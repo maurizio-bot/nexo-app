@@ -778,7 +778,7 @@
    },
    "revision": {
     "n": 2,
-    "fallos": 1
+    "fallos": 3
    },
    "modos": [
     {
@@ -839,6 +839,15 @@
     {
      "fallo": "DoS 2804: un trozo BLE (chat/archivo) con «n» (total de trozos) disparatado pasaba la validación (solo total>0/idx<total) y disparaba bucles de miles de millones en el hilo principal (_sendBlockAck / array de huecos) → congelación/ANR; sin cifrar, a alcance Bluetooth. Arreglado: tope MAX_CHUNKS (300000) en _handleIncomingChunk",
      "prueba": "DoS por trozo"
+    },
+    {
+     "fallo": "DoS 2805 (misma clase, defensa en profundidad): vault_manager vaultCreateTransfer/vaultAppendChunk construían un array/cadena de miles de millones con un totalChunks disparatado. Código muerto hoy (expuesto en window sin llamador) pero se acota igual (tope 300000). Lo vigila chunkdos.js (verifica también el tope del vault)",
+     "prueba": "DoS por trozo"
+    },
+    {
+     "fallo": "DoS 2805 (leve, post-E2E): una tarjeta de contactos compartida con una lista enorme (meta.contacts) dibujaba millones de nodos del DOM (share_contacts _renderContactCard) y addSharedContacts iteraba sin tope → congelación. Acotado a 500 en ambos. Amplificación 1:1 y exige ser contacto; revisión de código",
+     "prueba": null,
+     "fuera": "revisión de código + tope de 500 (una tarjeta real son unos pocos)"
     }
    ],
    "debiles": [

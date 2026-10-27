@@ -155,6 +155,52 @@ estaban cubiertos por el catálogo como «ver una vez» y «Estados», así que 
 
 ---
 
+## 3ter. Auditoría destructiva 27-10-2026 (builds 2804–2805) — «auditoría completa, pruebas destructivas» (pedido del dueño)
+
+Segunda auditoría del día, con revisión adversarial independiente centrada en la clase de fallo **«un número que
+controla el atacante se convierte en un contador de bucle o en el tamaño de una asignación, sin tope»** (la peor en una
+app de mensajería: un solo paquete cuelga el teléfono). Método de siempre: reproducir → arreglar → batería → subir.
+
+**Batería de ataque/caos VERDE** (`spoof`, `ackforge`, `groupforge`, `relaytls`, `misroute`, `chunkdos` nuevo) y pruebas
+Kotlin de ataque/fuzz verdes (`ParserFuzzTest`, `LanHubAttackTest`, `BigFileAttackTest`, `LanBeaconAttackTest`).
+
+### Hallazgo NEXO-02-010 — DoS por trozo BLE con «n» disparatado (ALTA, arreglado 2804)
+
+- **Gravedad:** ALTA. CVSS 4.0 aprox. `AV:A/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H` (disponibilidad alta; **a alcance Bluetooth, sin cifrar, sin ser contacto**).
+- **Qué:** el servidor GATT acepta escrituras de cualquiera (antes del E2E). Un trozo de chat/archivo con el campo «n»
+  (total de trozos) disparatado (p.ej. 2.000.000.000) pasaba `_handleIncomingChunk` (solo validaba `total>0`, `idx>=0`,
+  `idx<total`). Dos caminos al mismo desastre: (a) con `idx=0` creaba el búfer con ese total y agendaba un block-ack que
+  recorría `for (i<buf.total)` en `_sendBlockAck`; (b) con `idx` grande y sin búfer construía el array de huecos de L557.
+  Ambos → miles de millones de iteraciones en el hilo principal → **congelación de la interfaz → ANR en Android**.
+- **Ruta:** teléfono malicioso a ~alcance Bluetooth → escribe el trozo en el característico GATT de la víctima →
+  `processIncomingFragment` → `_handleIncomingChunk`. No necesita ser contacto ni clave: es **antes** del cifrado E2E.
+- **Arreglo (`src/ui/ble_ack.js`):** `const MAX_CHUNKS = 300000;` y `if (total > MAX_CHUNKS) return;` tras la validación.
+  El mensaje real más grande (`BLE_HD_MAX_CHARS` 9,5 M troceado al mínimo ~40–60) son ~158k trozos; el tope deja el doble
+  de margen y, como `idx<total`, acota también el array de huecos. Reproducido en `tests/sim/chunkdos.js` (antes: búfer de
+  2e9 + block-ack/NACK gigantes; después: ignorado), en la batería (tag CHUNKDOS). El ANR real se confirma en el teléfono.
+
+### Hallazgos NEXO-02-011 y 012 — misma clase, defensa en profundidad (LEVES, arreglados 2805)
+
+- **011 `vault_manager` (`vaultCreateTransfer`/`vaultAppendChunk`):** el bucle `for i<totalChunks` + `join` construía un
+  array/cadena de miles de millones con un `totalChunks` disparatado. **Hoy es código muerto** (expuesto en `window.*`,
+  sin llamador en `src/`: el reensamblado entrante vive en `ble_ack.js` con `MAX_CHUNKS`); pero al seguir expuesto en
+  `window`, cualquier recableado futuro reintroduciría el ANR. Se acota igual (tope 300000); `chunkdos.js` lo vigila.
+- **012 tarjeta de contactos compartida (`share_contacts._renderContactCard` / `ble_contacts.addSharedContacts`):** sin
+  tope, una lista `meta.contacts` enorme dibujaba millones de nodos del DOM → congelación. **POST-E2E** (exige ser un
+  contacto aceptado) y amplificación 1:1 (hay que mandar literalmente N entradas), de ahí la gravedad leve. Acotado a 500
+  (una tarjeta real son unos pocos).
+
+### Superficies revisadas y robustas (una línea cada una)
+
+QR del número de seguridad (`qr_verify`) y QR NEXO-MOVE (`move_account`): formato estricto, sin bucles. `estados.applyStatus`:
+texto ≤280, `ts` acotado a «ahora» (2800), escapado al mostrar. Sobres E2E (`e2e_proto`/`e2e_crypto`): tamaños 1:1, sin
+contadores explotables. Ratchet (`e2e_ratchet._skip`): rechaza `n>1e7` y tope `MAX_SKIP=1000`. Fénix/`shard_crypto`: share y
+blob validados, tope de dueños, umbral propio. `big_file`/`wifi_direct`: acotan `p.size`, transferencia nativa. Llamadas
+(`unpackCallPacket`): acotado por contador de 1 byte y por el tamaño del paquete. `net_link`/`lan`: handshake E2E, formatos
+y nombre (≤40) validados. **Veredicto:** fuera de los tres de arriba, no hay un paquete único que amplifique a un bucle/asignación sin tope.
+
+---
+
 ## 4. Plan de pruebas «al límite» (robustez y seguridad)
 
 Adaptado de los modelos más duros: simulación determinista (FoundationDB, TigerBeetle VOPR), Jepsen/caos, fuzzing
