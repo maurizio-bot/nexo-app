@@ -35,6 +35,9 @@ function _openProfileSheet() {
     // Ronda 2807: el resto (seguridad, avisos, llamadas, internet, diagnóstico, cuenta) se abre en Ajustes
     '<button id="nexo-open-settings" class="nx-btn nx-btn-primary" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;font-size:16px;padding:14px;">⚙️ Ajustes</button>' +
     '<div class="nx-sub" style="text-align:center;margin-top:2px;">Seguridad, avisos, llamadas, internet, diagnóstico y tu cuenta (Fénix, cambiar de teléfono).</div>' +
+    // Ronda 2810 (pedido del dueño): el gesto secreto de la «N» vive en el espacio negro de ABAJO de Perfil, no en
+    // Ajustes (donde el scroll se comía el trazo). touch-action:none → aquí el dedo dibuja, no hace scroll.
+    '<div id="nexo-gesture-zone" style="flex:1;min-height:220px;touch-action:none;"></div>' +
     '</div>';
   document.body.appendChild(sheet);
   sheet.querySelector('#nexo-profile-id').textContent = bi.localNexoId || '?';
@@ -81,6 +84,9 @@ function _openProfileSheet() {
   clr.onclick = function() { clearMyAvatar(); paintMine(); };
   sheet.querySelector('#nexo-profile-close').onclick = function() { sheet.remove(); };
   sheet.querySelector('#nexo-open-settings').onclick = function() { _openSettingsSheet(); };
+  // Juego secreto (pedido del dueño): dibujar la «N» de NEXO en el espacio negro de abajo abre el mini-arcade oculto.
+  var gz = sheet.querySelector('#nexo-gesture-zone');
+  if (gz) attachNexoUnlockGesture(gz);
 }
 window.addEventListener('nexo:ui:profile', _openProfileSheet);
 
@@ -128,9 +134,7 @@ function _openSettingsSheet() {
       '<textarea id="nexo-diag-text" readonly style="min-height:220px;width:100%;box-sizing:border-box;color:#9fe;font-size:10px;font-family:monospace;padding:8px;"></textarea>') +
     '</div>';
   document.body.appendChild(sheet);
-  // Juego secreto (pedido del dueño): dibujar la «N» de NEXO en esta pantalla de Ajustes abre el mini-arcade oculto.
-  // Pasivo: no estorba al scroll ni a los botones.
-  attachNexoUnlockGesture(sheet);
+  // (Ronda 2810) El gesto secreto de la «N» ya NO vive aquí: el scroll de Ajustes se comía el trazo. Está en Perfil.
   var ta = sheet.querySelector('#nexo-diag-text');
   ta.value = _diagnosticText();
   ta.scrollTop = ta.scrollHeight;
