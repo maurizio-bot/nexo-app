@@ -585,6 +585,8 @@ export class BleAckSystem {
           height: msg.h || msg.height,
           hdFor: msg.hf || null,
           preview: msg.pv === 1,
+          once: msg.o1 === 1, // #94 «ver una vez»
+
           thumb: msg.th || null,
           pages: msg.pg || null,
           dst: msg.dt || null,
@@ -1727,6 +1729,7 @@ ChatStream.prototype._buildChunk = function(idx) {
     if (this.meta.height) obj.h = this.meta.height;
     if (this.meta.hdFor) obj.hf = this.meta.hdFor;
     if (this.meta.preview) obj.pv = 1;
+    if (this.meta.once) obj.o1 = 1; // #94 «ver una vez»: el medio se consume al abrirlo en el receptor
     if (this.meta.thumb) obj.th = this.meta.thumb; // miniatura JPEG del vídeo (poster) o 1.ª página del PDF
     if (this.meta.pages) obj.pg = this.meta.pages;
     if (this.meta.dst) obj.dt = this.meta.dst;

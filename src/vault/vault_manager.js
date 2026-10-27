@@ -617,6 +617,8 @@ async function _appendMessageNow(cid, message) {
       if (normalized[k] == null && existing[k] != null) merged[k] = existing[k];
     });
     if (!normalized.content && existing.content) { merged.content = existing.content; merged.text = existing.text; }
+    // #94 «ver una vez»: si ya se abrió, nunca revive el medio (una retransmisión no debe restaurar el payload)
+    if (existing.onceSeen) { merged.onceSeen = true; merged.attachmentPayload = null; merged.attachmentRef = null; merged.hdRef = null; }
     messages[existingIdx] = merged;
   }
   else { messages.push(normalized); }
@@ -704,6 +706,28 @@ export async function vaultBlankMessage(contactNexoId, msgId) {
     var m = messages[idx];
     messages[idx] = Object.assign({}, m, { deleted: true, content: '', attachmentType: null, attachmentPayload: null,
       attachmentRef: null, attachmentMeta: null, hdRef: null, hdStatus: null });
+    _persistMessages(cid, messages);
+    _deleteMessageFiles(m, msgId);
+    return true;
+  });
+}
+
+// #94 «ver una vez»: tras abrir un medio de una sola vista, se borra de verdad (blob del disco incluido) y queda
+// marcado onceSeen para que la burbuja muestre «Abierta». No se puede volver a abrir. Se conserva el mensaje (no es
+// "eliminado"): solo pierde el contenido del medio.
+export async function vaultConsumeOnceMessage(contactNexoId, msgId) {
+  if (!contactNexoId || !msgId) return false;
+  var cid = _normId(contactNexoId);
+  return _withMsgLock(cid, async function() {
+    var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
+    var idx = messages.findIndex(function(m) { return (m.msgId || m.messageId) === msgId; });
+    if (idx < 0) return false;
+    var m = messages[idx];
+    if (m.onceSeen) return true;
+    var meta = Object.assign({}, m.attachmentMeta || {}, { once: true, onceSeen: true });
+    // Borrar también content/text: el content de un adjunto puede llevar el payload como JSON y lo resucitaría al
+    // reabrir el chat. Se conservan attachmentType y attachmentMeta.once para que la burbuja muestre «Abierta».
+    messages[idx] = Object.assign({}, m, { onceSeen: true, content: '', text: '', attachmentPayload: null, attachmentRef: null, hdRef: null, hdStatus: null, attachmentMeta: meta });
     _persistMessages(cid, messages);
     _deleteMessageFiles(m, msgId);
     return true;
