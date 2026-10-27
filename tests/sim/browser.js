@@ -155,6 +155,9 @@ async function sendText(page, t) {
     if (!tab) return 'sin pestaña';
     tab.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await new Promise((r) => setTimeout(r, 300));
+    const settings = document.getElementById('nexo-open-settings'); // ronda 2807: el diagnóstico vive ahora en Ajustes
+    if (settings) settings.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 300));
     const ta = document.getElementById('nexo-diag-text');
     if (!ta) return 'no abre';
     return ta.value.split('\n').length + ' líneas, ' + ta.value.split('\n').filter((l) => l.indexOf('[VIDEO]') >= 0).length + ' de [VIDEO]';

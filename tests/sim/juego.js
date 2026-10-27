@@ -71,16 +71,23 @@ function pathDiag() { const p = []; for (let t = 0; t <= 1.0001; t += 0.08) p.pu
   await sleep(50);
   r.cierra_overlay = !win.document.getElementById('nexo-game-overlay');
 
-  // 4. Gesto cableado en Ajustes
+  // 4. Perfil abre; desde Perfil se abre Ajustes (⚙️) y el gesto de la «N» está cableado EN AJUSTES (ronda 2807)
   win.dispatchEvent(new win.Event('nexo:ui:profile'));
   await sleep(200);
-  const sheet = win.document.getElementById('nexo-profile-sheet');
+  const perfil = win.document.getElementById('nexo-profile-sheet');
+  r.perfil_abre = !!perfil;
+  const btnAjustes = perfil && perfil.querySelector('#nexo-open-settings');
+  if (btnAjustes) btnAjustes.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  await sleep(200);
+  const sheet = win.document.getElementById('nexo-settings-sheet');
   r.ajustes_abre = !!sheet;
   r.gesto_cableado = !!(sheet && sheet.__nexoNWired);
+  r.gesto_no_en_perfil = !(perfil && perfil.__nexoNWired); // el gesto NO debe estar en Perfil
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|is not a function|RangeError/.test(l)).slice(0, 4);
   const ok = r.hay_api && r.N_aceptada && r.recta_rechazada && r.diagonal_rechazada && r.corto_rechazado &&
-    r.clasifica_ordenada && r.clasifica_persiste && r.abre_overlay && r.cierra_overlay && r.ajustes_abre && r.gesto_cableado && r.errores.length === 0;
+    r.clasifica_ordenada && r.clasifica_persiste && r.abre_overlay && r.cierra_overlay &&
+    r.perfil_abre && r.ajustes_abre && r.gesto_cableado && r.gesto_no_en_perfil && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('JUEGO ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_juego.txt'), logs.join('\n'));

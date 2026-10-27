@@ -1,7 +1,8 @@
 /**
- * NEXO — Perfil y Fénix (sacados de main.js en la ronda 2752, sin cambios en su código): la ficha de Perfil (NEXO ID,
- * Fénix, Seguridad, Internet, Diagnóstico) y los avisos de Fénix (recuperación, mensajes recuperados, petición de
- * ayuda de un teléfono nuevo). Lo que usa del resto de la app se lo da main.js con profileUse().
+ * NEXO — Perfil, Ajustes y Fénix. Ronda 2807 (pedido del dueño «organizar bien mi perfil con el menú ajustes»):
+ * se separan en DOS pantallas — «Perfil» (identidad: NEXO ID, foto, compartir, cómo te ven) y «Ajustes» (todo lo
+ * configurable: tu cuenta Fénix/cambiar de teléfono, seguridad, avisos, llamadas/tono, internet, diagnóstico). El
+ * gesto secreto (dibujar la «N») vive ahora en AJUSTES. Lo que usa del resto de la app se lo da main.js con profileUse().
  */
 import { securitySectionHtml, renderSecuritySection } from './app_lock.js';
 import { _diagnosticText } from './diag.js';
@@ -14,53 +15,29 @@ import { attachNexoUnlockGesture } from './nexo_game.js';
 var _showInfoToast;
 export function profileUse(d) { _showInfoToast = d._showInfoToast; } // [/pegamento]
 
+// ===================== Perfil (identidad) =====================
 function _openProfileSheet() {
   var old = document.getElementById('nexo-profile-sheet');
   if (old) old.remove();
+  var old2 = document.getElementById('nexo-settings-sheet');
+  if (old2) old2.remove();
   var bi = window.bleInterface || {};
   var sheet = document.createElement('div');
   sheet.id = 'nexo-profile-sheet';
   sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;color:#fff;box-sizing:border-box;font-family:inherit;overflow-y:auto;';
-  // Ronda 2763 (estilo NEXO, nexo_theme.css): tarjeta de identidad y una tarjeta por sección
-  var card = function(ico, title, body) { return '<div class="nx-card"><div class="nx-h"><span class="nx-ico">' + ico + '</span>' + title + '</div>' + body + '</div>'; };
   sheet.innerHTML = '<div class="nx-profile-in">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 14px;">' +
     '<div style="font-size:26px;font-weight:800;">Perfil</div><button id="nexo-profile-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;">Cerrar</button></div>' +
     '<div class="nx-card nx-id-card"><div class="nx-av" id="nexo-profile-av" title="Cambiar foto" style="cursor:pointer;"></div><div style="flex:1;min-width:0;"><div class="nx-idtxt">Mi NEXO ID</div><b id="nexo-profile-id"></b>' +
     '<div id="nexo-profile-seen" class="nx-idtxt" style="margin-top:2px;"></div>' +
     '<div><button id="nexo-av-pick" class="nx-link">Cambiar foto</button> <button id="nexo-av-clear" class="nx-link" style="display:none;">Quitar</button> <button id="nexo-id-share" class="nx-link">Compartir mi ID</button></div></div></div>' +
-    card('🔥', 'Fénix', '<div id="nexo-fenix-status" class="nx-sub"></div>' +
-      '<button id="nexo-fenix-recover" class="nx-btn">Recuperar mi cuenta (teléfono nuevo)</button>') +
-    // Ronda 2759: pasar la cuenta de un teléfono a otro (move_account.js)
-    card('📲', 'Cambiar de teléfono', '<div class="nx-sub">Con los dos teléfonos en el mismo Wi-Fi: en el nuevo, "Traer mi cuenta"; en este, "Pasar mi cuenta" y lee su código. Pasa todo (contactos, chats, fotos, grupos) y este queda vacío.</div>' +
-      '<button id="nexo-move-send" class="nx-btn">Pasar mi cuenta a un teléfono nuevo</button>' +
-      '<button id="nexo-move-receive" class="nx-btn">Traer mi cuenta de otro teléfono</button>') +
-    '<div class="nx-card">' + securitySectionHtml() + '</div>' +
-    // Ronda 2765 (pedido del dueño): que los avisos y las llamadas lleguen con la pantalla apagada y la enciendan
-    card('🔔', 'Avisos con la pantalla apagada', '<div class="nx-sub">Para que los mensajes y las llamadas lleguen con la app cerrada o la pantalla apagada.</div>' +
-      '<div id="nexo-alert-rows"></div>' +
-      '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-top:6px;"><input type="checkbox" id="nexo-wake-msg"> Encender la pantalla con un mensaje nuevo</label>') +
-    // Ronda 2772 (pedido del dueño): ver al otro como en un espejo (con su cámara de delante)
-    card('🎥', 'Videollamadas', '<label style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-call-mirror"> Ver al otro como en un espejo (su cámara de delante)</label>' +
-      '<div class="nx-sub" style="margin-top:6px;">Sin espejo lo ves como te vería en persona: un papel con letras se lee bien.</div>') +
-    // Ronda 2774 (pedido del dueño): elegir el tono de las llamadas y videollamadas (de los guardados en el teléfono);
-    // por defecto, el tono de llamada actual del teléfono.
-    card('📞', 'Tono de llamada y videollamada', '<div class="nx-sub">Suena igual en llamadas y videollamadas. Por defecto usa el tono de llamada de tu teléfono.</div>' +
-      '<button id="nexo-ringtone-btn" class="nx-btn" style="margin-top:6px;">Elegir tono…</button>') +
-    // v9.9.51: internet (relés públicos y Tor, src/net/net_link.js)
-    card('🌐', 'Internet', '<div id="nexo-net-status" class="nx-sub"></div>' +
-      '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> Usar Tor con Wi-Fi (oculta tu IP; más lento)</label>') +
-    card('🩺', 'Diagnóstico', '<div class="nx-sub">Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.</div>' +
-      '<button id="nexo-diag-copy" class="nx-btn nx-btn-primary">Copiar diagnóstico</button>' +
-      '<textarea id="nexo-diag-text" readonly style="min-height:220px;width:100%;box-sizing:border-box;color:#9fe;font-size:10px;font-family:monospace;padding:8px;"></textarea>') +
+    // Ronda 2807: el resto (seguridad, avisos, llamadas, internet, diagnóstico, cuenta) se abre en Ajustes
+    '<button id="nexo-open-settings" class="nx-btn nx-btn-primary" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;font-size:16px;padding:14px;">⚙️ Ajustes</button>' +
+    '<div class="nx-sub" style="text-align:center;margin-top:2px;">Seguridad, avisos, llamadas, internet, diagnóstico y tu cuenta (Fénix, cambiar de teléfono).</div>' +
     '</div>';
   document.body.appendChild(sheet);
-  // Juego secreto (pedido del dueño): dibujar la «N» de NEXO en esta pantalla de Ajustes abre el mini-arcade oculto.
-  // Pasivo: no estorba al scroll ni a los botones.
-  attachNexoUnlockGesture(sheet);
   sheet.querySelector('#nexo-profile-id').textContent = bi.localNexoId || '?';
   // Ronda 2771 (revisión, parte 4): cómo te ven tus contactos (el nombre del teléfono) y sus iniciales en el círculo
-  // (antes, la primera cifra del NEXO ID: "0")
   var myName = String(bi.localDeviceName || '').trim();
   sheet.querySelector('#nexo-profile-seen').textContent = myName ? 'Tus contactos te ven como «' + myName + '» (el nombre del teléfono)' : '';
   var initials = function(n) { var w = n.split(/\s+/).filter(Boolean); return ((w[0] || '').charAt(0) + (w[1] || '').charAt(0)).toUpperCase(); };
@@ -101,10 +78,61 @@ function _openProfileSheet() {
     else if (_showInfoToast) _showInfoToast('Tu NEXO ID: ' + id, 5000);
   };
   clr.onclick = function() { clearMyAvatar(); paintMine(); };
+  sheet.querySelector('#nexo-profile-close').onclick = function() { sheet.remove(); };
+  sheet.querySelector('#nexo-open-settings').onclick = function() { _openSettingsSheet(); };
+}
+window.addEventListener('nexo:ui:profile', _openProfileSheet);
+
+// ===================== Ajustes (todo lo configurable) =====================
+function _openSettingsSheet() {
+  var old = document.getElementById('nexo-settings-sheet');
+  if (old) old.remove();
+  var perfil = document.getElementById('nexo-profile-sheet');
+  if (perfil) perfil.remove(); // una sola hoja a la vez: Ajustes reemplaza a Perfil («‹ Perfil» la vuelve a abrir)
+  var bi = window.bleInterface || {};
+  var sheet = document.createElement('div');
+  sheet.id = 'nexo-settings-sheet';
+  sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;color:#fff;box-sizing:border-box;font-family:inherit;overflow-y:auto;';
+  // una tarjeta por sección (estilo NEXO, nexo_theme.css)
+  var card = function(ico, title, body) { return '<div class="nx-card"><div class="nx-h"><span class="nx-ico">' + ico + '</span>' + title + '</div>' + body + '</div>'; };
+  sheet.innerHTML = '<div class="nx-profile-in">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 14px;gap:10px;">' +
+    '<div style="display:flex;align-items:center;gap:8px;min-width:0;"><button id="nexo-settings-back" class="nx-btn" style="width:auto;margin:0;padding:9px 13px;">‹ Perfil</button><div style="font-size:26px;font-weight:800;">Ajustes</div></div>' +
+    '<button id="nexo-settings-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;flex-shrink:0;">Cerrar</button></div>' +
+    // Cuenta (Fénix + cambiar de teléfono)
+    card('🔥', 'Fénix (respaldo de tu cuenta)', '<div id="nexo-fenix-status" class="nx-sub"></div>' +
+      '<button id="nexo-fenix-recover" class="nx-btn">Recuperar mi cuenta (teléfono nuevo)</button>') +
+    // Ronda 2759: pasar la cuenta de un teléfono a otro (move_account.js)
+    card('📲', 'Cambiar de teléfono', '<div class="nx-sub">Con los dos teléfonos en el mismo Wi-Fi: en el nuevo, "Traer mi cuenta"; en este, "Pasar mi cuenta" y lee su código. Pasa todo (contactos, chats, fotos, grupos) y este queda vacío.</div>' +
+      '<button id="nexo-move-send" class="nx-btn">Pasar mi cuenta a un teléfono nuevo</button>' +
+      '<button id="nexo-move-receive" class="nx-btn">Traer mi cuenta de otro teléfono</button>') +
+    '<div class="nx-card">' + securitySectionHtml() + '</div>' +
+    // Ronda 2765 (pedido del dueño): que los avisos y las llamadas lleguen con la pantalla apagada y la enciendan
+    card('🔔', 'Avisos con la pantalla apagada', '<div class="nx-sub">Para que los mensajes y las llamadas lleguen con la app cerrada o la pantalla apagada.</div>' +
+      '<div id="nexo-alert-rows"></div>' +
+      '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-top:6px;"><input type="checkbox" id="nexo-wake-msg"> Encender la pantalla con un mensaje nuevo</label>') +
+    // Ronda 2772 (pedido del dueño): ver al otro como en un espejo (con su cámara de delante)
+    card('🎥', 'Videollamadas', '<label style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-call-mirror"> Ver al otro como en un espejo (su cámara de delante)</label>' +
+      '<div class="nx-sub" style="margin-top:6px;">Sin espejo lo ves como te vería en persona: un papel con letras se lee bien.</div>') +
+    // Ronda 2774 (pedido del dueño): elegir el tono de las llamadas y videollamadas; por defecto, el del teléfono.
+    card('📞', 'Tono de llamada y videollamada', '<div class="nx-sub">Suena igual en llamadas y videollamadas. Por defecto usa el tono de llamada de tu teléfono.</div>' +
+      '<button id="nexo-ringtone-btn" class="nx-btn" style="margin-top:6px;">Elegir tono…</button>') +
+    // v9.9.51: internet (relés públicos y Tor, src/net/net_link.js)
+    card('🌐', 'Internet', '<div id="nexo-net-status" class="nx-sub"></div>' +
+      '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> Usar Tor con Wi-Fi (oculta tu IP; más lento)</label>') +
+    card('🩺', 'Diagnóstico', '<div class="nx-sub">Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.</div>' +
+      '<button id="nexo-diag-copy" class="nx-btn nx-btn-primary">Copiar diagnóstico</button>' +
+      '<textarea id="nexo-diag-text" readonly style="min-height:220px;width:100%;box-sizing:border-box;color:#9fe;font-size:10px;font-family:monospace;padding:8px;"></textarea>') +
+    '</div>';
+  document.body.appendChild(sheet);
+  // Juego secreto (pedido del dueño): dibujar la «N» de NEXO en esta pantalla de Ajustes abre el mini-arcade oculto.
+  // Pasivo: no estorba al scroll ni a los botones.
+  attachNexoUnlockGesture(sheet);
   var ta = sheet.querySelector('#nexo-diag-text');
   ta.value = _diagnosticText();
   ta.scrollTop = ta.scrollHeight;
-  sheet.querySelector('#nexo-profile-close').onclick = function() { sheet.remove(); };
+  sheet.querySelector('#nexo-settings-close').onclick = function() { sheet.remove(); };
+  sheet.querySelector('#nexo-settings-back').onclick = function() { sheet.remove(); _openProfileSheet(); };
   _renderFenixStatus();
   renderSecuritySection();
   _renderNetStatus();
@@ -149,7 +177,8 @@ function _openProfileSheet() {
     else fallback();
   };
 }
-window.addEventListener('nexo:ui:profile', _openProfileSheet);
+window.addEventListener('nexo:ui:settings', _openSettingsSheet);
+try { if (typeof window !== 'undefined') window.__nexoOpenSettings = _openSettingsSheet; } catch (e) {}
 
 // Ronda 2759: botón 👤 en la cabecera (junto al 👥). La barra de abajo (Chats · Gente · Mapa · Perfil) queda fuera de la
 // pantalla en los teléfonos y Perfil (con el diagnóstico) no se podía abrir.
