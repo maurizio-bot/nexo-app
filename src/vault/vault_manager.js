@@ -879,6 +879,9 @@ function _persistTransfers(contactNexoId, transfers) {
 }
 export async function vaultCreateTransfer(contactNexoId, transferId, type, totalChunks, meta) {
   if (!contactNexoId || !transferId || !type || !totalChunks) return null;
+  // Robustez (auditoría 2805, misma clase que el DoS de ble_ack.js): un totalChunks disparatado haría un array/
+  // cadena de miles de millones (congelación/OOM). Igual que MAX_CHUNKS: el mensaje más grande son ~158k trozos.
+  if (totalChunks > 300000) return null;
   var cid = _normId(contactNexoId);
   var transfers = await _loadTransfers(cid);
   var existing = transfers.find(function(t) { return t.transferId === transferId; });
@@ -904,6 +907,7 @@ export async function vaultAppendChunk(contactNexoId, transferId, index, data, t
   var t = transfers.find(function(tr) { return tr.transferId === transferId; });
   if (!t) {
     if (!totalChunks || totalChunks <= 0) return false;
+    if (totalChunks > 300000) return false; // Robustez 2805: mismo tope que MAX_CHUNKS (evita array/cadena gigante → ANR)
     var now = Date.now();
     var maskArr = [];
     for (var i = 0; i < totalChunks; i++) maskArr.push('0');
