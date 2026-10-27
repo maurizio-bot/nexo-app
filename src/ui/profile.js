@@ -10,6 +10,7 @@ import { startReceiveAccount, startSendAccount } from './move_account.js';
 import { clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
 import { mirrorPeerPref, setMirrorPeerPref } from './calls_ui.js';
 import { attachNexoUnlockGesture } from './nexo_game.js';
+import { perfSectionHtml, renderPerfSection } from './perf.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _showInfoToast;
@@ -120,6 +121,8 @@ function _openSettingsSheet() {
     // v9.9.51: internet (relés públicos y Tor, src/net/net_link.js)
     card('🌐', 'Internet', '<div id="nexo-net-status" class="nx-sub"></div>' +
       '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> Usar Tor con Wi-Fi (oculta tu IP; más lento)</label>') +
+    // Ronda 2808 (pedido del dueño «rendimiento api de nexo»): medición en vivo del rendimiento de NEXO
+    perfSectionHtml() +
     card('🩺', 'Diagnóstico', '<div class="nx-sub">Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.</div>' +
       '<button id="nexo-diag-copy" class="nx-btn nx-btn-primary">Copiar diagnóstico</button>' +
       '<textarea id="nexo-diag-text" readonly style="min-height:220px;width:100%;box-sizing:border-box;color:#9fe;font-size:10px;font-family:monospace;padding:8px;"></textarea>') +
@@ -137,6 +140,8 @@ function _openSettingsSheet() {
   renderSecuritySection();
   _renderNetStatus();
   _renderAlertSettings();
+  renderPerfSection(); // ronda 2808: rendimiento en vivo
+  { var pr = sheet.querySelector('#nexo-perf-refresh'); if (pr) pr.onclick = function () { renderPerfSection(); }; }
   var mirBox = sheet.querySelector('#nexo-call-mirror');
   if (mirBox) { mirBox.checked = mirrorPeerPref(); mirBox.onchange = function() { setMirrorPeerPref(mirBox.checked); }; }
   // Tono de llamada/videollamada (ronda 2774): enseña el actual y abre el selector del teléfono al tocarlo

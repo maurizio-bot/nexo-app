@@ -346,6 +346,7 @@ export const BLE_MESSAGE_METHODS = {
             clearTimeout(pending.timer);
             self._pendingPings.delete(ctrl.pingId);
             var rtt = Date.now() - pending.ts;
+            try { if (typeof window !== 'undefined' && window.nexoPerf) window.nexoPerf.record('rtt', rtt); } catch (e) {} // ronda 2808: rendimiento (pasivo)
             self._lastPongTime.set(deviceId, Date.now());
             self._pingFailCount.set(deviceId, 0);
             self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.HEALTHY, since: Date.now(), rtt: rtt });
