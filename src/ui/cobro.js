@@ -18,6 +18,19 @@ export var MONEDAS = ['ARS', 'MXN', 'USD', 'EUR', 'COP', 'CLP', 'PEN', 'UYU', 'B
 function _recall(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
 function _remember(k, v) { try { if (v) localStorage.setItem(k, v); } catch (e) {} }
 
+// Ronda 2793 (pedido del dueño): la moneda por defecto se detecta del país/idioma del teléfono (antes arrancaba fija en
+// ARS). Solo es el valor INICIAL; si el dueño elige otra, se recuerda (COBRO_MONEDA_KEY) y manda esa.
+var _PAIS_MONEDA = { MX: 'MXN', AR: 'ARS', US: 'USD', CO: 'COP', CL: 'CLP', PE: 'PEN', UY: 'UYU', BR: 'BRL', BO: 'BOB', PY: 'PYG', GT: 'GTQ', DO: 'DOP', ES: 'EUR' };
+function _defaultMoneda() {
+  try {
+    var loc = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+    var m = /[-_]([A-Za-z]{2})(?:[-_]|$)/.exec(String(loc));
+    var cur = m && _PAIS_MONEDA[m[1].toUpperCase()];
+    if (cur && MONEDAS.indexOf(cur) >= 0) return cur;
+  } catch (e) {}
+  return 'USD';
+}
+
 export function _handleCobro() {
   _closeAttachMenu();
   _openCobroSheet();
