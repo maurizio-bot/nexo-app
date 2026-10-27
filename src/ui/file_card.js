@@ -19,7 +19,7 @@ export function _closeFullscreenMedia() {
   ov.remove();
 }
 
-export function _openFullscreenMedia(src, type) {
+export function _openFullscreenMedia(src, type, noSave) {
   _closeFullscreenMedia();
   if (!src) { console.warn('[VIDEO] Sin fuente para el visor'); return; }
   var overlay = document.createElement('div');
@@ -32,6 +32,16 @@ export function _openFullscreenMedia(src, type) {
   // se liberan al salir del chat (_cleanupObjectURLs)
   closeBtn.onclick = function(e) { if (e) e.stopPropagation(); _closeFullscreenMedia(); };
   overlay.appendChild(closeBtn);
+  // Ronda 2801 (pedido del dueño #92): guardar en la galería. NO en «ver una vez» (noSave): se consumen, no se guardan.
+  if (!noSave) {
+    var dlBtn = document.createElement('button');
+    dlBtn.className = 'fs-save-btn';
+    dlBtn.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" fill="#fff"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>';
+    dlBtn.title = 'Guardar en galería';
+    dlBtn.style.cssText = 'position:absolute;top:16px;left:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;';
+    dlBtn.onclick = function(e) { if (e) e.stopPropagation(); _saveMediaToGallery(src, type, dlBtn); };
+    overlay.appendChild(dlBtn);
+  }
   if (type === 'image') {
     var img = document.createElement('img');
     img.src = src;
@@ -99,8 +109,48 @@ export function _openFullscreenMedia(src, type) {
   });
   document.body.appendChild(overlay);
 }
+// Ronda 2801 (#92): guardar la foto/vídeo que se está viendo en la GALERÍA del teléfono (plugin nativo saveToGallery).
+// El visor tiene data: URL (foto) o blob: URL (vídeo); de ahí sacamos los bytes en base64 para el nativo.
+function _extForMime(mime) {
+  mime = String(mime || '');
+  if (/png/.test(mime)) return 'png'; if (/webp/.test(mime)) return 'webp'; if (/gif/.test(mime)) return 'gif';
+  if (/mp4/.test(mime)) return 'mp4'; if (/webm/.test(mime)) return 'webm'; if (/3gpp?/.test(mime)) return '3gp';
+  if (/quicktime|mov/.test(mime)) return 'mov';
+  return mime.indexOf('video') === 0 ? 'mp4' : 'jpg';
+}
+function _blobToB64(blob) {
+  return new Promise(function(resolve, reject) {
+    var r = new FileReader();
+    r.onload = function() { var s = String(r.result || ''); var i = s.indexOf(','); resolve(i >= 0 ? s.substring(i + 1) : ''); };
+    r.onerror = function() { reject(new Error('lectura')); };
+    r.readAsDataURL(blob);
+  });
+}
+export function _saveMediaToGallery(src, type, btn) {
+  var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
+  if (!pl || typeof pl.saveToGallery !== 'function') { _showPermissionError('Guardar: esta versión no puede guardar en la galería'); return; }
+  if (btn) btn.style.opacity = '0.5';
+  var done = function(ok) { if (btn) btn.style.opacity = '1'; _showPermissionError(ok ? 'Guardado en la galería' : 'No se pudo guardar en la galería'); };
+  var send = function(b64, mime) {
+    if (!b64) { done(false); return; }
+    pl.saveToGallery({ base64: b64, name: 'NEXO_' + Date.now() + '.' + _extForMime(mime), mime: mime })
+      .then(function(r) { done(!!(r && r.saved)); }).catch(function() { done(false); });
+  };
+  try {
+    if (typeof src === 'string' && src.indexOf('data:') === 0) {
+      var meta = src.substring(5, src.indexOf(','));           // p. ej. "image/jpeg;base64"
+      var mime = (meta.split(';')[0]) || (type === 'video' ? 'video/mp4' : 'image/jpeg');
+      send(src.substring(src.indexOf(',') + 1), mime);
+    } else {
+      fetch(src).then(function(r) { return r.blob(); }).then(function(blob) {
+        _blobToB64(blob).then(function(b64) { send(b64, blob.type || (type === 'video' ? 'video/mp4' : 'image/jpeg')); });
+      }).catch(function() { done(false); });
+    }
+  } catch (e) { done(false); }
+}
+
 // Para la prueba del simulador (zoom de la foto): abrir el visor sin tener que mandar una imagen por la radio
-if (typeof window !== 'undefined') window.__nexoOpenMedia = _openFullscreenMedia;
+if (typeof window !== 'undefined') { window.__nexoOpenMedia = _openFullscreenMedia; window.NEXO_saveMedia = _saveMediaToGallery; }
 
 export var _thumbsInProgress = {};
 
