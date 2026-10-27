@@ -105,7 +105,9 @@ export function _handleShareContacts() {
 // Tarjeta de contactos compartidos en la burbuja (todo como texto: los datos vienen de otro teléfono)
 export function _renderContactCard(container, meta, msg) {
   _contactsStyles();
-  var list = Array.isArray(meta.contacts) ? meta.contacts.filter(function(c) { return c && /^NX[0-9A-Z]{8}$/i.test(String(c.nexoId || '')); }) : [];
+  // Robustez (auditoría 2805): un contacto puede mandar una lista enorme; se acota a 500 (una tarjeta real son unos
+  // pocos) para no crear millones de filas en el DOM → congelación.
+  var list = Array.isArray(meta.contacts) ? meta.contacts.filter(function(c) { return c && /^NX[0-9A-Z]{8}$/i.test(String(c.nexoId || '')); }).slice(0, 500) : [];
   var card = document.createElement('div');
   card.className = 'contact-card';
   card.style.cssText = 'min-width:200px;max-width:260px;padding:10px 12px;';

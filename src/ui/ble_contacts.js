@@ -58,7 +58,7 @@ export const BLE_CONTACT_METHODS = {
     var res = { added: [], existing: [] }, keyFilled = false, bundles = [];
     var me = _normId(self.localNexoId);
     var contacts = _getBLEContacts();
-    (Array.isArray(list) ? list : []).forEach(function(c) {
+    (Array.isArray(list) ? list.slice(0, 500) : []).forEach(function(c) { // 2805: tope anti-DoS (lista enorme de un contacto)
       var id = String((c && c.nexoId) || '').trim();
       if (!/^NX[0-9A-Z]{8}$/i.test(id)) return;
       var nx = _normId(id);

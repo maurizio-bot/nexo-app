@@ -67,8 +67,20 @@ async function boot(name, native) {
   r.sin_nack_gigante = spy.nackMax < 1000000;       // ANTES: 5.000.000
   r.legitimo_ok = ack.incomingBuffers.has('ok1') && ack.incomingBuffers.get('ok1').total === 3;
 
+  // 2805: mismo tope en el vault (vaultCreateTransfer/vaultAppendChunk, expuestos en window). Un totalChunks
+  // disparatado debe rechazarse (null/false) y NO construir un array/cadena de miles de millones (congelación/OOM).
+  r.hay_vault = typeof A.win.vaultCreateTransfer === 'function' && typeof A.win.vaultAppendChunk === 'function';
+  if (r.hay_vault) {
+    r.vault_create_rechaza = (await A.win.vaultCreateTransfer('NXAAAAAAAA', 'dosV1', 'chat', 2000000000, {})) === null;
+    r.vault_append_rechaza = (await A.win.vaultAppendChunk('NXAAAAAAAA', 'dosV2', 0, 'x', 2000000000, {})) === false;
+    // Y un transfer legítimo pequeño se sigue creando (el tope no estorba).
+    var okT = await A.win.vaultCreateTransfer('NXAAAAAAAA', 'okV', 'chat', 3, {});
+    r.vault_legitimo_ok = !!okT && okT.totalChunks === 3;
+  }
+
   r.errores = logs.filter((l) => /TypeError|undefined is not|is not a function|RangeError/.test(l)).slice(0, 4);
-  const ok = r.hay_acksystem && r.dos1_sin_buffer && r.dos2_sin_buffer && r.sin_blockack_gigante && r.sin_nack_gigante && r.legitimo_ok && r.errores.length === 0;
+  const ok = r.hay_acksystem && r.dos1_sin_buffer && r.dos2_sin_buffer && r.sin_blockack_gigante && r.sin_nack_gigante && r.legitimo_ok
+    && r.hay_vault && r.vault_create_rechaza && r.vault_append_rechaza && r.vault_legitimo_ok && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('CHUNKDOS ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_chunkdos.txt'), logs.join('\n'));
