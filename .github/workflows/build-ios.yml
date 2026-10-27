@@ -57,6 +57,8 @@ jobs:
 
       - name: Compilar iOS (simulador, sin firma)
         working-directory: ios/App
+        # xcodebuild es muy verboso; si se filtra con `tail` se pierde la línea `error:`. Se guarda el log COMPLETO
+        # y, si falla, se imprimen las líneas de error y el final del log (para ver la causa real del exit 65).
         run: |
           set -o pipefail
           xcodebuild \
@@ -66,4 +68,13 @@ jobs:
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
-            clean build | tail -80
+            clean build 2>&1 | tee /tmp/xcodebuild.log | grep -E --line-buffered 'error:|warning: .*(NexoBle|App)|BUILD SUCCEEDED|BUILD FAILED|Compiling' || true
+          code=${PIPESTATUS[0]}
+          echo "xcodebuild exit = $code"
+          if [ "$code" != "0" ]; then
+            echo "===== líneas con 'error:' ====="
+            grep -nE 'error:' /tmp/xcodebuild.log | head -60 || echo "(ninguna línea 'error:' en el log)"
+            echo "===== últimas 150 líneas del log ====="
+            tail -150 /tmp/xcodebuild.log
+            exit "$code"
+          fi
