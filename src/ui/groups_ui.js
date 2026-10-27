@@ -66,9 +66,13 @@ export function openCreateGroupSheet() {
   var chosen = {};
   function refresh() {
     var n = Object.keys(chosen).length;
-    var ok = n > 0 && nameEl.value.trim().length > 0;
+    var hasName = nameEl.value.trim().length > 0;
+    var ok = n > 0 && hasName;
     btn.disabled = !ok; btn.style.opacity = ok ? '1' : '0.5';
-    btn.textContent = n ? 'Crear grupo (' + (n + 1) + ' personas)' : 'Crear grupo';
+    // Ronda 2792 (informe del dueño: «no se habilita el botón como si faltara algo»): antes el botón solo se activaba
+    // con nombre + 1 contacto, pero no decía CUÁL faltaba. Ahora lo dice, en orden: primero elegir a alguien, luego el
+    // nombre. Si no hay a quién marcar (la lista sale vacía), el texto lo deja claro en vez de un botón gris mudo.
+    btn.textContent = !n ? 'Elige al menos un contacto' : (!hasName ? 'Escribe un nombre del grupo' : 'Crear grupo (' + (n + 1) + ' personas)');
   }
   if (!all.length) listEl.innerHTML = '<div style="opacity:0.7;padding:16px 4px;">Aún no tienes contactos.</div>';
   all.forEach(function(c) {

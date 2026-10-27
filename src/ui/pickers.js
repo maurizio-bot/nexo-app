@@ -95,7 +95,7 @@ export function _handleFile() {
       console.warn('[ATTACH] Archivo demasiado grande: ' + file.size);
       _showPermissionError(file.size > BIG_MAX_BYTES ? 'Archivo demasiado grande (' + (file.size / 1048576).toFixed(0) + ' MB). Máximo 1 GB.'
         : (inGroup ? 'Demasiado grande para mandarlo por Bluetooth al grupo (' + (file.size / 1048576).toFixed(1) + ' MB).' : _tooBigMessage(file.size, cidF)) +
-          ' Hasta 1 GB con ' + (inGroup ? 'alguien del grupo' : 'el contacto') + ' en el mismo Wi-Fi, con Wi-Fi Direct o cerca por Bluetooth (Android 10 o más; ' + (inGroup ? 'con' : 'los dos con') + ' NEXO actualizado).');
+          ' Hasta 1 GB con ' + (inGroup ? 'alguien del grupo' : 'el contacto') + ' en el mismo Wi-Fi, con Wi-Fi Direct o cerca por Bluetooth (Android 10 o más; ' + (inGroup ? 'con' : 'los dos con') + ' NEXO actualizado).', 8000);
       return;
     }
     _readFileBase64(file).then(function(base64) {
