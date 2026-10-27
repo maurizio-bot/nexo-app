@@ -112,6 +112,7 @@ import { isGroupWire, startGroupMedia } from './ui/group_media.js';
 import { avatarInit } from './ui/avatar.js';
 import { parseCallSignal } from './ui/calls.js';
 import { installCallsUi } from './ui/calls_ui.js';
+import { installSearchUi } from './ui/search_ui.js';
 import { groupSubtitle, installGroupButton, openGroupChat, openGroupMenu, sendGroupText } from './ui/groups_ui.js';
 import { _STATUS_RANK, _statusRank, _canUpgradeStatus, _getDomMessageStatus, _normId, _getCurrentContactId, _chatKind, _plainText, _myNexoId, _contactName, _peerUnderstands, _cut, _msgSummary, _findMessage, _PREVIEW_BY_TYPE } from './ui/chat_format.js';
 import { cameraUse, _cameraActiveStream, _cameraPreviewMode, _cameraPreviewRecording, _cameraPreviewMediaRecorder, _cameraPreviewVideoChunks, _cameraVideoStartTime, _cameraTimer, _cameraTorchOn, _cameraReview, _showCameraPreviewOverlay, _hideCameraPreviewOverlay, _photoTarget, _videoLimitSec, _updateCameraPreviewUI, _cameraError, _setupVideoRecorder, _startCameraPreview, _cameraStartToken, _stopCameraPreview, _flipCamera, _setCameraMode, _toggleCameraMode, _toggleTorch, _startCameraTimer, _stopCameraTimer, _capturePhoto, _handleCameraCapture, _resumeBleFromCamera, _pauseBleForCamera, _showReview, _closeReview, _retakeReview, _sendReview, _bindCameraPreviewHandlers, _handleCamera, CAMERA_HD_BPS } from './ui/camera.js';
@@ -234,6 +235,8 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installProfileButton); else installProfileButton();
 // Ronda 2758: llamadas de voz (calls.js / calls_ui.js)
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installCallsUi); else installCallsUi();
+// Buscar dentro del chat (lupa en la cabecera, barra debajo): rápido de A_LA_PAR, pedido del dueño
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installSearchUi); else installSearchUi();
 
 window.vaultSaveContact = vaultSaveContact;
 // FIX v9.9.29: ble_interface guarda los contactos con window.vaultSaveContacts; no estaba expuesto y
