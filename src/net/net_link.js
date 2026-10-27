@@ -105,9 +105,17 @@ export class NetLink {
   }
 
   relayUrls() {
-    var urls = (typeof window !== 'undefined' && window.NEXO_NET_RELAYS) || DEFAULT_RELAYS;
-    var safe = (urls || []).filter(_relaySafe);
-    return safe.length ? safe : DEFAULT_RELAYS; // si todos eran en claro, caer a los wss:// por defecto (nunca sin internet por esto)
+    // NEXO_NET_RELAYS puede estar SIN definir (producción normal → relés por defecto) o ser una lista EXPLÍCITA,
+    // incluida la lista vacía (el simulador la usa para decir "sin internet").
+    var cfg = (typeof window !== 'undefined') ? window.NEXO_NET_RELAYS : undefined;
+    var safe = (cfg || DEFAULT_RELAYS).filter(_relaySafe);
+    if (safe.length) return safe;
+    // Sin relés seguros. Ronda 2789: distinguir dos casos (antes ambos caían a DEFAULT_RELAYS, y eso convertía una
+    // lista vacía explícita en los relés PÚBLICOS reales → en CI algunas pruebas "se conectaban a internet" y su
+    // resultado quedaba al azar; así fallaron las APK 2788 y 2789):
+    //  - lista EXPLÍCITAMENTE vacía ([]) → respetar "sin relés" (no inventar internet).
+    //  - configuraron relés pero TODOS eran en claro (ws:// remoto) → caer a los wss:// por defecto (F9: no dejar sin internet).
+    return (cfg && cfg.length === 0) ? [] : DEFAULT_RELAYS;
   }
   me() { return _nid(this.ble && this.ble.localNexoId); }
 

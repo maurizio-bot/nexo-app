@@ -31,14 +31,6 @@ async function boot(name, native) {
       Object.defineProperty(win.document, 'visibilityState', { configurable: true, get: () => vis[name] || 'visible' });
       Object.defineProperty(win.document, 'hidden', { configurable: true, get: () => (vis[name] || 'visible') === 'hidden' });
       win.navigator.mediaDevices = { getUserMedia: () => Promise.reject(new Error('sin micrófono en el simulador')) };
-      // Ronda 2789: esta prueba es de ENRUTADO por Bluetooth/Jump, SIN internet. jsdom trae WebSocket y relayUrls()
-      // por defecto son relés PÚBLICOS reales (wss://relay.damus.io...). En CI (con internet) el archivo "ausente"
-      // del paso 4 podía salir al buzón real y volver como "entregado" dentro de los 15 s → flake (así falló el 2788).
-      // Stub que construye pero nunca abre (onopen no dispara): net._openCount()=0 → online()=false → B sin internet,
-      // de verdad ausente en la ventana. Determinista: no depende de la red del runner.
-      win.WebSocket = function () { this.readyState = 0; };
-      win.WebSocket.prototype.close = function () {}; win.WebSocket.prototype.send = function () {};
-      win.WebSocket.CONNECTING = 0; win.WebSocket.OPEN = 1; win.WebSocket.CLOSING = 2; win.WebSocket.CLOSED = 3;
     },
   });
   const win = dom.window;

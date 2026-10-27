@@ -45,7 +45,16 @@ async function boot(name, native) {
   r.incluye_loopback = used.indexOf('ws://127.0.0.1:65123') >= 0;
   r.excluye_ws_remoto = used.indexOf('ws://relay.malo.example:7000') < 0;
   r.aviso_en_claro = logs.some((l) => /Rel[eé] en claro ignorado/.test(l));
-  const ok = r.incluye_wss && r.incluye_loopback && r.excluye_ws_remoto && r.aviso_en_claro;
+  // Ronda 2789: una lista EXPLÍCITAMENTE vacía = "sin relés" (no caer a los públicos). Antes, el repliegue de F9
+  // convertía [] en los relés por defecto, y en CI algunas pruebas se conectaban a internet REAL → resultado al azar
+  // (así fallaron las APK 2788 y 2789). Y si configuran relés pero todos son en claro, SÍ se cae a los wss:// (F9).
+  A.win.NEXO_NET_RELAYS = [];
+  r.lista_vacia_sin_reles = net.relayUrls().length === 0;
+  A.win.NEXO_NET_RELAYS = ['ws://relay.malo.example:7000'];
+  const soloEnClaro = net.relayUrls();
+  r.todo_en_claro_cae_a_wss = soloEnClaro.length > 0 && soloEnClaro.every((u) => /^wss:\/\//i.test(u));
+  A.win.NEXO_NET_RELAYS = RELAYS.slice(); // restaurar
+  const ok = r.incluye_wss && r.incluye_loopback && r.excluye_ws_remoto && r.aviso_en_claro && r.lista_vacia_sin_reles && r.todo_en_claro_cae_a_wss;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('RELAYTLS ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_relaytls.txt'), logs.join('\n'));
