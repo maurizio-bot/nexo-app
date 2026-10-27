@@ -64,7 +64,7 @@ export function _releaseMedia(root) {
   });
 }
 
-export function _showPermissionError(permName) {
+export function _showPermissionError(permName, ms) {
   var existing = document.getElementById('perm-error-toast');
   if (existing) existing.remove();
   var toast = document.createElement('div');
@@ -79,11 +79,13 @@ export function _showPermissionError(permName) {
     toast.innerHTML = 'Permiso de ' + permName + ' denegado.<span style="display:block;margin-top:4px;font-size:11px;opacity:0.8;font-weight:400;">Ve a Ajustes > Aplicaciones > NEXO > Permisos</span>';
   }
   document.body.appendChild(toast);
+  // Ronda 2792 (diagnóstico del dueño): un aviso largo (p. ej. «archivo demasiado grande para internet…») en 4 s, justo
+  // al cerrarse el selector, se perdía («no avisa»). Se permite pasar una duración mayor para esos avisos.
   setTimeout(function() {
     toast.style.opacity = '0';
     toast.style.transition = 'opacity 0.5s';
     setTimeout(function() { toast.remove(); }, 500);
-  }, 4000);
+  }, ms || 4000);
 }
 
 // v9.9.43: aviso informativo (no de error) arriba de la pantalla; ms = cuánto se ve
