@@ -37,7 +37,13 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        # El repo versiona node_modules (lo necesita Android), pero está hecho en Linux y es incompleto. En la Mac
+        # del CI, `npm install` ENCIMA de ese árbol deja caniuse-lite/browserslist a medias y webpack falla
+        # (MODULE_NOT_FOUND). Instalación LIMPIA: se borra node_modules y se instala de cero para este runner.
+        # webpack y webpack-cli están en package.json, así que la instalación limpia los trae.
+        run: |
+          rm -rf node_modules
+          npm install
 
       - name: Build Web Only
         run: npm run build:web
