@@ -92,6 +92,15 @@ body::before {
 }
 #jump-to-bottom { background: var(--nx-glass) !important; border: 1px solid var(--nx-line) !important; color: #fff !important; }
 
+/* Buscar en el chat (lupa de la cabecera): ocultar los que no coinciden y resaltar los que sí */
+#nexo-search-btn {
+  width: 40px !important; height: 40px !important; background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0 !important;
+}
+#nexo-search-btn svg { width: 19px; height: 19px; }
+.message.msg-search-hidden { display: none !important; }
+.message.msg-search-hit { outline: 2px solid var(--nx-cyan) !important; outline-offset: 1px; }
+
 /* Barra de escribir */
 #input-area {
   background: var(--nx-glass) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
