@@ -56,7 +56,9 @@ var DIAG_KEY_RE = /BT_ERR|\[BIN\]|\[MTU\]|\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FI
     var pl = plugin();
     if (!_diagDirty || !pl || typeof pl.saveToFile !== 'function') return;
     _diagDirty = false;
-    pl.saveToFile({ filename: DIAG_FILE, content: _diagSessionText() }).catch(function() {});
+    // Ronda 2812 (pedido del dueño: «solo una hora»): se guarda SOLO la última hora, así la próxima sesión carga
+    // como «sesión anterior» un registro ya recortado y el diagnóstico no se hace enorme.
+    pl.saveToFile({ filename: DIAG_FILE, content: _diagSessionText(true) }).catch(function() {});
     // Refrescar el registro nativo (crece mientras la app está en segundo plano)
     if (typeof pl.readNativeLog === 'function') pl.readNativeLog().then(function(r) { if (r && r.content) _nativeLog = r.content; }).catch(function() {});
   }, 20000);
@@ -73,12 +75,28 @@ function _diagSessionText(hourOnly) {
   return '--- eventos clave ---\n' + key.join('\n') + '\n--- últimas líneas ---\n' + lines.slice(-400).join('\n');
 }
 
+// Ronda 2812 (pedido del dueño: «solo una hora»): recorta un texto ya guardado (la sesión anterior) a la última
+// hora mirando la hora al inicio de cada línea (HH:MM:SS). Las líneas sin hora (cabeceras de sección) se mantienen.
+function _lastHourText(text) {
+  if (!text) return text;
+  var now = new Date();
+  var nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  return text.split('\n').filter(function(l) {
+    var m = /^(\d{2}):(\d{2}):(\d{2})/.exec(l);
+    if (!m) return true; // cabeceras («--- eventos clave ---», etc.): se mantienen
+    var s = (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
+    var diff = nowSec - s; if (diff < 0) diff += 86400; // la medianoche: la hora da la vuelta
+    return diff <= 3600;
+  }).join('\n');
+}
+
 export function _diagnosticText() {
   var bi = window.bleInterface || {};
   var head = 'NEXO diagnóstico ' + new Date().toISOString() + ' (última hora)\nNEXO ID: ' + (bi.localNexoId || '?') + '\nUA: ' + navigator.userAgent + '\n';
-  // La sesión actual se recorta a la última hora; se mantiene la anterior (contexto de antes de cerrar la app)
+  // Tanto la sesión actual como la anterior se recortan a la última hora (ronda 2812, pedido del dueño: «solo una hora»)
   // Ronda 2785 (#87): el registro nativo (últimas ~150 líneas) muestra qué hizo el nativo con la app cerrada
   var nat = _nativeLog ? ('\n===== REGISTRO NATIVO (segundo plano / app cerrada) =====\n' + _nativeLog.split('\n').slice(-150).join('\n') + '\n') : '';
-  return head + nat + (_diagPrev ? '\n===== SESIÓN ANTERIOR =====\n' + _diagPrev + '\n' : '') +
+  var prev = _lastHourText(_diagPrev);
+  return head + nat + (prev ? '\n===== SESIÓN ANTERIOR (última hora) =====\n' + prev + '\n' : '') +
     '\n===== SESIÓN ACTUAL (última hora) =====\n' + _diagSessionText(true);
 }
