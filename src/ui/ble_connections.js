@@ -213,7 +213,19 @@ export const BLE_CONNECTION_METHODS = {
       self._reconnectScanTimer = null;
       var now = Date.now();
       var presence = now < (self._presenceUntil || 0) && self._hasUnreadyContacts();
-      if (self._lostPeers.size === 0 && !presence) { self._reconnectScanAttempts = 0; return; }
+      // #87: los contactos en pausa de Bluetooth (no_service repetido) NO disparan re-búsqueda hasta que termine su
+      // pausa; así un teléfono con el GATT roto deja de martillar la radio (cientos de «despertares» en el diagnóstico).
+      var activeLost = [], nextCooldown = Infinity;
+      self._lostPeers.forEach(function(p) {
+        var cd = (self._bleCooldownUntil && self._bleCooldownUntil.get(p)) || 0;
+        if (cd > now) nextCooldown = Math.min(nextCooldown, cd); else activeLost.push(p);
+      });
+      if (activeLost.length === 0 && !presence) {
+        // si alguno está en pausa, volver a mirar justo cuando acabe; si no hay ninguno, parar el bucle
+        if (nextCooldown < Infinity) schedule(Math.min(60000, Math.max(1000, nextCooldown - now)));
+        else self._reconnectScanAttempts = 0;
+        return;
+      }
       var elapsed = now - self._reconnectLoopStart;
       var hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
       var interval = hidden ? 60000 : (self._reconnectScanAttempts < 8 ? 15000 : 60000);
@@ -223,7 +235,7 @@ export const BLE_CONNECTION_METHODS = {
         if (self._transferActive()) { console.log('[BLEInterface] Re-búsqueda aplazada: transferencia en curso'); return; }
         if (!self._cameraBlePaused && !self.isScanning) {
           self._reconnectScanAttempts++;
-          console.log('[BLEInterface] Re-búsqueda de contactos', Array.from(self._lostPeers), presence ? '(+presencia)' : '', 'intento', self._reconnectScanAttempts, hidden ? 'oculta' : '');
+          console.log('[BLEInterface] Re-búsqueda de contactos', activeLost, presence ? '(+presencia)' : '', 'intento', self._reconnectScanAttempts, hidden ? 'oculta' : '');
           self._autoScanForKnownContacts({ filtered: hidden });
         }
       };

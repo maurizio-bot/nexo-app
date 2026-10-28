@@ -136,6 +136,14 @@ export class BLEInterface {
     this._cameraBlePausedDevices = [];
     this._cameraBleWasAdvertising = false;
     this._lostPeers = new Set();
+    // #87 (diagnóstico del dueño 28-10): un contacto cuyo GATT nunca aparece (reason 'no_service', MTU 23) se
+    // reconectaba por Bluetooth cada ~15 s PARA SIEMPRE → cientos de «despertares» y batería. Tras varios no_service
+    // seguidos se pausa SOLO el Bluetooth con ese contacto (backoff exponencial); internet/Wi-Fi/Jump siguen igual.
+    this._noServiceStreak = new Map();   // NEXO ID -> no_service seguidos
+    this._bleCooldownUntil = new Map();  // NEXO ID -> hasta cuándo no reintentar Bluetooth
+    this._noServiceThreshold = 4;        // a partir de aquí, pausa
+    this._bleCooldownBaseMs = 30000;     // 30 s, se duplica
+    this._bleCooldownMaxMs = 600000;     // tope 10 min
     this._mtuByDevice = new Map(); // MAC normalizada -> MTU negociado (lo devuelve sendMessage nativo)
     this._reconnectScanTimer = null;
     this._reconnectScanAttempts = 0;
@@ -350,6 +358,9 @@ export class BLEInterface {
   _notifyPeerReady(deviceId, nexoId) {
     if (!deviceId || !nexoId) return;
     this._lostPeers.delete(_normId(nexoId));
+    // #87: el contacto conectó bien → se olvida la racha de no_service y la pausa de Bluetooth
+    this._noServiceStreak.delete(_normId(nexoId));
+    this._bleCooldownUntil.delete(_normId(nexoId));
     var ndPeer = _normMac(deviceId);
     if (!this._macToNexoId.get(ndPeer)) this._macToNexoId.set(ndPeer, _normId(nexoId));
     this._sendKx(deviceId, false);
@@ -590,6 +601,19 @@ export class BLEInterface {
           var contacts = _getBLEContacts();
           var idx = contacts.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(peerUUID); });
           if (idx >= 0) { contacts[idx].online = false; _saveBLEContacts(contacts); self.renderContactsList(); self.renderOnlineStrip(); }
+          // #87: GATT roto (no_service) muchas veces seguidas → pausar Bluetooth con este contacto un rato (backoff)
+          var nsId = _normId(peerUUID);
+          if (data.reason === 'no_service') {
+            var streak = (self._noServiceStreak.get(nsId) || 0) + 1;
+            self._noServiceStreak.set(nsId, streak);
+            if (streak >= self._noServiceThreshold) {
+              var backoff = Math.min(self._bleCooldownMaxMs, self._bleCooldownBaseMs * Math.pow(2, streak - self._noServiceThreshold));
+              self._bleCooldownUntil.set(nsId, Date.now() + backoff);
+              console.warn('[BLEInterface] ' + peerUUID + ' sin servicio GATT ' + streak + ' veces: pauso Bluetooth ' + Math.round(backoff / 1000) + ' s (sigo por internet/Wi-Fi/Jump)');
+            }
+          } else {
+            self._noServiceStreak.delete(nsId); // un corte normal no cuenta como GATT roto
+          }
           self._markPeerLost(peerUUID);
           _autoScanRegister(peerUUID);
           _autoScanStart();
