@@ -1,7 +1,8 @@
 // Archivos grandes por INTERNET (pedido del dueño, ronda 2786). A y B se conocen y luego cada uno en su casa (solo
 // internet, sin Bluetooth ni misma Wi-Fi).
-//  - Sin --tor (solo RELÉS): un archivo mediano (5 MB) llega; uno grande (12 MB) NO se manda y sale un aviso claro que
-//    nombra los relés, Tor y el camino local (nunca se queda sin mandar y sin avisar).
+//  - Sin --tor (solo RELÉS): un archivo mediano (5 MB) llega; uno grande (12 MB) AHORA TAMBIÉN llega (28-10: el tope por
+//    internet subió a ~22 MB, troceado; antes 12 MB se rechazaba). Solo por encima de ~22 MB (25 MB) se avisa claro
+//    (nombra el tope y Wi-Fi) y no se manda por internet (nunca se queda sin mandar y sin avisar).
 //  - Con --tor (TOR DIRECTO, una conexión .onion entre los dos): un archivo grande (12 MB) SÍ sale por internet y llega,
 //    sin aviso de "demasiado grande".
 // El mock de Tor añade latencia por trozo; aquí se baja (torLatency) para no esperar minutos: se prueba la lógica de la
@@ -105,17 +106,28 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     const prev1 = A.win.document.getElementById('perm-error-toast'); if (prev1) prev1.remove();
     const med = await sendFile(A, 'mediano_5MB.bin', 5 * 1048576);
     r.reles_mediano_5MB_llega_s = await waitFor(() => llega('mediano_5MB.bin', med), 120000);
+    // 28-10 (pedido del dueño): un archivo grande (12 MB) AHORA sí sale por los relés (antes se rechazaba). Troceado;
+    // cada trozo prueba Tor y, al no haber, cae a los relés.
     await sleep(400);
     const prev2 = A.win.document.getElementById('perm-error-toast'); if (prev2) prev2.remove();
-    await sendFile(A, 'grande_12MB.bin', 12 * 1048576);
-    await sleep(500);
-    r.reles_grande_12MB_aviso = toastText(A);
-    r.reles_grande_12MB_estado = status(A, 'grande_12MB.bin'); // null = no se creó mensaje (se avisó antes de mandar)
+    const g = await sendFile(A, 'grande_12MB.bin', 12 * 1048576);
+    await sleep(700);
+    r.reles_grande_12MB_aviso = toastText(A);                 // null: ya no "demasiado grande"
+    r.reles_grande_12MB_llega_s = await waitFor(() => llega('grande_12MB.bin', g), 240000);
+    // Por encima de ~22 MB sí se avisa y no se manda por internet
+    await sleep(400);
+    const prev3 = A.win.document.getElementById('perm-error-toast'); if (prev3) prev3.remove();
+    await sendFile(A, 'enorme_25MB.bin', 25 * 1048576);
+    await sleep(700);
+    r.reles_enorme_25MB_aviso = toastText(A);
+    r.reles_enorme_25MB_estado = status(A, 'enorme_25MB.bin'); // null = no se creó mensaje (avisó antes de mandar)
     r.errores = logs.filter((l) => /ilegible|Error procesando|No se pudo descifrar|TypeError|undefined is not/.test(l)).slice(0, 4);
-    const aviso = (r.reles_grande_12MB_aviso || '');
+    const avisoEnorme = (r.reles_enorme_25MB_aviso || '');
     const ok = r.reles_mediano_5MB_llega_s !== null &&
-      /rel[eé]s/i.test(aviso) && /Tor/.test(aviso) && /Wi-Fi/.test(aviso) &&
-      r.reles_grande_12MB_estado === null && r.errores.length === 0;
+      (r.reles_grande_12MB_aviso === null || !/demasiado grande/i.test(r.reles_grande_12MB_aviso)) &&
+      r.reles_grande_12MB_llega_s !== null &&
+      /van hasta ~\d+ MB/.test(avisoEnorme) && /Wi-Fi/.test(avisoEnorme) && r.reles_enorme_25MB_estado === null &&
+      r.errores.length === 0;
     r.resultado = ok ? 'OK' : 'FAIL';
   }
   console.log('BIGNET ' + JSON.stringify(r));

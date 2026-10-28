@@ -34,7 +34,7 @@ const SCENARIOS = [
     texto_estado_A: (v) => v === 'delivered', 'eventos_a_los_relés_durante_el_envío': (v) => v === 0, impostor_cerrado: isTrue,
     errores: isEmpty, contenido_en_registros: (v) => v === 0 } },
   { name: 'relés solo cifrados (wss): un ws:// remoto se ignora, loopback permitido (auditoría F9)', args: ['relaytls.js'], tag: 'RELAYTLS', checks: { resultado: (v) => v === 'OK' } },
-  { name: 'archivos grandes por internet (relés: mediano llega, grande avisa claro con Tor/Wi-Fi)', args: ['bignet.js'], tag: 'BIGNET', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'archivos grandes por internet (relés: mediano 5 MB y grande 12 MB llegan; >22 MB avisa claro)', args: ['bignet.js'], tag: 'BIGNET', checks: { resultado: (v) => v === 'OK' } },
   { name: 'archivos grandes por internet (Tor directo: un archivo grande llega sin aviso de tamaño)', args: ['bignet.js', '--tor'], tag: 'BIGNET', logs: 'last_logs_bignet_tor.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'cobros (pagos Fase 1): mensaje de cobro con importe/concepto/método, tarjeta en los dos, sin inyección', args: ['cobro.js', '--io-delay=25'], tag: 'COBRO', checks: { resultado: (v) => v === 'OK' } },
   { name: 'agregar por ID a alguien lejos: solicitud, aceptar/eliminar, se conectan (alta remota)', args: ['reqadd.js'], tag: 'REQADD', checks: { resultado: (v) => v === 'OK' } },
