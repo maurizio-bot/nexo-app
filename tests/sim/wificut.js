@@ -72,7 +72,20 @@ function watchBubble(p, text) {
   r.breve_camino = biA.linkOf(idB);
   await wait(() => biA.linkOf(idB) === 'wifi', 30);
   await sleep(3000);
-  // 2. Corte largo
+  // 2. Corte medio (~12 s): agota los reintentos cortos del ack (~8 s) → el texto queda PENDIENTE, pero el Wi-Fi
+  //    vuelve DENTRO del margen (15 s), así que no lo rescata el giveUp→Bluetooth (que nunca llega a dispararse).
+  //    Debe llegar igual en cuanto vuelve el Wi-Fi, sin "!".
+  nA.setWifi(null); nB.setWifi(null); await sleep(1000);
+  const w3 = watchBubble(A, 'corte medio');
+  sendText(A, 'corte medio');
+  await sleep(11000);
+  nA.setWifi('casa'); nB.setWifi('casa');
+  r.medio_llega_tras_volver_s = await wait(() => has('corte medio'), 30);
+  await sleep(1000);
+  r.medio_estados = w3.stop();
+  await wait(() => biA.linkOf(idB) === 'wifi', 30);
+  await sleep(3000);
+  // 3. Corte largo
   nA.setWifi(null); nB.setWifi(null); await sleep(1000);
   const w2 = watchBubble(A, 'sin volver el wifi');
   sendText(A, 'sin volver el wifi');
@@ -81,6 +94,7 @@ function watchBubble(p, text) {
   r.largo_estados = w2.stop();
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.wifi_s !== null && r.breve_llega_tras_volver_s !== null && r.breve_llega_tras_volver_s <= 5 && r.breve_estados.indexOf('failed') < 0 &&
+    r.medio_llega_tras_volver_s !== null && r.medio_llega_tras_volver_s <= 10 && r.medio_estados.indexOf('failed') < 0 &&
     r.largo_llega_s !== null && r.largo_llega_s <= 30 && r.largo_estados.indexOf('failed') < 0 && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('WIFICUT ' + JSON.stringify(r));
