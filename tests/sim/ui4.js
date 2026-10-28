@@ -65,20 +65,19 @@ async function scanUntil(p, cond, s) { for (let i = 0; i < s * 10; i++) { await 
   A.win.bleInterface.togglePanel();
   await scanUntil(A, () => found(A).some((t) => /Tablet/.test(t)), 40);
   await sleep(600);
-  r.panel_contactos = panelRows(A);
-  r.panel_vacio = txt(A, '#ble-contacts-list .ble-empty') || null;
+  // Ronda 2813 (pedido del dueño): "Agregar" ya NO muestra contactos; solo los teléfonos escaneados nuevos (abajo).
+  r.panel_contactos = panelRows(A);       // debe quedar vacío (los contactos están en Chats)
+  r.panel_encontrados = found(A);          // la Tablet (sin agregar) sí sale aquí para agregarla
+  r.panel_hint = txt(A, '#ble-contacts-list .ble-empty') || null;
   r.estado = txt(A, '#ble-status-text');
-  // Buscador
+  // Buscador: ahora filtra los teléfonos ESCANEADOS (no los contactos, que ya no salen aquí)
   r.hay_buscador = !!$(A, '#ble-search-input');
   search(A, 'zzz'); await sleep(500);
-  r.zzz = { contactos: panelRows(A), encontrados: found(A), aviso: txt(A, '#ble-contacts-list .ble-empty') || null };
-  search(A, 'galax'); await sleep(500);
-  r.galax = { contactos: panelRows(A), encontrados: found(A) };
+  r.zzz = { contactos: panelRows(A), encontrados: found(A) };
   search(A, 'tablet'); await sleep(500);
   r.tablet = { contactos: panelRows(A), encontrados: found(A) };
-  const idB = String(B.win.bleInterface.localNexoId || '');
-  search(A, idB.slice(-5).toLowerCase()); await sleep(500);
-  r.por_id = { contactos: panelRows(A) };
+  search(A, 'galax'); await sleep(500); // "Galaxy" es un contacto: NO debe salir en "Agregar"
+  r.galax = { contactos: panelRows(A), encontrados: found(A) };
   search(A, ''); await sleep(500);
   r.sin_filtro = { contactos: panelRows(A), encontrados: found(A) };
   // Cambiar el nombre de un contacto desde su menú ⋮
@@ -126,14 +125,13 @@ async function scanUntil(p, cond, s) { for (let i = 0; i < s * 10; i++) { await 
   const checks = {
     agregado: r.agregado,
     subtitulo: /^En línea$|^Sin conexión$/.test(r.subtitulo),
-    panel_con_contactos: has(r.panel_contactos, /Galaxy/) && !r.panel_vacio,
+    panel_solo_escaneados: !r.panel_contactos.length && has(r.panel_encontrados, /Tablet/),
     estado: /Bluetooth/.test(r.estado),
     buscador: r.hay_buscador,
-    zzz: !r.zzz.contactos.length && !r.zzz.encontrados.length && /zzz/.test(r.zzz.aviso || ''),
-    galax: has(r.galax.contactos, /Galaxy/) && !has(r.galax.encontrados, /Tablet/),
-    tablet: !r.tablet.contactos.length && has(r.tablet.encontrados, /Tablet/),
-    por_id: has(r.por_id.contactos, /Galaxy/),
-    sin_filtro: has(r.sin_filtro.contactos, /Galaxy/) && has(r.sin_filtro.encontrados, /Tablet/),
+    zzz: !r.zzz.contactos.length && !r.zzz.encontrados.length,
+    tablet: has(r.tablet.encontrados, /Tablet/) && !r.tablet.contactos.length,
+    galax: !has(r.galax.encontrados, /Tablet/) && !r.galax.contactos.length,
+    sin_filtro: has(r.sin_filtro.encontrados, /Tablet/) && !r.sin_filtro.contactos.length,
     textos: !r.textos_mal.length,
     boton: r.boton.icono && r.boton.burbuja === '2',
     perfil: r.perfil.circulo === 'VY' && /Vivo Y21/.test(r.perfil.te_ven || ''),

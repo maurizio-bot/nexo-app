@@ -53,67 +53,24 @@ export const BLE_UI_METHODS = {
     var q = this._panelQuery || '';
     return !q || (String(name || '') + ' ' + String(id || '')).toLowerCase().indexOf(q) >= 0;
   },
+  // Ronda 2813 (pedido del dueño: «en la pantalla de contactos... solo quiero que se vean los que se escanean»): la
+  // pantalla «Agregar contactos» YA NO muestra «En línea ahora» ni «Tus contactos» (esos viven en la pestaña Chats);
+  // aquí solo los teléfonos NUEVOS que aparecen al escanear, que salen abajo en #ble-new-device (renderNewDeviceBar).
+  // Esto invierte la ronda 2771 (que los metía aquí). Queda una pista en el área principal.
   renderPanelLists() {
-    var self = this, strip = this.elements.onlineStrip, list = this.elements.contactsList;
-    if (!strip || !list) return;
-    var seen = {}, contacts = [];
-    _getBLEContacts().forEach(function(c) {
-      var nid = _normId(c.nexoId || c.deviceUUID);
-      if (!nid || seen[nid]) return;
-      seen[nid] = true;
-      if (self._panelMatch(c.name, nid)) contacts.push(c);
-    });
-    var online = contacts.filter(function(c) { return c.online && (Date.now() - (c.lastSeen || 0)) < 60000; });
-    var label = document.getElementById('ble-online-label');
-    strip.innerHTML = '';
-    strip.style.display = online.length ? 'flex' : 'none';
-    if (label) label.style.display = online.length ? '' : 'none';
-    var open = function(uuid) {
-      self.elements.panel.classList.remove('active');
-      self.elements.overlay.classList.remove('active');
-      if (typeof self.setVisible === 'function') self.setVisible(false);
-      self.updateScanButton();
-      self.openChat(uuid);
-    };
-    online.forEach(function(c) {
-      var uuid = _normId(c.nexoId || c.deviceUUID);
-      var item = document.createElement('div');
-      item.className = 'ble-online-item';
-      item.innerHTML = '<div class="ble-online-avatar ' + _getGradientForUUID(uuid) + '"><span></span><div class="ble-online-dot"></div></div><span class="ble-online-name"></span>';
-      item.querySelector('.ble-online-avatar span').textContent = _getInitials(c.name);
-      paintAvatar(item.querySelector('.ble-online-avatar'), uuid, item.querySelector('.ble-online-avatar span'));
-      item.querySelector('.ble-online-name').textContent = c.name || '';
-      item.addEventListener('click', function() { open(uuid); });
-      strip.appendChild(item);
-    });
+    var strip = this.elements.onlineStrip, list = this.elements.contactsList;
+    if (!list) return;
+    var onlineLabel = document.getElementById('ble-online-label');
+    var contactsLabel = document.getElementById('ble-contacts-label');
+    if (strip) { strip.style.display = 'none'; strip.innerHTML = ''; }
+    if (onlineLabel) onlineLabel.style.display = 'none';
+    if (contactsLabel) contactsLabel.style.display = 'none';
     list.innerHTML = '';
-    contacts.sort(function(a, b) { return (b.addedAt || 0) - (a.addedAt || 0); });
-    if (!contacts.length) {
-      var empty = document.createElement('div');
-      empty.className = 'ble-empty';
-      empty.textContent = self._panelQuery ? 'Nadie coincide con "' + self._panelQuery + '".' :
-        self.isScanning ? 'Buscando teléfonos con NEXO cerca… Los que encuentre salen abajo.' : 'Aún no tienes contactos. Toca el botón de abajo para buscar teléfonos con NEXO cerca.';
-      list.appendChild(empty);
-      return;
-    }
-    contacts.forEach(function(c) {
-      var uuid = _normId(c.nexoId || c.deviceUUID);
-      var isOnline = c.online && (Date.now() - (c.lastSeen || 0)) < 60000;
-      var row = document.createElement('div');
-      row.className = 'ble-contact-row';
-      var avatar = document.createElement('div');
-      avatar.className = 'ble-contact-avatar ' + _getGradientForUUID(uuid);
-      avatar.textContent = _getInitials(c.name);
-      paintAvatar(avatar, uuid);
-      var info = document.createElement('div');
-      info.className = 'ble-contact-info';
-      var nameDiv = document.createElement('div'); nameDiv.className = 'ble-contact-name'; nameDiv.textContent = c.name || '';
-      var sub = document.createElement('div'); sub.className = 'ble-contact-msg'; sub.textContent = (isOnline ? 'En línea · ' : '') + uuid.toUpperCase();
-      info.appendChild(nameDiv); info.appendChild(sub);
-      row.appendChild(avatar); row.appendChild(info);
-      row.addEventListener('click', function() { open(uuid); });
-      list.appendChild(row);
-    });
+    var hint = document.createElement('div');
+    hint.className = 'ble-empty';
+    hint.textContent = this.isScanning ? 'Buscando teléfonos con NEXO cerca… Los que aparezcan salen aquí abajo para agregarlos.'
+      : 'Toca el botón de buscar (abajo) para encontrar teléfonos con NEXO cerca y agregarlos. Tus contactos están en Chats.';
+    list.appendChild(hint);
   },
 
   toggleVisibility() {
@@ -182,7 +139,7 @@ export const BLE_UI_METHODS = {
       '</div>' +
       '<div id="ble-online-label" class="ble-section-label">En línea ahora</div>' +
       '<div id="ble-online-strip" class="ble-online-strip"></div>' +
-      '<div class="ble-section-label">Tus contactos</div>' +
+      '<div id="ble-contacts-label" class="ble-section-label">Tus contactos</div>' +
       '<div id="ble-contacts-list" class="ble-contacts-list">' +
       '<div class="ble-empty"></div>' +
       '</div>' +
