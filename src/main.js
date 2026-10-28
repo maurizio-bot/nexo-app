@@ -102,6 +102,7 @@ import {
 import { initBLEInterface } from './ui/ble_interface.js';
 import { initAppLock, securitySectionHtml, renderSecuritySection, lockEnabled } from './ui/app_lock.js';
 import { initPerf } from './ui/perf.js';
+import { batteryGuard } from './ui/battery_prompt.js';
 import { createNotifier } from './ui/notify.js';
 import { initE2E } from './vault/e2e_crypto.js';
 import { ratchetInit, ratchetSafetyNumber, ratchetPeerBundle, ratchetSessionPq } from './vault/e2e_ratchet.js';
@@ -214,14 +215,16 @@ function _askBackgroundOnce() {
   if (!pl || typeof pl.alertSettings !== 'function') return;
   pl.alertSettings().then(function(r) {
     if (!r || r.notifications === false) return;
-    // Lo fundamental para recibir en segundo plano: que el ahorro de batería no congele NEXO. Una vez, si no está exento.
-    var bgAsked = false; try { bgAsked = localStorage.getItem('nexo_bg_asked') === '1'; } catch (e) {}
-    if (r.battery === false && !bgAsked) {
-      try { localStorage.setItem('nexo_bg_asked', '1'); } catch (e) {}
-      console.log('[NOTIF] Se pide que el ahorro de batería no congele NEXO');
-      pl.openAlertSetting({ what: 'battery' }).catch(function() {});
+    // Lo fundamental para recibir en segundo plano: que el ahorro de batería no congele NEXO. Ronda 2811 (pedido del
+    // dueño): ya no se salta en mudo al ajuste del sistema, sino una pantalla clara COMO UN PERMISO (battery_prompt.js)
+    // que explica por qué y, en los teléfonos agresivos (Vivo, Samsung…), guía además al inicio automático.
+    if (r.battery === false) {
+      console.log('[NOTIF] Se muestra el aviso de ahorro de batería (como un permiso)');
+      batteryGuard({ plugin: pl, settings: r });
       return; // una sola pantalla de ajustes por arranque; lo que falte se pide en el siguiente
     }
+    // Batería ya exenta: que no vuelva a salir el aviso nunca.
+    try { if (localStorage.getItem('nexo_bat_prompt_done') !== '1') localStorage.setItem('nexo_bat_prompt_done', '1'); } catch (e) {}
     // Ronda 2784 (#81): pantalla completa de llamadas/videollamadas en Android 14 — se pide una vez si no está concedida
     // (sin ella la llamada entra solo como aviso, no con los botones Contestar/Rechazar a pantalla completa). Como la
     // batería ya suele estar concedida (como en el teléfono del dueño), aquí es donde entra este aviso.
