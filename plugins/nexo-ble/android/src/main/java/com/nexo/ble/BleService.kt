@@ -73,24 +73,36 @@ class BleService : Service() {
     fun foreground(): String { val r = foregroundTyped(); fgsState = r; return r }
     private fun foregroundTyped(): String {
         val n = buildNotification()
-        if (Build.VERSION.SDK_INT < 29) { startForeground(NOTIFICATION_ID, n); return if (inCall) "micrófono (Android 8–9)" else "normal" }
+        if (Build.VERSION.SDK_INT < 29) { startFg(n, 0); return if (inCall) "micrófono (Android 8–9)" else "normal" }
         val base = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
         if (inCall && Build.VERSION.SDK_INT >= 30) {
             if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                startForeground(NOTIFICATION_ID, n, base); return "sin micrófono (sin permiso)"
+                startFg(n, base); return "sin micrófono (sin permiso)"
             }
-            try {
-                startForeground(NOTIFICATION_ID, n, base or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-                return "micrófono"
-            } catch (e: Exception) {
-                // Con la app en segundo plano Android no lo deja (se reintenta al volver a la app)
-                Log.w(TAG, "Servicio con micrófono: ${e.message}")
-                startForeground(NOTIFICATION_ID, n, base)
-                return "sin micrófono (${e.javaClass.simpleName})"
-            }
+            if (startFg(n, base or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)) return "micrófono"
+            // Con la app en segundo plano Android no deja el tipo micrófono (se reintenta al volver a la app)
+            startFg(n, base); return "sin micrófono (en segundo plano)"
         }
-        startForeground(NOTIFICATION_ID, n, base)
+        startFg(n, base)
         return if (inCall) "micrófono (Android 10)" else "normal"
+    }
+
+    // G1 (auditoría 28-10): al despertar por FCM con la app cerrada, onStartCommand → foreground() corre en el hilo
+    // principal del servicio; en Android 12+ startForeground puede lanzar ForegroundServiceStartNotAllowedException y en
+    // 14+ SecurityException si en ese instante no se cumple la precondición del tipo (p. ej. BLUETOOTH_CONNECT revocado o
+    // agotada la ventana de exención del despertar). Sin capturar = crash del proceso (la rama de micrófono ya lo sabía).
+    // Este ayudante NUNCA deja escapar la excepción: reintenta sin tipo (precondiciones más laxas) y, si tampoco, se
+    // detiene en vez de tumbar el proceso. Devuelve si el servicio quedó en primer plano.
+    private fun startFg(n: android.app.Notification, type: Int): Boolean {
+        try {
+            if (type != 0 && Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, n, type) else startForeground(NOTIFICATION_ID, n)
+            return true
+        } catch (e: Throwable) {
+            Log.w(TAG, "startForeground(tipo=$type) falló: ${e.javaClass.simpleName} ${e.message}")
+            if (type != 0) { try { startForeground(NOTIFICATION_ID, n); return true } catch (e2: Throwable) { Log.e(TAG, "startForeground sin tipo también falló: ${e2.message}") } }
+            try { stopSelf() } catch (e3: Throwable) {}
+            return false
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

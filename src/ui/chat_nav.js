@@ -7,6 +7,9 @@ import { _cleanupObjectURLs } from './media_limits.js';
 
 
 export function _clearMessageContainer() {
+  // M2 (auditoría 28-10): al salir o cambiar de chat, parar una nota de voz que esté sonando (su Audio y sus timers
+  // viven en el cierre de la burbuja; al vaciar el contenedor seguían sonando sobre nodos ya desprendidos del DOM).
+  try { if (typeof window.__nexoStopVoice === 'function') window.__nexoStopVoice(); } catch (e) {}
   var container = document.getElementById('messages-container');
   if (container) container.innerHTML = '';
   _renderedMessageIds.clear();

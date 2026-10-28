@@ -92,3 +92,16 @@ Con el `google-services.json` ya engancho el SDK de FCM en el Android y probamos
   (token caducado) lo olvida. Probado en `tests/sim/fcmwake.js` (intercambio + disparo + privacidad). **Falta (del
   dueño):** desplegar `push-sender/` con su cuenta y, si el URL del despliegue difiere del estándar, pasármelo para
   `net.setSender(url)`. El disparo real por Google y el despertar del teléfono cerrado se prueban en el móvil.
+
+## Endurecimiento pendiente (auditoría 28-10)
+- ✅ **M1 (arreglado 2820):** el «toque» se pedía en CADA envío por relé (cada trozo de un archivo = miles de toques →
+  cuota de FCM agotada, batería del par). Ahora solo por **mensaje nuevo** (primer trozo/texto) y con throttle por par
+  (8 s). Probado en `fcmwake.js`.
+- ✅ **G1 (arreglado 2820):** `startForeground` al despertar por FCM podía lanzar excepción en Android 12+/14+ y
+  **cuelgar el proceso**; ahora va protegido (reintenta sin tipo y, si no, `stopSelf`). Se confirma en el teléfono.
+- ⏳ **SEC-3 (pendiente, al desplegar):** el endpoint `/wake` es **público y sin autenticar**: quien tenga el token de la
+  víctima (sus contactos, o quien reciba un diagnóstico compartido) puede hacerla despertar (spam/batería, tope 8/5 min).
+  Antes de usarlo de verdad, **autenticar el disparo** en `push-sender/` (App Check o un HMAC por token). Y, una vez
+  confirmada la Fase 1, **quitar el token entero del diagnóstico** (`NexoFcmService`/`NexoBlePlugin` lo apuntan hoy a
+  propósito para que el dueño mande un «toque» de prueba a ese token; ya no hará falta). El token no es un secreto fuerte
+  (se comparte con los contactos por diseño), pero no conviene dejarlo en un texto que se pueda compartir.

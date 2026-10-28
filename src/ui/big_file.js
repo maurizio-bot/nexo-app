@@ -141,7 +141,14 @@ export class BigFiles {
   }
   _transfer(nexoId, id) {
     var self = this, nx = _nid(nexoId), via = self.route(nx), pl = _plugin();
-    if (!via) { self._set(id, { dir: 'out', state: 'failed', error: 'sin camino con el contacto' }); return Promise.reject(new Error('sin camino con el contacto')); }
+    // #99: un archivo muy grande (>~22 MB) por ahora solo va por un camino local (mismo Wi-Fi, Wi-Fi Direct o Bluetooth).
+    // Por internet todavía no (Fase B: canal directo por Tor). Antes el fallo decía «sin camino» y no se entendía; ahora
+    // queda claro y la tarjeta del chat lo muestra (nunca «enviada» sin enviarse).
+    if (!via) {
+      var msg = 'Archivo muy grande (' + Math.round((((this.st[id] || {}).total) || 0) / 1048576) + ' MB): por ahora solo se envía con el contacto cerca (mismo Wi-Fi, Wi-Fi Direct o Bluetooth); por internet todavía no.';
+      self._set(id, { dir: 'out', state: 'failed', error: msg });
+      return Promise.reject(Object.assign(new Error(msg), { code: 'BIG_NO_NET' }));
+    }
     return pl.bigStatus({ id: id }).then(function(s) {
       if (!s || !s.have) throw new Error('ya no está en este teléfono');
       self._set(id, { dir: 'out', state: 'sending', bytes: 0, total: s.bytes, nx: nx, via: via });

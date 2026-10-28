@@ -56,6 +56,8 @@ var HELLO_MS = 60000;         // saludo a los contactos en línea mientras la ap
 var TICK_MS = 15000;
 var TTL_MSG = 7 * 86400, TTL_CHUNK = 86400, TTL_HELLO = 600; // caducidad en los relés (s)
 var MAX_CONTENT = 60000;      // tamaño máximo de un evento que aceptan los relés habituales (~64 KB)
+var MAX_RELAY_FRAME = 300000; // SEC-4 (auditoría 28-10): tope de un frame de relé antes de analizarlo (como SafeJson nativo)
+var WAKE_MIN_MS = 8000;       // M1 (auditoría 28-10): como mucho un «toque» FCM por par cada 8 s (ráfaga de textos)
 // FCM «despertador» (#87, Fase 2): enviador por defecto (la Cloud Function del dueño; se puede cambiar con setSender).
 // Al mandar a un contacto por el buzón de los relés, se le pide a este enviador que dispare el «toque» de Google que
 // despierta su teléfono aunque esté cerrado. Por aquí SOLO va el token (nunca el contenido). Ver push-sender/ y docs/FCM.md.
@@ -283,6 +285,9 @@ export class NetLink {
 
   _onRelayMsg(url, r, data) {
     var m;
+    // SEC-4 (auditoría 28-10): un relé malicioso podría mandar un frame enorme → pico de memoria del WebView. Igual que
+    // el nativo (SafeJson), se descarta lo que exceda con holgura un evento legítimo antes de analizarlo.
+    if (typeof data === 'string' && data.length > MAX_RELAY_FRAME) { console.warn('[NET] Frame de relé demasiado grande (' + data.length + '): descartado'); return; }
     try { m = JSON.parse(data); } catch (e) { return; }
     if (!Array.isArray(m)) return;
     if (m[0] === 'EVENT' && m[1] === r.sub && m[2]) this._onEvent(m[2]);
@@ -321,7 +326,12 @@ export class NetLink {
     }
     var o = await this._open(nx, ev.content);
     if (!o) { console.warn('[NET] Evento ilegible para ' + nx + ': descartado'); return; }
-    if (ev.created_at * 1000 > (this.state.lastSeen || 0)) { this.state.lastSeen = ev.created_at * 1000; this._saveState(); }
+    // SEC-1 (auditoría 28-10): created_at es externo y la firma del evento no se verifica; un contacto —o un relé que
+    // reenvía un sobre cambiándole la fecha— podía ponerlo en el futuro y envenenar lastSeen → el filtro `since` saltaba
+    // al futuro y el teléfono dejaba de recibir CUALQUIER mensaje por internet, para siempre. Se acota a «ahora» (igual
+    // que el Estado con fecha futura, EST1).
+    var at = Math.min((Number(ev.created_at) || 0) * 1000, Date.now());
+    if (at > (this.state.lastSeen || 0)) { this.state.lastSeen = at; this._saveState(); }
     this._deliver(nx, o);
   }
 
@@ -494,9 +504,11 @@ export class NetLink {
     var tag = this._tag(pair, nx, _day(0));
     var ev = _event(schnorr.utils.randomSecretKey(), KIND, [['p', tag.pub], ['expiration', String(Math.floor(Date.now() / 1000) + ttl)]], b64);
     var pub = this._publish(ev);
-    // FCM «despertador» (#87, Fase 2): un mensaje de verdad (no un saludo) salió por el buzón de los relés (si fuera por
-    // Tor directo ya habría vuelto arriba). Pedir el «toque» que despierta al contacto aunque tenga NEXO cerrada.
-    if (!(opts && opts.hello)) { var self = this; pub.then(function() { self._wake(nx); }, function() {}); }
+    // FCM «despertador» (#87, Fase 2): salió por el buzón de los relés (si fuera por Tor directo ya habría vuelto
+    // arriba). M1 (auditoría 28-10): pedir el «toque» SOLO por un mensaje nuevo de verdad (nid: texto nuevo o primer
+    // trozo de un archivo) — NUNCA por cada trozo/ack/control; un archivo grande serían miles de toques = cuota de FCM
+    // agotada (tumbaría el propio #87) y batería del par. El throttle por par (en _wake) cubre además las ráfagas.
+    if (!(opts && opts.hello) && nid) { var self = this; pub.then(function() { self._wake(nx); }, function() {}); }
     return pub;
   }
 
@@ -511,6 +523,11 @@ export class NetLink {
       var peer = this.peers.get(_nid(nx)); if (!peer || !peer.fcmToken) return;
       var url = this.senderUrl(); if (!url) return;
       if (typeof fetch !== 'function') return;
+      // M1 (auditoría 28-10): throttle por par — como mucho un toque cada WAKE_MIN_MS (una ráfaga de textos despierta
+      // una sola vez; NetBg ya baja el resto en esa sesión).
+      var now = Date.now();
+      if (peer._wakeAt && (now - peer._wakeAt) < WAKE_MIN_MS) return;
+      peer._wakeAt = now;
       var self = this;
       fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: peer.fcmToken }) })
         .then(function(res) {
@@ -547,15 +564,19 @@ export class NetLink {
       self.relays.forEach(function(r) { if (r.open) open.push(r); });
       if (!open.length) { reject(Object.assign(new Error('Sin relés'), { code: 'NET_DOWN' })); return; }
       var left = open.length, done = false, why = '';
-      var timer = setTimeout(function() { if (!done) { done = true; reject(Object.assign(new Error('Los relés no respondieron'), { code: 'NET_DOWN' })); } }, 12000);
+      // L3 (auditoría 28-10): al cerrar la promesa (OK, rechazo o timeout) se quita ev.id de TODOS los relés abiertos;
+      // antes solo lo borraba el que contestaba OK, y con un relé que acepta pero nunca manda OK, r.waits crecía toda la
+      // conexión (fuga lenta).
+      var cleanup = function() { open.forEach(function(r) { r.waits.delete(ev.id); }); };
+      var timer = setTimeout(function() { if (!done) { done = true; cleanup(); reject(Object.assign(new Error('Los relés no respondieron'), { code: 'NET_DOWN' })); } }, 12000);
       open.forEach(function(r) {
         r.waits.set(ev.id, function(ok, msg) {
           if (done) return;
-          if (ok) { done = true; clearTimeout(timer); resolve(true); return; }
+          if (ok) { done = true; clearTimeout(timer); cleanup(); resolve(true); return; }
           why = msg || why;
-          if (--left === 0) { done = true; clearTimeout(timer); reject(Object.assign(new Error('Rechazado por los relés: ' + why), { code: 'NET_REJECTED' })); }
+          if (--left === 0) { done = true; clearTimeout(timer); cleanup(); reject(Object.assign(new Error('Rechazado por los relés: ' + why), { code: 'NET_REJECTED' })); }
         });
-        if (!self._send(r, ['EVENT', ev])) { r.waits.delete(ev.id); if (--left === 0 && !done) { done = true; clearTimeout(timer); reject(Object.assign(new Error('Sin relés'), { code: 'NET_DOWN' })); } }
+        if (!self._send(r, ['EVENT', ev])) { r.waits.delete(ev.id); if (--left === 0 && !done) { done = true; clearTimeout(timer); cleanup(); reject(Object.assign(new Error('Sin relés'), { code: 'NET_DOWN' })); } }
       });
     });
   }

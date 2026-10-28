@@ -201,6 +201,56 @@ y nombre (≤40) validados. **Veredicto:** fuera de los tres de arriba, no hay u
 
 ---
 
+## 3quater. Auditoría severa 28-10-2026 (builds 2819→2820) — «la auditoría más severa posible: seguridad, robustez, fluidez» (pedido del dueño)
+
+Tercera ronda, con **dos revisiones adversariales independientes a la vez** (un agente de **seguridad ofensiva**, otro de
+**robustez y fluidez**), centradas en la **superficie nueva** (FCM «despertador», archivos grandes por internet,
+diagnóstico de 30 min) sin repetir lo ya arreglado/documentado. Cada hallazgo se **verificó trazando el código real**
+(no se aceptó a ciegas), se reprodujo en `tests/sim` donde se podía y se arregló. **Batería VERDE (build 2820)**; las
+pruebas nuevas viven en `tests/sim/fcmwake.js` (M1, SEC-1, SEC-4). Lo nativo (G1) lo valida la compilación Kotlin del CI y
+la prueba del dueño en el teléfono.
+
+### Arreglados y comprobados en esta ronda (build 2820)
+
+| Id | Gravedad | Qué / ruta | Arreglo | Prueba |
+|---|---|---|---|---|
+| **SEC-1** | **Alta** | **`lastSeen` envenenable con el `created_at` del evento → DoS persistente de TODO internet.** `created_at` es externo y NEXO no verifica la firma Schnorr del evento; `net_link.js` lo guardaba en `lastSeen` sin acotar. Un contacto (tiene el secreto de la pareja) —o un relé/MITM que reenvía un sobre legítimo cambiándole la fecha— pone `created_at`=2099 → el filtro `since` salta al futuro → la víctima **deja de recibir cualquier mensaje por internet, para siempre** (persiste a disco, sobrevive a reinicios; también mata el despertador en segundo plano). Misma clase que el Estado con fecha futura (EST1), pero sin acotar. | Acotar a «ahora» antes de comparar/guardar: `at = Math.min(created_at*1000, Date.now())` (`net_link.js:_onEvent`) e igual en el nativo (`NetBg.kt:onEvent`, `since`). El `created_at` real (≈ahora) no cambia; solo se corta el del futuro. | `fcmwake.js` (`lastSeen_acotado_a_ahora`): se reenvía a B un sobre que descifra pero con `created_at` a 10 años → `lastSeen` queda ≤ ahora. Sin el arreglo B quedaba sordo. |
+| **G1** | **Grave** | **`startForeground` sin try/catch al despertar por FCM → posible crash del proceso.** `NexoFcmService.onMessageReceived` arranca `BleService` en segundo plano; su `onStartCommand → foreground()` corre en el hilo principal y, en Android 12+, `startForeground` puede lanzar `ForegroundServiceStartNotAllowedException` (y en 14+ `SecurityException` si no se cumple la precondición del tipo `connectedDevice`). Solo la rama de micrófono estaba protegida; las otras tres no → excepción sin capturar = crash justo al despertar (rompería el propio #87). | Ayudante `startFg(n, type)` que NUNCA deja escapar la excepción: reintenta sin tipo (precondiciones más laxas) y, si tampoco, `stopSelf()` en vez de tumbar el proceso. Todas las ramas pasan por él. | Nativo (no simulable): compila en el CI; el dueño lo confirma despertando el teléfono por FCM en Android 14+. |
+| **M1** | **Media** | **El «toque» FCM se pedía en CADA envío por relé, no por mensaje nuevo → tormenta de toques.** Un archivo de ~22 MB por el buzón de relés = cientos/miles de trozos, cada uno pedía un toque de alta prioridad → riesgo de agotar la cuota de FCM (tumbaría el #87), batería del par (15 s de wakelock por toque) y datos del emisor; además despertaba a pares ya en línea. | Pedir el toque SOLO cuando el envío es un mensaje nuevo de verdad (`nid`: texto nuevo o primer trozo), reusando la señal que ya calcula `send()`; y throttle por par (`WAKE_MIN_MS` 8 s) para las ráfagas. | `fcmwake.js` (`throttle_no_repite`, `trozo_siguiente_no_dispara`, `primer_trozo_si_dispara`). |
+| **M2** | **Media** | **La nota de voz seguía sonando al salir/cambiar de chat.** `_clearMessageContainer` vaciaba el contenedor pero no paraba el `Audio` (vive en el cierre de la burbuja, fuera del DOM): seguía sonando y sus timers escribían sobre nodos desprendidos. | Al vaciar el chat se llama a `window.__nexoStopVoice()` (el mismo que ya usan las llamadas). | Revisión (jsdom no reproduce audio); sin regresión en la batería. |
+| **SEC-4** | **Baja** | **El camino de relés en primer plano (JS) hacía `JSON.parse` sin tope de tamaño** (el nativo sí lo tiene con `SafeJson`). Un relé malicioso podía mandar un frame enorme → pico de memoria del WebView. | Tope `MAX_RELAY_FRAME` (300 KB, muy por encima de un evento legítimo) antes de analizar, en `_onRelayMsg`. | `fcmwake.js` (`frame_enorme_no_procesado`). |
+| **L1/L2/L3** | **Leves** | **L1:** `_capDiag` (la garantía dura de ≤5000 líneas del diagnóstico) estaba definida pero no se llamaba. **L2:** `DIAG_KEY_MAX` declarada dos veces (700 muerto, 1500 efectivo). **L3:** el timeout de `_publish` no limpiaba `ev.id` de `r.waits` de los relés que no contestan (fuga lenta). | L1: `_diagnosticText` ahora envuelve en `_capDiag`. L2: quitada la declaración muerta. L3: se limpia `ev.id` de todos los relés abiertos al cerrar (OK/rechazo/timeout). | Revisión + batería (`diaghora` `bajo_tope`). |
+
+### Documentados, NO arreglados en esta ronda (necesitan decisión del dueño o cambio de protocolo/servidor)
+
+- **SEC-2 (media, se solapa con H3):** el alta-por-ID agrega una clave desde una `acc` que puede forjar quien conozca el
+  NEXO ID de la víctima (semi-público) **y auto-agrega sin interacción** si hay una solicitud saliente pendiente. Atenuado:
+  el contacto queda «sin verificar» con banner de número de seguridad. Arreglo real = que la `acc` no auto-agregue en
+  silencio / exigir confirmación E2E antes de fijar la clave (ronda propia, como H3/H4; toca estado de claves → confirmar
+  con el dueño).
+- **SEC-3 (baja, se solapa con F6):** el endpoint `/wake` del enviador FCM es público y sin autenticar; con el token de la
+  víctima (lo tienen sus contactos; o quien reciba un diagnóstico compartido) se le puede hacer despertar (spam/batería,
+  tope 8/5 min). Arreglo = **autenticar el disparo** (App Check o HMAC por token) al desplegar `push-sender/`, y dejar de
+  volcar el token entero al diagnóstico **una vez probada la Fase 1** (hoy el token está ahí a propósito para la prueba del
+  dueño). Ver `docs/FCM.md`.
+- **Defensa en profundidad pendiente:** verificar la firma Schnorr del evento Nostr y que `ev.id` sea su sha256 (hoy no se
+  comprueba; el acotado de SEC-1 ya cierra el DoS, pero la firma evitaría que un relé toque cualquier campo). Ronda propia.
+- Siguen abiertos del catálogo (sin cambio esta ronda): **H3, H4, M5, M6, F6, F7, F8** (endurecimiento del protocolo/nativo,
+  cada uno su ronda y prueba en los dos teléfonos; H3 lo confirma el dueño por tocar estado de claves).
+
+### Resultados negativos (buscados y NO explotables — tranquilidad)
+
+El agente de seguridad trazó y descartó: **SSRF/URL arbitraria por el par en `_wake`** (la URL la fija el dueño en Perfil,
+no el par; `setSender` no tiene llamador de protocolo; el token solo viaja en el cuerpo, escapado) → sin SSRF ni inyección.
+**Archivos grandes / path traversal / DoS de memoria**: `BigFile.safeId`/`safeFileName` filtran y acotan, tamaños con tope,
+`BigReader`/`BigNet` validan cada registro → sin salida de directorio ni asignación sin tope. **Cripto/ratchet**
+(`e2e_ratchet`): `_skip` acotado, `_parse` rechaza `n/pn>1e7`, replay del X3DH bloqueado (`seenEk`), AAD liga emisor/destino/id,
+descifra sobre copia, guarda antes de entregar, anti-rebaja PQ. **Intents/nativo**: `MainActivity` exige el testigo del
+PendingIntent (N6), FileProvider/servicios `exported=false`, `SafeJson` nativo. **XSS**: todo el contenido del remitente
+se pinta con `textContent` o escapado (`_esc`/`_attr`); el `href` del cobro fuerza `^https?://`.
+
+---
+
 ## 4. Plan de pruebas «al límite» (robustez y seguridad)
 
 Adaptado de los modelos más duros: simulación determinista (FoundationDB, TigerBeetle VOPR), Jepsen/caos, fuzzing
