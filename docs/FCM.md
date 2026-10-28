@@ -69,5 +69,21 @@ Con el `google-services.json` ya engancho el SDK de FCM en el Android y probamos
 
 ## Estado
 
-- 28-10: autorizado por el dueño. Esperando `google-services.json` (Fase 0) para empezar la Fase 1.
-- Mientras tanto: diseño cerrado (este doc) + el enviador (Cloud Function) se escribe aparte, listo para desplegar.
+- 28-10: autorizado por el dueño («sí armalo»).
+- **Fase 0 — HECHA.** El dueño creó el proyecto Firebase `nexo-7994a` y registró la app `com.nexo.app`;
+  `google-services.json` está en `android/app/` (config pública, no secreta).
+- **Fase 1 (recibir) — HECHA y compilada (build 2816).** Firebase (solo mensajería) en el Android:
+  plugin `google-services` 4.5.0 (único compatible con AGP 9.4), Firebase BOM 34.3.0 + `firebase-messaging`
+  en `plugins/nexo-ble`, `NexoFcmService` (arranca el servicio y avisa al llegar el toque; token en `onNewToken`),
+  registrado en el manifest, y `NexoBlePlugin.load` apunta el token en el diagnóstico. No se puede simular: se
+  compiló antes en una rama de prueba (`workflow_dispatch`, APK artifact OK) para no romper la nightly de NEXOCHAT;
+  Firebase + AGP 9 compiló a la primera. **Falta la prueba en el teléfono:** instalar, abrir NEXO, copiar
+  diagnóstico (línea `Token FCM: …`) y mandar un «toque» de prueba a ese token (consola de Firebase o `curl`) para
+  ver que el Vivo cerrado despierta.
+  - Nota técnica: el despertar REAL (que corra `onMessageReceived` con la app cerrada) necesita un mensaje
+    **solo-datos** de **alta prioridad**; la consola de Firebase manda mensajes de *notificación* (sirven para
+    confirmar que FCM llega al teléfono cerrado, pero no ejecutan nuestro código). El toque solo-datos se prueba
+    del todo con el enviador de la Fase 2 (o un `curl` con credenciales).
+- **Fase 2 (enviar) — pendiente.** Intercambio del token FCM cifrado entre contactos (kx/relé), el enviador
+  (Cloud Function) con la llave de service account (SECRETA, no va al repo ni al chat) y disparar el toque al
+  postear al buzón de un contacto offline. La plomería se valida en `tests/sim` con un FCM de mentira.
