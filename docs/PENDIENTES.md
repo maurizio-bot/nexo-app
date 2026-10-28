@@ -24,6 +24,13 @@ corrige lo que encuentres, y dame **una puntuación** y **la comparativa con la 
   decisión del dueño (tocan el estado de claves/protocolo): **H3, H4, M5, M6, F6, F7, F8** y los nuevos **SEC-2** (alta
   por ID auto-agrega desde una `acc` forjable) y **SEC-3** (autenticar el endpoint `/wake` al desplegar; quitar el token
   del diagnóstico tras probar la Fase 1).
+- ✅ **#87 martilleo del Bluetooth (build 2821, con el diagnóstico de los dos teléfonos del dueño):** un contacto con el
+  GATT roto (`no_service` + MTU 23, como `nx1e29ab2f`) se reconectaba por Bluetooth cada ~15 s para siempre → 627
+  «despertares»/batería en el Vivo. Ahora se pausa su Bluetooth tras 4 fallos (backoff 30 s→10 min) y sigue por
+  internet/Wi-Fi; prueba `noservice.js`. **Falta del dueño:** confirmar en los teléfonos que bajan los despertares.
+  **Pendiente (siguiente frente):** los archivos que se abortan (`Max window retries`) a contactos por Jump y por enlaces
+  que parpadean — visto en el diagnóstico del S24 (video/imagen a `nx0ed4a8be`, foto al Vivo); evaluar reanudar en vez de
+  abortar. También aclarar con el dueño qué build tienen (no se vio la línea `Token FCM:` → quizá build anterior a la FCM).
 - ▶️ **Pendientes activos restantes** (no bloqueados por el dueño): #19 (Wi-Fi Direct HD), #50 (texto en el margen 15 s),
   #83 (Wi-Fi no soltar a internet), #89 (notif heads-up — falta decisión de privacidad del dueño), #93 (micrófono AEC),
   #95 (Stream fase 2), #105 (pagos socio), #107 (iOS Fase 1 Bluetooth), #111 (logo/sonidos — elige el dueño). Varios
