@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "542237388502",
+    "project_id": "nexo-7994a",
+    "storage_bucket": "nexo-7994a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:542237388502:android:05f290688333e4ad412377",
+        "android_client_info": {
+          "package_name": "com.nexo.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "542237388502-mh2rdbu96v02scccb5g56aeaa6ebnbhv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDvAL8cxawk9csq4y1HdDDiMK9eIudkD3s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "542237388502-7rujdp0kovspvpflj6cvmcdrn90vg7nv.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

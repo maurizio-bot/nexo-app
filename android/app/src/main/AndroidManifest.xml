@@ -93,6 +93,17 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice|microphone" />
 
+        <!-- FCM «despertador» tipo WhatsApp (#87): el "toque" de Google despierta NEXO aunque esté cerrada o el
+             fabricante la congele. Por Google solo pasa el toque (sin contenido); el mensaje sigue P2P/E2E. La clase
+             está en el módulo nexo-ble (Kotlin). Ver docs/FCM.md. -->
+        <service
+            android:name="com.nexo.ble.NexoFcmService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- Photo Picker service para compatibilidad galería en Android 11+ -->
         <service android:name="com.google.android.gms.metadata.ModuleDependencies"
             android:enabled="false"

@@ -7,6 +7,10 @@ buildscript {
     dependencies {
         classpath 'com.android.tools.build:gradle:9.4.0'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        // FCM «despertador» (#87): el plugin de Google procesa android/app/google-services.json. 4.5.0 es el primero
+        // que soporta AGP 9.1+/Gradle 9.4.1+ (aquí AGP 9.4); las versiones 4.4.x fallan con AGP 9. Solo se aplica en el
+        // módulo app y solo si existe google-services.json (ver android/app/build.gradle).
+        classpath 'com.google.gms:google-services:4.5.0'
     }
 }
 
