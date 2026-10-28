@@ -100,6 +100,10 @@
      "fallo": "La app cerrada y reabierta: mensajes retenidos y reconexión",
      "prueba": null,
      "fuera": "lifecycle.js"
+    },
+    {
+     "fallo": "GATT roto (no_service, MTU 23): se reconectaba por Bluetooth cada ~15 s para siempre → cientos de «despertares»/batería (diagnóstico del dueño 28-10, arreglado 2821: backoff por contacto)",
+     "prueba": "no_service"
     }
    ],
    "debiles": [

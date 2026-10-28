@@ -614,7 +614,7 @@ class NativePhone {
           this.emit('onConnectionFailed', { deviceId: peer.address, reason: 'NEXO service not found' });
           if (this.opts.closeOnNoService) {
             this.clients.delete(macNorm); peer.serverConnected.delete(norm(this.initAddress));
-            this.emit('onDeviceDisconnected', { deviceId: peer.address });
+            this.emit('onDeviceDisconnected', { deviceId: peer.address, reason: 'no_service' });
           }
           return;
         }
