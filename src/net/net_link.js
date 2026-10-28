@@ -56,6 +56,10 @@ var HELLO_MS = 60000;         // saludo a los contactos en línea mientras la ap
 var TICK_MS = 15000;
 var TTL_MSG = 7 * 86400, TTL_CHUNK = 86400, TTL_HELLO = 600; // caducidad en los relés (s)
 var MAX_CONTENT = 60000;      // tamaño máximo de un evento que aceptan los relés habituales (~64 KB)
+// FCM «despertador» (#87, Fase 2): enviador por defecto (la Cloud Function del dueño; se puede cambiar con setSender).
+// Al mandar a un contacto por el buzón de los relés, se le pide a este enviador que dispare el «toque» de Google que
+// despierta su teléfono aunque esté cerrado. Por aquí SOLO va el token (nunca el contenido). Ver push-sender/ y docs/FCM.md.
+var DEFAULT_SENDER = 'https://us-central1-nexo-7994a.cloudfunctions.net/wake';
 var STATE_FILE = 'nexo_net.json';
 var N = BigInt('0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141'); // orden de secp256k1
 
@@ -99,6 +103,7 @@ export class NetLink {
     this.seen = new Map();     // id de evento → cuándo (no procesar dos veces lo que llega por varios relés)
     this.state = { lastSeen: 0 };
     this.wifi = false;
+    this.fcmToken = ''; // token FCM de ESTE teléfono (lo da el nativo); se comparte con los contactos en el saludo
     this.tor = { ready: false, onion: '', port: 0, starting: false, triedAt: 0, error: '' };
     this._tagSig = '';
     this._timer = null;
@@ -124,6 +129,10 @@ export class NetLink {
     if (self._inited) return;
     self._inited = true;
     try { var r = pl && await pl.loadFromFile({ filename: STATE_FILE }); if (r && r.exists && r.content) self.state = JSON.parse(r.content) || self.state; } catch (e) {}
+    // FCM «despertador» (#87, Fase 2): el token de este teléfono (para que los contactos puedan despertarlo) y los
+    // tokens que ya conocíamos de ellos (sobreviven al reinicio, así se puede despertar aunque no haya saludo reciente).
+    try { if (pl && typeof pl.getFcmToken === 'function') { var ft = await pl.getFcmToken(); if (ft && ft.token) self.fcmToken = ft.token; } } catch (e) {}
+    try { if (self.state.peerFcm) Object.keys(self.state.peerFcm).forEach(function(nx) { self._peer(nx).fcmToken = self.state.peerFcm[nx]; }); } catch (e) {}
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() {
       // A segundo plano: la parte nativa sigue desde lo último que vio la app
       if (document.visibilityState === 'hidden') { self._bgSinceDirty = true; self._bgConfig(); }
@@ -354,6 +363,13 @@ export class NetLink {
     var t = Number(o.t) || 0, now = Date.now();
     // Su dirección de Tor (va en el saludo cifrado): si los dos tenemos Tor, conectar directamente
     if (typeof o.o === 'string' && /^[a-z2-7]{56}\.onion$/.test(o.o)) { peer.onion = o.o; peer.torPort = Number(o.op) || 0; this._torDial(nx); }
+    // FCM «despertador» (#87, Fase 2): su token (va en el saludo cifrado de la pareja). Se guarda para poder pedir el
+    // «toque» que lo despierta cuando le mandemos algo por el buzón. Longitud acotada (un token real ~140-200 chars).
+    if (typeof o.f === 'string' && o.f.length >= 20 && o.f.length <= 4096 && o.f !== peer.fcmToken) {
+      peer.fcmToken = o.f;
+      if (!this.state.peerFcm) this.state.peerFcm = {};
+      this.state.peerFcm[nx] = o.f; this._saveState();
+    }
     // Solo lo reciente cuenta para "en línea" (lo guardado de hace rato es del buzón)
     if (now - t < UP_MS && t > (peer.lastRx || 0)) { peer.lastRx = t; peer.wifi = !!o.w; }
     if (o.h) {
@@ -464,7 +480,7 @@ export class NetLink {
     if (!c || !(this.online() || (tp && tp.torUp))) throw Object.assign(new Error('Sin internet con ' + nx), { code: 'NET_DOWN' });
     var pair = await this._pair(nx, c.publicKey);
     var body = { t: Date.now(), w: this.wifi ? 1 : 0 };
-    if (opts && opts.hello) { body.h = 1; if (this.tor.ready && this.tor.onion) { body.o = this.tor.onion; body.op = this.tor.port; } }
+    if (opts && opts.hello) { body.h = 1; if (this.tor.ready && this.tor.onion) { body.o = this.tor.onion; body.op = this.tor.port; } if (this.fcmToken) body.f = this.fcmToken; }
     else { body.p = String(content); var nid = this._newMsgId(body.p); if (nid) body.n = nid; }
     var iv = _rnd(12);
     var ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: _utf8('NEXO-NET|' + me + '|' + nx) }, pair.aes, _utf8(JSON.stringify(body))));
@@ -477,7 +493,32 @@ export class NetLink {
     var ttl = (opts && opts.hello) ? TTL_HELLO : this._ttlFor(String(content || ''));
     var tag = this._tag(pair, nx, _day(0));
     var ev = _event(schnorr.utils.randomSecretKey(), KIND, [['p', tag.pub], ['expiration', String(Math.floor(Date.now() / 1000) + ttl)]], b64);
-    return this._publish(ev);
+    var pub = this._publish(ev);
+    // FCM «despertador» (#87, Fase 2): un mensaje de verdad (no un saludo) salió por el buzón de los relés (si fuera por
+    // Tor directo ya habría vuelto arriba). Pedir el «toque» que despierta al contacto aunque tenga NEXO cerrada.
+    if (!(opts && opts.hello)) { var self = this; pub.then(function() { self._wake(nx); }, function() {}); }
+    return pub;
+  }
+
+  // FCM «despertador» (#87, Fase 2): URL del enviador (Cloud Function del dueño). Por defecto la estándar del proyecto;
+  // se puede cambiar (setSender) si el despliegue da otra. Vacía = despertador apagado (no se piden toques).
+  senderUrl() { return (this.state.senderUrl != null) ? this.state.senderUrl : DEFAULT_SENDER; }
+  setSender(url) { this.state.senderUrl = String(url == null ? '' : url); this._saveState(); }
+  // Pide al enviador que dispare el «toque» de Google al token del contacto. SOLO viaja el token (nunca el contenido);
+  // el mensaje ya va cifrado por el camino normal. Defensivo: si no hay token/enviador o falla la red, no pasa nada.
+  _wake(nx) {
+    try {
+      var peer = this.peers.get(_nid(nx)); if (!peer || !peer.fcmToken) return;
+      var url = this.senderUrl(); if (!url) return;
+      if (typeof fetch !== 'function') return;
+      var self = this;
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: peer.fcmToken }) })
+        .then(function(res) {
+          // 404 = token caducado/desregistrado: lo olvidamos para pedir uno nuevo en el próximo saludo
+          if (res && res.status === 404) { peer.fcmToken = ''; if (self.state.peerFcm) { delete self.state.peerFcm[_nid(nx)]; self._saveState(); } }
+        })
+        .catch(function() {});
+    } catch (e) {}
   }
 
   // Alta por ID (ronda 2779): deja una solicitud ('req') o una aceptación ('acc') en el buzón del ID `to`, cifrada con la

@@ -84,6 +84,11 @@ Con el `google-services.json` ya engancho el SDK de FCM en el Android y probamos
     **solo-datos** de **alta prioridad**; la consola de Firebase manda mensajes de *notificación* (sirven para
     confirmar que FCM llega al teléfono cerrado, pero no ejecutan nuestro código). El toque solo-datos se prueba
     del todo con el enviador de la Fase 2 (o un `curl` con credenciales).
-- **Fase 2 (enviar) — pendiente.** Intercambio del token FCM cifrado entre contactos (kx/relé), el enviador
-  (Cloud Function) con la llave de service account (SECRETA, no va al repo ni al chat) y disparar el toque al
-  postear al buzón de un contacto offline. La plomería se valida en `tests/sim` con un FCM de mentira.
+- **Fase 2 — plomería de la app HECHA y probada (28-10); falta desplegar.** El Android expone el token
+  (`getFcmToken`); la app lo comparte con cada contacto en el saludo cifrado (`body.f` en `net_link.js`), lo guarda
+  (sobrevive al reinicio), y al mandar un mensaje por el buzón de los relés pide el «toque» al enviador
+  (`_wake` → `POST {to: token}` al `senderUrl`, por defecto la Cloud Function estándar del proyecto; `setSender(url)`
+  para cambiarla). Por el «toque» va **SOLO el token, nunca el contenido**; un saludo no dispara toque; un 404
+  (token caducado) lo olvida. Probado en `tests/sim/fcmwake.js` (intercambio + disparo + privacidad). **Falta (del
+  dueño):** desplegar `push-sender/` con su cuenta y, si el URL del despliegue difiere del estándar, pasármelo para
+  `net.setSender(url)`. El disparo real por Google y el despertar del teléfono cerrado se prueban en el móvil.

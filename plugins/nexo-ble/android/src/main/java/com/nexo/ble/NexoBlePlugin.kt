@@ -754,6 +754,29 @@ class NexoBlePlugin : Plugin() {
             }
         } catch (e: Throwable) { remLog("WARN", "FCM", "FCM no inicializado (¿sin Play Services?): ${e.message}") }
     }
+
+    // FCM «despertador» (#87, Fase 2): la app (net_link.js) pide el token de ESTE teléfono para compartirlo con sus
+    // contactos (en el saludo cifrado) y que puedan despertarlo con el app cerrada. El token NO es secreto. Se da el
+    // fresco de FirebaseMessaging; si no hay (sin Play Services), el guardado por onNewToken, o vacío.
+    @PluginMethod
+    fun getFcmToken(call: PluginCall) {
+        val prefs = try { context.getSharedPreferences(NexoFcmService.PREFS, Context.MODE_PRIVATE) } catch (e: Exception) { null }
+        try {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                val tok = if (task.isSuccessful) (task.result ?: "") else ""
+                if (tok.isNotEmpty()) {
+                    try { prefs?.edit()?.putString(NexoFcmService.PREF_TOKEN, tok)?.apply() } catch (e: Exception) {}
+                    call.resolve(JSObject().put("token", tok))
+                } else {
+                    val saved = try { prefs?.getString(NexoFcmService.PREF_TOKEN, "") ?: "" } catch (e: Exception) { "" }
+                    call.resolve(JSObject().put("token", saved).put("error", task.exception?.message ?: "sin token"))
+                }
+            }
+        } catch (e: Throwable) {
+            val saved = try { prefs?.getString(NexoFcmService.PREF_TOKEN, "") ?: "" } catch (e2: Exception) { "" }
+            call.resolve(JSObject().put("token", saved).put("error", e.message ?: "FCM no disponible"))
+        }
+    }
     override fun handleOnResume() {
         super.handleOnResume()
         appInBackground = false

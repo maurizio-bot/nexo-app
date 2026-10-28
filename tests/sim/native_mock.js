@@ -1085,6 +1085,9 @@ class NativePhone {
       // que cada uno dice tener: un impostor puede decir otro); torSend llega en orden con latencia (opts.torLatency,
       // por defecto 300 ms) y ~opts.torBps (50 KB/s). opts.noTor: Tor no arranca.
       torStatus: wrap('torStatus', (c) => c.resolve({ supported: true, running: !!self.tor, onion: self.tor ? self.tor.onion : '', port: 9878, peers: [] })),
+      // FCM «despertador» (#87, Fase 2): token FCM de ESTE teléfono (fijo por teléfono en el modelo). En teléfono real
+      // lo da FirebaseMessaging; aquí basta uno estable y único para probar el intercambio y el disparo del toque.
+      getFcmToken: wrap('getFcmToken', (c) => c.resolve({ token: 'FCMTOK-' + self.name + '-0000000000000000000000000000' })),
       torStart: wrap('torStart', (c, a) => {
         c.resolve({ starting: true });
         self.stats.torStarts = (self.stats.torStarts || 0) + 1;
