@@ -188,6 +188,12 @@ class NexoBlePlugin : Plugin() {
     private val messageBufferTimers = ConcurrentHashMap<String, Runnable>()
     private val messageBufferSince = ConcurrentHashMap<String, Long>() // desde cuándo hay algo pendiente
     private val lastScanNotifyTime = ConcurrentHashMap<String, Long>()
+    // #87/diagnóstico: el scan encuentra anuncios muchas veces por segundo; escribir cada uno en el registro nativo
+    // (NativeLog, anillo de 48 KB) lo inundaba y echaba fuera lo útil (p. ej. el Token FCM) en un minuto, y hacía el
+    // diagnóstico enorme (queja del dueño, 2812). Al registro nativo va como mucho una línea por dispositivo cada 20 s;
+    // el resto solo a logcat. No cambia nada de lo que hace el escaneo, solo cuánto se persiste.
+    private val scanLogLast = ConcurrentHashMap<String, Long>()
+    private val SCAN_LOG_MIN_MS = 20000L
     private val negotiatedMtu = ConcurrentHashMap<String, Int>()
     private val writeQueues = ConcurrentHashMap<String, MutableList<WriteQueueItem>>()
     private val writeQueueProcessing = ConcurrentHashMap<String, Boolean>()
@@ -204,7 +210,7 @@ class NexoBlePlugin : Plugin() {
     private data class JsonExtraction(val json: String, val remainder: String)
     // Solo estas etiquetas cruzan a la app (diagnóstico). El resto (uno por cada trozo enviado o recibido) solo
     // va a logcat: la 2722 los escuchaba todos y miles de avisos por foto saturaban el puente (fotos paradas).
-    private val remLogToJs = setOf("AT_REST", "FILE_IO", "BT_ERR")
+    private val remLogToJs = setOf("AT_REST", "FILE_IO", "BT_ERR", "FCM")
     // Errores de Bluetooth al enviar o recibir (ronda 2755): al diagnóstico, como mucho uno de cada tipo cada 5 s
     // (si fallan seguidas serían miles y saturarían el puente con la app, como en la 2722)
     private val btErrLast = ConcurrentHashMap<String, Long>()
@@ -2066,7 +2072,9 @@ class NexoBlePlugin : Plugin() {
                         remLog("WARN", "SCAN", "Anuncio NEXO con ID mal formado en 0x${key.toString(16)}: se ignora")
                         return null
                     }
-                    remLog("INFO", "SCAN", "NEXO ID found in manufacturer ID 0x${key.toString(16)}: $nexoId")
+                    // Solo a logcat (no al registro nativo): la línea "Device found" de abajo ya anota el NEXO ID por
+                    // dispositivo y con límite de frecuencia; esta por anuncio inundaba el diagnóstico.
+                    Log.i("NEXO_REM", "[INFO][SCAN] NEXO ID found in manufacturer ID 0x${key.toString(16)}: $nexoId")
                     return nexoId
                 }
             }
@@ -2124,7 +2132,14 @@ class NexoBlePlugin : Plugin() {
                     registerNexoMapping(nexoId, addr)
                 }
 
-                remLog("INFO", "SCAN", "Device found: $name ($addr) NEXO=$nexoId rssi=$rssi - cacheado")
+                val scanMsg = "Device found: $name ($addr) NEXO=$nexoId rssi=$rssi - cacheado"
+                val nowScanLog = System.currentTimeMillis()
+                if (nowScanLog - (scanLogLast[macNorm] ?: 0L) > SCAN_LOG_MIN_MS) {
+                    scanLogLast[macNorm] = nowScanLog
+                    remLog("INFO", "SCAN", scanMsg) // al registro nativo: como mucho 1 vez cada 20 s por dispositivo
+                } else {
+                    Log.i("NEXO_REM", "[INFO][SCAN] $scanMsg") // el resto, solo a logcat (no inunda el diagnóstico)
+                }
 
                 val item = JSObject().apply {
                     put("deviceId", addr)
