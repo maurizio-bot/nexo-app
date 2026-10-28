@@ -1,10 +1,9 @@
 # NEXO — Comparativa con la competencia y estado de avance
 
-Hecha el 24-10-2026 con la build 2763; actualizada el mismo día con la 2767 y la 2768 (revisión de las llamadas) y el
-25-10 con la 2769 (videollamada robusta), la 2770 (llamadas con la pantalla bloqueada), la 2771 (interfaz) y la 2772
-(informe del dueño: espejo y encuadre del vídeo, filtros del micrófono, pantalla apagada).
-Actualizar cuando cambie algo importante. Los datos de NEXO salen del código y del simulador; los de la competencia,
-de sus páginas y noticias (enlaces al final). Lo que no se pudo confirmar va marcado con "?".
+Hecha el 24-10-2026 (build 2763); **actualizada el 28-10-2026 (build 2820)** con lo nuevo desde entonces: despertador
+FCM tipo WhatsApp (#87), archivos grandes por internet (~22 MB), Estados (Stream fase 1), buscar en el chat, cobros,
+y la auditoría severa del 28-10. Los datos de NEXO salen del código y del simulador; los de la competencia, de sus
+páginas y noticias (enlaces al final). Lo que no se pudo confirmar va marcado con "?".
 
 ## 1. Comparativa
 
@@ -14,6 +13,8 @@ de sus páginas y noticias (enlaces al final). Lo que no se pudo confirmar va ma
 | Malla multi-salto | ✅ Jump (8 saltos, guarda 24 h) | ❌ | ❌ | ❌ | ✅ (7 saltos) | ✅ |
 | Wi-Fi local / Wi-Fi Direct | ✅ / ✅ | ❌ | ❌ | ✅ / ❌ | ? | ❌ |
 | Internet cuando hay | ✅ relés Nostr + Tor (Tor: arreglo 2766 sin confirmar) | ✅ | ✅ | ✅ Tor | ✅ Nostr | ✅ |
+| Archivos grandes por internet | ✅ ~22 MB (Tor directo o relés; >22 MB espera Wi-Fi/WD, con aviso claro) | ✅ | ✅ | ? | ? | texto |
+| Despertar con la app cerrada horas (push) | ⏳ FCM listo (Fase 1+2), falta desplegar el enviador | ✅ FCM/APNs | ✅ FCM/APNs | ❌ (servicio vivo) | ❌ | ? |
 | Elige el camino solo | ✅ (regla del dueño) | — | — | parcial | parcial | parcial |
 | Fotos, vídeo, archivos sin internet | ✅ hasta 1 GB, vídeo HD | ❌ | ❌ | fotos | ? | texto |
 | Llamadas de voz sin internet | ✅ Bluetooth / Wi-Fi (Bluetooth lento: voz con segundos de retraso, pendiente) | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -21,14 +22,15 @@ de sus páginas y noticias (enlaces al final). Lo que no se pudo confirmar va ma
 | Grupos | ✅ | ✅ | ✅ | ✅ | ✅ canales | difusión sin cifrar |
 | Cifrado | Double Ratchet + poscuántico + remitente oculto (suplantación por un teléfono cercano: arreglada en la 2768) | Signal | referencia | ✅ (auditado 2017) | Noise (sin auditoría al lanzar) | críticas 2020–21 |
 | ID Bluetooth que cambia (no te rastrean) | ✅ | — | — | — | efímero | ? |
-| Recibir con la app cerrada | ✅ Bluetooth e internet | ✅ | ✅ | servicio fijo | ? | ? |
+| Recibir con la app cerrada | ✅ Bluetooth e internet (servicio vivo); despertador FCM en camino para el caso «congelada horas» | ✅ | ✅ | servicio fijo | ? | ? |
 | Copia de seguridad | ✅ Fénix (en tus contactos, sin servidor) | nube | sí | ❌ | ❌ | ❌ |
 | Sin número de teléfono | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ |
 | iPhone | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ |
 | En tiendas (Play Store) | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Auditoría externa / uso a gran escala | ❌ / ❌ | ✅ | ✅ | ✅ / pequeño | ❌ / medio | pequeño |
 | Foto de perfil | ✅ (2766) | ✅ | ✅ | ✅ (desde 2021) | ? (nombre o "anon") | ? |
-| Estados / buscar en los chats | ❌ / ❌ | ✅ / ✅ | ✅ / ✅ | blogs / ? | ? | ? |
+| Estados / buscar en los chats | ✅ Estados (cercanos, E2E, 24 h) / ✅ buscar en un chat (falta global) | ✅ / ✅ | ✅ / ✅ | blogs / ? | ? | ? |
+| Cobros (mensajería de cobros, sin tocar el dinero) | ✅ (alias/CBU/QR, sin licencia) | pagos nativos (según país) | ❌ | ❌ | ❌ | ❌ |
 
 Corrección respecto a la versión anterior de esta tabla: Briar sí tiene foto de perfil (versión 1.3, 2021); en bitchat
 y Bridgefy no se pudo confirmar (antes ponía ❌).
@@ -37,24 +39,40 @@ y Bridgefy no se pudo confirmar (antes ponía ❌).
 y Jump) y cambia sola; la única que hace llamadas y videollamadas sin internet; archivos grandes y vídeo HD sin
 internet; cifrado al nivel de Signal y con poscuántico; copia de la cuenta sin servidores (Fénix).
 
-**Dónde pierde (puntos débiles):** solo Android y fuera de las tiendas; muy pocas pruebas reales (2–3 teléfonos) y
-cada prueba del dueño ha sacado fallos graves; sin auditoría externa (la revisión de las llamadas encontró, y la 2768
-arregla, que un teléfono cercano con un NEXO modificado podía hacerse pasar por un contacto: textos, archivos y
-llamadas sin cifrar se aceptaban);
-consumo de batería sin medir; voz con segundos de retraso por un Bluetooth lento; faltan estados y buscar en los
-chats (en "Agregar", "Buscar contacto…" es solo un dibujo).
+**Dónde pierde (puntos débiles):** solo Android y fuera de las tiendas; **muy pocas pruebas reales en teléfonos** (es el
+mayor hueco: casi nada confirmado desde la build 2765, ver la puntuación abajo); auditoría solo interna (propia, con
+revisores adversariales), no externa; consumo de batería en segundo plano sin medir; el despertador FCM «como WhatsApp»
+está listo en código pero **falta desplegar el enviador** (lo hace el dueño con su cuenta); voz con segundos de retraso
+por un Bluetooth lento (teléfonos viejos); llamada/videollamada por internet aún no (solo en local); falta el buscador
+global y iOS.
 
-**Qué cambió con la 2772 (informe del dueño del 25-10):** el otro se ve en espejo si usa su cámara de delante, y se
-puede quitar en Perfil (las grandes solo ponen en espejo la vista propia y no dejan elegir); la imagen llega con su
-forma y se ve entera o a toda la pantalla según quepa (antes recortada: se veía el 35 %); el micrófono baja mientras
-suena el otro, salvo si se habla a la vez (como el cancelador de WebRTC), y no actúa con cascos; la salida de audio va
-como voz de llamada (para el cancelador del teléfono); con Wi-Fi y la pantalla apagada se recibe y se avisa sin
-servidor (WhatsApp y Signal usan el aviso de Google, FCM). Todo sin probar aún en teléfonos.
+**Qué cambió en esta tanda (builds 2816→2820, 28-10):** (1) **Despertador FCM tipo WhatsApp (#87)** — Google solo lleva
+un «toque» sin contenido (el mensaje sigue P2P y cifrado); código de Fase 1+2 listo y probado en el simulador, falta que
+el dueño despliegue el enviador. (2) **Archivos grandes por internet** hasta ~22 MB (antes ~6 MB) y nunca «enviada» en
+silencio. (3) **Diagnóstico** acotado a 30 min y ~5000 líneas. (4) **Auditoría severa** con dos revisores adversariales
+independientes: 7 fallas reales arregladas (entre ellas una **ALTA** que dejaba sordo a internet para siempre con una
+fecha falsa, y una **GRAVE** que podía cuelgar el proceso al despertar por FCM). (5) Antes, en la tanda del 27-10:
+Estados (Stream fase 1), buscar en el chat, cobros, «ver una vez», guardar en galería, Face ID opcional, gesto atrás.
 
-**Qué cambió desde la tabla anterior (2763 → 2768):** foto de perfil (2766); avisos y llamadas que encienden la
-pantalla y se ven encima del bloqueo (2766); la causa de "sin dirección .onion" en Tor, corregida (2766, sin confirmar);
-el agujero de suplantación y otros 12 fallos de las llamadas, arreglados (2768); el retraso de la voz por un Bluetooth
-lento, medido (pendiente).
+## 1bis. Puntuación (índice de robustez, 28-10-2026, build 2820)
+
+Medido con `tests/sim/robustez.js` sobre la batería (75/75 verde) y el catálogo `robustez.json`. De 0 a 100, por área
+y ponderado por peso. **Índice global: 43,1/100.**
+
+| Componente | Puntos | De | Qué mide |
+|---|---|---|---|
+| A — Pruebas | 24,3 | 35 | Fallos conocidos vigilados por una prueba automática que pasa. **Alto**: el código está bien cubierto. |
+| B — Teléfonos | 6,8 | 35 | Confirmado en teléfonos reales tras el último cambio del área. **Muy bajo**: casi nada probado desde la 2765. |
+| C — Puntos débiles | 9,3 | 20 | 20 menos lo que resten los débiles abiertos (grave −8, medio −4, leve −2). |
+| D — Estabilidad | 2,7 | 10 | Áreas revisadas a fondo hace poco. |
+
+**Lectura honesta:** NEXO tiene MÁS funciones que cualquier rival offline y cifrado al nivel de Signal, pero el índice
+se queda en ~43 por una sola razón: **B (confirmación en los teléfonos) está en 6,8 de 35**. El código y el simulador
+están sólidos (A alto); lo que falta es **probar en los teléfonos reales**. Es, con diferencia, lo que más subiría la
+nota, y es lo único que no puedo hacer yo. Si confirmas unas pocas áreas en los dos teléfonos, el índice sube a ~55–65
+(ya estimado el 25-10). La seguridad mejoró esta tanda (sube la cobertura con SEC-1/SEC-4), pero quedan 7
+endurecimientos de protocolo abiertos (H3/H4/M5/M6/F6/F7/F8) para rondas propias, varios a confirmar contigo por tocar
+el estado de claves.
 
 ## 2. Estado de avance
 
