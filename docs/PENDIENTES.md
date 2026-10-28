@@ -36,7 +36,14 @@ corrige lo que encuentres, y dame **una puntuación** y **la comparativa con la 
   crudo no se toca, para no romper transferencias BT sanas). Prueba `fileflap.js`. **Falta del dueño:** confirmar con la
   2822 que las fotos/archivos llegan tras un corte. También aclarar qué build tienen (no se vio la línea `Token FCM:` →
   quizá build anterior a la FCM). (El caso del contacto `net:` genuinamente offline con buzón sigue con el tope de antes.)
-- ▶️ **Pendientes activos restantes** (no bloqueados por el dueño): #19 (Wi-Fi Direct HD), #50 (texto en el margen 15 s),
+- ✅ **#50 (texto durante el margen de 15 s tras un corte de Wi-Fi) — VERIFICADO, ya funcionaba.** Al revisarlo con el
+  método (reproducir antes de tocar) resultó que NO había fallo: un texto escrito mientras el Wi-Fi está cortado llega
+  igual al volver, por tres caminos según cuánto dure el corte — **corte breve** (<~8 s): lo entregan los reintentos
+  del ack al volver (queda en «enviando», ~0,6 s); **corte medio** (~8–15 s): agota los reintentos cortos → «pendiente»
+  (con reloj, nunca «!») y se reenvía al volver dentro del margen (~2 s); **corte largo** (>15 s): al acabar el margen
+  pasa a Bluetooth y llega por ahí. Ninguno muestra «!». Se **añadió un caso medio** a `tests/sim/wificut.js` (antes solo
+  breve y largo) como red de seguridad; batería 77/77. Cambio solo de prueba (la app no se tocó).
+- ▶️ **Pendientes activos restantes** (no bloqueados por el dueño): #19 (Wi-Fi Direct HD),
   #83 (Wi-Fi no soltar a internet), #89 (notif heads-up — falta decisión de privacidad del dueño), #93 (micrófono AEC),
   #95 (Stream fase 2), #105 (pagos socio), #107 (iOS Fase 1 Bluetooth), #111 (logo/sonidos — elige el dueño). Varios
   dependen de decisiones o de pruebas en teléfonos.
