@@ -43,10 +43,19 @@ corrige lo que encuentres, y dame **una puntuación** y **la comparativa con la 
   (con reloj, nunca «!») y se reenvía al volver dentro del margen (~2 s); **corte largo** (>15 s): al acabar el margen
   pasa a Bluetooth y llega por ahí. Ninguno muestra «!». Se **añadió un caso medio** a `tests/sim/wificut.js` (antes solo
   breve y largo) como red de seguridad; batería 77/77. Cambio solo de prueba (la app no se tocó).
-- ▶️ **Pendientes activos restantes** (no bloqueados por el dueño): #19 (Wi-Fi Direct HD),
-  #83 (Wi-Fi no soltar a internet), #89 (notif heads-up — falta decisión de privacidad del dueño), #93 (micrófono AEC),
-  #95 (Stream fase 2), #105 (pagos socio), #107 (iOS Fase 1 Bluetooth), #111 (logo/sonidos — elige el dueño). Varios
-  dependen de decisiones o de pruebas en teléfonos.
+- ✅ **#19 (Wi-Fi Direct: no remandar HD por Bluetooth si ya llegó) — ya resuelto en código** (`wifi_direct.js` v1.3):
+  se da por entregado en cuanto el socket de Wi-Fi Direct confirma (tiene todos los bytes) y, si luego llega también
+  por Bluetooth, se descarta (`completedMessages`); los tiempos por fase ya salen en el diagnóstico. La velocidad real
+  («medir y acelerar») se mide en los teléfonos (el simulador no monta Wi-Fi Direct de verdad).
+- ✅ **#83 (el Wi-Fi no se suelta a internet; llamadas sobre Wi-Fi) — ya resuelto en código.** El orden de camino antepone
+  el Wi-Fi local (`lan:`) al internet (`net:`) (`_deviceFor`, probado por `route.js`); y las llamadas de voz y vídeo usan
+  el enlace directo `lan:` cuando el Wi-Fi está arriba (`calls.js` `_link`/`canVideo`; el vídeo solo por Wi-Fi). Confirmar
+  fluidez en los teléfonos.
+- ▶️ **Pendientes restantes** (dependen del dueño o de pruebas en teléfonos): #89 (notif heads-up — falta decisión de
+  privacidad del dueño), #93 (micrófono AEC — se afina en los teléfonos), #95 (Stream fase 2 — función grande),
+  #105 (pagos — socio/licencia), #107 (iOS Fase 1 Bluetooth — función grande, necesita cuenta Apple), #111 (logo/sonidos —
+  elige el dueño), #112 (campaña final de seguridad — el dueño la pidió «al final»), #117 (FCM — el dueño despliega el
+  enviador). Autónomo y sin bloquear quedaría **empezar a organizar Stream fase 2 (#95)** o **más rondas de auditoría**.
 
 ## Decisiones del dueño 27-10 (madrugada) y nuevos pedidos
 El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de forma robusta», orden a mi criterio. Decisiones:
