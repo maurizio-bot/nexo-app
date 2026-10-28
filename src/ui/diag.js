@@ -8,6 +8,14 @@
 // v9.9.40 (seguridad): archivo nuevo; el anterior podía tener fragmentos de mensajes y se borra
 var DIAG_MAX = 800, DIAG_KEY_MAX = 700, DIAG_FILE = 'nexo_diag_log2.txt', DIAG_OLD_FILE = 'nexo_diag_log.txt';
 var _diagLines = [], _diagKey = [], _diagTimes = [], _diagKeyTimes = [], _diagDirty = false, _diagPrev = '';
+// Ventana del diagnóstico: 30 min (pedido del dueño 28-10; antes era 1 h). Para que el texto quepa al pegarlo.
+var DIAG_WINDOW_MS = 30 * 60 * 1000;
+var DIAG_WINDOW_LABEL = 'últimos 30 min';
+// Tope de líneas del diagnóstico (pedido del dueño 28-10: ~5000; 20 mil era excesivo). Dos niveles: se limitan los
+// «eventos clave» por sesión (así el total queda holgadamente por debajo del tope, con el registro nativo y las
+// cabeceras intactos) y, como garantía dura, nunca se pasa de MAX_DIAG_LINES (se queda la cabecera y lo más reciente).
+var MAX_DIAG_LINES = 5000;
+var DIAG_KEY_MAX = 1500; // «eventos clave» por sesión (actual y anterior)
 // Ronda 2785 (#87): registro nativo persistente (NativeLog.kt). La parte nativa (NetBg por internet, Bluetooth con la
 // app cerrada, WifiLock, energía, ciclo de vida) lo escribe en disco; aquí lo recogemos al abrir la app para ver qué
 // hizo mientras estaba cerrada (el registro de consola de arriba no existe sin WebView).
@@ -67,16 +75,16 @@ var DIAG_KEY_RE = /BT_ERR|\[BIN\]|\[MTU\]|\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FI
 function _diagSessionText(hourOnly) {
   var key = _diagKey, lines = _diagLines;
   if (hourOnly) {
-    // Ronda 2784 (pedido del dueño): solo la última hora, para que el diagnóstico quepa al pegarlo
-    var cut = Date.now() - 3600000;
+    // Ronda 2784 / 28-10 (pedido del dueño): solo los últimos 30 min, para que el diagnóstico quepa al pegarlo
+    var cut = Date.now() - DIAG_WINDOW_MS;
     key = _diagKey.filter(function(l, i) { return _diagKeyTimes[i] >= cut; });
     lines = _diagLines.filter(function(l, i) { return _diagTimes[i] >= cut; });
   }
-  return '--- eventos clave ---\n' + key.join('\n') + '\n--- últimas líneas ---\n' + lines.slice(-400).join('\n');
+  return '--- eventos clave ---\n' + key.slice(-DIAG_KEY_MAX).join('\n') + '\n--- últimas líneas ---\n' + lines.slice(-400).join('\n');
 }
 
-// Ronda 2812 (pedido del dueño: «solo una hora»): recorta un texto ya guardado (la sesión anterior) a la última
-// hora mirando la hora al inicio de cada línea (HH:MM:SS). Las líneas sin hora (cabeceras de sección) se mantienen.
+// Ronda 2812 / 28-10 (pedido del dueño: «solo 30 minutos»): recorta un texto ya guardado (la sesión anterior) a la
+// ventana (DIAG_WINDOW_MS) mirando la hora al inicio de cada línea (HH:MM:SS). Las líneas sin hora (cabeceras) se mantienen.
 function _lastHourText(text) {
   if (!text) return text;
   var now = new Date();
@@ -86,17 +94,26 @@ function _lastHourText(text) {
     if (!m) return true; // cabeceras («--- eventos clave ---», etc.): se mantienen
     var s = (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
     var diff = nowSec - s; if (diff < 0) diff += 86400; // la medianoche: la hora da la vuelta
-    return diff <= 3600;
+    return diff <= DIAG_WINDOW_MS / 1000;
   }).join('\n');
+}
+
+// Garantía dura de tamaño: nunca más de MAX_DIAG_LINES líneas. Mantiene la cabecera (NEXO ID, UA) y las MÁS RECIENTES.
+function _capDiag(text) {
+  var lines = text.split('\n');
+  if (lines.length <= MAX_DIAG_LINES) return text;
+  var keepHead = lines.slice(0, 3);
+  var keepTail = lines.slice(lines.length - (MAX_DIAG_LINES - keepHead.length - 1));
+  return keepHead.concat(['… (diagnóstico recortado a ' + MAX_DIAG_LINES + ' líneas; se muestran las más recientes) …'], keepTail).join('\n');
 }
 
 export function _diagnosticText() {
   var bi = window.bleInterface || {};
-  var head = 'NEXO diagnóstico ' + new Date().toISOString() + ' (última hora)\nNEXO ID: ' + (bi.localNexoId || '?') + '\nUA: ' + navigator.userAgent + '\n';
-  // Tanto la sesión actual como la anterior se recortan a la última hora (ronda 2812, pedido del dueño: «solo una hora»)
+  var head = 'NEXO diagnóstico ' + new Date().toISOString() + ' (' + DIAG_WINDOW_LABEL + ')\nNEXO ID: ' + (bi.localNexoId || '?') + '\nUA: ' + navigator.userAgent + '\n';
+  // Tanto la sesión actual como la anterior se recortan a la ventana (28-10, pedido del dueño: «solo 30 minutos»)
   // Ronda 2785 (#87): el registro nativo (últimas ~150 líneas) muestra qué hizo el nativo con la app cerrada
   var nat = _nativeLog ? ('\n===== REGISTRO NATIVO (segundo plano / app cerrada) =====\n' + _nativeLog.split('\n').slice(-150).join('\n') + '\n') : '';
   var prev = _lastHourText(_diagPrev);
-  return head + nat + (prev ? '\n===== SESIÓN ANTERIOR (última hora) =====\n' + prev + '\n' : '') +
-    '\n===== SESIÓN ACTUAL (última hora) =====\n' + _diagSessionText(true);
+  return head + nat + (prev ? '\n===== SESIÓN ANTERIOR (' + DIAG_WINDOW_LABEL + ') =====\n' + prev + '\n' : '') +
+    '\n===== SESIÓN ACTUAL (' + DIAG_WINDOW_LABEL + ') =====\n' + _diagSessionText(true);
 }
