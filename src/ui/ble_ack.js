@@ -1523,6 +1523,27 @@ ChatStream.prototype.useLink = function(deviceId) {
   }
   console.log('[ChatStream] ' + this.msgId + ' sigue por Bluetooth: ventana ' + this.windowSize + ', espera ' + this.windowTimeoutMs + ' ms');
 };
+// #87 (diagnóstico del dueño 28-10): ¿el enlace de este stream está ARRIBA ahora mismo? Si está caído (p. ej. el otro
+// teléfono con el GATT roto que se reconecta a cada rato, o el Wi-Fi que parpadea), una ventana que caduca NO es que el
+// receptor rechace: es que no hay por dónde. En ese caso no se gasta un reintento del tope (que abortaría el archivo).
+// Sesgo seguro: ante la duda devuelve true (cuenta el reintento, como antes); solo devuelve false cuando el enlace se ve
+// claramente caído. El límite real sigue siendo el timeout global (60 s sin ningún ACK) y la limpieza por inactividad.
+ChatStream.prototype._linkUp = function() {
+  try {
+    var ble = this.ble, dev = this.deviceId;
+    if (!ble || !dev) return true;
+    // Solo se aplica a Wi-Fi local (lan:) e internet (net:), que es donde se vio el problema del dueño (foto por
+    // lan:nx09acdb61, vídeo/imagen por net:nx0ed4a8be) y donde la señal de «caído» es fiable (canReach/online). Para
+    // Bluetooth crudo NO se toca el flujo: ya tiene su propia resiliencia (_sendFailed → PEER_ABSENT → queda pendiente
+    // y se reanuda al volver el camino); meter aquí connectedDevices daba falsos «caído» y colgaba transferencias BLE.
+    if (_isNetDevice(dev)) return !(ble.net && typeof ble.net.online === 'function') || ble.net.online();
+    if (_isLanDevice(dev)) {
+      var nx = this.ackSystem && this.ackSystem._resolveNexoId ? this.ackSystem._resolveNexoId(dev) : null;
+      return !(ble.lan && typeof ble.lan.canReach === 'function') || ble.lan.canReach(nx);
+    }
+    return true; // Bluetooth y cualquier otro: comportamiento de siempre
+  } catch (e) { return true; }
+};
 ChatStream.prototype.start = function() {
   var self = this;
   return new Promise(function(resolve, reject) {
@@ -1784,6 +1805,14 @@ ChatStream.prototype._onWindowTimeout = function() {
       self._windowReject = null;
     }
   } else {
+    // #87 (28-10): el enlace está CAÍDO ahora → esperar a que vuelva sin gastar un reintento del tope (no abortar el
+    // archivo por un corte del Bluetooth/Wi-Fi). No se reenvía (saturaría la cola nativa); el timeout global (60 s sin
+    // ACK) sigue siendo el límite si no vuelve nunca. Al volver y fluir los ACKs, el bucle resetea el contador.
+    if (!self._linkUp()) {
+      console.log('[ChatStream] Ventana sin ACK con el enlace caído: espero a que vuelva (no gasta reintento) msgId=' + self.msgId);
+      self._startWindowTimer();
+      return;
+    }
     self.windowRetryCount++;
     if (self.windowRetryCount > self.maxWindowRetries) {
       console.warn('[ChatStream] Max window retries alcanzado para', self.msgId);

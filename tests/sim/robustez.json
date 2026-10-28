@@ -268,6 +268,10 @@
     {
      "fallo": "Nota de voz: pausar/reanudar, borrar antes de enviar, y parar el audio al grabar o al entrar llamada (2781)",
      "prueba": "nota de voz: pausar/reanudar"
+    },
+    {
+     "fallo": "Transferencia abortada por «Max window retries» cuando el enlace solo parpadea (diagnóstico del S24 28-10): ahora no gasta reintentos con el enlace caído, espera a que vuelva (arreglado 2822)",
+     "prueba": "enlace parpadeando"
     }
    ],
    "debiles": [
