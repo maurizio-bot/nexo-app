@@ -17,10 +17,14 @@ export var MAX_BLE_FILE_BYTES = Math.floor(MAX_BLE_B64_BYTES * 3 / 4);
 // v9.9.39: con Wi-Fi Direct (contacto a alcance que también lo tiene) el límite sube a ~22 MB
 export var WD_MAX_B64_BYTES = 30000000;
 
-// Ronda 2780 (pedido del dueño): por internet (Tor directo o buzón de los relés) las fotos y archivos medianos SIEMPRE
-// se pueden mandar, aunque el otro no esté cerca ni en Wi-Fi. Tope ~8 MB base64 (~6 MB de archivo) por los RELÉS: por
-// encima irían cientos de eventos pequeños que saturan los relés públicos. El vídeo HD ya manda la previa.
-export var NET_MAX_B64_BYTES = 8000000;
+// Ronda 2780: por internet (Tor directo o buzón de los relés) las fotos y archivos SIEMPRE se pueden mandar, aunque el
+// otro no esté cerca ni en Wi-Fi. 28-10 (pedido del dueño: «archivos grandes por internet; Tor y si no, relés; todos los
+// tamaños»): el tope por internet sube de ~6 MB a ~22 MB (igual que Wi-Fi Direct), tanto por Tor como por el buzón de los
+// relés. El archivo ya se parte en trozos (como hasta ahora con ~6 MB) y CADA trozo prueba primero Tor (sin relés, sin
+// carga) y, si no hay Tor con ese contacto, cae a los relés (más eventos; aceptable para envíos puntuales). Por encima de
+// ~22 MB hace falta Wi-Fi/Wi-Fi Direct con el otro cerca (o la Fase B: archivos muy grandes por Tor directo). El vídeo HD
+// ya manda la previa.
+export var NET_MAX_B64_BYTES = 30000000;
 
 // Ronda 2786 (pedido del dueño: "que permita el envío de archivos grandes cuando hay internet"): con Tor DIRECTO (una
 // conexión .onion entre los dos teléfonos, sin relés) no hay tope de 64 KB por evento, así que por ahí los archivos
@@ -48,8 +52,7 @@ export function _maxB64For(contactId) {
 export function _tooBigMessage(bytes, contactId) {
   if (_wdReach(contactId)) return 'Archivo demasiado grande (' + (bytes / 1048576).toFixed(1) + ' MB). Máximo ~' + (WD_MAX_B64_BYTES * 3 / 4 / 1048576).toFixed(0) + ' MB.';
   if (_netReach(contactId)) {
-    if (_torDirect(contactId)) return 'Archivo demasiado grande para internet (' + (bytes / 1048576).toFixed(1) + ' MB). Por Tor van hasta ~' + (NET_TOR_MAX_B64_BYTES * 3 / 4 / 1048576).toFixed(0) + ' MB.';
-    return 'Archivo demasiado grande para internet (' + (bytes / 1048576).toFixed(1) + ' MB). Por los relés van hasta ~' + (NET_MAX_B64_BYTES * 3 / 4 / 1048576).toFixed(0) + ' MB; para archivos grandes por internet activa Tor en Perfil.';
+    return 'Archivo demasiado grande para internet (' + (bytes / 1048576).toFixed(1) + ' MB). Por internet van hasta ~' + (NET_MAX_B64_BYTES * 3 / 4 / 1048576).toFixed(0) + ' MB; para archivos más grandes, por Wi-Fi o Wi-Fi Direct con el otro cerca.';
   }
   var bi = window.bleInterface;
   var hint = (bi && bi.wifiDirect && bi.wifiDirect.supported()) ? ' Con Wi-Fi Direct (los dos con NEXO actualizado y cerca) se pueden enviar hasta ~22 MB.' : '';
