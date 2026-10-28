@@ -118,8 +118,13 @@ export class BLEInterface {
     this._pingIntervalMs = 8000;
     // Ronda 2760: 8 s (antes 3): la respuesta sale detrás de lo que el otro tenga en su cola de escritura
     this._pingTimeoutMs = 8000;
-    this._pingMaxFails = 2;
+    this._pingMaxFails = 4; // ronda 2814 (#87): más tolerante — un enlace flojo (MTU bajo/Vivo) tarda en contestar; antes (2) lo cortaba cada ~30 s aunque el otro seguía ahí
     this._pingFailCount = new Map();
+    // Ronda 2814 (#87): throttle del auto-escaneo (NO el del usuario). Android deja de dar resultados con >5 escaneos
+    // en 30 s; con un enlace flojo que se corta y reconecta en bucle se lanzaban escaneos en ráfaga y lo saturaban
+    // (scan lento). Mínimo 8 s entre auto-escaneos → como mucho ~4 en 30 s.
+    this._autoScanMinMs = 8000;
+    this._lastAutoScanAt = 0;
     this._supervisorStates = new Map();
     this._supervisorTimer = null;
     this._supervisorIntervalMs = 6000;
