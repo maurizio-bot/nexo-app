@@ -59,4 +59,9 @@ dependencies {
     // Tor (librería oficial del Guardian Project; pide compileSdk 37.1 y trae clases de Java 24: AGP 9.4). Sin su
     // kotlin-stdlib: las clases de Tor son Java puro
     implementation('info.guardianproject:tor-android:0.4.9.14') { exclude group: 'org.jetbrains.kotlin' }
+    // FCM «despertador» tipo WhatsApp (#87): recibir el "toque" de Google que despierta NEXO cerrada (NexoFcmService).
+    // El BOM fija versiones compatibles entre sí; solo mensajería (NO analytics ni nada que mande datos a Google). El
+    // contenido del mensaje NUNCA pasa por Google: sigue P2P y E2E (ver docs/FCM.md).
+    implementation platform('com.google.firebase:firebase-bom:34.3.0')
+    implementation 'com.google.firebase:firebase-messaging'
 }

@@ -734,6 +734,19 @@ class NexoBlePlugin : Plugin() {
         remLog("INFO", "LIFECYCLE", "load - auto-starting GATT server, ${nxidToMacMap.size} mapeos cargados")
         registerBluetoothStateReceiver()
         autoStartGattServerAndAdvertising()
+        logFcmToken()
+    }
+
+    // FCM «despertador» (#87): apunta en el diagnóstico el token de este teléfono (su "dirección" para despertarlo; NO
+    // es secreto). Fase 1: sirve para mandarle un "toque" de prueba desde la consola de Firebase/el enviador y ver que
+    // NEXO cerrada despierta. Defensivo: si Firebase/Play Services no está, solo deja un aviso (no afecta al resto).
+    private fun logFcmToken() {
+        try {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                if (task.isSuccessful) remLog("INFO", "FCM", "Token FCM: ${task.result}")
+                else remLog("WARN", "FCM", "Token FCM no disponible: ${task.exception?.message}")
+            }
+        } catch (e: Throwable) { remLog("WARN", "FCM", "FCM no inicializado (¿sin Play Services?): ${e.message}") }
     }
     override fun handleOnResume() {
         super.handleOnResume()
