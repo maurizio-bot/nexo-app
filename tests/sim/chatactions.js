@@ -104,6 +104,20 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   pel('pointerdown', 200); pel('pointermove', 150); pel('pointermove', 110); pel('pointerup', 110); await sleep(400);
   r.deslizar_izq_responde = !!A.win.document.getElementById('reply-bar');
   click(A.win, A.win.document.querySelector('#reply-bar .reply-cancel')); await sleep(200);
+  // 2c) F (informe del dueño 28-10): al deslizar la burbuja aparece una flecha ↩ (realimentación); al soltar se quita.
+  const swf = bubbleWith(A, 'pregunta de B');
+  const pef = (type, x) => swf.dispatchEvent(new A.win.MouseEvent(type, { bubbles: true, clientX: x, clientY: 300 }));
+  pef('pointerdown', 100); pef('pointermove', 140); pef('pointermove', 185);
+  r.desliz_muestra_flecha = !!A.win.document.getElementById('nexo-reply-hint');
+  pef('pointerup', 185); await sleep(60);
+  r.desliz_quita_flecha = !A.win.document.getElementById('nexo-reply-hint');
+  const rbc = A.win.document.querySelector('#reply-bar .reply-cancel'); if (rbc) click(A.win, rbc); await sleep(200);
+  // 2d) E (informe del dueño 28-10): responder a una UBICACIÓN muestra «Ubicación», no el código crudo. _msgSummary
+  //     maneja el adjunto codificado DENTRO de content (forma b) y como campo suelto (forma a).
+  const ms = A.win.__nexoMsgSummary;
+  r.resumen_ubic_contenido = ms ? ms({ content: '{"type":"attachment","attachmentType":"location","payload":"{\\"lat\\":19.4,\\"lng\\":-99.1}"}' }).s : null;
+  r.resumen_ubic_campo = ms ? ms({ attachmentType: 'location', content: '' }).s : null;
+  r.resumen_texto = ms ? ms({ content: 'hola mundo' }).s : null;
   // 3) Copiar
   ctx(A, bubbleWith(A, 'pregunta de B')); click(A.win, await menuItem(A, 'mm-copy')); await sleep(300);
   r.copiar_aviso = ((A.win.document.getElementById('perm-error-toast') || {}).textContent || '');
