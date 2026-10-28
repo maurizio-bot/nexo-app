@@ -3,6 +3,32 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## Bloque autónomo 28-10 (madrugada→mañana): FCM + archivos por internet + AUDITORÍA SEVERA
+El dueño (1 AM): «termina lo del ping a los servidores de Google robusto y probado; luego la parte internet del tamaño
+de los archivos y verifícalo (ya no quiero mandar una APK por internet y que ni la vea enviada); luego los pendientes
+activos; luego la prueba de tiempo/ciclo/CPU/API y **la auditoría más severa posible** en seguridad/robustez/fluidez,
+corrige lo que encuentres, y dame **una puntuación** y **la comparativa con la competencia**». Estado:
+- ✅ **FCM «despertador» (#87) Fase 1+2b** (builds 2816/2817/2819): recibir (Firebase nativo), token que se intercambia
+  cifrado y dispara el «toque» al mandar por el buzón. **Robusto y probado en el simulador** (`fcmwake.js`). **Falta del
+  dueño:** desplegar `push-sender/` (su cuenta, Blaze) y, si el URL difiere, pasármelo (`net.setSender`); prueba real en
+  el móvil (la gran incógnita: ¿despierta el Vivo cerrado?). El disparo real por Google no se puede simular.
+- ✅ **Archivos grandes por internet (#99 Fase A)** (build 2818): tope ~6 MB → ~22 MB (Tor directo o relés). **Nunca más
+  «enviada» en silencio**: si un archivo no cabe por el camino de ahora, sale un aviso claro (ya estaba desde la 2786; el
+  revisor de robustez lo confirmó). **Falta (Fase B, pendiente):** >22 MB (p. ej. una APK de 24 MB) por **Tor directo**
+  en bulk — necesita que Tor conecte de verdad en el Vivo (hoy el diagnóstico muestra internet solo por relés). Honesto:
+  mandar una APK por internet de punta a punta sigue sin estar hasta la Fase B + Tor conectando.
+- ✅ **Auditoría severa + puntuación + comparativa** (build 2820): dos revisores adversariales; 7 fallas reales
+  arregladas (SEC-1 ALTA, G1 GRAVE, M1, M2, SEC-4/L1/L2/L3), con prueba. **Puntuación: índice de robustez 43,1/100**
+  (`ROBUSTEZ.md` §4; el techo es B=confirmación en teléfonos, 6,8/35). **Comparativa** actualizada en `COMPARATIVA.md`
+  (§1 tabla + §1bis puntuación). Detalle de seguridad en `AUDITORIA.md` §3quater. Quedan abiertos, para rondas propias y
+  decisión del dueño (tocan el estado de claves/protocolo): **H3, H4, M5, M6, F6, F7, F8** y los nuevos **SEC-2** (alta
+  por ID auto-agrega desde una `acc` forjable) y **SEC-3** (autenticar el endpoint `/wake` al desplegar; quitar el token
+  del diagnóstico tras probar la Fase 1).
+- ▶️ **Pendientes activos restantes** (no bloqueados por el dueño): #19 (Wi-Fi Direct HD), #50 (texto en el margen 15 s),
+  #83 (Wi-Fi no soltar a internet), #89 (notif heads-up — falta decisión de privacidad del dueño), #93 (micrófono AEC),
+  #95 (Stream fase 2), #105 (pagos socio), #107 (iOS Fase 1 Bluetooth), #111 (logo/sonidos — elige el dueño). Varios
+  dependen de decisiones o de pruebas en teléfonos.
+
 ## Decisiones del dueño 27-10 (madrugada) y nuevos pedidos
 El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de forma robusta», orden a mi criterio. Decisiones:
 
