@@ -66,18 +66,30 @@ export function __recognizeN(pts) {
 export function attachNexoUnlockGesture(el) {
   if (!el || el.__nexoNWired) return;
   el.__nexoNWired = true;
-  var pts = null, drawing = false, t0 = 0;
+  var pts = null, drawing = false, t0 = 0, lock = 0; // lock: qué entrada manda el trazo (1=pointer, 2=touch)
   var start = function(x, y) { drawing = true; t0 = Date.now(); pts = [{ x: x, y: y }]; };
   var move = function(x, y) { if (drawing && pts) pts.push({ x: x, y: y }); };
   var end = function() {
     if (drawing && pts && Date.now() - t0 < 4000 && __recognizeN(pts)) { pts = null; drawing = false; openNexoGame(); return; }
     drawing = false; pts = null;
   };
-  // Pasivo: NO bloquea el scroll ni los toques normales de los ajustes; solo observa el trazo.
-  el.addEventListener('pointerdown', function(e) { start(e.clientX, e.clientY); }, { passive: true });
-  el.addEventListener('pointermove', function(e) { move(e.clientX, e.clientY); }, { passive: true });
-  el.addEventListener('pointerup', end, { passive: true });
-  el.addEventListener('pointercancel', function() { drawing = false; pts = null; }, { passive: true });
+  // Un solo tipo de entrada por trazo: en el teléfono pointer y touch se emiten a la vez; el que empieza manda.
+  var begin = function(kind, x, y) { if (lock && lock !== kind) return; lock = kind; start(x, y); };
+  var cont = function(kind, x, y) { if (lock === kind) move(x, y); };
+  var finish = function(kind) { if (lock === kind) { end(); lock = 0; } };
+  // Informe del dueño (28-10): dibujar la «N» en el espacio negro de Perfil NO abría el juego. La «N» es ALTA y el dedo
+  // se salía de la zona (220 px): sin capturar el puntero, los `pointermove`/`pointerup` dejaban de llegar aquí y el
+  // trazo quedaba incompleto → el reconocedor nunca veía una «N». setPointerCapture hace que TODOS los eventos de ese
+  // dedo sigan llegando a la zona aunque se salga. Todo pasivo: no bloquea el scroll ni los toques normales.
+  el.addEventListener('pointerdown', function(e) { try { el.setPointerCapture(e.pointerId); } catch (x) {} begin(1, e.clientX, e.clientY); }, { passive: true });
+  el.addEventListener('pointermove', function(e) { cont(1, e.clientX, e.clientY); }, { passive: true });
+  el.addEventListener('pointerup', function(e) { try { el.releasePointerCapture(e.pointerId); } catch (x) {} finish(1); }, { passive: true });
+  el.addEventListener('pointercancel', function() { drawing = false; pts = null; lock = 0; }, { passive: true });
+  // Respaldo por eventos táctiles (algún WebView no emite `pointermove` de forma fiable al arrastrar).
+  el.addEventListener('touchstart', function(e) { var t = e.touches && e.touches[0]; if (t) begin(2, t.clientX, t.clientY); }, { passive: true });
+  el.addEventListener('touchmove', function(e) { var t = e.touches && e.touches[0]; if (t) cont(2, t.clientX, t.clientY); }, { passive: true });
+  el.addEventListener('touchend', function() { finish(2); }, { passive: true });
+  el.addEventListener('touchcancel', function() { drawing = false; pts = null; lock = 0; }, { passive: true });
 }
 
 // ---------- El juego (sencillo) ----------

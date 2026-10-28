@@ -79,6 +79,35 @@ export function _scrollToMessage(id) {
   setTimeout(function() { el.style.background = ''; el.classList.remove('msg-highlight'); }, 1400);
 }
 
+// F (informe del dueño 28-10): al deslizar una burbuja para responder no había NINGUNA señal de que el gesto iba bien.
+// Ahora aparece una flecha ↩ que crece con el desliz y, al pasar el umbral (ya se va a responder), se ilumina y vibra
+// (como WhatsApp). Es solo visual (no toca el mensaje); si no hay getBoundingClientRect/vibrate, no rompe.
+var _replyHintArmed = false;
+function _showReplyHint(bubble, tx) {
+  var h = document.getElementById('nexo-reply-hint');
+  if (!h) {
+    h = document.createElement('div');
+    h.id = 'nexo-reply-hint';
+    h.textContent = '↩';
+    h.style.cssText = 'position:fixed;z-index:5500;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:19px;color:#fff;pointer-events:none;transition:background .1s,transform .08s;';
+    document.body.appendChild(h);
+  }
+  var rect; try { rect = bubble.getBoundingClientRect(); } catch (e) { rect = { top: 0, height: 40, left: 0, right: 0 }; }
+  var prog = Math.min(1, Math.abs(tx) / 60), armed = Math.abs(tx) >= 60;
+  h.style.top = (rect.top + rect.height / 2 - 19) + 'px';
+  h.style.left = (tx > 0 ? rect.left - 46 : rect.right + 8) + 'px';
+  h.style.opacity = String(0.2 + 0.8 * prog);
+  h.style.transform = 'scale(' + (0.6 + 0.5 * prog) + ')';
+  h.style.background = armed ? 'rgba(0,200,255,0.95)' : 'rgba(255,255,255,0.18)';
+  if (armed && !_replyHintArmed) { _replyHintArmed = true; try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {} }
+  else if (!armed) _replyHintArmed = false;
+}
+function _hideReplyHint() {
+  _replyHintArmed = false;
+  var h = document.getElementById('nexo-reply-hint');
+  if (h) h.remove();
+}
+
 export function _setupMessageActions() {
   var mc = document.getElementById('messages-container');
   if (!mc || mc._nexoActions) return;
@@ -106,6 +135,7 @@ export function _setupMessageActions() {
       swiping = true;
       var tx = dx > 0 ? Math.min(dx, 80) : Math.max(dx, -80);
       target.style.transform = 'translateX(' + tx + 'px)';
+      _showReplyHint(target, tx);
     }
   });
   var end = function(e) {
@@ -117,6 +147,7 @@ export function _setupMessageActions() {
     target = null;
     if (swiping) {
       swiping = false;
+      _hideReplyHint();
       t.style.transition = 'transform 0.15s';
       t.style.transform = '';
       setTimeout(function() { t.style.transition = ''; }, 200);

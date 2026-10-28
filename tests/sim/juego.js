@@ -79,6 +79,19 @@ function pathDiag() { const p = []; for (let t = 0; t <= 1.0001; t += 0.08) p.pu
   r.perfil_abre = !!perfil;
   const zona = perfil && perfil.querySelector('#nexo-gesture-zone');
   r.gesto_cableado = !!(zona && zona.__nexoNWired); // el gesto está en la zona de Perfil, con touch-action:none
+  // 4b. El GESTO de verdad: dibujar la «N» con el dedo abre el juego (informe del dueño 28-10: no abría porque el
+  //     dedo se salía de la zona y se perdían los pointermove/up; ahora se captura el puntero). Simula eventos de puntero.
+  if (zona) {
+    const pev = (type, pt) => zona.dispatchEvent(new win.MouseEvent(type, { clientX: pt.x, clientY: pt.y, bubbles: true }));
+    const np = pathN();
+    pev('pointerdown', np[0]);
+    for (let i = 1; i < np.length; i++) pev('pointermove', np[i]);
+    pev('pointerup', np[np.length - 1]);
+    await sleep(120);
+    const ov2 = win.document.getElementById('nexo-game-overlay');
+    r.gesto_abre_juego = !!ov2;
+    if (ov2) { const b = ov2.querySelector('button'); if (b) b.dispatchEvent(new win.MouseEvent('click', { bubbles: true })); await sleep(50); }
+  } else { r.gesto_abre_juego = false; }
   const btnAjustes = perfil && perfil.querySelector('#nexo-open-settings');
   if (btnAjustes) btnAjustes.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
   await sleep(200);
@@ -89,7 +102,7 @@ function pathDiag() { const p = []; for (let t = 0; t <= 1.0001; t += 0.08) p.pu
   r.errores = logs.filter((l) => /TypeError|undefined is not|is not a function|RangeError/.test(l)).slice(0, 4);
   const ok = r.hay_api && r.N_aceptada && r.recta_rechazada && r.diagonal_rechazada && r.corto_rechazado &&
     r.clasifica_ordenada && r.clasifica_persiste && r.abre_overlay && r.cierra_overlay &&
-    r.perfil_abre && r.ajustes_abre && r.gesto_cableado && r.gesto_no_en_ajustes && r.errores.length === 0;
+    r.perfil_abre && r.ajustes_abre && r.gesto_cableado && r.gesto_abre_juego && r.gesto_no_en_ajustes && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('JUEGO ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_juego.txt'), logs.join('\n'));

@@ -94,7 +94,9 @@ const SCENARIOS = [
     doble_toque_reacciona: isTrue, B_recibe_reaccion_s: (v) => typeof v === 'number', menu_reacciona: isTrue, deslizar_abajo_cierra: isTrue,
     foto_pellizco_zoom: isTrue, foto_pellizco_aleja: isTrue, foto_doble_toque_amplia: isTrue,
     barra_editar: isTrue, A_ve_editado: isTrue, B_recibe_edicion_s: (v) => typeof v === 'number', B_ve_editado: isTrue,
-    B_ve_eliminado_s: (v) => typeof v === 'number', accion_falsa_ignorada: isTrue, json_visible: (v) => v === 0, errores: isEmpty } },
+    B_ve_eliminado_s: (v) => typeof v === 'number', accion_falsa_ignorada: isTrue, json_visible: (v) => v === 0,
+    desliz_muestra_flecha: isTrue, desliz_quita_flecha: isTrue, resumen_ubic_contenido: (v) => /Ubicación/.test(v || ''),
+    resumen_ubic_campo: (v) => /Ubicación/.test(v || ''), resumen_texto: (v) => v === 'hola mundo', errores: isEmpty } },
   ...['rechazar-cerrada', 'rechazar-viva', 'contestar-viejo', 'cruce', 'reloj', 'oferta-vieja', 'bloqueo', 'repetida', 'wifi-uno', 'video-estado', 'sin-micro', 'timbre'].map((c) => (
     { name: 'llamadas: ' + c, args: ['calls2.js', '--case=' + c], tag: 'CALLS2', logs: 'last_logs_calls2_' + c + '.txt', checks: { resultado: (v) => v === 'OK' } })),
   { name: 'pasar la cuenta a un teléfono nuevo', args: ['move.js', '--io-delay=25'], tag: 'MOVE', checks: { resultado: (v) => v === 'OK' } },

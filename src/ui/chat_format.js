@@ -67,6 +67,15 @@ export function _cut(s, n) { s = String(s == null ? '' : s); if (s.length <= n) 
 
 export function _msgSummary(msg) {
   if (msg.attachmentType) return { k: msg.attachmentType, s: _PREVIEW_BY_TYPE[msg.attachmentType] || '📎 Archivo' };
+  // Un adjunto (ubicación, foto…) puede venir codificado DENTRO de content
+  // ({"type":"attachment","attachmentType":"location",...}); sin esto, responder a una ubicación así guardada mostraba
+  // el JSON crudo («código») en vez de «📍 Ubicación» (informe del dueño 28-10).
+  if (typeof msg.content === 'string' && msg.content.indexOf('"attachmentType"') > -1) {
+    try {
+      var p = JSON.parse(msg.content);
+      if (p && p.type === 'attachment' && p.attachmentType) return { k: p.attachmentType, s: _PREVIEW_BY_TYPE[p.attachmentType] || '📎 Archivo' };
+    } catch (e) {}
+  }
   return { k: 'text', s: _cut(_plainText(msg.content), 100) };
 }
 
@@ -78,3 +87,7 @@ export function _findMessage(cid, id) {
 
 // v9.9.29: la lista de contactos se ordena por el último mensaje enviado o recibido
 export var _PREVIEW_BY_TYPE = { contact: '👤 Contacto', image: '📷 Foto', video: '🎬 Vídeo', audio: '🎤 Audio', voice: '🎤 Audio', location: '📍 Ubicación', file: '📎 Archivo' };
+
+// Gancho para las pruebas (tests/sim/chatactions.js): comprobar el resumen de respuesta de un adjunto codificado en
+// content (ubicación/foto) sin depender del GPS. Es una función pura de solo lectura.
+try { if (typeof window !== 'undefined') window.__nexoMsgSummary = _msgSummary; } catch (e) {}
