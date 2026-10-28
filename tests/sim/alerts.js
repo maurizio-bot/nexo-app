@@ -61,9 +61,18 @@ const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows
   const [A, B] = await Promise.all([boot('A', nA), boot('B', nB), boot('C', nC)]);
   const idA = A.win.bleInterface.localNexoId.toLowerCase(), idB = B.win.bleInterface.localNexoId.toLowerCase();
   const r = { build: path.basename(buildDir) };
-  // 1. Pedido una vez al arrancar
+  // 1. Al arrancar, B (Vivo, sin exención) muestra el AVISO de ahorro de batería COMO UN PERMISO (ronda 2811, pedido del
+  //    dueño), no un salto mudo al ajuste del sistema. Al tocar «Desactivar ahorro de batería» se abre el ajuste; al
+  //    volver se comprueba y, como es un Vivo (agresivo), guía al inicio automático; «Listo» cierra el aviso.
+  r.muestra_aviso_bateria = await wait(() => !!B.win.document.getElementById('nexo-bat-allow'), 20);
+  click(B.win, B.win.document.getElementById('nexo-bat-allow'));
   r.pide_segundo_plano = await wait(() => (nB.alertOpened || []).indexOf('battery') >= 0, 20);
-  r.A_no_pide = !(nA.alertOpened || []).length; // A ya lo tiene
+  r.paso_fabricante = await wait(() => !!B.win.document.getElementById('nexo-bat-vendor'), 20); // Vivo: 2º paso (inicio automático)
+  { const v = B.win.document.getElementById('nexo-bat-vendor'); if (v) click(B.win, v); }
+  r.abre_fabricante_inicio = (nB.alertOpened || []).indexOf('vendor') >= 0;
+  { const d = B.win.document.getElementById('nexo-bat-vendor-done'); if (d) click(B.win, d); }
+  r.aviso_cerrado = await wait(() => !B.win.document.getElementById('nexo-bat-overlay'), 10);
+  r.A_no_pide = !(nA.alertOpened || []).length; // A ya está exenta: ni aviso ni salto
   r.pide_pantalla_completa = await wait(() => (nC.alertOpened || []).indexOf('fullScreen') >= 0, 20); // #81: con batería ya ok, pide la pantalla completa
   // Contactos
   A.win.bleInterface.togglePanel(); let add = null;
@@ -113,7 +122,8 @@ const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows
   if (A.win.bleInterface.calls.call) A.win.bleInterface.calls.hangup();
   r.vuelve_tras_el_bloqueo = await wait(() => nB.calls.filter((c) => c.name === 'callScreenDone').length > d0, 30);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
-  const ok = r.pide_segundo_plano && r.A_no_pide && r.pide_pantalla_completa && r.contactos && r.perfil_antes.length === 4 && r.perfil_antes.filter((t) => /^⚠️/.test(t)).length === 1 && r.boton_arreglar &&
+  const ok = r.muestra_aviso_bateria && r.pide_segundo_plano && r.paso_fabricante && r.abre_fabricante_inicio && r.aviso_cerrado &&
+    r.A_no_pide && r.pide_pantalla_completa && r.contactos && r.perfil_antes.length === 4 && r.perfil_antes.filter((t) => /^⚠️/.test(t)).length === 1 && r.boton_arreglar &&
     r.fabricante.fila && r.fabricante.boton === 'Abrir' && r.fabricante.abre &&
     r.abre_ajuste && r.perfil_despues.filter((t) => !/^📱/.test(t)).every((t) => /^✅/.test(t)) && r.encender_por_defecto && r.mensaje_enciende && r.sin_opcion_no_enciende && r.llamada_suena && r.llamada_enciende &&
     r.vuelve_tras_el_bloqueo && !r.errores.length;

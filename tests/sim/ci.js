@@ -63,6 +63,7 @@ const SCENARIOS = [
   { name: 'borrar y volver a agregar un contacto (sin "Unknown"; nombre al conectar)', args: ['readd.js'], tag: 'READD', checks: { resultado: (v) => v === 'OK' } },
   { name: 'interfaz: "Agregar" con tus contactos y buscador, textos, Perfil, cambiar nombre, avisos', args: ['ui4.js'], tag: 'UI4', logs: 'last_logs_ui4.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'avisos con la pantalla apagada (encender, ajustes, llamada sobre el bloqueo)', args: ['alerts.js'], tag: 'ALERTS', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'aviso de ahorro de batería al instalar (como un permiso, #dueño): sale si no está exento, abre el ajuste del sistema, 2º paso de fabricante en los agresivos (Vivo), «Ahora no» lo pospone, no sale si ya está exento ni tras posponerlo', args: ['battery_prompt.js'], tag: 'BATPROMPT', logs: 'last_logs_battery_prompt.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'foto de perfil (elegir, llega a los contactos, al reiniciar, a uno nuevo, quitarla)', args: ['avatar.js'], tag: 'AVATAR', checks: { resultado: (v) => v === 'OK' } },
   { name: 'llamadas de voz (contestar, rechazar, sin respuesta, se corta)', args: ['calls.js', '--io-delay=25'], tag: 'CALLS', checks: { resultado: (v) => v === 'OK' } },
   { name: 'suplantación: textos, archivos y llamadas sin cifrar de un teléfono ajeno que dice ser un contacto', args: ['spoof.js'], tag: 'SPOOF', checks: { resultado: (v) => v === 'OK' } },
