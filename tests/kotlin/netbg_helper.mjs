@@ -57,17 +57,28 @@ if (mode === 'relay') {
   const relay = new NostrRelay({ authRequired: true, latencyMs: 5 });
   const url = await relay.start();
   console.log('URL ' + url);
+  const WS = createRequire(path.join(here, '../sim/nostr_relay.js'))('ws');
   const rl = readline.createInterface({ input: process.stdin });
-  rl.on('line', async (line) => {
-    if (!line.trim()) return;
-    if (line.trim() === 'STATS') { console.log('STATS ' + JSON.stringify({ auths: relay.stats.auths, published: relay.stats.published, rejected: relay.stats.rejected })); return; }
+  // Publicar EN SERIE: cada evento llega del todo (espera su OK, y para entonces el relé ya lo repartió a las
+  // suscripciones) antes de mandar el siguiente. Si no, dos mensajes seguidos (mismo created_at, que va en segundos)
+  // corren una carrera por llegar al relé —cada línea se publica por su propio ws tras un `await seal`— y el
+  // suscriptor los veía a veces al revés (NetBgTest.dePuntaAPuntaConUnReleQueExigeIdentificarse fallaba [m2, m1]).
+  const publish = (line) => new Promise((resolve) => {
     const o = JSON.parse(line);
     const kraw = hexToBytes(o.kraw);
-    const content = await seal(kraw, o.from, o.to, o.body);
-    const t = tag(kraw, o.to, day(0));
-    const ev = event(schnorr.utils.randomSecretKey(), 1059, [['p', t.pub], ['expiration', String(Math.floor(Date.now() / 1000) + 3600)]], content, o.created_at || Math.floor(Date.now() / 1000));
-    const ws = new (createRequire(path.join(here, '../sim/nostr_relay.js'))('ws'))(url);
-    ws.on('open', () => ws.send(JSON.stringify(['EVENT', ev])));
-    ws.on('message', (d) => { const m = JSON.parse(String(d)); if (m[0] === 'OK') { console.log('PUBLISHED ' + m[2]); ws.close(); } });
+    seal(kraw, o.from, o.to, o.body).then((content) => {
+      const t = tag(kraw, o.to, day(0));
+      const ev = event(schnorr.utils.randomSecretKey(), 1059, [['p', t.pub], ['expiration', String(Math.floor(Date.now() / 1000) + 3600)]], content, o.created_at || Math.floor(Date.now() / 1000));
+      const ws = new WS(url);
+      ws.on('open', () => ws.send(JSON.stringify(['EVENT', ev])));
+      ws.on('message', (d) => { const m = JSON.parse(String(d)); if (m[0] === 'OK') { console.log('PUBLISHED ' + m[2]); try { ws.close(); } catch (e) {} resolve(); } });
+      ws.on('error', () => resolve());
+    }).catch(() => resolve());
+  });
+  let chain = Promise.resolve(); // cola: una publicación tras otra, en el orden de llegada de las líneas
+  rl.on('line', (line) => {
+    if (!line.trim()) return;
+    if (line.trim() === 'STATS') { chain = chain.then(() => { console.log('STATS ' + JSON.stringify({ auths: relay.stats.auths, published: relay.stats.published, rejected: relay.stats.rejected })); }); return; }
+    chain = chain.then(() => publish(line));
   });
 }
