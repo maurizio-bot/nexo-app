@@ -109,6 +109,56 @@ function installFetchSpy(win) {
   r.toque_solo_token = wakes.length > 0 && wakes.every((c) => c.body && Object.keys(c.body).length === 1 && c.body.to);
   r.toque_sin_contenido = wakes.every((c) => JSON.stringify(c.body || {}).indexOf('despierta a B') < 0);
 
+  // M1 (auditoría 28-10): el «toque» SOLO por mensaje NUEVO (nid) y throttle por par. Un archivo son muchos trozos y
+  // una ráfaga de textos: NO deben disparar cientos de toques (cuota de FCM agotada = se cae el propio #87, batería).
+  const peerB = netA.peers.get(idB);
+  const nWake = () => calls.filter((c) => /sender\.test\/wake/.test(c.url)).length;
+  // (a) throttle: otro mensaje nuevo enseguida (< 8 s del anterior) no dispara otro toque
+  const w0 = nWake();
+  await netA.send(idB, JSON.stringify({ type: 'chat', msgId: 'm1-throttle' })).catch(() => {});
+  await sleep(800);
+  r.throttle_no_repite = nWake() === w0;
+  // (b) un trozo que no es el primero (i>0) nunca dispara, aunque se libere el throttle
+  if (peerB) peerB._wakeAt = 0;
+  const w1 = nWake();
+  await netA.send(idB, JSON.stringify({ t: 'c', i: 3, m: 'archivo-m1' })).catch(() => {});
+  await sleep(800);
+  r.trozo_siguiente_no_dispara = nWake() === w1;
+  // (c) el primer trozo (i:0) de un archivo SÍ (es un mensaje nuevo), con el throttle liberado
+  if (peerB) peerB._wakeAt = 0;
+  const w2 = nWake();
+  await netA.send(idB, JSON.stringify({ t: 'f', i: 0, m: 'archivo-m1b' })).catch(() => {});
+  await sleep(800);
+  r.primer_trozo_si_dispara = nWake() === w2 + 1;
+
+  // SEC-1 (auditoría 28-10): un evento con created_at en el FUTURO (contacto malicioso, o un relé que reenvía un sobre
+  // legítimo cambiándole la fecha) NO debe envenenar lastSeen; si lo hiciera, el filtro `since` saltaría al futuro y B
+  // dejaría de recibir CUALQUIER mensaje por internet, para siempre. Se acota a «ahora».
+  let capturado = null;
+  const origOnEvent = netB._onEvent.bind(netB);
+  netB._onEvent = async function(ev) { capturado = ev; return origOnEvent(ev); };
+  if (peerB) peerB._wakeAt = 0;
+  await netA.send(idB, JSON.stringify({ type: 'chat', msgId: 'sec1-captura' })).catch(() => {});
+  await waitFor(() => !!capturado, 8000);
+  netB._onEvent = origOnEvent;
+  if (capturado) {
+    const dentro10a = Math.floor(Date.now() / 1000) + 10 * 365 * 86400;
+    const futuro = Object.assign({}, capturado, { id: 'sec1-futuro-' + Date.now(), created_at: dentro10a });
+    await netB._onEvent(futuro); // mismo sobre (descifra), pero con fecha disparatada
+    r.lastSeen_acotado_a_ahora = (netB.state.lastSeen || 0) <= Date.now() + 2000;
+  } else { r.lastSeen_acotado_a_ahora = false; }
+
+  // SEC-4 (auditoría 28-10): un frame de relé enorme se descarta antes de JSON.parse (como el nativo con SafeJson).
+  // Se sigue el id concreto 'sec4' (no un contador general, que capturaría entregas asíncronas de otros envíos).
+  let sawSec4 = false;
+  const oe = netB._onEvent.bind(netB);
+  netB._onEvent = async function(ev) { if (ev && ev.id === 'sec4') sawSec4 = true; return oe(ev); };
+  const hugeFrame = JSON.stringify(['EVENT', 'matchsub', { id: 'sec4', content: 'A'.repeat(400000), tags: [] }]);
+  netB._onRelayMsg('wss://x', { waits: new Map(), sub: 'matchsub' }, hugeFrame);
+  await sleep(200);
+  r.frame_enorme_no_procesado = !sawSec4; // sin el tope, JSON.parse pasaría y _onEvent vería el id 'sec4'
+  netB._onEvent = oe;
+
   // Un saludo (sin contenido) NO debe disparar toque (solo los mensajes de verdad)
   const antes = calls.length;
   netA._hello(idB);
@@ -119,6 +169,8 @@ function installFetchSpy(win) {
   const ok = r.A_tiene_su_token && r.B_tiene_su_token && r.intercambio_token_s !== null &&
     r.A_conoce_token_de_B && r.B_conoce_token_de_A && r.token_de_B_guardado &&
     r.toque_llamado && r.toque_con_token_de_B && r.toque_solo_token && r.toque_sin_contenido &&
+    r.throttle_no_repite && r.trozo_siguiente_no_dispara && r.primer_trozo_si_dispara &&
+    r.lastSeen_acotado_a_ahora && r.frame_enorme_no_procesado &&
     !r.errores.length;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('FCMWAKE ' + JSON.stringify(r));

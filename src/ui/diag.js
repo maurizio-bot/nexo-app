@@ -6,7 +6,7 @@
 // Últimas líneas de la consola (también de la sesión anterior) para verlas en Perfil → Diagnóstico y
 // copiarlas: lo que pasa en el teléfono real sin necesidad de un PC.
 // v9.9.40 (seguridad): archivo nuevo; el anterior podía tener fragmentos de mensajes y se borra
-var DIAG_MAX = 800, DIAG_KEY_MAX = 700, DIAG_FILE = 'nexo_diag_log2.txt', DIAG_OLD_FILE = 'nexo_diag_log.txt';
+var DIAG_MAX = 800, DIAG_FILE = 'nexo_diag_log2.txt', DIAG_OLD_FILE = 'nexo_diag_log.txt';
 var _diagLines = [], _diagKey = [], _diagTimes = [], _diagKeyTimes = [], _diagDirty = false, _diagPrev = '';
 // Ventana del diagnóstico: 30 min (pedido del dueño 28-10; antes era 1 h). Para que el texto quepa al pegarlo.
 var DIAG_WINDOW_MS = 30 * 60 * 1000;
@@ -114,6 +114,8 @@ export function _diagnosticText() {
   // Ronda 2785 (#87): el registro nativo (últimas ~150 líneas) muestra qué hizo el nativo con la app cerrada
   var nat = _nativeLog ? ('\n===== REGISTRO NATIVO (segundo plano / app cerrada) =====\n' + _nativeLog.split('\n').slice(-150).join('\n') + '\n') : '';
   var prev = _lastHourText(_diagPrev);
-  return head + nat + (prev ? '\n===== SESIÓN ANTERIOR (' + DIAG_WINDOW_LABEL + ') =====\n' + prev + '\n' : '') +
-    '\n===== SESIÓN ACTUAL (' + DIAG_WINDOW_LABEL + ') =====\n' + _diagSessionText(true);
+  // L1 (auditoría 28-10): la garantía dura de ≤ MAX_DIAG_LINES se aplica de verdad (antes _capDiag estaba definida pero
+  // no se llamaba; hoy el texto cabe por construcción, pero así el tope descrito no queda sin efecto si sube una cte).
+  return _capDiag(head + nat + (prev ? '\n===== SESIÓN ANTERIOR (' + DIAG_WINDOW_LABEL + ') =====\n' + prev + '\n' : '') +
+    '\n===== SESIÓN ACTUAL (' + DIAG_WINDOW_LABEL + ') =====\n' + _diagSessionText(true));
 }

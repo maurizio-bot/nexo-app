@@ -123,6 +123,134 @@ o seguir usando el teléfono viejo tras pasar la cuenta). Hay que probarlo (P0-1
 
 ---
 
+## 3bis. Revisión nocturna 27-10-2026 (builds 2794–2800) — «verificar robustez y fallas» (pedido del dueño)
+
+Repaso de la **superficie nueva de la madrugada** (buscar en el chat 2794, ver-una-vez 2795, limpieza de pagos 2796,
+foto/nombre 2797, mala señal 2798, Estados/Stream 2799) con el modelo de amenazas de §2. Método: una revisión propia +
+una revisión adversarial independiente (agente), solo hallazgos **alcanzables** con una ruta real, y arreglo
+proporcionado y **reproducido en `tests/sim`** antes de subir.
+
+**Batería de ataque/caos: VERDE en la 2799 (65/65).** Vigilan la seguridad, entre otras: `spoof.js` (anti-suplantación),
+`ackforge.js` (acuses ✓✓ falsos), `groupforge.js` (un miembro reescribe el grupo), `misroute.js` (enrutado BLE/Jump sin
+fugas), `relaytls.js` (relés en claro vetados), `forge`/`forgetext`. Todo pasa.
+
+### Arreglados y comprobados en esta revisión (build 2800)
+
+| # | Gravedad | Hallazgo | Arreglo (reproducido en `tests/sim`) |
+|---|---|---|---|
+| **NEXO-02-ONCE1** | **Alta** | **Una foto «de una vez» ya abierta REVIVÍA al retransmitirse.** Tras consumirla, el borrado (`vaultConsumeOnceMessage`) limpiaba `content`, pero el *merge* de una retransmisión del mismo `msgId` en `_appendMessageNow` solo anulaba `attachmentPayload`/`ref`/`hd`, **no `content`**. Como por relé/internet el payload viaja DENTRO de `content` como JSON, el reenvío automático del emisor al reconectar (su registro saliente no se borra, #12) devolvía ese `content`; al reabrir el chat `render.js` lo reconstruía y **volvía a mostrar la foto** (y la reescribía a disco) — rompía la promesa de privacidad del #94. Ruta real sin malicia (reconexión) y agravable con malicia (meta sin `once`). | `vault_manager.js` (guarda `onceSeen`): se iguala al borrado de consumir — `content`/`text` a `''`, payload/ref/hd a `null`, `attachmentMeta.once` forzado → la burbuja queda «Abierta». Prueba: `tests/sim/once.js` (`retransmision_no_revive_vault`/`_ui`); confirmado que SIN el arreglo la prueba falla. |
+| **NEXO-02-EST1** | **Media** | **Un Estado con fecha futura no caducaba.** `estados.applyStatus` aceptaba el `ts` del otro teléfono con solo `>0`; un `ts` en el futuro (reloj malo o malicioso) dejaba `(ahora−ts)<24 h` verdadero para siempre → el Estado de un contacto no caducaba y `_ago` mostraba tiempo negativo. | `estados.js`: el `ts` recibido se acota a «ahora» (`Math.min(ts, now)`); las 24 h quedan honestas pase lo que pase. Prueba: `tests/sim/estados.js` (`futuro_acotado`). |
+
+**Superficie nueva sin hallazgos alcanzables:** `search_ui.js` (filtra por `textContent`, no mete texto del otro como HTML);
+el toque del avatar en `ble_ui.js` (cierre por fila correcto, `stopPropagation` solo con foto); el parse de `o1` en
+`ble_ack.js` (`=== 1` estricto, tolera basura sin romper); `_refreshLinkSubtitle` de mala señal en `main.js` (guardas de
+tipo, `mtu>0 && mtu<60` falso para `undefined`/`NaN`, subtítulo por `textContent`, sin texto del otro). `estados.js` ya
+acota el texto a 280 car. al enviar **y al recibir**, valida NEXO IDs y escapa el texto al mostrar.
+
+**Estado del índice (42,5, sin cambio):** lo que lo frena no es la cobertura de pruebas (A alta: 65/65 + ataque verde) sino
+**B** (el dueño no ha reconfirmado las builds recientes en los teléfonos reales) y **C** (puntos débiles abiertos: 9 graves
++ 4 medios + 2 leves, sobre todo los duros — entrega con la app cerrada #87, llamadas por internet #99, Bluetooth con MTU 23
+inestable — que necesitan su diagnóstico o trabajo nativo/servidor, no un arreglo rápido). Los dos hallazgos de hoy ya
+estaban cubiertos por el catálogo como «ver una vez» y «Estados», así que no mueven el índice; sí refuerzan la robustez real.
+
+---
+
+## 3ter. Auditoría destructiva 27-10-2026 (builds 2804–2805) — «auditoría completa, pruebas destructivas» (pedido del dueño)
+
+Segunda auditoría del día, con revisión adversarial independiente centrada en la clase de fallo **«un número que
+controla el atacante se convierte en un contador de bucle o en el tamaño de una asignación, sin tope»** (la peor en una
+app de mensajería: un solo paquete cuelga el teléfono). Método de siempre: reproducir → arreglar → batería → subir.
+
+**Batería de ataque/caos VERDE** (`spoof`, `ackforge`, `groupforge`, `relaytls`, `misroute`, `chunkdos` nuevo) y pruebas
+Kotlin de ataque/fuzz verdes (`ParserFuzzTest`, `LanHubAttackTest`, `BigFileAttackTest`, `LanBeaconAttackTest`).
+
+### Hallazgo NEXO-02-010 — DoS por trozo BLE con «n» disparatado (ALTA, arreglado 2804)
+
+- **Gravedad:** ALTA. CVSS 4.0 aprox. `AV:A/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H` (disponibilidad alta; **a alcance Bluetooth, sin cifrar, sin ser contacto**).
+- **Qué:** el servidor GATT acepta escrituras de cualquiera (antes del E2E). Un trozo de chat/archivo con el campo «n»
+  (total de trozos) disparatado (p.ej. 2.000.000.000) pasaba `_handleIncomingChunk` (solo validaba `total>0`, `idx>=0`,
+  `idx<total`). Dos caminos al mismo desastre: (a) con `idx=0` creaba el búfer con ese total y agendaba un block-ack que
+  recorría `for (i<buf.total)` en `_sendBlockAck`; (b) con `idx` grande y sin búfer construía el array de huecos de L557.
+  Ambos → miles de millones de iteraciones en el hilo principal → **congelación de la interfaz → ANR en Android**.
+- **Ruta:** teléfono malicioso a ~alcance Bluetooth → escribe el trozo en el característico GATT de la víctima →
+  `processIncomingFragment` → `_handleIncomingChunk`. No necesita ser contacto ni clave: es **antes** del cifrado E2E.
+- **Arreglo (`src/ui/ble_ack.js`):** `const MAX_CHUNKS = 300000;` y `if (total > MAX_CHUNKS) return;` tras la validación.
+  El mensaje real más grande (`BLE_HD_MAX_CHARS` 9,5 M troceado al mínimo ~40–60) son ~158k trozos; el tope deja el doble
+  de margen y, como `idx<total`, acota también el array de huecos. Reproducido en `tests/sim/chunkdos.js` (antes: búfer de
+  2e9 + block-ack/NACK gigantes; después: ignorado), en la batería (tag CHUNKDOS). El ANR real se confirma en el teléfono.
+
+### Hallazgos NEXO-02-011 y 012 — misma clase, defensa en profundidad (LEVES, arreglados 2805)
+
+- **011 `vault_manager` (`vaultCreateTransfer`/`vaultAppendChunk`):** el bucle `for i<totalChunks` + `join` construía un
+  array/cadena de miles de millones con un `totalChunks` disparatado. **Hoy es código muerto** (expuesto en `window.*`,
+  sin llamador en `src/`: el reensamblado entrante vive en `ble_ack.js` con `MAX_CHUNKS`); pero al seguir expuesto en
+  `window`, cualquier recableado futuro reintroduciría el ANR. Se acota igual (tope 300000); `chunkdos.js` lo vigila.
+- **012 tarjeta de contactos compartida (`share_contacts._renderContactCard` / `ble_contacts.addSharedContacts`):** sin
+  tope, una lista `meta.contacts` enorme dibujaba millones de nodos del DOM → congelación. **POST-E2E** (exige ser un
+  contacto aceptado) y amplificación 1:1 (hay que mandar literalmente N entradas), de ahí la gravedad leve. Acotado a 500
+  (una tarjeta real son unos pocos).
+
+### Superficies revisadas y robustas (una línea cada una)
+
+QR del número de seguridad (`qr_verify`) y QR NEXO-MOVE (`move_account`): formato estricto, sin bucles. `estados.applyStatus`:
+texto ≤280, `ts` acotado a «ahora» (2800), escapado al mostrar. Sobres E2E (`e2e_proto`/`e2e_crypto`): tamaños 1:1, sin
+contadores explotables. Ratchet (`e2e_ratchet._skip`): rechaza `n>1e7` y tope `MAX_SKIP=1000`. Fénix/`shard_crypto`: share y
+blob validados, tope de dueños, umbral propio. `big_file`/`wifi_direct`: acotan `p.size`, transferencia nativa. Llamadas
+(`unpackCallPacket`): acotado por contador de 1 byte y por el tamaño del paquete. `net_link`/`lan`: handshake E2E, formatos
+y nombre (≤40) validados. **Veredicto:** fuera de los tres de arriba, no hay un paquete único que amplifique a un bucle/asignación sin tope.
+
+---
+
+## 3quater. Auditoría severa 28-10-2026 (builds 2819→2820) — «la auditoría más severa posible: seguridad, robustez, fluidez» (pedido del dueño)
+
+Tercera ronda, con **dos revisiones adversariales independientes a la vez** (un agente de **seguridad ofensiva**, otro de
+**robustez y fluidez**), centradas en la **superficie nueva** (FCM «despertador», archivos grandes por internet,
+diagnóstico de 30 min) sin repetir lo ya arreglado/documentado. Cada hallazgo se **verificó trazando el código real**
+(no se aceptó a ciegas), se reprodujo en `tests/sim` donde se podía y se arregló. **Batería VERDE (build 2820)**; las
+pruebas nuevas viven en `tests/sim/fcmwake.js` (M1, SEC-1, SEC-4). Lo nativo (G1) lo valida la compilación Kotlin del CI y
+la prueba del dueño en el teléfono.
+
+### Arreglados y comprobados en esta ronda (build 2820)
+
+| Id | Gravedad | Qué / ruta | Arreglo | Prueba |
+|---|---|---|---|---|
+| **SEC-1** | **Alta** | **`lastSeen` envenenable con el `created_at` del evento → DoS persistente de TODO internet.** `created_at` es externo y NEXO no verifica la firma Schnorr del evento; `net_link.js` lo guardaba en `lastSeen` sin acotar. Un contacto (tiene el secreto de la pareja) —o un relé/MITM que reenvía un sobre legítimo cambiándole la fecha— pone `created_at`=2099 → el filtro `since` salta al futuro → la víctima **deja de recibir cualquier mensaje por internet, para siempre** (persiste a disco, sobrevive a reinicios; también mata el despertador en segundo plano). Misma clase que el Estado con fecha futura (EST1), pero sin acotar. | Acotar a «ahora» antes de comparar/guardar: `at = Math.min(created_at*1000, Date.now())` (`net_link.js:_onEvent`) e igual en el nativo (`NetBg.kt:onEvent`, `since`). El `created_at` real (≈ahora) no cambia; solo se corta el del futuro. | `fcmwake.js` (`lastSeen_acotado_a_ahora`): se reenvía a B un sobre que descifra pero con `created_at` a 10 años → `lastSeen` queda ≤ ahora. Sin el arreglo B quedaba sordo. |
+| **G1** | **Grave** | **`startForeground` sin try/catch al despertar por FCM → posible crash del proceso.** `NexoFcmService.onMessageReceived` arranca `BleService` en segundo plano; su `onStartCommand → foreground()` corre en el hilo principal y, en Android 12+, `startForeground` puede lanzar `ForegroundServiceStartNotAllowedException` (y en 14+ `SecurityException` si no se cumple la precondición del tipo `connectedDevice`). Solo la rama de micrófono estaba protegida; las otras tres no → excepción sin capturar = crash justo al despertar (rompería el propio #87). | Ayudante `startFg(n, type)` que NUNCA deja escapar la excepción: reintenta sin tipo (precondiciones más laxas) y, si tampoco, `stopSelf()` en vez de tumbar el proceso. Todas las ramas pasan por él. | Nativo (no simulable): compila en el CI; el dueño lo confirma despertando el teléfono por FCM en Android 14+. |
+| **M1** | **Media** | **El «toque» FCM se pedía en CADA envío por relé, no por mensaje nuevo → tormenta de toques.** Un archivo de ~22 MB por el buzón de relés = cientos/miles de trozos, cada uno pedía un toque de alta prioridad → riesgo de agotar la cuota de FCM (tumbaría el #87), batería del par (15 s de wakelock por toque) y datos del emisor; además despertaba a pares ya en línea. | Pedir el toque SOLO cuando el envío es un mensaje nuevo de verdad (`nid`: texto nuevo o primer trozo), reusando la señal que ya calcula `send()`; y throttle por par (`WAKE_MIN_MS` 8 s) para las ráfagas. | `fcmwake.js` (`throttle_no_repite`, `trozo_siguiente_no_dispara`, `primer_trozo_si_dispara`). |
+| **M2** | **Media** | **La nota de voz seguía sonando al salir/cambiar de chat.** `_clearMessageContainer` vaciaba el contenedor pero no paraba el `Audio` (vive en el cierre de la burbuja, fuera del DOM): seguía sonando y sus timers escribían sobre nodos desprendidos. | Al vaciar el chat se llama a `window.__nexoStopVoice()` (el mismo que ya usan las llamadas). | Revisión (jsdom no reproduce audio); sin regresión en la batería. |
+| **SEC-4** | **Baja** | **El camino de relés en primer plano (JS) hacía `JSON.parse` sin tope de tamaño** (el nativo sí lo tiene con `SafeJson`). Un relé malicioso podía mandar un frame enorme → pico de memoria del WebView. | Tope `MAX_RELAY_FRAME` (300 KB, muy por encima de un evento legítimo) antes de analizar, en `_onRelayMsg`. | `fcmwake.js` (`frame_enorme_no_procesado`). |
+| **L1/L2/L3** | **Leves** | **L1:** `_capDiag` (la garantía dura de ≤5000 líneas del diagnóstico) estaba definida pero no se llamaba. **L2:** `DIAG_KEY_MAX` declarada dos veces (700 muerto, 1500 efectivo). **L3:** el timeout de `_publish` no limpiaba `ev.id` de `r.waits` de los relés que no contestan (fuga lenta). | L1: `_diagnosticText` ahora envuelve en `_capDiag`. L2: quitada la declaración muerta. L3: se limpia `ev.id` de todos los relés abiertos al cerrar (OK/rechazo/timeout). | Revisión + batería (`diaghora` `bajo_tope`). |
+
+### Documentados, NO arreglados en esta ronda (necesitan decisión del dueño o cambio de protocolo/servidor)
+
+- **SEC-2 (media, se solapa con H3):** el alta-por-ID agrega una clave desde una `acc` que puede forjar quien conozca el
+  NEXO ID de la víctima (semi-público) **y auto-agrega sin interacción** si hay una solicitud saliente pendiente. Atenuado:
+  el contacto queda «sin verificar» con banner de número de seguridad. Arreglo real = que la `acc` no auto-agregue en
+  silencio / exigir confirmación E2E antes de fijar la clave (ronda propia, como H3/H4; toca estado de claves → confirmar
+  con el dueño).
+- **SEC-3 (baja, se solapa con F6):** el endpoint `/wake` del enviador FCM es público y sin autenticar; con el token de la
+  víctima (lo tienen sus contactos; o quien reciba un diagnóstico compartido) se le puede hacer despertar (spam/batería,
+  tope 8/5 min). Arreglo = **autenticar el disparo** (App Check o HMAC por token) al desplegar `push-sender/`, y dejar de
+  volcar el token entero al diagnóstico **una vez probada la Fase 1** (hoy el token está ahí a propósito para la prueba del
+  dueño). Ver `docs/FCM.md`.
+- **Defensa en profundidad pendiente:** verificar la firma Schnorr del evento Nostr y que `ev.id` sea su sha256 (hoy no se
+  comprueba; el acotado de SEC-1 ya cierra el DoS, pero la firma evitaría que un relé toque cualquier campo). Ronda propia.
+- Siguen abiertos del catálogo (sin cambio esta ronda): **H3, H4, M5, M6, F6, F7, F8** (endurecimiento del protocolo/nativo,
+  cada uno su ronda y prueba en los dos teléfonos; H3 lo confirma el dueño por tocar estado de claves).
+
+### Resultados negativos (buscados y NO explotables — tranquilidad)
+
+El agente de seguridad trazó y descartó: **SSRF/URL arbitraria por el par en `_wake`** (la URL la fija el dueño en Perfil,
+no el par; `setSender` no tiene llamador de protocolo; el token solo viaja en el cuerpo, escapado) → sin SSRF ni inyección.
+**Archivos grandes / path traversal / DoS de memoria**: `BigFile.safeId`/`safeFileName` filtran y acotan, tamaños con tope,
+`BigReader`/`BigNet` validan cada registro → sin salida de directorio ni asignación sin tope. **Cripto/ratchet**
+(`e2e_ratchet`): `_skip` acotado, `_parse` rechaza `n/pn>1e7`, replay del X3DH bloqueado (`seenEk`), AAD liga emisor/destino/id,
+descifra sobre copia, guarda antes de entregar, anti-rebaja PQ. **Intents/nativo**: `MainActivity` exige el testigo del
+PendingIntent (N6), FileProvider/servicios `exported=false`, `SafeJson` nativo. **XSS**: todo el contenido del remitente
+se pinta con `textContent` o escapado (`_esc`/`_attr`); el `href` del cobro fuerza `^https?://`.
+
+---
+
 ## 4. Plan de pruebas «al límite» (robustez y seguridad)
 
 Adaptado de los modelos más duros: simulación determinista (FoundationDB, TigerBeetle VOPR), Jepsen/caos, fuzzing
@@ -150,8 +278,14 @@ detalle y las herramientas comprobadas están en la investigación guardada; aqu
   le da la app por `setAckKeys`, en memoria del proceso). Una confirmación falsa se ignora, así que ya no para los
   reintentos ni hace perder un mensaje con ✓✓. Lo vigila `tests/sim/ackforge.js` en la batería (52/52) y la firma del
   modo cerrado la cubre el escenario «recibir con la app cerrada». ⚠️ Falta la confirmación en los dos teléfonos del dueño.
-- **P0-4** XSS en mensajes, nombres, archivos, grupos, QR, contactos y ubicaciones (hoy se usa `textContent`; dejar una
-  prueba que lo vigile y revisar la CSP).
+- ✅ **P0-4 (XSS) RESUELTO (ronda 2809):** revisado todo el camino de pintado — la app ya usa `textContent` en TODAS las
+  superficies con datos del remitente (cuerpo del mensaje `_fillTextBubble`→`t.textContent`, nombre del remitente,
+  nombres de contacto, cita de respuesta; la tarjeta de ubicación solo mete números), ninguna usa `innerHTML` con datos
+  del otro teléfono. Se deja el vigilante `tests/sim/xss.js` (tag XSS, en la batería): 5 cargas típicas (`<img onerror>`,
+  `<script>`, `<svg onload>`, `<iframe javascript:>`, `on*`) → cero elementos inyectados, cero handlers ejecutados, texto
+  literal; si alguien volviera a usar `innerHTML` con datos del remitente, FALLA. CSP (`index.html`) endurecida con
+  `object-src 'none'`, `base-uri 'self'`, `form-action 'self'` (el `script-src` mantiene `'unsafe-inline'`/`'unsafe-eval'`
+  por el WebView de Capacitor y los handlers inline; el XSS se corta en origen con `textContent`). Batería 71/71.
 - **P1** «VOPR de NEXO»: mundo determinista (reloj virtual + PRNG con semilla) con fallos inyectados (pérdida en
   ráfagas, duplicados, reordenación, cortes, reinicios, relojes desfasados, disco lleno, muerte entre guardar y
   confirmar) sobre 3–6 teléfonos, comprobando I1–I13. Nocturno, miles de semillas.
