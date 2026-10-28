@@ -313,6 +313,14 @@ export const BLE_CONNECTION_METHODS = {
     if (self._cameraBlePaused) return;
     if (self.isScanning) return;
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'startScan')) return;
+    // Ronda 2814 (#87): throttle. Al menos _autoScanMinMs entre auto-escaneos, para NO pasar el límite de Android
+    // (~5/30 s, deja de dar resultados) cuando un enlace flojo se corta y reconecta en bucle. El escaneo del usuario
+    // (toggleScan en ble_ui.js) no pasa por aquí, así que buscar a mano sigue inmediato. La reconexión directa por
+    // GATT (con la MAC conocida) tampoco depende de esto; solo se aplaza el escaneo redundante, que de todos modos
+    // reintenta el bucle de reconexión.
+    var nowScan = Date.now();
+    if (nowScan - (self._lastAutoScanAt || 0) < (self._autoScanMinMs || 8000)) return;
+    self._lastAutoScanAt = nowScan;
     console.log('[BLEInterface] Auto-scan iniciado');
     // v6.12.0: lo que se ve en "dispositivos nuevos" sigue sirviendo hasta que el escaneo lo vuelva a encontrar
     // (antes el "+" de esas filas no hacía nada: el dispositivo ya no estaba en foundDevices)
