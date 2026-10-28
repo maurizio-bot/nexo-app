@@ -1,0 +1,11 @@
+{
+  "name": "nexo-push-sender",
+  "description": "Enviador de «toques» FCM para NEXO (Fase 2): despierta un teléfono por su token; nunca ve el contenido.",
+  "private": true,
+  "main": "index.js",
+  "engines": { "node": "20" },
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^6.0.0"
+  }
+}
