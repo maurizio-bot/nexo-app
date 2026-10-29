@@ -29,22 +29,31 @@ async function boot(name, native) {
   return { name, native, win };
 }
 
-// Construye el trazo de una «N» (arriba-izq ↓ abajo-izq ↗ arriba-der ↓ abajo-der)
+// Trazo de una «N» como la dibuja el dueño (aclaración 29-10): ARRIBA ABAJO ARRIBA — desde abajo-izq SUBE, BAJA en
+// diagonal a la derecha y vuelve a SUBIR (BL→TL→BR→TR). Diagonal real de la N (arriba-izq → abajo-der, «╲»).
 function pathN() {
   const p = [];
-  for (let y = 100; y <= 300; y += 25) p.push({ x: 100, y });          // baja izquierda
-  for (let t = 0; t <= 1.0001; t += 0.2) p.push({ x: 100 + 100 * t, y: 300 - 200 * t }); // sube a la derecha
-  for (let y = 100; y <= 300; y += 25) p.push({ x: 200, y });          // baja derecha
+  for (let y = 300; y >= 100; y -= 25) p.push({ x: 100, y });          // sube izquierda (BL→TL)
+  for (let t = 0; t <= 1.0001; t += 0.2) p.push({ x: 100 + 100 * t, y: 100 + 200 * t }); // baja diagonal a la derecha (TL→BR)
+  for (let y = 300; y >= 100; y -= 25) p.push({ x: 200, y });          // sube derecha (BR→TR)
+  return p;
+}
+// La MISMA «N» dibujada al revés (empezando arriba-der, der→izq). El reconocedor es agnóstico al sentido: debe aceptarla.
+function pathNrev() {
+  const p = [];
+  for (let y = 100; y <= 300; y += 25) p.push({ x: 200, y });          // baja derecha (TR→BR)
+  for (let t = 0; t <= 1.0001; t += 0.2) p.push({ x: 200 - 100 * t, y: 300 - 200 * t }); // sube diagonal a la izquierda (BR→TL)
+  for (let y = 100; y <= 300; y += 25) p.push({ x: 100, y });          // baja izquierda (TL→BL)
   return p;
 }
 function pathLine() { const p = []; for (let y = 100; y <= 300; y += 15) p.push({ x: 100, y }); return p; } // recta vertical
 function pathDiag() { const p = []; for (let t = 0; t <= 1.0001; t += 0.08) p.push({ x: 100 + 120 * t, y: 100 + 200 * t }); return p; } // diagonal
-// Variaciones REALES de una «N» dibujada con el dedo (informe del dueño 29-10): estrecha, ancha, de pocos puntos
-// (dedo rápido) e inclinada. El reconocedor robusto debe aceptarlas; una «V» (sin 3.er trazo) debe rechazarse.
-function pathNnarrow() { const p = []; for (let y = 80; y <= 300; y += 18) p.push({ x: 120, y }); for (let t = 0; t <= 1.0001; t += 0.12) p.push({ x: 120 + 55 * t, y: 300 - 220 * t }); for (let y = 80; y <= 300; y += 18) p.push({ x: 175, y }); return p; }
-function pathNwide() { const p = []; for (let y = 90; y <= 260; y += 20) p.push({ x: 60, y }); for (let t = 0; t <= 1.0001; t += 0.1) p.push({ x: 60 + 200 * t, y: 260 - 170 * t }); for (let y = 90; y <= 260; y += 20) p.push({ x: 260, y }); return p; }
-function pathNfast() { return [{ x: 100, y: 90 }, { x: 100, y: 200 }, { x: 100, y: 300 }, { x: 150, y: 200 }, { x: 200, y: 100 }, { x: 200, y: 200 }, { x: 200, y: 300 }]; }
-function pathNslant() { const p = []; for (let y = 100; y <= 300; y += 20) p.push({ x: 100 + (y - 100) * 0.12, y }); for (let t = 0; t <= 1.0001; t += 0.12) p.push({ x: 124 + 110 * t, y: 300 - 200 * t }); for (let y = 100; y <= 300; y += 20) p.push({ x: 234 + (y - 100) * 0.12, y }); return p; }
+// Variaciones REALES de una «N» (arriba-abajo-arriba) con el dedo: estrecha, ancha, de pocos puntos (dedo rápido) e
+// inclinada. El reconocedor debe aceptarlas; una «V» (una sola vuelta) debe rechazarse.
+function pathNnarrow() { const p = []; for (let y = 300; y >= 80; y -= 18) p.push({ x: 120, y }); for (let t = 0; t <= 1.0001; t += 0.12) p.push({ x: 120 + 55 * t, y: 80 + 220 * t }); for (let y = 300; y >= 80; y -= 18) p.push({ x: 175, y }); return p; }
+function pathNwide() { const p = []; for (let y = 260; y >= 90; y -= 20) p.push({ x: 60, y }); for (let t = 0; t <= 1.0001; t += 0.1) p.push({ x: 60 + 200 * t, y: 90 + 170 * t }); for (let y = 260; y >= 90; y -= 20) p.push({ x: 260, y }); return p; }
+function pathNfast() { return [{ x: 100, y: 300 }, { x: 100, y: 200 }, { x: 100, y: 100 }, { x: 150, y: 200 }, { x: 200, y: 300 }, { x: 200, y: 200 }, { x: 200, y: 100 }]; }
+function pathNslant() { const p = []; for (let y = 300; y >= 100; y -= 20) p.push({ x: 100 + (300 - y) * 0.12, y }); for (let t = 0; t <= 1.0001; t += 0.12) p.push({ x: 124 + 110 * t, y: 100 + 200 * t }); for (let y = 300; y >= 100; y -= 20) p.push({ x: 234 + (300 - y) * 0.12, y }); return p; }
 function pathV() { const p = []; for (let t = 0; t <= 1.0001; t += 0.08) p.push({ x: 100 + 60 * t, y: 100 + 200 * t }); for (let t = 0; t <= 1.0001; t += 0.08) p.push({ x: 160 + 60 * t, y: 300 - 200 * t }); return p; }
 
 (async () => {
@@ -68,6 +77,7 @@ function pathV() { const p = []; for (let t = 0; t <= 1.0001; t += 0.08) p.push(
   r.N_ancha = !!(g && g.recognizeN(pathNwide()));
   r.N_rapida = !!(g && g.recognizeN(pathNfast()));
   r.N_inclinada = !!(g && g.recognizeN(pathNslant()));
+  r.N_reves = !!(g && g.recognizeN(pathNrev())); // misma N al revés (agnóstico al sentido)
   r.V_rechazada = !!(g && g.recognizeN(pathV()) === false);
 
   // 2. Clasificación
@@ -129,7 +139,7 @@ function pathV() { const p = []; for (let t = 0; t <= 1.0001; t += 0.08) p.push(
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|is not a function|RangeError/.test(l)).slice(0, 4);
   const ok = r.hay_api && r.N_aceptada && r.recta_rechazada && r.diagonal_rechazada && r.corto_rechazado &&
-    r.N_estrecha && r.N_ancha && r.N_rapida && r.N_inclinada && r.V_rechazada &&
+    r.N_estrecha && r.N_ancha && r.N_rapida && r.N_inclinada && r.N_reves && r.V_rechazada &&
     r.clasifica_ordenada && r.clasifica_persiste && r.abre_overlay && r.cierra_overlay &&
     r.perfil_abre && r.ajustes_abre && r.gesto_cableado && r.gesto_abre_juego && r.gesto_mixto_abre && r.gesto_no_en_ajustes && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
