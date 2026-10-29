@@ -76,6 +76,18 @@ LLEGARON** (gran avance del #87: ya despertamos el otro teléfono). Reportó cua
   zona al dibujar la «N» alta); ahora captura el puntero + respaldo táctil (`nexo_game.js`, prueba `juego.js`).
 - ✅ **Guardada la 2823 como nueva base estable** (`base-estable-2823`, commit `b8644275`), como pidió el dueño.
 
+## Prueba real de la 2825 (dueño 29-10) → build 2826
+El dueño confirmó que **el ✓✓ con la app cerrada funciona** («funciona como lo esperábamos»). Pidió cinco detalles de
+interfaz, todos hechos en la 2826 (JS/CSS, sin tocar protocolo ni nativo):
+- ✅ **Transporte como símbolo** en la barra superior (icono de Wi-Fi / Internet / Bluetooth) en vez de la palabra: se
+  ve mejor y ocupa menos. La palabra queda en el tooltip; «⚠ señal débil» sigue como texto.
+- ✅ **Responder a un archivo ya no muestra «código»** (mismo fallo que la ubicación): `_msgSummary` nunca enseña JSON
+  crudo; cualquier adjunto/descriptor cae a una etiqueta limpia.
+- ✅ **Responder a un archivo muestra su NOMBRE** («📎 informe.pdf») en vez de «Archivo».
+- ✅ **Barra superior con sitio para el nombre**; un nombre largo se parte en **2 líneas** (el nombre es ahora un
+  `<textarea>` que admite dos renglones; se renombra igual tocándolo).
+- Batería 77/77; a confirmar en los teléfonos (es visual). Falta la APK **nightly-2826** (en curso al escribir esto).
+
 ## Decisiones del dueño 27-10 (madrugada) y nuevos pedidos
 El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de forma robusta», orden a mi criterio. Decisiones:
 
