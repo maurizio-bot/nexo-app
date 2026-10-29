@@ -32,22 +32,26 @@ export function addScore(score, saved) {
 // ---------- Reconocedor del trazo «N» (puro, sin Canvas; probado en tests/sim/juego.js) ----------
 // Una «N» son 3 tramos: baja (↓), sube hacia la derecha (↗), baja (↓). Se parte el trazo por longitud en 3 y se mira la
 // dirección neta de cada tercio, con tolerancias generosas (es un gesto a mano).
+// Reconoce una «N» dibujada de un trazo (informe del dueño 29-10: no arrancaba con una N natural). Antes se asumía que
+// las esquinas caían EXACTAMENTE en los tercios de la longitud del trazo; una N real (estrecha, ancha, temblorosa o
+// rápida) no cumplía eso. Ahora se BUSCAN las esquinas reales (inferior-izquierda = máximo y temprano; superior-derecha
+// = mínimo y después), lo que tolera la forma real y sigue rechazando rayas/diagonales/V/Z.
 export function __recognizeN(pts) {
-  if (!pts || pts.length < 8) return false;
+  if (!pts || pts.length < 6) return false;
   var xs = pts.map(function(p) { return p.x; });
   var ys = pts.map(function(p) { return p.y; });
   var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
   var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
   var w = maxX - minX, h = maxY - minY;
-  if (h < 60 || w < 30) return false;      // tamaño mínimo: evita toques/roces pequeños
-  if (h < w * 0.6) return false;           // una «N» es más alta que ancha; descarta trazos horizontales
+  if (h < 50 || w < 18) return false;      // tamaño mínimo: evita toques/roces pequeños (un poco más tolerante)
+  if (h < w * 0.5) return false;           // una «N» es más alta que ancha; descarta trazos horizontales
   var cum = [0];
   for (var i = 1; i < pts.length; i++) {
     var dx = pts[i].x - pts[i - 1].x, dy = pts[i].y - pts[i - 1].y;
     cum.push(cum[i - 1] + Math.sqrt(dx * dx + dy * dy));
   }
   var L = cum[cum.length - 1];
-  if (L < h) return false;
+  if (L < h * 1.3) return false;           // recorre 3 trazos (no una raya ni una sola diagonal ni una V)
   var at = function(frac) {
     var target = L * frac, j = 1;
     while (j < cum.length && cum[j] < target) j++;
@@ -55,41 +59,52 @@ export function __recognizeN(pts) {
     var seg = cum[j] - cum[j - 1] || 1, t = (target - cum[j - 1]) / seg;
     return { x: pts[j - 1].x + (pts[j].x - pts[j - 1].x) * t, y: pts[j - 1].y + (pts[j].y - pts[j - 1].y) * t };
   };
-  var A = at(0), B = at(1 / 3), C = at(2 / 3), D = at(1);
-  var down1 = (B.y - A.y) > h * 0.3;                               // tramo 1: baja
-  var up2 = (B.y - C.y) > h * 0.25 && (C.x - B.x) > w * 0.2;       // tramo 2: sube y va a la derecha
-  var down3 = (D.y - C.y) > h * 0.3;                               // tramo 3: baja
-  var goesRight = (D.x - A.x) > w * 0.3;                           // termina a la derecha
-  return down1 && up2 && down3 && goesRight;
+  var M = 24, s = [];
+  for (var k = 0; k <= M; k++) s.push(at(k / M));
+  var A = s[0], D = s[M];
+  if (A.y > minY + h * 0.45) return false; // empieza ARRIBA (zona alta)
+  if (D.y < minY + h * 0.45) return false; // termina ABAJO (zona baja)
+  if (D.x - A.x < w * 0.25) return false;  // va de izquierda a DERECHA
+  // Esquina inferior-izquierda: máximo y en la primera parte del trazo (no el final, que también baja).
+  var bi = 0, bYmax = -Infinity, lim = Math.floor(M * 0.6);
+  for (var k2 = 0; k2 <= lim; k2++) { if (s[k2].y > bYmax) { bYmax = s[k2].y; bi = k2; } }
+  // Esquina superior-derecha: mínimo y DESPUÉS de la esquina inferior-izquierda.
+  var ci = bi, cYmin = Infinity;
+  for (var k3 = bi; k3 <= M; k3++) { if (s[k3].y < cYmin) { cYmin = s[k3].y; ci = k3; } }
+  var B = s[bi], C = s[ci];
+  if (B.y < minY + h * 0.6) return false;  // el 1.er trazo bajó de verdad
+  if (C.y > minY + h * 0.4) return false;  // el 2.º trazo subió de verdad (diagonal)
+  if (C.x - B.x < w * 0.25) return false;  // la diagonal va hacia la derecha
+  if (D.y - C.y < h * 0.3) return false;   // el 3.er trazo vuelve a bajar
+  return true;
 }
 
 export function attachNexoUnlockGesture(el) {
   if (!el || el.__nexoNWired) return;
   el.__nexoNWired = true;
-  var pts = null, drawing = false, t0 = 0, lock = 0; // lock: qué entrada manda el trazo (1=pointer, 2=touch)
-  var start = function(x, y) { drawing = true; t0 = Date.now(); pts = [{ x: x, y: y }]; };
-  var move = function(x, y) { if (drawing && pts) pts.push({ x: x, y: y }); };
+  var pts = null, drawing = false, t0 = 0;
+  var start = function(x, y) { if (drawing) return; drawing = true; t0 = Date.now(); pts = [{ x: x, y: y }]; };
+  var move = function(x, y) { if (drawing && pts && pts.length < 3000) pts.push({ x: x, y: y }); };
   var end = function() {
-    if (drawing && pts && Date.now() - t0 < 4000 && __recognizeN(pts)) { pts = null; drawing = false; openNexoGame(); return; }
+    if (drawing && pts && Date.now() - t0 < 6000 && __recognizeN(pts)) { pts = null; drawing = false; openNexoGame(); return; }
     drawing = false; pts = null;
   };
-  // Un solo tipo de entrada por trazo: en el teléfono pointer y touch se emiten a la vez; el que empieza manda.
-  var begin = function(kind, x, y) { if (lock && lock !== kind) return; lock = kind; start(x, y); };
-  var cont = function(kind, x, y) { if (lock === kind) move(x, y); };
-  var finish = function(kind) { if (lock === kind) { end(); lock = 0; } };
-  // Informe del dueño (28-10): dibujar la «N» en el espacio negro de Perfil NO abría el juego. La «N» es ALTA y el dedo
-  // se salía de la zona (220 px): sin capturar el puntero, los `pointermove`/`pointerup` dejaban de llegar aquí y el
-  // trazo quedaba incompleto → el reconocedor nunca veía una «N». setPointerCapture hace que TODOS los eventos de ese
-  // dedo sigan llegando a la zona aunque se salga. Todo pasivo: no bloquea el scroll ni los toques normales.
-  el.addEventListener('pointerdown', function(e) { try { el.setPointerCapture(e.pointerId); } catch (x) {} begin(1, e.clientX, e.clientY); }, { passive: true });
-  el.addEventListener('pointermove', function(e) { cont(1, e.clientX, e.clientY); }, { passive: true });
-  el.addEventListener('pointerup', function(e) { try { el.releasePointerCapture(e.pointerId); } catch (x) {} finish(1); }, { passive: true });
-  el.addEventListener('pointercancel', function() { drawing = false; pts = null; lock = 0; }, { passive: true });
-  // Respaldo por eventos táctiles (algún WebView no emite `pointermove` de forma fiable al arrastrar).
-  el.addEventListener('touchstart', function(e) { var t = e.touches && e.touches[0]; if (t) begin(2, t.clientX, t.clientY); }, { passive: true });
-  el.addEventListener('touchmove', function(e) { var t = e.touches && e.touches[0]; if (t) cont(2, t.clientX, t.clientY); }, { passive: true });
-  el.addEventListener('touchend', function() { finish(2); }, { passive: true });
-  el.addEventListener('touchcancel', function() { drawing = false; pts = null; lock = 0; }, { passive: true });
+  var cancel = function() { drawing = false; pts = null; };
+  // Informe del dueño (28-10 y 29-10): dibujar la «N» en el espacio negro de Perfil NO abría el juego.
+  // (1) La «N» es ALTA y el dedo se salía de la zona (220 px) → setPointerCapture mantiene los eventos de ese dedo en la
+  //     zona aunque se salga. (2) ANTES había un "lock" por tipo de entrada: si el WebView emitía `pointerdown` (fijaba el
+  //     lock) pero luego NO mandaba `pointermove` de forma fiable, los `touchmove` quedaban BLOQUEADOS y el trazo se
+  //     quedaba en 1 punto → nunca se reconocía la «N». AHORA pointer Y touch alimentan el MISMO trazo: se empieza con el
+  //     primer "down" y se acumulan los "move" de cualquiera de los dos (sobran duplicados, pero nunca falta el trazo).
+  //     Todo pasivo: no bloquea el scroll ni los toques normales (la zona ya tiene touch-action:none).
+  el.addEventListener('pointerdown', function(e) { try { el.setPointerCapture(e.pointerId); } catch (x) {} start(e.clientX, e.clientY); }, { passive: true });
+  el.addEventListener('pointermove', function(e) { move(e.clientX, e.clientY); }, { passive: true });
+  el.addEventListener('pointerup', function(e) { try { el.releasePointerCapture(e.pointerId); } catch (x) {} end(); }, { passive: true });
+  el.addEventListener('pointercancel', cancel, { passive: true });
+  el.addEventListener('touchstart', function(e) { var t = e.touches && e.touches[0]; if (t) start(t.clientX, t.clientY); }, { passive: true });
+  el.addEventListener('touchmove', function(e) { var t = e.touches && e.touches[0]; if (t) move(t.clientX, t.clientY); }, { passive: true });
+  el.addEventListener('touchend', end, { passive: true });
+  el.addEventListener('touchcancel', cancel, { passive: true });
 }
 
 // ---------- El juego (sencillo) ----------
