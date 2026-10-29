@@ -271,16 +271,40 @@ export const BLE_UI_METHODS = {
       try {
         var d = e.detail || {};
         if (!d.nexoId || !d.msgId) return;
+        var nxR = _normId(d.nexoId);
         var devId = self._resolveDeviceIdForNexoId(d.nexoId);
         var stR = devId ? self._getDeviceState(devId) : {};
         var directR = stR.state === BLE_STATES.READY_TO_CHAT || stR.state === BLE_STATES.NOTIFICATIONS_READY;
         // Jump: sin enlace directo, la confirmación de lectura va dirigida por las rutas
         if (!directR && self.relay && self.relay.relayHop(d.nexoId)) {
-          if (self.ackSystem && self.ackSystem.sendReadReceipt) self.ackSystem.sendReadReceipt(null, d.msgId, _normId(d.nexoId));
+          if (self.ackSystem && self.ackSystem.sendReadReceipt) self.ackSystem.sendReadReceipt(null, d.msgId, nxR);
           return;
+        }
+        // Ronda 2827 (informe del dueño: por Bluetooth el ✓✓ de «leído» no se ponía azul): el acuse de lectura es un
+        // paquete de control de un solo intento; si el enlace Bluetooth no está listo al leer (se cayó, aún reconectando),
+        // se perdería sin reintento y el emisor nunca vería el ✓✓ azul. Se recuerda y se reenvía al reconectar
+        // (peerReady). Un acuse duplicado es inofensivo: el emisor lo deduplica por tipo+id.
+        if (!directR) {
+          self._pendingReads = self._pendingReads || new Map();
+          var pr = self._pendingReads.get(nxR) || new Set();
+          pr.add(d.msgId); if (pr.size > 300) pr.delete(pr.values().next().value);
+          self._pendingReads.set(nxR, pr);
         }
         if (!devId) return;
         if (self.ackSystem && self.ackSystem.sendReadReceipt) self.ackSystem.sendReadReceipt(devId, d.msgId);
+      } catch (err) {}
+    });
+    // Ronda 2827: al reconectar con un contacto, reenviar los acuses de lectura que quedaron pendientes (enlace caído al
+    // leer), para que el emisor acabe viendo el ✓✓ azul. Mismo patrón que estados/avatar (que también reenvían en peerReady).
+    window.addEventListener('nexo:ble:peerReady', function(e) {
+      try {
+        var nxP = _normId((e.detail && e.detail.nexoId) || '');
+        if (!nxP || !self._pendingReads) return;
+        var pend = self._pendingReads.get(nxP);
+        if (!pend || !pend.size) return;
+        self._pendingReads.delete(nxP);
+        var dev = self._resolveDeviceIdForNexoId(nxP);
+        pend.forEach(function(mid) { if (self.ackSystem && self.ackSystem.sendReadReceipt) self.ackSystem.sendReadReceipt(dev, mid); });
       } catch (err) {}
     });
     window.addEventListener('nexo:ble:closeChat', function() {

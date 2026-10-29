@@ -78,6 +78,7 @@ const SCENARIOS = [
   { name: 'filtros del micrófono: eco, los dos a la vez, ruido, zumbido, saturación', args: ['voicefx.js'], tag: 'VOICEFX', checks: { resultado: (v) => v === 'OK' } },
   { name: 'nota de voz: pausar/reanudar, borrar antes de enviar, y parar el audio al grabar o al entrar llamada', args: ['voicenote.js'], tag: 'VOICENOTE', logs: 'last_logs_voicenote.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'palomitas de estado iguales en todas las redes (enviado ✓, entregado y leído ✓✓)', args: ['palomitas.js'], tag: 'PALOM', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'leído (✓✓ azul) por Bluetooth: el acuse pendiente se reenvía al reconectar (enlace caído al leer)', args: ['readbt.js'], tag: 'READBT', logs: 'last_logs_readbt.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'buscar dentro del chat (lupa en la cabecera, barra debajo: filtra burbujas propias y recibidas y cuenta coincidencias)', args: ['search.js'], tag: 'SEARCH', checks: { resultado: (v) => v === 'OK' } },
   { name: 'foto de una vez (ver una vez): llega con el flag, se consume al abrirla (borra payload/content/blob) y no se reabre', args: ['once.js'], tag: 'ONCE', checks: { resultado: (v) => v === 'OK' } },
   { name: 'contacto: tocar la foto la abre grande (visor), tocar el nombre entra al chat; sin foto el avatar abre el chat', args: ['photo_tap.js'], tag: 'PHOTOTAP', checks: { resultado: (v) => v === 'OK' } },
