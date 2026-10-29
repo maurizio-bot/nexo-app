@@ -100,6 +100,25 @@ El dueño pidió «aplicar el azul a las palomitas de leído en red Bluetooth».
   batería **78/78**. APK **nightly-2827** publicada (sha256 `0918c361…`). **Falta del dueño:** confirmar en los teléfonos;
   si el ✓✓ sigue gris por Bluetooth, mandar el diagnóstico de los dos (Perfil → Copiar diagnóstico) para ver la causa real.
 
+## Pedidos del dueño 29-10 (3 cosas) → builds 2828+
+El dueño: «1 los stickers se deben de implementar, 2 quita la burbuja cuando se manda emoji y aumenta el
+tamaño, 3 buscar un entretenimiento para pegar un user a la pantalla».
+- ✅ **(2) Emoji solo (1–3) GRANDE y sin burbuja — build 2828.** Un mensaje que es SOLO emoji (1 a 3) se
+  pinta grande (54/44/34 px) y sin burbuja (como fotos, vía `:has()`), propios y recibidos; 4+ emojis o
+  texto vuelven a la burbuja. Detección pura con `Intl.Segmenter` (familia/tonos de piel/banderas bien
+  contados), defensiva. Pruebas en `chatactions.js`; batería **78/78**. APK en construcción (run 2828).
+- ⏳ **(1) Stickers — build 2829 (siguiente).** Diseño SEGURO: pack incorporado en la app; por el cable
+  viaja **solo el ID** del sticker (envoltorio `{type:'nexo_sticker', s:'<id>'}` por el camino de texto);
+  dibujo = SVG estático incorporado (mapa congelado tipo `_VIA_ICON`) → **sin bytes del emisor → sin
+  XSS**; render sin burbuja (clase `.msg-sticker`); selector de rejilla (plantilla: menú de reacciones /
+  hoja de Cobro). ID desconocido → cae a texto. Plan en scratchpad `plan-stickers-2829.md`.
+- ⏳ **(3) Entretenimiento para «pegar» al usuario — por decidir, recomiendo juegos de 2 jugadores en el
+  chat.** Encaje con NEXO (P2P, sin servidor, E2E): **juegos de 2 jugadores dentro del chat** (tres en
+  raya → conecta-4) sobre el canal E2E que ya existe, como acción del protocolo; es lo único que a la vez
+  respeta la identidad sin-servidor Y da un motivo social para volver (partida en curso). Alternativas:
+  ampliar «Defensor NEXO»; rachas/logros; efectos. Por autonomía, tras los stickers arranco con tres en
+  raya salvo que el dueño prefiera otra. Detalle en scratchpad `entretenimiento-3.md`.
+
 ## Decisiones del dueño 27-10 (madrugada) y nuevos pedidos
 El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de forma robusta», orden a mi criterio. Decisiones:
 
