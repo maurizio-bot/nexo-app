@@ -124,6 +124,18 @@ tamaño, 3 buscar un entretenimiento para pegar un user a la pantalla».
   **Pendiente del dueño:** confirmar en los teléfonos y decir si quiere **conecta-4** (mismo motor) u otra
   dirección (ampliar «Defensor NEXO», rachas/logros, efectos). Detalle en scratchpad `entretenimiento-3.md`.
 
+## Prueba real del dueño 29-10: el mini-juego no arrancaba dibujando la «N» → build 2831
+- ✅ **El gesto de la «N» ahora SÍ abre el juego — build 2831.** El dueño reportó que dibujar la «N» en Perfil no
+  arrancaba el juego secreto (ya lo tocamos en la 2824 con `setPointerCapture`; fue insuficiente). **Dos causas reales,
+  reproducidas en el simulador:** (1) **bug de eventos (principal):** un «candado» por tipo de entrada bloqueaba los
+  `touchmove` de respaldo cuando el WebView mandaba `pointerdown` pero no `pointermove` fiable → el trazo se quedaba en
+  1 punto y nunca se reconocía la «N»; ahora pointer y touch alimentan el MISMO trazo. (2) **reconocedor frágil:** ahora
+  busca las esquinas reales de la «N» (tolera estrecha/ancha/inclinada/rápida) en vez de asumir los tercios exactos;
+  umbral 4 s→6 s. `nexo_game.js`; `tests/sim/juego.js` ampliada (caso mixto pointerdown+touchmove: viejo `false`, nuevo
+  `true`). Batería **80/80**. **HONESTO:** la «N» limpia ya se reconocía en el sim, el síntoma exacto no se reproduce al
+  100 %, pero el bug del candado sí. **Falta del dueño:** confirmar en los teléfonos; si sigue sin abrir, mandar el
+  diagnóstico (Perfil → Copiar diagnóstico) de los dos.
+
 ## Decisiones del dueño 27-10 (madrugada) y nuevos pedidos
 El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de forma robusta», orden a mi criterio. Decisiones:
 
