@@ -94,6 +94,23 @@ body::before {
 .sticker-cell { background: rgba(255,255,255,0.06); border: none; border-radius: 12px; padding: 8px; cursor: pointer; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; }
 .sticker-cell:active { background: rgba(255,255,255,0.14); }
 .sticker-cell svg { width: 100%; height: 100%; display: block; }
+/* Tres en raya (2830): overlay del juego de 2 jugadores */
+.ttt-overlay { position: fixed; inset: 0; z-index: 2650; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.55); padding: 16px; }
+.ttt-panel { width: 100%; max-width: 360px; background: var(--nx-surface, #12232a); border-radius: 16px; padding: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+.ttt-head { text-align: center; color: var(--nx-text, #e8f0f2); margin-bottom: 12px; }
+.ttt-title { font-size: 17px; }
+.ttt-vs { font-size: 12px; color: var(--nx-muted, #9fb0b5); margin-top: 2px; }
+.ttt-status { font-size: 14px; margin-top: 6px; min-height: 18px; }
+.ttt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ttt-cell { aspect-ratio: 1 / 1; font-size: 44px; font-weight: 700; line-height: 1; border: none; border-radius: 12px; background: rgba(255,255,255,0.07); color: #e8f0f2; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.ttt-cell:disabled { cursor: default; }
+.ttt-cell:not(:disabled):active { background: rgba(255,255,255,0.16); }
+.ttt-cell.ttt-x { color: #38bdf8; }
+.ttt-cell.ttt-o { color: #fb7185; }
+.ttt-foot { display: flex; gap: 10px; margin-top: 14px; }
+.ttt-again, .ttt-close { flex: 1; padding: 11px; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.ttt-again { background: #19c3c9; color: #05242a; }
+.ttt-close { background: rgba(255,255,255,0.1); color: #e8f0f2; }
 /* Ronda 2789 (informe del dueño): entregado (llegó, sin leer) y leído se veían casi igual porque los dos son ✓✓ y el
    color de "entregado" era casi blanco. Ahora: enviado ✓ gris oscuro, entregado ✓✓ GRIS claro (apagado, "aún sin
    leer"), leído ✓✓ AZUL con brillo. Como WhatsApp: gris hasta que lo leen, y ahí se pone de color. */

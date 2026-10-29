@@ -17,6 +17,7 @@ import { _noteContactMessage } from './send.js';
 import { _renderMessage, _updateMessageStatus, _updateMessageStorageStatus } from './render.js';
 import { _failStatus } from './ble_helpers.js';
 import { openStickerPicker } from './stickers.js';
+import { openTttForContact } from './ttt.js';
 import { getPermissionShim } from '../core/NexoPermissionShim.js';
 import { rem } from './rem.js';
 import { vaultFindContactByNexoId, vaultSaveContact } from '../vault/vault_manager.js';
@@ -91,6 +92,7 @@ export function _bindAttachmentHandlers() {
       else if (type === 'cobro') _handleCobro();
       else if (type === 'contact') _handleShareContacts();
       else if (type === 'sticker') { _closeAttachMenu(); openStickerPicker(_getCurrentContactId(), _sendStickerTo); }
+      else if (type === 'ttt') { _closeAttachMenu(); openTttForContact(_getCurrentContactId()); }
     });
   });
   document.addEventListener('click', function(e) {
