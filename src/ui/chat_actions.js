@@ -30,6 +30,26 @@ export var _editing = null;                // ronda 2782: { id, cid } del mensaj
 export var QUICK_REACTION = '❤️';           // ronda 2783: doble toque en un mensaje = reaccionar con este emoji
 export var REACTION_SET = ['👍', '❤️', '😂', '😮', '😢', '🙏']; // emojis del menú "Reaccionar"
 
+// Mensaje de SOLO emoji (1–3): se muestra grande y SIN burbuja, como WhatsApp (pedido del dueño 29-10). Devuelve cuántos
+// emojis hay (0 = no aplica: hay texto, no hay emoji, o son más de 3). Defensivo: si el navegador no soporta \p{...} o
+// Intl.Segmenter, devuelve 0 (comportamiento normal, nunca rompe).
+function _emojiOnly(text) {
+  var s = String(text == null ? '' : text).trim();
+  if (!s) return 0;
+  var core = s.replace(/\s+/g, '');
+  if (!core) return 0;
+  try {
+    // Si al quitar pictográficos + combinadores (ZWJ, selector de variación, tonos de piel, banderas) queda algo, hay texto
+    if (core.replace(/[\p{Extended_Pictographic}‍️\u{1F3FB}-\u{1F3FF}\u{1F1E6}-\u{1F1FF}]/gu, '').length > 0) return 0;
+    if (!/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}]/u.test(core)) return 0;
+    var n;
+    if (typeof Intl !== 'undefined' && Intl.Segmenter) n = Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(core)).length;
+    else { var m = core.match(/(\p{Extended_Pictographic}(‍\p{Extended_Pictographic}|[️\u{1F3FB}-\u{1F3FF}])*)|([\u{1F1E6}-\u{1F1FF}]{2})/gu); n = m ? m.length : 1; }
+    return (n >= 1 && n <= 3) ? n : 0;
+  } catch (e) { return 0; }
+}
+try { if (typeof window !== 'undefined') window.__nexoEmojiOnly = _emojiOnly; } catch (e) {} // gancho de pruebas (función pura)
+
 // Burbuja de texto: eliminado, reenviado, respuesta citada (todo como texto: viene de otro teléfono)
 export function _fillTextBubble(contentDiv, msg, isOwn) {
   if (msg.deleted) {
@@ -66,6 +86,10 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
   var t = document.createElement('span');
   t.className = 'msg-text';
   t.textContent = String(k.t || '');
+  // Emoji grande sin burbuja: solo si el mensaje es 1–3 emojis sueltos (no reenviado, no respuesta citada). El CSS quita
+  // la burbuja con :has(.msg-text.emoji-jumbo), igual que ya hace con las fotos/vídeos.
+  var ej = (!k.fw && !(k.rp && k.rp.id)) ? _emojiOnly(k.t) : 0;
+  if (ej) t.classList.add('emoji-jumbo', 'emoji-' + ej);
   contentDiv.appendChild(t);
 }
 

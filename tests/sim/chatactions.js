@@ -132,6 +132,16 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   r.subt_solo_icono = vs ? (vs('wifi', 0).html.replace(/<[^>]*>/g, '').indexOf('Wi-Fi') === -1) : null;                     // la palabra no se ve (solo icono)
   r.subt_senal_debil = vs ? (vs('bluetooth', 23).html.indexOf('⚠') > -1) : null;
   r.nombre_es_textarea = A.win.document.getElementById('chat-contact-name') ? (A.win.document.getElementById('chat-contact-name').tagName === 'TEXTAREA') : null;
+  // 2g) Emoji grande sin burbuja (pedido del dueño 29-10): un mensaje de 1–3 emojis sueltos se marca «jumbo»; con texto o
+  //     con 4+ emojis, no. Se prueba la detección pura (window.__nexoEmojiOnly).
+  const eo = A.win.__nexoEmojiOnly;
+  r.emoji_1 = eo ? eo('😀') : null;             // 1
+  r.emoji_2 = eo ? eo('😀😁') : null;           // 2
+  r.emoji_piel = eo ? eo('👍🏽') : null;         // 1 (tono de piel)
+  r.emoji_bandera = eo ? eo('🇲🇽') : null;       // 1 (bandera)
+  r.emoji_muchos = eo ? eo('😀😁😂😃') : null;   // 0 (más de 3)
+  r.emoji_texto = eo ? eo('hola') : null;       // 0
+  r.emoji_mixto = eo ? eo('😀 hola') : null;    // 0 (emoji + texto)
   // 3) Copiar
   ctx(A, bubbleWith(A, 'pregunta de B')); click(A.win, await menuItem(A, 'mm-copy')); await sleep(300);
   r.copiar_aviso = ((A.win.document.getElementById('perm-error-toast') || {}).textContent || '');
