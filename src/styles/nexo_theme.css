@@ -80,6 +80,11 @@ body::before {
 }
 .msg-time { color: rgba(255, 255, 255, 0.55) !important; }
 .message.other .msg-time { color: var(--nx-muted) !important; }
+/* Emoji grande (pedido del dueño 29-10): un mensaje de 1–3 emojis sueltos se muestra SIN burbuja (ni fondo ni sombra ni
+   borde). Gana a .message.own/.other por mayor especificidad (:has) + !important. El tamaño lo pone critical.css. */
+.message.own:has(.msg-text.emoji-jumbo), .message.other:has(.msg-text.emoji-jumbo) {
+  background: none !important; border-color: transparent !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+}
 /* Ronda 2789 (informe del dueño): entregado (llegó, sin leer) y leído se veían casi igual porque los dos son ✓✓ y el
    color de "entregado" era casi blanco. Ahora: enviado ✓ gris oscuro, entregado ✓✓ GRIS claro (apagado, "aún sin
    leer"), leído ✓✓ AZUL con brillo. Como WhatsApp: gris hasta que lo leen, y ahí se pone de color. */

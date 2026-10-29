@@ -295,6 +295,12 @@ Consolidado: inline + main.css + ble_styles
    .message:has(.msg-content .audio-attachment) {
    padding: 3px 3px 6px 3px;
    }
+   /* Emoji grande sin burbuja (pedido del dueño): 1–3 emojis sueltos se agrandan; la burbuja se quita (abajo, :has) */
+   .msg-text.emoji-jumbo { font-size: 40px; line-height: 1.15; display: inline-block; }
+   .msg-text.emoji-jumbo.emoji-1 { font-size: 54px; }
+   .msg-text.emoji-jumbo.emoji-2 { font-size: 44px; }
+   .msg-text.emoji-jumbo.emoji-3 { font-size: 34px; }
+   .message:has(.msg-text.emoji-jumbo) { padding: 2px 4px 4px 4px; }
    .msg-meta {
    margin-top: 3px;
    font-size: 10px;
