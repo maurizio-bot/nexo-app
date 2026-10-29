@@ -7,3 +7,12 @@ tests/sim/builds/
 tests/sim/.deps/
 tests/sim/node_modules/
 tests/sim/last_logs_*.txt
+# Archivos locales de la máquina / artefactos de build de Android (no deben versionarse)
+local.properties
+android/local.properties
+android/.gradle/
+android/app/build/
+android/build/
+android/captures/
+*.backup
+*.bak
