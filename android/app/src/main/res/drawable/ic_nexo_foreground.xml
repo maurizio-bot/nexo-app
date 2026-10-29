@@ -1,0 +1,16 @@
+<!-- Logo PROVISIONAL de NEXO (build 2834, pedido del dueño): sobre fondo negro (ic_launcher_background),
+     burbuja de mensaje CIAN con la «N» BLANCA dentro. Centrado en la zona segura (72dp) del icono adaptativo. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Burbuja cian (sólida, con cola) -->
+    <path
+        android:fillColor="#19E0FF"
+        android:pathData="M36,26 H72 A12,12 0 0 1 84,38 V58 A12,12 0 0 1 72,70 H50 L38,82 V70 H36 A12,12 0 0 1 24,58 V38 A12,12 0 0 1 36,26 Z" />
+    <!-- «N» blanca (barra izq + barra der + diagonal) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,34 L47,34 L47,62 L40,62 Z M61,34 L68,34 L68,62 L61,62 Z M40,34 L47,34 L68,62 L61,62 Z" />
+</vector>

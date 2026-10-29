@@ -1,0 +1,15 @@
+<!-- Icono del aviso de mensaje en la barra de estado (build 2834, elección del dueño: opción 1 = burbuja + N).
+     Silueta monocroma: el sistema la pinta de blanco. Burbuja (anillo) con la «N» de NEXO dentro. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M6,3 H17 A4,4 0 0 1 21,7 V13 A4,4 0 0 1 17,17 H12.5 L8,21 V17 H6 A4,4 0 0 1 2,13 V7 A4,4 0 0 1 6,3 Z M6.3,5 H16.7 A2.2,2.2 0 0 1 18.9,7.2 V12.8 A2.2,2.2 0 0 1 16.7,15 H6.3 A2.2,2.2 0 0 1 4.1,12.8 V7.2 A2.2,2.2 0 0 1 6.3,5 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7.6,6.5 L9.3,6.5 L9.3,13.5 L7.6,13.5 Z M13.2,6.5 L14.9,6.5 L14.9,13.5 L13.2,13.5 Z M7.6,6.5 L9.3,6.5 L14.9,13.5 L13.2,13.5 Z" />
+</vector>

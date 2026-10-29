@@ -46,6 +46,12 @@ class MsgNotifier(private val ctx: Context) {
         @Volatile private var shared: MsgNotifier? = null
         // Una sola instancia por proceso (la usan el plugin y la escucha de internet en segundo plano)
         fun get(ctx: Context): MsgNotifier = shared ?: synchronized(this) { shared ?: MsgNotifier(ctx.applicationContext).also { shared = it } }
+        // Icono del aviso de mensaje (build 2834, elección del dueño): vector propio ic_stat_message (burbuja + N),
+        // resuelto por nombre porque el drawable vive en el módulo de la app (no en el del plugin). Si no está, cae al
+        // genérico de siempre, así el aviso nunca se queda sin icono.
+        @JvmStatic fun msgIcon(ctx: Context): Int = try {
+            ctx.resources.getIdentifier("ic_stat_message", "drawable", ctx.packageName).takeIf { it != 0 } ?: android.R.drawable.stat_notify_chat
+        } catch (e: Exception) { android.R.drawable.stat_notify_chat }
     }
 
     val book = UnreadBook()
@@ -211,12 +217,12 @@ class MsgNotifier(private val ctx: Context) {
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         val pi = PendingIntent.getActivity(ctx, notifId(chatId), launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val pub = NotificationCompat.Builder(ctx, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setSmallIcon(msgIcon(ctx))
             .setContentTitle("NEXO")
             .setContentText(if (n > 1) "$n mensajes nuevos" else "Mensaje nuevo")
             .build()
         val b = NotificationCompat.Builder(ctx, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setSmallIcon(msgIcon(ctx))
             .setContentTitle(c.name.ifBlank { "NEXO" })
             .setContentText(text)
             .setNumber(n)
