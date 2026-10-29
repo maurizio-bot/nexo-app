@@ -8,6 +8,7 @@ import { applyStatus } from './estados.js';
 import { _PREVIEW_BY_TYPE, _chatKind, _contactName, _cut, _findMessage, _getCurrentContactId, _msgSummary, _myNexoId, _normId, _peerUnderstands, _plainText } from './chat_format.js';
 import { _showInfoToast } from './ui_bits.js';
 import { _videoFormat } from './video_tools.js';
+import { stickerSvg } from './stickers.js';
 import { vaultBlankMessage, vaultDeleteMessage, vaultEditMessage, vaultLoadContacts, vaultLoadFile, vaultLoadMessages, vaultReactMessage, vaultSaveContacts } from '../vault/vault_manager.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
@@ -61,6 +62,16 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
   }
   var raw = msg.content || msg.text || '';
   var k = _chatKind(raw);
+  // Sticker (2829): se dibuja el SVG ESTÁTICO del pack por su ID; nunca bytes del emisor. ID desconocido → emoji de
+  // respaldo (jamás el JSON crudo). Sin burbuja: el CSS la quita con :has(.msg-sticker), igual que con fotos/emoji.
+  if (k && k.type === 'nexo_sticker') {
+    var sp = document.createElement('span');
+    sp.className = 'msg-sticker';
+    var svg = stickerSvg(k.s);
+    if (svg) { sp.innerHTML = svg; } else { sp.textContent = '🎟️'; }
+    contentDiv.appendChild(sp);
+    return;
+  }
   if (!k || k.type !== 'nexo_txt') { contentDiv.textContent = raw; return; }
   if (k.fw) {
     var fw = document.createElement('div');

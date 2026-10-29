@@ -301,6 +301,10 @@ Consolidado: inline + main.css + ble_styles
    .msg-text.emoji-jumbo.emoji-2 { font-size: 44px; }
    .msg-text.emoji-jumbo.emoji-3 { font-size: 34px; }
    .message:has(.msg-text.emoji-jumbo) { padding: 2px 4px 4px 4px; }
+   /* Sticker (2829): dibujo incorporado, grande y sin burbuja (la burbuja se quita abajo con :has, como el emoji) */
+   .msg-sticker { display: inline-block; width: 112px; height: 112px; line-height: 0; }
+   .msg-sticker svg { width: 100%; height: 100%; display: block; }
+   .message:has(.msg-sticker) { padding: 2px 4px 4px 4px; }
    .msg-meta {
    margin-top: 3px;
    font-size: 10px;

@@ -202,9 +202,10 @@ export function _isProtocolShaped(s) {
 }
 
 // v6.9.0: texto con respuesta / reenviado ('nexo_txt') y acciones del chat ('nexo_act': eliminar para todos)
+// 2829: stickers ('nexo_sticker': solo el ID del sticker, el dibujo es un SVG incorporado)
 export function _chatKind(content) {
   if (typeof content !== 'string' || content.charAt(0) !== '{' || content.indexOf('"nexo_') < 0) return null;
-  try { var p = JSON.parse(content); return (p && (p.type === 'nexo_txt' || p.type === 'nexo_act')) ? p : null; } catch (e) { return null; }
+  try { var p = JSON.parse(content); return (p && (p.type === 'nexo_txt' || p.type === 'nexo_act' || p.type === 'nexo_sticker')) ? p : null; } catch (e) { return null; }
 }
 
 // Recortar texto sin partir un emoji ni otro carácter de dos unidades (quedaría "�")
@@ -214,6 +215,7 @@ export function _messagePreview(content, attachmentType) {
   var t = attachmentType;
   var k = !t ? _chatKind(content) : null;
   if (k && k.type === 'nexo_act') return null;
+  if (k && k.type === 'nexo_sticker') return '🎟️ Sticker';
   if (k) return _cut(k.t, 50);
   if (!t && typeof content === 'string' && content.charAt(0) === '{') {
     try { var p = JSON.parse(content); if (p && p.attachmentType) t = p.attachmentType; } catch (e) {}
