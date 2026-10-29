@@ -86,7 +86,7 @@ interfaz, todos hechos en la 2826 (JS/CSS, sin tocar protocolo ni nativo):
 - ✅ **Responder a un archivo muestra su NOMBRE** («📎 informe.pdf») en vez de «Archivo».
 - ✅ **Barra superior con sitio para el nombre**; un nombre largo se parte en **2 líneas** (el nombre es ahora un
   `<textarea>` que admite dos renglones; se renombra igual tocándolo).
-- Batería 77/77; a confirmar en los teléfonos (es visual). Falta la APK **nightly-2826** (en curso al escribir esto).
+- Batería 77/77; a confirmar en los teléfonos (es visual). APK **nightly-2826** publicada (sha256 `e23f380d…`).
 
 ## Decisiones del dueño 27-10 (madrugada) y nuevos pedidos
 El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de forma robusta», orden a mi criterio. Decisiones:
