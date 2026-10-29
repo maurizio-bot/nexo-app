@@ -88,6 +88,18 @@ interfaz, todos hechos en la 2826 (JS/CSS, sin tocar protocolo ni nativo):
   `<textarea>` que admite dos renglones; se renombra igual tocándolo).
 - Batería 77/77; a confirmar en los teléfonos (es visual). APK **nightly-2826** publicada (sha256 `e23f380d…`).
 
+## Prueba real de la 2826 (dueño 29-10) → build 2827
+El dueño pidió «aplicar el azul a las palomitas de leído en red Bluetooth».
+- ✅ **Leído (✓✓ azul) por Bluetooth más robusto — build 2827.** **Honesto:** en el simulador el ✓✓ ya se pone azul por
+  Bluetooth (el color/estado es igual en todas las redes; `status-read` azul #00d4ff) incluso forzando que el enlace se
+  caiga al leer y reconectando → el síntoma exacto del dueño **no se reproduce** en el simulador. Hueco real visto en el
+  código: el acuse de lectura (`read_receipt`) es un paquete de CONTROL que se manda UNA vez; si el enlace Bluetooth no
+  está listo al leer (caído/reconectando) se **pierde sin reintento** → el ✓✓ queda gris para siempre. Arreglo (JS,
+  aditivo, `ble_ui.js`): si al leer no hay enlace directo, se recuerda el acuse y se **reenvía al reconectar** (evento
+  `peerReady`), como ya hacen estados/avatar; un acuse duplicado es inofensivo. Prueba nueva `tests/sim/readbt.js`;
+  batería **78/78**. APK **nightly-2827** publicada (sha256 `0918c361…`). **Falta del dueño:** confirmar en los teléfonos;
+  si el ✓✓ sigue gris por Bluetooth, mandar el diagnóstico de los dos (Perfil → Copiar diagnóstico) para ver la causa real.
+
 ## Decisiones del dueño 27-10 (madrugada) y nuevos pedidos
 El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de forma robusta», orden a mi criterio. Decisiones:
 
