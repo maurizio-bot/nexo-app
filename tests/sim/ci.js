@@ -51,6 +51,11 @@ const SCENARIOS = [
   { name: 'recibir con la app cerrada (buzón, ✓✓ y aviso)', args: ['background.js', '--scenario=closed', '--io-delay=25', '--app-events'], tag: 'BACKGROUND', checks: {
     llegada_a_B_tras_volver: (v) => Array.isArray(v) && v.every((x) => !/NO LLEGÓ/.test(x)),
     con_B_cerrada: (v) => !!v && v.estado_en_A.every((x) => /delivered|read/.test(x)) && v.notificaciones_B.length >= 1 && v.oculta_en_buzon_sin_aviso === true } },
+  { name: 'entregado (✓✓) con la app CONGELADA en segundo plano (#dueño: el Vivo congela el JS): el nativo confirma la entrega firmada al avisar, sin esperar a que vuelva', args: ['background.js', '--scenario=frozen', '--io-delay=25', '--app-events'], tag: 'BACKGROUND', logs: 'last_logs_frozen.txt', checks: {
+    entregado_sin_abrir_B: isTrue,
+    estado_en_A_con_B_congelada: (v) => Array.isArray(v) && v.every((x) => /: (delivered|read)$/.test(x)),
+    avisos_nativos_B: (v) => v >= 2,
+    recibidos_en_B_al_volver: (v) => Array.isArray(v) && v.every((n) => n === 1) } },
   { name: 'chats de grupo (crear, escribir, texto largo, salir)', args: ['groups.js', '--io-delay=25'], tag: 'GROUPS', checks: { resultado: (v) => v === 'OK' } },
   { name: 'seguridad de grupos: un miembro no reescribe la lista ni cuela claves de terceros (auditoría C2)', args: ['groupforge.js'], tag: 'GROUPFORGE', checks: { resultado: (v) => v === 'OK' } },
   { name: 'grupos: vídeo HD y archivo grande (24 MB, uno lo pide al llegar al Wi-Fi)', args: ['group_media.js'], tag: 'GROUP_MEDIA', checks: { resultado: (v) => v === 'OK' } },

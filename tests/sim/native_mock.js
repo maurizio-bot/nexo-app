@@ -432,7 +432,7 @@ class NativePhone {
       out.frames.forEach((f) => {
         this.stats.binChunksIn = (this.stats.binChunksIn || 0) + 1;
         if (this.closedMode) { this._closedReceive(fromAddress, f.header); return; }
-        this._bgNotify(f.header);
+        this._bgNotify(f.header, fromAddress);
         this.emit('onPayloadReceived', { deviceId: fromAddress, content: f.header, data: f.header, bin: f.data.toString('base64'), source, timestamp: Date.now(), reassembled: true });
       });
       if (!out.text) return;
@@ -452,7 +452,7 @@ class NativePhone {
       const ex = extractJson(buf);
       if (!ex) break;
       this.radio.log(this.name, 'RX de', fromAddress, ex.json.substring(0, 90));
-      if (!this.closedMode) this._bgNotify(ex.json);
+      if (!this.closedMode) this._bgNotify(ex.json, fromAddress);
       if (this.closedMode) this._closedReceive(fromAddress, ex.json);
       else this.emit('onPayloadReceived', { deviceId: fromAddress, content: ex.json, data: ex.json, source, timestamp: Date.now(), reassembled: true });
       buf = ex.rest;
@@ -539,7 +539,7 @@ class NativePhone {
   _notifName(nx) { const c = this.netBg && (this.netBg.contacts || []).find((x) => String(x.nx || '').toLowerCase() === nx); return (c && c.name) || 'NEXO'; }
   static whatText(w) { return ({ image: '📷 Foto', video: '🎥 Vídeo', audio: '🎤 Nota de voz', call: '📞 Llamada entrante', text: '' })[w] ?? '📎 Archivo'; }
   // Kotlin 2760 backgroundNotify: app en segundo plano (puede estar congelada): si a los 4 s la app no avisó, avisa el nativo
-  _bgNotify(json) {
+  _bgNotify(json, fromAddress) {
     if (this.appActive !== false || this.closedMode || this.opts.noBgNotify) return;
     const info = NativePhone.classifyClosed(json, this.advertisingId);
     if (!info.msgId || info.quiet || (info.kind !== 'MESSAGE' && info.kind !== 'NOTIFY_ONLY')) return;
@@ -547,10 +547,26 @@ class NativePhone {
     if (info.call || info.what === 'call') { this._incomingCall(info.from, this._notifName(info.from), false, info.msgId, { bg: true }); return; }
     this._uptimeTimeout(() => {
       if (this.appActive !== false || this.closedMode || (this.msgChat && this.msgChat.has(String(info.msgId)))) return;
-      if (info.kind === 'MESSAGE') this._notifyMsg(info, { bg: true });
+      if (info.kind === 'MESSAGE') {
+        this._notifyMsg(info, { bg: true });
+        // #87 / dueño 29-10 (2833): al avisar con el JS congelado (el Vivo lo congela y no pudo confirmar), mandar
+        // también la confirmación de ENTREGA firmada, para que el emisor vea el ✓✓ sin esperar a que la app vuelva.
+        this._sendDeliveredAck(fromAddress, info);
+      }
       else if (this._groupName(info.group)) { const who = this._notifName(info.from), w = NativePhone.whatText(info.what); this._postNotif(info.group, this._groupName(info.group), info.msgId, who !== 'NEXO' ? who + ': ' + (w || 'Mensaje nuevo') : w, { bg: true }); }
       else this._postNotif(info.from || 'nexo_jump', info.from ? this._notifName(info.from) : 'NEXO', info.msgId, NativePhone.whatText(info.what), { bg: true });
     }, 4000);
+  }
+  // #87 (C1, 2777): confirmación de ENTREGA firmada al emisor (el mensaje ya está a salvo aquí). La usan el modo cerrado
+  // (_closedReceive) y, desde 2833, el aviso de respaldo en segundo plano (_bgNotify) con el JS congelado. El emisor
+  // deduplica por tipo+id (un ack doble es inofensivo); sin clave de la pareja va sin firma (el emisor proto-2 lo ignora).
+  _sendDeliveredAck(fromAddress, info) {
+    const me = String(this.advertisingId || '').toLowerCase();
+    if (!me || !info.from || !fromAddress) return;
+    const ack = { v: 1, type: 'ack', msgId: info.msgId, from: me, ts: Date.now() };
+    const k = this.ackKeys && this.ackKeys.get(info.from);
+    if (k) ack.a = nodeCrypto.createHmac('sha256', k).update('nexo-ack|ack|' + info.msgId + '|' + me + '|' + info.from).digest().subarray(0, 12).toString('base64');
+    this._sendChunkedOrSingle(norm(fromAddress), JSON.stringify(ack));
   }
   _closedReceive(fromAddress, json) {
     const info = NativePhone.classifyClosed(json, this.advertisingId);
@@ -562,14 +578,7 @@ class NativePhone {
     };
     if (info.kind === 'MESSAGE') {
       this.bgInbox.push({ d: fromAddress, c: json, t: Date.now() });
-      const me = String(this.advertisingId || '').toLowerCase();
-      if (me) {
-        const ack = { v: 1, type: 'ack', msgId: info.msgId, from: me, ts: Date.now() };
-        // C1 (2777): firmar la confirmación con la clave de la pareja (si la app nos la dio), igual que el Kotlin
-        const k = this.ackKeys && this.ackKeys.get(info.from);
-        if (k) ack.a = nodeCrypto.createHmac('sha256', k).update('nexo-ack|ack|' + info.msgId + '|' + me + '|' + info.from).digest().subarray(0, 12).toString('base64');
-        this._sendChunkedOrSingle(norm(fromAddress), JSON.stringify(ack));
-      }
+      this._sendDeliveredAck(fromAddress, info);
       if (info.call) this._incomingCall(info.from, this._notifName(info.from), false, info.msgId, { closed: true });
       else if (!info.quiet) this._notifyMsg(info, { closed: true });
     } else if (info.kind === 'RECEIPT') this.bgInbox.push({ d: fromAddress, c: json, t: Date.now() });
