@@ -57,6 +57,25 @@ corrige lo que encuentres, y dame **una puntuación** y **la comparativa con la 
   elige el dueño), #112 (campaña final de seguridad — el dueño la pidió «al final»), #117 (FCM — el dueño despliega el
   enviador). Autónomo y sin bloquear quedaría **empezar a organizar Stream fase 2 (#95)** o **más rondas de auditoría**.
 
+## Prueba real de la 2823 (dueño 28-10 noche) → builds 2824 + 2825
+El dueño probó la 2823 en los dos teléfonos: **dos pruebas, S24 → Vivo con la app CERRADA + pantalla APAGADA y
+LLEGARON** (gran avance del #87: ya despertamos el otro teléfono). Reportó cuatro cosas; respondidas así:
+- ✅ **Entrega ✓✓ con la app cerrada (A, #87) — build 2825.** «El S24 solo marca enviado, no enviado-recibido»: con la app
+  cerrada el nativo (NetBg) avisaba pero NO devolvía la confirmación. Ahora la devuelve por el mismo buzón de relés,
+  sellada y **firmada con la clave de la pareja**, igual que armaría la app abierta. El dueño aclaró: **envío (✓) bien,
+  entrega (✓✓) era lo que faltaba, leído bien** (el leído sigue siendo cosa de la app al abrir el chat). Prueba Kotlin de
+  punta a punta con relé real. **Falta del dueño:** confirmar en los teléfonos que el emisor ve ✓✓ con el otro CERRADO.
+- ✅ **Pantalla que se enciende entera con la app cerrada (B) — sin cambio, por decisión del dueño.** Preguntado si la
+  quería discreta (solo la barra) o destacada (heads-up), eligió **«destacado: que se asome arriba»**. Es comportamiento
+  del fabricante para los avisos de importancia alta; se deja como está (no es cambio de código).
+- ✅ **Responder a una UBICACIÓN mostraba «código» (E) — build 2824.** `_msgSummary` no leía el adjunto de ubicación
+  codificado dentro de `content`; ahora muestra «📍 Ubicación» (`chat_format.js`, prueba `chatactions.js`).
+- ✅ **Deslizar para responder sin realimentación (F) — build 2824.** Ahora una flecha ↩ que crece con el desliz y, al
+  pasar el umbral, se ilumina y vibra, como WhatsApp (`chat_actions.js`, prueba `chatactions.js`).
+- ✅ **Gesto de la «N» en Perfil no abría el juego (C) — build 2824.** Faltaba `setPointerCapture` (el dedo salía de la
+  zona al dibujar la «N» alta); ahora captura el puntero + respaldo táctil (`nexo_game.js`, prueba `juego.js`).
+- ✅ **Guardada la 2823 como nueva base estable** (`base-estable-2823`, commit `b8644275`), como pidió el dueño.
+
 ## Decisiones del dueño 27-10 (madrugada) y nuevos pedidos
 El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de forma robusta», orden a mi criterio. Decisiones:
 
