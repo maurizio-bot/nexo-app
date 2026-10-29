@@ -136,6 +136,37 @@ tamaño, 3 buscar un entretenimiento para pegar un user a la pantalla».
   100 %, pero el bug del candado sí. **Falta del dueño:** confirmar en los teléfonos; si sigue sin abrir, mandar el
   diagnóstico (Perfil → Copiar diagnóstico) de los dos.
 
+## Revisión externa del dueño (29-10): verificación punto por punto (no se aceptó nada sin comprobar)
+1. **Limpieza del repo — ✅ VERDAD, ARREGLADO (parcial).** `node_modules` estaba versionado (4069 archivos, ≈91 % del
+   repo) y `local.properties` también. Dejados de rastrear en ambas ramas (build 2832 / 61588a20); `.gitignore` ampliado.
+   El CI usa `npm ci` y el sim instala sus deps, así que fue seguro. `.backup`/carpetas `build/` de Android: NO estaban
+   versionadas (esa parte del informe no aplica). **Falta (decisión del dueño):** purgar node_modules del HISTORIAL
+   (force-push destructivo que afecta base-estable y clones) — no lo hago sin su OK.
+2. **Rendimiento de archivos por BLE — ⚠️ PARCIAL / DESACTUALIZADO.** El «base64 + 33 %» YA se arregló (trozos binarios
+   por Bluetooth, `BinFrame.kt`, build 2753). El límite real hoy es MTU bajo/ventana en enlaces malos (MTU 23 del GATT
+   roto del dueño). Afinar chunk/ventana/MTU es un cambio profundo del protocolo que el dueño probó funcionando (2823) y
+   **necesita medición en teléfono real** (el sim no modela el throughput BLE) → hacerlo con cuidado y su diagnóstico, no a ciegas.
+3. **Huecos de seguridad (SEC-2, H3/H4/M5/M6) — ✅ VERDAD, documentados y abiertos** (`AUDITORIA.md`). SEC-2 (acc forjable
+   en alta-por-ID) está ATENUADO (contacto «sin verificar» + número de seguridad); el arreglo real es MITM de primer
+   contacto (como Signal con números de seguridad) → cambio de protocolo/UX a validar en teléfono. Pendiente de atacar de a uno.
+4. **Entrega/ticks con app cerrada — ⚠️ MEJORADO, no 100 %.** FCM (2816-2820), ✓✓ cerrado (2825), reenvío de leído al
+   reconectar (2827). Quedan casos de Bluetooth inestable; el techo es confirmación en teléfonos (índice B).
+5. **Código muerto/estructura — ⚠️ PARCIAL, por diseño.** CLAUDE.md dice que **solo entra en la APK lo que importa
+   `main.js`**; el resto de `src/` (fenix/net/mesh/auth experimentales) es intencional, no basura accidental. Se puede
+   marcar «experimental» más claramente, pero no son un bug.
+6. **Reconexión/descubrimiento — ⚠️ ITERADO, se puede endurecer.** Throttle de escaneo (2814), pausa del GATT roto
+   (2821), no abortar por parpadeo (2822). Más robustez posible con diagnósticos reales.
+7. **Firma/distribución — ✅ VERDAD (deuda).** Keystore debug fijo; nightlies firmados consistentes. Play Store internal
+   testing = decisión del dueño (cuenta de desarrollador, etc.).
+8. **Docs largas — ✅ VERDAD.** PROGRESO/PENDIENTES son largos. Propuesta: archivar el historial viejo y dejar estado +
+   últimas 5-7 builds. A confirmar (son la memoria de trabajo; no recortar a ciegas).
+9-11. **Vault/cifrado sólido, UX del core loop, congelar features — en línea con el plan.** El cifrado en reposo + huella
+   ya existe (fase 3); el intercambio de claves + ratchet existe (fase 2). «Congelar lo divertido hasta robustez alta» es
+   una decisión del dueño (yo seguí sus pedidos de emoji/stickers/juego; feliz de congelar si lo indica).
+
+**Orden que propongo (si el dueño da luz verde):** (1) ✅ limpieza repo [hecho] → (2) SEC-2 + autenticar control (H3/M5/M6)
+→ (3) medir y afinar rendimiento de archivos con diagnóstico real → (4) endurecer reconexión. Cada uno con su batería.
+
 ## Decisiones del dueño 27-10 (madrugada) y nuevos pedidos
 El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de forma robusta», orden a mi criterio. Decisiones:
 
