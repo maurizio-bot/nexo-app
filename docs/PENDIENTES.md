@@ -113,7 +113,7 @@ tamaño, 3 buscar un entretenimiento para pegar un user a la pantalla».
   base64, sin vault. 10 stickers (feliz, risa, guiño, triste, sorpresa, corazón, estrella, fuego, ok, logo
   NEXO); se ven grandes y SIN burbuja (`:has(.msg-sticker)`); entran por el 7.º ítem del menú de adjuntar
   (🙂) → hoja de rejilla. Id desconocido → 🎟️ (nunca bytes crudos). Prueba `tests/sim/stickers.js`;
-  batería **79/79**. APK en construcción (run 2829). **Falta del dueño:** confirmar en el teléfono.
+  batería **79/79**. APK **nightly-2829** publicada (sha256 `63715560…`). **Falta del dueño:** confirmar en el teléfono.
 - ⏳ **(3) Entretenimiento para «pegar» al usuario — por decidir, recomiendo juegos de 2 jugadores en el
   chat.** Encaje con NEXO (P2P, sin servidor, E2E): **juegos de 2 jugadores dentro del chat** (tres en
   raya → conecta-4) sobre el canal E2E que ya existe, como acción del protocolo; es lo único que a la vez
