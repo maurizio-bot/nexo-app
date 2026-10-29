@@ -78,7 +78,7 @@ class NexoFcmService : FirebaseMessagingService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         ) else null
         val b = NotificationCompat.Builder(this, MsgNotifier.CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setSmallIcon(MsgNotifier.msgIcon(this))
             .setContentTitle("NEXO")
             .setContentText("Mensaje nuevo")
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
