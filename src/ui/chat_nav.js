@@ -44,6 +44,10 @@ export function _setupBackButton() {
     // o el botón cierran primero el visor/estado/cámara y luego el chat, en vez de salir de la app de golpe.
     window.__nexoHandleBack = function() {
       try {
+        var ttt = document.getElementById('ttt-overlay');
+        if (ttt) { if (typeof window.__nexoCloseTtt === 'function') window.__nexoCloseTtt(); else ttt.remove(); return true; } // 2830: juego
+        var stk = document.getElementById('sticker-sheet');
+        if (stk) { stk.remove(); return true; } // 2829: hoja de stickers
         var fs = document.getElementById('fullscreen-media-overlay');
         if (fs) { if (typeof window.__nexoCloseMedia === 'function') window.__nexoCloseMedia(); else fs.remove(); return true; }
         var eo = document.getElementById('estado-overlay');
