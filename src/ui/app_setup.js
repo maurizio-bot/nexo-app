@@ -347,7 +347,8 @@ export function _setupChatHeader() {
       }
     };
     nameInput.addEventListener('blur', saveName);
-    nameInput.addEventListener('keypress', function(e) {
+    // El nombre es un <textarea> (puede ir en 2 líneas); Enter NO mete salto de línea: confirma y sale (rename).
+    nameInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') {
         e.preventDefault();
         nameInput.blur();
