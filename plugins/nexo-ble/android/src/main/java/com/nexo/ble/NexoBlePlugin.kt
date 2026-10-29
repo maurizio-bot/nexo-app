@@ -2542,6 +2542,7 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { call.reject("configuración ilegible"); return }
         val since = (call.getData().optLong("since", 0L))
         netBg().configure(me, relays, since, list)
+        netBg().setAckKeys(HashMap(ackKeys))   // #87: para confirmar la ENTREGA (✓✓) con la app cerrada
         if (appInBackground && list.isNotEmpty()) { wifiLockHold(true); netBg().start() }
         call.resolve(JSObject().put("contacts", list.size).put("running", netBg().running))
     }
@@ -2560,6 +2561,7 @@ class NexoBlePlugin : Plugin() {
                 val key = Base64.decode(o.getString("key"), Base64.NO_WRAP)
                 if (Regex("^nx[0-9a-z]{8}$").matches(nx) && key.isNotEmpty()) ackKeys[nx] = key
             }
+            netBgShared?.setAckKeys(HashMap(ackKeys))   // #87: que el modo cerrado por internet también pueda firmar el ✓✓
             call.resolve(JSObject().put("keys", ackKeys.size))
         } catch (e: Exception) { call.reject("claves de confirmación ilegibles") }
     }

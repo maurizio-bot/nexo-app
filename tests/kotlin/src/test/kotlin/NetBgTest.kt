@@ -66,9 +66,11 @@ class NetBgTest {
         val w = p.outputStream.bufferedWriter()
         try {
             val kraw = ByteArray(32) { (it * 7 + 3).toByte() }
+            val ackKey = ByteArray(32) { (it * 5 + 1).toByte() }   // #87: la clave con la que se firma la confirmación de entrega
             val got = CopyOnWriteArrayList<String>()
             val bg = NetBg({ nx, name, msgId -> got.add("$nx|$name|$msgId") })
             bg.configure("nxbbbbbbbb", listOf(url), System.currentTimeMillis() - 60000, listOf(NetBg.Contact("nxaaaaaaaa", "Ana", kraw)))
+            bg.setAckKeys(mapOf("nxaaaaaaaa" to ackKey))
             bg.start()
             Thread.sleep(1500)
             fun send(body: String) { w.write("{\"kraw\":\"${Secp256k1.hex(kraw)}\",\"from\":\"nxaaaaaaaa\",\"to\":\"nxbbbbbbbb\",\"body\":$body}\n"); w.flush() }
@@ -82,6 +84,32 @@ class NetBgTest {
             while (got.size < 2 && System.currentTimeMillis() - t0 < 10000) Thread.sleep(100)
             Thread.sleep(800)
             assertEquals(listOf("nxaaaaaaaa|Ana|m1", "nxaaaaaaaa|Ana|m2"), got.toList())
+            // #87: NetBg devolvió la confirmación de ENTREGA (✓✓) de cada mensaje NUEVO, por el buzón del EMISOR (su
+            // etiqueta del día), sellada para que solo él la abra y firmada con la clave de la pareja. Ni el saludo ni la
+            // confirmación entrante ni el mensaje de otro contacto generan confirmación (solo los que traen msgId).
+            w.write("DUMP\n"); w.flush()
+            var dump: String? = null
+            val td = System.currentTimeMillis()
+            while (dump == null && System.currentTimeMillis() - td < 5000) { dump = lines.lastOrNull { it.startsWith("EVENTS ") }; if (dump == null) Thread.sleep(100) }
+            assertNotNull(dump, "el relé no devolvió sus eventos (DUMP)")
+            val events = JSONArray(dump!!.removePrefix("EVENTS "))
+            val ackTagPub = Secp256k1.hex(Secp256k1.xOnly(NetBg.tagKey(kraw, "nxaaaaaaaa", NetBg.day(0))))
+            val acks = HashMap<String, JSONObject>()
+            for (i in 0 until events.length()) {
+                val e = events.getJSONObject(i); val tgs = e.getJSONArray("tags")
+                var toEmisor = false
+                for (j in 0 until tgs.length()) { val t = tgs.getJSONArray(j); if (t.getString(0) == "p" && t.getString(1) == ackTagPub) toEmisor = true }
+                if (!toEmisor) continue
+                val body = NetBg.open(kraw, "nxbbbbbbbb", "nxaaaaaaaa", e.getString("content"))
+                assertNotNull(body, "la confirmación de entrega no se abre con la clave de la pareja")
+                val a = JSONObject(body!!.getString("p")); acks[a.getString("msgId")] = a
+            }
+            assertEquals(setOf("m1", "m2"), acks.keys, "una confirmación de entrega por cada mensaje nuevo (y solo por esos)")
+            for ((msgId, a) in acks) {
+                assertEquals("ack", a.getString("type"))
+                assertEquals("nxbbbbbbbb", a.getString("from"))
+                assertEquals(NetBg.ackMac(ackKey, "ack|$msgId|nxbbbbbbbb|nxaaaaaaaa"), a.getString("a"), "la confirmación va firmada con la clave de la pareja")
+            }
             w.write("STATS\n"); w.flush(); Thread.sleep(500)
             val stats = lines.lastOrNull { it.startsWith("STATS ") }
             assertNotNull(stats); assertTrue(JSONObject(stats.removePrefix("STATS ")).getInt("auths") >= 1, "se identificó ante el relé (NIP-42): $stats")

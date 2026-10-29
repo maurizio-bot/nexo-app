@@ -79,6 +79,8 @@ if (mode === 'relay') {
   rl.on('line', (line) => {
     if (!line.trim()) return;
     if (line.trim() === 'STATS') { chain = chain.then(() => { console.log('STATS ' + JSON.stringify({ auths: relay.stats.auths, published: relay.stats.published, rejected: relay.stats.rejected })); }); return; }
+    // Lo que el relé tiene guardado (para comprobar lo que PUBLICA NetBg, p. ej. la confirmación de entrega del #87)
+    if (line.trim() === 'DUMP') { chain = chain.then(() => { console.log('EVENTS ' + JSON.stringify(relay.events.map((e) => ({ tags: e.tags, content: e.content })))); }); return; }
     chain = chain.then(() => publish(line));
   });
 }
