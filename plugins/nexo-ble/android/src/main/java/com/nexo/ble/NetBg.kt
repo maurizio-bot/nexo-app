@@ -46,6 +46,27 @@ class NetBg(
             val s = String(c.doFinal(raw, 12, raw.size - 12), Charsets.UTF_8)
             if (SafeJson.reject(s)) null else JSONObject(s) // ni un contacto puede tumbar la app con un sobre muy anidado
         } catch (e: Exception) { null }
+        // Sella como la app (NetLink.send): base64(iv[12] + AES-GCM), datos asociados "NEXO-NET|de|para"
+        fun seal(kraw: ByteArray, from: String, to: String, plain: String): String {
+            val iv = ByteArray(12); java.security.SecureRandom().nextBytes(iv)
+            val c = Cipher.getInstance("AES/GCM/NoPadding")
+            c.init(Cipher.ENCRYPT_MODE, SecretKeySpec(kraw, "AES"), GCMParameterSpec(128, iv))
+            c.updateAAD("NEXO-NET|$from|$to".toByteArray())
+            val ct = c.doFinal(plain.toByteArray(Charsets.UTF_8))
+            val all = ByteArray(iv.size + ct.size); System.arraycopy(iv, 0, all, 0, iv.size); System.arraycopy(ct, 0, all, iv.size, ct.size)
+            return Base64.getEncoder().encodeToString(all)
+        }
+        // MAC corto (base64 de 12 bytes) de una confirmación, igual que e2eAckTag en la app (y ackTag en el plugin para
+        // el ✓✓ del modo cerrado por Bluetooth): HMAC-SHA256 de "nexo-ack|<campos>" con la clave de la pareja.
+        fun ackMac(key: ByteArray, fields: String): String {
+            val mac = Mac.getInstance("HmacSHA256"); mac.init(SecretKeySpec(key, "HmacSHA256"))
+            return Base64.getEncoder().encodeToString(mac.doFinal("nexo-ack|$fields".toByteArray(Charsets.UTF_8)).copyOf(12))
+        }
+        // Clave privada efímera válida para firmar un evento Nostr (como schnorr.utils.randomSecretKey en la app)
+        fun randomSk(): ByteArray {
+            val b = ByteArray(32); java.security.SecureRandom().nextBytes(b)
+            return Secp256k1.b32(java.math.BigInteger(1, b).mod(Secp256k1.N.subtract(java.math.BigInteger.ONE)).add(java.math.BigInteger.ONE))
+        }
         // Cadena JSON como la escribe JSON.stringify (org.json escapa "/" y el id del evento no coincidiría)
         fun q(s: String): String {
             val b = StringBuilder(s.length + 2); b.append('"')
@@ -81,6 +102,10 @@ class NetBg(
     private var thread: Thread? = null
     private val seen = LinkedHashSet<String>()
     private val lock = Object()
+    // Auditoría C1 / #87: por contacto, la clave para FIRMAR la confirmación de entrega (✓✓) que mandamos con la app
+    // cerrada (la misma que ackKeys del plugin para el modo Bluetooth). La pone la app; vacío = se manda sin firma (un
+    // contacto antiguo la ignora, igual que hoy).
+    @Volatile private var ackKeys: Map<String, ByteArray> = emptyMap()
 
     fun configure(me: String, relayUrls: List<String>, since: Long, list: List<Contact>) {
         synchronized(lock) {
@@ -95,6 +120,9 @@ class NetBg(
     fun configured() = me.isNotEmpty() && contacts.isNotEmpty() && relays.isNotEmpty()
     // Nombre de un contacto (para la notificación de lo que llega por Bluetooth con la app cerrada)
     fun nameOf(nx: String): String? = contacts.firstOrNull { it.nx == nx.lowercase() }?.name?.takeIf { it.isNotEmpty() }
+    // La app nos pasa, por contacto, la clave con la que firmar la confirmación de entrega del modo cerrado (igual que
+    // al plugin). Se reemplaza el conjunto entero en cada llamada.
+    fun setAckKeys(m: Map<String, ByteArray>) { ackKeys = m }
 
     fun start() {
         if (running || !configured()) return
@@ -201,6 +229,29 @@ class NetBg(
         val o = open(c.kraw, c.nx, me, ev.optString("content")) ?: return
         if (o.optInt("h") == 1) return
         val n = o.optString("n")
-        if (n.isNotEmpty()) onMessage(c.nx, c.name, n)
+        if (n.isNotEmpty()) { onMessage(c.nx, c.name, n); publishDeliveryAck(c, n) }
+    }
+
+    // #87 (entrega con la app CERRADA): al reconocer un sobre con un mensaje NUEVO de la pareja, devolvemos su
+    // confirmación de ENTREGA (✓✓) por el mismo buzón de relés, igual que haría la app abierta (ble_ack._sendReceipt →
+    // net.send): sobre {t,w,p} con p = {v:1,type:"ack",msgId,from,ts,a}, firmado con la clave de la pareja si la
+    // tenemos (un contacto antiguo la ignora). Así el emisor pasa de ✓ a ✓✓ aunque este teléfono tenga la app cerrada.
+    // El «leído» sigue siendo cosa de la app (al abrir el chat), como pidió el dueño.
+    private fun publishDeliveryAck(c: Contact, msgId: String) {
+        try {
+            val open = synchronized(lock) { relays.values.mapNotNull { it.ws }.filter { it.open } }
+            if (open.isEmpty()) return
+            val now = System.currentTimeMillis()
+            val ack = JSONObject().put("v", 1).put("type", "ack").put("msgId", msgId).put("from", me).put("ts", now)
+            ackKeys[c.nx]?.let { ack.put("a", ackMac(it, "ack|$msgId|$me|${c.nx}")) }
+            val body = JSONObject().put("t", now).put("w", 0).put("p", ack.toString())
+            val b64 = seal(c.kraw, me, c.nx, body.toString())
+            val tagPub = Secp256k1.hex(Secp256k1.xOnly(tagKey(c.kraw, c.nx, day(0))))
+            val ttl = now / 1000 + 7 * 86400   // TTL_MSG en la app (net_link._ttlFor de un ack)
+            val ev = event(randomSk(), KIND, listOf(listOf("p", tagPub), listOf("expiration", ttl.toString())), b64)
+            val frame = JSONArray(listOf("EVENT", ev)).toString()
+            for (ws in open) try { ws.send(frame) } catch (e: Exception) {}
+            log("Internet en segundo plano: confirmación de entrega (✓✓) a $msgId de ${c.nx}")
+        } catch (e: Exception) { log("Internet en segundo plano: no se pudo confirmar la entrega ($e)") }
     }
 }
