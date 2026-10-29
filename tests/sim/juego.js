@@ -39,6 +39,13 @@ function pathN() {
 }
 function pathLine() { const p = []; for (let y = 100; y <= 300; y += 15) p.push({ x: 100, y }); return p; } // recta vertical
 function pathDiag() { const p = []; for (let t = 0; t <= 1.0001; t += 0.08) p.push({ x: 100 + 120 * t, y: 100 + 200 * t }); return p; } // diagonal
+// Variaciones REALES de una «N» dibujada con el dedo (informe del dueño 29-10): estrecha, ancha, de pocos puntos
+// (dedo rápido) e inclinada. El reconocedor robusto debe aceptarlas; una «V» (sin 3.er trazo) debe rechazarse.
+function pathNnarrow() { const p = []; for (let y = 80; y <= 300; y += 18) p.push({ x: 120, y }); for (let t = 0; t <= 1.0001; t += 0.12) p.push({ x: 120 + 55 * t, y: 300 - 220 * t }); for (let y = 80; y <= 300; y += 18) p.push({ x: 175, y }); return p; }
+function pathNwide() { const p = []; for (let y = 90; y <= 260; y += 20) p.push({ x: 60, y }); for (let t = 0; t <= 1.0001; t += 0.1) p.push({ x: 60 + 200 * t, y: 260 - 170 * t }); for (let y = 90; y <= 260; y += 20) p.push({ x: 260, y }); return p; }
+function pathNfast() { return [{ x: 100, y: 90 }, { x: 100, y: 200 }, { x: 100, y: 300 }, { x: 150, y: 200 }, { x: 200, y: 100 }, { x: 200, y: 200 }, { x: 200, y: 300 }]; }
+function pathNslant() { const p = []; for (let y = 100; y <= 300; y += 20) p.push({ x: 100 + (y - 100) * 0.12, y }); for (let t = 0; t <= 1.0001; t += 0.12) p.push({ x: 124 + 110 * t, y: 300 - 200 * t }); for (let y = 100; y <= 300; y += 20) p.push({ x: 234 + (y - 100) * 0.12, y }); return p; }
+function pathV() { const p = []; for (let t = 0; t <= 1.0001; t += 0.08) p.push({ x: 100 + 60 * t, y: 100 + 200 * t }); for (let t = 0; t <= 1.0001; t += 0.08) p.push({ x: 160 + 60 * t, y: 300 - 200 * t }); return p; }
 
 (async () => {
   const radio = new Radio();
@@ -56,6 +63,12 @@ function pathDiag() { const p = []; for (let t = 0; t <= 1.0001; t += 0.08) p.pu
   r.recta_rechazada = !!(g && g.recognizeN(pathLine()) === false);
   r.diagonal_rechazada = !!(g && g.recognizeN(pathDiag()) === false);
   r.corto_rechazado = !!(g && g.recognizeN([{ x: 0, y: 0 }, { x: 1, y: 1 }]) === false);
+  // Variaciones reales de la «N» (deben aceptarse) y una «V» (debe rechazarse)
+  r.N_estrecha = !!(g && g.recognizeN(pathNnarrow()));
+  r.N_ancha = !!(g && g.recognizeN(pathNwide()));
+  r.N_rapida = !!(g && g.recognizeN(pathNfast()));
+  r.N_inclinada = !!(g && g.recognizeN(pathNslant()));
+  r.V_rechazada = !!(g && g.recognizeN(pathV()) === false);
 
   // 2. Clasificación
   if (g) { g.addScore(100, 2); g.addScore(250, 5); g.addScore(50, 1); }
@@ -92,6 +105,21 @@ function pathDiag() { const p = []; for (let t = 0; t <= 1.0001; t += 0.08) p.pu
     r.gesto_abre_juego = !!ov2;
     if (ov2) { const b = ov2.querySelector('button'); if (b) b.dispatchEvent(new win.MouseEvent('click', { bubbles: true })); await sleep(50); }
   } else { r.gesto_abre_juego = false; }
+  // 4c. Caso del WebView real (informe del dueño 29-10): pointerdown SÍ llega pero los pointermove NO de forma fiable;
+  //     los movimientos vienen por TOUCH. Antes el "lock" del pointer bloqueaba el touch → trazo de 1 punto → no abría.
+  //     Ahora pointer y touch alimentan el mismo trazo y debe abrir.
+  if (zona) {
+    const tev = (type, pt) => { const e = new win.Event(type, { bubbles: true }); e.touches = [{ clientX: pt.x, clientY: pt.y }]; zona.dispatchEvent(e); };
+    const mev = (type, pt) => zona.dispatchEvent(new win.MouseEvent(type, { clientX: pt.x, clientY: pt.y, bubbles: true }));
+    const np = pathN();
+    mev('pointerdown', np[0]);                                      // el pointer empieza el trazo
+    for (let i = 1; i < np.length; i++) tev('touchmove', np[i]);    // pero los movimientos llegan por touch
+    tev('touchend', np[np.length - 1]);
+    await sleep(120);
+    const ov3 = win.document.getElementById('nexo-game-overlay');
+    r.gesto_mixto_abre = !!ov3;
+    if (ov3) { const b = ov3.querySelector('button'); if (b) b.dispatchEvent(new win.MouseEvent('click', { bubbles: true })); await sleep(50); }
+  } else { r.gesto_mixto_abre = false; }
   const btnAjustes = perfil && perfil.querySelector('#nexo-open-settings');
   if (btnAjustes) btnAjustes.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
   await sleep(200);
@@ -101,8 +129,9 @@ function pathDiag() { const p = []; for (let t = 0; t <= 1.0001; t += 0.08) p.pu
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|is not a function|RangeError/.test(l)).slice(0, 4);
   const ok = r.hay_api && r.N_aceptada && r.recta_rechazada && r.diagonal_rechazada && r.corto_rechazado &&
+    r.N_estrecha && r.N_ancha && r.N_rapida && r.N_inclinada && r.V_rechazada &&
     r.clasifica_ordenada && r.clasifica_persiste && r.abre_overlay && r.cierra_overlay &&
-    r.perfil_abre && r.ajustes_abre && r.gesto_cableado && r.gesto_abre_juego && r.gesto_no_en_ajustes && r.errores.length === 0;
+    r.perfil_abre && r.ajustes_abre && r.gesto_cableado && r.gesto_abre_juego && r.gesto_mixto_abre && r.gesto_no_en_ajustes && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('JUEGO ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_juego.txt'), logs.join('\n'));
