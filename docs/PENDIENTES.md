@@ -114,12 +114,15 @@ tamaño, 3 buscar un entretenimiento para pegar un user a la pantalla».
   NEXO); se ven grandes y SIN burbuja (`:has(.msg-sticker)`); entran por el 7.º ítem del menú de adjuntar
   (🙂) → hoja de rejilla. Id desconocido → 🎟️ (nunca bytes crudos). Prueba `tests/sim/stickers.js`;
   batería **79/79**. APK **nightly-2829** publicada (sha256 `63715560…`). **Falta del dueño:** confirmar en el teléfono.
-- ⏳ **(3) Entretenimiento para «pegar» al usuario — por decidir, recomiendo juegos de 2 jugadores en el
-  chat.** Encaje con NEXO (P2P, sin servidor, E2E): **juegos de 2 jugadores dentro del chat** (tres en
-  raya → conecta-4) sobre el canal E2E que ya existe, como acción del protocolo; es lo único que a la vez
-  respeta la identidad sin-servidor Y da un motivo social para volver (partida en curso). Alternativas:
-  ampliar «Defensor NEXO»; rachas/logros; efectos. Por autonomía, tras los stickers arranco con tres en
-  raya salvo que el dueño prefiera otra. Detalle en scratchpad `entretenimiento-3.md`.
+- ✅ **(3) Entretenimiento para «pegar» al usuario — build 2830: TRES EN RAYA (1.ª entrega de juegos de 2
+  jugadores en el chat).** Recomendación: juegos de 2 jugadores, que es lo que mejor encaja con lo P2P/sin
+  servidor de NEXO y da un motivo social para volver. Tres en raya entre dos contactos sobre el canal E2E
+  que ya existe, como acción oculta del protocolo (`nexo_act act:'game', g:'ttt'`), **asíncrono** (la
+  jugada llega cuando el otro vuelve). Robusto: tablero completo por jugada (idempotente) + validación
+  estricta al recibir (sin trampa/desorden). `src/ui/ttt.js` + overlay 3×3 + 8º ítem 🎮 del menú + atrás
+  de Android cierra el overlay. Prueba `tests/sim/ttt.js`; batería **80/80**. APK en construcción (run 2830).
+  **Pendiente del dueño:** confirmar en los teléfonos y decir si quiere **conecta-4** (mismo motor) u otra
+  dirección (ampliar «Defensor NEXO», rachas/logros, efectos). Detalle en scratchpad `entretenimiento-3.md`.
 
 ## Decisiones del dueño 27-10 (madrugada) y nuevos pedidos
 El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de forma robusta», orden a mi criterio. Decisiones:
