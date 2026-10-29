@@ -186,6 +186,27 @@ var _notifier = createNotifier({
 });
 initE2E().then(function() { return ratchetInit(); }).catch(function(e) { console.warn('[E2E] init:', e && e.message); });
 
+// Ronda 2826 (pedido del dueño 29-10): el transporte del chat (Wi-Fi / Internet / Bluetooth) se muestra como SÍMBOLO
+// en vez de la palabra — se ve mejor y ocupa menos, dejando sitio al nombre. Iconos dibujados (SVG, color del subtítulo
+// por currentColor; iguales en claro/oscuro). El SVG es SIEMPRE estático (nunca lleva datos del remitente) → seguro.
+var _VIA_ICON = {
+  wifi: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 11a13 13 0 0 1 16 0"/><path d="M7.5 14.5a8 8 0 0 1 9 0"/><circle cx="12" cy="18.6" r="1.1" fill="currentColor" stroke="none"/></svg>',
+  internet: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3 2.5 3 14.5 0 17M12 3.5c-3 2.5-3 14.5 0 17"/></svg>',
+  bluetooth: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M8 8l8 8-4 3V5l4 3-8 8"/></svg>'
+};
+var _VIA_WORD = { wifi: 'Wi-Fi', internet: 'Internet', bluetooth: 'Bluetooth' };
+// Subtítulo del chat 1:1: devuelve {html, text}. El html lleva el icono del transporte (estático); text es la versión
+// en palabras (para el tooltip accesible). mtu<60 por Bluetooth marca «señal débil» (ronda 2798).
+function _subtitleFor(via, mtu) {
+  if (via === 'jump') return { html: 'Por Jump', text: 'Por Jump' };
+  if (!_VIA_ICON[via]) return { html: '', text: '' };
+  var weak = via === 'bluetooth' && mtu > 0 && mtu < 60;
+  var word = 'En línea · ' + _VIA_WORD[via] + (weak ? ' · señal débil' : '');
+  var html = 'En línea · <span class="via-ico" role="img" aria-label="' + _VIA_WORD[via] + '">' + _VIA_ICON[via] + '</span>' + (weak ? ' · <span class="via-weak">⚠ señal débil</span>' : '');
+  return { html: html, text: word };
+}
+try { if (typeof window !== 'undefined') window.__nexoViaSubtitle = _subtitleFor; } catch (e) {} // gancho de pruebas (puro)
+
 // v9.9.48: por dónde va el contacto del chat abierto (Wi-Fi de la misma red, Bluetooth, Jump)
 function _refreshLinkSubtitle() {
   var sub = document.getElementById('chat-contact-subtitle');
@@ -193,19 +214,34 @@ function _refreshLinkSubtitle() {
   if (sub && bi && bi.groups && bi.groups.isGroup(cid)) { sub.textContent = groupSubtitle(bi.groups.get(cid)); return; } // ronda 2758
   if (!sub || !bi || typeof bi.linkOf !== 'function' || !cid) return;
   var via = bi.linkOf(cid);
-  var base = via === 'wifi' ? 'En línea · Wi-Fi' : via === 'internet' ? 'En línea · Internet' : via === 'bluetooth' ? 'En línea · Bluetooth' : via === 'jump' ? 'Por Jump' : '';
-  // Ronda 2798 (pedido del dueño): avisar de MALA SEÑAL. Por Bluetooth, un MTU que se quedó pequeño (p. ej. 23, sin
-  // negociar) hace el enlace MUY lento — el dueño lo vio en su diagnóstico ("Bluetooth muy lento"). Se marca en el
-  // subtítulo para que entienda por qué va lento (no es un fallo: es la radio de ese par de teléfonos).
-  if (via === 'bluetooth' && typeof bi.getMtu === 'function' && bi._activeChatDeviceId) {
-    var mtu = bi.getMtu(bi._activeChatDeviceId);
-    if (mtu > 0 && mtu < 60) base += ' · ⚠ señal débil';
-  }
-  sub.textContent = base;
+  var mtu = (via === 'bluetooth' && typeof bi.getMtu === 'function' && bi._activeChatDeviceId) ? bi.getMtu(bi._activeChatDeviceId) : 0;
+  var r = _subtitleFor(via, mtu);
+  sub.innerHTML = r.html;       // solo SVG estático + texto fijo (sin datos del remitente)
+  sub.title = r.text;           // tooltip accesible con la palabra completa (Wi-Fi/Internet/Bluetooth)
+}
+// Ronda 2826 (pedido del dueño): un nombre de contacto largo se parte en DOS líneas en vez de cortarse. El nombre es un
+// <textarea> (editable); aquí se ajusta su alto real a 1–2 líneas (el CSS lo acota a 2). Se llama al abrir el chat y al
+// escribir.
+function _fitContactName() {
+  try {
+    var el = document.getElementById('chat-contact-name');
+    if (!el || el.tagName !== 'TEXTAREA') return;
+    el.style.height = 'auto';
+    var max = 48; // ~2 líneas (el CSS pone el tope real con max-height)
+    var h = el.scrollHeight || 0;
+    el.style.height = (h ? Math.min(h, max) : 24) + 'px';
+  } catch (e) {}
 }
 ['nexo:ble:linkChange', 'nexo:ble:deviceDisconnected', 'nexo:ble:openChat'].forEach(function(ev) {
-  window.addEventListener(ev, function() { setTimeout(_refreshLinkSubtitle, 50); });
+  window.addEventListener(ev, function() { setTimeout(function() { _refreshLinkSubtitle(); _fitContactName(); }, 50); });
 });
+function installContactNameAutosize() {
+  var n = document.getElementById('chat-contact-name');
+  if (!n) return;
+  n.addEventListener('input', _fitContactName);
+  _fitContactName();
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installContactNameAutosize); else installContactNameAutosize();
 
 // Ronda 2758: chats de grupo (groups.js / groups_ui.js)
 // Ronda 2765: una vez, pedir que el ahorro de batería no congele NEXO (el Vivo del dueño la congelaba y los avisos

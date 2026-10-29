@@ -161,7 +161,7 @@ Consolidado: inline + main.css + ble_styles
    /* Chat Header */
    #chat-header {
    flex-shrink: 0;
-   height: 56px;
+   min-height: 56px;
    background: rgba(0,0,0,0.95);
    backdrop-filter: blur(10px);
    -webkit-backdrop-filter: blur(10px);
@@ -196,27 +196,50 @@ Consolidado: inline + main.css + ble_styles
    }
    .chat-back-btn.visible { display: flex; }
    .chat-back-btn:active { transform: translateY(-50%) scale(0.92); }
+   /* Nombre + subtítulo en COLUMNA (nombre arriba, estado abajo); el nombre largo se parte en 2 líneas
+      en vez de cortarse (pedido del dueño 29-10). 44px de hueco a la izquierda para no quedar bajo el botón «atrás». */
+   #chat-contact-info {
+   flex: 1 1 auto;
+   min-width: 0;
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   justify-content: center;
+   text-align: center;
+   padding: 4px 8px 4px 44px;
+   overflow: hidden;
+   }
    #chat-contact-name {
    background: transparent;
    border: none;
-   border-bottom: 1px solid transparent;
    color: #fff;
    font-size: 16px;
    font-weight: 600;
    text-align: center;
-   width: 60%;
+   width: 100%;
    outline: none;
-   padding: 2px 8px;
-   transition: border-color 0.2s;
+   padding: 0 2px;
+   font-family: inherit;
+   resize: none;
+   overflow: hidden;
+   display: block;
+   line-height: 1.15;
+   max-height: 2.4em;          /* hasta 2 líneas; si no cabe, se recorta (no se corta en 1 sola) */
+   white-space: normal;
+   word-break: break-word;
+   overflow-wrap: anywhere;
    }
-   #chat-contact-name:focus { border-bottom-color: #00c8ff; }
    #chat-contact-subtitle {
    font-size: 11px;
    color: #22c55e;
-   margin-top: 2px;
+   margin-top: 1px;
    text-transform: uppercase;
    letter-spacing: 1px;
+   white-space: nowrap;
    }
+   .via-ico { display: inline-block; margin-left: 1px; }
+   .via-ico svg { display: inline-block; vertical-align: -2px; }
+   .via-weak { color: #f59e0b; }
    /* Messages */
    #messages-container {
    flex-direction: column;

@@ -65,17 +65,42 @@ export function _peerUnderstands(cid) {
 // Recortar texto sin partir un emoji ni otro carácter de dos unidades (quedaría "�")
 export function _cut(s, n) { s = String(s == null ? '' : s); if (s.length <= n) return s; var c = s.charCodeAt(n - 1); return s.substring(0, (c >= 0xD800 && c <= 0xDBFF) ? n - 1 : n); }
 
+// Etiqueta de vista previa de un adjunto. Para un ARCHIVO se usa su NOMBRE (meta.name, como lo lee file_card.js), no la
+// palabra genérica «Archivo» (informe del dueño 29-10: al responder a un archivo salía «Archivo» en vez del nombre).
+function _attachLabel(at, meta) {
+  if (at === 'file') {
+    var fn = meta && (meta.name || meta.fileName);
+    return fn ? '📎 ' + String(fn) : '📎 Archivo';
+  }
+  return _PREVIEW_BY_TYPE[at] || '📎 Archivo';
+}
+
 export function _msgSummary(msg) {
-  if (msg.attachmentType) return { k: msg.attachmentType, s: _PREVIEW_BY_TYPE[msg.attachmentType] || '📎 Archivo' };
-  // Un adjunto (ubicación, foto…) puede venir codificado DENTRO de content
-  // ({"type":"attachment","attachmentType":"location",...}); sin esto, responder a una ubicación así guardada mostraba
-  // el JSON crudo («código») en vez de «📍 Ubicación» (informe del dueño 28-10).
+  // 1) Adjunto en campos (lo normal en el vault): foto, vídeo, audio, ubicación, archivo…
+  if (msg.attachmentType) return { k: msg.attachmentType, s: _attachLabel(msg.attachmentType, msg.attachmentMeta) };
+  // 2) Un adjunto puede venir codificado DENTRO de content ({"type":"attachment","attachmentType":"…","meta":{…}}).
+  //    Sin esto, responder a una ubicación o a un archivo guardado así mostraba el JSON crudo («código») en vez de
+  //    «📍 Ubicación» o «📎 <nombre>» (informes del dueño 28/29-10).
   if (typeof msg.content === 'string' && msg.content.indexOf('"attachmentType"') > -1) {
     try {
       var p = JSON.parse(msg.content);
-      if (p && p.type === 'attachment' && p.attachmentType) return { k: p.attachmentType, s: _PREVIEW_BY_TYPE[p.attachmentType] || '📎 Archivo' };
+      if (p && p.type === 'attachment' && p.attachmentType) return { k: p.attachmentType, s: _attachLabel(p.attachmentType, p.meta) };
     } catch (e) {}
   }
+  // 3) Texto normal (nexo_txt / nexo_act) → su texto plano, recortado sin partir emojis.
+  var k = _chatKind(msg.content);
+  if (k) return { k: 'text', s: _cut(String(k.t || ''), 100) };
+  // 4) Cualquier OTRO JSON de protocolo (descriptor de archivo, trozo, control…): NUNCA mostrar el «código» crudo. Se
+  //    intenta sacar un nombre de archivo; si no, etiqueta genérica. (El archivo del dueño caía aquí y salía como código.)
+  if (typeof msg.content === 'string' && msg.content.charAt(0) === '{') {
+    try {
+      var o = JSON.parse(msg.content);
+      var fn2 = o && ((o.meta && (o.meta.name || o.meta.fileName)) || o.name || o.fileName || o.fn);
+      if (fn2) return { k: 'file', s: '📎 ' + String(fn2) };
+    } catch (e2) {}
+    return { k: 'file', s: '📎 Archivo' };
+  }
+  // 5) Texto suelto (sin envoltorio).
   return { k: 'text', s: _cut(_plainText(msg.content), 100) };
 }
 

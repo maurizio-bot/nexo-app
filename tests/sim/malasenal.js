@@ -28,7 +28,9 @@ async function boot(name, native) {
 }
 const click = (w, el) => el && el.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
 async function openChat(p) { click(p.win, p.win.document.querySelector('#main-contacts-list .ble-contact-row')); await sleep(600); }
-const sub = (p) => (p.win.document.getElementById('chat-contact-subtitle') || {}).textContent || '';
+// Ronda 2826: el transporte se muestra como ICONO (no la palabra); el título (tooltip) conserva «Bluetooth»/«señal
+// débil». Se miran los dos (título + texto visible) para comprobar el transporte y el aviso de señal.
+const sub = (p) => { var el = p.win.document.getElementById('chat-contact-subtitle') || {}; return (el.title || '') + ' ' + (el.textContent || ''); };
 async function refresh(p) { p.win.dispatchEvent(new p.win.CustomEvent('nexo:ble:linkChange', { detail: {} })); await sleep(200); }
 async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await fn()) return true; await sleep(150); } return false; }
 

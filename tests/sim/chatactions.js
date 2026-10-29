@@ -118,6 +118,20 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   r.resumen_ubic_contenido = ms ? ms({ content: '{"type":"attachment","attachmentType":"location","payload":"{\\"lat\\":19.4,\\"lng\\":-99.1}"}' }).s : null;
   r.resumen_ubic_campo = ms ? ms({ attachmentType: 'location', content: '' }).s : null;
   r.resumen_texto = ms ? ms({ content: 'hola mundo' }).s : null;
+  // 2e) F (informe del dueño 29-10): responder a un ARCHIVO muestra su NOMBRE (no «Archivo») y NUNCA el código crudo,
+  //     ya venga como campo (attachmentMeta.name), codificado en content, o como descriptor de protocolo suelto.
+  r.resumen_archivo_nombre = ms ? ms({ attachmentType: 'file', attachmentMeta: { name: 'informe.pdf' } }).s : null;         // «📎 informe.pdf»
+  r.resumen_archivo_contenido = ms ? ms({ content: '{"type":"attachment","attachmentType":"file","payload":"AAA","meta":{"name":"foto.jpg"}}' }).s : null;
+  r.resumen_archivo_descriptor = ms ? ms({ content: '{"v":1,"t":"f","m":"x","fn":"video.mp4","n":4}' }).s : null;          // «📎 video.mp4»
+  r.resumen_sin_codigo = ms ? (ms({ content: '{"v":1,"t":"f","m":"x","n":4}' }).s.indexOf('{') === -1) : null;             // nunca JSON crudo
+  // 2f) Transporte del chat como SÍMBOLO (pedido del dueño 29-10): icono SVG en vez de la palabra; el tooltip la conserva.
+  const vs = A.win.__nexoViaSubtitle;
+  r.subt_wifi_icono = vs ? (vs('wifi', 0).html.indexOf('<svg') > -1 && vs('wifi', 0).text.indexOf('Wi-Fi') > -1) : null;
+  r.subt_internet_icono = vs ? (vs('internet', 0).html.indexOf('<svg') > -1 && vs('internet', 0).text.indexOf('Internet') > -1) : null;
+  r.subt_bluetooth_icono = vs ? (vs('bluetooth', 0).html.indexOf('<svg') > -1 && vs('bluetooth', 0).text.indexOf('Bluetooth') > -1) : null;
+  r.subt_solo_icono = vs ? (vs('wifi', 0).html.replace(/<[^>]*>/g, '').indexOf('Wi-Fi') === -1) : null;                     // la palabra no se ve (solo icono)
+  r.subt_senal_debil = vs ? (vs('bluetooth', 23).html.indexOf('⚠') > -1) : null;
+  r.nombre_es_textarea = A.win.document.getElementById('chat-contact-name') ? (A.win.document.getElementById('chat-contact-name').tagName === 'TEXTAREA') : null;
   // 3) Copiar
   ctx(A, bubbleWith(A, 'pregunta de B')); click(A.win, await menuItem(A, 'mm-copy')); await sleep(300);
   r.copiar_aviso = ((A.win.document.getElementById('perm-error-toast') || {}).textContent || '');

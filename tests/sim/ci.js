@@ -96,7 +96,11 @@ const SCENARIOS = [
     barra_editar: isTrue, A_ve_editado: isTrue, B_recibe_edicion_s: (v) => typeof v === 'number', B_ve_editado: isTrue,
     B_ve_eliminado_s: (v) => typeof v === 'number', accion_falsa_ignorada: isTrue, json_visible: (v) => v === 0,
     desliz_muestra_flecha: isTrue, desliz_quita_flecha: isTrue, resumen_ubic_contenido: (v) => /Ubicación/.test(v || ''),
-    resumen_ubic_campo: (v) => /Ubicación/.test(v || ''), resumen_texto: (v) => v === 'hola mundo', errores: isEmpty } },
+    resumen_ubic_campo: (v) => /Ubicación/.test(v || ''), resumen_texto: (v) => v === 'hola mundo',
+    resumen_archivo_nombre: (v) => v === '📎 informe.pdf', resumen_archivo_contenido: (v) => v === '📎 foto.jpg',
+    resumen_archivo_descriptor: (v) => v === '📎 video.mp4', resumen_sin_codigo: isTrue,
+    subt_wifi_icono: isTrue, subt_internet_icono: isTrue, subt_bluetooth_icono: isTrue, subt_solo_icono: isTrue,
+    subt_senal_debil: isTrue, nombre_es_textarea: isTrue, errores: isEmpty } },
   ...['rechazar-cerrada', 'rechazar-viva', 'contestar-viejo', 'cruce', 'reloj', 'oferta-vieja', 'bloqueo', 'repetida', 'wifi-uno', 'video-estado', 'sin-micro', 'timbre'].map((c) => (
     { name: 'llamadas: ' + c, args: ['calls2.js', '--case=' + c], tag: 'CALLS2', logs: 'last_logs_calls2_' + c + '.txt', checks: { resultado: (v) => v === 'OK' } })),
   { name: 'pasar la cuenta a un teléfono nuevo', args: ['move.js', '--io-delay=25'], tag: 'MOVE', checks: { resultado: (v) => v === 'OK' } },
