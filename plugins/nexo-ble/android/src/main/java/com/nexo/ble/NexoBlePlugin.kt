@@ -338,7 +338,7 @@ class NexoBlePlugin : Plugin() {
         if (out.dropped > 0) btErr("bin_drop", "Trozo binario incompleto de ${normalizeMac(deviceId)} descartado")
         out.frames.forEach { f ->
             if (closedMode) { closedReceive(deviceId, f.header); return@forEach }
-            backgroundNotify(f.header)
+            backgroundNotify(f.header, deviceId)
             notifyListeners("onPayloadReceived", JSObject()
                 .put("deviceId", deviceId)
                 .put("content", f.header)
@@ -376,7 +376,7 @@ class NexoBlePlugin : Plugin() {
                 // retainUntilConsumed=true: si el JS aún no escucha (app recién abierta, WebView
                 // recargando), Capacitor guarda el mensaje y lo entrega al registrarse el listener.
                 // Sin esto Capacitor lo DESCARTA (Plugin.notifyListeners) y el mensaje se perdía.
-                if (!closedMode) backgroundNotify(extraction.json)
+                if (!closedMode) backgroundNotify(extraction.json, deviceId)
                 if (closedMode) closedReceive(deviceId, extraction.json)
                 else notifyListeners("onPayloadReceived", JSObject()
                     .put("deviceId", deviceId)
@@ -650,7 +650,7 @@ class NexoBlePlugin : Plugin() {
     // Ronda 2760: con la app en segundo plano el aviso lo da la app (notify.js), pero algunos teléfonos (Vivo del dueño)
     // congelan la app en segundo plano y no avisaba nadie. Ahora el nativo mira lo que llega (Bluetooth o Wi-Fi) y, si
     // a los 4 s la app no ha avisado de ese mensaje, avisa él (sin texto: va cifrado). Mismo msgId = un solo aviso.
-    private fun backgroundNotify(json: String) {
+    private fun backgroundNotify(json: String, deviceId: String? = null) {
         if (!appInBackground || closedMode) return
         val ctx = appCtx ?: return
         val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
@@ -660,8 +660,14 @@ class NexoBlePlugin : Plugin() {
         if (info.call || info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false, info.msgId); return }
         mainHandler.postDelayed({
             if (!appInBackground || MsgNotifier.get(ctx).book.hasMsg(info.msgId)) return@postDelayed
-            if (info.kind == BgInbox.Kind.MESSAGE) notifyMessage(ctx, info)
-            else notifyOnly(ctx, info)
+            if (info.kind == BgInbox.Kind.MESSAGE) {
+                notifyMessage(ctx, info)
+                // #87 / dueño 29-10 (2833): el JS no confirmó en 4 s (lo normal: lo confirma él, pero algunos teléfonos —
+                // el Vivo del dueño— congelan la app y el JS no corre). Al avisar, mandar también la confirmación de
+                // ENTREGA firmada por Bluetooth, para que el emisor vea el ✓✓ sin esperar a que la app vuelva. deviceId
+                // nulo (p. ej. aviso por Wi-Fi/LAN) = sin ack por este camino (esa vía confirma la entrega por su cuenta).
+                if (deviceId != null) sendDeliveredAck(deviceId, info)
+            } else notifyOnly(ctx, info)
         }, BG_NOTIFY_DELAY_MS)
     }
 
@@ -674,15 +680,7 @@ class NexoBlePlugin : Plugin() {
         when (info.kind) {
             BgInbox.Kind.MESSAGE -> {
                 if (!inbox().add(deviceId, json)) { Log.w("NEXO_REM", "Buzón lleno: mensaje de ${info.from} sin guardar"); return }
-                val me = (nexoAdvertisingId ?: "").lowercase()
-                if (me.isNotEmpty()) {
-                    val ackObj = JSONObject().put("v", 1).put("type", "ack").put("msgId", info.msgId).put("from", me).put("ts", System.currentTimeMillis())
-                    // Auditoría C1 (ronda 2777): firmar la confirmación con la clave de la pareja (si la app nos la dio),
-                    // para que el emisor sepa que es de verdad y no de un tercero que espió el msgId.
-                    val k = ackKeys[info.from]
-                    if (k != null) ackObj.put("a", ackTag(k, "ack|${info.msgId}|$me|${info.from}"))
-                    sendChunkedOrSingle(normalizeMac(deviceId), deviceId, ackObj.toString())
-                }
+                sendDeliveredAck(deviceId, info)
                 // Ronda 2763: una llamada suena como una llamada del teléfono (aviso con tono, Contestar / Rechazar)
                 if (info.call) MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false, info.msgId)
                 else if (!info.quiet) notifyMessage(ctx, info)
@@ -691,6 +689,21 @@ class NexoBlePlugin : Plugin() {
             BgInbox.Kind.NOTIFY_ONLY -> notifyOnly(ctx, info)
             BgInbox.Kind.IGNORE -> {}
         }
+    }
+
+    // #87 (C1, ronda 2777): confirmación de ENTREGA firmada al emisor (el mensaje ya está a salvo en este teléfono). La
+    // usan el modo cerrado (closedReceive) y, desde 2833, el aviso de respaldo en segundo plano (backgroundNotify) cuando
+    // el teléfono congela la app (p. ej. el Vivo del dueño) y el JS no pudo confirmar: así el emisor ve el ✓✓ aunque el
+    // JS no corra. Se firma con la clave de la pareja (si la app nos la dio) para que el emisor sepa que es de verdad y no
+    // de un tercero que espió el msgId. El emisor deduplica por tipo+id (un ack doble es inofensivo); sin la clave va sin
+    // firma y el emisor proto-2 lo ignora (se recupera al reabrir, cuando el JS manda el ack firmado del buzón).
+    private fun sendDeliveredAck(deviceId: String, info: BgInbox.Info) {
+        val me = (nexoAdvertisingId ?: "").lowercase()
+        if (me.isEmpty() || info.from.isEmpty()) return
+        val ackObj = JSONObject().put("v", 1).put("type", "ack").put("msgId", info.msgId).put("from", me).put("ts", System.currentTimeMillis())
+        val k = ackKeys[info.from]
+        if (k != null) ackObj.put("a", ackTag(k, "ack|${info.msgId}|$me|${info.from}"))
+        sendChunkedOrSingle(normalizeMac(deviceId), deviceId, ackObj.toString())
     }
 
     // La app se abre: la instancia anterior (si siguió recibiendo) se retira y lo guardado se entrega a la app

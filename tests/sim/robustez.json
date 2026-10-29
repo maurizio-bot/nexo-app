@@ -606,8 +606,8 @@
      "prueba": "avisos por Wi-Fi"
     },
     {
-     "fallo": "Fabricantes que congelan la app (Vivo)",
-     "prueba": null
+     "fallo": "Fabricantes que congelan la app (Vivo): el ✓✓ (entregado) no volvía al emisor con la app congelada (el JS no corre, no confirmaba); 2833 el nativo lo confirma firmado al avisar",
+     "prueba": "entregado (✓✓) con la app CONGELADA"
     },
     {
      "fallo": "Pedir proactivamente el permiso de pantalla completa de llamadas (Android 14); sin él la llamada entra solo como aviso, sin Contestar/Rechazar (2784, #81)",

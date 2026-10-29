@@ -94,6 +94,32 @@ const statusOf = (p, t) => { const m = Array.from(p.win.document.querySelectorAl
     console.log('BACKGROUND ' + JSON.stringify({ build: path.basename(buildDir), scenario, ok_visibles_en_B: vis, ok_guardados_en_B: saved, estados_A: Array.from(A.win.document.querySelectorAll('#messages-container .message.own .msg-status')).slice(-3).map((e) => e.className.replace('msg-status status-', '')) }));
     process.exit(0);
   }
+  if (scenario === 'frozen') {
+    // El Vivo del dueño CONGELA la app en segundo plano: el JS no corre, así que no puede confirmar la entrega.
+    // Solo actúa el nativo (aviso de respaldo a los 4 s). Se comprueba que, aun así, el emisor A ve el ✓✓
+    // (entregado) gracias a la confirmación de ENTREGA FIRMADA que el nativo manda AL AVISAR — sin esperar a que
+    // B vuelva a la app. Antes (hasta 2832) el nativo solo avisaba en segundo plano pero no confirmaba, y el ✓✓
+    // se quedaba corto hasta que B descongelaba. Pedido del dueño 29-10 (dos vías de confirmación del "entregado").
+    await sleep(2000); // que el JS ya haya dado al nativo las claves de firma (_pushAckKeys, 4 s tras init)
+    const clavesB = nB.ackKeys ? nB.ackKeys.size : 0;
+    B.setActive(false); nB.setFrozen(true); await sleep(800);
+    await sendText(A, 'm1'); await sleep(6000);  // > 4 s del aviso de respaldo del nativo
+    await sendText(A, 'm2'); await sleep(6000);
+    const estadoCongelada = ['m1', 'm2'].map((w) => w + ': ' + statusOf(A, w));
+    const avisosB = nB.notifLog.filter((n) => n.bg).length;
+    // B vuelve: lo retenido (congelado) se entrega, sin pérdidas ni duplicados
+    nB.setFrozen(false); B.setActive(true); await sleep(4000);
+    const enB = await B.win.vaultLoadMessages(idA);
+    const res = {
+      build: path.basename(buildDir), scenario, claves_firma_en_B: clavesB,
+      estado_en_A_con_B_congelada: estadoCongelada,                 // esperado: m1/m2 'delivered' (o 'read')
+      avisos_nativos_B: avisosB,                                    // esperado: >= 2 (el nativo avisó)
+      recibidos_en_B_al_volver: ['m1', 'm2'].map((w) => enB.filter((m) => m.content === w).length), // esperado: [1,1]
+      entregado_sin_abrir_B: estadoCongelada.every((s) => /: (delivered|read)$/.test(s)),
+    };
+    console.log('BACKGROUND ' + JSON.stringify(res));
+    process.exit(0);
+  }
   const want = noM3 ? ['m1', 'm2'] : ['m1', 'm2', 'm3'];
   let tBack; const cerrada = {};
   if (scenario === 'bg') {

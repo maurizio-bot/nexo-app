@@ -167,6 +167,23 @@ tamaño, 3 buscar un entretenimiento para pegar un user a la pantalla».
 **Orden que propongo (si el dueño da luz verde):** (1) ✅ limpieza repo [hecho] → (2) SEC-2 + autenticar control (H3/M5/M6)
 → (3) medir y afinar rendimiento de archivos con diagnóstico real → (4) endurecer reconexión. Cada uno con su batería.
 
+## Propuesta del dueño 29-10: ✓✓ (entregado) también con la app CONGELADA en segundo plano → build 2833
+El dueño propuso una segunda vía de confirmación: en cuanto el otro teléfono muestra la notificación, disparar un «ping»
+de vuelta que confirme la entrega, para que el que manda SÍ o SÍ reciba retroalimentación. Verificado contra el código:
+- **App totalmente CERRADA:** ya estaba hecho — el nativo (`closedReceive`) manda el ✓✓ firmado al recibir y luego
+  muestra la notificación. Su idea ya existía ahí.
+- **Segundo plano CONGELADO (el Vivo congela la app, el JS no corre):** AQUÍ estaba el hueco — el nativo mostraba la
+  notificación de respaldo a los 4 s (`backgroundNotify`) pero **no** mandaba el ✓✓. El emisor veía «enviado» (o rojo
+  tras agotar reintentos) aunque el mensaje había llegado y el aviso había salido.
+- ✅ **Arreglo (2833):** al avisar un mensaje por el camino de segundo plano, el nativo manda también la confirmación de
+  ENTREGA FIRMADA por Bluetooth (helper `sendDeliveredAck()` compartido con el modo cerrado; firmada con la clave de la
+  pareja, C1; el emisor proto-2 la exige; dedup por tipo+id → si el JS luego descongela y también la manda, no molesta,
+  son las dos vías que pidió el dueño). El aviso por Wi-Fi/LAN va sin ack por esta vía (esa confirma por su cuenta).
+- Reproducido antes de arreglar (simulador, escenario `frozen` modelando el Vivo): A veía «m1: failed, m2: sending».
+  Con el arreglo: «m1/m2: delivered», sin pérdida ni duplicado al volver. Prueba `background.js --scenario=frozen` en la
+  batería. ⚠️ A confirmar en los teléfonos del dueño.
+- Nota: la notificación prueba ENTREGADO, no LEÍDO; el ✓✓ azul (leído) sigue atado a abrir el chat de verdad.
+
 ## Decisiones del dueño 27-10 (madrugada) y nuevos pedidos
 El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de forma robusta», orden a mi criterio. Decisiones:
 
