@@ -16,6 +16,7 @@ import { _msgContactMap } from './chat_state.js';
 import { _noteContactMessage } from './send.js';
 import { _renderMessage, _updateMessageStatus, _updateMessageStorageStatus } from './render.js';
 import { _failStatus } from './ble_helpers.js';
+import { openStickerPicker } from './stickers.js';
 import { getPermissionShim } from '../core/NexoPermissionShim.js';
 import { rem } from './rem.js';
 import { vaultFindContactByNexoId, vaultSaveContact } from '../vault/vault_manager.js';
@@ -23,6 +24,48 @@ import { vaultFindContactByNexoId, vaultSaveContact } from '../vault/vault_manag
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var initializeNexoApp;
 export function appSetupUse(d) { initializeNexoApp = d.initializeNexoApp; } // [/pegamento]
+
+
+// Stickers (2829): manda un sticker como mensaje VISIBLE normal — por el cable va solo el ID
+// ({type:'nexo_sticker', s:id}); el dibujo es un SVG incorporado (stickers.js). Mismo camino que _doSend (texto),
+// sin adjuntos ni base64. En grupo va a cada miembro con una vista previa «🎟️ Sticker».
+export async function _sendStickerTo(cid, id) {
+  var chatContactId = cid || _getCurrentContactId();
+  if (!chatContactId || !id) return;
+  var wire = JSON.stringify({ type: 'nexo_sticker', s: String(id) });
+  var msgId = 'msg' + Date.now() + '' + Math.random().toString(36).substr(2, 9);
+  var seq = (window.bleInterface && typeof window.bleInterface.getNextSeq === 'function') ? window.bleInterface.getNextSeq() : 0;
+  _msgContactMap[msgId] = chatContactId;
+  var gsx = window.bleInterface && window.bleInterface.groups;
+  if (gsx && gsx.isGroup(chatContactId) && typeof window.NEXO_sendGroupText === 'function') {
+    window.NEXO_sendGroupText(chatContactId, wire, '🎟️ Sticker', 'gm' + msgId.substring(3));
+    return;
+  }
+  var vaultMsg = { msgId: msgId, messageId: msgId, contactNexoId: chatContactId, content: wire, _own: true, status: 'sending', timestamp: Date.now(), seq: seq };
+  _renderMessage(vaultMsg);
+  _noteContactMessage(chatContactId, '🎟️ Sticker', vaultMsg.timestamp);
+  _updateMessageStatus(msgId, 'sending');
+  _updateMessageStorageStatus(msgId, 'sending');
+  try {
+    await window.NEXO.app.sendMessage({ content: wire, msgId: msgId, messageId: msgId, seq: seq });
+    window._sentFallbackTimers = window._sentFallbackTimers || {};
+    window._sentFallbackTimers[msgId] = setTimeout(function() {
+      _updateMessageStatus(msgId, 'sent');
+      _updateMessageStorageStatus(msgId, 'sent');
+      delete window._sentFallbackTimers[msgId];
+    }, 12000);
+  } catch (e) {
+    if (window._sentFallbackTimers && window._sentFallbackTimers[msgId]) {
+      clearTimeout(window._sentFallbackTimers[msgId]);
+      delete window._sentFallbackTimers[msgId];
+    }
+    var st = _failStatus(e);
+    _updateMessageStatus(msgId, st);
+    _updateMessageStorageStatus(msgId, st);
+  }
+}
+// Gancho de pruebas (tests/sim/stickers.js) y acceso directo del selector.
+try { if (typeof window !== 'undefined') window.__nexoSendSticker = _sendStickerTo; } catch (e) {}
 
 
 export function _bindAttachmentHandlers() {
@@ -47,6 +90,7 @@ export function _bindAttachmentHandlers() {
       else if (type === 'location') _handleLocation();
       else if (type === 'cobro') _handleCobro();
       else if (type === 'contact') _handleShareContacts();
+      else if (type === 'sticker') { _closeAttachMenu(); openStickerPicker(_getCurrentContactId(), _sendStickerTo); }
     });
   });
   document.addEventListener('click', function(e) {

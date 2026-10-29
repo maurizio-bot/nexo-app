@@ -82,9 +82,18 @@ body::before {
 .message.other .msg-time { color: var(--nx-muted) !important; }
 /* Emoji grande (pedido del dueño 29-10): un mensaje de 1–3 emojis sueltos se muestra SIN burbuja (ni fondo ni sombra ni
    borde). Gana a .message.own/.other por mayor especificidad (:has) + !important. El tamaño lo pone critical.css. */
-.message.own:has(.msg-text.emoji-jumbo), .message.other:has(.msg-text.emoji-jumbo) {
+.message.own:has(.msg-text.emoji-jumbo), .message.other:has(.msg-text.emoji-jumbo),
+.message.own:has(.msg-sticker), .message.other:has(.msg-sticker) {
   background: none !important; border-color: transparent !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
 }
+/* Stickers (2829): hoja inferior con la rejilla del pack incorporado */
+.sticker-sheet { position: fixed; inset: 0; z-index: 2600; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,0.45); }
+.sticker-panel { width: 100%; max-width: 520px; max-height: 60vh; overflow-y: auto; background: var(--nx-surface, #12232a); border-top-left-radius: 16px; border-top-right-radius: 16px; padding: 10px 12px calc(14px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 24px rgba(0,0,0,0.4); }
+.sticker-head { color: var(--nx-text, #e8f0f2); font-weight: 600; font-size: 15px; padding: 4px 4px 10px; }
+.sticker-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.sticker-cell { background: rgba(255,255,255,0.06); border: none; border-radius: 12px; padding: 8px; cursor: pointer; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; }
+.sticker-cell:active { background: rgba(255,255,255,0.14); }
+.sticker-cell svg { width: 100%; height: 100%; display: block; }
 /* Ronda 2789 (informe del dueño): entregado (llegó, sin leer) y leído se veían casi igual porque los dos son ✓✓ y el
    color de "entregado" era casi blanco. Ahora: enviado ✓ gris oscuro, entregado ✓✓ GRIS claro (apagado, "aún sin
    leer"), leído ✓✓ AZUL con brillo. Como WhatsApp: gris hasta que lo leen, y ahí se pone de color. */

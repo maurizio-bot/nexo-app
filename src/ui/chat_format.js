@@ -45,7 +45,7 @@ export function _getCurrentContactId() {
 
 export function _chatKind(content) {
   if (typeof content !== 'string' || content.charAt(0) !== '{' || content.indexOf('"nexo_') < 0) return null;
-  try { var p = JSON.parse(content); return (p && (p.type === 'nexo_txt' || p.type === 'nexo_act')) ? p : null; } catch (e) { return null; }
+  try { var p = JSON.parse(content); return (p && (p.type === 'nexo_txt' || p.type === 'nexo_act' || p.type === 'nexo_sticker')) ? p : null; } catch (e) { return null; }
 }
 
 export function _plainText(content) { var k = _chatKind(content); return k ? String(k.t || '') : String(content || ''); }
@@ -87,8 +87,10 @@ export function _msgSummary(msg) {
       if (p && p.type === 'attachment' && p.attachmentType) return { k: p.attachmentType, s: _attachLabel(p.attachmentType, p.meta) };
     } catch (e) {}
   }
-  // 3) Texto normal (nexo_txt / nexo_act) → su texto plano, recortado sin partir emojis.
+  // 3) Texto normal (nexo_txt / nexo_act) → su texto plano, recortado sin partir emojis. Un sticker (nexo_sticker, 2829)
+  //    muestra «🎟️ Sticker», nunca el JSON crudo.
   var k = _chatKind(msg.content);
+  if (k && k.type === 'nexo_sticker') return { k: 'sticker', s: '🎟️ Sticker' };
   if (k) return { k: 'text', s: _cut(String(k.t || ''), 100) };
   // 4) Cualquier OTRO JSON de protocolo (descriptor de archivo, trozo, control…): NUNCA mostrar el «código» crudo. Se
   //    intenta sacar un nombre de archivo; si no, etiqueta genérica. (El archivo del dueño caía aquí y salía como código.)
@@ -111,7 +113,7 @@ export function _findMessage(cid, id) {
 }
 
 // v9.9.29: la lista de contactos se ordena por el último mensaje enviado o recibido
-export var _PREVIEW_BY_TYPE = { contact: '👤 Contacto', image: '📷 Foto', video: '🎬 Vídeo', audio: '🎤 Audio', voice: '🎤 Audio', location: '📍 Ubicación', file: '📎 Archivo' };
+export var _PREVIEW_BY_TYPE = { contact: '👤 Contacto', image: '📷 Foto', video: '🎬 Vídeo', audio: '🎤 Audio', voice: '🎤 Audio', location: '📍 Ubicación', file: '📎 Archivo', sticker: '🎟️ Sticker' };
 
 // Gancho para las pruebas (tests/sim/chatactions.js): comprobar el resumen de respuesta de un adjunto codificado en
 // content (ubicación/foto) sin depender del GPS. Es una función pura de solo lectura.
