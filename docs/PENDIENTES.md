@@ -120,7 +120,7 @@ tamaño, 3 buscar un entretenimiento para pegar un user a la pantalla».
   que ya existe, como acción oculta del protocolo (`nexo_act act:'game', g:'ttt'`), **asíncrono** (la
   jugada llega cuando el otro vuelve). Robusto: tablero completo por jugada (idempotente) + validación
   estricta al recibir (sin trampa/desorden). `src/ui/ttt.js` + overlay 3×3 + 8º ítem 🎮 del menú + atrás
-  de Android cierra el overlay. Prueba `tests/sim/ttt.js`; batería **80/80**. APK en construcción (run 2830).
+  de Android cierra el overlay. Prueba `tests/sim/ttt.js`; batería **80/80**. APK **nightly-2830** publicada (sha256 `e56ebe4a…`).
   **Pendiente del dueño:** confirmar en los teléfonos y decir si quiere **conecta-4** (mismo motor) u otra
   dirección (ampliar «Defensor NEXO», rachas/logros, efectos). Detalle en scratchpad `entretenimiento-3.md`.
 
