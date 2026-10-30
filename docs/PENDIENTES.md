@@ -206,12 +206,36 @@ de vuelta que confirme la entrega, para que el que manda SÍ o SÍ reciba retroa
   en el buzón al mandarla (inmediato, no espera los 10 s de la red de seguridad; mismo id → `CallDedupe` deduplica);
   `ble_messages.js` deja la oferta fuera de la red de seguridad (`_callOut`) para no duplicar el toque. Prueba `wakebt.js`
   ampliada (oferta por el buzón → toque con el token). ⚠️ Que el teléfono dormido **suene** de verdad lo confirma el dueño.
-- 🔜 **Archivo a contacto «en línea» (internet) no se envía ni avisa (reporte del dueño 30-10) — build 2838 propuesta.**
+- 🔜 **Archivo a contacto «en línea» (internet) no se envía ni avisa (reporte del dueño 30-10).**
   Diagnóstico: los archivos SÍ pueden ir troceados por el buzón de relés hasta ~30 MB, pero `filesOk = canReach &&
   bothWifi`; cuando no hay un camino viable, `PEER_ABSENT` se trata como transitorio → la burbuja se queda en ⏳ «enviando»
   en silencio (ni error, ni reintento). Arreglo propuesto: mostrar un error claro + «tocá para reintentar» en vez del ⏳
   mudo. **Falta del dueño:** el tamaño del archivo + el «Copiar diagnóstico» de los dos teléfonos para afinar (tope de
   tamaño vs. «en línea» obsoleto).
+- 🔜 **Escaneo robusto a escala + recuperación de fallos (pedido del dueño 30-10, «rápido y robusto en poca señal,
+  lejanía, interferencia, ahorro de batería… y un concierto con miles de NEXO escaneando»).** Revisado el código real:
+  YA robusto en largo alcance (LE Coded PHY), señal débil (MIN_RSSI −95 permisivo), dedup+debounce, backoff no_service
+  (2821) y vigilante tolerante (2814). HUECOS a cerrar: (1) `onScanFailed` (ble_interface.js:495) no recupera — falta
+  backoff/reintento ante errorCode 3 (stack ocupado)/5 (sin recursos HW, típico en multitud)/6 (too frequently);
+  (2) escala de concierto: `scanResults` (Kotlin) sin tope y dedup O(n²) → pico de CPU/ANR con miles; falta priorizar
+  contactos conocidos entre el ruido; (3) modo de escaneo no adaptativo (siempre LOW_LATENCY; mal en ahorro de batería,
+  máxima congestión en multitud) → degradar a BALANCED/OPPORTUNISTIC según contexto; (4) falta compuerta GLOBAL de
+  arranques de escaneo (hoy el freno 5/30 s solo cubre el auto-escaneo, no la suma de todos los disparadores). Lo
+  verificable en sim (compuerta global + recuperación) con batería; lo nativo (dedup O(1), tope, modo adaptativo) con
+  CI-compila + prueba del dueño.
+- 🔜 **VOPR — simulador de caos determinista (sube la dimensión D del índice, hoy 2,7/10).** Con semilla fija inyecta
+  fallos reproducibles (caídas, pérdida/reorden de paquetes, congelados, desfase de reloj, tormentas de escaneo,
+  particiones) y comprueba invariantes duros (sin pérdida ni duplicados, entrega eventual, sin ANR, memoria/CPU
+  acotadas); al fallar, imprime la semilla para re-ejecutar idéntico. El **concierto con miles de NEXO** es un escenario
+  del VOPR (investigación externa en curso para los números exactos de Android a escala). El dueño autorizó arrancar.
+- 💡 **Operabilidad por IA — rumbo acordado (fase futura, DESPUÉS de la robustez; pedido/opinión del dueño 30-10).** El
+  dueño: vale la pena y diferencia, pero EN EL TELÉFONO (privado), no una IA de nube leyendo los chats; su idea de
+  «contrato»: permiso de entrar/leer para la operación pedida y luego borrar lo recopilado. Refinamiento acordado (más
+  fuerte y más diferenciador, es lo OPUESTO a la nube que te lee): (1) solo en el dispositivo (el chat nunca sale en
+  claro); (2) capacidad ACOTADA a la acción concreta («mandá esto a Pedro»), no lectura total; (3) efímero por
+  construcción (que NUNCA persista) en vez de «recopilar y borrar»; (4) consentimiento por acción + registro visible;
+  (5) las llaves las tiene el user (gate biométrico para acciones sensibles); (6) nube solo con lo mínimo redactado y
+  opt-in. Primero capa de ACCIÓN (mandar/llamar) antes que lectura. No arrancar hasta cerrar la robustez.
 - 🔜 **Resto de «implementa todo» (pedido del dueño):** palancas de velocidad (2M PHY + prioridad de conexión alta en
   transferencias), «courier» spray-and-wait (evolución de Jump), y grupo A de seguridad: SEC-2 → P0-1 → H3 → H4, cada
   una en su build propia.
