@@ -192,7 +192,15 @@ de vuelta que confirme la entrega, para que el que manda SÍ o SÍ reciba retroa
 - ✅ **A1 (notificación con heads-up/contenido) — VERIFICADO, ya estaba en código.** El aviso de mensaje usa canal de
   importancia ALTA + prioridad alta + título = nombre del remitente + heads-up; el contenido se oculta a propósito
   (E2E/privacidad). Sin cambio. Si se ve «solo el iconito»: canal viejo (reinstalar) o ajustes del fabricante. (#89)
-- 🔜 **Grupo A de seguridad (empezar, pedido del dueño):** SEC-2 → P0-1 → H3 → H4, cada una en su build propia.
+- ✅ **Entrega con ahorro de batería (2836, prioridad del dueño «como WhatsApp siempre llega»).** Revisado: NEXO ya
+  despierta al contacto dormido cuando hay internet (buzón de relés + «toque» FCM solo-datos de ALTA prioridad que
+  atraviesa Doze/ahorro; el receptor arranca el foreground service). Hueco cerrado: un envío por Bluetooth no confirmado
+  en ~10 s cae ADEMÁS al buzón → FCM (`_armDeliverySafetyNet`). Prueba `wakebt.js`. ⚠️ La rama «BLE con internet» (que el
+  sim no aísla) a confirmar en los teléfonos; la garantía integrada (dormido → despertado + mensaje recuperable) sí
+  quedó probada.
+- 🔜 **Resto de «implementa todo» (pedido del dueño):** palancas de velocidad (2M PHY + prioridad de conexión alta en
+  transferencias), «courier» spray-and-wait (evolución de Jump), y grupo A de seguridad: SEC-2 → P0-1 → H3 → H4, cada
+  una en su build propia.
 
 ## Decisiones del dueño 27-10 (madrugada) y nuevos pedidos
 El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de forma robusta», orden a mi criterio. Decisiones:

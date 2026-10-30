@@ -37,6 +37,7 @@ const SCENARIOS = [
   { name: 'archivos grandes por internet (relés: mediano 5 MB y grande 12 MB llegan; >22 MB avisa claro)', args: ['bignet.js'], tag: 'BIGNET', checks: { resultado: (v) => v === 'OK' } },
   { name: 'archivos grandes por internet (Tor directo: un archivo grande llega sin aviso de tamaño)', args: ['bignet.js', '--tor'], tag: 'BIGNET', logs: 'last_logs_bignet_tor.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'FCM «despertador» Fase 2: se intercambia el token en el saludo y al mandar se pide el toque (solo el token, sin contenido)', args: ['fcmwake.js'], tag: 'FCMWAKE', logs: 'last_logs_fcmwake.txt', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'entrega con ahorro de batería (#dueño, como WhatsApp): B dormido/congelado → A dispara el FCM de alta prioridad con el token de B (solo el token) y el mensaje queda recuperable → entregado al despertar', args: ['wakebt.js'], tag: 'WAKEBT', logs: 'last_logs_wakebt.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'cobros (pagos Fase 1): mensaje de cobro con importe/concepto/método, tarjeta en los dos, sin inyección', args: ['cobro.js', '--io-delay=25'], tag: 'COBRO', checks: { resultado: (v) => v === 'OK' } },
   { name: 'agregar por ID a alguien lejos: solicitud, aceptar/eliminar, se conectan (alta remota)', args: ['reqadd.js'], tag: 'REQADD', checks: { resultado: (v) => v === 'OK' } },
   { name: 'no leídos y notificaciones', args: ['unread.js', '--io-delay=25'], tag: 'UNREAD', checks: {

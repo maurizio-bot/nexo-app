@@ -11,6 +11,10 @@ import { parseCallSignal } from './calls.js';
 import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus } from './ble_helpers.js';
 
 
+// Build 2836 (pedido del dueño): margen para la «red de seguridad de entrega». Si un mensaje enviado por Bluetooth no
+// se confirma «entregado» en este tiempo, se deja además en el buzón de relés (dispara el toque FCM de alta prioridad).
+var DELIVERY_SAFETY_MS = 10000;
+
 export const BLE_MESSAGE_METHODS = {
   _flushAllPendingMessages() {
     var self = this;
@@ -784,7 +788,7 @@ export const BLE_MESSAGE_METHODS = {
           self._pendingMessageQueue.set(qKey, queue);
         }
 
-        if (isReady) { doSend(); return; }
+        if (isReady) { doSend(); self._armDeliverySafetyNet(uuid, content, msgId, msgSeq); return; }
         if (tryMailbox(enqueueMsg)) {
           if (self.relay) self.relay.discover(uuid);
           return;
@@ -799,6 +803,30 @@ export const BLE_MESSAGE_METHODS = {
         }
       } catch (fatal) { reject(fatal); }
     });
+  },
+
+  // Build 2836 (pedido del dueño: «enviar mensaje con ahorro de batería, como WhatsApp que siempre llega»): red de
+  // seguridad de entrega. El mensaje sale primero por Bluetooth (rápido y local). Si a los ~10 s NO se confirmó
+  // «entregado» —el otro puede estar dormido en ahorro de batería, con su app/servicio parados por el fabricante—, se
+  // deja ADEMÁS una copia en el buzón de relés, que dispara el «toque» FCM de ALTA prioridad (atraviesa Doze/ahorro): el
+  // otro despierta y recibe por internet, o por Bluetooth al revivir su servicio. Mismo msgId → el receptor deduplica
+  // (nunca llega doble) y un solo acuse de entrega resuelve el estado. Es el modelo servidor+push de WhatsApp.
+  // Defensivo: solo con internet + token del contacto (mailboxOk); nada para acciones ocultas; si ya se entregó, no hace nada.
+  _armDeliverySafetyNet(nexoId, content, msgId, seq) {
+    var self = this;
+    try {
+      if (!self.net || !msgId) return;
+      if (self._quietOut && self._quietOut.has(msgId)) return; // acción oculta (react/edit/estado): no despertar al otro
+      var nx = _normId(nexoId);
+      setTimeout(function() {
+        try {
+          if (self.ackSystem && self.ackSystem.isDone(msgId)) return;    // ya entregado/leído por Bluetooth: nada
+          if (!self.net || !self.net.mailboxOk(nx)) return;              // sin internet/token: no se puede (el reintento Bluetooth sigue)
+          console.log('[NET] red de seguridad de entrega: ' + msgId + ' sin confirmar por Bluetooth → buzón + toque FCM');
+          self._sendViaNetMailbox(nx, content, msgId, seq).catch(function() {});
+        } catch (e) {}
+      }, DELIVERY_SAFETY_MS);
+    } catch (e) {}
   },
 
   sendFile(deviceUUID, fileId, base64Data, meta) {
