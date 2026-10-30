@@ -184,6 +184,16 @@ de vuelta que confirme la entrega, para que el que manda SÍ o SÍ reciba retroa
   batería. ⚠️ A confirmar en los teléfonos del dueño.
 - Nota: la notificación prueba ENTREGADO, no LEÍDO; el ✓✓ azul (leído) sigue atado a abrir el chat de verdad.
 
+## Pedido del dueño 30-10 → build 2835 (confirmaciones de lectura + A1)
+- ✅ **Ajuste «Confirmaciones de lectura» (2835).** El dueño probó 2832–2834 en los teléfonos: todo bien. Nuevo toggle en
+  Perfil → Ajustes → «🔏 Privacidad» para encender/apagar el ✓✓ azul que *manda* este teléfono (como WhatsApp; por
+  defecto encendido). Apagado → no se manda el acuse de lectura; el «entregado» gris no cambia. `chat_state.js` /
+  `main.js` / `profile.js`; prueba `readtoggle.js`; batería 82/82.
+- ✅ **A1 (notificación con heads-up/contenido) — VERIFICADO, ya estaba en código.** El aviso de mensaje usa canal de
+  importancia ALTA + prioridad alta + título = nombre del remitente + heads-up; el contenido se oculta a propósito
+  (E2E/privacidad). Sin cambio. Si se ve «solo el iconito»: canal viejo (reinstalar) o ajustes del fabricante. (#89)
+- 🔜 **Grupo A de seguridad (empezar, pedido del dueño):** SEC-2 → P0-1 → H3 → H4, cada una en su build propia.
+
 ## Decisiones del dueño 27-10 (madrugada) y nuevos pedidos
 El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de forma robusta», orden a mi criterio. Decisiones:
 

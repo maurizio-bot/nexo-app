@@ -9,6 +9,7 @@ import { _diagnosticText } from './diag.js';
 import { startReceiveAccount, startSendAccount } from './move_account.js';
 import { clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
 import { mirrorPeerPref, setMirrorPeerPref } from './calls_ui.js';
+import { readReceiptsOn, setReadReceiptsOn } from './chat_state.js';
 import { attachNexoUnlockGesture } from './nexo_game.js';
 import { perfSectionHtml, renderPerfSection } from './perf.js';
 
@@ -118,6 +119,9 @@ function _openSettingsSheet() {
     card('🔔', 'Avisos con la pantalla apagada', '<div class="nx-sub">Para que los mensajes y las llamadas lleguen con la app cerrada o la pantalla apagada.</div>' +
       '<div id="nexo-alert-rows"></div>' +
       '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-top:6px;"><input type="checkbox" id="nexo-wake-msg"> Encender la pantalla con un mensaje nuevo</label>') +
+    // Build 2835 (pedido del dueño): encender/apagar las confirmaciones de lectura (el ✓✓ azul que mandás)
+    card('🔏', 'Privacidad', '<label style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-read-receipts"> Confirmaciones de lectura (✓✓ azul)</label>' +
+      '<div class="nx-sub" style="margin-top:6px;">Si lo apagás, tus contactos no ven el ✓✓ azul cuando leés sus mensajes. El «entregado» (dos palomitas grises) sigue igual.</div>') +
     // Ronda 2772 (pedido del dueño): ver al otro como en un espejo (con su cámara de delante)
     card('🎥', 'Videollamadas', '<label style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-call-mirror"> Ver al otro como en un espejo (su cámara de delante)</label>' +
       '<div class="nx-sub" style="margin-top:6px;">Sin espejo lo ves como te vería en persona: un papel con letras se lee bien.</div>') +
@@ -146,6 +150,8 @@ function _openSettingsSheet() {
   _renderAlertSettings();
   renderPerfSection(); // ronda 2808: rendimiento en vivo
   { var pr = sheet.querySelector('#nexo-perf-refresh'); if (pr) pr.onclick = function () { renderPerfSection(); }; }
+  var rrBox = sheet.querySelector('#nexo-read-receipts');
+  if (rrBox) { rrBox.checked = readReceiptsOn(); rrBox.onchange = function() { setReadReceiptsOn(rrBox.checked); }; }
   var mirBox = sheet.querySelector('#nexo-call-mirror');
   if (mirBox) { mirBox.checked = mirrorPeerPref(); mirBox.onchange = function() { setMirrorPeerPref(mirBox.checked); }; }
   // Tono de llamada/videollamada (ronda 2774): enseña el actual y abre el selector del teléfono al tocarlo

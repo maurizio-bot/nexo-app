@@ -133,7 +133,7 @@ import { chatActionsUse, _renderedMessageIds, _replyTo, DELETE_ALL_MS, _fillText
 import { _objectURLRegistry, MAX_BLE_B64_BYTES, MAX_BLE_FILE_BYTES, WD_MAX_B64_BYTES, _maxB64For, _tooBigMessage, _cleanupObjectURLs } from './ui/media_limits.js';
 import { videoSendUse, MAX_HD_B64_BYTES, _videoTimes, _hdOutbox, _hdInFlight, _showOwnPreparing, _sendVideo, _videoViaBle, _registerHd, _startHd, _onHdSent, _resumeHdForMsg, _resumeHdTransfers, _applyHdUpgrade, _swapVideoInBubble, _setHdBadge } from './ui/video_send.js';
 import { _renderE2EBanner, _onSafetyQr } from './ui/e2e_banner.js';
-import { _msgContactMap } from './ui/chat_state.js';
+import { _msgContactMap, readReceiptsOn } from './ui/chat_state.js';
 import { _closeFullscreenMedia, _openFullscreenMedia, _thumbsInProgress, _buildFileCard, _openingFile, _openAttachmentFile, _ensurePdfThumb, _ensureVideoThumb } from './ui/file_card.js';
 import { _clearMessageContainer, _setupBackButton, _setupSwipeBack, _chatNavToken, _doChatBack } from './ui/chat_nav.js';
 import { pickersUse, _pendingPicker, _pickFile, _readFailed, _handleGallery, _handleFile } from './ui/pickers.js';
@@ -178,6 +178,9 @@ var _notifier = createNotifier({
   currentChat: function() { var b = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface); return b ? b._activeChatDeviceId : _getCurrentContactId(); },
   hidePreview: function() { return lockEnabled(); },
   sendRead: function(nexoId, msgId) {
+    // Build 2835 (pedido del dueño): si apagaste las confirmaciones de lectura en Ajustes, no se manda el acuse (el
+    // otro no ve el ✓✓ azul). El "entregado" gris no se toca.
+    if (!readReceiptsOn()) return;
     // Ronda 2758: en un grupo el "leído" va a quien escribió el mensaje
     var gs = window.bleInterface && window.bleInterface.groups;
     if (gs && gs.isGroup(nexoId)) { nexoId = gs.senderOf(msgId); if (!nexoId) return; }
