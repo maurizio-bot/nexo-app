@@ -46,12 +46,18 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
                 // ronda 2763: mensaje de grupo directo: el id del grupo (para el nombre en el aviso)
                 if (to.isEmpty()) return Info(Kind.MESSAGE, from, o.optString("msgId"), o.optInt("q") == 1, "text", o.optInt("cl") == 1,
                     o.optString("g").lowercase().takeIf { GID.matches(it) } ?: "")
-                if (mine && to == me.lowercase()) return Info(Kind.NOTIFY_ONLY, from, o.optString("msgId"), o.optInt("q") == 1, "text")
+                // #130 (informe del dueño 30-10): una OFERTA de llamada dirigida (to = mi NEXO ID; por net/Jump/FCM)
+                // llevaba la marca cl:1 pero aquí se perdía (what="text", call=false) → salía como aviso de texto, no
+                // como la pantalla de llamada entrante. Ahora se propaga la marca → incomingCall (CallStyle, pantalla
+                // completa que enciende el teléfono), igual que la ruta no dirigida (abajo).
+                if (mine && to == me.lowercase()) { val cl = o.optInt("cl") == 1; return Info(Kind.NOTIFY_ONLY, from, o.optString("msgId"), o.optInt("q") == 1, if (cl) "call" else "text", cl) }
             }
             if (mine && type == "sx" && o.optString("to").lowercase() == me.lowercase() && o.optString("msgId").isNotEmpty())
                 return Info(Kind.NOTIFY_ONLY, "", o.optString("msgId"), false, "text")
             if (mine && (t == "c" || t == "f") && o.optInt("i", -1) == 0 && o.optString("dt").lowercase() == me.lowercase())
-                return Info(Kind.NOTIFY_ONLY, if (NX.matches(from)) from else "", o.optString("m"), o.optInt("q") == 1, if (t == "c") "text" else o.optString("tp").ifEmpty { "file" })
+                // #130: una oferta de llamada por trozos y DIRIGIDA (dt = mi NEXO ID, por Jump) también lleva cl:1 y
+                // debe ser «call» (pantalla completa), como la ruta no dirigida de abajo. Antes caía a "text".
+                return Info(Kind.NOTIFY_ONLY, if (NX.matches(from)) from else "", o.optString("m"), o.optInt("q") == 1, if (t == "c") (if (o.optInt("cl") == 1) "call" else "text") else o.optString("tp").ifEmpty { "file" }, o.optInt("cl") == 1)
             if ((type == "ack" || type == "read_receipt") && o.optString("msgId").isNotEmpty() && o.optString("to").isEmpty())
                 return Info(Kind.RECEIPT, from, o.optString("msgId"), true, type)
             if ((t == "c" || t == "f") && o.optInt("i", -1) == 0 && NX.matches(from) && o.optString("dt").isEmpty())
