@@ -206,12 +206,17 @@ de vuelta que confirme la entrega, para que el que manda SÍ o SÍ reciba retroa
   en el buzón al mandarla (inmediato, no espera los 10 s de la red de seguridad; mismo id → `CallDedupe` deduplica);
   `ble_messages.js` deja la oferta fuera de la red de seguridad (`_callOut`) para no duplicar el toque. Prueba `wakebt.js`
   ampliada (oferta por el buzón → toque con el token). ⚠️ Que el teléfono dormido **suene** de verdad lo confirma el dueño.
-- 🔜 **Archivo a contacto «en línea» (internet) no se envía ni avisa (reporte del dueño 30-10).**
-  Diagnóstico: los archivos SÍ pueden ir troceados por el buzón de relés hasta ~30 MB, pero `filesOk = canReach &&
-  bothWifi`; cuando no hay un camino viable, `PEER_ABSENT` se trata como transitorio → la burbuja se queda en ⏳ «enviando»
-  en silencio (ni error, ni reintento). Arreglo propuesto: mostrar un error claro + «tocá para reintentar» en vez del ⏳
-  mudo. **Falta del dueño:** el tamaño del archivo + el «Copiar diagnóstico» de los dos teléfonos para afinar (tope de
-  tamaño vs. «en línea» obsoleto).
+- ✅ **Archivo a contacto OFFLINE por internet (reporte del dueño 30-10 con diagnóstico) — #124, build 2840.** Con el
+  diagnóstico de los teléfonos quedó claro: el contacto estaba **apagado** (sin Bluetooth/Wi-Fi/Jump y offline por
+  internet) y NEXO storm-retransmitía hasta fallar. Causa raíz (`ble_ack.js` `_linkUp()`): por internet miraba
+  `net.online()` («¿tengo yo internet?») en vez de `net.canReach(nx)` («¿está el contacto en línea?», como ya hace
+  Wi-Fi). Arreglado: `_linkUp()` por internet usa `canReach(nx)` → ausente = enlace «caído» → la ventana ESPERA sin
+  tormenta; store-and-forward (buzón + `resumeOutgoingTransfers` al reconectar); el tope global marca 'pending' (⏳), no
+  'failed'. Prueba `fileabsent.js`. ⚠️ La entrega real al reconectarse la confirma el dueño.
+- 🔜 **Bluetooth a MTU 23: «cola de escritura llena» (2.º punto del diagnóstico del dueño 30-10) — tarea #129.** Con un
+  teléfono el BT negoció el MTU mínimo (23, lentísimo) y el envío de archivos/Fénix satura la cola de escritura nativa
+  (`Envio nativo fallo chunk N Cola de escritura llena`). Falta: marcar el ritmo de escritura según la capacidad real a
+  MTU 23 y/o preferir net/Wi-Fi para archivos con ese enlace. Build propia.
 - ✅ **Escaneo robusto a escala + recuperación de fallos (build 2838) (pedido del dueño 30-10, «rápido y robusto en poca
   señal, lejanía, interferencia, ahorro de batería… y un concierto con miles de NEXO escaneando»).** HECHO en JS (filtro
   NEXO siempre activo + compuerta global 5/30 s + recuperación ante onScanFailed), probado con VOPR + batería 84/84.

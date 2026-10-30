@@ -284,6 +284,10 @@
     {
      "fallo": "Transferencia abortada por «Max window retries» cuando el enlace solo parpadea (diagnóstico del S24 28-10): ahora no gasta reintentos con el enlace caído, espera a que vuelva (arreglado 2822)",
      "prueba": "enlace parpadeando"
+    },
+    {
+     "fallo": "Archivo a un contacto OFFLINE por internet: storm-retransmitía y fallaba, burbuja clavada en ⏳ (diagnóstico del dueño 30-10). Causa: _linkUp() por internet miraba net.online() (¿tengo YO internet?) en vez de net.canReach(nx) (¿está el contacto en línea?). Arreglado 2840: ahora espera sin tormenta, marca «esperando» (no «fallido») y entrega al reconectarse (store-and-forward)",
+     "prueba": "contacto OFFLINE por internet"
     }
    ],
    "debiles": [
