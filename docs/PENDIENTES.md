@@ -198,6 +198,20 @@ de vuelta que confirme la entrega, para que el que manda SÍ o SÍ reciba retroa
   en ~10 s cae ADEMÁS al buzón → FCM (`_armDeliverySafetyNet`). Prueba `wakebt.js`. ⚠️ La rama «BLE con internet» (que el
   sim no aísla) a confirmar en los teléfonos; la garantía integrada (dormido → despertado + mensaje recuperable) sí
   quedó probada.
+- ✅ **El «despertador» FCM cubre ya llamadas y videollamadas (2837, pedido del dueño «implementa el despertar para
+  todo lo demás, incluidas llamadas y videollamada»).** El dueño vio que despertar al otro solo funcionaba para texto.
+  Causa (leída en el código): `net_link._newMsgId` —lo que decide disparar el toque— solo reconocía `type:'chat'` y el
+  primer trozo de archivo (foto/audio/ubicación ya despertaban), pero NO la OFERTA de llamada (`type:'nexo_call',
+  op:'offer'`). Arreglo (solo JS, aditivo): `net_link.js` la reconoce como mensaje nuevo; `calls.js` publica la oferta YA
+  en el buzón al mandarla (inmediato, no espera los 10 s de la red de seguridad; mismo id → `CallDedupe` deduplica);
+  `ble_messages.js` deja la oferta fuera de la red de seguridad (`_callOut`) para no duplicar el toque. Prueba `wakebt.js`
+  ampliada (oferta por el buzón → toque con el token). ⚠️ Que el teléfono dormido **suene** de verdad lo confirma el dueño.
+- 🔜 **Archivo a contacto «en línea» (internet) no se envía ni avisa (reporte del dueño 30-10) — build 2838 propuesta.**
+  Diagnóstico: los archivos SÍ pueden ir troceados por el buzón de relés hasta ~30 MB, pero `filesOk = canReach &&
+  bothWifi`; cuando no hay un camino viable, `PEER_ABSENT` se trata como transitorio → la burbuja se queda en ⏳ «enviando»
+  en silencio (ni error, ni reintento). Arreglo propuesto: mostrar un error claro + «tocá para reintentar» en vez del ⏳
+  mudo. **Falta del dueño:** el tamaño del archivo + el «Copiar diagnóstico» de los dos teléfonos para afinar (tope de
+  tamaño vs. «en línea» obsoleto).
 - 🔜 **Resto de «implementa todo» (pedido del dueño):** palancas de velocidad (2M PHY + prioridad de conexión alta en
   transferencias), «courier» spray-and-wait (evolución de Jump), y grupo A de seguridad: SEC-2 → P0-1 → H3 → H4, cada
   una en su build propia.

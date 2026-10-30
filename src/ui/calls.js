@@ -87,7 +87,16 @@ export class Calls {
     if (op === 'offer') { ble._callOut = ble._callOut || new Set(); ble._callOut.add(mid); if (c) c.offerMid = mid; }
     // Ronda 2760: las señales (salvo la llamada entrante) no son mensajes: sin aviso en el otro teléfono
     if (op !== 'offer') { ble._quietOut = ble._quietOut || new Set(); ble._quietOut.add(mid); }
-    return ble.sendChatMessage(nx, JSON.stringify(o), mid).catch(function(e) { console.warn('[CALL] Señal ' + op + ' no enviada: ' + (e && e.message)); });
+    var p = ble.sendChatMessage(nx, JSON.stringify(o), mid).catch(function(e) { console.warn('[CALL] Señal ' + op + ' no enviada: ' + (e && e.message)); });
+    // Build 2837 (pedido del dueño): una llamada/videollamada tiene que SONAR aunque el otro esté dormido en ahorro de
+    // batería. Además del envío local (Bluetooth/Wi-Fi), la OFERTA se publica YA en el buzón de relés, que dispara el
+    // «toque» FCM de alta prioridad (net_link._newMsgId reconoce la oferta). Inmediato (no los ~10 s de la red de
+    // seguridad: una llamada no puede esperar). Mismo id → el otro deduplica la oferta (CallDedupe nativo). Solo si hay
+    // internet + token del contacto; si no, queda el camino local de siempre.
+    if (op === 'offer' && ble.net && typeof ble.net.mailboxOk === 'function' && ble.net.mailboxOk(nx) && typeof ble._sendViaNetMailbox === 'function') {
+      ble._sendViaNetMailbox(nx, JSON.stringify(o), mid).catch(function() {});
+    }
+    return p;
   }
 
   _importKey(hex) { return crypto.subtle.importKey('raw', _fromHex(hex), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']); }
