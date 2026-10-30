@@ -752,6 +752,10 @@
      "prueba": "grupos: vídeo HD"
     },
     {
+     "fallo": "La burbuja del grupo se quedaba en ○ (enviando) aunque a un miembro ya le había llegado: un miembro con el Bluetooth roto/offline la arrastraba (estado = MÍNIMO de todos; 'sending' rankeaba por encima de 'failed'/'pending'). Ahora ✓ al salir para alguien y ✓✓ cuando todos confirman (informe del dueño 30-10, #131)",
+     "prueba": "la burbuja muestra ✓ al salir"
+    },
+    {
      "fallo": "Compartir contactos",
      "prueba": null,
      "fuera": "share.js"

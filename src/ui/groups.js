@@ -144,14 +144,27 @@ export class Groups {
     if (!mm || !this.st[mm[1]] || !(status in STATUS_RANK)) return;
     var per = this.st[mm[1]].m, gid = this.st[mm[1]].g, nx = 'nx' + mm[2];
     if (!(nx in per)) return;
-    if ((STATUS_RANK[status] || 0) <= (STATUS_RANK[per[nx]] || 0) && !(per[nx] === 'failed' && status !== 'failed')) return;
+    // #131 (informe del dueño 30-10): un miembro en 'sending' puede pasar a CUALQUIER resultado (sent/pending/failed).
+    // Antes, como 'sending'(2) rankeaba por encima de 'pending'(1) y 'failed'(0), la compuerta anti-retroceso bloqueaba
+    // sending→failed/pending y el miembro con el Bluetooth roto/offline se quedaba «enviando» para siempre → la burbuja
+    // del grupo clavada en ○. Solo se bloquea un retroceso REAL desde un estado ya confirmado (p. ej. delivered→sent).
+    if ((STATUS_RANK[status] || 0) <= (STATUS_RANK[per[nx]] || 0) && !(per[nx] === 'failed' && status !== 'failed') && per[nx] !== 'sending') return;
     per[nx] = status;
     // Ya le llegó: la copia oculta de su chat sobra (con fotos o archivos ocuparía el tamaño una vez por miembro)
     if (STATUS_RANK[status] >= STATUS_RANK.delivered) vaultDeleteMessage(nx, wid).catch(function() {});
+    // #131: la burbuja del grupo muestra el MEJOR progreso común, como WhatsApp — NO el mínimo crudo (un miembro
+    // inalcanzable, atascado en 'sending'/'pending'/'failed', dejaba la burbuja en ○ aunque a otro ya le hubiera llegado).
+    // ✓✓ (entregado) solo cuando TODOS confirman; ✓ (enviado) en cuanto salió para alguien; ○/⏳ solo mientras no ha
+    // salido para nadie; ✗ solo si falló para todos.
     var all = Object.keys(per).map(function(k) { return per[k]; });
-    var min = all.reduce(function(a, b) { return STATUS_RANK[a] <= STATUS_RANK[b] ? a : b; }, 'read');
-    // Con alguno fallido pero otros entregados, la burbuja no se pone roja: queda en ✓ (se reintenta)
-    if (min === 'failed' && all.some(function(s) { return STATUS_RANK[s] >= STATUS_RANK.sent; })) min = 'sent';
+    var rk = function(s) { return STATUS_RANK[s] || 0; };
+    var min;
+    if (all.every(function(s) { return s === 'read'; })) min = 'read';
+    else if (all.every(function(s) { return rk(s) >= STATUS_RANK.delivered; })) min = 'delivered';
+    else if (all.some(function(s) { return rk(s) >= STATUS_RANK.sent; })) min = 'sent';
+    else if (all.some(function(s) { return s === 'sending'; })) min = 'sending';
+    else if (all.some(function(s) { return s === 'pending'; })) min = 'pending';
+    else min = 'failed';
     this._save();
     _emit('nexo:groups:status', { msgId: mm[1], gid: gid, status: min, per: per });
   }
