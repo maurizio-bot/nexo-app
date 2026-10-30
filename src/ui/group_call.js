@@ -261,6 +261,7 @@ export class GroupCall {
     var g = this.gc; if (!g) return;
     var l = g.legs.get(nx); if (l) l.state = 'gone';
     g.roster.delete(nx);
+    if (g.hub && g.hub.drop) try { g.hub.drop(nx); } catch (e) {} // #128 inc.2: liberar el decodificador del que se fue
     this._set(null);
     // si no queda nadie vivo, terminar
     var alive = 0, me = this._nidSelf();

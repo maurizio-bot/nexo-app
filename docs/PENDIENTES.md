@@ -41,9 +41,11 @@ regla «NEXO ID menor manda offer», voz por control `{type:'vf', c:<id tramo>, 
      grupo nueva `groupcall_ui.js` (estilo NEXO de `calls_ui.js`, lista de participantes, nexo:gcall/nexo:gcallRing/nexo:gcallEnded);
      tono de entrada reusando el de `calls_ui.js`. Ampliar `gcall.js`/añadir prueba del cableado (una señal por el enrutado real
      llega a onSignal; iniciar desde la UI emite invites). Textos ya traducibles (claves `grp_call_*` en i18n.js).
-  2. **Medios reales (NO simulable, lo prueba el dueño):** `call_group_media.js` = fábrica de hub real sobre `call_media.js`
-     (`createCallMedia`): UNA captura de micrófono compartida → `onPacket` por frame a todos los tramos; `play(nx,bytes,seq)`
-     decodifica y MEZCLA por tramo (Web Audio suma solo). Reusar codec/paquete de `call_media.js` (`unpackCallPacket`, `callCodecs`).
+  2. ✅ **Medios reales (2847):** hecho — `call_group_media.js` sobre `call_media.js`: UNA captura compartida → difunde a
+     todos los tramos; UN decodificador por tramo (instancia `noCapture` nueva de `call_media`, solo reproduce) → el SO
+     mezcla las salidas. `noCapture` es un cambio mínimo y guardado en `call_media.js` (el 1-a-1 no la usa → CALLS verde).
+     Cableado en `ble_interface.js`; `group_call.js` libera el decodificador del que sale. Prueba `gcallmedia.js` (estructura
+     con medios simulados). Batería 89/89. ⚠️ El audio REAL solo corre en el navegador → lo confirma el dueño en los teléfonos.
   3. **Vídeo en grupo (Fase 2):** `v:1` ya viaja en la señalización; falta la rejilla de vídeo y mandar el vídeo por Wi-Fi (como
      la videollamada 1-a-1, que por Bluetooth es solo voz).
 - Tope `GMAX_AUDIO=5`. No toca `calls.js` (1-a-1 sigue igual). Internet/Jump NO (el retraso no sirve para hablar): solo enlace directo.
