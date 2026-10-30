@@ -4,6 +4,8 @@
 // No toca el almacenamiento ni el envío: solo muestra/oculta burbujas ya pintadas en #messages-container.
 'use strict';
 
+import { t } from './i18n.js';
+
 var _bar = null;
 var _active = false;
 
@@ -17,7 +19,7 @@ function _installButton() {
   if (!header || document.getElementById('nexo-search-btn')) return;
   var b = document.createElement('button');
   b.id = 'nexo-search-btn';
-  b.title = 'Buscar en el chat';
+  b.title = t('misc_search_in_chat', 'Buscar en el chat');
   b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>';
   b.style.cssText = 'width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;cursor:pointer;flex-shrink:0;margin-left:6px;display:inline-flex;align-items:center;justify-content:center;padding:0;';
   b.addEventListener('click', function(e) { e.stopPropagation(); _toggle(); });
@@ -32,7 +34,7 @@ function _buildBar() {
   var input = document.createElement('input');
   input.id = 'nexo-search-input';
   input.type = 'text';
-  input.placeholder = 'Buscar en esta conversación…';
+  input.placeholder = t('misc_search_placeholder', 'Buscar en esta conversación…');
   input.setAttribute('autocomplete', 'off');
   input.setAttribute('autocorrect', 'off');
   input.setAttribute('spellcheck', 'false');
@@ -43,7 +45,7 @@ function _buildBar() {
   var close = document.createElement('button');
   close.id = 'nexo-search-close';
   close.type = 'button';
-  close.title = 'Cerrar búsqueda';
+  close.title = t('misc_search_close', 'Cerrar búsqueda');
   close.textContent = '✕';
   close.style.cssText = 'width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;cursor:pointer;flex-shrink:0;font-size:15px;';
   input.addEventListener('input', function() { _apply(input.value); });
@@ -91,7 +93,7 @@ function _apply(q) {
     }
   }
   var cnt = document.getElementById('nexo-search-count');
-  if (cnt) cnt.textContent = !query ? '' : (hits + (hits === 1 ? ' resultado' : ' resultados'));
+  if (cnt) cnt.textContent = !query ? '' : (hits + (hits === 1 ? t('misc_search_result', ' resultado') : t('misc_search_results', ' resultados')));
   // Llevar la vista al coincidente más reciente (el de más abajo)
   if (last && typeof last.scrollIntoView === 'function') { try { last.scrollIntoView({ block: 'center' }); } catch (e) {} }
 }

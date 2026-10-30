@@ -10,6 +10,7 @@
 import { _getBLEContacts, _normId, _saveBLEContacts } from './ble_helpers.js';
 import { _sendTextTo } from './send.js';
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
+import { t } from './i18n.js';
 
 var MY_FILE = 'nexo_my_avatar.json', SENT_FILE = 'nexo_av_sent.json';
 var IMG_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/;
@@ -119,10 +120,10 @@ export function makeAvatar(file) {
   if (typeof window.NEXO_makeAvatar === 'function') return Promise.resolve(window.NEXO_makeAvatar(file));
   return new Promise(function(resolve, reject) {
     var r = new FileReader();
-    r.onerror = function() { reject(new Error('no se pudo leer la foto')); };
+    r.onerror = function() { reject(new Error(t('misc_avatar_read_fail', 'no se pudo leer la foto'))); };
     r.onload = function() {
       var im = new Image();
-      im.onerror = function() { reject(new Error('no es una imagen')); };
+      im.onerror = function() { reject(new Error(t('misc_avatar_not_image', 'no es una imagen'))); };
       im.onload = function() {
         var s = Math.min(im.width, im.height), cv = document.createElement('canvas');
         cv.width = cv.height = SIZE;

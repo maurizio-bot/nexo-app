@@ -68,9 +68,26 @@ global.window = { dispatchEvent(ev) { if (ev && ev.type === 'nexo:lang') lastLan
   store = {}; navLang = 'es-ES'; m._resetForTest();
   r.zona1_es = m.t('nav_contactos') === 'Contactos' && m.t('cam_foto') === 'FOTO';
 
+  // 10) Fase 2 completa (chat, llamadas, multimedia, perfil/ajustes, grupos, varios): una clave de cada zona
+  //     traduce en inglés e italiano y el español es idéntico al original (respaldo con 2.º arg).
+  store = {}; navLang = 'en-US'; m._resetForTest();
+  r.zona2_en = m.t('chat_copied') === 'Copied' && m.t('call_hangup', 'Colgar') === 'End' &&
+    m.t('media_save_gallery') === 'Save to gallery' && m.t('prof_title') === 'Profile' &&
+    m.t('grp_publish') === 'Publish' && m.t('misc_search_in_chat') === 'Search in chat';
+  store = {}; navLang = 'it-IT'; m._resetForTest();
+  r.zona2_it = m.t('chat_copied') === 'Copiato' && m.t('call_hangup') === 'Termina' &&
+    m.t('prof_title') === 'Profilo' && m.t('grp_publish') === 'Pubblica' &&
+    m.t('misc_search_in_chat') === 'Cerca nella chat';
+  store = {}; navLang = 'es-ES'; m._resetForTest();
+  r.zona2_es = m.t('chat_copied') === 'Copiado' && m.t('call_hangup') === 'Colgar' &&
+    m.t('media_save_gallery') === 'Guardar en galería' && m.t('prof_title') === 'Perfil' &&
+    m.t('grp_publish') === 'Publicar' && m.t('misc_search_in_chat') === 'Buscar en el chat';
+
   const ok = r.default_it && r.default_en && r.desconocido_cae_a_es && r.guardado_manda &&
     r.setlang_cambia && r.setlang_guarda && r.setlang_avisa && r.invalido_ignorado &&
-    r.fallback_clave && r.it_tiene_privacy;
+    r.fallback_clave && r.it_tiene_privacy &&
+    r.zona1_en && r.zona1_it && r.zona1_es &&
+    r.zona2_en && r.zona2_it && r.zona2_es;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('I18N ' + JSON.stringify(r));
   process.exit(0);

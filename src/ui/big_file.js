@@ -17,6 +17,7 @@
  * Solo con quien lo anuncia ('bg' en el kx); el estado de cada archivo se ve en su tarjeta del chat.
  */
 import { WD_MAX_BYTES } from './wifi_direct.js';
+import { t } from './i18n.js';
 
 export var BIG_SLICE = 512 * 1024;
 export var BIG_MAX_BYTES = 1024 * 1024 * 1024;
@@ -32,7 +33,7 @@ function _sliceB64(file, start, end) {
   return new Promise(function(resolve, reject) {
     var r = new FileReader();
     r.onload = function() { var s = String(r.result || ''); resolve(s.substring(s.indexOf(',') + 1)); };
-    r.onerror = function() { reject(r.error || new Error('no se pudo leer')); };
+    r.onerror = function() { reject(r.error || new Error(t('misc_big_read_fail', 'no se pudo leer'))); };
     r.readAsDataURL(file.slice(start, end));
   });
 }
@@ -94,7 +95,7 @@ export class BigFiles {
   // 1. Cifrar a disco por trozos (la app nunca tiene el archivo entero). Devuelve la clave.
   prepare(file, id) {
     var self = this, pl = _plugin(), key = _hex(32);
-    if (!pl || typeof pl.bigBegin !== 'function') return Promise.reject(new Error('esta versión no puede'));
+    if (!pl || typeof pl.bigBegin !== 'function') return Promise.reject(new Error(t('misc_big_version_cannot', 'esta versión no puede')));
     self._set(id, { dir: 'out', state: 'preparing', bytes: 0, total: file.size });
     return pl.bigBegin({ id: id, key: key }).then(function() {
       var pos = 0;
@@ -145,28 +146,28 @@ export class BigFiles {
     // Por internet todavía no (Fase B: canal directo por Tor). Antes el fallo decía «sin camino» y no se entendía; ahora
     // queda claro y la tarjeta del chat lo muestra (nunca «enviada» sin enviarse).
     if (!via) {
-      var msg = 'Archivo muy grande (' + Math.round((((this.st[id] || {}).total) || 0) / 1048576) + ' MB): por ahora solo se envía con el contacto cerca (mismo Wi-Fi, Wi-Fi Direct o Bluetooth); por internet todavía no.';
+      var msg = t('misc_big_toobig_a', 'Archivo muy grande (') + Math.round((((this.st[id] || {}).total) || 0) / 1048576) + t('misc_big_toobig_b', ' MB): por ahora solo se envía con el contacto cerca (mismo Wi-Fi, Wi-Fi Direct o Bluetooth); por internet todavía no.');
       self._set(id, { dir: 'out', state: 'failed', error: msg });
       return Promise.reject(Object.assign(new Error(msg), { code: 'BIG_NO_NET' }));
     }
     return pl.bigStatus({ id: id }).then(function(s) {
-      if (!s || !s.have) throw new Error('ya no está en este teléfono');
+      if (!s || !s.have) throw new Error(t('misc_big_gone', 'ya no está en este teléfono'));
       self._set(id, { dir: 'out', state: 'sending', bytes: 0, total: s.bytes, nx: nx, via: via });
       console.log('[BIG] Enviando ' + id + ' a ' + nx + ' por ' + ({ lan: 'Wi-Fi', wd: 'Wi-Fi Direct', l2: 'Bluetooth (L2CAP)' })[via] + ' (' + Math.round(s.bytes / 1048576) + ' MB)');
       if (via === 'wd') return self.ble.wifiDirect.sendBig(self._dev(nx, 'wd'), id, s.bytes);
       return new Promise(function(resolve, reject) {
-        var t = setTimeout(function() { self.out.delete(id); reject(new Error('sin respuesta')); }, OFFER_TIMEOUT_MS);
+        var tmr = setTimeout(function() { self.out.delete(id); reject(new Error(t('misc_big_no_response', 'sin respuesta'))); }, OFFER_TIMEOUT_MS);
         self.out.set(id, {
-          onNo: function(why) { clearTimeout(t); self.out.delete(id); reject(new Error('el otro no puede (' + (why || '?') + ')')); },
+          onNo: function(why) { clearTimeout(tmr); self.out.delete(id); reject(new Error(t('misc_big_other_cannot', 'el otro no puede (') + (why || '?') + ')')); },
           onAccept: function(p) {
-            clearTimeout(t); self.out.delete(id);
+            clearTimeout(tmr); self.out.delete(id);
             if (via === 'l2') {
-              if (!(p.psm > 0)) { reject(new Error('el otro no abrió el canal')); return; }
+              if (!(p.psm > 0)) { reject(new Error(t('misc_big_other_no_channel', 'el otro no abrió el canal'))); return; }
               pl.bigSendL2({ id: id, deviceId: self._dev(nx, 'l2'), psm: p.psm, token: p.token }).then(resolve, reject);
             } else pl.bigSendLan({ id: id, nx: nx, port: p.port, token: p.token }).then(resolve, reject);
           }
         });
-        self._ctl(self._dev(nx, via), { type: 'gq', id: id, size: s.bytes, via: via }).catch(function(e) { clearTimeout(t); self.out.delete(id); reject(e); });
+        self._ctl(self._dev(nx, via), { type: 'gq', id: id, size: s.bytes, via: via }).catch(function(e) { clearTimeout(tmr); self.out.delete(id); reject(e); });
       });
     }).then(function() {
       // El socket confirmó que el otro tiene todos los bytes
@@ -246,7 +247,7 @@ export class BigFiles {
 
   open(id, key, name, mime) {
     var pl = _plugin();
-    if (!pl || typeof pl.bigOpen !== 'function') return Promise.reject(new Error('esta versión no puede abrirlo'));
+    if (!pl || typeof pl.bigOpen !== 'function') return Promise.reject(new Error(t('misc_big_version_cannot_open', 'esta versión no puede abrirlo')));
     return pl.bigOpen({ id: id, key: key, name: name, mime: mime });
   }
 }

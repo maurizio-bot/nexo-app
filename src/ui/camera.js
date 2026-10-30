@@ -5,6 +5,7 @@
  */
 import { PREVIEW_MAX_SECONDS, _videoFormat } from './video_tools.js';
 import { _getCurrentContactId } from './chat_format.js';
+import { t } from './i18n.js';
 
 // [pegamento] Lo que la cámara usa del resto de la app: main.js lo da al arrancar (cameraUse), antes de que se abra la cámara
 var _wdReach, _waitForBLEReady, _sendAttachment, _closeAttachMenu, _releaseMedia, _handleGallery, _sendVideo;
@@ -109,7 +110,7 @@ export function _setupVideoRecorder(stream) {
     'video/webm',
     'video/mp4;codecs=avc1.42E01E,mp4a.40.2'
   ];
-  if (typeof MediaRecorder === 'undefined') { _cameraError('Este teléfono no permite grabar vídeo aquí'); return; }
+  if (typeof MediaRecorder === 'undefined') { _cameraError(t('media_cam_no_record', 'Este teléfono no permite grabar vídeo aquí')); return; }
   for (var i = 0; i < candidates.length; i++) {
     if (MediaRecorder.isTypeSupported(candidates[i])) { mimeType = candidates[i]; break; }
   }
@@ -129,7 +130,7 @@ export function _setupVideoRecorder(stream) {
     };
   } catch (recErr) {
     console.log('[CAMERA] MediaRecorder init error:', recErr.message);
-    _cameraError('Error: grabación no soportada');
+    _cameraError(t('media_cam_rec_unsupported', 'Error: grabación no soportada'));
   }
 }
 
@@ -175,10 +176,10 @@ export function _startCameraPreview() {
     var fallback = { video: isFront ? { facingMode: 'user' } : { facingMode: 'environment' }, audio: needAudio };
     navigator.mediaDevices.getUserMedia(fallback).then(_onStreamSuccess).catch(function(err2) {
       console.log('[CAMERA] Fallback error:', err2.name, err2.message);
-      _cameraError('No se pudo abrir la cámara: ' + err2.message);
+      _cameraError(t('media_cam_open_fail', 'No se pudo abrir la cámara: ') + err2.message);
     });
   }
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { _cameraError('Cámara no disponible'); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { _cameraError(t('media_cam_unavailable', 'Cámara no disponible')); return; }
   navigator.mediaDevices.getUserMedia(constraints).then(_onStreamSuccess).catch(_onStreamError);
 }
 
@@ -256,7 +257,7 @@ export function _capturePhoto() {
   var container = document.getElementById('camera-preview-container');
   if (!container) return;
   var video = container.querySelector('video');
-  if (!video || !video.videoWidth) { _cameraError('La cámara aún no está lista'); return; }
+  if (!video || !video.videoWidth) { _cameraError(t('media_cam_not_ready', 'La cámara aún no está lista')); return; }
   var cid = _getCurrentContactId();
   var target = _photoTarget(cid);
   var vw = video.videoWidth, vh = video.videoHeight;
@@ -304,7 +305,7 @@ export function _handleCameraCapture() {
   var mimeType = (rec.mimeType || 'video/webm').split(';')[0];
   rec.onstop = function() {
     var blob = new Blob(_cameraPreviewVideoChunks, { type: mimeType });
-    if (!blob.size) { _cameraError('Error: el vídeo quedó vacío'); return; }
+    if (!blob.size) { _cameraError(t('media_cam_video_empty', 'Error: el vídeo quedó vacío')); return; }
     console.log('[CAMERA] Vídeo listo ' + Math.round(blob.size / 1024) + ' KB dur=' + duration);
     _stopCameraPreview();
     _resumeBleFromCamera();

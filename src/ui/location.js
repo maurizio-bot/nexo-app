@@ -3,6 +3,7 @@
  * red, avisos claros y envío. _sendAttachment lo da main.js con locationUse().
  */
 import { _closeAttachMenu, _getAttachmentPlugins, _hideInfoToast, _showInfoToast, _showPermissionError } from './ui_bits.js';
+import { t } from './i18n.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _sendAttachment;
@@ -26,7 +27,7 @@ export async function _handleLocation() {
   var t0 = Date.now();
   var why = '';
   var pos = null;
-  _showInfoToast('📍 Obteniendo tu ubicación…', 30000);
+  _showInfoToast(t('media_getting_location', '📍 Obteniendo tu ubicación…'), 30000);
   try {
     if (G && typeof G.getCurrentPosition === 'function') {
       try {
@@ -58,8 +59,8 @@ export async function _handleLocation() {
     }
     console.warn('[ATTACH] Ubicación no disponible tras ' + Math.round((Date.now() - t0) / 100) / 10 + ' s: ' + why);
     if (/permiso|denied|permission/i.test(why)) _showPermissionError('ubicación');
-    else if (/not enabled|disabled|services/i.test(why)) _showInfoToast('Activa la ubicación (GPS) del teléfono y vuelve a intentarlo.', 5000);
-    else _showInfoToast('No se pudo obtener tu ubicación (sin señal de GPS). Prueba cerca de una ventana o al aire libre.', 6000);
+    else if (/not enabled|disabled|services/i.test(why)) _showInfoToast(t('media_enable_gps', 'Activa la ubicación (GPS) del teléfono y vuelve a intentarlo.'), 5000);
+    else _showInfoToast(t('media_location_fail', 'No se pudo obtener tu ubicación (sin señal de GPS). Prueba cerca de una ventana o al aire libre.'), 6000);
   } finally {
     _isGettingLocation = false;
   }

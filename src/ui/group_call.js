@@ -20,6 +20,8 @@
  * micrófono UNA vez y entrega un decodificador/mezclador por tramo. Aquí va la señalización, los tramos y el enrutado.
  */
 
+import { t } from './i18n.js';
+
 var GMAX_AUDIO = 5;          // tope de participantes en audio (malla N²; ≤5 es cómodo)
 var GRING_MS = 45000;        // invitación sin contestar
 var GSILENCE_MS = 15000;     // un tramo sin recibir nada → se cierra (los demás siguen)
@@ -82,11 +84,11 @@ export class GroupCall {
   // Iniciar una llamada de grupo con una lista de contactos (members: [nexoId]). video reservado para la Fase 2.
   start(members, video) {
     var self = this, me = self._nidSelf();
-    if (self.gc) return Promise.reject(new Error('Ya hay una llamada en curso'));
+    if (self.gc) return Promise.reject(new Error(t('grp_call_busy', 'Ya hay una llamada en curso')));
     var list = (members || []).map(_nid).filter(function(x) { return x && x !== me; });
     list = list.filter(function(x, i) { return list.indexOf(x) === i; }); // sin repetidos
-    if (!list.length) return Promise.reject(new Error('Hace falta al menos un contacto'));
-    if (list.length + 1 > GMAX_AUDIO) return Promise.reject(new Error('Máximo ' + GMAX_AUDIO + ' en una llamada de grupo'));
+    if (!list.length) return Promise.reject(new Error(t('grp_call_need_one', 'Hace falta al menos un contacto')));
+    if (list.length + 1 > GMAX_AUDIO) return Promise.reject(new Error(t('grp_max_a', 'Máximo ') + GMAX_AUDIO + t('grp_max_call', ' en una llamada de grupo')));
     var gid = 'gc' + Date.now().toString(36) + _hex(4), key = _hex(32);
     var roster = new Set([me].concat(list));
     self.gc = { gid: gid, dir: 'out', state: 'calling', key: key, video: !!video, legs: new Map(), roster: roster, startedAt: 0, createdAt: Date.now() };

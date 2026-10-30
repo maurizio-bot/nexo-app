@@ -12,6 +12,7 @@ import { BIG_MAX_BYTES } from './big_file.js';
 import { groupBigRoute } from './group_media.js';
 import { isGroupId } from './groups.js';
 import { GROUP_MAX_BYTES } from './send.js';
+import { t } from './i18n.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _sendAttachment, _sendBigFile;
@@ -44,9 +45,9 @@ export function _pickFile(accept, label, onFile) {
 }
 
 export function _readFailed(err) {
-  var m = (err && (err.message || err.name)) || 'error de lectura';
+  var m = (err && (err.message || err.name)) || t('misc_read_error', 'error de lectura');
   console.warn('[ATTACH] No se pudo leer el archivo: ' + m);
-  _showPermissionError('Archivo: no se pudo leer (' + m + ')');
+  _showPermissionError(t('misc_file_read_fail', 'Archivo: no se pudo leer (') + m + ')');
 }
 
 export async function _handleGallery() {
@@ -93,9 +94,9 @@ export function _handleFile() {
         return;
       }
       console.warn('[ATTACH] Archivo demasiado grande: ' + file.size);
-      _showPermissionError(file.size > BIG_MAX_BYTES ? 'Archivo demasiado grande (' + (file.size / 1048576).toFixed(0) + ' MB). Máximo 1 GB.'
-        : (inGroup ? 'Demasiado grande para mandarlo por Bluetooth al grupo (' + (file.size / 1048576).toFixed(1) + ' MB).' : _tooBigMessage(file.size, cidF)) +
-          ' Hasta 1 GB con ' + (inGroup ? 'alguien del grupo' : 'el contacto') + ' en el mismo Wi-Fi, con Wi-Fi Direct o cerca por Bluetooth (Android 10 o más; ' + (inGroup ? 'con' : 'los dos con') + ' NEXO actualizado).', 8000);
+      _showPermissionError(file.size > BIG_MAX_BYTES ? t('misc_file_too_big_a', 'Archivo demasiado grande (') + (file.size / 1048576).toFixed(0) + t('misc_file_too_big_b', ' MB). Máximo 1 GB.')
+        : (inGroup ? t('misc_big_group_a', 'Demasiado grande para mandarlo por Bluetooth al grupo (') + (file.size / 1048576).toFixed(1) + t('misc_big_group_b', ' MB).') : _tooBigMessage(file.size, cidF)) +
+          t('misc_upto_1gb_a', ' Hasta 1 GB con ') + (inGroup ? t('misc_someone_group', 'alguien del grupo') : t('misc_the_contact', 'el contacto')) + t('misc_upto_1gb_b', ' en el mismo Wi-Fi, con Wi-Fi Direct o cerca por Bluetooth (Android 10 o más; ') + (inGroup ? t('misc_with', 'con') : t('misc_both_with', 'los dos con')) + t('misc_upto_1gb_c', ' NEXO actualizado).'), 8000);
       return;
     }
     _readFileBase64(file).then(function(base64) {
@@ -106,10 +107,10 @@ export function _handleFile() {
       }
       var mime = _mimeOf(file.type, file.name);
       var meta = { name: file.name, size: file.size, type: mime, mime: mime };
-      return (_isPdf(mime, file.name) ? _pdfThumb(base64) : Promise.resolve(null)).then(function(t) {
-        if (t && t.thumb) { meta.thumb = t.thumb; meta.pages = t.pages; }
+      return (_isPdf(mime, file.name) ? _pdfThumb(base64) : Promise.resolve(null)).then(function(tr) {
+        if (tr && tr.thumb) { meta.thumb = tr.thumb; meta.pages = tr.pages; }
         _sendAttachment('file', base64, meta);
-        console.log('[ATTACH] Archivo:', _extOf(file.name), mime, t && t.thumb ? 'con miniatura' : '');
+        console.log('[ATTACH] Archivo:', _extOf(file.name), mime, tr && tr.thumb ? 'con miniatura' : '');
       });
     }).catch(_readFailed);
   });

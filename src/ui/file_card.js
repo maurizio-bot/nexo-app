@@ -10,6 +10,7 @@ import { _releaseMedia, _showPermissionError } from './ui_bits.js';
 import { vaultSetMessageFields } from '../vault/vault_manager.js';
 import { isGroupId } from './groups.js';
 import { bigToGroup } from './group_media.js';
+import { t } from './i18n.js';
 
 
 export function _closeFullscreenMedia() {
@@ -37,7 +38,7 @@ export function _openFullscreenMedia(src, type, noSave) {
     var dlBtn = document.createElement('button');
     dlBtn.className = 'fs-save-btn';
     dlBtn.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" fill="#fff"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>';
-    dlBtn.title = 'Guardar en galería';
+    dlBtn.title = t('media_save_gallery', 'Guardar en galería');
     dlBtn.style.cssText = 'position:absolute;top:16px;left:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;';
     dlBtn.onclick = function(e) { if (e) e.stopPropagation(); _saveMediaToGallery(src, type, dlBtn); };
     overlay.appendChild(dlBtn);
@@ -128,9 +129,9 @@ function _blobToB64(blob) {
 }
 export function _saveMediaToGallery(src, type, btn) {
   var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
-  if (!pl || typeof pl.saveToGallery !== 'function') { _showPermissionError('Guardar: esta versión no puede guardar en la galería'); return; }
+  if (!pl || typeof pl.saveToGallery !== 'function') { _showPermissionError(t('media_save_unsupported', 'Guardar: esta versión no puede guardar en la galería')); return; }
   if (btn) btn.style.opacity = '0.5';
-  var done = function(ok) { if (btn) btn.style.opacity = '1'; _showPermissionError(ok ? 'Guardado en la galería' : 'No se pudo guardar en la galería'); };
+  var done = function(ok) { if (btn) btn.style.opacity = '1'; _showPermissionError(ok ? t('media_saved_ok', 'Guardado en la galería') : t('media_saved_fail', 'No se pudo guardar en la galería')); };
   var send = function(b64, mime) {
     if (!b64) { done(false); return; }
     pl.saveToGallery({ base64: b64, name: 'NEXO_' + Date.now() + '.' + _extForMime(mime), mime: mime })
@@ -186,11 +187,11 @@ export function _buildFileCard(msg, attachment, mime) {
   sub.style.cssText = 'font-size:11px;opacity:0.7;';
   var size = Number(m.size) || (attachment.payload ? Math.floor(attachment.payload.length * 3 / 4) : 0);
   var parts = [];
-  if (m.pages) parts.push(m.pages + (m.pages == 1 ? ' página' : ' páginas'));
+  if (m.pages) parts.push(m.pages + (m.pages == 1 ? t('media_page_sing', ' página') : t('media_page_plur', ' páginas')));
   if (size) parts.push(_fmtSize(size));
   var bigId = m.big && /^[A-Za-z0-9_-]{1,64}$/.test(String(m.big.id || '')) ? String(m.big.id) : '';
   if (bigId) { card.dataset.bigId = bigId; card.dataset.bigOwn = msg && msg._own ? '1' : ''; card.dataset.bigSize = _fmtSize(size); _bigWatch(); }
-  else parts.push('Toca para abrir');
+  else parts.push(t('media_tap_open', 'Toca para abrir'));
   sub.textContent = parts.join(' · ');
   txt.appendChild(nm);
   txt.appendChild(sub);
@@ -213,14 +214,14 @@ function _bigText(card) {
   var s = b && b.state(id);
   var pct = s && s.total ? Math.min(100, Math.floor((s.bytes || 0) * 100 / s.total)) : 0;
   var head = size ? size + ' · ' : '';
-  if (!s) return head + (own ? 'Toca para abrir' : 'Esperando el archivo · Toca para pedirlo');
-  if (s.state === 'preparing') return head + 'Preparando ' + pct + ' %';
+  if (!s) return head + (own ? t('media_tap_open', 'Toca para abrir') : t('media_waiting_file', 'Esperando el archivo · Toca para pedirlo'));
+  if (s.state === 'preparing') return head + t('media_preparing', 'Preparando ') + pct + ' %';
   var via = ({ wd: ' (Wi-Fi Direct)', lan: ' (Wi-Fi)', l2: ' (Bluetooth)' })[s.via] || '';
-  if (s.state === 'sending') return head + 'Enviando ' + pct + ' %' + via;
-  if (s.state === 'receiving') return head + 'Recibiendo ' + pct + ' %' + via;
-  if (s.state === 'waiting') return head + 'Pedido otra vez…';
-  if (s.state === 'failed') return head + (s.dir === 'out' ? 'No se pudo enviar · Toca para reintentar' : 'No llegó entero · Toca para pedirlo');
-  return head + 'Toca para abrir';
+  if (s.state === 'sending') return head + t('media_sending', 'Enviando ') + pct + ' %' + via;
+  if (s.state === 'receiving') return head + t('media_receiving', 'Recibiendo ') + pct + ' %' + via;
+  if (s.state === 'waiting') return head + t('media_requested_again', 'Pedido otra vez…');
+  if (s.state === 'failed') return head + (s.dir === 'out' ? t('media_send_fail_retry', 'No se pudo enviar · Toca para reintentar') : t('media_incomplete_file', 'No llegó entero · Toca para pedirlo'));
+  return head + t('media_tap_open', 'Toca para abrir');
 }
 function _bigSub(card) { var sub = card.querySelector('.file-sub'); if (sub) sub.textContent = _bigText(card); }
 var _bigWatching = false;
@@ -235,7 +236,7 @@ function _bigWatch() {
 }
 function _bigTap(msg, big, name, mime) {
   var b = _bigs(), id = String(big.id), cid = (msg && (_msgContactMap[msg.msgId || msg.messageId] || msg.contactNexoId)) || _getCurrentContactId();
-  if (!b) { _showPermissionError('Archivo: esta versión no puede abrirlo'); return; }
+  if (!b) { _showPermissionError(t('media_file_cant_open_ver', 'Archivo: esta versión no puede abrirlo')); return; }
   var s = b.state(id) || {};
   var own = !!(msg && msg._own);
   if (s.state === 'preparing' || s.state === 'sending' || s.state === 'receiving' || s.state === 'waiting') return;
@@ -244,21 +245,21 @@ function _bigTap(msg, big, name, mime) {
   if (s.state === 'failed' && s.dir === 'out') { if (inGroup) bigToGroup(cid, id); else b.transfer(cid, id).catch(function() {}); return; }
   if (!own && inGroup) cid = (msg && msg.senderNexoId) || big.from || cid;
   if (!own && s.state !== 'done') {
-    if (!b.request(cid, id)) _showPermissionError('Archivo grande: hace falta estar en el mismo Wi-Fi que el contacto o con Wi-Fi Direct');
+    if (!b.request(cid, id)) _showPermissionError(t('media_bigfile_need_wifi', 'Archivo grande: hace falta estar en el mismo Wi-Fi que el contacto o con Wi-Fi Direct'));
     return;
   }
-  if (!big.key) { _showPermissionError('Archivo: todavía no está listo'); return; }
+  if (!big.key) { _showPermissionError(t('media_file_not_ready', 'Archivo: todavía no está listo')); return; }
   if (_openingFile) return;
   _openingFile = true;
   console.log('[BIG] Abrir ' + id + ' (' + _extOf(name) + ')');
   b.open(id, big.key, name, mime).then(function(r) {
     if (r && r.opened === false) {
-      if (r.reason === 'install_permission') _showPermissionError('Archivo: permite a NEXO instalar apps y vuelve a tocar la APK');
-      else if (r.reason === 'missing') _showPermissionError('Archivo: ya no está en este teléfono' + (own ? '' : ' · Toca otra vez para pedirlo'));
-      else _showPermissionError('Archivo: no hay ninguna app en el teléfono para abrir este tipo de archivo');
+      if (r.reason === 'install_permission') _showPermissionError(t('media_file_install_perm', 'Archivo: permite a NEXO instalar apps y vuelve a tocar la APK'));
+      else if (r.reason === 'missing') _showPermissionError(t('media_file_gone', 'Archivo: ya no está en este teléfono') + (own ? '' : t('media_tap_request_again', ' · Toca otra vez para pedirlo')));
+      else _showPermissionError(t('media_file_no_app', 'Archivo: no hay ninguna app en el teléfono para abrir este tipo de archivo'));
       if (r.reason === 'missing' && !own) { b.saved[id] = undefined; b._set(id, { dir: 'in', state: 'failed' }); }
     }
-  }).catch(function(e) { _showPermissionError('Archivo: no se pudo abrir (' + ((e && e.message) || 'error') + ')'); })
+  }).catch(function(e) { _showPermissionError(t('media_file_open_fail_a', 'Archivo: no se pudo abrir (') + ((e && e.message) || 'error') + ')'); })
     .then(function() { _openingFile = false; });
 }
 
@@ -266,20 +267,20 @@ export var _openingFile = false;
 
 export function _openAttachmentFile(b64, name, mime) {
   var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
-  if (!b64) { _showPermissionError('Archivo: todavía no está disponible'); return; }
-  if (!pl || typeof pl.openFile !== 'function') { _showPermissionError('Archivo: esta versión no puede abrirlo'); return; }
+  if (!b64) { _showPermissionError(t('media_file_not_available', 'Archivo: todavía no está disponible')); return; }
+  if (!pl || typeof pl.openFile !== 'function') { _showPermissionError(t('media_file_cant_open_ver', 'Archivo: esta versión no puede abrirlo')); return; }
   if (_openingFile) return;
   _openingFile = true;
   console.log('[ATTACH] Abrir archivo ' + _extOf(name) + ' (' + mime + ')');
   pl.openFile({ base64: b64, name: name, mime: mime }).then(function(r) {
     if (r && r.opened === false) {
       console.warn('[ATTACH] No abierto: ' + r.reason);
-      if (r.reason === 'install_permission') _showPermissionError('Archivo: permite a NEXO instalar apps y vuelve a tocar la APK');
-      else _showPermissionError('Archivo: no hay ninguna app en el teléfono para abrir este tipo de archivo');
+      if (r.reason === 'install_permission') _showPermissionError(t('media_file_install_perm', 'Archivo: permite a NEXO instalar apps y vuelve a tocar la APK'));
+      else _showPermissionError(t('media_file_no_app', 'Archivo: no hay ninguna app en el teléfono para abrir este tipo de archivo'));
     }
   }).catch(function(e) {
     console.warn('[ATTACH] Error abriendo archivo: ' + (e && e.message));
-    _showPermissionError('Archivo: no se pudo abrir (' + ((e && e.message) || 'error') + ')');
+    _showPermissionError(t('media_file_open_fail_a', 'Archivo: no se pudo abrir (') + ((e && e.message) || 'error') + ')');
   }).then(function() { _openingFile = false; });
 }
 

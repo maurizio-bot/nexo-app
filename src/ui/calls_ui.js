@@ -15,6 +15,7 @@ import { _showInfoToast } from './ui_bits.js';
 import { _getGradientForUUID, _getInitials } from './ble_helpers.js';
 import { _hideCameraPreviewOverlay } from './camera.js';
 import { vaultAppendMessage, vaultFindContactByNexoId } from '../vault/vault_manager.js';
+import { t } from './i18n.js';
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
 function _calls() { var b = _bi(); return b && b.calls; }
@@ -170,7 +171,7 @@ function _screen() {
   el = document.createElement('div');
   el.id = 'nexo-call-screen';
   el.innerHTML = '<div class="nc-bg"></div>' +
-    '<div class="nc-top"><div class="nc-pill nc-lock">' + _svg('lock', 13) + '<span>Cifrada de extremo a extremo</span></div><div class="nc-mini"></div><div class="nc-warnbar"></div></div>' +
+    '<div class="nc-top"><div class="nc-pill nc-lock">' + _svg('lock', 13) + '<span>' + t('call_e2e', 'Cifrada de extremo a extremo') + '</span></div><div class="nc-mini"></div><div class="nc-warnbar"></div></div>' +
     '<div class="nc-center"><div class="nc-av-wrap"><div class="nc-ring"></div><div class="nc-ring r2"></div><div class="nc-ring r3"></div><div class="nc-av"></div></div>' +
     '<div class="call-name"></div><div class="call-status"></div><div class="call-note"></div></div>' +
     '<div class="nc-bottom"><div class="call-buttons"></div></div>';
@@ -315,32 +316,40 @@ function _videoLayout(el, st) {
 function _devErr(e) {
   e = String(e || '');
   if (!e || /^sin micr/i.test(e)) return '';
-  if (/NotAllowed|PermissionDenied|Security/.test(e)) return 'sin permiso';
-  if (/NotFound|DevicesNotFound/.test(e)) return 'no encontrado';
-  if (/NotReadable|Abort|TrackStart/.test(e)) return 'ocupado por otra app';
+  if (/NotAllowed|PermissionDenied|Security/.test(e)) return t('call_err_no_permission', 'sin permiso');
+  if (/NotFound|DevicesNotFound/.test(e)) return t('call_err_not_found', 'no encontrado');
+  if (/NotReadable|Abort|TrackStart/.test(e)) return t('call_err_busy_other_app', 'ocupado por otra app');
   return e;
 }
 function _warnText(st, name) {
   if (!st || st.state !== 'active') return '';
-  if (st.micState === 'retry') return 'Tu micrófono no responde: reintentando…';
+  if (st.micState === 'retry') return t('call_mic_retrying', 'Tu micrófono no responde: reintentando…');
   var why = _devErr(st.micError);
-  if (st.micState === 'none' || st.micError) return 'Sin micrófono' + (why ? ' (' + why + ')' : '') + ': ' + name + ' no te oye';
-  if (st.peerMic === 'retry' || st.peerMic === 'none') return 'El micrófono de ' + name + ' no funciona: no se le oye';
-  if (st.video && st.camState === 'retry' && !st.cameraOff) return 'Tu cámara no está disponible: reintentando…';
-  if (st.video && st.camState === 'none') return 'Tu cámara no funciona: solo voz';
+  if (st.micState === 'none' || st.micError) return t('call_no_mic', 'Sin micrófono') + (why ? ' (' + why + ')' : '') + ': ' + name + t('call_cant_hear_you', ' no te oye');
+  if (st.peerMic === 'retry' || st.peerMic === 'none') return t('call_peer_mic_prefix', 'El micrófono de ') + name + t('call_peer_mic_broken', ' no funciona: no se le oye');
+  if (st.video && st.camState === 'retry' && !st.cameraOff) return t('call_cam_retrying', 'Tu cámara no está disponible: reintentando…');
+  if (st.video && st.camState === 'none') return t('call_cam_voice_only', 'Tu cámara no funciona: solo voz');
   return '';
 }
 // Lo que se ve en lugar de la imagen del otro (el vídeo solo va por Wi-Fi: por Bluetooth, solo voz)
-function _peerVideoText(st, via) {
-  if (st.peerCam === 'off') return 'Cámara apagada';
-  if (st.peerCam === 'none') return 'Sin cámara: solo voz';
-  if (st.peerCam === 'retry') return 'Su cámara no está disponible';
-  return via === 'por Bluetooth' ? 'Sin Wi-Fi: solo voz (el vídeo vuelve con el Wi-Fi)' : 'Esperando imagen…';
+// `isBt` es un booleano (no el texto ya traducido) para no depender del idioma en la lógica.
+function _peerVideoText(st, isBt) {
+  if (st.peerCam === 'off') return t('call_peer_cam_off', 'Cámara apagada');
+  if (st.peerCam === 'none') return t('call_peer_cam_none', 'Sin cámara: solo voz');
+  if (st.peerCam === 'retry') return t('call_peer_cam_retry', 'Su cámara no está disponible');
+  return isBt ? t('call_no_wifi_voice_only', 'Sin Wi-Fi: solo voz (el vídeo vuelve con el Wi-Fi)') : t('call_waiting_image', 'Esperando imagen…');
+}
+
+// ¿El enlace activo es por Bluetooth? (true si hay enlace y NO es Wi-Fi). Fuente de la verdad para la lógica,
+// separada del texto mostrado por _linkText (que ya va traducido).
+function _isBtLink(nx) {
+  var calls = _calls(), l = calls && typeof calls._link === 'function' ? calls._link(nx) : null;
+  return !!l && l.indexOf('lan:') !== 0;
 }
 
 function _linkText(nx) {
   var calls = _calls(), l = calls && typeof calls._link === 'function' ? calls._link(nx) : null;
-  return l ? (l.indexOf('lan:') === 0 ? 'por Wi-Fi' : 'por Bluetooth') : '';
+  return l ? (l.indexOf('lan:') === 0 ? t('call_via_wifi', 'por Wi-Fi') : t('call_via_bt', 'por Bluetooth')) : '';
 }
 
 function _render(st) {
@@ -352,7 +361,7 @@ function _render(st) {
     if (old) {
       old.classList.remove('nc-live', 'nc-hide', 'nc-waiting');
       var s0 = old.querySelector('.call-status');
-      if (s0 && st) { s0.classList.remove('nc-warn'); s0.textContent = st.reason === 'busy' ? 'Ocupado' : st.reason === 'rejected' ? 'Rechazada' : st.reason === 'unanswered' ? 'No contesta' : st.reason === 'lost' ? 'Se cortó' : st.reason === 'missed' ? 'Llamada perdida' : 'Llamada terminada' + (st.seconds ? ' · ' + _fmt(st.seconds) : ''); }
+      if (s0 && st) { s0.classList.remove('nc-warn'); s0.textContent = st.reason === 'busy' ? t('call_end_busy', 'Ocupado') : st.reason === 'rejected' ? t('call_end_rejected', 'Rechazada') : st.reason === 'unanswered' ? t('call_end_no_answer', 'No contesta') : st.reason === 'lost' ? t('call_end_lost', 'Se cortó') : st.reason === 'missed' ? t('call_end_missed', 'Llamada perdida') : t('call_end_finished', 'Llamada terminada') + (st.seconds ? ' · ' + _fmt(st.seconds) : ''); }
       old.querySelector('.call-buttons').innerHTML = '';
       Array.prototype.forEach.call(old.querySelectorAll('.call-remote-video, .call-local-video'), function(n) { n.remove(); });
       clearTimeout(_rmTimer); _rmTimer = setTimeout(function() { _rmTimer = null; old.remove(); }, 1400);
@@ -373,51 +382,51 @@ function _render(st) {
   el.querySelector('.call-name').textContent = name;
   var status = el.querySelector('.call-status'), note = el.querySelector('.call-note'), bt = el.querySelector('.call-buttons'), mini = el.querySelector('.nc-mini');
   var lock = el.querySelector('.nc-lock span'), via = _linkText(st.nx);
-  lock.textContent = 'Cifrada de extremo a extremo' + (via ? ' · ' + via : '');
+  lock.textContent = t('call_e2e', 'Cifrada de extremo a extremo') + (via ? ' · ' + via : '');
   bt.innerHTML = ''; bt.classList.remove('nc-incoming');
   // Ronda 2769: con el estado de la cámara (si lo hay) en vez de "sin cámara" fijo al empezar (ahora se reintenta)
-  note.textContent = st.camState || st.micState ? _warnText(st, name) : st.micError ? 'Sin micrófono' + (_devErr(st.micError) ? ': ' + _devErr(st.micError) : '') : st.video && st.videoOk === false ? 'Sin cámara en este teléfono: solo voz' : '';
+  note.textContent = st.camState || st.micState ? _warnText(st, name) : st.micError ? t('call_no_mic', 'Sin micrófono') + (_devErr(st.micError) ? ': ' + _devErr(st.micError) : '') : st.video && st.videoOk === false ? t('call_no_cam_this_phone', 'Sin cámara en este teléfono: solo voz') : '';
   var warnbar = el.querySelector('.nc-warnbar');
   if (st.state === 'calling') {
     status.classList.remove('nc-warn');
-    status.textContent = st.video ? 'Videollamada…' : 'Llamando…';
-    bt.appendChild(_btn('phone', 'Colgar', 'call-hangup', function() { calls.hangup(); }, 'nc-red'));
+    status.textContent = st.video ? t('call_videocalling', 'Videollamada…') : t('call_calling', 'Llamando…');
+    bt.appendChild(_btn('phone', t('call_hangup', 'Colgar'), 'call-hangup', function() { calls.hangup(); }, 'nc-red'));
     if (!_ring) _startTone(false);
   } else if (st.state === 'ringing') {
     status.classList.remove('nc-warn');
-    status.textContent = st.video ? 'Videollamada entrante' : 'Llamada de voz entrante';
+    status.textContent = st.video ? t('call_incoming_video', 'Videollamada entrante') : t('call_incoming_voice', 'Llamada de voz entrante');
     bt.classList.add('nc-incoming');
-    bt.appendChild(_btn('phone', 'Rechazar', 'call-reject', function() { calls.reject(); }, 'nc-red nc-big'));
+    bt.appendChild(_btn('phone', t('call_reject', 'Rechazar'), 'call-reject', function() { calls.reject(); }, 'nc-red nc-big'));
     // Ronda 2778 (pedido del dueño): contestar deslizando hacia arriba; el toque también vale
-    var acc = _btn(st.video ? 'cam' : 'phone', 'Desliza o toca', 'call-accept', function() { calls.accept(); }, 'nc-green nc-big nc-swipe-up');
+    var acc = _btn(st.video ? 'cam' : 'phone', t('call_swipe_or_tap', 'Desliza o toca'), 'call-accept', function() { calls.accept(); }, 'nc-green nc-big nc-swipe-up');
     _makeSwipeAccept(acc, function() { calls.accept(); _autoHide(el); });
     bt.appendChild(acc);
     if (!_ring) _startIncomingTone();
   } else if (st.state === 'active') {
     _stopTone();
     var upd = function() {
-      var cur = (calls && calls.state()) || st, t = _fmt(Math.max(0, Math.round((Date.now() - (st.startedAt || Date.now())) / 1000)));
+      var cur = (calls && calls.state()) || st, dur = _fmt(Math.max(0, Math.round((Date.now() - (st.startedAt || Date.now())) / 1000)));
       var weak = cur.lastRx && Date.now() - cur.lastRx > 3000;
-      status.textContent = weak ? 'Conexión inestable…' : t;
+      status.textContent = weak ? t('call_unstable', 'Conexión inestable…') : dur;
       status.classList.toggle('nc-warn', !!weak);
-      mini.textContent = name + ' · ' + (weak ? 'Conexión inestable…' : t);
+      mini.textContent = name + ' · ' + (weak ? t('call_unstable', 'Conexión inestable…') : dur);
       var via2 = _linkText(st.nx);
-      lock.textContent = 'Cifrada de extremo a extremo' + (via2 ? ' · ' + via2 : '');
+      lock.textContent = t('call_e2e', 'Cifrada de extremo a extremo') + (via2 ? ' · ' + via2 : '');
       if (st.video) {
         _videoLayout(el, cur);
         // Ronda 2769: en videollamada los avisos van arriba; sin imagen del otro, debajo de su nombre el motivo
         var w = _warnText(cur, name);
         if (warnbar) warnbar.textContent = w;
-        note.textContent = el.classList.contains('nc-novideo') ? _peerVideoText(cur, via2) + (w ? ' · ' + w : '') : w;
+        note.textContent = el.classList.contains('nc-novideo') ? _peerVideoText(cur, _isBtLink(st.nx)) + (w ? ' · ' + w : '') : w;
       } else note.textContent = _warnText(cur, name);
     };
     upd(); _tick = setInterval(upd, 1000);
-    if (st.video) bt.appendChild(_btn('flip', 'Girar', 'call-flip', function() { calls.flipCamera(); }));
-    if (st.video) bt.appendChild(_btn(st.cameraOff ? 'camOff' : 'cam', st.cameraOff ? 'Cámara no' : 'Cámara', 'call-camera', function() { calls.camera(!!st.cameraOff); }, st.cameraOff ? 'nc-on' : ''));
-    bt.appendChild(_btn(st.muted ? 'micOff' : 'mic', st.muted ? 'Silenciado' : 'Silenciar', 'call-mute', function() { calls.mute(!st.muted); }, st.muted ? 'nc-on' : ''));
+    if (st.video) bt.appendChild(_btn('flip', t('call_flip', 'Girar'), 'call-flip', function() { calls.flipCamera(); }));
+    if (st.video) bt.appendChild(_btn(st.cameraOff ? 'camOff' : 'cam', st.cameraOff ? t('call_camera_off', 'Cámara no') : t('call_camera', 'Cámara'), 'call-camera', function() { calls.camera(!!st.cameraOff); }, st.cameraOff ? 'nc-on' : ''));
+    bt.appendChild(_btn(st.muted ? 'micOff' : 'mic', st.muted ? t('call_muted', 'Silenciado') : t('call_mute', 'Silenciar'), 'call-mute', function() { calls.mute(!st.muted); }, st.muted ? 'nc-on' : ''));
     // Altavoz / auricular (en la videollamada, altavoz de entrada)
-    bt.appendChild(_btn(_speaker ? 'speaker' : 'ear', _speaker ? 'Altavoz' : 'Auricular', 'call-speaker', function() { _speaker = !_speaker; _audioMode(true); _render(calls.state()); }, _speaker ? 'nc-on' : ''));
-    bt.appendChild(_btn('phone', 'Colgar', 'call-hangup', function() { calls.hangup(); }, 'nc-red'));
+    bt.appendChild(_btn(_speaker ? 'speaker' : 'ear', _speaker ? t('call_speaker', 'Altavoz') : t('call_earpiece', 'Auricular'), 'call-speaker', function() { _speaker = !_speaker; _audioMode(true); _render(calls.state()); }, _speaker ? 'nc-on' : ''));
+    bt.appendChild(_btn('phone', t('call_hangup', 'Colgar'), 'call-hangup', function() { calls.hangup(); }, 'nc-red'));
     if (!_render._modeFor || _render._modeFor !== st.id) { _render._modeFor = st.id; _speaker = !!st.video; _audioMode(true); _render(calls.state()); return; }
     if (st.video) _autoHide(el);
   }
@@ -429,7 +438,7 @@ function _notifyIncoming(st) {
   if (typeof document === 'undefined' || document.visibilityState !== 'hidden') return;
   var pl = _plugin();
   if (pl && typeof pl.notifyCall === 'function') { pl.notifyCall({ chatId: st.nx, name: _name(st.nx), video: !!st.video, offerId: st.offerMid || '' }).catch(function() {}); _callNotif = true; return; }
-  if (pl && typeof pl.notifyMessage === 'function') pl.notifyMessage({ chatId: st.nx, name: _name(st.nx), msgId: st.id, text: '📞 Llamada entrante', count: 1 }).catch(function() {});
+  if (pl && typeof pl.notifyMessage === 'function') pl.notifyMessage({ chatId: st.nx, name: _name(st.nx), msgId: st.id, text: t('call_incoming_notif', '📞 Llamada entrante'), count: 1 }).catch(function() {});
 }
 var _callNotif = false;
 function _lockScreenDone() { var pl = _plugin(); if (pl && typeof pl.callScreenDone === 'function') pl.callScreenDone().catch(function() {}); }
@@ -467,7 +476,7 @@ function _installButton() {
   if (!header || document.getElementById('nexo-call-btn')) return;
   var b = document.createElement('button');
   b.id = 'nexo-call-btn';
-  b.title = 'Llamar';
+  b.title = t('call_btn_call_title', 'Llamar');
   b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>'; // ronda 2763: icono dibujado (antes un emoji)
   b.style.cssText = 'width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;font-size:18px;cursor:pointer;flex-shrink:0;margin-left:6px;';
   b.addEventListener('click', function(e) {
@@ -480,7 +489,7 @@ function _installButton() {
   // Videollamada (solo con el contacto en el mismo Wi-Fi)
   var v = document.createElement('button');
   v.id = 'nexo-video-btn';
-  v.title = 'Videollamada';
+  v.title = t('call_btn_video_title', 'Videollamada');
   v.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="12" height="10" rx="2"/><path d="M15 11l6-3v8l-6-3z"/></svg>'; // ronda 2763: icono dibujado (antes un emoji)
   v.style.cssText = b.style.cssText;
   v.addEventListener('click', function(e) {

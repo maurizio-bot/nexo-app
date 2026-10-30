@@ -10,6 +10,8 @@
  * Exporta: attachNexoUnlockGesture(el), openNexoGame(), y __recognizeN/loadScores/addScore (para las pruebas, sin Canvas).
  */
 
+import { t } from './i18n.js';
+
 var LB_KEY = 'nexo_game_scores_v1';
 
 // ---------- Clasificación (mejores puntajes, local al teléfono) ----------
@@ -132,7 +134,7 @@ export function openNexoGame() {
   canvas.style.cssText = 'display:block;width:100%;height:100%;';
   ov.appendChild(canvas);
   var closeBtn = document.createElement('button');
-  closeBtn.textContent = '✕'; closeBtn.setAttribute('aria-label', 'Cerrar juego');
+  closeBtn.textContent = '✕'; closeBtn.setAttribute('aria-label', t('misc_close_game', 'Cerrar juego'));
   closeBtn.style.cssText = 'position:absolute;top:10px;right:12px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:18px;z-index:3;cursor:pointer;';
   ov.appendChild(closeBtn);
   document.body.appendChild(ov);
@@ -170,7 +172,7 @@ export function openNexoGame() {
   window.addEventListener('resize', resize);
 
   var dragging = false;
-  var toLocal = function(e) { var r = canvas.getBoundingClientRect(); var t = (e.touches && e.touches[0]) || e; return { x: t.clientX - r.left, y: t.clientY - r.top }; };
+  var toLocal = function(e) { var r = canvas.getBoundingClientRect(); var tp = (e.touches && e.touches[0]) || e; return { x: tp.clientX - r.left, y: tp.clientY - r.top }; };
   var onDown = function(e) {
     if (G.over) { restart(); return; }
     if (!G.started) { G.started = true; G.running = true; }
@@ -233,15 +235,15 @@ export function openNexoGame() {
     ctx.fillStyle = '#fff'; G.bullets.forEach(function(b) { ctx.fillRect(b.x - 2, b.y - 5, 4, 10); });
     var px = G.player.x, py = G.player.y; ctx.save(); ctx.shadowColor = '#fff'; ctx.shadowBlur = 8; ctx.beginPath(); ctx.moveTo(px, py - 18); ctx.lineTo(px - 14, py + 14); ctx.lineTo(px + 14, py + 14); ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
     G.parts.forEach(function(pt) { ctx.globalAlpha = Math.max(0, 1 - pt.t / pt.life); ctx.fillStyle = pt.color; ctx.fillRect(pt.x - 2, pt.y - 2, 4, 4); ctx.globalAlpha = 1; });
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 14px ' + MONO; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText('PUNTOS ' + G.score, 12, 12); ctx.fillText('SALVADOS ' + G.saved, 12, 32);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 14px ' + MONO; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(t('misc_game_points', 'PUNTOS ') + G.score, 12, 12); ctx.fillText(t('misc_game_saved', 'SALVADOS ') + G.saved, 12, 32);
     ctx.textAlign = 'right'; ctx.fillText('♥ ' + Math.max(0, G.lives), G.W - 12, 12);
-    if (!G.started) overlayText(['DEFENSOR NEXO', '', 'ARRASTRA TU NAVE', 'DESTRUYE METEOROS', 'Y SALVA A TUS CONTACTOS', 'LA VELOCIDAD SUBE CON EL TIEMPO', '', 'TOCA PARA EMPEZAR']);
-    else if (G.over) { var ls = ['GAME OVER', 'PUNTOS ' + G.score + '  SALVADOS ' + G.saved, '', '-- MEJORES --']; (G.scores || loadScores()).slice(0, 5).forEach(function(s, k) { ls.push((k + 1) + '.  ' + s.score + ' PTS'); }); ls.push('', 'TOCA PARA JUGAR DE NUEVO'); overlayText(ls); }
+    if (!G.started) overlayText([t('misc_game_title', 'DEFENSOR NEXO'), '', t('misc_game_drag', 'ARRASTRA TU NAVE'), t('misc_game_destroy', 'DESTRUYE METEOROS'), t('misc_game_save_contacts', 'Y SALVA A TUS CONTACTOS'), t('misc_game_speed', 'LA VELOCIDAD SUBE CON EL TIEMPO'), '', t('misc_game_tap_start', 'TOCA PARA EMPEZAR')]);
+    else if (G.over) { var ls = [t('misc_game_over', 'GAME OVER'), t('misc_game_points', 'PUNTOS ') + G.score + t('misc_game_saved_sp', '  SALVADOS ') + G.saved, '', t('misc_game_best', '-- MEJORES --')]; (G.scores || loadScores()).slice(0, 5).forEach(function(s, k) { ls.push((k + 1) + '.  ' + s.score + t('misc_game_pts', ' PTS')); }); ls.push('', t('misc_game_tap_again', 'TOCA PARA JUGAR DE NUEVO')); overlayText(ls); }
   }
   function overlayText(lines) {
     if (!ctx) return; ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(0, 0, G.W, G.H); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     var y = G.H / 2 - lines.length * 12;
-    lines.forEach(function(t, k) { var big = k === 0; ctx.fillStyle = '#fff'; ctx.font = (big ? 'bold 26px ' : '14px ') + MONO; ctx.fillText(t, G.W / 2, y); y += big ? 38 : 22; });
+    lines.forEach(function(ln, k) { var big = k === 0; ctx.fillStyle = '#fff'; ctx.font = (big ? 'bold 26px ' : '14px ') + MONO; ctx.fillText(ln, G.W / 2, y); y += big ? 38 : 22; });
   }
   function frame(ts) {
     if (!document.getElementById('nexo-game-overlay')) return;
