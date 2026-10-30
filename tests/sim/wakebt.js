@@ -111,6 +111,13 @@ function installFetchSpy(win) {
   B.win.bleInterface.net && B.win.bleInterface.net.tick && B.win.bleInterface.net.tick();
   r.entregado_al_despertar = await waitFor(() => { const s = status(A, 'con B en ahorro'); return s === 'delivered' || s === 'read'; }, 25000);
 
+  // Build 2837: una OFERTA de llamada/videollamada también despierta (debe sonar aunque el otro esté en ahorro).
+  // Se publica una oferta por el buzón y se comprueba que dispara el «toque» FCM (net_link._newMsgId la reconoce).
+  const pB = netA.peers.get(idB); if (pB) pB._wakeAt = 0; // liberar el throttle del toque
+  const wc = calls.filter((c) => /sender\.test\/wake/.test(c.url)).length;
+  await netA.send(idB, JSON.stringify({ type: 'nexo_call', op: 'offer', id: 'cl-wb-' + Date.now(), ts: Date.now(), k: 'x', co: 'ulaw' })).catch(() => {});
+  r.oferta_llamada_despierta = (await waitFor(() => calls.filter((c) => /sender\.test\/wake/.test(c.url)).length > wc, 8000)) !== null;
+
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   // Garantía (modelo WhatsApp): aunque B esté dormido (congelado), A dispara el «toque» FCM de ALTA prioridad con el
   // token de B (y SOLO el token: privacidad), y el mensaje queda recuperable → B se entera sí o sí. (bt_listo/control

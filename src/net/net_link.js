@@ -398,6 +398,9 @@ export class NetLink {
     var o; try { o = JSON.parse(p); } catch (e) { return null; }
     var id = null;
     if (o && o.type === 'chat' && typeof o.msgId === 'string') id = o.msgId;
+    // Build 2837 (pedido del dueño): una oferta de llamada/videollamada también despierta — tiene que SONAR aunque el
+    // otro esté dormido en ahorro de batería (antes solo despertaban los mensajes de texto/archivos).
+    else if (o && o.type === 'nexo_call' && o.op === 'offer' && typeof o.id === 'string') id = o.id;
     else if (o && (o.t === 'c' || o.t === 'f') && o.i === 0 && !o.hf && typeof o.m === 'string') id = o.m;
     if (!id) return null;
     var quiet = this.ble && this.ble._quietOut;

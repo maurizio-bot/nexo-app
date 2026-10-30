@@ -817,6 +817,7 @@ export const BLE_MESSAGE_METHODS = {
     try {
       if (!self.net || !msgId) return;
       if (self._quietOut && self._quietOut.has(msgId)) return; // acción oculta (react/edit/estado): no despertar al otro
+      if (self._callOut && self._callOut.has(msgId)) return;   // oferta de llamada: ya dispara su propio toque inmediato (calls.js, build 2837)
       var nx = _normId(nexoId);
       setTimeout(function() {
         try {
