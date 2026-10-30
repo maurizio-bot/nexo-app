@@ -1536,7 +1536,17 @@ ChatStream.prototype._linkUp = function() {
     // lan:nx09acdb61, vídeo/imagen por net:nx0ed4a8be) y donde la señal de «caído» es fiable (canReach/online). Para
     // Bluetooth crudo NO se toca el flujo: ya tiene su propia resiliencia (_sendFailed → PEER_ABSENT → queda pendiente
     // y se reanuda al volver el camino); meter aquí connectedDevices daba falsos «caído» y colgaba transferencias BLE.
-    if (_isNetDevice(dev)) return !(ble.net && typeof ble.net.online === 'function') || ble.net.online();
+    // #124 (build 2840, informe del dueño: un archivo a un contacto offline por internet no se enviaba y storm-
+    // retransmitía). Antes esto preguntaba net.online() = «¿tengo YO internet?» → con el contacto APAGADO el enlace
+    // parecía arriba, la ventana reintentaba hasta el tope y fallaba. Ahora pregunta net.canReach(nx) = «¿está el
+    // CONTACTO en línea?» (p.up, visto hace <150 s), igual que el camino Wi-Fi de abajo. Contacto ausente → enlace
+    // «caído» → la ventana ESPERA sin tormenta ni gastar reintentos; los trozos ya quedan en el buzón de relés y, al
+    // conectarse el contacto (_netUp → resumeOutgoingTransfers), fluyen los ACKs y se entrega (store-and-forward).
+    if (_isNetDevice(dev)) {
+      if (!(ble.net && typeof ble.net.canReach === 'function')) return true;
+      var nxn = this.ackSystem && this.ackSystem._resolveNexoId ? this.ackSystem._resolveNexoId(dev) : null;
+      return ble.net.canReach(nxn);
+    }
     if (_isLanDevice(dev)) {
       var nx = this.ackSystem && this.ackSystem._resolveNexoId ? this.ackSystem._resolveNexoId(dev) : null;
       return !(ble.lan && typeof ble.lan.canReach === 'function') || ble.lan.canReach(nx);
@@ -1572,6 +1582,16 @@ ChatStream.prototype.start = function() {
         // Ronda 2767 (revisión): si sigue avanzando (confirmaciones en el último minuto) se le da más tiempo, hasta 2 h:
         // un vídeo HD o un archivo grande por un Bluetooth lento no terminaba nunca
         if (Date.now() - (self.lastAckAt || 0) < 60000 && Date.now() - self.startTime < 7200000) { armGlobal(300000); return; }
+        // #124 (build 2840): el contacto está AUSENTE (sin camino; p. ej. apagado y solo por internet, net.canReach
+        // falso). NO es un fallo: el archivo queda EN ESPERA (store-and-forward). Los trozos ya están en el buzón de
+        // relés y, al conectarse el contacto (_netUp → resumeOutgoingTransfers) o al reabrir la app, se entrega. Se
+        // marca 'pending' (⏳ «esperando», no ✗) y se re-chequea cada 5 min, hasta 2 h en memoria; luego se suelta
+        // (queda persistido en el vault para reanudar). Antes se marcaba 'failed' y parecía perdido.
+        if (!self._linkUp()) {
+          if (!self.aborted) self.ackSystem._dispatchStatus(self.msgId, 'pending');
+          if (Date.now() - self.startTime < 7200000) { armGlobal(300000); return; }
+          self.abort(); reject(new Error('Contacto ausente: queda en espera')); return;
+        }
         console.error('[ChatStream] GLOBAL TIMEOUT msgId=' + self.msgId);
         self.abort();
         reject(new Error('Timeout global ' + (self.type === 'file' ? '3min+' : '45s+')));
