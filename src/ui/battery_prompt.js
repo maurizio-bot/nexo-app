@@ -14,6 +14,8 @@
  * salir nunca. Todo lo nativo pasa por el plugin NexoBLE (alertSettings / openAlertSetting), igual que Perfil → Ajustes.
  */
 
+import { t } from './i18n.js';
+
 var SKIP_LIMIT = 3; // tras posponerlo esta veces, deja de aparecer solo (sigue en Ajustes)
 var DONE_KEY = 'nexo_bat_prompt_done';
 var SKIP_KEY = 'nexo_bat_prompt_skips';
@@ -25,17 +27,17 @@ var VENDOR_LABEL = {
   oppo: 'Oppo', realme: 'Realme', oneplus: 'OnePlus', huawei: 'Huawei', honor: 'Honor'
 };
 var VENDOR_HINT = {
-  vivo: 'En tu Vivo, abre «Inicio automático» y «Alto consumo en segundo plano» y activa NEXO.',
-  iqoo: 'En tu iQOO, abre «Inicio automático» y «Alto consumo en segundo plano» y activa NEXO.',
-  samsung: 'En tu Samsung, pon la batería de NEXO «Sin restricciones» y quítala de «Apps en suspensión».',
-  xiaomi: 'En tu Xiaomi, abre «Inicio automático» y activa NEXO.',
-  redmi: 'En tu Redmi, abre «Inicio automático» y activa NEXO.',
-  poco: 'En tu Poco, abre «Inicio automático» y activa NEXO.',
-  oppo: 'En tu Oppo, permite el «Inicio automático» de NEXO.',
-  realme: 'En tu Realme, permite el «Inicio automático» de NEXO.',
-  oneplus: 'En tu OnePlus, permite el «Inicio automático» de NEXO.',
-  huawei: 'En tu Huawei, en «Inicio de apps» pon NEXO «a mano» y actívalo todo.',
-  honor: 'En tu Honor, en «Inicio de apps» pon NEXO «a mano» y actívalo todo.'
+  vivo: t('prof_bat_hint_vivo', 'En tu Vivo, abre «Inicio automático» y «Alto consumo en segundo plano» y activa NEXO.'),
+  iqoo: t('prof_bat_hint_iqoo', 'En tu iQOO, abre «Inicio automático» y «Alto consumo en segundo plano» y activa NEXO.'),
+  samsung: t('prof_bat_hint_samsung', 'En tu Samsung, pon la batería de NEXO «Sin restricciones» y quítala de «Apps en suspensión».'),
+  xiaomi: t('prof_bat_hint_xiaomi', 'En tu Xiaomi, abre «Inicio automático» y activa NEXO.'),
+  redmi: t('prof_bat_hint_redmi', 'En tu Redmi, abre «Inicio automático» y activa NEXO.'),
+  poco: t('prof_bat_hint_poco', 'En tu Poco, abre «Inicio automático» y activa NEXO.'),
+  oppo: t('prof_bat_hint_oppo', 'En tu Oppo, permite el «Inicio automático» de NEXO.'),
+  realme: t('prof_bat_hint_realme', 'En tu Realme, permite el «Inicio automático» de NEXO.'),
+  oneplus: t('prof_bat_hint_oneplus', 'En tu OnePlus, permite el «Inicio automático» de NEXO.'),
+  huawei: t('prof_bat_hint_huawei', 'En tu Huawei, en «Inicio de apps» pon NEXO «a mano» y actívalo todo.'),
+  honor: t('prof_bat_hint_honor', 'En tu Honor, en «Inicio de apps» pon NEXO «a mano» y actívalo todo.')
 };
 
 function _plugin() {
@@ -125,14 +127,14 @@ function _showOverlay(pl, settings, done) {
   function renderBatteryStep() {
     box.innerHTML = '';
     var icon = document.createElement('div'); icon.className = 'bat-icon'; icon.textContent = '🔋';
-    var h = document.createElement('h2'); h.textContent = 'Un paso para que NEXO funcione siempre';
-    var p = document.createElement('p'); p.textContent = 'NEXO recibe tus mensajes y llamadas aunque la app esté en segundo plano o la pantalla apagada.';
+    var h = document.createElement('h2'); h.textContent = t('prof_bat_step_title', 'Un paso para que NEXO funcione siempre');
+    var p = document.createElement('p'); p.textContent = t('prof_bat_step_body', 'NEXO recibe tus mensajes y llamadas aunque la app esté en segundo plano o la pantalla apagada.');
     var why = document.createElement('div'); why.className = 'bat-why';
-    why.textContent = '⚠️ Si no desactivas el ahorro de batería para NEXO, el teléfono lo congela y los mensajes y las llamadas llegan tarde o no llegan.';
+    why.textContent = t('prof_bat_why', '⚠️ Si no desactivas el ahorro de batería para NEXO, el teléfono lo congela y los mensajes y las llamadas llegan tarde o no llegan.');
     var primary = document.createElement('button'); primary.className = 'bat-primary'; primary.id = 'nexo-bat-allow';
-    primary.textContent = 'Desactivar ahorro de batería';
+    primary.textContent = t('prof_bat_disable', 'Desactivar ahorro de batería');
     var ghost = document.createElement('button'); ghost.className = 'bat-ghost'; ghost.id = 'nexo-bat-skip';
-    ghost.textContent = 'Ahora no';
+    ghost.textContent = t('prof_bat_later', 'Ahora no');
     box.append(icon, h, p, why, primary, ghost);
     primary.onclick = function () {
       awaiting = true;
@@ -147,15 +149,15 @@ function _showOverlay(pl, settings, done) {
   // Paso 2 (solo fabricantes agresivos): guiar al «inicio automático» que Android no deja comprobar.
   function renderVendorStep() {
     box.innerHTML = '';
-    var label = VENDOR_LABEL[vk] || 'tu teléfono';
+    var label = VENDOR_LABEL[vk] || t('prof_bat_your_phone', 'tu teléfono');
     var icon = document.createElement('div'); icon.className = 'bat-icon'; icon.textContent = '📱';
-    var ok = document.createElement('p'); ok.innerHTML = '<span class="bat-ok">✅ Ahorro de batería desactivado.</span>';
-    var h = document.createElement('h2'); h.textContent = 'Un último ajuste en tu ' + label;
-    var p = document.createElement('p'); p.textContent = VENDOR_HINT[vk] || 'Permite que NEXO se inicie solo y funcione en segundo plano.';
+    var ok = document.createElement('p'); ok.innerHTML = '<span class="bat-ok">' + t('prof_bat_disabled_ok', '✅ Ahorro de batería desactivado.') + '</span>';
+    var h = document.createElement('h2'); h.textContent = t('prof_bat_last_step', 'Un último ajuste en tu ') + label;
+    var p = document.createElement('p'); p.textContent = VENDOR_HINT[vk] || t('prof_bat_hint_generic', 'Permite que NEXO se inicie solo y funcione en segundo plano.');
     var primary = document.createElement('button'); primary.className = 'bat-primary'; primary.id = 'nexo-bat-vendor';
-    primary.textContent = 'Abrir ajustes de ' + label;
+    primary.textContent = t('prof_bat_open_settings', 'Abrir ajustes de ') + label;
     var ghost = document.createElement('button'); ghost.className = 'bat-ghost'; ghost.id = 'nexo-bat-vendor-done';
-    ghost.textContent = 'Listo';
+    ghost.textContent = t('prof_bat_done', 'Listo');
     box.append(icon, ok, h, p, primary, ghost);
     primary.onclick = function () { try { pl.openAlertSetting({ what: 'vendor' }).catch(function () {}); } catch (e) {} };
     ghost.onclick = function () { _finish('granted'); };

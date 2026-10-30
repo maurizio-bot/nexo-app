@@ -5,6 +5,7 @@
  */
 import { _showPermissionError } from './ui_bits.js';
 import { _fmtTime } from './file_tools.js';
+import { t } from './i18n.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _sendAttachment;
@@ -134,8 +135,8 @@ async function _startVoiceRecording() {
     console.log('[ATTACH] Grabando voz...');
   } catch (err) {
     console.log('[ATTACH:VOICE] Error:', err.name, err.message);
-    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') _showPermissionError('micrófono');
-    else if (err.name === 'NotFoundError') _showPermissionError('No se encontró el micrófono del teléfono');
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') _showPermissionError(t('call_voice_perm_mic', 'micrófono'));
+    else if (err.name === 'NotFoundError') _showPermissionError(t('call_voice_mic_not_found', 'No se encontró el micrófono del teléfono'));
     _isRecording = false; _isPaused = false; _updateMicIcon(false); _showVoiceBar(false);
     if (_recStream) { try { _recStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} _recStream = null; }
   }

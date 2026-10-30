@@ -21,6 +21,7 @@ import { openTttForContact } from './ttt.js';
 import { getPermissionShim } from '../core/NexoPermissionShim.js';
 import { rem } from './rem.js';
 import { vaultFindContactByNexoId, vaultSaveContact } from '../vault/vault_manager.js';
+import { t } from './i18n.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var initializeNexoApp;
@@ -39,12 +40,12 @@ export async function _sendStickerTo(cid, id) {
   _msgContactMap[msgId] = chatContactId;
   var gsx = window.bleInterface && window.bleInterface.groups;
   if (gsx && gsx.isGroup(chatContactId) && typeof window.NEXO_sendGroupText === 'function') {
-    window.NEXO_sendGroupText(chatContactId, wire, '🎟️ Sticker', 'gm' + msgId.substring(3));
+    window.NEXO_sendGroupText(chatContactId, wire, t('chat_sticker', '🎟️ Sticker'), 'gm' + msgId.substring(3));
     return;
   }
   var vaultMsg = { msgId: msgId, messageId: msgId, contactNexoId: chatContactId, content: wire, _own: true, status: 'sending', timestamp: Date.now(), seq: seq };
   _renderMessage(vaultMsg);
-  _noteContactMessage(chatContactId, '🎟️ Sticker', vaultMsg.timestamp);
+  _noteContactMessage(chatContactId, t('chat_sticker', '🎟️ Sticker'), vaultMsg.timestamp);
   _updateMessageStatus(msgId, 'sending');
   _updateMessageStorageStatus(msgId, 'sending');
   try {
@@ -112,7 +113,7 @@ export function _showPermissionOverlay() {
     if (document.getElementById('nexo-perm-overlay')) return;
     var overlay = document.createElement('div');
     overlay.id = 'nexo-perm-overlay';
-    overlay.innerHTML = '<div class="perm-overlay-content"> <h2>Permisos necesarios</h2> <p>NEXO necesita el Bluetooth y «Dispositivos cercanos» para hablar con otros teléfonos sin internet.</p> <p class="perm-sub">Si ya los diste en Ajustes, la app seguirá sola.</p> <button id="perm-btn-grant" class="perm-btn-primary">Dar permisos</button> <button id="perm-btn-settings" class="perm-btn-secondary">Abrir Ajustes</button> <button id="perm-btn-skip" class="perm-btn-ghost">Seguir sin Bluetooth</button> </div>';
+    overlay.innerHTML = '<div class="perm-overlay-content"> <h2>' + t('chat_perm_title', 'Permisos necesarios') + '</h2> <p>' + t('chat_perm_body', 'NEXO necesita el Bluetooth y «Dispositivos cercanos» para hablar con otros teléfonos sin internet.') + '</p> <p class="perm-sub">' + t('chat_perm_sub', 'Si ya los diste en Ajustes, la app seguirá sola.') + '</p> <button id="perm-btn-grant" class="perm-btn-primary">' + t('chat_perm_grant', 'Dar permisos') + '</button> <button id="perm-btn-settings" class="perm-btn-secondary">' + t('chat_perm_settings', 'Abrir Ajustes') + '</button> <button id="perm-btn-skip" class="perm-btn-ghost">' + t('chat_perm_skip', 'Seguir sin Bluetooth') + '</button> </div>';
     document.body.appendChild(overlay);
     var style = document.createElement('style');
     style.id = 'perm-overlay-styles';
@@ -142,7 +143,7 @@ export function _showPermissionOverlay() {
             window.location.href = 'app-settings:';
           }
         } catch (e) {
-          alert('Ve a Ajustes > Aplicaciones > NEXO > Permisos\nActiva «Dispositivos cercanos» y «Bluetooth»');
+          alert(t('chat_perm_alert', 'Ve a Ajustes > Aplicaciones > NEXO > Permisos\nActiva «Dispositivos cercanos» y «Bluetooth»'));
         }
       });
     }
@@ -224,7 +225,7 @@ export function _setupMessageInput() {
       btn.classList.toggle('mic-mode', !hasText);
       if (charCounter) {
         var len = input.value.length;
-        charCounter.textContent = len > 0 ? len + ' chars' : '';
+        charCounter.textContent = len > 0 ? len + t('chat_chars', ' chars') : '';
         charCounter.style.color = len > 180 ? '#FFC107' : '#888';
       }
     }
@@ -530,7 +531,7 @@ export function _enableFallbackMode() {
     body.classList.add('nexo-fallback-mode');
     var msg = document.createElement('div');
     msg.className = 'fallback-notice';
-    msg.innerHTML = '<h3>⚠ Error de Inicializacion</h3> <p>La app no pudo iniciar completamente.</p>';
+    msg.innerHTML = '<h3>⚠ ' + t('chat_init_error', 'Error de Inicializacion') + '</h3> <p>' + t('chat_init_body', 'La app no pudo iniciar completamente.') + '</p>';
     body.appendChild(msg);
   } catch (e) {
     console.error('[MAIN] _enableFallbackMode error:', e);

@@ -3,7 +3,7 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
-## 🌐 Selección de idioma (#132, pedido del dueño 30-10) — FASE 1 HECHA (2843); resto POR FASES
+## 🌐 Selección de idioma (#132, pedido del dueño 30-10) — ✅ COMPLETO (2845)
 Idiomas: **español, italiano, inglés** (preparado para añadir más). **Por defecto** el idioma del teléfono (`navigator.language`:
 `es`→español, `it`→italiano, `en`→inglés; otro→español) — NO por GPS (encaja con la privacidad). **Cambiable** en Perfil →
 Ajustes (🌐 Idioma), guardado por teléfono (no viaja).
@@ -14,13 +14,17 @@ Ajustes (🌐 Idioma), guardado por teléfono (no viaja).
 - ✅ **Fase 2a (2844):** `i18n.js` a CLAVE-primero + `applyStaticI18n()` para HTML estático; **pantalla principal** traducida
   (index.html: Contactos/Compartir/cámara/placeholders; main.js: subtítulo de conexión; ble_ui.js: «Agregar contactos»).
   Convención fijada: `t('clave','español exacto')`, solo textos que se MUESTRAN (los de lógica NO, romperían en it/en).
-- ⏳ **Falta (por fases, cada una build+batería):** (2b) **chat** — burbujas, menú de adjuntar (Foto/Vídeo/Audio/Ubicación/
-  Archivo/Grupo/Cobro/Sticker), responder/reenviar/eliminar/copiar, aviso de cifrado (`chat_actions.js`, `chat_format.js`,
-  `render.js`, `app_setup.js`, `send.js`, `e2e_banner.js`); (2c) **llamadas/videollamada** (`calls_ui.js`, `call_media.js`,
-  `calls.js`); (2d) **cámara, archivos, ubicación, cobro, compartir** (`camera.js`, `video_send.js`, `file_card.js`,
-  `location.js`, `cobro.js`, `share_contacts.js`, `voice.js`); (2e) **Perfil (resto), seguridad, Fénix, cambiar teléfono,
-  avisos, grupos** (`profile.js`, `app_lock.js`, `move_account.js`, `battery_prompt.js`, `perf.js`, `alerts.js`,
-  `groups_ui.js`). Al traducir cada zona, añadir sus claves (es/it/en) a `i18n.js`. Lo no traducido se ve en español.
+- ✅ **Fase 2 (2845): TODA la app traducida.** Zonas hechas: **chat** (burbujas, adjuntar, responder/reenviar/eliminar/
+  copiar/editar, banner y números de seguridad E2E, stickers, tres en raya); **llamadas/videollamada** (estados, avisos
+  micro/cámara, botones, registro); **multimedia** (cámara, vídeo, tarjeta de archivo, ubicación, cobro, compartir);
+  **Perfil y TODA la pantalla de Ajustes** (seguridad/bloqueo, avisos y marcas por fabricante, tono, internet/Tor,
+  diagnóstico, Fénix, cambiar de teléfono, rendimiento, grupos, QR); **grupos y Estados**; **avisos/toasts, buscador y
+  juego**. `i18n.js`: **533 claves** (es/it/en). Desacoplado «por Wi-Fi/por Bluetooth» en llamadas (se mostraba y se
+  comparaba: `_isBtLink()` para la lógica). `diag.js`/`notify.js`/`chat_state.js` son solo lógica; `rem.js` es un HUD
+  técnico (se deja). Lo que quede sin clave se ve en español (respaldo de `t()`). **Batería 88/88.**
+- ⚠️ **Nota para futuras traducciones (lección de la 2845):** nunca dejar un `var t`/parámetro `t` local en una función que
+  llame a `t('clave',...)` — el *hoisting* de `var` tapa la `t()` importada en toda la función → `t is not a function` al
+  ejecutar (webpack y la prueba unitaria NO lo ven; la batería sí). Si hay un `t` local, renombrarlo.
 
 ## Bloque autónomo 28-10 (madrugada→mañana): FCM + archivos por internet + AUDITORÍA SEVERA
 El dueño (1 AM): «termina lo del ping a los servidores de Google robusto y probado; luego la parte internet del tamaño

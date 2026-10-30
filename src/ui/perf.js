@@ -9,6 +9,8 @@
  */
 'use strict';
 
+import { t } from './i18n.js';
+
 var MAX = 80; // muestras por métrica (ventana deslizante)
 var _s = { rtt: [], entrega: [], transfer: [] }; // rtt(ms), confirmación de entrega(ms), transferencia(s)
 var _sentSet = Object.create(null); // msgId -> ts del inicio ('sending'/'sent') para la ida y vuelta
@@ -92,10 +94,10 @@ export function initPerf() {
 
 // --- Panel «Rendimiento» (se incrusta en Ajustes, igual que la sección de Seguridad) ---
 export function perfSectionHtml() {
-  return '<div class="nx-card"><div class="nx-h"><span class="nx-ico">⚡</span>Rendimiento</div>' +
-    '<div class="nx-sub">Medido en vivo mientras usas NEXO (esta sesión). Latencia = ping de ida y vuelta con tus contactos. Nada se guarda ni se envía.</div>' +
+  return '<div class="nx-card"><div class="nx-h"><span class="nx-ico">⚡</span>' + t('prof_perf_title', 'Rendimiento') + '</div>' +
+    '<div class="nx-sub">' + t('prof_perf_sub', 'Medido en vivo mientras usas NEXO (esta sesión). Latencia = ping de ida y vuelta con tus contactos. Nada se guarda ni se envía.') + '</div>' +
     '<div id="nexo-perf-rows"></div>' +
-    '<button id="nexo-perf-refresh" class="nx-btn" style="margin-top:8px;">Actualizar</button></div>';
+    '<button id="nexo-perf-refresh" class="nx-btn" style="margin-top:8px;">' + t('prof_perf_refresh', 'Actualizar') + '</button></div>';
 }
 
 function _fmtMs(v) { return v == null ? '—' : (v < 1000 ? Math.round(v) + ' ms' : (v / 1000).toFixed(2) + ' s'); }
@@ -106,15 +108,15 @@ export function renderPerfSection() {
   if (!box) return;
   var s = summary();
   var rows = [];
-  rows.push(['Latencia (ping ida y vuelta)',
-    s.rtt ? (_fmtMs(s.rtt.med) + ' · p95 ' + _fmtMs(s.rtt.p95)) : (s.rtt_vivo != null ? _fmtMs(s.rtt_vivo) + ' (ahora)' : 'sin datos aún')]);
-  rows.push(['Contactos en línea', String(s.en_linea)]);
-  rows.push(['Mensajes entregados',
-    s.enviados ? (s.entregados + ' de ' + s.enviados + (s.tasa != null ? ' · ' + s.tasa + '%' : '')) : 'sin datos aún']);
-  rows.push(['Confirmación de entrega',
-    s.entrega ? (_fmtMs(s.entrega.med) + ' · p95 ' + _fmtMs(s.entrega.p95)) : 'sin datos aún']);
-  rows.push(['Transferencia de archivos',
-    s.transfer ? ('tiempo típico ' + _fmtS(s.transfer.med) + ' · ' + s.archivos + ' archivo(s)') : 'sin datos aún']);
+  rows.push([t('prof_perf_latency', 'Latencia (ping ida y vuelta)'),
+    s.rtt ? (_fmtMs(s.rtt.med) + ' · p95 ' + _fmtMs(s.rtt.p95)) : (s.rtt_vivo != null ? _fmtMs(s.rtt_vivo) + t('prof_perf_now', ' (ahora)') : t('prof_perf_nodata', 'sin datos aún'))]);
+  rows.push([t('prof_perf_online', 'Contactos en línea'), String(s.en_linea)]);
+  rows.push([t('prof_perf_delivered', 'Mensajes entregados'),
+    s.enviados ? (s.entregados + t('prof_net_of', ' de ') + s.enviados + (s.tasa != null ? ' · ' + s.tasa + '%' : '')) : t('prof_perf_nodata', 'sin datos aún')]);
+  rows.push([t('prof_perf_ack', 'Confirmación de entrega'),
+    s.entrega ? (_fmtMs(s.entrega.med) + ' · p95 ' + _fmtMs(s.entrega.p95)) : t('prof_perf_nodata', 'sin datos aún')]);
+  rows.push([t('prof_perf_transfer', 'Transferencia de archivos'),
+    s.transfer ? (t('prof_perf_typical', 'tiempo típico ') + _fmtS(s.transfer.med) + ' · ' + s.archivos + t('prof_perf_files', ' archivo(s)')) : t('prof_perf_nodata', 'sin datos aún')]);
   box.innerHTML = rows.map(function (r) {
     return '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.08);font-size:14px;">' +
       '<span style="opacity:0.85;">' + r[0] + '</span><b style="text-align:right;">' + r[1] + '</b></div>';

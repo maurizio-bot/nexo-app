@@ -11,6 +11,7 @@ import { _showInfoToast } from './ui_bits.js';
 import { _videoFormat } from './video_tools.js';
 import { stickerSvg } from './stickers.js';
 import { vaultBlankMessage, vaultDeleteMessage, vaultEditMessage, vaultLoadContacts, vaultLoadFile, vaultLoadMessages, vaultReactMessage, vaultSaveContacts } from '../vault/vault_manager.js';
+import { t } from './i18n.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _renderMessage, _sendAttachment, _sendTextTo;
@@ -58,7 +59,7 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
     contentDiv.classList.add('msg-deleted');
     contentDiv.style.fontStyle = 'italic';
     contentDiv.style.opacity = '0.7';
-    contentDiv.textContent = isOwn ? '🚫 Eliminaste este mensaje' : '🚫 Se eliminó este mensaje';
+    contentDiv.textContent = isOwn ? t('chat_deleted_by_me', '🚫 Eliminaste este mensaje') : t('chat_deleted', '🚫 Se eliminó este mensaje');
     return;
   }
   var raw = msg.content || msg.text || '';
@@ -78,7 +79,7 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
     var fw = document.createElement('div');
     fw.className = 'msg-forwarded';
     fw.style.cssText = 'font-size:11px;font-style:italic;opacity:0.7;margin-bottom:2px;';
-    fw.textContent = '↪ Reenviado';
+    fw.textContent = t('chat_forwarded', '↪ Reenviado');
     contentDiv.appendChild(fw);
   }
   if (k.rp && k.rp.id) {
@@ -87,7 +88,7 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
     q.style.cssText = 'border-left:3px solid #00c8ff;background:rgba(0,0,0,0.25);border-radius:6px;padding:4px 8px;margin-bottom:4px;cursor:pointer;font-size:12px;';
     var who = document.createElement('div');
     who.style.cssText = 'color:#00c8ff;font-weight:600;';
-    who.textContent = _normId(k.rp.a) === _myNexoId() ? 'Tú' : _contactName(k.rp.a);
+    who.textContent = _normId(k.rp.a) === _myNexoId() ? t('chat_you', 'Tú') : _contactName(k.rp.a);
     var what = document.createElement('div');
     what.style.cssText = 'opacity:0.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;';
     what.textContent = String(k.rp.s || '');
@@ -95,19 +96,19 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
     q.onclick = function(e) { e.stopPropagation(); _scrollToMessage(k.rp.id); };
     contentDiv.appendChild(q);
   }
-  var t = document.createElement('span');
-  t.className = 'msg-text';
-  t.textContent = String(k.t || '');
+  var ts = document.createElement('span');
+  ts.className = 'msg-text';
+  ts.textContent = String(k.t || '');
   // Emoji grande sin burbuja: solo si el mensaje es 1–3 emojis sueltos (no reenviado, no respuesta citada). El CSS quita
   // la burbuja con :has(.msg-text.emoji-jumbo), igual que ya hace con las fotos/vídeos.
   var ej = (!k.fw && !(k.rp && k.rp.id)) ? _emojiOnly(k.t) : 0;
-  if (ej) t.classList.add('emoji-jumbo', 'emoji-' + ej);
-  contentDiv.appendChild(t);
+  if (ej) ts.classList.add('emoji-jumbo', 'emoji-' + ej);
+  contentDiv.appendChild(ts);
 }
 
 export function _scrollToMessage(id) {
   var el = document.querySelector('.message[data-msg-id="' + id + '"]');
-  if (!el) { _showInfoToast('El mensaje citado ya no está en el chat', 2500); return; }
+  if (!el) { _showInfoToast(t('chat_quote_gone', 'El mensaje citado ya no está en el chat'), 2500); return; }
   try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
   el.classList.add('msg-highlight');
   el.style.transition = 'background 0.4s';
@@ -256,17 +257,17 @@ export function _openMsgMenu(div) {
       });
       sheet.appendChild(rbar);
     }
-    if (!deleted) add('↩  Responder', 'mm-reply', function() { _startReply(id, msg); });
-    if (!deleted) add('↪  Reenviar', 'mm-forward', function() { _openForwardSheet(msg); });
-    if (!deleted && !msg.attachmentType) add('⧉  Copiar', 'mm-copy', function() { _copyText(_plainText(msg.content)); });
+    if (!deleted) add(t('chat_reply', '↩  Responder'), 'mm-reply', function() { _startReply(id, msg); });
+    if (!deleted) add(t('chat_forward', '↪  Reenviar'), 'mm-forward', function() { _openForwardSheet(msg); });
+    if (!deleted && !msg.attachmentType) add(t('chat_copy', '⧉  Copiar'), 'mm-copy', function() { _copyText(_plainText(msg.content)); });
     if (isOwn && !deleted && !msg.attachmentType && Date.now() - (msg.timestamp || 0) < EDIT_MS && _peerUnderstands(cid)) {
-      add('✏️  Editar', 'mm-edit', function() { _startEdit(id, msg); });
+      add(t('chat_edit', '✏️  Editar'), 'mm-edit', function() { _startEdit(id, msg); });
     }
-    add('🗑  Eliminar para mí', 'mm-del-me', function() { _deleteForMe(cid, id); }, true);
+    add(t('chat_delete_me', '🗑  Eliminar para mí'), 'mm-del-me', function() { _deleteForMe(cid, id); }, true);
     if (isOwn && !deleted && Date.now() - (msg.timestamp || 0) < DELETE_ALL_MS && _peerUnderstands(cid)) {
-      add('🗑  Eliminar para todos', 'mm-del-all', function() { _deleteForAll(cid, msg); }, true);
+      add(t('chat_delete_all', '🗑  Eliminar para todos'), 'mm-del-all', function() { _deleteForAll(cid, msg); }, true);
     }
-    add('Cancelar', 'mm-cancel', function() {});
+    add(t('chat_cancel', 'Cancelar'), 'mm-cancel', function() {});
     box.onclick = function(e) { if (e.target === box) close(); };
     box.appendChild(sheet);
     div.style.background = 'rgba(0,200,255,0.12)';
@@ -302,7 +303,7 @@ export function _renderReplyBar() {
   txt.style.cssText = 'flex:1;min-width:0;';
   var who = document.createElement('div');
   who.style.cssText = 'color:#00c8ff;font-weight:600;';
-  who.textContent = 'Respondiendo a ' + (_replyTo.a === _myNexoId() ? 'ti' : _contactName(_replyTo.a));
+  who.textContent = t('chat_replying_to', 'Respondiendo a ') + (_replyTo.a === _myNexoId() ? t('chat_you_obj', 'ti') : _contactName(_replyTo.a));
   var what = document.createElement('div');
   what.style.cssText = 'opacity:0.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
   what.textContent = _replyTo.s;
@@ -345,7 +346,7 @@ export function _renderEditBar() {
   bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:0 10px 4px;padding:6px 10px;border-left:3px solid #ffc107;background:rgba(255,255,255,0.08);border-radius:8px;color:#fff;font-size:13px;';
   var txt = document.createElement('div');
   txt.style.cssText = 'flex:1;min-width:0;color:#ffc107;font-weight:600;';
-  txt.textContent = '✏️ Editando mensaje';
+  txt.textContent = t('chat_editing_msg', '✏️ Editando mensaje');
   var x = document.createElement('button');
   x.className = 'edit-cancel';
   x.textContent = '✕';
@@ -356,7 +357,7 @@ export function _renderEditBar() {
 }
 
 export function _copyText(text) {
-  var ok = function() { _showInfoToast('Copiado', 1500); };
+  var ok = function() { _showInfoToast(t('chat_copied', 'Copiado'), 1500); };
   var fallback = function() {
     try { var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); ok(); } catch (e) {}
   };
@@ -376,9 +377,9 @@ export function _openForwardSheet(msg) {
   head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;';
   var title = document.createElement('div');
   title.style.cssText = 'font-size:18px;font-weight:700;';
-  title.textContent = 'Reenviar a…';
+  title.textContent = t('chat_forward_to', 'Reenviar a…');
   var cancel = document.createElement('button');
-  cancel.textContent = 'Cancelar';
+  cancel.textContent = t('chat_cancel', 'Cancelar');
   cancel.style.cssText = 'background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:16px;padding:8px 14px;';
   cancel.onclick = function() { box.remove(); };
   head.appendChild(title); head.appendChild(cancel);
@@ -387,7 +388,7 @@ export function _openForwardSheet(msg) {
   var send = document.createElement('button');
   send.className = 'fw-send';
   send.style.cssText = 'margin-top:12px;padding:12px;border:none;border-radius:12px;background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;font-size:15px;font-weight:600;';
-  var refresh = function() { var n = Object.keys(chosen).length; send.textContent = n ? 'Reenviar (' + n + ')' : 'Elige uno o más chats'; send.disabled = !n; };
+  var refresh = function() { var n = Object.keys(chosen).length; send.textContent = n ? t('chat_forward_n', 'Reenviar (') + n + ')' : t('chat_choose_chats', 'Elige uno o más chats'); send.disabled = !n; };
   all.forEach(function(c) {
     var id = _normId(c.nexoId || c.deviceUUID);
     var row = document.createElement('label');
@@ -407,7 +408,7 @@ export function _openForwardSheet(msg) {
     if (!ids.length) return;
     box.remove();
     Promise.all(ids.map(function(cid) { return _forwardTo(cid, msg); })).then(function() {
-      _showInfoToast('Reenviado a ' + ids.length + (ids.length === 1 ? ' chat' : ' chats'), 2000);
+      _showInfoToast(t('chat_forwarded_to', 'Reenviado a ') + ids.length + (ids.length === 1 ? t('chat_chat_sing', ' chat') : t('chat_chat_plur', ' chats')), 2000);
     });
   };
   refresh();
@@ -425,9 +426,9 @@ export async function _forwardTo(cid, msg) {
       var hd = await vaultLoadFile(msg.hdRef);
       if (hd) { payload = hd; if (msg.hdMime) { meta.mime = msg.hdMime; meta.format = _videoFormat(msg.hdMime); } }
     }
-    if (meta.big) { _showInfoToast('Los archivos grandes todavía no se pueden reenviar', 2500); return; }
+    if (meta.big) { _showInfoToast(t('chat_big_no_forward', 'Los archivos grandes todavía no se pueden reenviar'), 2500); return; }
     ['preview', 'hdSize', 'hdFor', 'hd', 'wdOnly', 'fwd'].forEach(function(k) { delete meta[k]; });
-    if (!payload) { _showInfoToast('No se pudo reenviar: el archivo ya no está', 2500); return; }
+    if (!payload) { _showInfoToast(t('chat_forward_file_gone', 'No se pudo reenviar: el archivo ya no está'), 2500); return; }
     console.log('[ATTACH] Reenviando ' + msg.attachmentType + ' a ' + cid);
     _sendAttachment(msg.attachmentType, payload, meta, { contactId: cid });
     return;
@@ -445,7 +446,7 @@ export function _refreshChatPreview(cid) {
     var contacts = vaultLoadContacts() || [];
     var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === _normId(cid); });
     if (!c) return;
-    c.lastMessage = !last ? '' : last.deleted ? '🚫 Mensaje eliminado' : last.attachmentType ? (_PREVIEW_BY_TYPE[last.attachmentType] || '📎 Archivo') : _cut(_plainText(last.content), 50);
+    c.lastMessage = !last ? '' : last.deleted ? t('chat_msg_deleted', '🚫 Mensaje eliminado') : last.attachmentType ? (_PREVIEW_BY_TYPE[last.attachmentType] || t('chat_file', '📎 Archivo')) : _cut(_plainText(last.content), 50);
     vaultSaveContacts(contacts);
     var bi = window.bleInterface;
     if (bi && typeof bi.renderContactsList === 'function') bi.renderContactsList();

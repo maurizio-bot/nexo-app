@@ -9,6 +9,7 @@ import { _getCurrentContactId, _normId } from './chat_format.js';
 import { _showPermissionError, _wdReach } from './ui_bits.js';
 import { isGroupWire, registerGroupHd, videoGroupChatOf } from './group_media.js';
 import { vaultHdFileName, vaultLoadContacts, vaultLoadFile, vaultLoadMessages, vaultReplaceAttachment, vaultSaveFile, vaultSetMessageFields } from '../vault/vault_manager.js';
+import { t } from './i18n.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _handleIncomingMessage, _sendAttachment, _sendFileFor, _updateMessageStatus, _updateMessageStorageStatus;
@@ -31,7 +32,7 @@ export function _showOwnPreparing(show) {
   ph = document.createElement('div');
   ph.id = 'video-preparing';
   ph.className = 'message own progress-placeholder';
-  ph.innerHTML = '<div class="msg-content">🎬 Preparando vídeo…</div>';
+  ph.innerHTML = '<div class="msg-content">' + t('media_video_preparing', '🎬 Preparando vídeo…') + '</div>';
   container.appendChild(ph);
 }
 
@@ -54,12 +55,12 @@ export function _sendVideo(blob, meta) {
       _sendAttachment('video', r[0], Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), thumb: r[1] || null, wdOnly: true }), {
         onWdFail: function(msgId) { _videoViaBle(contactId, msgId, blob, meta, mime, makePreview, tStart); }
       });
-    }).catch(function(e) { _showOwnPreparing(false); console.warn('[VIDEO] Error preparando vídeo:', e && e.message); _showPermissionError('No se pudo preparar el vídeo (' + ((e && e.message) || 'error') + '). Prueba con uno más corto, o envía una foto.'); });
+    }).catch(function(e) { _showOwnPreparing(false); console.warn('[VIDEO] Error preparando vídeo:', e && e.message); _showPermissionError(t('media_video_fail_a', 'No se pudo preparar el vídeo (') + ((e && e.message) || 'error') + t('media_video_fail_b', '). Prueba con uno más corto, o envía una foto.')); });
   }
   return makePreview(blob, meta.duration).then(function(preview) {
     _showOwnPreparing(false);
     if (preview && preview.tooLong) {
-      _showPermissionError('Vídeo demasiado largo para Bluetooth (' + Math.round(preview.duration) + ' s). Máximo ' + PREVIEW_MAX_SECONDS + ' s.');
+      _showPermissionError(t('media_video_long_a', 'Vídeo demasiado largo para Bluetooth (') + Math.round(preview.duration) + t('media_video_long_b', ' s). Máximo ') + PREVIEW_MAX_SECONDS + ' s.');
       return;
     }
     if (!preview) {
@@ -96,7 +97,7 @@ export function _sendVideo(blob, meta) {
   }).catch(function(e) {
     _showOwnPreparing(false);
     console.warn('[VIDEO] Error preparando vídeo:', e && e.message);
-    _showPermissionError('No se pudo preparar el vídeo (' + ((e && e.message) || 'error') + '). Prueba con uno más corto, o envía una foto.');
+    _showPermissionError(t('media_video_fail_a', 'No se pudo preparar el vídeo (') + ((e && e.message) || 'error') + t('media_video_fail_b', '). Prueba con uno más corto, o envía una foto.'));
   });
 }
 
@@ -109,7 +110,7 @@ export function _videoViaBle(cid, msgId, blob, meta, mime, makePreview, tStart) 
     if (txt) _showPermissionError(txt);
   };
   makePreview(blob, meta.duration).then(function(preview) {
-    if (preview && preview.tooLong) { fail('Vídeo demasiado largo para Bluetooth (' + Math.round(preview.duration) + ' s). Máximo ' + PREVIEW_MAX_SECONDS + ' s.'); return; }
+    if (preview && preview.tooLong) { fail(t('media_video_long_a', 'Vídeo demasiado largo para Bluetooth (') + Math.round(preview.duration) + t('media_video_long_b', ' s). Máximo ') + PREVIEW_MAX_SECONDS + ' s.'); return; }
     if (!preview) {
       if (blob.size > MAX_BLE_FILE_BYTES) { fail(_tooBigMessage(blob.size, cid)); return; }
       return _blobToB64(blob).then(function(b64) {
@@ -134,7 +135,7 @@ export function _videoViaBle(cid, msgId, blob, meta, mime, makePreview, tStart) 
     });
   }).catch(function(e) {
     console.warn('[VIDEO] Error preparando la previa:', e && e.message);
-    fail('No se pudo preparar el vídeo (' + ((e && e.message) || 'error') + '). Prueba con uno más corto, o envía una foto.');
+    fail(t('media_video_fail_a', 'No se pudo preparar el vídeo (') + ((e && e.message) || 'error') + t('media_video_fail_b', '). Prueba con uno más corto, o envía una foto.'));
   });
 }
 
@@ -143,7 +144,7 @@ export function _registerHd(cid, msgId, hdB64, mime) {
   _hdOutbox[msgId] = { cid: cid, mime: mime, b64: hdB64 };
   vaultSaveFile(ref, hdB64);
   vaultSetMessageFields(cid, msgId, { hdRef: ref, hdStatus: 'pending', hdMime: mime });
-  _setHdBadge(msgId, 'HD en espera');
+  _setHdBadge(msgId, t('media_hd_waiting', 'HD en espera'));
 }
 
 // Emisor: manda el original cuando la previa ya llegó (o al reconectar si quedó a medias)
@@ -166,7 +167,7 @@ export function _startHd(cid, msgId) {
         delete _hdInFlight[msgId];
         console.warn('[VIDEO] HD interrumpido, se reintenta al reconectar:', err && err.message);
         vaultSetMessageFields(cid, msgId, { hdStatus: 'pending' });
-        _setHdBadge(msgId, 'HD en espera');
+        _setHdBadge(msgId, t('media_hd_waiting', 'HD en espera'));
       });
   }).catch(function() { delete _hdInFlight[msgId]; });
 }

@@ -17,6 +17,7 @@ import { _renderE2EBanner } from './e2e_banner.js';
 import { _setHdBadge } from './video_send.js';
 import { isGroupId } from './groups.js';
 import { vaultAppendMessage, vaultConsumeOnceMessage, vaultHydrateAttachments, vaultLoadMessages, vaultUpdateMessageStatus } from '../vault/vault_manager.js';
+import { t } from './i18n.js';
 
 
 export var _renderedMessageCount = 0;
@@ -31,17 +32,17 @@ function _renderOnceBubble(contentDiv, msg, attachment, isOwn) {
   var seen = !!(msg.onceSeen || (attachment.meta && attachment.meta.onceSeen));
   contentDiv.style.minWidth = '150px';
   if (isOwn) {
-    contentDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;opacity:0.92;">' + _onceEye() + '<span>Foto de una vez · enviada</span></div>';
+    contentDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;opacity:0.92;">' + _onceEye() + '<span>' + t('chat_once_photo_sent', 'Foto de una vez · enviada') + '</span></div>';
     return;
   }
   if (seen) {
-    contentDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;opacity:0.6;">' + _onceEye() + '<span style="font-style:italic;">Abierta</span></div>';
+    contentDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;opacity:0.6;">' + _onceEye() + '<span style="font-style:italic;">' + t('chat_once_opened', 'Abierta') + '</span></div>';
     return;
   }
   var wrap = document.createElement('div');
   wrap.className = 'msg-once-tap';
   wrap.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;color:#00d4ff;font-weight:600;';
-  wrap.innerHTML = _onceEye() + '<span>Toca para ver · una vez</span>';
+  wrap.innerHTML = _onceEye() + '<span>' + t('chat_once_tap', 'Toca para ver · una vez') + '</span>';
   wrap.addEventListener('click', function(e) {
     e.stopPropagation();
     var payload = attachment.payload || msg.attachmentPayload;
@@ -53,7 +54,7 @@ function _renderOnceBubble(contentDiv, msg, attachment, isOwn) {
     // Consumir YA (aunque cierren la app): borra el blob y marca visto; la vista de ahora usa la copia en memoria
     try { vaultConsumeOnceMessage(cid, mid); } catch (err) {}
     if (msg) { msg.onceSeen = true; msg.attachmentPayload = null; }
-    contentDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;opacity:0.6;">' + _onceEye() + '<span style="font-style:italic;">Abierta</span></div>';
+    contentDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;opacity:0.6;">' + _onceEye() + '<span style="font-style:italic;">' + t('chat_once_opened', 'Abierta') + '</span></div>';
     _openFullscreenMedia(src, 'image', true);   // noSave: una foto «de una vez» se consume, no se guarda en galería
   });
   contentDiv.appendChild(wrap);
@@ -343,8 +344,8 @@ export function _renderMessage(msg, skipSave) {
         videoWrapper.appendChild(playOverlay);
         // v9.9.30: estado del HD (propio: hdStatus; recibido: previa o HD)
         var hdText = msg._own
-          ? (msg.hdStatus === 'sent' ? 'HD ✓' : (msg.hdStatus ? 'HD en espera' : ''))
-          : (attachment.meta.hd ? 'HD' : (attachment.meta.preview ? 'Previa · HD en camino' : ''));
+          ? (msg.hdStatus === 'sent' ? 'HD ✓' : (msg.hdStatus ? t('chat_hd_waiting', 'HD en espera') : ''))
+          : (attachment.meta.hd ? 'HD' : (attachment.meta.preview ? t('chat_hd_preview', 'Previa · HD en camino') : ''));
         if (hdText) {
           var hdBadge = document.createElement('span');
           hdBadge.className = 'hd-badge';
@@ -422,7 +423,7 @@ export function _renderMessage(msg, skipSave) {
         locHtml += '<svg viewBox="0 0 24 24" width="32" height="32" fill="#FF3B30"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>';
         locHtml += '<span style="font-size:11px;color:#aaa;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span>';
         locHtml += '</div></div>';
-        locHtml += '<div style="padding:8px 12px;"> <b>Ubicación</b><span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
+        locHtml += '<div style="padding:8px 12px;"> <b>' + t('chat_location', 'Ubicación') + '</b><span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
         locHtml += '<div style="display:flex;gap:8px;padding:0 12px 10px;">';
         locHtml += '<a href="' + mapsUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(0,130,252,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Maps</a>';
         locHtml += '<a href="' + wazeUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(107,78,255,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Waze</a>';
@@ -508,7 +509,7 @@ export function _renderMessage(msg, skipSave) {
           audioEl.onerror = function(e) {
             console.log('[AUDIO] Error reproduciendo:', e);
             _stopPlayback();
-            if (timeEl) timeEl.textContent = 'Error';
+            if (timeEl) timeEl.textContent = t('chat_error', 'Error');
           };
           btn.onclick = function(e) {
             e.stopPropagation();
@@ -549,7 +550,7 @@ export function _renderMessage(msg, skipSave) {
     timeSpan.className = 'msg-time';
     timeSpan.textContent = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     metaDiv.appendChild(timeSpan);
-    if (msg.edited && !msg.deleted) { var edSpan = document.createElement('span'); edSpan.className = 'msg-edited'; edSpan.textContent = 'editado'; edSpan.style.cssText = 'opacity:0.6;font-size:11px;margin:0 5px;'; metaDiv.appendChild(edSpan); }
+    if (msg.edited && !msg.deleted) { var edSpan = document.createElement('span'); edSpan.className = 'msg-edited'; edSpan.textContent = t('chat_edited', 'editado'); edSpan.style.cssText = 'opacity:0.6;font-size:11px;margin:0 5px;'; metaDiv.appendChild(edSpan); }
     if (isOwn) {
       var statusClass = 'status-pending';
       var statusIcon = '○';
@@ -643,10 +644,10 @@ export function _onFileProgress(d) {
     var container = document.getElementById('messages-container');
     if (!container) return;
     var kind = String(d.mime || '').split('/')[0];
-    var label = (d.fileType === 'image' || kind === 'image') ? '📷 Recibiendo foto'
-      : (d.fileType === 'video' || kind === 'video') ? '🎬 Recibiendo vídeo'
-      : (d.fileType === 'audio' || d.fileType === 'voice' || kind === 'audio') ? '🎤 Recibiendo audio'
-      : '📄 Recibiendo ' + (d.name || 'archivo');
+    var label = (d.fileType === 'image' || kind === 'image') ? t('chat_receiving_photo', '📷 Recibiendo foto')
+      : (d.fileType === 'video' || kind === 'video') ? t('chat_receiving_video', '🎬 Recibiendo vídeo')
+      : (d.fileType === 'audio' || d.fileType === 'voice' || kind === 'audio') ? t('chat_receiving_audio', '🎤 Recibiendo audio')
+      : t('chat_receiving_file', '📄 Recibiendo ') + (d.name || t('chat_file_generic', 'archivo'));
     var ph = document.querySelector('[data-progress-id="' + d.fileId + '"]');
     if (!ph) {
       ph = document.createElement('div');
@@ -719,7 +720,7 @@ function _showRetry(div, cid, msgId) {
   if (!meta || meta.querySelector('.msg-retry')) return;
   var b = document.createElement('button');
   b.className = 'msg-retry';
-  b.textContent = '↻ Reintentar';
+  b.textContent = t('chat_retry', '↻ Reintentar');
   b.style.cssText = 'margin-left:8px;padding:1px 8px;font-size:12px;line-height:1.5;color:#00c8ff;background:rgba(0,200,255,0.12);border:1px solid rgba(0,200,255,0.4);border-radius:10px;cursor:pointer;';
   b.addEventListener('pointerdown', function(e) { e.stopPropagation(); });
   b.onclick = function(e) { e.stopPropagation(); e.preventDefault(); _retrySend(cid, msgId, div); };

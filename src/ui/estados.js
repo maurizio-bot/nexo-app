@@ -12,6 +12,7 @@
 import { _getBLEContacts, _normId, _saveBLEContacts } from './ble_helpers.js';
 import { _sendTextTo } from './send.js';
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
+import { t } from './i18n.js';
 
 var MY_FILE = 'nexo_my_status.json', SENT_FILE = 'nexo_status_sent.json';
 var TTL_MS = 24 * 60 * 60 * 1000;      // caduca a las 24 h
@@ -133,7 +134,7 @@ function _activeContacts() {
 
 // ---------- Interfaz: tira de Estados arriba de la lista de contactos ----------
 function _esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-function _ago(ts) { var m = Math.floor((Date.now() - ts) / 60000); if (m < 1) return 'ahora'; if (m < 60) return 'hace ' + m + ' min'; return 'hace ' + Math.floor(m / 60) + ' h'; }
+function _ago(ts) { var m = Math.floor((Date.now() - ts) / 60000); if (m < 1) return t('grp_ago_now', 'ahora'); if (m < 60) return t('grp_ago_prefix', 'hace ') + m + t('grp_ago_min', ' min'); return t('grp_ago_prefix', 'hace ') + Math.floor(m / 60) + t('grp_ago_h', ' h'); }
 function _strip() {
   var cv = document.getElementById('contacts-view');
   if (!cv) return null;
@@ -166,7 +167,7 @@ function _renderStrip() {
   if (!el) return;
   el.innerHTML = '';
   var mine = myStatus();
-  el.appendChild(_chip('Mi estado', mine ? 'Tu estado' : 'Mi estado', _compose, !mine));
+  el.appendChild(_chip(t('grp_my_status', 'Mi estado'), mine ? t('grp_your_status', 'Tu estado') : t('grp_my_status', 'Mi estado'), _compose, !mine));
   if (mine) { var mc = el.lastChild.querySelector('div'); if (mc) { mc.textContent = (mine.t || '·').substring(0, 1).toUpperCase(); mc.style.background = 'var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7))'; } }
   _activeContacts().forEach(function(c) {
     el.appendChild(_chip(c.name, c.name, function() { _view(c); }, false));
@@ -187,24 +188,24 @@ function _compose() {
   var o = _overlay();
   var box = document.createElement('div');
   box.style.cssText = 'background:#0a0a15;border:1px solid #00c8ff;border-radius:16px;padding:20px;max-width:340px;width:100%;color:#fff;display:flex;flex-direction:column;gap:12px;';
-  var h = document.createElement('div'); h.style.cssText = 'font-weight:700;color:#00c8ff;'; h.textContent = 'Mi estado (24 h)';
+  var h = document.createElement('div'); h.style.cssText = 'font-weight:700;color:#00c8ff;'; h.textContent = t('grp_my_status_24h', 'Mi estado (24 h)');
   var ta = document.createElement('textarea');
   ta.id = 'estado-input';
   ta.maxLength = MAX_LEN;
-  ta.placeholder = '¿Qué estás pensando?';
+  ta.placeholder = t('grp_status_ph', '¿Qué estás pensando?');
   ta.style.cssText = 'width:100%;min-height:70px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:10px;color:#fff;font-size:15px;padding:10px;outline:none;resize:none;';
   var m = myStatus(); if (m) ta.value = m.t;
   var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:10px;';
   var pub = document.createElement('button');
   pub.id = 'estado-publicar';
-  pub.textContent = 'Publicar';
+  pub.textContent = t('grp_publish', 'Publicar');
   pub.style.cssText = 'flex:1;padding:11px;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;';
   pub.addEventListener('click', function(e) { e.stopPropagation(); setMyStatus(ta.value); o.remove(); });
   row.appendChild(pub);
   if (m) {
     var del = document.createElement('button');
     del.id = 'estado-quitar';
-    del.textContent = 'Quitar';
+    del.textContent = t('grp_remove', 'Quitar');
     del.style.cssText = 'padding:11px 16px;background:rgba(255,59,48,0.3);border:1px solid #FF3B30;border-radius:10px;color:#fff;font-weight:600;cursor:pointer;';
     del.addEventListener('click', function(e) { e.stopPropagation(); clearMyStatus(); o.remove(); });
     row.appendChild(del);

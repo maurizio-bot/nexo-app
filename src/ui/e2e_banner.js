@@ -8,6 +8,7 @@ import { _showInfoToast } from './ui_bits.js';
 import { safetyQrPayload, checkSafetyQr, showSafetyQr, openQrScanner } from './qr_verify.js';
 import { ratchetSafetyNumber, ratchetSessionPq } from '../vault/e2e_ratchet.js';
 import { vaultLoadContacts } from '../vault/vault_manager.js';
+import { t } from './i18n.js';
 
 
 // v9.9.36: aviso de cifrado al principio del chat (pulsar: huellas para comparar en persona)
@@ -29,7 +30,7 @@ export function _renderE2EBanner() {
   if (isGroupId(cid)) {
     b.style.cssText = 'margin:8px auto 12px;max-width:300px;padding:8px 12px;border-radius:10px;font-size:12px;text-align:center;white-space:pre-line;';
     b.onclick = null;
-    b.textContent = '🔒 Mensajes del grupo cifrados de extremo a extremo: cada mensaje va cifrado para cada persona del grupo.';
+    b.textContent = t('chat_e2e_group', '🔒 Mensajes del grupo cifrados de extremo a extremo: cada mensaje va cifrado para cada persona del grupo.');
     return;
   }
   b.style.cssText = 'margin:8px auto 12px;max-width:300px;padding:8px 12px;border-radius:10px;font-size:12px;text-align:center;cursor:pointer;white-space:pre-line;' +
@@ -39,20 +40,20 @@ export function _renderE2EBanner() {
   if (c.pendingKey) {
     // v9.9.40 (seguridad): clave nueva sin aceptar: puede ser un reinstalación o un impostor
     var held = (bi && typeof bi.heldCount === 'function') ? bi.heldCount(cid) : 0;
-    txt = '⚠️ La clave de seguridad de ' + name + ' cambió (' + new Date(c.keyChangedAt || Date.now()).toLocaleString() + ').' +
-      (held ? ' ' + held + (held === 1 ? ' mensaje retenido.' : ' mensajes retenidos.') : '') +
-      ' Hasta que la aceptes no se muestran sus mensajes nuevos ni se le envía nada.' +
-      ' Si no reinstaló NEXO, puede ser un impostor: comparad las huellas en persona.';
-  } else if (c.publicKey && c.verified === c.publicKey) txt = '🔒✔ Cifrado de extremo a extremo. Verificaste el número de seguridad de ' + name + '.';
-  else if (c.publicKey && c.keyAcceptedAt) txt = '🔒 Cifrado de extremo a extremo. Aceptaste una clave nueva de ' + name + ' (' + new Date(c.keyAcceptedAt).toLocaleString() + '). Toca para verificar.';
-  else if (c.publicKey) txt = '🔒 Mensajes cifrados de extremo a extremo. Nadie fuera de este chat puede leerlos. Toca para verificar.';
-  else txt = '⏳ Esperando la clave de cifrado de ' + name + ': tus mensajes saldrán cifrados en cuanto conecte.';
+    txt = t('chat_e2e_key_changed_1', '⚠️ La clave de seguridad de ') + name + t('chat_e2e_key_changed_2', ' cambió (') + new Date(c.keyChangedAt || Date.now()).toLocaleString() + ').' +
+      (held ? ' ' + held + (held === 1 ? t('chat_e2e_held_sing', ' mensaje retenido.') : t('chat_e2e_held_plur', ' mensajes retenidos.')) : '') +
+      t('chat_e2e_until_accept', ' Hasta que la aceptes no se muestran sus mensajes nuevos ni se le envía nada.') +
+      t('chat_e2e_impostor', ' Si no reinstaló NEXO, puede ser un impostor: comparad las huellas en persona.');
+  } else if (c.publicKey && c.verified === c.publicKey) txt = t('chat_e2e_verified', '🔒✔ Cifrado de extremo a extremo. Verificaste el número de seguridad de ') + name + '.';
+  else if (c.publicKey && c.keyAcceptedAt) txt = t('chat_e2e_accepted', '🔒 Cifrado de extremo a extremo. Aceptaste una clave nueva de ') + name + ' (' + new Date(c.keyAcceptedAt).toLocaleString() + t('chat_e2e_accepted_tail', '). Toca para verificar.');
+  else if (c.publicKey) txt = t('chat_e2e_encrypted', '🔒 Mensajes cifrados de extremo a extremo. Nadie fuera de este chat puede leerlos. Toca para verificar.');
+  else txt = t('chat_e2e_waiting_key', '⏳ Esperando la clave de cifrado de ') + name + t('chat_e2e_waiting_tail', ': tus mensajes saldrán cifrados en cuanto conecte.');
   // v9.9.49: sesión empezada con el acuerdo poscuántico (ML-KEM): protegida también ante ordenadores cuánticos
-  if (c.publicKey && !c.pendingKey && ratchetSessionPq(cid, c.publicKey)) txt += ' Protección poscuántica activa.';
-  var t = document.createElement('div');
-  t.className = 'e2e-text';
-  t.textContent = txt;
-  b.appendChild(t);
+  if (c.publicKey && !c.pendingKey && ratchetSessionPq(cid, c.publicKey)) txt += t('chat_e2e_pq', ' Protección poscuántica activa.');
+  var te = document.createElement('div');
+  te.className = 'e2e-text';
+  te.textContent = txt;
+  b.appendChild(te);
   var fp = document.createElement('div');
   fp.className = 'e2e-fp';
   fp.style.cssText = 'margin-top:6px;font-family:monospace;';
@@ -62,17 +63,17 @@ export function _renderE2EBanner() {
   var showFp = function() {
     if (fp.dataset.shown) return;
     fp.dataset.shown = '1';
-    fp.textContent = 'Calculando…';
+    fp.textContent = t('chat_calculating', 'Calculando…');
     Promise.all([c.publicKey ? ratchetSafetyNumber(me, cid, c.publicKey) : Promise.resolve(''), c.pendingKey ? ratchetSafetyNumber(me, cid, c.pendingKey) : Promise.resolve('')]).then(function(n) {
       var fmt = function(x) { var g = x.split(' '); return g.slice(0, 4).join(' ') + '\n' + g.slice(4, 8).join(' ') + '\n' + g.slice(8).join(' '); };
       fp.textContent = c.pendingKey
-        ? 'Número de seguridad con la clave anterior:\n' + (n[0] ? fmt(n[0]) : '—') + '\nCon la clave NUEVA:\n' + fmt(n[1])
-        : (n[0] ? 'Número de seguridad (debe ser idéntico en el teléfono de ' + name + '):\n' + fmt(n[0]) : 'Sin clave aún');
+        ? t('chat_safety_prev', 'Número de seguridad con la clave anterior:\n') + (n[0] ? fmt(n[0]) : '—') + t('chat_safety_new', '\nCon la clave NUEVA:\n') + fmt(n[1])
+        : (n[0] ? t('chat_safety_same', 'Número de seguridad (debe ser idéntico en el teléfono de ') + name + '):\n' + fmt(n[0]) : t('chat_safety_nokey', 'Sin clave aún'));
       if (!c.pendingKey && c.publicKey && bi && typeof bi.setContactVerified === 'function') {
         var on = c.verified === c.publicKey;
         var vb = document.createElement('button');
         vb.className = 'e2e-verify';
-        vb.textContent = on ? 'Quitar verificado' : 'Marcar como verificado';
+        vb.textContent = on ? t('chat_unverify', 'Quitar verificado') : t('chat_mark_verified', 'Marcar como verificado');
         vb.style.cssText = 'display:block;margin:8px auto 0;padding:6px 10px;border-radius:8px;border:none;font-size:12px;cursor:pointer;background:' + (on ? 'rgba(255,255,255,0.15)' : '#00c8ff') + ';color:#fff;';
         vb.onclick = function(ev) { ev.stopPropagation(); bi.setContactVerified(cid, !on); };
         fp.appendChild(vb);
@@ -87,10 +88,10 @@ export function _renderE2EBanner() {
           x.onclick = function(ev) { ev.stopPropagation(); fn(); };
           qrow.appendChild(x);
         };
-        qb('Mostrar mi QR', 'e2e-qr-show', function() {
-          showSafetyQr(safetyQrPayload(me, cid, n[0]), 'Que ' + name + ' lo escanee desde su chat contigo\n(Escanear su QR)');
+        qb(t('chat_show_qr', 'Mostrar mi QR'), 'e2e-qr-show', function() {
+          showSafetyQr(safetyQrPayload(me, cid, n[0]), t('chat_qr_show_1', 'Que ') + name + t('chat_qr_show_2', ' lo escanee desde su chat contigo\n(Escanear su QR)'));
         });
-        qb('Escanear su QR', 'e2e-qr-scan', function() { openQrScanner(function(text) { _onSafetyQr(cid, name, text); }, 'Apunta al QR que muestra ' + name); });
+        qb(t('chat_scan_qr', 'Escanear su QR'), 'e2e-qr-scan', function() { openQrScanner(function(text) { _onSafetyQr(cid, name, text); }, t('chat_qr_scan_hint', 'Apunta al QR que muestra ') + name); });
         fp.appendChild(qrow);
       }
     }).catch(function() { fp.textContent = ''; delete fp.dataset.shown; });
@@ -108,8 +109,8 @@ export function _renderE2EBanner() {
       btn.onclick = function(ev) { ev.stopPropagation(); fn(); };
       return btn;
     };
-    row.appendChild(mk('Aceptar clave nueva', 'e2e-accept', function() { if (bi && bi.acceptContactKey) bi.acceptContactKey(cid); }));
-    row.appendChild(mk('Rechazar', 'e2e-reject', function() { if (bi && bi.rejectContactKey) bi.rejectContactKey(cid); }));
+    row.appendChild(mk(t('chat_accept_key', 'Aceptar clave nueva'), 'e2e-accept', function() { if (bi && bi.acceptContactKey) bi.acceptContactKey(cid); }));
+    row.appendChild(mk(t('chat_reject', 'Rechazar'), 'e2e-reject', function() { if (bi && bi.rejectContactKey) bi.rejectContactKey(cid); }));
     b.appendChild(row);
   }
 }
@@ -119,17 +120,17 @@ export function _onSafetyQr(cid, name, text) {
   var bi = window.bleInterface;
   var me = _normId(bi && bi.localNexoId);
   var c = (vaultLoadContacts() || []).find(function(x) { return _normId(x.nexoId || x.deviceUUID) === cid; });
-  if (!c || !c.publicKey || c.pendingKey) { _showInfoToast('Primero acepta o rechaza la clave nueva de ' + name, 3500); return; }
+  if (!c || !c.publicKey || c.pendingKey) { _showInfoToast(t('chat_first_accept_reject', 'Primero acepta o rechaza la clave nueva de ') + name, 3500); return; }
   ratchetSafetyNumber(me, cid, c.publicKey).then(function(num) {
     var r = checkSafetyQr(text, me, cid, num);
     console.log('[E2E] QR del número de seguridad de ' + cid + ': ' + r);
     if (r === 'ok') {
       if (bi && typeof bi.setContactVerified === 'function') bi.setContactVerified(cid, true);
-      _showInfoToast('✔ Número de seguridad verificado: ' + name + ' es quien dice ser', 3500);
+      _showInfoToast(t('chat_safety_ok_1', '✔ Número de seguridad verificado: ') + name + t('chat_safety_ok_2', ' es quien dice ser'), 3500);
     } else if (r === 'mismatch') {
-      _showInfoToast('⚠️ El número NO coincide: la clave de ' + name + ' no es la que tienes guardada. Puede haber un impostor: no lo marques como verificado.', 7000);
-    } else if (r === 'other') _showInfoToast('Ese QR es de otro contacto, no de ' + name, 3500);
-    else if (r === 'notme') _showInfoToast('Ese QR es para otra persona: pide a ' + name + ' que lo abra en su chat contigo', 4000);
-    else _showInfoToast('No es un QR de número de seguridad de NEXO', 3000);
-  }).catch(function() { _showInfoToast('No se pudo calcular el número de seguridad', 3000); });
+      _showInfoToast(t('chat_safety_mismatch_1', '⚠️ El número NO coincide: la clave de ') + name + t('chat_safety_mismatch_2', ' no es la que tienes guardada. Puede haber un impostor: no lo marques como verificado.'), 7000);
+    } else if (r === 'other') _showInfoToast(t('chat_safety_other', 'Ese QR es de otro contacto, no de ') + name, 3500);
+    else if (r === 'notme') _showInfoToast(t('chat_safety_notme_1', 'Ese QR es para otra persona: pide a ') + name + t('chat_safety_notme_2', ' que lo abra en su chat contigo'), 4000);
+    else _showInfoToast(t('chat_safety_notqr', 'No es un QR de número de seguridad de NEXO'), 3000);
+  }).catch(function() { _showInfoToast(t('chat_safety_calc_fail', 'No se pudo calcular el número de seguridad'), 3000); });
 }

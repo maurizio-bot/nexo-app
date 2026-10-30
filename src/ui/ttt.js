@@ -16,6 +16,7 @@ import { _normId } from './ble_helpers.js';
 import { _sendTextTo } from './send.js';
 import { _contactName, _getCurrentContactId } from './chat_format.js';
 import { _showInfoToast } from './ui_bits.js';
+import { t } from './i18n.js';
 
 var NX_RE = /^nx[0-9a-z]{8}$/;
 var LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
@@ -89,11 +90,11 @@ function _notify(g, isNew) {
   // Si el chat con el rival está abierto, abro el overlay directo; si no, aviso tocable.
   var cur = _normId(_getCurrentContactId());
   if (cur === _normId(g.opp)) { _openOverlay(g.gid); return; }
-  var msg = isNew ? ('🎮 ' + g.oppName + ' te invitó a Tres en raya') : (g.over ? ('🎮 Tres en raya con ' + g.oppName + ': ' + _endText(g)) : ('🎮 ' + g.oppName + ': te toca en Tres en raya'));
+  var msg = isNew ? ('🎮 ' + g.oppName + t('chat_ttt_invited', ' te invitó a Tres en raya')) : (g.over ? (t('chat_ttt_with', '🎮 Tres en raya con ') + g.oppName + ': ' + _endText(g)) : ('🎮 ' + g.oppName + t('chat_ttt_your_turn_toast', ': te toca en Tres en raya')));
   try { _showInfoToast(msg, 3500); } catch (e) {}
 }
 
-function _endText(g) { return g.winner === '' ? 'empate' : (g.winner === g.me ? 'ganaste 🎉' : 'perdiste'); }
+function _endText(g) { return g.winner === '' ? t('chat_ttt_draw', 'empate') : (g.winner === g.me ? t('chat_ttt_won', 'ganaste 🎉') : t('chat_ttt_lost', 'perdiste')); }
 
 // ----- Overlay -----
 function _openOverlay(gid) {
@@ -104,9 +105,9 @@ function _openOverlay(gid) {
   ov.id = 'ttt-overlay'; ov.className = 'ttt-overlay';
   var panel = document.createElement('div'); panel.className = 'ttt-panel';
   var head = document.createElement('div'); head.className = 'ttt-head';
-  var title = document.createElement('div'); title.className = 'ttt-title'; title.textContent = 'Tres en raya'; title.style.fontWeight = '600';
+  var title = document.createElement('div'); title.className = 'ttt-title'; title.textContent = t('chat_ttt_title', 'Tres en raya'); title.style.fontWeight = '600';
   var sub = document.createElement('div'); sub.className = 'ttt-sub ttt-status';
-  var vs = document.createElement('div'); vs.className = 'ttt-vs'; vs.textContent = 'Tú (' + g.me + ') vs ' + g.oppName + ' (' + (g.me === 'X' ? 'O' : 'X') + ')';
+  var vs = document.createElement('div'); vs.className = 'ttt-vs'; vs.textContent = t('chat_ttt_you_paren', 'Tú (') + g.me + t('chat_ttt_vs', ') vs ') + g.oppName + ' (' + (g.me === 'X' ? 'O' : 'X') + ')';
   head.appendChild(title); head.appendChild(vs); head.appendChild(sub);
   var grid = document.createElement('div'); grid.className = 'ttt-grid';
   for (var i = 0; i < 9; i++) {
@@ -115,9 +116,9 @@ function _openOverlay(gid) {
     grid.appendChild(cell);
   }
   var foot = document.createElement('div'); foot.className = 'ttt-foot';
-  var again = document.createElement('button'); again.type = 'button'; again.className = 'ttt-again'; again.textContent = 'Nueva partida';
+  var again = document.createElement('button'); again.type = 'button'; again.className = 'ttt-again'; again.textContent = t('chat_ttt_new_game', 'Nueva partida');
   again.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); var opp = g.opp; _closeOverlay(); _startFresh(opp); });
-  var close = document.createElement('button'); close.type = 'button'; close.className = 'ttt-close'; close.textContent = 'Cerrar';
+  var close = document.createElement('button'); close.type = 'button'; close.className = 'ttt-close'; close.textContent = t('chat_close', 'Cerrar');
   close.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); _closeOverlay(); });
   foot.appendChild(again); foot.appendChild(close);
   panel.appendChild(head); panel.appendChild(grid); panel.appendChild(foot);
@@ -137,7 +138,7 @@ function _renderOverlay(g) {
     cells[i].disabled = !!v || !myTurn;
   }
   var st = ov.querySelector('.ttt-status');
-  if (st) st.textContent = g.over ? ('Fin — ' + _endText(g)) : (myTurn ? 'Tu turno' : 'Turno de ' + g.oppName);
+  if (st) st.textContent = g.over ? (t('chat_ttt_end', 'Fin — ') + _endText(g)) : (myTurn ? t('chat_ttt_your_turn', 'Tu turno') : t('chat_ttt_turn_of', 'Turno de ') + g.oppName);
   var again = ov.querySelector('.ttt-again');
   if (again) again.style.display = g.over ? '' : 'none';
 }
@@ -146,7 +147,7 @@ function _closeOverlay() { try { var ov = document.getElementById('ttt-overlay')
 // Empezar SIEMPRE una partida nueva con un contacto (yo = X). Usado por el menú y por «Nueva partida».
 function _startFresh(cid) {
   cid = _normId(cid);
-  if (!NX_RE.test(cid)) { _showInfoToast('Los juegos son entre dos personas (abre el chat de un contacto)', 2500); return; }
+  if (!NX_RE.test(cid)) { _showInfoToast(t('chat_ttt_two_people', 'Los juegos son entre dos personas (abre el chat de un contacto)'), 2500); return; }
   var gid = _newGid();
   games[gid] = { gid: gid, board: _emptyBoard(), me: 'X', opp: cid, oppName: _contactName(cid), over: false, winner: '' };
   _openOverlay(gid);
@@ -155,7 +156,7 @@ function _startFresh(cid) {
 // Punto de entrada del menú: retoma la partida viva con el contacto, o empieza una nueva.
 export function openTttForContact(cid) {
   cid = _normId(cid);
-  if (!NX_RE.test(cid)) { _showInfoToast('Los juegos son entre dos personas (abre el chat de un contacto)', 2500); return; }
+  if (!NX_RE.test(cid)) { _showInfoToast(t('chat_ttt_two_people', 'Los juegos son entre dos personas (abre el chat de un contacto)'), 2500); return; }
   var live = null;
   Object.keys(games).forEach(function(k) { var gg = games[k]; if (_normId(gg.opp) === cid && !gg.over) live = gg; });
   if (live) _openOverlay(live.gid); else _startFresh(cid);

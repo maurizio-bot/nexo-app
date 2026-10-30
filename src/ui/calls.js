@@ -13,6 +13,8 @@
  * en paquetes { type:'vf', k:'v', … } solo por el mismo Wi-Fi (por Bluetooth no cabe); si el Wi-Fi se pierde en plena
  * videollamada, el vídeo se para y la voz sigue por Bluetooth.
  */
+import { t } from './i18n.js';
+
 var RING_MS = 45000;
 var SILENCE_MS = 12000;
 // Ronda 2768: solo para ofertas muy viejas; si una reciente sigue viva lo dice el que llama al recibir 'ring' (antes, con
@@ -104,9 +106,9 @@ export class Calls {
   // Llamar a un contacto (video: videollamada)
   start(nexoId, video) {
     var self = this, nx = _nid(nexoId);
-    if (self.call) return Promise.reject(new Error('Ya hay una llamada'));
-    if (!self._link(nx)) return Promise.reject(new Error('Para llamar hace falta tener al contacto cerca (Bluetooth) o en el mismo Wi-Fi'));
-    if (video && !self.canVideo(nx)) return Promise.reject(new Error('Para una videollamada hace falta estar en el mismo Wi-Fi (por Bluetooth solo voz)'));
+    if (self.call) return Promise.reject(new Error(t('call_err_already', 'Ya hay una llamada')));
+    if (!self._link(nx)) return Promise.reject(new Error(t('call_err_need_near', 'Para llamar hace falta tener al contacto cerca (Bluetooth) o en el mismo Wi-Fi')));
+    if (video && !self.canVideo(nx)) return Promise.reject(new Error(t('call_err_need_wifi_video', 'Para una videollamada hace falta estar en el mismo Wi-Fi (por Bluetooth solo voz)')));
     var id = 'cl' + Date.now().toString(36) + _hex(4), key = _hex(32);
     self.call = { id: id, nx: nx, dir: 'out', state: 'calling', key: key, createdAt: Date.now(), sendSeq: 0, vSeq: 0, lastRx: 0, video: !!video };
     _emit('nexo:call', self.state());
@@ -374,14 +376,14 @@ export class Calls {
 
   // Línea en el chat (solo en este teléfono)
   _log(nx, reason, secs, own, video) {
-    var w = video ? '🎥 Videollamada' : '📞 Llamada', ic = video ? '🎥' : '📞';
-    var t = secs > 0 ? w + ' · ' + Math.floor(secs / 60) + ':' + ('0' + (secs % 60)).slice(-2)
-      : reason === 'missed' ? w + ' perdida'
-      : reason === 'busy' ? ic + ' Ocupado'
-      : reason === 'rejected' || reason === 'rejected_by_me' ? w + ' rechazada'
-      : reason === 'unanswered' ? ic + ' Sin respuesta'
-      : w + ' cancelada';
-    _emit('nexo:callLog', { nx: nx, text: t, own: !!own, missed: reason === 'missed' });
+    var w = video ? t('call_log_video', '🎥 Videollamada') : t('call_log_voice', '📞 Llamada'), ic = video ? '🎥' : '📞';
+    var txt = secs > 0 ? w + ' · ' + Math.floor(secs / 60) + ':' + ('0' + (secs % 60)).slice(-2)
+      : reason === 'missed' ? w + t('call_log_missed', ' perdida')
+      : reason === 'busy' ? ic + t('call_log_busy', ' Ocupado')
+      : reason === 'rejected' || reason === 'rejected_by_me' ? w + t('call_log_rejected', ' rechazada')
+      : reason === 'unanswered' ? ic + t('call_log_no_answer', ' Sin respuesta')
+      : w + t('call_log_cancelled', ' cancelada');
+    _emit('nexo:callLog', { nx: nx, text: txt, own: !!own, missed: reason === 'missed' });
   }
 }
 

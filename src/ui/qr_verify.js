@@ -10,6 +10,7 @@
  */
 import qrcode from 'qrcode-generator';
 import jsQR from 'jsqr';
+import { t } from './i18n.js';
 
 var PREFIX = 'NEXO-SN1';
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
@@ -63,13 +64,13 @@ export function showSafetyQr(payload, caption) {
   box.innerHTML = qrSvg(payload);
   var svg = box.querySelector('svg');
   if (svg) { svg.style.width = '100%'; svg.style.height = '100%'; }
-  var t = document.createElement('div');
-  t.textContent = caption || '';
-  t.style.cssText = 'max-width:340px;white-space:pre-line;';
-  var close = _button('Cerrar', false);
+  var cap = document.createElement('div');
+  cap.textContent = caption || '';
+  cap.style.cssText = 'max-width:340px;white-space:pre-line;';
+  var close = _button(t('close'), false);
   close.onclick = function() { o.remove(); };
   o.appendChild(box);
-  o.appendChild(t);
+  o.appendChild(cap);
   o.appendChild(close);
   return o;
 }
@@ -89,13 +90,13 @@ export function openQrScanner(onText, caption) {
   frame.style.cssText = 'position:absolute;inset:12%;border:3px solid #00c8ff;border-radius:12px;pointer-events:none;';
   wrap.appendChild(video);
   wrap.appendChild(frame);
-  var t = document.createElement('div');
-  t.className = 'qr-scan-text';
-  t.textContent = caption || 'Apunta al QR';
-  t.style.cssText = 'max-width:380px;white-space:pre-line;';
-  var cancel = _button('Cancelar', false);
+  var cap = document.createElement('div');
+  cap.className = 'qr-scan-text';
+  cap.textContent = caption || t('prof_qr_aim', 'Apunta al QR');
+  cap.style.cssText = 'max-width:380px;white-space:pre-line;';
+  var cancel = _button(t('cancel'), false);
   o.appendChild(wrap);
-  o.appendChild(t);
+  o.appendChild(cap);
   o.appendChild(cancel);
   var canvas = document.createElement('canvas');
   var ctx = null;
@@ -121,7 +122,7 @@ export function openQrScanner(onText, caption) {
     var r = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
     if (r && r.data) { close(); onText(r.data); }
   }
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { t.textContent = 'Cámara no disponible'; return close; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { cap.textContent = t('prof_qr_no_cam', 'Cámara no disponible'); return close; }
   var start = function(c) {
     return navigator.mediaDevices.getUserMedia(c).then(function(s) {
       if (closed) { s.getTracks().forEach(function(tr) { tr.stop(); }); return; }
@@ -133,6 +134,6 @@ export function openQrScanner(onText, caption) {
   };
   start({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false })
     .catch(function() { return start({ video: true, audio: false }); })
-    .catch(function(e) { t.textContent = 'No se pudo abrir la cámara: ' + ((e && e.message) || e); });
+    .catch(function(e) { cap.textContent = t('prof_qr_cam_fail', 'No se pudo abrir la cámara: ') + ((e && e.message) || e); });
   return close;
 }

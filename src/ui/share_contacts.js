@@ -6,6 +6,7 @@ import { _closeAttachMenu } from './ui_bits.js';
 import { _getCurrentContactId, _normId } from './chat_format.js';
 import { vaultLoadContacts } from '../vault/vault_manager.js';
 import { ratchetPeerBundle } from '../vault/e2e_ratchet.js';
+import { t } from './i18n.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _sendAttachment;
@@ -39,11 +40,11 @@ export function _handleShareContacts() {
   sheet.id = 'nexo-share-sheet';
   sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#0a0a15;color:#fff;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
   sheet.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
-    '<button id="nexo-share-cancel" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:18px;padding:8px 14px;font-size:14px;">Cancelar</button>' +
-    '<div style="font-size:18px;font-weight:700;">Enviar contactos</div><div style="width:70px"></div></div>' +
-    '<input id="nexo-share-search" placeholder="Buscar..." style="background:rgba(255,255,255,0.08);border:none;border-radius:10px;padding:10px 12px;color:#fff;font-size:15px;margin-bottom:8px;">' +
+    '<button id="nexo-share-cancel" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:18px;padding:8px 14px;font-size:14px;">' + t('media_cancel', 'Cancelar') + '</button>' +
+    '<div style="font-size:18px;font-weight:700;">' + t('media_share_title', 'Enviar contactos') + '</div><div style="width:70px"></div></div>' +
+    '<input id="nexo-share-search" placeholder="' + t('media_search', 'Buscar...') + '" style="background:rgba(255,255,255,0.08);border:none;border-radius:10px;padding:10px 12px;color:#fff;font-size:15px;margin-bottom:8px;">' +
     '<div id="nexo-share-list" style="flex:1;overflow-y:auto;"></div>' +
-    '<button id="nexo-share-send" disabled style="background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:600;margin-top:8px;opacity:0.5;">Enviar</button>';
+    '<button id="nexo-share-send" disabled style="background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:600;margin-top:8px;opacity:0.5;">' + t('media_send', 'Enviar') + '</button>';
   document.body.appendChild(sheet);
   var listEl = sheet.querySelector('#nexo-share-list');
   var sendBtn = sheet.querySelector('#nexo-share-send');
@@ -52,7 +53,7 @@ export function _handleShareContacts() {
     var n = Object.keys(chosen).length;
     sendBtn.disabled = n === 0;
     sendBtn.style.opacity = n ? '1' : '0.5';
-    sendBtn.textContent = n ? 'Enviar (' + n + ')' : 'Enviar';
+    sendBtn.textContent = n ? t('media_send_count', 'Enviar (') + n + ')' : t('media_send', 'Enviar');
   }
   function render(filter) {
     listEl.innerHTML = '';
@@ -61,7 +62,7 @@ export function _handleShareContacts() {
     if (!shown.length) {
       var empty = document.createElement('div');
       empty.style.cssText = 'opacity:0.6;padding:24px;text-align:center;';
-      empty.textContent = all.length ? 'Sin resultados' : 'No tienes otros contactos para enviar';
+      empty.textContent = all.length ? t('media_no_results', 'Sin resultados') : t('media_no_other_contacts', 'No tienes otros contactos para enviar');
       listEl.appendChild(empty);
     }
     shown.forEach(function(c) {
@@ -113,7 +114,7 @@ export function _renderContactCard(container, meta, msg) {
   card.style.cssText = 'min-width:200px;max-width:260px;padding:10px 12px;';
   var title = document.createElement('div');
   title.style.cssText = 'font-weight:700;margin-bottom:6px;';
-  title.textContent = '👤 ' + (list.length === 1 ? 'Contacto' : list.length + ' contactos');
+  title.textContent = '👤 ' + (list.length === 1 ? t('media_contact', 'Contacto') : list.length + t('media_contacts_n', ' contactos'));
   card.appendChild(title);
   var bi = window.bleInterface || (window.NEXO.app && window.NEXO.app.bleInterface);
   function isMine(id) { return (vaultLoadContacts() || []).some(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(id); }); }
@@ -130,7 +131,7 @@ export function _renderContactCard(container, meta, msg) {
     var go = document.createElement('button');
     go.className = 'contact-card-write';
     go.style.cssText = 'background:rgba(0,200,255,0.25);color:#fff;border:none;border-radius:8px;padding:4px 8px;font-size:12px;';
-    go.textContent = 'Escribir';
+    go.textContent = t('media_write', 'Escribir');
     go.onclick = function(e) { e.stopPropagation(); if (bi && bi.openChat) bi.openChat(_normId(c.nexoId)).catch(function() {}); };
     row.appendChild(txt); row.appendChild(go);
     card.appendChild(row);
@@ -143,12 +144,12 @@ export function _renderContactCard(container, meta, msg) {
     addBtn.className = 'contact-card-add';
     addBtn.style.cssText = 'width:100%;margin-top:8px;background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:10px;padding:8px;font-size:14px;font-weight:600;';
     var pending = list.filter(function(c) { return !isMine(c.nexoId) && !isMe(c.nexoId); }).length;
-    addBtn.textContent = pending ? 'Agregar a contactos' : 'Ya en tus contactos ✓';
+    addBtn.textContent = pending ? t('media_add_contacts', 'Agregar a contactos') : t('media_already_contacts', 'Ya en tus contactos ✓');
     var doAdd = function(e) {
       if (e) e.stopPropagation();
       if (!bi || typeof bi.addSharedContacts !== 'function') return;
       var r = bi.addSharedContacts(list, msg.senderNexoId);
-      addBtn.textContent = r.added.length ? ('Agregados: ' + r.added.length + ' ✓') : 'Ya en tus contactos ✓';
+      addBtn.textContent = r.added.length ? (t('media_added_n', 'Agregados: ') + r.added.length + ' ✓') : t('media_already_contacts', 'Ya en tus contactos ✓');
       refresh();
     };
     addBtn.onclick = doAdd;

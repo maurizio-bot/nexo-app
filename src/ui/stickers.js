@@ -12,6 +12,8 @@
  * selector como función.
  */
 
+import { t } from './i18n.js';
+
 // Mapa congelado id → SVG estático (viewBox 0 0 100 100). Todo el contenido es fijo y de confianza (de este repo).
 export var STICKER_SET = Object.freeze({
   feliz: '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="#FFD23F"/><circle cx="36" cy="43" r="6" fill="#3a2e00"/><circle cx="64" cy="43" r="6" fill="#3a2e00"/><path d="M30 60 Q50 80 70 60" stroke="#3a2e00" stroke-width="6" fill="none" stroke-linecap="round"/></svg>',
@@ -46,7 +48,7 @@ export function openStickerPicker(cid, sendFn) {
     panel.className = 'sticker-panel';
     var head = document.createElement('div');
     head.className = 'sticker-head';
-    head.textContent = 'Stickers';
+    head.textContent = t('chat_stickers_title', 'Stickers');
     panel.appendChild(head);
     var grid = document.createElement('div');
     grid.className = 'sticker-grid';

@@ -11,6 +11,7 @@ import { _showPermissionError } from './ui_bits.js';
 import { vaultAppendMessage, vaultSetMessageFields } from '../vault/vault_manager.js';
 import { bigToGroup } from './group_media.js';
 import { _failStatus } from './ble_helpers.js';
+import { t } from './i18n.js';
 
 
 /**
@@ -96,7 +97,7 @@ export function _sendAttachment(type, payload, meta, opts) {
   if (inGroup) {
     var gstr = JSON.stringify(attachmentData);
     if (gstr.length > GROUP_MAX_CHARS) {
-      _showPermissionError('Demasiado grande para un grupo (' + (gstr.length * 3 / 4 / 1048576).toFixed(1) + ' MB). Máximo ~' + (GROUP_MAX_CHARS * 3 / 4 / 1048576).toFixed(1) + ' MB por ahora.');
+      _showPermissionError(t('chat_too_big_group', 'Demasiado grande para un grupo (') + (gstr.length * 3 / 4 / 1048576).toFixed(1) + t('chat_max_mb', ' MB). Máximo ~') + (GROUP_MAX_CHARS * 3 / 4 / 1048576).toFixed(1) + t('chat_mb_for_now', ' MB por ahora.'));
       return;
     }
     if (showHere) _renderMessage(localMsg, true);
@@ -190,7 +191,7 @@ export function _sendBigFile(contactId, file, mime) {
   }).catch(function(e) {
     console.warn('[BIG] ' + msgId + ': ' + (e && e.message));
     _updateMessageStatus(msgId, 'failed'); _updateMessageStorageStatus(msgId, 'failed', contactId);
-    _showPermissionError('Archivo: no se pudo preparar (' + ((e && e.message) || 'error') + ')');
+    _showPermissionError(t('chat_file_prep_fail', 'Archivo: no se pudo preparar (') + ((e && e.message) || t('chat_error_lc', 'error')) + ')');
   });
   return msgId;
 }
@@ -219,7 +220,7 @@ export function _sendFileFor(contactId, msgId, type, payload, meta, opts) {
         if (opts && typeof opts.onWdFail === 'function') { opts.onWdFail(msgId); return; }
         _updateMessageStatus(msgId, 'failed');
         _updateMessageStorageStatus(msgId, 'failed', contactId);
-        _showPermissionError('No se pudo enviar por Wi-Fi Direct y es demasiado grande para Bluetooth (' + (Math.floor(String(payload).length * 3 / 4) / 1048576).toFixed(1) + ' MB). Máximo ~' + (MAX_BLE_FILE_BYTES / 1048576).toFixed(1) + ' MB.');
+        _showPermissionError(t('chat_wd_too_big', 'No se pudo enviar por Wi-Fi Direct y es demasiado grande para Bluetooth (') + (Math.floor(String(payload).length * 3 / 4) / 1048576).toFixed(1) + t('chat_max_mb', ' MB). Máximo ~') + (MAX_BLE_FILE_BYTES / 1048576).toFixed(1) + t('chat_mb_end', ' MB.'));
         return;
       }
 

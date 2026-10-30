@@ -9,6 +9,7 @@ import { _normId } from './chat_format.js';
 import { vaultLoadContacts } from '../vault/vault_manager.js';
 import { _renderMessage } from './render.js';
 import { _showInfoToast } from './ui_bits.js';
+import { t } from './i18n.js';
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
 function _groups() { var b = _bi(); return b && b.groups; }
@@ -18,8 +19,8 @@ function _toast(t) { try { _showInfoToast(t, 3000); } catch (e) { console.log('[
 export function groupSubtitle(g) {
   var gs = _groups(), me = _normId(_bi() && _bi().localNexoId);
   if (!g || !gs) return '';
-  var names = g.members.map(function(nx) { return nx === me ? 'tú' : gs.memberName(nx); });
-  return g.members.length + ' personas: ' + names.join(', ');
+  var names = g.members.map(function(nx) { return nx === me ? t('prof_group_you', 'tú') : gs.memberName(nx); });
+  return g.members.length + t('prof_group_people', ' personas: ') + names.join(', ');
 }
 
 // Abrir el chat de un grupo (como openChat de un contacto, sin Bluetooth: cada mensaje va a cada miembro por su camino)
@@ -55,12 +56,12 @@ export function openCreateGroupSheet() {
   sheet.id = 'nexo-group-sheet';
   sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#0a0a15;color:#fff;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
   sheet.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
-    '<button id="nexo-group-cancel" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:18px;padding:8px 14px;font-size:14px;">Cancelar</button>' +
-    '<div style="font-size:18px;font-weight:700;">Nuevo grupo</div><div style="width:70px"></div></div>' +
-    '<input id="nexo-group-name" maxlength="60" placeholder="Nombre del grupo" style="background:rgba(255,255,255,0.08);border:none;border-radius:10px;padding:12px;color:#fff;font-size:16px;margin-bottom:8px;">' +
-    '<div style="font-size:13px;opacity:0.7;margin:4px 2px 6px;">Elige quién está en el grupo</div>' +
+    '<button id="nexo-group-cancel" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:18px;padding:8px 14px;font-size:14px;">' + t('cancel') + '</button>' +
+    '<div style="font-size:18px;font-weight:700;">' + t('prof_group_new', 'Nuevo grupo') + '</div><div style="width:70px"></div></div>' +
+    '<input id="nexo-group-name" maxlength="60" placeholder="' + t('prof_group_name_ph', 'Nombre del grupo') + '" style="background:rgba(255,255,255,0.08);border:none;border-radius:10px;padding:12px;color:#fff;font-size:16px;margin-bottom:8px;">' +
+    '<div style="font-size:13px;opacity:0.7;margin:4px 2px 6px;">' + t('prof_group_choose', 'Elige quién está en el grupo') + '</div>' +
     '<div id="nexo-group-list" style="flex:1;overflow-y:auto;"></div>' +
-    '<button id="nexo-group-create" disabled style="background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:600;margin-top:8px;opacity:0.5;">Crear grupo</button>';
+    '<button id="nexo-group-create" disabled style="background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:600;margin-top:8px;opacity:0.5;">' + t('prof_group_create', 'Crear grupo') + '</button>';
   document.body.appendChild(sheet);
   var listEl = sheet.querySelector('#nexo-group-list'), btn = sheet.querySelector('#nexo-group-create'), nameEl = sheet.querySelector('#nexo-group-name');
   var chosen = {};
@@ -72,9 +73,9 @@ export function openCreateGroupSheet() {
     // Ronda 2792 (informe del dueño: «no se habilita el botón como si faltara algo»): antes el botón solo se activaba
     // con nombre + 1 contacto, pero no decía CUÁL faltaba. Ahora lo dice, en orden: primero elegir a alguien, luego el
     // nombre. Si no hay a quién marcar (la lista sale vacía), el texto lo deja claro en vez de un botón gris mudo.
-    btn.textContent = !n ? 'Elige al menos un contacto' : (!hasName ? 'Escribe un nombre del grupo' : 'Crear grupo (' + (n + 1) + ' personas)');
+    btn.textContent = !n ? t('prof_group_need_contact', 'Elige al menos un contacto') : (!hasName ? t('prof_group_need_name', 'Escribe un nombre del grupo') : t('prof_group_create_n_pre', 'Crear grupo (') + (n + 1) + t('prof_group_create_n_post', ' personas)'));
   }
-  if (!all.length) listEl.innerHTML = '<div style="opacity:0.7;padding:16px 4px;">Aún no tienes contactos.</div>';
+  if (!all.length) listEl.innerHTML = '<div style="opacity:0.7;padding:16px 4px;">' + t('prof_group_no_contacts', 'Aún no tienes contactos.') + '</div>';
   all.forEach(function(c) {
     var id = _normId(c.nexoId || c.deviceUUID);
     var row = document.createElement('label');
@@ -156,13 +157,13 @@ export function openGroupMenu(gid) {
     b.onclick = function(e) { e.stopPropagation(); box.remove(); fn(); };
     sheet.appendChild(b);
   };
-  add('💬  Abrir', 'gm-open', function() { openGroupChat(g.id); });
-  add('🚪  Salir del grupo', 'gm-leave', function() {
+  add('💬  ' + t('prof_open', 'Abrir'), 'gm-open', function() { openGroupChat(g.id); });
+  add('🚪  ' + t('prof_group_leave', 'Salir del grupo'), 'gm-leave', function() {
     gs.leave(g.id);
     var bi = _bi();
     if (bi && typeof bi.renderContactsList === 'function') bi.renderContactsList();
   }, true);
-  add('Cancelar', 'gm-cancel', function() {});
+  add(t('cancel'), 'gm-cancel', function() {});
   box.onclick = function(e) { if (e.target === box) box.remove(); };
   box.appendChild(sheet);
   document.body.appendChild(box);
@@ -174,7 +175,7 @@ export function installGroupButton() {
   if (!header || document.getElementById('nexo-new-group-btn')) return;
   var b = document.createElement('button');
   b.id = 'nexo-new-group-btn';
-  b.title = 'Nuevo grupo';
+  b.title = t('prof_group_new', 'Nuevo grupo');
   b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 13.5a6.5 6.5 0 0 1 3.5 6.5"/></svg>'; // ronda 2763: icono dibujado (antes un emoji)
   b.style.cssText = 'position:absolute;right:14px;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;font-size:20px;cursor:pointer;z-index:5;';
   if (getComputedStyle(header).position === 'static') header.style.position = 'relative';

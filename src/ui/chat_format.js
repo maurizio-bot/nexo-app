@@ -4,6 +4,7 @@
  * buscar un mensaje en pantalla y orden de los estados (enviando → enviado → entregado → leído).
  */
 import { vaultLoadContacts, vaultLoadMessages } from '../vault/vault_manager.js';
+import { t } from './i18n.js';
 
 
 export var _STATUS_RANK = {
@@ -70,9 +71,9 @@ export function _cut(s, n) { s = String(s == null ? '' : s); if (s.length <= n) 
 function _attachLabel(at, meta) {
   if (at === 'file') {
     var fn = meta && (meta.name || meta.fileName);
-    return fn ? '📎 ' + String(fn) : '📎 Archivo';
+    return fn ? '📎 ' + String(fn) : t('chat_file', '📎 Archivo');
   }
-  return _PREVIEW_BY_TYPE[at] || '📎 Archivo';
+  return _PREVIEW_BY_TYPE[at] || t('chat_file', '📎 Archivo');
 }
 
 export function _msgSummary(msg) {
@@ -90,7 +91,7 @@ export function _msgSummary(msg) {
   // 3) Texto normal (nexo_txt / nexo_act) → su texto plano, recortado sin partir emojis. Un sticker (nexo_sticker, 2829)
   //    muestra «🎟️ Sticker», nunca el JSON crudo.
   var k = _chatKind(msg.content);
-  if (k && k.type === 'nexo_sticker') return { k: 'sticker', s: '🎟️ Sticker' };
+  if (k && k.type === 'nexo_sticker') return { k: 'sticker', s: t('chat_sticker', '🎟️ Sticker') };
   if (k) return { k: 'text', s: _cut(String(k.t || ''), 100) };
   // 4) Cualquier OTRO JSON de protocolo (descriptor de archivo, trozo, control…): NUNCA mostrar el «código» crudo. Se
   //    intenta sacar un nombre de archivo; si no, etiqueta genérica. (El archivo del dueño caía aquí y salía como código.)
@@ -100,7 +101,7 @@ export function _msgSummary(msg) {
       var fn2 = o && ((o.meta && (o.meta.name || o.meta.fileName)) || o.name || o.fileName || o.fn);
       if (fn2) return { k: 'file', s: '📎 ' + String(fn2) };
     } catch (e2) {}
-    return { k: 'file', s: '📎 Archivo' };
+    return { k: 'file', s: t('chat_file', '📎 Archivo') };
   }
   // 5) Texto suelto (sin envoltorio).
   return { k: 'text', s: _cut(_plainText(msg.content), 100) };
@@ -113,7 +114,7 @@ export function _findMessage(cid, id) {
 }
 
 // v9.9.29: la lista de contactos se ordena por el último mensaje enviado o recibido
-export var _PREVIEW_BY_TYPE = { contact: '👤 Contacto', image: '📷 Foto', video: '🎬 Vídeo', audio: '🎤 Audio', voice: '🎤 Audio', location: '📍 Ubicación', file: '📎 Archivo', sticker: '🎟️ Sticker' };
+export var _PREVIEW_BY_TYPE = { contact: t('chat_prev_contact', '👤 Contacto'), image: t('chat_prev_photo', '📷 Foto'), video: t('chat_prev_video', '🎬 Vídeo'), audio: t('chat_prev_audio', '🎤 Audio'), voice: t('chat_prev_audio', '🎤 Audio'), location: t('chat_prev_location', '📍 Ubicación'), file: t('chat_file', '📎 Archivo'), sticker: t('chat_sticker', '🎟️ Sticker') };
 
 // Gancho para las pruebas (tests/sim/chatactions.js): comprobar el resumen de respuesta de un adjunto codificado en
 // content (ubicación/foto) sin depender del GPS. Es una función pura de solo lectura.

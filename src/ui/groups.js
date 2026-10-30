@@ -14,6 +14,7 @@
  */
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
 import { _failStatus } from './ble_helpers.js';
+import { t } from './i18n.js';
 
 var STORE_FILE = 'nexo_groups.json';
 var GID_RE = /^gr[0-9a-z]{8}$/;
@@ -83,10 +84,10 @@ export class Groups {
   create(name, members) {
     var me = this._me();
     var m = [me].concat((members || []).map(_nid)).filter(function(x, i, a) { return NX_RE.test(x) && a.indexOf(x) === i; });
-    if (m.length < 2) throw new Error('Elige al menos un contacto');
-    if (m.length > MAX_MEMBERS) throw new Error('Máximo ' + MAX_MEMBERS + ' personas');
+    if (m.length < 2) throw new Error(t('grp_pick_one', 'Elige al menos un contacto'));
+    if (m.length > MAX_MEMBERS) throw new Error(t('grp_max_a', 'Máximo ') + MAX_MEMBERS + t('grp_max_people', ' personas'));
     var id = 'gr' + _rnd(8);
-    var g = { id: id, name: String(name || '').trim().substring(0, 60) || 'Grupo', members: m, createdBy: me, createdAt: Date.now(), lastMessageAt: Date.now(), unreadCount: 0 };
+    var g = { id: id, name: String(name || '').trim().substring(0, 60) || t('grp_default_name', 'Grupo'), members: m, createdBy: me, createdAt: Date.now(), lastMessageAt: Date.now(), unreadCount: 0 };
     this.list[id] = g;
     this._save();
     _emit('nexo:groups', { id: id });
@@ -100,7 +101,7 @@ export class Groups {
     if (!g) return;
     var me = this._me();
     var others = g.members.filter(function(x) { return x !== me; });
-    this.sendText(id, JSON.stringify({ type: 'nexo_txt', t: '👋 Salió del grupo', gl: 1 }), null, null, others);
+    this.sendText(id, JSON.stringify({ type: 'nexo_txt', t: t('grp_left_msg', '👋 Salió del grupo'), gl: 1 }), null, null, others);
     g.left = true;
     g.members = others;
     this._save();
@@ -180,7 +181,7 @@ export class Groups {
     try { var inner = JSON.parse(env.c); leaving = !!(inner && inner.gl); } catch (e) {}
     if (!g) {
       if (members.indexOf(me) < 0) return null;
-      g = this.list[gid] = { id: gid, name: String(env.n || 'Grupo').substring(0, 60), members: members, createdBy: nx, createdAt: Date.now(), lastMessageAt: 0, unreadCount: 0 };
+      g = this.list[gid] = { id: gid, name: String(env.n || t('grp_default_name', 'Grupo')).substring(0, 60), members: members, createdBy: nx, createdAt: Date.now(), lastMessageAt: 0, unreadCount: 0 };
       console.log('[GROUP] Nuevo grupo ' + gid + ' (de ' + nx + ', ' + members.length + ' personas)');
     } else {
       if (g.left) return null;
