@@ -401,9 +401,14 @@ como Briar/Signal-sin-Google (va con batería exenta y la app sin matar, pero es
 Plan sin servidor (orden de impacto), a cerrar con el diagnóstico de los dos teléfonos en 2785:
 1. **Endurecer NetBg / modelo B** (ataca el #87): tipo de foreground service de Android 14, `START_STICKY` + reinicio en
    `onTaskRemoved` + `BOOT_COMPLETED`, websocket con reconexión/keepalive/re-auth NIP-42; guía de batería por marca.
-2. **Llamada entrante con app cerrada SIN push**: si NetBg vive, el relé ya trae la oferta; marcar la oferta de llamada
-   en el sobre para que NetBg lance la pantalla completa (CallStyle/#1 y permiso/#81 ya están) y el emisor la mantenga
-   "caliente" ~30-60 s. (Si NetBg está muerto, no suena — igual que Jami/SimpleX.)
+2. **Llamada entrante con app cerrada SIN push** — ✅ **HECHO (2841, #130, informe del dueño 30-10)**: el relé ya traía
+   la oferta con la marca `cl:1`, pero el clasificador de la app cerrada (`BgInbox.classify`) la PERDÍA en los dos
+   caminos DIRIGIDOS (`to` = mi NEXO ID por internet/Jump/FCM, y troceada con `dt` = mi NEXO ID) → salía como aviso de
+   TEXTO, no como la pantalla de llamada entrante que enciende el teléfono (el diagnóstico del que recibe mostró
+   `NOTIFY_ONLY ... (msgId cs4...)`). Ahora los dos caminos propagan la marca → `what="call"` → `incomingCall`
+   (CallStyle/#1, pantalla completa). Prueba Kotlin `BgInboxTest` ampliada. Lo confirma el dueño en los teléfonos. El
+   emisor ya mantiene la oferta "caliente" (2837 + 2841: la llamada pide el «toque» FCM con su propio throttle, aparte
+   del de textos, para despertar sí o sí). (Si NetBg está muerto, no suena — igual que Jami/SimpleX.)
 3. **Red de seguridad WorkManager (~15 min)**: si NetBg no vive, despertar, reconectar, bajar el buzón y avisar (sirve
    para mensajes en ≤15 min, no para llamadas).
 4. (Opcional, decisión del dueño) **Fase 4**: montar/confiar un puente de push Nostr→FCM/UnifiedPush = lo único que daría

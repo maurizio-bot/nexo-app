@@ -58,6 +58,8 @@ var TTL_MSG = 7 * 86400, TTL_CHUNK = 86400, TTL_HELLO = 600; // caducidad en los
 var MAX_CONTENT = 60000;      // tamaño máximo de un evento que aceptan los relés habituales (~64 KB)
 var MAX_RELAY_FRAME = 300000; // SEC-4 (auditoría 28-10): tope de un frame de relé antes de analizarlo (como SafeJson nativo)
 var WAKE_MIN_MS = 8000;       // M1 (auditoría 28-10): como mucho un «toque» FCM por par cada 8 s (ráfaga de textos)
+var CALL_WAKE_MIN_MS = 3000;  // #130 (dueño 30-10): una llamada insiste en despertar — throttle propio, más corto y
+                              // aparte del de textos (un texto reciente NO silencia el toque de una llamada entrante)
 // FCM «despertador» (#87, Fase 2): enviador por defecto (la Cloud Function del dueño; se puede cambiar con setSender).
 // Al mandar a un contacto por el buzón de los relés, se le pide a este enviador que dispare el «toque» de Google que
 // despierta su teléfono aunque esté cerrado. Por aquí SOLO va el token (nunca el contenido). Ver push-sender/ y docs/FCM.md.
@@ -406,6 +408,15 @@ export class NetLink {
     var quiet = this.ble && this.ble._quietOut;
     return quiet && quiet.has(id) ? null : id;
   }
+  // #130 (dueño 30-10): ¿es una OFERTA de llamada/videollamada? (para que el «toque» insista en despertar, con su
+  // propio throttle, aunque un texto reciente ya haya gastado el de textos). El sobre REAL que arma la app para una
+  // oferta es type:'chat' con la marca cl:1 por FUERA (ble_messages `_sendMessageNative`, la MISMA marca que lee el
+  // nativo en BgInbox); la oferta va cifrada dentro, así que NO se puede mirar «nexo_call» en el texto. Se acepta
+  // también la oferta cruda (type:'nexo_call') por si algún camino la mandara sin sobre. Barato: guarda antes de parsear.
+  _isCallOffer(p) {
+    if (typeof p !== 'string' || (p.indexOf('"cl":1') < 0 && p.indexOf('nexo_call') < 0)) return false;
+    try { var o = JSON.parse(p); return !!(o && (o.cl === 1 || (o.type === 'nexo_call' && o.op === 'offer'))); } catch (e) { return false; }
+  }
 
   // La parte nativa escucha los relés con la app en segundo plano (NetBg.kt): se le da lo justo para reconocer los
   // sobres de cada pareja (el secreto de la pareja, que no sale del teléfono)
@@ -494,7 +505,7 @@ export class NetLink {
     var pair = await this._pair(nx, c.publicKey);
     var body = { t: Date.now(), w: this.wifi ? 1 : 0 };
     if (opts && opts.hello) { body.h = 1; if (this.tor.ready && this.tor.onion) { body.o = this.tor.onion; body.op = this.tor.port; } if (this.fcmToken) body.f = this.fcmToken; }
-    else { body.p = String(content); var nid = this._newMsgId(body.p); if (nid) body.n = nid; }
+    else { body.p = String(content); var nid = this._newMsgId(body.p); if (nid) body.n = nid; var callOffer = nid ? this._isCallOffer(body.p) : false; }
     var iv = _rnd(12);
     var ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: _utf8('NEXO-NET|' + me + '|' + nx) }, pair.aes, _utf8(JSON.stringify(body))));
     var b64 = _b64(_cat(iv, ct));
@@ -511,7 +522,7 @@ export class NetLink {
     // arriba). M1 (auditoría 28-10): pedir el «toque» SOLO por un mensaje nuevo de verdad (nid: texto nuevo o primer
     // trozo de un archivo) — NUNCA por cada trozo/ack/control; un archivo grande serían miles de toques = cuota de FCM
     // agotada (tumbaría el propio #87) y batería del par. El throttle por par (en _wake) cubre además las ráfagas.
-    if (!(opts && opts.hello) && nid) { var self = this; pub.then(function() { self._wake(nx); }, function() {}); }
+    if (!(opts && opts.hello) && nid) { var self = this; pub.then(function() { self._wake(nx, callOffer); }, function() {}); }
     return pub;
   }
 
@@ -521,16 +532,23 @@ export class NetLink {
   setSender(url) { this.state.senderUrl = String(url == null ? '' : url); this._saveState(); }
   // Pide al enviador que dispare el «toque» de Google al token del contacto. SOLO viaja el token (nunca el contenido);
   // el mensaje ya va cifrado por el camino normal. Defensivo: si no hay token/enviador o falla la red, no pasa nada.
-  _wake(nx) {
+  _wake(nx, isCall) {
     try {
       var peer = this.peers.get(_nid(nx)); if (!peer || !peer.fcmToken) return;
       var url = this.senderUrl(); if (!url) return;
       if (typeof fetch !== 'function') return;
       // M1 (auditoría 28-10): throttle por par — como mucho un toque cada WAKE_MIN_MS (una ráfaga de textos despierta
-      // una sola vez; NetBg ya baja el resto en esa sesión).
+      // una sola vez; NetBg ya baja el resto en esa sesión). #130 (dueño 30-10): una llamada tiene su propio throttle
+      // (CALL_WAKE_MIN_MS), más corto y aparte, para que SIEMPRE despierte aunque un texto reciente haya gastado el de
+      // textos (el informe «al llamar no siempre despierta»); dos ofertas pegadas siguen pidiendo un solo toque.
       var now = Date.now();
-      if (peer._wakeAt && (now - peer._wakeAt) < WAKE_MIN_MS) return;
-      peer._wakeAt = now;
+      if (isCall) {
+        if (peer._callWakeAt && (now - peer._callWakeAt) < CALL_WAKE_MIN_MS) return;
+        peer._callWakeAt = now;
+      } else {
+        if (peer._wakeAt && (now - peer._wakeAt) < WAKE_MIN_MS) return;
+        peer._wakeAt = now;
+      }
       var self = this;
       fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: peer.fcmToken }) })
         .then(function(res) {

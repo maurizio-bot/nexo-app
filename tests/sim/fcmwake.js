@@ -118,6 +118,24 @@ function installFetchSpy(win) {
   await netA.send(idB, JSON.stringify({ type: 'chat', msgId: 'm1-throttle' })).catch(() => {});
   await sleep(800);
   r.throttle_no_repite = nWake() === w0;
+  // #130 (informe del dueño 30-10: «al llamar no siempre despierta al otro»): una OFERTA de llamada debe pedir el toque
+  // SÍ O SÍ aunque el throttle de textos esté activo (chateando y luego llamo, < 8 s). Antes el throttle por par la
+  // silenciaba → el otro teléfono no despertaba. Se usa el FORMATO REAL que la app pasa a net.send para una oferta: el
+  // sobre type:'chat' con la marca cl:1 por fuera y la oferta cifrada dentro (ble_messages `_sendMessageNative`), NO la
+  // oferta cruda (que por internet nunca llega así). Simulamos que un texto despertó hace un instante:
+  // El sobre lleva cl:1 y el msgId (lo que mira el «toque»); el texto va en claro a propósito para no provocar en B un
+  // fallo de descifrado (una oferta real lleva texto cifrado, pero eso no cambia la detección de la llamada).
+  const offerEnv = (mid) => JSON.stringify({ v: 1, type: 'chat', from: idA, to: '', ts: Date.now(), seq: 1, msgId: mid, payload: { text: 'ring' }, cl: 1 });
+  if (peerB) peerB._wakeAt = Date.now();
+  const wc0 = nWake();
+  await netA.send(idB, offerEnv('cs' + 'aa11bb')).catch(() => {});
+  await sleep(800);
+  r.llamada_despierta_pese_al_throttle = nWake() === wc0 + 1;
+  // ...pero dos ofertas pegadas (< 3 s) piden un solo toque (su propio throttle: no un bucle de toques)
+  const wc1 = nWake();
+  await netA.send(idB, offerEnv('cs' + 'cc22dd')).catch(() => {});
+  await sleep(400);
+  r.llamada_no_hace_bucle = nWake() === wc1;
   // (b) un trozo que no es el primero (i>0) nunca dispara, aunque se libere el throttle
   if (peerB) peerB._wakeAt = 0;
   const w1 = nWake();
@@ -170,6 +188,7 @@ function installFetchSpy(win) {
     r.A_conoce_token_de_B && r.B_conoce_token_de_A && r.token_de_B_guardado &&
     r.toque_llamado && r.toque_con_token_de_B && r.toque_solo_token && r.toque_sin_contenido &&
     r.throttle_no_repite && r.trozo_siguiente_no_dispara && r.primer_trozo_si_dispara &&
+    r.llamada_despierta_pese_al_throttle && r.llamada_no_hace_bucle &&
     r.lastSeen_acotado_a_ahora && r.frame_enorme_no_procesado &&
     !r.errores.length;
   r.resultado = ok ? 'OK' : 'FAIL';

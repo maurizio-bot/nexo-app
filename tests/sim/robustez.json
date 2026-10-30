@@ -477,6 +477,10 @@
     {
      "fallo": "Pantalla encendida y sensor de proximidad",
      "prueba": null
+    },
+    {
+     "fallo": "Al llamar no siempre despertaba al otro: la oferta de llamada quedaba silenciada por el throttle de 8 s de los textos (chateando y luego llamo). Ahora la llamada insiste con su propio toque, aparte (informe del dueño 30-10, #130)",
+     "prueba": "se pide el toque"
     }
    ],
    "debiles": [

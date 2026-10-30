@@ -45,12 +45,20 @@ class BgInboxTest {
         val me = "NX99999999"
         val j = BgInbox.classify(chat.replace("\"to\":\"\"", "\"to\":\"nx99999999\""), me)
         assertEquals(BgInbox.Kind.NOTIFY_ONLY, j.kind); assertEquals("nx12345678", j.from); assertEquals("msg_1", j.msgId)
+        assertEquals("text", j.what, "mensaje dirigido normal: texto"); assertFalse(j.call)
+        // #130 (informe del dueño 30-10): una oferta de llamada DIRIGIDA a mí (to = mi NEXO ID, por net/Jump/FCM)
+        // debe salir como «call» (pantalla de llamada entrante que enciende el teléfono), no como aviso de texto.
+        val jc = BgInbox.classify(chat.replace("\"to\":\"\"", "\"to\":\"nx99999999\"").replace("\"nt\":1", "\"nt\":1,\"cl\":1"), me)
+        assertEquals(BgInbox.Kind.NOTIFY_ONLY, jc.kind); assertEquals("call", jc.what); assertTrue(jc.call, "llamada dirigida: pantalla de llamada")
         assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify(chat.replace("\"to\":\"\"", "\"to\":\"nx88888888\""), me).kind, "para otro: nada")
         val sx = BgInbox.classify("""{"v":1,"type":"sx","to":"nx99999999","msgId":"msg_7","c":"S1:abc"}""", me)
         assertEquals(BgInbox.Kind.NOTIFY_ONLY, sx.kind); assertEquals("", sx.from, "remitente oculto"); assertEquals("msg_7", sx.msgId)
         assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("""{"v":1,"type":"sx","to":"nx88888888","msgId":"msg_7","c":"S1:abc"}""", me).kind)
         val f0 = BgInbox.classify("""{"v":2,"t":"f","m":"f2","i":0,"n":9,"d":"x","fr":"sx:abc","dt":"nx99999999","tp":"image","k":"a"}""", me)
         assertEquals(BgInbox.Kind.NOTIFY_ONLY, f0.kind); assertEquals("", f0.from); assertEquals("image", f0.what)
+        // #130: una oferta de llamada TROCEADA y dirigida a mí (t:c + dt = mi NEXO ID + cl:1, por Jump) también es «call»
+        val cc = BgInbox.classify("""{"v":2,"t":"c","m":"cs9","i":0,"n":3,"d":"x","fr":"NX12345678","dt":"nx99999999","cl":1,"k":"a"}""", me)
+        assertEquals(BgInbox.Kind.NOTIFY_ONLY, cc.kind); assertEquals("call", cc.what); assertTrue(cc.call, "llamada troceada dirigida: pantalla de llamada")
         assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("""{"v":2,"t":"f","m":"f2","i":0,"n":9,"d":"x","fr":"sx:abc","dt":"nx99999999","k":"a"}""").kind, "sin mi NEXO ID: como antes")
         // Texto largo oculto (señal de llamada, acción): el primer trozo lleva q:1
         assertTrue(BgInbox.classify("""{"v":2,"t":"c","m":"cs1","i":0,"n":3,"d":"x","fr":"NX12345678","q":1,"k":"a"}""").quiet)
