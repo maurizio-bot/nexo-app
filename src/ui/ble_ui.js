@@ -4,6 +4,7 @@
  * barra de teléfonos nuevos, insignia y estado.
  */
 import { avatarOf, paintAvatar } from './avatar.js';
+import { t } from './i18n.js'; // #132 idioma
 import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isBLEContact, _isPinned, _normId, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
 
 
@@ -120,26 +121,26 @@ export const BLE_UI_METHODS = {
       '<button id="ble-panel-back" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,200,255,0.3);transition:transform 0.15s ease;z-index:2;">' +
       '<svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" transform="scale(-1,1) translate(-24,0)"/></svg>' +
       '</button>' +
-      '<div style="text-align:center;"><div class="contacts-title">Agregar contactos</div></div>' +
+      '<div style="text-align:center;"><div class="contacts-title">' + t('add_contacts', 'Agregar contactos') + '</div></div>' +
       '</div>' +
       '<div class="ble-search-bar">' +
       '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>' +
-      '<input id="ble-search-input" type="search" placeholder="Buscar por nombre o NEXO ID" autocomplete="off" spellcheck="false">' +
+      '<input id="ble-search-input" type="search" placeholder="' + t('ph_search_contact', 'Buscar por nombre o NEXO ID') + '" autocomplete="off" spellcheck="false">' +
       '</div>' +
       // Ronda 2779 (pedido del dueño): agregar a alguien que no está cerca con su NEXO ID (te lo pasa por WhatsApp)
-      '<div class="ble-section-label">Agregar por NEXO ID (está lejos)</div>' +
+      '<div class="ble-section-label">' + t('add_by_id', 'Agregar por NEXO ID (está lejos)') + '</div>' +
       '<div id="ble-addid-row" style="display:flex;gap:8px;padding:0 12px 4px;">' +
-      '<input id="ble-addid-input" type="text" placeholder="NX……… (su NEXO ID)" autocomplete="off" spellcheck="false" maxlength="10" style="flex:1;min-width:0;padding:9px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-size:14px;text-transform:uppercase;">' +
-      '<button id="ble-addid-btn" style="flex-shrink:0;padding:9px 16px;border-radius:12px;border:none;background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Agregar</button>' +
+      '<input id="ble-addid-input" type="text" placeholder="' + t('ph_addid', 'NX……… (su NEXO ID)') + '" autocomplete="off" spellcheck="false" maxlength="10" style="flex:1;min-width:0;padding:9px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-size:14px;text-transform:uppercase;">' +
+      '<button id="ble-addid-btn" style="flex-shrink:0;padding:9px 16px;border-radius:12px;border:none;background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;font-size:14px;font-weight:600;cursor:pointer;">' + t('add', 'Agregar') + '</button>' +
       '</div>' +
       '<div id="ble-addid-note" style="font-size:12px;opacity:.85;text-align:center;padding:0 12px 6px;min-height:1px;"></div>' +
       '<div id="ble-requests" style="display:none;">' +
-      '<div class="ble-section-label">Solicitudes para ti</div>' +
+      '<div class="ble-section-label">' + t('requests_for_you', 'Solicitudes para ti') + '</div>' +
       '<div id="ble-requests-list" style="padding:0 12px 6px;"></div>' +
       '</div>' +
-      '<div id="ble-online-label" class="ble-section-label">En línea ahora</div>' +
+      '<div id="ble-online-label" class="ble-section-label">' + t('online_now', 'En línea ahora') + '</div>' +
       '<div id="ble-online-strip" class="ble-online-strip"></div>' +
-      '<div id="ble-contacts-label" class="ble-section-label">Tus contactos</div>' +
+      '<div id="ble-contacts-label" class="ble-section-label">' + t('your_contacts', 'Tus contactos') + '</div>' +
       '<div id="ble-contacts-list" class="ble-contacts-list">' +
       '<div class="ble-empty"></div>' +
       '</div>' +

@@ -11,10 +11,16 @@ Ajustes (🌐 Idioma), guardado por teléfono (no viaja).
   `nexo:lang`, respaldo al español si falta una clave) + selector 🌐 en Ajustes (al cambiar recarga la app) + cabecera de
   Ajustes traducida. Simulador fijado a español (`native_mock.js`) para que las pruebas sigan deterministas. Prueba
   `tests/sim/i18n.js`. Batería 88/88.
-- ⏳ **Falta (por fases):** externalizar a `t()` los textos del resto de la app — pantallas principales primero (lista de
-  chats, chat, agregar contactos, llamadas/videollamada, perfil, avisos) y luego el resto (son cientos). Al traducir cada
-  pantalla, añadir sus claves a los 3 idiomas en `i18n.js`. Hasta entonces, lo no traducido se ve en español (nunca roto).
-  Cada fase: traducir una zona, construir aparte, batería, subir.
+- ✅ **Fase 2a (2844):** `i18n.js` a CLAVE-primero + `applyStaticI18n()` para HTML estático; **pantalla principal** traducida
+  (index.html: Contactos/Compartir/cámara/placeholders; main.js: subtítulo de conexión; ble_ui.js: «Agregar contactos»).
+  Convención fijada: `t('clave','español exacto')`, solo textos que se MUESTRAN (los de lógica NO, romperían en it/en).
+- ⏳ **Falta (por fases, cada una build+batería):** (2b) **chat** — burbujas, menú de adjuntar (Foto/Vídeo/Audio/Ubicación/
+  Archivo/Grupo/Cobro/Sticker), responder/reenviar/eliminar/copiar, aviso de cifrado (`chat_actions.js`, `chat_format.js`,
+  `render.js`, `app_setup.js`, `send.js`, `e2e_banner.js`); (2c) **llamadas/videollamada** (`calls_ui.js`, `call_media.js`,
+  `calls.js`); (2d) **cámara, archivos, ubicación, cobro, compartir** (`camera.js`, `video_send.js`, `file_card.js`,
+  `location.js`, `cobro.js`, `share_contacts.js`, `voice.js`); (2e) **Perfil (resto), seguridad, Fénix, cambiar teléfono,
+  avisos, grupos** (`profile.js`, `app_lock.js`, `move_account.js`, `battery_prompt.js`, `perf.js`, `alerts.js`,
+  `groups_ui.js`). Al traducir cada zona, añadir sus claves (es/it/en) a `i18n.js`. Lo no traducido se ve en español.
 
 ## Bloque autónomo 28-10 (madrugada→mañana): FCM + archivos por internet + AUDITORÍA SEVERA
 El dueño (1 AM): «termina lo del ping a los servidores de Google robusto y probado; luego la parte internet del tamaño
