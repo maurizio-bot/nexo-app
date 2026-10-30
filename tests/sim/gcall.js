@@ -49,7 +49,7 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
 
 (async () => {
   const r = { prueba: 'gcall' };
-  const { createGroupCall } = await import('../../src/ui/group_call.js');
+  const { createGroupCall, parseGroupCallSignal } = await import('../../src/ui/group_call.js');
 
   const A_ID = 'nxa0000001', B_ID = 'nxb0000002', C_ID = 'nxc0000003';
   const recA = { played: [] }, recB = { played: [] }, recC = { played: [] };
@@ -89,6 +89,15 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
   r.A_oye_a_B = recA.played.some((x) => _n(x.nx) === B_ID);
   r.C_oye_a_B = recC.played.some((x) => _n(x.nx) === B_ID);
 
+  // Cableado (build 2846, #128): la invariante en la que se apoya ble_messages. Un `vf` cuyo id de tramo NO es de este
+  // grupo → onFrame devuelve FALSE (así la app lo deja pasar a la llamada 1-a-1 de calls.js; no se lo traga el grupo).
+  r.onframe_ajeno_false = A.onFrame({ type: 'vf', c: 'cl1a1ajeno', s: 1, d: 'AA==' }, 'lan') === false;
+  // Un `vf` de un tramo REAL del grupo → onFrame devuelve TRUE (lo maneja el grupo).
+  r.onframe_propio_true = A.onFrame({ type: 'vf', c: (A.gc.legs.get(B_ID) || {}).id, s: 777, d: 'AA==' }, 'lan') === true;
+  // parseGroupCallSignal: acepta una señal válida y rechaza basura o un `op` inválido (lo usa el enrutado).
+  r.parse_ok = !!parseGroupCallSignal(JSON.stringify({ type: 'nexo_gcall', op: 'invite', gid: 'gc123456', from: A_ID }));
+  r.parse_basura = parseGroupCallSignal('hola') === null && parseGroupCallSignal(JSON.stringify({ type: 'nexo_gcall', op: 'mal', gid: 'gc123456' })) === null;
+
   // Un paquete manipulado (AAD/clave equivocada) NO se reproduce (se descarta al descifrar)
   const before = recB.played.length;
   B.onFrame({ type: 'vf', c: (B.gc.legs.get(A_ID) || {}).id, s: 999, d: Buffer.from('basura basura basura basura basura').toString('base64') }, 'lan');
@@ -105,6 +114,7 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
 
   const ok = r.B_suena && r.C_suena && r.invita_con_roster && r.A_activa && r.malla_completa &&
     r.B_oye_a_A && r.C_oye_a_A && r.A_oye_a_B && r.C_oye_a_B && r.descarta_manipulado &&
+    r.onframe_ajeno_false && r.onframe_propio_true && r.parse_ok && r.parse_basura &&
     r.C_colgo && r.A_cierra_C && r.B_cierra_C && r.A_sigue_con_B;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('GCALL ' + JSON.stringify(r));

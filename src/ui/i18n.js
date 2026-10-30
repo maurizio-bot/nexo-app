@@ -325,6 +325,15 @@ var STRINGS = {
   grp_call_busy: { es: "Ya hay una llamada en curso", it: "C'è già una chiamata in corso", en: "There's already a call in progress" },
   grp_call_need_one: { es: "Hace falta al menos un contacto", it: "Serve almeno un contatto", en: "You need at least one contact" },
   grp_max_call: { es: " en una llamada de grupo", it: " in una chiamata di gruppo", en: " in a group call" },
+  grp_call_group_btn: { es: "Llamar al grupo", it: "Chiama il gruppo", en: "Call the group" },
+  grp_call_title: { es: "Llamada de grupo", it: "Chiamata di gruppo", en: "Group call" },
+  grp_calling: { es: "Llamando…", it: "Chiamata…", en: "Calling…" },
+  grp_ring_in: { es: "Llamada de grupo entrante", it: "Chiamata di gruppo in arrivo", en: "Incoming group call" },
+  grp_join: { es: "Entrar", it: "Entra", en: "Join" },
+  grp_leg_active: { es: "En la llamada", it: "In chiamata", en: "In the call" },
+  grp_leg_connecting: { es: "Conectando…", it: "Connessione…", en: "Connecting…" },
+  grp_leg_lost: { es: "Sin señal", it: "Nessun segnale", en: "No signal" },
+  grp_leg_gone: { es: "Salió", it: "Uscito", en: "Left" },
 
   // Perfil y Ajustes - Fase 2f
   prof_title: { es: "Perfil", it: "Profilo", en: "Profile" },
