@@ -101,6 +101,7 @@ import {
 } from './vault/vault_manager.js';
 import { initBLEInterface } from './ui/ble_interface.js';
 import { initAppLock, securitySectionHtml, renderSecuritySection, lockEnabled } from './ui/app_lock.js';
+import { applyStaticI18n, t as _t } from './ui/i18n.js'; // #132 idioma: traducir el HTML estático + textos de estado
 import { initPerf } from './ui/perf.js';
 import { batteryGuard } from './ui/battery_prompt.js';
 import { createNotifier } from './ui/notify.js';
@@ -201,11 +202,12 @@ var _VIA_WORD = { wifi: 'Wi-Fi', internet: 'Internet', bluetooth: 'Bluetooth' };
 // Subtítulo del chat 1:1: devuelve {html, text}. El html lleva el icono del transporte (estático); text es la versión
 // en palabras (para el tooltip accesible). mtu<60 por Bluetooth marca «señal débil» (ronda 2798).
 function _subtitleFor(via, mtu) {
-  if (via === 'jump') return { html: 'Por Jump', text: 'Por Jump' };
+  if (via === 'jump') return { html: _t('st_jump', 'Por Jump'), text: _t('st_jump', 'Por Jump') };
   if (!_VIA_ICON[via]) return { html: '', text: '' };
   var weak = via === 'bluetooth' && mtu > 0 && mtu < 60;
-  var word = 'En línea · ' + _VIA_WORD[via] + (weak ? ' · señal débil' : '');
-  var html = 'En línea · <span class="via-ico" role="img" aria-label="' + _VIA_WORD[via] + '">' + _VIA_ICON[via] + '</span>' + (weak ? ' · <span class="via-weak">⚠ señal débil</span>' : '');
+  var online = _t('st_online', 'En línea'), weakTxt = _t('st_weak_signal', 'señal débil');
+  var word = online + ' · ' + _VIA_WORD[via] + (weak ? ' · ' + weakTxt : '');
+  var html = online + ' · <span class="via-ico" role="img" aria-label="' + _VIA_WORD[via] + '">' + _VIA_ICON[via] + '</span>' + (weak ? ' · <span class="via-weak">⚠ ' + weakTxt + '</span>' : '');
   return { html: html, text: word };
 }
 try { if (typeof window !== 'undefined') window.__nexoViaSubtitle = _subtitleFor; } catch (e) {} // gancho de pruebas (puro)
@@ -290,6 +292,9 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installCallsUi); else installCallsUi();
 // Buscar dentro del chat (lupa en la cabecera, barra debajo): rápido de A_LA_PAR, pedido del dueño
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installSearchUi); else installSearchUi();
+// #132 idioma: traducir el HTML estático marcado con data-i18n (pestañas, cámara, placeholders…). Al cambiar idioma la
+// app recarga, así que basta con aplicarlo al arrancar.
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function() { applyStaticI18n(); }); else applyStaticI18n();
 
 window.vaultSaveContact = vaultSaveContact;
 // FIX v9.9.29: ble_interface guarda los contactos con window.vaultSaveContacts; no estaba expuesto y

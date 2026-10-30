@@ -60,6 +60,14 @@ global.window = { dispatchEvent(ev) { if (ev && ev.type === 'nexo:lang') lastLan
   store = { nexo_lang: 'it' }; m._resetForTest();
   r.it_tiene_privacy = m.t('privacy') === 'Privacy';
 
+  // 9) Zona 1 (pantalla principal): las claves nuevas traducen en los tres idiomas y el 2.º arg (español) es el respaldo.
+  store = {}; navLang = 'en-US'; m._resetForTest();
+  r.zona1_en = m.t('nav_contactos') === 'Contacts' && m.t('add_contacts') === 'Add contacts' && m.t('st_online', 'En línea') === 'Online';
+  store = {}; navLang = 'it-IT'; m._resetForTest();
+  r.zona1_it = m.t('nav_contactos') === 'Contatti' && m.t('online_now') === 'Online adesso';
+  store = {}; navLang = 'es-ES'; m._resetForTest();
+  r.zona1_es = m.t('nav_contactos') === 'Contactos' && m.t('cam_foto') === 'FOTO';
+
   const ok = r.default_it && r.default_en && r.desconocido_cae_a_es && r.guardado_manda &&
     r.setlang_cambia && r.setlang_guarda && r.setlang_avisa && r.invalido_ignorado &&
     r.fallback_clave && r.it_tiene_privacy;
