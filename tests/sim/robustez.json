@@ -46,6 +46,18 @@
     {
      "fallo": "Teléfonos en el mismo Wi-Fi que no se encontraban (router sin mDNS)",
      "prueba": "Wi-Fi (escaneo de la red)"
+    },
+    {
+     "fallo": "Concierto/multitud: miles de anunciantes de ruido inundaban el escaneo (tormenta de callbacks, CPU) y el descubrimiento de un contacto conocido se frenaba (2838: filtro NEXO siempre activo → el controlador descarta el ruido; el tiempo de descubrimiento no crece con N)",
+     "prueba": "VOPR concierto"
+    },
+    {
+     "fallo": "Un fallo de escaneo (onScanFailed 3/5/6) dejaba la búsqueda muerta sin recuperación (2838: backoff por código, bloqueo de 30 s ante too-frequently, marca no-soportado en 4)",
+     "prueba": "VOPR concierto"
+    },
+    {
+     "fallo": "Ráfaga de arranques de escaneo superaba el límite de Android (5/30 s) y el sistema dejaba de dar resultados sin avisar (2838: compuerta global que difiere el arranque del usuario si la ventana está llena)",
+     "prueba": "VOPR concierto"
     }
    ],
    "debiles": [

@@ -364,13 +364,31 @@ export const BLE_UI_METHODS = {
       self.updateStatus();
       return Promise.resolve();
     } else {
+      // Build 2838: compuerta global ANTES de arrancar — no pasar el límite de Android (5 startScan/30 s), que si no
+      // deja de dar resultados SIN avisar (Nordic #18). Si la ventana está llena o venimos de un throttle, se difiere
+      // (el usuario pidió buscar, así que no se descarta: arranca solo en cuanto se libere un hueco).
+      if (self._scanUnsupported) { try { _showToast('Este teléfono no puede buscar por Bluetooth ahora mismo.', 'warn'); } catch (e) {} return Promise.resolve(); }
+      var waitMs = 0;
+      if (Date.now() < (self._scanBlockedUntil || 0)) waitMs = self._scanBlockedUntil - Date.now();
+      else if (self._scanWindowFull && self._scanWindowFull()) waitMs = self._scanWindowWaitMs ? self._scanWindowWaitMs() : 2000;
+      if (waitMs > 0) {
+        try { _showToast('Buscando en un momento…', 'info'); } catch (e) {}
+        self._userScanWanted = Date.now() + waitMs + 20000;
+        clearTimeout(self._userDeferTimer);
+        self._userDeferTimer = setTimeout(function() { if (!self.isScanning) self._executeToggleScan(); }, waitMs + 120);
+        return Promise.resolve();
+      }
       self.foundDevices.clear();
       self.renderContactsList();
       self.renderNewDeviceBar();
       self.renderOnlineStrip();
       if (_hasNativeMethod(self.nativePlugin, 'startScan')) {
         self._autoScanActive = false; // escaneo del usuario: no lo corta el temporizador automático
-        return _safeNativeCall(self.nativePlugin, 'startScan', {}).then(function() {
+        self._userScanWanted = Date.now() + 20000;
+        if (self._noteScanStart) self._noteScanStart();
+        // Build 2838: con filtro NEXO siempre (el controlador descarta el ruido de una multitud antes de llegar a la app)
+        return _safeNativeCall(self.nativePlugin, 'startScan', { filtered: true }).then(function() {
+          self._scanFailBackoff = 0;
           self.isScanning = true;
           self._autoScanActive = false;
           self.updateScanButton();

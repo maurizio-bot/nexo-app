@@ -125,6 +125,20 @@ export class BLEInterface {
     // (scan lento). Mínimo 8 s entre auto-escaneos → como mucho ~4 en 30 s.
     this._autoScanMinMs = 8000;
     this._lastAutoScanAt = 0;
+    // Build 2838 (pedido del dueño: «escaneo rápido y robusto en todas las situaciones… y un concierto con miles de
+    // NEXO»). Compuerta GLOBAL de arranques de escaneo (no solo el auto): Android deja de dar resultados con >5
+    // startScan/30 s (AOSP NUM_SCAN_DURATIONS_KEPT=5, EXCESSIVE_SCANNING_PERIOD_MS=30000) y a veces NI avisa (Nordic
+    // Scanner-Compat #18). La defensa primaria es NO llegar al límite: se cuentan TODOS los arranques (usuario + auto +
+    // reconexión) en una ventana deslizante y se difiere el que pasaría de _scanWindowMax (uno por debajo de 5, de margen).
+    this._scanStartTimes = [];
+    this._scanWindowMs = 30000;
+    this._scanWindowMax = 4;
+    this._scanBlockedUntil = 0;   // tras un onScanFailed de throttle, no reintentar hasta aquí
+    this._scanFailBackoff = 0;    // backoff exponencial acotado para errores recuperables (3/5)
+    this._scanDeferTimer = null;
+    this._userDeferTimer = null;
+    this._userScanWanted = 0;     // el usuario pidió buscar hace poco → la recuperación reintenta
+    this._scanUnsupported = false; // error 4: este equipo no puede escanear como se pidió
     this._supervisorStates = new Map();
     this._supervisorTimer = null;
     this._supervisorIntervalMs = 6000;
@@ -493,7 +507,7 @@ export class BLEInterface {
     var self = this;
     this._nativeDeviceFoundListener = this.nativePlugin.addListener('onDeviceFound', function(data) { self._onScanFound(data); });
     this._nativeScanFailedListener = this.nativePlugin.addListener('onScanFailed', function(data) {
-      try { self.isScanning = false; self.updateScanButton(); } catch (e) {}
+      self._onScanFailed(data);
     });
     // Ronda 2766: el nativo paró la búsqueda (a los 15 s): la app ya no busca (antes se quedaba en "buscando" y ninguna
     // búsqueda automática volvía a arrancar)

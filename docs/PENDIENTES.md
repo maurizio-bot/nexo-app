@@ -212,8 +212,10 @@ de vuelta que confirme la entrega, para que el que manda SÍ o SÍ reciba retroa
   en silencio (ni error, ni reintento). Arreglo propuesto: mostrar un error claro + «tocá para reintentar» en vez del ⏳
   mudo. **Falta del dueño:** el tamaño del archivo + el «Copiar diagnóstico» de los dos teléfonos para afinar (tope de
   tamaño vs. «en línea» obsoleto).
-- 🔜 **Escaneo robusto a escala + recuperación de fallos (pedido del dueño 30-10, «rápido y robusto en poca señal,
-  lejanía, interferencia, ahorro de batería… y un concierto con miles de NEXO escaneando»).** Revisado el código real:
+- ✅ **Escaneo robusto a escala + recuperación de fallos (build 2838) (pedido del dueño 30-10, «rápido y robusto en poca
+  señal, lejanía, interferencia, ahorro de batería… y un concierto con miles de NEXO escaneando»).** HECHO en JS (filtro
+  NEXO siempre activo + compuerta global 5/30 s + recuperación ante onScanFailed), probado con VOPR + batería 84/84.
+  Falta la parte nativa (2839, abajo) y la confirmación del dueño en los teléfonos. Revisado el código real:
   YA robusto en largo alcance (LE Coded PHY), señal débil (MIN_RSSI −95 permisivo), dedup+debounce, backoff no_service
   (2821) y vigilante tolerante (2814). HUECOS a cerrar: (1) `onScanFailed` (ble_interface.js:495) no recupera — falta
   backoff/reintento ante errorCode 3 (stack ocupado)/5 (sin recursos HW, típico en multitud)/6 (too frequently);
@@ -223,11 +225,20 @@ de vuelta que confirme la entrega, para que el que manda SÍ o SÍ reciba retroa
   arranques de escaneo (hoy el freno 5/30 s solo cubre el auto-escaneo, no la suma de todos los disparadores). Lo
   verificable en sim (compuerta global + recuperación) con batería; lo nativo (dedup O(1), tope, modo adaptativo) con
   CI-compila + prueba del dueño.
-- 🔜 **VOPR — simulador de caos determinista (sube la dimensión D del índice, hoy 2,7/10).** Con semilla fija inyecta
+- 🟡 **VOPR — simulador de caos determinista (arrancado en 2838; escenario «concierto» hecho).** `tests/sim/vopr.js`
+  con semilla fija; escenario 1 = concierto (escaneo a escala + recuperación). Falta EXTENDER a más escenarios
+  (entrega de mensajes bajo caos: caídas, reorden, congelados, particiones) para subir la dimensión D del índice en
+  más áreas. Con semilla fija inyecta
   fallos reproducibles (caídas, pérdida/reorden de paquetes, congelados, desfase de reloj, tormentas de escaneo,
   particiones) y comprueba invariantes duros (sin pérdida ni duplicados, entrega eventual, sin ANR, memoria/CPU
   acotadas); al fallar, imprime la semilla para re-ejecutar idéntico. El **concierto con miles de NEXO** es un escenario
-  del VOPR (investigación externa en curso para los números exactos de Android a escala). El dueño autorizó arrancar.
+  del VOPR. El dueño autorizó arrancar.
+- 🔜 **Escaneo — endurecimiento NATIVO (2839, no simulable; CI-compila + prueba del dueño).** Lo que el filtro siempre
+  activo (2838) no cubre y vive en Kotlin: dedup O(1) (Map por MAC en vez del `scanResults.none{}` lineal O(n²)) + tope/
+  LRU+TTL de la tabla «visto» (hoy sin límite) para CPU/memoria acotadas con miles de NEXO; **modo de escaneo adaptativo**
+  (LOW_LATENCY solo en primer plano con pantalla encendida; BALANCED/LOW_POWER en segundo plano/ahorro, que Android fuerza
+  igual); `MATCH_MODE_STICKY` por defecto en densidad; reinicio del escaneo cada ~25 min (un escaneo largo degrada solo a
+  OPPORTUNISTIC). El filtro siempre activo (2838) ya acota el flood en origen, así que esto es el caso extremo.
 - 💡 **Operabilidad por IA — rumbo acordado (fase futura, DESPUÉS de la robustez; pedido/opinión del dueño 30-10).** El
   dueño: vale la pena y diferencia, pero EN EL TELÉFONO (privado), no una IA de nube leyendo los chats; su idea de
   «contrato»: permiso de entrar/leer para la operación pedida y luego borrar lo recopilado. Refinamiento acordado (más

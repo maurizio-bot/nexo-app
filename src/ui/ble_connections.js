@@ -325,6 +325,12 @@ export const BLE_CONNECTION_METHODS = {
     if (self._cameraBlePaused) return;
     if (self.isScanning) return;
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'startScan')) return;
+    // Build 2838: compuerta GLOBAL antes del throttle propio — equipo que no puede escanear (error 4), enfriamiento
+    // tras un throttle de Android, o ventana de 5/30 s ya llena (contando también los escaneos del usuario y de la
+    // reconexión). Si está bloqueado, se salta; el bucle de reconexión/presencia vuelve a intentar.
+    if (self._scanUnsupported) return;
+    if (Date.now() < (self._scanBlockedUntil || 0)) return;
+    if (self._scanWindowFull && self._scanWindowFull()) return;
     // Ronda 2814 (#87): throttle. Al menos _autoScanMinMs entre auto-escaneos, para NO pasar el límite de Android
     // (~5/30 s, deja de dar resultados) cuando un enlace flojo se corta y reconecta en bucle. El escaneo del usuario
     // (toggleScan en ble_ui.js) no pasa por aquí, así que buscar a mano sigue inmediato. La reconexión directa por
@@ -338,8 +344,13 @@ export const BLE_CONNECTION_METHODS = {
     // (antes el "+" de esas filas no hacía nada: el dispositivo ya no estaba en foundDevices)
     self._recentFound = new Map(self.foundDevices);
     self.foundDevices.clear();
-    _safeNativeCall(self.nativePlugin, 'startScan', { filtered: !!(opts && opts.filtered) })
+    if (self._noteScanStart) self._noteScanStart();
+    // Build 2838: SIEMPRE con el filtro NEXO (manufacturer-data). En un concierto el controlador descarta el ruido del
+    // estadio (miles de pulseras/beacons/otros teléfonos) ANTES de llegar a la app — palanca nº1 de robustez a escala;
+    // antes el auto-escaneo en primer plano iba sin filtro. Solo nos interesan anuncios NEXO de todos modos.
+    _safeNativeCall(self.nativePlugin, 'startScan', { filtered: true })
       .then(function() {
+        self._scanFailBackoff = 0;
         self.isScanning = true;
         self._autoScanActive = true;
         var token = self._autoScanToken = (self._autoScanToken || 0) + 1;
@@ -359,6 +370,72 @@ export const BLE_CONNECTION_METHODS = {
           }
         }, 6000);
       }).catch(function(e) { console.warn('[BLEInterface] Auto-scan fallo:', e.message); });
+  },
+
+  // Build 2838: compuerta global de arranques de escaneo. ¿Está llena la ventana de Android (5/30 s)? Poda y mira.
+  _scanWindowFull() {
+    var now = Date.now();
+    var win = this._scanWindowMs || 30000;
+    this._scanStartTimes = (this._scanStartTimes || []).filter(function(t) { return now - t < win; });
+    return this._scanStartTimes.length >= (this._scanWindowMax || 4);
+  },
+
+  _noteScanStart() {
+    this._scanStartTimes = this._scanStartTimes || [];
+    this._scanStartTimes.push(Date.now());
+  },
+
+  // Cuánto falta (ms) para que se libere un hueco en la ventana de 30 s.
+  _scanWindowWaitMs() {
+    var now = Date.now();
+    var win = this._scanWindowMs || 30000;
+    var max = this._scanWindowMax || 4;
+    var arr = (this._scanStartTimes || []).filter(function(t) { return now - t < win; }).sort(function(a, b) { return a - b; });
+    if (arr.length < max) return 0;
+    return Math.max(0, win - (now - arr[arr.length - max]) + 60);
+  },
+
+  // Build 2838: máquina de recuperación ante onScanFailed. Android a veces NO avisa del throttle (Nordic Scanner-Compat
+  // #18), así que la compuerta es la defensa primaria; esto cubre el camino del error explícito (stack ocupado, sin
+  // recursos de hardware en multitud, etc.). Receta por código (guía Punchthrough + AOSP ScanCallback).
+  _onScanFailed(data) {
+    var self = this;
+    var code = (data && typeof data.errorCode === 'number') ? data.errorCode : 0;
+    try { self.isScanning = false; self._autoScanActive = false; self.updateScanButton(); } catch (e) {}
+    // 1 = ALREADY_STARTED: ya hay un escaneo; no es un fallo. Se trata como «sigue buscando».
+    if (code === 1) { self.isScanning = true; try { self.updateScanButton(); } catch (e) {} return; }
+    // 4 = FEATURE_UNSUPPORTED: este equipo no puede escanear como se pidió → no reintentar en bucle.
+    if (code === 4) { self._scanUnsupported = true; return; }
+    var now = Date.now();
+    var wantScan = (self._presenceUntil || 0) > now || (self._userScanWanted || 0) > now;
+    // 6 = SCANNING_TOO_FREQUENTLY (a veces aflora como 2 = APPLICATION_REGISTRATION_FAILED): esperar a vaciar la
+    // ventana de 30 s y un solo reintento.
+    if (code === 6 || code === 2) {
+      self._scanBlockedUntil = now + 31000;
+      self._scanStartTimes = []; // para Android la ventana está «llena»; dejar que se enfríe
+      if (wantScan) self._scheduleScanRetry((self._scanBlockedUntil - now) + 100);
+      return;
+    }
+    // 3 = INTERNAL_ERROR, 5 = OUT_OF_HARDWARE_RESOURCES: backoff exponencial corto y acotado.
+    if (code === 3 || code === 5) {
+      self._scanFailBackoff = Math.min(self._scanFailBackoff ? self._scanFailBackoff * 2 : 1500, 12000);
+      if (wantScan) self._scheduleScanRetry(self._scanFailBackoff);
+      return;
+    }
+    // Otros códigos: un reintento suave.
+    if (wantScan) self._scheduleScanRetry(2000);
+  },
+
+  _scheduleScanRetry(ms) {
+    var self = this;
+    if (self._scanDeferTimer) clearTimeout(self._scanDeferTimer);
+    self._scanDeferTimer = setTimeout(function() {
+      self._scanDeferTimer = null;
+      if (self.isScanning) return;
+      if (Date.now() < (self._scanBlockedUntil || 0)) { self._scheduleScanRetry((self._scanBlockedUntil - Date.now()) + 100); return; }
+      self._lastAutoScanAt = 0; // reintento deliberado de recuperación: no lo frena el throttle de 8 s (la ventana 5/30 s sí lo protege)
+      self._autoScanForKnownContacts();
+    }, Math.max(200, ms || 2000));
   },
 
   _stopPingInterval() {
