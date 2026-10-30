@@ -115,7 +115,9 @@ import { isGroupWire, startGroupMedia } from './ui/group_media.js';
 import { avatarInit } from './ui/avatar.js';
 import { estadosInit } from './ui/estados.js';
 import { parseCallSignal } from './ui/calls.js';
+import { parseGroupCallSignal } from './ui/group_call.js';
 import { installCallsUi } from './ui/calls_ui.js';
+import { installGroupCallUi } from './ui/groupcall_ui.js';
 import { installSearchUi } from './ui/search_ui.js';
 import { groupSubtitle, installGroupButton, openGroupChat, openGroupMenu, sendGroupText } from './ui/groups_ui.js';
 import { _STATUS_RANK, _statusRank, _canUpgradeStatus, _getDomMessageStatus, _normId, _getCurrentContactId, _chatKind, _plainText, _myNexoId, _contactName, _peerUnderstands, _cut, _msgSummary, _findMessage, _PREVIEW_BY_TYPE } from './ui/chat_format.js';
@@ -290,6 +292,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installProfileButton); else installProfileButton();
 // Ronda 2758: llamadas de voz (calls.js / calls_ui.js)
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installCallsUi); else installCallsUi();
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installGroupCallUi); else installGroupCallUi();
 // Buscar dentro del chat (lupa en la cabecera, barra debajo): rápido de A_LA_PAR, pedido del dueño
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installSearchUi); else installSearchUi();
 // #132 idioma: traducir el HTML estático marcado con data-i18n (pestañas, cámara, placeholders…). Al cambiar idioma la
@@ -516,6 +519,9 @@ function _handleIncomingMessage(msg) {
     // Ronda 2758: señal de llamada que llegó por el camino de los textos largos
     var csg = !msg.groupId ? parseCallSignal(msg.content) : null;
     if (csg) { var bcs = window.bleInterface && window.bleInterface.calls; if (bcs && msg.e2e === true) bcs.onSignal(msg.senderNexoId || msg.deviceUUID, csg, msg.messageId); else console.warn('[CALL] Señal sin cifrar descartada'); return; }
+    // #128: señal de llamada de GRUPO por el camino de los textos largos (como la 1-a-1)
+    var gcsg = !msg.groupId ? parseGroupCallSignal(msg.content) : null;
+    if (gcsg) { var bgc = window.bleInterface && window.bleInterface.gcall; if (bgc && msg.e2e === true) bgc.onSignal(msg.senderNexoId || msg.deviceUUID, gcsg); else console.warn('[GCALL] Señal sin cifrar descartada'); return; }
     // Ronda 2758: mensaje de grupo que llegó por el camino de los textos largos (los cortos ya vienen con groupId)
     var bgs = window.bleInterface && window.bleInterface.groups;
     if (!msg.groupId) {

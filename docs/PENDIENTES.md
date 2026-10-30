@@ -33,7 +33,7 @@ Malla sin servidor: cada participante mantiene un tramo con cada otro (≤5 por 
 regla «NEXO ID menor manda offer», voz por control `{type:'vf', c:<id tramo>, s, d}` y un `mediaHubFactory` INYECTADO
 (agnóstico de medios). **Está sin cablear** (`createGroupCall` no se usa en ningún lado).
 - **Falta (por incrementos, cada uno build+batería):**
-  1. **Cableado + pantalla (SIMULABLE, primer incremento):** instanciar en `ble_interface.js` (`this.gcall = createGroupCall(this, mf)`,
+  1. ✅ **Cableado + pantalla (2846):** hecho — `ble_interface` instancia `gcall`; `ble_messages` enruta `vf`→`gcall.onFrame` (antes que `calls`; onFrame devuelve false si el tramo no es de grupo) y `nexo_gcall`→`gcall.onSignal` (solo E2E); `main.js` igual por textos largos; pantalla `groupcall_ui.js` (participantes, aceptar/rechazar, colgar) + botón «Llamar al grupo» solo en chats de grupo; claves `grp_*` en i18n.js; prueba `gcall.js` ampliada (invariante del enrutado); batería 88/88 (CALLS verde). El detalle original era: instanciar en `ble_interface.js` (`this.gcall = createGroupCall(this, mf)`,
      como `this.calls` en la línea 110); enrutar en `ble_messages.js` los `vf` a `gcall.onFrame` ANTES que a `calls.onFrame`
      (onFrame devuelve false si el tramo no es suyo → cae a calls; los ids de grupo llevan `~`, los 1-a-1 no) y las señales
      `parseGroupCallSignal` a `gcall.onSignal` (solo si e2e, como `parseCallSignal` en las líneas 446-449; y el `main.js:518`);

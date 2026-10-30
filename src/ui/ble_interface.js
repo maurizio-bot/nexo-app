@@ -7,6 +7,7 @@ import { createLan } from './lan.js';
 import { createBigFiles } from './big_file.js';
 import { createGroups } from './groups.js';
 import { createCalls } from './calls.js';
+import { createGroupCall } from './group_call.js';
 import { callCodecs, createCallMedia } from './call_media.js';
 import { createVoiceFx } from './call_voice_fx.js';
 import { createNet } from '../net/net_link.js';
@@ -108,6 +109,11 @@ export class BLEInterface {
     var mf = function(o) { return (window.NEXO_callMediaFactory || createCallMedia)(Object.assign({ voiceFx: createVoiceFx }, o)); };
     mf.codecs = function() { return window.NEXO_callMediaFactory ? 'opus,ulaw' : callCodecs(); };
     this.calls = createCalls(this, mf);
+    // #128: llamadas en grupo (malla, group_call.js). El hub de medios reales llega en el incremento 2
+    // (call_group_media sobre call_media); por ahora el simulador inyecta window.NEXO_gcallMediaFactory para
+    // probar el enrutado, y sin fábrica la señalización y la pantalla funcionan sin audio.
+    var gmf = function(o) { return window.NEXO_gcallMediaFactory ? window.NEXO_gcallMediaFactory(o) : null; };
+    this.gcall = createGroupCall(this, gmf);
     this.net = createNet(this);
     this.fenix = createFenix(this);
     this._localSeqCounter = 0;

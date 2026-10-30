@@ -8,6 +8,7 @@ import { e2eAnyEncrypted, e2eOpenText, e2eOuterAd } from '../vault/e2e_proto.js'
 import { groupAttachment, parseGroupEnvelope } from './groups.js';
 import { NET_MAX_B64_BYTES } from './media_limits.js';
 import { parseCallSignal } from './calls.js';
+import { parseGroupCallSignal } from './group_call.js';
 import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus } from './ble_helpers.js';
 
 
@@ -117,10 +118,15 @@ export const BLE_MESSAGE_METHODS = {
       if (pw && self.wifiDirect.handle(pw, data.deviceId)) return Promise.resolve(null);
     }
     // Llamadas de voz (ronda 2758, calls.js): paquete de voz cifrado con la clave de la llamada
-    if (/"type":"vf"/.test(raw) && self.calls) {
+    if (/"type":"vf"/.test(raw) && (self.calls || self.gcall)) {
       var pv0 = null;
       try { pv0 = JSON.parse(raw); } catch (e) {}
-      if (pv0 && pv0.type === 'vf') { self.calls.onFrame(pv0, data.deviceId); return Promise.resolve(null); } // ronda 2768: y por dónde llegó
+      if (pv0 && pv0.type === 'vf') {
+        // #128: primero a la llamada de GRUPO (onFrame devuelve true si el tramo es suyo); si no, a la 1-a-1
+        if (self.gcall && self.gcall.onFrame(pv0, data.deviceId)) return Promise.resolve(null);
+        if (self.calls) self.calls.onFrame(pv0, data.deviceId); // ronda 2768: y por dónde llegó
+        return Promise.resolve(null);
+      }
     }
     // Archivos grandes (ronda 2756, big_file.js): control de una transferencia
     if (/"type":"g[qanfr]"/.test(raw) && self.bigFiles) {
@@ -448,6 +454,13 @@ export const BLE_MESSAGE_METHODS = {
         if (csig) {
           if (self.calls && senderUUID && ctrl && ctrl.payload && ctrl.payload.e2e === true) self.calls.onSignal(senderUUID, csig, messageId);
           else console.warn('[CALL] Señal sin cifrar descartada (de ' + senderUUID + ')');
+          return;
+        }
+        // #128: señal de llamada de GRUPO (como la 1-a-1: solo si llegó cifrada E2E; ni se guarda ni se muestra)
+        var gsig = !grp && !attachmentData ? parseGroupCallSignal(msgContent) : null;
+        if (gsig) {
+          if (self.gcall && senderUUID && ctrl && ctrl.payload && ctrl.payload.e2e === true) self.gcall.onSignal(senderUUID, gsig);
+          else console.warn('[GCALL] Señal sin cifrar descartada (de ' + senderUUID + ')');
           return;
         }
         // Acción del chat (eliminar para todos): no es un mensaje; la aplica main.js
