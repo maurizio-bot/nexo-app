@@ -10,6 +10,7 @@ import { startReceiveAccount, startSendAccount } from './move_account.js';
 import { clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
 import { mirrorPeerPref, setMirrorPeerPref } from './calls_ui.js';
 import { readReceiptsOn, setReadReceiptsOn } from './chat_state.js';
+import { t, getLang, setLang, LANGS, langName } from './i18n.js';
 import { attachNexoUnlockGesture } from './nexo_game.js';
 import { perfSectionHtml, renderPerfSection } from './perf.js';
 
@@ -105,8 +106,12 @@ function _openSettingsSheet() {
   var card = function(ico, title, body) { return '<div class="nx-card"><div class="nx-h"><span class="nx-ico">' + ico + '</span>' + title + '</div>' + body + '</div>'; };
   sheet.innerHTML = '<div class="nx-profile-in">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 14px;gap:10px;">' +
-    '<div style="display:flex;align-items:center;gap:8px;min-width:0;"><button id="nexo-settings-back" class="nx-btn" style="width:auto;margin:0;padding:9px 13px;">‹ Perfil</button><div style="font-size:26px;font-weight:800;">Ajustes</div></div>' +
-    '<button id="nexo-settings-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;flex-shrink:0;">Cerrar</button></div>' +
+    '<div style="display:flex;align-items:center;gap:8px;min-width:0;"><button id="nexo-settings-back" class="nx-btn" style="width:auto;margin:0;padding:9px 13px;">' + t('settings_back') + '</button><div style="font-size:26px;font-weight:800;">' + t('settings_title') + '</div></div>' +
+    '<button id="nexo-settings-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;flex-shrink:0;">' + t('close') + '</button></div>' +
+    // #132 (pedido del dueño): selección de idioma (es/it/en). Por defecto el del teléfono; al cambiarlo se guarda y la app recarga para aplicarlo en todas las pantallas.
+    card('🌐', t('language'), '<div class="nx-sub" style="margin-bottom:8px;">' + t('language_hint') + '</div>' +
+      '<select id="nexo-lang-select" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +
+      LANGS.map(function(l) { return '<option value="' + l + '"' + (l === getLang() ? ' selected' : '') + '>' + langName(l) + '</option>'; }).join('') + '</select>') +
     // Cuenta (Fénix + cambiar de teléfono)
     card('🔥', 'Fénix (respaldo de tu cuenta)', '<div id="nexo-fenix-status" class="nx-sub"></div>' +
       '<button id="nexo-fenix-recover" class="nx-btn">Recuperar mi cuenta (teléfono nuevo)</button>') +
@@ -144,6 +149,12 @@ function _openSettingsSheet() {
   ta.scrollTop = ta.scrollHeight;
   sheet.querySelector('#nexo-settings-close').onclick = function() { sheet.remove(); };
   sheet.querySelector('#nexo-settings-back').onclick = function() { sheet.remove(); _openProfileSheet(); };
+  // #132: cambiar el idioma → se guarda y la app recarga para aplicarlo en todas las pantallas (como al reabrir la app)
+  var langSel = sheet.querySelector('#nexo-lang-select');
+  if (langSel) langSel.onchange = function() {
+    var v = langSel.value;
+    if (v && v !== getLang()) { setLang(v); try { window.location.reload(); } catch (e) {} }
+  };
   _renderFenixStatus();
   renderSecuritySection();
   _renderNetStatus();

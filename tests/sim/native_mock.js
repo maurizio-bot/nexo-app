@@ -1230,6 +1230,10 @@ function installWebCrypto(win) {
   // Internet: sin relés salvo que la prueba ponga los suyos (en GitHub hay salida a internet y los "teléfonos"
   // se conectaban a los relés públicos de verdad)
   if (!win.NEXO_NET_RELAYS) win.NEXO_NET_RELAYS = [];
+  // #132 (i18n): la app elige el idioma por el locale del teléfono, pero jsdom trae navigator.language='en-US'. En las
+  // pruebas fijamos ESPAÑOL (el idioma base de la app) para que los textos sean deterministas; los teléfonos reales
+  // siguen su propio idioma. Una prueba concreta puede ponerlo antes de arrancar para probar otro idioma.
+  if (!win.NEXO_FORCE_LANG) win.NEXO_FORCE_LANG = 'es';
   const wc = require('crypto').webcrypto;
   Object.defineProperty(win, 'crypto', { configurable: true, value: wc });
   const util = require('util');

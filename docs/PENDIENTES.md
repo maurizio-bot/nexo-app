@@ -3,14 +3,18 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
-## 🌐 Selección de idioma (#132, pedido del dueño 30-10) — PENDIENTE (siguiente)
-Idiomas para empezar: **español, italiano, inglés** (preparado para añadir más). **Por defecto** se ajusta al idioma del
-teléfono (locale del dispositivo: `es`→español, `it`→italiano, `en`→inglés; otro→español por ahora) — NO por GPS (encaja
-con la privacidad: no pide ubicación ni permisos nuevos). **Cambiable** en Perfil → Ajustes (🌐 Idioma), guardado. Plan:
-(1) base en una build dedicada — módulo `i18n.js` (tabla de textos + `t(clave)`, detección por locale, persistencia,
-evento de re-render) + selector en Ajustes + externalizar las pantallas principales (chats, chat, agregar, perfil/ajustes,
-llamadas); (2) el resto de textos por fases (son cientos repartidos por toda la app). Prueba en `tests/sim` (cambiar
-idioma → los textos cambian; default sigue el locale). No romper lo actual (todo en español hoy).
+## 🌐 Selección de idioma (#132, pedido del dueño 30-10) — FASE 1 HECHA (2843); resto POR FASES
+Idiomas: **español, italiano, inglés** (preparado para añadir más). **Por defecto** el idioma del teléfono (`navigator.language`:
+`es`→español, `it`→italiano, `en`→inglés; otro→español) — NO por GPS (encaja con la privacidad). **Cambiable** en Perfil →
+Ajustes (🌐 Idioma), guardado por teléfono (no viaja).
+- ✅ **Fase 1 (2843):** base `src/ui/i18n.js` (`t(clave)` + `getLang/setLang`, detección por locale, persistencia, evento
+  `nexo:lang`, respaldo al español si falta una clave) + selector 🌐 en Ajustes (al cambiar recarga la app) + cabecera de
+  Ajustes traducida. Simulador fijado a español (`native_mock.js`) para que las pruebas sigan deterministas. Prueba
+  `tests/sim/i18n.js`. Batería 88/88.
+- ⏳ **Falta (por fases):** externalizar a `t()` los textos del resto de la app — pantallas principales primero (lista de
+  chats, chat, agregar contactos, llamadas/videollamada, perfil, avisos) y luego el resto (son cientos). Al traducir cada
+  pantalla, añadir sus claves a los 3 idiomas en `i18n.js`. Hasta entonces, lo no traducido se ve en español (nunca roto).
+  Cada fase: traducir una zona, construir aparte, batería, subir.
 
 ## Bloque autónomo 28-10 (madrugada→mañana): FCM + archivos por internet + AUDITORÍA SEVERA
 El dueño (1 AM): «termina lo del ping a los servidores de Google robusto y probado; luego la parte internet del tamaño
