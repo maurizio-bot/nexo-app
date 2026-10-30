@@ -26,6 +26,28 @@ Ajustes (🌐 Idioma), guardado por teléfono (no viaja).
   llame a `t('clave',...)` — el *hoisting* de `var` tapa la `t()` importada en toda la función → `t is not a function` al
   ejecutar (webpack y la prueba unitaria NO lo ven; la batería sí). Si hay un `t` local, renombrarlo.
 
+## 📞 Llamadas y videollamadas en GRUPO (#128, siguiente por orden del dueño) — CIMIENTO hecho (2839), falta cablear
+Malla sin servidor: cada participante mantiene un tramo con cada otro (≤5 por ser N²). **Ya hecho (2839, probado en `gcall.js`):**
+`src/ui/group_call.js` — `GroupCall` con señalización `nexo_gcall` (invite/offer/accept/leave/end), roster, clave de grupo
+única, id de tramo determinista por par (`gid~<nx menor>-<nx mayor>`), AAD con el emisor (una voz no se hace pasar por otra),
+regla «NEXO ID menor manda offer», voz por control `{type:'vf', c:<id tramo>, s, d}` y un `mediaHubFactory` INYECTADO
+(agnóstico de medios). **Está sin cablear** (`createGroupCall` no se usa en ningún lado).
+- **Falta (por incrementos, cada uno build+batería):**
+  1. **Cableado + pantalla (SIMULABLE, primer incremento):** instanciar en `ble_interface.js` (`this.gcall = createGroupCall(this, mf)`,
+     como `this.calls` en la línea 110); enrutar en `ble_messages.js` los `vf` a `gcall.onFrame` ANTES que a `calls.onFrame`
+     (onFrame devuelve false si el tramo no es suyo → cae a calls; los ids de grupo llevan `~`, los 1-a-1 no) y las señales
+     `parseGroupCallSignal` a `gcall.onSignal` (solo si e2e, como `parseCallSignal` en las líneas 446-449; y el `main.js:518`);
+     botón «Llamar al grupo» en la cabecera del chat de grupo (`groups_ui.js`/`calls_ui.js` `_installButton`); pantalla de
+     grupo nueva `groupcall_ui.js` (estilo NEXO de `calls_ui.js`, lista de participantes, nexo:gcall/nexo:gcallRing/nexo:gcallEnded);
+     tono de entrada reusando el de `calls_ui.js`. Ampliar `gcall.js`/añadir prueba del cableado (una señal por el enrutado real
+     llega a onSignal; iniciar desde la UI emite invites). Textos ya traducibles (claves `grp_call_*` en i18n.js).
+  2. **Medios reales (NO simulable, lo prueba el dueño):** `call_group_media.js` = fábrica de hub real sobre `call_media.js`
+     (`createCallMedia`): UNA captura de micrófono compartida → `onPacket` por frame a todos los tramos; `play(nx,bytes,seq)`
+     decodifica y MEZCLA por tramo (Web Audio suma solo). Reusar codec/paquete de `call_media.js` (`unpackCallPacket`, `callCodecs`).
+  3. **Vídeo en grupo (Fase 2):** `v:1` ya viaja en la señalización; falta la rejilla de vídeo y mandar el vídeo por Wi-Fi (como
+     la videollamada 1-a-1, que por Bluetooth es solo voz).
+- Tope `GMAX_AUDIO=5`. No toca `calls.js` (1-a-1 sigue igual). Internet/Jump NO (el retraso no sirve para hablar): solo enlace directo.
+
 ## Bloque autónomo 28-10 (madrugada→mañana): FCM + archivos por internet + AUDITORÍA SEVERA
 El dueño (1 AM): «termina lo del ping a los servidores de Google robusto y probado; luego la parte internet del tamaño
 de los archivos y verifícalo (ya no quiero mandar una APK por internet y que ni la vea enviada); luego los pendientes
