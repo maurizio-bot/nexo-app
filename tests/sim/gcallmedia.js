@@ -1,0 +1,73 @@
+// Medios de la llamada en grupo (#128 incremento 2) — prueba de UNIDAD de call_group_media.js con medios SIMULADOS
+// (el audio real —micrófono, WebAudio, codec— solo corre en un navegador de verdad; aquí se prueba la ESTRUCTURA:
+// una captura compartida que difunde a todos los tramos, un decodificador por tramo que se reutiliza y se mezcla por
+// separado, silenciar solo el micrófono, soltar un tramo y parar todo). Uso: node gcallmedia.js
+'use strict';
+
+function makeMk(log) {
+  return function (o) {
+    var inst = {
+      opts: o, noCapture: !!o.noCapture, started: false, stopped: false, muted: null, woke: false, played: [],
+      start: function () { inst.started = true; return Promise.resolve({ codec: 'opus' }); },
+      stop: function () { inst.stopped = true; },
+      mute: function (on) { inst.muted = on; },
+      wake: function () { inst.woke = true; },
+      play: function (bytes) { inst.played.push(bytes); },
+    };
+    log.push(inst);
+    return inst;
+  };
+}
+
+(async () => {
+  const r = { prueba: 'gcallmedia' };
+  const { createGroupMedia } = await import('../../src/ui/call_group_media.js');
+
+  const log = [];
+  const packets = [];
+  const hub = createGroupMedia({ codecs: 'opus,ulaw', onPacket: function (b) { packets.push(b); }, _mk: makeMk(log) });
+
+  // La PRIMERA instancia es la captura compartida (con micrófono: noCapture false).
+  r.cap_es_captura = log.length === 1 && log[0].noCapture === false;
+
+  await hub.start();
+  r.start_abre_micro = log[0].started === true;
+
+  // El micrófono saca un paquete → el hub lo DIFUNDE (la malla lo manda a todos los tramos).
+  log[0].opts.onPacket(new Uint8Array([1, 2, 3]));
+  r.difunde = packets.length === 1 && packets[0][0] === 1;
+
+  // Llega voz de dos tramos (B y C): un decodificador por tramo, SOLO reproducir (noCapture true); el mismo tramo
+  // reutiliza su decodificador; cada tramo tiene el suyo (se mezclan por separado).
+  hub.play('nxb', new Uint8Array([10]));
+  hub.play('nxc', new Uint8Array([20]));
+  hub.play('nxb', new Uint8Array([11]));
+  const nxb = log[1], nxc = log[2];
+  r.un_decoder_por_tramo = log.length === 3 && nxb.noCapture === true && nxc.noCapture === true;
+  r.decoder_reutilizado = nxb.played.length === 2 && nxc.played.length === 1;
+  r.decoder_arranca = nxb.started === true && nxc.started === true;
+
+  // Silenciar afecta SOLO al micrófono propio, no a lo que se oye de los demás.
+  hub.mute(true);
+  r.mute_solo_captura = log[0].muted === true && nxb.muted === null;
+
+  // Soltar un tramo cierra su decodificador (los demás siguen); si vuelve, se crea uno nuevo.
+  hub.drop('nxb');
+  r.drop_cierra = nxb.stopped === true && nxc.stopped === false;
+  hub.play('nxb', new Uint8Array([12]));
+  r.drop_recrea = log.length === 4 && log[3].noCapture === true;
+
+  // Parar: se cierra la captura y TODOS los decodificadores.
+  hub.stop();
+  r.stop_todo = log[0].stopped === true && nxc.stopped === true && log[3].stopped === true;
+  // Tras parar, no se crean más decodificadores.
+  hub.play('nxd', new Uint8Array([99]));
+  r.stop_no_crea = log.length === 4;
+
+  const ok = r.cap_es_captura && r.start_abre_micro && r.difunde && r.un_decoder_por_tramo &&
+    r.decoder_reutilizado && r.decoder_arranca && r.mute_solo_captura && r.drop_cierra &&
+    r.drop_recrea && r.stop_todo && r.stop_no_crea;
+  r.resultado = ok ? 'OK' : 'FALLO';
+  console.log('GCALLMEDIA ' + JSON.stringify(r));
+  process.exit(ok ? 0 : 1);
+})().catch((e) => { console.error('GCALLMEDIA FALLO:', e && e.stack); process.exit(1); });

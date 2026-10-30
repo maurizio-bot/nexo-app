@@ -123,6 +123,7 @@ export function callCodecs() { return _hasOpus().then(function(o) { return o ? '
 
 export function createCallMedia(opts) {
   var onPacket = opts.onPacket, peerCodecs = String(opts.codecs || 'ulaw');
+  var noCapture = !!opts.noCapture; // #128 grupo: instancia que SOLO reproduce (mezcla un tramo), sin micrófono
   var onState = typeof opts.onState === 'function' ? opts.onState : function() {};
   var onNeedKey = typeof opts.onNeedKey === 'function' ? opts.onNeedKey : function() {};
   var wantVideo = !!opts.video, venc = null, vdec = null, vTimer = null, vN = 0, vIn = 0, vGotKey = false, camOn = true, vcanvas = null, vctx = null;
@@ -209,6 +210,8 @@ export function createCallMedia(opts) {
   function setupAudio() {
     var AC = window.AudioContext || window.webkitAudioContext;
     ctx = new AC({ sampleRate: RATE });
+    // #128 grupo: un decodificador de un tramo solo reproduce → ctx listo (y resume) y nada de micrófono/codificador
+    if (noCapture) { if (ctx.state !== 'running' && ctx.resume) { lastResumeAt = Date.now(); ctx.resume().catch(function() {}); } return; }
     if (typeof opts.voiceFx === 'function') try { vfx = opts.voiceFx({ rate: RATE }); } catch (e) { vfx = null; }
     proc = ctx.createScriptProcessor(2048, 1, 1);
     // Ronda 2772: el micrófono ya está abierto (va antes): se conecta aquí
@@ -451,6 +454,7 @@ export function createCallMedia(opts) {
         codec = r[0] && peerCodecs.indexOf('opus') >= 0 ? 1 : 2;
         opusCfg = r[1] || OPUS_BASE;
         if (stopped) return false;
+        if (noCapture) { setupAudio(); return false; } // #128 grupo: solo reproducir (sin micrófono ni vigilante)
         stream = new MediaStream([]);
         watchTimer = setInterval(watch, WATCH_MS);
         // Ronda 2769: primero el micrófono y luego la cámara, por separado (antes juntos: si la cámara fallaba, sin voz).
