@@ -775,6 +775,10 @@
     {
      "fallo": "2855 (informe del dueño 31-10): «selecciono contactos pero no se habilita Crear grupo». La hoja de crear grupo exigía nombre + contacto, así que al elegir contactos sin escribir nombre el botón quedaba gris (ya reportado en 2792, solo se añadió texto-pista). 2856: el nombre es OPCIONAL → el botón se habilita con al menos un contacto; nombre vacío = por defecto con los nombres de los elegidos",
      "prueba": "chats de grupo"
+    },
+    {
+     "fallo": "2857 (informe del dueño 31-10): el vídeo de la videollamada de GRUPO no se veía. call_group_media.js leía cap.media.localVideo / decoder.media.remoteCanvas, pero createCallMedia DEVUELVE el objeto media directo (sin «.media») → localVideo()/remoteCanvas() daban SIEMPRE null y la rejilla no recibía el <video>/<canvas>. 2858: cap.localVideo / decoder.remoteCanvas; el mock del test se corrigió a la realidad y comprueba que devuelven el elemento real",
+     "prueba": "medios de la llamada en grupo"
     }
    ],
    "debiles": [
