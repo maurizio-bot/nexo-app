@@ -7,8 +7,10 @@
 function makeMk(log) {
   return function (o) {
     var inst = {
+      // OJO: createCallMedia DEVUELVE el objeto media directamente → localVideo/remoteCanvas son propiedades DEL propio
+      // objeto (no inst.media.*). El mock lo refleja para cazar el bug del «.media» de más (2858).
       opts: o, noCapture: !!o.noCapture, started: false, stopped: false, muted: null, woke: false, played: [], playedV: [],
-      cameraArg: null, flipped: false, media: { localVideo: { tag: 'localv' }, remoteCanvas: { tag: 'rc' } },
+      cameraArg: null, flipped: false, localVideo: { tag: 'localv' }, remoteCanvas: { tag: 'rc' },
       start: function () { inst.started = true; return Promise.resolve({ codec: 'opus' }); },
       stop: function () { inst.stopped = true; },
       mute: function (on) { inst.muted = on; },
@@ -89,6 +91,10 @@ function makeMk(log) {
   // Voltear cámara (delante/detrás) pasa por la captura.
   await hubV.flip();
   r.flip_ok = logV[0].flipped === true;
+  // Elementos para la rejilla: la vista propia es la de la CAPTURA; la imagen de un tramo, la de SU decodificador. (Este es
+  // el que caza el bug del «.media» de más: antes localVideo()/remoteCanvas() devolvían null y no se veía nada — 2858.)
+  r.local_video_el = hubV.localVideo() === logV[0].localVideo && !!logV[0].localVideo;
+  r.remote_canvas_el = hubV.remoteCanvas('nxb') === logV[1].remoteCanvas && !!logV[1].remoteCanvas;
   // Apagar la cámara.
   hubV.camera(false);
   r.camara_apaga = logV[0].cameraArg === false;
@@ -97,7 +103,8 @@ function makeMk(log) {
   const ok = r.cap_es_captura && r.start_abre_micro && r.difunde && r.un_decoder_por_tramo &&
     r.decoder_reutilizado && r.decoder_arranca && r.mute_solo_captura && r.drop_cierra &&
     r.drop_recrea && r.stop_todo && r.stop_no_crea &&
-    r.cap_video_capaz && r.camara_enciende && r.difunde_video && r.video_por_tramo && r.flip_ok && r.camara_apaga;
+    r.cap_video_capaz && r.camara_enciende && r.difunde_video && r.video_por_tramo && r.flip_ok && r.camara_apaga &&
+    r.local_video_el && r.remote_canvas_el;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('GCALLMEDIA ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);

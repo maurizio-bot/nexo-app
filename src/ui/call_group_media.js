@@ -57,9 +57,11 @@ export function createGroupMedia(opts) {
     camera: function(on) { try { if (cap && cap.camera) cap.camera(!!on); } catch (e) {} },
     // #138: cámara de delante/detrás (devuelve promesa con la orientación final).
     flip: function() { try { return cap && cap.flip ? Promise.resolve(cap.flip()) : Promise.resolve(); } catch (e) { return Promise.resolve(); } },
-    // #138: elementos para pintar la rejilla de vídeo (los coloca groupcall_ui): mi vista y la imagen de cada tramo.
-    localVideo: function() { return cap && cap.media ? cap.media.localVideo : null; },
-    remoteCanvas: function(nx) { var d = decoders.get(nx); return (d && d.media) ? d.media.remoteCanvas : null; },
+    // #138: elementos para pintar la rejilla de vídeo (los coloca groupcall_ui). OJO: createCallMedia DEVUELVE el objeto
+    // media directamente, así que la vista propia es cap.localVideo y la imagen de un tramo es decoder.remoteCanvas (NO
+    // cap.media.*; ese «.media» de más devolvía siempre null y por eso el vídeo de grupo no se veía — build 2858).
+    localVideo: function() { return cap ? cap.localVideo : null; },
+    remoteCanvas: function(nx) { var d = decoders.get(nx); return d ? d.remoteCanvas : null; },
     remoteLive: function(nx) { var d = decoders.get(nx); return !!(d && d.remoteLive && d.remoteLive()); },
     // Silenciar/activar el micrófono propio (no afecta a lo que se oye de los demás).
     mute: function(on) { try { if (cap && cap.mute) cap.mute(on); } catch (e) {} },
