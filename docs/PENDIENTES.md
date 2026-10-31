@@ -48,6 +48,17 @@ regla «NEXO ID menor manda offer», voz por control `{type:'vf', c:<id tramo>, 
      con medios simulados). Batería 89/89. ⚠️ El audio REAL solo corre en el navegador → lo confirma el dueño en los teléfonos.
   3. **Vídeo en grupo (Fase 2):** `v:1` ya viaja en la señalización; falta la rejilla de vídeo y mandar el vídeo por Wi-Fi (como
      la videollamada 1-a-1, que por Bluetooth es solo voz).
+  4. ✅ **Internet + reconexión (2848 transporte + 2850 UX, pedido del dueño 31-10):** las llamadas de grupo heredan el
+     transporte por internet (`group_call._link` delega en `calls._link`, 2848). Reconexión (2850): un tramo sin voz →
+     «Reconectando…» (ámbar); a los 15 s → «Sin señal» (rojo) y la llamada sigue con los demás; sin nadie → corte con 5 s de
+     «Volver a llamar» y vuelta al chat del grupo. `group_call.js` (GWEAK_MS, `reconnecting` por tramo, `chatId` en
+     start/estado/evento `gcallEnded` con members/video), `groupcall_ui.js` (etiqueta, colores por tramo, pantalla de fin).
+     Prueba `gcall.js` (débil→reconnecting, 15 s→perdido, sin nadie→`empty`). Batería 90/90.
+  5. ⏳ **AGREGAR un contacto a una llamada en curso (pedido del dueño 31-10) — FALTA (build 2851):** en GRUPO,
+     `GroupCall.addMember(nx)` (invita al nuevo con roster+clave; el que entra abre tramo con TODOS = incorporación tardía,
+     ofrecer a todos, no solo «NEXO ID menor»). En 1-a-1, promover a llamada de grupo (empezar un grupo con el par + el nuevo).
+     Hace falta un SELECTOR de contactos (no existe uno reutilizable) y, para grupos, poder añadir miembros tras crear (hoy
+     `groups.js:191` fija la lista al crear). Botón «➕» en la pantalla de llamada (1-a-1 y grupo).
 - Tope `GMAX_AUDIO=5`. No toca `calls.js` (1-a-1 sigue igual). Internet/Jump NO (el retraso no sirve para hablar): solo enlace directo.
 
 ## Bloque autónomo 28-10 (madrugada→mañana): FCM + archivos por internet + AUDITORÍA SEVERA

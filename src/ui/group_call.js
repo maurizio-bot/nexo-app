@@ -24,7 +24,8 @@ import { t } from './i18n.js';
 
 var GMAX_AUDIO = 5;          // tope de participantes en audio (malla N²; ≤5 es cómodo)
 var GRING_MS = 45000;        // invitación sin contestar
-var GSILENCE_MS = 15000;     // un tramo sin recibir nada → se cierra (los demás siguen)
+var GWEAK_MS = 4000;         // #130 (dueño 31-10): un tramo sin voz > esto → «Reconectando…» (como la 1-a-1), sin cerrarlo
+var GSILENCE_MS = 15000;     // un tramo sin recibir nada en 15 s → se cierra (los demás siguen); como el corte 1-a-1
 var GDEAD_MS = 180000;
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
@@ -53,8 +54,8 @@ export class GroupCall {
   _nidSelf() { var b = this.ble; return _nid(b && (b.localNexoId || (b.getLocalNexoId && b.getLocalNexoId()))); }
   state() {
     var g = this.gc; if (!g) return null;
-    var legs = []; g.legs.forEach(function(l, nx) { legs.push({ nx: nx, state: l.state, talking: !!l.talking }); });
-    return { gid: g.gid, dir: g.dir, state: g.state, video: !!g.video, legs: legs, members: Array.from(g.roster) };
+    var legs = []; g.legs.forEach(function(l, nx) { legs.push({ nx: nx, state: l.state, talking: !!l.talking, reconnecting: !!l.reconnecting }); });
+    return { gid: g.gid, dir: g.dir, state: g.state, video: !!g.video, legs: legs, members: Array.from(g.roster), chatId: g.chatId || '' };
   }
   _set(o) { if (!this.gc) return; if (o) Object.assign(this.gc, o); _emit('nexo:gcall', this.state()); }
 
@@ -82,7 +83,8 @@ export class GroupCall {
   }
 
   // Iniciar una llamada de grupo con una lista de contactos (members: [nexoId]). video reservado para la Fase 2.
-  start(members, video) {
+  // chatId (opcional): el id del chat de grupo desde el que se llama, para volver a él si la llamada se corta (#130 dueño).
+  start(members, video, chatId) {
     var self = this, me = self._nidSelf();
     if (self.gc) return Promise.reject(new Error(t('grp_call_busy', 'Ya hay una llamada en curso')));
     var list = (members || []).map(_nid).filter(function(x) { return x && x !== me; });
@@ -91,7 +93,7 @@ export class GroupCall {
     if (list.length + 1 > GMAX_AUDIO) return Promise.reject(new Error(t('grp_max_a', 'Máximo ') + GMAX_AUDIO + t('grp_max_call', ' en una llamada de grupo')));
     var gid = 'gc' + Date.now().toString(36) + _hex(4), key = _hex(32);
     var roster = new Set([me].concat(list));
-    self.gc = { gid: gid, dir: 'out', state: 'calling', key: key, video: !!video, legs: new Map(), roster: roster, startedAt: 0, createdAt: Date.now() };
+    self.gc = { gid: gid, dir: 'out', state: 'calling', key: key, video: !!video, legs: new Map(), roster: roster, startedAt: 0, createdAt: Date.now(), chatId: _nid(chatId) || '' };
     list.forEach(function(nx) { self._leg(nx).state = 'inviting'; });
     _emit('nexo:gcall', self.state());
     self._ringTimer = setTimeout(function() {
@@ -155,11 +157,18 @@ export class GroupCall {
   _tick() {
     var self = this, g = self.gc; if (!g || g.state !== 'active') return;
     var now = Date.now(), alive = 0, me = self._nidSelf();
+    var weak = window.NEXO_GCALL_WEAK_MS || GWEAK_MS, silence = window.NEXO_GCALL_SILENCE_MS || GSILENCE_MS;
     g.legs.forEach(function(l, nx) {
-      if (l.state === 'active' && l.lastRx && now - l.lastRx > GSILENCE_MS) { l.state = 'lost'; }
+      if (l.state === 'active') {
+        var gap = l.lastRx ? now - l.lastRx : 0;
+        // #130 (dueño 31-10): un tramo activo que deja de recibir voz muestra «Reconectando…» (como la 1-a-1); a los 15 s
+        // sin nada se cierra ESE tramo (los demás siguen). Se deja de contar como vivo.
+        if (l.lastRx && gap > silence) { l.state = 'lost'; l.reconnecting = false; }
+        else l.reconnecting = !!(l.lastRx && gap > weak);
+      } else if (l.reconnecting) l.reconnecting = false;
       if (l.state === 'active' || l.state === 'offering' || l.state === 'waiting') alive++;
     });
-    if (alive === 0 && now - g.startedAt > GSILENCE_MS) { self._finish('empty'); return; }
+    if (alive === 0 && now - g.startedAt > silence) { self._finish('empty'); return; }
     self._set(null);
   }
 
@@ -276,7 +285,9 @@ export class GroupCall {
     self._markDead(g.gid);
     self.gc = null;
     _emit('nexo:gcall', null);
-    _emit('nexo:gcallEnded', { gid: g.gid, why: why });
+    // #130 (dueño 31-10): al cortarse, la pantalla da «Volver a llamar» y vuelve al chat del grupo (como la 1-a-1). Se
+    // mandan el chat del grupo (si se llamó desde uno) y los miembros, para rehacer la llamada.
+    _emit('nexo:gcallEnded', { gid: g.gid, why: why, chatId: g.chatId || '', video: !!g.video, members: Array.from(g.roster) });
     console.log('[GCALL] fin (' + why + ') ' + g.gid);
   }
 }
