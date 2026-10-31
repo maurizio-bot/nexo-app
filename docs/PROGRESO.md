@@ -138,6 +138,29 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2810 | 8c8c0e94 | **El gesto secreto de la «N» pasa de Ajustes a Perfil (informe del dueño).** El dueño probó en el teléfono: en Ajustes (mucho scroll) dibujar la «N» no abría el juego, porque el arrastre vertical lo tomaba el scroll (`pointercancel`) y se perdía el trazo. Ahora el gesto vive en una **zona dedicada del espacio negro de abajo de Perfil** (`#nexo-gesture-zone`, `flex:1`, `touch-action:none`) → ahí el dedo DIBUJA, no hace scroll, y la «N» se reconoce. `profile.js`: zona en Perfil + `attachNexoUnlockGesture`; retirado de `_openSettingsSheet`. `juego.js` comprueba que el gesto está en Perfil y NO en Ajustes. Batería **71/71**. Solo interfaz web. APK: a publicar (`nightly-2810`). ⚠️ A confirmar en el teléfono (dibujar la «N» en el espacio negro de Perfil) |
 | 2774 | fa52b3d1 | Auditoría de seguridad y robustez «al límite» (ver "Ronda 2774" y `docs/AUDITORIA.md`): endurecido el Wi-Fi (saludo gigante, avalancha de conexiones, archivo abortado por un extraño, inundación de escaneo), cierre a distancia con JSON muy anidado, intent de llamada exportado, anuncio con ID mal formado, grupos (un miembro reescribía la lista y colaba claves) y recuperación del WebView. Pruebas nuevas: 4 de ataque en Kotlin + fuzzing con semilla + `groupforge.js`. Batería 51/51, Kotlin 87/87 (16 nuevas). Índice de robustez 41,8 (ver `docs/ROBUSTEZ.md` §4). **APK publicada: `nightly-2775` (24,5 MB, firma verificada).** La primera compilación (run 2774) falló por una carrera en `LanHub.stop()` dentro de la prueba de la avalancha (iterar la cola mientras los hilos de lectura la vaciaban); arreglada con `poll()` y comprobada 5 veces; la 2775 compila, pasa todo y publica |
 
+## Base estable (actual): build 2858
+El dueño la guardó como base el **31-10-2026** tras probar en los teléfonos: la llamada/videollamada de grupo es «lo
+menos peor hasta ahora» (el vídeo de grupo ya se ve tras el arreglo del `.media`), con detalles de UX por pulir
+(igualar la pantalla de grupo a la 1-a-1, el eco, proximidad) que se harán en otro momento.
+- Código: rama **`base-estable-2858`** (commit `c9fd751e`). Incluye todo lo de hoy (2853–2858): silenciar/agregar/cámara
+  en grupo, vídeo de grupo, nombre por defecto «Grupo N», escaneo lento (#129) arreglado, audio en modo llamada.
+- APK: release `nightly-2858`. Misma llave y `versionCode 1` que todas: se instala encima sin desinstalar.
+- Es reciente (mismo cifrado en reposo y protocolo 2 que NEXOCHAT), así que volver a ella NO tiene los avisos del
+  cifrado/at-rest de las bases viejas; es un `git restore` directo.
+- Para la ENTREGA con app cerrada + pantalla apagada, la base probada a fondo sigue siendo la **2823**
+  (`base-estable-2823`, dueño 28-10; abajo). La 2858 no re-verificó ese escenario concreto.
+- Volver a la base (genera una build nueva con el código de la 2858, sin reescribir la historia):
+  ```
+  git checkout NEXOCHAT && git pull
+  git restore --source=base-estable-2858 --staged --worktree -- src plugins android index.html package.json package-lock.json
+  git commit -m "Volver a la base estable 2858" && git push origin NEXOCHAT
+  ```
+
+## Base estable: build 2823
+Probada por el dueño en los teléfonos el **28-10-2026**: ENTREGA con la app cerrada + la pantalla apagada ✓ (el
+escenario grave que se perseguía). Rama **`base-estable-2823`**. No modificarla. Es la referencia para ese escenario
+de entrega aunque la base «actual» de trabajo sea la 2858.
+
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
 22-10-2026. Anteriores: 2699 (rama `base-estable-2699`, commit `d563355`) y 2698 (`base-estable-2698`).
