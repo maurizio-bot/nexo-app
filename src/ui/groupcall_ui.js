@@ -58,7 +58,7 @@ function _btn(label, cls, fn) {
   return b;
 }
 
-function _remove() { var el = document.getElementById('nexo-gcall-screen'); if (el) el.remove(); }
+function _remove() { var el = document.getElementById('nexo-gcall-screen'); if (el) el.remove(); if (_gcAudioFor) { _gcAudioFor = null; _gAudioMode(false); } }
 
 // #130 (dueño 31-10): al cortarse la llamada de grupo, volver al chat del grupo donde se hizo (como la 1-a-1)
 function _openChatOf(cid) { try { var b = _bi(); cid = _normId(cid); if (b && typeof b.openChat === 'function' && cid) b.openChat(cid).catch(function() {}); } catch (e) {} }
@@ -91,9 +91,19 @@ function _showEnded(detail) {
   _endTimer = setTimeout(function() { _removeEnded(); _openChatOf(chatId); }, 5000);
 }
 
+// #dueño 31-10: modo de audio del teléfono en la llamada de GRUPO (Kotlin callAudio), igual que la 1-a-1: pone el modo de
+// comunicación (mejor cancelación de eco) y el altavoz/auricular. Sin esto, el audio del grupo iba por el flujo multimedia
+// (peor eco) y no había altavoz/auricular. En grupo el altavoz arranca encendido (manos libres); el botón lo cambia.
+var _gcSpeaker = true, _gcAudioFor = null;
+function _gAudioMode(on) {
+  try { var pl = _plugin(); if (pl && typeof pl.callAudio === 'function') pl.callAudio({ on: !!on, speaker: !!on && _gcSpeaker }).catch(function() {}); } catch (e) {}
+}
+
 function _render(st) {
   var gcall = _gcall();
   if (!st) { _remove(); return; }
+  // Al entrar en activa (una vez por llamada): arrancar el modo de audio de comunicación; al cambiar de llamada, reiniciar.
+  if (st.state === 'active' && _gcAudioFor !== st.gid) { _gcAudioFor = st.gid; _gcSpeaker = true; _gAudioMode(true); }
   var el = _screen();
   var me = _me();
   el.querySelector('.gc-e2e').textContent = t('call_e2e', 'Cifrada de extremo a extremo');
@@ -145,6 +155,8 @@ function _render(st) {
     // #138 (dueño 31-10): CÁMARA on/off (sin re-llamar: activar la cámara pasa la llamada a vídeo) y GIRAR (delante/detrás).
     if (st.state === 'active') bt.appendChild(_btn(st.cameraOn ? t('call_camera_off', 'Cámara no') : t('call_camera', 'Cámara'), 'gc-add', function() { var g = _gcall(); if (g) g.camera(!st.cameraOn); }));
     if (st.state === 'active' && st.cameraOn) bt.appendChild(_btn(t('call_flip', 'Girar'), 'gc-add', function() { var g = _gcall(); if (g && g.flip) g.flip(); }));
+    // #dueño 31-10: ALTAVOZ/AURICULAR (como la 1-a-1); en grupo arranca en altavoz (manos libres).
+    if (st.state === 'active') bt.appendChild(_btn(_gcSpeaker ? t('call_speaker', 'Altavoz') : t('call_earpiece', 'Auricular'), 'gc-add', function() { _gcSpeaker = !_gcSpeaker; _gAudioMode(true); _render(st); }));
     bt.appendChild(_btn(t('call_hangup', 'Colgar'), 'gc-red', function() { if (_gcall()) _gcall().hangup(); }));
   }
   _renderVideo(st); // #138: rejilla de vídeo (reconciliada, sin recrear los <canvas>/<video> → sin parpadeo)
@@ -182,30 +194,40 @@ function _renderVideo(st) {
   grid.style.display = want.length ? 'flex' : 'none';
 }
 
-// Botón «Llamar al grupo» en la cabecera del chat (solo en chats de grupo)
+// #dueño 31-10: el chat de grupo tiene los MISMOS botones que un chat de contacto: llamar y VIDEOLLAMAR (mismos iconos y
+// estilo que calls_ui.js). El de vídeo arranca la videollamada de grupo (cámara encendida desde el inicio, como la 1-a-1).
+var _GBTN_STYLE = 'width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;font-size:18px;cursor:pointer;flex-shrink:0;margin-left:6px;display:none;';
+function _startGroupCall(video) {
+  var gcall = _gcall(), gs = _groups(), cid = _getCurrentContactId();
+  if (!gcall || !gs || !cid) return;
+  var g = gs.get(cid);
+  if (!g || !g.members) return;
+  gcall.start(g.members, !!video, cid).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); });
+}
 function _installGroupButton() {
   var header = document.getElementById('chat-header');
   if (!header || document.getElementById('nexo-gcall-btn')) return;
   var b = document.createElement('button');
   b.id = 'nexo-gcall-btn';
   b.title = t('grp_call_group_btn', 'Llamar al grupo');
-  b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/><circle cx="18" cy="6" r="3" fill="#00c8ff" stroke="none"/></svg>';
-  b.style.cssText = 'width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;font-size:18px;cursor:pointer;flex-shrink:0;margin-left:6px;display:none;';
-  b.addEventListener('click', function(e) {
-    e.stopPropagation();
-    var gcall = _gcall(), gs = _groups(), cid = _getCurrentContactId();
-    if (!gcall || !gs || !cid) return;
-    var g = gs.get(cid);
-    if (!g || !g.members) return;
-    gcall.start(g.members, false, cid).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); });
-  });
+  b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>';
+  b.style.cssText = _GBTN_STYLE;
+  b.addEventListener('click', function(e) { e.stopPropagation(); _startGroupCall(false); });
   header.appendChild(b);
+  // Videollamada de grupo (mismo botón que la 1-a-1): la cámara arranca encendida
+  var v = document.createElement('button');
+  v.id = 'nexo-gvideo-btn';
+  v.title = t('call_btn_video_title', 'Videollamada');
+  v.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="12" height="10" rx="2"/><path d="M15 11l6-3v8l-6-3z"/></svg>';
+  v.style.cssText = _GBTN_STYLE;
+  v.addEventListener('click', function(e) { e.stopPropagation(); _startGroupCall(true); });
+  header.appendChild(v);
 }
 
 function _refreshGroupButton() {
   var cid = _getCurrentContactId(), gs = _groups();
   var show = cid && gs && typeof gs.isGroup === 'function' && gs.isGroup(cid) ? '' : 'none';
-  var b = document.getElementById('nexo-gcall-btn'); if (b) b.style.display = show;
+  ['nexo-gcall-btn', 'nexo-gvideo-btn'].forEach(function(id) { var b = document.getElementById(id); if (b) b.style.display = show; });
 }
 
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }

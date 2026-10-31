@@ -64,6 +64,8 @@ export function openCreateGroupSheet() {
     '<button id="nexo-group-create" disabled style="background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:600;margin-top:8px;opacity:0.5;">' + t('prof_group_create', 'Crear grupo') + '</button>';
   document.body.appendChild(sheet);
   var listEl = sheet.querySelector('#nexo-group-list'), btn = sheet.querySelector('#nexo-group-create'), nameEl = sheet.querySelector('#nexo-group-name');
+  // #dueño 31-10: nombre por defecto «Grupo N» (editable). Así siempre hay un nombre (no bloquea crear) y el dueño lo cambia si quiere.
+  try { var _gn = Object.keys((gs && gs.list) || {}).length + 1; nameEl.value = t('prof_group_default_pre', 'Grupo ') + _gn; } catch (e) {}
   var chosen = {};
   function refresh() {
     var n = Object.keys(chosen).length;
@@ -88,16 +90,9 @@ export function openCreateGroupSheet() {
   nameEl.addEventListener('input', refresh);
   sheet.querySelector('#nexo-group-cancel').onclick = function() { sheet.remove(); };
   btn.onclick = function() {
-    var ids = Object.keys(chosen);
-    var name = nameEl.value.trim();
-    if (!name) {
-      // #dueño 31-10: nombre OPCIONAL → vacío = uno por defecto con los nombres de los elegidos (como WhatsApp); si por lo
-      // que sea quedara vacío, create() pone «Grupo».
-      var nms = ids.map(function(cid) { var c = all.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === cid; }); return (c && c.name) || cid.toUpperCase(); });
-      name = nms.slice(0, 3).join(', ').substring(0, 60);
-    }
     var g;
-    try { g = gs.create(name, ids); } catch (e) { _toast(e.message); return; }
+    // El nombre viene con «Grupo N» por defecto y es editable; si aun así quedara vacío, create() pone «Grupo».
+    try { g = gs.create(nameEl.value, Object.keys(chosen)); } catch (e) { _toast(e.message); return; }
     sheet.remove();
     var bi = _bi();
     if (bi && typeof bi.renderContactsList === 'function') bi.renderContactsList();
