@@ -57,7 +57,7 @@ export class GroupCall {
   state() {
     var g = this.gc; if (!g) return null;
     var legs = []; g.legs.forEach(function(l, nx) { legs.push({ nx: nx, state: l.state, talking: !!l.talking, reconnecting: !!l.reconnecting }); });
-    return { gid: g.gid, dir: g.dir, state: g.state, video: !!g.video, legs: legs, members: Array.from(g.roster), chatId: g.chatId || '' };
+    return { gid: g.gid, dir: g.dir, state: g.state, video: !!g.video, muted: !!g.muted, legs: legs, members: Array.from(g.roster), chatId: g.chatId || '' };
   }
   _set(o) { if (!this.gc) return; if (o) Object.assign(this.gc, o); _emit('nexo:gcall', this.state()); }
 
@@ -133,6 +133,15 @@ export class GroupCall {
   }
 
   reject() { var g = this.gc; if (g && g.dir === 'in' && g.state === 'ringing') { this._signal(g.host, 'leave', {}); this._finish('rejected'); } }
+
+  // #dueño 31-10: silenciar/activar MI micrófono en la llamada de grupo (el botón, como en la 1-a-1). No afecta a lo que
+  // se oye de los demás; solo deja de mandar mi voz. El hub de medios comparte una sola captura, así que silencia todo.
+  mute(on) {
+    var g = this.gc; if (!g) return;
+    g.muted = !!on;
+    if (g.hub && g.hub.mute) { try { g.hub.mute(!!on); } catch (e) {} }
+    this._set(null);
+  }
 
   // #130 (dueño 31-10): AGREGAR un contacto a una llamada de grupo EN CURSO. Lo puede hacer cualquier participante. Al nuevo
   // se le invita con el roster y la clave de grupo actuales y la marca late:1 (para que, al entrar, abra su tramo con TODOS

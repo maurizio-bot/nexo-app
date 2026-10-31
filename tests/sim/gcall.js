@@ -44,6 +44,7 @@ function makeHub(rec) {
       start() { hub.started = true; return Promise.resolve({ codec: 'opus' }); },
       stop() { hub.started = false; },
       play(nx, bytes) { rec.played.push({ nx: nx, len: bytes.length }); },
+      mute(on) { hub.muted = !!on; },  // #dueño 31-10: silenciar la captura compartida
       emit(bytes) { hub._onPacket(bytes); },  // simula salida del micrófono
     };
     rec.hub = hub; return hub;
@@ -92,6 +93,12 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
   await sleep(80);
   r.A_oye_a_B = recA.played.some((x) => _n(x.nx) === B_ID);
   r.C_oye_a_B = recC.played.some((x) => _n(x.nx) === B_ID);
+
+  // #dueño 31-10: SILENCIAR (botón) → marca el estado y silencia la captura compartida; al reactivar, vuelve.
+  A.mute(true);
+  r.silenciar = A.gc.muted === true && recA.hub.muted === true && A.state().muted === true;
+  A.mute(false);
+  r.reactivar = A.gc.muted === false && recA.hub.muted === false;
 
   // Cableado (build 2846, #128): la invariante en la que se apoya ble_messages. Un `vf` cuyo id de tramo NO es de este
   // grupo → onFrame devuelve FALSE (así la app lo deja pasar a la llamada 1-a-1 de calls.js; no se lo traga el grupo).
@@ -190,6 +197,7 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
     r.H_suena && r.colgar_corta_entrante && r.corte_es_perdida && r.H_suena_b && r.H_perdida_30s && r.invite_viejo_ignorado &&
     r.B_oye_a_A && r.C_oye_a_A && r.A_oye_a_B && r.C_oye_a_B && r.descarta_manipulado &&
     r.onframe_ajeno_false && r.onframe_propio_true && r.parse_ok && r.parse_basura &&
+    r.silenciar && r.reactivar &&
     r.C_colgo && r.A_cierra_C && r.B_cierra_C && r.A_sigue_con_B &&
     r.F_suena && r.agregado_malla && r.A_oye_a_F && r.B_oye_a_F && r.no_duplica &&
     r.DE_activa && r.chatId_guardado && r.reconnecting && r.tramo_perdido && r.D_corto && r.corte_empty;

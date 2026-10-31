@@ -129,6 +129,8 @@ function _render(st) {
     bt.appendChild(_btn(t('call_reject', 'Rechazar'), 'gc-red', function() { if (_gcall()) _gcall().reject(); }));
     bt.appendChild(_btn(t('grp_join', 'Entrar'), 'gc-green', function() { if (_gcall()) _gcall().accept(); }));
   } else {
+    // #dueño 31-10: SILENCIAR mi micrófono (como en la 1-a-1); el hub comparte una captura, así deja de mandar mi voz.
+    if (st.state === 'active') bt.appendChild(_btn(st.muted ? t('call_muted', 'Silenciado') : t('call_mute', 'Silenciar'), 'gc-add', function() { var g = _gcall(); if (g) g.mute(!st.muted); }));
     // #130 (dueño 31-10): AGREGAR un contacto a la llamada de grupo en curso (selector de contactos → gcall.addMember).
     if (st.state === 'active') bt.appendChild(_btn(t('call_add', 'Agregar'), 'gc-add', function() {
       var gcall = _gcall(); if (!gcall) return;
