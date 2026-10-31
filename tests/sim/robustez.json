@@ -771,6 +771,10 @@
      "fallo": "Compartir contactos",
      "prueba": null,
      "fuera": "share.js"
+    },
+    {
+     "fallo": "2855 (informe del dueño 31-10): «selecciono contactos pero no se habilita Crear grupo». La hoja de crear grupo exigía nombre + contacto, así que al elegir contactos sin escribir nombre el botón quedaba gris (ya reportado en 2792, solo se añadió texto-pista). 2856: el nombre es OPCIONAL → el botón se habilita con al menos un contacto; nombre vacío = por defecto con los nombres de los elegidos",
+     "prueba": "chats de grupo"
     }
    ],
    "debiles": [

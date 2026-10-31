@@ -67,13 +67,12 @@ export function openCreateGroupSheet() {
   var chosen = {};
   function refresh() {
     var n = Object.keys(chosen).length;
-    var hasName = nameEl.value.trim().length > 0;
-    var ok = n > 0 && hasName;
+    var ok = n > 0;
     btn.disabled = !ok; btn.style.opacity = ok ? '1' : '0.5';
-    // Ronda 2792 (informe del dueño: «no se habilita el botón como si faltara algo»): antes el botón solo se activaba
-    // con nombre + 1 contacto, pero no decía CUÁL faltaba. Ahora lo dice, en orden: primero elegir a alguien, luego el
-    // nombre. Si no hay a quién marcar (la lista sale vacía), el texto lo deja claro en vez de un botón gris mudo.
-    btn.textContent = !n ? t('prof_group_need_contact', 'Elige al menos un contacto') : (!hasName ? t('prof_group_need_name', 'Escribe un nombre del grupo') : t('prof_group_create_n_pre', 'Crear grupo (') + (n + 1) + t('prof_group_create_n_post', ' personas)'));
+    // Ronda 2792 + informe del dueño 31-10 («selecciono contactos pero no se habilita Crear grupo»): el NOMBRE es OPCIONAL
+    // (create() ya pone «Grupo» o uno por defecto con los nombres si se deja vacío), así que el botón se habilita en cuanto
+    // hay AL MENOS UN contacto. Antes exigía nombre y el dueño veía el botón gris aunque hubiera elegido a alguien.
+    btn.textContent = !n ? t('prof_group_need_contact', 'Elige al menos un contacto') : t('prof_group_create_n_pre', 'Crear grupo (') + (n + 1) + t('prof_group_create_n_post', ' personas)');
   }
   if (!all.length) listEl.innerHTML = '<div style="opacity:0.7;padding:16px 4px;">' + t('prof_group_no_contacts', 'Aún no tienes contactos.') + '</div>';
   all.forEach(function(c) {
@@ -89,8 +88,16 @@ export function openCreateGroupSheet() {
   nameEl.addEventListener('input', refresh);
   sheet.querySelector('#nexo-group-cancel').onclick = function() { sheet.remove(); };
   btn.onclick = function() {
+    var ids = Object.keys(chosen);
+    var name = nameEl.value.trim();
+    if (!name) {
+      // #dueño 31-10: nombre OPCIONAL → vacío = uno por defecto con los nombres de los elegidos (como WhatsApp); si por lo
+      // que sea quedara vacío, create() pone «Grupo».
+      var nms = ids.map(function(cid) { var c = all.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === cid; }); return (c && c.name) || cid.toUpperCase(); });
+      name = nms.slice(0, 3).join(', ').substring(0, 60);
+    }
     var g;
-    try { g = gs.create(nameEl.value, Object.keys(chosen)); } catch (e) { _toast(e.message); return; }
+    try { g = gs.create(name, ids); } catch (e) { _toast(e.message); return; }
     sheet.remove();
     var bi = _bi();
     if (bi && typeof bi.renderContactsList === 'function') bi.renderContactsList();
