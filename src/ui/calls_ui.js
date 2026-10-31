@@ -11,7 +11,7 @@
 import { paintAvatar } from './avatar.js';
 import { _normId, _getCurrentContactId } from './chat_format.js';
 import { _renderMessage } from './render.js';
-import { _showInfoToast } from './ui_bits.js';
+import { _showInfoToast, _pickContact } from './ui_bits.js';
 import { _getGradientForUUID, _getInitials } from './ble_helpers.js';
 import { _hideCameraPreviewOverlay } from './camera.js';
 import { vaultAppendMessage, vaultFindContactByNexoId } from '../vault/vault_manager.js';
@@ -93,7 +93,8 @@ var _IC = {
   camOff: '<rect x="3" y="7" width="12" height="10" rx="2"/><path d="M15 11l6-3v8l-6-3zM3 3l18 18"/>',
   flip: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><path d="M9.5 13.5a2.5 2.5 0 0 0 4.6 1.3M14.5 12.5a2.5 2.5 0 0 0-4.6-1.3"/><path d="M14 15l.3-1.8 1.7.6M10 11l-.3 1.8-1.7-.6"/>',
   phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
-  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  addp: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M15 11h6"/>'
 };
 function _svg(name, size) {
   return '<svg width="' + (size || 26) + '" height="' + (size || 26) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + _IC[name] + '</svg>';
@@ -442,6 +443,20 @@ function _render(st) {
     bt.appendChild(_btn(st.muted ? 'micOff' : 'mic', st.muted ? t('call_muted', 'Silenciado') : t('call_mute', 'Silenciar'), 'call-mute', function() { calls.mute(!st.muted); }, st.muted ? 'nc-on' : ''));
     // Altavoz / auricular (en la videollamada, altavoz de entrada)
     bt.appendChild(_btn(_speaker ? 'speaker' : 'ear', _speaker ? t('call_speaker', 'Altavoz') : t('call_earpiece', 'Auricular'), 'call-speaker', function() { _speaker = !_speaker; _audioMode(true); _render(calls.state()); }, _speaker ? 'nc-on' : ''));
+    // #130 (dueño 31-10): AGREGAR un contacto a la llamada 1-a-1 → se convierte en llamada de GRUPO (el contacto actual + el
+    // nuevo). Cuelga la 1-a-1 y arranca el grupo (el otro recibe la invitación de grupo). El grupo es de voz (el vídeo de
+    // grupo es Fase 2); por eso se arranca como audio aunque la 1-a-1 fuera vídeo.
+    bt.appendChild(_btn('addp', t('call_add', 'Agregar'), 'call-add', function() {
+      var cur = calls.state(); if (!cur) return;
+      var peer = cur.nx, me = _normId(_bi() && _bi().localNexoId);
+      var gcall = _bi() && _bi().gcall;
+      if (!gcall) { _showInfoToast(t('grp_call_na', 'Las llamadas de grupo no están disponibles'), 3000); return; }
+      _pickContact({ title: t('call_add_pick', 'Agregar a la llamada'), exclude: [peer, me], onPick: function(nx) {
+        _showInfoToast(t('call_to_group', 'Convirtiendo en llamada de grupo…'), 2500);
+        try { calls.hangup(); } catch (e) {}
+        setTimeout(function() { gcall.start([peer, nx], false).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); }); }, 400);
+      } });
+    }));
     bt.appendChild(_btn('phone', t('call_hangup', 'Colgar'), 'call-hangup', function() { calls.hangup(); }, 'nc-red'));
     if (!_render._modeFor || _render._modeFor !== st.id) { _render._modeFor = st.id; _speaker = !!st.video; _audioMode(true); _render(calls.state()); return; }
     if (st.video) _autoHide(el);

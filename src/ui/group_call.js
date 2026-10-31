@@ -123,12 +123,30 @@ export class GroupCall {
       if (nx === me) return;
       var l = self._leg(nx);
       if (nx === g.host) { self._signal(nx, 'accept', {}); l.state = 'active'; } // al que invitó: aceptar
-      else if (me < nx) { self._signal(nx, 'offer', {}); l.state = 'offering'; } // yo inicio ese par
+      // #130 (dueño 31-10): si entro TARDE (me agregaron a una llamada ya en curso, late:1), abro el tramo con TODOS (los que
+      // ya estaban no van a iniciar hacia mí); si no, la regla normal: el NEXO ID menor manda 'offer' y el otro espera.
+      else if (g.late || me < nx) { self._signal(nx, 'offer', {}); l.state = 'offering'; }
       else l.state = 'waiting'; // el otro iniciará
     });
   }
 
   reject() { var g = this.gc; if (g && g.dir === 'in' && g.state === 'ringing') { this._signal(g.host, 'leave', {}); this._finish('rejected'); } }
+
+  // #130 (dueño 31-10): AGREGAR un contacto a una llamada de grupo EN CURSO. Lo puede hacer cualquier participante. Al nuevo
+  // se le invita con el roster y la clave de grupo actuales y la marca late:1 (para que, al entrar, abra su tramo con TODOS
+  // los que ya estaban; ellos no van a iniciar hacia él). Los que ya estaban abren su tramo con el nuevo al llegarles su
+  // oferta (onSignal 'offer' ya lo hace cuando la llamada está activa).
+  addMember(nexoId) {
+    var self = this, g = self.gc, nx = _nid(nexoId), me = self._nidSelf();
+    if (!g || g.state !== 'active') return Promise.reject(new Error(t('grp_call_none', 'No hay una llamada de grupo en curso')));
+    if (!nx || nx === me) return Promise.reject(new Error(t('grp_call_need_one', 'Hace falta al menos un contacto')));
+    if (g.roster.has(nx)) return Promise.reject(new Error(t('grp_already_in', 'Ya está en la llamada')));
+    if (g.roster.size + 1 > GMAX_AUDIO) return Promise.reject(new Error(t('grp_max_a', 'Máximo ') + GMAX_AUDIO + t('grp_max_call', ' en una llamada de grupo')));
+    g.roster.add(nx);
+    self._leg(nx).state = 'inviting';
+    self._set(null);
+    return self._signal(nx, 'invite', { roster: Array.from(g.roster), k: g.key, co: self._codecs(), v: g.video ? 1 : 0, late: 1 });
+  }
 
   // Colgar / salir de la llamada de grupo
   hangup() {
@@ -243,7 +261,7 @@ export class GroupCall {
       if (typeof o.k !== 'string' || !/^[0-9a-f]{64}$/.test(o.k)) return;
       var roster = new Set((o.roster || []).map(_nid)); roster.add(nx); roster.add(me);
       if (roster.size > GMAX_AUDIO) return;
-      self.gc = { gid: o.gid, dir: 'in', state: 'ringing', key: o.k, video: o.v === 1, host: nx, legs: new Map(), roster: roster, startedAt: 0, createdAt: Date.now() };
+      self.gc = { gid: o.gid, dir: 'in', state: 'ringing', key: o.k, video: o.v === 1, host: nx, legs: new Map(), roster: roster, startedAt: 0, createdAt: Date.now(), late: o.late === 1 };
       self._importKey(o.k).then(function(k) { if (self.gc && self.gc.gid === o.gid) { self.gc.cryptoKey = k; _emit('nexo:gcall', self.state()); _emit('nexo:gcallRing', { gid: o.gid, from: nx, members: Array.from(roster) }); } });
       return;
     }

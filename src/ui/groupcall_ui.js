@@ -7,7 +7,7 @@
  * ocultan ahí). La pantalla escucha nexo:gcall (estado), nexo:gcallRing (entrante) y nexo:gcallEnded (fin).
  */
 import { t } from './i18n.js';
-import { _showInfoToast } from './ui_bits.js';
+import { _showInfoToast, _pickContact } from './ui_bits.js';
 import { _getCurrentContactId, _normId } from './chat_format.js';
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
@@ -129,6 +129,15 @@ function _render(st) {
     bt.appendChild(_btn(t('call_reject', 'Rechazar'), 'gc-red', function() { if (_gcall()) _gcall().reject(); }));
     bt.appendChild(_btn(t('grp_join', 'Entrar'), 'gc-green', function() { if (_gcall()) _gcall().accept(); }));
   } else {
+    // #130 (dueño 31-10): AGREGAR un contacto a la llamada de grupo en curso (selector de contactos → gcall.addMember).
+    if (st.state === 'active') bt.appendChild(_btn(t('call_add', 'Agregar'), 'gc-add', function() {
+      var gcall = _gcall(); if (!gcall) return;
+      var cur = gcall.state ? gcall.state() : null;
+      var ex = ((cur && cur.members) || []).concat([_me()]);
+      _pickContact({ title: t('call_add_pick', 'Agregar a la llamada'), exclude: ex, onPick: function(nx) {
+        gcall.addMember(nx).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); });
+      } });
+    }));
     bt.appendChild(_btn(t('call_hangup', 'Colgar'), 'gc-red', function() { if (_gcall()) _gcall().hangup(); }));
   }
 }

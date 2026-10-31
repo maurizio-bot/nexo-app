@@ -54,11 +54,14 @@ regla «NEXO ID menor manda offer», voz por control `{type:'vf', c:<id tramo>, 
      «Volver a llamar» y vuelta al chat del grupo. `group_call.js` (GWEAK_MS, `reconnecting` por tramo, `chatId` en
      start/estado/evento `gcallEnded` con members/video), `groupcall_ui.js` (etiqueta, colores por tramo, pantalla de fin).
      Prueba `gcall.js` (débil→reconnecting, 15 s→perdido, sin nadie→`empty`). Batería 90/90.
-  5. ⏳ **AGREGAR un contacto a una llamada en curso (pedido del dueño 31-10) — FALTA (build 2851):** en GRUPO,
-     `GroupCall.addMember(nx)` (invita al nuevo con roster+clave; el que entra abre tramo con TODOS = incorporación tardía,
-     ofrecer a todos, no solo «NEXO ID menor»). En 1-a-1, promover a llamada de grupo (empezar un grupo con el par + el nuevo).
-     Hace falta un SELECTOR de contactos (no existe uno reutilizable) y, para grupos, poder añadir miembros tras crear (hoy
-     `groups.js:191` fija la lista al crear). Botón «➕» en la pantalla de llamada (1-a-1 y grupo).
+  5. ✅ **AGREGAR un contacto a una llamada en curso (2851, pedido del dueño 31-10):** en GRUPO, `GroupCall.addMember(nx)`
+     invita al nuevo con roster+clave y la marca `late:1` (incorporación tardía: el que entra ofrece a TODOS; los que ya
+     estaban abren su tramo al recibir su oferta). En 1-a-1, el botón «Agregar» convierte la llamada en grupo (cuelga la 1-a-1
+     y arranca un grupo con el par + el nuevo; es de voz, el vídeo de grupo es Fase 2). Selector de contactos compartido
+     `_pickContact` (`ui_bits.js`, hoja inferior con los contactos del vault menos los que ya están); botón «Agregar» en la
+     pantalla de grupo y en la 1-a-1 (icono `addp`). Prueba `gcall.js` (A agrega a F a la llamada A-B en curso → F entra en la
+     malla, su voz llega a A y B, no se duplica). Batería 90/90. (No hizo falta tocar `groups.js`: la llamada de grupo lleva
+     su propio roster, aparte de la lista del chat de grupo.)
 - Tope `GMAX_AUDIO=5`. No toca `calls.js` (1-a-1 sigue igual). Internet/Jump NO (el retraso no sirve para hablar): solo enlace directo.
 
 ## Bloque autónomo 28-10 (madrugada→mañana): FCM + archivos por internet + AUDITORÍA SEVERA

@@ -5,6 +5,42 @@
  */
 
 import { t } from './i18n.js';
+import { vaultLoadContacts } from '../vault/vault_manager.js';
+
+// #130 (dueño 31-10): selector de contactos (hoja inferior) para AGREGAR a alguien a una llamada/videollamada en curso.
+// opts: { title, exclude:[nexoId…], onPick:fn(nexoId) }. Lista los contactos del vault menos los excluidos (los que ya
+// están en la llamada y uno mismo). Estilo NEXO; por encima de la pantalla de llamada.
+export function _pickContact(opts) {
+  opts = opts || {};
+  var exclude = {};
+  (opts.exclude || []).forEach(function(x) { if (x) exclude[String(x).toLowerCase()] = 1; });
+  var old = document.getElementById('nexo-contact-picker'); if (old) old.remove();
+  var ov = document.createElement('div');
+  ov.id = 'nexo-contact-picker';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:2147483646;display:flex;flex-direction:column;justify-content:flex-end;background:rgba(0,0,0,0.55);';
+  var sheet = document.createElement('div');
+  sheet.style.cssText = 'background:#14152a;color:#fff;border-radius:18px 18px 0 0;max-height:70vh;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
+  var h = document.createElement('div'); h.style.cssText = 'font-size:16px;font-weight:700;margin-bottom:10px;'; h.textContent = opts.title || t('call_add_pick', 'Agregar a la llamada');
+  var list = document.createElement('div'); list.style.cssText = 'overflow:auto;display:flex;flex-direction:column;gap:6px;';
+  var contacts = (vaultLoadContacts() || []).filter(function(c) { var id = (c && c.nexoId || '').toLowerCase(); return id && !exclude[id]; });
+  if (!contacts.length) { var em = document.createElement('div'); em.style.cssText = 'opacity:0.7;padding:12px 4px;'; em.textContent = t('call_add_none', 'No hay contactos para agregar'); list.appendChild(em); }
+  contacts.forEach(function(c) {
+    var row = document.createElement('button');
+    row.style.cssText = 'text-align:left;background:rgba(255,255,255,0.07);border:none;color:#fff;border-radius:12px;padding:12px 14px;font-size:15px;cursor:pointer;';
+    row.textContent = c.name || c.displayName || (c.nexoId || '').toUpperCase();
+    row.addEventListener('click', function(e) { e.stopPropagation(); ov.remove(); if (opts.onPick) opts.onPick((c.nexoId || '').toLowerCase()); });
+    list.appendChild(row);
+  });
+  var cancel = document.createElement('button');
+  cancel.style.cssText = 'margin-top:12px;background:rgba(255,255,255,0.12);border:none;color:#fff;border-radius:12px;padding:12px;font-size:15px;font-weight:600;cursor:pointer;';
+  cancel.textContent = t('misc_cancel', 'Cancelar');
+  cancel.addEventListener('click', function(e) { e.stopPropagation(); ov.remove(); });
+  sheet.appendChild(h); sheet.appendChild(list); sheet.appendChild(cancel);
+  ov.appendChild(sheet);
+  ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
+  (document.body || document.documentElement).appendChild(ov);
+  return ov;
+}
 
 // v9.9.48: "camino rápido": Wi-Fi Direct o la misma red Wi-Fi (lan.js); por ellos fotos, vídeos y archivos grandes
 export function _wdReach(contactId) {
