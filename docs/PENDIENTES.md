@@ -72,6 +72,18 @@ regla «NEXO ID menor manda offer», voz por control `{type:'vf', c:<id tramo>, 
      DIRECTO** (Bluetooth/Wi-Fi), como el diseño (señalización/aviso sí por internet); (e) colgar con ≥1 contestando sigue
      entre los demás hasta quedar 2 y que uno termine. `group_call.js`, `groupcall_ui.js` (aviso `grp_call_missed`), prueba
      `gcall.js`. Batería 90/90.
+  7. **Controles de interfaz + VIDEOLLAMADA de grupo (pedido del dueño 31-10, tras confirmar que las llamadas funcionan):**
+     - ✅ **Silenciar (2853):** `GroupCall.mute(on)` + `muted` en `state()` + botón en `groupcall_ui`. Prueba `gcall.js`.
+     - ⏳ **Videollamada de grupo (próximo build, el grande):** la pantalla de grupo debe ser la INTERFAZ DE VIDEOLLAMADA con la
+       cámara APAGADA por defecto; activar la cámara = pasar a vídeo sin re-llamar (misma llamada). Botones: cámara on/off,
+       girar cámara, silenciar (hecho), agregar (hecho), colgar. Audio por SENSOR DE PROXIMIDAD (auricular si el teléfono está
+       al oído, altavoz si no), como la 1-a-1. Requiere: `call_media.js` capturar/compartir vídeo una vez (como el audio), 
+       `call_group_media.js` difundir vídeo + un `<video>` por tramo (rejilla), `group_call.js` rutear frames de vídeo, 
+       `groupcall_ui.js` rejilla de vídeo + botones. Hacer por incrementos para NO romper el audio de grupo que ya funciona.
+     - ⏳ **Eco (la voz propia vuelve, informe del dueño 31-10):** probable causa: cada tramo se reproduce en su propio
+       AudioContext que la cancelación de eco de la captura compartida no referencia → el eco del otro lado no se cancela.
+       A revisar con las pruebas del dueño (el audio real no se reproduce en el simulador). Posible arreglo: reproducir todos
+       los tramos por una salida que la AEC sí referencie, o reforzar la supresión; se verá al tocar el audio de grupo (vídeo).
 - Tope `GMAX_AUDIO=5`. No toca `calls.js` (1-a-1 sigue igual). Internet/Jump: la SEÑALIZACIÓN/aviso sí (despierta por FCM); la VOZ no (el retraso no sirve para hablar): solo enlace directo (Bluetooth o misma Wi-Fi).
 
 ## Bloque autónomo 28-10 (madrugada→mañana): FCM + archivos por internet + AUDITORÍA SEVERA
