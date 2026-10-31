@@ -39,8 +39,10 @@ function _screen() {
     '<span>🔒</span><span class="gc-e2e"></span></div>' +
     '<div class="gc-title" style="margin-top:18px;font-size:22px;font-weight:700;text-align:center;"></div>' +
     '<div class="gc-status" style="margin-top:6px;font-size:14px;opacity:0.8;"></div>' +
-    '<div class="gc-members" style="margin-top:26px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px;flex:1;overflow:auto;"></div>' +
-    '<div class="gc-buttons" style="display:flex;gap:22px;justify-content:center;padding:14px 0 6px;"></div>';
+    // #138: rejilla de vídeo (mi vista + imagen de cada tramo). Vacía/oculta hasta que alguien enciende la cámara.
+    '<div class="gc-video" style="margin-top:16px;width:100%;max-width:360px;display:none;flex-wrap:wrap;gap:8px;justify-content:center;"></div>' +
+    '<div class="gc-members" style="margin-top:18px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px;flex:1;overflow:auto;"></div>' +
+    '<div class="gc-buttons" style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;padding:14px 0 6px;"></div>';
   (document.body || document.documentElement).appendChild(el);
   return el;
 }
@@ -140,8 +142,44 @@ function _render(st) {
         gcall.addMember(nx).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); });
       } });
     }));
+    // #138 (dueño 31-10): CÁMARA on/off (sin re-llamar: activar la cámara pasa la llamada a vídeo) y GIRAR (delante/detrás).
+    if (st.state === 'active') bt.appendChild(_btn(st.cameraOn ? t('call_camera_off', 'Cámara no') : t('call_camera', 'Cámara'), 'gc-add', function() { var g = _gcall(); if (g) g.camera(!st.cameraOn); }));
+    if (st.state === 'active' && st.cameraOn) bt.appendChild(_btn(t('call_flip', 'Girar'), 'gc-add', function() { var g = _gcall(); if (g && g.flip) g.flip(); }));
     bt.appendChild(_btn(t('call_hangup', 'Colgar'), 'gc-red', function() { if (_gcall()) _gcall().hangup(); }));
   }
+  _renderVideo(st); // #138: rejilla de vídeo (reconciliada, sin recrear los <canvas>/<video> → sin parpadeo)
+}
+
+// #138: coloca/actualiza las baldosas de vídeo SIN recrearlas (si se recrearan en cada evento, la imagen parpadearía).
+// Mi vista propia (si mi cámara está encendida) + la imagen de cada tramo que esté mandando vídeo. Vacía = rejilla oculta.
+function _renderVideo(st) {
+  var grid = document.querySelector('#nexo-gcall-screen .gc-video');
+  var gcall = _gcall();
+  if (!grid) return;
+  if (!gcall || !st || st.state !== 'active') { grid.innerHTML = ''; grid.style.display = 'none'; return; }
+  var me = _me(), want = [], seen = {};
+  if (st.cameraOn && gcall.localVideoEl) { var lv = gcall.localVideoEl(); if (lv) want.push({ key: me, el: lv, label: t('chat_you', 'Tú'), mirror: true }); }
+  (st.legs || []).forEach(function(l) {
+    if (!l || l.state !== 'active') return;
+    var nx = _normId(l.nx);
+    var ce = gcall.remoteVideoEl ? gcall.remoteVideoEl(nx) : null;
+    if (ce) want.push({ key: nx, el: ce, label: _memberName(nx), mirror: false });
+  });
+  want.forEach(function(w) {
+    seen[w.key] = 1;
+    var tile = grid.querySelector('.gc-tile[data-nx="' + w.key + '"]');
+    if (!tile) {
+      tile = document.createElement('div'); tile.className = 'gc-tile'; tile.setAttribute('data-nx', w.key);
+      tile.style.cssText = 'position:relative;width:150px;height:112px;border-radius:12px;overflow:hidden;background:#000;';
+      var lab = document.createElement('span'); lab.className = 'gc-tile-lab';
+      lab.style.cssText = 'position:absolute;left:6px;bottom:4px;font-size:11px;background:rgba(0,0,0,0.55);padding:1px 7px;border-radius:8px;';
+      tile.appendChild(lab); grid.appendChild(tile);
+    }
+    if (w.el.parentNode !== tile) { w.el.style.cssText = 'width:100%;height:100%;object-fit:cover;' + (w.mirror ? 'transform:scaleX(-1);' : ''); tile.insertBefore(w.el, tile.firstChild); }
+    var lb = tile.querySelector('.gc-tile-lab'); if (lb) lb.textContent = w.label;
+  });
+  Array.prototype.slice.call(grid.querySelectorAll('.gc-tile')).forEach(function(tl) { if (!seen[tl.getAttribute('data-nx')]) tl.remove(); });
+  grid.style.display = want.length ? 'flex' : 'none';
 }
 
 // Botón «Llamar al grupo» en la cabecera del chat (solo en chats de grupo)

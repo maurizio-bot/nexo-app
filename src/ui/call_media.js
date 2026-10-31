@@ -126,7 +126,9 @@ export function createCallMedia(opts) {
   var noCapture = !!opts.noCapture; // #128 grupo: instancia que SOLO reproduce (mezcla un tramo), sin micrófono
   var onState = typeof opts.onState === 'function' ? opts.onState : function() {};
   var onNeedKey = typeof opts.onNeedKey === 'function' ? opts.onNeedKey : function() {};
-  var wantVideo = !!opts.video, venc = null, vdec = null, vTimer = null, vN = 0, vIn = 0, vGotKey = false, camOn = true, vcanvas = null, vctx = null;
+  // #138: cameraStart:false = capaz de vídeo pero la cámara NO se abre al arrancar (se enciende luego con camera(true), sin
+  // re-llamar). Por defecto true (la videollamada 1-a-1 abre la cámara al empezar, como siempre).
+  var wantVideo = !!opts.video, camStart = opts.cameraStart !== false, venc = null, vdec = null, vTimer = null, vN = 0, vIn = 0, vGotKey = false, camOn = camStart, vcanvas = null, vctx = null;
   var facing = 'user', forceKey = false, localV = null;
   var vstats = window.NEXO_callVideoStats = { sent: 0, keys: 0, decoded: 0, bytes: 0, frames: 0, keyReq: 0, encErr: 0, decErr: 0 };
   window.NEXO_callAudioStats = { samples: 0, seconds: 0, energy: 0 }; // por llamada
@@ -463,6 +465,8 @@ export function createCallMedia(opts) {
       }).then(function(micOk) {
         var info = { codec: codec === 1 ? 'opus' : 'ulaw', mic: !!micOk, micError: micOk ? '' : micErr, video: false };
         if (stopped || !wantVideo) { if (!wantVideo) setState('none'); return info; }
+        // #138 (grupo): capaz de vídeo pero la cámara empieza apagada; se abre luego con camera(true), sin re-llamar.
+        if (!camStart) { camOn = false; setState('off'); return info; }
         return openCam('').then(function(vok) { info.video = !!vok; return info; });
       });
     },

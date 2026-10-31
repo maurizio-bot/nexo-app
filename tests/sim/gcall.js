@@ -38,14 +38,19 @@ function makeBle(nx) {
   };
 }
 function makeHub(rec) {
+  rec.playedV = rec.playedV || []; // #138: imágenes recibidas por tramo
   return function (opts) {
     const hub = {
-      _onPacket: opts.onPacket, started: false,
+      _onPacket: opts.onPacket, _onVideoPacket: opts.onVideoPacket, started: false, camOn: false, opts: opts,
       start() { hub.started = true; return Promise.resolve({ codec: 'opus' }); },
       stop() { hub.started = false; },
       play(nx, bytes) { rec.played.push({ nx: nx, len: bytes.length }); },
+      playVideo(nx, bytes) { rec.playedV.push({ nx: nx, len: bytes.length }); }, // #138: imagen de un tramo
+      camera(on) { hub.camOn = !!on; },  // #138: encender/apagar MI cámara
+      flip() { hub.flipped = true; return Promise.resolve('user'); }, // #138
       mute(on) { hub.muted = !!on; },  // #dueño 31-10: silenciar la captura compartida
       emit(bytes) { hub._onPacket(bytes); },  // simula salida del micrófono
+      emitVideo(bytes) { if (hub._onVideoPacket) hub._onVideoPacket(bytes); },  // #138: simula imagen de la cámara
     };
     rec.hub = hub; return hub;
   };
@@ -99,6 +104,23 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
   r.silenciar = A.gc.muted === true && recA.hub.muted === true && A.state().muted === true;
   A.mute(false);
   r.reactivar = A.gc.muted === false && recA.hub.muted === false;
+
+  // #138 (dueño 31-10): la CÁMARA en la llamada de GRUPO (sin re-llamar). A enciende la cámara → estado cameraOn y la
+  // captura compartida la enciende; A «saca una imagen» (k:'v') → se difunde (solo Wi-Fi) y B y C la decodifican por tramo.
+  A.camera(true);
+  r.camara_on = A.state().cameraOn === true && recA.hub.camOn === true;
+  recB.playedV = []; recC.playedV = [];
+  recA.hub.emitVideo(new Uint8Array([1, 11, 22, 33, 44]));
+  await sleep(80);
+  r.B_ve_a_A = recB.playedV.some((x) => _n(x.nx) === A_ID);
+  r.C_ve_a_A = recC.playedV.some((x) => _n(x.nx) === A_ID);
+  // La voz (sin kind) sigue yendo al decodificador de AUDIO, no al de vídeo (no se cruzan los flujos).
+  recB.played = []; recB.playedV = [];
+  recA.hub.emit(new Uint8Array([2, 2, 2, 2, 2, 2, 2, 2]));
+  await sleep(60);
+  r.voz_no_es_video = recB.played.some((x) => _n(x.nx) === A_ID) && recB.playedV.length === 0;
+  A.camera(false);
+  r.camara_off = A.state().cameraOn === false && recA.hub.camOn === false;
 
   // Cableado (build 2846, #128): la invariante en la que se apoya ble_messages. Un `vf` cuyo id de tramo NO es de este
   // grupo → onFrame devuelve FALSE (así la app lo deja pasar a la llamada 1-a-1 de calls.js; no se lo traga el grupo).
@@ -198,6 +220,7 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
     r.B_oye_a_A && r.C_oye_a_A && r.A_oye_a_B && r.C_oye_a_B && r.descarta_manipulado &&
     r.onframe_ajeno_false && r.onframe_propio_true && r.parse_ok && r.parse_basura &&
     r.silenciar && r.reactivar &&
+    r.camara_on && r.B_ve_a_A && r.C_ve_a_A && r.voz_no_es_video && r.camara_off &&
     r.C_colgo && r.A_cierra_C && r.B_cierra_C && r.A_sigue_con_B &&
     r.F_suena && r.agregado_malla && r.A_oye_a_F && r.B_oye_a_F && r.no_duplica &&
     r.DE_activa && r.chatId_guardado && r.reconnecting && r.tramo_perdido && r.D_corto && r.corte_empty;
