@@ -69,8 +69,11 @@ const vaultHas = async (p, cid, re) => (await p.win.vaultLoadMessages(cid)).some
   const sheet = A.win.document.getElementById('nexo-group-sheet');
   r.boton_grupo = !!sheet;
   if (!sheet) { console.log('GROUPS ' + JSON.stringify(Object.assign(r, { resultado: 'FALLO' }))); fs.writeFileSync(path.join(__dirname, 'last_logs_groups.txt'), logs.join('\n')); process.exit(1); }
-  const nm = sheet.querySelector('#nexo-group-name'); nm.value = 'Amigos'; nm.dispatchEvent(new A.win.Event('input'));
+  // #dueño 31-10: el botón «Crear grupo» debe habilitarse con SOLO contactos seleccionados (el nombre es OPCIONAL). Antes
+  // exigía nombre y el dueño veía el botón gris aunque hubiera elegido contactos.
   sheet.querySelectorAll('.nexo-pick-row input').forEach((cb) => { cb.checked = true; cb.dispatchEvent(new A.win.Event('change')); });
+  r.boton_sin_nombre = sheet.querySelector('#nexo-group-create').disabled === false;
+  const nm = sheet.querySelector('#nexo-group-name'); nm.value = 'Amigos'; nm.dispatchEvent(new A.win.Event('input'));
   r.texto_boton = sheet.querySelector('#nexo-group-create').textContent;
   click(A.win, sheet.querySelector('#nexo-group-create')); await sleep(500);
   const gid = Object.keys(A.win.bleInterface.groups.list)[0];
@@ -125,7 +128,7 @@ const vaultHas = async (p, cid, re) => (await p.win.vaultLoadMessages(cid)).some
   await openChatWith(A, '👥 Amigos'); await sendText(A, 'ya sin C'); await sleep(4000);
   r.no_se_manda_a_C = !(await vaultHas(A, id(C), /ya sin C/)) && !(await vaultHas(C, gid, /ya sin C/));
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css/.test(l)).slice(0, 5);
-  const ok = r.grupo_en_B && r.grupo_en_C && r.creado_entregado_en_A === true && r.B_conoce_a_C_despues && r.C_conoce_a_B_despues && r.llega_a_A && r.no_leido_A === 1 &&
+  const ok = r.boton_sin_nombre && r.grupo_en_B && r.grupo_en_C && r.creado_entregado_en_A === true && r.B_conoce_a_C_despues && r.C_conoce_a_B_despues && r.llega_a_A && r.no_leido_A === 1 &&
     r.llega_a_C && r.no_va_al_chat_1a1_de_C && r.estado_en_B === 'entregado a todos' && r.burbuja_en_C.some((x) => /^B: hola grupo/.test(x)) && r.largo_llega_a_A && r.largo_llega_a_B &&
     r.sin_sobres_en_1a1 && r.archivo_llega_a_B && r.archivo_llega_a_C && r.archivo_entregado_en_A && r.copias_borradas && r.C_ya_no_lo_tiene && r.A_ve_que_salio && r.B_ve_que_salio && r.no_se_manda_a_C && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
