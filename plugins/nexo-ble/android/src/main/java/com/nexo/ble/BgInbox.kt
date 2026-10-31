@@ -41,6 +41,14 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
             // quién va ('dn'); si no es este teléfono, nada (ni aviso, ni llamada, ni ✓✓, ni buzón)
             val dn = o.optString("dn").lowercase()
             if (mine && NX.matches(dn) && dn != me.lowercase()) return Info(Kind.IGNORE, from, "", false, "")
+            // #dueño 31-10: una oferta de llamada (1-a-1, nexo_call) o una invitación de llamada de GRUPO (nexo_gcall) que
+            // llega como SEÑAL CRUDA (por el buzón de relés / «toque» FCM con la pantalla apagada, no como el sobre type:chat
+            // con cl:1) debe tratarse como LLAMADA (pantalla completa que enciende el teléfono), no como un aviso de mensaje.
+            // Antes se perdía aquí → salía como notificación de texto. Aplica a contactos y a grupos.
+            if (type == "nexo_call" && o.optString("op") == "offer" && NX.matches(from))
+                return Info(Kind.NOTIFY_ONLY, from, o.optString("id").ifEmpty { o.optString("msgId") }, false, "call", true)
+            if (type == "nexo_gcall" && o.optString("op") == "invite" && NX.matches(from))
+                return Info(Kind.NOTIFY_ONLY, from, o.optString("gid").ifEmpty { o.optString("id") }, false, "call", true)
             if (type == "chat" && o.optString("msgId").isNotEmpty() && NX.matches(from)) {
                 val to = o.optString("to").lowercase()
                 // ronda 2763: mensaje de grupo directo: el id del grupo (para el nombre en el aviso)

@@ -149,6 +149,31 @@ function installFetchSpy(win) {
   await sleep(800);
   r.primer_trozo_si_dispara = nWake() === w2 + 1;
 
+  // #130b (dueño 31-10): «con la pantalla apagada una llamada entrante suena y llega una notificación como si fuera un
+  // mensaje; eso está mal». Causa: por internet en segundo plano, la escucha nativa (NetBg) solo miraba el msgId del
+  // sobre y lo sacaba como mensaje. Ahora la app marca el sobre de una OFERTA de llamada con cl:1 y NetBg lo saca como
+  // LLAMADA a pantalla completa. Aquí se comprueba de punta a punta que esa marca viaja en el sobre que abre el que
+  // recibe (y SOLO en ofertas), más que la detección reconoce la oferta 1-a-1 y la invitación de GRUPO (cruda y real).
+  const msgEnv = (mid) => JSON.stringify({ v: 1, type: 'chat', from: idA, to: '', ts: Date.now(), seq: 1, msgId: mid, payload: { text: 'hi' } });
+  const bodies = [];
+  const origDeliver = netB._deliver.bind(netB);
+  netB._deliver = function (nx, o) { bodies.push(o); return origDeliver(nx, o); };
+  const grab = (mid) => bodies.find((b) => b && b.n === mid);
+  if (peerB) peerB._wakeAt = 0;
+  await netA.send(idB, offerEnv('cs' + 'ee33ff')).catch(() => {}); // oferta real (type:chat + cl:1 por fuera)
+  await netA.send(idB, msgEnv('m-normal')).catch(() => {});        // mensaje normal: sin cl
+  await waitFor(() => grab('cs' + 'ee33ff') && grab('m-normal'), 8000);
+  netB._deliver = origDeliver;
+  const offerBody = grab('cs' + 'ee33ff'), msgBody = grab('m-normal');
+  r.sobre_oferta_marca_llamada = !!(offerBody && offerBody.cl === 1 && offerBody.n === 'cs' + 'ee33ff');
+  r.sobre_mensaje_sin_marca = !!(msgBody && msgBody.cl !== 1 && msgBody.n === 'm-normal');
+  // La detección reconoce la invitación de GRUPO cruda (nexo_gcall/invite) y la oferta 1-a-1 cruda (nexo_call/offer),
+  // y NO confunde las señales internas de grupo (gcall/offer entre pares) con una llamada entrante.
+  const jInvite = JSON.stringify({ type: 'nexo_gcall', op: 'invite', gid: 'gc12ab34' });
+  r.detecta_invite_grupo_cruda = netA._isCallOffer(jInvite) && netA._newMsgId(jInvite) === 'gc12ab34';
+  r.detecta_oferta_cruda = netA._isCallOffer(JSON.stringify({ type: 'nexo_call', op: 'offer', id: 'cl77' }));
+  r.gcall_offer_no_es_llamada = !netA._isCallOffer(JSON.stringify({ type: 'nexo_gcall', op: 'offer', gid: 'gc12ab34' }));
+
   // SEC-1 (auditoría 28-10): un evento con created_at en el FUTURO (contacto malicioso, o un relé que reenvía un sobre
   // legítimo cambiándole la fecha) NO debe envenenar lastSeen; si lo hiciera, el filtro `since` saltaría al futuro y B
   // dejaría de recibir CUALQUIER mensaje por internet, para siempre. Se acota a «ahora».
@@ -189,6 +214,8 @@ function installFetchSpy(win) {
     r.toque_llamado && r.toque_con_token_de_B && r.toque_solo_token && r.toque_sin_contenido &&
     r.throttle_no_repite && r.trozo_siguiente_no_dispara && r.primer_trozo_si_dispara &&
     r.llamada_despierta_pese_al_throttle && r.llamada_no_hace_bucle &&
+    r.sobre_oferta_marca_llamada && r.sobre_mensaje_sin_marca &&
+    r.detecta_invite_grupo_cruda && r.detecta_oferta_cruda && r.gcall_offer_no_es_llamada &&
     r.lastSeen_acotado_a_ahora && r.frame_enorme_no_procesado &&
     !r.errores.length;
   r.resultado = ok ? 'OK' : 'FAIL';

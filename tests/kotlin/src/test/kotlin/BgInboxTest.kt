@@ -62,6 +62,15 @@ class BgInboxTest {
         assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("""{"v":2,"t":"f","m":"f2","i":0,"n":9,"d":"x","fr":"sx:abc","dt":"nx99999999","k":"a"}""").kind, "sin mi NEXO ID: como antes")
         // Texto largo oculto (señal de llamada, acción): el primer trozo lleva q:1
         assertTrue(BgInbox.classify("""{"v":2,"t":"c","m":"cs1","i":0,"n":3,"d":"x","fr":"NX12345678","q":1,"k":"a"}""").quiet)
+        // #dueño 31-10: oferta/invitación de llamada como SEÑAL CRUDA (buzón/FCM, pantalla apagada) → «call» (pantalla
+        // completa), no aviso de mensaje. Contacto (nexo_call) y grupo (nexo_gcall).
+        val nc = BgInbox.classify("""{"type":"nexo_call","op":"offer","id":"cl123","from":"nx12345678","k":"a","co":"opus"}""")
+        assertEquals("call", nc.what, "oferta de llamada cruda: pantalla de llamada"); assertTrue(nc.call)
+        val ng = BgInbox.classify("""{"type":"nexo_gcall","op":"invite","gid":"gc123abc","from":"nx12345678","k":"a","roster":[]}""")
+        assertEquals("call", ng.what, "invitación de llamada de grupo cruda: pantalla de llamada"); assertTrue(ng.call)
+        // Otras señales de llamada (accept/leave/end) NO son avisos (no deben sonar como llamada entrante)
+        assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("""{"type":"nexo_call","op":"accept","id":"cl123","from":"nx12345678"}""").kind, "accept: no es llamada entrante")
+        assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("""{"type":"nexo_gcall","op":"leave","gid":"gc123abc","from":"nx12345678"}""").kind, "leave de grupo: no es llamada entrante")
     }
 
     // Ronda 2763: mensaje de grupo directo: el id del grupo (para poner su nombre en el aviso)

@@ -18,7 +18,9 @@ import javax.crypto.spec.SecretKeySpec
 // y abre solo el sobre de la pareja: si el emisor marcó "mensaje nuevo" (n = msgId) avisa con onMessage. El mensaje
 // sigue cifrado de extremo a extremo; lo descifra la app al abrirse (lo recoge de los relés como siempre).
 class NetBg(
-    private val onMessage: (nx: String, name: String, msgId: String) -> Unit,
+    // #130b (dueño 31-10): isCall = el sobre venía marcado como oferta de llamada (cl:1). Con la app en segundo plano o
+    // congelada, el que escucha (NexoBlePlugin) saca la LLAMADA a pantalla completa en vez del aviso de mensaje normal.
+    private val onMessage: (nx: String, name: String, msgId: String, isCall: Boolean) -> Unit,
     private val log: (String) -> Unit = {},
 ) {
     class Contact(val nx: String, val name: String, val kraw: ByteArray)
@@ -229,7 +231,8 @@ class NetBg(
         val o = open(c.kraw, c.nx, me, ev.optString("content")) ?: return
         if (o.optInt("h") == 1) return
         val n = o.optString("n")
-        if (n.isNotEmpty()) { onMessage(c.nx, c.name, n); publishDeliveryAck(c, n) }
+        // #130b: cl:1 = oferta de llamada (1-a-1 o invitación de grupo) → pantalla de llamada, no aviso de mensaje
+        if (n.isNotEmpty()) { onMessage(c.nx, c.name, n, o.optInt("cl") == 1); publishDeliveryAck(c, n) }
     }
 
     // #87 (entrega con la app CERRADA): al reconocer un sobre con un mensaje NUEVO de la pareja, devolvemos su

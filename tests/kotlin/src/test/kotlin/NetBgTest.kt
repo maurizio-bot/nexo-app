@@ -68,7 +68,7 @@ class NetBgTest {
             val kraw = ByteArray(32) { (it * 7 + 3).toByte() }
             val ackKey = ByteArray(32) { (it * 5 + 1).toByte() }   // #87: la clave con la que se firma la confirmación de entrega
             val got = CopyOnWriteArrayList<String>()
-            val bg = NetBg({ nx, name, msgId -> got.add("$nx|$name|$msgId") })
+            val bg = NetBg({ nx, name, msgId, isCall -> got.add("$nx|$name|$msgId" + if (isCall) "|CALL" else "") })
             bg.configure("nxbbbbbbbb", listOf(url), System.currentTimeMillis() - 60000, listOf(NetBg.Contact("nxaaaaaaaa", "Ana", kraw)))
             bg.setAckKeys(mapOf("nxaaaaaaaa" to ackKey))
             bg.start()
@@ -78,12 +78,15 @@ class NetBgTest {
             send("{\"t\":1,\"p\":\"{\\\"t\\\":\\\"a\\\"}\"}")                              // confirmación: no avisa
             send("{\"t\":1,\"p\":\"{\\\"type\\\":\\\"chat\\\",\\\"msgId\\\":\\\"m1\\\"}\",\"n\":\"m1\"}")  // mensaje: avisa
             send("{\"t\":1,\"p\":\"x\",\"n\":\"m2\"}")
+            // #130b (dueño 31-10): una oferta de llamada (sobre marcado cl:1) sale como LLAMADA (pantalla completa), no
+            // como aviso de mensaje. Aplica a 1-a-1 (nexo_call) y a la invitación de grupo (nexo_gcall), que viajan igual.
+            send("{\"t\":1,\"p\":\"x\",\"n\":\"cl9\",\"cl\":1}")
             // Para otro contacto (otra pareja): no se ve
             w.write("{\"kraw\":\"${Secp256k1.hex(ByteArray(32))}\",\"from\":\"nxcccccccc\",\"to\":\"nxbbbbbbbb\",\"body\":{\"t\":1,\"p\":\"x\",\"n\":\"m9\"}}\n"); w.flush()
             val t0 = System.currentTimeMillis()
-            while (got.size < 2 && System.currentTimeMillis() - t0 < 10000) Thread.sleep(100)
+            while (got.size < 3 && System.currentTimeMillis() - t0 < 10000) Thread.sleep(100)
             Thread.sleep(800)
-            assertEquals(listOf("nxaaaaaaaa|Ana|m1", "nxaaaaaaaa|Ana|m2"), got.toList())
+            assertEquals(listOf("nxaaaaaaaa|Ana|m1", "nxaaaaaaaa|Ana|m2", "nxaaaaaaaa|Ana|cl9|CALL"), got.toList())
             // #87: NetBg devolvió la confirmación de ENTREGA (✓✓) de cada mensaje NUEVO, por el buzón del EMISOR (su
             // etiqueta del día), sellada para que solo él la abra y firmada con la clave de la pareja. Ni el saludo ni la
             // confirmación entrante ni el mensaje de otro contacto generan confirmación (solo los que traen msgId).
@@ -104,7 +107,7 @@ class NetBgTest {
                 assertNotNull(body, "la confirmación de entrega no se abre con la clave de la pareja")
                 val a = JSONObject(body!!.getString("p")); acks[a.getString("msgId")] = a
             }
-            assertEquals(setOf("m1", "m2"), acks.keys, "una confirmación de entrega por cada mensaje nuevo (y solo por esos)")
+            assertEquals(setOf("m1", "m2", "cl9"), acks.keys, "una confirmación de entrega por cada mensaje/oferta nuevos (y solo por esos)")
             for ((msgId, a) in acks) {
                 assertEquals("ack", a.getString("type"))
                 assertEquals("nxbbbbbbbb", a.getString("from"))
