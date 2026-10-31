@@ -7,12 +7,17 @@
 function makeMk(log) {
   return function (o) {
     var inst = {
-      opts: o, noCapture: !!o.noCapture, started: false, stopped: false, muted: null, woke: false, played: [],
+      opts: o, noCapture: !!o.noCapture, started: false, stopped: false, muted: null, woke: false, played: [], playedV: [],
+      cameraArg: null, flipped: false, media: { localVideo: { tag: 'localv' }, remoteCanvas: { tag: 'rc' } },
       start: function () { inst.started = true; return Promise.resolve({ codec: 'opus' }); },
       stop: function () { inst.stopped = true; },
       mute: function (on) { inst.muted = on; },
       wake: function () { inst.woke = true; },
       play: function (bytes) { inst.played.push(bytes); },
+      playVideo: function (bytes) { inst.playedV.push(bytes); }, // #138
+      camera: function (on) { inst.cameraArg = on; }, // #138
+      flip: function () { inst.flipped = true; return Promise.resolve('user'); }, // #138
+      remoteLive: function () { return true; },
     };
     log.push(inst);
     return inst;
@@ -64,9 +69,35 @@ function makeMk(log) {
   hub.play('nxd', new Uint8Array([99]));
   r.stop_no_crea = log.length === 4;
 
+  // #138 vídeo de grupo: un hub CAPAZ de vídeo (cámara apagada por defecto); encender la cámara, difundir mi imagen y
+  // recibir la de un tramo. Hub nuevo para no mezclar con el de audio de arriba.
+  const logV = [];
+  const videoPackets = [];
+  const hubV = createGroupMedia({ codecs: 'opus,ulaw', video: true, onPacket: function () {}, onVideoPacket: function (b) { videoPackets.push(b); }, _mk: makeMk(logV) });
+  // La captura compartida es capaz de vídeo pero arranca con la cámara APAGADA (cameraStart:false).
+  r.cap_video_capaz = logV[0].opts.video === true && logV[0].opts.cameraStart === false;
+  await hubV.start();
+  // Encender MI cámara pasa por la captura compartida (sin re-llamar).
+  hubV.camera(true);
+  r.camara_enciende = logV[0].cameraArg === true;
+  // La cámara saca una imagen codificada → el hub la DIFUNDE (la malla la manda a los tramos, por Wi-Fi).
+  logV[0].opts.onVideoPacket(new Uint8Array([1, 9, 9]));
+  r.difunde_video = videoPackets.length === 1 && videoPackets[0][0] === 1;
+  // Imagen recibida de un tramo → se decodifica en el decodificador de ESE tramo (no en la captura).
+  hubV.playVideo('nxb', new Uint8Array([7]));
+  r.video_por_tramo = logV.length === 2 && logV[1].noCapture === true && logV[1].playedV.length === 1;
+  // Voltear cámara (delante/detrás) pasa por la captura.
+  await hubV.flip();
+  r.flip_ok = logV[0].flipped === true;
+  // Apagar la cámara.
+  hubV.camera(false);
+  r.camara_apaga = logV[0].cameraArg === false;
+  hubV.stop();
+
   const ok = r.cap_es_captura && r.start_abre_micro && r.difunde && r.un_decoder_por_tramo &&
     r.decoder_reutilizado && r.decoder_arranca && r.mute_solo_captura && r.drop_cierra &&
-    r.drop_recrea && r.stop_todo && r.stop_no_crea;
+    r.drop_recrea && r.stop_todo && r.stop_no_crea &&
+    r.cap_video_capaz && r.camara_enciende && r.difunde_video && r.video_por_tramo && r.flip_ok && r.camara_apaga;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('GCALLMEDIA ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);

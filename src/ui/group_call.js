@@ -57,7 +57,7 @@ export class GroupCall {
   state() {
     var g = this.gc; if (!g) return null;
     var legs = []; g.legs.forEach(function(l, nx) { legs.push({ nx: nx, state: l.state, talking: !!l.talking, reconnecting: !!l.reconnecting }); });
-    return { gid: g.gid, dir: g.dir, state: g.state, video: !!g.video, muted: !!g.muted, legs: legs, members: Array.from(g.roster), chatId: g.chatId || '' };
+    return { gid: g.gid, dir: g.dir, state: g.state, video: !!g.video, cameraOn: !!g.cameraOn, muted: !!g.muted, legs: legs, members: Array.from(g.roster), chatId: g.chatId || '' };
   }
   _set(o) { if (!this.gc) return; if (o) Object.assign(this.gc, o); _emit('nexo:gcall', this.state()); }
 
@@ -143,6 +143,25 @@ export class GroupCall {
     this._set(null);
   }
 
+  // #138 (dueño 31-10): encender/apagar MI cámara en la llamada de grupo SIN re-llamar (la interfaz ya es de vídeo). El hub
+  // comparte una sola captura; al encenderla, mi imagen se difunde a los tramos (por Wi-Fi) y los demás la ven.
+  camera(on) {
+    var g = this.gc; if (!g) return;
+    g.cameraOn = !!on;
+    if (g.hub && g.hub.camera) { try { g.hub.camera(!!on); } catch (e) {} }
+    this._set(null);
+  }
+
+  // Cámara de delante / de detrás (igual que la 1-a-1); devuelve una promesa con la orientación final.
+  flip() {
+    var g = this.gc; if (!g || !g.hub || !g.hub.flip) return Promise.resolve();
+    try { return Promise.resolve(g.hub.flip()).catch(function() {}); } catch (e) { return Promise.resolve(); }
+  }
+
+  // #138: elementos de vídeo para la rejilla (los coloca groupcall_ui.js): mi vista propia y la imagen de cada tramo.
+  localVideoEl() { var g = this.gc; return (g && g.hub && g.hub.localVideo) ? g.hub.localVideo() : null; }
+  remoteVideoEl(nx) { var g = this.gc; return (g && g.hub && g.hub.remoteCanvas) ? g.hub.remoteCanvas(_nid(nx)) : null; }
+
   // #130 (dueño 31-10): AGREGAR un contacto a una llamada de grupo EN CURSO. Lo puede hacer cualquier participante. Al nuevo
   // se le invita con el roster y la clave de grupo actuales y la marca late:1 (para que, al entrar, abra su tramo con TODOS
   // los que ya estaban; ellos no van a iniciar hacia él). Los que ya estaban abren su tramo con el nuevo al llegarles su
@@ -173,10 +192,16 @@ export class GroupCall {
     if (self.mediaHubFactory) {
       try {
         g.hub = self.mediaHubFactory({
-          codecs: 'opus,ulaw', video: !!g.video,
+          // #138 (dueño 31-10): TODA llamada de grupo es CAPAZ de vídeo pero empieza con la cámara apagada; activar la
+          // cámara pasa a vídeo sin re-llamar (la interfaz es la de videollamada). El vídeo se difunde por `onVideoPacket`.
+          codecs: 'opus,ulaw', video: true,
           onPacket: function(bytes) { self._broadcast(bytes); },
+          onVideoPacket: function(bytes) { self._broadcastVideo(bytes); },
         });
-        if (g.hub && g.hub.start) Promise.resolve(g.hub.start()).catch(function(e) { console.warn('[GCALL] micrófono: ' + (e && e.message)); });
+        if (g.hub && g.hub.start) Promise.resolve(g.hub.start()).then(function() {
+          // Si se pidió videollamada de grupo, la cámara arranca encendida; si no, apagada (se enciende con el botón).
+          if (g.video && g.hub && g.hub.camera) { g.cameraOn = true; try { g.hub.camera(true); } catch (e) {} self._set(null); }
+        }).catch(function(e) { console.warn('[GCALL] micrófono: ' + (e && e.message)); });
       } catch (e) { console.warn('[GCALL] sin audio: ' + (e && e.message)); }
     }
     self._watch = setInterval(function() { self._tick(); }, 1000);
@@ -210,19 +235,29 @@ export class GroupCall {
     });
   }
 
-  _sendTo(l, bytes) {
+  // #138: difundir MI imagen (vídeo ya codificado) a cada tramo activo (como _broadcast pero marcado kind 'v')
+  _broadcastVideo(bytes) {
+    var self = this, g = self.gc; if (!g || g.state !== 'active' || !g.cryptoKey) return;
+    g.legs.forEach(function(l) { if (l.state === 'active') self._sendTo(l, bytes, 'v'); });
+  }
+
+  _sendTo(l, bytes, kind) {
     var self = this, g = self.gc, me = self._nidSelf();
     var link = self._link(l.nx);
     // #dueño 31-10: la VOZ va SOLO por enlace DIRECTO (Bluetooth o misma Wi-Fi). Por los relés de internet (net:) el retraso
     // es de segundos: no sirve para hablar y solo inunda el relé. Sin enlace directo, el tramo espera a que vuelva (no hay voz).
     if (!link || String(link).indexOf('net:') === 0) return;
-    var seq = l.sendSeq++;
+    // #138: el VÍDEO (kind 'v', ~300 kb/s) solo por Wi-Fi (lan:); por Bluetooth no cabe (igual que la videollamada 1-a-1).
+    if (kind === 'v' && String(link).indexOf('lan:') !== 0) return;
+    // nº de secuencia propio por tipo: la voz y el vídeo no comparten contador (ni la marca anti-repetición del receptor)
+    var seq = kind === 'v' ? (l.sendVSeq = (l.sendVSeq || 0) + 1) : l.sendSeq++;
     var iv = crypto.getRandomValues(new Uint8Array(12));
-    // AAD: gid|emisor|nº → una voz de un par no se puede hacer pasar por otro
-    var ad = new TextEncoder().encode(g.gid + '|' + me + '|' + seq);
+    // AAD: gid|emisor|<tipo>nº → una voz/imagen de un par no se puede hacer pasar por otro (voz = tipo vacío, compat. 2852)
+    var ad = new TextEncoder().encode(g.gid + '|' + me + '|' + (kind || '') + seq);
     crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: ad }, g.cryptoKey, bytes).then(function(ct) {
       var out = new Uint8Array(12 + ct.byteLength); out.set(iv, 0); out.set(new Uint8Array(ct), 12);
       var pk = { type: 'vf', c: l.id, s: seq, d: _b64GC(out) };
+      if (kind) pk.k = kind;
       return self.ble._sendMessageNative(link, JSON.stringify(pk), null);
     }).catch(function() {});
   }
@@ -233,15 +268,18 @@ export class GroupCall {
     if (!g || g.state !== 'active' || typeof p.d !== 'string') return false;
     var leg = null; g.legs.forEach(function(l) { if (l.id === p.c) leg = l; });
     if (!leg || !g.cryptoKey) return false;
+    var k = p.k || '';
+    if (k && k !== 'v') return true; // en grupo solo se añade el vídeo ('v'); otros kinds de la 1-a-1 no se usan aquí
     var raw; try { raw = _unb64GC(p.d); } catch (e) { return true; }
     if (raw.length < 29) return true;
-    // AAD con el emisor = el par de ese tramo
-    var ad = new TextEncoder().encode(g.gid + '|' + leg.nx + '|' + p.s);
+    // AAD con el emisor = el par de ese tramo y el tipo (voz = vacío; vídeo = 'v')
+    var ad = new TextEncoder().encode(g.gid + '|' + leg.nx + '|' + k + p.s);
     crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.subarray(0, 12), additionalData: ad }, g.cryptoKey, raw.subarray(12)).then(function(pt) {
       if (self.gc !== g) return;
-      var sk = p.s; leg.seen = leg.seen || new Set();
+      var sk = (k || 'a') + p.s; leg.seen = leg.seen || new Set(); // voz y vídeo numeran aparte: la marca incluye el tipo
       if (leg.seen.has(sk)) return; leg.seen.add(sk); if (leg.seen.size > 1000) leg.seen.delete(leg.seen.values().next().value);
       leg.lastRx = Date.now();
+      if (k === 'v') { if (g.hub && g.hub.playVideo) g.hub.playVideo(leg.nx, new Uint8Array(pt)); return; } // imagen del par
       if (pt.byteLength <= 2) return; // «sigo aquí» sin voz
       if (g.hub && g.hub.play) g.hub.play(leg.nx, new Uint8Array(pt), p.s); // mezcla: el hub reproduce por tramo
     }).catch(function() {});
