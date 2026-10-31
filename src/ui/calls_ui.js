@@ -349,8 +349,10 @@ function _isBtLink(nx) {
 
 function _linkText(nx) {
   var calls = _calls(), l = calls && typeof calls._link === 'function' ? calls._link(nx) : null;
-  return l ? (l.indexOf('lan:') === 0 ? t('call_via_wifi', 'por Wi-Fi') : t('call_via_bt', 'por Bluetooth')) : '';
+  return l ? (l.indexOf('lan:') === 0 ? t('call_via_wifi', 'por Wi-Fi') : l.indexOf('net:') === 0 ? t('call_via_internet', 'por internet') : t('call_via_bt', 'por Bluetooth')) : '';
 }
+// #dueño: al cerrarse la llamada cortada, volver al chat del contacto donde se hizo
+function _openChatOf(nx) { try { var b = _bi(); if (b && typeof b.openChat === 'function') b.openChat(_normId(nx)).catch(function() {}); } catch (e) {} }
 
 function _render(st) {
   var calls = _calls();
@@ -362,9 +364,20 @@ function _render(st) {
       old.classList.remove('nc-live', 'nc-hide', 'nc-waiting');
       var s0 = old.querySelector('.call-status');
       if (s0 && st) { s0.classList.remove('nc-warn'); s0.textContent = st.reason === 'busy' ? t('call_end_busy', 'Ocupado') : st.reason === 'rejected' ? t('call_end_rejected', 'Rechazada') : st.reason === 'unanswered' ? t('call_end_no_answer', 'No contesta') : st.reason === 'lost' ? t('call_end_lost', 'Se cortó') : st.reason === 'missed' ? t('call_end_missed', 'Llamada perdida') : t('call_end_finished', 'Llamada terminada') + (st.seconds ? ' · ' + _fmt(st.seconds) : ''); }
-      old.querySelector('.call-buttons').innerHTML = '';
       Array.prototype.forEach.call(old.querySelectorAll('.call-remote-video, .call-local-video'), function(n) { n.remove(); });
-      clearTimeout(_rmTimer); _rmTimer = setTimeout(function() { _rmTimer = null; old.remove(); }, 1400);
+      var bt0 = old.querySelector('.call-buttons'); bt0.innerHTML = '';
+      // #dueño: si se CORTÓ por mala conexión ('lost'), la pantalla da 5 s para «Volver a llamar» y luego se cierra y
+      // vuelve al chat del contacto donde se hizo la llamada. Cualquier otro final se quita en 1,4 s como siempre.
+      if (st && st.reason === 'lost') {
+        var lnx = st.nx, lvideo = !!st.video;
+        bt0.appendChild(_btn('phone', t('call_call_again', 'Volver a llamar'), 'call-again', function() {
+          var c2 = _calls(); if (!c2) return; clearTimeout(_rmTimer); _rmTimer = null;
+          c2.start(lnx, lvideo).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); });
+        }, 'nc-green'));
+        clearTimeout(_rmTimer); _rmTimer = setTimeout(function() { _rmTimer = null; old.remove(); _openChatOf(lnx); }, 5000);
+      } else {
+        clearTimeout(_rmTimer); _rmTimer = setTimeout(function() { _rmTimer = null; old.remove(); }, 1400);
+      }
     }
     _render._modeFor = null; _speaker = false; _pip = { swapped: false, corner: 'tr' };
     _audioMode(false);
@@ -406,10 +419,13 @@ function _render(st) {
     _stopTone();
     var upd = function() {
       var cur = (calls && calls.state()) || st, dur = _fmt(Math.max(0, Math.round((Date.now() - (st.startedAt || Date.now())) / 1000)));
-      var weak = cur.lastRx && Date.now() - cur.lastRx > 3000;
-      status.textContent = weak ? t('call_unstable', 'Conexión inestable…') : dur;
-      status.classList.toggle('nc-warn', !!weak);
-      mini.textContent = name + ' · ' + (weak ? t('call_unstable', 'Conexión inestable…') : dur);
+      // #dueño (internet): mala conexión → «Reconectando…» (lo marca calls.js); antes de eso, «Conexión inestable…»
+      var recon = !!cur.reconnecting;
+      var weak = !recon && cur.lastRx && Date.now() - cur.lastRx > 3000;
+      var slabel = recon ? t('call_reconnecting', 'Reconectando…') : weak ? t('call_unstable', 'Conexión inestable…') : dur;
+      status.textContent = slabel;
+      status.classList.toggle('nc-warn', recon || !!weak);
+      mini.textContent = name + ' · ' + slabel;
       var via2 = _linkText(st.nx);
       lock.textContent = t('call_e2e', 'Cifrada de extremo a extremo') + (via2 ? ' · ' + via2 : '');
       if (st.video) {

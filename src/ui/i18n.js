@@ -226,8 +226,8 @@ var STRINGS = {
   call_btn_call_title: { es: "Llamar", it: "Chiama", en: "Call" },
   call_btn_video_title: { es: "Videollamada", it: "Videochiamata", en: "Video call" },
   call_err_already: { es: "Ya hay una llamada", it: "C'è già una chiamata in corso", en: "There's already a call in progress" },
-  call_err_need_near: { es: "Para llamar hace falta tener al contacto cerca (Bluetooth) o en el mismo Wi-Fi", it: "Per chiamare devi avere il contatto vicino (Bluetooth) o sulla stessa rete Wi-Fi", en: "To call, the contact must be nearby (Bluetooth) or on the same Wi-Fi" },
-  call_err_need_wifi_video: { es: "Para una videollamada hace falta estar en el mismo Wi-Fi (por Bluetooth solo voz)", it: "Per una videochiamata dovete essere sulla stessa rete Wi-Fi (via Bluetooth solo voce)", en: "A video call requires being on the same Wi-Fi (via Bluetooth, voice only)" },
+  call_err_need_near: { es: "Para llamar hace falta Bluetooth, Wi-Fi o internet con el contacto", it: "Per chiamare serve Bluetooth, Wi-Fi o internet con il contatto", en: "To call you need Bluetooth, Wi-Fi or internet with the contact" },
+  call_err_need_wifi_video: { es: "Para una videollamada hace falta Wi-Fi o internet (por Bluetooth solo voz)", it: "Per una videochiamata serve Wi-Fi o internet (via Bluetooth solo voce)", en: "A video call needs Wi-Fi or internet (via Bluetooth, voice only)" },
   call_log_video: { es: "🎥 Videollamada", it: "🎥 Videochiamata", en: "🎥 Video call" },
   call_log_voice: { es: "📞 Llamada", it: "📞 Chiamata", en: "📞 Call" },
   call_log_missed: { es: " perdida", it: " persa", en: " missed" },
@@ -239,6 +239,9 @@ var STRINGS = {
   call_voice_mic_not_found: { es: "No se encontró el micrófono del teléfono", it: "Microfono del telefono non trovato", en: "Phone's microphone not found" },
   call_via_wifi: { es: "por Wi-Fi", it: "tramite Wi-Fi", en: "via Wi-Fi" },
   call_via_bt: { es: "por Bluetooth", it: "tramite Bluetooth", en: "via Bluetooth" },
+  call_via_internet: { es: "por internet", it: "tramite internet", en: "via internet" },
+  call_reconnecting: { es: "Reconectando…", it: "Riconnessione…", en: "Reconnecting…" },
+  call_call_again: { es: "Volver a llamar", it: "Richiama", en: "Call again" },
 
   // Multimedia (camara, video, archivos, ubicacion, cobro, compartir) - Fase 2d
   media_cam_no_record: { es: "Este teléfono no permite grabar vídeo aquí", it: "Questo telefono non può registrare video qui", en: "This phone can't record video here" },
