@@ -403,6 +403,10 @@ export class NetLink {
     // Build 2837 (pedido del dueño): una oferta de llamada/videollamada también despierta — tiene que SONAR aunque el
     // otro esté dormido en ahorro de batería (antes solo despertaban los mensajes de texto/archivos).
     else if (o && o.type === 'nexo_call' && o.op === 'offer' && typeof o.id === 'string') id = o.id;
+    // #130b (dueño 31-10): una INVITACIÓN a una llamada de GRUPO (nexo_gcall/invite) también despierta y suena como
+    // llamada. La invitación REAL va type:'chat' con cl:1 por fuera (sendChatMessage); se acepta también la cruda por si
+    // algún camino la mandara sin sobre (p. ej. el buzón directo de group_call._signal).
+    else if (o && o.type === 'nexo_gcall' && o.op === 'invite' && typeof o.gid === 'string') id = o.gid;
     else if (o && (o.t === 'c' || o.t === 'f') && o.i === 0 && !o.hf && typeof o.m === 'string') id = o.m;
     if (!id) return null;
     var quiet = this.ble && this.ble._quietOut;
@@ -414,8 +418,8 @@ export class NetLink {
   // nativo en BgInbox); la oferta va cifrada dentro, así que NO se puede mirar «nexo_call» en el texto. Se acepta
   // también la oferta cruda (type:'nexo_call') por si algún camino la mandara sin sobre. Barato: guarda antes de parsear.
   _isCallOffer(p) {
-    if (typeof p !== 'string' || (p.indexOf('"cl":1') < 0 && p.indexOf('nexo_call') < 0)) return false;
-    try { var o = JSON.parse(p); return !!(o && (o.cl === 1 || (o.type === 'nexo_call' && o.op === 'offer'))); } catch (e) { return false; }
+    if (typeof p !== 'string' || (p.indexOf('"cl":1') < 0 && p.indexOf('nexo_call') < 0 && p.indexOf('nexo_gcall') < 0)) return false;
+    try { var o = JSON.parse(p); return !!(o && (o.cl === 1 || (o.type === 'nexo_call' && o.op === 'offer') || (o.type === 'nexo_gcall' && o.op === 'invite'))); } catch (e) { return false; }
   }
 
   // La parte nativa escucha los relés con la app en segundo plano (NetBg.kt): se le da lo justo para reconocer los
@@ -505,7 +509,11 @@ export class NetLink {
     var pair = await this._pair(nx, c.publicKey);
     var body = { t: Date.now(), w: this.wifi ? 1 : 0 };
     if (opts && opts.hello) { body.h = 1; if (this.tor.ready && this.tor.onion) { body.o = this.tor.onion; body.op = this.tor.port; } if (this.fcmToken) body.f = this.fcmToken; }
-    else { body.p = String(content); var nid = this._newMsgId(body.p); if (nid) body.n = nid; var callOffer = nid ? this._isCallOffer(body.p) : false; }
+    // #130b (dueño 31-10): una oferta de llamada/videollamada (1-a-1 o invitación de grupo) marca el sobre con cl:1, para
+    // que la escucha nativa de internet en segundo plano (NetBg) la saque como LLAMADA a pantalla completa (enciende el
+    // teléfono, Contestar/Rechazar), no como un aviso de mensaje. El síntoma del dueño era justo ese: con la pantalla
+    // apagada sonaba y llegaba «un mensaje nuevo» en vez de la pantalla de llamada.
+    else { body.p = String(content); var nid = this._newMsgId(body.p); if (nid) body.n = nid; var callOffer = nid ? this._isCallOffer(body.p) : false; if (callOffer) body.cl = 1; }
     var iv = _rnd(12);
     var ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: _utf8('NEXO-NET|' + me + '|' + nx) }, pair.aes, _utf8(JSON.stringify(body))));
     var b64 = _b64(_cat(iv, ct));

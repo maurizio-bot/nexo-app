@@ -2538,10 +2538,18 @@ class NexoBlePlugin : Plugin() {
         // Ronda 2774 (el dueño: con la pantalla apagada no llegan por Wi-Fi/internet): al recibir por internet en segundo
         // plano se renueva el wakelock (rxWake), igual que por Bluetooth y Wi-Fi, para que dé tiempo a avisar antes de que
         // el teléfono vuelva a dormir.
-        netBgShared ?: NetBg({ nx, name, msgId ->
+        netBgShared ?: NetBg({ nx, name, msgId, isCall ->
             if (appInBackground) rxWake()
-            nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): aviso de mensaje nuevo por internet")
-            MsgNotifier.get(context).message(nx, name, msgId, "")
+            // #130b (dueño 31-10): una oferta de llamada/videollamada que llega por internet con la app en segundo plano o
+            // congelada tiene que salir a PANTALLA COMPLETA (enciende el teléfono, Contestar/Rechazar), como la 1-a-1 por
+            // Bluetooth y como las llamadas de grupo. Antes salía como «mensaje nuevo» porque NetBg solo miraba el msgId.
+            if (isCall) {
+                nlog()?.add("INFO", "NET", "oferta de llamada de $nx por internet (msgId $msgId): pantalla de llamada")
+                MsgNotifier.get(context).incomingCall(nx, name, false, msgId)
+            } else {
+                nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): aviso de mensaje nuevo por internet")
+                MsgNotifier.get(context).message(nx, name, msgId, "")
+            }
         }, { nlog()?.add("INFO", "NET", it); Log.i("NEXO_NET", it) }).also { netBgShared = it }
     }
 

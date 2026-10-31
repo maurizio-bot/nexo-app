@@ -125,10 +125,38 @@ function _refreshGroupButton() {
   var b = document.getElementById('nexo-gcall-btn'); if (b) b.style.display = show;
 }
 
+function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
+function _clearCallNotif() { var pl = _plugin(); if (pl && typeof pl.clearCall === 'function') pl.clearCall().catch(function() {}); }
+
+// #dueño 31-10: una llamada de grupo entrante con la app en segundo plano/pantalla apagada tiene que SONAR y salir a
+// pantalla completa (contestar/rechazar), igual que la 1-a-1. Antes la pantalla de grupo solo aparecía con la app abierta.
+// Con la app oculta, se posta el aviso nativo de LLAMADA (CallStyle, full-screen intent que enciende la pantalla).
+function _notifyGroupIncoming(ring) {
+  if (typeof document === 'undefined' || document.visibilityState !== 'hidden') return;
+  var pl = _plugin(), gc = _gcall(), st = gc && gc.state ? gc.state() : null;
+  if (!pl || !st || st.state !== 'ringing' || typeof pl.notifyCall !== 'function') return;
+  var host = (ring && ring.from) || st.host || '';
+  pl.notifyCall({ chatId: host, name: _memberName(host), video: !!st.video, offerId: (ring && ring.gid) || st.gid || '' }).catch(function() {});
+}
+
+// «Contestar»/«Rechazar» tocados en el aviso nativo (pantalla de bloqueo): solo si hay una llamada de GRUPO sonando.
+function _applyGroupCallAction(r) {
+  var gc = _gcall(); var st = gc && gc.state ? gc.state() : null;
+  if (!st || st.state !== 'ringing') return;
+  if (r && (r.answer || r.answerOffer)) { try { gc.accept(); } catch (e) {} }
+  else if (r && (r.declined || r.declinedOffer)) { try { gc.reject(); } catch (e) {} }
+}
+
 export function installGroupCallUi() {
   _installGroupButton();
-  window.addEventListener('nexo:gcall', function(e) { _render(e && e.detail); });
-  window.addEventListener('nexo:gcallRing', function() { var gc = _gcall(); if (gc && gc.state) _render(gc.state()); });
-  window.addEventListener('nexo:gcallEnded', function() { _remove(); });
+  window.addEventListener('nexo:gcall', function(e) {
+    var st = e && e.detail;
+    if (!st || st.state === 'active') _clearCallNotif(); // contestada/terminada: fuera el aviso de llamada entrante
+    _render(st);
+  });
+  window.addEventListener('nexo:gcallRing', function(e) { var gc = _gcall(); _render(gc && gc.state ? gc.state() : null); _notifyGroupIncoming(e && e.detail); });
+  window.addEventListener('nexo:gcallEnded', function() { _clearCallNotif(); _remove(); });
   window.addEventListener('nexo:ble:openChat', function() { setTimeout(_refreshGroupButton, 0); });
+  // #dueño: contestar/rechazar la llamada de grupo desde el aviso nativo (también para grupos, como la 1-a-1)
+  try { var pl = _plugin(); if (pl && typeof pl.addListener === 'function') pl.addListener('onCallAction', function(r) { setTimeout(function() { _applyGroupCallAction(r); }, 300); }); } catch (e) {}
 }

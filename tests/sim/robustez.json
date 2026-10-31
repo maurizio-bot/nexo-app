@@ -602,6 +602,10 @@
    },
    "modos": [
     {
+     "fallo": "2849 (#130b, dueño 31-10): una llamada/videollamada entrante por INTERNET con la app en segundo plano o congelada salía como aviso de mensaje en vez de a pantalla completa (NetBg solo miraba el msgId del sobre; ahora la oferta marca cl:1 → incomingCall). Contactos y grupos",
+     "prueba": "FCM «despertador»"
+    },
+    {
      "fallo": "No leídos y notificaciones",
      "prueba": "no leídos y notificaciones"
     },

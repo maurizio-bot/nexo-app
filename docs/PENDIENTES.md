@@ -456,6 +456,18 @@ Plan sin servidor (orden de impacto), a cerrar con el diagnóstico de los dos te
    (CallStyle/#1, pantalla completa). Prueba Kotlin `BgInboxTest` ampliada. Lo confirma el dueño en los teléfonos. El
    emisor ya mantiene la oferta "caliente" (2837 + 2841: la llamada pide el «toque» FCM con su propio throttle, aparte
    del de textos, para despertar sí o sí). (Si NetBg está muerto, no suena — igual que Jami/SimpleX.)
+   - ✅ **Ampliación 2849 (#130b, informe del dueño 31-10: «a pantalla apagada suena y llega una notificación como si fuera
+     un mensaje; eso está mal»):** faltaba un camino. La 2841 arregló `BgInbox.classify` (oferta que llega como sobre
+     `type:chat` con `cl:1`), pero la oferta que llega por el **buzón de los relés** (internet) la procesa `NetBg`, que **no
+     pasa por `classify`**: solo leía el marcador `n` (msgId) del sobre y la sacaba con `MsgNotifier.message(...)` → aviso de
+     mensaje, nunca `incomingCall`. Ahora la app marca el sobre de una oferta con `cl:1` (`net_link.js` `send`;
+     `_isCallOffer`/`_newMsgId` reconocen `nexo_call/offer` y la invitación de grupo `nexo_gcall/invite`) y `NetBg` lo lee y
+     la saca a pantalla completa (CallStyle), igual que por Bluetooth. **Contactos y grupos** (la invitación de grupo viaja
+     igual). Paridad de la pantalla de grupo con la 1-a-1 (aviso nativo con la app viva en segundo plano, `groupcall_ui.js`);
+     `BgInbox.classify` reconoce además, defensivo, la señal cruda `nexo_call`/`nexo_gcall`. Pruebas: `fcmwake.js` (el sobre
+     de la oferta lleva `cl:1` de extremo a extremo y el del mensaje no), Kotlin `NetBgTest` (`cl:1`→llamada) y `BgInboxTest`.
+     Batería 90/90. Lo confirma el dueño en los teléfonos (recordarle el permiso Android 14 «Llamadas a pantalla completa» +
+     «Funcionar en segundo plano»; si NetBg/FCM no viven, no suena).
 3. **Red de seguridad WorkManager (~15 min)**: si NetBg no vive, despertar, reconectar, bajar el buzón y avisar (sirve
    para mensajes en ≤15 min, no para llamadas).
 4. (Opcional, decisión del dueño) **Fase 4**: montar/confiar un puente de push Nostr→FCM/UnifiedPush = lo único que daría
