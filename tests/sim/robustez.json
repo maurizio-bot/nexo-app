@@ -58,6 +58,10 @@
     {
      "fallo": "Ráfaga de arranques de escaneo superaba el límite de Android (5/30 s) y el sistema dejaba de dar resultados sin avisar (2838: compuerta global que difiere el arranque del usuario si la ventana está llena)",
      "prueba": "VOPR concierto"
+    },
+    {
+     "fallo": "2852: «escaneo lento otra vez... debería ser instantáneo» (dueño 31-10). Un respaldo Fénix de FONDO sobre un enlace degradado (MTU 23 «ready» pero lentísimo) daba _transferActive()=true hasta 15 min y el bucle de re-búsqueda saltaba su turno (y _stopAutoScan lo paraba al arrancar) → escaneo de contactos PARADO. 2854: un respaldo Fénix ya no pausa el escaneo; una foto/archivo que el usuario espera sí lo pausa como antes",
+     "prueba": "escaneo lento por respaldo FÉNIX"
     }
    ],
    "debiles": [

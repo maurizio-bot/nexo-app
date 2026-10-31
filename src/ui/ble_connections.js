@@ -262,8 +262,12 @@ export const BLE_CONNECTION_METHODS = {
     var busy = false, now = Date.now();
     // v6.2.0: solo si el otro sigue confirmando (si cerró la app a mitad, el flujo sigue vivo hasta su
     // tiempo máximo y sin re-búsqueda no se le volvía a encontrar para continuar)
-    if (ack.outgoingStreams) ack.outgoingStreams.forEach(function(st) { if (st && st.type === 'file' && !st.aborted && now - (st.lastAckAt || 0) < 10000) busy = true; });
-    if (!busy && ack.incomingBuffers) ack.incomingBuffers.forEach(function(b) { if (b && !b.isChat && now - (b.lastActivity || 0) < 5000) busy = true; });
+    // #129 (dueño 31-10, «escaneo lento»): un respaldo FÉNIX (type:'fenix') es tarea de FONDO y nadie lo espera. Sobre un
+    // enlace degradado (MTU 23 «ready» pero lentísimo, «Cola de escritura llena») arrastra hasta 15 min y dejaba el escaneo
+    // de contactos PARADO todo ese rato. Solo las transferencias que el usuario sí espera (foto/vídeo/archivo) pausan el
+    // escaneo; un respaldo Fénix no debe frenar el descubrimiento de contactos.
+    if (ack.outgoingStreams) ack.outgoingStreams.forEach(function(st) { if (st && st.type === 'file' && !st.aborted && !(st.meta && st.meta.type === 'fenix') && now - (st.lastAckAt || 0) < 10000) busy = true; });
+    if (!busy && ack.incomingBuffers) ack.incomingBuffers.forEach(function(b) { if (b && !b.isChat && !(b.meta && b.meta.type === 'fenix') && now - (b.lastActivity || 0) < 5000) busy = true; });
     return busy;
   },
 
