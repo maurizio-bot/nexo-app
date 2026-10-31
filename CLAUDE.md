@@ -16,7 +16,7 @@ actualizarlos al terminar cada bloque de trabajo.
 
 - Rama principal: `NEXOCHAT`; cada push genera una APK (`.github/workflows/build-apk.yml`).
   El dueño autorizó subir cambios directamente a `NEXOCHAT`.
-- Base estable: build **2823**, rama `base-estable-2823` (probada por el dueño en los teléfonos 28-10: entrega con app cerrada + pantalla apagada ✓; no modificarla). Anteriores: `base-estable-2713`, `base-estable-2699`, `base-estable-2698`. Cómo volver a ella: `docs/PROGRESO.md`.
+- Base estable (actual): build **2858**, rama `base-estable-2858` (el dueño la guardó el 31-10 como base: la llamada/videollamada de grupo es «lo menos peor hasta ahora», el vídeo ya se ve; quedan detalles de UX por pulir —igualar la pantalla de grupo a la 1-a-1, etc.— para otro momento). Probada a fondo para la ENTREGA con app cerrada + pantalla apagada ✓: build **2823**, rama `base-estable-2823` (dueño 28-10; no modificarla). Anteriores: `base-estable-2713`, `base-estable-2699`, `base-estable-2698`. Cómo volver a cualquiera: `docs/PROGRESO.md`.
 - Diagnóstico de fallos en teléfonos reales: pedir al dueño Perfil → Copiar diagnóstico (ambos teléfonos).
 - Para cambios que no deben generar APK (solo docs), añadir `[skip ci]` al mensaje del commit.
 - Método obligatorio: reproducir el fallo en `tests/sim`, corregir, confirmar con la batería y solo
