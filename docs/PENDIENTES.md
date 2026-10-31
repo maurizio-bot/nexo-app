@@ -296,16 +296,24 @@ de vuelta que confirme la entrega, para que el que manda SÍ o SÍ reciba retroa
   Wi-Fi). Arreglado: `_linkUp()` por internet usa `canReach(nx)` → ausente = enlace «caído» → la ventana ESPERA sin
   tormenta; store-and-forward (buzón + `resumeOutgoingTransfers` al reconectar); el tope global marca 'pending' (⏳), no
   'failed'. Prueba `fileabsent.js`. ⚠️ La entrega real al reconectarse la confirma el dueño.
-- 🔜 **Bluetooth a MTU 23: «cola de escritura llena» + ESCANEO LENTO (diagnóstico del dueño 30-10 y RE-REPORTADO 31-10:
+- 🔶 **Bluetooth a MTU 23: «cola de escritura llena» + ESCANEO LENTO (diagnóstico del dueño 30-10 y RE-REPORTADO 31-10:
   «escaneo demasiado lento, debería ser instantáneo») — tarea #129.** Con un teléfono (Galaxy Tab A7 Lite, `nx1e29ab2f`) el
   BT negoció el MTU mínimo (23, lentísimo) y entra en `no_service` una y otra vez; el envío de archivos/Fénix lo martillea y
   satura la cola de escritura nativa (`Envio nativo fallo chunk N Cola de escritura llena` en bucle), mientras la re-búsqueda
   reintenta cada ~15 s. Diagnóstico 31-10 confirma: trozos grandes (24000) y pacing 2 ms empujados a un enlace MTU 23, y el
-  respaldo Fénix insistiendo en ese contacto roto. Falta (build propia, con reproducción en sim): (1) marcar el ritmo de
-  escritura según la capacidad real del enlace (MTU bajo → trozo chico + más espera, o parar al llenarse la cola y reanudar
-  al vaciarse en vez de reintentar a ciegas); (2) no insistir Fénix/archivos en un contacto con GATT roto (ya hay backoff de
-  pausa 30/60 s por `no_service`, 2813/2814; extenderlo a que no se encole trabajo pesado durante la pausa); (3) preferir
-  net/Wi-Fi para archivos con ese enlace. Reproducir primero en `tests/sim` el caso MTU 23 + cola llena.
+  respaldo Fénix insistiendo en ese contacto roto.
+  - ✅ **Escaneo lento RESUELTO (build 2854).** Causa del síntoma visible: un **respaldo Fénix de FONDO** (`type:'fenix'`)
+    sobre un enlace MTU-23 «ready» pero lentísimo arrastraba hasta 15 min y mantenía `_transferActive()`=true, así que el
+    bucle de re-búsqueda saltaba su turno y `_stopAutoScan` paraba el escaneo al arrancar el envío → escaneo de contactos
+    PARADO. Fix: un respaldo Fénix (de fondo, nadie lo espera) **ya no pausa** el escaneo; una foto/vídeo/archivo que el
+    usuario sí espera lo sigue pausando (v6.1.13). `_transferActive` ignora `meta.type==='fenix'`; `_stopAutoScan` no se
+    llama para envío/recepción Fénix. Prueba `scanfenix.js` (reproduce con el código viejo y pasa con el fix; guarda de
+    regresión). Confirma el dueño en los teléfonos.
+  - 🔜 **Falta (pacing nativo, build propia con reproducción en sim):** (1) marcar el ritmo de escritura según la capacidad
+    real del enlace (MTU bajo → trozo chico + más espera, o parar al llenarse la cola y reanudar al vaciarse en vez de
+    reintentar a ciegas); (2) preferir net/Wi-Fi para archivos con ese enlace. (Fénix ya no insiste en contactos con GATT
+    roto: solo envía a `ready_to_chat`, y el backoff `no_service` 2813/2814 los pausa; el caso que quedaba era el MTU-23
+    «ready».) Reproducir primero en `tests/sim` el caso MTU 23 + cola llena.
 - ✅ **Escaneo robusto a escala + recuperación de fallos (build 2838) (pedido del dueño 30-10, «rápido y robusto en poca
   señal, lejanía, interferencia, ahorro de batería… y un concierto con miles de NEXO escaneando»).** HECHO en JS (filtro
   NEXO siempre activo + compuerta global 5/30 s + recuperación ante onScanFailed), probado con VOPR + batería 84/84.

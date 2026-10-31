@@ -472,7 +472,8 @@ export class BleAckSystem {
         return;
       }
       console.log('[BleAckSystem] sendFile START fileId=' + fileId + ' type=' + finalMeta.type + ' bytes(b64)=' + base64Data.length + ' to=' + deviceId);
-      if (self.ble && typeof self.ble._stopAutoScan === 'function') self.ble._stopAutoScan();
+      // #129 (dueño 31-10): un respaldo FÉNIX de fondo NO debe parar el escaneo de contactos (sí lo hace una foto/archivo que el usuario espera).
+      if (self.ble && typeof self.ble._stopAutoScan === 'function' && finalMeta.type !== 'fenix') self.ble._stopAutoScan();
       var stream = new ChatStream(self, deviceId, fileId, base64Data, finalMeta, 'file');
       self.outgoingStreams.set(fileId, stream);
       stream._promise = stream.start();
@@ -605,7 +606,8 @@ export class BleAckSystem {
         isChat: type === 'c', nackSent: false, a: msg.a || ''
       };
       self.incomingBuffers.set(msgId, buf);
-      if (!buf.isChat && self.ble && typeof self.ble._stopAutoScan === 'function') self.ble._stopAutoScan();
+      // #129 (dueño 31-10): recibir un respaldo FÉNIX de fondo tampoco debe parar el escaneo de contactos.
+      if (!buf.isChat && buf.meta.type !== 'fenix' && self.ble && typeof self.ble._stopAutoScan === 'function') self.ble._stopAutoScan();
       buf.assemblyTimer = setTimeout(function() {
         if (self.incomingBuffers.has(msgId)) {
           console.warn('[BleAckSystem] Assembly timeout msgId=' + msgId);
