@@ -116,6 +116,26 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
   r.B_cierra_C = legState(B, C_ID) === 'gone' || legState(B, C_ID) === null;
   r.A_sigue_con_B = A.gc && A.gc.state === 'active' && legState(A, B_ID) === 'active';
 
+  // #130 (dueño 31-10): AGREGAR un contacto a la llamada EN CURSO. A agrega a F → F suena (late:1), acepta y abre tramo con
+  // TODOS los que ya estaban (A y B); A y B abren el suyo con F al llegarles su oferta. La voz de F llega a A y B.
+  const F_ID = 'nxf0000006';
+  const recF = { played: [] };
+  const F = createGroupCall(makeBle(F_ID), makeHub(recF));
+  registry[F_ID] = F;
+  await A.addMember(F_ID);
+  await sleep(60);
+  r.F_suena = !!(F.gc && F.gc.state === 'ringing' && F.gc.host === A_ID && F.gc.late === true);
+  F.accept();
+  await sleep(150);
+  r.agregado_malla = legState(A, F_ID) === 'active' && legState(B, F_ID) === 'active' && legState(F, A_ID) === 'active' && legState(F, B_ID) === 'active';
+  recA.played = []; recB.played = [];
+  recF.hub.emit(new Uint8Array([9, 8, 7, 6, 5, 4, 3, 2]));
+  await sleep(80);
+  r.A_oye_a_F = recA.played.some((x) => _n(x.nx) === F_ID);
+  r.B_oye_a_F = recB.played.some((x) => _n(x.nx) === F_ID);
+  // No se puede agregar dos veces el mismo
+  r.no_duplica = await A.addMember(F_ID).then(() => false, () => true);
+
   // #130 (dueño 31-10): reconexión por tramo, igual que la 1-a-1. Umbrales acelerados (débil 100 ms, corte 500 ms).
   // Escenario aparte D↔E para no tocar la malla A/B de arriba.
   window.NEXO_GCALL_WEAK_MS = 100; window.NEXO_GCALL_SILENCE_MS = 500;
@@ -146,6 +166,7 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
     r.B_oye_a_A && r.C_oye_a_A && r.A_oye_a_B && r.C_oye_a_B && r.descarta_manipulado &&
     r.onframe_ajeno_false && r.onframe_propio_true && r.parse_ok && r.parse_basura &&
     r.C_colgo && r.A_cierra_C && r.B_cierra_C && r.A_sigue_con_B &&
+    r.F_suena && r.agregado_malla && r.A_oye_a_F && r.B_oye_a_F && r.no_duplica &&
     r.DE_activa && r.chatId_guardado && r.reconnecting && r.tramo_perdido && r.D_corto && r.corte_empty;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('GCALL ' + JSON.stringify(r));
