@@ -9,7 +9,11 @@ const { webcrypto } = require('crypto');
 if (!global.crypto) global.crypto = webcrypto;
 if (typeof global.btoa !== 'function') global.btoa = (s) => Buffer.from(s, 'binary').toString('base64');
 if (typeof global.atob !== 'function') global.atob = (s) => Buffer.from(s, 'base64').toString('binary');
-global.window = { dispatchEvent() {}, NEXO_GCALL_RING_MS: 45000 };
+// Captura de eventos (nexo:gcall / nexo:gcallEnded) para la prueba de reconexión (#130). Polyfill mínimo de CustomEvent
+// (en node pelado no existe; group_call._emit lo usa y, sin él, no emitiría nada).
+const _events = [];
+if (typeof global.CustomEvent !== 'function') global.CustomEvent = function (type, init) { this.type = type; this.detail = init && init.detail; };
+global.window = { dispatchEvent(ev) { _events.push(ev); }, NEXO_GCALL_RING_MS: 45000 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const _n = (x) => (x || '').toString().toLowerCase().trim();
@@ -112,10 +116,37 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
   r.B_cierra_C = legState(B, C_ID) === 'gone' || legState(B, C_ID) === null;
   r.A_sigue_con_B = A.gc && A.gc.state === 'active' && legState(A, B_ID) === 'active';
 
+  // #130 (dueño 31-10): reconexión por tramo, igual que la 1-a-1. Umbrales acelerados (débil 100 ms, corte 500 ms).
+  // Escenario aparte D↔E para no tocar la malla A/B de arriba.
+  window.NEXO_GCALL_WEAK_MS = 100; window.NEXO_GCALL_SILENCE_MS = 500;
+  const D_ID = 'nxd0000004', E_ID = 'nxe0000005';
+  const D = createGroupCall(makeBle(D_ID), makeHub({ played: [] }));
+  const E = createGroupCall(makeBle(E_ID), makeHub({ played: [] }));
+  registry[D_ID] = D; registry[E_ID] = E;
+  await D.start([E_ID], false, 'grp_de_prueba'); // chatId = el chat del grupo (para «Volver a llamar»/volver al chat)
+  await sleep(60); E.accept(); await sleep(120);
+  r.DE_activa = D.gc && D.gc.state === 'active' && legState(D, E_ID) === 'active';
+  r.chatId_guardado = D.gc && D.gc.chatId === 'grp_de_prueba';
+  const legE = D.gc.legs.get(E_ID);
+  // (1) tramo activo que deja de recibir voz (> débil, < corte) → «Reconectando…», sin cerrarse
+  legE.lastRx = Date.now() - 250; D._tick();
+  var legView = function (inst, nx) { return (inst.state().legs || []).find((l) => _n(l.nx) === _n(nx)) || {}; };
+  r.reconnecting = legView(D, E_ID).reconnecting === true && legState(D, E_ID) === 'active';
+  // (2) más silencio (> corte) → ese tramo pasa a «perdido» (los demás seguirían)
+  legE.lastRx = Date.now() - 900; D._tick();
+  r.tramo_perdido = legState(D, E_ID) === 'lost';
+  // (3) sin nadie vivo tras el silencio → corte 'empty' con el chat del grupo y los miembros (para «Volver a llamar»)
+  D.gc.startedAt = Date.now() - 1000; // ya lleva un rato en curso
+  _events.length = 0; D._tick(); await sleep(20);
+  r.D_corto = D.gc === null;
+  const endedEv = _events.filter((e) => e.type === 'nexo:gcallEnded').pop();
+  r.corte_empty = !!(endedEv && endedEv.detail && endedEv.detail.why === 'empty' && _n(endedEv.detail.chatId) === 'grp_de_prueba' && (endedEv.detail.members || []).map(_n).indexOf(E_ID) >= 0);
+
   const ok = r.B_suena && r.C_suena && r.invita_con_roster && r.A_activa && r.malla_completa &&
     r.B_oye_a_A && r.C_oye_a_A && r.A_oye_a_B && r.C_oye_a_B && r.descarta_manipulado &&
     r.onframe_ajeno_false && r.onframe_propio_true && r.parse_ok && r.parse_basura &&
-    r.C_colgo && r.A_cierra_C && r.B_cierra_C && r.A_sigue_con_B;
+    r.C_colgo && r.A_cierra_C && r.B_cierra_C && r.A_sigue_con_B &&
+    r.DE_activa && r.chatId_guardado && r.reconnecting && r.tramo_perdido && r.D_corto && r.corte_empty;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('GCALL ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);
