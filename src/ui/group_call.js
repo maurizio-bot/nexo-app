@@ -26,6 +26,8 @@ var GMAX_AUDIO = 5;          // tope de participantes en audio (malla N²; ≤5 
 var GRING_MS = 45000;        // invitación sin contestar
 var GWEAK_MS = 4000;         // #130 (dueño 31-10): un tramo sin voz > esto → «Reconectando…» (como la 1-a-1), sin cerrarlo
 var GSILENCE_MS = 15000;     // un tramo sin recibir nada en 15 s → se cierra (los demás siguen); como el corte 1-a-1
+var GMISS_MS = 30000;        // #dueño 31-10: una invitación entrante sin contestar en 30 s → perdida («llamada perdida de grupo»)
+var GINVITE_MAX_AGE = 60000; // #dueño 31-10: una invitación más vieja que esto (re-entrega del buzón tras colgar/reabrir) se ignora: no re-suena
 var GDEAD_MS = 180000;
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
@@ -202,7 +204,9 @@ export class GroupCall {
   _sendTo(l, bytes) {
     var self = this, g = self.gc, me = self._nidSelf();
     var link = self._link(l.nx);
-    if (!link) return; // ese par no tiene camino ahora; su tramo seguirá intentando
+    // #dueño 31-10: la VOZ va SOLO por enlace DIRECTO (Bluetooth o misma Wi-Fi). Por los relés de internet (net:) el retraso
+    // es de segundos: no sirve para hablar y solo inunda el relé. Sin enlace directo, el tramo espera a que vuelva (no hay voz).
+    if (!link || String(link).indexOf('net:') === 0) return;
     var seq = l.sendSeq++;
     var iv = crypto.getRandomValues(new Uint8Array(12));
     // AAD: gid|emisor|nº → una voz de un par no se puede hacer pasar por otro
@@ -257,11 +261,18 @@ export class GroupCall {
     if (!o || _nid(o.from) !== nx) return;
     if (o.op === 'invite') {
       if (self._dead.has(o.gid)) return;
-      if (g) { self._signal(nx, 'leave', { gid: o.gid }); return; } // ya estoy en otra llamada → ocupado
+      // #dueño 31-10: una invitación VIEJA (re-entrega del buzón de relés después de colgar, o al reabrir la app que perdió
+      // la memoria de llamadas terminadas) NO debe volver a sonar. Una invitación de verdad llega al instante.
+      if (o.ts && Date.now() - Number(o.ts) > GINVITE_MAX_AGE) return;
+      if (g) { if (g.gid === o.gid) return; self._signal(nx, 'leave', { gid: o.gid }); return; } // ya en otra llamada → ocupado (si es la MISMA, es re-entrega: ignorar, no avisar «leave»)
       if (typeof o.k !== 'string' || !/^[0-9a-f]{64}$/.test(o.k)) return;
       var roster = new Set((o.roster || []).map(_nid)); roster.add(nx); roster.add(me);
       if (roster.size > GMAX_AUDIO) return;
       self.gc = { gid: o.gid, dir: 'in', state: 'ringing', key: o.k, video: o.v === 1, host: nx, legs: new Map(), roster: roster, startedAt: 0, createdAt: Date.now(), late: o.late === 1 };
+      // #dueño 31-10: si no se contesta en 30 s, la entrante se da por PERDIDA (deja de sonar, queda «llamada perdida de
+      // grupo»); los que sí contestaron siguen entre ellos.
+      clearTimeout(self._ringTimer);
+      self._ringTimer = setTimeout(function() { if (self.gc && self.gc.gid === o.gid && self.gc.state === 'ringing') self._finish('missed'); }, window.NEXO_GCALL_MISS_MS || GMISS_MS);
       self._importKey(o.k).then(function(k) { if (self.gc && self.gc.gid === o.gid) { self.gc.cryptoKey = k; _emit('nexo:gcall', self.state()); _emit('nexo:gcallRing', { gid: o.gid, from: nx, members: Array.from(roster) }); } });
       return;
     }
@@ -269,6 +280,9 @@ export class GroupCall {
       if (o.op !== 'leave' && o.op !== 'end') self._signal(nx, 'leave', { gid: o.gid });
       return;
     }
+    // #dueño 31-10: si TODAVÍA está sonando (no contesté) y el que invitó se va/cuelga → se cancela para mí (deja de sonar)
+    // y queda como «llamada perdida de grupo». Antes se quedaba sonando si el grupo tenía 3+ miembros.
+    if ((o.op === 'leave' || o.op === 'end') && g.dir === 'in' && g.state === 'ringing' && nx === g.host) { self._finish('missed'); return; }
     if (o.op === 'leave') { self._dropLeg(nx); return; }
     if (o.op === 'end') { if (g.dir === 'in' && nx === g.host) self._finish('ended'); else self._dropLeg(nx); return; }
     // El que INICIÓ (dir 'out', 'calling') pasa a activo con la PRIMERA aceptación (arranca su micrófono compartido)
@@ -305,7 +319,7 @@ export class GroupCall {
     _emit('nexo:gcall', null);
     // #130 (dueño 31-10): al cortarse, la pantalla da «Volver a llamar» y vuelve al chat del grupo (como la 1-a-1). Se
     // mandan el chat del grupo (si se llamó desde uno) y los miembros, para rehacer la llamada.
-    _emit('nexo:gcallEnded', { gid: g.gid, why: why, chatId: g.chatId || '', video: !!g.video, members: Array.from(g.roster) });
+    _emit('nexo:gcallEnded', { gid: g.gid, why: why, chatId: g.chatId || '', host: g.host || '', video: !!g.video, members: Array.from(g.roster) });
     console.log('[GCALL] fin (' + why + ') ' + g.gid);
   }
 }

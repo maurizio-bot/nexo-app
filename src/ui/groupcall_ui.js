@@ -204,8 +204,16 @@ export function installGroupCallUi() {
   window.addEventListener('nexo:gcallEnded', function(e) {
     _clearCallNotif();
     var d = e && e.detail;
-    if (d && d.why === 'empty' && _normId(d.chatId)) _showEnded(d);
-    else _remove();
+    if (d && d.why === 'empty' && _normId(d.chatId)) { _showEnded(d); return; }
+    _remove();
+    // #dueño 31-10: no contesté una llamada de grupo (perdida) → aviso «Llamada de grupo perdida». En segundo plano, como
+    // aviso del teléfono; a la vista, como toast.
+    if (d && d.why === 'missed') {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        var pl = _plugin();
+        if (pl && typeof pl.notifyMessage === 'function') pl.notifyMessage({ chatId: _normId(d.host) || 'nexo_gcall', name: _memberName(d.host), msgId: 'gmiss_' + (d.gid || ''), text: t('grp_call_missed', 'Llamada de grupo perdida'), count: 1 }).catch(function() {});
+      } else _showInfoToast(t('grp_call_missed', 'Llamada de grupo perdida'), 3500);
+    }
   });
   window.addEventListener('nexo:ble:openChat', function() { setTimeout(_refreshGroupButton, 0); });
   // #dueño: contestar/rechazar la llamada de grupo desde el aviso nativo (también para grupos, como la 1-a-1)

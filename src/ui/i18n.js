@@ -332,6 +332,7 @@ var STRINGS = {
   grp_already_in: { es: "Ya está en la llamada", it: "È già nella chiamata", en: "Already in the call" },
   grp_call_none: { es: "No hay una llamada de grupo en curso", it: "Non c'è una chiamata di gruppo in corso", en: "No group call in progress" },
   grp_call_na: { es: "Las llamadas de grupo no están disponibles", it: "Le chiamate di gruppo non sono disponibili", en: "Group calls are not available" },
+  grp_call_missed: { es: "Llamada de grupo perdida", it: "Chiamata di gruppo persa", en: "Missed group call" },
   call_add: { es: "Agregar", it: "Aggiungi", en: "Add" },
   call_add_pick: { es: "Agregar a la llamada", it: "Aggiungi alla chiamata", en: "Add to the call" },
   call_add_none: { es: "No hay contactos para agregar", it: "Nessun contatto da aggiungere", en: "No contacts to add" },

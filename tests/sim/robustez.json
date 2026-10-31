@@ -748,6 +748,10 @@
    },
    "modos": [
     {
+     "fallo": "2852 (informe del dueño 31-10): en una llamada de grupo, colgar con otros todavía sonando no los cortaba (grupo 3+); la pantalla de llamada reaparecía (re-entrega de invitación vieja del buzón); el que no contestaba se quedaba sonando. Arreglado: el receptor se corta cuando el host sale/cuelga sonando; 30 s sin contestar → perdida; invitación vieja (ts>60s) ignorada; colgar con ≥1 contestando sigue entre los demás; voz de grupo solo por enlace directo (no net:)",
+     "prueba": "llamada en GRUPO (malla"
+    },
+    {
      "fallo": "Crear, escribir, texto largo, salir",
      "prueba": "chats de grupo"
     },
