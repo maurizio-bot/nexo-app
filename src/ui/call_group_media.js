@@ -27,8 +27,9 @@ export function createGroupMedia(opts) {
   var stopped = false;
 
   // Captura compartida: un micrófono + (si procede) una cámara, un codificador → cada paquete va a TODOS los tramos.
+  // cameraStart: si es una VIDEOLLAMADA, la cámara se abre al arrancar (como la 1-a-1, camino probado); si no, apagada.
   var cap = mk({
-    codecs: codecs, video: video, cameraStart: false, voiceFx: opts.voiceFx,
+    codecs: codecs, video: video, cameraStart: !!opts.cameraStart, voiceFx: opts.voiceFx,
     onPacket: function(bytes) { try { onPacket(bytes); } catch (e) {} },
     onVideoPacket: function(bytes) { try { onVideoPacket(bytes); } catch (e) {} },
   });

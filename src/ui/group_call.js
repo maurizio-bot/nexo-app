@@ -191,17 +191,16 @@ export class GroupCall {
     // Micrófono compartido: una captura, un codificador → el paquete codificado va a TODOS los tramos
     if (self.mediaHubFactory) {
       try {
+        // #138 (dueño 31-10): TODA llamada de grupo es CAPAZ de vídeo. Si es VIDEOLLAMADA, la cámara arranca encendida
+        // (cameraStart, el mismo camino probado de la 1-a-1); si es llamada de voz, la cámara empieza apagada y se enciende
+        // con el botón (sin re-llamar). El vídeo se difunde por `onVideoPacket`.
+        g.cameraOn = !!g.video;
         g.hub = self.mediaHubFactory({
-          // #138 (dueño 31-10): TODA llamada de grupo es CAPAZ de vídeo pero empieza con la cámara apagada; activar la
-          // cámara pasa a vídeo sin re-llamar (la interfaz es la de videollamada). El vídeo se difunde por `onVideoPacket`.
-          codecs: 'opus,ulaw', video: true,
+          codecs: 'opus,ulaw', video: true, cameraStart: !!g.video,
           onPacket: function(bytes) { self._broadcast(bytes); },
           onVideoPacket: function(bytes) { self._broadcastVideo(bytes); },
         });
-        if (g.hub && g.hub.start) Promise.resolve(g.hub.start()).then(function() {
-          // Si se pidió videollamada de grupo, la cámara arranca encendida; si no, apagada (se enciende con el botón).
-          if (g.video && g.hub && g.hub.camera) { g.cameraOn = true; try { g.hub.camera(true); } catch (e) {} self._set(null); }
-        }).catch(function(e) { console.warn('[GCALL] micrófono: ' + (e && e.message)); });
+        if (g.hub && g.hub.start) Promise.resolve(g.hub.start()).catch(function(e) { console.warn('[GCALL] micrófono: ' + (e && e.message)); });
       } catch (e) { console.warn('[GCALL] sin audio: ' + (e && e.message)); }
     }
     self._watch = setInterval(function() { self._tick(); }, 1000);

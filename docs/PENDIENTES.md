@@ -81,8 +81,17 @@ regla «NEXO ID menor manda offer», voz por control `{type:'vf', c:<id tramo>, 
        Wi-Fi; `camera`/`flip`; `cameraOn` en `state()`), `groupcall_ui.js` (rejilla reconciliada sin parpadeo + botones Cámara/
        Girar; silenciar y agregar ya estaban). Pruebas `gcallmedia.js` + `gcall.js` ampliadas. La cámara/imagen real la confirma
        el dueño en los teléfonos (el simulador no tiene cámara/WebCodecs).
-     - ⏳ **Audio por SENSOR DE PROXIMIDAD en grupo (próximo):** auricular si el teléfono está al oído, altavoz si no (como la
-       1-a-1, capa nativa de la 2769). Falta cablear la pantalla de grupo al mismo ruteo de salida por proximidad.
+     - ✅ **Grupos como un contacto (2857, informe del dueño 31-10):** (a) crear grupo precarga nombre «Grupo N» (editable, no
+       bloquea); (b) el chat de grupo tiene botones LLAMAR y VIDEOLLAMAR como un contacto (mismos iconos/estilo), no uno solo
+       (`groupcall_ui._installGroupButton`→2 botones); (c) el VÍDEO ahora se activa: la videollamada de grupo abre la cámara AL
+       ARRANCAR por el camino probado de la 1-a-1 (`cameraStart`; `group_call` crea el hub con `cameraStart`=videollamada); (d)
+       audio con el modo de comunicación nativo (`callAudio`) como la 1-a-1 (mejor eco + altavoz/auricular; botón Altavoz, arranca
+       en altavoz).
+     - ⏳ **Igualar la PANTALLA de llamada/videollamada de grupo a la de la 1-a-1 (próximo, pedido del dueño):** hoy `groupcall_ui.js`
+       tiene su propio diseño; el dueño quiere que se vea idéntica a la de contacto (`calls_ui.js`). Re-estilar la pantalla de
+       grupo (fondo, botones, rejilla de vídeo) para que coincida.
+     - ⏳ **Audio por SENSOR DE PROXIMIDAD AUTO en grupo:** el altavoz/auricular manual (botón) y el modo de comunicación ya están
+       (2857, `callAudio`); falta el AUTO por el sensor (auricular al oído, altavoz si no), que no lo tiene ni la 1-a-1 todavía.
      - ⏳ **Eco (la voz propia vuelve, informe del dueño 31-10):** probable causa: cada tramo se reproduce en su propio
        AudioContext que la cancelación de eco de la captura compartida no referencia → el eco del otro lado no se cancela.
        A revisar con las pruebas del dueño (el audio real no se reproduce en el simulador). Posible arreglo: reproducir todos
