@@ -62,7 +62,17 @@ regla «NEXO ID menor manda offer», voz por control `{type:'vf', c:<id tramo>, 
      pantalla de grupo y en la 1-a-1 (icono `addp`). Prueba `gcall.js` (A agrega a F a la llamada A-B en curso → F entra en la
      malla, su voz llega a A y B, no se duplica). Batería 90/90. (No hizo falta tocar `groups.js`: la llamada de grupo lleva
      su propio roster, aparte de la lista del chat de grupo.)
-- Tope `GMAX_AUDIO=5`. No toca `calls.js` (1-a-1 sigue igual). Internet/Jump NO (el retraso no sirve para hablar): solo enlace directo.
+  6. ✅ **Ciclo de vida corregido (2852, informe del dueño 31-10 en los teléfonos):** el dueño reportó «apareció la llamada
+     pero sin sonido; colgué en un dispositivo y el otro seguía sonando; colgué en el otro y reapareció la pantalla». Arreglado
+     + semántica pedida (llamadas y videollamadas): (a) colgar con otros TODAVÍA sonando los corta (el receptor que sigue
+     sonando se cancela cuando el host sale/cuelga → «llamada perdida de grupo»; antes solo se cortaba si el grupo era de 2);
+     (b) sin contestar en 30 s → perdida con aviso, los que sí contestaron siguen; (c) la pantalla ya no reaparece (se ignora
+     la invitación vieja re-entregada por el buzón, por `ts` > `GINVITE_MAX_AGE` = 60 s, y la re-entrega de la misma llamada no
+     manda «leave» falso); (d) sin sonido: la voz se iba por `net:` (relés, retraso de segundos) → **voz solo por enlace
+     DIRECTO** (Bluetooth/Wi-Fi), como el diseño (señalización/aviso sí por internet); (e) colgar con ≥1 contestando sigue
+     entre los demás hasta quedar 2 y que uno termine. `group_call.js`, `groupcall_ui.js` (aviso `grp_call_missed`), prueba
+     `gcall.js`. Batería 90/90.
+- Tope `GMAX_AUDIO=5`. No toca `calls.js` (1-a-1 sigue igual). Internet/Jump: la SEÑALIZACIÓN/aviso sí (despierta por FCM); la VOZ no (el retraso no sirve para hablar): solo enlace directo (Bluetooth o misma Wi-Fi).
 
 ## Bloque autónomo 28-10 (madrugada→mañana): FCM + archivos por internet + AUDITORÍA SEVERA
 El dueño (1 AM): «termina lo del ping a los servidores de Google robusto y probado; luego la parte internet del tamaño
@@ -274,10 +284,16 @@ de vuelta que confirme la entrega, para que el que manda SÍ o SÍ reciba retroa
   Wi-Fi). Arreglado: `_linkUp()` por internet usa `canReach(nx)` → ausente = enlace «caído» → la ventana ESPERA sin
   tormenta; store-and-forward (buzón + `resumeOutgoingTransfers` al reconectar); el tope global marca 'pending' (⏳), no
   'failed'. Prueba `fileabsent.js`. ⚠️ La entrega real al reconectarse la confirma el dueño.
-- 🔜 **Bluetooth a MTU 23: «cola de escritura llena» (2.º punto del diagnóstico del dueño 30-10) — tarea #129.** Con un
-  teléfono el BT negoció el MTU mínimo (23, lentísimo) y el envío de archivos/Fénix satura la cola de escritura nativa
-  (`Envio nativo fallo chunk N Cola de escritura llena`). Falta: marcar el ritmo de escritura según la capacidad real a
-  MTU 23 y/o preferir net/Wi-Fi para archivos con ese enlace. Build propia.
+- 🔜 **Bluetooth a MTU 23: «cola de escritura llena» + ESCANEO LENTO (diagnóstico del dueño 30-10 y RE-REPORTADO 31-10:
+  «escaneo demasiado lento, debería ser instantáneo») — tarea #129.** Con un teléfono (Galaxy Tab A7 Lite, `nx1e29ab2f`) el
+  BT negoció el MTU mínimo (23, lentísimo) y entra en `no_service` una y otra vez; el envío de archivos/Fénix lo martillea y
+  satura la cola de escritura nativa (`Envio nativo fallo chunk N Cola de escritura llena` en bucle), mientras la re-búsqueda
+  reintenta cada ~15 s. Diagnóstico 31-10 confirma: trozos grandes (24000) y pacing 2 ms empujados a un enlace MTU 23, y el
+  respaldo Fénix insistiendo en ese contacto roto. Falta (build propia, con reproducción en sim): (1) marcar el ritmo de
+  escritura según la capacidad real del enlace (MTU bajo → trozo chico + más espera, o parar al llenarse la cola y reanudar
+  al vaciarse en vez de reintentar a ciegas); (2) no insistir Fénix/archivos en un contacto con GATT roto (ya hay backoff de
+  pausa 30/60 s por `no_service`, 2813/2814; extenderlo a que no se encole trabajo pesado durante la pausa); (3) preferir
+  net/Wi-Fi para archivos con ese enlace. Reproducir primero en `tests/sim` el caso MTU 23 + cola llena.
 - ✅ **Escaneo robusto a escala + recuperación de fallos (build 2838) (pedido del dueño 30-10, «rápido y robusto en poca
   señal, lejanía, interferencia, ahorro de batería… y un concierto con miles de NEXO escaneando»).** HECHO en JS (filtro
   NEXO siempre activo + compuerta global 5/30 s + recuperación ante onScanFailed), probado con VOPR + batería 84/84.

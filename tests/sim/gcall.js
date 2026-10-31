@@ -162,7 +162,32 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
   const endedEv = _events.filter((e) => e.type === 'nexo:gcallEnded').pop();
   r.corte_empty = !!(endedEv && endedEv.detail && endedEv.detail.why === 'empty' && _n(endedEv.detail.chatId) === 'grp_de_prueba' && (endedEv.detail.members || []).map(_n).indexOf(E_ID) >= 0);
 
+  // #dueño 31-10: ciclo de vida reportado en los teléfonos. (a) si cuelgo con el otro todavía sonando, a él se le corta
+  // (deja de sonar) y queda como perdida; (b) sin contestar en 30 s (acelerado) → perdida; (c) una invitación vieja
+  // re-entregada por el buzón no vuelve a sonar.
+  window.NEXO_GCALL_MISS_MS = 300;
+  const G_ID = 'nxg0000007', H_ID = 'nxh0000008';
+  const G = createGroupCall(makeBle(G_ID), makeHub({ played: [] }));
+  const H = createGroupCall(makeBle(H_ID), makeHub({ played: [] }));
+  registry[G_ID] = G; registry[H_ID] = H;
+  await G.start([H_ID], false); await sleep(60);
+  r.H_suena = !!(H.gc && H.gc.state === 'ringing');
+  _events.length = 0; G.hangup(); await sleep(80);
+  r.colgar_corta_entrante = H.gc === null; // (a) deja de sonar en el otro
+  r.corte_es_perdida = _events.some((e) => e.type === 'nexo:gcallEnded' && e.detail && e.detail.why === 'missed');
+  const G2 = createGroupCall(makeBle(G_ID), makeHub({ played: [] })); registry[G_ID] = G2;
+  await G2.start([H_ID], false); await sleep(60);
+  r.H_suena_b = !!(H.gc && H.gc.state === 'ringing');
+  await sleep(500); // > miss (300 ms)
+  r.H_perdida_30s = H.gc === null; // (b) perdida por no contestar
+  try { G2.hangup(); } catch (e) {}
+  await sleep(40);
+  H.onSignal(G_ID, { type: 'nexo_gcall', op: 'invite', gid: 'gcviejo99aa', from: G_ID, to: H_ID, k: 'a'.repeat(64), roster: [G_ID, H_ID], ts: Date.now() - 120000 });
+  await sleep(40);
+  r.invite_viejo_ignorado = H.gc === null; // (c) no re-suena una invitación vieja
+
   const ok = r.B_suena && r.C_suena && r.invita_con_roster && r.A_activa && r.malla_completa &&
+    r.H_suena && r.colgar_corta_entrante && r.corte_es_perdida && r.H_suena_b && r.H_perdida_30s && r.invite_viejo_ignorado &&
     r.B_oye_a_A && r.C_oye_a_A && r.A_oye_a_B && r.C_oye_a_B && r.descarta_manipulado &&
     r.onframe_ajeno_false && r.onframe_propio_true && r.parse_ok && r.parse_basura &&
     r.C_colgo && r.A_cierra_C && r.B_cierra_C && r.A_sigue_con_B &&
