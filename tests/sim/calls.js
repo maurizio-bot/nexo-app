@@ -155,7 +155,7 @@ const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-conta
     r.linea_video = lines(A).filter((t) => /Videollamada/.test(t));
     // Sin Wi-Fi: el botón 🎥 avisa
     click(A.win, A.win.document.getElementById('nexo-video-btn')); await sleep(600);
-    r.video_sin_wifi_aviso = Array.from(A.win.document.querySelectorAll('div')).some((d) => /mismo Wi-Fi \(por Bluetooth solo voz\)/.test(d.textContent) && d.children.length === 0);
+    r.video_sin_wifi_aviso = Array.from(A.win.document.querySelectorAll('div')).some((d) => /Wi-Fi o internet \(por Bluetooth solo voz\)/.test(d.textContent) && d.children.length === 0);
     r.video_sin_wifi_no_llama = !A.win.bleInterface.calls.call;
     r.B_se_entera_al_colgar = await wait(() => !B.win.bleInterface.calls.call, 5);
     nB.setOffline(true);
@@ -197,7 +197,7 @@ const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-conta
   // 5. Sin el contacto cerca
   const before = nA.sent.length;
   click(A.win, A.win.document.getElementById('nexo-call-btn')); await sleep(800);
-  r.sin_alcance_aviso = Array.from(A.win.document.querySelectorAll('div')).some((d) => /hace falta tener al contacto cerca/.test(d.textContent) && d.children.length === 0);
+  r.sin_alcance_aviso = Array.from(A.win.document.querySelectorAll('div')).some((d) => /hace falta Bluetooth, Wi-Fi o internet/.test(d.textContent) && d.children.length === 0);
   r.sin_alcance_no_llama = !A.win.bleInterface.calls.call;
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css/.test(l)).slice(0, 5);
   const ok = r.boton && r.A_llamando && r.B_suena && r.en_llamada && r.voz_B_a_A >= 25 && r.voz_A_a_B >= 25 && r.en_orden && r.voz_en_el_aire && r.nada_en_claro && r.modo_llamada && r.altavoz && r.modo_normal_al_colgar && r.B_ve_fin &&

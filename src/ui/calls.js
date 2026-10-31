@@ -17,6 +17,9 @@ import { t } from './i18n.js';
 
 var RING_MS = 45000;
 var SILENCE_MS = 12000;
+// #dueño (internet): en una llamada activa, 15 s sin recibir nada → se corta; antes de eso, aviso de «Reconectando…».
+var RECONNECT_MS = 15000;
+var WEAK_MS = 4000;
 // Ronda 2768: solo para ofertas muy viejas; si una reciente sigue viva lo dice el que llama al recibir 'ring' (antes, con
 // el reloj del otro más de 60 s adelantado, nunca sonaba)
 var OFFER_MAX_AGE_MS = 600000;
@@ -69,10 +72,15 @@ export class Calls {
     var q = ble.lan && typeof ble.lan.quality === 'function' ? ble.lan.quality(nx) : null;
     var wifi = ble.lan && typeof ble.lan.canReach === 'function' && ble.lan.canReach(nx) && q && q.up;
     if (wifi && !(preferBle && bt)) return 'lan:' + nx;
-    return bt;
+    if (bt) return bt;
+    // #dueño: sin enlace directo, por INTERNET (relés). Así la llamada/videollamada funciona aunque no estén cerca ni en
+    // el mismo Wi-Fi, y una llamada en curso se mantiene si se cae el Bluetooth/Wi-Fi (failover: _sendFrame reelige cada vez).
+    if (ble.net && typeof ble.net.canReach === 'function' && ble.net.canReach(nx)) return 'net:' + nx;
+    return null;
   }
   canCall(nexoId) { return !!this._link(_nid(nexoId)); }
-  canVideo(nexoId) { var l = this._link(_nid(nexoId)); return !!l && l.indexOf('lan:') === 0; }
+  // Vídeo por Wi-Fi o por internet (por Bluetooth no cabe: solo voz)
+  canVideo(nexoId) { var l = this._link(_nid(nexoId)); return !!l && (l.indexOf('lan:') === 0 || l.indexOf('net:') === 0); }
   state() { return this.call ? Object.assign({}, this.call, { key: undefined, cryptoKey: undefined, media: undefined }) : null; }
 
   _set(o) {
@@ -107,8 +115,8 @@ export class Calls {
   start(nexoId, video) {
     var self = this, nx = _nid(nexoId);
     if (self.call) return Promise.reject(new Error(t('call_err_already', 'Ya hay una llamada')));
-    if (!self._link(nx)) return Promise.reject(new Error(t('call_err_need_near', 'Para llamar hace falta tener al contacto cerca (Bluetooth) o en el mismo Wi-Fi')));
-    if (video && !self.canVideo(nx)) return Promise.reject(new Error(t('call_err_need_wifi_video', 'Para una videollamada hace falta estar en el mismo Wi-Fi (por Bluetooth solo voz)')));
+    if (!self._link(nx)) return Promise.reject(new Error(t('call_err_need_near', 'Para llamar hace falta Bluetooth, Wi-Fi o internet con el contacto')));
+    if (video && !self.canVideo(nx)) return Promise.reject(new Error(t('call_err_need_wifi_video', 'Para una videollamada hace falta Wi-Fi o internet (por Bluetooth solo voz)')));
     var id = 'cl' + Date.now().toString(36) + _hex(4), key = _hex(32);
     self.call = { id: id, nx: nx, dir: 'out', state: 'calling', key: key, createdAt: Date.now(), sendSeq: 0, vSeq: 0, lastRx: 0, video: !!video };
     _emit('nexo:call', self.state());
@@ -204,7 +212,13 @@ export class Calls {
     self._silenceTimer = setInterval(function() {
       var cc = self.call;
       if (!cc || cc.id !== c.id) return;
-      if (Date.now() - (cc.lastRx || 0) > SILENCE_MS) { self._signal(cc.nx, 'end'); self._finish('lost', false); return; }
+      // #dueño (internet): mala conexión → aviso «Reconectando…»; si no se restablece en 15 s, se corta.
+      var rmax = (typeof window !== 'undefined' && window.NEXO_CALL_RECONNECT_MS) || RECONNECT_MS;
+      var wmin = (typeof window !== 'undefined' && window.NEXO_CALL_WEAK_MS) || WEAK_MS;
+      var gap = Date.now() - (cc.lastRx || cc.startedAt || Date.now());
+      if (gap > rmax) { self._signal(cc.nx, 'end'); self._finish('lost', false); return; }
+      var recon = gap > wmin;
+      if (recon !== !!cc.reconnecting) self._set({ reconnecting: recon });
       if (Date.now() - (cc.diagAt || cc.startedAt) >= DIAG_EVERY_MS) { cc.diagAt = Date.now(); self._diag(cc, ''); }
       // Ronda 2769: el estado se repite cada 5 s (un aviso perdido no deja al otro con lo de antes)
       if (cc.camState && Date.now() - (cc.stateAt || 0) >= DIAG_EVERY_MS) self._sendState(cc);
@@ -370,7 +384,7 @@ export class Calls {
     if (c.media && c.media.stop) { try { c.media.stop(); } catch (e) {} }
     self.call = null;
     console.log('[CALL] Fin (' + reason + ', ' + secs + ' s; voz enviada ' + self.stats.sent + ', recibida ' + self.stats.got + ')');
-    _emit('nexo:call', { id: c.id, nx: c.nx, dir: c.dir, state: 'ended', reason: reason, seconds: secs });
+    _emit('nexo:call', { id: c.id, nx: c.nx, dir: c.dir, state: 'ended', reason: reason, seconds: secs, video: !!c.video });
     self._log(c.nx, reason, secs, c.dir === 'out', c.video);
   }
 
