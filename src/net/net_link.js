@@ -57,6 +57,14 @@ var TICK_MS = 15000;
 var TTL_MSG = 7 * 86400, TTL_CHUNK = 86400, TTL_HELLO = 600; // caducidad en los relés (s)
 var MAX_CONTENT = 60000;      // tamaño máximo de un evento que aceptan los relés habituales (~64 KB)
 var MAX_RELAY_FRAME = 300000; // SEC-4 (auditoría 28-10): tope de un frame de relé antes de analizarlo (como SafeJson nativo)
+// P5 (dueño 01-11): un relé que FLAPEA (abre y se cae enseguida, muchas veces) desestabiliza internet (en el diagnóstico
+// damus.io se cerró 37×). Se detecta por conexiones de vida corta y se aparta un rato — pero SOLO si quedan otros relés
+// abiertos (mejor un relé que flapea que quedarse sin internet).
+var RELAY_STABLE_MS = 20000;        // una conexión de relé de menos de esto cuenta como «flap» (abrió y se cayó enseguida)
+var RELAY_FLAP_WINDOW_MS = 300000;  // ventana para contar flaps (5 min)
+var RELAY_FLAP_MAX = 3;             // nº de flaps en la ventana para considerar el relé inestable
+var RELAY_FLAP_PENALTY_MS = 300000; // cuánto se aparta un relé inestable (5 min) antes de reintentar
+var RELAY_MIN_OTHERS = 2;           // solo se aparta si quedan al menos tantos OTROS relés abiertos (no quedarse sin red)
 var WAKE_MIN_MS = 8000;       // M1 (auditoría 28-10): como mucho un «toque» FCM por par cada 8 s (ráfaga de textos)
 var CALL_WAKE_MIN_MS = 3000;  // #130 (dueño 30-10): una llamada insiste en despertar — throttle propio, más corto y
                               // aparte del de textos (un texto reciente NO silencia el toque de una llamada entrante)
@@ -68,6 +76,7 @@ var STATE_FILE = 'nexo_net.json';
 var N = BigInt('0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141'); // orden de secp256k1
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
+function _relayHost(url) { return String(url || '').replace(/^wss?:\/\//, '').replace(/\/.*$/, ''); } // P5: host del relé para el registro
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 function _day(offset) { return new Date(Date.now() + (offset || 0) * 86400000).toISOString().substring(0, 10); }
 function _utf8(s) { return new TextEncoder().encode(s); }
@@ -256,7 +265,7 @@ export class NetLink {
     try { ws = new WebSocket(url); } catch (e) { r.retryAt = Date.now() + r.backoff; return; }
     r.ws = ws; r.open = false;
     ws.onopen = function() {
-      r.open = true; r.backoff = 2000;
+      r.open = true; r.backoff = 2000; r.openedAt = Date.now();
       self._subscribe(r);
       if (self._openCount() === 1) {
         console.log('[NET] Conectado a internet por relés públicos');
@@ -268,12 +277,40 @@ export class NetLink {
     ws.onmessage = function(ev) { self._onRelayMsg(url, r, ev.data); };
     ws.onclose = function() {
       var was = r.open;
+      var stableFor = r.openedAt ? (Date.now() - r.openedAt) : 0; r.openedAt = 0;
       r.open = false; r.ws = null; r.sub = null;
-      r.retryAt = Date.now() + r.backoff; r.backoff = Math.min(r.backoff * 2, 120000);
+      // P5: decide el retraso (reintento normal con backoff, o apartar el relé si flapea y quedan otros)
+      var delay = self._noteRelayClose(r, url, stableFor);
+      if (r._sidelined) { if (!r._sidelinedLog) { console.log('[NET] Relé inestable ' + _relayHost(url) + ': lo aparto ~' + Math.round(delay / 60000) + ' min (se cae sin parar)'); r._sidelinedLog = true; } }
+      else { r._sidelinedLog = false; }
       r.waits.forEach(function(fn) { fn(false); }); r.waits.clear();
       if (was && !self.online()) console.log('[NET] Sin relés: internet no disponible');
     };
     ws.onerror = function() {};
+  }
+  // P5 (dueño 01-11): relés abiertos distintos de `url` (para decidir si se puede apartar uno que flapea sin quedarse sin red)
+  _openRelaysExcept(url) { var n = 0; this.relays.forEach(function(r, u) { if (u !== url && r.open) n++; }); return n; }
+  // P5: al cerrarse un relé, actualiza su contador de flaps y elige el retraso del próximo intento. Un relé que abrió y se
+  // cayó enseguida (vida < RELAY_STABLE_MS) suma un flap; con RELAY_FLAP_MAX flaps en la ventana y ≥RELAY_MIN_OTHERS relés
+  // abiertos, se aparta RELAY_FLAP_PENALTY_MS (en vez del backoff normal). Una conexión estable olvida los flaps viejos.
+  _noteRelayClose(r, url, stableFor, now) {
+    now = now || Date.now();
+    if (stableFor > 0 && stableFor < RELAY_STABLE_MS) {
+      r.flapTimes = (r.flapTimes || []).filter(function(t) { return now - t < RELAY_FLAP_WINDOW_MS; });
+      r.flapTimes.push(now);
+    } else if (stableFor >= RELAY_STABLE_MS) {
+      r.flapTimes = []; // estuvo estable: no arrastrar flaps antiguos
+    }
+    if ((r.flapTimes || []).length >= RELAY_FLAP_MAX && this._openRelaysExcept(url) >= RELAY_MIN_OTHERS) {
+      r._sidelined = true;
+      r.retryAt = now + RELAY_FLAP_PENALTY_MS;
+      return RELAY_FLAP_PENALTY_MS;
+    }
+    r._sidelined = false;
+    var delay = r.backoff;
+    r.retryAt = now + delay;
+    r.backoff = Math.min(r.backoff * 2, 120000);
+    return delay;
   }
   _closeAll() { this.relays.forEach(function(r) { try { if (r.ws) r.ws.close(); } catch (e) {} }); }
   _send(r, arr) { try { if (r.ws && r.open) { r.ws.send(JSON.stringify(arr)); return true; } } catch (e) {} return false; }

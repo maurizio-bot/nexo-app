@@ -339,6 +339,10 @@
      "prueba": "puente JUMP y batería"
     },
     {
+     "fallo": "P5 (diagnóstico real 01-11, dueño): un relé público que flapea (abre y se cae sin parar) desestabiliza internet — en el log wss://relay.damus.io se cerró 37×, a veces 3× en <1 min; cada apertura reseteaba el backoff a 2 s y reconectaba rápido sin parar. 2863: se detecta el flapeo (conexiones de vida < 20 s) y se aparta el relé 5 min — pero solo si quedan ≥2 relés abiertos (nunca quedarse sin internet); una conexión estable olvida los flaps",
+     "prueba": "relé que flapea"
+    },
+    {
      "fallo": "Cortes del Wi-Fi breves y largos, sin «!» mientras se espera",
      "prueba": "cortes del Wi-Fi"
     },
