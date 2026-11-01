@@ -543,6 +543,13 @@ export class BleAckSystem {
       if (!completed.pending) self._sendFinalAck(deviceId, msgId, total);
       return;
     }
+    // P6 (dueño 01-11): el MISMO mensaje ya llegó ENTERO por otro camino (internet/Jump/BLE corto; dedup central
+    // _receivedMessageIds). No reabrir un reensamblado BLE con trozos tardíos que nunca completaría: acusar recibo (que el
+    // emisor pare) y salir. Cubre el orden «internet antes, trozos BLE después»; el buffer ya a medias lo cierra dropAssembly.
+    if (self.ble && self.ble._receivedMessageIds && self.ble._receivedMessageIds.has(msgId)) {
+      self._sendFinalAck(deviceId, msgId, total);
+      return;
+    }
     var buf = self.incomingBuffers.get(msgId);
     // Ronda 2767: otro intento del mismo mensaje (marca 'a' distinta: cifrado otra vez, distinto). Sus trozos no se
     // mezclan con los del anterior (antes salía ilegible y se perdía): si el anterior está parado, se empieza de nuevo
@@ -1352,6 +1359,20 @@ export class BleAckSystem {
   }
   // Ronda 2767: ya confirmado en esta sesión (un reenvío que arrancó antes no lo vuelve a mandar)
   isDone(msgId) { return !!msgId && this._done.has(msgId); }
+  // P6 (dueño 01-11): el MISMO mensaje llegó ENTERO por otro camino (internet/Jump/BLE corto). Cierra un reensamblado BLE
+  // que quedó a medias con ese msgId para que NO caduque a los 120 s con un «Assembly timeout» (y un falso «fallo» de un
+  // mensaje que SÍ llegó). Lo llama ble_messages.onPayloadReceived al recibir/deduplicar un mensaje completo. Devuelve true
+  // si había un reensamblado que cerrar.
+  dropAssembly(msgId) {
+    if (!msgId) return false;
+    var buf = this.incomingBuffers.get(msgId);
+    if (!buf) return false;
+    if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
+    if (buf.ackTimer) clearTimeout(buf.ackTimer);
+    this.incomingBuffers.delete(msgId);
+    console.log('[BleAckSystem] reensamblado de ' + msgId + ' cerrado: el mensaje llegó entero por otro camino');
+    return true;
+  }
   _dispatchFileProgress(fileId, sent, total, status, percent, extra) {
     try { window.dispatchEvent(new CustomEvent('nexo:ble:fileProgress', { detail: Object.assign({ fileId: fileId, sent: sent, total: total, status: status, percent: percent || 0, direction: 'out' }, extra || {}) })); } catch (e) {}
   }

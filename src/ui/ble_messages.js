@@ -425,6 +425,10 @@ export const BLE_MESSAGE_METHODS = {
           _vaultGetOrCreateContact(senderUUID, senderName, self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name);
         }
         var ackTo = data.viaRelay ? data.relayOrigin : null;
+        // P6 (dueño 01-11): este mensaje llegó ENTERO por este camino (internet/Jump/BLE corto). Si quedó un reensamblado
+        // BLE a medias del mismo msgId (el emisor empezó por Bluetooth y acabó por otra vía), ciérralo: así no caduca a los
+        // 120 s con un «Assembly timeout» ni un falso «fallo» de un mensaje que SÍ llegó.
+        if (messageId && self.ackSystem && typeof self.ackSystem.dropAssembly === 'function') self.ackSystem.dropAssembly(messageId);
         if (messageId && self._receivedMessageIds.has(messageId)) {
           if (!isControl && self.ackSystem) self.ackSystem.sendAck(deviceId, messageId, ackTo);
           return;

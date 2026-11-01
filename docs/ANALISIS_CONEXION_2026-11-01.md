@@ -108,12 +108,22 @@ activa. De los 4 relés que escucha, damus.io flapea constantemente.
 **Solución robusta:** detectar relés que flapean (N caídas en M min) y bajarles prioridad / sacarlos un
 rato; mantener ≥N relés estables; apoyarse en Tor directo cuando esté. (Robustez de la capa internet.)
 
-## P6 — Reensamblado BLE huérfano cuando el mismo archivo ya llegó por internet (doble ruta)
+## P6 — Reensamblado BLE huérfano cuando el mismo archivo ya llegó por internet (doble ruta) — ✅ HECHO (build 2861, 01-11)
 **Evidencia (log):** `[BleAckSystem] Assembly timeout` ×3 msgId; **2 de ellos ya habían sido ✓✓ por
 internet** minutos antes → buffers de reensamblado BLE que nunca completan y caducan.
-**Causa:** el mismo msgId llega por dos rutas (BLE + net); el buffer BLE queda colgado hasta el timeout.
-**Solución robusta:** al completar/confirmar un msgId por CUALQUIER ruta, cerrar/descartar los buffers de
-reensamblado de ese msgId en las otras rutas (dedupe por msgId entre transportes).
+**Causa:** el mismo msgId llega por dos rutas (BLE troceado + net). El dedup de recepción estaba PARTIDO: los
+mensajes completos por net/Jump/BLE-corto van por `ble_messages.onPayloadReceived` (dedup `_receivedMessageIds`),
+pero el troceado BLE va por `ble_ack` (dedup propio `completedMessages`/`incomingBuffers`) y los dos no se
+hablaban → el buffer BLE a medias quedaba colgado hasta el timeout de 120 s (con un falso «fallo» de progreso).
+**Solución aplicada (2861):** dedup ENTRE transportes. (1) `ble_ack.dropAssembly(msgId)`: cierra el reensamblado
+BLE a medias (cancela su temporizador) y lo llama `onPayloadReceived` al recibir/deduplicar un mensaje completo
+→ no más «Assembly timeout» de algo que ya llegó. (2) En `_handleIncomingChunk`, un trozo BLE tardío de un msgId
+que ya está en el dedup central (`self.ble._receivedMessageIds`) NO reabre buffer: se acusa recibo (que el emisor
+pare) y se descarta. Cubre los dos órdenes (net-antes-trozos y trozos-antes-net). Sin tocar la lógica de entrega
+(aditivo), así que no puede duplicar ni perder mensajes (el doble por E2E ya lo corta la protección anti-repetición).
+Prueba determinista `dedupe.js` (en `ci.js`): dropAssembly cierra y cancela el timer; trozo tardío de un recibido
+no reabre buffer y acusa; un msgId nuevo SÍ abre buffer (no se rompe lo normal). Reproduce el fallo con el código
+viejo (`dropAssembly` no existía).
 
 ## P7 — JUMP deja de hacer de puente a 82 % de batería (texto engañoso) — rompió la ruta a mitad
 **Evidencia (log):** `[JUMP] Batería baja (82 %, ahorro): dejo de hacer de puente` (y otra al 65 %); el
@@ -137,7 +147,7 @@ bien o subir el tope con cuidado.
 ## Orden de arreglo propuesto (uno a uno, con prueba + batería)
 1. ✅ **P1 — vídeo por internet** — HECHO (build 2859). Solo `calls.js` (grupo fuera, ver P1).
 2. ✅ **P2 — toque de despertar + tipo de conexión al abrir chat** — HECHO (build 2860). `net_link.wakeFor` + `ble_links._wakeSleepingPeer/isWaking` + `openChat` + subtítulo «Conectando…». Prueba `wakeopen.js`.
-3. **P6 — dedupe de reensamblado entre BLE y net** (arreglo contenido, quita buffers colgados).
+3. ✅ **P6 — dedupe de reensamblado entre BLE y net** — HECHO (build 2861). `ble_ack.dropAssembly` + guard con `_receivedMessageIds`. Prueba `dedupe.js`.
 4. **P7 — no cortar el puente JUMP con batería alta** (afecta rutas mesh/internet).
 5. **P5 — relés que flapean: prioridad/robustez.**
 6. **P3 — archivo grande por internet (canal Tor directo)** — el más grande; build propia.
@@ -148,4 +158,4 @@ bien o subir el tope con cuidado.
    mejora la robustez del día a día. Decisión del dueño sobre cuándo meterlo (toca el pacing nativo BLE,
    build propia con medición antes/después).
 
-(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859 · P2 ✅ 2860.** Siguiente, por elección del dueño: P6 dedupe de reensamblado, o adelantar P4/#129 pacing.)
+(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859 · P2 ✅ 2860 · P6 ✅ 2861.** Siguiente del plan: P7 (JUMP no cortar puente con batería alta). P4/#129 pacing sigue como candidato a adelantar cuando el dueño quiera.)
