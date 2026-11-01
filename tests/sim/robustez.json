@@ -575,6 +575,10 @@
     {
      "fallo": "Girar el teléfono en plena videollamada (la imagen cambia de forma)",
      "prueba": "girar el teléfono"
+    },
+    {
+     "fallo": "P1 (diagnóstico real 01-11, dueño): la videollamada por INTERNET conectaba (audio OK) pero NO mandaba vídeo (log: 536 s, audio 4172 frames, 'vídeo enviado 0'). calls.js solo dejaba salir los fotogramas de vídeo por Wi-Fi (lan:); por net: se descartaban todos. 2859: el vídeo sale por lan: y por net: cuando es Tor DIRECTO (net.via='tor'); por relés no (los inundaría) ni por Bluetooth. Solo calls.js (la videollamada de grupo ya descarta net: por completo, así que queda fuera de P1)",
+     "prueba": "vídeo por INTERNET"
     }
    ],
    "debiles": [
