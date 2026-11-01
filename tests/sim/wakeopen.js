@@ -5,10 +5,11 @@
 // «Conectando…» hasta que llega la presencia del otro. Esta prueba comprueba el gate de forma determinista (sin red real).
 // Uso: node wakeopen.js
 'use strict';
+const { importSrc } = require('./srcmod');
 (async () => {
   const r = { prueba: 'wakeopen' };
-  const { BLE_LINK_METHODS } = await import('../../src/ui/ble_links.js');
-  const { NetLink } = await import('../../src/net/net_link.js');
+  const { BLE_LINK_METHODS } = await importSrc('ui/ble_links.js');
+  const { NetLink } = await importSrc('net/net_link.js');
 
   // --- 1) _wakeSleepingPeer: decide si despertar según el enlace actual ---
   function mkSelf(via, wakeOk) {

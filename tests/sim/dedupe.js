@@ -6,9 +6,10 @@
 // `ble._receivedMessageIds`) NO reabre buffer: se acusa recibo y se descarta. Prueba determinista (sin DOM/nativo).
 // Uso: node dedupe.js
 'use strict';
+const { importSrc } = require('./srcmod');
 (async () => {
   const r = { prueba: 'dedupe' };
-  const { BleAckSystem } = await import('../../src/ui/ble_ack.js');
+  const { BleAckSystem } = await importSrc('ui/ble_ack.js');
 
   function mkAck() {
     const ble = { _receivedMessageIds: new Set(), _sendMessageNative: () => Promise.resolve(), _resolveNexoId: () => 'nxb0000002' };

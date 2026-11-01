@@ -4,9 +4,10 @@
 // no (los inundaría y llegaría con retraso), ni por Bluetooth. Esta prueba comprueba el gate `_videoLinkOk` de forma
 // determinista (sin red real). Uso: node netvideo.js
 'use strict';
+const { importSrc } = require('./srcmod');
 (async () => {
   const r = { prueba: 'netvideo' };
-  const { createCalls } = await import('../../src/ui/calls.js');
+  const { createCalls } = await importSrc('ui/calls.js');
 
   // net.via(nx) controlable; el resto del ble, lo mínimo que toca el gate.
   var viaVal = 'relés';

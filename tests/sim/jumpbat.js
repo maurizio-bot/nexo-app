@@ -4,9 +4,10 @@
 // puente por sí solo; solo manda la batería (en ahorro se pide 30 %, sin ahorro 15 %), y el texto del registro dice el
 // motivo real. Prueba determinista de canRelay()/_relayStopReason(). Uso: node jumpbat.js
 'use strict';
+const { importSrc } = require('./srcmod');
 (async () => {
   const r = { prueba: 'jumpbat' };
-  const { BleRelay } = await import('../../src/ui/ble_relay.js');
+  const { BleRelay } = await importSrc('ui/ble_relay.js');
   const relay = new BleRelay({ localNexoId: 'nxa0000001' });
   const set = (level, powerSave, charging) => { relay.power = { level: level, charging: !!charging, powerSave: !!powerSave, ts: Date.now() }; };
 

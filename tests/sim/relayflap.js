@@ -4,9 +4,10 @@
 // SOLO si quedan otros relés abiertos (mejor un relé que flapea que quedarse sin internet). Prueba determinista de
 // `_noteRelayClose`. Uso: node relayflap.js
 'use strict';
+const { importSrc } = require('./srcmod');
 (async () => {
   const r = { prueba: 'relayflap' };
-  const { NetLink } = await import('../../src/net/net_link.js');
+  const { NetLink } = await importSrc('net/net_link.js');
 
   function mkNet(openOthers) {
     const net = new NetLink({ localNexoId: 'nxa0000001' });
