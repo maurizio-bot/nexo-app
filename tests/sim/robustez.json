@@ -248,6 +248,10 @@
      "prueba": "archivos grandes por Bluetooth L2CAP"
     },
     {
+     "fallo": "Congestión Bluetooth MTU 23 (#129 parte 2a, análisis del dueño 01-11): al vaciar el backlog arrancaban TODAS las transferencias de archivo a la vez e inundaban la cola nativa; los textos/acks quedaban atrás (mensajes en ○). Ahora tope de 1 transferencia de archivo a la vez por enlace Bluetooth (las demás en cola); net/lan/Wi-Fi Direct y textos/acks/control no se limitan",
+     "prueba": "tope de archivos por enlace Bluetooth"
+    },
+    {
      "fallo": "Archivos grandes por internet (informe del dueño 2786: «no manda nada ni avisa si es por dimensiones»): por los relés van los medianos (~6 MB); por Tor DIRECTO los grandes (~22 MB) también salen por internet; si no caben, aviso claro con la opción de Tor / mismo Wi-Fi / cerca (nunca se queda sin mandar y sin avisar)",
      "prueba": "archivos grandes por internet"
     },

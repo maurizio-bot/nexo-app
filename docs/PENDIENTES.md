@@ -321,9 +321,17 @@ de vuelta que confirme la entrega, para que el que manda SÍ o SÍ reciba retroa
     usuario sí espera lo sigue pausando (v6.1.13). `_transferActive` ignora `meta.type==='fenix'`; `_stopAutoScan` no se
     llama para envío/recepción Fénix. Prueba `scanfenix.js` (reproduce con el código viejo y pasa con el fix; guarda de
     regresión). Confirma el dueño en los teléfonos.
+  - ✅ **Concurrencia por enlace acotada (pacing parte 2a, build 2872, análisis del dueño 01-11).** Al reconectar,
+    `resumeOutgoingTransfers` arrancaba TODAS las transferencias de archivo a la vez (en el diagnóstico real ~12
+    «sendFile START» juntos) e inundaba la cola nativa con MTU 23; los textos/acks quedaban atrás → mensajes en ○.
+    Fix: tope de **1 transferencia de archivo a la vez por enlace Bluetooth** (`_maxBleFilesPerLink`, en `ble_ack.js`
+    `_sendFileJS`/`_bleFileSlots`/`_pumpFileQueue`); las demás esperan en cola y entran al liberarse un hueco
+    (net:/lan:/Wi-Fi Direct no se limitan; textos/acks/control tampoco). Prueba `filecap.js` (4 archivos a la vez →
+    máx. 1 stream, los 4 llegan y un texto mandado en medio llega sin quedarse atrás). Confirma el dueño.
   - 🔜 **Falta (pacing nativo, build propia con reproducción en sim):** (1) marcar el ritmo de escritura según la capacidad
     real del enlace (MTU bajo → trozo chico + más espera, o parar al llenarse la cola y reanudar al vaciarse en vez de
-    reintentar a ciegas); (2) preferir net/Wi-Fi para archivos con ese enlace. (Fénix ya no insiste en contactos con GATT
+    reintentar a ciegas) y **priorizar en la cola nativa control/presencia/texto** por delante de los trozos de archivo;
+    (2) preferir net/Wi-Fi para archivos con ese enlace. (Fénix ya no insiste en contactos con GATT
     roto: solo envía a `ready_to_chat`, y el backoff `no_service` 2813/2814 los pausa; el caso que quedaba era el MTU-23
     «ready».) Reproducir primero en `tests/sim` el caso MTU 23 + cola llena.
 - ✅ **Escaneo robusto a escala + recuperación de fallos (build 2838) (pedido del dueño 30-10, «rápido y robusto en poca
