@@ -156,9 +156,11 @@ const mk = (e, extra) => e.mod.createCallMedia(Object.assign({ onPacket() {}, co
     if (ctx && ctx.proc && ctx.proc.onaudioprocess) for (let i = 0; i < 30; i++) ctx.proc.onaudioprocess({ inputBuffer: { getChannelData: () => new Float32Array(2048).fill(0.1) } });
     r.colgar_mientras_abre_el_micro = { micros_abiertos: e.live('audio'), audio_abierto: e.ctxs.filter((c) => !c.closed).length, voz_tras_colgar: packets.length };
   }
-  // 2. Videollamada con la cámara denegada (o sin cámara): al menos voz, y el estado lo dice
+  // 2. Videollamada SIN cámara de verdad (NotFoundError, fallo duro): al menos voz, y el estado lo dice al instante
+  // ('none', sin reintentar — no hay cámara que esperar). El permiso denegado (NotAllowedError), que en Android suele
+  // ser transitorio, se reintenta y se prueba aparte en 7b/7c.
   {
-    const e = env({ cameraDenied: true, vp8: true });
+    const e = env({ camFail: () => 'NotFoundError', vp8: true });
     const states = [];
     const m = mk(e, { video: true, onVideoPacket() {}, onState: (s) => states.push(s && s.cam) });
     r.video_sin_camara = await m.start().then((i) => ({ empieza: true, video: !!i.video, micros: e.live('audio') }), () => ({ empieza: false, micros: e.live('audio') }));
@@ -218,6 +220,30 @@ const mk = (e, extra) => e.mod.createCallMedia(Object.assign({ onPacket() {}, co
     const voz = e.live('audio');
     const t = await until(() => sent.length > 0, 14000);
     r.camara_ocupada_5s = { al_empezar_video: !!i.video, voz_al_empezar: voz, video_entra_ms: t, estados: states.filter((x, k) => x !== states[k - 1]) };
+    m.stop();
+  }
+  // 7b. #dueño 01-11 (diagnóstico de videollamada «Cámara: NotAllowedError: solo voz»): un permiso denegado TRANSITORIO
+  // al activar la cámara (ocupada por la llamada anterior / app recién en primer plano) se reintenta y el vídeo entra.
+  // Antes NotAllowedError era final → camNextTry=Infinity → quedaba en «solo voz» toda la llamada (sin vídeo nunca).
+  {
+    const e = env({ vp8: true, camFail: (n, ms) => (ms < 3000 ? 'NotAllowedError' : null) });
+    const sent = [], states = [];
+    const m = mk(e, { video: true, onVideoPacket: (b) => sent.push(b), onState: (s) => states.push(s && s.cam) });
+    const i = await m.start().catch(() => ({}));
+    const voz = e.live('audio');
+    const t = await until(() => sent.length > 0, 14000);
+    r.camara_permiso_transitorio = { al_empezar_video: !!i.video, voz_al_empezar: voz, video_entra_ms: t, estados: states.filter((x, k) => x !== states[k - 1]) };
+    m.stop();
+  }
+  // 7c. Permiso de cámara denegado SIEMPRE (de verdad): se reintenta unas pocas veces (no gira para siempre) y cae a
+  // «solo voz» ('none'); la voz sigue. (El micro no se toca: su NotAllowedError sigue siendo final al instante.)
+  {
+    const e = env({ vp8: true, camFail: () => 'NotAllowedError' });
+    const sent = [], states = [];
+    const m = mk(e, { video: true, onVideoPacket: (b) => sent.push(b), onState: (s) => states.push(s && s.cam) });
+    await m.start().catch(() => ({}));
+    await sleep(10000);
+    r.camara_permiso_denegado = { micros: e.live('audio'), imagenes: sent.length, estado_final: states[states.length - 1], hubo_retry: states.indexOf('retry') >= 0 };
     m.stop();
   }
   // 8. Micrófono ocupado al empezar (otra app lo soltaba): el primer intento falla
@@ -446,6 +472,8 @@ const mk = (e, extra) => e.mod.createCallMedia(Object.assign({ onPacket() {}, co
     rafaga: r.rafaga.suenan >= 1 && r.rafaga.a_la_vez_max === 1,
     camara_ocupada_un_momento: p6.video && p6.imagenes_enviadas > 3 && p6.micros >= 1,
     camara_ocupada_5s: !p7.al_empezar_video && p7.voz_al_empezar >= 1 && p7.video_entra_ms !== null && p7.estados.indexOf('retry') >= 0 && p7.estados[p7.estados.length - 1] === 'on',
+    camara_permiso_transitorio: r.camara_permiso_transitorio.video_entra_ms !== null && r.camara_permiso_transitorio.estados.indexOf('retry') >= 0 && r.camara_permiso_transitorio.estados[r.camara_permiso_transitorio.estados.length - 1] === 'on',
+    camara_permiso_denegado: r.camara_permiso_denegado.micros >= 1 && r.camara_permiso_denegado.imagenes === 0 && r.camara_permiso_denegado.estado_final === 'none' && r.camara_permiso_denegado.hubo_retry,
     micro_ocupado_un_momento: r.micro_ocupado_un_momento.empieza === 'ok' && r.micro_ocupado_un_momento.micros >= 1 && r.micro_ocupado_un_momento.voz_enviada > 0,
     camara_cortada: r.camara_cortada.vuelve_ms !== null && r.camara_cortada.camaras_vivas === 1,
     camara_sin_imagenes: r.camara_sin_imagenes.imagenes_ms !== null && r.camara_sin_imagenes.camaras_vivas === 1,

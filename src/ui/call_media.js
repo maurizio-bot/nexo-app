@@ -45,6 +45,7 @@ var PACKET_MS = 100;
 // Ronda 2769
 var GUM_RETRY_MS = [400, 1000, 2000];          // micrófono o cámara ocupados un momento: reintentos al abrir
 var CAM_RETRY_MS = 4000, CAM_RETRY_MAX = 15;   // sin cámara: otro intento cada 4 s (~1 min)
+var CAM_DENY_MAX = 3;                          // #dueño 01-11: NotAllowedError al activar la cámara suele ser transitorio (cámara ocupada por la llamada previa o app recién en primer plano): unos pocos reintentos antes de rendirse a solo voz
 var MIC_RETRY_MS = 3000;
 var WATCH_MS = 1000;
 var NO_FRAMES_MS = 2000;                       // cámara abierta sin imágenes: se reanuda; el doble: se vuelve a abrir
@@ -116,6 +117,10 @@ function _hasVp8() {
 // Ronda 2769: ocupado un momento (se reintenta) o definitivo (permiso denegado, no hay)
 function _busy(e) { var n = e && e.name; return n === 'NotReadableError' || n === 'AbortError' || n === 'TrackStartError'; }
 function _final(e) { var n = e && e.name; return n === 'NotAllowedError' || n === 'PermissionDeniedError' || n === 'NotFoundError' || n === 'DevicesNotFoundError' || n === 'SecurityError'; }
+// #dueño 01-11: fallo DURO de cámara (reintentar no sirve): no hay cámara o contexto inseguro. El permiso denegado
+// (NotAllowedError) NO entra aquí: al activar la cámara en una llamada suele ser transitorio en Android (cámara
+// ocupada por la llamada anterior, o la app recién volviendo a primer plano), así que se reintenta unas veces.
+function _hardFinal(e) { var n = e && e.name; return n === 'NotFoundError' || n === 'DevicesNotFoundError' || n === 'SecurityError'; }
 function _stopAll(s) { try { s.getTracks().forEach(function(t) { t.stop(); }); } catch (e) {} }
 
 // Ronda 2761: lo que este teléfono puede recibir (va en la oferta y en la respuesta; antes se anunciaba Opus siempre)
@@ -143,7 +148,7 @@ export function createCallMedia(opts) {
   var stopped = false, flipping = null;
   // Ronda 2769: estado de la cámara ('on' | 'off' | 'retry' | 'none') y del micrófono ('on' | 'retry' | 'none') y vigilante
   var camState = '', micState = '', camErr = '', micErr = '', watchTimer = null;
-  var camOpening = false, camTries = 0, camNextTry = 0, camReopens = 0, lastFrameAt = 0, playTriedAt = 0;
+  var camOpening = false, camTries = 0, camDenied = 0, camNextTry = 0, camReopens = 0, lastFrameAt = 0, playTriedAt = 0;
   var micOpening = false, micNextTry = 0, micReopens = 0, lastResumeAt = 0;
   var rxVideoAt = 0, firstRxAt = 0, lastDecodedAt = 0, lastKeyReq = 0, stallResetAt = 0;
 
@@ -306,7 +311,7 @@ export function createCallMedia(opts) {
       if (!t) { _stopAll(s); throw Object.assign(new Error('sin cámara'), { name: 'NotFoundError' }); }
       stream.getVideoTracks().forEach(function(o) { stream.removeTrack(o); try { o.stop(); } catch (e) {} });
       t.enabled = camOn; stream.addTrack(t);
-      camTries = 0; camErr = ''; camNextTry = 0; lastFrameAt = Date.now(); playTriedAt = 0; forceKey = true;
+      camTries = 0; camDenied = 0; camErr = ''; camNextTry = 0; lastFrameAt = Date.now(); playTriedAt = 0; forceKey = true;
       if (reason) { camReopens++; console.log('[CALL] Cámara abierta de nuevo (' + reason + ')'); }
       if (localV) { localV.srcObject = new MediaStream([t]); playLocal(); }
       setState(camOn ? 'on' : 'off');
@@ -314,7 +319,14 @@ export function createCallMedia(opts) {
     }).catch(function(e) {
       camOpening = false;
       camErr = (e && e.name) || 'error';
-      var fin = _final(e) || camTries >= CAM_RETRY_MAX;
+      // #dueño 01-11 (diagnóstico de videollamada «Cámara: NotAllowedError: solo voz»): un permiso denegado al activar
+      // la cámara en una llamada suele ser TRANSITORIO en Android (la cámara sigue ocupada por la llamada anterior, o
+      // la app acaba de volver a primer plano). Antes NotAllowedError era final → camNextTry=Infinity → el vigilante NO
+      // reintentaba y quedaba en «solo voz» toda la llamada. Ahora se reintenta unas pocas veces (CAM_DENY_MAX) antes de
+      // rendirse; un fallo DURO (sin cámara / contexto inseguro) sí es final al instante.
+      var denied = camErr === 'NotAllowedError' || camErr === 'PermissionDeniedError';
+      camDenied = denied ? camDenied + 1 : 0;
+      var fin = _hardFinal(e) || (denied ? camDenied >= CAM_DENY_MAX : camTries >= CAM_RETRY_MAX);
       camNextTry = fin ? Infinity : Date.now() + CAM_RETRY_MS;
       console.warn('[CALL] Cámara: ' + camErr + (fin ? ': solo voz' : ': solo voz por ahora, otro intento en ' + CAM_RETRY_MS / 1000 + ' s'));
       setState(fin ? 'none' : 'retry');
