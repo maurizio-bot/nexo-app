@@ -135,7 +135,7 @@ function _openSettingsSheet() {
       '<button id="nexo-ringtone-btn" class="nx-btn" style="margin-top:6px;">' + t('prof_choose_tone', 'Elegir tono…') + '</button>') +
     // v9.9.51: internet (relés públicos y Tor, src/net/net_link.js)
     card('🌐', t('internet'), '<div id="nexo-net-status" class="nx-sub"></div>' +
-      '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> ' + t('prof_tor_label', 'Usar Tor con Wi-Fi (oculta tu IP; más lento)') + '</label>') +
+      '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> ' + t('prof_tor_label', 'Usar Tor siempre (oculta tu IP; va más lento). El vídeo y los archivos grandes por internet ya lo usan solos.') + '</label>') +
     // Ronda 2808 (pedido del dueño «rendimiento api de nexo»): medición en vivo del rendimiento de NEXO
     perfSectionHtml() +
     card('🩺', t('diagnostics'), '<div class="nx-sub">' + t('prof_diag_sub', 'Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.') + '</div>' +
@@ -179,7 +179,7 @@ function _openSettingsSheet() {
   }
   var torBox = sheet.querySelector('#nexo-net-tor');
   if (torBox) {
-    torBox.checked = !!(bi.net && bi.net.torWanted());
+    torBox.checked = !!(bi.net && (bi.net.torManual ? bi.net.torManual() : bi.net.torWanted()));
     torBox.onchange = function() { if (bi.net) { bi.net.setTor(torBox.checked); setTimeout(_renderNetStatus, 300); } };
   }
   sheet.querySelector('#nexo-move-send').onclick = function() { sheet.remove(); startSendAccount(); };

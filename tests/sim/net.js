@@ -88,6 +88,10 @@ const tokenOf = (nx, day) => crypto.createHash('sha256').update('nexo-lan|' + nx
   const has = async (p, from, f) => (await p.win.vaultLoadMessages(from)).some(f);
   const status = (p, text) => { const el = Array.from(p.win.document.querySelectorAll('#messages-container .message.own')).find((m) => m.textContent.indexOf(text) >= 0); const s = el && el.querySelector('.msg-status'); return s ? s.className.replace('msg-status status-', '') : null; };
   if (withTor) {
+    // #dueño 01-11: Tor ya NO va por defecto (más lento). Para probar el camino Tor, el usuario lo enciende a mano en
+    // Ajustes (privacidad siempre): con Tor manual, TODO (texto, foto) va por Tor directo. setTor(true) arranca Tor.
+    A.win.bleInterface.net.setTor(true); B.win.bleInterface.net.setTor(true);
+    A.win.bleInterface.net.tick(); B.win.bleInterface.net.tick();
     r.por_tor_s = await waitFor(() => logs.some((l) => /\[A\].*conectado por Tor/.test(l)) && logs.some((l) => /\[B\].*conectado por Tor/.test(l)), 60000);
   }
   const ev0 = r1.events.length + r2.events.length;

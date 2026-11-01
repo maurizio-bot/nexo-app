@@ -24,13 +24,17 @@ export var WD_MAX_B64_BYTES = 30000000;
 // carga) y, si no hay Tor con ese contacto, cae a los relés (más eventos; aceptable para envíos puntuales). Por encima de
 // ~22 MB hace falta Wi-Fi/Wi-Fi Direct con el otro cerca (o la Fase B: archivos muy grandes por Tor directo). El vídeo HD
 // ya manda la previa.
-export var NET_MAX_B64_BYTES = 30000000;
+// #dueño 01-11: «internet rápido hasta 40 MB». Sube de ~22 MB a ~40 MB reales (56 MB en base64) el tope por internet por
+// los RELÉS (el camino rápido ahora que Tor no va por defecto). El archivo se parte en trozos como hasta ahora; 40 MB por
+// relés son ~700 eventos (envío puntual, aceptable). Para más grande: Wi-Fi/Wi-Fi Direct cerca o Tor directo nativo (P3).
+export var NET_MAX_B64_BYTES = 56000000;
 
 // Ronda 2786 (pedido del dueño: "que permita el envío de archivos grandes cuando hay internet"): con Tor DIRECTO (una
 // conexión .onion entre los dos teléfonos, sin relés) no hay tope de 64 KB por evento, así que por ahí los archivos
-// grandes también salen por internet, como por Wi-Fi Direct. Mismo tope que Wi-Fi Direct (~22 MB) para no cargar en
-// memoria más de lo ya probado. Por los relés (sin Tor) se mantiene el tope de medianos.
-export var NET_TOR_MAX_B64_BYTES = WD_MAX_B64_BYTES;
+// grandes también salen por internet, como por Wi-Fi Direct. #dueño 01-11: igual que por los relés, hasta ~40 MB (antes
+// ~22 MB) por este camino troceado-en-memoria. Para más grande: Wi-Fi/Wi-Fi Direct cerca o (P3) streaming nativo por Tor
+// directo, de disco a disco, sin cargar en memoria.
+export var NET_TOR_MAX_B64_BYTES = 56000000;
 
 // ¿hay una conexión Tor DIRECTA con el contacto ahora mismo? (net.via() === 'tor'; p.torOk en net_link.js). Si la hay,
 // un archivo grande puede ir por internet por ese canal P2P (sin el límite por evento de los relés públicos).
