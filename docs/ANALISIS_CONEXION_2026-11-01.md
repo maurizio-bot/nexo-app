@@ -92,7 +92,20 @@ Android 15 ↔ cercanos, el dueño: «aquí debería estar lo del scan lento»).
 escaneo ni de GATT: el escaneo es rápido y el GATT conecta (MTU 517 de entrada; la saturación es de SALIDA
 por un enlace MTU-23). Los `Device no en cache → getRemoteDevice` (10×) son normales: son las direcciones
 BLE **rotativas** de los anuncios recién vistos (no están en caché del stack) y sí acaban conectando.
-**Solución robusta (= #129):** *pacing* de escritura guiado por el drenaje real del enlace (esperar al
+**Solución aplicada (2864, 1ª parte — JS, testable):** el fallo concreto estaba en `ble_ack` ChatStream: una
+rechazo `BLE_BUSY` («Cola de escritura llena») se trataba como FALLO del enlace → sumaba a `_nativeFails`, que a
+los 3 intentaba CAMBIAR de camino (`_resolveDeviceIdForNexoId`) y a los 120 ABORTABA como PEER_ABSENT un enlace
+SANO, solo congestionado (141× en el log). Ahora `BLE_BUSY` es CONTRAPRESIÓN: se espera escalonado (600→1200→2400
+ms) y se reintenta el MISMO trozo SIN contar como fallo (no cambia de camino ni aborta); el contador se reinicia al
+pasar un trozo; solo si NINGÚN trozo pasa ~5 min seguidos se deja pendiente. Nuevas funciones puras `_isBusyErr` /
+`_busyBackoffMs` + `_giveUpPending`; prueba `busyback.js` (en `ci.js`; reproduce el fallo con el código viejo). La
+cola nativa ya pacea por `onCharacteristicWrite` y el ChatStream ya ajusta ventana/trozo al MTU (no era «falta de
+pacing» sino la mala clasificación de la contrapresión).
+**Pendiente (2ª parte, medir en teléfonos):** con el diagnóstico del dueño antes/después (nº de «Cola de escritura
+llena» y tiempo hasta «Peer ready») decidir si hace falta además limitar transferencias concurrentes por enlace o
+negociar MTU mayor. La vía robusta para archivos grandes por un enlace lento es moverlos a Wi-Fi Direct (P8) en vez
+de pelear con MTU 23.
+**Solución robusta (= #129), nota original:** *pacing* de escritura guiado por el drenaje real del enlace (esperar al
 callback `onCharacteristicWrite`/crédito antes del siguiente write, en vez de reintentar «cola llena»);
 limitar transferencias BLE concurrentes por enlace (una activa + cola, no todas peleando); priorizar el
 tráfico de control/presencia (que el contacto se vuelva «ready» y los ✓✓) sobre las transferencias de fondo;
@@ -170,10 +183,9 @@ se trocea/gestiona, no se trunca en silencio — el mensaje del log llegó bien.
 5. ✅ **P5 — relés que flapean: prioridad/robustez** — HECHO (build 2863). `net_link` detecta flapeo y aparta el relé 5 min (si quedan ≥2 abiertos). Prueba `relayflap.js`.
 6. **P3 — archivo grande por internet (canal Tor directo)** — el más grande; build propia.
 7. ✅ **P9 — verificar tope 64 KB** — VERIFICADO: no hay truncado, nada que arreglar. **P8 — permiso Wi-Fi Direct** (pendiente, nativo).
-8. **P4 — pacing de escritura BLE con MTU 23 (= #129).** Ya CONFIRMADO con el diagnóstico lado a lado
-   (no hace falta pedir más). Es de **alto impacto**: cubre el GRAVE #1 (mensajes lentos/feedback) y el #2
-   (cercano tardado). **Candidato a ADELANTARLO** (p. ej. justo tras P2, o incluso antes): es el que más
-   mejora la robustez del día a día. Decisión del dueño sobre cuándo meterlo (toca el pacing nativo BLE,
-   build propia con medición antes/después).
+8. ✅ **P4 — pacing de escritura BLE con MTU 23 (= #129)** — 1ª parte HECHA (build 2864): `BLE_BUSY` tratado
+   como contrapresión (no como fallo del enlace) → ya no cambia de camino ni aborta un enlace sano por
+   congestión. Prueba `busyback.js`. 2ª parte (medir en teléfonos si hace falta limitar concurrencia o subir
+   MTU; o mover archivos grandes a Wi-Fi Direct P8) queda para con el próximo diagnóstico del dueño.
 
-(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859 · P2 ✅ 2860 · P6 ✅ 2861 · P7 ✅ 2862 · P5 ✅ 2863 · P9 ✅ verificado (sin fallo).** Quedan: P3 (archivo grande por Tor, feature grande), P8 (permiso Wi-Fi Direct, nativo) y P4/#129 pacing (nativo, alto impacto, candidato a adelantar). Checkpoint con el dueño antes de estos (son más grandes / tocan nativo).)
+(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859 · P2 ✅ 2860 · P6 ✅ 2861 · P7 ✅ 2862 · P5 ✅ 2863 · P9 ✅ verificado · P4/#129 ✅ 2864 (1ª parte).** Quedan: P3 (archivo grande por Tor, feature grande), P8 (permiso Wi-Fi Direct, nativo), y la 2ª parte de P4/#129 (medir en teléfonos). El dueño pidió seguir sin parar.)

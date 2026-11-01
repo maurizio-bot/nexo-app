@@ -76,6 +76,16 @@ const NACK_INTERVAL_MS = 1500;
 const FILE_WINDOW_TIMEOUT_MS = 8000;
 const FILE_PACING_DELAY_MS = 2; // el nativo ya regula el ritmo (control de flujo por callback)
 const MAX_WINDOW_RETRIES = 8;
+// #129 (dueño 01-11): «Cola de escritura llena» (BLE_BUSY) es CONTRAPRESIÓN, no un fallo del enlace: la cola nativa (con
+// MTU 23 son ~26 escrituras por mensajito) va llena y drena despacio. Se espera más y se reintenta el MISMO trozo, sin
+// contar como fallo (no cambiar de camino ni abortar). Solo si NINGÚN trozo pasa durante ~5 min seguidos se da por
+// saturado (enlace muerto). Antes se trataba como fallo y podía cambiar de enlace o abortar un enlace SANO (141× en el log).
+const BUSY_MAX_WAITS = 150; // reintentos de contrapresión seguidos (sin que pase ningún trozo) antes de dejar pendiente
+// #129: ¿el error de envío es «cola nativa llena» (BLE_BUSY = contrapresión) y no un fallo del enlace?
+export function _isBusyErr(err) { return !!(err && err.code === 'BLE_BUSY'); }
+// #129: espera (ms) ante la cola llena según el nº de reintentos SEGUIDOS n (1,2,3,…): 600 → 1200 → 2400 → 2400 (tope),
+// para dar tiempo a que la cola MTU-23 drene. n > BUSY_MAX_WAITS devuelve -1 (saturado de verdad: dejar pendiente).
+export function _busyBackoffMs(n) { return n > BUSY_MAX_WAITS ? -1 : Math.min(300 * Math.pow(2, Math.min(n, 3)), 2400); }
 // v3.10.0: Wi-Fi normal (lan.js): trozos grandes por la misma red
 const LAN_FILE_CHUNK = 24000;
 const LAN_CHAT_CHUNK = 8000;
@@ -1720,11 +1730,19 @@ ChatStream.prototype._sendWindow = function() {
       self.sentMask[idx] = true;
       self._sendChunk(idx)
         .then(function() {
-          self._nativeFails = 0;
+          self._nativeFails = 0; self._busyWaits = 0; // pasó un trozo: la cola drena y el enlace va bien
           setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
         })
         .catch(function(err) {
           if (self.aborted) return;
+          // #129 (dueño 01-11): «Cola de escritura llena» (BLE_BUSY) NO es fallo del enlace: es contrapresión de la cola
+          // nativa (MTU 23). Esperar más y reintentar el MISMO trozo, SIN contar como fallo (no cambiar de camino ni abortar).
+          if (self._isBusyErr(err)) {
+            var wait = self._busyBackoff();
+            if (wait < 0) { self._giveUpPending(); return; } // ~5 min saturado sin que pase un trozo: enlace muerto
+            setTimeout(function() { sendNext(idx); }, wait);
+            return;
+          }
           if (self._sendFailed(idx, err)) setTimeout(function() { sendNext(idx); }, self._nativeFails > 10 ? 1000 : 200);
         });
     }
@@ -1747,14 +1765,29 @@ ChatStream.prototype._sendFailed = function(idx, err) {
   }
   if (fails > 120 || (wrong && !best)) {
     // ~2 min sin poder enviar: queda pendiente y se reanuda al volver a haber camino
-    var e = new Error('Contacto no disponible: queda pendiente'); e.code = 'PEER_ABSENT';
-    var rej = self.reject; self.reject = null;
-    self.abort();
-    self.ackSystem.outgoingStreams.delete(self.msgId);
-    if (rej) rej(e);
+    self._giveUpPending();
     return false;
   }
   return true;
+};
+// #129 (dueño 01-11): ¿el trozo falló porque la cola nativa está llena (contrapresión), no por el enlace? (delegan en las
+// funciones puras _isBusyErr/_busyBackoffMs, exportadas para la prueba busyback.js)
+ChatStream.prototype._isBusyErr = function(err) { return _isBusyErr(err); };
+// #129: espera escalonada ante la cola llena. Cuenta los reintentos SEGUIDOS sin que pase ningún trozo; pasado
+// BUSY_MAX_WAITS (~5 min saturado) devuelve -1 = darse por saturado. Se reinicia a 0 al pasar un trozo.
+ChatStream.prototype._busyBackoff = function() {
+  var n = this._busyWaits = (this._busyWaits || 0) + 1;
+  if (n === 1 || n % 50 === 0) console.warn('[ChatStream] Cola nativa llena (contrapresión) en ' + this.msgId + ' (' + n + ')');
+  return _busyBackoffMs(n);
+};
+// #129: dejar el envío pendiente (se reanuda al volver a haber camino). Reutilizado por _sendFailed y por la contrapresión.
+ChatStream.prototype._giveUpPending = function() {
+  var self = this;
+  var e = new Error('Contacto no disponible: queda pendiente'); e.code = 'PEER_ABSENT';
+  var rej = self.reject; self.reject = null;
+  self.abort();
+  self.ackSystem.outgoingStreams.delete(self.msgId);
+  if (rej) rej(e);
 };
 // v3.13.0: binario si se puede (no el trozo 0, que lleva los datos del archivo y la miniatura); si no, JSON
 ChatStream.prototype._sendChunk = function(idx) {
