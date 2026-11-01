@@ -127,6 +127,11 @@ class NexoBlePlugin : Plugin() {
         private const val MESSAGE_MAX_PENDING_MS = 10000L
         private const val KEEPALIVE_INTERVAL_MS = 10000L
         private const val MTU_REQUEST = 512
+        // #dueño 01-11 (velocidad BLE): si el teléfono rechaza 512 el MTU se queda en 23 (20 B/escritura, ~20× más
+        // lento). Algunos stacks de Android descartan en silencio peticiones >512. Por eso el reintento pide 247 (el
+        // punto óptimo con DLE: 251 B por paquete de enlace entra en uno solo), que casi todos aceptan: así un teléfono
+        // que no da 512 cae a 247 (~90–100 kB/s) en vez de a 23 (~2 kB/s). La investigación (Nordic/Memfault) lo respalda.
+        private const val MTU_REQUEST_FALLBACK = 247
         private const val BG_NOTIFY_DELAY_MS = 4000L
         private const val RX_WAKE_MS = 15000L // ronda 2772: despierto tras recibir con la app en segundo plano (rxWake)
         private val RX_EVENTS = setOf("onPayloadReceived", "onLanMessage", "onTorMessage", "onWifiDirectReceived", "onBigProgress", "onBigDone")
@@ -1518,11 +1523,12 @@ class NexoBlePlugin : Plugin() {
                 if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == NexoBleSpec.CCCD_UUID) {
                     notifyListeners("onNotificationsEnabled", JSObject().put("deviceId", address).put("notificationsEnabled", true))
                     startKeepAlive(macNorm)
-                    // MTU aún mínimo: se pide otra vez (una), ya sin nada más en curso
+                    // MTU aún mínimo: se pide otra vez (una), ya sin nada más en curso, pero con el valor SEGURO 247
+                    // (no 512): un teléfono que rechazó 512 suele aceptar 247, y así no se queda en 23 (~20× más lento).
                     if ((negotiatedMtu[macNorm] ?: 23) <= 23 && mtuRetries < 1) {
                         mtuRetries++
-                        val again = try { gatt.requestMtu(MTU_REQUEST) } catch (e: Exception) { false }
-                        remLog("INFO", "GATT_CLIENT_CB", "MTU otra vez para $address: $again")
+                        val again = try { gatt.requestMtu(MTU_REQUEST_FALLBACK) } catch (e: Exception) { false }
+                        remLog("INFO", "GATT_CLIENT_CB", "MTU otra vez (247, valor seguro) para $address: $again")
                     }
                 }
             }
