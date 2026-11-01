@@ -151,6 +151,10 @@
    },
    "modos": [
     {
+     "fallo": "P6 (diagnóstico real 01-11, dueño): el mismo mensaje llega por dos caminos (Bluetooth troceado + internet); el reensamblado BLE quedaba a medias y caducaba a los 120 s con «[BleAckSystem] Assembly timeout» (2 de 3 ya ✓✓ por internet) → falso «fallo» de un mensaje que SÍ llegó. 2861: dedup entre transportes — dropAssembly cierra el reensamblado a medias cuando llega entero por otra vía, y un trozo BLE tardío de un msgId ya recibido (dedup central _receivedMessageIds) no reabre buffer (se acusa y se descarta)",
+     "prueba": "dedup entre caminos"
+    },
+    {
      "fallo": "Textos largos pendientes que se perdían mostrando «entregado»",
      "prueba": "lo pendiente al volver el contacto"
     },
