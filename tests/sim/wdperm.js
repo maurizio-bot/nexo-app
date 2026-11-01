@@ -4,9 +4,10 @@
 // por sesión, para tenerlo listo. Esta prueba comprueba la decisión `_shouldAskPermNow` y que markPeer la dispara una vez.
 // Uso: node wdperm.js
 'use strict';
+const { importSrc } = require('./srcmod');
 (async () => {
   const r = { prueba: 'wdperm' };
-  const { WifiDirect } = await import('../../src/ui/wifi_direct.js');
+  const { WifiDirect } = await importSrc('ui/wifi_direct.js');
   const mk = (status, over) => Object.assign(new WifiDirect({ localNexoId: 'nxa0000001' }), over || {}, status ? { status: status } : {});
 
   // soportado, sin conceder, sin denegar, sin pedir → SÍ pedir

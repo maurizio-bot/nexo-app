@@ -5,9 +5,10 @@
 // contrapresión — esperar más (600→1200→2400 ms) y reintentar el MISMO trozo, sin contar como fallo; solo si NINGÚN trozo
 // pasa en ~5 min seguidos se deja pendiente. Prueba de las funciones puras `_isBusyErr`/`_busyBackoffMs`. Uso: node busyback.js
 'use strict';
+const { importSrc } = require('./srcmod');
 (async () => {
   const r = { prueba: 'busyback' };
-  const { _isBusyErr, _busyBackoffMs } = await import('../../src/ui/ble_ack.js');
+  const { _isBusyErr, _busyBackoffMs } = await importSrc('ui/ble_ack.js');
 
   // _isBusyErr: solo true para BLE_BUSY (cola llena); un fallo real del enlace (WRONG_PEER, genérico) NO.
   r.busy_si = _isBusyErr({ code: 'BLE_BUSY' }) === true;
