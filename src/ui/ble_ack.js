@@ -209,6 +209,11 @@ export class BleAckSystem {
     this.windowTimeoutMs = CHAT_WINDOW_TIMEOUT_MS;
     this.outgoingStreams = new Map();
     this.preparing = new Set(); // ids cifrándose (aún sin ack pendiente ni flujo): cuentan como en vuelo
+    // #129 parte 2 (dueño 01-11): tope de transferencias de ARCHIVO simultáneas por enlace Bluetooth (MTU 23 se
+    // inunda si arrancan muchas a la vez; los textos/acks/control quedaban atrás → mensajes en ○). Las que no caben
+    // esperan en esta cola y arrancan al liberarse un hueco. net:/lan:/Wi-Fi Direct NO se limitan.
+    this._fileStartQueue = new Map(); // fileId -> { deviceId, data, meta, at, waiters:[{resolve,reject}] }
+    this._maxBleFilesPerLink = 1;
     this._chatPrep = new Map(); // id → envío de un texto en curso (cifrándose, en flujo o esperando ✓✓): no sale dos veces a la vez
     this._done = new Map();     // id → cuándo se confirmó (entregado o leído): no se reenvía
     this.incomingBuffers = new Map();
@@ -472,7 +477,6 @@ export class BleAckSystem {
         reject(new Error('Datos de archivo vacios'));
         return;
       }
-      var finalMeta = self._fileMeta(meta, base64Data.length);
       // v3.3.3: reanudar (resumeOutgoingTransfers) una transferencia que sigue en curso creaba un segundo
       // flujo con el mismo id que pisaba al primero
       var running = self.outgoingStreams.get(fileId);
@@ -481,22 +485,69 @@ export class BleAckSystem {
         running._promise.then(resolve, reject);
         return;
       }
-      console.log('[BleAckSystem] sendFile START fileId=' + fileId + ' type=' + finalMeta.type + ' bytes(b64)=' + base64Data.length + ' to=' + deviceId);
-      // #129 (dueño 31-10): un respaldo FÉNIX de fondo NO debe parar el escaneo de contactos (sí lo hace una foto/archivo que el usuario espera).
-      if (self.ble && typeof self.ble._stopAutoScan === 'function' && finalMeta.type !== 'fenix') self.ble._stopAutoScan();
-      var stream = new ChatStream(self, deviceId, fileId, base64Data, finalMeta, 'file');
-      self.outgoingStreams.set(fileId, stream);
-      stream._promise = stream.start();
-      stream._promise.then(function() {
-        self.outgoingStreams.delete(fileId);
-        console.log('[BleAckSystem] sendFile OK fileId=' + fileId);
-        resolve();
-      }).catch(function(err) {
-        self.outgoingStreams.delete(fileId);
-        console.warn('[BleAckSystem] sendFile FAIL fileId=' + fileId, err && err.message);
-        reject(err);
-      });
+      // #129 parte 2: si ya está esperando en la cola de arranque (otro reenvío pidió lo mismo), no duplicar
+      var q = self._fileStartQueue.get(fileId);
+      if (q) { q.waiters.push({ resolve: resolve, reject: reject }); return; }
+      // #129 parte 2 (dueño 01-11): no inundar un enlace BLUETOOTH (MTU 23) arrancando muchas transferencias de
+      // archivo a la vez. Máximo _maxBleFilesPerLink por enlace Bluetooth; las demás esperan en cola y arrancan al
+      // liberarse un hueco, así los textos/acks/control (que NO se limitan) tienen aire y no se quedan en ○ detrás de
+      // miles de trozos. net:/lan:/Wi-Fi Direct no tienen la cola nativa de Bluetooth → no se limitan.
+      var isBle = !_isNetDevice(deviceId) && !_isLanDevice(deviceId);
+      if (isBle && self._bleFileSlots(deviceId) >= self._maxBleFilesPerLink) {
+        self._fileStartQueue.set(fileId, { deviceId: deviceId, data: base64Data, meta: meta, at: Date.now(), waiters: [{ resolve: resolve, reject: reject }] });
+        console.log('[BleAckSystem] sendFile EN COLA (enlace Bluetooth ocupado) fileId=' + fileId + ' to=' + deviceId + ' cola=' + self._fileStartQueue.size);
+        return;
+      }
+      self._startFileStream(deviceId, fileId, base64Data, meta, resolve, reject);
     });
+  }
+  // #129 parte 2: nº de transferencias de ARCHIVO activas hacia ese enlace Bluetooth (mismo teléfono; net:/lan: no cuentan)
+  _bleFileSlots(deviceId) {
+    var self = this, n = 0, mac = _normMac(deviceId), nx = self._resolveNexoId(deviceId);
+    self.outgoingStreams.forEach(function(s) {
+      if (!s || s.aborted || s.type !== 'file') return;
+      if (_isNetDevice(s.deviceId) || _isLanDevice(s.deviceId)) return;
+      if (_normMac(s.deviceId) === mac || self._resolveNexoId(s.deviceId) === nx) n++;
+    });
+    return n;
+  }
+  _startFileStream(deviceId, fileId, base64Data, meta, resolve, reject) {
+    var self = this;
+    var finalMeta = self._fileMeta(meta, base64Data.length);
+    console.log('[BleAckSystem] sendFile START fileId=' + fileId + ' type=' + finalMeta.type + ' bytes(b64)=' + base64Data.length + ' to=' + deviceId);
+    // #129 (dueño 31-10): un respaldo FÉNIX de fondo NO debe parar el escaneo de contactos (sí lo hace una foto/archivo que el usuario espera).
+    if (self.ble && typeof self.ble._stopAutoScan === 'function' && finalMeta.type !== 'fenix') self.ble._stopAutoScan();
+    var stream = new ChatStream(self, deviceId, fileId, base64Data, finalMeta, 'file');
+    self.outgoingStreams.set(fileId, stream);
+    stream._promise = stream.start();
+    stream._promise.then(function() {
+      self.outgoingStreams.delete(fileId);
+      console.log('[BleAckSystem] sendFile OK fileId=' + fileId);
+      resolve();
+      self._pumpFileQueue(deviceId);
+    }).catch(function(err) {
+      self.outgoingStreams.delete(fileId);
+      console.warn('[BleAckSystem] sendFile FAIL fileId=' + fileId, err && err.message);
+      reject(err);
+      self._pumpFileQueue(deviceId);
+    });
+  }
+  // #129 parte 2: al liberarse un hueco, arrancar la siguiente transferencia de archivo en cola para ese enlace Bluetooth
+  _pumpFileQueue(deviceId) {
+    var self = this;
+    if (!self._fileStartQueue || self._fileStartQueue.size === 0) return;
+    if (self._bleFileSlots(deviceId) >= self._maxBleFilesPerLink) return;
+    var mac = _normMac(deviceId), nx = self._resolveNexoId(deviceId), pick = null, pickId = null;
+    self._fileStartQueue.forEach(function(it, id) {
+      if (pick || _isNetDevice(it.deviceId) || _isLanDevice(it.deviceId)) return;
+      if (_normMac(it.deviceId) === mac || self._resolveNexoId(it.deviceId) === nx) { pick = it; pickId = id; }
+    });
+    if (!pick) return;
+    self._fileStartQueue.delete(pickId);
+    var waiters = pick.waiters || [];
+    self._startFileStream(pick.deviceId, pickId, pick.data, pick.meta,
+      function() { waiters.forEach(function(w) { try { w.resolve(); } catch (e) {} }); },
+      function(err) { waiters.forEach(function(w) { try { w.reject(err); } catch (e) {} }); });
   }
   processIncomingFragment(dataObj) {
     try {
