@@ -3538,6 +3538,35 @@ class NexoBlePlugin : Plugin() {
         return try { svc.foreground() } catch (e: Exception) { Log.w(TAG, "Servicio en llamada: ${e.message}"); "error (${e.javaClass.simpleName})" }
     }
 
+    // #dueño 01-11: la VIDEOLLAMADA marca pipVideo mientras está activa; así, al irse de la app con el gesto de inicio
+    // (deslizar hacia arriba), MainActivity entra en Picture-in-Picture (miniatura flotante) y el audio/vídeo no se cortan
+    // (ya corre el servicio en primer plano de la llamada). Al colgar, el JS lo apaga.
+    @PluginMethod
+    fun setPipActive(call: PluginCall) {
+        BleService.pipVideo = call.getBoolean("on", false) ?: false
+        call.resolve()
+    }
+
+    // Entrar YA en miniatura (PiP), p. ej. desde un botón «minimizar» de la pantalla de llamada.
+    @PluginMethod
+    fun enterPip(call: PluginCall) {
+        var ok = false
+        try {
+            val act = activity
+            if (act != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ok = true
+                act.runOnUiThread {
+                    try {
+                        val params = android.app.PictureInPictureParams.Builder()
+                            .setAspectRatio(android.util.Rational(9, 16)).build()
+                        act.enterPictureInPictureMode(params)
+                    } catch (e: Exception) { remLog("WARN", "PIP", "enterPip: ${e.message}") }
+                }
+            }
+        } catch (e: Exception) { remLog("WARN", "PIP", "enterPip: ${e.message}") }
+        call.resolve(JSObject().put("ok", ok))
+    }
+
     // Ronda 2770: foco de audio durante la llamada (la música u otro audio de otra app se para y vuelve al colgar; antes
     // seguía sonando encima de la llamada)
     @Volatile private var focusReq: android.media.AudioFocusRequest? = null

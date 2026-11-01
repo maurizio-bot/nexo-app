@@ -81,4 +81,40 @@ public class MainActivity extends BridgeActivity {
       super.onBackPressed();
     }
   }
+
+  // #dueño 01-11: en una VIDEOLLAMADA, al irse de la app con el gesto de inicio («deslizar hacia arriba») entrar en
+  // Picture-in-Picture (miniatura flotante) en vez de dejar la videollamada atrás. El audio/vídeo NO se cortan (ya corre
+  // el servicio en primer plano de la llamada). enterPictureInPictureMode debe llamarse aquí, síncrono, al irse el usuario.
+  @Override
+  public void onUserLeaveHint() {
+    super.onUserLeaveHint();
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+          && getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
+          && com.nexo.ble.BleService.getPipVideo()) {
+        android.app.PictureInPictureParams params = new android.app.PictureInPictureParams.Builder()
+            .setAspectRatio(new android.util.Rational(9, 16)).build();
+        enterPictureInPictureMode(params);
+      }
+    } catch (Exception e) { Log.w("NEXO", "PiP onUserLeaveHint: " + e.getMessage()); }
+  }
+
+  // Al entrar/salir de la miniatura, avisar al WebView para que la pantalla de llamada muestre solo el vídeo (sin
+  // controles) en la ventanita y los recupere al volver a pantalla completa.
+  @Override
+  public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, android.content.res.Configuration newConfig) {
+    super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+    try {
+      final WebView wv = (this.getBridge() != null) ? this.getBridge().getWebView() : null;
+      if (wv != null) {
+        final boolean in = isInPictureInPictureMode;
+        runOnUiThread(() -> {
+          try {
+            wv.evaluateJavascript(
+              "(function(){try{window.__nexoPipChanged&&window.__nexoPipChanged(" + (in ? "true" : "false") + ")}catch(e){}})()", null);
+          } catch (Exception e) {}
+        });
+      }
+    } catch (Exception e) {}
+  }
 }

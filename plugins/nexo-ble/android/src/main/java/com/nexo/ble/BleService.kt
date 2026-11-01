@@ -38,6 +38,9 @@ class BleService : Service() {
         // Ronda 2770: el servicio en marcha (para cambiar sus tipos al empezar y acabar una llamada) y si hay llamada
         @Volatile var live: BleService? = null
         @Volatile var inCall = false
+        // #dueño 01-11: hay una VIDEOLLAMADA activa → al irse de la app (gesto de inicio) MainActivity entra en
+        // Picture-in-Picture (miniatura flotante) sin cortar audio/vídeo. @JvmStatic para leerlo desde MainActivity (Java).
+        @JvmStatic @Volatile var pipVideo = false
         // Cómo quedó el servicio la última vez (también si se reinició solo en plena llamada: al volver a la app se mira)
         @Volatile var fgsState = ""
     }
