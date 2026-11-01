@@ -79,8 +79,18 @@ export class Calls {
     return null;
   }
   canCall(nexoId) { return !!this._link(_nid(nexoId)); }
-  // Vídeo por Wi-Fi o por internet (por Bluetooth no cabe: solo voz)
+  // Vídeo por Wi-Fi o por internet (por Bluetooth no cabe: solo voz). Permisivo para PODER iniciar la videollamada por
+  // internet; los fotogramas de vídeo solo salen cuando el camino los soporta (_videoLinkOk): el audio va enseguida y el
+  // vídeo aparece al establecerse Tor directo.
   canVideo(nexoId) { var l = this._link(_nid(nexoId)); return !!l && (l.indexOf('lan:') === 0 || l.indexOf('net:') === 0); }
+  // #dueño 01-11 (P1): ¿por este enlace pueden ir los FOTOGRAMAS de vídeo? Wi-Fi (lan:) siempre; internet (net:) solo si es
+  // Tor DIRECTO (net.via==='tor'); por relés (15 fps los inundaría, segundos de retraso) o Bluetooth, no.
+  _videoLinkOk(link, nexoId) {
+    if (!link) return false;
+    if (link.indexOf('lan:') === 0) return true;
+    if (link.indexOf('net:') === 0) { var n = this.ble && this.ble.net; return !!(n && typeof n.via === 'function' && n.via(_nid(nexoId)) === 'tor'); }
+    return false;
+  }
   state() { return this.call ? Object.assign({}, this.call, { key: undefined, cryptoKey: undefined, media: undefined }) : null; }
 
   _set(o) {
@@ -270,7 +280,10 @@ export class Calls {
       return;
     }
     c.seeking = false;
-    if (kind === 'v' && link.indexOf('lan:') !== 0) return; // vídeo solo por Wi-Fi
+    // #dueño 01-11 (P1): el VÍDEO va por Wi-Fi (lan:) y por INTERNET cuando es Tor DIRECTO (net.via==='tor'). Por relés NO
+    // (15 fps los inundaría y llegaría con segundos de retraso = inservible) ni por Bluetooth (no cabe). El audio sigue por
+    // cualquier camino. Antes el vídeo solo salía por lan: → la videollamada por internet conectaba pero no mandaba imagen.
+    if (kind === 'v' && !self._videoLinkOk(link, c.nx)) return;
     // Ronda 2769: 'k' (pide imagen completa) y 'c' (estado de cámara y micrófono) con su propia numeración
     var seq = kind === 'v' ? c.vSeq++ : kind === 'e' ? 0 : (kind === 'k' || kind === 'c') ? (c.cSeq = (c.cSeq || 0) + 1) : c.sendSeq++;
     var iv = crypto.getRandomValues(new Uint8Array(12));
