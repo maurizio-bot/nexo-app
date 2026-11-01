@@ -29,6 +29,9 @@ var DIAG_EVERY_MS = 5000;
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _emit(name, detail) { try { window.dispatchEvent(new CustomEvent(name, { detail: detail })); } catch (e) {} }
+// #dueño 01-11: avisar al nativo que hay (o dejó de haber) una VIDEOLLAMADA activa, para que al irse de la app con el
+// gesto de inicio entre en Picture-in-Picture (miniatura flotante) sin cortar audio/vídeo.
+function _pipActive(on) { try { var p = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE; if (p && typeof p.setPipActive === 'function') p.setPipActive({ on: !!on }); } catch (e) {} }
 function _hex(n) { var a = new Uint8Array(n); crypto.getRandomValues(a); return Array.from(a).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
 function _fromHex(h) { var a = new Uint8Array(h.length / 2); for (var i = 0; i < a.length; i++) a[i] = parseInt(h.substr(i * 2, 2), 16); return a; }
 function _b64(u8) { var s = ''; for (var i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
@@ -228,6 +231,7 @@ export class Calls {
     self.stats = { sent: 0, got: 0, bad: 0 }; // por llamada (el diagnóstico de cada una)
     self._set({ state: 'active', startedAt: c.startedAt });
     console.log('[CALL] En llamada con ' + c.nx + ' (' + c.id + ')');
+    if (c.video) _pipActive(true); // videollamada → habilitar la miniatura (PiP) al irse de la app
     var media;
     try {
       media = self.mediaFactory({ onPacket: function(bytes) { self._sendPacket(bytes); }, codecs: c.peerCodecs || 'opus,ulaw',
@@ -442,6 +446,7 @@ export class Calls {
     self._markDead(c.id);
     self._dropOffer(c.offerMid);
     clearTimeout(self._ringTimer); clearInterval(self._silenceTimer);
+    _pipActive(false); // llamada terminada → ya no entrar en miniatura
     if (notifyPeer) self._signal(c.nx, 'end');
     var secs = c.startedAt ? Math.round((Date.now() - c.startedAt) / 1000) : 0;
     if (c.startedAt) try { self._diag(c, 'Al colgar (' + secs + ' s)'); } catch (e) {}
