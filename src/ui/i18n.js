@@ -63,6 +63,7 @@ var STRINGS = {
   st_weak_signal: { es: 'señal débil', it: 'segnale debole', en: 'weak signal' },
   st_offline: { es: 'Sin conexión', it: 'Non connesso', en: 'Offline' },
   st_jump: { es: 'Por Jump', it: 'Tramite Jump', en: 'Via Jump' },
+  st_connecting: { es: 'Conectando…', it: 'Connessione…', en: 'Connecting…' },
 
   // Chat (burbujas, acciones, envio, E2E, stickers, tres en raya) - Fase 2b
   chat_file: { es: "📎 Archivo", it: "📎 File", en: "📎 File" },

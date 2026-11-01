@@ -206,5 +206,25 @@ export const BLE_LINK_METHODS = {
     if (st === BLE_STATES.READY_TO_CHAT || st === BLE_STATES.NOTIFICATIONS_READY) return 'bluetooth';
     if (this.relay && this.relay.relayHop(nx)) return 'jump';
     return 'none';
+  },
+
+  // P2 (dueño 01-11): al ABRIR el chat con un contacto DORMIDO (sin enlace directo vivo), pedir el «toque» FCM por
+  // internet para que despierte ANTES de que el usuario escriba — así el 1er mensaje no espera ni se pierde, el enlace se
+  // forma antes y aparece el tipo de conexión. Si ya hay enlace (Wi-Fi/Bluetooth/internet), no hace nada. El propio _wake
+  // tiene throttle por par, así que abrir el chat varias veces no spamea. Devuelve 'waking' si lanzó el toque, o el via.
+  _wakeSleepingPeer(nexoId) {
+    var nx = _normId(nexoId);
+    var via = this.linkOf(nx);
+    if (via === 'wifi' || via === 'bluetooth' || via === 'internet') return via; // ya hay enlace vivo: nada que despertar
+    var woke = !!(this.net && typeof this.net.wakeFor === 'function' && this.net.wakeFor(nx));
+    if (woke) this._wakingPeer = { nx: nx, t: Date.now() };
+    return woke ? 'waking' : via;
+  },
+
+  // P2: ¿estamos esperando que ESTE contacto despierte (toque lanzado hace poco y aún sin enlace)? La interfaz lo usa para
+  // mostrar «Conectando…» en el subtítulo mientras llega la presencia del otro; al formarse el enlace, el via real manda.
+  isWaking(nexoId) {
+    var w = this._wakingPeer;
+    return !!(w && w.nx === _normId(nexoId) && (Date.now() - w.t) < 30000);
   }
 };
