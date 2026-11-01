@@ -607,6 +607,10 @@
     {
      "fallo": "P1 (diagnóstico real 01-11, dueño): la videollamada por INTERNET conectaba (audio OK) pero NO mandaba vídeo (log: 536 s, audio 4172 frames, 'vídeo enviado 0'). calls.js solo dejaba salir los fotogramas de vídeo por Wi-Fi (lan:); por net: se descartaban todos. 2859: el vídeo sale por lan: y por net: cuando es Tor DIRECTO (net.via='tor'); por relés no (los inundaría) ni por Bluetooth. Solo calls.js (la videollamada de grupo ya descarta net: por completo, así que queda fuera de P1)",
      "prueba": "vídeo por INTERNET"
+    },
+    {
+     "fallo": "GRAVE (diagnóstico real 01-11, dueño): con la videollamada por internet en curso (vídeo OK) entró una llamada TELEFÓNICA y la de NEXO se cortó/trabó. Causa: al perder el micro por la telefónica, el vigilante de «15 s sin audio» cortaba los dos lados, y el audio peleaba por reanudarse. 2870: el nativo avisa del foco de audio (onCallInterruption); calls RETIENE la llamada (held) — silencia el micro, avisa al otro (hold) para que su vigilante tampoco corte — y al volver el foco (rechazada/colgada) reanuda (unhold, micro restaurado, vigilante reiniciado). Nunca se cae; preserva el silencio manual. Prueba callhold.js",
+     "prueba": "no corta la llamada/videollamada NEXO"
     }
    ],
    "debiles": [

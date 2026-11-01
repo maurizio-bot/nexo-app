@@ -879,6 +879,11 @@ export class BLEInterface {
     var self = this;
     this._nativeAdStartedListener = this.nativePlugin.addListener('onAdvertiseStarted', function() {});
     this._nativeAdFailedListener = this.nativePlugin.addListener('onAdvertiseFailed', function() {});
+    // #dueño 01-11 (GRAVE): una llamada TELEFÓNICA le quita el foco de audio a la videollamada NEXO. El nativo avisa
+    // (onCallInterruption {paused}); calls RETIENE la llamada en vez de dejar que se corte, y la reanuda al volver el foco.
+    this._nativeCallInterruptionListener = this.nativePlugin.addListener('onCallInterruption', function(ev) {
+      try { if (self.calls && typeof self.calls._onInterruption === 'function') self.calls._onInterruption(!!(ev && ev.paused)); } catch (e) {}
+    });
   }
 
   // v6.1.8: se llamaba con cada paquete recibido (pings, trozos de foto) y reconstruía toda la lista
