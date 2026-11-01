@@ -116,7 +116,13 @@ export class Calls {
     // «toque» FCM de alta prioridad (net_link._newMsgId reconoce la oferta). Inmediato (no los ~10 s de la red de
     // seguridad: una llamada no puede esperar). Mismo id → el otro deduplica la oferta (CallDedupe nativo). Solo si hay
     // internet + token del contacto; si no, queda el camino local de siempre.
-    if (op === 'offer' && ble.net && typeof ble.net.mailboxOk === 'function' && ble.net.mailboxOk(nx) && typeof ble._sendViaNetMailbox === 'function') {
+    // Build 2874 (#dueño 01-11: «cuando cuelgo en un teléfono, el otro sigue sonando»): las señales que CAMBIAN el estado
+    // de sonar/activo (end/reject/busy/accept), igual que la oferta, se dejan TAMBIÉN en el buzón de relés cuando hay
+    // internet. Si el enlace vivo (p. ej. Bluetooth con MTU 23 congestionado) se traga la señal, el otro la recibe igual
+    // por el buzón y deja de sonar. Mismo id (y la misma máquina de estados con guardas) → procesarla dos veces no hace
+    // daño. ring/hold/unhold NO van al buzón (son handshake frecuente, no cambian «sonar»).
+    var viaMailbox = op === 'offer' || op === 'end' || op === 'reject' || op === 'busy' || op === 'accept';
+    if (viaMailbox && ble.net && typeof ble.net.mailboxOk === 'function' && ble.net.mailboxOk(nx) && typeof ble._sendViaNetMailbox === 'function') {
       ble._sendViaNetMailbox(nx, JSON.stringify(o), mid).catch(function() {});
     }
     return p;
