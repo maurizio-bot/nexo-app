@@ -567,6 +567,21 @@ export class NetLink {
     } catch (e) {}
   }
 
+  // P2 (dueño 01-11): «toque» FCM A PETICIÓN (p.ej. al ABRIR el chat), para despertar a un contacto dormido por internet
+  // ANTES de que el usuario escriba — así el 1er mensaje no espera ni se pierde, el enlace se forma antes y aparece el tipo
+  // de conexión. Solo si tenemos su token FCM y hay internet (relés abiertos). Reusa el throttle de _wake (una ráfaga de
+  // aperturas no spamea). Devuelve true si hay a quién/por dónde despertar, para que la interfaz muestre «Conectando…».
+  wakeFor(nexoId) {
+    try {
+      var nx = _nid(nexoId);
+      var peer = this.peers.get(nx);
+      if (!peer || !peer.fcmToken) return false;
+      if (!this.senderUrl() || !this.online()) return false;
+      this._wake(nx, false);
+      return true;
+    } catch (e) { return false; }
+  }
+
   // Alta por ID (ronda 2779): deja una solicitud ('req') o una aceptación ('acc') en el buzón del ID `to`, cifrada con la
   // clave de ese ID. Lleva mi NEXO ID, mi clave pública (para que el otro pueda encender el canal seguro) y mi nombre.
   // Se conecta a los relés si hace falta. Resuelve cuando un relé la guardó.

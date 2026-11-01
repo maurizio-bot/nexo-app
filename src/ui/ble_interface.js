@@ -847,6 +847,10 @@ export class BLEInterface {
         }
         finishOpenChat();
         self._resendPendingMessages(uuid);
+        // P2 (dueño 01-11): si el contacto está DORMIDO (sin enlace vivo), pedir el «toque» FCM AL ABRIR el chat (no solo
+        // al enviar): el 1er mensaje ya no espera ni se pierde y el subtítulo pasa a «Conectando…» hasta que llega la
+        // presencia del otro (entonces se ve el tipo real: Wi-Fi / Bluetooth / internet). Si ya hay enlace, no hace nada.
+        try { if (typeof self._wakeSleepingPeer === 'function') self._wakeSleepingPeer(uuid); } catch (e) {}
         // v6.1.12: solo se avisa; main.js dibuja la última página del historial. Antes se cargaba aquí
         // TODO el historial leyendo de disco todos sus adjuntos y main.js lo dibujaba entero
         _safeDispatchEvent('nexo:vault:messagesLoaded', { contactId: uuid });

@@ -327,6 +327,10 @@
      "prueba": "camino de envío"
     },
     {
+     "fallo": "P2 (diagnóstico real 01-11, dueño): al ABRIR el chat con un contacto dormido por Android no se le mandaba el «toque» FCM (solo salía al enviar) → el 1er mensaje esperaba o se perdía y el subtítulo quedaba vacío (no se veía el tipo de conexión). 2860: openChat llama a _wakeSleepingPeer → si no hay enlace vivo pide net.wakeFor(nx) (toque con token + internet) y el subtítulo pasa a «Conectando…» hasta que llega la presencia del otro (entonces se ve Wi-Fi/Bluetooth/internet)",
+     "prueba": "toque al ABRIR el chat"
+    },
+    {
      "fallo": "Cortes del Wi-Fi breves y largos, sin «!» mientras se espera",
      "prueba": "cortes del Wi-Fi"
     },

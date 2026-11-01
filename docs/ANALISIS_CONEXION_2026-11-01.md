@@ -35,19 +35,28 @@ Nota de la prueba real: la ruta era de 2 saltos (JUMP por nx09acdb61) y el inter
 (ver P7); aun así el código NUNCA intentó enviar vídeo (bloqueado en la línea 273). La imagen real por
 internet la confirma el dueño en los teléfonos (requiere Tor directo entre ambos, que NEXO monta con Wi-Fi).
 
-## P2 — (GRAVE, dueño #4) No se despierta al contacto dormido ni se ve el tipo de conexión al abrir el chat
+## P2 — (GRAVE, dueño #4) No se despierta al contacto dormido ni se ve el tipo de conexión al abrir el chat — ✅ HECHO (build 2860, 01-11)
 **Evidencia (log):** "No hay evidencia de toque/FCM/wake/doze"; `despertares por mensajes 0`; contactos
 nx0ed4a8be y nx1793e595 "sin enlace ni ruta" toda la sesión con mensajes **pendientes** (3 y 1) que nunca
 salen; solo se reintenta scan BLE + búsqueda de ruta JUMP.
-**Evidencia (código):** `ble_interface.openChat` (línea 802) pone el subtítulo a '' y, si no está listo,
-fuerza `connectToDevice` (solo Bluetooth); NO dispara el "toque" FCM. El toque existe (`net_link._wake`,
-`calls._wakePush`) pero solo se dispara AL ENVIAR un mensaje/llamada, no al abrir el chat.
-**Causa:** al abrir el chat no se despierta al contacto dormido; el primer mensaje espera (o se pierde) y
-no se ve el camino de conexión.
-**Solución robusta:** al abrir el chat, si no hay enlace conocido (`!canReach` y sin BLE listo), disparar
-el toque FCM + saludo/presencia; al confirmarse, mostrar el tipo de enlace real en el subtítulo
-(Wi-Fi / Bluetooth / internet-Tor / internet-relés, usando `net.via(nx)`), y reintentar el envío del 1er
-mensaje en cuanto despierte.
+**Evidencia (código):** `ble_interface.openChat` (línea 802) ponía el subtítulo a '' y, si no estaba listo,
+forzaba `connectToDevice` (solo Bluetooth); NO disparaba el "toque" FCM. El toque existe (`net_link._wake`,
+`calls._wakePush`) pero solo se disparaba AL ENVIAR un mensaje/llamada, no al abrir el chat.
+**Causa:** al abrir el chat no se despertaba al contacto dormido; el primer mensaje esperaba (o se perdía) y
+no se veía el camino de conexión.
+**Solución aplicada (2860):** `net_link.js` → nuevo `wakeFor(nx)` público (toque FCM a petición, solo con
+token del par + internet, reusa el throttle de `_wake`). `ble_links.js` → `_wakeSleepingPeer(nx)`: si NO hay
+enlace vivo (`linkOf` ≠ wifi/bluetooth/internet) pide `net.wakeFor(nx)` y marca «despertando»; `isWaking(nx)`
+caduca a los 30 s. `ble_interface.openChat` lo llama AL ABRIR (no solo al enviar). `main.js` → el subtítulo
+muestra «Conectando…» (`st_connecting`, i18n es/it/en) mientras se despierta, y al formarse el enlace el tipo
+real manda (Wi-Fi / Bluetooth / internet, vía `linkOf`). Así el 1er mensaje ya no espera/pierde, el enlace se
+forma antes y se ve el camino. Prueba determinista `wakeopen.js` (en `ci.js`): dormido+token→toca y queda
+«waking»; con enlace vivo no toca; sin token no marca «waking»; «waking» caduca; `wakeFor` solo con token e
+internet. Reproduce el fallo con el código viejo (los métodos no existían).
+**Nota (futuro, no bloquea):** el tipo de internet mostrado es «internet» a secas; distinguir Tor-directo vs
+relés en el subtítulo (`net.via(nx)`) queda para un pulido posterior (no lo pidió explícito y el log solo
+pedía «ver el tipo»). El reintento del 1er mensaje al despertar ya lo cubre la cola de pendientes existente
+(`_resendPendingMessages` + reenvío al volver la presencia).
 
 ## P3 — (dueño #5) Archivo GRANDE (>~22 MB) por internet: no se manda ni se refleja
 **Evidencia (log):** los archivos troceados NORMALES por internet SÍ llegan y confirman ✓✓ en ms (varios
@@ -127,7 +136,7 @@ bien o subir el tope con cuidado.
 
 ## Orden de arreglo propuesto (uno a uno, con prueba + batería)
 1. ✅ **P1 — vídeo por internet** — HECHO (build 2859). Solo `calls.js` (grupo fuera, ver P1).
-2. **P2 — toque de despertar + tipo de conexión al abrir chat** (robustez + no perder 1er mensaje).
+2. ✅ **P2 — toque de despertar + tipo de conexión al abrir chat** — HECHO (build 2860). `net_link.wakeFor` + `ble_links._wakeSleepingPeer/isWaking` + `openChat` + subtítulo «Conectando…». Prueba `wakeopen.js`.
 3. **P6 — dedupe de reensamblado entre BLE y net** (arreglo contenido, quita buffers colgados).
 4. **P7 — no cortar el puente JUMP con batería alta** (afecta rutas mesh/internet).
 5. **P5 — relés que flapean: prioridad/robustez.**
@@ -139,4 +148,4 @@ bien o subir el tope con cuidado.
    mejora la robustez del día a día. Decisión del dueño sobre cuándo meterlo (toca el pacing nativo BLE,
    build propia con medición antes/después).
 
-(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859.**)
+(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859 · P2 ✅ 2860.** Siguiente, por elección del dueño: P6 dedupe de reensamblado, o adelantar P4/#129 pacing.)

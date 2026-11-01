@@ -205,6 +205,9 @@ var _VIA_WORD = { wifi: 'Wi-Fi', internet: 'Internet', bluetooth: 'Bluetooth' };
 // en palabras (para el tooltip accesible). mtu<60 por Bluetooth marca «señal débil» (ronda 2798).
 function _subtitleFor(via, mtu) {
   if (via === 'jump') return { html: _t('st_jump', 'Por Jump'), text: _t('st_jump', 'Por Jump') };
+  // P2 (dueño 01-11): contacto dormido al que acabamos de mandar el «toque» FCM al abrir el chat; mientras llega su
+  // presencia mostramos «Conectando…» (antes el subtítulo quedaba VACÍO y el dueño no veía el tipo de conexión).
+  if (via === 'waking') return { html: _t('st_connecting', 'Conectando…'), text: _t('st_connecting', 'Conectando…') };
   if (!_VIA_ICON[via]) return { html: '', text: '' };
   var weak = via === 'bluetooth' && mtu > 0 && mtu < 60;
   var online = _t('st_online', 'En línea'), weakTxt = _t('st_weak_signal', 'señal débil');
@@ -221,6 +224,8 @@ function _refreshLinkSubtitle() {
   if (sub && bi && bi.groups && bi.groups.isGroup(cid)) { sub.textContent = groupSubtitle(bi.groups.get(cid)); return; } // ronda 2758
   if (!sub || !bi || typeof bi.linkOf !== 'function' || !cid) return;
   var via = bi.linkOf(cid);
+  // P2: sin enlace todavía pero despertando al contacto → «Conectando…» (al formarse el enlace, el via real manda)
+  if (via === 'none' && typeof bi.isWaking === 'function' && bi.isWaking(cid)) via = 'waking';
   var mtu = (via === 'bluetooth' && typeof bi.getMtu === 'function' && bi._activeChatDeviceId) ? bi.getMtu(bi._activeChatDeviceId) : 0;
   var r = _subtitleFor(via, mtu);
   sub.innerHTML = r.html;       // solo SVG estático + texto fijo (sin datos del remitente)
