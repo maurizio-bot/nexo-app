@@ -158,9 +158,18 @@ motivo real («Ahorro de energía (N %)» vs «Batería baja (N %)»), en `_refr
 Prueba `jumpbat.js` (en `ci.js`): 82 %+ahorro→puente; 25 %+ahorro→no (conservador); 25 % sin ahorro→sí;
 10 %→no; cargando→sí; sin dato→sí; motivos correctos. Reproduce el fallo con el código viejo.
 
-## P8 — (menor) Wi-Fi Direct disponible pero sin permiso
+## P8 — (menor) Wi-Fi Direct disponible pero sin permiso — ⚠️ REVISADO: ya está cableado (01-11)
 **Evidencia (log):** `[WIFI-DIRECT] Disponible (falta permiso)`.
-**Solución:** pedir el permiso (NEARBY_WIFI_DEVICES, Android 13+) para poder usar Wi-Fi Direct.
+**Revisión (código):** la infraestructura del permiso YA existe de punta a punta: el manifest declara
+`NEARBY_WIFI_DEVICES` (android/app/src/main/AndroidManifest.xml); el nativo tiene `requestWifiDirectPermission`
+y el alias `nearbyWifi` (NexoBlePlugin.kt); y el JS `wifi_direct._ensurePermission()` lo pide **cuando una
+transferencia lo necesita** (lazy). `supported()` NO exige `granted`, así que Wi-Fi Direct se sigue anunciando
+(kx `wd:1`) e intentando, y al intentar una transferencia grande cercana se pide el permiso. El log
+«(falta permiso)» es el ESTADO al arrancar (aún no concedido/aceptado), no un request que falte.
+**Conclusión:** no es un bug claro de código; es que el permiso aún no se ha concedido en ese teléfono. Mejora
+posible (menor, UX): pedirlo proactivamente con una explicación la 1ª vez que haya un contacto cerca con Wi-Fi
+Direct (en vez de esperar a la 1ª transferencia grande), para que esté listo. Pendiente de decidir con el dueño si
+vale la pena; se confirma en los teléfonos (el simulador no tiene Wi-Fi Direct).
 
 ## P9 — (verificar) Mensaje entrante de exactamente 65536 car. (64 KB) — ✅ VERIFICADO: NO hay truncado (01-11)
 **Evidencia (log):** `msg…ej5er7pj5 … (65536 car.)` — exacto 64×1024.
@@ -182,10 +191,10 @@ se trocea/gestiona, no se trunca en silencio — el mensaje del log llegó bien.
 4. ✅ **P7 — no cortar el puente JUMP con batería alta** — HECHO (build 2862). `ble_relay.canRelay()` ya no para por modo-ahorro solo; umbral por batería (ahorro 30 %, normal 15 %) + motivo real en el registro. Prueba `jumpbat.js`.
 5. ✅ **P5 — relés que flapean: prioridad/robustez** — HECHO (build 2863). `net_link` detecta flapeo y aparta el relé 5 min (si quedan ≥2 abiertos). Prueba `relayflap.js`.
 6. **P3 — archivo grande por internet (canal Tor directo)** — el más grande; build propia.
-7. ✅ **P9 — verificar tope 64 KB** — VERIFICADO: no hay truncado, nada que arreglar. **P8 — permiso Wi-Fi Direct** (pendiente, nativo).
+7. ✅ **P9 — verificar tope 64 KB** — VERIFICADO: no hay truncado, nada que arreglar. ⚠️ **P8 — permiso Wi-Fi Direct** — REVISADO: ya está cableado (manifest + nativo + JS lazy); el «falta permiso» es estado, no un request que falte. Mejora UX menor opcional (pedirlo proactivamente); a confirmar en teléfonos.
 8. ✅ **P4 — pacing de escritura BLE con MTU 23 (= #129)** — 1ª parte HECHA (build 2864): `BLE_BUSY` tratado
    como contrapresión (no como fallo del enlace) → ya no cambia de camino ni aborta un enlace sano por
    congestión. Prueba `busyback.js`. 2ª parte (medir en teléfonos si hace falta limitar concurrencia o subir
    MTU; o mover archivos grandes a Wi-Fi Direct P8) queda para con el próximo diagnóstico del dueño.
 
-(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859 · P2 ✅ 2860 · P6 ✅ 2861 · P7 ✅ 2862 · P5 ✅ 2863 · P9 ✅ verificado · P4/#129 ✅ 2864 (1ª parte).** Quedan: P3 (archivo grande por Tor, feature grande), P8 (permiso Wi-Fi Direct, nativo), y la 2ª parte de P4/#129 (medir en teléfonos). El dueño pidió seguir sin parar.)
+(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859 · P2 ✅ 2860 · P6 ✅ 2861 · P7 ✅ 2862 · P5 ✅ 2863 · P9 ✅ verificado · P4/#129 ✅ 2864 (1ª parte) · P8 ⚠️ revisado (ya cableado).** Queda SOLO **P3** como arreglo de código nuevo: archivo grande por internet = **streaming nativo por Tor** (Kotlin), que el simulador NO puede probar — build propia + confirmación del dueño en los teléfonos. Y la 2ª parte de P4/#129 + la posible mejora UX de P8, ambas a decidir con medición en teléfonos. El dueño pidió seguir sin parar; P3 es el único que queda y es nativo-puro.)
