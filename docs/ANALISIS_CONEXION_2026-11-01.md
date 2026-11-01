@@ -149,10 +149,16 @@ Prueba `jumpbat.js` (en `ci.js`): 82 %+ahorro→puente; 25 %+ahorro→no (conser
 **Evidencia (log):** `[WIFI-DIRECT] Disponible (falta permiso)`.
 **Solución:** pedir el permiso (NEARBY_WIFI_DEVICES, Android 13+) para poder usar Wi-Fi Direct.
 
-## P9 — (verificar) Mensaje entrante de exactamente 65536 car. (64 KB)
+## P9 — (verificar) Mensaje entrante de exactamente 65536 car. (64 KB) — ✅ VERIFICADO: NO hay truncado (01-11)
 **Evidencia (log):** `msg…ej5er7pj5 … (65536 car.)` — exacto 64×1024.
-**Solución:** verificar si hay un tope de 64 KB que trunca textos/mensajes grandes; si lo hay, trocear
-bien o subir el tope con cuidado.
+**Verificación (código):** NO existe un tope que trunque el CONTENIDO de un mensaje a 64 KB. Los 65536 que
+aparecen en el código son otra cosa: `e2e_ratchet.RECENT_MAX_CHARS=65536` es el tope de la CACHÉ anti-repetición
+(no se guarda en esa caché un mensaje mayor, pero se entrega entero); `ble_ack.LAN_PSEUDO_MTU=65535` es el tamaño
+de troceo por Wi-Fi; en Kotlin `BinFrame.MAX_DATA=65536` es el máximo por trama binaria (troceo), y el resto son
+búferes de E/S de 64 KB o el tamaño de trama WebSocket. El campo de escribir no tiene `maxlength`. El mensaje de
+65536 del log se registró como RECIBIDO (no fallido) → llegó entero. **Conclusión:** no es un fallo; nada que
+arreglar. (El único límite cercano es `net_link.MAX_CONTENT=60000` por EVENTO de relé; un texto mayor por internet
+se trocea/gestiona, no se trunca en silencio — el mensaje del log llegó bien.)
 
 ---
 
@@ -163,11 +169,11 @@ bien o subir el tope con cuidado.
 4. ✅ **P7 — no cortar el puente JUMP con batería alta** — HECHO (build 2862). `ble_relay.canRelay()` ya no para por modo-ahorro solo; umbral por batería (ahorro 30 %, normal 15 %) + motivo real en el registro. Prueba `jumpbat.js`.
 5. ✅ **P5 — relés que flapean: prioridad/robustez** — HECHO (build 2863). `net_link` detecta flapeo y aparta el relé 5 min (si quedan ≥2 abiertos). Prueba `relayflap.js`.
 6. **P3 — archivo grande por internet (canal Tor directo)** — el más grande; build propia.
-7. **P9 — verificar tope 64 KB.** **P8 — permiso Wi-Fi Direct.**
+7. ✅ **P9 — verificar tope 64 KB** — VERIFICADO: no hay truncado, nada que arreglar. **P8 — permiso Wi-Fi Direct** (pendiente, nativo).
 8. **P4 — pacing de escritura BLE con MTU 23 (= #129).** Ya CONFIRMADO con el diagnóstico lado a lado
    (no hace falta pedir más). Es de **alto impacto**: cubre el GRAVE #1 (mensajes lentos/feedback) y el #2
    (cercano tardado). **Candidato a ADELANTARLO** (p. ej. justo tras P2, o incluso antes): es el que más
    mejora la robustez del día a día. Decisión del dueño sobre cuándo meterlo (toca el pacing nativo BLE,
    build propia con medición antes/después).
 
-(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859 · P2 ✅ 2860 · P6 ✅ 2861 · P7 ✅ 2862 · P5 ✅ 2863.** Siguen P3 (archivo grande por Tor, grande), P9 (verificar tope 64 KB), P8 (permiso Wi-Fi Direct); y P4/#129 pacing (nativo), candidato a adelantar. Checkpoint con el dueño antes de P3/P4.)
+(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859 · P2 ✅ 2860 · P6 ✅ 2861 · P7 ✅ 2862 · P5 ✅ 2863 · P9 ✅ verificado (sin fallo).** Quedan: P3 (archivo grande por Tor, feature grande), P8 (permiso Wi-Fi Direct, nativo) y P4/#129 pacing (nativo, alto impacto, candidato a adelantar). Checkpoint con el dueño antes de estos (son más grandes / tocan nativo).)
