@@ -166,10 +166,12 @@ y el alias `nearbyWifi` (NexoBlePlugin.kt); y el JS `wifi_direct._ensurePermissi
 transferencia lo necesita** (lazy). `supported()` NO exige `granted`, así que Wi-Fi Direct se sigue anunciando
 (kx `wd:1`) e intentando, y al intentar una transferencia grande cercana se pide el permiso. El log
 «(falta permiso)» es el ESTADO al arrancar (aún no concedido/aceptado), no un request que falte.
-**Conclusión:** no es un bug claro de código; es que el permiso aún no se ha concedido en ese teléfono. Mejora
-posible (menor, UX): pedirlo proactivamente con una explicación la 1ª vez que haya un contacto cerca con Wi-Fi
-Direct (en vez de esperar a la 1ª transferencia grande), para que esté listo. Pendiente de decidir con el dueño si
-vale la pena; se confirma en los teléfonos (el simulador no tiene Wi-Fi Direct).
+**Conclusión:** no era un bug de código; el permiso aún no se había concedido en ese teléfono.
+**Mejora UX aplicada (2865, pedida por el dueño):** al ver el 1er contacto cercano con Wi-Fi Direct (`markPeer`),
+se pide el permiso de forma PROACTIVA una vez por sesión (`_maybeAskPerm`/`_shouldAskPermNow`, con un pequeño
+retraso para no chocar con la interfaz de conexión), en vez de esperar a la 1ª transferencia grande — así está
+listo cuando haga falta. No se pide si ya está concedido/denegado/pedido, ni antes de saber que el teléfono lo
+soporta. Prueba `wdperm.js` (en `ci.js`). El pop real del permiso lo confirma el dueño en los teléfonos.
 
 ## P9 — (verificar) Mensaje entrante de exactamente 65536 car. (64 KB) — ✅ VERIFICADO: NO hay truncado (01-11)
 **Evidencia (log):** `msg…ej5er7pj5 … (65536 car.)` — exacto 64×1024.
@@ -191,10 +193,10 @@ se trocea/gestiona, no se trunca en silencio — el mensaje del log llegó bien.
 4. ✅ **P7 — no cortar el puente JUMP con batería alta** — HECHO (build 2862). `ble_relay.canRelay()` ya no para por modo-ahorro solo; umbral por batería (ahorro 30 %, normal 15 %) + motivo real en el registro. Prueba `jumpbat.js`.
 5. ✅ **P5 — relés que flapean: prioridad/robustez** — HECHO (build 2863). `net_link` detecta flapeo y aparta el relé 5 min (si quedan ≥2 abiertos). Prueba `relayflap.js`.
 6. **P3 — archivo grande por internet (canal Tor directo)** — el más grande; build propia.
-7. ✅ **P9 — verificar tope 64 KB** — VERIFICADO: no hay truncado, nada que arreglar. ⚠️ **P8 — permiso Wi-Fi Direct** — REVISADO: ya está cableado (manifest + nativo + JS lazy); el «falta permiso» es estado, no un request que falte. Mejora UX menor opcional (pedirlo proactivamente); a confirmar en teléfonos.
+7. ✅ **P9 — verificar tope 64 KB** — VERIFICADO: no hay truncado, nada que arreglar. ✅ **P8 — permiso Wi-Fi Direct** — ya estaba cableado; mejora UX HECHA (build 2865): se pide proactivamente al ver el 1er contacto cercano con Wi-Fi Direct. Prueba `wdperm.js`.
 8. ✅ **P4 — pacing de escritura BLE con MTU 23 (= #129)** — 1ª parte HECHA (build 2864): `BLE_BUSY` tratado
    como contrapresión (no como fallo del enlace) → ya no cambia de camino ni aborta un enlace sano por
    congestión. Prueba `busyback.js`. 2ª parte (medir en teléfonos si hace falta limitar concurrencia o subir
    MTU; o mover archivos grandes a Wi-Fi Direct P8) queda para con el próximo diagnóstico del dueño.
 
-(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859 · P2 ✅ 2860 · P6 ✅ 2861 · P7 ✅ 2862 · P5 ✅ 2863 · P9 ✅ verificado · P4/#129 ✅ 2864 (1ª parte) · P8 ⚠️ revisado (ya cableado).** Queda SOLO **P3** como arreglo de código nuevo: archivo grande por internet = **streaming nativo por Tor** (Kotlin), que el simulador NO puede probar — build propia + confirmación del dueño en los teléfonos. Y la 2ª parte de P4/#129 + la posible mejora UX de P8, ambas a decidir con medición en teléfonos. El dueño pidió seguir sin parar; P3 es el único que queda y es nativo-puro.)
+(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859 · P2 ✅ 2860 · P6 ✅ 2861 · P7 ✅ 2862 · P5 ✅ 2863 · P9 ✅ verificado · P4/#129 ✅ 2864 (1ª parte) · P8 ✅ 2865 (UX proactiva).** Queda SOLO **P3** como arreglo de código nuevo: archivo grande por internet = **streaming nativo por Tor** (Kotlin) — build propia + confirmación del dueño en los teléfonos (el simulador no tiene Tor). Y la 2ª parte de P4/#129 (medir en teléfonos). El dueño pidió hacer P8 y P3; P8 hecho, P3 en curso.)
