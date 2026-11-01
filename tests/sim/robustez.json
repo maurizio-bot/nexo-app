@@ -109,6 +109,10 @@
      "prueba": null
     },
     {
+     "fallo": "P4/#129 (diagnóstico real 01-11, dueño): «Cola de escritura llena» (BLE_BUSY) 141× con MTU 23 — la cola nativa de escritura se llena y drena despacio. El ChatStream lo trataba como FALLO del enlace: sumaba a _nativeFails → a los 3 cambiaba de camino y a los 120 abortaba como PEER_ABSENT un enlace SANO. 2864: BLE_BUSY es CONTRAPRESIÓN — esperar 600→1200→2400 ms y reintentar el mismo trozo sin contar como fallo (no cambiar de camino ni abortar); solo si ningún trozo pasa ~5 min seguidos se deja pendiente. Al pasar un trozo se reinicia el contador",
+     "prueba": "cola de escritura llena = contrapresión"
+    },
+    {
      "fallo": "Caídas reales del Bluetooth que no se avisaban a la app (Kotlin)",
      "prueba": null
     },
