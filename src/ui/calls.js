@@ -369,6 +369,11 @@ export class Calls {
       if (typeof o.k !== 'string' || !/^[0-9a-f]{64}$/.test(o.k)) return;
       self.call = { id: o.id, nx: nx, dir: 'in', state: 'ringing', key: o.k, createdAt: Date.now(), sendSeq: 0, vSeq: 0, lastRx: 0, peerCodecs: o.co || 'ulaw', video: o.v === 1, offerMid: mid || '' };
       self._importKey(o.k).then(function(k) { if (self.call && self.call.id === o.id) self.call.cryptoKey = k; });
+      // #dueño 01-11 (diagnóstico vídeo): una llamada entrante por INTERNET solo va en tiempo real por Tor directo (el
+      // vídeo SOLO por Tor), y la conexión onion entre los dos tarda en enlazar. Encender Tor YA, al LLEGAR la oferta
+      // (mientras suena), no al aceptar: así la 1ª videollamada enlaza antes y el vídeo aparece sin tener que rellamar.
+      var inLink = self._link(nx);
+      if (inLink && inLink.indexOf('net:') === 0 && self.ble && self.ble.net && typeof self.ble.net.ensureTor === 'function') self.ble.net.ensureTor();
       console.log('[CALL] Llamada entrante de ' + nx + ' (' + o.id + ')');
       _emit('nexo:call', self.state());
       self._signal(nx, 'ring'); // ¿sigue llamando? (si no, contesta 'end' y deja de sonar)
