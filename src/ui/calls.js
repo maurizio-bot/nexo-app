@@ -127,6 +127,10 @@ export class Calls {
     if (self.call) return Promise.reject(new Error(t('call_err_already', 'Ya hay una llamada')));
     if (!self._link(nx)) return Promise.reject(new Error(t('call_err_need_near', 'Para llamar hace falta Bluetooth, Wi-Fi o internet con el contacto')));
     if (video && !self.canVideo(nx)) return Promise.reject(new Error(t('call_err_need_wifi_video', 'Para una videollamada hace falta Wi-Fi o internet (por Bluetooth solo voz)')));
+    // Si la llamada va por INTERNET, el único camino en tiempo real es Tor directo (los relés tienen segundos de retraso).
+    // Tor ya no corre por defecto (#dueño 01-11: más lento para lo normal); se enciende AQUÍ, bajo demanda, para la llamada.
+    var startLink = self._link(nx);
+    if (startLink && startLink.indexOf('net:') === 0 && self.ble && self.ble.net && typeof self.ble.net.ensureTor === 'function') self.ble.net.ensureTor();
     var id = 'cl' + Date.now().toString(36) + _hex(4), key = _hex(32);
     self.call = { id: id, nx: nx, dir: 'out', state: 'calling', key: key, createdAt: Date.now(), sendSeq: 0, vSeq: 0, lastRx: 0, video: !!video };
     _emit('nexo:call', self.state());
@@ -150,6 +154,9 @@ export class Calls {
     var self = this, c = self.call;
     if (!c || c.dir !== 'in' || c.state !== 'ringing') return;
     clearTimeout(self._ringTimer);
+    // Llamada entrante por INTERNET: encender Tor directo bajo demanda para el audio/vídeo en tiempo real (#dueño 01-11).
+    var acLink = self._link(c.nx);
+    if (acLink && acLink.indexOf('net:') === 0 && self.ble && self.ble.net && typeof self.ble.net.ensureTor === 'function') self.ble.net.ensureTor();
     self._codecs().then(function(co) { if (self.call === c) self._signal(c.nx, 'accept', { co: co }); });
     self._begin();
   }

@@ -380,7 +380,7 @@ var STRINGS = {
   prof_tone_title: { es: "Tono de llamada y videollamada", it: "Suoneria di chiamate e videochiamate", en: "Call and video call ringtone" },
   prof_tone_sub: { es: "Suena igual en llamadas y videollamadas. Por defecto usa el tono de llamada de tu teléfono.", it: "Suona uguale per chiamate e videochiamate. Di default usa la suoneria del tuo telefono.", en: "Sounds the same for calls and video calls. By default it uses your phone's ringtone." },
   prof_choose_tone: { es: "Elegir tono…", it: "Scegli suoneria…", en: "Choose ringtone…" },
-  prof_tor_label: { es: "Usar Tor con Wi-Fi (oculta tu IP; más lento)", it: "Usa Tor con il Wi-Fi (nasconde il tuo IP; più lento)", en: "Use Tor on Wi-Fi (hides your IP; slower)" },
+  prof_tor_label: { es: "Usar Tor siempre (oculta tu IP; va más lento). El vídeo y los archivos grandes por internet ya lo usan solos.", it: "Usa sempre Tor (nasconde il tuo IP; più lento). Le videochiamate e i file grandi via internet lo usano già da soli.", en: "Always use Tor (hides your IP; slower). Video calls and large files over the internet already use it automatically." },
   prof_diag_sub: { es: "Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.", it: "Registro di ciò che fa l'app (include la sessione precedente). Copialo e incollalo per esaminare un errore.", en: "Log of what the app does (includes the previous session). Copy and paste it to review a problem." },
   prof_diag_copy: { es: "Copiar diagnóstico", it: "Copia diagnostica", en: "Copy diagnostics" },
   prof_phone_tone: { es: "Tono del teléfono", it: "Suoneria del telefono", en: "Phone ringtone" },

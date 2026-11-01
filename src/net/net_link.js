@@ -490,18 +490,34 @@ export class NetLink {
   }
 
   // ---------- Tor ----------
-  torWanted() { return this.state.tor !== false; }
+  // Tor es MÁS LENTO que los relés: por defecto NO corre (pedido del dueño 01-11: «no quiero Tor por defecto siendo más
+  // lento»). Se enciende de dos formas: (1) el usuario lo activa a mano en Ajustes para ocultar su IP siempre
+  // (state.tor === true); (2) BAJO DEMANDA (_torNeeded) cuando una videollamada o un archivo grande van por internet, que
+  // solo pueden ir por Tor directo (los relés no pueden). Si state.tor === false, el usuario lo apagó aposta: ni a demanda.
+  torWanted() { return this.state.tor === true || (this.state.tor !== false && !!this._torNeeded); }
   setTor(on) {
     this.state.tor = !!on; this._saveState();
     var pl = _plugin();
-    if (!on && pl && typeof pl.torStop === 'function') { pl.torStop().catch(function() {}); this.tor.ready = false; this.tor.onion = ''; this.peers.forEach(function(p) { p.torUp = p.torOk = false; }); }
+    if (!on && pl && typeof pl.torStop === 'function') { this._torNeeded = false; pl.torStop().catch(function() {}); this.tor.ready = false; this.tor.onion = ''; this.peers.forEach(function(p) { p.torUp = p.torOk = false; }); }
     else this.tick();
   }
+  // Pide Tor para ESTA sesión (vídeo/archivo grande por internet). No hace nada si el usuario lo apagó a mano. Devuelve si
+  // ya está listo; si no, lo intenta arrancar (tarda unos segundos la 1ª vez) y los caminos que lo necesitan esperan a via==='tor'.
+  ensureTor() { if (this.state.tor === false) return false; this._torNeeded = true; this.tick(); return this.tor.ready; }
+  // ¿El usuario encendió Tor A MANO (privacidad siempre)? El interruptor de Ajustes refleja ESTO, no el arranque bajo
+  // demanda (_torNeeded), para que la casilla no se «palomee» sola por una videollamada. Por defecto apagado (#dueño 01-11).
+  torManual() { return this.state.tor === true; }
+  // ¿Preferir Tor para ESTE envío? Solo si el usuario lo encendió a mano (privacidad siempre), si no hay relés (offline,
+  // Tor es el único camino) o si el que llama lo pide (opts.tor: vídeo/archivo grande por internet, que los relés no
+  // pueden). Lo NORMAL online → false → relés (rápido). Extraído para poder probarlo. #dueño 01-11.
+  _preferTor(opts) { return (this.state.tor === true) || !this.online() || !!(opts && opts.tor); }
   _torTick() {
     var pl = _plugin(), now = Date.now();
     if (!pl || typeof pl.torStart !== 'function' || !this.torWanted() || this.tor.ready || this.tor.starting) return;
-    // Solo con Wi-Fi (arrancar Tor gasta datos) y si hay contactos con los que usarlo; reintento cada 10 min
-    if (!this.wifi || !this.inTags.size || now - (this.tor.triedAt || 0) < 600000) return;
+    // Con Wi-Fi para la privacidad automática (arrancar Tor gasta datos); pero BAJO DEMANDA (_torNeeded: el usuario
+    // arrancó un vídeo/archivo grande por internet) se permite también con datos, porque lo pidió él. Siempre hace falta
+    // tener contactos con los que usarlo; reintento cada 10 min.
+    if ((!this.wifi && !this._torNeeded) || !this.inTags.size || now - (this.tor.triedAt || 0) < 600000) return;
     this.tor.starting = true; this.tor.triedAt = now;
     console.log('[NET] Arrancando Tor…');
     var self = this;
@@ -555,7 +571,12 @@ export class NetLink {
     var ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: _utf8('NEXO-NET|' + me + '|' + nx) }, pair.aes, _utf8(JSON.stringify(body))));
     var b64 = _b64(_cat(iv, ct));
     var peer = this._peer(nx), pl = _plugin();
-    if (peer.torUp && (peer.torOk || (opts && opts.hello)) && pl && typeof pl.torSend === 'function') {
+    // Tor es más lento: para lo NORMAL (texto, fotos) se prefieren los relés (rápido). Se usa Tor solo si el usuario lo
+    // encendió a mano para privacidad (state.tor === true), si no hay relés (offline) o si el que llama lo pide
+    // (opts.tor: vídeo/archivo grande por internet, que los relés no pueden). Si no, se cae a los relés más abajo (sin
+    // pérdida: si los relés fallan, el mensaje queda pendiente y se reintenta / buzón). #dueño 01-11.
+    var preferTor = this._preferTor(opts);
+    if (preferTor && peer.torUp && (peer.torOk || (opts && opts.hello)) && pl && typeof pl.torSend === 'function') {
       try { await pl.torSend({ nx: nx, content: b64 }); return true; } catch (e) { peer.torUp = false; peer.torOk = false; }
     }
     if (b64.length > MAX_CONTENT) throw Object.assign(new Error('Demasiado grande para internet'), { code: 'NET_TOO_BIG' });

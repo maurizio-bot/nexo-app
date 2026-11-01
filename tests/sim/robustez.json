@@ -391,6 +391,10 @@
      "fallo": "Al despertar con la pantalla apagada, el latido del Wi-Fi cortaba enlaces sanos (2772)",
      "prueba": null,
      "fuera": "Kotlin LanHubTest (en la compilación)"
+    },
+    {
+     "fallo": "Internet usaba Tor por defecto (más lento) hasta para un texto; el Tor directo es solo P2P. #dueño 01-11: Tor ya NO va por defecto — relés rápidos para lo normal, Tor a mano/offline/bajo demanda (vídeo/archivo grande por internet). Tope por internet (relés) ~22→~40 MB",
+     "prueba": "Tor no va por defecto"
     }
    ],
    "debiles": [
