@@ -272,6 +272,10 @@
      "fuera": "wifidirect.js"
     },
     {
+     "fallo": "P8 (diagnóstico real 01-11, dueño): «[WIFI-DIRECT] Disponible (falta permiso)» — el permiso solo se pedía al INTENTAR una transferencia grande; si el usuario no estaba cerca entonces, se perdía el envío rápido por Wi-Fi Direct. 2865: al ver el 1er contacto cercano con Wi-Fi Direct se pide el permiso una vez por sesión (proactivo), para tenerlo listo. No se pide si ya está concedido/denegado/pedido o si aún no se sabe que el teléfono lo soporta",
+     "prueba": "permiso Wi-Fi Direct proactivo"
+    },
+    {
      "fallo": "Selector de archivos, PDF con miniatura, demasiado grande",
      "prueba": null,
      "fuera": "files.js"

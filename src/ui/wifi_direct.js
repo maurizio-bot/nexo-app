@@ -27,6 +27,10 @@ export var WD_MAX_BYTES = 30000000;  // contenido cifrado en base64 (~22 MB de a
 var OFFER_TIMEOUT_MS = 25000;
 var PERM_TIMEOUT_MS = 60000;
 var FAIL_COOLDOWN_MS = 10 * 60000;
+// P8 (dueño 01-11): al ver el 1er contacto cercano con Wi-Fi Direct, pedir el permiso un poco después (no justo al
+// conectar, para no chocar con la interfaz de conexión) y UNA sola vez por sesión, para que esté listo antes de la 1ª
+// transferencia grande. Antes solo se pedía al intentar una transferencia; si el usuario estaba lejos entonces, se perdía.
+var PERM_PROACTIVE_DELAY_MS = 2500;
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _mac(m) { return (m || '').toString().toLowerCase().replace(/[:-]/g, '').trim(); }
@@ -70,7 +74,22 @@ export class WifiDirect {
   }
   _cooling(nx) { return (this.failUntil[nx] || 0) > Date.now(); }
   unmarkPeer(nexoId) { var nx = _nid(nexoId); if (nx && this.peers.delete(nx)) console.log('[WIFI-DIRECT] ' + nx + ' ya no lo tiene disponible'); }
-  markPeer(nexoId) { var nx = _nid(nexoId); if (nx && !this.peers.has(nx)) { this.peers.add(nx); console.log('[WIFI-DIRECT] ' + nx + ' también lo tiene'); } }
+  markPeer(nexoId) { var nx = _nid(nexoId); if (nx && !this.peers.has(nx)) { this.peers.add(nx); console.log('[WIFI-DIRECT] ' + nx + ' también lo tiene'); this._maybeAskPerm(); } }
+  // P8 (dueño 01-11): ¿pedir ahora el permiso de Wi-Fi Direct de forma proactiva? Sí si: este teléfono lo soporta, aún no
+  // está concedido, no se denegó, y no se ha pedido ya (ni lazy ni proactivo) en esta sesión. (función pura, para la prueba)
+  _shouldAskPermNow() {
+    if (!this.supported() || this.denied || this._asked || this._permProactive) return false;
+    if (this.status && this.status.granted) return false;
+    return true;
+  }
+  // P8: lanza la petición del permiso una vez, con un pequeño retraso (no al conectar), para tenerlo listo antes de la 1ª
+  // transferencia grande. El throttle real (self._asked) y el timeout están en _ensurePermission.
+  _maybeAskPerm() {
+    if (!this._shouldAskPermNow()) return;
+    this._permProactive = true;
+    var self = this;
+    setTimeout(function() { self._ensurePermission().catch(function() {}); }, PERM_PROACTIVE_DELAY_MS);
+  }
 
   _nexoOf(deviceId) { return _nid(this.ble && this.ble._macToNexoId && this.ble._macToNexoId.get(_mac(deviceId))); }
 
