@@ -193,6 +193,33 @@ export class Calls {
 
   mute(on) { var c = this.call; if (!c) return; c.muted = !!on; if (c.media && c.media.mute) c.media.mute(!!on); _emit('nexo:call', this.state()); }
 
+  // #dueño 01-11 (GRAVE): entró/salió una llamada TELEFÓNICA (el nativo lo avisa por el foco de audio, onCallInterruption).
+  // RETENER la llamada NEXO sin cortarla: al perder el foco (paused=true) silenciar el micro, avisar al otro «en pausa»
+  // (hold) para que NINGUNO corte por silencio, y NO pelear por el audio; al volver el foco (paused=false, p.ej. se rechazó
+  // o colgó la telefónica) reanudar: micro, reiniciar el vigilante y avisar «sigo» (unhold). La llamada nunca se cae.
+  _onInterruption(paused) {
+    var self = this, c = self.call;
+    if (!c || c.state !== 'active') return;
+    if (paused) {
+      if (c.held) return;
+      c.held = true;
+      c._mutedBefore = !!c.muted;                 // recordar el silencio MANUAL del usuario (para restaurarlo al volver)
+      if (c.media && c.media.mute) try { c.media.mute(true); } catch (e) {}
+      self._signal(c.nx, 'hold');
+      self._set({ held: true });
+      console.log('[CALL] En pausa por llamada telefónica (retenida, sin cortar)');
+    } else {
+      if (!c.held) return;
+      c.held = false;
+      c.lastRx = Date.now();                       // vigilante limpio: no contar el tiempo en pausa
+      if (c.media && c.media.mute) try { c.media.mute(!!c._mutedBefore); } catch (e) {}
+      if (c.media && typeof c.media.wake === 'function') try { c.media.wake(); } catch (e) {} // re-tomar micro/cámara/audio
+      self._signal(c.nx, 'unhold');
+      self._set({ held: false });
+      console.log('[CALL] Reanudada tras la llamada telefónica');
+    }
+  }
+
   // La llamada empieza: micrófono y altavoz
   _begin() {
     var self = this, c = self.call;
@@ -232,6 +259,10 @@ export class Calls {
       // #dueño (internet): mala conexión → aviso «Reconectando…»; si no se restablece en 15 s, se corta.
       var rmax = (typeof window !== 'undefined' && window.NEXO_CALL_RECONNECT_MS) || RECONNECT_MS;
       var wmin = (typeof window !== 'undefined' && window.NEXO_CALL_WEAK_MS) || WEAK_MS;
+      // #dueño 01-11 (GRAVE): si una llamada TELEFÓNICA interrumpió (held) o el otro avisó que está en pausa (peerHeld),
+      // NO contar el silencio ni cortar: la llamada NEXO queda RETENIDA. Se reinicia el reloj del vigilante en cada vuelta
+      // para que al reanudar no cuente el tiempo que estuvo en pausa (ni marque «Reconectando…»).
+      if (cc.held || cc.peerHeld) { cc.lastRx = Date.now(); if (cc.reconnecting) self._set({ reconnecting: false }); return; }
       var gap = Date.now() - (cc.lastRx || cc.startedAt || Date.now());
       if (gap > rmax) { self._signal(cc.nx, 'end'); self._finish('lost', false); return; }
       var recon = gap > wmin;
@@ -387,6 +418,14 @@ export class Calls {
       return;
     }
     if (o.op === 'ring') return;
+    // #dueño 01-11 (GRAVE): el otro entró/salió de una llamada telefónica y retuvo la suya. Marcar peerHeld para que
+    // NUESTRO vigilante tampoco corte por silencio mientras él está en pausa; al volver (unhold) reiniciar el reloj.
+    if (o.op === 'hold' || o.op === 'unhold') {
+      c.peerHeld = (o.op === 'hold');
+      if (!c.peerHeld) c.lastRx = Date.now();
+      self._set({ peerHeld: c.peerHeld });
+      return;
+    }
     if (o.op === 'accept' && c.dir === 'out' && c.state === 'calling') {
       clearTimeout(self._ringTimer);
       if (typeof o.co === 'string' && /^[a-z,]{1,40}$/.test(o.co)) c.peerCodecs = o.co; // (una build anterior no lo dice)

@@ -3549,7 +3549,13 @@ class NexoBlePlugin : Plugin() {
                 val attrs = android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION)
                     .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build()
                 val req = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                    .setAudioAttributes(attrs).setOnAudioFocusChangeListener { change -> remLog("INFO", "CALL", "Foco de audio: $change") }.build()
+                    .setAudioAttributes(attrs).setOnAudioFocusChangeListener { change ->
+                        remLog("INFO", "CALL", "Foco de audio: $change")
+                        // #dueño 01-11 (GRAVE): si entra una llamada TELEFÓNICA, NEXO pierde el foco (change < 0). Avisar al JS
+                        // para PAUSAR (retener) la llamada NEXO sin cortarla; al recuperar el foco (change == GAIN, p.ej. se
+                        // rechazó o colgó la telefónica), reanudar. Antes solo se registraba y la videollamada se trababa/caía.
+                        try { notifyListeners("onCallInterruption", JSObject().put("paused", change < 0).put("focus", change)) } catch (e: Exception) {}
+                    }.build()
                 val r = am.requestAudioFocus(req)
                 focusReq = req
                 callFocusState = if (r == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED) "sí" else "no ($r)"
