@@ -51,6 +51,10 @@ var SCAN_MS = 6500;
 var MAX_TRANSIENT = 3;            // conexiones a la vez con teléfonos que no son contactos
 var TRANSIENT_IDLE_MS = 60000;
 var LOW_BATTERY_PCT = 15;
+// P7 (dueño 01-11): en AHORRO DE ENERGÍA el usuario quiere conservar, así que se exige la batería más holgada para hacer
+// de puente — pero NO se deja de hacer de puente con la batería alta (en el diagnóstico se cortaba al 82 % «, ahorro»,
+// rompiendo una ruta a mitad de la videollamada). Antes: cualquier modo-ahorro paraba el puente a cualquier nivel.
+var LOW_BATTERY_PCT_SAVER = 30;
 var DEFAULT_HOP_BPS = 4400;       // velocidad útil medida en los teléfonos del dueño (2695), por salto
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
@@ -289,7 +293,7 @@ export class BleRelay {
     self._touch(deviceId);
     // Batería baja: no hace de puente para mensajes nuevos (sin custodia: el emisor buscará otro camino)
     var isMsg = p.type === 'chat' || p.type === 'sx'; // 'sx': sobre sellado (remitente oculto)
-    if (isMsg && !self.canRelay()) { console.warn('[JUMP] Batería baja: no hago de puente para ' + p.msgId); return true; }
+    if (isMsg && !self.canRelay()) { console.warn('[JUMP] ' + self._relayStopReason() + ': no hago de puente para ' + p.msgId); return true; }
     // Paquete para otro teléfono: hacer de puente
     var hp = (Number(p.hp) || 0) + 1;
     var id = p.msgId || (p.type + ':' + (p.from || '') + ':' + (p.ts || ''));
@@ -571,7 +575,7 @@ export class BleRelay {
       self.power = { level: Number(r.level), charging: !!r.charging, powerSave: !!r.powerSave, ts: Date.now() };
       var now = self.canRelay();
       if (was !== now) {
-        console.log('[JUMP] ' + (now ? 'Vuelvo a hacer de puente' : 'Batería baja (' + r.level + ' %' + (r.powerSave ? ', ahorro' : '') + '): dejo de hacer de puente'));
+        console.log('[JUMP] ' + (now ? 'Vuelvo a hacer de puente' : self._relayStopReason() + ': dejo de hacer de puente'));
         self._advertise();
       }
     }).catch(function() {});
@@ -579,8 +583,18 @@ export class BleRelay {
 
   canRelay() {
     var p = this.power;
-    if (p.powerSave) return false;
-    return p.charging || !(p.level >= 0) || p.level >= LOW_BATTERY_PCT;
+    if (p.charging) return true;                  // cargando: siempre
+    if (!(p.level >= 0)) return true;             // sin dato de batería: no bloquear (compat.)
+    // P7 (dueño 01-11): el modo-ahorro YA NO para el puente por sí solo. Solo manda la batería: en ahorro se pide más
+    // holgura (30 %); sin ahorro, el umbral normal (15 %). Así al 82 % con ahorro SÍ se hace de puente (antes se cortaba).
+    return p.level >= (p.powerSave ? LOW_BATTERY_PCT_SAVER : LOW_BATTERY_PCT);
+  }
+  // P7: motivo (para el registro) por el que NO se hace de puente ahora — batería baja de verdad, o ahorro con batería media
+  _relayStopReason() {
+    var p = this.power;
+    if (p.level >= 0 && p.level < LOW_BATTERY_PCT) return 'Batería baja (' + p.level + ' %)';
+    if (p.powerSave) return 'Ahorro de energía (' + p.level + ' %)';
+    return 'No hago de puente';
   }
 
   // ---------- búsqueda de camino bajo demanda ----------

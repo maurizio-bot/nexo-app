@@ -335,6 +335,10 @@
      "prueba": "toque al ABRIR el chat"
     },
     {
+     "fallo": "P7 (diagnóstico real 01-11, dueño): el puente JUMP dejaba de reenviar al 82 % de batería porque el modo-ahorro del sistema estaba activo (log: «[JUMP] Batería baja (82 %, ahorro): dejo de hacer de puente»), rompiendo una ruta a mitad de la videollamada; y el texto decía «batería baja» al 82 %. 2862: el modo-ahorro ya no para el puente por sí solo — solo manda la batería (en ahorro 30 %, sin ahorro 15 %, cargando siempre) y el registro dice el motivo real (batería baja vs ahorro de energía)",
+     "prueba": "puente JUMP y batería"
+    },
+    {
      "fallo": "Cortes del Wi-Fi breves y largos, sin «!» mientras se espera",
      "prueba": "cortes del Wi-Fi"
     },

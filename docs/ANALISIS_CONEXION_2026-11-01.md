@@ -125,13 +125,18 @@ Prueba determinista `dedupe.js` (en `ci.js`): dropAssembly cierra y cancela el t
 no reabre buffer y acusa; un msgId nuevo SÍ abre buffer (no se rompe lo normal). Reproduce el fallo con el código
 viejo (`dropAssembly` no existía).
 
-## P7 — JUMP deja de hacer de puente a 82 % de batería (texto engañoso) — rompió la ruta a mitad
+## P7 — JUMP deja de hacer de puente a 82 % de batería (texto engañoso) — rompió la ruta a mitad — ✅ HECHO (build 2862, 01-11)
 **Evidencia (log):** `[JUMP] Batería baja (82 %, ahorro): dejo de hacer de puente` (y otra al 65 %); el
 intermediario nx09acdb61 se cayó a mitad de la videollamada (`22:10:00 … ya no está en línea por internet`).
-**Causa:** el corte del puente mesh se dispara por el **modo-ahorro del sistema** aunque la batería esté
-alta; además el texto dice "batería baja" al 82 %.
-**Solución robusta:** no dejar de hacer de puente solo por modo-ahorro si la batería está alta; usar un
-umbral real (p. ej. <20 %). Corregir el texto del aviso.
+**Causa:** `ble_relay.canRelay()` tenía `if (p.powerSave) return false;` → el **modo-ahorro del sistema**
+paraba el puente a CUALQUIER nivel de batería (82 % incluido); además el texto decía "batería baja" al 82 %.
+**Solución aplicada (2862):** el modo-ahorro YA NO para el puente por sí solo; solo manda la batería —
+`canRelay()`: cargando siempre; sin dato, no bloquear; si no, `level >= (powerSave ? 30 : 15)`. Así al 82 %
+con ahorro SÍ se hace de puente (antes se cortaba), pero con ahorro se pide algo más de holgura (30 %) que sin
+ahorro (15 %), respetando que el usuario quiere conservar. Nuevo `_relayStopReason()` y el registro dice el
+motivo real («Ahorro de energía (N %)» vs «Batería baja (N %)»), en `_refreshPower` y en el descarte de paquetes.
+Prueba `jumpbat.js` (en `ci.js`): 82 %+ahorro→puente; 25 %+ahorro→no (conservador); 25 % sin ahorro→sí;
+10 %→no; cargando→sí; sin dato→sí; motivos correctos. Reproduce el fallo con el código viejo.
 
 ## P8 — (menor) Wi-Fi Direct disponible pero sin permiso
 **Evidencia (log):** `[WIFI-DIRECT] Disponible (falta permiso)`.
@@ -148,7 +153,7 @@ bien o subir el tope con cuidado.
 1. ✅ **P1 — vídeo por internet** — HECHO (build 2859). Solo `calls.js` (grupo fuera, ver P1).
 2. ✅ **P2 — toque de despertar + tipo de conexión al abrir chat** — HECHO (build 2860). `net_link.wakeFor` + `ble_links._wakeSleepingPeer/isWaking` + `openChat` + subtítulo «Conectando…». Prueba `wakeopen.js`.
 3. ✅ **P6 — dedupe de reensamblado entre BLE y net** — HECHO (build 2861). `ble_ack.dropAssembly` + guard con `_receivedMessageIds`. Prueba `dedupe.js`.
-4. **P7 — no cortar el puente JUMP con batería alta** (afecta rutas mesh/internet).
+4. ✅ **P7 — no cortar el puente JUMP con batería alta** — HECHO (build 2862). `ble_relay.canRelay()` ya no para por modo-ahorro solo; umbral por batería (ahorro 30 %, normal 15 %) + motivo real en el registro. Prueba `jumpbat.js`.
 5. **P5 — relés que flapean: prioridad/robustez.**
 6. **P3 — archivo grande por internet (canal Tor directo)** — el más grande; build propia.
 7. **P9 — verificar tope 64 KB.** **P8 — permiso Wi-Fi Direct.**
@@ -158,4 +163,4 @@ bien o subir el tope con cuidado.
    mejora la robustez del día a día. Decisión del dueño sobre cuándo meterlo (toca el pacing nativo BLE,
    build propia con medición antes/después).
 
-(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859 · P2 ✅ 2860 · P6 ✅ 2861.** Siguiente del plan: P7 (JUMP no cortar puente con batería alta). P4/#129 pacing sigue como candidato a adelantar cuando el dueño quiera.)
+(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859 · P2 ✅ 2860 · P6 ✅ 2861 · P7 ✅ 2862.** Siguiente del plan: P5 (relés que flapean). P4/#129 pacing sigue como candidato a adelantar cuando el dueño quiera.)
