@@ -101,12 +101,19 @@ en `tests/sim` el tiempo hasta «Peer ready» y el nº de «cola llena» antes/d
 **Impacto/orden:** esto cubre a la vez el GRAVE #1 (mensajes lentos/feedback) y el #2 (cercano tardado), así
 que es de **alto impacto**; ver la nota en el orden de abajo (candidato a adelantarlo).
 
-## P5 — Relé público damus.io inestable (afecta la robustez de internet)
+## P5 — Relé público damus.io inestable (afecta la robustez de internet) — ✅ HECHO (build 2863, 01-11)
 **Evidencia (log):** `wss://relay.damus.io: cerrada` **37×**, a veces 3× en <1 min, también en sesión
 activa. De los 4 relés que escucha, damus.io flapea constantemente.
-**Causa:** un relé público inestable que se cae y reconecta sin parar.
-**Solución robusta:** detectar relés que flapean (N caídas en M min) y bajarles prioridad / sacarlos un
-rato; mantener ≥N relés estables; apoyarse en Tor directo cuando esté. (Robustez de la capa internet.)
+**Causa:** `net_link._connect` reseteaba `r.backoff = 2000` en cada `onopen`, así que un relé que abría y se
+caía enseguida reconectaba a los 2 s una y otra vez (el backoff exponencial nunca llegaba a crecer).
+**Solución aplicada (2863):** detección de flapeo. En `onclose` se mide cuánto estuvo abierto (`openedAt`);
+una conexión de vida < `RELAY_STABLE_MS` (20 s) cuenta como flap. Con `RELAY_FLAP_MAX` (3) flaps en la ventana
+de 5 min Y ≥`RELAY_MIN_OTHERS` (2) relés abiertos, el relé se aparta `RELAY_FLAP_PENALTY_MS` (5 min) en vez de
+reconectar enseguida; una conexión estable olvida los flaps. **Nunca** se aparta si quedarían <2 relés abiertos
+(mejor un relé que flapea que ninguno). El registro dice «Relé inestable <host>: lo aparto ~5 min». Nuevo
+`_noteRelayClose` + `_openRelaysExcept` + `_relayHost`. Prueba `relayflap.js` (en `ci.js`): 3 flaps con ≥2
+relés→apartado; con 1 relé→no; estable resetea; backoff normal se dobla. Reproduce el fallo con el código viejo.
+Tor directo ya se prefiere aparte (net.send) cuando está arriba.
 
 ## P6 — Reensamblado BLE huérfano cuando el mismo archivo ya llegó por internet (doble ruta) — ✅ HECHO (build 2861, 01-11)
 **Evidencia (log):** `[BleAckSystem] Assembly timeout` ×3 msgId; **2 de ellos ya habían sido ✓✓ por
@@ -154,7 +161,7 @@ bien o subir el tope con cuidado.
 2. ✅ **P2 — toque de despertar + tipo de conexión al abrir chat** — HECHO (build 2860). `net_link.wakeFor` + `ble_links._wakeSleepingPeer/isWaking` + `openChat` + subtítulo «Conectando…». Prueba `wakeopen.js`.
 3. ✅ **P6 — dedupe de reensamblado entre BLE y net** — HECHO (build 2861). `ble_ack.dropAssembly` + guard con `_receivedMessageIds`. Prueba `dedupe.js`.
 4. ✅ **P7 — no cortar el puente JUMP con batería alta** — HECHO (build 2862). `ble_relay.canRelay()` ya no para por modo-ahorro solo; umbral por batería (ahorro 30 %, normal 15 %) + motivo real en el registro. Prueba `jumpbat.js`.
-5. **P5 — relés que flapean: prioridad/robustez.**
+5. ✅ **P5 — relés que flapean: prioridad/robustez** — HECHO (build 2863). `net_link` detecta flapeo y aparta el relé 5 min (si quedan ≥2 abiertos). Prueba `relayflap.js`.
 6. **P3 — archivo grande por internet (canal Tor directo)** — el más grande; build propia.
 7. **P9 — verificar tope 64 KB.** **P8 — permiso Wi-Fi Direct.**
 8. **P4 — pacing de escritura BLE con MTU 23 (= #129).** Ya CONFIRMADO con el diagnóstico lado a lado
@@ -163,4 +170,4 @@ bien o subir el tope con cuidado.
    mejora la robustez del día a día. Decisión del dueño sobre cuándo meterlo (toca el pacing nativo BLE,
    build propia con medición antes/después).
 
-(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859 · P2 ✅ 2860 · P6 ✅ 2861 · P7 ✅ 2862.** Siguiente del plan: P5 (relés que flapean). P4/#129 pacing sigue como candidato a adelantar cuando el dueño quiera.)
+(Se irá marcando aquí el estado de cada punto conforme se arregle. **P1 ✅ 2859 · P2 ✅ 2860 · P6 ✅ 2861 · P7 ✅ 2862 · P5 ✅ 2863.** Siguen P3 (archivo grande por Tor, grande), P9 (verificar tope 64 KB), P8 (permiso Wi-Fi Direct); y P4/#129 pacing (nativo), candidato a adelantar. Checkpoint con el dueño antes de P3/P4.)
