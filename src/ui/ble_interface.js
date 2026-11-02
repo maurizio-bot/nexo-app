@@ -127,6 +127,10 @@ export class BLEInterface {
     this._pingTimeoutMs = 8000;
     this._pingMaxFails = 4; // ronda 2814 (#87): más tolerante — un enlace flojo (MTU bajo/Vivo) tarda en contestar; antes (2) lo cortaba cada ~30 s aunque el otro seguía ahí
     this._pingFailCount = new Map();
+    // #dueño 02-11 (A3): el supervisor corre cada 6 s pero un ping tarda hasta 8 s en caducar → se apilaban 2-3 pings
+    // del MISMO enlace en vuelo; al caducar juntos, cada catch sumaba fallo y disparaba la desconexión → el «sin
+    // respuesta a 2 pings» salía triplicado. Este set evita apilar: un enlace con un ping en vuelo no recibe otro.
+    this._pingInFlight = new Set();   // deviceId con un ping en vuelo (no apilar)
     // Ronda 2814 (#87): throttle del auto-escaneo (NO el del usuario). Android deja de dar resultados con >5 escaneos
     // en 30 s; con un enlace flojo que se corta y reconecta en bucle se lanzaban escaneos en ráfaga y lo saturaban
     // (scan lento). Mínimo 8 s entre auto-escaneos → como mucho ~4 en 30 s.

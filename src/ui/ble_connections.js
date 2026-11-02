@@ -64,7 +64,12 @@ export const BLE_CONNECTION_METHODS = {
       var lastPong = self._lastPongTime.get(deviceId) || 0;
       var timeSincePong = Date.now() - lastPong;
       if (lastPong === 0 || timeSincePong > 16000) {
+        // #dueño 02-11 (A3): si ya hay un ping en vuelo para este enlace, NO disparar otro (el ciclo es cada 6 s pero
+        // el ping caduca a los 8 s; apilarlos hacía que la desconexión saliera 2-3 veces seguidas). Uno a la vez.
+        if (self._pingInFlight && self._pingInFlight.has(deviceId)) return;
+        (self._pingInFlight || (self._pingInFlight = new Set())).add(deviceId);
         self._pingDevice(deviceId).then(function(result) {
+          self._pingInFlight.delete(deviceId);
           self._pingFailCount.set(deviceId, 0);
           var prevState = self._supervisorStates.get(deviceId);
           if (prevState && prevState.state === SUPERVISOR_STATES.ZOMBIE) {
@@ -76,6 +81,7 @@ export const BLE_CONNECTION_METHODS = {
           }
           self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.HEALTHY, since: Date.now(), rtt: result.rtt });
         }).catch(function(err) {
+          self._pingInFlight.delete(deviceId);
           var fails = (self._pingFailCount.get(deviceId) || 0) + 1;
           self._pingFailCount.set(deviceId, fails);
           if (fails >= self._pingMaxFails) {
@@ -116,6 +122,11 @@ export const BLE_CONNECTION_METHODS = {
 
   _forceDisconnectAndReconnect(deviceId) {
     var self = this;
+    // #dueño 02-11 (A3): idempotente — si este enlace YA está en reconexión (o ya no está conectado), no repetir la
+    // desconexión ni el log (un ping apilado que caduca tarde no debe volver a dispararla). Defensa extra al dedup.
+    var sup = self._supervisorStates.get(deviceId);
+    if (sup && sup.state === SUPERVISOR_STATES.RECONNECTING) return;
+    if (self._pingInFlight) self._pingInFlight.delete(deviceId);
     // Ronda 2760: al diagnóstico (antes no quedaba rastro y en los teléfonos el enlace se rehacía cada ~30 s)
     console.warn('[BLEInterface] Enlace ' + (self._macToNexoId.get(_normMac(deviceId)) || deviceId) + ' sin respuesta a 2 pings: desconectado para reconectar');
     self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
