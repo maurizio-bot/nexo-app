@@ -118,6 +118,9 @@ class NexoBlePlugin : Plugin() {
         // "Rechazar" en el aviso de llamada (CallDeclineReceiver): con la app viva, la app rechaza ya, cifrado (antes el
         // que llama seguía en "Llamando…" hasta "No contesta"); con la app cerrada queda apuntado para cuando se abra
         fun declinedFromNotification(tap: CallTap) { live?.onDeclineTapped(tap) }
+        // Build 2882 (parte 2): Telecom (coche/auriculares/reloj/pantalla de bloqueo) pidió COLGAR una llamada activa o
+        // saliente (NexoConnection.onDisconnect). Avisar al JS para que termine la llamada NEXO por su lado.
+        fun telecomEnded(from: String) { live?.onTelecomEnded(from) }
         private const val TAG = "NexoBlePlugin"
         private const val SCAN_TIMEOUT_MS = 15000L
         private const val RECONNECT_DELAY_MS = 3000L
@@ -2607,8 +2610,40 @@ class NexoBlePlugin : Plugin() {
         if (closedMode) return
         notifyListeners("onCallAction", JSObject().put("declined", tap.from).put("declinedOffer", tap.offer), true)
     }
+    // Build 2882 (parte 2): el sistema pidió colgar la llamada activa/saliente (ver telecomEnded). El JS (ble_interface)
+    // cuelga la llamada NEXO en curso si es de ese contacto.
+    private fun onTelecomEnded(from: String) {
+        if (closedMode) return
+        notifyListeners("onTelecomEnd", JSObject().put("nx", from), true)
+    }
     @PluginMethod
     fun clearCall(call: PluginCall) { MsgNotifier.get(context).cancelCall(); call.resolve() }
+
+    // Build 2882 (parte 2): puente del ciclo de vida de la llamada SALIENTE con Telecom (self-managed). Lo llama calls.js:
+    //   op="out"    al empezar a llamar  → placeCall (la llamada aparece como real: coche/auriculares/foco de audio)
+    //   op="active" cuando el otro contesta → la conexión Telecom pasa a activa
+    //   op="end"    al colgar/terminar     → se cierra la conexión Telecom
+    // Best-effort y aditivo: si Telecom no está o falla, NEXO llama EXACTAMENTE como hasta ahora. Nunca rechaza (el JS no
+    // depende del resultado). La entrante (parte 1) NO pasa por aquí: se registra sola al llegar la oferta.
+    @PluginMethod
+    fun telecom(call: PluginCall) {
+        val op = call.getString("op") ?: ""
+        var ok = false
+        try {
+            when (op) {
+                "out" -> {
+                    val to = (call.getString("to") ?: "").lowercase()
+                    if (to.isNotEmpty()) {
+                        val name = netBgShared?.nameOf(to) ?: "NEXO"
+                        ok = CallTelecom.startOutgoing(context, to, name, call.getBoolean("video", false) == true)
+                    }
+                }
+                "active" -> { CallTelecom.setActive(); ok = true }
+                "end" -> { CallTelecom.endActive(); ok = true }
+            }
+        } catch (e: Throwable) { Log.w(TAG, "telecom($op): ${e.message}") }
+        call.resolve(JSObject().put("ok", ok))
+    }
 
     // ===== Ronda 2765: avisos con la pantalla apagada =====
     private fun showOverLock(on: Boolean) {

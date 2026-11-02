@@ -32,6 +32,11 @@ function _emit(name, detail) { try { window.dispatchEvent(new CustomEvent(name, 
 // #dueño 01-11: avisar al nativo que hay (o dejó de haber) una VIDEOLLAMADA activa, para que al irse de la app con el
 // gesto de inicio entre en Picture-in-Picture (miniatura flotante) sin cortar audio/vídeo.
 function _pipActive(on) { try { var p = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE; if (p && typeof p.setPipActive === 'function') p.setPipActive({ on: !!on }); } catch (e) {} }
+// #dueño 02-11 (ConnectionService parte 2): avisar al nativo del ciclo de vida de la llamada SALIENTE para que Telecom la
+// trate como una llamada real (convivencia con una llamada del teléfono, mandos del coche/auriculares/reloj, foco de
+// audio). op: 'out' al empezar a llamar, 'active' cuando el otro contesta, 'end' al terminar. Best-effort: si el nativo
+// no está o Telecom falla, NEXO llama EXACTAMENTE igual que hasta ahora. La ENTRANTE la registra el nativo sola (parte 1).
+function _telecom(op, extra) { try { var p = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE; if (p && typeof p.telecom === 'function') p.telecom(Object.assign({ op: op }, extra || {})).catch(function () {}); } catch (e) {} }
 function _hex(n) { var a = new Uint8Array(n); crypto.getRandomValues(a); return Array.from(a).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
 function _fromHex(h) { var a = new Uint8Array(h.length / 2); for (var i = 0; i < a.length; i++) a[i] = parseInt(h.substr(i * 2, 2), 16); return a; }
 function _b64(u8) { var s = ''; for (var i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
@@ -143,6 +148,7 @@ export class Calls {
     var id = 'cl' + Date.now().toString(36) + _hex(4), key = _hex(32);
     self.call = { id: id, nx: nx, dir: 'out', state: 'calling', key: key, createdAt: Date.now(), sendSeq: 0, vSeq: 0, lastRx: 0, video: !!video };
     _emit('nexo:call', self.state());
+    _telecom('out', { to: nx, video: !!video });  // parte 2: la saliente aparece como llamada real del sistema
     console.log('[CALL] Llamando a ' + nx + ' (' + id + ')');
     self._ringTimer = setTimeout(function() { if (self.call && self.call.id === id && self.call.state === 'calling') self._finish('unanswered', true); }, window.NEXO_CALL_RING_MS || RING_MS);
     return Promise.all([self._importKey(key), self._codecs()]).then(function(r) {
@@ -236,6 +242,7 @@ export class Calls {
     c.startedAt = Date.now(); c.lastRx = Date.now();
     self.stats = { sent: 0, got: 0, bad: 0 }; // por llamada (el diagnóstico de cada una)
     self._set({ state: 'active', startedAt: c.startedAt });
+    _telecom('active');  // parte 2: la saliente por Telecom pasa a activa (la entrante no pasa por aquí: no-op)
     console.log('[CALL] En llamada con ' + c.nx + ' (' + c.id + ')');
     if (c.video) _pipActive(true); // videollamada → habilitar la miniatura (PiP) al irse de la app
     var media;
@@ -449,6 +456,7 @@ export class Calls {
   _finish(reason, notifyPeer) {
     var self = this, c = self.call;
     if (!c) return;
+    _telecom('end');  // parte 2: cerrar la llamada Telecom saliente (idempotente; no-op si no había)
     self._markDead(c.id);
     self._dropOffer(c.offerMid);
     clearTimeout(self._ringTimer); clearInterval(self._silenceTimer);
