@@ -218,15 +218,19 @@ export function _sendFileFor(contactId, msgId, type, payload, meta, opts) {
       // queda fallido con aviso (antes se quedaba "enviando" en 1 % para siempre)
       if (err && err.code === 'WD_FAILED') {
         if (opts && typeof opts.onWdFail === 'function') { opts.onWdFail(msgId); return; }
-        _updateMessageStatus(msgId, 'failed');
-        _updateMessageStorageStatus(msgId, 'failed', contactId);
-        _showPermissionError(t('chat_wd_too_big', 'No se pudo enviar por Wi-Fi Direct y es demasiado grande para Bluetooth (') + (Math.floor(String(payload).length * 3 / 4) / 1048576).toFixed(1) + t('chat_max_mb', ' MB). Máximo ~') + (MAX_BLE_FILE_BYTES / 1048576).toFixed(1) + t('chat_mb_end', ' MB.'));
+        // #dueño 02-11 (diagnóstico coche): un archivo que no cabe por el camino de ahora (Wi-Fi caído → solo Bluetooth
+        // MTU chico) NO se marca ✗ ni se pierde: queda PENDIENTE (⏳) y resumeOutgoingTransfers lo reenvía cuando vuelva
+        // Wi-Fi/internet (el registro sigue en el vault). Antes se marcaba 'failed' con un aviso de «demasiado grande».
+        console.log('[ATTACH] Archivo no cabe por el camino actual — queda pendiente (se reenvía al volver Wi-Fi/internet)');
+        _updateMessageStatus(msgId, 'pending');
+        _updateMessageStorageStatus(msgId, 'pending', contactId);
         return;
       }
 
-      // No marcar failed ante errores transitorios / timeouts leves
+      // No marcar failed ante errores transitorios / timeouts leves (incl. #dueño 02-11: cola BLE llena / max window
+      // retries / «no cabe» → el archivo queda pendiente y lo reenvía resumeOutgoingTransfers, no se pierde)
       var isTransient =
-        /timeout|abort|network|disconnected|not ready|busy|interrupted|temporary|no disponible/i.test(msg) ||
+        /timeout|abort|network|disconnected|not ready|busy|interrupted|temporary|no disponible|window retries|cola de escritura|no cabe/i.test(msg) ||
         (err && (err.code === 'BLE_BUSY' || err.code === 'PEER_ABSENT' || err.code === 'NO_KEY'));
 
       if (isTransient) {

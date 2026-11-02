@@ -17,8 +17,8 @@ Leyenda: **JS** = se reproduce y prueba en el simulador; **NATIVO** = Kotlin, se
 
 ### Envío de archivos / mensajes (lo que reportó el dueño)
 - **B1 · GRAVE · NATIVO — «mensaje descartado entero» (hasta 126 trozos)** tras ~1,8 s de fallo de escritura; peor con enlace débil (rssi −82/−91). → Arreglo: reintentar por trozo / re-encolar, no tirar el mensaje completo.
-- **B2/B3 · GRAVE · JS — «Cola de escritura llena» + «Max window retries» → «sendFile FAIL Abortado» en bucle** (reinicia de cero). Con MTU 23 la ventana nunca se vacía. → Arreglo (#129 pacing): con MTU mínimo, no martillar BLE; dejar el archivo pendiente para Wi-Fi/internet/Jump; ritmo por MTU.
-- **B4 · GRAVE · JS — «Wi-Fi caído y no cabe por Bluetooth»**: al cortarse el Wi-Fi a mitad de un archivo grande (coche), se rechaza sin reintento diferido. → Arreglo: dejarlo PENDIENTE y reintentar cuando vuelva una ruta (no abortar).
+- **B2/B3 · GRAVE · JS — «Cola de escritura llena» + «Max window retries» → «sendFile FAIL Abortado» en bucle** (reinicia de cero). Con MTU 23 la ventana nunca se vacía. → ✅ **PARCIAL (2885):** «Max window retries» en un ARCHIVO ya NO lo marca ✗ — queda **⏳ pendiente** y se reenvía por el mejor camino al volver una ruta (ya no «se pierde»). **Falta (B2):** no MARTILLAR BLE con MTU mínimo (fail-fast: no intentar un archivo grande por un enlace de 20 bytes; esperar Wi-Fi/internet) + ritmo por MTU (#129).
+- **B4 · GRAVE · JS — «Wi-Fi caído y no cabe por Bluetooth»**: al cortarse el Wi-Fi a mitad de un archivo grande (coche), se rechaza sin reintento diferido. → ✅ **HECHO (2885):** un archivo que no cabe por el camino de ahora queda **⏳ pendiente** (no ✗); el registro sigue en el vault y `resumeOutgoingTransfers` lo reenvía al volver Wi-Fi/internet. Solo el vídeo original va por su camino (previa+HD). Prueba `filepend.js`. (`relink` + `send.js`.)
 - **B5 · MEDIA · JS — Assembly timeout** (4 mensajes a medio reensamblar). **B6 · LEVE — ACK timeout en reenvío JUMP.**
 
 ### Llamada / audio (coche; la llamada SÍ fluyó 31 s, opus los dos lados)
@@ -35,7 +35,7 @@ Leyenda: **JS** = se reproduce y prueba en el simulador; **NATIVO** = Kotlin, se
 
 ## Orden de ejecución (robusto, con batería verde + APK, lo nativo lo confirma el dueño)
 1. **2883 (hecho):** audio volumen+foco (C parcial) + sticker.
-2. **Envío de archivos (B4 + B2/B3 JS):** no abortar al caer Wi-Fi; con MTU mínimo no martillar, dejar pendiente. + reintento diferido.
+2. **Envío de archivos (B4 + B3 JS): ✅ HECHO en 2885** — un archivo que no cabe por el camino de ahora queda ⏳ pendiente (no ✗) y se reenvía al volver Wi-Fi/internet (`filepend.js`). **Falta (B2):** fail-fast / no martillar BLE con MTU mínimo + ritmo por MTU (#129); y **B1 nativo** (no descartar el mensaje entero por un corte de 1,8 s).
 3. **Bluetooth JS (A2/A3/D1):** backoff + de-dup de reconexión y de JUMP.
 4. **Nativo (A1 MTU, B1 descarte, A4/A5 reconexión):** re-negociar MTU; no descartar mensaje entero; backoff del connectToDevice.
 5. **Audio fino (C):** gate menos agresivo con nivel bajo; volumen del stream.
