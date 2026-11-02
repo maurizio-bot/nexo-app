@@ -73,11 +73,14 @@ body::before {
 #chat-contact-info { padding-left: 8px !important; }
 #chat-contact-name { font-size: 17px !important; font-weight: 700 !important; }
 #chat-contact-subtitle { color: var(--nx-cyan) !important; font-weight: 600; letter-spacing: 0.6px; }
-#nexo-call-btn, #nexo-video-btn {
+/* Dueño 01-11 (plan 2/3): los botones de llamada/videollamada del chat de GRUPO (#nexo-gcall-btn/#nexo-gvideo-btn)
+   llevan el mismo «look NEXO» que los del chat de contacto 1-a-1 (antes se quedaban con su estilo inline: 38px, sin
+   borde, SVG sin tamaño). El `display` va SIN !important a propósito: así el show/hide inline (según isGroup) gana. */
+#nexo-call-btn, #nexo-video-btn, #nexo-gcall-btn, #nexo-gvideo-btn {
   width: 40px !important; height: 40px !important; background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important;
   display: inline-flex; align-items: center; justify-content: center; padding: 0 !important; /* sin !important: en un grupo se ocultan */
 }
-#nexo-call-btn svg, #nexo-video-btn svg { width: 20px; height: 20px; }
+#nexo-call-btn svg, #nexo-video-btn svg, #nexo-gcall-btn svg, #nexo-gvideo-btn svg { width: 20px; height: 20px; }
 #messages-container { background: transparent !important; }
 .message { border-radius: 20px !important; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22); }
 .message.own { background: var(--nx-grad) !important; border-bottom-right-radius: 6px !important; }
