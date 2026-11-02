@@ -366,12 +366,16 @@ export class BleAckSystem {
         if (st.tooBigFor(next)) self._restartStream(st, id, next); else st.useLink(next);
         return;
       }
-      var e = new Error(tooBig ? 'Wi-Fi caído y no cabe por Bluetooth' : 'Contacto no disponible: queda pendiente');
-      e.code = tooBig ? 'WD_FAILED' : 'PEER_ABSENT';
+      // #dueño 02-11: al caerse el Wi-Fi, solo el VÍDEO ORIGINAL (wdOnly) va por su camino aparte (previa + HD → WD_FAILED).
+      // Un archivo/foto grande NO se marca ✗: queda PENDIENTE (PEER_ABSENT, ⏳) y resumeOutgoingTransfers lo reenvía
+      // cuando vuelva Wi-Fi/internet (el registro sigue en el vault). Antes todo lo «tooBig» caía a 'failed' y parecía perdido.
+      var videoWd = tooBig && st.meta && st.meta.wdOnly;
+      var e = new Error(videoWd ? 'Wi-Fi caído y no cabe por Bluetooth' : 'Contacto no disponible: queda pendiente');
+      e.code = videoWd ? 'WD_FAILED' : 'PEER_ABSENT';
       var rej = st.reject; st.reject = null;
       st.abort();
       self.outgoingStreams.delete(id);
-      if (st.type === 'file') self._dispatchFileProgress(id, 0, 1, tooBig ? 'failed' : 'sending', 0);
+      if (st.type === 'file') self._dispatchFileProgress(id, 0, 1, videoWd ? 'failed' : 'sending', 0);
       if (rej) rej(e);
     });
   }
@@ -1708,7 +1712,10 @@ ChatStream.prototype._runWindowLoop = function() {
       self.windowRetryCount++;
       if (self.windowRetryCount > self.maxWindowRetries) {
         self.abort();
-        self.ackSystem._dispatchStatus(self.msgId, 'failed');
+        // #dueño 02-11 (diagnóstico coche: el archivo moría por BLE MTU 23 congestionado): un ARCHIVO que agota los
+        // reintentos NO se marca ✗ ni se pierde — el registro sigue en el vault y resumeOutgoingTransfers lo reenvía
+        // por el mejor camino cuando vuelva Wi-Fi/internet. Queda ⏳ 'pending'. El texto (chat) sí sigue 'failed'.
+        self.ackSystem._dispatchStatus(self.msgId, self.type === 'file' ? 'pending' : 'failed');
         if (self.reject) self.reject(new Error('Max window retries'));
         return;
       }
@@ -1949,7 +1956,9 @@ ChatStream.prototype._onWindowTimeout = function() {
         self._windowReject = null;
         self._windowResolve = null;
       }
-      self.ackSystem._dispatchStatus(self.msgId, 'failed');
+      // #dueño 02-11: un ARCHIVO que agota reintentos queda ⏳ 'pending' (persistido, se reenvía al volver una ruta),
+      // no ✗ 'failed'. El texto sí sigue 'failed'.
+      self.ackSystem._dispatchStatus(self.msgId, self.type === 'file' ? 'pending' : 'failed');
       return;
     }
     console.log('[ChatStream] Window timeout, reenviando ventana desde', self.windowStart, 'retry', self.windowRetryCount, 'msgId=' + self.msgId);

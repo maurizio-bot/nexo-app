@@ -297,8 +297,8 @@
      "prueba": null
     },
     {
-     "fallo": "Wi-Fi caído a mitad de una foto con un Bluetooth lento",
-     "prueba": null
+     "fallo": "Wi-Fi caído a mitad de un archivo/foto con un Bluetooth lento (diagnóstico coche 02-11): se marcaba ✗ failed y parecía perdido. 2885: al agotar reintentos (o no caber por el enlace de ahora) un ARCHIVO queda ⏳ pending y su registro sigue en el vault → resumeOutgoingTransfers lo reenvía al volver Wi-Fi/internet. Prueba filepend.js",
+     "prueba": "archivo que no cabe por Bluetooth"
     },
     {
      "fallo": "Nota de voz: pausar/reanudar, borrar antes de enviar, y parar el audio al grabar o al entrar llamada (2781)",
