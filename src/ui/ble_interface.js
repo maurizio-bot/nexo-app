@@ -884,6 +884,16 @@ export class BLEInterface {
     this._nativeCallInterruptionListener = this.nativePlugin.addListener('onCallInterruption', function(ev) {
       try { if (self.calls && typeof self.calls._onInterruption === 'function') self.calls._onInterruption(!!(ev && ev.paused)); } catch (e) {}
     });
+    // Build 2882 (ConnectionService parte 2): el sistema (coche/auriculares/reloj/pantalla de bloqueo) pidió COLGAR la
+    // llamada activa o SALIENTE por Telecom. Colgar la llamada NEXO en curso si es de ese contacto (el camino de
+    // "rechazar" del aviso solo vale mientras SUENA; esto cubre colgar una llamada ya en marcha o saliente).
+    this._nativeTelecomEndListener = this.nativePlugin.addListener('onTelecomEnd', function(ev) {
+      try {
+        var st = self.calls && typeof self.calls.state === 'function' ? self.calls.state() : null;
+        var nx = (ev && ev.nx ? String(ev.nx) : '').toLowerCase();
+        if (st && st.nx && (!nx || String(st.nx).toLowerCase() === nx) && typeof self.calls.hangup === 'function') self.calls.hangup();
+      } catch (e) {}
+    });
   }
 
   // v6.1.8: se llamaba con cada paquete recibido (pings, trozos de foto) y reconstruía toda la lista

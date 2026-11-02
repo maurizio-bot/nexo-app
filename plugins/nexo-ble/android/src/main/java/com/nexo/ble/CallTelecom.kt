@@ -88,6 +88,40 @@ object CallTelecom {
     }
     private fun cancelEndTimer() { endTimer?.let { try { main.removeCallbacks(it) } catch (e: Throwable) {} }; endTimer = null }
 
+    /**
+     * Build 2882 (parte 2): llamada SALIENTE por Telecom (self-managed), igual que la entrante pero al revés. Presenta la
+     * llamada que YO hago como una llamada de verdad del sistema → foco de audio, convivencia con una llamada del teléfono,
+     * y mandos del coche/auriculares/reloj (colgar/cancelar). Best-effort: si el sistema no la permite ahora
+     * (isOutgoingCallPermitted=false, p.ej. ya hay una llamada telefónica) o algo falla, devuelve false y NEXO sigue
+     * llamando EXACTAMENTE como hasta ahora (la llamada NEXO no depende de esto). NO lanza.
+     */
+    fun startOutgoing(ctx: Context, to: String, name: String, video: Boolean): Boolean {
+        return try {
+            if (!ensureAccount(ctx)) return false
+            val tm = ctx.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager ?: return false
+            val h = handle(ctx)
+            if (!tm.isOutgoingCallPermitted(h)) { Log.i(TAG, "Telecom no permite la llamada saliente ahora"); return false }
+            val inner = Bundle().apply {
+                putString(EX_FROM, to); putString(EX_NAME, name); putBoolean(EX_VIDEO, video); putString(EX_OFFER, "")
+            }
+            val extras = Bundle().apply {
+                putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, h)
+                if (video) putInt(TelecomManager.EXTRA_START_CALL_WITH_VIDEO_STATE, android.telecom.VideoProfile.STATE_BIDIRECTIONAL)
+                putBundle(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS, inner)
+            }
+            // self-managed + esquema propio «nexo:» → el sistema NO marca ningún número; enruta a NexoConnectionService
+            // (onCreateOutgoingConnection). Requiere MANAGE_OWN_CALLS (declarado); para self-managed no hace falta CALL_PHONE.
+            tm.placeCall(Uri.fromParts("nexo", to, null), extras)
+            true
+        } catch (e: Throwable) { Log.w(TAG, "placeCall falló (sigue la llamada normal): ${e.message}"); false }
+    }
+
+    /** NEXO dice que la llamada ya está en curso (el otro contestó / se enlazó): pasar la conexión Telecom a activa. */
+    fun setActive() {
+        cancelEndTimer()
+        active?.let { try { it.setActive() } catch (e: Throwable) {} }
+    }
+
     /** Cierra la llamada Telecom activa (al colgar/rechazar/caducar o cuando NEXO cierra la llamada). Idempotente. */
     fun endActive() {
         cancelEndTimer()

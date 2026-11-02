@@ -43,8 +43,17 @@ class NexoConnection(
 
     override fun onReject() { declineAndClose() }
     override fun onReject(replyMessage: String?) { declineAndClose() }
-    override fun onDisconnect() { declineAndClose() }
-    override fun onAbort() { closeCall() }
+    // Build 2882 (parte 2): mientras SUENA una entrante, colgar desde el sistema = rechazar (camino de siempre, parte 1,
+    // que el JS solo aplica mientras suena). Ya activa, o una SALIENTE (marcando / en curso): el usuario colgó/canceló
+    // desde el coche, los auriculares, el reloj o la pantalla de bloqueo → avisar a NEXO para que termine por su lado.
+    override fun onDisconnect() { if (state == Connection.STATE_RINGING) declineAndClose() else systemEnd() }
+    override fun onAbort() { if (state == Connection.STATE_RINGING) declineAndClose() else systemEnd() }
+
+    /** El sistema (coche/auriculares/reloj) pidió colgar una llamada activa o saliente: NEXO la termina por su lado. */
+    private fun systemEnd() {
+        try { NexoBlePlugin.telecomEnded(from.lowercase()) } catch (e: Throwable) {}
+        closeCall()
+    }
 
     private fun declineAndClose() {
         try {
