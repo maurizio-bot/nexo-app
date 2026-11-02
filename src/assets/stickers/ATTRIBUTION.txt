@@ -1,0 +1,7 @@
+Stickers del pack de NEXO (build 2879).
+
+Los emojis 3D (todos los *.png salvo nexo.png) provienen de Microsoft Fluent Emoji,
+bajo licencia MIT: https://github.com/microsoft/fluentui-emoji  (archivos "3D").
+Copyright (c) Microsoft Corporation. Licencia MIT.
+
+nexo.png es un badge propio de NEXO (generado en este proyecto).
