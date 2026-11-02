@@ -171,6 +171,7 @@ var STRINGS = {
   sticker_create: { es: "Crear sticker", it: "Crea sticker", en: "Create sticker" },
   sticker_pick: { es: "📷 Elegir foto", it: "📷 Scegli foto", en: "📷 Choose photo" },
   sticker_text_ph: { es: "Texto (opcional)", it: "Testo (opzionale)", en: "Text (optional)" },
+  sticker_drag_hint: { es: "Arrastra el texto y el emoji para moverlos", it: "Trascina testo ed emoji per spostarli", en: "Drag the text and emoji to move them" },
   sticker_emoji_ph: { es: "Emoji (opcional)", it: "Emoji (opzionale)", en: "Emoji (optional)" },
   sticker_send: { es: "Enviar", it: "Invia", en: "Send" },
   sticker_mine: { es: "Mi sticker", it: "Il mio sticker", en: "My sticker" },
