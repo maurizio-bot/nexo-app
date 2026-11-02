@@ -16,7 +16,8 @@ import { _msgContactMap } from './chat_state.js';
 import { _noteContactMessage } from './send.js';
 import { _renderMessage, _updateMessageStatus, _updateMessageStorageStatus } from './render.js';
 import { _failStatus } from './ble_helpers.js';
-import { openStickerPicker } from './stickers.js';
+import { openStickerPicker, isValidStickerImg } from './stickers.js';
+import { openStickerEditor } from './sticker_editor.js';
 import { openTttForContact } from './ttt.js';
 import { getPermissionShim } from '../core/NexoPermissionShim.js';
 import { rem } from './rem.js';
@@ -31,10 +32,14 @@ export function appSetupUse(d) { initializeNexoApp = d.initializeNexoApp; } // [
 // Stickers (2829): manda un sticker como mensaje VISIBLE normal — por el cable va solo el ID
 // ({type:'nexo_sticker', s:id}); el dibujo es un SVG incorporado (stickers.js). Mismo camino que _doSend (texto),
 // sin adjuntos ni base64. En grupo va a cada miembro con una vista previa «🎟️ Sticker».
-export async function _sendStickerTo(cid, id) {
+export async function _sendStickerTo(cid, sticker) {
   var chatContactId = cid || _getCurrentContactId();
-  if (!chatContactId || !id) return;
-  var wire = JSON.stringify({ type: 'nexo_sticker', s: String(id) });
+  if (!chatContactId || !sticker) return;
+  // sticker del pack: string con el ID (viaja solo el ID). Sticker PROPIO: {img} (viaja la imagen VALIDADA, 2878).
+  var wire;
+  if (typeof sticker === 'string') wire = JSON.stringify({ type: 'nexo_sticker', s: String(sticker) });
+  else if (sticker && typeof sticker === 'object' && isValidStickerImg(sticker.img)) wire = JSON.stringify({ type: 'nexo_sticker', img: sticker.img });
+  else return;
   var msgId = 'msg' + Date.now() + '' + Math.random().toString(36).substr(2, 9);
   var seq = (window.bleInterface && typeof window.bleInterface.getNextSeq === 'function') ? window.bleInterface.getNextSeq() : 0;
   _msgContactMap[msgId] = chatContactId;
@@ -92,7 +97,7 @@ export function _bindAttachmentHandlers() {
       else if (type === 'location') _handleLocation();
       else if (type === 'cobro') _handleCobro();
       else if (type === 'contact') _handleShareContacts();
-      else if (type === 'sticker') { _closeAttachMenu(); openStickerPicker(_getCurrentContactId(), _sendStickerTo); }
+      else if (type === 'sticker') { _closeAttachMenu(); var _scid = _getCurrentContactId(); openStickerPicker(_scid, _sendStickerTo, function() { openStickerEditor(_scid, _sendStickerTo); }); }
       else if (type === 'ttt') { _closeAttachMenu(); openTttForContact(_getCurrentContactId()); }
     });
   });

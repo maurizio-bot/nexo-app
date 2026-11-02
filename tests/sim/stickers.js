@@ -90,10 +90,26 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   await sleep(1500);
   r.desconocido_fallback = stickerEls(B).some((e) => (e.textContent || '').indexOf('🎟️') >= 0 && !e.querySelector('svg'));
 
-  // 4) NUNCA se ve el JSON crudo del sticker (ni en A ni en B).
+  // 5) Sticker PROPIO (2878): A manda una IMAGEN (sticker creado). B y A la pintan como <img> (no SVG, no JSON crudo).
+  var VALID_IMG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
+  A.win.__nexoSendSticker(id('B'), { img: VALID_IMG });
+  r.b_recibe_img = !!(await waitFor(async () => (await B.win.vaultLoadMessages(id('A'))).filter((m) => /"type":"nexo_sticker"/.test(String(m.content || ''))).length >= 3, 25000));
+  await sleep(1500);
+  var imgsOf = (p) => stickerEls(p).map((e) => e.querySelector('img')).filter(Boolean);
+  r.b_pinta_img = imgsOf(B).some((im) => String(im.getAttribute('src') || '').indexOf('data:image/') === 0);
+  r.a_pinta_img = imgsOf(A).some((im) => String(im.getAttribute('src') || '').indexOf('data:image/') === 0);
+
+  // 6) Validador anti-XSS (el MISMO que usa el render): acepta imagen válida; RECHAZA html, formato raro y exceso de tamaño.
+  var V = A.win.__nexoIsValidStickerImg;
+  r.valida_ok = typeof V === 'function' && V(VALID_IMG) === true
+    && V('data:text/html;base64,QUJD') === false
+    && V('<img src=x onerror=alert(1)>') === false
+    && V('data:image/png;base64,' + 'A'.repeat(100000)) === false;
+
+  // 7) NUNCA se ve el JSON crudo del sticker (ni pack ni imagen propia, ni en A ni en B).
   r.sin_json = shown(A).concat(shown(B)).filter((t) => /"type":"nexo_/.test(t) || t.indexOf('nexo_sticker') >= 0).length === 0;
 
-  r.resultado = (r.svg_feliz && r.svg_desconocido_null && r.b_recibe && r.b_pinta_svg && r.a_pinta_svg && r.desconocido_fallback && r.sin_json) ? 'OK' : 'FALLO';
+  r.resultado = (r.svg_feliz && r.svg_desconocido_null && r.b_recibe && r.b_pinta_svg && r.a_pinta_svg && r.desconocido_fallback && r.b_recibe_img && r.b_pinta_img && r.a_pinta_img && r.valida_ok && r.sin_json) ? 'OK' : 'FALLO';
   console.log('STICKER ' + JSON.stringify(r));
   try { fs.writeFileSync(path.join(buildDir, 'last_logs_stickers.txt'), logs.slice(-250).join('\n')); } catch (e) {}
   process.exit(0);

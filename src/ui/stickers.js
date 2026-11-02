@@ -40,8 +40,52 @@ export function stickerSvg(id) {
   return Object.prototype.hasOwnProperty.call(STICKER_SET, id) ? STICKER_SET[id] : null;
 }
 
-// Hoja inferior con la rejilla de stickers. Al tocar uno → sendFn(cid, id) y se cierra. sendFn la da app_setup.js.
-export function openStickerPicker(cid, sendFn) {
+// ---- Stickers PROPIOS (2878, pedido del dueño 01-11 «crear stickers»: foto + texto/emoji) ----
+// A diferencia del pack, un sticker propio SÍ lleva el dibujo (imagen) para que se vea en el otro teléfono. Viaja de
+// forma SEGURA, igual que la foto de perfil: imagen base64 VALIDADA (STICKER_IMG_RE) con tope de tamaño, cifrada de
+// extremo a extremo por el camino normal, y pintada como <img> (NUNCA innerHTML). Un dato que no cumpla cae a 🎟️.
+export var STICKER_IMG_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/;
+export var STICKER_MAX_LEN = 90000;   // ~67 KB como mucho por sticker (el editor comprime para caber)
+export var STICKER_SIZE = 288;        // lienzo cuadrado del sticker creado
+var USER_FILE = 'nexo_my_stickers.json';
+var MAX_USER = 30;                     // guardamos como mucho los 30 más recientes
+var _userStickers = null;              // [{ id:'u<ts>', img, ts }] (cacheado)
+
+export function isValidStickerImg(img) { return typeof img === 'string' && img.length <= STICKER_MAX_LEN && STICKER_IMG_RE.test(img); }
+function _plug() { try { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; } catch (e) { return null; } }
+
+export function loadUserStickers() {
+  if (_userStickers) return Promise.resolve(_userStickers);
+  var pl = _plug();
+  if (!pl || typeof pl.loadFromFile !== 'function') { _userStickers = []; return Promise.resolve(_userStickers); }
+  return pl.loadFromFile({ filename: USER_FILE }).then(function(r) {
+    var arr = [];
+    try { if (r && r.exists && r.content) { var p = JSON.parse(r.content); if (Array.isArray(p)) arr = p.filter(function(x) { return x && isValidStickerImg(x.img); }); } } catch (e) {}
+    _userStickers = arr;
+    return _userStickers;
+  }).catch(function() { _userStickers = []; return _userStickers; });
+}
+export function getUserStickers() { return _userStickers || []; }
+function _saveUser() { var pl = _plug(); if (pl && typeof pl.saveToFile === 'function') { try { pl.saveToFile({ filename: USER_FILE, content: JSON.stringify(_userStickers || []) }).catch(function() {}); } catch (e) {} } }
+// Añade un sticker propio (imagen ya validada por el editor). Devuelve el id, o null si la imagen no es válida.
+export function addUserSticker(img) {
+  if (!isValidStickerImg(img)) return null;
+  if (!_userStickers) _userStickers = [];
+  var id = 'u' + Date.now().toString(36);
+  _userStickers.unshift({ id: id, img: img, ts: Date.now() });
+  if (_userStickers.length > MAX_USER) _userStickers = _userStickers.slice(0, MAX_USER);
+  _saveUser();
+  return id;
+}
+export function removeUserSticker(id) {
+  if (!_userStickers) return;
+  _userStickers = _userStickers.filter(function(x) { return x.id !== id; });
+  _saveUser();
+}
+
+// Hoja inferior con la rejilla de stickers. Al tocar un sticker del pack → sendFn(cid, id); un sticker PROPIO →
+// sendFn(cid, {img}); la celda «+ Crear» → onCreate(). sendFn y onCreate las da app_setup.js.
+export function openStickerPicker(cid, sendFn, onCreate) {
   try {
     closeStickerPicker();
     var ov = document.createElement('div');
@@ -55,6 +99,24 @@ export function openStickerPicker(cid, sendFn) {
     panel.appendChild(head);
     var grid = document.createElement('div');
     grid.className = 'sticker-grid';
+
+    // 1) Celda «+ Crear» (2878): abre el editor de stickers (foto + texto/emoji).
+    var create = document.createElement('button');
+    create.type = 'button';
+    create.className = 'sticker-cell sticker-create';
+    create.setAttribute('aria-label', t('sticker_create', 'Crear sticker'));
+    create.innerHTML = '<span class="sticker-plus">+</span>';
+    create.addEventListener('click', function(e) {
+      e.preventDefault(); e.stopPropagation();
+      closeStickerPicker();
+      try { if (typeof onCreate === 'function') onCreate(); } catch (err) {}
+    });
+    grid.appendChild(create);
+
+    // Marca dónde insertar los stickers propios (van tras «+ Crear», antes del pack).
+    var afterCreate = create.nextSibling;
+
+    // 2) Pack incorporado (SVG estáticos de confianza).
     STICKER_ORDER.forEach(function(id) {
       var svg = stickerSvg(id);
       if (!svg) return;
@@ -75,6 +137,28 @@ export function openStickerPicker(cid, sendFn) {
     // Tocar fuera del panel cierra.
     ov.addEventListener('click', function(e) { if (e.target === ov) closeStickerPicker(); });
     document.body.appendChild(ov);
+
+    // 3) Stickers PROPIOS (asíncrono: se cargan del vault). Se pintan como <img> (imagen validada), no innerHTML.
+    loadUserStickers().then(function(list) {
+      if (!document.getElementById('sticker-sheet')) return; // se cerró entre tanto
+      (list || []).forEach(function(st) {
+        if (!isValidStickerImg(st.img)) return;
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'sticker-cell sticker-own';
+        b.setAttribute('aria-label', t('sticker_mine', 'Mi sticker'));
+        var im = document.createElement('img');
+        im.src = st.img;            // imagen VALIDADA (no innerHTML)
+        im.alt = '';
+        b.appendChild(im);
+        b.addEventListener('click', function(e) {
+          e.preventDefault(); e.stopPropagation();
+          closeStickerPicker();
+          try { if (typeof sendFn === 'function') sendFn(cid, { img: st.img }); } catch (err) {}
+        });
+        grid.insertBefore(b, afterCreate);
+      });
+    });
   } catch (e) {}
 }
 
@@ -82,5 +166,5 @@ export function closeStickerPicker() {
   try { var ov = document.getElementById('sticker-sheet'); if (ov && ov.parentNode) ov.parentNode.removeChild(ov); } catch (e) {}
 }
 
-// Gancho de pruebas (función de solo lectura): tests/sim/stickers.js comprueba el mapa sin tocar la interfaz.
-try { if (typeof window !== 'undefined') window.__nexoStickerSvg = stickerSvg; } catch (e) {}
+// Gancho de pruebas (funciones de solo lectura): tests/sim/stickers.js comprueba el mapa y el validador sin interfaz.
+try { if (typeof window !== 'undefined') { window.__nexoStickerSvg = stickerSvg; window.__nexoIsValidStickerImg = isValidStickerImg; window.__nexoAddUserSticker = addUserSticker; } } catch (e) {}

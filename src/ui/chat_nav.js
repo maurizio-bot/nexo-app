@@ -44,6 +44,8 @@ export function _setupBackButton() {
     // o el botón cierran primero el visor/estado/cámara y luego el chat, en vez de salir de la app de golpe.
     window.__nexoHandleBack = function() {
       try {
+        var sted = document.getElementById('sticker-editor');
+        if (sted) { sted.remove(); return true; } // 2878: editor de stickers (el modal más alto)
         var ttt = document.getElementById('ttt-overlay');
         if (ttt) { if (typeof window.__nexoCloseTtt === 'function') window.__nexoCloseTtt(); else ttt.remove(); return true; } // 2830: juego
         var stk = document.getElementById('sticker-sheet');
