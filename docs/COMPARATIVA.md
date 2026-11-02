@@ -1,9 +1,13 @@
 # NEXO — Comparativa con la competencia y estado de avance
 
-Hecha el 24-10-2026 (build 2763); **actualizada el 28-10-2026 (build 2820)** con lo nuevo desde entonces: despertador
-FCM tipo WhatsApp (#87), archivos grandes por internet (~22 MB), Estados (Stream fase 1), buscar en el chat, cobros,
-y la auditoría severa del 28-10. Los datos de NEXO salen del código y del simulador; los de la competencia, de sus
-páginas y noticias (enlaces al final). Lo que no se pudo confirmar va marcado con "?".
+Hecha el 24-10-2026 (build 2763); **actualizada el 02-11-2026 (build 2886)**. Nuevo desde la 2820: **llamada entrante Y
+saliente integrada al sistema** (ConnectionService/Telecom, como WhatsApp/Signal: aparece en el coche/auriculares/reloj
+y se cuelga desde ahí), **volumen de llamada + foco de audio** (la música vuelve solo al colgar), **stickers propios**
+(foto + texto/emoji arrastrables), **tres idiomas** (es/it/en), **arranque limpio** (sin el splash feo), y un arreglo
+clave de **envío de archivos** (al caer el Wi-Fi/MTU 23 el archivo ya no se marca «fallido»: queda pendiente y se
+reenvía solo). Antes (2820): despertador FCM (#87), archivos grandes por internet (~22 MB), Estados, buscar en el chat,
+cobros, auditoría severa. Los datos de NEXO salen del código, el simulador y las pruebas del dueño; los de la
+competencia, de sus páginas y noticias (enlaces al final). Lo que no se pudo confirmar va marcado con "?".
 
 ## 1. Comparativa
 
@@ -19,6 +23,8 @@ páginas y noticias (enlaces al final). Lo que no se pudo confirmar va marcado c
 | Fotos, vídeo, archivos sin internet | ✅ hasta 1 GB, vídeo HD | ❌ | ❌ | fotos | ? | texto |
 | Llamadas de voz sin internet | ✅ Bluetooth / Wi-Fi (Bluetooth lento: voz con segundos de retraso, pendiente) | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Videollamadas sin internet | ✅ mismo Wi-Fi | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Llamada integrada al sistema (coche/auriculares/reloj, colgar desde ahí) | ✅ Telecom self-managed, entrante+saliente (2880/2882) | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Idiomas | ✅ 3 (es/it/en, sigue el teléfono) | ✅ muchos | ✅ muchos | ✅ varios | ? | ? |
 | Grupos | ✅ | ✅ | ✅ | ✅ | ✅ canales | difusión sin cifrar |
 | Cifrado | Double Ratchet + poscuántico + remitente oculto (suplantación por un teléfono cercano: arreglada en la 2768) | Signal | referencia | ✅ (auditado 2017) | Noise (sin auditoría al lanzar) | críticas 2020–21 |
 | ID Bluetooth que cambia (no te rastrean) | ✅ | — | — | — | efímero | ? |
@@ -54,27 +60,31 @@ independientes: 7 fallas reales arregladas (entre ellas una **ALTA** que dejaba 
 fecha falsa, y una **GRAVE** que podía cuelgar el proceso al despertar por FCM). (5) Antes, en la tanda del 27-10:
 Estados (Stream fase 1), buscar en el chat, cobros, «ver una vez», guardar en galería, Face ID opcional, gesto atrás.
 
-## 1bis. Puntuación (índice de robustez, 28-10-2026, build 2820)
+## 1bis. Puntuación (índice de robustez, 02-11-2026, build 2886)
 
-Medido con `tests/sim/robustez.js` sobre la batería (75/75 verde) y el catálogo `robustez.json`. De 0 a 100, por área
-y ponderado por peso. **Índice global: 43,1/100.**
+Medido con `tests/sim/robustez.js` sobre la batería (104/104 verde) y el catálogo `robustez.json`. De 0 a 100, por área
+y ponderado por peso. **Índice global: 54,2/100** (era 43,1 el 28-10).
 
 | Componente | Puntos | De | Qué mide |
 |---|---|---|---|
-| A — Pruebas | 24,3 | 35 | Fallos conocidos vigilados por una prueba automática que pasa. **Alto**: el código está bien cubierto. |
-| B — Teléfonos | 6,8 | 35 | Confirmado en teléfonos reales tras el último cambio del área. **Muy bajo**: casi nada probado desde la 2765. |
+| A — Pruebas | 26,3 | 35 | Fallos conocidos vigilados por una prueba automática que pasa. **Alto**: el código está bien cubierto. |
+| B — Teléfonos | 15,9 | 35 | Confirmado en teléfonos reales. **Subió de 6,8 a 15,9** al acreditar las pruebas reales del dueño (bases 2823/2858, UX 2875/2876) que no estaban anotadas en el catálogo. |
 | C — Puntos débiles | 9,3 | 20 | 20 menos lo que resten los débiles abiertos (grave −8, medio −4, leve −2). |
 | D — Estabilidad | 2,7 | 10 | Áreas revisadas a fondo hace poco. |
 
-**Lectura honesta:** NEXO tiene MÁS funciones que cualquier rival offline y cifrado al nivel de Signal, pero el índice
-se queda en ~43 por una sola razón: **B (confirmación en los teléfonos) está en 6,8 de 35**. El código y el simulador
-están sólidos (A alto); lo que falta es **probar en los teléfonos reales**. Es, con diferencia, lo que más subiría la
-nota, y es lo único que no puedo hacer yo. Si confirmas unas pocas áreas en los dos teléfonos, el índice sube a ~55–65
-(ya estimado el 25-10). La seguridad mejoró esta tanda (sube la cobertura con SEC-1/SEC-4), pero quedan 7
-endurecimientos de protocolo abiertos (H3/H4/M5/M6/F6/F7/F8) para rondas propias, varios a confirmar contigo por tocar
-el estado de claves.
+**Lectura honesta:** NEXO tiene MÁS funciones que cualquier rival offline y cifrado al nivel de Signal; el índice subió
+a **54,2** al contar el testeo real del dueño (B 6,8 → 15,9). Lo que todavía lo frena es **B**: la regla da 35 por área
+solo si el dueño la confirma en la ÚLTIMA build, y como se sube muy seguido, casi todo figura «cambió desde la última
+prueba» (15). Si el dueño re-confirma cada área en la build de hoy, el índice sube a **~73** (calculado con el mismo
+programa). A sigue alto (código bien cubierto). Quedan endurecimientos de protocolo de seguridad abiertos
+(H3/H4/M5/M6/F6/F7/F8) para rondas propias, varios a confirmar con el dueño por tocar el estado de claves. Pendientes de
+los diagnósticos del 02-11: el resto del envío de archivos (B2 no-martillar / B1 nativo), reconexión en ráfaga, audio
+fino y chat lento al crecer (ver `docs/DIAGNOSTICO_02-11.md`).
 
 ## 2. Estado de avance
+
+Esta tabla es un **histórico que va creciendo** (con la build en que se arregló cada cosa); para el número actual de
+robustez, mirar §1bis. Las filas de abajo del todo (02-11) son lo nuevo de esta tanda.
 
 ✅ hecho / probado · ⚠️ probado en teléfonos con fallos (arreglo sin confirmar) · ⏳ sin probar en teléfonos
 
@@ -101,6 +111,12 @@ el estado de claves.
 | Pasar la cuenta | ✅ | ✅ | ⏳ |
 | Foto de perfil | ✅ | ✅ | ⏳ (2766) |
 | Interfaz estilo NEXO | ✅ | ✅ | ⚠️ barra gris al girar (arreglo 2765) |
+| Llamada integrada al sistema (Telecom) | ✅ | ✅ | ✅ entrante+saliente, coche OK (dueño 02-11, build 2882) |
+| Volumen de llamada + foco (música vuelve al colgar) | ✅ | ✅ | ⏳ arreglo 2883 (diagnóstico «foco de audio: no») |
+| Stickers propios (foto + texto/emoji) | ✅ | ✅ | ⚠️ 2882 muy transparentes; más sólidos 2883 (sin confirmar) |
+| Arranque sin splash | ✅ | ✅ | ⏳ 2884 |
+| Archivo que no cabe por el camino de ahora → pendiente, no «fallido» | ✅ | ✅ | ⏳ arreglo 2885 (diagnóstico del dueño) |
+| Burbuja de texto que recortaba el texto | ✅ | ✅ | ⏳ arreglo 2886 |
 
 Plan del dueño (23-10, PENDIENTES §5): puntos 1–17 hechos en código (13 L2CAP y 17 videollamadas con una segunda
 fase pendiente; 15 B, varios dispositivos a la vez, para después). Faltan 18 (pruebas con 3–4 teléfonos), 19
