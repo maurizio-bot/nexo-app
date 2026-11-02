@@ -9,7 +9,7 @@ import { tttOnAction } from './ttt.js';
 import { _PREVIEW_BY_TYPE, _chatKind, _contactName, _cut, _findMessage, _getCurrentContactId, _msgSummary, _myNexoId, _normId, _peerUnderstands, _plainText } from './chat_format.js';
 import { _showInfoToast } from './ui_bits.js';
 import { _videoFormat } from './video_tools.js';
-import { stickerSvg } from './stickers.js';
+import { stickerSvg, isValidStickerImg } from './stickers.js';
 import { vaultBlankMessage, vaultDeleteMessage, vaultEditMessage, vaultLoadContacts, vaultLoadFile, vaultLoadMessages, vaultReactMessage, vaultSaveContacts } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
 
@@ -69,8 +69,15 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
   if (k && k.type === 'nexo_sticker') {
     var sp = document.createElement('span');
     sp.className = 'msg-sticker';
-    var svg = stickerSvg(k.s);
-    if (svg) { sp.innerHTML = svg; } else { sp.textContent = '🎟️'; }
+    // Sticker PROPIO (2878): lleva imagen. Se VALIDA (formato+tamaño) y se pinta como <img>, NUNCA innerHTML (anti-XSS).
+    if (isValidStickerImg(k.img)) {
+      var sim = document.createElement('img');
+      sim.src = k.img; sim.alt = '';
+      sp.appendChild(sim);
+    } else {
+      var svg = stickerSvg(k.s);              // sticker del pack: SVG estático de confianza
+      if (svg) { sp.innerHTML = svg; } else { sp.textContent = '🎟️'; } // id desconocido / dato inválido → respaldo
+    }
     contentDiv.appendChild(sp);
     return;
   }
