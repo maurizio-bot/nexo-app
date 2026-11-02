@@ -126,6 +126,14 @@
     {
      "fallo": "GATT roto (no_service, MTU 23): se reconectaba por Bluetooth cada ~15 s para siempre → cientos de «despertares»/batería (diagnóstico del dueño 28-10, arreglado 2821: backoff por contacto)",
      "prueba": "no_service"
+    },
+    {
+     "fallo": "Ping del vigilante TRIPLICADO (A3, diagnóstico del coche 02-11): el supervisor corre cada 6 s pero un ping caduca a los 8 s, así que se apilaban 2-3 pings del MISMO enlace en vuelo y, al caducar juntos, cada catch sumaba fallo y disparaba la desconexión → «sin respuesta a 2 pings» salía 2-3 veces y gastaba radio. 2887: un ping por enlace a la vez (_pingInFlight) + _forceDisconnectAndReconnect idempotente",
+     "prueba": "un ping por enlace a la vez"
+    },
+    {
+     "fallo": "Tormenta «[JUMP] Conectando con» (D1, diagnóstico del coche 02-11): relay._connect llamaba connectToDevice en CADA tick de re-búsqueda para el MISMO contacto (12 en 1 ms, 104 crudas) porque el guard de 15 s solo cubría los NO-contactos. 2887: ventana de dedup de connect (_connecting) que cubre también a los contactos; pasada la ventana, si sigue sin conectar, se reintenta",
+     "prueba": "un connect por contacto dentro de la ventana"
     }
    ],
    "debiles": [

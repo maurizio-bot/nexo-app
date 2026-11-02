@@ -50,6 +50,10 @@ var SCAN_FRESH_MS = 30000;        // si se escaneó hace menos, no se vuelve a e
 var SCAN_MS = 6500;
 var MAX_TRANSIENT = 3;            // conexiones a la vez con teléfonos que no son contactos
 var TRANSIENT_IDLE_MS = 60000;
+// #dueño 02-11 (D1): un connect por nx a la vez dentro de esta ventana. Antes, en cada tick de re-búsqueda se llamaba
+// connectToDevice ~12 veces en 1 ms para el MISMO contacto (tormenta «[JUMP] Conectando con»): el guard de 15 s solo
+// cubría los NO-contactos (transient). Pasada la ventana, si sigue sin conectar, se reintenta.
+var CONNECT_DEDUP_MS = 15000;
 var LOW_BATTERY_PCT = 15;
 // P7 (dueño 01-11): en AHORRO DE ENERGÍA el usuario quiere conservar, así que se exige la batería más holgada para hacer
 // de puente — pero NO se deja de hacer de puente con la batería alta (en el diagnóstico se cortaba al 82 % «, ahorro»,
@@ -82,6 +86,7 @@ export class BleRelay {
     this.capable = new Set();    // vecinos que entienden Jump (kx con j:1 o ya mandaron 'rt')
     this.nearby = new Map();     // nexoId → { deviceId, ts, rssi } (visto al escanear)
     this.transient = new Map();  // nexoId → { deviceId, since, lastUse } (conexiones de paso, no contactos)
+    this._connecting = new Map();// #D1: nexoId → ts del último connect disparado (dedup de connect en vuelo, contactos incl.)
     this.discoveries = new Map();// id → { dst, ts, sent: Set } (búsquedas propias)
     this._discoverAt = new Map();// dst → ts
     this._discoverWait = new Map();// dst → espera actual (crece mientras no aparezca camino)
@@ -515,6 +520,10 @@ export class BleRelay {
     var self = this, ble = self.ble;
     if (!deviceId || !ble || !ble.nativePlugin) return false;
     if (self._isReady(deviceId) || self.neighbors.has(nx)) return true;
+    // #dueño 02-11 (D1): ¿ya hay un connect a este nx en vuelo (dentro de la ventana)? No repetir (evita la tormenta de
+    // connectToDevice en cada tick de re-búsqueda). Pasada la ventana, si sigue sin conectar, se reintenta.
+    var cAt = self._connecting.get(nx);
+    if (cAt && Date.now() - cAt < CONNECT_DEDUP_MS) return true;
     var isContact = self._isContact(nx);
     if (!isContact) {
       var t = self.transient.get(nx);
@@ -524,6 +533,7 @@ export class BleRelay {
       if (self.transient.size >= MAX_TRANSIENT) return false;
       self.transient.set(nx, { deviceId: deviceId, since: Date.now(), lastUse: Date.now() });
     }
+    self._connecting.set(nx, Date.now()); // #D1: marcar connect en vuelo (dedup); se reintenta pasada la ventana
     console.log('[JUMP] Conectando con ' + nx + (isContact ? '' : ' (no es contacto, de paso)'));
     var pl = ble.nativePlugin;
     if (pl && typeof pl.connectToDevice === 'function') pl.connectToDevice({ deviceId: deviceId }).catch(function() {});
