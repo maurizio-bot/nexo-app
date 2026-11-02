@@ -17,7 +17,11 @@
     </style>
 
 
+    <!-- #dueño 02-11: quitar el splash «feo». En vez de la imagen a pantalla completa (@drawable/splash), fondo
+         LISO oscuro (el color de la app). Así el arranque en frío muestra una pantalla limpia, no la imagen fea. -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/splash</item>
+        <item name="android:background">@color/nexo_bg</item>
+        <item name="android:windowBackground">@color/nexo_bg</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 </resources>
