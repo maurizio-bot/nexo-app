@@ -50,7 +50,11 @@ function drawSticker(ctx, S, o) {
     var ehalf = ef / 2;
     var ecx = clamp((o.emojiPos ? o.emojiPos.x : 0.8) * S, pad + ehalf, S - pad - ehalf);
     var ecy = clamp((o.emojiPos ? o.emojiPos.y : 0.2) * S, pad + ehalf, S - pad - ehalf);
+    // #dueño 02-11: más solidez (se veía tenue): sombra suave para que el emoji resalte sobre cualquier fondo.
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = Math.round(ef * 0.14); ctx.shadowOffsetY = Math.round(ef * 0.03);
     ctx.fillText(emoji.slice(0, 4), ecx, ecy);
+    ctx.restore();
     boxes.emojiBox = { cx: ecx, cy: ecy, w: ef, h: ef };
   }
 

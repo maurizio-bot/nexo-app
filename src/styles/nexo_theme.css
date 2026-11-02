@@ -110,15 +110,17 @@ body::before {
 .sticker-create { background: rgba(0,200,255,0.08) !important; border: 1.5px dashed var(--nx-cyan, #19c3c9) !important; }
 .sticker-plus { font-size: 34px; font-weight: 300; color: var(--nx-cyan, #19c3c9); line-height: 1; }
 /* Editor de stickers (2878): foto + texto/emoji */
-.sticker-editor { position: fixed; inset: 0; z-index: 2660; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); padding: 16px; }
-.stedit-panel { width: 100%; max-width: 360px; background: var(--nx-surface, #12232a); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+.sticker-editor { position: fixed; inset: 0; z-index: 2660; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.82); padding: 16px; }
+/* #dueño 02-11: más solidez (se veía tenue y costaba leer). Fondo del panel OPACO (no la superficie del tema, que puede quedar translúcida), borde y sombra marcados. */
+.stedit-panel { width: 100%; max-width: 360px; background: #13242d; border: 1px solid rgba(255,255,255,0.10); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 14px 48px rgba(0,0,0,0.65); }
 .stedit-head { font-weight: 800; font-size: 18px; color: var(--nx-text, #e8f0f2); }
 .stedit-preview { display: flex; justify-content: center; }
 .stedit-preview canvas { width: 230px; height: 230px; border-radius: 16px; background: #0a1a20; border: 1px solid var(--nx-line, #2a3b44); touch-action: none; cursor: move; }
-.stedit-hint { color: var(--nx-cyan, #19c3c9); font-size: 12px; text-align: center; margin-top: -2px; }
+.stedit-hint { color: #4fd8dd; font-size: 13px; font-weight: 600; text-align: center; margin-top: -2px; }
 .stedit-row { display: flex; gap: 8px; }
 .stedit-row .nx-btn { flex: 1; margin: 0; }
-#stedit-text, #stedit-emoji { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--nx-line, #2a3b44); background: var(--nx-surface-2, #0e1a20); color: var(--nx-text, #e8f0f2); font-size: 15px; }
+#stedit-text, #stedit-emoji { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid #38505c; background: #0c1920; color: #eef5f7; font-size: 15px; }
+#stedit-text::placeholder, #stedit-emoji::placeholder { color: rgba(238,245,247,0.6); }
 .stedit-actions { display: flex; gap: 8px; margin-top: 2px; }
 .stedit-actions .nx-btn { flex: 1; margin: 0; }
 /* Tres en raya (2830): overlay del juego de 2 jugadores */

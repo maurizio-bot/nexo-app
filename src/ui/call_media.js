@@ -171,6 +171,24 @@ export function createCallMedia(opts) {
     pending.push(u8);
     flush(codec === 2); // μ-law: cada trama ya son 100 ms (sale sola: menos retraso)
   }
+  // #dueño 02-11 (diagnóstico de llamada en el coche: «se escucha más bajo que WhatsApp», volumen 5-7/15): la voz salía
+  // DIRECTA a la salida, sin ganancia. Se mete una ganancia (1.8×) + un limitador (DynamicsCompressor) para subir el
+  // volumen sin distorsionar ni saturar. Se crea una sola vez por AudioContext (ctx.__nexoOut). Si el entorno no tiene
+  // estos nodos (p. ej. el mock del simulador), cae a ctx.destination igual que antes (cero regresión).
+  function outputNode() {
+    try {
+      if (!ctx) return null;
+      if (ctx.__nexoOut) return ctx.__nexoOut;
+      if (ctx.createGain && ctx.createDynamicsCompressor) {
+        var g = ctx.createGain(); g.gain.value = 1.8;
+        var comp = ctx.createDynamicsCompressor();
+        try { comp.threshold.value = -4; comp.knee.value = 6; comp.ratio.value = 12; comp.attack.value = 0.003; comp.release.value = 0.12; } catch (e) {}
+        g.connect(comp); comp.connect(ctx.destination);
+        ctx.__nexoOut = g; return g;
+      }
+    } catch (e) {}
+    return ctx.destination;
+  }
   function playPcm(f32, rate) {
     if (!ctx) return;
     // Para el diagnóstico (y las pruebas): cuánto audio llegó a reproducirse y con qué volumen medio
@@ -180,7 +198,7 @@ export function createCallMedia(opts) {
     var buf = ctx.createBuffer(1, f32.length, rate);
     buf.copyToChannel ? buf.copyToChannel(f32, 0) : buf.getChannelData(0).set(f32);
     var s = ctx.createBufferSource();
-    s.buffer = buf; s.connect(ctx.destination);
+    s.buffer = buf; s.connect(outputNode() || ctx.destination);
     var now = ctx.currentTime;
     if (playAt > now + 0.6) return; // ronda 2768: demasiado adelantado (ráfaga tras un atasco): se descarta (antes sonaban varios a la vez)
     if (playAt < now + 0.05) playAt = now + 0.15; // colchón
