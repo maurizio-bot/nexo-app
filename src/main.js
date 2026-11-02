@@ -90,7 +90,7 @@ import { ensureBLEPermissions, getPermissionShim } from './core/NexoPermissionSh
 import { createAckSystem } from './ui/ble_ack.js';
 import {
   initVault,
-  vaultLoadContacts, vaultSaveContacts, vaultSaveContact, vaultLoadMessages, vaultSaveMessages,
+  vaultLoadContacts, vaultSaveContacts, vaultSaveContact, vaultLoadMessages, vaultLoadRecent, vaultSaveMessages,
   vaultAppendMessage, vaultUpdateMessageStatus, vaultGetOrCreateContact, vaultFindContactByNexoId,
   vaultCreateTransfer, vaultAppendChunk, vaultGetTransfer, vaultCompleteTransfer,
   vaultGetIncompleteTransfers, vaultGetPendingOutgoingTransfers, vaultCreateOutgoingTransfer,
@@ -309,6 +309,7 @@ window.vaultSaveContact = vaultSaveContact;
 // el último mensaje / no leídos nunca llegaban a disco
 window.vaultSaveContacts = vaultSaveContacts;
 window.vaultLoadMessages = vaultLoadMessages;
+window.vaultLoadRecent = vaultLoadRecent;
 window.vaultSaveMessages = vaultSaveMessages;
 window.vaultAppendMessage = vaultAppendMessage;
 window.vaultUpdateMessageStatus = vaultUpdateMessageStatus;

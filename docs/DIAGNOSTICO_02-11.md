@@ -31,7 +31,7 @@ Leyenda: **JS** = se reproduce y prueba en el simulador; **NATIVO** = Kotlin, se
 - **F1 · MEDIA · NATIVO — FILE_IO «leyendo lento» 1,3–2,2 s en el vivo** (bloquea el envío). **F2 · MEDIA · JS — FENIX re-reparte 21 segmentos de golpe por un «nodo perdido» que parece falso positivo** (nx09acdb61 seguía activo). **F3/F4 · LEVE** — splash not found; install_permission (esperado).
 
 ### Aparte (reporte del dueño, no en estos logs)
-- **Chat lento al crecer · JS/NATIVO** — al abrir en frío, `vaultLoadMessages` descifra+parsea+ordena el archivo entero (tope 2000 msg). El render ya está paginado (60). → Arreglo: cargar solo la cola al instante y el resto perezoso (cambio de formato del vault, cuidadoso).
+- **Chat lento al crecer · JS/NATIVO** — al abrir en frío, `vaultLoadMessages` descifra+parsea+ordena el archivo entero (tope 2000 msg). El render ya está paginado (60). → ✅ **HECHO (2888):** archivo de **cola** (`_tailFileName`, últimos 80) escrito junto al completo; al abrir, se pinta al instante con la cola (`vaultLoadRecent`) y el completo se carga perezosamente (`_loadFullHistory`). El completo es la fuente de verdad intacta; la cola, caché aditiva (si falta, cae al completo sin perder nada); `vaultLoadRecent` no cachea (evita truncar al guardar). Prueba `chatlento.js` (sin pérdida: tras leer la cola en frío + enviar, el disco conserva los 300+1).
 
 ## Orden de ejecución (robusto, con batería verde + APK, lo nativo lo confirma el dueño)
 1. **2883 (hecho):** audio volumen+foco (C parcial) + sticker.

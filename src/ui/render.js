@@ -16,7 +16,7 @@ import { _renderCobroCard } from './cobro.js';
 import { _renderE2EBanner } from './e2e_banner.js';
 import { _setHdBadge } from './video_send.js';
 import { isGroupId } from './groups.js';
-import { vaultAppendMessage, vaultConsumeOnceMessage, vaultHydrateAttachments, vaultLoadMessages, vaultUpdateMessageStatus } from '../vault/vault_manager.js';
+import { vaultAppendMessage, vaultConsumeOnceMessage, vaultHydrateAttachments, vaultLoadMessages, vaultLoadRecent, vaultUpdateMessageStatus } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
 
 
@@ -160,34 +160,59 @@ export async function _loadOlderMessages() {
   } finally { _loadingOlder = false; }
 }
 
+// Pintar una tanda ya hidratada (normaliza id y, en grupo, el groupId). _renderMessage deduplica por msgId.
+async function _paintHydrated(contactId, list) {
+  var hydrated = await vaultHydrateAttachments(list, { preferHd: true });
+  if (_normId(_getCurrentContactId()) !== _normId(contactId)) return false;
+  hydrated.forEach(function(msg) {
+    var mid = msg.msgId || msg.messageId || msg.id || ('msg' + (msg.timestamp || Date.now()));
+    msg.msgId = mid; msg.messageId = mid;
+    if (isGroupId(contactId)) msg.groupId = contactId; // ronda 2758: historial de un grupo
+    _renderMessage(msg, true);
+  });
+  return true;
+}
 export async function _loadPersistedMessages() {
   try {
     _clearMessageContainer();
     var contactId = _getCurrentContactId();
     if (!contactId) return;
-    // v9.9.34: solo los últimos HISTORY_PAGE mensajes; los anteriores al subir (antes se dibujaba todo
-    // el historial: con cientos de mensajes abrir el chat congelaba la app y cada mensaje nuevo
-    // recalculaba la maquetación de todas las burbujas)
+    _olderArmed = false;
+    _olderMessages = [];
+    _olderContactId = contactId;
+    // #dueño 02-11 (fluidez «los chats tardan más al crecer»): pintar al INSTANTE con la COLA pequeña (archivo
+    // de cola, rápido), y cargar el historial completo PEREZOSAMENTE (para subir a ver anteriores) sin bloquear
+    // la apertura. v9.9.34: la interfaz ya solo dibuja los últimos HISTORY_PAGE; esto evita además leer+parsear el
+    // archivo entero (hasta 2000 msg) en frío.
+    var recent = await vaultLoadRecent(contactId, HISTORY_PAGE);
+    if (_normId(_getCurrentContactId()) !== _normId(contactId)) return;
+    var painted = false;
+    if (recent && recent.length) {
+      painted = await _paintHydrated(contactId, recent.slice(-HISTORY_PAGE));
+      if (painted) _renderE2EBanner();
+    }
+    // Historial completo en segundo plano: arma los «anteriores» y, si no había cola (historial viejo), pinta ahora.
+    _loadFullHistory(contactId, painted);
+  } catch (e) {
+    console.warn('[MAIN] _loadPersistedMessages error:', e);
+  }
+}
+// Carga perezosa del historial completo: el archivo completo es la fuente de verdad (lo usa subir-a-ver-anteriores,
+// buscar y el envío). Se repinta la última página (deduplicada por msgId → no duplica) por si la cola iba algo atrás.
+async function _loadFullHistory(contactId, alreadyPainted) {
+  try {
     var all = await vaultLoadMessages(contactId);
     if (_normId(_getCurrentContactId()) !== _normId(contactId)) return;
-    _olderArmed = false;
     _olderMessages = all.slice(0, Math.max(0, all.length - HISTORY_PAGE));
     _olderContactId = contactId;
-    var vaultMessages = await vaultHydrateAttachments(all.slice(-HISTORY_PAGE), { preferHd: true });
-    if (_normId(_getCurrentContactId()) !== _normId(contactId)) return;
-    vaultMessages.forEach(function(msg) {
-      var mid = msg.msgId || msg.messageId || msg.id || ('msg' + (msg.timestamp || Date.now()));
-      msg.msgId = mid;
-      msg.messageId = mid;
-      if (isGroupId(contactId)) msg.groupId = contactId; // ronda 2758: historial de un grupo
-      _renderMessage(msg, true);
-    });
+    var ok = await _paintHydrated(contactId, all.slice(-HISTORY_PAGE)); // deduplicado si ya se pintó la cola
+    if (!ok) return;
+    if (!alreadyPainted) _renderE2EBanner();
     _bindOlderMessagesScroll();
-    _renderE2EBanner();
     // Armar la carga de anteriores cuando el chat ya está abajo (tras el scroll inicial)
     setTimeout(function() { _olderArmed = true; }, 600);
   } catch (e) {
-    console.warn('[MAIN] _loadPersistedMessages error:', e);
+    console.warn('[MAIN] _loadFullHistory error:', e);
   }
 }
 
