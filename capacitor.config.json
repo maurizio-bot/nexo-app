@@ -9,8 +9,10 @@
       "backgroundColor": "#000000"
     },
     "SplashScreen": {
-      "launchShowDuration": 2000,
-      "backgroundColor": "#000000"
+      "launchShowDuration": 0,
+      "launchAutoHide": true,
+      "showSpinner": false,
+      "backgroundColor": "#070812"
     }
   },
   "android": {
