@@ -23,8 +23,9 @@
    "nombre": "Escaneo y agregar contactos",
    "peso": 8,
    "telefono": {
-    "estado": "falla",
-    "por": "2764: con la tablet no salía nadie en «Agregar» (arreglado en la 2765, sin probar en teléfonos)"
+    "estado": "antes",
+    "por": "2764: con la tablet no salía nadie en «Agregar» (arreglado en la 2765, sin probar en teléfonos)",
+    "nota": "dueño: agrega contactos y usa la app de punta a punta en las bases probadas 2823/2858; sin informe de fallo abierto del escaneo en sí (el scan-lento a escala 2812-2814 se trabajó)"
    },
    "revision": {
     "n": 1,
@@ -76,8 +77,9 @@
    "nombre": "Conexión Bluetooth y enlace",
    "peso": 10,
    "telefono": {
-    "estado": "falla",
-    "por": "Diagnóstico de la 2760: el enlace se rehacía cada ~30 s (arreglado en la 2766, sin probar)"
+    "estado": "antes",
+    "por": "Diagnóstico de la 2760: el enlace se rehacía cada ~30 s (arreglado en la 2766, sin probar)",
+    "nota": "dueño: todo (mensajes, llamadas, archivos) viaja por el enlace Bluetooth/Wi-Fi en sus pruebas; funcionó, cambió desde entonces sin re-probarse"
    },
    "revision": {
     "n": 1,
@@ -231,8 +233,9 @@
    "nombre": "Fotos, vídeos y archivos",
    "peso": 10,
    "telefono": {
-    "estado": "falla",
-    "por": "2755: los archivos no llegaban; 2764: llegaban al teléfono equivocado (arreglos sin probar)"
+    "estado": "antes",
+    "por": "2755: los archivos no llegaban; 2764: llegaban al teléfono equivocado (arreglos sin probar)",
+    "nota": "dueño: envía/recibe fotos y vídeos en las bases probadas; quedan abiertos casos por internet (#82/#99), no el envío en sí"
    },
    "revision": {
     "n": 1,
@@ -429,8 +432,9 @@
    "nombre": "Llamadas de voz",
    "peso": 10,
    "telefono": {
-    "estado": "falla",
-    "por": "25-10 (2771): interferencias en el micrófono (eco); 2768: en videollamada a veces no se oía (arreglos en la 2769, 2770 y 2772, sin probar)"
+    "estado": "antes",
+    "por": "25-10 (2771): interferencias en el micrófono (eco); 2768: en videollamada a veces no se oía (arreglos en la 2769, 2770 y 2772, sin probar)",
+    "nota": "dueño (PROGRESO ~l.533): «con batería Sin restricciones las llamadas ya [funcionan]»; hace llamadas. Últimos arreglos (2874 colgar) a re-confirmar"
    },
    "revision": {
     "n": 1,
@@ -551,8 +555,9 @@
    "nombre": "Videollamadas",
    "peso": 7,
    "telefono": {
-    "estado": "falla",
-    "por": "25-10 (2771): imagen muy cerca y deformada, y al revés que la propia; 2768 (Vivo ↔ S24): a veces sin cámara, negro y sin voz (arreglos en la 2769 y la 2772, sin probar)"
+    "estado": "antes",
+    "por": "25-10 (2771): imagen muy cerca y deformada, y al revés que la propia; 2768 (Vivo ↔ S24): a veces sin cámara, negro y sin voz (arreglos en la 2769 y la 2772, sin probar)",
+    "nota": "dueño base 2858: «el vídeo ya se ve» (videollamada funciona); quedan detalles de UX de grupo"
    },
    "revision": {
     "n": 1,
@@ -637,8 +642,9 @@
    "nombre": "Avisos, segundo plano y app cerrada",
    "peso": 10,
    "telefono": {
-    "estado": "falla",
-    "por": "26-10: con la app CERRADA + pantalla apagada no llegan mensajes ni avisos (ni Wi-Fi ni internet) hasta abrir la app (tarea #87, nativo, sin arreglar). La 2772 arregló el caso de pantalla apagada con la app viva"
+    "estado": "antes",
+    "por": "26-10: con la app CERRADA + pantalla apagada no llegan mensajes ni avisos (ni Wi-Fi ni internet) hasta abrir la app (tarea #87, nativo, sin arreglar). La 2772 arregló el caso de pantalla apagada con la app viva",
+    "nota": "dueño 28-10 base 2823: «Probada a fondo para la ENTREGA con app cerrada + pantalla apagada ✓»; cambió desde entonces (FCM despertador), a re-confirmar en la última"
    },
    "revision": {
     "n": 0,
@@ -783,8 +789,9 @@
    "nombre": "Grupos",
    "peso": 5,
    "telefono": {
-    "estado": "nunca",
-    "por": "Pedido probar desde la 2758/2765; sin respuesta aún"
+    "estado": "antes",
+    "por": "Pedido probar desde la 2758/2765; sin respuesta aún",
+    "nota": "dueño base 2858: llamada/videollamada de grupo probada, «lo menos peor», el vídeo se ve (ya NO es «nunca probado»)"
    },
    "revision": {
     "n": 0,
@@ -833,8 +840,9 @@
    "nombre": "Interfaz",
    "peso": 5,
    "telefono": {
-    "estado": "antes",
-    "por": "Se usa a diario; lo de la 2771 no está probado"
+    "estado": "ok",
+    "por": "Se usa a diario; lo de la 2771 no está probado",
+    "nota": "dueño 02-11 (chat): «2875 ok 2876 ok ... probadas y funcionales» (gestos-atrás 2875, botones de grupo 2876); interfaz sin cambios desde entonces"
    },
    "revision": {
     "n": 1,
