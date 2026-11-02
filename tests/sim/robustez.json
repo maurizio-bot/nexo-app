@@ -313,6 +313,10 @@
      "prueba": "archivo grande por Bluetooth de MTU mínimo"
     },
     {
+     "fallo": "CONGELACIÓN (ANR) al subir archivos a un chat con tiempo (diagnóstico del dueño 02-11, lo más grave hasta ahora): un chat viejo con muchas transferencias pendientes (segmentos Fénix, mensajes sin entregar) hacía que resumeOutgoingTransfers arrancara TODAS a la vez — decenas de ChatStreams simultáneos, cada uno con su temporizador reintentando sobre un enlace caído/MTU 23 — y el hilo principal del WebView se saturaba (timers + logs + reconstruir el contenido de cada una) → la app se trababa y no respondía. 2887 (2.ª parte): cola global, se reanudan como mucho MAX_RESUME_CONCURRENT (3) a la vez, con dedup (resume repetido no duplica) y contenido reconstruido perezosamente; ninguna transferencia se pierde. Prueba resumestorm.js",
+     "prueba": "reanudar sin congelar"
+    },
+    {
      "fallo": "Nota de voz: pausar/reanudar, borrar antes de enviar, y parar el audio al grabar o al entrar llamada (2781)",
      "prueba": "nota de voz: pausar/reanudar"
     },

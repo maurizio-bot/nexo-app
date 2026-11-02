@@ -97,6 +97,13 @@ export function _busyBackoffMs(n) { return n > BUSY_MAX_WAITS ? -1 : Math.min(30
 const TINY_MTU = 50;                      // MTU <= esto es el caso degenerado (23): negociación inestable / enlace al límite
 const BLE_TINY_MTU_DEFER_CHARS = 300000;  // archivo (base64) por encima de esto NO se arranca por MTU mínimo: queda pendiente
 const MTU_DEFER_MAX_WAIT_MS = 300000;     // 5 min esperando un camino mejor; luego se intenta igual por Bluetooth (no perder)
+// #dueño 02-11 (CRASH al subir 2 archivos a un chat con tiempo): resumeOutgoingTransfers arrancaba TODAS las
+// transferencias pendientes a la vez. En un chat viejo con muchas pendientes (segmentos Fénix, mensajes sin entregar)
+// eran decenas de ChatStreams simultáneos, cada uno con su temporizador reintentando sobre un enlace caído/MTU 23 → el
+// hilo principal del WebView se saturaba (timers + logs + reconstruir el contenido de cada una) y la app se CONGELABA
+// (ANR). Ahora se reanudan como mucho MAX_RESUME_CONCURRENT a la vez (el resto en cola) y el contenido se reconstruye
+// perezosamente al arrancar cada una, no todas de golpe.
+const MAX_RESUME_CONCURRENT = 3;          // transferencias reanudadas a la vez (global); el resto espera en cola
 // v3.10.0: Wi-Fi normal (lan.js): trozos grandes por la misma red
 const LAN_FILE_CHUNK = 24000;
 const LAN_CHAT_CHUNK = 8000;
@@ -227,6 +234,10 @@ export class BleAckSystem {
     this._maxBleFilesPerLink = 1;
     this._chatPrep = new Map(); // id → envío de un texto en curso (cifrándose, en flujo o esperando ✓✓): no sale dos veces a la vez
     this._mtuDeferSince = new Map(); // #B2: msgId → cuándo se aplazó por 1ª vez (MTU mínimo + archivo grande); tras un rato se intenta igual
+    // #CRASH 02-11: cola global para reanudar transferencias pendientes sin saturar (ver MAX_RESUME_CONCURRENT)
+    this._resumeQueue = [];          // trabajos pendientes de reanudar { cid, tx, contactDeviceId }
+    this._resumeActive = 0;          // transferencias reanudadas en vuelo ahora mismo
+    this._resumeSeen = new Set();    // transferId ya en cola o en vuelo (no encolar dos veces)
     this._done = new Map();     // id → cuándo se confirmó (entregado o leído): no se reenvía
     this.incomingBuffers = new Map();
     this.pendingFragments = new Map();
@@ -1344,34 +1355,60 @@ export class BleAckSystem {
       }).then(function(list) {
         if (!list || list.length === 0) return;
         console.log('[BleAckSystem] Resume:', list.length, 'outgoing para', cid);
+        // #CRASH 02-11: NO arrancar todas a la vez — encolar y reanudar como mucho MAX_RESUME_CONCURRENT a la vez.
         list.forEach(function(tx) {
           if (tx.status !== 'sending' && tx.status !== 'pending') return;
-          var content = tx.chunks.map(function(c) { return (typeof c === 'string') ? c : (c.data || c.d || ''); }).join('');
-          // v3.10.0: por el mejor camino de ahora (Wi-Fi, Bluetooth); el guardado puede ser un Wi-Fi que ya no está
-          var best = (self.ble && typeof self.ble._resolveDeviceIdForNexoId === 'function') ? self.ble._resolveDeviceIdForNexoId(cid) : null;
-          var devId = best || tx.deviceId || contact.deviceId;
-          if (_isLanDevice(devId) && !(self.ble && self.ble.lan && self.ble.lan.canReach(cid))) devId = contact.deviceId;
-          // Por internet: texto/medios en línea; archivos por Tor/Wi-Fi (filesOk) o al buzón de los relés (mailboxOk),
-          // ronda 2780, para que un adjunto pendiente a un contacto lejano se reenvíe solo cuando haya internet
-          var net = self.ble && self.ble.net;
-          if (_isNetDevice(devId) && !(net && (tx.type === 'file' ? (net.filesOk(cid) || net.mailboxOk(cid)) : net.canReach(cid)))) devId = contact.deviceId;
-          if (!devId) return;
-          // FIX: respetar tx.type. Antes SIEMPRE se llamaba a sendChunkedMessage (tipo 'chat'),
-          // así que una foto/video interrumpido se reenviaba como texto (t:'c') y el receptor
-          // lo entregaba como mensaje de texto plano en vez de adjunto.
-          var isFileTx = tx.type === 'file';
-          // Ronda 2766: a quién va (es su chat): si la conexión resulta ser de otro, no sale por ella
-          var txMeta = Object.assign({}, tx.meta || {}, (tx.meta && tx.meta.dst) ? {} : { to: cid });
-          var resumePromise = isFileTx
-            ? self.sendFile(devId, tx.transferId, content, txMeta)
-            : self.sendChunkedMessage(devId, content, txMeta, tx.transferId, (tx.meta && tx.meta.seq));
-          resumePromise
-            .then(function() {
-              if (window.vaultRemoveOutgoingTransfer) window.vaultRemoveOutgoingTransfer(cid, tx.transferId).catch(function(){});
-            })
-            .catch(function(){});
+          // dedup: si ya está en vuelo (un ChatStream real) o ya encolada, no la metas otra vez (resumeOutgoingTransfers
+          // se llama en cada evento de enlace; sin esto se recreaba el enjambre en cada reconexión)
+          if (self.outgoingStreams.has(tx.transferId) || self._resumeSeen.has(tx.transferId)) return;
+          self._resumeSeen.add(tx.transferId);
+          self._resumeQueue.push({ cid: cid, tx: tx, contactDeviceId: contact.deviceId });
         });
+        self._pumpResume();
       }).catch(function(){});
+    });
+  }
+  // #CRASH 02-11: arrancar hasta MAX_RESUME_CONCURRENT reanudaciones a la vez; al terminar una, entra la siguiente.
+  _pumpResume() {
+    var self = this;
+    var max = (typeof window !== 'undefined' && Number(window.NEXO_MAX_RESUME)) || MAX_RESUME_CONCURRENT;
+    while (self._resumeActive < max && self._resumeQueue.length > 0) {
+      var job = self._resumeQueue.shift();
+      self._resumeActive++;
+      (function(j) {
+        var done = function() {
+          self._resumeActive--;
+          self._resumeSeen.delete(j.tx.transferId);
+          self._pumpResume();
+        };
+        var p;
+        try { p = self._resumeRunOne(j); } catch (e) { p = null; }
+        if (p && typeof p.then === 'function') p.then(done, done); else done();
+      })(job);
+    }
+  }
+  // Reanuda UNA transferencia: resuelve el mejor camino de AHORA y reconstruye el contenido perezosamente (no todas de
+  // golpe). Devuelve la promesa del envío (o null si no hay camino). El registro se borra al entregarse.
+  _resumeRunOne(job) {
+    var self = this, cid = job.cid, tx = job.tx, contactDeviceId = job.contactDeviceId;
+    // v3.10.0: por el mejor camino de ahora (Wi-Fi, Bluetooth); el guardado puede ser un Wi-Fi que ya no está
+    var best = (self.ble && typeof self.ble._resolveDeviceIdForNexoId === 'function') ? self.ble._resolveDeviceIdForNexoId(cid) : null;
+    var devId = best || tx.deviceId || contactDeviceId;
+    if (_isLanDevice(devId) && !(self.ble && self.ble.lan && self.ble.lan.canReach(cid))) devId = contactDeviceId;
+    // Por internet: texto/medios en línea; archivos por Tor/Wi-Fi (filesOk) o al buzón de los relés (mailboxOk)
+    var net = self.ble && self.ble.net;
+    if (_isNetDevice(devId) && !(net && (tx.type === 'file' ? (net.filesOk(cid) || net.mailboxOk(cid)) : net.canReach(cid)))) devId = contactDeviceId;
+    if (!devId) return null;
+    var content = tx.chunks.map(function(c) { return (typeof c === 'string') ? c : (c.data || c.d || ''); }).join('');
+    // FIX: respetar tx.type (una foto/vídeo interrumpido no debe reenviarse como texto plano)
+    var isFileTx = tx.type === 'file';
+    // Ronda 2766: a quién va (es su chat): si la conexión resulta ser de otro, no sale por ella
+    var txMeta = Object.assign({}, tx.meta || {}, (tx.meta && tx.meta.dst) ? {} : { to: cid });
+    var resumePromise = isFileTx
+      ? self.sendFile(devId, tx.transferId, content, txMeta)
+      : self.sendChunkedMessage(devId, content, txMeta, tx.transferId, (tx.meta && tx.meta.seq));
+    return resumePromise.then(function() {
+      if (window.vaultRemoveOutgoingTransfer) window.vaultRemoveOutgoingTransfer(cid, tx.transferId).catch(function(){});
     });
   }
   // v3.4.0: hasta la 2701 el registro de una transferencia terminada no se borraba y al abrir la app o
