@@ -114,7 +114,8 @@ body::before {
 .stedit-panel { width: 100%; max-width: 360px; background: var(--nx-surface, #12232a); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
 .stedit-head { font-weight: 800; font-size: 18px; color: var(--nx-text, #e8f0f2); }
 .stedit-preview { display: flex; justify-content: center; }
-.stedit-preview canvas { width: 200px; height: 200px; border-radius: 16px; background: #0a1a20; border: 1px solid var(--nx-line, #2a3b44); }
+.stedit-preview canvas { width: 230px; height: 230px; border-radius: 16px; background: #0a1a20; border: 1px solid var(--nx-line, #2a3b44); touch-action: none; cursor: move; }
+.stedit-hint { color: var(--nx-cyan, #19c3c9); font-size: 12px; text-align: center; margin-top: -2px; }
 .stedit-row { display: flex; gap: 8px; }
 .stedit-row .nx-btn { flex: 1; margin: 0; }
 #stedit-text, #stedit-emoji { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--nx-line, #2a3b44); background: var(--nx-surface-2, #0e1a20); color: var(--nx-text, #e8f0f2); font-size: 15px; }
