@@ -64,6 +64,13 @@ body::before {
   border-bottom: 1px solid var(--nx-line) !important; min-height: 60px;
 }
 .chat-back-btn { background: var(--nx-surface-2) !important; box-shadow: none !important; border: 1px solid var(--nx-line) !important; }
+/* Dueño 01-11: atrás SOLO por gestos — se ocultan los botones de «atrás»/«cerrar» de las pantallas a pantalla
+   completa (chat, Perfil, Ajustes, panel Agregar). El gesto del sistema (window.__nexoHandleBack) y el deslizar
+   desde el borde los cierran. Siguen en el DOM (sus handlers y los tests siguen vivos), solo no se ven. */
+#chat-back-btn, .chat-back-btn, #ble-panel-back,
+#nexo-settings-back, #nexo-settings-close, #nexo-profile-close { display: none !important; }
+/* Sin botón «atrás» a la izquierda, el nombre del contacto se centra de verdad (se quita el hueco de 44px). */
+#chat-contact-info { padding-left: 8px !important; }
 #chat-contact-name { font-size: 17px !important; font-weight: 700 !important; }
 #chat-contact-subtitle { color: var(--nx-cyan) !important; font-weight: 600; letter-spacing: 0.6px; }
 #nexo-call-btn, #nexo-video-btn {

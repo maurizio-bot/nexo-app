@@ -1,6 +1,8 @@
 // Ronda 2801 (pedido del dueño #101): el «atrás» de Android. Comprueba la LÓGICA JS que el MainActivity llama
-// (window.__nexoHandleBack): cierra lo que esté arriba en orden (visor → estado → cámara → chat) y devuelve true;
-// con nada abierto devuelve false (el nativo manda la app a segundo plano). El cableado nativo se prueba en el teléfono.
+// (window.__nexoHandleBack): cierra lo que esté arriba en orden (visor → estado → cámara → Ajustes → Perfil →
+// Agregar → chat) y devuelve true; con nada abierto devuelve false (el nativo manda la app a segundo plano).
+// Dueño 01-11: atrás SOLO por gestos — el gesto también cierra las pantallas cuyo botón «atrás» se quitó.
+// El cableado nativo se prueba en el teléfono.
 // Uso: node backbtn.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -59,11 +61,36 @@ async function boot(name, native) {
   var vr = win.__nexoHandleBack();
   r.visor_cierra = teniaVisor && vr === true && !doc.getElementById('fullscreen-media-overlay');
 
+  // 4b. (dueño 01-11: atrás SOLO por gestos) «Ajustes» es un nivel por debajo de «Perfil»: el gesto la cierra y
+  // VUELVE a Perfil (como el viejo botón «‹ Perfil»). Se abre con el cableado real (evento nexo:ui:settings).
+  var _ps0 = doc.getElementById('nexo-profile-sheet'); if (_ps0) _ps0.remove();
+  win.dispatchEvent(new win.CustomEvent('nexo:ui:settings'));
+  await sleep(150);
+  var teniaAjustes = !!doc.getElementById('nexo-settings-sheet');
+  var sr = win.__nexoHandleBack();
+  await sleep(150);
+  r.ajustes_vuelve_perfil = teniaAjustes && sr === true && !doc.getElementById('nexo-settings-sheet') && !!doc.getElementById('nexo-profile-sheet');
+
+  // 4c. «Perfil» (abierto por 4b) → el gesto lo cierra del todo
+  var teniaPerfil = !!doc.getElementById('nexo-profile-sheet');
+  var prf = win.__nexoHandleBack();
+  await sleep(120);
+  r.perfil_cierra = teniaPerfil && prf === true && !doc.getElementById('nexo-profile-sheet');
+
+  // 4d. Panel «Agregar» (ble-panel activo) → el gesto lo cierra (quita la clase active, vía togglePanel o respaldo)
+  var blep = doc.getElementById('ble-panel');
+  if (blep) {
+    blep.classList.add('active');
+    var blo = doc.getElementById('ble-overlay'); if (blo) blo.classList.add('active');
+    var br = win.__nexoHandleBack();
+    r.agregar_cierra = br === true && !doc.getElementById('ble-panel').classList.contains('active');
+  } else { r.agregar_cierra = true; }
+
   // 5. Tras cerrarlo todo → otra vez false
   r.final_false = win.__nexoHandleBack() === false;
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|is not a function/.test(l)).slice(0, 4);
-  const ok = r.handler_existe && r.nada_false && r.chat_true && r.chat_cerrado && r.overlay_primero && r.visor_cierra && r.final_false && r.errores.length === 0;
+  const ok = r.handler_existe && r.nada_false && r.chat_true && r.chat_cerrado && r.overlay_primero && r.visor_cierra && r.ajustes_vuelve_perfil && r.perfil_cierra && r.agregar_cierra && r.final_false && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('BACKBTN ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_backbtn.txt'), logs.join('\n'));

@@ -54,6 +54,17 @@ export function _setupBackButton() {
         if (eo) { eo.remove(); return true; }
         var cam = document.getElementById('camera-preview-overlay');
         if (cam && !cam.classList.contains('hidden')) { if (typeof window.__nexoHideCamera === 'function') window.__nexoHideCamera(); return true; }
+        // #dueño 01-11 (atrás SOLO por gestos): el gesto del sistema también cierra las pantallas a pantalla completa cuyo
+        // botón de «atrás» se quitó (Ajustes, Perfil, panel Agregar). Van ANTES que el chat porque están por encima de él.
+        // Ajustes es un nivel por DEBAJO de Perfil (lo reemplaza), así que el gesto vuelve a Perfil, como el viejo botón «‹ Perfil».
+        var settings = document.getElementById('nexo-settings-sheet');
+        if (settings) { settings.remove(); try { window.dispatchEvent(new CustomEvent('nexo:ui:profile')); } catch (e) {} return true; }
+        var profile = document.getElementById('nexo-profile-sheet'); if (profile) { profile.remove(); return true; }
+        var blePanel = document.getElementById('ble-panel');
+        if (blePanel && blePanel.classList.contains('active')) {
+          try { if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') window.bleInterface.togglePanel(); else { blePanel.classList.remove('active'); var _bov = document.getElementById('ble-overlay'); if (_bov) _bov.classList.remove('active'); } } catch (e) {}
+          return true;
+        }
         if (document.body.classList.contains('chat-view-active')) { _doChatBack(); return true; }
         return false;
       } catch (e) { return false; }
