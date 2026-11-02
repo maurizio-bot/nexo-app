@@ -36,6 +36,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Ronda 2763: llamada entrante a pantalla completa (si el sistema lo permite; si no, aviso grande) -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Build 2880: llamadas tipo WhatsApp (ConnectionService autogestionado / Telecom). Permiso normal, gratis. -->
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
     <!-- Ronda 2765: encender la pantalla con un aviso y pedir que el sistema no congele NEXO (avisos con la pantalla apagada) -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -94,6 +96,18 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|microphone" />
+
+        <!-- Build 2880 (#dueño): llamada entrante tipo WhatsApp/Signal (ConnectionService autogestionado / Telecom).
+             El sistema trata la llamada de NEXO como una llamada real (foco de audio, Doze, Bluetooth). Gratis y
+             privado (self-managed: no entra en el registro de llamadas). Es ADITIVO: el aviso CallStyle sigue igual. -->
+        <service
+            android:name="com.nexo.ble.NexoConnectionService"
+            android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.telecom.ConnectionService" />
+            </intent-filter>
+        </service>
 
         <!-- FCM «despertador» tipo WhatsApp (#87): el "toque" de Google despierta NEXO aunque esté cerrada o el
              fabricante la congele. Por Google solo pasa el toque (sin contenido); el mensaje sigue P2P/E2E. La clase

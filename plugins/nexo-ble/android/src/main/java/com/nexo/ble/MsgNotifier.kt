@@ -123,6 +123,21 @@ class MsgNotifier(private val ctx: Context) {
         if (!calls.first(from, offerId)) { Log.i(TAG, "Oferta de llamada ya avisada: sin aviso nuevo"); return }
         val nm = NotificationManagerCompat.from(ctx)
         if (!nm.areNotificationsEnabled()) { Log.w(TAG, "Notificaciones desactivadas: llamada sin aviso"); return }
+        // El aviso CallStyle probado se muestra SIEMPRE (cero regresión si Telecom no está / falla / lo trata raro un
+        // fabricante). La dedup por oferta (CallDedupe) ya se aplicó arriba, así que postCallNotification no la repite.
+        postCallNotification(from, name, video, offerId)
+        // Build 2880 (#dueño: ConnectionService «tipo WhatsApp»). ADEMÁS, best-effort, registrar la llamada en Telecom
+        // (self-managed) para que el sistema le dé trato de llamada REAL: foco de audio, prioridad con pantalla apagada/
+        // Doze, auriculares/coche Bluetooth, convivencia con una llamada del teléfono. Gratis y privado (no entra en el
+        // registro de llamadas del sistema). Si falla, ya está el aviso de arriba (no lanza).
+        try { CallTelecom.startIncoming(ctx, from, name, video, offerId) } catch (e: Throwable) { Log.w(TAG, "Telecom no disponible: ${e.message}") }
+    }
+
+    // El aviso de llamada entrante (CallStyle, build 2785), extraído para reutilizarlo desde incomingCall y desde
+    // NexoConnection.onShowIncomingCallUi (camino Telecom). NO aplica la dedup (quien llama ya decidió mostrarlo).
+    fun postCallNotification(from: String, name: String, video: Boolean, offerId: String = "") {
+        val nm = NotificationManagerCompat.from(ctx)
+        if (!nm.areNotificationsEnabled()) return
         val launch = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: return
         val fl = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         val pf = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
@@ -172,7 +187,11 @@ class MsgNotifier(private val ctx: Context) {
         wakeScreen(20000) // por si el sistema no deja la pantalla completa (Android 14: permiso aparte)
     }
 
-    fun cancelCall() { try { NotificationManagerCompat.from(ctx).cancel(CALL_NOTIF_ID) } catch (e: Exception) { } }
+    fun cancelCall() {
+        try { NotificationManagerCompat.from(ctx).cancel(CALL_NOTIF_ID) } catch (e: Exception) { }
+        // Build 2880: cerrar también la llamada Telecom (si la hubo), para que el sistema suelte el foco de audio.
+        try { CallTelecom.endActive() } catch (e: Throwable) { }
+    }
 
     // Ronda 2765 (pedido del dueño: con la pantalla apagada, que llegue y se encienda): Android no enciende la pantalla
     // por un aviso; se enciende unos segundos (un mensaje: si no se quitó en Perfil; una llamada: siempre)
