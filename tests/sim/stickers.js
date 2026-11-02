@@ -63,9 +63,9 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const shown = (p) => bubbles(p).map((m) => (m.querySelector('.msg-content') || {}).textContent || '');
   const stickerEls = (p) => Array.from(p.win.document.querySelectorAll('#messages-container .msg-sticker'));
 
-  // 0) Función pura del mapa (de solo lectura): id conocido → SVG; desconocido → null.
-  r.svg_feliz = typeof A.win.__nexoStickerSvg === 'function' && String(A.win.__nexoStickerSvg('feliz') || '').indexOf('<svg') >= 0;
-  r.svg_desconocido_null = A.win.__nexoStickerSvg('noexiste') === null;
+  // 0) Función pura del mapa (de solo lectura): id conocido → RUTA de imagen del pack; desconocido → null.
+  r.asset_feliz = typeof A.win.__nexoStickerAsset === 'function' && String(A.win.__nexoStickerAsset('feliz') || '').indexOf('assets/stickers/') >= 0;
+  r.asset_desconocido_null = A.win.__nexoStickerAsset('noexiste') === null;
 
   // Emparejar A y B (kx con fx:1), como en chatactions.
   P.A.win.bleInterface.togglePanel(); const ok = await addFound(P.A, 'B'); P.A.win.bleInterface.togglePanel();
@@ -79,16 +79,17 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   A.win.__nexoSendSticker(id('B'), 'feliz');
   r.b_recibe = !!(await waitFor(async () => (await B.win.vaultLoadMessages(id('A'))).some((m) => /"type":"nexo_sticker"/.test(String(m.content || ''))), 30000));
 
-  // 2) B abre el chat y ve el SVG (no el JSON); A también ve el propio como SVG.
+  // 2) B abre el chat y ve la IMAGEN del pack (no el JSON); A también ve la propia como <img> con ruta del repo.
   await openChatWith(B, 'A'); await sleep(1000);
-  r.b_pinta_svg = stickerEls(B).some((e) => !!e.querySelector('svg'));
-  r.a_pinta_svg = stickerEls(A).some((e) => !!e.querySelector('svg'));
+  var packImg = (p) => stickerEls(p).some((e) => { var im = e.querySelector('img'); return im && String(im.getAttribute('src') || '').indexOf('assets/stickers/') >= 0; });
+  r.b_pinta_pack = packImg(B);
+  r.a_pinta_pack = packImg(A);
 
-  // 3) Id DESCONOCIDO: A manda, B lo ve como 🎟️ (respaldo), nunca bytes crudos ni JSON.
+  // 3) Id DESCONOCIDO: A manda, B lo ve como 🎟️ (respaldo), nunca bytes crudos ni JSON ni <img>.
   A.win.__nexoSendSticker(id('B'), 'noexiste');
   await waitFor(async () => (await B.win.vaultLoadMessages(id('A'))).filter((m) => /"type":"nexo_sticker"/.test(String(m.content || ''))).length >= 2, 20000);
   await sleep(1500);
-  r.desconocido_fallback = stickerEls(B).some((e) => (e.textContent || '').indexOf('🎟️') >= 0 && !e.querySelector('svg'));
+  r.desconocido_fallback = stickerEls(B).some((e) => (e.textContent || '').indexOf('🎟️') >= 0 && !e.querySelector('img'));
 
   // 5) Sticker PROPIO (2878): A manda una IMAGEN (sticker creado). B y A la pintan como <img> (no SVG, no JSON crudo).
   var VALID_IMG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
@@ -109,7 +110,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   // 7) NUNCA se ve el JSON crudo del sticker (ni pack ni imagen propia, ni en A ni en B).
   r.sin_json = shown(A).concat(shown(B)).filter((t) => /"type":"nexo_/.test(t) || t.indexOf('nexo_sticker') >= 0).length === 0;
 
-  r.resultado = (r.svg_feliz && r.svg_desconocido_null && r.b_recibe && r.b_pinta_svg && r.a_pinta_svg && r.desconocido_fallback && r.b_recibe_img && r.b_pinta_img && r.a_pinta_img && r.valida_ok && r.sin_json) ? 'OK' : 'FALLO';
+  r.resultado = (r.asset_feliz && r.asset_desconocido_null && r.b_recibe && r.b_pinta_pack && r.a_pinta_pack && r.desconocido_fallback && r.b_recibe_img && r.b_pinta_img && r.a_pinta_img && r.valida_ok && r.sin_json) ? 'OK' : 'FALLO';
   console.log('STICKER ' + JSON.stringify(r));
   try { fs.writeFileSync(path.join(buildDir, 'last_logs_stickers.txt'), logs.slice(-250).join('\n')); } catch (e) {}
   process.exit(0);

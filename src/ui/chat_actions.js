@@ -9,7 +9,7 @@ import { tttOnAction } from './ttt.js';
 import { _PREVIEW_BY_TYPE, _chatKind, _contactName, _cut, _findMessage, _getCurrentContactId, _msgSummary, _myNexoId, _normId, _peerUnderstands, _plainText } from './chat_format.js';
 import { _showInfoToast } from './ui_bits.js';
 import { _videoFormat } from './video_tools.js';
-import { stickerSvg, isValidStickerImg } from './stickers.js';
+import { stickerAsset, isValidStickerImg } from './stickers.js';
 import { vaultBlankMessage, vaultDeleteMessage, vaultEditMessage, vaultLoadContacts, vaultLoadFile, vaultLoadMessages, vaultReactMessage, vaultSaveContacts } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
 
@@ -75,8 +75,9 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
       sim.src = k.img; sim.alt = '';
       sp.appendChild(sim);
     } else {
-      var svg = stickerSvg(k.s);              // sticker del pack: SVG estático de confianza
-      if (svg) { sp.innerHTML = svg; } else { sp.textContent = '🎟️'; } // id desconocido / dato inválido → respaldo
+      var path = stickerAsset(k.s);           // sticker del pack: imagen 3D empaquetada (ruta FIJA de confianza, no bytes del emisor)
+      if (path) { var pim = document.createElement('img'); pim.src = path; pim.alt = ''; sp.appendChild(pim); }
+      else { sp.textContent = '🎟️'; }        // id desconocido / dato inválido → respaldo
     }
     contentDiv.appendChild(sp);
     return;
