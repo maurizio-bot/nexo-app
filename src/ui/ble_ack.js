@@ -86,6 +86,17 @@ export function _isBusyErr(err) { return !!(err && err.code === 'BLE_BUSY'); }
 // #129: espera (ms) ante la cola llena según el nº de reintentos SEGUIDOS n (1,2,3,…): 600 → 1200 → 2400 → 2400 (tope),
 // para dar tiempo a que la cola MTU-23 drene. n > BUSY_MAX_WAITS devuelve -1 (saturado de verdad: dejar pendiente).
 export function _busyBackoffMs(n) { return n > BUSY_MAX_WAITS ? -1 : Math.min(300 * Math.pow(2, Math.min(n, 3)), 2400); }
+// #dueño 02-11 (B2, diagnóstico del coche): no MARTILLAR un Bluetooth de MTU MÍNIMO con un archivo GRANDE. Con MTU 23
+// cada escritura lleva ~20 bytes útiles: un archivo de cientos de KB son decenas de miles de escrituras (minutos/horas)
+// que congestionan la cola nativa, gastan batería/radio y suelen morir al moverse (el coche). En vez de arrancar y
+// martillar, el archivo queda ⏳ PENDIENTE (el registro sigue en el vault) y resumeOutgoingTransfers lo reenvía por
+// Wi-Fi / internet / Wi-Fi Direct en cuanto aparezca un camino mejor. Anti-inanición: si tras MTU_DEFER_MAX_WAIT_MS no
+// apareció ningún camino mejor, se intenta IGUAL por Bluetooth (crawl) — así un contacto SOLO-Bluetooth nunca pierde el
+// archivo; solo se evita el martilleo inútil mientras pueda llegar Wi-Fi. Las fotos/vistas previas chicas (por debajo
+// del tope) SÍ se mandan por MTU 23 (caben en pocos minutos). Un enlace sano negocia MTU >= 185.
+const TINY_MTU = 50;                      // MTU <= esto es el caso degenerado (23): negociación inestable / enlace al límite
+const BLE_TINY_MTU_DEFER_CHARS = 300000;  // archivo (base64) por encima de esto NO se arranca por MTU mínimo: queda pendiente
+const MTU_DEFER_MAX_WAIT_MS = 300000;     // 5 min esperando un camino mejor; luego se intenta igual por Bluetooth (no perder)
 // v3.10.0: Wi-Fi normal (lan.js): trozos grandes por la misma red
 const LAN_FILE_CHUNK = 24000;
 const LAN_CHAT_CHUNK = 8000;
@@ -215,6 +226,7 @@ export class BleAckSystem {
     this._fileStartQueue = new Map(); // fileId -> { deviceId, data, meta, at, waiters:[{resolve,reject}] }
     this._maxBleFilesPerLink = 1;
     this._chatPrep = new Map(); // id → envío de un texto en curso (cifrándose, en flujo o esperando ✓✓): no sale dos veces a la vez
+    this._mtuDeferSince = new Map(); // #B2: msgId → cuándo se aplazó por 1ª vez (MTU mínimo + archivo grande); tras un rato se intenta igual
     this._done = new Map();     // id → cuándo se confirmó (entregado o leído): no se reenvía
     this.incomingBuffers = new Map();
     this.pendingFragments = new Map();
@@ -1642,6 +1654,30 @@ ChatStream.prototype._linkUp = function() {
     return true; // Bluetooth y cualquier otro: comportamiento de siempre
   } catch (e) { return true; }
 };
+// #dueño 02-11 (B2): ¿este archivo es GRANDE y el único camino de ahora es un Bluetooth de MTU MÍNIMO? Entonces NO lo
+// arranques (martillaría la cola nativa minutos/horas): déjalo pendiente y espera un camino mejor. Devuelve true =
+// aplazar. Solo Bluetooth crudo (net:/lan:/Wi-Fi Direct no tienen cola MTU-23); solo archivos; nunca reenvíos (fwd).
+ChatStream.prototype._shouldDeferTinyMtu = function() {
+  try {
+    if (this.type !== 'file') return false;
+    var dev = this.deviceId;
+    if (_isNetDevice(dev) || _isLanDevice(dev)) return false;        // Wi-Fi/internet: sin cola MTU-23 → nunca aplazar
+    if (this.meta && this.meta.fwd) return false;                    // reenvío/puente Jump: no aplica
+    var ble = this.ble;
+    var mtu = (ble && typeof ble.getMtu === 'function') ? ble.getMtu(dev) : 0;
+    var tiny = (typeof window !== 'undefined' && Number(window.NEXO_TINY_MTU)) || TINY_MTU;
+    if (!(mtu > 0 && mtu <= tiny)) return false;                     // MTU sano o desconocido → comportamiento de siempre
+    var big = (typeof window !== 'undefined' && Number(window.NEXO_BLE_DEFER_CHARS)) || BLE_TINY_MTU_DEFER_CHARS;
+    if (!this.content || this.content.length <= big) return false;   // archivo chico (foto/preview): cabe por MTU 23 → se manda
+    // Anti-inanición: esperar un rato por un camino mejor; si ya esperó bastante, intentar igual por Bluetooth (no perder)
+    var waitMs = (typeof window !== 'undefined' && Number(window.NEXO_MTU_DEFER_MS)) || MTU_DEFER_MAX_WAIT_MS;
+    var map = this.ackSystem._mtuDeferSince, since = map.get(this.msgId), now = Date.now();
+    if (!since) { map.set(this.msgId, now); return true; }
+    if (now - since < waitMs) return true;
+    map.delete(this.msgId);                                          // ya esperó bastante → intentar por Bluetooth igual
+    return false;
+  } catch (e) { return false; }
+};
 ChatStream.prototype.start = function() {
   var self = this;
   return new Promise(function(resolve, reject) {
@@ -1663,6 +1699,19 @@ ChatStream.prototype.start = function() {
     if (window.vaultCreateOutgoingTransfer && !self.meta.fwd && !/^cs[0-9a-f]{12}$/.test(self.msgId)) {
       var cid = self.meta.dst || self.ackSystem._resolveNexoId(self.deviceId);
       window.vaultCreateOutgoingTransfer(cid, self.msgId, self.type, self.total, self.chunks, self.meta, self.deviceId).catch(function(){});
+    }
+    // #dueño 02-11 (B2): archivo GRANDE por un Bluetooth de MTU MÍNIMO → NO martillar. El registro ya está en el vault
+    // (arriba), así que queda ⏳ pendiente y resumeOutgoingTransfers lo reenvía por Wi-Fi/internet al aparecer un camino
+    // mejor; si tras un rato no aparece, el propio _shouldDeferTinyMtu deja de aplazar y se intenta por Bluetooth igual.
+    if (self._shouldDeferTinyMtu()) {
+      console.warn('[ChatStream] MTU mínimo + archivo grande (' + self.content.length + ' b64) → ⏳ pendiente, no martillo el Bluetooth; espero Wi-Fi/internet. msgId=' + self.msgId);
+      // Aún no hay temporizadores ni ventana en vuelo (es antes de _runWindowLoop): basta marcar abortado para que
+      // _startFileStream lo limpie de outgoingStreams; se rechaza con el motivo propio (NO abort(), que rechazaría
+      // antes con «Abortado» y perdería el motivo que send.js usa para dejarlo pendiente en vez de ✗).
+      self.aborted = true;
+      self.ackSystem._dispatchStatus(self.msgId, 'pending');
+      reject(new Error('archivo grande no cabe por Bluetooth de MTU mínimo ahora: en espera de Wi-Fi/internet'));
+      return;
     }
     var armGlobal = function(ms) {
       self.globalTimeout = setTimeout(function() {
@@ -2020,6 +2069,7 @@ ChatStream.prototype._finish = function() {
   if (this.aborted) return;
   console.log('[ChatStream] _finish msgId=' + this.msgId);
   this.aborted = true;
+  try { this.ackSystem._mtuDeferSince.delete(this.msgId); } catch (e) {} // #B2: entregado → fuera del registro de aplazados
   if (this.timer) clearTimeout(this.timer);
   if (this.globalTimeout) clearTimeout(this.globalTimeout);
   // Velocidad real por salto (la usa el selector de camino de Jump)

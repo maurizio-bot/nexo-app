@@ -301,6 +301,10 @@
      "prueba": "archivo que no cabe por Bluetooth"
     },
     {
+     "fallo": "Martilleo del Bluetooth de MTU mínimo con un archivo grande (B2, diagnóstico coche 02-11): un archivo grande se arrancaba por un enlace de 20 bytes útiles y congestionaba la cola nativa minutos/horas gastando batería/radio (y al final moría). 2886: un ARCHIVO grande cuyo único camino es un Bluetooth de MTU mínimo (≤50) queda ⏳ pending (registro en el vault, reanudable) y espera Wi-Fi/internet; las fotos chicas SÍ se mandan, el MTU sano y net:/lan: no se tocan, y tras un rato sin camino mejor se intenta por Bluetooth igual (nunca se pierde). Prueba filetinymtu.js",
+     "prueba": "archivo grande por Bluetooth de MTU mínimo"
+    },
+    {
      "fallo": "Nota de voz: pausar/reanudar, borrar antes de enviar, y parar el audio al grabar o al entrar llamada (2781)",
      "prueba": "nota de voz: pausar/reanudar"
     },

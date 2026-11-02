@@ -328,6 +328,13 @@ de vuelta que confirme la entrega, para que el que manda SÍ o SÍ reciba retroa
     `_sendFileJS`/`_bleFileSlots`/`_pumpFileQueue`); las demás esperan en cola y entran al liberarse un hueco
     (net:/lan:/Wi-Fi Direct no se limitan; textos/acks/control tampoco). Prueba `filecap.js` (4 archivos a la vez →
     máx. 1 stream, los 4 llegan y un texto mandado en medio llega sin quedarse atrás). Confirma el dueño.
+  - ✅ **Fail-fast: no MARTILLAR el MTU mínimo con un archivo grande (B2, build 2886, diagnóstico del coche 02-11).** Un
+    archivo GRANDE (base64 > 300 000) cuyo único camino es un Bluetooth de MTU mínimo (≤50) ya no se arranca: queda
+    **⏳ pendiente** (registro en el vault, reanudable) y `resumeOutgoingTransfers` lo reenvía por Wi-Fi/internet/Wi-Fi
+    Direct al aparecer un camino mejor; las **fotos/vistas previas chicas** SÍ se mandan por MTU 23. **Anti-inanición:**
+    tras ~5 min sin camino mejor se intenta por Bluetooth igual (un contacto solo-Bluetooth nunca pierde el archivo).
+    `ble_ack.js` (`_shouldDeferTinyMtu` + comprobación en `ChatStream.start`, tras crear el registro). Prueba
+    `filetinymtu.js`. Esto cubre la parte JS de «preferir net/Wi-Fi para archivos con ese enlace».
   - 🔜 **Falta (pacing nativo, build propia con reproducción en sim):** (1) marcar el ritmo de escritura según la capacidad
     real del enlace (MTU bajo → trozo chico + más espera, o parar al llenarse la cola y reanudar al vaciarse en vez de
     reintentar a ciegas) y **priorizar en la cola nativa control/presencia/texto** por delante de los trozos de archivo;
