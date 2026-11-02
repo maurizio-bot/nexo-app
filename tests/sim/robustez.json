@@ -223,6 +223,10 @@
      "fallo": "Ubicación (GPS que no responde, sin permiso)",
      "prueba": null,
      "fuera": "location.js"
+    },
+    {
+     "fallo": "Chat lento al crecer (fluidez, #dueño 02-11): al abrir en frío un chat con mucho historial, vaultLoadMessages leía+descifraba+parseaba el archivo ENTERO (hasta 2000 msg) → «leyendo lento 800 ms». 2888: archivo de COLA pequeño (últimos 80) que se lee rápido para pintar al instante; el completo se carga perezosamente (al subir a ver anteriores o al enviar). El completo sigue siendo la fuente de verdad intacta (cola = caché aditiva); no se pierde historial. Prueba chatlento.js (apertura en frío lee ≤80, y tras leer la cola + enviar, el disco conserva los 300+1, no se trunca)",
+     "prueba": "chat lento al crecer"
     }
    ],
    "debiles": [

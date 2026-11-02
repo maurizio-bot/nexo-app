@@ -464,6 +464,56 @@ export async function vaultHydrateAttachments(messages, opts) {
 function _msgFileName(contactNexoId) {
   return VAULT_MESSAGES_PREFIX + _normId(contactNexoId) + '.json';
 }
+// #dueño 02-11 (fluidez: «los chats con el tiempo tardan más en cargar»): el archivo completo (hasta 2000
+// mensajes) se lee+descifra+parsea entero al abrir en frío (en el diagnóstico, «leyendo lento 800 ms»). Por eso
+// mantenemos además un archivo de COLA pequeño con solo los últimos TAIL_N mensajes: al abrir se lee ESE (rápido)
+// para pintar al instante, y el completo se carga perezosamente (al subir a ver anteriores o al enviar). El archivo
+// completo sigue siendo la FUENTE DE VERDAD intacta (la cola es solo una caché aditiva: si falta o está dañada, se
+// cae al completo sin perder nada).
+var TAIL_N = 80; // un poco más que HISTORY_PAGE (60) de la interfaz, para que la 1.ª página entre entera
+function _tailFileName(contactNexoId) {
+  return VAULT_MESSAGES_PREFIX + _normId(contactNexoId) + '.tail.json';
+}
+function _writeTailFile(cid) {
+  var plugin = _nativePlugin();
+  var msgs = _msgCache.get(cid);
+  if (!plugin || !msgs) return Promise.resolve();
+  var tail = msgs.slice(-TAIL_N);
+  return _safeNativeCall(plugin, 'saveToFile', {
+    filename: _tailFileName(cid),
+    content: JSON.stringify({ messages: tail, savedAt: Date.now(), tail: true })
+  }).catch(function(e) {});
+}
+// Lectura RÁPIDA para pintar al instante: solo la cola. NO toca _msgCache (no es el historial completo; cachearlo
+// como «completo» haría que un guardado posterior truncara el historial). Devuelve null si no hay archivo de cola
+// (historial viejo aún sin migrar) → el llamador carga el completo como siempre.
+export async function vaultLoadRecent(contactNexoId, limit) {
+  if (!contactNexoId) return [];
+  var cid = _normId(contactNexoId);
+  var n = (typeof limit === 'number' && limit > 0) ? limit : TAIL_N;
+  var cached = _msgCache.get(cid);
+  if (cached !== undefined) return cached.slice(-n); // caché caliente: el completo ya está, usa su cola
+  var plugin = _nativePlugin();
+  if (!plugin) return null;
+  try {
+    var result = await _safeNativeCall(plugin, 'loadFromFile', { filename: _tailFileName(cid) });
+    if (result && result.exists && result.content) {
+      var data = JSON.parse(result.content);
+      var msgs = Array.isArray(data.messages) ? data.messages : (Array.isArray(data) ? data : []);
+      msgs.forEach(function(m) { var mid = m.msgId || m.messageId || m.id || ('msg_' + (m.timestamp || Date.now())); m.msgId = mid; m.messageId = mid; });
+      // ordenar la cola (es chica, trivial) por si el orden de escritura no fuera perfecto
+      msgs.sort(function(a, b) {
+        var tsA = a.timestamp || 0, tsB = b.timestamp || 0;
+        if (tsA !== tsB) return tsA - tsB;
+        var seqA = (typeof a.seq === 'number') ? a.seq : 0, seqB = (typeof b.seq === 'number') ? b.seq : 0;
+        if (seqA !== seqB) return seqA - seqB;
+        return (a.msgId || '').localeCompare(b.msgId || '');
+      });
+      return msgs.slice(-n);
+    }
+    return null; // sin cola → cargar completo
+  } catch (e) { return null; }
+}
 
 export async function vaultLoadMessages(contactNexoId) {
   if (!contactNexoId) return [];
@@ -502,6 +552,7 @@ async function _loadMessagesFromDisk(cid) {
         return (a.msgId || '').localeCompare(b.msgId || '');
       });
       _msgCache.set(cid, msgs.slice());
+      _writeTailFile(cid); // #fluidez: tras la 1.ª carga completa, dejar la cola lista → próximas aperturas instantáneas
       if (migrated) _persistMessages(cid, msgs);
       return msgs;
     }
@@ -528,10 +579,12 @@ function _writeMessagesFile(cid) {
   var plugin = _nativePlugin();
   var msgs = _msgCache.get(cid);
   if (!plugin || !msgs) return Promise.resolve();
-  return _safeNativeCall(plugin, 'saveToFile', {
+  var p = _safeNativeCall(plugin, 'saveToFile', {
     filename: _msgFileName(cid),
     content: JSON.stringify({ messages: msgs, savedAt: Date.now() })
   }).catch(function(e) {});
+  _writeTailFile(cid); // #fluidez: cola pequeña para abrir rápido (aditiva; el completo es la fuente de verdad)
+  return p;
 }
 function _flushPendingWrites() {
   return Promise.all(Array.from(_persistTimers.keys()).map(_writeMessagesFile));
@@ -555,6 +608,7 @@ async function _saveMessagesNow(cid, messages) {
   if (!plugin) return false;
   try {
     await _safeNativeCall(plugin, 'saveToFile', { filename: _msgFileName(cid), content: JSON.stringify({ messages: toSave, savedAt: Date.now() }) });
+    await _writeTailFile(cid); // #fluidez: actualizar también la cola (durable antes de volver)
     return true;
   } catch (e) { return false; }
 }
