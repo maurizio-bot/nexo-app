@@ -82,7 +82,10 @@ body::before {
 }
 #nexo-call-btn svg, #nexo-video-btn svg, #nexo-gcall-btn svg, #nexo-gvideo-btn svg { width: 20px; height: 20px; }
 #messages-container { background: transparent !important; }
-.message { border-radius: 20px !important; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22); }
+/* #dueño 02-11: la burbuja de texto RECORTABA el texto — el radio (20px) era mayor que el padding, así que la esquina
+   redondeada comía las letras. Se reduce el radio (14px) para que no recorte; con el padding de critical.css (10px 14px)
+   el texto ya no toca el arco. */
+.message { border-radius: 14px !important; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22); }
 .message.own { background: var(--nx-grad) !important; border-bottom-right-radius: 6px !important; }
 .message.other {
   background: rgba(255, 255, 255, 0.08) !important; border: 1px solid var(--nx-line) !important;

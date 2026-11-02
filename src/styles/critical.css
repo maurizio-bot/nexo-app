@@ -258,8 +258,8 @@ Consolidado: inline + main.css + ble_styles
    width: fit-content;
    max-width: min(75%, 320px);
    min-width: 0;
-   padding: 9px 13px;
-   border-radius: 18px;
+   padding: 10px 14px;
+   border-radius: 14px;
    font-size: 13px;
    line-height: 1.45;
    animation: messageIn 0.3s ease;
