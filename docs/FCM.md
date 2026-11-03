@@ -107,9 +107,18 @@ Con el `google-services.json` ya engancho el SDK de FCM en el Android y probamos
   (8 s). Probado en `fcmwake.js`.
 - ✅ **G1 (arreglado 2820):** `startForeground` al despertar por FCM podía lanzar excepción en Android 12+/14+ y
   **cuelgar el proceso**; ahora va protegido (reintenta sin tipo y, si no, `stopSelf`). Se confirma en el teléfono.
-- ⏳ **SEC-3 (pendiente, al desplegar):** el endpoint `/wake` es **público y sin autenticar**: quien tenga el token de la
-  víctima (sus contactos, o quien reciba un diagnóstico compartido) puede hacerla despertar (spam/batería, tope 8/5 min).
-  Antes de usarlo de verdad, **autenticar el disparo** en `push-sender/` (App Check o un HMAC por token). Y, una vez
-  confirmada la Fase 1, **quitar el token entero del diagnóstico** (`NexoFcmService`/`NexoBlePlugin` lo apuntan hoy a
-  propósito para que el dueño mande un «toque» de prueba a ese token; ya no hará falta). El token no es un secreto fuerte
-  (se comparte con los contactos por diseño), pero no conviene dejarlo en un texto que se pueda compartir.
+- **SEC-3 (03-11): endurecido de forma proporcionada.** Primero, el daño real: un «toque» solo DESPIERTA al teléfono
+  (arranca NEXO, que busca en el buzón cifrado y muestra lo que haya o se vuelve a dormir). Un toque espurio → el teléfono
+  despierta, no encuentra nada y se duerme. O sea: el único daño del spam de toques es **batería** (NO una filtración ni un
+  mensaje falso: el contenido siempre viene E2E del buzón, autenticado). Con eso en mente:
+  - ✅ **Token fuera del diagnóstico (build 2898).** `NexoFcmService.onNewToken` y `NexoBlePlugin.logFcmToken` ya **no**
+    escriben el token completo al diagnóstico, solo un prefijo + largo (`djG9qoyyTreG... (142 car.)`). Así, un diagnóstico
+    compartido (con soporte, un foro, conmigo) ya **no** deja a nadie despertar ese teléfono. Era la vía de fuga real hacia
+    NO-contactos (el token sí se comparte con los contactos, cifrado, por diseño — lo necesitan para despertarte).
+  - ✅ **Tope en el enviador:** el Worker ya limita 8 toques / 5 min por token (best-effort en memoria), que acota el gasto
+    de batería incluso si un contacto quisiera molestar.
+  - ⏳ **Diferido (fase mayor, solo si hace falta): autenticación por pareja** (que SOLO un contacto real pueda despertarte,
+    con firma). Requiere que el Worker guarde estado por usuario (una base tipo KV/Durable Objects) + un alta con prueba de
+    propiedad del token. Dado que el daño es **solo batería** (no hay brecha), esa complejidad no se justifica ahora; queda
+    documentada por si el abuso real lo pide. App Check (atestiguar que el pedido viene de la app genuina) es otra opción
+    para frenar scripts, pero no frena a un contacto malicioso.

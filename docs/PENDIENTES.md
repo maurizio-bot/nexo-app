@@ -112,7 +112,9 @@ corrige lo que encuentres, y dame **una puntuación** y **la comparativa con la 
     llave de la cuenta de servicio como secreto `SA_B64`. Credenciales **verificadas con `curl`** (token falso →
     `{"error":"fcm","status":400}` = Google aceptó la llave, solo rechazó el token de prueba). La app ya apunta ahí
     (`DEFAULT_SENDER` en `net_link.js`, build 2895). **Falta del dueño:** la prueba del despertar real (token real del
-    diagnóstico → `{"ok":true}` y el móvil cerrado despierta) y, después, el endurecimiento **SEC-3** (autenticar `/wake`).
+    diagnóstico → `{"ok":true}` y el móvil cerrado despierta — **✅ PROBADO 03-11**: el diagnóstico mostró `[FCM] Despierta
+    recibido (data=1, prio=1/1)` con la app cerrada 3 min). **SEC-3 (03-11, build 2898):** token fuera del diagnóstico (solo
+    prefijo); el daño del spam de toques es solo batería (no brecha); auth por pareja diferida — razonamiento en `docs/FCM.md`.
 - ✅ **Archivos grandes por internet (#99 Fase A)** (build 2818): tope ~6 MB → ~22 MB (Tor directo o relés). **Nunca más
   «enviada» en silencio**: si un archivo no cabe por el camino de ahora, sale un aviso claro (ya estaba desde la 2786; el
   revisor de robustez lo confirmó). **Falta (Fase B, pendiente):** >22 MB (p. ej. una APK de 24 MB) por **Tor directo**
@@ -123,8 +125,8 @@ corrige lo que encuentres, y dame **una puntuación** y **la comparativa con la 
   (`ROBUSTEZ.md` §4; el techo es B=confirmación en teléfonos, 6,8/35). **Comparativa** actualizada en `COMPARATIVA.md`
   (§1 tabla + §1bis puntuación). Detalle de seguridad en `AUDITORIA.md` §3quater. Quedan abiertos, para rondas propias y
   decisión del dueño (tocan el estado de claves/protocolo): **H3, H4, M5, M6, F6, F7, F8** y los nuevos **SEC-2** (alta
-  por ID auto-agrega desde una `acc` forjable) y **SEC-3** (autenticar el endpoint `/wake` al desplegar; quitar el token
-  del diagnóstico tras probar la Fase 1).
+  por ID auto-agrega desde una `acc` forjable) y **SEC-3** (✅ 03-11, build 2898: token fuera del diagnóstico; el daño del
+  spam de toques es solo batería, no brecha; autenticación por pareja diferida — ver `docs/FCM.md`).
 - ✅ **#87 martilleo del Bluetooth (build 2821, con el diagnóstico de los dos teléfonos del dueño):** un contacto con el
   GATT roto (`no_service` + MTU 23, como `nx1e29ab2f`) se reconectaba por Bluetooth cada ~15 s para siempre → 627
   «despertares»/batería en el Vivo. Ahora se pausa su Bluetooth tras 4 fallos (backoff 30 s→10 min) y sigue por
