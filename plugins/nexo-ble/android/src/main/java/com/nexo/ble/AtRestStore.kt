@@ -75,9 +75,18 @@ class AtRestStore(private val dir: File, private val keyProvider: () -> SecretKe
     }
 
     private fun replace(tmp: File, f: File) {
-        if (!tmp.renameTo(f)) {
-            f.delete()
-            if (!tmp.renameTo(f)) { tmp.delete(); throw IOException("no se pudo guardar ${f.name}") }
+        // Reemplazo ATÓMICO: en POSIX/Android rename(2) sustituye el destino de una sola vez. Clave de la auditoría:
+        // NUNCA se borra el original — en el peor caso no se instala el nuevo (y se lanza), pero el anterior queda
+        // intacto. (Antes: f.delete() antes de confirmar el 2.º rename podía, con el disco lleno o un error de E/S,
+        // dejar el archivo SIN original Y SIN nuevo.)
+        try {
+            java.nio.file.Files.move(tmp.toPath(), f.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+            return
+        } catch (e: Throwable) {
+            // Algún sistema de archivos sin ATOMIC_MOVE: rename simple (también atómico dentro del mismo dir en POSIX)
+            if (tmp.renameTo(f)) return
+            tmp.delete()
+            throw IOException("no se pudo guardar ${f.name} (original conservado)")
         }
     }
 

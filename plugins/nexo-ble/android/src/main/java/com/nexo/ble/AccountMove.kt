@@ -21,6 +21,11 @@ import java.io.OutputStream
  */
 object AccountMove {
     const val MAGIC = "NEXOMOVE1"
+    // Auditoría (#11, F8): un archivo de TEXTO (contactos, chat, claves) de NEXO no se acerca a esto; antes el tope era
+    // 512 MB y se reservaba de una sola vez (ByteArray + String ≈ 1 GB) → riesgo de OOM al traer la cuenta. Los archivos
+    // GRANDES (fotos/vídeos) NO son de texto: van en streaming por trozos (type 2), no entran aquí.
+    const val MAX_TEXT_FILE = 64 * 1024 * 1024            // por archivo de texto
+    const val MAX_TEXT_TOTAL = 256L * 1024 * 1024         // suma de los de texto (evita un manifiesto malicioso que agote RAM)
     private val NAME = Regex("^nexo_[A-Za-z0-9_.:-]{1,200}$")
     private val BIG_NAME = Regex("^[A-Za-z0-9_-]{1,64}\\.enc$")
 
@@ -53,8 +58,10 @@ object AccountMove {
     }
 
     /** Desempaqueta: write(nombre, texto) guarda (AtRestStore.write); los archivos grandes se copian tal cual. */
-    fun import(input: InputStream, skip: Set<String>, write: (String, String) -> Unit, bigDir: File): Stats {
+    fun import(input: InputStream, skip: Set<String>, write: (String, String) -> Unit, bigDir: File,
+               maxTextFile: Int = MAX_TEXT_FILE, maxTextTotal: Long = MAX_TEXT_TOTAL): Stats {
         val st = Stats()
+        var textTotal = 0L
         val d = DataInputStream(input)
         if (d.readUTF() != MAGIC) throw IOException("no es una cuenta de NEXO")
         while (true) {
@@ -62,7 +69,10 @@ object AccountMove {
                 0 -> return st
                 1 -> {
                     val name = d.readUTF(); val len = d.readInt()
-                    if (!travels(name, skip) || len < 0 || len > 512 * 1024 * 1024) throw IOException("archivo no válido: $name")
+                    // Topes ANTES de reservar: un len descomunal se rechaza sin pedir memoria (anti-OOM de la auditoría)
+                    if (!travels(name, skip) || len < 0 || len > maxTextFile) throw IOException("archivo no válido: $name")
+                    textTotal += len
+                    if (textTotal > maxTextTotal) throw IOException("cuenta demasiado grande (texto)")
                     val b = ByteArray(len); d.readFully(b)
                     write(name, String(b, Charsets.UTF_8))
                     st.files++; st.bytes += len
