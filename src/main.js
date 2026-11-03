@@ -113,7 +113,7 @@ import { _extOf, _compressImageBase64, _fmtTime, _readFileBase64, _isPdf, _MIME_
 import { groupAttachment, isGroupId, parseGroupEnvelope } from './ui/groups.js';
 import { isGroupWire, startGroupMedia } from './ui/group_media.js';
 import { avatarInit } from './ui/avatar.js';
-import { wallpaperInit, setListWallpaper, clearListWallpaper, setChatWallpaper, clearChatWallpaper, wallpaperRefresh, wallpaperApplied } from './ui/wallpaper.js';
+import { wallpaperInit, wallpaperUse, installWallpaperButton, setListWallpaper, clearListWallpaper, setChatWallpaper, clearChatWallpaper, wallpaperRefresh, wallpaperApplied, setChatWallpaperFor, clearChatWallpaperFor, chatWallpaperFor, hasChatWallpaper, hasChatWallpaperFor, shareChatWallpaper, applyChatWallpaper } from './ui/wallpaper.js';
 import { estadosInit } from './ui/estados.js';
 import { parseCallSignal } from './ui/calls.js';
 import { parseGroupCallSignal } from './ui/group_call.js';
@@ -150,6 +150,7 @@ videoSendUse({ /* [pegamento] */ _handleIncomingMessage: _handleIncomingMessage,
 chatActionsUse({ /* [pegamento] */ _renderMessage: _renderMessage, _sendAttachment: _sendAttachment, _sendTextTo: _sendTextTo });
 voiceUse({ /* [pegamento] */ _sendAttachment: _sendAttachment });
 profileUse({ /* [pegamento] */ _showInfoToast: _showInfoToast });
+wallpaperUse({ /* [pegamento] */ _showInfoToast: _showInfoToast }); // ronda 2890: aviso del fondo por chat
 cameraUse({ /* [pegamento] */ _wdReach: _wdReach, _waitForBLEReady: _waitForBLEReady, _sendAttachment: _sendAttachment, _closeAttachMenu: _closeAttachMenu, _releaseMedia: _releaseMedia, _handleGallery: _handleGallery, _sendVideo: _sendVideo });
 
 try {
@@ -296,6 +297,8 @@ window.addEventListener('nexo:groups', function() {
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installGroupButton); else installGroupButton();
 // Ronda 2759: botón 👤 (Perfil) en la cabecera
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installProfileButton); else installProfileButton();
+// ronda 2890: botón 🖼️ en la cabecera del chat (fondo por chat, opción A)
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installWallpaperButton); else installWallpaperButton();
 // Ronda 2758: llamadas de voz (calls.js / calls_ui.js)
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installCallsUi); else installCallsUi();
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installGroupCallUi); else installGroupCallUi();
@@ -315,6 +318,11 @@ window.vaultLoadRecent = vaultLoadRecent;
 window.setListWallpaper = setListWallpaper; window.clearListWallpaper = clearListWallpaper;
 window.setChatWallpaper = setChatWallpaper; window.clearChatWallpaper = clearChatWallpaper; window.wallpaperRefresh = wallpaperRefresh;
 window.wallpaperApplied = wallpaperApplied;
+// ronda 2890: fondo por chat concreto + compartir (lo usa tests/sim/fondo2.js)
+window.setChatWallpaperFor = setChatWallpaperFor; window.clearChatWallpaperFor = clearChatWallpaperFor;
+window.chatWallpaperFor = chatWallpaperFor; window.hasChatWallpaperFor = hasChatWallpaperFor;
+window.shareChatWallpaper = shareChatWallpaper; window.applyChatWallpaper = applyChatWallpaper;
+window.hasChatWallpaper = hasChatWallpaper; window.hasChatWallpaperFor = hasChatWallpaperFor;
 window.vaultSaveMessages = vaultSaveMessages;
 window.vaultAppendMessage = vaultAppendMessage;
 window.vaultUpdateMessageStatus = vaultUpdateMessageStatus;
