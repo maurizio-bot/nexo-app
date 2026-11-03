@@ -144,7 +144,6 @@ class NexoBlePlugin : Plugin() {
         private const val SERVER_NOTIFY_DELAY_MS = 80L       // Server notifications: 80ms entre notifies
         private const val CLIENT_WRITE_TIMEOUT_MS = 300L     // Timeout de respaldo si no llega onCharacteristicWrite
         private const val SERVER_NOTIFY_TIMEOUT_MS = 200L    // Timeout de respaldo si no llega onNotificationSent
-        private const val WRITE_RETRY_DELAY_MS = 15L         // Reintento si el stack está ocupado (sin bloquear)
         // === FIN FIX F0 ===
         private const val MANUFACTURER_ID = 0xFFFF
         private const val NEXO_MAGIC_HIGH: Byte = 0x4E
@@ -1849,18 +1848,21 @@ class NexoBlePlugin : Plugin() {
         val result = sendSingleChunk(item.macNorm, item.rawDeviceId, item.chunk, item.bytes)
         if (!result.sent) {
             // Android rechaza la escritura si aún está ocupado con la anterior (muy frecuente con la radio
-            // cargada). v2723: se reintenta (15 ms las primeras veces, luego 50 ms) hasta ~1,8 s; si no se puede,
-            // fuera el RESTO DE ESE MENSAJE entero. Antes: 3 intentos y se descartaba ese trozo suelto (mensaje
-            // mutilado en el otro teléfono).
+            // cargada, MTU 23). B1 (dueño 03-11): el rechazo es TRANSITORIO (la escritura sale en cuanto el stack
+            // drena), así que se reintenta el MISMO trozo hasta ~9 s con un ritmo que se va espaciando (WriteRetry,
+            // puro y probado en JVM; menos radio/batería en la cola larga); solo si ni así se puede, fuera el RESTO
+            // DE ESE MENSAJE entero (no mutilado). Antes se rendía a los ~1,8 s y una congestión normal de MTU 23
+            // perdía el mensaje. En una desconexión REAL la cola se vacía sola (manejador de desconexión) y esto ni
+            // corre, así que no se espera 9 s con el enlace caído.
             val attempts = (writeRetryCount[macNorm] ?: 0) + 1
-            var delay = if (attempts < 5) WRITE_RETRY_DELAY_MS else 50L
-            if (attempts < 40) {
+            val decision = WriteRetry.decide(attempts)
+            val delay = decision.delayMs
+            if (!decision.drop) {
                 writeRetryCount[macNorm] = attempts
             } else {
                 writeRetryCount.remove(macNorm)
                 val dropped = synchronized(queue) { val before = queue.size; queue.removeAll { it.msgId == item.msgId }; before - queue.size }
-                btErr("drop", "Write fallo para $macNorm durante ~1,8 s: mensaje descartado entero ($dropped trozos" + (if (item.bytes != null) ", binario ${item.bytes.size} B" else "") + ")")
-                delay = WRITE_RETRY_DELAY_MS
+                btErr("drop", "Write fallo para $macNorm durante ~${WriteRetry.maxWaitMs() / 1000} s (enlace congestionado/atascado): mensaje descartado entero ($dropped trozos" + (if (item.bytes != null) ", binario ${item.bytes.size} B" else "") + ")")
             }
             // Bloquear la cola durante la espera: otras llamadas no deben gastar los reintentos de golpe
             writeQueueProcessing[macNorm] = true
