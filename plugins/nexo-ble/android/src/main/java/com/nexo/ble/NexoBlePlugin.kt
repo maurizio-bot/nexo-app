@@ -214,7 +214,9 @@ class NexoBlePlugin : Plugin() {
     private var quickScanLatch: java.util.concurrent.CountDownLatch? = null
     private var quickScanResultMac: String? = null
     // msgId: de qué mensaje es el trozo (un mensaje nunca se parte: o salen todos sus trozos o ninguno más)
-    private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String, val msgId: Long = 0L, val bytes: ByteArray? = null)
+    // isHigh: ALTA prioridad = texto/control/ack (sendMessage); BAJA = trozo de archivo (sendBinary). Pacing 2b (#141):
+    // el ALTA salta por delante de los trozos de archivo en la cola (WritePacing.insertIndex). Por defecto ALTA.
+    private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String, val msgId: Long = 0L, val bytes: ByteArray? = null, val isHigh: Boolean = true)
     // Trozos binarios de archivos (BinFrame.kt): se juntan aparte de los mensajes de texto
     private val binAssembler = BinAssembler()
     private val writeMsgCounter = java.util.concurrent.atomic.AtomicLong()
@@ -1780,7 +1782,8 @@ class NexoBlePlugin : Plugin() {
             val msgId = writeMsgCounter.incrementAndGet()
             val ok = synchronized(queue) {
                 if (queue.isNotEmpty() && queue.size + writes.size > MAX_QUEUE_SIZE) false
-                else { writes.forEach { queue.add(WriteQueueItem(macNorm, rawDeviceId, "", msgId, it)) }; true }
+                // pacing 2b (#141): trozo de archivo = BAJA prioridad (isHigh=false) → al final de la cola (texto/ack lo adelanta)
+                else { writes.forEach { queue.add(WriteQueueItem(macNorm, rawDeviceId, "", msgId, it, false)) }; true }
             }
             if (!ok) { call.reject("Cola de escritura llena para $macNorm", "BLE_BUSY"); return@post }
             remLog("INFO", "SEND", "sendBinary MAC='$macNorm' bytes=${frame.size} writes=${writes.size}")
@@ -1851,7 +1854,10 @@ class NexoBlePlugin : Plugin() {
                 remLog("WARN", "SEND", "Cola llena para $macNorm: el mensaje espera (no se parte)")
                 return SendResult(false, "")
             }
-            chunks.forEach { queue.add(WriteQueueItem(macNorm, rawDeviceId, it, msgId)) }
+            // pacing 2b (#141): texto/control/ack = ALTA prioridad → se inserta DELANTE de los trozos de archivo ya
+            // encolados (sin mover el item en vuelo, índice 0), para no esperar a que termine un archivo lento (MTU 23).
+            var at = WritePacing.insertIndex(queue.map { it.isHigh }, true)
+            chunks.forEach { queue.add(at, WriteQueueItem(macNorm, rawDeviceId, it, msgId)); at++ }
         }
         // La cola se procesa solo en el hilo principal (los callbacks de Android también llegan ahí)
         mainHandler.post { processWriteQueue(macNorm) }
