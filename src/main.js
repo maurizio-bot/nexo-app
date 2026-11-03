@@ -113,6 +113,7 @@ import { _extOf, _compressImageBase64, _fmtTime, _readFileBase64, _isPdf, _MIME_
 import { groupAttachment, isGroupId, parseGroupEnvelope } from './ui/groups.js';
 import { isGroupWire, startGroupMedia } from './ui/group_media.js';
 import { avatarInit } from './ui/avatar.js';
+import { wallpaperInit, setListWallpaper, clearListWallpaper, setChatWallpaper, clearChatWallpaper, wallpaperRefresh, wallpaperApplied } from './ui/wallpaper.js';
 import { estadosInit } from './ui/estados.js';
 import { parseCallSignal } from './ui/calls.js';
 import { parseGroupCallSignal } from './ui/group_call.js';
@@ -310,6 +311,10 @@ window.vaultSaveContact = vaultSaveContact;
 window.vaultSaveContacts = vaultSaveContacts;
 window.vaultLoadMessages = vaultLoadMessages;
 window.vaultLoadRecent = vaultLoadRecent;
+// ronda 2889: fondo de pantalla (lo usa Ajustes y el simulador tests/sim/fondo.js)
+window.setListWallpaper = setListWallpaper; window.clearListWallpaper = clearListWallpaper;
+window.setChatWallpaper = setChatWallpaper; window.clearChatWallpaper = clearChatWallpaper; window.wallpaperRefresh = wallpaperRefresh;
+window.wallpaperApplied = wallpaperApplied;
 window.vaultSaveMessages = vaultSaveMessages;
 window.vaultAppendMessage = vaultAppendMessage;
 window.vaultUpdateMessageStatus = vaultUpdateMessageStatus;
@@ -774,6 +779,7 @@ async function initializeNexoApp() {
     window.NEXO.initialized = true;
     startGroupMedia(); // ronda 2764: HD y archivos grandes en grupos (reanudar lo pendiente)
     avatarInit(); // ronda 2765: foto de perfil
+    wallpaperInit(); // ronda 2889: fondo de pantalla (lista + chats)
     estadosInit(); // ronda 2799: Estados (Stream fase 1)
     window.addEventListener('nexo:avatar', function() { var b = window.bleInterface; if (b) { try { b.renderContactsList(); b.renderOnlineStrip(); } catch (e) {} } });
     clearTimeout(SAFETY_TIMEOUT);

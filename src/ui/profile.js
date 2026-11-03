@@ -8,6 +8,7 @@ import { securitySectionHtml, renderSecuritySection } from './app_lock.js';
 import { _diagnosticText } from './diag.js';
 import { startReceiveAccount, startSendAccount } from './move_account.js';
 import { clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
+import { hasListWallpaper, hasChatWallpaper, setListWallpaper, clearListWallpaper, setChatWallpaper, clearChatWallpaper, makeWallpaper } from './wallpaper.js';
 import { mirrorPeerPref, setMirrorPeerPref } from './calls_ui.js';
 import { readReceiptsOn, setReadReceiptsOn } from './chat_state.js';
 import { t, getLang, setLang, LANGS, langName } from './i18n.js';
@@ -112,6 +113,12 @@ function _openSettingsSheet() {
     card('🌐', t('language'), '<div class="nx-sub" style="margin-bottom:8px;">' + t('language_hint') + '</div>' +
       '<select id="nexo-lang-select" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +
       LANGS.map(function(l) { return '<option value="' + l + '"' + (l === getLang() ? ' selected' : '') + '>' + langName(l) + '</option>'; }).join('') + '</select>') +
+    // Ronda 2889 (pedido del dueño): fondo de pantalla para la lista de contactos y para los chats (local a este teléfono)
+    card('🖼️', t('prof_wallpaper_title', 'Fondo de pantalla'), '<div class="nx-sub">' + t('prof_wallpaper_sub', 'Elige una foto de fondo para la lista de contactos y para los chats. Se guarda solo en este teléfono.') + '</div>' +
+      '<button id="nexo-wp-list" class="nx-btn">' + t('prof_wallpaper_list', 'Fondo de la lista de contactos…') + '</button>' +
+      '<button id="nexo-wp-list-clear" class="nx-link" style="display:none;">' + t('prof_wallpaper_remove', 'Quitar este fondo') + '</button>' +
+      '<button id="nexo-wp-chat" class="nx-btn">' + t('prof_wallpaper_chat', 'Fondo de los chats…') + '</button>' +
+      '<button id="nexo-wp-chat-clear" class="nx-link" style="display:none;">' + t('prof_wallpaper_remove', 'Quitar este fondo') + '</button>') +
     // Cuenta (Fénix + cambiar de teléfono)
     card('🔥', t('prof_fenix_title', 'Fénix (respaldo de tu cuenta)'), '<div id="nexo-fenix-status" class="nx-sub"></div>' +
       '<button id="nexo-fenix-recover" class="nx-btn">' + t('prof_fenix_recover', 'Recuperar mi cuenta (teléfono nuevo)') + '</button>') +
@@ -155,6 +162,33 @@ function _openSettingsSheet() {
     var v = langSel.value;
     if (v && v !== getLang()) { setLang(v); try { window.location.reload(); } catch (e) {} }
   };
+  // Ronda 2889: fondo de pantalla. makeWallpaper reduce la foto elegida; set* la guarda (cifrada) y la pinta en #app.
+  (function() {
+    var listClr = sheet.querySelector('#nexo-wp-list-clear'), chatClr = sheet.querySelector('#nexo-wp-chat-clear');
+    var sync = function() {
+      if (listClr) listClr.style.display = hasListWallpaper() ? '' : 'none';
+      if (chatClr) chatClr.style.display = hasChatWallpaper() ? '' : 'none';
+    };
+    sync();
+    var pick = function(apply, okMsg) {
+      var inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = 'image/*'; inp.style.display = 'none';
+      inp.onchange = function() {
+        var f = inp.files && inp.files[0]; inp.remove();
+        if (!f) return;
+        makeWallpaper(f).then(function(url) {
+          if (!apply(url)) throw new Error(t('prof_photo_invalid', 'foto no válida'));
+          sync();
+          if (_showInfoToast) _showInfoToast(okMsg, 2500);
+        }).catch(function(e) { if (_showInfoToast) _showInfoToast(t('prof_photo_fail', 'No se pudo usar esa foto: ') + ((e && e.message) || t('prof_error', 'error')), 3500); });
+      };
+      document.body.appendChild(inp); inp.click();
+    };
+    var bL = sheet.querySelector('#nexo-wp-list'); if (bL) bL.onclick = function() { pick(setListWallpaper, t('prof_wallpaper_list_ok', 'Fondo de la lista puesto ✓')); };
+    var bC = sheet.querySelector('#nexo-wp-chat'); if (bC) bC.onclick = function() { pick(setChatWallpaper, t('prof_wallpaper_chat_ok', 'Fondo de los chats puesto ✓')); };
+    if (listClr) listClr.onclick = function() { clearListWallpaper(); sync(); };
+    if (chatClr) chatClr.onclick = function() { clearChatWallpaper(); sync(); };
+  })();
   _renderFenixStatus();
   renderSecuritySection();
   _renderNetStatus();
