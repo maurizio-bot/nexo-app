@@ -68,10 +68,12 @@ var RELAY_MIN_OTHERS = 2;           // solo se aparta si quedan al menos tantos 
 var WAKE_MIN_MS = 8000;       // M1 (auditoría 28-10): como mucho un «toque» FCM por par cada 8 s (ráfaga de textos)
 var CALL_WAKE_MIN_MS = 3000;  // #130 (dueño 30-10): una llamada insiste en despertar — throttle propio, más corto y
                               // aparte del de textos (un texto reciente NO silencia el toque de una llamada entrante)
-// FCM «despertador» (#87, Fase 2): enviador por defecto (la Cloud Function del dueño; se puede cambiar con setSender).
-// Al mandar a un contacto por el buzón de los relés, se le pide a este enviador que dispare el «toque» de Google que
-// despierta su teléfono aunque esté cerrado. Por aquí SOLO va el token (nunca el contenido). Ver push-sender/ y docs/FCM.md.
-var DEFAULT_SENDER = 'https://us-central1-nexo-7994a.cloudfunctions.net/wake';
+// FCM «despertador» (#87, Fase 2): enviador por defecto. Se desplegó en Cloudflare Workers (gratis, sin tarjeta) en vez de
+// Firebase Functions (que exige el plan Blaze); hace lo mismo (POST { to } -> «toque» solo-datos de alta prioridad) firmando
+// con la cuenta de servicio del proyecto nexo-7994a. Se puede cambiar con setSender. Al mandar a un contacto por el buzón de
+// los relés, se le pide a este enviador que dispare el «toque» de Google que despierta su teléfono aunque esté cerrado. Por
+// aquí SOLO va el token (nunca el contenido). Ver push-sender/cloudflare/ y docs/FCM.md.
+var DEFAULT_SENDER = 'https://nexo-wake.maurizioamistani.workers.dev';
 var STATE_FILE = 'nexo_net.json';
 var N = BigInt('0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141'); // orden de secp256k1
 

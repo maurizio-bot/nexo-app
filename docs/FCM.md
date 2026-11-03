@@ -33,7 +33,9 @@ Google solo ve «este teléfono recibió un toque». **Jamás el contenido.** El
 3. **Enviador diminuto** («push sender»):
    - Lo único que guarda la **llave de Google** (service account) — **no puede ir en los teléfonos** (se robaría).
    - Recibe «despierta al token X» y llama a la **API HTTP v1 de FCM**. **Nunca ve el contenido** (solo el token).
-   - Vive en una **Cloud Function de Firebase** (plan gratis: millones de invocaciones/mes) → **coste ≈ $0**.
+   - Vive en un **Worker de Cloudflare** (plan gratis: 100.000 pedidos/día; sin tarjeta) → **coste ≈ $0**. (Se pensó
+     primero en una Cloud Function de Firebase, pero Firebase Functions exige el plan **Blaze** = tarjeta/prepago; el
+     Worker hace lo mismo firmando con la misma cuenta de servicio del proyecto `nexo-7994a`. Ver `push-sender/cloudflare/`.)
    - Antiabuso v1: el token solo lo conocen los contactos (se comparte cifrado), así que solo un contacto puede
      pedir el despertar; + límite de frecuencia por token.
 
@@ -89,9 +91,15 @@ Con el `google-services.json` ya engancho el SDK de FCM en el Android y probamos
   (sobrevive al reinicio), y al mandar un mensaje por el buzón de los relés pide el «toque» al enviador
   (`_wake` → `POST {to: token}` al `senderUrl`, por defecto la Cloud Function estándar del proyecto; `setSender(url)`
   para cambiarla). Por el «toque» va **SOLO el token, nunca el contenido**; un saludo no dispara toque; un 404
-  (token caducado) lo olvida. Probado en `tests/sim/fcmwake.js` (intercambio + disparo + privacidad). **Falta (del
-  dueño):** desplegar `push-sender/` con su cuenta y, si el URL del despliegue difiere del estándar, pasármelo para
-  `net.setSender(url)`. El disparo real por Google y el despertar del teléfono cerrado se prueban en el móvil.
+  (token caducado) lo olvida. Probado en `tests/sim/fcmwake.js` (intercambio + disparo + privacidad).
+- **Fase 2 — DESPLEGADA (03-11) en Cloudflare Workers.** Como Firebase Functions exigía el plan Blaze (tarjeta +
+  prepago, y además dio errores de facturación OR-CBAT), se desplegó el enviador equivalente en **Cloudflare Workers**
+  (gratis, sin tarjeta): `push-sender/cloudflare/worker.js` (mismo contrato `POST {to} → toque solo-datos de alta
+  prioridad`, firma RS256 del OAuth de Google con la cuenta de servicio del proyecto, probada en `test_sign.mjs`). El
+  dueño lo publicó en `https://nexo-wake.maurizioamistani.workers.dev` y guardó la llave como secreto `SA_B64`. **Credenciales
+  verificadas con `curl`** (token de prueba → `{"error":"fcm","status":400}`, es decir Google aceptó la llave y solo
+  rechazó el token falso = la firma/OAuth funciona). La app ya apunta ahí por defecto (`DEFAULT_SENDER` en `net_link.js`).
+  **Falta:** la prueba del despertar real en el teléfono cerrado (token real → `{"ok":true}` y el móvil despierta).
 
 ## Endurecimiento pendiente (auditoría 28-10)
 - ✅ **M1 (arreglado 2820):** el «toque» se pedía en CADA envío por relé (cada trozo de un archivo = miles de toques →
