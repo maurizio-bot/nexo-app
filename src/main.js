@@ -97,7 +97,7 @@ import {
   vaultSetOutgoingChunkAcked, vaultIncrementOutgoingTimeout, vaultRemoveOutgoingTransfer,
   vaultSetOutgoingStatus, vaultHydrateAttachments,
   vaultSetMessageFields, vaultReplaceAttachment, vaultSaveFile, vaultLoadFile, vaultHdFileName,
-  vaultDeleteMessage, vaultBlankMessage
+  vaultDeleteMessage, vaultBlankMessage, vaultFlushAll
 } from './vault/vault_manager.js';
 import { initBLEInterface } from './ui/ble_interface.js';
 import { initAppLock, securitySectionHtml, renderSecuritySection, lockEnabled } from './ui/app_lock.js';
@@ -309,6 +309,8 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function() { applyStaticI18n(); }); else applyStaticI18n();
 
 window.vaultSaveContact = vaultSaveContact;
+// ronda 2894 (auditoría): expuestos para tests/sim/vaultdurable.js (durabilidad del vault)
+window.vaultSaveFile = vaultSaveFile; window.vaultLoadFile = vaultLoadFile; window.vaultFlushAll = vaultFlushAll;
 // FIX v9.9.29: ble_interface guarda los contactos con window.vaultSaveContacts; no estaba expuesto y
 // el último mensaje / no leídos nunca llegaban a disco
 window.vaultSaveContacts = vaultSaveContacts;

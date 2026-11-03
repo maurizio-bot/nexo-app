@@ -23,8 +23,8 @@ independientes en paralelo (AtRestStore, vault_manager, NexoBlePlugin/AccountMov
 | 13 | Mapa NEXO ID→MAC (`nexo_nxid_mac_map.json`) fuera del cifrado en reposo | **VERDAD** (metadatos; no contenido) | ⚠️ Evaluado: lo lee/escribe Kotlin directo en varios sitios; medio riesgo. Recomendado, no urgente |
 | 14 | Endpoint FCM `/wake` público, límite en memoria | **VERDAD** (= SEC-3, ya conocido) | ⏭️ Tras el despliegue del push-sender (el dueño lo está desplegando) |
 | 15 | Alta de contacto `acc` falsificable con solo el NEXO ID | **VERDAD** (= SEC-2, documentado; el contacto queda «sin verificar») | ⏭️ Endurecimiento de identidad, build aparte |
-| 16 | Firma Nostr no se verifica al recibir | **VERDAD** (lo dice el propio comentario del código; mitigado porque el contenido va cifrado E2E) | ✅ **2895** (defensa en profundidad, verificable en JS) |
-| 17 | Servidor WebSocket viejo sin autorización de salas | **VERDAD pero NO SE USA** (ninguna referencia en la app) | ✅ Limpieza: borrar/marcar deshabilitado |
+| 16 | Firma Nostr no se verifica al recibir | **VERDAD** (lo dice el propio comentario del código; mitigado: el contenido va cifrado E2E y el `created_at` ya se acota, SEC-1) | ⏭️ **Diferido** a la pasada de seguridad (con #21/#22): es defensa en profundidad (un evento alterado por un relé igual no descifra) y tocar la recepción por internet tiene riesgo; se hará con pruebas dedicadas |
+| 17 | Servidor WebSocket viejo sin autorización de salas | **VERDAD pero NO SE USA** (ninguna referencia en la app) | ✅ **HECHO en 2894**: borrado `server/relay/websocket_server.py` (código muerto; queda en el historial de git) |
 | 18 | `targetSdkVersion 34` | **VERDAD** | ⚠️ Solo importa para Google Play; cambiarlo es riesgoso (comportamiento). Recomendado, con pruebas, no ahora |
 | 19 | `webauthn_helper.js` truncado / error de sintaxis | **FALSO/DESACTUALIZADO** (`node --check` pasa; el archivo está completo) | ℹ️ Nada |
 | 20 | `eslint` no está en dependencias | **VERDAD** (solo `eslint-scope` transitivo) | ℹ️ Mantenimiento menor, opcional |
