@@ -559,7 +559,7 @@ export const BLE_CONNECTION_METHODS = {
         _saveBLEContacts(contacts);
       }
     }
-    this._autoConnectGATT(device.id || deviceId, device);
+    this._autoConnectGATT(device.id || deviceId, device, { manual: true }); // «Agregar» es intención del usuario → ignora la pausa Bluetooth
     // Ronda 2764: si ya estaba conectado, su kx (clave y nombre del teléfono) no se repetía: se le pide
     if (typeof this._sendKx === 'function' && device.id && !/^(lan|net)/i.test(String(device.id))) { var selfK = this; setTimeout(function() { selfK._sendKx(device.id, true, true); }, 800); }
     this.foundDevices.delete(deviceId);
@@ -569,10 +569,21 @@ export const BLE_CONNECTION_METHODS = {
     this.togglePanel();
   },
 
-  _autoConnectGATT(deviceId, device) {
+  _autoConnectGATT(deviceId, device, opts) {
     var self = this;
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'connectToDevice')) return Promise.resolve();
     if (!deviceId) return Promise.resolve();
+    // #87 / A2 (análisis 02-11, batería): si este contacto está en PAUSA de Bluetooth (no_service repetido → backoff),
+    // NO auto-reconectar aunque el escaneo lo vea o un mensaje lo quiera enviar. Era la OTRA puerta por la que se saltaba
+    // el backoff y se volvía a martillar la radio (los «627 despertares» del diagnóstico del Vivo). El tick de re-búsqueda
+    // ya respetaba la pausa; ahora también la auto-conexión por resultado de escaneo/reconexión/cámara. Mientras tanto el
+    // contacto sigue llegando por internet/Wi-Fi/Jump (la pausa es SOLO del Bluetooth). Una conexión MANUAL del usuario
+    // (opts.manual, p.ej. tocar «Agregar») SÍ pasa, porque es intención explícita.
+    if (!(opts && opts.manual) && self._bleCooldownUntil) {
+      var nxCd = _normId((device && device.deviceUUID) || deviceId);
+      var cd = self._bleCooldownUntil.get(nxCd) || 0;
+      if (cd > Date.now()) { console.log('[BLEInterface] Auto-conexion omitida: ' + nxCd + ' en pausa Bluetooth (no_service), ' + Math.round((cd - Date.now()) / 1000) + ' s'); return Promise.resolve(); }
+    }
     var state = self._getDeviceState(deviceId);
     if (state.state === BLE_STATES.CONNECTING && state.timestamp && (Date.now() - state.timestamp > 8000)) {
       self._forceDisconnectAndReconnect(deviceId);
