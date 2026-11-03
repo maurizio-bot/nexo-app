@@ -1,0 +1,4 @@
+name = "nexo-wake"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+# El secreto SA_B64 se pone con: wrangler secret put SA_B64  (o en el panel de Cloudflare).
