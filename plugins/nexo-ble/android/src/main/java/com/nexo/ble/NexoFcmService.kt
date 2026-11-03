@@ -44,9 +44,10 @@ class NexoFcmService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         try { getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(PREF_TOKEN, token).apply() } catch (e: Exception) { }
-        // El token NO es secreto (es la "dirección" para despertar ESTE teléfono). Va al diagnóstico para la prueba de
-        // la Fase 1: mandarle un "toque" a este token desde la consola de Firebase (o el enviador) y ver que despierta.
-        nlog("Token FCM nuevo: $token")
+        // SEC-3 (03-11): el token es la "dirección" para despertar ESTE teléfono. La Fase 1 ya se probó, así que al
+        // diagnóstico va SOLO un prefijo + largo (no el token entero), para que un diagnóstico compartido no deje a nadie
+        // despertar este teléfono. El token completo sí se comparte con los contactos, cifrado, por el camino normal.
+        nlog("Token FCM nuevo: ${token.take(12)}... (${token.length} car.)")
     }
 
     override fun onMessageReceived(message: RemoteMessage) {

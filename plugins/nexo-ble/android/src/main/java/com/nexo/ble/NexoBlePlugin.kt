@@ -788,7 +788,10 @@ class NexoBlePlugin : Plugin() {
     private fun logFcmToken() {
         try {
             com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-                if (task.isSuccessful) remLog("INFO", "FCM", "Token FCM: ${task.result}")
+                // SEC-3 (03-11): el token COMPLETO ya no va al diagnóstico. Es la «dirección» para despertar este
+                // teléfono; un diagnóstico compartido (con soporte, un foro…) lo filtraría y cualquiera podría despertarlo
+                // (gasto de batería). Solo un prefijo + largo, para confirmar que hay token sin que sea usable.
+                if (task.isSuccessful) remLog("INFO", "FCM", "Token FCM: ${task.result?.take(12)}... (${task.result?.length} car.)")
                 else remLog("WARN", "FCM", "Token FCM no disponible: ${task.exception?.message}")
             }
         } catch (e: Throwable) { remLog("WARN", "FCM", "FCM no inicializado (¿sin Play Services?): ${e.message}") }
