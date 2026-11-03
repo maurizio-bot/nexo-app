@@ -32,12 +32,12 @@ independientes en paralelo (AtRestStore, vault_manager, NexoBlePlugin/AccountMov
 | 22 | Verificación completa de alta y fijación de claves (H3/H4) | **PENDIENTE DOCUMENTADO** | ⏭️ Con #15 |
 | 23 | M5/M6/F6/F7/F8 | **PENDIENTE DOCUMENTADO** (F8 = #11) | ⏭️ Revisar uno a uno |
 
-## Lo que se implementa ahora (seguro, alto valor, con prueba)
-- **2892 — Bluetooth no te puede tumbar la app (#1, #2):** criba de JSON (SafeJson) + `catch(Throwable)` antes de parsear, y tope de bytes del reensamblado de texto.
-- **2893 — Integridad en disco (#5, #11):** guardado atómico que nunca pierde el original; import de cuenta con topes de memoria. Ambos probados en JVM (tests/kotlin).
-- **2894 — Durabilidad del Vault (#6, #7, #8, #9):** no perder adjuntos durante la migración, no pisar contactos tras un error de carga, volcar todo antes de migrar y no migrar si el volcado falla. Probado en tests/sim + batería.
-- **2895 — Autenticidad de internet (#16):** verificar la firma del evento al recibir (defensa en profundidad). tests/sim + batería.
-- **Limpieza (#17):** quitar el servidor Python viejo que no se usa.
+## Lo IMPLEMENTADO (seguro, alto valor, con prueba) — HECHO
+- ✅ **2892 — Bluetooth no te puede tumbar la app (#1, #2):** criba de JSON (SafeJson) + `catch(Throwable)` antes de parsear, y tope de bytes (8 MB) del reensamblado de texto. Nativo compila verde en CI (confirmado en nightly-2893).
+- ✅ **2893 — Integridad en disco (#5, #11):** guardado atómico que nunca pierde el original; import de cuenta con topes de memoria. Probados en JVM (`AtRestReplaceTest`, `AccountMoveLimitsTest`); nightly-2893 VERDE.
+- ✅ **2894 — Durabilidad del Vault (#6, #7, #8b, #8c):** no perder adjuntos durante la migración, no pisar contactos tras un error de carga, volcar también los contactos antes de migrar y no migrar si el volcado falla. Probado en `tests/sim/vaultdurable.js` + batería 111/111.
+- ✅ **#17** limpieza: borrado `server/relay/websocket_server.py` (en 2894).
+- Nota #9: no hizo falta tocar el nativo `saveToFile` — el lado JS (#6) ahora respeta el `frozen`, que es lo que cerraba la fuga.
 
 ## Decisiones del dueño / riesgo alto (NO se tocan sin tu visto bueno)
 - **#4 (clave del Keystore):** hoy, si el Keystore falla un momento, un archivo NUEVO se guarda en claro (está puesto así a propósito, con prueba). Alternativa: no guardar y reintentar (no pierde, no deja claro) — pero es más complejo. **¿Qué preferís?**
