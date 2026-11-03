@@ -4,6 +4,7 @@
  * reenvío y aplicar el "eliminar para todos" que llega. Lo que usa del resto de la app se lo da main.js.
  */
 import { applyAvatar } from './avatar.js';
+import { applyChatWallpaper } from './wallpaper.js';
 import { applyStatus } from './estados.js';
 import { tttOnAction } from './ttt.js';
 import { _PREVIEW_BY_TYPE, _chatKind, _contactName, _cut, _findMessage, _getCurrentContactId, _msgSummary, _myNexoId, _normId, _peerUnderstands, _plainText } from './chat_format.js';
@@ -553,6 +554,7 @@ export function _renderReactions(msgEl, reactions, isOwn) {
 // Recibido: el contacto eliminó para todos uno de SUS mensajes
 export function _applyChatAction(senderId, act) {
   if (act && act.act === 'av') { applyAvatar(senderId, act); return; } // ronda 2765: foto de perfil (avatar.js)
+  if (act && act.act === 'wp') { applyChatWallpaper(senderId, act); return; } // ronda 2890: fondo de chat compartido (wallpaper.js)
   if (act && act.act === 'st') { applyStatus(senderId, act); return; } // ronda 2799: Estado (Stream fase 1, estados.js)
   if (act && act.act === 'game') { tttOnAction(senderId, act); return; } // ronda 2830: tres en raya (ttt.js)
   // Ronda 2782: el contacto editó uno de SUS mensajes de texto

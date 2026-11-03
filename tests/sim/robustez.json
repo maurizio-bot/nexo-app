@@ -882,6 +882,10 @@
      "prueba": "fondo de pantalla"
     },
     {
+     "fallo": "Fondo POR chat + compartir (2890): el fondo propio de un chat manda sobre el global de chats y al quitarlo cae al global; compartirlo va como acción oculta cifrada E2E (como la foto de perfil) y el otro lo aplica a SU chat sin mensaje visible; al recibir, lo que no es imagen no pisa el fondo bueno",
+     "prueba": "fondo POR chat"
+    },
+    {
      "fallo": "Gestos: deslizar la burbuja (izq/der) para responder, deslizar el chat abajo para cerrar, ampliar foto con pellizco o doble toque (2783)",
      "prueba": "menú de la burbuja"
     },
