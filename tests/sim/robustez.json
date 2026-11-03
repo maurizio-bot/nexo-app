@@ -878,6 +878,10 @@
      "prueba": "foto de perfil"
     },
     {
+     "fallo": "Fondo de pantalla (lista + chats, 2889): rechaza lo que no es imagen o es enorme (>1 MB → no carga el fondo con una foto gigante que gaste memoria); lista y chat son INDEPENDIENTES (poner uno no borra el otro); se guarda cifrado y se recarga al arrancar; sin fondo queda negro liso",
+     "prueba": "fondo de pantalla"
+    },
+    {
      "fallo": "Gestos: deslizar la burbuja (izq/der) para responder, deslizar el chat abajo para cerrar, ampliar foto con pellizco o doble toque (2783)",
      "prueba": "menú de la burbuja"
     },
