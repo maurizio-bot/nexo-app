@@ -345,8 +345,9 @@ de vuelta que confirme la entrega, para que el que manda SÍ o SÍ reciba retroa
     `filetinymtu.js`. Esto cubre la parte JS de «preferir net/Wi-Fi para archivos con ese enlace».
   - 🔜 **Falta (pacing nativo, build propia con reproducción en sim):** (1) marcar el ritmo de escritura según la capacidad
     real del enlace (MTU bajo → trozo chico + más espera, o parar al llenarse la cola y reanudar al vaciarse en vez de
-    reintentar a ciegas) y **priorizar en la cola nativa control/presencia/texto** por delante de los trozos de archivo;
-    (2) preferir net/Wi-Fi para archivos con ese enlace. (Fénix ya no insiste en contactos con GATT
+    reintentar a ciegas — el reintento con backoff ya está, WriteRetry/B1 build 2891) y **✅ priorizar en la cola nativa
+    control/texto/ACK por delante de los trozos de archivo — HECHO (build 2899, `WritePacing.insertIndex`, prueba JVM
+    `WritePacingTest`)**; (2) preferir net/Wi-Fi para archivos con ese enlace (parte JS hecha, B2 2886). (Fénix ya no insiste en contactos con GATT
     roto: solo envía a `ready_to_chat`, y el backoff `no_service` 2813/2814 los pausa; el caso que quedaba era el MTU-23
     «ready».) Reproducir primero en `tests/sim` el caso MTU 23 + cola llena.
 - ✅ **Escaneo robusto a escala + recuperación de fallos (build 2838) (pedido del dueño 30-10, «rápido y robusto en poca
@@ -425,7 +426,12 @@ El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de form
       - **No verificable aquí (sin SDK Android)** → se confirma compilando en CI + prueba del dueño en los teléfonos (que la saliente aparezca en el coche y se pueda colgar desde ahí).
       - **Falta incremento 3:** enrutado FINO de audio (Bluetooth/altavoz/auricular como dispositivo de la llamada, coordinado con la media de NEXO — toca el `callAudio` probado, hay que validarlo en teléfono) + mantener la ENTRANTE viva por Telecom durante la llamada activa (hoy la parte 1 la cierra al contestar) + pulir fabricantes. Es GRATIS (parte de Android) y privado (self-managed no entra en el registro de llamadas).
     - (a) **despertar-al-llamar robusto = memoria de rechazos + reenvío** (nativo: recordar ofertas ya rechazadas para no re-sonar; el re-ofrecer regresó a #2768 y se revirtió → necesita memoria nativa de rechazos). *Pendiente; se hará si el dueño lo pide tras (b).*
-    - (c) **pacing 2b** (prioridad control/texto sobre trozos de archivo en la cola nativa + ritmo por MTU + medición real). *Pendiente.*
+    - (c) **pacing 2b** — ✅ **prioridad en la cola nativa HECHA (build 2899).** Texto/control/ACK (vía `sendMessage`, ALTA
+      prioridad) salta por delante de los trozos de archivo (vía `sendBinary`, BAJA) ya encolados, sin mover el item en
+      vuelo (índice 0) y manteniendo FIFO entre iguales. Función pura `WritePacing.insertIndex` probada en JVM
+      (`WritePacingTest`); cableada en `NexoBlePlugin` (`WriteQueueItem.isHigh`, enqueue de `sendMessage`/`sendBinary`).
+      Cierra el síntoma «texto/acks atrás de un archivo en MTU 23 → burbujas en ○». *Falta (menor): ritmo por MTU más fino
+      y medición real; el caso base64-fallback (archivo por sendMessage) sigue como hoy, no empeora.*
     - **Tareas secundarias de UI (dueño 02-11; para DESPUÉS de lo funcional del diagnóstico):**
       - **Fondo de pantalla elegible** para la LISTA de contactos y para los CHATS (como WhatsApp). ✅ **HECHO en la 2889** (incremento 1, local): Ajustes → «Fondo de pantalla» → elegir foto para la lista y para los chats; se reduce (lado mayor 1280, JPEG), se guarda cifrada (`nexo_wp_list.json`/`nexo_wp_chat.json`) y se pinta como fondo de `#app` con un oscurecido para que se lea el texto; al abrir un chat se pone el de chats y al volver el de la lista (independientes); sin fondo queda negro liso. `src/ui/wallpaper.js` + Ajustes (`profile.js`) + prueba `tests/sim/fondo.js`.
       - ✅ **Fondo POR chat concreto + COMPARTIR — HECHO en la 2890.** El dueño eligió **(1) opción A** (se elige desde la cabecera del chat, botón 🖼️) y **(2) compartido, con opción a compartir** (al cambiar el fondo de un chat podés tocar «Compartir» y se lo manda al otro, no automático). El fondo propio del chat manda sobre el global de chats; compartir va como acción oculta cifrada E2E (`nexo_act act:'wp'`, como la foto de perfil, imagen reducida ≤~0,5 MB) y el otro lo aplica SOLO a ese chat. `src/ui/wallpaper.js` (fondo por chat + botón de cabecera + hoja), `chat_actions.js` (recibo), prueba `tests/sim/fondo2.js` (2 teléfonos: precedencia, compartir E2E recibido sin mensaje visible, guardado por contacto, rechazo de lo que no es imagen).
