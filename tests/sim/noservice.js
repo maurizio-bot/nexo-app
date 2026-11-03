@@ -111,9 +111,28 @@ async function openChatWith(p, name) {
   await sleep(2600);
   r.activo_si_escanea = scans(nA) > sActive0;
 
+  // ---- 5) A2 (análisis 02-11): la AUTO-conexión (resultado de escaneo/reconexión) respeta la pausa; la MANUAL no;
+  //        sin pausa, la auto-conexión legítima sigue funcionando. (Era la otra puerta por la que se saltaba el backoff.)
+  biA._lostPeers.clear(); biA._noServiceStreak.delete(idB);
+  let connCalls = 0; const realConn = biA.nativePlugin.connectToDevice;
+  biA.nativePlugin.connectToDevice = function () { connCalls++; return Promise.resolve({ connected: false }); };
+  const resetSt = () => { try { biA._setDeviceState(bMac, 'disconnected'); } catch (e) {} biA.connectedDevices.delete(bMac); };
+  // (a) en pausa → AUTO no conecta (antes del fix, sí lo hacía)
+  biA._bleCooldownUntil.set(idB, Date.now() + 60000); resetSt();
+  let c0 = connCalls; biA._autoConnectGATT(bMac, { deviceUUID: idB }); await sleep(90);
+  r.auto_en_pausa_no_conecta = connCalls === c0;
+  // (b) MANUAL (tocar «Agregar») → conecta aunque esté en pausa (intención del usuario)
+  resetSt(); c0 = connCalls; biA._autoConnectGATT(bMac, { deviceUUID: idB }, { manual: true }); await sleep(90);
+  r.manual_en_pausa_si_conecta = connCalls > c0;
+  // (c) SIN pausa → AUTO conecta (la reconexión legítima NO se rompió)
+  biA._bleCooldownUntil.delete(idB); resetSt(); c0 = connCalls; biA._autoConnectGATT(bMac, { deviceUUID: idB }); await sleep(90);
+  r.auto_sin_pausa_si_conecta = connCalls > c0;
+  biA.nativePlugin.connectToDevice = realConn;
+
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.conecta && r.hay_enlace && r.racha_4 && r.pausa_fijada && r.aviso_pausa &&
-    r.corte_normal_olvida_racha && r.peerready_limpia && r.pausa_no_escanea && r.bucle_sigue_vivo && r.activo_si_escanea && !r.errores.length;
+    r.corte_normal_olvida_racha && r.peerready_limpia && r.pausa_no_escanea && r.bucle_sigue_vivo && r.activo_si_escanea &&
+    r.auto_en_pausa_no_conecta && r.manual_en_pausa_si_conecta && r.auto_sin_pausa_si_conecta && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NOSERVICE ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_noservice.txt'), logs.join('\n'));

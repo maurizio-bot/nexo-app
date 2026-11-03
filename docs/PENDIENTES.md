@@ -130,7 +130,10 @@ corrige lo que encuentres, y dame **una puntuación** y **la comparativa con la 
 - ✅ **#87 martilleo del Bluetooth (build 2821, con el diagnóstico de los dos teléfonos del dueño):** un contacto con el
   GATT roto (`no_service` + MTU 23, como `nx1e29ab2f`) se reconectaba por Bluetooth cada ~15 s para siempre → 627
   «despertares»/batería en el Vivo. Ahora se pausa su Bluetooth tras 4 fallos (backoff 30 s→10 min) y sigue por
-  internet/Wi-Fi; prueba `noservice.js`. **Falta del dueño:** confirmar en los teléfonos que bajan los despertares.
+  internet/Wi-Fi; prueba `noservice.js`. **A2 cerrado (build 2900, del análisis del dueño):** la auto-conexión por resultado
+  de escaneo/reconexión/resume-de-cámara (`_autoConnectGATT`) TAMBIÉN respeta la pausa — antes era la otra puerta por la que
+  se saltaba el backoff y re-martillaba la radio; una conexión manual («Agregar») sí pasa. Prueba `noservice.js` test 5.
+  **Falta del dueño:** confirmar en los teléfonos que bajan los despertares.
 - ✅ **#2 archivos que se abortaban por un enlace que parpadea (build 2822, diagnóstico del S24):** una transferencia
   (ChatStream) se abortaba tras 8 «window timeout» (`Max window retries` → `sendFile FAIL … Abortado`) aunque el enlace
   solo estuviera caído un rato y volviera (visto: video/imagen a `nx0ed4a8be`, foto al Vivo). Ahora, con el enlace caído,
