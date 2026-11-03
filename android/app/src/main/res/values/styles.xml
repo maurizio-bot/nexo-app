@@ -17,9 +17,17 @@
     </style>
 
 
-    <!-- #dueño 02-11: quitar el splash «feo». En vez de la imagen a pantalla completa (@drawable/splash), fondo
-         LISO oscuro (el color de la app). Así el arranque en frío muestra una pantalla limpia, no la imagen fea. -->
+    <!-- #dueño 02-11/03-11: quitar el splash «feo». Android 12+ SIEMPRE muestra un splash del sistema con el ícono de
+         la app; no se puede eliminar, solo controlar. Antes se veía un DISCO NEGRO (#000000, el fondo del ícono adaptativo)
+         flotando sobre el fondo de la app (#070812): ese círculo de distinto tono era lo feo. Ahora se le dice al splash
+         del sistema: fondo = el color EXACTO de la app, e ícono = el logo NEXO directo (ic_nexo_foreground: cyan+blanco
+         sobre transparente, con su zona segura 2/3 = el tamaño correcto del splash). Al NO fijar iconBackgroundColor, el
+         logo se dibuja SIN círculo sobre el fondo oscuro → arranque limpio que se funde con la app. Atributos de
+         androidx core-splashscreen (ya usado por postSplashScreenTheme). MainActivity no llama installSplashScreen(): en
+         <12 el tema solo pinta el fondo oscuro liso (sin ícono); en 12+ el sistema aplica estos atributos. -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/nexo_bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_nexo_foreground</item>
         <item name="android:background">@color/nexo_bg</item>
         <item name="android:windowBackground">@color/nexo_bg</item>
         <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
