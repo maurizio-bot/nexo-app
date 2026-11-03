@@ -95,10 +95,15 @@ export function sendAccountTo(qrText) {
   if (p[0] !== 'NEXO-MOVE1' || p.length !== 6) { _screen = _overlay(); _screen.status(t('prof_move_wrong_qr', 'Ese código no es de "Traer mi cuenta".')); _screen.closable(); return Promise.resolve(false); }
   _screen = _overlay();
   _screen.status(t('prof_move_saving', 'Guardando lo pendiente…'));
-  return vaultFlushAll().catch(function() {}).then(function() {
+  // Auditoría #8c: si NO se pudo volcar todo a disco, no pasar la cuenta (moveSend lee de disco y luego borra lo de
+  // este teléfono; migrar con algo sin guardar lo perdería). Antes el error del flush se tragaba y se migraba igual.
+  return vaultFlushAll().then(function() {
     _screen.status(t('prof_move_sending', 'Pasando tu cuenta…'));
     return pl.moveSend({ ip: p[1], port: Number(p[2]), id: p[3], token: p[4], key: p[5] });
-  }).then(function() { return true; }, function() { return false; });
+  }).then(function() { return true; }, function() {
+    try { _screen.status(t('prof_move_flush_fail', 'No se pudo guardar todo antes de pasar la cuenta. No se pasó nada; tu cuenta sigue aquí. Probá de nuevo.')); _screen.closable(); } catch (x) {}
+    return false;
+  });
 }
 
 export function startSendAccount() {

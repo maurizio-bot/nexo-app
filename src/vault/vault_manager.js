@@ -226,18 +226,23 @@ export async function initVault() {
   } catch (e) {
     console.error('[VaultManager] initVault:', e);
     _vaultContacts = [];
+    _vaultLoadFailed = true; // auditoría #7: no pisar el archivo real mientras no se haya podido leer
   }
   _vaultInitDone = true;
 }
 var _persistContactsTimer = null;
+var _vaultLoadFailed = false; // auditoría #7: si la carga de contactos FALLÓ (plugin/JSON), no sobrescribir el archivo real con []
 function _persistContacts() {
   if (_persistContactsTimer) return;
   _persistContactsTimer = setTimeout(function() { _persistContactsTimer = null; _persistContactsNow(); }, 300);
 }
 function _persistContactsNow() {
   var plugin = _nativePlugin();
-  if (!plugin) return;
-  _safeNativeCall(plugin, 'saveToFile', {
+  if (!plugin) return Promise.resolve();
+  // Auditoría #7: si initVault no pudo LEER los contactos (error del plugin o JSON dañado), la lista en memoria no es
+  // de fiar: no se sobrescribe el archivo (así no se pisan los contactos reales con una lista vacía/parcial).
+  if (_vaultLoadFailed) { console.warn('[VaultManager] contactos no se guardan: la carga inicial había fallado (archivo conservado)'); return Promise.resolve(); }
+  return _safeNativeCall(plugin, 'saveToFile', {
     filename: VAULT_CONTACTS_FILE,
     content: JSON.stringify({ contacts: _vaultContacts, savedAt: Date.now() })
   }).catch(function(e) {});
@@ -427,7 +432,9 @@ function _externalizeAttachment(m, existing) {
     _pendingAttachments[ref] = payload;
     if (plugin) {
       _safeNativeCall(plugin, 'saveToFile', { filename: ref, content: payload })
-        .then(function() { delete _pendingAttachments[ref]; })
+        // Auditoría #6: durante «pasar la cuenta» saveToFile resuelve {frozen:true} SIN escribir → NO darlo por guardado
+        // (si no, se borraría la copia en memoria y el adjunto se perdería si la migración falla). Se mantiene pendiente.
+        .then(function(r) { if (r && r.frozen) return; delete _pendingAttachments[ref]; })
         .catch(function(e) { console.warn('[VaultManager] No se pudo guardar adjunto', ref, e && e.message); });
     }
   }
@@ -590,7 +597,12 @@ function _flushPendingWrites() {
   return Promise.all(Array.from(_persistTimers.keys()).map(_writeMessagesFile));
 }
 // Ronda 2759 (pasar la cuenta): todo lo pendiente a disco antes de empaquetarlo
-export function vaultFlushAll() { return _flushPendingWrites().then(function() { return Promise.all(Object.keys(_pendingAttachments).map(function(f) { return vaultSaveFile(f, _pendingAttachments[f]); })); }); }
+export function vaultFlushAll() {
+  // Auditoría #8b: volcar TAMBIÉN el temporizador de contactos (antes solo mensajes + adjuntos), si no un contacto
+  // guardado en los últimos 300 ms no entraba en la cuenta al pasarla.
+  if (_persistContactsTimer) { clearTimeout(_persistContactsTimer); _persistContactsTimer = null; }
+  return Promise.all([_persistContactsNow(), _flushPendingWrites()]).then(function() { return Promise.all(Object.keys(_pendingAttachments).map(function(f) { return vaultSaveFile(f, _pendingAttachments[f]); })); });
+}
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') _flushPendingWrites(); });
   window.addEventListener('pagehide', _flushPendingWrites);
@@ -695,7 +707,8 @@ export function vaultSaveFile(filename, content) {
   var plugin = _nativePlugin();
   if (!plugin) return Promise.resolve(false);
   return _safeNativeCall(plugin, 'saveToFile', { filename: filename, content: content })
-    .then(function() { delete _pendingAttachments[filename]; return true; })
+    // Auditoría #6: no dar por guardado un {frozen:true} (migración en curso); se mantiene pendiente.
+    .then(function(r) { if (r && r.frozen) return false; delete _pendingAttachments[filename]; return true; })
     .catch(function() { return false; });
 }
 export async function vaultLoadFile(filename) {
