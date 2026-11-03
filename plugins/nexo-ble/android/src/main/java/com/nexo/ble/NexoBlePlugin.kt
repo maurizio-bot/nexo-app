@@ -128,6 +128,10 @@ class NexoBlePlugin : Plugin() {
         private const val MAX_RECONNECT_ATTEMPTS = 10
         private const val MESSAGE_REASSEMBLY_TIMEOUT_MS = 5000L
         private const val MESSAGE_MAX_PENDING_MS = 10000L
+        // Auditoría: el reensamblado de TEXTO acumulaba por tiempo pero sin tope de bytes → un vecino podía mandar trozos
+        // sin cerrar nunca el JSON y hacer crecer la memoria. Un mensaje de texto/acción legítimo de NEXO no se acerca a
+        // esto (el sobre va ~1 MB como mucho); al pasarse se descarta el buffer de ese enlace y se resincroniza.
+        private const val MESSAGE_BUFFER_MAX_CHARS = 8 * 1024 * 1024
         private const val KEEPALIVE_INTERVAL_MS = 10000L
         private const val MTU_REQUEST = 512
         // #dueño 01-11 (velocidad BLE): si el teléfono rechaza 512 el MTU se queda en 23 (20 B/escritura, ~20× más
@@ -322,10 +326,15 @@ class NexoBlePlugin : Plugin() {
                         braceCount--
                         if (braceCount == 0) {
                             val candidate = buffer.substring(startIdx, j + 1)
+                            // Auditoría: un JSON de fuera descomunal o demasiado anidado hace que el parser recursivo de
+                            // org.json lance StackOverflowError (NO es Exception → mataba la app a distancia con un
+                            // paquete). Se criba antes con SafeJson (O(n), sin recursión, ya probado en JVM) y además el
+                            // catch pasa a Throwable (atrapa StackOverflowError/OutOfMemoryError y resincroniza).
+                            if (SafeJson.reject(candidate)) { i = startIdx + 1; break }
                             return try {
                                 JSONObject(candidate)
                                 JsonExtraction(candidate, buffer.substring(j + 1))
-                            } catch (e: Exception) {
+                            } catch (e: Throwable) {
                                 i = startIdx + 1
                                 break
                             }
@@ -374,6 +383,16 @@ class NexoBlePlugin : Plugin() {
         if (messageBuffers[macNorm].isNullOrEmpty()) messageBufferSince[macNorm] = System.currentTimeMillis()
         val buffer = messageBuffers.getOrPut(macNorm) { StringBuilder() }
         buffer.append(chunk)
+        // Auditoría: tope de bytes por enlace (no solo por tiempo) — si el buffer crece sin formar un mensaje, se
+        // descarta y se resincroniza (el emisor legítimo reenvía por la capa de ACK; un inundador no agota la memoria).
+        if (buffer.length > MESSAGE_BUFFER_MAX_CHARS) {
+            remLog("WARN", "REASSEMBLY", "Buffer de $macNorm pasó el tope (${buffer.length} chars) sin formar mensaje: descartado (posible inundación)")
+            messageBuffers.remove(macNorm)
+            messageBufferSince.remove(macNorm)
+            messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
+            messageBufferTimers.remove(macNorm)
+            return
+        }
         var remaining = buffer.toString()
         var extractedCount = 0
         while (true) {
