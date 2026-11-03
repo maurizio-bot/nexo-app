@@ -104,9 +104,15 @@ de los archivos y verifícalo (ya no quiero mandar una APK por internet y que ni
 activos; luego la prueba de tiempo/ciclo/CPU/API y **la auditoría más severa posible** en seguridad/robustez/fluidez,
 corrige lo que encuentres, y dame **una puntuación** y **la comparativa con la competencia**». Estado:
 - ✅ **FCM «despertador» (#87) Fase 1+2b** (builds 2816/2817/2819): recibir (Firebase nativo), token que se intercambia
-  cifrado y dispara el «toque» al mandar por el buzón. **Robusto y probado en el simulador** (`fcmwake.js`). **Falta del
-  dueño:** desplegar `push-sender/` (su cuenta, Blaze) y, si el URL difiere, pasármelo (`net.setSender`); prueba real en
-  el móvil (la gran incógnita: ¿despierta el Vivo cerrado?). El disparo real por Google no se puede simular.
+  cifrado y dispara el «toque» al mandar por el buzón. **Robusto y probado en el simulador** (`fcmwake.js`). El disparo real
+  por Google no se puede simular.
+  - ✅ **Enviador DESPLEGADO (03-11, build 2895).** Firebase Functions pedía plan Blaze (tarjeta + prepago, y dio errores
+    de facturación OR-CBAT), así que se desplegó el equivalente en **Cloudflare Workers** (gratis, sin tarjeta):
+    `push-sender/cloudflare/worker.js`, publicado por el dueño en `https://nexo-wake.maurizioamistani.workers.dev` con la
+    llave de la cuenta de servicio como secreto `SA_B64`. Credenciales **verificadas con `curl`** (token falso →
+    `{"error":"fcm","status":400}` = Google aceptó la llave, solo rechazó el token de prueba). La app ya apunta ahí
+    (`DEFAULT_SENDER` en `net_link.js`, build 2895). **Falta del dueño:** la prueba del despertar real (token real del
+    diagnóstico → `{"ok":true}` y el móvil cerrado despierta) y, después, el endurecimiento **SEC-3** (autenticar `/wake`).
 - ✅ **Archivos grandes por internet (#99 Fase A)** (build 2818): tope ~6 MB → ~22 MB (Tor directo o relés). **Nunca más
   «enviada» en silencio**: si un archivo no cabe por el camino de ahora, sale un aviso claro (ya estaba desde la 2786; el
   revisor de robustez lo confirmó). **Falta (Fase B, pendiente):** >22 MB (p. ej. una APK de 24 MB) por **Tor directo**
