@@ -3,6 +3,9 @@
 App de mensajería P2P por Bluetooth LE (Capacitor 5 + plugin nativo Kotlin `plugins/nexo-ble`).
 El dueño habla español: responder en español.
 
+**LO PRIMERO: leer `ESTADO.md`** (en la raíz) — es el resumen vivo del estado y el punto de encuentro entre el
+Claude de la compu y el Claude del teléfono. Mantenerlo actualizado al terminar cada bloque (es lo que lee el otro Claude).
+
 Antes de empezar, leer `docs/PROGRESO.md` (estado, historial de builds y pendientes),
 `docs/PENDIENTES.md` (todo lo que falta, decisiones pendientes y las reglas del dueño para elegir el
 camino de envío) y `docs/ROBUSTEZ.md` (registro de revisiones, índice de robustez y rutina diaria), y
