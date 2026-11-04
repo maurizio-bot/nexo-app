@@ -133,7 +133,7 @@ function _openContactProfile(uuid) {
     '<div class="nx-card" style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;">' +
     '<div class="nx-av" id="nexo-cp-av" style="width:92px;height:92px;font-size:34px;"></div>' +
     '<div style="font-size:21px;font-weight:800;word-break:break-word;">' + _esc(name) + '</div>' +
-    '<div class="nx-idtxt">' + t('prof_my_id', 'NEXO ID') + '</div><b style="letter-spacing:0.5px;">' + _esc(nx.toUpperCase()) + '</b>' +
+    '<div class="nx-idtxt">' + t('prof_cp_nexoid', 'NEXO ID') + '</div><b style="letter-spacing:0.5px;">' + _esc(nx.toUpperCase()) + '</b>' +
     '<div class="nx-sub">' + (online ? '🟢 ' + t('prof_cp_online', 'En línea') : '⚪ ' + t('prof_cp_offline', 'Desconectado')) + '</div>' +
     '</div>' +
     '<div class="nx-sub" style="text-align:center;margin-top:6px;">' + t('prof_cp_more', 'Pronto: teléfono y correo (si el contacto los comparte) y los contactos en común.') + '</div>' +

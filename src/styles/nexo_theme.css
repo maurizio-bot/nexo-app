@@ -239,9 +239,9 @@ body::before {
 #nexo-group-cancel, #nexo-share-cancel { background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important; }
 
 /* Perfil */
-#nexo-profile-sheet, #nexo-settings-sheet { background: transparent !important; padding: 0 !important; }
-#nexo-profile-sheet::before, #nexo-settings-sheet::before { content: ''; position: fixed; inset: 0; z-index: -1; background: inherit; }
-#nexo-profile-sheet .nx-profile-in, #nexo-settings-sheet .nx-profile-in { padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 24px; display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; background:
+#nexo-profile-sheet, #nexo-settings-sheet, #nexo-contact-profile { background: transparent !important; padding: 0 !important; }
+#nexo-profile-sheet::before, #nexo-settings-sheet::before, #nexo-contact-profile::before { content: ''; position: fixed; inset: 0; z-index: -1; background: inherit; }
+#nexo-profile-sheet .nx-profile-in, #nexo-settings-sheet .nx-profile-in, #nexo-contact-profile .nx-profile-in { padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 24px; display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; background:
   radial-gradient(circle at 20% 0%, rgba(0, 200, 255, 0.16), transparent 40%), radial-gradient(circle at 90% 100%, rgba(168, 85, 247, 0.18), transparent 45%), #0a0a15; }
 .nx-card { background: var(--nx-surface); border: 1px solid var(--nx-line); border-radius: 20px; padding: 14px 14px 12px; margin-bottom: 12px; }
 .nx-h { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; margin: 0 0 8px; }
