@@ -11,7 +11,7 @@
  * y las burbujas se lean sobre cualquier foto. Sin fondo elegido, negro liso (como antes).
  */
 import { t } from './i18n.js';
-import { _normId } from './ble_helpers.js';
+import { _normId, _getBLEContacts } from './ble_helpers.js';
 import { _sendTextTo } from './send.js';
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
 
@@ -48,6 +48,13 @@ function _hash(s) { var h = 2166136261; for (var i = 0; i < s.length; i++) { h ^
 function _inChat() { try { return document.body.classList.contains('chat-view-active'); } catch (e) { return false; } }
 // El fondo que corresponde a un chat: el propio del contacto si lo tiene, si no el global de chats.
 function _chatImgFor(nx) { return (nx && _per.get(nx)) || _chat; }
+// Nombre del contacto para los avisos (si no está en la agenda, el NEXO ID en mayúsculas).
+function _nameOf(nx) {
+  try {
+    var c = _getBLEContacts().find(function (x) { return _normId(x.nexoId || x.deviceUUID) === _normId(nx); });
+    return (c && c.name) || String(nx || '').toUpperCase();
+  } catch (e) { return String(nx || '').toUpperCase(); }
+}
 
 // Pinta el fondo en #app (no hace scroll; la cabecera y la barra de escribir, opacas, lo tapan donde toca).
 function _paint(img) {
@@ -155,7 +162,16 @@ export function applyChatWallpaper(sender, act) {
   if (!NX_RE.test(nx) || (img && (!IMG_RE.test(img) || img.length > MAX_LEN))) return;
   _per.set(nx, img);
   _save(CHATP_FILE(nx), { img: img });
-  if (_curNx === nx) _paint(img || _chat);
+  var here = (_curNx === nx);
+  if (here) _paint(img || _chat);   // si estoy en ese chat, se ve al instante (por _curNx, sin depender de la clase del body)
+  // #dueño 04-11: antes se aplicaba EN SILENCIO (y solo repintaba si justo estabas en ese chat). El fondo llegaba
+  // bien (el diagnóstico lo confirma) pero el dueño creía que «no funcionaba» porque no veía nada. Ahora: aviso
+  // visible siempre, y si no estás en ese chat, te dice que lo abras para verlo (ya está guardado, lo pinta al abrir).
+  try {
+    _showInfoToast('🖼️ ' + _nameOf(nx) + ' ' +
+      (img ? t('wp_shared_in', 'compartió el fondo de este chat') : t('wp_removed_in', 'quitó el fondo de este chat')) +
+      (here ? '' : t('wp_open_to_see', ' — abrí el chat para verlo')), 4200);
+  } catch (e) {}
   console.log('[WP] Fondo de chat ' + (img ? 'recibido' : 'quitado') + ' de ' + nx);
 }
 

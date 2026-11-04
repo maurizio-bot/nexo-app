@@ -2,7 +2,8 @@
 // del chat, y «compartido, con opción a compartir»). Dos teléfonos reales en jsdom:
 //   (1) el fondo por chat MANDA sobre el global de chats SOLO en ese chat; quitarlo cae al global
 //   (2) COMPARTIR: A comparte el fondo de su chat con B (acción oculta cifrada E2E, como la foto de perfil) y a B le
-//       llega y lo aplica a SU chat con A — sin mensaje visible
+//       llega y lo aplica a SU chat con A — con AVISO visible (toast) pero SIN mensaje de chat (diag. 04-11: antes
+//       era mudo y el dueño creía que «no funcionaba»)
 //   (3) se guarda cifrado por contacto (nexo_wp_c_<id>.json) en los dos teléfonos
 //   (4) al recibir, se rechaza lo que no es una imagen (no pisa el fondo bueno)
 // Uso: node fondo2.js <dir_build>
@@ -73,6 +74,10 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   r.comparte = A.win.shareChatWallpaper(idB) === true;
   r.llega_a_B = await wait(() => B.win.chatWallpaperFor(idA) === PER, 30);
   r.B_no_mensaje_visible = !(await B.win.vaultLoadMessages(idA)).some((m) => /nexo_act|data:image/.test(m.content || ''));
+  // #dueño 04-11: al recibir un fondo compartido AHORA hay aviso visible (toast). B no tenía abierto el chat con A, así
+  // que el aviso le dice que lo abra para verlo (el fondo ya quedó guardado y se pinta al abrir).
+  var tB = B.win.document.getElementById('perm-error-toast');
+  r.B_avisa_al_recibir = !!tB && /fondo/i.test(tB.textContent || '') && /abr/i.test(tB.textContent || '');
   await sleep(200);
   let savedB = null; try { savedB = JSON.parse(nB.files.get('nexo_wp_c_' + idA + '.json') || '{}'); } catch (e) {}
   r.B_guarda = !!savedB && savedB.img === PER;
@@ -96,10 +101,23 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   await sleep(60);
   r.boton_oculto_fuera = !!wpBtn && wpBtn.style.display === 'none';    // fuera de un chat, oculto
 
+  // (6) #dueño 04-11: si B SÍ tiene abierto ese chat, el fondo recibido se PINTA al instante (por _curNx, sin depender de
+  //     la clase 'chat-view-active' del body — misma carrera que el botón) y el aviso NO dice «abrí el chat».
+  const PER2 = 'data:image/png;base64,PERCHAT2zz==';
+  B.win.dispatchEvent(new B.win.CustomEvent('nexo:ble:openChat', { detail: { contactId: idA } }));
+  await sleep(80);
+  B.win.applyChatWallpaper(idA, { act: 'wp', img: PER2 });
+  await sleep(40);
+  r.en_chat_pinta_al_instante = B.win.wallpaperApplied() === PER2;
+  var tB2 = B.win.document.getElementById('perm-error-toast');
+  r.en_chat_aviso_sin_abrir = !!tB2 && /fondo/i.test(tB2.textContent || '') && !/abr/i.test(tB2.textContent || '');
+  B.win.dispatchEvent(new B.win.CustomEvent('nexo:ble:closeChat', { detail: {} }));
+
   r.errores = logs.filter((l) => /TypeError|undefined is not|No se pudo descifrar/.test(l)).slice(0, 4);
   const ok = r.emparejados && r.per_set && r.per_manda && r.cae_a_global && r.global_intacto && r.A_guarda_por_chat &&
-    r.comparte && r.llega_a_B && r.B_no_mensaje_visible && r.B_guarda && r.rechaza_basura && r.recibe_quitar &&
-    r.boton_existe && r.boton_visible_en_chat && r.boton_oculto_fuera && r.errores.length === 0;
+    r.comparte && r.llega_a_B && r.B_no_mensaje_visible && r.B_avisa_al_recibir && r.B_guarda && r.rechaza_basura && r.recibe_quitar &&
+    r.boton_existe && r.boton_visible_en_chat && r.boton_oculto_fuera &&
+    r.en_chat_pinta_al_instante && r.en_chat_aviso_sin_abrir && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('FONDO2 ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_fondo2.txt'), logs.join('\n'));
