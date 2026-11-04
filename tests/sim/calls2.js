@@ -121,6 +121,37 @@ async function closeApp(p) { p.win.close(); p.native.destroyActivity(); await sl
 async function reopenApp(p, cfg) { p.native.load(); return boot(p.name, p.native, cfg || {}); }
 
 const CASES = {
+  // #dueño 04-11: videollamada en miniatura (PiP del sistema) + volver a la app.
+  //  (a) al ENTRAR en la miniatura se ve SOLO el vídeo del otro (sin controles ni mi imagen, que antes lo tapaba) → nc-pipwin.
+  //  (b) al SALIR (volver a la app) la llamada queda como MINI flotante (nc-appmini), no a pantalla completa; tocarla la abre.
+  async 'pip'() {
+    const { A, B, idA, idB } = await setup({}, { wifi: 'casa' });
+    const r = { wifi: await wait(() => A.win.bleInterface.calls.canVideo(idB) && B.win.bleInterface.calls.canVideo(idA), 60) };
+    click(A.win, A.win.document.getElementById('nexo-video-btn'));
+    await wait(() => st(B) === 'ringing', 20);
+    accept(B);
+    r.en_llamada = await wait(() => st(A) === 'active' && st(B) === 'active', 15);
+    await sleep(1200);
+    const scr = A.win.document.getElementById('nexo-call-screen');
+    const cc = A.win.bleInterface.calls.call;
+    r.es_videollamada = !!scr && !!cc && cc.video === true;
+    r.hay_manejador = typeof A.win.__nexoPipChanged === 'function'; // antes NO existía → de ahí los dos fallos
+    // (a) entra en la miniatura del sistema
+    A.win.__nexoPipChanged(true);
+    r.a_solo_el_otro = !!scr && scr.classList.contains('nc-pipwin') && !scr.classList.contains('nc-appmini');
+    const css = (A.win.document.getElementById('nexo-call-style') || {}).textContent || '';
+    r.css_oculta_mi_imagen = /nc-pipwin/.test(css) && /nc-appmini/.test(css); // las reglas de las dos miniaturas están inyectadas
+    // (b) sale de la miniatura (vuelve a la app): queda mini flotante, no a pantalla completa
+    A.win.__nexoPipChanged(false);
+    r.b_mini_flotante = !!scr && scr.classList.contains('nc-appmini') && !scr.classList.contains('nc-pipwin');
+    // tocar la mini la vuelve a abrir completa
+    click(A.win, scr);
+    r.toque_restaura_completa = !!scr && !scr.classList.contains('nc-appmini');
+    A.win.bleInterface.calls.hangup();
+    r.ok = r.wifi && r.en_llamada && r.es_videollamada && r.hay_manejador && r.a_solo_el_otro &&
+      r.css_oculta_mi_imagen && r.b_mini_flotante && r.toque_restaura_completa;
+    return r;
+  },
   async 'rechazar-cerrada'() {
     const { nB, A, B, idB } = await setup();
     await closeApp(B);
