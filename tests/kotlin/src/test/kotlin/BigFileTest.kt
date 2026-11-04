@@ -112,4 +112,19 @@ class BigFileTest {
         assertEquals("msg1x", BigFile.safeId("msg1/../x".replace("/..", "").replace("/", "")))
         assertEquals(32, BigFile.token().length)
     }
+
+    // R4 (auditoría 03-11): una transferencia grande ABANDONADA se cierra con abort() → libera el descriptor y borra el
+    // .enc a medias (no deja basura). El plugin ahora llama abort() sobre TODOS los bigWriters en handleOnDestroy; antes
+    // quedaban colgados (fuga de descriptor + parcial por cada id abandonado). Aquí se fija el mecanismo que usa ese arreglo.
+    @Test fun abortCierraDescriptorYBorraParcial() {
+        val f = tmp("abort")
+        val w = BigWriter(f, BigFile.key(keyHex), "msg1")
+        w.append(Random(9).nextBytes(64 * 1024), false)   // trozo PARCIAL (no last) → a medias, descriptor abierto
+        assertTrue(f.exists() && f.length() > 0, "el parcial está en disco mientras el descriptor sigue abierto")
+        assertTrue(!w.closed, "aún no está cerrado")
+        w.abort()                                          // abandonar: cerrar el FD + borrar el parcial
+        assertTrue(w.closed, "abort marca cerrado")
+        assertTrue(!f.exists(), "abort borra el .enc a medias (no deja basura)")
+        assertFailsWith<Exception> { w.append(Random(10).nextBytes(16), true) }  // tras abort no se puede seguir escribiendo
+    }
 }

@@ -86,6 +86,15 @@ async function sendText(p, t) { const i = p.win.document.getElementById('message
   r.coordenadas_B = enB ? String(enB.content).indexOf('19.4326') >= 0 : null;
   await openChat(B); await sleep(800);
   r.se_ve_en_B = Array.from(B.win.document.querySelectorAll('#messages-container .message')).some((m) => /Ubicaci[oó]n/.test(m.textContent));
+  // PRIVACIDAD (auditoría 03-11): pintar una ubicación recibida NO debe cargar un mapa de un tercero (fugaba ubicación+IP).
+  // La burbuja de ubicación de B no puede tener ningún <img> con src externo (static-maps/openstreetmap ni http alguno).
+  (function () {
+    var bubble = Array.from(B.win.document.querySelectorAll('#messages-container .message')).find((m) => /Ubicaci[oó]n/.test(m.textContent));
+    var imgs = bubble ? Array.from(bubble.querySelectorAll('img')) : [];
+    var fuga = imgs.map((im) => im.getAttribute('src') || '').filter((s) => /^https?:\/\//i.test(s));
+    r.mapa_externo_en_render = fuga;               // debe quedar vacío
+    r.sin_fuga_de_mapa = fuga.length === 0;        // true = sin fuga
+  })();
   r.estado_A = (Array.from(A.win.document.querySelectorAll('#messages-container .message.own')).filter((m) => /Ubicaci[oó]n/.test(m.textContent)).map((m) => (m.querySelector('.msg-status') || {}).className || '').pop() || '').replace('msg-status status-', '');
   r.avisos_A = avisos;
   r.en_claro = air.join('\n').indexOf('19.4326') >= 0;

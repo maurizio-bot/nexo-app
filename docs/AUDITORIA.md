@@ -65,8 +65,11 @@ etiquetas que rotan a diario en internet).
 6. **Otra app en el mismo teléfono** (intents a la actividad exportada).
 7. **Acceso físico** a un teléfono bloqueado o robado.
 
-**Lo que está bien (comprobado leyendo el código, resumen de la auditoría):** el cifrado liga remitente↔sesión en el
-AAD (cambiar `from`/`to`/`id` o repetir con otro id no descifra); un `chat` sin cifrar que dice ser de un contacto se
+**Lo que está bien (comprobado leyendo el código, resumen de la auditoría):** el cifrado del **Protocolo 2 (Double
+Ratchet, el actual)** liga remitente↔sesión en el AAD (cambiar `from`/`to`/`id` o repetir con otro id no descifra)
+—⚠️ **corrección auditoría 03-11 (hallazgo N-B, leve):** el **Protocolo 1 legado (E1, `e2e_crypto.js:138-143`, solo
+contactos aún sin migrar a proto-2) NO usa AAD**, así que un E1 capturado se puede reinyectar con otro `msgId`
+(replay/duplicación); se cierra migrando ese contacto a proto-2 o añadiéndole AAD a E1—; un `chat` sin cifrar que dice ser de un contacto se
 descarta; el Double Ratchet limita los saltos (`MAX_SKIP` 1000) y las claves guardadas (300) **antes** del bucle (no
 hay DoS de memoria ni CPU sin tope); las señales de llamada exigen E2E (un desconocido no puede hacer sonar ni
 descolgar); las tramas de voz/vídeo van cifradas con la clave de la llamada y con anti-repetición; el Wi-Fi no se usa
