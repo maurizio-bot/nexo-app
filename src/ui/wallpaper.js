@@ -89,10 +89,14 @@ export function wallpaperInit() {
   });
   // Al entrar a un chat: pinta el global de chats al instante y, si ese contacto tiene fondo propio, lo cambia.
   window.addEventListener('nexo:ble:openChat', function(e) {
-    _curNx = _normId((e && e.detail && e.detail.contactId) || '');
+    // #dueño 04-11: aceptar las dos formas del evento — {contactId} (el camino normal, ble_interface) y {contact}
+    // (un camino de respaldo de main.js que mandaba el objeto); si no, _curNx quedaba '' y el botón no salía.
+    var d = (e && e.detail) || {};
+    _curNx = _normId(d.contactId || (d.contact && (d.contact.nexoId || d.contact.deviceUUID || d.contact.id)) || '');
     _paint(_chat);
     var nx = _curNx;
     _ensurePer(nx).then(function() { if (_curNx === nx) _paint(_chatImgFor(nx)); });
+    installWallpaperButton(); // re-asegura el botón por si no se instaló al arrancar (idempotente)
     _refreshButton();
   });
   window.addEventListener('nexo:ble:closeChat', function() { _curNx = ''; _paint(_list); _refreshButton(); });
@@ -187,8 +191,11 @@ function _curName() { try { return (document.getElementById('chat-contact-name')
 function _refreshButton() {
   var b = document.getElementById('nexo-wp-btn');
   if (!b) return;
-  // Solo en chats 1 a 1 (en grupos no; el global de chats sí los cubre)
-  b.style.display = (_inChat() && NX_RE.test(_curNx)) ? '' : 'none';
+  // Solo en chats 1 a 1 (en grupos no; el global de chats sí los cubre). #dueño 04-11: se decide por _curNx (puesto al
+  // abrir el chat, '' al cerrar), NO por la clase 'chat-view-active' del <body>: esa clase se agrega DESPUÉS de disparar
+  // openChat (main.js / chat_nav), así que mirarla aquí —síncrono— dejaba el botón OCULTO a veces (carrera; por eso «a
+  // veces lo veía y a veces no»). calls_ui/groupcall_ui lo evitaban con setTimeout; esto lo hace determinista.
+  b.style.display = NX_RE.test(_curNx) ? '' : 'none';
 }
 
 export function installWallpaperButton() {
