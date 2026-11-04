@@ -8,6 +8,8 @@ import { securitySectionHtml, renderSecuritySection } from './app_lock.js';
 import { _diagnosticText } from './diag.js';
 import { startReceiveAccount, startSendAccount } from './move_account.js';
 import { clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
+import { myProfile, setMyProfile } from './profile_data.js';
+import { _getBLEContacts, _normId } from './ble_helpers.js';
 import { hasListWallpaper, hasChatWallpaper, setListWallpaper, clearListWallpaper, setChatWallpaper, clearChatWallpaper, makeWallpaper } from './wallpaper.js';
 import { mirrorPeerPref, setMirrorPeerPref } from './calls_ui.js';
 import { readReceiptsOn, setReadReceiptsOn } from './chat_state.js';
@@ -35,6 +37,13 @@ function _openProfileSheet() {
     '<div class="nx-card nx-id-card"><div class="nx-av" id="nexo-profile-av" title="' + t('prof_change_photo', 'Cambiar foto') + '" style="cursor:pointer;"></div><div style="flex:1;min-width:0;"><div class="nx-idtxt">' + t('prof_my_id', 'Mi NEXO ID') + '</div><b id="nexo-profile-id"></b>' +
     '<div id="nexo-profile-seen" class="nx-idtxt" style="margin-top:2px;"></div>' +
     '<div><button id="nexo-av-pick" class="nx-link">' + t('prof_change_photo', 'Cambiar foto') + '</button> <button id="nexo-av-clear" class="nx-link" style="display:none;">' + t('prof_remove', 'Quitar') + '</button> <button id="nexo-id-share" class="nx-link">' + t('prof_share_my_id', 'Compartir mi ID') + '</button></div></div></div>' +
+    // Ronda 2910 (pedido del dueño): mis datos OPCIONALES (nombre y apellido, teléfono, correo). Se guardan cifrados;
+    // más adelante se podrán compartir (enmascarados) al agregar un contacto. Cada uno se llena o se deja vacío.
+    '<div class="nx-card"><div class="nx-h"><span class="nx-ico">📇</span>' + t('prof_my_data', 'Mis datos') + '</div>' +
+    '<div class="nx-sub" style="margin-bottom:8px;">' + t('prof_my_data_sub', 'Opcional. Lo que llenes lo podrás compartir al agregar un contacto (vos elegís qué mostrar).') + '</div>' +
+    '<input id="nexo-prof-name" type="text" autocomplete="off" maxlength="60" placeholder="' + t('prof_field_name', 'Nombre y apellido') + '" style="width:100%;box-sizing:border-box;padding:12px;margin-bottom:8px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +
+    '<input id="nexo-prof-phone" type="tel" autocomplete="off" maxlength="24" placeholder="' + t('prof_field_phone', 'Teléfono') + '" style="width:100%;box-sizing:border-box;padding:12px;margin-bottom:8px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +
+    '<input id="nexo-prof-email" type="email" autocomplete="off" maxlength="80" placeholder="' + t('prof_field_email', 'Correo') + '" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;"></div>' +
     // Ronda 2807: el resto (seguridad, avisos, llamadas, internet, diagnóstico, cuenta) se abre en Ajustes
     '<button id="nexo-open-settings" class="nx-btn nx-btn-primary" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;font-size:16px;padding:14px;">⚙️ ' + t('settings_title', 'Ajustes') + '</button>' +
     '<div class="nx-sub" style="text-align:center;margin-top:2px;">' + t('prof_settings_sub', 'Seguridad, avisos, llamadas, internet, diagnóstico y tu cuenta (Fénix, cambiar de teléfono).') + '</div>' +
@@ -90,8 +99,60 @@ function _openProfileSheet() {
   // Juego secreto (pedido del dueño): dibujar la «N» de NEXO en el espacio negro de abajo abre el mini-arcade oculto.
   var gz = sheet.querySelector('#nexo-gesture-zone');
   if (gz) attachNexoUnlockGesture(gz);
+  // Ronda 2910: mis datos — cargo lo guardado y guardo al salir de cada campo (change = al perder el foco, no en cada tecla)
+  (function () {
+    var mp = myProfile();
+    var fName = sheet.querySelector('#nexo-prof-name'), fPhone = sheet.querySelector('#nexo-prof-phone'), fEmail = sheet.querySelector('#nexo-prof-email');
+    if (fName) fName.value = mp.name; if (fPhone) fPhone.value = mp.phone; if (fEmail) fEmail.value = mp.email;
+    var save = function () {
+      var r = setMyProfile({ name: fName ? fName.value : '', phone: fPhone ? fPhone.value : '', email: fEmail ? fEmail.value : '' });
+      if (r && r.email_bad && _showInfoToast) _showInfoToast(t('prof_email_bad', 'Ese correo no parece un correo (se guardó igual).'), 2600);
+    };
+    [fName, fPhone, fEmail].forEach(function (el) { if (el) el.addEventListener('change', save); });
+  })();
 }
 window.addEventListener('nexo:ui:profile', _openProfileSheet);
+
+// ===================== Perfil de un CONTACTO (ronda 2910) =====================
+// El ⋮ de cada contacto tiene «Perfil»; antes disparaba 'nexo:ble:goToProfile' y NADIE lo escuchaba (no hacía nada).
+// Ahora abre la ficha del contacto: foto, nombre, NEXO ID y estado. (Los datos que comparta —tel/correo enmascarados,
+// contactos en común— se suman en el paso 2.)
+function _openContactProfile(uuid) {
+  var nx = _normId(uuid);
+  var c = _getBLEContacts().find(function (x) { return _normId(x.nexoId || x.deviceUUID) === nx; }) || {};
+  var name = String(c.name || '').trim() || nx.toUpperCase();
+  var online = !!(c.connected || c.online || c.isOnline);
+  var old = document.getElementById('nexo-contact-profile'); if (old) old.remove();
+  var sheet = document.createElement('div');
+  sheet.id = 'nexo-contact-profile';
+  sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;color:#fff;box-sizing:border-box;font-family:inherit;overflow-y:auto;';
+  sheet.innerHTML = '<div class="nx-profile-in">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 14px;">' +
+    '<div style="font-size:26px;font-weight:800;">' + t('prof_contact_title', 'Perfil') + '</div>' +
+    '<button id="nexo-cp-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;">' + t('close', 'Cerrar') + '</button></div>' +
+    '<div class="nx-card" style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;">' +
+    '<div class="nx-av" id="nexo-cp-av" style="width:92px;height:92px;font-size:34px;"></div>' +
+    '<div style="font-size:21px;font-weight:800;word-break:break-word;">' + _esc(name) + '</div>' +
+    '<div class="nx-idtxt">' + t('prof_my_id', 'NEXO ID') + '</div><b style="letter-spacing:0.5px;">' + _esc(nx.toUpperCase()) + '</b>' +
+    '<div class="nx-sub">' + (online ? '🟢 ' + t('prof_cp_online', 'En línea') : '⚪ ' + t('prof_cp_offline', 'Desconectado')) + '</div>' +
+    '</div>' +
+    '<div class="nx-sub" style="text-align:center;margin-top:6px;">' + t('prof_cp_more', 'Pronto: teléfono y correo (si el contacto los comparte) y los contactos en común.') + '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:10px;">' +
+    '<button id="nexo-cp-chat" class="nx-btn nx-btn-primary" style="flex:1;">💬 ' + t('prof_cp_chat', 'Abrir chat') + '</button></div>' +
+    '</div>';
+  document.body.appendChild(sheet);
+  try { paintAvatar(sheet.querySelector('#nexo-cp-av'), nx); } catch (e) {}
+  sheet.querySelector('#nexo-cp-close').onclick = function () { sheet.remove(); };
+  var chatBtn = sheet.querySelector('#nexo-cp-chat');
+  if (chatBtn) chatBtn.onclick = function () {
+    sheet.remove();
+    var bi = window.bleInterface;   // el camino real de abrir un chat (no un evento suelto)
+    if (bi && typeof bi.openChat === 'function') { try { var p = bi.openChat(nx); if (p && p.catch) p.catch(function () {}); } catch (e) {} }
+  };
+}
+function _esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
+window.addEventListener('nexo:ble:goToProfile', function (e) { var d = (e && e.detail) || {}; if (d.deviceUUID) _openContactProfile(d.deviceUUID); });
+try { if (typeof window !== 'undefined') window.NEXO_openContactProfile = _openContactProfile; } catch (e) {}
 
 // ===================== Ajustes (todo lo configurable) =====================
 function _openSettingsSheet() {
