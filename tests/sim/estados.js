@@ -62,6 +62,28 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#main-estados-s
   r.ver_muestra_texto = /hola mundo 24h/.test((B.win.document.getElementById('estado-view') || {}).textContent || '');
   { const o = B.win.document.getElementById('estado-overlay'); if (o) o.remove(); }
 
+  // 2b. Fase 2 (foto en el estado, #dueño): A publica un estado CON foto → le llega a B con la imagen; la tira y el
+  //     visor muestran la foto.
+  const FOTO = 'data:image/jpeg;base64,' + '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQ'.repeat(3);
+  A.win.NEXO_setMyStatus('mirá esto', FOTO);
+  r.foto_llega_a_B = await wait(() => { const s = B.win.NEXO_statusOf(idA); return !!(s && s.img === FOTO && s.t === 'mirá esto'); }, 30);
+  await sleep(400);
+  const chipFoto = chips(B).find((c) => c.querySelector('img') && !/Mi estado|Tu estado/.test(c.textContent));
+  r.tira_muestra_foto = !!chipFoto;
+  if (chipFoto) { click(B.win, chipFoto); await sleep(300); }
+  r.ver_muestra_foto = !!(B.win.document.querySelector('#estado-view img'));
+
+  // 2c. Fase 2 («me gusta», #dueño): B le da me gusta al estado de A → a A le llega (myLikes pasa a 1); el botón existe.
+  const likeBtn = B.win.document.getElementById('estado-like');
+  r.boton_like = !!likeBtn;
+  if (likeBtn) click(B.win, likeBtn);
+  r.like_llega_a_A = await wait(() => A.win.NEXO_myLikes() === 1, 30);
+  { const o = B.win.document.getElementById('estado-overlay'); if (o) o.remove(); }
+
+  // 2d. Robustez: una "imagen" que NO es imagen (o gigante) se descarta al recibir y no pisa el estado bueno.
+  B.win.NEXO_applyStatus(idA, { t: 'x', img: 'data:text/plain;base64,QQ==', ts: Date.now() });
+  r.rechaza_img_mala = (B.win.NEXO_statusOf(idA) || {}).img === '';
+
   // 3. B publica el suyo por la INTERFAZ (chip "Mi estado" → input → Publicar) → le llega a A
   const miChip = chips(B).find((c) => /Mi estado|Tu estado/.test(c.textContent)) || chips(B)[0];
   click(B.win, miChip); await sleep(300);
@@ -88,6 +110,7 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#main-estados-s
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|No se pudo descifrar/.test(l)).slice(0, 4);
   const ok = r.emparejados && r.llega_a_B && r.B_no_mensaje_visible && r.tira_muestra_a_A && r.ver_muestra_texto &&
+    r.foto_llega_a_B && r.tira_muestra_foto && r.ver_muestra_foto && r.boton_like && r.like_llega_a_A && r.rechaza_img_mala &&
     r.compose_abre && r.B_a_A_por_ui && r.caducado_no_se_ve && r.fresco_se_ve && r.futuro_acotado && r.quitar_borra_en_B && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('ESTADOS ' + JSON.stringify(r));
