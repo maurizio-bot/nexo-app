@@ -20,17 +20,24 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 
 ## Dónde estamos (actualizado: 2026-11-04)
 
-- **Build actual:** **2902** — APK `nightly-2902` (videollamada en miniatura/PiP arreglada). Rama principal `NEXOCHAT` (cada push genera APK). Espejo: `claude/repo-file-access-9bwl60`.
+- **Build actual:** **2904** — APK `nightly-2904` (trae DOS arreglos del dueño: notificaciones del chat abierto + Fénix cede al usuario; ver «Último trabajo»). Antes: `nightly-2903` (botón «Fondo de este chat»). Rama principal `NEXOCHAT` (cada push genera APK; `cancel-in-progress` → un push = un APK). Espejo: `claude/repo-file-access-9bwl60`.
 - **Base estable de emergencia:** build **2882** (rama `base-estable-2882`).
 - **Índice de robustez:** **54,8 / 110**. El freno NO es seguridad ni bugs: es la **validación en teléfonos (componente B = 15,9/35)** — eso solo lo sube el dueño probando.
 - **App:** mensajería P2P por Bluetooth/Wi-Fi/Internet, serverless, E2E (Double Ratchet + poscuántico). Capacitor 5 + plugin Kotlin `plugins/nexo-ble`.
 
-### Último trabajo hecho
-- **Auditoría completa + pruebas masivas** (reporte en `docs/AUDITORIA_COMPLETA_03-11.md`): batería 111/111, Kotlin OK, VOPR 5/5, navegador voz/vídeo OK.
-- **Build 2901 — «verdes» de la auditoría:** (1) cerrada la fuga de ubicación a un mapa de terceros (privacidad), (2) R2 el vault avisa+reintenta si falla una escritura, (3) R3 los adjuntos se vuelcan al 2.º plano, (4) R4 se cierran los `bigWriters` abandonados, (5) corregido un claim de AAD en `AUDITORIA.md`.
+### Último trabajo hecho (04-11, pedidos del dueño en el teléfono)
+- **Build 2904 — notificaciones del chat abierto + Fénix cede (las dos en este APK):**
+  - *Notificaciones (notify.js):* «llegan avisos de un chat si estoy en ese chat abierto». Causa: al abrir/leer un chat a la vista solo se quitaba la notificación si la había puesto el JS; la que pone el NATIVO (respaldo con la app congelada, caso Samsung/Vivo) quedaba. Ahora se quita SIEMPRE + `syncNative()`. Prueba `unread.js` esc. 7.
+  - *Fénix (fenix.js):* «envío de archivo grande + Fénix = crash». Regla del dueño: el usuario tiene prioridad; Fénix se para si hay transferencia del usuario y reanuda al quedar libre (gate en `_ownerTick` por `_transferActive()`). Confirma el 2.º diagnóstico (NX1N36C283, enlace MTU 23). Prueba `scanfenix.js` secc. 3.
+- **Build 2903 — botón «Fondo de este chat»:** no salía por una carrera (se decidía por una clase del `<body>` que se agrega tarde); ahora se decide por el chat abierto. Prueba `fondo2.js`.
+- **Build 2902 — videollamada en miniatura (PiP):** se ve solo el otro + volver a la app no reabre la llamada.
+- **Build 2901 — «verdes» de la auditoría:** fuga de ubicación cerrada + durabilidad R2/R3/R4. (Auditoría completa en `docs/AUDITORIA_COMPLETA_03-11.md`.)
+- Batería 112/112 verde en cada uno.
 
 ### En qué seguimos / próximo paso
-- Traer el **trabajo de monetización que el dueño hizo en el teléfono** (ver apartado de abajo).
+- **Burbujas con adjunto (ubicación/foto): borde/relleno FINO** para que no tapen el texto (pedido del dueño 04-11, sin prisa). Tarea en curso.
+- **Diagnóstico nuevo del dueño** (algo que «acaba de pasar»): revisar cuando lo mande.
+- **Estados fase 2** (pedido del dueño): elegir foto/imagen/vídeo/audio y poder reaccionar («me gusta»). Hoy Estados = solo texto 24 h. Es feature, va con entretenimiento.
 - Verde pendiente (producto): **buscador global + conecta-4** (`#6` del reporte) — espera decisión.
 
 ### ⚠️ Pendiente de decisión del DUEÑO (no lo toco solo)
