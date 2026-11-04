@@ -178,6 +178,17 @@ export class Fenix {
   }
 
   async _ownerTick() {
+    // #dueño 04-11: las conversaciones/transferencias del usuario tienen SIEMPRE prioridad sobre Fénix. Si el usuario
+    // está mandando o recibiendo algo que espera (foto, vídeo, archivo), Fénix NO mete sus copias en la radio: se queda
+    // quieto y reanuda en el siguiente tick, cuando el usuario quede libre. Evita el atasco/caída de «archivo grande del
+    // usuario + copias de Fénix a la vez», sobre todo en un enlace malo (MTU 23). _transferActive() ya ignora las propias
+    // transferencias Fénix (type:'fenix'), así que esto pausa solo por la actividad real del usuario, no por sí mismo.
+    try {
+      if (this.ble && typeof this.ble._transferActive === 'function' && this.ble._transferActive()) {
+        console.log('[FENIX] En pausa: el usuario está transfiriendo; reanudo cuando quede libre');
+        return;
+      }
+    } catch (e) {}
     var el = this._eligible();
     if (!this.state) {
       if (el.length < this.cfg.min) return;
