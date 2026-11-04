@@ -137,6 +137,18 @@ const status = (p, text) => { const el = Array.from(p.win.document.querySelector
   r.repetido_suma = unreadB() - before;
   r.repetido_cuenta_una_vez = r.repetido_suma === 1;
 
+  // 7. #dueño 04-11: una notificación que puso el NATIVO (aviso de respaldo con la app congelada en 2.º plano) y que el
+  //    JS NO registró (no está en this.notified) se quita igual al ENTRAR al chat estando la app a la vista — navegando
+  //    de la lista al chat, SIN volver de 2.º plano (ese camino no dispara visibilitychange). Antes quedaba el aviso del
+  //    chat que ya estás leyendo («llegan notificaciones de un chat si estoy en ese chat abierto»).
+  await closeChat(B); setVisible(B, true); await sleep(300);
+  nB._postNotif(idA, 'A', 'nat_respaldo_1', '', { bg: true }); // la pone el nativo; el JS no se entera (this.notified no la tiene)
+  B.win.bleInterface.bumpUnread(idA);                          // y hay 1 sin leer de A en la burbuja
+  await sleep(200);
+  r.nativa_antes_de_abrir = !!notifB();                        // existe la notificación puesta por el nativo
+  await openChat(B); await sleep(1500);                        // B entra al chat de A (app a la vista)
+  r.nativa_quitada_al_abrir = !notifB();                       // se quitó aunque la había puesto el nativo
+
   r.permiso_notificaciones_pedido = (nB.notifPermAsked || 0) >= 1;
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css/.test(l)).slice(0, 5);
   console.log('UNREAD ' + JSON.stringify(r));
