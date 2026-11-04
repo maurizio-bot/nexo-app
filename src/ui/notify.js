@@ -85,7 +85,14 @@ export class Notifier {
     this.unreadIds.delete(cid);
     var self = this;
     if (this.sendRead) ids.forEach(function(id) { self.sendRead(cid, id); });
-    if (this.notified.has(cid)) { this.notified.delete(cid); _call('clearChatNotification', { chatId: cid }); }
+    // #dueño 04-11: al abrir/leer un chat con la app a la vista se quita SIEMPRE su notificación del teléfono, aunque
+    // la haya puesto la parte NATIVA (aviso de respaldo cuando el teléfono congela la app en 2.º plano) y por eso no
+    // esté en this.notified. Antes solo se quitaba la que puso el JS, así que en esos teléfonos quedaba el aviso del
+    // chat que YA estás leyendo. Además syncNative() reconcilia el resto (número del icono y otras notificaciones):
+    // sólo corría al volver a la vista, NO al entrar a un chat estando ya a la vista (navegar de la lista al chat).
+    this.notified.delete(cid);
+    _call('clearChatNotification', { chatId: cid });
+    this.syncNative();
   }
 
   // Android 13+: pedir el permiso de notificaciones si falta (una vez por arranque)
