@@ -84,9 +84,22 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   B.win.applyChatWallpaper(idA, { act: 'wp', img: '' });
   r.recibe_quitar = B.win.chatWallpaperFor(idA) === '';
 
+  // (5) #dueño 04-11: el botón «Fondo de este chat» de la cabecera SALE al abrir un chat 1-a-1, SIN depender de que el
+  //     <body> ya tenga 'chat-view-active' (antes era una carrera con el orden del evento → «a veces no estaba el botón»).
+  A.win.document.body.classList.remove('chat-view-active');          // simular que la clase aún NO se agregó (la carrera)
+  A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:openChat', { detail: { contactId: idB } }));
+  await sleep(60);
+  var wpBtn = A.win.document.getElementById('nexo-wp-btn');
+  r.boton_existe = !!wpBtn;
+  r.boton_visible_en_chat = !!wpBtn && wpBtn.style.display !== 'none'; // visible aunque falte la clase del body
+  A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:closeChat', { detail: {} }));
+  await sleep(60);
+  r.boton_oculto_fuera = !!wpBtn && wpBtn.style.display === 'none';    // fuera de un chat, oculto
+
   r.errores = logs.filter((l) => /TypeError|undefined is not|No se pudo descifrar/.test(l)).slice(0, 4);
   const ok = r.emparejados && r.per_set && r.per_manda && r.cae_a_global && r.global_intacto && r.A_guarda_por_chat &&
-    r.comparte && r.llega_a_B && r.B_no_mensaje_visible && r.B_guarda && r.rechaza_basura && r.recibe_quitar && r.errores.length === 0;
+    r.comparte && r.llega_a_B && r.B_no_mensaje_visible && r.B_guarda && r.rechaza_basura && r.recibe_quitar &&
+    r.boton_existe && r.boton_visible_en_chat && r.boton_oculto_fuera && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('FONDO2 ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_fondo2.txt'), logs.join('\n'));
