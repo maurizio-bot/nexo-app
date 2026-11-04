@@ -37,10 +37,10 @@
 
 ---
 
-## ⚠️ Trabajo del teléfono SIN SUBIR (traer a GitHub)
-> Acá se anota lo que se hizo en el teléfono y todavía no está en el repo. Cuando se integra, se borra de esta lista.
+## ✅ Trabajo del teléfono — YA INTEGRADO
+> Acá se anota lo que se hizo en el teléfono y se trajo al repo.
 
-- **[PENDIENTE] Monetización** — el dueño avanzó una parte en el teléfono (un archivo aparte). **Aún NO está en GitHub**, así que el Claude de la compu no la ve. Para traerla: el dueño la pega en la compu, o el Claude del teléfono la commitea a una rama y la anota acá.
+- **[✅ 04-11] Monetización + entretenimiento** — el dueño avanzó el plan en el teléfono; se integró a `docs/MONETIZACION_Y_ENTRETENIMIENTO.md`. Tiene las fuentes de ingreso (Fundador 199 MXN, Negocios, etc.), el modo entretenimiento para el **15-nov** (sala de juegos: Conecta 4 + piedra-papel-tijera) y una **checklist de decisiones del dueño**.
 
 ---
 
