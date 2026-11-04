@@ -4,6 +4,10 @@
 > Quien entre —sea quien sea— lo PRIMERO que hace es leer este archivo para saber en qué punto está el proyecto.
 > Vive en GitHub (rama `NEXOCHAT`), así que los dos lo pueden leer desde donde estén.
 
+## ⭐ Regla del dueño (prioridad SIEMPRE)
+**Funcional y robustez primero.** El error que aparece se resuelve **en el momento**, no se dejan cabos sueltos.
+No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (Monetización/entretenimiento van después de que lo funcional esté firme.)
+
 ## 🔄 Cómo usar este archivo (la regla)
 - **Claude de la compu (yo, Claude Code):** actualizo este archivo al terminar cada bloque de trabajo y lo subo a GitHub. Es lo primero que leo al empezar.
 - **Claude del teléfono:** leé este archivo primero (pedí «traé la última versión de `ESTADO.md` de GitHub»). Si hacés algo nuevo:
@@ -16,7 +20,7 @@
 
 ## Dónde estamos (actualizado: 2026-11-04)
 
-- **Build actual:** **2901** — APK `nightly-2901` ✅ verde. Rama principal `NEXOCHAT` (cada push genera APK). Espejo: `claude/repo-file-access-9bwl60`.
+- **Build actual:** **2902** — APK `nightly-2902` (videollamada en miniatura/PiP arreglada). Rama principal `NEXOCHAT` (cada push genera APK). Espejo: `claude/repo-file-access-9bwl60`.
 - **Base estable de emergencia:** build **2882** (rama `base-estable-2882`).
 - **Índice de robustez:** **54,8 / 110**. El freno NO es seguridad ni bugs: es la **validación en teléfonos (componente B = 15,9/35)** — eso solo lo sube el dueño probando.
 - **App:** mensajería P2P por Bluetooth/Wi-Fi/Internet, serverless, E2E (Double Ratchet + poscuántico). Capacitor 5 + plugin Kotlin `plugins/nexo-ble`.

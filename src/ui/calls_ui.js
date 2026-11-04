@@ -160,7 +160,16 @@ function _style() {
     '#nexo-call-screen .nc-swipe-up{position:relative;touch-action:none}',
     '#nexo-call-screen .nc-swipe-up .nc-ic{animation:none}',
     '#nexo-call-screen .nc-swipe-up::before{content:"";position:absolute;left:50%;top:-24px;width:15px;height:15px;margin-left:-8px;border-left:3px solid #22c55e;border-top:3px solid #22c55e;border-radius:2px;animation:ncUp 1.2s ease-in-out infinite;pointer-events:none}',
-    '@keyframes ncUp{0%,100%{transform:rotate(45deg) translateY(2px);opacity:.3}50%{transform:rotate(45deg) translateY(-6px);opacity:1}}'
+    '@keyframes ncUp{0%,100%{transform:rotate(45deg) translateY(2px);opacity:.3}50%{transform:rotate(45deg) translateY(-6px);opacity:1}}',
+    // #dueño 04-11: (a) EN la ventanita del sistema (PiP) se ve SOLO el vídeo del otro — sin controles ni MI imagen pequeña
+    // (antes mi imagen 104x148 tapaba al otro en la ventanita chica).
+    '#nexo-call-screen.nc-pipwin .nc-top,#nexo-call-screen.nc-pipwin .nc-bottom,#nexo-call-screen.nc-pipwin .nc-center,#nexo-call-screen.nc-pipwin .nc-pip{display:none!important}',
+    '#nexo-call-screen.nc-pipwin .nc-full{object-fit:cover}',
+    // (b) al VOLVER a la app desde la miniatura, la llamada queda como MINI flotante (no a pantalla completa) y debajo se
+    // usa la app (contactos/último chat). Tocar la mini la vuelve a abrir completa.
+    '#nexo-call-screen.nc-appmini{inset:auto;right:12px;bottom:96px;width:112px;height:188px;border-radius:18px;overflow:hidden;box-shadow:0 12px 34px rgba(0,0,0,.55);border:2px solid rgba(255,255,255,.55)}',
+    '#nexo-call-screen.nc-appmini .nc-top,#nexo-call-screen.nc-appmini .nc-bottom,#nexo-call-screen.nc-appmini .nc-center,#nexo-call-screen.nc-appmini .nc-pip,#nexo-call-screen.nc-appmini .nc-bg{display:none!important}',
+    '#nexo-call-screen.nc-appmini .nc-full{object-fit:cover;border-radius:16px}'
   ].join('\n');
   document.head.appendChild(st);
 }
@@ -178,6 +187,7 @@ function _screen() {
     '<div class="nc-bottom"><div class="call-buttons"></div></div>';
   // Videollamada: tocar la pantalla muestra / oculta los controles
   el.addEventListener('click', function(e) {
+    if (el.classList.contains('nc-appmini')) { el.classList.remove('nc-appmini'); return; } // mini flotante → volver a pantalla completa
     if (!el.classList.contains('nc-live') || (e.target && e.target.closest && e.target.closest('.nc-btn, .nc-pip'))) return;
     el.classList.toggle('nc-hide');
     _autoHide(el);
@@ -202,6 +212,28 @@ function _autoHide(el) {
   clearTimeout(_hideTimer);
   if (!el.classList.contains('nc-live') || el.classList.contains('nc-hide')) return;
   _hideTimer = setTimeout(function() { if (el.classList.contains('nc-live')) el.classList.add('nc-hide'); }, 5000);
+}
+
+// #dueño 04-11: la miniatura del sistema (PiP) avisa al WebView al entrar/salir (MainActivity.onPictureInPictureModeChanged
+// → window.__nexoPipChanged). Antes NO existía este manejador, así que la ventanita salía con mi imagen tapando al otro y,
+// al volver, la app abría la llamada a pantalla completa. Ahora:
+//  (a) al ENTRAR en la miniatura → `nc-pipwin`: se ve solo el vídeo del otro (sin controles ni mi imagen).
+//  (b) al SALIR (volver a la app) → la llamada queda como MINI flotante (`nc-appmini`) y debajo se usa la app normal
+//      (contactos / último chat); tocar la mini la vuelve a abrir completa.
+function _setAppMini(on) { var el = document.getElementById('nexo-call-screen'); if (el) el.classList.toggle('nc-appmini', !!on); }
+if (typeof window !== 'undefined') {
+  window.__nexoPipChanged = function(active) {
+    try {
+      var el = document.getElementById('nexo-call-screen');
+      if (!el) return;
+      if (active) { el.classList.add('nc-pipwin'); el.classList.remove('nc-appmini'); }
+      else {
+        el.classList.remove('nc-pipwin');
+        var c = _calls(), st = c && c.state && c.state();
+        if (st && st.video && st.state === 'active') _setAppMini(true);
+      }
+    } catch (e) {}
+  };
 }
 
 function _btn(icon, label, cls, fn, extra) {
