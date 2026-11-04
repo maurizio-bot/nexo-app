@@ -116,9 +116,30 @@ async function openChatWith(p, name) {
   if (biA._reconnectScanTimer) { clearTimeout(biA._reconnectScanTimer); biA._reconnectScanTimer = null; }
   clear();
 
+  // ---- 3) Fénix CEDE la radio a la actividad del usuario (#dueño 04-11) ----
+  // «las conversaciones del user tienen SIEMPRE la prioridad sobre fénix; en esa situación fénix se para hasta que el
+  //  user no tenga actividad y después se reanuda». Con una transferencia de USUARIO en curso, _ownerTick se queda quieto
+  //  (ni siquiera llega a mirar a quién repartir: no mete copias en la radio); sin actividad del usuario, SÍ trabaja.
+  const fx = biA.fenix; r.hay_fenix = !!(fx && typeof fx._ownerTick === 'function');
+  if (fx && fx._timer) { clearInterval(fx._timer); fx._timer = null; } // determinismo: sin ticks periódicos de fondo
+  if (fx) {
+    let elig = 0; const origElig = fx._eligible.bind(fx); fx._eligible = function() { elig++; return origElig(); };
+    fx._busy = false;
+    // usuario transfiriendo un archivo → Fénix en pausa (no llega a _eligible)
+    clear(); ack.outgoingStreams.set('ph9', { type: 'file', aborted: false, meta: { type: 'photo' }, lastAckAt: Date.now() });
+    elig = 0; await fx._ownerTick();
+    r.fenix_cede_con_usuario = elig === 0;
+    // usuario libre → Fénix reanuda (sí corre el tick; luego se frena por falta de contactos/estado, da igual aquí)
+    clear();
+    elig = 0; await fx._ownerTick();
+    r.fenix_trabaja_sin_usuario = elig === 1;
+    fx._eligible = origElig; clear();
+  }
+
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.conecta && r.hay_ack && r.vacio_libre && r.fenix_out_libre && r.user_out_ocupa &&
-    r.fenix_in_libre && r.user_in_ocupa && r.fenix_no_frena_escaneo && r.user_si_frena_escaneo && r.bucle_sigue_vivo && !r.errores.length;
+    r.fenix_in_libre && r.user_in_ocupa && r.fenix_no_frena_escaneo && r.user_si_frena_escaneo && r.bucle_sigue_vivo &&
+    r.hay_fenix && r.fenix_cede_con_usuario && r.fenix_trabaja_sin_usuario && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('SCANFENIX ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_scanfenix.txt'), logs.join('\n'));
