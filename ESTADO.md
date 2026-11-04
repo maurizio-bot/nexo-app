@@ -20,12 +20,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 
 ## Dónde estamos (actualizado: 2026-11-04)
 
-- **Build actual:** **2904** — APK `nightly-2904` (trae DOS arreglos del dueño: notificaciones del chat abierto + Fénix cede al usuario; ver «Último trabajo»). Antes: `nightly-2903` (botón «Fondo de este chat»). Rama principal `NEXOCHAT` (cada push genera APK; `cancel-in-progress` → un push = un APK). Espejo: `claude/repo-file-access-9bwl60`.
+- **Build actual:** **2906** — APK `nightly-2906` (Estados fase 2: foto + audio + «me gusta»). Antes: `nightly-2905` (burbuja: el texto largo ya no se recorta), `nightly-2904` (notis del chat abierto + Fénix cede), `nightly-2903` (botón «Fondo de este chat»). Rama principal `NEXOCHAT` (cada push genera APK; `cancel-in-progress` → un push = un APK). Espejo: `claude/repo-file-access-9bwl60` (sincronizado con los commits de código; tiene una divergencia vieja: iOS Fase 0 que NEXOCHAT no tiene, y NEXOCHAT tiene el push-sender Cloudflare que el espejo no — reconciliar aparte, sin prisa).
 - **Base estable de emergencia:** build **2882** (rama `base-estable-2882`).
 - **Índice de robustez:** **54,8 / 110**. El freno NO es seguridad ni bugs: es la **validación en teléfonos (componente B = 15,9/35)** — eso solo lo sube el dueño probando.
 - **App:** mensajería P2P por Bluetooth/Wi-Fi/Internet, serverless, E2E (Double Ratchet + poscuántico). Capacitor 5 + plugin Kotlin `plugins/nexo-ble`.
 
 ### Último trabajo hecho (04-11, pedidos del dueño en el teléfono)
+- **Build 2906 — Estados fase 2 (foto + audio + «me gusta»):** al componer un estado se puede elegir 📷 foto (reducida, lado mayor 720px) o grabar 🎤 audio (MediaRecorder, tope 30 s); una media por estado. Viajan como la fase 1: acción oculta cifrada E2E entre contactos, 24 h, con tope de tamaño; al recibir se rechaza lo que no es imagen/audio válido. «Me gusta» (acción `act:'sl'`) le llega al dueño del estado con cuenta. Prueba `estados.js` ampliada. **Falta de Estados: VIDEO** (va aparte, por el camino de transferencia de archivos).
+- **Build 2905 — burbuja: el texto largo ya no se recorta:** en pantallas anchas (Samsung ~412dp) el texto propio se cortaba en los bordes (`overflow:hidden` del `.msg-content` + `.message{width:fit-content}`). Fix: `.msg-text{display:block}` (envuelve). Verificado en Chromium (el jsdom no calcula layout).
 - **Build 2904 — notificaciones del chat abierto + Fénix cede (las dos en este APK):**
   - *Notificaciones (notify.js):* «llegan avisos de un chat si estoy en ese chat abierto». Causa: al abrir/leer un chat a la vista solo se quitaba la notificación si la había puesto el JS; la que pone el NATIVO (respaldo con la app congelada, caso Samsung/Vivo) quedaba. Ahora se quita SIEMPRE + `syncNative()`. Prueba `unread.js` esc. 7.
   - *Fénix (fenix.js):* «envío de archivo grande + Fénix = crash». Regla del dueño: el usuario tiene prioridad; Fénix se para si hay transferencia del usuario y reanuda al quedar libre (gate en `_ownerTick` por `_transferActive()`). Confirma el 2.º diagnóstico (NX1N36C283, enlace MTU 23). Prueba `scanfenix.js` secc. 3.
@@ -35,10 +37,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - Batería 112/112 verde en cada uno.
 
 ### En qué seguimos / próximo paso
-- **Burbujas con adjunto (ubicación/foto): borde/relleno FINO** para que no tapen el texto (pedido del dueño 04-11, sin prisa). Tarea en curso.
+- **Estados — VIDEO** (último trozo de media; va por el camino de transferencia de archivos, no por el de los estados).
 - **Diagnóstico nuevo del dueño** (algo que «acaba de pasar»): revisar cuando lo mande.
-- **Estados fase 2** (pedido del dueño): elegir foto/imagen/vídeo/audio y poder reaccionar («me gusta»). Hoy Estados = solo texto 24 h. Es feature, va con entretenimiento.
-- Verde pendiente (producto): **buscador global + conecta-4** (`#6` del reporte) — espera decisión.
+- **SEC-2 (decisión del dueño):** MITM remoto silencioso al agregar por ID (la solicitud se «cifra» con el ID público → un relé forja la aceptación con su clave). Barrera: comparar nº de seguridad. Opciones dadas al dueño: A) mostrar nº + aviso; B) marcar «sin verificar» hasta comparar; C) aceptar 1.ª clave + avisar fuerte si cambia. Voto: C+A. Espera su «sí».
+- **Entretenimiento 15-nov:** Conecta 4 + piedra-papel-tijera (retención, lo que más engancha). Candidato a arrancar.
+- Verde pendiente (producto): **buscador global + conecta-4** (`#6` del reporte).
+
+### ✅ Resuelto hoy (04-11)
+- Burbuja de texto que se recortaba (2905). Botón de fondo de chat (2903). Notis del chat abierto + Fénix cede (2904). Estados fase 2 foto+audio+me gusta (2906). Doc de monetización con el orden «funcional primero, cobrar después».
 
 ### ⚠️ Pendiente de decisión del DUEÑO (no lo toco solo)
 - **SEC-2** (MITM silencioso al agregar por ID) y **rollback del Double Ratchet** (P0-1): los 2 riesgos de seguridad reales; tocan aceptación de claves / estado del ratchet.
