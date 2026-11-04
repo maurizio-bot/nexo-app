@@ -80,6 +80,12 @@ export const BLE_MESSAGE_METHODS = {
         .then(function(d) { if (d) self._handlePayload(d); })
         .catch(function(e) { console.warn('[BLEInterface] Error procesando paquete:', e && e.message); });
     });
+    // #dueño 04-11: el nativo avisa cuando SUELTA un mensaje por un enlace BT muerto/atascado (~6 s sin poder escribir).
+    // En vez de seguir martillando el BT, se re-rutea al toque por internet/Wi-Fi (regla «internet antes que un BT muerto»).
+    if (this._nativeWriteDroppedListener) { try { this._nativeWriteDroppedListener.remove(); } catch (e) {} }
+    this._nativeWriteDroppedListener = this.nativePlugin.addListener('onWriteDropped', function(d) {
+      if (d && d.mac && typeof self._markBleDead === 'function') self._markBleDead(d.mac);
+    });
   },
 
   _prePayload(data) {
@@ -87,6 +93,8 @@ export const BLE_MESSAGE_METHODS = {
     // Ronda 2760: cualquier cosa que llega por un enlace Bluetooth demuestra que está vivo (el vigilante solo contaba
     // la respuesta a su ping; si esa se retrasaba, cortaba un enlace que funcionaba)
     if (data && data.deviceId && !/^(lan|net)/i.test(data.deviceId) && self._lastPongTime) self._lastPongTime.set(data.deviceId, Date.now());
+    // #dueño 04-11: recibir algo por un enlace BT es prueba de que está vivo → se quita el cooldown de «muerto» (vuelve a elegible)
+    if (data && data.deviceId && !/^(lan|net)/i.test(data.deviceId) && typeof self._clearBleDead === 'function') self._clearBleDead(data.deviceId);
     // Ronda 2753: trozo binario (el nativo trae la cabecera y los datos en base64): se rehace el trozo JSON de siempre
     if (data && typeof data.bin === 'string') {
       var bh = String(data.content || '');

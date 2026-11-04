@@ -150,6 +150,7 @@ const SCENARIOS = [
   { name: 'avisos por Wi-Fi: segundo plano, app congelada, pantalla apagada (informe del dueño) y cerrada', args: ['notify.js', '--via=lan'], tag: 'NOTIFY', logs: 'last_logs_notify_lan.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'avisos por Jump: segundo plano, app congelada, pantalla apagada y cerrada', args: ['notify.js', '--via=jump'], tag: 'NOTIFY', logs: 'last_logs_notify_jump.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'camino de envío (regla del dueño: Wi-Fi, internet, Bluetooth; sin brincar)', args: ['route.js'], tag: 'ROUTE', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'BT muerto → internet al toque (regla del dueño 04-11): cuando el nativo suelta un mensaje por un enlace Bluetooth atascado/muerto (onWriteDropped → _markBleDead), ese BT se marca muerto un rato y el resolvedor de camino SALTA a internet (no se queda pegado al BT muerto, «internet antes que un Bluetooth muerto»); al recibir algo por ese BT (prueba de vida) se re-habilita; sin internet no deja al contacto sin camino', args: ['deadbt.js'], tag: 'DEADBT', logs: 'last_logs_deadbt.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'Double Ratchet y poscuántico', args: ['ratchet.js'], tag: null },
 ];
 

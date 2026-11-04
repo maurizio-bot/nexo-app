@@ -91,6 +91,7 @@ export class BLEInterface {
     this._deviceStates = new Map();
     this._nexoIdToMac = new Map();
     this._macToNexoId = new Map();
+    this._bleDeadUntil = new Map(); // #dueño 04-11: MAC BT -> hasta cuándo se considera muerta (soltó un mensaje) y se salta a internet
     this._sxHops = new Set(); // v6.11.1: vecinos que reenvían sobres 'sx' (kx con ss:1)
     this._pqHave = new Map(); // v6.12.0: NEXO ID → id de mi clave poscuántica que dice tener (kx 'ph')
     this._receivedMessageIds = new Set();

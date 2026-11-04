@@ -1895,6 +1895,9 @@ class NexoBlePlugin : Plugin() {
                 writeRetryCount.remove(macNorm)
                 val dropped = synchronized(queue) { val before = queue.size; queue.removeAll { it.msgId == item.msgId }; before - queue.size }
                 btErr("drop", "Write fallo para $macNorm durante ~${WriteRetry.maxWaitMs() / 1000} s (enlace congestionado/atascado): mensaje descartado entero ($dropped trozos" + (if (item.bytes != null) ", binario ${item.bytes.size} B" else "") + ")")
+                // #dueño 04-11: avisar a la capa de arriba que este enlace BT soltó un mensaje (muerto/atascado) → re-rutea
+                // por internet/Wi-Fi al toque en vez de seguir martillando el Bluetooth («internet antes que un BT muerto»).
+                notifyListeners("onWriteDropped", JSObject().put("mac", macNorm))
             }
             // Bloquear la cola durante la espera: otras llamadas no deben gastar los reintentos de golpe
             writeQueueProcessing[macNorm] = true

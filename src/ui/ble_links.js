@@ -5,6 +5,10 @@
  */
 import { BLE_STATES, _getBLEContacts, _lanId, _netId, _netNx, _normId, _normMac, _safeDispatchEvent, _saveBLEContacts, _vNx } from './ble_helpers.js';
 
+// #dueño 04-11 (regla de caminos): cuando el Bluetooth SUELTA un mensaje (enlace muerto/atascado, p. ej. MTU 23), ese
+// enlace se considera muerto este rato y NO se elige para enviar → el resolvedor cae a internet/Wi-Fi («internet antes
+// que un Bluetooth muerto»). Vuelve a estar disponible al expirar o al recibir algo por él (prueba de vida).
+var BLE_DEAD_TTL_MS = 20000;
 
 export const BLE_LINK_METHODS = {
   _lanUp(nexoId) {
@@ -35,15 +39,44 @@ export const BLE_LINK_METHODS = {
   // Ronda 2760: con varios enlaces listos con el mismo contacto (Android usa direcciones distintas), el de MTU más alto
   // (en los teléfonos del dueño convivían uno de 23 y otro de 512: la foto salía por el de 23, ~20 veces más lento)
   _bleReadyFor(nexoId) {
-    var self = this, nx = _normId(nexoId), found = null, best = -1;
+    var self = this, nx = _normId(nexoId), found = null, best = -1, now = Date.now();
     this._deviceStates.forEach(function(st, key) {
       if (/^(lan|net)nx/.test(key) || (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY)) return;
       if (_normId(self._macToNexoId.get(key)) !== nx) return;
+      // #dueño 04-11: un enlace BT que acaba de soltar un mensaje (muerto/atascado) NO se elige → el resolvedor cae a
+      // internet. Se re-habilita al expirar el cooldown o al recibir algo por él (_clearBleDead).
+      if (self._bleDeadUntil && (self._bleDeadUntil.get(key) || 0) > now) return;
       var mtu = (self._mtuByDevice && self._mtuByDevice.get(key)) || 185; // sin medir: entre el mínimo y el bueno
       if (mtu > best) { best = mtu; found = key; }
     });
     return found;
   },
+
+  // #dueño 04-11: el Bluetooth soltó un mensaje (enlace muerto/atascado ~los 6 s del nativo). En vez de seguir martillando
+  // el BT, lo marco muerto un rato y MUEVO lo que iba por ahí al mejor camino de AHORA (internet/Wi-Fi) con relink, si lo
+  // hay. Cumple «internet antes que un Bluetooth muerto» y baja la espera. Si no hay otro camino, no cambia nada (sigue el
+  // flujo normal del BT: reintento/pendiente). El cooldown evita volver a elegir el mismo enlace muerto al toque.
+  _markBleDead(mac) {
+    var self = this, nd = _normMac(mac);
+    if (!nd || !this._bleDeadUntil) return;
+    var until = Date.now() + BLE_DEAD_TTL_MS;
+    this._bleDeadUntil.set(nd, until);
+    var nx = _normId(this._macToNexoId.get(nd));
+    if (!nx) return;
+    // Android usa VARIAS direcciones BT para el mismo NEXO (anunciar vs conectar); con MTU 23 suelen estar todas igual de
+    // mal. Marco muertas TODAS las de este contacto → el resolvedor cae a internet de una, sin ir dirección por dirección.
+    this._deviceStates.forEach(function (st, key) {
+      if (/^(lan|net)nx/.test(key)) return;
+      if (_normId(self._macToNexoId.get(key)) === nx) self._bleDeadUntil.set(key, until);
+    });
+    var next = this._resolveDeviceIdForNexoId(nx); // ya saltea el BT muerto (cooldown) → internet/Wi-Fi si hay
+    if (next && _vNx(next)) {
+      console.warn('[BLEInterface] BT de ' + nx + ' soltó un mensaje (muerto): re-ruteo a ' + next + ' (lo salto ' + Math.round(BLE_DEAD_TTL_MS / 1000) + ' s)');
+      if (this.ackSystem && typeof this.ackSystem.relink === 'function') this.ackSystem.relink(nd, next);
+      if (typeof this._resendPendingMessages === 'function') this._resendPendingMessages(nx);
+    }
+  },
+  _clearBleDead(mac) { var nd = _normMac(mac); if (nd && this._bleDeadUntil) this._bleDeadUntil.delete(nd); },
 
   _lanDegraded(nexoId, on) {
     var nx = _normId(nexoId);

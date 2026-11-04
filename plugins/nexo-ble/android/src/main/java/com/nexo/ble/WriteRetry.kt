@@ -21,7 +21,9 @@ object WriteRetry {
     const val FAST_DELAY_MS = 15L
     const val MID_DELAY_MS = 50L
     const val SLOW_DELAY_MS = 150L        // la cola larga, espaciada (menos radio/batería)
-    const val MAX_ATTEMPTS = 80           // ~9 s de reintentos antes de rendirse (antes 40 ≈ 1,8 s)
+    const val MAX_ATTEMPTS = 58           // ~6 s de reintentos antes de rendirse (dueño 04-11: «bajá los 9 s al tiempo real
+                                          // del BT»; ~6 s ≈ el supervision timeout de Android +margen; antes 80 ≈ 9 s, y 40 ≈ 1,8 s
+                                          // perdía mensajes). Rendirse ya NO pierde: la capa de arriba re-rutea a internet (onWriteDropped).
 
     data class Decision(val drop: Boolean, val delayMs: Long)
 
