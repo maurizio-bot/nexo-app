@@ -4,6 +4,18 @@
 > Consolida `docs/PLAN_NEGOCIO.md`, `docs/RENTABILIDAD_MX.md` y `docs/DICIEMBRE.md`, recortado al presupuesto real.
 > **Las cifras de ingresos son ejemplos para decidir, no previsiones.**
 
+## ⭐ El orden (regla del dueño, 04-11): PRIMERO lo funcional, DESPUÉS cobrar
+**Esto es un plan para tener a mano, NO para ejecutar ya.** El freno de NEXO no es el dinero: es que
+funcione firme en teléfonos reales (índice de robustez, componente B) y que la gente se quede
+(entretenimiento). Cobrar antes de tener usuarios es el carro delante del caballo.
+
+**Orden real de trabajo:**
+1. **Funcional + robustez** en teléfonos de verdad — es lo que más sube el índice y lo que decide si la app sirve.
+2. **Retención**: el modo entretenimiento (los juegos) para que la gente vuelva cada día.
+3. **Recién entonces, cobrar.** Y de todo lo de abajo, lo único «para ya» con 0 esfuerzo es el botón **«Apoya NEXO»** (donativos). El **Pase Fundador** se deja *listo* pero sin esperar ingresos reales (¿quién paga 199 por una app sin usuarios todavía?). **NEXO Negocios** es la apuesta que más rinde, pero es **2027**, cuando haya producto + usuarios: necesita features que aún no existen (cola de impresión, cobros) y salir a venderlo local por local.
+
+**Nada de gastar** (Google Play 25 USD, marca, Mac) hasta tener tracción real. Las cifras de ejemplo (p. ej. ~94.000 MXN/año) son optimistas: sirven para decidir, no son una previsión.
+
 ## En resumen
 La app sigue **gratis**. El primer dinero sale de un **pago único «Fundador NEXO»** y de un **piloto con papelerías**, sin gastar más de ~25 USD antes de tener ingresos. **Nada de anuncios, saldo dentro de la app ni cripto.**
 
