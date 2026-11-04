@@ -53,9 +53,33 @@ async function boot(name, native) {
   try { savedContacts = (JSON.parse(nA.files.get('nexo_vault_contacts.json') || '{}').contacts) || []; } catch (e) {}
   r.contacto_guardado = okSave !== false && savedContacts.some((c) => (c.nexoId || c.deviceUUID) === 'nxdur00001');
 
+  // ===== R3 (auditoría 03-11): los adjuntos PENDIENTES se vuelcan al pasar a 2.º plano (pagehide) =====
+  // Antes, el handler de 2.º plano solo volcaba mensajes (_flushPendingWrites) → un adjunto en memoria podía perderse si
+  // el proceso moría. Ahora el handler llama a vaultFlushAll (mensajes + adjuntos + contactos).
+  const FN3 = 'nexo_att_bg.b64', PAY3 = 'ADJUNTO_SEGUNDO_PLANO_'.repeat(20);
+  nA.moveFrozen = true;                                     // el guardado queda «frozen» → el adjunto queda PENDIENTE en memoria
+  await w.vaultSaveFile(FN3, PAY3); await sleep(40);
+  r.r3_pendiente_antes_de_bg = !nA.files.has(FN3);         // aún NO está en disco
+  nA.moveFrozen = false;                                    // «descongela» (como si la migración terminó)
+  w.dispatchEvent(new w.Event('pagehide'));                 // pasar a 2.º plano
+  await sleep(220);
+  r.r3_adjunto_volcado_en_bg = nA.files.get(FN3) === PAY3;  // el handler de 2.º plano SÍ volcó el adjunto
+
+  // ===== R2 (auditoría 03-11): una escritura de mensajes que FALLA no se traga en silencio: avisa y reintenta hasta recuperarse =====
+  const CIDR2 = 'nxr2dur0001', MF = 'nexo_vault_msgs_v2_' + CIDR2 + '.json';
+  nA.failSaves = /nexo_vault_msgs_v2_/;                     // la escritura de mensajes falla (clave Keystore «no disponible»)
+  await w.vaultAppendMessage(CIDR2, { id: 'r2m1', content: 'durabilidad R2', direction: 'incoming', timestamp: Date.now(), status: 'delivered' });
+  await sleep(220);
+  r.r2_aviso_no_silencioso = logs.some((l) => /fallo al guardar mensajes/i.test(l));  // antes: .catch vacío, sin aviso
+  r.r2_no_en_disco_con_fallo = !nA.files.has(MF);
+  nA.failSaves = null;                                      // la clave «vuelve»
+  await sleep(1800);                                        // esperar el reintento con backoff (500·intentos, máx 4 s)
+  r.r2_recuperado_tras_reintento = /durabilidad R2/.test(nA.files.get(MF) || '');
+
   r.errores = logs.filter((l) => /TypeError|undefined is not|is not a function/.test(l)).slice(0, 5);
   const ok = r.sigue_en_memoria_tras_frozen && r.no_en_disco_durante_frozen && r.guardado_tras_descongelar &&
-    r.contacto_guardado && !r.errores.length;
+    r.contacto_guardado && r.r3_pendiente_antes_de_bg && r.r3_adjunto_volcado_en_bg &&
+    r.r2_aviso_no_silencioso && r.r2_no_en_disco_con_fallo && r.r2_recuperado_tras_reintento && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('VAULTDURABLE ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_vaultdurable.txt'), logs.join('\n'));

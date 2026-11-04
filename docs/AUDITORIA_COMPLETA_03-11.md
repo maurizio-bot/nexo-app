@@ -137,7 +137,8 @@ vez** (hoisting de `var t` tapando `t()` de i18n) — disciplina máxima de «re
 ## 5) ACCIONES RECOMENDADAS (rankeadas)
 
 ### 🟢 Código que puedo hacer con el método (sim/JVM + batería + build) — bajo riesgo
-1. **Arreglar el leak de ubicación a openstreetmap** (`render.js:443`) — privacidad, muy barato.
+> ✅ **Hechos en la build 2901 (04-11)**, batería 111/111 verde: **1** (fuga de ubicación, `location.js`), **2** (R2, `vaultdurable.js`), **3** (R3, `vaultdurable.js`), **4** (R4, `BigFileTest`) y **5** (claim AAD-E1 en `AUDITORIA.md`). Falta solo el **6** (buscador global + conecta-4), que es producto y espera tu visto bueno.
+1. ~~**Arreglar el leak de ubicación a openstreetmap** (`render.js:443`) — privacidad, muy barato.~~ ✅ 2901
 2. **R2: no tragar los fallos de escritura del vault** (loguear/propagar + reintentar) — cierra pérdida silenciosa.
 3. **R3: volcar adjuntos al pasar a 2.º plano** (`vaultFlushAll` en `pagehide`) — cierra adjunto perdido.
 4. **R4: cerrar `bigWriters` en desconexión/destroy** — cierra fuga de FD.

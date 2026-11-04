@@ -873,6 +873,10 @@ class NexoBlePlugin : Plugin() {
         }
         try { lanStopAll() } catch (e: Exception) {}
         try { torStopAll() } catch (e: Exception) {}
+        // R4 (auditoría 03-11): cerrar los escritores de archivos grandes que quedaron SIN terminar (fuga de descriptor +
+        // un .enc a medias por cada id abandonado). bigWriters no se limpiaba al destruir; al cerrar el Activity la UI ya no
+        // puede seguir alimentándolos (bigAppend viene del WebView), así que se abortan (cierra el FD y borra el parcial).
+        try { if (bigWriters.isNotEmpty()) { remLog("INFO", "FILE_IO", "handleOnDestroy - cerrando ${bigWriters.size} escritor(es) de archivo grande sin terminar"); bigWriters.values.forEach { try { it.abort() } catch (e: Exception) {} }; bigWriters.clear() } } catch (e: Exception) {}
         // Ronda 2758: con permisos y el servidor en marcha, el Bluetooth sigue recibiendo con la app cerrada
         if (bluetoothGattServer != null && appCtx != null && checkCoreBLEPermissions(appCtx!!)) {
             try { stopScanInternal() } catch (e: Exception) { }

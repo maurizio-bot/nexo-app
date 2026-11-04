@@ -245,7 +245,7 @@ function _persistContactsNow() {
   return _safeNativeCall(plugin, 'saveToFile', {
     filename: VAULT_CONTACTS_FILE,
     content: JSON.stringify({ contacts: _vaultContacts, savedAt: Date.now() })
-  }).catch(function(e) {});
+  }).catch(function(e) { console.warn('[VaultManager] fallo al guardar contactos (R2): ' + ((e && e.message) || e)); }); // R2: no tragar el error en silencio
 }
 export function vaultLoadContacts() { return _vaultContacts || []; }
 export function vaultSaveContacts(contacts) {
@@ -572,6 +572,7 @@ async function _loadMessagesFromDisk(cid) {
 // cambio de ese contacto). Antes cada mensaje y cada cambio de estado (enviado/entregado/leído)
 // serializaba y escribía el historial entero. Se escribe ya si la app pasa a segundo plano o se cierra.
 var _persistTimers = new Map();
+var _msgRetry = new Map(); // R2 (auditoría 03-11): cid -> {timer,tries} para reintentar una escritura de mensajes que FALLÓ (sin tragarse el error)
 function _persistMessages(contactNexoId, messages, immediate) {
   var cid = _normId(contactNexoId);
   _msgCache.set(cid, messages.slice(-2000));
@@ -589,7 +590,23 @@ function _writeMessagesFile(cid) {
   var p = _safeNativeCall(plugin, 'saveToFile', {
     filename: _msgFileName(cid),
     content: JSON.stringify({ messages: msgs, savedAt: Date.now() })
-  }).catch(function(e) {});
+  }).then(function() {
+    var rt = _msgRetry.get(cid); if (rt) { clearTimeout(rt.timer); _msgRetry.delete(cid); } // guardó bien: olvida el reintento
+  }).catch(function(e) {
+    // R2 (auditoría 03-11): NO tragar el fallo de escritura de mensajes (p.ej. la clave del Keystore un instante no
+    // disponible). Antes el `.catch` vacío lo ocultaba → el mensaje se perdía al reiniciar SIN aviso. Ahora AVISA y
+    // reintenta con backoff; los mensajes siguen en `_msgCache`, así que el reintento los recupera (nada se pierde en silencio).
+    var rt = _msgRetry.get(cid) || { tries: 0, timer: null };
+    rt.tries++; if (rt.timer) clearTimeout(rt.timer);
+    if (rt.tries <= 5) {
+      console.warn('[VaultManager] fallo al guardar mensajes de ' + cid + ' (intento ' + rt.tries + '): ' + ((e && e.message) || e) + ' → reintento');
+      rt.timer = setTimeout(function() { _writeMessagesFile(cid); }, Math.min(500 * rt.tries, 4000));
+      _msgRetry.set(cid, rt);
+    } else {
+      console.error('[VaultManager] NO se pudieron guardar los mensajes de ' + cid + ' tras varios reintentos; quedan en memoria y se reintentará con el próximo mensaje');
+      _msgRetry.delete(cid);
+    }
+  });
   _writeTailFile(cid); // #fluidez: cola pequeña para abrir rápido (aditiva; el completo es la fuente de verdad)
   return p;
 }
@@ -604,8 +621,11 @@ export function vaultFlushAll() {
   return Promise.all([_persistContactsNow(), _flushPendingWrites()]).then(function() { return Promise.all(Object.keys(_pendingAttachments).map(function(f) { return vaultSaveFile(f, _pendingAttachments[f]); })); });
 }
 if (typeof document !== 'undefined') {
-  document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') _flushPendingWrites(); });
-  window.addEventListener('pagehide', _flushPendingWrites);
+  // R3 (auditoría 03-11): al pasar a 2.º plano hay que volcar TAMBIÉN los adjuntos pendientes (`_pendingAttachments`),
+  // no solo los mensajes. Antes se llamaba a `_flushPendingWrites` (solo mensajes) → si el proceso moría ahí, un mensaje
+  // podía quedar apuntando a un adjunto que nunca se escribió. `vaultFlushAll` vuelca mensajes + adjuntos + contactos.
+  document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') vaultFlushAll(); });
+  window.addEventListener('pagehide', function() { vaultFlushAll(); });
 }
 
 export async function vaultSaveMessages(contactNexoId, messages) {
@@ -622,7 +642,7 @@ async function _saveMessagesNow(cid, messages) {
     await _safeNativeCall(plugin, 'saveToFile', { filename: _msgFileName(cid), content: JSON.stringify({ messages: toSave, savedAt: Date.now() }) });
     await _writeTailFile(cid); // #fluidez: actualizar también la cola (durable antes de volver)
     return true;
-  } catch (e) { return false; }
+  } catch (e) { console.warn('[VaultManager] no se pudieron guardar los mensajes (vaultSaveMessages) de ' + cid + ': ' + ((e && e.message) || e)); return false; }
 }
 
 // FIX v2.2.2: Filtro defensivo anti-protocolo TURBO compacto + legacy
@@ -942,7 +962,7 @@ function _persistTransfers(contactNexoId, transfers) {
   _safeNativeCall(plugin, 'saveToFile', {
     filename: _transferFileName(cid),
     content: JSON.stringify({ transfers: toSave, savedAt: Date.now() })
-  }).catch(function(e) {});
+  }).catch(function(e) { console.warn('[VaultManager] fallo al guardar transferencias (R2) de ' + cid + ': ' + ((e && e.message) || e)); }); // R2: no tragar en silencio
 }
 export async function vaultCreateTransfer(contactNexoId, transferId, type, totalChunks, meta) {
   if (!contactNexoId || !transferId || !type || !totalChunks) return null;
@@ -1113,7 +1133,7 @@ function _persistOutgoingTransfers(contactNexoId, outgoing) {
   _safeNativeCall(plugin, 'saveToFile', {
     filename: _outgoingFileName(cid),
     content: JSON.stringify({ outgoing: toSave, savedAt: Date.now() })
-  }).catch(function(e) {});
+  }).catch(function(e) { console.warn('[VaultManager] fallo al guardar transferencias salientes (R2) de ' + cid + ': ' + ((e && e.message) || e)); }); // R2: no tragar en silencio
 }
 export async function vaultCreateOutgoingTransfer(contactNexoId, transferId, type, totalChunks, chunks, meta, deviceId) {
   if (!contactNexoId || !transferId || !type || !totalChunks || !chunks) return null;

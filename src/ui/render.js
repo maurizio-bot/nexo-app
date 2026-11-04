@@ -440,10 +440,12 @@ export function _renderMessage(msg, skipSave) {
         var lng = Number(loc && loc.lng) || 0;
         var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
         var wazeUrl = 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes';
-        var osmUrl = 'https://static-maps.openstreetmap.de/staticmap.php?center=' + lat + ',' + lng + '&zoom=15&size=300x150&markers=' + lat + ',' + lng + ',red-pushpin';
+        // PRIVACIDAD (auditoría 03-11): NO cargar un mapa de un tercero al pintar la burbuja. El `<img>` a
+        // static-maps.openstreetmap.de filtraba la ubicación recibida Y la IP del que mira a un servidor ajeno en
+        // CADA render (sin tocar nada). Se muestra una previa LOCAL (degradado + pin + coords); el mapa real se abre
+        // solo si el usuario toca Maps/Waze (decisión suya, a un servicio que él elige).
         var locHtml = '<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;">';
         locHtml += '<div style="position:relative;width:100%;height:120px;background:linear-gradient(135deg,#1a1a2e,#0f3460);overflow:hidden;">';
-        locHtml += '<img src="' + osmUrl + '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;z-index:1;" onerror="this.style.display=\'none\'">';
         locHtml += '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;z-index:0;">';
         locHtml += '<svg viewBox="0 0 24 24" width="32" height="32" fill="#FF3B30"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>';
         locHtml += '<span style="font-size:11px;color:#aaa;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span>';
