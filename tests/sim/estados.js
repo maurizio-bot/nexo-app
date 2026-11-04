@@ -84,6 +84,19 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#main-estados-s
   B.win.NEXO_applyStatus(idA, { t: 'x', img: 'data:text/plain;base64,QQ==', ts: Date.now() });
   r.rechaza_img_mala = (B.win.NEXO_statusOf(idA) || {}).img === '';
 
+  // 2e. Fase 2 (audio en el estado, #dueño): A publica un estado con AUDIO → le llega a B con el audio; el visor
+  //     muestra el reproductor. Un "audio" que no es audio se descarta.
+  const AUDIO = 'data:audio/webm;base64,' + 'GkXfowEAAAAAAAAfQoaBAUL3gQFC8oEEQvOBCEKChHdlYm1Ch4ECQ'.repeat(2);
+  A.win.NEXO_setMyStatus('', '', '', AUDIO, 'audio/webm');
+  r.audio_llega_a_B = await wait(() => { const s = B.win.NEXO_statusOf(idA); return !!(s && s.aud === AUDIO); }, 30);
+  await sleep(400);
+  const chipAud = chips(B).find((c) => !/Mi estado|Tu estado/.test(c.textContent));
+  if (chipAud) { click(B.win, chipAud); await sleep(300); }
+  r.ver_muestra_audio = !!(B.win.document.querySelector('#estado-view #estado-audio'));
+  { const o = B.win.document.getElementById('estado-overlay'); if (o) o.remove(); }
+  B.win.NEXO_applyStatus(idA, { t: 'y', aud: 'data:text/plain;base64,QQ==', ts: Date.now() });
+  r.rechaza_aud_malo = (B.win.NEXO_statusOf(idA) || {}).aud === '';
+
   // 3. B publica el suyo por la INTERFAZ (chip "Mi estado" → input → Publicar) → le llega a A
   const miChip = chips(B).find((c) => /Mi estado|Tu estado/.test(c.textContent)) || chips(B)[0];
   click(B.win, miChip); await sleep(300);
@@ -111,6 +124,7 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#main-estados-s
   r.errores = logs.filter((l) => /TypeError|undefined is not|No se pudo descifrar/.test(l)).slice(0, 4);
   const ok = r.emparejados && r.llega_a_B && r.B_no_mensaje_visible && r.tira_muestra_a_A && r.ver_muestra_texto &&
     r.foto_llega_a_B && r.tira_muestra_foto && r.ver_muestra_foto && r.boton_like && r.like_llega_a_A && r.rechaza_img_mala &&
+    r.audio_llega_a_B && r.ver_muestra_audio && r.rechaza_aud_malo &&
     r.compose_abre && r.B_a_A_por_ui && r.caducado_no_se_ve && r.fresco_se_ve && r.futuro_acotado && r.quitar_borra_en_B && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('ESTADOS ' + JSON.stringify(r));
