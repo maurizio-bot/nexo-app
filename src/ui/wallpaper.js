@@ -63,12 +63,19 @@ function _paint(img) {
   try { app = document.getElementById('app'); } catch (e) { app = null; }
   if (!app) return;
   if (img && IMG_RE.test(img)) {
-    app.style.backgroundImage = 'linear-gradient(rgba(0,0,0,' + DIM + '),rgba(0,0,0,' + DIM + ')),url("' + img + '")';
-    app.style.backgroundSize = 'cover';
-    app.style.backgroundPosition = 'center';
-    app.style.backgroundRepeat = 'no-repeat';
+    // #dueño 04-11: el tema pone `#app{background:transparent!important}` (para dejar ver el gradiente de body::before).
+    // Ese !important le ganaba al estilo inline normal → el fondo del chat NUNCA se pintaba (lo probé en Chromium; el
+    // jsdom no aplica cascada, por eso la batería no lo cazaba). Hay que pintar con !important inline: el inline-important
+    // le gana al stylesheet-important. Al quitar, removeProperty devuelve el gradiente del tema.
+    app.style.setProperty('background-image', 'linear-gradient(rgba(0,0,0,' + DIM + '),rgba(0,0,0,' + DIM + ')),url("' + img + '")', 'important');
+    app.style.setProperty('background-size', 'cover', 'important');
+    app.style.setProperty('background-position', 'center', 'important');
+    app.style.setProperty('background-repeat', 'no-repeat', 'important');
   } else {
-    app.style.backgroundImage = '';   // vuelve al negro liso del CSS
+    app.style.removeProperty('background-image');   // vuelve al gradiente del tema (body::before) / negro liso
+    app.style.removeProperty('background-size');
+    app.style.removeProperty('background-position');
+    app.style.removeProperty('background-repeat');
   }
 }
 
