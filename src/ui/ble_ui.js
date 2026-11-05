@@ -663,9 +663,21 @@ export const BLE_UI_METHODS = {
     // Ronda 2771: "Cambiar nombre" (el nombre del chat ya se podía tocar y cambiar, pero nada lo decía)
     menu.innerHTML = '<div class="ble-menu-item" data-action="pin">' + (isPinned ? '&#x2606; Desfijar' : '&#x2605; Fijar') + '</div><div class="ble-menu-item" data-action="rename">&#x270F;&#xFE0F; Cambiar nombre</div><div class="ble-menu-item" data-action="profile">&#x1F464; Perfil</div><div class="ble-menu-item ble-menu-delete" data-action="delete">&#x1F5D1; Eliminar</div>';
     var rect = btn.getBoundingClientRect();
-    menu.style.top = (rect.bottom + 4) + 'px';
     menu.style.right = (window.innerWidth - rect.right) + 'px';
+    // #dueño 05-11: el menú se abría SIEMPRE hacia abajo (top = rect.bottom), así que en los contactos del final de
+    // la lista se salía por debajo de la pantalla y quedaba recortado (y el botón flotante estorbaba el ⋮). Ahora se
+    // mide el alto real y, si no cabe abajo, se abre hacia ARRIBA del botón. Se mide con el menú invisible para que no
+    // parpadee saltando de abajo hacia arriba.
+    menu.style.visibility = 'hidden';
     document.body.appendChild(menu);
+    var mh = menu.offsetHeight || 200;
+    var vh = window.innerHeight;
+    if (rect.bottom + mh + 8 > vh && rect.top - mh - 8 >= 0) {
+      menu.style.bottom = (vh - rect.top + 4) + 'px';
+    } else {
+      menu.style.top = (rect.bottom + 4) + 'px';
+    }
+    menu.style.visibility = '';
     menu.addEventListener('click', function(e) {
       var action = e.target.dataset.action;
       if (action === 'pin') { _togglePinnedContact(uuid); self.renderContactsList(); }

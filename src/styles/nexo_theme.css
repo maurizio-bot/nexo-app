@@ -42,7 +42,9 @@ body::before {
 #nexo-profile-btn svg, #nexo-new-group-btn svg { width: 21px; height: 21px; }
 
 #main-contacts-online-strip { border-bottom: 1px solid var(--nx-line) !important; }
-#main-contacts-list { padding: 6px 10px 96px !important; }
+/* #dueño 05-11: padding-bottom amplio para que el ÚLTIMO contacto se pueda subir por encima del botón flotante
+   (bottom:80 + 56 de alto) y su ⋮ no quede tapado/difícil de tocar. */
+#main-contacts-list { padding: 6px 10px 150px !important; }
 .ble-contact-row { border-radius: var(--nx-radius); padding: 10px 10px !important; margin: 2px 0; transition: background 0.15s, transform 0.12s; }
 .ble-contact-row:hover, .ble-contact-row:active { background: var(--nx-surface) !important; }
 .ble-contact-avatar { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08), 0 6px 18px rgba(0, 0, 0, 0.35); }
