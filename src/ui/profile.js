@@ -17,6 +17,7 @@ import { readReceiptsOn, setReadReceiptsOn } from './chat_state.js';
 import { t, getLang, setLang, LANGS, langName } from './i18n.js';
 import { attachNexoUnlockGesture } from './nexo_game.js';
 import { perfSectionHtml, renderPerfSection } from './perf.js';
+import { welcomeGuide } from './welcome_guide.js'; // #dueño 05-11: «ver la guía de bienvenida otra vez»
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _showInfoToast;
@@ -219,6 +220,9 @@ function _openSettingsSheet() {
       '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> ' + t('prof_tor_label', 'Usar Tor siempre (oculta tu IP; va más lento). El vídeo y los archivos grandes por internet ya lo usan solos.') + '</label>') +
     // Ronda 2808 (pedido del dueño «rendimiento api de nexo»): medición en vivo del rendimiento de NEXO
     perfSectionHtml() +
+    // #dueño 05-11: volver a ver la guía de bienvenida (welcome_guide.js) cuando se quiera
+    card('👋', t('welcome_settings_title', 'Guía de bienvenida'), '<div class="nx-sub" style="margin-bottom:8px;">' + t('welcome_settings_sub', 'Vuelve a ver la introducción: cómo agregar un contacto y mandar tu primer mensaje.') + '</div>' +
+      '<button id="nexo-show-welcome" class="nx-btn">' + t('welcome_settings_btn', 'Ver la guía otra vez') + '</button>') +
     card('🩺', t('diagnostics'), '<div class="nx-sub">' + t('prof_diag_sub', 'Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.') + '</div>' +
       '<button id="nexo-diag-copy" class="nx-btn nx-btn-primary">' + t('prof_diag_copy', 'Copiar diagnóstico') + '</button>' +
       '<textarea id="nexo-diag-text" readonly style="min-height:220px;width:100%;box-sizing:border-box;color:#9fe;font-size:10px;font-family:monospace;padding:8px;"></textarea>') +
@@ -303,6 +307,7 @@ function _openSettingsSheet() {
     fx.startRecovery(bi.localDeviceName || '');
     _renderFenixStatus();
   };
+  { var wB = sheet.querySelector('#nexo-show-welcome'); if (wB) wB.onclick = function() { sheet.remove(); welcomeGuide({ force: true }); }; }
   sheet.querySelector('#nexo-diag-copy').onclick = function() {
     var btn = this, txt = ta.value;
     var ok = function() { btn.textContent = t('prof_copied', 'Copiado ✓'); setTimeout(function() { btn.textContent = t('prof_diag_copy', 'Copiar diagnóstico'); }, 2000); };

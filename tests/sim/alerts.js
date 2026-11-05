@@ -32,6 +32,9 @@ async function boot(name, native) {
       Object.defineProperty(win.document, 'visibilityState', { configurable: true, get: () => vis[name] || 'visible' });
       Object.defineProperty(win.document, 'hidden', { configurable: true, get: () => (vis[name] || 'visible') === 'hidden' });
       win.navigator.mediaDevices = { getUserMedia: () => Promise.reject(new Error('sin micrófono en el simulador')) };
+      // #dueño 05-11: la guía de bienvenida sale antes del aviso de batería la 1ª vez; aquí se prueba el flujo de avisos
+      // EN AISLADO (bienvenida ya vista), así el aviso de batería/pantalla completa sale al arrancar como antes.
+      try { win.localStorage.setItem('nexo_welcome_done', '1'); } catch (e) {}
     },
   });
   const win = dom.window;

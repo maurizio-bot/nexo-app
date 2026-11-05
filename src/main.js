@@ -104,6 +104,7 @@ import { initAppLock, securitySectionHtml, renderSecuritySection, lockEnabled } 
 import { applyStaticI18n, t as _t } from './ui/i18n.js'; // #132 idioma: traducir el HTML estático + textos de estado
 import { initPerf } from './ui/perf.js';
 import { batteryGuard } from './ui/battery_prompt.js';
+import { welcomeGuide } from './ui/welcome_guide.js'; // #dueño 05-11: guía de bienvenida la primera vez (antes del aviso de batería)
 import { createNotifier } from './ui/notify.js';
 import { initE2E } from './vault/e2e_crypto.js';
 import { ratchetInit, ratchetSafetyNumber, ratchetPeerBundle, ratchetSessionPq } from './vault/e2e_ratchet.js';
@@ -781,7 +782,9 @@ async function initializeNexoApp() {
       console.log('[MAIN] Notificacion listener no disponible:', notifErr);
     }
     // Al arrancar, los contadores de la app mandan sobre las notificaciones que hubiera en el teléfono
-    setTimeout(function() { _notifier.syncNative(); Promise.resolve(_notifier.ensurePermission()).then(_askBackgroundOnce).catch(function() {}); }, 4000);
+    // #dueño 05-11: la PRIMERA vez, la guía de bienvenida (welcome_guide.js) y, al cerrarla, el aviso de batería de
+    // siempre. Si ya se vio la guía, welcomeGuide llama a _askBackgroundOnce al instante → mismo comportamiento de antes.
+    setTimeout(function() { _notifier.syncNative(); Promise.resolve(_notifier.ensurePermission()).then(function() { welcomeGuide({ onDone: _askBackgroundOnce }); }).catch(function() {}); }, 4000);
     var initPromise = window.NEXO.app.init();
     var timeoutPromise = new Promise(function(resolve, reject) {
       setTimeout(function() { reject(new Error('INIT_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.CONNECT) ? NEXO_CONFIG.TIMEOUTS.CONNECT + 3000 : 13000);
