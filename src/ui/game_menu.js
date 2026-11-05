@@ -5,6 +5,7 @@
  */
 import { openConnect4ForContact } from './connect4.js';
 import { openTetris } from './tetris.js';
+import { openTetrisVersusForContact } from './tetris_versus.js';
 import { _getCurrentContactId, _contactName } from './chat_format.js';
 import { _normId } from './ble_helpers.js';
 import { _showInfoToast } from './ui_bits.js';
@@ -20,7 +21,8 @@ var NX_RE = /^nx[0-9a-z]{8}$/;
 function _catalog() {
   return [
     { id: 'c4', emoji: '🔴', name: t('game_c4_name', 'Conecta 4'), open: openConnect4ForContact },
-    { id: 'tetris', emoji: '🧱', name: t('game_tetris_name', 'Tetris'), open: function() { openTetris(); }, solo: true },
+    { id: 'tetvs', emoji: '🧱', name: t('game_tetvs_name', 'Tetris versus'), open: openTetrisVersusForContact },
+    { id: 'tetris', emoji: '🧩', name: t('game_tetris_name', 'Tetris'), open: function() { openTetris(); }, solo: true },
   ];
 }
 

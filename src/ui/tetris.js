@@ -15,7 +15,7 @@ import { t } from './i18n.js';
 var COLS = 10, ROWS = 20;
 var LB_KEY = 'nexo_tetris_scores_v1';
 // Colores clásicos de Tetris (reconocibles) sobre tablero oscuro.
-var COLORS = { I: '#22d3ee', O: '#facc15', T: '#a855f7', S: '#22c55e', Z: '#ef4444', J: '#3b82f6', L: '#f97316' };
+var COLORS = { I: '#22d3ee', O: '#facc15', T: '#a855f7', S: '#22c55e', Z: '#ef4444', J: '#3b82f6', L: '#f97316', G: '#6b7280' }; // G = basura (gris) del modo versus
 var SHAPES = {
   I: [[0, 0, 0, 0], [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0]],
   J: [[1, 0, 0], [1, 1, 1], [0, 0, 0]],
@@ -241,6 +241,24 @@ function _close() {
 
 export function tetrisOverlayOpen() { return !!document.getElementById('tetris-overlay'); }
 export function tetrisCloseOverlay() { _close(); }
+
+// ---------- Núcleo PURO reutilizado por el modo VERSUS (tetris_versus.js), sin tocar el modo solo ----------
+export { COLS, ROWS, COLORS, newGame, tryMove, tryRotate, step, hardDrop, softDrop };
+// #dueño 05-11: en VERSUS, al hacer líneas le mando «basura» al rival; esta función la APLICA a mi tablero: n filas
+// grises ('G') suben desde abajo, cada una con un hueco (holes[k] en 0..COLS-1). Si eso empuja bloques por encima del
+// techo, o la pieza viva queda atrapada, pierdo (G.over). Determinista: el hueco viaja en el evento y se valida al llegar.
+export function addGarbage(G, n, holes) {
+  if (!G || G.over) return;
+  for (var k = 0; k < n; k++) {
+    var topHadBlocks = G.grid[0].some(function (c) { return !!c; });
+    G.grid.shift();
+    var hole = holes[k], row = [];
+    for (var c = 0; c < COLS; c++) row.push(c === hole ? '' : 'G');
+    G.grid.push(row);
+    if (topHadBlocks) G.over = true;
+  }
+  if (G.piece && collide(G, G.piece.m, G.piece.x, G.piece.y)) G.over = true;
+}
 
 // ---------- Ganchos de prueba (tests/sim/tetris.js): lógica determinista, sin canvas ni timers ----------
 try {
