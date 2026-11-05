@@ -107,6 +107,12 @@ function sendFile(p, name, type, bytes) {
   r.c5_antiinanicion_intenta = st._shouldDeferTinyMtu() === false;
   delete A.win.NEXO_MTU_DEFER_MS; AS._mtuDeferSince.clear();
 
+  // Caso 6 (#dueño 05-11, diagnóstico de 2 teléfonos): archivo GRANDE + MTU DESCONOCIDO (0, aún sin negociar) → aplazar
+  // (true). El MTU se negocia unas décimas después de arrancar sendFile; antes getMtu=0 → el guardia NO aplazaba y un
+  // archivo de 34 MB arrancaba por Bluetooth MTU 23 y tapaba la cola para todo. Ahora un MTU desconocido también aplaza.
+  AS._mtuDeferSince.clear(); st.content = BIG; biA.getMtu = function () { return 0; };
+  r.c6_grande_mtudesconocido_aplaza = st._shouldDeferTinyMtu() === true;
+
   // --- Extremo a extremo: arrancar un archivo GRANDE por MTU mínimo → 'pending', sin martilleo, registro persiste ---
   biA.getMtu = function () { return 23; };
   const fileId = 'bigfile_' + Date.now();
@@ -125,7 +131,7 @@ function sendFile(p, name, type, bytes) {
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT/.test(l)).slice(0, 5);
   const ok = r.hay_stream && r.c1_grande_mtu23_aplaza && r.c2_chico_mtu23_no_aplaza && r.c3_grande_mtusano_no_aplaza &&
-             r.c4_net_no_aplaza && r.c5_antiinanicion_intenta && r.e2e_rechaza_defer && r.e2e_estado_pending &&
+             r.c4_net_no_aplaza && r.c5_antiinanicion_intenta && r.c6_grande_mtudesconocido_aplaza && r.e2e_rechaza_defer && r.e2e_estado_pending &&
              r.e2e_sin_flujo_martillando && r.e2e_registro_persiste && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('FILETINYMTU ' + JSON.stringify(r));

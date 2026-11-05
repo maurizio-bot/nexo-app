@@ -1729,7 +1729,13 @@ ChatStream.prototype._shouldDeferTinyMtu = function() {
     var ble = this.ble;
     var mtu = (ble && typeof ble.getMtu === 'function') ? ble.getMtu(dev) : 0;
     var tiny = (typeof window !== 'undefined' && Number(window.NEXO_TINY_MTU)) || TINY_MTU;
-    if (!(mtu > 0 && mtu <= tiny)) return false;                     // MTU sano o desconocido → comportamiento de siempre
+    // #dueño 05-11 (diagnóstico de 2 teléfonos: un archivo de 34 MB se fue por Bluetooth MTU 23 y tapó la cola para TODO
+    // —textos, fotos, ACKs—). El MTU se negocia unas décimas DESPUÉS de arrancar sendFile, así que acá getMtu devolvía 0
+    // (desconocido) y la condición vieja `!(mtu>0 && mtu<=tiny)` daba return false → NO aplazaba → el archivote arrancaba
+    // por MTU 23. Ahora: solo un MTU CONOCIDO y SANO (> tiny) se manda ya; MTU mínimo (≤tiny) O desconocido (0, aún sin
+    // negociar) cae a la decisión de aplazar de abajo (y resumeOutgoingTransfers lo re-rutea por Wi-Fi/internet; si tras el
+    // tope no aparece nada mejor, se intenta igual por Bluetooth: nunca se pierde).
+    if (mtu > tiny) return false;                                    // MTU conocido y sano → comportamiento de siempre
     var big = (typeof window !== 'undefined' && Number(window.NEXO_BLE_DEFER_CHARS)) || BLE_TINY_MTU_DEFER_CHARS;
     if (!this.content || this.content.length <= big) return false;   // archivo chico (foto/preview): cabe por MTU 23 → se manda
     // Anti-inanición: esperar un rato por un camino mejor; si ya esperó bastante, intentar igual por Bluetooth (no perder)
