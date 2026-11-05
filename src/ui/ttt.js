@@ -16,6 +16,7 @@ import { _normId } from './ble_helpers.js';
 import { _sendTextTo } from './send.js';
 import { _contactName, _getCurrentContactId } from './chat_format.js';
 import { _showInfoToast } from './ui_bits.js';
+import { recordGameResult } from './game_stats.js';
 import { t } from './i18n.js';
 
 var NX_RE = /^nx[0-9a-z]{8}$/;
@@ -38,7 +39,10 @@ function _parseBoard(raw) {
   return b;
 }
 function _same(a, b) { for (var i = 0; i < 9; i++) if (a[i] !== b[i]) return false; return true; }
-function _finish(g) { var w = _winner(g.board); if (w) { g.over = true; g.winner = w; } else if (_count(g.board) === 9) { g.over = true; g.winner = ''; } }
+function _finish(g) {
+  var w = _winner(g.board); if (w) { g.over = true; g.winner = w; } else if (_count(g.board) === 9) { g.over = true; g.winner = ''; }
+  if (g.over && !g.recorded) { g.recorded = true; try { recordGameResult(g.opp, 'ttt', g.winner === '' ? 'draw' : (g.winner === g.me ? 'win' : 'loss')); } catch (e) {} }
+}
 
 function _newGid() { return 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 

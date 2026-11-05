@@ -16,6 +16,7 @@ import { _normId } from './ble_helpers.js';
 import { _sendTextTo } from './send.js';
 import { _contactName, _getCurrentContactId } from './chat_format.js';
 import { _showInfoToast } from './ui_bits.js';
+import { recordGameResult } from './game_stats.js';
 import { t } from './i18n.js';
 
 var NX_RE = /^nx[0-9a-z]{8}$/;
@@ -58,7 +59,12 @@ function _parseBoard(raw) {
   return b;
 }
 function _same(a, b) { for (var i = 0; i < N; i++) if (a[i] !== b[i]) return false; return true; }
-function _finish(g) { var w = _winner(g.board); if (w) { g.over = true; g.winner = w; } else if (_count(g.board) === N) { g.over = true; g.winner = ''; } }
+function _finish(g) {
+  var w = _winner(g.board); if (w) { g.over = true; g.winner = w; } else if (_count(g.board) === N) { g.over = true; g.winner = ''; }
+  // #dueño 05-11: al terminar, anotar el cabeza a cabeza (una sola vez por partida; el tablero es determinista, así que
+  // el que gana cuenta victoria y el que pierde, derrota, sin sincronizar nada).
+  if (g.over && !g.recorded) { g.recorded = true; try { recordGameResult(g.opp, 'c4', g.winner === '' ? 'draw' : (g.winner === g.me ? 'win' : 'loss')); } catch (e) {} }
+}
 function _newGid() { return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
 // ----- Envío (yo juego el color g.me) -----
@@ -112,17 +118,29 @@ export function connect4OnAction(senderNx, act) {
 function _notify(g, isNew) {
   if (openGid === g.gid) { _renderOverlay(g); return; }
   var cur = _normId(_getCurrentContactId());
-  if (cur === _normId(g.opp)) { _openOverlay(g.gid); return; }
+  var visible = (typeof document === 'undefined' || document.visibilityState !== 'hidden');
+  if (cur === _normId(g.opp) && visible) { _openOverlay(g.gid); return; }   // en SU chat y a la vista → abrir ya
+  // No estás mirando esta partida. Si sigue viva, marcá para abrirla al ENTRAR a su chat (#dueño 05-11).
+  if (!g.over) g.autoOpenPending = true;
   var msg = isNew ? ('🔴 ' + g.oppName + t('chat_c4_invited', ' te invitó a Conecta 4'))
     : (g.over ? (t('chat_c4_with', '🔴 Conecta 4 con ') + g.oppName + ': ' + _endText(g))
       : ('🔴 ' + g.oppName + t('chat_c4_your_turn_toast', ': te toca en Conecta 4')));
-  try { _showInfoToast(msg, 3500); } catch (e) {}
+  // App en segundo plano → notificación del teléfono (como un mensaje, vía el nativo). A la vista pero en otro chat → toast.
+  if (!visible) _fireGameNotif(g, msg);
+  else { try { _showInfoToast(msg, 3500); } catch (e) {} }
+}
+function _fireGameNotif(g, text) {
+  try {
+    var pl = (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null;
+    if (pl && typeof pl.notifyMessage === 'function') pl.notifyMessage({ chatId: _normId(g.opp), name: g.oppName, msgId: 'game_c4_' + g.gid, text: text, count: 1 }).catch(function () {});
+  } catch (e) {}
 }
 function _endText(g) { return g.winner === '' ? t('chat_ttt_draw', 'empate') : (g.winner === g.me ? t('chat_ttt_won', 'ganaste 🎉') : t('chat_ttt_lost', 'perdiste')); }
 
 // ----- Overlay -----
 function _openOverlay(gid) {
   var g = games[gid]; if (!g) return;
+  g.autoOpenPending = false;
   _closeOverlay();
   openGid = gid;
   var ov = document.createElement('div');
@@ -192,6 +210,21 @@ export function openConnect4ForContact(cid) {
 export function connect4OverlayOpen() { return !!document.getElementById('c4-overlay'); }
 export function connect4CloseOverlay() { _closeOverlay(); }
 
+// #dueño 05-11: al ENTRAR al chat de un contacto que te invitó (o donde te toca), el juego se abre solo (una vez).
+// Podés jugar o cerrarlo. La marca `autoOpenPending` se puso en _notify al llegar la jugada estando fuera de esa partida.
+function _autoOpenForContact(cid) {
+  cid = _normId(cid);
+  if (!NX_RE.test(cid) || openGid) return;
+  var pend = null;
+  Object.keys(games).forEach(function(k) { var g = games[k]; if (_normId(g.opp) === cid && !g.over && g.autoOpenPending) pend = g; });
+  if (pend) setTimeout(function() { if (!openGid && games[pend.gid] && games[pend.gid].autoOpenPending) _openOverlay(pend.gid); }, 350);
+}
+try {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('nexo:ble:openChat', function(e) { var d = (e && e.detail) || {}; _autoOpenForContact(d.contactId || (d.contact && (d.contact.nexoId || d.contact.deviceUUID || d.contact.id)) || ''); });
+  }
+} catch (e) {}
+
 // Ganchos de prueba (tests/sim/connect4.js): jugar y leer estado sin depender del DOM.
 try {
   if (typeof window !== 'undefined') {
@@ -199,6 +232,7 @@ try {
     window.__nexoC4Drop = function(gid, col) { return _drop(games[gid], col); };
     window.__nexoC4State = function(gid) { var g = games[gid]; return g ? { board: g.board.slice(), me: g.me, over: g.over, winner: g.winner, turn: _turn(g.board) } : null; };
     window.__nexoC4GidFor = function(cid) { var r = null; Object.keys(games).forEach(function(k) { if (_normId(games[k].opp) === _normId(cid)) r = k; }); return r; };
+    window.__nexoC4PendingFor = function(cid) { var r = false; Object.keys(games).forEach(function(k) { var g = games[k]; if (_normId(g.opp) === _normId(cid) && !g.over && g.autoOpenPending) r = true; }); return r; };
     window.__nexoCloseC4 = function() { _closeOverlay(); };
   }
 } catch (e) {}

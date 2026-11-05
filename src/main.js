@@ -114,6 +114,7 @@ import { groupAttachment, isGroupId, parseGroupEnvelope } from './ui/groups.js';
 import { isGroupWire, startGroupMedia } from './ui/group_media.js';
 import { avatarInit } from './ui/avatar.js';
 import { profileInit } from './ui/profile_data.js';
+import { gameStatsInit } from './ui/game_stats.js';
 import { wallpaperInit, wallpaperUse, installWallpaperGesture, setListWallpaper, clearListWallpaper, setChatWallpaper, clearChatWallpaper, wallpaperRefresh, wallpaperApplied, setChatWallpaperFor, clearChatWallpaperFor, chatWallpaperFor, hasChatWallpaper, hasChatWallpaperFor, shareChatWallpaper, applyChatWallpaper } from './ui/wallpaper.js';
 import { estadosInit } from './ui/estados.js';
 import { parseCallSignal } from './ui/calls.js';
@@ -791,6 +792,7 @@ async function initializeNexoApp() {
     startGroupMedia(); // ronda 2764: HD y archivos grandes en grupos (reanudar lo pendiente)
     avatarInit(); // ronda 2765: foto de perfil
     profileInit(); // ronda 2910: datos de mi perfil (nombre y apellido, teléfono, correo — opcionales)
+    gameStatsInit(); // #dueño 05-11: ranking cabeza a cabeza de los juegos (Fase A)
     wallpaperInit(); // ronda 2889: fondo de pantalla (lista + chats)
     estadosInit(); // ronda 2799: Estados (Stream fase 1)
     window.addEventListener('nexo:avatar', function() { var b = window.bleInterface; if (b) { try { b.renderContactsList(); b.renderOnlineStrip(); } catch (e) {} } });

@@ -161,6 +161,15 @@ body::before {
   border-radius: 12px; background: rgba(255,255,255,0.05); color: var(--nx-text, #e8f0f2); font-size: 15px; font-weight: 600; cursor: pointer; text-align: left; }
 .game-pick-item:active { background: rgba(0,200,255,0.12); }
 .game-pick-emoji { font-size: 24px; line-height: 1; }
+/* #dueño 05-11: marcador cabeza a cabeza a la derecha del juego, y hoja de ranking. */
+.game-pick-name { flex: 1 1 auto; }
+.game-pick-score { margin-left: auto; font-size: 12px; font-weight: 600; color: #19c3c9; white-space: nowrap; flex-shrink: 0; }
+.game-rank-list { display: flex; flex-direction: column; gap: 3px; max-height: 60vh; overflow-y: auto; }
+.game-rank-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,0.04); }
+.game-rank-pos { min-width: 28px; text-align: center; font-size: 16px; font-weight: 700; color: #9fb0b5; flex-shrink: 0; }
+.game-rank-name { flex: 1 1 auto; font-weight: 600; color: #e8f0f2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-rank-score { font-size: 13px; font-weight: 700; color: #19c3c9; white-space: nowrap; flex-shrink: 0; }
+.game-rank-empty { text-align: center; color: #9fb0b5; padding: 24px 12px; font-size: 14px; line-height: 1.4; }
 
 /* Tetris (tetris.js) — overlay propio: tablero (canvas) arriba, controles abajo. */
 /* #dueño 05-11: el tablero se veía MINÚSCULO → panel más ancho, cromo (cabecera/controles/pie) más compacto y alto casi

@@ -48,6 +48,8 @@ export function _setupBackButton() {
         if (sted) { sted.remove(); return true; } // 2878: editor de stickers (el modal más alto)
         var gpick = document.getElementById('game-picker-overlay');
         if (gpick) { if (typeof window.__nexoCloseGamePicker === 'function') window.__nexoCloseGamePicker(); else gpick.remove(); return true; } // salón de juegos
+        var grank = document.getElementById('game-rank-overlay');
+        if (grank) { if (typeof window.__nexoCloseGamePicker === 'function') window.__nexoCloseGamePicker(); else grank.remove(); return true; } // #dueño 05-11: hoja de ranking
         var ttt = document.getElementById('ttt-overlay');
         if (ttt) { if (typeof window.__nexoCloseTtt === 'function') window.__nexoCloseTtt(); else ttt.remove(); return true; } // 2830: juego
         var c4 = document.getElementById('c4-overlay');

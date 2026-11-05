@@ -82,6 +82,13 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const gidB = B.win.__nexoC4GidFor(id('A'));
   r.mismo_gid = gidB === gid;
 
+  // #dueño 05-11: AUTO-ABRIR al entrar al chat. B recibió la invitación SIN estar en el chat de A → quedó marcada
+  // «pendiente»; al dispatch de openChat con A, el overlay de Conecta 4 se abre solo. Luego se cierra para seguir el test.
+  r.b_autoopen_pendiente = B.win.__nexoC4PendingFor(id('A')) === true;
+  B.win.dispatchEvent(new B.win.CustomEvent('nexo:ble:openChat', { detail: { contactId: id('A') } }));
+  r.b_abre_al_entrar = (await waitFor(async () => !!B.win.document.getElementById('c4-overlay'), 4000)) !== null;
+  B.win.__nexoCloseC4(); await closeChat(B); await sleep(200);
+
   // Columna 0 para A (R), columna 1 para B (Y). A arma 4 verticales en la col 0.
   B.win.__nexoC4Drop(gidB, 1);                     // Y → 36
   r.a_recibe = (await waitA(gid, (s) => s.board[bot(1)] === 'Y', 30000)) !== null;
@@ -104,7 +111,16 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   var sa2 = stA(gid); r.a_gana = !!(sa2 && sa2.over && sa2.winner === 'R');
   r.b_ve_gana = (await waitB(gidB, (s) => s.over && s.winner === 'R', 30000)) !== null;
 
-  r.resultado = (r.gid && r.b_recibe_invite && r.mismo_gid && r.a_recibe && r.ilegal_turno && r.a_gana && r.b_ve_gana) ? 'OK' : 'FALLO';
+  // #dueño 05-11: RANKING cabeza a cabeza. A ganó → 1 victoria vs B; B perdió → 1 derrota vs A (cada teléfono su lado,
+  // sin sincronizar). Y el leaderboard de A lista a B con esa victoria.
+  await sleep(400);
+  const h2hA = A.win.__nexoGameH2H(id('B'), 'c4'), h2hB = B.win.__nexoGameH2H(id('A'), 'c4');
+  r.ranking_A_1v0 = !!(h2hA && h2hA.w === 1 && h2hA.l === 0);
+  r.ranking_B_0v1 = !!(h2hB && h2hB.w === 0 && h2hB.l === 1);
+  const lbA = A.win.__nexoGameLeaderboard();
+  r.leaderboard_A = Array.isArray(lbA) && lbA.length >= 1 && lbA[0].w === 1 && lbA[0].l === 0;
+
+  r.resultado = (r.gid && r.b_recibe_invite && r.mismo_gid && r.b_autoopen_pendiente && r.b_abre_al_entrar && r.a_recibe && r.ilegal_turno && r.a_gana && r.b_ve_gana && r.ranking_A_1v0 && r.ranking_B_0v1 && r.leaderboard_A) ? 'OK' : 'FALLO';
   console.log('C4 ' + JSON.stringify(r));
   try { fs.writeFileSync(path.join(buildDir, 'last_logs_connect4.txt'), logs.slice(-250).join('\n')); } catch (e) {}
   process.exit(0);
