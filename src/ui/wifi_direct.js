@@ -116,10 +116,15 @@ export class WifiDirect {
     if (this.busy || !this.supported() || bytes > WD_MAX_BYTES) return false;
     var nx = this._nexoOf(deviceId);
     if (!(this.peers.has(nx) && !this._cooling(nx) && this._directReady(deviceId))) return false;
-    // Umbral dinámico (política de caminos, paso 2/3, dueño 04-11): si el grupo WD ya está PREPARADO (caliente), el
-    // montaje de ~5 s ya se pagó → vale la pena WD incluso para archivos más chicos. Si no, el umbral normal. HOY
-    // _isWdReady es siempre false (lo activará la parte NATIVA que mantiene el grupo caliente) → sin cambio de conducta.
-    var min = this._isWdReady(nx) ? WD_MIN_BYTES_READY : WD_MIN_BYTES;
+    // Umbral dinámico (política de caminos, dueño 04-11): WD vale la pena para archivos MEDIANOS (no solo ≥150 KB) cuando:
+    //  - el grupo ya está PREPARADO/caliente (warm — paso NATIVO siguiente; hoy _isWdReady es false), O
+    //  - el Bluetooth con este contacto quedó en MTU MÍNIMO (23, lentísimo): aunque montar el grupo cueste ~5 s, por BT 23
+    //    un archivo mediano son MINUTOS; WD lo esquiva (diagnóstico del dueño 05-11). Si WD falla, `_sendFileBest` cae a
+    //    Bluetooth igual (nunca se pierde). Interruptor NEXO_WD_TINY para apagarlo si en los teléfonos molesta.
+    var mtu = (this.ble && typeof this.ble.getMtu === 'function') ? this.ble.getMtu(deviceId) : 0;
+    var tiny = (typeof window !== 'undefined' && Number(window.NEXO_TINY_MTU)) || 50;
+    var btLento = ((typeof window === 'undefined') || window.NEXO_WD_TINY !== false) && mtu > 0 && mtu <= tiny;
+    var min = (this._isWdReady(nx) || btLento) ? WD_MIN_BYTES_READY : WD_MIN_BYTES;
     return bytes >= min;
   }
 

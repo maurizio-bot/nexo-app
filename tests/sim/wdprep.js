@@ -10,10 +10,11 @@ const { importSrc } = require('./srcmod');
 
   const BMAC = 'bbbbbbbbbbbb';           // MAC del contacto B (normalizada, sin ':')
   const fakeBle = {
-    localNexoId: 'nxa0000001',
+    localNexoId: 'nxa0000001', mtu: 185,                                           // MTU del enlace BT por defecto: sano
     _macToNexoId: new Map([[BMAC, 'nxb0000002']]),
     _resolveDeviceIdForNexoId(nx) { return nx === 'nxb0000002' ? BMAC : null; },   // solo B tiene Bluetooth directo
     _getDeviceState(dev) { return String(dev).toLowerCase() === BMAC ? { state: 'ready_to_chat' } : null; }, // y está vivo
+    getMtu(dev) { return String(dev).toLowerCase() === BMAC ? this.mtu : 185; },   // MTU del BT (configurable en la prueba)
   };
   const mk = () => { const wd = Object.assign(new WifiDirect(fakeBle), { status: { supported: true, granted: true } }); wd.peers.add('nxb0000002'); return wd; };
 
@@ -51,10 +52,23 @@ const { importSrc } = require('./srcmod');
 
   r.constantes = (WD_MIN_BYTES === 150000 && WD_MIN_BYTES_READY === 20000);
 
+  // ----- PASO 1 (dueño 05-11): BT en MTU MÍNIMO (23) → WD para archivos MEDIANOS aunque NO esté preparado (esquivar el BT
+  // lento del diagnóstico). Usa el Wi-Fi Direct que YA existe; si falla, cae a Bluetooth. Apagable con NEXO_WD_TINY. -----
+  fakeBle.mtu = 23;
+  const wdt = mk();
+  r.bt_lento_mediano_por_wd = wdt.eligible(BMAC, 30000) === true;   // 30 KB por WD porque el BT va a 23 (lentísimo)
+  r.bt_lento_chico_no = wdt.eligible(BMAC, 10000) === false;        // 10 KB sigue sin WD (no compensa montar el grupo)
+  fakeBle.mtu = 185;
+  r.bt_sano_mediano_no = wdt.eligible(BMAC, 30000) === false;       // con BT sano (185) el mediano NO va por WD (como hoy)
+  global.window = { NEXO_WD_TINY: false }; fakeBle.mtu = 23;
+  r.interruptor_apaga = wdt.eligible(BMAC, 30000) === false;        // NEXO_WD_TINY=false desactiva el atajo
+  delete global.window; fakeBle.mtu = 185;
+
   const ok = r.grande_va_por_wd && r.mediano_no_sin_preparar && r.sin_preparar_isready_false && r.conviene_preparar_B &&
     r.no_prepara_sin_bt && r.no_prepara_sin_soporte && r.preparado_isready && r.mediano_si_preparado &&
     r.chico_no_aunque_preparado && r.ya_preparado_no_reprepara && r.soltar_sube_umbral && r.fallo_suelta &&
-    r.unmark_suelta && r.ttl_vencido && r.constantes;
+    r.unmark_suelta && r.ttl_vencido && r.constantes &&
+    r.bt_lento_mediano_por_wd && r.bt_lento_chico_no && r.bt_sano_mediano_no && r.interruptor_apaga;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('WDPREP ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);
