@@ -128,7 +128,7 @@ body::before {
 .stedit-actions .nx-btn { flex: 1; margin: 0; }
 /* Tres en raya (2830): overlay del juego de 2 jugadores */
 .ttt-overlay { position: fixed; inset: 0; z-index: 2650; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.55); padding: 16px; }
-.ttt-panel { width: 100%; max-width: 360px; background: var(--nx-surface, #12232a); border-radius: 16px; padding: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+.ttt-panel { width: 100%; max-width: 360px; background: linear-gradient(160deg, #13223c, #0b1324); border: 1px solid rgba(0,200,255,0.18); border-radius: 16px; padding: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); } /* opaco: var(--nx-surface) es casi transparente y el panel dejaba ver el fondo */
 .ttt-head { text-align: center; color: var(--nx-text, #e8f0f2); margin-bottom: 12px; }
 .ttt-title { font-size: 17px; }
 .ttt-vs { font-size: 12px; color: var(--nx-muted, #9fb0b5); margin-top: 2px; }
@@ -143,6 +143,24 @@ body::before {
 .ttt-again, .ttt-close { flex: 1; padding: 11px; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
 .ttt-again { background: #19c3c9; color: #05242a; }
 .ttt-close { background: rgba(255,255,255,0.1); color: #e8f0f2; }
+
+/* Conecta 4 (connect4.js) — reusa .ttt-overlay/.ttt-panel/.ttt-head/.ttt-foot; solo el tablero es propio. */
+.c4-panel { max-width: 400px; }
+.c4-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; padding: 8px; border-radius: 14px;
+  background: linear-gradient(160deg, rgba(0,200,255,0.16), rgba(168,85,247,0.16)); border: 1px solid rgba(0,200,255,0.25); }
+.c4-cell { aspect-ratio: 1 / 1; border: none; border-radius: 50%; padding: 0; cursor: pointer;
+  background: rgba(0,0,0,0.38); box-shadow: inset 0 2px 5px rgba(0,0,0,0.5); transition: transform .08s; }
+.c4-cell:disabled { cursor: default; }
+.c4-cell:not(:disabled):active { transform: scale(0.92); }
+.c4-cell.c4-r { background: radial-gradient(circle at 35% 30%, #ff8a8a, #e11d48 70%); box-shadow: inset 0 2px 4px rgba(0,0,0,0.3), 0 0 6px rgba(225,29,72,0.5); }
+.c4-cell.c4-y { background: radial-gradient(circle at 35% 30%, #ffe08a, #f59e0b 70%); box-shadow: inset 0 2px 4px rgba(0,0,0,0.3), 0 0 6px rgba(245,158,11,0.5); }
+
+/* Salón de juegos (game_menu.js) — reusa .ttt-overlay/.ttt-panel/.ttt-head/.ttt-foot. */
+.game-pick-list { display: flex; flex-direction: column; gap: 10px; }
+.game-pick-item { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid rgba(0,200,255,0.22);
+  border-radius: 12px; background: rgba(255,255,255,0.05); color: var(--nx-text, #e8f0f2); font-size: 15px; font-weight: 600; cursor: pointer; text-align: left; }
+.game-pick-item:active { background: rgba(0,200,255,0.12); }
+.game-pick-emoji { font-size: 24px; line-height: 1; }
 /* Ronda 2789 (informe del dueño): entregado (llegó, sin leer) y leído se veían casi igual porque los dos son ✓✓ y el
    color de "entregado" era casi blanco. Ahora: enviado ✓ gris oscuro, entregado ✓✓ GRIS claro (apagado, "aún sin
    leer"), leído ✓✓ AZUL con brillo. Como WhatsApp: gris hasta que lo leen, y ahí se pone de color. */

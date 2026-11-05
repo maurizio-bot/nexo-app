@@ -19,6 +19,7 @@ import { _failStatus } from './ble_helpers.js';
 import { openStickerPicker, isValidStickerImg } from './stickers.js';
 import { openStickerEditor } from './sticker_editor.js';
 import { openTttForContact } from './ttt.js';
+import { openGamePicker } from './game_menu.js';
 import { getPermissionShim } from '../core/NexoPermissionShim.js';
 import { rem } from './rem.js';
 import { vaultFindContactByNexoId, vaultSaveContact } from '../vault/vault_manager.js';
@@ -98,7 +99,8 @@ export function _bindAttachmentHandlers() {
       else if (type === 'cobro') _handleCobro();
       else if (type === 'contact') _handleShareContacts();
       else if (type === 'sticker') { _closeAttachMenu(); var _scid = _getCurrentContactId(); openStickerPicker(_scid, _sendStickerTo, function() { openStickerEditor(_scid, _sendStickerTo); }); }
-      else if (type === 'ttt') { _closeAttachMenu(); openTttForContact(_getCurrentContactId()); }
+      else if (type === 'ttt') { _closeAttachMenu(); openTttForContact(_getCurrentContactId()); } // compat: por si quedó algún item viejo
+      else if (type === 'games') { _closeAttachMenu(); openGamePicker(_getCurrentContactId()); } // salón de juegos (game_menu.js)
     });
   });
   document.addEventListener('click', function(e) {

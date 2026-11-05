@@ -46,8 +46,12 @@ export function _setupBackButton() {
       try {
         var sted = document.getElementById('sticker-editor');
         if (sted) { sted.remove(); return true; } // 2878: editor de stickers (el modal más alto)
+        var gpick = document.getElementById('game-picker-overlay');
+        if (gpick) { if (typeof window.__nexoCloseGamePicker === 'function') window.__nexoCloseGamePicker(); else gpick.remove(); return true; } // salón de juegos
         var ttt = document.getElementById('ttt-overlay');
         if (ttt) { if (typeof window.__nexoCloseTtt === 'function') window.__nexoCloseTtt(); else ttt.remove(); return true; } // 2830: juego
+        var c4 = document.getElementById('c4-overlay');
+        if (c4) { if (typeof window.__nexoCloseC4 === 'function') window.__nexoCloseC4(); else c4.remove(); return true; } // Conecta 4
         var stk = document.getElementById('sticker-sheet');
         if (stk) { stk.remove(); return true; } // 2829: hoja de stickers
         var fs = document.getElementById('fullscreen-media-overlay');

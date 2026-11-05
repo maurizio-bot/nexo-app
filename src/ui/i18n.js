@@ -192,6 +192,16 @@ var STRINGS = {
   chat_ttt_turn_of: { es: "Turno de ", it: "Turno di ", en: "Turn: " },
   chat_ttt_two_people: { es: "Los juegos son entre dos personas (abre el chat de un contacto)", it: "I giochi sono tra due persone (apri la chat di un contatto)", en: "Games are between two people (open a contact's chat)" },
 
+  // Salón de juegos + Conecta 4 (Fase A entretenimiento)
+  game_pick_title: { es: "🎮 Elegí un juego", it: "🎮 Scegli un gioco", en: "🎮 Pick a game" },
+  game_ttt_name: { es: "Tres en raya", it: "Tris", en: "Tic-Tac-Toe" },
+  game_c4_name: { es: "Conecta 4", it: "Forza 4", en: "Connect 4" },
+  chat_c4_title: { es: "Conecta 4", it: "Forza 4", en: "Connect 4" },
+  chat_c4_you_paren: { es: "Tú (", it: "Tu (", en: "You (" },
+  chat_c4_invited: { es: " te invitó a Conecta 4", it: " ti ha invitato a Forza 4", en: " invited you to Connect 4" },
+  chat_c4_with: { es: "🔴 Conecta 4 con ", it: "🔴 Forza 4 con ", en: "🔴 Connect 4 with " },
+  chat_c4_your_turn_toast: { es: ": te toca en Conecta 4", it: ": tocca a te in Forza 4", en: ": your turn in Connect 4" },
+
   // Llamadas y videollamadas - Fase 2c
   call_e2e: { es: "Cifrada de extremo a extremo", it: "Crittografia end-to-end", en: "End-to-end encrypted" },
   call_err_no_permission: { es: "sin permiso", it: "senza permesso", en: "no permission" },

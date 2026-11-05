@@ -7,6 +7,7 @@ import { applyAvatar } from './avatar.js';
 import { applyChatWallpaper } from './wallpaper.js';
 import { applyStatus, likeReceived } from './estados.js';
 import { tttOnAction } from './ttt.js';
+import { connect4OnAction } from './connect4.js';
 import { _PREVIEW_BY_TYPE, _chatKind, _contactName, _cut, _findMessage, _getCurrentContactId, _msgSummary, _myNexoId, _normId, _peerUnderstands, _plainText } from './chat_format.js';
 import { _showInfoToast } from './ui_bits.js';
 import { _videoFormat } from './video_tools.js';
@@ -557,7 +558,11 @@ export function _applyChatAction(senderId, act) {
   if (act && act.act === 'wp') { applyChatWallpaper(senderId, act); return; } // ronda 2890: fondo de chat compartido (wallpaper.js)
   if (act && act.act === 'st') { applyStatus(senderId, act); return; } // ronda 2799: Estado (Stream fase 1, estados.js)
   if (act && act.act === 'sl') { likeReceived(senderId, act); return; } // ronda 2906: «me gusta» a mi estado (estados.js fase 2)
-  if (act && act.act === 'game') { tttOnAction(senderId, act); return; } // ronda 2830: tres en raya (ttt.js)
+  if (act && act.act === 'game') { // ronda 2830+: juegos por turnos; se enruta por act.g
+    if (act.g === 'c4') connect4OnAction(senderId, act);   // Conecta 4 (connect4.js)
+    else tttOnAction(senderId, act);                        // Tres en raya (ttt.js)
+    return;
+  }
   // Ronda 2782: el contacto editó uno de SUS mensajes de texto
   if (act && act.act === 'edit' && act.id && typeof act.t === 'string') {
     var cide = _normId(senderId);
