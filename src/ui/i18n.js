@@ -383,6 +383,10 @@ var STRINGS = {
 
   // Perfil y Ajustes - Fase 2f
   prof_title: { es: "Perfil", it: "Profilo", en: "Profile" },
+  prof_cp_name: { es: "Nombre", it: "Nome", en: "Name" },
+  prof_cp_phone: { es: "Teléfono", it: "Telefono", en: "Phone" },
+  prof_cp_email: { es: "Correo", it: "Email", en: "Email" },
+  prof_cp_none: { es: "Este contacto todavía no compartió su teléfono ni correo.", it: "Questo contatto non ha ancora condiviso telefono o email.", en: "This contact hasn't shared their phone or email yet." },
   prof_change_photo: { es: "Cambiar foto", it: "Cambia foto", en: "Change photo" },
   prof_my_id: { es: "Mi NEXO ID", it: "Il mio NEXO ID", en: "My NEXO ID" },
   prof_remove: { es: "Quitar", it: "Rimuovi", en: "Remove" },

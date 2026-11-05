@@ -9,6 +9,7 @@ import { _diagnosticText } from './diag.js';
 import { startReceiveAccount, startSendAccount } from './move_account.js';
 import { clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
 import { myProfile, setMyProfile } from './profile_data.js';
+import { getContactProfile, profileShareResend } from './profile_share.js';
 import { _getBLEContacts, _normId } from './ble_helpers.js';
 import { hasListWallpaper, hasChatWallpaper, setListWallpaper, clearListWallpaper, setChatWallpaper, clearChatWallpaper, makeWallpaper } from './wallpaper.js';
 import { mirrorPeerPref, setMirrorPeerPref } from './calls_ui.js';
@@ -106,6 +107,7 @@ function _openProfileSheet() {
     if (fName) fName.value = mp.name; if (fPhone) fPhone.value = mp.phone; if (fEmail) fEmail.value = mp.email;
     var save = function () {
       var r = setMyProfile({ name: fName ? fName.value : '', phone: fPhone ? fPhone.value : '', email: fEmail ? fEmail.value : '' });
+      try { profileShareResend(); } catch (e) {}   // #dueño 04-11: al cambiar mis datos, reenviarlos a los contactos (E2E)
       if (r && r.email_bad && _showInfoToast) _showInfoToast(t('prof_email_bad', 'Ese correo no parece un correo (se guardó igual).'), 2600);
     };
     [fName, fPhone, fEmail].forEach(function (el) { if (el) el.addEventListener('change', save); });
@@ -122,6 +124,18 @@ function _openContactProfile(uuid) {
   var c = _getBLEContacts().find(function (x) { return _normId(x.nexoId || x.deviceUUID) === nx; }) || {};
   var name = String(c.name || '').trim() || nx.toUpperCase();
   var online = !!(c.connected || c.online || c.isOnline);
+  // #dueño 04-11 (perfil 2b/3): si el contacto compartió sus datos COMPLETOS (por E2E, profile_share.js), se muestran acá.
+  var prof = null; try { prof = getContactProfile(nx); } catch (e) {}
+  var datosHtml;
+  if (prof && (prof.phone || prof.email || (prof.name && prof.name !== name))) {
+    datosHtml = '<div class="nx-card" style="margin-top:10px;display:flex;flex-direction:column;gap:4px;text-align:left;">';
+    if (prof.name && prof.name !== name) datosHtml += '<div class="nx-idtxt">' + t('prof_cp_name', 'Nombre') + '</div><b>' + _esc(prof.name) + '</b>';
+    if (prof.phone) datosHtml += '<div class="nx-idtxt" style="margin-top:6px;">📱 ' + t('prof_cp_phone', 'Teléfono') + '</div><b>' + _esc(prof.phone) + '</b>';
+    if (prof.email) datosHtml += '<div class="nx-idtxt" style="margin-top:6px;">✉️ ' + t('prof_cp_email', 'Correo') + '</div><b>' + _esc(prof.email) + '</b>';
+    datosHtml += '</div>';
+  } else {
+    datosHtml = '<div class="nx-sub" style="text-align:center;margin-top:6px;">' + t('prof_cp_none', 'Este contacto todavía no compartió su teléfono ni correo.') + '</div>';
+  }
   var old = document.getElementById('nexo-contact-profile'); if (old) old.remove();
   var sheet = document.createElement('div');
   sheet.id = 'nexo-contact-profile';
@@ -136,7 +150,7 @@ function _openContactProfile(uuid) {
     '<div class="nx-idtxt">' + t('prof_cp_nexoid', 'NEXO ID') + '</div><b style="letter-spacing:0.5px;">' + _esc(nx.toUpperCase()) + '</b>' +
     '<div class="nx-sub">' + (online ? '🟢 ' + t('prof_cp_online', 'En línea') : '⚪ ' + t('prof_cp_offline', 'Desconectado')) + '</div>' +
     '</div>' +
-    '<div class="nx-sub" style="text-align:center;margin-top:6px;">' + t('prof_cp_more', 'Pronto: teléfono y correo (si el contacto los comparte) y los contactos en común.') + '</div>' +
+    datosHtml +
     '<div style="display:flex;gap:8px;margin-top:10px;">' +
     '<button id="nexo-cp-chat" class="nx-btn nx-btn-primary" style="flex:1;">💬 ' + t('prof_cp_chat', 'Abrir chat') + '</button></div>' +
     '</div>';

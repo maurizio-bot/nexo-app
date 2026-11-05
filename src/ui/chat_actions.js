@@ -4,6 +4,7 @@
  * reenvío y aplicar el "eliminar para todos" que llega. Lo que usa del resto de la app se lo da main.js.
  */
 import { applyAvatar } from './avatar.js';
+import { applyContactProfile } from './profile_share.js';
 import { applyChatWallpaper } from './wallpaper.js';
 import { applyStatus, likeReceived } from './estados.js';
 import { tttOnAction } from './ttt.js';
@@ -559,6 +560,7 @@ export function _applyChatAction(senderId, act) {
   if (act && act.act === 'wp') { applyChatWallpaper(senderId, act); return; } // ronda 2890: fondo de chat compartido (wallpaper.js)
   if (act && act.act === 'st') { applyStatus(senderId, act); return; } // ronda 2799: Estado (Stream fase 1, estados.js)
   if (act && act.act === 'sl') { likeReceived(senderId, act); return; } // ronda 2906: «me gusta» a mi estado (estados.js fase 2)
+  if (act && act.act === 'prof') { applyContactProfile(senderId, act); return; } // #dueño 04-11: datos de perfil completos (profile_share.js)
   if (act && act.act === 'game') { // ronda 2830+: juegos por turnos; se enruta por act.g
     if (act.g === 'c4') connect4OnAction(senderId, act);   // Conecta 4 (connect4.js)
     else if (act.g === 'tetvs') tetrisVersusOnAction(senderId, act); // Tetris versus por eventos (tetris_versus.js)

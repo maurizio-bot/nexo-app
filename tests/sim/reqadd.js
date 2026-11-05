@@ -82,6 +82,14 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   // El canal seguro de pareja se enciende solo (se ven en línea por internet)
   r.se_conectan = await waitFor(() => A.bi.net.canReach(idB) && B.bi.net.canReach(idA), 40000);
 
+  // #dueño 04-11 (perfil 2b/3): ya conectados, A comparte su perfil COMPLETO por el canal seguro E2E; B lo guarda y lo
+  // vería en la ficha (⋮→Perfil). A diferencia de la solicitud (enmascarado), acá viaja el dato COMPLETO.
+  A.win.__nexoSendProfileTo(idB);
+  r.B_recibe_perfil = await waitFor(() => { const p = B.win.__nexoGetContactProfile(idA); return !!(p && p.phone); }, 15000);
+  const profB = B.win.__nexoGetContactProfile(idA) || {};
+  r.B_ve_tel_completo = !!(profB.phone && profB.phone.indexOf('5555') >= 0);   // el COMPLETO (no «•••••88»)
+  r.B_ve_correo_completo = profB.email === 'ana@correo.com';
+
   // 3) Anti-spam: C (desconocido) manda una solicitud a A; queda pendiente; A la elimina y no se agrega nada
   try { await C.bi.addByNexoId(idA); } catch (e) { logs.push('[C] addByNexoId: ' + (e && e.message)); }
   r.A_ve_solicitud_C = await waitFor(() => A.bi.pendingRequests().some((x) => x.id === idC), 15000);
@@ -92,7 +100,8 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
 
   const ok = r.en_internet && r.solicitud_enviada && r.B_ve_solicitud && r.pendiente_sin_agregar && r.B_agrego_a_A &&
     r.A_agrego_a_B && r.sin_verificar && r.se_conectan && r.A_ve_solicitud_C && r.C_no_agregado_solo && r.rechazo_funciona &&
-    r.B_ve_tel_enmascarado && r.B_ve_correo_enmascarado && r.enmascarado_no_filtra;
+    r.B_ve_tel_enmascarado && r.B_ve_correo_enmascarado && r.enmascarado_no_filtra &&
+    r.B_recibe_perfil && r.B_ve_tel_completo && r.B_ve_correo_completo;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('REQADD ' + JSON.stringify(r));
   if (!ok) console.log(logs.slice(-50).join('\n'));
