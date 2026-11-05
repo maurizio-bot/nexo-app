@@ -1000,18 +1000,21 @@ CAMERA PREVIEW OVERLAY (v9.9.46: tipo WhatsApp)
   background: none; border: none; color: rgba(255,255,255,0.65); font-size: 14px; font-weight: 700;
   letter-spacing: 1px; padding: 4px 8px; border-radius: 12px;
 }
-.cam-mode.active { color: #000; background: #ffd60a; }
+/* #dueño 04-11: estética NEXO (antes amarillo iOS): el modo activo es el gradiente cian→violeta con glow */
+.cam-mode.active { color: #fff; background: linear-gradient(135deg,#00c8ff,#a855f7); box-shadow: 0 2px 12px rgba(0,200,255,0.45); }
 .camera-preview-controls { display: flex; align-items: center; justify-content: space-between; max-width: 340px; margin: 0 auto; }
 .camera-btn {
-  width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.15);
-  border: 1px solid rgba(255,255,255,0.3); display: flex; align-items: center; justify-content: center;
+  width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(0,200,255,0.35); display: flex; align-items: center; justify-content: center;
   cursor: pointer; transition: transform 0.15s ease, background 0.15s ease;
 }
-.camera-btn:active { transform: scale(0.92); background: rgba(255,255,255,0.25); }
-.camera-btn.on { background: #ffd60a; }
+.camera-btn:active { transform: scale(0.92); background: rgba(0,200,255,0.25); }
+.camera-btn.on { background: linear-gradient(135deg,#00c8ff,#a855f7); border-color: transparent; } /* linterna NEXO (antes amarillo) */
+/* Disparador NEXO: aro blanco con halo cian→violeta (antes blanco plano estilo iPhone) */
 .camera-btn-capture {
-  width: 78px; height: 78px; border-radius: 50%; border: 5px solid #fff; background: rgba(255,255,255,0.25);
+  width: 78px; height: 78px; border-radius: 50%; border: 4px solid #fff; background: rgba(255,255,255,0.18);
   cursor: pointer; position: relative; transition: transform 0.15s ease;
+  box-shadow: 0 0 0 3px rgba(0,200,255,0.55), 0 0 22px 2px rgba(168,85,247,0.5);
 }
 .camera-btn-capture::after {
   content: ''; position: absolute; inset: 6px; border-radius: 50%; background: #fff; transition: all 0.2s ease;
