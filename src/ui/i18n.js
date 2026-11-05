@@ -387,6 +387,11 @@ var STRINGS = {
   prof_cp_phone: { es: "Teléfono", it: "Telefono", en: "Phone" },
   prof_cp_email: { es: "Correo", it: "Email", en: "Email" },
   prof_cp_none: { es: "Este contacto todavía no compartió su teléfono ni correo.", it: "Questo contatto non ha ancora condiviso telefono o email.", en: "This contact hasn't shared their phone or email yet." },
+  // Contactos en común (PSI) — psi.js (#dueño 04-11 paso 3)
+  psi_title: { es: "Contactos en común", it: "Contatti in comune", en: "Contacts in common" },
+  psi_calc: { es: "Calculando contactos en común…", it: "Calcolo contatti in comune…", en: "Finding contacts in common…" },
+  psi_offline: { es: "Se calculará cuando se conecten.", it: "Si calcolerà quando vi connetterete.", en: "Will be computed when you connect." },
+  psi_none: { es: "Ningún contacto en común.", it: "Nessun contatto in comune.", en: "No contacts in common." },
   // Guía de bienvenida (primera vez) — welcome_guide.js (#dueño 05-11). El cuerpo lleva <b> (texto fijo de la app).
   welcome_s1_title: { es: "Bienvenido a NEXO", it: "Benvenuto su NEXO", en: "Welcome to NEXO" },
   welcome_s1_body: { es: "Mensajería privada que funciona <b>sin internet</b>: directo entre teléfonos por Bluetooth y Wi-Fi. Tus mensajes van cifrados de extremo a extremo, solo tú y quien recibe pueden leerlos.", it: "Messaggistica privata che funziona <b>senza internet</b>: diretta tra telefoni via Bluetooth e Wi-Fi. I tuoi messaggi sono cifrati end-to-end, solo tu e chi riceve potete leggerli.", en: "Private messaging that works <b>without internet</b>: directly between phones over Bluetooth and Wi-Fi. Your messages are end-to-end encrypted — only you and the recipient can read them." },

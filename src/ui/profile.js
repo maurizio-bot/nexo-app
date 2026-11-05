@@ -10,6 +10,7 @@ import { startReceiveAccount, startSendAccount } from './move_account.js';
 import { clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
 import { myProfile, setMyProfile } from './profile_data.js';
 import { getContactProfile, profileShareResend } from './profile_share.js';
+import { getCommonContacts, psiEnsure } from './psi.js'; // #dueño 04-11 paso 3: contactos en común (PSI)
 import { _getBLEContacts, _normId } from './ble_helpers.js';
 import { hasListWallpaper, hasChatWallpaper, setListWallpaper, clearListWallpaper, setChatWallpaper, clearChatWallpaper, makeWallpaper } from './wallpaper.js';
 import { mirrorPeerPref, setMirrorPeerPref } from './calls_ui.js';
@@ -137,6 +138,9 @@ function _openContactProfile(uuid) {
   } else {
     datosHtml = '<div class="nx-sub" style="text-align:center;margin-top:6px;">' + t('prof_cp_none', 'Este contacto todavía no compartió su teléfono ni correo.') + '</div>';
   }
+  // #dueño 04-11 paso 3: contactos en común (PSI). Tarjeta con su propio id para refrescar en vivo cuando llegue el cálculo.
+  var commonHtml = '<div class="nx-card"><div class="nx-h"><span class="nx-ico">🤝</span>' + t('psi_title', 'Contactos en común') + '</div>' +
+    '<div id="nexo-cp-common">' + _commonInner(nx, online) + '</div></div>';
   var old = document.getElementById('nexo-contact-profile'); if (old) old.remove();
   var sheet = document.createElement('div');
   sheet.id = 'nexo-contact-profile';
@@ -152,11 +156,22 @@ function _openContactProfile(uuid) {
     '<div class="nx-sub">' + (online ? '🟢 ' + t('prof_cp_online', 'En línea') : '⚪ ' + t('prof_cp_offline', 'Desconectado')) + '</div>' +
     '</div>' +
     datosHtml +
+    commonHtml +
     '<div style="display:flex;gap:8px;margin-top:10px;">' +
     '<button id="nexo-cp-chat" class="nx-btn nx-btn-primary" style="flex:1;">💬 ' + t('prof_cp_chat', 'Abrir chat') + '</button></div>' +
     '</div>';
   document.body.appendChild(sheet);
   try { paintAvatar(sheet.querySelector('#nexo-cp-av'), nx); } catch (e) {}
+  // #dueño 04-11 paso 3: si está en línea, (re)calcular contactos en común al abrir la ficha y refrescar la tarjeta en vivo.
+  if (online) { try { psiEnsure(nx); } catch (e) {} }
+  (function () {
+    var onPsi = function (e) {
+      var box = document.getElementById('nexo-cp-common');
+      if (!box) { window.removeEventListener('nexo:psi', onPsi); return; }   // ficha cerrada → soltar el listener
+      if (e && e.detail && _normId(e.detail.nx) === nx) box.innerHTML = _commonInner(nx, online);
+    };
+    window.addEventListener('nexo:psi', onPsi);
+  })();
   var chatBtn = sheet.querySelector('#nexo-cp-chat');
   if (chatBtn) chatBtn.onclick = function () {
     sheet.remove();
@@ -165,6 +180,19 @@ function _openContactProfile(uuid) {
   };
 }
 function _esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
+// #dueño 04-11 paso 3: cuerpo de la tarjeta «contactos en común» (PSI). ids=null → aún no calculado; []=calculado, ninguno.
+function _commonInner(nx, online) {
+  var ids = null; try { ids = getCommonContacts(nx); } catch (e) {}
+  if (ids == null) return '<div class="nx-sub">' + (online ? t('psi_calc', 'Calculando contactos en común…') : t('psi_offline', 'Se calculará cuando se conecten.')) + '</div>';
+  if (!ids.length) return '<div class="nx-sub">' + t('psi_none', 'Ningún contacto en común.') + '</div>';
+  var all = _getBLEContacts();
+  return ids.map(function (id) {
+    var cnx = _normId(id);
+    var c = all.find(function (x) { return _normId(x.nexoId || x.deviceUUID) === cnx; }) || {};
+    var name = String(c.name || '').trim() || cnx.toUpperCase();
+    return '<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.08);">👤 ' + _esc(name) + '</div>';
+  }).join('');
+}
 window.addEventListener('nexo:ble:goToProfile', function (e) { var d = (e && e.detail) || {}; if (d.deviceUUID) _openContactProfile(d.deviceUUID); });
 try { if (typeof window !== 'undefined') window.NEXO_openContactProfile = _openContactProfile; } catch (e) {}
 

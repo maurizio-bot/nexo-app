@@ -116,6 +116,7 @@ import { isGroupWire, startGroupMedia } from './ui/group_media.js';
 import { avatarInit } from './ui/avatar.js';
 import { profileInit } from './ui/profile_data.js';
 import { profileShareInit } from './ui/profile_share.js';
+import { psiInit } from './ui/psi.js';
 import { gameStatsInit } from './ui/game_stats.js';
 import { wallpaperInit, wallpaperUse, installWallpaperGesture, setListWallpaper, clearListWallpaper, setChatWallpaper, clearChatWallpaper, wallpaperRefresh, wallpaperApplied, setChatWallpaperFor, clearChatWallpaperFor, chatWallpaperFor, hasChatWallpaper, hasChatWallpaperFor, shareChatWallpaper, applyChatWallpaper } from './ui/wallpaper.js';
 import { estadosInit } from './ui/estados.js';
@@ -797,6 +798,7 @@ async function initializeNexoApp() {
     avatarInit(); // ronda 2765: foto de perfil
     profileInit(); // ronda 2910: datos de mi perfil (nombre y apellido, teléfono, correo — opcionales)
     profileShareInit(); // #dueño 04-11: compartir mis datos COMPLETOS con los contactos por E2E + guardar los suyos (perfil 2b/3)
+    psiInit(); // #dueño 04-11 paso 3: «contactos en común» por PSI (psi.js) — al conectar, el ID menor inicia el cálculo
     gameStatsInit(); // #dueño 05-11: ranking cabeza a cabeza de los juegos (Fase A)
     wallpaperInit(); // ronda 2889: fondo de pantalla (lista + chats)
     estadosInit(); // ronda 2799: Estados (Stream fase 1)
