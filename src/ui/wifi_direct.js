@@ -24,6 +24,10 @@ import { e2eAnyEncrypted } from '../vault/e2e_proto.js';
 
 export var WD_MIN_BYTES = 150000;    // ~35 s por Bluetooth a la velocidad medida; montar el grupo son ~5 s
 export var WD_MAX_BYTES = 30000000;  // contenido cifrado en base64 (~22 MB de archivo)
+// Paso 2/3 de la política de caminos (dueño 04-11): si el grupo WD ya está PREPARADO (caliente), el montaje ya se pagó →
+// umbral más bajo (WD vale la pena para archivos medianos). TTL del «preparado» sin uso (se suelta por ociosidad).
+export var WD_MIN_BYTES_READY = 20000;
+var WD_READY_TTL_MS = 45000;
 var OFFER_TIMEOUT_MS = 25000;
 var PERM_TIMEOUT_MS = 60000;
 var FAIL_COOLDOWN_MS = 10 * 60000;
@@ -48,6 +52,7 @@ export class WifiDirect {
     this.failUntil = {};         // nexoId → hasta cuándo no se intenta (falló)
     this._asked = false;
     this._listener = null;
+    this.wdReady = new Map();    // paso 2: nexoId → hasta cuándo el grupo WD está «preparado» (lo marca el nativo; hoy vacío)
   }
 
   init() {
@@ -70,10 +75,11 @@ export class WifiDirect {
     var nx = _nid(nexoId);
     if (!nx) return;
     this.failUntil[nx] = Date.now() + FAIL_COOLDOWN_MS;
+    this._dropWdReady(nx);       // si falló, el «preparado» ya no vale
     console.warn('[WIFI-DIRECT] Con ' + nx + ' no funcionó: por Bluetooth durante ' + Math.round(FAIL_COOLDOWN_MS / 60000) + ' min');
   }
   _cooling(nx) { return (this.failUntil[nx] || 0) > Date.now(); }
-  unmarkPeer(nexoId) { var nx = _nid(nexoId); if (nx && this.peers.delete(nx)) console.log('[WIFI-DIRECT] ' + nx + ' ya no lo tiene disponible'); }
+  unmarkPeer(nexoId) { var nx = _nid(nexoId); this._dropWdReady(nx); if (nx && this.peers.delete(nx)) console.log('[WIFI-DIRECT] ' + nx + ' ya no lo tiene disponible'); }
   markPeer(nexoId) { var nx = _nid(nexoId); if (nx && !this.peers.has(nx)) { this.peers.add(nx); console.log('[WIFI-DIRECT] ' + nx + ' también lo tiene'); this._maybeAskPerm(); } }
   // P8 (dueño 01-11): ¿pedir ahora el permiso de Wi-Fi Direct de forma proactiva? Sí si: este teléfono lo soporta, aún no
   // está concedido, no se denegó, y no se ha pedido ya (ni lazy ni proactivo) en esta sesión. (función pura, para la prueba)
@@ -107,10 +113,26 @@ export class WifiDirect {
   }
 
   eligible(deviceId, bytes) {
-    if (this.busy || !this.supported() || bytes < WD_MIN_BYTES || bytes > WD_MAX_BYTES) return false;
+    if (this.busy || !this.supported() || bytes > WD_MAX_BYTES) return false;
     var nx = this._nexoOf(deviceId);
-    return this.peers.has(nx) && !this._cooling(nx) && this._directReady(deviceId);
+    if (!(this.peers.has(nx) && !this._cooling(nx) && this._directReady(deviceId))) return false;
+    // Umbral dinámico (política de caminos, paso 2/3, dueño 04-11): si el grupo WD ya está PREPARADO (caliente), el
+    // montaje de ~5 s ya se pagó → vale la pena WD incluso para archivos más chicos. Si no, el umbral normal. HOY
+    // _isWdReady es siempre false (lo activará la parte NATIVA que mantiene el grupo caliente) → sin cambio de conducta.
+    var min = this._isWdReady(nx) ? WD_MIN_BYTES_READY : WD_MIN_BYTES;
+    return bytes >= min;
   }
+
+  // ----- Paso 2 (política de caminos): preparar WD por adelantado cuando hay Bluetooth, para que el 1er envío no pague el
+  // montaje de ~5 s. El estado «preparado» lo marcará la parte NATIVA (mantener el grupo caliente) cuando exista; acá van
+  // la LÓGICA (pura, para la prueba) y el estado, listos. Hasta que el nativo llame _setWdReady, nada cambia de conducta. -----
+  _isWdReady(nx) { nx = _nid(nx); var u = this.wdReady.get(nx) || 0; if (u && u < Date.now()) { this.wdReady.delete(nx); return false; } return u > 0; }
+  _setWdReady(nx, ttlMs) { nx = _nid(nx); if (nx) this.wdReady.set(nx, Date.now() + (ttlMs || WD_READY_TTL_MS)); }
+  _dropWdReady(nx) { nx = _nid(nx); if (nx && this.wdReady) this.wdReady.delete(nx); }
+  // ¿Conviene preparar WD con este contacto ahora? (pura, para la prueba) Reusa canReach (soportado + él lo tiene + no en
+  // cooldown + enlace Bluetooth DIRECTO vivo); solo si no está ya preparado. NO prepara sin BT directo (no hay por dónde
+  // armarlo y no debe tocar el Wi-Fi/internet normal).
+  _shouldPrepareWD(nx) { return this.canReach(nx) && !this._isWdReady(_nid(nx)); }
 
   _ensurePermission() {
     var self = this, pl = _plugin();
