@@ -48,6 +48,7 @@ const SCENARIOS = [
     nativa_antes_de_abrir: isTrue, nativa_quitada_al_abrir: isTrue, permiso_notificaciones_pedido: isTrue, errores: isEmpty } },
   { name: 'ID Bluetooth rotativo (no se ve el NEXO ID en el aire)', args: ['rid.js'], tag: 'RID', checks: { resultado: (v) => v === 'OK' } },
   { name: 'archivos grandes por Wi-Fi (24 MB, corte y reintento)', args: ['big.js'], tag: 'BIG', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'prioridad: la foto no espera detrás de un archivo grande (#dueño 05-11) — lo chico/interactivo arranca ya (no hace cola detrás del grande) y el grande le cede la radio; la foto llega en segundos (antes esperaba a que terminara el grande), más rápido con prioridad que sin, y nada se pierde (grande y foto llegan)', args: ['prio.js'], tag: 'PRIO', logs: 'last_logs_prio.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'archivos grandes por Bluetooth L2CAP (4 MB, corte y reintento)', args: ['big.js', '--l2', '--mb=4'], tag: 'BIG', checks: { resultado: (v) => v === 'OK' } },
   { name: 'trozos binarios por Bluetooth', args: ['binary.js', '--loss=0.02'], tag: 'BINARY', checks: { resultado: (v) => v === 'OK' } },
   { name: 'recibir con la app cerrada (buzón, ✓✓ y aviso)', args: ['background.js', '--scenario=closed', '--io-delay=25', '--app-events'], tag: 'BACKGROUND', checks: {

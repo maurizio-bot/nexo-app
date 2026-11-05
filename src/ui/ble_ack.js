@@ -76,6 +76,15 @@ const NACK_INTERVAL_MS = 1500;
 const FILE_WINDOW_TIMEOUT_MS = 8000;
 const FILE_PACING_DELAY_MS = 2; // el nativo ya regula el ritmo (control de flujo por callback)
 const MAX_WINDOW_RETRIES = 8;
+// #dueño 05-11 («la foto tarda detrás de un archivo grande»): PRIORIDAD para lo chico/interactivo. Un ARCHIVO grande le
+// CEDE la radio mientras haya un envío interactivo (texto, foto, sticker) activo, para que la foto salga YA — como Fénix
+// cede a la actividad del usuario (2905). Acotado: el archivo no cede más de BULK_YIELD_MAX_MS seguidos (siempre avanza,
+// nunca se muere de hambre). Solo retrasa ventanas del archivo; no toca el protocolo de ventana/ACK (sin pérdida).
+const INTERACTIVE_MAX_CHARS = 600000;   // ~450 KB: foto/sticker/voz/vídeo-previa = interactivo; archivos/vídeo HD grandes = bulk
+const BULK_YIELD_STEP_MS = 120;         // cada cuánto el archivo re-mira si lo interactivo ya terminó
+const BULK_YIELD_MAX_MS = 2500;         // tope de cesión continua: pasado esto manda una ventana igual
+function BULK_PRIO() { return (typeof window === 'undefined') || window.NEXO_BULK_PRIO !== false; } // interruptor (prueba/seguridad)
+function _isBulkFileData(data) { return typeof data === 'string' && data.length > INTERACTIVE_MAX_CHARS; } // archivo "grande"
 // #129 (dueño 01-11): «Cola de escritura llena» (BLE_BUSY) es CONTRAPRESIÓN, no un fallo del enlace: la cola nativa (con
 // MTU 23 son ~26 escrituras por mensajito) va llena y drena despacio. Se espera más y se reintenta el MISMO trozo, sin
 // contar como fallo (no cambiar de camino ni abortar). Solo si NINGÚN trozo pasa durante ~5 min seguidos se da por
@@ -272,6 +281,16 @@ export class BleAckSystem {
     this.outgoingStreams.forEach(function(s) { if (!busy && s && !s.aborted && same(s.deviceId)) busy = true; });
     this.incomingBuffers.forEach(function(b) { if (!busy && b && now - (b.lastActivity || 0) < 30000 && same(b.deviceId)) busy = true; });
     return busy;
+  }
+  // #dueño 05-11: ¿hay un envío INTERACTIVO (texto/foto/sticker, no un archivo grande) activo AHORA? Si sí, un archivo
+  // grande le cede la radio para que lo chico salga ya. Los streams terminados ya no están en outgoingStreams.
+  _interactiveActive(excludeMsgId) {
+    var active = false;
+    this.outgoingStreams.forEach(function(s, id) {
+      if (active || id === excludeMsgId || !s || s.aborted || s._bulk) return;
+      active = true;
+    });
+    return active;
   }
   // _fromPrep: llamada interna con el texto ya cifrado por este mismo envío
   sendChunkedMessage(deviceId, content, meta, messageId, seq, _fromPrep) {
@@ -519,8 +538,11 @@ export class BleAckSystem {
       // archivo a la vez. Máximo _maxBleFilesPerLink por enlace Bluetooth; las demás esperan en cola y arrancan al
       // liberarse un hueco, así los textos/acks/control (que NO se limitan) tienen aire y no se quedan en ○ detrás de
       // miles de trozos. net:/lan:/Wi-Fi Direct no tienen la cola nativa de Bluetooth → no se limitan.
+      // #dueño 05-11: cupo POR CLASE. Un archivo GRANDE hace cola detrás de otro grande; uno CHICO (foto/sticker) hace
+      // cola detrás de otro chico — PERO un chico arranca YA aunque haya un grande en curso (son clases distintas) → la
+      // foto no espera a que termine el archivo grande, y a la vez NO se inunda el enlace con muchos (máx. 1 por clase, #129).
       var isBle = !_isNetDevice(deviceId) && !_isLanDevice(deviceId);
-      if (isBle && self._bleFileSlots(deviceId) >= self._maxBleFilesPerLink) {
+      if (isBle && self._bleFileSlots(deviceId, _isBulkFileData(base64Data)) >= self._maxBleFilesPerLink) {
         self._fileStartQueue.set(fileId, { deviceId: deviceId, data: base64Data, meta: meta, at: Date.now(), waiters: [{ resolve: resolve, reject: reject }] });
         console.log('[BleAckSystem] sendFile EN COLA (enlace Bluetooth ocupado) fileId=' + fileId + ' to=' + deviceId + ' cola=' + self._fileStartQueue.size);
         return;
@@ -529,10 +551,10 @@ export class BleAckSystem {
     });
   }
   // #129 parte 2: nº de transferencias de ARCHIVO activas hacia ese enlace Bluetooth (mismo teléfono; net:/lan: no cuentan)
-  _bleFileSlots(deviceId) {
+  _bleFileSlots(deviceId, bulk) {
     var self = this, n = 0, mac = _normMac(deviceId), nx = self._resolveNexoId(deviceId);
     self.outgoingStreams.forEach(function(s) {
-      if (!s || s.aborted || s.type !== 'file') return;
+      if (!s || s.aborted || s.type !== 'file' || (!!s._bulk !== !!bulk)) return;   // #dueño 05-11: cupo POR CLASE (grandes con grandes, chicos con chicos) → 1 grande + 1 chico a la vez; muchos de la misma clase hacen cola (sigue sin inundar, #129)
       if (_isNetDevice(s.deviceId) || _isLanDevice(s.deviceId)) return;
       if (_normMac(s.deviceId) === mac || self._resolveNexoId(s.deviceId) === nx) n++;
     });
@@ -563,11 +585,11 @@ export class BleAckSystem {
   _pumpFileQueue(deviceId) {
     var self = this;
     if (!self._fileStartQueue || self._fileStartQueue.size === 0) return;
-    if (self._bleFileSlots(deviceId) >= self._maxBleFilesPerLink) return;
     var mac = _normMac(deviceId), nx = self._resolveNexoId(deviceId), pick = null, pickId = null;
     self._fileStartQueue.forEach(function(it, id) {
       if (pick || _isNetDevice(it.deviceId) || _isLanDevice(it.deviceId)) return;
-      if (_normMac(it.deviceId) === mac || self._resolveNexoId(it.deviceId) === nx) { pick = it; pickId = id; }
+      if (!(_normMac(it.deviceId) === mac || self._resolveNexoId(it.deviceId) === nx)) return;
+      if (self._bleFileSlots(it.deviceId, _isBulkFileData(it.data)) < self._maxBleFilesPerLink) { pick = it; pickId = id; }  // arranca el siguiente de la clase (grande/chico) que tenga hueco
     });
     if (!pick) return;
     self._fileStartQueue.delete(pickId);
@@ -1613,6 +1635,10 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.pacingDelayMs = isFile ? FILE_PACING_DELAY_MS : CHAT_PACING_DELAY_MS;
   this.baseTimeoutMs = isFile ? GLOBAL_TIMEOUT_MS : 45000;
   this.type = type || 'chat';
+  // #dueño 05-11: un ARCHIVO grande es "bulk" (cede la radio a lo interactivo). Texto, foto, sticker, voz y vídeo-previa
+  // son interactivos (tienen prioridad). Umbral por tamaño del contenido.
+  this._bulk = (this.type === 'file') && (typeof content === 'string') && content.length > INTERACTIVE_MAX_CHARS;
+  this._yieldSince = 0;
   this.chunks = [];
   this.total = 0;
   this.sentMask = [];
@@ -1788,6 +1814,13 @@ ChatStream.prototype._runWindowLoop = function() {
       self._finish();
       return;
     }
+    // #dueño 05-11: PRIORIDAD — un archivo grande cede la radio a lo chico/interactivo que esté activo (foto/texto),
+    // así la foto no espera detrás del archivo. Acotado a BULK_YIELD_MAX_MS seguidos: el archivo siempre avanza.
+    if (self._bulk && BULK_PRIO() && self.ackSystem && self.ackSystem._interactiveActive(self.msgId)) {
+      var nowY = Date.now();
+      if (!self._yieldSince) self._yieldSince = nowY;
+      if (nowY - self._yieldSince < BULK_YIELD_MAX_MS) { setTimeout(next, BULK_YIELD_STEP_MS); return; }
+    } else if (self._yieldSince) { self._yieldSince = 0; }
     console.log('[ChatStream] _runWindowLoop: enviando ventana. windowStart=' + self.windowStart + ' msgId=' + self.msgId);
     self._sendWindow().then(function() {
       console.log('[ChatStream] _sendWindow RESUELTA. windowStart ahora=' + self.windowStart + ' msgId=' + self.msgId);
