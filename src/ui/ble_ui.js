@@ -229,7 +229,11 @@ export const BLE_UI_METHODS = {
     if (addIdBtn) addIdBtn.addEventListener('click', doAddId);
     if (addIdInput) addIdInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); doAddId(); } });
     if (typeof window !== 'undefined' && window.addEventListener) {
-      window.addEventListener('nexo:ble:reqIncoming', function() { self.renderRequests(); });
+      window.addEventListener('nexo:ble:reqIncoming', function(e) {
+        self.renderRequests();
+        self.renderContactsList(); // #dueño 04-11: que el aviso de la solicitud salga en la LISTA (antes solo dentro de «Agregar» → si no entrabas ahí, no te enterabas)
+        try { var nm = (e && e.detail && e.detail.name) || 'Alguien'; _showToast('👋 ' + nm + ' quiere agregarte — mirá «Solicitudes para ti»', 'info'); } catch (x) {}
+      });
       window.addEventListener('nexo:ble:reqAccepted', function(e) {
         self.renderRequests(); self.renderContactsList();
         if (addNote) { addNote.style.color = '#22c55e'; addNote.textContent = ((e.detail && (e.detail.name || e.detail.id)) || 'Tu contacto') + ' te aceptó. Ya estáis conectados.'; }
@@ -508,6 +512,20 @@ export const BLE_UI_METHODS = {
     });
   },
 
+  _prependReqBanner(list) {
+    var self = this;
+    if (!list) return;
+    var reqs = (typeof self.pendingRequests === 'function' && self.pendingRequests()) || [];
+    if (!reqs.length) return;
+    var banner = document.createElement('div');
+    banner.id = 'ble-req-banner';
+    banner.style.cssText = 'margin:8px 12px 10px;padding:12px 14px;border-radius:14px;background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:9px;box-shadow:0 2px 12px rgba(0,200,255,.35);';
+    banner.innerHTML = '<span style="font-size:18px;">👋</span><span>' + reqs.length + (reqs.length === 1 ? ' solicitud para ti' : ' solicitudes para ti') + ' — tocá para ver</span>';
+    banner.addEventListener('click', function () { try { self.togglePanel(); } catch (e) {} });
+    if (list.firstChild) list.insertBefore(banner, list.firstChild);
+    else list.appendChild(banner);
+  },
+
   renderContactsList() {
     var self = this;
     var now = Date.now();
@@ -523,6 +541,9 @@ export const BLE_UI_METHODS = {
     var list = this.elements.mainContactsList;
     if (!list) return;
     list.innerHTML = '';
+    // #dueño 04-11: si hay solicitudes de contacto esperando, avisarlo EN LA LISTA (banner arriba de todo) para que no
+    // queden escondidas dentro de «Agregar». Tocarlo abre ese panel (donde se aceptan/eliminan).
+    self._prependReqBanner(list);
     var contacts = _getBLEContacts();
     var seenNexoIds = {};
     var deduped = [];
@@ -551,6 +572,7 @@ export const BLE_UI_METHODS = {
     contacts = contacts.concat(groupRows);
     if (contacts.length === 0) {
       list.innerHTML = '';
+      self._prependReqBanner(list); // sin contactos todavía, pero la solicitud pendiente igual tiene que avisarse
       if (this.elements.mainEmptyMsg) this.elements.mainEmptyMsg.classList.add('visible');
       this.renderOnlineStrip();
       return;

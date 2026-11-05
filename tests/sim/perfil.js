@@ -89,12 +89,25 @@ async function boot(name, native) {
   r.perfil_contacto_muestra_id = !!cp && /NX12345678/.test(cp.textContent || '');
   r.perfil_contacto_antes_nada = prevNada;
 
+  // (6) #dueño 04-11: una solicitud de contacto pendiente AVISA en la lista principal (banner), no solo dentro de «Agregar»
+  //     (antes: si no entrabas a «Agregar», no te enterabas). Y al quedar sin solicitudes, el banner desaparece.
+  w.bleInterface._reqSave('nexo_req_in', [{ id: 'nx0solic1', pk: 'xx', name: 'Fulano', at: Date.now() }]);
+  w.bleInterface.renderContactsList();
+  await sleep(450); // renderContactsList tiene un throttle de ~300 ms
+  var reqBanner = w.document.getElementById('ble-req-banner');
+  r.solicitud_banner_en_lista = !!reqBanner && /solicitud/i.test(reqBanner.textContent || '');
+  w.bleInterface._reqSave('nexo_req_in', []);
+  w.bleInterface.renderContactsList();
+  await sleep(450);
+  r.sin_solicitud_sin_banner = !w.document.getElementById('ble-req-banner');
+
   r.errores = logs.filter((l) => /TypeError|undefined is not|is not a function|NEXO_setMyProfile/.test(l) && /error/.test(l)).slice(0, 4);
   const ok = r.guarda_nombre && r.guarda_tel && r.guarda_correo && r.en_disco &&
     r.tel_limpio && r.correo_malo_avisa && r.correo_malo_se_guarda &&
     r.mask_tel && r.mask_correo && r.mask_vacio &&
     r.pantalla_tiene_campos && r.pantalla_muestra_datos && r.editar_en_pantalla_guarda &&
     r.perfil_contacto_abre && r.perfil_contacto_muestra_id && r.perfil_contacto_antes_nada &&
+    r.solicitud_banner_en_lista && r.sin_solicitud_sin_banner &&
     r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('PERFIL ' + JSON.stringify(r));
