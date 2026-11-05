@@ -3,8 +3,8 @@
  * del chat (🎮 Jugar) y, al elegir un juego, lo arranca con el contacto del chat actual. Cada juego vive en su módulo
  * (ttt.js, connect4.js, …) y es asíncrono/cifrado sobre el canal que ya existe. Sin servidor.
  */
-import { openTttForContact } from './ttt.js';
 import { openConnect4ForContact } from './connect4.js';
+import { openTetris } from './tetris.js';
 import { _getCurrentContactId } from './chat_format.js';
 import { _normId } from './ble_helpers.js';
 import { _showInfoToast } from './ui_bits.js';
@@ -12,11 +12,14 @@ import { t } from './i18n.js';
 
 var NX_RE = /^nx[0-9a-z]{8}$/;
 
-// Catálogo de juegos disponibles (por turnos; todos reusan el canal del chat). Agregar uno es una línea más acá.
+// Catálogo de juegos disponibles. Agregar uno es una línea más acá. (Tres en raya se escondió: era redundante con
+// Conecta 4 —ambos «alinear en grilla» y C4 es más juego—, pedido del dueño 05-11. ttt.js queda por compatibilidad
+// con partidas en curso y por si se quiere volver a ofrecer.)
+// `solo:true` = juego de 1 jugador (no necesita contacto; el picker se abre desde un chat pero se ignora el contacto).
 function _catalog() {
   return [
-    { id: 'ttt', emoji: '⭕', name: t('game_ttt_name', 'Tres en raya'), open: openTttForContact },
     { id: 'c4', emoji: '🔴', name: t('game_c4_name', 'Conecta 4'), open: openConnect4ForContact },
+    { id: 'tetris', emoji: '🧱', name: t('game_tetris_name', 'Tetris'), open: function() { openTetris(); }, solo: true },
   ];
 }
 

@@ -161,6 +161,24 @@ body::before {
   border-radius: 12px; background: rgba(255,255,255,0.05); color: var(--nx-text, #e8f0f2); font-size: 15px; font-weight: 600; cursor: pointer; text-align: left; }
 .game-pick-item:active { background: rgba(0,200,255,0.12); }
 .game-pick-emoji { font-size: 24px; line-height: 1; }
+
+/* Tetris (tetris.js) — overlay propio: tablero (canvas) arriba, controles abajo. */
+.tetris-overlay { position: fixed; inset: 0; z-index: 2650; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75); padding: 12px; }
+.tetris-panel { width: 100%; max-width: 340px; max-height: 96vh; background: linear-gradient(160deg,#13223c,#0b1324); border: 1px solid rgba(0,200,255,0.18); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+.tetris-head { text-align: center; color: #e8f0f2; }
+.tetris-title { font-size: 17px; font-weight: 700; }
+.tetris-stat { font-size: 12px; color: #9fb0b5; margin-top: 2px; }
+.tetris-board-wrap { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.tetris-canvas { border-radius: 8px; background: #0a1020; box-shadow: 0 0 0 1px rgba(0,200,255,0.2), 0 6px 20px rgba(0,0,0,0.4); touch-action: manipulation; }
+.tetris-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tetris-btn { padding: 13px 0; border: 1px solid rgba(0,200,255,0.22); border-radius: 12px; background: rgba(255,255,255,0.06); color: #e8f0f2; font-size: 20px; font-weight: 700; cursor: pointer; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+.tetris-btn:active { background: rgba(0,200,255,0.18); }
+.tetris-btn.td { grid-column: 1 / 2; }
+.tetris-btn.thd { grid-column: 2 / 4; background: linear-gradient(135deg,#00c8ff,#a855f7); color: #fff; border: none; }
+.tetris-foot { display: flex; gap: 10px; }
+.tetris-again, .tetris-close { flex: 1; padding: 11px; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.tetris-again { background: #19c3c9; color: #05242a; }
+.tetris-close { background: rgba(255,255,255,0.1); color: #e8f0f2; }
 /* Ronda 2789 (informe del dueño): entregado (llegó, sin leer) y leído se veían casi igual porque los dos son ✓✓ y el
    color de "entregado" era casi blanco. Ahora: enviado ✓ gris oscuro, entregado ✓✓ GRIS claro (apagado, "aún sin
    leer"), leído ✓✓ AZUL con brillo. Como WhatsApp: gris hasta que lo leen, y ahí se pone de color. */

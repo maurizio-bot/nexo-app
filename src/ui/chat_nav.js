@@ -52,6 +52,8 @@ export function _setupBackButton() {
         if (ttt) { if (typeof window.__nexoCloseTtt === 'function') window.__nexoCloseTtt(); else ttt.remove(); return true; } // 2830: juego
         var c4 = document.getElementById('c4-overlay');
         if (c4) { if (typeof window.__nexoCloseC4 === 'function') window.__nexoCloseC4(); else c4.remove(); return true; } // Conecta 4
+        var tet = document.getElementById('tetris-overlay');
+        if (tet) { if (typeof window.__nexoCloseTetris === 'function') window.__nexoCloseTetris(); else tet.remove(); return true; } // Tetris
         var stk = document.getElementById('sticker-sheet');
         if (stk) { stk.remove(); return true; } // 2829: hoja de stickers
         var fs = document.getElementById('fullscreen-media-overlay');

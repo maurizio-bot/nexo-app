@@ -201,6 +201,14 @@ var STRINGS = {
   chat_c4_invited: { es: " te invitó a Conecta 4", it: " ti ha invitato a Forza 4", en: " invited you to Connect 4" },
   chat_c4_with: { es: "🔴 Conecta 4 con ", it: "🔴 Forza 4 con ", en: "🔴 Connect 4 with " },
   chat_c4_your_turn_toast: { es: ": te toca en Conecta 4", it: ": tocca a te in Forza 4", en: ": your turn in Connect 4" },
+  game_tetris_name: { es: "Tetris", it: "Tetris", en: "Tetris" },
+  game_tetris_score: { es: "Puntos ", it: "Punti ", en: "Score " },
+  game_tetris_lines: { es: "Líneas ", it: "Linee ", en: "Lines " },
+  game_tetris_level: { es: "Nivel ", it: "Livello ", en: "Level " },
+  game_tetris_over: { es: "Fin — ", it: "Fine — ", en: "Over — " },
+  game_tetris_over_title: { es: "FIN DEL JUEGO", it: "GAME OVER", en: "GAME OVER" },
+  game_tetris_pts: { es: " pts", it: " pti", en: " pts" },
+  game_tetris_best: { es: "— Mejores —", it: "— Migliori —", en: "— Best —" },
 
   // Llamadas y videollamadas - Fase 2c
   call_e2e: { es: "Cifrada de extremo a extremo", it: "Crittografia end-to-end", en: "End-to-end encrypted" },
