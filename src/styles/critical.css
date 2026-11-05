@@ -318,6 +318,7 @@ Consolidado: inline + main.css + ble_styles
    display: flex;
    gap: 8px;
    align-items: center;
+   justify-content: flex-end; /* #dueño 05-11: hora + ✓✓ a la derecha — posición consistente y, en burbuja propia, caen sobre el morado del gradiente (135deg cian→violeta) → el azul del ✓✓ resalta en vez de confundirse con el cian */
    padding: 0 4px;
    }
    .msg-time { font-size: 10px; color: #444; }
