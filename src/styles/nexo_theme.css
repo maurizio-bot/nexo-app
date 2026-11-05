@@ -70,7 +70,7 @@ body::before {
 #chat-back-btn, .chat-back-btn, #ble-panel-back,
 #nexo-settings-back, #nexo-settings-close, #nexo-profile-close { display: none !important; }
 /* Sin botón «atrás» a la izquierda, el nombre del contacto se centra de verdad (se quita el hueco de 44px). */
-#chat-contact-info { padding-left: 8px !important; }
+#chat-contact-info { padding-left: 100px !important; padding-right: 100px !important; } /* #dueño 05-11: simétrico → nombre centrado (atrás a la izq, llamada/video a la der) */
 #chat-contact-name { font-size: 17px !important; font-weight: 700 !important; }
 #chat-contact-subtitle { color: var(--nx-cyan) !important; font-weight: 600; letter-spacing: 0.6px; }
 /* Dueño 01-11 (plan 2/3): los botones de llamada/videollamada del chat de GRUPO (#nexo-gcall-btn/#nexo-gvideo-btn)
@@ -163,15 +163,17 @@ body::before {
 .game-pick-emoji { font-size: 24px; line-height: 1; }
 
 /* Tetris (tetris.js) — overlay propio: tablero (canvas) arriba, controles abajo. */
-.tetris-overlay { position: fixed; inset: 0; z-index: 2650; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75); padding: 12px; }
-.tetris-panel { width: 100%; max-width: 340px; max-height: 96vh; background: linear-gradient(160deg,#13223c,#0b1324); border: 1px solid rgba(0,200,255,0.18); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+/* #dueño 05-11: el tablero se veía MINÚSCULO → panel más ancho, cromo (cabecera/controles/pie) más compacto y alto casi
+   completo, para que el tablero (lo calcula tetris.js _sizeCanvas desde la ventana) use casi toda la pantalla sin recortes. */
+.tetris-overlay { position: fixed; inset: 0; z-index: 2650; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75); padding: 6px; }
+.tetris-panel { width: 100%; max-width: 420px; max-height: calc(100vh - 12px); background: linear-gradient(160deg,#13223c,#0b1324); border: 1px solid rgba(0,200,255,0.18); border-radius: 16px; padding: 10px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
 .tetris-head { text-align: center; color: #e8f0f2; }
-.tetris-title { font-size: 17px; font-weight: 700; }
-.tetris-stat { font-size: 12px; color: #9fb0b5; margin-top: 2px; }
+.tetris-title { font-size: 16px; font-weight: 700; }
+.tetris-stat { font-size: 12px; color: #9fb0b5; margin-top: 1px; }
 .tetris-board-wrap { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
-.tetris-canvas { border-radius: 8px; background: #0a1020; box-shadow: 0 0 0 1px rgba(0,200,255,0.2), 0 6px 20px rgba(0,0,0,0.4); touch-action: manipulation; }
-.tetris-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.tetris-btn { padding: 13px 0; border: 1px solid rgba(0,200,255,0.22); border-radius: 12px; background: rgba(255,255,255,0.06); color: #e8f0f2; font-size: 20px; font-weight: 700; cursor: pointer; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+.tetris-canvas { border-radius: 8px; background: #0a1020; box-shadow: 0 0 0 1px rgba(0,200,255,0.2), 0 6px 20px rgba(0,0,0,0.4); touch-action: manipulation; max-width: 100%; }
+.tetris-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.tetris-btn { padding: 9px 0; border: 1px solid rgba(0,200,255,0.22); border-radius: 12px; background: rgba(255,255,255,0.06); color: #e8f0f2; font-size: 18px; font-weight: 700; cursor: pointer; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
 .tetris-btn:active { background: rgba(0,200,255,0.18); }
 .tetris-btn.td { grid-column: 1 / 2; }
 .tetris-btn.thd { grid-column: 2 / 4; background: linear-gradient(135deg,#00c8ff,#a855f7); color: #fff; border: none; }
@@ -235,6 +237,8 @@ body::before {
 .attach-menu-item[data-type="location"]::after { content: 'Ubicación'; }
 .attach-menu-item[data-type="contact"]::after { content: 'Contacto'; }
 .attach-menu-item[data-type="cobro"]::after { content: 'Cobro'; }
+.attach-menu-item[data-type="search"] svg { background: linear-gradient(135deg, #3b82f6, #06b6d4); }
+.attach-menu-item[data-type="search"]::after { content: 'Buscar'; }
 
 /* ---------- Hojas (menú de un mensaje, reenviar, compartir, grupo) ---------- */
 /* Menús que suben desde abajo (fondo oscuro translúcido + hoja de cristal) */

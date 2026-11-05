@@ -207,13 +207,16 @@ function _startGroupCall(video) {
 function _installGroupButton() {
   var header = document.getElementById('chat-header');
   if (!header || document.getElementById('nexo-gcall-btn')) return;
+  // #dueño 05-11: mismo contenedor derecho que la 1-a-1 (calls_ui) para que el nombre quede centrado también en grupos.
+  var actions = document.getElementById('chat-head-actions');
+  if (!actions) { actions = document.createElement('div'); actions.id = 'chat-head-actions'; header.appendChild(actions); }
   var b = document.createElement('button');
   b.id = 'nexo-gcall-btn';
   b.title = t('grp_call_group_btn', 'Llamar al grupo');
   b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>';
   b.style.cssText = _GBTN_STYLE;
   b.addEventListener('click', function(e) { e.stopPropagation(); _startGroupCall(false); });
-  header.appendChild(b);
+  actions.appendChild(b);
   // Videollamada de grupo (mismo botón que la 1-a-1): la cámara arranca encendida
   var v = document.createElement('button');
   v.id = 'nexo-gvideo-btn';
@@ -221,7 +224,7 @@ function _installGroupButton() {
   v.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="12" height="10" rx="2"/><path d="M15 11l6-3v8l-6-3z"/></svg>';
   v.style.cssText = _GBTN_STYLE;
   v.addEventListener('click', function(e) { e.stopPropagation(); _startGroupCall(true); });
-  header.appendChild(v);
+  actions.appendChild(v);
 }
 
 function _refreshGroupButton() {

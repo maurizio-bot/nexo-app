@@ -192,9 +192,17 @@ function _onOver(G, canvas, stat, again) {
 }
 function _sizeCanvas(canvas) {
   var wrap = canvas.parentNode; if (!wrap) return;
-  var maxW = Math.min(wrap.clientWidth || 300, 320), maxH = (wrap.clientHeight || 560);
-  var cell = Math.max(10, Math.floor(Math.min(maxW / COLS, (maxH || (maxW / COLS * ROWS)) / ROWS)));
-  var dpr = (window.devicePixelRatio || 1);
+  // #dueño 05-11: el tablero salía MINÚSCULO. Causa: se medía wrap.clientHeight, pero el wrap es flex:1 dentro de un
+  // panel de alto automático → su alto depende del canvas, que depende de su alto (círculo); a veces daba un valor chico
+  // y la celda colapsaba al mínimo. Ahora el ALTO se saca de la VENTANA menos el «cromo» (cabecera+controles+pie ≈ 212 px)
+  // y el ANCHO del contenedor (ese sí es fiable). Así el tablero usa casi toda la pantalla.
+  var vw = (typeof window !== 'undefined' && window.innerWidth) || 360;
+  var vh = (typeof window !== 'undefined' && window.innerHeight) || 720;
+  var wrapW = wrap.clientWidth || 0;
+  var availW = wrapW > 40 ? wrapW : Math.min(vw - 28, 460);
+  var availH = Math.max(260, vh - 204);
+  var cell = Math.max(16, Math.floor(Math.min(availW / COLS, availH / ROWS)));
+  var dpr = Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, 2);
   canvas.width = cell * COLS * dpr; canvas.height = cell * ROWS * dpr;
   canvas.style.width = (cell * COLS) + 'px'; canvas.style.height = (cell * ROWS) + 'px';
   canvas._cell = cell; canvas._dpr = dpr;
@@ -248,5 +256,6 @@ try {
     // Para armar un tablero concreto en las pruebas: filas de 10 chars ('.'=vacío, letra=lleno). No toca la pieza viva.
     window.__nexoTetrisSetGrid = function(rows) { if (!TG || !Array.isArray(rows)) return; for (var r = 0; r < ROWS; r++) { var s = rows[r] || ''; for (var c = 0; c < COLS; c++) { var ch = s[c] || '.'; TG.grid[r][c] = (ch === '.' || ch === ' ') ? '' : ch; } } };
     window.__nexoCloseTetris = function() { _close(); };   // botón atrás de Android (chat_nav.js)
+    window.__nexoOpenTetris = function() { openTetris(); };  // abrir el overlay (prueba visual en Chromium / acceso directo)
   }
 } catch (e) {}

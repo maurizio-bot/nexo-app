@@ -65,6 +65,8 @@ export function _setupBackButton() {
         // #dueño 01-11 (atrás SOLO por gestos): el gesto del sistema también cierra las pantallas a pantalla completa cuyo
         // botón de «atrás» se quitó (Ajustes, Perfil, panel Agregar). Van ANTES que el chat porque están por encima de él.
         // Ajustes es un nivel por DEBAJO de Perfil (lo reemplaza), así que el gesto vuelve a Perfil, como el viejo botón «‹ Perfil».
+        var cprof = document.getElementById('nexo-contact-profile'); // #dueño 05-11: la ficha del contacto se cierra por gesto/atrás (se le quitó el botón), como el resto
+        if (cprof) { cprof.remove(); return true; }
         var settings = document.getElementById('nexo-settings-sheet');
         if (settings) { settings.remove(); try { window.dispatchEvent(new CustomEvent('nexo:ui:profile')); } catch (e) {} return true; }
         var profile = document.getElementById('nexo-profile-sheet'); if (profile) { profile.remove(); return true; }

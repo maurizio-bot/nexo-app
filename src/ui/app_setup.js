@@ -20,6 +20,7 @@ import { openStickerPicker, isValidStickerImg } from './stickers.js';
 import { openStickerEditor } from './sticker_editor.js';
 import { openTttForContact } from './ttt.js';
 import { openGamePicker } from './game_menu.js';
+import { openChatSearch } from './search_ui.js';
 import { getPermissionShim } from '../core/NexoPermissionShim.js';
 import { rem } from './rem.js';
 import { vaultFindContactByNexoId, vaultSaveContact } from '../vault/vault_manager.js';
@@ -101,6 +102,7 @@ export function _bindAttachmentHandlers() {
       else if (type === 'sticker') { _closeAttachMenu(); var _scid = _getCurrentContactId(); openStickerPicker(_scid, _sendStickerTo, function() { openStickerEditor(_scid, _sendStickerTo); }); }
       else if (type === 'ttt') { _closeAttachMenu(); openTttForContact(_getCurrentContactId()); } // compat: por si quedó algún item viejo
       else if (type === 'games') { _closeAttachMenu(); openGamePicker(_getCurrentContactId()); } // salón de juegos (game_menu.js)
+      else if (type === 'search') { _closeAttachMenu(); openChatSearch(); } // #dueño 05-11: la lupa se mudó acá (antes en la cabecera)
     });
   });
   document.addEventListener('click', function(e) {

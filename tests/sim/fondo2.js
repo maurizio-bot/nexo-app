@@ -89,17 +89,31 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   B.win.applyChatWallpaper(idA, { act: 'wp', img: '' });
   r.recibe_quitar = B.win.chatWallpaperFor(idA) === '';
 
-  // (5) #dueño 04-11: el botón «Fondo de este chat» de la cabecera SALE al abrir un chat 1-a-1, SIN depender de que el
-  //     <body> ya tenga 'chat-view-active' (antes era una carrera con el orden del evento → «a veces no estaba el botón»).
-  A.win.document.body.classList.remove('chat-view-active');          // simular que la clase aún NO se agregó (la carrera)
+  // (5) #dueño 05-11: el fondo del chat se abre con una PULSACIÓN LARGA sobre el fondo vacío (ya NO hay botón en la
+  //     cabecera; salió para que el nombre quede centrado). Solo en chats 1-a-1 y solo si no se arrastró (scroll/gesto).
+  A.win.NEXO_WP_LONGPRESS_MS = 40;                                   // acelerar el tiempo para la prueba (determinista)
+  var mc = A.win.document.getElementById('messages-container');
+  r.gesto_instalado = !!(mc && mc._nexoWpGesture);
   A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:openChat', { detail: { contactId: idB } }));
   await sleep(60);
-  var wpBtn = A.win.document.getElementById('nexo-wp-btn');
-  r.boton_existe = !!wpBtn;
-  r.boton_visible_en_chat = !!wpBtn && wpBtn.style.display !== 'none'; // visible aunque falte la clase del body
+  var md = function(x, y) { mc.dispatchEvent(new A.win.MouseEvent('mousedown', { bubbles: true, button: 0, clientX: x, clientY: y })); };
+  var mm = function(x, y) { mc.dispatchEvent(new A.win.MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: y })); };
+  var mu = function() { mc.dispatchEvent(new A.win.MouseEvent('mouseup', { bubbles: true })); };
+  var rmSheet = function() { var s = A.win.document.getElementById('nexo-wp-sheet'); if (s) s.remove(); };
+  // pulsación larga sobre el FONDO → abre la hoja de fondo
+  rmSheet(); md(100, 300); await sleep(90); mu(); await sleep(40);
+  r.pulsacion_abre = !!A.win.document.getElementById('nexo-wp-sheet');
+  rmSheet();
+  // si se ARRASTRA (scroll/gesto), NO abre
+  md(100, 300); mm(100, 370); await sleep(90); mu(); await sleep(20);
+  r.arrastre_no_abre = !A.win.document.getElementById('nexo-wp-sheet');
+  rmSheet();
+  // FUERA de un chat 1-a-1, NO abre
   A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:closeChat', { detail: {} }));
   await sleep(60);
-  r.boton_oculto_fuera = !!wpBtn && wpBtn.style.display === 'none';    // fuera de un chat, oculto
+  md(100, 300); await sleep(90); mu(); await sleep(20);
+  r.fuera_no_abre = !A.win.document.getElementById('nexo-wp-sheet');
+  rmSheet();
 
   // (6) #dueño 04-11: si B SÍ tiene abierto ese chat, el fondo recibido se PINTA al instante (por _curNx, sin depender de
   //     la clase 'chat-view-active' del body — misma carrera que el botón) y el aviso NO dice «abrí el chat».
@@ -116,7 +130,7 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   r.errores = logs.filter((l) => /TypeError|undefined is not|No se pudo descifrar/.test(l)).slice(0, 4);
   const ok = r.emparejados && r.per_set && r.per_manda && r.cae_a_global && r.global_intacto && r.A_guarda_por_chat &&
     r.comparte && r.llega_a_B && r.B_no_mensaje_visible && r.B_avisa_al_recibir && r.B_guarda && r.rechaza_basura && r.recibe_quitar &&
-    r.boton_existe && r.boton_visible_en_chat && r.boton_oculto_fuera &&
+    r.gesto_instalado && r.pulsacion_abre && r.arrastre_no_abre && r.fuera_no_abre &&
     r.en_chat_pinta_al_instante && r.en_chat_aviso_sin_abrir && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('FONDO2 ' + JSON.stringify(r));

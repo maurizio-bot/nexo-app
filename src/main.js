@@ -114,7 +114,7 @@ import { groupAttachment, isGroupId, parseGroupEnvelope } from './ui/groups.js';
 import { isGroupWire, startGroupMedia } from './ui/group_media.js';
 import { avatarInit } from './ui/avatar.js';
 import { profileInit } from './ui/profile_data.js';
-import { wallpaperInit, wallpaperUse, installWallpaperButton, setListWallpaper, clearListWallpaper, setChatWallpaper, clearChatWallpaper, wallpaperRefresh, wallpaperApplied, setChatWallpaperFor, clearChatWallpaperFor, chatWallpaperFor, hasChatWallpaper, hasChatWallpaperFor, shareChatWallpaper, applyChatWallpaper } from './ui/wallpaper.js';
+import { wallpaperInit, wallpaperUse, installWallpaperGesture, setListWallpaper, clearListWallpaper, setChatWallpaper, clearChatWallpaper, wallpaperRefresh, wallpaperApplied, setChatWallpaperFor, clearChatWallpaperFor, chatWallpaperFor, hasChatWallpaper, hasChatWallpaperFor, shareChatWallpaper, applyChatWallpaper } from './ui/wallpaper.js';
 import { estadosInit } from './ui/estados.js';
 import { parseCallSignal } from './ui/calls.js';
 import { parseGroupCallSignal } from './ui/group_call.js';
@@ -299,7 +299,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 // Ronda 2759: botón 👤 (Perfil) en la cabecera
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installProfileButton); else installProfileButton();
 // ronda 2890: botón 🖼️ en la cabecera del chat (fondo por chat, opción A)
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installWallpaperButton); else installWallpaperButton();
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installWallpaperGesture); else installWallpaperGesture();
 // Ronda 2758: llamadas de voz (calls.js / calls_ui.js)
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installCallsUi); else installCallsUi();
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installGroupCallUi); else installGroupCallUi();

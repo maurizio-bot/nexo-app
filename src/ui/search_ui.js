@@ -108,8 +108,11 @@ function _clear() {
 // Al abrir o cerrar un chat, la búsqueda se cierra (cada chat empieza limpio).
 function _reset() { if (_active) _toggle(); }
 
+// #dueño 05-11: la lupa salió de la cabecera; ahora se abre desde el menú «+» (data-type="search", app_setup.js).
+export function openChatSearch() { _buildBar(); if (!_active) _toggle(); }
+
 export function installSearchUi() {
-  _installButton();
+  // Ya NO se instala el botón en la cabecera (menos amontonamiento; el nombre queda centrado). Se conserva el reset.
   window.addEventListener('nexo:ble:closeChat', _reset);
   window.addEventListener('nexo:ble:openChat', _reset);
 }

@@ -126,10 +126,10 @@ function _openContactProfile(uuid) {
   var sheet = document.createElement('div');
   sheet.id = 'nexo-contact-profile';
   sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;color:#fff;box-sizing:border-box;font-family:inherit;overflow-y:auto;';
+  // #dueño 05-11: sin botón de regreso — se cierra con el gesto/atrás (estándar de la app, chat_nav.js), como el resto.
   sheet.innerHTML = '<div class="nx-profile-in">' +
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 14px;">' +
-    '<div style="font-size:26px;font-weight:800;">' + t('prof_contact_title', 'Perfil') + '</div>' +
-    '<button id="nexo-cp-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;">' + t('close', 'Cerrar') + '</button></div>' +
+    '<div style="display:flex;align-items:center;margin:4px 0 14px;">' +
+    '<div style="font-size:26px;font-weight:800;">' + t('prof_contact_title', 'Perfil') + '</div></div>' +
     '<div class="nx-card" style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;">' +
     '<div class="nx-av" id="nexo-cp-av" style="width:92px;height:92px;font-size:34px;"></div>' +
     '<div style="font-size:21px;font-weight:800;word-break:break-word;">' + _esc(name) + '</div>' +
@@ -142,7 +142,6 @@ function _openContactProfile(uuid) {
     '</div>';
   document.body.appendChild(sheet);
   try { paintAvatar(sheet.querySelector('#nexo-cp-av'), nx); } catch (e) {}
-  sheet.querySelector('#nexo-cp-close').onclick = function () { sheet.remove(); };
   var chatBtn = sheet.querySelector('#nexo-cp-chat');
   if (chatBtn) chatBtn.onclick = function () {
     sheet.remove();

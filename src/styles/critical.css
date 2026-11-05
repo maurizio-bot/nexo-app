@@ -206,8 +206,19 @@ Consolidado: inline + main.css + ble_styles
    align-items: center;
    justify-content: center;
    text-align: center;
-   padding: 4px 8px 4px 44px;
+   /* #dueño 05-11: hueco IGUAL a izquierda (botón atrás) y derecha (llamada+video) para que el nombre quede CENTRADO */
+   padding: 4px 100px;
    overflow: hidden;
+   }
+   /* #dueño 05-11: llamada + videollamada (1-a-1 y grupo) agrupadas a la derecha, fuera del flujo, para no descentrar el nombre */
+   #chat-head-actions {
+   position: absolute;
+   right: 12px;
+   top: 50%;
+   transform: translateY(-50%);
+   display: flex;
+   flex-direction: row;
+   align-items: center;
    }
    #chat-contact-name {
    background: transparent;

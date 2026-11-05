@@ -110,7 +110,7 @@ export function wallpaperInit() {
     _paint(_chat);
     var nx = _curNx;
     _ensurePer(nx).then(function() { if (_curNx === nx) _paint(_chatImgFor(nx)); });
-    installWallpaperButton(); // re-asegura el botón por si no se instaló al arrancar (idempotente)
+    installWallpaperGesture(); // re-asegura el gesto de pulsación larga por si no se instaló al arrancar (idempotente)
     _refreshButton();
   });
   window.addEventListener('nexo:ble:closeChat', function() { _curNx = ''; _paint(_list); _refreshButton(); });
@@ -221,17 +221,32 @@ function _refreshButton() {
   b.style.display = NX_RE.test(_curNx) ? '' : 'none';
 }
 
-export function installWallpaperButton() {
-  var header = document.getElementById('chat-header');
-  if (!header || document.getElementById('nexo-wp-btn')) return;
-  var b = document.createElement('button');
-  b.id = 'nexo-wp-btn';
-  b.title = t('wp_btn_title', 'Fondo de este chat');
-  b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.6"/><path d="M21 16l-5-5L5 20"/></svg>';
-  b.style.cssText = 'width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;cursor:pointer;flex-shrink:0;margin-left:6px;display:none;';
-  b.addEventListener('click', function(e) { e.stopPropagation(); _openSheet(); });
-  header.appendChild(b);
-  _refreshButton();
+// #dueño 05-11: se quitó el botón 🖼️ de la cabecera. Ahora el fondo del chat se abre con una PULSACIÓN LARGA (~0,8 s)
+// sobre el FONDO del chat (donde no hay mensajes). Solo en chats 1-a-1 y solo si no se arrastró (para no pisar el scroll
+// ni el gesto de cerrar). El tiempo es configurable por window.NEXO_WP_LONGPRESS_MS (para probarlo determinista en jsdom).
+export function installWallpaperGesture() {
+  var c = document.getElementById('messages-container');
+  if (!c || c._nexoWpGesture) return;
+  c._nexoWpGesture = true;
+  var timer = null, sx = 0, sy = 0, moved = false, MOVE = 12;
+  function clearT() { if (timer) { clearTimeout(timer); timer = null; } }
+  function start(x, y, target) {
+    if (!NX_RE.test(_curNx)) return;                                  // solo en chats 1-a-1
+    if (target && target.closest && target.closest('.message, button, a, input, textarea, img, video, svg, .msg-media')) return; // solo el FONDO vacío
+    sx = x; sy = y; moved = false; clearT();
+    var ms = (typeof window !== 'undefined' && window.NEXO_WP_LONGPRESS_MS) || 800;
+    timer = setTimeout(function() { timer = null; if (!moved) _openSheet(); }, ms);
+  }
+  function move(x, y) { if (timer && (Math.abs(x - sx) > MOVE || Math.abs(y - sy) > MOVE)) { moved = true; clearT(); } }
+  c.addEventListener('touchstart', function(e) { var t = e.touches && e.touches[0]; if (t) start(t.clientX, t.clientY, e.target); }, { passive: true });
+  c.addEventListener('touchmove', function(e) { var t = e.touches && e.touches[0]; if (t) move(t.clientX, t.clientY); }, { passive: true });
+  c.addEventListener('touchend', clearT, { passive: true });
+  c.addEventListener('touchcancel', clearT, { passive: true });
+  c.addEventListener('scroll', function() { moved = true; clearT(); }, { passive: true });
+  c.addEventListener('mousedown', function(e) { if (e.button === 0) start(e.clientX, e.clientY, e.target); });
+  c.addEventListener('mousemove', function(e) { move(e.clientX, e.clientY); });
+  c.addEventListener('mouseup', clearT);
+  c.addEventListener('mouseleave', clearT);
 }
 
 function _pick(onUrl) {

@@ -1,6 +1,6 @@
-// Buscar dentro del chat (lupa de la cabecera): A y B emparejados; A escribe varios textos y recibe uno de B.
-// Comprueba: la lupa está en la cabecera y abre una barra debajo; al teclear, oculta las burbujas que no
-// coinciden, resalta las que sí (propias y recibidas) y cuenta cuántas; vaciar y cerrar restauran todo.
+// Buscar dentro del chat (lupa en el menú «+», #dueño 05-11): A y B emparejados; A escribe varios textos y recibe uno de B.
+// Comprueba: la lupa está en el menú de adjuntar (ya NO en la cabecera) y abre una barra debajo de la cabecera; al teclear,
+// oculta las burbujas que no coinciden, resalta las que sí (propias y recibidas) y cuenta cuántas; vaciar y cerrar restauran todo.
 // Uso: node search.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -45,6 +45,8 @@ async function search(p, q) {
   const cuenta = (p.win.document.getElementById('nexo-search-count') || {}).textContent || '';
   return { total: all.length, visibles: visibles.length, resaltados: resaltados.length, cuenta };
 }
+// #dueño 05-11: la lupa se mudó de la cabecera al menú «+»; se abre eligiendo el ítem data-type="search".
+async function openSearch(p) { click(p.win, p.win.document.querySelector('.attach-menu-item[data-type="search"]')); await sleep(200); }
 
 (async () => {
   const radio = new Radio();
@@ -75,12 +77,13 @@ async function search(p, q) {
   r.A_recibe_respuesta = await waitFor(() => Array.from(A.win.document.querySelectorAll('#messages-container .message.other')).some((m) => /de acuerdo con los tacos/.test(m.textContent)), 15000);
   await sleep(400);
 
-  // La lupa está en la cabecera
-  const btn = A.win.document.getElementById('nexo-search-btn');
-  r.lupa_en_cabecera = !!btn && btn.closest('#chat-header') === A.win.document.getElementById('chat-header');
+  // La lupa está AHORA en el menú «+» (ya no en la cabecera) — #dueño 05-11
+  const menuItem = A.win.document.querySelector('.attach-menu-item[data-type="search"]');
+  r.lupa_en_menu = !!menuItem && menuItem.closest('#attach-menu') === A.win.document.getElementById('attach-menu');
+  r.lupa_fuera_cabecera = !A.win.document.getElementById('nexo-search-btn');
 
-  // Al pulsarla aparece la barra debajo de la cabecera
-  click(A.win, btn); await sleep(200);
+  // Al elegirla en el menú aparece la barra debajo de la cabecera
+  await openSearch(A);
   const bar = A.win.document.getElementById('nexo-search-bar');
   r.barra_visible = !!bar && bar.style.display === 'flex';
   r.barra_debajo_cabecera = !!bar && bar.previousElementSibling === A.win.document.getElementById('chat-header');
@@ -118,14 +121,14 @@ async function search(p, q) {
   r.cerrar_restaura = barHidden && afterClose.every((m) => !m.classList.contains('msg-search-hidden') && !m.classList.contains('msg-search-hit'));
 
   // Abrir búsqueda y luego cerrar el chat: la búsqueda se resetea sola
-  click(A.win, A.win.document.getElementById('nexo-search-btn')); await sleep(150);
+  await openSearch(A);
   await search(A, 'parque');
   A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:closeChat', { detail: {} })); await sleep(200);
   r.cerrar_chat_resetea = A.win.document.getElementById('nexo-search-bar').style.display === 'none' &&
     Array.from(A.win.document.querySelectorAll('#messages-container .message')).every((m) => !m.classList.contains('msg-search-hidden'));
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|No se pudo descifrar|Error procesando/.test(l)).slice(0, 4);
-  const ok = r.lupa_en_cabecera && r.barra_visible && r.barra_debajo_cabecera && r.tacos_ok && r.parque_ok &&
+  const ok = r.lupa_en_menu && r.lupa_fuera_cabecera && r.barra_visible && r.barra_debajo_cabecera && r.tacos_ok && r.parque_ok &&
     r.insensible_mayusculas && r.sin_resultados && r.vaciar_restaura && r.cerrar_restaura && r.cerrar_chat_resetea &&
     r.A_recibe_respuesta && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';

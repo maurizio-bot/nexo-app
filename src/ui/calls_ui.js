@@ -534,9 +534,17 @@ function _logLine(d) {
 }
 
 // Botón 📞 en la cabecera del chat
+// #dueño 05-11: llamada + videollamada agrupadas a la DERECHA (en un contenedor) para que el nombre quede CENTRADO.
+// El contenedor lo comparten la 1-a-1 (acá), la de grupo (groupcall_ui) — lo crea quien llegue primero.
+function _headActions(header) {
+  var a = document.getElementById('chat-head-actions');
+  if (!a) { a = document.createElement('div'); a.id = 'chat-head-actions'; header.appendChild(a); }
+  return a;
+}
 function _installButton() {
   var header = document.getElementById('chat-header');
   if (!header || document.getElementById('nexo-call-btn')) return;
+  var actions = _headActions(header);
   var b = document.createElement('button');
   b.id = 'nexo-call-btn';
   b.title = t('call_btn_call_title', 'Llamar');
@@ -548,7 +556,7 @@ function _installButton() {
     if (!calls || !cid) return;
     calls.start(cid).catch(function(err) { _showInfoToast(err.message, 3500); });
   });
-  header.appendChild(b);
+  actions.appendChild(b);
   // Videollamada (solo con el contacto en el mismo Wi-Fi)
   var v = document.createElement('button');
   v.id = 'nexo-video-btn';
@@ -561,7 +569,7 @@ function _installButton() {
     if (!calls || !cid) return;
     calls.start(cid, true).catch(function(err) { _showInfoToast(err.message, 3500); });
   });
-  header.appendChild(v);
+  actions.appendChild(v);
 }
 function _refreshButton() {
   var cid = _getCurrentContactId(), gs = _bi() && _bi().groups, show = cid && !(gs && gs.isGroup(cid)) ? '' : 'none';
