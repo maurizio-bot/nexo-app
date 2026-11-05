@@ -405,7 +405,7 @@ export class NetLink {
     if (!/^nx[0-9a-z]{8}$/.test(from) || from === this.me()) return;
     if (typeof o.pk !== 'string' || !/^[A-Za-z0-9+/=]{80,100}$/.test(o.pk)) return;
     if (this.ble && typeof this.ble._onNetRequest === 'function') {
-      this.ble._onNetRequest({ id: from, pk: o.pk, name: String(o.name || '').replace(/[<>]/g, '').slice(0, 40), kind: o.t });
+      this.ble._onNetRequest({ id: from, pk: o.pk, name: String(o.name || '').replace(/[<>]/g, '').slice(0, 40), kind: o.t, ph: typeof o.ph === 'string' ? o.ph.replace(/[<>]/g, '').slice(0, 16) : '', em: typeof o.em === 'string' ? o.em.replace(/[<>]/g, '').slice(0, 24) : '' });
     }
   }
 
@@ -645,7 +645,7 @@ export class NetLink {
   // Alta por ID (ronda 2779): deja una solicitud ('req') o una aceptación ('acc') en el buzón del ID `to`, cifrada con la
   // clave de ese ID. Lleva mi NEXO ID, mi clave pública (para que el otro pueda encender el canal seguro) y mi nombre.
   // Se conecta a los relés si hace falta. Resuelve cuando un relé la guardó.
-  async sendRequest(toId, type, name) {
+  async sendRequest(toId, type, name, extra) {
     var to = _nid(toId), me = this.me(), pk = e2eMyPublicKey();
     if (!/^nx[0-9a-z]{8}$/.test(to)) throw new Error('ID no válido (debe ser NX y 8 más)');
     if (to === me) throw new Error('Ese es tu propio ID');
@@ -653,6 +653,11 @@ export class NetLink {
     if (!this.online()) { await this.tick(); }
     if (!this.online()) throw Object.assign(new Error('Sin internet para mandar la solicitud'), { code: 'NET_DOWN' });
     var payload = { v: 1, t: type === 'acc' ? 'acc' : 'req', from: me, pk: pk, name: String(name || '').replace(/[<>]/g, '').slice(0, 40), ts: Date.now() };
+    // #dueño 04-11 (perfil 2b): la solicitud lleva SOLO los datos ENMASCARADOS (tel = últimos dígitos, correo = primeras
+    // letras). El buzón se cifra con una clave derivable del ID destino (no es E2E fuerte), así que los datos COMPLETOS
+    // NUNCA viajan acá: llegan por el canal seguro recién al aceptar. Enmascarado = reconocer sin regalar el dato.
+    if (extra && typeof extra.ph === 'string' && extra.ph) payload.ph = extra.ph.slice(0, 16);
+    if (extra && typeof extra.em === 'string' && extra.em) payload.em = extra.em.slice(0, 24);
     var key = await crypto.subtle.importKey('raw', _reqAesKey(to), 'AES-GCM', false, ['encrypt']);
     var iv = _rnd(12);
     var ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, _utf8(JSON.stringify(payload))));

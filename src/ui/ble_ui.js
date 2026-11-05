@@ -498,6 +498,16 @@ export const BLE_UI_METHODS = {
       var sub = document.createElement('div'); sub.style.cssText = 'font-size:11px;opacity:.7;';
       sub.textContent = String(req.id || '').toUpperCase() + ' · quiere agregarte';
       info.appendChild(nm); info.appendChild(sub);
+      // #dueño 04-11 (perfil 2b): tarjeta de validación — tel/correo ENMASCARADOS que llegaron en la solicitud (reconocer
+      // sin regalar el dato). Los datos COMPLETOS y la foto aparecen al ACEPTAR (por el canal seguro E2E).
+      if (req.ph || req.em) {
+        var det = document.createElement('div'); det.style.cssText = 'font-size:11px;opacity:.65;margin-top:3px;';
+        var bits = [];
+        if (req.ph) bits.push('📱 ' + req.ph);
+        if (req.em) bits.push('✉️ ' + req.em);
+        det.textContent = bits.join('   ·   ');
+        info.appendChild(det);
+      }
       var ok = document.createElement('button'); ok.textContent = 'Aceptar';
       ok.style.cssText = 'flex-shrink:0;padding:7px 12px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:600;cursor:pointer;';
       var no = document.createElement('button'); no.textContent = 'Eliminar';

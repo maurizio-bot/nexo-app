@@ -4,6 +4,7 @@
  * internet y por dónde va cada contacto (linkOf).
  */
 import { BLE_STATES, _getBLEContacts, _lanId, _netId, _netNx, _normId, _normMac, _safeDispatchEvent, _saveBLEContacts, _vNx } from './ble_helpers.js';
+import { myProfile, maskPhone, maskEmail } from './profile_data.js'; // #dueño 04-11 (perfil 2b): datos enmascarados en la solicitud
 
 // #dueño 04-11 (regla de caminos): cuando el Bluetooth SUELTA un mensaje (enlace muerto/atascado, p. ej. MTU 23), ese
 // enlace se considera muerto este rato y NO se elige para enviar → el resolvedor cae a internet/Wi-Fi («internet antes
@@ -171,7 +172,8 @@ export const BLE_LINK_METHODS = {
     if (nx === _normId(self.localNexoId)) return Promise.reject(new Error('Ese es tu propio ID'));
     if (_getBLEContacts().some(function(c) { return _normId(c.nexoId || c.deviceUUID) === nx; })) return Promise.reject(new Error('Ya tienes a ese contacto'));
     if (!self.net) return Promise.reject(new Error('Esta versión no tiene internet'));
-    return self.net.sendRequest(nx, 'req', self.localDeviceName || '').then(function() {
+    var _mp = myProfile(); // perfil 2b: mando mis datos ENMASCARADOS (los completos van al aceptar, por E2E)
+    return self.net.sendRequest(nx, 'req', self.localDeviceName || '', { ph: maskPhone(_mp.phone), em: maskEmail(_mp.email) }).then(function() {
       var out = self._reqStore('nexo_req_out').filter(function(x) { return x.id !== nx; });
       out.unshift({ id: nx, at: Date.now() });
       self._reqSave('nexo_req_out', out);
@@ -197,7 +199,7 @@ export const BLE_LINK_METHODS = {
     }
     // Solicitud entrante (o una aceptación que no esperaba): a la bandeja, para aceptar o eliminar
     var inbox = self._reqStore('nexo_req_in').filter(function(x) { return x.id !== nx; });
-    inbox.unshift({ id: nx, pk: pk, name: name, at: Date.now() });
+    inbox.unshift({ id: nx, pk: pk, name: name, ph: (info && info.ph) || '', em: (info && info.em) || '', at: Date.now() });
     self._reqSave('nexo_req_in', inbox);
     _safeDispatchEvent('nexo:ble:reqIncoming', { id: nx, name: name, count: inbox.length });
   },
@@ -213,7 +215,8 @@ export const BLE_LINK_METHODS = {
     self._reqSave('nexo_req_in', inbox.filter(function(x) { return x.id !== nx; }));
     if (self.net) self.net.greet();
     _safeDispatchEvent('nexo:ble:reqIncoming', { count: self._reqStore('nexo_req_in').length });
-    return (self.net ? self.net.sendRequest(nx, 'acc', self.localDeviceName || '') : Promise.resolve()).catch(function() {});
+    var _mp = myProfile(); // perfil 2b: al aceptar también mando mis datos enmascarados en la respuesta
+    return (self.net ? self.net.sendRequest(nx, 'acc', self.localDeviceName || '', { ph: maskPhone(_mp.phone), em: maskEmail(_mp.email) }) : Promise.resolve()).catch(function() {});
   },
 
   // Eliminar una solicitud entrante (no se agrega nada)

@@ -55,6 +55,8 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.en_internet = await waitFor(() => A.bi.net && A.bi.net.online() && B.bi.net.online() && C.bi.net.online(), 20000);
 
   // 1) A agrega a B por su NEXO ID (como si B se lo hubiera pasado por WhatsApp). B no es contacto de A todavía.
+  // #dueño 04-11 (perfil 2b): A tiene datos de perfil; en la solicitud viajan ENMASCARADOS (los completos van al aceptar).
+  A.win.NEXO_setMyProfile({ name: 'Ana', phone: '+54 11 5555-7788', email: 'ana@correo.com' });
   let sent = false;
   try { await A.bi.addByNexoId(idB); sent = true; } catch (e) { logs.push('[A] addByNexoId: ' + (e && e.message)); }
   r.solicitud_enviada = sent;
@@ -63,6 +65,12 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.B_no_agrego_solo = !hasContact(B, idA) || !r.B_ve_solicitud ? !hasContact(B, idA) : true;
   // (comprobación directa: antes de aceptar, B NO tiene a A de contacto)
   r.pendiente_sin_agregar = r.B_ve_solicitud && !hasContact(B, idA);
+  // #dueño 04-11 (perfil 2b): la tarjeta de validación que ve B trae tel/correo ENMASCARADOS (reconocer sin regalar el
+  // dato). maskPhone('...5555-7788')='•••••88'; maskEmail('ana@correo.com')='an•••@•••'. Y NO filtra el dato completo.
+  const reqB = B.bi.pendingRequests().find((x) => x.id === idA) || {};
+  r.B_ve_tel_enmascarado = reqB.ph === '•••••88';
+  r.B_ve_correo_enmascarado = reqB.em === 'an•••@•••';
+  r.enmascarado_no_filtra = !!reqB.ph && reqB.ph.indexOf('5555') < 0 && !!reqB.em && reqB.em.indexOf('correo.com') < 0;
 
   // 2) B acepta → agrega a A (con su clave) y avisa a A; A recibe la aceptación y agrega a B
   if (r.B_ve_solicitud) { try { await B.bi.acceptRequest(idA); } catch (e) { logs.push('[B] accept: ' + (e && e.message)); } }
@@ -83,7 +91,8 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.rechazo_funciona = !A.bi.pendingRequests().some((x) => x.id === idC) && !hasContact(A, idC);
 
   const ok = r.en_internet && r.solicitud_enviada && r.B_ve_solicitud && r.pendiente_sin_agregar && r.B_agrego_a_A &&
-    r.A_agrego_a_B && r.sin_verificar && r.se_conectan && r.A_ve_solicitud_C && r.C_no_agregado_solo && r.rechazo_funciona;
+    r.A_agrego_a_B && r.sin_verificar && r.se_conectan && r.A_ve_solicitud_C && r.C_no_agregado_solo && r.rechazo_funciona &&
+    r.B_ve_tel_enmascarado && r.B_ve_correo_enmascarado && r.enmascarado_no_filtra;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('REQADD ' + JSON.stringify(r));
   if (!ok) console.log(logs.slice(-50).join('\n'));
