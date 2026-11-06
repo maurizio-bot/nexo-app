@@ -28,7 +28,9 @@ import { t } from './i18n.js';
 import { COLS, ROWS, COLORS, newGame, tryMove, tryRotate, step, hardDrop, softDrop, addGarbage } from './tetris.js';
 
 var NX_RE = /^nx[0-9a-z]{8}$/;
-var GARBAGE_FOR = [0, 0, 1, 2, 4];      // líneas que hago → filas de basura que mando (1→0, 2→1, 3→2, 4→4; tabla tipo Tetris)
+var GARBAGE_FOR = [0, 1, 2, 3, 4];      // líneas que hago → filas de basura que mando (1→1, 2→2, 3→3, 4→4). #dueño 06-11:
+                                        // antes 1 línea mandaba 0 (regla del Tetris competitivo) y parecía roto; en NEXO
+                                        // (casual) CADA línea manda basura, para que se vea reflejada en el rival.
 var MAX_GARBAGE_ROWS = 60;              // techo acumulado de basura recibida por partida (anti-spam)
 var games = {};                          // gid → estado
 var openGid = null;

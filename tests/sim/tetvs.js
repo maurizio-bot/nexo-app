@@ -84,20 +84,25 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.mismo_gid = gidB === gid;
   r.semilla_compartida = !!(stA(gid) && stB(gidB) && stA(gid).seed === stB(gidB).seed && stA(gid).next === stB(gidB).next);
 
-  // A hace 3 líneas → me manda 2 filas de basura (GARBAGE_FOR[3]=2). El tablero de B crece.
+  // #dueño 06-11: A hace UNA línea → me manda 1 fila de basura (GARBAGE_FOR[1]=1). ESTE es el caso que el dueño vio ROTO:
+  // antes 1 línea mandaba 0 basura, así que haciendo líneas de a una NUNCA se reflejaba nada en el rival. El tablero de B crece.
   const filledB0 = stB(gidB).filled;
-  A.win.__nexoTvsClearLines(gid, 3);
-  r.b_recibe_basura = (await waitFor(async () => { const s = stB(gidB); return s && s.recv === 2; }, 30000)) !== null;
+  A.win.__nexoTvsClearLines(gid, 1);
+  r.b_recibe_basura_1linea = (await waitFor(async () => { const s = stB(gidB); return s && s.recv === 1; }, 30000)) !== null;
   r.basura_crece_tablero = stB(gidB).filled > filledB0;
+
+  // A hace 3 líneas → 3 filas más (GARBAGE_FOR[3]=3). recv 1→4.
+  A.win.__nexoTvsClearLines(gid, 3);
+  r.b_recibe_basura_3 = (await waitFor(async () => { const s = stB(gidB); return s && s.recv === 4; }, 30000)) !== null;
 
   // Basura INVÁLIDA (n=99) inyectada directo en B: se ignora y NO quema el seq. Uso un seq ALTO para probar que, pese a
   // eso, un evento VÁLIDO posterior (con seq menor, el real de A) SÍ entra (el inválido no comprometió seqIn).
   B.win.__nexoTvsOnAction(id('A'), { g: 'tetvs', gid: gidB, seq: 99999, e: 'garbage', n: 99, h: [0] });
   await sleep(200);
-  r.basura_invalida_ignorada = stB(gidB).recv === 2;
-  // Ahora A hace 2 líneas más → 1 fila de basura (GARBAGE_FOR[2]=1). Debe entrar (recv 2→3) aunque antes llegó el seq 99999.
+  r.basura_invalida_ignorada = stB(gidB).recv === 4;
+  // Ahora A hace 2 líneas más → 2 filas (GARBAGE_FOR[2]=2). Debe entrar (recv 4→6) aunque antes llegó el seq 99999.
   A.win.__nexoTvsClearLines(gid, 2);
-  r.valido_tras_invalido = (await waitFor(async () => { const s = stB(gidB); return s && s.recv === 3; }, 30000)) !== null;
+  r.valido_tras_invalido = (await waitFor(async () => { const s = stB(gidB); return s && s.recv === 6; }, 30000)) !== null;
 
   // A se topa (pierde). Manda 'over'. A queda perdedor; B, que seguía vivo, gana.
   A.win.__nexoTvsTopOut(gid);
@@ -111,7 +116,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.ranking_B_1v0 = !!(h2hB && h2hB.w === 1 && h2hB.l === 0);
 
   r.errores = logs.filter((l) => /PAGEERROR|TypeError|is not a function/.test(l)).slice(0, 5);
-  r.resultado = (r.gid && r.b_recibe && r.mismo_gid && r.semilla_compartida && r.b_recibe_basura && r.basura_crece_tablero &&
+  r.resultado = (r.gid && r.b_recibe && r.mismo_gid && r.semilla_compartida && r.b_recibe_basura_1linea && r.b_recibe_basura_3 && r.basura_crece_tablero &&
     r.basura_invalida_ignorada && r.valido_tras_invalido && r.a_pierde && r.b_gana && r.ranking_A_0v1 && r.ranking_B_1v0 && r.errores.length === 0) ? 'OK' : 'FALLO';
   console.log('TVS ' + JSON.stringify(r));
   try { fs.writeFileSync(path.join(buildDir, 'last_logs_tetvs.txt'), logs.slice(-250).join('\n')); } catch (e) {}
