@@ -18,7 +18,9 @@ jobs:
   # Pruebas antes de publicar: si alguna falla, no se compila ni se publica la APK
   tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # El paso «Chromium» (playwright install, sin caché) tarda ~9 min fijos; con la batería del simulador (~19-20 min)
+    # el job rozaba los 30 min y GitHub lo cortaba como «cancelado» (builds 2935 attempt 1 y 2). 45 da margen de sobra.
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
