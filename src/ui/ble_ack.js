@@ -1414,16 +1414,18 @@ export class BleAckSystem {
   _resumeRunOne(job) {
     var self = this, cid = job.cid, tx = job.tx, contactDeviceId = job.contactDeviceId;
     // v3.10.0: por el mejor camino de ahora (Wi-Fi, Bluetooth); el guardado puede ser un Wi-Fi que ya no está
-    var best = (self.ble && typeof self.ble._resolveDeviceIdForNexoId === 'function') ? self.ble._resolveDeviceIdForNexoId(cid) : null;
+    var content = tx.chunks.map(function(c) { return (typeof c === 'string') ? c : (c.data || c.d || ''); }).join('');
+    var isFileTx = tx.type === 'file';   // FIX: respetar tx.type (una foto/vídeo interrumpido no se reenvía como texto plano)
+    // #dueño 06-11: un archivo grande (> tope de Bluetooth) prefiere internet/Wi-Fi antes que un Bluetooth listo (si no,
+    // se arrastra por BT y no llega: un APK de 25 MB = 148 mil trozos). preferNet solo para archivos grandes.
+    var bigFile = isFileTx && content.length > BLE_FILE_MAX_CHARS;
+    var best = (self.ble && typeof self.ble._resolveDeviceIdForNexoId === 'function') ? self.ble._resolveDeviceIdForNexoId(cid, bigFile) : null;
     var devId = best || tx.deviceId || contactDeviceId;
     if (_isLanDevice(devId) && !(self.ble && self.ble.lan && self.ble.lan.canReach(cid))) devId = contactDeviceId;
     // Por internet: texto/medios en línea; archivos por Tor/Wi-Fi (filesOk) o al buzón de los relés (mailboxOk)
     var net = self.ble && self.ble.net;
     if (_isNetDevice(devId) && !(net && (tx.type === 'file' ? (net.filesOk(cid) || net.mailboxOk(cid)) : net.canReach(cid)))) devId = contactDeviceId;
     if (!devId) return null;
-    var content = tx.chunks.map(function(c) { return (typeof c === 'string') ? c : (c.data || c.d || ''); }).join('');
-    // FIX: respetar tx.type (una foto/vídeo interrumpido no debe reenviarse como texto plano)
-    var isFileTx = tx.type === 'file';
     // Ronda 2766: a quién va (es su chat): si la conexión resulta ser de otro, no sale por ella
     var txMeta = Object.assign({}, tx.meta || {}, (tx.meta && tx.meta.dst) ? {} : { to: cid });
     var resumePromise = isFileTx
@@ -1726,6 +1728,11 @@ ChatStream.prototype._shouldDeferTinyMtu = function() {
     var dev = this.deviceId;
     if (_isNetDevice(dev) || _isLanDevice(dev)) return false;        // Wi-Fi/internet: sin cola MTU-23 → nunca aplazar
     if (this.meta && this.meta.fwd) return false;                    // reenvío/puente Jump: no aplica
+    // #dueño 06-11 (diagnóstico: un APK de 25 MB se fue por un Bluetooth SANO = 148 550 trozos y no llegó nunca): un
+    // archivo DEMASIADO GRANDE para Bluetooth (> BLE_FILE_MAX_CHARS) NO se manda por Bluetooth, tenga el MTU que tenga.
+    // Queda ⏳ pendiente SIEMPRE y espera Wi-Fi/internet (el resolvedor, con preferNet, lo re-rutea por ahí). La app ya
+    // considera «> tope BLE» como demasiado grande para Bluetooth; antes solo frenaba el caso de MTU mínimo (≤50).
+    if ((this.content ? this.content.length : 0) > BLE_FILE_MAX_CHARS) { try { this.ackSystem._mtuDeferSince.set(this.msgId, Date.now()); } catch (e) {} return true; }
     var ble = this.ble;
     var mtu = (ble && typeof ble.getMtu === 'function') ? ble.getMtu(dev) : 0;
     var tiny = (typeof window !== 'undefined' && Number(window.NEXO_TINY_MTU)) || TINY_MTU;
@@ -1773,13 +1780,26 @@ ChatStream.prototype.start = function() {
     // (arriba), así que queda ⏳ pendiente y resumeOutgoingTransfers lo reenvía por Wi-Fi/internet al aparecer un camino
     // mejor; si tras un rato no aparece, el propio _shouldDeferTinyMtu deja de aplazar y se intenta por Bluetooth igual.
     if (self._shouldDeferTinyMtu()) {
-      console.warn('[ChatStream] MTU mínimo + archivo grande (' + self.content.length + ' b64) → ⏳ pendiente, no martillo el Bluetooth; espero Wi-Fi/internet. msgId=' + self.msgId);
+      console.warn('[ChatStream] Archivo grande (' + self.content.length + ' b64) → ⏳ pendiente, no por Bluetooth; espero Wi-Fi/internet. msgId=' + self.msgId);
       // Aún no hay temporizadores ni ventana en vuelo (es antes de _runWindowLoop): basta marcar abortado para que
       // _startFileStream lo limpie de outgoingStreams; se rechaza con el motivo propio (NO abort(), que rechazaría
       // antes con «Abortado» y perdería el motivo que send.js usa para dejarlo pendiente en vez de ✗).
       self.aborted = true;
       self.ackSystem._dispatchStatus(self.msgId, 'pending');
-      reject(new Error('archivo grande no cabe por Bluetooth de MTU mínimo ahora: en espera de Wi-Fi/internet'));
+      // #dueño 06-11: si YA hay internet/Wi-Fi para el contacto, re-rutear pronto por ahí (sin esperar un evento externo):
+      // resumeOutgoingTransfers vuelve a resolver con preferNet y manda el archivo grande por internet en vez de Bluetooth.
+      try {
+        var cidD = (self.meta && self.meta.dst) ? self.meta.dst : self.ackSystem._resolveNexoId(self.deviceId);
+        var netD = self.ble && self.ble.net, lanD = self.ble && self.ble.lan;
+        var hasBetter = (netD && ((netD.filesOk && netD.filesOk(cidD)) || (netD.mailboxOk && netD.mailboxOk(cidD)))) || (lanD && lanD.canReach && lanD.canReach(cidD));
+        if (hasBetter) setTimeout(function() { try { self.ackSystem.resumeOutgoingTransfers(); } catch (e) {} }, 1000);
+      } catch (e) {}
+      // El motivo distingue la causa (para los diagnósticos) pero SIEMPRE contiene «no cabe por Bluetooth» → send.js lo
+      // deja ⏳ pendiente (no ✗) y resumeOutgoingTransfers lo reenvía por Wi-Fi/internet. Dos causas: un archivo > tope BLE
+      // = demasiado grande para Bluetooth (cualquier MTU, el bug del APK de 25 MB); si no, un MTU mínimo/desconocido cuya
+      // cola de 20 bytes no traga un archivo grande (B2, #dueño 02-11).
+      var _tooBig = (self.content ? self.content.length : 0) > BLE_FILE_MAX_CHARS;
+      reject(new Error('archivo grande no cabe por Bluetooth ' + (_tooBig ? '(demasiado grande)' : 'de MTU mínimo') + ' ahora: en espera de Wi-Fi/internet'));
       return;
     }
     var armGlobal = function(ms) {
@@ -1941,7 +1961,10 @@ ChatStream.prototype._sendFailed = function(idx, err) {
   // reintentaba para siempre cada 200 ms por el mismo enlace.
   var bi = self.ble, nx = self._dn || self.ackSystem._resolveNexoId(self.deviceId);
   var wrong = err && err.code === 'WRONG_PEER';
-  var best = ((fails >= 3 || wrong) && bi && typeof bi._resolveDeviceIdForNexoId === 'function') ? bi._resolveDeviceIdForNexoId(nx) : null;
+  // #dueño 06-11: un archivo grande que falla por un enlace NO debe re-rutearse a otro Bluetooth (se arrastra en miles de
+  // trozos); prefiere internet/Wi-Fi si el contacto es alcanzable por ahí.
+  var bigFile = self.type === 'file' && self.content && self.content.length > BLE_FILE_MAX_CHARS;
+  var best = ((fails >= 3 || wrong) && bi && typeof bi._resolveDeviceIdForNexoId === 'function') ? bi._resolveDeviceIdForNexoId(nx, bigFile) : null;
   if (best && _normMac(best) !== _normMac(self.deviceId)) {
     if (self.tooBigFor(best)) { self.ackSystem._restartStream(self, self.msgId, best); return false; }
     self.useLink(best);

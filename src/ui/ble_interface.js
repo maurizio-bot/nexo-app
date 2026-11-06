@@ -285,7 +285,7 @@ export class BLEInterface {
    * v6.1.1: Resolución robusta de deviceId.
    * Prioridad: mapeo actualizado → contact.deviceId → connectedDevices → foundDevices.
    */
-  _resolveDeviceIdForNexoId(nexoId) {
+  _resolveDeviceIdForNexoId(nexoId, preferNet) {
     var nx = _normId(nexoId);
     if (!nx) return null;
 
@@ -293,6 +293,12 @@ export class BLEInterface {
     if (this.lan && this.lan.canReach(nx)) return _lanId(nx);
     // v6.13.0 (regla del dueño): los dos en Wi-Fi, aunque sean módems distintos → por internet antes que Bluetooth
     if (this.net && this.net.canReach(nx) && this.net.bothWifi(nx)) return _netId(nx);
+
+    // #dueño 06-11 (diagnóstico: un APK de 25 MB a un contacto en línea por internet se iba por BLUETOOTH, partido en
+    // 148 mil trozos, y nunca llegaba): un archivo DEMASIADO GRANDE para Bluetooth prefiere internet ANTES que un
+    // Bluetooth listo. preferNet lo activan solo los envíos de archivo grande (ble_ack.js). Si el contacto no es
+    // alcanzable por internet ahora, cae al Bluetooth de abajo (y ble_ack lo deja pendiente hasta que haya internet/Wi-Fi).
+    if (preferNet && this.net && this.net.canReach(nx)) return _netId(nx);
 
     // 0. v6.1.6: preferir un enlace YA LISTO con ese NEXO ID. Android usa direcciones distintas para
     // anunciarse y para conectarse como cliente: el otro puede estar conectado por una dirección
