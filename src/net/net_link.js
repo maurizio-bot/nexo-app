@@ -68,6 +68,11 @@ var RELAY_MIN_OTHERS = 2;           // solo se aparta si quedan al menos tantos 
 var WAKE_MIN_MS = 8000;       // M1 (auditoría 28-10): como mucho un «toque» FCM por par cada 8 s (ráfaga de textos)
 var CALL_WAKE_MIN_MS = 3000;  // #130 (dueño 30-10): una llamada insiste en despertar — throttle propio, más corto y
                               // aparte del de textos (un texto reciente NO silencia el toque de una llamada entrante)
+var XFER_WAKE_MIN_MS = 15000; // #dueño 06-11 (latido de despertador para archivo grande por internet): mientras una
+                              // transferencia por internet NO avanza (el que recibe se durmió), re-despertarlo como
+                              // mucho cada 15 s (bucket propio, sparse: no gasta la cuota de FCM; con avance no hay
+                              // timeout → no hay toques). 15 s = el dueño lo pidió corto porque el envío ya es lento.
+                              // Configurable para las pruebas con window.NEXO_XFER_WAKE_MS.
 // FCM «despertador» (#87, Fase 2): enviador por defecto. Se desplegó en Cloudflare Workers (gratis, sin tarjeta) en vez de
 // Firebase Functions (que exige el plan Blaze); hace lo mismo (POST { to } -> «toque» solo-datos de alta prioridad) firmando
 // con la cuenta de servicio del proyecto nexo-7994a. Se puede cambiar con setSender. Al mandar a un contacto por el buzón de
@@ -625,6 +630,32 @@ export class NetLink {
         })
         .catch(function() {});
     } catch (e) {}
+  }
+
+  // #dueño 06-11 — LATIDO de despertador para un archivo grande por internet. Mientras una transferencia por internet
+  // está EN CURSO pero NO avanza (típico: el que recibe tiene la app dormida y por eso no confirma los trozos), se le
+  // re-dispara el «toque» para que su app vuelva, siga recibiendo y confirme. Tiene su PROPIO throttle (XFER_WAKE_MIN_MS,
+  // bucket _xferWakeAt), aparte del de textos y del de llamadas: como mucho un toque cada 15 s, así que es barato (no
+  // gasta la cuota de FCM) y, en cuanto el envío vuelve a fluir, deja de haber timeouts → deja de haber toques. SOLO el
+  // token viaja (como _wake), nunca el contenido. Lo llama ble_ack.js en cada window-timeout de un archivo por net:.
+  wakeKeepAlive(nexoId) {
+    try {
+      var nx = _nid(nexoId);
+      var peer = this.peers.get(nx); if (!peer || !peer.fcmToken) return false;
+      var url = this.senderUrl(); if (!url) return false;
+      if (typeof fetch !== 'function') return false;
+      var minMs = (typeof window !== 'undefined' && Number(window.NEXO_XFER_WAKE_MS)) || XFER_WAKE_MIN_MS;
+      var now = Date.now();
+      if (peer._xferWakeAt && (now - peer._xferWakeAt) < minMs) return false;
+      peer._xferWakeAt = now;
+      var self = this;
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: peer.fcmToken }) })
+        .then(function(res) {
+          if (res && res.status === 404) { peer.fcmToken = ''; if (self.state.peerFcm) { delete self.state.peerFcm[nx]; self._saveState(); } }
+        })
+        .catch(function() {});
+      return true;
+    } catch (e) { return false; }
   }
 
   // P2 (dueño 01-11): «toque» FCM A PETICIÓN (p.ej. al ABRIR el chat), para despertar a un contacto dormido por internet

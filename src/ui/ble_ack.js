@@ -2090,6 +2090,12 @@ ChatStream.prototype._onWindowTimeout = function() {
     // #87 (28-10): el enlace está CAÍDO ahora → esperar a que vuelva sin gastar un reintento del tope (no abortar el
     // archivo por un corte del Bluetooth/Wi-Fi). No se reenvía (saturaría la cola nativa); el timeout global (60 s sin
     // ACK) sigue siendo el límite si no vuelve nunca. Al volver y fluir los ACKs, el bucle resetea el contador.
+    // #dueño 06-11 (LATIDO de despertador): un ARCHIVO por INTERNET que no avanza = el que recibe se durmió y por eso no
+    // confirma. Le re-disparamos el «toque» (net_link lo throttlea a 1 cada 15 s, así que es barato) para que su app
+    // vuelva, siga recibiendo y confirme; en cuanto fluyan los ACKs ya no hay timeout → no más toques. Solo net: + file.
+    if (_isNetDevice(self.deviceId) && self.type === 'file' && self.ble && self.ble.net && typeof self.ble.net.wakeKeepAlive === 'function') {
+      try { var _cidKa = (self.meta && self.meta.dst) ? self.meta.dst : self.ackSystem._resolveNexoId(self.deviceId); if (_cidKa) self.ble.net.wakeKeepAlive(_cidKa); } catch (e) {}
+    }
     if (!self._linkUp()) {
       console.log('[ChatStream] Ventana sin ACK con el enlace caído: espero a que vuelva (no gasta reintento) msgId=' + self.msgId);
       self._startWindowTimer();
