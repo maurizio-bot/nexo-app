@@ -848,6 +848,13 @@ export class BleAckSystem {
     }
   }
   _sendBlockAck(deviceId, msgId, buf) {
+    // #dueño 06-11 (LATIDO de vuelta): si estoy RECIBIENDO un archivo por internet, al confirmar un bloque le devuelvo el
+    // «toque» FCM al que ENVÍA para que su app tampoco se duerma a mitad del envío → los dos se mantienen despiertos
+    // hasta terminar. net_link lo throttlea a 1 cada 15 s (bucket propio), así que es barato aunque confirme muchos
+    // bloques; en un envío sano (los dos despiertos) el toque extra es inofensivo. Solo archivos por net (no textos/BT).
+    if (buf && !buf.isChat && _isNetDevice(deviceId) && this.ble && this.ble.net && typeof this.ble.net.wakeKeepAlive === 'function') {
+      try { var _nxKa = this._resolveNexoId(deviceId); if (_nxKa) this.ble.net.wakeKeepAlive(_nxKa); } catch (e) {}
+    }
     var received = [];
     for (var i = 0; i < buf.total; i++) {
       if (buf.chunks.has(i)) received.push(i);

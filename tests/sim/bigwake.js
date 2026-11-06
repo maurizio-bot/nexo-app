@@ -157,11 +157,42 @@ function installFetchSpy(win) {
   st._onWindowTimeout(); await sleep(40);
   r.net_chat_no_dispara = nWake() === wc;
 
+  // --- PASO 2 (latido de VUELTA): el que RECIBE un archivo por internet le devuelve el «toque» al que ENVÍA, para que
+  //     el que envía tampoco se duerma a mitad del envío. Mismo throttle (15 s), solo token, solo archivos por net. ---
+  const TOKA = 'FCMTOK-A-0000000000000000000000000000';
+  const ASB = B.win.bleInterface.ackSystem;
+  const callsB = installFetchSpy(B.win);
+  netB.setSender('https://sender.test/wakeB');
+  const nWakeB = () => callsB.filter((c) => /sender\.test\/wakeB/.test(c.url)).length;
+  const peerA = netB.peers.get(idA);
+  r.B_conoce_token_de_A = !!(peerA && peerA.fcmToken === TOKA);
+  const fileBuf = { isChat: false, total: 4, chunks: new Map([[0, 'x']]) };
+  const chatBuf = { isChat: true, total: 4, chunks: new Map([[0, 'x']]) };
+  // (a) recibir un archivo por net → devuelve el toque al que envía (token de A), solo el token
+  B.win.NEXO_XFER_WAKE_MS = 0; if (peerA) peerA._xferWakeAt = 0;
+  const b0 = nWakeB(); ASB._sendBlockAck('net:' + idA, 'rxf1', fileBuf); await sleep(60);
+  r.rx_echo_dispara = nWakeB() > b0;
+  const wkB = callsB.filter((c) => /sender\.test\/wakeB/.test(c.url));
+  r.rx_echo_solo_token = wkB.length > 0 && wkB.every((c) => c.body && Object.keys(c.body).length === 1 && c.body.to === TOKA);
+  // (b) throttle: confirmar otro bloque enseguida (tope real) NO repite el toque → no es un toque por bloque
+  B.win.NEXO_XFER_WAKE_MS = 15000; if (peerA) peerA._xferWakeAt = Date.now();
+  const b1 = nWakeB(); ASB._sendBlockAck('net:' + idA, 'rxf1', fileBuf); await sleep(30);
+  r.rx_echo_throttle = nWakeB() === b1;
+  // (c) un TEXTO (chat) por net NO devuelve toque; un archivo por BLUETOOTH tampoco
+  B.win.NEXO_XFER_WAKE_MS = 0; if (peerA) peerA._xferWakeAt = 0;
+  const b2 = nWakeB(); ASB._sendBlockAck('net:' + idA, 'rxc1', chatBuf); await sleep(30);
+  r.rx_chat_no_devuelve = nWakeB() === b2;
+  if (peerA) peerA._xferWakeAt = 0;
+  const b3 = nWakeB(); ASB._sendBlockAck('AA:AA:AA:AA:AA:01', 'rxf2', fileBuf); await sleep(30);
+  r.rx_bluetooth_no_devuelve = nWakeB() === b3;
+
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT/.test(l)).slice(0, 5);
   const ok = r.en_internet_s !== null && r.token_intercambiado_s !== null && r.hay_stream_net &&
     r.net_estancado_dispara && r.toque_con_token_de_B && r.toque_solo_token &&
     r.throttle_un_solo_toque && r.pasado_el_tope_otro_toque &&
-    r.bluetooth_no_dispara && r.net_chat_no_dispara && r.errores.length === 0;
+    r.bluetooth_no_dispara && r.net_chat_no_dispara &&
+    r.B_conoce_token_de_A && r.rx_echo_dispara && r.rx_echo_solo_token && r.rx_echo_throttle &&
+    r.rx_chat_no_devuelve && r.rx_bluetooth_no_devuelve && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('BIGWAKE ' + JSON.stringify(r));
   if (!ok) console.log(logs.slice(-40).join('\n'));
