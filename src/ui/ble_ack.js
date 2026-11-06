@@ -1783,11 +1783,24 @@ ChatStream.prototype._shouldDeferTinyMtu = function() {
 ChatStream.prototype.start = function() {
   var self = this;
   return new Promise(function(resolve, reject) {
+    // #dueño 06-11 (paso 2b, PAREJO con el receptor): el que ENVÍA un archivo GRANDE por internet también se mantiene
+    // despierto de CORRIDO (candado + Wi-Fi, vía net.xferKeepAwake) para no dormirse a mitad del envío largo con la
+    // pantalla apagada. Se toma abajo (ya con self.total, solo si es archivo grande por net) y se SUELTA pase lo que pase:
+    // envuelvo resolve/reject —único modo en que la promesa termina— para liberarlo tanto en éxito como en fallo. El
+    // nativo igual tiene un tope duro de 20 min por si algún camino raro no soltara. self._xferHeld lo comparte con el
+    // renovado de _onWindowTimeout (envíos muy lentos > 20 min).
+    var _releaseXfer = function () { if (!self._xferHeld) return; self._xferHeld = false; try { if (self.ble && self.ble.net && typeof self.ble.net.xferKeepAwake === 'function') self.ble.net.xferKeepAwake(false); } catch (e) {} };
+    var _rs = resolve, _rj = reject;
+    resolve = function (v) { _releaseXfer(); _rs(v); };
+    reject = function (e) { _releaseXfer(); _rj(e); };
     self.resolve = resolve;
     self.reject = reject;
     self.lastAckAt = Date.now();
     self._splitChunks();
     if (self.total === 0) { reject(new Error('Vacio')); return; }
+    if (self.type === 'file' && _isNetDevice(self.deviceId) && self.total > NET_TOR_PREFER_CHUNKS) {
+      try { if (self.ble && self.ble.net && typeof self.ble.net.xferKeepAwake === 'function') { self.ble.net.xferKeepAwake(true); self._xferHeld = true; } } catch (e) {}
+    }
     var estimatedWindows = Math.ceil(self.total / self.windowSize);
     var timeoutPerWindow = self.windowTimeoutMs * (MAX_WINDOW_RETRIES + 2);
     var baseTo = (self.type === 'file') ? FILE_GLOBAL_TIMEOUT_MS : self.baseTimeoutMs;
@@ -2121,6 +2134,9 @@ ChatStream.prototype._onWindowTimeout = function() {
     // vuelva, siga recibiendo y confirme; en cuanto fluyan los ACKs ya no hay timeout → no más toques. Solo net: + file.
     if (_isNetDevice(self.deviceId) && self.type === 'file' && self.ble && self.ble.net && typeof self.ble.net.wakeKeepAlive === 'function') {
       try { var _cidKa = (self.meta && self.meta.dst) ? self.meta.dst : self.ackSystem._resolveNexoId(self.deviceId); if (_cidKa) self.ble.net.wakeKeepAlive(_cidKa); } catch (e) {}
+      // #dueño 06-11 (paso 2b, PAREJO): renovar el candado del que ENVÍA en un archivo grande por net (el acquire resetea
+      // el tope de 20 min), para que un envío lento (> 20 min) no se duerma a mitad. Se suelta al terminar (start()).
+      try { if (self.total > NET_TOR_PREFER_CHUNKS && typeof self.ble.net.xferKeepAwake === 'function') { self.ble.net.xferKeepAwake(true); self._xferHeld = true; } } catch (e) {}
     }
     if (!self._linkUp()) {
       console.log('[ChatStream] Ventana sin ACK con el enlace caído: espero a que vuelva (no gasta reintento) msgId=' + self.msgId);
