@@ -120,6 +120,10 @@ const LAN_PSEUDO_MTU = 65535;
 // v3.12.0: enlace por internet (relés públicos, net_link.js): "net:<NEXO ID>" (normalizado "netnx…")
 function _isNetDevice(deviceId) { var d = (deviceId || '').toString().toLowerCase(); return d.indexOf('net:') === 0 || /^netnx[0-9a-z]{8}$/.test(d); }
 const NET_FILE_CHUNK = 16000;   // un evento de relé admite ~64 KB (con cifrado y base64)
+// #dueño 06-11: por encima de ~12 MB (que los relés sí aguantan, probado en bignet.js) un archivo por INTERNET prefiere
+// TOR DIRECTO (sin relés, sin tope de tamaño). Umbral en caracteres base64 (~16 M ≈ 12 MB reales). Configurable en pruebas.
+const NET_TOR_PREFER_BYTES = 16000000;
+const NET_TOR_PREFER_CHUNKS = 1000;   // del lado del que recibe: tantos trozos de 16 KB ≈ 12 MB → archivo grande, arranca Tor
 const NET_CHAT_CHUNK = 8000;
 const NET_TEXT_ONE = 20000;     // un texto (ya cifrado) hasta este tamaño va en un solo paquete (buzón)
 function _isLanDevice(deviceId) { var d = (deviceId || '').toString().toLowerCase(); return d.indexOf('lan:') === 0 || /^lannx[0-9a-z]{8}$/.test(d); }
@@ -483,6 +487,11 @@ export class BleAckSystem {
       // Ronda 2780 (pedido del dueño): fotos y archivos medianos SIEMPRE por internet: por Tor directo/Wi-Fi si está en
       // línea (filesOk), o al buzón de los relés si no (mailboxOk), bajo el tope. Si ni eso, queda pendiente y se reintenta.
       var net = self.ble && self.ble.net, cid = self._resolveNexoId(deviceId);
+      // #dueño 06-11: un archivo GRANDE por internet (> ~12 MB) prefiere Tor DIRECTO (los relés no aguantan 25 MB). Se
+      // marca al contacto y se arranca Tor a demanda (no hace nada si el usuario apagó Tor). Lo chico/mediano sigue por
+      // relés (rápido). Con el latido (2930/2931) manteniendo despiertos a los dos, se forma el Tor directo y el archivo va por ahí.
+      var torBig = (typeof window !== 'undefined' && Number(window.NEXO_NET_TOR_PREFER_BYTES)) || NET_TOR_PREFER_BYTES;
+      if (net && typeof net.preferTorFor === 'function' && cid && data && data.length > torBig) net.preferTorFor(cid);
       var netOk = net && (net.filesOk(cid) || (net.mailboxOk(cid) && data && data.length <= NET_MAX_B64_BYTES));
       if (!netOk) {
         var en = new Error('Contacto no disponible: queda pendiente'); en.code = 'PEER_ABSENT';
@@ -854,6 +863,9 @@ export class BleAckSystem {
     // bloques; en un envío sano (los dos despiertos) el toque extra es inofensivo. Solo archivos por net (no textos/BT).
     if (buf && !buf.isChat && _isNetDevice(deviceId) && this.ble && this.ble.net && typeof this.ble.net.wakeKeepAlive === 'function') {
       try { var _nxKa = this._resolveNexoId(deviceId); if (_nxKa) this.ble.net.wakeKeepAlive(_nxKa); } catch (e) {}
+      // #dueño 06-11: si lo que recibo es un archivo GRANDE por internet, arranco Tor a demanda (no hace nada si lo apagué)
+      // para que se forme el Tor directo con el que envía (él también lo prefiere) → los 25 MB viajan por Tor, no por relés.
+      try { if (buf.total > NET_TOR_PREFER_CHUNKS && typeof this.ble.net.ensureTor === 'function') this.ble.net.ensureTor(); } catch (e) {}
     }
     var received = [];
     for (var i = 0; i < buf.total; i++) {

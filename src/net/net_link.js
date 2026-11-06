@@ -518,6 +518,20 @@ export class NetLink {
   // Tor es el único camino) o si el que llama lo pide (opts.tor: vídeo/archivo grande por internet, que los relés no
   // pueden). Lo NORMAL online → false → relés (rápido). Extraído para poder probarlo. #dueño 01-11.
   _preferTor(opts) { return (this.state.tor === true) || !this.online() || !!(opts && opts.tor); }
+  // #dueño 06-11: un ARCHIVO GRANDE por internet prefiere Tor DIRECTO (sin relés: los relés no aguantan ~25 MB). El que
+  // ENVÍA marca al contacto con preferTorFor al arrancar el envío (y arranca Tor a demanda); el que RECIBE arranca Tor
+  // (ensureTor) al recibir bloques de un archivo grande. Así, con los dos despiertos (latido 2930/2931), se forma el Tor
+  // directo y el archivo viaja por ahí. Dura un rato (TTL): mientras dura el envío. No hace nada si el usuario apagó Tor
+  // (ensureTor respeta state.tor===false). send() lee _torPreferred para preferir Tor para ese contacto.
+  preferTorFor(nexoId, ttlMs) {
+    try {
+      var nx = _nid(nexoId); if (!nx) return;
+      if (!this._torPref) this._torPref = new Map();
+      this._torPref.set(nx, Date.now() + (ttlMs || 600000)); // 10 min por defecto (lo que suele durar un envío grande)
+      this.ensureTor();
+    } catch (e) {}
+  }
+  _torPreferred(nexoId) { try { var t = this._torPref && this._torPref.get(_nid(nexoId)); return !!t && t > Date.now(); } catch (e) { return false; } }
   _torTick() {
     var pl = _plugin(), now = Date.now();
     if (!pl || typeof pl.torStart !== 'function' || !this.torWanted() || this.tor.ready || this.tor.starting) return;
@@ -582,7 +596,7 @@ export class NetLink {
     // encendió a mano para privacidad (state.tor === true), si no hay relés (offline) o si el que llama lo pide
     // (opts.tor: vídeo/archivo grande por internet, que los relés no pueden). Si no, se cae a los relés más abajo (sin
     // pérdida: si los relés fallan, el mensaje queda pendiente y se reintenta / buzón). #dueño 01-11.
-    var preferTor = this._preferTor(opts);
+    var preferTor = this._preferTor(opts) || this._torPreferred(nx); // #dueño 06-11: un archivo grande marcó a este contacto para Tor
     if (preferTor && peer.torUp && (peer.torOk || (opts && opts.hello)) && pl && typeof pl.torSend === 'function') {
       try { await pl.torSend({ nx: nx, content: b64 }); return true; } catch (e) { peer.torUp = false; peer.torOk = false; }
     }
