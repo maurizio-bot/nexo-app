@@ -672,6 +672,17 @@ export class NetLink {
     } catch (e) { return false; }
   }
 
+  // #dueño 06-11 (paso 2b del envío de 25 MB): mientras RECIBO un archivo GRANDE por internet, le pido al nativo que me
+  // mantenga despierto de CORRIDO (wakelock + Wi-Fi) para no dormirme a mitad del envío largo con la pantalla apagada;
+  // y lo suelto al completarlo. Guardado: si no hay plugin nativo (simulador/navegador) o no tiene el método, es un
+  // no-op silencioso. El nativo tiene un tope DURO de seguridad (XferAwake.MAX_HOLD_MS) por si no llega el «soltar».
+  xferKeepAwake(on) {
+    try {
+      var pl = _plugin();
+      if (pl && typeof pl.xferKeepAwake === 'function') pl.xferKeepAwake({ on: !!on });
+    } catch (e) {}
+  }
+
   // P2 (dueño 01-11): «toque» FCM A PETICIÓN (p.ej. al ABRIR el chat), para despertar a un contacto dormido por internet
   // ANTES de que el usuario escriba — así el 1er mensaje no espera ni se pierde, el enlace se forma antes y aparece el tipo
   // de conexión. Solo si tenemos su token FCM y hay internet (relés abiertos). Reusa el throttle de _wake (una ráfaga de

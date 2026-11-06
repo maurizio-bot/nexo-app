@@ -623,6 +623,39 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { Log.w(TAG, "WifiLock: ${e.message}") }
     }
 
+    // ===== #dueño 06-11 (paso 2b del envío de 25 MB a alguien lejos): mientras RECIBO un archivo GRANDE por internet,
+    // mantener la CPU y la Wi-Fi despiertas de CORRIDO (no solo los 15 s por evento de rxWake) para no dormirse a mitad
+    // del envío largo con la pantalla apagada / la app en segundo plano. La LÓGICA (umbral, TTL, tope) vive en la clase
+    // pura XferAwake.kt (probada en JVM). Acá va el I/O real, espejando rxWake/wifiLockHold:
+    //   - al TOMAR: un wakelock parcial dedicado "nexo:xfer" con un TOPE DURO de seguridad (XferAwake.MAX_HOLD_MS, 20 min)
+    //     para que una transferencia atascada NO deje la radio tomada para siempre; el JS lo re-toma en cada bloque, así
+    //     que se renueva mientras el archivo avanza. Más la Wi-Fi despierta (idempotente; datos móviles no usan WifiLock).
+    //   - al SOLTAR (archivo completo): se libera el wakelock. La Wi-Fi la maneja el ciclo de vida (onPause la toma,
+    //     onResume la suelta), así que no la toco acá (NetBg puede seguir necesitándola en segundo plano).
+    private var xferWakeLock: android.os.PowerManager.WakeLock? = null
+    @Synchronized private fun xferAwakeHold(on: Boolean) {
+        val ctx = appCtx ?: return
+        try {
+            if (on) {
+                val wl = xferWakeLock ?: (ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager)
+                    .newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "nexo:xfer").also { it.setReferenceCounted(false); xferWakeLock = it }
+                wl.acquire(XferAwake.MAX_HOLD_MS)
+                wifiLockHold(true)
+                nlog()?.add("INFO", "XFER", "Despierto para una transferencia grande por internet (tope ${XferAwake.MAX_HOLD_MS / 60000} min)")
+            } else {
+                xferWakeLock?.let { if (it.isHeld) it.release() }
+                nlog()?.add("INFO", "XFER", "Transferencia grande terminada: liberado el wakelock")
+            }
+        } catch (e: Exception) { Log.w(TAG, "xferAwakeHold: ${e.message}") }
+    }
+
+    // Lo llama el JS (ble_ack.js) al recibir bloques de un archivo GRANDE por internet (tomar) y al completarlo (soltar).
+    @PluginMethod
+    fun xferKeepAwake(call: PluginCall) {
+        xferAwakeHold(call.getBoolean("on") ?: false)
+        call.resolve()
+    }
+
     // Ronda 2772: estado de energía para el diagnóstico (lo que puede impedir recibir con la pantalla apagada)
     private fun energyLog(why: String) {
         try {

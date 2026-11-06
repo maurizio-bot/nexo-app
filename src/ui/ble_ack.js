@@ -804,6 +804,9 @@ export class BleAckSystem {
   }
   _assembleAndDispatch(buf, deviceId, senderId, msgId) {
     var self = this;
+    // #dueño 06-11 (paso 2b): archivo GRANDE por internet COMPLETO → suelto el «mantenerme despierto» (lo había tomado
+    // _sendBlockAck). Si por algo no llegáramos acá (transferencia muerta), el nativo lo suelta igual por su tope duro.
+    try { if (buf && !buf.isChat && _isNetDevice(deviceId) && buf.total > NET_TOR_PREFER_CHUNKS && self.ble && self.ble.net && typeof self.ble.net.xferKeepAwake === 'function') self.ble.net.xferKeepAwake(false); } catch (e) {}
     var assembled = '';
     for (var i = 0; i < buf.total; i++) {
       assembled += buf.chunks.has(i) ? buf.chunks.get(i) : '';
@@ -866,6 +869,10 @@ export class BleAckSystem {
       // #dueño 06-11: si lo que recibo es un archivo GRANDE por internet, arranco Tor a demanda (no hace nada si lo apagué)
       // para que se forme el Tor directo con el que envía (él también lo prefiere) → los 25 MB viajan por Tor, no por relés.
       try { if (buf.total > NET_TOR_PREFER_CHUNKS && typeof this.ble.net.ensureTor === 'function') this.ble.net.ensureTor(); } catch (e) {}
+      // #dueño 06-11 (paso 2b): y le pido al nativo que me mantenga despierto de corrido (wakelock + Wi-Fi) mientras dura
+      // el envío largo, para no dormirme con la pantalla apagada. Se re-toma en cada bloque (se renueva); se suelta al
+      // completar el archivo (_assembleAndDispatch) y, por las dudas, el nativo tiene un tope duro de seguridad.
+      try { if (buf.total > NET_TOR_PREFER_CHUNKS && typeof this.ble.net.xferKeepAwake === 'function') this.ble.net.xferKeepAwake(true); } catch (e) {}
     }
     var received = [];
     for (var i = 0; i < buf.total; i++) {
