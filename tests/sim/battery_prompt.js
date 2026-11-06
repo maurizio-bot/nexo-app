@@ -51,7 +51,7 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   [nG, nV, nP, nE, nK].forEach((n) => { radio.add(n); n.load(); });
   // #dueño 05-11: la guía de bienvenida (welcome_guide.js) sale ANTES del aviso de batería la primera vez. Aquí se prueba
   // el aviso de batería EN AISLADO, así que se siembra nexo_welcome_done='1' (bienvenida ya vista) en todos los teléfonos.
-  const W = { nexo_welcome_done: '1' };
+  const W = { nexo_welcome_done: '1', nexo_display_name: 'Tester' }; // #dueño 06-11: nombre ya fijado → la pantalla de nombre no sale; se prueba la batería en aislado
   const [G, V, P, E, K] = await Promise.all([
     boot('G', nG, W), boot('V', nV, W), boot('P', nP, W), boot('E', nE, W), boot('K', nK, Object.assign({ nexo_bat_prompt_skips: '3' }, W)),
   ]);

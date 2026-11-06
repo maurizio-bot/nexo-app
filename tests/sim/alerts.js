@@ -34,7 +34,7 @@ async function boot(name, native) {
       win.navigator.mediaDevices = { getUserMedia: () => Promise.reject(new Error('sin micrófono en el simulador')) };
       // #dueño 05-11: la guía de bienvenida sale antes del aviso de batería la 1ª vez; aquí se prueba el flujo de avisos
       // EN AISLADO (bienvenida ya vista), así el aviso de batería/pantalla completa sale al arrancar como antes.
-      try { win.localStorage.setItem('nexo_welcome_done', '1'); } catch (e) {}
+      try { win.localStorage.setItem('nexo_welcome_done', '1'); win.localStorage.setItem('nexo_display_name', 'Tester'); } catch (e) {} // #dueño 06-11: nombre ya fijado → la pantalla de nombre no sale
     },
   });
   const win = dom.window;

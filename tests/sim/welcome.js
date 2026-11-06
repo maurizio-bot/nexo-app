@@ -44,9 +44,15 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   const nN = new NativePhone('N', 'NN:NN:NN:NN:NN:01', Object.assign({}, opts, { alerts: { battery: false }, vendor: 'google' }));
   const nS = new NativePhone('S', 'SS:SS:SS:SS:SS:02', Object.assign({}, opts, { alerts: { battery: false }, vendor: 'google' }));
   const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:03', Object.assign({}, opts, { alerts: { battery: true }, vendor: 'google' }));
-  [nN, nS, nA].forEach((n) => { radio.add(n); n.load(); });
-  const [N, S, A] = await Promise.all([
-    boot('N', nN), boot('S', nS), boot('A', nA, { nexo_welcome_done: '1' }),
+  const nG = new NativePhone('G', 'GG:GG:GG:GG:GG:04', Object.assign({}, opts, { alerts: { battery: false }, vendor: 'google' }));
+  [nN, nS, nA, nG].forEach((n) => { radio.add(n); n.load(); });
+  // N/S/A ya tienen el nombre fijado (nexo_display_name) → la pantalla de nombre NO sale, prueban la guía en aislado (como
+  // antes). G es un teléfono NUEVO del todo (sin nombre) → sale la pantalla OBLIGATORIA del nombre ANTES de la guía (#dueño 06-11).
+  const [N, S, A, G] = await Promise.all([
+    boot('N', nN, { nexo_display_name: 'Tester' }),
+    boot('S', nS, { nexo_display_name: 'Tester' }),
+    boot('A', nA, { nexo_welcome_done: '1', nexo_display_name: 'Tester' }),
+    boot('G', nG),
   ]);
   const r = { build: path.basename(buildDir) };
 
@@ -79,11 +85,30 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   click(A.win, $(A, 'nexo-welcome-skip'));
   r.A_force_cierra = await wait(() => !$(A, 'nexo-welcome-overlay'), 10);
 
+  // G: teléfono NUEVO del todo (#dueño 06-11) — ANTES de la guía sale la pantalla OBLIGATORIA del nombre: avisa que NO se
+  //    puede cambiar (anti perfiles falsos), el botón Confirmar está apagado si está vacío, y al confirmar el nombre queda
+  //    FIJO y es el que verán los contactos (bi.localDeviceName). Recién después sale la guía.
+  r.G_sale_pantalla_nombre = await wait(() => !!$(G, 'nexo-name-overlay'), 20);
+  r.G_aviso_permanente = /no se puede cambiar|no se podrá cambiar/i.test((qs(G, '#nexo-name-overlay .nm-warn') || {}).textContent || '');
+  r.G_guia_aun_no = !$(G, 'nexo-welcome-overlay');   // el nombre va ANTES de la guía
+  (() => { const inp = $(G, 'nexo-name-input'); if (inp) { inp.value = ''; inp.dispatchEvent(new G.win.Event('input', { bubbles: true })); } })();
+  r.G_confirmar_off_si_vacio = (() => { const b = $(G, 'nexo-name-ok'); return !!b && b.disabled === true; })();
+  (() => { const inp = $(G, 'nexo-name-input'); inp.value = 'Maurizio Real'; inp.dispatchEvent(new G.win.Event('input', { bubbles: true })); })();
+  r.G_confirmar_on_con_nombre = (() => { const b = $(G, 'nexo-name-ok'); return !!b && b.disabled === false; })();
+  click(G.win, $(G, 'nexo-name-ok'));
+  r.G_cierra_nombre = await wait(() => !$(G, 'nexo-name-overlay'), 10);
+  r.G_nombre_fijado = (() => { try { return G.win.NEXO_displayNameLocked() === true && G.win.NEXO_myDisplayName() === 'Maurizio Real'; } catch (e) { return false; } })();
+  r.G_contactos_ven_el_nombre = (G.win.bleInterface && G.win.bleInterface.localDeviceName) === 'Maurizio Real';
+  r.G_luego_guia = await wait(() => !!$(G, 'nexo-welcome-overlay'), 15);   // tras fijar el nombre, sí sale la guía
+
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.N_sale_guia && r.N_cuatro_diapositivas && r.N_primera_es_bienvenida && r.N_atras_desactivado_en_1a &&
     r.N_aviso_bateria_aun_no && r.N_ultima_es_empezar && r.N_saltar_oculto_en_ultima && r.N_cierra && r.N_marca_vista && r.N_luego_aviso_bateria &&
     r.S_sale_guia && r.S_cierra && r.S_marca_vista && r.S_luego_aviso_bateria &&
-    r.A_sin_guia && r.A_force_reabre && r.A_force_cierra && !r.errores.length;
+    r.A_sin_guia && r.A_force_reabre && r.A_force_cierra &&
+    r.G_sale_pantalla_nombre && r.G_aviso_permanente && r.G_guia_aun_no && r.G_confirmar_off_si_vacio &&
+    r.G_confirmar_on_con_nombre && r.G_cierra_nombre && r.G_nombre_fijado && r.G_contactos_ven_el_nombre && r.G_luego_guia &&
+    !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('WELCOME ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_welcome.txt'), logs.join('\n'));

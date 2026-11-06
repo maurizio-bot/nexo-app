@@ -408,6 +408,12 @@ var STRINGS = {
   welcome_settings_title: { es: "Guía de bienvenida", it: "Guida di benvenuto", en: "Welcome guide" },
   welcome_settings_sub: { es: "Vuelve a ver la introducción: cómo agregar un contacto y mandar tu primer mensaje.", it: "Rivedi l'introduzione: come aggiungere un contatto e inviare il primo messaggio.", en: "See the intro again: how to add a contact and send your first message." },
   welcome_settings_btn: { es: "Ver la guía otra vez", it: "Rivedi la guida", en: "See the guide again" },
+  // Nombre fijo pedido la 1.ª vez — display_name.js (#dueño 06-11). El aviso lleva <b> (texto fijo de la app).
+  name_gate_title: { es: "¿Cómo te llamás?", it: "Come ti chiami?", en: "What's your name?" },
+  name_gate_body: { es: "Este es el nombre con el que te van a ver tus contactos en NEXO.", it: "Questo è il nome con cui ti vedranno i tuoi contatti su NEXO.", en: "This is the name your contacts will see you by on NEXO." },
+  name_gate_ph: { es: "Tu nombre", it: "Il tuo nome", en: "Your name" },
+  name_gate_warn: { es: "⚠️ <b>Escribilo con atención: NO se puede cambiar después.</b> Tu nombre queda fijo para que nadie pueda hacerse pasar por otro (evita perfiles falsos y fraudes).", it: "⚠️ <b>Scrivilo con attenzione: NON si potrà cambiare dopo.</b> Il tuo nome resta fisso così nessuno può spacciarsi per un altro (evita profili falsi e truffe).", en: "⚠️ <b>Type it carefully: it CANNOT be changed later.</b> Your name stays fixed so no one can impersonate someone else (prevents fake profiles and fraud)." },
+  name_gate_ok: { es: "Confirmar mi nombre", it: "Conferma il mio nome", en: "Confirm my name" },
   prof_change_photo: { es: "Cambiar foto", it: "Cambia foto", en: "Change photo" },
   prof_my_id: { es: "Mi NEXO ID", it: "Il mio NEXO ID", en: "My NEXO ID" },
   prof_remove: { es: "Quitar", it: "Rimuovi", en: "Remove" },

@@ -105,6 +105,7 @@ import { applyStaticI18n, t as _t } from './ui/i18n.js'; // #132 idioma: traduci
 import { initPerf } from './ui/perf.js';
 import { batteryGuard } from './ui/battery_prompt.js';
 import { welcomeGuide } from './ui/welcome_guide.js'; // #dueño 05-11: guía de bienvenida la primera vez (antes del aviso de batería)
+import { nameGate, loadDisplayName, applyDisplayName } from './ui/display_name.js'; // #dueño 06-11: nombre fijo (pedido 1 vez, no se cambia)
 import { createNotifier } from './ui/notify.js';
 import { initE2E } from './vault/e2e_crypto.js';
 import { ratchetInit, ratchetSafetyNumber, ratchetPeerBundle, ratchetSessionPq } from './vault/e2e_ratchet.js';
@@ -785,7 +786,9 @@ async function initializeNexoApp() {
     // Al arrancar, los contadores de la app mandan sobre las notificaciones que hubiera en el teléfono
     // #dueño 05-11: la PRIMERA vez, la guía de bienvenida (welcome_guide.js) y, al cerrarla, el aviso de batería de
     // siempre. Si ya se vio la guía, welcomeGuide llama a _askBackgroundOnce al instante → mismo comportamiento de antes.
-    setTimeout(function() { _notifier.syncNative(); Promise.resolve(_notifier.ensurePermission()).then(function() { welcomeGuide({ onDone: _askBackgroundOnce }); }).catch(function() {}); }, 4000);
+    // #dueño 06-11: ANTES de la bienvenida, la 1.ª vez se pide el NOMBRE (obligatorio, no se puede cambiar después; evita
+    // perfiles falsos). Si ya está fijado, nameGate pasa de largo (y aplica el nombre). Luego la guía y el aviso de batería.
+    setTimeout(function() { _notifier.syncNative(); Promise.resolve(_notifier.ensurePermission()).then(function() { loadDisplayName().then(function() { nameGate(window.bleInterface, { onDone: function() { welcomeGuide({ onDone: _askBackgroundOnce }); } }); }); }).catch(function() {}); }, 4000);
     var initPromise = window.NEXO.app.init();
     var timeoutPromise = new Promise(function(resolve, reject) {
       setTimeout(function() { reject(new Error('INIT_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.CONNECT) ? NEXO_CONFIG.TIMEOUTS.CONNECT + 3000 : 13000);
@@ -797,6 +800,7 @@ async function initializeNexoApp() {
     startGroupMedia(); // ronda 2764: HD y archivos grandes en grupos (reanudar lo pendiente)
     avatarInit(); // ronda 2765: foto de perfil
     profileInit(); // ronda 2910: datos de mi perfil (nombre y apellido, teléfono, correo — opcionales)
+    loadDisplayName().then(function() { applyDisplayName(window.bleInterface); }); // #dueño 06-11: el nombre fijo elegido pisa el del teléfono (lo ven los contactos)
     profileShareInit(); // #dueño 04-11: compartir mis datos COMPLETOS con los contactos por E2E + guardar los suyos (perfil 2b/3)
     psiInit(); // #dueño 04-11 paso 3: «contactos en común» por PSI (psi.js) — al conectar, el ID menor inicia el cálculo
     gameStatsInit(); // #dueño 05-11: ranking cabeza a cabeza de los juegos (Fase A)
