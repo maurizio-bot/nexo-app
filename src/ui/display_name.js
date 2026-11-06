@@ -22,8 +22,12 @@ var _state = { name: '', locked: false };
 var _loaded = false;
 
 function _pl() { try { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; } catch (e) { return null; } }
-// Limpia: sin <>, espacios colapsados, recortado. (No valida más: el dueño elige su nombre; esto solo evita basura/inyección.)
-function _clean(s) { return String(s == null ? '' : s).replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX); }
+// #dueño 06-11: el nombre son SOLO letras (con acentos/ñ), espacios, guion y apóstrofe (nombres reales tipo «Jean-Pierre»
+// u «O'Brien»). NADA de números ni símbolos (para que sea un nombre de verdad, no un alias raro). _stripName quita lo no
+// permitido pero DEJA los espacios tal cual (para poder escribir «Juan Pérez» mientras se teclea); _clean además colapsa
+// espacios y recorta (al confirmar / guardar).
+function _stripName(s) { return String(s == null ? '' : s).replace(/[0-9]/g, '').replace(/[^\p{L}\s'\-]/gu, '').slice(0, NAME_MAX); }
+function _clean(s) { return _stripName(s).replace(/\s+/g, ' ').trim(); }
 
 function _lsGet(k) { try { return (typeof localStorage !== 'undefined') ? localStorage.getItem(k) : null; } catch (e) { return null; } }
 function _lsSet(k, v) { try { if (typeof localStorage !== 'undefined') localStorage.setItem(k, v); } catch (e) {} }
@@ -114,7 +118,11 @@ export function nameGate(bi, opts) {
   primary.textContent = t('name_gate_ok', 'Confirmar mi nombre');
   box.append(icon, title, body, input, warn, primary);
 
-  function refresh() { primary.disabled = _clean(input.value).length < 1; }
+  function refresh() {
+    var live = _stripName(input.value);
+    if (input.value !== live) input.value = live;   // #dueño 06-11: quita números/símbolos al instante (deja los espacios)
+    primary.disabled = _clean(input.value).length < 1;
+  }
   input.addEventListener('input', refresh);
   function confirm() {
     if (_clean(input.value).length < 1) return;

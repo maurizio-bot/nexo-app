@@ -40,11 +40,12 @@ function _openProfileSheet() {
     '<div class="nx-card nx-id-card"><div class="nx-av" id="nexo-profile-av" title="' + t('prof_change_photo', 'Cambiar foto') + '" style="cursor:pointer;"></div><div style="flex:1;min-width:0;"><div class="nx-idtxt">' + t('prof_my_id', 'Mi NEXO ID') + '</div><b id="nexo-profile-id"></b>' +
     '<div id="nexo-profile-seen" class="nx-idtxt" style="margin-top:2px;"></div>' +
     '<div><button id="nexo-av-pick" class="nx-link">' + t('prof_change_photo', 'Cambiar foto') + '</button> <button id="nexo-av-clear" class="nx-link" style="display:none;">' + t('prof_remove', 'Quitar') + '</button> <button id="nexo-id-share" class="nx-link">' + t('prof_share_my_id', 'Compartir mi ID') + '</button></div></div></div>' +
-    // Ronda 2910 (pedido del dueño): mis datos OPCIONALES (nombre y apellido, teléfono, correo). Se guardan cifrados;
-    // más adelante se podrán compartir (enmascarados) al agregar un contacto. Cada uno se llena o se deja vacío.
+    // Ronda 2910 (pedido del dueño): mis datos OPCIONALES (teléfono, correo). Se guardan cifrados; más adelante se podrán
+    // compartir (enmascarados) al agregar un contacto. Cada uno se llena o se deja vacío. #dueño 06-11: el NOMBRE ya NO
+    // está aquí — es el FIJO del install (bi.localDeviceName), el MISMO en todos lados y NO se edita (ver la línea «Tus
+    // contactos te ven como…» de arriba y display_name.js).
     '<div class="nx-card"><div class="nx-h"><span class="nx-ico">📇</span>' + t('prof_my_data', 'Mis datos') + '</div>' +
     '<div class="nx-sub" style="margin-bottom:8px;">' + t('prof_my_data_sub', 'Opcional. Lo que llenes lo podrás compartir al agregar un contacto (vos elegís qué mostrar).') + '</div>' +
-    '<input id="nexo-prof-name" type="text" autocomplete="off" maxlength="60" placeholder="' + t('prof_field_name', 'Nombre y apellido') + '" style="width:100%;box-sizing:border-box;padding:12px;margin-bottom:8px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +
     '<input id="nexo-prof-phone" type="tel" autocomplete="off" maxlength="24" placeholder="' + t('prof_field_phone', 'Teléfono') + '" style="width:100%;box-sizing:border-box;padding:12px;margin-bottom:8px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +
     '<input id="nexo-prof-email" type="email" autocomplete="off" maxlength="80" placeholder="' + t('prof_field_email', 'Correo') + '" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;"></div>' +
     // Ronda 2807: el resto (seguridad, avisos, llamadas, internet, diagnóstico, cuenta) se abre en Ajustes
@@ -56,9 +57,10 @@ function _openProfileSheet() {
     '</div>';
   document.body.appendChild(sheet);
   sheet.querySelector('#nexo-profile-id').textContent = bi.localNexoId || '?';
-  // Ronda 2771 (revisión, parte 4): cómo te ven tus contactos (el nombre del teléfono) y sus iniciales en el círculo
+  // #dueño 06-11: cómo te ven tus contactos — el NOMBRE FIJO que elegiste al instalar (bi.localDeviceName, ya pisado por
+  // display_name.js). Es el MISMO en todos lados (lista, ficha, al agregar por ID, al compartir) y NO se puede cambiar.
   var myName = String(bi.localDeviceName || '').trim();
-  sheet.querySelector('#nexo-profile-seen').textContent = myName ? t('prof_seen_pre', 'Tus contactos te ven como «') + myName + t('prof_seen_post', '» (el nombre del teléfono)') : '';
+  sheet.querySelector('#nexo-profile-seen').textContent = myName ? t('prof_seen_pre', 'Tus contactos te ven como «') + myName + t('prof_seen_post', '» (no se puede cambiar)') : '';
   var initials = function(n) { var w = n.split(/\s+/).filter(Boolean); return ((w[0] || '').charAt(0) + (w[1] || '').charAt(0)).toUpperCase(); };
   // Ronda 2765: foto de perfil (avatar.js): tocar el círculo o "Cambiar foto"
   var avEl = sheet.querySelector('#nexo-profile-av'), clr = sheet.querySelector('#nexo-av-clear');
@@ -102,17 +104,18 @@ function _openProfileSheet() {
   // Juego secreto (pedido del dueño): dibujar la «N» de NEXO en el espacio negro de abajo abre el mini-arcade oculto.
   var gz = sheet.querySelector('#nexo-gesture-zone');
   if (gz) attachNexoUnlockGesture(gz);
-  // Ronda 2910: mis datos — cargo lo guardado y guardo al salir de cada campo (change = al perder el foco, no en cada tecla)
+  // Ronda 2910: mis datos — cargo lo guardado y guardo al salir de cada campo (change = al perder el foco, no en cada tecla).
+  // #dueño 06-11: el nombre NO se edita acá (es el fijo del install); solo teléfono y correo.
   (function () {
     var mp = myProfile();
-    var fName = sheet.querySelector('#nexo-prof-name'), fPhone = sheet.querySelector('#nexo-prof-phone'), fEmail = sheet.querySelector('#nexo-prof-email');
-    if (fName) fName.value = mp.name; if (fPhone) fPhone.value = mp.phone; if (fEmail) fEmail.value = mp.email;
+    var fPhone = sheet.querySelector('#nexo-prof-phone'), fEmail = sheet.querySelector('#nexo-prof-email');
+    if (fPhone) fPhone.value = mp.phone; if (fEmail) fEmail.value = mp.email;
     var save = function () {
-      var r = setMyProfile({ name: fName ? fName.value : '', phone: fPhone ? fPhone.value : '', email: fEmail ? fEmail.value : '' });
+      var r = setMyProfile({ phone: fPhone ? fPhone.value : '', email: fEmail ? fEmail.value : '' });
       try { profileShareResend(); } catch (e) {}   // #dueño 04-11: al cambiar mis datos, reenviarlos a los contactos (E2E)
       if (r && r.email_bad && _showInfoToast) _showInfoToast(t('prof_email_bad', 'Ese correo no parece un correo (se guardó igual).'), 2600);
     };
-    [fName, fPhone, fEmail].forEach(function (el) { if (el) el.addEventListener('change', save); });
+    [fPhone, fEmail].forEach(function (el) { if (el) el.addEventListener('change', save); });
   })();
 }
 window.addEventListener('nexo:ui:profile', _openProfileSheet);

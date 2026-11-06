@@ -68,7 +68,7 @@ export function sendProfileTo(nx) {
   nx = _normId(nx);
   if (!NX_RE.test(nx) || _contactIds().indexOf(nx) < 0) return;
   var msg = _myMsg();
-  if (!msg.n && !msg.p && !msg.e) return;            // nada que compartir
+  if (!msg.p && !msg.e) return;            // nada que compartir (el nombre FIJO ya viaja en el saludo kx; acá van los extras)
   var h = _myHash();
   if (_sent[nx] === h) return;                        // ya le mandé esta versión
   var wire = { type: 'nexo_act', act: 'prof', h: h };

@@ -420,7 +420,7 @@ var STRINGS = {
   prof_share_my_id: { es: "Compartir mi ID", it: "Condividi il mio ID", en: "Share my ID" },
   prof_settings_sub: { es: "Seguridad, avisos, llamadas, internet, diagnóstico y tu cuenta (Fénix, cambiar de teléfono).", it: "Sicurezza, notifiche, chiamate, internet, diagnostica e il tuo account (Fénix, cambio telefono).", en: "Security, notifications, calls, internet, diagnostics and your account (Fénix, change phone)." },
   prof_seen_pre: { es: "Tus contactos te ven como «", it: "I tuoi contatti ti vedono come «", en: "Your contacts see you as «" },
-  prof_seen_post: { es: "» (el nombre del teléfono)", it: "» (il nome del telefono)", en: "» (your phone's name)" },
+  prof_seen_post: { es: "» (no se puede cambiar)", it: "» (non si può cambiare)", en: "» (cannot be changed)" },
   prof_photo_ready: { es: "Foto de perfil lista: tus contactos la verán al conectar", it: "Foto del profilo pronta: i tuoi contatti la vedranno quando si collegano", en: "Profile photo ready: your contacts will see it when they connect" },
   prof_photo_fail: { es: "No se pudo usar esa foto: ", it: "Impossibile usare questa foto: ", en: "Couldn't use that photo: " },
   prof_error: { es: "error", it: "errore", en: "error" },

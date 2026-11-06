@@ -93,6 +93,9 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   r.G_guia_aun_no = !$(G, 'nexo-welcome-overlay');   // el nombre va ANTES de la guía
   (() => { const inp = $(G, 'nexo-name-input'); if (inp) { inp.value = ''; inp.dispatchEvent(new G.win.Event('input', { bubbles: true })); } })();
   r.G_confirmar_off_si_vacio = (() => { const b = $(G, 'nexo-name-ok'); return !!b && b.disabled === true; })();
+  // #dueño 06-11: el campo NO admite números ni caracteres especiales (un nombre de verdad, no un alias) → se limpian al teclear
+  (() => { const inp = $(G, 'nexo-name-input'); inp.value = 'Jo4n #Pérez!'; inp.dispatchEvent(new G.win.Event('input', { bubbles: true })); })();
+  r.G_sin_numeros_ni_simbolos = (() => { const inp = $(G, 'nexo-name-input'); return !!inp && inp.value === 'Jon Pérez'; })();
   (() => { const inp = $(G, 'nexo-name-input'); inp.value = 'Maurizio Real'; inp.dispatchEvent(new G.win.Event('input', { bubbles: true })); })();
   r.G_confirmar_on_con_nombre = (() => { const b = $(G, 'nexo-name-ok'); return !!b && b.disabled === false; })();
   click(G.win, $(G, 'nexo-name-ok'));
@@ -107,6 +110,7 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
     r.S_sale_guia && r.S_cierra && r.S_marca_vista && r.S_luego_aviso_bateria &&
     r.A_sin_guia && r.A_force_reabre && r.A_force_cierra &&
     r.G_sale_pantalla_nombre && r.G_aviso_permanente && r.G_guia_aun_no && r.G_confirmar_off_si_vacio &&
+    r.G_sin_numeros_ni_simbolos &&
     r.G_confirmar_on_con_nombre && r.G_cierra_nombre && r.G_nombre_fijado && r.G_contactos_ven_el_nombre && r.G_luego_guia &&
     !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';

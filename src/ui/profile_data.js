@@ -33,21 +33,23 @@ export function profileInit() {
 }
 
 // Copia de mis datos (para pintar / compartir). Siempre devuelve los 3 campos (string, '' si no hay).
-export function myProfile() { return { name: _mine.name || '', phone: _mine.phone || '', email: _mine.email || '' }; }
-export function hasAnyProfile() { return !!(_mine.name || _mine.phone || _mine.email); }
+// #dueño 06-11: el NOMBRE es SIEMPRE el fijo del install (bi.localDeviceName), el MISMO en todos lados (lista, ficha,
+// al agregar por ID, al compartir por E2E) y NO se edita. Acá solo se guardan los EXTRAS opcionales (teléfono, correo).
+function _installName() { try { return String((typeof window !== 'undefined' && window.bleInterface && window.bleInterface.localDeviceName) || '').trim(); } catch (e) { return ''; } }
+export function myProfile() { return { name: _installName(), phone: _mine.phone || '', email: _mine.email || '' }; }
+export function hasAnyProfile() { return !!(_mine.phone || _mine.email); }   // extras opcionales (el nombre siempre está)
 
-// Guarda los campos que vengan (merge). Devuelve { ok, email_bad } para avisar si el correo no tiene forma de correo.
+// Guarda los EXTRAS (teléfono, correo). El nombre NO se edita acá (es el fijo del install). Devuelve { ok, email_bad }.
 export function setMyProfile(fields) {
   fields = fields || {};
   var email_bad = false;
-  if (fields.name != null) _mine.name = _clean(fields.name, NAME_MAX);
   if (fields.phone != null) _mine.phone = _cleanPhone(fields.phone);
   if (fields.email != null) {
     var e = _clean(fields.email, EMAIL_MAX);
     if (e && !EMAIL_RE.test(e)) email_bad = true;   // se guarda igual (el dueño manda), solo se avisa
     _mine.email = e;
   }
-  _save(MY_FILE, { name: _mine.name, phone: _mine.phone, email: _mine.email });
+  _save(MY_FILE, { phone: _mine.phone, email: _mine.email });
   return { ok: true, email_bad: email_bad };
 }
 

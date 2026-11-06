@@ -55,8 +55,9 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.en_internet = await waitFor(() => A.bi.net && A.bi.net.online() && B.bi.net.online() && C.bi.net.online(), 20000);
 
   // 1) A agrega a B por su NEXO ID (como si B se lo hubiera pasado por WhatsApp). B no es contacto de A todavía.
-  // #dueño 04-11 (perfil 2b): A tiene datos de perfil; en la solicitud viajan ENMASCARADOS (los completos van al aceptar).
-  A.win.NEXO_setMyProfile({ name: 'Ana', phone: '+54 11 5555-7788', email: 'ana@correo.com' });
+  // #dueño 04-11 (perfil 2b): A tiene datos de perfil (EXTRAS tel/correo); en la solicitud viajan ENMASCARADOS (los
+  // completos van al aceptar). #dueño 06-11: el nombre ya NO se guarda acá (es el fijo del install); solo tel/correo.
+  A.win.NEXO_setMyProfile({ phone: '+54 11 5555-7788', email: 'ana@correo.com' });
   let sent = false;
   try { await A.bi.addByNexoId(idB); sent = true; } catch (e) { logs.push('[A] addByNexoId: ' + (e && e.message)); }
   r.solicitud_enviada = sent;

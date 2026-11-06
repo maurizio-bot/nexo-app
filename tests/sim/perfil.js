@@ -1,8 +1,12 @@
-// Perfil enriquecido — paso 1 (ronda 2910, pedido del dueño 04-11). Un solo teléfono en jsdom (es todo local):
-//   (1) mis datos (nombre y apellido, teléfono, correo) se guardan y se leen (round-trip) y quedan en disco cifrado
+// Perfil enriquecido — paso 1 (ronda 2910, pedido del dueño 04-11) + nombre FIJO del install (#dueño 06-11). Un solo
+// teléfono en jsdom (es todo local):
+//   (1) el NOMBRE es el FIJO del install (bi.localDeviceName, sembrado con nexo_display_name): myProfile().name lo
+//       devuelve, NO se edita (ni pasándole 'name' a setMyProfile); setMyProfile solo guarda los EXTRAS (tel, correo),
+//       y en disco van solo esos (el nombre NO se guarda acá)
 //   (2) validación suave: el teléfono se limpia (fuera letras), el correo malo avisa (email_bad) pero se guarda igual
 //   (3) enmascarado (decisión del dueño): teléfono = últimos dígitos, correo = primeras letras
-//   (4) la pantalla Perfil muestra los 3 campos con lo guardado (inputs editables)
+//   (4) la pantalla Perfil NO tiene campo de nombre (es fijo); sí teléfono y correo (editables); la línea «te ven como»
+//       muestra el nombre fijo y aclara que no se puede cambiar
 //   (5) ⋮ → Perfil de un contacto: antes NO hacía nada; ahora abre la ficha del contacto con su NEXO ID
 // Uso: node perfil.js <dir_build>
 'use strict';
@@ -15,12 +19,13 @@ const buildDir = path.resolve(process.argv[2]);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DL extends ResourceLoader { constructor(d) { super(); this.d = d; } fetch(u) { const f = path.join(this.d, decodeURIComponent(new URL(u).pathname)); return fs.existsSync(f) ? Promise.resolve(fs.readFileSync(f)) : Promise.reject(new Error('x')); } }
 const logs = [];
-async function boot(name, native) {
+async function boot(name, native, seed) {
   const vc = new VirtualConsole();
   ['log', 'warn', 'error'].forEach((l) => vc.on(l, (...a) => logs.push(`[${name}] ${l}: ` + a.map(String).join(' ').substring(0, 200))));
   const dom = new JSDOM(fs.readFileSync(path.join(buildDir, 'dist', 'index.html'), 'utf8'), {
     url: 'https://' + name.toLowerCase() + '.nexo.test/index.html', runScripts: 'dangerously', resources: new DL(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
-    beforeParse(win) { win.CapacitorCustomPlatform = { name: 'android' }; installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {}; },
+    beforeParse(win) { win.CapacitorCustomPlatform = { name: 'android' }; installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {};
+      if (seed) { try { Object.keys(seed).forEach((k) => win.localStorage.setItem(k, seed[k])); } catch (e) {} } },
   });
   const win = dom.window;
   for (let i = 0; i < 100 && !(win.NEXO && win.NEXO.initialized); i++) await sleep(100);
@@ -32,20 +37,27 @@ async function boot(name, native) {
   const radio = new Radio();
   const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', { wifi: 'casa', ioDelay: 5 });
   radio.add(nA); nA.load();
-  const A = await boot('A', nA);
+  // #dueño 06-11: el nombre ya está fijado (nexo_display_name) → NO sale la pantalla del nombre; es el FIJO del install
+  // (bi.localDeviceName) y el MISMO en todos lados. nexo_welcome_done evita que la guía tape la hoja de Perfil.
+  const A = await boot('A', nA, { nexo_display_name: 'Juan Pérez', nexo_welcome_done: '1' });
   const w = A.win;
   const r = { build: path.basename(buildDir) };
 
-  // (1) round-trip: guardar mis datos y leerlos
-  w.NEXO_setMyProfile({ name: 'Juan Pérez', phone: '+54 11 2345-6789', email: 'juan@correo.com' });
+  // (1) #dueño 06-11: el NOMBRE es el FIJO del install (bi.localDeviceName), NO se edita acá; setMyProfile solo guarda
+  //     los EXTRAS (teléfono, correo). myProfile().name devuelve siempre el del install (el MISMO en todos lados).
+  w.NEXO_setMyProfile({ phone: '+54 11 2345-6789', email: 'juan@correo.com' });
   await sleep(50);
   let mp = w.NEXO_myProfile();
-  r.guarda_nombre = mp.name === 'Juan Pérez';
+  r.nombre_es_el_del_install = mp.name === 'Juan Pérez' && mp.name === w.bleInterface.localDeviceName;
   r.guarda_tel = mp.phone === '+54 11 2345-6789';
   r.guarda_correo = mp.email === 'juan@correo.com';
-  // queda en disco (cifrado por el plugin; aquí el mock lo guarda en nA.files)
+  // pasarle un 'name' a setMyProfile NO cambia el nombre (es el fijo del install, anti perfiles falsos)
+  w.NEXO_setMyProfile({ name: 'Otro Falso', phone: '+54 11 2345-6789', email: 'juan@correo.com' });
+  await sleep(20);
+  r.nombre_no_editable = w.NEXO_myProfile().name === 'Juan Pérez';
+  // en disco van SOLO los extras (teléfono, correo); el nombre NO se guarda acá (vive en display_name.js)
   let saved = null; try { saved = JSON.parse(nA.files.get('nexo_my_profile.json') || '{}'); } catch (e) {}
-  r.en_disco = !!saved && saved.name === 'Juan Pérez' && saved.email === 'juan@correo.com';
+  r.en_disco = !!saved && saved.email === 'juan@correo.com' && saved.name === undefined;
 
   // (2) validación suave: teléfono se limpia (fuera letras), correo malo avisa pero se guarda igual
   let res = w.NEXO_setMyProfile({ phone: '11ABC22xx33', email: 'no-es-correo' });
@@ -60,22 +72,26 @@ async function boot(name, native) {
   r.mask_correo = w.NEXO_maskEmail('juan@correo.com') === 'ju•••@•••';
   r.mask_vacio = w.NEXO_maskPhone('') === '' && w.NEXO_maskEmail('') === '';
 
-  // volver a poner datos buenos para la pantalla
-  w.NEXO_setMyProfile({ name: 'Juan Pérez', phone: '+54 11 2345-6789', email: 'juan@correo.com' });
+  // volver a poner extras buenos para la pantalla
+  w.NEXO_setMyProfile({ phone: '+54 11 2345-6789', email: 'juan@correo.com' });
   await sleep(30);
 
-  // (4) la pantalla Perfil muestra los campos con lo guardado
+  // (4) la pantalla Perfil: ya NO hay campo de nombre editable (es fijo del install); sí teléfono y correo con lo guardado,
+  //     y la línea «Tus contactos te ven como …» muestra el nombre FIJO y aclara que NO se puede cambiar.
   w.dispatchEvent(new w.CustomEvent('nexo:ui:profile', {}));
   await sleep(120);
   const fName = w.document.getElementById('nexo-prof-name');
   const fPhone = w.document.getElementById('nexo-prof-phone');
   const fEmail = w.document.getElementById('nexo-prof-email');
-  r.pantalla_tiene_campos = !!(fName && fPhone && fEmail);
-  r.pantalla_muestra_datos = !!fName && fName.value === 'Juan Pérez' && !!fEmail && fEmail.value === 'juan@correo.com';
-  // editar en la pantalla + 'change' debe guardar
-  if (fName) { fName.value = 'Juana López'; fName.dispatchEvent(new w.Event('change', { bubbles: true })); }
+  r.pantalla_sin_campo_nombre = !fName;   // el nombre NO se edita en Perfil
+  r.pantalla_tiene_campos = !!(fPhone && fEmail);
+  r.pantalla_muestra_datos = !!fPhone && fPhone.value === '+54 11 2345-6789' && !!fEmail && fEmail.value === 'juan@correo.com';
+  const seen = w.document.getElementById('nexo-profile-seen');
+  r.pantalla_muestra_nombre_fijo = !!seen && /Juan Pérez/.test(seen.textContent || '') && /no se puede cambiar/i.test(seen.textContent || '');
+  // editar el TELÉFONO en la pantalla + 'change' debe guardar (los extras sí se editan)
+  if (fPhone) { fPhone.value = '+54 11 0000-0000'; fPhone.dispatchEvent(new w.Event('change', { bubbles: true })); }
   await sleep(30);
-  r.editar_en_pantalla_guarda = w.NEXO_myProfile().name === 'Juana López';
+  r.editar_en_pantalla_guarda = w.NEXO_myProfile().phone === '+54 11 0000-0000';
   // cerrar la hoja
   const closeP = w.document.getElementById('nexo-profile-close'); if (closeP) closeP.click();
   await sleep(30);
@@ -102,10 +118,10 @@ async function boot(name, native) {
   r.sin_solicitud_sin_banner = !w.document.getElementById('ble-req-banner');
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|is not a function|NEXO_setMyProfile/.test(l) && /error/.test(l)).slice(0, 4);
-  const ok = r.guarda_nombre && r.guarda_tel && r.guarda_correo && r.en_disco &&
+  const ok = r.nombre_es_el_del_install && r.nombre_no_editable && r.guarda_tel && r.guarda_correo && r.en_disco &&
     r.tel_limpio && r.correo_malo_avisa && r.correo_malo_se_guarda &&
     r.mask_tel && r.mask_correo && r.mask_vacio &&
-    r.pantalla_tiene_campos && r.pantalla_muestra_datos && r.editar_en_pantalla_guarda &&
+    r.pantalla_sin_campo_nombre && r.pantalla_tiene_campos && r.pantalla_muestra_datos && r.pantalla_muestra_nombre_fijo && r.editar_en_pantalla_guarda &&
     r.perfil_contacto_abre && r.perfil_contacto_muestra_id && r.perfil_contacto_antes_nada &&
     r.solicitud_banner_en_lista && r.sin_solicitud_sin_banner &&
     r.errores.length === 0;
