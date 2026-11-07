@@ -441,11 +441,13 @@ export class BLEInterface {
     // (visibilitychange); se usa el primero que llegue.
     if (self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'addListener')) {
       self.nativePlugin.addListener('onAppStateChange', function(st) {
+        self._foreground = !!(st && st.isActive); // regla del dueño (07-11): el usuario es la prioridad; con la app en PRIMER PLANO, Fénix y los procesos de fondo no usan la radio
         if (st && st.isActive) self._onAppResumed('nativo');
       });
     }
     if (typeof document !== 'undefined' && document.addEventListener) {
       document.addEventListener('visibilitychange', function() {
+        self._foreground = (document.visibilityState === 'visible'); // regla del dueño (07-11): primer plano → Fénix/fondo en pausa; segundo plano → reanudan
         if (document.visibilityState === 'visible') self._onAppResumed('visibilidad');
         else self._pushAckKeys(); // C1 (2777): antes de irse a segundo plano, dar a la parte nativa las claves para firmar el ✓✓ del modo cerrado
       });
@@ -455,6 +457,7 @@ export class BLEInterface {
       if (_hasNativeMethod(appPlugin, 'addListener')) {
         appPlugin.addListener('appStateChange', function(state) {
           try {
+            self._foreground = !!(state && state.isActive); // regla del dueño (07-11): usuario primero; primer plano → Fénix/fondo en pausa
             if (state && state.isActive === true) {
               self.renderContactsList(); self.renderOnlineStrip();
               setTimeout(function() { if (!self.isDummyMode && self.nativePlugin && !self.isScanning) self._autoScanForKnownContacts(); }, 500);

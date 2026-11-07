@@ -59,6 +59,13 @@ export function _fenixSkipHolder(now, coldUntil, dev, isDead) {
   return false;
 }
 
+// Regla del dueño (07-11): el usuario es la prioridad, es el dueño de la radio. Con la app en PRIMER PLANO (foreground===true),
+// los envíos pesados de respaldo Fénix ESPERAN (no estorban lo que hace el usuario); en segundo plano se reanudan. Defensivo:
+// solo pausa cuando hay señal CIERTA de primer plano (===true); undefined/false (el simulador, o si falta la señal) → corre,
+// para no dejar nunca el respaldo sin hacerse. En uso real el teléfono pasa a segundo plano a cada rato (pantalla apagada,
+// cambio de app), así que el respaldo tiene ventanas de sobra. Pura y testable.
+export function _fenixFgPaused(foreground) { return foreground === true; }
+
 // Anti-abuso / anti-IA (07-11): ¿cabe otra petición de recuperación en la ventana, o es spam? Poda `win` a las de la
 // última `winMs` y, si ya hay `max`, devuelve false (no mostrar); si cabe, apunta `now` y devuelve true. Pura y testable.
 export function _recWindowOk(win, now, max, winMs) {
@@ -321,6 +328,7 @@ export class Fenix {
   async _put(nx, dev, node) {
     var self = this, s = self.state;
     if (self.inflight.has(nx) || !self.ble.ackSystem) return;
+    if (_fenixFgPaused(self.ble && self.ble._foreground)) return; // regla del dueño: app en primer plano → el respaldo espera (el usuario primero)
     self.inflight.add(nx);
     var ep = s.ep;
     var payload = { v: 1, k: 'put', o: self.me(), name: self.ble.localDeviceName || '', ep: ep, n: s.n, t: s.t, idx: node.idx,
@@ -588,6 +596,7 @@ export class Fenix {
   async _putSeg(nx, dev, g) {
     var self = this;
     if (self.inflight.has(nx) || !self.ble.ackSystem) return;
+    if (_fenixFgPaused(self.ble && self.ble._foreground)) return; // regla del dueño: app en primer plano → el respaldo espera (el usuario primero)
     var blob = g.med ? await _load(g.ref) : g.blob;
     if (!blob) { console.warn('[FENIX] ' + g.id + ': ya no está en este teléfono'); return; }
     self.inflight.add(nx);

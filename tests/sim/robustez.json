@@ -119,6 +119,10 @@
      "prueba": "Fénix no martilla un custodio atascado"
     },
     {
+     "fallo": "LENTITUD en Bluetooth, regla del dueño (07-11): «el usuario siempre primero, es el dueño de la radio». El respaldo Fénix competía por la radio con los chats del usuario incluso con la app abierta. 2952: _fenixFgPaused (fenix.js) — con la app en PRIMER PLANO los envíos pesados de respaldo (_put, _putSeg) ESPERAN; en segundo plano se reanudan (el teléfono pasa a 2.º plano a cada rato → hay ventanas de sobra). La señal de primer plano (_foreground en ble_interface.js) se pone desde onAppStateChange/visibilitychange/appStateChange; solo pausa con foreground===true (undefined/false → corre, nunca deja el respaldo sin hacerse: simulador y sin-señal a salvo). Recibir con app cerrada (FCM) y la recuperación NO se tocan. Pendiente: dedup de conexiones al mismo NEXO (ID rotativo)",
+     "prueba": "el usuario primero"
+    },
+    {
      "fallo": "Caídas reales del Bluetooth que no se avisaban a la app (Kotlin)",
      "prueba": null
     },
