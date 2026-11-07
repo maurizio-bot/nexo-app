@@ -24,7 +24,7 @@ async function boot(name, native) {
     beforeParse(win) {
       win.CapacitorCustomPlatform = { name: 'android' }; require('./native_mock').installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {};
       win.URL.createObjectURL = () => 'blob:sim'; win.URL.revokeObjectURL = () => {};
-      win.navigator.mediaDevices = { getUserMedia: () => Promise.resolve({ getTracks: () => [{ stop() {} }] }) };
+      win.__gumCalls = 0; win.navigator.mediaDevices = { getUserMedia: () => { win.__gumCalls++; return Promise.resolve({ getTracks: () => [{ readyState: 'live', stop() {} }] }); } };
       // Micrófono de mentira con pausa/reanudación (ronda 2781)
       win.MediaRecorder = class {
         constructor() { this.state = 'inactive'; }
@@ -96,9 +96,25 @@ const barVisible = (p) => { const b = $(p, 'voice-bar'); return !!b && b.style.d
   await sleep(200);
   r.llamada_para_el_audio = (A.win.__nexoVoiceStops || 0) > stops1;
 
+  // 4) Pre-warm (#dueño 07-11): el micrófono se PRECALIENTA apenas tocás el botón y la grabación REUSA ese micrófono (no
+  //    pide otro) → al grabar ya está listo y no se come la 1.ª palabra. El retardo real del micrófono solo se mide en el teléfono.
+  A.win.__gumCalls = 0;
+  r.prewarm_hook = typeof A.win.__nexoPrewarmMic === 'function';
+  A.win.__nexoPrewarmMic();                              // como el touchstart del botón de grabar
+  await sleep(150);
+  r.prewarm_pide_mic = A.win.__gumCalls === 1;            // precalentó: pidió el micrófono una vez
+  A.win.__nexoPrewarmMic();                              // tocar/entrar otra vez no pide otro (idempotente)
+  r.prewarm_idempotente = A.win.__gumCalls === 1;
+  micTap(A); await sleep(500);
+  r.barra_al_grabar_warm = barVisible(A);
+  r.grabar_reusa_warm = A.win.__gumCalls === 1;          // la grabación REUSÓ el precalentado (NO pidió otro)
+  click(A.win, $(A, 'voice-cancel')); await sleep(800);
+  r.barra_oculta_warm = !barVisible(A);
+
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.contactos && r.barra_al_grabar && r.grabar_para_el_audio && r.pausa && r.reanuda && r.barra_oculta_tras_enviar &&
-    r.voz_llega_s !== null && r.barra_al_grabar_2 && r.barra_oculta_tras_borrar && r.notas_en_B === 1 && r.llamada_para_el_audio && !r.errores.length;
+    r.voz_llega_s !== null && r.barra_al_grabar_2 && r.barra_oculta_tras_borrar && r.notas_en_B === 1 && r.llamada_para_el_audio &&
+    r.prewarm_hook && r.prewarm_pide_mic && r.prewarm_idempotente && r.barra_al_grabar_warm && r.grabar_reusa_warm && r.barra_oculta_warm && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('VOICENOTE ' + JSON.stringify(r));
   if (!ok) fs.writeFileSync(path.join(__dirname, 'last_logs_voicenote.txt'), logs.join('\n'));

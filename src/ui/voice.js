@@ -28,6 +28,35 @@ var _pausedMs = 0;     // tiempo total que ha estado en pausa
 var _pauseStart = 0;   // cuándo empezó la pausa actual (0 si no está en pausa)
 var _discard = false;  // true = se canceló (borrar), no se envía
 var _recStream = null; // el micrófono, para pararlo al terminar o cancelar
+// #dueño 07-11: el micrófono tarda una fracción de segundo en «encenderse»; si se pide recién al apretar grabar, se come la
+// 1.ª palabra. _prewarmMic() lo precalienta apenas tocás el botón (touchstart) para que al grabar ya esté listo.
+var _warmStream = null;   // micrófono precalentado, listo para grabar sin esperar
+var _warmPromise = null;  // la adquisición en vuelo (se espera en vez de pedir otra)
+var _warmTimer = null;    // lo suelta si no grabás en WARM_TTL_MS (no deja el micrófono abierto)
+var WARM_TTL_MS = 8000;
+
+function _streamLive(s) {
+  try { var ts = s && s.getTracks ? s.getTracks() : []; return ts.length > 0 && ts.some(function (t) { return t.readyState !== 'ended'; }); } catch (e) { return !!s; }
+}
+function _releaseWarm() {
+  if (_warmTimer) { clearTimeout(_warmTimer); _warmTimer = null; }
+  if (_warmStream) { try { _warmStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} _warmStream = null; }
+}
+// Precalentar el micrófono (apenas tocás el botón de grabar). No hace nada si ya estás grabando o ya está precalentado.
+export function _prewarmMic() {
+  try {
+    if (_isRecording || _warmStream || _warmPromise) return;
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    _warmPromise = navigator.mediaDevices.getUserMedia({ audio: true }).then(function (s) {
+      _warmPromise = null;
+      if (_isRecording) { try { s.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} return; } // ya se consumió por otra vía
+      _warmStream = s;
+      if (_warmTimer) clearTimeout(_warmTimer);
+      _warmTimer = setTimeout(_releaseWarm, WARM_TTL_MS);
+      return s;
+    }).catch(function () { _warmPromise = null; });
+  } catch (e) {}
+}
 
 function _elapsedMs() {
   if (!_voiceStartTime) return 0;
@@ -90,7 +119,12 @@ async function _startVoiceRecording() {
   // Ronda 2781: parar cualquier nota de voz que esté sonando antes de grabar (no se mezclan ni se graba el altavoz)
   try { if (typeof window !== 'undefined' && window.__nexoStopVoice) window.__nexoStopVoice(); } catch (e) {}
   try {
-    var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // #dueño 07-11: usar el micrófono YA precalentado (apenas tocaste el botón) para no comerse la 1.ª palabra. Si hay una
+    // adquisición en vuelo, la esperamos (no pedimos otra); si ya está lista, se usa directo; si no se precalentó, se pide ahora.
+    if (_warmTimer) { clearTimeout(_warmTimer); _warmTimer = null; }
+    var stream = _warmStream; _warmStream = null;
+    if (!stream && _warmPromise) { try { stream = await _warmPromise; } catch (e) { stream = null; } _warmStream = null; }
+    if (!_streamLive(stream)) stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     _recStream = stream;
     var audioMimeType = '';
     // #dueño 06-11 (micrófono "dejó de funcionar"): en Android el <audio> no reproduce bien el webm («no supported

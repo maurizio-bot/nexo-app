@@ -11,7 +11,7 @@ import { _handleFile, _handleGallery } from './pickers.js';
 import { _handleLocation } from './location.js';
 import { _handleCobro } from './cobro.js';
 import { _handleShareContacts } from './share_contacts.js';
-import { _handleVoiceToggle } from './voice.js';
+import { _handleVoiceToggle, _prewarmMic } from './voice.js';
 import { _msgContactMap } from './chat_state.js';
 import { _noteContactMessage } from './send.js';
 import { _renderMessage, _updateMessageStatus, _updateMessageStorageStatus } from './render.js';
@@ -332,8 +332,12 @@ export function _setupMessageInput() {
         _handleVoiceToggle();
       }
     });
+    // #dueño 07-11: precalentar el micrófono apenas tocás el botón, para que al grabar ya esté listo y no se coma la 1.ª palabra.
+    try { if (typeof window !== 'undefined') window.__nexoPrewarmMic = _prewarmMic; } catch (e) {}
+    btn.addEventListener('pointerdown', function() { if (btn.classList.contains('mic-mode')) _prewarmMic(); });
     btn.addEventListener('touchstart', function(e) {
       if (!btn.classList.contains('mic-mode')) return;
+      _prewarmMic(); // #dueño 07-11: el micrófono empieza a encenderse ya, durante el toque
       _isLongPress = false;
       _longPressTimer = setTimeout(function() {
         _isLongPress = true;

@@ -177,6 +177,10 @@
      "prueba": "lo pendiente al volver el contacto"
     },
     {
+     "fallo": "El micrófono se comía la primera palabra (dueño 07-11): se pedía getUserMedia recién al apretar grabar y el micrófono tarda una fracción de segundo en encenderse → lo dicho en ese instante se perdía. 2942: se PRECALIENTA apenas tocás el botón (_prewarmMic en touchstart/pointerdown) y la grabación REUSA ese stream ya listo (si sigue en vuelo lo espera; se suelta en 8 s si no grabás). El retardo real solo se mide en el teléfono; el simulador verifica el mecanismo (precalentar pide 1 getUserMedia, grabar reusa sin pedir otro). Prueba voicenote.js ampliada",
+     "prueba": "nota de voz"
+    },
+    {
      "fallo": "Orden en el chat con relojes desfasados y con la app cerrada",
      "prueba": "orden en el chat"
     },
