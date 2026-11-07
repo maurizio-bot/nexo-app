@@ -378,6 +378,10 @@
      "prueba": "camino de envío"
     },
     {
+     "fallo": "Regla ÚNICA de caminos (principio del dueño 07-11): un archivo PESADO nunca por Bluetooth si hay Wi-Fi/Wi-Fi Direct/internet. La regla «archivo grande por internet antes que Bluetooth» estaba en el camino de reanudación (preferNet) pero NO en el de reintento de pendientes (_resendPendingMessages resolvía Bluetooth sin preferNet) → cada camino decidía suelto. 2943: la regla vive en el ÚNICO embudo de todos los envíos de archivo (_sendFileBest): un archivo > tope BLE en envío directo re-resuelve con preferNet ahí mismo (Wi-Fi misma red / internet; si no, Wi-Fi Direct antes que Bluetooth). Prueba bigroute.js con INVARIANTE (reintento_embudo_internet): simula el reintento que resuelve Bluetooth y exige que el embudo re-rutee a internet. Cubre lo pesado (> ~2,3 MB); medianos por datos móviles = siguiente escalón",
+     "prueba": "archivo que no cabe por Bluetooth"
+    },
+    {
      "fallo": "P2 (diagnóstico real 01-11, dueño): al ABRIR el chat con un contacto dormido por Android no se le mandaba el «toque» FCM (solo salía al enviar) → el 1er mensaje esperaba o se perdía y el subtítulo quedaba vacío (no se veía el tipo de conexión). 2860: openChat llama a _wakeSleepingPeer → si no hay enlace vivo pide net.wakeFor(nx) (toque con token + internet) y el subtítulo pasa a «Conectando…» hasta que llega la presencia del otro (entonces se ve Wi-Fi/Bluetooth/internet)",
      "prueba": "toque al ABRIR el chat"
     },

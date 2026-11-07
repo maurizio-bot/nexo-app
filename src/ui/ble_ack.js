@@ -482,6 +482,25 @@ export class BleAckSystem {
   // v3.6.0: Wi-Fi Direct primero si se puede (mucho más rápido); si falla, Bluetooth
   _sendFileBest(deviceId, fileId, data, meta) {
     var self = this, wd = self.ble && self.ble.wifiDirect;
+    // #dueño 07-11 (REGLA ÚNICA de caminos, en el ÚNICO embudo por el que pasan TODOS los envíos de archivo): un archivo
+    // PESADO (> tope de Bluetooth) nunca se arrastra por Bluetooth si hay algo mejor. Aunque el que llama ya haya resuelto
+    // un enlace Bluetooth sin pedir «preferir internet» (p. ej. el reintento de pendientes, _resendPendingMessages, que
+    // resolvía Bluetooth sin preferNet), aquí se RE-RESUELVE con preferNet para un archivo grande en un envío DIRECTO (no
+    // Jump/puente): si el contacto tiene Wi-Fi de la misma red o internet, se va por ahí; si no, el propio flujo de abajo
+    // prueba Wi-Fi Direct antes que Bluetooth crudo. Así NINGÚN camino puede saltarse la regla (antes cada uno decidía suelto).
+    if (data && data.length > BLE_FILE_MAX_CHARS && !_isNetDevice(deviceId) && !_isLanDevice(deviceId) &&
+        !(meta && (meta.dst || meta.fwd)) && self.ble && typeof self.ble._resolveDeviceIdForNexoId === 'function') {
+      try {
+        var cidHeavy = (meta && meta.to) || self._resolveNexoId(deviceId);
+        if (cidHeavy) {
+          var better = self.ble._resolveDeviceIdForNexoId(cidHeavy, true);
+          if (better && (_isNetDevice(better) || _isLanDevice(better))) {
+            console.log('[BleAckSystem] archivo grande re-ruteado de Bluetooth a ' + (_isLanDevice(better) ? 'Wi-Fi' : 'internet') + ' (regla única de caminos) fileId=' + fileId);
+            deviceId = better;
+          }
+        }
+      } catch (e) {}
+    }
     // v3.10.0: misma red Wi-Fi: por ahí directamente (rápido, sin montar grupo; también el vídeo original)
     if (_isNetDevice(deviceId)) {
       // Ronda 2780 (pedido del dueño): fotos y archivos medianos SIEMPRE por internet: por Tor directo/Wi-Fi si está en

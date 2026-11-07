@@ -97,6 +97,18 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const bleBefore = nA.sent.length;
   const bigBuf = Buffer.alloc(2500000); for (let i = 0; i < bigBuf.length; i++) bigBuf[i] = (i * 17 + 3) & 255;
   const bigB64 = bigBuf.toString('base64');                                // ~3,33 M chars > 3,1 M (tope BLE)
+
+  // (1b) REGLA ÚNICA / EMBUDO (#dueño 07-11): el camino de REINTENTO de pendientes (_resendPendingMessages) resolvía un
+  //      Bluetooth SIN pedir «preferir internet» y llamaba a ackSystem.sendFile(btDevice, ...). El embudo _sendFileBest
+  //      —por el que pasan TODOS los envíos de archivo— debe RE-RUTEAR un archivo grande por internet/Wi-Fi igual, para que
+  //      ningún camino pueda arrastrar algo pesado por Bluetooth cuando hay algo mejor. Simulamos ese camino.
+  var btDevRe = A.bi._resolveDeviceIdForNexoId(idB, false);                // Bluetooth, como resolvía el reintento (sin la pista)
+  r.reintento_resuelve_bluetooth = !isNet(btDevRe);                        // el camino del reintento resolvía Bluetooth
+  const nBeforeRe = logs.length;
+  try { var pRe = A.bi.ackSystem.sendFile(btDevRe, 'bigresend1', bigB64, { type: 'file', to: idB, fileName: 'resend.bin' }); if (pRe && pRe.catch) pRe.catch(function () {}); } catch (e) {}
+  await waitFor(() => logs.slice(nBeforeRe).some((l) => /sendFile START/.test(l) && /bigresend1/.test(l)), 8000);
+  var startRe = logs.slice(nBeforeRe).find((l) => /sendFile START/.test(l) && /bigresend1/.test(l)) || '';
+  r.reintento_embudo_internet = /to=net/.test(startRe);                    // EL ARREGLO: el embudo lo re-ruteó a internet, NO Bluetooth
   // sendFile rechaza al aplazar (el arreglo: «no por Bluetooth»); en la app real send.js lo captura y deja pendiente, y la
   // re-corrida (resumeOutgoingTransfers) lo manda por internet. Acá capturo igual el rechazo y dejo que la re-corrida actúe.
   try { var pBig = A.win.bleInterface.sendFile(idB, 'bigmsg1', bigB64, { type: 'file', to: idB, fileName: 'grande.bin' }); if (pBig && pBig.catch) pBig.catch(function (e) { logs.push('[A] sendFile big rechazado (esperado, aplazado): ' + (e && e.message)); }); } catch (e) { logs.push('[A] sendFile throw: ' + (e && e.message)); }
@@ -110,6 +122,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.en_internet !== null && r.ble_vivo && r.no_bothwifi &&
     r.sin_preferNet_elige_bluetooth && r.con_preferNet_elige_internet &&
+    r.reintento_resuelve_bluetooth && r.reintento_embudo_internet &&
     r.grande_llega_s !== null && r.ruteado_por_internet && r.sin_tromba_bluetooth && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('BIGROUTE ' + JSON.stringify(r));
