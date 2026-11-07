@@ -3,7 +3,7 @@
  * supervisor de enlaces, pings, reconexión, búsqueda de contactos perdidos, teléfonos encontrados al escanear y
  * esperar a que un enlace esté listo.
  */
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _niceName, _showToast, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages } from './ble_helpers.js';
 
 
 export const BLE_CONNECTION_METHODS = {
@@ -150,13 +150,16 @@ export const BLE_CONNECTION_METHODS = {
       var contact = _getContactByUUID(nx);
       if (contact && contact.deviceId) setTimeout(function() { self._autoConnectGATT(contact.deviceId, { name: contact.name, deviceUUID: nx }); }, 800);
     }
-    // Ronda 2766 (revisión): la espera crece de verdad (2, 4, 8, 16, 30 s…): antes el contador se borraba antes de
-    // cada reintento, siempre eran 2 s y cada vuelta lanzaba una búsqueda (Android ignora más de 5 en 30 s: a partir de
-    // ahí las búsquedas llegaban vacías). Se deja de insistir con esta dirección si el contacto ya está conectado por
-    // otro camino o tras ~2,5 min (la búsqueda de contactos perdidos sigue aparte)
+    // Ronda 2766 (revisión): la espera crece de verdad (antes el contador se borraba antes de cada reintento, siempre
+    // eran 2 s y cada vuelta lanzaba una búsqueda; Android ignora más de 5 en 30 s: a partir de ahí las búsquedas
+    // llegaban vacías). Se deja de insistir con esta dirección si el contacto ya está conectado por otro camino o tras
+    // ~2,5 min (la búsqueda de contactos perdidos sigue aparte).
+    // C-1 (07-11): la espera lleva JITTER (fórmula única _jitteredBackoff, misma que el nativo): ~1–2, 2–4, 4–8, 8–16,
+    // 15–30 s… en vez de 2, 4, 8, 16, 30 s clavados. Así, si varios teléfonos se cortan a la vez (grupo, concierto,
+    // coche), no reintentan todos en el MISMO instante chocando en la radio (GATT 133, ventana de escaneo llena).
     var attempt = self._reconnectAttempts.get(deviceId) || 0;
     if (attempt >= 8 || (nx && (self._bleReadyFor(nx) || (self.lan && self.lan.canReach(nx))))) { self._reconnectAttempts.delete(deviceId); self._backoffTimers.delete(deviceId); return; }
-    var delay = Math.min(2000 * Math.pow(2, attempt), 30000);
+    var delay = _jitteredBackoff(attempt, 2000, 30000);
     self._reconnectAttempts.set(deviceId, attempt + 1);
     var timer = setTimeout(function() {
       var currentState = self._getDeviceState(deviceId);

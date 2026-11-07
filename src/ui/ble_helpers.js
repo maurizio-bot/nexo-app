@@ -211,6 +211,21 @@ export function _chatKind(content) {
 // Recortar texto sin partir un emoji ni otro carácter de dos unidades (quedaría "�")
 export function _cut(s, n) { s = String(s == null ? '' : s); if (s.length <= n) return s; var c = s.charCodeAt(n - 1); return s.substring(0, (c >= 0xD800 && c <= 0xDBFF) ? n - 1 : n); }
 
+// C-1 (07-11): backoff exponencial CON "jitter" (igual), una sola regla para TODO reintento de reconexión (JS y Kotlin
+// usan la misma fórmula). Por qué: cuando varios teléfonos se cortan a la vez —el dueño de un grupo se va, todos pierden
+// la señal en un concierto, el Bluetooth del coche se apaga— SIN jitter TODOS reintentan en el MISMO instante (2 s, 4 s,
+// 8 s…) y chocan en la radio, que es compartida: colisiones de GATT (error 133), la ventana de escaneo de Android (5/30 s)
+// se llena para todos a la vez, y la reconexión se alarga justo cuando más se necesita. El jitter los reparte en el tiempo.
+// "Igual" (no "full", receta de AWS «Exponential Backoff And Jitter»): mitad FIJA (suelo = exp/2) + mitad ALEATORIA, para
+// repartir sin martillar la radio con esperas casi cero. Devuelve ms enteros en [exp/2, exp], con exp = min(base·2^intento, tope).
+export function _jitteredBackoff(attempt, baseMs, capMs) {
+  var base = baseMs || 2000, cap = capMs || 30000;
+  var a = (typeof attempt === 'number' && attempt > 0) ? attempt : 0;
+  var exp = Math.min(base * Math.pow(2, a), cap);
+  var half = exp / 2;
+  return Math.round(half + Math.random() * half);
+}
+
 export function _messagePreview(content, attachmentType) {
   var t = attachmentType;
   var k = !t ? _chatKind(content) : null;

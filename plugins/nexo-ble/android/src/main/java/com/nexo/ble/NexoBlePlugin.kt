@@ -1669,8 +1669,13 @@ class NexoBlePlugin : Plugin() {
 
     private fun getReconnectDelay(macNorm: String): Long {
         val attempts = reconnectAttempts[macNorm] ?: 0
-        val delay = RECONNECT_DELAY_MS * (1L shl attempts.coerceAtMost(4))
-        return delay.coerceAtMost(MAX_RECONNECT_DELAY_MS)
+        val exp = (RECONNECT_DELAY_MS * (1L shl attempts.coerceAtMost(4))).coerceAtMost(MAX_RECONNECT_DELAY_MS)
+        // C-1 (07-11): jitter "igual" (misma regla que el JS _jitteredBackoff en ble_helpers.js): suelo = exp/2 + mitad
+        // aleatoria. Sin esto, si varios teléfonos se cortan a la vez (el dueño de un grupo se va, concierto, el coche se
+        // apaga) TODOS reintentaban en el MISMO instante y chocaban en la radio (GATT 133, ventana de escaneo 5/30 s llena
+        // para todos a la vez). El jitter los reparte en el tiempo. Resultado en [exp/2, exp].
+        val half = exp / 2
+        return half + (Math.random() * half).toLong()
     }
 
     private fun startAutoReconnect(macNorm: String) {

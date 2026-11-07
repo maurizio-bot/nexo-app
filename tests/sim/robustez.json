@@ -134,6 +134,10 @@
     {
      "fallo": "Tormenta «[JUMP] Conectando con» (D1, diagnóstico del coche 02-11): relay._connect llamaba connectToDevice en CADA tick de re-búsqueda para el MISMO contacto (12 en 1 ms, 104 crudas) porque el guard de 15 s solo cubría los NO-contactos. 2887: ventana de dedup de connect (_connecting) que cubre también a los contactos; pasada la ventana, si sigue sin conectar, se reintenta",
      "prueba": "un connect por contacto dentro de la ventana"
+    },
+    {
+     "fallo": "Reintentos de reconexión SINCRONIZADOS entre teléfonos (C-1, Tanda 1, investigación 07-11): la espera del backoff era determinista (2,4,8,16,30 s clavados) en JS (_attemptAutoReconnect) y en el nativo (getReconnectDelay); si varios teléfonos se cortan en el MISMO instante (el dueño de un grupo se va, concierto, el Bluetooth del coche se apaga) TODOS reintentaban a la vez y chocaban en la radio compartida (colisiones de GATT 133, ventana de escaneo 5/30 s llena para todos a la vez). 2944: una sola regla común _jitteredBackoff en ble_helpers.js (jitter «igual» estilo AWS: suelo exp/2 + mitad aleatoria → [exp/2, exp]) usada por JS, y la misma fórmula replicada en Kotlin → los reintentos se reparten en el tiempo y dejan de chocar",
+     "prueba": "jitter en el backoff de reconexión"
     }
    ],
    "debiles": [
