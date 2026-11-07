@@ -205,6 +205,10 @@
      "prueba": "palomitas de estado"
     },
     {
+     "fallo": "Audio/archivo a un contacto AUSENTE (sin Bluetooth/Wi-Fi/internet) «queda en °»: el estado 'pending' («esperando») no se veía (sin dibujo y, por rango pending=1 < sending=3, bloqueado) → la burbuja seguía en ○ como clavada hasta el tope global de 10 min (diagnóstico del dueño 07-11, panel «Contactos en línea: 0», «2 de 7 entregados»). 2940: 'pending' tiene reloj de espera ⏳ y reemplaza a sending/queued (nunca a sent/delivered/read); _onWindowTimeout marca pending PRONTO con el contacto de internet ausente; sigue siendo re-enviable (store-and-forward, no se pierde)",
+     "prueba": "audio/archivo a contacto AUSENTE"
+    },
+    {
      "fallo": "Orden de la lista de contactos (por último mensaje)",
      "prueba": null,
      "fuera": "contacts.js"

@@ -2139,6 +2139,10 @@ ChatStream.prototype._onWindowTimeout = function() {
       try { if (self.total > NET_TOR_PREFER_CHUNKS && typeof self.ble.net.xferKeepAwake === 'function') { self.ble.net.xferKeepAwake(true); self._xferHeld = true; } } catch (e) {}
     }
     if (!self._linkUp()) {
+      // #dueño 07-11: el contacto de internet/Wi-Fi está AUSENTE (store-and-forward). Marcar 'pending' («esperando», reloj
+      // ⏳) PRONTO para que la burbuja no se quede en ○ («clavado») hasta el tope global de 10 min; el audio/archivo ya
+      // quedó para el buzón y se entrega al reconectar. Solo archivos (el texto al buzón ya muestra ✓ por otro camino).
+      if (self.type === 'file') { try { self.ackSystem._dispatchStatus(self.msgId, 'pending'); } catch (e) {} }
       console.log('[ChatStream] Ventana sin ACK con el enlace caído: espero a que vuelva (no gasta reintento) msgId=' + self.msgId);
       self._startWindowTimer();
       return;

@@ -709,12 +709,17 @@ export function _updateMessageStatus(messageId, status) {
     var cls = statusEl.className || '';
     var m = cls.match(/status-(pending|queued|sending|sent|delivered|read|failed)/);
     if (m) current = m[1];
-    if (!_canUpgradeStatus(current, status)) {
+    // #dueño 07-11: 'pending' («esperando», store-and-forward) tiene rango 1 para no pisar un 'sent'/'delivered' tardío,
+    // pero SÍ debe VERSE cuando reemplaza a un envío en curso: un audio/archivo a un contacto AUSENTE se quedaba en ○
+    // («clavado») hasta el tope global de 10 min. Se permite pending sobre sending/queued (nunca sobre sent/delivered/read).
+    var allowPending = status === 'pending' && (current === 'sending' || current === 'queued');
+    if (!allowPending && !_canUpgradeStatus(current, status)) {
       return;
     }
     statusEl.classList.remove('status-pending', 'status-queued', 'status-sending', 'status-sent', 'status-delivered', 'status-read', 'status-failed');
     statusEl.classList.add('status-' + status);
     if (status === 'queued') statusEl.textContent = '°';
+    else if (status === 'pending') statusEl.textContent = '⏳'; // #dueño 07-11: reloj de espera (se enviará solo al reconectar)
     else if (status === 'sending') statusEl.textContent = '○';
     else if (status === 'sent') statusEl.textContent = '✓';
     else if (status === 'delivered') statusEl.textContent = '✓✓';
