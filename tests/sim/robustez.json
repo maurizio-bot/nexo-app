@@ -321,6 +321,10 @@
      "prueba": "archivo grande por Bluetooth de MTU mínimo"
     },
     {
+     "fallo": "CRASH por ralentización al mandar fotos/vídeo (GRAVE, diagnóstico del dueño S24 07-11): un archivo DEMASIADO GRANDE para Bluetooth (un APK de 35 MB pendiente de un envío anterior) re-resuelto a un enlace Bluetooth se PARTÍA en ~99 mil trozos (_splitChunks) ANTES de decidir aplazarlo, y eso pasaba en CADA reintento (cada ~10 s) → partir + máscaras + persistir llenaba la memoria del WebView → OOM/crash. 2941: la decisión de aplazar (_shouldDeferTinyMtu, solo mira el contenido) se toma ANTES de _splitChunks; si aplaza, se persiste el registro con el contenido entero como UN trozo (barato, reanudable por internet) y se rechaza SIN partir ni armar máscaras; el bloque viejo de aplazar tras partir se quitó. Prueba filetinymtu.js ampliada (espía _splitChunks: huge_no_parte + e2e_no_parte_tinymtu)",
+     "prueba": "archivo que no cabe por Bluetooth"
+    },
+    {
      "fallo": "CONGELACIÓN (ANR) al subir archivos a un chat con tiempo (diagnóstico del dueño 02-11, lo más grave hasta ahora): un chat viejo con muchas transferencias pendientes (segmentos Fénix, mensajes sin entregar) hacía que resumeOutgoingTransfers arrancara TODAS a la vez — decenas de ChatStreams simultáneos, cada uno con su temporizador reintentando sobre un enlace caído/MTU 23 — y el hilo principal del WebView se saturaba (timers + logs + reconstruir el contenido de cada una) → la app se trababa y no respondía. 2887 (2.ª parte): cola global, se reanudan como mucho MAX_RESUME_CONCURRENT (3) a la vez, con dedup (resume repetido no duplica) y contenido reconstruido perezosamente; ninguna transferencia se pierde. Prueba resumestorm.js",
      "prueba": "reanudar sin congelar"
     },

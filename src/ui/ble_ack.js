@@ -1796,6 +1796,36 @@ ChatStream.prototype.start = function() {
     self.resolve = resolve;
     self.reject = reject;
     self.lastAckAt = Date.now();
+    // #dueño 07-11 (CRASH, diagnóstico S24 «se ralentizó hasta crashear tras un par de fotos y un vídeo»): un archivo
+    // que NO va por Bluetooth (demasiado grande para BT, o MTU mínimo) y que se re-resolvía a un enlace Bluetooth se
+    // PARTÍA en decenas de miles de trozos (_splitChunks; un APK de 35 MB = ~99 mil) ANTES de decidir aplazarlo, y eso
+    // pasaba en CADA reintento (cada ~10 s) → partir + armar máscaras + persistir llenaba la memoria y tiraba la app.
+    // Ahora se DECIDE aplazar ANTES de partir (_shouldDeferTinyMtu solo mira self.content, no los trozos): si aplaza, se
+    // persiste el registro para reanudar con el CONTENIDO entero como UN solo trozo (barato; resumeOutgoingTransfers lo
+    // re-rutea por Wi-Fi/internet y parte con chunk grande por el camino bueno) y se rechaza, SIN partir ni armar máscaras.
+    if (self.type === 'file' && self._shouldDeferTinyMtu()) {
+      self.aborted = true;
+      // Persistir para reanudar por internet: el contenido entero como UN trozo (vaultCreateOutgoingTransfer devuelve el
+      // existente si ya estaba → no duplica; el resume reconstruye el contenido uniendo los trozos, así que [content] basta).
+      if (window.vaultCreateOutgoingTransfer && !self.meta.fwd && !/^cs[0-9a-f]{12}$/.test(self.msgId)) {
+        var cidDefer = self.meta.dst || self.ackSystem._resolveNexoId(self.deviceId);
+        try { window.vaultCreateOutgoingTransfer(cidDefer, self.msgId, self.type, 1, [self.content], self.meta, self.deviceId).catch(function(){}); } catch (e) {}
+      }
+      console.warn('[ChatStream] Archivo grande (' + (self.content ? self.content.length : 0) + ' b64) → ⏳ pendiente, no por Bluetooth (SIN partir); espero Wi-Fi/internet. msgId=' + self.msgId);
+      self.ackSystem._dispatchStatus(self.msgId, 'pending');
+      // #dueño 06-11: si YA hay internet/Wi-Fi para el contacto, re-rutear pronto por ahí (resumeOutgoingTransfers re-resuelve con preferNet).
+      try {
+        var cidBetter = (self.meta && self.meta.dst) ? self.meta.dst : self.ackSystem._resolveNexoId(self.deviceId);
+        var netB = self.ble && self.ble.net, lanB = self.ble && self.ble.lan;
+        var hasBetter = (netB && ((netB.filesOk && netB.filesOk(cidBetter)) || (netB.mailboxOk && netB.mailboxOk(cidBetter)))) || (lanB && lanB.canReach && lanB.canReach(cidBetter));
+        if (hasBetter) setTimeout(function() { try { self.ackSystem.resumeOutgoingTransfers(); } catch (e) {} }, 1000);
+      } catch (e) {}
+      // El motivo SIEMPRE contiene «no cabe por Bluetooth» → send.js lo deja ⏳ pendiente (no ✗). Demasiado grande para BT
+      // (cualquier MTU, el bug del APK) vs MTU mínimo/desconocido (B2, #dueño 02-11).
+      var _tooBig = (self.content ? self.content.length : 0) > BLE_FILE_MAX_CHARS;
+      reject(new Error('archivo grande no cabe por Bluetooth ' + (_tooBig ? '(demasiado grande)' : 'de MTU mínimo') + ' ahora: en espera de Wi-Fi/internet'));
+      return;
+    }
     self._splitChunks();
     if (self.total === 0) { reject(new Error('Vacio')); return; }
     if (self.type === 'file' && _isNetDevice(self.deviceId) && self.total > NET_TOR_PREFER_CHUNKS) {
@@ -1815,32 +1845,9 @@ ChatStream.prototype.start = function() {
       var cid = self.meta.dst || self.ackSystem._resolveNexoId(self.deviceId);
       window.vaultCreateOutgoingTransfer(cid, self.msgId, self.type, self.total, self.chunks, self.meta, self.deviceId).catch(function(){});
     }
-    // #dueño 02-11 (B2): archivo GRANDE por un Bluetooth de MTU MÍNIMO → NO martillar. El registro ya está en el vault
-    // (arriba), así que queda ⏳ pendiente y resumeOutgoingTransfers lo reenvía por Wi-Fi/internet al aparecer un camino
-    // mejor; si tras un rato no aparece, el propio _shouldDeferTinyMtu deja de aplazar y se intenta por Bluetooth igual.
-    if (self._shouldDeferTinyMtu()) {
-      console.warn('[ChatStream] Archivo grande (' + self.content.length + ' b64) → ⏳ pendiente, no por Bluetooth; espero Wi-Fi/internet. msgId=' + self.msgId);
-      // Aún no hay temporizadores ni ventana en vuelo (es antes de _runWindowLoop): basta marcar abortado para que
-      // _startFileStream lo limpie de outgoingStreams; se rechaza con el motivo propio (NO abort(), que rechazaría
-      // antes con «Abortado» y perdería el motivo que send.js usa para dejarlo pendiente en vez de ✗).
-      self.aborted = true;
-      self.ackSystem._dispatchStatus(self.msgId, 'pending');
-      // #dueño 06-11: si YA hay internet/Wi-Fi para el contacto, re-rutear pronto por ahí (sin esperar un evento externo):
-      // resumeOutgoingTransfers vuelve a resolver con preferNet y manda el archivo grande por internet en vez de Bluetooth.
-      try {
-        var cidD = (self.meta && self.meta.dst) ? self.meta.dst : self.ackSystem._resolveNexoId(self.deviceId);
-        var netD = self.ble && self.ble.net, lanD = self.ble && self.ble.lan;
-        var hasBetter = (netD && ((netD.filesOk && netD.filesOk(cidD)) || (netD.mailboxOk && netD.mailboxOk(cidD)))) || (lanD && lanD.canReach && lanD.canReach(cidD));
-        if (hasBetter) setTimeout(function() { try { self.ackSystem.resumeOutgoingTransfers(); } catch (e) {} }, 1000);
-      } catch (e) {}
-      // El motivo distingue la causa (para los diagnósticos) pero SIEMPRE contiene «no cabe por Bluetooth» → send.js lo
-      // deja ⏳ pendiente (no ✗) y resumeOutgoingTransfers lo reenvía por Wi-Fi/internet. Dos causas: un archivo > tope BLE
-      // = demasiado grande para Bluetooth (cualquier MTU, el bug del APK de 25 MB); si no, un MTU mínimo/desconocido cuya
-      // cola de 20 bytes no traga un archivo grande (B2, #dueño 02-11).
-      var _tooBig = (self.content ? self.content.length : 0) > BLE_FILE_MAX_CHARS;
-      reject(new Error('archivo grande no cabe por Bluetooth ' + (_tooBig ? '(demasiado grande)' : 'de MTU mínimo') + ' ahora: en espera de Wi-Fi/internet'));
-      return;
-    }
+    // #dueño 02-11 (B2) + #dueño 07-11 (CRASH): la decisión de NO ir por Bluetooth (demasiado grande / MTU mínimo) ahora
+    // se toma ARRIBA, ANTES de _splitChunks, para no partir decenas de miles de trozos al pedo en cada reintento. El
+    // registro queda ⏳ pendiente y resumeOutgoingTransfers lo reenvía por Wi-Fi/internet; anti-inanición en _shouldDeferTinyMtu.
     var armGlobal = function(ms) {
       self.globalTimeout = setTimeout(function() {
         if (self.aborted) return;

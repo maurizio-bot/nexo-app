@@ -113,6 +113,15 @@ function sendFile(p, name, type, bytes) {
   AS._mtuDeferSince.clear(); st.content = BIG; biA.getMtu = function () { return 0; };
   r.c6_grande_mtudesconocido_aplaza = st._shouldDeferTinyMtu() === true;
 
+  // #dueño 07-11 (CRASH, diagnóstico S24 «se ralentizó hasta crashear»): al APLAZAR un archivo grande por Bluetooth NO se
+  // deben PARTIR los trozos antes de decidir (un APK de 35 MB = ~99 mil trozos, y pasaba en CADA reintento cada ~10 s →
+  // memoria → crash). Espiamos _splitChunks por msgId para confirmar que, al aplazar, NO corre.
+  const BLE_FILE_MAX_CHARS_SIM = 3100000; // = tope por Bluetooth en ble_ack.js (archivo > esto = demasiado grande para BT)
+  const proto = Object.getPrototypeOf(st);
+  const origSplit = proto._splitChunks;
+  const splitCalls = {};
+  proto._splitChunks = function () { if (this && this.msgId) splitCalls[this.msgId] = (splitCalls[this.msgId] || 0) + 1; return origSplit.apply(this, arguments); };
+
   // --- Extremo a extremo: arrancar un archivo GRANDE por MTU mínimo → 'pending', sin martilleo, registro persiste ---
   biA.getMtu = function () { return 23; };
   const fileId = 'bigfile_' + Date.now();
@@ -128,11 +137,32 @@ function sendFile(p, name, type, bytes) {
   r.e2e_sin_flujo_martillando = !(AS.outgoingStreams && AS.outgoingStreams.has(fileId)); // no quedó un flujo activo
   const pend = await A.win.vaultGetPendingOutgoingTransfers(idB);
   r.e2e_registro_persiste = Array.isArray(pend) && pend.some((t) => t.transferId === fileId); // reanudable
+  r.e2e_no_parte_tinymtu = !splitCalls[fileId]; // #dueño 07-11: aplazó SIN partir (antes partía ~1389 trozos y los descartaba)
+
+  // --- CRASH exacto (#dueño 07-11): archivo DEMASIADO GRANDE para Bluetooth (> tope BLE) por MTU 23 → aplaza SIN partir.
+  // Antes se partía en decenas de miles de trozos en CADA reintento (el APK de 35 MB = ~99 mil) → memoria → crash. ---
+  biA.getMtu = function () { return 23; };
+  const HUGE = 'A'.repeat(BLE_FILE_MAX_CHARS_SIM + 100000); // > tope por Bluetooth → «demasiado grande»
+  const hugeId = 'hugefile_' + Date.now();
+  const outcome2 = await new Promise((resolve) => {
+    let done = false; const fin = (v) => { if (!done) { done = true; resolve(v); } };
+    AS._startFileStream(mac, hugeId, HUGE, { type: 'file', name: 'app.apk', dst: idB }, () => fin('ok'), (err) => fin('rej:' + (err && err.message)));
+    setTimeout(() => fin('timeout'), 5000);
+  });
+  await sleep(150);
+  r.huge_outcome = outcome2;
+  r.huge_rechaza_demasiado_grande = /no cabe por Bluetooth \(demasiado grande\)/.test(outcome2);
+  r.huge_no_parte = !splitCalls[hugeId]; // EL ARREGLO: NO se partió en decenas de miles de trozos (antes sí, y crasheaba)
+  r.huge_estado_pending = seen[hugeId] === 'pending';
+  const pend2 = await A.win.vaultGetPendingOutgoingTransfers(idB);
+  r.huge_registro_persiste = Array.isArray(pend2) && pend2.some((t) => t.transferId === hugeId); // reanudable por internet
+  proto._splitChunks = origSplit; // restaurar el espía
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT/.test(l)).slice(0, 5);
   const ok = r.hay_stream && r.c1_grande_mtu23_aplaza && r.c2_chico_mtu23_no_aplaza && r.c3_grande_mtusano_no_aplaza &&
              r.c4_net_no_aplaza && r.c5_antiinanicion_intenta && r.c6_grande_mtudesconocido_aplaza && r.e2e_rechaza_defer && r.e2e_estado_pending &&
-             r.e2e_sin_flujo_martillando && r.e2e_registro_persiste && !r.errores.length;
+             r.e2e_sin_flujo_martillando && r.e2e_registro_persiste && r.e2e_no_parte_tinymtu &&
+             r.huge_rechaza_demasiado_grande && r.huge_no_parte && r.huge_estado_pending && r.huge_registro_persiste && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('FILETINYMTU ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_filetinymtu.txt'), logs.join('\n'));
