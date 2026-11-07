@@ -165,6 +165,28 @@ export const BLE_LINK_METHODS = {
   _reqStore(key) { try { return JSON.parse((typeof localStorage !== 'undefined' && localStorage.getItem(key)) || '[]') || []; } catch (e) { return []; } },
   _reqSave(key, arr) { try { if (typeof localStorage !== 'undefined') localStorage.setItem(key, JSON.stringify((arr || []).slice(0, 60))); } catch (e) {} },
 
+  // Anti-automatización / anti-IA (07-11): ¿se procesa esta solicitud entrante, o es parte de una INUNDACIÓN? Hasta hoy
+  // no había NINGÚN freno: una IA/bot que conozca NEXO IDs (son semi-públicos) podía llenar el buzón de solicitudes y
+  // spamear avisos a velocidad de máquina. Dos topes, muy por encima del uso real (unas pocas al día) y muy por debajo
+  // de un flood: (1) por ORIGEN, no más de una cada REQ_MIN_MS; (2) GLOBAL, no más de REQ_MAX por ventana REQ_WIN_MS.
+  // Una 'acc' que responde a una solicitud MÍA saliente queda EXENTA del tope global (la inicié yo), pero sí se throttlea
+  // por origen. Solo DESCARTA el exceso: no toca claves, ni cifrado, ni el envío. Umbrales configurables para la prueba.
+  _reqFlood(nx, exemptGlobal) {
+    var cfg = (typeof window !== 'undefined' && window.NEXO_REQ_FLOOD) || {};
+    var MIN = cfg.min != null ? cfg.min : 30000;        // 30 s entre solicitudes del mismo origen
+    var WIN = cfg.win != null ? cfg.win : 3600000;      // ventana de 1 h para el tope global
+    var MAX = cfg.max != null ? cfg.max : 20;           // máx. solicitudes nuevas por ventana (legítimo: unas pocas/día)
+    var now = Date.now();
+    this._reqSeen = this._reqSeen || new Map();
+    this._reqWin = (this._reqWin || []).filter(function(t) { return now - t < WIN; });
+    if (now - (this._reqSeen.get(nx) || 0) < MIN) return false;     // mismo origen martillando → descartar
+    if (!exemptGlobal && this._reqWin.length >= MAX) return false;  // inundación global → descartar
+    this._reqSeen.set(nx, now);                                     // solo se registra lo ACEPTADO (el flood ni llega aquí)
+    if (!exemptGlobal) this._reqWin.push(now);
+    if (this._reqSeen.size > 512) { var cut = now - WIN, m = this._reqSeen; m.forEach(function(t, k) { if (t < cut) m.delete(k); }); }
+    return true;
+  },
+
   // Mandar una solicitud de contacto a un NEXO ID. Devuelve una promesa (error legible si falla).
   addByNexoId(id) {
     var self = this, nx = _normId(id);
@@ -188,7 +210,10 @@ export const BLE_LINK_METHODS = {
     if (!/^nx[0-9a-z]{8}$/.test(nx) || typeof pk !== 'string') return;
     if (_getBLEContacts().some(function(c) { return _normId(c.nexoId || c.deviceUUID) === nx; })) return; // ya es contacto
     var out = self._reqStore('nexo_req_out');
-    if (info.kind === 'acc' && out.some(function(x) { return x.id === nx; })) {
+    var isMyAcc = info.kind === 'acc' && out.some(function(x) { return x.id === nx; });
+    // Anti-IA: frenar una inundación de solicitudes antes de tocar nada (buzón, avisos). El exceso se descarta en silencio.
+    if (!self._reqFlood(nx, isMyAcc)) return;
+    if (isMyAcc) {
       // Aceptaron MI solicitud: agrego su clave (sin verificar) y el canal seguro se enciende solo
       self.addSharedContacts([{ nexoId: nx, name: name, publicKey: pk, nt: 1 }], null, { quiet: true });
       self._reqSave('nexo_req_out', out.filter(function(x) { return x.id !== nx; }));

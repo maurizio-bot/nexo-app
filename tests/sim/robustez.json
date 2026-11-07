@@ -944,6 +944,10 @@
    },
    "modos": [
     {
+     "fallo": "Sin defensa anti-automatización / anti-IA (análisis 07-11, docs/SEGURIDAD_ATAQUE_2026-11-07.md): no había NINGÚN límite de tasa en el buzón de solicitudes de contacto. Como el NEXO ID es semi-público, una IA/bot podía dejar miles de solicitudes a velocidad de máquina → buzón lleno + spam de avisos. 2946: _reqFlood (ble_links.js) frena por ORIGEN (una cada 30 s) y GLOBAL (máx 20/h), muy por encima del uso real y por debajo de un flood; una «acc» a una solicitud propia saliente queda exenta del tope global; solo descarta el exceso, no toca claves ni cifrado",
+     "prueba": "anti-automatización"
+    },
+    {
      "fallo": "N1 Wi-Fi: el saludo del hub reservaba hasta 48 MB sin autenticar (sin memoria → app cerrada)",
      "prueba": null,
      "fuera": "Kotlin LanHubAttackTest.saludoGigante…"
