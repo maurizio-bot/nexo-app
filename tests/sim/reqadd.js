@@ -73,9 +73,14 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.B_ve_correo_enmascarado = reqB.em === 'an•••@•••';
   r.enmascarado_no_filtra = !!reqB.ph && reqB.ph.indexOf('5555') < 0 && !!reqB.em && reqB.em.indexOf('correo.com') < 0;
 
-  // 2) B acepta → agrega a A (con su clave) y avisa a A; A recibe la aceptación y agrega a B
+  // 2) B acepta → agrega a A (con su clave) y le avisa a A. SEC-2 (#dueño 07-11): A ya NO agrega en silencio al recibir la
+  //    aceptación; le llega a su BANDEJA marcada «aceptó» (acc:true) y debe CONFIRMARLA a conciencia (un impostor que forje
+  //    una «acc» con su clave ya no se cuela sin que A lo vea; A debería comparar el número de seguridad al confirmar).
   if (r.B_ve_solicitud) { try { await B.bi.acceptRequest(idA); } catch (e) { logs.push('[B] accept: ' + (e && e.message)); } }
   r.B_agrego_a_A = await waitFor(() => { const c = hasContact(B, idA); return !!(c && c.publicKey && c.nt); }, 10000);
+  r.A_ve_aceptacion = await waitFor(() => A.bi.pendingRequests().some((x) => x.id === idB && x.acc), 20000);
+  r.A_no_agrego_en_silencio = !hasContact(A, idB); // SEC-2: antes de confirmar, A NO tiene a B (no hay alta silenciosa)
+  if (r.A_ve_aceptacion) { try { await A.bi.acceptRequest(idB); } catch (e) { logs.push('[A] confirm: ' + (e && e.message)); } }
   r.A_agrego_a_B = await waitFor(() => { const c = hasContact(A, idB); return !!(c && c.publicKey && c.nt); }, 20000);
   // "Sin verificar": la clave llegó por internet, no en persona (no marcada como verificada)
   const cAB = hasContact(A, idB);
@@ -100,6 +105,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.rechazo_funciona = !A.bi.pendingRequests().some((x) => x.id === idC) && !hasContact(A, idC);
 
   const ok = r.en_internet && r.solicitud_enviada && r.B_ve_solicitud && r.pendiente_sin_agregar && r.B_agrego_a_A &&
+    r.A_ve_aceptacion && r.A_no_agrego_en_silencio &&
     r.A_agrego_a_B && r.sin_verificar && r.se_conectan && r.A_ve_solicitud_C && r.C_no_agregado_solo && r.rechazo_funciona &&
     r.B_ve_tel_enmascarado && r.B_ve_correo_enmascarado && r.enmascarado_no_filtra &&
     r.B_recibe_perfil && r.B_ve_tel_completo && r.B_ve_correo_completo;

@@ -80,6 +80,11 @@ const sortJ = (a) => JSON.stringify((a || []).slice().sort());
   try { await A.bi.addByNexoId(idB); sent = true; } catch (e) { logs.push('[A] addByNexoId: ' + (e && e.message)); }
   r.solicitud = sent && await waitFor(() => B.bi.pendingRequests().some((x) => x.id === idA), 15000);
   if (r.solicitud) { try { await B.bi.acceptRequest(idA); } catch (e) { logs.push('[B] accept: ' + (e && e.message)); } }
+  // SEC-2 (build 2949): A ya NO agrega en silencio al recibir la aceptación; le llega a su bandeja marcada (acc:true) y
+  // debe CONFIRMARLA. Sin esto A nunca obtiene la clave de B y el canal E2E (que usa el PSI) no se establece.
+  if (r.solicitud && await waitFor(() => A.bi.pendingRequests().some((x) => x.id === idB && x.acc), 20000)) {
+    try { await A.bi.acceptRequest(idB); } catch (e) { logs.push('[A] confirm: ' + (e && e.message)); }
+  }
   r.conectados = await waitFor(() => A.bi.net.canReach(idB) && B.bi.net.canReach(idA) && hasContact(A, idB) && hasContact(B, idA), 40000);
 
   // Sembrar agendas: 2 compartidos + 1 propio en cada uno. La intersección de las AGENDAS debe ser {shared01, shared02}

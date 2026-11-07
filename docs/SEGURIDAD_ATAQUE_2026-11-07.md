@@ -229,22 +229,17 @@ dueño decida qué entra como build (varios tocan el núcleo del protocolo y exi
   la cuenta clonaba las sesiones vivas** (`AccountMove` copiaba `nexo_ratchet.json`; Fénix ya era seguro). Arreglo:
   `AccountMove.sanitizeImport` vacía `sessions`+`seenEk` al importar (conserva identidad/firma/prekeys/peers), mismo patrón
   que Fénix. No toca `ratchetEncrypt`. Prueba JVM `AccountMoveTest`. **Pendiente: tu prueba pasando la cuenta entre teléfonos.**
+- **Build 2949 — SEC‑2 (primer contacto / hombre en el medio), cerrada la parte SILENCIOSA:** una `acc` que acepta mi
+  solicitud saliente ya NO auto‑agrega la clave en silencio; va a la bandeja marcada «aceptó tu solicitud» y hay que
+  CONFIRMARLA (momento para comparar el número de seguridad). `ble_links.js` + `ble_ui.js`; prueba `reqadd.js`. El cierre
+  TOTAL del MITM sigue dependiendo de que el usuario compare el número de seguridad (inherente al modelo TOFU, como Signal).
 
 ### Lo que falta, con el plan (necesitan tu visto bueno y/o prueba en los dos teléfonos: tocan el núcleo)
 
-**P0‑1 — rollback del ratchet (lo más peligroso).** El IV de AES‑GCM se deriva determinista de la clave de mensaje
-(`e2e_ratchet.js:100‑108`); si se RESTAURA un estado viejo (pasar la cuenta, Fénix, un backup, o seguir en el teléfono
-viejo) se repite (clave, IV) sobre texto distinto → catástrofe. No es un ataque activo: lo dispara el uso normal. Plan:
-(1) marca de agua local, en un archivo que NO se copia con la cuenta, con el nº de mensaje más alto por sesión; antes de
-cifrar, si el nº actual ≤ la marca → rollback → se arranca sesión nueva (X3DH fresco) en vez de reusar. En el camino
-normal nunca se dispara. (2) al pasar la cuenta / Fénix, forzar re‑clave de todas las sesiones de envío (cierra el clon).
-No lo subí ya porque el caso clon no se reproduce limpio en el simulador sin meterle un gancho de recarga al cifrado;
-propongo agregar ese gancho de prueba acotado, implementar la marca de agua, y que lo pruebes en los dos teléfonos.
-**Dime si le doy.**
-
-**SEC‑2 / H3 — primer contacto (MITM).** Que «agregar por ID» no fije la clave en silencio (un toque de confirmación) y
-hacer el número de seguridad prominente. Es un intercambio seguridad/comodidad: ¿aceptas un toque extra al agregar por ID
-a cambio de cerrar el MITM silencioso? Si sí, lo hago con prueba (`reqadd.js`) y lo validas en los teléfonos.
+**P0‑1 (rollback) y SEC‑2 (primer contacto): HECHOS** en las builds 2948 y 2949 (ver arriba). Queda de SEC‑2 solo la parte
+que depende del usuario: comparar el número de seguridad (el prompt ahora lo empuja). **H3** (claves de tarjetas compartidas
+«de oídas») sigue abierto: una tarjeta de contacto fija la clave de un contacto nuevo sin verificar — misma clase que
+SEC‑2; se cerraría marcándolas «pendientes» hasta el flujo de aceptación. Toca el estado de claves → su propia ronda.
 
 **M5/M6/F6 — control sin autenticar (molestia).** Ignorar `ss`/`sr`/`nm` de un desconocido y no sonar por una oferta de
 llamada sin autenticar. Bajo impacto, testeable; con cuidado de no romper la reconexión/llamadas legítimas.
@@ -252,3 +247,32 @@ llamada sin autenticar. Bajo impacto, testeable; con cuidado de no romper la rec
 **Otros (menor urgencia):** verificar la firma de los eventos de internet (defensa en profundidad), migrar los contactos
 que queden en el cifrado viejo E1 (S‑1), leer por flujo los 40 MB de Wi‑Fi Direct (F8), cifrar en reposo el mapa
 ID→dirección.
+
+---
+
+## 6. Los dos caminos que NO son código de la app (fake NEXO y servidor de compilación) — honestidad
+
+El dueño (07‑11) pidió blindar NEXO contra los mismos caminos del red‑team, preocupado por un ataque a escala o
+«por el reto», tal vez con ayuda de una IA. **Línea dura:** este asistente solo ayuda a DEFENDER NEXO; nunca a entrar en
+NEXO ni en otro sistema, ni disfrazado de prueba ni por un pedido astuto. Dicho eso, dos de los seis caminos del
+red‑team **no se cierran con código dentro de la app** y hay que ser honesto:
+
+- **Camino 1 — un NEXO falso/manipulado instalado por engaño** (un APK de «actualización» que en realidad es del
+  atacante; o un teléfono ya comprometido con malware). Ningún código DENTRO de la app frena del todo un teléfono ya
+  comprometido. Lo que SÍ ayuda: (a) NEXO ya es build de producción, sin backup, cifrado en reposo, bloqueo por huella;
+  (b) el CI **verifica la firma del APK** (SHA‑256 fijo `23d86688…9f865e`) en cada build, así que la nightly oficial está
+  firmada con la llave del dueño y una copia re‑firmada por un atacante tendría otra huella; (c) **pendiente/opcional**:
+  agregar en Perfil → Seguridad la huella de firma de la instalación para que el usuario compare con la oficial, y un
+  aviso al arrancar si la huella no coincide (defensa en profundidad; un atacante sofisticado podría quitar el aviso, por
+  eso lo robusto es instalar solo desde la fuente oficial y comparar la huella). La defensa real aquí es de
+  **distribución**: publicar la huella oficial y que el usuario instale solo desde ahí.
+- **Camino 6 — comprometer el servidor de compilación / la llave de firma** (el de mayor impacto: un APK con puerta
+  trasera para todos). Esto es **operativo**, no código de la app: proteger los secretos del CI (`DEBUG_KEYSTORE_BASE64`,
+  tokens de GitHub Actions), que la llave de firma no esté en el repo (ya es así: la guarda el dueño), compilaciones
+  reproducibles para poder verificar que la APK publicada sale del código público, y revisar los permisos de quién puede
+  tocar el workflow. Recomendación: activar protección de rama en `NEXOCHAT`, 2FA en la cuenta de GitHub, y revisar
+  periódicamente los secretos del repositorio.
+
+En resumen: lo de la RED y el CIFRADO está fuerte y lo seguimos cerrando con código y pruebas; lo del TELÉFONO y el
+SERVIDOR DE COMPILACIÓN se defiende con distribución oficial, protección de la llave de firma y buenas prácticas de la
+cuenta — ahí ningún truco dentro de la app sustituye a esas medidas, y conviene no prometer que sí.

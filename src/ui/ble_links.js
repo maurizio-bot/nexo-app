@@ -213,20 +213,16 @@ export const BLE_LINK_METHODS = {
     var isMyAcc = info.kind === 'acc' && out.some(function(x) { return x.id === nx; });
     // Anti-IA: frenar una inundación de solicitudes antes de tocar nada (buzón, avisos). El exceso se descarta en silencio.
     if (!self._reqFlood(nx, isMyAcc)) return;
-    if (isMyAcc) {
-      // Aceptaron MI solicitud: agrego su clave (sin verificar) y el canal seguro se enciende solo
-      self.addSharedContacts([{ nexoId: nx, name: name, publicKey: pk, nt: 1 }], null, { quiet: true });
-      self._reqSave('nexo_req_out', out.filter(function(x) { return x.id !== nx; }));
-      if (self.net) self.net.greet();
-      console.log('[BLEInterface] ' + nx + ' aceptó la solicitud: contacto agregado por internet (sin verificar)');
-      _safeDispatchEvent('nexo:ble:reqAccepted', { id: nx, name: name });
-      return;
-    }
-    // Solicitud entrante (o una aceptación que no esperaba): a la bandeja, para aceptar o eliminar
+    // SEC-2 (07-11): una 'acc' que acepta MI solicitud saliente ya NO agrega la clave EN SILENCIO. Un impostor que conozca
+    // tu NEXO ID y el del destino (ambos semi-públicos) podía forjar una 'acc' con SU clave mientras tuvieras una solicitud
+    // saliente pendiente, y se colaba como «ese contacto» sin que te enteraras (hombre en el medio). Ahora TODA 'acc'/'req'
+    // va a la BANDEJA para confirmarla a conciencia; al confirmar se agrega «sin verificar» y conviene comparar el número de
+    // seguridad. La 'acc' a una solicitud mía se marca (acc:true) para mostrarla como «aceptó tu solicitud».
+    if (isMyAcc) self._reqSave('nexo_req_out', out.filter(function(x) { return x.id !== nx; })); // ya respondió: fuera de salientes
     var inbox = self._reqStore('nexo_req_in').filter(function(x) { return x.id !== nx; });
-    inbox.unshift({ id: nx, pk: pk, name: name, ph: (info && info.ph) || '', em: (info && info.em) || '', at: Date.now() });
+    inbox.unshift({ id: nx, pk: pk, name: name, ph: (info && info.ph) || '', em: (info && info.em) || '', at: Date.now(), acc: isMyAcc });
     self._reqSave('nexo_req_in', inbox);
-    _safeDispatchEvent('nexo:ble:reqIncoming', { id: nx, name: name, count: inbox.length });
+    _safeDispatchEvent('nexo:ble:reqIncoming', { id: nx, name: name, count: inbox.length, acc: isMyAcc });
   },
 
   pendingRequests() { return this._reqStore('nexo_req_in'); },
@@ -240,6 +236,9 @@ export const BLE_LINK_METHODS = {
     self._reqSave('nexo_req_in', inbox.filter(function(x) { return x.id !== nx; }));
     if (self.net) self.net.greet();
     _safeDispatchEvent('nexo:ble:reqIncoming', { count: self._reqStore('nexo_req_in').length });
+    // SEC-2: si esto CONFIRMA la aceptación de MI solicitud (req.acc), el otro ya me agregó al aceptar: no hace falta
+    // devolverle otra 'acc' (evita un ida y vuelta infinito). El canal seguro se enciende con el saludo/greet de arriba.
+    if (req.acc) { _safeDispatchEvent('nexo:ble:reqAccepted', { id: nx, name: req.name || '' }); return Promise.resolve(); }
     var _mp = myProfile(); // perfil 2b: al aceptar también mando mis datos enmascarados en la respuesta
     return (self.net ? self.net.sendRequest(nx, 'acc', self.localDeviceName || '', { ph: maskPhone(_mp.phone), em: maskEmail(_mp.email) }) : Promise.resolve()).catch(function() {});
   },

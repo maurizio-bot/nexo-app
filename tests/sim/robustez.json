@@ -962,6 +962,10 @@
      "fuera": "Kotlin AccountMoveTest.elPaseDeCuentaNoClonaLasSesionesDelCifrado + pasaLaCuentaEntera (lo confirma el dueño pasando la cuenta entre teléfonos)"
     },
     {
+     "fallo": "SEC-2 primer contacto (hombre en el medio al agregar por ID): una «acc» que acepta mi solicitud saliente auto-agregaba la clave EN SILENCIO; un impostor que conozca mi NEXO ID y el del destino (semi-públicos) podía forjar una «acc» con SU clave mientras hubiera una solicitud saliente pendiente y colarse como ese contacto. 2949: la «acc» ya NO se auto-agrega — va a la bandeja marcada «aceptó tu solicitud» y hay que CONFIRMARLA a conciencia (y conviene comparar el número de seguridad); antes de confirmar no se agrega nada. Cierra la parte SILENCIOSA; la verificación en persona (número de seguridad) la sigue decidiendo el usuario",
+     "prueba": "SEC-2"
+    },
+    {
      "fallo": "N1 Wi-Fi: el saludo del hub reservaba hasta 48 MB sin autenticar (sin memoria → app cerrada)",
      "prueba": null,
      "fuera": "Kotlin LanHubAttackTest.saludoGigante…"

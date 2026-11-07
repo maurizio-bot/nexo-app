@@ -496,7 +496,7 @@ export const BLE_UI_METHODS = {
       var nm = document.createElement('div'); nm.style.cssText = 'font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
       nm.textContent = req.name || String(req.id || '').toUpperCase();
       var sub = document.createElement('div'); sub.style.cssText = 'font-size:11px;opacity:.7;';
-      sub.textContent = String(req.id || '').toUpperCase() + ' · quiere agregarte';
+      sub.textContent = String(req.id || '').toUpperCase() + (req.acc ? ' · aceptó tu solicitud — confirmá' : ' · quiere agregarte');
       info.appendChild(nm); info.appendChild(sub);
       // #dueño 04-11 (perfil 2b): tarjeta de validación — tel/correo ENMASCARADOS que llegaron en la solicitud (reconocer
       // sin regalar el dato). Los datos COMPLETOS y la foto aparecen al ACEPTAR (por el canal seguro E2E).
@@ -508,7 +508,7 @@ export const BLE_UI_METHODS = {
         det.textContent = bits.join('   ·   ');
         info.appendChild(det);
       }
-      var ok = document.createElement('button'); ok.textContent = 'Aceptar';
+      var ok = document.createElement('button'); ok.textContent = req.acc ? 'Confirmar' : 'Aceptar';
       ok.style.cssText = 'flex-shrink:0;padding:7px 12px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:600;cursor:pointer;';
       var no = document.createElement('button'); no.textContent = 'Eliminar';
       no.style.cssText = 'flex-shrink:0;padding:7px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:transparent;color:#fff;cursor:pointer;';
