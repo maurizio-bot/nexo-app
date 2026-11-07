@@ -93,7 +93,11 @@ async function _startVoiceRecording() {
     var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     _recStream = stream;
     var audioMimeType = '';
-    var audioCandidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/wav'];
+    // #dueño 06-11 (micrófono "dejó de funcionar"): en Android el <audio> no reproduce bien el webm («no supported
+    // sources»); mp4/AAC sí se reproduce NATIVO siempre. Por eso se prefiere mp4 antes que webm (solo cambia en los
+    // teléfonos que soportan grabar mp4, donde es estrictamente mejor; donde no, cae a webm como antes — p.ej. Chrome
+    // de escritorio y el simulador graban webm y lo reproducen bien).
+    var audioCandidates = ['audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/aac', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/wav'];
     for (var ai = 0; ai < audioCandidates.length; ai++) {
       if (MediaRecorder.isTypeSupported(audioCandidates[ai])) { audioMimeType = audioCandidates[ai]; console.log('[VOICE] MimeType seleccionado:', audioMimeType); break; }
     }

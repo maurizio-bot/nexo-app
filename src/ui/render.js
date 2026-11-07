@@ -466,13 +466,17 @@ export function _renderMessage(msg, skipSave) {
         var audioId = 'audio' + msgId;
         var fmt = (attachment.meta && attachment.meta.format) ? attachment.meta.format : 'webm';
         var mime = (attachment.meta && attachment.meta.mimeType) ? attachment.meta.mimeType : ('audio/' + fmt);
+        // #dueño 06-11 (micrófono "dejó de funcionar"): en Android el <audio> suele rechazar un Blob tipado con el codec
+        // completo («audio/webm;codecs=opus» → "no supported sources") aunque pueda reproducir el contenedor. Se usa solo
+        // el CONTENEDOR (audio/webm, audio/mp4…) para el Blob, que es lo que el elemento sabe interpretar.
+        var playMime = String(mime).split(';')[0].trim() || ('audio/' + fmt);
         var byteChars = atob(attachment.payload);
         var byteNums = new Array(byteChars.length);
         for (var i = 0; i < byteChars.length; i++) {
           byteNums[i] = byteChars.charCodeAt(i);
         }
         var byteArray = new Uint8Array(byteNums);
-        var audioBlob = new Blob([byteArray], { type: mime });
+        var audioBlob = new Blob([byteArray], { type: playMime });
         var audioSrc = URL.createObjectURL(audioBlob);
         _objectURLRegistry.push(audioSrc);
         var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:200px;" id="' + audioId + '_wrap">';
