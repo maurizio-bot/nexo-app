@@ -213,3 +213,38 @@ la parte 2.
 y el endurecimiento nativo son fuertes; lo que queda abierto es, por orden de importancia real: **P0‑1 (rollback),
 H3/SEC‑2 (primer contacto), la ausencia de anti‑automatización, y luego M5/M6/F6/H4/E1/F7/F8**. Pendiente: que el
 dueño decida qué entra como build (varios tocan el núcleo del protocolo y exigen prueba en los dos teléfonos).
+
+---
+
+## 5. Ejecución del blindaje — hecho y plan (07‑11, «no pares hasta terminar»)
+
+### Ya hecho y subido (método: reproducido en el simulador + batería verde)
+- **Build 2946 — anti‑automatización / anti‑IA (el hueco nº 9, el que no existía):** `_reqFlood` en `ble_links.js` frena
+  una inundación de solicitudes de contacto (por origen y global). Prueba `antiflood.js`. Es la base de «anti‑IA»: una IA
+  atacante es un atacante rápido y a escala; ahora el buzón de solicitudes tiene tope.
+- **Build 2947 — anti‑abuso fase 2 + F7:** tope por ventana a las peticiones de recuperación Fénix (`_recWindowOk`: no se
+  puede spamear al custodio; mitiga el nag y frena el goteo de fragmentos de H4), prueba `recflood.js`; y **F7** cerrado
+  (el FileProvider ya solo expone `cacheDir/nexo_open`, no las raíces).
+
+### Lo que falta, con el plan (necesitan tu visto bueno y/o prueba en los dos teléfonos: tocan el núcleo)
+
+**P0‑1 — rollback del ratchet (lo más peligroso).** El IV de AES‑GCM se deriva determinista de la clave de mensaje
+(`e2e_ratchet.js:100‑108`); si se RESTAURA un estado viejo (pasar la cuenta, Fénix, un backup, o seguir en el teléfono
+viejo) se repite (clave, IV) sobre texto distinto → catástrofe. No es un ataque activo: lo dispara el uso normal. Plan:
+(1) marca de agua local, en un archivo que NO se copia con la cuenta, con el nº de mensaje más alto por sesión; antes de
+cifrar, si el nº actual ≤ la marca → rollback → se arranca sesión nueva (X3DH fresco) en vez de reusar. En el camino
+normal nunca se dispara. (2) al pasar la cuenta / Fénix, forzar re‑clave de todas las sesiones de envío (cierra el clon).
+No lo subí ya porque el caso clon no se reproduce limpio en el simulador sin meterle un gancho de recarga al cifrado;
+propongo agregar ese gancho de prueba acotado, implementar la marca de agua, y que lo pruebes en los dos teléfonos.
+**Dime si le doy.**
+
+**SEC‑2 / H3 — primer contacto (MITM).** Que «agregar por ID» no fije la clave en silencio (un toque de confirmación) y
+hacer el número de seguridad prominente. Es un intercambio seguridad/comodidad: ¿aceptas un toque extra al agregar por ID
+a cambio de cerrar el MITM silencioso? Si sí, lo hago con prueba (`reqadd.js`) y lo validas en los teléfonos.
+
+**M5/M6/F6 — control sin autenticar (molestia).** Ignorar `ss`/`sr`/`nm` de un desconocido y no sonar por una oferta de
+llamada sin autenticar. Bajo impacto, testeable; con cuidado de no romper la reconexión/llamadas legítimas.
+
+**Otros (menor urgencia):** verificar la firma de los eventos de internet (defensa en profundidad), migrar los contactos
+que queden en el cifrado viejo E1 (S‑1), leer por flujo los 40 MB de Wi‑Fi Direct (F8), cifrar en reposo el mapa
+ID→dirección.

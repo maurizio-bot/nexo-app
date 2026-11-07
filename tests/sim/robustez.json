@@ -948,6 +948,15 @@
      "prueba": "anti-automatización"
     },
     {
+     "fallo": "Spam de peticiones de recuperación Fénix (anti-IA fase 2, 07-11; ligado a H4): la recuperación tenía «una a la vez» (20 s) pero no un tope por ventana → se podía spamear al custodio con avisos, y cada aviso engañado filtra un fragmento de la clave. 2947: _recWindowOk (fenix.js) limita las peticiones MOSTRADAS a recMax (5) por recWinMs (1 h); solo descarta el exceso",
+     "prueba": "anti-abuso recuperación Fénix"
+    },
+    {
+     "fallo": "F7: FileProvider demasiado abierto (external-path «.» y cache-path «.»: raíces enteras expuestas, latente). 2947: file_paths.xml solo expone cacheDir/nexo_open (la única subcarpeta que se comparte de verdad); se quitó la external-path que nadie usaba",
+     "prueba": null,
+     "fuera": "nativo: file_paths.xml (lo verifica el dueño abriendo un archivo recibido)"
+    },
+    {
      "fallo": "N1 Wi-Fi: el saludo del hub reservaba hasta 48 MB sin autenticar (sin memoria → app cerrada)",
      "prueba": null,
      "fuera": "Kotlin LanHubAttackTest.saludoGigante…"

@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- F7 (análisis 07-11, docs/SEGURIDAD_ATAQUE_2026-11-07.md): el FileProvider solo debe exponer la subcarpeta que de
+     verdad se comparte (cacheDir/nexo_open: archivos recibidos que el usuario abre con otra app), NO la raíz del caché ni
+     la externa. Antes: external-path "." y cache-path "." (raíces enteras, exposición latente). Ahora: solo nexo_open. -->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+    <cache-path name="my_cache_images" path="nexo_open" />
 </paths>

@@ -41,7 +41,19 @@ var CFG = { n: 10, t: 6, min: 10, mirror: 20, pingMs: DAY, lostMs: 7 * DAY, tick
   // Fase 2: segmento con ≥ segMin mensajes nuevos o con alguno de hace > segMaxMs; tamaño y límites
   segMin: 20, segMaxMs: DAY, segBytes: 48000, msgsMax: 2000000, nodeSegCap: 2500000, segCopies: 2,
   // Fase 3: un medio de hasta medItemMax (base64), entre todos medMax; quien guarda, hasta nodeMedCap por contacto
-  medItemMax: 1500000, medMax: 30000000, nodeMedCap: 20000000, medBleMax: 300000 };
+  medItemMax: 1500000, medMax: 30000000, nodeMedCap: 20000000, medBleMax: 300000,
+  // Anti-abuso / anti-IA (07-11): tope de peticiones de recuperación MOSTRADAS por ventana (además del «una a la vez»)
+  recMax: 5, recWinMs: 3600000 };
+
+// Anti-abuso / anti-IA (07-11): ¿cabe otra petición de recuperación en la ventana, o es spam? Poda `win` a las de la
+// última `winMs` y, si ya hay `max`, devuelve false (no mostrar); si cabe, apunta `now` y devuelve true. Pura y testable.
+export function _recWindowOk(win, now, max, winMs) {
+  var i = 0;
+  while (i < win.length) { if (now - win[i] >= winMs) win.splice(i, 1); else i++; }
+  if (win.length >= max) return false;
+  win.push(now);
+  return true;
+}
 var MED_TYPES = { image: 1, video: 1, audio: 1, file: 1 };
 function _medFile(id) { return 'nexo_fenix_d_' + String(id).replace(/[^A-Za-z0-9_-]/g, '_') + '.b64'; }
 function _nodeMedFile(owner, id) { return 'nexo_fenix_n_' + _nid(owner) + '_' + String(id).replace(/[^A-Za-z0-9_-]/g, '_') + '.b64'; }
@@ -729,6 +741,11 @@ export class Fenix {
     this.requests.forEach(function(q) { if (!q.answered && now - q.ts < 20000) busy = true; });
     if (busy) return;
     if (typeof p.pk !== 'string' || !/^[A-Za-z0-9+/=]{80,100}$/.test(p.pk)) return;
+    // Anti-abuso / anti-IA (07-11): además del «una a la vez», un tope por ventana para que NO se pueda spamear al
+    // custodio con avisos de recuperación (cada aviso engañado filtra un fragmento — H4). Muy por encima de una
+    // recuperación real (el que recupera pide UNA vez a cada custodio). Solo descarta el exceso.
+    this._recWin = this._recWin || [];
+    if (!_recWindowOk(this._recWin, now, this.cfg.recMax || 5, this.cfg.recWinMs || 3600000)) { console.warn('[FENIX] Demasiadas peticiones de recuperación en poco tiempo: ignoro (anti-spam)'); return; }
     var contacts = this._contacts();
     var choices = list.map(function(nx) {
       var c = contacts.find(function(x) { return _nid(x.nexoId || x.deviceUUID) === nx; });
