@@ -8,12 +8,15 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import org.json.JSONObject
 
 /**
  * Pasar la cuenta a un teléfono nuevo (ronda 2759, plan del dueño punto 15, opción A).
- * Todo lo de NEXO (archivos "nexo_*" de la app: NEXO ID, identidad y claves, sesiones de cifrado, contactos, historial,
- * adjuntos, grupos, Fénix…) y los archivos grandes ya cifrados (nexo_big/) se empaquetan, se cifran con una clave de un
+ * Todo lo de NEXO (archivos "nexo_*" de la app: NEXO ID, identidad y claves, contactos, historial, adjuntos, grupos,
+ * Fénix…) y los archivos grandes ya cifrados (nexo_big/) se empaquetan, se cifran con una clave de un
  * solo uso que va en el QR (BigWriter: AES-GCM por trozos) y pasan de teléfono a teléfono por el Wi-Fi (BigNet).
+ * P0-1 (07-11): las SESIONES vivas del cifrado (nexo_ratchet.json) se importan VACÍAS (ver sanitizeImport), para que el
+ * teléfono viejo y el nuevo nunca cifren con la misma clave de cadena (repetir clave+IV de AES-GCM = catástrofe).
  * El nuevo los guarda con SU cifrado en reposo; el viejo borra los suyos en cuanto el nuevo confirma (así la cuenta
  * nunca queda activa en los dos).
  * Paquete (en claro dentro del cifrado):  "NEXOMOVE1" { [1][nombre][largo 4 bytes][texto UTF-8] | [2][nombre][largo 8][bytes] }* [0]
@@ -33,6 +36,25 @@ object AccountMove {
      *  direcciones Bluetooth, registros de diagnóstico, temporales). */
     fun travels(name: String, skip: Set<String>): Boolean =
         NAME.matches(name) && !name.endsWith(".nxtmp") && name !in skip && !name.startsWith("nexo_diag") && !name.startsWith("nexo_bg_inbox")
+
+    const val RATCHET_FILE = "nexo_ratchet.json"
+
+    /** P0-1 (07-11, docs/SEGURIDAD_ATAQUE_2026-11-07.md): al TRAER la cuenta, el estado del cifrado NO debe copiarse con
+     *  sus SESIONES vivas. El IV de AES-GCM se deriva determinista de la clave de mensaje; si el teléfono viejo sigue
+     *  usándose (o dos teléfonos quedan con el mismo estado), las dos partes cifrarían con la MISMA clave de cadena →
+     *  se repetiría (clave, IV) = catástrofe. Fénix ya reescribe el ratchet con sessions/seenEk vacíos (fenix.js); el
+     *  pase de cuenta no lo hacía. Aquí se vacían `sessions` y `seenEk` y se conservan ik/sign/spks/peers (así el teléfono
+     *  nuevo sigue cifrando sin re-kx). Para cualquier otro archivo, el texto pasa igual. Devuelve null SOLO si el ratchet
+     *  no es JSON legible → no se escribe (el teléfono nuevo lo regenera entero en ratchetInit). */
+    fun sanitizeImport(name: String, txt: String): String? {
+        if (name != RATCHET_FILE) return txt
+        return try {
+            val o = JSONObject(txt)
+            o.put("sessions", JSONObject())
+            o.put("seenEk", JSONObject())
+            o.toString()
+        } catch (e: Throwable) { null }
+    }
 
     class Stats { var files = 0; var bigFiles = 0; var bytes = 0L }
 
@@ -74,7 +96,9 @@ object AccountMove {
                     textTotal += len
                     if (textTotal > maxTextTotal) throw IOException("cuenta demasiado grande (texto)")
                     val b = ByteArray(len); d.readFully(b)
-                    write(name, String(b, Charsets.UTF_8))
+                    // P0-1: el ratchet se importa con sus sesiones vivas vaciadas (sanitizeImport); null = ilegible → no
+                    // escribir (el teléfono nuevo lo regenera). Cualquier otro archivo pasa igual.
+                    sanitizeImport(name, String(b, Charsets.UTF_8))?.let { write(name, it) }
                     st.files++; st.bytes += len
                 }
                 2 -> {

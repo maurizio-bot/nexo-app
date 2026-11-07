@@ -225,6 +225,10 @@ dueño decida qué entra como build (varios tocan el núcleo del protocolo y exi
 - **Build 2947 — anti‑abuso fase 2 + F7:** tope por ventana a las peticiones de recuperación Fénix (`_recWindowOk`: no se
   puede spamear al custodio; mitiga el nag y frena el goteo de fragmentos de H4), prueba `recflood.js`; y **F7** cerrado
   (el FileProvider ya solo expone `cacheDir/nexo_open`, no las raíces).
+- **Build 2948 — P0‑1 (rollback), arreglado en la raíz correcta:** el vector real NO era el cifrado en sí, sino que **pasar
+  la cuenta clonaba las sesiones vivas** (`AccountMove` copiaba `nexo_ratchet.json`; Fénix ya era seguro). Arreglo:
+  `AccountMove.sanitizeImport` vacía `sessions`+`seenEk` al importar (conserva identidad/firma/prekeys/peers), mismo patrón
+  que Fénix. No toca `ratchetEncrypt`. Prueba JVM `AccountMoveTest`. **Pendiente: tu prueba pasando la cuenta entre teléfonos.**
 
 ### Lo que falta, con el plan (necesitan tu visto bueno y/o prueba en los dos teléfonos: tocan el núcleo)
 

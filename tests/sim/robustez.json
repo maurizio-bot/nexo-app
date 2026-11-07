@@ -957,6 +957,11 @@
      "fuera": "nativo: file_paths.xml (lo verifica el dueño abriendo un archivo recibido)"
     },
     {
+     "fallo": "P0-1 rollback del ratchet: el IV de AES-GCM se deriva determinista de la clave de mensaje; al RESTAURAR estado viejo se repetía (clave, IV) sobre texto distinto = catástrofe. Fénix ya reescribía el ratchet con sesiones vacías; el vector abierto era PASAR LA CUENTA (AccountMove copiaba nexo_ratchet.json con las sesiones vivas; moveSkip solo excluía el mapa de direcciones). 2948: AccountMove.sanitizeImport vacía sessions+seenEk al importar la cuenta (conserva ik/sign/spks/peers); mismo patrón que Fénix. No toca ratchetEncrypt",
+     "prueba": null,
+     "fuera": "Kotlin AccountMoveTest.elPaseDeCuentaNoClonaLasSesionesDelCifrado + pasaLaCuentaEntera (lo confirma el dueño pasando la cuenta entre teléfonos)"
+    },
+    {
      "fallo": "N1 Wi-Fi: el saludo del hub reservaba hasta 48 MB sin autenticar (sin memoria → app cerrada)",
      "prueba": null,
      "fuera": "Kotlin LanHubAttackTest.saludoGigante…"
