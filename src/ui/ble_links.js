@@ -78,6 +78,9 @@ export const BLE_LINK_METHODS = {
     }
   },
   _clearBleDead(mac) { var nd = _normMac(mac); if (nd && this._bleDeadUntil) this._bleDeadUntil.delete(nd); },
+  // Lentitud en Bluetooth (#dueño 07-11): ¿este enlace está marcado muerto/atascado AHORA (el nativo soltó un mensaje por él)?
+  // Lo usa Fénix para NO mandar respaldos por un Bluetooth atascado (congestiona la radio y retrasa los chats del usuario).
+  _bleCongested(deviceId) { var nd = _normMac(deviceId); return !!(nd && this._bleDeadUntil && (this._bleDeadUntil.get(nd) || 0) > Date.now()); },
 
   _lanDegraded(nexoId, on) {
     var nx = _normId(nexoId);

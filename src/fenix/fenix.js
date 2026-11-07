@@ -43,7 +43,21 @@ var CFG = { n: 10, t: 6, min: 10, mirror: 20, pingMs: DAY, lostMs: 7 * DAY, tick
   // Fase 3: un medio de hasta medItemMax (base64), entre todos medMax; quien guarda, hasta nodeMedCap por contacto
   medItemMax: 1500000, medMax: 30000000, nodeMedCap: 20000000, medBleMax: 300000,
   // Anti-abuso / anti-IA (07-11): tope de peticiones de recuperación MOSTRADAS por ventana (además del «una a la vez»)
-  recMax: 5, recWinMs: 3600000 };
+  recMax: 5, recWinMs: 3600000,
+  // Lentitud en Bluetooth (#dueño 07-11): si una entrega de respaldo a un custodio falla (enlace atascado), no se le vuelve a
+  // mandar por este rato (la redundancia en otros custodios cubre el respaldo; no se martilla la radio ni se retrasan los chats)
+  segColdMs: 300000 };
+
+// Lentitud en Bluetooth (#dueño 07-11): ¿SALTAR a este custodio en esta vuelta del respaldo Fénix? Se salta si está en
+// cooldown por un fallo reciente (un envío de respaldo que falla muele la radio 2–8 min por los reintentos de ventana y
+// retrasa los chats), o si su ÚNICO camino es un Bluetooth muerto/atascado (dev REAL + isDead: el nativo soltó un mensaje
+// por él). Con internet/Wi-Fi (dev VIRTUAL «net…»/«lan…») NUNCA se salta: por ahí el respaldo va rápido y no estorba. La
+// redundancia (segCopies en otros custodios) cubre el respaldo mientras tanto. Pura y testable.
+export function _fenixSkipHolder(now, coldUntil, dev, isDead) {
+  if (coldUntil && now < coldUntil) return true;
+  if (isDead && !/^(lan|net)/.test(String(dev || ''))) return true;
+  return false;
+}
 
 // Anti-abuso / anti-IA (07-11): ¿cabe otra petición de recuperación en la ventana, o es spam? Poda `win` a las de la
 // última `winMs` y, si ya hay `max`, devuelve false (no mostrar); si cabe, apunta `now` y devuelve true. Pura y testable.
@@ -93,6 +107,7 @@ export class Fenix {
     this.peers = new Set();        // nexoIds que anunciaron fx:1 (en esta sesión)
     this.pings = new Map();        // nonce → { nx, idx, at }
     this.inflight = new Set();     // nexoIds con una entrega en curso
+    this._segCold = {};            // #dueño 07-11: nexoId → hasta cuándo saltarlo (entrega de respaldo falló: enlace atascado)
     this.requests = new Map();     // rid → petición de recuperación recibida (nodo)
     this.recovery = null;          // recuperación en curso (teléfono nuevo)
     this.msgs = null;              // fase 2, dueño: { lastTs, recent, segs: [{ id, ts, n, blob, bh, holders }] }
@@ -501,6 +516,10 @@ export class Fenix {
     for (var j = 0; j < el2.length; j++) {
       var nx = el2[j], dev = this._readyDevice(nx);
       if (!dev || !this.peers.has(nx) || (this.levels.get(nx) || 1) < 2) continue;
+      // Lentitud en Bluetooth (#dueño 07-11): NO le mando segmentos de respaldo a un custodio con el enlace atascado (ni uno
+      // que falló hace poco, ni un Bluetooth muerto sin internet) — un envío Fénix atascado muele la radio minutos y retrasa
+      // tus chats. Lo salto esta vuelta; la redundancia (segCopies en otros custodios) cubre el respaldo.
+      if (_fenixSkipHolder(now, self._segCold[nx], dev, !!(self.ble._bleCongested && self.ble._bleCongested(dev)))) continue;
       // Fase 3: un medio grande solo por el mismo Wi-Fi: si ahora no hay, primero lo demás
       var lanOk = !!(this.ble.lan && this.ble.lan.canReach(nx));
       var pend = this._segsOf(nx).filter(function(g) { return !g.holders[nx].ok && (!g.med || (g.size || 0) <= cfg.medBleMax || lanOk) && (!g.med || (self.levels.get(nx) || 1) >= 3); });
@@ -577,10 +596,14 @@ export class Fenix {
     try {
       await self.ble.ackSystem.sendFile(dev, 'fxs_' + g.id + '_' + _hex(_rand(2)), _jsonB64(payload), { type: 'fenix', fx: 'put' });
       if (g.holders[nx]) { g.holders[nx].ok = true; g.holders[nx].proofAt = Date.now(); }
+      if (self._segCold[nx]) delete self._segCold[nx]; // funcionó: el custodio ya no está atascado
       console.log('[FENIX] Segmento ' + g.id + ' entregado a ' + nx);
       await self._saveMsgs();
     } catch (e) {
-      console.warn('[FENIX] Entrega del segmento a ' + nx + ' fallida: ' + (e && e.message));
+      // Lentitud en Bluetooth (#dueño 07-11): falló (enlace atascado) → no reintentar a este custodio por segColdMs (la
+      // redundancia cubre el respaldo; no se martilla la radio ni se retrasan los chats).
+      self._segCold[nx] = Date.now() + self.cfg.segColdMs;
+      console.warn('[FENIX] Entrega del segmento a ' + nx + ' fallida: ' + (e && e.message) + ' (lo salto ' + Math.round(self.cfg.segColdMs / 1000) + ' s)');
     } finally { self.inflight.delete(nx); }
   }
 

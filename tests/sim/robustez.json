@@ -115,6 +115,10 @@
      "prueba": "cola de escritura llena = contrapresión"
     },
     {
+     "fallo": "LENTITUD en Bluetooth (diag. real del dueño 07-11, S24 Ultra): el envío es instantáneo (texto sale en 1–4 ms) pero la CONFIRMACIÓN tardaba 4–11 s (vs 261 ms con la radio libre) por congestión de la radio. Causa principal: el respaldo Fénix martillaba un custodio con el enlace ATASCADO (65916ff3aabc: «Cola llena» / «Write fallo 6 s, descartado 17 trozos» / sendFile type=fenix 84 KB reintentado hasta «Max window retries», 2–8 min por intento, en bucle). 2951: _fenixSkipHolder (fenix.js) salta a un custodio por cooldown tras un fallo (segColdMs) o si su único camino es un Bluetooth muerto (_bleCongested); por internet/Wi-Fi nunca salta; la redundancia en otros custodios cubre el respaldo. Pendientes (siguientes pasos): Fénix cede más la radio al chat, y dedup de conexiones al mismo NEXO (ID rotativo, 4 enlaces a uno)",
+     "prueba": "Fénix no martilla un custodio atascado"
+    },
+    {
      "fallo": "Caídas reales del Bluetooth que no se avisaban a la app (Kotlin)",
      "prueba": null
     },
