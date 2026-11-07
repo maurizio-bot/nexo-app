@@ -66,7 +66,10 @@ export const BLE_CONTACT_METHODS = {
       var name = _cut(String((c && c.name) || '').replace(/[<>]/g, '').trim(), 40) || id.toUpperCase();
       var cur = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
       if (cur) {
-        if (!cur.publicKey && c && typeof c.publicKey === 'string' && /^[A-Za-z0-9+/=]{80,100}$/.test(c.publicKey)) { cur.publicKey = c.publicKey; keyFilled = true; }
+        // H3 (07-11): una clave que llega «de oídas» (tarjeta compartida o cartas de un grupo, sharedBy≠null) entra SIN
+        // VERIFICAR: se usa igual (no rompe «compartir contacto»), pero queda marcada pkHearsay para avisar en el banner y
+        // empujar a comparar el número de seguridad. Se confirma sola cuando el propio contacto conecta directo (_noteSenderKey).
+        if (!cur.publicKey && c && typeof c.publicKey === 'string' && /^[A-Za-z0-9+/=]{80,100}$/.test(c.publicKey)) { cur.publicKey = c.publicKey; if (_normId(sharedBy)) cur.pkHearsay = 1; keyFilled = true; }
         if (c && c.b2) bundles.push([nx, c.b2]);
         res.existing.push(cur.name || name);
         return;
@@ -76,7 +79,8 @@ export const BLE_CONTACT_METHODS = {
         nexoId: nx, deviceUUID: nx, name: name, deviceId: null, addedAt: Date.now(), lastSeen: 0,
         online: false, unreadCount: 0, lastMessage: '', isNewShared: !(opts && opts.quiet), sharedBy: _normId(sharedBy) || null,
         publicKey: pk, ss: pk && c.ss ? 1 : undefined, // v6.11.1: así el primer mensaje ya puede ir sellado
-        nt: pk && c.nt ? 1 : undefined // v6.13.0: y por internet
+        nt: pk && c.nt ? 1 : undefined, // v6.13.0: y por internet
+        pkHearsay: (pk && _normId(sharedBy)) ? 1 : undefined // H3 (07-11): clave «de oídas» (tarjeta/grupo) → sin verificar hasta contacto directo o número de seguridad
       });
       if (pk && c.b2) bundles.push([nx, c.b2]);
       res.added.push(name);

@@ -233,13 +233,21 @@ dueño decida qué entra como build (varios tocan el núcleo del protocolo y exi
   solicitud saliente ya NO auto‑agrega la clave en silencio; va a la bandeja marcada «aceptó tu solicitud» y hay que
   CONFIRMARLA (momento para comparar el número de seguridad). `ble_links.js` + `ble_ui.js`; prueba `reqadd.js`. El cierre
   TOTAL del MITM sigue dependiendo de que el usuario compare el número de seguridad (inherente al modelo TOFU, como Signal).
+- **Build 2950 — H3 (primer contacto por TARJETA/GRUPO), nivel «marcar sin verificar» (decisión del dueño 07-11):** una clave
+  que llega «de oídas» en una tarjeta compartida o en las cartas de un grupo (`sharedBy≠null`) entra marcada `pkHearsay` — se
+  usa igual (NO rompe «compartir contacto»: el sellado sigue andando) pero el banner del chat la muestra «sin verificar» y
+  empuja a comparar el número de seguridad; se confirma sola cuando el propio contacto conecta DIRECTO con la misma clave
+  (`_noteSenderKey`; un puente por relé no puede falsearlo, solo fija la primera clave si no hay ninguna) o al verificar.
+  `ble_contacts.js` + `ble_keys.js` + `e2e_banner.js`; prueba `hearsay.js`. El cierre total sigue dependiendo de comparar el
+  número de seguridad en persona, igual que SEC-2 (el dueño descartó el nivel estricto «no usar hasta confirmar» por romper compartir).
 
 ### Lo que falta, con el plan (necesitan tu visto bueno y/o prueba en los dos teléfonos: tocan el núcleo)
 
-**P0‑1 (rollback) y SEC‑2 (primer contacto): HECHOS** en las builds 2948 y 2949 (ver arriba). Queda de SEC‑2 solo la parte
-que depende del usuario: comparar el número de seguridad (el prompt ahora lo empuja). **H3** (claves de tarjetas compartidas
-«de oídas») sigue abierto: una tarjeta de contacto fija la clave de un contacto nuevo sin verificar — misma clase que
-SEC‑2; se cerraría marcándolas «pendientes» hasta el flujo de aceptación. Toca el estado de claves → su propia ronda.
+**P0‑1 (rollback), SEC‑2 y H3 (primer contacto): HECHOS** en las builds 2948, 2949 y 2950 (ver arriba). Queda, igual que en
+SEC‑2, solo la parte que depende del usuario: comparar el número de seguridad (el banner ahora lo empuja). **H3** se cerró al
+nivel «marcar sin verificar» que eligió el dueño (no romper «compartir contacto»): la clave de tarjeta/grupo entra `pkHearsay`,
+el banner avisa «sin verificar» y se confirma sola al contacto directo o al verificar. El nivel estricto (no usar la clave
+hasta confirmar) quedó descartado porque rompía escribirle a un contacto compartido que nunca conociste.
 
 **M5/M6/F6 — control sin autenticar (molestia).** Ignorar `ss`/`sr`/`nm` de un desconocido y no sonar por una oferta de
 llamada sin autenticar. Bajo impacto, testeable; con cuidado de no romper la reconexión/llamadas legítimas.

@@ -966,6 +966,10 @@
      "prueba": "SEC-2"
     },
     {
+     "fallo": "H3 primer contacto por TARJETA/GRUPO (misma clase que SEC-2): una clave que llega «de oídas» en una tarjeta compartida o en las cartas de un grupo (sharedBy≠null) se fijaba sin verificar — un tercero podía meter SU clave como la de un contacto nuevo. 2950 (opción del dueño «marcar sin verificar», no romper «compartir contacto»): la clave entra marcada pkHearsay — se usa igual (el sellado sigue andando) pero el banner del chat avisa «sin verificar» y empuja a comparar el número de seguridad; se confirma sola cuando el propio contacto conecta DIRECTO con la misma clave, o al verificar; si llega otra clave directa salta el aviso de «clave cambiada» de siempre. El cierre total del hombre-en-el-medio lo sigue decidiendo el usuario (comparar el número de seguridad, como en Signal)",
+     "prueba": "de oídas"
+    },
+    {
      "fallo": "N1 Wi-Fi: el saludo del hub reservaba hasta 48 MB sin autenticar (sin memoria → app cerrada)",
      "prueba": null,
      "fuera": "Kotlin LanHubAttackTest.saludoGigante…"

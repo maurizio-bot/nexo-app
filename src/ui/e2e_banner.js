@@ -45,6 +45,7 @@ export function _renderE2EBanner() {
       t('chat_e2e_until_accept', ' Hasta que la aceptes no se muestran sus mensajes nuevos ni se le envía nada.') +
       t('chat_e2e_impostor', ' Si no reinstaló NEXO, puede ser un impostor: comparad las huellas en persona.');
   } else if (c.publicKey && c.verified === c.publicKey) txt = t('chat_e2e_verified', '🔒✔ Cifrado de extremo a extremo. Verificaste el número de seguridad de ') + name + '.';
+  else if (c.publicKey && c.pkHearsay) txt = t('chat_e2e_hearsay_1', '⚠️ La clave de ') + name + t('chat_e2e_hearsay_2', ' llegó en una tarjeta compartida o por un grupo, SIN verificar. Toca y comparen el número de seguridad en persona para confirmar que es de verdad quien dice ser (se confirma sola cuando conecten directo).');
   else if (c.publicKey && c.keyAcceptedAt) txt = t('chat_e2e_accepted', '🔒 Cifrado de extremo a extremo. Aceptaste una clave nueva de ') + name + ' (' + new Date(c.keyAcceptedAt).toLocaleString() + t('chat_e2e_accepted_tail', '). Toca para verificar.');
   else if (c.publicKey) txt = t('chat_e2e_encrypted', '🔒 Mensajes cifrados de extremo a extremo. Nadie fuera de este chat puede leerlos. Toca para verificar.');
   else txt = t('chat_e2e_waiting_key', '⏳ Esperando la clave de cifrado de ') + name + t('chat_e2e_waiting_tail', ': tus mensajes saldrán cifrados en cuanto conecte.');
