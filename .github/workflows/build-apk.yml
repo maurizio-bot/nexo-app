@@ -17,7 +17,11 @@ concurrency:
 jobs:
   # Pruebas antes de publicar: si alguna falla, no se compila ni se publica la APK
   tests:
-    runs-on: ubuntu-latest
+    # 2945: fijado a 24.04 — GitHub pasó `ubuntu-latest` a Ubuntu 26.04 el 07-11 y Playwright 1.56.1 no
+    # instala Chromium ahí («Playwright does not support chromium on ubuntu26.04-x64»), lo que tumbaba el paso
+    # «Chromium para las pruebas de videollamada» en TODOS los builds (no es del código). 24.04 es el entorno
+    # con el que se construyó la 2943 y todos los anteriores. Pendiente: subir Playwright cuando 24.04 se retire.
+    runs-on: ubuntu-24.04
     # El paso «Chromium» (playwright install, sin caché) tarda ~9 min fijos; con la batería del simulador (~19-20 min)
     # el job rozaba los 30 min y GitHub lo cortaba como «cancelado» (builds 2935 attempt 1 y 2). 45 da margen de sobra.
     timeout-minutes: 45
@@ -76,7 +80,8 @@ jobs:
 
   build:
     needs: tests
-    runs-on: ubuntu-latest
+    # 2945: fijado a 24.04 igual que `tests` (ver nota arriba) — restaura el entorno con el que se armó la 2943.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
