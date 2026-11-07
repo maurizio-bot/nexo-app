@@ -77,8 +77,18 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   // A empieza (R) y suelta en la columna 0 → invita a B.
   const gid = A.win.__nexoC4Start(id('B'));
   r.gid = !!gid;
+  // #dueño 07-11: B está jugando al Tetris EN SOLITARIO cuando le llega la invitación a Conecta 4. El Tetris debe PAUSARSE
+  // (antes seguía cayendo la pieza y perdías). Se pausa por el evento común 'nexo:game:invite' que emite Conecta 4.
+  B.win.__nexoOpenTetris(); await sleep(150);
+  r.b_tetris_abierto = !!B.win.document.getElementById('tetris-overlay');
+  var _pausesBefore = B.win.__nexoTetrisPauses || 0;
   A.win.__nexoC4Drop(gid, 0);
   r.b_recibe_invite = (await waitFor(async () => { const g = B.win.__nexoC4GidFor(id('A')); if (!g) return false; const s = B.win.__nexoC4State(g); return s && s.board[bot(0)] === 'R' && s.me === 'Y'; }, 30000)) !== null;
+  // Al recibir la invitación, el Tetris solo de B quedó en pausa (contador subió + capa «Reanudar» visible); y se reanuda a pedido.
+  r.b_tetris_se_pausa = (B.win.__nexoTetrisPauses || 0) > _pausesBefore && !!B.win.document.getElementById('tetris-paused');
+  B.win.__nexoResumeTetris();
+  r.b_tetris_reanuda = !B.win.document.getElementById('tetris-paused');
+  B.win.__nexoCloseTetris();
   const gidB = B.win.__nexoC4GidFor(id('A'));
   r.mismo_gid = gidB === gid;
 
@@ -120,7 +130,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const lbA = A.win.__nexoGameLeaderboard();
   r.leaderboard_A = Array.isArray(lbA) && lbA.length >= 1 && lbA[0].w === 1 && lbA[0].l === 0;
 
-  r.resultado = (r.gid && r.b_recibe_invite && r.mismo_gid && r.b_autoopen_pendiente && r.b_abre_al_entrar && r.a_recibe && r.ilegal_turno && r.a_gana && r.b_ve_gana && r.ranking_A_1v0 && r.ranking_B_0v1 && r.leaderboard_A) ? 'OK' : 'FALLO';
+  r.resultado = (r.gid && r.b_recibe_invite && r.mismo_gid && r.b_autoopen_pendiente && r.b_abre_al_entrar && r.a_recibe && r.ilegal_turno && r.a_gana && r.b_ve_gana && r.ranking_A_1v0 && r.ranking_B_0v1 && r.leaderboard_A && r.b_tetris_abierto && r.b_tetris_se_pausa && r.b_tetris_reanuda) ? 'OK' : 'FALLO';
   console.log('C4 ' + JSON.stringify(r));
   try { fs.writeFileSync(path.join(buildDir, 'last_logs_connect4.txt'), logs.slice(-250).join('\n')); } catch (e) {}
   process.exit(0);

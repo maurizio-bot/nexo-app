@@ -116,6 +116,9 @@ export function connect4OnAction(senderNx, act) {
 }
 
 function _notify(g, isNew) {
+  // #dueño 07-11: señal COMÚN de invitación entrante (todos los juegos la emiten). Sirve para pausar un juego en
+  // solitario en curso (p.ej. el Tetris solo se pausa al recibir esto). No hace nada si no hay un juego solo abierto.
+  if (isNew) { try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('nexo:game:invite', { detail: { g: 'c4', from: g.opp } })); } catch (e) {} }
   if (openGid === g.gid) { _renderOverlay(g); return; }
   var cur = _normId(_getCurrentContactId());
   var visible = (typeof document === 'undefined' || document.visibilityState !== 'hidden');

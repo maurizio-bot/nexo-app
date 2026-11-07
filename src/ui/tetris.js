@@ -120,6 +120,11 @@ function softDrop(G) { if (tryMove(G, 0, 1)) G.score += 1; else lockPiece(G); }
 
 // ---------- Overlay (canvas + controles); solo en la app real ----------
 var openG = null, raf = null, dropTimer = null;
+// #dueño 07-11: PAUSA del Tetris en solitario. Antes no existía: si llegaba una invitación a otro juego mientras jugabas,
+// la pieza seguía cayendo y perdías. Ahora, al llegar una invitación (evento global 'nexo:game:invite' que emiten todos
+// los juegos), el Tetris solo se pausa (muestra «Reanudar») y no se baja la pieza. Mismo criterio que las notas de voz,
+// que se paran con el evento 'nexo:call' (render.js). El versus NO se pausa (es en tiempo real: el rival sigue jugando).
+var _paused = false, _pauseCount = 0;
 function dropInterval(level) { return Math.max(90, 800 - level * 70); }
 
 export function openTetris() {
@@ -171,11 +176,12 @@ export function openTetris() {
   _startLoop(canvas, stat, again);
   return G;
 }
-function _restart(canvas, stat, again) { openG = newGame(); again.style.display = 'none'; _render(openG, canvas, stat); _startLoop(canvas, stat, again); }
+function _restart(canvas, stat, again) { openG = newGame(); _resumeTetris(); again.style.display = 'none'; _render(openG, canvas, stat); _startLoop(canvas, stat, again); }
 function _startLoop(canvas, stat, again) {
   if (dropTimer) clearInterval(dropTimer);
   var tick = function() {
     var G = openG; if (!G) return;
+    if (_paused) return;   // #dueño 07-11: pausado por una invitación entrante → la pieza no baja (el setInterval sigue, inofensivo)
     if (G.over) { clearInterval(dropTimer); dropTimer = null; _onOver(G, canvas, stat, again); return; }
     step(G); _render(G, canvas, stat);
     if (G.over) { clearInterval(dropTimer); dropTimer = null; _onOver(G, canvas, stat, again); return; }
@@ -234,9 +240,38 @@ function _cell(ctx, c, r, cell, color) {
 function _close() {
   if (dropTimer) { clearInterval(dropTimer); dropTimer = null; }
   if (raf && window.cancelAnimationFrame) { window.cancelAnimationFrame(raf); raf = null; }
+  _paused = false;
+  var pbq = document.getElementById('tetris-paused'); if (pbq && pbq.parentNode) pbq.parentNode.removeChild(pbq);
   var ov = document.getElementById('tetris-overlay');
   if (ov) { try { window.removeEventListener('keydown', ov._key); window.removeEventListener('resize', ov._resize); } catch (e) {} if (ov.parentNode) ov.parentNode.removeChild(ov); }
   openG = null;
+}
+
+// #dueño 07-11: pausar la partida en solitario (al llegar una invitación a otro juego) y reanudarla a pedido. Solo aplica
+// si hay un Tetris solo abierto y no terminado. Muestra una capa «En pausa — Reanudar» sobre el tablero.
+function _pauseTetris() {
+  if (!openG || openG.over || _paused) return false;
+  _paused = true; _pauseCount++;
+  try { if (typeof window !== 'undefined') window.__nexoTetrisPauses = _pauseCount; } catch (e) {}
+  var ov = document.getElementById('tetris-overlay');
+  if (ov && !document.getElementById('tetris-paused')) {
+    var pb = document.createElement('div'); pb.id = 'tetris-paused';
+    pb.style.cssText = 'position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:rgba(5,8,20,0.85);color:#fff;text-align:center;padding:20px;box-sizing:border-box;';
+    var txt = document.createElement('div'); txt.style.cssText = 'font-size:18px;font-weight:800;line-height:1.4;max-width:300px;';
+    txt.textContent = t('game_paused_invite', '⏸ En pausa: te invitaron a otro juego');
+    var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'tetris-btn';
+    btn.style.cssText = 'padding:13px 26px;border:none;border-radius:13px;font-size:16px;font-weight:700;color:#fff;background:linear-gradient(135deg,#00c8ff,#a855f7);cursor:pointer;';
+    btn.textContent = t('game_resume', '▶ Reanudar');
+    btn.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); _resumeTetris(); });
+    pb.appendChild(txt); pb.appendChild(btn);
+    ov.appendChild(pb);
+  }
+  return true;
+}
+function _resumeTetris() {
+  if (!_paused) return;
+  _paused = false;
+  var pb = document.getElementById('tetris-paused'); if (pb && pb.parentNode) pb.parentNode.removeChild(pb);
 }
 
 export function tetrisOverlayOpen() { return !!document.getElementById('tetris-overlay'); }
@@ -275,5 +310,10 @@ try {
     window.__nexoTetrisSetGrid = function(rows) { if (!TG || !Array.isArray(rows)) return; for (var r = 0; r < ROWS; r++) { var s = rows[r] || ''; for (var c = 0; c < COLS; c++) { var ch = s[c] || '.'; TG.grid[r][c] = (ch === '.' || ch === ' ') ? '' : ch; } } };
     window.__nexoCloseTetris = function() { _close(); };   // botón atrás de Android (chat_nav.js)
     window.__nexoOpenTetris = function() { openTetris(); };  // abrir el overlay (prueba visual en Chromium / acceso directo)
+    // #dueño 07-11: pausar el Tetris solo al llegar una invitación a otro juego (evento común que emiten c4/tetvs/ttt).
+    window.__nexoTetrisPauses = 0;   // observable para las pruebas
+    window.__nexoPauseTetris = function() { return _pauseTetris(); };
+    window.__nexoResumeTetris = function() { _resumeTetris(); };
+    window.addEventListener('nexo:game:invite', function() { try { _pauseTetris(); } catch (e) {} });
   }
 } catch (e) {}

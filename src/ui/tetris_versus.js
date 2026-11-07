@@ -139,6 +139,8 @@ function _mkGame(gid, opp, seed, me) {
 
 // ---- Avisos (igual criterio que connect4) ----
 function _notify(g, isNew) {
+  // #dueño 07-11: señal COMÚN de invitación entrante (igual que connect4) → pausa un juego en solitario en curso.
+  if (isNew) { try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('nexo:game:invite', { detail: { g: 'tetvs', from: g.opp } })); } catch (e) {} }
   if (openGid === g.gid) { _render(g); return; }
   var cur = _normId(_getCurrentContactId());
   var visible = (typeof document === 'undefined' || document.visibilityState !== 'hidden');

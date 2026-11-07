@@ -90,6 +90,8 @@ export function tttOnAction(senderNx, act) {
 }
 
 function _notify(g, isNew) {
+  // #dueño 07-11: señal COMÚN de invitación entrante (igual que connect4) → pausa un juego en solitario en curso.
+  if (isNew) { try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('nexo:game:invite', { detail: { g: 'ttt', from: g.opp } })); } catch (e) {} }
   if (openGid === g.gid) { _renderOverlay(g); return; }
   // Si el chat con el rival está abierto, abro el overlay directo; si no, aviso tocable.
   var cur = _normId(_getCurrentContactId());
