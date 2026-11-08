@@ -97,6 +97,13 @@ export class BLEInterface {
     this._receivedMessageIds = new Set();
     this._maxMessageIds = 1000;
     this._dedupTTL = 300000;
+    // Build 2960: dedup de enlaces Bluetooth repetidos al mismo NEXO (fase «conectar»). El barrido corre en el ciclo del
+    // supervisor; con freno para no cerrar en un traspaso momentáneo (los duplicados deben coexistir _dupDebounceMs) y
+    // enfriamiento por MAC para no cerrar-y-reabrir. Nunca cierra un enlace en transferencia ni el del chat activo.
+    this._dupSeenSince = new Map();        // nexoId -> cuándo se vieron por primera vez ≥2 enlaces listos
+    this._dupClosedUntil = new Map();      // MAC -> hasta cuándo no reintentar cerrarla
+    this._dupDebounceMs = 12000;           // los duplicados deben coexistir este tiempo antes de cerrar (> un traspaso)
+    this._dupCloseCooldownMs = 60000;      // tras cerrar una MAC, no reintentar por un rato (ya está desconectada)
     this._pendingMessageQueue = new Map();
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();

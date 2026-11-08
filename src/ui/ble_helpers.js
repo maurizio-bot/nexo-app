@@ -200,6 +200,36 @@ export function _scanWindowFullAt(count, max) {
   return (count || 0) >= (max || 0);
 }
 
+// Build 2960: dedup de enlaces Bluetooth repetidos al MISMO NEXO (fase «conectar» del orden del Bluetooth). Android abre
+// varias conexiones a una persona (su dirección BT rota por privacidad + anunciar vs conectar); al mandar ya elegimos el
+// mejor enlace (mayor MTU, _bleReadyFor), pero los de sobra quedan ABIERTOS y tapan la radio (parte de la «foto lenta de
+// cerca» y de la lentitud). Dado el grupo de enlaces LISTOS a un NEXO, decide cuál se QUEDA y cuáles se pueden CERRAR.
+// Regla: se queda el MEJOR (no-muerto y mayor MTU; empate → el más reciente, mayor `since`); se cierran los demás que NO
+// estén ocupados (`busy`: transferencia en curso o chat activo). NUNCA cierra un enlace ocupado ni el único que haya
+// (con <2 enlaces devuelve []). Cada enlace: { key(MAC), mtu, dead, since, busy }. Pura y exportada: prueba bledup.js.
+export function _dupBleLinksToClose(links) {
+  if (!Array.isArray(links) || links.length < 2) return [];
+  var valid = links.filter(function (l) { return l && l.key; });
+  if (valid.length < 2) return [];
+  var alive = valid.filter(function (l) { return !l.dead; });
+  var pool = alive.length ? alive : valid;
+  var keep = pool[0];
+  for (var i = 1; i < pool.length; i++) {
+    var l = pool[i];
+    var better = (l.mtu || 0) > (keep.mtu || 0) ||
+      ((l.mtu || 0) === (keep.mtu || 0) && (l.since || 0) > (keep.since || 0));
+    if (better) keep = l;
+  }
+  var out = [];
+  for (var j = 0; j < valid.length; j++) {
+    var x = valid[j];
+    if (x.key === keep.key) continue;
+    if (x.busy) continue; // nunca cortar uno en transferencia o el del chat activo
+    out.push(x.key);
+  }
+  return out;
+}
+
 export function _rssiToBars(rssi) {
   if (typeof rssi !== 'number' || !isFinite(rssi)) return 0;
   if (rssi >= -60) return 4;   // muy cerca

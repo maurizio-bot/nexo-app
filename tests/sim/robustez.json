@@ -147,6 +147,10 @@
      "prueba": "cupo reservado"
     },
     {
+     "fallo": "CONEXIONES BLUETOOTH REPETIDAS al mismo NEXO que tapaban la radio — «foto lenta de cerca» (#dueño 08-11, fase «conectar» del orden del Bluetooth). Android abre VARIAS conexiones a la misma persona (su dirección BT rota por privacidad + una para anunciar y otra para conectar: hasta 4-6 enlaces a un solo contacto en _deviceStates/_macToNexoId). Al mandar ya se elegía el mejor (_bleReadyFor por MTU), pero los enlaces de sobra quedaban ABIERTOS y congestionaban la radio → parte de la lentitud y de que una foto de cerca saliera lenta aunque el otro estuviera al lado. 2960 (dedup, solo JS, nada nativo nuevo): en cada ciclo del supervisor se agrupan los enlaces LISTOS por NEXO; con 2+, se conserva el mejor (mayor MTU no-muerto; empate → más reciente) y se cierran los de sobra con el disconnectDevice nativo que ya existía. Decisión pura _dupBleLinksToClose (ble_helpers.js); barrido _dedupBleLinks (ble_connections.js) en _runSupervisorCycle; estado/constantes en ble_interface.js. Salvaguardas: freno _dupDebounceMs=12 s (los duplicados deben coexistir, no cerrar en un traspaso de reconexión) + enfriamiento por MAC 60 s (no cerrar-y-reabrir) + NUNCA cierra un enlace en transferencia (_hasActiveFileTransfer) ni el del chat activo (_activeChatDeviceIdNative) ni el único. Cierra la fase «conectar» (descubrir→conectar→enviar); sigue la fase «enviar»",
+     "prueba": "dedup de enlaces repetidos"
+    },
+    {
      "fallo": "Caídas reales del Bluetooth que no se avisaban a la app (Kotlin)",
      "prueba": null
     },

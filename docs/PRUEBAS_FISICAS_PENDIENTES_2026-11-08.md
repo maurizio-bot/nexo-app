@@ -57,9 +57,8 @@ abajo pasó la batería completa en verde y tiene su APK.
     de buscar, abrir «Agregar» no hacía nada por unos segundos — eso ya no pasa); (2) que los contactos cercanos
     **vayan apareciendo** en la lista, de arriba hacia abajo (el más cerca arriba), cada uno con sus **barritas
     de señal** (como el wifi: más barras = más cerca), y que la lista **no salte de lugar**. (El **cupo reservado**
-    para que nunca diga «Buscando en un momento…» ya está en el 2959, acá abajo.) **Pendiente del mismo plan
-    (fase «conectar»):** juntar las conexiones repetidas al mismo contacto (el identificador rotativo). Este build
-    es el primer paso del orden del Bluetooth: **descubrir → conectar → enviar**.
+    para que nunca diga «Buscando en un momento…» ya está en el 2959, y el **dedup de conexiones repetidas** en el
+    2960, acá abajo.) Este build es el primer paso del orden del Bluetooth: **descubrir → conectar → enviar**.
 
 11. **2959 — scan rápido, paso 2: cupo reservado (lo que pediste: «cuidado con no sobrepasarte del límite de
     escaneos para que Android no nos tache»).** Difícil de forzar a mano. Alcanza con confirmar que abrir
@@ -68,15 +67,24 @@ abajo pasó la batería completa en verde y tiene su APK.
     pasás de ~5 búsquedas en 30 s; antes, el escaneo de fondo (reconexión) podía llenar ese cupo y dejar sin
     hueco a tu búsqueda. Ahora el fondo **se guarda un hueco siempre** para vos, sin pasarse del límite.
 
+12. **2960 — dedup de conexiones repetidas al mismo contacto (LA «FOTO LENTA DE CERCA»).** Es la fase «conectar»
+    del orden del Bluetooth. Android abre **varias** conexiones al mismo contacto (su dirección Bluetooth cambia
+    sola por privacidad, más la de anunciar y la de conectar: llegaban a ser **4–6 enlaces a una sola persona**),
+    y los de sobra quedaban abiertos **tapando la radio**. Ahora, cuando hay repetidos, la app se queda con el
+    **mejor** y **cierra los de sobra** (nunca el que esté mandando/recibiendo algo, ni el del chat que tenés
+    abierto). **Prueba:** con alguien **cerca** (Bluetooth, sin WiFi), mandale **varias fotos y mensajes seguidos**
+    y fijate que la **foto de cerca salga más rápida** que antes y que el chat **no se trabe**. Con esto cerramos
+    «descubrir → conectar»; queda la fase **enviar**.
+
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 
 Estos NO los subí todavía: o son de la parte nativa (Kotlin), que no se puede probar en el simulador, o
 tocan el núcleo (cifrado/conexiones) con poco valor y mucho riesgo de romper lo que anda. Los dejo acá para
 hacerlos con cuidado y validarlos contra tu prueba, en vez de arriesgar la base estable.
 
-1. **Bluetooth: juntar las conexiones repetidas al mismo contacto** (por el identificador rotativo había hasta
-   4 enlaces a una sola persona). Es el tercer paso de la lentitud. Delicado (decide qué enlaces se
-   mantienen), por eso lo hago DESPUÉS de tu prueba de 2951/2952, para validarlo con lo que veas.
+1. ~~**Bluetooth: juntar las conexiones repetidas al mismo contacto**~~ **HECHO en 2960** (ver A.12): se cierra
+   automáticamente lo repetido y se conserva el mejor enlace, con las salvaguardas (nunca corta una transferencia
+   ni el chat activo). Queda tu prueba física de la «foto lenta de cerca».
 
 2. **F6: que el teléfono no suene por una oferta de llamada falsa** sin verificar (con la app cerrada). Es
    nativo (`BgInbox.kt`); necesita una pasada nativa + prueba tuya de llamadas.

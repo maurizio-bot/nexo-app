@@ -3,7 +3,7 @@
  * supervisor de enlaces, pings, reconexión, búsqueda de contactos perdidos, teléfonos encontrados al escanear y
  * esperar a que un enlace esté listo.
  */
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _dupBleLinksToClose, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages } from './ble_helpers.js';
 
 
 export const BLE_CONNECTION_METHODS = {
@@ -96,6 +96,52 @@ export const BLE_CONNECTION_METHODS = {
             self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.DEGRADED, since: Date.now(), failCount: fails });
           }
         });
+      }
+    });
+    // Build 2960: tras los pings, barrer enlaces Bluetooth repetidos al mismo NEXO y cerrar los de sobra (dedup).
+    self._dedupBleLinks();
+  },
+
+  // Build 2960: dedup de enlaces Bluetooth (fase «conectar» del orden del Bluetooth). Android abre varias conexiones a una
+  // misma persona (dirección BT rotativa + anunciar vs conectar); al mandar ya se elige el mejor (_bleReadyFor), pero los
+  // de sobra quedan ABIERTOS y tapan la radio (parte de la «foto lenta de cerca»). Acá, en cada ciclo del supervisor, se
+  // agrupan los enlaces LISTOS por NEXO; con 2+, se conserva el mejor (mayor MTU, no muerto) y se cierran los demás con el
+  // disconnectDevice nativo que ya existe. Salvaguardas: freno (_dupDebounceMs: deben coexistir un rato, no un traspaso),
+  // enfriamiento por MAC (_dupCloseCooldownMs), y NUNCA se cierra un enlace en transferencia ni el del chat activo (busy).
+  _dedupBleLinks() {
+    var self = this;
+    if (self._cameraBlePaused || self.isDummyMode) return;
+    if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'disconnectDevice')) return;
+    var now = Date.now();
+    var activeMac = self._activeChatDeviceIdNative ? _normMac(self._activeChatDeviceIdNative) : null;
+    var byNexo = new Map();
+    self._deviceStates.forEach(function(st, key) {
+      if (/^(lan|net)nx/.test(key)) return; // solo Bluetooth (no internet/Wi-Fi)
+      if (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY) return;
+      var nx = _normId(self._macToNexoId.get(key));
+      if (!nx) return;
+      var arr = byNexo.get(nx) || [];
+      arr.push({
+        key: key,
+        mtu: (self._mtuByDevice && self._mtuByDevice.get(key)) || 185,
+        dead: self._bleCongested(key),
+        since: (st && st.since) || 0,
+        busy: self._hasActiveFileTransfer(key) || (!!activeMac && _normMac(key) === activeMac)
+      });
+      byNexo.set(nx, arr);
+    });
+    byNexo.forEach(function(links, nx) {
+      if (links.length < 2) { self._dupSeenSince.delete(nx); return; } // sin repetidos: nada que hacer
+      var seen = self._dupSeenSince.get(nx);
+      if (!seen) { self._dupSeenSince.set(nx, now); return; }           // primera vez: arrancar el freno, no cerrar aún
+      if (now - seen < self._dupDebounceMs) return;                     // aún no estables (podría ser un traspaso)
+      var toClose = _dupBleLinksToClose(links);
+      for (var i = 0; i < toClose.length; i++) {
+        var key = toClose[i];
+        if ((self._dupClosedUntil.get(key) || 0) > now) continue;       // enfriamiento por MAC
+        self._dupClosedUntil.set(key, now + self._dupCloseCooldownMs);
+        console.log('[BLEInterface] Dedup: cierro enlace repetido ' + key + ' de ' + nx + ' (me quedo con el mejor)');
+        _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: key }).catch(function() {});
       }
     });
   },
