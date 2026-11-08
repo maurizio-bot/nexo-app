@@ -1,91 +1,71 @@
-# NEXO — Diseño: entrega a un contacto OFFLINE (store-and-forward + «cita» FCM)
+# NEXO — Diseño: entrega eficiente y robusta (offline + fan-out + reenvío)
 
-**BORRADOR para revisión** (dueño + Claude del teléfono). 08-11-2026. **Sin código todavía** — primero lo estudiamos y lo cerramos acá.
+**BORRADOR v2 (consolidado)** — ideas del dueño + optimizaciones y endurecimiento de Claude. 08-11-2026. **Sin código todavía.** Para revisión del dueño y del Claude del teléfono.
 
-## 1. El problema
-Un archivo (foto, nota de voz, video, archivo grande) a un contacto que está **OFFLINE** (ni Bluetooth, ni Wi-Fi, ni internet alcanzable) hoy:
-- No se entrega: queda ⏳ «en espera» en el teléfono del que envía.
-- Solo se intenta despertar al otro **al abrir su chat** — NO por lo pendiente.
-- Para archivos no hay «buzón»: los relés solo aceptan ~60 KB por evento, y un video/archivo no entra.
+## 1. El problema (qué falla hoy)
+- Un archivo a un contacto **OFFLINE** no llega: queda ⏳ en el teléfono del que envía; solo se intenta despertar al otro **al abrir su chat**, no por lo pendiente; y los relés solo aceptan ~60 KB, así que los archivos **no tienen buzón**.
+- **Fan-out (a varios / grupos):** hoy NEXO cifra y sube **una vez por destinatario** → a 15 personas = 15 cifrados + 15 copias + 15 subidas. Con N grande + archivo grande → puede **crashear** (memoria, como #2941) o **trabarse** (todo a la vez, como #2887).
+- **Reenvío:** reenviar un archivo ya enviado **re-sube de cero** (no reusa nada).
 
-Resultado: el archivo puede quedar horas sin llegar aunque el otro prenda el teléfono. (Diagnóstico del dueño 08-11: video 200 KB + foto 50 KB a nx0ed4a8be, horas en espera, sin tocarle la puerta.)
+## 2. Qué hace un server (WhatsApp) — y qué YA tenemos
+Un server hace 3 cosas: **guarda** el cifrado en un buzón, **toca** el teléfono (FCM/APNs) para despertarlo, y el otro **se baja** lo guardado. NEXO ya lo replica **para texto, sin server propio**: buzón = relés Nostr (de terceros, siempre prendidos); toque = FCM (`net_link._wake`). Falta para **archivos** y falta **optimizar el fan-out/reenvío**.
 
-## 2. Qué hace un server (WhatsApp) — y qué de eso YA tenemos
-Un server hace 3 cosas simples (confirmado con investigación):
-1. **Guarda** el mensaje cifrado en un buzón del destinatario mientras está offline (no lo lee, solo lo guarda).
-2. **Toca** el teléfono del otro con el push de Google/Apple (FCM/APNs) para **despertar la app** — el push SOLO despierta, no lleva contenido.
-3. El teléfono, ya despierto, **se baja** lo guardado; se borra al confirmar.
+## 3. Principios (del dueño)
+1. **Funcional > seguro, pero seguro hasta cierto punto.** De nada sirve seguro si no funciona.
+2. **Contenido E2E siempre** (cifrar es gratis en tiempo). **Metadata = perilla** → Tor de respaldo, no de arranque.
+3. **Subir una vez; repartir y reenviar por referencia**, no re-subir desde el teléfono.
 
-NEXO ya replica esto **para texto, sin server propio**:
-- **Buzón** = relés públicos de Nostr (siempre prendidos, de terceros).
-- **Toque** = el mismo FCM de Google (`net_link._wake`).
+## 4. Diseño base (cita + cifrar-una-vez + blob compartido)
+- **4a. Cifrar una vez.** El archivo se cifra UNA vez con una **llave al azar K** (sobre/envelope), leyendo del disco → **un solo blob cifrado**, identificado por su **huella** (hash).
+- **4b. Subir una vez.** El blob va UNA vez al **buzón** (trozos ≤60 KB en relés) o al **guardadero** (enormes). A cada destinatario se le manda solo **(K + huella + ubicación)** cifrado con SU clave: mensajitos chiquitos.
+- **4c. La cita (idea del dueño).** Si el otro está dormido: dejar la marca en su buzón + **tocarlo FCM con freno creciente** hasta que despierte; al despertar, (a) baja lo guardado y (b) deja en el buzón del que envió «ya estoy, mandá el resto» + **lo toca a él**. Se despiertan mutuamente hasta coincidir.
+- **4d. Reenvío / fan-out por referencia (idea del dueño).** El blob queda **cacheado por su huella**. Reenviar/repartir el MISMO archivo = mandar solo (K + puntero) → **instantáneo, sin re-subir**.
+- **4e. Grupos = consumidor principal.** Un mensaje/archivo de grupo es fan-out puro. **Media de grupo → protocolo nuevo ya** (gran ganancia). **Texto de grupo → como hoy por ahora** (de a pares, barato); la «llave de grupo» (sender keys) = mejora mayor futura, con cuidado por el re-llaveo al entrar/salir alguien.
 
-Falta hacerlo para **archivos**.
+## 5. Optimizaciones y robustez (lo que agrego yo)
+- **5.1 Content-addressing VERIFICADO (crítico, seguridad).** El blob vive en un **relé público**: un relé malicioso podría servir bytes **cambiados** o un archivo **distinto**. Por eso la huella del blob viaja **cifrada E2E** en el puntero, y el que recibe **rechaza** todo lo que no coincida con esa huella. Sin esto, el diseño ingenuo tiene un agujero. (Bonus: la huella da **dedup** y **resume** gratis.)
+- **5.2 Trozos con árbol de huellas (Merkle).** El blob se parte en trozos, cada uno con su huella. Esto permite: **bajar de VARIOS relés en paralelo** (más rápido), **re-bajar solo el trozo malo/faltante** (no todo el archivo), y **resume** natural.
+- **5.3 Redundancia en relés.** Cada trozo se guarda en **varios relés** (replicación); si uno se cae o expira, el archivo no se pierde. (Erasure coding tipo Reed-Solomon = opción avanzada para después: menos espacio que replicar, misma tolerancia.)
+- **5.4 Staging inteligente (no subir siempre).** Si el otro está **alcanzable ya por Wi-Fi/Wi-Fi Direct** → va **directo** (más rápido y más privado, sin pasar por el relé). El buzón/relé se usa para **offline / solo-internet / varios destinatarios**. Así no cargamos el relé al pedo.
+- **5.5 «De corrido» con checkpoints (idea del dueño, afinada).** Sobre un socket confiable (Tor-directo/Wi-Fi/WD) se **stremea continuo** (sin el trozo-a-trozo-con-ACK de BLE), **leyendo del disco** (anti-OOM) y con **marcas de resume** cada tanto por si se corta.
+- **5.6 Prioridades (lecciones «usuario primero» 2952).** Las transferencias grandes de blob corren en **2.º plano y CEDEN** a lo interactivo (textos, acks, llamadas). Un archivote nunca congela el chat.
+- **5.7 Dedup local por huella.** Antes de bajar, el que recibe mira su propia caché: si **ya tiene** ese archivo (un meme reenviado mil veces), **no baja nada**.
+- **5.8 Borrar del relé al confirmar + TTL corto.** Cuando **todos** confirmaron, se borra el blob del relé (privacidad + cortesía con el relé); TTL corto por las dudas.
+- **5.9 Forward secrecy + «ver una vez».** K viaja por el ratchet (forward secret). Para media **sensible / ver-una-vez**, **no se sube al relé** — solo directo, para no dejar copia.
 
-## 3. El diseño: la «cita» (idea del dueño), en dos modos por tamaño
+## 6. Invariantes anti-crash (reglas duras — lecciones de Bluetooth, generalizadas)
+Reglas que el código DEBE cumplir siempre (y que se prueban):
+1. **Nunca** el archivo entero en memoria → siempre **stream del disco**.
+2. **Nunca** cifrar el mismo archivo más de una vez (una K, un blob).
+3. **Tope de concurrencia** (MAX_CONCURRENT, ej. 3) → el resto en cola.
+4. **Cada destinatario independiente**: uno atascado/offline **no frena ni crashea** a los demás (se va a buzón+cita).
+5. **Caché de blobs con tope** (LRU, se evicta lo viejo) y **ritmo por relé acotado** (no floodear un relé).
 
-### 3a. Archivos MEDIANOS (foto, nota de voz, video corto — el caso común)
-Se guardan **enteros en el buzón**, partidos en pedazos de ≤60 KB (N eventos de relé, numerados).
-- Al enviar: se dejan los N pedazos en el buzón del destinatario + se le toca FCM.
-- El otro, al despertar: baja los N pedazos, los arma, confirma. **No hace falta que el que envió esté online.**
-- **Totalmente desacoplado:** cero dependencia de que coincidan en el tiempo.
+## 7. Estados y UX (honesto — «experiencia perfecta»)
+- ⏳ **«esperando que se conecte»**, nunca ✗ «fallido», para lo que es store-and-forward (va a llegar).
+- En grupos, **progreso por miembro** (✓ al primero, ✓✓ cuando todos — como #131).
 
-### 3b. Archivos ENORMES (ej. 35 MB) — la «cita»
-No caben enteros en el buzón, así que:
-1. Al enviar: se deja en el buzón del otro **un pedazo + una marca** «hay un archivo grande tuyo esperando» + el token del que envía.
-2. Se **toca FCM** al destinatario, **con freno creciente**, hasta que despierte.
-3. Al despertar, su app hace **las dos cosas (idea del dueño)**: (a) baja el pedazo ya guardado, y (b) deja en el buzón del que ENVIÓ la señal «estoy online, mandame el resto» + **le toca FCM a ÉL**.
-4. El que envió despierta → los dos online → se manda **el grueso directo**, reanudable, por el mejor camino.
+## 8. Lo que NO se promete en cero (honesto)
+- Un archivo **enorme** a un teléfono que **nunca** coincide online con el del que envía: se entrega el pedazo y se insiste, pero el grueso espera una coincidencia (o el guardadero de terceros, opción 2).
+- Teléfono **apagado para siempre / sin internet nunca**: imposible para cualquier app.
 
-El relé + el toque **mutuo** = la «cita»: se despiertan uno al otro hasta coincidir. **Replica al server sin server propio.**
+## 9. Fases (de menor a mayor riesgo)
+- **A (JS):** toque-por-pendiente (freno creciente) + token robusto en el buzón.
+- **B (JS):** buzón de archivos **medianos** (trozos ≤60 KB en relés, con huellas y redundancia) → entrega desacoplada del caso común.
+- **C (JS):** **cifrar-una-vez + blob compartido + reenvío/fan-out por referencia** (dedup por huella). Aplica a **grupos**.
+- **D (JS):** la **cita completa** para enormes (marca + señal de vuelta + stream al coincidir).
+- **E (opcional):** guardadero de archivos grandes de terceros; erasure coding; sender keys de grupo.
 
-## 4. Seguridad vs velocidad (regla del dueño: lo funcional primero)
-Hay **dos** seguridades y **solo una** cuesta velocidad:
-- **Contenido (que nadie lea el archivo):** cifrado **E2E**. SIEMPRE, en todos los caminos. **No cuesta velocidad.** No se negocia.
-- **Metadata (quién/cuándo/IP):** la esconde **Tor**. **Sí cuesta velocidad.** Es la perilla.
-
-→ El archivo **nunca es menos seguro por ir rápido**. Solo se dializa cuánta metadata se esconde. «Seguro hasta cierto punto» = contenido al máximo siempre; metadata, la perilla.
-
-**Caminos, de más rápido a más privado:**
-
-| Camino | Velocidad | Qué esconde |
-|---|---|---|
-| Wi-Fi misma red / Wi-Fi Direct | rapidísimo | local (no sale a internet) |
-| Relés (directo) | rápido | contenido (E2E); metadata parcial → etiqueta del buzón **rota por día** |
-| Tor (relés por Tor / onion directo) | lento | todo (IP + metadata) |
-| Bluetooth | local, cerca | contenido (E2E) |
-
-**Regla:** el camino **más rápido que haya; Tor de respaldo, no de arranque. Nunca forzar todo por Tor** (ahí el usuario se va a otra app).
-- Buzón (pedacito + toque, chicos): por **relés directos** → rápido, la cita pasa ya.
-- Grueso del archivo: **Wi-Fi/Wi-Fi Direct > trozos por relés > Tor-directo solo** si no hay nada mejor.
-
-(Consistente con la decisión del dueño 01-11: «Tor no va por defecto».)
-
-## 5. Fallas posibles y cómo las dejamos al mínimo (el dueño: «no quiero fallas, y si hay, mínima»)
-
-| Falla posible | Mitigación |
-|---|---|
-| El relé borra lo guardado tras un tiempo (TTL) | re-dejar la marca/pedazos cada tanto mientras siga pendiente; usar **varios relés** a la vez; la **copia local** del que envía queda de respaldo |
-| Spamear FCM (batería/cuota del otro) | toque con **freno creciente** (al toque → cada pocos minutos → cada rato); el throttle por par ya existe |
-| Falta el token (no se puede despertar) | token en **los dos sentidos**, guardado en la marca del buzón; se re-intercambia en cada saludo |
-| Llega dos veces (buzón + directo) | **dedup por msgId** (ya existe) |
-| Privacidad del buzón | etiqueta del destinatario **rota por día**; contenido E2E; el toque no lleva contenido |
-
-## 6. Lo que NO se promete en cero (honesto)
-- Un archivo **enorme** a un teléfono que **nunca** se prende a la vez que el del que envía: se entrega el pedazo y se sigue insistiendo, pero el **grueso espera una coincidencia**. Sacarle eso del todo pediría un «guardadero de archivos grandes» de terceros (Nostr/Tor file server) — **opción 2**, se evalúa después.
-- Un teléfono **apagado para siempre / nunca con internet**: imposible para cualquier app (WhatsApp incluido).
-
-## 7. Fases de implementación (de menor a mayor riesgo)
-1. **Fase A (solo JS):** toque-por-pendiente (freno creciente) + token robusto en el buzón → ya hace que **insistamos en despertar** al otro por lo pendiente.
-2. **Fase B (solo JS):** **buzón de archivos medianos** (pedazos ≤60 KB en relés) → entrega **desacoplada** del caso común (fotos, notas de voz, videos cortos).
-3. **Fase C (JS + quizá nativo):** la **«cita» completa** para enormes (marca + señal de vuelta + stream al coincidir).
-4. **Fase D (opcional):** guardadero de archivos grandes de terceros, para enormes sin coincidencia.
-
-## 8. Cómo lo probamos (antes de subir nada)
-- sim de los **DOS casos**: (a) contacto alcanzable (ya andaba), (b) contacto **OFFLINE que despierta después** → el archivo llega **sin que el que envía toque nada**.
-- toque-por-pendiente con freno (no spamea; backoff correcto).
-- token en los dos sentidos presente.
-- dedup (buzón + directo no duplica).
+## 10. Plan de prueba ADVERSARIAL (demostrar robustez, no «parece que anda»)
+sim que fuerce lo peor y verifique que **no crashea, no bloquea, y entrega**:
+1. Relé que se **cae a mitad** de la bajada → se re-baja solo lo que falta, llega.
+2. El archivo llega por **dos vías** (buzón + directo) → **dedup**, se arma una sola vez.
+3. Archivo **enorme** → **sin OOM** (se stremea del disco, no se materializa entero).
+4. **N destinatarios**, algunos offline → los online llegan ya; los offline por buzón+cita; **ninguno frena a otro**.
+5. **Miembro entra/sale** del grupo a mitad del fan-out → consistente.
+6. Relé que **expira** el blob antes de que el otro despierte → se re-sube (sin re-cifrar) o se espera; no se pierde.
+7. El que **envía se va** a mitad del fan-out → lo que ya está en el buzón se entrega solo; el resto reanuda al volver.
+8. **Relé malicioso** mete bytes cambiados → la huella no coincide → **se rechaza** (no se muestra basura).
 
 ---
-*Revisión pendiente del dueño y del Claude del teléfono. Cuando esté redondo, se implementa por fases y se prueba cada una con la batería antes de subir.*
+*Revisión pendiente del dueño y del Claude del teléfono. Al cerrar, se implementa por fases y se prueba CADA fase con la batería (incluido el plan adversarial de §10) antes de subir.*
