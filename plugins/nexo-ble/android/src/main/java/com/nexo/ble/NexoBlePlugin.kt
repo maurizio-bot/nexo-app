@@ -210,6 +210,7 @@ class NexoBlePlugin : Plugin() {
     private val writeQueueProcessing = ConcurrentHashMap<String, Boolean>()
     private val writeQueueTimeouts = ConcurrentHashMap<String, Runnable>()
     private val writeRetryCount = ConcurrentHashMap<String, Int>()
+    private val writeDropStreak = ConcurrentHashMap<String, Int>() // #129: mensajes SEGUIDOS descartados por enlace (atasco real)
     private val nxidToMacMap = ConcurrentHashMap<String, String>()
     private var quickScanLatch: java.util.concurrent.CountDownLatch? = null
     private var quickScanResultMac: String? = null
@@ -1936,6 +1937,17 @@ class NexoBlePlugin : Plugin() {
                 // #dueño 04-11: avisar a la capa de arriba que este enlace BT soltó un mensaje (muerto/atascado) → re-rutea
                 // por internet/Wi-Fi al toque en vez de seguir martillando el Bluetooth («internet antes que un BT muerto»).
                 notifyListeners("onWriteDropped", JSObject().put("mac", macNorm))
+                // #129 (dueño 08-11): tras N mensajes SEGUIDOS descartados al mismo enlace, está atascado de verdad → soltar
+                // TODA la cola de ese MAC de una, en vez de moler cada mensaje ~6 s (el martilleo de ~2 min del diagnóstico).
+                // La capa de arriba ya re-rutea/reintenta por otro camino (onWriteDropped + resume). El streak se reinicia
+                // en cuanto una escritura sale bien (onWriteDone) o al limpiar la cola (desconexión).
+                val streak = (writeDropStreak[macNorm] ?: 0) + 1
+                writeDropStreak[macNorm] = streak
+                if (WriteRetry.shouldFlushStuckQueue(streak)) {
+                    writeDropStreak.remove(macNorm)
+                    val restantes = synchronized(queue) { val n = queue.size; queue.clear(); n }
+                    if (restantes > 0) btErr("flush", "Enlace $macNorm atascado ($streak mensajes seguidos sin salir): suelto $restantes trozo(s) más en cola para no martillarlo (se reintentan por otro camino)")
+                }
             }
             // Bloquear la cola durante la espera: otras llamadas no deben gastar los reintentos de golpe
             writeQueueProcessing[macNorm] = true
@@ -1946,6 +1958,7 @@ class NexoBlePlugin : Plugin() {
             return
         }
         writeRetryCount.remove(macNorm)
+        writeDropStreak.remove(macNorm) // #129: salió una escritura → el enlace NO está atascado, reiniciar el conteo de atasco
         removeHead(queue, item)
         writeQueueProcessing[macNorm] = true
         val timeoutMs = if (result.mode == "gatt_server") SERVER_NOTIFY_TIMEOUT_MS else CLIENT_WRITE_TIMEOUT_MS

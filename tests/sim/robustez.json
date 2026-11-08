@@ -155,6 +155,10 @@
      "prueba": "varias fotos de una"
     },
     {
+     "fallo": "COLA DE ESCRITURA NATIVA martillaba un Bluetooth ATASCADO minutos (#129, nativo Kotlin; diagnóstico del dueño sobre el 2960). Un respaldo Fénix a 6a14d9595cff seguía reintentando a nivel nativo («Write fallo … 15 trozos» cada ~6 s) ~2 min, aun después de que el JS se había rendido (lo marcó pendiente a las 05:58). Causa: por la regla B1 (2891) la cola nativa descarta UN mensaje tras ~6 s de reintentos y pasa al SIGUIENTE del mismo enlace muerto → N mensajes en cola = N×6 s de martilleo que tapa la radio. 2951/2956 frenan en el JS pero no vacían la cola nativa ya encolada. 2962 (nativo): tras 2 mensajes SEGUIDOS descartados al mismo MAC (sin ninguna escritura que salga en medio = atascado de verdad), se suelta TODA la cola de ese enlace de una, en vez de molerla mensaje a mensaje. La capa de arriba ya re-rutea/reintenta (onWriteDropped + resume): no se pierde nada. N=2 (no 1) para no vaciar por una congestión transitoria de un solo mensaje (normal con MTU 23); writeDropStreak se reinicia al salir una escritura. Lógica pura WriteRetry.shouldFlushStuckQueue (JVM-testeable) + writeDropStreak en NexoBlePlugin.processWriteQueue. Prueba JVM WriteRetryTest (no suelta con 1 descarte; suelta con 2+; tope=2); el resto es Android (compila el APK + prueba del dueño: el diagnóstico ya no debe mostrar el martilleo, sino «suelto X trozos más en cola para no martillarlo»)",
+     "prueba": "cola suelta un BT atascado (JVM + teléfono del dueño)"
+    },
+    {
      "fallo": "Caídas reales del Bluetooth que no se avisaban a la app (Kotlin)",
      "prueba": null
     },

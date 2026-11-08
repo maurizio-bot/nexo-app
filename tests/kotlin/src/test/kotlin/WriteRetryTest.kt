@@ -39,4 +39,19 @@ class WriteRetryTest {
         assertTrue(wait in 5000..7500, "el presupuesto de reintentos debe rondar ~6 s, fue $wait ms")
         assertTrue(wait > 3 * 1800, "debe ser mucho mayor que los ~1,8 s de antes")
     }
+
+    // #129 (dueño 08-11, diagnóstico del 2960): tras N mensajes SEGUIDOS descartados al mismo enlace (atasco real), se
+    // suelta TODA la cola de ese MAC de una, en vez de moler cada mensaje ~6 s (el martilleo de ~2 min del diagnóstico).
+    @Test fun noSueltaLaColaPorUnSoloDescarte() {
+        // Un solo descarte es congestión transitoria normal de MTU 23 (el siguiente mensaje puede salir bien): NO vaciar.
+        assertFalse(WriteRetry.shouldFlushStuckQueue(0), "sin descartes no se vacía")
+        assertFalse(WriteRetry.shouldFlushStuckQueue(1), "con un solo descarte seguido no se vacía (podría ser transitorio)")
+    }
+
+    @Test fun sueltaLaColaConEnlaceAtascadoDeVerdad() {
+        // Dos (o más) mensajes seguidos descartados sin ninguno que salga en medio = el enlace está atascado → vaciar la cola.
+        assertTrue(WriteRetry.shouldFlushStuckQueue(WriteRetry.FLUSH_AFTER_DROPS), "en el tope de descartes seguidos se vacía")
+        assertTrue(WriteRetry.shouldFlushStuckQueue(WriteRetry.FLUSH_AFTER_DROPS + 3), "por encima del tope también")
+        assertEquals(2, WriteRetry.FLUSH_AFTER_DROPS, "el tope es 2 (no 1): no reaccionar a una congestión de un solo mensaje")
+    }
 }

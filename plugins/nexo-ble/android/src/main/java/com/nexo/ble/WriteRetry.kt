@@ -25,7 +25,18 @@ object WriteRetry {
                                           // del BT»; ~6 s ≈ el supervision timeout de Android +margen; antes 80 ≈ 9 s, y 40 ≈ 1,8 s
                                           // perdía mensajes). Rendirse ya NO pierde: la capa de arriba re-rutea a internet (onWriteDropped).
 
+    // #129 (dueño 08-11, diagnóstico del 2960): cuando un enlace está ATASCADO DE VERDAD, descartar UN mensaje (~6 s) y
+    // pasar al siguiente de la cola — que también grinda ~6 s y se descarta, y así — martillaba el enlace muerto minutos
+    // (en el diagnóstico, un Fénix a 6a14d9595cff: «Write fallo … 15 trozos» cada ~6 s durante ~2 min). Tras N mensajes
+    // SEGUIDOS descartados al MISMO enlace (sin ninguna escritura que salga en medio), el enlace está atascado: se suelta
+    // TODA la cola de ese MAC de una, en vez de molerla mensaje a mensaje. La capa de arriba ya re-rutea por onWriteDropped.
+    // N=2 (no 1) para no soltar la cola por una congestión transitoria de un solo mensaje (lo normal con MTU 23).
+    const val FLUSH_AFTER_DROPS = 2
+
     data class Decision(val drop: Boolean, val delayMs: Long)
+
+    /** streak = cuántos mensajes SEGUIDOS se descartaron a este enlace (se reinicia en cuanto una escritura sale bien). */
+    fun shouldFlushStuckQueue(consecutiveDrops: Int): Boolean = consecutiveDrops >= FLUSH_AFTER_DROPS
 
     /** attempts = número de ESTE intento fallido (1 = el primero que falla). */
     fun decide(attempts: Int): Decision {
