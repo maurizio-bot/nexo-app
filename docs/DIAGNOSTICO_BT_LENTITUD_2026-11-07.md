@@ -63,3 +63,24 @@ congestión por Fénix + el enlace atascado.
 - 2905 (Fénix cede la radio a la actividad del usuario), 2947 (anti-abuso Fénix), scanfenix (Fénix no pausa
   el escaneo). Este diagnóstico pide el paso que falta: Fénix cede también los ENVÍOS, y el enlace atascado se
   suelta.
+
+## Avance (builds 2951–2956)
+- **2951** — plan punto 1 (al ELEGIR): `_fenixSkipHolder` salta a un custodio por cooldown tras un fallo o si
+  su único camino es un Bluetooth muerto. **2952** — regla del dueño «el usuario primero»: con la app en
+  primer plano los envíos pesados de respaldo esperan. **2954** — al REANUDAR: `resumeOutgoingTransfers`
+  (`_resumeRunOne`) aplaza un respaldo Fénix si el usuario tiene la radio o el enlace está atascado.
+- **2956 — plan punto 2 cerrado para un stream YA en marcha (diags. 08-11 00:47 y 01:07).** Faltaba este
+  hueco: 2951/2952/2954 frenan al elegir/reanudar, pero un respaldo Fénix **ya corriendo** a un enlace
+  atascado seguía martillando la cola nativa («Cola de escritura llena») hasta ~5 min por segmento
+  (`BUSY_MAX_WAITS=150`), tapando la radio → un audio por internet tardaba ~1 min y la UI parecía clavada.
+  Arreglo (solo JS, `ble_ack.js`): `_fenixYieldBle` (pura) + `_bgShouldYieldBle` consultados en el bucle de
+  trozos (`_sendWindow`/`_retransmitWindow`) → un respaldo de FONDO (`meta.type==='fenix'`) por Bluetooth ya
+  marcado atascado (`_bleCongested`) se rinde al toque (`_giveUpPending`, queda pendiente; la redundancia de
+  Fénix y el resume lo cubren). Lo del usuario mantiene la paciencia de #129. Prueba `fenixyield.js`.
+- **Pendiente (el otro síntoma del diagnóstico, más de fondo):** los **archivos grandes por internet** se
+  parten en **miles** de trozos con confirmación uno por uno; por Tor eso es muy lento y los de 26–34 MB
+  agotan reintentos y muestran «reintentar». Arreglarlo bien probablemente pide un cambio mayor (mandar el
+  archivo cifrado **entero** a un relé/buzón y que el otro lo baje, en vez de trozo a trozo con ACK por
+  ventana). Queda para una ronda aparte, con cuidado.
+- **Plan punto 3 (dedup de conexiones al mismo NEXO por el ID rotativo):** sigue pendiente, delicado, después
+  de la prueba física del dueño.

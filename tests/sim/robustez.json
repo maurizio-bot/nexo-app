@@ -131,6 +131,10 @@
      "prueba": "la REANUDACIÓN no re-manda un respaldo Fénix"
     },
     {
+     "fallo": "LENTITUD en Bluetooth / «audio no sale» por internet (dos WiFi distintas) — diags. del dueño 08-11 (00:47 y 01:07). Un respaldo Fénix EN VUELO a un enlace Bluetooth atascado (MTU 23: 5ab50526519b/65916ff3aabc/6a14d9595cff) seguía martillando la cola nativa («Cola de escritura llena»/«mensaje descartado entero») hasta ~5 min por segmento (BUSY_MAX_WAITS=150), tapando la radio y el hilo JS → un audio por internet tardaba ~1 min en salir y la UI parecía clavada. 2951/2952/2954 frenan al ELEGIR/REANUDAR, no a un stream ya corriendo. 2956: _fenixYieldBle (pura, exportada) + _bgShouldYieldBle en el bucle de trozos (ble_ack.js _sendWindow/_retransmitWindow) — un respaldo de FONDO (meta.type==='fenix') por Bluetooth ya marcado atascado (_bleCongested) se rinde al toque (_giveUpPending, queda pendiente; Fénix tiene redundancia y el resume lo reintenta luego o por internet). Lo del usuario (texto/foto/archivo) mantiene la paciencia de #129. Pendiente aparte (más de fondo): archivos grandes por internet se parten en miles de trozos con ACK uno por uno → por Tor lentos/se cortan (posible cambio mayor: mandar el blob entero en vez de trozo a trozo)",
+     "prueba": "se rinde al toque en el bucle de trozos"
+    },
+    {
      "fallo": "Caídas reales del Bluetooth que no se avisaban a la app (Kotlin)",
      "prueba": null
     },

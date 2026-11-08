@@ -36,6 +36,15 @@ abajo pasó la batería completa en verde y tiene su APK.
    recién agregado SIN ningún mensaje todavía sí flota arriba (para que no se pierda). Mirá que «Galaxy» con
    «Ahora» quede por encima de «vivo Y03» con 14 minutos, como esperabas.
 
+8. **2956 — «audio no sale» por internet / lentitud (tus dos diagnósticos del 08-11).** Es la pieza que
+   destapa la radio: un respaldo de fondo ya no se queda martillando un contacto con el Bluetooth atascado.
+   Prueba: con los dos teléfonos en **WiFi distintas** (solo internet), mandá un **audio** y fijate que salga
+   rápido (antes tardaba ~1 minuto y parecía clavado). Probá también con contactos cerca mezclados: que el
+   chat no se trabe mientras hay un respaldo Fénix en curso. **Importante, honestidad:** lo de los **archivos
+   grandes por internet** que se cortan y muestran «reintentar» es un problema **aparte** y más de fondo (por
+   internet se parten en miles de pedacitos lentos por Tor) — todavía NO está arreglado; lo encaro después,
+   con cuidado, porque puede necesitar un cambio más grande.
+
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 
 Estos NO los subí todavía: o son de la parte nativa (Kotlin), que no se puede probar en el simulador, o

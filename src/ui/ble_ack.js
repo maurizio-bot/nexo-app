@@ -95,6 +95,17 @@ export function _isBusyErr(err) { return !!(err && err.code === 'BLE_BUSY'); }
 // #129: espera (ms) ante la cola llena según el nº de reintentos SEGUIDOS n (1,2,3,…): 600 → 1200 → 2400 → 2400 (tope),
 // para dar tiempo a que la cola MTU-23 drene. n > BUSY_MAX_WAITS devuelve -1 (saturado de verdad: dejar pendiente).
 export function _busyBackoffMs(n) { return n > BUSY_MAX_WAITS ? -1 : Math.min(300 * Math.pow(2, Math.min(n, 3)), 2400); }
+// #dueño 08-11 (diagnóstico lentitud BT, dos WiFi): un respaldo Fénix EN VUELO a un enlace Bluetooth ATASCADO seguía
+// martillando la cola nativa («Cola de escritura llena») hasta ~5 min (BUSY_MAX_WAITS) tapando la radio y la UI para el
+// usuario, AUNQUE el nativo ya hubiera marcado el enlace muerto (onWriteDropped → _markBleDead → _bleCongested). Las rondas
+// 2951/2952/2954 frenan al ELEGIR/REANUDAR, pero NO a un stream ya corriendo. ¿Un respaldo de FONDO debe rendir el
+// Bluetooth AHORA? Sí si: es Fénix (metaType==='fenix'), va por Bluetooth crudo (no net:/lan:, que no tienen cola MTU-23),
+// y el enlace está marcado atascado/muerto (congested). Entonces se rinde y queda pendiente (Fénix tiene redundancia; el
+// resume lo reintenta luego o por internet). Lo del usuario (texto/foto/archivo) NO se toca: mantiene toda la paciencia de
+// #129. Pura y exportada para la prueba fenixyield.js.
+export function _fenixYieldBle(metaType, deviceIsBle, congested) {
+  return metaType === 'fenix' && !!deviceIsBle && !!congested;
+}
 // #dueño 02-11 (B2, diagnóstico del coche): no MARTILLAR un Bluetooth de MTU MÍNIMO con un archivo GRANDE. Con MTU 23
 // cada escritura lleva ~20 bytes útiles: un archivo de cientos de KB son decenas de miles de escrituras (minutos/horas)
 // que congestionan la cola nativa, gastan batería/radio y suelen morir al moverse (el coche). En vez de arrancar y
@@ -2018,6 +2029,9 @@ ChatStream.prototype._sendWindow = function() {
         })
         .catch(function(err) {
           if (self.aborted) return;
+          // #dueño 08-11: un respaldo Fénix de FONDO sobre un Bluetooth ya marcado atascado se rinde YA (queda pendiente),
+          // sin seguir martillando la cola nativa ni tapar la radio del usuario. Antes de tratar la contrapresión.
+          if (self._bgShouldYieldBle()) { self._giveUpPending(); return; }
           // #129 (dueño 01-11): «Cola de escritura llena» (BLE_BUSY) NO es fallo del enlace: es contrapresión de la cola
           // nativa (MTU 23). Esperar más y reintentar el MISMO trozo, SIN contar como fallo (no cambiar de camino ni abortar).
           if (self._isBusyErr(err)) {
@@ -2074,6 +2088,16 @@ ChatStream.prototype._giveUpPending = function() {
   self.abort();
   self.ackSystem.outgoingStreams.delete(self.msgId);
   if (rej) rej(e);
+};
+// #dueño 08-11: ¿este stream es un respaldo Fénix de FONDO sobre un Bluetooth atascado y debe rendir la radio YA? (ver
+// _fenixYieldBle). Se consulta en el bucle de trozos para que un respaldo en vuelo no siga martillando un enlace que el
+// nativo ya marcó muerto (_bleCongested). El usuario (no-Fénix) nunca entra acá.
+ChatStream.prototype._bgShouldYieldBle = function() {
+  var dev = this.deviceId;
+  var isBle = !_isNetDevice(dev) && !_isLanDevice(dev);
+  var cong = false;
+  try { cong = !!(this.ble && typeof this.ble._bleCongested === 'function' && this.ble._bleCongested(dev)); } catch (e) {}
+  return _fenixYieldBle(this.meta && this.meta.type, isBle, cong);
 };
 // v3.13.0: binario si se puede (no el trozo 0, que lleva los datos del archivo y la miniatura); si no, JSON
 ChatStream.prototype._sendChunk = function(idx) {
@@ -2229,6 +2253,8 @@ ChatStream.prototype._retransmitWindow = function() {
         // Ronda 2766 (revisión): como al enviar la ventana. Antes se reintentaba cada 200 ms por el mismo enlace hasta el
         // tiempo máximo (45 s un texto, hasta 15 min un archivo), también por una conexión que resultó ser de otro
         if (self.aborted) return;
+        // #dueño 08-11: respaldo Fénix de fondo sobre un Bluetooth atascado → rendir YA (igual que en _sendWindow).
+        if (self._bgShouldYieldBle()) { self._giveUpPending(); return; }
         if (self._sendFailed(idx, err)) setTimeout(function() { sendNext(idx); }, self._nativeFails > 10 ? 1000 : 200);
       });
   }
