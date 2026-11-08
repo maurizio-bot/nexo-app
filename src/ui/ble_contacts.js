@@ -45,7 +45,12 @@ export const BLE_CONTACT_METHODS = {
     var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
     if (!c) return;
     var t = ts || Date.now();
-    if ((c.lastMessageAt || 0) > t) return;
+    // #dueño 08-11 (orden de la lista): con un mensaje (entrante o saliente) el contacto YA NO es «nuevo sin ver» → deja de
+    // flotar arriba y se ordena por el más reciente como todos. El «nuevo arriba» queda solo para un contacto recién agregado
+    // (de una tarjeta/grupo) con el que todavía NO cruzaste ningún mensaje. Antes solo se limpiaba al ABRIR el chat, así que un
+    // contacto que te escribía pero cuyo chat no abriste se quedaba clavado arriba aunque su último mensaje fuera viejo.
+    var cleared = !!c.isNewShared; if (cleared) c.isNewShared = false;
+    if ((c.lastMessageAt || 0) > t) { if (cleared) { _saveBLEContacts(contacts); this.renderContactsList(); } return; }
     c.lastMessageAt = t;
     if (preview) c.lastMessage = preview;
     _saveBLEContacts(contacts);

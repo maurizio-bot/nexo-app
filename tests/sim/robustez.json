@@ -41,6 +41,10 @@
      "prueba": "borrar y volver a agregar"
     },
     {
+     "fallo": "Orden de la lista (captura del dueño 08-11): la lista no respetaba el «más reciente». Un contacto agregado de una tarjeta/grupo quedaba marcado isNewShared y FLOTABA arriba de todo hasta que ABRÍAS su chat — aunque su último mensaje fuera viejo (vivo Y03 «14m» por encima de Galaxy «Ahora»). Solo se limpiaba al abrir el chat (ble_interface.js), así que un contacto que te escribía pero cuyo chat no abriste se quedaba clavado arriba. 2955: noteContactMessage limpia isNewShared con el primer mensaje (entrante o saliente) → el contacto se ordena por tiempo como todos; el «nuevo arriba» queda solo para uno recién agregado SIN ningún mensaje",
+     "prueba": "orden de la lista por el MÁS RECIENTE"
+    },
+    {
      "fallo": "«Agregar» decía «No hay contactos» aunque los hubiera; el buscador no buscaba",
      "prueba": "interfaz: \"Agregar\""
     },
