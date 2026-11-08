@@ -1454,6 +1454,16 @@ export class BleAckSystem {
       })(job);
     }
   }
+  // #dueño 07-11 (lentitud BT): ¿aplazar AHORA un respaldo de fondo (Fénix)? Sí si el usuario tiene la radio (app en PRIMER
+  // PLANO) o si el enlace del destino está atascado/muerto (_bleCongested). Así un respaldo no compite con el usuario ni
+  // martilla un enlace malo, ni siquiera al REANUDAR. No aplica a lo del usuario (texto/foto/archivo). En el simulador y si
+  // falta la señal de primer plano, _foreground es undefined → no aplaza (el respaldo corre).
+  _fenixDeferNow(deviceId) {
+    var ble = this.ble;
+    if (!ble) return false;
+    if (ble._foreground === true) return true;
+    return !!(typeof ble._bleCongested === 'function' && ble._bleCongested(deviceId));
+  }
   // Reanuda UNA transferencia: resuelve el mejor camino de AHORA y reconstruye el contenido perezosamente (no todas de
   // golpe). Devuelve la promesa del envío (o null si no hay camino). El registro se borra al entregarse.
   _resumeRunOne(job) {
@@ -1471,6 +1481,11 @@ export class BleAckSystem {
     var net = self.ble && self.ble.net;
     if (_isNetDevice(devId) && !(net && (tx.type === 'file' ? (net.filesOk(cid) || net.mailboxOk(cid)) : net.canReach(cid)))) devId = contactDeviceId;
     if (!devId) return null;
+    // #dueño 07-11 (lentitud BT): NO reanudar un respaldo de fondo (Fénix) si el usuario tiene la radio (app en primer plano)
+    // o si el enlace del destino está atascado/muerto. Se queda PENDIENTE (como «sin camino») y se reintenta cuando convenga; la
+    // redundancia de Fénix cubre el respaldo. Tapa el hueco del diagnóstico: la REANUDACIÓN saltaba el freno que el respaldo ya
+    // respeta al elegir (2951/2952). Solo afecta a Fénix: lo del usuario (texto/foto/archivo) se reanuda siempre.
+    if ((tx.type === 'fenix' || (tx.meta && tx.meta.type === 'fenix')) && self._fenixDeferNow(devId)) return null;
     // Ronda 2766: a quién va (es su chat): si la conexión resulta ser de otro, no sale por ella
     var txMeta = Object.assign({}, tx.meta || {}, (tx.meta && tx.meta.dst) ? {} : { to: cid });
     var resumePromise = isFileTx

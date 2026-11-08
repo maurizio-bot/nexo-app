@@ -123,6 +123,10 @@
      "prueba": "el usuario primero"
     },
     {
+     "fallo": "LENTITUD en Bluetooth, hueco del 2.º diagnóstico (08-11, S24 Ultra, contacto MTU 23 5ab50526519b): la REANUDACIÓN de transferencias (resumeOutgoingTransfers → _resumeRunOne → sendFile) volvía a mandar un respaldo Fénix a un contacto atascado o con la app en primer plano, SALTÁNDOSE el freno que el respaldo ya respeta al elegir (2951/2952). Por eso seguía viéndose «Cola llena» en bucle a un enlace muerto. 2954: _resumeRunOne aplaza un respaldo Fénix (tx.type/meta.type==='fenix') si _fenixDeferNow — usuario en primer plano (_foreground===true) o enlace atascado (_bleCongested) — devolviendo null (queda pendiente, como «sin camino»); se reintenta cuando convenga, la redundancia cubre. Lo del usuario (texto/foto/archivo) se reanuda siempre. Pendientes del mismo diagnóstico: abortar un respaldo EN VUELO al volver a primer plano; un archivo enorme (26 MB) que agota reintentos que quede en espera en vez de reintentar sin fin; dedup de conexiones al mismo NEXO",
+     "prueba": "la REANUDACIÓN no re-manda un respaldo Fénix"
+    },
+    {
      "fallo": "Caídas reales del Bluetooth que no se avisaban a la app (Kotlin)",
      "prueba": null
     },
