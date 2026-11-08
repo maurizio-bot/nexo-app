@@ -40,10 +40,17 @@ abajo pasó la batería completa en verde y tiene su APK.
    destapa la radio: un respaldo de fondo ya no se queda martillando un contacto con el Bluetooth atascado.
    Prueba: con los dos teléfonos en **WiFi distintas** (solo internet), mandá un **audio** y fijate que salga
    rápido (antes tardaba ~1 minuto y parecía clavado). Probá también con contactos cerca mezclados: que el
-   chat no se trabe mientras hay un respaldo Fénix en curso. **Importante, honestidad:** lo de los **archivos
-   grandes por internet** que se cortan y muestran «reintentar» es un problema **aparte** y más de fondo (por
-   internet se parten en miles de pedacitos lentos por Tor) — todavía NO está arreglado; lo encaro después,
-   con cuidado, porque puede necesitar un cambio más grande.
+   chat no se trabe mientras hay un respaldo Fénix en curso.
+
+9. **2957 — archivos grandes por internet AUTÓNOMOS (lo que pediste: «sin picar reintentar»).** Con los dos
+   teléfonos en **WiFi distintas** (solo internet), mandá un **archivo grande** (un APK, un vídeo). Lo que
+   tenés que ver: que se mande **solo**, de principio a fin, **sin que te muestre el botón de reintentar ni
+   te haga tocar nada**. Puede tardar varios minutos (eso es la velocidad, aparte), pero no debería pedirte
+   que lo reinicies. Si el otro contacto se va de internet de verdad, debe quedar en el relojito ⏳ y
+   entregarse cuando vuelva. **Honestidad — queda APARTE la VELOCIDAD:** que un archivo de 34 MB tarde ~11
+   minutos todavía no se arregló; eso necesita un cambio más grande (mandar el archivo entero a un buzón y que
+   el otro lo baje), y lo hacemos en otra ronda. Este build arregla la **autonomía** (que no tengas que picar),
+   que era el punto.
 
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 

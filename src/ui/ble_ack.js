@@ -106,6 +106,19 @@ export function _busyBackoffMs(n) { return n > BUSY_MAX_WAITS ? -1 : Math.min(30
 export function _fenixYieldBle(metaType, deviceIsBle, congested) {
   return metaType === 'fenix' && !!deviceIsBle && !!congested;
 }
+// #dueño 08-11 (diagnóstico de dos WiFi, archivos grandes por INTERNET): un archivo de 34 MB por internet arrancaba en ○,
+// se quedaba en 0%, y SOLO avanzaba ~5% cada vez que el dueño tocaba «reintentar» — no era autónomo pese a los despertadores
+// (2930–2937). Causa: cuando el envío se estancaba un rato (Tor directo parpadea), (a) el timeout global lo marcaba ✗
+// 'failed' → botón de reintentar que el usuario tenía que tocar, y (b) agotar los reintentos de ventana ABORTABA el stream
+// → dependía de un re-disparo externo (contacto que vuelve / app al frente) que no llegaba solo. Regla nueva: un archivo
+// por internet a un contacto ALCANZABLE (canReach) se reenvía SOLO, sin pedir nada al usuario, mientras siga alcanzable y
+// dentro del presupuesto de tiempo (2 h). No aborta ni marca ✗: queda ⏳ y el bucle de ventanas sigue reintentando y
+// renovando el despertador hasta que fluye. Solo si el contacto se vuelve INALCANZABLE cae al store-and-forward de siempre
+// (pending, se entrega al reconectar), y al pasar el tope se suelta (persistido, reanudable). Pura y exportada: prueba netfileauto.js.
+const NET_FILE_AUTORETRY_BUDGET_MS = 7200000; // 2 h reintentando solo mientras el contacto siga alcanzable; luego store-and-forward
+export function _netFileAutoRetry(type, isNet, reachable, elapsedMs, budgetMs) {
+  return type === 'file' && !!isNet && !!reachable && (elapsedMs || 0) < (budgetMs || 0);
+}
 // #dueño 02-11 (B2, diagnóstico del coche): no MARTILLAR un Bluetooth de MTU MÍNIMO con un archivo GRANDE. Con MTU 23
 // cada escritura lleva ~20 bytes útiles: un archivo de cientos de KB son decenas de miles de escrituras (minutos/horas)
 // que congestionan la cola nativa, gastan batería/radio y suelen morir al moverse (el coche). En vez de arrancar y
@@ -1909,6 +1922,10 @@ ChatStream.prototype.start = function() {
           if (Date.now() - self.startTime < 7200000) { armGlobal(300000); return; }
           self.abort(); reject(new Error('Contacto ausente: queda en espera')); return;
         }
+        // #dueño 08-11: un archivo por INTERNET a un contacto ALCANZABLE no se marca ✗ ni pide «reintentar»: queda ⏳ y se
+        // re-arma el tope; el bucle de ventanas sigue reintentando SOLO y renovando el despertador hasta que fluye. (ver
+        // _netFileAutoRetry) Antes el timeout global lo marcaba 'failed' → botón de reintentar que el dueño tenía que tocar.
+        if (self._netFileAutoRetryNow()) { if (!self.aborted) try { self.ackSystem._dispatchStatus(self.msgId, 'pending'); } catch (e) {} armGlobal(300000); return; }
         console.error('[ChatStream] GLOBAL TIMEOUT msgId=' + self.msgId);
         self.abort();
         reject(new Error('Timeout global ' + (self.type === 'file' ? '3min+' : '45s+')));
@@ -2099,6 +2116,15 @@ ChatStream.prototype._bgShouldYieldBle = function() {
   try { cong = !!(this.ble && typeof this.ble._bleCongested === 'function' && this.ble._bleCongested(dev)); } catch (e) {}
   return _fenixYieldBle(this.meta && this.meta.type, isBle, cong);
 };
+// #dueño 08-11: ¿este archivo por INTERNET debe seguir reintentando SOLO (sin pedir «reintentar» al usuario)? Sí mientras el
+// contacto siga alcanzable (_linkUp = canReach) y no se pase el presupuesto. Consultado en los dos puntos donde antes
+// abortaba / marcaba ✗ (ver _netFileAutoRetry).
+ChatStream.prototype._netFileAutoRetryNow = function() {
+  try {
+    return _netFileAutoRetry(this.type, _isNetDevice(this.deviceId), this._linkUp(),
+      Date.now() - (this.startTime || Date.now()), NET_FILE_AUTORETRY_BUDGET_MS);
+  } catch (e) { return false; }
+};
 // v3.13.0: binario si se puede (no el trozo 0, que lleva los datos del archivo y la miniatura); si no, JSON
 ChatStream.prototype._sendChunk = function(idx) {
   var d = this.chunks[idx];
@@ -2214,6 +2240,11 @@ ChatStream.prototype._onWindowTimeout = function() {
     }
     self.windowRetryCount++;
     if (self.windowRetryCount > self.maxWindowRetries) {
+      // #dueño 08-11: un archivo por INTERNET a un contacto ALCANZABLE NO aborta ni pide reintentar: resetea el contador,
+      // queda ⏳ y reintenta la ventana SOLO (el despertador ya se renovó arriba). Solo aborta si el contacto no es
+      // alcanzable (rama de arriba) o al pasar el tope de 2 h. (ver _netFileAutoRetry) Mantiene VIVO el mismo stream para no
+      // depender de un re-disparo externo (contacto que vuelve / app al frente) que antes no llegaba solo.
+      if (self._netFileAutoRetryNow()) { self.windowRetryCount = 0; try { self.ackSystem._dispatchStatus(self.msgId, 'pending'); } catch (e) {} self._retransmitWindow(); return; }
       console.warn('[ChatStream] Max window retries alcanzado para', self.msgId);
       self.abort();
       if (self._windowReject) {

@@ -135,6 +135,10 @@
      "prueba": "se rinde al toque en el bucle de trozos"
     },
     {
+     "fallo": "ARCHIVOS GRANDES por INTERNET no autónomos — «tenía que picar reintentar» (diag. del dueño 08-11, dos WiFi distintas). Un archivo de 34 MB arrancaba en ○, se quedaba en 0% y SOLO avanzaba ~5% cada vez que el dueño tocaba «reintentar», pese a los despertadores (2930–2937). Causa: al estancarse (Tor directo parpadea) (a) el timeout global lo marcaba ✗ 'failed' → botón de reintentar que el usuario tocaba, y (b) agotar los reintentos de ventana ABORTABA el stream → dependía de un re-disparo externo (contacto que vuelve / app al frente) que no llegaba solo. 2957: _netFileAutoRetry (pura) + _netFileAutoRetryNow — un archivo por internet a un contacto ALCANZABLE (canReach) se reenvía SOLO (⏳, sin pedir nada) mientras siga alcanzable y dentro del tope de 2 h; en los dos puntos de aborto (timeout global y max window retries) NO aborta ni marca ✗: resetea, queda ⏳ y sigue el bucle de ventanas renovando el despertador. Inalcanzable → store-and-forward (pending, se entrega al reconectar); pasado el tope → se suelta persistido. Pendiente aparte: la VELOCIDAD (un APK de 34 MB tardó ~11 min: trozo a trozo con ACK por ventana por Tor) — posible cambio mayor (mandar el blob entero)",
+     "prueba": "se reenvía SOLO"
+    },
+    {
      "fallo": "Caídas reales del Bluetooth que no se avisaban a la app (Kotlin)",
      "prueba": null
     },
