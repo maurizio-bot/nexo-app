@@ -190,6 +190,16 @@ export function _netNx(deviceId) {
 
 // NEXO ID de un enlace que no es Bluetooth (Wi-Fi o internet)
 export function _vNx(deviceId) { return _lanNx(deviceId) || _netNx(deviceId); }
+// #dueño 08-11 (scan rápido): fuerza de señal (rssi) → nº de barritas (como el wifi), para ver de un vistazo quién está más
+// cerca SIN re-ordenar la lista. 4 = muy cerca, 1 = lejos; 0 si no hay dato. El nativo ya descarta por debajo de -95
+// (MIN_RSSI), así que el rango real es ~-95…-40. Pura y exportada: prueba rssibars.js.
+export function _rssiToBars(rssi) {
+  if (typeof rssi !== 'number' || !isFinite(rssi)) return 0;
+  if (rssi >= -60) return 4;   // muy cerca
+  if (rssi >= -72) return 3;   // cerca
+  if (rssi >= -84) return 2;   // medio
+  return 1;                    // lejos
+}
 
 export function _lanNx(deviceId) {
   var d = (deviceId || '').toString().toLowerCase();

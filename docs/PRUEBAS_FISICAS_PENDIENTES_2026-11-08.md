@@ -52,6 +52,15 @@ abajo pasó la batería completa en verde y tiene su APK.
    el otro lo baje), y lo hacemos en otra ronda. Este build arregla la **autonomía** (que no tengas que picar),
    que era el punto.
 
+10. **2958 — scan rápido, paso 1 (lo que pediste: «el scan tiene que ser rápido»).** Con alguien cerca,
+    abrí «Agregar» y fijate dos cosas: (1) que la **búsqueda arranque al toque** (antes, si el teléfono acababa
+    de buscar, abrir «Agregar» no hacía nada por unos segundos — eso ya no pasa); (2) que los contactos cercanos
+    **vayan apareciendo** en la lista, de arriba hacia abajo (el más cerca arriba), cada uno con sus **barritas
+    de señal** (como el wifi: más barras = más cerca), y que la lista **no salte de lugar**. **Pendiente del
+    mismo plan (próximos builds):** reservarte el cupo para que nunca diga «Buscando en un momento…», y juntar
+    las conexiones repetidas al mismo contacto (el identificador rotativo). Este build es el primer paso del
+    orden del Bluetooth: **descubrir → conectar → enviar**.
+
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 
 Estos NO los subí todavía: o son de la parte nativa (Kotlin), que no se puede probar en el simulador, o

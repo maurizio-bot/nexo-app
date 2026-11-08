@@ -5,7 +5,26 @@
  */
 import { avatarOf, paintAvatar } from './avatar.js';
 import { t } from './i18n.js'; // #132 idioma
-import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isBLEContact, _isPinned, _normId, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
+import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isBLEContact, _isPinned, _normId, _rssiToBars, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
+
+// #dueño 08-11 (scan rápido): barritas de señal (como el wifi) para una fila de contacto encontrado — de un vistazo se ve
+// quién está más cerca, SIN mover la lista de lugar (el orden sigue siendo por aparición). Devuelve null si no hay señal.
+function _signalBarsEl(rssi) {
+  try {
+    var n = _rssiToBars(rssi);
+    if (!n) return null;
+    var wrap = document.createElement('span');
+    wrap.setAttribute('aria-label', 'Señal ' + n + ' de 4');
+    wrap.title = 'Señal ' + n + '/4';
+    wrap.style.cssText = 'display:inline-flex;align-items:flex-end;gap:2px;height:16px;margin-right:12px;flex-shrink:0;';
+    for (var i = 1; i <= 4; i++) {
+      var b = document.createElement('span');
+      b.style.cssText = 'width:3px;height:' + (4 + i * 3) + 'px;border-radius:1px;background:' + (i <= n ? '#00e0a0' : 'rgba(255,255,255,0.18)') + ';';
+      wrap.appendChild(b);
+    }
+    return wrap;
+  } catch (e) { return null; }
+}
 
 
 export const BLE_UI_METHODS = {
@@ -347,11 +366,27 @@ export const BLE_UI_METHODS = {
       this.renderNewDeviceBar();
       this.renderRequests(); // ronda 2779: solicitudes de alta por ID pendientes
       var self = this;
-      setTimeout(function() {
-        if (!self.isDummyMode && self.nativePlugin && !self.isScanning) self._autoScanForKnownContacts();
-      }, 300);
+      // #dueño 08-11 (scan rápido, paso 1): al ABRIR «Agregar» arranca un escaneo con PRIORIDAD DEL USUARIO (inmediato),
+      // NO el auto-escaneo de fondo que lleva un throttle de 8 s (si acababa de escanear, abrir «Agregar» no hacía NADA
+      // hasta 8 s después → «abro y no veo nada»). El camino del usuario no pasa por ese throttle: arranca al toque.
+      setTimeout(function() { self._startUserScan(); }, 150);
     }
     this.updateScanButton();
+  },
+
+  // #dueño 08-11 (scan rápido): arranca YA un escaneo con prioridad del usuario. Si ya hay uno en curso (p. ej. uno de
+  // fondo), lo ADOPTA como del usuario (no deja que el temporizador automático lo corte a los 6 s) en vez de arrancar otro.
+  // El límite de Android (5/30 s) y el diferido si la ventana está llena siguen intactos (es el mismo camino del usuario).
+  _startUserScan() {
+    var self = this;
+    if (self.isDummyMode || !self.nativePlugin) return Promise.resolve();
+    if (self.isScanning) {
+      self._autoScanActive = false; // deja de ser un auto-escaneo cortable: ahora lo mira el usuario
+      self._userScanWanted = Date.now() + 20000;
+      try { self.updateScanButton(); } catch (e) {}
+      return Promise.resolve();
+    }
+    return self._doToggleScan();
   },
 
   _executeToggleScan() {
@@ -740,6 +775,9 @@ export const BLE_UI_METHODS = {
         self._addNewDevice(deviceId);
       });
       row.appendChild(nameSpan);
+      // #dueño 08-11 (scan rápido): barritas de señal — se ve quién está más cerca sin re-ordenar la lista.
+      var barsEl = _signalBarsEl(device.rssi);
+      if (barsEl) row.appendChild(barsEl);
       row.appendChild(addBtn);
       bar.appendChild(row);
     });

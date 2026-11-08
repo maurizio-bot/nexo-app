@@ -139,6 +139,10 @@
      "prueba": "se reenvía SOLO"
     },
     {
+     "fallo": "SCAN LENTO al abrir «Agregar» — «el user no puede esperar >2 s y no ver nada» (#dueño 08-11, orden del Bluetooth paso 1). Abrir «Agregar» disparaba el AUTO-escaneo de FONDO, que lleva un throttle de 8 s (si acababa de escanear, abrir no hacía NADA hasta 8 s después) → pantalla vacía. 2958 (scan rápido, paso 1, solo JS): al abrir «Agregar» arranca un escaneo con PRIORIDAD DEL USUARIO (_startUserScan en ble_ui.js togglePanel, sin el throttle de 8 s; el reveal ya era instantáneo —onDeviceFound→renderNewDeviceBar en orden de aparición, cerca/rápido arriba—). + BARRITAS DE SEÑAL por contacto encontrado (_rssiToBars en ble_helpers.js, como el wifi): se ve de un vistazo quién está más cerca SIN re-ordenar la lista (el orden es por aparición, estable). Las pruebas de scan (thrash/scanfenix/vopr-concierto) siguen verdes (no toca la ventana de Android 5/30 s). Pendiente del mismo plan: reservar el cupo al usuario para que NUNCA diga «Buscando en un momento…» (con cuidado por el límite 5/30 s), y juntar las conexiones repetidas al mismo NEXO (dedup, ID rotativo)",
+     "prueba": "barritas de señal"
+    },
+    {
      "fallo": "Caídas reales del Bluetooth que no se avisaban a la app (Kotlin)",
      "prueba": null
     },
