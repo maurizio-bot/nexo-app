@@ -978,6 +978,10 @@
      "prueba": "de oídas"
     },
     {
+     "fallo": "Control sin autenticar (M5/M6, análisis 07-11): un mensaje de control «ni» («esta conexión es de <from>, no de <dn>») podía RE-APUNTAR la conexión a cualquier <from>, aunque fuera un desconocido — un impostor forjaba un «ni» para re-etiquetar o re-enrutar la conexión (molestia; el contenido ya lo protege el E2E, pero estorbaba el enrutado / permitía inferir presencia). 2953: _wrongPeer solo honra el re-apuntado si <from> es un CONTACTO conocido (_isKnownSender); un «ni» legítimo entre los que ya hablan viene de un contacto, así que no se rompe el caso real «envío al teléfono equivocado». Pendientes del mismo hallazgo: F6 (no sonar por una oferta de llamada sin autenticar, es nativo BgInbox.kt — prueba física)",
+     "prueba": "control sin autenticar"
+    },
+    {
      "fallo": "N1 Wi-Fi: el saludo del hub reservaba hasta 48 MB sin autenticar (sin memoria → app cerrada)",
      "prueba": null,
      "fuera": "Kotlin LanHubAttackTest.saludoGigante…"

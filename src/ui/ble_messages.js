@@ -572,8 +572,12 @@ export const BLE_MESSAGE_METHODS = {
     var nd = _normMac(deviceId), wrong = _normId(dn || ''), real = _normId(from || '');
     if (!nd || /^(lan|net)/i.test(String(deviceId))) return;
     console.warn('[SEND] ' + (real || 'El otro') + ' dice que lo enviado por ' + deviceId + ' (para ' + wrong + ') no es para él');
-    if (/^nx[0-9a-z]{8}$/.test(real)) { if (_normId(this._macToNexoId.get(nd) || '') !== real) this._remapDevice(deviceId, real, 'no era él'); }
-    else if (_normId(this._macToNexoId.get(nd) || '') === wrong) { this._macToNexoId.delete(nd); if (_normMac(this._nexoIdToMac.get(wrong) || '') === nd) this._nexoIdToMac.delete(wrong); }
+    // M5/M6 (#dueño 07-11, control sin autenticar): un 'ni' puede re-apuntar esta conexión a 'real'. Solo lo honro si 'real' es
+    // un CONTACTO conocido — así un DESCONOCIDO no puede forjar un 'ni' para re-etiquetar/re-enrutar la conexión (es molestia:
+    // el contenido ya lo protege el cifrado E2E, pero sin esto podía estorbar el enrutado o inferir presencia). Un 'ni' legítimo
+    // (corregir un mensaje mal dirigido entre los que ya hablan) siempre viene de un contacto, así que no rompe el caso real.
+    if (/^nx[0-9a-z]{8}$/.test(real) && this._isKnownSender(real)) { if (_normId(this._macToNexoId.get(nd) || '') !== real) this._remapDevice(deviceId, real, 'no era él'); }
+    else if (!/^nx[0-9a-z]{8}$/.test(real) && _normId(this._macToNexoId.get(nd) || '') === wrong) { this._macToNexoId.delete(nd); if (_normMac(this._nexoIdToMac.get(wrong) || '') === nd) this._nexoIdToMac.delete(wrong); }
   },
 
   _sendMessageNative(deviceId, content, messageId, seq, dst) {
