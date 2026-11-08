@@ -163,6 +163,10 @@
      "prueba": "doble toque = una sola nota"
     },
     {
+     "fallo": "FONDO COMPARTIDO no llegaba por internet — «compartí fondo de vivo a tablet y no apareció» (#dueño 08-11). NO era dimensiones (el pintado de wallpaper.js usa background-size:cover, que se adapta a cualquier pantalla). Era el TAMAÑO al viajar: el fondo por chat se comparte como acción oculta cifrada E2E (_sendTextTo) y podía pesar hasta ~520 KB (SHARE_LEN), pero por internet un evento de relé no puede pasar de ~60 KB (MAX_CONTENT en net_link.js, medido sobre el contenido YA cifrado) o se DESCARTA en silencio → el fondo nunca llegaba por internet (a una tablet en otra red). Por Bluetooth cerca sí (se parte en trozos). 2964 (solo JS): se achica el fondo COMPARTIDO (SHARE_EDGE 1080→720, SHARE_LEN 520KB→40KB) para que, ya cifrado (AES-GCM + base64 ~×4/3 ≈ 53 KB), entre bajo el tope de internet y llegue por cualquier camino; makeWallpaper ahora GARANTIZA el tope (si ni bajando la calidad entra, achica el lado y reintenta). El fondo local (lista/global) sigue en alta; solo la copia que viaja se achica (oscurecida al 50 %, no se nota). _encFitsNet (pura) estima el tamaño cifrado. Aparte, pedido más grande del dueño: auditar que toda la UX se adapte a tablet (pantalla por pantalla)",
+     "prueba": "fondo compartido entra por internet"
+    },
+    {
      "fallo": "Caídas reales del Bluetooth que no se avisaban a la app (Kotlin)",
      "prueba": null
     },

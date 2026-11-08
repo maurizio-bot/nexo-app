@@ -20,9 +20,22 @@ function CHATP_FILE(nx) { return 'nexo_wp_c_' + nx + '.json'; }   // fondo por c
 var IMG_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/;
 var NX_RE = /^nx[0-9a-z]{8}$/;
 var MAX_LEN = 1400000;    // ~1 MB de imagen como mucho (las nuestras: 100–400 KB)
-var MAX_EDGE = 1280;      // lado mayor al que se reduce la foto elegida (fondos globales)
-var SHARE_EDGE = 1080, SHARE_LEN = 520000; // el fondo por chat se comparte: más chico para que viaje bien
+var MAX_EDGE = 1280;      // lado mayor al que se reduce la foto elegida (fondos globales, SOLO locales: no se comparten)
+// #dueño 08-11 (fondo compartido no aparecía en la tablet): el fondo POR chat se COMPARTE (acción oculta cifrada E2E). Por
+// internet, un evento de relé no puede pasar de ~60 KB (MAX_CONTENT en net_link.js) o se DESCARTA → el fondo de 520 KB nunca
+// llegaba por internet (p.ej. a una tablet en otra red: «no apareció»; NO era un tema de dimensiones, el pintado usa
+// background-size:cover y se adapta solo). Ahora se achica para que, ya CIFRADO (AES-GCM + base64 ~×1,33), entre bajo ese
+// tope y llegue por CUALQUIER camino (Bluetooth, Wi-Fi o internet). Es un fondo oscurecido al 50 %: la menor resolución no se nota.
+var NET_MAX = 60000;                       // tope de un evento de relé (igual que MAX_CONTENT en net_link.js)
+var SHARE_EDGE = 720, SHARE_LEN = 40000;   // ~40 KB de data URL → cifrado ~53 KB, entra bajo NET_MAX con margen
 var DIM = 0.5;            // oscurecido del fondo (0 = foto tal cual, 1 = negro) para que se lea el texto encima
+
+// ¿Un contenido de `plainLen` chars entra por internet una vez CIFRADO? El relé mira el tamaño YA cifrado (iv + AES-GCM, luego
+// base64 ≈ ×4/3, +~28 B de iv/tag). Pura y exportada: prueba wpnet.js. Con esto el fondo compartido (SHARE_LEN) cae bajo NET_MAX.
+export function _encFitsNet(plainLen, netMax) {
+  return Math.ceil(((plainLen || 0) + 28) * 4 / 3) <= (netMax || NET_MAX);
+}
+export function wpShareLimits() { return { edge: SHARE_EDGE, len: SHARE_LEN, netMax: NET_MAX }; } // para la prueba
 
 var _list = '';           // data URL o '' (sin fondo)
 var _chat = '';           // fondo global de chats
@@ -194,12 +207,21 @@ export function makeWallpaper(file, maxEdge, maxLen) {
       var im = new Image();
       im.onerror = function() { reject(new Error(t('misc_avatar_not_image', 'no es una imagen'))); };
       im.onload = function() {
-        var w = im.width || 1, h = im.height || 1, s = Math.min(1, maxEdge / Math.max(w, h));
-        var cw = Math.max(1, Math.round(w * s)), ch = Math.max(1, Math.round(h * s));
-        var cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
-        cv.getContext('2d').drawImage(im, 0, 0, cw, ch);
-        var q = 0.72, out = cv.toDataURL('image/jpeg', q);
-        while (out.length > maxLen && q > 0.4) { q -= 0.12; out = cv.toDataURL('image/jpeg', q); }
+        var w = im.width || 1, h = im.height || 1;
+        var edge = maxEdge, out = '';
+        // #dueño 08-11: GARANTIZAR que el resultado quepa en maxLen. Primero se baja la calidad; si ni con la calidad mínima
+        // entra (foto muy cargada), se ACHICA el lado y se reintenta. Antes solo bajaba la calidad y un fondo compartido podía
+        // quedar por encima del tope de internet (y se descartaba al viajar). El lado no baja de ~360 px (un fondo oscurecido).
+        for (var attempt = 0; attempt < 6; attempt++) {
+          var s = Math.min(1, edge / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * s)), ch = Math.max(1, Math.round(h * s));
+          var cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+          cv.getContext('2d').drawImage(im, 0, 0, cw, ch);
+          var q = 0.72; out = cv.toDataURL('image/jpeg', q);
+          while (out.length > maxLen && q > 0.4) { q -= 0.12; out = cv.toDataURL('image/jpeg', q); }
+          if (out.length <= maxLen || edge <= 360) break;
+          edge = Math.round(edge * 0.8);
+        }
         resolve(out);
       };
       im.src = r.result;
