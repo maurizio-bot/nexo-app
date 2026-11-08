@@ -2,7 +2,8 @@
  * NEXO — Elegir foto de la galería o un archivo (sacado de main.js en la ronda 2752, sin cambios en su código): selector
  * del sistema, lectura, compresión de fotos, miniatura de PDF y límites de tamaño. _sendAttachment lo da main.js.
  */
-import { _closeAttachMenu, _showPermissionError } from './ui_bits.js';
+import { _closeAttachMenu, _showInfoToast, _showPermissionError } from './ui_bits.js';
+import { _capAttachments, GALLERY_MAX } from './attach_cap.js';
 import { _compressImageBase64, _extOf, _isPdf, _mimeOf, _pdfThumb, _readFileBase64 } from './file_tools.js';
 import { _getCurrentContactId } from './chat_format.js';
 import { _hideCameraPreviewOverlay, _photoTarget, _stopCameraPreview } from './camera.js';
@@ -24,17 +25,27 @@ export function pickersUse(d) { _sendAttachment = d._sendAttachment; _sendBigFil
 // lo elegido después no hacía nada y sin aviso. Ahora vive hasta que se elige algo (o se abre otro).
 export var _pendingPicker = null;
 
-export function _pickFile(accept, label, onFile) {
+// Build 2961 (#dueño 08-11): `multiple` para elegir varias fotos de una. Con multiple, onFile recibe un ARRAY de files;
+// sin multiple sigue igual (un solo file), así _handleFile y el resto no cambian.
+export function _pickFile(accept, label, onFile, multiple) {
   if (_pendingPicker && _pendingPicker.parentNode) _pendingPicker.remove();
   var input = document.createElement('input');
   input.type = 'file';
   input.accept = accept;
+  if (multiple) input.multiple = true;
   input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;pointer-events:none;width:1px;height:1px;';
   input.onchange = function(e) {
-    var file = e.target.files && e.target.files[0];
+    var files = e.target.files;
     if (_pendingPicker === input) _pendingPicker = null;
     input.remove();
-    if (!file) { console.log('[ATTACH] ' + label + ': nada elegido'); return; }
+    if (!files || !files.length) { console.log('[ATTACH] ' + label + ': nada elegido'); return; }
+    if (multiple) {
+      var arr = Array.prototype.slice.call(files);
+      console.log('[ATTACH] ' + label + ' elegidos: ' + arr.length);
+      onFile(arr);
+      return;
+    }
+    var file = files[0];
     console.log('[ATTACH] ' + label + ' elegido: ' + _extOf(file.name) + ' ' + Math.round(file.size / 1024) + ' KB ' + (file.type || 'sin tipo'));
     onFile(file);
   };
@@ -55,27 +66,45 @@ export async function _handleGallery() {
   _hideCameraPreviewOverlay();
   _stopCameraPreview();
   await new Promise(function(r) { setTimeout(r, 150); });
-  _pickFile('image/*,video/*', 'Galería', function(file) {
-    var isVideo = file.type.indexOf('video') === 0;
-    // v9.9.30: el vídeo no se lee entero: se recodifica una previa y el original va como HD si cabe
-    if (isVideo) {
-      _sendVideo(file, { name: file.name, size: file.size, mime: file.type });
-      return;
+  // Build 2961 (#dueño 08-11): elegir VARIAS fotos (hasta GALLERY_MAX) y mandarlas todas, cada una como su mensaje.
+  _pickFile('image/*,video/*', 'Galería', function(files) {
+    var picked = _capAttachments(files, GALLERY_MAX);
+    if (picked.dropped > 0) {
+      console.log('[ATTACH] Galería: ' + (picked.send.length + picked.dropped) + ' elegidas, mando ' + picked.send.length + ' (tope ' + GALLERY_MAX + ')');
+      try { _showInfoToast(t('misc_gallery_cap', 'Hasta ' + GALLERY_MAX + ' a la vez: mando las primeras ' + GALLERY_MAX + '.'), 4500); } catch (e) {}
     }
-    _readFileBase64(file).then(function(base64) {
-      var pt = _photoTarget(_getCurrentContactId());
-      return _compressImageBase64(base64, pt.max, pt.q).then(function(res) {
-        _sendAttachment('image', res.base64, {
-          name: file.name,
-          size: res.base64.length,
-          type: 'image/jpeg',
-          format: res.format || 'jpeg',
-          width: res.width,
-          height: res.height
-        });
+    _sendGalleryItems(picked.send, 0);
+  }, true);
+}
+
+// Build 2961: mandar las fotos elegidas DE A UNA por dentro — leer → comprimir → mandar la actual, y recién ENTONCES la
+// siguiente. Es a propósito: así nunca hay 10 fotos enteras en memoria a la vez (evita el tipo de crash de archivos
+// enormes, #2941) ni se tapa la radio de golpe; la base ya pacea el envío. Cada foto va como su propio mensaje (como
+// WhatsApp). Los vídeos de la tanda se mandan con _sendVideo (con un respiro entre ellos porque recodificar es pesado).
+function _sendGalleryItems(files, i) {
+  if (!files || i >= files.length) return;
+  var file = files[i];
+  var next = function() { _sendGalleryItems(files, i + 1); };
+  var isVideo = (file.type || '').indexOf('video') === 0;
+  if (isVideo) {
+    // v9.9.30: el vídeo no se lee entero: se recodifica una previa y el original va como HD si cabe
+    try { _sendVideo(file, { name: file.name, size: file.size, mime: file.type }); } catch (e) { console.warn('[ATTACH] vídeo galería: ' + (e && e.message)); }
+    setTimeout(next, 500);
+    return;
+  }
+  _readFileBase64(file).then(function(base64) {
+    var pt = _photoTarget(_getCurrentContactId());
+    return _compressImageBase64(base64, pt.max, pt.q).then(function(res) {
+      _sendAttachment('image', res.base64, {
+        name: file.name,
+        size: res.base64.length,
+        type: 'image/jpeg',
+        format: res.format || 'jpeg',
+        width: res.width,
+        height: res.height
       });
-    }).catch(_readFailed);
-  });
+    });
+  }).catch(_readFailed).then(next, next); // seguir con la siguiente pase lo que pase con esta
 }
 
 export function _handleFile() {

@@ -151,6 +151,10 @@
      "prueba": "dedup de enlaces repetidos"
     },
     {
+     "fallo": "SOLO se podía mandar UNA foto a la vez desde la galería (#dueño 08-11, tras probar la 2960: «quiero mandar más, al menos hasta 10»). El selector de galería (_pickFile en pickers.js) abría el <input type=file> sin el atributo multiple y tomaba solo files[0], así que elegías una sola. 2961 (solo JS): _pickFile gana `multiple`; _handleGallery usa _capAttachments(files, GALLERY_MAX=10) → manda hasta 10, cada una como su propio mensaje (como WhatsApp); con más de 10 manda las primeras 10 y avisa (_showInfoToast). Clave: se procesan DE A UNA por dentro (_sendGalleryItems: leer→comprimir→mandar la actual, recién ahí la siguiente) para no juntar 10 fotos enteras en memoria (evita el tipo de crash de archivos enormes, #2941) ni tapar la radio de golpe; la base ya pacea el envío. Vídeos de la tanda con _sendVideo (con un respiro entre ellos). La cámara sigue de a una. Decisión pura _capAttachments en attach_cap.js (sin dependencias, node-testeable)",
+     "prueba": "varias fotos de una"
+    },
+    {
      "fallo": "Caídas reales del Bluetooth que no se avisaban a la app (Kotlin)",
      "prueba": null
     },
