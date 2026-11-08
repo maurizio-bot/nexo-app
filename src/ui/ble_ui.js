@@ -629,7 +629,10 @@ export const BLE_UI_METHODS = {
       var bPinned = pinned.indexOf(_normId(b.nexoId || b.deviceUUID)) >= 0 ? 1 : 0;
       if (aPinned !== bPinned) return bPinned - aPinned;
       // v6.1.11: recién agregados desde una tarjeta compartida, arriba hasta abrir su chat
-      var aNew = a.isNewShared ? 1 : 0, bNew = b.isNewShared ? 1 : 0;
+      // #dueño 08-11 (hueco del 2955): solo flota «nuevo» si NO tiene NINGÚN mensaje. Un contacto que ya cruzó un mensaje
+      // (lastMessageAt>0) nunca flota, aunque le haya quedado la marca isNewShared vieja de una build anterior (donde solo
+      // se limpiaba al ABRIR el chat) — por eso vivo Y03 (06:44) salía clavado arriba de Galaxy («Ahora») en la 2965.
+      var aNew = (a.isNewShared && !a.lastMessageAt) ? 1 : 0, bNew = (b.isNewShared && !b.lastMessageAt) ? 1 : 0;
       if (aNew !== bNew) return bNew - aNew;
       // v6.1.8: por último mensaje; sin mensajes, por fecha de alta (estable)
       var d = (b.lastMessageAt || 0) - (a.lastMessageAt || 0);
@@ -647,7 +650,7 @@ export const BLE_UI_METHODS = {
       var timeStr = _formatTime(contact.lastMessageAt);
       var unread = contact.unreadCount || 0;
       var row = document.createElement('div');
-      row.className = 'ble-contact-row' + (contact.isNewShared ? ' ble-contact-new' : '');
+      row.className = 'ble-contact-row' + ((contact.isNewShared && !contact.lastMessageAt) ? ' ble-contact-new' : '');
       row.addEventListener('click', function(e) {
         if (e.target.closest('.ble-contact-menu') || e.target.closest('.ble-btn-menu')) return;
         self.openChat(uuid);

@@ -105,7 +105,16 @@ export const BLE_CONTACT_METHODS = {
 
   _backfillLastMessageAt() {
     var self = this;
-    var contacts = _getBLEContacts().filter(function(c) { return !c.lastMessageAt && (c.nexoId || c.deviceUUID); });
+    var all = _getBLEContacts();
+    // #dueño 08-11 (hueco del 2955): un contacto que YA tiene mensajes pero quedó marcado isNewShared de una build vieja
+    // (donde el flag solo se limpiaba al ABRIR el chat, y este chat nunca se abrió) seguía FLOTANDO arriba con su mensaje
+    // viejo (vivo Y03 06:44 por encima de Galaxy «Ahora»). Al arrancar, cualquier contacto con lastMessageAt deja de ser
+    // «nuevo sin ver» → se limpia el flag persistido (el orden y el resalte quedan bien). El «nuevo arriba» queda solo
+    // para uno SIN ningún mensaje. (El sort además ya lo ignora en vivo, pero acá lo dejamos limpio en disco.)
+    var staleCleared = 0;
+    all.forEach(function(c) { if (c.isNewShared && c.lastMessageAt) { c.isNewShared = false; staleCleared++; } });
+    if (staleCleared) { _saveBLEContacts(all); self.renderContactsList(); }
+    var contacts = all.filter(function(c) { return !c.lastMessageAt && (c.nexoId || c.deviceUUID); });
     if (!contacts.length) return;
     Promise.all(contacts.map(function(c) {
       var nx = _normId(c.nexoId || c.deviceUUID);

@@ -66,9 +66,28 @@ const findC = (p, id) => (p.win.vaultLoadContacts() || []).find((c) => (c.nexoId
   r.reciente_antes_que_viejo = iReciente >= 0 && iViejo >= 0 && iReciente < iViejo; // lo clave del bug del dueño
   r.nuevo_sin_mensaje_arriba = iNuevo >= 0 && iNuevo < iReciente && iNuevo < iViejo;
 
+  // (3) #dueño 08-11 (EL caso de la captura, vivo Y03): un contacto PERSISTIDO con un mensaje viejo (lastMessageAt) PERO con
+  //     la marca isNewShared vieja (de una build donde solo se limpiaba al ABRIR el chat, y ese chat nunca se abrió) NO debe
+  //     flotar. Simulamos ese estado guardándolo DIRECTO (vaultSaveContacts, sin noteContactMessage que limpiaría el flag).
+  A.bi.addSharedContacts([{ nexoId: 'NXCLAVAD05', name: 'Clavado' }], 'NXSHARER01', {});
+  await sleep(100);
+  const cs = A.win.vaultLoadContacts();
+  const clav = cs.find((c) => (c.nexoId || c.deviceUUID || '').toLowerCase() === 'nxclavad05');
+  clav.isNewShared = true; clav.lastMessageAt = now - 7200000; clav.lastMessage = 'mensaje viejo'; // 2 h atrás, flag viejo intacto
+  A.win.vaultSaveContacts(cs);
+  A.bi.renderContactsList();
+  await sleep(200);
+  const names2 = rowNames(A);
+  const iClav = names2.indexOf('Clavado'), iRec2 = names2.indexOf('Reciente');
+  r.clavado_no_flota = iClav >= 0 && iRec2 >= 0 && iClav > iRec2; // con mensaje de 2 h va DEBAJO de «Reciente» (ahora), no clavado arriba
+  // (4) Al arrancar, el backfill limpia el flag viejo persistido de los que ya tienen mensaje.
+  A.bi._backfillLastMessageAt();
+  await sleep(300);
+  r.clavado_flag_limpiado = !((findC(A, 'nxclavad05') || {}).isNewShared);
+
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.nuevo_sigue_nuevo && r.viejo_ya_no_es_nuevo && r.reciente_ya_no_es_nuevo &&
-    r.reciente_antes_que_viejo && r.nuevo_sin_mensaje_arriba && !r.errores.length;
+    r.reciente_antes_que_viejo && r.nuevo_sin_mensaje_arriba && r.clavado_no_flota && r.clavado_flag_limpiado && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('CONTACTORDER ' + JSON.stringify(r));
   if (!ok) console.log(logs.slice(-30).join('\n'));
