@@ -111,10 +111,21 @@ const barVisible = (p) => { const b = $(p, 'voice-bar'); return !!b && b.style.d
   click(A.win, $(A, 'voice-cancel')); await sleep(800);
   r.barra_oculta_warm = !barVisible(A);
 
+  // 5) #dueño 08-11 (nota de voz DOBLE: salía dos veces, la 1.ª real y una 2.ª rota que no se reproduce). _startVoiceRecording
+  //    es async y recién marca _isRecording DESPUÉS de await getUserMedia; dos disparos del botón en ese hueco (el click + el
+  //    temporizador de pulsación larga, o un doble toque) arrancaban DOS grabadores → dos notas. Con la guarda de reentrada,
+  //    un doble toque casi junto arranca UNA sola grabación.
+  A.win.__nexoPrewarmMic(); await sleep(120);
+  const grabAntes = logs.filter((l) => /Grabando voz/.test(l)).length;
+  micTap(A); micTap(A);                                   // dos disparos casi juntos (antes: dos «Grabando voz» = dos notas)
+  await sleep(600);
+  r.doble_toque_una_sola_nota = (logs.filter((l) => /Grabando voz/.test(l)).length - grabAntes) === 1;
+  click(A.win, $(A, 'voice-cancel')); await sleep(800);
+
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.contactos && r.barra_al_grabar && r.grabar_para_el_audio && r.pausa && r.reanuda && r.barra_oculta_tras_enviar &&
     r.voz_llega_s !== null && r.barra_al_grabar_2 && r.barra_oculta_tras_borrar && r.notas_en_B === 1 && r.llamada_para_el_audio &&
-    r.prewarm_hook && r.prewarm_pide_mic && r.prewarm_idempotente && r.barra_al_grabar_warm && r.grabar_reusa_warm && r.barra_oculta_warm && !r.errores.length;
+    r.prewarm_hook && r.prewarm_pide_mic && r.prewarm_idempotente && r.barra_al_grabar_warm && r.grabar_reusa_warm && r.barra_oculta_warm && r.doble_toque_una_sola_nota && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('VOICENOTE ' + JSON.stringify(r));
   if (!ok) fs.writeFileSync(path.join(__dirname, 'last_logs_voicenote.txt'), logs.join('\n'));

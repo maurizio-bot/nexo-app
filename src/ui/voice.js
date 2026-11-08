@@ -18,6 +18,11 @@ export var _audioChunks = [];
 
 export var _isRecording = false;
 
+// #dueño 08-11 (nota de voz DOBLE): _startVoiceRecording es async y recién marca _isRecording DESPUÉS de await getUserMedia;
+// dos disparos del botón durante ese hueco (p.ej. el click y el temporizador de pulsación larga, o un doble toque) arrancaban
+// DOS grabadores → dos notas (una real, una rota que no se reproduce). Esta bandera marca «arranque en vuelo» para no arrancar otra.
+export var _voiceStarting = false;
+
 export var _voiceStartTime = 0;
 
 export var _voiceTimerInterval = null;
@@ -116,6 +121,10 @@ export async function _handleVoiceToggle() {
 }
 
 async function _startVoiceRecording() {
+  // #dueño 08-11 (nota de voz doble): guarda de reentrada. Si ya se está grabando o YA hay un arranque en vuelo (otro
+  // disparo del botón que todavía está en el await de getUserMedia), no arrancar un segundo grabador → una sola nota.
+  if (_isRecording || _voiceStarting) return;
+  _voiceStarting = true;
   // Ronda 2781: parar cualquier nota de voz que esté sonando antes de grabar (no se mezclan ni se graba el altavoz)
   try { if (typeof window !== 'undefined' && window.__nexoStopVoice) window.__nexoStopVoice(); } catch (e) {}
   try {
@@ -169,9 +178,11 @@ async function _startVoiceRecording() {
     };
     try { _mediaRecorder.start(100); } catch (tsErr) { _mediaRecorder.start(); }
     _isRecording = true;
+    _voiceStarting = false; // arranque terminado: a partir de acá manda _isRecording (el 2.º toque ya para/envía)
     _updateMicIcon(true);
     console.log('[ATTACH] Grabando voz...');
   } catch (err) {
+    _voiceStarting = false; // falló el arranque: liberar la guarda para poder reintentar
     console.log('[ATTACH:VOICE] Error:', err.name, err.message);
     if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') _showPermissionError(t('call_voice_perm_mic', 'micrófono'));
     else if (err.name === 'NotFoundError') _showPermissionError(t('call_voice_mic_not_found', 'No se encontró el micrófono del teléfono'));

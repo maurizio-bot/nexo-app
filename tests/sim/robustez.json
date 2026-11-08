@@ -159,6 +159,10 @@
      "prueba": "cola suelta un BT atascado (JVM + teléfono del dueño)"
     },
     {
+     "fallo": "NOTA DE VOZ DOBLE — salía dos veces, la 2.ª rota que no se reproduce (#dueño 08-11, diagnóstico del 2960). El log muestra «Grabando voz» ×2 (al mismo ms) y «Audio enviado» ×2. Causa: _startVoiceRecording (voice.js) es async y recién marca _isRecording=true DESPUÉS de await getUserMedia; dos disparos del botón en ese hueco (el click + el temporizador de pulsación larga de app_setup.js, o un doble toque) entraban los dos con _isRecording=false y arrancaban DOS MediaRecorder → dos notas (una válida, una rota/duplicada). El parar (_finishVoiceRecording) ya era idempotente (if (!_isRecording) return), así que el hueco era solo al arrancar. 2963 (solo JS): guarda de reentrada _voiceStarting al tope de _startVoiceRecording — si ya se graba o ya hay un arranque en vuelo, no arranca otro; se libera al marcar _isRecording (éxito) o en el catch (fallo). Prueba voicenote.js ampliada (doble_toque_una_sola_nota: dos toques casi juntos ⇒ una sola «Grabando voz»)",
+     "prueba": "doble toque = una sola nota"
+    },
+    {
      "fallo": "Caídas reales del Bluetooth que no se avisaban a la app (Kotlin)",
      "prueba": null
     },
