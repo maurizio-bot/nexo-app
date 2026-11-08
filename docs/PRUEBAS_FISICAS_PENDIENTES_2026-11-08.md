@@ -4,10 +4,12 @@ Lo que sigue hay que probarlo en los DOS teléfonos reales: el simulador comprue
 Bluetooth, las llamadas, el pase de cuenta y lo nativo solo se ven de verdad en el teléfono. Cada build de
 abajo pasó la batería completa en verde y tiene su APK.
 
-**Estado (08-11): ya confirmaste varias — gracias.** Tus diagnósticos del 08-11 y tu «todo bien» de la 2960
-confirman: **dedup de Bluetooth / conexión (2960)** y **archivo grande AUTÓNOMO por internet entre dos WiFi
-distintas (2957)**, más el envío de fotos. Eso ya subió el índice de robustez **54,8 → 61,1** (el componente
-«teléfonos», que es el que mueven tus pruebas, pasó de **15,9 a 22,2 / 35**; ver `docs/ROBUSTEZ.md`). Abajo
+**Estado (08-11): ya confirmaste varias — gracias.** Tus diagnósticos y capturas del 08-11, más tu «todo bien»
+de la 2960, confirman: **dedup de Bluetooth / conexión (2960)**, **archivo grande AUTÓNOMO por internet entre
+dos WiFi distintas (2957)**, **envío de fotos**, y **JUMP funcionando** (tu captura «S24 — POR JUMP», primera
+vez que lo probás; aclaraste que no era un error, era el Jump andando). Eso ya subió el índice de robustez
+**54,8 → 61,8** (el componente «teléfonos», que es el que mueven tus pruebas, pasó de **15,9 a 22,8 / 35**;
+«caminos» llegó a su nivel pleno porque internet y Jump eran los que faltaban; ver `docs/ROBUSTEZ.md`). Abajo
 marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2964**).
 
 ## A. Builds nuevos a probar

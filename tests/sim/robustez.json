@@ -423,9 +423,9 @@
    "nombre": "Wi-Fi, internet, Jump y cambio de camino",
    "peso": 10,
    "telefono": {
-    "estado": "reciente",
-    "por": "2960: por PRIMERA vez el dueño confirmó internet en teléfonos — un archivo grande llegó de una red Wi-Fi a OTRA distinta por internet, y de forma AUTÓNOMA (diagnósticos del 08-11, dos Wi-Fi distintas). El Wi-Fi ya funcionaba (2728–2761). Pendiente de confirmar el fondo compartido por internet (2964), armado encima y aún sin re-probar",
-    "nota": "dueño: Wi-Fi OK desde hace tiempo; internet (relés/Tor) confirmado por primera vez en 2960 con un archivo grande entre dos redes distintas; el 2964 (fondo por internet) queda pendiente de su prueba"
+    "estado": "ok",
+    "por": "08-11: el dueño confirmó físicamente los DOS caminos que nunca se habían probado en teléfonos — INTERNET (un archivo grande llegó SOLO, autónomo, de una Wi-Fi a OTRA distinta; diagnósticos 08-11) y JUMP (captura «S24 Ultra — POR JUMP»: el puente por teléfonos intermedios funciona, primera vez que lo prueba). El Wi-Fi ya funcionaba (2728–2761). No hay un cambio de CAMINO sin probar encima (el 2964 solo achica el payload del fondo, no toca el transporte)",
+    "nota": "dueño: Wi-Fi, internet (archivo grande entre dos redes distintas) y Jump, los tres confirmados físicamente el 08-11 (internet y Jump por primera vez). Quedan afinamientos (velocidad por Tor, Wi-Fi Direct) como puntos débiles, no el camino en sí"
    },
    "revision": {
     "n": 1,
@@ -501,8 +501,8 @@
    ],
    "debiles": [
     {
-     "g": "media",
-     "d": "Internet (relés y Tor) nunca comprobado en teléfonos"
+     "g": "leve",
+     "d": "Internet confirmado por el dueño con un archivo grande entre dos Wi-Fi distintas (08-11); faltan los casos finos (relés con flapeo, Tor en redes hostiles) y la velocidad por Tor en archivos enormes"
     },
     {
      "g": "media",
