@@ -56,10 +56,17 @@ abajo pasó la batería completa en verde y tiene su APK.
     abrí «Agregar» y fijate dos cosas: (1) que la **búsqueda arranque al toque** (antes, si el teléfono acababa
     de buscar, abrir «Agregar» no hacía nada por unos segundos — eso ya no pasa); (2) que los contactos cercanos
     **vayan apareciendo** en la lista, de arriba hacia abajo (el más cerca arriba), cada uno con sus **barritas
-    de señal** (como el wifi: más barras = más cerca), y que la lista **no salte de lugar**. **Pendiente del
-    mismo plan (próximos builds):** reservarte el cupo para que nunca diga «Buscando en un momento…», y juntar
-    las conexiones repetidas al mismo contacto (el identificador rotativo). Este build es el primer paso del
-    orden del Bluetooth: **descubrir → conectar → enviar**.
+    de señal** (como el wifi: más barras = más cerca), y que la lista **no salte de lugar**. (El **cupo reservado**
+    para que nunca diga «Buscando en un momento…» ya está en el 2959, acá abajo.) **Pendiente del mismo plan
+    (fase «conectar»):** juntar las conexiones repetidas al mismo contacto (el identificador rotativo). Este build
+    es el primer paso del orden del Bluetooth: **descubrir → conectar → enviar**.
+
+11. **2959 — scan rápido, paso 2: cupo reservado (lo que pediste: «cuidado con no sobrepasarte del límite de
+    escaneos para que Android no nos tache»).** Difícil de forzar a mano. Alcanza con confirmar que abrir
+    «Agregar» **varias veces seguidas** (y con el teléfono reconectando con contactos cerca) la búsqueda
+    **arranque siempre al toque**, sin que aparezca el aviso «Buscando en un momento…». Android corta si te
+    pasás de ~5 búsquedas en 30 s; antes, el escaneo de fondo (reconexión) podía llenar ese cupo y dejar sin
+    hueco a tu búsqueda. Ahora el fondo **se guarda un hueco siempre** para vos, sin pasarse del límite.
 
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 

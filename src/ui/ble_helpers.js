@@ -193,6 +193,13 @@ export function _vNx(deviceId) { return _lanNx(deviceId) || _netNx(deviceId); }
 // #dueño 08-11 (scan rápido): fuerza de señal (rssi) → nº de barritas (como el wifi), para ver de un vistazo quién está más
 // cerca SIN re-ordenar la lista. 4 = muy cerca, 1 = lejos; 0 si no hay dato. El nativo ya descarta por debajo de -95
 // (MIN_RSSI), así que el rango real es ~-95…-40. Pura y exportada: prueba rssibars.js.
+// Build 2959: cupo reservado del escaneo. El fondo (reconexión) se detiene en bgMax; el usuario puede hasta userMax.
+// Con bgMax < userMax siempre queda al menos un hueco de la ventana de Android (5/30 s) para el escaneo del usuario,
+// así «Agregar» nunca se difiere por culpa del bucle de fondo. true = esa fuente ya llenó su cupo y debe esperar.
+export function _scanWindowFullAt(count, max) {
+  return (count || 0) >= (max || 0);
+}
+
 export function _rssiToBars(rssi) {
   if (typeof rssi !== 'number' || !isFinite(rssi)) return 0;
   if (rssi >= -60) return 4;   // muy cerca

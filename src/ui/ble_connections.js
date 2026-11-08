@@ -3,7 +3,7 @@
  * supervisor de enlaces, pings, reconexión, búsqueda de contactos perdidos, teléfonos encontrados al escanear y
  * esperar a que un enlace esté listo.
  */
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages } from './ble_helpers.js';
 
 
 export const BLE_CONNECTION_METHODS = {
@@ -348,7 +348,9 @@ export const BLE_CONNECTION_METHODS = {
     // reconexión). Si está bloqueado, se salta; el bucle de reconexión/presencia vuelve a intentar.
     if (self._scanUnsupported) return;
     if (Date.now() < (self._scanBlockedUntil || 0)) return;
-    if (self._scanWindowFull && self._scanWindowFull()) return;
+    // Build 2959: cupo reservado — el FONDO se detiene en _bgScanWindowMax (uno por debajo del tope del usuario), para
+    // dejar siempre un hueco de la ventana de Android libre al escaneo del usuario. El usuario sigue usando _scanWindowFull.
+    if (self._scanWindowFullBg && self._scanWindowFullBg()) return;
     // Ronda 2814 (#87): throttle. Al menos _autoScanMinMs entre auto-escaneos, para NO pasar el límite de Android
     // (~5/30 s, deja de dar resultados) cuando un enlace flojo se corta y reconecta en bucle. El escaneo del usuario
     // (toggleScan en ble_ui.js) no pasa por aquí, así que buscar a mano sigue inmediato. La reconexión directa por
@@ -391,11 +393,21 @@ export const BLE_CONNECTION_METHODS = {
   },
 
   // Build 2838: compuerta global de arranques de escaneo. ¿Está llena la ventana de Android (5/30 s)? Poda y mira.
+  // Este es el tope del USUARIO (_scanWindowMax); el fondo usa _scanWindowFullBg (uno por debajo, cupo reservado).
   _scanWindowFull() {
     var now = Date.now();
     var win = this._scanWindowMs || 30000;
     this._scanStartTimes = (this._scanStartTimes || []).filter(function(t) { return now - t < win; });
-    return this._scanStartTimes.length >= (this._scanWindowMax || 4);
+    return _scanWindowFullAt(this._scanStartTimes.length, this._scanWindowMax || 4);
+  },
+
+  // Build 2959: compuerta del FONDO. Usa _bgScanWindowMax (< _scanWindowMax), así el bucle de reconexión deja siempre
+  // al menos un arranque libre en la ventana para el escaneo del usuario. Cuenta la MISMA ventana deslizante.
+  _scanWindowFullBg() {
+    var now = Date.now();
+    var win = this._scanWindowMs || 30000;
+    this._scanStartTimes = (this._scanStartTimes || []).filter(function(t) { return now - t < win; });
+    return _scanWindowFullAt(this._scanStartTimes.length, this._bgScanWindowMax || 3);
   },
 
   _noteScanStart() {

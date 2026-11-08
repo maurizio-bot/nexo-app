@@ -143,6 +143,10 @@
      "prueba": "barritas de señal"
     },
     {
+     "fallo": "SCAN del usuario DIFERIDO al abrir «Agregar» cuando el fondo había llenado la ventana de Android — «cuidado con no sobrepasarse del límite de escaneos repetidos para que Android no nos tache» (#dueño 08-11, orden del Bluetooth paso 2). Android deja de dar resultados con >5 startScan/30 s (y a veces NI avisa); la defensa cuenta TODOS los arranques (usuario + reconexión de fondo) en una ventana deslizante y difiere el que pasaría del tope (_scanWindowMax=4). Hueco: si el bucle de reconexión de FONDO llenaba la ventana (4 en 30 s), al abrir «Agregar» el escaneo del USUARIO se difería → toast «Buscando en un momento…» en vez de arrancar al toque. 2959 (cupo reservado, solo JS): el FONDO se detiene un hueco antes (_bgScanWindowMax=3 en ble_interface.js; _scanWindowFullBg en ble_connections.js usa ese tope en la compuerta del auto-escaneo), así SIEMPRE queda ≥1 arranque libre en la ventana para el usuario, que sigue usando la ventana completa (_scanWindowFull con _scanWindowMax). NO se sube el límite de Android (sigue ≤4, por debajo de 5): el fondo cede, no se agrega cupo. Función pura _scanWindowFullAt(count,max) compartida por ambos topes. vopr (compuerta/concierto) sigue verde: usuario_diferido_con_ventana_llena y ventana_llena_tras_4 intactos. Pendiente del mismo plan (fase «conectar»): juntar las conexiones repetidas al mismo NEXO (dedup del ID rotativo)",
+     "prueba": "cupo reservado"
+    },
+    {
      "fallo": "Caídas reales del Bluetooth que no se avisaban a la app (Kotlin)",
      "prueba": null
     },

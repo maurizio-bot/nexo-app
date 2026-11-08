@@ -145,6 +145,10 @@ export class BLEInterface {
     this._scanStartTimes = [];
     this._scanWindowMs = 30000;
     this._scanWindowMax = 4;
+    // Build 2959: CUPO RESERVADO. El bucle de FONDO (reconexión/presencia) se detiene un hueco antes del límite del
+    // usuario, para que SIEMPRE quede al menos un arranque libre en la ventana de Android. Así, al abrir «Agregar», el
+    // escaneo del usuario nunca se difiere («Buscando en un momento…») por culpa del fondo. El usuario usa _scanWindowMax.
+    this._bgScanWindowMax = 3;
     this._scanBlockedUntil = 0;   // tras un onScanFailed de throttle, no reintentar hasta aquí
     this._scanFailBackoff = 0;    // backoff exponencial acotado para errores recuperables (3/5)
     this._scanDeferTimer = null;
