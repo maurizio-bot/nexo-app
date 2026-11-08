@@ -27,6 +27,15 @@ abajo pasó la batería completa en verde y tiene su APK.
 5. **2953 — control sin autenticar.** Difícil de forzar a mano; alcanza con confirmar que agregar y hablar
    con un contacto sigue normal, sin que «se conecte al teléfono equivocado».
 
+6. **2954 — lentitud en Bluetooth, al reanudar (tu 2.º diagnóstico).** Dejá un respaldo Fénix en cola, cerrá
+   la app o pasala a segundo plano y volvé a abrirla. Al volver, el respaldo ya NO debe re-mandarse a un
+   contacto con el Bluetooth atascado y trabar el chat; lo tuyo (texto, foto, archivo) sí se reanuda al toque.
+
+7. **2955 — orden de la lista de contactos (tu captura).** Un contacto agregado de una tarjeta o un grupo ya
+   no se queda clavado arriba: en cuanto te escribe (o le escribís) baja a su lugar por el más reciente. El
+   recién agregado SIN ningún mensaje todavía sí flota arriba (para que no se pierda). Mirá que «Galaxy» con
+   «Ahora» quede por encima de «vivo Y03» con 14 minutos, como esperabas.
+
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 
 Estos NO los subí todavía: o son de la parte nativa (Kotlin), que no se puede probar en el simulador, o
