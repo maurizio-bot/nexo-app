@@ -32,7 +32,18 @@ export class Notifier {
     this.unreadIds = new Map();                // chat → msgId sin leer (al abrirlo se confirma su lectura)
     var self = this;
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() { if (_visible()) self.onVisible(); });
-    if (typeof window !== 'undefined') window.addEventListener('nexo:unread', function(e) { self._onUnread((e && e.detail) || {}); });
+    if (typeof window !== 'undefined') {
+      window.addEventListener('nexo:unread', function(e) { self._onUnread((e && e.detail) || {}); });
+      // #dueño 08-11: avisar al NATIVO qué chat está ABIERTO, para que el aviso de respaldo (el que da el nativo cuando el
+      // teléfono congela la app en 2.º plano) NUNCA avise de la persona que tenés en pantalla. El nativo no lo sabía por su
+      // cuenta (el chat abierto vivía solo en el JS) → podía asomar un aviso del chat abierto en un parpadeo a segundo plano.
+      window.addEventListener('nexo:ble:openChat', function(e) {
+        var d = (e && e.detail) || {};
+        var cid = _nid(d.contactId || (d.contact && (d.contact.nexoId || d.contact.deviceUUID || d.contact.id)) || '');
+        _call('setActiveChat', { chatId: cid });
+      });
+      window.addEventListener('nexo:ble:closeChat', function() { _call('setActiveChat', { chatId: '' }); });
+    }
   }
 
   // Mensaje recibido. m: { cid, name, msgId, preview }
@@ -45,9 +56,17 @@ export class Notifier {
       this.seen.set(key, Date.now());
       if (this.seen.size > MAX_SEEN) this.seen.delete(this.seen.keys().next().value);
     }
+    // #dueño 08-11: el chat que tenés ABIERTO nunca avisa ni suma no-leídos, AUNQUE la app esté un instante en segundo plano
+    // (un parpadeo del sistema). Al volver ya ves el mensaje, así que una notificación de la persona que estás leyendo no
+    // tiene sentido y molesta. Antes el corte solo valía con la app A LA VISTA (open && _visible): abierto + app oculta
+    // sumaba no-leído y mandaba notificación de ese chat. Ahora: con el chat abierto SIEMPRE se corta. La confirmación de
+    // leído sale al toque si la app está a la vista; en segundo plano se guarda y se manda al volver (onVisible → _onUnread).
     var open = _nid(this.currentChat()) === cid;
-    if (open && _visible()) {
-      if (m.msgId && this.sendRead) this.sendRead(cid, m.msgId);
+    if (open) {
+      if (m.msgId) {
+        if (_visible() && this.sendRead) this.sendRead(cid, m.msgId);
+        else if (this.sendRead) { var oids = this.unreadIds.get(cid) || []; oids.push(m.msgId); if (oids.length > 50) oids.shift(); this.unreadIds.set(cid, oids); }
+      }
       return;
     }
     if (m.msgId) {

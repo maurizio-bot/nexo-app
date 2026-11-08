@@ -717,6 +717,9 @@ class NexoBlePlugin : Plugin() {
         val ctx = appCtx ?: return
         val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
         if (info.msgId.isEmpty() || info.quiet) return
+        // #dueño 08-11: si tenés ABIERTO el chat de este remitente (o grupo), NO avisar: lo estás leyendo. Solo acá (aviso de
+        // respaldo de 2.º plano); con la app CERRADA (closedReceive) sí se avisa, porque ahí no hay un chat abierto a la vista.
+        if (activeChatNx.isNotEmpty() && (info.from.lowercase() == activeChatNx || info.group.lowercase() == activeChatNx)) return
         if (info.kind != BgInbox.Kind.MESSAGE && info.kind != BgInbox.Kind.NOTIFY_ONLY) return
         // Llamada: suena ya (si la app está viva también la avisa: es el mismo aviso, no sale dos veces)
         if (info.call || info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false, info.msgId); return }
@@ -2878,6 +2881,17 @@ class NexoBlePlugin : Plugin() {
         val ok = getPermissionState("postNotifications") == com.getcapacitor.PermissionState.GRANTED
         remLog("INFO", "PERMISSIONS", "Notificaciones: " + if (ok) "permitidas" else "denegadas")
         call.resolve(JSObject().put("granted", ok))
+    }
+
+    // #dueño 08-11: qué chat tiene abierto la app AHORA (NEXO ID en minúsculas, o "" si ninguno). Lo pone el JS al abrir/cerrar
+    // un chat (notify.js). El aviso de respaldo en segundo plano (backgroundNotify) NO avisa de este chat: no debe llegar una
+    // notificación de la persona que tenés en pantalla, aunque la app pase un instante a segundo plano.
+    @Volatile private var activeChatNx: String = ""
+
+    @PluginMethod
+    fun setActiveChat(call: PluginCall) {
+        activeChatNx = (call.getString("chatId") ?: "").lowercase().trim()
+        call.resolve()
     }
 
     @PluginMethod

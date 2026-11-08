@@ -56,7 +56,7 @@ const SCENARIOS = [
   { name: 'orden de la lista por el MÁS RECIENTE (#dueño 08-11, captura): un contacto agregado de una tarjeta/grupo quedaba «nuevo» y flotaba ARRIBA hasta abrir su chat, aunque su último mensaje fuera viejo (vivo Y03 14m encima de Galaxy Ahora). 2955: con un mensaje (entrante/saliente) se limpia isNewShared en noteContactMessage y el contacto se ordena por tiempo como todos; el «nuevo arriba» queda solo para uno recién agregado SIN ningún mensaje', args: ['contactorder.js'], tag: 'CONTACTORDER', logs: 'last_logs_contactorder.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'no leídos y notificaciones', args: ['unread.js', '--io-delay=25'], tag: 'UNREAD', checks: {
     contador_corto_largo_foto: (v) => v === 3, notificaciones_con_app_a_la_vista: (v) => v === 0, al_abrir_chat: (v) => v === 0, A_ve_leido: isTrue,
-    segundo_plano_cuenta: (v) => v === 2, notificacion: (v) => !!v && v.numero === 2, A_no_ve_leido_en_segundo_plano: isTrue,
+    segundo_plano_cuenta: (v) => v === 0, notificacion: (v) => v === null, A_no_ve_leido_en_segundo_plano: isTrue,
     al_volver_cuenta: (v) => v === 0, al_volver_notificacion_quitada: isTrue, al_volver_A_ve_leido: isTrue,
     tocar_abre_chat: isTrue, tocar_cuenta: (v) => v === 0, tocar_notificacion_quitada: isTrue, repetido_cuenta_una_vez: isTrue,
     nativa_antes_de_abrir: isTrue, nativa_quitada_al_abrir: isTrue, permiso_notificaciones_pedido: isTrue, errores: isEmpty } },

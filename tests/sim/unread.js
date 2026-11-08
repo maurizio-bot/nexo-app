@@ -3,9 +3,10 @@
 //  1. B en la lista de chats (app a la vista): texto corto, texto largo y foto de A suman 3 en la burbuja de A; sin
 //     notificaciones del teléfono (la app está a la vista).
 //  2. B abre el chat de A: burbuja a 0 y A ve "leído".
-//  3. B con el chat de A abierto pero la app en segundo plano: lo que llega cuenta como no leído, sale una
-//     notificación (con el número) y A NO ve "leído" hasta que B vuelve a la app.
-//  4. B vuelve: burbuja a 0, notificación quitada, A ve "leído".
+//  3. #dueño 08-11: B con el chat de A ABIERTO pero la app un instante en segundo plano: lo que llega NO cuenta como
+//     no leído y NO sale notificación (es el chat que estás leyendo, avisar molesta); A tampoco ve "leído" todavía:
+//     la confirmación se guarda y se manda al volver a la app.
+//  4. B vuelve: sigue en 0, no hay notificación que quitar, y A ve "leído" (se mandan las confirmaciones guardadas).
 //  5. B en segundo plano con la lista: llega una foto ("📷 Foto" en la notificación); B toca la notificación: se abre
 //     el chat de A, burbuja a 0, notificación quitada.
 //  6. El mismo mensaje dos veces (reenvío) no cuenta dos veces.
@@ -98,11 +99,12 @@ const status = (p, text) => { const el = Array.from(p.win.document.querySelector
   r.al_abrir_chat = unreadB();
   r.A_ve_leido = await waitFor(() => status(A, 'corto 1') === 'read', 20000) !== null;
 
-  // 3. B en segundo plano con el chat abierto
+  // 3. #dueño 08-11: B en segundo plano CON el chat de A abierto → el chat abierto NUNCA cuenta ni avisa, aunque la
+  //    app esté un instante en 2.º plano. La confirmación de leído se guarda y se manda al volver (caso 4).
   setVisible(B, false); await sleep(300);
   await sendText(A, 'en segundo plano 1'); await sleep(1500);
   await sendText(A, 'en segundo plano 2');
-  await waitFor(() => unreadB() >= 2, 30000); await sleep(2500);
+  await sleep(4000); // tiempo de sobra para que lleguen y se procesen; con el chat abierto NO deben contar ni avisar
   r.segundo_plano_cuenta = unreadB();
   const n3 = notifB();
   r.notificacion = n3 ? { nombre: n3.name, numero: n3.base + n3.ids.size, texto: n3.text } : null;
