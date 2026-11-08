@@ -8,6 +8,7 @@
  },
  "telefono": {
   "ok": 35,
+  "reciente": 28,
   "antes": 15,
   "falla": 0,
   "nunca": 0
@@ -23,9 +24,9 @@
    "nombre": "Escaneo y agregar contactos",
    "peso": 8,
    "telefono": {
-    "estado": "antes",
-    "por": "2764: con la tablet no salía nadie en «Agregar» (arreglado en la 2765, sin probar en teléfonos)",
-    "nota": "dueño: agrega contactos y usa la app de punta a punta en las bases probadas 2823/2858; sin informe de fallo abierto del escaneo en sí (el scan-lento a escala 2812-2814 se trabajó)"
+    "estado": "reciente",
+    "por": "2960: el dueño probó una build reciente de la fase «conectar» y agregó contactos nuevos (apareció el «S24 Ultra» en sus diagnósticos del 08-11) → el descubrimiento/alta funciona en los teléfonos. Pendiente de confirmar la UX de scan instantáneo (2958 scan rápido / 2959 cupo reservado), armada encima y aún sin probar expresamente",
+    "nota": "dueño: agrega contactos y usa la app de punta a punta en las bases probadas 2823/2858 y en la fase conectar 2960; sin informe de fallo abierto del escaneo en sí (el scan-lento a escala 2812-2814 se trabajó)"
    },
    "revision": {
     "n": 1,
@@ -81,9 +82,9 @@
    "nombre": "Conexión Bluetooth y enlace",
    "peso": 10,
    "telefono": {
-    "estado": "antes",
-    "por": "Diagnóstico de la 2760: el enlace se rehacía cada ~30 s (arreglado en la 2766, sin probar)",
-    "nota": "dueño: todo (mensajes, llamadas, archivos) viaja por el enlace Bluetooth/Wi-Fi en sus pruebas; funcionó, cambió desde entonces sin re-probarse"
+    "estado": "reciente",
+    "por": "2960: el dueño probó la fase «conectar» y dijo «todo bien»; sus diagnósticos del 08-11 confirman el dedup de enlaces repetidos funcionando y Bluetooth + archivos grandes OK. Pendiente de confirmar el 2962 (nativo #129: soltar la cola de un BT atascado), armado encima a partir de ese mismo diagnóstico y aún sin re-probar en teléfono",
+    "nota": "dueño: todo (mensajes, llamadas, archivos) viaja por el enlace Bluetooth/Wi-Fi; probado y OK en 2960, con un cambio nativo (2962) pendiente de re-confirmar"
    },
    "revision": {
     "n": 1,
@@ -212,8 +213,9 @@
    "nombre": "Mensajes (cortos, largos, pendientes, orden)",
    "peso": 15,
    "telefono": {
-    "estado": "antes",
-    "por": "Los textos funcionan a diario; lo arreglado en la 2766–2767 no está probado"
+    "estado": "reciente",
+    "por": "2960: el dueño probó y dijo «todo bien»; usa los textos a diario y funcionan. Pendiente de confirmar el 2963 (nota de voz doble), armado a partir de su diagnóstico del 2960 y aún sin re-probar en teléfono",
+    "nota": "dueño: textos y mensajería a diario, OK en 2960; un arreglo de nota de voz (2963) pendiente de re-confirmar"
    },
    "revision": {
     "n": 1,
@@ -309,9 +311,9 @@
    "nombre": "Fotos, vídeos y archivos",
    "peso": 10,
    "telefono": {
-    "estado": "antes",
-    "por": "2755: los archivos no llegaban; 2764: llegaban al teléfono equivocado (arreglos sin probar)",
-    "nota": "dueño: envía/recibe fotos y vídeos en las bases probadas; quedan abiertos casos por internet (#82/#99), no el envío en sí"
+    "estado": "reciente",
+    "por": "2960: el dueño probó y dijo «parece que Bluetooth y archivos grandes ok 2960»; sus diagnósticos del 08-11 confirman un archivo grande que viaja SOLO por internet (autonomía 2957) y el envío de fotos. Pendiente de confirmar el 2961 (mandar varias fotos de una), armado encima y aún sin re-probar en teléfono",
+    "nota": "dueño: envía/recibe fotos y vídeos; archivos grandes OK en 2960 (incluso autónomo por internet); multi-foto (2961) pendiente de re-confirmar. Quedan casos por internet abiertos (#99), no el envío en sí"
    },
    "revision": {
     "n": 1,
@@ -421,8 +423,9 @@
    "nombre": "Wi-Fi, internet, Jump y cambio de camino",
    "peso": 10,
    "telefono": {
-    "estado": "antes",
-    "por": "El Wi-Fi funcionó en las pruebas (2728–2761, con arreglos); lo de la 2766–2767 no está probado; internet nunca se probó"
+    "estado": "reciente",
+    "por": "2960: por PRIMERA vez el dueño confirmó internet en teléfonos — un archivo grande llegó de una red Wi-Fi a OTRA distinta por internet, y de forma AUTÓNOMA (diagnósticos del 08-11, dos Wi-Fi distintas). El Wi-Fi ya funcionaba (2728–2761). Pendiente de confirmar el fondo compartido por internet (2964), armado encima y aún sin re-probar",
+    "nota": "dueño: Wi-Fi OK desde hace tiempo; internet (relés/Tor) confirmado por primera vez en 2960 con un archivo grande entre dos redes distintas; el 2964 (fondo por internet) queda pendiente de su prueba"
    },
    "revision": {
     "n": 1,

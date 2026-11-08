@@ -4,6 +4,12 @@ Lo que sigue hay que probarlo en los DOS teléfonos reales: el simulador comprue
 Bluetooth, las llamadas, el pase de cuenta y lo nativo solo se ven de verdad en el teléfono. Cada build de
 abajo pasó la batería completa en verde y tiene su APK.
 
+**Estado (08-11): ya confirmaste varias — gracias.** Tus diagnósticos del 08-11 y tu «todo bien» de la 2960
+confirman: **dedup de Bluetooth / conexión (2960)** y **archivo grande AUTÓNOMO por internet entre dos WiFi
+distintas (2957)**, más el envío de fotos. Eso ya subió el índice de robustez **54,8 → 61,1** (el componente
+«teléfonos», que es el que mueven tus pruebas, pasó de **15,9 a 22,2 / 35**; ver `docs/ROBUSTEZ.md`). Abajo
+marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2964**).
+
 ## A. Builds nuevos a probar
 
 1. **2948 — pasar la cuenta (rollback del cifrado).** Pasá la cuenta a otro teléfono. Confirmá: los chats
@@ -50,7 +56,8 @@ abajo pasó la batería completa en verde y tiene su APK.
    entregarse cuando vuelva. **Honestidad — queda APARTE la VELOCIDAD:** que un archivo de 34 MB tarde ~11
    minutos todavía no se arregló; eso necesita un cambio más grande (mandar el archivo entero a un buzón y que
    el otro lo baje), y lo hacemos en otra ronda. Este build arregla la **autonomía** (que no tengas que picar),
-   que era el punto.
+   que era el punto. **✅ CONFIRMADO (08-11):** tu diagnóstico muestra el archivo grande viajando solo por
+   internet entre dos WiFi distintas, sin que piques reintentar.
 
 10. **2958 — scan rápido, paso 1 (lo que pediste: «el scan tiene que ser rápido»).** Con alguien cerca,
     abrí «Agregar» y fijate dos cosas: (1) que la **búsqueda arranque al toque** (antes, si el teléfono acababa
@@ -74,7 +81,28 @@ abajo pasó la batería completa en verde y tiene su APK.
     **mejor** y **cierra los de sobra** (nunca el que esté mandando/recibiendo algo, ni el del chat que tenés
     abierto). **Prueba:** con alguien **cerca** (Bluetooth, sin WiFi), mandale **varias fotos y mensajes seguidos**
     y fijate que la **foto de cerca salga más rápida** que antes y que el chat **no se trabe**. Con esto cerramos
-    «descubrir → conectar»; queda la fase **enviar**.
+    «descubrir → conectar»; queda la fase **enviar**. **✅ CONFIRMADO (08-11):** probaste la 2960 («todo bien») y
+    tu diagnóstico muestra el dedup cerrando los enlaces repetidos; queda tu prueba fina de la «foto lenta de cerca».
+
+13. **2961 — mandar varias fotos de una (lo que pediste: «al menos hasta 10 a la vez»).** En un chat, abrí la
+    galería y elegí **varias fotos** (hasta 10). Confirmá que llegan **todas**, cada una como su propio mensaje
+    (como WhatsApp), y que si elegís más de 10 te avisa y manda las primeras 10. Mirá que el chat **no se trabe**
+    al mandarlas (van de a una por dentro para no cargar la memoria). La cámara sigue de a una.
+
+14. **2962 — soltar la cola de un Bluetooth atascado (nativo, #129).** Es la parte nativa que complementa lo de
+    la lentitud. Difícil de forzar a mano; alcanza con que, en tu próximo diagnóstico, **ya no veas** el martilleo
+    «Cola de escritura llena / Write fallo … descartado N trozos» repitiéndose minutos sobre un enlace muerto;
+    en su lugar debería soltar la cola de una («suelto X trozos más en cola para no martillarlo»).
+
+15. **2963 — nota de voz doble (tu reporte del 08-11).** Mandá una **nota de voz**. Confirmá que sale **una sola
+    vez** y se reproduce bien (antes salían dos, y la segunda estaba rota y no se oía). Probá a tocar el botón de
+    grabar normal y también un toque rápido, para descartar que se dispare dos veces.
+
+16. **2964 — fondo de pantalla compartido por internet (tu caso vivo → tablet).** Elegí un fondo para un chat y
+    tocá **«Compartir»** con el otro teléfono en **otra red** (solo internet, como la tablet en WiFi distinta).
+    Confirmá que ahora **SÍ aparece** en el otro (antes no llegaba por internet porque pesaba demasiado). Aparte,
+    el pedido más grande —que **toda la UX se adapte a la pantalla de la tablet**— lo encaro como auditoría
+    propia, pantalla por pantalla.
 
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 

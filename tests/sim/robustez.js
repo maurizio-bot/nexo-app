@@ -1,8 +1,9 @@
 // Índice de robustez de NEXO (docs/ROBUSTEZ.md), a partir del catálogo (robustez.json) y de la salida de la batería
 // (node ci.js <build> > salida.txt). Por área, de 0 a 100:
 //  A (35) pruebas: fallos conocidos vigilados por una prueba de la batería que pasa / fallos conocidos del área
-//  B (35) teléfonos: confirmado en los teléfonos del dueño tras el último cambio del área (35); funcionó antes y ha
-//         cambiado sin volver a probarse (15); el último informe fue un fallo o nunca se probó (0)
+//  B (35) teléfonos: confirmado en los teléfonos del dueño tras el último cambio del área (35); confirmado en una
+//         build RECIENTE del dueño, con un cambio menor encima sin re-probar (28); funcionó antes y ha cambiado
+//         sin volver a probarse (15); el último informe fue un fallo o nunca se probó (0)
 //  C (20) puntos débiles abiertos: 20 − 8 por cada grave, 4 por cada medio y 2 por cada leve (mínimo 0)
 //  D (10) estabilidad: 10 − 2 por cada fallo que encontró la última revisión del área (0 si aún no se ha revisado)
 // Índice global: media de las áreas ponderada por su peso.
