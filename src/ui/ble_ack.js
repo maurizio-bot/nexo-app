@@ -1764,6 +1764,7 @@ export class BleAckSystem {
       if (!wasE2e && self._plainFromContact(sender)) { console.warn('[E2E] Archivo sin cifrar que dice ser de ' + _normId(sender) + ': descartado'); return; }
       // Fénix: fragmentos y respuestas de recuperación (no son mensajes del chat)
       if (m.type === 'fenix') { if (self.ble && self.ble.fenix) self.ble.fenix.onFile(fileId, data, m, sender); return; }
+      if (self.ble && typeof self.ble._citaResolved === 'function') self.ble._citaResolved(fileId); // Fase D (2972): si había un marcador de cita, se cumplió
       window.dispatchEvent(new CustomEvent('nexo:ble:fileComplete', {
         detail: {
           fileId: fileId,

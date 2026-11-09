@@ -10,7 +10,7 @@ dos WiFi distintas (2957)**, **envío de fotos**, y **JUMP funcionando** (tu cap
 vez que lo probás; aclaraste que no era un error, era el Jump andando). Eso ya subió el índice de robustez
 **54,8 → 61,8** (el componente «teléfonos», que es el que mueven tus pruebas, pasó de **15,9 a 22,8 / 35**;
 «caminos» llegó a su nivel pleno porque internet y Jump eran los que faltaban; ver `docs/ROBUSTEZ.md`). Abajo
-marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2971**).
+marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2972**).
 
 ## A. Builds nuevos a probar
 
@@ -165,6 +165,14 @@ marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo l
     casi al instante (no se vuelve a subir: solo viaja el puntero; en «Copiar diagnóstico» del vivo aparece «[BLOB] … va POR
     REFERENCIA») y en la tablet, que ya la tenía, «[BLOB] … ya lo tenía (mismo archivo, no se baja nada)». Si algo falla:
     Perfil → Copiar diagnóstico en los tres y buscá líneas `[BLOB]` y `[GROUP]`.
+
+25. **2972 — Fase D: archivo GRANDE (> 5 MB) a un teléfono apagado (tu «Procede con fase c y d»).** Los dos solo por internet;
+    **apagá el vivo**. Desde el S24 mandale un archivo de **más de 5 MB** (un vídeo largo, el APK de 25 MB). En el S24 tiene que
+    quedar **⏳** (no ✗, no ○ eterno) y nada más. Encendé el vivo: en el chat con el S24 le tiene que aparecer una **tarjeta**
+    «📦 nombre · tamaño · Esperando que los dos estén en línea para bajarlo» (sin bajar nada todavía). Dejá el S24 con la app
+    abierta un momento: el archivo tiene que salir solo, la tarjeta del vivo se vuelve el archivo (una sola burbuja) y el S24 pasa
+    a ✓✓. Variante: apagá el S24 justo después de mandar y dejá el vivo encendido — el vivo tiene que **tocar** al S24 (en su
+    diagnóstico: «[WAKE] toque a …»). Si algo falla: Perfil → Copiar diagnóstico en los dos y buscá `[CITA]`.
 
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 

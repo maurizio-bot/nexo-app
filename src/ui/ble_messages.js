@@ -10,7 +10,7 @@ import { NET_MAX_B64_BYTES } from './media_limits.js';
 import { parseCallSignal } from './calls.js';
 import { parseGroupCallSignal } from './group_call.js';
 import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus } from './ble_helpers.js';
-import { blobPointerIn, validatePointer, fetchBlob, blobMailboxEligible, pointerReusable, loadBlobSeen, saveBlobSeen, _fetchRetryDelay, _b64Bytes as _blobB64Bytes, MAX_CONCURRENT as BLOB_MAX_CONCURRENT, MAILBOX_MAX_BYTES as BLOB_MAILBOX_MAX_BYTES } from '../net/blob_mailbox.js'; // Fase B (2969): buzón de ARCHIVOS
+import { blobPointerIn, validatePointer, fetchBlob, blobMailboxEligible, pointerReusable, loadBlobSeen, saveBlobSeen, citaIn, validateCita, loadCitaIn, saveCitaIn, loadCitaOut, saveCitaOut, _fetchRetryDelay, _b64Bytes as _blobB64Bytes, MAX_CONCURRENT as BLOB_MAX_CONCURRENT, MAILBOX_MAX_BYTES as BLOB_MAILBOX_MAX_BYTES } from '../net/blob_mailbox.js'; // Fase B (2969): buzón de ARCHIVOS
 
 
 // Build 2836 (pedido del dueño): margen para la «red de seguridad de entrega». Si un mensaje enviado por Bluetooth no
@@ -452,6 +452,14 @@ export const BLE_MESSAGE_METHODS = {
               return;
             }
           }
+          // Fase D (2972): AVISO («cita») de un archivo > 5 MB que no cabe en el buzón de archivos: marcador en el chat, «ya estoy» al
+          // emisor (+ toque FCM) y toque mutuo; el archivo llega por el flujo directo cuando coinciden
+          var citaAtt = citaIn(content, ctrl);
+          if (citaAtt) { self._citaReceived(deviceId, senderUUID, messageId, citaAtt, data, ackTo); return; }
+          if (content.indexOf('"nexo_cita"') >= 0) {
+            var citaSig = _chatKind(content);
+            if (citaSig && citaSig.type === 'nexo_cita') { if (self.ackSystem) self.ackSystem.sendAck(deviceId, messageId, ackTo); self._onCitaReply(senderUUID, citaSig); return; }
+          }
         }
         // P6 (dueño 01-11): este mensaje llegó ENTERO por este camino (internet/Jump/BLE corto). Si quedó un reensamblado
         // BLE a medias del mismo msgId (el emisor empezó por Bluetooth y acabó por otra vía), ciérralo: así no caduca a los
@@ -508,6 +516,7 @@ export const BLE_MESSAGE_METHODS = {
             attachmentMeta: attachmentData ? attachmentData.meta : null
           };
           _vaultAppendMessage(grp ? grp.gid : senderUUID, vaultMsg, false);
+          if (!grp) self._citaResolved(messageId); // Fase D: si era el archivo de una cita, el marcador se cumplió
         }
         // v6.14.0: el contador de no leídos lo lleva notify.js (todas las vías: texto largo, fotos, archivos…)
         var pv = _messagePreview(content, attachmentData && attachmentData.attachmentType);
@@ -965,6 +974,97 @@ export const BLE_MESSAGE_METHODS = {
       });
     });
   },
+  // ===== Fase D (2972): la «CITA» para archivos > 5 MB (no caben en el buzón de archivos) a un contacto AUSENTE =====
+  // Emisor: deja en su buzón un aviso chiquito (nombre, tamaño, id) UNA vez por archivo; el archivo queda ⏳ y entra al toque FCM
+  // por pendientes (Fase A). Receptor: marcador «esperando» en el chat, contesta «ya estoy» (+ toque FCM al emisor) y entra al
+  // toque mutuo; cuando coinciden, el flujo directo de siempre lo entrega y el marcador se vuelve el archivo (mismo id).
+  _citaOutMap() { if (!this._citaOut) this._citaOut = loadCitaOut(); return this._citaOut; },
+  _citaInMap() { if (!this._citaIn) this._citaIn = loadCitaIn(); return this._citaIn; },
+  _fileCita(nexoId, fileId, base64Data, meta) {
+    var bytes = (typeof base64Data === 'string') ? Math.floor(base64Data.length * 3 / 4) : Number(base64Data) || 0;
+    return this._fileCitaBytes(nexoId, fileId, bytes, meta);
+  },
+  _fileCitaBytes(nexoId, fileId, bytes, meta) {
+    var self = this, nx = _normId(nexoId), net = self.net, type = (meta && meta.type) || 'file';
+    if (!nx || !fileId || !net || !bytes || bytes <= BLOB_MAILBOX_MAX_BYTES) return false; // ≤ 5 MB: eso es el buzón de archivos
+    if (meta && (meta.dst || meta.fwd || meta.big || meta.hdFor)) return false;
+    if (type !== 'image' && type !== 'video' && type !== 'file') return false;
+    if (typeof net.canReach !== 'function' || net.canReach(nx) || typeof net.mailboxOk !== 'function' || !net.mailboxOk(nx)) return false;
+    if (self.lan && typeof self.lan.canReach === 'function' && self.lan.canReach(nx)) return false;
+    if (typeof self._bleReadyFor === 'function' && self._bleReadyFor(nx)) return false;
+    var out = self._citaOutMap(), prev = out.get(String(fileId));
+    self._noteWakePending(nx); // el archivo grande pendiente entra al toque por pendientes (Fase A)
+    if (prev && prev.cid === nx) return true; // ya avisado
+    var metaWire = Object.assign({}, meta || {}); delete metaWire.to; delete metaWire.blobPtr; delete metaWire.thumb;
+    var att = { type: 'attachment', attachmentType: type, payload: 'cita', meta: Object.assign({}, metaWire, { cita: 1, size: bytes }),
+      cita: { v: 1, id: String(fileId), bytes: bytes, name: metaWire.name ? String(metaWire.name).substring(0, 200) : undefined, mime: metaWire.mime ? String(metaWire.mime).substring(0, 100) : undefined } };
+    out.set(String(fileId), { cid: nx, at: Date.now(), bytes: bytes }); saveCitaOut(out);
+    console.log('[CITA] ' + fileId + ' (' + Math.round(bytes / 1048576) + ' MB) a ' + nx + ' ausente: le dejo el aviso en su buzón; el archivo queda ⏳ hasta coincidir');
+    if (self.ackSystem && typeof self.ackSystem._dispatchStatus === 'function') self.ackSystem._dispatchStatus(String(fileId), 'pending'); // ⏳ «esperando que se conecte» visible (contratos §7), nunca ✗
+    self._sendViaNetMailbox(nx, JSON.stringify(att), String(fileId) + '_c').catch(function(e) { out.delete(String(fileId)); saveCitaOut(out); console.warn('[CITA] el aviso de ' + fileId + ' no salió: ' + (e && e.message)); });
+    return true;
+  },
+  _fileCitaFromMsg(nexoId, m) {
+    var t = m.attachmentType, mm = m.attachmentMeta || {}, p = m.attachmentPayload;
+    var bytes = (typeof p === 'string' && p.length > 16) ? Math.floor(p.length * 3 / 4) : Number(mm.size) || 0;
+    if (!t || mm.big) return false;
+    return this._fileCitaBytes(nexoId, m.messageId || m.msgId || m.id, bytes, Object.assign({ type: t }, mm));
+  },
+  _citaReceived(deviceId, senderUUID, messageId, att, data, ackTo) {
+    var self = this, why = validateCita(att.cita);
+    if (self.ackSystem && messageId) self.ackSystem.sendAck(deviceId, messageId, ackTo);
+    if (why) { console.warn('[CITA] aviso de ' + senderUUID + ' rechazado (' + why + ')'); return; }
+    if (messageId && self._receivedMessageIds.has(messageId)) return;
+    if (messageId) self._receivedMessageIds.add(messageId);
+    var fileId = att.cita.id, nx = _normId(senderUUID), inMap = self._citaInMap();
+    if (inMap.has(fileId)) { self._citaReply(nx, fileId); return; }
+    inMap.set(fileId, { from: nx, bytes: att.cita.bytes, at: Date.now() }); saveCitaIn(inMap);
+    var meta = Object.assign({}, att.meta || {}); delete meta.ptr;
+    meta.cita = { bytes: att.cita.bytes, from: nx, at: Date.now(), realType: att.attachmentType };
+    if (att.cita.name && !meta.name) meta.name = att.cita.name;
+    if (att.cita.mime && !meta.mime) meta.mime = att.cita.mime;
+    if (!meta.size) meta.size = att.cita.bytes;
+    var marker = { type: 'attachment', attachmentType: 'file', payload: 'cita', meta: meta };
+    var ts = data.timestamp || Date.now();
+    var vaultMsg = { messageId: fileId, content: JSON.stringify(marker), _own: false, status: 'delivered', timestamp: ts, senderName: '', senderNexoId: nx, seq: 0,
+      attachmentType: 'file', attachmentPayload: null, attachmentMeta: meta };
+    console.log('[CITA] ' + nx + ' tiene un archivo de ' + Math.round(att.cita.bytes / 1048576) + ' MB para mí (' + fileId + '): marcador en el chat, le aviso que ya estoy y lo toco si hace falta');
+    _vaultLoadMessages(nx).then(function(list) {
+      var cur = (list || []).find(function(x) { return (x.messageId || x.msgId) === fileId; });
+      if (cur && (cur.attachmentPayload || cur.attachmentRef)) { inMap.delete(fileId); saveCitaIn(inMap); return; } // ya lo tengo
+      if (!cur) _vaultAppendMessage(nx, vaultMsg, false);
+      self.noteContactMessage(nx, '📦 ' + (meta.name || 'archivo'), ts);
+      _safeDispatchEvent('nexo:ble:messageReceived', { deviceId: deviceId, deviceUUID: nx, content: vaultMsg.content, messageId: fileId, senderName: '', senderNexoId: nx, seq: 0, timestamp: ts, attachmentType: 'file', attachmentPayload: null, attachmentMeta: meta });
+    }).catch(function() {});
+    self._noteWakePending(nx); // toque MUTUO (Fase A): si el que tiene el archivo duerme, lo despierto yo con freno creciente
+    self._citaReply(nx, fileId);
+  },
+  _citaReply(nx, fileId) {
+    var self = this;
+    if (!self.net || typeof self.net.mailboxOk !== 'function' || !self.net.mailboxOk(nx)) return;
+    var wire = JSON.stringify({ type: 'nexo_cita', id: String(fileId), ok: 1 });
+    self._sendViaNetMailbox(nx, wire, 'cr' + String(fileId).replace(/[^A-Za-z0-9]/g, '').substring(0, 40) + Date.now().toString(36)).catch(function() {});
+  },
+  _onCitaReply(from, sig) {
+    var self = this, nx = _normId(from);
+    console.log('[CITA] ' + nx + ' ya está (espera ' + (sig && sig.id) + '): saludo y reenvío lo pendiente en cuanto lo vea en línea');
+    try { if (self.net && typeof self.net.greet === 'function') self.net.greet(); } catch (e) {}
+    setTimeout(function() { try { self._resendPendingMessages(nx); } catch (e) {} }, 2500);
+    setTimeout(function() { try { self._resendPendingMessages(nx); } catch (e) {} }, 15000);
+  },
+  _citaResolved(fileId) {
+    if (!fileId) return;
+    var m = this._citaInMap();
+    if (!m.has(fileId)) return;
+    m.delete(fileId); saveCitaIn(m);
+    console.log('[CITA] ' + fileId + ' llegó: marcador cumplido');
+  },
+  // ¿Sigo esperando un archivo grande de este contacto? (mantiene el toque mutuo de la Fase A)
+  _citaPendingFrom(nx) {
+    var m = this._citaInMap(), any = false; nx = _normId(nx);
+    m.forEach(function(v) { if (v && _normId(v.from) === nx) any = true; });
+    return any;
+  },
   // Volvió internet / un relé: reintentar ya lo que esperaba su turno
   _blobRetryNow() {
     var self = this;
@@ -994,6 +1094,7 @@ export const BLE_MESSAGE_METHODS = {
           // el archivo llega aunque los dos nunca coincidan en línea. Antes: PEER_ABSENT → ⏳ hasta coincidir.
           var viaBlob0 = self._fileToBlobMailbox(uuid, fileId, base64Data, meta);
           if (viaBlob0) { viaBlob0.then(resolve, reject); return; }
+          self._fileCita(uuid, fileId, base64Data, meta); // Fase D (2972): > 5 MB a un ausente → aviso chiquito en su buzón (el archivo queda ⏳)
           // v6.1.11: contacto aún no visto: el adjunto queda pendiente y se reenvía al encontrarlo
           self._markPeerLost(uuid);
           if (self.relay) self.relay.discover(uuid);
@@ -1063,6 +1164,7 @@ export const BLE_MESSAGE_METHODS = {
             if (!busy || Date.now() >= deadline) {
               var viaBlob = self._fileToBlobMailbox(uuid, fileId, base64Data, meta);
               if (viaBlob) { viaBlob.then(resolve, reject); return; }
+              self._fileCita(uuid, fileId, base64Data, meta); // Fase D (2972): > 5 MB → aviso chiquito (una vez); el archivo queda ⏳
             }
             if (!nudged) {
               nudged = true;
@@ -1153,7 +1255,7 @@ export const BLE_MESSAGE_METHODS = {
         // en espera (toque FCM, Fase A). Antes TODO quedaba ⏳ hasta coincidir en línea.
         blobOnly = !!(self.net && typeof self.net.mailboxOk === 'function' && self.net.mailboxOk(nexoId) && !self.net.canReach(nexoId) && list.some(blobCandidate));
         if (blobOnly) list = list.filter(blobCandidate);
-        else if (list.length) { console.log('[BLEInterface] ' + list.length + ' pending para ' + nexoId + ': sin enlace ni ruta, quedan en espera'); self._noteWakePending(nexoId); if (self.relay) self.relay.discover(nexoId); return []; }
+        else if (list.length) { console.log('[BLEInterface] ' + list.length + ' pending para ' + nexoId + ': sin enlace ni ruta, quedan en espera'); self._noteWakePending(nexoId); if (self.relay) self.relay.discover(nexoId); list.forEach(function(m) { try { self._fileCitaFromMsg(nexoId, m); } catch (e) {} }); return []; }
       }
       return _hydrateAttachments(list);
     });

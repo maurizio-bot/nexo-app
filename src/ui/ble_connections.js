@@ -200,7 +200,8 @@ export const BLE_CONNECTION_METHODS = {
       var p = (w && typeof w.vaultGetPendingMessages === 'function') ? w.vaultGetPendingMessages(nx)
         : (w ? _vaultLoadMessages(nx).then(function(msgs) { return msgs.filter(_isResendable); }) : null);
       if (!p) return Promise.resolve(true);
-      return Promise.resolve(p).then(function(pending) { return !!(pending && pending.length); }, function() { return true; });
+      var selfW = this;
+      return Promise.resolve(p).then(function(pending) { return !!(pending && pending.length) || (typeof selfW._citaPendingFrom === 'function' && selfW._citaPendingFrom(nx)); }, function() { return true; }); // Fase D: esperar un archivo grande también es «pendiente»
     } catch (e) { return Promise.resolve(true); }
   },
 

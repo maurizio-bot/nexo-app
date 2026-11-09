@@ -190,7 +190,10 @@ export function _buildFileCard(msg, attachment, mime) {
   if (m.pages) parts.push(m.pages + (m.pages == 1 ? t('media_page_sing', ' página') : t('media_page_plur', ' páginas')));
   if (size) parts.push(_fmtSize(size));
   var bigId = m.big && /^[A-Za-z0-9_-]{1,64}$/.test(String(m.big.id || '')) ? String(m.big.id) : '';
+  // Fase D (2972): marcador de una «cita» (archivo > 5 MB que llegará cuando los dos estén en línea): sin archivo todavía
+  var citaWait = !!(m.cita && (!attachment.payload || attachment.payload === 'cita'));
   if (bigId) { card.dataset.bigId = bigId; card.dataset.bigOwn = msg && msg._own ? '1' : ''; card.dataset.bigSize = _fmtSize(size); _bigWatch(); }
+  else if (citaWait) { card.dataset.cita = '1'; parts.push(t('media_cita_waiting', 'Esperando que los dos estén en línea para bajarlo')); }
   else parts.push(t('media_tap_open', 'Toca para abrir'));
   sub.textContent = parts.join(' · ');
   txt.appendChild(nm);
@@ -201,6 +204,7 @@ export function _buildFileCard(msg, attachment, mime) {
   if (bigId) _bigSub(card);
   card.onclick = function(e) {
     e.stopPropagation();
+    if (citaWait) { _showPermissionError(t('media_cita_tap', 'Llega solo cuando los dos estén en línea; ya le avisé que estoy')); return; } // Fase D
     if (bigId) { _bigTap(msg, m.big, name, mime); return; }
     _openAttachmentFile(attachment.payload, name, mime);
   };

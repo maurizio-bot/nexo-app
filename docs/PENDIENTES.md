@@ -20,7 +20,7 @@ visibles + área 56; ajuste «Vibración al tocar» en Perfil → Ajustes (como 
 - **Siguiente (build 2 del plan):** llevar las áreas de toque a lo que falte (hojas, cámara, juegos), `segment` en los snaps
   de stickers/selectores, y `hapticCaps` en el diagnóstico para ver qué motor tiene cada teléfono.
 
-## 📬 Entrega OFFLINE sin servidor propio (diseño 08/09-11; dueño: «vamos a estudiarlo bien, no quiero fallas») — Fase A ✅ (2967) · Fase B ✅ (2969/2970) · Fase C ✅ (2971) · D–E pendientes
+## 📬 Entrega OFFLINE sin servidor propio (diseño 08/09-11; dueño: «vamos a estudiarlo bien, no quiero fallas») — Fase A ✅ (2967) · Fase B ✅ (2969/2970) · Fase C ✅ (2971) · Fase D ✅ (2972) · E pendiente
 Docs: `docs/DISENO_ENTREGA_OFFLINE_2026-11-08.md` (diseño v2: cita FCM, cifrar-una-vez, blob compartido, fan-out por
 referencia, invariantes anti-crash, plan adversarial) y `docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md` (spec con números:
 CHUNK 40 KB, ≥3 relés, techos anti-DoS, backoff, GIVE_UP, TTL 7 d, puntero v1, orden cifrar→hash→partir).
@@ -84,7 +84,17 @@ CHUNK 40 KB, ≥3 relés, techos anti-DoS, backoff, GIVE_UP, TTL 7 d, puntero v1
   —no 10—, dos punteros, ✓ y ✓✓, un kind 5; B reenvía a C: 0 subidas y C no baja nada; A reenvía a C apagado: 0 subidas, C
   vuelve y la tiene, ✓✓; nada legible en los relés). **No incluido (D/E):** > 5 MB (cita), miniatura en el puntero, sender keys.
   ⚠️ **Falta del dueño:** `docs/PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md` §A.24.
-- ⬜ **Fase D (JS):** «cita» completa para enormes (marca + señal de vuelta + toque MUTUO + stream directo al coincidir).
+- ✅ **Fase D (2972, solo JS) — la «CITA» para archivos > 5 MB a un contacto AUSENTE:** el emisor deja en el buzón del otro un
+  aviso chiquito (`{type:'attachment', payload:'cita', cita:{id, bytes, name, mime}}`, una vez por archivo, `nexo_cita_out`;
+  también desde el reenvío de pendientes, sin leer el archivo del disco) y el archivo queda ⏳ (nunca ✗) con toque por pendientes
+  (Fase A). El receptor valida el aviso (`validateCita`), pone un MARCADOR en el chat bajo el id del archivo (tarjeta «📦 nombre ·
+  tamaño · esperando que los dos estén en línea para bajarlo», sin tocar la red por el archivo), contesta «ya estoy» (`nexo_cita`,
+  por el buzón → toque FCM al emisor) y entra al toque MUTUO (`_wakeStillPending` también cuenta un archivo que se espera,
+  `nexo_cita_in`). El emisor, al recibir el «ya estoy», saluda y reenvía lo pendiente: el archivo va por el flujo directo de
+  siempre y en el receptor el marcador se vuelve el archivo (mismo id, una sola burbuja: la tarjeta se reemplaza sola y la cita se
+  da por cumplida al llegar el archivo por cualquier camino). Prueba `bigcita.js` (2 teléfonos). **Límite honesto (Fase E):**
+  el archivo grande por internet sigue viajando entero por la memoria del WebView (flujo por relés/Tor en base64) — el crash del
+  APK de 35 MB es eso; la salida es el canal directo nativo de disco a disco por internet, como `big_file.js` por Wi-Fi/WD/L2CAP.
 - ⬜ **Fase E (opcional):** guardadero de terceros, erasure coding, sender keys de grupo.
 
 ## 🌐 Selección de idioma (#132, pedido del dueño 30-10) — ✅ COMPLETO (2845)

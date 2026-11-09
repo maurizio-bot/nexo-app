@@ -238,8 +238,10 @@ export function _renderMessage(msg, skipSave) {
     // Ronda 2758: las copias propias de acciones y de mensajes de grupo tampoco (guardadas antes sin la marca)
     if (msg._own && typeof msg.content === 'string' && /^\{"type":"nexo_(act|grp)"/.test(msg.content)) return;
     if (msgIdDedup && _renderedMessageIds.has(msgIdDedup)) {
-      if (msg.status) _updateMessageStatus(msgIdDedup, msg.status);
-      return;
+      // Fase D (2972): la burbuja de un marcador de cita («esperando el archivo») se reemplaza cuando llega el archivo de verdad
+      var citaCard = (msg.attachmentPayload || (typeof msg.content === 'string' && msg.content.indexOf('"cita"') < 0)) ? document.querySelector('.message[data-msg-id="' + msgIdDedup + '"] .file-attachment[data-cita="1"]') : null;
+      if (citaCard) { var oldBubble = citaCard.closest('.message'); if (oldBubble) oldBubble.remove(); _renderedMessageIds.delete(msgIdDedup); }
+      else { if (msg.status) _updateMessageStatus(msgIdDedup, msg.status); return; }
     }
     if (msgIdDedup) _renderedMessageIds.add(msgIdDedup);
 
@@ -389,7 +391,7 @@ export function _renderMessage(msg, skipSave) {
         var isImageFile = fileType.indexOf('image') === 0;
         var isVideoFile = fileType.indexOf('video') === 0;
         // Ronda 2756: un archivo grande (meta.big) no viene en el mensaje: siempre tarjeta
-        if ((isImageFile || isVideoFile) && !attachment.meta.big) {
+        if ((isImageFile || isVideoFile) && !attachment.meta.big && !attachment.meta.cita) {
           var mediaWrapper = document.createElement('div');
           mediaWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px;overflow:hidden;background:#000;cursor:pointer;';
           if (isImageFile) {

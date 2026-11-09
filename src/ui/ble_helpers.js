@@ -252,7 +252,7 @@ export function _isProtocolShaped(s) {
 // 2829: stickers ('nexo_sticker': solo el ID del sticker, el dibujo es un SVG incorporado)
 export function _chatKind(content) {
   if (typeof content !== 'string' || content.charAt(0) !== '{' || content.indexOf('"nexo_') < 0) return null;
-  try { var p = JSON.parse(content); return (p && (p.type === 'nexo_txt' || p.type === 'nexo_act' || p.type === 'nexo_sticker')) ? p : null; } catch (e) { return null; }
+  try { var p = JSON.parse(content); return (p && (p.type === 'nexo_txt' || p.type === 'nexo_act' || p.type === 'nexo_sticker' || p.type === 'nexo_cita')) ? p : null; } catch (e) { return null; }
 }
 
 // Recortar texto sin partir un emoji ni otro carácter de dos unidades (quedaría "�")

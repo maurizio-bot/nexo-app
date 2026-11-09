@@ -124,5 +124,22 @@ Fan-out/reenvío por referencia (C) · cita completa+stream (D) · blob-store de
   huella y llave) el receptor copia su propio adjunto (`_blobTryLocal`) y no baja nada; verifica el tamaño en claro.
 - **Prueba que cierra la fase:** `tests/sim/blobfan.js` (3 teléfonos).
 
+## 12. Implementado en 2972 (Fase D) — la «cita» para archivos > 5 MB
+- **Aviso (emisor):** `bleInterface._fileCitaBytes(nx, fileId, bytes, meta)`: contacto ausente por internet, con buzón, archivo
+  foto/vídeo/archivo > MAILBOX_MAX_BYTES, no Jump/big/HD → `{type:'attachment', attachmentType, payload:'cita', meta:{…, cita:1,
+  size}, cita:{v:1, id, bytes, name?, mime?}}` por el buzón normal con id `<fileId>_c`, UNA vez (`nexo_cita_out`, 7 d); el archivo
+  queda ⏳ (`_dispatchStatus(fileId,'pending')`) y entra al toque por pendientes. Se dispara desde `sendFile` (sin dispositivo, o
+  sin enlace listo) y desde el reenvío de pendientes (por el tamaño declarado, sin leer el disco).
+- **Marcador (receptor):** `_citaReceived`: `validateCita` (id, tamaño ≤ 1 GB, nombre/mime acotados) → mensaje en el vault bajo el
+  id del ARCHIVO (`attachmentType:'file'`, sin payload, `meta.cita={bytes, from, at, realType}`) → tarjeta «esperando que los dos
+  estén en línea para bajarlo» (`file_card.js`, `data-cita`); `nexo_cita_in` (7 d); «ya estoy» = `{type:'nexo_cita', id, ok:1}` por
+  el buzón del emisor (su marca `n` dispara el toque FCM); `_noteWakePending(emisor)` y `_wakeStillPending` cuenta la cita como
+  pendiente (toque mutuo con el freno de la Fase A).
+- **Coincidir:** el emisor, con el «ya estoy», saluda (`net.greet`) y reenvía lo pendiente (`_resendPendingMessages` a 2,5 s y 15 s);
+  el archivo va por el flujo directo (relés o Tor). Al llegar (por flujo o por buzón) `_citaResolved` cumple la cita y `render.js`
+  reemplaza la tarjeta por el archivo (mismo id, una burbuja; `vaultAppendMessage` funde por id).
+- **Fuera de D (Fase E, nativo):** el archivo grande por internet sigue entero en memoria (base64) — canal directo de disco a
+  disco por internet. **Prueba que cierra la fase:** `tests/sim/bigcita.js`.
+
 ---
 *Con esto, Fase A y B se codean sin ambigüedad. Cada fase se cierra solo cuando pasa su batería adversarial (§8) + la batería completa, antes de subir.*

@@ -266,3 +266,35 @@ export function saveBlobSeen(map, store) {
 }
 // ¿Puntero vigente y bien formado para REENVIAR POR REFERENCIA (el mismo blob ya vive en los relés: no se vuelve a subir)?
 export function pointerReusable(ptr) { return !!ptr && typeof ptr === 'object' && validatePointer(ptr) === null; }
+
+// ---------- Fase D (2972): la «CITA» para archivos > 5 MB (no caben en el buzón de archivos) a un contacto AUSENTE ----------
+// El que tiene el archivo deja en el buzón del otro un AVISO chiquito (nombre, tamaño, id del mensaje); el otro, al despertar,
+// pone un marcador en el chat, contesta «ya estoy» (+ toque FCM) y entra al toque mutuo; el archivo va por el flujo directo al coincidir.
+export var CITA_MAX_BYTES = 1024 * 1024 * 1024;
+export function validateCita(c) {
+  if (!c || typeof c !== 'object' || c.v !== 1) return 'versión';
+  if (typeof c.id !== 'string' || !/^[A-Za-z0-9_-]{4,64}$/.test(c.id)) return 'id';
+  if (!Number.isInteger(c.bytes) || c.bytes < 1 || c.bytes > CITA_MAX_BYTES) return 'tamaño';
+  if (c.name != null && (typeof c.name !== 'string' || c.name.length > 200)) return 'nombre';
+  if (c.mime != null && (typeof c.mime !== 'string' || c.mime.length > 100)) return 'mime';
+  return null;
+}
+export function citaIn(content, ctrl) {
+  try {
+    var a = (ctrl && ctrl.payload && ctrl.payload.attachment) ? ctrl.payload.attachment : null;
+    if (!a && typeof content === 'string' && content.indexOf('"cita"') >= 0 && content.charAt(0) === '{') a = JSON.parse(content);
+    if (a && a.type === 'attachment' && a.payload === 'cita' && a.cita && typeof a.cita === 'object') return a;
+  } catch (e) {}
+  return null;
+}
+var CITA_IN_KEY = 'nexo_cita_in', CITA_OUT_KEY = 'nexo_cita_out', CITA_TTL_MS = 7 * 86400000;
+function _citaLoad(key) {
+  var m = new Map(), st = (typeof localStorage !== 'undefined') ? localStorage : null;
+  try { var raw = st && st.getItem(key), now = Date.now(); if (raw) Object.entries(JSON.parse(raw)).forEach(function(kv) { if (kv[1] && (kv[1].at || 0) + CITA_TTL_MS > now) m.set(kv[0], kv[1]); }); } catch (e) {}
+  return m;
+}
+function _citaSave(key, map) { var st = (typeof localStorage !== 'undefined') ? localStorage : null; try { var o = {}; map.forEach(function(v, k) { o[k] = v; }); if (st) st.setItem(key, JSON.stringify(o)); } catch (e) {} }
+export function loadCitaIn() { return _citaLoad(CITA_IN_KEY); }
+export function saveCitaIn(m) { _citaSave(CITA_IN_KEY, m); }
+export function loadCitaOut() { return _citaLoad(CITA_OUT_KEY); }
+export function saveCitaOut(m) { _citaSave(CITA_OUT_KEY, m); }

@@ -422,6 +422,10 @@
     {
      "fallo": "Fan-out y reenvío sin reusar nada (diseño 08-11 §1): una foto a un grupo de N se cifraba y subía N veces (una por miembro, entera dentro del sobre, tope ~1 MB) y reenviar un archivo ya enviado/recibido lo re-subía de cero. Fase C de la entrega offline (2971): UN blob por archivo —se cifra y sube UNA sola vez al buzón de archivos— y cada destinatario recibe solo el puntero (en grupo, dentro del sobre nexo_grp: hasta 5 MB con internet propio); el puntero vigente se guarda en el mensaje (meta.blobPtr) y un reenvío va POR REFERENCIA (0 subidas, también a un contacto en línea solo por internet); el que recibe recuerda las huellas que ya tiene (nexo_blob_seen) y no baja dos veces el mismo blob; la limpieza (kind 5) espera a que confirmen TODOS los destinatarios. Prueba blobfan.js (3 teléfonos)",
      "prueba": "CIFRAR UNA VEZ, BLOB COMPARTIDO"
+    },
+    {
+     "fallo": "Archivo > 5 MB (no cabe en el buzón de archivos) a un contacto DORMIDO: el que recibe no se enteraba de nada hasta que coincidieran (ni marcador ni aviso) y solo el emisor tocaba; si el emisor dormía cuando el otro despertaba, nadie lo despertaba a él (diseño 08-11 §4c, la «cita»). Fase D de la entrega offline (2972): el emisor deja en el buzón del otro un AVISO chiquito (nombre, tamaño, id del mensaje) una vez por archivo y el archivo queda ⏳ (nunca ✗) con toque por pendientes; el receptor pone un MARCADOR en el chat («esperando que los dos estén en línea para bajarlo»), contesta «ya estoy» al buzón del emisor (+ toque FCM) y entra al toque MUTUO (el toque por pendientes también cuenta un archivo que se espera); el emisor, al recibir el «ya estoy», saluda y reenvía lo pendiente: el archivo va por el flujo directo de siempre y el marcador se vuelve el archivo (mismo id, una burbuja). Prueba bigcita.js (2 teléfonos)",
+     "prueba": "la «CITA» para archivos > 5 MB"
     }
    ],
    "debiles": [
