@@ -19,6 +19,7 @@
 | `GIVE_UP` | parar wake activo tras **min(TTL del blob, 7 días)** **o** **20 wakes fallidos seguidos** | No tocar un teléfono muerto para siempre; el blob ya expiró igual. |
 | `BLOB_TTL` | **7 días** (expiration NIP-40) | Garantía real de limpieza (ver §2). |
 | `MAX_CONCURRENT` | **3** | Transferencias pesadas simultáneas; el resto en cola. |
+| `THUMB_MAX_BYTES` | **16 KB** | Techo duro de la miniatura dentro del puntero (que una miniatura enorme no lo infle). |
 
 ## 2. Evento de buzón (Nostr)
 - `kind`: el que ya usa NEXO para el buzón de pareja.
@@ -41,7 +42,7 @@
   expires: <ts> }
 ```
 **Verificación OBLIGATORIA, en orden:**
-1. **Rechazar** si `chunks.length > MAX_POINTER_CHUNKS` **o** `size > MAX_POINTER_BYTES` → **antes** de reservar o iterar nada.
+1. **Rechazar** si `chunks.length > MAX_POINTER_CHUNKS`, `size > MAX_POINTER_BYTES`, o `thumb > THUMB_MAX_BYTES` → **antes** de reservar o iterar nada.
 2. Por trozo: `SHA-256(trozo) == chunks[i].hash` antes de usarlo; si no, re-bajar de otro relé.
 3. Al armar: `SHA-256(blob) == hash`; descifrar con `(k, nonce)` (GCM confirma integridad).
 4. Los trozos se bajan por `event_id` **aleatorio** (va en el puntero), **no** por una etiqueta ligada al destinatario → **el relé no correlaciona** quién baja qué.
@@ -50,6 +51,8 @@
 - **Un blob = un `(k, nonce)` = un cifrado. NUNCA** re-cifrar otro contenido con el mismo `(k, nonce)` → reusar `(k,nonce)` **rompe AES-GCM** (revela XOR de textos y tira la autenticación).
 - `k` **aleatoria por archivo** (no derivada del contenido) → sin ataque de confirmación de archivo. **Consecuencia honesta:** el **dedup es por-blob (misma `k`)**, no universal: dedupea en la **cadena de reenvío**, no entre dos emisores que cifran el mismo archivo con `k` distinta.
 - El puntero (con `k`) viaja **siempre E2E**. El blob **nunca** viaja sin cifrar.
+- **Orden fijo (nunca al revés):** leer disco → **cifrar TODO el archivo** con `(k, nonce)` → `hash` del ciphertext → **partir el ciphertext** en trozos ≤`CHUNK_RAW_BYTES`. Jamás partir primero y cifrar trozo por trozo (llevaría a reusar nonce = romper GCM).
+- **Emisor persiste** por cada trozo la lista completa `(relay, event_id)` para poder re-bajar de otro relé si uno falla.
 
 ## 5. Máquina de estados (emisor)
 ```
