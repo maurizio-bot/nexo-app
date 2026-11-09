@@ -265,9 +265,17 @@ export const BLE_LINK_METHODS = {
     var nx = _normId(nexoId);
     if (this.lan && this.lan.canReach(nx)) return 'wifi';
     var dev = this._resolveDeviceIdForNexoId(nx);
-    if (_netNx(dev)) return 'internet';
-    var st = dev ? this._getDeviceState(dev).state : null;
-    if (st === BLE_STATES.READY_TO_CHAT || st === BLE_STATES.NOTIFICATIONS_READY) return 'bluetooth';
+    if (_netNx(dev)) {
+      // 2976 (primer diagnóstico AUTOMÁTICO del dueño, 09-11 16:01, «pendiente viejo… enlace internet»): un contacto cuyo
+      // identificador guardado es «net:…» (agregado por ID / solo internet) daba «internet» aunque estuviera APAGADO. Con eso
+      // _wakeSleepingPeer no lo tocaba al abrir el chat («ya hay enlace vivo») y el bucle de toques por pendientes lo daba por
+      // «ya alcanzable» y lo BORRABA: un texto llevaba 25 h ⏳ sin un solo toque FCM. «internet» = EN LÍNEA por internet
+      // (canReach, lo que ya usa _linkUp); si no lo está, sigue (puente Jump o nada).
+      if (this.net && typeof this.net.canReach === 'function' && this.net.canReach(nx)) return 'internet';
+    } else {
+      var st = dev ? this._getDeviceState(dev).state : null;
+      if (st === BLE_STATES.READY_TO_CHAT || st === BLE_STATES.NOTIFICATIONS_READY) return 'bluetooth';
+    }
     if (this.relay && this.relay.relayHop(nx)) return 'jump';
     return 'none';
   },

@@ -10,7 +10,7 @@ dos WiFi distintas (2957)**, **envío de fotos**, y **JUMP funcionando** (tu cap
 vez que lo probás; aclaraste que no era un error, era el Jump andando). Eso ya subió el índice de robustez
 **54,8 → 61,8** (el componente «teléfonos», que es el que mueven tus pruebas, pasó de **15,9 a 22,8 / 35**;
 «caminos» llegó a su nivel pleno porque internet y Jump eran los que faltaban; ver `docs/ROBUSTEZ.md`). Abajo
-marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2975**).
+marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2976**).
 
 ## A. Builds nuevos a probar
 
@@ -206,6 +206,18 @@ marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo l
     se me pase lo contrario): alejá la tablet hasta que el Wi-Fi se corte de verdad durante el envío → ahí SÍ debe salir «Señal Wi-Fi
     mala» (por «… s sin recibir») y el archivo quedar ⏳ hasta que vuelva el Wi-Fi; al volver, sale solo. (d) Copiame el diagnóstico de
     los dos si algo de eso no pasa.
+
+29. **2976 — lo que salió de tu primer diagnóstico automático (16:01).** (a) Elegí un contacto que tengas agregado por ID (solo
+    internet) y que esté APAGADO o sin la app abierta: abrí su chat. El subtítulo ya NO debe decir «Internet»: debe decir «Conectando…»
+    (lo está tocando) o nada. Mandale una foto: queda ⏳ y en tu diagnóstico tiene que aparecer «[WAKE] toque a nx… (intento 1, por
+    pendientes)» y después intentos 2, 3… con más espera entre uno y otro (antes no salía ninguno). Cuando ese contacto abra la app,
+    la foto le llega sola. (b) Arranque en frío: cerrá NEXO del todo (deslizala de Recientes), con el vivo o la tablet cerca por
+    Bluetooth, y abrila con la pantalla encendida. En el diagnóstico de los primeros 2 minutos NO tiene que haber «sendFile START
+    … type=fenix» mientras estés en pantalla (antes salían dos respaldos Fénix a los 2 s de abrir). Dejala en segundo plano un
+    rato: ahí sí pueden salir. (c) Si en tu S24 el diagnóstico muestra «Write fallo para … descartado entero» para un contacto, en las
+    líneas siguientes no debe seguir «Window timeout, reenviando ventana … fxs_…» para ese mismo enlace: tiene que decir «Respaldo
+    Fénix sobre un Bluetooth muerto: se rinde». (d) Cuando te llegue (o te llegues) otro diagnóstico automático, buscá la línea «se
+    cargan N adjunto(s) del disco para reenviar: …» y pegámela: me dice qué eran las 4 lecturas de ~450 ms de hoy.
 
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 

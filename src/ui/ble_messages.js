@@ -1272,6 +1272,10 @@ export const BLE_MESSAGE_METHODS = {
         var grandes = list.filter(tooBigForBt);
         if (grandes.length) { console.log('[BLEInterface] ' + grandes.length + ' archivo(s) grande(s) para ' + nexoId + ' no caben por Bluetooth: esperan Wi-Fi/internet (sin leer del disco)'); list = list.filter(function(m) { return !tooBigForBt(m); }); }
       }
+      // 2976: qué adjuntos se leen del disco en esta vuelta (el primer diagnóstico automático mostró 4 lecturas de ~450 ms justo
+      // después de «no caben por Bluetooth» sin saber de qué archivo eran): tipo y tamaño declarado; sin nombres ni contenido.
+      var conAdj = list.filter(function(m) { return m && (m.attachmentRef || m.attachmentType); });
+      if (conAdj.length) console.log('[BLEInterface] ' + nexoId + ': se cargan ' + conAdj.length + ' adjunto(s) del disco para reenviar: ' + conAdj.map(function(m) { var mm = m.attachmentMeta || {}; return (m.attachmentType || '?') + (mm.size ? ' ' + Math.round(Number(mm.size) / 1024) + ' KB' : ' ?KB') + (mm.big ? ' big' : ''); }).join(', '));
       return _hydrateAttachments(list);
     });
     getPending.then(function(pending) {

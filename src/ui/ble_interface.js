@@ -447,6 +447,15 @@ export class BLEInterface {
 
   _setupAppStateListener() {
     var self = this;
+    // 2976 (primer diagnóstico AUTOMÁTICO del dueño): al ARRANCAR en frío, _foreground quedaba undefined hasta el primer cambio
+    // de estado (el nativo solo avisa en las transiciones) → el resume de Fénix salía al toque con el usuario en pantalla
+    // (dos respaldos sobre Bluetooth a MTU 23 nada más abrir la app). En el teléfono real el WebView de Android sabe si está
+    // visible desde el principio; se reconoce por el puente nativo que inyecta Capacitor (window.androidBridge; el simulador no
+    // lo tiene —isNativePlatform() ahí también da true por CapacitorCustomPlatform— y queda como estaba: undefined → corre).
+    // Perilla de prueba: window.NEXO_SIM_ANDROID_BRIDGE.
+    try {
+      if ((window.androidBridge || window.NEXO_SIM_ANDROID_BRIDGE) && typeof document !== 'undefined' && document.visibilityState) self._foreground = (document.visibilityState === 'visible');
+    } catch (e) {}
     // v6.1.7: @capacitor/app no está instalado: el bloque de abajo nunca se activaba y al volver a la app
     // no se reconectaba ni se vaciaba la cola. Ahora avisan el nativo (onAppStateChange) y el WebView
     // (visibilitychange); se usa el primero que llegue.

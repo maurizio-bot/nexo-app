@@ -21,6 +21,9 @@ visibles + área 56; ajuste «Vibración al tocar» en Perfil → Ajustes (como 
   de stickers/selectores, y `hapticCaps` en el diagnóstico para ver qué motor tiene cada teléfono.
 
 ## 🩺 Diagnóstico AUTOMÁTICO al desarrollador (dueño 09-11: «que el diagnóstico se haga solo y me llegue») — ✅ base en 2974
+- **09-11 16:01: llegó el PRIMER diagnóstico automático** (del propio S24 del dueño, síntoma «pendiente_viejo», build 2975): la parte
+  local funciona (síntoma → bandeja → copiar). Dio para tres arreglos reales (2976: `netoffline.js`, `fenixstuck.js`). El síntoma en sí era
+  un falso positivo de `linkOf` (ya corregido): el escaneo de pendientes viejos solo cuenta contactos EN LÍNEA de verdad.
 - ✅ **2974:** la app manda sola el diagnóstico al detectar un síntoma (enlace zombi, reintentos agotados, pendiente > 30 min con
   camino, error de código), cifrado de extremo a extremo al NEXO ID del dueño (`DIAG_DEV_NX`, `src/ui/autodiag.js`) como mensaje
   oculto de protocolo; límites 1 cada 2 h, 3/día, mismo síntoma 1 vez/24 h; interruptor + «últimos envíos» (✓ al confirmarse) en
@@ -827,6 +830,15 @@ cerrado — en cuyo caso el #87 de mensajes ya está, y solo queda la llamada ce
   `keepTooBig`). Queda lo de fondo: si el Wi-Fi se CAE de verdad a mitad de un archivo grande, el siguiente intento empieza desde el
   trozo 0 («llega otro intento: se empieza de nuevo» en la tablet). Reanudar desde el último trozo confirmado es un cambio de protocolo
   (el receptor guarda los trozos que ya tiene y lo dice en el saludo del flujo): va con la Fase E de la entrega offline, no antes.
+- **Cuatro lecturas de disco de ~450 ms tras «no caben por Bluetooth»** (primer diagnóstico automático, 09-11 16:01): cada
+  «Peer ready» de la tablet disparó un reenvío de pendientes que filtró el APK grande y aun así leyó UN adjunto grande del disco
+  (FILE_IO «adjunto» = `nexo_att_*`/`nexo_relay_*`). Candidatos: un segundo adjunto sin `meta.size` (`_tooBigForBt` no puede saber
+  el tamaño sin leerlo), un adjunto `meta.big`, o una lectura ajena al reenvío. 2976: el reenvío registra «se cargan N adjunto(s) del
+  disco: tipo tamaño». Con el próximo diagnóstico se sabe; si es por tamaño desconocido, guardar el tamaño al enviar.
+- **Wi-Fi con la tablet «sin comprobar: se cierra»** (mismo diagnóstico, 10:01:03): la conexión Wi-Fi subió y la tablet no contestó la
+  comprobación en 30 s (`VERIFY_LIMIT_MS`) → se cerró justo cuando el APK esperaba Wi-Fi. La comprobación la contesta el JS de la
+  tablet: si su app estaba congelada, no hay quién conteste. Ver si el «toque» por Wi-Fi (latido nativo) puede despertarla o si hay
+  que tolerar más tiempo cuando el otro está en segundo plano. Esperar el diagnóstico de la tablet.
 - **Archivos grandes** (pedido del dueño 24-10, un APK de 24 MB no salía): hecho en la 2756, hasta 1 GB por el mismo
   Wi-Fi o Wi-Fi Direct, a disco por trozos y con clave propia por archivo. Falta: reenviarlos, y por Bluetooth/Jump
   (demasiado lento) o internet (relés: no admiten archivos así).

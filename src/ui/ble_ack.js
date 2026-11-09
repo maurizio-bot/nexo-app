@@ -2382,6 +2382,15 @@ ChatStream.prototype._onWindowTimeout = function() {
       self._startWindowTimer();
       return;
     }
+    // 2976 (primer diagnóstico AUTOMÁTICO del dueño): el nativo SOLTÓ el mensaje por ese Bluetooth («Write fallo… descartado
+    // entero» → onWriteDropped → marcado muerto), pero las escrituras «sin respuesta» no fallan en JS, así que el respaldo
+    // Fénix no pasaba por el catch de _sendChunk y seguía reenviando la ventana cada 8 s (7 reintentos × 12 trozos a MTU 23)
+    // sobre un enlace muerto. Rendir también AQUÍ (solo Fénix; lo del usuario mantiene toda su paciencia, #129).
+    if (self._bgShouldYieldBle()) {
+      console.log('[ChatStream] Respaldo Fénix sobre un Bluetooth muerto: se rinde, queda pendiente msgId=' + self.msgId);
+      self._giveUpPending();
+      return;
+    }
     self.windowRetryCount++;
     if (self.windowRetryCount > self.maxWindowRetries) {
       // #dueño 08-11: un archivo por INTERNET a un contacto ALCANZABLE NO aborta ni pide reintentar: resetea el contador,

@@ -200,6 +200,14 @@
     {
      "fallo": "Fénix se colaba al volver al frente (diagnóstico del dueño S24 09-11 12:15): _putSeg pasaba la compuerta «usuario primero» en segundo plano, tardaba ~400 ms en leer el segmento del disco y, si en ese rato la app volvía al frente, el envío salía igual (un segmento 90 ms después de «App de vuelta en primer plano», y después 5 reintentos de 8 s sobre un enlace atascado). 2973: re-comprueba la pausa después de leer",
      "prueba": "el usuario primero"
+    },
+    {
+     "fallo": "2976 (primer diagnóstico AUTOMÁTICO del dueño): un respaldo Fénix en vuelo por Bluetooth a MTU 23; el nativo soltó el mensaje («Write fallo para 6a14… durante ~6 s: mensaje descartado entero», «Enlace atascado: suelto 331 trozos») y avisó (onWriteDropped → _markBleDead), pero el flujo siguió reenviando la ventana cada 8 s (retry 5, 6, 7 × 12 trozos) sobre el enlace muerto: las escrituras «sin respuesta» no fallan en JS, así que no pasaba por el catch de _sendChunk, el único punto donde se rendía (2956). 2976: _onWindowTimeout también consulta _bgShouldYieldBle → el respaldo se rinde (PEER_ABSENT, queda pendiente) y la cola sigue con lo del usuario, que mantiene su paciencia (#129). fenixstuck.js (antes: seguía reenviando)",
+     "prueba": "respaldo Fénix sobre un Bluetooth MUERTO"
+    },
+    {
+     "fallo": "2976 (primer diagnóstico AUTOMÁTICO del dueño): al ARRANCAR en frío, _foreground quedaba undefined hasta la primera transición de estado (el nativo solo avisa en handleOnResume/handleOnPause) → el resume de Fénix salía a los 2 s de abrir la app con el usuario en pantalla (dos respaldos por Bluetooth a MTU 23 que acabaron martillando enlaces muertos), contra la regla «usuario primero» (2952). 2976: en el WebView de Android (window.androidBridge, el puente que inyecta Capacitor; el simulador no lo tiene y queda como estaba) _foreground arranca de document.visibilityState. netoffline.js (arranque)",
+     "prueba": "ARRANQUE en frío"
     }
    ],
    "debiles": [
@@ -551,6 +559,10 @@
     {
      "fallo": "2975 (diagnóstico del dueño S24 09-11 13:35, APK de 25 MB a la tablet por Wi-Fi): el archivo por fin salía por la red local (350 trozos de 24 KB de 1487 en 90 s) y la propia app lo cortó: «Señal Wi-Fi mala con la tablet (ida y vuelta 5509 ms, 0 s sin recibir): lo nuevo por otro camino» y 2 ms después «abort … Contacto no disponible: queda pendiente». El latido nativo viaja por el MISMO canal que los trozos en vuelo: la ida y vuelta se infla por la CARGA, no por mala señal («0 s sin recibir» = enlace vivo); y al degradar, relink movía el archivo en vuelo a Bluetooth, donde no cabe → ⏳ → el siguiente intento empezaba de cero («llega otro intento: se empieza de nuevo» en la tablet). 2975: (1) lan.js: mientras hay una transferencia por ese enlace Wi-Fi (hasActiveTransferOn: flujo saliente con ACK < 20 s o entrante con actividad < 30 s) la ida y vuelta alta no cuenta como mala señal, solo «sin recibir» > 12 s; sin transferencia, la regla de siempre (la vigilan lan.js 1c y route.js); (2) relink con keepTooBig: lo que no cabe por el camino nuevo se queda en el Wi-Fi mientras esté arriba (degradado ≠ caído). lanload.js: 6 MB con latido 5000 ms/0 s → 0 latidos malos y llega (antes 5 malos, degradado); 12 MB con 5000 ms/15 s → degrada pero el archivo sigue por Wi-Fi y llega (antes abortado a ⏳)",
      "prueba": "Wi-Fi bajo CARGA no es mala señal"
+    },
+    {
+     "fallo": "2976 (primer diagnóstico AUTOMÁTICO del dueño, S24 09-11 16:01, síntoma «pendiente_viejo … 1529 min, enlace internet» mientras el registro decía «2 pending para nx…: sin enlace ni ruta»): linkOf devolvía «internet» en cuanto el identificador guardado del contacto era net:… (agregado por ID / solo internet), estuviera o no en línea. Consecuencias: al abrir el chat no se mandaba el toque FCM (P2: «ya hay enlace vivo»); el bucle de toques por pendientes (Fase A) lo daba por «ya alcanzable» y BORRABA la entrada → un pendiente 25 h sin un solo toque; el subtítulo del chat decía Internet con el contacto apagado; el diagnóstico automático lo contaba como alcanzable (falso «pendiente viejo»). 2976: «internet» solo si el contacto está EN LÍNEA (net.canReach, lo mismo que usa _linkUp); si no, puente Jump o «none». netoffline.js: B apagado del todo guardado como net:… → «none», abrir el chat = «waking», el pendiente sigue en toques y se toca; en línea otra vez → «internet»",
+     "prueba": "contacto SOLO INTERNET apagado"
     }
    ],
    "debiles": [
