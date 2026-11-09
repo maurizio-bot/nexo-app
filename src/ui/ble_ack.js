@@ -77,6 +77,10 @@ const NACK_INTERVAL_MS = 1500;
 const FILE_WINDOW_TIMEOUT_MS = 8000;
 const FILE_PACING_DELAY_MS = 2; // el nativo ya regula el ritmo (control de flujo por callback)
 const MAX_WINDOW_RETRIES = 8;
+// #dueño 09-11 (diagnóstico S24 12:15): un flujo saliente > XFER_STUCK_MS sin NINGÚN ACK ya no cuenta como «transferencia
+// activa» para proteger el enlace del ping/zombie del vigilante (hasActiveTransfer): un enlace Bluetooth zombi (las escrituras
+// «salen», no vuelve nada) se detecta y se rehace aunque haya flujos encima (2 ventanas de archivo de 8 s + margen).
+const XFER_STUCK_MS = 20000;
 // #dueño 05-11 («la foto tarda detrás de un archivo grande»): PRIORIDAD para lo chico/interactivo. Un ARCHIVO grande le
 // CEDE la radio mientras haya un envío interactivo (texto, foto, sticker) activo, para que la foto salga YA — como Fénix
 // cede a la actividad del usuario (2905). Acotado: el archivo no cede más de BULK_YIELD_MAX_MS seguidos (siempre avanza,
@@ -307,7 +311,11 @@ export class BleAckSystem {
   hasActiveTransfer(deviceId) {
     var nx = this._resolveNexoId(deviceId), now = Date.now(), self = this, busy = false;
     var same = function(d) { return d && (_normMac(d) === _normMac(deviceId) || self._resolveNexoId(d) === nx); };
-    this.outgoingStreams.forEach(function(s) { if (!busy && s && !s.aborted && same(s.deviceId)) busy = true; });
+    // #dueño 09-11 (diagnóstico S24 12:15, tablet zombi por Bluetooth): un flujo saliente que lleva > XFER_STUCK_MS sin NINGÚN
+    // ACK no «protege» el enlace. Antes el vigilante saltaba el ping/zombie PARA SIEMPRE («transferencia activa») mientras cada
+    // pendiente se arrastraba 8 reintentos de ventana sobre un enlace muerto y, al abortar, arrancaba el siguiente sobre el
+    // mismo. Atascado → se pinga; sin pong, zombi → se rehace el enlace y lo pendiente se reanuda por el nuevo (como siempre).
+    this.outgoingStreams.forEach(function(s) { if (!busy && s && !s.aborted && same(s.deviceId) && now - (s.lastAckAt || s.startTime || now) < XFER_STUCK_MS) busy = true; });
     this.incomingBuffers.forEach(function(b) { if (!busy && b && now - (b.lastActivity || 0) < 30000 && same(b.deviceId)) busy = true; });
     return busy;
   }
@@ -1619,6 +1627,11 @@ export class BleAckSystem {
     // ventanas de confirmación (ver _sendFileBest). Los ≤ 5 MB a un ausente van por el buzón de archivos desde el reenvío de pendientes.
     if (_isNetDevice(devId) && !(net && typeof net.canReach === 'function' && net.canReach(cid) && (tx.type === 'file' ? (net.filesOk(cid) || net.mailboxOk(cid)) : true))) devId = contactDeviceId;
     if (!devId) return null;
+    // #dueño 09-11 (diagnóstico S24 12:15, APK de 35 MB a la tablet por Bluetooth): un archivo que NO cabe por Bluetooth y cuyo
+    // único camino de AHORA es un Bluetooth queda ⏳ SIN sellarlo ni partirlo (antes: sendFile lo sellaba entero para que
+    // ChatStream lo aplazara igual, en CADA reanudación → memoria y CPU en cada vuelta). Lo re-rutea el evento de enlace
+    // (Wi-Fi/internet) como hasta ahora; un puente Jump (fwd) no aplica (ChatStream tampoco lo aplaza).
+    if (bigFile && !_isNetDevice(devId) && !_isLanDevice(devId) && !(tx.meta && tx.meta.fwd)) { console.log('[BleAckSystem] ' + tx.transferId + ': archivo grande, no cabe por Bluetooth: espera Wi-Fi/internet (sin sellar ni partir)'); return null; }
     // #dueño 07-11 (lentitud BT): NO reanudar un respaldo de fondo (Fénix) si el usuario tiene la radio (app en primer plano)
     // o si el enlace del destino está atascado/muerto. Se queda PENDIENTE (como «sin camino») y se reintenta cuando convenga; la
     // redundancia de Fénix cubre el respaldo. Tapa el hueco del diagnóstico: la REANUDACIÓN saltaba el freno que el respaldo ya

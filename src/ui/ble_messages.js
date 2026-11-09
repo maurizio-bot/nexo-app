@@ -6,7 +6,9 @@
 import { e2eOpenAnon } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOpenText, e2eOuterAd } from '../vault/e2e_proto.js';
 import { groupAttachment, parseGroupEnvelope } from './groups.js';
-import { NET_MAX_B64_BYTES } from './media_limits.js';
+import { NET_MAX_B64_BYTES, MAX_BLE_B64_BYTES } from './media_limits.js';
+// = BLE_FILE_MAX_CHARS de ble_ack.js (tope BLE en base64 + cabecera de cifrado): por encima, un archivo NUNCA va por Bluetooth
+var BT_FILE_MAX_CHARS = MAX_BLE_B64_BYTES + 100000;
 import { parseCallSignal } from './calls.js';
 import { parseGroupCallSignal } from './group_call.js';
 import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus } from './ble_helpers.js';
@@ -1247,6 +1249,22 @@ export const BLE_MESSAGE_METHODS = {
     var direct = st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY;
     var rh = direct ? null : (self.relay && self.relay.relayHop(nexoId));
     var blobOnly = false;
+    // #dueño 09-11 (diagnóstico S24 12:15, APK de 35 MB a la tablet conectada por Bluetooth): con enlace Bluetooth DIRECTO y
+    // sin Wi-Fi/internet con el contacto, un archivo que NO cabe por Bluetooth (> tope BLE en base64) NO se carga del disco.
+    // Antes cada «Reenviando pending» (evento de enlace, vuelta al frente, flush) leía los 35 MB («leyendo lento (adjunto)»),
+    // los sellaba y ChatStream los aplazaba igual: el teléfono arrastrándose. Queda ⏳ y lo re-rutea el evento de enlace
+    // (Wi-Fi/internet), como hasta ahora. Tamaño declarado (meta.size) o el adjunto ya en memoria; si no se conoce, se carga.
+    var btDirect = !!(direct && deviceId && !/^(lan|net)/i.test(String(deviceId)));
+    var betterPath = !!((self.net && typeof self.net.canReach === 'function' && self.net.canReach(nexoId)) || (self.lan && typeof self.lan.canReach === 'function' && self.lan.canReach(nexoId)));
+    var tooBigForBt = function(m) {
+      var t = m.attachmentType, p = m.attachmentPayload, mm = m.attachmentMeta;
+      if ((!t || !p) && m.content && typeof m.content === 'string' && m.content.charAt(0) === '{') {
+        try { var pr = JSON.parse(m.content); if (pr && pr.type === 'attachment') { t = pr.attachmentType; p = pr.payload; mm = pr.meta || mm; } } catch (e) {}
+      }
+      if (!t || (mm && mm.big)) return false;
+      var chars = (p && typeof p === 'string') ? p.length : Math.ceil(((mm && Number(mm.size)) || 0) * 4 / 3);
+      return chars > BT_FILE_MAX_CHARS;
+    };
     getPending = getPending.then(function(list) {
       list = (list || []).filter(function(m) { return !self._isMsgInFlight(idOf(m)); });
       if (!direct && !rh) {
@@ -1256,6 +1274,10 @@ export const BLE_MESSAGE_METHODS = {
         blobOnly = !!(self.net && typeof self.net.mailboxOk === 'function' && self.net.mailboxOk(nexoId) && !self.net.canReach(nexoId) && list.some(blobCandidate));
         if (blobOnly) list = list.filter(blobCandidate);
         else if (list.length) { console.log('[BLEInterface] ' + list.length + ' pending para ' + nexoId + ': sin enlace ni ruta, quedan en espera'); self._noteWakePending(nexoId); if (self.relay) self.relay.discover(nexoId); list.forEach(function(m) { try { self._fileCitaFromMsg(nexoId, m); } catch (e) {} }); return []; }
+      }
+      if (btDirect && !betterPath) {
+        var grandes = list.filter(tooBigForBt);
+        if (grandes.length) { console.log('[BLEInterface] ' + grandes.length + ' archivo(s) grande(s) para ' + nexoId + ' no caben por Bluetooth: esperan Wi-Fi/internet (sin leer del disco)'); list = list.filter(function(m) { return !tooBigForBt(m); }); }
       }
       return _hydrateAttachments(list);
     });

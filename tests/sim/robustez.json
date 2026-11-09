@@ -192,6 +192,14 @@
     {
      "fallo": "Reintentos de reconexión SINCRONIZADOS entre teléfonos (C-1, Tanda 1, investigación 07-11): la espera del backoff era determinista (2,4,8,16,30 s clavados) en JS (_attemptAutoReconnect) y en el nativo (getReconnectDelay); si varios teléfonos se cortan en el MISMO instante (el dueño de un grupo se va, concierto, el Bluetooth del coche se apaga) TODOS reintentaban a la vez y chocaban en la radio compartida (colisiones de GATT 133, ventana de escaneo 5/30 s llena para todos a la vez). 2944: una sola regla común _jitteredBackoff en ble_helpers.js (jitter «igual» estilo AWS: suelo exp/2 + mitad aleatoria → [exp/2, exp]) usada por JS, y la misma fórmula replicada en Kotlin → los reintentos se reparten en el tiempo y dejan de chocar",
      "prueba": "jitter en el backoff de reconexión"
+    },
+    {
+     "fallo": "Enlace Bluetooth ZOMBI con transferencia en curso (diagnóstico del dueño S24 09-11 12:15): la tablet seguía conectada pero no contestaba nada (las escrituras «salían» NO_RESPONSE, ningún ACK) y el vigilante saltaba SIEMPRE el ping/zombie por «transferencia activa» → el enlace muerto no se detectaba nunca y cada pendiente (foto de grupo de 267 trozos, segmentos de Fénix) se arrastraba 8 reintentos de ventana sobre él, uno detrás de otro («Max window retries» en bucle). 2973: un flujo saliente > 20 s sin NINGÚN ACK no protege el enlace (hasActiveTransfer, XFER_STUCK_MS); se pinga, sin pong es zombi y se rehace; lo pendiente se reanuda por el enlace nuevo. Queda el caso «vivo pero atascado» (contesta pings, no confirma datos): sigue con sus 8 reintentos (PENDIENTES §3)",
+     "prueba": "enlace Bluetooth ZOMBI con transferencia en curso"
+    },
+    {
+     "fallo": "Fénix se colaba al volver al frente (diagnóstico del dueño S24 09-11 12:15): _putSeg pasaba la compuerta «usuario primero» en segundo plano, tardaba ~400 ms en leer el segmento del disco y, si en ese rato la app volvía al frente, el envío salía igual (un segmento 90 ms después de «App de vuelta en primer plano», y después 5 reintentos de 8 s sobre un enlace atascado). 2973: re-comprueba la pausa después de leer",
+     "prueba": "el usuario primero"
     }
    ],
    "debiles": [
@@ -426,6 +434,10 @@
     {
      "fallo": "Archivo > 5 MB (no cabe en el buzón de archivos) a un contacto DORMIDO: el que recibe no se enteraba de nada hasta que coincidieran (ni marcador ni aviso) y solo el emisor tocaba; si el emisor dormía cuando el otro despertaba, nadie lo despertaba a él (diseño 08-11 §4c, la «cita»). Fase D de la entrega offline (2972): el emisor deja en el buzón del otro un AVISO chiquito (nombre, tamaño, id del mensaje) una vez por archivo y el archivo queda ⏳ (nunca ✗) con toque por pendientes; el receptor pone un MARCADOR en el chat («esperando que los dos estén en línea para bajarlo»), contesta «ya estoy» al buzón del emisor (+ toque FCM) y entra al toque MUTUO (el toque por pendientes también cuenta un archivo que se espera); el emisor, al recibir el «ya estoy», saluda y reenvía lo pendiente: el archivo va por el flujo directo de siempre y el marcador se vuelve el archivo (mismo id, una burbuja). Prueba bigcita.js (2 teléfonos)",
      "prueba": "la «CITA» para archivos > 5 MB"
+    },
+    {
+     "fallo": "2973 (diagnóstico del dueño S24 09-11 12:15, APK de 35 MB pendiente para la tablet CONECTADA por Bluetooth, sin Wi-Fi/internet con ella): el reenvío de pendientes cargaba del disco el archivo ENTERO en cada vuelta (evento de enlace, vuelta al frente, flush: «leyendo lento (adjunto)» ×N), lo sellaba y recién ChatStream lo descartaba por tamaño; la reanudación de registros salientes hacía lo mismo (sellar 35 MB para aplazar). 2973: con Bluetooth directo y sin camino mejor (canReach Wi-Fi/internet), un archivo que no cabe por Bluetooth (tamaño declarado meta.size o adjunto en memoria) no se carga ni se sella: queda ⏳ hasta el evento de enlace. blobe2e.js (5b): 3 reenvíos → 0 cargas, 0 sendFile (antes 3/6)",
+     "prueba": "ARCHIVO A UN TELÉFONO APAGADO"
     }
    ],
    "debiles": [

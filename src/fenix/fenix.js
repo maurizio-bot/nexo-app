@@ -598,6 +598,7 @@ export class Fenix {
     if (self.inflight.has(nx) || !self.ble.ackSystem) return;
     if (_fenixFgPaused(self.ble && self.ble._foreground)) return; // regla del dueño: app en primer plano → el respaldo espera (el usuario primero)
     var blob = g.med ? await _load(g.ref) : g.blob;
+    if (_fenixFgPaused(self.ble && self.ble._foreground)) return; // #dueño 09-11 (diagnóstico S24 12:15): la lectura del disco se cruzó con la vuelta al frente y un segmento salió 90 ms después de «App de vuelta en primer plano»
     if (!blob) { console.warn('[FENIX] ' + g.id + ': ya no está en este teléfono'); return; }
     self.inflight.add(nx);
     var payload = { v: 1, k: 'seg', o: self.me(), id: g.id, ts: g.ts, blob: blob, bh: g.bh };

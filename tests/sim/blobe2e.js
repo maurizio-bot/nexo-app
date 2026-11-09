@@ -196,6 +196,18 @@ const statusOf = (p, msgId) => { const s = p.win.document.querySelector('.msg-st
   r.grande_bt_intentos_en_9s = starts + '/' + resumes;
   r.grande_bt_sin_bucle = starts <= 2 && resumes <= 3;
   r.grande_bt_queda_pendiente = statusOf(A, idG) === 'pending' && count1064() === blobEvents5; // > 5 MB: no va al buzón de archivos (Fase D)
+  // (5b) 2973 (diagnóstico del dueño S24 09-11 12:15): con el contacto conectado por Bluetooth, cada «Reenviando pending» (evento de
+  //      enlace, vuelta al frente, flush) LEÍA el archivo de 35 MB del disco y lo sellaba para que ChatStream lo descartara por
+  //      tamaño («leyendo lento (adjunto)» ×N, el teléfono arrastrándose). Ahora el reenvío lo salta ANTES de cargarlo: 3 reenvíos → 0 cargas, 0 sendFile.
+  let hydG = 0; const oHyd = A.win.vaultHydrateAttachments;
+  A.win.vaultHydrateAttachments = function (list) { (list || []).forEach((m) => { if (m && (m.msgId || m.messageId || m.id) === idG) hydG++; }); return oHyd.apply(this, arguments); };
+  const startsG = () => logs.filter((l) => new RegExp('\\[A\\].*sendFile START fileId=' + idG + '\\b').test(l)).length;
+  const sG0 = startsG();
+  for (let k = 0; k < 3; k++) { try { A.win.bleInterface._resendPendingMessages(idB); } catch (e) {} await sleep(1500); }
+  await sleep(1500);
+  r.grande_bt_reenvio_lecturas = hydG + '/' + (startsG() - sG0);
+  r.grande_bt_reenvio_sin_leer_disco = hydG === 0 && startsG() === sG0 && statusOf(A, idG) === 'pending';
+  A.win.vaultHydrateAttachments = oHyd;
   // ===== (6) 2970: una REANUDACIÓN con contenido YA SELLADO (registro saliente, como los segmentos de Fénix del diagnóstico) a
   //     un contacto ausente por internet NO pasa por el buzón de archivos (antes: «atob … not correctly encoded») ni abre un
   //     flujo por relés hacia un ausente =====
@@ -209,7 +221,7 @@ const statusOf = (p, msgId) => { const s = p.win.document.querySelector('.msg-st
   r.contenido_en_registros = logs.filter((l) => l.indexOf(b64.substring(0, 24)) >= 0).length;
 
   const numeric = ['en_linea_por_internet_s', 'registrado_en_A_s', 'A_tick_al_guardarse_el_puntero_s', 'B_recibe_el_archivo_s', 'A_doble_tick_s', 'de_vuelta_en_linea_s', 'en_linea_llega_s', 'bt_de_nuevo_s', 'grande_registrado_s'];
-  const info = { prueba: 1, build: 1, resultado: 1, eventos_nuevos_no_trozo_en_r1: 1, puntero_capturado: 1, grande_bt_intentos_en_9s: 1 };
+  const info = { prueba: 1, build: 1, resultado: 1, eventos_nuevos_no_trozo_en_r1: 1, puntero_capturado: 1, grande_bt_intentos_en_9s: 1, grande_bt_reenvio_lecturas: 1 };
   const ok = numeric.every((k) => typeof r[k] === 'number') && r.trozos_por_rele === '8,8,8' && r.reles_ven_algo.length === 0 && r.errores.length === 0 && r.contenido_en_registros === 0 &&
     Object.keys(r).every((k) => info[k] || typeof r[k] !== 'boolean' || r[k] === true);
   r.resultado = ok ? 'OK' : 'FALLO';

@@ -22,7 +22,24 @@ const { importSrc } = require('./srcmod');
   // (5) Robustez: solo el booleano true exacto pausa (un valor «truthy» cualquiera NO pausa, evita pausas por accidente).
   r.truthy_no_pausa = _fenixFgPaused(1) === false && _fenixFgPaused('visible') === false;
 
-  const ok = r.primer_plano_pausa && r.segundo_plano_corre && r.sin_senal_corre && r.null_corre && r.cero_corre && r.truthy_no_pausa;
+  // 2973 (diagnóstico del dueño S24 09-11 12:15): la CARRERA «leer del disco ↔ vuelta al frente». _putSeg pasaba la compuerta en
+  // segundo plano, tardaba ~400 ms en leer el segmento del disco y, si en ese rato la app volvía al frente, el envío salía igual (en
+  // el diagnóstico: un segmento 90 ms después de «App de vuelta en primer plano», y luego 5 reintentos de 8 s sobre un enlace
+  // atascado). Ahora re-comprueba la pausa DESPUÉS de leer. Fenix real con un ble mínimo y un «disco» lento que trae la app al frente.
+  const { Fenix } = await importSrc('fenix/fenix.js');
+  let sent = 0;
+  const ble = { _foreground: false, localNexoId: 'nxa0000000', ackSystem: { sendFile: () => { sent++; return Promise.resolve(); } } };
+  const slowLoad = () => new Promise((res) => setTimeout(() => { ble._foreground = true; res({ exists: true, content: 'QUJDREVGRw==' }); }, 40));
+  global.window = Object.assign(global.window || {}, { crypto: require('crypto').webcrypto, Capacitor: { Plugins: { NexoBLE: { loadFromFile: slowLoad } } } });
+  const fx = new Fenix(ble); fx.msgs = { segs: [] }; fx._saveMsgs = async () => {};
+  await fx._putSeg('nxa0000001', 'AA:BB:CC:DD:EE:01', { id: 'g1', ts: 1, med: 1, ref: 'nexo_att_g1', bh: 'x', holders: {} });
+  r.carrera_disco_vs_frente_no_manda = sent === 0 && !fx.inflight.has('nxa0000001');
+  // control: en segundo plano sostenido el mismo segmento SÍ sale (la compuerta no se volvió un «nunca»)
+  ble._foreground = false; global.window.Capacitor.Plugins.NexoBLE.loadFromFile = () => Promise.resolve({ exists: true, content: 'QUJDREVGRw==' });
+  await fx._putSeg('nxa0000002', 'AA:BB:CC:DD:EE:02', { id: 'g2', ts: 1, med: 1, ref: 'nexo_att_g2', bh: 'x', holders: {} });
+  r.segundo_plano_manda = sent === 1;
+
+  const ok = r.primer_plano_pausa && r.segundo_plano_corre && r.sin_senal_corre && r.null_corre && r.cero_corre && r.truthy_no_pausa && r.carrera_disco_vs_frente_no_manda && r.segundo_plano_manda
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('FENIXFG ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);

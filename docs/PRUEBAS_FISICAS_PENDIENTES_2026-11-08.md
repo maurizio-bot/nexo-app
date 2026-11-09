@@ -10,7 +10,7 @@ dos WiFi distintas (2957)**, **envío de fotos**, y **JUMP funcionando** (tu cap
 vez que lo probás; aclaraste que no era un error, era el Jump andando). Eso ya subió el índice de robustez
 **54,8 → 61,8** (el componente «teléfonos», que es el que mueven tus pruebas, pasó de **15,9 a 22,8 / 35**;
 «caminos» llegó a su nivel pleno porque internet y Jump eran los que faltaban; ver `docs/ROBUSTEZ.md`). Abajo
-marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2972**).
+marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2973**).
 
 ## A. Builds nuevos a probar
 
@@ -173,6 +173,18 @@ marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo l
     abierta un momento: el archivo tiene que salir solo, la tarjeta del vivo se vuelve el archivo (una sola burbuja) y el S24 pasa
     a ✓✓. Variante: apagá el S24 justo después de mandar y dejá el vivo encendido — el vivo tiene que **tocar** al S24 (en su
     diagnóstico: «[WAKE] toque a …»). Si algo falla: Perfil → Copiar diagnóstico en los dos y buscá `[CITA]`.
+
+26. **2973 — tu diagnóstico del S24 (12:15): la tablet por Bluetooth, sin arrastrarse y sin enlace zombi.** El S24 con el APK
+    de 25 MB todavía pendiente para la tablet, los dos por Bluetooth y **sin internet** entre ellos. (a) Movete por la app un rato
+    (entrá y salí del chat de la tablet, mandá un texto a otro, bloqueá y desbloqueá): el S24 **no debe arrastrarse** y en el
+    diagnóstico ya no tiene que repetirse «leyendo lento (adjunto)» ni «sendFile START … 35651706»; en su lugar, a lo sumo
+    «archivo(s) grande(s) para … no caben por Bluetooth: esperan Wi-Fi/internet (sin leer del disco)». El APK sigue ⏳. (b) Mandá
+    una foto al **vivo** (tu diagnóstico de las 12:17 mostró que su app estaba congelada en segundo plano: eso es el «zombi») y
+    **dejalo en la mesa con la pantalla apagada** sin tocarlo: en ~1 minuto el diagnóstico del S24 debe decir «sin respuesta a 2
+    pings: desconectado para reconectar» y rehacer el enlace (antes se quedaba para siempre en «Supervisor: transferencia activa,
+    skip ping/zombie»); al desbloquear el vivo la foto tiene que llegar sola. Lo mismo vale con la tablet. (c) Si el otro sigue sin
+    recibir nada por Bluetooth pero el S24 NO corta el enlace, copiame el diagnóstico de los DOS: es el caso «vivo pero atascado»
+    que dejé anotado en PENDIENTES §3.
 
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 

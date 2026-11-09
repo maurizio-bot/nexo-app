@@ -803,6 +803,11 @@ cerrado — en cuyo caso el #87 de mensajes ya está, y solo queda la llamada ce
   (mejor por Wi-Fi); pingeo por Jump (hoy solo con el contacto conectado).
 
 ## 3. Mejoras de lo que ya existe
+- **Enlace Bluetooth «vivo pero atascado»** (2973, diagnóstico del dueño 09-11 12:15): un enlace MUDO (sin pong) ya se detecta y se
+  rehace aunque haya una transferencia atascada encima (`zombiexfer.js`). Queda el caso intermedio: el otro contesta pings pero no
+  confirma datos (su cola de escritura atascada, su JS saturado) → el flujo sigue con sus 8 reintentos de ventana y el siguiente
+  pendiente vuelve a probar el mismo enlace. Idea: tras N flujos seguidos agotados sin un solo ACK por un enlace, marcarlo muerto
+  (`_markBleDead`) para que el resolvedor salte a otro camino. Esperar al próximo diagnóstico del dueño para ver si pasa.
 - **Archivos grandes** (pedido del dueño 24-10, un APK de 24 MB no salía): hecho en la 2756, hasta 1 GB por el mismo
   Wi-Fi o Wi-Fi Direct, a disco por trozos y con clave propia por archivo. Falta: reenviarlos, y por Bluetooth/Jump
   (demasiado lento) o internet (relés: no admiten archivos así).
