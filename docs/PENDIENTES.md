@@ -822,6 +822,11 @@ cerrado — en cuyo caso el #87 de mensajes ya está, y solo queda la llamada ce
   confirma datos (su cola de escritura atascada, su JS saturado) → el flujo sigue con sus 8 reintentos de ventana y el siguiente
   pendiente vuelve a probar el mismo enlace. Idea: tras N flujos seguidos agotados sin un solo ACK por un enlace, marcarlo muerto
   (`_markBleDead`) para que el resolvedor salte a otro camino. Esperar al próximo diagnóstico del dueño para ver si pasa.
+- **Archivo grande por Wi-Fi que se corta y vuelve a empezar de cero** (2975, diagnóstico del dueño 09-11 13:35): ya no lo corta la
+  propia app por la ida y vuelta inflada por la carga (`lan.js` + `hasActiveTransferOn`) ni lo manda a Bluetooth al degradar (`relink` con
+  `keepTooBig`). Queda lo de fondo: si el Wi-Fi se CAE de verdad a mitad de un archivo grande, el siguiente intento empieza desde el
+  trozo 0 («llega otro intento: se empieza de nuevo» en la tablet). Reanudar desde el último trozo confirmado es un cambio de protocolo
+  (el receptor guarda los trozos que ya tiene y lo dice en el saludo del flujo): va con la Fase E de la entrega offline, no antes.
 - **Archivos grandes** (pedido del dueño 24-10, un APK de 24 MB no salía): hecho en la 2756, hasta 1 GB por el mismo
   Wi-Fi o Wi-Fi Direct, a disco por trozos y con clave propia por archivo. Falta: reenviarlos, y por Bluetooth/Jump
   (demasiado lento) o internet (relés: no admiten archivos así).

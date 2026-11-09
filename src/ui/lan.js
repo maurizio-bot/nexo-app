@@ -259,7 +259,14 @@ export class LanLink {
       var p = q[nx];
       if (!p) return;
       l.rtt = p.rtt; l.idle = p.idle;
-      var bad = (p.rtt > BAD_RTT_MS) || (p.idle > BAD_IDLE_MS);
+      // 2975 (diagnóstico del dueño 13:35, APK de 25 MB a la tablet por Wi-Fi): el latido viaja por el MISMO canal que los trozos
+      // de 24 KB en vuelo, así que con una transferencia la ida y vuelta se infla por la CARGA (5509 ms con «0 s sin recibir»)
+      // y el enlace se daba por malo justo cuando mejor andaba (y el archivo caía a Bluetooth, donde no cabe → ⏳ y de cero).
+      // Ahora, mientras haya un archivo/texto largo yendo o viniendo por ESTE enlace Wi-Fi (con confirmaciones recientes), la ida
+      // y vuelta alta no cuenta: solo «sin recibir» > 12 s. Sin transferencia, la regla de siempre (mala señal = ida y vuelta alta).
+      var ack = self.ble && self.ble.ackSystem;
+      var carga = !!(ack && typeof ack.hasActiveTransferOn === 'function' && ack.hasActiveTransferOn('lan:' + nx));
+      var bad = (p.idle > BAD_IDLE_MS) || (p.rtt > BAD_RTT_MS && !carga);
       var good = p.rtt >= 0 && p.rtt < GOOD_RTT_MS && p.idle < BAD_IDLE_MS;
       l.bad = bad ? (l.bad || 0) + 1 : 0;
       l.good = good ? (l.good || 0) + 1 : 0;

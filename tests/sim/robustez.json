@@ -547,6 +547,10 @@
     {
      "fallo": "El token FCM solo viajaba en el SALUDO, que caduca en el relé a los 10 min (TTL_HELLO): un contacto dormido horas leía mi mensaje del buzón (TTL 7 días) pero NO mi token → no podía tocarme a mí (mutuo) ni despertarme después si mi token había rotado. Fase A (2967): la marca del buzón de cada mensaje NUEVO lleva también el token (una vez por mensaje, nunca por trozo; si con el token el sobre se pasa del tope del relé va sin token antes que no ir)",
      "prueba": "TOKEN EN LOS DOS SENTIDOS"
+    },
+    {
+     "fallo": "2975 (diagnóstico del dueño S24 09-11 13:35, APK de 25 MB a la tablet por Wi-Fi): el archivo por fin salía por la red local (350 trozos de 24 KB de 1487 en 90 s) y la propia app lo cortó: «Señal Wi-Fi mala con la tablet (ida y vuelta 5509 ms, 0 s sin recibir): lo nuevo por otro camino» y 2 ms después «abort … Contacto no disponible: queda pendiente». El latido nativo viaja por el MISMO canal que los trozos en vuelo: la ida y vuelta se infla por la CARGA, no por mala señal («0 s sin recibir» = enlace vivo); y al degradar, relink movía el archivo en vuelo a Bluetooth, donde no cabe → ⏳ → el siguiente intento empezaba de cero («llega otro intento: se empieza de nuevo» en la tablet). 2975: (1) lan.js: mientras hay una transferencia por ese enlace Wi-Fi (hasActiveTransferOn: flujo saliente con ACK < 20 s o entrante con actividad < 30 s) la ida y vuelta alta no cuenta como mala señal, solo «sin recibir» > 12 s; sin transferencia, la regla de siempre (la vigilan lan.js 1c y route.js); (2) relink con keepTooBig: lo que no cabe por el camino nuevo se queda en el Wi-Fi mientras esté arriba (degradado ≠ caído). lanload.js: 6 MB con latido 5000 ms/0 s → 0 latidos malos y llega (antes 5 malos, degradado); 12 MB con 5000 ms/15 s → degrada pero el archivo sigue por Wi-Fi y llega (antes abortado a ⏳)",
+     "prueba": "Wi-Fi bajo CARGA no es mala señal"
     }
    ],
    "debiles": [
@@ -568,7 +572,7 @@
     },
     {
      "g": "grave",
-     "d": "Informe del dueño (2780): con Wi-Fi bueno la app se pasa a «Internet» y no deja llamar/videollamar; debe mantener el Wi-Fi si está conectado y bueno (sospecha: el tráfico de la propia videollamada marca el enlace «malo»). Tarea #83, para 2781"
+     "d": "Informe del dueño (2780): con Wi-Fi bueno la app se pasa a «Internet» y no deja llamar/videollamar; debe mantener el Wi-Fi si está conectado y bueno (sospecha: el tráfico de la propia videollamada marca el enlace «malo»). Tarea #83, para 2781. 2975: la sospecha se confirmó en el diagnóstico del dueño (13:35) con una transferencia: la ida y vuelta se infla por la carga del propio enlace; ahora la ida y vuelta alta no cuenta mientras hay una transferencia por ese enlace (lanload.js); una videollamada NO pasa por el sistema de flujos, así que para ella sigue abierto. Queda medir en teléfono que una videollamada por Wi-Fi ya no «se pasa a Internet»"
     }
    ]
   },

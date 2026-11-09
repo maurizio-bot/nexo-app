@@ -319,6 +319,15 @@ export class BleAckSystem {
     this.incomingBuffers.forEach(function(b) { if (!busy && b && now - (b.lastActivity || 0) < 30000 && same(b.deviceId)) busy = true; });
     return busy;
   }
+  // 2975: ¿hay un archivo/texto largo yendo o viniendo por ESE enlace exacto (p. ej. "lan:nx…")? Lo usa el latido del Wi-Fi para
+  // no tomar por mala señal la ida y vuelta inflada por la propia carga (una transferencia por Bluetooth con el mismo contacto
+  // no carga el Wi-Fi: por eso aquí no se resuelve al contacto como en hasActiveTransfer).
+  hasActiveTransferOn(deviceId) {
+    var id = _normMac(deviceId), now = Date.now(), busy = false;
+    this.outgoingStreams.forEach(function(s) { if (!busy && s && !s.aborted && _normMac(s.deviceId) === id && now - (s.lastAckAt || s.startTime || now) < XFER_STUCK_MS) busy = true; });
+    this.incomingBuffers.forEach(function(b) { if (!busy && b && _normMac(b.deviceId) === id && now - (b.lastActivity || 0) < 30000) busy = true; });
+    return busy;
+  }
   // #dueño 05-11: ¿hay un envío INTERACTIVO (texto/foto/sticker, no un archivo grande) activo AHORA? Si sí, un archivo
   // grande le cede la radio para que lo chico salga ya. Los streams terminados ya no están en outgoingStreams.
   _interactiveActive(excludeMsgId) {
@@ -434,13 +443,16 @@ export class BleAckSystem {
   // v3.10.0: se cayó el Wi-Fi con un contacto (oldId "lan:<nx>"). Lo que iba por él sigue por `next` (Bluetooth);
   // lo que no cabe por Bluetooth (vídeo original, archivo grande) o si no hay Bluetooth, se para con WD_FAILED /
   // PEER_ABSENT y quien lo mandó decide (vídeo: previa + HD; lo demás: pendiente hasta que vuelva un camino).
-  relink(oldId, next) {
+  relink(oldId, next, opts) {
     var self = this, nd = _normMac(oldId);
     self.pendingAcks.forEach(function(e) { if (next && _normMac(e.deviceId) === nd) e.deviceId = next; });
     self.outgoingStreams.forEach(function(st, id) {
       if (!st || _normMac(st.deviceId) !== nd) return;
       var limit = (st.meta && st.meta.hdFor) ? BLE_HD_MAX_CHARS : BLE_FILE_MAX_CHARS;
       var tooBig = st.type === 'file' && ((st.meta && st.meta.wdOnly) || String(st.content || '').length > limit);
+      // 2975 (diagnóstico del dueño 13:35): Wi-Fi DEGRADADO (no caído) con un archivo grande en vuelo: el enlace sigue arriba y
+      // el archivo no cabe por el camino nuevo → se queda donde está (antes se abortaba a ⏳ y el siguiente intento empezaba de cero)
+      if (tooBig && opts && opts.keepTooBig) return;
       if (next && !tooBig) {
         if (st.tooBigFor(next)) self._restartStream(st, id, next); else st.useLink(next);
         return;

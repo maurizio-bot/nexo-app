@@ -10,7 +10,7 @@ dos WiFi distintas (2957)**, **envío de fotos**, y **JUMP funcionando** (tu cap
 vez que lo probás; aclaraste que no era un error, era el Jump andando). Eso ya subió el índice de robustez
 **54,8 → 61,8** (el componente «teléfonos», que es el que mueven tus pruebas, pasó de **15,9 a 22,8 / 35**;
 «caminos» llegó a su nivel pleno porque internet y Jump eran los que faltaban; ver `docs/ROBUSTEZ.md`). Abajo
-marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2974**).
+marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2975**).
 
 ## A. Builds nuevos a probar
 
@@ -196,6 +196,16 @@ marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo l
     build 2974 =====» y adentro dice «Build: 2974». (d) En tu S24, forzá un síntoma propio (por ejemplo cerrá la app del vivo con una
     foto en vuelo desde el S24): tiene que aparecer en tu propia bandeja sin viajar a ningún lado. (e) Si el vivo NO manda nada:
     copiame su diagnóstico normal y buscá `[AUTODIAG]` (dice por qué: apagado, espera, tope, sin contacto).
+
+28. **2975 — archivo grande por Wi-Fi ya no se corta solo (tu diagnóstico de las 13:35: el APK de 25 MB a la tablet).** S24 y tablet
+    en la misma Wi-Fi, Bluetooth encendido en los dos. (a) Mandá el APK (o cualquier archivo de 20–40 MB) del S24 a la tablet y dejá la
+    pantalla encendida: tiene que llegar ENTERO de una, sin el aviso «Señal Wi-Fi mala con la tablet» en el diagnóstico (antes salía a los
+    ~90 s con «ida y vuelta 5509 ms, 0 s sin recibir» y el envío quedaba ⏳). (b) Si igual aparece «Señal Wi-Fi mala», el archivo NO debe
+    quedar pendiente ni empezar de cero: en el diagnóstico del S24 no tiene que haber «abort … Contacto no disponible: queda pendiente»
+    para ese archivo y en la tablet no tiene que repetirse «llega otro intento: se empieza de nuevo». (c) Prueba inversa (para que no
+    se me pase lo contrario): alejá la tablet hasta que el Wi-Fi se corte de verdad durante el envío → ahí SÍ debe salir «Señal Wi-Fi
+    mala» (por «… s sin recibir») y el archivo quedar ⏳ hasta que vuelva el Wi-Fi; al volver, sale solo. (d) Copiame el diagnóstico de
+    los dos si algo de eso no pasa.
 
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 
