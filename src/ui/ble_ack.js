@@ -2,6 +2,7 @@ import { e2eAvailable, e2eAckTag } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOuterAd, e2eSealText, e2eSealB64, e2eOpenText, e2eOpenToB64 } from '../vault/e2e_proto.js';
 import { ratchetCanEncrypt } from '../vault/e2e_ratchet.js';
 import { NET_MAX_B64_BYTES } from './media_limits.js';
+import { stageBlob, blobMailboxEligible, loadBlobOut, saveBlobOut, _b64ToBytes as _blobB64ToBytes } from '../net/blob_mailbox.js'; // Fase B (2969): buzón de ARCHIVOS en relés
 /**
 * v3.14.0: el mismo mensaje troceado distinto por otro camino (puente cortado y reenvío directo) ya no se queda sin completar
 * v3.13.0: trozos de archivo en binario por Bluetooth (BinFrame.kt; sin el 33 % del base64) con quien lo anuncia
@@ -535,6 +536,13 @@ export class BleAckSystem {
       // relés (rápido). Con el latido (2930/2931) manteniendo despiertos a los dos, se forma el Tor directo y el archivo va por ahí.
       var torBig = (typeof window !== 'undefined' && Number(window.NEXO_NET_TOR_PREFER_BYTES)) || NET_TOR_PREFER_BYTES;
       if (net && typeof net.preferTorFor === 'function' && cid && data && data.length > torBig) net.preferTorFor(cid);
+      // Fase B (build 2969, docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md): contacto AUSENTE por internet (no canReach) y archivo
+      // de hasta 5 MB → BUZÓN DE ARCHIVOS: se cifra UNA vez, se parte en trozos de 40 KB publicados en todos los relés (sin
+      // etiqueta del destinatario: se bajan por id) y al contacto le llega un PUNTERO E2E chiquito por el buzón normal (TTL
+      // 7 días + toque FCM). Así el archivo llega aunque los dos NUNCA coincidan en línea (antes: ⏳ hasta coincidir).
+      if (net && cid && typeof net.canReach === 'function' && !net.canReach(cid) && net.mailboxOk(cid) && blobMailboxEligible(data, meta)) {
+        return self._sendFileViaBlobMailbox(cid, fileId, data, meta);
+      }
       var netOk = net && (net.filesOk(cid) || (net.mailboxOk(cid) && data && data.length <= NET_MAX_B64_BYTES));
       if (!netOk) {
         var en = new Error('Contacto no disponible: queda pendiente'); en.code = 'PEER_ABSENT';
@@ -567,6 +575,53 @@ export class BleAckSystem {
       }
       return self._sendFileJS(deviceId, fileId, data, meta);
     });
+  }
+  // Fase B (2969): archivo → buzón de archivos de los relés + puntero al buzón del contacto (ver src/net/blob_mailbox.js).
+  // Resuelve cuando el puntero quedó guardado en un relé (la burbuja pasa a ✓ «en el buzón»); el ✓✓ llega con el ack del
+  // receptor cuando bajó, verificó y descifró el archivo. Un puntero VIGENTE no se vuelve a subir (reenvíos de pendientes).
+  _sendFileViaBlobMailbox(cid, fileId, data, meta) {
+    var self = this, net = self.ble && self.ble.net;
+    if (!self._blobOut) self._blobOut = loadBlobOut();
+    var live = self._blobOut.get(fileId);
+    if (live && live.expires > Date.now()) { console.log('[BLOB] ' + fileId + ' ya está en el buzón de archivos (puntero vigente hasta ' + new Date(live.expires).toISOString() + '): no se vuelve a subir'); return Promise.resolve(); }
+    if (!self._blobOutRunning) self._blobOutRunning = new Map();
+    if (self._blobOutRunning.has(fileId)) return self._blobOutRunning.get(fileId);
+    var type = (meta && meta.type) || 'file';
+    var metaWire = Object.assign({}, meta || {}); delete metaWire.to; delete metaWire.dst; delete metaWire.fwd;
+    self._dispatchFileProgress(fileId, 0, 1, 'sending', 1);
+    console.log('[BLOB] ' + fileId + ' (' + type + ', ' + Math.round(data.length * 3 / 4 / 1024) + ' KB) → buzón de archivos: contacto ' + cid + ' ausente, cifro una vez y subo trozos a los relés');
+    var p = stageBlob(net, data, { onProgress: function(i, n) { self._dispatchFileProgress(fileId, i, n, 'sending', Math.max(1, Math.round(95 * i / n))); } }).then(function(res) {
+      var att = { type: 'attachment', attachmentType: type, payload: 'ptr', meta: Object.assign({}, metaWire, { ptr: 1, size: res.pointer.raw }), ptr: res.pointer };
+      console.log('[BLOB] ' + fileId + ': ' + res.pointer.chunks.length + ' trozos en ' + res.pointer.relays.length + ' relés (réplica mínima ' + res.replication + '); mando el puntero al buzón');
+      return self.ble._sendViaNetMailbox(cid, JSON.stringify(att), fileId).then(function() {
+        self._blobOut.set(fileId, { expires: res.pointer.expires * 1000, rec: res.outRecord, cid: cid });
+        saveBlobOut(self._blobOut);
+        self._dispatchStatus(fileId, 'sent'); // ✓ «en el buzón» (el icono limpio, no «✓ 99 %» de progreso)
+      });
+    }).catch(function(e) {
+      // «⏳, nunca ✗» (contratos §7): si ningún relé guardó un trozo o se cayó internet a mitad, el archivo queda PENDIENTE y
+      // se reintenta al volver internet (_netOnline → _resendPendingMessages → buzón de archivos); jamás se marca fallido
+      console.warn('[BLOB] ' + fileId + ' no pudo subirse al buzón de archivos (' + ((e && e.message) || 'sin relés') + '): queda pendiente');
+      self._dispatchStatus(fileId, 'pending');
+      var en = new Error('Buzón de archivos no disponible: queda pendiente'); en.code = 'PEER_ABSENT';
+      throw en;
+    });
+    self._blobOutRunning.set(fileId, p);
+    var clear = function() { self._blobOutRunning.delete(fileId); };
+    p.then(clear, clear);
+    return p;
+  }
+  // Fase B: al confirmar el receptor (✓✓), pedir a los relés que borren los trozos (NIP-09, best-effort; la caducidad de 7 días es la garantía)
+  _blobCleanup(msgId) {
+    var self = this, rec = self._blobOut && self._blobOut.get(msgId);
+    if (!rec) return;
+    self._blobOut.delete(msgId); saveBlobOut(self._blobOut);
+    var net = self.ble && self.ble.net;
+    if (!net || !rec.rec || !rec.rec.sk || typeof net.blobDeleteEvent !== 'function') return;
+    try {
+      var ev = net.blobDeleteEvent(_blobB64ToBytes(rec.rec.sk), rec.rec.ids);
+      net.publishEach(ev, 8000).then(function(ok) { console.log('[BLOB] ' + msgId + ' confirmado por el receptor: pedí borrar sus ' + rec.rec.ids.length + ' trozos (' + ok.length + ' relés aceptaron; igual caducan solos)'); });
+    } catch (e) {}
   }
   _sendFileJS(deviceId, fileId, base64Data, meta) {
     var self = this;
@@ -1355,6 +1410,7 @@ export class BleAckSystem {
         this.receivedAcks.delete(first);
       }
       var status = ack.type === 'read_receipt' ? 'read' : 'delivered';
+      if (status === 'delivered' && this._blobOut && this._blobOut.has(ackMsgId)) this._blobCleanup(ackMsgId); // Fase B: el archivo ya está en el otro teléfono
       if (entry) {
         clearTimeout(entry.timer);
         this.pendingAcks.delete(ackMsgId);

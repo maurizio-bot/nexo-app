@@ -4,6 +4,8 @@
 // suscripciones (filtros kinds, #p, since, until, ids, authors, limit).
 // opts: { maxEventSize, authRequired (para leer kind 1059 hay que identificarse con la clave de la etiqueta p),
 //         latencyMs, dropEveryN (pierde un evento de cada N al repartir) }
+//         tamper(ev) → ev' | null: relé MALICIOSO para las pruebas de la Fase B — devuelve una copia alterada del evento que
+//         sirve (contenido cambiado, mismo id) o null para servirlo intacto. Se aplica solo al SERVIR (lo guardado queda bien).
 'use strict';
 const path = require('path');
 const WebSocket = require('ws');
@@ -99,7 +101,8 @@ class NostrRelay {
         if (this.opts.authRequired && !ws.authed.size) { send(['CLOSED', sub, 'auth-required: identifícate para leer mensajes privados']); return; }
         ws.subs.set(sub, filters);
         const list = this.events.filter((ev) => !this._expired(ev, now) && filters.some((f) => this._match(f, ev)) && this._canRead(ws, ev));
-        list.sort((a, b) => a.created_at - b.created_at).forEach((ev) => send(['EVENT', sub, ev]));
+        list.sort((a, b) => a.created_at - b.created_at).forEach((ev) => { const served = (this.opts.tamper && this.opts.tamper(ev)) || ev; if (served !== ev) this.stats.tampered = (this.stats.tampered || 0) + 1; send(['EVENT', sub, served]); });
+        this.stats.reqs = (this.stats.reqs || 0) + 1; if (filters.some((f) => f.ids)) this.stats.reqIds = (this.stats.reqIds || 0) + 1;
         send(['EOSE', sub]);
       } else if (m[0] === 'CLOSE') {
         ws.subs.delete(m[1]);

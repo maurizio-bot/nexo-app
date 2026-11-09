@@ -85,5 +85,27 @@ GIVE_UP alcanzado ──▶ PASSIVE (se entrega al verlo / al abrir su chat)
 ## 9. Fuera de A+B (va después)
 Fan-out/reenvío por referencia (C) · cita completa+stream (D) · blob-store de terceros / erasure coding / sender keys de grupo (E).
 
+## 10. Implementado en 2969 (Fase B) — lo que quedó distinto del borrador
+- **Eventos-trozo:** `kind 1064` (no el kind del buzón de pareja) y **sin etiqueta `p`**: se bajan por `id` (§3.4). Motivo: los
+  relés con NIP-42 solo dejan leer kind 1059 al destinatario etiquetado; un trozo sin etiqueta tiene que poder leerlo
+  cualquiera que conozca su id. Solo llevan `expiration` (now + 7 d). Una clave secp256k1 aleatoria por blob → un único
+  evento de borrado kind 5 (NIP-09) con los ids al confirmar (best-effort; la caducidad es la garantía).
+- **Puntero v1 real:** `{ v:1, kind:'file-pointer', alg:'AES-256-GCM', k, nonce, hash, size, raw, chunk:40960,
+  chunks:[{ i, n, id, r:[índices en relays] }], relays:[url…], expires, thumb? }`. La huella por trozo es el **id del
+  evento** (SHA-256 del evento entero, trozo incluido): no hace falta un `hash` aparte por trozo. `raw` = bytes en claro
+  (`size` = `raw` + 16 de GCM). El puntero viaja dentro de un adjunto normal E2E (`{type:'attachment', payload:'ptr', ptr}`)
+  por el buzón de pareja de siempre (un solo paquete, con marca `n` → toque FCM de la Fase A).
+- **Decisión de camino (emisor):** `bleInterface.sendFile` (sin enlace listo ni ruta Jump y contacto no alcanzable por internet
+  → buzón de archivos; si algo se está conectando por Bluetooth se le dan los 8 s de siempre), `_sendFileBest` (enlace `net:`
+  con el contacto caído) y `_resendPendingMessages` al volver internet (solo los adjuntos foto/vídeo/archivo; el resto sigue en
+  espera). Si ningún relé guarda un trozo → el archivo queda PENDIENTE (código PEER_ABSENT), nunca ✗. Con el contacto EN LÍNEA
+  no cambia nada. Interruptor `window.NEXO_BLOB_MAILBOX = false`.
+- **Receptor:** `validatePointer` (techos §1 + coherencia interna) → bajada por lotes de 16 ids, relé por relé (los del puntero
+  primero, después cualquier relé abierto), ≤3 bajadas a la vez, reintentos 30 s → 2 m → 8 m → 30 m hasta `expires`; el
+  archivo se re-inyecta como un adjunto normal (`_blobResolved`) y recién entonces se guarda, se avisa y se confirma (✓✓ = ya
+  está en el teléfono). El mismo puntero por dos vías → una sola copia (dedup por id de mensaje, se re-confirma).
+- **Fuera de B, confirmado:** sin miniatura en el puntero todavía (campo previsto), sin toque mutuo, sin fan-out, > 5 MB igual que antes.
+- **Pruebas que cierran la fase:** `tests/sim/blobmail.js` (§8-B adversarial) y `tests/sim/blobe2e.js` (dos teléfonos, B apagado).
+
 ---
 *Con esto, Fase A y B se codean sin ambigüedad. Cada fase se cierra solo cuando pasa su batería adversarial (§8) + la batería completa, antes de subir.*

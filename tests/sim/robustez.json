@@ -406,12 +406,20 @@
     {
      "fallo": "Archivo/mensaje a un contacto DORMIDO quedaba ⏳ horas sin que nadie lo despertara (diagnóstico del dueño 08-11: foto y vídeo a nx0ed4a8be): el «toque» FCM solo salía al ABRIR su chat (2860), nunca por lo pendiente. Fase A de la entrega offline (2967): cada contacto con pendientes y sin enlace entra al calendario de toques 30 s → 2 m → 8 m → 30 m → 2 h → 6 h (jitter ±20 %), se rinde a los 20 toques o min(TTL, 7 días) → PASSIVE explícito (el ⏳ sigue; al abrir el chat se re-dispara); contactos independientes; sin token/internet reintenta sin avanzar el freno",
      "prueba": "toque» FCM POR PENDIENTES"
+    },
+    {
+     "fallo": "Un ARCHIVO a un contacto DORMIDO (apagado, solo por internet) no llegaba NUNCA si los dos no coincidían en línea: sendFile rechazaba con PEER_ABSENT (⏳) y el flujo por trozos necesita al otro despierto; los textos sí tenían buzón (relés), los archivos no. Fase B de la entrega offline (2969, src/net/blob_mailbox.js): BUZÓN DE ARCHIVOS sin servidor propio — se cifra TODO una vez (AES-256-GCM, k y nonce aleatorios por blob), huella, se parte el cifrado en trozos de 40 KB publicados como eventos kind 1064 SIN etiqueta del destinatario (se bajan por id), caducidad 7 días, réplica en todos los relés abiertos, una clave por blob → un solo borrado (kind 5) al confirmar; al contacto le llega un PUNTERO E2E chiquito por su buzón normal (TTL 7 días + toque FCM de la Fase A). Hasta 5 MB; Jump/reenvíos y más grandes siguen igual (Fase C/D/E). Decisión en el embudo sendFile (sin enlace listo ni ruta → buzón de archivos) y en el reenvío de pendientes al volver internet; si ningún relé guarda un trozo, queda ⏳ (nunca ✗). Pruebas blobmail.js (adversarial) y blobe2e.js (dos teléfonos)",
+     "prueba": "BUZÓN DE ARCHIVOS en relés"
+    },
+    {
+     "fallo": "El que recibe un puntero al buzón de archivos podía ser atacado con punteros gigantes (reservar GB, iterar 10⁶ trozos) o con trozos alterados por un relé malicioso. 2969: el puntero se VALIDA con sus números antes de reservar o pedir nada (techos: 10000 trozos, 64 MB, miniatura 16 KB, trozos que cuadran con el tamaño, sin repetidos); cada trozo se verifica por su id de evento (SHA-256 del evento entero) y el todo por la huella + GCM: un byte cambiado se detecta y se pide a OTRO relé; huella/llave malas → rechazo con código, nunca se muestra basura; el ✓✓ solo sale cuando el archivo YA está en el teléfono; el mismo puntero por dos vías → una sola copia",
+     "prueba": "ARCHIVO A UN TELÉFONO APAGADO"
     }
    ],
    "debiles": [
     {
      "g": "media",
-     "d": "Archivo a un contacto DORMIDO: la Fase A (2967) lo despierta por FCM con freno creciente, pero el archivo en sí solo viaja cuando los dos coinciden en línea (no hay buzón de archivos todavía → Fase B de docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md); y el que toca es el teléfono del que envía con la app viva (con la app cerrada del todo no toca nadie)"
+     "d": "Entrega offline, lo que queda tras A+B (2967/2969): el «toque» FCM lo dispara el teléfono del que envía con la app viva (con la app cerrada del todo no toca nadie); un archivo > 5 MB a un contacto dormido sigue ⏳ hasta coincidir (buzón de archivos solo hasta 5 MB; más grande → Fase D/E); el buzón de archivos no cubre Jump/reenvíos ni grupos (Fase C); el borrado en los relés es best-effort (la caducidad de 7 días es la garantía)"
     },
     {
      "g": "media",

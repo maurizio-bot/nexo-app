@@ -51,6 +51,7 @@ function _relaySafe(u) {
   return false;
 }
 var KIND = 1059;              // el de los mensajes privados envueltos de Nostr (los relés lo aceptan)
+var BLOB_KIND = 1064;         // Fase B (2969): eventos-TROZO del buzón de archivos (sin etiqueta p; se bajan por id). No 1059: los relés con NIP-42 solo dejan leer 1059 al etiquetado
 var UP_MS = 150000;           // visto hace menos: en línea
 var HELLO_MS = 60000;         // saludo a los contactos en línea mientras la app está abierta
 var TICK_MS = 15000;
@@ -336,6 +337,13 @@ export class NetLink {
     if (typeof data === 'string' && data.length > MAX_RELAY_FRAME) { console.warn('[NET] Frame de relé demasiado grande (' + data.length + '): descartado'); return; }
     try { m = JSON.parse(data); } catch (e) { return; }
     if (!Array.isArray(m)) return;
+    // Fase B (2969): respuestas a una bajada por id (fetchEvents) — van a su recolector, no al buzón
+    if (r.fetches && typeof m[1] === 'string' && r.fetches.has(m[1])) {
+      var fj = r.fetches.get(m[1]);
+      if (m[0] === 'EVENT' && m[2]) fj.onEvent(m[2]);
+      else if (m[0] === 'EOSE' || m[0] === 'CLOSED') fj.done();
+      return;
+    }
     if (m[0] === 'EVENT' && m[1] === r.sub && m[2]) this._onEvent(m[2]);
     else if (m[0] === 'OK') { var fn = r.waits.get(m[1]); if (fn) { r.waits.delete(m[1]); fn(!!m[2], m[3]); } }
     else if (m[0] === 'AUTH' && typeof m[1] === 'string') { r.challenge = m[1]; this._auth(url, r, m[1]); }
@@ -728,6 +736,59 @@ export class NetLink {
     var b64 = _b64(_cat(iv, ct));
     var ev = _event(schnorr.utils.randomSecretKey(), KIND, [['p', _reqTagPub(to, _day(0))], ['expiration', String(Math.floor(Date.now() / 1000) + TTL_MSG)]], b64);
     return this._publish(ev);
+  }
+
+  // ---------- Fase B (build 2969): BUZÓN DE ARCHIVOS (src/net/blob_mailbox.js) ----------
+  // Los trozos de un archivo cifrado van como eventos BLOB_KIND SIN etiqueta p (se bajan por id: el relé no correlaciona
+  // quién baja qué), con caducidad; se publican en TODOS los relés abiertos (réplica) y se piden a UN relé por id.
+  randomKey() { return schnorr.utils.randomSecretKey(); }
+  openRelayUrls() { var out = []; this.relays.forEach(function(r, u) { if (r.open) out.push(u); }); return out; }
+  blobEvent(sk, contentB64, expiresSec) { return _event(sk, BLOB_KIND, [['expiration', String(expiresSec)]], contentB64); }
+  // NIP-09: pedir el borrado de los trozos (firmado con la clave del blob) al confirmar; best-effort (la caducidad es la garantía)
+  blobDeleteEvent(sk, ids) { return _event(sk, 5, (ids || []).map(function(id) { return ['e', id]; }), ''); }
+  // Conectar a demanda a un relé del puntero que no tengamos (solo wss:// o localhost); resuelve true si quedó abierto
+  ensureRelay(url, waitMs) {
+    var self = this;
+    if (!_relaySafe(url)) return Promise.resolve(false);
+    var r = self.relays.get(url);
+    if (r && r.open) return Promise.resolve(true);
+    if (!r || (!r.ws && (!r.retryAt || r.retryAt <= Date.now()))) { try { self._connect(url); } catch (e) { return Promise.resolve(false); } }
+    return new Promise(function(resolve) {
+      var t0 = Date.now(), iv = setInterval(function() {
+        var rr = self.relays.get(url);
+        if (rr && rr.open) { clearInterval(iv); resolve(true); }
+        else if (Date.now() - t0 > (waitMs || 6000)) { clearInterval(iv); resolve(false); }
+      }, 100);
+    });
+  }
+  // Publica en TODOS los relés abiertos y devuelve los que dijeron OK (acá importa la RÉPLICA, no «al menos uno»)
+  publishEach(ev, timeoutMs) {
+    var self = this;
+    return new Promise(function(resolve) {
+      var open = [];
+      self.relays.forEach(function(r, u) { if (r.open) open.push({ r: r, u: u }); });
+      if (!open.length) { resolve([]); return; }
+      var oks = [], left = open.length, done = false;
+      var finish = function() { if (done) return; done = true; clearTimeout(timer); open.forEach(function(o) { o.r.waits.delete(ev.id); }); resolve(oks); };
+      var timer = setTimeout(finish, timeoutMs || 10000);
+      open.forEach(function(o) {
+        o.r.waits.set(ev.id, function(ok) { if (ok && oks.indexOf(o.u) < 0) oks.push(o.u); if (--left === 0) finish(); });
+        if (!self._send(o.r, ['EVENT', ev])) { o.r.waits.delete(ev.id); if (--left === 0) finish(); }
+      });
+    });
+  }
+  // Pide eventos por id a UN relé (REQ con filtro ids) y devuelve los que llegaron hasta el EOSE o el tope de tiempo
+  fetchEvents(url, ids, timeoutMs) {
+    var self = this, r = self.relays.get(url);
+    if (!r || !r.open || !ids || !ids.length) return Promise.resolve([]);
+    return new Promise(function(resolve) {
+      var sub = 'bf' + bytesToHex(_rnd(6)), got = [], done = false;
+      if (!r.fetches) r.fetches = new Map();
+      var finish = function() { if (done) return; done = true; clearTimeout(timer); r.fetches.delete(sub); try { self._send(r, ['CLOSE', sub]); } catch (e) {} resolve(got); };
+      var timer = setTimeout(finish, timeoutMs || 15000);
+      r.fetches.set(sub, { onEvent: function(ev) { if (ev && typeof ev.id === 'string' && ids.indexOf(ev.id) >= 0) { got.push(ev); if (got.length >= ids.length) finish(); } }, done: finish });
+      if (!self._send(r, ['REQ', sub, { ids: ids }])) finish();
+    });
   }
 
   _publish(ev) {

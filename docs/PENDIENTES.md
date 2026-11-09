@@ -20,7 +20,7 @@ visibles + área 56; ajuste «Vibración al tocar» en Perfil → Ajustes (como 
 - **Siguiente (build 2 del plan):** llevar las áreas de toque a lo que falte (hojas, cámara, juegos), `segment` en los snaps
   de stickers/selectores, y `hapticCaps` en el diagnóstico para ver qué motor tiene cada teléfono.
 
-## 📬 Entrega OFFLINE sin servidor propio (diseño 08/09-11; dueño: «vamos a estudiarlo bien, no quiero fallas») — Fase A ✅ (2967), B–E pendientes
+## 📬 Entrega OFFLINE sin servidor propio (diseño 08/09-11; dueño: «vamos a estudiarlo bien, no quiero fallas») — Fase A ✅ (2967) · Fase B ✅ (2969) · C–E pendientes
 Docs: `docs/DISENO_ENTREGA_OFFLINE_2026-11-08.md` (diseño v2: cita FCM, cifrar-una-vez, blob compartido, fan-out por
 referencia, invariantes anti-crash, plan adversarial) y `docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md` (spec con números:
 CHUNK 40 KB, ≥3 relés, techos anti-DoS, backoff, GIVE_UP, TTL 7 d, puntero v1, orden cifrar→hash→partir).
@@ -42,9 +42,25 @@ CHUNK 40 KB, ≥3 relés, techos anti-DoS, backoff, GIVE_UP, TTL 7 d, puntero v1
   siguiente paso es un tick nativo periódico (WorkManager) que revise pendientes y toque — se decide tras tu prueba.
   *No incluido en A (va en B/D):* el toque MUTUO del que recibe hacia el emisor «si falta el grueso» (solo tiene sentido
   con archivos en buzón).
-- ⬜ **Fase B (JS):** buzón de archivos MEDIANOS (≤5 MB): cifrar UNA vez (`k` aleatoria + nonce único) → `hash` del
-  ciphertext → partir en trozos de 40 KB → ≥3 relés → puntero v1 E2E; verificación OBLIGATORIA (techos anti-DoS antes
-  de reservar, hash por trozo, hash del blob, GCM); resume; borrado al confirmar + TTL 7 días. Cierra con §8 adversarial.
+- ✅ **Fase B (2969, solo JS) — BUZÓN DE ARCHIVOS en relés (`src/net/blob_mailbox.js`):** un archivo (foto/vídeo/archivo
+  ≤ 5 MB) a un contacto AUSENTE por todos los caminos, teniendo yo internet, ya no queda ⏳ hasta coincidir: se cifra TODO
+  una vez (AES-256-GCM, `k` + nonce aleatorios por blob, nunca reusados) → huella SHA-256 del cifrado → se parte el CIFRADO
+  en trozos de 40 KB → cada trozo un evento **kind 1064** SIN etiqueta del destinatario (se baja por id: el relé no
+  correlaciona), caducidad 7 días, replicado en todos los relés abiertos (objetivo ≥3), una clave por blob → un solo borrado
+  (kind 5, best-effort) al confirmar; al contacto le llega un **puntero v1 E2E** chiquito por su buzón normal (TTL 7 días +
+  toque FCM de la Fase A). La burbuja pasa a ✓ al guardarse el puntero; ✓✓ cuando el otro bajó, verificó y descifró. El que
+  recibe VALIDA el puntero con sus números antes de reservar nada (techos anti-DoS), verifica cada trozo por su id de evento
+  y el todo por la huella + GCM (un relé malicioso se detecta y se pide a otro), dedup por id de mensaje, hasta 3 bajadas a
+  la vez, reintentos 30 s → 2 m → 8 m → 30 m hasta la caducidad. Decisión en el embudo `sendFile` (sin enlace listo ni ruta
+  → buzón de archivos, sin esperar los 8 s si nada se está conectando), en `_sendFileBest` (enlace de internet caído) y en el
+  reenvío de pendientes al volver internet; si ningún relé guarda un trozo → ⏳ (nunca ✗). Interruptor `window.NEXO_BLOB_MAILBOX=false`.
+  Pruebas: `blobmail.js` (contratos adversariales §8-B: relé malicioso, relé caído, anti-DoS, huella/llave malas, borrado) y
+  `blobe2e.js` (dos teléfonos: B apagado, ✓ sin esperar, 8 trozos sin etiqueta, B vuelve y recibe idéntico, ✓✓, kind 5,
+  dedup, en línea no usa el buzón de archivos); `net.js` §3 ahora pasa por aquí. Lo implementado tal cual: contratos §10.
+  ⚠️ **Falta del dueño:** `docs/PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md` §A.22 (archivo a un teléfono apagado de verdad).
+  **No incluido en B (C/D/E):** Jump/reenvíos/grupos por referencia, miniatura en el puntero, > 5 MB (sigue ⏳ hasta
+  coincidir), toque mutuo del receptor, stream directo al coincidir, blob-store de terceros. **Pendiente aparte:** el crash
+  del archivo de 35 MB por internet (se parte en memoria aunque vaya por `net:`) — no entró en B; va con la D.
 - ⬜ **Fase C (JS):** cifrar-una-vez + blob compartido + reenvío/fan-out por referencia (grupos = consumidor principal;
   dedup por blob, no universal).
 - ⬜ **Fase D (JS):** «cita» completa para enormes (marca + señal de vuelta + toque MUTUO + stream directo al coincidir).

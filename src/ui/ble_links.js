@@ -130,6 +130,7 @@ export const BLE_LINK_METHODS = {
   // contacto pasa a Wi-Fi) para el caso de que sea MI internet el que faltaba al mandar.
   _netOnline() {
     var self = this;
+    try { if (typeof self._blobRetryNow === 'function') self._blobRetryNow(); } catch (e) {} // Fase B (2969): bajadas del buzón de archivos que esperaban internet
     try { if (self.ackSystem && typeof self.ackSystem.resumeOutgoingTransfers === 'function') self.ackSystem.resumeOutgoingTransfers(); } catch (e) {}
     var cs = (self.net && typeof self.net._netContacts === 'function') ? self.net._netContacts() : [];
     cs.forEach(function(c) {

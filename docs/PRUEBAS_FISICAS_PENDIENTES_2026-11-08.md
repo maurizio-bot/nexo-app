@@ -10,7 +10,7 @@ dos WiFi distintas (2957)**, **envío de fotos**, y **JUMP funcionando** (tu cap
 vez que lo probás; aclaraste que no era un error, era el Jump andando). Eso ya subió el índice de robustez
 **54,8 → 61,8** (el componente «teléfonos», que es el que mueven tus pruebas, pasó de **15,9 a 22,8 / 35**;
 «caminos» llegó a su nivel pleno porque internet y Jump eran los que faltaban; ver `docs/ROBUSTEZ.md`). Abajo
-marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2968**).
+marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2969**).
 
 ## A. Builds nuevos a probar
 
@@ -139,6 +139,16 @@ marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo l
     un botón y deslizalo afuera: se despresiona y NO dispara. Decime qué ajustarías: fuerza del tick, tamaño del
     hundimiento, el pulso cian sí/no. Y abrí el menú «+» (tu captura): deben verse 2 filas de 4 —
     Cámara, Galería, Archivo, Ubicación / Contacto, Stickers, Juegos, Buscar— cada uno con su círculo de color y su nombre.
+
+22. **2969 — Fase B de la entrega offline: un ARCHIVO llega a un teléfono APAGADO (tu «Arrancá la Fase B»).** Con los dos
+    teléfonos SOLO por internet (Bluetooth apagado o lejos; Wi-Fi o datos): **apagá del todo el vivo** (o cerrá NEXO y dejalo
+    así). Desde el S24 mandale una **foto o un archivo de hasta 5 MB** (un PDF, una foto de la galería). En el S24 la burbuja
+    tiene que pasar a **✓ en segundos** (antes se quedaba ⏳ «esperando» hasta que coincidieran). Esperá unos minutos con el
+    vivo apagado; podés hasta cerrar NEXO en el S24 (que quede claro que nadie lo está esperando). Encendé el vivo y abrí NEXO:
+    el archivo tiene que **aparecer entero** en el chat (abrilo: la foto se ve, el PDF abre) y en el S24 la burbuja pasa a
+    **✓✓** cuando vuelva a tener internet. Probalo también al revés (S24 apagado, el vivo manda) y con una foto de la cámara.
+    Si algo falla: Perfil → Copiar diagnóstico en los dos y buscá líneas `[BLOB]`. Límite honesto: hasta 5 MB; más grande
+    sigue ⏳ hasta coincidir (Fase D). La §A.19 (que el toque FCM despierte al vivo con la app cerrada) vale también acá.
 
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 
