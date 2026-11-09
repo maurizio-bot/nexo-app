@@ -563,6 +563,10 @@
     {
      "fallo": "2976 (primer diagnóstico AUTOMÁTICO del dueño, S24 09-11 16:01, síntoma «pendiente_viejo … 1529 min, enlace internet» mientras el registro decía «2 pending para nx…: sin enlace ni ruta»): linkOf devolvía «internet» en cuanto el identificador guardado del contacto era net:… (agregado por ID / solo internet), estuviera o no en línea. Consecuencias: al abrir el chat no se mandaba el toque FCM (P2: «ya hay enlace vivo»); el bucle de toques por pendientes (Fase A) lo daba por «ya alcanzable» y BORRABA la entrada → un pendiente 25 h sin un solo toque; el subtítulo del chat decía Internet con el contacto apagado; el diagnóstico automático lo contaba como alcanzable (falso «pendiente viejo»). 2976: «internet» solo si el contacto está EN LÍNEA (net.canReach, lo mismo que usa _linkUp); si no, puente Jump o «none». netoffline.js: B apagado del todo guardado como net:… → «none», abrir el chat = «waking», el pendiente sigue en toques y se toca; en línea otra vez → «internet»",
      "prueba": "contacto SOLO INTERNET apagado"
+    },
+    {
+     "fallo": "2978 (diagnósticos del dueño S24 09-11 13:42 y 15:57, builds 2975/2976): «Conexión con \"nx1e29ab2f\" sin comprobar: se cierra» y lo mismo con el vivo, SIEMPRE a los 30 s de conectarse por Wi-Fi, mientras un APK de 25 MB esperaba justamente la Wi-Fi para salir. La comprobación del enlace (nonce cifrado 'lv' → 'lw') la contesta el JS del otro teléfono: con su app dormida (pantalla apagada, WebView congelado) nadie contesta aunque su nativo tenga la conexión viva (el latido nativo da ida y vuelta). 2978: mientras el latido diga que el otro está vivo se espera hasta 3 min (VERIFY_ALIVE_LIMIT_MS; el enlace sigue sin ser camino hasta comprobar) y a los 8 s se le manda un «toque» FCM (net.wakeFor, frenado por par) para que su app despierte y conteste; sin latido, los 30 s de siempre. lanverify.js (antes: cerrada a los 30 s y sin toque)",
+     "prueba": "Wi-Fi con la app del otro DORMIDA"
     }
    ],
    "debiles": [

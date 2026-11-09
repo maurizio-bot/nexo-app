@@ -830,15 +830,16 @@ cerrado — en cuyo caso el #87 de mensajes ya está, y solo queda la llamada ce
   `keepTooBig`). Queda lo de fondo: si el Wi-Fi se CAE de verdad a mitad de un archivo grande, el siguiente intento empieza desde el
   trozo 0 («llega otro intento: se empieza de nuevo» en la tablet). Reanudar desde el último trozo confirmado es un cambio de protocolo
   (el receptor guarda los trozos que ya tiene y lo dice en el saludo del flujo): va con la Fase E de la entrega offline, no antes.
-- **Cuatro lecturas de disco de ~450 ms tras «no caben por Bluetooth»** (primer diagnóstico automático, 09-11 16:01): cada
-  «Peer ready» de la tablet disparó un reenvío de pendientes que filtró el APK grande y aun así leyó UN adjunto grande del disco
-  (FILE_IO «adjunto» = `nexo_att_*`/`nexo_relay_*`). Candidatos: un segundo adjunto sin `meta.size` (`_tooBigForBt` no puede saber
-  el tamaño sin leerlo), un adjunto `meta.big`, o una lectura ajena al reenvío. 2976: el reenvío registra «se cargan N adjunto(s) del
-  disco: tipo tamaño». Con el próximo diagnóstico se sabe; si es por tamaño desconocido, guardar el tamaño al enviar.
-- **Wi-Fi con la tablet «sin comprobar: se cierra»** (mismo diagnóstico, 10:01:03): la conexión Wi-Fi subió y la tablet no contestó la
-  comprobación en 30 s (`VERIFY_LIMIT_MS`) → se cerró justo cuando el APK esperaba Wi-Fi. La comprobación la contesta el JS de la
-  tablet: si su app estaba congelada, no hay quién conteste. Ver si el «toque» por Wi-Fi (latido nativo) puede despertarla o si hay
-  que tolerar más tiempo cuando el otro está en segundo plano. Esperar el diagnóstico de la tablet.
+- **Cuatro lecturas de disco de ~450 ms al volver al frente** (diagnósticos 16:01 y 21:58): RESUELTO el misterio. No es el reenvío de
+  pendientes (el registro 2976 «se cargan N adjunto(s)» no aparece ahí): son las fotos HD del chat abierto (con NX1E50C95D) que
+  `render.js` hidrata con `preferHd` al pintarlo (`_paintHydrated`), ~450 ms por foto grande, justo después de «openChat». Mejora
+  posible: pintar con la previa y cargar el HD perezoso (al tocar o al entrar en pantalla).
+- **Wi-Fi «sin comprobar: se cierra»** (diagnósticos 13:42 y 15:57, con la tablet y con el vivo, siempre a los 30 s): ✅ 2978. La
+  comprobación la contesta el JS del otro; con su app dormida se espera hasta 3 min mientras el latido nativo lo dé por vivo y a los
+  8 s se le manda un toque FCM (`lanverify.js`). Queda ver en teléfono si el toque despierta de verdad el WebView del otro (si el
+  sistema lo tiene congelado, la alternativa es contestar la comprobación desde el nativo). También visto: la tablet cerró una
+  conexión 11 ms después de aceptarla («cerrada: null») y la dirección guardada del vivo estaba vieja (ECONNREFUSED ×3 al puerto
+  anterior): esperar su diagnóstico.
 - **Archivos grandes** (pedido del dueño 24-10, un APK de 24 MB no salía): hecho en la 2756, hasta 1 GB por el mismo
   Wi-Fi o Wi-Fi Direct, a disco por trozos y con clave propia por archivo. Falta: reenviarlos, y por Bluetooth/Jump
   (demasiado lento) o internet (relés: no admiten archivos así).

@@ -28,6 +28,12 @@ var TICK_MS = 4000;
 var REDISCOVER_MS = 60000;
 var GRACE_MS = 15000;         // tras un corte: tiempo para recuperar el Wi-Fi antes de pasar a otro camino (2760: 15 s)
 var VERIFY_LIMIT_MS = 30000;  // una conexión sin comprobar se cierra (impostor)
+// 2978 (diagnósticos del dueño 09-11 13:42 y 15:57: «Conexión con la tablet/el vivo sin comprobar: se cierra» SIEMPRE a los 30 s, y el
+// APK esperando Wi-Fi): la comprobación la contesta el JS del otro; si su app está dormida (pantalla apagada, WebView congelado)
+// no hay quién conteste aunque su nativo tenga la conexión viva (latido con ida y vuelta). Mientras el latido diga que el otro
+// está vivo se espera más (sin usar el enlace: sigue sin ser camino) y a los 8 s se le manda un «toque» FCM para que su app
+// despierte y conteste. Sin latido (impostor o nativo caído), los 30 s de siempre.
+var VERIFY_ALIVE_LIMIT_MS = 180000, VERIFY_WAKE_MS = 8000;
 var BAD_RTT_MS = 1500, GOOD_RTT_MS = 800, BAD_IDLE_MS = 12000; // mala señal (latido nativo cada 4 s)
 // Ronda 2760 (regla del dueño: que no brinque): mala 3 latidos seguidos (~12 s) para dejarlo; buena 8 (~30 s) para volver
 var BAD_TICKS = 3, GOOD_TICKS = 8;
@@ -252,8 +258,14 @@ export class LanLink {
         return;
       }
       if (!l.verified) {
-        if (now - l.upAt > VERIFY_LIMIT_MS) { console.warn('[WIFI] Conexión con "' + nx + '" sin comprobar: se cierra'); self._giveUp(nx, 'sin comprobar'); return; }
+        var pq = q[nx], alive = !!(pq && pq.rtt >= 0 && pq.idle < BAD_IDLE_MS); // 2978: su nativo contesta el latido
+        if (now - l.upAt > (alive ? VERIFY_ALIVE_LIMIT_MS : VERIFY_LIMIT_MS)) { console.warn('[WIFI] Conexión con "' + nx + '" sin comprobar' + (alive ? ' (su app no contestó en ' + Math.round(VERIFY_ALIVE_LIMIT_MS / 1000) + ' s)' : '') + ': se cierra'); self._giveUp(nx, 'sin comprobar'); return; }
         if (now - (l.verifyAt || 0) > 10000) self._verify(nx); // sin respuesta (p. ej. el otro aún no tenía nuestra clave)
+        // 2978: conectado por Wi-Fi pero su app no contesta → está dormida: un toque FCM (frenado por par en net_link) la despierta
+        if (!l.woke && alive && now - l.upAt > VERIFY_WAKE_MS && self.ble && self.ble.net && typeof self.ble.net.wakeFor === 'function') {
+          l.woke = true;
+          try { if (self.ble.net.wakeFor(nx)) console.log('[WIFI] ' + nx + ' conectado por Wi-Fi pero su app no contesta la comprobación: toque para despertarla'); } catch (e) {}
+        }
         return;
       }
       var p = q[nx];

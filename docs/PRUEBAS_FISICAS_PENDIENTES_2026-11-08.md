@@ -10,7 +10,7 @@ dos WiFi distintas (2957)**, **envío de fotos**, y **JUMP funcionando** (tu cap
 vez que lo probás; aclaraste que no era un error, era el Jump andando). Eso ya subió el índice de robustez
 **54,8 → 61,8** (el componente «teléfonos», que es el que mueven tus pruebas, pasó de **15,9 a 22,8 / 35**;
 «caminos» llegó a su nivel pleno porque internet y Jump eran los que faltaban; ver `docs/ROBUSTEZ.md`). Abajo
-marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2977**).
+marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2978**).
 
 ## A. Builds nuevos a probar
 
@@ -224,6 +224,12 @@ marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo l
     vuelve a ▶). Al terminar la tercera NO debe arrancar la que está después del texto. Tocá ⏸ en medio de la cadena: se para y no
     sigue sola. Probalo también con el teléfono bloqueado a mitad de la cadena (si se corta al apagarse la pantalla, decímelo: es
     cosa del WebView en segundo plano, no de la cadena).
+
+31. **2978 — Wi-Fi con la tablet dormida.** Tablet en la misma Wi-Fi con la pantalla APAGADA (sin tocarla), S24 con la app abierta.
+    En el diagnóstico del S24 tiene que aparecer «nx1e29ab2f conectado por Wi-Fi pero su app no contesta la comprobación: toque para
+    despertarla» y, si la tablet despierta, «Conectado con nx1e29ab2f por Wi-Fi (comprobado)». NO debe aparecer «sin comprobar: se
+    cierra» antes de 3 minutos. Si aparece el toque y aun así no se comprueba en 3 min, copiame el diagnóstico de la TABLET: quiero
+    saber si el toque la despertó. (b) Actualizá el teléfono NX1E50C95D: todavía tiene la 2975 (lo vi en su diagnóstico automático).
 
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 
