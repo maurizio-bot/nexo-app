@@ -10,7 +10,7 @@ import { NET_MAX_B64_BYTES } from './media_limits.js';
 import { parseCallSignal } from './calls.js';
 import { parseGroupCallSignal } from './group_call.js';
 import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus } from './ble_helpers.js';
-import { blobPointerIn, validatePointer, fetchBlob, blobMailboxEligible, _fetchRetryDelay, MAX_CONCURRENT as BLOB_MAX_CONCURRENT } from '../net/blob_mailbox.js'; // Fase B (2969): buzón de ARCHIVOS
+import { blobPointerIn, validatePointer, fetchBlob, blobMailboxEligible, _fetchRetryDelay, MAX_CONCURRENT as BLOB_MAX_CONCURRENT, MAILBOX_MAX_BYTES as BLOB_MAILBOX_MAX_BYTES } from '../net/blob_mailbox.js'; // Fase B (2969): buzón de ARCHIVOS
 
 
 // Build 2836 (pedido del dueño): margen para la «red de seguridad de entrega». Si un mensaje enviado por Bluetooth no
@@ -1073,12 +1073,17 @@ export const BLE_MESSAGE_METHODS = {
     };
     var idOf = function(m) { return m.msgId || m.messageId || m.id; };
     // Fase B (2969): ¿adjunto que puede ir al buzón de archivos? (foto/vídeo/archivo con sus datos; no el «archivo grande» de Wi-Fi)
+    // Vale ANTES de cargar el adjunto del disco (2970, diagnóstico del dueño: un APK de 25 MB pendiente se leía del disco en cada
+    // vuelta —«leyendo lento» ×decenas— para después descartarse por tamaño): foto/vídeo/archivo, con datos (en línea o en
+    // disco: attachmentRef), no «archivo grande» de Wi-Fi, y tamaño declarado dentro del tope del buzón (si no se conoce, se mira al cargar).
     var blobCandidate = function(m) {
-      var t = m.attachmentType, p = m.attachmentPayload, mm = m.attachmentMeta;
-      if ((!t || !p) && m.content && typeof m.content === 'string' && m.content.charAt(0) === '{') {
+      var t = m.attachmentType, p = m.attachmentPayload, mm = m.attachmentMeta, ref = m.attachmentRef;
+      if ((!t || !p) && !ref && m.content && typeof m.content === 'string' && m.content.charAt(0) === '{') {
         try { var pr = JSON.parse(m.content); if (pr && pr.type === 'attachment') { t = pr.attachmentType; p = pr.payload; mm = pr.meta; } } catch (e) {}
       }
-      return !!(t && p && !(mm && mm.big) && (t === 'image' || t === 'video' || t === 'file'));
+      if (!(t && (p || ref) && !(mm && mm.big) && (t === 'image' || t === 'video' || t === 'file'))) return false;
+      var size = (p && typeof p === 'string') ? p.length : (mm && Number(mm.size)) || 0;
+      return !size || size <= BLOB_MAILBOX_MAX_BYTES * 4 / 3 + 8;
     };
     var getPending = (window.vaultGetPendingMessages && typeof window.vaultGetPendingMessages === 'function')
       ? window.vaultGetPendingMessages(nexoId)
@@ -1087,26 +1092,34 @@ export const BLE_MESSAGE_METHODS = {
         });
     // No reenviar lo que sigue en vuelo en esta sesión (cola JS, ACK pendiente o stream activo); se mira antes de cargar
     // los adjuntos de disco (antes se cargaban todos en cada vuelta)
-    getPending = getPending.then(function(list) { return _hydrateAttachments((list || []).filter(function(m) { return !self._isMsgInFlight(idOf(m)); })); });
+    // El camino se decide ANTES de cargar los adjuntos del disco (2970): si no hay enlace ni ruta, solo se cargan los que
+    // pueden ir al buzón de archivos; lo demás queda en espera sin leer megas del disco en cada vuelta.
+    var deviceId = self._resolveDeviceIdForNexoId(nexoId);
+    var st = deviceId ? self._getDeviceState(deviceId) : {};
+    var direct = st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY;
+    var rh = direct ? null : (self.relay && self.relay.relayHop(nexoId));
+    var blobOnly = false;
+    getPending = getPending.then(function(list) {
+      list = (list || []).filter(function(m) { return !self._isMsgInFlight(idOf(m)); });
+      if (!direct && !rh) {
+        // Fase B (build 2969): sin enlace ni ruta pero CON internet propio y el contacto AUSENTE → los ARCHIVOS pendientes
+        // (foto/vídeo/archivo ≤ 5 MB) van al BUZÓN DE ARCHIVOS (cifrados en los relés + puntero en su buzón); el resto sigue
+        // en espera (toque FCM, Fase A). Antes TODO quedaba ⏳ hasta coincidir en línea.
+        blobOnly = !!(self.net && typeof self.net.mailboxOk === 'function' && self.net.mailboxOk(nexoId) && !self.net.canReach(nexoId) && list.some(blobCandidate));
+        if (blobOnly) list = list.filter(blobCandidate);
+        else if (list.length) { console.log('[BLEInterface] ' + list.length + ' pending para ' + nexoId + ': sin enlace ni ruta, quedan en espera'); self._noteWakePending(nexoId); if (self.relay) self.relay.discover(nexoId); return []; }
+      }
+      return _hydrateAttachments(list);
+    });
     getPending.then(function(pending) {
       pending = pending || [];
       if (pending.length === 0) { finish(); return; }
-      var deviceId = self._resolveDeviceIdForNexoId(nexoId);
-      var st = deviceId ? self._getDeviceState(deviceId) : {};
-      var direct = st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY;
-      var relayDst = null, blobOnly = false;
+      var relayDst = null;
       if (!direct) {
-        // v6.3.0 Jump: por otro teléfono si hay ruta
-        var rh = self.relay && self.relay.relayHop(nexoId);
         if (!rh) {
-          // Fase B (build 2969): sin enlace ni ruta pero CON internet propio y el contacto AUSENTE → los ARCHIVOS pendientes
-          // (foto/vídeo/archivo ≤ 5 MB) van al BUZÓN DE ARCHIVOS (cifrados en los relés + puntero en su buzón); el resto sigue
-          // en espera (toque FCM, Fase A). Antes TODO quedaba ⏳ hasta coincidir en línea.
-          blobOnly = !!(self.net && typeof self.net.mailboxOk === 'function' && self.net.mailboxOk(nexoId) && !self.net.canReach(nexoId) && pending.some(blobCandidate));
-          console.log('[BLEInterface] ' + pending.length + ' pending para ' + nexoId + ': sin enlace ni ruta, ' + (blobOnly ? 'los archivos van al buzón de archivos y el resto queda en espera' : 'quedan en espera'));
+          console.log('[BLEInterface] ' + pending.length + ' archivo(s) pendiente(s) para ' + nexoId + ': sin enlace ni ruta, van al buzón de archivos');
           self._noteWakePending(nexoId); // Build 2967 (Fase A): lo que queda en espera entra al wake-por-pendiente (toque FCM con backoff)
           if (self.relay) self.relay.discover(nexoId);
-          if (!blobOnly) { finish(); return; }
         } else {
           deviceId = rh.deviceId;
           relayDst = _normId(nexoId);

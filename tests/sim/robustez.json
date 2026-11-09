@@ -414,6 +414,10 @@
     {
      "fallo": "El que recibe un puntero al buzón de archivos podía ser atacado con punteros gigantes (reservar GB, iterar 10⁶ trozos) o con trozos alterados por un relé malicioso. 2969: el puntero se VALIDA con sus números antes de reservar o pedir nada (techos: 10000 trozos, 64 MB, miniatura 16 KB, trozos que cuadran con el tamaño, sin repetidos); cada trozo se verifica por su id de evento (SHA-256 del evento entero) y el todo por la huella + GCM: un byte cambiado se detecta y se pide a OTRO relé; huella/llave malas → rechazo con código, nunca se muestra basura; el ✓✓ solo sale cuando el archivo YA está en el teléfono; el mismo puntero por dos vías → una sola copia",
      "prueba": "ARCHIVO A UN TELÉFONO APAGADO"
+    },
+    {
+     "fallo": "2969 (diagnóstico del dueño S24 09-11, primeras horas de la Fase B): (1) el enganche del buzón de archivos en _sendFileBest actuaba sobre contenido YA SELLADO de extremo a extremo (sendFile sella antes de elegir camino) y sobre cualquier tipo —segmentos de Fénix incluidos— → «atob … not correctly encoded: queda pendiente» en cada reanudación; (2) un APK de 25 MB a la tablet conectada por Bluetooth pero ausente por internet se re-reanudaba cada ~1,5 s (hasBetter tomaba mailboxOk = «tengo internet» por «camino mejor»), leyendo 35 MB del disco y armando el base64 cada vez (ralentización); (3) el reenvío de pendientes cargaba del disco TODOS los adjuntos antes de decidir el camino. 2970: el buzón de archivos se decide SOLO antes de sellar (embudo sendFile + reenvío de pendientes); por internet un flujo de archivo solo con el contacto EN LÍNEA (canReach), si no queda ⏳; hasBetter = contacto en línea por internet o Wi-Fi; el camino se decide antes de cargar adjuntos y solo se cargan los que pueden ir al buzón",
+     "prueba": "ARCHIVO A UN TELÉFONO APAGADO"
     }
    ],
    "debiles": [

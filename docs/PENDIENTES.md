@@ -58,6 +58,12 @@ CHUNK 40 KB, ≥3 relés, techos anti-DoS, backoff, GIVE_UP, TTL 7 d, puntero v1
   `blobe2e.js` (dos teléfonos: B apagado, ✓ sin esperar, 8 trozos sin etiqueta, B vuelve y recibe idéntico, ✓✓, kind 5,
   dedup, en línea no usa el buzón de archivos); `net.js` §3 ahora pasa por aquí. Lo implementado tal cual: contratos §10.
   ⚠️ **Falta del dueño:** `docs/PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md` §A.22 (archivo a un teléfono apagado de verdad).
+  **2970 (corrección por el diagnóstico del dueño S24 09-11 07:45):** el enganche en `_sendFileBest` actuaba sobre contenido YA
+  sellado y sobre cualquier tipo (segmentos de Fénix al reanudar → «atob … not correctly encoded: queda pendiente»): se quitó; el
+  buzón se decide solo antes de sellar. Un flujo de archivo por internet solo con el contacto EN LÍNEA (a un ausente no se abre).
+  El APK de 25 MB a la tablet (Bluetooth sí, internet no) se re-reanudaba cada ~1,5 s leyendo 35 MB del disco (`hasBetter` con
+  `mailboxOk`): ahora «mejor camino» = contacto en línea por internet o Wi-Fi. El reenvío de pendientes decide el camino antes de
+  cargar adjuntos del disco. Pendiente de tu re-prueba: §A.23.
   **No incluido en B (C/D/E):** Jump/reenvíos/grupos por referencia, miniatura en el puntero, > 5 MB (sigue ⏳ hasta
   coincidir), toque mutuo del receptor, stream directo al coincidir, blob-store de terceros. **Pendiente aparte:** el crash
   del archivo de 35 MB por internet (se parte en memoria aunque vaya por `net:`) — no entró en B; va con la D.

@@ -18,7 +18,7 @@ const { Radio, NativePhone, installWebCrypto } = require('./native_mock');
 const { NostrRelay } = require('./nostr_relay');
 
 const buildDir = path.resolve(process.argv[2]);
-const base = { readsContentFallback: true, retain: ['onPayloadReceived', 'onLanMessage', 'onLanUp', 'onLanDown'], closeOnNoService: true, pace: [15, 15], ioDelay: 25, asymmetric: true };
+const base = { readsContentFallback: true, retain: ['onPayloadReceived', 'onLanMessage', 'onLanUp', 'onLanDown'], closeOnNoService: true, pace: [15, 15], ioDelay: 25, asymmetric: true, noL2: true }; // noL2: sin canal L2CAP (como la tablet del dueño): un archivo > 5 MB va por el flujo normal, no por big_file.js
 let RELAYS = [];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DistLoader extends ResourceLoader {
@@ -172,11 +172,44 @@ const statusOf = (p, msgId) => { const s = p.win.document.querySelector('.msg-st
   const m2 = await findMsg(A, idB, b64b, true);
   r.en_linea_no_usa_buzon_de_archivos = count1064() === blob1 && !!m2 && !(ackA()._blobOut && ackA()._blobOut.has(m2.messageId)) && logs.filter((l) => /\[A\].*\[BLOB\].*buzón de archivos/.test(l)).length === 1;
 
-  r.errores = logs.filter((l) => /ilegible|Error procesando|No se pudo descifrar|\[BLOB\].*( descartado:|rechazado \(|no se pudo bajar|caducó|no pudo subirse)/.test(l)).slice(0, 3);
+  // ===== (5) 2970 (diagnóstico del dueño S24 09-11, APK de 25 MB a la tablet): archivo > 5 MB a un contacto conectado por
+  //     BLUETOOTH pero AUSENTE por internet → queda ⏳ UNA vez. Antes se re-reanudaba cada ~1,5 s («hasBetter» tomaba
+  //     mailboxOk —tengo internet— por «camino mejor» aunque el contacto no estuviera en línea): leía 35 MB del disco y
+  //     armaba el base64 en cada vuelta = la ralentización del diagnóstico =====
+  radio.unblock(nA, nB);
+  // volver a enlazar por Bluetooth: abrir el chat fuerza la conexión al dispositivo conocido; si no, buscarlo y agregarlo otra vez
+  try { A.win.bleInterface.openChat(idB); } catch (e) {}
+  r.bt_de_nuevo_s = await waitFor(() => !!A.win.bleInterface._bleReadyFor(idB), 45000);
+  if (r.bt_de_nuevo_s === null) { A.win.bleInterface.togglePanel(); await addFound(A, 'B'); A.win.bleInterface.togglePanel(); r.bt_de_nuevo_s = await waitFor(() => !!A.win.bleInterface._bleReadyFor(idB), 45000); }
+  // B se queda sin internet (relés cerrados, sin reintentar) y A lo da por ausente por internet
+  B.win.bleInterface.net._closeAll(); B.win.bleInterface.net.relays.forEach((rl) => { rl.retryAt = Date.now() + 9e6; });
+  const pB3 = netA().peers.get(idB); if (pB3) pB3.lastRx = 0; await netA().tick();
+  r.B_sin_internet_con_bt = await waitFor(() => !netA().canReach(idB) && !!A.win.bleInterface._bleReadyFor(idB), 15000) !== null;
+  const blobEvents5 = count1064();
+  const grande = await sendFile(A, 'grande.bin', 6 * 1024 * 1024);
+  let msgG = null;
+  r.grande_registrado_s = await waitFor(async () => !!(msgG = await findMsg(A, idB, grande.toString('base64'), true)), 20000);
+  const idG = msgG && msgG.messageId;
+  await sleep(9000);
+  const starts = logs.filter((l) => new RegExp('\\[A\\].*sendFile START fileId=' + idG + '\\b').test(l)).length;
+  const resumes = logs.filter((l) => new RegExp('\\[A\\].*Resume: .* para ' + idB).test(l)).length;
+  r.grande_bt_intentos_en_9s = starts + '/' + resumes;
+  r.grande_bt_sin_bucle = starts <= 2 && resumes <= 3;
+  r.grande_bt_queda_pendiente = statusOf(A, idG) === 'pending' && count1064() === blobEvents5; // > 5 MB: no va al buzón de archivos (Fase D)
+  // ===== (6) 2970: una REANUDACIÓN con contenido YA SELLADO (registro saliente, como los segmentos de Fénix del diagnóstico) a
+  //     un contacto ausente por internet NO pasa por el buzón de archivos (antes: «atob … not correctly encoded») ni abre un
+  //     flujo por relés hacia un ausente =====
+  await A.win.vaultCreateOutgoingTransfer(idB, 'msgsellado1', 'file', 1, ['E2:QUJDREVGRw=='], { type: 'file', to: idB }, 'net:' + idB);
+  const blobLogs0 = logs.filter((l) => /\[A\].*\[BLOB\]/.test(l)).length;
+  ackA().resumeOutgoingTransfers(); await sleep(4000);
+  r.sellado_no_pasa_por_buzon = logs.filter((l) => /\[A\].*\[BLOB\]/.test(l)).length === blobLogs0 && !logs.some((l) => /atob/.test(l));
+  r.sellado_sin_flujo_por_reles_a_ausente = !logs.some((l) => /\[A\].*sendFile START fileId=msgsellado1 .*to=net/.test(l));
+
+  r.errores = logs.filter((l) => !/msgsellado1/.test(l) && /ilegible|Error procesando|No se pudo descifrar|\[BLOB\].*( descartado:|rechazado \(|no se pudo bajar|caducó|no pudo subirse)/.test(l)).slice(0, 3); // msgsellado1: contenido falso de la prueba (6)
   r.contenido_en_registros = logs.filter((l) => l.indexOf(b64.substring(0, 24)) >= 0).length;
 
-  const numeric = ['en_linea_por_internet_s', 'registrado_en_A_s', 'A_tick_al_guardarse_el_puntero_s', 'B_recibe_el_archivo_s', 'A_doble_tick_s', 'de_vuelta_en_linea_s', 'en_linea_llega_s'];
-  const info = { prueba: 1, build: 1, resultado: 1, eventos_nuevos_no_trozo_en_r1: 1, puntero_capturado: 1 };
+  const numeric = ['en_linea_por_internet_s', 'registrado_en_A_s', 'A_tick_al_guardarse_el_puntero_s', 'B_recibe_el_archivo_s', 'A_doble_tick_s', 'de_vuelta_en_linea_s', 'en_linea_llega_s', 'bt_de_nuevo_s', 'grande_registrado_s'];
+  const info = { prueba: 1, build: 1, resultado: 1, eventos_nuevos_no_trozo_en_r1: 1, puntero_capturado: 1, grande_bt_intentos_en_9s: 1 };
   const ok = numeric.every((k) => typeof r[k] === 'number') && r.trozos_por_rele === '8,8,8' && r.reles_ven_algo.length === 0 && r.errores.length === 0 && r.contenido_en_registros === 0 &&
     Object.keys(r).every((k) => info[k] || typeof r[k] !== 'boolean' || r[k] === true);
   r.resultado = ok ? 'OK' : 'FALLO';

@@ -536,14 +536,14 @@ export class BleAckSystem {
       // relés (rápido). Con el latido (2930/2931) manteniendo despiertos a los dos, se forma el Tor directo y el archivo va por ahí.
       var torBig = (typeof window !== 'undefined' && Number(window.NEXO_NET_TOR_PREFER_BYTES)) || NET_TOR_PREFER_BYTES;
       if (net && typeof net.preferTorFor === 'function' && cid && data && data.length > torBig) net.preferTorFor(cid);
-      // Fase B (build 2969, docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md): contacto AUSENTE por internet (no canReach) y archivo
-      // de hasta 5 MB → BUZÓN DE ARCHIVOS: se cifra UNA vez, se parte en trozos de 40 KB publicados en todos los relés (sin
-      // etiqueta del destinatario: se bajan por id) y al contacto le llega un PUNTERO E2E chiquito por el buzón normal (TTL
-      // 7 días + toque FCM). Así el archivo llega aunque los dos NUNCA coincidan en línea (antes: ⏳ hasta coincidir).
-      if (net && cid && typeof net.canReach === 'function' && !net.canReach(cid) && net.mailboxOk(cid) && blobMailboxEligible(data, meta)) {
-        return self._sendFileViaBlobMailbox(cid, fileId, data, meta);
-      }
-      var netOk = net && (net.filesOk(cid) || (net.mailboxOk(cid) && data && data.length <= NET_MAX_B64_BYTES));
+      // 2970 (diagnóstico del dueño S24 09-11): acá `data` YA viene SELLADO de extremo a extremo (sendFile sella antes de
+      // elegir camino), así que el buzón de archivos (Fase B) NO se decide aquí: se decide ANTES de sellar, en el embudo
+      // bleInterface.sendFile y en el reenvío de pendientes (ble_messages.js). El enganche que estaba acá mandaba al buzón
+      // de archivos contenido sellado y hasta segmentos de Fénix (reanudaciones) → «atob … not correctly encoded».
+      // Y un flujo por relés a un contacto AUSENTE no sirve de nada (la ventana espera confirmaciones EN VIVO: se quedaba
+      // «Ventana sin ACK con el enlace caído» con el archivo entero en memoria): por internet solo si el contacto está EN
+      // LÍNEA (canReach); si no, queda ⏳ pendiente y lo reanuda _netUp/_netOnline (los ≤ 5 MB ya fueron al buzón de archivos).
+      var netOk = net && typeof net.canReach === 'function' && net.canReach(cid) && (net.filesOk(cid) || (net.mailboxOk(cid) && data && data.length <= NET_MAX_B64_BYTES));
       if (!netOk) {
         var en = new Error('Contacto no disponible: queda pendiente'); en.code = 'PEER_ABSENT';
         return Promise.reject(en);
@@ -1559,7 +1559,9 @@ export class BleAckSystem {
     if (_isLanDevice(devId) && !(self.ble && self.ble.lan && self.ble.lan.canReach(cid))) devId = contactDeviceId;
     // Por internet: texto/medios en línea; archivos por Tor/Wi-Fi (filesOk) o al buzón de los relés (mailboxOk)
     var net = self.ble && self.ble.net;
-    if (_isNetDevice(devId) && !(net && (tx.type === 'file' ? (net.filesOk(cid) || net.mailboxOk(cid)) : net.canReach(cid)))) devId = contactDeviceId;
+    // 2970: un archivo por internet solo con el contacto EN LÍNEA (canReach); el buzón de relés no sirve para un flujo con
+    // ventanas de confirmación (ver _sendFileBest). Los ≤ 5 MB a un ausente van por el buzón de archivos desde el reenvío de pendientes.
+    if (_isNetDevice(devId) && !(net && typeof net.canReach === 'function' && net.canReach(cid) && (tx.type === 'file' ? (net.filesOk(cid) || net.mailboxOk(cid)) : true))) devId = contactDeviceId;
     if (!devId) return null;
     // #dueño 07-11 (lentitud BT): NO reanudar un respaldo de fondo (Fénix) si el usuario tiene la radio (app en primer plano)
     // o si el enlace del destino está atascado/muerto. Se queda PENDIENTE (como «sin camino») y se reintenta cuando convenga; la
@@ -1931,7 +1933,11 @@ ChatStream.prototype.start = function() {
       try {
         var cidBetter = (self.meta && self.meta.dst) ? self.meta.dst : self.ackSystem._resolveNexoId(self.deviceId);
         var netB = self.ble && self.ble.net, lanB = self.ble && self.ble.lan;
-        var hasBetter = (netB && ((netB.filesOk && netB.filesOk(cidBetter)) || (netB.mailboxOk && netB.mailboxOk(cidBetter)))) || (lanB && lanB.canReach && lanB.canReach(cidBetter));
+        // 2970 (diagnóstico del dueño S24 09-11, APK de 25 MB a la tablet por Bluetooth): «mejor camino» = el contacto EN LÍNEA
+        // por internet (canReach) o por Wi-Fi. Con mailboxOk (= tengo internet y el contacto es de internet, esté o no) se
+        // re-reanudaba cada segundo sin que hubiera camino → leía 35 MB del disco y armaba el base64 cada ~1,5 s (la
+        // «ralentización» del diagnóstico). Ahora, sin camino real, queda ⏳ y lo despierta el evento de enlace (_netUp/_linkUp).
+        var hasBetter = (netB && typeof netB.canReach === 'function' && netB.canReach(cidBetter)) || (lanB && lanB.canReach && lanB.canReach(cidBetter));
         if (hasBetter) setTimeout(function() { try { self.ackSystem.resumeOutgoingTransfers(); } catch (e) {} }, 1000);
       } catch (e) {}
       // El motivo SIEMPRE contiene «no cabe por Bluetooth» → send.js lo deja ⏳ pendiente (no ✗). Demasiado grande para BT

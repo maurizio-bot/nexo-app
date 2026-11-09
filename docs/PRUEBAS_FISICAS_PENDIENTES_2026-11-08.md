@@ -10,7 +10,7 @@ dos WiFi distintas (2957)**, **envío de fotos**, y **JUMP funcionando** (tu cap
 vez que lo probás; aclaraste que no era un error, era el Jump andando). Eso ya subió el índice de robustez
 **54,8 → 61,8** (el componente «teléfonos», que es el que mueven tus pruebas, pasó de **15,9 a 22,8 / 35**;
 «caminos» llegó a su nivel pleno porque internet y Jump eran los que faltaban; ver `docs/ROBUSTEZ.md`). Abajo
-marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2969**).
+marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2970**).
 
 ## A. Builds nuevos a probar
 
@@ -149,6 +149,13 @@ marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo l
     **✓✓** cuando vuelva a tener internet. Probalo también al revés (S24 apagado, el vivo manda) y con una foto de la cámara.
     Si algo falla: Perfil → Copiar diagnóstico en los dos y buscá líneas `[BLOB]`. Límite honesto: hasta 5 MB; más grande
     sigue ⏳ hasta coincidir (Fase D). La §A.19 (que el toque FCM despierte al vivo con la app cerrada) vale también acá.
+
+23. **2970 — corrección por tu diagnóstico del S24 (07:45): el APK de 25 MB a la tablet ya no debe «ralentizar».** Repetí lo
+    mismo: con la tablet conectada por Bluetooth (sin internet en ella, o lejos de tu red), mandale el APK desde el S24. Debe
+    quedar **⏳ una sola vez** (no un bucle: en «Copiar diagnóstico» no tienen que repetirse «sendFile START» ni «leyendo lento
+    (adjunto)» cada 1–2 s) y el teléfono no debe ponerse lento. Cuando la tablet tenga Wi-Fi/internet con vos, el archivo tiene
+    que salir solo. Además: en el diagnóstico no debe aparecer más «[BLOB] … atob … not correctly encoded» (eran segmentos de
+    Fénix y archivos ya cifrados que la 2969 intentaba meter al buzón de archivos al reanudar).
 
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 
