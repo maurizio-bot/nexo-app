@@ -65,6 +65,21 @@ function _renderOnceBubble(contentDiv, msg, attachment, isOwn) {
 // que suena ahora; _stopVoicePlayback la llama. voice.js la usa por window.__nexoStopVoice; las llamadas, por el evento
 // 'nexo:call' (calls.js lo emite en 'calling'/'ringing'/'active').
 var _curVoiceStop = null;
+// 2977 (pedido del dueño 09-11): notas de voz SEGUIDAS se reproducen una tras otra (como WhatsApp). Al terminar una, si la
+// burbuja siguiente del chat también es una nota de voz, arranca sola (un toque en ⏸ la para, como siempre). Un texto, una
+// foto o cualquier otra cosa en medio corta la cadena.
+export function _nextVoiceButton(fromEl) {
+  var m = (fromEl && typeof fromEl.closest === 'function') ? fromEl.closest('.message') : null;
+  var el = m ? m.nextElementSibling : null;
+  while (el && !(el.classList && el.classList.contains('message'))) el = el.nextElementSibling;
+  return el ? el.querySelector('button[id^="audio"][id$="_play"]') : null;
+}
+function _playNextVoice(fromEl) {
+  var btn = _nextVoiceButton(fromEl);
+  if (!btn) return false;
+  setTimeout(function() { try { if (btn.isConnected !== false) btn.click(); } catch (e) {} }, 350);
+  return true;
+}
 export function _stopVoicePlayback() {
   try { if (typeof window !== 'undefined') window.__nexoVoiceStops = (window.__nexoVoiceStops || 0) + 1; } catch (e) {} // observable para pruebas
   var f = _curVoiceStop; _curVoiceStop = null;
@@ -538,7 +553,7 @@ export function _renderMessage(msg, skipSave) {
             }
             _updateTime();
           }
-          audioEl.onended = function() { _stopPlayback(); };
+          audioEl.onended = function() { _stopPlayback(); _playNextVoice(btn); }; // 2977: la siguiente nota de voz arranca sola
           audioEl.onerror = function(e) {
             console.log('[AUDIO] Error reproduciendo:', e);
             _stopPlayback();

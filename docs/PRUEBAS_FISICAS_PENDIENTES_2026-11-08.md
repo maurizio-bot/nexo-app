@@ -10,7 +10,7 @@ dos WiFi distintas (2957)**, **envío de fotos**, y **JUMP funcionando** (tu cap
 vez que lo probás; aclaraste que no era un error, era el Jump andando). Eso ya subió el índice de robustez
 **54,8 → 61,8** (el componente «teléfonos», que es el que mueven tus pruebas, pasó de **15,9 a 22,8 / 35**;
 «caminos» llegó a su nivel pleno porque internet y Jump eran los que faltaban; ver `docs/ROBUSTEZ.md`). Abajo
-marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2976**).
+marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2977**).
 
 ## A. Builds nuevos a probar
 
@@ -218,6 +218,12 @@ marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo l
     líneas siguientes no debe seguir «Window timeout, reenviando ventana … fxs_…» para ese mismo enlace: tiene que decir «Respaldo
     Fénix sobre un Bluetooth muerto: se rinde». (d) Cuando te llegue (o te llegues) otro diagnóstico automático, buscá la línea «se
     cargan N adjunto(s) del disco para reenviar: …» y pegámela: me dice qué eran las 4 lecturas de ~450 ms de hoy.
+
+30. **2977 — notas de voz seguidas, una tras otra (tu pedido).** Que el vivo te mande tres notas de voz seguidas y después un texto
+    y otra nota. En el S24 tocá ▶ en la primera: al terminar debe arrancar sola la segunda y luego la tercera (el ▶ de la que terminó
+    vuelve a ▶). Al terminar la tercera NO debe arrancar la que está después del texto. Tocá ⏸ en medio de la cadena: se para y no
+    sigue sola. Probalo también con el teléfono bloqueado a mitad de la cadena (si se corta al apagarse la pantalla, decímelo: es
+    cosa del WebView en segundo plano, no de la cadena).
 
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 
