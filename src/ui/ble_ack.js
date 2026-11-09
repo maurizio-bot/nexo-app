@@ -2,7 +2,7 @@ import { e2eAvailable, e2eAckTag } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOuterAd, e2eSealText, e2eSealB64, e2eOpenText, e2eOpenToB64 } from '../vault/e2e_proto.js';
 import { ratchetCanEncrypt } from '../vault/e2e_ratchet.js';
 import { NET_MAX_B64_BYTES } from './media_limits.js';
-import { stageBlob, blobMailboxEligible, loadBlobOut, saveBlobOut, _b64ToBytes as _blobB64ToBytes } from '../net/blob_mailbox.js'; // Fase B (2969): buzón de ARCHIVOS en relés
+import { stageBlob, loadBlobOut, saveBlobOut, pointerReusable, _b64ToBytes as _blobB64ToBytes } from '../net/blob_mailbox.js'; // Fase B (2969): buzón de ARCHIVOS en relés
 /**
 * v3.14.0: el mismo mensaje troceado distinto por otro camino (puente cortado y reenvío directo) ya no se queda sin completar
 * v3.13.0: trozos de archivo en binario por Bluetooth (BinFrame.kt; sin el 33 % del base64) con quien lo anuncia
@@ -576,28 +576,68 @@ export class BleAckSystem {
       return self._sendFileJS(deviceId, fileId, data, meta);
     });
   }
-  // Fase B (2969): archivo → buzón de archivos de los relés + puntero al buzón del contacto (ver src/net/blob_mailbox.js).
-  // Resuelve cuando el puntero quedó guardado en un relé (la burbuja pasa a ✓ «en el buzón»); el ✓✓ llega con el ack del
-  // receptor cuando bajó, verificó y descifró el archivo. Un puntero VIGENTE no se vuelve a subir (reenvíos de pendientes).
-  _sendFileViaBlobMailbox(cid, fileId, data, meta) {
+  // ===== Fase B/C (2969/2971): BUZÓN DE ARCHIVOS en relés — ver src/net/blob_mailbox.js =====
+  // Registro de blobs salientes: fileId → { expires, rec (sk, ids, relays), ptr, to: { cid: 'sent'|'delivered' }, byRef, group }.
+  // Fase C: UN archivo se cifra y sube UNA sola vez; varios destinatarios (grupo, varios chats, reenvíos) comparten el mismo
+  // blob y reciben solo el puntero. Un puntero VIGENTE guardado en el mensaje de origen (meta.blobPtr) se reenvía POR REFERENCIA.
+  _blobRecord(fileId) {
+    if (!this._blobOut) this._blobOut = loadBlobOut();
+    var r = this._blobOut.get(fileId);
+    return (r && r.expires > Date.now()) ? r : null;
+  }
+  _stageBlobOnce(fileId, data, meta) {
     var self = this, net = self.ble && self.ble.net;
-    if (!self._blobOut) self._blobOut = loadBlobOut();
-    var live = self._blobOut.get(fileId);
-    if (live && live.expires > Date.now()) { console.log('[BLOB] ' + fileId + ' ya está en el buzón de archivos (puntero vigente hasta ' + new Date(live.expires).toISOString() + '): no se vuelve a subir'); return Promise.resolve(); }
+    var live = self._blobRecord(fileId);
+    if (live && live.ptr) return Promise.resolve(live);
+    var ref = meta && meta.blobPtr;
+    if (pointerReusable(ref)) {
+      var recRef = { expires: ref.expires * 1000, rec: null, ptr: ref, to: {}, byRef: true };
+      self._blobOut.set(fileId, recRef); saveBlobOut(self._blobOut);
+      console.log('[BLOB] ' + fileId + ' va POR REFERENCIA (el mismo archivo ya está en los relés, huella ' + String(ref.hash).substring(0, 12) + '…): no se vuelve a subir nada');
+      return Promise.resolve(recRef);
+    }
     if (!self._blobOutRunning) self._blobOutRunning = new Map();
     if (self._blobOutRunning.has(fileId)) return self._blobOutRunning.get(fileId);
     var type = (meta && meta.type) || 'file';
-    var metaWire = Object.assign({}, meta || {}); delete metaWire.to; delete metaWire.dst; delete metaWire.fwd;
     self._dispatchFileProgress(fileId, 0, 1, 'sending', 1);
-    console.log('[BLOB] ' + fileId + ' (' + type + ', ' + Math.round(data.length * 3 / 4 / 1024) + ' KB) → buzón de archivos: contacto ' + cid + ' ausente, cifro una vez y subo trozos a los relés');
+    console.log('[BLOB] ' + fileId + ' (' + type + ', ' + Math.round(data.length * 3 / 4 / 1024) + ' KB) → buzón de archivos: cifro una vez y subo trozos a los relés');
     var p = stageBlob(net, data, { onProgress: function(i, n) { self._dispatchFileProgress(fileId, i, n, 'sending', Math.max(1, Math.round(95 * i / n))); } }).then(function(res) {
-      var att = { type: 'attachment', attachmentType: type, payload: 'ptr', meta: Object.assign({}, metaWire, { ptr: 1, size: res.pointer.raw }), ptr: res.pointer };
-      console.log('[BLOB] ' + fileId + ': ' + res.pointer.chunks.length + ' trozos en ' + res.pointer.relays.length + ' relés (réplica mínima ' + res.replication + '); mando el puntero al buzón');
-      return self.ble._sendViaNetMailbox(cid, JSON.stringify(att), fileId).then(function() {
-        self._blobOut.set(fileId, { expires: res.pointer.expires * 1000, rec: res.outRecord, cid: cid });
-        saveBlobOut(self._blobOut);
-        self._dispatchStatus(fileId, 'sent'); // ✓ «en el buzón» (el icono limpio, no «✓ 99 %» de progreso)
-      });
+      var rec = { expires: res.pointer.expires * 1000, rec: res.outRecord, ptr: res.pointer, to: {} };
+      self._blobOut.set(fileId, rec); saveBlobOut(self._blobOut);
+      console.log('[BLOB] ' + fileId + ': ' + res.pointer.chunks.length + ' trozos en ' + res.pointer.relays.length + ' relés (réplica mínima ' + res.replication + ')');
+      return rec;
+    });
+    self._blobOutRunning.set(fileId, p);
+    var clear = function() { self._blobOutRunning.delete(fileId); };
+    p.then(clear, clear);
+    return p;
+  }
+  // El puntero (chiquito, E2E) a UN destinatario por su buzón normal; se anota a quién fue (la limpieza espera a TODOS)
+  _sendBlobPointer(cid, fileId, rec, meta) {
+    var self = this, type = (meta && meta.type) || 'file';
+    var metaWire = Object.assign({}, meta || {}); delete metaWire.to; delete metaWire.dst; delete metaWire.fwd; delete metaWire.blobPtr;
+    var att = { type: 'attachment', attachmentType: type, payload: 'ptr', meta: Object.assign({}, metaWire, { ptr: 1, size: rec.ptr.raw }), ptr: rec.ptr };
+    console.log('[BLOB] ' + fileId + ': mando el puntero al buzón de ' + cid);
+    return self.ble._sendViaNetMailbox(cid, JSON.stringify(att), fileId).then(function() {
+      var cur = self._blobOut.get(fileId);
+      if (cur) { cur.to = cur.to || {}; if (cur.to[cid] !== 'delivered') cur.to[cid] = 'sent'; saveBlobOut(self._blobOut); }
+      self._dispatchStatus(fileId, 'sent'); // ✓ «en el buzón» (el icono limpio, no «✓ 99 %» de progreso)
+    });
+  }
+  // Un reenvío futuro de este mensaje va por referencia: el puntero se guarda en el propio mensaje (meta.blobPtr)
+  _rememberBlobPtr(chatId, fileId, ptr) {
+    try { if (typeof window !== 'undefined' && window.vaultSetMessageFields) window.vaultSetMessageFields(chatId, fileId, { metaMerge: { blobPtr: ptr } }).catch(function() {}); } catch (e) {}
+  }
+  // Archivo a UN contacto (ausente, o en línea solo por internet con puntero reutilizable): resuelve con ✓ al guardarse el
+  // puntero en un relé; el ✓✓ llega con el ack del receptor cuando bajó, verificó y descifró. Un puntero ya mandado a ese
+  // contacto no se vuelve a mandar (reenvíos de pendientes).
+  _sendFileViaBlobMailbox(cid, fileId, data, meta) {
+    var self = this;
+    var live = self._blobRecord(fileId);
+    if (live && live.to && live.to[cid]) { console.log('[BLOB] ' + fileId + ' ya está en el buzón de ' + cid + ' (puntero vigente hasta ' + new Date(live.expires).toISOString() + '): no se vuelve a mandar'); return Promise.resolve(); }
+    return self._stageBlobOnce(fileId, data, meta).then(function(rec) {
+      self._rememberBlobPtr(cid, fileId, rec.ptr);
+      return self._sendBlobPointer(cid, fileId, rec, meta);
     }).catch(function(e) {
       // «⏳, nunca ✗» (contratos §7): si ningún relé guardó un trozo o se cayó internet a mitad, el archivo queda PENDIENTE y
       // se reintenta al volver internet (_netOnline → _resendPendingMessages → buzón de archivos); jamás se marca fallido
@@ -606,21 +646,37 @@ export class BleAckSystem {
       var en = new Error('Buzón de archivos no disponible: queda pendiente'); en.code = 'PEER_ABSENT';
       throw en;
     });
-    self._blobOutRunning.set(fileId, p);
-    var clear = function() { self._blobOutRunning.delete(fileId); };
-    p.then(clear, clear);
-    return p;
   }
-  // Fase B: al confirmar el receptor (✓✓), pedir a los relés que borren los trozos (NIP-09, best-effort; la caducidad de 7 días es la garantía)
-  _blobCleanup(msgId) {
-    var self = this, rec = self._blobOut && self._blobOut.get(msgId);
+  // Fase C: adjunto de GRUPO por referencia — se sube UNA vez y cada miembro recibe el puntero dentro del sobre del grupo
+  // (groups.sendText). Devuelve el puntero. `members` = a quién se le manda (se espera a TODOS antes de borrar los trozos).
+  stageBlobFor(msgId, data, meta, members) {
+    var self = this;
+    return self._stageBlobOnce(msgId, data, meta).then(function(rec) {
+      rec.to = rec.to || {}; (members || []).forEach(function(nx) { var k = _normId(nx); if (k && !rec.to[k]) rec.to[k] = 'sent'; });
+      rec.group = true; saveBlobOut(self._blobOut);
+      return rec.ptr;
+    });
+  }
+  // Al confirmar un receptor (✓✓) se anota; cuando confirmaron TODOS se pide a los relés que borren los trozos (NIP-09,
+  // best-effort; la caducidad de 7 días es la garantía). Por referencia (los trozos son de otro envío) solo se olvida el registro.
+  _blobCleanup(ackMsgId, acker) {
+    var self = this;
+    if (!self._blobOut || !self._blobOut.size) return;
+    var key = self._blobOut.has(ackMsgId) ? ackMsgId : String(ackMsgId).split('_')[0]; // grupo: wid = gm…_<sufijo del miembro>
+    var rec = self._blobOut.get(key);
     if (!rec) return;
-    self._blobOut.delete(msgId); saveBlobOut(self._blobOut);
+    var who = _normId(acker || '');
+    if (!who && rec.group) { var mm = /_([0-9a-z]{8})$/.exec(String(ackMsgId)); if (mm) who = 'nx' + mm[1]; }
+    rec.to = rec.to || {};
+    if (who) rec.to[who] = 'delivered'; else Object.keys(rec.to).forEach(function(k) { rec.to[k] = 'delivered'; });
+    var left = Object.keys(rec.to).filter(function(k) { return rec.to[k] !== 'delivered'; });
+    if (left.length) { saveBlobOut(self._blobOut); console.log('[BLOB] ' + key + ' confirmado por ' + (who || '?') + '; faltan ' + left.length + ' destinatario(s)'); return; }
+    self._blobOut.delete(key); saveBlobOut(self._blobOut);
     var net = self.ble && self.ble.net;
-    if (!net || !rec.rec || !rec.rec.sk || typeof net.blobDeleteEvent !== 'function') return;
+    if (rec.byRef || !net || !rec.rec || !rec.rec.sk || typeof net.blobDeleteEvent !== 'function') { console.log('[BLOB] ' + key + ' confirmado por todos' + (rec.byRef ? ' (por referencia: los trozos son de otro envío y caducan solos)' : '')); return; }
     try {
       var ev = net.blobDeleteEvent(_blobB64ToBytes(rec.rec.sk), rec.rec.ids);
-      net.publishEach(ev, 8000).then(function(ok) { console.log('[BLOB] ' + msgId + ' confirmado por el receptor: pedí borrar sus ' + rec.rec.ids.length + ' trozos (' + ok.length + ' relés aceptaron; igual caducan solos)'); });
+      net.publishEach(ev, 8000).then(function(ok) { console.log('[BLOB] ' + key + ' confirmado por todos: pedí borrar sus ' + rec.rec.ids.length + ' trozos (' + ok.length + ' relés aceptaron; igual caducan solos)'); });
     } catch (e) {}
   }
   _sendFileJS(deviceId, fileId, base64Data, meta) {
@@ -1410,7 +1466,7 @@ export class BleAckSystem {
         this.receivedAcks.delete(first);
       }
       var status = ack.type === 'read_receipt' ? 'read' : 'delivered';
-      if (status === 'delivered' && this._blobOut && this._blobOut.has(ackMsgId)) this._blobCleanup(ackMsgId); // Fase B: el archivo ya está en el otro teléfono
+      if (status === 'delivered' && this._blobOut && this._blobOut.size) this._blobCleanup(ackMsgId, ack.from); // Fase B/C: el archivo ya está en el otro teléfono (en grupo, en ESE miembro)
       if (entry) {
         clearTimeout(entry.timer);
         this.pendingAcks.delete(ackMsgId);

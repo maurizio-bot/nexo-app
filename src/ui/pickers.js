@@ -12,7 +12,7 @@ import { _sendVideo } from './video_send.js';
 import { BIG_MAX_BYTES } from './big_file.js';
 import { groupBigRoute } from './group_media.js';
 import { isGroupId } from './groups.js';
-import { GROUP_MAX_BYTES } from './send.js';
+import { GROUP_MAX_BYTES, _groupBlobCap } from './send.js';
 import { t } from './i18n.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
@@ -115,7 +115,10 @@ export function _handleFile() {
     var maxB64 = _maxB64For(cidF);
     // Ronda 2764: en un grupo, lo que no cabe en el sobre (~1 MB) va como archivo grande a cada miembro
     var inGroup = isGroupId(cidF);
-    if (file.size > Math.floor(maxB64 * 3 / 4) || (inGroup && file.size > GROUP_MAX_BYTES)) {
+    // Fase C (2971): en un grupo con internet propio, hasta 5 MB van por el buzón de archivos (una subida, un puntero por miembro)
+    var groupBlob = inGroup ? _groupBlobCap() : 0;
+    if (groupBlob && file.size <= groupBlob) maxB64 = Math.max(maxB64, Math.ceil(groupBlob * 4 / 3) + 8);
+    if (file.size > Math.floor(maxB64 * 3 / 4) || (inGroup && file.size > GROUP_MAX_BYTES && !(groupBlob && file.size <= groupBlob))) {
       // Ronda 2756: más grande que lo de siempre: como archivo grande (a disco por trozos) si hay Wi-Fi con el contacto
       var bigs = window.bleInterface && window.bleInterface.bigFiles;
       if (file.size <= BIG_MAX_BYTES && bigs && (inGroup ? groupBigRoute(cidF) : bigs.route(cidF)) && typeof _sendBigFile === 'function') {

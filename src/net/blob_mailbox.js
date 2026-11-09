@@ -248,3 +248,21 @@ export function saveBlobOut(map, store) {
 // Reintentos de una bajada que falló (relé caído, sin internet): 30 s → 2 m → 8 m → 30 m → 30 m… hasta que el puntero caduque
 export var FETCH_RETRY_MS = [30000, 120000, 480000, 1800000];
 export function _fetchRetryDelay(tries) { return FETCH_RETRY_MS[Math.min(Math.max(0, tries - 1), FETCH_RETRY_MS.length - 1)]; }
+
+// ---------- Fase C (2971): dedup local por huella — el que recibe recuerda qué blobs ya tiene (hash → dónde está) ----------
+var SEEN_KEY = 'nexo_blob_seen', SEEN_MAX = 300;
+export function loadBlobSeen(store) {
+  var m = new Map(), st = store || ((typeof localStorage !== 'undefined') ? localStorage : null);
+  try { var raw = st && st.getItem(SEEN_KEY); if (raw) Object.entries(JSON.parse(raw)).forEach(function(kv) { m.set(kv[0], kv[1]); }); } catch (e) {}
+  return m;
+}
+export function saveBlobSeen(map, store) {
+  var st = store || ((typeof localStorage !== 'undefined') ? localStorage : null);
+  try {
+    while (map.size > SEEN_MAX) map.delete(map.keys().next().value);
+    var o = {}; map.forEach(function(v, k) { o[k] = v; });
+    if (st) st.setItem(SEEN_KEY, JSON.stringify(o));
+  } catch (e) {}
+}
+// ¿Puntero vigente y bien formado para REENVIAR POR REFERENCIA (el mismo blob ya vive en los relés: no se vuelve a subir)?
+export function pointerReusable(ptr) { return !!ptr && typeof ptr === 'object' && validatePointer(ptr) === null; }

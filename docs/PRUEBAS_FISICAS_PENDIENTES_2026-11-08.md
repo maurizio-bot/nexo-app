@@ -10,7 +10,7 @@ dos WiFi distintas (2957)**, **envío de fotos**, y **JUMP funcionando** (tu cap
 vez que lo probás; aclaraste que no era un error, era el Jump andando). Eso ya subió el índice de robustez
 **54,8 → 61,8** (el componente «teléfonos», que es el que mueven tus pruebas, pasó de **15,9 a 22,8 / 35**;
 «caminos» llegó a su nivel pleno porque internet y Jump eran los que faltaban; ver `docs/ROBUSTEZ.md`). Abajo
-marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2970**).
+marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2971**).
 
 ## A. Builds nuevos a probar
 
@@ -156,6 +156,15 @@ marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo l
     (adjunto)» cada 1–2 s) y el teléfono no debe ponerse lento. Cuando la tablet tenga Wi-Fi/internet con vos, el archivo tiene
     que salir solo. Además: en el diagnóstico no debe aparecer más «[BLOB] … atob … not correctly encoded» (eran segmentos de
     Fénix y archivos ya cifrados que la 2969 intentaba meter al buzón de archivos al reanudar).
+
+24. **2971 — Fase C: foto al GRUPO con uno apagado, y reenviar sin volver a subir (tu «Procede con fase c y d»).** Con el S24,
+    el vivo y la tablet en el grupo «Familia» (o el que tengas), todos SOLO por internet: **apagá la tablet**. Desde el S24
+    mandá una **foto o archivo de 1 a 4 MB al grupo** (antes el grupo no aceptaba más de ~1 MB): tiene que salir ✓ en segundos
+    y llegarle al vivo entero. Encendé la tablet: le tiene que aparecer también, y en el S24 la burbuja pasa a **✓✓** recién
+    cuando los dos la tienen. Después, desde el vivo, **reenviá esa misma foto** al chat 1-a-1 con la tablet: tiene que llegar
+    casi al instante (no se vuelve a subir: solo viaja el puntero; en «Copiar diagnóstico» del vivo aparece «[BLOB] … va POR
+    REFERENCIA») y en la tablet, que ya la tenía, «[BLOB] … ya lo tenía (mismo archivo, no se baja nada)». Si algo falla:
+    Perfil → Copiar diagnóstico en los tres y buscá líneas `[BLOB]` y `[GROUP]`.
 
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 

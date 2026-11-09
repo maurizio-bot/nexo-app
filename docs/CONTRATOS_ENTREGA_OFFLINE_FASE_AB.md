@@ -107,5 +107,22 @@ Fan-out/reenvío por referencia (C) · cita completa+stream (D) · blob-store de
 - **Fuera de B, confirmado:** sin miniatura en el puntero todavía (campo previsto), sin toque mutuo, sin fan-out, > 5 MB igual que antes.
 - **Pruebas que cierran la fase:** `tests/sim/blobmail.js` (§8-B adversarial) y `tests/sim/blobe2e.js` (dos teléfonos, B apagado).
 
+## 11. Implementado en 2971 (Fase C) — cifrar una vez, blob compartido, por referencia
+- **Registro saliente** `_blobOut`: `fileId → { expires, rec (sk, ids, relays), ptr, to: { cid: 'sent'|'delivered' }, byRef, group }`.
+  `_stageBlobOnce` cifra y sube UNA vez por `fileId` (promesa compartida mientras sube); si el adjunto trae un puntero vigente
+  (`meta.blobPtr`, `pointerReusable`) no sube nada (`byRef`). `_sendBlobPointer` manda el puntero a UN destinatario y anota
+  `to[cid]`. `_blobCleanup(ackMsgId, acker)` anota por destinatario (remitente del ack o sufijo del wid de grupo) y pide el
+  borrado (kind 5) solo cuando confirmaron TODOS; por referencia solo olvida el registro (los trozos son de otro envío).
+- **Grupo:** `send.js` → `ackSystem.stageBlobFor(msgId, payload, meta, miembros)` → `groups.sendText(gid, {type:'attachment',
+  payload:'ptr', ptr}, msgId)`: un puntero por miembro dentro del sobre; tope 5 MB con internet propio (`_groupBlobCap`, también
+  en el selector). Sin relés: lo que cabe en el sobre va como siempre; lo demás ✗ con aviso. Receptor: `parseGroupEnvelope` +
+  `blobPointerIn(c)` + `groups.receive` (miembro/grupo) ANTES de bajar; al completar se reinyecta el sobre con el adjunto entero.
+- **Por referencia:** el puntero se guarda en el mensaje de origen (`meta.blobPtr`; emisor con `vaultSetMessageFields`, receptor al
+  completar); al reenviar viaja solo el puntero, también a un contacto en línea solo por internet; con Bluetooth/Wi-Fi listos,
+  camino local directo. Un puente Jump por internet no le gana al buzón de archivos (uno por Bluetooth sí).
+- **Dedup local por huella:** `nexo_blob_seen` (huella → chat, mensaje, llave; tope 300). Ante un puntero al mismo blob (misma
+  huella y llave) el receptor copia su propio adjunto (`_blobTryLocal`) y no baja nada; verifica el tamaño en claro.
+- **Prueba que cierra la fase:** `tests/sim/blobfan.js` (3 teléfonos).
+
 ---
 *Con esto, Fase A y B se codean sin ambigüedad. Cada fase se cierra solo cuando pasa su batería adversarial (§8) + la batería completa, antes de subir.*

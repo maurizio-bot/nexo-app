@@ -11,6 +11,7 @@ import { _showPermissionError } from './ui_bits.js';
 import { vaultAppendMessage, vaultSetMessageFields } from '../vault/vault_manager.js';
 import { bigToGroup } from './group_media.js';
 import { _failStatus } from './ble_helpers.js';
+import { blobMailboxEligible, MAILBOX_MAX_BYTES as BLOB_MAILBOX_MAX_BYTES } from '../net/blob_mailbox.js'; // Fase C (2971): adjuntos de grupo por referencia
 import { t } from './i18n.js';
 
 
@@ -47,6 +48,14 @@ export function _waitForBLEReady(maxMs) {
 // Ronda 2758: tope de un adjunto en un grupo (va una vez a cada miembro dentro del sobre, como texto largo)
 var GROUP_MAX_CHARS = 1400000;
 export var GROUP_MAX_BYTES = Math.floor(GROUP_MAX_CHARS * 3 / 4) - 4096; // lo que cabe en el sobre (con su JSON)
+// Fase C (2971): con internet propio, una foto/vídeo/archivo al grupo se sube UNA vez al buzón de archivos (hasta 5 MB) y cada
+// miembro recibe un puntero dentro del sobre; por debajo de este tamaño sigue yendo dentro del sobre (más barato que los relés).
+var GROUP_BLOB_MIN_CHARS = 60000;
+export function _groupBlobCap() {
+  var bi = window.bleInterface, ack = bi && bi.ackSystem, net = bi && bi.net;
+  if (!ack || typeof ack.stageBlobFor !== 'function' || !net || typeof net.online !== 'function' || !net.online() || window.NEXO_BLOB_MAILBOX === false) return 0;
+  return BLOB_MAILBOX_MAX_BYTES;
+}
 
 export function _sendAttachment(type, payload, meta, opts) {
   // FIX v9.9.26: meta.type llega con el MIME del archivo ('image/jpeg', 'text/plain'...) y pisaba
@@ -96,12 +105,32 @@ export function _sendAttachment(type, payload, meta, opts) {
 
   if (inGroup) {
     var gstr = JSON.stringify(attachmentData);
-    if (gstr.length > GROUP_MAX_CHARS) {
+    var viaBlob = (type === 'image' || type === 'video' || type === 'file') && _groupBlobCap() > 0 && (gstr.length > GROUP_BLOB_MIN_CHARS || !!(meta && meta.blobPtr)) && blobMailboxEligible(payload, meta);
+    if (!viaBlob && gstr.length > GROUP_MAX_CHARS) {
       _showPermissionError(t('chat_too_big_group', 'Demasiado grande para un grupo (') + (gstr.length * 3 / 4 / 1048576).toFixed(1) + t('chat_max_mb', ' MB). Máximo ~') + (GROUP_MAX_CHARS * 3 / 4 / 1048576).toFixed(1) + t('chat_mb_for_now', ' MB por ahora.'));
       return;
     }
     if (showHere) _renderMessage(localMsg, true);
     try { if (window.vaultAppendMessage) vaultAppendMessage(contactId, localMsg); } catch (e) {}
+    if (viaBlob) {
+      // Fase C (2971): se cifra y sube UNA vez al buzón de archivos; cada miembro recibe dentro del sobre un puntero chiquito
+      // (antes: el archivo entero dentro del sobre, una vez POR MIEMBRO, tope ~1 MB). Un adjunto con puntero vigente (reenvío)
+      // va por referencia: 0 subidas. Si no hay relés, lo que cabe en el sobre va como siempre; lo demás, ✗ con aviso.
+      var ackB = window.bleInterface.ackSystem, gObj = gsA.get(contactId), gMe = typeof gsA._me === 'function' ? gsA._me() : null;
+      var gMembers = ((gObj && gObj.members) || []).filter(function(m) { return m !== gMe; });
+      var gMeta = Object.assign({ type: type }, meta || {}); delete gMeta.to;
+      ackB.stageBlobFor(msgId, payload, gMeta, gMembers).then(function(ptr) {
+        try { vaultSetMessageFields(contactId, msgId, { metaMerge: { blobPtr: ptr } }).catch(function() {}); } catch (e) {}
+        var wireMeta = Object.assign({}, gMeta, { ptr: 1, size: ptr.raw }); delete wireMeta.blobPtr;
+        gsA.sendText(contactId, JSON.stringify({ type: 'attachment', attachmentType: type, payload: 'ptr', meta: wireMeta, ptr: ptr }), msgId);
+      }).catch(function(e) {
+        console.warn('[BLOB] grupo ' + msgId + ': ' + (e && e.message) + (gstr.length <= GROUP_MAX_CHARS ? ' → va dentro del sobre como siempre' : ' → no se pudo subir'));
+        if (gstr.length <= GROUP_MAX_CHARS) { gsA.sendText(contactId, gstr, msgId); return; }
+        _updateMessageStatus(msgId, 'failed'); _updateMessageStorageStatus(msgId, 'failed', contactId);
+        _showPermissionError(t('chat_group_blob_fail', 'No se pudo subir el archivo al grupo (sin relés): probá de nuevo con internet'));
+      });
+      return msgId;
+    }
     gsA.sendText(contactId, gstr, msgId);
     return msgId;
   }

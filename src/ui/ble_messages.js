@@ -10,7 +10,7 @@ import { NET_MAX_B64_BYTES } from './media_limits.js';
 import { parseCallSignal } from './calls.js';
 import { parseGroupCallSignal } from './group_call.js';
 import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus } from './ble_helpers.js';
-import { blobPointerIn, validatePointer, fetchBlob, blobMailboxEligible, _fetchRetryDelay, MAX_CONCURRENT as BLOB_MAX_CONCURRENT, MAILBOX_MAX_BYTES as BLOB_MAILBOX_MAX_BYTES } from '../net/blob_mailbox.js'; // Fase B (2969): buzón de ARCHIVOS
+import { blobPointerIn, validatePointer, fetchBlob, blobMailboxEligible, pointerReusable, loadBlobSeen, saveBlobSeen, _fetchRetryDelay, _b64Bytes as _blobB64Bytes, MAX_CONCURRENT as BLOB_MAX_CONCURRENT, MAILBOX_MAX_BYTES as BLOB_MAILBOX_MAX_BYTES } from '../net/blob_mailbox.js'; // Fase B (2969): buzón de ARCHIVOS
 
 
 // Build 2836 (pedido del dueño): margen para la «red de seguridad de entrega». Si un mensaje enviado por Bluetooth no
@@ -440,6 +440,18 @@ export const BLE_MESSAGE_METHODS = {
         if (!isControl && senderUUID && messageId && !data._blobResolved) {
           var ptrAtt = blobPointerIn(content, ctrl);
           if (ptrAtt) { self._blobPointerReceived(deviceId, senderUUID, messageId, ptrAtt, data, ackTo); return; }
+          // Fase C (2971): puntero DENTRO de un sobre de GRUPO (foto/archivo al grupo subido UNA vez): el sobre se valida como
+          // un mensaje de grupo normal (miembro, grupo conocido) y se baja; al completar se reinyecta el sobre con el adjunto entero
+          // (el adjunto va como texto DENTRO del sobre: sus comillas llegan escapadas, por eso no se busca '"ptr"' literal)
+          if (content.indexOf('"nexo_grp"') >= 0 && content.indexOf('ptr') >= 0) {
+            var genvP = parseGroupEnvelope(content), gatt = genvP ? blobPointerIn(genvP.c) : null;
+            if (gatt) {
+              var grpP = (senderUUID && self.groups) ? self.groups.receive(genvP, senderUUID, messageId) : null;
+              if (!grpP) { console.warn('[GROUP] Sobre de grupo con puntero descartado (de ' + senderUUID + ')'); return; }
+              self._blobPointerReceived(deviceId, senderUUID, messageId, gatt, data, ackTo, genvP);
+              return;
+            }
+          }
         }
         // P6 (dueño 01-11): este mensaje llegó ENTERO por este camino (internet/Jump/BLE corto). Si quedó un reensamblado
         // BLE a medias del mismo msgId (el emisor empezó por Bluetooth y acabó por otra vía), ciérralo: así no caduca a los
@@ -867,34 +879,65 @@ export const BLE_MESSAGE_METHODS = {
     } catch (e) {}
   },
 
-  // Fase B (build 2969): archivo a un contacto AUSENTE (ni Bluetooth listo, ni Wi-Fi, ni en línea por internet) teniendo yo
-  // internet → BUZÓN DE ARCHIVOS (≤ 5 MB; no Jump/reenvíos): cifrado una vez en los relés + puntero E2E en su buzón. Devuelve
-  // la promesa del envío (resuelve con ✓ al guardarse el puntero) o null si no aplica (en línea → camino directo de siempre).
+  // Fase B/C: archivo a un contacto AUSENTE (ni Bluetooth listo, ni Wi-Fi, ni en línea por internet) teniendo yo internet →
+  // BUZÓN DE ARCHIVOS (≤ 5 MB; no Jump): cifrado una vez en los relés + puntero E2E en su buzón. Fase C: si el adjunto trae un
+  // puntero VIGENTE (meta.blobPtr: ya vive en los relés —reenvío de algo recibido o enviado por el buzón—) va POR REFERENCIA
+  // también a un contacto EN LÍNEA solo por internet (0 subidas); con Bluetooth/Wi-Fi listos sigue el camino local directo.
+  // Devuelve la promesa del envío (✓ al guardarse el puntero) o null si no aplica.
   _fileToBlobMailbox(nexoId, fileId, base64Data, meta) {
     var self = this, nx = _normId(nexoId), net = self.net;
     if (!nx || !net || !self.ackSystem || typeof self.ackSystem._sendFileViaBlobMailbox !== 'function') return null;
-    if (typeof net.canReach !== 'function' || net.canReach(nx)) return null;
     if (self.lan && typeof self.lan.canReach === 'function' && self.lan.canReach(nx)) return null;
     if (typeof self._bleReadyFor === 'function' && self._bleReadyFor(nx)) return null;
+    var byRef = pointerReusable(meta && meta.blobPtr);
+    if (!byRef && (typeof net.canReach !== 'function' || net.canReach(nx))) return null;
     if (!net.mailboxOk(nx) || !blobMailboxEligible(base64Data, meta)) return null;
     return self.ackSystem._sendFileViaBlobMailbox(nx, fileId, base64Data, meta);
   },
-  // ===== Fase B (build 2969): llegó un PUNTERO a un archivo del buzón de relés (src/net/blob_mailbox.js) =====
-  // Orden obligatorio: techos anti-DoS (validatePointer, sin reservar nada) → bajar por id de los relés del puntero →
-  // verificar cada trozo por su id → armar → verificar la huella → descifrar (GCM) → recién entonces guardar, mostrar, avisar
-  // y confirmar (✓✓), reinyectando el adjunto completo por el mismo camino que un adjunto normal (mismo msgId, mismo sobre
-  // E2E). Dedup: un puntero repetido (llegó por dos vías) solo re-confirma. Si la bajada falla (relé caído, sin internet),
-  // se reintenta con freno (30 s → 2 m → 8 m → 30 m…) hasta que el puntero caduque; máximo BLOB_MAX_CONCURRENT bajadas a la vez.
-  _blobPointerReceived(deviceId, senderUUID, messageId, att, data, ackTo) {
+  // ===== Fase B/C: llegó un PUNTERO a un archivo del buzón de relés (1-a-1 o dentro de un sobre de GRUPO) =====
+  // Orden obligatorio: techos anti-DoS (validatePointer, sin reservar nada) → ¿ya tengo este blob? (dedup local por huella,
+  // Fase C) → si no, bajar por id de los relés del puntero → verificar cada trozo por su id → armar → huella → descifrar (GCM)
+  // → recién entonces guardar, mostrar, avisar y confirmar (✓✓), reinyectando el adjunto completo por el mismo camino que un
+  // adjunto normal (mismo msgId, mismo sobre E2E; en grupo, el mismo sobre nexo_grp con el adjunto entero). El puntero se
+  // guarda en el mensaje (meta.blobPtr): un reenvío va por referencia. Dedup: un puntero repetido solo re-confirma. Si la
+  // bajada falla, reintento con freno (30 s → 2 m → 8 m → 30 m…) hasta que caduque; máximo BLOB_MAX_CONCURRENT bajadas a la vez.
+  _blobPointerReceived(deviceId, senderUUID, messageId, att, data, ackTo, genv) {
     var self = this;
     if (self._receivedMessageIds.has(messageId)) { if (self.ackSystem) self.ackSystem.sendAck(deviceId, messageId, ackTo); return; }
     var why = validatePointer(att.ptr);
     if (why) { console.warn('[BLOB] Puntero de ' + senderUUID + ' rechazado (' + why + '): no se baja nada'); return; }
     if (!self._blobIn) self._blobIn = new Map();
     if (self._blobIn.has(messageId)) return; // ya bajando / en cola
-    var job = { deviceId: deviceId, senderUUID: senderUUID, messageId: messageId, att: att, data: data, ackTo: ackTo, tries: 0, running: false, timer: null };
+    var job = { deviceId: deviceId, senderUUID: senderUUID, messageId: messageId, att: att, data: data, ackTo: ackTo, genv: genv || null, tries: 0, running: false, timer: null };
     self._blobIn.set(messageId, job);
-    console.log('[BLOB] Puntero de ' + senderUUID + ' (' + att.attachmentType + ', ' + att.ptr.chunks.length + ' trozos, ' + Math.round(att.ptr.raw / 1024) + ' KB): bajo del buzón de archivos');
+    console.log('[BLOB] Puntero de ' + senderUUID + (genv ? ' (grupo ' + genv.g + ')' : '') + ' (' + att.attachmentType + ', ' + att.ptr.chunks.length + ' trozos, ' + Math.round(att.ptr.raw / 1024) + ' KB): bajo del buzón de archivos');
+    self._blobRunQueue();
+  },
+  _blobSeenMap() { if (!this._blobSeen) this._blobSeen = loadBlobSeen(); return this._blobSeen; },
+  // Fase C (dedup local por huella): ¿ya tengo este mismo blob (misma huella y misma llave) en algún chat? → su contenido, sin bajar
+  _blobTryLocal(j) {
+    var self = this, ptr = j.att.ptr, seen = self._blobSeenMap().get(ptr.hash);
+    if (!seen || seen.k !== ptr.k || typeof window === 'undefined' || !window.vaultLoadMessages) return Promise.resolve(null);
+    return window.vaultLoadMessages(seen.chat).then(function(list) {
+      var m = (list || []).find(function(x) { return (x.messageId || x.msgId) === seen.msgId && x.attachmentType && !x.deleted; });
+      if (!m) return null;
+      if (m.attachmentPayload && typeof m.attachmentPayload === 'string' && m.attachmentPayload.length > 16) return m.attachmentPayload;
+      return (m.attachmentRef && window.vaultLoadFile) ? window.vaultLoadFile(m.attachmentRef) : null;
+    }).then(function(b64) { return (typeof b64 === 'string' && _blobB64Bytes(b64) === ptr.raw) ? b64 : null; }).catch(function() { return null; });
+  },
+  _blobComplete(j, b64, how) {
+    var self = this;
+    self._blobIn.delete(j.messageId);
+    var meta = Object.assign({}, j.att.meta || {}); delete meta.ptr; meta.blobPtr = j.att.ptr; // Fase C: un reenvío va por referencia
+    var full = { type: 'attachment', attachmentType: j.att.attachmentType, payload: b64, meta: meta };
+    var chat = j.genv ? _normId(j.genv.g) : _normId(j.senderUUID);
+    try { var seen = self._blobSeenMap(); seen.set(j.att.ptr.hash, { k: j.att.ptr.k, chat: chat, msgId: j.messageId, at: Date.now() }); saveBlobSeen(seen); } catch (e) {}
+    var text = j.genv ? JSON.stringify(Object.assign({}, j.genv, { c: JSON.stringify(full) })) : JSON.stringify(full);
+    var env = { v: 1, type: 'chat', from: j.senderUUID, msgId: j.messageId, ts: j.data.timestamp || Date.now(), payload: { text: text, e2e: true, senderNexoId: j.senderUUID } };
+    if (!j.genv) env.payload.attachment = full;
+    var wire = JSON.stringify(env);
+    console.log('[BLOB] ' + j.messageId + ' ' + how + ' (' + Math.round(_blobB64Bytes(b64) / 1024) + ' KB): se guarda y se confirma');
+    self._handlePayload(Object.assign({}, j.data, { content: wire, data: wire, reassembled: true, _blobResolved: true }));
     self._blobRunQueue();
   },
   _blobRunQueue() {
@@ -905,22 +948,18 @@ export const BLE_MESSAGE_METHODS = {
     self._blobIn.forEach(function(j) {
       if (running >= BLOB_MAX_CONCURRENT || j.running || j.timer) return;
       running++; j.running = true; j.tries++;
-      fetchBlob(self.net, j.att.ptr, { log: function(s) { console.log(s); } }).then(function(res) {
-        self._blobIn.delete(j.messageId);
-        var meta = Object.assign({}, j.att.meta || {}); delete meta.ptr;
-        var full = { type: 'attachment', attachmentType: j.att.attachmentType, payload: res.b64, meta: meta };
-        var env = { v: 1, type: 'chat', from: j.senderUUID, msgId: j.messageId, ts: j.data.timestamp || Date.now(), payload: { text: JSON.stringify(full), attachment: full, e2e: true, senderNexoId: j.senderUUID } };
-        var wire = JSON.stringify(env);
-        console.log('[BLOB] ' + j.messageId + ' bajado y verificado (' + Math.round(res.bytes.length / 1024) + ' KB, ' + res.relays + ' relés, ' + res.bad + ' trozos malos descartados): se guarda y se confirma');
-        self._handlePayload(Object.assign({}, j.data, { content: wire, data: wire, reassembled: true, _blobResolved: true }));
-        self._blobRunQueue();
-      }, function(e) {
+      self._blobTryLocal(j).then(function(local) {
+        if (local) return self._blobComplete(j, local, 'ya lo tenía (mismo archivo, no se baja nada)');
+        return fetchBlob(self.net, j.att.ptr, { log: function(s) { console.log(s); } }).then(function(res) {
+          self._blobComplete(j, res.b64, 'bajado y verificado (' + res.relays + ' relés, ' + res.bad + ' trozos malos descartados)');
+        });
+      }).catch(function(e) {
         j.running = false;
         var expMs = (j.att.ptr.expires || 0) * 1000;
-        if (e && e.code === 'BLOB_PTR' || e && e.code === 'BLOB_GCM' || e && e.code === 'BLOB_HASH') { console.warn('[BLOB] ' + j.messageId + ' descartado: ' + e.message); self._blobIn.delete(j.messageId); self._blobRunQueue(); return; }
-        if (Date.now() + 30000 > expMs) { console.warn('[BLOB] ' + j.messageId + ' caducó sin poder bajarse (' + e.message + ')'); self._blobIn.delete(j.messageId); self._blobRunQueue(); return; }
+        if (e && (e.code === 'BLOB_PTR' || e.code === 'BLOB_GCM' || e.code === 'BLOB_HASH')) { console.warn('[BLOB] ' + j.messageId + ' descartado: ' + e.message); self._blobIn.delete(j.messageId); self._blobRunQueue(); return; }
+        if (Date.now() + 30000 > expMs) { console.warn('[BLOB] ' + j.messageId + ' caducó sin poder bajarse (' + (e && e.message) + ')'); self._blobIn.delete(j.messageId); self._blobRunQueue(); return; }
         var wait = _fetchRetryDelay(j.tries);
-        console.warn('[BLOB] ' + j.messageId + ' no se pudo bajar (' + e.message + '): reintento en ' + Math.round(wait / 1000) + ' s');
+        console.warn('[BLOB] ' + j.messageId + ' no se pudo bajar (' + (e && e.message) + '): reintento en ' + Math.round(wait / 1000) + ' s');
         j.timer = setTimeout(function() { j.timer = null; self._blobRunQueue(); }, wait);
         self._blobRunQueue();
       });
@@ -986,6 +1025,9 @@ export const BLE_MESSAGE_METHODS = {
           var nudged = false;
           (function check() {
             var dev = self._resolveDeviceIdForNexoId(uuid) || (self._macOfOther(deviceId, uuid) ? null : deviceId);
+            // Fase C (2971): el adjunto ya vive en los relés (puntero vigente: reenvío de algo recibido/enviado por el buzón) y el
+            // contacto está solo por internet → va POR REFERENCIA (0 subidas) aunque esté en línea; con Bluetooth/Wi-Fi, directo
+            if (_netNx(dev) && meta && meta.blobPtr) { var viaRef = self._fileToBlobMailbox(uuid, fileId, base64Data, meta); if (viaRef) { viaRef.then(resolve, reject); return; } }
             // Ronda 2780 (pedido del dueño): fotos y archivos medianos SIEMPRE se pueden mandar por internet. Si el otro
             // está en línea van por Tor directo/Wi-Fi (filesOk); si no, al buzón de los relés (mailboxOk) y llegan cuando
             // abre, igual que los textos. Bajo un tope (~6 MB de archivo): los más grandes son la fase 2 (Tor). Antes solo
@@ -1001,6 +1043,10 @@ export const BLE_MESSAGE_METHODS = {
             }
             // v6.3.0 Jump: por otro teléfono si hay ruta
             var rh = self.relay && self.relay.relayHop(uuid, { files: true });
+            // Fase C (2971): un puente por INTERNET (2 saltos cargando a otro teléfono, con su dato) no le gana al buzón de archivos
+            // (una copia en los relés + toque FCM) si el archivo puede ir por ahí; con puntero vigente va por referencia (0 bytes).
+            // Un puente por Bluetooth (local, gratis) sí va primero.
+            if (rh && _netNx(rh.deviceId)) { var viaBlobJ = self._fileToBlobMailbox(uuid, fileId, base64Data, meta); if (viaBlobJ) { viaBlobJ.then(resolve, reject); return; } }
             if (rh) {
               deviceId = rh.deviceId;
               meta = Object.assign({}, meta || {}, { dst: uuid });

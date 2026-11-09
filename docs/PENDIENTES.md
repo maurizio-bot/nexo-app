@@ -20,7 +20,7 @@ visibles + área 56; ajuste «Vibración al tocar» en Perfil → Ajustes (como 
 - **Siguiente (build 2 del plan):** llevar las áreas de toque a lo que falte (hojas, cámara, juegos), `segment` en los snaps
   de stickers/selectores, y `hapticCaps` en el diagnóstico para ver qué motor tiene cada teléfono.
 
-## 📬 Entrega OFFLINE sin servidor propio (diseño 08/09-11; dueño: «vamos a estudiarlo bien, no quiero fallas») — Fase A ✅ (2967) · Fase B ✅ (2969) · C–E pendientes
+## 📬 Entrega OFFLINE sin servidor propio (diseño 08/09-11; dueño: «vamos a estudiarlo bien, no quiero fallas») — Fase A ✅ (2967) · Fase B ✅ (2969/2970) · Fase C ✅ (2971) · D–E pendientes
 Docs: `docs/DISENO_ENTREGA_OFFLINE_2026-11-08.md` (diseño v2: cita FCM, cifrar-una-vez, blob compartido, fan-out por
 referencia, invariantes anti-crash, plan adversarial) y `docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md` (spec con números:
 CHUNK 40 KB, ≥3 relés, techos anti-DoS, backoff, GIVE_UP, TTL 7 d, puntero v1, orden cifrar→hash→partir).
@@ -67,8 +67,23 @@ CHUNK 40 KB, ≥3 relés, techos anti-DoS, backoff, GIVE_UP, TTL 7 d, puntero v1
   **No incluido en B (C/D/E):** Jump/reenvíos/grupos por referencia, miniatura en el puntero, > 5 MB (sigue ⏳ hasta
   coincidir), toque mutuo del receptor, stream directo al coincidir, blob-store de terceros. **Pendiente aparte:** el crash
   del archivo de 35 MB por internet (se parte en memoria aunque vaya por `net:`) — no entró en B; va con la D.
-- ⬜ **Fase C (JS):** cifrar-una-vez + blob compartido + reenvío/fan-out por referencia (grupos = consumidor principal;
-  dedup por blob, no universal).
+- ✅ **Fase C (2971, solo JS) — CIFRAR UNA VEZ, BLOB COMPARTIDO, REENVÍO/FAN-OUT POR REFERENCIA:** (1) **Grupo:** una foto/
+  vídeo/archivo al grupo se cifra y sube UNA sola vez al buzón de archivos y cada miembro recibe dentro del sobre `nexo_grp`
+  un puntero chiquito (`stageBlobFor` + `gsA.sendText`); con internet propio el tope del grupo sube de ~1 MB a **5 MB**
+  (`_groupBlobCap`, también en el selector de archivos); el receptor valida el sobre (miembro, grupo) antes de bajar, y al
+  completar reinyecta el sobre con el adjunto entero; ✓✓ cuando TODOS confirman y recién entonces un solo borrado (kind 5):
+  `_blobCleanup` anota por destinatario (`to`), con el remitente del ack o el sufijo del wid. Antes: el archivo entero dentro
+  del sobre, una vez por miembro. (2) **Reenvío por referencia:** el puntero vigente se guarda en el propio mensaje
+  (`meta.blobPtr`, en el que envía con `vaultSetMessageFields` y en el que recibe al completar); al reenviar, `_stageBlobOnce`
+  ve el puntero reutilizable (`pointerReusable`) y NO sube nada: solo manda el puntero —también a un contacto en línea solo por
+  internet (`sendFile.check()` con `_netNx(dev)`)—; con Bluetooth/Wi-Fi listos sigue el camino local directo. (3) **Dedup
+  local por huella:** el receptor recuerda qué blobs ya tiene (`nexo_blob_seen`: huella → chat/mensaje/llave) y, ante un puntero
+  al mismo blob (misma huella y llave), lo copia de su propio vault sin bajar nada (`_blobTryLocal`). (4) Un puente Jump por
+  INTERNET no le gana al buzón de archivos para estos archivos (un puente por Bluetooth sí va primero). Interruptor
+  `window.NEXO_BLOB_MAILBOX=false` (apaga B y C). Prueba `blobfan.js` (3 teléfonos: grupo con dos apagados → 5 trozos por relé
+  —no 10—, dos punteros, ✓ y ✓✓, un kind 5; B reenvía a C: 0 subidas y C no baja nada; A reenvía a C apagado: 0 subidas, C
+  vuelve y la tiene, ✓✓; nada legible en los relés). **No incluido (D/E):** > 5 MB (cita), miniatura en el puntero, sender keys.
+  ⚠️ **Falta del dueño:** `docs/PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md` §A.24.
 - ⬜ **Fase D (JS):** «cita» completa para enormes (marca + señal de vuelta + toque MUTUO + stream directo al coincidir).
 - ⬜ **Fase E (opcional):** guardadero de terceros, erasure coding, sender keys de grupo.
 
