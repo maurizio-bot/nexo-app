@@ -4,7 +4,7 @@
  */
 import { e2eMyPublicKey, initE2E } from '../vault/e2e_crypto.js';
 import { ratchetMyBundle, ratchetPeerPqId } from '../vault/e2e_ratchet.js';
-import { _failStatus, _hydrateAttachments, _normId, _normMac, _vaultLoadMessages, _vaultUpdateMessageStatus } from './ble_helpers.js';
+import { _failStatus, _hydrateAttachments, _tooBigForBt, _normId, _normMac, _vaultLoadMessages, _vaultUpdateMessageStatus } from './ble_helpers.js';
 
 
 export const BLE_JUMP_METHODS = {
@@ -61,11 +61,16 @@ export const BLE_JUMP_METHODS = {
       else if (v.nx === nx && Date.now() - v.ts > 3000) ids.push(id);
     });
     if (!ids.length) return;
+    // 2974 (diagnóstico del dueño 13:21: «salió por un puente sin ✓✓: se reenvía directo» ×3 en 1,5 s, cada vez leyendo 35 MB): si el
+    // camino directo es Bluetooth y no hay Wi-Fi/internet con el contacto, un archivo que no cabe por Bluetooth no se lee del disco
+    var btDev = !!(deviceId && !/^(lan|net)/i.test(String(deviceId)));
+    var better = !!((self.net && typeof self.net.canReach === 'function' && self.net.canReach(nx)) || (self.lan && typeof self.lan.canReach === 'function' && self.lan.canReach(nx)));
     _vaultLoadMessages(nx).then(function(msgs) {
       return _hydrateAttachments((msgs || []).filter(function(m) {
         var id = m.msgId || m.messageId || m.id;
         if (ids.indexOf(id) < 0) return false;
         if (m.status === 'delivered' || m.status === 'read') { self._relayedOut.delete(id); return false; }
+        if (btDev && !better && _tooBigForBt(m)) { console.log('[JUMP] ' + id + ' no cabe por Bluetooth: espera Wi-Fi/internet (sin leer del disco)'); return false; }
         return !self._isMsgInFlight(id);
       }));
     }).then(function(list) {

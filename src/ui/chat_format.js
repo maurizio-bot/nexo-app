@@ -46,7 +46,7 @@ export function _getCurrentContactId() {
 
 export function _chatKind(content) {
   if (typeof content !== 'string' || content.charAt(0) !== '{' || content.indexOf('"nexo_') < 0) return null;
-  try { var p = JSON.parse(content); return (p && (p.type === 'nexo_txt' || p.type === 'nexo_act' || p.type === 'nexo_sticker' || p.type === 'nexo_cita')) ? p : null; } catch (e) { return null; }
+  try { var p = JSON.parse(content); return (p && (p.type === 'nexo_txt' || p.type === 'nexo_act' || p.type === 'nexo_sticker' || p.type === 'nexo_cita' || p.type === 'nexo_diag')) ? p : null; } catch (e) { return null; }
 }
 
 export function _plainText(content) { var k = _chatKind(content); return k ? String(k.t || '') : String(content || ''); }

@@ -101,7 +101,10 @@ const { NostrRelay } = require('./nostr_relay');
   const att = { type: 'attachment', attachmentType: 'image', payload: 'ptr', meta: { ptr: 1 }, ptr: ptr };
   r.puntero_detectado = !!B.blobPointerIn(JSON.stringify(att)) && !B.blobPointerIn('hola') && !B.blobPointerIn(JSON.stringify({ type: 'attachment', payload: 'AAAA' })) && !!B.blobPointerIn('', { payload: { attachment: att } });
   r.orden_cifrar_luego_partir = (() => { const enc = { ct: new Uint8Array(100000) }; const parts = B.splitChunks(enc.ct, 40960); return parts.length === 3 && parts[2].length === 100000 - 2 * 40960; })();
-  r.id_de_evento_es_huella = B._eventId(evs[0]) === evs[0].id && B._eventId(Object.assign({}, evs[0], { content: 'X' + evs[0].content.slice(1) })) !== evs[0].id;
+  // 2974: el primer carácter del contenido es base64 al azar; si ya era «X», «X» + resto no cambiaba nada y la prueba fallaba 1 de 64 veces
+  // (falló en GitHub en la 2973 y nunca en local). Se cambia por un carácter DISTINTO del que hay.
+  const otro = evs[0].content.charAt(0) === 'X' ? 'Y' : 'X';
+  r.id_de_evento_es_huella = B._eventId(evs[0]) === evs[0].id && B._eventId(Object.assign({}, evs[0], { content: otro + evs[0].content.slice(1) })) !== evs[0].id;
 
   await Promise.all([r2.stop(), r3.stop()]);
   netA._closeAll(); netB._closeAll();

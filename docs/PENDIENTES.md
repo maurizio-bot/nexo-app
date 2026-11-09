@@ -20,6 +20,20 @@ visibles + área 56; ajuste «Vibración al tocar» en Perfil → Ajustes (como 
 - **Siguiente (build 2 del plan):** llevar las áreas de toque a lo que falte (hojas, cámara, juegos), `segment` en los snaps
   de stickers/selectores, y `hapticCaps` en el diagnóstico para ver qué motor tiene cada teléfono.
 
+## 🩺 Diagnóstico AUTOMÁTICO al desarrollador (dueño 09-11: «que el diagnóstico se haga solo y me llegue») — ✅ base en 2974
+- ✅ **2974:** la app manda sola el diagnóstico al detectar un síntoma (enlace zombi, reintentos agotados, pendiente > 30 min con
+  camino, error de código), cifrado de extremo a extremo al NEXO ID del dueño (`DIAG_DEV_NX`, `src/ui/autodiag.js`) como mensaje
+  oculto de protocolo; límites 1 cada 2 h, 3/día, mismo síntoma 1 vez/24 h; interruptor + «últimos envíos» (✓ al confirmarse) en
+  Perfil; bandeja «Diagnósticos recibidos» con «Copiar los nuevos» en el teléfono del dueño. Sin servicios externos (repo público).
+- ⚠️ **Decisión del dueño:** encendido por defecto en las builds de prueba (lo que hay) o apagado con una pregunta única al
+  instalar (patrón Element X «Aceptar / Ahora no»). Al publicar en Play: declarar «Crash logs + Diagnostics» en Data safety y en
+  la política de privacidad (lo lee el desarrollador).
+- Siguiente: (a) aviso/insignia en el icono de Perfil del dueño cuando llega uno; (b) más síntomas (llamada caída, ANR nativo vía
+  `ApplicationExitInfo`); (c) comprimir antes de cifrar si el texto crece; (d) que el nativo conteste los pings con «app cerrada»
+  (diagnóstico del vivo 13:21: `handleOnDestroy` + «IGNORE») para que el emisor pase directo al buzón y al toque sin esperar al zombi.
+- Investigación de pruebas reales (nubes, Mobly, emuladores con Bluetooth virtual, ADB, FCM, fabricantes, privacidad):
+  `docs/PRUEBAS_REALES_INVESTIGACION_2026-11-09.md`. Nivel 1 (laboratorio casero con los 3 aparatos) a pedido del dueño.
+
 ## 📬 Entrega OFFLINE sin servidor propio (diseño 08/09-11; dueño: «vamos a estudiarlo bien, no quiero fallas») — Fase A ✅ (2967) · Fase B ✅ (2969/2970) · Fase C ✅ (2971) · Fase D ✅ (2972) · E pendiente
 Docs: `docs/DISENO_ENTREGA_OFFLINE_2026-11-08.md` (diseño v2: cita FCM, cifrar-una-vez, blob compartido, fan-out por
 referencia, invariantes anti-crash, plan adversarial) y `docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md` (spec con números:

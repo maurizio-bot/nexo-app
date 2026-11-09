@@ -6,12 +6,10 @@
 import { e2eOpenAnon } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOpenText, e2eOuterAd } from '../vault/e2e_proto.js';
 import { groupAttachment, parseGroupEnvelope } from './groups.js';
-import { NET_MAX_B64_BYTES, MAX_BLE_B64_BYTES } from './media_limits.js';
-// = BLE_FILE_MAX_CHARS de ble_ack.js (tope BLE en base64 + cabecera de cifrado): por encima, un archivo NUNCA va por Bluetooth
-var BT_FILE_MAX_CHARS = MAX_BLE_B64_BYTES + 100000;
+import { NET_MAX_B64_BYTES } from './media_limits.js';
 import { parseCallSignal } from './calls.js';
 import { parseGroupCallSignal } from './group_call.js';
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus, _tooBigForBt } from './ble_helpers.js';
 import { blobPointerIn, validatePointer, fetchBlob, blobMailboxEligible, pointerReusable, loadBlobSeen, saveBlobSeen, citaIn, validateCita, loadCitaIn, saveCitaIn, loadCitaOut, saveCitaOut, _fetchRetryDelay, _b64Bytes as _blobB64Bytes, MAX_CONCURRENT as BLOB_MAX_CONCURRENT, MAILBOX_MAX_BYTES as BLOB_MAILBOX_MAX_BYTES } from '../net/blob_mailbox.js'; // Fase B (2969): buzón de ARCHIVOS
 
 
@@ -507,7 +505,7 @@ export const BLE_MESSAGE_METHODS = {
         }
         // Acción del chat (eliminar para todos): no es un mensaje; la aplica main.js
         var chatAct = _chatKind(msgContent);
-        if (chatAct && chatAct.type === 'nexo_act') isControl = true;
+        if (chatAct && (chatAct.type === 'nexo_act' || chatAct.type === 'nexo_diag')) isControl = true; // 2974: el diagnóstico automático es de protocolo (lo guarda autodiag.js, no el chat)
         if (!isControl && senderUUID) {
           var vaultMsg = {
             messageId: messageId || ('recv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5)),
@@ -1255,16 +1253,11 @@ export const BLE_MESSAGE_METHODS = {
     // los sellaba y ChatStream los aplazaba igual: el teléfono arrastrándose. Queda ⏳ y lo re-rutea el evento de enlace
     // (Wi-Fi/internet), como hasta ahora. Tamaño declarado (meta.size) o el adjunto ya en memoria; si no se conoce, se carga.
     var btDirect = !!(direct && deviceId && !/^(lan|net)/i.test(String(deviceId)));
+    // 2974 (diagnóstico del dueño 13:21): también por un PUENTE Jump por Bluetooth («Reenviando 1 pending para la tablet por el vivo»
+    // leía los 35 MB igual): un archivo que no cabe por Bluetooth tampoco cabe por un puente Bluetooth.
+    var btHop = !!(rh && rh.deviceId && !/^(lan|net)/i.test(String(rh.deviceId)));
     var betterPath = !!((self.net && typeof self.net.canReach === 'function' && self.net.canReach(nexoId)) || (self.lan && typeof self.lan.canReach === 'function' && self.lan.canReach(nexoId)));
-    var tooBigForBt = function(m) {
-      var t = m.attachmentType, p = m.attachmentPayload, mm = m.attachmentMeta;
-      if ((!t || !p) && m.content && typeof m.content === 'string' && m.content.charAt(0) === '{') {
-        try { var pr = JSON.parse(m.content); if (pr && pr.type === 'attachment') { t = pr.attachmentType; p = pr.payload; mm = pr.meta || mm; } } catch (e) {}
-      }
-      if (!t || (mm && mm.big)) return false;
-      var chars = (p && typeof p === 'string') ? p.length : Math.ceil(((mm && Number(mm.size)) || 0) * 4 / 3);
-      return chars > BT_FILE_MAX_CHARS;
-    };
+    var tooBigForBt = _tooBigForBt;
     getPending = getPending.then(function(list) {
       list = (list || []).filter(function(m) { return !self._isMsgInFlight(idOf(m)); });
       if (!direct && !rh) {
@@ -1275,7 +1268,7 @@ export const BLE_MESSAGE_METHODS = {
         if (blobOnly) list = list.filter(blobCandidate);
         else if (list.length) { console.log('[BLEInterface] ' + list.length + ' pending para ' + nexoId + ': sin enlace ni ruta, quedan en espera'); self._noteWakePending(nexoId); if (self.relay) self.relay.discover(nexoId); list.forEach(function(m) { try { self._fileCitaFromMsg(nexoId, m); } catch (e) {} }); return []; }
       }
-      if (btDirect && !betterPath) {
+      if ((btDirect || btHop) && !betterPath) {
         var grandes = list.filter(tooBigForBt);
         if (grandes.length) { console.log('[BLEInterface] ' + grandes.length + ' archivo(s) grande(s) para ' + nexoId + ' no caben por Bluetooth: esperan Wi-Fi/internet (sin leer del disco)'); list = list.filter(function(m) { return !tooBigForBt(m); }); }
       }

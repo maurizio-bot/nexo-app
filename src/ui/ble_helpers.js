@@ -252,7 +252,22 @@ export function _isProtocolShaped(s) {
 // 2829: stickers ('nexo_sticker': solo el ID del sticker, el dibujo es un SVG incorporado)
 export function _chatKind(content) {
   if (typeof content !== 'string' || content.charAt(0) !== '{' || content.indexOf('"nexo_') < 0) return null;
-  try { var p = JSON.parse(content); return (p && (p.type === 'nexo_txt' || p.type === 'nexo_act' || p.type === 'nexo_sticker' || p.type === 'nexo_cita')) ? p : null; } catch (e) { return null; }
+  try { var p = JSON.parse(content); return (p && (p.type === 'nexo_txt' || p.type === 'nexo_act' || p.type === 'nexo_sticker' || p.type === 'nexo_cita' || p.type === 'nexo_diag')) ? p : null; } catch (e) { return null; }
+}
+
+// 2973/2974: ¿este adjunto (mensaje del vault, hidratado o no) NO cabe por Bluetooth? Tamaño declarado (meta.size, bytes) o el
+// adjunto ya en memoria (base64). Tope = BLE_FILE_MAX_CHARS de ble_ack.js (3 MB de base64 + cabecera de cifrado). Un archivo así
+// por Bluetooth (directo o por un puente Jump) SIEMPRE se aplaza, así que no vale la pena ni leerlo del disco ni sellarlo.
+export var BT_FILE_MAX_CHARS = 3100000;
+export function _tooBigForBt(m) {
+  if (!m) return false;
+  var t = m.attachmentType, p = m.attachmentPayload, mm = m.attachmentMeta;
+  if ((!t || !p) && m.content && typeof m.content === 'string' && m.content.charAt(0) === '{') {
+    try { var pr = JSON.parse(m.content); if (pr && pr.type === 'attachment') { t = pr.attachmentType; p = pr.payload; mm = pr.meta || mm; } } catch (e) {}
+  }
+  if (!t || (mm && mm.big)) return false;
+  var chars = (p && typeof p === 'string') ? p.length : Math.ceil(((mm && Number(mm.size)) || 0) * 4 / 3);
+  return chars > BT_FILE_MAX_CHARS;
 }
 
 // Recortar texto sin partir un emoji ni otro carácter de dos unidades (quedaría "�")
@@ -318,7 +333,7 @@ export function _wakeAdvance(entry, nowMs, rnd) {
 export function _messagePreview(content, attachmentType) {
   var t = attachmentType;
   var k = !t ? _chatKind(content) : null;
-  if (k && k.type === 'nexo_act') return null;
+  if (k && (k.type === 'nexo_act' || k.type === 'nexo_diag')) return null; // 2974: el diagnóstico automático tampoco es un mensaje
   if (k && k.type === 'nexo_sticker') return '🎟️ Sticker';
   if (k) return _cut(k.t, 50);
   if (!t && typeof content === 'string' && content.charAt(0) === '{') {

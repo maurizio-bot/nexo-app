@@ -2378,6 +2378,7 @@ ChatStream.prototype._onWindowTimeout = function() {
       // depender de un re-disparo externo (contacto que vuelve / app al frente) que antes no llegaba solo.
       if (self._netFileAutoRetryNow()) { self.windowRetryCount = 0; try { self.ackSystem._dispatchStatus(self.msgId, 'pending'); } catch (e) {} self._retransmitWindow(); return; }
       console.warn('[ChatStream] Max window retries alcanzado para', self.msgId);
+      try { window.dispatchEvent(new CustomEvent('nexo:diag:symptom', { detail: { kind: 'reintentos', info: self.type + ' ' + self.msgId } })); } catch (e) {} // 2974: síntoma → diagnóstico automático
       self.abort();
       if (self._windowReject) {
         self._windowReject(new Error('Max window retries'));

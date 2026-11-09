@@ -438,6 +438,11 @@
     {
      "fallo": "2973 (diagnóstico del dueño S24 09-11 12:15, APK de 35 MB pendiente para la tablet CONECTADA por Bluetooth, sin Wi-Fi/internet con ella): el reenvío de pendientes cargaba del disco el archivo ENTERO en cada vuelta (evento de enlace, vuelta al frente, flush: «leyendo lento (adjunto)» ×N), lo sellaba y recién ChatStream lo descartaba por tamaño; la reanudación de registros salientes hacía lo mismo (sellar 35 MB para aplazar). 2973: con Bluetooth directo y sin camino mejor (canReach Wi-Fi/internet), un archivo que no cabe por Bluetooth (tamaño declarado meta.size o adjunto en memoria) no se carga ni se sella: queda ⏳ hasta el evento de enlace. blobe2e.js (5b): 3 reenvíos → 0 cargas, 0 sendFile (antes 3/6)",
      "prueba": "ARCHIVO A UN TELÉFONO APAGADO"
+    },
+    {
+     "fallo": "2974 (diagnóstico del dueño S24 13:21): el PUENTE Jump también leía del disco el APK de 35 MB en cada vuelta («Reenviando 1 pending para la tablet por el vivo»; y al volver el enlace directo, «salió por un puente sin ✓✓: se reenvía directo» ×3 en 1,5 s, cada vez con su «leyendo lento (adjunto)»). 2974: la misma regla del 2973 (_tooBigForBt, en ble_helpers) se aplica ANTES de hidratar en el reenvío por puente Bluetooth (_resendPendingMessages, btHop) y en el re-envío directo de lo que salió por un puente (_resendRelayedDirect)",
+     "prueba": null,
+     "fuera": "el puente Jump con un archivo > tope Bluetooth no está montado en el simulador; la regla compartida (_tooBigForBt) la cubre blobe2e.js (5b) para el enlace directo"
     }
    ],
    "debiles": [

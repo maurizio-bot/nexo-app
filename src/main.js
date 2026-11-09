@@ -116,6 +116,7 @@ import { _extOf, _compressImageBase64, _fmtTime, _readFileBase64, _isPdf, _MIME_
 import { groupAttachment, isGroupId, parseGroupEnvelope } from './ui/groups.js';
 import { isGroupWire, startGroupMedia } from './ui/group_media.js';
 import { avatarInit } from './ui/avatar.js';
+import { autoDiagInit, autoDiagReceived } from './ui/autodiag.js'; // 2974: diagnóstico automático al desarrollador
 import { profileInit } from './ui/profile_data.js';
 import { profileShareInit } from './ui/profile_share.js';
 import { psiInit } from './ui/psi.js';
@@ -568,6 +569,8 @@ function _handleIncomingMessage(msg) {
     // v9.9.45: acción del chat (eliminar para todos): se aplica, no se muestra
     var chatAct = _chatKind(msg.content);
     if (chatAct && chatAct.type === 'nexo_act') { _applyChatAction(msg.senderNexoId || msg.deviceUUID, chatAct); return; }
+    // 2974: diagnóstico automático de un probador: a la bandeja de Perfil, nunca al chat
+    if (chatAct && chatAct.type === 'nexo_diag') { try { autoDiagReceived(msg.senderNexoId || msg.deviceUUID, chatAct); } catch (e) {} return; }
     var bi = window.NEXO.app && window.NEXO.app.bleInterface;
     var localUUID = (bi && bi.localNexoId) || (bi && bi.localDeviceUUID) || '';
     var senderUUID = msg.senderNexoId || msg.deviceUUID || '';
@@ -801,6 +804,7 @@ async function initializeNexoApp() {
     window.NEXO.initialized = true;
     startGroupMedia(); // ronda 2764: HD y archivos grandes en grupos (reanudar lo pendiente)
     avatarInit(); // ronda 2765: foto de perfil
+    autoDiagInit(); // 2974: diagnóstico automático al desarrollador (síntomas → mensaje oculto nexo_diag)
     profileInit(); // ronda 2910: datos de mi perfil (nombre y apellido, teléfono, correo — opcionales)
     loadDisplayName().then(function() { applyDisplayName(window.bleInterface); }); // #dueño 06-11: el nombre fijo elegido pisa el del teléfono (lo ven los contactos)
     profileShareInit(); // #dueño 04-11: compartir mis datos COMPLETOS con los contactos por E2E + guardar los suyos (perfil 2b/3)

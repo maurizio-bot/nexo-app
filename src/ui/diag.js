@@ -102,14 +102,17 @@ function _lastHourText(text) {
 function _capDiag(text) {
   var lines = text.split('\n');
   if (lines.length <= MAX_DIAG_LINES) return text;
-  var keepHead = lines.slice(0, 3);
+  var keepHead = lines.slice(0, 4); // cabecera: NEXO diagnóstico, NEXO ID, Build (2974), UA
   var keepTail = lines.slice(lines.length - (MAX_DIAG_LINES - keepHead.length - 1));
   return keepHead.concat(['… (diagnóstico recortado a ' + MAX_DIAG_LINES + ' líneas; se muestran las más recientes) …'], keepTail).join('\n');
 }
 
+// 2974: número de build (el workflow lo inyecta en dist/index.html como window.NEXO_BUILD; en local y en el simulador, «dev»)
+export function _diagBuild() { var b = window.NEXO_BUILD; return /^\d+$/.test(String(b || '')) ? String(b) : 'dev'; }
+
 export function _diagnosticText() {
   var bi = window.bleInterface || {};
-  var head = 'NEXO diagnóstico ' + new Date().toISOString() + ' (' + DIAG_WINDOW_LABEL + ')\nNEXO ID: ' + (bi.localNexoId || '?') + '\nUA: ' + navigator.userAgent + '\n';
+  var head = 'NEXO diagnóstico ' + new Date().toISOString() + ' (' + DIAG_WINDOW_LABEL + ')\nNEXO ID: ' + (bi.localNexoId || '?') + '\nBuild: ' + _diagBuild() + '\nUA: ' + navigator.userAgent + '\n';
   // Tanto la sesión actual como la anterior se recortan a la ventana (28-10, pedido del dueño: «solo 30 minutos»)
   // Ronda 2785 (#87): el registro nativo (últimas ~150 líneas) muestra qué hizo el nativo con la app cerrada
   var nat = _nativeLog ? ('\n===== REGISTRO NATIVO (segundo plano / app cerrada) =====\n' + _nativeLog.split('\n').slice(-150).join('\n') + '\n') : '';

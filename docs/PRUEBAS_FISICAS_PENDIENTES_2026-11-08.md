@@ -10,7 +10,7 @@ dos WiFi distintas (2957)**, **envío de fotos**, y **JUMP funcionando** (tu cap
 vez que lo probás; aclaraste que no era un error, era el Jump andando). Eso ya subió el índice de robustez
 **54,8 → 61,8** (el componente «teléfonos», que es el que mueven tus pruebas, pasó de **15,9 a 22,8 / 35**;
 «caminos» llegó a su nivel pleno porque internet y Jump eran los que faltaban; ver `docs/ROBUSTEZ.md`). Abajo
-marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2973**).
+marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2974**).
 
 ## A. Builds nuevos a probar
 
@@ -185,6 +185,17 @@ marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo l
     skip ping/zombie»); al desbloquear el vivo la foto tiene que llegar sola. Lo mismo vale con la tablet. (c) Si el otro sigue sin
     recibir nada por Bluetooth pero el S24 NO corta el enlace, copiame el diagnóstico de los DOS: es el caso «vivo pero atascado»
     que dejé anotado en PENDIENTES §3.
+
+27. **2974 — diagnóstico AUTOMÁTICO al desarrollador (tu pedido: «que se haga solo y me llegue»).** (a) En el vivo: Perfil →
+    «Diagnóstico automático»: tiene que estar encendido y decir «Todavía no se mandó ninguno». (b) Provocá un síntoma: vivo y S24
+    por Bluetooth, mandá una foto del vivo al S24 y en ese instante **cerrá la app del S24** (deslizala de Recientes). El vivo
+    detecta el zombi en ~1 minuto («sin respuesta a 2 pings») y tiene que mandar el diagnóstico: en el vivo, Perfil → «Últimos
+    envíos: … zombi … KB ⏳» (pasa a ✓ cuando tu S24 lo confirma). (c) Abrí el S24: Perfil → «Diagnósticos recibidos (1, 1
+    nuevos)» con el vivo como remitente, y arriba una notificación corta «Llegó un diagnóstico automático de nx09acdb61». Tocá
+    «Copiar los nuevos» y pegámelo acá: el texto empieza con «===== DIAGNÓSTICO AUTOMÁTICO de nx09acdb61 … síntoma: zombi …
+    build 2974 =====» y adentro dice «Build: 2974». (d) En tu S24, forzá un síntoma propio (por ejemplo cerrá la app del vivo con una
+    foto en vuelo desde el S24): tiene que aparecer en tu propia bandeja sin viajar a ningún lado. (e) Si el vivo NO manda nada:
+    copiame su diagnóstico normal y buscá `[AUTODIAG]` (dice por qué: apagado, espera, tope, sin contacto).
 
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 

@@ -109,6 +109,9 @@ jobs:
       - name: Build Web Only
         run: npm run build:web
 
+      - name: Número de build en la app (diagnóstico)
+        run: sed -i "s/__NEXO_BUILD__/${{ github.run_number }}/g" dist/index.html
+
       - name: Sync Capacitor
         run: npx cap sync android
 

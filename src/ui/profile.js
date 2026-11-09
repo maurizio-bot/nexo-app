@@ -7,6 +7,7 @@
 import { haptic, hapticMode, setHapticMode } from './haptics.js'; // NEXO Touch (2968): ajuste «Vibración al tocar»
 import { securitySectionHtml, renderSecuritySection } from './app_lock.js';
 import { _diagnosticText } from './diag.js';
+import { autoDiagInnerHtml, renderAutoDiagSection } from './autodiag.js'; // 2974: diagnóstico automático al desarrollador
 import { startReceiveAccount, startSendAccount } from './move_account.js';
 import { clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
 import { myProfile, setMyProfile } from './profile_data.js';
@@ -262,6 +263,8 @@ function _openSettingsSheet() {
     card('🩺', t('diagnostics'), '<div class="nx-sub">' + t('prof_diag_sub', 'Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.') + '</div>' +
       '<button id="nexo-diag-copy" class="nx-btn nx-btn-primary">' + t('prof_diag_copy', 'Copiar diagnóstico') + '</button>' +
       '<textarea id="nexo-diag-text" readonly style="min-height:220px;width:100%;box-sizing:border-box;color:#9fe;font-size:10px;font-family:monospace;padding:8px;"></textarea>') +
+    // 2974: diagnóstico automático al desarrollador (interruptor, últimos envíos; en el teléfono del desarrollador, la bandeja)
+    card('📡', t('autodiag_title', 'Diagnóstico automático'), autoDiagInnerHtml()) +
     '</div>';
   document.body.appendChild(sheet);
   // NEXO Touch (2968): guardar el modo y hacerlo SENTIR al elegirlo (un «confirm»)
@@ -354,6 +357,7 @@ function _openSettingsSheet() {
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok).catch(fallback);
     else fallback();
   };
+  renderAutoDiagSection(sheet); // 2974
 }
 window.addEventListener('nexo:ui:settings', _openSettingsSheet);
 try { if (typeof window !== 'undefined') window.__nexoOpenSettings = _openSettingsSheet; } catch (e) {}

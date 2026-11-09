@@ -234,6 +234,7 @@ export const BLE_CONNECTION_METHODS = {
     if (self._pingInFlight) self._pingInFlight.delete(deviceId);
     // Ronda 2760: al diagnóstico (antes no quedaba rastro y en los teléfonos el enlace se rehacía cada ~30 s)
     console.warn('[BLEInterface] Enlace ' + (self._macToNexoId.get(_normMac(deviceId)) || deviceId) + ' sin respuesta a 2 pings: desconectado para reconectar');
+    _safeDispatchEvent('nexo:diag:symptom', { kind: 'zombi', info: String(self._macToNexoId.get(_normMac(deviceId)) || deviceId) }); // 2974: síntoma → diagnóstico automático
     self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
     self.connectedDevices.delete(deviceId);
     self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.RECONNECTING, since: Date.now() });
