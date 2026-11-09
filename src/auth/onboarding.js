@@ -70,7 +70,6 @@ export class OnboardingController {
         box-shadow: 0 4px 20px rgba(0, 255, 136, 0.3);
         transition: transform 0.2s, opacity 0.2s;
       }
-      .nap-onboard-btn:active { transform: scale(0.95); }
       .nap-onboard-btn:disabled { opacity: 0.7; cursor: not-allowed; }
       .nap-onboard-btn-secondary {
         background: transparent; color: #666; border: 1px solid #333;

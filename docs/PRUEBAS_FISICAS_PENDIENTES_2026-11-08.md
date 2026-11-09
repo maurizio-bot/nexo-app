@@ -10,7 +10,7 @@ dos WiFi distintas (2957)**, **envío de fotos**, y **JUMP funcionando** (tu cap
 vez que lo probás; aclaraste que no era un error, era el Jump andando). Eso ya subió el índice de robustez
 **54,8 → 61,8** (el componente «teléfonos», que es el que mueven tus pruebas, pasó de **15,9 a 22,8 / 35**;
 «caminos» llegó a su nivel pleno porque internet y Jump eran los que faltaban; ver `docs/ROBUSTEZ.md`). Abajo
-marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2967**).
+marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2968**).
 
 ## A. Builds nuevos a probar
 
@@ -125,6 +125,20 @@ marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo l
 20. **2967 — botón «Cobro» oculto (tu pedido 09-11).** Abrí el menú «+» de un chat: tienen que verse Cámara, Galería,
     Archivo, Ubicación, Contacto y Sticker, y **ya no** «Cobro». (El código sigue; se vuelve a mostrar cuando haya algo
     sólido.)
+
+21. **2968 — NEXO Touch: cómo se SIENTEN los botones (tu pedido 09-11).** Es la prueba del «wow»: tocá botones por toda la
+    app (enviar, el «+», atrás, llamar, perfil, filas de contactos, el menú de adjuntar, stickers). Fijate en tres cosas:
+    (a) **el toque entra a la primera** (enviar/micro y adjuntar ahora miden 44 y su área invisible llega a 56 hacia el
+    borde; probá rozar el borde de la pantalla al lado de «enviar»); (b) **se siente un tick corto y nítido al apoyar el
+    dedo** — no un zumbido — y uno un poco más presente al ENVIAR un mensaje, al terminar una nota de voz, al sacar una foto,
+    al aceptar una solicitud y al contestar/colgar; (c) **se ve**: el botón se hunde en el mismo instante, una onda nace
+    donde tocaste, y al soltar vuelve con un rebote suave (en los redondos, un anillo cian que se expande). Probalo en el
+    **S24** (motor bueno) y en el **vivo** (motor pobre): en el vivo tiene que sentirse flojo o no sentirse, pero NUNCA
+    zumbar. Con «Vibración al tocar» APAGADA en los ajustes del teléfono no debe vibrar nada; en Perfil → Ajustes →
+    «Vibración al tocar» podés forzar «Siempre» o «Nunca». Tocá rápido 10 veces seguidas: cero ráfagas. Apoyá el dedo en
+    un botón y deslizalo afuera: se despresiona y NO dispara. Decime qué ajustarías: fuerza del tick, tamaño del
+    hundimiento, el pulso cian sí/no. Y abrí el menú «+» (tu captura): deben verse 2 filas de 4 —
+    Cámara, Galería, Archivo, Ubicación / Contacto, Stickers, Juegos, Buscar— cada uno con su círculo de color y su nombre.
 
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 

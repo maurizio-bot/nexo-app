@@ -83,7 +83,7 @@ function _injectStyles() {
     + ' #nexo-name-overlay .nm-warn b { color: #ffb300; }'
     + ' #nexo-name-overlay .nm-primary { display: block; width: 100%; padding: 15px; border: none; border-radius: 14px; font-size: 16px; font-weight: 700; color: #fff; cursor: pointer; background: linear-gradient(135deg,#00c8ff,#a855f7); box-shadow: 0 8px 22px rgba(0,200,255,0.3); }'
     + ' #nexo-name-overlay .nm-primary:disabled { opacity: 0.45; box-shadow: none; cursor: default; }'
-    + ' #nexo-name-overlay .nm-primary:not(:disabled):active { transform: scale(0.98); }';
+    + '';
   document.head.appendChild(s);
 }
 

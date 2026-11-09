@@ -3,6 +3,7 @@
  * cita, menú de la burbuja (responder, reenviar, copiar, eliminar para mí / para todos), barra de respuesta, hoja de
  * reenvío y aplicar el "eliminar para todos" que llega. Lo que usa del resto de la app se lo da main.js.
  */
+import { haptic } from './haptics.js'; // NEXO Touch (2968): háptica del sistema
 import { applyAvatar } from './avatar.js';
 import { applyContactProfile } from './profile_share.js';
 import { psiOnAction } from './psi.js';
@@ -149,7 +150,7 @@ function _showReplyHint(bubble, tx) {
   h.style.opacity = String(0.2 + 0.8 * prog);
   h.style.transform = 'scale(' + (0.6 + 0.5 * prog) + ')';
   h.style.background = armed ? 'rgba(0,200,255,0.95)' : 'rgba(255,255,255,0.18)';
-  if (armed && !_replyHintArmed) { _replyHintArmed = true; try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {} }
+  if (armed && !_replyHintArmed) { _replyHintArmed = true; haptic('gesture'); /* NEXO Touch (2968): «responder» armado → tick del sistema, no un zumbido */ }
   else if (!armed) _replyHintArmed = false;
 }
 function _hideReplyHint() {

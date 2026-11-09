@@ -985,6 +985,10 @@
      "fallo": "M2 nota de voz: seguía sonando al salir/cambiar de chat (Audio y timers en nodo desprendido) (auditoría 28-10, arreglado 2820)",
      "prueba": null,
      "fuera": "revisión: jsdom no reproduce audio; se ve en el teléfono"
+    },
+    {
+     "fallo": "El «feel» de los botones (dueño 09-11: «quiero algo de calidad, que el user diga: wow, qué bien se siente»): :active { scale(0.92) } suelto en ~25 selectores sin tiempos ni curvas y tarde en el WebView, vibración navigator.vibrate(50) zumbona que ignoraba el ajuste del teléfono, y los botones más usados (enviar/micro/adjuntar) de 38 px. NEXO Touch (2968): UN motor de presionado (press.js: hundirse en pointerdown, onda desde el dedo, sostén ≥120 ms, muelle + pulso NEXO, cancelación por deslizamiento/scroll) + háptica del SISTEMA (haptics.js + plugin: tick al presionar, confirm en 5 momentos de verdad, reject en errores; modos sistema/siempre/nunca) + áreas de toque 48/56 sin pisar vecinos; barra de escribir 44 visibles",
+     "prueba": "NEXO Touch"
     }
    ],
    "debiles": [

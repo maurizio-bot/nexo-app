@@ -4,6 +4,7 @@
  * "mensajería de cobros" (como una factura o un "Request to Pay"), así que no necesita licencia ni servidor; el cobro
  * viaja cifrado como cualquier mensaje (Bluetooth/Wi-Fi/Jump/internet). _sendAttachment lo da main.js con cobroUse().
  */
+import { haptic } from './haptics.js'; // NEXO Touch (2968): háptica del sistema
 import { _closeAttachMenu, _showPermissionError, _showInfoToast } from './ui_bits.js';
 import { t } from './i18n.js';
 
@@ -69,7 +70,7 @@ export function _openCobroSheet() {
   setTimeout(function() { try { imp.focus(); } catch (e) {} }, 50);
   ov.querySelector('#cobro-send').addEventListener('click', function() {
     var importe = parseFloat(String(imp.value).replace(',', '.'));
-    if (!(importe > 0)) { imp.style.borderColor = '#ff3b30'; _showInfoToast(t('media_cobro_min', 'Pon un importe mayor que 0.'), 3000); return; }
+    if (!(importe > 0)) { imp.style.borderColor = '#ff3b30'; haptic('reject'); _showInfoToast(t('media_cobro_min', 'Pon un importe mayor que 0.'), 3000); return; }
     var moneda = ov.querySelector('#cobro-moneda').value || 'ARS';
     var concepto = String(ov.querySelector('#cobro-concepto').value || '').slice(0, 80);
     var metodo = String(ov.querySelector('#cobro-metodo').value || '').slice(0, 120);

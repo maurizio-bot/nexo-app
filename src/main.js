@@ -103,6 +103,7 @@ import { initBLEInterface } from './ui/ble_interface.js';
 import { initAppLock, securitySectionHtml, renderSecuritySection, lockEnabled } from './ui/app_lock.js';
 import { applyStaticI18n, t as _t } from './ui/i18n.js'; // #132 idioma: traducir el HTML estático + textos de estado
 import { initPerf } from './ui/perf.js';
+import { initPress } from './ui/press.js'; // NEXO Touch (build 2968): un motor de presionado + háptica del sistema
 import { batteryGuard } from './ui/battery_prompt.js';
 import { welcomeGuide } from './ui/welcome_guide.js'; // #dueño 05-11: guía de bienvenida la primera vez (antes del aviso de batería)
 import { nameGate, loadDisplayName, applyDisplayName } from './ui/display_name.js'; // #dueño 06-11: nombre fijo (pedido 1 vez, no se cambia)
@@ -181,6 +182,7 @@ window.vaultLoadContacts = vaultLoadContacts;
 // v9.9.41: y la del protocolo 2 (como Signal: claves que cambian con cada mensaje)
 // v9.9.47 (seguridad fase 3): bloqueo con huella y capturas (Perfil → Seguridad)
 initAppLock({ toast: function(t, ms) { _showInfoToast(t, ms); } });
+initPress(); // NEXO Touch (build 2968, dueño 09-11): hundirse/onda/pulso + tick háptico + áreas de toque
 initPerf(); // ronda 2808: medición de rendimiento (pasiva: escucha eventos ya existentes)
 // v9.9.52: mensajes sin leer y notificaciones (todas las vías de llegada pasan por _handleIncomingMessage)
 var _notifier = createNotifier({

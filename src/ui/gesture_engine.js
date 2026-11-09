@@ -1,3 +1,4 @@
+import { haptic } from './haptics.js'; // NEXO Touch (2968): háptica del sistema en vez de navigator.vibrate
 /**
  * NEXO v9.0 - Gesture Engine v1.2-NAP-CERTIFIED
  * Sistema de gestos táctiles 100% edge-based
@@ -103,11 +104,9 @@ export class GestureEngine {
   _haptic(pattern = [50]) {
     if (this._isDestroyed) return;  // [FIX 1.2.2]
     if (!this.config.haptic) return;
-    if (typeof navigator === 'undefined' || !navigator.vibrate) return;
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    }
-    try { navigator.vibrate(pattern); } catch (e) {}
+    // NEXO Touch (2968): antes navigator.vibrate(50) = zumbido «buzzy». Ahora la sensación del SISTEMA (haptics.js), que
+    // respeta el ajuste del teléfono: patrón de dos partes (pulsación larga armada) → long; deslizar/menú/refrescar → gesture.
+    haptic(Array.isArray(pattern) && pattern.length > 1 ? 'long' : 'gesture');
   }
   
   _applyGestureStyles(active) {

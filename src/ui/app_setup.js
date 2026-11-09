@@ -16,6 +16,7 @@ import { _msgContactMap } from './chat_state.js';
 import { _noteContactMessage } from './send.js';
 import { _renderMessage, _updateMessageStatus, _updateMessageStorageStatus } from './render.js';
 import { _failStatus } from './ble_helpers.js';
+import { haptic } from './haptics.js'; // NEXO Touch (2968): confirm al enviar, reject si falla de verdad
 import { openStickerPicker, isValidStickerImg } from './stickers.js';
 import { openStickerEditor } from './sticker_editor.js';
 import { openTttForContact } from './ttt.js';
@@ -57,6 +58,7 @@ export async function _sendStickerTo(cid, sticker) {
   _updateMessageStorageStatus(msgId, 'sending');
   try {
     await window.NEXO.app.sendMessage({ content: wire, msgId: msgId, messageId: msgId, seq: seq });
+        haptic('confirm'); // NEXO Touch: momento de verdad (mensaje enviado)
     window._sentFallbackTimers = window._sentFallbackTimers || {};
     window._sentFallbackTimers[msgId] = setTimeout(function() {
       _updateMessageStatus(msgId, 'sent');
@@ -69,6 +71,7 @@ export async function _sendStickerTo(cid, sticker) {
       delete window._sentFallbackTimers[msgId];
     }
     var st = _failStatus(e);
+        if (st === 'failed') haptic('reject'); // NEXO Touch: error de verdad (no un «esperando»)
     _updateMessageStatus(msgId, st);
     _updateMessageStorageStatus(msgId, st);
   }
@@ -260,6 +263,7 @@ export function _setupMessageInput() {
         var gwire = _replyTo ? JSON.stringify({ type: 'nexo_txt', t: text, rp: _replyTo }) : text;
         _cancelReply();
         window.NEXO_sendGroupText(chatContactId, gwire, text, 'gm' + msgId.substring(3));
+        haptic('confirm'); // NEXO Touch: momento de verdad (mensaje de grupo enviado)
         return;
       }
       // v9.9.45: respuesta a una burbuja (solo si el otro la entiende; si no, va el texto solo)

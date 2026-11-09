@@ -1,6 +1,6 @@
 # NEXO — Propuesta: el «feel» de los botones (toque certero + háptica placentera + respuesta visual de calidad)
 
-**Para decidir juntos. Nada implementado todavía.** 09-11-2026. Pedido del dueño: «retroalimentación por vibración y visual…
+**Decidido 09-11 (dueño: «pon lo que creas mejor y lo tomamos como base»): las 5 recomendaciones se implementaron en el build 2968; se afina con su prueba física (§A.21 de PRUEBAS_FISICAS).** Propuesta original, 09-11-2026. Pedido del dueño: «retroalimentación por vibración y visual…
 algo que el user diga: *wow, qué bien se siente*… partiendo desde el toque, dimensionar las áreas sin interferir, vibración
 placentera y un efecto visual superlativo. Antes de hacerlo me exponés la idea y decidimos juntos».
 

@@ -1,8 +1,10 @@
+        haptic('confirm'); // NEXO Touch (2968): nota de voz grabada y enviada
 /**
  * NEXO — Notas de voz: grabar, con barra de controles para PAUSAR/REANUDAR, BORRAR antes de enviar y ENVIAR
  * (ronda 2781, pedido del dueño). Al empezar a grabar se para cualquier nota de voz que esté sonando. _sendAttachment
  * lo da main.js con voiceUse().
  */
+import { haptic } from './haptics.js'; // NEXO Touch (2968): háptica del sistema
 import { _showPermissionError } from './ui_bits.js';
 import { _fmtTime } from './file_tools.js';
 import { t } from './i18n.js';

@@ -3,6 +3,7 @@
  * temporizador de grabación, revisión antes de enviar y pausa del Bluetooth mientras la cámara está abierta.
  * Lo que usa del resto de la app (enviar, galería…) se lo da main.js al arrancar con cameraUse().
  */
+import { haptic } from './haptics.js'; // NEXO Touch (2968): háptica del sistema
 import { PREVIEW_MAX_SECONDS, _videoFormat } from './video_tools.js';
 import { _getCurrentContactId } from './chat_format.js';
 import { t } from './i18n.js';
@@ -266,6 +267,7 @@ export function _capturePhoto() {
   canvas.width = Math.max(1, Math.round(vw * scale));
   canvas.height = Math.max(1, Math.round(vh * scale));
   var ctx = canvas.getContext('2d');
+  haptic('confirm'); // NEXO Touch (2968): obturador — la foto se tomó
   var mirror = container.classList.contains('mirror');
   if (mirror) { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); } // igual que se ve (espejo)
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);

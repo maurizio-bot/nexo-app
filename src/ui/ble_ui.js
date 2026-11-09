@@ -3,6 +3,7 @@
  * sin cambios): panel, botones de visibilidad y búsqueda, lista de chats, franja de en línea, menú de cada contacto,
  * barra de teléfonos nuevos, insignia y estado.
  */
+import { haptic } from './haptics.js'; // NEXO Touch (2968): háptica del sistema
 import { avatarOf, paintAvatar } from './avatar.js';
 import { t } from './i18n.js'; // #132 idioma
 import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isBLEContact, _isPinned, _normId, _rssiToBars, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
@@ -549,7 +550,7 @@ export const BLE_UI_METHODS = {
       no.style.cssText = 'flex-shrink:0;padding:7px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:transparent;color:#fff;cursor:pointer;';
       ok.addEventListener('click', function() {
         ok.disabled = no.disabled = true;
-        self.acceptRequest(req.id).then(function() { self.renderRequests(); self.renderContactsList(); }).catch(function() { ok.disabled = no.disabled = false; });
+        self.acceptRequest(req.id).then(function() { haptic('confirm'); self.renderRequests(); self.renderContactsList(); }).catch(function() { ok.disabled = no.disabled = false; });
       });
       no.addEventListener('click', function() { self.rejectRequest(req.id); self.renderRequests(); });
       row.appendChild(info); row.appendChild(ok); row.appendChild(no);

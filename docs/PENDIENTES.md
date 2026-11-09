@@ -3,6 +3,23 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🖐️ NEXO Touch — el «feel» de los botones (dueño 09-11: «algo de calidad… que el user diga: wow») — ✅ base en 2968, a afinar con su prueba
+Propuesta e investigación: `docs/FEEDBACK_TOQUE_PROPUESTA_2026-11-09.md`. Decisión del dueño: «pon lo que creas mejor y lo tomamos como
+base; después de las pruebas lo vamos ajustando» → se implementaron las 5 recomendaciones: tick al presionar en todos los
+botones; confirm en 5 momentos de verdad (mensaje enviado, nota de voz grabada, foto tomada, solicitud aceptada, llamada
+contestada/colgada) y reject en errores; estilo C (onda Material + «pulso NEXO» cian en los redondos); barra de escribir 44
+visibles + área 56; ajuste «Vibración al tocar» en Perfil → Ajustes (como el sistema / siempre / nunca).
+- **Hecho (2968):** `src/ui/press.js` (motor único, pointer events delegados, Web Animations sobre `scale`, onda acotada,
+  sostén ≥120 ms, cancelación por deslizamiento >12 px/scroll, áreas de toque con `_hitSlop` pura que no pisa vecinos),
+  `src/ui/haptics.js` (6 sensaciones → plugin nativo `haptic({kind, mode})`, compuerta 40 ms, suplente `navigator.vibrate`),
+  Kotlin `HapticKinds.kt` (mapa puro → `View.performHapticFeedback`; «siempre» → `VibrationEffect.createPredefined`) +
+  `haptic`/`hapticCaps` en el plugin, retiro de los ~25 `:active` sueltos (los de tinte pasan a `.is-pressed`), `vibrate(50)`
+  de gestos → `long`/`gesture`. Pruebas: `tests/sim/press.js` (34 comprobaciones con la geometría real), JVM `HapticKindsTest`.
+- **Falta del dueño:** la prueba de «cómo se siente» en S24 y vivo (`docs/PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md` §A.21):
+  fuerza del tick, hundimiento, pulso sí/no, y si algún botón sigue costando acertarle.
+- **Siguiente (build 2 del plan):** llevar las áreas de toque a lo que falte (hojas, cámara, juegos), `segment` en los snaps
+  de stickers/selectores, y `hapticCaps` en el diagnóstico para ver qué motor tiene cada teléfono.
+
 ## 📬 Entrega OFFLINE sin servidor propio (diseño 08/09-11; dueño: «vamos a estudiarlo bien, no quiero fallas») — Fase A ✅ (2967), B–E pendientes
 Docs: `docs/DISENO_ENTREGA_OFFLINE_2026-11-08.md` (diseño v2: cita FCM, cifrar-una-vez, blob compartido, fan-out por
 referencia, invariantes anti-crash, plan adversarial) y `docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md` (spec con números:

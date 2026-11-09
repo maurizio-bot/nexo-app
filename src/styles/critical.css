@@ -195,7 +195,6 @@ Consolidado: inline + main.css + ble_styles
    box-shadow: 0 2px 8px rgba(0,200,255,0.3);
    }
    .chat-back-btn.visible { display: flex; }
-   .chat-back-btn:active { transform: translateY(-50%) scale(0.92); }
    /* Nombre + subtítulo en COLUMNA (nombre arriba, estado abajo); el nombre largo se parte en 2 líneas
       en vez de cortarse (pedido del dueño 29-10). 44px de hueco a la izquierda para no quedar bajo el botón «atrás». */
    #chat-contact-info {
@@ -634,7 +633,7 @@ Consolidado: inline + main.css + ble_styles
    margin-bottom: 2px;
    }
    .ble-contact-row:hover { background: #0d0d0d; }
-   .ble-contact-row:active { background: #111; transform: scale(0.98); }
+   .ble-contact-row.is-pressed { background: #111; }
    /* Contact Avatar */
    .ble-contact-avatar {
    width: 46px; height: 46px;
@@ -703,7 +702,6 @@ Consolidado: inline + main.css + ble_styles
    border-radius: 12px;
    transition: background 0.15s;
    }
-   .ble-nav-item:active { transform: scale(0.92); }
    .ble-nav-item svg { width: 22px; height: 22px; fill: #444; }
    .ble-nav-item.active svg { fill: #00c8ff; }
    .ble-nav-item span { font-size: 9px; color: #444; }
@@ -730,7 +728,6 @@ Consolidado: inline + main.css + ble_styles
    gap: 8px;
    }
    .ble-menu-item:hover { background: rgba(0,200,255,0.15); }
-   .ble-menu-item:active { transform: scale(0.98); }
    .ble-menu-delete { color: #ff4444; }
    .ble-menu-delete:hover { background: rgba(255,68,68,0.15); }
    /* BLE Buttons */
@@ -742,7 +739,6 @@ Consolidado: inline + main.css + ble_styles
    transition: transform 0.15s ease;
    flex-shrink: 0;
    }
-   .ble-btn-back:active { transform: scale(0.92); }
    .ble-btn-visibility-round {
    width: 48px; height: 48px;
    border-radius: 50%;
@@ -756,7 +752,6 @@ Consolidado: inline + main.css + ble_styles
    transition: all 0.3s;
    flex-shrink: 0;
    }
-   .ble-btn-visibility-round:active { transform: scale(0.92); }
    .ble-btn-visibility-round.active {
    background: #00c8ff; color: #fff;
    border-color: #00c8ff;
@@ -779,7 +774,6 @@ Consolidado: inline + main.css + ble_styles
    box-shadow: 0 4px 15px rgba(0,200,255,0.3);
    transition: all 0.3s;
    }
-   .ble-btn-scan-round:active { transform: scale(0.92); }
    .ble-btn-scan-round.scanning {
    background: linear-gradient(135deg, #ff4444, #cc0000);
    animation: pulse-red 1.5s infinite;
@@ -812,7 +806,6 @@ Consolidado: inline + main.css + ble_styles
    flex-shrink: 0;
    transition: transform 0.15s ease;
    }
-   .ble-btn-add-small:active { transform: scale(0.92); }
    .ble-bottom-bar {
    display: flex;
    align-items: center;
@@ -836,8 +829,8 @@ INPUT BAR v2 — Attach + Toggle Send/Mic
 ============================================ */
 /* Boton attach (+) — FONDO OSCURO como los demas */
 .input-btn {
-width: 38px;
-height: 38px;
+width: 44px;
+height: 44px;
 border-radius: 50%;
 display: flex;
 align-items: center;
@@ -848,9 +841,6 @@ transition: all 0.15s ease;
 border: none;
 padding: 0;
 }
-.input-btn:active {
-transform: scale(0.92);
-}
 .attach-btn {
 background: #1a1a1a;
 border: 1px solid #222;
@@ -858,8 +848,8 @@ color: #fff;
 box-shadow: none;
 }
 .attach-btn svg {
-width: 18px;
-height: 18px;
+width: 20px;
+height: 20px;
 fill: #fff;
 }
 /* Wrapper del textarea */
@@ -892,8 +882,8 @@ color: #444;
 }
 /* Send / Mic toggle */
 .send-btn {
-width: 38px;
-height: 38px;
+width: 44px;
+height: 44px;
 border-radius: 50%;
 background: linear-gradient(135deg, #00c8ff, #a855f7);
 border: none;
@@ -958,7 +948,7 @@ flex-shrink: 0;
   transition: background 0.15s;
   border-radius: 10px;
 }
-.attach-menu-item:active {
+.attach-menu-item.is-pressed {
   background: rgba(0,200,255,0.1);
 }
 .attach-menu-item svg {
@@ -1020,7 +1010,7 @@ CAMERA PREVIEW OVERLAY (v9.9.46: tipo WhatsApp)
   border: 1px solid rgba(0,200,255,0.35); display: flex; align-items: center; justify-content: center;
   cursor: pointer; transition: transform 0.15s ease, background 0.15s ease;
 }
-.camera-btn:active { transform: scale(0.92); background: rgba(0,200,255,0.25); }
+.camera-btn.is-pressed { background: rgba(0,200,255,0.25); }
 .camera-btn.on { background: linear-gradient(135deg,#00c8ff,#a855f7); border-color: transparent; } /* linterna NEXO (antes amarillo) */
 /* Disparador NEXO: aro blanco con halo cian→violeta (antes blanco plano estilo iPhone) */
 .camera-btn-capture {
@@ -1031,7 +1021,6 @@ CAMERA PREVIEW OVERLAY (v9.9.46: tipo WhatsApp)
 .camera-btn-capture::after {
   content: ''; position: absolute; inset: 6px; border-radius: 50%; background: #fff; transition: all 0.2s ease;
 }
-.camera-btn-capture:active { transform: scale(0.94); }
 .camera-btn-capture.video-mode::after { background: #ff3b30; }
 .camera-btn-capture.recording::after { inset: 20px; border-radius: 8px; background: #ff3b30; }
 .camera-preview-status {
@@ -1110,8 +1099,7 @@ FULLSCREEN MEDIA OVERLAY
   z-index: 4001;
   backdrop-filter: blur(4px);
 }
-.fullscreen-media-close:active {
-  transform: scale(0.92);
+.fullscreen-media-close.is-pressed {
   background: rgba(255,255,255,0.2);
 }
 /* ============================================

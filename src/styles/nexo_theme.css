@@ -38,7 +38,6 @@ body::before {
   width: 42px !important; height: 42px !important; background: var(--nx-surface-2) !important;
   border: 1px solid var(--nx-line) !important; display: flex !important; align-items: center; justify-content: center; padding: 0 !important;
 }
-#nexo-profile-btn:active, #nexo-new-group-btn:active { transform: translateY(-50%) scale(0.92) !important; }
 #nexo-profile-btn svg, #nexo-new-group-btn svg { width: 21px; height: 21px; }
 
 #main-contacts-online-strip { border-bottom: 1px solid var(--nx-line) !important; }
@@ -46,7 +45,7 @@ body::before {
    (bottom:80 + 56 de alto) y su ⋮ no quede tapado/difícil de tocar. */
 #main-contacts-list { padding: 6px 10px 150px !important; }
 .ble-contact-row { border-radius: var(--nx-radius); padding: 10px 10px !important; margin: 2px 0; transition: background 0.15s, transform 0.12s; }
-.ble-contact-row:hover, .ble-contact-row:active { background: var(--nx-surface) !important; }
+.ble-contact-row:hover, .ble-contact-row.is-pressed { background: var(--nx-surface) !important; }
 .ble-contact-avatar { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08), 0 6px 18px rgba(0, 0, 0, 0.35); }
 .ble-contact-name { font-size: 15.5px !important; letter-spacing: 0.1px; }
 .ble-contact-msg { color: var(--nx-muted) !important; }
@@ -107,7 +106,7 @@ body::before {
 .sticker-head { color: var(--nx-text, #e8f0f2); font-weight: 600; font-size: 15px; padding: 4px 4px 10px; }
 .sticker-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .sticker-cell { background: rgba(255,255,255,0.06); border: none; border-radius: 12px; padding: 8px; cursor: pointer; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; }
-.sticker-cell:active { background: rgba(255,255,255,0.14); }
+.sticker-cell.is-pressed { background: rgba(255,255,255,0.14); }
 .sticker-cell svg { width: 100%; height: 100%; display: block; }
 /* Stickers PROPIOS (2878): la imagen (validada) se pinta como <img>, nunca innerHTML */
 .msg-sticker img { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 14px; }
@@ -138,7 +137,7 @@ body::before {
 .ttt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .ttt-cell { aspect-ratio: 1 / 1; font-size: 44px; font-weight: 700; line-height: 1; border: none; border-radius: 12px; background: rgba(255,255,255,0.07); color: #e8f0f2; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .ttt-cell:disabled { cursor: default; }
-.ttt-cell:not(:disabled):active { background: rgba(255,255,255,0.16); }
+.ttt-cell:not(:disabled).is-pressed { background: rgba(255,255,255,0.16); }
 .ttt-cell.ttt-x { color: #38bdf8; }
 .ttt-cell.ttt-o { color: #fb7185; }
 .ttt-foot { display: flex; gap: 10px; margin-top: 14px; }
@@ -153,7 +152,6 @@ body::before {
 .c4-cell { aspect-ratio: 1 / 1; border: none; border-radius: 50%; padding: 0; cursor: pointer;
   background: rgba(0,0,0,0.38); box-shadow: inset 0 2px 5px rgba(0,0,0,0.5); transition: transform .08s; }
 .c4-cell:disabled { cursor: default; }
-.c4-cell:not(:disabled):active { transform: scale(0.92); }
 .c4-cell.c4-r { background: radial-gradient(circle at 35% 30%, #ff8a8a, #e11d48 70%); box-shadow: inset 0 2px 4px rgba(0,0,0,0.3), 0 0 6px rgba(225,29,72,0.5); }
 .c4-cell.c4-y { background: radial-gradient(circle at 35% 30%, #ffe08a, #f59e0b 70%); box-shadow: inset 0 2px 4px rgba(0,0,0,0.3), 0 0 6px rgba(245,158,11,0.5); }
 
@@ -161,7 +159,7 @@ body::before {
 .game-pick-list { display: flex; flex-direction: column; gap: 10px; }
 .game-pick-item { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid rgba(0,200,255,0.22);
   border-radius: 12px; background: rgba(255,255,255,0.05); color: var(--nx-text, #e8f0f2); font-size: 15px; font-weight: 600; cursor: pointer; text-align: left; }
-.game-pick-item:active { background: rgba(0,200,255,0.12); }
+.game-pick-item.is-pressed { background: rgba(0,200,255,0.12); }
 .game-pick-emoji { font-size: 24px; line-height: 1; }
 /* #dueño 05-11: marcador cabeza a cabeza a la derecha del juego, y hoja de ranking. */
 .game-pick-name { flex: 1 1 auto; }
@@ -185,7 +183,7 @@ body::before {
 .tetris-canvas { border-radius: 8px; background: #0a1020; box-shadow: 0 0 0 1px rgba(0,200,255,0.2), 0 6px 20px rgba(0,0,0,0.4); touch-action: manipulation; max-width: 100%; }
 .tetris-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
 .tetris-btn { padding: 9px 0; border: 1px solid rgba(0,200,255,0.22); border-radius: 12px; background: rgba(255,255,255,0.06); color: #e8f0f2; font-size: 18px; font-weight: 700; cursor: pointer; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
-.tetris-btn:active { background: rgba(0,200,255,0.18); }
+.tetris-btn.is-pressed { background: rgba(0,200,255,0.18); }
 .tetris-btn.td { grid-column: 1 / 2; }
 .tetris-btn.thd { grid-column: 2 / 4; background: linear-gradient(135deg,#00c8ff,#a855f7); color: #fff; border: none; }
 .tetris-foot { display: flex; gap: 10px; }
@@ -231,9 +229,13 @@ body::before {
   padding: 14px 10px 10px !important; gap: 4px !important;
   /* Ronda 2791 (informe del dueño): con 6 iconos (se añadió «Cobro» 💵) la barra se salía de la pantalla y el último
      quedaba cortado. Ahora el menú NO puede pasar del ancho de la pantalla y, si no caben, saltan de línea. */
-  flex-wrap: wrap !important; justify-content: center; max-width: calc(100vw - 24px);
+  /* NEXO Touch 2968 (dueño 09-11, captura): CUADRÍCULA de 4 columnas en vez de una fila que se desborda (6+2 asimétrico):
+     con «Cobro» oculto quedan 8 items → 2×4 simétrico; cada item con su círculo de color y su etiqueta (attr(data-label),
+     traducible desde i18n.js, antes quemada en CSS y faltaban Stickers y Juegos). */
+  display: grid !important; grid-template-columns: repeat(4, 1fr); justify-items: center; align-items: start;
+  gap: 12px 4px !important; width: min(344px, calc(100vw - 24px)); box-sizing: border-box;
 }
-.attach-menu-item { flex-direction: column; gap: 5px; background: none !important; width: 50px !important; height: auto !important; }
+.attach-menu-item { flex-direction: column; gap: 5px; background: none !important; width: 100% !important; max-width: 74px; height: auto !important; padding: 6px 2px !important; }
 .attach-menu-item svg { width: 40px !important; height: 40px !important; padding: 10px; box-sizing: border-box; border-radius: 50%; fill: #fff !important; }
 .attach-menu-item[data-type="camera"] svg { background: linear-gradient(135deg, #ff5f6d, #ff3b30); }
 .attach-menu-item[data-type="gallery"] svg { background: linear-gradient(135deg, #00c8ff, #3b82f6); }
@@ -241,19 +243,14 @@ body::before {
 .attach-menu-item[data-type="location"] svg { background: linear-gradient(135deg, #22c55e, #10b981); }
 .attach-menu-item[data-type="contact"] svg { background: linear-gradient(135deg, #f59e0b, #ff6b35); }
 .attach-menu-item[data-type="cobro"] svg { background: linear-gradient(135deg, #14b8a6, #0d9488); }
+.attach-menu-item[data-type="sticker"] svg { background: linear-gradient(135deg, #a855f7, #ec4899); }
+.attach-menu-item[data-type="games"] svg { background: linear-gradient(135deg, #38bdf8, #6366f1); fill: none !important; stroke: #fff; }
 /* Build 2967 (decisión del dueño 09-11): el botón «Cobro» (pagos) se OCULTA hasta tener algo sólido («no tiene caso
    mostrarlo»). El código de cobros (cobro.js, tarjeta, prueba cobro.js) sigue intacto; para volver a mostrarlo basta
    con borrar esta regla. */
 .attach-menu-item[data-type="cobro"] { display: none !important; }
-.attach-menu-item::after { font-size: 11px; color: var(--nx-muted); }
-.attach-menu-item[data-type="camera"]::after { content: 'Cámara'; }
-.attach-menu-item[data-type="gallery"]::after { content: 'Galería'; }
-.attach-menu-item[data-type="file"]::after { content: 'Archivo'; }
-.attach-menu-item[data-type="location"]::after { content: 'Ubicación'; }
-.attach-menu-item[data-type="contact"]::after { content: 'Contacto'; }
-.attach-menu-item[data-type="cobro"]::after { content: 'Cobro'; }
+.attach-menu-item::after { content: attr(data-label); font-size: 11px; color: var(--nx-muted); white-space: nowrap; }
 .attach-menu-item[data-type="search"] svg { background: linear-gradient(135deg, #3b82f6, #06b6d4); }
-.attach-menu-item[data-type="search"]::after { content: 'Buscar'; }
 
 /* ---------- Hojas (menú de un mensaje, reenviar, compartir, grupo) ---------- */
 /* Menús que suben desde abajo (fondo oscuro translúcido + hoja de cristal) */
@@ -276,7 +273,7 @@ body::before {
 }
 @keyframes nxUp { from { transform: translateY(40px); opacity: 0.4; } to { transform: none; opacity: 1; } }
 .mm-item { border-radius: 14px !important; padding: 13px 14px !important; font-size: 15px !important; }
-.mm-item:active { background: var(--nx-surface-2) !important; }
+.mm-item.is-pressed { background: var(--nx-surface-2) !important; }
 /* Pantallas completas (nuevo grupo, enviar contactos, reenviar) */
 #nexo-share-sheet, #nexo-group-sheet, #nexo-forward-sheet {
   background: radial-gradient(circle at 15% 0%, rgba(0, 200, 255, 0.14), transparent 40%), radial-gradient(circle at 90% 100%, rgba(168, 85, 247, 0.16), transparent 45%), #0a0a15 !important;
@@ -288,7 +285,7 @@ body::before {
 #nexo-share-sheet input[type="checkbox"], #nexo-group-sheet input[type="checkbox"], #nexo-forward-sheet input[type="checkbox"] { accent-color: #00c8ff; width: 20px; height: 20px; }
 #nexo-group-name:focus, #nexo-share-search:focus { border-color: var(--nx-cyan) !important; outline: none; box-shadow: 0 0 0 3px rgba(0, 200, 255, 0.15); }
 .nexo-pick-row, .fw-row { border-radius: 14px !important; border-bottom: none !important; padding: 10px 8px !important; }
-.nexo-pick-row:active, .fw-row:active { background: var(--nx-surface) !important; }
+.nexo-pick-row.is-pressed, .fw-row.is-pressed { background: var(--nx-surface) !important; }
 #nexo-group-create, #nexo-share-send, .fw-send { background: var(--nx-grad) !important; border-radius: 16px !important; box-shadow: 0 8px 24px rgba(0, 200, 255, 0.3); }
 #nexo-group-create:disabled, #nexo-share-send:disabled { opacity: 0.4; box-shadow: none; }
 #nexo-group-cancel, #nexo-share-cancel { background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important; }
@@ -303,7 +300,6 @@ body::before {
 .nx-h .nx-ico { width: 30px; height: 30px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--nx-grad); font-size: 15px; }
 .nx-sub { font-size: 12px; color: var(--nx-muted); margin-bottom: 10px; white-space: pre-line; line-height: 1.45; }
 .nx-btn { width: 100%; padding: 12px; border-radius: 14px; border: 1px solid var(--nx-line); background: var(--nx-surface-2); color: #fff; font-size: 14px; font-weight: 600; margin-bottom: 8px; cursor: pointer; }
-.nx-btn:active { transform: scale(0.98); }
 .nx-btn-primary { background: var(--nx-grad); border: none; box-shadow: 0 8px 22px rgba(0, 200, 255, 0.3); }
 .nx-id-card { display: flex; align-items: center; gap: 14px; }
 .nx-id-card .nx-av { width: 58px; height: 58px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; background: var(--nx-grad); box-shadow: 0 8px 24px rgba(0, 200, 255, 0.3); }
@@ -346,3 +342,27 @@ body::before {
 /* Ronda 2765: foto de perfil (avatar.js) y enlaces pequeños en Perfil */
 .nx-has-photo { color: transparent; }
 .nx-link { background: none; border: none; color: var(--nx-cyan); font-size: 13px; padding: 4px 0; margin-top: 4px; cursor: pointer; }
+
+/* ====== NEXO Touch (build 2968, dueño 09-11): UN motor de presionado para toda la app (src/ui/press.js + haptics.js).
+   Antes: `:active { transform: scale(0.92) }` suelto en ~25 selectores (sin tiempos ni curvas; en el WebView llega tarde).
+   Ahora press.js hunde el botón en pointerdown (scale por Web Animations, no pisa los transform), pone la ONDA desde el
+   punto exacto del toque (acotada al elemento), suelta con muelle, y en los redondos un «pulso NEXO». Las reglas
+   `.is-pressed` de arriba son el VELO (tinte) de cada tipo de superficie, ahora sincronizado con el dedo. ====== */
+.nx-pressable { touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+.nx-ripple { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; z-index: 0; }
+.nx-ripple i { position: absolute; left: var(--nx-px, 50%); top: var(--nx-py, 50%); width: calc(var(--nx-pr, 24px) * 2); height: calc(var(--nx-pr, 24px) * 2);
+  margin: calc(-1 * var(--nx-pr, 24px)) 0 0 calc(-1 * var(--nx-pr, 24px)); border-radius: 50%; background: currentColor; opacity: 0; transform: scale(0);
+  transition: transform 260ms cubic-bezier(.2, 0, 0, 1), opacity 120ms ease; }
+.nx-ripple.on i { transform: scale(1); opacity: .12; }
+.nx-ripple.out i { opacity: 0; transition: transform 260ms cubic-bezier(.2, 0, 0, 1), opacity 300ms ease; }
+.nx-pulse { position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(0, 200, 255, .45); pointer-events: none; animation: nxPulse 320ms cubic-bezier(.2, 0, 0, 1) forwards; }
+@keyframes nxPulse { from { transform: scale(1); opacity: .9; } to { transform: scale(1.35); opacity: 0; } }
+/* Área de toque invisible (hit slop): press.js calcula cuánto crece cada lado SIN pisar a los vecinos */
+.nx-hit::before { content: ''; position: absolute; top: calc(-1 * var(--hs-t, 0px)); right: calc(-1 * var(--hs-r, 0px)); bottom: calc(-1 * var(--hs-b, 0px)); left: calc(-1 * var(--hs-l, 0px)); }
+@media (prefers-reduced-motion: reduce) {
+  .nx-ripple i { transition: opacity 80ms ease; transform: scale(1); }
+  .nx-pulse { display: none; }
+}
+/* Barra de escribir: 44 visibles (+ área de toque 56 que pone press.js hacia el borde). «+» de agregar 36→40. */
+.input-btn, .send-btn { width: 44px !important; height: 44px !important; }
+.ble-btn-add-small { width: 40px !important; height: 40px !important; }

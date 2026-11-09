@@ -8,6 +8,7 @@
  * esquina; tocarla cambia cuál se ve en grande), girar la cámara, y tocar la pantalla oculta o muestra los controles (se
  * ocultan solos a los 5 s). "Conexión inestable" si la voz del otro deja de llegar unos segundos.
  */
+import { haptic } from './haptics.js'; // NEXO Touch (2968): háptica del sistema
 import { paintAvatar } from './avatar.js';
 import { _normId, _getCurrentContactId } from './chat_format.js';
 import { _renderMessage } from './render.js';
@@ -128,7 +129,6 @@ function _style() {
     '#nexo-call-screen .call-buttons:empty{display:none}',
     '#nexo-call-screen .nc-btn{display:flex;flex-direction:column;align-items:center;gap:7px;background:none;border:none;color:#fff;font-size:11.5px;cursor:pointer;padding:0;min-width:62px;-webkit-tap-highlight-color:transparent}',
     '#nexo-call-screen .nc-btn .nc-ic{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.13);transition:transform .15s,background .2s,color .2s}',
-    '#nexo-call-screen .nc-btn:active .nc-ic{transform:scale(.9)}',
     '#nexo-call-screen .nc-btn.nc-on .nc-ic{background:#fff;color:#14152a}',
     '#nexo-call-screen .nc-btn.nc-red .nc-ic{background:#ef4444;box-shadow:0 8px 24px rgba(239,68,68,.45)}',
     '#nexo-call-screen .nc-btn.nc-red .nc-ic svg{transform:rotate(135deg)}',
@@ -436,7 +436,7 @@ function _render(st) {
   if (st.state === 'calling') {
     status.classList.remove('nc-warn');
     status.textContent = st.video ? t('call_videocalling', 'Videollamada…') : t('call_calling', 'Llamando…');
-    bt.appendChild(_btn('phone', t('call_hangup', 'Colgar'), 'call-hangup', function() { calls.hangup(); }, 'nc-red'));
+    bt.appendChild(_btn('phone', t('call_hangup', 'Colgar'), 'call-hangup', function() { haptic('confirm'); calls.hangup(); }, 'nc-red'));
     if (!_ring) _startTone(false);
   } else if (st.state === 'ringing') {
     status.classList.remove('nc-warn');
@@ -444,7 +444,7 @@ function _render(st) {
     bt.classList.add('nc-incoming');
     bt.appendChild(_btn('phone', t('call_reject', 'Rechazar'), 'call-reject', function() { calls.reject(); }, 'nc-red nc-big'));
     // Ronda 2778 (pedido del dueño): contestar deslizando hacia arriba; el toque también vale
-    var acc = _btn(st.video ? 'cam' : 'phone', t('call_swipe_or_tap', 'Desliza o toca'), 'call-accept', function() { calls.accept(); }, 'nc-green nc-big nc-swipe-up');
+    var acc = _btn(st.video ? 'cam' : 'phone', t('call_swipe_or_tap', 'Desliza o toca'), 'call-accept', function() { haptic('confirm'); calls.accept(); }, 'nc-green nc-big nc-swipe-up');
     _makeSwipeAccept(acc, function() { calls.accept(); _autoHide(el); });
     bt.appendChild(acc);
     if (!_ring) _startIncomingTone();
@@ -489,7 +489,7 @@ function _render(st) {
         setTimeout(function() { gcall.start([peer, nx], false).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); }); }, 400);
       } });
     }));
-    bt.appendChild(_btn('phone', t('call_hangup', 'Colgar'), 'call-hangup', function() { calls.hangup(); }, 'nc-red'));
+    bt.appendChild(_btn('phone', t('call_hangup', 'Colgar'), 'call-hangup', function() { haptic('confirm'); calls.hangup(); }, 'nc-red'));
     if (!_render._modeFor || _render._modeFor !== st.id) { _render._modeFor = st.id; _speaker = !!st.video; _audioMode(true); _render(calls.state()); return; }
     if (st.video) _autoHide(el);
   }

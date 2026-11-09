@@ -4,6 +4,7 @@
  * configurable: tu cuenta Fénix/cambiar de teléfono, seguridad, avisos, llamadas/tono, internet, diagnóstico). El
  * gesto secreto (dibujar la «N») vive ahora en AJUSTES. Lo que usa del resto de la app se lo da main.js con profileUse().
  */
+import { haptic, hapticMode, setHapticMode } from './haptics.js'; // NEXO Touch (2968): ajuste «Vibración al tocar»
 import { securitySectionHtml, renderSecuritySection } from './app_lock.js';
 import { _diagnosticText } from './diag.js';
 import { startReceiveAccount, startSendAccount } from './move_account.js';
@@ -246,6 +247,10 @@ function _openSettingsSheet() {
     // Ronda 2774 (pedido del dueño): elegir el tono de las llamadas y videollamadas; por defecto, el del teléfono.
     card('📞', t('prof_tone_title', 'Tono de llamada y videollamada'), '<div class="nx-sub">' + t('prof_tone_sub', 'Suena igual en llamadas y videollamadas. Por defecto usa el tono de llamada de tu teléfono.') + '</div>' +
       '<button id="nexo-ringtone-btn" class="nx-btn" style="margin-top:6px;">' + t('prof_choose_tone', 'Elegir tono…') + '</button>') +
+    // NEXO Touch (build 2968, dueño 09-11): vibración al tocar — como el sistema (por defecto) / siempre / nunca
+    card('📳', t('prof_haptics_title', 'Vibración al tocar'), '<div class="nx-sub" style="margin-bottom:8px;">' + t('prof_haptics_sub', 'Un toque corto y nítido al presionar un botón y al enviar. Por defecto sigue el ajuste «Vibración al tocar» de tu teléfono.') + '</div>' +
+      '<select id="nexo-haptics-mode" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +
+      [['system', t('prof_haptics_system', 'Como el sistema (recomendado)')], ['on', t('prof_haptics_on', 'Siempre')], ['off', t('prof_haptics_off', 'Nunca')]].map(function(o) { return '<option value="' + o[0] + '"' + (o[0] === hapticMode() ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>') +
     // v9.9.51: internet (relés públicos y Tor, src/net/net_link.js)
     card('🌐', t('internet'), '<div id="nexo-net-status" class="nx-sub"></div>' +
       '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> ' + t('prof_tor_label', 'Usar Tor siempre (oculta tu IP; va más lento). El vídeo y los archivos grandes por internet ya lo usan solos.') + '</label>') +
@@ -259,6 +264,9 @@ function _openSettingsSheet() {
       '<textarea id="nexo-diag-text" readonly style="min-height:220px;width:100%;box-sizing:border-box;color:#9fe;font-size:10px;font-family:monospace;padding:8px;"></textarea>') +
     '</div>';
   document.body.appendChild(sheet);
+  // NEXO Touch (2968): guardar el modo y hacerlo SENTIR al elegirlo (un «confirm»)
+  var hsel = sheet.querySelector('#nexo-haptics-mode');
+  if (hsel) hsel.onchange = function() { setHapticMode(hsel.value); haptic('confirm'); };
   // (Ronda 2810) El gesto secreto de la «N» ya NO vive aquí: el scroll de Ajustes se comía el trazo. Está en Perfil.
   var ta = sheet.querySelector('#nexo-diag-text');
   ta.value = _diagnosticText();

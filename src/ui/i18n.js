@@ -446,6 +446,22 @@ var STRINGS = {
   prof_tone_title: { es: "Tono de llamada y videollamada", it: "Suoneria di chiamate e videochiamate", en: "Call and video call ringtone" },
   prof_tone_sub: { es: "Suena igual en llamadas y videollamadas. Por defecto usa el tono de llamada de tu teléfono.", it: "Suona uguale per chiamate e videochiamate. Di default usa la suoneria del tuo telefono.", en: "Sounds the same for calls and video calls. By default it uses your phone's ringtone." },
   prof_choose_tone: { es: "Elegir tono…", it: "Scegli suoneria…", en: "Choose ringtone…" },
+  // NEXO Touch (build 2968): vibración al tocar (háptica del sistema) — ajuste propio además del del teléfono
+  prof_haptics_title: { es: "Vibración al tocar", it: "Vibrazione al tocco", en: "Touch vibration" },
+  prof_haptics_sub: { es: "Un toque corto y nítido al presionar un botón y al enviar. Por defecto sigue el ajuste «Vibración al tocar» de tu teléfono.", it: "Un tocco breve e nitido quando premi un pulsante e quando invii. Di default segue l'impostazione «Vibrazione al tocco» del telefono.", en: "A short, crisp tap when you press a button and when you send. By default it follows your phone's «Touch feedback» setting." },
+  prof_haptics_system: { es: "Como el sistema (recomendado)", it: "Come il sistema (consigliato)", en: "Like the system (recommended)" },
+  prof_haptics_on: { es: "Siempre", it: "Sempre", en: "Always" },
+  prof_haptics_off: { es: "Nunca", it: "Mai", en: "Never" },
+  // NEXO Touch 2968 (dueño 09-11, captura): etiquetas del menú «+» traducibles (antes quemadas en CSS, solo en español, y Stickers/Juegos sin etiqueta)
+  attach_camera: { es: "Cámara", it: "Fotocamera", en: "Camera" },
+  attach_gallery: { es: "Galería", it: "Galleria", en: "Gallery" },
+  attach_file: { es: "Archivo", it: "File", en: "File" },
+  attach_location: { es: "Ubicación", it: "Posizione", en: "Location" },
+  attach_contact: { es: "Contacto", it: "Contatto", en: "Contact" },
+  attach_cobro: { es: "Cobro", it: "Incasso", en: "Payment" },
+  attach_sticker: { es: "Stickers", it: "Sticker", en: "Stickers" },
+  attach_games: { es: "Juegos", it: "Giochi", en: "Games" },
+  attach_search: { es: "Buscar", it: "Cerca", en: "Search" },
   prof_tor_label: { es: "Usar Tor siempre (oculta tu IP; va más lento). El vídeo y los archivos grandes por internet ya lo usan solos.", it: "Usa sempre Tor (nasconde il tuo IP; più lento). Le videochiamate e i file grandi via internet lo usano già da soli.", en: "Always use Tor (hides your IP; slower). Video calls and large files over the internet already use it automatically." },
   prof_diag_sub: { es: "Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.", it: "Registro di ciò che fa l'app (include la sessione precedente). Copialo e incollalo per esaminare un errore.", en: "Log of what the app does (includes the previous session). Copy and paste it to review a problem." },
   prof_diag_copy: { es: "Copiar diagnóstico", it: "Copia diagnostica", en: "Copy diagnostics" },
@@ -720,6 +736,7 @@ export function applyStaticI18n(root) {
     r.querySelectorAll('[data-i18n]').forEach(function(el) { var k = el.getAttribute('data-i18n'); if (k) el.textContent = t(k); });
     r.querySelectorAll('[data-i18n-ph]').forEach(function(el) { var k = el.getAttribute('data-i18n-ph'); if (k) el.setAttribute('placeholder', t(k)); });
     r.querySelectorAll('[data-i18n-title]').forEach(function(el) { var k = el.getAttribute('data-i18n-title'); if (k) el.setAttribute('title', t(k)); });
+    r.querySelectorAll('[data-i18n-label]').forEach(function(el) { var k = el.getAttribute('data-i18n-label'); if (k) el.setAttribute('data-label', t(k)); }); // etiqueta que el CSS pinta con attr(data-label) (menú «+»)
   } catch (e) {}
 }
 

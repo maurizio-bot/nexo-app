@@ -42,7 +42,7 @@ function _injectStyles() {
     + ' #nexo-welcome-overlay .wel-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.22); transition: background 0.2s, transform 0.2s; }'
     + ' #nexo-welcome-overlay .wel-dot.on { background: linear-gradient(135deg,#00c8ff,#a855f7); transform: scale(1.25); }'
     + ' #nexo-welcome-overlay .wel-primary { display: block; width: 100%; padding: 15px; border: none; border-radius: 14px; font-size: 16px; font-weight: 700; color: #fff; cursor: pointer; background: linear-gradient(135deg,#00c8ff,#a855f7); box-shadow: 0 8px 22px rgba(0,200,255,0.3); }'
-    + ' #nexo-welcome-overlay .wel-primary:active { transform: scale(0.98); }'
+    + ''
     + ' #nexo-welcome-overlay .wel-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; min-height: 22px; }'
     + ' #nexo-welcome-overlay .wel-ghost { background: transparent; color: #8b93ab; border: none; font-size: 14px; padding: 6px 2px; cursor: pointer; }'
     + ' #nexo-welcome-overlay .wel-ghost:disabled { visibility: hidden; }';

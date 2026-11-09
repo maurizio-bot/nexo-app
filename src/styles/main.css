@@ -128,9 +128,6 @@ body {
   transition: transform 0.1s;
 }
 
-#chispa-creator button:active {
-  transform: scale(0.95);
-}
 
 /* Overlay Chispas */
 #chispas-overlay {

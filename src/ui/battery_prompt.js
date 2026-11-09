@@ -67,7 +67,7 @@ function _injectStyles() {
     + ' #nexo-bat-overlay .bat-ok { color: #00ff88; font-weight: 700; }'
     + ' #nexo-bat-overlay .bat-primary { display: block; width: 100%; margin: 6px 0; padding: 15px; background: linear-gradient(135deg,#00d4ff,#0099cc); color: #000; border: none; border-radius: 10px; font-weight: 700; font-size: 15px; cursor: pointer; }'
     + ' #nexo-bat-overlay .bat-ghost { display: block; width: 100%; margin: 4px 0 0; padding: 10px; background: transparent; color: #666; border: none; font-size: 13px; cursor: pointer; }'
-    + ' #nexo-bat-overlay .bat-primary:active { transform: scale(0.98); }';
+    + '';
   document.head.appendChild(style);
 }
 
