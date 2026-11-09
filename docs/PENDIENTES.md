@@ -3,6 +3,36 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 📬 Entrega OFFLINE sin servidor propio (diseño 08/09-11; dueño: «vamos a estudiarlo bien, no quiero fallas») — Fase A ✅ (2967), B–E pendientes
+Docs: `docs/DISENO_ENTREGA_OFFLINE_2026-11-08.md` (diseño v2: cita FCM, cifrar-una-vez, blob compartido, fan-out por
+referencia, invariantes anti-crash, plan adversarial) y `docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md` (spec con números:
+CHUNK 40 KB, ≥3 relés, techos anti-DoS, backoff, GIVE_UP, TTL 7 d, puntero v1, orden cifrar→hash→partir).
+- ✅ **Fase A (2967, solo JS):** (1) **«toque» FCM POR PENDIENTES** — antes solo se tocaba al ABRIR el chat (2860), así
+  que un archivo/mensaje a un contacto dormido quedaba ⏳ horas sin que nadie lo despertara (diagnóstico del dueño 08-11,
+  foto+vídeo a `nx0ed4a8be`). Ahora cada contacto con pendientes y sin enlace entra a un calendario con freno creciente
+  **30 s → 2 m → 8 m → 30 m → 2 h → 6 h (techo), jitter ±20 %**, y se rinde a los **20 toques o min(TTL, 7 días)** →
+  **PASSIVE explícito** (deja de tocar activo; el ⏳ sigue igual y al abrir su chat se re-dispara como siempre). Cada
+  contacto es independiente (uno rendido no frena a otro); si ya es alcanzable sale de la lista sin tocar; sin token/sin
+  internet reintenta sin avanzar el freno (no falla ruidoso). Funciones puras en `ble_helpers.js`, tick en el supervisor
+  (`_tickWakePending`, cada 30 s), alta desde el flush de pendientes y desde el envío que queda «en espera».
+  (2) **Token en los dos sentidos:** la **marca del buzón** de cada mensaje NUEVO lleva también mi token FCM (antes solo
+  el saludo, que caduca en el relé a los 10 min → un contacto dormido horas leía mi mensaje pero no mi token); una vez
+  por mensaje, nunca por trozo; si con el token el sobre se pasa del tope del relé va sin token antes que no ir.
+  Pruebas: `wakesched.js` (calendario a la vista, 20 toques exactos en 8 días simulados, PASSIVE una vez) y `netmark.js`.
+  ⚠️ **Falta del dueño:** la prueba con un teléfono apagado/dormido de verdad (`docs/PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md` §A.19).
+  **Límite honesto:** el que toca es el teléfono del que ENVÍA, así que su app tiene que estar viva (abierta o en segundo
+  plano, donde corre el supervisor); con la app cerrada del todo no hay quien toque (igual que hoy). Si hace falta, el
+  siguiente paso es un tick nativo periódico (WorkManager) que revise pendientes y toque — se decide tras tu prueba.
+  *No incluido en A (va en B/D):* el toque MUTUO del que recibe hacia el emisor «si falta el grueso» (solo tiene sentido
+  con archivos en buzón).
+- ⬜ **Fase B (JS):** buzón de archivos MEDIANOS (≤5 MB): cifrar UNA vez (`k` aleatoria + nonce único) → `hash` del
+  ciphertext → partir en trozos de 40 KB → ≥3 relés → puntero v1 E2E; verificación OBLIGATORIA (techos anti-DoS antes
+  de reservar, hash por trozo, hash del blob, GCM); resume; borrado al confirmar + TTL 7 días. Cierra con §8 adversarial.
+- ⬜ **Fase C (JS):** cifrar-una-vez + blob compartido + reenvío/fan-out por referencia (grupos = consumidor principal;
+  dedup por blob, no universal).
+- ⬜ **Fase D (JS):** «cita» completa para enormes (marca + señal de vuelta + toque MUTUO + stream directo al coincidir).
+- ⬜ **Fase E (opcional):** guardadero de terceros, erasure coding, sender keys de grupo.
+
 ## 🌐 Selección de idioma (#132, pedido del dueño 30-10) — ✅ COMPLETO (2845)
 Idiomas: **español, italiano, inglés** (preparado para añadir más). **Por defecto** el idioma del teléfono (`navigator.language`:
 `es`→español, `it`→italiano, `en`→inglés; otro→español) — NO por GPS (encaja con la privacidad). **Cambiable** en Perfil →
@@ -409,7 +439,7 @@ El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de form
   - Haré estos con cuidado, de a uno, cada uno con su prueba; antes de los más delicados (H3) confirmo con el dueño por ser estado de claves.
 - ▶️ **AL FINAL (orden del dueño): campaña de seguridad/robustez** (XSS+CSP, H3/H4/M5, replay del ratchet, inyección de fallos, fuzzing).
 - **Stream**: empezar por **Estados entre contactos, solo cercanos** (sin servidor), «luego vemos». Cifrados, caducidad 24 h (molde del cobro). Ver `STREAM_PROPUESTA.md`. (#104) → ✅ **HECHO en la 2799 (fase 1)**: `src/ui/estados.js`, tira «Estados» arriba de contactos, publicar/ver/quitar, texto 24 h cifrado como acción oculta del chat, prueba `tests/sim/estados.js`. Falta (más adelante, cuando el dueño lo pida): **foto/clip** de estado, y lo público/con-servidor («luego vemos»).
-- **Pagos**: «lo implementamos y después vemos lo del socio». OJO: saldo/custodia real exige licencia o socio (Mercado Pago/CoDi) = Fase 2. Autónomo-seguro ahora: ampliar UX, maquetar; **recargas celulares** necesitan proveedor/API. (#105)
+- **Pagos**: **botón «Cobro» OCULTO desde la 2967 (dueño 09-11: «hasta que tengamos algo sólido no tiene caso mostrarlo»)** — una regla CSS en `nexo_theme.css` (`.attach-menu-item[data-type="cobro"] { display:none }`); el código de cobros y su prueba siguen intactos, se vuelve a mostrar borrando la regla. Antes: «lo implementamos y después vemos lo del socio». OJO: saldo/custodia real exige licencia o socio (Mercado Pago/CoDi) = Fase 2. Autónomo-seguro ahora: ampliar UX, maquetar; **recargas celulares** necesitan proveedor/API. (#105)
 - **(pedido del dueño 01-11, PARA DESPUÉS) Estados con FOTO/IMAGEN y mini-vídeo**: ampliar `estados.js` (hoy solo texto) a subir foto/imagen y clips cortos (es el «falta foto/clip» de la fase 1 de Estados; el dueño lo pide explícito).
 - **(idea del dueño 01-11, PARA DESPUÉS) Monetización — contenido de pago / suscripciones (tipo «OnlyFans»)**: creadores con contenido de pago como vía de ingresos. Al diseñarlo: verificación de edad, pagos (misma restricción de custodia → licencia/socio, ver Pagos), moderación y marco legal. Encaja con la fase de «Cobros»/negocio.
 - **(pedido del dueño 01-11) SESIÓN DEDICADA: «cómo hacer rentable NEXO»** — retomar a fondo el plan de negocio (#63, `PLAN_NEGOCIO.md`): modelo de ingresos (cobros sin licencia, suscripciones/contenido de pago, recargas), país y requisitos legales. Plantearlo bien ANTES de implementar.

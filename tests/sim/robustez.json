@@ -145,27 +145,28 @@
     },
     {
      "fallo": "SCAN del usuario DIFERIDO al abrir «Agregar» cuando el fondo había llenado la ventana de Android — «cuidado con no sobrepasarse del límite de escaneos repetidos para que Android no nos tache» (#dueño 08-11, orden del Bluetooth paso 2). Android deja de dar resultados con >5 startScan/30 s (y a veces NI avisa); la defensa cuenta TODOS los arranques (usuario + reconexión de fondo) en una ventana deslizante y difiere el que pasaría del tope (_scanWindowMax=4). Hueco: si el bucle de reconexión de FONDO llenaba la ventana (4 en 30 s), al abrir «Agregar» el escaneo del USUARIO se difería → toast «Buscando en un momento…» en vez de arrancar al toque. 2959 (cupo reservado, solo JS): el FONDO se detiene un hueco antes (_bgScanWindowMax=3 en ble_interface.js; _scanWindowFullBg en ble_connections.js usa ese tope en la compuerta del auto-escaneo), así SIEMPRE queda ≥1 arranque libre en la ventana para el usuario, que sigue usando la ventana completa (_scanWindowFull con _scanWindowMax). NO se sube el límite de Android (sigue ≤4, por debajo de 5): el fondo cede, no se agrega cupo. Función pura _scanWindowFullAt(count,max) compartida por ambos topes. vopr (compuerta/concierto) sigue verde: usuario_diferido_con_ventana_llena y ventana_llena_tras_4 intactos. Pendiente del mismo plan (fase «conectar»): juntar las conexiones repetidas al mismo NEXO (dedup del ID rotativo)",
-     "prueba": "cupo reservado"
+     "prueba": "CUPO RESERVADO"
     },
     {
      "fallo": "CONEXIONES BLUETOOTH REPETIDAS al mismo NEXO que tapaban la radio — «foto lenta de cerca» (#dueño 08-11, fase «conectar» del orden del Bluetooth). Android abre VARIAS conexiones a la misma persona (su dirección BT rota por privacidad + una para anunciar y otra para conectar: hasta 4-6 enlaces a un solo contacto en _deviceStates/_macToNexoId). Al mandar ya se elegía el mejor (_bleReadyFor por MTU), pero los enlaces de sobra quedaban ABIERTOS y congestionaban la radio → parte de la lentitud y de que una foto de cerca saliera lenta aunque el otro estuviera al lado. 2960 (dedup, solo JS, nada nativo nuevo): en cada ciclo del supervisor se agrupan los enlaces LISTOS por NEXO; con 2+, se conserva el mejor (mayor MTU no-muerto; empate → más reciente) y se cierran los de sobra con el disconnectDevice nativo que ya existía. Decisión pura _dupBleLinksToClose (ble_helpers.js); barrido _dedupBleLinks (ble_connections.js) en _runSupervisorCycle; estado/constantes en ble_interface.js. Salvaguardas: freno _dupDebounceMs=12 s (los duplicados deben coexistir, no cerrar en un traspaso de reconexión) + enfriamiento por MAC 60 s (no cerrar-y-reabrir) + NUNCA cierra un enlace en transferencia (_hasActiveFileTransfer) ni el del chat activo (_activeChatDeviceIdNative) ni el único. Cierra la fase «conectar» (descubrir→conectar→enviar); sigue la fase «enviar»",
-     "prueba": "dedup de enlaces repetidos"
+     "prueba": "dedup de enlaces Bluetooth repetidos"
     },
     {
      "fallo": "SOLO se podía mandar UNA foto a la vez desde la galería (#dueño 08-11, tras probar la 2960: «quiero mandar más, al menos hasta 10»). El selector de galería (_pickFile en pickers.js) abría el <input type=file> sin el atributo multiple y tomaba solo files[0], así que elegías una sola. 2961 (solo JS): _pickFile gana `multiple`; _handleGallery usa _capAttachments(files, GALLERY_MAX=10) → manda hasta 10, cada una como su propio mensaje (como WhatsApp); con más de 10 manda las primeras 10 y avisa (_showInfoToast). Clave: se procesan DE A UNA por dentro (_sendGalleryItems: leer→comprimir→mandar la actual, recién ahí la siguiente) para no juntar 10 fotos enteras en memoria (evita el tipo de crash de archivos enormes, #2941) ni tapar la radio de golpe; la base ya pacea el envío. Vídeos de la tanda con _sendVideo (con un respiro entre ellos). La cámara sigue de a una. Decisión pura _capAttachments en attach_cap.js (sin dependencias, node-testeable)",
-     "prueba": "varias fotos de una"
+     "prueba": "VARIAS fotos de una tanda"
     },
     {
      "fallo": "COLA DE ESCRITURA NATIVA martillaba un Bluetooth ATASCADO minutos (#129, nativo Kotlin; diagnóstico del dueño sobre el 2960). Un respaldo Fénix a 6a14d9595cff seguía reintentando a nivel nativo («Write fallo … 15 trozos» cada ~6 s) ~2 min, aun después de que el JS se había rendido (lo marcó pendiente a las 05:58). Causa: por la regla B1 (2891) la cola nativa descarta UN mensaje tras ~6 s de reintentos y pasa al SIGUIENTE del mismo enlace muerto → N mensajes en cola = N×6 s de martilleo que tapa la radio. 2951/2956 frenan en el JS pero no vacían la cola nativa ya encolada. 2962 (nativo): tras 2 mensajes SEGUIDOS descartados al mismo MAC (sin ninguna escritura que salga en medio = atascado de verdad), se suelta TODA la cola de ese enlace de una, en vez de molerla mensaje a mensaje. La capa de arriba ya re-rutea/reintenta (onWriteDropped + resume): no se pierde nada. N=2 (no 1) para no vaciar por una congestión transitoria de un solo mensaje (normal con MTU 23); writeDropStreak se reinicia al salir una escritura. Lógica pura WriteRetry.shouldFlushStuckQueue (JVM-testeable) + writeDropStreak en NexoBlePlugin.processWriteQueue. Prueba JVM WriteRetryTest (no suelta con 1 descarte; suelta con 2+; tope=2); el resto es Android (compila el APK + prueba del dueño: el diagnóstico ya no debe mostrar el martilleo, sino «suelto X trozos más en cola para no martillarlo»)",
-     "prueba": "cola suelta un BT atascado (JVM + teléfono del dueño)"
+     "prueba": null,
+     "fuera": "nativo (Kotlin): prueba JVM WriteRetryTest + el diagnóstico del dueño en el teléfono (ya no debe verse el martilleo)"
     },
     {
      "fallo": "NOTA DE VOZ DOBLE — salía dos veces, la 2.ª rota que no se reproduce (#dueño 08-11, diagnóstico del 2960). El log muestra «Grabando voz» ×2 (al mismo ms) y «Audio enviado» ×2. Causa: _startVoiceRecording (voice.js) es async y recién marca _isRecording=true DESPUÉS de await getUserMedia; dos disparos del botón en ese hueco (el click + el temporizador de pulsación larga de app_setup.js, o un doble toque) entraban los dos con _isRecording=false y arrancaban DOS MediaRecorder → dos notas (una válida, una rota/duplicada). El parar (_finishVoiceRecording) ya era idempotente (if (!_isRecording) return), así que el hueco era solo al arrancar. 2963 (solo JS): guarda de reentrada _voiceStarting al tope de _startVoiceRecording — si ya se graba o ya hay un arranque en vuelo, no arranca otro; se libera al marcar _isRecording (éxito) o en el catch (fallo). Prueba voicenote.js ampliada (doble_toque_una_sola_nota: dos toques casi juntos ⇒ una sola «Grabando voz»)",
-     "prueba": "doble toque = una sola nota"
+     "prueba": "nota de voz: pausar/reanudar"
     },
     {
      "fallo": "FONDO COMPARTIDO no llegaba por internet — «compartí fondo de vivo a tablet y no apareció» (#dueño 08-11). NO era dimensiones (el pintado de wallpaper.js usa background-size:cover, que se adapta a cualquier pantalla). Era el TAMAÑO al viajar: el fondo por chat se comparte como acción oculta cifrada E2E (_sendTextTo) y podía pesar hasta ~520 KB (SHARE_LEN), pero por internet un evento de relé no puede pasar de ~60 KB (MAX_CONTENT en net_link.js, medido sobre el contenido YA cifrado) o se DESCARTA en silencio → el fondo nunca llegaba por internet (a una tablet en otra red). Por Bluetooth cerca sí (se parte en trozos). 2964 (solo JS): se achica el fondo COMPARTIDO (SHARE_EDGE 1080→720, SHARE_LEN 520KB→40KB) para que, ya cifrado (AES-GCM + base64 ~×4/3 ≈ 53 KB), entre bajo el tope de internet y llegue por cualquier camino; makeWallpaper ahora GARANTIZA el tope (si ni bajando la calidad entra, achica el lado y reintenta). El fondo local (lista/global) sigue en alta; solo la copia que viaja se achica (oscurecida al 50 %, no se nota). _encFitsNet (pura) estima el tamaño cifrado. Aparte, pedido más grande del dueño: auditar que toda la UX se adapte a tablet (pantalla por pantalla)",
-     "prueba": "fondo compartido entra por internet"
+     "prueba": "fondo compartido que ENTRE por internet"
     },
     {
      "fallo": "Caídas reales del Bluetooth que no se avisaban a la app (Kotlin)",
@@ -401,9 +402,17 @@
     {
      "fallo": "Archivo a un contacto OFFLINE por internet: storm-retransmitía y fallaba, burbuja clavada en ⏳ (diagnóstico del dueño 30-10). Causa: _linkUp() por internet miraba net.online() (¿tengo YO internet?) en vez de net.canReach(nx) (¿está el contacto en línea?). Arreglado 2840: ahora espera sin tormenta, marca «esperando» (no «fallido») y entrega al reconectarse (store-and-forward)",
      "prueba": "contacto OFFLINE por internet"
+    },
+    {
+     "fallo": "Archivo/mensaje a un contacto DORMIDO quedaba ⏳ horas sin que nadie lo despertara (diagnóstico del dueño 08-11: foto y vídeo a nx0ed4a8be): el «toque» FCM solo salía al ABRIR su chat (2860), nunca por lo pendiente. Fase A de la entrega offline (2967): cada contacto con pendientes y sin enlace entra al calendario de toques 30 s → 2 m → 8 m → 30 m → 2 h → 6 h (jitter ±20 %), se rinde a los 20 toques o min(TTL, 7 días) → PASSIVE explícito (el ⏳ sigue; al abrir el chat se re-dispara); contactos independientes; sin token/internet reintenta sin avanzar el freno",
+     "prueba": "toque» FCM POR PENDIENTES"
     }
    ],
    "debiles": [
+    {
+     "g": "media",
+     "d": "Archivo a un contacto DORMIDO: la Fase A (2967) lo despierta por FCM con freno creciente, pero el archivo en sí solo viaja cuando los dos coinciden en línea (no hay buzón de archivos todavía → Fase B de docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md); y el que toca es el teléfono del que envía con la app viva (con la app cerrada del todo no toca nadie)"
+    },
     {
      "g": "media",
      "d": "Wi-Fi Direct sin medir en teléfonos; el HD puede ir por Bluetooth aunque llegó por Wi-Fi Direct"
@@ -497,6 +506,10 @@
     {
      "fallo": "Internet usaba Tor por defecto (más lento) hasta para un texto; el Tor directo es solo P2P. #dueño 01-11: Tor ya NO va por defecto — relés rápidos para lo normal, Tor a mano/offline/bajo demanda (vídeo/archivo grande por internet). Tope por internet (relés) ~22→~40 MB",
      "prueba": "Tor no va por defecto"
+    },
+    {
+     "fallo": "El token FCM solo viajaba en el SALUDO, que caduca en el relé a los 10 min (TTL_HELLO): un contacto dormido horas leía mi mensaje del buzón (TTL 7 días) pero NO mi token → no podía tocarme a mí (mutuo) ni despertarme después si mi token había rotado. Fase A (2967): la marca del buzón de cada mensaje NUEVO lleva también el token (una vez por mensaje, nunca por trozo; si con el token el sobre se pasa del tope del relé va sin token antes que no ir)",
+     "prueba": "TOKEN EN LOS DOS SENTIDOS"
     }
    ],
    "debiles": [

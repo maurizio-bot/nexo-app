@@ -273,6 +273,48 @@ export function _jitteredBackoff(attempt, baseMs, capMs) {
   return Math.round(half + Math.random() * half);
 }
 
+// Build 2967 (Fase A, entrega offline — docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md): calendario del «toque» (wake FCM) para un
+// contacto con PENDIENTES. Funciones PURAS (el calendario exacto + jitter + rendición se testean sin DOM). El emisor toca al
+// otro con freno creciente hasta que despierte; al techo (20 intentos o min(TTL,7 días)) deja de tocar activo → PASSIVE (sigue
+// ⏳, se entrega al verlo o al abrir su chat). Números del contrato.
+export var WAKE_BACKOFF_MS = [30000, 120000, 480000, 1800000, 7200000, 21600000]; // 30s, 2m, 8m, 30m, 2h, 6h (techo)
+export var WAKE_MAX_FAILS = 20;
+export var WAKE_GIVEUP_MS = 7 * 24 * 3600 * 1000; // 7 días
+// Intervalo base antes del intento n (1-indexado); se queda en el techo (6 h).
+export function _wakeBackoffMs(attempt) {
+  var a = (typeof attempt === 'number' && attempt > 0) ? attempt : 1;
+  return WAKE_BACKOFF_MS[Math.min(a - 1, WAKE_BACKOFF_MS.length - 1)];
+}
+// Jitter ±20 % (rnd en [0,1); inyectable para test determinista).
+export function _wakeJitter(baseMs, rnd) {
+  var r = (typeof rnd === 'number') ? rnd : Math.random();
+  return Math.round((baseMs || 0) * (0.8 + 0.4 * r));
+}
+// ¿Rendirse? Techo de intentos O de tiempo, lo que llegue primero.
+export function _wakeGaveUp(attempt, firstAtMs, nowMs, giveUpMs) {
+  var cap = (typeof giveUpMs === 'number' && giveUpMs > 0) ? Math.min(giveUpMs, WAKE_GIVEUP_MS) : WAKE_GIVEUP_MS;
+  if ((attempt || 0) >= WAKE_MAX_FAILS) return true;
+  var first = (typeof firstAtMs === 'number') ? firstAtMs : nowMs; // por tipo, no por verdad: el instante 0 es válido (sim)
+  return (nowMs - first) >= cap;
+}
+// Entrada nueva: el primer toque sale enseguida (nextAt = now).
+export function _wakeNewEntry(nowMs) {
+  return { attempt: 0, firstAt: nowMs, nextAt: nowMs, passive: false };
+}
+// Decisión en un tick: 'fire' (toca ahora), 'wait' (aún no), 'passive' (rendido — marcar explícito).
+export function _wakeShouldFire(entry, nowMs, giveUpMs) {
+  if (!entry || entry.passive) return 'passive';
+  if (_wakeGaveUp(entry.attempt, entry.firstAt, nowMs, giveUpMs)) return 'passive';
+  return (nowMs >= (entry.nextAt || 0)) ? 'fire' : 'wait';
+}
+// Tras un toque exitoso: sube el intento y programa el siguiente con backoff + jitter.
+export function _wakeAdvance(entry, nowMs, rnd) {
+  var attempt = ((entry && entry.attempt) || 0) + 1;
+  var delay = _wakeJitter(_wakeBackoffMs(attempt), rnd);
+  var firstAt = (entry && typeof entry.firstAt === 'number') ? entry.firstAt : nowMs; // se conserva el PRIMER instante (también si es 0)
+  return { attempt: attempt, firstAt: firstAt, nextAt: nowMs + delay, passive: false };
+}
+
 export function _messagePreview(content, attachmentType) {
   var t = attachmentType;
   var k = !t ? _chatKind(content) : null;

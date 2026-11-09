@@ -31,6 +31,7 @@ export const BLE_MESSAGE_METHODS = {
       getPending.then(function(pending) {
         if (!pending || pending.length === 0) return;
         console.log('[BLEInterface]', nx, 'tiene', pending.length, 'pending');
+        self._noteWakePending(nx); // Build 2967 (Fase A): tocar (wake FCM) al contacto con pendientes; el tick lo quita si ya es alcanzable
         var deviceId = contact.deviceId || self._resolveDeviceIdForNexoId(nx);
         if (deviceId) {
           var state = self._getDeviceState(deviceId);
@@ -1005,6 +1006,7 @@ export const BLE_MESSAGE_METHODS = {
         var rh = self.relay && self.relay.relayHop(nexoId);
         if (!rh) {
           console.log('[BLEInterface] ' + pending.length + ' pending para ' + nexoId + ': sin enlace ni ruta, quedan en espera');
+          self._noteWakePending(nexoId); // Build 2967 (Fase A): lo que queda en espera entra al wake-por-pendiente (toque FCM con backoff)
           if (self.relay) self.relay.discover(nexoId);
           finish();
           return;

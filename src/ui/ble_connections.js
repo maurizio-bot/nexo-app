@@ -3,7 +3,7 @@
  * supervisor de enlaces, pings, reconexión, búsqueda de contactos perdidos, teléfonos encontrados al escanear y
  * esperar a que un enlace esté listo.
  */
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _dupBleLinksToClose, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _dupBleLinksToClose, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages, _wakeShouldFire, _wakeAdvance, _wakeNewEntry, WAKE_GIVEUP_MS } from './ble_helpers.js';
 
 
 export const BLE_CONNECTION_METHODS = {
@@ -49,6 +49,9 @@ export const BLE_CONNECTION_METHODS = {
 
   _runSupervisorCycle() {
     var self = this;
+    // Build 2967 (Fase A, entrega offline): tocar (wake FCM) a los contactos con PENDIENTES, ANTES de la compuerta de abajo
+    // (que corta si no hay enlaces vivos — justo el caso offline). El propio tick tiene su freno de 30 s.
+    self._tickWakePending();
     if (self._cameraBlePaused) return;
     if (!self._activeChatDeviceId && self.connectedDevices.size === 0) return;
     self.connectedDevices.forEach(function(device, deviceId) {
@@ -144,6 +147,61 @@ export const BLE_CONNECTION_METHODS = {
         _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: key }).catch(function() {});
       }
     });
+  },
+
+  // Build 2967 (Fase A, docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md): un contacto con PENDIENTES a quien no alcanzamos por
+  // ningún enlace recibe el «toque» FCM con freno creciente, hasta que despierte o hasta el techo (→ PASSIVE: deja de tocar
+  // activo; el ⏳ del mensaje pendiente queda igual, y al abrir su chat se re-dispara como siempre). El calendario y la
+  // rendición son funciones PURAS (ble_helpers, testeadas). Alta de contactos: _noteWakePending (desde el flush de pendientes
+  // y desde el envío que queda «en espera»). Nunca re-cifra ni toca el nativo.
+  _noteWakePending(nexoId) {
+    var nx = _normId(nexoId);
+    if (!nx || !/^nx[0-9a-z]{8}$/.test(nx)) return; // solo contactos (NEXO ID); un grupo u otro id no tiene a quién tocar
+    if (!this._pendingWake) this._pendingWake = new Map();
+    if (!this._pendingWake.has(nx)) this._pendingWake.set(nx, _wakeNewEntry(Date.now())); // preserva el existente (incl. PASSIVE)
+  },
+
+  _tickWakePending() {
+    var self = this;
+    if (!self._pendingWake || self._pendingWake.size === 0) return;
+    var now = Date.now();
+    if (now - (self._lastWakeTick || 0) < 30000) return; // freno: a lo sumo cada 30 s (no por cada tick de 6 s del supervisor)
+    self._lastWakeTick = now;
+    self._pendingWake.forEach(function(entry, nx) {
+      var via = (typeof self.linkOf === 'function') ? self.linkOf(nx) : null;
+      if (via === 'wifi' || via === 'bluetooth' || via === 'internet') { self._pendingWake.delete(nx); return; } // ya alcanzable → lo entrega el camino normal
+      var d = _wakeShouldFire(entry, now, WAKE_GIVEUP_MS);
+      if (d === 'wait') return;
+      if (d === 'passive') {
+        if (!entry.passive) { entry.passive = true; console.log('[WAKE] ' + nx + ' → PASSIVE (rendido tras ' + entry.attempt + ' toques / tope de tiempo); se entrega al verlo o al abrir su chat'); }
+        return;
+      }
+      // d === 'fire': antes de tocar, confirmar que SIGUE habiendo pendientes (si ya se entregaron por otro camino —buzón+ack
+      // con el otro en 2.º plano, Jump— no hay a quién despertar y la entrada se va sola). Asíncrono (lee la bóveda) y raro.
+      self._wakeStillPending(nx).then(function(still) {
+        if (!self._pendingWake || self._pendingWake.get(nx) !== entry) return; // la entrada cambió mientras tanto
+        if (!still) { self._pendingWake.delete(nx); console.log('[WAKE] ' + nx + ' ya no tiene pendientes: fin del toque'); return; }
+        var fired = (typeof self._wakeSleepingPeer === 'function') ? self._wakeSleepingPeer(nx) : null;
+        if (fired === 'waking') {
+          self._pendingWake.set(nx, _wakeAdvance(entry, now, Math.random()));
+          console.log('[WAKE] toque a ' + nx + ' (intento ' + (entry.attempt + 1) + ', por pendientes)');
+        } else if (fired === 'wifi' || fired === 'bluetooth' || fired === 'internet') {
+          self._pendingWake.delete(nx); // se volvió alcanzable justo al tocar
+        } // else (falsy): no se pudo tocar (sin token/internet) → se reintenta en el próximo tick, sin avanzar el backoff
+      });
+    });
+  },
+
+  // ¿Sigue habiendo mensajes pendientes para este contacto? Lee la bóveda (igual que el flush); sin bóveda (sim puro) o
+  // ante un error se asume que sí (mejor un toque de más que dejar a alguien sin despertar).
+  _wakeStillPending(nx) {
+    try {
+      var w = (typeof window !== 'undefined') ? window : null;
+      var p = (w && typeof w.vaultGetPendingMessages === 'function') ? w.vaultGetPendingMessages(nx)
+        : (w ? _vaultLoadMessages(nx).then(function(msgs) { return msgs.filter(_isResendable); }) : null);
+      if (!p) return Promise.resolve(true);
+      return Promise.resolve(p).then(function(pending) { return !!(pending && pending.length); }, function() { return true; });
+    } catch (e) { return Promise.resolve(true); }
   },
 
   _pingDevice(deviceId) {

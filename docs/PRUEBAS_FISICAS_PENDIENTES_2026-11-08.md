@@ -10,7 +10,7 @@ dos WiFi distintas (2957)**, **envío de fotos**, y **JUMP funcionando** (tu cap
 vez que lo probás; aclaraste que no era un error, era el Jump andando). Eso ya subió el índice de robustez
 **54,8 → 61,8** (el componente «teléfonos», que es el que mueven tus pruebas, pasó de **15,9 a 22,8 / 35**;
 «caminos» llegó a su nivel pleno porque internet y Jump eran los que faltaban; ver `docs/ROBUSTEZ.md`). Abajo
-marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2964**).
+marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo los builds nuevos **2961–2967**).
 
 ## A. Builds nuevos a probar
 
@@ -105,6 +105,26 @@ marco con ✅ lo confirmado; el resto sigue pendiente de tu prueba (sobre todo l
     Confirmá que ahora **SÍ aparece** en el otro (antes no llegaba por internet porque pesaba demasiado). Aparte,
     el pedido más grande —que **toda la UX se adapte a la pantalla de la tablet**— lo encaro como auditoría
     propia, pantalla por pantalla.
+
+17. **2965 — la notificación NUNCA avisa del chat que tenés abierto.** Con el chat de X abierto, que X te mande varios
+    mensajes (también si NEXO se va un instante a segundo plano y vuelve): no debe aparecer ni la notificación ni el
+    contador de ESE chat. De otro contacto, sí.
+
+18. **2966 — orden de la lista por el más reciente.** Agregá un contacto desde una tarjeta compartida o un grupo SIN
+    abrir su chat: la lista no debe clavarlo arriba por encima de los que tienen mensajes más nuevos (tu captura del
+    vivo Y03 «14m» por encima de «Galaxy Ahora»).
+
+19. **2967 — Fase A de la entrega offline: toque POR PENDIENTES + token en el buzón.** Con el otro teléfono APAGADO (o
+    en modo avión) mandale un texto y una foto por internet. Tienen que quedar ⏳ («esperando»), nunca ✗. Dejá TU app
+    abierta o en segundo plano (el que toca es tu teléfono; con la app cerrada del todo no hay quien toque) un buen
+    rato: el toque sale a los 30 s, 2 m, 8 m, 30 m, 2 h… y de ahí cada 6 h, nunca más seguido. Al encender el
+    otro con internet tiene que recibir lo pendiente solo (sin que abras nada). En el **diagnóstico del que envía**
+    deben verse líneas `[WAKE] toque a nx… (intento N, por pendientes)` espaciadas como ese calendario; si llegara a
+    20 toques, una sola línea `→ PASSIVE` y después nada más (hasta que abras su chat, que vuelve a tocar como siempre).
+
+20. **2967 — botón «Cobro» oculto (tu pedido 09-11).** Abrí el menú «+» de un chat: tienen que verse Cámara, Galería,
+    Archivo, Ubicación, Contacto y Sticker, y **ya no** «Cobro». (El código sigue; se vuelve a mostrar cuando haya algo
+    sólido.)
 
 ## B. Lo que falta, que necesita tu teléfono o una pasada NATIVA (no se puede en el simulador)
 

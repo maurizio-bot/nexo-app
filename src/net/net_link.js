@@ -588,9 +588,14 @@ export class NetLink {
     // teléfono, Contestar/Rechazar), no como un aviso de mensaje. El síntoma del dueño era justo ese: con la pantalla
     // apagada sonaba y llegaba «un mensaje nuevo» en vez de la pantalla de llamada.
     else { body.p = String(content); var nid = this._newMsgId(body.p); if (nid) body.n = nid; var callOffer = nid ? this._isCallOffer(body.p) : false; if (callOffer) body.cl = 1; }
-    var iv = _rnd(12);
-    var ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: _utf8('NEXO-NET|' + me + '|' + nx) }, pair.aes, _utf8(JSON.stringify(body))));
-    var b64 = _b64(_cat(iv, ct));
+    // Build 2967 (Fase A, docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md §6 «token en los dos sentidos»): la MARCA del buzón de un
+    // mensaje NUEVO lleva también mi token FCM. Antes iba SOLO en el saludo, que caduca en el relé a los 10 min (TTL_HELLO):
+    // un contacto dormido horas leía mi mensaje (TTL 7 días) pero no mi token → no podía tocarme a mí (mutuo) ni despertarme
+    // después si mi token había rotado. Una vez por mensaje (nid), nunca por trozo/ack/control (peso ~160 B). El que recibe
+    // ya guarda el token de cualquier sobre (_deliver).
+    if (!(opts && opts.hello) && nid && this.fcmToken) body.f = this.fcmToken;
+    var seal = async function() { var iv = _rnd(12); var ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: _utf8('NEXO-NET|' + me + '|' + nx) }, pair.aes, _utf8(JSON.stringify(body)))); return _b64(_cat(iv, ct)); };
+    var b64 = await seal();
     var peer = this._peer(nx), pl = _plugin();
     // Tor es más lento: para lo NORMAL (texto, fotos) se prefieren los relés (rápido). Se usa Tor solo si el usuario lo
     // encendió a mano para privacidad (state.tor === true), si no hay relés (offline) o si el que llama lo pide
@@ -600,6 +605,9 @@ export class NetLink {
     if (preferTor && peer.torUp && (peer.torOk || (opts && opts.hello)) && pl && typeof pl.torSend === 'function') {
       try { await pl.torSend({ nx: nx, content: b64 }); return true; } catch (e) { peer.torUp = false; peer.torOk = false; }
     }
+    // Lección 2964 (el tope del relé es sobre el evento YA codificado): si el token hace que el sobre se pase, va SIN token
+    // antes que no ir (p. ej. el primer trozo de un archivo, que ya viene al límite).
+    if (b64.length > MAX_CONTENT && body.f && !(opts && opts.hello)) { delete body.f; b64 = await seal(); }
     if (b64.length > MAX_CONTENT) throw Object.assign(new Error('Demasiado grande para internet'), { code: 'NET_TOO_BIG' });
     var ttl = (opts && opts.hello) ? TTL_HELLO : this._ttlFor(String(content || ''));
     var tag = this._tag(pair, nx, _day(0));

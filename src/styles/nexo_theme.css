@@ -241,6 +241,10 @@ body::before {
 .attach-menu-item[data-type="location"] svg { background: linear-gradient(135deg, #22c55e, #10b981); }
 .attach-menu-item[data-type="contact"] svg { background: linear-gradient(135deg, #f59e0b, #ff6b35); }
 .attach-menu-item[data-type="cobro"] svg { background: linear-gradient(135deg, #14b8a6, #0d9488); }
+/* Build 2967 (decisión del dueño 09-11): el botón «Cobro» (pagos) se OCULTA hasta tener algo sólido («no tiene caso
+   mostrarlo»). El código de cobros (cobro.js, tarjeta, prueba cobro.js) sigue intacto; para volver a mostrarlo basta
+   con borrar esta regla. */
+.attach-menu-item[data-type="cobro"] { display: none !important; }
 .attach-menu-item::after { font-size: 11px; color: var(--nx-muted); }
 .attach-menu-item[data-type="camera"]::after { content: 'Cámara'; }
 .attach-menu-item[data-type="gallery"]::after { content: 'Galería'; }
