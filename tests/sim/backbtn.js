@@ -67,6 +67,9 @@ async function boot(name, native) {
   win.dispatchEvent(new win.CustomEvent('nexo:ui:settings'));
   await sleep(150);
   var teniaAjustes = !!doc.getElementById('nexo-settings-sheet');
+  // A6 (2984): cada sección de Ajustes tiene su PROPIO icono (antes «Idioma» e «Internet» compartían el 🌐)
+  var icos = Array.from(doc.querySelectorAll('#nexo-settings-sheet .nx-ico')).map(function(e) { return e.textContent.trim(); });
+  r.ajustes_iconos_unicos = icos.length >= 10 && new Set(icos).size === icos.length;
   var sr = win.__nexoHandleBack();
   await sleep(150);
   r.ajustes_vuelve_perfil = teniaAjustes && sr === true && !doc.getElementById('nexo-settings-sheet') && !!doc.getElementById('nexo-profile-sheet');
@@ -90,7 +93,7 @@ async function boot(name, native) {
   r.final_false = win.__nexoHandleBack() === false;
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|is not a function/.test(l)).slice(0, 4);
-  const ok = r.handler_existe && r.nada_false && r.chat_true && r.chat_cerrado && r.overlay_primero && r.visor_cierra && r.ajustes_vuelve_perfil && r.perfil_cierra && r.agregar_cierra && r.final_false && r.errores.length === 0;
+  const ok = r.handler_existe && r.nada_false && r.chat_true && r.chat_cerrado && r.overlay_primero && r.visor_cierra && r.ajustes_vuelve_perfil && r.ajustes_iconos_unicos && r.perfil_cierra && r.agregar_cierra && r.final_false && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('BACKBTN ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_backbtn.txt'), logs.join('\n'));

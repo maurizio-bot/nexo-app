@@ -218,7 +218,7 @@ function _openSettingsSheet() {
     '<div style="display:flex;align-items:center;gap:8px;min-width:0;"><button id="nexo-settings-back" class="nx-btn" style="width:auto;margin:0;padding:9px 13px;">' + t('settings_back') + '</button><div style="font-size:26px;font-weight:800;">' + t('settings_title') + '</div></div>' +
     '<button id="nexo-settings-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;flex-shrink:0;">' + t('close') + '</button></div>' +
     // #132 (pedido del dueño): selección de idioma (es/it/en). Por defecto el del teléfono; al cambiarlo se guarda y la app recarga para aplicarlo en todas las pantallas.
-    card('🌐', t('language'), '<div class="nx-sub" style="margin-bottom:8px;">' + t('language_hint') + '</div>' +
+    card('🗣️', t('language'), '<div class="nx-sub" style="margin-bottom:8px;">' + t('language_hint') + '</div>' +
       '<select id="nexo-lang-select" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +
       LANGS.map(function(l) { return '<option value="' + l + '"' + (l === getLang() ? ' selected' : '') + '>' + langName(l) + '</option>'; }).join('') + '</select>') +
     // Ronda 2889 (pedido del dueño): fondo de pantalla para la lista de contactos y para los chats (local a este teléfono)
