@@ -102,9 +102,9 @@ lo importante (dirección, dinero, marca, publicar, datos de usuarios, seguridad
 pequeño, lo guía, lo corrige y le da opciones; las ideas que llegan de repente se anotan en `docs/IDEAS.md` con tres preguntas
 (¿para quién?, ¿qué resuelve?, ¿cómo sabremos que funcionó?) antes de construirlas. Aceptó también **una tarea aburrida al día**
 (`docs/COLA_DE_PULIDO.md`) y las preguntas de alcance. Siguen pendientes de su OK: P1 (decisiones con plazo), P5 (simplificar),
-P6 (más probadores y auditoría), P7 (resumen de arranque). **Decisión D1 abierta:** ¿se programa una sesión diaria que haga sola
-una tarea de la cola? Recomendación de Claude: sí, pero en una rama aparte (`pulido`) que el dueño mezcla con una palabra; así
-nada llega a los teléfonos sin su visto bueno, sobre todo cuando exista el actualizador automático.
+P6 (más probadores y auditoría), P7 (resumen de arranque). **Decisión D1 resuelta (10-11): MODO ADELANTO** (`COMO_TRABAJAMOS.md` §8). El dueño pidió que Claude avance solo mientras él
+está ocupado o duerme, y pregunte antes solo si algo es grande. Esquema: lo «Claude decide» va a `NEXOCHAT` con la batería en
+verde; lo «Claude propone» espera en la rama `pulido` hasta que el dueño diga «mézclala»; al volver, informe de cinco líneas.
 
 **📌 10-11 (2.ª) — PENDIENTES IMPORTANTES acordados con el dueño** (detalle en `docs/PENDIENTES.md` ⭐ y
 `docs/CONVERSACION_ESTRATEGIA_2026-11-10.md`): problemas = poco uso, poca comunicación de los usuarios, poco testeo físico;

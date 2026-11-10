@@ -83,9 +83,43 @@ cola, se pospone o se descarta. Si el dueño dice «urgente», se hace primero s
 Aceptada. Mientras no haya sesión automática, Claude cierra **una tarea de `COLA_DE_PULIDO.md` en cada sesión** y lo dice al
 final. Falta decidir si se programa una sesión diaria que lo haga sola (ver la decisión D1 en `ESTADO.md`).
 
+## 8. Modo adelanto (autorización permanente del dueño, 10-11-2026)
+Dicho por el dueño: «cuando yo estoy ocupado y no puedo estar contigo, tú te adelantas con cualquier pendiente que tengas que
+resolver; así avanzamos sí o sí. Si algo requiere demasiados tokens, me lo preguntas primero. Si estamos llegando al límite de una
+sesión y me voy a dormir, ese tiempo se perdería: tomas la delantera y lo aprovechas hasta donde se pueda».
+
+**Cuándo se activa:** el dueño dice que se va, que está ocupado o que se duerme; o la sesión va a cerrarse por el límite y el
+tiempo se perdería. No hace falta que lo repita cada vez.
+
+**Qué se hace, en este orden:**
+1. Las tareas de la sección A de `COLA_DE_PULIDO.md`.
+2. Pendientes que el reparto de decisiones (§4) marca como «Claude decide y avisa después».
+3. Preparar, sin decidir, lo que es del dueño: diseño, borradores, pruebas y las opciones con recomendación, para que decida con
+   una letra.
+
+**Límites (cambiables por el dueño):**
+- **Tamaño:** solo tareas pequeñas o medianas (cabe una batería completa). Las grandes se dejan preparadas y se le preguntan
+  primero; si el dueño no puede contestar, no se empiezan.
+- **Entrega:** solo se sube con la batería en verde, como siempre. Las tareas «Claude decide» van directo a `NEXOCHAT`; lo que
+  sea «Claude propone» espera en la rama `pulido` hasta que el dueño diga «mézclala». Cuando exista el actualizador
+  automático, TODO lo que llegue a `NEXOCHAT` pasará antes por esa rama.
+- **Si algo falla o se complica:** se detiene, se anota en `ESTADO.md` y no se fuerza nada.
+- **No se toca sin el dueño:** dinero, marca, publicar, datos de usuarios, cifrado y seguridad, nada irreversible, ni abrir salida
+  de red del entorno de Claude.
+- **Informe al volver:** cinco líneas: qué se hizo, qué quedó, qué necesita su decisión y qué probar.
+
+**Cómo funciona (honesto):**
+1. *Dentro de la sesión abierta:* si el dueño dice «me voy», Claude sigue trabajando la cola mientras queden recursos.
+2. *Sesión programada:* Claude puede programar una continuación (por ejemplo cuando se reinicie el límite). Se prueba una noche
+   y se compara.
+3. *Lo que Claude no sabe:* cuánto le queda al plan del dueño ni cómo cuenta una sesión programada. Por eso se empieza con una
+   sola tarea por noche y se ajusta con lo que se vea.
+
 ## 7. Registro (Claude lo actualiza)
 - 10-11-2026: documento creado.
 - 10-11-2026: el dueño acepta P2, P3, P4 y el modelo de delegación (P8): «una tarea aburrida al día» y las preguntas ¿para qué?, ¿qué
   resuelve?, ¿para quién?. Aclara que no toma el análisis como regaño sino como crítica constructiva. Se describe como
   impulsivo con las ideas que le llegan, y pide que Claude lo guíe, lo corrija y le dé opciones.
+- 10-11-2026: el dueño autoriza de forma permanente el **modo adelanto** (§8) y señala que esto debió ofrecerse desde el principio;
+  Claude lo reconoce. La decisión D1 queda resuelta con el esquema mixto de §8.
 

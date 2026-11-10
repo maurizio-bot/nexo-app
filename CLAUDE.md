@@ -11,6 +11,10 @@ Antes de empezar, leer `docs/PROGRESO.md` (estado, historial de builds y pendien
 camino de envío) y `docs/ROBUSTEZ.md` (registro de revisiones, índice de robustez y rutina diaria), y
 actualizarlos al terminar cada bloque de trabajo.
 
+- **Modo adelanto (dueño, 10-11):** cuando el dueño esté ocupado o dormido, avanzar solo con la cola de pulido y los pendientes
+  que Claude decide, sin esperar; preguntar antes solo si es grande. Reglas y límites: `docs/COMO_TRABAJAMOS.md` §8. Léelo con
+  `ESTADO.md` al empezar.
+
 - Rutina diaria (pedida por el dueño, `docs/ROBUSTEZ.md` §5): lo del dueño primero (sus pruebas y
   diagnósticos); luego el área del día del calendario de la revisión en curso; un punto débil abierto;
   medir (batería + `node tests/sim/robustez.js <salida de ci.js>`) y anotar la medición en el historial;
