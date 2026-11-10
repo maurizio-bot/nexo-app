@@ -44,7 +44,32 @@ function _kb(n) { return Math.max(1, Math.round(n / 1024)); }
 
 // Número de build (lo inyecta el workflow en dist/index.html: window.NEXO_BUILD); en el simulador y en local, «dev».
 export function autoDiagBuild() { var b = (typeof window !== 'undefined' && window.NEXO_BUILD) || ''; return /^\d+$/.test(String(b)) ? String(b) : 'dev'; }
-export function autoDiagEnabled() { return _lsGet(KEY_ON) !== '0'; }
+// 2991 (B, dueño 10-11: «el sentido por defecto»): en estas builds de prueba va ENCENDIDO por defecto. Para probadores externos / Google Play
+// la compilación fija window.NEXO_DIAG_DEFAULT = 'ask': apagado hasta que la persona conteste una pregunta única («Aceptar» / «Ahora no»).
+// Lo que la persona eligió (nexo_autodiag 1/0) manda siempre. El resumen diario de uso (usage_stats.js) usa este mismo interruptor.
+function _defaultAsk() { return (typeof window !== 'undefined') && window.NEXO_DIAG_DEFAULT === 'ask'; }
+export function autoDiagEnabled() { var v = _lsGet(KEY_ON); if (v === '1') return true; if (v === '0') return false; return !_defaultAsk(); }
+/** ¿Falta contestar la pregunta única? (solo con NEXO_DIAG_DEFAULT = 'ask' y sin elección previa) */
+export function autoDiagNeedsAsk() { return _defaultAsk() && _lsGet(KEY_ON) == null; }
+/** Muestra la pregunta única (una vez). Devuelve true si la mostró. */
+export function autoDiagAskOnce() {
+  try {
+    if (!autoDiagNeedsAsk() || document.getElementById('nexo-diag-ask')) return false;
+    var ov = document.createElement('div'); ov.id = 'nexo-diag-ask';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:24px;';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:#14152a;color:#fff;max-width:420px;width:100%;border-radius:16px;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,0.5);';
+    var h = document.createElement('div'); h.style.cssText = 'font-size:18px;font-weight:700;margin-bottom:8px;'; h.textContent = t('diag_ask_title', 'Ayudar a mejorar NEXO');
+    var p = document.createElement('div'); p.style.cssText = 'font-size:14px;line-height:1.45;opacity:0.9;margin-bottom:16px;'; p.textContent = t('diag_ask_text', 'Si algo falla, NEXO puede mandar un diagnóstico técnico al desarrollador, y una vez al día un resumen de uso (solo números). Va cifrado y nunca incluye tus mensajes ni nombres. Puedes cambiarlo cuando quieras en Perfil → Ajustes.');
+    var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;';
+    var no = document.createElement('button'); no.id = 'nexo-diag-ask-no'; no.textContent = t('diag_ask_no', 'Ahora no'); no.style.cssText = 'background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.35);border-radius:10px;padding:10px 14px;';
+    var yes = document.createElement('button'); yes.id = 'nexo-diag-ask-yes'; yes.textContent = t('diag_ask_yes', 'Aceptar'); yes.style.cssText = 'background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:10px;padding:10px 16px;font-weight:700;';
+    var done = function(on) { setAutoDiagEnabled(on); if (ov.parentNode) ov.parentNode.removeChild(ov); };
+    no.onclick = function() { done(false); }; yes.onclick = function() { done(true); };
+    row.appendChild(no); row.appendChild(yes); box.appendChild(h); box.appendChild(p); box.appendChild(row); ov.appendChild(box); document.body.appendChild(ov);
+    return true;
+  } catch (e) { return false; }
+}
 export function setAutoDiagEnabled(on) { _lsSet(KEY_ON, on ? '1' : '0'); console.log('[AUTODIAG] ' + (on ? 'encendido' : 'apagado') + ' por el usuario'); _emit(); }
 export function autoDiagDevNx() { return _normId((typeof window !== 'undefined' && window.NEXO_DIAG_DEV) || DIAG_DEV_NX); }
 
@@ -172,6 +197,7 @@ export function autoDiagScanPending() {
 
 export function autoDiagInit() {
   if (typeof window === 'undefined' || window.__nexoAutoDiag) return;
+  setTimeout(function() { autoDiagAskOnce(); }, 6000);   // 2991: pregunta única (solo con NEXO_DIAG_DEFAULT = 'ask')
   window.addEventListener('nexo:diag:symptom', function(e) { var d = (e && e.detail) || {}; try { autoDiagReport(d.kind || 'sintoma', d.info || ''); } catch (err) {} });
   // Errores de código: un rato después, para que la línea [ERROR] ya esté en el registro; cada mensaje una sola vez por sesión
   window.addEventListener('error', function(e) {
@@ -189,7 +215,7 @@ export function autoDiagInit() {
   });
   var scanMs = _knob('NEXO_AUTODIAG_SCAN_MS', SCAN_MS);
   setTimeout(function() { autoDiagScanPending(); setInterval(autoDiagScanPending, scanMs); }, Math.min(scanMs, 60000));
-  window.__nexoAutoDiag = { report: autoDiagReport, inbox: autoDiagInbox, text: autoDiagInboxText, state: _state, enabled: autoDiagEnabled, setEnabled: setAutoDiagEnabled, clear: autoDiagClearInbox, markSeen: autoDiagMarkSeen, scan: autoDiagScanPending, newCount: autoDiagNewCount, dev: autoDiagDevNx };
+  window.__nexoAutoDiag = { ask: autoDiagAskOnce, needsAsk: autoDiagNeedsAsk, report: autoDiagReport, inbox: autoDiagInbox, text: autoDiagInboxText, state: _state, enabled: autoDiagEnabled, setEnabled: setAutoDiagEnabled, clear: autoDiagClearInbox, markSeen: autoDiagMarkSeen, scan: autoDiagScanPending, newCount: autoDiagNewCount, dev: autoDiagDevNx };
   console.log('[AUTODIAG] activo (' + (autoDiagEnabled() ? 'encendido' : 'apagado') + '); desarrollador ' + autoDiagDevNx() + '; build ' + autoDiagBuild());
 }
 

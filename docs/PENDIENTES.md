@@ -28,8 +28,7 @@ visibles + área 56; ajuste «Vibración al tocar» en Perfil → Ajustes (como 
   camino, error de código), cifrado de extremo a extremo al NEXO ID del dueño (`DIAG_DEV_NX`, `src/ui/autodiag.js`) como mensaje
   oculto de protocolo; límites 1 cada 2 h, 3/día, mismo síntoma 1 vez/24 h; interruptor + «últimos envíos» (✓ al confirmarse) en
   Perfil; bandeja «Diagnósticos recibidos» con «Copiar los nuevos» en el teléfono del dueño. Sin servicios externos (repo público).
-- ⚠️ **Decisión del dueño:** encendido por defecto en las builds de prueba (lo que hay) o apagado con una pregunta única al
-  instalar (patrón Element X «Aceptar / Ahora no»). Al publicar en Play: declarar «Crash logs + Diagnostics» en Data safety y en
+- ✅ **Decidido (10-11, «el sentido por defecto») y hecho en la 2991:** encendido por defecto en las builds de prueba; para externos / Google Play la compilación fija `window.NEXO_DIAG_DEFAULT='ask'` (apagado + pregunta única «Aceptar / Ahora no»). Falta poner esa marca en el index.html de la compilación de externos. Al publicar en Play: declarar «Crash logs + Diagnostics» en Data safety y en
   la política de privacidad (lo lee el desarrollador).
 - Siguiente: (a) aviso/insignia en el icono de Perfil del dueño cuando llega uno; (b) más síntomas (llamada caída, ANR nativo vía
   `ApplicationExitInfo`); (c) comprimir antes de cifrar si el texto crece; (d) que el nativo conteste los pings con «app cerrada»
