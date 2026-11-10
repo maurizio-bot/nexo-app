@@ -150,6 +150,7 @@ export class NetLink {
     if (self._inited) return;
     self._inited = true;
     try { var r = pl && await pl.loadFromFile({ filename: STATE_FILE }); if (r && r.exists && r.content) self.state = JSON.parse(r.content) || self.state; } catch (e) {}
+    self._migrateState();
     // FCM «despertador» (#87, Fase 2): el token de este teléfono (para que los contactos puedan despertarlo) y los
     // tokens que ya conocíamos de ellos (sobreviven al reinicio, así se puede despertar aunque no haya saludo reciente).
     try { if (pl && typeof pl.getFcmToken === 'function') { var ft = await pl.getFcmToken(); if (ft && ft.token) self.fcmToken = ft.token; } } catch (e) {}
@@ -505,6 +506,18 @@ export class NetLink {
   }
 
   // ---------- Tor ----------
+  // Dueño 10-11: «Tor siempre» debe venir DESAPAGADO por defecto y que lo active el usuario si quiere. Antes de 2867 el
+  // defecto era «encendido», y teléfonos con ese estado viejo lo muestran palomeado sin que el usuario lo haya pedido.
+  // Una sola vez (marca torMig): se quita el «true» heredado; si el usuario lo vuelve a encender, se respeta para siempre.
+  _migrateState() {
+    var st = this.state;
+    if (!st || st.torMig) return false;
+    st.torMig = 1;
+    var changed = false;
+    if (st.tor === true) { delete st.tor; changed = true; }
+    this._saveState();
+    return changed;
+  }
   // Tor es MÁS LENTO que los relés: por defecto NO corre (pedido del dueño 01-11: «no quiero Tor por defecto siendo más
   // lento»). Se enciende de dos formas: (1) el usuario lo activa a mano en Ajustes para ocultar su IP siempre
   // (state.tor === true); (2) BAJO DEMANDA (_torNeeded) cuando una videollamada o un archivo grande van por internet, que

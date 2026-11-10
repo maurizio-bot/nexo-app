@@ -37,6 +37,11 @@ class MsgNotifier(private val ctx: Context) {
         const val EXTRA_CALL_TOKEN = "nexo_call_token"
         @JvmStatic val callIntentToken: String = java.util.UUID.randomUUID().toString()
         private const val CALL_NOTIF_ID = 3999
+        // 2994 (pedido del dueño 10-11): aviso de «versión nueva de NEXO» con botón «Actualizar». Mismo testigo que las llamadas
+        // (la pantalla principal está exportada; solo se hace caso al botón si el intent trae el testigo de nuestro PendingIntent).
+        const val UPDATE_CHANNEL_ID = "nexo_updates"
+        const val EXTRA_UPDATE_INSTALL = "nexo_update_install"
+        private const val UPDATE_NOTIF_ID = 3997
         // Lo que el dueño tocó en el aviso; la app lo recoge al abrirse (NexoBlePlugin.callAction). Ronda 2768: con la
         // oferta a la que se refiere (si no, valía para la siguiente llamada de ese contacto y se contestaba sola)
         @Volatile var pendingAnswer: CallTap? = null
@@ -101,6 +106,37 @@ class MsgNotifier(private val ctx: Context) {
     }
 
     private fun notifId(chatId: String) = 4000 + (chatId.hashCode() and 0x7ffff)
+
+    // Aviso de actualización disponible: tocarlo abre NEXO; «Actualizar» abre NEXO e inicia la descarga + instalador (el sistema pide
+    // su confirmación; Android no deja instalar sin ese toque). Un solo aviso (id fijo): si llega otro número, sustituye al anterior.
+    fun updateAvailable(build: Int, sizeBytes: Long) {
+        val nm = NotificationManagerCompat.from(ctx)
+        if (!nm.areNotificationsEnabled()) { Log.w(TAG, "Notificaciones desactivadas: sin aviso de actualización"); return }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val ch = NotificationChannel(UPDATE_CHANNEL_ID, "Actualizaciones", NotificationManager.IMPORTANCE_DEFAULT)
+            ch.description = "Avisa cuando hay una versión nueva de NEXO"
+            ctx.getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
+        }
+        val launch = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: return
+        val fl = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        val pf = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        val openPi = PendingIntent.getActivity(ctx, 3996, Intent(launch).addFlags(fl), pf)
+        val installPi = PendingIntent.getActivity(ctx, 3995, Intent(launch).putExtra(EXTRA_UPDATE_INSTALL, build).putExtra(EXTRA_CALL_TOKEN, callIntentToken).addFlags(fl), pf)
+        val mb = if (sizeBytes > 0) " (" + maxOf(1L, sizeBytes / 1048576L) + " MB)" else ""
+        val b = NotificationCompat.Builder(ctx, UPDATE_CHANNEL_ID)
+            .setSmallIcon(msgIcon(ctx))
+            .setContentTitle("Hay una versión nueva de NEXO ($build)")
+            .setContentText("Toca «Actualizar» para instalarla$mb")
+            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(openPi)
+            .addAction(0, "Actualizar", installPi)
+        try { nm.notify(UPDATE_NOTIF_ID, b.build()) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones") }
+    }
+
+    fun cancelUpdate() { try { NotificationManagerCompat.from(ctx).cancel(UPDATE_NOTIF_ID) } catch (e: Exception) { } }
 
     fun message(chatId: String, name: String, msgId: String, text: String): Int {
         // Ronda 2760: si ya se avisó en otro chat (el nativo, con quien lo manda), pasa a este (el grupo)

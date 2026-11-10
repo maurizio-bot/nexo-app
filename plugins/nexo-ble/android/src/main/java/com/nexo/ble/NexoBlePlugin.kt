@@ -282,6 +282,13 @@ class NexoBlePlugin : Plugin() {
                     intent.removeExtra(MsgNotifier.EXTRA_ANSWER)
                     intent.removeExtra(MsgNotifier.EXTRA_CALL_OFFER)
                 }
+                // 2994: botón «Actualizar» del aviso de versión nueva (mismo testigo): la app baja e instala
+                if (callTokenOk && intent.hasExtra(MsgNotifier.EXTRA_UPDATE_INSTALL)) {
+                    val ub = intent.getIntExtra(MsgNotifier.EXTRA_UPDATE_INSTALL, 0)
+                    MsgNotifier.get(activity.applicationContext).cancelUpdate()
+                    notifyListeners("onUpdateAction", JSObject().put("install", true).put("build", ub), true)
+                    intent.removeExtra(MsgNotifier.EXTRA_UPDATE_INSTALL)
+                }
                 val deviceId = intent.getStringExtra("nexo_chat_device_id")
                 if (deviceId != null) {
                     notifyListeners("onNotificationOpened", JSObject()
@@ -689,6 +696,18 @@ class NexoBlePlugin : Plugin() {
             } finally { try { c?.disconnect() } catch (e: Exception) {} }
         }.start()
     }
+
+    // 2994: aviso del sistema «Hay una versión nueva» con botón «Actualizar» (lo pide la parte web al encontrar una más nueva)
+    @PluginMethod
+    fun updateNotify(call: PluginCall) {
+        val b = call.getInt("build") ?: 0
+        val size = (call.getDouble("size") ?: 0.0).toLong()
+        if (b > 0) MsgNotifier.get(context).updateAvailable(b, size)
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun updateNotifyCancel(call: PluginCall) { MsgNotifier.get(context).cancelUpdate(); call.resolve() }
 
     @PluginMethod
     fun updateInstall(call: PluginCall) {

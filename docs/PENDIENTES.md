@@ -58,6 +58,7 @@ automático de punta a punta y que las actualizaciones sean automáticas. Orden:
 4. **Insignia en Perfil** cuando llega un diagnóstico nuevo (cola de pulido A3).
 5. **El poco uso es el problema de fondo:** más telemetría lo mide, no lo cura. Hace falta que NEXO tenga una razón de uso
    cotidiano para la gente (ver `CONVERSACION_ESTRATEGIA_2026-11-10.md`).
+6. **Bluetooth apagado: dejar de insistir y avisar** (diagnóstico del dueño 10-11 17:49, teléfono Nubia, build 2984): con «Bluetooth desactivado» la app repite «Re-búsqueda»/«Auto-scan fallo» y llega a dar un «zombi» de un enlace que no existe por Bluetooth (genera diagnósticos de ruido). Debería saltarse el escaneo y los pings BLE y mostrar «Enciende Bluetooth» una vez. Además ese teléfono tiene las notificaciones denegadas (no verá ni mensajes ni el aviso de actualización) y está en la 2984 (sin actualizador: instalar a mano la 2993+ una vez).
 Cola de tareas pequeñas para cuando el dueño no está: `docs/COLA_DE_PULIDO.md`.
 
 ## 🧭 Estrategia y negocio (conversación del dueño 10-11) — detalle en `docs/CONVERSACION_ESTRATEGIA_2026-11-10.md`

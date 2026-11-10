@@ -21,7 +21,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **Código:** builds 2974 a 2989 (`nightly-2987` publicada; 2988 = vídeos del chat perezosos; 2989 = resumen diario de uso + archivos/PDF perezosos, 160/160; 2990 = interfaz en «tú», 160/160; 2991 = pregunta única del diagnóstico para externos; 2992 = botón «Instalar actualización (N)»; 2993 = canal directo de diagnósticos a Claude + texto ocupado, 163/163); nada sin subir.
+- **Código:** builds 2974 a 2989 (`nightly-2987` publicada; 2988 = vídeos del chat perezosos; 2989 = resumen diario de uso + archivos/PDF perezosos, 160/160; 2990 = interfaz en «tú», 160/160; 2991 = pregunta única del diagnóstico para externos; 2992 = botón «Instalar actualización (N)»; 2993 = canal directo de diagnósticos a Claude + texto ocupado, 163/163; 2994 = aviso del sistema «Hay una versión nueva» con botón «Actualizar» + «Usar Tor siempre» apagado por defecto, 163/163); nada sin subir.
 - **El dueño solo tiene el S24** (tablet y vivo en la oficina). Pruebas que puede hacer solo: §A.29 y §A.30 de
   `docs/PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md`; §A.31 necesita la tablet.
 - **Decisiones del 10-11:** modelo CEO (el dueño decide, Claude ejecuta y lo guía), modo adelanto, reloj de ausencia de 5 min,
@@ -37,7 +37,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   se espera; el dueño contesta con una letra. Decir siempre qué está probado, qué está sin probar y qué es idea.
 
 
-- **Build actual:** **2993** — CANAL DIRECTO de diagnósticos a Claude (cifrado a una llave aparte por los relés; falta que el dueño guarde la llave privada como variable `NEXO_DIAG_PRIV`, ver `docs/CANAL_DIAGNOSTICO.md`) y un texto que espera detrás de otro envío ya no queda ✗.
+- **Build actual:** **2994** — AVISO DEL SISTEMA de versión nueva con botón «Actualizar» (notificación «Hay una versión nueva de NEXO (N)»; el botón abre NEXO y baja/instala; una vez por número, solo si la app no se ve; `updater.js` + `MsgNotifier.updateAvailable` + `onUpdateAction`) y «Usar Tor siempre» apagado por defecto (migración única que quita el «sí» heredado, `net_link._migrateState`). Anterior 2993: canal directo de diagnósticos (falta que el dueño guarde `NEXO_DIAG_PRIV`, ver `docs/CANAL_DIAGNOSTICO.md`).
 - **Anterior (2992):** **2992** — BOTÓN «INSTALAR ACTUALIZACIÓN»: en Perfil → Ajustes → Actualizaciones, «Buscar ahora» pasa a «Instalar actualización (N)» cuando hay una versión nueva y al tocarlo baja e instala.
 - **Anterior (2991):** **2991** — PREGUNTA ÚNICA del diagnóstico automático para probadores externos / Google Play (apagado hasta que contesten; en tus builds sigue encendido por defecto).
 - **Anterior (2990):** **2990** — INTERFAZ EN «TÚ» (D2 resuelta con tu «sentido por defecto»): sin voseo en los textos en español; una prueba lo vigila.

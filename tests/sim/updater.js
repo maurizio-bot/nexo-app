@@ -32,7 +32,9 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     beforeParse(win) {
       win.CapacitorCustomPlatform = { name: 'android' }; installWebCrypto(win);
       const pl = nA.plugin();
-      win.__upd = { checks: 0, installs: [], nextCheck: { build: 2005, tag: 'nightly-2005', url: URL_NEW, size: 25000000 }, nextInstall: { opened: true } };
+      win.__upd = { checks: 0, installs: [], nextCheck: { build: 2005, tag: 'nightly-2005', url: URL_NEW, size: 25000000 }, nextInstall: { opened: true }, notifs: [], cancels: 0 };
+      pl.updateNotify = async (a) => { win.__upd.notifs.push(a && a.build); };
+      pl.updateNotifyCancel = async () => { win.__upd.cancels++; };
       pl.updateCheck = async () => { win.__upd.checks++; return win.__upd.nextCheck; };
       pl.updateInstall = async (a) => { win.__upd.installs.push(a && a.url); return win.__upd.nextInstall; };
       win.Capacitor = { Plugins: { NexoBLE: pl } };
@@ -116,8 +118,29 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     r.abre_ya_con_instalar = !!sheet2 && /Instalar actualización \(2005\)/.test(sheet2.querySelector('#nexo-updater-now').textContent);
   }
 
+  // (7) 2994 (pedido del dueño): aviso del sistema «Hay una versión nueva» con botón «Actualizar»
+  r.visible_sin_aviso_sistema = win.__upd.notifs.length === 0;                     // con la app a la vista basta el aviso de abajo
+  win.localStorage.removeItem('nexo_upd_snooze'); win.localStorage.removeItem('nexo_upd_notified');
+  let vis = 'hidden'; Object.defineProperty(doc, 'visibilityState', { configurable: true, get: () => vis });
+  doc.dispatchEvent(new win.Event('visibilitychange')); await sleep(200);
+  r.aviso_al_salir = win.__upd.notifs.length === 1 && win.__upd.notifs[0] === 2005;      // te vas de la app con una versión pendiente
+  doc.dispatchEvent(new win.Event('visibilitychange')); await sleep(200);
+  r.una_vez_por_numero = win.__upd.notifs.length === 1;                            // no se repite para el mismo número
+  win.__upd.nextCheck = { build: 2006, tag: 'nightly-2006', url: URL_NEW.replace('2005', '2006'), size: 26000000 };
+  const n6 = await U().check(true);
+  r.numero_nuevo_avisa = n6.state === 'newer' && win.__upd.notifs.length === 2 && win.__upd.notifs[1] === 2006;
+  const instA = win.__upd.installs.length, canA = win.__upd.cancels;
+  nA.emit('onUpdateAction', { install: true, build: 2006 }); await sleep(500);        // botón «Actualizar» del aviso
+  r.boton_aviso_instala = win.__upd.installs.length === instA + 1 && win.__upd.installs[instA] === URL_NEW.replace('2005', '2006');
+  r.instalar_quita_aviso = win.__upd.cancels > canA;
+  win.__upd.nextCheck = { build: 2000, tag: 'nightly-2000', url: URL_NEW, size: 1 };
+  const canB = win.__upd.cancels;
+  await U().check(true);
+  r.al_ya_no_aplicar_quita_aviso = win.__upd.cancels > canB;
+  vis = 'visible';
+
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|Assembly timeout|net::ERR|fetch/.test(l)).slice(0, 5);
-  const keys = ['gancho', 'consulta_sola', 'aviso_con_numero', 'disponible', 'ahora_no_quita', 'auto_limitada', 'manual_consulta', 'silenciado_no_vuelve', 'sin_permiso', 'reintento_posible', 'instala', 'mismo_numero_nada', 'dev_no_consulta', 'apagado_no_consulta', 'apagado_sin_aviso', 'tarjeta_ajustes', 'buscar_ahora_informa', 'boton_pasa_a_instalar', 'boton_instala', 'abre_ya_con_instalar'];
+  const keys = ['gancho', 'consulta_sola', 'aviso_con_numero', 'disponible', 'ahora_no_quita', 'auto_limitada', 'manual_consulta', 'silenciado_no_vuelve', 'sin_permiso', 'reintento_posible', 'instala', 'mismo_numero_nada', 'dev_no_consulta', 'apagado_no_consulta', 'apagado_sin_aviso', 'tarjeta_ajustes', 'buscar_ahora_informa', 'boton_pasa_a_instalar', 'boton_instala', 'abre_ya_con_instalar', 'visible_sin_aviso_sistema', 'aviso_al_salir', 'una_vez_por_numero', 'numero_nuevo_avisa', 'boton_aviso_instala', 'instalar_quita_aviso', 'al_ya_no_aplicar_quita_aviso'];
   const ok = typeof r.aviso_s === 'number' && keys.every((k) => r[k] === true) && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('UPDATER ' + JSON.stringify(r));

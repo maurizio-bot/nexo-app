@@ -13,7 +13,7 @@
 import { t } from './i18n.js';
 import { _showToast } from './ble_helpers.js';
 
-var KEY_ON = 'nexo_updater', KEY_LAST = 'nexo_upd_last', KEY_AVAIL = 'nexo_upd_avail', KEY_SNOOZE = 'nexo_upd_snooze';
+var KEY_ON = 'nexo_updater', KEY_LAST = 'nexo_upd_last', KEY_AVAIL = 'nexo_upd_avail', KEY_SNOOZE = 'nexo_upd_snooze', KEY_NOTIFIED = 'nexo_upd_notified';
 var GAP_MS = 6 * 60 * 60 * 1000;      // una consulta cada 6 h como mucho
 var SNOOZE_MS = 24 * 60 * 60 * 1000;  // «Ahora no» calla ESE número un día
 var _busy = false, _pct = -1, _listening = false;
@@ -44,11 +44,11 @@ export function updaterCheck(manual) {
     if (r && typeof r.build === 'number' && r.build > me && /^https:\/\//.test(String(r.url || ''))) {
       _lsSet(KEY_AVAIL, JSON.stringify({ build: r.build, url: r.url, size: r.size || 0 }));
       console.log('[UPDATER] hay una versión nueva: ' + r.build + ' (esta es la ' + me + ')');
-      _renderBanner(); _emit();
+      _renderBanner(); _emit(); _maybeNotify();
       return { state: 'newer', build: r.build };
     }
     try { localStorage.removeItem(KEY_AVAIL); } catch (e) {}
-    _removeBanner(); _emit();
+    _removeBanner(); _notifyCancel(); _emit();
     if (r && typeof r.build === 'number') return { state: 'current', build: r.build };
     return { state: (r && r.reason && r.reason !== 'none') ? 'error' : 'current' };
   }).catch(function() { return { state: 'error' }; });
@@ -58,7 +58,7 @@ export function updaterCheck(manual) {
 export function updaterInstall() {
   var a = updaterAvailable(), pl = _plugin();
   if (!a || !pl || typeof pl.updateInstall !== 'function' || _busy) return Promise.resolve({ opened: false, reason: 'unavailable' });
-  _busy = true; _pct = 0; _renderBanner();
+  _busy = true; _pct = 0; _renderBanner(); _notifyCancel();
   return Promise.resolve(pl.updateInstall({ url: a.url })).then(function(r) {
     _busy = false; _pct = -1; _renderBanner();
     if (r && r.opened) { console.log('[UPDATER] instalador abierto para la ' + a.build); return r; }
@@ -86,6 +86,22 @@ function _syncSettings() {
   } catch (e) {}
 }
 
+// 2994 (pedido del dueño 10-11): aviso del sistema «Hay una versión nueva de NEXO» con botón «Actualizar». Una sola vez por número
+// de versión y solo si la app NO se está viendo (con la app a la vista ya está el aviso de abajo). «Actualizar» en el aviso abre
+// NEXO y arranca la descarga (evento nativo onUpdateAction → updaterInstall). Se quita al instalar, al descartar o si ya no aplica.
+function _notifyCancel() { try { var pl = _plugin(); if (pl && typeof pl.updateNotifyCancel === 'function') pl.updateNotifyCancel(); } catch (e) {} }
+function _maybeNotify() {
+  try {
+    var a = updaterAvailable(), pl = _plugin();
+    if (!a || !pl || typeof pl.updateNotify !== 'function' || !updaterEnabled() || _snoozed(a) || _busy) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') return;
+    if (parseInt(_lsGet(KEY_NOTIFIED), 10) === a.build) return;
+    _lsSet(KEY_NOTIFIED, String(a.build));
+    Promise.resolve(pl.updateNotify({ build: a.build, size: a.size || 0 })).catch(function() {});
+    console.log('[UPDATER] aviso del sistema por la versión ' + a.build);
+  } catch (e) {}
+}
+
 function _removeBanner() { try { var b = document.getElementById('nexo-update-banner'); if (b && b.parentNode) b.parentNode.removeChild(b); } catch (e) {} }
 
 function _renderBanner() {
@@ -107,7 +123,7 @@ function _renderBanner() {
     b.querySelector('#nexo-update-text').textContent = text;
     var now = b.querySelector('#nexo-update-now'), later = b.querySelector('#nexo-update-later');
     if (now) now.onclick = function() { updaterInstall(); };
-    if (later) later.onclick = function() { _lsSet(KEY_SNOOZE, JSON.stringify({ build: a.build, until: Date.now() + SNOOZE_MS })); _removeBanner(); };
+    if (later) later.onclick = function() { _lsSet(KEY_SNOOZE, JSON.stringify({ build: a.build, until: Date.now() + SNOOZE_MS })); _removeBanner(); _notifyCancel(); };
   } catch (e) {}
 }
 
@@ -118,10 +134,22 @@ export function updaterInit() {
     if (pl && typeof pl.addListener === 'function' && !_listening) {
       _listening = true;
       pl.addListener('onUpdateProgress', function(d) { if (d && typeof d.pct === 'number') { _pct = d.pct; _renderBanner(); } });
+      // Botón «Actualizar» del aviso del sistema: la app se abre y baja/instala (si el estado guardado ya no la ofrece, consulta antes)
+      pl.addListener('onUpdateAction', function(d) {
+        if (!d || !d.install) return;
+        console.log('[UPDATER] «Actualizar» desde el aviso del sistema');
+        if (updaterAvailable()) updaterInstall();
+        else updaterCheck(true).then(function(r) { if (r && r.state === 'newer') updaterInstall(); });
+      });
     }
     _renderBanner();
     setTimeout(function() { updaterCheck(false); }, 8000);   // sin competir con el arranque
-    document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') updaterCheck(false); });
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') updaterCheck(false);
+      else _maybeNotify();   // te vas de la app con una versión nueva pendiente → aviso del sistema (una vez por número)
+    });
+    // Con la app en segundo plano también se mira (updaterCheck se limita solo a una consulta cada 6 h)
+    setInterval(function() { updaterCheck(false); }, 30 * 60 * 1000);
   } catch (e) {}
 }
 
