@@ -9,7 +9,7 @@ import { groupAttachment, parseGroupEnvelope } from './groups.js';
 import { NET_MAX_B64_BYTES } from './media_limits.js';
 import { parseCallSignal } from './calls.js';
 import { parseGroupCallSignal } from './group_call.js';
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus, _tooBigForBt } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _attMissDecision, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus, _tooBigForBt } from './ble_helpers.js';
 import { blobPointerIn, validatePointer, fetchBlob, blobMailboxEligible, pointerReusable, loadBlobSeen, saveBlobSeen, citaIn, validateCita, loadCitaIn, saveCitaIn, loadCitaOut, saveCitaOut, _fetchRetryDelay, _b64Bytes as _blobB64Bytes, MAX_CONCURRENT as BLOB_MAX_CONCURRENT, MAILBOX_MAX_BYTES as BLOB_MAILBOX_MAX_BYTES } from '../net/blob_mailbox.js'; // Fase B (2969): buzón de ARCHIVOS
 
 
@@ -1386,7 +1386,14 @@ export const BLE_MESSAGE_METHODS = {
           // historial guarda el adjunto aparte y el texto como "[adjunto]": antes llegaba ese texto, no la nota de voz
           else if (attachmentType && attachmentPayload) txt = JSON.stringify({ type: 'attachment', attachmentType: attachmentType, payload: attachmentPayload, meta: attachmentMeta || {} });
           else if (attachmentType) {
-            console.warn('[BLEInterface] Adjunto pendiente sin sus datos (no se pudo leer del teléfono): no se reenvía', mid);
+            // 2995: no se marca ✗ a la primera (puede estar a medio escribir tras un reinicio): queda ⏳ y se reintenta; solo tras 3 fallos y 5 min
+            var miss = _attMissDecision(self._attMiss || (self._attMiss = {}), mid, Date.now());
+            if (miss === 'wait') {
+              console.log('[BLEInterface] Adjunto pendiente sin sus datos (aún no se lee del teléfono): queda ⏳ y se reintenta', mid);
+              sendNext();
+              return;
+            }
+            console.warn('[BLEInterface] Adjunto pendiente sin sus datos (no se pudo leer del teléfono tras varios intentos): no se reenvía', mid);
             _vaultUpdateMessageStatus(nexoId, mid, 'failed');
             try { if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(mid, 'failed'); } catch (e3) {}
             sendNext();

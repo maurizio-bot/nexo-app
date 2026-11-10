@@ -354,6 +354,10 @@
    },
    "modos": [
     {
+     "fallo": "Adjunto pendiente que «no se pudo leer» tras un reinicio se marcaba ✗ de inmediato y en cada reenvío (dueño 10-11); ahora ⏳ y reintento, ✗ solo tras 3 fallos y 5 min",
+     "prueba": "adjunto pendiente que aún no se lee"
+    },
+    {
      "fallo": "Reenviar un adjunto grande (APK de 25 MB) a 10 contactos a la vez cerraba la app (dueño 10-11): cada reenvío leía, guardaba, cifraba y troceaba el archivo (~4 copias de 35 MB por contacto en memoria); 2995: de a un contacto, leído una sola vez",
      "prueba": "reenviar un adjunto grande a varios chats"
     },
@@ -1244,3 +1248,7 @@
   }
  ]
 }
+    {
+     "fallo": "Bluetooth apagado: la app repetía «Auto-scan fallo»/«Re-búsqueda» y daba un «zombi» falso de un enlace que ya no existía (Nubia, dueño 10-11)",
+     "prueba": "Bluetooth APAGADO"
+    },

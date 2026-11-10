@@ -4,7 +4,7 @@
  * esperar a que un enlace esté listo.
  */
 import { t } from './i18n.js';
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _dupBleLinksToClose, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages, _wakeShouldFire, _wakeAdvance, _wakeNewEntry, WAKE_GIVEUP_MS } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _netNx, _lanNx, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _dupBleLinksToClose, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages, _wakeShouldFire, _wakeAdvance, _wakeNewEntry, WAKE_GIVEUP_MS } from './ble_helpers.js';
 
 
 export const BLE_CONNECTION_METHODS = {
@@ -58,6 +58,8 @@ export const BLE_CONNECTION_METHODS = {
     self.connectedDevices.forEach(function(device, deviceId) {
       var state = self._getDeviceState(deviceId);
       if (state.state !== BLE_STATES.READY_TO_CHAT && state.state !== BLE_STATES.NOTIFICATIONS_READY) return;
+      // 2995: con el Bluetooth apagado un enlace Bluetooth «listo» es solo un recuerdo: no se le manda ping ni se da por «zombi»
+      if (self._btIsOff() && !_netNx(deviceId) && !_lanNx(deviceId)) return;
 
       // Protección: no matar la conexión mientras se envía un archivo
       if (self._hasActiveFileTransfer(deviceId)) {
@@ -445,9 +447,24 @@ export const BLE_CONNECTION_METHODS = {
     this._processPendingMessages(deviceId);
   },
 
+  // 2995 (diagnóstico del dueño 10-11, teléfono Nubia con el Bluetooth APAGADO: «Auto-scan fallo: Bluetooth desactivado» una y otra vez, 6
+  // «Re-búsqueda» en 2 min y un «zombi» falso de un enlace Bluetooth que ya no existía, que además se mandaba al desarrollador): con el
+  // Bluetooth apagado no se busca ni se comprueba ningún enlace Bluetooth; se vuelve a mirar cada minuto y se avisa una sola vez.
+  _btIsOff() { return Date.now() < (this._btOffUntil || 0); },
+  _noteBtOff() {
+    var self = this;
+    if (!self._btOffLogged) {
+      self._btOffLogged = true;
+      console.log('[BLEInterface] Bluetooth apagado: no se busca ni se comprueban enlaces Bluetooth (se vuelve a mirar cada minuto)');
+      try { _showToast(t('bt_off_hint', 'Enciende el Bluetooth para hablar con teléfonos cercanos. Por internet sigues conectado.'), 'warn'); } catch (e) {}
+    }
+    self._btOffUntil = Date.now() + 60000;
+  },
+
   _autoScanForKnownContacts(opts) {
     var self = this;
     if (self._cameraBlePaused) return;
+    if (self._btIsOff()) return;
     if (self.isScanning) return;
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'startScan')) return;
     // Build 2838: compuerta GLOBAL antes del throttle propio — equipo que no puede escanear (error 4), enfriamiento
@@ -478,6 +495,8 @@ export const BLE_CONNECTION_METHODS = {
     _safeNativeCall(self.nativePlugin, 'startScan', { filtered: true })
       .then(function() {
         self._scanFailBackoff = 0;
+        if (self._btOffLogged) { console.log('[BLEInterface] Bluetooth encendido otra vez'); }
+        self._btOffUntil = 0; self._btOffLogged = false;
         self.isScanning = true;
         self._autoScanActive = true;
         var token = self._autoScanToken = (self._autoScanToken || 0) + 1;
@@ -496,7 +515,10 @@ export const BLE_CONNECTION_METHODS = {
             });
           }
         }, 6000);
-      }).catch(function(e) { console.warn('[BLEInterface] Auto-scan fallo:', e.message); });
+      }).catch(function(e) {
+        if (/desactivad|disabled|turned off|not enabled|bluetooth.*off/i.test(String((e && e.message) || ''))) { self._noteBtOff(); return; }
+        console.warn('[BLEInterface] Auto-scan fallo:', e.message);
+      });
   },
 
   // Build 2838: compuerta global de arranques de escaneo. ¿Está llena la ventana de Android (5/30 s)? Poda y mira.

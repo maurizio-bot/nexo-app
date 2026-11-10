@@ -515,6 +515,7 @@ var STRINGS = {
   prof_net_online: { es: "\nContactos en línea por internet: ", it: "\nContatti online tramite internet: ", en: "\nContacts online via internet: " },
   prof_net_tor: { es: "\nTor: ", it: "\nTor: ", en: "\nTor: " },
   prof_net_off: { es: "apagado", it: "spento", en: "off" },
+  bt_off_hint: { es: "Enciende el Bluetooth para hablar con teléfonos cercanos. Por internet sigues conectado.", it: "Attiva il Bluetooth per parlare con i telefoni vicini. Via internet resti connesso.", en: "Turn on Bluetooth to talk to nearby phones. You stay connected over the internet." },
   prof_net_ready: { es: "listo", it: "pronto", en: "ready" },
   prof_net_direct: { es: " contacto(s) directo por Tor", it: " contatto/i diretto tramite Tor", en: " direct contact(s) via Tor" },
   prof_net_starting: { es: "arrancando…", it: "avvio…", en: "starting…" },

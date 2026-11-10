@@ -694,3 +694,12 @@ export function _autoScanUnregister(nexoId) {
 export function _autoScanStart() {
   try { if (window.autoScan && typeof window.autoScan.start === 'function') window.autoScan.start(); } catch (e) {}
 }
+
+// 2995 (diagnóstico del dueño 10-11 12:46: la app se reinició enviando un APK de 25 MB y, al volver, el adjunto pendiente «no se pudo
+// leer del teléfono» y se marcaba ✗ de inmediato y en cada reenvío): un adjunto cuyo archivo aún no se lee (a medio escribir, disco
+// ocupado) NO pasa a ✗ a la primera: queda ⏳ y se reintenta. Solo se da por perdido tras 3 intentos fallidos Y 5 minutos desde el 1.º.
+export function _attMissDecision(memo, mid, now) {
+  var m = memo[mid] || (memo[mid] = { n: 0, t0: now });
+  m.n++;
+  return (m.n >= 3 && now - m.t0 >= 300000) ? 'fail' : 'wait';
+}
