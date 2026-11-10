@@ -103,3 +103,16 @@ los teléfonos del dueño es el prototipo de ese ciclo. Habría que revisar qué
 - Pruebas de las builds 2976 y 2977 que no necesitan segundo equipo: §A.29 y §A.30 de
   `PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md`.
 - Preparar la ruta a Google Play: compilación de producción firmada, borrador de política de privacidad, lista de permisos.
+
+## 8. Problemas y soluciones a los que se llegó (segunda parte de la conversación)
+- **Cómo consigue hoy el dueño sus diagnósticos:** pasa la app a compañeros del trabajo y les pide que se metan y le manden el
+  diagnóstico; él lo copia y lo pega a Claude. Nadie la usa entre ellos (el dueño tiene que forzarlos, no le ven propósito) y
+  muchos no actualizan. La novia la usa poco con sus hijos.
+- **Problemas:** poco uso, poca comunicación de los usuarios para saber qué analizar, poco testeo físico.
+- **Soluciones acordadas:** diagnóstico automático de punta a punta (resumen diario + canal directo a Claude) y actualizaciones
+  automáticas. Detalle y orden en `PENDIENTES.md` ⭐.
+- **Dos correcciones del dueño a Claude:** (a) el diagnóstico automático llega a su bandeja sin que el otro haga nada, pero el
+  tramo bandeja → Claude lo hace él a mano; (b) la frase «tipo WhatsApp pero mejor» es solo lo que le dice a un compañero para
+  que la pruebe, no su estrategia, y sus ideas técnicas (usuario primero, internet antes que un Bluetooth muerto, el propio
+  diagnóstico automático) han sido de lo mejor del proyecto.
+- **Cola de pulido** para cuando el dueño no tiene tiempo: `COLA_DE_PULIDO.md`.

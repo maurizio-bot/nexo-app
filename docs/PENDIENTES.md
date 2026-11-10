@@ -37,6 +37,30 @@ visibles + área 56; ajuste «Vibración al tocar» en Perfil → Ajustes (como 
 - Investigación de pruebas reales (nubes, Mobly, emuladores con Bluetooth virtual, ADB, FCM, fabricantes, privacidad):
   `docs/PRUEBAS_REALES_INVESTIGACION_2026-11-09.md`. Nivel 1 (laboratorio casero con los 3 aparatos) a pedido del dueño.
 
+## ⭐ PENDIENTES IMPORTANTES (conversación del dueño 10-11) — de aquí sale el siguiente trabajo
+Problemas acordados: **poco uso, poca comunicación de los usuarios y poco testeo físico**. Soluciones: que el diagnóstico sea
+automático de punta a punta y que las actualizaciones sean automáticas. Orden:
+1. **Actualizador automático** (lo que más le gustó al dueño). La app consulta si hay una versión nueva en los lanzamientos
+   `nightly-N` de GitHub, descarga el APK y lo instala (ya tiene el permiso de instalar y el flujo verifica la firma; Android
+   rechaza una actualización con otra llave). La primera vez pide un toque; en Android 12 o posterior las siguientes podrían ir
+   sin preguntar si NEXO queda como instalador, **a probar en el S24 (Android 16)**. Solo para el APK de probadores: la versión de
+   Google Play no puede llevar ese permiso y se actualiza por Play (la prueba cerrada de Play actualiza sola). Aviso: los
+   teléfonos que no lo tengan deben actualizarse a mano una última vez.
+2. **Resumen diario por tiempo a la bandeja** (aunque no haya fallos): versión, mensajes enviados y recibidos, cuántos
+   llegaron, tiempo mediano, enlaces usados, restricciones de batería. Solo contadores, sin contenido ni identificadores de
+   terceros. Responde «¿lo usan entre ellos?» sin preguntar. Hay que avisar bien a quien lo recibe (incluidos los hijos de la
+   novia del dueño). **Aclaración:** el diagnóstico automático por síntoma ya existe desde la 2974 y llega a la bandeja; los
+   teléfonos con una versión anterior no pueden mandarlo.
+3. **Canal directo a Claude por tiempo.** Hoy el último tramo (bandeja → Claude) es copiar y pegar, y este entorno no alcanza
+   los relés (error 403). Diseño: reporte cifrado a una **llave de diagnóstico aparte** (no la identidad del dueño), enviado por
+   los relés que la app ya usa; la mitad privada guardada como secreto en el entorno de Claude; permitir los relés en la red del
+   entorno; tarea programada que lee, descifra, analiza y deja un informe. **Visto bueno del dueño (10-11):** «lo de las llaves
+   está bien, estamos en fase de testeo». Se pedirá la aprobación del entorno en el momento.
+4. **Insignia en Perfil** cuando llega un diagnóstico nuevo (cola de pulido A3).
+5. **El poco uso es el problema de fondo:** más telemetría lo mide, no lo cura. Hace falta que NEXO tenga una razón de uso
+   cotidiano para la gente (ver `CONVERSACION_ESTRATEGIA_2026-11-10.md`).
+Cola de tareas pequeñas para cuando el dueño no está: `docs/COLA_DE_PULIDO.md`.
+
 ## 🧭 Estrategia y negocio (conversación del dueño 10-11) — detalle en `docs/CONVERSACION_ESTRATEGIA_2026-11-10.md`
 - 💡 **Plan de pago con servidor propio y buzón garantizado** (idea del dueño aprobada: «muy buena, tiene sustentabilidad, que no
   se nos olvide»): opcional, para empresas y como extra de Plus; continuidad como WhatsApp sin quitar lo gratis. Falta diseño

@@ -97,6 +97,13 @@ Equipos/Plus (§4.1). También la siembra en universidades, el piloto con una em
 Play (incluye búsqueda de marca: «Nexo» es una empresa cripto). Decisión del dueño aún pendiente: diagnóstico automático
 encendido o apagado con pregunta, sobre todo antes de dárselo a probadores externos.
 
+**📌 10-11 (2.ª) — PENDIENTES IMPORTANTES acordados con el dueño** (detalle en `docs/PENDIENTES.md` ⭐ y
+`docs/CONVERSACION_ESTRATEGIA_2026-11-10.md`): problemas = poco uso, poca comunicación de los usuarios, poco testeo físico;
+soluciones = **(1) actualizador automático** (lo que más le gustó), **(2) resumen diario a la bandeja**, **(3) canal directo a
+Claude por tiempo** (llave de diagnóstico aparte + relés permitidos en el entorno + tarea programada; el dueño dio el visto
+bueno a las llaves). Aclaración: el diagnóstico automático por síntoma existe desde la 2974; el último tramo (bandeja →
+Claude) todavía es copiar y pegar. Además, **cola de tareas de pulido** para cuando el dueño no está: `docs/COLA_DE_PULIDO.md`.
+
 **📌 09-11 (noche, 9.ª) — 2978: TU DIAGNÓSTICO DE LAS 21:58, la Wi-Fi que se cerraba «sin comprobar».** Con la tablet y con el vivo,
 siempre a los 30 s: la comprobación del enlace la contesta el JS del otro y su app estaba dormida; el nativo tenía la conexión viva. Ahora
 se espera hasta 3 min mientras el latido lo dé por vivo y a los 8 s se le manda un toque FCM (`lanverify.js`). También en ese diagnóstico:
