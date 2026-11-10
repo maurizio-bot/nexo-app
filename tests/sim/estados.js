@@ -60,6 +60,17 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#main-estados-s
   r.tira_muestra_a_A = !!chipA;
   if (chipA) { click(B.win, chipA); await sleep(300); }
   r.ver_muestra_texto = /hola mundo 24h/.test((B.win.document.getElementById('estado-view') || {}).textContent || '');
+  // 2999 (dueño 10-11): en el estado NO está el botón flotante de agregar contacto; tocar el NOMBRE abre el chat con el dueño del estado
+  { const fab = B.win.document.getElementById('ble-fab-btn');
+    r.fab_existe = !!fab;
+    r.fab_oculto_en_estado = !!fab && fab.style.display === 'none';
+    const who = B.win.document.getElementById('estado-who');
+    r.nombre_tocable = !!who && /›/.test(who.textContent);
+    if (who) { click(B.win, who); await sleep(1500); }
+    r.nombre_cierra_el_estado = !B.win.document.getElementById('estado-overlay');
+    r.nombre_abre_chat = String((B.win.NEXO.app.activeContact && B.win.NEXO.app.activeContact.nexoId) || '').toLowerCase() === idA;
+    r.fab_vuelve = !!fab && fab.style.display !== 'none';
+    await closeChat(B); }
   { const o = B.win.document.getElementById('estado-overlay'); if (o) o.remove(); }
 
   // 2b. Fase 2 (foto en el estado, #dueño): A publica un estado CON foto → le llega a B con la imagen; la tira y el
@@ -136,6 +147,7 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#main-estados-s
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|No se pudo descifrar/.test(l)).slice(0, 4);
   const ok = r.emparejados && r.llega_a_B && r.B_no_mensaje_visible && r.tira_muestra_a_A && r.ver_muestra_texto &&
+    r.fab_existe && r.fab_oculto_en_estado && r.nombre_tocable && r.nombre_cierra_el_estado && r.nombre_abre_chat && r.fab_vuelve &&
     r.foto_llega_a_B && r.tira_muestra_foto && r.ver_muestra_foto && r.boton_like && r.like_llega_a_A && r.rechaza_img_mala &&
     r.audio_llega_a_B && r.ver_muestra_audio && r.rechaza_aud_malo &&
     r.video_llega_a_B && r.ver_muestra_video && r.rechaza_vid_malo &&

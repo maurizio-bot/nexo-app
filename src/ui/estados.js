@@ -253,6 +253,25 @@ function _renderStrip() {
   });
   el.style.display = 'flex'; // siempre visible (al menos «Mi estado»)
 }
+// 2999 (dueño 10-11: «en un estado no hay razón de que esté el botón de agregar contacto»): el botón flotante de la burbuja de chat
+// (#ble-fab-btn, abre el panel «Agregar contactos») va por encima de todo; mientras hay un estado abierto (verlo o componerlo) se oculta
+// y vuelve cuando se cierra, sea por donde sea que se cierre.
+var _fabWatch = null;
+function _hideFabWhileOpen() {
+  var fab = document.getElementById('ble-fab-btn');
+  if (!fab) return;
+  if (!_fabWatch) fab.setAttribute('data-estado-prev', fab.style.display || '');
+  fab.style.display = 'none';
+  if (_fabWatch) return;
+  _fabWatch = new MutationObserver(function() {
+    if (document.getElementById('estado-overlay')) return;
+    var f = document.getElementById('ble-fab-btn');
+    if (f) { f.style.display = f.getAttribute('data-estado-prev') || ''; f.removeAttribute('data-estado-prev'); }
+    try { _fabWatch.disconnect(); } catch (e) {}
+    _fabWatch = null;
+  });
+  _fabWatch.observe(document.body, { childList: true });
+}
 function _overlay() {
   var o = document.getElementById('estado-overlay');
   if (o) o.remove();
@@ -261,6 +280,7 @@ function _overlay() {
   o.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:6000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;';
   o.addEventListener('click', function(e) { if (e.target === o) o.remove(); });
   document.body.appendChild(o);
+  _hideFabWhileOpen();
   return o;
 }
 function _compose() {
@@ -394,7 +414,15 @@ function _view(c) {
   var box = document.createElement('div');
   box.id = 'estado-view';
   box.style.cssText = 'max-width:360px;width:100%;color:#fff;display:flex;flex-direction:column;gap:10px;';
-  var who = document.createElement('div'); who.style.cssText = 'font-weight:700;color:#00c8ff;'; who.textContent = c.name;
+  // 2999 (dueño 10-11): tocar el NOMBRE del dueño del estado abre el chat con él
+  var who = document.createElement('div'); who.id = 'estado-who'; who.style.cssText = 'font-weight:700;color:#00c8ff;cursor:pointer;display:inline-flex;align-items:center;gap:6px;align-self:flex-start;padding:4px 0;';
+  who.textContent = c.name + ' ›'; who.title = t('est_open_chat', 'Abrir el chat');
+  who.addEventListener('click', function(e) {
+    e.stopPropagation();
+    var bi = window.bleInterface;
+    o.remove();
+    try { if (bi && typeof bi.openChat === 'function') bi.openChat(c.nx).catch(function() {}); } catch (err) {}
+  });
   var when = document.createElement('div'); when.style.cssText = 'font-size:12px;color:#888;'; when.textContent = _ago(c.ts);
   box.appendChild(who); box.appendChild(when);
   if (c.img) { var im = document.createElement('img'); im.src = c.img; im.style.cssText = 'width:100%;max-height:60vh;object-fit:contain;border-radius:12px;background:#000;'; box.appendChild(im); }
