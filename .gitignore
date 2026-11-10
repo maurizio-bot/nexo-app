@@ -16,3 +16,4 @@ android/build/
 android/captures/
 *.backup
 *.bak
+tools/.deps/

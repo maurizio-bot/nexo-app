@@ -19,6 +19,7 @@ import { _diagnosticText } from './diag.js';
 import { _getBLEContacts, _isResendable, _normId, _showToast } from './ble_helpers.js';
 import { _sendTextTo } from './send.js';
 import { t } from './i18n.js';
+import { diagChannelAvailable, diagChannelInit, diagChannelSend } from './diag_channel.js'; // 2992: canal directo a Claude
 
 export var DIAG_DEV_NX = 'nx1n36c283'; // el S24 del dueño (Fénix conserva el NEXO ID al cambiar de teléfono)
 var GAP_MS = 2 * 60 * 60 * 1000;       // como mucho un diagnóstico automático cada 2 h
@@ -95,20 +96,23 @@ export function autoDiagReport(kind, info) {
   var day = _dayKey(now); if (s.day !== day) { s.day = day; s.count = 0; }
   if ((s.count || 0) >= _knob('NEXO_AUTODIAG_MAX_DAY', MAX_PER_DAY)) return 'tope';
   var isDev = !!me && me === dev;
-  if (!isDev && (!dev || !_isContact(dev))) { console.log('[AUTODIAG] síntoma «' + kind + '»: el desarrollador no está entre los contactos → no se manda'); return 'sin_contacto'; }
+  var viaCh = diagChannelAvailable();            // 2992: canal directo a Claude (relés, llave de diagnóstico aparte)
+  var devOk = isDev || (!!dev && _isContact(dev));
+  if (!devOk && !viaCh) { console.log('[AUTODIAG] síntoma «' + kind + '»: el desarrollador no está entre los contactos → no se manda'); return 'sin_contacto'; }
   var text = _compose(kind, info);
+  if (viaCh) { try { diagChannelSend(kind, info, text, autoDiagBuild()); } catch (e) {} }
   if (isDev) {
     _store({ from: me, at: now, sym: kind, info: info, build: autoDiagBuild(), text: text, seen: false, local: true });
-  } else {
+  } else if (devOk) {
     var wire = JSON.stringify({ type: 'nexo_diag', v: 1, sym: kind, info: info, build: autoDiagBuild(), at: now, text: text });
     id = _sendTextTo(dev, wire, '', true);
-    if (!id) return 'no_envio';
-    _ackIds[id] = now;
+    if (!id) { if (!viaCh) return 'no_envio'; }
+    else _ackIds[id] = now;
   }
   s.lastAt = now; s.count = (s.count || 0) + 1;
   s.same = s.same || {}; s.same[key] = now;
   Object.keys(s.same).forEach(function(k) { if (now - s.same[k] > SAME_MS) delete s.same[k]; });
-  s.sent = s.sent || []; s.sent.unshift({ at: now, sym: kind, info: info, kb: _kb(text.length), id: id, ok: isDev });
+  s.sent = s.sent || []; s.sent.unshift({ at: now, sym: kind, info: info, kb: _kb(text.length), id: id, ok: isDev || !devOk });
   if (s.sent.length > SENT_MAX) s.sent.length = SENT_MAX;
   var first = !s.first; if (first) s.first = now;
   _saveState(s);
@@ -123,15 +127,17 @@ export function autoDiagReport(kind, info) {
 export function autoDiagSendSummary(day, text) {
   if (!autoDiagEnabled()) return 'apagado';
   var now = Date.now(), dev = autoDiagDevNx(), me = _me(), isDev = !!me && me === dev;
-  if (!isDev && (!dev || !_isContact(dev))) return 'sin_contacto';
+  var viaCh = diagChannelAvailable(), devOk = isDev || (!!dev && _isContact(dev));
+  if (!devOk && !viaCh) return 'sin_contacto';
   var full = 'NEXO RESUMEN DIARIO de uso · ' + day + ' · build ' + autoDiagBuild() + '\n' + String(text || '').substring(0, 4000);
   var sym = 'resumen_diario';
+  if (viaCh) { try { diagChannelSend(sym, day, full, autoDiagBuild()); } catch (e) {} }
   if (isDev) { _store({ from: me, at: now, sym: sym, info: day, build: autoDiagBuild(), text: full, seen: false, local: true }); }
-  else {
+  else if (devOk) {
     var wire = JSON.stringify({ type: 'nexo_diag', v: 1, sym: sym, info: day, build: autoDiagBuild(), at: now, text: full });
     var id = _sendTextTo(dev, wire, '', true);
-    if (!id) return 'no_envio';
-    _ackIds[id] = now;
+    if (!id) { if (!viaCh) return 'no_envio'; }
+    else _ackIds[id] = now;
   }
   _emit();
   return isDev ? 'local' : 'enviado';
@@ -197,7 +203,8 @@ export function autoDiagScanPending() {
 
 export function autoDiagInit() {
   if (typeof window === 'undefined' || window.__nexoAutoDiag) return;
-  setTimeout(function() { autoDiagAskOnce(); }, 6000);   // 2991: pregunta única (solo con NEXO_DIAG_DEFAULT = 'ask')
+  setTimeout(function() { autoDiagAskOnce(); }, 6000);
+  diagChannelInit();   // 2992: canal directo a Claude (cola de reintentos)   // 2991: pregunta única (solo con NEXO_DIAG_DEFAULT = 'ask')
   window.addEventListener('nexo:diag:symptom', function(e) { var d = (e && e.detail) || {}; try { autoDiagReport(d.kind || 'sintoma', d.info || ''); } catch (err) {} });
   // Errores de código: un rato después, para que la línea [ERROR] ya esté en el registro; cada mensaje una sola vez por sesión
   window.addEventListener('error', function(e) {

@@ -50,7 +50,7 @@ automático de punta a punta y que las actualizaciones sean automáticas. Orden:
    terceros. Responde «¿lo usan entre ellos?» sin preguntar. Hay que avisar bien a quien lo recibe (incluidos los hijos de la
    novia del dueño). **Aclaración:** el diagnóstico automático por síntoma ya existe desde la 2974 y llega a la bandeja; los
    teléfonos con una versión anterior no pueden mandarlo.
-3. **Canal directo a Claude por tiempo.** Hoy el último tramo (bandeja → Claude) es copiar y pegar, y este entorno no alcanza
+3. ✅ **Canal directo a Claude por tiempo — HECHO en la 2993 (falta que el dueño guarde `NEXO_DIAG_PRIV`; ver `docs/CANAL_DIAGNOSTICO.md`).** Hoy el último tramo (bandeja → Claude) es copiar y pegar, y este entorno no alcanza
    los relés (error 403). Diseño: reporte cifrado a una **llave de diagnóstico aparte** (no la identidad del dueño), enviado por
    los relés que la app ya usa; la mitad privada guardada como secreto en el entorno de Claude; permitir los relés en la red del
    entorno; tarea programada que lee, descifra, analiza y deja un informe. **Visto bueno del dueño (10-11):** «lo de las llaves

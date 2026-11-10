@@ -21,12 +21,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **Código:** builds 2974 a 2989 (`nightly-2987` publicada; 2988 = vídeos del chat perezosos; 2989 = resumen diario de uso + archivos/PDF perezosos, 160/160; 2990 = interfaz en «tú», 160/160; 2991 = pregunta única del diagnóstico para externos; 2992 = botón «Instalar actualización (N)» en Ajustes, 161/161; en curso 2993 = canal directo de diagnósticos a Claude + texto ocupado); nada sin subir.
+- **Código:** builds 2974 a 2989 (`nightly-2987` publicada; 2988 = vídeos del chat perezosos; 2989 = resumen diario de uso + archivos/PDF perezosos, 160/160; 2990 = interfaz en «tú», 160/160; 2991 = pregunta única del diagnóstico para externos; 2992 = botón «Instalar actualización (N)»; 2993 = canal directo de diagnósticos a Claude + texto ocupado, 163/163); nada sin subir.
 - **El dueño solo tiene el S24** (tablet y vivo en la oficina). Pruebas que puede hacer solo: §A.29 y §A.30 de
   `docs/PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md`; §A.31 necesita la tablet.
 - **Decisiones del 10-11:** modelo CEO (el dueño decide, Claude ejecuta y lo guía), modo adelanto, reloj de ausencia de 5 min,
   una tarea aburrida al día, preguntas ¿para quién? ¿qué resuelve? antes de funciones nuevas. Todo en `docs/COMO_TRABAJAMOS.md`.
-- **Importantes por hacer (orden):** (1) ✅ actualizador automático (2986; falta tu prueba en el S24); (2) resumen diario a la
+- **Importantes por hacer (orden):** (1) ✅ actualizador automático (2986/2992; falta tu prueba de instalación real); (3) ✅ canal directo a Claude (2993; falta la variable `NEXO_DIAG_PRIV`); (2) resumen diario a la
   bandeja; (3) canal directo a Claude por tiempo (el dueño dio el visto bueno a las llaves); detalle en `docs/PENDIENTES.md` ⭐.
 - **Cola de pulido:** `docs/COLA_DE_PULIDO.md`, A1 (2979), A2 (2980), A1b (2981), A3 (2982), A5 (2983) y A6 (2984) hechas; la cola autónoma está AGOTADA: A4 se investigó y se dejó (ver `docs/COLA_DE_PULIDO.md`, es de vídeos propios y toca el visor); lo que sigue es B (necesita teléfono), C (decisiones del dueño) y los importantes (actualizador automático, resumen diario, canal directo a Claude). Ideas en `docs/IDEAS.md`.
 - **Estrategia y negocio:** `docs/CONVERSACION_ESTRATEGIA_2026-11-10.md` (plan de pago opcional con servidor propio y buzón
@@ -37,7 +37,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   se espera; el dueño contesta con una letra. Decir siempre qué está probado, qué está sin probar y qué es idea.
 
 
-- **Build actual:** **2992** — BOTÓN «INSTALAR ACTUALIZACIÓN»: en Perfil → Ajustes → Actualizaciones, «Buscar ahora» pasa a «Instalar actualización (N)» cuando hay una versión nueva y al tocarlo baja e instala.
+- **Build actual:** **2993** — CANAL DIRECTO de diagnósticos a Claude (cifrado a una llave aparte por los relés; falta que el dueño guarde la llave privada como variable `NEXO_DIAG_PRIV`, ver `docs/CANAL_DIAGNOSTICO.md`) y un texto que espera detrás de otro envío ya no queda ✗.
+- **Anterior (2992):** **2992** — BOTÓN «INSTALAR ACTUALIZACIÓN»: en Perfil → Ajustes → Actualizaciones, «Buscar ahora» pasa a «Instalar actualización (N)» cuando hay una versión nueva y al tocarlo baja e instala.
 - **Anterior (2991):** **2991** — PREGUNTA ÚNICA del diagnóstico automático para probadores externos / Google Play (apagado hasta que contesten; en tus builds sigue encendido por defecto).
 - **Anterior (2990):** **2990** — INTERFAZ EN «TÚ» (D2 resuelta con tu «sentido por defecto»): sin voseo en los textos en español; una prueba lo vigila.
 - **Anterior (2989):** **2989** — RESUMEN DIARIO de uso al desarrollador (solo números, una vez al día, mismo interruptor del diagnóstico automático) y archivos/PDF del chat sin leerse al abrir (un PDF «no legible» ya no se reintenta).

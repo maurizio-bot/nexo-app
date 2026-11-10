@@ -153,6 +153,7 @@ const NET_FILE_CHUNK = 16000;   // un evento de relé admite ~64 KB (con cifrado
 // TOR DIRECTO (sin relés, sin tope de tamaño). Umbral en caracteres base64 (~16 M ≈ 12 MB reales). Configurable en pruebas.
 const NET_TOR_PREFER_BYTES = 16000000;
 const NET_TOR_PREFER_CHUNKS = 1000;   // del lado del que recibe: tantos trozos de 16 KB ≈ 12 MB → archivo grande, arranca Tor
+var TEXT_BUSY_GRACE_MS = 180000;   // 2993: cuánto puede un texto esperar sin gastar reintentos detrás de otro envío (ver _onWindowTimeout)
 var LINK_DOWN_WAIT_FILE_MS = 15000; // y para un archivo por internet (mantiene vivo el toque de despertador)
 var LINK_DOWN_WAIT_MAX_MS = 30000; // 2985: tope de la espera con el enlace caído (ver _onWindowTimeout)
 const NET_CHAT_CHUNK = 8000;
@@ -328,6 +329,17 @@ export class BleAckSystem {
     var id = _normMac(deviceId), now = Date.now(), busy = false;
     this.outgoingStreams.forEach(function(s) { if (!busy && s && !s.aborted && _normMac(s.deviceId) === id && now - (s.lastAckAt || s.startTime || now) < XFER_STUCK_MS) busy = true; });
     this.incomingBuffers.forEach(function(b) { if (!busy && b && _normMac(b.deviceId) === id && now - (b.lastActivity || 0) < 30000) busy = true; });
+    return busy;
+  }
+  // 2993 (diagnóstico automático del dueño, vivo 10-11 16:46: un mensaje de grupo al tablet, por el puente del S24, agotó sus 8 reintentos —31 s—
+  // y quedó ✗ mientras una foto de 212 KB salía por ese mismo Bluetooth): ¿hay OTRO envío avanzando ahora (ACKs en los últimos 8 s)?
+  // Mientras sí, un texto que espera no gasta reintentos (la radio está ocupada, no muerta).
+  _otherProgressing(excludeMsgId) {
+    var now = Date.now(), busy = false;
+    this.outgoingStreams.forEach(function(st, id) {
+      if (busy || id === excludeMsgId || !st || st.aborted) return;
+      if (st.lastAckAt && now - st.lastAckAt < 8000) busy = true;
+    });
     return busy;
   }
   // #dueño 05-11: ¿hay un envío INTERACTIVO (texto/foto/sticker, no un archivo grande) activo AHORA? Si sí, un archivo
@@ -2402,6 +2414,15 @@ ChatStream.prototype._onWindowTimeout = function() {
       self._giveUpPending();
       return;
     }
+    // 2993: un TEXTO cuya ventana vence mientras otro envío avanza por la radio no gasta reintento ni reenvía (sería más carga): espera con
+    // backoff (3,8 → 7,6 → 15 s) hasta TEXT_BUSY_GRACE_MS desde que arrancó; pasado eso, o sin otro envío avanzando, el presupuesto de siempre.
+    if (self.type !== 'file' && Date.now() - self.startTime < TEXT_BUSY_GRACE_MS && self.ackSystem._otherProgressing(self.msgId)) {
+      self._busyWaitMs = Math.min(Math.max((self._busyWaitMs || 0) * 2, self.windowTimeoutMs), 15000);
+      console.log('[ChatStream] Ventana sin ACK mientras otro envío avanza por la radio: espero sin gastar reintento (reviso en ' + Math.round(self._busyWaitMs / 1000) + ' s) msgId=' + self.msgId);
+      self._startWindowTimer(self._busyWaitMs);
+      return;
+    }
+    self._busyWaitMs = 0;
     self.windowRetryCount++;
     if (self.windowRetryCount > self.maxWindowRetries) {
       // #dueño 08-11: un archivo por INTERNET a un contacto ALCANZABLE NO aborta ni pide reintentar: resetea el contador,

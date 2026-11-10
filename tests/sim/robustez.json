@@ -220,6 +220,10 @@
     {
      "fallo": "2989 (diagnóstico del dueño con la 2987, 10-11): al abrir cada chat los archivos (PDF, zip…) también se leían enteros del disco y un PDF «no legible» («Miniatura PDF: PDF no legible») se volvía a probar en CADA apertura. Ahora la tarjeta de archivo no lee el archivo hasta tocarla y un PDF que ya falló se anota (meta.thumbFailed) y no se reintenta",
      "prueba": "fotos en el chat: miniatura al abrir"
+    },
+    {
+     "fallo": "2993 (diagnóstico automático del dueño, vivo 10-11 16:46, build 2987, síntoma «reintentos»): un mensaje de GRUPO al tablet, que va por el puente del S24, agotó sus 8 reintentos de ventana en 31 s y quedó ✗ mientras una foto de 212 KB salía por ese mismo Bluetooth (la radio estaba ocupada, no muerta). Ahora un texto cuya ventana vence mientras otro envío avanza (ACKs en los últimos 8 s) espera con backoff hasta 3 min sin gastar reintento ni reenviar",
+     "prueba": "un texto que espera mientras otro envío avanza"
     }
    ],
    "debiles": [
