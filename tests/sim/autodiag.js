@@ -8,7 +8,8 @@
 //   (3) B apagado (fuera de alcance): el diagnóstico queda pendiente y llega solo cuando B vuelve (misma cola que un mensaje).
 //   (4) el propio desarrollador: su síntoma va directo a su bandeja, sin viajar.
 //   (5) pendiente VIEJO con el contacto alcanzable (barrido): se detecta y se manda como síntoma, una sola vez.
-//   (6) el texto para copiar incluye los recibidos; «marcar vistos» deja 0 nuevos.
+//   (6) el texto para copiar incluye los recibidos; «marcar vistos» deja 0 nuevos; el icono de Perfil muestra un puntito mientras
+//       haya nuevos (A3, 2982) y lo quita al marcarlos.
 // Uso: node autodiag.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -124,15 +125,20 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
   const txt = adB().text(true);
   r.texto_copiar_ok = txt.indexOf('DIAGNÓSTICO AUTOMÁTICO de ' + idA) >= 0 && txt.indexOf('síntoma: zombi') >= 0 && txt.indexOf('síntoma: pendiente_viejo') >= 0;
   r.nuevos_antes = adB().newCount();
+  // A3 (2982): puntito en el icono de Perfil mientras haya diagnósticos sin leer; se quita al marcarlos vistos
+  const dotB = () => B.win.document.getElementById('nexo-profile-badge');
+  r.insignia_con_nuevos = !!dotB() && B.win.document.getElementById('nexo-profile-btn').getAttribute('data-badge') === String(r.nuevos_antes);
+  r.insignia_solo_dev = !A.win.document.getElementById('nexo-profile-badge');
   adB().markSeen();
   r.nuevos_despues = adB().newCount();
+  r.insignia_se_quita = !dotB() && !B.win.document.getElementById('nexo-profile-btn').hasAttribute('data-badge');
   r.sin_contenido_de_mensajes = txt.indexOf('hola B') < 0 && txt.indexOf('hola A') < 0;
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|Assembly timeout|net::ERR|fetch/.test(l)).slice(0, 5);
   const nums = ['emparejados_s', 'llega_a_B_s', 'A_ve_tick_s', 'bt_de_nuevo_s', 'llega_al_volver_s', 'viejo_llega_s'];
   const ok = r.modulo_activo && nums.every((k) => typeof r[k] === 'number') && r.evento_sintoma_manda && r.remitente_ok && r.sintoma_ok && r.texto_es_diagnostico && r.sin_burbuja_en_B && r.sin_burbuja_en_A &&
     r.estado_enviado && r.mismo_sintoma_repetido && r.otro_sintoma_espera_2h && r.apagado_no_manda && r.tope_diario && r.bandeja_B_sigue_1 && r.B_fuera && r.sintoma_con_B_ausente === 'enviado' &&
-    r.no_llega_mientras_B_ausente && r.pendiente_entregado && r.dev_propio && r.barrido_detecta_viejo && r.barrido_no_repite && r.texto_copiar_ok && r.nuevos_antes === 4 && r.nuevos_despues === 0 && r.sin_contenido_de_mensajes && !r.errores.length;
+    r.no_llega_mientras_B_ausente && r.pendiente_entregado && r.dev_propio && r.barrido_detecta_viejo && r.barrido_no_repite && r.texto_copiar_ok && r.nuevos_antes === 4 && r.nuevos_despues === 0 && r.insignia_con_nuevos && r.insignia_solo_dev && r.insignia_se_quita && r.sin_contenido_de_mensajes && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('AUTODIAG ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_autodiag.txt'), logs.join('\n'));

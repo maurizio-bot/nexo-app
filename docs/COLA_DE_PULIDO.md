@@ -18,7 +18,7 @@ estéticos; cosas que me puedas dejar como actividades cuando no tengo tiempo de
 |---|---|---|---|
 | A1 ✅ | **Textos sueltos** (hecho en la build 2979, 10-11; ver abajo): buscar textos fijos que no pasan por el traductor, o cortados, o en inglés dentro del español (el dueño lo pidió en la ronda 2771) y revisar que las claves nuevas de esta semana existan en español, italiano e inglés | S–M | Un script que lista textos fuera de `t()` y claves que faltan en algún idioma; la batería |
 | A2 ✅ | **Capturas de las pantallas principales** (lista de contactos, chat, Perfil, Ajustes, Agregar, llamada) en Chromium con tamaño de teléfono; buscar desalineaciones, textos cortados, contraste bajo, botones muy juntos | M | Informe con capturas y lista de hallazgos; se corrigen los claros |
-| A3 | **Insignia en el icono de Perfil** cuando llega un diagnóstico nuevo a la bandeja (sigue de la 🩺 de `PENDIENTES.md`) | S | `autodiag.js` ampliado |
+| A3 ✅ | **Insignia en el icono de Perfil** cuando llega un diagnóstico nuevo a la bandeja (sigue de la 🩺 de `PENDIENTES.md`) | S | `autodiag.js` ampliado |
 | A4 | **Fotos HD perezosas al abrir un chat:** pintar con la previa y cargar el HD al tocar (hoy cada foto grande se lee del disco, unos 450 ms cada una) | M | Prueba de carga del chat en Chromium; contar lecturas |
 | A5 | **Borrar un sticker propio** desde el selector (la función `removeUserSticker` ya existe, falta el botón) | S | Prueba del selector |
 | A6 | **Pasada «usuario nuevo» por Perfil y Ajustes:** orden de las secciones, nombres claros, nada duplicado (con capturas de A2) | M | Capturas antes y después |
@@ -45,6 +45,8 @@ estéticos; cosas que me puedas dejar como actividades cuando no tengo tiempo de
   (se dejan).
 
 - **A2 (10-11, build 2980):** `ui_shots.js` ya salta nombre y bienvenida y saca 15 capturas. Sin textos cortados ni botones montados. Arreglado: enlaces del Perfil pegados y 5 textos fijos de Agregar contactos. **A1b (build 2981, hecho):** 14 avisos más pasaron a `t()` y la auditoría suma un tope de textos fijos en español (25, solo baja). Quedan ~25 candidatos, casi todos razones internas (`ble_ack.js`, `wifi_direct.js`…) y los avisos de `media_limits.js` (pruebas dependen del texto). Voseo visible: «vos elegís» en Perfil (D2).
+
+- **A3 (10-11, build 2982):** punto rojo en el icono 👤 de la cabecera mientras haya diagnósticos recibidos sin leer; se quita al copiarlos/marcarlos vistos. Prueba en `autodiag.js`.
 
 ## Decisiones nuevas que salieron de las tareas
 - **D2 (para el dueño): ¿en qué español van los textos de la app?** Hoy se mezclan «tú» y voseo: 39 formas (seguí, abrí, tocá, podés,

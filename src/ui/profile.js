@@ -7,7 +7,7 @@
 import { haptic, hapticMode, setHapticMode } from './haptics.js'; // NEXO Touch (2968): ajuste «Vibración al tocar»
 import { securitySectionHtml, renderSecuritySection } from './app_lock.js';
 import { _diagnosticText } from './diag.js';
-import { autoDiagInnerHtml, renderAutoDiagSection } from './autodiag.js'; // 2974: diagnóstico automático al desarrollador
+import { autoDiagInnerHtml, renderAutoDiagSection, autoDiagNewCount } from './autodiag.js'; // 2974: diagnóstico automático al desarrollador
 import { startReceiveAccount, startSendAccount } from './move_account.js';
 import { clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
 import { myProfile, setMyProfile } from './profile_data.js';
@@ -375,6 +375,23 @@ export function installProfileButton() {
   if (getComputedStyle(header).position === 'static') header.style.position = 'relative';
   b.addEventListener('click', function(e) { e.stopPropagation(); _openProfileSheet(); });
   header.appendChild(b);
+  // 2982 (A3): puntito en el icono de Perfil cuando hay diagnósticos recibidos sin leer (solo le pasa al desarrollador)
+  window.addEventListener('nexo:autodiag:changed', _refreshProfileBadge);
+  _refreshProfileBadge();
+}
+
+export function _refreshProfileBadge() {
+  var b = document.getElementById('nexo-profile-btn'); if (!b) return;
+  var n = 0; try { n = autoDiagNewCount(); } catch (e) {}
+  var dot = document.getElementById('nexo-profile-badge');
+  if (!n) { if (dot) dot.remove(); b.removeAttribute('data-badge'); return; }
+  if (!dot) {
+    dot = document.createElement('span'); dot.id = 'nexo-profile-badge';
+    dot.style.cssText = 'position:absolute;top:4px;right:4px;min-width:10px;height:10px;border-radius:5px;background:#ff4d6d;box-shadow:0 0 0 2px rgba(10,12,24,0.95);pointer-events:none;';
+    b.appendChild(dot);
+  }
+  b.setAttribute('data-badge', String(n));
+  b.title = t('prof_title', 'Perfil') + ' · ' + n + ' ' + t('autodiag_new', 'nuevos');
 }
 
 // Ronda 2765: qué falta para que los avisos lleguen con la pantalla apagada (cada cosa con su botón para arreglarla)
