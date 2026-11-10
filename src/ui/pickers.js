@@ -71,7 +71,7 @@ export async function _handleGallery() {
     var picked = _capAttachments(files, GALLERY_MAX);
     if (picked.dropped > 0) {
       console.log('[ATTACH] Galería: ' + (picked.send.length + picked.dropped) + ' elegidas, mando ' + picked.send.length + ' (tope ' + GALLERY_MAX + ')');
-      try { _showInfoToast(t('misc_gallery_cap', 'Hasta ' + GALLERY_MAX + ' a la vez: mando las primeras ' + GALLERY_MAX + '.'), 4500); } catch (e) {}
+      try { _showInfoToast(t('misc_gallery_cap', 'Hasta {n} a la vez: mando las primeras {n}.').replace(/\{n\}/g, GALLERY_MAX), 4500); } catch (e) {}
     }
     _sendGalleryItems(picked.send, 0);
   }, true);

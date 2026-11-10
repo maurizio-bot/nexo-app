@@ -16,7 +16,7 @@ estéticos; cosas que me puedas dejar como actividades cuando no tengo tiempo de
 ## A. Autónomas (no necesitan teléfono)
 | # | Tarea | Tamaño | Cómo se comprueba |
 |---|---|---|---|
-| A1 | **Textos sueltos:** buscar textos fijos que no pasan por el traductor, o cortados, o en inglés dentro del español (el dueño lo pidió en la ronda 2771) y revisar que las claves nuevas de esta semana existan en español, italiano e inglés | S–M | Un script que lista textos fuera de `t()` y claves que faltan en algún idioma; la batería |
+| A1 ✅ | **Textos sueltos** (hecho en la build 2979, 10-11; ver abajo): buscar textos fijos que no pasan por el traductor, o cortados, o en inglés dentro del español (el dueño lo pidió en la ronda 2771) y revisar que las claves nuevas de esta semana existan en español, italiano e inglés | S–M | Un script que lista textos fuera de `t()` y claves que faltan en algún idioma; la batería |
 | A2 | **Capturas de las pantallas principales** (lista de contactos, chat, Perfil, Ajustes, Agregar, llamada) en Chromium con tamaño de teléfono; buscar desalineaciones, textos cortados, contraste bajo, botones muy juntos | M | Informe con capturas y lista de hallazgos; se corrigen los claros |
 | A3 | **Insignia en el icono de Perfil** cuando llega un diagnóstico nuevo a la bandeja (sigue de la 🩺 de `PENDIENTES.md`) | S | `autodiag.js` ampliado |
 | A4 | **Fotos HD perezosas al abrir un chat:** pintar con la previa y cargar el HD al tocar (hoy cada foto grande se lee del disco, unos 450 ms cada una) | M | Prueba de carga del chat en Chromium; contar lecturas |
@@ -35,3 +35,18 @@ estéticos; cosas que me puedas dejar como actividades cuando no tengo tiempo de
 - **Diagnóstico automático:** encendido por defecto o apagado con una pregunta única (importante antes de darle la app a
   probadores externos).
 - **Búsqueda de marca** de «Nexo» (empresa de criptomonedas con marcas registradas) antes de Google Play.
+
+## Hecho
+- **A1 (10-11, modo adelanto, build 2979):** `tests/sim/i18n_audit.js` (ahora en la batería, `I18NAUDIT`) revisa que toda clave usada con
+  `t()` exista en la tabla con español, italiano e inglés. Encontró **60 textos sin traducir** (Estados, menú de juegos, datos y fondo de
+  pantalla del Perfil, fondos por chat, tarjeta de archivo pendiente, Tetris) que en italiano e inglés salían en español; se agregaron.
+  La frase armada por partes de la galería (`Hasta N a la vez…`) pasó a un marcador `{n}`. Las 16 traducciones iguales al español que
+  marca la auditoría son palabras iguales en los idiomas (Foto, Error, Stickers…), correctas. Hay 25 claves de la tabla que nadie usa
+  (se dejan).
+
+## Decisiones nuevas que salieron de las tareas
+- **D2 (para el dueño): ¿en qué español van los textos de la app?** Hoy se mezclan «tú» y voseo: 39 formas (seguí, abrí, tocá, podés,
+  tenés, escribí, mandá, elegís, vos…) en 23 archivos. Opciones: **A.** todo a «tú» neutro (Claude lo cambia y la batería lo
+  comprueba); **B.** dejarlo como está. Recomendación: A, porque el dueño escribe con «tú» y una app con dos tratos se nota. Si se
+  espera, queda B.
+
