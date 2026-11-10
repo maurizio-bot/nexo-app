@@ -97,11 +97,14 @@ Equipos/Plus (§4.1). También la siembra en universidades, el piloto con una em
 Play (incluye búsqueda de marca: «Nexo» es una empresa cripto). Decisión del dueño aún pendiente: diagnóstico automático
 encendido o apagado con pregunta, sobre todo antes de dárselo a probadores externos.
 
-**📌 10-11 (3.ª) — `docs/COMO_TRABAJAMOS.md` (LEER después de este archivo):** el dueño pidió que Claude anote su análisis sin
-matices (de él, del desarrollo y de Claude) y proponga cómo resolverlo. Contiene 7 propuestas (decisiones con plazo y valor por
-defecto, lo aburrido lo carga Claude, una tarea aburrida por sesión, regla de alcance, fase de simplificar, más probadores y
-auditoría, resumen de arranque), **todas pendientes de que el dueño diga cuáles acepta**, y 4 reglas que Claude se aplica desde
-ya (leer antes de proponer, decir qué está probado, no llamar «automático» sin el tramo manual, preguntar antes de corregir).
+**📌 10-11 (3.ª) — `docs/COMO_TRABAJAMOS.md` (LEER después de este archivo).** El dueño aceptó el **modelo de delegación**: él decide
+lo importante (dirección, dinero, marca, publicar, datos de usuarios, seguridad, lo irreversible) y Claude ejecuta, decide lo
+pequeño, lo guía, lo corrige y le da opciones; las ideas que llegan de repente se anotan en `docs/IDEAS.md` con tres preguntas
+(¿para quién?, ¿qué resuelve?, ¿cómo sabremos que funcionó?) antes de construirlas. Aceptó también **una tarea aburrida al día**
+(`docs/COLA_DE_PULIDO.md`) y las preguntas de alcance. Siguen pendientes de su OK: P1 (decisiones con plazo), P5 (simplificar),
+P6 (más probadores y auditoría), P7 (resumen de arranque). **Decisión D1 abierta:** ¿se programa una sesión diaria que haga sola
+una tarea de la cola? Recomendación de Claude: sí, pero en una rama aparte (`pulido`) que el dueño mezcla con una palabra; así
+nada llega a los teléfonos sin su visto bueno, sobre todo cuando exista el actualizador automático.
 
 **📌 10-11 (2.ª) — PENDIENTES IMPORTANTES acordados con el dueño** (detalle en `docs/PENDIENTES.md` ⭐ y
 `docs/CONVERSACION_ESTRATEGIA_2026-11-10.md`): problemas = poco uso, poca comunicación de los usuarios, poco testeo físico;

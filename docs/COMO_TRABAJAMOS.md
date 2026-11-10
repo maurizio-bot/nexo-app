@@ -4,7 +4,8 @@ Pedido del dueño (10-11-2026), después de pedirle a Claude una opinión sin ma
 razón en muchos aspectos y lo reconozco […] espero me puedas apoyar buscando soluciones a problemas que yo no estoy
 resolviendo […] esos análisis deberías tomarlos en cuenta y apuntarlos para pensar cómo resolverlos».
 
-**Estado: PROPUESTAS. Nada de la sección 3 se aplica hasta que el dueño diga cuáles acepta** (se marca abajo).
+**Estado (10-11): el dueño aceptó P2, P3, P4 y el modelo de delegación (P8, secciones 5 y 6). P1 y P5 a P7 siguen pendientes de su OK;
+lo pendiente no se aplica** (se marca en la tabla).
 **Instrucción para Claude en cada sesión:** leer este documento después de `ESTADO.md`, aplicar lo aceptado, no aplicar lo
 no aceptado, y actualizar la sección 4.
 
@@ -43,12 +44,13 @@ La idea de fondo: **el aburrimiento no se arregla con fuerza de voluntad, se rod
 | # | Propuesta | Qué problema ataca | ¿Aceptada? |
 |---|---|---|---|
 | P1 | **Decisiones con plazo y valor por defecto.** Cada decisión pendiente del dueño se lista con una recomendación de Claude y una fecha. Si pasa la fecha sin respuesta, se aplica la recomendación (salvo en seguridad, dinero o cosas irreversibles, donde nunca se asume) | Decisiones que esperan semanas | pendiente |
-| P2 | **Lo aburrido lo carga Claude por defecto.** La cola de `COLA_DE_PULIDO.md` y las limpiezas (textos, archivos grandes, documentación) son de Claude; al dueño solo le toca probar 2 o 3 cosas cortas | Pereza con lo aburrido | pendiente |
-| P3 | **Una tarea aburrida por sesión.** Cada vez que el dueño pida algo, Claude cierra además una tarea pequeña de la cola y lo dice al final | Que lo aplazado nunca se vea | pendiente |
-| P4 | **Regla de alcance:** mientras el índice de robustez esté por debajo de 70, cada función nueva grande se discute primero con una frase: ¿para quién es y qué problema resuelve? Lo que no la tenga, espera | Abarcar demasiado | pendiente |
+| P2 | **Lo aburrido lo carga Claude por defecto.** La cola de `COLA_DE_PULIDO.md` y las limpiezas (textos, archivos grandes, documentación) son de Claude; al dueño solo le toca probar 2 o 3 cosas cortas | Pereza con lo aburrido | **aceptada 10-11** |
+| P3 | **Una tarea aburrida por sesión.** Cada vez que el dueño pida algo, Claude cierra además una tarea pequeña de la cola y lo dice al final | Que lo aplazado nunca se vea | **aceptada 10-11** |
+| P4 | **Regla de alcance:** mientras el índice de robustez esté por debajo de 70, cada función nueva grande se discute primero con una frase: ¿para quién es y qué problema resuelve? Lo que no la tenga, espera | Abarcar demasiado | **aceptada 10-11** |
 | P5 | **Fase de simplificar** cada cierto tiempo: Claude propone una limpieza acotada (por ejemplo partir `ble_ack.js` en módulos) con pruebas antes y después, sin cambiar el comportamiento | Parches sobre parches | pendiente |
 | P6 | **Más ojos humanos:** programa corto de probadores con una misión concreta por semana («mandá una foto de 5 MB», «llamá desde el sótano»), y plan de auditoría de seguridad externa | Casi único probador; falta de revisión humana | pendiente |
 | P7 | **Resumen de arranque.** Al empezar cada sesión Claude muestra en 5 líneas: lo urgente, las 3 decisiones que esperan, lo que quedó probado y lo que no | Memoria entre sesiones | pendiente |
+| P8 | **Modelo de delegación («CEO y ejecución»).** El dueño decide lo importante; Claude ejecuta y decide lo pequeño; Claude además guía: corrige, da opciones y frena con una pregunta cuando llega una idea impulsiva | Perder la visión completa por ideas que llegan de repente | **aceptada 10-11** |
 
 **Reglas que Claude se aplica desde ya** (corrección propia, no necesitan aprobación):
 1. Antes de proponer una idea de negocio o de producto, leer lo que ya existe en los documentos.
@@ -56,5 +58,34 @@ La idea de fondo: **el aburrimiento no se arregla con fuerza de voluntad, se rod
 3. No llamar «automático» a algo sin decir qué tramo sigue siendo manual.
 4. Ante una frase del dueño que parezca floja, preguntar antes de corregirla.
 
-## 4. Registro (Claude lo actualiza)
-- 10-11-2026: documento creado; ninguna propuesta aceptada todavía.
+## 4. Reparto de decisiones (modelo de delegación aceptado el 10-11)
+Dicho por el dueño: «en una empresa grande hay un CEO que toma las decisiones importantes y lo demás lo delega; yo me dedicaría a
+decidir y tú a la ejecución; y tú también estás para corregirme y darme opciones».
+
+| Quién | Qué |
+|---|---|
+| **Decide el dueño** | Dirección del producto y del negocio; dinero y precios; nombre y marca; país; publicar en tiendas; qué datos se recogen de las personas y cómo se avisa; cambios de diseño en seguridad o cifrado; aceptar un riesgo; cualquier cosa pública o irreversible |
+| **Claude propone y el dueño aprueba con una palabra** | Funciones nuevas; cambios que el usuario nota mucho; cambios de protocolo (afectan a versiones viejas); permisos o envíos de datos nuevos; abrir salida de red del entorno de Claude |
+| **Claude decide y avisa después** | Arreglo de fallos; pulido visual menor; textos y traducciones; pruebas; limpiezas sin cambio de comportamiento con la batería en verde; documentación; el orden de la cola de pulido |
+
+**Formato de las decisiones para el dueño** (para que decidir sea barato): una línea de qué hay que decidir, 2 o 3 opciones, la
+recomendación de Claude y qué pasa si se espera. El dueño contesta con una letra. Claude no empuja decisiones que no sean suyas.
+
+**Límite honesto:** Claude ejecuta pero no es infalible. Lo delegado se comprueba con la batería, con las pruebas cortas del
+dueño en su teléfono y, para seguridad, con una auditoría humana externa.
+
+## 5. Estacionamiento de ideas (para las ideas que llegan de repente)
+La idea no se descarta ni se construye al momento: **se anota en `docs/IDEAS.md` con tres preguntas** (¿para quién?, ¿qué
+problema resuelve?, ¿cómo sabremos que funcionó?), Claude da su opinión y una opción de tamaño, y el dueño decide si pasa a la
+cola, se pospone o se descarta. Si el dueño dice «urgente», se hace primero sin trámite.
+
+## 6. Una tarea aburrida al día
+Aceptada. Mientras no haya sesión automática, Claude cierra **una tarea de `COLA_DE_PULIDO.md` en cada sesión** y lo dice al
+final. Falta decidir si se programa una sesión diaria que lo haga sola (ver la decisión D1 en `ESTADO.md`).
+
+## 7. Registro (Claude lo actualiza)
+- 10-11-2026: documento creado.
+- 10-11-2026: el dueño acepta P2, P3, P4 y el modelo de delegación (P8): «una tarea aburrida al día» y las preguntas ¿para qué?, ¿qué
+  resuelve?, ¿para quién?. Aclara que no toma el análisis como regaño sino como crítica constructiva. Se describe como
+  impulsivo con las ideas que le llegan, y pide que Claude lo guíe, lo corrija y le dé opciones.
+
