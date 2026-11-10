@@ -122,6 +122,19 @@ turnos, así que lo mide con un mensaje programado:
    a mitad de la tarea y Claude lo atiende; si interrumpe demasiado, se sube el plazo. Si la sesión se cierra por el límite de
    uso, el aviso puede no entregarse: no está probado.
 
+**Modelo y costo (aclarado con el dueño, 10-11).**
+- El modelo de una sesión lo elige **el dueño** con `/model`; Claude no puede cambiarlo. Los avisos programados de esa sesión
+  (reloj de ausencia) corren con el mismo modelo. Hoy: Sonnet 5.5, elegido por el dueño para conversar.
+- Lo que sí puede Claude: delegar subtareas a subagentes con otro modelo, y crear sesiones nuevas con un modelo elegido (por
+  ejemplo una sesión programada y corta con modelo liviano). Cambiar el modelo de una tarea programada solo si el dueño lo pide.
+- Cada turno de una sesión larga vuelve a leer todo lo acumulado, así que despertar una conversación enorme es caro aunque la
+  tarea sea chica. Para ausencias largas es más barato una sesión nueva y corta que lea `ESTADO.md` y la cola. Claude no ve la
+  cuota del plan del dueño; las cifras son estimaciones.
+- Regla en modo adelanto: con un modelo liviano solo tareas pequeñas o medianas. Lo que pida el modelo grande (cambios de
+  protocolo, cifrado, depuración profunda) se deja preparado y se avisa al dueño para que cambie de modelo antes de empezar.
+- Higiene: el recordatorio de tareas reimprime la lista entera en cada turno. El 10-11 se borraron las 166 tareas completadas
+  (184 a 18); el historial real vive en `PROGRESO.md`. Mantener la lista corta.
+
 **Cómo funciona (honesto):**
 1. *Dentro de la sesión abierta:* si el dueño dice «me voy», Claude sigue trabajando la cola mientras queden recursos.
 2. *Sesión programada:* Claude puede programar una continuación (por ejemplo cuando se reinicie el límite). Se prueba una noche
@@ -138,4 +151,6 @@ turnos, así que lo mide con un mensaje programado:
   Claude lo reconoce. La decisión D1 queda resuelta con el esquema mixto de §8.
 - 10-11-2026: el dueño pide medir la ausencia sin que tenga que avisar: pasados 5 minutos sin respuesta, Claude empieza con la cola.
   Se implementa como «reloj de ausencia» (§8) con mensajes programados de la sesión; primera prueba real ese mismo día.
+- 10-11-2026: el dueño pregunta cuántos tokens gastaría el modo adelanto y si Claude puede cambiar de modelo. Se documenta
+  «Modelo y costo» (§8) y se limpia la lista de tareas.
 
