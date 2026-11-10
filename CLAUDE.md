@@ -13,7 +13,8 @@ actualizarlos al terminar cada bloque de trabajo.
 
 - **Modo adelanto (dueño, 10-11):** cuando el dueño esté ocupado o dormido, avanzar solo con la cola de pulido y los pendientes
   que Claude decide, sin esperar; preguntar antes solo si es grande. Reglas y límites: `docs/COMO_TRABAJAMOS.md` §8. Léelo con
-  `ESTADO.md` al empezar.
+  `ESTADO.md` al empezar. **Reloj de ausencia:** al terminar cada respuesta, programar con `send_later` un aviso a 5 min; si llega y
+  el dueño no escribió, empezar la cola (detalle en §8).
 
 - Rutina diaria (pedida por el dueño, `docs/ROBUSTEZ.md` §5): lo del dueño primero (sus pruebas y
   diagnósticos); luego el área del día del calendario de la revisión en curso; un punto débil abierto;

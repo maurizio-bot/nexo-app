@@ -108,6 +108,20 @@ tiempo se perdería. No hace falta que lo repita cada vez.
   de red del entorno de Claude.
 - **Informe al volver:** cinco líneas: qué se hizo, qué quedó, qué necesita su decisión y qué probar.
 
+**Reloj de ausencia (idea del dueño, 10-11): para cuando no puede avisar que se va.** Claude no siente pasar el tiempo entre
+turnos, así que lo mide con un mensaje programado:
+1. Al terminar cada respuesta, Claude programa con `send_later` un aviso para dentro de **5 minutos** (valor inicial; el dueño
+   puede cambiarlo) y guarda su identificador en el espacio temporal (`reloj_ausencia.id`).
+2. Si el dueño escribe antes, Claude borra ese aviso al empezar su turno y programa uno nuevo al terminar.
+3. Si el aviso llega y **no hay ningún mensaje del dueño posterior a mi última respuesta**, el dueño está ausente: Claude entra en
+   modo adelanto (arriba), toma la primera tarea sin hacer de la sección A de `COLA_DE_PULIDO.md`, la termina con el método de
+   siempre y programa otro aviso. Si sí hubo un mensaje del dueño, ignora el aviso.
+4. El dueño puede decir **«sin adelanto»** para apagarlo en esa sesión, o **«estoy aquí»** para posponerlo.
+5. Costes y límites: cada aviso que dispara un turno gasta tokens aunque no haga nada, por eso se borra el pendiente cuando el
+   dueño vuelve. Si el dueño tarda en escribir mensajes largos y Claude empieza a trabajar mientras tanto, su mensaje llega igual
+   a mitad de la tarea y Claude lo atiende; si interrumpe demasiado, se sube el plazo. Si la sesión se cierra por el límite de
+   uso, el aviso puede no entregarse: no está probado.
+
 **Cómo funciona (honesto):**
 1. *Dentro de la sesión abierta:* si el dueño dice «me voy», Claude sigue trabajando la cola mientras queden recursos.
 2. *Sesión programada:* Claude puede programar una continuación (por ejemplo cuando se reinicie el límite). Se prueba una noche
@@ -122,4 +136,6 @@ tiempo se perdería. No hace falta que lo repita cada vez.
   impulsivo con las ideas que le llegan, y pide que Claude lo guíe, lo corrija y le dé opciones.
 - 10-11-2026: el dueño autoriza de forma permanente el **modo adelanto** (§8) y señala que esto debió ofrecerse desde el principio;
   Claude lo reconoce. La decisión D1 queda resuelta con el esquema mixto de §8.
+- 10-11-2026: el dueño pide medir la ausencia sin que tenga que avisar: pasados 5 minutos sin respuesta, Claude empieza con la cola.
+  Se implementa como «reloj de ausencia» (§8) con mensajes programados de la sesión; primera prueba real ese mismo día.
 
