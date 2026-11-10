@@ -44,7 +44,8 @@ class MsgNotifier(private val ctx: Context) {
         const val ACTION_OPEN_FROM_NOTIF = "com.nexo.ble.OPEN_FROM_NOTIFICATION"
         @JvmStatic fun notifLaunchIntent(ctx: Context): Intent? {
             val l = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: return null
-            return Intent(l).setAction(ACTION_OPEN_FROM_NOTIF).removeCategory(Intent.CATEGORY_LAUNCHER)
+            // (removeCategory devuelve Unit: por eso apply, no cadena)
+            return Intent(l).apply { action = ACTION_OPEN_FROM_NOTIF; removeCategory(Intent.CATEGORY_LAUNCHER) }
         }
         // 2994 (pedido del dueño 10-11): aviso de «versión nueva de NEXO» con botón «Actualizar». Mismo testigo que las llamadas
         // (la pantalla principal está exportada; solo se hace caso al botón si el intent trae el testigo de nuestro PendingIntent).
