@@ -18,7 +18,24 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 
 ---
 
-## Dónde estamos (actualizado: 2026-11-09)
+## Dónde estamos (actualizado: 2026-11-10)
+
+### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **Código:** builds 2974 a 2978 publicadas (`nightly-2978` es la última); nada sin subir. El 10-11 solo hubo documentos.
+- **El dueño solo tiene el S24** (tablet y vivo en la oficina). Pruebas que puede hacer solo: §A.29 y §A.30 de
+  `docs/PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md`; §A.31 necesita la tablet.
+- **Decisiones del 10-11:** modelo CEO (el dueño decide, Claude ejecuta y lo guía), modo adelanto, reloj de ausencia de 5 min,
+  una tarea aburrida al día, preguntas ¿para quién? ¿qué resuelve? antes de funciones nuevas. Todo en `docs/COMO_TRABAJAMOS.md`.
+- **Importantes por hacer (orden):** (1) actualizador automático del APK de probadores, a probar en el S24; (2) resumen diario a la
+  bandeja; (3) canal directo a Claude por tiempo (el dueño dio el visto bueno a las llaves); detalle en `docs/PENDIENTES.md` ⭐.
+- **Cola de pulido:** `docs/COLA_DE_PULIDO.md`, siguiente tarea A1 (textos sueltos y traducciones). Ideas en `docs/IDEAS.md`.
+- **Estrategia y negocio:** `docs/CONVERSACION_ESTRATEGIA_2026-11-10.md` (plan de pago opcional con servidor propio y buzón
+  garantizado, siembra en universidades, ruta a Google Play, riesgo de marca «Nexo»).
+- **Reloj de ausencia:** se re-arma al final de cada respuesta con `send_later` (5 min) y se cancela al volver el dueño; el
+  identificador queda en el espacio temporal. Tras un `/clear` el reloj anterior puede quedar huérfano: re-armarlo.
+- **Estilo:** respuestas en español, cortas, sin jerga; formato de decisiones: una línea, 2 o 3 opciones, recomendación, qué pasa si
+  se espera; el dueño contesta con una letra. Decir siempre qué está probado, qué está sin probar y qué es idea.
+
 
 - **Build actual:** **2978** — APK `nightly-2978` (**tu diagnóstico de las 21:58: la Wi-Fi con la tablet y el vivo se cerraba SIEMPRE «sin comprobar» a los 30 s**). La comprobación del enlace Wi-Fi la contesta el JS del otro teléfono; con su app dormida (pantalla apagada) nadie contesta aunque su nativo tenga la conexión viva, y el APK que esperaba la Wi-Fi nunca la tenía. Ahora, mientras el latido nativo diga que el otro está vivo, se espera hasta 3 min (sin usar el enlace) y a los 8 s se le manda un toque FCM para que despierte y conteste. Prueba `lanverify.js` (falla con la 2977). Lo demás del diagnóstico: te llegó el PRIMER diagnóstico automático REMOTO (del teléfono NX1E50C95D, build 2975: hay que actualizarlo); los arreglos de la 2976 se ven funcionando («toque a nx1905c1ee (intento 1…5)», «Respaldo Fénix sobre un Bluetooth muerto: se rinde»); y las 4 lecturas de disco de ~450 ms ya tienen explicación: son las fotos HD del chat abierto (con NX1E50C95D) al pintarlo, no el reenvío de pendientes. Tu prueba: §A.31.
 - **Anterior (2977):** APK `nightly-2977` (**tu pedido: las notas de voz seguidas se reproducen una tras otra**, como WhatsApp). Al terminar una nota, si la burbuja siguiente del chat también es una nota de voz, arranca sola y la anterior vuelve a ▶; un texto, una foto o cualquier otra cosa en medio corta la cadena; un toque en ⏸ la para como siempre. Prueba `voicechain.js` (falla con la 2976). Tu prueba: §A.30.

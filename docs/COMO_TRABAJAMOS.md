@@ -142,6 +142,24 @@ turnos, así que lo mide con un mensaje programado:
 3. *Lo que Claude no sabe:* cuánto le queda al plan del dueño ni cómo cuenta una sesión programada. Por eso se empieza con una
    sola tarea por noche y se ajusta con lo que se vea.
 
+## 9. Higiene de contexto (idea del dueño, 10-11): resumir para gastar menos en cada respuesta
+Dicho por el dueño: «si la conversación es enorme y la lees cada vez, ¿por qué no guardas lo importante, haces un resumen y vuelves a
+empezar?». Claude lo aplica así:
+- **Lo que ya pasa solo:** el sistema compacta la conversación cuando se llena (en este proyecto ya lo hizo decenas de veces), pero
+  tarde, y hasta entonces cada respuesta cuesta mucho.
+- **Lo que Claude no puede:** compactar o reiniciar la sesión por sí mismo. Lo hace el dueño: `/compact` (conserva un resumen; se
+  puede decir qué conservar) o `/clear` (empieza limpio y sale más barato, porque todo está en los documentos).
+- **Lo que Claude hace:** (1) mantiene al día el bloque TRASPASO de `ESTADO.md` (qué se hizo, decisiones, qué sigue, si hay reloj
+  de ausencia); (2) cuando cierra un bloque con todo guardado y subido, o cuando la conversación lleva muchos mensajes largos o
+  diagnósticos pegados, lo dice en una línea: «buen momento para /compact o /clear, todo está guardado»; (3) tras el cambio,
+  vuelve a leer `ESTADO.md` y re-arma el reloj de ausencia si hace falta.
+- **En ausencia del dueño:** para tandas largas es mejor crear una sesión nueva y corta (`create_session`, con modelo liviano)
+  que lea `ESTADO.md` y la cola, en lugar de despertar la conversación larga.
+- **Cómo medir el tamaño** (cota alta, cuenta también salidas de herramientas): bytes del transcript desde la última marca
+  `isCompactSummary` en `~/.claude/projects/.../<sesión>.jsonl`, a unos 4 bytes por token. Pasada de ~1,5 MB: sugerir el cambio.
+- **Costo de limpiar:** se pierde el tono de la conversación; por eso lo que importa (decisiones, ideas, reglas, estilo de
+  trabajo) se escribe en `COMO_TRABAJAMOS.md`, `ESTADO.md` y `IDEAS.md` antes de cambiar.
+
 ## 7. Registro (Claude lo actualiza)
 - 10-11-2026: documento creado.
 - 10-11-2026: el dueño acepta P2, P3, P4 y el modelo de delegación (P8): «una tarea aburrida al día» y las preguntas ¿para qué?, ¿qué
@@ -153,4 +171,5 @@ turnos, así que lo mide con un mensaje programado:
   Se implementa como «reloj de ausencia» (§8) con mensajes programados de la sesión; primera prueba real ese mismo día.
 - 10-11-2026: el dueño pregunta cuántos tokens gastaría el modo adelanto y si Claude puede cambiar de modelo. Se documenta
   «Modelo y costo» (§8) y se limpia la lista de tareas.
+- 10-11-2026: el dueño propone resumir/reiniciar la conversación para gastar menos tokens y fijarlo como regla; se documenta §9.
 

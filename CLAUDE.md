@@ -15,6 +15,7 @@ actualizarlos al terminar cada bloque de trabajo.
   que Claude decide, sin esperar; preguntar antes solo si es grande. Reglas y límites: `docs/COMO_TRABAJAMOS.md` §8. Léelo con
   `ESTADO.md` al empezar. **Reloj de ausencia:** al terminar cada respuesta, programar con `send_later` un aviso a 5 min; si llega y
   el dueño no escribió, empezar la cola (detalle en §8).
+  **Higiene de contexto (§9):** mantener el bloque TRASPASO de `ESTADO.md` y sugerir `/compact` o `/clear` al cerrar un bloque.
 
 - Rutina diaria (pedida por el dueño, `docs/ROBUSTEZ.md` §5): lo del dueño primero (sus pruebas y
   diagnósticos); luego el área del día del calendario de la revisión en curso; un punto débil abierto;
