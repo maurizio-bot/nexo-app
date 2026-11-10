@@ -68,16 +68,29 @@ const dist = path.resolve(process.argv[2], 'dist');
     return out;
   }, idB);
   r.video_kb = Math.round(vsz[0] / 1024);
+  // 3 archivos (tarjetas): un zip, un PDF que ya falló al sacar su miniatura y un PDF sin miniatura (el simulador no tiene lector de PDF)
+  const fsz = await A.evaluate(async (idB) => {
+    const mk = () => { const bytes = new Uint8Array(1024 * 1024); for (let i = 0; i < bytes.length; i += 65536) crypto.getRandomValues(bytes.subarray(i, Math.min(i + 65536, bytes.length))); let bin = ''; for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192)); return btoa(bin); };
+    const defs = [['a.zip', 'application/zip', {}], ['b.pdf', 'application/pdf', { thumbFailed: 1 }], ['c.pdf', 'application/pdf', {}]];
+    const out = [];
+    for (let k = 0; k < defs.length; k++) {
+      const b64 = mk(); const id = 'file' + k + 'x' + Date.now();
+      await window.vaultAppendMessage(idB, { msgId: id, messageId: id, content: '[adjunto]', attachmentType: 'file', attachmentPayload: b64, attachmentMeta: Object.assign({ name: defs[k][0], size: Math.round(b64.length * 0.75), type: defs[k][1], mime: defs[k][1] }, defs[k][2]), _own: true, status: 'delivered', timestamp: Date.now() - (2 - k) * 20000, seq: 200 + k }, true);
+      out.push(b64.length);
+    }
+    return out;
+  }, idB);
   await sleep(1500);
 
   // Cuenta de lecturas de archivo desde la página (el plugin del simulador se arma en cada llamada, así que se envuelve aquí)
   const instrument = (p) => p.evaluate(() => {
-    window.__loads = [];
+    window.__loads = []; window.__opened = null;
+    window.Capacitor.Plugins.NexoBLE.openFile = async (a) => { window.__opened = a; return { opened: true }; };
     const pl = window.Capacitor.Plugins.NexoBLE, o = pl.loadFromFile;
     pl.loadFromFile = function (a) { window.__loads.push(String((a && a.filename) || '')); return o.apply(pl, arguments); };
   });
   const openChat = async (p) => { await p.evaluate(() => window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} }))); await sleep(400); await click(p, '#main-contacts-list .ble-contact-row'); };
-  const bubbles = (p) => p.evaluate(() => Array.from(document.querySelectorAll('#messages-container .msg-content img:not(.video-thumb)')).map((i) => ({ len: (i.src || '').length, full: !!i.dataset.fullRef })));
+  const bubbles = (p) => p.evaluate(() => Array.from(document.querySelectorAll('#messages-container .msg-content img:not(.video-thumb):not(.file-thumb)')).map((i) => ({ len: (i.src || '').length, full: !!i.dataset.fullRef })));
 
   // (1) primera apertura: lee las fotos (sin miniatura todavía) y crea las miniaturas
   await instrument(A);
@@ -110,10 +123,13 @@ const dist = path.resolve(process.argv[2], 'dist');
   const vb = await A.evaluate(() => Array.from(document.querySelectorAll('#messages-container .video-attachment')).map((v) => ({ lazy: !!v.dataset.lazyRef, thumb: !!(v.querySelector('img.video-thumb') && v.querySelector('img.video-thumb').src) })));
   r.burbujas_video = vb.length;
   r.videos_perezosos = vb.length >= NV && vb.every((v) => v.lazy && v.thumb);
+  const fc = await A.evaluate(() => Array.from(document.querySelectorAll('#messages-container .file-attachment')).map((c) => (c.querySelector('.file-name') || {}).textContent));
+  r.tarjetas_archivo = fc.length;
+  r.archivos_sin_leer = fc.length >= 3 && r.lecturas_de_fotos_al_abrir === 0;
   r.burbujas_con_miniatura = bs.length >= N && bs.every((b) => b.full && b.len < sizes[0] / 3);
 
   // (3) tocar una foto carga el ORIGINAL en el visor
-  await A.evaluate(() => { const i = document.querySelector('#messages-container .msg-content img:not(.video-thumb)'); i.click(); });
+  await A.evaluate(() => { const i = document.querySelector('#messages-container .msg-content img:not(.video-thumb):not(.file-thumb)'); i.click(); });
   await A.waitForFunction(() => !!document.getElementById('fullscreen-media-overlay'), null, { timeout: 8000 }).catch(() => {});
   await sleep(500);
   const viewer = await A.evaluate(() => { const o = document.getElementById('fullscreen-media-overlay'); const i = o && o.querySelector('img'); return i ? i.src.length : 0; });
@@ -129,8 +145,15 @@ const dist = path.resolve(process.argv[2], 'dist');
   r.video_al_tocar = /^blob:/.test(vsrc) && (await A.evaluate(() => window.__loads.filter((f) => /^nexo_att_/.test(f)).length)) === before + 1;
   await A.evaluate(() => window.__nexoCloseMedia && window.__nexoCloseMedia()); await sleep(300);
 
+  // (3c) tocar la tarjeta de un archivo lo carga entonces y lo abre con el original completo
+  const before2 = await A.evaluate(() => window.__loads.filter((f) => /^nexo_att_/.test(f)).length);
+  await A.evaluate(() => { const c = Array.from(document.querySelectorAll('#messages-container .file-attachment')).find((x) => /a\.zip/.test(x.textContent)); c.click(); });
+  await sleep(1500);
+  const op = await A.evaluate(() => window.__opened && { name: window.__opened.name, len: (window.__opened.base64 || '').length, mime: window.__opened.mime });
+  r.archivo_al_tocar = !!op && op.name === 'a.zip' && op.len === fsz[0] && (await A.evaluate(() => window.__loads.filter((f) => /^nexo_att_/.test(f)).length)) === before2 + 1;
+
   // (4) el mensaje guardado no se contamina con la miniatura
-  const clean = await A.evaluate(async (idB) => { const l = await window.vaultLoadMessages(idB); const m = l.filter((x) => x.attachmentType === 'image' || x.attachmentType === 'video'); return m.length >= 10 && m.every((x) => !(x.attachmentMeta && (x.attachmentMeta.thumbOnly || x.attachmentMeta.fullRef || x.attachmentMeta.lazyRef)) && !!x.attachmentRef && !x.attachmentPayload); }, idB);
+  const clean = await A.evaluate(async (idB) => { const l = await window.vaultLoadMessages(idB); const m = l.filter((x) => x.attachmentType === 'image' || x.attachmentType === 'video' || x.attachmentType === 'file'); return m.length >= 13 && m.every((x) => !(x.attachmentMeta && (x.attachmentMeta.thumbOnly || x.attachmentMeta.fullRef || x.attachmentMeta.lazyRef)) && !!x.attachmentRef && !x.attachmentPayload); }, idB);
   r.vault_limpio = clean;
   // la miniatura se borra con el mensaje
   const delId = await A.evaluate(async (idB) => { if (typeof window.vaultDeleteMessage !== 'function') return 'sin-gancho'; const l = await window.vaultLoadMessages(idB); const m = l.find((x) => x.attachmentType === 'image'); await window.vaultDeleteMessage(idB, m.msgId); return m.msgId; }, idB);
@@ -138,7 +161,7 @@ const dist = path.resolve(process.argv[2], 'dist');
   r.miniatura_se_borra = !Array.from(nA.files.keys()).some((f) => f === 'nexo_thumb_' + delId.replace(/[^A-Za-z0-9_-]/g, '_') + '.b64');
 
   r.errores = logs.filter((l) => /PAGEERROR/.test(l)).slice(0, 4);
-  const keys = ['primera_lee_fotos', 'miniaturas_creadas', 'miniatura_mucho_mas_chica', 'sin_leer_originales', 'burbujas_con_miniatura', 'videos_perezosos', 'video_al_tocar', 'visor_con_original', 'tocar_leyo_original', 'vault_limpio', 'miniatura_se_borra'];
+  const keys = ['primera_lee_fotos', 'miniaturas_creadas', 'miniatura_mucho_mas_chica', 'sin_leer_originales', 'burbujas_con_miniatura', 'videos_perezosos', 'video_al_tocar', 'archivos_sin_leer', 'archivo_al_tocar', 'visor_con_original', 'tocar_leyo_original', 'vault_limpio', 'miniatura_se_borra'];
   const ok = keys.every((k) => r[k] === true) && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('CHATTHUMBS ' + JSON.stringify(r));

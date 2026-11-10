@@ -470,6 +470,14 @@ export async function vaultHydrateAttachments(messages, opts) {
     if (ref === m.hdRef && m.hdMime) copy.attachmentMeta = Object.assign({}, m.attachmentMeta || {}, { mime: m.hdMime });
     // 2988: VÍDEO con miniatura (meta.thumb) al dibujar el chat → NO se lee del disco (un vídeo son varios MB, ~420 ms cada uno en el diagnóstico
     // del dueño del 10-11); la burbuja solo muestra la miniatura. El vídeo (el original si es propio y lo guardó) se carga al TOCARLO (render.js).
+    // 2988: ARCHIVO (tarjeta: PDF, zip, documentos…) → tampoco se lee al abrir; solo lo necesita al tocarlo. Un PDF sin miniatura aún sí se lee
+    // (una vez) para sacarla; si ya la tiene o ya falló (meta.thumbFailed), no.
+    var _fm = m.attachmentMeta || {}, _fmime = String(_fm.mime || _fm.type || '').toLowerCase(), _fisPdf = /pdf/.test(_fmime) || /\.pdf$/i.test(String(_fm.name || ''));
+    if (opts && opts.thumbs && m.attachmentType === 'file' && ref === m.attachmentRef && _fm.size && !_fm.big && !_fm.cita && !_fm.once && !/^(image|video)/.test(_fmime) && (!_fisPdf || _fm.thumb || _fm.thumbFailed)) {
+      copy.attachmentPayload = 'L';
+      copy.attachmentMeta = Object.assign({}, _fm, { lazyRef: ref });
+      out.push(copy); continue;
+    }
     if (opts && opts.thumbs && m.attachmentType === 'video' && ref && !m.attachmentDisplayUrl && !(m.attachmentMeta && (m.attachmentMeta.once || !m.attachmentMeta.thumb))) {
       copy.attachmentPayload = 'L';
       copy.attachmentMeta = Object.assign({}, copy.attachmentMeta || m.attachmentMeta || {}, { lazyRef: ref });
@@ -680,6 +688,10 @@ function _isProtocolPayload(txt) {
   } catch(e) {}
   return false;
 }
+// 2989: gancho de uso (usage_stats.js): se avisa de un mensaje NUEVO y de los cambios de estado de uno propio. Solo contadores.
+var _usageHook = null;
+export function vaultSetUsageHook(fn) { _usageHook = (typeof fn === 'function') ? fn : null; }
+function _usageNote(kind, cid, m, prev) { if (_usageHook) { try { _usageHook(kind, cid, m, prev); } catch (e) {} } }
 export async function vaultAppendMessage(contactNexoId, message) {
   if (!contactNexoId || !message) return null;
   var txt = message.text || message.content || '';
@@ -737,7 +749,7 @@ async function _appendMessageNow(cid, message) {
     }
     messages[existingIdx] = merged;
   }
-  else { messages.push(normalized); }
+  else { messages.push(normalized); _usageNote('msg', cid, normalized); }
   _persistMessages(cid, messages, !existing);
   return normalized;
 }
@@ -975,7 +987,9 @@ export async function vaultUpdateMessageStatus(contactNexoId, msgId, status) {
       if (idx < 0) return false;
       // FIX v2.2.3: no degradar (p.ej. 'sent' tardío pisando 'delivered'/'read')
       if (_statusRank(status) < _statusRank(messages[idx].status) && !(status === 'failed' && _statusRank(messages[idx].status) < 5)) return true;
+      var _prevSt = messages[idx].status;
       messages[idx] = Object.assign({}, messages[idx], { status: status });
+      _usageNote('status', cid, messages[idx], _prevSt);
       _persistMessages(cid, messages);
       return true;
     });

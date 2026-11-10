@@ -216,6 +216,10 @@
     {
      "fallo": "2987 (diagnóstico del dueño S24 10-11, build 2984): abrir un chat con fotos tardaba de 1 a ~8 s: una lectura de ~430 ms POR FOTO, una tras otra, porque para dibujar una burbuja de 220 px se leía del disco y se pasaba por el puente la foto ENTERA. Ahora la primera vez se guarda una miniatura (JPEG lado máx. 480) y el chat se abre leyendo solo miniaturas; el original se carga al tocar la foto",
      "prueba": "fotos en el chat: miniatura al abrir"
+    },
+    {
+     "fallo": "2989 (diagnóstico del dueño con la 2987, 10-11): al abrir cada chat los archivos (PDF, zip…) también se leían enteros del disco y un PDF «no legible» («Miniatura PDF: PDF no legible») se volvía a probar en CADA apertura. Ahora la tarjeta de archivo no lee el archivo hasta tocarla y un PDF que ya falló se anota (meta.thumbFailed) y no se reintenta",
+     "prueba": "fotos en el chat: miniatura al abrir"
     }
    ],
    "debiles": [

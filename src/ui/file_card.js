@@ -7,7 +7,7 @@ import { _getCurrentContactId } from './chat_format.js';
 import { _makeVideoThumb } from './video_tools.js';
 import { _msgContactMap } from './chat_state.js';
 import { _releaseMedia, _showPermissionError } from './ui_bits.js';
-import { vaultSetMessageFields } from '../vault/vault_manager.js';
+import { vaultLoadFile, vaultSetMessageFields } from '../vault/vault_manager.js';
 import { isGroupId } from './groups.js';
 import { bigToGroup } from './group_media.js';
 import { t } from './i18n.js';
@@ -168,7 +168,7 @@ export function _buildFileCard(msg, attachment, mime) {
     img.alt = '';
     img.style.cssText = 'display:none;width:100%;max-height:260px;object-fit:cover;object-position:top;background:#fff;';
     if (m.thumb) { img.src = 'data:image/jpeg;base64,' + m.thumb; img.style.display = 'block'; }
-    else _ensurePdfThumb(msg, attachment, img);
+    else if (!m.thumbFailed) _ensurePdfThumb(msg, attachment, img);   // 2988: un PDF que ya falló no se reintenta en cada apertura
     card.appendChild(img);
   }
   var row = document.createElement('div');
@@ -206,6 +206,8 @@ export function _buildFileCard(msg, attachment, mime) {
     e.stopPropagation();
     if (citaWait) { _showPermissionError(t('media_cita_tap', 'Llega solo cuando los dos estén en línea; ya le avisé que estoy')); return; } // Fase D
     if (bigId) { _bigTap(msg, m.big, name, mime); return; }
+    // 2988: el archivo no se leyó al abrir el chat (payload 'L'): se carga ahora, al tocar
+    if (m.lazyRef) { vaultLoadFile(m.lazyRef).then(function(b64) { _openAttachmentFile(b64, name, mime); }).catch(function() { _openAttachmentFile(null, name, mime); }); return; }
     _openAttachmentFile(attachment.payload, name, mime);
   };
   return card;
@@ -295,7 +297,12 @@ export function _ensurePdfThumb(msg, attachment, img) {
   _thumbsInProgress[mid] = true;
   _pdfThumb(attachment.payload).then(function(t) {
     delete _thumbsInProgress[mid];
-    if (!t || !t.thumb) return;
+    if (!t || !t.thumb) {
+      // 2988: PDF «no legible» (o sin lector): se anota para no volver a leerlo y probarlo en cada apertura del chat
+      var cid0 = msg._own ? (msg.contactNexoId || _msgContactMap[mid] || _getCurrentContactId()) : (msg.senderNexoId || _getCurrentContactId());
+      vaultSetMessageFields(cid0 || null, mid, { metaMerge: { thumbFailed: 1 } });
+      return;
+    }
     img.src = 'data:image/jpeg;base64,' + t.thumb;
     img.style.display = 'block';
     var cid = msg._own ? (msg.contactNexoId || _msgContactMap[mid] || _getCurrentContactId()) : (msg.senderNexoId || _getCurrentContactId());

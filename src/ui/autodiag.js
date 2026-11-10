@@ -93,6 +93,25 @@ export function autoDiagReport(kind, info) {
   return isDev ? 'local' : 'enviado';
 }
 
+// 2989: resumen diario de uso (usage_stats.js): mismo canal cifrado y mismo interruptor; no gasta el cupo de síntomas (2 h / 3 por día).
+// Devuelve 'enviado' | 'local' (soy el desarrollador) | 'apagado' | 'sin_contacto' | 'no_envio'.
+export function autoDiagSendSummary(day, text) {
+  if (!autoDiagEnabled()) return 'apagado';
+  var now = Date.now(), dev = autoDiagDevNx(), me = _me(), isDev = !!me && me === dev;
+  if (!isDev && (!dev || !_isContact(dev))) return 'sin_contacto';
+  var full = 'NEXO RESUMEN DIARIO de uso · ' + day + ' · build ' + autoDiagBuild() + '\n' + String(text || '').substring(0, 4000);
+  var sym = 'resumen_diario';
+  if (isDev) { _store({ from: me, at: now, sym: sym, info: day, build: autoDiagBuild(), text: full, seen: false, local: true }); }
+  else {
+    var wire = JSON.stringify({ type: 'nexo_diag', v: 1, sym: sym, info: day, build: autoDiagBuild(), at: now, text: full });
+    var id = _sendTextTo(dev, wire, '', true);
+    if (!id) return 'no_envio';
+    _ackIds[id] = now;
+  }
+  _emit();
+  return isDev ? 'local' : 'enviado';
+}
+
 // Lo que llega de un probador (main.js, mensaje oculto nexo_diag ya descifrado): a la bandeja, nunca al chat
 export function autoDiagReceived(fromNx, k) {
   if (!k || k.v !== 1 || typeof k.text !== 'string') return false;
@@ -182,7 +201,7 @@ export function autoDiagInnerHtml() {
   var on = autoDiagEnabled(), isDev = !!_me() && _me() === autoDiagDevNx();
   var sent = autoDiagSentList(), inbox = autoDiagInbox(), nuevos = autoDiagNewCount();
   var h = '<label style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-autodiag-on"' + (on ? ' checked' : '') + '> ' + t('autodiag_toggle', 'Mandar un diagnóstico técnico al desarrollador cuando la app detecta un fallo') + '</label>' +
-    '<div class="nx-sub" style="margin-top:6px;">' + t('autodiag_sub', 'Se manda solo (enlace Bluetooth muerto, un envío que no sale, un error). Va cifrado de extremo a extremo al desarrollador, sin el contenido de tus mensajes; como mucho uno cada 2 horas y 3 por día.') + '</div>' +
+    '<div class="nx-sub" style="margin-top:6px;">' + t('autodiag_sub', 'Se manda solo (enlace Bluetooth muerto, un envío que no sale, un error). Va cifrado de extremo a extremo al desarrollador, sin el contenido de tus mensajes; como mucho uno cada 2 horas y 3 por día. Además, una vez al día se manda un resumen de uso: solo números (cuántos mensajes y de qué tipo), sin contenido ni nombres.') + '</div>' +
     '<div class="nx-sub" id="nexo-autodiag-sent" style="margin-top:6px;">' + (sent.length
       ? _esc(t('autodiag_sent_last', 'Últimos envíos:') + ' ' + sent.slice(0, 3).map(function(x) { return _fmtDate(x.at) + ' ' + x.sym + ' ' + x.kb + ' KB' + (x.ok ? ' ✓' : ' ⏳'); }).join(' · '))
       : _esc(t('autodiag_sent_none', 'Todavía no se mandó ninguno'))) + '</div>';

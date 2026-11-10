@@ -46,7 +46,7 @@ automático de punta a punta y que las actualizaciones sean automáticas. Orden:
    sin preguntar si NEXO queda como instalador, **a probar en el S24 (Android 16)**. Solo para el APK de probadores: la versión de
    Google Play no puede llevar ese permiso y se actualiza por Play (la prueba cerrada de Play actualiza sola). Aviso: los
    teléfonos que no lo tengan deben actualizarse a mano una última vez.
-2. **Resumen diario por tiempo a la bandeja** (aunque no haya fallos): versión, mensajes enviados y recibidos, cuántos
+2. ✅ **Resumen diario por tiempo a la bandeja — HECHO en la 2989 (falta ver llegar el primero)** (aunque no haya fallos): versión, mensajes enviados y recibidos, cuántos
    llegaron, tiempo mediano, enlaces usados, restricciones de batería. Solo contadores, sin contenido ni identificadores de
    terceros. Responde «¿lo usan entre ellos?» sin preguntar. Hay que avisar bien a quien lo recibe (incluidos los hijos de la
    novia del dueño). **Aclaración:** el diagnóstico automático por síntoma ya existe desde la 2974 y llega a la bandeja; los

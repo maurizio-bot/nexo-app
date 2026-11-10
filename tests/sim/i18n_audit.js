@@ -58,7 +58,7 @@ const STOP = /\b(el|la|los|las|de|del|que|para|con|por|una?|no|se|tu|tus|mi|su|e
 const fijos = [];
 for (const f of files.filter((x) => /[\\/]src[\\/]ui[\\/]/.test(x))) {
   fs.readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
-    if (/^\s*(\/\/|\*|\/\*)/.test(l) || /console\.|\bt\(\s*['"]|throw new Error|\.log\(|_log\(|dbg|diag/i.test(l)) return;
+    if (/^\s*(\/\/|\*|\/\*)/.test(l) || /console\.|\bt\(\s*['"]|throw new Error|\.log\(|_log\(|dbg|diag|i18n-ok/i.test(l)) return;   // «i18n-ok» al final de la línea: texto para el desarrollador, no para el usuario
     for (const x of l.matchAll(/(['"`])((?:(?!\1).){14,})\1/g)) {
       const s2 = x[2]; const w = (s2.match(STOP) || []).length;
       if (w >= 2 && /\s/.test(s2) && !/[{}();=<>]{2}/.test(s2.slice(0, 6))) { fijos.push(path.relative(root, f) + ':' + (i + 1) + '  ' + s2.slice(0, 70)); break; }
