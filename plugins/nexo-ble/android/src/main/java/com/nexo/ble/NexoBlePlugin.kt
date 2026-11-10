@@ -657,6 +657,104 @@ class NexoBlePlugin : Plugin() {
         call.resolve()
     }
 
+    // 2985 (pedido del dueño 10-11: «actualizaciones automáticas»). Solo para el APK de probadores (la versión de Google Play se
+    // actualiza por Play). La lógica de decisión vive en UpdateSpec (pura, probada en JVM). updateCheck consulta los lanzamientos
+    // públicos del repositorio; updateInstall descarga el APK (solo https y hosts de GitHub, con tope de tamaño) y lo abre en el
+    // instalador del sistema, que pide su confirmación y exige la misma firma que la app instalada.
+    @PluginMethod
+    fun updateCheck(call: PluginCall) {
+        Thread {
+            var c: java.net.HttpURLConnection? = null
+            try {
+                c = (java.net.URL("https://api.github.com/repos/maurizio-bot/nexo-app/releases?per_page=8").openConnection() as java.net.HttpURLConnection).apply {
+                    connectTimeout = 10_000; readTimeout = 15_000
+                    setRequestProperty("Accept", "application/vnd.github+json")
+                    setRequestProperty("User-Agent", "NEXO-updater")
+                }
+                if (c.responseCode != 200) { call.resolve(JSObject().put("build", JSONObject.NULL).put("reason", "http_" + c.responseCode)); return@Thread }
+                val buf = ByteArrayOutputStream()
+                c.inputStream.use { ins ->
+                    val chunk = ByteArray(8192)
+                    while (true) {
+                        val n = ins.read(chunk); if (n < 0) break
+                        buf.write(chunk, 0, n)
+                        if (buf.size() > UpdateSpec.MAX_JSON_BYTES) { call.resolve(JSObject().put("build", JSONObject.NULL).put("reason", "too_big")); return@Thread }
+                    }
+                }
+                val l = UpdateSpec.pickLatest(buf.toString("UTF-8"))
+                if (l == null) call.resolve(JSObject().put("build", JSONObject.NULL).put("reason", "none"))
+                else call.resolve(JSObject().put("build", l.build).put("tag", l.tag).put("url", l.url).put("size", l.size))
+            } catch (e: Exception) {
+                call.resolve(JSObject().put("build", JSONObject.NULL).put("reason", "net"))
+            } finally { try { c?.disconnect() } catch (e: Exception) {} }
+        }.start()
+    }
+
+    @PluginMethod
+    fun updateInstall(call: PluginCall) {
+        val url0 = call.getString("url")
+        if (!UpdateSpec.isAllowedStartUrl(url0)) { call.resolve(JSObject().put("opened", false).put("reason", "bad_url")); return }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+            // Android pide permitir a NEXO instalar apps (una sola vez); al volver, el usuario toca «Actualizar» otra vez
+            activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + context.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            call.resolve(JSObject().put("opened", false).put("reason", "install_permission")); return
+        }
+        Thread {
+            var c: java.net.HttpURLConnection? = null
+            try {
+                var url = url0 as String
+                var hops = 0
+                while (true) {
+                    c = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+                        connectTimeout = 15_000; readTimeout = 30_000; instanceFollowRedirects = false
+                        setRequestProperty("User-Agent", "NEXO-updater")
+                    }
+                    val code = c.responseCode
+                    if (code in 300..399) {
+                        val loc = c.getHeaderField("Location")
+                        val next = try { java.net.URL(java.net.URL(url), loc ?: "").toString() } catch (e: Exception) { "" }
+                        c.disconnect()
+                        if (++hops > 5 || !UpdateSpec.isAllowedRedirect(next)) { call.resolve(JSObject().put("opened", false).put("reason", "bad_redirect")); return@Thread }
+                        url = next; continue
+                    }
+                    if (code != 200) { call.resolve(JSObject().put("opened", false).put("reason", "http_$code")); return@Thread }
+                    break
+                }
+                val total = c!!.contentLengthLong
+                if (total > UpdateSpec.MAX_APK_BYTES) { call.resolve(JSObject().put("opened", false).put("reason", "too_big")); return@Thread }
+                val dir = File(activity.cacheDir, "nexo_open").also { it.mkdirs() }
+                dir.listFiles()?.forEach { if (it.name.startsWith("nexo-update")) it.delete() }
+                val out = File(dir, "nexo-update.apk")
+                var done = 0L; var lastPct = -1
+                FileOutputStream(out).use { os ->
+                    c!!.inputStream.use { ins ->
+                        val chunk = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = ins.read(chunk); if (n < 0) break
+                            done += n
+                            if (done > UpdateSpec.MAX_APK_BYTES) throw java.io.IOException("demasiado grande")
+                            os.write(chunk, 0, n)
+                            val pct = if (total > 0) (done * 100 / total).toInt() else -1
+                            if (pct >= 0 && pct != lastPct && pct % 5 == 0) {
+                                lastPct = pct
+                                mainHandler.post { try { notifyListeners("onUpdateProgress", JSObject().put("pct", pct).put("done", done).put("total", total)) } catch (e: Exception) {} }
+                            }
+                        }
+                    }
+                }
+                if (total > 0 && done != total) { out.delete(); call.resolve(JSObject().put("opened", false).put("reason", "incomplete")); return@Thread }
+                mainHandler.post {
+                    try { launchView(out, "application/vnd.android.package-archive"); call.resolve(JSObject().put("opened", true)) }
+                    catch (e: ActivityNotFoundException) { call.resolve(JSObject().put("opened", false).put("reason", "no_app")) }
+                    catch (e: Exception) { call.resolve(JSObject().put("opened", false).put("reason", "launch")) }
+                }
+            } catch (e: Exception) {
+                remLog("WARN", "UPDATE", "No se pudo bajar la actualización: ${e.message}")
+                call.resolve(JSObject().put("opened", false).put("reason", "net"))
+            } finally { try { c?.disconnect() } catch (e: Exception) {} }
+        }.start()
+    }
+
     // Ronda 2772: estado de energía para el diagnóstico (lo que puede impedir recibir con la pantalla apagada)
     private fun energyLog(why: String) {
         try {

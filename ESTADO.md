@@ -21,12 +21,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **Código:** builds 2974 a 2985 (`nightly-2984` publicada; 2985 = tu diagnóstico 10-11: la ventana con el enlace caído ya no gira cada 3,8 s; batería 157/157); nada sin subir.
+- **Código:** builds 2974 a 2986 (`nightly-2985` publicada; 2986 = actualizador automático del APK de probadores, batería 158/158; en curso 2987 = fotos del chat con miniatura); nada sin subir.
 - **El dueño solo tiene el S24** (tablet y vivo en la oficina). Pruebas que puede hacer solo: §A.29 y §A.30 de
   `docs/PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md`; §A.31 necesita la tablet.
 - **Decisiones del 10-11:** modelo CEO (el dueño decide, Claude ejecuta y lo guía), modo adelanto, reloj de ausencia de 5 min,
   una tarea aburrida al día, preguntas ¿para quién? ¿qué resuelve? antes de funciones nuevas. Todo en `docs/COMO_TRABAJAMOS.md`.
-- **Importantes por hacer (orden):** (1) actualizador automático del APK de probadores, a probar en el S24; (2) resumen diario a la
+- **Importantes por hacer (orden):** (1) ✅ actualizador automático (2986; falta tu prueba en el S24); (2) resumen diario a la
   bandeja; (3) canal directo a Claude por tiempo (el dueño dio el visto bueno a las llaves); detalle en `docs/PENDIENTES.md` ⭐.
 - **Cola de pulido:** `docs/COLA_DE_PULIDO.md`, A1 (2979), A2 (2980), A1b (2981), A3 (2982), A5 (2983) y A6 (2984) hechas; la cola autónoma está AGOTADA: A4 se investigó y se dejó (ver `docs/COLA_DE_PULIDO.md`, es de vídeos propios y toca el visor); lo que sigue es B (necesita teléfono), C (decisiones del dueño) y los importantes (actualizador automático, resumen diario, canal directo a Claude). Ideas en `docs/IDEAS.md`.
 - **Estrategia y negocio:** `docs/CONVERSACION_ESTRATEGIA_2026-11-10.md` (plan de pago opcional con servidor propio y buzón
@@ -37,7 +37,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   se espera; el dueño contesta con una letra. Decir siempre qué está probado, qué está sin probar y qué es idea.
 
 
-- **Build actual:** **2985** — tu diagnóstico del 10-11 (build 2984): dos envíos pendientes a contactos ausentes repetían «ventana sin ACK» cada 3,8 s y llenaban el diagnóstico; ahora la espera crece hasta 15–30 s (`winbackoff.js`).
+- **Build actual:** **2986** — ACTUALIZADOR AUTOMÁTICO (lo que más te gustó): la app avisa «Hay una versión nueva», la baja y abre el instalador; Perfil → Ajustes → Actualizaciones. **Tu prueba:** instalar la 2986 a mano UNA vez; cuando salga la siguiente, ver el aviso y tocar Actualizar (la primera vez Android pide permitir a NEXO instalar apps).
+- **Anterior (2985):** **2985** — tu diagnóstico del 10-11 (build 2984): dos envíos pendientes a contactos ausentes repetían «ventana sin ACK» cada 3,8 s y llenaban el diagnóstico; ahora la espera crece hasta 15–30 s (`winbackoff.js`).
 - **Anterior (2984):** **2984** — A6: pasada «usuario nuevo» por Ajustes; el icono 🌐 repetido de Idioma/Internet se separa.
 - **Anterior (2983):** **2983** — A5: mantener pulsado un sticker propio en el selector lo borra (con confirmación).
 - **Anterior (2982):** **2982** — A3: puntito rojo en el icono de Perfil cuando llega un diagnóstico automático nuevo (solo en el teléfono que los recibe).

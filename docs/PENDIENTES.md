@@ -40,7 +40,7 @@ visibles + área 56; ajuste «Vibración al tocar» en Perfil → Ajustes (como 
 ## ⭐ PENDIENTES IMPORTANTES (conversación del dueño 10-11) — de aquí sale el siguiente trabajo
 Problemas acordados: **poco uso, poca comunicación de los usuarios y poco testeo físico**. Soluciones: que el diagnóstico sea
 automático de punta a punta y que las actualizaciones sean automáticas. Orden:
-1. **Actualizador automático** (lo que más le gustó al dueño). La app consulta si hay una versión nueva en los lanzamientos
+1. ✅ **Actualizador automático — HECHO en la 2986, falta la prueba del dueño en el S24** (lo que más le gustó al dueño). La app consulta si hay una versión nueva en los lanzamientos
    `nightly-N` de GitHub, descarga el APK y lo instala (ya tiene el permiso de instalar y el flujo verifica la firma; Android
    rechaza una actualización con otra llave). La primera vez pide un toque; en Android 12 o posterior las siguientes podrían ir
    sin preguntar si NEXO queda como instalador, **a probar en el S24 (Android 16)**. Solo para el APK de probadores: la versión de

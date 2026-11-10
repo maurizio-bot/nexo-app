@@ -7,6 +7,7 @@
 import { haptic, hapticMode, setHapticMode } from './haptics.js'; // NEXO Touch (2968): ajuste «Vibración al tocar»
 import { securitySectionHtml, renderSecuritySection } from './app_lock.js';
 import { _diagnosticText } from './diag.js';
+import { updaterInnerHtml, renderUpdaterSection } from './updater.js'; // 2986: actualizador automático
 import { autoDiagInnerHtml, renderAutoDiagSection, autoDiagNewCount } from './autodiag.js'; // 2974: diagnóstico automático al desarrollador
 import { startReceiveAccount, startSendAccount } from './move_account.js';
 import { clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
@@ -257,6 +258,8 @@ function _openSettingsSheet() {
       '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> ' + t('prof_tor_label', 'Usar Tor siempre (oculta tu IP; va más lento). El vídeo y los archivos grandes por internet ya lo usan solos.') + '</label>') +
     // Ronda 2808 (pedido del dueño «rendimiento api de nexo»): medición en vivo del rendimiento de NEXO
     perfSectionHtml() +
+    // 2986: actualizaciones (interruptor + «Buscar ahora»)
+    card('⬆️', t('upd_title', 'Actualizaciones'), updaterInnerHtml()) +
     // #dueño 05-11: volver a ver la guía de bienvenida (welcome_guide.js) cuando se quiera
     card('👋', t('welcome_settings_title', 'Guía de bienvenida'), '<div class="nx-sub" style="margin-bottom:8px;">' + t('welcome_settings_sub', 'Vuelve a ver la introducción: cómo agregar un contacto y mandar tu primer mensaje.') + '</div>' +
       '<button id="nexo-show-welcome" class="nx-btn">' + t('welcome_settings_btn', 'Ver la guía otra vez') + '</button>') +
@@ -358,6 +361,7 @@ function _openSettingsSheet() {
     else fallback();
   };
   renderAutoDiagSection(sheet); // 2974
+  renderUpdaterSection(sheet); // 2986
 }
 window.addEventListener('nexo:ui:settings', _openSettingsSheet);
 try { if (typeof window !== 'undefined') window.__nexoOpenSettings = _openSettingsSheet; } catch (e) {}

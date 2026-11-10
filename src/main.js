@@ -116,6 +116,7 @@ import { _extOf, _compressImageBase64, _fmtTime, _readFileBase64, _isPdf, _MIME_
 import { groupAttachment, isGroupId, parseGroupEnvelope } from './ui/groups.js';
 import { isGroupWire, startGroupMedia } from './ui/group_media.js';
 import { avatarInit } from './ui/avatar.js';
+import { updaterInit } from './ui/updater.js'; // 2986: actualizador automático del APK de probadores
 import { autoDiagInit, autoDiagReceived } from './ui/autodiag.js'; // 2974: diagnóstico automático al desarrollador
 import { profileInit } from './ui/profile_data.js';
 import { profileShareInit } from './ui/profile_share.js';
@@ -804,6 +805,7 @@ async function initializeNexoApp() {
     window.NEXO.initialized = true;
     startGroupMedia(); // ronda 2764: HD y archivos grandes en grupos (reanudar lo pendiente)
     avatarInit(); // ronda 2765: foto de perfil
+    updaterInit(); // 2986: avisa de una versión nueva (solo compilaciones con número; consulta GitHub, público)
     autoDiagInit(); // 2974: diagnóstico automático al desarrollador (síntomas → mensaje oculto nexo_diag)
     profileInit(); // ronda 2910: datos de mi perfil (nombre y apellido, teléfono, correo — opcionales)
     loadDisplayName().then(function() { applyDisplayName(window.bleInterface); }); // #dueño 06-11: el nombre fijo elegido pisa el del teléfono (lo ven los contactos)
