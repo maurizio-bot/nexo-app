@@ -103,6 +103,21 @@ function _event(sk, kind, tags, content) {
   return { id: bytesToHex(id), pubkey: pubkey, created_at: created_at, kind: kind, tags: tags, content: content, sig: bytesToHex(schnorr.sign(id, sk)) };
 }
 
+// Defensa en profundidad (auditoría, 2998): antes NO se comprobaba la firma del evento Nostr ni que su id fuera el sha256 de su contenido, así
+// que un relé podía tocar cualquier campo (fecha, etiquetas) de un evento que reenvía. Ahora un evento del buzón solo entra si su id es el
+// sha256 canónico (NIP-01) y su firma Schnorr es válida para su pubkey. (El contenido ya iba cifrado y autenticado por pareja: esto cierra
+// la manipulación de lo de fuera del sobre.)
+export function netEventValid(ev) {
+  try {
+    if (!ev || typeof ev.id !== 'string' || typeof ev.pubkey !== 'string' || typeof ev.sig !== 'string') return false;
+    if (!/^[0-9a-f]{64}$/.test(ev.id) || !/^[0-9a-f]{64}$/.test(ev.pubkey) || !/^[0-9a-f]{128}$/.test(ev.sig)) return false;
+    var id = sha256(_utf8(JSON.stringify([0, ev.pubkey, ev.created_at, ev.kind, ev.tags, ev.content])));
+    if (bytesToHex(id) !== ev.id) return false;
+    return schnorr.verify(hexToBytes(ev.sig), id, hexToBytes(ev.pubkey)) === true;
+  } catch (e) { return false; }
+}
+export var netMakeEvent = _event;   // para las pruebas (tests/sim/evsig.js)
+
 // Alta por ID (ronda 2779): "buzón de solicitudes" de un NEXO ID. A diferencia de la etiqueta de pareja (que necesita el
 // secreto ECDH de las dos claves), este buzón se deriva SOLO del NEXO ID, así que cualquiera que conozca tu ID (te lo
 // pasas por WhatsApp) puede dejarte una solicitud de contacto; tú la aceptas o la eliminas (anti-spam). Clave secp256k1
@@ -368,6 +383,7 @@ export class NetLink {
 
   async _onEvent(ev) {
     if (!ev || typeof ev.id !== 'string' || this.seen.has(ev.id)) return;
+    if (!netEventValid(ev)) { this._badSig = (this._badSig || 0) + 1; if (this._badSig <= 3 || this._badSig % 50 === 0) console.warn('[NET] Evento con id o firma inválidos: descartado (' + this._badSig + ')'); return; }
     this.seen.set(ev.id, Date.now());
     if (this.seen.size > 3000) { var cut = Date.now() - 3600000; this.seen.forEach(function(t, k) { if (t < cut) this.seen.delete(k); }, this); }
     var self = this;

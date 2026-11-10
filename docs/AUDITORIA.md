@@ -238,6 +238,7 @@ la prueba del dueño en el teléfono.
   dueño). Ver `docs/FCM.md`.
 - **Defensa en profundidad pendiente:** verificar la firma Schnorr del evento Nostr y que `ev.id` sea su sha256 (hoy no se
   comprueba; el acotado de SEC-1 ya cierra el DoS, pero la firma evitaría que un relé toque cualquier campo). Ronda propia.
+- **Actualización 10-11 (build 2998, luz verde del dueño «procede»):** ✅ **M6 cerrado** (`ble_ack.js` `_syncFromLinkOwner`: `ss`/`sr` solo del dueño conocido del enlace; prueba `synclink.js`), ✅ **F7 ya estaba cerrado** (`file_paths.xml` solo `nexo_open`) y ✅ **firma/id del evento Nostr verificados** (`net_link.js` `netEventValid`; prueba `evsig.js`). Quedan abiertos los que tocan estado de claves o el nativo: **H3, H4, M5, F6, F8** (y SEC-2/SEC-3).
 - Siguen abiertos del catálogo (sin cambio esta ronda): **H3, H4, M5, M6, F6, F7, F8** (endurecimiento del protocolo/nativo,
   cada uno su ronda y prueba en los dos teléfonos; H3 lo confirma el dueño por tocar estado de claves).
 

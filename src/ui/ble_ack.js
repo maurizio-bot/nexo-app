@@ -1186,10 +1186,20 @@ export class BleAckSystem {
       stream._windowReject = null;
     }
   }
+  // Auditoría M6 (2998): «ss»/«sr» llegan SIN firmar. Una «ss» falsa de un desconocido hacía reenviar los propios mensajes (ya cifrados) y
+  // revelaba el último número de secuencia. Ahora solo se atiende si el NEXO ID que dice ser coincide con el DUEÑO CONOCIDO de ese enlace
+  // (el que ya resolvió el flujo de enlace: Wi-Fi/internet por su id, Bluetooth por el mapa MAC→NEXO ID); si no, se ignora.
+  _syncFromLinkOwner(deviceId, claimed) {
+    var linkNx = this._resolveNexoId(deviceId);
+    var ok = !!claimed && /^nx[0-9a-z]{8}$/.test(String(linkNx || '')) && _normId(claimed) === _normId(linkNx);
+    if (!ok) console.log('[BleAckSystem] Sync ignorado: quien lo manda (' + (claimed || '?') + ') no es el dueño conocido de este enlace');
+    return ok;
+  }
   _handleSessionSync(deviceId, msg) {
     var self = this;
     var peerLastSeq = msg.l || 0;
     var peerNexoId = msg.fr || msg.from;
+    if (!self._syncFromLinkOwner(deviceId, peerNexoId)) return;
     var myLastSeq = 0;
     if (window.vaultLoadMessages && peerNexoId) {
       window.vaultLoadMessages(peerNexoId).then(function(msgs) {
@@ -1208,6 +1218,7 @@ export class BleAckSystem {
     var peerLastSeq = msg.l || 0;
     var peerNexoId = msg.fr || msg.from;
     if (!peerNexoId || !window.vaultLoadMessages) return;
+    if (!self._syncFromLinkOwner(deviceId, peerNexoId)) return;
     window.vaultLoadMessages(peerNexoId).then(function(msgs) {
       if (!msgs) return;
       // v3.3.1: peerLastSeq es el mayor seq NUESTRO que el otro tiene (antes mezclaba los contadores de

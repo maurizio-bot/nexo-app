@@ -960,6 +960,14 @@
      "fallo": "Número de seguridad por QR",
      "prueba": null,
      "fuera": "qr.js"
+    },
+    {
+     "fallo": "Auditoría M6 (cerrado en 2998): una «ss»/«sr» falsa (sin firmar) hacía reenviar mensajes propios y revelaba el último nº de secuencia; ahora solo del dueño conocido del enlace",
+     "prueba": "auditoría M6"
+    },
+    {
+     "fallo": "Auditoría (cerrado en 2998): no se comprobaba la firma Schnorr ni el id (sha256) del evento Nostr del buzón; un relé podía tocar fecha/etiquetas",
+     "prueba": "auditoría (defensa en profundidad)"
     }
    ],
    "debiles": [
@@ -1082,6 +1090,10 @@
     {
      "fallo": "2979 (cola de pulido A1, auditoría de textos): 60 textos que se pintaban con t('clave', '…') no estaban en la tabla de traducciones, así que en italiano e inglés se veía el respaldo en español (pantallas de Estados, menú de juegos, datos y fondo de pantalla del Perfil, fondos por chat, tarjeta de archivo pendiente, Tetris). Se agregaron con italiano e inglés y la frase armada por partes de la galería pasó a marcador {n}. i18n_audit.js --strict en la batería: toda clave usada debe existir con las tres lenguas",
      "prueba": "traducciones: toda clave usada"
+    },
+    {
+     "fallo": "Bluetooth apagado: la app repetía «Auto-scan fallo»/«Re-búsqueda» y daba un «zombi» falso de un enlace que ya no existía (Nubia, dueño 10-11)",
+     "prueba": "Bluetooth APAGADO"
     }
    ],
    "debiles": [
@@ -1248,7 +1260,3 @@
   }
  ]
 }
-    {
-     "fallo": "Bluetooth apagado: la app repetía «Auto-scan fallo»/«Re-búsqueda» y daba un «zombi» falso de un enlace que ya no existía (Nubia, dueño 10-11)",
-     "prueba": "Bluetooth APAGADO"
-    },

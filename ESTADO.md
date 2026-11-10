@@ -26,7 +26,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   `docs/PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md`; §A.31 necesita la tablet.
 - **Decisiones del 10-11:** modelo CEO (el dueño decide, Claude ejecuta y lo guía), modo adelanto, reloj de ausencia de 5 min,
   una tarea aburrida al día, preguntas ¿para quién? ¿qué resuelve? antes de funciones nuevas. Todo en `docs/COMO_TRABAJAMOS.md`.
-- **Importantes por hacer (orden):** (1) ✅ actualizador automático (2986/2992; falta tu prueba de instalación real); (3) ✅ canal directo a Claude (2993; falta la variable `NEXO_DIAG_PRIV`); (2) resumen diario a la
+- **Importantes por hacer (orden):** (1) ✅ actualizador automático (2986/2992/2994) — **probado por el dueño 10-11: actualizó a la 2997 desde la app y funcionó perfecto**; (3) ✅ canal directo a Claude (2993; falta la variable `NEXO_DIAG_PRIV`); (2) resumen diario a la
   bandeja; (3) canal directo a Claude por tiempo (el dueño dio el visto bueno a las llaves); detalle en `docs/PENDIENTES.md` ⭐.
 - **Cola de pulido:** `docs/COLA_DE_PULIDO.md`, A1 (2979), A2 (2980), A1b (2981), A3 (2982), A5 (2983) y A6 (2984) hechas; la cola autónoma está AGOTADA: A4 se investigó y se dejó (ver `docs/COLA_DE_PULIDO.md`, es de vídeos propios y toca el visor); lo que sigue es B (necesita teléfono), C (decisiones del dueño) y los importantes (actualizador automático, resumen diario, canal directo a Claude). Ideas en `docs/IDEAS.md`.
 - **Estrategia y negocio:** `docs/CONVERSACION_ESTRATEGIA_2026-11-10.md` (plan de pago opcional con servidor propio y buzón
@@ -37,7 +37,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   se espera; el dueño contesta con una letra. Decir siempre qué está probado, qué está sin probar y qué es idea.
 
 
-- **Build actual:** **2997** — BLUETOOTH APAGADO: la app deja de buscar y de comprobar enlaces Bluetooth (se mira cada minuto), avisa una sola vez «Enciende el Bluetooth…» y no da «zombi» falsos (diagnóstico del Nubia, `ble_connections.js` `_btIsOff`/`_noteBtOff`; prueba `btoff.js`); ADJUNTO PENDIENTE que aún no se lee tras un reinicio queda ⏳ y se reintenta (✗ solo tras 3 fallos y 5 min; `_attMissDecision`, prueba `attmiss.js`), 168/168. Anterior 2996 (= contenido de la 2995, que no tiene APK por un fallo de Kotlin `removeCategory`): tocar una notificación abre el chat, freno a la tormenta de NACK y reenvío grande de a un contacto.
+- **Build actual:** **2998** — SEGURIDAD de la auditoría (luz verde del dueño): M6 cerrado (`ss`/`sr` solo del dueño conocido del enlace; prueba `synclink.js`), firma Schnorr e id (sha256) del evento Nostr verificados en el buzón (`netEventValid`; prueba `evsig.js`), F7 ya estaba cerrado; 170/170. Anterior 2997: Bluetooth apagado sin insistir ni «zombi» falso + adjunto pendiente sin datos queda ⏳ (168/168). 2996 (= contenido de la 2995, sin APK por un fallo de Kotlin): tocar una notificación abre el chat, freno a la tormenta de NACK y reenvío grande de a un contacto.
 - **Anterior (2992):** **2992** — BOTÓN «INSTALAR ACTUALIZACIÓN»: en Perfil → Ajustes → Actualizaciones, «Buscar ahora» pasa a «Instalar actualización (N)» cuando hay una versión nueva y al tocarlo baja e instala.
 - **Anterior (2991):** **2991** — PREGUNTA ÚNICA del diagnóstico automático para probadores externos / Google Play (apagado hasta que contesten; en tus builds sigue encendido por defecto).
 - **Anterior (2990):** **2990** — INTERFAZ EN «TÚ» (D2 resuelta con tu «sentido por defecto»): sin voseo en los textos en español; una prueba lo vigila.
