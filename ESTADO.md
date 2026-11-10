@@ -21,14 +21,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **Código:** builds 2974 a 2982 (`nightly-2981` publicada; 2982 = A3 puntito de diagnósticos sin leer en Perfil, batería 156/156); nada sin subir.
+- **Código:** builds 2974 a 2983 (`nightly-2981` publicada; 2982 = A3 puntito en Perfil; 2983 = A5 borrar sticker propio; batería 156/156); nada sin subir.
 - **El dueño solo tiene el S24** (tablet y vivo en la oficina). Pruebas que puede hacer solo: §A.29 y §A.30 de
   `docs/PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md`; §A.31 necesita la tablet.
 - **Decisiones del 10-11:** modelo CEO (el dueño decide, Claude ejecuta y lo guía), modo adelanto, reloj de ausencia de 5 min,
   una tarea aburrida al día, preguntas ¿para quién? ¿qué resuelve? antes de funciones nuevas. Todo en `docs/COMO_TRABAJAMOS.md`.
 - **Importantes por hacer (orden):** (1) actualizador automático del APK de probadores, a probar en el S24; (2) resumen diario a la
   bandeja; (3) canal directo a Claude por tiempo (el dueño dio el visto bueno a las llaves); detalle en `docs/PENDIENTES.md` ⭐.
-- **Cola de pulido:** `docs/COLA_DE_PULIDO.md`, A1 (2979), A2 (2980), A1b (2981) y A3 (2982) hechas; siguiente A5 (borrar sticker propio), luego A4 y A6. Ideas en `docs/IDEAS.md`.
+- **Cola de pulido:** `docs/COLA_DE_PULIDO.md`, A1 (2979), A2 (2980), A1b (2981), A3 (2982) y A5 (2983) hechas; siguiente A6 (pasada «usuario nuevo» por Perfil/Ajustes), luego A4. Ideas en `docs/IDEAS.md`.
 - **Estrategia y negocio:** `docs/CONVERSACION_ESTRATEGIA_2026-11-10.md` (plan de pago opcional con servidor propio y buzón
   garantizado, siembra en universidades, ruta a Google Play, riesgo de marca «Nexo»).
 - **Reloj de ausencia:** se re-arma al final de cada respuesta con `send_later` (5 min) y se cancela al volver el dueño; el
@@ -37,7 +37,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   se espera; el dueño contesta con una letra. Decir siempre qué está probado, qué está sin probar y qué es idea.
 
 
-- **Build actual:** **2982** — A3: puntito rojo en el icono de Perfil cuando llega un diagnóstico automático nuevo (solo en el teléfono que los recibe).
+- **Build actual:** **2983** — A5: mantener pulsado un sticker propio en el selector lo borra (con confirmación).
+- **Anterior (2982):** **2982** — A3: puntito rojo en el icono de Perfil cuando llega un diagnóstico automático nuevo (solo en el teléfono que los recibe).
 - **Anterior (2981):** **2981** — A1b: 14 avisos de Agregar contactos a `t()` y la auditoría limita los textos fijos en español (tope 25).
 - **Anterior (2980):** **2980** — A2: capturas revisadas, enlaces del Perfil separados y 5 textos de Agregar contactos traducidos.
 - **Anterior (2979):** **2979** — APK `nightly-2979` (cola de pulido A1: ~60 textos de la interfaz que estaban fijos en español ahora tienen es/it/en; prueba `i18n_audit.js`). Sin cambio de comportamiento; solo textos.

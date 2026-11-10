@@ -158,12 +158,26 @@ export function openStickerPicker(cid, sendFn, onCreate) {
         im.src = st.img;            // imagen VALIDADA (no innerHTML)
         im.alt = '';
         b.appendChild(im);
+        // A5 (2982): mantener pulsado (o clic derecho) un sticker PROPIO lo borra, con confirmación. Un toque corto lo manda.
+        var _held = false, _timer = null;
+        var _ask = function() {
+          _held = true; if (_timer) { clearTimeout(_timer); _timer = null; }
+          var ok = true; try { ok = window.confirm(t('sticker_delete_confirm', '¿Borrar este sticker?')); } catch (err) {}
+          if (!ok) return;
+          removeUserSticker(st.id);
+          if (b.parentNode) b.parentNode.removeChild(b);
+        };
+        b.addEventListener('pointerdown', function() { _held = false; if (_timer) clearTimeout(_timer); _timer = setTimeout(_ask, 600); });
+        ['pointerup', 'pointerleave', 'pointercancel'].forEach(function(ev) { b.addEventListener(ev, function() { if (_timer) { clearTimeout(_timer); _timer = null; } }); });
+        b.addEventListener('contextmenu', function(e) { e.preventDefault(); e.stopPropagation(); _ask(); });
         b.addEventListener('click', function(e) {
           e.preventDefault(); e.stopPropagation();
+          if (_held) { _held = false; return; }   // el clic que sigue a una pulsación larga no manda el sticker
           closeStickerPicker();
           try { if (typeof sendFn === 'function') sendFn(cid, { img: st.img }); } catch (err) {}
         });
         grid.insertBefore(b, afterCreate);
+        if (head && !head.dataset.hint) { head.dataset.hint = '1'; head.title = t('sticker_delete_hint', 'Mantén pulsado un sticker tuyo para borrarlo'); var hint = document.createElement('div'); hint.className = 'sticker-hint'; hint.textContent = head.title; panel.insertBefore(hint, grid); }
       });
     });
   } catch (e) {}
@@ -174,4 +188,4 @@ export function closeStickerPicker() {
 }
 
 // Gancho de pruebas (funciones de solo lectura): tests/sim/stickers.js comprueba el mapa y el validador sin interfaz.
-try { if (typeof window !== 'undefined') { window.__nexoStickerAsset = stickerAsset; window.__nexoIsValidStickerImg = isValidStickerImg; window.__nexoAddUserSticker = addUserSticker; } } catch (e) {}
+try { if (typeof window !== 'undefined') { window.__nexoStickerAsset = stickerAsset; window.__nexoIsValidStickerImg = isValidStickerImg; window.__nexoAddUserSticker = addUserSticker; window.__nexoOpenStickerPicker = openStickerPicker; window.__nexoUserStickers = getUserStickers; } } catch (e) {}

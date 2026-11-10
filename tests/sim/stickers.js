@@ -110,7 +110,25 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   // 7) NUNCA se ve el JSON crudo del sticker (ni pack ni imagen propia, ni en A ni en B).
   r.sin_json = shown(A).concat(shown(B)).filter((t) => /"type":"nexo_/.test(t) || t.indexOf('nexo_sticker') >= 0).length === 0;
 
-  r.resultado = (r.asset_feliz && r.asset_desconocido_null && r.b_recibe && r.b_pinta_pack && r.a_pinta_pack && r.desconocido_fallback && r.b_recibe_img && r.b_pinta_img && r.a_pinta_img && r.valida_ok && r.sin_json) ? 'OK' : 'FALLO';
+  // 8) A5 (2982): borrar un sticker PROPIO desde el selector (clic derecho / pulsación larga + confirmación); uno corto lo manda.
+  A.win.__nexoAddUserSticker(VALID_IMG);
+  var nProp = () => A.win.__nexoUserStickers().length;
+  r.prop_antes = nProp();
+  A.win.__nexoOpenStickerPicker(id('B'), () => {}, () => {});
+  await sleep(800);
+  var own = () => Array.from(A.win.document.querySelectorAll('#sticker-sheet .sticker-own'));
+  r.selector_muestra_propio = own().length >= 1;
+  A.win.confirm = () => false;   // cancelar: no borra
+  own()[0].dispatchEvent(new A.win.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await sleep(300);
+  r.cancelar_no_borra = nProp() === r.prop_antes && own().length >= 1;
+  A.win.confirm = () => true;    // aceptar: borra de la lista y de la rejilla
+  own()[0].dispatchEvent(new A.win.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await sleep(300);
+  r.borrar_quita = nProp() === r.prop_antes - 1 && own().length === r.prop_antes - 1;
+  A.win.__nexoCloseStickerPicker && A.win.__nexoCloseStickerPicker();
+
+  r.resultado = (r.asset_feliz && r.asset_desconocido_null && r.b_recibe && r.b_pinta_pack && r.a_pinta_pack && r.desconocido_fallback && r.b_recibe_img && r.b_pinta_img && r.a_pinta_img && r.valida_ok && r.selector_muestra_propio && r.cancelar_no_borra && r.borrar_quita && r.sin_json) ? 'OK' : 'FALLO';
   console.log('STICKER ' + JSON.stringify(r));
   try { fs.writeFileSync(path.join(buildDir, 'last_logs_stickers.txt'), logs.slice(-250).join('\n')); } catch (e) {}
   process.exit(0);

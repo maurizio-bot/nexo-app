@@ -758,6 +758,8 @@ var STRINGS = {
   ble_req_sent: { es: 'Solicitud enviada a {id}. Aparecerás cuando la acepte.', it: 'Richiesta inviata a {id}. Comparirai quando l\'accetterà.', en: 'Request sent to {id}. You will appear once they accept.' },
   ble_req_fail: { es: 'No se pudo enviar la solicitud.', it: 'Impossibile inviare la richiesta.', en: 'Could not send the request.' },
   ble_visible_note: { es: 'Visible para agregar mientras esta pantalla esté abierta', it: 'Visibile per essere aggiunto finché questa schermata è aperta', en: 'Visible to be added while this screen is open' },
+  sticker_delete_confirm: { es: "¿Borrar este sticker?", it: "Eliminare questo sticker?", en: "Delete this sticker?" },
+  sticker_delete_hint: { es: "Mantén pulsado un sticker tuyo para borrarlo", it: "Tieni premuto un tuo sticker per eliminarlo", en: "Press and hold one of your stickers to delete it" },
   add_err_badid: { es: "Ese no parece un NEXO ID (empieza por NX y 8 más)", it: "Non sembra un NEXO ID (inizia con NX e altri 8)", en: "That doesn't look like a NEXO ID (it starts with NX plus 8 more)" },
   add_err_self: { es: "Ese es tu propio ID", it: "Questo è il tuo ID", en: "That is your own ID" },
   add_err_dup: { es: "Ya tienes a ese contacto", it: "Hai già questo contatto", en: "You already have that contact" },
