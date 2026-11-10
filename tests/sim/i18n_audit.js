@@ -49,4 +49,23 @@ const show = (t, a_) => { if (a_.length) console.log('\n' + t + ' (' + a_.length
 show('Claves con idioma que falta o vacío', faltan.concat(vacias));
 show('Claves USADAS que no están en la tabla (en it/en se verá el respaldo en español)', sinTabla);
 show('Traducción igual al español (posible sin traducir)', iguales);
+
+// (5) Textos FIJOS en español dentro de src/ui (A1b, 10-11): cadenas con ≥2 palabras vacías del español que no pasan por t().
+// Heurística: ignora comentarios, console/log y throw; no son todos avisos al usuario (muchos son razones internas). Es un TOPE
+// que solo baja: si alguien agrega un texto fijo nuevo, la prueba falla; al pasar uno a t(), se baja el tope.
+const FIJOS_TOPE = 25;
+const STOP = /\b(el|la|los|las|de|del|que|para|con|por|una?|no|se|tu|tus|mi|su|esta|este|más|ya|al|sin|hay|puede|pudo|toca|elige|tocá|podés|tenés)\b/gi;
+const fijos = [];
+for (const f of files.filter((x) => /[\\/]src[\\/]ui[\\/]/.test(x))) {
+  fs.readFileSync(f, 'utf8').split('\n').forEach((l, i) => {
+    if (/^\s*(\/\/|\*|\/\*)/.test(l) || /console\.|\bt\(\s*['"]|throw new Error|\.log\(|_log\(|dbg|diag/i.test(l)) return;
+    for (const x of l.matchAll(/(['"`])((?:(?!\1).){14,})\1/g)) {
+      const s2 = x[2]; const w = (s2.match(STOP) || []).length;
+      if (w >= 2 && /\s/.test(s2) && !/[{}();=<>]{2}/.test(s2.slice(0, 6))) { fijos.push(path.relative(root, f) + ':' + (i + 1) + '  ' + s2.slice(0, 70)); break; }
+    }
+  });
+}
+console.log('I18NFIJOS ' + JSON.stringify({ fijos_es: fijos.length, tope: FIJOS_TOPE }));
+show('Textos fijos en español (no pasan por t(); tope ' + FIJOS_TOPE + ')', fijos);
+if (fijos.length > FIJOS_TOPE) { console.log('FALLO: ' + fijos.length + ' textos fijos > tope ' + FIJOS_TOPE + ' (pasa los nuevos por t())'); if (process.argv.includes('--strict')) process.exit(1); }
 if (process.argv.includes('--strict') && !ok) process.exit(1);

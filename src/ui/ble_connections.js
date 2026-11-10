@@ -3,6 +3,7 @@
  * supervisor de enlaces, pings, reconexión, búsqueda de contactos perdidos, teléfonos encontrados al escanear y
  * esperar a que un enlace esté listo.
  */
+import { t } from './i18n.js';
 import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _dupBleLinksToClose, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages, _wakeShouldFire, _wakeAdvance, _wakeNewEntry, WAKE_GIVEUP_MS } from './ble_helpers.js';
 
 
@@ -648,7 +649,7 @@ export const BLE_CONNECTION_METHODS = {
     // Ronda 2764 (informe del dueño: "al pulsar agregar no pasaba nada"): nunca en silencio
     if (!device) {
       console.warn('[ADD] Agregar ' + deviceId + ': ya no está en la lista (se dejó de ver); se vuelve a buscar');
-      _showToast('Ya no se ve ese teléfono. Buscando otra vez…', 'warn');
+      _showToast(t('add_toast_gone', 'Ya no se ve ese teléfono. Buscando otra vez…'), 'warn');
       this.foundDevices.delete(deviceId); this.renderNewDeviceBar();
       if (!this.isScanning && typeof this.toggleScan === 'function') this.toggleScan();
       return;
@@ -657,7 +658,7 @@ export const BLE_CONNECTION_METHODS = {
     var nexoId = device.deviceUUID || '';
     if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
       console.warn('[ADD] Agregar: sin NEXO ID (' + nexoId + ')');
-      _showToast('No se pudo agregar: ese teléfono no dijo su NEXO ID. Que abra "Agregar" y vuelve a buscar.', 'warn');
+      _showToast(t('add_toast_noid', 'No se pudo agregar: ese teléfono no dijo su NEXO ID. Que abra "Agregar" y vuelve a buscar.'), 'warn');
       return;
     }
     console.log('[ADD] Agregar ' + _normId(nexoId) + ' (' + name + ') por ' + (device.id || deviceId));

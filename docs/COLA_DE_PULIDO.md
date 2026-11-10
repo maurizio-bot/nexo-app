@@ -44,7 +44,7 @@ estéticos; cosas que me puedas dejar como actividades cuando no tengo tiempo de
   marca la auditoría son palabras iguales en los idiomas (Foto, Error, Stickers…), correctas. Hay 25 claves de la tabla que nadie usa
   (se dejan).
 
-- **A2 (10-11, build 2980):** `ui_shots.js` ya salta nombre y bienvenida y saca 15 capturas. Sin textos cortados ni botones montados. Arreglado: enlaces del Perfil pegados y 5 textos fijos de Agregar contactos. **Pendiente (A1b):** la auditoría solo ve `t()`; revisar textos fijos en español dentro de `src/ui` (se encontraron en `ble_ui.js`/`ble_privacy.js`; puede haber más). Voseo visible: «vos elegís» en Perfil (D2).
+- **A2 (10-11, build 2980):** `ui_shots.js` ya salta nombre y bienvenida y saca 15 capturas. Sin textos cortados ni botones montados. Arreglado: enlaces del Perfil pegados y 5 textos fijos de Agregar contactos. **A1b (build 2981, hecho):** 14 avisos más pasaron a `t()` y la auditoría suma un tope de textos fijos en español (25, solo baja). Quedan ~25 candidatos, casi todos razones internas (`ble_ack.js`, `wifi_direct.js`…) y los avisos de `media_limits.js` (pruebas dependen del texto). Voseo visible: «vos elegís» en Perfil (D2).
 
 ## Decisiones nuevas que salieron de las tareas
 - **D2 (para el dueño): ¿en qué español van los textos de la app?** Hoy se mezclan «tú» y voseo: 39 formas (seguí, abrí, tocá, podés,

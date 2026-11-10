@@ -239,8 +239,8 @@ export const BLE_UI_METHODS = {
       if (!v) return;
       var m = v.match(/NX[0-9A-Z]{8}/); // si pegó un mensaje entero ("Agrégame… ID: NX…"), saca el ID
       if (m) v = m[0];
-      if (addNote) { addNote.style.color = ''; addNote.textContent = 'Enviando solicitud…'; }
-      if (typeof self.addByNexoId !== 'function') { if (addNote) addNote.textContent = 'Esta versión no lo permite.'; return; }
+      if (addNote) { addNote.style.color = ''; addNote.textContent = t('add_sending', 'Enviando solicitud…'); }
+      if (typeof self.addByNexoId !== 'function') { if (addNote) addNote.textContent = t('add_unsupported', 'Esta versión no lo permite.'); return; }
       self.addByNexoId(v).then(function() {
         addIdInput.value = '';
         if (addNote) { addNote.style.color = '#22c55e'; addNote.textContent = t('ble_req_sent', 'Solicitud enviada a {id}. Aparecerás cuando la acepte.').replace(/\{id\}/g, v); }
@@ -256,7 +256,7 @@ export const BLE_UI_METHODS = {
       });
       window.addEventListener('nexo:ble:reqAccepted', function(e) {
         self.renderRequests(); self.renderContactsList();
-        if (addNote) { addNote.style.color = '#22c55e'; addNote.textContent = ((e.detail && (e.detail.name || e.detail.id)) || 'Tu contacto') + ' te aceptó. Ya estáis conectados.'; }
+        if (addNote) { addNote.style.color = '#22c55e'; addNote.textContent = t('add_accepted', '{name} te aceptó. Ya están conectados.').replace(/\{name\}/g, (e.detail && (e.detail.name || e.detail.id)) || t('add_your_contact', 'Tu contacto')); }
       });
     }
     // Ronda 2771 (revisión, parte 4): el buscador de "Agregar" filtra tus contactos y los teléfonos encontrados
@@ -408,7 +408,7 @@ export const BLE_UI_METHODS = {
       // Build 2838: compuerta global ANTES de arrancar — no pasar el límite de Android (5 startScan/30 s), que si no
       // deja de dar resultados SIN avisar (Nordic #18). Si la ventana está llena o venimos de un throttle, se difiere
       // (el usuario pidió buscar, así que no se descarta: arranca solo en cuanto se libere un hueco).
-      if (self._scanUnsupported) { try { _showToast('Este teléfono no puede buscar por Bluetooth ahora mismo.', 'warn'); } catch (e) {} return Promise.resolve(); }
+      if (self._scanUnsupported) { try { _showToast(t('scan_unsupported', 'Este teléfono no puede buscar por Bluetooth ahora mismo.'), 'warn'); } catch (e) {} return Promise.resolve(); }
       var waitMs = 0;
       if (Date.now() < (self._scanBlockedUntil || 0)) waitMs = self._scanBlockedUntil - Date.now();
       else if (self._scanWindowFull && self._scanWindowFull()) waitMs = self._scanWindowWaitMs ? self._scanWindowWaitMs() : 2000;
@@ -566,7 +566,7 @@ export const BLE_UI_METHODS = {
     var banner = document.createElement('div');
     banner.id = 'ble-req-banner';
     banner.style.cssText = 'margin:8px 12px 10px;padding:12px 14px;border-radius:14px;background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:9px;box-shadow:0 2px 12px rgba(0,200,255,.35);';
-    banner.innerHTML = '<span style="font-size:18px;">👋</span><span>' + reqs.length + (reqs.length === 1 ? ' solicitud para ti' : ' solicitudes para ti') + ' — tocá para ver</span>';
+    banner.innerHTML = '<span style="font-size:18px;">👋</span><span>' + reqs.length + ' ' + (reqs.length === 1 ? t('req_banner_one', 'solicitud para ti') : t('req_banner_many', 'solicitudes para ti')) + ' — ' + t('req_banner_tap', 'toca para ver') + '</span>';
     banner.addEventListener('click', function () { try { self.togglePanel(); } catch (e) {} });
     if (list.firstChild) list.insertBefore(banner, list.firstChild);
     else list.appendChild(banner);

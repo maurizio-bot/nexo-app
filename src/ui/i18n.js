@@ -757,7 +757,22 @@ var STRINGS = {
   ble_scan_hint_off: { es: 'Toca el botón de buscar (abajo) para encontrar teléfonos con NEXO cerca y agregarlos. Tus contactos están en Chats.', it: 'Tocca il pulsante di ricerca (in basso) per trovare telefoni con NEXO vicini e aggiungerli. I tuoi contatti sono in Chat.', en: 'Tap the search button (below) to find phones with NEXO nearby and add them. Your contacts are in Chats.' },
   ble_req_sent: { es: 'Solicitud enviada a {id}. Aparecerás cuando la acepte.', it: 'Richiesta inviata a {id}. Comparirai quando l\'accetterà.', en: 'Request sent to {id}. You will appear once they accept.' },
   ble_req_fail: { es: 'No se pudo enviar la solicitud.', it: 'Impossibile inviare la richiesta.', en: 'Could not send the request.' },
-  ble_visible_note: { es: 'Visible para agregar mientras esta pantalla esté abierta', it: 'Visibile per essere aggiunto finché questa schermata è aperta', en: 'Visible to be added while this screen is open' }
+  ble_visible_note: { es: 'Visible para agregar mientras esta pantalla esté abierta', it: 'Visibile per essere aggiunto finché questa schermata è aperta', en: 'Visible to be added while this screen is open' },
+  add_err_badid: { es: "Ese no parece un NEXO ID (empieza por NX y 8 más)", it: "Non sembra un NEXO ID (inizia con NX e altri 8)", en: "That doesn't look like a NEXO ID (it starts with NX plus 8 more)" },
+  add_err_self: { es: "Ese es tu propio ID", it: "Questo è il tuo ID", en: "That is your own ID" },
+  add_err_dup: { es: "Ya tienes a ese contacto", it: "Hai già questo contatto", en: "You already have that contact" },
+  add_err_nonet: { es: "Esta versión no tiene internet", it: "Questa versione non ha internet", en: "This version has no internet" },
+  add_err_gone: { es: "Esa solicitud ya no está", it: "Quella richiesta non c'è più", en: "That request is no longer there" },
+  add_toast_gone: { es: "Ya no se ve ese teléfono. Buscando otra vez…", it: "Quel telefono non si vede più. Cerco di nuovo…", en: "That phone is no longer visible. Searching again…" },
+  add_toast_noid: { es: "No se pudo agregar: ese teléfono no dijo su NEXO ID. Que abra \"Agregar\" y vuelve a buscar.", it: "Impossibile aggiungere: quel telefono non ha detto il suo NEXO ID. Deve aprire «Aggiungi» e cerca di nuovo.", en: "Could not add: that phone did not give its NEXO ID. Ask them to open \"Add\" and search again." },
+  add_sending: { es: "Enviando solicitud…", it: "Invio della richiesta…", en: "Sending request…" },
+  add_unsupported: { es: "Esta versión no lo permite.", it: "Questa versione non lo permette.", en: "This version doesn't allow it." },
+  add_accepted: { es: "{name} te aceptó. Ya están conectados.", it: "{name} ti ha accettato. Ora siete connessi.", en: "{name} accepted you. You are now connected." },
+  add_your_contact: { es: "Tu contacto", it: "Il tuo contatto", en: "Your contact" },
+  scan_unsupported: { es: "Este teléfono no puede buscar por Bluetooth ahora mismo.", it: "Questo telefono non può cercare via Bluetooth in questo momento.", en: "This phone can't scan over Bluetooth right now." },
+  req_banner_one: { es: "solicitud para ti", it: "richiesta per te", en: "request for you" },
+  req_banner_many: { es: "solicitudes para ti", it: "richieste per te", en: "requests for you" },
+  req_banner_tap: { es: "toca para ver", it: "tocca per vedere", en: "tap to see" },
 };
 
 // El idioma del teléfono (navigator.language), reducido a dos letras; si no es uno de los nuestros → español.

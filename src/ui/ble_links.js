@@ -3,6 +3,7 @@
  * el contacto aparece o desaparece por Wi-Fi (lan:) o internet (net:), paquetes que llegan por ahí, buzón de
  * internet y por dónde va cada contacto (linkOf).
  */
+import { t } from './i18n.js';
 import { BLE_STATES, _getBLEContacts, _lanId, _netId, _netNx, _normId, _normMac, _safeDispatchEvent, _saveBLEContacts, _vNx } from './ble_helpers.js';
 import { myProfile, maskPhone, maskEmail } from './profile_data.js'; // #dueño 04-11 (perfil 2b): datos enmascarados en la solicitud
 
@@ -194,10 +195,10 @@ export const BLE_LINK_METHODS = {
   // Mandar una solicitud de contacto a un NEXO ID. Devuelve una promesa (error legible si falla).
   addByNexoId(id) {
     var self = this, nx = _normId(id);
-    if (!/^nx[0-9a-z]{8}$/.test(nx)) return Promise.reject(new Error('Ese no parece un NEXO ID (empieza por NX y 8 más)'));
-    if (nx === _normId(self.localNexoId)) return Promise.reject(new Error('Ese es tu propio ID'));
-    if (_getBLEContacts().some(function(c) { return _normId(c.nexoId || c.deviceUUID) === nx; })) return Promise.reject(new Error('Ya tienes a ese contacto'));
-    if (!self.net) return Promise.reject(new Error('Esta versión no tiene internet'));
+    if (!/^nx[0-9a-z]{8}$/.test(nx)) return Promise.reject(new Error(t('add_err_badid', 'Ese no parece un NEXO ID (empieza por NX y 8 más)')));
+    if (nx === _normId(self.localNexoId)) return Promise.reject(new Error(t('add_err_self', 'Ese es tu propio ID')));
+    if (_getBLEContacts().some(function(c) { return _normId(c.nexoId || c.deviceUUID) === nx; })) return Promise.reject(new Error(t('add_err_dup', 'Ya tienes a ese contacto')));
+    if (!self.net) return Promise.reject(new Error(t('add_err_nonet', 'Esta versión no tiene internet')));
     var _mp = myProfile(); // perfil 2b: mando mis datos ENMASCARADOS (los completos van al aceptar, por E2E)
     return self.net.sendRequest(nx, 'req', self.localDeviceName || '', { ph: maskPhone(_mp.phone), em: maskEmail(_mp.email) }).then(function() {
       var out = self._reqStore('nexo_req_out').filter(function(x) { return x.id !== nx; });
@@ -235,7 +236,7 @@ export const BLE_LINK_METHODS = {
   acceptRequest(id) {
     var self = this, nx = _normId(id);
     var inbox = self._reqStore('nexo_req_in'), req = inbox.find(function(x) { return x.id === nx; });
-    if (!req || !req.pk) return Promise.reject(new Error('Esa solicitud ya no está'));
+    if (!req || !req.pk) return Promise.reject(new Error(t('add_err_gone', 'Esa solicitud ya no está')));
     self.addSharedContacts([{ nexoId: nx, name: req.name || '', publicKey: req.pk, nt: 1 }], null, { quiet: true });
     self._reqSave('nexo_req_in', inbox.filter(function(x) { return x.id !== nx; }));
     if (self.net) self.net.greet();
