@@ -100,8 +100,24 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     r.buscar_ahora_informa = /Ya tienes la última/.test(sheet.querySelector('#nexo-updater-status').textContent);
   }
 
+  // (6) 2991 (pedido del dueño): si «Buscar ahora» encuentra una versión nueva, el MISMO botón pasa a «Instalar actualización (N)» y al tocarlo instala
+  if (sheet) {
+    win.__upd.nextCheck = { build: 2005, tag: 'nightly-2005', url: URL_NEW, size: 25000000 };
+    win.localStorage.removeItem('nexo_upd_snooze');
+    sheet.querySelector('#nexo-updater-now').click(); await sleep(500);
+    const b6 = sheet.querySelector('#nexo-updater-now');
+    r.boton_pasa_a_instalar = /Instalar actualización \(2005\)/.test(b6.textContent) && /2005/.test(sheet.querySelector('#nexo-updater-status').textContent);
+    const antes = win.__upd.installs.length;
+    b6.click(); await sleep(500);
+    r.boton_instala = win.__upd.installs.length === antes + 1 && win.__upd.installs[antes] === URL_NEW;
+    // al abrir Ajustes con una versión ya conocida, el botón ya dice «Instalar actualización» (sin tener que buscar otra vez)
+    win.dispatchEvent(new win.CustomEvent('nexo:ui:settings')); await sleep(300);
+    const sheet2 = doc.getElementById('nexo-settings-sheet');
+    r.abre_ya_con_instalar = !!sheet2 && /Instalar actualización \(2005\)/.test(sheet2.querySelector('#nexo-updater-now').textContent);
+  }
+
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|Assembly timeout|net::ERR|fetch/.test(l)).slice(0, 5);
-  const keys = ['gancho', 'consulta_sola', 'aviso_con_numero', 'disponible', 'ahora_no_quita', 'auto_limitada', 'manual_consulta', 'silenciado_no_vuelve', 'sin_permiso', 'reintento_posible', 'instala', 'mismo_numero_nada', 'dev_no_consulta', 'apagado_no_consulta', 'apagado_sin_aviso', 'tarjeta_ajustes', 'buscar_ahora_informa'];
+  const keys = ['gancho', 'consulta_sola', 'aviso_con_numero', 'disponible', 'ahora_no_quita', 'auto_limitada', 'manual_consulta', 'silenciado_no_vuelve', 'sin_permiso', 'reintento_posible', 'instala', 'mismo_numero_nada', 'dev_no_consulta', 'apagado_no_consulta', 'apagado_sin_aviso', 'tarjeta_ajustes', 'buscar_ahora_informa', 'boton_pasa_a_instalar', 'boton_instala', 'abre_ya_con_instalar'];
   const ok = typeof r.aviso_s === 'number' && keys.every((k) => r[k] === true) && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('UPDATER ' + JSON.stringify(r));

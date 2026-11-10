@@ -72,9 +72,24 @@ export function updaterInstall() {
   }).catch(function() { _busy = false; _pct = -1; _renderBanner(); try { _showToast(t('upd_failed', 'No se pudo bajar la actualización. Revisa tu internet y prueba otra vez.'), 'warn'); } catch (e) {} return { opened: false, reason: 'net' }; });
 }
 
+// 2991 (pedido del dueño): en Perfil → Ajustes el botón es «Buscar ahora» y, cuando hay una versión nueva, pasa a «Instalar actualización (N)»
+// (y al tocarlo baja e instala); mientras baja muestra el avance. Se mantiene al día desde aquí (consulta, avance, descarte).
+function _installLabel(a) { return t('upd_install_btn', 'Instalar actualización') + ' (' + a.build + ')'; }
+function _syncSettings() {
+  try {
+    var btn = document.getElementById('nexo-updater-now'), st = document.getElementById('nexo-updater-status');
+    if (!btn) return;
+    var a = updaterAvailable();
+    if (_busy) { btn.disabled = true; if (st) st.textContent = t('upd_downloading', 'Descargando…') + (_pct > 0 ? ' ' + _pct + ' %' : ''); return; }
+    btn.disabled = false;
+    btn.textContent = a ? _installLabel(a) : t('upd_check_now', 'Buscar ahora');
+  } catch (e) {}
+}
+
 function _removeBanner() { try { var b = document.getElementById('nexo-update-banner'); if (b && b.parentNode) b.parentNode.removeChild(b); } catch (e) {} }
 
 function _renderBanner() {
+  _syncSettings();
   try {
     var a = updaterAvailable();
     if (!a || !updaterEnabled() || (_snoozed(a) && !_busy)) { _removeBanner(); return; }
@@ -115,19 +130,20 @@ export function updaterInnerHtml() {
   var me = updaterBuildNum();
   return '<div class="nx-sub" style="margin-bottom:8px;">' + t('upd_sub', 'NEXO avisa cuando hay una versión nueva y la baja con un toque. Solo se consulta GitHub (público): no se manda nada tuyo.') + '</div>' +
     '<label class="nx-row" style="display:flex;align-items:center;gap:10px;"><input type="checkbox" id="nexo-updater-on"' + (updaterEnabled() ? ' checked' : '') + '><span>' + t('upd_auto', 'Buscar versiones nuevas solo') + '</span></label>' +
-    '<div class="nx-sub" id="nexo-updater-status" style="margin:6px 0;">' + t('upd_current', 'Tu versión') + ': ' + (me != null ? me : 'dev') + '</div>' +
-    '<button id="nexo-updater-now" class="nx-btn">' + t('upd_check_now', 'Buscar ahora') + '</button>';
+    '<div class="nx-sub" id="nexo-updater-status" style="margin:6px 0;">' + (updaterAvailable() ? t('upd_new', 'Hay una versión nueva de NEXO') + ' (' + updaterAvailable().build + ')' : t('upd_current', 'Tu versión') + ': ' + (me != null ? me : 'dev')) + '</div>' +
+    '<button id="nexo-updater-now" class="nx-btn nx-btn-primary">' + (updaterAvailable() ? _installLabel(updaterAvailable()) : t('upd_check_now', 'Buscar ahora')) + '</button>';
 }
 export function renderUpdaterSection(sheet) {
   if (!sheet) return;
   var box = sheet.querySelector('#nexo-updater-on'), btn = sheet.querySelector('#nexo-updater-now'), st = sheet.querySelector('#nexo-updater-status');
   if (box) box.onchange = function() { setUpdaterEnabled(box.checked); };
   if (btn) btn.onclick = function() {
+    if (updaterAvailable()) { updaterInstall(); return; }   // ya hay una versión nueva: el botón es «Instalar actualización»
     if (st) st.textContent = t('upd_checking', 'Buscando…');
     updaterCheck(true).then(function(r) {
       if (!st) return;
       var me = updaterBuildNum();
-      if (r.state === 'newer') st.textContent = t('upd_new', 'Hay una versión nueva de NEXO') + ' (' + r.build + ')';
+      if (r.state === 'newer') { st.textContent = t('upd_new', 'Hay una versión nueva de NEXO') + ' (' + r.build + ')'; _syncSettings(); }
       else if (r.state === 'current') st.textContent = t('upd_uptodate', 'Ya tienes la última') + ' (' + (me != null ? me : 'dev') + ')';
       else if (r.state === 'unsupported') st.textContent = t('upd_unsupported', 'Esta versión no se actualiza sola.');
       else st.textContent = t('upd_error', 'No se pudo consultar. Revisa tu internet.');
