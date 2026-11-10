@@ -153,6 +153,8 @@ const NET_FILE_CHUNK = 16000;   // un evento de relé admite ~64 KB (con cifrado
 // TOR DIRECTO (sin relés, sin tope de tamaño). Umbral en caracteres base64 (~16 M ≈ 12 MB reales). Configurable en pruebas.
 const NET_TOR_PREFER_BYTES = 16000000;
 const NET_TOR_PREFER_CHUNKS = 1000;   // del lado del que recibe: tantos trozos de 16 KB ≈ 12 MB → archivo grande, arranca Tor
+var LINK_DOWN_WAIT_FILE_MS = 15000; // y para un archivo por internet (mantiene vivo el toque de despertador)
+var LINK_DOWN_WAIT_MAX_MS = 30000; // 2985: tope de la espera con el enlace caído (ver _onWindowTimeout)
 const NET_CHAT_CHUNK = 8000;
 const NET_TEXT_ONE = 20000;     // un texto (ya cifrado) hasta este tamaño va en un solo paquete (buzón)
 function _isLanDevice(deviceId) { var d = (deviceId || '').toString().toLowerCase(); return d.indexOf('lan:') === 0 || /^lannx[0-9a-z]{8}$/.test(d); }
@@ -1084,7 +1086,7 @@ export class BleAckSystem {
     var stream = this.outgoingStreams.get(msgId);
     if (!stream) return;
     if (msg.bf) this.markBin(stream.deviceId);
-    stream.lastAckAt = Date.now();
+    stream.lastAckAt = Date.now(); stream._downWaitMs = 0;
     if (isFinal) {
       console.log('[BleAckSystem] handleFinalAck msgId=' + msgId);
       stream.handleFinalAck();
@@ -2336,13 +2338,14 @@ ChatStream.prototype._buildChunk = function(idx) {
   obj.k = _chunkCheck(obj);
   return JSON.stringify(obj);
 };
-ChatStream.prototype._startWindowTimer = function() {
+ChatStream.prototype._startWindowTimer = function(waitMs) {
   var self = this;
   if (self.timer) clearTimeout(self.timer);
-  console.log('[ChatStream] Timer iniciado (' + self.windowTimeoutMs + 'ms) msgId=' + self.msgId);
+  var ms = waitMs || self.windowTimeoutMs;
+  console.log('[ChatStream] Timer iniciado (' + ms + 'ms) msgId=' + self.msgId);
   self.timer = setTimeout(function() {
     self._onWindowTimeout();
-  }, self.windowTimeoutMs);
+  }, ms);
 };
 ChatStream.prototype._onWindowTimeout = function() {
   var self = this;
@@ -2354,7 +2357,7 @@ ChatStream.prototype._onWindowTimeout = function() {
   console.log('[ChatStream] _onWindowTimeout. ventanaOriginal=[' + self._windowStartAtSend + ',' + self._windowEndAtSend + ') allAcked=' + allAcked + ' windowStartActual=' + self.windowStart + ' msgId=' + self.msgId);
   if (allAcked) {
     console.log('[ChatStream] Ventana original completa por ACKs tardios. Resolviendo. msgId=' + self.msgId);
-    self.windowRetryCount = 0;
+    self.windowRetryCount = 0; self._downWaitMs = 0;
     if (self._windowResolve) {
       self._windowResolve();
       self._windowResolve = null;
@@ -2378,10 +2381,18 @@ ChatStream.prototype._onWindowTimeout = function() {
       // ⏳) PRONTO para que la burbuja no se quede en ○ («clavado») hasta el tope global de 10 min; el audio/archivo ya
       // quedó para el buzón y se entrega al reconectar. Solo archivos (el texto al buzón ya muestra ✓ por otro camino).
       if (self.type === 'file') { try { self.ackSystem._dispatchStatus(self.msgId, 'pending'); } catch (e) {} }
-      console.log('[ChatStream] Ventana sin ACK con el enlace caído: espero a que vuelva (no gasta reintento) msgId=' + self.msgId);
-      self._startWindowTimer();
+      // 2985 (diagnóstico del dueño 10-11, build 2984): con el contacto ausente esto se repetía cada 3,8 s sin parar (hasta 2 h en memoria:
+      // ~950 vueltas por hora y por flujo, y el registro del diagnóstico se llenaba de estas líneas). La espera ahora CRECE
+      // (3,8 s → 7,6 → 15 → 30 s, tope) y vuelve a la normal en cuanto el enlace está arriba o llegan ACKs. No se gasta reintento ni se aborta.
+      // Un ARCHIVO por internet re-dispara el «toque» de despertador en cada vencimiento (net_link lo frena a 1 cada 15 s): su tope es 15 s
+      // para no aflojar ese latido; el resto (texto, lo demás) llega a 30 s.
+      var _cap = (_isNetDevice(self.deviceId) && self.type === 'file') ? LINK_DOWN_WAIT_FILE_MS : LINK_DOWN_WAIT_MAX_MS;
+      self._downWaitMs = Math.min(Math.max((self._downWaitMs || 0) * 2, self.windowTimeoutMs), _cap);
+      console.log('[ChatStream] Ventana sin ACK con el enlace caído: espero a que vuelva (no gasta reintento; reviso en ' + Math.round(self._downWaitMs / 1000) + ' s) msgId=' + self.msgId);
+      self._startWindowTimer(self._downWaitMs);
       return;
     }
+    self._downWaitMs = 0; // el enlace está arriba: la espera vuelve a la normal
     // 2976 (primer diagnóstico AUTOMÁTICO del dueño): el nativo SOLTÓ el mensaje por ese Bluetooth («Write fallo… descartado
     // entero» → onWriteDropped → marcado muerto), pero las escrituras «sin respuesta» no fallan en JS, así que el respaldo
     // Fénix no pasaba por el catch de _sendChunk y seguía reenviando la ventana cada 8 s (7 reintentos × 12 trozos a MTU 23)

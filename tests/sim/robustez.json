@@ -208,6 +208,10 @@
     {
      "fallo": "2976 (primer diagnóstico AUTOMÁTICO del dueño): al ARRANCAR en frío, _foreground quedaba undefined hasta la primera transición de estado (el nativo solo avisa en handleOnResume/handleOnPause) → el resume de Fénix salía a los 2 s de abrir la app con el usuario en pantalla (dos respaldos por Bluetooth a MTU 23 que acabaron martillando enlaces muertos), contra la regla «usuario primero» (2952). 2976: en el WebView de Android (window.androidBridge, el puente que inyecta Capacitor; el simulador no lo tiene y queda como estaba) _foreground arranca de document.visibilityState. netoffline.js (arranque)",
      "prueba": "ARRANQUE en frío"
+    },
+    {
+     "fallo": "2985 (diagnóstico del dueño S24 10-11, build 2984): dos envíos pendientes a contactos de SOLO internet ausentes, arrancados al abrir la app («Resume: N outgoing»), repetían «Ventana sin ACK con el enlace caído: espero a que vuelva» + «Timer iniciado (3800ms)» cada 3,8 s sin parar (hasta 2 h en memoria, ~950 vueltas por hora y por flujo) y llenaban el registro de 30 min del diagnóstico (tapaban las líneas útiles). Ahora la espera crece (3,8 → 7,6 → 15 → 30 s; 15 s para un archivo por internet, que mantiene el toque de despertador) y vuelve a la normal con el enlace arriba o con ACKs",
+     "prueba": "ventana con el enlace caído"
     }
    ],
    "debiles": [

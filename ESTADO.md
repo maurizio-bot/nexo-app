@@ -21,7 +21,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **Código:** builds 2974 a 2984 (`nightly-2983` publicada; 2984 = A6 icono repetido en Ajustes + `ajustes_shots.js`; batería 156/156); nada sin subir.
+- **Código:** builds 2974 a 2985 (`nightly-2984` publicada; 2985 = tu diagnóstico 10-11: la ventana con el enlace caído ya no gira cada 3,8 s; batería 157/157); nada sin subir.
 - **El dueño solo tiene el S24** (tablet y vivo en la oficina). Pruebas que puede hacer solo: §A.29 y §A.30 de
   `docs/PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md`; §A.31 necesita la tablet.
 - **Decisiones del 10-11:** modelo CEO (el dueño decide, Claude ejecuta y lo guía), modo adelanto, reloj de ausencia de 5 min,
@@ -37,7 +37,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   se espera; el dueño contesta con una letra. Decir siempre qué está probado, qué está sin probar y qué es idea.
 
 
-- **Build actual:** **2984** — A6: pasada «usuario nuevo» por Ajustes; el icono 🌐 repetido de Idioma/Internet se separa.
+- **Build actual:** **2985** — tu diagnóstico del 10-11 (build 2984): dos envíos pendientes a contactos ausentes repetían «ventana sin ACK» cada 3,8 s y llenaban el diagnóstico; ahora la espera crece hasta 15–30 s (`winbackoff.js`).
+- **Anterior (2984):** **2984** — A6: pasada «usuario nuevo» por Ajustes; el icono 🌐 repetido de Idioma/Internet se separa.
 - **Anterior (2983):** **2983** — A5: mantener pulsado un sticker propio en el selector lo borra (con confirmación).
 - **Anterior (2982):** **2982** — A3: puntito rojo en el icono de Perfil cuando llega un diagnóstico automático nuevo (solo en el teléfono que los recibe).
 - **Anterior (2981):** **2981** — A1b: 14 avisos de Agregar contactos a `t()` y la auditoría limita los textos fijos en español (tope 25).
