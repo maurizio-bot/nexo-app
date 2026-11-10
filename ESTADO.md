@@ -88,6 +88,15 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 
 ### En qué seguimos / próximo paso
 
+**📌 10-11 — Conversación de estrategia con el dueño** (solo el S24 a mano; la tablet y el vivo en la oficina). Quedó guardada en
+`docs/CONVERSACION_ESTRATEGIA_2026-11-10.md`: qué sería «valió la pena» (producto oficial de uso diario y vivir de él; el hito
+fundacional fue el primer mensaje que «llegó»), lo que NO quiere (presionar a la familia, premios por invitar), la lectura de
+Claude (efecto red local, seguro contra hábito, sembrar zonas densas) y las ideas. **Idea nueva a no perder:** un plan de pago
+OPCIONAL con servidor propio y buzón garantizado («nunca se cae el servicio», sobre todo para empresas), dentro de NEXO
+Equipos/Plus (§4.1). También la siembra en universidades, el piloto con una empresa (aún sin empresa) y la ruta a Google
+Play (incluye búsqueda de marca: «Nexo» es una empresa cripto). Decisión del dueño aún pendiente: diagnóstico automático
+encendido o apagado con pregunta, sobre todo antes de dárselo a probadores externos.
+
 **📌 09-11 (noche, 9.ª) — 2978: TU DIAGNÓSTICO DE LAS 21:58, la Wi-Fi que se cerraba «sin comprobar».** Con la tablet y con el vivo,
 siempre a los 30 s: la comprobación del enlace la contesta el JS del otro y su app estaba dormida; el nativo tenía la conexión viva. Ahora
 se espera hasta 3 min mientras el latido lo dé por vivo y a los 8 s se le manda un toque FCM (`lanverify.js`). También en ese diagnóstico:

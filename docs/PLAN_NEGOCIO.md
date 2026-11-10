@@ -105,6 +105,12 @@ es para negocios y, con socio, una comisión a los comercios.
 **No hacer**: anuncios en los chats, vender o analizar datos, emitir una criptomoneda propia, guardar dinero de usuarios
 sin licencia.
 
+**Idea añadida el 10-11-2026 (dueño):** dentro de NEXO Equipos y de NEXO Plus, un **servicio opcional de pago con servidor
+propio y buzón garantizado** (relé de NEXO con retención larga, disponibilidad 24/7 y prioridad en el toque) para quien
+necesite que el mensaje nunca se caiga. Lo gratis sigue gratis y sin servidor. Detalle y riesgos en
+`CONVERSACION_ESTRATEGIA_2026-11-10.md` §4.1.
+
+
 ### Cuánto podría dar (escenarios de ejemplo, con supuestos a la vista)
 - **100.000 usuarios activos en México**, 1,5 % pagan Plus, 17,6 dólares al año cada uno (mediana mexicana), menos
   15 % de Google: ≈ **22.000 dólares al año**.

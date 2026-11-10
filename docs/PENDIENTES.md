@@ -37,6 +37,18 @@ visibles + área 56; ajuste «Vibración al tocar» en Perfil → Ajustes (como 
 - Investigación de pruebas reales (nubes, Mobly, emuladores con Bluetooth virtual, ADB, FCM, fabricantes, privacidad):
   `docs/PRUEBAS_REALES_INVESTIGACION_2026-11-09.md`. Nivel 1 (laboratorio casero con los 3 aparatos) a pedido del dueño.
 
+## 🧭 Estrategia y negocio (conversación del dueño 10-11) — detalle en `docs/CONVERSACION_ESTRATEGIA_2026-11-10.md`
+- 💡 **Plan de pago con servidor propio y buzón garantizado** (idea del dueño aprobada: «muy buena, tiene sustentabilidad, que no
+  se nos olvide»): opcional, para empresas y como extra de Plus; continuidad como WhatsApp sin quitar lo gratis. Falta diseño
+  técnico corto, precio y revisar obligaciones sobre datos. Va en NEXO Equipos de `PLAN_NEGOCIO.md` §4.
+- 🎓 **Siembra en universidades** con conocidos del dueño: antes, decidir diagnóstico automático encendido/apagado, avisar el
+  muro de iPhone y medir entrega, no instalaciones.
+- 🏢 **Piloto con una empresa o un evento** (10 a 20 personas, un mes): el dueño aún no conoce una empresa.
+- 🛒 **Ruta a Google Play:** compilación de producción firmada, política de privacidad, seguridad de datos con el diagnóstico,
+  permisos delicados, regla de 12 testers/14 días (verificar) y **búsqueda de marca** («Nexo» es una empresa cripto).
+- 🔁 **Difusión sin internet** (pasar el APK entre teléfonos): idea sin validar; revisar política de Play.
+- Hilos por platicar: el «plus» de NEXO en una frase, qué promesa va primero, simplificar antes de agregar, código abierto.
+
 ## 📬 Entrega OFFLINE sin servidor propio (diseño 08/09-11; dueño: «vamos a estudiarlo bien, no quiero fallas») — Fase A ✅ (2967) · Fase B ✅ (2969/2970) · Fase C ✅ (2971) · Fase D ✅ (2972) · E pendiente
 Docs: `docs/DISENO_ENTREGA_OFFLINE_2026-11-08.md` (diseño v2: cita FCM, cifrar-una-vez, blob compartido, fan-out por
 referencia, invariantes anti-crash, plan adversarial) y `docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md` (spec con números:
