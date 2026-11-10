@@ -105,7 +105,7 @@ export function nameGate(bi, opts) {
   overlay.id = 'nexo-name-overlay';
   var box = document.createElement('div'); box.className = 'nm-in'; overlay.appendChild(box);
   var icon = document.createElement('div'); icon.className = 'nm-icon'; icon.textContent = '🪪';
-  var title = document.createElement('div'); title.className = 'nm-title'; title.textContent = t('name_gate_title', '¿Cómo te llamás?');
+  var title = document.createElement('div'); title.className = 'nm-title'; title.textContent = t('name_gate_title', '¿Cómo te llamas?');
   var body = document.createElement('div'); body.className = 'nm-body'; body.textContent = t('name_gate_body', 'Este es el nombre con el que te van a ver tus contactos en NEXO.');
   var input = document.createElement('input'); input.className = 'nm-input'; input.id = 'nexo-name-input';
   input.type = 'text'; input.maxLength = NAME_MAX; input.autocomplete = 'off'; input.autocapitalize = 'words'; input.spellcheck = false;

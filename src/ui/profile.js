@@ -48,7 +48,7 @@ function _openProfileSheet() {
     // está aquí — es el FIJO del install (bi.localDeviceName), el MISMO en todos lados y NO se edita (ver la línea «Tus
     // contactos te ven como…» de arriba y display_name.js).
     '<div class="nx-card"><div class="nx-h"><span class="nx-ico">📇</span>' + t('prof_my_data', 'Mis datos') + '</div>' +
-    '<div class="nx-sub" style="margin-bottom:8px;">' + t('prof_my_data_sub', 'Opcional. Lo que llenes lo podrás compartir al agregar un contacto (vos elegís qué mostrar).') + '</div>' +
+    '<div class="nx-sub" style="margin-bottom:8px;">' + t('prof_my_data_sub', 'Opcional. Lo que llenes lo podrás compartir al agregar un contacto (tú eliges qué mostrar).') + '</div>' +
     '<input id="nexo-prof-phone" type="tel" autocomplete="off" maxlength="24" placeholder="' + t('prof_field_phone', 'Teléfono') + '" style="width:100%;box-sizing:border-box;padding:12px;margin-bottom:8px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +
     '<input id="nexo-prof-email" type="email" autocomplete="off" maxlength="80" placeholder="' + t('prof_field_email', 'Correo') + '" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;"></div>' +
     // Ronda 2807: el resto (seguridad, avisos, llamadas, internet, diagnóstico, cuenta) se abre en Ajustes
@@ -242,7 +242,7 @@ function _openSettingsSheet() {
       '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-top:6px;"><input type="checkbox" id="nexo-wake-msg"> ' + t('prof_wake_msg', 'Encender la pantalla con un mensaje nuevo') + '</label>') +
     // Build 2835 (pedido del dueño): encender/apagar las confirmaciones de lectura (el ✓✓ azul que mandás)
     card('🔏', t('privacy'), '<label style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-read-receipts"> ' + t('read_receipts') + '</label>' +
-      '<div class="nx-sub" style="margin-top:6px;">' + t('prof_read_receipts_sub', 'Si lo apagás, tus contactos no ven el ✓✓ azul cuando leés sus mensajes. El «entregado» (dos palomitas grises) sigue igual.') + '</div>') +
+      '<div class="nx-sub" style="margin-top:6px;">' + t('prof_read_receipts_sub', 'Si lo apagas, tus contactos no ven el ✓✓ azul cuando lees sus mensajes. El «entregado» (dos palomitas grises) sigue igual.') + '</div>') +
     // Ronda 2772 (pedido del dueño): ver al otro como en un espejo (con su cámara de delante)
     card('🎥', t('prof_video_calls', 'Videollamadas'), '<label style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-call-mirror"> ' + t('prof_mirror_label', 'Ver al otro como en un espejo (su cámara de delante)') + '</label>' +
       '<div class="nx-sub" style="margin-top:6px;">' + t('prof_mirror_sub', 'Sin espejo lo ves como te vería en persona: un papel con letras se lee bien.') + '</div>') +

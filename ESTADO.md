@@ -21,7 +21,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **Código:** builds 2974 a 2989 (`nightly-2987` publicada; 2988 = vídeos del chat perezosos; 2989 = resumen diario de uso + archivos/PDF perezosos, 160/160; en curso 2990 = interfaz en «tú»); nada sin subir.
+- **Código:** builds 2974 a 2989 (`nightly-2987` publicada; 2988 = vídeos del chat perezosos; 2989 = resumen diario de uso + archivos/PDF perezosos, 160/160; 2990 = interfaz en «tú», 160/160); nada sin subir.
 - **El dueño solo tiene el S24** (tablet y vivo en la oficina). Pruebas que puede hacer solo: §A.29 y §A.30 de
   `docs/PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md`; §A.31 necesita la tablet.
 - **Decisiones del 10-11:** modelo CEO (el dueño decide, Claude ejecuta y lo guía), modo adelanto, reloj de ausencia de 5 min,
@@ -37,7 +37,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   se espera; el dueño contesta con una letra. Decir siempre qué está probado, qué está sin probar y qué es idea.
 
 
-- **Build actual:** **2989** — RESUMEN DIARIO de uso al desarrollador (solo números, una vez al día, mismo interruptor del diagnóstico automático) y archivos/PDF del chat sin leerse al abrir (un PDF «no legible» ya no se reintenta).
+- **Build actual:** **2990** — INTERFAZ EN «TÚ» (D2 resuelta con tu «sentido por defecto»): sin voseo en los textos en español; una prueba lo vigila.
+- **Anterior (2989):** **2989** — RESUMEN DIARIO de uso al desarrollador (solo números, una vez al día, mismo interruptor del diagnóstico automático) y archivos/PDF del chat sin leerse al abrir (un PDF «no legible» ya no se reintenta).
 - **Anterior (2988):** **2988** — VÍDEOS DEL CHAT: tu diagnóstico con la 2987 mostró que lo lento que quedaba eran los vídeos (se leían enteros para dibujar la burbuja); ahora la burbuja usa su miniatura y el vídeo se carga al tocarlo.
 - **Anterior (2987):** **2987** — FOTOS DEL CHAT: abrir un chat con fotos ya no lee cada foto entera (tu diagnóstico: 1 a 8 s); lee una miniatura y el original se carga al tocar la foto. Se ve igual; debería abrir mucho más rápido.
 - **Anterior (2986):** **2986** — ACTUALIZADOR AUTOMÁTICO (lo que más te gustó): la app avisa «Hay una versión nueva», la baja y abre el instalador; Perfil → Ajustes → Actualizaciones. **Tu prueba:** instalar la 2986 a mano UNA vez; cuando salga la siguiente, ver el aviso y tocar Actualizar (la primera vez Android pide permitir a NEXO instalar apps).

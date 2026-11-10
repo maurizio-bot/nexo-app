@@ -49,7 +49,7 @@ export function openGamePicker(cid) {
     if (!game.solo) {
       var h = headToHead(cid, game.id);
       var sc = document.createElement('span'); sc.className = 'game-pick-score';
-      sc.textContent = (h.w + h.l + h.d) ? (t('game_you', 'Vos') + ' ' + h.w + '–' + h.l + ' ' + oppName + (h.d ? (' (' + h.d + ' ' + t('game_draws', 'empates') + ')') : '')) : t('game_no_games', 'sin partidas aún');
+      sc.textContent = (h.w + h.l + h.d) ? (t('game_you', 'Tú') + ' ' + h.w + '–' + h.l + ' ' + oppName + (h.d ? (' (' + h.d + ' ' + t('game_draws', 'empates') + ')') : '')) : t('game_no_games', 'sin partidas aún');
       btn.appendChild(sc);
     }
     btn.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); _close(); try { game.open(cid); } catch (err) {} });

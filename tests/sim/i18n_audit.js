@@ -68,4 +68,11 @@ for (const f of files.filter((x) => /[\\/]src[\\/]ui[\\/]/.test(x))) {
 console.log('I18NFIJOS ' + JSON.stringify({ fijos_es: fijos.length, tope: FIJOS_TOPE }));
 show('Textos fijos en español (no pasan por t(); tope ' + FIJOS_TOPE + ')', fijos);
 if (fijos.length > FIJOS_TOPE) { console.log('FALLO: ' + fijos.length + ' textos fijos > tope ' + FIJOS_TOPE + ' (pasa los nuevos por t())'); if (process.argv.includes('--strict')) process.exit(1); }
+
+// (6) D2 (dueño 10-11, «el sentido por defecto»): la interfaz en español va en «tú», sin voseo (vos, podés, tenés, apagás, llamás…) ni «vosotros».
+const VOSEO = /\b(seguí|abrí|tocá|podés|tenés|escribí|mandá|elegís|elegí|vos|leés|apagás|querés|sabés|pegá|copiá|esperá|probá|decime|fijate|mirá|volvé|pedí|usá|agregá|activá|desactivá|dejá|cambiá|borrá|guardá|enviá|permití|aceptá|confirmá|revisá|intentá|escaneá|compartí|sacá|andá|venís|hacés|vivís|llegás|enviás|usás|necesitás|quedás|tocás|cerrás|abrís|seguís|ponés|mandás|pasás|buscás|agregás|activás|desactivás|borrás|guardás|aceptás|confirmás|cambiás|escribís|esperás|probás|recibís|decís|salís|tomás|tené|mantené|poné|asegurate|fijá|ingresá|presioná|hacé|llamás|ustedes|vosotros|estáis|tenéis|podéis|queréis|sois)\b/i;
+const voseo = keys.filter((k) => STR[k] && typeof STR[k].es === 'string' && VOSEO.test(STR[k].es)).map((k) => k + ': ' + STR[k].es.match(VOSEO)[0]);
+console.log('I18NVOSEO ' + JSON.stringify({ voseo_es: voseo.length }));
+show('Voseo en español (la interfaz va en «tú»)', voseo);
+if (voseo.length && process.argv.includes('--strict')) { console.log('FALLO: voseo en la tabla de textos'); process.exit(1); }
 if (process.argv.includes('--strict') && !ok) process.exit(1);

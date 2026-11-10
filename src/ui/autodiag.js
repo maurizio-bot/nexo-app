@@ -88,7 +88,7 @@ export function autoDiagReport(kind, info) {
   var first = !s.first; if (first) s.first = now;
   _saveState(s);
   console.log('[AUTODIAG] síntoma «' + kind + '»' + (info ? ' (' + info + ')' : '') + ' → diagnóstico ' + (isDev ? 'guardado en este teléfono (soy el desarrollador)' : 'al desarrollador ' + dev + ' (' + id + ')') + ', ' + _kb(text.length) + ' KB');
-  if (first && !isDev) { try { _showToast(t('autodiag_first_toast', 'Se mandó un diagnóstico técnico al desarrollador (sin tus mensajes). Podés apagarlo en Perfil.'), 'info'); } catch (e) {} }
+  if (first && !isDev) { try { _showToast(t('autodiag_first_toast', 'Se mandó un diagnóstico técnico al desarrollador (sin tus mensajes). Puedes apagarlo en Perfil.'), 'info'); } catch (e) {} }
   _emit();
   return isDev ? 'local' : 'enviado';
 }

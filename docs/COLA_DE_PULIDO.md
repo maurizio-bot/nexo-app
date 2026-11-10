@@ -63,7 +63,7 @@ estéticos; cosas que me puedas dejar como actividades cuando no tengo tiempo de
 - **A4 (retomada, build 2987):** el dueño pidió «aliviar el chat con fotos» y su diagnóstico del 10-11 lo confirmó (1 a 8 s por abrir un chat con fotos). Se hizo con miniatura (no con «previa/HD» como pensaba la nota anterior): ver ROBUSTEZ 2987. Prueba `chatthumbs.js`. Falta el vídeo propio con original (`hdRef`), que sigue leyendo el original al abrir.
 
 ## Decisiones nuevas que salieron de las tareas
-- **D2 (para el dueño): ¿en qué español van los textos de la app?** Hoy se mezclan «tú» y voseo: 39 formas (seguí, abrí, tocá, podés,
+- ✅ **D2 RESUELTA (10-11, build 2990): todo en «tú»** (el dueño: «el sentido por defecto»). — era: ¿en qué español van los textos de la app? Hoy se mezclan «tú» y voseo: 39 formas (seguí, abrí, tocá, podés,
   tenés, escribí, mandá, elegís, vos…) en 23 archivos. Opciones: **A.** todo a «tú» neutro (Claude lo cambia y la batería lo
   comprueba); **B.** dejarlo como está. Recomendación: A, porque el dueño escribe con «tú» y una app con dos tratos se nota. Si se
   espera, queda B.
