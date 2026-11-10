@@ -425,8 +425,8 @@ function _attFileName(msgId) {
 // Saca el payload grande del mensaje (sin await: no abrir carreras de lectura-escritura del historial)
 function _externalizeAttachment(m, existing) {
   // 2987: el mensaje dibujado con miniatura (thumbOnly) jamás pisa el original: se descarta la miniatura y se conserva la referencia
-  if (m && m.attachmentMeta && m.attachmentMeta.thumbOnly) {
-    var mm = Object.assign({}, m.attachmentMeta); delete mm.thumbOnly; delete mm.fullRef;
+  if (m && m.attachmentMeta && (m.attachmentMeta.thumbOnly || m.attachmentMeta.lazyRef)) {
+    var mm = Object.assign({}, m.attachmentMeta); delete mm.thumbOnly; delete mm.fullRef; delete mm.lazyRef;
     m.attachmentMeta = mm; m.attachmentPayload = null;
     return false;
   }
@@ -468,6 +468,13 @@ export async function vaultHydrateAttachments(messages, opts) {
       if (th) { copy.attachmentPayload = th; copy.attachmentMeta = Object.assign({}, m.attachmentMeta || {}, { thumbOnly: true, fullRef: ref }); out.push(copy); continue; }
     }
     if (ref === m.hdRef && m.hdMime) copy.attachmentMeta = Object.assign({}, m.attachmentMeta || {}, { mime: m.hdMime });
+    // 2988: VÍDEO con miniatura (meta.thumb) al dibujar el chat → NO se lee del disco (un vídeo son varios MB, ~420 ms cada uno en el diagnóstico
+    // del dueño del 10-11); la burbuja solo muestra la miniatura. El vídeo (el original si es propio y lo guardó) se carga al TOCARLO (render.js).
+    if (opts && opts.thumbs && m.attachmentType === 'video' && ref && !m.attachmentDisplayUrl && !(m.attachmentMeta && (m.attachmentMeta.once || !m.attachmentMeta.thumb))) {
+      copy.attachmentPayload = 'L';
+      copy.attachmentMeta = Object.assign({}, copy.attachmentMeta || m.attachmentMeta || {}, { lazyRef: ref });
+      out.push(copy); continue;
+    }
     var mem = _pendingAttachments[ref];
     if (mem) copy.attachmentPayload = mem;
     else if (plugin) {

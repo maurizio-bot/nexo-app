@@ -376,7 +376,8 @@ export function _renderMessage(msg, skipSave) {
         var vFmt = attachment.meta.format || 'webm';
         var vMime = (attachment.meta.mime && attachment.meta.mime.indexOf('video/') === 0) ? attachment.meta.mime.split(';')[0] : 'video/' + vFmt;
         var vSrc = msg.attachmentDisplayUrl || '';
-        if (!vSrc) {
+        var _lazyVid = !!(attachment.meta && attachment.meta.lazyRef);   // 2988: el vídeo no se leyó al abrir el chat; se carga al tocar
+        if (!vSrc && !_lazyVid) {
           try { vSrc = URL.createObjectURL(_b64ToBlob(attachment.payload, vMime)); _objectURLRegistry.push(vSrc); } catch (vErr) { console.warn('[VIDEO] No se pudo preparar el vídeo:', vErr && vErr.message); }
         }
         videoWrapper.dataset.src = vSrc;
@@ -408,8 +409,23 @@ export function _renderMessage(msg, skipSave) {
           hdBadge.textContent = hdText;
           videoWrapper.appendChild(hdBadge);
         }
+        if (_lazyVid) videoWrapper.dataset.lazyRef = attachment.meta.lazyRef;
         videoWrapper.onclick = function(e) {
           e.stopPropagation();
+          if (videoWrapper.dataset.lazyRef && !videoWrapper.dataset.src) {
+            if (videoWrapper.dataset.loading) return;
+            videoWrapper.dataset.loading = '1'; videoWrapper.style.opacity = '0.6';
+            vaultLoadFile(videoWrapper.dataset.lazyRef).then(function(b64) {
+              videoWrapper.style.opacity = ''; delete videoWrapper.dataset.loading;
+              if (!b64) { console.warn('[VIDEO] el vídeo ya no está en el teléfono'); return; }
+              try {
+                var u = URL.createObjectURL(_b64ToBlob(b64, vMime)); _objectURLRegistry.push(u);
+                videoWrapper.dataset.src = u; videoWrapper.dataset.fullscreenSrc = u;
+                _openFullscreenMedia(u, 'video');
+              } catch (vErr2) { console.warn('[VIDEO] No se pudo preparar el vídeo:', vErr2 && vErr2.message); }
+            }).catch(function() { videoWrapper.style.opacity = ''; delete videoWrapper.dataset.loading; });
+            return;
+          }
           _openFullscreenMedia(videoWrapper.dataset.src, 'video');
         };
         contentDiv.appendChild(videoWrapper);

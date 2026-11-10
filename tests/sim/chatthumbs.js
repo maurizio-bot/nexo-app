@@ -4,7 +4,7 @@
 // abren leyendo SOLO las miniaturas; la foto original se carga al TOCARLA. Chromium real (hace falta canvas), un teléfono.
 // Comprueba: (1) 1.ª apertura: se leen las fotos (aún sin miniatura) y se crean las miniaturas; (2) tras reiniciar la app (la miniatura está
 // en el disco): abrir el chat NO lee ningún archivo de foto (nexo_att_*), solo miniaturas, y las burbujas muestran la miniatura (mucho más
-// chica); (3) tocar una foto carga el ORIGINAL (visor con la foto completa); (4) el mensaje guardado no se contamina (sin thumbOnly) y la
+// chica); (3) tocar una foto carga el ORIGINAL (visor con la foto completa); (3b) los VÍDEOS (2988) tampoco se leen al abrir —burbuja con su miniatura— y tocar uno lo carga; (4) el mensaje guardado no se contamina (sin thumbOnly) y la
 // miniatura se borra con el mensaje; (5) reenviar usa el original.
 // Uso: node chatthumbs.js <dir_build>
 'use strict';
@@ -51,6 +51,23 @@ const dist = path.resolve(process.argv[2], 'dist');
     return out;
   }, idB);
   r.foto_kb = Math.round(sizes[0] / 1024);
+  // 4 vídeos de ~2 MB con miniatura (meta.thumb), como los que manda la app (la burbuja solo muestra la miniatura)
+  const NV = 4;
+  const vsz = await A.evaluate(async (idB) => {
+    const out = [];
+    const tc = document.createElement('canvas'); tc.width = 160; tc.height = 90; const tg = tc.getContext('2d'); tg.fillStyle = '#336'; tg.fillRect(0, 0, 160, 90);
+    const thumb = tc.toDataURL('image/jpeg', 0.7).split(',')[1];
+    for (let k = 0; k < 4; k++) {
+      const bytes = new Uint8Array(2 * 1024 * 1024); for (let i = 0; i < bytes.length; i += 65536) crypto.getRandomValues(bytes.subarray(i, Math.min(i + 65536, bytes.length)));
+      let bin = ''; for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+      const b64 = btoa(bin);
+      const id = 'vid' + k + 'x' + Date.now();
+      await window.vaultAppendMessage(idB, { msgId: id, messageId: id, content: '[adjunto]', attachmentType: 'video', attachmentPayload: b64, attachmentMeta: { format: 'webm', mime: 'video/webm', thumb, size: bytes.length, preview: false }, _own: true, status: 'delivered', timestamp: Date.now() - (3 - k) * 30000, seq: 100 + k }, true);
+      out.push(b64.length);
+    }
+    return out;
+  }, idB);
+  r.video_kb = Math.round(vsz[0] / 1024);
   await sleep(1500);
 
   // Cuenta de lecturas de archivo desde la página (el plugin del simulador se arma en cada llamada, así que se envuelve aquí)
@@ -60,7 +77,7 @@ const dist = path.resolve(process.argv[2], 'dist');
     pl.loadFromFile = function (a) { window.__loads.push(String((a && a.filename) || '')); return o.apply(pl, arguments); };
   });
   const openChat = async (p) => { await p.evaluate(() => window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} }))); await sleep(400); await click(p, '#main-contacts-list .ble-contact-row'); };
-  const bubbles = (p) => p.evaluate(() => Array.from(document.querySelectorAll('#messages-container .msg-content img')).map((i) => ({ len: (i.src || '').length, full: !!i.dataset.fullRef })));
+  const bubbles = (p) => p.evaluate(() => Array.from(document.querySelectorAll('#messages-container .msg-content img:not(.video-thumb)')).map((i) => ({ len: (i.src || '').length, full: !!i.dataset.fullRef })));
 
   // (1) primera apertura: lee las fotos (sin miniatura todavía) y crea las miniaturas
   await instrument(A);
@@ -90,10 +107,13 @@ const dist = path.resolve(process.argv[2], 'dist');
   const bs = await bubbles(A);
   r.burbujas = bs.length;
   r.sin_leer_originales = r.lecturas_de_fotos_al_abrir === 0 && r.lecturas_de_miniaturas >= N;
+  const vb = await A.evaluate(() => Array.from(document.querySelectorAll('#messages-container .video-attachment')).map((v) => ({ lazy: !!v.dataset.lazyRef, thumb: !!(v.querySelector('img.video-thumb') && v.querySelector('img.video-thumb').src) })));
+  r.burbujas_video = vb.length;
+  r.videos_perezosos = vb.length >= NV && vb.every((v) => v.lazy && v.thumb);
   r.burbujas_con_miniatura = bs.length >= N && bs.every((b) => b.full && b.len < sizes[0] / 3);
 
   // (3) tocar una foto carga el ORIGINAL en el visor
-  await A.evaluate(() => { const i = document.querySelector('#messages-container .msg-content img'); i.click(); });
+  await A.evaluate(() => { const i = document.querySelector('#messages-container .msg-content img:not(.video-thumb)'); i.click(); });
   await A.waitForFunction(() => !!document.getElementById('fullscreen-media-overlay'), null, { timeout: 8000 }).catch(() => {});
   await sleep(500);
   const viewer = await A.evaluate(() => { const o = document.getElementById('fullscreen-media-overlay'); const i = o && o.querySelector('img'); return i ? i.src.length : 0; });
@@ -101,8 +121,16 @@ const dist = path.resolve(process.argv[2], 'dist');
   r.tocar_leyo_original = (await A.evaluate(() => window.__loads.filter((f) => /^nexo_att_/.test(f)).length)) === 1;
   await A.evaluate(() => window.__nexoCloseMedia && window.__nexoCloseMedia()); await sleep(300);
 
+  // (3b) tocar un VÍDEO lo carga entonces (una sola lectura) y abre el visor con el vídeo
+  const before = await A.evaluate(() => window.__loads.filter((f) => /^nexo_att_/.test(f)).length);
+  await A.evaluate(() => { const v = document.querySelector('#messages-container .video-attachment'); v.click(); });
+  await A.waitForFunction(() => { const o = document.getElementById('fullscreen-media-overlay'); return !!(o && o.querySelector('video')); }, null, { timeout: 8000 }).catch(() => {});
+  const vsrc = await A.evaluate(() => { const o = document.getElementById('fullscreen-media-overlay'); const v = o && o.querySelector('video'); return v ? (v.src || (v.querySelector('source') || {}).src || '') : ''; });
+  r.video_al_tocar = /^blob:/.test(vsrc) && (await A.evaluate(() => window.__loads.filter((f) => /^nexo_att_/.test(f)).length)) === before + 1;
+  await A.evaluate(() => window.__nexoCloseMedia && window.__nexoCloseMedia()); await sleep(300);
+
   // (4) el mensaje guardado no se contamina con la miniatura
-  const clean = await A.evaluate(async (idB) => { const l = await window.vaultLoadMessages(idB); const m = l.filter((x) => x.attachmentType === 'image'); return m.length >= 6 && m.every((x) => !(x.attachmentMeta && (x.attachmentMeta.thumbOnly || x.attachmentMeta.fullRef)) && !!x.attachmentRef && !x.attachmentPayload); }, idB);
+  const clean = await A.evaluate(async (idB) => { const l = await window.vaultLoadMessages(idB); const m = l.filter((x) => x.attachmentType === 'image' || x.attachmentType === 'video'); return m.length >= 10 && m.every((x) => !(x.attachmentMeta && (x.attachmentMeta.thumbOnly || x.attachmentMeta.fullRef || x.attachmentMeta.lazyRef)) && !!x.attachmentRef && !x.attachmentPayload); }, idB);
   r.vault_limpio = clean;
   // la miniatura se borra con el mensaje
   const delId = await A.evaluate(async (idB) => { if (typeof window.vaultDeleteMessage !== 'function') return 'sin-gancho'; const l = await window.vaultLoadMessages(idB); const m = l.find((x) => x.attachmentType === 'image'); await window.vaultDeleteMessage(idB, m.msgId); return m.msgId; }, idB);
@@ -110,7 +138,7 @@ const dist = path.resolve(process.argv[2], 'dist');
   r.miniatura_se_borra = !Array.from(nA.files.keys()).some((f) => f === 'nexo_thumb_' + delId.replace(/[^A-Za-z0-9_-]/g, '_') + '.b64');
 
   r.errores = logs.filter((l) => /PAGEERROR/.test(l)).slice(0, 4);
-  const keys = ['primera_lee_fotos', 'miniaturas_creadas', 'miniatura_mucho_mas_chica', 'sin_leer_originales', 'burbujas_con_miniatura', 'visor_con_original', 'tocar_leyo_original', 'vault_limpio', 'miniatura_se_borra'];
+  const keys = ['primera_lee_fotos', 'miniaturas_creadas', 'miniatura_mucho_mas_chica', 'sin_leer_originales', 'burbujas_con_miniatura', 'videos_perezosos', 'video_al_tocar', 'visor_con_original', 'tocar_leyo_original', 'vault_limpio', 'miniatura_se_borra'];
   const ok = keys.every((k) => r[k] === true) && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('CHATTHUMBS ' + JSON.stringify(r));

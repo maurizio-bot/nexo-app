@@ -434,7 +434,7 @@ export async function _forwardTo(cid, msg) {
   if (msg.attachmentType) {
     var payload = msg.attachmentPayload;
     var meta = Object.assign({}, msg.attachmentMeta || {});
-    if (meta.thumbOnly) { payload = null; delete meta.thumbOnly; delete meta.fullRef; }   // 2987: nunca se reenvía la miniatura
+    if (meta.thumbOnly || meta.lazyRef) { payload = null; delete meta.thumbOnly; delete meta.fullRef; delete meta.lazyRef; }   // 2987/2988: nunca se reenvía la miniatura ni el marcador del vídeo perezoso
     if (!payload && msg.attachmentRef) payload = await vaultLoadFile(msg.attachmentRef);
     // Vídeo propio: el original (HD) si está guardado
     if (msg.attachmentType === 'video' && msg.hdRef) {
