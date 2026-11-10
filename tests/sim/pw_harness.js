@@ -32,6 +32,8 @@ async function bootPhone(browser, name, native, dist, opts = {}) {
     forwarded.add(event);
     native.plugin().addListener(event, (data) => { page.evaluate(([e, d]) => window.__nexoEmit(e, d), [event, data]).catch(() => {}); });
   });
+  // opts.seedName: nombre ya elegido (salta la pantalla «¿cómo te llamas?»); opts.lang: idioma de la interfaz
+  if (opts.seedName || opts.lang) await page.addInitScript(([n, l]) => { try { if (n) localStorage.setItem('nexo_display_name', n); if (l) localStorage.setItem('nexo_lang', l); if (n) localStorage.setItem('nexo_welcome_done', '1'); } catch (e) {} }, [opts.seedName || '', opts.lang || '']);
   await page.addInitScript((methods) => {
     window.CapacitorCustomPlatform = { name: 'android' };
     const listeners = {};

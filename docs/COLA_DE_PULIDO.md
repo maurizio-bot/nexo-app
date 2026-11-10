@@ -17,7 +17,7 @@ estéticos; cosas que me puedas dejar como actividades cuando no tengo tiempo de
 | # | Tarea | Tamaño | Cómo se comprueba |
 |---|---|---|---|
 | A1 ✅ | **Textos sueltos** (hecho en la build 2979, 10-11; ver abajo): buscar textos fijos que no pasan por el traductor, o cortados, o en inglés dentro del español (el dueño lo pidió en la ronda 2771) y revisar que las claves nuevas de esta semana existan en español, italiano e inglés | S–M | Un script que lista textos fuera de `t()` y claves que faltan en algún idioma; la batería |
-| A2 | **Capturas de las pantallas principales** (lista de contactos, chat, Perfil, Ajustes, Agregar, llamada) en Chromium con tamaño de teléfono; buscar desalineaciones, textos cortados, contraste bajo, botones muy juntos | M | Informe con capturas y lista de hallazgos; se corrigen los claros |
+| A2 ✅ | **Capturas de las pantallas principales** (lista de contactos, chat, Perfil, Ajustes, Agregar, llamada) en Chromium con tamaño de teléfono; buscar desalineaciones, textos cortados, contraste bajo, botones muy juntos | M | Informe con capturas y lista de hallazgos; se corrigen los claros |
 | A3 | **Insignia en el icono de Perfil** cuando llega un diagnóstico nuevo a la bandeja (sigue de la 🩺 de `PENDIENTES.md`) | S | `autodiag.js` ampliado |
 | A4 | **Fotos HD perezosas al abrir un chat:** pintar con la previa y cargar el HD al tocar (hoy cada foto grande se lee del disco, unos 450 ms cada una) | M | Prueba de carga del chat en Chromium; contar lecturas |
 | A5 | **Borrar un sticker propio** desde el selector (la función `removeUserSticker` ya existe, falta el botón) | S | Prueba del selector |
@@ -43,6 +43,8 @@ estéticos; cosas que me puedas dejar como actividades cuando no tengo tiempo de
   La frase armada por partes de la galería (`Hasta N a la vez…`) pasó a un marcador `{n}`. Las 16 traducciones iguales al español que
   marca la auditoría son palabras iguales en los idiomas (Foto, Error, Stickers…), correctas. Hay 25 claves de la tabla que nadie usa
   (se dejan).
+
+- **A2 (10-11, build 2980):** `ui_shots.js` ya salta nombre y bienvenida y saca 15 capturas. Sin textos cortados ni botones montados. Arreglado: enlaces del Perfil pegados y 5 textos fijos de Agregar contactos. **Pendiente (A1b):** la auditoría solo ve `t()`; revisar textos fijos en español dentro de `src/ui` (se encontraron en `ble_ui.js`/`ble_privacy.js`; puede haber más). Voseo visible: «vos elegís» en Perfil (D2).
 
 ## Decisiones nuevas que salieron de las tareas
 - **D2 (para el dueño): ¿en qué español van los textos de la app?** Hoy se mezclan «tú» y voseo: 39 formas (seguí, abrí, tocá, podés,

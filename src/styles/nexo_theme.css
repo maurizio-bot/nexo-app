@@ -366,3 +366,6 @@ body::before {
 /* Barra de escribir: 44 visibles (+ área de toque 56 que pone press.js hacia el borde). «+» de agregar 36→40. */
 .input-btn, .send-btn { width: 44px !important; height: 44px !important; }
 .ble-btn-add-small { width: 40px !important; height: 40px !important; }
+
+/* 2980 (A2 capturas): los enlaces seguidos del Perfil («Cambiar foto» «Compartir mi ID») no se pegan entre sí */
+.nx-link + .nx-link { margin-left: 16px; }

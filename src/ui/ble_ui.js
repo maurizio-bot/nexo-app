@@ -89,8 +89,8 @@ export const BLE_UI_METHODS = {
     list.innerHTML = '';
     var hint = document.createElement('div');
     hint.className = 'ble-empty';
-    hint.textContent = this.isScanning ? 'Buscando teléfonos con NEXO cerca… Los que aparezcan salen aquí abajo para agregarlos.'
-      : 'Toca el botón de buscar (abajo) para encontrar teléfonos con NEXO cerca y agregarlos. Tus contactos están en Chats.';
+    hint.textContent = this.isScanning ? t('ble_scan_hint_on', 'Buscando teléfonos con NEXO cerca… Los que aparezcan salen aquí abajo para agregarlos.')
+      : t('ble_scan_hint_off', 'Toca el botón de buscar (abajo) para encontrar teléfonos con NEXO cerca y agregarlos. Tus contactos están en Chats.');
     list.appendChild(hint);
   },
 
@@ -243,8 +243,8 @@ export const BLE_UI_METHODS = {
       if (typeof self.addByNexoId !== 'function') { if (addNote) addNote.textContent = 'Esta versión no lo permite.'; return; }
       self.addByNexoId(v).then(function() {
         addIdInput.value = '';
-        if (addNote) { addNote.style.color = '#22c55e'; addNote.textContent = 'Solicitud enviada a ' + v + '. Aparecerás cuando la acepte.'; }
-      }).catch(function(e) { if (addNote) { addNote.style.color = '#fbbf24'; addNote.textContent = (e && e.message) || 'No se pudo enviar la solicitud.'; } });
+        if (addNote) { addNote.style.color = '#22c55e'; addNote.textContent = t('ble_req_sent', 'Solicitud enviada a {id}. Aparecerás cuando la acepte.').replace(/\{id\}/g, v); }
+      }).catch(function(e) { if (addNote) { addNote.style.color = '#fbbf24'; addNote.textContent = (e && e.message) || t('ble_req_fail', 'No se pudo enviar la solicitud.'); } });
     };
     if (addIdBtn) addIdBtn.addEventListener('click', doAddId);
     if (addIdInput) addIdInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); doAddId(); } });

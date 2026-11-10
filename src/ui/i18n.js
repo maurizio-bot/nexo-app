@@ -753,6 +753,11 @@ var STRINGS = {
   wp_share_ok: { es: "Fondo enviado a ", it: "Sfondo inviato a ", en: "Wallpaper sent to " },
   wp_share_fail: { es: "No se pudo enviar el fondo", it: "Impossibile inviare lo sfondo", en: "Couldn't send the wallpaper" },
   wp_removed: { es: "Fondo de este chat quitado", it: "Sfondo di questa chat rimosso", en: "This chat's wallpaper was removed" },
+  ble_scan_hint_on: { es: 'Buscando teléfonos con NEXO cerca… Los que aparezcan salen aquí abajo para agregarlos.', it: 'Cerco telefoni con NEXO vicini… Quelli che compaiono saranno qui sotto per aggiungerli.', en: 'Looking for phones with NEXO nearby… The ones that show up appear below so you can add them.' },
+  ble_scan_hint_off: { es: 'Toca el botón de buscar (abajo) para encontrar teléfonos con NEXO cerca y agregarlos. Tus contactos están en Chats.', it: 'Tocca il pulsante di ricerca (in basso) per trovare telefoni con NEXO vicini e aggiungerli. I tuoi contatti sono in Chat.', en: 'Tap the search button (below) to find phones with NEXO nearby and add them. Your contacts are in Chats.' },
+  ble_req_sent: { es: 'Solicitud enviada a {id}. Aparecerás cuando la acepte.', it: 'Richiesta inviata a {id}. Comparirai quando l\'accetterà.', en: 'Request sent to {id}. You will appear once they accept.' },
+  ble_req_fail: { es: 'No se pudo enviar la solicitud.', it: 'Impossibile inviare la richiesta.', en: 'Could not send the request.' },
+  ble_visible_note: { es: 'Visible para agregar mientras esta pantalla esté abierta', it: 'Visibile per essere aggiunto finché questa schermata è aperta', en: 'Visible to be added while this screen is open' }
 };
 
 // El idioma del teléfono (navigator.language), reducido a dos letras; si no es uno de los nuestros → español.

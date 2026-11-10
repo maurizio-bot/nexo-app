@@ -1,4 +1,5 @@
 // ID Bluetooth rotativo (ronda 2755, plan del dueño punto 4; cálculo en ble_rid.js). Métodos de BLEInterface.
+import { t } from './i18n.js';
 import { initE2E, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 import { RidBook, ridKey, ridIsToken, ridEpochSeconds, RID_VISIBLE_MS } from './ble_rid.js';
 import { _getBLEContacts, _hasNativeMethod, _safeNativeCall, _normMac, _normId } from './ble_helpers.js';
@@ -31,7 +32,7 @@ export const BLE_PRIVACY_METHODS = {
   _renderVisibleNote() {
     var el = typeof document !== 'undefined' && document.getElementById('ble-visible-note');
     if (!el) return;
-    el.textContent = Date.now() < (this._visibleUntil || 0) ? 'Visible para agregar mientras esta pantalla esté abierta' : '';
+    el.textContent = Date.now() < (this._visibleUntil || 0) ? t('ble_visible_note', 'Visible para agregar mientras esta pantalla esté abierta') : '';
   },
 
   _advertise() {

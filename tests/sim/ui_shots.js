@@ -20,7 +20,7 @@ const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeO
   const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', opts), nB = new NativePhone('B', 'BB:BB:BB:BB:BB:02', opts);
   radio.add(nA); radio.add(nB); nA.load(); nB.load();
   const logs = [];
-  const [A, B] = (await Promise.all([bootPhone(browser, 'A', nA, dist, { phone: true, logs }), bootPhone(browser, 'B', nB, dist, { phone: true, logs })])).map((x) => x.page);
+  const [A, B] = (await Promise.all([bootPhone(browser, 'A', nA, dist, { phone: true, logs, seedName: 'Ana', lang: 'es' }), bootPhone(browser, 'B', nB, dist, { phone: true, logs, seedName: 'Beto', lang: 'es' })])).map((x) => x.page);
   const shot = async (p, name) => { await sleep(500); await p.screenshot({ path: path.join(out, name + '.png') }); };
   await shot(A, '01_inicio_vacio');
   await A.evaluate(() => window.bleInterface.togglePanel());
