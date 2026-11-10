@@ -16,7 +16,7 @@ import { _renderCobroCard } from './cobro.js';
 import { _renderE2EBanner } from './e2e_banner.js';
 import { _setHdBadge } from './video_send.js';
 import { isGroupId } from './groups.js';
-import { vaultAppendMessage, vaultConsumeOnceMessage, vaultHydrateAttachments, vaultLoadMessages, vaultLoadRecent, vaultUpdateMessageStatus } from '../vault/vault_manager.js';
+import { vaultAppendMessage, vaultConsumeOnceMessage, vaultHydrateAttachments, vaultLoadFile, vaultLoadMessages, vaultLoadRecent, vaultUpdateMessageStatus } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
 
 
@@ -162,7 +162,7 @@ export async function _loadOlderMessages() {
   _loadingOlder = true;
   try {
     var batch = _olderMessages.splice(Math.max(0, _olderMessages.length - HISTORY_PAGE));
-    batch = await vaultHydrateAttachments(batch, { preferHd: true });
+    batch = await vaultHydrateAttachments(batch, { preferHd: true, thumbs: true });
     if (_getCurrentContactId() !== cid) return;
     var h0 = mc.scrollHeight, t0 = mc.scrollTop;
     _suppressAutoScroll = true;
@@ -177,7 +177,7 @@ export async function _loadOlderMessages() {
 
 // Pintar una tanda ya hidratada (normaliza id y, en grupo, el groupId). _renderMessage deduplica por msgId.
 async function _paintHydrated(contactId, list) {
-  var hydrated = await vaultHydrateAttachments(list, { preferHd: true });
+  var hydrated = await vaultHydrateAttachments(list, { preferHd: true, thumbs: true });
   if (_normId(_getCurrentContactId()) !== _normId(contactId)) return false;
   hydrated.forEach(function(msg) {
     var mid = msg.msgId || msg.messageId || msg.id || ('msg' + (msg.timestamp || Date.now()));
@@ -337,15 +337,28 @@ export function _renderMessage(msg, skipSave) {
         _renderOnceBubble(contentDiv, msg, attachment, isOwn);
       } else if (attachment.type === 'image') {
         var img = document.createElement('img');
-        img.src = 'data:image/' + (attachment.meta.format || 'jpeg') + ';base64,' + attachment.payload;
+        var _thumbOnly = !!(attachment.meta && attachment.meta.thumbOnly && attachment.meta.fullRef);
+        // 2987: con miniatura (chat recién abierto) la burbuja muestra la miniatura y el original se baja al tocarla
+        img.src = 'data:image/' + (_thumbOnly ? 'jpeg' : (attachment.meta.format || 'jpeg')) + ';base64,' + attachment.payload;
         img.style.maxWidth = '220px';
         img.style.maxHeight = '280px';
         img.style.display = 'block';
         img.style.cursor = 'pointer';
         img.dataset.fullscreenSrc = img.src;
         img.dataset.fullscreenType = 'image';
+        if (_thumbOnly) img.dataset.fullRef = attachment.meta.fullRef;
         img.onclick = function(e) {
           e.stopPropagation();
+          if (img.dataset.fullRef && !img.dataset.fullLoaded) {
+            if (img.dataset.fullLoading) return;
+            img.dataset.fullLoading = '1'; img.style.opacity = '0.6';
+            vaultLoadFile(img.dataset.fullRef).then(function(b64) {
+              img.style.opacity = ''; delete img.dataset.fullLoading;
+              if (b64) { img.dataset.fullscreenSrc = 'data:image/' + (attachment.meta.format || 'jpeg') + ';base64,' + b64; img.dataset.fullLoaded = '1'; }
+              _openFullscreenMedia(img.dataset.fullscreenSrc, 'image');   // sin el original (borrado) se abre la miniatura
+            }).catch(function() { img.style.opacity = ''; delete img.dataset.fullLoading; _openFullscreenMedia(img.dataset.fullscreenSrc, 'image'); });
+            return;
+          }
           _openFullscreenMedia(img.dataset.fullscreenSrc, 'image');
         };
         img.onload = function() {

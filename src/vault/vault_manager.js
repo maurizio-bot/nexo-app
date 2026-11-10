@@ -424,6 +424,12 @@ function _attFileName(msgId) {
 }
 // Saca el payload grande del mensaje (sin await: no abrir carreras de lectura-escritura del historial)
 function _externalizeAttachment(m, existing) {
+  // 2987: el mensaje dibujado con miniatura (thumbOnly) jamás pisa el original: se descarta la miniatura y se conserva la referencia
+  if (m && m.attachmentMeta && m.attachmentMeta.thumbOnly) {
+    var mm = Object.assign({}, m.attachmentMeta); delete mm.thumbOnly; delete mm.fullRef;
+    m.attachmentMeta = mm; m.attachmentPayload = null;
+    return false;
+  }
   if (!m || !m.attachmentPayload || typeof m.attachmentPayload !== 'string' || m.attachmentPayload.length <= ATT_INLINE_LIMIT) return false;
   var ref = (existing && existing.attachmentRef) || m.attachmentRef || _attFileName(m.msgId);
   if (!(existing && existing.attachmentRef)) {
@@ -455,6 +461,12 @@ export async function vaultHydrateAttachments(messages, opts) {
     var ref = (preferHd && m && m.hdRef) ? m.hdRef : (m && m.attachmentRef);
     if (!m || !ref || (m.attachmentPayload && ref === m.attachmentRef)) { out.push(m); continue; }
     var copy = Object.assign({}, m);
+    // 2987: FOTO (no «ver una vez») al dibujar el chat → solo su miniatura; el original se carga al tocarla (render.js)
+    var wantThumb = !!(opts && opts.thumbs) && m.attachmentType === 'image' && ref === m.attachmentRef && !(m.attachmentMeta && m.attachmentMeta.once) && !_thumbFailed[vaultThumbFileName(m.msgId || m.messageId || m.id)];
+    if (wantThumb) {
+      var th = await _thumbLoad(vaultThumbFileName(m.msgId || m.messageId || m.id));
+      if (th) { copy.attachmentPayload = th; copy.attachmentMeta = Object.assign({}, m.attachmentMeta || {}, { thumbOnly: true, fullRef: ref }); out.push(copy); continue; }
+    }
     if (ref === m.hdRef && m.hdMime) copy.attachmentMeta = Object.assign({}, m.attachmentMeta || {}, { mime: m.hdMime });
     var mem = _pendingAttachments[ref];
     if (mem) copy.attachmentPayload = mem;
@@ -464,6 +476,7 @@ export async function vaultHydrateAttachments(messages, opts) {
         if (r && r.exists && r.content) copy.attachmentPayload = r.content;
       } catch (e) {}
     }
+    if (wantThumb && copy.attachmentPayload) _thumbCreate(m.msgId || m.messageId || m.id, copy.attachmentPayload, (m.attachmentMeta && m.attachmentMeta.format) || 'jpeg');
     out.push(copy);
   }
   return out;
@@ -742,6 +755,56 @@ export async function vaultLoadFile(filename) {
 }
 export function vaultHdFileName(msgId) { return _attFileName(msgId + '_hd'); }
 
+// 2987 (pedido del dueño 10-11, diagnóstico: «cada chat con fotos tarda 1-8 s en abrir»: una lectura de ~430 ms POR FOTO, una tras otra):
+// miniatura de cada foto (JPEG de lado máx. 480, unos 15-40 KB) guardada aparte. Al ABRIR un chat se leen solo las miniaturas
+// (burbujas de 220 px); la foto original se carga al TOCARLA. Es una caché derivable: si falta, se lee la foto de siempre y se crea.
+var THUMB_MAX_SIDE = 480, THUMB_QUALITY = 0.72, THUMB_CACHE_MAX = 200;
+var _thumbCache = {}, _thumbKeys = [], _thumbBusy = {}, _thumbFailed = {};
+export function vaultThumbFileName(msgId) { return 'nexo_thumb_' + String(msgId).replace(/[^A-Za-z0-9_-]/g, '_') + '.b64'; }
+function _thumbRemember(name, b64) {
+  if (!_thumbCache[name]) { _thumbKeys.push(name); if (_thumbKeys.length > THUMB_CACHE_MAX) { var old = _thumbKeys.shift(); delete _thumbCache[old]; } }
+  _thumbCache[name] = b64;
+}
+async function _thumbLoad(name) {
+  if (_thumbCache[name]) return _thumbCache[name];
+  var plugin = _nativePlugin();
+  if (!plugin) return null;
+  try {
+    var r = await _safeNativeCall(plugin, 'loadFromFile', { filename: name });
+    if (r && r.exists && r.content) { _thumbRemember(name, r.content); return r.content; }
+  } catch (e) {}
+  return null;
+}
+// Crea la miniatura a partir de la foto ya leída (en segundo plano: no frena el chat). Sin canvas (simulador) no hace nada.
+function _thumbCreate(msgId, b64, format) {
+  var name = vaultThumbFileName(msgId);
+  if (_thumbBusy[name] || _thumbFailed[name] || typeof document === 'undefined' || !b64 || typeof b64 !== 'string') return;
+  _thumbBusy[name] = true;
+  try {
+    var img = new Image();
+    img.onload = function() {
+      try {
+        var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        if (!w || !h) throw new Error('sin tamaño');
+        var k = Math.min(1, THUMB_MAX_SIDE / Math.max(w, h));
+        // Una foto que ya es chica no gana nada con la miniatura: se deja como está (se leerá entera, que es rápido)
+        if (k >= 1 && b64.length < 60000) { _thumbFailed[name] = true; delete _thumbBusy[name]; return; }
+        var c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        var out = c.toDataURL('image/jpeg', THUMB_QUALITY).split(',')[1];
+        if (!out || out.length >= b64.length) { _thumbFailed[name] = true; delete _thumbBusy[name]; return; }
+        _thumbRemember(name, out);
+        var plugin = _nativePlugin();
+        if (plugin) _safeNativeCall(plugin, 'saveToFile', { filename: name, content: out }).catch(function() {});
+        console.log('[THUMB] miniatura de ' + msgId + ': ' + Math.round(b64.length / 1024) + ' KB → ' + Math.round(out.length / 1024) + ' KB');
+      } catch (e) { _thumbFailed[name] = true; }
+      delete _thumbBusy[name];
+    };
+    img.onerror = function() { _thumbFailed[name] = true; delete _thumbBusy[name]; };
+    img.src = 'data:image/' + (format || 'jpeg') + ';base64,' + b64;
+  } catch (e) { _thumbFailed[name] = true; delete _thumbBusy[name]; }
+}
+
 // v2.3.3: cambia campos de un mensaje (sin tocar estado ni contenido)
 export async function vaultSetMessageFields(contactNexoId, msgId, patch) {
   if (!msgId || !patch) return false;
@@ -774,7 +837,7 @@ function _deleteMessageFiles(m, msgId) {
   var plugin = _nativePlugin();
   if (!plugin) return;
   var names = {};
-  [m && m.attachmentRef, m && m.hdRef, _attFileName(msgId), vaultHdFileName(msgId)].forEach(function(n) { if (n) names[n] = true; });
+  [m && m.attachmentRef, m && m.hdRef, _attFileName(msgId), vaultHdFileName(msgId), vaultThumbFileName(msgId)].forEach(function(n) { if (n) names[n] = true; });
   Object.keys(names).forEach(function(n) { _safeNativeCall(plugin, 'deleteFile', { filename: n }).catch(function() {}); });
 }
 // Eliminar para mí: fuera del historial

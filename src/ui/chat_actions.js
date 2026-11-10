@@ -433,8 +433,9 @@ export function _openForwardSheet(msg) {
 export async function _forwardTo(cid, msg) {
   if (msg.attachmentType) {
     var payload = msg.attachmentPayload;
-    if (!payload && msg.attachmentRef) payload = await vaultLoadFile(msg.attachmentRef);
     var meta = Object.assign({}, msg.attachmentMeta || {});
+    if (meta.thumbOnly) { payload = null; delete meta.thumbOnly; delete meta.fullRef; }   // 2987: nunca se reenvía la miniatura
+    if (!payload && msg.attachmentRef) payload = await vaultLoadFile(msg.attachmentRef);
     // Vídeo propio: el original (HD) si está guardado
     if (msg.attachmentType === 'video' && msg.hdRef) {
       var hd = await vaultLoadFile(msg.hdRef);

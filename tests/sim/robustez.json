@@ -212,6 +212,10 @@
     {
      "fallo": "2985 (diagnóstico del dueño S24 10-11, build 2984): dos envíos pendientes a contactos de SOLO internet ausentes, arrancados al abrir la app («Resume: N outgoing»), repetían «Ventana sin ACK con el enlace caído: espero a que vuelva» + «Timer iniciado (3800ms)» cada 3,8 s sin parar (hasta 2 h en memoria, ~950 vueltas por hora y por flujo) y llenaban el registro de 30 min del diagnóstico (tapaban las líneas útiles). Ahora la espera crece (3,8 → 7,6 → 15 → 30 s; 15 s para un archivo por internet, que mantiene el toque de despertador) y vuelve a la normal con el enlace arriba o con ACKs",
      "prueba": "ventana con el enlace caído"
+    },
+    {
+     "fallo": "2987 (diagnóstico del dueño S24 10-11, build 2984): abrir un chat con fotos tardaba de 1 a ~8 s: una lectura de ~430 ms POR FOTO, una tras otra, porque para dibujar una burbuja de 220 px se leía del disco y se pasaba por el puente la foto ENTERA. Ahora la primera vez se guarda una miniatura (JPEG lado máx. 480) y el chat se abre leyendo solo miniaturas; el original se carga al tocar la foto",
+     "prueba": "fotos en el chat: miniatura al abrir"
     }
    ],
    "debiles": [

@@ -19,7 +19,7 @@ estéticos; cosas que me puedas dejar como actividades cuando no tengo tiempo de
 | A1 ✅ | **Textos sueltos** (hecho en la build 2979, 10-11; ver abajo): buscar textos fijos que no pasan por el traductor, o cortados, o en inglés dentro del español (el dueño lo pidió en la ronda 2771) y revisar que las claves nuevas de esta semana existan en español, italiano e inglés | S–M | Un script que lista textos fuera de `t()` y claves que faltan en algún idioma; la batería |
 | A2 ✅ | **Capturas de las pantallas principales** (lista de contactos, chat, Perfil, Ajustes, Agregar, llamada) en Chromium con tamaño de teléfono; buscar desalineaciones, textos cortados, contraste bajo, botones muy juntos | M | Informe con capturas y lista de hallazgos; se corrigen los claros |
 | A3 ✅ | **Insignia en el icono de Perfil** cuando llega un diagnóstico nuevo a la bandeja (sigue de la 🩺 de `PENDIENTES.md`) | S | `autodiag.js` ampliado |
-| A4 ⏸ | **Fotos HD perezosas al abrir un chat:** pintar con la previa y cargar el HD al tocar (hoy cada foto grande se lee del disco, unos 450 ms cada una) | M | Prueba de carga del chat en Chromium; contar lecturas |
+| A4 ✅ | **Fotos HD perezosas al abrir un chat:** pintar con la previa y cargar el HD al tocar (hoy cada foto grande se lee del disco, unos 450 ms cada una) | M | Prueba de carga del chat en Chromium; contar lecturas |
 | A5 ✅ | **Borrar un sticker propio** desde el selector (la función `removeUserSticker` ya existe, falta el botón) | S | Prueba del selector |
 | A6 ✅ | **Pasada «usuario nuevo» por Perfil y Ajustes:** orden de las secciones, nombres claros, nada duplicado (con capturas de A2) | M | Capturas antes y después |
 
@@ -59,6 +59,8 @@ estéticos; cosas que me puedas dejar como actividades cuando no tengo tiempo de
   en la burbuja + `vaultLoadFile` en el visor). Se detiene porque toca el visor de vídeo, que solo se puede probar bien con teléfono, y el
   beneficio es sobre todo para quien tiene muchos vídeos propios en un chat. **Decisión para el dueño:** ¿vale la pena? (recomiendo esperar
   a que un diagnóstico lo muestre como lento en uso real). Hecha la parte barata: nada.
+
+- **A4 (retomada, build 2987):** el dueño pidió «aliviar el chat con fotos» y su diagnóstico del 10-11 lo confirmó (1 a 8 s por abrir un chat con fotos). Se hizo con miniatura (no con «previa/HD» como pensaba la nota anterior): ver ROBUSTEZ 2987. Prueba `chatthumbs.js`. Falta el vídeo propio con original (`hdRef`), que sigue leyendo el original al abrir.
 
 ## Decisiones nuevas que salieron de las tareas
 - **D2 (para el dueño): ¿en qué español van los textos de la app?** Hoy se mezclan «tú» y voseo: 39 formas (seguí, abrí, tocá, podés,

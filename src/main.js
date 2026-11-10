@@ -337,6 +337,7 @@ window.shareChatWallpaper = shareChatWallpaper; window.applyChatWallpaper = appl
 window.hasChatWallpaper = hasChatWallpaper; window.hasChatWallpaperFor = hasChatWallpaperFor;
 window.vaultSaveMessages = vaultSaveMessages;
 window.vaultAppendMessage = vaultAppendMessage;
+window.vaultDeleteMessage = vaultDeleteMessage; // gancho de pruebas (tests/sim/chatthumbs.js)
 window.vaultUpdateMessageStatus = vaultUpdateMessageStatus;
 window.vaultGetOrCreateContact = vaultGetOrCreateContact;
 window.vaultFindContactByNexoId = vaultFindContactByNexoId;
