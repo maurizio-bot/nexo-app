@@ -231,8 +231,11 @@ export function _sendFileFor(contactId, msgId, type, payload, meta, opts) {
   _updateMessageStatus(msgId, 'sending');
   _updateMessageStorageStatus(msgId, 'sending', contactId);
 
+  // 2995: avisa al que espera (reenviar un adjunto grande a varios chats, de a uno) cuando este envío termina o queda pendiente
+  var _settle = function() { var f = opts && opts.onSettled; if (typeof f === 'function') { opts.onSettled = null; try { f(); } catch (e) {} } };
   window.bleInterface.sendFile(contactId, msgId, payload, Object.assign({}, meta, { type: type }))
     .then(function() {
+      _settle();
       // Solo subir a 'sent' si aún no ha llegado un ack superior
       var current = _getDomMessageStatus(msgId);
       if (_canUpgradeStatus(current, 'sent')) {
@@ -241,6 +244,7 @@ export function _sendFileFor(contactId, msgId, type, payload, meta, opts) {
       }
     })
     .catch(function(err) {
+      _settle();
       var msg = (err && err.message) ? err.message : String(err || '');
       console.warn('[ATTACH] sendFile rejected:', msg);
       // v9.9.42: Wi-Fi Direct falló y no cabe por Bluetooth: el vídeo sigue como previa + HD; un archivo

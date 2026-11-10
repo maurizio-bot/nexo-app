@@ -354,6 +354,14 @@
    },
    "modos": [
     {
+     "fallo": "Reenviar un adjunto grande (APK de 25 MB) a 10 contactos a la vez cerraba la app (dueño 10-11): cada reenvío leía, guardaba, cifraba y troceaba el archivo (~4 copias de 35 MB por contacto en memoria); 2995: de a un contacto, leído una sola vez",
+     "prueba": "reenviar un adjunto grande a varios chats"
+    },
+    {
+     "fallo": "Tormenta de NACK (dueño 10-11, APK de 25 MB S24→vivo): el receptor pedía «faltan 0…95» cada ~150 ms y cada aviso reenviaba todos los trozos y encadenaba otra vuelta de la ventana (~100 reenvíos en 10 s, registro lleno); 2995: un reenvío por NACK en curso (los demás se juntan) y una sola cadena de reenvío",
+     "prueba": "tormenta de NACK"
+    },
+    {
      "fallo": "Archivos grandes por Wi-Fi con corte y reintento",
      "prueba": "archivos grandes por Wi-Fi"
     },
@@ -1037,6 +1045,10 @@
     {
      "fallo": "Foto de perfil",
      "prueba": "foto de perfil"
+    },
+    {
+     "fallo": "Tocar una notificación no abría el chat de quien escribió (dueño 10-11): con la app cerrada el aviso del nativo llegaba antes que el JS (no retenido, extra borrado) y el aviso genérico «Mensaje nuevo» del despertar no traía chat (2995)",
+     "prueba": "tocar una notificación abre el chat"
     },
     {
      "fallo": "Fondo de pantalla (lista + chats, 2889): rechaza lo que no es imagen o es enorme (>1 MB → no carga el fondo con una foto gigante que gaste memoria); lista y chat son INDEPENDIENTES (poner uno no borra el otro); se guarda cifrado y se recarga al arrancar; sin fondo queda negro liso",

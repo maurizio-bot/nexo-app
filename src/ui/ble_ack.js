@@ -2450,9 +2450,10 @@ ChatStream.prototype._onWindowTimeout = function() {
 ChatStream.prototype._retransmitWindow = function() {
   var self = this;
   var end = Math.min(self.windowStart + self.windowSize, self.total);
+  var gen = self._retxGen = (self._retxGen || 0) + 1;   // 2995: una sola cadena de reenvío a la vez (la nueva sustituye a la vieja)
   console.log('[ChatStream] _retransmitWindow: [' + self.windowStart + ',' + end + ') msgId=' + self.msgId);
   function sendNext(idx) {
-    if (self.aborted) return;
+    if (self.aborted || gen !== self._retxGen) return;
     if (idx >= end) {
       self._startWindowTimer();
       return;
@@ -2477,10 +2478,24 @@ ChatStream.prototype._retransmitWindow = function() {
   }
   sendNext(self.windowStart);
 };
+var NACK_MIN_GAP_MS = 1000;   // 2995: un reenvío por NACK como mucho por segundo y flujo
 ChatStream.prototype.handleNack = function(indices) {
   var self = this;
   if (self.aborted) return;
-  console.log('[ChatStream] handleNack: ' + indices.join(',') + ' msgId=' + self.msgId);
+  indices = indices || [];
+  // 2995 (diagnóstico del dueño 10-11 12:39, APK de 25 MB S24→vivo): el receptor repetía «faltan 0…95» cada ~150 ms y CADA aviso
+  // reenviaba todos esos trozos y, si el envío fallaba (los relés no respondían), encadenaba otra vuelta de la ventana a los
+  // 500 ms: ~100 reenvíos de la misma ventana en 10 s (más de 100 cadenas a la vez) y el registro lleno de líneas «handleNack».
+  // Ahora hay UN reenvío por NACK en curso: los avisos que llegan mientras tanto se juntan y se atienden de una vez al acabar.
+  if (self._nackBusy && Date.now() - (self._nackBusyAt || 0) < 20000) {   // (20 s de seguro por si un envío no vuelve nunca)
+    self._nackPend = self._nackPend || {};
+    indices.forEach(function(i) { self._nackPend[i] = true; });
+    self._nackMerged = (self._nackMerged || 0) + 1;
+    return;
+  }
+  self._nackBusy = true; self._nackBusyAt = Date.now();
+  console.log('[ChatStream] handleNack: ' + indices.length + ' trozo(s)' + (indices.length ? ' [' + indices[0] + '…' + indices[indices.length - 1] + ']' : '') + (self._nackMerged ? ' (' + self._nackMerged + ' avisos juntados)' : '') + ' msgId=' + self.msgId);
+  self._nackMerged = 0;
   if (self.timer) clearTimeout(self.timer);
   var promises = [];
   indices.forEach(function(idx) {
@@ -2489,11 +2504,20 @@ ChatStream.prototype.handleNack = function(indices) {
       promises.push(self._sendChunk(idx));
     }
   });
-  Promise.all(promises).then(function() {
-    if (!self.aborted) self._startWindowTimer();
-  }).catch(function() {
-    setTimeout(function() { if (!self.aborted) self._retransmitWindow(); }, 500);
-  });
+  function done(failed) {
+    // como mucho un reenvío por NACK cada NACK_MIN_GAP_MS (aunque el envío fallara al instante): los avisos de ese rato se juntan
+    var wait = Math.max(0, NACK_MIN_GAP_MS - (Date.now() - self._nackBusyAt));
+    setTimeout(function() {
+      self._nackBusy = false;
+      if (self.aborted) return;
+      var pend = Object.keys(self._nackPend || {}).map(Number);
+      self._nackPend = {};
+      if (pend.length) { self.handleNack(pend); return; }
+      if (failed) { if (!self._retxQueued) { self._retxQueued = true; setTimeout(function() { self._retxQueued = false; if (!self.aborted) self._retransmitWindow(); }, 500); } }
+      else self._startWindowTimer();
+    }, wait);
+  }
+  Promise.all(promises).then(function() { done(false); }).catch(function() { done(true); });
 };
 ChatStream.prototype.handleFinalAck = function() {
   console.log('[ChatStream] handleFinalAck msgId=' + this.msgId);

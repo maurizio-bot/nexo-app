@@ -484,6 +484,36 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 
 
+// 2995 (dueño 10-11: «al pulsar una notificación no me manda al chat que mandó el mensaje»): con la app cerrada el nativo avisa
+// antes de que el vault y la interfaz estén listos; abrir entonces creaba un contacto «NEXO» vacío o no hacía nada. Espera (hasta
+// 30 s) a que la app termine de arrancar y entonces abre el chat.
+function _openChatWhenReady(deviceId, n) {
+  try {
+    if (window.NEXO && window.NEXO.initialized && window.NEXO.app && window.NEXO.app.bleInterface) { _openChatFromNotification(deviceId); return; }
+  } catch (e) {}
+  if (n < 60) setTimeout(function() { _openChatWhenReady(deviceId, n + 1); }, 500);
+}
+
+function _openSoleUnreadWhenReady(n) {
+  try {
+    var bi = window.NEXO && window.NEXO.initialized && window.NEXO.app && window.NEXO.app.bleInterface;
+    if (bi && typeof bi.unreadSummary === 'function') {
+      var u = bi.unreadSummary().filter(function(x) { return x.count > 0; });
+      if (u.length) {
+        // hay mensajes: se deja un instante por si llegan más de otro chat y se decide con lo que haya
+        setTimeout(function() {
+          try {
+            var u2 = bi.unreadSummary().filter(function(x) { return x.count > 0; });
+            if (u2.length === 1) _openChatFromNotification(u2[0].chatId);
+          } catch (e) {}
+        }, 1200);
+        return;
+      }
+    }
+  } catch (e) {}
+  if (n < 24) setTimeout(function() { _openSoleUnreadWhenReady(n + 1); }, 500);
+}
+
 function _openChatFromNotification(deviceId) {
   try {
     if (!window.NEXO.app) return;
@@ -783,8 +813,12 @@ async function initializeNexoApp() {
         window.Capacitor.Plugins.NexoBLE.addListener('onNotificationOpened', function(event) {
           if (event && event.deviceId) {
             setTimeout(function() {
-              _openChatFromNotification(event.deviceId);
+              _openChatWhenReady(event.deviceId, 0);
             }, 500);
+          } else if (event && event.source === 'wake') {
+            // El aviso genérico «Mensaje nuevo» (despertar por FCM) no sabe quién escribió: al tocarlo se abre el chat SOLO si
+            // hay un único chat con mensajes sin leer (si hay varios, se queda en la lista)
+            setTimeout(function() { _openSoleUnreadWhenReady(0); }, 500);
           }
         });
       }

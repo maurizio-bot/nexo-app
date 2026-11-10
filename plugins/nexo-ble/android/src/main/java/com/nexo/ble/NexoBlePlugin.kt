@@ -289,12 +289,19 @@ class NexoBlePlugin : Plugin() {
                     notifyListeners("onUpdateAction", JSObject().put("install", true).put("build", ub), true)
                     intent.removeExtra(MsgNotifier.EXTRA_UPDATE_INSTALL)
                 }
+                // 2995: el aviso genérico «Mensaje nuevo» (despertar por FCM) no trae chat: la app decide con sus no leídos
+                if (intent.hasExtra(MsgNotifier.EXTRA_WAKE_TAP)) {
+                    notifyListeners("onNotificationOpened", JSObject().put("deviceId", "").put("source", "wake"), true)
+                    intent.removeExtra(MsgNotifier.EXTRA_WAKE_TAP)
+                }
                 val deviceId = intent.getStringExtra("nexo_chat_device_id")
                 if (deviceId != null) {
+                    // 2995: con la app CERRADA este aviso sale al cargar el plugin, antes de que exista el JS; sin «retener» se
+                    // perdía (y el extra se borra justo después). Retenido hasta que el JS escuche.
                     notifyListeners("onNotificationOpened", JSObject()
                         .put("deviceId", deviceId)
                         .put("source", "notification")
-                    )
+                    , true)
                     intent.removeExtra("nexo_chat_device_id")
                 }
             }
@@ -641,6 +648,7 @@ class NexoBlePlugin : Plugin() {
     //   - al SOLTAR (archivo completo): se libera el wakelock. La Wi-Fi la maneja el ciclo de vida (onPause la toma,
     //     onResume la suelta), así que no la toco acá (NetBg puede seguir necesitándola en segundo plano).
     private var xferWakeLock: android.os.PowerManager.WakeLock? = null
+    private var xferLogAt = 0L
     @Synchronized private fun xferAwakeHold(on: Boolean) {
         val ctx = appCtx ?: return
         try {
@@ -649,7 +657,9 @@ class NexoBlePlugin : Plugin() {
                     .newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "nexo:xfer").also { it.setReferenceCounted(false); xferWakeLock = it }
                 wl.acquire(XferAwake.MAX_HOLD_MS)
                 wifiLockHold(true)
-                nlog()?.add("INFO", "XFER", "Despierto para una transferencia grande por internet (tope ${XferAwake.MAX_HOLD_MS / 60000} min)")
+                // 2995: el JS lo re-toma en cada bloque (~2 veces por segundo): una línea cada 30 s, no una por bloque (taparon el diagnóstico del dueño)
+                val nowMs = System.currentTimeMillis()
+                if (nowMs - xferLogAt > 30_000) { xferLogAt = nowMs; nlog()?.add("INFO", "XFER", "Despierto para una transferencia grande por internet (tope ${XferAwake.MAX_HOLD_MS / 60000} min)") }
             } else {
                 xferWakeLock?.let { if (it.isHeld) it.release() }
                 nlog()?.add("INFO", "XFER", "Transferencia grande terminada: liberado el wakelock")

@@ -37,6 +37,15 @@ class MsgNotifier(private val ctx: Context) {
         const val EXTRA_CALL_TOKEN = "nexo_call_token"
         @JvmStatic val callIntentToken: String = java.util.UUID.randomUUID().toString()
         private const val CALL_NOTIF_ID = 3999
+        // 2995: los avisos de mensaje y de actualización abren la pantalla con una acción PROPIA (no MAIN/LAUNCHER): un intent igual al
+        // de arranque del icono puede hacer que Android solo traiga la app al frente SIN entregar los extras (onNewIntent), y entonces
+        // tocar el aviso no abría el chat. Con acción propia (y componente explícito) siempre llega al plugin.
+        const val EXTRA_WAKE_TAP = "nexo_wake_tap"
+        const val ACTION_OPEN_FROM_NOTIF = "com.nexo.ble.OPEN_FROM_NOTIFICATION"
+        @JvmStatic fun notifLaunchIntent(ctx: Context): Intent? {
+            val l = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: return null
+            return Intent(l).setAction(ACTION_OPEN_FROM_NOTIF).removeCategory(Intent.CATEGORY_LAUNCHER)
+        }
         // 2994 (pedido del dueño 10-11): aviso de «versión nueva de NEXO» con botón «Actualizar». Mismo testigo que las llamadas
         // (la pantalla principal está exportada; solo se hace caso al botón si el intent trae el testigo de nuestro PendingIntent).
         const val UPDATE_CHANNEL_ID = "nexo_updates"
@@ -117,7 +126,7 @@ class MsgNotifier(private val ctx: Context) {
             ch.description = "Avisa cuando hay una versión nueva de NEXO"
             ctx.getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
         }
-        val launch = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: return
+        val launch = notifLaunchIntent(ctx) ?: return
         val fl = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         val pf = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         val openPi = PendingIntent.getActivity(ctx, 3996, Intent(launch).addFlags(fl), pf)
@@ -267,7 +276,7 @@ class MsgNotifier(private val ctx: Context) {
         if (!nm.areNotificationsEnabled()) { Log.w(TAG, "Notificaciones desactivadas por el usuario"); return }
         val n = c.count
         val text = if (n > 1) "$n mensajes nuevos" else c.last.ifBlank { "Mensaje nuevo" }
-        val launch = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: return
+        val launch = notifLaunchIntent(ctx) ?: return
         launch.putExtra(EXTRA_CHAT, chatId)
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         val pi = PendingIntent.getActivity(ctx, notifId(chatId), launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)

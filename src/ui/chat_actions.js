@@ -421,7 +421,7 @@ export function _openForwardSheet(msg) {
     var ids = Object.keys(chosen);
     if (!ids.length) return;
     box.remove();
-    Promise.all(ids.map(function(cid) { return _forwardTo(cid, msg); })).then(function() {
+    _forwardToMany(ids, msg).then(function() {
       _showInfoToast(t('chat_forwarded_to', 'Reenviado a ') + ids.length + (ids.length === 1 ? t('chat_chat_sing', ' chat') : t('chat_chat_plur', ' chats')), 2000);
     });
   };
@@ -430,23 +430,53 @@ export function _openForwardSheet(msg) {
   document.body.appendChild(box);
 }
 
-export async function _forwardTo(cid, msg) {
+// 2995 (dueño 10-11: mandó un APK de 25 MB a un contacto, este lo REENVIÓ A 10 CONTACTOS Y LA APP SE CERRÓ): cada reenvío lee el archivo
+// entero (35 MB en base64), lo guarda en el vault, lo cifra y lo trocea: unas 4 copias en memoria POR contacto, y a los 10 a la vez
+// eran ~1,5 GB en el WebView → se cerraba. Ahora un adjunto GRANDE (> FWD_SEQ_CHARS) se reenvía de a UN contacto: se lee del disco una
+// sola vez, se manda al primero y, cuando ese envío termina (o queda pendiente), al siguiente. Lo chico sigue yendo a la vez.
+var FWD_SEQ_CHARS = 1500000;
+var FWD_STEP_MAX_MS = 30 * 60 * 1000;   // tope por contacto, por si un envío no vuelve nunca
+export async function _forwardToMany(ids, msg) {
+  ids = ids || [];
+  if (!msg || !msg.attachmentType || ids.length < 2) return Promise.all(ids.map(function(cid) { return _forwardTo(cid, msg); }));
+  var prep = await _forwardPrepare(msg);
+  if (!prep || !prep.payload || prep.payload.length <= FWD_SEQ_CHARS) return Promise.all(ids.map(function(cid) { return _forwardTo(cid, msg, prep); }));
+  console.log('[ATTACH] Reenvío de un adjunto grande (' + Math.round(prep.payload.length * 3 / 4 / 1048576) + ' MB) a ' + ids.length + ' chats: de a uno');
+  for (var i = 0; i < ids.length; i++) {
+    await new Promise(function(resolve) {
+      var done = false, to = setTimeout(function() { if (!done) { done = true; resolve(); } }, FWD_STEP_MAX_MS);
+      var settle = function() { if (!done) { done = true; clearTimeout(to); resolve(); } };
+      _forwardTo(ids[i], msg, prep, settle).then(function(launched) { if (!launched) settle(); }, settle);
+    });
+  }
+  prep = null;
+}
+
+// Lee UNA vez lo que hay que reenviar (carga del disco, HD del vídeo, limpia marcas). null si no se puede (ya avisó).
+async function _forwardPrepare(msg) {
+  var payload = msg.attachmentPayload;
+  var meta = Object.assign({}, msg.attachmentMeta || {});
+  if (meta.thumbOnly || meta.lazyRef) { payload = null; delete meta.thumbOnly; delete meta.fullRef; delete meta.lazyRef; }
+  if (!payload && msg.attachmentRef) payload = await vaultLoadFile(msg.attachmentRef);
+  if (msg.attachmentType === 'video' && msg.hdRef) {
+    var hd = await vaultLoadFile(msg.hdRef);
+    if (hd) { payload = hd; if (msg.hdMime) { meta.mime = msg.hdMime; meta.format = _videoFormat(msg.hdMime); } }
+  }
+  return { payload: payload, meta: meta };
+}
+
+export async function _forwardTo(cid, msg, prep, onSettled) {
   if (msg.attachmentType) {
-    var payload = msg.attachmentPayload;
-    var meta = Object.assign({}, msg.attachmentMeta || {});
-    if (meta.thumbOnly || meta.lazyRef) { payload = null; delete meta.thumbOnly; delete meta.fullRef; delete meta.lazyRef; }   // 2987/2988: nunca se reenvía la miniatura ni el marcador del vídeo perezoso
-    if (!payload && msg.attachmentRef) payload = await vaultLoadFile(msg.attachmentRef);
-    // Vídeo propio: el original (HD) si está guardado
-    if (msg.attachmentType === 'video' && msg.hdRef) {
-      var hd = await vaultLoadFile(msg.hdRef);
-      if (hd) { payload = hd; if (msg.hdMime) { meta.mime = msg.hdMime; meta.format = _videoFormat(msg.hdMime); } }
-    }
+    if (!prep) prep = await _forwardPrepare(msg);
+    var payload = prep.payload;
+    var meta = Object.assign({}, prep.meta);
     if (meta.big) { _showInfoToast(t('chat_big_no_forward', 'Los archivos grandes todavía no se pueden reenviar'), 2500); return; }
     ['preview', 'hdSize', 'hdFor', 'hd', 'wdOnly', 'fwd'].forEach(function(k) { delete meta[k]; });
     if (!payload) { _showInfoToast(t('chat_forward_file_gone', 'No se pudo reenviar: el archivo ya no está'), 2500); return; }
     console.log('[ATTACH] Reenviando ' + msg.attachmentType + ' a ' + cid);
-    _sendAttachment(msg.attachmentType, payload, meta, { contactId: cid });
-    return;
+    var gsF = window.bleInterface && window.bleInterface.groups;
+    var idF = _sendAttachment(msg.attachmentType, payload, meta, { contactId: cid, onSettled: (gsF && gsF.isGroup(cid)) ? null : onSettled });
+    return !!idF && !(gsF && gsF.isGroup(cid));   // true: el envío avisará (onSettled) al terminar
   }
   var text = _plainText(msg.content);
   var wire = _peerUnderstands(cid) ? JSON.stringify({ type: 'nexo_txt', t: text, fw: 1 }) : text;
@@ -602,3 +632,6 @@ export function _applyChatAction(senderId, act) {
     });
   });
 }
+
+// Gancho de pruebas (tests/sim/fwdbig.js)
+try { if (typeof window !== 'undefined') window.__nexoForwardMany = _forwardToMany; } catch (e) {}

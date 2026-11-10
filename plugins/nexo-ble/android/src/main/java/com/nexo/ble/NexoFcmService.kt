@@ -72,7 +72,8 @@ class NexoFcmService : FirebaseMessagingService() {
         val mn = MsgNotifier.get(this)
         val nm = NotificationManagerCompat.from(this)
         if (!nm.areNotificationsEnabled()) { nlog("Avisos desactivados: despertó sin aviso", "WARN"); return }
-        val launch = packageManager.getLaunchIntentForPackage(packageName)
+        // 2995: acción propia (llega siempre al plugin) + marca «despertar»: la app abre el chat si solo hay uno con mensajes sin leer
+        val launch = MsgNotifier.notifLaunchIntent(this)?.putExtra(MsgNotifier.EXTRA_WAKE_TAP, "1")
         val pi = if (launch != null) PendingIntent.getActivity(
             this, WAKE_NOTIF_ID,
             launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
