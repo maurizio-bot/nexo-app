@@ -19,7 +19,7 @@ estéticos; cosas que me puedas dejar como actividades cuando no tengo tiempo de
 | A1 ✅ | **Textos sueltos** (hecho en la build 2979, 10-11; ver abajo): buscar textos fijos que no pasan por el traductor, o cortados, o en inglés dentro del español (el dueño lo pidió en la ronda 2771) y revisar que las claves nuevas de esta semana existan en español, italiano e inglés | S–M | Un script que lista textos fuera de `t()` y claves que faltan en algún idioma; la batería |
 | A2 ✅ | **Capturas de las pantallas principales** (lista de contactos, chat, Perfil, Ajustes, Agregar, llamada) en Chromium con tamaño de teléfono; buscar desalineaciones, textos cortados, contraste bajo, botones muy juntos | M | Informe con capturas y lista de hallazgos; se corrigen los claros |
 | A3 ✅ | **Insignia en el icono de Perfil** cuando llega un diagnóstico nuevo a la bandeja (sigue de la 🩺 de `PENDIENTES.md`) | S | `autodiag.js` ampliado |
-| A4 | **Fotos HD perezosas al abrir un chat:** pintar con la previa y cargar el HD al tocar (hoy cada foto grande se lee del disco, unos 450 ms cada una) | M | Prueba de carga del chat en Chromium; contar lecturas |
+| A4 ⏸ | **Fotos HD perezosas al abrir un chat:** pintar con la previa y cargar el HD al tocar (hoy cada foto grande se lee del disco, unos 450 ms cada una) | M | Prueba de carga del chat en Chromium; contar lecturas |
 | A5 ✅ | **Borrar un sticker propio** desde el selector (la función `removeUserSticker` ya existe, falta el botón) | S | Prueba del selector |
 | A6 ✅ | **Pasada «usuario nuevo» por Perfil y Ajustes:** orden de las secciones, nombres claros, nada duplicado (con capturas de A2) | M | Capturas antes y después |
 
@@ -51,6 +51,14 @@ estéticos; cosas que me puedas dejar como actividades cuando no tengo tiempo de
 - **A5 (10-11, build 2983):** en el selector, pulsación larga o clic derecho sobre un sticker propio → «¿Borrar este sticker?»; toque corto sigue mandándolo. Prueba en `stickers.js`.
 
 - **A6 (10-11, build 2984):** captura completa de Ajustes (`ajustes_shots.js`). Arreglado: icono 🌐 repetido (Idioma → 🗣️). Anotado: voseo en Privacidad (D2), 🔐 repetido dentro de Seguridad. El orden de secciones se deja.
+
+- **A4 (10-11, investigado, NO hecho):** lo que pinta el chat con `preferHd` (`render.js` líneas ~165 y ~180 → `vaultHydrateAttachments`) solo cambia
+  algo para **vídeos propios con original guardado** (`hdRef`): para dibujar la burbuja se lee del disco el ORIGINAL (grande) y se
+  decodifica a un `Blob` aunque la burbuja solo muestra la miniatura (`meta.thumb`). Las fotos no tienen «previa» aparte (su archivo es
+  lo que se ve), así que no hay nada que cargar perezosamente. Arreglo posible: hidratar con la previa y cargar el HD al tocar (`dataset.hdRef`
+  en la burbuja + `vaultLoadFile` en el visor). Se detiene porque toca el visor de vídeo, que solo se puede probar bien con teléfono, y el
+  beneficio es sobre todo para quien tiene muchos vídeos propios en un chat. **Decisión para el dueño:** ¿vale la pena? (recomiendo esperar
+  a que un diagnóstico lo muestre como lento en uso real). Hecha la parte barata: nada.
 
 ## Decisiones nuevas que salieron de las tareas
 - **D2 (para el dueño): ¿en qué español van los textos de la app?** Hoy se mezclan «tú» y voseo: 39 formas (seguí, abrí, tocá, podés,

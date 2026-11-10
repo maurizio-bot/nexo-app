@@ -28,7 +28,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   una tarea aburrida al día, preguntas ¿para quién? ¿qué resuelve? antes de funciones nuevas. Todo en `docs/COMO_TRABAJAMOS.md`.
 - **Importantes por hacer (orden):** (1) actualizador automático del APK de probadores, a probar en el S24; (2) resumen diario a la
   bandeja; (3) canal directo a Claude por tiempo (el dueño dio el visto bueno a las llaves); detalle en `docs/PENDIENTES.md` ⭐.
-- **Cola de pulido:** `docs/COLA_DE_PULIDO.md`, A1 (2979), A2 (2980), A1b (2981), A3 (2982), A5 (2983) y A6 (2984) hechas; solo queda A4 (fotos HD perezosas, tamaño M). Ideas en `docs/IDEAS.md`.
+- **Cola de pulido:** `docs/COLA_DE_PULIDO.md`, A1 (2979), A2 (2980), A1b (2981), A3 (2982), A5 (2983) y A6 (2984) hechas; la cola autónoma está AGOTADA: A4 se investigó y se dejó (ver `docs/COLA_DE_PULIDO.md`, es de vídeos propios y toca el visor); lo que sigue es B (necesita teléfono), C (decisiones del dueño) y los importantes (actualizador automático, resumen diario, canal directo a Claude). Ideas en `docs/IDEAS.md`.
 - **Estrategia y negocio:** `docs/CONVERSACION_ESTRATEGIA_2026-11-10.md` (plan de pago opcional con servidor propio y buzón
   garantizado, siembra en universidades, ruta a Google Play, riesgo de marca «Nexo»).
 - **Reloj de ausencia:** se re-arma al final de cada respuesta con `send_later` (5 min) y se cancela al volver el dueño; el
