@@ -100,7 +100,15 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   radio.block(nA, nB);
   r.Z2_detecta_s = await waitFor(() => { const l = A.win.bleInterface.linkOf(idB); return !l || l === 'none' || /sin respuesta a 2 pings|desconectado/.test(logs.slice(mark2).join('\n')); }, 120000);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
-  const ok = !r.Z1_zombi && r.Z1_pongs_nativos > 0 && r.Z1_texto_llega_s !== null && r.Z2_detecta_s !== null && !r.errores.length;
+  // Z3 (3013, canal de diagnósticos 11-11: 3 de 5 «zombi» eran de conexiones DE PASO con un NEXO sin identificar —el síntoma traía
+  // una dirección, no un contacto—): eso no se manda al desarrollador; el de un CONTACTO sí
+  const sym = []; A.win.addEventListener('nexo:diag:symptom', (e) => sym.push(e.detail && (e.detail.kind + ':' + e.detail.info)));
+  const biA = A.win.bleInterface;
+  biA._setDeviceState('5A:5A:5A:5A:5A:01', 'ready_to_chat'); biA._forceDisconnectAndReconnect('5A:5A:5A:5A:5A:01');
+  r.Z3_de_paso_sin_sintoma = sym.length === 0;
+  biA._macToNexoId.set('5b5b5b5b5b02', String(idB).toLowerCase()); biA._setDeviceState('5B:5B:5B:5B:5B:02', 'ready_to_chat'); biA._forceDisconnectAndReconnect('5B:5B:5B:5B:5B:02');
+  r.Z3_contacto_con_sintoma = sym.some((x) => String(x).indexOf('zombi:') === 0);
+  const ok = !r.Z1_zombi && r.Z1_pongs_nativos > 0 && r.Z1_texto_llega_s !== null && r.Z2_detecta_s !== null && r.Z3_de_paso_sin_sintoma && r.Z3_contacto_con_sintoma && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('ZOMBIFALSO ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_zombifalso.txt'), logs.join('\n'));
