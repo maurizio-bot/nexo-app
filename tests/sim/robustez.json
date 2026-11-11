@@ -483,6 +483,10 @@
      "fallo": "2974 (diagnóstico del dueño S24 13:21): el PUENTE Jump también leía del disco el APK de 35 MB en cada vuelta («Reenviando 1 pending para la tablet por el vivo»; y al volver el enlace directo, «salió por un puente sin ✓✓: se reenvía directo» ×3 en 1,5 s, cada vez con su «leyendo lento (adjunto)»). 2974: la misma regla del 2973 (_tooBigForBt, en ble_helpers) se aplica ANTES de hidratar en el reenvío por puente Bluetooth (_resendPendingMessages, btHop) y en el re-envío directo de lo que salió por un puente (_resendRelayedDirect)",
      "prueba": null,
      "fuera": "el puente Jump con un archivo > tope Bluetooth no está montado en el simulador; la regla compartida (_tooBigForBt) la cubre blobe2e.js (5b) para el enlace directo"
+    },
+    {
+     "fallo": "3003 (diagnóstico automático S24 build 3001, 11-11 03:42): la app arrancó 3 veces en 1 minuto con un APK de 25 MB pendiente para tres contactos; el registro muestra bloques «Resume: N outgoing para …» (uno por contacto, 21) cada ~1 s y lecturas de 450–750 ms de nexo_vault_outgoing_v2: cada «Reenviando pending para X» llamaba a resumeOutgoingTransfers(), que recorre TODOS los contactos leyendo el almacén de transferencias (N × 21 lecturas en segundos), y el adjunto sin datos se volvía a cargar del disco (25 MB) en cada vuelta. 3003: resumeOutgoingTransfers se agrupa (un escaneo a la vez, mín. 2,5 s entre escaneos, uno pendiente al final) y un adjunto que falló al leerse se enfría 5→60 s (_attMissCooling). resumescan.js (antes: 252 lecturas en una ráfaga de 12 llamadas; ahora 21) + attmiss.js",
+     "prueba": "tormenta de escaneos de transferencias pendientes"
     }
    ],
    "debiles": [

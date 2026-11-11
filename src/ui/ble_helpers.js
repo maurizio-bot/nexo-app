@@ -701,5 +701,15 @@ export function _autoScanStart() {
 export function _attMissDecision(memo, mid, now) {
   var m = memo[mid] || (memo[mid] = { n: 0, t0: now });
   m.n++;
+  m.tl = now;
   return (m.n >= 3 && now - m.t0 >= 300000) ? 'fail' : 'wait';
+}
+// 3003 (diagnóstico automático S24 build 3001, 11-11 03:42): el mismo adjunto sin datos se volvía a cargar del disco (25 MB, 450–750 ms) en
+// CADA vuelta del reenvío (decenas por minuto, para tres contactos) hasta reiniciar la app. Tras un intento fallido se enfría: no se
+// vuelve a leer hasta pasados 5 s, 10 s, 20 s, 40 s y 60 s (tope) del último intento. Mientras tanto el adjunto sigue ⏳ pendiente.
+export function _attMissCooling(memo, mid, now) {
+  var m = memo && memo[mid];
+  if (!m || !m.tl) return false;
+  var wait = Math.min(60000, 5000 * Math.pow(2, Math.max(0, m.n - 1)));
+  return now - m.tl < wait;
 }

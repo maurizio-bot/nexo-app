@@ -9,7 +9,7 @@ import { groupAttachment, parseGroupEnvelope } from './groups.js';
 import { NET_MAX_B64_BYTES } from './media_limits.js';
 import { parseCallSignal } from './calls.js';
 import { parseGroupCallSignal } from './group_call.js';
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _attMissDecision, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus, _tooBigForBt } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _attMissDecision, _attMissCooling, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus, _tooBigForBt } from './ble_helpers.js';
 import { blobPointerIn, validatePointer, fetchBlob, blobMailboxEligible, pointerReusable, loadBlobSeen, saveBlobSeen, citaIn, validateCita, loadCitaIn, saveCitaIn, loadCitaOut, saveCitaOut, _fetchRetryDelay, _b64Bytes as _blobB64Bytes, MAX_CONCURRENT as BLOB_MAX_CONCURRENT, MAILBOX_MAX_BYTES as BLOB_MAILBOX_MAX_BYTES } from '../net/blob_mailbox.js'; // Fase B (2969): buzón de ARCHIVOS
 
 
@@ -1260,6 +1260,9 @@ export const BLE_MESSAGE_METHODS = {
     var tooBigForBt = _tooBigForBt;
     getPending = getPending.then(function(list) {
       list = (list || []).filter(function(m) { return !self._isMsgInFlight(idOf(m)); });
+      // 3003: un adjunto que acaba de fallar al leerse del disco se enfría (no se relee 25 MB en cada vuelta); sigue ⏳ pendiente
+      var nowCool = Date.now();
+      list = list.filter(function(m) { return !(m && (m.attachmentRef || m.attachmentType) && _attMissCooling(self._attMiss, idOf(m), nowCool)); });
       if (!direct && !rh) {
         // Fase B (build 2969): sin enlace ni ruta pero CON internet propio y el contacto AUSENTE → los ARCHIVOS pendientes
         // (foto/vídeo/archivo ≤ 5 MB) van al BUZÓN DE ARCHIVOS (cifrados en los relés + puntero en su buzón); el resto sigue

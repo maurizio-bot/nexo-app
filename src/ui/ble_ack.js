@@ -141,6 +141,7 @@ const MTU_DEFER_MAX_WAIT_MS = 300000;     // 5 min esperando un camino mejor; lu
 // hilo principal del WebView se saturaba (timers + logs + reconstruir el contenido de cada una) y la app se CONGELABA
 // (ANR). Ahora se reanudan como mucho MAX_RESUME_CONCURRENT a la vez (el resto en cola) y el contenido se reconstruye
 // perezosamente al arrancar cada una, no todas de golpe.
+const RESUME_SCAN_GAP_MS = 2500;          // 3003: mínimo entre dos escaneos completos de transferencias pendientes (resumeOutgoingTransfers)
 const MAX_RESUME_CONCURRENT = 3;          // transferencias reanudadas a la vez (global); el resto espera en cola
 // v3.10.0: Wi-Fi normal (lan.js): trozos grandes por la misma red
 const LAN_FILE_CHUNK = 24000;
@@ -1593,11 +1594,27 @@ export class BleAckSystem {
   resumeOutgoingTransfers() {
     var self = this;
     if (!window.vaultGetPendingOutgoingTransfers) return;
+    // 3003 (diagnóstico automático S24 build 3001, 11-11 03:42: la app arrancó 3 veces en 1 min con un APK de 25 MB pendiente para tres
+    // contactos): cada «Reenviando pending para X» y cada evento de enlace llamaba aquí, y esto recorre TODOS los contactos leyendo el
+    // almacén de transferencias (trozos base64 de los archivos grandes, ~450–750 ms cada lectura): N reenvíos × 21 contactos en segundos →
+    // memoria del WebView → reinicio. Se juntan las llamadas: como mucho un escaneo a la vez y como mínimo RESUME_SCAN_GAP_MS entre
+    // escaneos; las llamadas intermedias se reducen a UN escaneo pendiente que corre al final (nada se pierde, solo se agrupa).
+    var nowS = Date.now();
+    var gap = RESUME_SCAN_GAP_MS - (nowS - (self._resumeScanAt || 0));
+    if (self._resumeScanBusy || gap > 0) {
+      if (!self._resumeScanTimer) {
+        self._resumeScanTimer = setTimeout(function() { self._resumeScanTimer = null; self.resumeOutgoingTransfers(); }, Math.max(gap, 250));
+      }
+      return;
+    }
+    self._resumeScanAt = nowS;
+    self._resumeScanBusy = true;
+    var scans = [];
     var contacts = (self.ble && typeof self.ble.getBLEContacts === 'function') ? self.ble.getBLEContacts() : [];
     contacts.forEach(function(contact) {
       var cid = _normId(contact.nexoId);
       if (!cid) return;
-      window.vaultGetPendingOutgoingTransfers(cid).then(function(list) {
+      scans.push(window.vaultGetPendingOutgoingTransfers(cid).then(function(list) {
         if (!list || list.length === 0) return;
         return self._dropDeliveredTransfers(cid, list);
       }).then(function(list) {
@@ -1613,8 +1630,9 @@ export class BleAckSystem {
           self._resumeQueue.push({ cid: cid, tx: tx, contactDeviceId: contact.deviceId });
         });
         self._pumpResume();
-      }).catch(function(){});
+      }).catch(function(){}));
     });
+    Promise.all(scans).then(function() { self._resumeScanBusy = false; }, function() { self._resumeScanBusy = false; });
   }
   // #CRASH 02-11: arrancar hasta MAX_RESUME_CONCURRENT reanudaciones a la vez; al terminar una, entra la siguiente.
   _pumpResume() {
