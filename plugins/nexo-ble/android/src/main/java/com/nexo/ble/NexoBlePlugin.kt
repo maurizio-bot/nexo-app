@@ -427,7 +427,7 @@ class NexoBlePlugin : Plugin() {
                 // Sin esto Capacitor lo DESCARTA (Plugin.notifyListeners) y el mensaje se perdía.
                 // 3009: con la app en segundo plano o cerrada, el nativo contesta el ping del vigilante del otro (ver nativePong)
                 if ((appInBackground || closedMode) && extraction.json.length < 400 && extraction.json.contains("\"ping\"")) nativePong(deviceId, extraction.json)
-                // 3013 (regla del dueño 11-11: «cualquiera que tiene NEXO debe aparecer al instante en un escaneo»): con la app en
+                // 3012 (regla del dueño 11-11: «cualquiera que tiene NEXO debe aparecer al instante en un escaneo»): con la app en
                 // segundo plano, dormida o cerrada, el nativo contesta «quién soy» a quien lo pregunta (ver nativeKx)
                 if ((appInBackground || closedMode) && extraction.json.length < 6000 && extraction.json.contains("\"type\":\"kx\"") && extraction.json.contains("\"rq\":1")) nativeKx(deviceId)
                 if (!closedMode) backgroundNotify(extraction.json, deviceId)
@@ -957,7 +957,7 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { }
     }
 
-    // 3013 (regla del dueño 11-11): un teléfono con «Agregar» abierto pregunta «quién eres» (kx con rq:1) a los NEXO cercanos
+    // 3012 (regla del dueño 11-11): un teléfono con «Agregar» abierto pregunta «quién eres» (kx con rq:1) a los NEXO cercanos
     // que no reconoce. Si la app de este teléfono duerme (segundo plano congelado) o está cerrada, el JS no contesta y el teléfono
     // NO salía en la lista del otro (la tableta del dueño, registro del teléfono de Marcos 13:45). Ahora contesta el nativo con la
     // «tarjeta» que la app le dejó (setKxCard): el mismo kx que manda la app (NEXO ID, clave pública, nombre y capacidades), sin el

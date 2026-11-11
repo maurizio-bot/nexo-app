@@ -459,7 +459,7 @@ class NativePhone {
       if (!this.opts.noNativePong && (this.appActive === false || this.jsFrozen || this.closedMode) && ex.json.length < 400 && ex.json.indexOf('"ping"') >= 0) {
         try { const o = JSON.parse(ex.json); if (o.type === 'ping' && o.pingId) { this.stats.nativePongs = (this.stats.nativePongs || 0) + 1; this._sendChunkedOrSingle(mac, JSON.stringify({ v: 1, type: 'pong', pingId: o.pingId, ts: Date.now(), fromNexoId: String(this.advertisingId || '').toLowerCase(), nb: 1 })); } } catch (e) {}
       }
-      // Kotlin 3013 nativeKx: con la app en segundo plano/congelada o cerrada, el nativo contesta «quién soy» (la tarjeta que le dejó
+      // Kotlin 3012 nativeKx: con la app en segundo plano/congelada o cerrada, el nativo contesta «quién soy» (la tarjeta que le dejó
       // la app, setKxCard) a quien lo pregunta (kx con rq:1); como mucho una vez cada 8 s por conexión
       if (!this.opts.noNativeKx && this.kxCard && (this.appActive === false || this.jsFrozen || this.closedMode) && ex.json.length < 6000 && ex.json.indexOf('"type":"kx"') >= 0 && ex.json.indexOf('"rq":1') >= 0) {
         this._kxCardAt = this._kxCardAt || new Map();
@@ -1202,7 +1202,7 @@ class NativePhone {
       }),
       torStop: wrap('torStop', (c) => { if (self.tor) self.tor.conns.forEach((p, nx) => { if (p.tor) { p.tor.conns.delete(self.tor.nx); p.emit('onTorDown', { nx: self.tor.nx }); } }); self.tor = null; c.resolve({ stopped: true }); }),
       // Notificaciones de mensajes (MsgNotifier.kt): una por chat con su número; el icono de la app suma los números
-      // Kotlin 3013 setKxCard: la app deja su «tarjeta» (kx sin paquete de claves) para que el nativo conteste con la app dormida
+      // Kotlin 3012 setKxCard: la app deja su «tarjeta» (kx sin paquete de claves) para que el nativo conteste con la app dormida
       setKxCard: wrap('setKxCard', (c, a) => {
         const card = String((a && a.card) || '');
         let ok = card.length >= 40 && card.length <= 1500;

@@ -250,7 +250,7 @@ export const BLE_MESSAGE_METHODS = {
       if (p.ss && p.from) self._noteSealPeer(p.from);
       if (p.nt && p.from) self._noteNetPeer(p.from);
       if (self.ackSystem) self.ackSystem.markBin(data.deviceId, !p.bf); // ronda 2753: trozos binarios (una build anterior no los entiende)
-      // (3013: un kx «ligero» —lt— o contestado por el nativo con la app dormida —nk— no dice nada de lo poscuántico: no se toca)
+      // (3012: un kx «ligero» —lt— o contestado por el nativo con la app dormida —nk— no dice nada de lo poscuántico: no se toca)
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '') && !p.lt && !p.nk) self._pqHave.set(_normId(p.from), Number(p.ph) || 0);
       // v6.11.1: ¿este vecino reenvía sobres 'sx' bien? (las builds anteriores los envolvían como texto suyo)
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) { if (p.ss) self._sxHops.add(_normId(p.from)); else self._sxHops.delete(_normId(p.from)); }
@@ -258,7 +258,7 @@ export const BLE_MESSAGE_METHODS = {
       else if (self.wifiDirect) self.wifiDirect.unmarkPeer(p.from); // ya no lo anuncia (p.ej. sin permiso)
       if (self.bigFiles) { if (p.bg) self.bigFiles.markPeer(p.from); else self.bigFiles.unmarkPeer(p.from); self.bigFiles.markL2(p.from, !!p.l2); } // archivos grandes (2756; L2CAP 2758)
       // Responder con el nuestro (cada lado sabe así que el otro entiende Jump; máx. 1 cada 15 s)
-      // (3013: a «solo dime quién eres» —id— se contesta ligero; el completo va al agregar o al escribirse)
+      // (3012: a «solo dime quién eres» —id— se contesta ligero; el completo va al agregar o al escribirse)
       // y a una RESPUESTA ligera (lt) o del nativo con la app dormida (nk) no se le contesta nada: ya se sabe lo que hacía falta
       if (p.rq || (p.j && !p.lt && !p.nk)) self._sendKx(data.deviceId, false, !!p.rq, !!(p.rq && p.id));
       return Promise.resolve(null);

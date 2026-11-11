@@ -52,6 +52,7 @@ var MAX_TRANSIENT = 3;            // conexiones a la vez con teléfonos que no s
 var MAX_TRANSIENT_ADD = 6;        // 3012: con «Agregar» abierto (el usuario está esperando ver a alguien): más a la vez
 var BLE_LINKS_BUDGET = 7;         // 3012: conexiones Bluetooth que se dan por seguras a la vez (contactos + de paso)
 var ANON_NO_ANSWER_MS = 4500;     // 3012: un anónimo al que se le preguntó quién es y no contesta en este rato (app dormida) suelta su hueco
+var ANON_KNOWN_HOLD_MS = 700;     // 3012: con «Agregar» abierto y sin hueco, uno que YA dijo quién es suelta su conexión de paso tras este rato
 var TRANSIENT_IDLE_MS = 60000;
 // #dueño 02-11 (D1): un connect por nx a la vez dentro de esta ventana. Antes, en cada tick de re-búsqueda se llamaba
 // connectToDevice ~12 veces en 1 ms para el MISMO contacto (tormenta «[JUMP] Conectando con»): el guard de 15 s solo
@@ -468,7 +469,7 @@ export class BleRelay {
     if (!_isNx(nx) || !m) return;
     var a = this.anon.get(m);
     var t = this.transient.get('anon:' + m);
-    if (t) { this.transient.delete('anon:' + m); if (!this._isContact(nx)) this.transient.set(nx, t); }
+    if (t) { this.transient.delete('anon:' + m); t.idAt = Date.now(); if (!this._isContact(nx)) this.transient.set(nx, t); }
     if (a) { this.anon.delete(m); this.noteSeen(nx, deviceId, a.rssi); }
   }
 
@@ -478,11 +479,12 @@ export class BleRelay {
     if (!(ble && Date.now() < (ble._visibleUntil || 0))) return MAX_TRANSIENT;
     // Los teléfonos aguantan pocas conexiones Bluetooth a la vez (~7): las de paso extra salen de lo que dejan libres las
     // conexiones con los contactos (con muchos contactos conectados queda como antes, 3)
-    var own = 0, tdev = new Set();
+    var own = 0, tdev = new Set(), now = Date.now();
     self.transient.forEach(function(t) { if (t && t.deviceId) tdev.add(_mac(t.deviceId)); });
     if (ble._deviceStates && typeof ble._deviceStates.forEach === 'function') ble._deviceStates.forEach(function(v, dev) {
       if (/^(lan|net)/i.test(String(dev)) || !(v && (v.state === 'ready_to_chat' || v.state === 'notifications_ready'))) return;
-      if (!tdev.has(_mac(dev))) own++;
+      // (una de paso que se acaba de cerrar sigue «lista» un instante mientras se desconecta: no es de un contacto)
+      if (!tdev.has(_mac(dev)) && !(self._closedT && now - (self._closedT.get(_mac(dev)) || 0) < 3000)) own++;
     });
     return Math.max(MAX_TRANSIENT, Math.min(MAX_TRANSIENT_ADD, BLE_LINKS_BUDGET - own));
   }
@@ -573,16 +575,23 @@ export class BleRelay {
   _closeIdleTransient(force) {
     var self = this, now = Date.now(), pl = self.ble && self.ble.nativePlugin;
     var list = Array.from(self.transient.entries()).sort(function(a, b) { return a[1].lastUse - b[1].lastUse; });
-    var cap = self._transientCap();
+    var cap = self._transientCap(), addOpen = !!(self.ble && now < (self.ble._visibleUntil || 0));
     list.forEach(function(e) {
       var nx = e[0], t = e[1];
       // 3012: un anónimo al que ya se le preguntó quién es y no contestó (su app duerme): suelta el hueco para el siguiente
       var mute = force && self.transient.size >= cap && nx.indexOf('anon:') === 0 && t.asked && now - t.asked > ANON_NO_ANSWER_MS;
-      if (!mute && now - t.lastUse < TRANSIENT_IDLE_MS && !(force && self.transient.size >= cap && now - t.lastUse > 10000)) return;
+      // 3012: uno que se agregó como contacto después de identificarse ya no es «de paso»: su conexión no se cierra por aquí
+      if (nx.indexOf('anon:') !== 0 && self._isContact(nx)) { self.transient.delete(nx); return; }
       // Si algo de la cola va por él, se mantiene
       var busy = self.queue.some(function(q) { var r = self.routes.get(q.dst); return q.dst === nx || (r && r.via === nx); });
+      // 3012 (regla del dueño: todo NEXO cercano sale al instante, también con MUCHOS cerca): con «Agregar» abierto y sin hueco,
+      // uno que YA dijo quién es (está en la lista con su nombre) suelta su conexión para el siguiente; al tocar «+» se reconecta
+      var known = force && addOpen && !busy && self.transient.size >= cap && t.idAt && now - t.idAt > ANON_KNOWN_HOLD_MS;
+      if (!mute && !known && now - t.lastUse < TRANSIENT_IDLE_MS && !(force && self.transient.size >= cap && now - t.lastUse > 10000)) return;
       if (busy && !force) return;
       self.transient.delete(nx);
+      self._closedT = self._closedT || new Map();
+      self._closedT.set(_mac(t.deviceId), now); if (self._closedT.size > 100) self._closedT.delete(self._closedT.keys().next().value);
       console.log('[JUMP] Cierro conexión de paso con ' + nx + ' (sin uso)');
       if (pl && typeof pl.disconnectDevice === 'function') pl.disconnectDevice({ deviceId: t.deviceId }).catch(function() {});
     });

@@ -10,7 +10,7 @@ import { _getBLEContacts, _normId, _normMac, _safeDispatchEvent, _saveBLEContact
 
 
 export const BLE_KEY_METHODS = {
-  // 3013: lo común de todo kx (quién soy y qué entiendo), sin el paquete de claves del protocolo 2. Lo usan el kx completo,
+  // 3012: lo común de todo kx (quién soy y qué entiendo), sin el paquete de claves del protocolo 2. Lo usan el kx completo,
   // el «ligero» (preguntar/decir quién es al escanear) y la tarjeta que contesta el nativo con la app dormida (_syncKxCard).
   // Requiere el cifrado ya iniciado (initE2E); null si aún no hay clave o NEXO ID.
   _kxPacketBase() {
@@ -30,7 +30,7 @@ export const BLE_KEY_METHODS = {
     return pkt;
   },
 
-  // lite (3013): kx «ligero» (~300 letras en vez de ~2300) para preguntar o decir quién es al escanear: sin el paquete de
+  // lite (3012): kx «ligero» (~300 letras en vez de ~2300) para preguntar o decir quién es al escanear: sin el paquete de
   // claves del protocolo 2 ni lo poscuántico (eso va en el kx completo, al agregar o al escribirse). lt:1 lo marca; con
   // request lleva además id:1 («solo dime quién eres»: el otro contesta también ligero).
   _sendKx(deviceId, request, force, lite) {
@@ -45,7 +45,7 @@ export const BLE_KEY_METHODS = {
     initE2E().then(function() { return lite ? null : ratchetMyBundle(self._pqNeeded(peerNx)).catch(function() { return null; }); }).then(function(b2) {
       var pkt = self._kxPacketBase();
       if (!pkt) return;
-      if (typeof self._syncKxCard === 'function') self._syncKxCard(); // 3013: la tarjeta del nativo, al día
+      if (typeof self._syncKxCard === 'function') self._syncKxCard(); // 3012: la tarjeta del nativo, al día
       if (lite) { pkt.lt = 1; if (request) pkt.id = 1; }
       else {
         if (b2) pkt.b2 = b2; // paquete de claves del protocolo 2

@@ -8,8 +8,10 @@ var CHECK_MS = 30000;
 // 3012: un NEXO cercano no-contacto que ya dijo quién es se lista al abrir «Agregar» si sigue conectado, si el escaneo lo vio
 // hace menos de KX_PEER_SEEN_MS o si lo dijo hace menos de KX_PEER_FRESH_MS
 var KX_PEER_SEEN_MS = 60000, KX_PEER_FRESH_MS = 90000;
-// 3013: filas «identificando…»: cuánto dura una sin volver a verla, desde cuándo se dice «no responde», y cuántas como mucho
-var ANON_ROW_TTL_MS = 12000, ANON_ROW_SLOW_MS = 7000, ANON_ROWS_MAX = 8;
+// 3012: filas «identificando…»: cuánto dura una sin volver a verla, desde cuándo se dice «no responde», y cuántas como mucho
+var ANON_ROW_TTL_MS = 12000, ANON_ROW_SLOW_MS = 7000, ANON_ROWS_MAX = 12;
+// 3012: tras identificarse uno, a los ANON_PUMP_MS les toca a los que siguen «identificando…» (algo más que ANON_KNOWN_HOLD_MS de ble_relay.js)
+var ANON_PUMP_MS = 750;
 
 export const BLE_PRIVACY_METHODS = {
   // Arranca con el NEXO ID ya conocido: anuncio y códigos de los contactos; se revisa cada 30 s (contactos nuevos,
@@ -46,12 +48,21 @@ export const BLE_PRIVACY_METHODS = {
     this._kxPeers.delete(nx);
     this._kxPeers.set(nx, { deviceId: deviceId, name: nm || old.name || '', pk: (typeof p.pk === 'string' && p.pk) || old.pk || '', b2: p.b2 || old.b2 || null, ts: Date.now() });
     if (this._kxPeers.size > 60) this._kxPeers.delete(this._kxPeers.keys().next().value);
-    // 3013: sus códigos rotativos (de su clave): la próxima vez que el escaneo lo vea se reconoce sin conectar
+    // 3012: sus códigos rotativos (de su clave): la próxima vez que el escaneo lo vea se reconoce sin conectar
     var self = this;
     // la fila «identificando…» de ESTA dirección ya sobra (si dijo quién es por otra dirección, la quita _anonResolved por código)
     if (self._anonSeen) self._anonSeen.forEach(function(a, tok) { if (_normMac(a.deviceId) === _normMac(deviceId)) { if (self._addPending && self._addPending.tok === tok) self._addPending.nx = nx; self._anonSeen.delete(tok); } });
     if (old.pk !== self._kxPeers.get(nx).pk || !self._kxTok) self._kxTokRefresh(true);
     if (self._addPending && self._addPending.nx === nx && Date.now() - self._addPending.ts < 30000) { self._addPending = null; setTimeout(function() { try { self._addNewDevice(nx); } catch (e) {} }, 50); }
+    // con muchos cerca no caben todas las conexiones a la vez: en un momento este suelta la suya y les toca a los que esperan
+    if (!self._anonPumpT && self._anonSeen && self._anonSeen.size) self._anonPumpT = setTimeout(function() { self._anonPumpT = null; try { self._anonPump(); } catch (e) {} }, ANON_PUMP_MS);
+  },
+
+  // 3012: turno de los que siguen «identificando…» (los más cercanos primero), sin esperar a que el escaneo vuelva a verlos
+  _anonPump() {
+    var self = this;
+    if (!(Date.now() < (self._visibleUntil || 0))) return;
+    self._anonRows().forEach(function(a) { self._identifyNearby(a.deviceId, a.tok); });
   },
 
   // Al abrir «Agregar»: (1) salen YA los NEXO cercanos no-contacto de los que ya se sabe quiénes son (siguen conectados o se
@@ -74,7 +85,7 @@ export const BLE_PRIVACY_METHODS = {
     });
   },
 
-  // 3013 (regla del dueño 11-11: «cualquiera que tiene NEXO debe aparecer al instante en un escaneo»): la app le deja al nativo
+  // 3012 (regla del dueño 11-11: «cualquiera que tiene NEXO debe aparecer al instante en un escaneo»): la app le deja al nativo
   // su «tarjeta» (el kx sin el paquete de claves) para que conteste «quién soy» aunque la app duerma o esté cerrada (nativeKx)
   _syncKxCard() {
     var self = this, pl = self.nativePlugin;
@@ -88,7 +99,7 @@ export const BLE_PRIVACY_METHODS = {
     _safeNativeCall(pl, 'setKxCard', { card: card }).catch(function() { self._kxCardSent = null; });
   },
 
-  // 3013: códigos rotativos de los NEXO cercanos NO-contacto que ya dijeron quiénes son (su kx trae la clave pública, y de ella
+  // 3012: códigos rotativos de los NEXO cercanos NO-contacto que ya dijeron quiénes son (su kx trae la clave pública, y de ella
   // salen sus códigos): al volver a verlos en el escaneo se reconocen SIN conectar (aunque cambien de dirección).
   _kxTokRefresh(force) {
     var self = this, e = ridEpoch();
@@ -125,12 +136,19 @@ export const BLE_PRIVACY_METHODS = {
     if (addNx) { self._addPending = null; try { self._addNewDevice(addNx); } catch (e) {} }
   },
 
+  // ¿Esta dirección es de un CONTACTO (ya dijo quién es por esta conexión)? Pasa con un contacto del que aún no se tiene la clave
+  // o que la cambió (su código rotativo no se reconoce): no es «alguien por agregar», no lleva fila «identificando…»
+  _anonIsContact(deviceId) {
+    var nx = _normId(this._macToNexoId.get(_normMac(deviceId)) || '');
+    return !!nx && _getBLEContacts().some(function(c) { return _normId(c.nexoId || c.deviceUUID) === nx; });
+  },
+
   // Filas «NEXO cercano · identificando…» para la lista de «Agregar» (ble_ui.renderNewDeviceBar): las más cercanas primero
   _anonRows() {
     var self = this, now = Date.now(), out = [];
     if (!self._anonSeen || !(now < (self._visibleUntil || 0))) return out;
     self._anonSeen.forEach(function(a, tok) {
-      if (now - a.ts > ANON_ROW_TTL_MS) { self._anonSeen.delete(tok); return; }
+      if (now - a.ts > ANON_ROW_TTL_MS || self._anonIsContact(a.deviceId)) { self._anonSeen.delete(tok); return; }
       out.push({ tok: tok, deviceId: a.deviceId, rssi: a.rssi, waiting: now - a.first > ANON_ROW_SLOW_MS, pending: !!(self._addPending && self._addPending.tok === tok) });
     });
     out.sort(function(x, y) { return (y.rssi || -100) - (x.rssi || -100); });
@@ -159,7 +177,7 @@ export const BLE_PRIVACY_METHODS = {
     self._whoAsked.set(nd, { ts: now, n: wa.n + 1 }); if (self._whoAsked.size > 200) self._whoAsked.delete(self._whoAsked.keys().next().value);
     if (self.relay && typeof self.relay.noteAsked === 'function') self.relay.noteAsked(deviceId);
     console.log('[ADD] NEXO cercano sin reconocer (' + deviceId + '): se le pregunta quién es' + (why ? ' (' + why + ')' : ''));
-    self._sendKx(deviceId, true, true, true); // 3013: ligero (solo «quién eres»)
+    self._sendKx(deviceId, true, true, true); // 3012: ligero (solo «quién eres»)
   },
 
   // Una conexión quedó lista y no se sabe de quién es: si «Agregar» está abierto (o se conectó justo para saber quién es),
@@ -185,7 +203,7 @@ export const BLE_PRIVACY_METHODS = {
     if (!self.localNexoId) return Promise.resolve();
     if (self._ridBook) self._ridBook.refresh(_getBLEContacts()).catch(function() {});
     return initE2E().then(function() { return ridKey(e2eMyPublicKey()); }).catch(function() { return null; }).then(function(key) {
-      try { self._syncKxCard(); } catch (eC) {} // 3013: «quién soy» para que el nativo conteste con la app dormida
+      try { self._syncKxCard(); } catch (eC) {} // 3012: «quién soy» para que el nativo conteste con la app dormida
       var visible = self._isVisible();
       // Sin contactos: visible "para siempre" hasta que haya alguno (se revisa cada 30 s)
       var until = visible ? Math.max(self._visibleUntil || 0, Date.now() + CHECK_MS * 3) : 0;
@@ -248,7 +266,7 @@ export const BLE_PRIVACY_METHODS = {
       self._ridBook.refresh(_getBLEContacts()).then(function() { return self._kxTokRefresh(); }).then(function() {
         if (self._ridBook.lookup(tok)) self._onScanFound(data, true);
         else {
-          // 3013: ¿es un NEXO no-contacto que ya dijo quién es (su código sale de la clave que dijo)? Se reconoce sin conectar
+          // 3012: ¿es un NEXO no-contacto que ya dijo quién es (su código sale de la clave que dijo)? Se reconoce sin conectar
           var knx = self._kxTok ? self._kxTok.get(tok) : null, kp = knx && self._kxPeers ? self._kxPeers.get(knx) : null;
           if (kp) {
             kp.seen = Date.now(); kp.deviceId = data.deviceId;
@@ -258,9 +276,9 @@ export const BLE_PRIVACY_METHODS = {
               self.onDeviceFound({ id: data.deviceId, name: kp.name || '', rssi: data.rssi, nexoId: knx.toUpperCase() });
             return;
           }
-          // 3013 (regla del dueño): con «Agregar» abierto, TODO NEXO cercano sale al instante: primero como «identificando…»
+          // 3012 (regla del dueño): con «Agregar» abierto, TODO NEXO cercano sale al instante: primero como «identificando…»
           // (el anuncio no dice quién es) y en cuanto contesta, con su nombre
-          if (Date.now() < (self._visibleUntil || 0)) {
+          if (Date.now() < (self._visibleUntil || 0) && !self._anonIsContact(data.deviceId)) {
             self._anonSeen = self._anonSeen || new Map();
             var prevA = self._anonSeen.get(tok);
             self._anonSeen.set(tok, { deviceId: data.deviceId, rssi: typeof data.rssi === 'number' ? data.rssi : -100, ts: Date.now(), first: prevA ? prevA.first : Date.now() });

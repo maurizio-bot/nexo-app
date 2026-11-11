@@ -757,13 +757,16 @@ export const BLE_UI_METHODS = {
       var uuid = device.deviceUUID;
       if (uuid && !_isBLEContact(uuid) && self._panelMatch(_niceName(device.name, uuid), uuid)) newDevices.push({ deviceId: deviceId, device: device });
     });
-    // 3013 (regla del dueño 11-11: «cualquiera que tiene NEXO debe aparecer al instante en un escaneo»): los NEXO cercanos que el
+    // 3012 (regla del dueño 11-11: «cualquiera que tiene NEXO debe aparecer al instante en un escaneo»): los NEXO cercanos que el
     // escaneo ve pero aún no dijeron quiénes son salen YA como «identificando…» (ble_privacy._anonRows) y pasan a su nombre al contestar
     var anonRows = (typeof this._anonRows === 'function' && !this._panelQuery) ? this._anonRows() : [];
     if (newDevices.length === 0 && anonRows.length === 0) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
     bar.style.display = 'flex';
     bar.style.flexDirection = 'column';
     bar.style.gap = '8px';
+    // 3012: con muchos teléfonos cerca la lista no se sale de la pantalla: se desplaza
+    bar.style.maxHeight = '46vh';
+    bar.style.overflowY = 'auto';
     bar.innerHTML = '';
     // (se vuelve a pintar sola mientras haya filas «identificando…»: pasan a «no responde todavía» o caducan)
     if (anonRows.length && !this._anonRowTimer) { this._anonRowTimer = setTimeout(function() { self._anonRowTimer = null; try { self.renderNewDeviceBar(); } catch (e) {} }, 2500); }
