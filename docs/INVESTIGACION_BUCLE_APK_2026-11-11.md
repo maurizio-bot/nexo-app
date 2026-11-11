@@ -110,3 +110,11 @@ Preguntas para la sesión profunda: ¿cuál es la raíz común real?; ¿qué par
 - Arranque seguro (contador nativo de arranques que no llegan a N segundos sanos → no reanudar envíos grandes y avisar) y observabilidad que sobreviva al proceso.
 - `largeHeap` solo como colchón temporal: mueve el precipicio, no lo quita.
 - Mover a almacén nativo lo que hoy vive solo en localStorage (nivel de seguridad, consentimientos, etc.).
+
+## 9. Primera prueba real de la 3004 (diagnóstico automático S24, 11-11 12:17 UTC)
+- **Sin cierre.** Dos APK de 25 MB enviándose a la vez a `nx13c1b0fe` (el viejo `…ucw62`, reenviado una vez al arrancar —freno: 1 de 2—, y uno nuevo `…84cbb`): la app siguió viva, sin sesión nueva en la ventana.
+- **El envío se para en el trozo 180 de 2213 (8 %) a las 06:14:22 (hora local).** De 0 a 180 en ~70 s (~2,6 trozos/s, ventanas resueltas en 3–4 s). Desde ahí, **ningún** ACK ni NACK del otro: ni de la ventana [180,192) (8 reintentos y vuelta a empezar) ni de la PRIMERA ventana del APK nuevo [0,12). Del lado del emisor no hay rechazos de los relés (sin «Envio nativo fallo chunk»).
+- **Mismo patrón en todos los envíos de 25 MB por relés** de los diagnósticos guardados (todos a teléfonos de amigos): se paran en 96, 120, 183, 216, 396, 411 trozos. El único de 25 MB por internet que llegó completo fue **por Tor entre los dos teléfonos del dueño** (08-11 04:20, 2220 trozos).
+- **Problema estructural:** 2213 trozos ≈ 14 min con los dos teléfonos despiertos y la app viva. El receptor guarda los trozos solo en memoria (`incomingBuffers`, los tira a los 120 s sin trozos nuevos, `ASSEMBLY_TIMEOUT_MS`) y cada intento nuevo se vuelve a cifrar (marca `a` distinta) → **empieza de cero**. Si el otro se duerme o cierra la app, no se completa nunca.
+- **Sin confirmar:** si el otro teléfono se durmió o si los relés dejaron de pasarle los trozos. Hace falta el diagnóstico del que recibe → prueba entre los dos teléfonos del dueño (dos Wi-Fi distintos): 1) receptor con la pantalla encendida en el chat; 2) receptor con la pantalla apagada.
+- **Arreglo propuesto:** (a) continuar donde se quedó (el receptor guarda los trozos en disco y dice desde cuál sigue; el emisor reanuda) — lo que ya hace `BigFile.kt` por Wi-Fi; (b) si el otro deja de contestar ~1 min, pausar sin inundar los relés y seguir cuando vuelva.
