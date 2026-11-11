@@ -1294,7 +1294,16 @@ export const BLE_MESSAGE_METHODS = {
       }
       // 2976: qué adjuntos se leen del disco en esta vuelta (el primer diagnóstico automático mostró 4 lecturas de ~450 ms justo
       // después de «no caben por Bluetooth» sin saber de qué archivo eran): tipo y tamaño declarado; sin nombres ni contenido.
-      var conAdj = list.filter(function(m) { return m && (m.attachmentRef || m.attachmentType); });
+      // 3007 (dueño 11-11, «(a)»): un archivo grande cuyo envío por internet quedó GUARDADO a medias (cifrado, en el teléfono) y que
+      // ahora sale por internet NO se vuelve a leer del disco ni a cifrar: sigue con lo guardado (ble_ack.js sendFile → vaultBigxOutGet).
+      // Por Wi-Fi local (más rápido) se manda como siempre. Antes cada reanudación leía los 35 MB del adjunto por el puente.
+      var netOnlyX = !!(self.net && typeof self.net.canReach === 'function' && self.net.canReach(nexoId)) && !(self.lan && typeof self.lan.canReach === 'function' && self.lan.canReach(nexoId));
+      if (netOnlyX && typeof window.vaultBigxOutHas === 'function') {
+        var nX = 0;
+        list = list.map(function(m) { if (m && window.vaultBigxOutHas(idOf(m))) { nX++; return Object.assign({}, m, { _bigx: true, attachmentRef: null, attachmentPayload: null }); } return m; });
+        if (nX) console.log('[BLEInterface] ' + nexoId + ': ' + nX + ' archivo(s) grande(s) siguen donde iban (guardados en el teléfono, sin leer el adjunto)');
+      }
+      var conAdj = list.filter(function(m) { return m && !m._bigx && (m.attachmentRef || m.attachmentType); });
       if (conAdj.length) console.log('[BLEInterface] ' + nexoId + ': se cargan ' + conAdj.length + ' adjunto(s) del disco para reenviar: ' + conAdj.map(function(m) { var mm = m.attachmentMeta || {}; return (m.attachmentType || '?') + (mm.size ? ' ' + Math.round(Number(mm.size) / 1024) + ' KB' : ' ?KB') + (mm.big ? ' big' : ''); }).join(', '));
       return _hydrateAttachments(list);
     });
@@ -1362,7 +1371,7 @@ export const BLE_MESSAGE_METHODS = {
 
         if (
           attachmentType &&
-          attachmentPayload &&
+          (attachmentPayload || msg._bigx) &&
           !bigMeta &&
           (attachmentType === 'image' ||
            attachmentType === 'video' ||
@@ -1394,7 +1403,7 @@ export const BLE_MESSAGE_METHODS = {
               return self.ackSystem.sendFile(
                 deviceId,
                 mid,
-                attachmentPayload,
+                attachmentPayload || null,   // 3007: null = sigue con lo guardado (msg._bigx)
                 fileMeta
               );
             };
@@ -1457,7 +1466,7 @@ export const BLE_MESSAGE_METHODS = {
         }
 
         // 3004: un intento grande se anota ANTES (llega al disco) y se borra al terminar sin morir (freno de bucle de arranque)
-        var bigTry = typeof attachmentPayload === 'string' && attachmentPayload.length > 2000000 && typeof window.vaultBigSendBegin === 'function';
+        var bigTry = ((typeof attachmentPayload === 'string' && attachmentPayload.length > 2000000) || !!msg._bigx) && typeof window.vaultBigSendBegin === 'function';
         var endTry = function() { if (bigTry && typeof window.vaultBigSendEnd === 'function') window.vaultBigSendEnd(mid).catch(function() {}); };
         (bigTry ? window.vaultBigSendBegin(mid).catch(function() {}).then(function() { return doSend(); }) : doSend())
           .then(function(v) { endTry(); return v; }, function(err) { endTry(); throw err; })

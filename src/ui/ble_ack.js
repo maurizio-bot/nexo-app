@@ -181,6 +181,22 @@ const NET_BIG_MIN_CHUNKS = 64;
 const NET_BIG_IDLE_MS = 1800000;
 var NET_SILENT_FULL_RETRIES = 1;
 var NET_SILENT_PROBE_MS = 60000;
+// 3007 (dueño 11-11, «(a) aquí está mi OK»): archivo GRANDE por internet que SIGUE DONDE IBA aunque se corte más de 30 min o se
+// reinicie la app de cualquiera de los dos. El que envía guarda el contenido ya cifrado + su marca 'a' (vaultBigxOutPut) y al
+// reanudar manda exactamente lo mismo (sin releer ni cifrar el adjunto); el que recibe guarda cada bloque completo de
+// BIGX_BLOCK trozos (vaultBigxInPutBlock) y, tras reiniciarse, rehace lo recibido y lo confirma: el que envía salta lo que ya llegó.
+const BIGX_MIN_CHARS = 2000000;    // envío: contenido (cifrado) a partir del cual se guarda para seguir donde iba
+const BIGX_BLOCK = 64;             // = vault_manager.BIGX_BLOCK
+const BIGX_MIN_CHUNKS = 128;       // recepción: trozos a partir de los cuales se guardan bloques en el teléfono
+function _bigxUserId(id) { return /^msg[0-9a-z]+$/i.test(String(id || '')); }
+// ¿bloque k completo en memoria (todos sus trozos como texto, no ya en el teléfono)? Devuelve sus trozos o null. El último bloque no.
+export function _bigxFullBlock(chunks, k, total) {
+  var s = k * BIGX_BLOCK, e = s + BIGX_BLOCK;
+  if (e >= total) return null;
+  var arr = [];
+  for (var i = s; i < e; i++) { var v = chunks.get(i); if (typeof v !== 'string') return null; arr.push(v); }
+  return arr;
+}
 export function _assemblyTimeoutFor(isNet, isChat, total) { return (isNet && !isChat && total >= NET_BIG_MIN_CHUNKS) ? NET_BIG_IDLE_MS : ASSEMBLY_TIMEOUT_MS; }
 const COMPLETED_TTL_MS = 60000;
 const GLOBAL_TIMEOUT_MS = 180000;
@@ -286,6 +302,9 @@ export class BleAckSystem {
     this.windowSize = CHAT_WINDOW_SIZE;
     this.windowTimeoutMs = CHAT_WINDOW_TIMEOUT_MS;
     this.outgoingStreams = new Map();
+    // 3007: transferencias grandes por internet a medias guardadas en el teléfono (msgId → { a, total, meta, blocks })
+    this._bigxIn = new Map();
+    this._bigxLoadIndex(0);
     this.preparing = new Set(); // ids cifrándose (aún sin ack pendiente ni flujo): cuentan como en vuelo
     // #129 parte 2 (dueño 01-11): tope de transferencias de ARCHIVO simultáneas por enlace Bluetooth (MTU 23 se
     // inunda si arrancan muchas a la vez; los textos/acks/control quedaban atrás → mensajes en ○). Las que no caben
@@ -429,6 +448,29 @@ export class BleAckSystem {
     var self = this;
     var running = self.outgoingStreams.get(fileId);
     if (running && !running.aborted && running._promise) return running._promise;
+    // 3007: hay un envío GRANDE guardado a medias para este archivo y el camino para archivos grandes es internet → se sigue con
+    // lo guardado (mismo contenido cifrado, misma marca 'a'): el receptor reconoce lo que ya tiene y el envío salta hasta ahí.
+    if (!(meta && (meta._noBigx || meta.fwd)) && typeof window !== 'undefined' && typeof window.vaultBigxOutHas === 'function' && window.vaultBigxOutHas(fileId)) {
+      var cidR = (meta && (meta.dst || meta.to)) ? _nxOf(meta.dst || meta.to) : self._resolveNexoId(deviceId);
+      var bestR = (cidR && self.ble && typeof self.ble._resolveDeviceIdForNexoId === 'function') ? self.ble._resolveDeviceIdForNexoId(cidR, true) : null;
+      var netR = _isNetDevice(deviceId) ? deviceId : ((bestR && _isNetDevice(bestR)) ? bestR : null);
+      if (netR) {
+        return self._preparingFor(fileId, window.vaultBigxOutGet(fileId).then(function(x) {
+          if (!x) {
+            if (base64Data) return self.sendFile(deviceId, fileId, base64Data, Object.assign({}, meta || {}, { _noBigx: true }));
+            throw Object.assign(new Error('Contacto no disponible: queda pendiente'), { code: 'PEER_ABSENT' });
+          }
+          console.log('[BleAckSystem] ' + fileId + ': sigo el archivo grande donde iba (guardado en el teléfono; sin volver a leerlo ni cifrarlo)');
+          var m2 = Object.assign({}, x.rec.meta || {}, { _att: x.rec.att, _bigxResumed: true });
+          if (meta && meta.to && !m2.dst) m2.to = meta.to;
+          return self._sendFileBest(netR, fileId, x.content, m2);
+        }));
+      }
+      // Sin internet para archivos grandes ahora (p. ej. Wi-Fi local): sale como siempre, con el adjunto
+      if (!base64Data) return Promise.reject(Object.assign(new Error('Contacto no disponible: queda pendiente'), { code: 'PEER_ABSENT' }));
+    }
+    // 3007: null = «seguir con lo guardado» y ya no hay nada guardado → queda ⏳ y la siguiente vuelta carga el adjunto
+    if (base64Data === null) return Promise.reject(Object.assign(new Error('Contacto no disponible: queda pendiente'), { code: 'PEER_ABSENT' }));
     if (e2eAvailable() && base64Data && !e2eAnyEncrypted(base64Data)) {
       // También el nombre y la miniatura del vídeo, que van en la cabecera
       var m = meta || {};
@@ -790,9 +832,16 @@ export class BleAckSystem {
     if (self.ble && typeof self.ble._stopAutoScan === 'function' && finalMeta.type !== 'fenix') self.ble._stopAutoScan();
     var stream = new ChatStream(self, deviceId, fileId, base64Data, finalMeta, 'file');
     self.outgoingStreams.set(fileId, stream);
+    // 3007: archivo grande del usuario por internet → se guarda (cifrado) para poder seguir donde iba; se borra al entregarse
+    var bigx = _isNetDevice(deviceId) && base64Data.length >= BIGX_MIN_CHARS && _bigxUserId(fileId) && !(meta && meta.fwd) && typeof window !== 'undefined' && typeof window.vaultBigxOutPut === 'function';
+    if (bigx && !finalMeta._bigxResumed) {
+      var metaX = Object.assign({}, meta || {}); delete metaX._att; delete metaX._bigxResumed; delete metaX._noBigx;
+      try { window.vaultBigxOutPut(fileId, { att: stream.att, cid: self._resolveNexoId(deviceId), meta: metaX }, base64Data).catch(function() {}); } catch (e) {}
+    }
     stream._promise = stream.start();
     stream._promise.then(function() {
       self.outgoingStreams.delete(fileId);
+      if (bigx || finalMeta._bigxResumed) { try { window.vaultBigxOutDrop(fileId).catch(function() {}); } catch (e) {} }
       console.log('[BleAckSystem] sendFile OK fileId=' + fileId);
       resolve();
       self._pumpFileQueue(deviceId);
@@ -883,6 +932,9 @@ export class BleAckSystem {
       return;
     }
     var buf = self.incomingBuffers.get(msgId);
+    if (buf && buf._loading) return;   // 3007: se está trayendo del teléfono lo ya recibido para juntarlo
+    // 3007: archivo grande por internet a medias guardado en el teléfono (p. ej. tras reiniciarse la app) → seguir donde iba
+    if (!buf && type !== 'c' && _isNetDevice(deviceId)) buf = self._bigxRestore(deviceId, msgId, msg, total);
     // Ronda 2767: otro intento del mismo mensaje (marca 'a' distinta: cifrado otra vez, distinto). Sus trozos no se
     // mezclan con los del anterior (antes salía ilegible y se perdía): si el anterior está parado, se empieza de nuevo
     if (buf && (msg.a || '') !== (buf.a || '')) {
@@ -891,6 +943,7 @@ export class BleAckSystem {
       if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
       if (buf.ackTimer) clearTimeout(buf.ackTimer);
       self.incomingBuffers.delete(msgId);
+      self._bigxForget(msgId);   // 3007: lo guardado era de otro intento
       buf = null;
     }
     // Ronda 2758: el mismo mensaje llega por otro camino troceado distinto (el puente Jump lo empezó y se cortó, y el
@@ -901,6 +954,7 @@ export class BleAckSystem {
       console.warn('[BleAckSystem] ' + msgId + ' llega troceado distinto (' + buf.total + ' → ' + total + ' trozos): se empieza de nuevo');
       if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
       self.incomingBuffers.delete(msgId);
+      self._bigxForget(msgId);   // 3007
       buf = null;
     }
     if (!buf && idx !== 0) {
@@ -969,6 +1023,7 @@ export class BleAckSystem {
         }
       }, _assemblyTimeoutFor(_isNetDevice(deviceId), buf.isChat, buf.total));
     }
+    self._bigxMaybeSave(deviceId, msgId, buf, idx);   // 3007
     var senderId = from || (buf.meta && buf.meta.fr) || 'unknown';
     if (buf.received >= buf.total) {
       if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
@@ -987,6 +1042,102 @@ export class BleAckSystem {
       buf.lastNackAt = now;
       self._sendNack(deviceId, msgId, gaps);
     }
+  }
+  // ── 3007: recepción de archivos grandes por internet que sigue donde iba (bloques en el teléfono) ──
+  _bigxLoadIndex(n) {
+    var self = this;
+    try {
+      if (typeof window !== 'undefined' && typeof window.vaultBigxInIndex === 'function') {
+        window.vaultBigxInIndex().then(function(m) { Object.keys(m || {}).forEach(function(k) { if (!self._bigxIn.has(k)) self._bigxIn.set(k, m[k]); }); }).catch(function() {});
+      } else if (n < 20) setTimeout(function() { self._bigxLoadIndex(n + 1); }, 500);   // main.js aún no lo expuso
+    } catch (e) {}
+  }
+  _bigxForget(msgId) {
+    var had = this._bigxIn.has(msgId);
+    this._bigxIn.delete(msgId);
+    try { if (typeof window !== 'undefined' && typeof window.vaultBigxInDrop === 'function') window.vaultBigxInDrop(msgId).catch(function() {}); } catch (e) {}
+    return had;
+  }
+  // Rehace el buffer de un archivo grande a medias desde lo guardado (sus bloques quedan como «en el teléfono»: valor null)
+  _bigxRestore(deviceId, msgId, msg, total) {
+    var self = this, rec = self._bigxIn.get(msgId);
+    if (!rec) return null;
+    if (rec.a !== (msg.a || '') || rec.total !== total) {
+      console.log('[BleAckSystem] ' + msgId + ': llega otro intento del archivo grande: lo guardado de antes no sirve, se empieza de nuevo');
+      self._bigxForget(msgId);
+      return null;
+    }
+    var buf = { chunks: new Map(), total: total, meta: rec.meta || {}, received: 0, deviceId: deviceId, lastActivity: Date.now(), isChat: false, nackSent: false, a: rec.a, diskBlocks: new Set(), bigx: true };
+    (rec.blocks || []).forEach(function(k) {
+      var s0 = k * BIGX_BLOCK, e0 = Math.min(total, s0 + BIGX_BLOCK);
+      for (var i = s0; i < e0; i++) { if (!buf.chunks.has(i)) { buf.chunks.set(i, null); buf.received++; if (typeof buf.maxIdx !== 'number' || i > buf.maxIdx) buf.maxIdx = i; } }
+      buf.diskBlocks.add(k);
+    });
+    if (!buf.diskBlocks.size) return null;
+    buf.assemblyTimer = setTimeout(function() {
+      if (self.incomingBuffers.get(msgId) === buf) {
+        console.warn('[BleAckSystem] Assembly timeout msgId=' + msgId);
+        self._reportIncomingProgress(msgId, buf, 'failed');
+        self.incomingBuffers.delete(msgId);
+      }
+    }, _assemblyTimeoutFor(true, false, total));
+    self.incomingBuffers.set(msgId, buf);
+    if (self.ble && typeof self.ble._stopAutoScan === 'function') self.ble._stopAutoScan();
+    console.log('[BleAckSystem] ' + msgId + ': sigo recibiendo el archivo grande donde iba (' + buf.received + ' de ' + total + ' trozos guardados en el teléfono)');
+    return buf;
+  }
+  // Guarda en el teléfono el bloque de idx si ya está completo (y libera esa memoria: queda como «en el teléfono»)
+  _bigxMaybeSave(deviceId, msgId, buf, idx) {
+    if (!buf || buf.isChat || buf.total < BIGX_MIN_CHUNKS || !_isNetDevice(deviceId) || !_bigxUserId(msgId)) return;
+    if (typeof window === 'undefined' || typeof window.vaultBigxInPutBlock !== 'function') return;
+    var k = Math.floor(idx / BIGX_BLOCK);
+    buf.diskBlocks = buf.diskBlocks || new Set(); buf._bigxSaving = buf._bigxSaving || new Set();
+    if (buf.diskBlocks.has(k) || buf._bigxSaving.has(k)) return;
+    var arr = _bigxFullBlock(buf.chunks, k, buf.total);
+    if (!arr) return;
+    var self = this, s0 = k * BIGX_BLOCK, e0 = s0 + BIGX_BLOCK;
+    buf.bigx = true; buf._bigxSaving.add(k);
+    window.vaultBigxInPutBlock(msgId, k, arr, { a: buf.a || '', total: buf.total, meta: buf.meta, from: buf.meta && buf.meta.fr }).then(function(ok) {
+      buf._bigxSaving.delete(k);
+      if (!ok || buf._assembled || buf._loading || self.incomingBuffers.get(msgId) !== buf) return;   // juntándose: se queda en memoria
+      buf.diskBlocks.add(k);
+      for (var j = s0; j < e0; j++) { if (typeof buf.chunks.get(j) === 'string') buf.chunks.set(j, null); }
+      var rec = self._bigxIn.get(msgId);
+      if (!rec || rec.a !== (buf.a || '') || rec.total !== buf.total) { rec = { a: buf.a || '', total: buf.total, meta: buf.meta, blocks: [] }; self._bigxIn.set(msgId, rec); }
+      if (rec.blocks.indexOf(k) < 0) rec.blocks.push(k);
+    }, function() { buf._bigxSaving.delete(k); });
+  }
+  // Trae del teléfono los bloques guardados (de uno en uno) y junta; si falta alguno, se piden de nuevo esos trozos
+  _bigxLoadThenAssemble(buf, deviceId, senderId, msgId) {
+    var self = this;
+    buf._loading = true;
+    var ks = [], bad = [];   // los bloques que están solo en el teléfono (trozos con valor null)
+    for (var iq = 0; iq < buf.total; iq++) { if (buf.chunks.get(iq) === null) { var kq = Math.floor(iq / BIGX_BLOCK); if (ks.indexOf(kq) < 0) ks.push(kq); } }
+    var step = function(i) {
+      if (i >= ks.length) return Promise.resolve();
+      var k = ks[i];
+      return Promise.resolve(window.vaultBigxInGetBlock(msgId, k)).then(function(arr) {
+        var s0 = k * BIGX_BLOCK, e0 = Math.min(buf.total, s0 + BIGX_BLOCK);
+        if (!arr || arr.length !== e0 - s0) bad.push(k);
+        else for (var j = s0; j < e0; j++) { if (buf.chunks.get(j) === null) buf.chunks.set(j, arr[j - s0]); }
+        return step(i + 1);
+      });
+    };
+    step(0).then(function() {
+      buf._loading = false;
+      if (bad.length) {
+        bad.forEach(function(k) {
+          buf.diskBlocks.delete(k);
+          var s0 = k * BIGX_BLOCK, e0 = Math.min(buf.total, s0 + BIGX_BLOCK);
+          for (var j = s0; j < e0; j++) { if (buf.chunks.get(j) === null) { buf.chunks.delete(j); buf.received--; } }
+        });
+        console.warn('[BleAckSystem] ' + msgId + ': faltan ' + bad.length + ' bloque(s) guardados en el teléfono: se piden de nuevo');
+        buf.lastActivity = Date.now();
+        self._sendNack(deviceId, msgId, self._findMissing(buf));
+        return;
+      }
+      self._assembleAndDispatch(buf, deviceId, senderId, msgId);
+    }, function() { buf._loading = false; });
   }
   _findGaps(buf) {
     var gaps = [];
@@ -1017,6 +1168,12 @@ export class BleAckSystem {
   }
   _assembleAndDispatch(buf, deviceId, senderId, msgId) {
     var self = this;
+    // 3007: parte de lo recibido está en el teléfono (bloques guardados) → traerlo primero (de bloque en bloque) y juntar después
+    if (buf && buf.diskBlocks && buf.diskBlocks.size) {
+      for (var iz = 0; iz < buf.total; iz++) { if (buf.chunks.get(iz) === null) { self._bigxLoadThenAssemble(buf, deviceId, senderId, msgId); return; } }
+    }
+    if (buf) buf._assembled = true;
+    if (buf && (buf.bigx || self._bigxIn.has(msgId))) self._bigxForget(msgId);
     // #dueño 06-11 (paso 2b): archivo GRANDE por internet COMPLETO → suelto el «mantenerme despierto» (lo había tomado
     // _sendBlockAck). Si por algo no llegáramos acá (transferencia muerta), el nativo lo suelta igual por su tope duro.
     try { if (buf && !buf.isChat && _isNetDevice(deviceId) && buf.total > NET_TOR_PREFER_CHUNKS && self.ble && self.ble.net && typeof self.ble.net.xferKeepAwake === 'function') self.ble.net.xferKeepAwake(false); } catch (e) {}
@@ -1973,7 +2130,7 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.globalTimeoutMs = this.baseTimeoutMs;
   // Ronda 2767: marca de este intento en cada trozo ('a'): otro intento del mismo mensaje va cifrado distinto y el
   // receptor no debe mezclar sus trozos
-  this.att = Math.random().toString(36).substr(2, 3);
+  this.att = (meta && typeof meta._att === 'string' && meta._att) ? meta._att : Math.random().toString(36).substr(2, 3); // 3007: al seguir un envío guardado, la MISMA marca
   this._windowResolve = null;
   this._windowReject = null;
   this._windowStartAtSend = 0;

@@ -96,6 +96,7 @@ import {
   vaultGetIncompleteTransfers, vaultGetPendingOutgoingTransfers, vaultCreateOutgoingTransfer,
   vaultSetOutgoingChunkAcked, vaultIncrementOutgoingTimeout, vaultRemoveOutgoingTransfer,
   vaultSetOutgoingStatus, vaultHydrateAttachments, vaultBigSendBegin, vaultBigSendEnd, vaultBigSendBlockedIds,
+  vaultBigxInit, vaultBigxOutHas, vaultBigxOutPut, vaultBigxOutGet, vaultBigxOutDrop, vaultBigxInIndex, vaultBigxInPutBlock, vaultBigxInGetBlock, vaultBigxInDrop,
   vaultSetMessageFields, vaultReplaceAttachment, vaultSaveFile, vaultLoadFile, vaultHdFileName,
   vaultDeleteMessage, vaultBlankMessage, vaultFlushAll
 } from './vault/vault_manager.js';
@@ -356,6 +357,10 @@ window.vaultRemoveOutgoingTransfer = vaultRemoveOutgoingTransfer;
 window.vaultSetOutgoingStatus = vaultSetOutgoingStatus;
 window.vaultHydrateAttachments = vaultHydrateAttachments;
 window.vaultBigSendBegin = vaultBigSendBegin;   // 3004: freno de bucle de arranque con archivos grandes
+// 3007 (dueño 11-11, «(a)»): archivo grande por internet que sigue donde iba (trozos en el teléfono, ver vault_manager.js)
+window.vaultBigxOutHas = vaultBigxOutHas; window.vaultBigxOutPut = vaultBigxOutPut; window.vaultBigxOutGet = vaultBigxOutGet; window.vaultBigxOutDrop = vaultBigxOutDrop;
+window.vaultBigxInIndex = vaultBigxInIndex; window.vaultBigxInPutBlock = vaultBigxInPutBlock; window.vaultBigxInGetBlock = vaultBigxInGetBlock; window.vaultBigxInDrop = vaultBigxInDrop;
+try { vaultBigxInit().catch(function() {}); } catch (e) {}
 window.vaultBigSendEnd = vaultBigSendEnd;
 window.vaultBigSendBlockedIds = vaultBigSendBlockedIds;
 
