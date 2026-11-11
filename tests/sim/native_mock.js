@@ -452,6 +452,10 @@ class NativePhone {
       const ex = extractJson(buf);
       if (!ex) break;
       this.radio.log(this.name, 'RX de', fromAddress, ex.json.substring(0, 90));
+      // Kotlin 3009 nativePong: con la app en segundo plano/congelada o cerrada, el nativo contesta el ping del vigilante del otro
+      if (!this.opts.noNativePong && (this.appActive === false || this.jsFrozen || this.closedMode) && ex.json.length < 400 && ex.json.indexOf('"ping"') >= 0) {
+        try { const o = JSON.parse(ex.json); if (o.type === 'ping' && o.pingId) { this.stats.nativePongs = (this.stats.nativePongs || 0) + 1; this._sendChunkedOrSingle(mac, JSON.stringify({ v: 1, type: 'pong', pingId: o.pingId, ts: Date.now(), fromNexoId: String(this.advertisingId || '').toLowerCase(), nb: 1 })); } } catch (e) {}
+      }
       if (!this.closedMode) this._bgNotify(ex.json, fromAddress);
       if (this.closedMode) this._closedReceive(fromAddress, ex.json);
       else this.emit('onPayloadReceived', { deviceId: fromAddress, content: ex.json, data: ex.json, source, timestamp: Date.now(), reassembled: true });

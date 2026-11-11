@@ -243,6 +243,12 @@
      "g": "leve",
      "d": "Algunos teléfonos se quedan en MTU 23 (falta renegociar)"
     }
+   ],
+   "fallos": [
+    {
+     "fallo": "3009 (canal de diagnósticos 11-11: «zombi» 3 de 7 síntomas, siempre con la app del otro dormida): el ping del vigilante Bluetooth lo contestaba solo el JS; con la app del otro congelada nadie contestaba y se tiraba un enlace sano (y se rehacía en bucle). 3009: el nativo contesta el pong con la app en segundo plano o cerrada (Kotlin nativePong; native_mock lo replica). zombifalso.js (contraprueba --sin-pong-nativo: zombi)",
+     "prueba": "«zombi» falso con la app del otro DORMIDA"
+    }
    ]
   },
   {
@@ -340,6 +346,12 @@
     {
      "g": "leve",
      "d": "Si el receptor perdió lo que llevaba, pide de nuevo todos los trozos sin límite de ritmo"
+    }
+   ],
+   "fallos": [
+    {
+     "fallo": "3009 (diagnóstico b2987: texto de grupo a la tablet dormida, 8 reintentos y ✗): un texto troceado (o la copia de grupo de un miembro) a una app congelada agotaba la ventana y quedaba ✗ aunque el enlace estuviera vivo (el nativo del otro avisa pero no confirma textos troceados). 3009: queda ⏳ (PEER_ABSENT) y lo reenvía la cola de pendientes; llega al despertar. textsleep.js (contraprueba 3007: failed)",
+     "prueba": "texto troceado (o copia de grupo) a una app CONGELADA"
     }
    ]
   },

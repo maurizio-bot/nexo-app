@@ -425,6 +425,8 @@ class NexoBlePlugin : Plugin() {
                 // retainUntilConsumed=true: si el JS aún no escucha (app recién abierta, WebView
                 // recargando), Capacitor guarda el mensaje y lo entrega al registrarse el listener.
                 // Sin esto Capacitor lo DESCARTA (Plugin.notifyListeners) y el mensaje se perdía.
+                // 3009: con la app en segundo plano o cerrada, el nativo contesta el ping del vigilante del otro (ver nativePong)
+                if ((appInBackground || closedMode) && extraction.json.length < 400 && extraction.json.contains("\"ping\"")) nativePong(deviceId, extraction.json)
                 if (!closedMode) backgroundNotify(extraction.json, deviceId)
                 if (closedMode) closedReceive(deviceId, extraction.json)
                 else notifyListeners("onPayloadReceived", JSObject()
@@ -936,6 +938,22 @@ class NexoBlePlugin : Plugin() {
     // JS no corra. Se firma con la clave de la pareja (si la app nos la dio) para que el emisor sepa que es de verdad y no
     // de un tercero que espió el msgId. El emisor deduplica por tipo+id (un ack doble es inofensivo); sin la clave va sin
     // firma y el emisor proto-2 lo ignora (se recupera al reabrir, cuando el JS manda el ack firmado del buzón).
+    // 3009 (PENDIENTES 12a, «zombi» falso: 3 de 7 síntomas del canal de diagnósticos): con la app en segundo plano o cerrada el
+    // JS puede estar dormido y no contestar el ping del vigilante del otro teléfono → «sin respuesta a 2 pings» → el otro tiraba
+    // un enlace Bluetooth SANO y lo rehacía en bucle. Si llega un ping por un enlace vivo, contesta el nativo con el mismo
+    // pong que el JS (ble_messages.js). El otro resuelve con el primero; uno repetido (si el JS también contesta) se ignora.
+    private fun nativePong(deviceId: String, json: String) {
+        try {
+            val o = JSONObject(json)
+            if (o.optString("type") != "ping") return
+            val pingId = o.optString("pingId")
+            if (pingId.isEmpty() || pingId.length > 80) return
+            val me = (nexoAdvertisingId ?: "").lowercase()
+            val pong = JSONObject().put("v", 1).put("type", "pong").put("pingId", pingId).put("ts", System.currentTimeMillis()).put("fromNexoId", me).put("nb", 1)
+            sendChunkedOrSingle(normalizeMac(deviceId), deviceId, pong.toString())
+        } catch (e: Exception) { }
+    }
+
     private fun sendDeliveredAck(deviceId: String, info: BgInbox.Info) {
         val me = (nexoAdvertisingId ?: "").lowercase()
         if (me.isEmpty() || info.from.isEmpty()) return

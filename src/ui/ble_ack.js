@@ -2684,6 +2684,17 @@ ChatStream.prototype._onWindowTimeout = function() {
         return;
       }
     }
+    if (self.windowRetryCount > self.maxWindowRetries && self.type !== 'file' && /^(msg|gm)[0-9a-z]+/i.test(String(self.msgId || ''))) {
+      // 3009 (PENDIENTES 12b; diagnóstico b2987 «gm…_1e29ab2f»: texto de grupo a una app dormida, 8 reintentos y ✗): un TEXTO del
+      // usuario (o su copia para un miembro de grupo) que agota los reintentos con el enlace ARRIBA es un otro que no confirma
+      // (app congelada o dormida: su nativo avisa pero no puede confirmar un texto troceado). No es un fallo: queda ⏳ pendiente
+      // (PEER_ABSENT) y lo reenvía la cola de pendientes de ese contacto cuando vuelva (app al frente, enlace nuevo), como el 3002
+      // con un Bluetooth muerto. Antes quedaba ✗ y el usuario tenía que reintentar a mano.
+      console.log('[ChatStream] Texto sin confirmar tras ' + self.maxWindowRetries + ' reintentos (la app del otro no contesta): queda pendiente, no ✗ msgId=' + self.msgId);
+      try { self.ackSystem._dispatchStatus(self.msgId, 'pending'); } catch (e) {}
+      self._giveUpPending();
+      return;
+    }
     if (self.windowRetryCount > self.maxWindowRetries) {
       // #dueño 08-11: un archivo por INTERNET a un contacto ALCANZABLE NO aborta ni pide reintentar: resetea el contador,
       // queda ⏳ y reintenta la ventana SOLO (el despertador ya se renovó arriba). Solo aborta si el contacto no es
