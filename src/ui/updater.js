@@ -60,7 +60,7 @@ export function updaterCheck(manual) {
   }).catch(function() { return { state: 'error' }; });
 }
 
-function _toast(k, d, kind) { try { _showToast(t(k, d), kind || 'info'); } catch (e) {} }
+function _toast(text, kind) { try { _showToast(text, kind || 'info'); } catch (e) {} }
 function _stopPoll() { if (_pollT) { clearInterval(_pollT); _pollT = null; } }
 function _startPoll() { if (!_pollT) _pollT = setInterval(function() { _refreshState(); }, 4000); }
 function _onReady(build) {
@@ -68,7 +68,7 @@ function _onReady(build) {
   if (!a || a.build !== build) return;
   var was = _ready === build;
   _ready = build; _busy = false; _pct = -1; _stopPoll(); _renderBanner(); _emit();
-  if (!was) { console.log('[UPDATER] la ' + build + ' ya está descargada: lista para instalar'); _toast('upd_ready_toast', 'Actualización descargada. Toca «Instalar».', 'success'); }
+  if (!was) { console.log('[UPDATER] la ' + build + ' ya está descargada: lista para instalar'); _toast(t('upd_ready_toast', 'Actualización descargada. Toca «Instalar».'), 'success'); }
 }
 // Pregunta al nativo si la versión ofrecida ya está bajada o se está bajando (p. ej. tras cerrar la ventana o rehacerse la pantalla)
 function _refreshState() {
@@ -89,9 +89,9 @@ export function updaterDownload() {
   var a = updaterAvailable(), pl = _plugin();
   if (!a || !pl || typeof pl.updateInstall !== 'function') return Promise.resolve({ ready: false, reason: 'unavailable' });
   if (_ready === a.build) return Promise.resolve({ ready: true });
-  if (_busy) { _toast('upd_busy_toast', 'Ya se está descargando. Te aviso al terminar.'); return Promise.resolve({ downloading: true }); }
+  if (_busy) { _toast(t('upd_busy_toast', 'Ya se está descargando. Te aviso al terminar.')); return Promise.resolve({ downloading: true }); }
   _busy = true; _pct = 0; _dlCall = true; _renderBanner(); _notifyCancel(); _startPoll();
-  _toast('upd_bg_toast', 'Descargando la actualización. Puedes seguir usando NEXO: te aviso al terminar.');
+  _toast(t('upd_bg_toast', 'Descargando la actualización. Puedes seguir usando NEXO: te aviso al terminar.'));
   console.log('[UPDATER] descargando la ' + a.build + ' (sigue aunque se cierre la ventana)');
   return Promise.resolve(pl.updateInstall({ url: a.url, build: a.build, mode: 'download' })).then(function(r) {
     _dlCall = false;
@@ -99,9 +99,9 @@ export function updaterDownload() {
     if (r && r.downloading) return r;                          // ya se estaba bajando: avisa al terminar (evento o consulta)
     _busy = false; _pct = -1; _stopPoll(); _renderBanner();
     console.log('[UPDATER] no se pudo descargar: ' + ((r && r.reason) || 'net'));
-    _toast('upd_failed', 'No se pudo bajar la actualización. Revisa tu internet y prueba otra vez.', 'warn');
+    _toast(t('upd_failed', 'No se pudo bajar la actualización. Revisa tu internet y prueba otra vez.'), 'warn');
     return r || { ready: false, reason: 'net' };
-  }).catch(function() { _dlCall = false; _busy = false; _pct = -1; _stopPoll(); _renderBanner(); _toast('upd_failed', 'No se pudo bajar la actualización. Revisa tu internet y prueba otra vez.', 'warn'); return { ready: false, reason: 'net' }; });
+  }).catch(function() { _dlCall = false; _busy = false; _pct = -1; _stopPoll(); _renderBanner(); _toast(t('upd_failed', 'No se pudo bajar la actualización. Revisa tu internet y prueba otra vez.'), 'warn'); return { ready: false, reason: 'net' }; });
 }
 
 /** «Instalar»: abre el instalador con lo YA bajado. Si aún no está bajado, lo baja (y avisa al terminar; luego «Instalar»). */
@@ -114,8 +114,8 @@ export function updaterInstall() {
     var why = (r && r.reason) || 'launch';
     console.log('[UPDATER] no se pudo abrir el instalador: ' + why);
     if (why === 'missing') { _ready = 0; _renderBanner(); return updaterDownload().then(function() { return { opened: false, reason: 'missing' }; }); }
-    if (why === 'install_permission') _toast('upd_need_permission_install', 'Permite a NEXO instalar aplicaciones y vuelve a tocar «Instalar».', 'warn');
-    else _toast('upd_failed', 'No se pudo bajar la actualización. Revisa tu internet y prueba otra vez.', 'warn');
+    if (why === 'install_permission') _toast(t('upd_need_permission_install', 'Permite a NEXO instalar aplicaciones y vuelve a tocar «Instalar».'), 'warn');
+    else _toast(t('upd_failed', 'No se pudo bajar la actualización. Revisa tu internet y prueba otra vez.'), 'warn');
     return r || { opened: false, reason: why };
   }).catch(function() { return { opened: false, reason: 'launch' }; });
 }
