@@ -59,7 +59,10 @@ const cortes = (mac) => logs.filter((l) => /\[A\].*sin respuesta a 2 pings: desc
 
 (async () => {
   const radio = new Radio();
-  const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', opts), nB = new NativePhone('B', 'BB:BB:BB:BB:BB:02', opts);
+  // 3009: el zombi real (la tablet del 09-11: errores 133/147 del nativo) es un enlace por el que NO VUELVE NADA, tampoco el pong
+  // que desde la 3009 contesta el nativo con la app dormida (nativePong). Se modela con B sin pong nativo; el caso «app dormida con
+  // el enlace sano» (que NO debe dar zombi) lo cubre zombifalso.js.
+  const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', opts), nB = new NativePhone('B', 'BB:BB:BB:BB:BB:02', Object.assign({}, opts, { noNativePong: true }));
   [nA, nB].forEach((n) => { radio.add(n); n.load(); });
   const [A, B] = await Promise.all([boot('A', nA), boot('B', nB)]);
   const biA = A.win.bleInterface, idA = biA.localNexoId.toLowerCase(), idB = B.win.bleInterface.localNexoId.toLowerCase();
