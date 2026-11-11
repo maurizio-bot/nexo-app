@@ -3,6 +3,32 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🔎 «Agregar»: todo NEXO cercano al instante (3012) y foto de perfil equivocada (dueño 11-11) — en prueba del dueño
+- **Hecho (3012):** detalle en `ESTADO.md` («Build actual»). Prueba: `tests/sim/addlento.js`.
+- **Falta del dueño (pruebas cortas):** (1) con varios teléfonos con NEXO cerca, abrir «Agregar»: deben salir todos enseguida (primero
+  «NEXO cercano · identificando…», luego su nombre); (2) uno de ellos con la app en segundo plano o cerrada **y con la 3012**: también
+  sale con su nombre; (3) tocar «+» en una fila «identificando…»: se agrega sola al contestar; (4) cerrar y reabrir «Agregar»: salen al instante.
+- **Foto de perfil equivocada — ABIERTO:** el registro del teléfono de Marcos dice que la foto la mandó el teléfono de Austin como suya.
+  Falta: que el dueño diga si alguien puso esa foto en el Perfil de ese teléfono (o si ese teléfono fue suyo), o el diagnóstico de ese
+  teléfono con la 3012 (línea `[AVATAR] Este teléfono tiene foto de perfil propia (…, puesta: …)`). Mientras: Perfil → «Quitar foto» en ese teléfono.
+- **Límite conocido:** un teléfono con una versión anterior a la 3012 y la app dormida no puede decir quién es: queda como
+  «NEXO cercano · no responde todavía» hasta que despierte (o se actualice).
+- **Para decidir más adelante (privacidad):** desde la 3012 el teléfono dice quién es (NEXO ID, nombre del teléfono y clave pública) a
+  cualquier NEXO que se conecte y lo pregunte, TAMBIÉN con la app dormida o cerrada (antes solo con la app despierta). Es lo que pide la
+  regla «todos salen al instante»; el código rotativo sigue protegiendo de quien solo escucha. Si algún día se quiere un modo
+  «no aparecer en Agregar de desconocidos», es un interruptor sobre `setKxCard`.
+
+## 📶 Wi-Fi Direct no funciona en los teléfonos (dueño 11-11: «primero es Wi-Fi Direct y después, si no hay otra forma, Bluetooth») — ABIERTO
+- **Hechos:** 3 intentos reales (08, 09, 10-11), 3 fallos: «No se pudo crear el grupo (2)» ×2 y «sin respuesta» ×1. El nativo es el de la 2713
+  (cuando funcionó). El 2 es «ocupado» (Android no puede levantar Wi-Fi Direct). **Causa en sus teléfonos sin confirmar.**
+- **Hecho (3012, JS):** Wi-Fi apagado → aviso al usuario y sin castigo de 10 min; fallo de montaje → se reprueba a los 2 min (`wdoff.js`).
+- **Siguiente (build propio):** aplicar `docs/pendientes/wd_nativo_patch_kt.py` (reintentos, canal nuevo, estado en el diagnóstico) y pedir al
+  dueño una prueba con el Wi-Fi ENCENDIDO en los dos teléfonos (sin red) + diagnóstico de ambos. Luego, bajar el umbral (hoy 150 KB).
+- **Dueño (11-11):** «no apago nada» → el Wi-Fi apagado NO explica sus fallos. La causa real solo se verá con la parte nativa
+  (estado en el diagnóstico). Es lo PRIMERO del siguiente bloque.
+- **Foto de perfil:** el dueño no sabe si alguien puso esa foto en ese teléfono → esperar su diagnóstico con la 3012.
+- **Avisos sin mensaje (3012):** falta que el dueño confirme que ya no salen (necesita la 3012 en el teléfono que RECIBE el aviso).
+
 ## 🖐️ NEXO Touch — el «feel» de los botones (dueño 09-11: «algo de calidad… que el user diga: wow») — ✅ base en 2968, a afinar con su prueba
 Propuesta e investigación: `docs/FEEDBACK_TOQUE_PROPUESTA_2026-11-09.md`. Decisión del dueño: «pon lo que creas mejor y lo tomamos como
 base; después de las pruebas lo vamos ajustando» → se implementaron las 5 recomendaciones: tick al presionar en todos los
