@@ -21,6 +21,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **⚠️ LEER PRIMERO (11-11): `docs/INVESTIGACION_BUCLE_APK_2026-11-11.md`** — traspaso completo del bucle de reinicios con un APK de 25 MB y de la pregunta de fondo del dueño («¿hay un problema de fondo en el sistema?»). El dueño pidió **no seguir con parches** hasta una revisión de fondo con el modelo más potente. Los diagnósticos crudos están en `diagnosticos_crudos/` (local, privados, fuera del repositorio).
 - **Código:** builds 2974 a 2989 (`nightly-2987` publicada; 2988 = vídeos del chat perezosos; 2989 = resumen diario de uso + archivos/PDF perezosos, 160/160; 2990 = interfaz en «tú», 160/160; 2991 = pregunta única del diagnóstico para externos; 2992 = botón «Instalar actualización (N)»; 2993 = canal directo de diagnósticos a Claude + texto ocupado, 163/163; 2994 = aviso del sistema «Hay una versión nueva» con botón «Actualizar» + «Usar Tor siempre» apagado por defecto, 163/163; 2995 = tocar una notificación abre el chat + freno a la tormenta de NACK + reenvío grande de a un contacto, 166/166); nada sin subir.
 - **El dueño solo tiene el S24** (tablet y vivo en la oficina). Pruebas que puede hacer solo: §A.29 y §A.30 de
   `docs/PRUEBAS_FISICAS_PENDIENTES_2026-11-08.md`; §A.31 necesita la tablet.
