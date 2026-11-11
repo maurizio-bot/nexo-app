@@ -39,6 +39,9 @@ class NostrRelay {
   stop() { if (this.wss) this.wss.clients.forEach((c) => c.terminate()); return new Promise((r) => (this.wss ? this.wss.close(() => r()) : r())); }
   // Cortar las conexiones de un "teléfono" (pruebas): los clientes se reconectan solos
   dropAll() { this.wss.clients.forEach((c) => c.terminate()); }
+  // Conexiones MUDAS (pruebas, diagnóstico S24 3010): las que ya están abiertas siguen abiertas pero el relé no lee ni manda
+  // nada por ellas — como una conexión muerta tras un rato en segundo plano, que el teléfono aún cree abierta. Las nuevas van bien.
+  muteAll() { this.wss.clients.forEach((c) => { c.mute = true; }); }
 
   _valid(ev) {
     const { schnorr, sha256, hex, unhex } = noble;
@@ -71,10 +74,11 @@ class NostrRelay {
     this.stats.conns++;
     ws.subs = new Map(); ws.authed = new Set();
     ws.challenge = Math.random().toString(36).substring(2);
-    const send = (m) => setTimeout(() => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); }, this.opts.latencyMs);
+    const send = (m) => setTimeout(() => { if (ws.readyState === 1 && !ws.mute) ws.send(JSON.stringify(m)); }, this.opts.latencyMs);
     ws.sendM = send;
     if (this.opts.authRequired) send(['AUTH', ws.challenge]);
     ws.on('message', (data) => {
+      if (ws.mute) return;
       let m;
       try { m = JSON.parse(String(data)); } catch (e) { send(['NOTICE', 'invalid json']); return; }
       if (!Array.isArray(m)) return;

@@ -666,6 +666,12 @@
      "g": "grave",
      "d": "Informe del dueño (2780): con Wi-Fi bueno la app se pasa a «Internet» y no deja llamar/videollamar; debe mantener el Wi-Fi si está conectado y bueno (sospecha: el tráfico de la propia videollamada marca el enlace «malo»). Tarea #83, para 2781. 2975: la sospecha se confirmó en el diagnóstico del dueño (13:35) con una transferencia: la ida y vuelta se infla por la carga del propio enlace; ahora la ida y vuelta alta no cuenta mientras hay una transferencia por ese enlace (lanload.js); una videollamada NO pasa por el sistema de flujos, así que para ella sigue abierto. Queda medir en teléfono que una videollamada por Wi-Fi ya no «se pasa a Internet»"
     }
+   ],
+   "fallos": [
+    {
+     "fallo": "3011 (diagnóstico S24 3010, 11-11 19:25 UTC): tras 12 min en segundo plano, al volver, las conexiones a los relés seguían «abiertas» pero muertas (el teléfono no se entera hasta minutos después); los textos al buzón de internet esperaban 12 s sin respuesta, 5 reintentos, y quedaban ✗ («Los relés no respondieron»). 3011 (net_link.js): al volver a la app tras ≥ 10 s se hace una pregunta mínima a cada relé y el que no contesta en 5 s se reconecta; lo mismo con un relé callado > 2 min, y si un envío no tiene respuesta de ninguno, los relés que no dijeron nada se reconectan (el reintento va por una conexión nueva). relaymudo.js (relé de pruebas con conexiones «mudas»).",
+     "prueba": "relés que no contestan al volver de segundo plano"
+    }
    ]
   },
   {

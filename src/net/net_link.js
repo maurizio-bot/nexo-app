@@ -65,6 +65,12 @@ var RELAY_STABLE_MS = 20000;        // una conexión de relé de menos de esto c
 var RELAY_FLAP_WINDOW_MS = 300000;  // ventana para contar flaps (5 min)
 var RELAY_FLAP_MAX = 3;             // nº de flaps en la ventana para considerar el relé inestable
 var RELAY_FLAP_PENALTY_MS = 300000; // cuánto se aparta un relé inestable (5 min) antes de reintentar
+// 3011 (diagnóstico S24 3010, 11-11 19:25 UTC): conexión a un relé «abierta» pero MUERTA (tras un rato en segundo plano o un
+// cambio de red el teléfono no se entera hasta minutos después). Se le hace una pregunta mínima y, si no contesta, se reconecta.
+var RELAY_PROBE_MS = 5000;          // tiempo para contestar a la pregunta de comprobación
+var RELAY_IDLE_PROBE_MS = 120000;   // un relé callado más que esto (con la app a la vista) se comprueba
+var RELAY_BG_PROBE_MS = 10000;      // al volver a la app tras al menos esto en segundo plano, se comprueban todos
+var RELAY_PROBE_ID = '0000000000000000000000000000000000000000000000000000000000000000';
 var RELAY_MIN_OTHERS = 2;           // solo se aparta si quedan al menos tantos OTROS relés abiertos (no quedarse sin red)
 var WAKE_MIN_MS = 8000;       // M1 (auditoría 28-10): como mucho un «toque» FCM por par cada 8 s (ráfaga de textos)
 var CALL_WAKE_MIN_MS = 3000;  // #130 (dueño 30-10): una llamada insiste en despertar — throttle propio, más corto y
@@ -172,10 +178,13 @@ export class NetLink {
     try { if (self.state.peerFcm) Object.keys(self.state.peerFcm).forEach(function(nx) { self._peer(nx).fcmToken = self.state.peerFcm[nx]; }); } catch (e) {}
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() {
       // A segundo plano: la parte nativa sigue desde lo último que vio la app
-      if (document.visibilityState === 'hidden') { self._bgSinceDirty = true; self._bgConfig(); }
+      if (document.visibilityState === 'hidden') { self._bgSinceDirty = true; self._hiddenAt = Date.now(); self._bgConfig(); }
       if (document.visibilityState === 'visible') {
         // Tras un rato en segundo plano las conexiones pueden haberse caído: reconectar ya (sin esperar la pausa)
         self.relays.forEach(function(r) { r.retryAt = 0; r.backoff = 2000; });
+        // 3011: y las que siguen «abiertas» pueden estar muertas sin saberlo (S24 3010: 12 min fuera → todo ✗): comprobarlas
+        if (self._hiddenAt && Date.now() - self._hiddenAt >= RELAY_BG_PROBE_MS) self._probeRelays('al volver a la app');
+        self._hiddenAt = 0;
         self.tick().then(function() { self._helloAll(true); });
       }
     });
@@ -264,7 +273,12 @@ export class NetLink {
         if (self.ble) { if (up && typeof self.ble._netUp === 'function') self.ble._netUp(nx); else if (!up && typeof self.ble._netDown === 'function') self.ble._netDown(nx); }
       }
     });
-    if (typeof document === 'undefined' || document.visibilityState !== 'hidden') self._helloAll(false);
+    if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
+      // 3011: un relé que lleva rato sin decir nada puede estar muerto sin saberlo (cambio de red): se comprueba
+      var idle = false; self.relays.forEach(function(r) { if (r.open && !r.probing && now - (r.rxAt || r.openedAt || now) > RELAY_IDLE_PROBE_MS) idle = true; });
+      if (idle) self._probeRelays('callado más de 2 min', RELAY_IDLE_PROBE_MS);
+      self._helloAll(false);
+    }
     self._torTick();
   }
 
@@ -289,7 +303,7 @@ export class NetLink {
     try { ws = new WebSocket(url); } catch (e) { r.retryAt = Date.now() + r.backoff; return; }
     r.ws = ws; r.open = false;
     ws.onopen = function() {
-      r.open = true; r.backoff = 2000; r.openedAt = Date.now();
+      r.open = true; r.backoff = 2000; r.openedAt = Date.now(); r.rxAt = r.openedAt;
       self._subscribe(r);
       if (self._openCount() === 1) {
         console.log('[NET] Conectado a internet por relés públicos');
@@ -298,7 +312,7 @@ export class NetLink {
         if (self.ble && typeof self.ble._netOnline === 'function') setTimeout(function() { self.ble._netOnline(); }, 800);
       }
     };
-    ws.onmessage = function(ev) { self._onRelayMsg(url, r, ev.data); };
+    ws.onmessage = function(ev) { r.rxAt = Date.now(); self._onRelayMsg(url, r, ev.data); };
     ws.onclose = function() {
       var was = r.open;
       var stableFor = r.openedAt ? (Date.now() - r.openedAt) : 0; r.openedAt = 0;
@@ -338,6 +352,40 @@ export class NetLink {
   }
   _closeAll() { this.relays.forEach(function(r) { try { if (r.ws) r.ws.close(); } catch (e) {} }); }
   _send(r, arr) { try { if (r.ws && r.open) { r.ws.send(JSON.stringify(arr)); return true; } } catch (e) {} return false; }
+  // 3011: pregunta mínima (una búsqueda por un id que no existe: todo relé contesta EOSE) a los relés abiertos; el que no dice
+  // NADA en RELAY_PROBE_MS se da por muerto y se reconecta. minIdle: solo los que llevan callados al menos eso.
+  _probeRelays(why, minIdle) {
+    var self = this, t0 = Date.now();
+    self.relays.forEach(function(r, u) {
+      if (!r.open || !r.ws || r.probing) return;
+      if (minIdle && t0 - (r.rxAt || r.openedAt || t0) <= minIdle) return;
+      var ws = r.ws, sub = 'pb' + bytesToHex(_rnd(4));
+      r.probing = true;
+      self._send(r, ['REQ', sub, { ids: [RELAY_PROBE_ID], limit: 1 }]);
+      setTimeout(function() {
+        r.probing = false;
+        if (r.ws !== ws || !r.open) return;            // ya se cerró o se reconectó entretanto
+        if ((r.rxAt || 0) < t0) self._dropDead(u, r, why);
+        else self._send(r, ['CLOSE', sub]);
+      }, RELAY_PROBE_MS);
+    });
+  }
+  // 3011: los relés que no dijeron nada desde `since` (a un envío sin respuesta de ninguno) se dan por muertos
+  _dropSilent(since, why) {
+    var self = this;
+    self.relays.forEach(function(r, u) { if (r.open && r.ws && (r.rxAt || 0) < since) self._dropDead(u, r, why); });
+  }
+  // 3011: cierra una conexión muerta SIN esperar su cierre (en una conexión muerta puede tardar minutos) y reconecta ya
+  _dropDead(url, r, why) {
+    var ws = r.ws, was = r.open;
+    console.warn('[NET] Relé ' + _relayHost(url) + ' no contesta (' + why + '): conexión muerta, reconecto');
+    if (ws) { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null; try { ws.close(); } catch (e) {} }
+    r.open = false; r.ws = null; r.sub = null; r.openedAt = 0; r.probing = false;
+    r.waits.forEach(function(fn) { try { fn(false, 'conexión muerta'); } catch (e) {} }); r.waits.clear();
+    if (was && !this.online()) console.log('[NET] Sin relés: internet no disponible');
+    r.retryAt = 0; r.backoff = 2000;
+    this._connect(url);
+  }
 
   _subscribe(r) {
     if (r.sub) this._send(r, ['CLOSE', r.sub]);
@@ -831,7 +879,9 @@ export class NetLink {
       // antes solo lo borraba el que contestaba OK, y con un relé que acepta pero nunca manda OK, r.waits crecía toda la
       // conexión (fuga lenta).
       var cleanup = function() { open.forEach(function(r) { r.waits.delete(ev.id); }); };
-      var timer = setTimeout(function() { if (!done) { done = true; cleanup(); reject(Object.assign(new Error('Los relés no respondieron'), { code: 'NET_DOWN' })); } }, 12000);
+      var tSent = Date.now();
+      // 3011: sin respuesta de NINGÚN relé → los que no dijeron nada desde el envío están muertos: se reconectan (el reintento va por una conexión nueva)
+      var timer = setTimeout(function() { if (!done) { done = true; cleanup(); self._dropSilent(tSent, 'sin respuesta a un envío'); reject(Object.assign(new Error('Los relés no respondieron'), { code: 'NET_DOWN' })); } }, 12000);
       open.forEach(function(r) {
         r.waits.set(ev.id, function(ok, msg) {
           if (done) return;
