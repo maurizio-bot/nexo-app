@@ -172,6 +172,16 @@ const BLE_HD_MAX_CHARS = 9500000;   // HD de vídeo (main.js MAX_HD_B64_BYTES + 
 // principal (congelación → ANR). 300.000 deja el doble de margen sobre cualquier envío legítimo.
 const MAX_CHUNKS = 300000;
 const ASSEMBLY_TIMEOUT_MS = 120000;
+// 3005 (investigación 11-11 §9: el APK de 25 MB por internet se paraba en el trozo 180/2213 y cada intento empezaba de cero).
+// Archivo GRANDE por internet (≥ NET_BIG_MIN_CHUNKS trozos, ~1 MB): el que RECIBE guarda lo recibido 30 min sin trozos nuevos
+// (antes 2 min: si su app se dormía más de eso lo tiraba y el otro tenía que volver a mandarlo todo) y el que ENVÍA mantiene el
+// envío vivo ese mismo rato; si el otro deja de confirmar, tras NET_SILENT_FULL_RETRIES reenvíos de ventana pasa a «sondeo»:
+// UN trozo cada NET_SILENT_PROBE_MS (antes ~80 trozos/min al vacío a los relés) y vuelve al ritmo normal en cuanto confirma.
+const NET_BIG_MIN_CHUNKS = 64;
+const NET_BIG_IDLE_MS = 1800000;
+var NET_SILENT_FULL_RETRIES = 1;
+var NET_SILENT_PROBE_MS = 60000;
+export function _assemblyTimeoutFor(isNet, isChat, total) { return (isNet && !isChat && total >= NET_BIG_MIN_CHUNKS) ? NET_BIG_IDLE_MS : ASSEMBLY_TIMEOUT_MS; }
 const COMPLETED_TTL_MS = 60000;
 const GLOBAL_TIMEOUT_MS = 180000;
 const FILE_GLOBAL_TIMEOUT_MS = 600000;
@@ -933,7 +943,7 @@ export class BleAckSystem {
           self._reportIncomingProgress(msgId, self.incomingBuffers.get(msgId), 'failed');
           self.incomingBuffers.delete(msgId);
         }
-      }, ASSEMBLY_TIMEOUT_MS);
+      }, _assemblyTimeoutFor(_isNetDevice(deviceId), buf.isChat, buf.total));
     }
     if (!buf.chunks.has(idx)) {
       buf.chunks.set(idx, data || '');
@@ -947,7 +957,7 @@ export class BleAckSystem {
           self._reportIncomingProgress(msgId, self.incomingBuffers.get(msgId), 'failed');
           self.incomingBuffers.delete(msgId);
         }
-      }, ASSEMBLY_TIMEOUT_MS);
+      }, _assemblyTimeoutFor(_isNetDevice(deviceId), buf.isChat, buf.total));
     }
     var senderId = from || (buf.meta && buf.meta.fr) || 'unknown';
     if (buf.received >= buf.total) {
@@ -1159,6 +1169,15 @@ export class BleAckSystem {
       stream._windowResolve = null;
       stream._windowReject = null;
       res();
+    }
+    // 3005: el otro volvió a confirmar durante el «sondeo» → ritmo normal ya (no esperar al minuto del sondeo)
+    if (stream._probing) {
+      stream._probing = false; stream.windowRetryCount = 0;
+      console.log('[BleAckSystem] El otro volvió a confirmar: sigo al ritmo normal msgId=' + msgId);
+      if (!stream.aborted && stream._windowResolve && stream.windowStart < stream.total) {
+        if (stream.timer) { clearTimeout(stream.timer); stream.timer = null; }
+        stream._retransmitWindow();
+      }
     }
     if (stream.windowStart >= stream.total) {
       console.log('[BleAckSystem] Mensaje completo, finalizando msgId=' + msgId);
@@ -1867,7 +1886,7 @@ export class BleAckSystem {
     setInterval(function() {
       var now = Date.now();
       self.incomingBuffers.forEach(function(buf, msgId) {
-        if (now - buf.lastActivity > self.maxFragmentAge) {
+        if (now - buf.lastActivity > Math.max(self.maxFragmentAge, _assemblyTimeoutFor(_isNetDevice(buf.deviceId), buf.isChat, buf.total))) {
           if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
           self.incomingBuffers.delete(msgId);
         }
@@ -1875,7 +1894,8 @@ export class BleAckSystem {
       // Ronda 2767 (revisión): por inactividad (10 min sin confirmaciones), no por el tiempo desde el principio: un vídeo
       // HD o un archivo grande por un Bluetooth lento se cortaba a los 10 min aunque avanzara (se quedaba en "○ 44%")
       self.outgoingStreams.forEach(function(stream, msgId) {
-        if (now - (stream.lastAckAt || stream.startTime) > self.maxFragmentAge * 2) { stream.abort(); self.outgoingStreams.delete(msgId); }
+        var idleMax = (stream.type === 'file' && _isNetDevice(stream.deviceId) && stream.total >= NET_BIG_MIN_CHUNKS) ? NET_BIG_IDLE_MS : self.maxFragmentAge * 2; // 3005
+        if (now - (stream.lastAckAt || stream.startTime) > idleMax) { stream.abort(); self.outgoingStreams.delete(msgId); }
       });
       self.pendingAcks.forEach(function(entry, msgId) {
         if (now - entry.sentAt > self.maxFragmentAge) { clearTimeout(entry.timer); self.pendingAcks.delete(msgId); try { entry.reject(new Error('Timeout global')); } catch(e) {} }
@@ -2482,6 +2502,21 @@ ChatStream.prototype._onWindowTimeout = function() {
       return;
     }
     self.windowRetryCount++;
+    // 3005: archivo grande por internet y el otro no confirma → «sondeo» (1 trozo por minuto) en vez de reenviar la ventana
+    // entera cada 8 s al vacío. Mantiene el contador en el tope mientras siga el presupuesto de reintento solo (2 h, contacto
+    // alcanzable); si se acaba, cae al tope de siempre (abajo).
+    if (_isNetDevice(self.deviceId) && self.type === 'file' && self.total >= NET_BIG_MIN_CHUNKS && self.windowRetryCount > NET_SILENT_FULL_RETRIES) {
+      if (self.windowRetryCount > self.maxWindowRetries && self._netFileAutoRetryNow()) {
+        self.windowRetryCount = self.maxWindowRetries;
+        try { self.ackSystem._dispatchStatus(self.msgId, 'pending'); } catch (e) {}
+      }
+      if (self.windowRetryCount <= self.maxWindowRetries) {
+        if (!self._probing) console.log('[ChatStream] El otro no confirma: pruebo con 1 trozo cada ' + Math.round(NET_SILENT_PROBE_MS / 1000) + ' s hasta que conteste msgId=' + self.msgId);
+        self._probing = true;
+        self._probe();
+        return;
+      }
+    }
     if (self.windowRetryCount > self.maxWindowRetries) {
       // #dueño 08-11: un archivo por INTERNET a un contacto ALCANZABLE NO aborta ni pide reintentar: resetea el contador,
       // queda ⏳ y reintenta la ventana SOLO (el despertador ya se renovó arriba). Solo aborta si el contacto no es
@@ -2510,6 +2545,19 @@ ChatStream.prototype._textOnDeadBle = function() {
   var dev = this.deviceId;
   if (_isNetDevice(dev) || _isLanDevice(dev)) return false;
   try { return !!(this.ble && typeof this.ble._bleCongested === 'function' && this.ble._bleCongested(dev)); } catch (e) { return false; }
+};
+// 3005: «sondeo» de un archivo grande por internet cuyo receptor no confirma: reenvía SOLO el primer trozo sin confirmar y
+// revisa en NET_SILENT_PROBE_MS. Si el otro lo tiene a medias, lo confirma (→ ritmo normal); si lo perdió, pide lo que falta (NACK).
+ChatStream.prototype._probe = function() {
+  var self = this;
+  var idx = self.windowStart;
+  while (idx < self.total && self.ackedMask[idx]) idx++;
+  self._retxGen = (self._retxGen || 0) + 1;   // corta una cadena de reenvío en curso
+  if (idx < self.total) {
+    console.log('[ChatStream] Sondeo: reenvío solo el trozo ' + idx + ' (reviso en ' + Math.round(NET_SILENT_PROBE_MS / 1000) + ' s) msgId=' + self.msgId);
+    self._sendChunk(idx).then(function() { self._nativeFails = 0; }, function() {});
+  }
+  self._startWindowTimer(NET_SILENT_PROBE_MS);
 };
 ChatStream.prototype._retransmitWindow = function() {
   var self = this;

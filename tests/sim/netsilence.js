@@ -80,6 +80,8 @@ function silence(p, on) { const bi = p.win.bleInterface; if (!bi.__origNP) bi.__
 
 (async () => {
   const r = { prueba: 'netsilence', build: path.basename(buildDir) };
+  const AK = await importSrc('ui/ble_ack.js');
+  r.pura_espera = typeof AK._assemblyTimeoutFor === 'function' ? (AK._assemblyTimeoutFor(true, false, 2213) >= 1800000 && AK._assemblyTimeoutFor(true, true, 2213) === 120000 && AK._assemblyTimeoutFor(false, false, 2213) === 120000 && AK._assemblyTimeoutFor(true, false, 10) === 120000) : false;
   const r1 = new NostrRelay(), r2 = new NostrRelay();
   RELAYS = [await r1.start(), await r2.start()];
   const radio = new Radio();
@@ -128,7 +130,7 @@ function silence(p, on) { const bi = p.win.bleInterface; if (!bi.__origNP) bi.__
   r.C2_mandados_antes_del_reinicio = sentBefore2;
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
-  const ok = r.en_linea_por_internet_s !== null && r.C1_llega_s !== null && r.C1_reenviado_pct !== null && r.C1_reenviado_pct < 25 && r.C1_por_minuto_callado <= 12 &&
+  const ok = r.pura_espera && r.en_linea_por_internet_s !== null && r.C1_receptor_conserva && r.C1_llega_s !== null && r.C1_reenviado_pct !== null && r.C1_reenviado_pct < 25 && r.C1_por_minuto_callado <= 12 &&
     r.C2_llega_s !== null && r.C2_reenviado_pct !== null && r.C2_reenviado_pct < 25 && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NETSILENCE ' + JSON.stringify(r));
