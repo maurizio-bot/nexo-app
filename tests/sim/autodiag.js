@@ -120,6 +120,10 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
   r.viejo_llega_s = await waitFor(() => adB().inbox().some((e) => e.sym === 'pendiente_viejo'), 40000);
   const again = await adA().scan();
   r.barrido_no_repite = again === null;
+  // 2999: un archivo grande que no cabe por Bluetooth y espera Wi-Fi/internet a propósito NO es «pendiente viejo» (leído en un diagnóstico real por el canal)
+  await A.win.vaultAppendMessage(idB, { msgId: 'grande1', messageId: 'grande1', content: JSON.stringify({ type: 'attachment', attachmentType: 'file', payload: null, meta: { name: 'x.apk', size: 30000000 } }), attachmentType: 'file', attachmentMeta: { name: 'x.apk', size: 30000000 }, _own: true, status: 'pending', timestamp: Date.now() - 600000, seq: 0 });
+  const grande = await adA().scan();
+  r.archivo_grande_esperando_no_cuenta = grande === null || (grande && grande.id !== 'grande1');
 
   // ===== (6) copiar y marcar vistos =====
   const txt = adB().text(true);
@@ -138,7 +142,7 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
   const nums = ['emparejados_s', 'llega_a_B_s', 'A_ve_tick_s', 'bt_de_nuevo_s', 'llega_al_volver_s', 'viejo_llega_s'];
   const ok = r.modulo_activo && nums.every((k) => typeof r[k] === 'number') && r.evento_sintoma_manda && r.remitente_ok && r.sintoma_ok && r.texto_es_diagnostico && r.sin_burbuja_en_B && r.sin_burbuja_en_A &&
     r.estado_enviado && r.mismo_sintoma_repetido && r.otro_sintoma_espera_2h && r.apagado_no_manda && r.tope_diario && r.bandeja_B_sigue_1 && r.B_fuera && r.sintoma_con_B_ausente === 'enviado' &&
-    r.no_llega_mientras_B_ausente && r.pendiente_entregado && r.dev_propio && r.barrido_detecta_viejo && r.barrido_no_repite && r.texto_copiar_ok && r.nuevos_antes === 4 && r.nuevos_despues === 0 && r.insignia_con_nuevos && r.insignia_solo_dev && r.insignia_se_quita && r.sin_contenido_de_mensajes && !r.errores.length;
+    r.no_llega_mientras_B_ausente && r.pendiente_entregado && r.dev_propio && r.barrido_detecta_viejo && r.barrido_no_repite && r.archivo_grande_esperando_no_cuenta && r.texto_copiar_ok && r.nuevos_antes === 4 && r.nuevos_despues === 0 && r.insignia_con_nuevos && r.insignia_solo_dev && r.insignia_se_quita && r.sin_contenido_de_mensajes && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('AUTODIAG ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_autodiag.txt'), logs.join('\n'));

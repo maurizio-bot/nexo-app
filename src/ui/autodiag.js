@@ -16,7 +16,7 @@
  * NEXO_AUTODIAG_SCAN_MS.
  */
 import { _diagnosticText } from './diag.js';
-import { _getBLEContacts, _isResendable, _normId, _showToast } from './ble_helpers.js';
+import { _getBLEContacts, _isResendable, _normId, _showToast, _tooBigForBt } from './ble_helpers.js';
 import { _sendTextTo } from './send.js';
 import { t } from './i18n.js';
 import { diagChannelAvailable, diagChannelInit, diagChannelSend } from './diag_channel.js'; // 2992: canal directo a Claude
@@ -189,6 +189,10 @@ export function autoDiagScanPending() {
         (list || []).some(function(m) {
           var id = m.msgId || m.messageId || m.id;
           if (!id || m.hidden || _reportedPending[id] || now - (m.timestamp || now) < oldMs) return false;
+          // 2999 (diagnóstico real leído por el canal, 11-11): un archivo grande que NO cabe por Bluetooth espera Wi-Fi/internet a propósito (la app del otro
+          // dormida, p. ej.): no es un fallo y llenaba el diagnóstico con «pendiente viejo» de 34 h. Solo cuenta si el enlace de ahora ya serviría.
+          var via0 = ''; try { via0 = bi.linkOf(nx); } catch (e0) {}
+          if (via0 === 'bluetooth' && _tooBigForBt(m)) return false;
           _reportedPending[id] = now;
           found = { nx: nx, id: id, min: Math.round((now - m.timestamp) / 60000), via: bi.linkOf(nx) };
           return true;

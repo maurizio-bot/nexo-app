@@ -88,7 +88,7 @@ async function ensureDeps() {
   let d = need();
   if (!d) {
     fs.mkdirSync(dir, { recursive: true });
-    require('child_process').execSync('npm install --prefix "' + dir + '" ws https-proxy-agent @noble/curves@2.0.1 @noble/hashes@2.0.1 --no-audit --no-fund --silent', { stdio: 'inherit' });
+    require('child_process').execSync('npm install --prefix "' + dir + '" ws https-proxy-agent@7 @noble/curves@2.0.1 @noble/hashes@2.0.1 --no-audit --no-fund --silent', { stdio: 'inherit' });
     d = need();
   }
   return d;
