@@ -488,7 +488,8 @@ class NativePhone {
     const what = () => (o.t === 'c' ? (o.cl === 1 ? 'call' : 'text') : (o.tp || 'file'));
     if (o.type === 'chat' && o.msgId && NX.test(from) && !o.to) return { kind: 'MESSAGE', from, msgId: o.msgId, quiet: o.q === 1, call: o.cl === 1, group: /^gr[0-9a-z]{8}$/.test(String(o.g || '').toLowerCase()) ? String(o.g).toLowerCase() : '' };
     if (mine && o.type === 'chat' && o.msgId && NX.test(from) && String(o.to).toLowerCase() === me) return { kind: 'NOTIFY_ONLY', from, msgId: o.msgId, quiet: o.q === 1, what: 'text' };
-    if (mine && o.type === 'sx' && o.msgId && String(o.to).toLowerCase() === me) return { kind: 'NOTIFY_ONLY', from: '', msgId: o.msgId, what: 'text' };
+    // 3012 (BgInbox.kt): un sobre sellado con id al azar («sx…»: confirmación, clave) no avisa; con q:1 (acción oculta) tampoco. NEXO_OLD_SX=1: nativo de antes (contraprueba)
+    if (mine && o.type === 'sx' && o.msgId && String(o.to).toLowerCase() === me) { if (process.env.NEXO_OLD_SX !== '1' && String(o.msgId).indexOf('sx') === 0) return { kind: 'IGNORE', from: '', msgId: '' }; return { kind: 'NOTIFY_ONLY', from: '', msgId: o.msgId, quiet: process.env.NEXO_OLD_SX !== '1' && o.q === 1, what: 'text' }; }
     if (mine && (o.t === 'c' || o.t === 'f') && o.i === 0 && String(o.dt || '').toLowerCase() === me) return { kind: 'NOTIFY_ONLY', from: NX.test(from) ? from : '', msgId: o.m, quiet: o.q === 1, what: what() };
     if ((o.type === 'ack' || o.type === 'read_receipt') && o.msgId && !o.to) return { kind: 'RECEIPT', from, msgId: o.msgId };
     if ((o.t === 'c' || o.t === 'f') && o.i === 0 && NX.test(from) && !o.dt) return { kind: 'NOTIFY_ONLY', from, msgId: o.m, quiet: o.q === 1, what: what(), group: /^gr[0-9a-z]{8}$/.test(String(o.g || '').toLowerCase()) ? String(o.g).toLowerCase() : '' };
@@ -915,10 +916,15 @@ class NativePhone {
       // Wi-Fi Direct (opts.wifiDirect: lo tiene; opts.wdFail: unirse al grupo falla). El receptor crea el
       // grupo con credenciales; el emisor solo se une con ellas y a alcance; ~2 MB/s.
       // opts.wdNoPerm: sin permiso (la 2711 no declaraba NEARBY_WIFI_DEVICES: Android 13+ lo deniega sin preguntar)
-      wifiDirectStatus: wrap('wifiDirectStatus', (c) => c.resolve({ supported: !!self.opts.wifiDirect, granted: !self.opts.wdNoPerm, wifiOn: true })),
+      // 3012: opts.wifiOff = Wi-Fi apagado (Android contesta «ocupado» (2) al montar el grupo o al unirse: diagnósticos del dueño 08 y 10-11);
+      // opts.wdBusy = el grupo no se puede montar aunque el Wi-Fi esté encendido (tras los reintentos del nativo)
+      wifiDirectStatus: wrap('wifiDirectStatus', (c) => c.resolve({ supported: !!self.opts.wifiDirect, granted: !self.opts.wdNoPerm, wifiOn: !self.opts.wifiOff })),
       requestWifiDirectPermission: wrap('requestWifiDirectPermission', (c) => { self.stats.wdPermAsked = (self.stats.wdPermAsked || 0) + 1; c.resolve({ granted: !self.opts.wdNoPerm }); }),
       wifiDirectHost: wrap('wifiDirectHost', (c, a) => {
         if (!self.opts.wifiDirect || self.opts.wdNoPerm) return c.reject('Wi-Fi Direct no disponible', 'WD_UNAVAILABLE');
+        self.stats.wdHostCalls = (self.stats.wdHostCalls || 0) + 1;
+        if (self.opts.wifiOff) return c.reject('No se pudo crear el grupo (2)', 'WD_GROUP');
+        if (self.opts.wdBusy) return setTimeout(() => c.reject('No se pudo crear el grupo (2; Wi-Fi encendido, Wi-Fi Direct inactivo, grupo ninguno, app en primer plano)', 'WD_GROUP'), 500);
         const rnd = (n) => Array.from({ length: n }, () => 'abcdefghjkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 31)]).join('');
         const ssid = 'DIRECT-' + rnd(2) + '-NEXO', pass = rnd(16), port = 40000 + Math.floor(Math.random() * 20000);
         self.radio.wdGroups = self.radio.wdGroups || new Map();
@@ -929,6 +935,7 @@ class NativePhone {
       }),
       wifiDirectSend: wrap('wifiDirectSend', (c, a) => {
         if (!self.opts.wifiDirect || self.opts.wdNoPerm) return c.reject('Wi-Fi Direct no disponible', 'WD_UNAVAILABLE');
+        if (self.opts.wifiOff) return c.reject('No se pudo conectar (2)', 'WD_CONNECT');
         const g = self.radio.wdGroups && self.radio.wdGroups.get(a.ssid);
         const data = String(a.data || '');
         if (!g || g.pass !== a.passphrase || g.port !== a.port || g.id !== a.transferId || !self.radio.inRange(self, g.host) || self.opts.wdFail || g.host.opts.wdFail) {

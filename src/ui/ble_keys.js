@@ -137,7 +137,10 @@ export const BLE_KEY_METHODS = {
     var nx = _normId(nexoId), key = this._sealKeyFor(nx);
     if (!key) return Promise.resolve(json);
     var id = msgId || ('sx' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6));
-    return e2eSealAnon(key, json).then(function(c) { return JSON.stringify({ v: 1, type: 'sx', to: nx, msgId: id, c: c }); });
+    // 3012 (dueño 11-11: avisos sin mensaje): q:1 = lo de dentro NO es un mensaje visible (confirmación, clave, acción oculta):
+    // el teléfono que lo recibe con la app en segundo plano o cerrada no avisa (BgInbox.kt)
+    var quiet = !msgId || !!(this._quietOut && this._quietOut.has(msgId));
+    return e2eSealAnon(key, json).then(function(c) { var env = { v: 1, type: 'sx', to: nx, msgId: id, c: c }; if (quiet) env.q = 1; return JSON.stringify(env); });
   },
 
   _sealObj(nexoId, obj) {

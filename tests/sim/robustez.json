@@ -675,6 +675,10 @@
     {
      "fallo": "3011 (diagnóstico S24 3010, 11-11 19:25 UTC): tras 12 min en segundo plano, al volver, las conexiones a los relés seguían «abiertas» pero muertas (el teléfono no se entera hasta minutos después); los textos al buzón de internet esperaban 12 s sin respuesta, 5 reintentos, y quedaban ✗ («Los relés no respondieron»). 3011 (net_link.js): al volver a la app tras ≥ 10 s se hace una pregunta mínima a cada relé y el que no contesta en 5 s se reconecta; lo mismo con un relé callado > 2 min, y si un envío no tiene respuesta de ninguno, los relés que no dijeron nada se reconectan (el reintento va por una conexión nueva). relaymudo.js (relé de pruebas con conexiones «mudas»).",
      "prueba": "relés que no contestan al volver de segundo plano"
+    },
+    {
+     "fallo": "3012 (dueño 11-11: «primero es Wi-Fi Direct… no veo que funcione»). Diagnósticos 08 y 10-11: «No se pudo crear el grupo (2)» en los dos teléfonos (2 = «ocupado»: Android no puede levantar Wi-Fi Direct; lo más común, el Wi-Fi apagado). La app lo intentaba igual, fallaba y dejaba al contacto 10 min «por Bluetooth» aunque se encendiera el Wi-Fi; nadie avisaba al usuario. 3012 (JS): el estado se lee antes de cada intento; con el Wi-Fi apagado (aquí o en el otro) no se intenta, se avisa y no hay castigo; si falla el montaje, se reprueba a los 2 min. Pendiente la parte nativa (reintentos y estado en el diagnóstico).",
+     "prueba": "Wi-Fi Direct con el Wi-Fi apagado"
     }
    ]
   },
@@ -966,6 +970,10 @@
     {
      "fallo": "3007 (dueño 11-11, captura «Alex pi · Mensaje nuevo» y al entrar nada): el aviso nativo con la app cerrada solo miraba si el SOBRE ya había llegado, no si el MENSAJE ya estaba; un reenvío de algo ya recibido avisaba «Mensaje nuevo». 3007: SeenMsgs.kt + markMsgsSeen desde la app + dedupe en los avisos nativos. notifseen.js (contraprueba 3006: 1 aviso falso)",
      "prueba": "sin «Mensaje nuevo» por un REENVÍO"
+    },
+    {
+     "fallo": "3012 (dueño 11-11: «llega la notificación pero no hay un mensaje nuevo»; diagnóstico de un A55 con la 3010: «Aviso tocado: abro el chat nexo_jump»). Con tres teléfonos cerca y el Bluetooth inestable, lo que iba por un teléfono puente (Jump) llega en sobre sellado; las CONFIRMACIONES (✓✓, «leído») y las claves van en un sobre con id al azar («sx…») y la parte nativa, con la app en segundo plano o cerrada, las tomaba por «mensaje nuevo» sin remitente (chat «nexo_jump»). 3012: BgInbox.kt no avisa de un sobre «sx…» ni de uno con q:1; la app marca q:1 en el sobre cuando lo de dentro no es un mensaje visible; los mensajes largos y archivos ya recibidos se apuntan también para no avisar de sus reenvíos.",
+     "prueba": "avisos por Jump: segundo plano, app congelada, pantalla apagada y cerrada"
     }
    ]
   },

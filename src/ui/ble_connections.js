@@ -17,6 +17,15 @@ export const BLE_CONNECTION_METHODS = {
     if (self.fenix) self.fenix.init();
     if (self.lan) self.lan.init();
     if (self.net) self.net.init();
+    // 3013: aviso cuando Wi-Fi Direct no puede usarse por tener el Wi-Fi apagado (aquí o en el otro teléfono)
+    if (self.wifiDirect && !self._wdOffListener && typeof window !== 'undefined') {
+      self._wdOffListener = function(e) {
+        _showToast((e && e.detail && e.detail.peer)
+          ? t('wd_wifi_off_peer', 'El otro teléfono tiene el Wi-Fi apagado: se envía por Bluetooth (más lento).')
+          : t('wd_wifi_off_me', 'Wi-Fi apagado: se envía por Bluetooth (más lento). Enciende el Wi-Fi —no hace falta red— para enviar rápido.'), 'warn');
+      };
+      window.addEventListener('nexo:wd:wifiOff', self._wdOffListener);
+    }
     if (self.wifiDirect) self.wifiDirect.init().then(function(st) {
       // Los ya conectados aún no sabían que tenemos Wi-Fi Direct: repetir el kx con wd:1
       if (st && st.supported) self._deviceStates.forEach(function(v, k) {

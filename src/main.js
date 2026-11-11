@@ -650,6 +650,9 @@ function _handleIncomingMessage(msg) {
       var npv = msg.attachmentType ? (_PREVIEW_BY_TYPE[msg.attachmentType] || '📎 Archivo') : _cut(_plainText(msg.content), 50);
       try { bi.noteContactMessage(senderUUID, npv, msg.timestamp || Date.now()); } catch (e) {}
     }
+    // 3012 (dueño 11-11: avisos sin mensaje): el nativo sabe que ESTE mensaje ya está en el teléfono (también los largos y los
+    // archivos, que no pasan por ble_messages): si el otro lo reenvía con esta app cerrada, no sale «Mensaje nuevo»
+    if (bi && typeof bi._noteSeen === 'function' && msg.msgId) { try { bi._noteSeen(msg.msgId); } catch (e) {} }
     _renderMessage(msg);
     if (window.NEXO.app && typeof window.NEXO.app.onMessage === 'function') {
       try { window.NEXO.app.onMessage(msg); } catch (omErr) {}

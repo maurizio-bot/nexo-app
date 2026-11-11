@@ -212,10 +212,24 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   nB.load(); B = await boot('B', nB);
   r.al_abrir_texto_s = await waitFor(() => has((m) => m.content === 'cerrada-' + via), 120000);
   r.al_abrir_foto_s = await waitFor(() => has((m) => m.attachmentType && !m._own && (m.attachmentMeta || {}).name === 'foto13.jpg'), 180000);
+  // 3012 (dueño 11-11: «llega la notificación pero no hay un mensaje nuevo»; su diagnóstico: un aviso que abre el chat «nexo_jump»):
+  // A manda por Jump y pasa a segundo plano; lo que vuelve por el puente para A son CONFIRMACIONES en sobre sellado (✓✓, «leído»):
+  // la parte nativa de A no debe avisar de «mensaje nuevo» (NEXO_OLD_SX=1: nativo de antes, para la contraprueba)
+  if (via === 'jump') {
+    setVisible(B, true); await openChatWith(B, 'A'); await sleep(500);
+    const tS = Date.now();
+    await openSendChat(); sendText(A, 'vuelta-' + via);
+    setVisible(A, false);
+    r.sellado_llega_s = await waitFor(() => has((m) => m.content === 'vuelta-' + via), 90000);
+    await sleep(9000);   // el aviso de respaldo del nativo sale a los 4 s
+    r.sellado_avisos_falsos_en_A = nA.notifLog.filter((n) => n.t >= tS).map((n) => n.chatId + ': ' + (n.text || '(sin texto)'));
+    setVisible(A, true);
+  }
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const closedOk = ['ble', 'jump', 'group'].indexOf(via) >= 0; // Wi-Fi sin Bluetooth ni internet: nada sigue vivo
   const ok = r.fondo_texto_llega_s !== null && r.fondo_foto_llega_s !== null && r.fondo_aviso_texto && r.fondo_aviso_foto && r.fondo_no_leidos >= 2 && !r.fondo_avisos_repetidos &&
     (!frozenOk || (r.congelada_aviso_texto && r.congelada_aviso_foto && r.congelada_sin_repetir)) && r.congelada_texto_llega_s !== null && r.congelada_foto_llega_s !== null &&
+    (via !== 'jump' || (r.sellado_llega_s !== null && r.sellado_avisos_falsos_en_A.length === 0)) &&
     (!closedOk || (r.cerrada_aviso_texto && r.cerrada_aviso_foto && (!gid || r.cerrada_nombre_grupo))) && r.al_abrir_texto_s !== null && r.al_abrir_foto_s !== null && !r.errores.length &&
     (!frozenOk || (r.apagada_aviso_s !== null && r.apagada_aviso_s <= 8 && r.apagada_llega_s !== null && r.apagada_llega_s <= 8 && r.apagada_entregado_s !== null && r.apagada_entregado_s <= 10 && r.apagada_sin_repetir));
   r.resultado = ok ? 'OK' : 'FALLO';

@@ -54,6 +54,10 @@ class BgInboxTest {
         val sx = BgInbox.classify("""{"v":1,"type":"sx","to":"nx99999999","msgId":"msg_7","c":"S1:abc"}""", me)
         assertEquals(BgInbox.Kind.NOTIFY_ONLY, sx.kind); assertEquals("", sx.from, "remitente oculto"); assertEquals("msg_7", sx.msgId)
         assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("""{"v":1,"type":"sx","to":"nx88888888","msgId":"msg_7","c":"S1:abc"}""", me).kind)
+        // 3012 (dueño 11-11, avisos sin mensaje): una confirmación o clave en sobre sellado (id al azar «sx…») no avisa; una acción oculta (q:1) tampoco
+        assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("""{"v":1,"type":"sx","to":"nx99999999","msgId":"sxmhz3k2a1b2c3","c":"S1:abc"}""", me).kind, "confirmación sellada: sin aviso")
+        assertEquals(true, BgInbox.classify("""{"v":1,"type":"sx","to":"nx99999999","msgId":"msg_8","c":"S1:abc","q":1}""", me).quiet, "acción oculta sellada: sin aviso")
+        assertEquals(false, sx.quiet, "un mensaje de verdad en sobre sí avisa")
         val f0 = BgInbox.classify("""{"v":2,"t":"f","m":"f2","i":0,"n":9,"d":"x","fr":"sx:abc","dt":"nx99999999","tp":"image","k":"a"}""", me)
         assertEquals(BgInbox.Kind.NOTIFY_ONLY, f0.kind); assertEquals("", f0.from); assertEquals("image", f0.what)
         // #130: una oferta de llamada TROCEADA y dirigida a mí (t:c + dt = mi NEXO ID + cl:1, por Jump) también es «call»

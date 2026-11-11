@@ -31,6 +31,15 @@ var WD_READY_TTL_MS = 45000;
 var OFFER_TIMEOUT_MS = 25000;
 var PERM_TIMEOUT_MS = 60000;
 var FAIL_COOLDOWN_MS = 10 * 60000;
+// 3013 (dueño 11-11: «primero es Wi-Fi Direct… no veo que funcione»; diagnósticos 08 y 10-11: «No se pudo crear el grupo (2)»):
+// - el estado (¿Wi-Fi encendido?) se vuelve a leer antes de cada intento: con el Wi-Fi APAGADO Android contesta «ocupado» y
+//   Wi-Fi Direct no puede funcionar; ahora se dice claro (aviso al usuario) y NO cuenta como fallo (no hay 10 min de castigo);
+// - si falla el MONTAJE del grupo (el nativo ya reintentó ~5 s), se vuelve a probar a los 2 min, no a los 10.
+var STATUS_FRESH_MS = 4000;
+var GROUP_FAIL_COOLDOWN_MS = 2 * 60000;
+var WIFI_OFF_NOTE_MS = 60000;
+var WIFI_OFF_RE = /wi-?fi apagado/i;
+var GROUP_FAIL_RE = /crear el grupo|no se pudo conectar|grupo no se form/i;
 // P8 (dueño 01-11): al ver el 1er contacto cercano con Wi-Fi Direct, pedir el permiso un poco después (no justo al
 // conectar, para no chocar con la interfaz de conexión) y UNA sola vez por sesión, para que esté listo antes de la 1ª
 // transferencia grande. Antes solo se pedía al intentar una transferencia; si el usuario estaba lejos entonces, se perdía.
@@ -71,12 +80,37 @@ export class WifiDirect {
 
   supported() { return !!(this.status && this.status.supported) && !this.denied; }
   // Falló con este contacto: un rato todo por Bluetooth (no se deja nada esperando a Wi-Fi Direct)
-  noteFail(nexoId) {
+  noteFail(nexoId, why) {
     var nx = _nid(nexoId);
     if (!nx) return;
-    this.failUntil[nx] = Date.now() + FAIL_COOLDOWN_MS;
+    var ms = GROUP_FAIL_RE.test(String(why || '')) ? GROUP_FAIL_COOLDOWN_MS : FAIL_COOLDOWN_MS;
+    this.failUntil[nx] = Date.now() + ms;
     this._dropWdReady(nx);       // si falló, el «preparado» ya no vale
-    console.warn('[WIFI-DIRECT] Con ' + nx + ' no funcionó: por Bluetooth durante ' + Math.round(FAIL_COOLDOWN_MS / 60000) + ' min');
+    console.warn('[WIFI-DIRECT] Con ' + nx + ' no funcionó: por Bluetooth durante ' + Math.round(ms / 60000) + ' min');
+  }
+  // 3013: estado al día antes de cada intento (¿sigue el Wi-Fi encendido? ¿se concedió el permiso?)
+  _refreshStatus() {
+    var self = this, pl = _plugin();
+    if (!pl || typeof pl.wifiDirectStatus !== 'function') return Promise.resolve(self.status);
+    if (self._statusAt && Date.now() - self._statusAt < STATUS_FRESH_MS) return Promise.resolve(self.status);
+    return pl.wifiDirectStatus().then(function(st) {
+      if (!st) return self.status;
+      var was = self.status ? self.status.wifiOn : undefined;
+      self.status = Object.assign({}, self.status || {}, st);
+      self._statusAt = Date.now();
+      if (st.granted) self.denied = false;
+      if (was !== undefined && was !== st.wifiOn) console.log('[WIFI-DIRECT] Wi-Fi ' + (st.wifiOn ? 'encendido: Wi-Fi Direct disponible otra vez' : 'apagado'));
+      return self.status;
+    }).catch(function() { return self.status; });
+  }
+  // 3013: Wi-Fi apagado (aquí o en el otro teléfono): al registro siempre; aviso al usuario como mucho una vez por minuto
+  _wifiOffNote(peerSide) {
+    console.warn('[WIFI-DIRECT] Wi-Fi APAGADO en ' + (peerSide ? 'el otro teléfono' : 'este teléfono') + ': va por Bluetooth (Wi-Fi Direct necesita el Wi-Fi encendido, aunque no haya red)');
+    var now = Date.now(), k = peerSide ? 'peer' : 'me';
+    this._offNoteAt = this._offNoteAt || {};
+    if (now - (this._offNoteAt[k] || 0) < WIFI_OFF_NOTE_MS) return;
+    this._offNoteAt[k] = now;
+    try { if (typeof window !== 'undefined' && typeof CustomEvent === 'function') window.dispatchEvent(new CustomEvent('nexo:wd:wifiOff', { detail: { peer: !!peerSide } })); } catch (e) {}
   }
   _cooling(nx) { return (this.failUntil[nx] || 0) > Date.now(); }
   unmarkPeer(nexoId) { var nx = _nid(nexoId); this._dropWdReady(nx); if (nx && this.peers.delete(nx)) console.log('[WIFI-DIRECT] ' + nx + ' ya no lo tiene disponible'); }
@@ -108,6 +142,9 @@ export class WifiDirect {
   canReach(nexoId) {
     var nx = _nid(nexoId);
     if (!this.supported() || !this.peers.has(nx) || this._cooling(nx) || !this.ble) return false;
+    // 3013: con el Wi-Fi apagado no hay Wi-Fi Direct (el estado se refresca solo, sin esperar)
+    if (!this._statusAt || Date.now() - this._statusAt > 15000) this._refreshStatus();
+    if (this.status && this.status.wifiOn === false) return false;
     var dev = typeof this.ble._resolveDeviceIdForNexoId === 'function' ? this.ble._resolveDeviceIdForNexoId(nx) : null;
     return !!dev && this._directReady(dev);
   }
@@ -171,10 +208,13 @@ export class WifiDirect {
     var t0 = Date.now();
     return self._ensurePermission().then(function(ok) {
       if (!ok) throw new Error('sin permiso de Wi-Fi Direct');
+      return self._refreshStatus();
+    }).then(function(ws) {
+      if (ws && ws.wifiOn === false) { var eOff = new Error('Wi-Fi apagado en este teléfono'); eOff.wifiOff = 'me'; throw eOff; }
       return new Promise(function(resolve, reject) {
         var st = { reject: reject };
         var offerTimer = setTimeout(function() { self.out.delete(fileId); reject(new Error('sin respuesta')); }, OFFER_TIMEOUT_MS);
-        st.onNo = function(why) { clearTimeout(offerTimer); self.out.delete(fileId); reject(new Error('el otro no puede (' + (why || '?') + ')')); };
+        st.onNo = function(why) { clearTimeout(offerTimer); self.out.delete(fileId); var eNo = new Error('el otro no puede (' + (why || '?') + ')'); if (WIFI_OFF_RE.test(String(why || ''))) eNo.wifiOff = 'peer'; reject(eNo); };
         st.onCreds = function(c) {
           clearTimeout(offerTimer);
           var tCreds = Date.now();
@@ -207,7 +247,9 @@ export class WifiDirect {
     }, function(e) {
       self.busy = false;
       console.warn('[WIFI-DIRECT] ' + fileId + ': ' + (e && e.message) + ' → por Bluetooth');
-      self.noteFail(peer);
+      // 3013: Wi-Fi apagado (aquí, o lo dijo el otro, o lo dijo Android al unirse) no es un fallo de Wi-Fi Direct: sin castigo
+      if (e && (e.wifiOff || e.code === 'WD_WIFI_OFF')) self._wifiOffNote(e.wifiOff === 'peer');
+      else self.noteFail(peer, e && e.message);
       throw e;
     });
   }
@@ -219,10 +261,13 @@ export class WifiDirect {
     self.busy = true;
     return self._ensurePermission().then(function(ok) {
       if (!ok) throw new Error('sin permiso de Wi-Fi Direct');
+      return self._refreshStatus();
+    }).then(function(ws) {
+      if (ws && ws.wifiOn === false) { var eOff = new Error('Wi-Fi apagado en este teléfono'); eOff.wifiOff = 'me'; throw eOff; }
       return new Promise(function(resolve, reject) {
         var st = {};
         var offerTimer = setTimeout(function() { self.out.delete(fileId); reject(new Error('sin respuesta')); }, OFFER_TIMEOUT_MS);
-        st.onNo = function(why) { clearTimeout(offerTimer); self.out.delete(fileId); reject(new Error('el otro no puede (' + (why || '?') + ')')); };
+        st.onNo = function(why) { clearTimeout(offerTimer); self.out.delete(fileId); var eNo = new Error('el otro no puede (' + (why || '?') + ')'); if (WIFI_OFF_RE.test(String(why || ''))) eNo.wifiOff = 'peer'; reject(eNo); };
         st.onCreds = function(c) {
           clearTimeout(offerTimer);
           st.onDone = function() {};
@@ -239,7 +284,9 @@ export class WifiDirect {
       self.busy = false;
       console.warn('[WIFI-DIRECT] Archivo grande ' + fileId + ': ' + (e && e.message));
       // Cortado a mitad (WD_SEND: se alejó, se apagó…): Wi-Fi Direct sí funciona con él; se puede reintentar ya
-      if (!(e && e.code === 'WD_SEND')) self.noteFail(peer);
+      // (3013: Wi-Fi apagado tampoco es un fallo de Wi-Fi Direct)
+      if (e && (e.wifiOff || e.code === 'WD_WIFI_OFF')) self._wifiOffNote(e.wifiOff === 'peer');
+      else if (!(e && e.code === 'WD_SEND')) self.noteFail(peer, e && e.message);
       throw e;
     });
   }
@@ -273,6 +320,10 @@ export class WifiDirect {
     var bigToken = big ? Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join('') : null;
     self._ensurePermission().then(function(ok) {
       if (!ok) throw new Error('sin permiso');  // (denied ya marcado: el próximo kx no lo anuncia)
+      return self._refreshStatus();
+    }).then(function(ws) {
+      // 3013: con el Wi-Fi apagado no se puede montar el grupo (Android contesta «ocupado»): se dice claro al otro
+      if (ws && ws.wifiOn === false) { var eOff = new Error('Wi-Fi apagado'); eOff.wifiOff = true; throw eOff; }
       var args = { transferId: id, size: p.size };
       if (big) args.bigToken = bigToken;
       return _plugin().wifiDirectHost(args);
@@ -290,7 +341,9 @@ export class WifiDirect {
       self.busy = false;
       self.incoming.delete(id);
       console.warn('[WIFI-DIRECT] No puedo recibir ' + id + ': ' + (e && e.message));
-      no(e && e.message);
+      var off = !!(e && (e.wifiOff || e.code === 'WD_WIFI_OFF' || WIFI_OFF_RE.test(String(e.message || ''))));
+      if (off) self._wifiOffNote(false);
+      no(off ? 'Wi-Fi apagado' : (e && e.message));
     });
     return true;
   }

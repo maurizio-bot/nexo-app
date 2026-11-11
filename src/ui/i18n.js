@@ -127,6 +127,8 @@ var STRINGS = {
   chat_mb_for_now: { es: " MB por ahora.", it: " MB per ora.", en: " MB for now." },
   chat_file_prep_fail: { es: "Archivo: no se pudo preparar (", it: "File: impossibile preparare (", en: "File: couldn't prepare (" },
   chat_error_lc: { es: "error", it: "errore", en: "error" },
+  wd_wifi_off_me: { es: "Wi-Fi apagado: se envía por Bluetooth (más lento). Enciende el Wi-Fi —no hace falta red— para enviar rápido.", it: "Wi-Fi spento: invio via Bluetooth (più lento). Accendi il Wi-Fi —non serve una rete— per inviare velocemente.", en: "Wi-Fi is off: sending over Bluetooth (slower). Turn Wi-Fi on —no network needed— to send fast." },
+  wd_wifi_off_peer: { es: "El otro teléfono tiene el Wi-Fi apagado: se envía por Bluetooth (más lento).", it: "L'altro telefono ha il Wi-Fi spento: invio via Bluetooth (più lento).", en: "The other phone has Wi-Fi off: sending over Bluetooth (slower)." },
   chat_wd_too_big: { es: "No se pudo enviar por Wi-Fi Direct y es demasiado grande para Bluetooth (", it: "Impossibile inviare via Wi-Fi Direct ed è troppo grande per il Bluetooth (", en: "Couldn't send via Wi-Fi Direct and it's too large for Bluetooth (" },
   chat_mb_end: { es: " MB.", it: " MB.", en: " MB." },
   chat_e2e_group: { es: "🔒 Mensajes del grupo cifrados de extremo a extremo: cada mensaje va cifrado para cada persona del grupo.", it: "🔒 Messaggi del gruppo crittografati end-to-end: ogni messaggio è crittografato per ogni persona del gruppo.", en: "🔒 Group messages are end-to-end encrypted: each message is encrypted for each person in the group." },

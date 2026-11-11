@@ -60,8 +60,15 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
                 // completa que enciende el teléfono), igual que la ruta no dirigida (abajo).
                 if (mine && to == me.lowercase()) { val cl = o.optInt("cl") == 1; return Info(Kind.NOTIFY_ONLY, from, o.optString("msgId"), o.optInt("q") == 1, if (cl) "call" else "text", cl) }
             }
-            if (mine && type == "sx" && o.optString("to").lowercase() == me.lowercase() && o.optString("msgId").isNotEmpty())
-                return Info(Kind.NOTIFY_ONLY, "", o.optString("msgId"), false, "text")
+            if (mine && type == "sx" && o.optString("to").lowercase() == me.lowercase() && o.optString("msgId").isNotEmpty()) {
+                // 3012 (dueño 11-11: «llega la notificación pero no hay un mensaje nuevo»; su diagnóstico: «Aviso tocado: abro el
+                // chat nexo_jump»): un sobre sellado que llega por un teléfono puente no siempre trae un mensaje. Las confirmaciones
+                // (✓✓, «leído») y las claves van en sobres cuyo id es uno al azar («sx…», ble_keys._sealString), y las acciones
+                // ocultas llevan q:1: nada de eso avisa. Solo avisa el sobre con el id de un mensaje de verdad.
+                val sid = o.optString("msgId")
+                if (sid.startsWith("sx")) return Info(Kind.IGNORE, "", "", false, "")
+                return Info(Kind.NOTIFY_ONLY, "", sid, o.optInt("q") == 1, "text")
+            }
             if (mine && (t == "c" || t == "f") && o.optInt("i", -1) == 0 && o.optString("dt").lowercase() == me.lowercase())
                 // #130: una oferta de llamada por trozos y DIRIGIDA (dt = mi NEXO ID, por Jump) también lleva cl:1 y
                 // debe ser «call» (pantalla completa), como la ruta no dirigida de abajo. Antes caía a "text".
