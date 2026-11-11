@@ -867,8 +867,8 @@ class NexoBlePlugin : Plugin() {
     private fun notifyMessage(ctx: Context, info: BgInbox.Info) {
         val who = netBgShared?.nameOf(info.from)
         val gname = groupName(info.group)
-        if (gname != null) MsgNotifier.get(ctx).message(info.group, gname, info.msgId, if (who != null) "$who: Mensaje nuevo" else "")
-        else MsgNotifier.get(ctx).message(info.from, who ?: "NEXO", info.msgId, "")
+        if (gname != null) MsgNotifier.get(ctx).message(info.group, gname, info.msgId, if (who != null) "$who: Mensaje nuevo" else "", true)
+        else MsgNotifier.get(ctx).message(info.from, who ?: "NEXO", info.msgId, "", true)
     }
 
     // Aviso de "solo notificación" (BgInbox.Kind.NOTIFY_ONLY): sin remitente (Jump con remitente oculto) va a un chat
@@ -879,8 +879,8 @@ class NexoBlePlugin : Plugin() {
         val chat = info.from.ifEmpty { "nexo_jump" }
         val what = when (info.what) { "image" -> "📷 Foto"; "video" -> "🎥 Vídeo"; "audio" -> "🎤 Nota de voz"; "call" -> "📞 Llamada entrante"; "text" -> ""; else -> "📎 Archivo" }
         val gname = groupName(info.group) // ronda 2763: de un grupo, en el chat del grupo con su nombre
-        if (gname != null) { val who = netBgShared?.nameOf(info.from); MsgNotifier.get(ctx).message(info.group, gname, info.msgId, if (who != null) "$who: ${what.ifEmpty { "Mensaje nuevo" }}" else what); return }
-        MsgNotifier.get(ctx).message(chat, if (info.from.isEmpty()) "NEXO" else netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId, what)
+        if (gname != null) { val who = netBgShared?.nameOf(info.from); MsgNotifier.get(ctx).message(info.group, gname, info.msgId, if (who != null) "$who: ${what.ifEmpty { "Mensaje nuevo" }}" else what, true); return }
+        MsgNotifier.get(ctx).message(chat, if (info.from.isEmpty()) "NEXO" else netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId, what, true)
     }
 
     // Ronda 2760: con la app en segundo plano el aviso lo da la app (notify.js), pero algunos teléfonos (Vivo del dueño)
@@ -2820,9 +2820,12 @@ class NexoBlePlugin : Plugin() {
             if (isCall) {
                 nlog()?.add("INFO", "NET", "oferta de llamada de $nx por internet (msgId $msgId): pantalla de llamada")
                 MsgNotifier.get(context).incomingCall(nx, name, false, msgId)
+            } else if (SeenMsgs.has(context, msgId)) {
+                // 3008: reenvío de un mensaje que este teléfono ya tiene → sin «Mensaje nuevo» (la ✓✓ sí se devuelve, para que el otro pare)
+                nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): ese mensaje ya estaba en el teléfono (reenvío): sin aviso")
             } else {
                 nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): aviso de mensaje nuevo por internet")
-                MsgNotifier.get(context).message(nx, name, msgId, "")
+                MsgNotifier.get(context).message(nx, name, msgId, "", true)
             }
         }, { nlog()?.add("INFO", "NET", it); Log.i("NEXO_NET", it) }).also { netBgShared = it }
     }
@@ -3032,6 +3035,16 @@ class NexoBlePlugin : Plugin() {
         if (a != null) out.put("answer", a.from).put("answerOffer", a.offer)
         if (d != null) out.put("declined", d.from).put("declinedOffer", d.offer)
         call.resolve(out)
+    }
+
+    // 3008: la app avisa de los mensajes que YA recibió (con la app abierta), para que un reenvío de alguno con la app cerrada no
+    // salga como «Mensaje nuevo» (ver SeenMsgs)
+    @PluginMethod
+    fun markMsgsSeen(call: PluginCall) {
+        val ids = ArrayList<String>()
+        try { call.getArray("ids")?.let { for (i in 0 until it.length()) { val v = it.optString(i); if (v.isNotEmpty()) ids.add(v) } } } catch (e: Exception) {}
+        if (ids.isNotEmpty()) SeenMsgs.add(context, ids)
+        call.resolve(JSObject().put("count", ids.size))
     }
 
     // ===== Notificaciones de mensajes (MsgNotifier): las pide notify.js con la app en segundo plano =====

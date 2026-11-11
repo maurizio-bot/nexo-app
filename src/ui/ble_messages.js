@@ -49,6 +49,21 @@ export const BLE_MESSAGE_METHODS = {
     });
   },
 
+  // 3008 (dueño 11-11: «me llegan notificaciones y luego entro y no hay mensajes nuevos»): avisar al nativo de los mensajes YA
+  // recibidos con la app abierta, para que si el otro teléfono reenvía alguno (un envío que en su lado seguía pendiente) con esta app
+  // cerrada, no salga «Mensaje nuevo» (SeenMsgs.kt). Por tandas, cada 3 s como mucho.
+  _noteSeen(id) {
+    var self = this;
+    if (!id || !_hasNativeMethod(self.nativePlugin, 'markMsgsSeen')) return;
+    (self._seenQ = self._seenQ || []).push(String(id));
+    if (self._seenT) return;
+    self._seenT = setTimeout(function() {
+      self._seenT = null;
+      var ids = self._seenQ.splice(0, self._seenQ.length);
+      if (ids.length) _safeNativeCall(self.nativePlugin, 'markMsgsSeen', { ids: ids }).catch(function() {});
+    }, 3000);
+  },
+
   _isMsgInFlight(msgId) {
     if (!msgId) return false;
     var found = false;
@@ -471,6 +486,7 @@ export const BLE_MESSAGE_METHODS = {
         }
         if (messageId) {
           self._receivedMessageIds.add(messageId);
+          if (!isControl) self._noteSeen(messageId);   // 3008: el nativo ya no avisa de un reenvío de este mensaje con la app cerrada
           if (self._receivedMessageIds.size > self._maxMessageIds) {
             var first = self._receivedMessageIds.values().next().value;
             self._receivedMessageIds.delete(first);

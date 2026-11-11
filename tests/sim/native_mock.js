@@ -485,6 +485,11 @@ class NativePhone {
   // otro chat (el nativo, con quien lo manda) pasa a este (el grupo). flags: { closed, bg }
   _postNotif(chatId, name, msgId, text, flags) {
     const id = String(chatId || '').toLowerCase(), mid = String(msgId);
+    // Kotlin 3008 (SeenMsgs + MsgNotifier.message dedupe): los avisos que da el NATIVO (app cerrada o en segundo plano) no avisan
+    // de un mensaje que el teléfono ya tiene (reenvío); todos los ids avisados quedan apuntados
+    if (!this.seenMsgs) this.seenMsgs = new Set();
+    if (flags && (flags.bg || flags.closed) && this.seenMsgs.has(mid) && !this.opts.noSeenMsgs) { this.seenSkips = (this.seenSkips || 0) + 1; const o = this.notifications.get(id); return o ? o.base + o.ids.size : 0; }
+    if (!this.opts.noSeenMsgs) this.seenMsgs.add(mid);
     if (!this.msgChat) this.msgChat = new Map();
     const prev = this.msgChat.get(mid);
     if (prev && prev !== id) {
@@ -1166,6 +1171,7 @@ class NativePhone {
       }),
       torStop: wrap('torStop', (c) => { if (self.tor) self.tor.conns.forEach((p, nx) => { if (p.tor) { p.tor.conns.delete(self.tor.nx); p.emit('onTorDown', { nx: self.tor.nx }); } }); self.tor = null; c.resolve({ stopped: true }); }),
       // Notificaciones de mensajes (MsgNotifier.kt): una por chat con su número; el icono de la app suma los números
+      markMsgsSeen: wrap('markMsgsSeen', (c, a) => { if (!self.seenMsgs) self.seenMsgs = new Set(); ((a && a.ids) || []).forEach((x) => self.seenMsgs.add(String(x))); c.resolve({ count: ((a && a.ids) || []).length }); }),
       notifyMessage: wrap('notifyMessage', (c, a) => { c.resolve({ count: self._postNotif(a.chatId, a.name, a.msgId, a.text, {}) }); }),
       // Ronda 2763 (MsgNotifier.incomingCall): aviso de llamada con tono; Contestar / Rechazar quedan en pendingAnswer / pendingDecline
       notifyCall: wrap('notifyCall', (c, a) => { self._incomingCall(a.chatId, a.name, !!a.video, a.offerId || '', {}); c.resolve({}); }),

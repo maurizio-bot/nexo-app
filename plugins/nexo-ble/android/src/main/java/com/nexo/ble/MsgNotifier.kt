@@ -174,7 +174,11 @@ class MsgNotifier(private val ctx: Context) {
 
     fun cancelUpdate() { try { NotificationManagerCompat.from(ctx).cancel(UPDATE_NOTIF_ID) } catch (e: Exception) { } }
 
-    fun message(chatId: String, name: String, msgId: String, text: String): Int {
+    // 3008: dedupe = true en los avisos que da el NATIVO con la app cerrada (internet/Bluetooth): si el mensaje ya estaba en el
+    // teléfono (SeenMsgs), es un reenvío de algo que ya llegó → sin aviso. Los que pide la app (notifyMessage) ya vienen filtrados.
+    fun message(chatId: String, name: String, msgId: String, text: String, dedupe: Boolean = false): Int {
+        if (dedupe && SeenMsgs.has(ctx, msgId)) { Log.i(TAG, "Sin aviso: el mensaje ya estaba en el teléfono (reenvío)"); return book.get(chatId)?.count ?: 0 }
+        try { SeenMsgs.add(ctx, listOf(msgId)) } catch (e: Exception) { }
         // Ronda 2760: si ya se avisó en otro chat (el nativo, con quien lo manda), pasa a este (el grupo)
         book.takeFromOthers(chatId, msgId).forEach { other ->
             if (book.get(other) == null) try { NotificationManagerCompat.from(ctx).cancel(notifId(other)) } catch (e: Exception) { }
