@@ -60,17 +60,28 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.despertar_un_chat_abre_s = await waitFor(() => inChat() && active() === ID1, 15000);
   r.despertar_un_chat_abre = r.despertar_un_chat_abre_s !== null;
   await backToList();
+  // varios chats con mensajes sin leer (como con 20 contactos): abre el del mensaje MÁS RECIENTE (2999)
+  { const cs = win.vaultLoadContacts(); const set = (id, at) => { const c = cs.find((k) => String(k.nexoId || k.deviceUUID || '').toLowerCase() === id); if (c) c.lastMessageAt = at; };
+    set(ID1, Date.now() - 600000); set(ID2, Date.now() - 1000); win.vaultSaveContacts(cs); }
   bi.bumpUnread(ID1); bi.bumpUnread(ID2); await sleep(200);
   nA.emit('onNotificationOpened', { deviceId: '', source: 'wake' });
-  await sleep(4000);
-  r.despertar_varios_se_queda_en_lista = !inChat();
+  r.despertar_varios_abre_el_mas_reciente_s = await waitFor(() => inChat() && active() === ID2, 15000);
+  r.despertar_varios_abre_el_mas_reciente = r.despertar_varios_abre_el_mas_reciente_s !== null;
   await backToList();
+  // Ajustes abierto encima: al tocar el aviso se cierra y se ve el chat (2999: «me abre en Ajustes»)
+  win.dispatchEvent(new win.CustomEvent('nexo:ui:settings')); await sleep(400);
+  r.ajustes_abierto_antes = !!win.document.getElementById('nexo-settings-sheet');
+  nA.emit('onNotificationOpened', { deviceId: ID1, source: 'notification' });
+  r.ajustes_se_cierra_y_abre_chat_s = await waitFor(() => !win.document.getElementById('nexo-settings-sheet') && inChat() && active() === ID1, 15000);
+  r.ajustes_se_cierra_y_abre_chat = r.ajustes_se_cierra_y_abre_chat_s !== null;
+  await backToList();
+  // (abrir ambos chats dejó los no leídos en 0)
   nA.emit('onNotificationOpened', { deviceId: '', source: 'wake' });   // nada sin leer: no abre nada, sin errores
   await sleep(2000);
   r.despertar_sin_nada_no_abre = !inChat();
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|Assembly timeout|net::ERR|fetch/.test(l)).slice(0, 5);
-  const ok = r.frio_abre_chat && r.vivo_abre_chat && r.sin_remitente_no_cambia && r.lista_antes && r.despertar_un_chat_abre && r.despertar_varios_se_queda_en_lista && r.despertar_sin_nada_no_abre && r.errores.length === 0;
+  const ok = r.frio_abre_chat && r.vivo_abre_chat && r.sin_remitente_no_cambia && r.lista_antes && r.despertar_un_chat_abre && r.despertar_varios_abre_el_mas_reciente && r.ajustes_abierto_antes && r.ajustes_se_cierra_y_abre_chat && r.despertar_sin_nada_no_abre && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NOTIFTAP ' + JSON.stringify(r));
   try { fs.writeFileSync(path.join(__dirname, 'last_logs_notiftap.txt'), logs.join('\n')); } catch (e) {}

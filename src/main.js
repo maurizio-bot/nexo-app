@@ -494,29 +494,49 @@ function _openChatWhenReady(deviceId, n) {
   if (n < 60) setTimeout(function() { _openChatWhenReady(deviceId, n + 1); }, 500);
 }
 
+// 2999 (dueño 10-11: «pulso la notificación y no me abre el chat sino el estado anterior o Ajustes»): el aviso genérico «Mensaje nuevo» no trae
+// chat; antes solo se abría si UN solo chat tenía mensajes sin leer (con 20 contactos casi nunca). Ahora se abre el chat con el mensaje sin
+// leer MÁS RECIENTE (el que acaba de llegar).
+function _latestUnreadChat(bi) {
+  var u = bi.unreadSummary().filter(function(x) { return x.count > 0; });
+  if (!u.length) return null;
+  var best = null, bestAt = -1;
+  u.forEach(function(x) {
+    var at = 0;
+    try {
+      if (bi.groups && bi.groups.isGroup(x.chatId)) { var g = bi.groups.get(x.chatId); at = (g && g.lastMessageAt) || 0; }
+      else { var c = (vaultLoadContacts() || []).find(function(k) { return _normId(k.nexoId || k.deviceUUID) === _normId(x.chatId); }); at = (c && c.lastMessageAt) || 0; }
+    } catch (e) {}
+    if (at > bestAt) { bestAt = at; best = x.chatId; }
+  });
+  return best;
+}
 function _openSoleUnreadWhenReady(n) {
   try {
     var bi = window.NEXO && window.NEXO.initialized && window.NEXO.app && window.NEXO.app.bleInterface;
-    if (bi && typeof bi.unreadSummary === 'function') {
-      var u = bi.unreadSummary().filter(function(x) { return x.count > 0; });
-      if (u.length) {
-        // hay mensajes: se deja un instante por si llegan más de otro chat y se decide con lo que haya
-        setTimeout(function() {
-          try {
-            var u2 = bi.unreadSummary().filter(function(x) { return x.count > 0; });
-            if (u2.length === 1) _openChatFromNotification(u2[0].chatId);
-          } catch (e) {}
-        }, 1200);
-        return;
-      }
+    if (bi && typeof bi.unreadSummary === 'function' && _latestUnreadChat(bi)) {
+      // hay mensajes: se deja un instante por si llega algo más reciente y se decide con lo que haya
+      setTimeout(function() {
+        try { var id = _latestUnreadChat(bi); if (id) { console.log('[NOTIF] Aviso genérico tocado: abro el chat con el último mensaje sin leer (' + id + ')'); _openChatFromNotification(id); } } catch (e) {}
+      }, 1200);
+      return;
     }
   } catch (e) {}
   if (n < 24) setTimeout(function() { _openSoleUnreadWhenReady(n + 1); }, 500);
 }
 
+// Al abrir un chat desde un aviso se cierra lo que hubiera encima (Ajustes, perfiles, un estado): si no, el chat se abre DETRÁS y se ve la pantalla de antes
+function _closeSheetsForChat() {
+  ['nexo-settings-sheet', 'nexo-profile-sheet', 'nexo-contact-profile', 'estado-overlay'].forEach(function(id) {
+    try { var el = document.getElementById(id); if (el && el.parentNode) el.parentNode.removeChild(el); } catch (e) {}
+  });
+}
+
 function _openChatFromNotification(deviceId) {
   try {
     if (!window.NEXO.app) return;
+    _closeSheetsForChat();
+    console.log('[NOTIF] Aviso tocado: abro el chat ' + deviceId);
     // Ronda 2760: aviso de un grupo → su chat; aviso sin remitente conocido (Jump con remitente oculto y la app
     // cerrada) → solo se abre la app. Antes se guardaba un "contacto" con ese id
     if (isGroupId(deviceId)) { openGroupChat(_normId(deviceId)); return; }

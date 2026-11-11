@@ -291,11 +291,13 @@ class NexoBlePlugin : Plugin() {
                 }
                 // 2995: el aviso genérico «Mensaje nuevo» (despertar por FCM) no trae chat: la app decide con sus no leídos
                 if (intent.hasExtra(MsgNotifier.EXTRA_WAKE_TAP)) {
+                    remLog("INFO", "NOTIF", "Aviso genérico «Mensaje nuevo» tocado: la app abre el chat del último mensaje sin leer")
                     notifyListeners("onNotificationOpened", JSObject().put("deviceId", "").put("source", "wake"), true)
                     intent.removeExtra(MsgNotifier.EXTRA_WAKE_TAP)
                 }
                 val deviceId = intent.getStringExtra("nexo_chat_device_id")
                 if (deviceId != null) {
+                    remLog("INFO", "NOTIF", "Aviso de mensaje tocado: abre el chat " + deviceId)
                     // 2995: con la app CERRADA este aviso sale al cargar el plugin, antes de que exista el JS; sin «retener» se
                     // perdía (y el extra se borra justo después). Retenido hasta que el JS escuche.
                     notifyListeners("onNotificationOpened", JSObject()
