@@ -10,7 +10,30 @@ import { _getBLEContacts, _normId, _normMac, _safeDispatchEvent, _saveBLEContact
 
 
 export const BLE_KEY_METHODS = {
-  _sendKx(deviceId, request, force) {
+  // 3013: lo común de todo kx (quién soy y qué entiendo), sin el paquete de claves del protocolo 2. Lo usan el kx completo,
+  // el «ligero» (preguntar/decir quién es al escanear) y la tarjeta que contesta el nativo con la app dormida (_syncKxCard).
+  // Requiere el cifrado ya iniciado (initE2E); null si aún no hay clave o NEXO ID.
+  _kxPacketBase() {
+    var self = this, pk = e2eMyPublicKey();
+    if (!pk || !self.localNexoId) return null;
+    // j:1 = entiende Jump (rutas): solo a quien lo diga se le mandan 'rt' (una build anterior los
+    // mostraría como mensajes de texto)
+    var pkt = { v: 1, type: 'kx', from: self.localNexoId, pk: pk, j: 1 };
+    pkt.fx = 3; // Fénix: 1 = la cuenta; 2 = también los mensajes (segmentos); 3 = también fotos y archivos (2757)
+    pkt.ss = 1; // entiende el remitente sellado (sobres 'sx' por Jump)
+    pkt.nt = 1; // v6.13.0: internet por relés públicos
+    pkt.bf = 1; // ronda 2753: entiende trozos binarios de archivos por Bluetooth
+    if (self.localDeviceName) pkt.nm = String(self.localDeviceName).substring(0, 40); // ronda 2764: nombre del teléfono (el anuncio no lo trae)
+    pkt.bg = 1; // ronda 2756: archivos grandes por Wi-Fi / Wi-Fi Direct (big_file.js)
+    if (self.bigFiles && self.bigFiles.l2Ok) pkt.l2 = 1; // ronda 2758: y por Bluetooth L2CAP (Android 10+)
+    if (self.wifiDirect && self.wifiDirect.supported()) pkt.wd = 1;
+    return pkt;
+  },
+
+  // lite (3013): kx «ligero» (~300 letras en vez de ~2300) para preguntar o decir quién es al escanear: sin el paquete de
+  // claves del protocolo 2 ni lo poscuántico (eso va en el kx completo, al agregar o al escribirse). lt:1 lo marca; con
+  // request lleva además id:1 («solo dime quién eres»: el otro contesta también ligero).
+  _sendKx(deviceId, request, force, lite) {
     var self = this;
     if (!deviceId) return;
     var key = _normMac(deviceId) + (request ? ':rq' : '');
@@ -19,24 +42,17 @@ export const BLE_KEY_METHODS = {
     self._kxSentAt = self._kxSentAt || {};
     self._kxSentAt[key] = now;
     var peerNx = _normId(self._macToNexoId.get(_normMac(deviceId)) || _vNx(deviceId) || '');
-    initE2E().then(function() { return ratchetMyBundle(self._pqNeeded(peerNx)).catch(function() { return null; }); }).then(function(b2) {
-      var pk = e2eMyPublicKey();
-      if (!pk || !self.localNexoId) return;
-      // j:1 = entiende Jump (rutas): solo a quien lo diga se le mandan 'rt' (una build anterior los
-      // mostraría como mensajes de texto). b2: paquete de claves del protocolo 2.
-      var pkt = { v: 1, type: 'kx', from: self.localNexoId, pk: pk, j: 1 };
-      if (b2) pkt.b2 = b2;
-      pkt.fx = 3; // Fénix: 1 = la cuenta; 2 = también los mensajes (segmentos); 3 = también fotos y archivos (2757)
-      pkt.ss = 1; // entiende el remitente sellado (sobres 'sx' por Jump)
-      pkt.nt = 1; // v6.13.0: internet por relés públicos
-      pkt.bf = 1; // ronda 2753: entiende trozos binarios de archivos por Bluetooth
-      if (self.localDeviceName) pkt.nm = String(self.localDeviceName).substring(0, 40); // ronda 2764: nombre del teléfono (el anuncio no lo trae)
-      pkt.bg = 1; // ronda 2756: archivos grandes por Wi-Fi / Wi-Fi Direct (big_file.js)
-      if (self.bigFiles && self.bigFiles.l2Ok) pkt.l2 = 1; // ronda 2758: y por Bluetooth L2CAP (Android 10+)
-      if (peerNx) pkt.ph = ratchetPeerPqId(peerNx); // v6.12.0: qué clave poscuántica suya tengo (no hace falta repetirla)
-      var rs = self.fenix ? self.fenix.resetMark() : 0;
-      if (rs) pkt.rs = rs;
-      if (self.wifiDirect && self.wifiDirect.supported()) pkt.wd = 1;
+    initE2E().then(function() { return lite ? null : ratchetMyBundle(self._pqNeeded(peerNx)).catch(function() { return null; }); }).then(function(b2) {
+      var pkt = self._kxPacketBase();
+      if (!pkt) return;
+      if (typeof self._syncKxCard === 'function') self._syncKxCard(); // 3013: la tarjeta del nativo, al día
+      if (lite) { pkt.lt = 1; if (request) pkt.id = 1; }
+      else {
+        if (b2) pkt.b2 = b2; // paquete de claves del protocolo 2
+        if (peerNx) pkt.ph = ratchetPeerPqId(peerNx); // v6.12.0: qué clave poscuántica suya tengo (no hace falta repetirla)
+        var rs = self.fenix ? self.fenix.resetMark() : 0;
+        if (rs) pkt.rs = rs;
+      }
       if (request) pkt.rq = 1;
       return self._sendMessageNative(deviceId, JSON.stringify(pkt), null);
     }).catch(function() {});

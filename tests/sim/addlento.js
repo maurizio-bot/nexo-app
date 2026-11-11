@@ -5,7 +5,11 @@
 // (4) Austin se identificó justo con la pantalla cerrada y al reabrirla no salía.
 // A = el dueño (contacto de todos); B = Marcos; C = Austin; D = tableta con la app DORMIDA; E, F = otros teléfonos del dueño.
 // Ninguno tiene «Agregar» abierto salvo B (todos anuncian código rotativo: tienen contactos).
-//  L1  B abre «Agregar»: C sale en ≤ 8 s (y E, F también; D dormida no estorba);
+//  L0  (3013, regla del dueño: «cualquiera que tiene NEXO debe aparecer al instante en un escaneo») B abre «Agregar»: en ≤ 1,5 s
+//      hay una fila por cada NEXO cercano (con nombre o «identificando…»);
+//  L1  C sale con su nombre en ≤ 3 s (y E, F también);
+//  L5  (3013) D, con la app DORMIDA, también sale con su nombre: contesta su nativo;
+//  L6  (3013) G, versión anterior y dormida: fila «NEXO cercano · no responde todavía»; se toca «+» y se agrega sola al despertar;
 //  L2  B cierra y reabre: C sale en ≤ 1,5 s (ya se sabe quién es);
 //  L3  B no se conecta a ninguna copia de largo alcance de un teléfono cercano;
 //  L4  B agrega a C con «+» y se escriben.
@@ -53,8 +57,9 @@ function sendText(p, t) { const i = p.win.document.getElementById('message-input
 (async () => {
   const r = { prueba: 'addlento', build: path.basename(buildDir) };
   const radio = new Radio();
-  const names = ['A', 'B', 'D', 'E', 'F', 'C'];   // C (Austin) es el ÚLTIMO que B ve en cada pasada del escaneo (como en el registro de Marcos)
-  const nat = {}; names.forEach((n, i) => { nat[n] = new NativePhone(n, n + n + ':' + n + n + ':' + n + n + ':' + n + n + ':' + n + n + ':0' + (i + 1), Object.assign({}, opts, { codedCopy: false })); });
+  const names = ['A', 'B', 'D', 'E', 'F', 'G', 'C'];   // C (Austin) es el ÚLTIMO que B ve en cada pasada del escaneo (como en el registro de Marcos)
+  const hx = { A: 'AA', B: 'BB', C: 'CC', D: 'DD', E: 'EE', F: 'FF', G: 'A7' };   // direcciones Bluetooth válidas (hexadecimal)
+  const nat = {}; names.forEach((n, i) => { const h = hx[n]; nat[n] = new NativePhone(n, [h, h, h, h, h, '0' + (i + 1)].join(':'), Object.assign({}, opts, { codedCopy: false })); });
   // al principio solo A y uno más cada vez (así nadie más se hace contacto de nadie: B…F solo conocen a A)
   const P = {};
   radio.add(nat.A); nat.A.load(); P.A = await boot('A', nat.A);
@@ -79,22 +84,41 @@ function sendText(p, t) { const i = p.win.document.getElementById('message-input
   await sleep(1000);
   names.slice(1).forEach((a) => names.slice(1).forEach((b) => { if (a < b) radio.unblock(nat[a], nat[b]); }));
   names.forEach((n) => { nat[n].opts.codedCopy = true; });   // desde aquí, como en los teléfonos reales: dos direcciones por teléfono
-  for (const n of ['C', 'D', 'E', 'F']) { nat[n].load(); P[n] = await boot(n, nat[n]); }
+  for (const n of ['C', 'D', 'E', 'F', 'G']) { nat[n].load(); P[n] = await boot(n, nat[n]); }
   // D: la tableta con la app dormida (no contesta nada)
   nat.D.setAppActive(false); nat.D.setFrozen(true);
+  // G: un teléfono con una versión ANTERIOR y la app dormida (su nativo no sabe contestar «quién soy»)
+  nat.G.opts.noNativeKx = true; nat.G.setAppActive(false); nat.G.setFrozen(true);
   await sleep(3000);
   // B (Marcos) acaba de abrir la app (recién actualizada) y entra enseguida en «Agregar»: sin nada visto ni conectado todavía
   nat.B.load(); P.B = await boot('B', nat.B);
   const idC = P.C.win.bleInterface.localNexoId.toLowerCase(), idB = P.B.win.bleInterface.localNexoId.toLowerCase();
-  r.rotativos = ['B', 'C', 'D', 'E', 'F'].every((n) => !nat[n].advertisedVisible());
+  r.rotativos = ['B', 'C', 'D', 'E', 'F', 'G'].every((n) => !nat[n].advertisedVisible());
   nat.B.stats.codedConnects = 0;
 
   // ---- L1: B abre «Agregar» ----
   openPanel(P.B);
+  // L0 (3013, regla del dueño: «cualquiera que tiene NEXO debe aparecer al instante»): en ≤ 1,5 s hay una fila por cada NEXO
+  // cercano (con su nombre o, mientras no conteste, «identificando…»): C, D (dormida), E y F
+  r.L0_filas_s = await wait(() => { if (!P.B.win.bleInterface.isScanning) click(P.B.win, P.B.win.document.getElementById('ble-scan-btn')); return found(P.B).length + P.B.win.document.querySelectorAll('#ble-new-device .ble-anon-row').length >= 5; }, 20);
   r.L1_C_sale_s = await waitRow(P.B, 'C', 60);
   r.L1_lista = found(P.B);
   r.L1_E_sale_s = await waitRow(P.B, 'E', 30);
   r.L1_F_sale_s = await waitRow(P.B, 'F', 30);
+  // L5 (3013): D tiene la app DORMIDA: contesta su nativo y también sale con su nombre
+  r.L5_D_dormida_sale_s = await waitRow(P.B, 'D', 30);
+  r.L5_kx_nativos_de_D = nat.D.stats.nativeKx || 0;
+  // L6 (3013): G (versión anterior, dormida) no puede decir quién es: su fila sigue como «NEXO cercano», pasa a «no responde
+  // todavía»; el usuario toca «+» y, cuando G despierta, se agrega sola con su nombre
+  const anonTxt = () => Array.from(P.B.win.document.querySelectorAll('#ble-new-device .ble-anon-row')).map((e) => (e.firstChild || {}).textContent || '');
+  r.L6_fila_sin_nombre = (await wait(() => { if (!P.B.win.bleInterface.isScanning) click(P.B.win, P.B.win.document.getElementById('ble-scan-btn')); return anonTxt().length === 1; }, 10)) !== null;
+  r.L6_no_responde = (await wait(() => { if (!P.B.win.bleInterface.isScanning) click(P.B.win, P.B.win.document.getElementById('ble-scan-btn')); return anonTxt().some((x) => /no responde/.test(x)); }, 15)) !== null;
+  click(P.B.win, P.B.win.document.querySelector('#ble-new-device .ble-anon-row button')); await sleep(300);
+  r.L6_pendiente = anonTxt().some((x) => /en cuanto responda/.test(x));
+  const idG = P.G.win.bleInterface.localNexoId.toLowerCase();
+  nat.G.setFrozen(false); nat.G.setAppActive(true);
+  r.L6_G_agregada_s = await wait(() => { if (panelOpen(P.B) && !P.B.win.bleInterface.isScanning) click(P.B.win, P.B.win.document.getElementById('ble-scan-btn')); return hasContact(P.B, idG); }, 40);
+  openPanel(P.B);
   // ---- L2: cerrar y reabrir ----
   closePanel(P.B); await sleep(6000);
   openPanel(P.B);
@@ -107,7 +131,8 @@ function sendText(p, t) { const i = p.win.document.getElementById('message-input
   await openChatWith(P.B, 'C'); sendText(P.B, 'hola Austin'); 
   r.L4_llega_s = await wait(async () => (await P.C.win.vaultLoadMessages(idB)).some((m) => m.content === 'hola Austin'), 60);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
-  const ok = r.rotativos && r.L1_C_sale_s !== null && r.L1_C_sale_s <= 8 && r.L1_E_sale_s !== null && r.L1_F_sale_s !== null && r.L2_C_sale_s !== null && r.L2_C_sale_s <= 1.5 &&
+  const ok = r.rotativos && r.L0_filas_s !== null && r.L0_filas_s <= 1.5 && r.L1_C_sale_s !== null && r.L1_C_sale_s <= 3 && r.L1_E_sale_s !== null && r.L1_F_sale_s !== null &&
+    r.L5_D_dormida_sale_s !== null && r.L5_kx_nativos_de_D > 0 && r.L6_fila_sin_nombre && r.L6_no_responde && r.L6_pendiente && r.L6_G_agregada_s !== null && r.L2_C_sale_s !== null && r.L2_C_sale_s <= 1.5 &&
     r.L3_conexiones_largo_alcance === 0 && r.L4_agregado && r.L4_llega_s !== null && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('ADDLENTO ' + JSON.stringify(r));
