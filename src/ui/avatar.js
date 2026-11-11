@@ -39,7 +39,10 @@ export function avatarInit() {
   if (_started) return;
   _started = true;
   Promise.all([_load(MY_FILE), _load(SENT_FILE)]).then(function(r) {
-    if (r[0] && typeof r[0].h === 'string') _mine = { h: r[0].h, img: IMG_RE.test(r[0].img || '') ? r[0].img : '' };
+    if (r[0] && typeof r[0].h === 'string') _mine = { h: r[0].h, img: IMG_RE.test(r[0].img || '') ? r[0].img : '', at: Number(r[0].at) || 0 };
+    // 3012 (dueño 11-11: un contacto salió con una foto que no era la suya; el registro de Marcos mostró que la mandó ese teléfono
+    // como SU foto): al diagnóstico, si este teléfono tiene foto propia y desde cuándo (las puestas antes de la 3012: «fecha desconocida»)
+    if (_mine && _mine.img) console.log('[AVATAR] Este teléfono tiene foto de perfil propia (' + Math.round(_mine.img.length / 1024) + ' KB, puesta: ' + (_mine.at ? new Date(_mine.at).toISOString().substring(0, 16) : 'fecha desconocida') + ')');
     if (r[1] && typeof r[1] === 'object') _sent = r[1];
     if (_mine && _mine.img) _emit('me');
   });
@@ -90,15 +93,17 @@ function _sendToAll() { _contactIds().forEach(sendAvatarTo); }
 
 export function setMyAvatar(dataUrl) {
   if (!IMG_RE.test(dataUrl || '') || dataUrl.length > MAX_LEN) return false;
-  _mine = { h: _hash(dataUrl), img: dataUrl };
+  _mine = { h: _hash(dataUrl), img: dataUrl, at: Date.now() };
   _save(MY_FILE, _mine);
+  console.log('[AVATAR] Foto de perfil propia puesta ahora desde Perfil (' + Math.round(dataUrl.length / 1024) + ' KB)');
   _emit('me');
   _sendToAll();
   return true;
 }
 export function clearMyAvatar() {
-  _mine = { h: 'x' + Date.now().toString(36), img: '' };
+  _mine = { h: 'x' + Date.now().toString(36), img: '', at: Date.now() };
   _save(MY_FILE, _mine);
+  console.log('[AVATAR] Foto de perfil propia quitada desde Perfil');
   _emit('me');
   _sendToAll();
 }

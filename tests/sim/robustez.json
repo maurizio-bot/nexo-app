@@ -84,6 +84,10 @@
     {
      "fallo": "3009 (dueño 11-11: «el scan Bluetooth está lento»; diagnóstico S24 10:14): cada teléfono anuncia por dos direcciones (normal 1M y LARGO ALCANCE LE Coded, mismo código); la app se conectaba también a la de largo alcance de teléfonos al lado (rssi -49/-63) y esas conexiones fallaban 133/147 tras 2–10 s, repetidas, ocupando la cola de conexiones mientras la normal entraba en < 0,5 s. 3009: el nativo marca 'coded' en el hallazgo y la app ignora esa copia si vio el mismo código por la normal hace < 20 s. codedscan.js (contraprueba 3008: se conecta a la copia)",
      "prueba": "Bluetooth lento por la dirección de LARGO ALCANCE"
+    },
+    {
+     "fallo": "3012 (dueño 11-11: «se tardó mucho en aparecer al agregarlo»; registro del teléfono de Marcos 13:45–13:47, canal directo): con «Agregar» abierto, a cada NEXO cercano sin reconocer se le conectaba pero «quién eres» solo se preguntaba al volver a verlo en el escaneo ≥ 10 s después (11 s por teléfono); solo 3 conexiones de paso a la vez y había más teléfonos (la tableta con la app dormida no contesta y ocupaba hueco); Austin se identificó justo con la pantalla cerrada y al reabrirla no salía; y la copia de largo alcance vista antes que la normal sí se usaba (3009). 3012: se pregunta al quedar lista la conexión (_linkReadyUnknown, también lado servidor), hasta 6 de paso con «Agregar» abierto y el que no contesta en 4,5 s suelta su hueco, lo identificado se recuerda (_noteKxPeer) y sale al abrir (_listKnownNearby), la clave dicha en su kx se guarda al agregar, y la copia de largo alcance sin la normal espera 3 s. addlento.js (contraprueba 3011: 21,5 s y 4,7 s al reabrir; 3012: 0,6 s y 0 s); codedscan.js L3",
+     "prueba": "alta lenta en «Agregar»"
     }
    ]
   },
@@ -1170,6 +1174,10 @@
     {
      "fallo": "3007 (dueño 11-11): en el actualizador, al cerrar la ventana mientras bajaba y volver, pedía descargar otra vez (bajar e instalar iban juntos y lo bajado no se reutilizaba). 3007: «Descargar» e «Instalar» separados; la descarga sigue con la ventana cerrada, avisa al terminar y el único botón es «Instalar». updater.js (contraprueba 3006: falla)",
      "prueba": "actualizador automático del APK de probadores"
+    },
+    {
+     "fallo": "Foto de perfil «cruzada» (dueño 11-11: Marcos agregó a Austin y salió con la foto del dueño, también en Perfil). El registro del teléfono de Marcos (canal directo) muestra que esa foto llegó del teléfono de Austin como SU foto de perfil (acción 'av' cifrada con su identidad, 11,5 KB): no es un cruce al recibir. No se encontró ningún camino del código por el que una foto ajena pase a ser la propia (se revisó guardado, pase de cuenta, Fénix, copia de seguridad de Android, selectores de archivo); pendiente de saber con el dueño si esa foto se puso a mano en ese teléfono. 3012: el diagnóstico dice si el teléfono tiene foto propia y desde cuándo. avatarcruce.js (A con foto; B agrega a C: nada cruzado)",
+     "prueba": "foto de perfil al agregar un contacto"
     }
    ]
   },

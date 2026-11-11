@@ -49,6 +49,8 @@ var DISCOVER_WAIT_MS = 60000;     // una búsqueda vale 60 s
 var SCAN_FRESH_MS = 30000;        // si se escaneó hace menos, no se vuelve a escanear para buscar camino
 var SCAN_MS = 6500;
 var MAX_TRANSIENT = 3;            // conexiones a la vez con teléfonos que no son contactos
+var MAX_TRANSIENT_ADD = 6;        // 3012: con «Agregar» abierto (el usuario está esperando ver a alguien): más a la vez
+var ANON_NO_ANSWER_MS = 4500;     // 3012: un anónimo al que se le preguntó quién es y no contesta en este rato (app dormida) suelta su hueco
 var TRANSIENT_IDLE_MS = 60000;
 // #dueño 02-11 (D1): un connect por nx a la vez dentro de esta ventana. Antes, en cada tick de re-búsqueda se llamaba
 // connectToDevice ~12 veces en 1 ms para el MISMO contacto (tormenta «[JUMP] Conectando con»): el guard de 15 s solo
@@ -469,14 +471,26 @@ export class BleRelay {
     if (a) { this.anon.delete(m); this.noteSeen(nx, deviceId, a.rssi); }
   }
 
+  // 3012: cuántas conexiones de paso a la vez (más con «Agregar» abierto)
+  _transientCap() {
+    var ble = this.ble;
+    return (ble && Date.now() < (ble._visibleUntil || 0)) ? MAX_TRANSIENT_ADD : MAX_TRANSIENT;
+  }
+  // 3012: se le preguntó «quién eres» a un anónimo por esta conexión (para soltarlo si no contesta: _closeIdleTransient)
+  noteAsked(deviceId) {
+    var t = this.transient.get('anon:' + _mac(deviceId));
+    if (t && !t.asked) t.asked = Date.now();
+  }
+
   _connectAnon(deviceId) {
     var self = this, ble = self.ble, key = 'anon:' + _mac(deviceId);
     if (!deviceId || !ble || !ble.nativePlugin || self._isReady(deviceId)) return false;
     var t = self.transient.get(key);
     if (t && Date.now() - t.since < 15000) return true;
     if (t) self.transient.delete(key);
-    if (self.transient.size >= MAX_TRANSIENT) self._closeIdleTransient(true);
-    if (self.transient.size >= MAX_TRANSIENT) return false;
+    var cap = self._transientCap();
+    if (self.transient.size >= cap) self._closeIdleTransient(true);
+    if (self.transient.size >= cap) return false;
     self.transient.set(key, { deviceId: deviceId, since: Date.now(), lastUse: Date.now() });
     console.log('[JUMP] Conectando con un NEXO anónimo (de paso) para saber quién es');
     var pl = ble.nativePlugin;
@@ -549,9 +563,12 @@ export class BleRelay {
   _closeIdleTransient(force) {
     var self = this, now = Date.now(), pl = self.ble && self.ble.nativePlugin;
     var list = Array.from(self.transient.entries()).sort(function(a, b) { return a[1].lastUse - b[1].lastUse; });
+    var cap = self._transientCap();
     list.forEach(function(e) {
       var nx = e[0], t = e[1];
-      if (now - t.lastUse < TRANSIENT_IDLE_MS && !(force && self.transient.size >= MAX_TRANSIENT && now - t.lastUse > 10000)) return;
+      // 3012: un anónimo al que ya se le preguntó quién es y no contestó (su app duerme): suelta el hueco para el siguiente
+      var mute = force && self.transient.size >= cap && nx.indexOf('anon:') === 0 && t.asked && now - t.asked > ANON_NO_ANSWER_MS;
+      if (!mute && now - t.lastUse < TRANSIENT_IDLE_MS && !(force && self.transient.size >= cap && now - t.lastUse > 10000)) return;
       // Si algo de la cola va por él, se mantiene
       var busy = self.queue.some(function(q) { var r = self.routes.get(q.dst); return q.dst === nx || (r && r.via === nx); });
       if (busy && !force) return;

@@ -3,7 +3,8 @@
 // lado y esas conexiones fallaban (133/147) tras 2–10 s cada una, una y otra vez. Dos teléfonos por Bluetooth:
 //  L1  A ve a B por su dirección normal; llega la copia de LARGO ALCANCE de B (otra dirección, mismo código) → A no se conecta a ella
 //      y sigue usando la normal.
-//  L2  control: un código que SOLO se ve por largo alcance (teléfono lejos) se procesa como siempre.
+//  L2  control: un código que SOLO se ve por largo alcance (teléfono lejos) se usa (3012: tras esperar ~3 s por si llega la normal).
+//  L3  (3012) la copia de largo alcance llega ANTES que la normal: no se usa (antes sí: conexión que fallaba y atascaba la cola).
 // Uso: node codedscan.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -103,14 +104,36 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     r.L1_sigue_normal = !macsPuestas.some((m) => /7c0ded000001/i.test(m));
   }
   // L2: el mismo teléfono visto SOLO por largo alcance (sin verlo por la normal en los últimos 20 s: lejos) → se procesa como siempre
+  // (3012: una copia de largo alcance SIN la normal espera ~3 s por si la normal llega después; si no llega, se usa)
+  let soloLargo = false; const scan2 = bi._onScanFound.bind(bi);
+  bi._onScanFound = (d, retried) => { if (soloLargo && d && !d.coded && /BB:BB/i.test(String(d.deviceId || ''))) return; return scan2(d, retried); };
   if (lastB) {
+    soloLargo = true;                       // B «lejos»: su dirección normal ya no se ve
     if (bi._seen1MTok) bi._seen1MTok.clear();
     bi._onScanFound(Object.assign({}, lastB, { deviceId: '7C:0D:ED:00:00:03', coded: true, rssi: -50 }));
-    await sleep(300);
+    await sleep(600);
+    r.L2_espera_a_la_normal = !macsPuestas.some((m) => /7c0ded000003/i.test(m));
+    await sleep(3200);
     r.L2_procesada = macsPuestas.some((m) => /7c0ded000003/i.test(m));
+    // ya confirmado «solo por largo alcance»: la siguiente vista se usa sin esperar
+    bi._onScanFound(Object.assign({}, lastB, { deviceId: '7C:0D:ED:00:00:04', coded: true, rssi: -50 }));
+    await sleep(300);
+    r.L2_siguiente_sin_espera = macsPuestas.some((m) => /7c0ded000004/i.test(m));
+    soloLargo = false;
+  }
+  // L3 (3012, registro del teléfono de Marcos 11-11): la copia de largo alcance llega ANTES que la normal → no se usa
+  if (lastB) {
+    if (bi._seen1MTok) bi._seen1MTok.clear();
+    if (bi._codedOnly) bi._codedOnly.clear();
+    const c0 = conn.length;
+    bi._onScanFound(Object.assign({}, lastB, { deviceId: '7C:0D:ED:00:00:05', coded: true, rssi: -48 }));
+    await sleep(400);
+    bi._onScanFound(Object.assign({}, lastB));   // la normal, 0,4 s después
+    await sleep(3600);
+    r.L3_largo_primero_no_se_usa = !macsPuestas.some((m) => /7c0ded000005/i.test(m)) && !conn.slice(c0).some((d) => /7C:0D:ED:00:00:05/i.test(d));
   }
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
-  const ok = r.visto_normal && r.L1_ignorada && r.L1_sigue_normal && r.L2_procesada && !r.errores.length;
+  const ok = r.visto_normal && r.L1_ignorada && r.L1_sigue_normal && r.L2_espera_a_la_normal && r.L2_procesada && r.L2_siguiente_sin_espera && r.L3_largo_primero_no_se_usa && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('CODEDSCAN ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_codedscan.txt'), logs.join('\n'));

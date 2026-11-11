@@ -67,6 +67,9 @@ function ridToken(keyHex, epoch) {
   return out;
 }
 
+// 3012: dirección de LARGO ALCANCE (LE Coded) de un teléfono (otra dirección del mismo teléfono, mismo código anunciado)
+function codedAddr(addr) { return 'C0:DE:' + String(addr).split(':').slice(2).join(':'); }
+
 class Radio {
   constructor() { this.phones = []; this.trace = []; this.blocked = new Set(); }
   add(p) { this.phones.push(p); p.radio = this; }
@@ -793,7 +796,13 @@ class NativePhone {
             const adv = p.advertised();
             (self.radio.airAds = self.radio.airAds || []).push({ by: p.name, adv, visible: p.advertisedVisible(), t: Date.now() });
             // (noAdvName: como en los teléfonos reales, el anuncio no trae el nombre y el nativo pone "Unknown")
-            self.emit('onDeviceFound', { deviceId: p.address, name: p.opts.noAdvName ? 'Unknown' : (p.advertisedVisible() ? p.name : ''), rssi: -50, nexoId: adv });
+            // 3012 (registro del teléfono de Marcos, 11-11): cada teléfono anuncia además por una dirección de LARGO ALCANCE (LE Coded)
+            // con el mismo código; opts.codedCopy la modela y aquí llega ANTES que la normal (el orden real es arbitrario; este es el malo)
+            const ev = { deviceId: p.address, name: p.opts.noAdvName ? 'Unknown' : (p.advertisedVisible() ? p.name : ''), rssi: typeof p.opts.rssi === 'number' ? p.opts.rssi : -50, nexoId: adv };
+            if (p.opts.codedCopy && !self.opts.noCodedScan) {
+              self.emit('onDeviceFound', { deviceId: codedAddr(p.address), name: 'Unknown', rssi: ev.rssi, nexoId: adv, coded: true });
+              setTimeout(() => self.emit('onDeviceFound', ev), 350);
+            } else self.emit('onDeviceFound', ev);
           });
           // Build 2838: RUIDO de multitud (anunciantes NO-NEXO: pulseras, beacons, otros teléfonos). El filtro del
           // controlador (ScanFilter manufacturer-data NEXO) los descarta → solo se entregan si el escaneo va SIN filtro.
@@ -822,7 +831,19 @@ class NativePhone {
         if (cl && cl.state === 'connecting') return c.resolve({ connected: false, error: 'Connection already in progress', deviceId: raw });
         if (cl && cl.state === 'connected') return c.resolve({ connected: true, alreadyConnected: true, deviceId: raw });
         const peer = self.radio.byNorm(mac);
+        // 3012: conexión a la copia de LARGO ALCANCE de un teléfono cercano: falla (133) tras varios segundos y, mientras, Android
+        // no atiende las demás conexiones (cola en serie) — diagnóstico S24 10:14 y registro de Marcos 13:45
+        const codedOf = !peer && self.radio.phones.find((x) => x.opts.codedCopy && norm(codedAddr(x.address)) === norm(mac));
+        if (codedOf) {
+          const ms = self.opts.codedFailMs || 5000;
+          self.stats.codedConnects = (self.stats.codedConnects || 0) + 1;
+          self._connBlockedUntil = Math.max(self._connBlockedUntil || 0, Date.now()) + ms;
+          setTimeout(() => { c.resolve({ connected: false, deviceId: raw, error: 'Connection error 133' }); self.emit('onDeviceDisconnected', { deviceId: raw, reason: 'status 133' }); }, ms);
+          return;
+        }
         if (!peer || peer.offline || self.offline || !self.radio.inRange(self, peer)) { setTimeout(() => { c.resolve({ connected: false, deviceId: raw, error: 'Connection error 133' }); }, 200); return; }
+        const waitQ = Math.max(0, (self._connBlockedUntil || 0) - Date.now());
+        if (waitQ > 0) { self.stats.queuedConnects = (self.stats.queuedConnects || 0) + 1; setTimeout(() => self._connectClient(peer, c), waitQ); return; }
         self._connectClient(peer, c);
       }),
       disconnectDevice: wrap('disconnectDevice', (c) => {
@@ -1257,4 +1278,4 @@ function installWebCrypto(win) {
 // Ronda 2772: eventos que traen un mensaje (el nativo mantiene el teléfono despierto al recibirlos en segundo plano)
 NativePhone.RX_EVENTS = new Set(['onPayloadReceived', 'onLanMessage', 'onTorMessage', 'onWifiDirectReceived', 'onBigProgress', 'onBigDone']);
 
-module.exports = { Radio, NativePhone, norm, installWebCrypto };
+module.exports = { codedAddr, Radio, NativePhone, norm, installWebCrypto };

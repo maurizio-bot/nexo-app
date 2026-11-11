@@ -240,6 +240,8 @@ export const BLE_MESSAGE_METHODS = {
       if (p.j && self.relay) self.relay.markCapable(p.from);
       // Ronda 2764: su nombre (el anuncio no lo trae: salía "Unknown"); solo si el que tengo es genérico
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '') && typeof p.nm === 'string' && p.nm.trim()) self._notePeerName(p.from, p.nm);
+      // 3012: quién dijo ser (aunque «Agregar» esté cerrado ahora: al abrirlo sale sin esperar otro kx)
+      if (/^nx[0-9a-z]{8}$/i.test(p.from || '') && !_isBLEContact(p.from) && typeof self._noteKxPeer === 'function') self._noteKxPeer(data.deviceId, p);
       // Ronda 2764: con "Agregar" abierto, un NEXO cercano que no es contacto (se identificó con su kx) sale en la lista
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '') && !_isBLEContact(p.from) && Date.now() < (self._visibleUntil || 0) && !/^(lan|net)/i.test(String(data.deviceId)))
         self.onDeviceFound({ id: data.deviceId, name: typeof p.nm === 'string' ? p.nm.substring(0, 40) : '', rssi: -60, nexoId: String(p.from).toUpperCase() });

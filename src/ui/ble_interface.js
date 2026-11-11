@@ -69,6 +69,9 @@ import { BLE_PRIVACY_METHODS } from './ble_privacy.js';
 
 
 
+// 3012: copia de LARGO ALCANCE (LE Coded) sin la normal: cuánto se espera a que aparezca la normal, y cuánto vale «solo por largo alcance»
+var CODED_HOLD_MS = 3000, CODED_ONLY_MS = 60000;
+
 export class BLEInterface {
   constructor(bleMesh) {
     this.bleMesh = bleMesh;
@@ -572,11 +575,33 @@ export class BLEInterface {
       if (advTok) {
         var nowC = Date.now();
         self._seen1MTok = self._seen1MTok || new Map();
-        if (!data.coded) { self._seen1MTok.set(advTok, nowC); if (self._seen1MTok.size > 300) self._seen1MTok.delete(self._seen1MTok.keys().next().value); }
+        if (!data.coded) {
+          self._seen1MTok.set(advTok, nowC); if (self._seen1MTok.size > 300) self._seen1MTok.delete(self._seen1MTok.keys().next().value);
+          if (self._codedOnly) self._codedOnly.delete(advTok); // se ve por la normal: está cerca
+        }
         else if (nowC - (self._seen1MTok.get(advTok) || 0) < 20000) {
           self._codedSkipLog = self._codedSkipLog || new Map();
           if (nowC - (self._codedSkipLog.get(advTok) || 0) > 60000) { self._codedSkipLog.set(advTok, nowC); console.log('[BLEInterface] Copia de largo alcance (LE Coded) de un teléfono que está cerca: no me conecto por ahí (' + _normMac(deviceId).slice(-4) + ')'); }
           return;
+        }
+        // 3012 (registro del teléfono de Marcos, 11-11 13:45: «Agregar» tardó ~75 s): si la copia de largo alcance llegaba ANTES que
+        // la normal (el orden es arbitrario), la 3009 la dejaba pasar → conexión que falla a los segundos y atasca la cola de
+        // Android. Ahora una copia de largo alcance sin la normal ESPERA CODED_HOLD_MS: si en ese rato aparece la normal, se
+        // descarta; si no (teléfono lejos de verdad, solo llega por largo alcance), se usa — y las siguientes ya sin esperar.
+        else if (!data._codedOk) {
+          self._codedOnly = self._codedOnly || new Map();
+          if (nowC - (self._codedOnly.get(advTok) || 0) > CODED_ONLY_MS) {
+            self._codedHold = self._codedHold || new Map();
+            if (!self._codedHold.has(advTok)) {
+              self._codedHold.set(advTok, setTimeout(function() {
+                self._codedHold.delete(advTok);
+                if (Date.now() - (self._seen1MTok.get(advTok) || 0) < 20000) return; // apareció por la normal: está cerca
+                self._codedOnly.set(advTok, Date.now()); if (self._codedOnly.size > 300) self._codedOnly.delete(self._codedOnly.keys().next().value);
+                self._onScanFound(Object.assign({}, data, { _codedOk: true }), retried);
+              }, CODED_HOLD_MS));
+            }
+            return;
+          }
         }
       }
       // Ronda 2755: código rotativo → NEXO ID del contacto, o NEXO anónimo (relay.noteAnon) y nada más
@@ -628,6 +653,9 @@ export class BLEInterface {
         self._pingFailCount.set(deviceId, 0);
         self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.HEALTHY, since: Date.now() });
         _safeDispatchEvent('nexo:ble:deviceConnected', { deviceId: deviceId, deviceUUID: peerUUID, name: displayName });
+        // 3012: alguien desconocido se conectó a este teléfono (lado servidor) con «Agregar» abierto: preguntarle quién es
+        // (0,6 s: lo que tarda el otro en poder recibir; _linkReadyUnknown insiste una vez más si no contesta)
+        if (!peerUUID && data.role === 'server' && typeof self._linkReadyUnknown === 'function') setTimeout(function() { try { self._linkReadyUnknown(deviceId); } catch (e) {} }, 600);
         if (peerUUID) {
           setTimeout(function() {
             var st = self._getDeviceState(deviceId);
@@ -716,6 +744,7 @@ export class BLEInterface {
             self._resolveReadyToChat(deviceId);
             var nxFb = self._macToNexoId.get(_normMac(deviceId));
             if (nxFb) self._notifyPeerReady(deviceId, nxFb);
+            else if (typeof self._linkReadyUnknown === 'function') self._linkReadyUnknown(deviceId); // 3012
           }
         }, 3000);
         self._notificationFallbackTimers.set(deviceId, fallbackTimer);
@@ -743,6 +772,7 @@ export class BLEInterface {
           }
           setTimeout(function() { self._resendPendingMessages(nxFlush); }, 500);
         }
+        else if (typeof self._linkReadyUnknown === 'function') self._linkReadyUnknown(deviceId); // 3012: «Agregar»: preguntar quién es YA
         self._pingFailCount.set(deviceId, 0);
         self._lastPongTime.set(deviceId, Date.now());
         self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.HEALTHY, since: Date.now() });

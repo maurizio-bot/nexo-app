@@ -691,6 +691,12 @@ export const BLE_CONNECTION_METHODS = {
         deviceId: device.id || null
       });
       _vaultGetOrCreateContact(nexoId, name, device.name);
+      // 3012: si este teléfono ya dijo quién es (su kx directo, _noteKxPeer), su clave se guarda al agregarlo: el cifrado queda
+      // listo ya y se le reconoce por su código rotativo aunque cambie de dirección (sin clave no se puede calcular su código)
+      var kxp = this._kxPeers && this._kxPeers.get(_normId(nexoId));
+      if (kxp && kxp.pk && typeof this._noteSenderKey === 'function') {
+        try { this._noteSenderKey(nexoId, kxp.pk); if (kxp.b2 && typeof this._notePeerBundle === 'function') this._notePeerBundle(nexoId, kxp.b2); } catch (eK) {}
+      }
     } else {
       var contacts = _getBLEContacts();
       var idx = contacts.findIndex(function(c) {
