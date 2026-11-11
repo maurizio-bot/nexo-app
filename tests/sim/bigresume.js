@@ -120,10 +120,10 @@ function bigStreamId(p) { let f = null; p.win.bleInterface.ackSystem.outgoingStr
 
   // ---- R1: se reinicia la app del que ENVÍA a mitad ----
   pickFile(A, 'uno.bin', buf);
-  await waitFor(() => { const g = rxProgress(B); return g && g.rx >= g.total * 0.4; }, 120000);
+  await waitFor(() => { const g = rxProgress(B); return g && g.rx >= g.total * 0.4 && /msg/.test(String(nA.files.get('nexo_bigx_out.json') || '')); }, 120000);
   const id1 = bigStreamId(A); r.R1_id = !!id1;
   const g1 = rxProgress(B); r.R1_total = g1 && g1.total; r.R1_recibidos_antes = g1 && g1.rx;
-  r.R1_guardado_emisor = await waitFor(() => bigxFiles(nA, 'o').length > 0 && /nexo_bigx_out|bigx/.test(String(nA.files.get('nexo_bigx_out.json') || '')) , 20000) !== null;
+  r.R1_guardado_emisor = bigxFiles(nA, 'o').length > 0 && /msg/.test(String(nA.files.get('nexo_bigx_out.json') || ''));
   const rxBefore1 = rxCount.get(id1) || 0;
   const mark1 = logs.length;
   shutdown(A); await sleep(3000);
@@ -161,8 +161,8 @@ function bigStreamId(p) { let f = null; p.win.bleInterface.ackSystem.outgoingStr
   r.limpio_receptor = bigxFiles(nB, 'i').length === 0 && !/msg/.test(String(nB.files.get('nexo_bigx_in.json') || ''));
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
   const ok = r.pura_bloque && r.en_linea_por_internet_s !== null &&
-    r.R1_llega_s !== null && r.R1_sigue_lo_guardado && r.R1_sin_releer_adjunto && r.R1_repetidos_pct !== null && r.R1_repetidos_pct < 15 && r.R1_integro &&
-    r.R2_llega_s !== null && r.R2_rehace_lo_recibido && r.R2_repetidos_pct !== null && r.R2_repetidos_pct < 25 && r.R2_integro &&
+    r.R1_guardado_emisor && r.R1_llega_s !== null && r.R1_sigue_lo_guardado && r.R1_sin_releer_adjunto && r.R1_repetidos_pct !== null && r.R1_repetidos_pct < 15 && r.R1_integro &&
+    r.R2_guardado_receptor && r.R2_llega_s !== null && r.R2_rehace_lo_recibido && r.R2_repetidos_pct !== null && r.R2_repetidos_pct < 25 && r.R2_integro &&
     r.limpio_emisor && r.limpio_receptor && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('BIGRESUME ' + JSON.stringify(r));

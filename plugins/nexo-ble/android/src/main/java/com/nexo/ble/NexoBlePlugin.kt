@@ -80,6 +80,10 @@ import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONObject
 
+// 3008: número de la actualización que se está bajando ahora (0 = ninguna). Fuera del plugin: si la pantalla se rehace (y con ella el
+// plugin), la descarga en curso sigue en su hilo y no se empieza otra.
+internal object UpdDownload { @Volatile var build: Int = 0 }
+
 @CapacitorPlugin(
     name = "NexoBLE",
     permissions = [
@@ -721,11 +725,40 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun updateNotifyCancel(call: PluginCall) { MsgNotifier.get(context).cancelUpdate(); call.resolve() }
 
+    // 3008 (dueño 11-11: «si pulso afuera mientras descargo y luego vuelvo me hace volver a descargar»): descarga y apertura SEPARADAS.
+    // mode = "download": solo baja (sigue aunque se cierre la ventana o se salga de la app), a nexo-update-<build>.apk; al terminar avisa
+    //   (evento onUpdateReady + aviso del sistema «Instalar»). Si ya está bajado no vuelve a bajar; si ya se está bajando, no empieza otra.
+    // mode = "open": abre el instalador con lo YA bajado (sin descargar). mode = "status": ¿bajado? ¿bajando?
+    // Sin mode: como antes (baja y abre).
     @PluginMethod
     fun updateInstall(call: PluginCall) {
         val url0 = call.getString("url")
+        val mode = call.getString("mode") ?: ""
+        val build = call.getInt("build") ?: 0
+        val updDir = File(activity.cacheDir, "nexo_open").also { it.mkdirs() }
+        val readyFile: File? = if (build > 0) File(updDir, "nexo-update-$build.apk") else null
+        val isReady = readyFile != null && readyFile.isFile && readyFile.length() > 0L
+        if (mode == "status") {
+            call.resolve(JSObject().put("ready", isReady).put("downloading", build > 0 && UpdDownload.build == build)); return
+        }
+        if (mode == "open") {
+            if (readyFile == null || !isReady) { call.resolve(JSObject().put("opened", false).put("reason", "missing")); return }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+                activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + context.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                call.resolve(JSObject().put("opened", false).put("reason", "install_permission")); return
+            }
+            try { launchView(readyFile, "application/vnd.android.package-archive"); MsgNotifier.get(context).cancelUpdate(); call.resolve(JSObject().put("opened", true)) }
+            catch (e: ActivityNotFoundException) { call.resolve(JSObject().put("opened", false).put("reason", "no_app")) }
+            catch (e: Exception) { call.resolve(JSObject().put("opened", false).put("reason", "launch")) }
+            return
+        }
         if (!UpdateSpec.isAllowedStartUrl(url0)) { call.resolve(JSObject().put("opened", false).put("reason", "bad_url")); return }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+        val dlOnly = mode == "download" && readyFile != null
+        if (dlOnly) {
+            if (isReady) { call.resolve(JSObject().put("ready", true)); return }
+            if (UpdDownload.build == build) { call.resolve(JSObject().put("downloading", true)); return }
+            UpdDownload.build = build
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
             // Android pide permitir a NEXO instalar apps (una sola vez); al volver, el usuario toca «Actualizar» otra vez
             activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + context.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             call.resolve(JSObject().put("opened", false).put("reason", "install_permission")); return
@@ -753,9 +786,9 @@ class NexoBlePlugin : Plugin() {
                 }
                 val total = c!!.contentLengthLong
                 if (total > UpdateSpec.MAX_APK_BYTES) { call.resolve(JSObject().put("opened", false).put("reason", "too_big")); return@Thread }
-                val dir = File(activity.cacheDir, "nexo_open").also { it.mkdirs() }
+                val dir = updDir
                 dir.listFiles()?.forEach { if (it.name.startsWith("nexo-update")) it.delete() }
-                val out = File(dir, "nexo-update.apk")
+                val out = if (dlOnly) File(dir, "nexo-update-$build.part") else File(dir, "nexo-update.apk")
                 var done = 0L; var lastPct = -1
                 FileOutputStream(out).use { os ->
                     c!!.inputStream.use { ins ->
@@ -774,6 +807,15 @@ class NexoBlePlugin : Plugin() {
                     }
                 }
                 if (total > 0 && done != total) { out.delete(); call.resolve(JSObject().put("opened", false).put("reason", "incomplete")); return@Thread }
+                if (dlOnly && readyFile != null) {
+                    if (!out.renameTo(readyFile)) { out.delete(); call.resolve(JSObject().put("opened", false).put("reason", "rename")); return@Thread }
+                    UpdDownload.build = 0
+                    remLog("INFO", "UPDATE", "Actualización $build descargada (${readyFile.length()} bytes): lista para instalar")
+                    try { MsgNotifier.get(context).updateReady(build) } catch (e: Exception) {}
+                    mainHandler.post { try { notifyListeners("onUpdateReady", JSObject().put("build", build)) } catch (e: Exception) {} }
+                    call.resolve(JSObject().put("ready", true))
+                    return@Thread
+                }
                 mainHandler.post {
                     try { launchView(out, "application/vnd.android.package-archive"); call.resolve(JSObject().put("opened", true)) }
                     catch (e: ActivityNotFoundException) { call.resolve(JSObject().put("opened", false).put("reason", "no_app")) }
@@ -782,7 +824,10 @@ class NexoBlePlugin : Plugin() {
             } catch (e: Exception) {
                 remLog("WARN", "UPDATE", "No se pudo bajar la actualización: ${e.message}")
                 call.resolve(JSObject().put("opened", false).put("reason", "net"))
-            } finally { try { c?.disconnect() } catch (e: Exception) {} }
+            } finally {
+                try { c?.disconnect() } catch (e: Exception) {}
+                if (dlOnly && UpdDownload.build == build) UpdDownload.build = 0
+            }
         }.start()
     }
 

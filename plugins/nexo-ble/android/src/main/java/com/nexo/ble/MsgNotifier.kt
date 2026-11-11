@@ -146,6 +146,32 @@ class MsgNotifier(private val ctx: Context) {
         try { nm.notify(UPDATE_NOTIF_ID, b.build()) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones") }
     }
 
+    // 3008 (dueño 11-11): la actualización YA ESTÁ BAJADA en el teléfono. El único botón es «Instalar» (abre NEXO y el instalador del
+    // sistema con lo ya bajado, sin volver a descargar). Mismo id que el aviso de «versión nueva»: lo sustituye.
+    fun updateReady(build: Int) {
+        val nm = NotificationManagerCompat.from(ctx)
+        if (!nm.areNotificationsEnabled()) { Log.w(TAG, "Notificaciones desactivadas: sin aviso de actualización bajada"); return }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val ch = NotificationChannel(UPDATE_CHANNEL_ID, "Actualizaciones", NotificationManager.IMPORTANCE_DEFAULT)
+            ch.description = "Avisa cuando hay una versión nueva de NEXO"
+            ctx.getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
+        }
+        val launch = notifLaunchIntent(ctx) ?: return
+        val fl = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        val pf = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        val installPi = PendingIntent.getActivity(ctx, 3995, Intent(launch).putExtra(EXTRA_UPDATE_INSTALL, build).putExtra(EXTRA_CALL_TOKEN, callIntentToken).addFlags(fl), pf)
+        val b = NotificationCompat.Builder(ctx, UPDATE_CHANNEL_ID)
+            .setSmallIcon(msgIcon(ctx))
+            .setContentTitle("NEXO $build descargada")
+            .setContentText("Toca «Instalar» para actualizar")
+            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setContentIntent(installPi)
+            .addAction(0, "Instalar", installPi)
+        try { nm.notify(UPDATE_NOTIF_ID, b.build()) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones") }
+    }
+
     fun cancelUpdate() { try { NotificationManagerCompat.from(ctx).cancel(UPDATE_NOTIF_ID) } catch (e: Exception) { } }
 
     fun message(chatId: String, name: String, msgId: String, text: String): Int {
