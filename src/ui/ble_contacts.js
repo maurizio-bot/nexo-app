@@ -50,7 +50,8 @@ export const BLE_CONTACT_METHODS = {
     // (de una tarjeta/grupo) con el que todavía NO cruzaste ningún mensaje. Antes solo se limpiaba al ABRIR el chat, así que un
     // contacto que te escribía pero cuyo chat no abriste se quedaba clavado arriba aunque su último mensaje fuera viejo.
     var cleared = !!c.isNewShared; if (cleared) c.isNewShared = false;
-    if ((c.lastMessageAt || 0) > t) { if (cleared) { _saveBLEContacts(contacts); this.renderContactsList(); } return; }
+    // 3010: >= (no >): el mismo mensaje anotado dos veces (ble_messages y main.js) no vuelve a guardar ni redibujar
+    if ((c.lastMessageAt || 0) >= t) { if (cleared) { _saveBLEContacts(contacts); this.renderContactsList(); } return; }
     c.lastMessageAt = t;
     if (preview) c.lastMessage = preview;
     _saveBLEContacts(contacts);

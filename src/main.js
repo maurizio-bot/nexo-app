@@ -643,6 +643,13 @@ function _handleIncomingMessage(msg) {
     if (msg.senderNexoId) {
       vaultGetOrCreateContact(msg.senderNexoId, msg.senderName || 'NEXO');
     }
+    // 3010 (dueño 11-11: «la lista no se ordena desde el último de conversación»): un texto LARGO (> 180 letras, llega troceado
+    // por este camino) no subía al contacto arriba ni cambiaba su último mensaje; solo lo hacían los cortos (ble_messages).
+    // Ahora todo mensaje 1-a-1 recibido lo anota. Si ya se anotó con la misma hora (los cortos, los archivos), no hace nada.
+    if (!msg.groupId && senderUUID && bi && typeof bi.noteContactMessage === 'function') {
+      var npv = msg.attachmentType ? (_PREVIEW_BY_TYPE[msg.attachmentType] || '📎 Archivo') : _cut(_plainText(msg.content), 50);
+      try { bi.noteContactMessage(senderUUID, npv, msg.timestamp || Date.now()); } catch (e) {}
+    }
     _renderMessage(msg);
     if (window.NEXO.app && typeof window.NEXO.app.onMessage === 'function') {
       try { window.NEXO.app.onMessage(msg); } catch (omErr) {}

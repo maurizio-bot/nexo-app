@@ -46,6 +46,10 @@
      "prueba": "orden de la lista por el MÁS RECIENTE"
     },
     {
+     "fallo": "3010 (dueño 11-11: «aún la lista de contactos no está en orden, del último de conversación arriba al más antiguo abajo»): un texto LARGO recibido (más de 180 letras, llega troceado y entra por main.js) no subía al contacto arriba ni cambiaba su último mensaje; solo lo hacían los textos cortos (ble_messages). Ahora main._handleIncomingMessage anota todo mensaje 1-a-1 recibido (noteContactMessage, que no repite si ya lo anotó con la misma hora). ordenlista.js (contraprueba 3009: tras un largo de B, C seguía primero)",
+     "prueba": "orden de la lista con mensajes LARGOS"
+    },
+    {
      "fallo": "«Agregar» decía «No hay contactos» aunque los hubiera; el buscador no buscaba",
      "prueba": "interfaz: \"Agregar\""
     },
