@@ -491,6 +491,10 @@
     {
      "fallo": "3004 (investigación de fondo 11-11, S24 build 3001): la app se cerraba en bucle al enviar un APK de 25,9 MB por internet. El registro de salientes de un contacto (nexo_vault_outgoing_v2_<nx>.json: un JSON con TODOS sus envíos pendientes y sus trozos) se reescribía entero por el puente de Capacitor; Capacitor analiza cada mensaje en el hilo principal con org.json (MessageHandler.java:54) y solo atrapa Exception: con 35-71 M caracteres pide 136-265 MiB (medido en JVM) y un OutOfMemoryError mata el proceso sin pause/destroy ni rastro. El mensaje quedaba 'sending' y cada arranque lo reintentaba (bucle). Además el «leído» de la tarjeta de cita (mismo id que el archivo) lo marcaba leído sin entregarse. 3004: archivos del usuario > 2 M car. fuera del registro (los cubre el reenvío de pendientes), purga de los gigantes heredados y de los caducados (expiresAt nunca se aplicaba), freno de bucle (2 intentos sin terminar → no se reintenta solo), y «leído» de un archivo no entregado ignorado (y la tarjeta de cita ya no lo manda). bigsend.js (contraprueba en 3003: guardados de 4 M y 8 M car., sin freno, leído prematuro aplicado)",
      "prueba": "archivos GRANDES por internet sin cerrar la app"
+    },
+    {
+     "fallo": "3005 (primera prueba real de la 3004, S24 11-11 12:17 UTC): el APK de 25 MB por internet se paraba en el trozo 180/2213 porque el que recibe dejó de confirmar (igual en todos los envíos de 25 MB por relés a teléfonos de amigos: 96-411 trozos); el emisor seguía reenviando la ventana entera cada ~12 s al vacío (~80 trozos/min) y el receptor tiraba lo recibido a los 2 min (ASSEMBLY_TIMEOUT_MS), así que al volver se mandaba todo de nuevo (125 % en el simulador). 3005: archivo grande por internet (≥ 64 trozos) → el receptor guarda lo recibido 30 min y el emisor mantiene el envío vivo ese rato; si el otro calla, «sondeo» de 1 trozo por minuto y ritmo normal al primer ACK. netsilence.js (contraprueba en 3004: 83 trozos/min callado, 125 % reenviado, receptor sin lo recibido)",
+     "prueba": "el que recibe un archivo grande por internet se calla o se reinicia a mitad"
     }
    ],
    "debiles": [
