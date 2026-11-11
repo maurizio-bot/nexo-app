@@ -51,9 +51,17 @@ jobs:
 
       # Ronda 2772: la videollamada de verdad (videoframe.js: espejo, forma y encuadre de la imagen) usa Chromium con
       # Playwright (cámara falsa en vertical); sin esto la prueba no arrancaba en GitHub
+      # 3007: las builds 3006 (intentos 1 y 2) se cayeron aquí porque el servidor no resolvía el espejo de apt de Ubuntu
+      # («Temporary failure resolving 'azure.archive.ubuntu.com'») al bajar 9 paquetes de FUENTES opcionales; las librerías que
+      # Chromium necesita ya vienen en la imagen. Si --with-deps falla, se instala solo Chromium (su descarga es de otro sitio).
       - name: Chromium para las pruebas de videollamada
         working-directory: ./tests/sim
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 20
+        run: |
+          npx playwright install --with-deps chromium || {
+            echo "apt falló (espejo de Ubuntu); instalo solo Chromium"
+            npx playwright install chromium
+          }
 
       - name: Compilar el bundle para el simulador
         run: bash tests/sim/build.sh wip

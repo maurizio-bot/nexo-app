@@ -518,6 +518,12 @@
      "g": "leve",
      "d": "Si se perdió la confirmación final, el archivo se manda entero otra vez"
     }
+   ],
+   "fallos": [
+    {
+     "fallo": "3007 (OK del dueño 11-11 «(a)»): un archivo grande por internet que se cortaba más de 30 min o con un reinicio de la app de cualquiera de los dos volvía a empezar de cero (intento nuevo = marca 'a' distinta; el receptor solo guardaba en memoria). 3007: el emisor guarda el contenido cifrado + su marca en el teléfono y al reanudar manda lo mismo sin releer el adjunto; el receptor guarda bloques de 64 trozos y tras reiniciarse rehace lo recibido. bigresume.js (contraprueba 3006: no guarda nada)",
+     "prueba": "archivo grande por internet que SIGUE DONDE IBA"
+    }
    ]
   },
   {
@@ -923,6 +929,12 @@
      "g": "media",
      "d": "Al recibir con la pantalla apagada se enciende la pantalla pero el aviso solo sale como icono en la barra, sin contenido ni heads-up (informe del dueño 26-10, tarea #89); probable importancia del canal de mensajes o que no se llegó a postear el aviso del mensaje"
     }
+   ],
+   "fallos": [
+    {
+     "fallo": "3007 (dueño 11-11, captura «Alex pi · Mensaje nuevo» y al entrar nada): el aviso nativo con la app cerrada solo miraba si el SOBRE ya había llegado, no si el MENSAJE ya estaba; un reenvío de algo ya recibido avisaba «Mensaje nuevo». 3007: SeenMsgs.kt + markMsgsSeen desde la app + dedupe en los avisos nativos. notifseen.js (contraprueba 3006: 1 aviso falso)",
+     "prueba": "sin «Mensaje nuevo» por un REENVÍO"
+    }
    ]
   },
   {
@@ -1124,6 +1136,12 @@
     {
      "g": "leve",
      "d": "Sin la foto del contacto en sus notificaciones"
+    }
+   ],
+   "fallos": [
+    {
+     "fallo": "3007 (dueño 11-11): en el actualizador, al cerrar la ventana mientras bajaba y volver, pedía descargar otra vez (bajar e instalar iban juntos y lo bajado no se reutilizaba). 3007: «Descargar» e «Instalar» separados; la descarga sigue con la ventana cerrada, avisa al terminar y el único botón es «Instalar». updater.js (contraprueba 3006: falla)",
+     "prueba": "actualizador automático del APK de probadores"
     }
    ]
   },
