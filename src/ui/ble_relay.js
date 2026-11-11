@@ -50,6 +50,7 @@ var SCAN_FRESH_MS = 30000;        // si se escaneó hace menos, no se vuelve a e
 var SCAN_MS = 6500;
 var MAX_TRANSIENT = 3;            // conexiones a la vez con teléfonos que no son contactos
 var MAX_TRANSIENT_ADD = 6;        // 3012: con «Agregar» abierto (el usuario está esperando ver a alguien): más a la vez
+var BLE_LINKS_BUDGET = 7;         // 3012: conexiones Bluetooth que se dan por seguras a la vez (contactos + de paso)
 var ANON_NO_ANSWER_MS = 4500;     // 3012: un anónimo al que se le preguntó quién es y no contesta en este rato (app dormida) suelta su hueco
 var TRANSIENT_IDLE_MS = 60000;
 // #dueño 02-11 (D1): un connect por nx a la vez dentro de esta ventana. Antes, en cada tick de re-búsqueda se llamaba
@@ -473,8 +474,17 @@ export class BleRelay {
 
   // 3012: cuántas conexiones de paso a la vez (más con «Agregar» abierto)
   _transientCap() {
-    var ble = this.ble;
-    return (ble && Date.now() < (ble._visibleUntil || 0)) ? MAX_TRANSIENT_ADD : MAX_TRANSIENT;
+    var self = this, ble = self.ble;
+    if (!(ble && Date.now() < (ble._visibleUntil || 0))) return MAX_TRANSIENT;
+    // Los teléfonos aguantan pocas conexiones Bluetooth a la vez (~7): las de paso extra salen de lo que dejan libres las
+    // conexiones con los contactos (con muchos contactos conectados queda como antes, 3)
+    var own = 0, tdev = new Set();
+    self.transient.forEach(function(t) { if (t && t.deviceId) tdev.add(_mac(t.deviceId)); });
+    if (ble._deviceStates && typeof ble._deviceStates.forEach === 'function') ble._deviceStates.forEach(function(v, dev) {
+      if (/^(lan|net)/i.test(String(dev)) || !(v && (v.state === 'ready_to_chat' || v.state === 'notifications_ready'))) return;
+      if (!tdev.has(_mac(dev))) own++;
+    });
+    return Math.max(MAX_TRANSIENT, Math.min(MAX_TRANSIENT_ADD, BLE_LINKS_BUDGET - own));
   }
   // 3012: se le preguntó «quién eres» a un anónimo por esta conexión (para soltarlo si no contesta: _closeIdleTransient)
   noteAsked(deviceId) {
