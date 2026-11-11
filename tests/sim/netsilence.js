@@ -3,6 +3,8 @@
 // igual (96–411 trozos). Esta prueba reproduce, con dos teléfonos en Wi-Fi distintas (solo internet, relés):
 //  C1  el receptor se CALLA a mitad (no le llegan los trozos ~150 s, más que los 120 s en que tira lo recibido) y vuelve:
 //      ¿termina? ¿cuántos trozos hubo que volver a mandar? ¿cuánto tráfico mandó el emisor mientras el otro callaba?
+//  C3  (3006) el contacto SALE de internet a mitad (el emisor lo ve «ya no está en línea») y vuelve: antes el envío se
+//      abortaba en el acto y el siguiente intento empezaba de cero.
 //  C2  el receptor se REINICIA a mitad (app cerrada y abierta): ¿sigue donde iba o empieza de cero?
 // Deseado (arreglo (a)/(b)): termina en los dos casos, vuelve a mandar < 25 % de los trozos y, callado el otro, el emisor no
 // inunda los relés (≤ 1 ventana por minuto). Uso: node netsilence.js <dir_build>
@@ -116,6 +118,25 @@ function silence(p, on) { const bi = p.win.bleInterface; if (!bi.__origNP) bi.__
   r.C1_trozos_tras_volver = chunkSends - sendsBack;
   r.C1_reenviado_pct = r.C1_total ? Math.round(100 * Math.max(0, (chunkSends - sendsBefore) - (r.C1_total - r.C1_recibidos_antes)) / r.C1_total) : null;
 
+  // ---- C3 (3006): el contacto SALE de internet a mitad (A lo ve «ya no está en línea»: _netDown) y vuelve ----
+  const s3 = chunkSends;
+  pickFile(A, 'tres.bin', buf);
+  await waitFor(() => { const g = rxProgress(B); return g && g.rx >= g.total * 0.3; }, 120000);
+  const g3 = rxProgress(B); r.C3_recibidos_antes = g3 && g3.rx; r.C3_total = g3 && g3.total;
+  const bigStream = () => { let f = null; A.win.bleInterface.ackSystem.outgoingStreams.forEach((st, id) => { if (st && st.type === 'file' && st.total > 100) f = { id, st }; }); return f; };
+  const st3 = bigStream(); r.C3_hay_envio = !!st3;
+  const netA = A.win.bleInterface.net; const origDeliver = netA._deliver.bind(netA); let cutB = true;
+  netA._deliver = (nx, o) => { if (cutB && nx === idB) return; return origDeliver(nx, o); };
+  silence(B, true);
+  const pB = netA.peers.get(idB); if (pB) { pB.up = false; pB.lastRx = 0; }
+  A.win.bleInterface._netDown(idB);
+  await sleep(60000);
+  r.C3_envio_sigue_vivo = !!(st3 && A.win.bleInterface.ackSystem.outgoingStreams.get(st3.id) === st3.st && !st3.st.aborted);
+  cutB = false; silence(B, false);
+  r.C3_llega_s = await waitFor(async () => (await filesAt(B, idA)).length >= 2, 300000);
+  r.C3_trozos_total = chunkSends - s3;
+  r.C3_reenviado_pct = r.C3_total ? Math.round(100 * Math.max(0, r.C3_trozos_total - r.C3_total) / r.C3_total) : null;
+
   // ---- C2: el receptor se reinicia a mitad ----
   const s2 = chunkSends;
   pickFile(A, 'dos.bin', buf);
@@ -124,13 +145,14 @@ function silence(p, on) { const bi = p.win.bleInterface; if (!bi.__origNP) bi.__
   const sentBefore2 = chunkSends - s2;
   shutdown(B); await sleep(5000);
   nB.load(); B = await boot('B', nB);
-  r.C2_llega_s = await waitFor(async () => (await filesAt(B, idA)).length >= 2, 400000);
+  r.C2_llega_s = await waitFor(async () => (await filesAt(B, idA)).length >= 3, 400000);
   r.C2_trozos_total = chunkSends - s2;
   r.C2_reenviado_pct = r.C2_total ? Math.round(100 * Math.max(0, r.C2_trozos_total - r.C2_total) / r.C2_total) : null;
   r.C2_mandados_antes_del_reinicio = sentBefore2;
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
   const ok = r.pura_espera && r.en_linea_por_internet_s !== null && r.C1_receptor_conserva && r.C1_llega_s !== null && r.C1_reenviado_pct !== null && r.C1_reenviado_pct < 25 && r.C1_por_minuto_callado <= 12 &&
+    r.C3_envio_sigue_vivo && r.C3_llega_s !== null && r.C3_reenviado_pct !== null && r.C3_reenviado_pct < 25 &&
     r.C2_llega_s !== null && r.C2_reenviado_pct !== null && r.C2_reenviado_pct < 25 && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NETSILENCE ' + JSON.stringify(r));

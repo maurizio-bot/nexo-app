@@ -482,6 +482,16 @@ export class BleAckSystem {
       // 2975 (diagnóstico del dueño 13:35): Wi-Fi DEGRADADO (no caído) con un archivo grande en vuelo: el enlace sigue arriba y
       // el archivo no cabe por el camino nuevo → se queda donde está (antes se abortaba a ⏳ y el siguiente intento empezaba de cero)
       if (tooBig && opts && opts.keepTooBig) return;
+      // 3006 (diagnóstico S24 11-11 07:48: el APK de 25 MB a un contacto se abortó en el instante en que éste salió «ya no está
+      // en línea por internet» → ⏳ y el siguiente intento, de cero): un archivo GRANDE por internet sin otro camino NO se aborta
+      // al caerse el contacto; el envío queda vivo esperando (rama «enlace caído» de _onWindowTimeout: sin reenviar, con el toque
+      // de despertador) hasta NET_BIG_IDLE_MS sin confirmaciones, y al volver el contacto sigue donde iba (el receptor guarda lo
+      // recibido ese mismo rato).
+      if (!next && st.type === 'file' && _isNetDevice(st.deviceId) && st.total >= NET_BIG_MIN_CHUNKS) {
+        console.log('[ChatStream] ' + id + ': el contacto salió de internet; el archivo grande espera a que vuelva (sigue donde iba)');
+        try { self._dispatchStatus(id, 'pending'); } catch (e2) {}
+        return;
+      }
       if (next && !tooBig) {
         if (st.tooBigFor(next)) self._restartStream(st, id, next); else st.useLink(next);
         return;
