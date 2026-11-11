@@ -2476,6 +2476,9 @@ class NexoBlePlugin : Plugin() {
                     if (nexoId != null) {
                         put("nexoId", nexoId)
                     }
+                    // 3009: visto por el conjunto de anuncio de LARGO ALCANCE (LE Coded, otra dirección del mismo teléfono): la app no
+                    // se conecta a esa copia si al mismo teléfono lo ve cerca por la dirección normal (ble_interface._onScanFound)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && result.primaryPhy == BluetoothDevice.PHY_LE_CODED) put("coded", true)
                 }
 
                 synchronized(scanResults) {

@@ -563,6 +563,22 @@ export class BLEInterface {
       var deviceId = data.deviceId || '';
       var name = data.name || '';
       if (!deviceId) return;
+      // 3009 (diagnóstico S24 11-11 10:14, «el Bluetooth está lento»): cada teléfono con NEXO anuncia por DOS direcciones —la normal
+      // (1M) y la de LARGO ALCANCE (LE Coded)— con el mismo código. La app se conectaba también a la de largo alcance de teléfonos que
+      // estaban al lado (rssi -49/-63) y esas conexiones fallaban (133/147) tras 2–10 s cada una, una y otra vez, ocupando la cola de
+      // conexiones de Android mientras la normal entraba en < 0,5 s. Si al mismo código se lo vio por la dirección normal hace < 20 s,
+      // la copia de largo alcance se ignora (está cerca); si SOLO se ve por largo alcance (lejos de verdad), se usa como siempre.
+      var advTok = String(data.nexoId || '');
+      if (advTok) {
+        var nowC = Date.now();
+        self._seen1MTok = self._seen1MTok || new Map();
+        if (!data.coded) { self._seen1MTok.set(advTok, nowC); if (self._seen1MTok.size > 300) self._seen1MTok.delete(self._seen1MTok.keys().next().value); }
+        else if (nowC - (self._seen1MTok.get(advTok) || 0) < 20000) {
+          self._codedSkipLog = self._codedSkipLog || new Map();
+          if (nowC - (self._codedSkipLog.get(advTok) || 0) > 60000) { self._codedSkipLog.set(advTok, nowC); console.log('[BLEInterface] Copia de largo alcance (LE Coded) de un teléfono que está cerca: no me conecto por ahí (' + _normMac(deviceId).slice(-4) + ')'); }
+          return;
+        }
+      }
       // Ronda 2755: código rotativo → NEXO ID del contacto, o NEXO anónimo (relay.noteAnon) y nada más
       var nexoId = self._ridFound(data, retried);
       if (nexoId === null) return;

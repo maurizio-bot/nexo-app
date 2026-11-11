@@ -75,6 +75,12 @@
      "g": "media",
      "d": "Android 8–11: sin la ubicación activada no escanea y no se avisa"
     }
+   ],
+   "fallos": [
+    {
+     "fallo": "3009 (dueño 11-11: «el scan Bluetooth está lento»; diagnóstico S24 10:14): cada teléfono anuncia por dos direcciones (normal 1M y LARGO ALCANCE LE Coded, mismo código); la app se conectaba también a la de largo alcance de teléfonos al lado (rssi -49/-63) y esas conexiones fallaban 133/147 tras 2–10 s, repetidas, ocupando la cola de conexiones mientras la normal entraba en < 0,5 s. 3009: el nativo marca 'coded' en el hallazgo y la app ignora esa copia si vio el mismo código por la normal hace < 20 s. codedscan.js (contraprueba 3008: se conecta a la copia)",
+     "prueba": "Bluetooth lento por la dirección de LARGO ALCANCE"
+    }
    ]
   },
   {
