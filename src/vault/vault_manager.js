@@ -1190,6 +1190,31 @@ export async function vaultCleanupTransfers(contactNexoId, maxAgeMs) {
 function _outgoingFileName(contactNexoId) {
   return VAULT_OUTGOING_PREFIX + _normId(contactNexoId) + '.json';
 }
+// 3004 (investigación de fondo 11-11, cierre del S24 con un APK de 25,9 MB): el registro de salientes de un contacto es UN
+// archivo JSON que se reescribe ENTERO por el puente de Capacitor en cada cambio. Con el contenido de un archivo grande dentro
+// (35 M caracteres por APK; 71 M con dos) el nativo lo analiza en el hilo principal y la app muere sin rastro (OutOfMemoryError,
+// MessageHandler.java:54). Regla: el contenido de un ARCHIVO DEL USUARIO (id msg… sin sufijo) que no quepa en OUT_INLINE_MAX
+// caracteres NO se guarda aquí: ya está en su adjunto (nexo_att_…) y en el historial como pendiente, y lo reenvía el reenvío de
+// pendientes. Los registros así que ya existan en el teléfono se purgan al leer, igual que los caducados (expiresAt, que se
+// escribía y nunca se aplicaba).
+export var OUT_INLINE_MAX = 2000000;
+function _isUserFileTransferId(id) { return /^msg[0-9a-z]+$/i.test(String(id || '')); }
+function _chunksChars(chunks) {
+  var n = 0;
+  (chunks || []).forEach(function(c) { n += String(typeof c === 'string' ? c : ((c && (c.data || c.d)) || '')).length; });
+  return n;
+}
+function _purgeOutgoing(cid, list) {
+  var now = Date.now(), keep = [], drop = [];
+  list.forEach(function(o) {
+    if (!o) return;
+    var big = o.type === 'file' && _isUserFileTransferId(o.transferId) && _chunksChars(o.chunks) > OUT_INLINE_MAX;
+    var expired = o.expiresAt && o.expiresAt < now;
+    if (big || expired) drop.push((big ? 'grande ' : 'caducado ') + String(o.transferId || '?').slice(-10)); else keep.push(o);
+  });
+  if (drop.length) console.log('[VaultManager] Salientes de ' + cid + ': se quitan ' + drop.length + ' registro(s) (' + drop.join(', ') + '); los archivos siguen pendientes en el historial');
+  return { keep: keep, purged: drop.length };
+}
 async function _loadOutgoingTransfers(contactNexoId) {
   if (!contactNexoId) return [];
   var cid = _normId(contactNexoId);
@@ -1202,10 +1227,14 @@ async function _loadOutgoingTransfers(contactNexoId) {
     if (result && result.exists && result.content) {
       var data = JSON.parse(result.content);
       var out = Array.isArray(data.outgoing) ? data.outgoing : [];
+      var pg = _purgeOutgoing(cid, out);
+      if (pg.purged) { _persistOutgoingTransfers(cid, pg.keep); return pg.keep.slice(); }
       _outgoingCache.set(cid, out.slice());
       return out;
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('[VaultManager] No se pudo leer el registro de salientes de ' + cid + ' (' + ((e && e.message) || e) + '): se trata como vacío');
+  }
   return [];
 }
 function _persistOutgoingTransfers(contactNexoId, outgoing) {
@@ -1222,6 +1251,8 @@ function _persistOutgoingTransfers(contactNexoId, outgoing) {
 export async function vaultCreateOutgoingTransfer(contactNexoId, transferId, type, totalChunks, chunks, meta, deviceId) {
   if (!contactNexoId || !transferId || !type || !totalChunks || !chunks) return null;
   var cid = _normId(contactNexoId);
+  // 3004: un archivo grande del usuario no entra en el registro (ver OUT_INLINE_MAX): lo cubre el reenvío de pendientes
+  if (type === 'file' && _isUserFileTransferId(transferId) && _chunksChars(chunks) > OUT_INLINE_MAX) return null;
   return _withOutLock(cid, async function() {
     var outgoing = await _loadOutgoingTransfers(cid);
     var existing = outgoing.find(function(o) { return o.transferId === transferId; });
@@ -1305,6 +1336,57 @@ export async function vaultSetOutgoingStatus(contactNexoId, transferId, status) 
     o.updatedAt = Date.now();
     _persistOutgoingTransfers(cid, outgoing);
     return true;
+  });
+}
+// 3004 — FRENO DE BUCLE DE ARRANQUE (investigación 11-11): si la app muere mientras manda un archivo grande, el mensaje sigue
+// pendiente y cada arranque lo vuelve a intentar a los ~3 s, y vuelve a morir. Antes de cada intento grande se anota el intento
+// (archivo pequeño, esperando a que llegue al disco) y al terminar el intento (bien o mal, sin morir) se borra. Si al arrancar un
+// mensaje acumula BIGSEND_MAX_TRIES intentos sin terminar en los últimos BIGSEND_WINDOW_MS, no se reintenta solo: queda para que
+// el usuario toque «reintentar» (que borra la cuenta).
+export var BIGSEND_MIN_CHARS = 2000000;
+export var BIGSEND_MAX_TRIES = 2;
+export var BIGSEND_WINDOW_MS = 600000;
+var BIGSEND_GUARD_FILE = 'nexo_bigsend_guard.json';
+var _bigGuard = null, _bigGuardLoading = null;
+function _bigGuardLoad() {
+  if (_bigGuard) return Promise.resolve(_bigGuard);
+  if (_bigGuardLoading) return _bigGuardLoading;
+  var plugin = _nativePlugin();
+  _bigGuardLoading = (plugin ? _safeNativeCall(plugin, 'loadFromFile', { filename: BIGSEND_GUARD_FILE }) : Promise.resolve(null))
+    .then(function(r) { var g = {}; try { if (r && r.exists && r.content) g = JSON.parse(r.content) || {}; } catch (e) {} _bigGuard = g; return g; })
+    .catch(function() { _bigGuard = {}; return _bigGuard; });
+  return _bigGuardLoading;
+}
+function _bigGuardSave() {
+  var plugin = _nativePlugin();
+  if (!plugin || !_bigGuard) return Promise.resolve();
+  var keys = Object.keys(_bigGuard);
+  if (keys.length > 50) keys.sort(function(a, b) { return (_bigGuard[a].t || 0) - (_bigGuard[b].t || 0); }).slice(0, keys.length - 50).forEach(function(k) { delete _bigGuard[k]; });
+  return _safeNativeCall(plugin, 'saveToFile', { filename: BIGSEND_GUARD_FILE, content: JSON.stringify(_bigGuard) }).catch(function() {});
+}
+// Pura (prueba bigsend.js): ¿este registro del freno bloquea el reintento automático ahora?
+export function bigSendBlocked(entry, now) {
+  return !!entry && (entry.n || 0) >= BIGSEND_MAX_TRIES && (now - (entry.t || 0)) < BIGSEND_WINDOW_MS;
+}
+export function vaultBigSendBegin(msgId) {
+  if (!msgId) return Promise.resolve(0);
+  return _bigGuardLoad().then(function(g) {
+    var now = Date.now(), e = g[msgId];
+    if (!e || now - (e.t || 0) >= BIGSEND_WINDOW_MS) e = { n: 0 };
+    e.n = (e.n || 0) + 1; e.t = now; g[msgId] = e;
+    return _bigGuardSave().then(function() { return e.n; });
+  });
+}
+export function vaultBigSendEnd(msgId) {
+  if (!msgId) return Promise.resolve();
+  return _bigGuardLoad().then(function(g) { if (g[msgId]) { delete g[msgId]; return _bigGuardSave(); } });
+}
+// Devuelve el conjunto de ids que NO deben reintentarse solos ahora
+export function vaultBigSendBlockedIds() {
+  return _bigGuardLoad().then(function(g) {
+    var now = Date.now(), out = new Set();
+    Object.keys(g).forEach(function(k) { if (bigSendBlocked(g[k], now)) out.add(k); });
+    return out;
   });
 }
 export async function vaultCleanupOutgoingTransfers(contactNexoId, maxAgeMs) {

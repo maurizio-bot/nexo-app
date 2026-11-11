@@ -487,6 +487,10 @@
     {
      "fallo": "3003 (diagnóstico automático S24 build 3001, 11-11 03:42): la app arrancó 3 veces en 1 minuto con un APK de 25 MB pendiente para tres contactos; el registro muestra bloques «Resume: N outgoing para …» (uno por contacto, 21) cada ~1 s y lecturas de 450–750 ms de nexo_vault_outgoing_v2: cada «Reenviando pending para X» llamaba a resumeOutgoingTransfers(), que recorre TODOS los contactos leyendo el almacén de transferencias (N × 21 lecturas en segundos), y el adjunto sin datos se volvía a cargar del disco (25 MB) en cada vuelta. 3003: resumeOutgoingTransfers se agrupa (un escaneo a la vez, mín. 2,5 s entre escaneos, uno pendiente al final) y un adjunto que falló al leerse se enfría 5→60 s (_attMissCooling). resumescan.js (antes: 252 lecturas en una ráfaga de 12 llamadas; ahora 21) + attmiss.js",
      "prueba": "tormenta de escaneos de transferencias pendientes"
+    },
+    {
+     "fallo": "3004 (investigación de fondo 11-11, S24 build 3001): la app se cerraba en bucle al enviar un APK de 25,9 MB por internet. El registro de salientes de un contacto (nexo_vault_outgoing_v2_<nx>.json: un JSON con TODOS sus envíos pendientes y sus trozos) se reescribía entero por el puente de Capacitor; Capacitor analiza cada mensaje en el hilo principal con org.json (MessageHandler.java:54) y solo atrapa Exception: con 35-71 M caracteres pide 136-265 MiB (medido en JVM) y un OutOfMemoryError mata el proceso sin pause/destroy ni rastro. El mensaje quedaba 'sending' y cada arranque lo reintentaba (bucle). Además el «leído» de la tarjeta de cita (mismo id que el archivo) lo marcaba leído sin entregarse. 3004: archivos del usuario > 2 M car. fuera del registro (los cubre el reenvío de pendientes), purga de los gigantes heredados y de los caducados (expiresAt nunca se aplicaba), freno de bucle (2 intentos sin terminar → no se reintenta solo), y «leído» de un archivo no entregado ignorado (y la tarjeta de cita ya no lo manda). bigsend.js (contraprueba en 3003: guardados de 4 M y 8 M car., sin freno, leído prematuro aplicado)",
+     "prueba": "archivos GRANDES por internet sin cerrar la app"
     }
    ],
    "debiles": [

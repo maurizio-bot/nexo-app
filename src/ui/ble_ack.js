@@ -121,6 +121,10 @@ export function _fenixYieldBle(metaType, deviceIsBle, congested) {
 // renovando el despertador hasta que fluye. Solo si el contacto se vuelve INALCANZABLE cae al store-and-forward de siempre
 // (pending, se entrega al reconectar), y al pasar el tope se suelta (persistido, reanudable). Pura y exportada: prueba netfileauto.js.
 const NET_FILE_AUTORETRY_BUDGET_MS = 7200000; // 2 h reintentando solo mientras el contacto siga alcanzable; luego store-and-forward
+// 3004: estados de un archivo propio en los que un «leído» llega antes de tiempo (no se entregó todavía). Pura (prueba bigsend.js).
+export function _readTooEarly(status) {
+  return status === 'pending' || status === 'sending' || status === 'queued' || status === 'failed';
+}
 export function _netFileAutoRetry(type, isNet, reachable, elapsedMs, budgetMs) {
   return type === 'file' && !!isNet && !!reachable && (elapsedMs || 0) < (budgetMs || 0);
 }
@@ -1513,6 +1517,21 @@ export class BleAckSystem {
       }
       var status = ack.type === 'read_receipt' ? 'read' : 'delivered';
       if (status === 'delivered' && this._blobOut && this._blobOut.size) this._blobCleanup(ackMsgId, ack.from); // Fase B/C: el archivo ya está en el otro teléfono (en grupo, en ESE miembro)
+      // 3004 (investigación 11-11): un «leído» de un ARCHIVO propio que todavía no se entregó es el de su tarjeta de cita (mismo id;
+      // los teléfonos con versiones anteriores lo siguen mandando): no lo da por leído ni por hecho. Antes lo marcaba ✓✓, dejaba de
+      // reenviarse y, si la app se reiniciaba antes de entregarlo, se perdía en silencio.
+      if (status === 'read' && !entry && !this._done.has(ackMsgId) && ack.from && typeof window.vaultLoadMessages === 'function') {
+        var selfR = this;
+        window.vaultLoadMessages(_normId(ack.from)).then(function(msgs) {
+          var m = (msgs || []).find(function(x) { return (x.msgId || x.messageId || x.id) === ackMsgId; });
+          if (m && m._own && (m.attachmentType || m.attachmentRef) && _readTooEarly(m.status)) {
+            console.log('[BleAckSystem] «Leído» de ' + ackMsgId + ' ignorado: el archivo aún no se entregó (es el de su tarjeta de cita)');
+            return;
+          }
+          selfR._dispatchStatus(ackMsgId, status);
+        }).catch(function() { selfR._dispatchStatus(ackMsgId, status); });
+        return true;
+      }
       if (entry) {
         clearTimeout(entry.timer);
         this.pendingAcks.delete(ackMsgId);

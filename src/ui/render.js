@@ -828,8 +828,13 @@ function _retrySend(cid, msgId, div) {
   _hideRetry(div);
   _updateMessageStatus(msgId, 'sending');
   var bi = window.bleInterface;
-  try { if (bi && typeof bi._resendPendingMessages === 'function') bi._resendPendingMessages(cid); } catch (e) {}
-  try { if (bi && bi.ackSystem && typeof bi.ackSystem.resumeOutgoingTransfers === 'function') bi.ackSystem.resumeOutgoingTransfers(); } catch (e) {}
+  // 3004: «reintentar» a mano borra la cuenta del freno de bucle de arranque de este mensaje (el usuario decide volver a probar)
+  var cleared = (typeof window.vaultBigSendEnd === 'function') ? window.vaultBigSendEnd(msgId).catch(function() {}) : Promise.resolve();
+  if (bi && bi._bigBlockedNoted) bi._bigBlockedNoted.delete(msgId);
+  cleared.then(function() {
+    try { if (bi && typeof bi._resendPendingMessages === 'function') bi._resendPendingMessages(cid); } catch (e) {}
+    try { if (bi && bi.ackSystem && typeof bi.ackSystem.resumeOutgoingTransfers === 'function') bi.ackSystem.resumeOutgoingTransfers(); } catch (e) {}
+  });
   // Si en otros ~30 s sigue sin salir, vuelve a ofrecer el botón
   var d = document.querySelector('.message[data-msg-id="' + msgId + '"]') || div;
   _armRetry(d, cid, msgId, 'sending');

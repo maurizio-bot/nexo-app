@@ -95,7 +95,7 @@ import {
   vaultCreateTransfer, vaultAppendChunk, vaultGetTransfer, vaultCompleteTransfer,
   vaultGetIncompleteTransfers, vaultGetPendingOutgoingTransfers, vaultCreateOutgoingTransfer,
   vaultSetOutgoingChunkAcked, vaultIncrementOutgoingTimeout, vaultRemoveOutgoingTransfer,
-  vaultSetOutgoingStatus, vaultHydrateAttachments,
+  vaultSetOutgoingStatus, vaultHydrateAttachments, vaultBigSendBegin, vaultBigSendEnd, vaultBigSendBlockedIds,
   vaultSetMessageFields, vaultReplaceAttachment, vaultSaveFile, vaultLoadFile, vaultHdFileName,
   vaultDeleteMessage, vaultBlankMessage, vaultFlushAll
 } from './vault/vault_manager.js';
@@ -197,6 +197,7 @@ var _notifier = createNotifier({
     // Build 2835 (pedido del dueño): si apagaste las confirmaciones de lectura en Ajustes, no se manda el acuse (el
     // otro no ve el ✓✓ azul). El "entregado" gris no se toca.
     if (!readReceiptsOn()) return;
+    if (/#cita$/.test(String(msgId || ''))) return; // 3004: la tarjeta de cita no se confirma como leída (ver incoming)
     // Ronda 2758: en un grupo el "leído" va a quien escribió el mensaje
     var gs = window.bleInterface && window.bleInterface.groups;
     if (gs && gs.isGroup(nexoId)) { nexoId = gs.senderOf(msgId); if (!nexoId) return; }
@@ -354,6 +355,9 @@ window.vaultIncrementOutgoingTimeout = vaultIncrementOutgoingTimeout;
 window.vaultRemoveOutgoingTransfer = vaultRemoveOutgoingTransfer;
 window.vaultSetOutgoingStatus = vaultSetOutgoingStatus;
 window.vaultHydrateAttachments = vaultHydrateAttachments;
+window.vaultBigSendBegin = vaultBigSendBegin;   // 3004: freno de bucle de arranque con archivos grandes
+window.vaultBigSendEnd = vaultBigSendEnd;
+window.vaultBigSendBlockedIds = vaultBigSendBlockedIds;
 
 var SAFETY_TIMEOUT = setTimeout(function() {
   try {
@@ -646,8 +650,12 @@ function _handleIncomingMessage(msg) {
       var who = (sc && (sc.name || sc.displayName)) || msg.senderName || 'NEXO';
       var pvw = msg.attachmentType ? (_PREVIEW_BY_TYPE[msg.attachmentType] || '📎 Archivo') : _cut(_plainText(msg.content), 80);
       var grpN = msg.groupId && bgs ? bgs.get(msg.groupId) : null;
-      _notifier.incoming(grpN ? { cid: grpN.id, msgId: msgId, name: grpN.name, preview: who + ': ' + pvw }
-        : { cid: senderId, msgId: msgId, name: who, preview: pvw });
+      // 3004 (investigación 11-11): la tarjeta de CITA («📦 … esperando que los dos estén en línea») lleva el MISMO id que el archivo
+      // que vendrá. Su «leído» marcaba el ARCHIVO como leído en el que lo manda sin haberse entregado (y podía perderse). Para el
+      // aviso y el «leído» se usa un id propio (#cita) que no se confirma; cuando llega el archivo de verdad, se confirma él.
+      var nId = (msg.attachmentMeta && msg.attachmentMeta.cita && !msg.attachmentPayload && !msg.attachmentRef) ? msgId + '#cita' : msgId;
+      _notifier.incoming(grpN ? { cid: grpN.id, msgId: nId, name: grpN.name, preview: who + ': ' + pvw }
+        : { cid: senderId, msgId: nId, name: who, preview: pvw });
     }
   } catch (err) {
     console.warn('[MAIN] _handleIncomingMessage error:', err && err.message);

@@ -1258,8 +1258,25 @@ export const BLE_MESSAGE_METHODS = {
     var btHop = !!(rh && rh.deviceId && !/^(lan|net)/i.test(String(rh.deviceId)));
     var betterPath = !!((self.net && typeof self.net.canReach === 'function' && self.net.canReach(nexoId)) || (self.lan && typeof self.lan.canReach === 'function' && self.lan.canReach(nexoId)));
     var tooBigForBt = _tooBigForBt;
-    getPending = getPending.then(function(list) {
+    // 3004: freno de bucle de arranque — los ids que ya murieron BIGSEND_MAX_TRIES veces enviándose no se reintentan solos
+    var blockedP = (typeof window.vaultBigSendBlockedIds === 'function') ? window.vaultBigSendBlockedIds().catch(function() { return new Set(); }) : Promise.resolve(new Set());
+    getPending = Promise.all([getPending, blockedP]).then(function(pr) {
+      var list = pr[0], blocked = pr[1];
       list = (list || []).filter(function(m) { return !self._isMsgInFlight(idOf(m)); });
+      if (blocked && blocked.size) {
+        list = list.filter(function(m) {
+          var id = idOf(m);
+          if (!blocked.has(id)) return true;
+          self._bigBlockedNoted = self._bigBlockedNoted || new Set();
+          if (!self._bigBlockedNoted.has(id)) {
+            self._bigBlockedNoted.add(id);
+            console.warn('[BLEInterface] ' + id + ': archivo grande que no terminó de enviarse en sus últimos intentos (posible cierre de la app): no se reintenta solo; queda para «reintentar»');
+            _vaultUpdateMessageStatus(nexoId, id, 'failed');
+            try { if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(id, 'failed'); } catch (e) {}
+          }
+          return false;
+        });
+      }
       // 3003: un adjunto que acaba de fallar al leerse del disco se enfría (no se relee 25 MB en cada vuelta); sigue ⏳ pendiente
       var nowCool = Date.now();
       list = list.filter(function(m) { return !(m && (m.attachmentRef || m.attachmentType) && _attMissCooling(self._attMiss, idOf(m), nowCool)); });
@@ -1439,7 +1456,11 @@ export const BLE_MESSAGE_METHODS = {
           }
         }
 
-        doSend()
+        // 3004: un intento grande se anota ANTES (llega al disco) y se borra al terminar sin morir (freno de bucle de arranque)
+        var bigTry = typeof attachmentPayload === 'string' && attachmentPayload.length > 2000000 && typeof window.vaultBigSendBegin === 'function';
+        var endTry = function() { if (bigTry && typeof window.vaultBigSendEnd === 'function') window.vaultBigSendEnd(mid).catch(function() {}); };
+        (bigTry ? window.vaultBigSendBegin(mid).catch(function() {}).then(function() { return doSend(); }) : doSend())
+          .then(function(v) { endTry(); return v; }, function(err) { endTry(); throw err; })
           .then(function() {
             console.log('[BLEInterface] Pending OK:', mid);
             _vaultUpdateMessageStatus(nexoId, mid, 'sent');

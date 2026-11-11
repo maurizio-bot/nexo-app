@@ -233,7 +233,12 @@ export function _sendFileFor(contactId, msgId, type, payload, meta, opts) {
 
   // 2995: avisa al que espera (reenviar un adjunto grande a varios chats, de a uno) cuando este envío termina o queda pendiente
   var _settle = function() { var f = opts && opts.onSettled; if (typeof f === 'function') { opts.onSettled = null; try { f(); } catch (e) {} } };
-  window.bleInterface.sendFile(contactId, msgId, payload, Object.assign({}, meta, { type: type }))
+  // 3004: freno de bucle de arranque — un envío grande se anota antes de empezar y se borra al terminar sin morir
+  var bigTry = typeof payload === 'string' && payload.length > 2000000 && typeof window.vaultBigSendBegin === 'function';
+  var endTry = function() { if (bigTry && typeof window.vaultBigSendEnd === 'function') window.vaultBigSendEnd(msgId).catch(function() {}); };
+  (bigTry ? window.vaultBigSendBegin(msgId).catch(function() {}) : Promise.resolve())
+    .then(function() { return window.bleInterface.sendFile(contactId, msgId, payload, Object.assign({}, meta, { type: type })); })
+    .then(function(v) { endTry(); return v; }, function(err) { endTry(); throw err; })
     .then(function() {
       _settle();
       // Solo subir a 'sent' si aún no ha llegado un ack superior
