@@ -206,6 +206,10 @@
      "prueba": "respaldo Fénix sobre un Bluetooth MUERTO"
     },
     {
+     "fallo": "3002 (diagnóstico automático del 11-11, S24 14:55): un TEXTO por Bluetooth con el enlace atascado: el nativo soltó el mensaje («Write fallo… descartado entero» → onWriteDropped → _markBleDead) y el JS, sin otro camino, reenviaba la ventana 8 veces (~64 s sobre un enlace muerto, «Max window retries») y lo marcaba ✗; el freno de la 2976 solo cubría a Fénix. 3002: _onWindowTimeout rinde también el texto de usuario (no el archivo) sobre un Bluetooth ya marcado muerto → ⏳ pendiente (PEER_ABSENT) y se reenvía solo al volver un camino. textdead.js (antes: no se rendía en 20 s)",
+     "prueba": "texto sobre un Bluetooth DESCARTADO"
+    },
+    {
      "fallo": "2976 (primer diagnóstico AUTOMÁTICO del dueño): al ARRANCAR en frío, _foreground quedaba undefined hasta la primera transición de estado (el nativo solo avisa en handleOnResume/handleOnPause) → el resume de Fénix salía a los 2 s de abrir la app con el usuario en pantalla (dos respaldos por Bluetooth a MTU 23 que acabaron martillando enlaces muertos), contra la regla «usuario primero» (2952). 2976: en el WebView de Android (window.androidBridge, el puente que inyecta Capacitor; el simulador no lo tiene y queda como estaba) _foreground arranca de document.visibilityState. netoffline.js (arranque)",
      "prueba": "ARRANQUE en frío"
     },

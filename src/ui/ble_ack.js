@@ -2434,6 +2434,16 @@ ChatStream.prototype._onWindowTimeout = function() {
       return;
     }
     self._busyWaitMs = 0;
+    // 3002 (diagnóstico automático del 11-11, S24 14:55): un TEXTO por Bluetooth cuyo enlace el nativo ya soltó («Write fallo…
+    // descartado entero» → _markBleDead) reenviaba la ventana 8 veces (~64 s) sobre un enlace muerto y acababa ✗ («Max window
+    // retries»). Un texto no se pierde por eso: se rinde YA y queda ⏳ pendiente (PEER_ABSENT); se reenvía solo al volver un camino
+    // (_markBleDead ya re-ruteó a internet/Wi-Fi si había; si no, lo reenvía el flujo de pendientes). Los archivos tienen su propia regla.
+    if (self.type !== 'file' && self._textOnDeadBle()) {
+      console.log('[ChatStream] Texto sobre un Bluetooth que el nativo ya soltó: se rinde, queda pendiente msgId=' + self.msgId);
+      try { self.ackSystem._dispatchStatus(self.msgId, 'pending'); } catch (e) {}
+      self._giveUpPending();
+      return;
+    }
     self.windowRetryCount++;
     if (self.windowRetryCount > self.maxWindowRetries) {
       // #dueño 08-11: un archivo por INTERNET a un contacto ALCANZABLE NO aborta ni pide reintentar: resetea el contador,
@@ -2457,6 +2467,12 @@ ChatStream.prototype._onWindowTimeout = function() {
     console.log('[ChatStream] Window timeout, reenviando ventana desde', self.windowStart, 'retry', self.windowRetryCount, 'msgId=' + self.msgId);
     self._retransmitWindow();
   }
+};
+// 3002: ¿el enlace de este flujo es un Bluetooth que el nativo ya marcó muerto/atascado (onWriteDropped → _markBleDead)?
+ChatStream.prototype._textOnDeadBle = function() {
+  var dev = this.deviceId;
+  if (_isNetDevice(dev) || _isLanDevice(dev)) return false;
+  try { return !!(this.ble && typeof this.ble._bleCongested === 'function' && this.ble._bleCongested(dev)); } catch (e) { return false; }
 };
 ChatStream.prototype._retransmitWindow = function() {
   var self = this;
