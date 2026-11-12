@@ -128,7 +128,25 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.borrar_quita = nProp() === r.prop_antes - 1 && own().length === r.prop_antes - 1;
   A.win.__nexoCloseStickerPicker && A.win.__nexoCloseStickerPicker();
 
-  r.resultado = (r.asset_feliz && r.asset_desconocido_null && r.b_recibe && r.b_pinta_pack && r.a_pinta_pack && r.desconocido_fallback && r.b_recibe_img && r.b_pinta_img && r.a_pinta_img && r.valida_ok && r.selector_muestra_propio && r.cancelar_no_borra && r.borrar_quita && r.sin_json) ? 'OK' : 'FALLO';
+  // 9) 3032 (dueño 12-11: «que si me mandan un sticker lo pueda agregar a mis stickers»): B mantiene pulsado el sticker
+  //    PROPIO que le mandó A → «Agregar a mis stickers» → queda en sus stickers (y guardado); otra vez → no se duplica.
+  //    En A (es suyo) no sale la opción.
+  var ctxm = (p, el) => el && el.dispatchEvent(new p.win.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  var imgBubble = (p) => bubbles(p).find((m) => { var im = m.querySelector('.msg-sticker img'); return im && String(im.getAttribute('src') || '') === VALID_IMG; });
+  var addItem = (p) => p.win.document.querySelector('#nexo-msg-menu .mm-sticker-add');
+  var closeMenu = (p) => { var c = p.win.document.querySelector('#nexo-msg-menu .mm-cancel'); if (c) click(p.win, c); };
+  var nB0 = (await B.win.__nexoLoadUserStickers()).filter((x) => x.img === VALID_IMG).length;
+  ctxm(B, imgBubble(B)); await sleep(600);
+  r.b_menu_agregar = !!addItem(B);
+  click(B.win, addItem(B)); await sleep(800);
+  r.b_agregado = B.win.__nexoUserStickers().filter((x) => x.img === VALID_IMG).length === nB0 + 1;
+  r.b_guardado = /iVBORw0KGgo/.test((await B.win.Capacitor.Plugins.NexoBLE.loadFromFile({ filename: 'nexo_my_stickers.json' })).content || '');
+  ctxm(B, imgBubble(B)); await sleep(600); click(B.win, addItem(B)); await sleep(800);
+  r.b_no_duplica = B.win.__nexoUserStickers().filter((x) => x.img === VALID_IMG).length === nB0 + 1;
+  ctxm(A, imgBubble(A)); await sleep(600);
+  r.a_sin_opcion = !!A.win.document.getElementById('nexo-msg-menu') && !addItem(A);
+  closeMenu(A);
+  r.resultado = (r.b_menu_agregar && r.b_agregado && r.b_guardado && r.b_no_duplica && r.a_sin_opcion && r.asset_feliz && r.asset_desconocido_null && r.b_recibe && r.b_pinta_pack && r.a_pinta_pack && r.desconocido_fallback && r.b_recibe_img && r.b_pinta_img && r.a_pinta_img && r.valida_ok && r.selector_muestra_propio && r.cancelar_no_borra && r.borrar_quita && r.sin_json) ? 'OK' : 'FALLO';
   console.log('STICKER ' + JSON.stringify(r));
   try { fs.writeFileSync(path.join(buildDir, 'last_logs_stickers.txt'), logs.slice(-250).join('\n')); } catch (e) {}
   process.exit(0);

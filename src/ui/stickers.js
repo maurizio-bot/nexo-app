@@ -84,6 +84,16 @@ export function addUserSticker(img) {
   _saveUser();
   return id;
 }
+// 3032 (dueño 12-11: «que si me mandan un sticker lo pueda agregar a mis stickers»): un sticker PROPIO recibido (con imagen
+// validada) se agrega a los míos. Primero se carga la lista guardada (si no, se pisaría); el mismo dibujo no se repite.
+// Devuelve 'added' | 'dup' | 'invalid'.
+export function addReceivedSticker(img) {
+  if (!isValidStickerImg(img)) return Promise.resolve('invalid');
+  return loadUserStickers().then(function(list) {
+    if ((list || []).some(function(x) { return x && x.img === img; })) return 'dup';
+    return addUserSticker(img) ? 'added' : 'invalid';
+  });
+}
 export function removeUserSticker(id) {
   if (!_userStickers) return;
   _userStickers = _userStickers.filter(function(x) { return x.id !== id; });
@@ -188,4 +198,4 @@ export function closeStickerPicker() {
 }
 
 // Gancho de pruebas (funciones de solo lectura): tests/sim/stickers.js comprueba el mapa y el validador sin interfaz.
-try { if (typeof window !== 'undefined') { window.__nexoStickerAsset = stickerAsset; window.__nexoIsValidStickerImg = isValidStickerImg; window.__nexoAddUserSticker = addUserSticker; window.__nexoOpenStickerPicker = openStickerPicker; window.__nexoUserStickers = getUserStickers; } } catch (e) {}
+try { if (typeof window !== 'undefined') { window.__nexoStickerAsset = stickerAsset; window.__nexoIsValidStickerImg = isValidStickerImg; window.__nexoAddUserSticker = addUserSticker; window.__nexoOpenStickerPicker = openStickerPicker; window.__nexoUserStickers = getUserStickers; window.__nexoLoadUserStickers = loadUserStickers; } } catch (e) {}

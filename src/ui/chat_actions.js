@@ -15,7 +15,7 @@ import { tetrisVersusOnAction } from './tetris_versus.js';
 import { _PREVIEW_BY_TYPE, _chatKind, _contactName, _cut, _findMessage, _getCurrentContactId, _msgSummary, _myNexoId, _normId, _peerUnderstands, _plainText } from './chat_format.js';
 import { _showInfoToast } from './ui_bits.js';
 import { _videoFormat } from './video_tools.js';
-import { stickerAsset, isValidStickerImg } from './stickers.js';
+import { stickerAsset, isValidStickerImg, addReceivedSticker } from './stickers.js';
 import { vaultBlankMessage, vaultDeleteMessage, vaultEditMessage, vaultLoadContacts, vaultLoadFile, vaultLoadMessages, vaultReactMessage, vaultSaveContacts } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
 
@@ -273,6 +273,15 @@ export function _openMsgMenu(div) {
     }
     if (!deleted) add(t('chat_reply', '↩  Responder'), 'mm-reply', function() { _startReply(id, msg); });
     if (!deleted) add(t('chat_forward', '↪  Reenviar'), 'mm-forward', function() { _openForwardSheet(msg); });
+    // 3032 (dueño 12-11): un sticker PROPIO que me mandaron (con su dibujo) se puede agregar a mis stickers
+    var stk = (!isOwn && !deleted) ? _chatKind(msg.content || '') : null;
+    if (stk && stk.type === 'nexo_sticker' && isValidStickerImg(stk.img)) {
+      add(t('chat_sticker_add', '⭐  Agregar a mis stickers'), 'mm-sticker-add', function() {
+        addReceivedSticker(stk.img).then(function(res) {
+          if (_showInfoToast) _showInfoToast(res === 'added' ? t('chat_sticker_added', 'Sticker agregado a tus stickers') : (res === 'dup' ? t('chat_sticker_dup', 'Ya tienes este sticker') : t('chat_sticker_bad', 'No se pudo agregar el sticker')), 2500);
+        });
+      });
+    }
     if (!deleted && !msg.attachmentType) add(t('chat_copy', '⧉  Copiar'), 'mm-copy', function() { _copyText(_plainText(msg.content)); });
     if (isOwn && !deleted && !msg.attachmentType && Date.now() - (msg.timestamp || 0) < EDIT_MS && _peerUnderstands(cid)) {
       add(t('chat_edit', '✏️  Editar'), 'mm-edit', function() { _startEdit(id, msg); });
