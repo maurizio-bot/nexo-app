@@ -10,6 +10,12 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - **Hecho 3021 (era «abierto, sin reproducir»; reproducido con `jumpdead.js`):** una foto de 57 KB del S23 al S24 salió por el Redmi como puente Bluetooth (22:13:49, justo tras usar la cámara, que desconecta y reconecta todos los enlaces) con internet «no listo para archivos» (relés fallando); 73 s sin una sola confirmación, luego por internet en 2 s. Posibles causas: puente con la app dormida, enlace recién rehecho a medias, o internet descartado por un fallo pasajero de los relés. Hace falta reproducirlo antes de tocar nada.
 - **Wi-Fi Direct:** sigue sin probarse (en la prueba del dueño el Wi-Fi estaba apagado).
 
+## 🗂️ Archivos demasiado grandes (dueño 12-11: «no quiero que exageren los archivos… más adelante sí los tendremos que hacer») — PARA MÁS ADELANTE
+- Los 5 más grandes (12-11): `NexoBlePlugin.kt` 4574 líneas (260 KB), `ble_ack.js` 2887 (184 KB), `ble_messages.js` 1563 (104 KB),
+  `vault_manager.js` 1533 (76 KB), `ble_interface.js` 1045 (56 KB). Cada cambio en ellos arriesga romper otra cosa.
+- Plan (cuando el dueño lo pida): dividirlos por partes SIN cambiar lo que hacen (mover, no reescribir), uno por build, con la batería
+  completa antes y después. Mientras tanto: no hacerlos crecer sin necesidad; lo nuevo, en archivos aparte (como `diag_state.js`).
+
 ## 🔎 «Agregar»: todo NEXO cercano al instante (3012) y foto de perfil equivocada (dueño 11-11) — en prueba del dueño
 - **Hecho (3012 y 3014):** detalle en `ESTADO.md` («Build actual»). Prueba: `tests/sim/addlento.js`. Desde la 3014 (dueño 12-11, opción A) NO hay filas sin
   nombre: una línea «Buscando… N teléfonos NEXO cerca» y cada teléfono sale con su nombre al contestar (las pruebas (1) y (3) de abajo cambian: no hay «+» sobre uno sin identificar).
