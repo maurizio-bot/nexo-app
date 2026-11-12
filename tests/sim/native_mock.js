@@ -862,7 +862,8 @@ class NativePhone {
           setTimeout(() => { c.resolve({ connected: false, deviceId: raw, error: 'Connection error 133' }); self.emit('onDeviceDisconnected', { deviceId: raw, reason: 'status 133' }); }, ms);
           return;
         }
-        if (!peer || peer.offline || self.offline || !self.radio.inRange(self, peer)) { setTimeout(() => { c.resolve({ connected: false, deviceId: raw, error: 'Connection error 133' }); }, 200); return; }
+        if (peer) { peer.stats.connectsIn = (peer.stats.connectsIn || 0) + 1; } // 3024: cuántas veces intentan conectar con este teléfono
+        if (!peer || peer.offline || self.offline || !self.radio.inRange(self, peer) || peer.opts.connectFails) { setTimeout(() => { c.resolve({ connected: false, deviceId: raw, error: 'Connection error 133' }); }, 200); return; } // 3024: opts.connectFails = se ve al escanear pero nunca conecta (lejísimos)
         const waitQ = Math.max(0, (self._connBlockedUntil || 0) - Date.now());
         if (waitQ > 0) { self.stats.queuedConnects = (self.stats.queuedConnects || 0) + 1; setTimeout(() => self._connectClient(peer, c), waitQ); return; }
         self._connectClient(peer, c);

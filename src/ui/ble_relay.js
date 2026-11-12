@@ -49,6 +49,10 @@ var DISCOVER_WAIT_MS = 60000;     // una búsqueda vale 60 s
 var SCAN_FRESH_MS = 30000;        // si se escaneó hace menos, no se vuelve a escanear para buscar camino
 var SCAN_MS = 6500;
 var MAX_TRANSIENT = 3;            // conexiones a la vez con teléfonos que no son contactos
+// 3024 (diagnóstico del vivo 12-11 07:12: intentaba conectar «de paso» cada minuto con un NEXO a −92/−95 dBm que nunca
+// conectaba): para buscar puentes Jump no se conecta de paso con NADIE (conocido o desconocido) con señal de −90 o peor, y al que
+// no llega a conectar se le espera cada vez más (1, 2, 4… hasta 15 min). Así la radio queda para los cercanos que sí sirven.
+var PASS_MIN_RSSI = -90, PASS_FAIL_BASE_MS = 60000, PASS_FAIL_MAX_MS = 15 * 60000, PASS_RETRY_WINDOW_MS = 120000;
 var MAX_TRANSIENT_ADD = 6;        // 3012: con «Agregar» abierto (el usuario está esperando ver a alguien): más a la vez
 var BLE_LINKS_BUDGET = 7;         // 3012: conexiones Bluetooth que se dan por seguras a la vez (contactos + de paso)
 var ANON_NO_ANSWER_MS = 4500;     // 3012: un anónimo al que se le preguntó quién es y no contesta en este rato (app dormida) suelta su hueco
@@ -506,11 +510,39 @@ export class BleRelay {
     if (t && !t.asked) t.asked = Date.now();
   }
 
-  _connectAnon(deviceId) {
+  // 3024: ¿se puede intentar una conexión «de paso» con este teléfono ahora? (señal suficiente y sin espera por fallos)
+  _passOk(deviceId, rssi) {
+    if (typeof rssi === 'number' && rssi > -100 && rssi <= PASS_MIN_RSSI) return false; // (−100 = sin medida)
+    var m = _mac(deviceId), f = this._passFail && this._passFail.get(m);
+    if (!f) return true;
+    if (this._isReady(deviceId)) { this._passFail.delete(m); return true; }
+    return !(f.until > Date.now());
+  }
+  // 3024: se va a intentar; si el intento anterior (hace < 2 min) no llegó a conectar, cuenta como fallo y crece la espera.
+  // Devuelve false si con eso queda en espera (no se intenta ahora).
+  _passTry(deviceId) {
+    this._passFail = this._passFail || new Map();
+    var m = _mac(deviceId), now = Date.now(), f = this._passFail.get(m) || { n: 0, until: 0, last: 0 };
+    if (f.last && now - f.last < PASS_RETRY_WINDOW_MS && !this._isReady(deviceId)) {
+      f.n++; f.until = now + Math.min(PASS_FAIL_MAX_MS, PASS_FAIL_BASE_MS * Math.pow(2, f.n - 1));
+      if (f.n === 1 || f.n % 5 === 0) console.log('[JUMP] Conexión de paso con ' + m.slice(-4) + ' sin éxito: vuelvo a probar en ' + Math.round((f.until - now) / 60000) + ' min');
+      this._passFail.set(m, f);
+      if (this._passFail.size > 200) this._passFail.delete(this._passFail.keys().next().value);
+      return false;
+    }
+    f.last = now; this._passFail.set(m, f);
+    return true;
+  }
+
+  // forJump (3024): la conexión es para buscar un puente Jump → se aplican el umbral de señal y la espera por fallos. «Agregar»
+  // (ble_privacy) NO los usa: regla del dueño 11-11, todo NEXO cercano sale al instante.
+  _connectAnon(deviceId, forJump) {
     var self = this, ble = self.ble, key = 'anon:' + _mac(deviceId);
     if (!deviceId || !ble || !ble.nativePlugin || self._isReady(deviceId)) return false;
     var t = self.transient.get(key);
     if (t && Date.now() - t.since < 15000) return true;
+    var aRec = self.anon.get(_mac(deviceId));
+    if (forJump && (!self._passOk(deviceId, aRec && aRec.rssi) || !self._passTry(deviceId))) return false; // 3024
     if (t) self.transient.delete(key);
     var cap = self._transientCap();
     if (self.transient.size >= cap) self._closeIdleTransient(true);
@@ -566,6 +598,8 @@ export class BleRelay {
     if (!isContact) {
       var t = self.transient.get(nx);
       if (t && Date.now() - t.since < 15000) return true; // conectando
+      var nRec = self.nearby.get(nx);
+      if (!self._passOk(deviceId, nRec && nRec.rssi) || !self._passTry(deviceId)) return false; // 3024
       if (t) self.transient.delete(nx);
       if (self.transient.size >= MAX_TRANSIENT) self._closeIdleTransient(true);
       if (self.transient.size >= MAX_TRANSIENT) return false;
@@ -701,15 +735,16 @@ export class BleRelay {
     var cands = [];
     self.nearby.forEach(function(n, nx) {
       if (nx === disc.dst || _inPath(disc.path, id, nx) || self.neighbors.has(nx) || Date.now() - n.ts > NEARBY_TTL_MS) return;
+      if (!self._passOk(n.deviceId, n.rssi)) return; // 3024: ni lejísimos ni en espera por fallos (conocidos también)
       cands.push({ nx: nx, n: n });
     });
     cands.sort(function(a, b) { return b.n.rssi - a.n.rssi; });
     cands.slice(0, MAX_TRANSIENT).forEach(function(c) { self._connect(c.nx, c.n.deviceId); });
     // Ronda 2755: NEXO anónimos (código rotativo): de paso, para saber quién es y preguntarle
     var anon = [];
-    self.anon.forEach(function(a) { if (Date.now() - a.ts <= NEARBY_TTL_MS && !self._isReady(a.deviceId)) anon.push(a); });
+    self.anon.forEach(function(a) { if (Date.now() - a.ts <= NEARBY_TTL_MS && !self._isReady(a.deviceId) && self._passOk(a.deviceId, a.rssi)) anon.push(a); });
     anon.sort(function(a, b) { return b.rssi - a.rssi; });
-    anon.slice(0, Math.max(0, MAX_TRANSIENT - cands.length)).forEach(function(a) { self._connectAnon(a.deviceId); });
+    anon.slice(0, Math.max(0, MAX_TRANSIENT - cands.length)).forEach(function(a) { self._connectAnon(a.deviceId, true); });
   }
 
   _sendRq(id, disc, nx, dev) {

@@ -116,6 +116,10 @@
     {
      "fallo": "3023 (dueño 12-11: «15 s son muchos… 5 s máximo»; «Wi-Fi Direct automático si hay Bluetooth y el Wi-Fi de los dos activo»): tras un corte del Wi-Fi se esperaban 15 s fijos antes de cambiar de camino; Wi-Fi Direct solo desde 150 KB; el diagnóstico no distinguía Wi-Fi apagado de Wi-Fi sin red ni el estado real de la app en el vivo. 3023: margen = promedio medido de reconexión con ese contacto + 2 s (entre 2 y 5 s; sin Wi-Fi propio, al momento); Wi-Fi Direct desde ~100 KB; ESTADO con Wi-Fi encendido/apagado, Wi-Fi Direct, L2CAP y caminos rápidos de cada contacto. wifioff.js W2/W5, wdprep.js, diagplus.js D1b",
      "prueba": "apagar el Wi-Fi con el Bluetooth listo"
+    },
+    {
+     "fallo": "3024 (diagnóstico del vivo 12-11 07:12–07:13): al buscar un puente Jump intentaba conectar «de paso» cada ~minuto con un NEXO a −92/−95 dBm que nunca conectaba: radio gastada. 3024: para buscar puentes no se conecta de paso con nadie (conocido o desconocido) con señal de −90 o peor, y al que no conecta se le espera 1, 2, 4… hasta 15 min; «Agregar» no cambia (regla del dueño 11-11). passfar.js (contraprueba 3023: 2 intentos al lejano en 4 min)",
+     "prueba": "conexiones de paso para Jump"
     }
    ],
    "debiles": [
