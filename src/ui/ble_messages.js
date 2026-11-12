@@ -1436,13 +1436,23 @@ export const BLE_MESSAGE_METHODS = {
             sendNext();
             return;
           }
+          // 3021: el puente de esta ruta no confirmó ni un trozo de un archivo hace poco (relay.bridgeStalled): el archivo NO vuelve
+          // por él; va al buzón de archivos si se puede y, si no, queda ⏳ (lo de texto sigue por el puente con su custodia)
+          var stalledFile = !!(relayDst && rh && self.relay && typeof self.relay.isBridgeStalled === 'function' && self.relay.isBridgeStalled(rh.via));
+          if (stalledFile && !(self.net && typeof self.net.mailboxOk === 'function' && self.net.mailboxOk(nxKey) && blobCandidate(msg))) {
+            console.log('[JUMP] ' + mid + ': el puente ' + rh.via + ' no avanzó con archivos hace poco y no hay buzón de archivos: queda en espera');
+            _vaultUpdateMessageStatus(nexoId, mid, 'pending');
+            try { if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(mid, 'pending'); } catch (e4) {}
+            sendNext();
+            return;
+          }
           // Ronda 2767: directo, a quién va (como al enviarlo: se cifra para él y solo sale por una conexión suya)
           var fileMeta = Object.assign(
             { type: attachmentType },
             attachmentMeta || {},
-            relayDst ? { dst: relayDst } : { to: nxKey }
+            (relayDst && !stalledFile) ? { dst: relayDst } : { to: nxKey }
           );
-          doSend = blobOnly
+          doSend = (blobOnly || stalledFile)
             ? function() { // Fase B (2969): al buzón de archivos (si justo dejó de aplicar, queda pendiente)
               return self._fileToBlobMailbox(nxKey, mid, attachmentPayload, fileMeta) ||
                 Promise.reject(Object.assign(new Error('Contacto no disponible: queda pendiente'), { code: 'PEER_ABSENT' }));
@@ -1455,7 +1465,7 @@ export const BLE_MESSAGE_METHODS = {
                 fileMeta
               );
             };
-          console.log('[BLEInterface] Reenviando ADJUNTO' + (blobOnly ? ' al buzón de archivos' : '') + ':', attachmentType, mid);
+          console.log('[BLEInterface] Reenviando ADJUNTO' + ((blobOnly || stalledFile) ? ' al buzón de archivos' : '') + ':', attachmentType, mid);
         } else {
           var txt;
           if (bigMeta) txt = JSON.stringify({ type: 'attachment', attachmentType: 'file', payload: 'big', meta: attachmentMeta });

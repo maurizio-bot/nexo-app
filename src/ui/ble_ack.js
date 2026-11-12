@@ -77,6 +77,11 @@ const NACK_INTERVAL_MS = 1500;
 const FILE_WINDOW_TIMEOUT_MS = 8000;
 const FILE_PACING_DELAY_MS = 2; // el nativo ya regula el ritmo (control de flujo por callback)
 const MAX_WINDOW_RETRIES = 8;
+// 3021 (diagnóstico S23 12-11 22:13: foto de 57 KB por el Redmi como puente, ni un trozo confirmado en 73 s): un ARCHIVO por un
+// PUENTE Jump que no confirma ni un trozo en tantas ventanas se suelta y el archivo sale por el siguiente camino (buzón de archivos,
+// internet); ese puente queda fuera para archivos BRIDGE_STALL_MS. Un puente vivo confirma la ventana 0 en ~1 s.
+const BRIDGE_STALL_RETRIES = 2;
+const BRIDGE_STALL_MS = 5 * 60 * 1000;
 // #dueño 09-11 (diagnóstico S24 12:15): un flujo saliente > XFER_STUCK_MS sin NINGÚN ACK ya no cuenta como «transferencia
 // activa» para proteger el enlace del ping/zombie del vigilante (hasActiveTransfer): un enlace Bluetooth zombi (las escrituras
 // «salen», no vuelve nada) se detecta y se rehace aunque haya flujos encima (2 ventanas de archivo de 8 s + margen).
@@ -2681,6 +2686,18 @@ ChatStream.prototype._onWindowTimeout = function() {
       return;
     }
     self.windowRetryCount++;
+    // 3021: archivo por un PUENTE Jump que no confirmó ni un trozo → soltar el puente (ver BRIDGE_STALL_RETRIES)
+    if (self.type === 'file' && self.meta && self.meta.dst && self.windowStart === 0 && self.windowRetryCount >= BRIDGE_STALL_RETRIES && !_isNetDevice(self.deviceId)) {
+      var dstS = _normId(self.meta.dst), viaS = '';
+      try { viaS = _normId(self.ble && self.ble._macToNexoId && self.ble._macToNexoId.get(_normMac(self.deviceId))); } catch (e) {}
+      console.warn('[ChatStream] Puente ' + (viaS || self.deviceId) + ' sin confirmar ni un trozo de ' + self.msgId + ' tras ' + self.windowRetryCount + ' ventanas: lo suelto y va por otro camino (buzón/internet) a ' + dstS);
+      try { if (self.ble && self.ble.relay && typeof self.ble.relay.bridgeStalled === 'function') self.ble.relay.bridgeStalled(viaS || self.deviceId, BRIDGE_STALL_MS); } catch (e) {}
+      try { self.ackSystem._dispatchStatus(self.msgId, 'pending'); } catch (e) {}
+      self._giveUpPending();
+      var bleS = self.ble;
+      if (dstS && bleS && typeof bleS._resendPendingMessages === 'function') setTimeout(function() { try { bleS._resendPendingMessages(dstS); } catch (e) {} }, 500);
+      return;
+    }
     // 3005: archivo grande por internet y el otro no confirma → «sondeo» (1 trozo por minuto) en vez de reenviar la ventana
     // entera cada 8 s al vacío. Mantiene el contador en el tope mientras siga el presupuesto de reintento solo (2 h, contacto
     // alcanzable); si se acaba, cae al tope de siempre (abajo).

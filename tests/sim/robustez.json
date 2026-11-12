@@ -104,6 +104,10 @@
     {
      "fallo": "3020 (plan de diagnóstico del dueño 12-11): los diagnósticos reales obligaban a adivinar: sin zona horaria (no se cruzaban dos teléfonos), sin el camino ni la build de cada contacto, sin la historia de cada mensaje, con bucles de cientos de líneas que tapaban lo demás, con solo el registro de un lado y con límites (2 h / 3 por día) que perdían casi todos los síntomas de un día malo. 3020: sección ESTADO, línea de tiempo, compactación, diagnóstico emparejado (respeta el interruptor del otro), síntomas nuevos (reenvío sin fin, enlace que abre y cierra, búsqueda frenada, contacto duplicado, entrega lenta) y límites 10 min / 30 por día / el mismo 2 h. diagplus.js (contraprueba 3019: sin ESTADO)",
      "prueba": "diagnóstico más claro"
+    },
+    {
+     "fallo": "3021 (diagnóstico S23 12-11 22:13, foto de 57 KB al S24 por el Redmi como puente, justo tras la cámara): el puente no confirmó ni un trozo y la ventana 0 se reenvió cada 8 s hasta los 8 reintentos (73 s); el reenvío de pendientes volvía a mandarla por el MISMO puente. 3021: un archivo por un puente que no confirma ni un trozo en 2 ventanas suelta ese puente para archivos 5 min (relay.bridgeStalled) y sale por el buzón de archivos/internet; si no hay buzón, queda ⏳. jumpdead.js (contraprueba 3020: 8 reintentos y ⏳ más de 150 s)",
+     "prueba": "foto por un puente Jump dormido"
     }
    ],
    "debiles": [

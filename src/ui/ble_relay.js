@@ -249,9 +249,21 @@ export class BleRelay {
     var rt = this.routes.get(d);
     if (!rt || Date.now() - rt.ts > ROUTE_TTL_MS) return null;
     if (rt.nearby) return null; // a la vista pero sin conectar: _connectNearby
+    // 3021: un puente que no confirmó ni un trozo de un archivo queda fuera para ARCHIVOS un rato (bridgeStalled)
+    if (files && this._stalledVia && (this._stalledVia.get(_nid(rt.via)) || 0) > Date.now()) return null;
     var dev = usable(this.neighbors.get(rt.via), rt.via);
     if (!dev) return null;
     return { deviceId: dev, direct: false, via: rt.via, hops: rt.hops };
+  }
+
+  // 3021: un ARCHIVO por este puente no avanzó ni un trozo (app del puente dormida, enlace rehecho a medias): no se le vuelven a
+  // mandar archivos durante `ms` (los textos siguen con su custodia de siempre). Se olvida al expirar.
+  isBridgeStalled(via) { var v = _nid(via); return !!(v && this._stalledVia && (this._stalledVia.get(v) || 0) > Date.now()); }
+  bridgeStalled(via, ms) {
+    var v = _nid(via); if (!v) return;
+    this._stalledVia = this._stalledVia || new Map();
+    this._stalledVia.set(v, Date.now() + (ms || 300000));
+    if (this._stalledVia.size > 50) this._stalledVia.delete(this._stalledVia.keys().next().value);
   }
 
   // Ruta por otro teléfono (null si hay enlace directo o no hay ruta)
