@@ -4205,7 +4205,31 @@ class NexoBlePlugin : Plugin() {
             val level = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
             val charging = bm.isCharging
             val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-            call.resolve(JSObject().put("level", level).put("charging", charging).put("powerSave", pm.isPowerSaveMode))
+            val out = JSObject().put("level", level).put("charging", charging).put("powerSave", pm.isPowerSaveMode)
+            // 3020 (diagnóstico más claro, dueño 12-11): Doze, pantalla, optimización de batería, red activa y punto de acceso.
+            // Cada dato por separado: si uno falla en algún modelo, los demás siguen.
+            try { out.put("idle", pm.isDeviceIdleMode) } catch (e: Exception) {}
+            try { out.put("interactive", pm.isInteractive) } catch (e: Exception) {}
+            try { out.put("ignoringOpt", pm.isIgnoringBatteryOptimizations(context.packageName)) } catch (e: Exception) {}
+            try {
+                val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+                val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+                val net = when {
+                    caps == null -> "ninguna"
+                    caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+                    caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "datos móviles"
+                    caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) -> "VPN"
+                    else -> "otra"
+                }
+                out.put("net", net)
+            } catch (e: Exception) {}
+            try {
+                val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+                val m = wm.javaClass.getDeclaredMethod("isWifiApEnabled")
+                m.isAccessible = true
+                out.put("hotspot", m.invoke(wm) as Boolean)
+            } catch (e: Throwable) {}
+            call.resolve(out)
         } catch (e: Exception) {
             call.reject("Estado de batería no disponible: ${e.message}")
         }

@@ -177,6 +177,7 @@ export const BLE_CONTACT_METHODS = {
     self._reinstallAsked.add(nx);
     var old = cands[0], oldNx = _normId(old.nexoId || old.deviceUUID), name = old.name || '';
     console.log('[ADD] ' + nx + ' se llama igual que ' + oldNx + ' (sin camino ahora): se pregunta si es el mismo teléfono reinstalado');
+    try { window.dispatchEvent(new CustomEvent('nexo:diag:symptom', { detail: { kind: 'contacto_duplicado', info: oldNx + ' → ' + nx + ' (mismo nombre)' } })); } catch (e) {} // 3020
     setTimeout(function() {
       var ok = false;
       try { ok = window.confirm(t('merge_reinstall_q', '«{name}» ya estaba en tus contactos con otro NEXO ID. ¿Es el mismo teléfono, reinstalado? Si dices que sí, el chat anterior y lo pendiente pasan a este y el contacto viejo se borra.').replace('{name}', name)); } catch (e) { ok = false; }

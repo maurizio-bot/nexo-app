@@ -2,6 +2,7 @@
  * NEXO — Registro de diagnóstico (sacado de main.js en la ronda 2752, sin cambios): copia la consola (también la
  * sesión anterior) para Perfil → Copiar diagnóstico, con los eventos clave aparte.
  */
+import { diagStateText, diagCompactLines, diagStateInit } from './diag_state.js'; // 3020: ESTADO + compactación de repetidas
 // ===================== v9.9.32: registro de diagnóstico =====================
 // Últimas líneas de la consola (también de la sesión anterior) para verlas en Perfil → Diagnóstico y
 // copiarlas: lo que pasa en el teléfono real sin necesidad de un PC.
@@ -45,6 +46,7 @@ var DIAG_KEY_RE = /BT_ERR|\[BIN\]|\[MTU\]|\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FI
       return orig.apply(null, arguments);
     };
   });
+  try { diagStateInit(); } catch (e) {} // 3020: línea de tiempo de los mensajes y estado del teléfono
   window.addEventListener('error', function(e) { console.error('[ERROR] ' + (e && e.message) + ' @' + (e && e.filename) + ':' + (e && e.lineno)); });
   window.addEventListener('unhandledrejection', function(e) { console.warn('[PROMESA] ' + (e && e.reason && (e.reason.message || e.reason))); });
   function plugin() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE; }
@@ -80,7 +82,8 @@ function _diagSessionText(hourOnly) {
     key = _diagKey.filter(function(l, i) { return _diagKeyTimes[i] >= cut; });
     lines = _diagLines.filter(function(l, i) { return _diagTimes[i] >= cut; });
   }
-  return '--- eventos clave ---\n' + key.slice(-DIAG_KEY_MAX).join('\n') + '\n--- últimas líneas ---\n' + lines.slice(-400).join('\n');
+  // 3020: las líneas seguidas iguales (salvo hora y números) se compactan: un bucle se ve como bucle y no se come el resto
+  return '--- eventos clave ---\n' + diagCompactLines(key.slice(-DIAG_KEY_MAX)).join('\n') + '\n--- últimas líneas ---\n' + diagCompactLines(lines.slice(-400)).join('\n');
 }
 
 // Ronda 2812 / 28-10 (pedido del dueño: «solo 30 minutos»): recorta un texto ya guardado (la sesión anterior) a la
@@ -119,6 +122,8 @@ export function _diagnosticText() {
   var prev = _lastHourText(_diagPrev);
   // L1 (auditoría 28-10): la garantía dura de ≤ MAX_DIAG_LINES se aplica de verdad (antes _capDiag estaba definida pero
   // no se llamaba; hoy el texto cabe por construcción, pero así el tope descrito no queda sin efecto si sube una cte).
-  return _capDiag(head + nat + (prev ? '\n===== SESIÓN ANTERIOR (' + DIAG_WINDOW_LABEL + ') =====\n' + prev + '\n' : '') +
+  // 3020: ESTADO (zona horaria, teléfono, caminos por contacto con su build, línea de tiempo de los mensajes) arriba de todo
+  var st = ''; try { st = '\n' + diagStateText(); } catch (e) { st = ''; }
+  return _capDiag(head + st + nat + (prev ? '\n===== SESIÓN ANTERIOR (' + DIAG_WINDOW_LABEL + ') =====\n' + prev + '\n' : '') +
     '\n===== SESIÓN ACTUAL (' + DIAG_WINDOW_LABEL + ') =====\n' + _diagSessionText(true));
 }

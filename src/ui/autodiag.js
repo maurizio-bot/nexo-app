@@ -13,7 +13,7 @@
  * «últimos envíos» a la vista con ✓ cuando el desarrollador lo confirma. El desarrollador ve «Diagnósticos recibidos (N)»
  * en su Perfil y los copia de una vez (sus propios síntomas van directo a esa lista, sin viajar).
  * Perillas de prueba (tests/sim): window.NEXO_DIAG_DEV, NEXO_AUTODIAG_GAP_MS, NEXO_AUTODIAG_MAX_DAY, NEXO_AUTODIAG_OLD_MS,
- * NEXO_AUTODIAG_SCAN_MS.
+ * NEXO_AUTODIAG_SCAN_MS, NEXO_AUTODIAG_PAIR_MS (3020), NEXO_DIAG_SLOW_MS (3020, diag_state.js).
  */
 import { _diagnosticText } from './diag.js';
 import { _getBLEContacts, _isResendable, _normId, _showToast, _tooBigForBt } from './ble_helpers.js';
@@ -22,9 +22,11 @@ import { t } from './i18n.js';
 import { diagChannelAvailable, diagChannelInit, diagChannelSend } from './diag_channel.js'; // 2992: canal directo a Claude
 
 export var DIAG_DEV_NX = 'nx1n36c283'; // el S24 del dueño (Fénix conserva el NEXO ID al cambiar de teléfono)
-var GAP_MS = 2 * 60 * 60 * 1000;       // como mucho un diagnóstico automático cada 2 h
-var MAX_PER_DAY = 3;                   // y 3 por día
-var SAME_MS = 24 * 60 * 60 * 1000;     // el mismo síntoma (tipo + detalle) una vez cada 24 h
+// 3020 (dueño 12-11, «más diagnósticos = más arreglos»): antes 2 h / 3 por día / el mismo síntoma 24 h; se perdían casi
+// todos los síntomas de un día malo. Ahora la recogida es cada hora y los límites dejan pasar lo que hace falta.
+var GAP_MS = 10 * 60 * 1000;           // como mucho un diagnóstico automático cada 10 min
+var MAX_PER_DAY = 30;                  // y 30 por día
+var SAME_MS = 2 * 60 * 60 * 1000;      // el mismo síntoma (tipo + detalle) una vez cada 2 h
 var DIAG_MAX_CHARS = 40000;            // ~40 KB por envío (cabecera + lo más reciente)
 var INBOX_MAX = 20, SENT_MAX = 10;
 var OLD_PENDING_MS = 30 * 60 * 1000;   // un pendiente de más de 30 min con el contacto ALCANZABLE es un síntoma
@@ -81,7 +83,10 @@ function _compose(kind, info) {
   var head = 'NEXO diagnóstico AUTOMÁTICO · síntoma: ' + kind + (info ? ' (' + info + ')' : '') + ' · build ' + autoDiagBuild() + ' · ' + new Date().toISOString() + '\n';
   var max = DIAG_MAX_CHARS - head.length;
   if (full.length <= max) return head + full;
-  var lines = full.split('\n'), top = lines.slice(0, 3).join('\n') + '\n… (recortado: se manda lo más reciente) …\n';
+  // 3020: se conserva la cabecera ENTERA hasta el primer registro (incluye la sección ESTADO: zona, caminos, línea de tiempo)
+  var cut = full.search(/\n===== (REGISTRO NATIVO|SESIÓN)/);
+  var top = (cut > 0 && cut < max / 2) ? full.substring(0, cut) : full.split('\n').slice(0, 3).join('\n');
+  top += '\n… (recortado: se manda lo más reciente) …\n'; // i18n-ok: texto del diagnóstico (para el desarrollador)
   return head + top + full.substring(full.length - (max - top.length));
 }
 
@@ -117,6 +122,7 @@ export function autoDiagReport(kind, info) {
   var first = !s.first; if (first) s.first = now;
   _saveState(s);
   console.log('[AUTODIAG] síntoma «' + kind + '»' + (info ? ' (' + info + ')' : '') + ' → diagnóstico ' + (isDev ? 'guardado en este teléfono (soy el desarrollador)' : 'al desarrollador ' + dev + ' (' + id + ')') + ', ' + _kb(text.length) + ' KB');
+  _askPeer(kind, info, now); // 3020 (B): el otro teléfono implicado manda el suyo (si lo tiene encendido)
   if (first && !isDev) { try { _showToast(t('autodiag_first_toast', 'Se mandó un diagnóstico técnico al desarrollador (sin tus mensajes). Puedes apagarlo en Perfil.'), 'info'); } catch (e) {} }
   _emit();
   return isDev ? 'local' : 'enviado';
@@ -143,8 +149,36 @@ export function autoDiagSendSummary(day, text) {
   return isDev ? 'local' : 'enviado';
 }
 
+// 3020 (B, plan de diagnóstico del dueño 12-11): DIAGNÓSTICO EMPAREJADO. Un fallo entre dos teléfonos se entiende con los
+// DOS registros (quién mandó, quién no confirmó). Si el síntoma nombra a un contacto (su NEXO ID va al principio del
+// detalle) y hay camino con él ahora, se le pide —con un mensaje oculto cifrado, sin texto— que mande el suyo. Él lo manda
+// SOLO si tiene el diagnóstico automático encendido (su interruptor manda) y con sus propios límites. Un pedido por contacto
+// cada PAIR_ASK_MS; un diagnóstico pedido no pide a su vez (sin ping-pong). Una build anterior ignora el pedido (sin «text»).
+var PAIR_ASK_MS = 30 * 60 * 1000, _pairAsked = {}, _pairGot = {};
+function _askPeer(kind, info, now) {
+  if (/^par:/.test(kind)) return;
+  var m = /^(nx[0-9a-z]{8})\b/.exec(String(info || '')); if (!m) return;
+  var nx = m[1], bi = (typeof window !== 'undefined') ? window.bleInterface : null;
+  if (nx === _me() || !_isContact(nx) || now - (_pairAsked[nx] || 0) < _knob('NEXO_AUTODIAG_PAIR_MS', PAIR_ASK_MS)) return;
+  var via = 'none'; try { via = bi && typeof bi.linkOf === 'function' ? bi.linkOf(nx) : 'none'; } catch (e) {}
+  if (via === 'none') return; // sin camino ahora: no se deja un pedido pendiente que llegaría tarde
+  _pairAsked[nx] = now;
+  var id = _sendTextTo(nx, JSON.stringify({ type: 'nexo_diag', v: 1, req: 1, sym: kind, at: now }), '', true);
+  console.log('[AUTODIAG] pido a ' + nx + ' su diagnóstico (síntoma «' + kind + '», camino ' + via + ')' + (id ? '' : ': no salió'));
+}
+function _pairRequest(from, k) {
+  var now = Date.now(), sym = String(k.sym || 'sintoma').replace(/[^a-z_]/gi, '').substring(0, 30) || 'sintoma';
+  if (!_isContact(from)) return 'no_contacto';
+  if (now - (_pairGot[from] || 0) < _knob('NEXO_AUTODIAG_PAIR_MS', PAIR_ASK_MS)) return 'reciente';
+  _pairGot[from] = now;
+  var r = autoDiagReport('par:' + sym, 'pedido por ' + from);
+  console.log('[AUTODIAG] ' + from + ' pidió mi diagnóstico (su síntoma «' + sym + '»): ' + r);
+  return r;
+}
+
 // Lo que llega de un probador (main.js, mensaje oculto nexo_diag ya descifrado): a la bandeja, nunca al chat
 export function autoDiagReceived(fromNx, k) {
+  if (k && k.v === 1 && k.req === 1) { var fr = _normId(fromNx); if (/^nx[0-9a-z]{8}$/.test(fr)) _pairRequest(fr, k); return true; } // 3020 (B)
   if (!k || k.v !== 1 || typeof k.text !== 'string') return false;
   var from = _normId(fromNx);
   if (!/^nx[0-9a-z]{8}$/.test(from)) return false;

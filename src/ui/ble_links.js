@@ -157,6 +157,16 @@ export const BLE_LINK_METHODS = {
     if (!c.nt) { c.nt = 1; _saveBLEContacts(contacts); if (this.net) this.net.tick(); }
   },
 
+  // 3020: el contacto se acaba de crear y ya había dicho que tiene internet (su kx nt:1 llegó antes de ser contacto): se
+  // aplica y se guarda YA. Antes solo se aplicaba en el siguiente ciclo de internet (segundos después); si la app se cerraba
+  // antes, se perdía: al volver no se leía el buzón de internet de ese contacto (ni sus textos ni sus archivos pendientes).
+  _applyNtNow(nexoId) {
+    var nx = _normId(nexoId);
+    if (!nx || !this._ntKnown || !this._ntKnown.has(nx)) return;
+    this._applyNtKnown();
+    if (this.net) this.net.tick();
+  },
+
   _applyNtKnown() {
     if (!this._ntKnown || !this._ntKnown.size) return;
     var self = this, contacts = _getBLEContacts(), changed = false;

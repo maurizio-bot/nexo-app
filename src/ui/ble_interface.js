@@ -690,6 +690,7 @@ export class BLEInterface {
         if (contact) peerUUID = contact.nexoId || contact.deviceUUID;
         // Ronda 2760: al diagnóstico (con la dirección: puede haber varios enlaces con el mismo contacto)
         console.log('[BLEInterface] Enlace ' + (peerUUID || '?') + ' (' + _normMac(deviceId).slice(-4) + ') desconectado' + (data.reason ? ': ' + data.reason : ''));
+        if (typeof self._noteLinkFlap === 'function') self._noteLinkFlap(peerUUID || self._macToNexoId.get(_normMac(deviceId)), 'desconexion'); // 3020
         self.connectedDevices.delete(deviceId);
         self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
         self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.OFFLINE, since: Date.now() });

@@ -4,6 +4,7 @@
  * pendientes, reenvío al reconectar).
  */
 import { e2eOpenAnon } from '../vault/e2e_crypto.js';
+import { diagNotePeerBuild } from './diag_state.js'; // 3020
 import { e2eAnyEncrypted, e2eOpenText, e2eOuterAd } from '../vault/e2e_proto.js';
 import { groupAttachment, parseGroupEnvelope } from './groups.js';
 import { NET_MAX_B64_BYTES } from './media_limits.js';
@@ -224,6 +225,7 @@ export const BLE_MESSAGE_METHODS = {
         if (p.from && p.b2) self._notePeerBundle(p.from, p.b2);
         if (p.ss && p.from) self._noteSealPeer(p.from);
         if (p.nt && p.from) self._noteNetPeer(p.from);
+        if (p.from && p.bd) diagNotePeerBuild(p.from, p.bd); // 3020: su build, para el diagnóstico
         if (p.from) self._pqHave.set(_normId(p.from), Number(p.ph) || 0);
         if (p.rq) self._sendKxRouted(p.from, false);
         return Promise.resolve(null);
@@ -249,6 +251,7 @@ export const BLE_MESSAGE_METHODS = {
       if (p.fx && p.from) self._noteFenixPeer(p.from, data.deviceId, Number(p.fx) || 1);
       if (p.ss && p.from) self._noteSealPeer(p.from);
       if (p.nt && p.from) self._noteNetPeer(p.from);
+      if (p.from && p.bd) diagNotePeerBuild(p.from, p.bd); // 3020: su build, para el diagnóstico
       if (self.ackSystem) self.ackSystem.markBin(data.deviceId, !p.bf); // ronda 2753: trozos binarios (una build anterior no los entiende)
       // (3012: un kx «ligero» —lt— o contestado por el nativo con la app dormida —nk— no dice nada de lo poscuántico: no se toca)
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '') && !p.lt && !p.nk) self._pqHave.set(_normId(p.from), Number(p.ph) || 0);
@@ -446,6 +449,7 @@ export const BLE_MESSAGE_METHODS = {
             _addBLEContact({ deviceUUID: senderUUID, name: senderName, deviceId: data.viaRelay ? null : deviceId });
             if (data.e2eSenderKey) self._noteSenderKey(senderUUID, data.e2eSenderKey);
             if (data.e2eSenderKey && data.e2eProto === 2) self._markProto2(senderUUID, data.e2eSenderKey);
+            if (typeof self._applyNtNow === 'function') self._applyNtNow(senderUUID); // 3020: su «tengo internet» se guarda ya
             self.renderContactsList(); self.renderOnlineStrip();
             if (typeof self._offerReinstallMerge === 'function') self._offerReinstallMerge(senderUUID); // 3018: ¿mismo teléfono reinstalado?
           } else {
@@ -1257,6 +1261,8 @@ export const BLE_MESSAGE_METHODS = {
         var b = self._resendBackoff.get(nxKey) || { n: 0, until: 0, timer: null };
         b.n++; b.until = Date.now() + Math.min(120000, 15000 * Math.pow(2, b.n - 1));
         self._resendBackoff.set(nxKey, b);
+        // 3020: síntoma para el diagnóstico automático (una vez por racha: al llegar a la 3.ª vuelta sin confirmar)
+        if (b.n === 3) _safeDispatchEvent('nexo:diag:symptom', { kind: 'reenvio_sin_fin', info: nxKey + ' ' + run.noAck + ' sin confirmar, 3 vueltas' });
       }
       if (run.again) setTimeout(function() { self._resendPendingMessages(nexoId); }, 300);
     };

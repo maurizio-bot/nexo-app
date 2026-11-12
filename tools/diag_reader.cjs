@@ -2,7 +2,9 @@
 // Lector del CANAL DIRECTO de diagnósticos (2992): baja de los relés los eventos kind 1065 con la etiqueta de la llave de diagnóstico, los DESCIFRA con
 // la mitad privada (variable de entorno NEXO_DIAG_PRIV, hex de 32 bytes; jamás en el repositorio) y los imprime ordenados. Pensado para la tarea
 // programada de Claude (cada sesión nueva recibe la variable). Formato: src/ui/diag_channel.js.
-// Uso:  NEXO_DIAG_PRIV=<hex> node tools/diag_reader.cjs [--horas 26] [--relays wss://a,wss://b] [--json]
+// Uso:  NEXO_DIAG_PRIV=<hex> node tools/diag_reader.cjs [--horas 26 | --hora-anterior] [--relays wss://a,wss://b] [--json]
+// --hora-anterior (3020, recogida cada hora): solo los llegados en la hora de reloj ANTERIOR completa (p. ej. a las 10:07, de
+// 09:00:00 a 09:59:59 UTC). Así cada pasada horaria ve cada diagnóstico una sola vez: sin huecos ni repetidos.
 // En el entorno de Claude el WebSocket sale por el proxy (HTTPS_PROXY): hace falta `ws` y `https-proxy-agent` (se instalan solos en tools/.deps).
 'use strict';
 const fs = require('fs');
@@ -98,13 +100,16 @@ async function main() {
   const args = process.argv.slice(2), get = (k, def) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : def; };
   const priv = (process.env.NEXO_DIAG_PRIV || '').trim();
   if (!/^[0-9a-f]{64}$/i.test(priv)) { console.error('Falta NEXO_DIAG_PRIV (hex de 32 bytes) en el entorno.'); process.exit(2); }
-  const horas = Number(get('--horas', '26')) || 26;
+  const horaAnt = args.includes('--hora-anterior');
+  const nowSec = Math.floor(Date.now() / 1000), hourEnd = Math.floor(nowSec / 3600) * 3600;
+  const horas = horaAnt ? 1 : (Number(get('--horas', '26')) || 26);
   const relays = (get('--relays', '') || '').split(',').filter(Boolean);
   const d = await ensureDeps();
   const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
-  const r = await readDiagnostics({ privHex: priv, relays: relays.length ? relays : DEFAULT_RELAYS, sinceSec: Math.floor(Date.now() / 1000) - Math.round(horas * 3600), WebSocket: d.WebSocket, agent: proxy ? new d.HPA(proxy) : undefined });
+  const r = await readDiagnostics({ privHex: priv, relays: relays.length ? relays : DEFAULT_RELAYS, sinceSec: horaAnt ? hourEnd - 3600 : nowSec - Math.round(horas * 3600), WebSocket: d.WebSocket, agent: proxy ? new d.HPA(proxy) : undefined });
+  if (horaAnt) r.list = r.list.filter((e) => e.created_at >= hourEnd - 3600 && e.created_at < hourEnd);
   if (args.includes('--json')) { console.log(JSON.stringify(r)); return; }
-  console.log('DIAGNÓSTICOS recibidos en las últimas ' + horas + ' h: ' + r.list.length + ' (etiqueta ' + r.tag + '; firmas malas ' + r.bad.firma + ', no descifrados ' + r.bad.descifrado + (r.errs.length ? '; relés con problema: ' + r.errs.join(' | ') : '') + ')');
+  console.log('DIAGNÓSTICOS recibidos ' + (horaAnt ? 'entre ' + new Date((hourEnd - 3600) * 1000).toISOString().substring(11, 16) + ' y ' + new Date(hourEnd * 1000).toISOString().substring(11, 16) + ' UTC' : 'en las últimas ' + horas + ' h') + ': ' + r.list.length + ' (etiqueta ' + r.tag + '; firmas malas ' + r.bad.firma + ', no descifrados ' + r.bad.descifrado + (r.errs.length ? '; relés con problema: ' + r.errs.join(' | ') : '') + ')');
   for (const e of r.list) {
     console.log('\n===== ' + new Date(e.at || e.created_at * 1000).toISOString() + ' · ' + e.sym + (e.info ? ' (' + e.info + ')' : '') + ' · build ' + (e.build || '?') + ' =====');
     console.log(e.text);

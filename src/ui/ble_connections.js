@@ -123,6 +123,22 @@ export const BLE_CONNECTION_METHODS = {
   // agrupan los enlaces LISTOS por NEXO; con 2+, se conserva el mejor (mayor MTU, no muerto) y se cierran los demás con el
   // disconnectDevice nativo que ya existe. Salvaguardas: freno (_dupDebounceMs: deben coexistir un rato, no un traspaso),
   // enfriamiento por MAC (_dupCloseCooldownMs), y NUNCA se cierra un enlace en transferencia ni el del chat activo (busy).
+  // 3020 (diagnóstico más claro): un enlace Bluetooth que se abre y se cierra en bucle con el mismo contacto es un síntoma
+  // (S24 12-11: conectar/cerrar «repetido» cada ~60 s). Cuenta cierres por contacto en 10 min: 6 desconexiones o 3 cierres
+  // por repetido → diagnóstico automático (como mucho uno cada 30 min por contacto; los límites globales siguen aparte).
+  _noteLinkFlap(nexoId, why) {
+    var nx = _normId(nexoId); if (!/^nx[0-9a-z]{8}$/.test(nx)) return;
+    var now = Date.now(), key = nx + '|' + why;
+    this._flapLog = this._flapLog || new Map(); this._flapSaid = this._flapSaid || new Map();
+    var arr = (this._flapLog.get(key) || []).filter(function(t) { return now - t < 600000; });
+    arr.push(now); this._flapLog.set(key, arr);
+    var need = why === 'repetido' ? 3 : 6;
+    if (arr.length >= need && now - (this._flapSaid.get(nx) || 0) > 1800000) {
+      this._flapSaid.set(nx, now);
+      _safeDispatchEvent('nexo:diag:symptom', { kind: 'enlace_abre_cierra', info: nx + ' ' + arr.length + ' ' + (why === 'repetido' ? 'cierres por enlace repetido' : 'desconexiones') + ' en 10 min' });
+    }
+  },
+
   _dedupBleLinks() {
     var self = this;
     if (self._cameraBlePaused || self.isDummyMode) return;
@@ -156,6 +172,7 @@ export const BLE_CONNECTION_METHODS = {
         if ((self._dupClosedUntil.get(key) || 0) > now) continue;       // enfriamiento por MAC
         self._dupClosedUntil.set(key, now + self._dupCloseCooldownMs);
         console.log('[BLEInterface] Dedup: cierro enlace repetido ' + key + ' de ' + nx + ' (me quedo con el mejor)');
+        self._noteLinkFlap(nx, 'repetido');
         _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: key }).catch(function() {});
       }
     });
@@ -368,7 +385,14 @@ export const BLE_CONNECTION_METHODS = {
       var go = function() {
         // v6.1.13: escanear comparte la radio con las conexiones; durante una transferencia de archivo
         // se salta este turno (en el teléfono real la foto/vídeo iba más lenta)
-        if (self._transferActive(true)) { console.log('[BLEInterface] Re-búsqueda aplazada: transferencia en curso'); return; }
+        if (self._transferActive(true)) {
+          console.log('[BLEInterface] Re-búsqueda aplazada: transferencia en curso');
+          // 3020: búsqueda frenada más de 3 min seguidos (contactos perdidos sin buscarse) → síntoma, una vez por racha
+          var nowP = Date.now(); if (!self._scanHeldSince) self._scanHeldSince = nowP;
+          if (!self._scanHeldSaid && nowP - self._scanHeldSince > 180000) { self._scanHeldSaid = true; _safeDispatchEvent('nexo:diag:symptom', { kind: 'busqueda_frenada', info: Math.round((nowP - self._scanHeldSince) / 60000) + ' min sin buscar a ' + activeLost.length + ' contacto(s): transferencia en curso' }); }
+          return;
+        }
+        self._scanHeldSince = 0; self._scanHeldSaid = false;
         if (!self._cameraBlePaused && !self.isScanning) {
           self._reconnectScanAttempts++;
           console.log('[BLEInterface] Re-búsqueda de contactos', activeLost, presence ? '(+presencia)' : '', 'intento', self._reconnectScanAttempts, hidden ? 'oculta' : '');
@@ -715,6 +739,7 @@ export const BLE_CONNECTION_METHODS = {
         deviceId: device.id || null
       });
       _vaultGetOrCreateContact(nexoId, name, device.name);
+      if (typeof this._applyNtNow === 'function') this._applyNtNow(nexoId); // 3020: su «tengo internet» se guarda ya
       // 3018 (opción A del dueño): ¿es un teléfono que ya estaba, reinstalado (NEXO ID nuevo)? Se pregunta antes de unir
       if (typeof this._offerReinstallMerge === 'function') this._offerReinstallMerge(nexoId);
       // 3012: si este teléfono ya dijo quién es (su kx directo, _noteKxPeer), su clave se guarda al agregarlo: el cifrado queda

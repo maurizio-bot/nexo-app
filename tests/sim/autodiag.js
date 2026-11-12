@@ -4,7 +4,7 @@
 //   (1) un síntoma en A (evento nexo:diag:symptom / report) manda a B un diagnóstico cifrado como mensaje OCULTO: llega a la
 //       bandeja de B con remitente, síntoma y texto; NO aparece como mensaje en el chat de ninguno de los dos (en A queda un
 //       mensaje oculto, que es lo que le da la cola de pendientes); A ve el ✓ cuando B lo confirma.
-//   (2) límites: el mismo síntoma no se repite en 24 h; otro síntoma espera el hueco de 2 h; apagado → no manda; tope diario.
+//   (2) límites (3020: 10 min / 30 por día / el mismo 2 h): el mismo síntoma no se repite; otro síntoma espera el hueco; apagado → no manda; tope diario.
 //   (3) B apagado (fuera de alcance): el diagnóstico queda pendiente y llega solo cuando B vuelve (misma cola que un mensaje).
 //   (4) el propio desarrollador: su síntoma va directo a su bandeja, sin viajar.
 //   (5) pendiente VIEJO con el contacto alcanzable (barrido): se detecta y se manda como síntoma, una sola vez.
@@ -91,7 +91,7 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
   adA().setEnabled(false);
   r.apagado_no_manda = adA().report('reintentos', 'x2') === 'apagado' && adB().inbox().length === 1;
   adA().setEnabled(true);
-  { const st = adA().state(); st.count = 3; st.day = new Date().toISOString().substring(0, 10); A.win.localStorage.setItem('nexo_autodiag_state', JSON.stringify(st)); }
+  { const st = adA().state(); st.count = 30; st.day = new Date().toISOString().substring(0, 10); A.win.localStorage.setItem('nexo_autodiag_state', JSON.stringify(st)); }
   r.tope_diario = adA().report('reintentos', 'x3') === 'tope';
   { const st = adA().state(); st.count = 1; A.win.localStorage.setItem('nexo_autodiag_state', JSON.stringify(st)); }
   await sleep(500);

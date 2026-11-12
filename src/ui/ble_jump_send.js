@@ -111,6 +111,7 @@ export const BLE_JUMP_METHODS = {
       var pkt = { v: 1, type: 'kx', from: _normId(self.localNexoId), to: nx, pk: pk, msgId: 'kx_' + now, ss: 1, nt: 1, ph: ratchetPeerPqId(nx) };
       if (b2) pkt.b2 = b2;
       if (request) pkt.rq = 1;
+      var bd = (typeof window !== 'undefined' && window.NEXO_BUILD) || ''; pkt.bd = /^\d{1,6}$/.test(String(bd)) ? String(bd) : 'dev'; // 3020
       return self._sealObj(nx, pkt).then(function(o) { self.relay.sendRouted(o); });
     }).catch(function() {});
   }

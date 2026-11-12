@@ -96,6 +96,14 @@
     {
      "fallo": "3016 (dueño 12-11, diagnóstico S23 con la 3014): con un contacto cuyo enlace seguía «vivo» (pings contestados) pero que no confirmaba, el S23 reenviaba 2 textos cortos sin pausa más de 16 min («ACK timeout 1..5/5» → «Pending fallo» → 0,3 s → «Reenviando», una vuelta cada ~22 s). 3016: tras una vuelta sin ningún éxito y todo por falta de confirmación, la siguiente espera 15→30→60 s (tope 2 min); una confirmación de ese contacto la quita. resendloop.js (contraprueba 3015: 6 vueltas en 150 s; 3016: 3)",
      "prueba": "reenvío sin pausa a un contacto que no confirma"
+    },
+    {
+     "fallo": "3020 (batería de la 3019: blobe2e Fase B y bigcita Fase D fallaban): el «tengo internet» (kx nt:1) de un teléfono que aún no era contacto se guardaba solo en memoria y se aplicaba al contacto en el siguiente ciclo de internet (segundos después); si la app se cerraba antes, se perdía y al volver no se leía el buzón de internet de ese contacto (ni textos ni archivos) ni se le veía en línea. La 3019 lo destapó (ya no se abre un segundo enlace que repetía el kx). 3020: se aplica y guarda al crear el contacto. ntpersist.js (contraprueba 3016 y 3019: falla N1/N2/N3; el fallo es anterior, la 3019 solo lo destapó)",
+     "prueba": "«tiene internet» guardado al crear el contacto"
+    },
+    {
+     "fallo": "3020 (plan de diagnóstico del dueño 12-11): los diagnósticos reales obligaban a adivinar: sin zona horaria (no se cruzaban dos teléfonos), sin el camino ni la build de cada contacto, sin la historia de cada mensaje, con bucles de cientos de líneas que tapaban lo demás, con solo el registro de un lado y con límites (2 h / 3 por día) que perdían casi todos los síntomas de un día malo. 3020: sección ESTADO, línea de tiempo, compactación, diagnóstico emparejado (respeta el interruptor del otro), síntomas nuevos (reenvío sin fin, enlace que abre y cierra, búsqueda frenada, contacto duplicado, entrega lenta) y límites 10 min / 30 por día / el mismo 2 h. diagplus.js (contraprueba 3019: sin ESTADO)",
+     "prueba": "diagnóstico más claro"
     }
    ],
    "debiles": [

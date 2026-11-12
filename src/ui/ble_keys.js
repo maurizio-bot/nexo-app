@@ -22,6 +22,8 @@ export const BLE_KEY_METHODS = {
     pkt.fx = 3; // Fénix: 1 = la cuenta; 2 = también los mensajes (segmentos); 3 = también fotos y archivos (2757)
     pkt.ss = 1; // entiende el remitente sellado (sobres 'sx' por Jump)
     pkt.nt = 1; // v6.13.0: internet por relés públicos
+    // 3020: la build instalada (solo para el diagnóstico del otro: ver qué versión tiene cada contacto)
+    var bd = (typeof window !== 'undefined' && window.NEXO_BUILD) || ''; pkt.bd = /^\d{1,6}$/.test(String(bd)) ? String(bd) : 'dev';
     pkt.bf = 1; // ronda 2753: entiende trozos binarios de archivos por Bluetooth
     if (self.localDeviceName) pkt.nm = String(self.localDeviceName).substring(0, 40); // ronda 2764: nombre del teléfono (el anuncio no lo trae)
     pkt.bg = 1; // ronda 2756: archivos grandes por Wi-Fi / Wi-Fi Direct (big_file.js)
