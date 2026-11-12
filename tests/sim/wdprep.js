@@ -50,7 +50,7 @@ const { importSrc } = require('./srcmod');
   const wd3 = mk(); wd3._setWdReady('nxb0000002', -1);
   r.ttl_vencido = wd3._isWdReady('nxb0000002') === false;
 
-  r.constantes = (WD_MIN_BYTES === 150000 && WD_MIN_BYTES_READY === 20000);
+  r.constantes = (WD_MIN_BYTES === 100000 && WD_MIN_BYTES_READY === 20000); // 3023: el mínimo baja a 100 000 (dueño 12-11)
 
   // ----- PASO 1 (dueño 05-11): BT en MTU MÍNIMO (23) → WD para archivos MEDIANOS aunque NO esté preparado (esquivar el BT
   // lento del diagnóstico). Usa el Wi-Fi Direct que YA existe; si falla, cae a Bluetooth. Apagable con NEXO_WD_TINY. -----

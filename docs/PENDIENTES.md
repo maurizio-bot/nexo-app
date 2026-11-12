@@ -731,7 +731,9 @@ Queda, por prioridad (cada uno necesita un cambio de protocolo y probarse en los
 
 ## Reglas para elegir el camino de envío (decididas por el dueño, 23-10-2026; revisadas el 24-10-2026, build 2761)
 1. **Wi-Fi en el mismo router/módem: prioridad sobre todo** (seguro, rápido, no gasta datos) y **se mantiene, sin
-   brincar**: no se deja por un pico ni por un corte breve (primero se intenta recuperar, 15 s); solo si está muy mal
+   brincar**: no se deja por un pico ni por un corte breve (primero se intenta recuperar; **desde la 3023, dueño 12-11: «15 s
+   son muchos… 5 s máximo»: el margen es el promedio medido de reconexión con ese contacto + 2 s, entre 2 y 5 s; sin Wi-Fi
+   propio, 0 s; los textos nuevos ya van por el otro camino durante el margen desde la 3022**); solo si está muy mal
    un rato (~12 s seguidos). Se vuelve a él cuando lleva ~30 s bien. Una foto a medias no cambia de camino por un pico.
 2. **Wi-Fi muy malo o caído → internet** (los dos en Wi-Fi). **Sin internet → Bluetooth** (y Jump si no hay alcance).
 3. **Wi-Fi Direct**: para fotos, vídeos y archivos grandes cuando no hay Wi-Fi común ni internet, antes que Bluetooth.

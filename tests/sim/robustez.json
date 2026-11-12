@@ -112,6 +112,10 @@
     {
      "fallo": "3022 (prueba del dueño 12-11 07:05, S24 y vivo con la 3018, los dos apagan el Wi-Fi con el Bluetooth listo): (1) en el margen de 15 s del corte los textos nuevos seguían yendo al Wi-Fi caído (5 fallos nativos por texto; llegaban a los 37–54 s); (2) un respaldo de Fénix siguió por Bluetooth con trozos de Wi-Fi de 24 000 letras (~48 escrituras, bajo el umbral de 100 que los rehacía) y tapó el Bluetooth ~40 s: textos sin confirmar en los dos sentidos. 3022: durante el margen lo nuevo y los textos en vuelo van por el otro camino listo (lan.canReach/_lanSoftDown); el archivo a medias espera el margen (regla del dueño) y al pasar a Bluetooth se rehace si sus trozos necesitan más de 8 escrituras. wifioff.js (contraprueba 3021: 24 s y trozos de 24 000)",
      "prueba": "apagar el Wi-Fi con el Bluetooth listo"
+    },
+    {
+     "fallo": "3023 (dueño 12-11: «15 s son muchos… 5 s máximo»; «Wi-Fi Direct automático si hay Bluetooth y el Wi-Fi de los dos activo»): tras un corte del Wi-Fi se esperaban 15 s fijos antes de cambiar de camino; Wi-Fi Direct solo desde 150 KB; el diagnóstico no distinguía Wi-Fi apagado de Wi-Fi sin red ni el estado real de la app en el vivo. 3023: margen = promedio medido de reconexión con ese contacto + 2 s (entre 2 y 5 s; sin Wi-Fi propio, al momento); Wi-Fi Direct desde ~100 KB; ESTADO con Wi-Fi encendido/apagado, Wi-Fi Direct, L2CAP y caminos rápidos de cada contacto. wifioff.js W2/W5, wdprep.js, diagplus.js D1b",
+     "prueba": "apagar el Wi-Fi con el Bluetooth listo"
     }
    ],
    "debiles": [

@@ -12,6 +12,8 @@
  * v1.3 (ronda 2760, regla del dueño: el Wi-Fi se mantiene, sin brincar): mala señal solo tras ~12 s seguidos y se vuelve
  *   tras ~30 s buenos; con mala señal lo nuevo va por internet (los dos en Wi-Fi) y, si no hay, por Bluetooth; tras un
  *   corte se espera 15 s a que vuelva.
+ * v1.4 (3022/3023, dueño 12-11): durante el margen lo nuevo va por otro camino listo; el margen es el promedio medido de
+ *   reconexión con ese contacto + 2 s, entre 2 y 5 s (sin Wi-Fi propio: se cambia al momento).
  *
  * - Cada teléfono se anuncia en la red (NSD/mDNS, lo mismo que Bonjour en iPhone) con una marca del día:
  *   SHA-256("nexo-lan|<NEXO ID>|<fecha UTC>") recortado. Solo quien ya conoce el NEXO ID (un contacto) la
@@ -26,7 +28,11 @@ import { e2eSealText, e2eOpenText, e2eOuterAd } from '../vault/e2e_proto.js';
 
 var TICK_MS = 4000;
 var REDISCOVER_MS = 60000;
-var GRACE_MS = 15000;         // tras un corte: tiempo para recuperar el Wi-Fi antes de pasar a otro camino (2760: 15 s)
+var GRACE_MS = 15000;         // (hasta la 3022) margen fijo tras un corte; desde la 3023 el margen es _graceMs (abajo)
+// 3023 (dueño 12-11: «15 s son muchos… toma el tiempo promedio de reconexión de cada tipo, agrégale 2 s, y ese es el máximo»,
+// y «5 s máximo»): margen tras un corte = promedio de las últimas reconexiones REALES con ese contacto + 2 s, entre 2 y 5 s; sin
+// medidas, 5 s. Si ESTE teléfono no tiene Wi-Fi (apagado/sin red), no hay nada que esperar: se cambia al momento.
+var GRACE_MIN_MS = 2000, GRACE_MAX_MS = 5000, GRACE_EXTRA_MS = 2000, GRACE_DEFAULT_MS = 5000, RECOV_KEEP = 5, RECOV_MAX_MS = 60000;
 var VERIFY_LIMIT_MS = 30000;  // una conexión sin comprobar se cierra (impostor)
 // 2978 (diagnósticos del dueño 09-11 13:42 y 15:57: «Conexión con la tablet/el vivo sin comprobar: se cierra» SIEMPRE a los 30 s, y el
 // APK esperando Wi-Fi): la comprobación la contesta el JS del otro; si su app está dormida (pantalla apagada, WebView congelado)
@@ -130,6 +136,27 @@ export class LanLink {
     }
     return true;
   }
+  // 3023: margen tras un corte con este contacto (ver GRACE_*): promedio de sus últimas reconexiones + 2 s, entre 2 y 5 s
+  _graceMs(nx) {
+    var a = this._recovFor(nx);
+    if (!a.length) return GRACE_DEFAULT_MS;
+    var avg = a.reduce(function(x, y) { return x + y; }, 0) / a.length;
+    return Math.round(Math.min(GRACE_MAX_MS, Math.max(GRACE_MIN_MS, avg + GRACE_EXTRA_MS)));
+  }
+  _recovFor(nx) {
+    if (!this._recov) { this._recov = {}; try { this._recov = JSON.parse(localStorage.getItem('nexo_lan_recov') || '{}') || {}; } catch (e) { this._recov = {}; } }
+    var a = this._recov[nx]; return Array.isArray(a) ? a.filter(function(v) { return typeof v === 'number' && v >= 0; }) : [];
+  }
+  // Volvió el Wi-Fi con este contacto tras un corte (dentro o después del margen): se anota cuánto tardó (hasta 1 min)
+  _noteRecovery(nx) {
+    var t = this._cutAt && this._cutAt.get(nx); if (!t) return 0;
+    this._cutAt.delete(nx);
+    var d = Date.now() - t; if (d > RECOV_MAX_MS) return 0;
+    var a = this._recovFor(nx); a.push(d); if (a.length > RECOV_KEEP) a = a.slice(-RECOV_KEEP);
+    this._recov[nx] = a;
+    try { localStorage.setItem('nexo_lan_recov', JSON.stringify(this._recov)); } catch (e) {}
+    return d;
+  }
   // 3022: ¿el Wi-Fi con este contacto está caído y en su margen de recuperación?
   inGrace(nexoId) { var l = this.links.get(_nid(nexoId)); return !!(l && l.routable && !l.up && l.graceUntil && Date.now() < l.graceUntil); }
   _otherPath(nx) {
@@ -180,10 +207,17 @@ export class LanLink {
     if (!l) return;
     l.up = false; l.verified = false;
     if (!l.routable) { this.links.delete(nx); return; }
-    // Corte: no se cambia de camino todavía; se intenta recuperar el Wi-Fi durante GRACE_MS
+    // Corte: no se cambia de camino todavía; se intenta recuperar el Wi-Fi durante el margen (3023: medido, 2–5 s)
     if (!l.graceUntil) {
-      l.graceUntil = Date.now() + GRACE_MS;
-      console.log('[WIFI] Corte con ' + nx + ': reconectando…');
+      var self = this, g = this._graceMs(nx);
+      l.graceMs = g; l.graceUntil = Date.now() + g;
+      this._cutAt = this._cutAt || new Map(); if (!this._cutAt.has(nx)) this._cutAt.set(nx, Date.now());
+      console.log('[WIFI] Corte con ' + nx + ': reconectando… (espero hasta ' + (g / 1000).toFixed(1) + ' s)');
+      // al vencer el margen, cambiar en ese momento (no al siguiente latido de 4 s)
+      setTimeout(function() { var l2 = self.links.get(nx); if (l2 && !l2.up && l2.graceUntil && Date.now() >= l2.graceUntil) self._giveUp(nx, 'no volvió en ' + (g / 1000).toFixed(1) + ' s'); }, g + 30);
+      // ¿este teléfono sigue con Wi-Fi? Sin Wi-Fi propio no vuelve: se cambia ya
+      var pl0 = _plugin();
+      if (pl0 && typeof pl0.lanStatus === 'function') pl0.lanStatus().then(function(st) { var l3 = self.links.get(nx); if (st && st.wifi === false && l3 && !l3.up && l3.graceUntil) self._giveUp(nx, 'este teléfono no tiene Wi-Fi'); }).catch(function() {});
       this._connect(nx);
       this.start();
       // 3022: los textos que esperaban confirmación por el Wi-Fi pasan ya al otro camino listo (los archivos esperan el margen)
@@ -244,8 +278,9 @@ export class LanLink {
           l.verified = true;
           var again = l.routable;
           l.routable = true; l.graceUntil = 0;
+          var recMs = this._noteRecovery(nx);
           if (again) {
-            console.log('[WIFI] Wi-Fi con ' + nx + ' recuperado');
+            console.log('[WIFI] Wi-Fi con ' + nx + ' recuperado' + (recMs ? ' en ' + (recMs / 1000).toFixed(1) + ' s' : ''));
           } else {
             console.log('[WIFI] Conectado con ' + nx + ' por Wi-Fi (comprobado)');
             if (this.ble && typeof this.ble._lanUp === 'function') this.ble._lanUp(nx);
@@ -267,7 +302,7 @@ export class LanLink {
     }
     self.links.forEach(function(l, nx) {
       if (!l.up) {
-        if (l.graceUntil && now > l.graceUntil) self._giveUp(nx, 'no volvió en ' + Math.round(GRACE_MS / 1000) + ' s');
+        if (l.graceUntil && now > l.graceUntil) self._giveUp(nx, 'no volvió en ' + ((l.graceMs || GRACE_DEFAULT_MS) / 1000).toFixed(1) + ' s');
         else self._connect(nx);
         return;
       }

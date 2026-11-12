@@ -94,7 +94,10 @@ function _tz() {
 }
 
 function _phoneLine(bi) {
-  var parts = ['pantalla ' + ((typeof document !== 'undefined' && document.visibilityState === 'hidden') ? 'app oculta' : 'app visible')];
+  // 3023 (diagnóstico del vivo 12-11: «app visible · pantalla apagada»): en algunos teléfonos el WebView no avisa al pasar a
+  // segundo plano; el estado bueno es el que avisa la parte nativa (_foreground, onAppStateChange)
+  var fg = bi && typeof bi._foreground === 'boolean' ? bi._foreground : !(typeof document !== 'undefined' && document.visibilityState === 'hidden');
+  var parts = ['app ' + (fg ? 'en primer plano' : 'en segundo plano')];
   if (_power) {
     if (_power.level != null) parts.push('batería ' + _power.level + '%' + (_power.charging ? ' cargando' : ''));
     if (_power.powerSave) parts.push('AHORRO DE BATERÍA');
@@ -109,6 +112,9 @@ function _phoneLine(bi) {
     var open = 0; try { open = net._openCount(); } catch (e) {}
     parts.push('relés abiertos ' + open + (net.wifi ? ' (Wi-Fi)' : ' (datos/otra)'));
   }
+  // 3023: Wi-Fi ENCENDIDO o APAGADO (no es lo mismo que «sin red»: Wi-Fi Direct lo necesita encendido) y caminos rápidos propios
+  try { var wd = bi && bi.wifiDirect; if (wd && wd.status) parts.push('Wi-Fi ' + (wd.status.wifiOn === false ? 'APAGADO' : wd.status.wifiOn ? 'encendido' : '?') + ' · Wi-Fi Direct ' + (wd.supported && wd.supported() ? 'sí' : 'no')); } catch (e) {}
+  try { if (bi && bi.bigFiles) parts.push('Bluetooth L2CAP ' + (bi.bigFiles.l2Ok ? 'sí' : 'no')); } catch (e) {}
   if (bi && bi.lan && bi.lan.links) { try { var nl = 0; bi.lan.links.forEach(function(l) { if (l && l.up) nl++; }); parts.push('enlaces Wi-Fi local ' + nl); } catch (e) {} }
   return parts.join(' · ');
 }
@@ -123,6 +129,8 @@ function _contactRows(bi) {
     try { var np = bi.net && bi.net.peers && bi.net.peers.get(nx); if (np) p.push('internet ' + (np.up ? 'en línea' + (np.wifi ? ' (Wi-Fi)' : ' (datos)') : 'fuera') + (np.lastRx ? ', oído hace ' + Math.round((now - np.lastRx) / 1000) + ' s' : '')); } catch (e) {}
     try { if (bi.lan && bi.lan.canReach(nx)) p.push('Wi-Fi local'); } catch (e) {}
     if (!c.nt) p.push('sin internet anunciado');
+    // 3023: qué caminos rápidos tiene ese contacto (los anuncia en su kx): Wi-Fi Direct, archivos grandes, L2CAP
+    try { var fast = []; if (bi.wifiDirect && bi.wifiDirect.peers && bi.wifiDirect.peers.has(nx)) fast.push('WD'); if (bi.bigFiles && bi.bigFiles.peers && bi.bigFiles.peers.has(nx)) fast.push('grandes'); if (bi.bigFiles && bi.bigFiles.l2Peers && bi.bigFiles.l2Peers.has(nx)) fast.push('L2CAP'); p.push('rápidos: ' + (fast.length ? fast.join('+') : 'ninguno')); } catch (e) {}
     try { if (bi._lostPeers && bi._lostPeers.has(nx)) p.push('se le busca'); } catch (e) {}
     try { var bo = bi._resendBackoff && bi._resendBackoff.get(nx); if (bo && bo.n) p.push('reenvío en espera ×' + bo.n); } catch (e) {}
     if (c.lastSeen) p.push('visto ' + _hhmmss(c.lastSeen));

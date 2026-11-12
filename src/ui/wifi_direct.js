@@ -22,7 +22,11 @@
 import { e2eEncryptText, e2eDecryptText, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted } from '../vault/e2e_proto.js';
 
-export var WD_MIN_BYTES = 150000;    // ~35 s por Bluetooth a la velocidad medida; montar el grupo son ~5 s
+// 3023 (dueño 12-11: «quiero que entre en automático si hay Bluetooth y el Wi-Fi de los dos activo»): desde ~100 KB en base64
+// (~75 KB de archivo). Medido en sus teléfonos el 12-11: por Bluetooth binario (MTU 517) una foto de 143 K letras tardó 8 s;
+// montar el grupo cuesta ~5 s: por encima de esto Wi-Fi Direct ya gana. Sin tope arriba: lo de más de ~22 MB va como «archivo
+// grande» (big_file.js, de disco a disco) también por Wi-Fi Direct, hasta 1 GB.
+export var WD_MIN_BYTES = 100000;
 export var WD_MAX_BYTES = 30000000;  // contenido cifrado en base64 (~22 MB de archivo)
 // Paso 2/3 de la política de caminos (dueño 04-11): si el grupo WD ya está PREPARADO (caliente), el montaje ya se pagó →
 // umbral más bajo (WD vale la pena para archivos medianos). TTL del «preparado» sin uso (se suelta por ociosidad).

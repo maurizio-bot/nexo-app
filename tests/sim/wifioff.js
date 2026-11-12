@@ -6,8 +6,9 @@
 //      se quedaban sin confirmar.
 // Escena: A y B en el mismo Wi-Fi y con Bluetooth. A manda un archivo de ~1,4 MB por Wi-Fi; a medias, los dos apagan el Wi-Fi.
 //  W1: textos escritos durante el margen (A→B y B→A) llegan por Bluetooth en ≤ 5 s, sin fallo nativo contra el Wi-Fi.
-//  W2: el archivo a medias espera el margen (no cambia de camino por un corte breve) y, si el Wi-Fi no vuelve, sigue por
-//      Bluetooth con trozos A SU MEDIDA (se rehace), no con los de Wi-Fi.
+//  W2: el archivo a medias sigue por Bluetooth con trozos A SU MEDIDA (se rehace), no con los de Wi-Fi. 3023 (dueño 12-11:
+//      «15 s son muchos», máximo 5 s): este teléfono SIN Wi-Fi no tiene nada que esperar → cambia en ≤ 3 s.
+//  W5 (3023): solo B se va del Wi-Fi (A sigue con Wi-Fi): A espera el margen medido (sin medidas: 5 s) y cambia en 4–7 s.
 //  W3: con el archivo yendo por Bluetooth, un texto nuevo llega en ≤ 10 s.
 //  W4: el archivo llega íntegro.
 // Uso: node wifioff.js <dir_build>
@@ -95,16 +96,33 @@ function watchBubble(p, text) {
   r.cambio_a_bt_tras_corte_s = tSwitch ? Math.round((tSwitch - tCut) / 100) / 10 : null;
   const s3 = biA.ackSystem.outgoingStreams.get(fileId);
   r.trozos_bt = s3 && s3.chunkSize;
-  r.W2_espero_margen = r.cambio_a_bt_tras_corte_s !== null && r.cambio_a_bt_tras_corte_s >= 14;
+  r.W2_cambio_rapido = r.cambio_a_bt_tras_corte_s !== null && r.cambio_a_bt_tras_corte_s <= 3;
   // W3: texto nuevo con el archivo yendo por Bluetooth
   await openChatWith(A, 'B'); sendText(A, 'con archivo por bt');
   r.W3_texto_con_archivo_s = await wait(() => hasB('con archivo por bt'), 30);
   // W4: el archivo llega
   const b64 = buf.toString('base64');
   r.W4_archivo_llega_s = await wait(async () => (await B.win.vaultLoadMessages(idA)).some((m) => m.attachmentType && (m.attachmentPayload === b64 || (m.attachmentRef && nB.files.get(m.attachmentRef) === b64))), 400);
+  // W5: vuelve el Wi-Fi a los dos; otro archivo por Wi-Fi; solo B se va
+  nA.setWifi('casa'); nB.setWifi('casa');
+  r.W5_wifi_de_nuevo_s = await wait(() => biA.linkOf(idB) === 'wifi' && biB.linkOf(idA) === 'wifi', 90);
+  await openChatWith(A, 'B');
+  const buf2 = Buffer.alloc(1400000); for (let i = 0; i < buf2.length; i++) buf2[i] = (i * 7 + 11) & 255;
+  click(A.win, A.win.document.querySelector('.attach-menu-item[data-type="file"]')); await sleep(200);
+  const fin2 = Array.from(A.win.document.querySelectorAll('input[type=file]')).pop();
+  Object.defineProperty(fin2, 'files', { value: [new A.win.File([buf2], 'grande2.bin', { type: 'application/octet-stream' })] });
+  fin2.dispatchEvent(new A.win.Event('change'));
+  let st2 = null;
+  r.W5_archivo2_por_wifi_s = await wait(() => { st2 = Array.from(biA.ackSystem.outgoingStreams.values()).find((x) => x.type === 'file' && x.msgId !== fileId); return !!st2 && /^lan/i.test(String(st2.deviceId)) && st2.windowStart >= 4; }, 30);
+  const f2 = st2 && st2.msgId;
+  nB.setWifi(null);
+  const tCut2 = Date.now(); let tSw2 = 0;
+  await wait(() => { const s4 = biA.ackSystem.outgoingStreams.get(f2); if (s4 && !/^lan/i.test(String(s4.deviceId))) { tSw2 = Date.now(); return true; } return false; }, 30);
+  r.W5_cambio_tras_corte_s = tSw2 ? Math.round((tSw2 - tCut2) / 100) / 10 : null;
+  r.W5_margen_medido = r.W5_cambio_tras_corte_s !== null && r.W5_cambio_tras_corte_s >= 4 && r.W5_cambio_tras_corte_s <= 7;
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.wifi_s !== null && r.bt_listo && typeof r.archivo_por_wifi_s === 'number' && r.W1_A_a_B_s !== null && r.W1_A_a_B_s <= 5 && r.W1_B_a_A_s !== null && r.W1_B_a_A_s <= 5 &&
-    r.W2_archivo_sigue_por_bt_s !== null && r.W2_espero_margen && r.trozos_bt < 2000 && r.W3_texto_con_archivo_s !== null && r.W3_texto_con_archivo_s <= 10 && r.W4_archivo_llega_s !== null && !r.errores.length;
+    r.W2_archivo_sigue_por_bt_s !== null && r.W2_cambio_rapido && r.W5_margen_medido && r.trozos_bt < 2000 && r.W3_texto_con_archivo_s !== null && r.W3_texto_con_archivo_s <= 10 && r.W4_archivo_llega_s !== null && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('WIFIOFF ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_wifioff.txt'), logs.join('\n'));
