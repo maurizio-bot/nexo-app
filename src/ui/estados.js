@@ -42,6 +42,7 @@ var SQ_GAP_MS = 15000;                  // una petición «sq» por contacto cad
 // contacto le llega solo el puntero dentro del estado; el que lo ve lo baja y lo verifica. Sin internet (o si el puntero no
 // sirve) lo pide al dueño por el enlace directo («sm») y le llega como archivo («stmedia»). Se guarda aparte (no en la lista).
 var BIG_MAX = 5 * 1024 * 1024;          // bytes reales de la media de un estado
+var INLINE_SEND_MAX = 24 * 1024;        // al publicar, solo va dentro del estado una media de hasta ~24 KB (data URI)
 var BIG_TTL_SEC = 26 * 3600;            // en los relés: lo que dura el estado y un margen
 var SM_GAP_MS = 20000;                  // una petición/envío «sm» por contacto y estado cada 20 s como mucho
 var SM_WAIT_MS = 90000;                 // espera de la media pedida por el enlace directo
@@ -181,7 +182,10 @@ export function addMyStatus(text, img, mime, aud, amime, vid, vmime) {
   text = String(text == null ? '' : text).substring(0, MAX_LEN);
   // 3032: una media que no cabe en línea pero sí hasta 5 MB va aparte («big»)
   var bigData = '', big = null;
-  [img, vid, aud].some(function(d) { if (d && !_validImg(d) && !_validAud(d) && !_validVid(d)) { big = _bigOf(d); if (big) bigData = d; return true; } return false; });
+  // 3032 (diagnósticos 12-11 15:07: el Honor publicó un estado con una foto de 112 KB y salió EN LÍNEA a 6 contactos por
+  // Bluetooth, 434 trozos cada uno: la radio quedó saturada y llegaron «zombi» y «enlace_abre_cierra»). Ahora solo va en línea una
+  // media muy chica (≤ INLINE_SEND_MAX); el resto va aparte: puntero (buzón de archivos) o se pide al verla, a quien la ve.
+  [img, vid, aud].some(function(d) { if (d && (d.length > INLINE_SEND_MAX || (!_validImg(d) && !_validAud(d) && !_validVid(d)))) { big = _bigOf(d); if (big) bigData = d; return true; } return false; });
   img = _validImg(img) ? img : ''; aud = _validAud(aud) ? aud : ''; vid = _validVid(vid) ? vid : '';
   if (big) { img = ''; aud = ''; vid = ''; }
   if (!text && !img && !aud && !vid && !big) return null;

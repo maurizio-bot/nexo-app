@@ -128,9 +128,19 @@ const statusOf = (p, msgId) => { const s = p.win.document.querySelector('.msg-st
   const vel = B.win.document.getElementById('estado-video');
   r.visor_muestra_video = !!vel && vel.getAttribute('src') === VID;
 
+  // ===== 3. Diagnóstico 12-11 15:07 (Honor): una foto MEDIANA (84 KB) ya no va dentro del estado (antes: 434 trozos por contacto
+  //     por Bluetooth): el estado lleva solo el aviso y la foto se pide al verla =====
+  const MED = mk('image/jpeg', 84, 5);
+  const logs3 = logs.length;
+  const s3 = A.win.NEXO_addMyStatus('foto mediana', MED, 'image/jpeg');
+  r.mediana_llega_sin_foto_en_linea = await waitFor(() => { const it = (B.win.NEXO_statusesOf(idA) || []).find((x) => x.sid === s3); return !!(it && it.big && !it.img); }, 60000) !== null;
+  r.mediana_trozos = logs.slice(logs3).filter((l) => /\[A\].*\[ChatStream\] START .*type=chat totalChunks=(\d+)/.test(l)).map((l) => Number(/totalChunks=(\d+)/.exec(l)[1]));
+  r.mediana_sin_cientos_de_trozos = r.mediana_trozos.every((n) => n < 60);
+  const it3 = (B.win.NEXO_statusesOf(idA) || []).find((x) => x.sid === s3);
+  r.mediana_se_ve_al_pedirla = !!it3 && (await Promise.race([B.win.NEXO_statusMedia(idA, it3), sleep(90000).then(() => null)])) === MED;
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.por_internet && r.publicada && r.subida_una_vez && r.trozos_en_reles > 0 && r.B_recibe_puntero && r.B_estado_sin_foto_en_linea && r.B_baja_y_ve_la_foto && r.B_la_guarda && r.B_sin_adjunto_en_chat &&
-    r.bt_de_nuevo && r.B_recibe_video_sin_puntero && r.B_pide_y_ve_el_video && r.pedido_log && r.B_sin_adjunto_en_chat_2 && r.visor_muestra_video && !r.errores.length;
+    r.bt_de_nuevo && r.B_recibe_video_sin_puntero && r.B_pide_y_ve_el_video && r.pedido_log && r.B_sin_adjunto_en_chat_2 && r.visor_muestra_video && r.mediana_llega_sin_foto_en_linea && r.mediana_sin_cientos_de_trozos && r.mediana_se_ve_al_pedirla && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('ESTADOSBIG ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_estadosbig.txt'), logs.join('\n'));
