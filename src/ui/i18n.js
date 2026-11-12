@@ -429,6 +429,8 @@ var STRINGS = {
   prof_photo_fail: { es: "No se pudo usar esa foto: ", it: "Impossibile usare questa foto: ", en: "Couldn't use that photo: " },
   prof_error: { es: "error", it: "errore", en: "error" },
   prof_photo_invalid: { es: "foto no válida", it: "foto non valida", en: "invalid photo" },
+  prof_photo_theirs: { es: "es la foto de perfil de ", it: "è la foto profilo di ", en: "it is the profile photo of " },
+  prof_photo_theirs2: { es: "; elige una tuya", it: "; scegline una tua", en: "; pick one of your own" },
   prof_share_msg: { es: "Agrégame en NEXO con mi ID: ", it: "Aggiungimi su NEXO con il mio ID: ", en: "Add me on NEXO with my ID: " },
   prof_id_copied: { es: "ID copiado ✓", it: "ID copiato ✓", en: "ID copied ✓" },
   prof_your_id: { es: "Tu NEXO ID: ", it: "Il tuo NEXO ID: ", en: "Your NEXO ID: " },

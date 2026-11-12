@@ -23,7 +23,11 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - **Falta del dueño (pruebas cortas):** (1) con varios teléfonos con NEXO cerca, abrir «Agregar»: deben salir todos enseguida (primero
   «NEXO cercano · identificando…», luego su nombre); (2) uno de ellos con la app en segundo plano o cerrada **y con la 3012**: también
   sale con su nombre; (3) tocar «+» en una fila «identificando…»: se agrega sola al contestar; (4) cerrar y reabrir «Agregar»: salen al instante.
-- **Foto de perfil equivocada — ABIERTO:** el registro del teléfono de Marcos dice que la foto la mandó el teléfono de Austin como suya.
+- **Foto de perfil copiada — ARREGLADO en 3028 (dueño 12-11: «hay otros contactos con mi misma foto de perfil»):** el registro del Motorola mostró
+  la causa: «Guardado en galería (7111 bytes)» desde el visor de la foto de un contacto y 9 s después «Foto de perfil propia puesta ahora desde Perfil».
+  3028: tu teléfono no muestra la foto de un contacto que es la misma que la tuya (o la de otro contacto que la tenía antes), por huella de la
+  imagen; Perfil rechaza la foto de un contacto; el visor de la foto de un contacto no tiene «Guardar». Prueba `avatardup.js`. Falta: prueba del dueño.
+- (Antes) **Foto de perfil equivocada:** el registro del teléfono de Marcos dice que la foto la mandó el teléfono de Austin como suya.
   Falta: que el dueño diga si alguien puso esa foto en el Perfil de ese teléfono (o si ese teléfono fue suyo), o el diagnóstico de ese
   teléfono con la 3012 (línea `[AVATAR] Este teléfono tiene foto de perfil propia (…, puesta: …)`). Mientras: Perfil → «Quitar foto» en ese teléfono.
 - **Límite conocido:** un teléfono con una versión anterior a la 3012 y la app dormida no puede decir quién es: queda como

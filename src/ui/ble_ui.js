@@ -665,7 +665,8 @@ export const BLE_UI_METHODS = {
       avatar.addEventListener('click', function(e) {
         if (contact.isGroup) return;
         var ph = avatarOf(uuid);
-        if (ph && typeof window.__nexoOpenMedia === 'function') { e.stopPropagation(); window.__nexoOpenMedia(ph, 'image'); }
+        // 3028 (dueño 12-11): sin «Guardar en galería» (así se copió la foto de un contacto como propia)
+        if (ph && typeof window.__nexoOpenMedia === 'function') { e.stopPropagation(); window.__nexoOpenMedia(ph, 'image', true); }
       });
       row.appendChild(avatar);
       var info = document.createElement('div');
