@@ -4,7 +4,9 @@ Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar c
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
 ## 🔎 «Agregar»: todo NEXO cercano al instante (3012) y foto de perfil equivocada (dueño 11-11) — en prueba del dueño
-- **Hecho (3012):** detalle en `ESTADO.md` («Build actual»). Prueba: `tests/sim/addlento.js`.
+- **Hecho (3012 y 3014):** detalle en `ESTADO.md` («Build actual»). Prueba: `tests/sim/addlento.js`. Desde la 3014 (dueño 12-11, opción A) NO hay filas sin
+  nombre: una línea «Buscando… N teléfonos NEXO cerca» y cada teléfono sale con su nombre al contestar (las pruebas (1) y (3) de abajo cambian: no hay «+» sobre uno sin identificar).
+- **Dueño 12-11 (con la 3012):** «parece funcionar mucho mejor el Bluetooth».
 - **Falta del dueño (pruebas cortas):** (1) con varios teléfonos con NEXO cerca, abrir «Agregar»: deben salir todos enseguida (primero
   «NEXO cercano · identificando…», luego su nombre); (2) uno de ellos con la app en segundo plano o cerrada **y con la 3012**: también
   sale con su nombre; (3) tocar «+» en una fila «identificando…»: se agrega sola al contestar; (4) cerrar y reabrir «Agregar»: salen al instante.
