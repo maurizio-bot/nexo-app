@@ -171,6 +171,7 @@ var LINK_DOWN_WAIT_FILE_MS = 15000; // y para un archivo por internet (mantiene 
 var LINK_DOWN_WAIT_MAX_MS = 30000; // 2985: tope de la espera con el enlace caído (ver _onWindowTimeout)
 const NET_CHAT_CHUNK = 8000;
 const NET_TEXT_ONE = 20000;     // un texto (ya cifrado) hasta este tamaño va en un solo paquete (buzón)
+const PTR_ONE_MAX = 12000;      // 3031: puntero del buzón de archivos sin cifrar; cifrado (relleno + base64) queda < NET_TEXT_ONE
 function _isLanDevice(deviceId) { var d = (deviceId || '').toString().toLowerCase(); return d.indexOf('lan:') === 0 || /^lannx[0-9a-z]{8}$/.test(d); }
 const BLE_FILE_MAX_CHARS = 3100000; // tope por Bluetooth (main.js MAX_BLE_B64_BYTES + cabecera de cifrado)
 const BLE_HD_MAX_CHARS = 9500000;   // HD de vídeo (main.js MAX_HD_B64_BYTES + relleno y cabecera de cifrado)
@@ -734,6 +735,13 @@ export class BleAckSystem {
     var self = this, type = (meta && meta.type) || 'file';
     var metaWire = Object.assign({}, meta || {}); delete metaWire.to; delete metaWire.dst; delete metaWire.fwd; delete metaWire.blobPtr;
     var att = { type: 'attachment', attachmentType: type, payload: 'ptr', meta: Object.assign({}, metaWire, { ptr: 1, size: rec.ptr.raw }), ptr: rec.ptr };
+    // 3031 (diagnóstico S24 3021 12-11): el puntero tiene que caber en UN paquete del buzón (NET_TEXT_ONE, ya cifrado). Con la
+    // miniatura de un vídeo dentro (~24 KB) no cabía: salía por trozos esperando confirmaciones de un contacto AUSENTE y al volver
+    // la app se abortaba y se volvía a subir. La miniatura grande no viaja en el puntero: el que recibe la hace al bajar el vídeo.
+    if (JSON.stringify(att).length > PTR_ONE_MAX && att.meta.thumb) {
+      console.log('[BLOB] ' + fileId + ': la miniatura grande no va en el puntero (' + Math.round(String(att.meta.thumb).length / 1024) + ' KB): el puntero cabe en un paquete');
+      delete att.meta.thumb;
+    }
     console.log('[BLOB] ' + fileId + ': mando el puntero al buzón de ' + cid);
     return self.ble._sendViaNetMailbox(cid, JSON.stringify(att), fileId).then(function() {
       var cur = self._blobOut.get(fileId);
