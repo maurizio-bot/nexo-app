@@ -17,6 +17,8 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 
 4a. **Pausa de Bluetooth (3033).** S24 y Motorola juntos 10 min con la app abierta: si sale «pauso Bluetooth» en el
    diagnóstico del S24, debe salir UNA vez (no 15–20 seguidas) y los mensajes siguen por Wi-Fi/internet.
+4d. **Mensajes al volver (3033).** Deja tu app en segundo plano 5 min; que otro te escriba 3 mensajes por internet (lejos). Al tocar
+   el aviso, los 3 ya están en el chat al abrirlo (no aparecen después).
 4c. **Foto de perfil (3033).** En el Honor: tu foto se ve en tu contacto y la copia del otro contacto sale con iniciales.
 
 4b. **Estados v3 (3032).** Publica 3 estados (uno con foto grande): en otro teléfono salen «(3)», se recorren con ‹ ›, la foto

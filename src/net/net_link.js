@@ -176,6 +176,7 @@ export class NetLink {
     // tokens que ya conocíamos de ellos (sobreviven al reinicio, así se puede despertar aunque no haya saludo reciente).
     try { if (pl && typeof pl.getFcmToken === 'function') { var ft = await pl.getFcmToken(); if (ft && ft.token) self.fcmToken = ft.token; } } catch (e) {}
     try { if (self.state.peerFcm) Object.keys(self.state.peerFcm).forEach(function(nx) { self._peer(nx).fcmToken = self.state.peerFcm[nx]; }); } catch (e) {}
+    self._drainPending = true; // 3033: al arrancar, lo que la parte nativa recibió con la app cerrada entra ya (ver _drainBg)
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() {
       // A segundo plano: la parte nativa sigue desde lo último que vio la app
       if (document.visibilityState === 'hidden') { self._bgSinceDirty = true; self._hiddenAt = Date.now(); self._bgConfig(); }
@@ -185,6 +186,7 @@ export class NetLink {
         // 3011: y las que siguen «abiertas» pueden estar muertas sin saberlo (S24 3010: 12 min fuera → todo ✗): comprobarlas
         if (self._hiddenAt && Date.now() - self._hiddenAt >= RELAY_BG_PROBE_MS) self._probeRelays('al volver a la app');
         self._hiddenAt = 0;
+        self._drainPending = true; // 3033: lo que llegó en segundo plano entra al chat ya, sin esperar a los relés
         self.tick().then(function() { self._helloAll(true); });
       }
     });
@@ -255,6 +257,7 @@ export class NetLink {
     var changed = await self._refreshTags();
     if (changed) self._bgConfig();
     if (!self.inTags.size && !self.reqTags.size) { self._closeAll(); return; }
+    if (self._drainPending && self.inTags.size) { self._drainPending = false; self._drainBg(); }
     var urls = self.relayUrls();
     urls.forEach(function(u) {
       var r = self.relays.get(u);
@@ -452,6 +455,27 @@ export class NetLink {
     var at = Math.min((Number(ev.created_at) || 0) * 1000, Date.now());
     if (at > (this.state.lastSeen || 0)) { this.state.lastSeen = at; this._saveState(); }
     this._deliver(nx, o);
+  }
+
+  // 3033 (dueño 12-11: «si me llega un mensaje ya debe de quedarse en el chat y no cargarse cuando yo abro el chat»): con la
+  // app en segundo plano la parte nativa (NetBg) recibe y AVISA, pero el mensaje se volvía a pedir a los relés al volver (17 s
+  // o más si un relé no contestaba). Ahora la parte nativa guarda los eventos que recibió y aquí entran en el acto, por el
+  // mismo camino que los del relé (firma, pareja, repetidos: _onEvent). Lo que luego mande el relé ya está visto.
+  async _drainBg() {
+    var pl = _plugin();
+    if (!pl || typeof pl.netBgDrain !== 'function') return 0;
+    var res = null;
+    try { res = await pl.netBgDrain(); } catch (e) { return 0; }
+    var evs = (res && Array.isArray(res.events)) ? res.events : [];
+    var n = 0;
+    for (var i = 0; i < evs.length && i < 600; i++) {
+      var ev = null;
+      try { ev = typeof evs[i] === 'string' ? JSON.parse(evs[i]) : evs[i]; } catch (e) { ev = null; }
+      if (!ev || typeof ev !== 'object') continue;
+      try { await this._onEvent(ev); n++; } catch (e) {}
+    }
+    if (n) console.log('[NET] ' + n + ' sobre(s) que el teléfono recibió en segundo plano: entran ya (sin esperar a los relés)');
+    return n;
   }
 
   // Sobre de la pareja (relé o Tor): null si no se descifra con la clave de ese contacto

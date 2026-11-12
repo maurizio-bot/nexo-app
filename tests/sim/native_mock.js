@@ -1251,6 +1251,8 @@ class NativePhone {
         c.resolve(o);
       }),
       // Escucha nativa de internet en segundo plano (NetBg.kt; probada en tests/kotlin/NetBgTest): se guarda la configuración
+      // 3033: lo recibido en segundo plano para la app (la prueba lo pone en self.netBgInbox; NetBg.drainForApp en Kotlin)
+      netBgDrain: wrap('netBgDrain', (c) => { const ev = self.netBgInbox || []; self.netBgInbox = []; c.resolve({ events: ev }); }),
       netBgConfig: wrap('netBgConfig', (c, a) => { self.netBg = a; self.netBgCalls = (self.netBgCalls || 0) + 1; c.resolve({ contacts: (a.contacts || []).length, running: false }); }),
       // C1 (2777): la app nos da las claves de firma del ✓✓ del modo cerrado (como el Kotlin setAckKeys)
       setAckKeys: wrap('setAckKeys', (c, a) => { self.ackKeys = new Map(); (a.keys || []).forEach((k) => { try { self.ackKeys.set(String(k.nx).toLowerCase(), Buffer.from(k.key, 'base64')); } catch (e) {} }); c.resolve({ keys: self.ackKeys.size }); }),

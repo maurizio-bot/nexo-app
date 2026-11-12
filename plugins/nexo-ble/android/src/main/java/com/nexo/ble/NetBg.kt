@@ -27,6 +27,8 @@ class NetBg(
     private class Relay(val url: String) { var ws: WsClient? = null; var retryAt = 0L; var fails = 0; var authed = false }
 
     companion object {
+        const val FOR_APP_MAX = 500                    // 3033: eventos guardados para la app como mucho
+        const val FOR_APP_MAX_CHARS = 4_000_000L       // y como mucho ~4 MB (lo más viejo sale primero)
         const val KIND = 1059
         private val SUB = "nexobg"
         fun day(offsetDays: Int, now: Long = System.currentTimeMillis()): String {
@@ -103,6 +105,16 @@ class NetBg(
     @Volatile var running = false; private set
     private var thread: Thread? = null
     private val seen = LinkedHashSet<String>()
+    // 3033 (dueño 12-11: «si me llega un mensaje ya debe quedarse en el chat, no cargarse cuando abro el chat»): lo que se
+    // recibió y se avisó en segundo plano se GUARDA aquí (el evento del relé tal cual, cifrado) y la app lo recoge al volver
+    // (drainForApp → netBgDrain) en vez de esperar a reconectar con los relés y pedirlo otra vez (tardaba 17 s o más).
+    private val forApp = ArrayList<String>()
+    private var forAppChars = 0L
+    fun drainForApp(): List<String> = synchronized(forApp) { val l = ArrayList(forApp); forApp.clear(); forAppChars = 0; l }
+    private fun keepForApp(ev: String) = synchronized(forApp) {
+        forApp.add(ev); forAppChars += ev.length
+        while (forApp.size > FOR_APP_MAX || forAppChars > FOR_APP_MAX_CHARS) { forAppChars -= forApp.removeAt(0).length }
+    }
     private val lock = Object()
     // Auditoría C1 / #87: por contacto, la clave para FIRMAR la confirmación de entrega (✓✓) que mandamos con la app
     // cerrada (la misma que ackKeys del plugin para el modo Bluetooth). La pone la app; vacío = se manda sin firma (un
@@ -230,6 +242,7 @@ class NetBg(
         if (c == null) return
         val o = open(c.kraw, c.nx, me, ev.optString("content")) ?: return
         if (o.optInt("h") == 1) return
+        keepForApp(ev.toString())   // 3033: para la app al volver (mensajes, confirmaciones, acciones: lo procesa como si llegara)
         val n = o.optString("n")
         // #130b: cl:1 = oferta de llamada (1-a-1 o invitación de grupo) → pantalla de llamada, no aviso de mensaje
         if (n.isNotEmpty()) { onMessage(c.nx, c.name, n, o.optInt("cl") == 1); publishDeliveryAck(c, n) }

@@ -87,6 +87,12 @@ class NetBgTest {
             while (got.size < 3 && System.currentTimeMillis() - t0 < 10000) Thread.sleep(100)
             Thread.sleep(800)
             assertEquals(listOf("nxaaaaaaaa|Ana|m1", "nxaaaaaaaa|Ana|m2", "nxaaaaaaaa|Ana|cl9|CALL"), got.toList())
+            // 3033: lo recibido queda guardado para la app (evento del relé tal cual): confirmación + 2 mensajes + oferta; ni el
+            // saludo ni lo de otra pareja. Al recogerlo se vacía.
+            val kept = bg.drainForApp()
+            assertEquals(4, kept.size, "eventos guardados para la app: $kept")
+            kept.forEach { val e = JSONObject(it); assertTrue(e.has("id") && e.has("sig") && e.has("content"), "evento completo (la app verifica la firma)") }
+            assertTrue(bg.drainForApp().isEmpty(), "al recogerlo se vacía")
             // #87: NetBg devolvió la confirmación de ENTREGA (✓✓) de cada mensaje NUEVO, por el buzón del EMISOR (su
             // etiqueta del día), sellada para que solo él la abra y firmada con la clave de la pareja. Ni el saludo ni la
             // confirmación entrante ni el mensaje de otro contacto generan confirmación (solo los que traen msgId).

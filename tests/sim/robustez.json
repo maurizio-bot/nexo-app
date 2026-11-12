@@ -422,6 +422,10 @@
     {
      "fallo": "3033 (diagnósticos S24 y Honor 12-11 22:06–22:25): copias ocultas de estados mandadas por builds anteriores con la foto DENTRO (112 KB → 424–779 trozos por Bluetooth) y del formato sin sid seguían en la cola de reenvío tras actualizar; la sin sid además le borraba al otro los estados de ahora. 3033: estados.staleStatusCopy en la cola (_isResendable con el contacto, vaultGetPendingMessages, transferencias guardadas): no se reenvían, se borran y el estado activo se manda en el formato de ahora. Foto de perfil: viaja con cuándo la puso su dueño (t); con dos iguales se ve la original y se esconde la copia (antes empataban y el Honor escondía las dos). cola3033.js",
      "prueba": "las copias viejas de estados en cola"
+    },
+    {
+     "fallo": "3033 (dueño 12-11 22:41, S24 3028: «si me llega un mensaje ya debe de quedarse en el chat y no cargarse cuando yo abro el chat»): con la app en segundo plano NetBg recibía y avisaba (y mandaba ✓✓) pero no guardaba nada; al volver la app pedía todo otra vez a los relés (17 s con un relé que no contestaba). 3033: NetBg.keepForApp/drainForApp + netBgDrain; net_link._drainBg al arrancar y al volver procesa los eventos guardados por _onEvent. bgdrain.js (contraprueba 3032: con los relés caídos no llegan); NetBgTest (JVM)",
+     "prueba": "mensajes recibidos en segundo plano ya en el chat al volver"
     }
    ]
   },

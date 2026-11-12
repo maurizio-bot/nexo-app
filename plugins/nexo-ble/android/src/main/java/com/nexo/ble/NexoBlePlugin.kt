@@ -2920,6 +2920,16 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("contacts", list.size).put("running", netBg().running))
     }
 
+    // 3033: lo que la escucha de internet en segundo plano recibió (eventos del relé, cifrados) para que la app lo procese
+    // al volver sin esperar a los relés (ver NetBg.drainForApp)
+    @PluginMethod
+    fun netBgDrain(call: PluginCall) {
+        val list = try { netBgShared?.drainForApp() ?: emptyList() } catch (e: Exception) { emptyList<String>() }
+        val arr = JSArray()
+        for (s in list) arr.put(s)
+        call.resolve(JSObject().put("events", arr))
+    }
+
     // Auditoría C1 (ronda 2777): la app nos da, por contacto, la clave con la que firmar la confirmación (✓✓) del modo
     // cerrado (ver closedReceive). La clave (base64) la deriva la app del secreto de la pareja; aquí solo se guarda en
     // memoria del proceso. Se reemplaza el conjunto en cada llamada.
