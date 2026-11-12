@@ -24,6 +24,16 @@ export const BLE_LINK_METHODS = {
     _safeDispatchEvent('nexo:ble:linkChange', { nexoId: nx, via: 'wifi' });
   },
 
+  // 3022: corte de Wi-Fi en su margen con otro camino listo: los TEXTOS en vuelo pasan a ese camino; los archivos se quedan
+  // esperando el margen (regla del dueño 23-10: «una foto a medias no cambia de camino por un pico»). lan.canReach ya no da el
+  // Wi-Fi para lo nuevo mientras esté caído.
+  _lanSoftDown(nexoId) {
+    var nx = _normId(nexoId), next = this._resolveDeviceIdForNexoId(nx);
+    if (!next || /^lan/i.test(String(next))) return;
+    console.log('[WIFI] Corte con ' + nx + ': los textos en vuelo siguen por ' + (_netNx(next) ? 'internet' : 'Bluetooth') + ' mientras se espera al Wi-Fi');
+    if (this.ackSystem && typeof this.ackSystem.relink === 'function') this.ackSystem.relink(_lanId(nx), next, { textsOnly: true });
+  },
+
   _lanDown(nexoId) {
     var self = this, nx = _normId(nexoId), nd = _normMac(_lanId(nx));
     self._deviceStates.delete(nd);

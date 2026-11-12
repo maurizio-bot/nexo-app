@@ -81,6 +81,7 @@ const MAX_WINDOW_RETRIES = 8;
 // PUENTE Jump que no confirma ni un trozo en tantas ventanas se suelta y el archivo sale por el siguiente camino (buzón de archivos,
 // internet); ese puente queda fuera para archivos BRIDGE_STALL_MS. Un puente vivo confirma la ventana 0 en ~1 s.
 const BRIDGE_STALL_RETRIES = 2;
+const BT_RECHUNK_WRITES = 8; // 3022: un trozo de más escrituras Bluetooth que esto se rehace al pasar a Bluetooth (ver tooBigFor)
 const BRIDGE_STALL_MS = 5 * 60 * 1000;
 // #dueño 09-11 (diagnóstico S24 12:15): un flujo saliente > XFER_STUCK_MS sin NINGÚN ACK ya no cuenta como «transferencia
 // activa» para proteger el enlace del ping/zombie del vigilante (hasActiveTransfer): un enlace Bluetooth zombi (las escrituras
@@ -524,6 +525,7 @@ export class BleAckSystem {
     self.pendingAcks.forEach(function(e) { if (next && _normMac(e.deviceId) === nd) e.deviceId = next; });
     self.outgoingStreams.forEach(function(st, id) {
       if (!st || _normMac(st.deviceId) !== nd) return;
+      if (opts && opts.textsOnly && st.type === 'file') return; // 3022: el archivo espera el margen del Wi-Fi
       var limit = (st.meta && st.meta.hdFor) ? BLE_HD_MAX_CHARS : BLE_FILE_MAX_CHARS;
       var tooBig = st.type === 'file' && ((st.meta && st.meta.wdOnly) || String(st.content || '').length > limit);
       // 2975 (diagnóstico del dueño 13:35): Wi-Fi DEGRADADO (no caído) con un archivo grande en vuelo: el enlace sigue arriba y
@@ -2161,7 +2163,10 @@ ChatStream.prototype.tooBigFor = function(deviceId) {
   if (_isLanDevice(deviceId) || _isNetDevice(deviceId)) return false;
   var mtu = (this.ble && typeof this.ble.getMtu === 'function') ? this.ble.getMtu(deviceId) : 0;
   var perWrite = mtu ? Math.min(Math.max(mtu - 3, 20), 512) : 20;
-  return Math.ceil((this.chunkSize + 90) / perWrite) > 100;
+  // 3022 (prueba del dueño 12-11: un respaldo de Fénix siguió por Bluetooth con trozos de Wi-Fi de 24 000 letras —~48 escrituras
+  // cada uno, por debajo del umbral de 100— y tapó el Bluetooth ~40 s: los textos de los dos lados sin confirmar). Un trozo que
+  // necesita más de BT_RECHUNK_WRITES escrituras se rehace a la medida del Bluetooth (entre trozo y trozo pasan los textos).
+  return Math.ceil((this.chunkSize + 90) / perWrite) > BT_RECHUNK_WRITES;
 };
 ChatStream.prototype.useLink = function(deviceId) {
   this.deviceId = deviceId;
@@ -2482,6 +2487,9 @@ ChatStream.prototype._sendFailed = function(idx, err) {
   // #dueño 06-11: un archivo grande que falla por un enlace NO debe re-rutearse a otro Bluetooth (se arrastra en miles de
   // trozos); prefiere internet/Wi-Fi si el contacto es alcanzable por ahí.
   var bigFile = self.type === 'file' && self.content && self.content.length > BLE_FILE_MAX_CHARS;
+  // 3022: un ARCHIVO a medias por Wi-Fi espera el margen del corte (regla del dueño 23-10: no cambia de camino por un pico);
+  // al vencer, lan._giveUp → _lanDown lo pasa al otro camino (y se rehace a su medida si hace falta)
+  if (self.type === 'file' && !wrong && _isLanDevice(self.deviceId) && bi && bi.lan && typeof bi.lan.inGrace === 'function' && bi.lan.inGrace(nx)) return true;
   var best = ((fails >= 3 || wrong) && bi && typeof bi._resolveDeviceIdForNexoId === 'function') ? bi._resolveDeviceIdForNexoId(nx, bigFile) : null;
   if (best && _normMac(best) !== _normMac(self.deviceId)) {
     if (self.tooBigFor(best)) { self.ackSystem._restartStream(self, self.msgId, best); return false; }

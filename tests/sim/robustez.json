@@ -108,6 +108,10 @@
     {
      "fallo": "3021 (diagnóstico S23 12-11 22:13, foto de 57 KB al S24 por el Redmi como puente, justo tras la cámara): el puente no confirmó ni un trozo y la ventana 0 se reenvió cada 8 s hasta los 8 reintentos (73 s); el reenvío de pendientes volvía a mandarla por el MISMO puente. 3021: un archivo por un puente que no confirma ni un trozo en 2 ventanas suelta ese puente para archivos 5 min (relay.bridgeStalled) y sale por el buzón de archivos/internet; si no hay buzón, queda ⏳. jumpdead.js (contraprueba 3020: 8 reintentos y ⏳ más de 150 s)",
      "prueba": "foto por un puente Jump dormido"
+    },
+    {
+     "fallo": "3022 (prueba del dueño 12-11 07:05, S24 y vivo con la 3018, los dos apagan el Wi-Fi con el Bluetooth listo): (1) en el margen de 15 s del corte los textos nuevos seguían yendo al Wi-Fi caído (5 fallos nativos por texto; llegaban a los 37–54 s); (2) un respaldo de Fénix siguió por Bluetooth con trozos de Wi-Fi de 24 000 letras (~48 escrituras, bajo el umbral de 100 que los rehacía) y tapó el Bluetooth ~40 s: textos sin confirmar en los dos sentidos. 3022: durante el margen lo nuevo y los textos en vuelo van por el otro camino listo (lan.canReach/_lanSoftDown); el archivo a medias espera el margen (regla del dueño) y al pasar a Bluetooth se rehace si sus trozos necesitan más de 8 escrituras. wifioff.js (contraprueba 3021: 24 s y trozos de 24 000)",
+     "prueba": "apagar el Wi-Fi con el Bluetooth listo"
     }
    ],
    "debiles": [

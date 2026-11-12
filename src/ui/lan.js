@@ -120,11 +120,23 @@ export class LanLink {
   canReach(nexoId) {
     var nx = _nid(nexoId), l = this.links.get(nx);
     if (!l || !l.routable) return false;
+    // 3022 (prueba del dueño 12-11, los dos apagan el Wi-Fi con el Bluetooth listo): en el margen de un corte (regla del dueño
+    // 23-10: se espera a que vuelva) lo NUEVO no va al Wi-Fi caído si hay otro camino listo; antes el nativo fallaba 5 veces por
+    // texto y llegaban a los ~40 s. Un archivo a medias sigue esperando el margen (no se re-resuelve: va con su enlace).
+    if (!l.up && l.graceUntil && this._otherPath(nx)) return false;
     if (l.degraded && this.ble) {
       if (this.ble.net && this.ble.net.canReach(nx)) return false;
       if (typeof this.ble._bleReadyFor === 'function' && this.ble._bleReadyFor(nx)) return false;
     }
     return true;
+  }
+  // 3022: ¿el Wi-Fi con este contacto está caído y en su margen de recuperación?
+  inGrace(nexoId) { var l = this.links.get(_nid(nexoId)); return !!(l && l.routable && !l.up && l.graceUntil && Date.now() < l.graceUntil); }
+  _otherPath(nx) {
+    var b = this.ble; if (!b) return false;
+    try { if (typeof b._bleReadyFor === 'function' && b._bleReadyFor(nx)) return true; } catch (e) {}
+    try { if (b.net && b.net.canReach(nx)) return true; } catch (e) {}
+    return false;
   }
   quality(nexoId) { var l = this.links.get(_nid(nexoId)); return l ? { rtt: l.rtt, idle: l.idle, degraded: !!l.degraded, up: !!l.up } : null; }
 
@@ -174,6 +186,8 @@ export class LanLink {
       console.log('[WIFI] Corte con ' + nx + ': reconectando…');
       this._connect(nx);
       this.start();
+      // 3022: los textos que esperaban confirmación por el Wi-Fi pasan ya al otro camino listo (los archivos esperan el margen)
+      if (this._otherPath(nx) && this.ble && typeof this.ble._lanSoftDown === 'function') this.ble._lanSoftDown(nx);
     }
   }
 
