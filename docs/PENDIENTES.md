@@ -1082,5 +1082,5 @@ mejoras donde se vea la oportunidad. Método: cada fallo se reproduce en el simu
 Mejoras pendientes: la foto del contacto en sus notificaciones (como icono grande).
 
 
-### Observación (12-11, diagnóstico S24 3021): puntero del buzón de archivos con miniatura grande
+### Observación (12-11, diagnóstico S24 3021): puntero del buzón de archivos con miniatura grande — ✅ ARREGLADO en 3031 (`blobthumb.js`)
 El puntero de un vídeo a un contacto ausente lleva la miniatura (~24 KB) y sale en trozos por el buzón; la ventana espera el ACK del contacto ausente («enlace caído: espero…» cada 30 s) y al volver la app se aborta y se re-publica. No se pierde (los trozos quedan en los relés), pero se re-suben ~24 KB por cada vuelta a la app. Idea: miniatura reducida en el puntero o ✓ al guardarse en el relé. No urgente.
