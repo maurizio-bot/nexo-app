@@ -1977,6 +1977,7 @@ export class BleAckSystem {
   // reconectar se volvían a enviar textos largos, fotos y vídeos ya entregados (hasta 50). Los que ya
   // constan como entregados en el historial (o HD enviado) se borran aquí sin reenviarlos.
   _dropDeliveredTransfers(cid, list) {
+    var self = this;
     if (!window.vaultLoadMessages) return Promise.resolve(list);
     return window.vaultLoadMessages(cid).catch(function() { return []; }).then(function(msgs) {
       var byId = {};
@@ -1985,6 +1986,8 @@ export class BleAckSystem {
         var isHd = /_hd$/.test(tx.transferId);
         var m = byId[isHd ? tx.transferId.replace(/_hd$/, '') : tx.transferId];
         var done = !!m && (isHd ? m.hdStatus === 'sent' : (m.status === 'delivered' || m.status === 'read'));
+        // 3033: una acción oculta que se reanuda va callada (sin «mensaje nuevo» en el otro; ver ble_messages._markHiddenQuiet)
+        if (!done && m && m.hidden === true && self.ble && typeof self.ble._markHiddenQuiet === 'function') self.ble._markHiddenQuiet([m]);
         // 3033: la transferencia guardada de una copia vieja de un estado (foto dentro, 424–779 trozos) se borra sin reanudarla
         if (!done && m && !isHd && m.hidden === true && typeof window.NEXO_staleStatusCopy === 'function' && window.NEXO_staleStatusCopy(m, cid)) done = true;
         if (done && window.vaultRemoveOutgoingTransfer) window.vaultRemoveOutgoingTransfer(cid, tx.transferId).catch(function(){});

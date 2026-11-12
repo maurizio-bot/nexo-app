@@ -1229,6 +1229,15 @@ export const BLE_MESSAGE_METHODS = {
     });
   },
 
+  // 3033: los mensajes guardados como ocultos (acciones) se reenvían sin aviso en el otro teléfono (ver _resendPendingMessages)
+  _markHiddenQuiet(list) {
+    var self = this;
+    (list || []).forEach(function(m) {
+      var id = m && (m.msgId || m.messageId || m.id);
+      if (id && m.hidden === true) { self._quietOut = self._quietOut || new Set(); self._quietOut.add(id); }
+    });
+  },
+
   _resendPendingMessages(nexoId) {
     var self = this;
     if (!nexoId) return;
@@ -1311,6 +1320,11 @@ export const BLE_MESSAGE_METHODS = {
     getPending = Promise.all([getPending, blockedP]).then(function(pr) {
       var list = pr[0], blocked = pr[1];
       list = (list || []).filter(function(m) { return !self._isMsgInFlight(idOf(m)); });
+      // 3033 (dueño 12-11: «me aparecieron nueve mensajes nuevos y no vi ninguno»): una acción OCULTA (estado, foto de perfil,
+      // me gusta, reacción, borrar…) va «callada» (sin aviso ni toque en el otro teléfono) solo si su id está en _quietOut,
+      // que vive en memoria. Al reenviarla desde la cola tras reiniciar la app ya no estaba → salía como MENSAJE NUEVO y el
+      // otro teléfono avisaba «N mensajes nuevos» que al abrir no existían. Lo guardado como oculto se reenvía callado.
+      self._markHiddenQuiet(list);
       if (blocked && blocked.size) {
         list = list.filter(function(m) {
           var id = idOf(m);

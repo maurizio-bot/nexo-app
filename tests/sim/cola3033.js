@@ -7,6 +7,9 @@
 //     se borran y, si el estado sigue activo, se manda en el formato de ahora.
 //  3. FOTO DE PERFIL EMPATADA: el Honor escondía las DOS (la del dueño y la copia de otro contacto). Ahora cada foto viaja con
 //     cuándo la puso su dueño: se muestra la original y se esconde solo la copia, aunque la copia llegue antes.
+//  4. AVISOS FANTASMA (dueño 12-11: «me aparecieron nueve mensajes nuevos y no vi ninguno»): una acción oculta (estado, foto de
+//     perfil, me gusta…) reenviada desde la cola tras reiniciar la app salía como mensaje NUEVO (la marca «callada» vivía solo
+//     en memoria) y el otro teléfono avisaba. Ahora lo guardado como oculto se reenvía callado.
 // Uso: node cola3033.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -71,8 +74,26 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   const viejo2 = { msgId: 'msg' + ts + 'viejo2bb', messageId: 'msg' + ts + 'viejo2bb', contactNexoId: idB, _own: true, hidden: true, status: 'pending', timestamp: ts, seq: 0,
     content: JSON.stringify({ type: 'nexo_act', act: 'st', t: 'estado viejo', ts: ts }) };
   await A.win.vaultAppendMessage(idB, viejo1); await A.win.vaultAppendMessage(idB, viejo2);
+  // 4. (avisos fantasma, dueño 12-11: «nueve mensajes nuevos y no vi ninguno») mientras B no está, A publica otro estado:
+  //    su copia oculta queda en cola; tras reiniciar A se reenvía y en B debe llegar CALLADA (sin «mensaje nuevo»)
+  //    (una baja de estado: acción oculta que sí se reenvía; en la app real, lo mismo pasa con fotos de perfil, me gusta, etc.)
+  const sid2 = A.win.NEXO_addMyStatus('mientras no estabas');
+  const baja = { msgId: 'msg' + ts + 'bajaoc1', messageId: 'msg' + ts + 'bajaoc1', contactNexoId: idB, _own: true, hidden: true, status: 'pending', timestamp: ts, seq: 0,
+    content: JSON.stringify({ type: 'nexo_act', act: 'st', sid: 'zzzz9999', del: 1, t: '', ts: ts }) };
+  await A.win.vaultAppendMessage(idB, baja);
+  await sleep(1500);
+  const ocultas = (await A.win.vaultLoadMessages(idB)).filter((m) => m.hidden && m._own && !/viejo[12]/.test(m.msgId || '') && (m.status === 'pending' || m.status === 'failed' || m.status === 'sending')).map((m) => m.msgId);
+  r.ocultas_en_cola = ocultas.length;
   await sleep(500);
   A.win.close(); nA.destroyActivity(); await sleep(1500); nA.load(); A = await boot('A', nA);
+  const llegadas = new Map();
+  const realEmit = nB.emit.bind(nB);
+  nB.emit = function (ev, d) {
+    if (ev === 'onPayloadReceived' && d && typeof d.content === 'string') {
+      try { const info = NativePhone.classifyClosed(d.content, nB.advertisingId); if (info && info.msgId && ocultas.indexOf(info.msgId) >= 0) llegadas.set(info.msgId, !!info.quiet); } catch (e) {}
+    }
+    return realEmit(ev, d);
+  };
   nB.load(); B = await boot('B', nB);
   const t0 = logs.length;
   await sleep(25000);
@@ -84,6 +105,9 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   r.B_sin_foto_vieja = !(B.win.NEXO_statusesOf(idA) || []).some((x) => x.img && x.img.length > 100000);
   r.B_sin_estado_viejo = !(B.win.NEXO_statusesOf(idA) || []).some((x) => x.t === 'estado viejo' || x.lg);
   r.B_sigue_con_su_estado = (B.win.NEXO_statusesOf(idA) || []).some((x) => x.sid === sid);
+  r.B_tiene_estado_nuevo = (B.win.NEXO_statusesOf(idA) || []).some((x) => x.sid === sid2);
+  r.ocultas_llegadas = llegadas.size;
+  r.ocultas_calladas = llegadas.size > 0 && Array.from(llegadas.values()).every(Boolean);
   r.log_copia_vieja = logs.some((l) => /\[A\].*Copia vieja de un estado/.test(l));
 
   // ---------- 3. foto de perfil empatada ----------
@@ -136,7 +160,7 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   biA.nativePlugin.connectToDevice = realConn;
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
-  const ok = r.emparejados && r.estado_publicado && r.B_lo_tiene && r.no_sale_la_vieja && r.B_sin_foto_vieja && r.viejas_borradas && r.B_sin_estado_viejo && r.B_sigue_con_su_estado &&
+  const ok = r.emparejados && r.estado_publicado && r.B_lo_tiene && r.no_sale_la_vieja && r.B_sin_foto_vieja && r.viejas_borradas && r.B_sin_estado_viejo && r.B_sigue_con_su_estado && r.B_tiene_estado_nuevo && r.ocultas_en_cola > 0 && r.ocultas_calladas &&
     r.foto_original_se_ve && r.foto_copia_escondida && r.escaneo_en_pausa_no_conecta && r.jump_en_pausa_no_conecta && r.escaneo_sin_pausa_conecta && r.jump_sin_pausa_conecta && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('COLA3033 ' + JSON.stringify(r));

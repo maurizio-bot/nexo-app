@@ -1034,6 +1034,10 @@
     {
      "fallo": "3012 (dueño 11-11: «llega la notificación pero no hay un mensaje nuevo»; diagnóstico de un A55 con la 3010: «Aviso tocado: abro el chat nexo_jump»). Con tres teléfonos cerca y el Bluetooth inestable, lo que iba por un teléfono puente (Jump) llega en sobre sellado; las CONFIRMACIONES (✓✓, «leído») y las claves van en un sobre con id al azar («sx…») y la parte nativa, con la app en segundo plano o cerrada, las tomaba por «mensaje nuevo» sin remitente (chat «nexo_jump»). 3012: BgInbox.kt no avisa de un sobre «sx…» ni de uno con q:1; la app marca q:1 en el sobre cuando lo de dentro no es un mensaje visible; los mensajes largos y archivos ya recibidos se apuntan también para no avisar de sus reenvíos.",
      "prueba": "avisos por Jump: segundo plano, app congelada, pantalla apagada y cerrada"
+    },
+    {
+     "fallo": "3033 (dueño 12-11 22:41: «me aparecieron nueve mensajes nuevos y no vi ninguno», S24 3028): una acción oculta (estado, foto de perfil, me gusta, reacción, borrar) va callada solo si su id está en _quietOut, que vive en memoria; al reenviarla desde la cola tras reiniciar la app salía como mensaje NUEVO (sobre con n/q ausente) y el nativo del otro avisaba «N mensajes nuevos» que no existían. 3033: _markHiddenQuiet en _resendPendingMessages y al reanudar transferencias. cola3033.js §4 (contraprueba 3032: llega sin q)",
+     "prueba": "llega CALLADA (avisos fantasma"
     }
    ]
   },
