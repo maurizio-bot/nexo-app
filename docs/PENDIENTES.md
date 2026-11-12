@@ -22,7 +22,7 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - **Hechos:** 3 intentos reales (08, 09, 10-11), 3 fallos: «No se pudo crear el grupo (2)» ×2 y «sin respuesta» ×1. El nativo es el de la 2713
   (cuando funcionó). El 2 es «ocupado» (Android no puede levantar Wi-Fi Direct). **Causa en sus teléfonos sin confirmar.**
 - **Hecho (3012, JS):** Wi-Fi apagado → aviso al usuario y sin castigo de 10 min; fallo de montaje → se reprueba a los 2 min (`wdoff.js`).
-- **Siguiente (build propio):** aplicar `docs/pendientes/wd_nativo_patch_kt.py` (reintentos, canal nuevo, estado en el diagnóstico) y pedir al
+- **Hecho (3013):** parte nativa aplicada (reintentos, canal nuevo, estado en el diagnóstico). **Siguiente:** pedir al
   dueño una prueba con el Wi-Fi ENCENDIDO en los dos teléfonos (sin red) + diagnóstico de ambos. Luego, bajar el umbral (hoy 150 KB).
 - **Dueño (11-11):** «no apago nada» → el Wi-Fi apagado NO explica sus fallos. La causa real solo se verá con la parte nativa
   (estado en el diagnóstico). Es lo PRIMERO del siguiente bloque.
