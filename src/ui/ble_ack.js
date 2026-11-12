@@ -1694,7 +1694,11 @@ export class BleAckSystem {
     try {
       // 3016: una confirmación del contacto quita la espera de reenvíos sin confirmar (ble_messages `_resendBackoff`)
       var bmap = this.ble && this.ble._resendBackoff, bnx = _normId(ack.from);
-      if (bmap && bnx && bmap.has(bnx)) { var bb = bmap.get(bnx), bble = this.ble; if (bb && bb.timer) clearTimeout(bb.timer); bmap.delete(bnx); setTimeout(function() { try { bble._resendPendingMessages(bnx); } catch (e) {} }, 300); }
+      // 3020: la confirmación de un mensaje oculto de PROTOCOLO (el pedido de diagnóstico emparejado) no prueba que lo
+      // atascado ya pase: no quita la espera (si no, cada pedido daba una vuelta de reenvío de más; resendloop.js)
+      var nbk = this.ble && this.ble._noBackoffAckIds, nbHit = !!(nbk && nbk.has(ackMsgId));
+      if (nbHit) nbk.delete(ackMsgId);
+      if (bmap && bnx && bmap.has(bnx) && !nbHit) { var bb = bmap.get(bnx), bble = this.ble; if (bb && bb.timer) clearTimeout(bb.timer); bmap.delete(bnx); setTimeout(function() { try { bble._resendPendingMessages(bnx); } catch (e) {} }, 300); }
       // FIX v3.2.13: dedup por tipo+id; antes el 'ack' de un mensaje hacía descartar su 'read_receipt'
       var ackKey = ack.type + ':' + ackMsgId;
       var entry = this.pendingAcks.get(ackMsgId);

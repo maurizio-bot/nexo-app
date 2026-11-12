@@ -164,6 +164,8 @@ function _askPeer(kind, info, now) {
   if (via === 'none') return; // sin camino ahora: no se deja un pedido pendiente que llegaría tarde
   _pairAsked[nx] = now;
   var id = _sendTextTo(nx, JSON.stringify({ type: 'nexo_diag', v: 1, req: 1, sym: kind, at: now }), '', true);
+  // su confirmación no cuenta como «el contacto ya confirma» para la espera de reenvíos (ble_ack._applyAck)
+  if (id && bi) { bi._noBackoffAckIds = bi._noBackoffAckIds || new Set(); bi._noBackoffAckIds.add(id); if (bi._noBackoffAckIds.size > 50) bi._noBackoffAckIds.delete(bi._noBackoffAckIds.values().next().value); }
   console.log('[AUTODIAG] pido a ' + nx + ' su diagnóstico (síntoma «' + kind + '», camino ' + via + ')' + (id ? '' : ': no salió'));
 }
 function _pairRequest(from, k) {
