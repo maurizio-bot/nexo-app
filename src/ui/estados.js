@@ -15,14 +15,15 @@ import { _sendTextTo } from './send.js';
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
 import { _makeVideoPreview, _blobToB64 } from './video_tools.js';
 import { t } from './i18n.js';
+import { stageBlob, fetchBlob, validatePointer } from '../net/blob_mailbox.js';
 
 var MY_FILE = 'nexo_my_status.json', SENT_FILE = 'nexo_status_sent.json';
 var TTL_MS = 24 * 60 * 60 * 1000;      // caduca a las 24 h
 var MAX_LEN = 280;                      // texto de estado como mucho
-var IMG_DIM = 720;                      // foto de estado: lado mayor como mucho (ligera; se reparte a todos los contactos)
+var IMG_DIM = 1600;                     // foto de estado: lado mayor como mucho (3032: hasta 5 MB, antes 720 px / 150 KB)
 var IMG_MAX = 150 * 1024;               // y como mucho ~150 KB de data URI (si no, se rechaza al recibir)
 var AUD_MAX = 220 * 1024;               // audio de estado: como mucho ~220 KB (≈30 s en opus/webm a bitrate bajo)
-var AUD_SECS = 30;                      // y como mucho 30 s de grabación
+var AUD_SECS = 60;                      // y como mucho 60 s de grabación (3032: con estados grandes, antes 30)
 var VID_MAX = 520 * 1024;               // video de estado: como mucho ~520 KB (previa 240p re-codificada, ~250 KB objetivo)
 var NX_RE = /^nx[0-9a-z]{8}$/;
 // 3032 — Estados v3 (dueño 12-11: «poder subir más estados», «que se puedan comentar», «ver quién puso me gusta», «deslizar
@@ -36,6 +37,16 @@ var MAX_ITEMS = 10;
 var MAX_COMMENTS = 50;
 var SID_RE = /^[a-z0-9]{4,24}$/;
 var SQ_GAP_MS = 15000;                  // una petición «sq» por contacto cada 15 s como mucho (en los dos sentidos)
+// 3032 (dueño 12-11: «que se puedan subir estados de al menos 5 MB»): una foto/video/audio que no cabe en la acción oculta
+// (topes de arriba) viaja aparte, hasta BIG_MAX: con internet se sube UNA vez cifrada al buzón de archivos (relés) y a cada
+// contacto le llega solo el puntero dentro del estado; el que lo ve lo baja y lo verifica. Sin internet (o si el puntero no
+// sirve) lo pide al dueño por el enlace directo («sm») y le llega como archivo («stmedia»). Se guarda aparte (no en la lista).
+var BIG_MAX = 5 * 1024 * 1024;          // bytes reales de la media de un estado
+var BIG_TTL_SEC = 26 * 3600;            // en los relés: lo que dura el estado y un margen
+var SM_GAP_MS = 20000;                  // una petición/envío «sm» por contacto y estado cada 20 s como mucho
+var SM_WAIT_MS = 90000;                 // espera de la media pedida por el enlace directo
+var _media = new Map();                 // 'me|sid' o 'nx|sid' → data URI (memoria)
+var _smWait = new Map(), _smOut = new Map(), _smIn = new Map();
 
 var _mine = { items: [] };    // mis estados: [{ sid, t, ts, img, mime, aud, amime, vid, vmime, likes:{nx:ts}, comments:[{nx,t,ts}] }]
 var _cache = new Map();       // NEXO ID → [estados del contacto] (ordenados por ts)
@@ -57,17 +68,31 @@ function _emit(nx) { try { window.dispatchEvent(new CustomEvent('nexo:estado', {
 function _contactIds() { return _getBLEContacts().map(function(c) { return _normId(c.nexoId || c.deviceUUID); }).filter(function(nx) { return NX_RE.test(nx); }); }
 function _contactName(nx) { var c = _getBLEContacts().find(function(x) { return _normId(x.nexoId || x.deviceUUID) === _normId(nx); }); return (c && c.name) || String(nx || '').toUpperCase(); }
 // Un estado está activo si tiene texto, foto, audio O video, con ts dentro de las 24 h
-function _active(s) { return !!(s && typeof s.ts === 'number' && ((typeof s.t === 'string' && s.t) || (typeof s.img === 'string' && s.img) || (typeof s.aud === 'string' && s.aud) || (typeof s.vid === 'string' && s.vid)) && (Date.now() - s.ts) < TTL_MS); }
+function _active(s) { return !!(s && typeof s.ts === 'number' && ((typeof s.t === 'string' && s.t) || (typeof s.img === 'string' && s.img) || (typeof s.aud === 'string' && s.aud) || (typeof s.vid === 'string' && s.vid) || (s.big && s.big.k)) && (Date.now() - s.ts) < TTL_MS); }
 function _validImg(v) { return typeof v === 'string' && /^data:image\/(png|jpe?g|webp|gif);base64,/.test(v) && v.length <= IMG_MAX; }
 function _validAud(v) { return typeof v === 'string' && /^data:audio\/(webm|ogg|mp4|mpeg|mp3|wav|aac);base64,/.test(v) && v.length <= AUD_MAX; }
 function _validVid(v) { return typeof v === 'string' && /^data:video\/(webm|mp4|ogg|quicktime);base64,/.test(v) && v.length <= VID_MAX; }
+function _rawBytes(b64) { var l = (b64 || '').length; if (!l) return 0; var pad = b64.charAt(l - 1) === '=' ? (b64.charAt(l - 2) === '=' ? 2 : 1) : 0; return Math.floor(l * 3 / 4) - pad; }
+function _b64Of(d) { var i = String(d || '').indexOf(','); return i >= 0 ? d.substring(i + 1) : ''; }
+// Media grande válida: data URI de imagen/video/audio, base64 (se mira el principio y el final; el resto lo verifica quien lo baja) y ≤ BIG_MAX
+function _bigOf(d) {
+  var m = /^data:(image|video|audio)\/([a-z0-9.+-]{1,30});base64,/.exec(typeof d === 'string' ? d.substring(0, 80) : '');
+  if (!m) return null;
+  var b = _b64Of(d), n = _rawBytes(b);
+  if (!n || n > BIG_MAX || !/^[A-Za-z0-9+/]*={0,2}$/.test(b.substring(0, 2000)) || !/^[A-Za-z0-9+/]*={0,2}$/.test(b.substring(Math.max(0, b.length - 2000)))) return null;
+  return { k: m[1] === 'image' ? 'img' : (m[1] === 'video' ? 'vid' : 'aud'), mime: m[1] + '/' + m[2], size: n };
+}
+function _validBig(b) { return !!(b && typeof b === 'object' && /^(img|vid|aud)$/.test(b.k) && /^(image|video|audio)\/[a-z0-9.+-]{1,30}$/.test(String(b.mime || '')) && String(b.mime).indexOf({ img: 'image/', vid: 'video/', aud: 'audio/' }[b.k]) === 0 && Number(b.size) > 0 && Number(b.size) <= BIG_MAX); }
+function _mediaFile(owner, sid) { return owner === 'me' ? 'nexo_stm_' + sid + '.json' : 'nexo_stc_' + owner + '_' + sid + '.json'; }
+function _delFile(name) { var pl = _pl(); if (pl && typeof pl.deleteFile === 'function') pl.deleteFile({ filename: name }).catch(function() {}); }
 function _newSid() { return Date.now().toString(36) + Math.random().toString(36).substr(2, 5); }
 // Un estado validado (de un archivo o de otro teléfono): campos conocidos, media válida o vacía
 function _item(o, sid) {
   if (!o || typeof o !== 'object') return null;
   var img = _validImg(o.img) ? o.img : '', aud = _validAud(o.aud) ? o.aud : '', vid = _validVid(o.vid) ? o.vid : '';
   return { sid: sid || (SID_RE.test(String(o.sid || '')) ? String(o.sid) : 'l' + Number(o.ts || 0).toString(36)), t: typeof o.t === 'string' ? o.t.substring(0, MAX_LEN) : '', ts: Number(o.ts) || 0,
-    img: img, mime: img ? (o.mime || 'image/jpeg') : '', aud: aud, amime: aud ? (o.amime || 'audio/webm') : '', vid: vid, vmime: vid ? (o.vmime || 'video/webm') : '' };
+    img: img, mime: img ? (o.mime || 'image/jpeg') : '', aud: aud, amime: aud ? (o.amime || 'audio/webm') : '', vid: vid, vmime: vid ? (o.vmime || 'video/webm') : '',
+    big: _validBig(o.big) ? { k: o.big.k, mime: o.big.mime, size: Number(o.big.size) } : null, ptr: (_validBig(o.big) && o.ptr && !validatePointer(o.ptr)) ? o.ptr : null };
 }
 function _activeList(list) { return (list || []).filter(_active).sort(function(a, b) { return a.ts - b.ts; }); }
 // Archivo guardado: v3 { v:3, items:[...] } o el de antes (un solo estado { t, ts, img… })
@@ -100,9 +125,8 @@ export function makeStatusImage(file) {
         var cw = Math.max(1, Math.round(w * sc)), ch = Math.max(1, Math.round(h * sc));
         var cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
         cv.getContext('2d').drawImage(im, 0, 0, cw, ch);
-        var out = cv.toDataURL('image/jpeg', 0.72);
-        if (out.length > IMG_MAX) out = cv.toDataURL('image/jpeg', 0.55);
-        if (out.length > IMG_MAX) out = cv.toDataURL('image/jpeg', 0.4);
+        var out = cv.toDataURL('image/jpeg', 0.85);
+        if (!_validImg(out) && !_bigOf(out)) out = cv.toDataURL('image/jpeg', 0.6);
         resolve(out);
       };
       im.src = r.result;
@@ -155,21 +179,37 @@ export function myStatus() { var l = myStatuses(); return l.length ? l[l.length 
 // Publica un estado NUEVO (texto y/o una media). Devuelve su sid, o null (vacío, o ya hay MAX_ITEMS activos).
 export function addMyStatus(text, img, mime, aud, amime, vid, vmime) {
   text = String(text == null ? '' : text).substring(0, MAX_LEN);
+  // 3032: una media que no cabe en línea pero sí hasta 5 MB va aparte («big»)
+  var bigData = '', big = null;
+  [img, vid, aud].some(function(d) { if (d && !_validImg(d) && !_validAud(d) && !_validVid(d)) { big = _bigOf(d); if (big) bigData = d; return true; } return false; });
   img = _validImg(img) ? img : ''; aud = _validAud(aud) ? aud : ''; vid = _validVid(vid) ? vid : '';
-  if (!text && !img && !aud && !vid) return null;
+  if (big) { img = ''; aud = ''; vid = ''; }
+  if (!text && !img && !aud && !vid && !big) return null;
   var act = myStatuses();
   if (act.length >= MAX_ITEMS) { _toast(t('est_max', 'Ya tienes 10 estados: quita uno para publicar otro')); return null; }
-  var it = { sid: _newSid(), t: text, ts: Date.now(), img: img, mime: img ? (mime || 'image/jpeg') : '', aud: aud, amime: aud ? (amime || 'audio/webm') : '', vid: vid, vmime: vid ? (vmime || 'video/webm') : '', likes: {}, comments: [] };
+  var it = { sid: _newSid(), t: text, ts: Date.now(), img: img, mime: img ? (mime || 'image/jpeg') : '', aud: aud, amime: aud ? (amime || 'audio/webm') : '', vid: vid, vmime: vid ? (vmime || 'video/webm') : '', big: big, ptr: null, likes: {}, comments: [] };
   _mine.items = act.concat([it]);
   _saveMine();
-  _contactIds().forEach(function(nx) { sendStatusTo(nx); });
+  if (big) {
+    _save(_mediaFile('me', it.sid), { d: bigData }); _media.set('me|' + it.sid, bigData);
+    // con internet: se sube UNA vez al buzón de archivos y el puntero va dentro del estado; sin internet, sale sin puntero
+    _stageMine(it, bigData).then(function() { _contactIds().forEach(function(nx) { sendStatusTo(nx); }); });
+  } else _contactIds().forEach(function(nx) { sendStatusTo(nx); });
   _emit('me');
-  console.log('[ESTADO] Publicado ' + it.sid + ' (' + text.length + ' car.' + (img ? ' + foto ' + Math.round(img.length / 1024) + ' KB' : '') + (aud ? ' + audio ' + Math.round(aud.length / 1024) + ' KB' : '') + (vid ? ' + video ' + Math.round(vid.length / 1024) + ' KB' : '') + '; activos ' + _mine.items.length + ')');
+  console.log('[ESTADO] Publicado ' + it.sid + ' (' + text.length + ' car.' + (img ? ' + foto ' + Math.round(img.length / 1024) + ' KB' : '') + (aud ? ' + audio ' + Math.round(aud.length / 1024) + ' KB' : '') + (vid ? ' + video ' + Math.round(vid.length / 1024) + ' KB' : '') + (big ? ' + ' + big.k + ' grande ' + Math.round(big.size / 1024) + ' KB' : '') + '; activos ' + _mine.items.length + ')');
   return it.sid;
+}
+function _stageMine(it, data) {
+  var bi = window.bleInterface, net = bi && bi.net;
+  if (!net || typeof net.online !== 'function' || !net.online()) return Promise.resolve();
+  return stageBlob(net, _b64Of(data), { ttlSec: BIG_TTL_SEC }).then(function(res) {
+    it.ptr = res.pointer; _saveMine();
+    console.log('[ESTADO] ' + it.sid + ': media subida una vez al buzón de archivos (' + res.pointer.chunks.length + ' trozos)');
+  }).catch(function(e) { console.warn('[ESTADO] ' + it.sid + ': no se pudo subir la media (' + ((e && e.message) || e) + '): se pedirá por el enlace directo'); });
 }
 // Compatibilidad: publicar (un estado nuevo); sin nada → quita todos
 export function setMyStatus(text, img, mime, aud, amime, vid, vmime) {
-  if (!text && !_validImg(img) && !_validAud(aud) && !_validVid(vid)) { clearMyStatus(); return; }
+  if (!text && !_validImg(img) && !_validAud(aud) && !_validVid(vid) && !_bigOf(img || vid || aud)) { clearMyStatus(); return; }
   addMyStatus(text, img, mime, aud, amime, vid, vmime);
 }
 // Quita UNO de mis estados
@@ -178,6 +218,7 @@ export function removeMyStatus(sid) {
   if (!had) return false;
   _mine.items = myStatuses().filter(function(x) { return x.sid !== sid; });
   _saveMine();
+  _media.delete('me|' + sid); _delFile(_mediaFile('me', sid));
   _contactIds().forEach(function(nx) {
     var s = _sent[nx];
     if (s && s[sid]) { delete s[sid]; _sendAct(nx, { type: 'nexo_act', act: 'st', sid: sid, del: 1, t: '', ts: Date.now() }); }
@@ -189,6 +230,7 @@ export function removeMyStatus(sid) {
 }
 // Quita TODOS
 export function clearMyStatus() {
+  _mine.items.forEach(function(x) { if (x.big) { _media.delete('me|' + x.sid); _delFile(_mediaFile('me', x.sid)); } });
   _mine.items = [];
   _saveMine();
   var sent = _sent; _sent = {}; _save(SENT_FILE, _sent);
@@ -205,6 +247,7 @@ function _broadcastItem(nx, s) {
   if (s.img) { act.img = s.img; act.mime = s.mime || 'image/jpeg'; }
   if (s.aud) { act.aud = s.aud; act.amime = s.amime || 'audio/webm'; }
   if (s.vid) { act.vid = s.vid; act.vmime = s.vmime || 'video/webm'; }
+  if (s.big) { act.big = s.big; if (s.ptr) act.ptr = s.ptr; }
   return _sendAct(nx, act);
 }
 // Manda a nx los estados activos que aún no tiene (force: todos otra vez, p. ej. si los pidió con «sq»)
@@ -264,6 +307,72 @@ export function requestStatuses() {
   _renderStrip();
   console.log('[ESTADO] Actualizar: pedidos a ' + n + ' contacto(s)');
   return n;
+}
+
+// ---- Media grande de un estado (3032) ----
+// La media de un estado (data URI): memoria → archivo → buzón de archivos (puntero) → pedirla al dueño por el enlace directo
+export function statusMedia(owner, it) {
+  owner = owner === 'me' ? 'me' : _normId(owner);
+  if (!it || !it.big) return Promise.resolve(it ? (it.img || it.vid || it.aud || null) : null);
+  var key = owner + '|' + it.sid;
+  if (_media.has(key)) return Promise.resolve(_media.get(key));
+  return _load(_mediaFile(owner, it.sid)).then(function(o) {
+    var d = o && typeof o.d === 'string' && _bigOf(o.d) ? o.d : '';
+    if (d) { _media.set(key, d); return d; }
+    if (owner === 'me') return null;
+    var net = window.bleInterface && window.bleInterface.net;
+    var viaPtr = (it.ptr && net && typeof net.online === 'function' && net.online())
+      ? fetchBlob(net, it.ptr).then(function(res) { return 'data:' + it.big.mime + ';base64,' + res.b64; }).catch(function(e) { console.warn('[ESTADO] media de ' + owner + ' ' + it.sid + ' no bajó del buzón (' + ((e && e.message) || e) + '): la pido directo'); return null; })
+      : Promise.resolve(null);
+    return viaPtr.then(function(d2) { return d2 || _requestMedia(owner, it); }).then(function(d3) {
+      if (d3 && _bigOf(d3)) { _media.set(key, d3); _save(_mediaFile(owner, it.sid), { d: d3 }); return d3; }
+      return null;
+    });
+  });
+}
+function _requestMedia(nx, it) {
+  var key = nx + '|' + it.sid, now = Date.now();
+  return new Promise(function(resolve) {
+    var list = _smWait.get(key) || []; list.push(resolve); _smWait.set(key, list);
+    setTimeout(function() { var l = _smWait.get(key); if (l && l.indexOf(resolve) >= 0) { l.splice(l.indexOf(resolve), 1); resolve(null); } }, SM_WAIT_MS);
+    if (now - (_smOut.get(key) || 0) < SM_GAP_MS) return;
+    _smOut.set(key, now);
+    console.log('[ESTADO] pido la media de ' + it.sid + ' a ' + nx + ' por el enlace directo');
+    _sendAct(nx, { type: 'nexo_act', act: 'sm', sid: it.sid, ts: now });
+  });
+}
+// Me piden la media de uno de mis estados: se la mando como archivo («stmedia») por el enlace directo de ahora
+export function statusMediaRequested(senderNx, act) {
+  var nx = _normId(senderNx), sid = act && SID_RE.test(String(act.sid || '')) ? String(act.sid) : '';
+  var it = sid ? myStatuses().find(function(x) { return x.sid === sid && x.big; }) : null;
+  var bi = window.bleInterface, ack = bi && bi.ackSystem, now = Date.now(), key = nx + '|' + sid;
+  if (!NX_RE.test(nx) || !it || _contactIds().indexOf(nx) < 0 || !ack || typeof ack.sendFile !== 'function') return false;
+  if (now - (_smIn.get(key) || 0) < SM_GAP_MS) return false;
+  var dev = typeof bi._resolveDeviceIdForNexoId === 'function' ? bi._resolveDeviceIdForNexoId(nx) : null;
+  if (!dev) return false;                                    // sin enlace: no al buzón (allí se vería como un adjunto del chat)
+  _smIn.set(key, now);
+  statusMedia('me', it).then(function(d) {
+    if (!d) return;
+    console.log('[ESTADO] mando la media de ' + sid + ' a ' + nx + ' (' + Math.round(it.big.size / 1024) + ' KB)');
+    ack.sendFile(dev, 'stm' + sid + now.toString(36), _b64Of(d), { type: 'stmedia', sid: sid, name: 'st:' + sid, mime: it.big.mime, to: nx }).catch(function(e) { console.warn('[ESTADO] la media de ' + sid + ' a ' + nx + ' no salió (' + ((e && e.message) || e) + ')'); });
+  });
+  return true;
+}
+// Me llegó la media («stmedia») de un estado de un contacto
+export function statusMediaIn(senderNx, meta, b64) {
+  // el sid viaja en el nombre del archivo («st:<sid>»): los datos del archivo solo llevan campos fijos
+  var nm = meta && /^st:([a-z0-9]{4,24})$/.exec(String(meta.name || '')), nx = _normId(senderNx);
+  var sid = meta && SID_RE.test(String(meta.sid || '')) ? String(meta.sid) : (nm ? nm[1] : '');
+  var it = sid ? statusesOf(nx).find(function(x) { return x.sid === sid && x.big; }) : null;
+  if (!it || typeof b64 !== 'string') return false;
+  var d = 'data:' + it.big.mime + ';base64,' + b64, b = _bigOf(d);
+  if (!b || b.size !== it.big.size) { console.warn('[ESTADO] media de ' + nx + ' ' + sid + ' no coincide con lo anunciado: descartada'); return false; }
+  var key = nx + '|' + sid;
+  _media.set(key, d); _save(_mediaFile(nx, sid), { d: d });
+  var l = _smWait.get(key) || []; _smWait.delete(key); l.forEach(function(fn) { try { fn(d); } catch (e) {} });
+  console.log('[ESTADO] media de ' + sid + ' de ' + nx + ' recibida por el enlace directo (' + Math.round(b.size / 1024) + ' KB)');
+  _emit(nx);
+  return true;
 }
 
 // ---- «Me gusta» y comentarios ----
@@ -454,7 +563,7 @@ function _compose() {
   fin.addEventListener('change', function() {
     var f = fin.files && fin.files[0]; if (!f) return;
     makeStatusImage(f).then(function(dataUri) {
-      if (!_validImg(dataUri)) { _toast(t('est_img_too_big', 'La foto es muy pesada para un estado')); return; }
+      if (!_validImg(dataUri) && !_bigOf(dataUri)) { _toast(t('est_img_too_big', 'La foto es muy pesada para un estado')); return; }
       picked.img = dataUri; picked.mime = 'image/jpeg'; prev.src = dataUri; prev.style.display = 'block';
       picked.aud = ''; audPrev.removeAttribute('src'); audPrev.style.display = 'none';
       picked.vid = ''; vidPrev.removeAttribute('src'); vidPrev.style.display = 'none'; // una sola media por estado
@@ -486,7 +595,7 @@ function _compose() {
         var fr = new FileReader();
         fr.onload = function() {
           var d = String(fr.result || '');
-          if (!_validAud(d)) { _toast(t('est_aud_too_big', 'El audio es muy largo/pesado para un estado')); return; }
+          if (!_validAud(d) && !_bigOf(d)) { _toast(t('est_aud_too_big', 'El audio es muy largo/pesado para un estado')); return; }
           picked.aud = d; picked.amime = (blob.type || 'audio/webm').split(';')[0];
           audPrev.src = d; audPrev.style.display = 'block';
           picked.img = ''; prev.removeAttribute('src'); prev.style.display = 'none';
@@ -510,6 +619,20 @@ function _compose() {
   var vfin = document.createElement('input'); vfin.type = 'file'; vfin.accept = 'video/*'; vfin.style.display = 'none';
   vfin.addEventListener('change', function() {
     var f = vfin.files && vfin.files[0]; if (!f) return;
+    // 3032: un video de hasta 5 MB va tal cual (sin recomprimir); más grande, la previa liviana de siempre
+    if (f.size && f.size <= BIG_MAX && /^video\//.test(f.type || '')) {
+      var frv = new FileReader();
+      frv.onload = function() {
+        var dv = String(frv.result || '');
+        if (!_validVid(dv) && !_bigOf(dv)) { _toast(t('est_vid_too_big', 'El video quedó muy pesado para un estado')); return; }
+        picked.vid = dv; picked.vmime = (f.type || 'video/mp4').split(';')[0];
+        vidPrev.src = dv; vidPrev.style.display = 'block';
+        picked.img = ''; prev.removeAttribute('src'); prev.style.display = 'none';
+        picked.aud = ''; audPrev.removeAttribute('src'); audPrev.style.display = 'none';
+      };
+      frv.readAsDataURL(f);
+      return;
+    }
     var mk = (typeof window.NEXO_makeVideoPreview === 'function') ? window.NEXO_makeVideoPreview : _makeVideoPreview;
     vidBtn.textContent = '🎥 ' + t('est_processing', 'Procesando…'); vidBtn.disabled = true;
     Promise.resolve(mk(f)).then(function(res) {
@@ -517,7 +640,7 @@ function _compose() {
       if (!res || res.tooLong || !res.size) { _toast(res && res.tooLong ? t('est_vid_too_long', 'El video es muy largo para un estado') : t('est_vid_fail', 'No se pudo preparar el video')); return; }
       return _blobToB64(res).then(function(b64) {
         var d = 'data:' + ((res.type || 'video/webm').split(';')[0]) + ';base64,' + b64;
-        if (!_validVid(d)) { _toast(t('est_vid_too_big', 'El video quedó muy pesado para un estado')); return; }
+        if (!_validVid(d) && !_bigOf(d)) { _toast(t('est_vid_too_big', 'El video quedó muy pesado para un estado')); return; }
         picked.vid = d; picked.vmime = (res.type || 'video/webm').split(';')[0];
         vidPrev.src = d; vidPrev.style.display = 'block';
         picked.img = ''; prev.removeAttribute('src'); prev.style.display = 'none';
@@ -573,6 +696,7 @@ function _view(c) {
     if (it.img) { var im = document.createElement('img'); im.src = it.img; im.style.cssText = 'width:100%;max-height:55vh;object-fit:contain;border-radius:12px;background:#000;'; box.appendChild(im); }
     if (it.vid) { var vd = document.createElement('video'); vd.id = 'estado-video'; vd.controls = true; vd.src = it.vid; vd.playsInline = true; vd.style.cssText = 'width:100%;max-height:55vh;border-radius:12px;background:#000;'; box.appendChild(vd); }
     if (it.aud) { var au = document.createElement('audio'); au.id = 'estado-audio'; au.controls = true; au.src = it.aud; au.style.cssText = 'width:100%;'; box.appendChild(au); }
+    if (it.big) _bigEl(box, c.nx, it);
     if (it.t) { var txt = document.createElement('div'); txt.style.cssText = 'font-size:20px;line-height:1.5;white-space:pre-wrap;word-break:break-word;'; txt.innerHTML = _esc(it.t); box.appendChild(txt); }
     // ‹ anterior / siguiente ›
     if (items.length > 1) {
@@ -613,6 +737,25 @@ function _view(c) {
   paint();
 }
 
+// Media grande en el visor: «Cargando…» mientras se baja (buzón de archivos o enlace directo)
+function _bigEl(box, owner, it) {
+  var el;
+  var tag = { img: 'img', vid: 'video', aud: 'audio' }[it.big.k];
+  var css = { img: 'width:100%;max-height:55vh;object-fit:contain;border-radius:12px;background:#000;', vid: 'width:100%;max-height:55vh;border-radius:12px;background:#000;', aud: 'width:100%;' }[it.big.k];
+  el = document.createElement(tag);
+  el.id = { img: 'estado-img-grande', vid: 'estado-video', aud: 'estado-audio' }[it.big.k];
+  el.style.cssText = css;
+  if (tag !== 'img') el.controls = true;
+  if (tag === 'video') el.playsInline = true;
+  var ph = document.createElement('div'); ph.id = 'estado-cargando'; ph.style.cssText = 'font-size:13px;color:#00c8ff;'; ph.textContent = '⏳ ' + t('est_loading', 'Cargando…') + ' (' + Math.round(it.big.size / 1024) + ' KB)';
+  el.style.display = 'none';
+  box.appendChild(ph); box.appendChild(el);
+  statusMedia(owner, it).then(function(d) {
+    if (d) { el.src = d; el.style.display = ''; ph.remove(); }
+    else ph.textContent = t('est_media_fail', 'No se pudo bajar todavía: se reintenta cuando el otro esté cerca o en línea');
+  });
+}
+
 // Mis estados: cada uno con quién le dio me gusta y los comentarios (solo los veo yo); quitar uno; «+ Nuevo»
 function _myView() {
   var o = _overlay();
@@ -638,7 +781,8 @@ function _myView() {
       if (it.img) { var im = document.createElement('img'); im.src = it.img; im.style.cssText = 'width:48px;height:48px;object-fit:cover;border-radius:8px;flex-shrink:0;'; top.appendChild(im); }
       var info = document.createElement('div'); info.style.cssText = 'flex:1;min-width:0;';
       var tx = document.createElement('div'); tx.style.cssText = 'font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-      tx.textContent = it.t || (it.vid ? '🎥 ' + t('est_add_video', 'Video') : it.aud ? '🎤 ' + t('est_add_audio', 'Audio') : it.img ? '📷 ' + t('est_add_photo', 'Foto') : '');
+      var kk = it.big ? it.big.k : (it.vid ? 'vid' : it.aud ? 'aud' : it.img ? 'img' : '');
+      tx.textContent = it.t || (kk === 'vid' ? '🎥 ' + t('est_add_video', 'Video') : kk === 'aud' ? '🎤 ' + t('est_add_audio', 'Audio') : kk === 'img' ? '📷 ' + t('est_add_photo', 'Foto') : '');
       var wh = document.createElement('div'); wh.style.cssText = 'font-size:11px;color:#888;'; wh.textContent = _ago(it.ts);
       info.appendChild(tx); info.appendChild(wh); top.appendChild(info);
       var del = document.createElement('button'); del.className = 'estado-quitar'; del.textContent = t('grp_remove', 'Quitar');
@@ -696,5 +840,5 @@ if (typeof window !== 'undefined') {
   window.NEXO_setMyStatus = setMyStatus; window.NEXO_statusOf = statusOf; window.NEXO_applyStatus = applyStatus;
   window.NEXO_likeStatus = likeStatus; window.NEXO_likeReceived = likeReceived; window.NEXO_myLikes = myLikes; // pruebas (tests/sim/estados.js)
   window.NEXO_addMyStatus = addMyStatus; window.NEXO_statusesOf = statusesOf; window.NEXO_myStatuses = myStatuses; window.NEXO_removeMyStatus = removeMyStatus;
-  window.NEXO_commentStatus = commentStatus; window.NEXO_myComments = myComments; window.NEXO_whoLiked = whoLiked; window.NEXO_requestStatuses = requestStatuses; // 3032
+  window.NEXO_commentStatus = commentStatus; window.NEXO_myComments = myComments; window.NEXO_whoLiked = whoLiked; window.NEXO_requestStatuses = requestStatuses; window.NEXO_statusMedia = statusMedia; window.NEXO_statusMediaIn = statusMediaIn; // 3032
 }

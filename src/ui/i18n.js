@@ -727,6 +727,8 @@ var STRINGS = {
   est_commented_your: { es: "comentó tu estado", it: "ha commentato il tuo stato", en: "commented on your status" },
   est_pull: { es: "Desliza para actualizar los estados", it: "Scorri per aggiornare gli stati", en: "Pull to refresh statuses" },
   est_pull_release: { es: "Suelta para actualizar los estados", it: "Rilascia per aggiornare gli stati", en: "Release to refresh statuses" },
+  est_loading: { es: "Cargando…", it: "Caricamento…", en: "Loading…" },
+  est_media_fail: { es: "No se pudo bajar todavía: se reintenta cuando el otro esté cerca o en línea", it: "Non ancora scaricato: si riprova quando l'altro è vicino o online", en: "Not downloaded yet: it retries when the other is nearby or online" },
   est_refreshing: { es: "Actualizando estados…", it: "Aggiornamento degli stati…", en: "Refreshing statuses…" },
   est_liked: { es: "Te gustó", it: "Ti è piaciuto", en: "You liked it" },
   media_cita_waiting: { es: "Esperando que los dos estén en línea para bajarlo", it: "In attesa che entrambi siate online per scaricarlo", en: "Waiting for both of you to be online to download it" },

@@ -116,6 +116,8 @@ export function _busyBackoffMs(n) { return n > BUSY_MAX_WAITS ? -1 : Math.min(30
 // #129. Pura y exportada para la prueba fenixyield.js.
 // 3026: ¿es un respaldo Fénix? (no se guarda para reanudar: Fénix reintenta por su cuenta)
 function _isFenixTx(meta) { return !!(meta && meta.type === 'fenix'); }
+// 3032: tampoco se guarda para reanudar la media de un estado (se vuelve a pedir si hace falta)
+function _noResumeTx(meta) { return _isFenixTx(meta) || !!(meta && meta.type === 'stmedia'); }
 export function _fenixYieldBle(metaType, deviceIsBle, congested) {
   return metaType === 'fenix' && !!deviceIsBle && !!congested;
 }
@@ -2102,6 +2104,8 @@ export class BleAckSystem {
       if (!wasE2e && self._plainFromContact(sender)) { console.warn('[E2E] Archivo sin cifrar que dice ser de ' + _normId(sender) + ': descartado'); return; }
       // Fénix: fragmentos y respuestas de recuperación (no son mensajes del chat)
       if (m.type === 'fenix') { if (self.ble && self.ble.fenix) self.ble.fenix.onFile(fileId, data, m, sender); return; }
+      // 3032: la media grande de un ESTADO (la pidió este teléfono con «sm»): a estados.js, nunca al chat
+      if (m.type === 'stmedia') { try { if (typeof window.NEXO_statusMediaIn === 'function') window.NEXO_statusMediaIn(sender, m, data); } catch (e) {} return; }
       if (self.ble && typeof self.ble._citaResolved === 'function') self.ble._citaResolved(fileId); // Fase D (2972): si había un marcador de cita, se cumplió
       window.dispatchEvent(new CustomEvent('nexo:ble:fileComplete', {
         detail: {
@@ -2322,7 +2326,7 @@ ChatStream.prototype.start = function() {
       self.aborted = true;
       // Persistir para reanudar por internet: el contenido entero como UN trozo (vaultCreateOutgoingTransfer devuelve el
       // existente si ya estaba → no duplica; el resume reconstruye el contenido uniendo los trozos, así que [content] basta).
-      if (window.vaultCreateOutgoingTransfer && !self.meta.fwd && !_isFenixTx(self.meta) && !/^cs[0-9a-f]{12}$/.test(self.msgId)) {
+      if (window.vaultCreateOutgoingTransfer && !self.meta.fwd && !_noResumeTx(self.meta) && !/^cs[0-9a-f]{12}$/.test(self.msgId)) {
         var cidDefer = self.meta.dst || self.ackSystem._resolveNexoId(self.deviceId);
         try { window.vaultCreateOutgoingTransfer(cidDefer, self.msgId, self.type, 1, [self.content], self.meta, self.deviceId).catch(function(){}); } catch (e) {}
       }
@@ -2363,7 +2367,7 @@ ChatStream.prototype.start = function() {
     // 3026 (diagnósticos del S24 12-11: el mismo segmento Fénix de 800 KB salía 2-4 veces seguidas al mismo contacto): un respaldo
     // Fénix NO se guarda para reanudarlo. Fénix ya reintenta solo (con otro id, espera tras un fallo y redundancia en otros
     // custodios); el registro guardado lo volvía a mandar resumeOutgoingTransfers en paralelo → copias duplicadas en la radio.
-    if (window.vaultCreateOutgoingTransfer && !self.meta.fwd && !_isFenixTx(self.meta) && !/^cs[0-9a-f]{12}$/.test(self.msgId)) {
+    if (window.vaultCreateOutgoingTransfer && !self.meta.fwd && !_noResumeTx(self.meta) && !/^cs[0-9a-f]{12}$/.test(self.msgId)) {
       var cid = self.meta.dst || self.ackSystem._resolveNexoId(self.deviceId);
       window.vaultCreateOutgoingTransfer(cid, self.msgId, self.type, self.total, self.chunks, self.meta, self.deviceId).catch(function(){});
     }
