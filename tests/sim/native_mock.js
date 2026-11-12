@@ -558,7 +558,7 @@ class NativePhone {
   _notifName(nx) { const c = this.netBg && (this.netBg.contacts || []).find((x) => String(x.nx || '').toLowerCase() === nx); return (c && c.name) || 'NEXO'; }
   static whatText(w) { return ({ image: '📷 Foto', video: '🎥 Vídeo', audio: '🎤 Nota de voz', call: '📞 Llamada entrante', text: '' })[w] ?? '📎 Archivo'; }
   // Kotlin 2760 backgroundNotify: app en segundo plano (puede estar congelada): si a los 4 s la app no avisó, avisa el nativo
-  _bgNotify(json, fromAddress) {
+  _bgNotify(json, fromAddress, lanNx) {
     if (this.appActive !== false || this.closedMode || this.opts.noBgNotify) return;
     const info = NativePhone.classifyClosed(json, this.advertisingId);
     if (!info.msgId || info.quiet || (info.kind !== 'MESSAGE' && info.kind !== 'NOTIFY_ONLY')) return;
@@ -570,7 +570,9 @@ class NativePhone {
         this._notifyMsg(info, { bg: true });
         // #87 / dueño 29-10 (2833): al avisar con el JS congelado (el Vivo lo congela y no pudo confirmar), mandar
         // también la confirmación de ENTREGA firmada, para que el emisor vea el ✓✓ sin esperar a que la app vuelva.
-        this._sendDeliveredAck(fromAddress, info);
+        // 3016: si llegó por Wi-Fi local (lanNx), la confirmación vuelve por esa misma conexión Wi-Fi
+        if (fromAddress) this._sendDeliveredAck(fromAddress, info);
+        else if (lanNx && !process.env.NEXO_OLD_LANACK) this._sendDeliveredAckLan(lanNx, info);   // contraprueba: NEXO_OLD_LANACK=1 (nativo ≤ 3015)
       }
       else if (this._groupName(info.group)) { const who = this._notifName(info.from), w = NativePhone.whatText(info.what); this._postNotif(info.group, this._groupName(info.group), info.msgId, who !== 'NEXO' ? who + ': ' + (w || 'Mensaje nuevo') : w, { bg: true }); }
       else this._postNotif(info.from || 'nexo_jump', info.from ? this._notifName(info.from) : 'NEXO', info.msgId, NativePhone.whatText(info.what), { bg: true });
@@ -579,13 +581,25 @@ class NativePhone {
   // #87 (C1, 2777): confirmación de ENTREGA firmada al emisor (el mensaje ya está a salvo aquí). La usan el modo cerrado
   // (_closedReceive) y, desde 2833, el aviso de respaldo en segundo plano (_bgNotify) con el JS congelado. El emisor
   // deduplica por tipo+id (un ack doble es inofensivo); sin clave de la pareja va sin firma (el emisor proto-2 lo ignora).
-  _sendDeliveredAck(fromAddress, info) {
+  _deliveredAckJson(info) {
     const me = String(this.advertisingId || '').toLowerCase();
-    if (!me || !info.from || !fromAddress) return;
+    if (!me || !info.from) return null;
     const ack = { v: 1, type: 'ack', msgId: info.msgId, from: me, ts: Date.now() };
     const k = this.ackKeys && this.ackKeys.get(info.from);
     if (k) ack.a = nodeCrypto.createHmac('sha256', k).update('nexo-ack|ack|' + info.msgId + '|' + me + '|' + info.from).digest().subarray(0, 12).toString('base64');
-    this._sendChunkedOrSingle(norm(fromAddress), JSON.stringify(ack));
+    return JSON.stringify(ack);
+  }
+  _sendDeliveredAck(fromAddress, info) {
+    const j = fromAddress ? this._deliveredAckJson(info) : null;
+    if (j) this._sendChunkedOrSingle(norm(fromAddress), j);
+  }
+  // Kotlin 3016 sendDeliveredAckLan: solo al MISMO teléfono que lo mandó por esa conexión Wi-Fi (remitente = par de la conexión)
+  _sendDeliveredAckLan(nx, info) {
+    nx = String(nx || '').toLowerCase();
+    if (!nx || String(info.from || '').toLowerCase() !== nx) return;
+    const j = this._deliveredAckJson(info), peer = this.lanConns && this.lanConns.get(nx), from = this.lan && this.lan.nx;
+    if (!j || !peer || !from || !this.wifiNet) return;
+    setTimeout(() => { if (peer.wifiNet === this.wifiNet && peer.lanConns && peer.lanConns.get(from) === this) { peer._bgNotify(j, null, from); peer.emit('onLanMessage', { nx: from, content: j }); } }, 2);
   }
   _closedReceive(fromAddress, json) {
     const info = NativePhone.classifyClosed(json, this.advertisingId);
@@ -1149,7 +1163,7 @@ class NativePhone {
         const from = self.lan.nx;
         self._lanQ = (self._lanQ || Promise.resolve()).then(() => new Promise((done) => setTimeout(() => {
           // Llega solo si los dos siguen en la misma red y el otro aún tiene la conexión
-          if (peer.wifiNet && peer.wifiNet === self.wifiNet && peer.lanConns && peer.lanConns.get(from) === self) { peer._bgNotify(content); peer.emit('onLanMessage', { nx: from, content }); }
+          if (peer.wifiNet && peer.wifiNet === self.wifiNet && peer.lanConns && peer.lanConns.get(from) === self) { peer._bgNotify(content, null, from); peer.emit('onLanMessage', { nx: from, content }); }
           else self.stats.lanLost = (self.stats.lanLost || 0) + 1;
           done();
         }, 2 + content.length / ((self.opts.lanBps || 20e6) / 1000))));

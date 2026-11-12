@@ -891,7 +891,8 @@ class NexoBlePlugin : Plugin() {
     // Ronda 2760: con la app en segundo plano el aviso lo da la app (notify.js), pero algunos teléfonos (Vivo del dueño)
     // congelan la app en segundo plano y no avisaba nadie. Ahora el nativo mira lo que llega (Bluetooth o Wi-Fi) y, si
     // a los 4 s la app no ha avisado de ese mensaje, avisa él (sin texto: va cifrado). Mismo msgId = un solo aviso.
-    private fun backgroundNotify(json: String, deviceId: String? = null) {
+    // 3016: lanNx = llegó por Wi-Fi local desde ese NEXO ID (la confirmación vuelve por esa misma conexión)
+    private fun backgroundNotify(json: String, deviceId: String? = null, lanNx: String? = null) {
         if (!appInBackground || closedMode) return
         val ctx = appCtx ?: return
         val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
@@ -908,9 +909,11 @@ class NexoBlePlugin : Plugin() {
                 notifyMessage(ctx, info)
                 // #87 / dueño 29-10 (2833): el JS no confirmó en 4 s (lo normal: lo confirma él, pero algunos teléfonos —
                 // el Vivo del dueño— congelan la app y el JS no corre). Al avisar, mandar también la confirmación de
-                // ENTREGA firmada por Bluetooth, para que el emisor vea el ✓✓ sin esperar a que la app vuelva. deviceId
-                // nulo (p. ej. aviso por Wi-Fi/LAN) = sin ack por este camino (esa vía confirma la entrega por su cuenta).
+                // ENTREGA firmada por Bluetooth, para que el emisor vea el ✓✓ sin esperar a que la app vuelva.
+                // 3016 (diagnóstico S23 del dueño 12-11): por Wi-Fi local NO se confirmaba («esa vía confirma por su cuenta»
+                // era falso con el JS congelado) y el emisor reenviaba sin fin; ahora vuelve por la misma conexión Wi-Fi.
                 if (deviceId != null) sendDeliveredAck(deviceId, info)
+                else if (lanNx != null) sendDeliveredAckLan(lanNx, info)
             } else notifyOnly(ctx, info)
         }, BG_NOTIFY_DELAY_MS)
     }
@@ -991,13 +994,27 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("ok", true))
     }
 
-    private fun sendDeliveredAck(deviceId: String, info: BgInbox.Info) {
+    private fun deliveredAckJson(info: BgInbox.Info): String? {
         val me = (nexoAdvertisingId ?: "").lowercase()
-        if (me.isEmpty() || info.from.isEmpty()) return
+        if (me.isEmpty() || info.from.isEmpty()) return null
         val ackObj = JSONObject().put("v", 1).put("type", "ack").put("msgId", info.msgId).put("from", me).put("ts", System.currentTimeMillis())
         val k = ackKeys[info.from]
         if (k != null) ackObj.put("a", ackTag(k, "ack|${info.msgId}|$me|${info.from}"))
-        sendChunkedOrSingle(normalizeMac(deviceId), deviceId, ackObj.toString())
+        return ackObj.toString()
+    }
+
+    private fun sendDeliveredAck(deviceId: String, info: BgInbox.Info) {
+        val json = deliveredAckJson(info) ?: return
+        sendChunkedOrSingle(normalizeMac(deviceId), deviceId, json)
+    }
+
+    // 3016: confirmación de entrega por Wi-Fi local, solo al mismo NEXO que lo mandó por esa conexión (remitente = par)
+    private fun sendDeliveredAckLan(nx: String, info: BgInbox.Info) {
+        val peer = nx.lowercase()
+        if (peer.isEmpty() || info.from.lowercase() != peer) return
+        val json = deliveredAckJson(info) ?: return
+        val hub = lanHub ?: return
+        lanSendExec.execute { try { hub.send(peer, json) } catch (e: Exception) { } }
     }
 
     // La app se abre: la instancia anterior (si siguió recibiendo) se retira y lo guardado se entrega a la app
@@ -3236,7 +3253,7 @@ class NexoBlePlugin : Plugin() {
             val hub = lanHub ?: LanHub({ lanMyId }, object : LanHub.Listener {
                 override fun onUp(nx: String) { remLog("INFO", "LAN", "Conectado con $nx por Wi-Fi"); notifyListeners("onLanUp", JSObject().put("nx", nx), true) }
                 override fun onDown(nx: String) { remLog("INFO", "LAN", "Sin Wi-Fi con $nx"); notifyListeners("onLanDown", JSObject().put("nx", nx), true) }
-                override fun onMessage(nx: String, text: String) { backgroundNotify(text); notifyListeners("onLanMessage", JSObject().put("nx", nx).put("content", text), true) }
+                override fun onMessage(nx: String, text: String) { backgroundNotify(text, null, nx); notifyListeners("onLanMessage", JSObject().put("nx", nx).put("content", text), true) }
                 override fun onLog(level: String, message: String) { remLog(level, "LAN", message) }
             }, clock = { android.os.SystemClock.elapsedRealtime() }).also { lanHub = it }
             val port = hub.start()

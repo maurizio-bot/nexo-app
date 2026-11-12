@@ -78,6 +78,10 @@
      "prueba": "escaneo lento por respaldo FÉNIX"
     },
     {
+     "fallo": "3016 (dueño 12-11, diagnóstico S23 con la 3014) — CAUSA de los reenvíos sin fin: los textos iban por Wi-Fi LOCAL a un teléfono con la app en segundo plano/congelada; su nativo los recibía y avisaba, pero por Wi-Fi no mandaba la confirmación de entrega (por Bluetooth sí, desde 2833; el comentario decía «esa vía confirma por su cuenta», falso con el JS congelado). 3016 (NexoBlePlugin.kt `sendDeliveredAckLan`, solo al mismo NEXO de esa conexión): ✓✓ en ~4 s sin despertar la app. lanack.js (contraprueba NEXO_OLD_LANACK=1: nunca ✓✓, 2 vueltas de reenvío)",
+     "prueba": "confirmación de entrega por Wi-Fi con la app del otro dormida"
+    },
+    {
      "fallo": "3016 (dueño 12-11, diagnóstico S23 con la 3014): con un contacto cuyo enlace seguía «vivo» (pings contestados) pero que no confirmaba, el S23 reenviaba 2 textos cortos sin pausa más de 16 min («ACK timeout 1..5/5» → «Pending fallo» → 0,3 s → «Reenviando», una vuelta cada ~22 s). 3016: tras una vuelta sin ningún éxito y todo por falta de confirmación, la siguiente espera 15→30→60 s (tope 2 min); una confirmación de ese contacto la quita. resendloop.js (contraprueba 3015: 6 vueltas en 150 s; 3016: 3)",
      "prueba": "reenvío sin pausa a un contacto que no confirma"
     }
