@@ -157,6 +157,7 @@ export const BLE_CONNECTION_METHODS = {
         mtu: (self._mtuByDevice && self._mtuByDevice.get(key)) || 185,
         dead: self._bleCongested(key),
         since: (st && st.since) || 0,
+        role: (st && st.role) || null, // 3027: cliente/servidor (desempate común con el otro teléfono)
         busy: self._hasActiveFileTransfer(key) || (!!activeMac && _normMac(key) === activeMac)
       });
       byNexo.set(nx, arr);
@@ -166,7 +167,8 @@ export const BLE_CONNECTION_METHODS = {
       var seen = self._dupSeenSince.get(nx);
       if (!seen) { self._dupSeenSince.set(nx, now); return; }           // primera vez: arrancar el freno, no cerrar aún
       if (now - seen < self._dupDebounceMs) return;                     // aún no estables (podría ser un traspaso)
-      var toClose = _dupBleLinksToClose(links);
+      var me = _normId(self.localNexoId); // 3027: el de NEXO ID menor se queda su enlace de cliente; el otro, el de servidor
+      var toClose = _dupBleLinksToClose(links, me ? { iAmLower: me < nx } : null);
       for (var i = 0; i < toClose.length; i++) {
         var key = toClose[i];
         if ((self._dupClosedUntil.get(key) || 0) > now) continue;       // enfriamiento por MAC

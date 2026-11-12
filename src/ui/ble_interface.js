@@ -804,6 +804,12 @@ export class BLEInterface {
     meta = meta || {};
     if (!deviceId) return;
     var stateObj = Object.assign({}, meta, { state: state, timestamp: Date.now() });
+    // 3027: el papel del enlace (cliente/servidor) se conserva entre cambios de estado del MISMO enlace (lo usa el dedup
+    // para desempatar igual que el otro teléfono); al desconectarse se olvida
+    if (!('role' in meta) && state !== BLE_STATES.DISCONNECTED) {
+      var prevSt = this._deviceStates.get(_normMac(deviceId));
+      if (prevSt && prevSt.role && prevSt.state !== BLE_STATES.DISCONNECTED) stateObj.role = prevSt.role;
+    }
     // FIX v6.1.3: clave normalizada; los eventos nativos traen 'AA:BB:..' y el mapeo NXID->MAC 'aabb..'
     this._deviceStates.set(_normMac(deviceId), stateObj);
   }

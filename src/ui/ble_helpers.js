@@ -207,8 +207,14 @@ export function _scanWindowFullAt(count, max) {
 // Regla: se queda el MEJOR (no-muerto y mayor MTU; empate → el más reciente, mayor `since`); se cierran los demás que NO
 // estén ocupados (`busy`: transferencia en curso o chat activo). NUNCA cierra un enlace ocupado ni el único que haya
 // (con <2 enlaces devuelve []). Cada enlace: { key(MAC), mtu, dead, since, busy }. Pura y exportada: prueba bledup.js.
-export function _dupBleLinksToClose(links) {
+// 3027 (diagnósticos S24↔Motorola 12-11, «enlace_abre_cierra» en los DOS teléfonos): cuando los dos se conectan a la vez
+// (cada uno como cliente del otro) hay dos enlaces físicos; cada teléfono deduplicaba por su cuenta y, con el mismo MTU, el
+// desempate «el más reciente» podía elegir enlaces DISTINTOS a cada lado → cada uno cerraba el del otro, caían los dos y
+// vuelta a empezar. Desempate común a los dos: se queda el enlace cuyo CLIENTE es el teléfono de NEXO ID menor (opts.iAmLower:
+// soy el menor → me quedo con mi enlace de cliente; si no, con el de servidor). Los dos calculan lo mismo → cierran el mismo.
+export function _dupBleLinksToClose(links, opts) {
   if (!Array.isArray(links) || links.length < 2) return [];
+  var prefRole = (opts && typeof opts.iAmLower === 'boolean') ? (opts.iAmLower ? 'client' : 'server') : null;
   var valid = links.filter(function (l) { return l && l.key; });
   if (valid.length < 2) return [];
   var alive = valid.filter(function (l) { return !l.dead; });
@@ -216,8 +222,10 @@ export function _dupBleLinksToClose(links) {
   var keep = pool[0];
   for (var i = 1; i < pool.length; i++) {
     var l = pool[i];
+    var sameMtu = (l.mtu || 0) === (keep.mtu || 0);
+    var roleTie = sameMtu && prefRole && l.role && keep.role && l.role !== keep.role; // 3027: desempate común
     var better = (l.mtu || 0) > (keep.mtu || 0) ||
-      ((l.mtu || 0) === (keep.mtu || 0) && (l.since || 0) > (keep.since || 0));
+      (roleTie ? l.role === prefRole : (sameMtu && (l.since || 0) > (keep.since || 0)));
     if (better) keep = l;
   }
   var out = [];

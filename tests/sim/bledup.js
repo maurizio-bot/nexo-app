@@ -44,6 +44,18 @@ const { importSrc } = require('./srcmod');
   r.keeper_no_se_cierra = !cerr.includes('C'); // C es el keeper (mejor MTU no muerto) → nunca se cierra
   r.cierra_solo_el_libre = same(cerr, ['D']);  // solo el repetido LIBRE se cierra
 
+  // 10. 3027 (S24↔Motorola 12-11, «enlace_abre_cierra» en los DOS): cada teléfono es cliente del otro → dos enlaces físicos
+  //     (enl1 = A cliente→B servidor; enl2 = B cliente→A servidor), mismo MTU. Cada lado ve los dos con papeles invertidos y
+  //     «since» distintos. Los dos deben cerrar el MISMO enlace físico (si no, se caen ambos y vuelta a empezar).
+  //     (contraprueba 3026: el desempate «más reciente» elige enlaces distintos a cada lado)
+  const ladoA = [L('enl1', 517, { role: 'client', since: 100 }), L('enl2', 517, { role: 'server', since: 900 })];
+  const ladoB = [L('enl1', 517, { role: 'server', since: 900 }), L('enl2', 517, { role: 'client', since: 100 })];
+  const cA = _dupBleLinksToClose(ladoA, { iAmLower: true }), cB = _dupBleLinksToClose(ladoB, { iAmLower: false });
+  r.cruzado_cierran_el_mismo = cA.length === 1 && same(cA, cB);
+  r.cruzado_queda_cliente_del_menor = same(cA, ['enl2']);
+  // el MTU sigue mandando sobre el desempate (los dos ven el mismo MTU del mismo enlace)
+  r.cruzado_mtu_manda = same(_dupBleLinksToClose([L('e1', 23, { role: 'client' }), L('e2', 517, { role: 'server' })], { iAmLower: true }), ['e1']);
+
   // 9. Robustez ante basura.
   r.sin_dato = same(_dupBleLinksToClose([]), []) && same(_dupBleLinksToClose(null), []) &&
     same(_dupBleLinksToClose([L('A', 512)]), []) && same(_dupBleLinksToClose([null, { mtu: 1 }]), []);

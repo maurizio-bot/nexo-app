@@ -67,6 +67,8 @@ async function openChatWith(p, name) {
   // deviceId (MAC) de B en A
   let bMac = null; biA.connectedDevices.forEach((d, k) => { if (!bMac && !/^(lan|net)/.test(k)) bMac = k; });
   r.hay_enlace = !!bMac;
+  // 3027: el papel del enlace (A es cliente de B) se conserva al pasar a «listo» (lo usa el dedup para desempatar igual que B)
+  { let rol = null; biA._deviceStates.forEach((st, k) => { if (!/^(lan|net)/.test(k) && st.state === 'ready_to_chat') rol = st.role; }); r.papel_enlace_conservado = rol === 'client'; }
 
   // No dejar que el auto-escaneo reconecte a B a mitad de la prueba (controlamos los eventos a mano)
   const realAutoScan = biA._autoScanForKnownContacts;
@@ -141,7 +143,7 @@ async function openChatWith(p, name) {
   biA.nativePlugin.connectToDevice = realConn;
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
-  const ok = r.conecta && r.hay_enlace && r.racha_4 && r.pausa_fijada && r.aviso_pausa &&
+  const ok = r.conecta && r.hay_enlace && r.papel_enlace_conservado && r.racha_4 && r.pausa_fijada && r.aviso_pausa &&
     r.patron_real_pausa && r.racha_caduca && r.peerready_limpia && r.pausa_no_escanea && r.bucle_sigue_vivo && r.activo_si_escanea &&
     r.auto_en_pausa_no_conecta && r.manual_en_pausa_si_conecta && r.auto_sin_pausa_si_conecta && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
