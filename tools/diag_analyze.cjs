@@ -20,6 +20,7 @@ const FIRMAS = [
   { id: 'no_confirma_reenvio', re: /no confirma lo reenviado/, min: 3, que: 'el contacto no confirma lo reenviado (espera creciente activa; mirar su diagnóstico emparejado)', arreglo: null },
   { id: 'openchat_mac_vieja', re: /openChat: forcing connectToDevice/, min: 3, que: 'abrir un chat forzaba la dirección Bluetooth vieja', arreglo: 3017 },
   { id: 'enlace_repetido_bucle', re: /Dedup: cierro enlace repetido/, min: 3, que: 'enlace Bluetooth repetido que se abre y se cierra (escaneo)', arreglo: 3019 },
+  { id: 'no_service_bucle', re: /desconectado: no_service/, min: 8, que: 'reconexión Bluetooth sin servicio NEXO en bucle (la pausa no saltaba: el corte-eco la reiniciaba)', arreglo: 3025 },
   { id: 'contacto_reinstalado', re: /se llama igual que .* reinstalado|contacto_duplicado/, min: 1, que: 'contacto duplicado por reinstalación', arreglo: 3018 },
   { id: 'sin_internet', re: /sin internet anunciado/, min: 1, que: 'contacto sin «tiene internet» guardado: no se lee su buzón (normal si su app es muy vieja; desde la 3020 se guarda al agregarlo)', arreglo: null, soloEstado: true, info: true },
   { id: 'blob_rechazado', re: /\[BLOB\] Puntero .* rechazado/, min: 1, que: 'archivo del buzón rechazado (versión/algoritmo)', arreglo: null },

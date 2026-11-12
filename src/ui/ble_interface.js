@@ -181,6 +181,8 @@ export class BLEInterface {
     // seguidos se pausa SOLO el Bluetooth con ese contacto (backoff exponencial); internet/Wi-Fi/Jump siguen igual.
     this._noServiceStreak = new Map();   // NEXO ID -> no_service seguidos
     this._bleCooldownUntil = new Map();  // NEXO ID -> hasta cuándo no reintentar Bluetooth
+    this._noServiceLast = new Map();     // 3025: NEXO ID -> cuándo fue el último no_service (la racha caduca)
+    this._noServiceDecayMs = 600000;     // 3025: 10 min sin no_service → la racha empieza de cero
     this._noServiceThreshold = 4;        // a partir de aquí, pausa
     this._bleCooldownBaseMs = 30000;     // 30 s, se duplica
     this._bleCooldownMaxMs = 600000;     // tope 10 min
@@ -406,6 +408,7 @@ export class BLEInterface {
     this._lostPeers.delete(_normId(nexoId));
     // #87: el contacto conectó bien → se olvida la racha de no_service y la pausa de Bluetooth
     this._noServiceStreak.delete(_normId(nexoId));
+    this._noServiceLast.delete(_normId(nexoId));
     this._bleCooldownUntil.delete(_normId(nexoId));
     var ndPeer = _normMac(deviceId);
     if (!this._macToNexoId.get(ndPeer)) this._macToNexoId.set(ndPeer, _normId(nexoId));
@@ -704,16 +707,21 @@ export class BLEInterface {
           // #87: GATT roto (no_service) muchas veces seguidas → pausar Bluetooth con este contacto un rato (backoff)
           var nsId = _normId(peerUUID);
           if (data.reason === 'no_service') {
-            var streak = (self._noServiceStreak.get(nsId) || 0) + 1;
+            // 3025: la racha caduca si el último no_service fue hace más de 10 min (fallos sueltos de días distintos no suman)
+            var nsLast = self._noServiceLast.get(nsId) || 0;
+            var streak = (Date.now() - nsLast > self._noServiceDecayMs ? 0 : (self._noServiceStreak.get(nsId) || 0)) + 1;
             self._noServiceStreak.set(nsId, streak);
+            self._noServiceLast.set(nsId, Date.now());
             if (streak >= self._noServiceThreshold) {
               var backoff = Math.min(self._bleCooldownMaxMs, self._bleCooldownBaseMs * Math.pow(2, streak - self._noServiceThreshold));
               self._bleCooldownUntil.set(nsId, Date.now() + backoff);
               console.warn('[BLEInterface] ' + peerUUID + ' sin servicio GATT ' + streak + ' veces: pauso Bluetooth ' + Math.round(backoff / 1000) + ' s (sigo por internet/Wi-Fi/Jump)');
             }
-          } else {
-            self._noServiceStreak.delete(nsId); // un corte normal no cuenta como GATT roto
           }
+          // 3025 (diagnósticos del S24 12-11 con el Motorola: «no_service» cada ~1-2 s durante minutos, en 3012, 3018 y 3019):
+          // cada no_service venía seguido ~1 s después de un corte SIN motivo de la misma dirección (el eco del lado servidor
+          // de la misma conexión), y ese corte borraba la racha → nunca llegaba a 4 y la pausa no saltaba nunca. Un corte
+          // normal ya NO borra la racha: solo la borra conectar bien (_notifyPeerReady), y caduca sola a los 10 min.
           self._markPeerLost(peerUUID);
           _autoScanRegister(peerUUID);
           _autoScanStart();

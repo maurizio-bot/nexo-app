@@ -4,7 +4,8 @@
 // Bluetooth con ese contacto (backoff exponencial); internet/Wi-Fi/Jump siguen igual; al conectar bien se olvida.
 // Esta prueba es determinista (dispara los eventos a mano, no depende de la radio real):
 //   1) 4 no_service seguidos → se fija la pausa (cooldown) y la racha llega a 4.
-//   2) un corte normal (no no_service) NO cuenta como GATT roto → se olvida la racha.
+//   2) (3025) el patrón real: no_service + corte sin motivo (eco del servidor) ×4 → pausa (antes el corte borraba la
+//      racha y la pausa no saltaba nunca); la racha caduca a los 10 min sin no_service.
 //   3) al conectar bien (peerReady) se olvida racha y pausa.
 //   4) con el contacto en pausa y siendo el único «perdido», el bucle de re-búsqueda NO escanea (deja de martillar);
 //      sin pausa, sí escanea.
@@ -78,9 +79,19 @@ async function openChatWith(p, name) {
   r.pausa_fijada = (biA._bleCooldownUntil.get(idB) || 0) > Date.now();
   r.aviso_pausa = logs.some((l) => /sin servicio GATT/.test(l));
 
-  // ---- 2) un corte normal NO cuenta como GATT roto (se olvida la racha) ----
-  nA.emit('onDeviceDisconnected', { deviceId: bMac, reason: 'timeout' }); await sleep(40);
-  r.corte_normal_olvida_racha = !biA._noServiceStreak.has(idB);
+  // ---- 2) 3025 (diagnósticos del S24 12-11 con el Motorola): el patrón REAL es no_service y ~1 s después un corte SIN
+  //         motivo de la misma dirección (eco del lado servidor). Ese corte ya no borra la racha: 4 parejas → pausa.
+  //         (contraprueba 3024: la racha nunca pasa de 1 y la pausa no salta)
+  biA._noServiceStreak.delete(idB); biA._noServiceLast && biA._noServiceLast.delete(idB); biA._bleCooldownUntil.delete(idB);
+  for (let k = 0; k < 4; k++) {
+    nA.emit('onDeviceDisconnected', { deviceId: bMac, reason: 'no_service' }); await sleep(40);
+    nA.emit('onDeviceDisconnected', { deviceId: bMac }); await sleep(40);
+  }
+  r.patron_real_pausa = (biA._noServiceStreak.get(idB) || 0) >= 4 && (biA._bleCooldownUntil.get(idB) || 0) > Date.now();
+  // la racha caduca: con el último no_service de hace > 10 min, uno nuevo empieza de cero (fallos sueltos no suman)
+  biA._noServiceStreak.set(idB, 3); if (biA._noServiceLast) biA._noServiceLast.set(idB, Date.now() - 11 * 60000); biA._bleCooldownUntil.delete(idB);
+  nA.emit('onDeviceDisconnected', { deviceId: bMac, reason: 'no_service' }); await sleep(40);
+  r.racha_caduca = biA._noServiceStreak.get(idB) === 1 && !((biA._bleCooldownUntil.get(idB) || 0) > Date.now());
 
   // ---- 3) al conectar bien (peerReady) se olvida racha y pausa ----
   biA._noServiceStreak.set(idB, 5); biA._bleCooldownUntil.set(idB, Date.now() + 300000);
@@ -131,7 +142,7 @@ async function openChatWith(p, name) {
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.conecta && r.hay_enlace && r.racha_4 && r.pausa_fijada && r.aviso_pausa &&
-    r.corte_normal_olvida_racha && r.peerready_limpia && r.pausa_no_escanea && r.bucle_sigue_vivo && r.activo_si_escanea &&
+    r.patron_real_pausa && r.racha_caduca && r.peerready_limpia && r.pausa_no_escanea && r.bucle_sigue_vivo && r.activo_si_escanea &&
     r.auto_en_pausa_no_conecta && r.manual_en_pausa_si_conecta && r.auto_sin_pausa_si_conecta && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NOSERVICE ' + JSON.stringify(r));
