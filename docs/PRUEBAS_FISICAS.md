@@ -15,6 +15,10 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 4. **Bluetooth con un teléfono que no responde (3025).** Uno con el Bluetooth del otro apagado 5 min: el primero deja de
    insistir (en su diagnóstico sale «pausa» y no 20 líneas «no_service» seguidas).
 
+4b. **Estados v3 (3032).** Publica 3 estados (uno con foto grande): en otro teléfono salen «(3)», se recorren con ‹ ›, la foto
+   carga al abrirla. Dale me gusta y comenta uno: en «Mis estados» del dueño se ve quién y el comentario. En Contactos, desliza
+   hacia abajo: «Actualizando estados…». Mantén pulsado un sticker propio que te mandaron → «Agregar a mis stickers».
+
 ## B. Cambio de camino y archivos
 5. **Wi-Fi que se corta (3022/3023).** Los dos en el mismo Wi-Fi, chat abierto; apaga el Wi-Fi de uno y escribe enseguida:
    el texto llega en 2–5 s por Bluetooth. Vuelve a encenderlo: sigue por Wi-Fi.
