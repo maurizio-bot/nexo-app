@@ -799,6 +799,8 @@ var STRINGS = {
   add_err_dup: { es: "Ya tienes a ese contacto", it: "Hai già questo contatto", en: "You already have that contact" },
   add_err_nonet: { es: "Esta versión no tiene internet", it: "Questa versione non ha internet", en: "This version has no internet" },
   add_err_gone: { es: "Esa solicitud ya no está", it: "Quella richiesta non c'è più", en: "That request is no longer there" },
+  add_anon_one: { es: "Buscando… 1 teléfono NEXO cerca", it: "Ricerca… 1 telefono NEXO vicino", en: "Searching… 1 NEXO phone nearby" },
+  add_anon_count: { es: "Buscando… {n} teléfonos NEXO cerca", it: "Ricerca… {n} telefoni NEXO vicini", en: "Searching… {n} NEXO phones nearby" },
   add_anon_row: { es: "NEXO cercano · identificando…", it: "NEXO vicino · identificazione…", en: "Nearby NEXO · identifying…" },
   add_anon_slow: { es: "NEXO cercano · no responde todavía", it: "NEXO vicino · non risponde ancora", en: "Nearby NEXO · not answering yet" },
   add_anon_pending: { es: "NEXO cercano · lo agrego en cuanto responda…", it: "NEXO vicino · lo aggiungo appena risponde…", en: "Nearby NEXO · adding as soon as it answers…" },

@@ -760,7 +760,11 @@ export const BLE_UI_METHODS = {
     // 3012 (regla del dueño 11-11: «cualquiera que tiene NEXO debe aparecer al instante en un escaneo»): los NEXO cercanos que el
     // escaneo ve pero aún no dijeron quiénes son salen YA como «identificando…» (ble_privacy._anonRows) y pasan a su nombre al contestar
     var anonRows = (typeof this._anonRows === 'function' && !this._panelQuery) ? this._anonRows() : [];
-    if (newDevices.length === 0 && anonRows.length === 0) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+    // 3014 (dueño 12-11: «encontrar rápido, pero que se vean solo los que son»; eligió A): los NEXO cercanos que aún no dijeron quiénes
+    // son NO salen como filas sin nombre. Una sola línea discreta dice cuántos se están identificando (solo los vistos hace poco: el
+    // que no contesta deja de contar) y cada uno aparece, con su nombre, en cuanto contesta.
+    var fresh = anonRows.filter(function(a) { return !a.waiting; }).length;
+    if (newDevices.length === 0 && fresh === 0) { bar.style.display = 'none'; bar.innerHTML = ''; if (anonRows.length && !this._anonRowTimer) { this._anonRowTimer = setTimeout(function() { self._anonRowTimer = null; try { self.renderNewDeviceBar(); } catch (e) {} }, 2500); } return; }
     bar.style.display = 'flex';
     bar.style.flexDirection = 'column';
     bar.style.gap = '8px';
@@ -770,6 +774,14 @@ export const BLE_UI_METHODS = {
     bar.innerHTML = '';
     // (se vuelve a pintar sola mientras haya filas «identificando…»: pasan a «no responde todavía» o caducan)
     if (anonRows.length && !this._anonRowTimer) { this._anonRowTimer = setTimeout(function() { self._anonRowTimer = null; try { self.renderNewDeviceBar(); } catch (e) {} }, 2500); }
+    if (fresh > 0) {
+      var note = document.createElement('p');
+      note.className = 'ble-anon-note';
+      note.dataset.n = String(fresh);
+      note.textContent = fresh === 1 ? t('add_anon_one', 'Buscando… 1 teléfono NEXO cerca') : t('add_anon_count', 'Buscando… {n} teléfonos NEXO cerca').replace('{n}', String(fresh));
+      note.style.cssText = 'width:100%;margin:0;text-align:center;font-size:13px;color:rgba(255,255,255,0.65);padding:2px 0;';
+      bar.appendChild(note);
+    }
     newDevices.forEach(function(item) {
       var device = item.device;
       var deviceId = item.deviceId;
@@ -792,27 +804,6 @@ export const BLE_UI_METHODS = {
       if (barsEl) row.appendChild(barsEl);
       row.appendChild(addBtn);
       bar.appendChild(row);
-    });
-    // (en su propio bloque: las filas ya identificadas siguen siendo los hijos directos de la barra)
-    var anonBox = anonRows.length ? document.createElement('section') : null;
-    if (anonBox) { anonBox.className = 'ble-anon-list'; anonBox.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:100%;'; bar.appendChild(anonBox); }
-    anonRows.forEach(function(a) {
-      var row = document.createElement('div');
-      row.className = 'ble-anon-row';
-      row.dataset.tok = a.tok;
-      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;width:100%;padding:12px 20px;border:2px dashed rgba(0,200,255,0.55);border-radius:16px;background:rgba(0,20,40,0.7);box-sizing:border-box;';
-      var nameSpan = document.createElement('span');
-      nameSpan.textContent = a.pending ? t('add_anon_pending', 'NEXO cercano · lo agrego en cuanto responda…') : (a.waiting ? t('add_anon_slow', 'NEXO cercano · no responde todavía') : t('add_anon_row', 'NEXO cercano · identificando…'));
-      nameSpan.style.cssText = 'color:rgba(255,255,255,0.8);font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin-right:12px;';
-      row.appendChild(nameSpan);
-      var barsA = _signalBarsEl(a.rssi);
-      if (barsA) row.appendChild(barsA);
-      var addBtn = document.createElement('button');
-      addBtn.textContent = '+';
-      addBtn.style.cssText = 'width:40px;height:40px;border-radius:50%;background:rgba(0,200,255,0.55);border:none;color:#fff;font-size:20px;font-weight:700;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;';
-      addBtn.addEventListener('click', function(e) { e.stopPropagation(); if (typeof self._addAnon === 'function') self._addAnon(a.tok); });
-      row.appendChild(addBtn);
-      anonBox.appendChild(row);
     });
   },
 

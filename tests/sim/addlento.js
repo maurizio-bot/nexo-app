@@ -98,10 +98,12 @@ function sendText(p, t) { const i = p.win.document.getElementById('message-input
   nat.B.stats.codedConnects = 0;
 
   // ---- L1: B abre «Agregar» ----
+  // (3014: los que aún no dijeron quiénes son no salen como filas; una línea dice cuántos se están identificando)
+  const noteN = () => Number(((P.B.win.document.querySelector('#ble-new-device .ble-anon-note') || {}).dataset || {}).n || 0);
   openPanel(P.B); const tOpen = Date.now();
   // L0 (3012, regla del dueño: «cualquiera que tiene NEXO debe aparecer al instante»): en ≤ 1,5 s hay una fila por cada NEXO
   // cercano (con su nombre o, mientras no conteste, «identificando…»): los 9 que no son contactos de B
-  r.L0_filas_s = await wait(() => { if (!P.B.win.bleInterface.isScanning) click(P.B.win, P.B.win.document.getElementById('ble-scan-btn')); return found(P.B).length + P.B.win.document.querySelectorAll('#ble-new-device .ble-anon-row').length >= 9; }, 20);
+  r.L0_filas_s = await wait(() => { if (!P.B.win.bleInterface.isScanning) click(P.B.win, P.B.win.document.getElementById('ble-scan-btn')); return found(P.B).length + noteN() >= 9; }, 20);
   r.L1_C_sale_s = await waitRow(P.B, 'C', 60);
   r.L1_lista = found(P.B);
   // L7 (3012): con MUCHOS cerca (9 que no son contactos; solo caben ~6 conexiones a la vez): todos los que pueden contestar salen
@@ -114,16 +116,12 @@ function sendText(p, t) { const i = p.win.document.getElementById('message-input
   // L5 (3012): D tiene la app DORMIDA: contesta su nativo y también sale con su nombre
   r.L5_D_dormida_sale_s = await waitRow(P.B, 'D', 30);
   r.L5_kx_nativos_de_D = nat.D.stats.nativeKx || 0;
-  // L6 (3012): G (versión anterior, dormida) no puede decir quién es: su fila sigue como «NEXO cercano», pasa a «no responde
-  // todavía»; el usuario toca «+» y, cuando G despierta, se agrega sola con su nombre
-  const anonTxt = () => Array.from(P.B.win.document.querySelectorAll('#ble-new-device .ble-anon-row')).map((e) => (e.firstChild || {}).textContent || '');
-  r.L6_fila_sin_nombre = (await wait(() => { if (!P.B.win.bleInterface.isScanning) click(P.B.win, P.B.win.document.getElementById('ble-scan-btn')); return anonTxt().length === 1; }, 10)) !== null;
-  r.L6_no_responde = (await wait(() => { if (!P.B.win.bleInterface.isScanning) click(P.B.win, P.B.win.document.getElementById('ble-scan-btn')); return anonTxt().some((x) => /no responde/.test(x)); }, 15)) !== null;
-  click(P.B.win, P.B.win.document.querySelector('#ble-new-device .ble-anon-row button')); await sleep(300);
-  r.L6_pendiente = anonTxt().some((x) => /en cuanto responda/.test(x));
-  const idG = P.G.win.bleInterface.localNexoId.toLowerCase();
+  // L6 (3014, dueño 12-11: «que se vean solo los que son»): G (versión anterior, dormida) no puede decir quién es: NO sale como fila
+  // sin nombre; la línea «Buscando…» deja de contarlo a los pocos segundos; cuando G despierta, sale con su nombre
+  r.L6_sin_filas_sin_nombre = P.B.win.document.querySelectorAll('#ble-new-device .ble-anon-row').length === 0 && found(P.B).every((n) => all8.indexOf(n) >= 0);
+  r.L6_linea_se_quita_s = await wait(() => { if (!P.B.win.bleInterface.isScanning) click(P.B.win, P.B.win.document.getElementById('ble-scan-btn')); return noteN() === 0; }, 20);
   nat.G.setFrozen(false); nat.G.setAppActive(true);
-  r.L6_G_agregada_s = await wait(() => { if (panelOpen(P.B) && !P.B.win.bleInterface.isScanning) click(P.B.win, P.B.win.document.getElementById('ble-scan-btn')); return hasContact(P.B, idG); }, 40);
+  r.L6_G_sale_al_despertar_s = await waitRow(P.B, 'G', 40);
   openPanel(P.B);
   // ---- L2: cerrar y reabrir ----
   closePanel(P.B); await sleep(6000);
@@ -138,7 +136,7 @@ function sendText(p, t) { const i = p.win.document.getElementById('message-input
   r.L4_llega_s = await wait(async () => (await P.C.win.vaultLoadMessages(idB)).some((m) => m.content === 'hola Austin'), 60);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.rotativos && r.L0_filas_s !== null && r.L0_filas_s <= 1.5 && r.L1_C_sale_s !== null && r.L1_C_sale_s <= 3 && r.L7_todos_con_nombre_s !== null && r.L7_todos_con_nombre_s <= 6 && r.L1_E_sale_s !== null && r.L1_F_sale_s !== null &&
-    r.L5_D_dormida_sale_s !== null && r.L5_kx_nativos_de_D > 0 && r.L6_fila_sin_nombre && r.L6_no_responde && r.L6_pendiente && r.L6_G_agregada_s !== null && r.L2_C_sale_s !== null && r.L2_C_sale_s <= 1.5 &&
+    r.L5_D_dormida_sale_s !== null && r.L5_kx_nativos_de_D > 0 && r.L6_sin_filas_sin_nombre && r.L6_linea_se_quita_s !== null && r.L6_G_sale_al_despertar_s !== null && r.L2_C_sale_s !== null && r.L2_C_sale_s <= 1.5 &&
     r.L3_conexiones_largo_alcance === 0 && r.L4_agregado && r.L4_llega_s !== null && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('ADDLENTO ' + JSON.stringify(r));
