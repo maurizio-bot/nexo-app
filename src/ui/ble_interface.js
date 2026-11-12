@@ -888,10 +888,11 @@ export class BLEInterface {
         // Ronda 2758: un grupo no es un teléfono (groups_ui.js)
         if (self.groups && self.groups.isGroup(uuid) && typeof window.NEXO_openGroupChat === 'function') { window.NEXO_openGroupChat(uuid); resolve(); return; }
         var contact = _getContactByUUID(uuid);
-        var deviceId = contact ? contact.deviceId : null;
-        if (!deviceId) {
-          deviceId = self._resolveDeviceIdForNexoId(uuid);
-        }
+        // 3017 (diagnósticos S23 y HONOR del dueño 12-11): primero el mejor camino VIVO (Wi-Fi comprobado, internet, enlace
+        // Bluetooth listo); la dirección guardada en el contacto solo si no hay otro. Antes se usaba primero la guardada y se
+        // forzaba la conexión a ella aunque ya no sirviera (dirección rotada, o un enlace repetido que la app misma cerró):
+        // enlace a medias y escrituras atascadas ~6 s antes de pasar al Wi-Fi.
+        var deviceId = self._resolveDeviceIdForNexoId(uuid) || (contact ? contact.deviceId : null) || null;
         // v6.1.11: sin dirección conocida (contacto compartido aún no visto) el chat se abre igual y se
         // busca al contacto; antes se rechazaba y no se podía abrir
         if (!deviceId) self._markPeerLost(uuid);

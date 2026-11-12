@@ -707,6 +707,8 @@ export const BLE_CONNECTION_METHODS = {
         deviceId: device.id || null
       });
       _vaultGetOrCreateContact(nexoId, name, device.name);
+      // 3018 (opción A del dueño): ¿es un teléfono que ya estaba, reinstalado (NEXO ID nuevo)? Se pregunta antes de unir
+      if (typeof this._offerReinstallMerge === 'function') this._offerReinstallMerge(nexoId);
       // 3012: si este teléfono ya dijo quién es (su kx directo, _noteKxPeer), su clave se guarda al agregarlo: el cifrado queda
       // listo ya y se le reconoce por su código rotativo aunque cambie de dirección (sin clave no se puede calcular su código)
       var kxp = this._kxPeers && this._kxPeers.get(_normId(nexoId));

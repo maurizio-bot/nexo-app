@@ -447,6 +447,7 @@ export const BLE_MESSAGE_METHODS = {
             if (data.e2eSenderKey) self._noteSenderKey(senderUUID, data.e2eSenderKey);
             if (data.e2eSenderKey && data.e2eProto === 2) self._markProto2(senderUUID, data.e2eSenderKey);
             self.renderContactsList(); self.renderOnlineStrip();
+            if (typeof self._offerReinstallMerge === 'function') self._offerReinstallMerge(senderUUID); // 3018: ¿mismo teléfono reinstalado?
           } else {
             var contacts2 = _getBLEContacts();
             var idx2 = contacts2.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(senderUUID); });

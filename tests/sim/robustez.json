@@ -82,6 +82,14 @@
      "prueba": "confirmación de entrega por Wi-Fi con la app del otro dormida"
     },
     {
+     "fallo": "3017 (dueño 12-11, diagnósticos S23 y HONOR con la 3014): al abrir un chat (también al tocar un aviso) se usaba primero la dirección Bluetooth guardada en el contacto y se forzaba la conexión a ella aunque ya no sirviera (dirección rotada, o un enlace repetido que la propia app había cerrado): enlace a medias y envíos atascados ~6 s ×2 antes de pasar al Wi-Fi. 3017: primero el mejor camino vivo (`_resolveDeviceIdForNexoId`), la guardada solo si no hay otro. openstale.js (contraprueba 3016: fuerza la vieja)",
+     "prueba": "abrir un chat usa el mejor camino vivo"
+    },
+    {
+     "fallo": "3018 (opción A del dueño 12-11): al reinstalar NEXO el teléfono estrena NEXO ID; el contacto viejo quedaba con sus pendientes y se le buscaba sin fin. 3018: al entrar un contacto con el mismo nombre que uno que no se alcanza, se pregunta si es el mismo teléfono reinstalado; si sí, el chat y lo pendiente pasan al nuevo (se cortan los envíos en curso al viejo y lo no entregado vuelve a pendiente: si no, quedaba «enviando» para siempre) y el viejo se borra. reinstall.js (contraprueba 3016: no pregunta)",
+     "prueba": "contacto reinstalado"
+    },
+    {
      "fallo": "3016 (dueño 12-11, diagnóstico S23 con la 3014): con un contacto cuyo enlace seguía «vivo» (pings contestados) pero que no confirmaba, el S23 reenviaba 2 textos cortos sin pausa más de 16 min («ACK timeout 1..5/5» → «Pending fallo» → 0,3 s → «Reenviando», una vuelta cada ~22 s). 3016: tras una vuelta sin ningún éxito y todo por falta de confirmación, la siguiente espera 15→30→60 s (tope 2 min); una confirmación de ese contacto la quita. resendloop.js (contraprueba 3015: 6 vueltas en 150 s; 3016: 3)",
      "prueba": "reenvío sin pausa a un contacto que no confirma"
     }
