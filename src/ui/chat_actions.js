@@ -8,7 +8,7 @@ import { applyAvatar } from './avatar.js';
 import { applyContactProfile } from './profile_share.js';
 import { psiOnAction } from './psi.js';
 import { applyChatWallpaper } from './wallpaper.js';
-import { applyStatus, likeReceived } from './estados.js';
+import { applyStatus, likeReceived, commentReceived, statusQueryReceived } from './estados.js';
 import { tttOnAction } from './ttt.js';
 import { connect4OnAction } from './connect4.js';
 import { tetrisVersusOnAction } from './tetris_versus.js';
@@ -602,6 +602,8 @@ export function _applyChatAction(senderId, act) {
   if (act && act.act === 'wp') { applyChatWallpaper(senderId, act); return; } // ronda 2890: fondo de chat compartido (wallpaper.js)
   if (act && act.act === 'st') { applyStatus(senderId, act); return; } // ronda 2799: Estado (Stream fase 1, estados.js)
   if (act && act.act === 'sl') { likeReceived(senderId, act); return; } // ronda 2906: «me gusta» a mi estado (estados.js fase 2)
+  if (act && act.act === 'sc') { commentReceived(senderId, act); return; } // 3032: comentario a mi estado (solo lo veo yo)
+  if (act && act.act === 'sq') { statusQueryReceived(senderId); return; }   // 3032: me piden mis estados (deslizar para actualizar)
   if (act && act.act === 'prof') { applyContactProfile(senderId, act); return; } // #dueño 04-11: datos de perfil completos (profile_share.js)
   if (act && act.act === 'psi') { psiOnAction(senderId, act); return; } // #dueño 04-11 paso 3: contactos en común (PSI, psi.js)
   if (act && act.act === 'game') { // ronda 2830+: juegos por turnos; se enruta por act.g
