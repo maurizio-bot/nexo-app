@@ -76,6 +76,10 @@
     {
      "fallo": "3016 (dueño 12-11, diagnóstico S24 con la 3014): un archivo grande (APK de 25 MB) al S23 que iba POR INTERNET (relés, 2213 trozos, >30 min) dejaba la re-búsqueda de contactos por Bluetooth parada todo ese rato («Re-búsqueda aplazada: transferencia en curso» cada 15 s) y además paraba el escaneo al empezar. Un envío por internet no usa la radio. 3016: la re-búsqueda y el paro del escaneo ya no cuentan los envíos por internet (Fénix sigue cediendo ante cualquier envío del usuario). scanfenix.js (contraprueba 3015: falla net_no_frena_escaneo)",
      "prueba": "escaneo lento por respaldo FÉNIX"
+    },
+    {
+     "fallo": "3016 (dueño 12-11, diagnóstico S23 con la 3014): con un contacto cuyo enlace seguía «vivo» (pings contestados) pero que no confirmaba, el S23 reenviaba 2 textos cortos sin pausa más de 16 min («ACK timeout 1..5/5» → «Pending fallo» → 0,3 s → «Reenviando», una vuelta cada ~22 s). 3016: tras una vuelta sin ningún éxito y todo por falta de confirmación, la siguiente espera 15→30→60 s (tope 2 min); una confirmación de ese contacto la quita. resendloop.js (contraprueba 3015: 6 vueltas en 150 s; 3016: 3)",
+     "prueba": "reenvío sin pausa a un contacto que no confirma"
     }
    ],
    "debiles": [

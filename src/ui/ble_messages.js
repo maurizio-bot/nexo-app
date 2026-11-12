@@ -1231,13 +1231,32 @@ export const BLE_MESSAGE_METHODS = {
     // a la vez. Si ya hay una en marcha (con avances en los últimos 30 s), se repite al acabar
     var nxKey = _normId(nexoId);
     self._resendRun = self._resendRun || new Map();
+    // 3016 (diagnóstico S23 del dueño 12-11): un camino que acepta el envío pero nunca confirma (el otro con la app dormida,
+    // un enlace a medias) hacía una vuelta tras otra sin pausa: «ACK timeout 1..5/5» → «Pending fallo» → 0,3 s → «Reenviando»
+    // (>16 min, una vuelta cada ~22 s). Tras una vuelta en la que TODO falló por falta de confirmación se espera 15 s, luego
+    // 30, 60 y como mucho 2 min; cualquier confirmación de ese contacto (o un envío que sale bien) quita la espera.
+    self._resendBackoff = self._resendBackoff || new Map();
+    var bo = self._resendBackoff.get(nxKey);
+    if (bo && Date.now() < bo.until) {
+      if (!bo.timer) {
+        console.log('[BLEInterface] ' + nxKey + ': no confirma lo reenviado; próxima vuelta en ' + Math.round((bo.until - Date.now()) / 1000) + ' s');
+        bo.timer = setTimeout(function() { bo.timer = null; self._resendPendingMessages(nexoId); }, bo.until - Date.now() + 50);
+      }
+      return;
+    }
     var cur = self._resendRun.get(nxKey);
     if (cur && Date.now() - cur.at < 30000) { cur.again = true; return; }
-    var run = { at: Date.now(), again: false };
+    var run = { at: Date.now(), again: false, ok: 0, noAck: 0, other: 0 };
     self._resendRun.set(nxKey, run);
     var finish = function() {
       if (self._resendRun.get(nxKey) !== run) return;
       self._resendRun.delete(nxKey);
+      if (run.ok > 0 || run.noAck === 0 || run.other > 0) self._resendBackoff.delete(nxKey);
+      else {
+        var b = self._resendBackoff.get(nxKey) || { n: 0, until: 0, timer: null };
+        b.n++; b.until = Date.now() + Math.min(120000, 15000 * Math.pow(2, b.n - 1));
+        self._resendBackoff.set(nxKey, b);
+      }
       if (run.again) setTimeout(function() { self._resendPendingMessages(nexoId); }, 300);
     };
     var idOf = function(m) { return m.msgId || m.messageId || m.id; };
@@ -1494,6 +1513,7 @@ export const BLE_MESSAGE_METHODS = {
           .then(function(v) { endTry(); return v; }, function(err) { endTry(); throw err; })
           .then(function() {
             console.log('[BLEInterface] Pending OK:', mid);
+            run.ok++;
             _vaultUpdateMessageStatus(nexoId, mid, 'sent');
             try {
               if (window.NEXO_updateMessageStatus) {
@@ -1504,6 +1524,7 @@ export const BLE_MESSAGE_METHODS = {
           })
           .catch(function(e) {
             console.warn('[BLEInterface] Pending fallo:', mid, e.message);
+            if (/ACK timeout/i.test((e && e.message) || '')) run.noAck++; else run.other++;
             // No marcar failed de forma agresiva si es transitorio
             var isTransient = /timeout|abort|network|disconnected|not ready|busy|interrupted|temporary/i.test(e.message || '') || _failStatus(e) === 'pending';
             if (!isTransient) {
