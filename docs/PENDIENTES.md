@@ -3,6 +3,13 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 12-11 (diagnósticos S24, S23, Redmi y HONOR con la 3014) — en curso
+- **Hecho 3015/3016:** nota de voz como archivo; confirmación por Wi-Fi con la app dormida; espera creciente al reenviar; envío por internet no frena la búsqueda Bluetooth (detalle en `ESTADO.md`).
+- **3017 (en preparación):** al abrir un chat se usa el mejor camino vivo y no la dirección Bluetooth guardada (que puede ser una conexión ya cerrada por repetida o una dirección rotada): `openstale.js` (contraprueba 3016: FALLO).
+- **3018 (en preparación, opción A del dueño):** contacto duplicado por reinstalar NEXO (NEXO ID nuevo): al agregar uno con el mismo nombre que otro que no se alcanza, se pregunta «¿es el mismo teléfono reinstalado?» y, si sí, el chat y lo pendiente pasan al nuevo. `reinstall.js`. OJO: un texto pendiente pasado al contacto nuevo salió como «leído» sin llegar (las confirmaciones por número de orden del contacto viejo no valen para el nuevo): resolver antes de subir.
+- **Abierto:** una foto por puente Jump con el puente dormido (S23 22:13, 73 s) cuando internet no estaba «listo para archivos».
+- **Wi-Fi Direct:** sigue sin probarse (en la prueba del dueño el Wi-Fi estaba apagado).
+
 ## 🔎 «Agregar»: todo NEXO cercano al instante (3012) y foto de perfil equivocada (dueño 11-11) — en prueba del dueño
 - **Hecho (3012 y 3014):** detalle en `ESTADO.md` («Build actual»). Prueba: `tests/sim/addlento.js`. Desde la 3014 (dueño 12-11, opción A) NO hay filas sin
   nombre: una línea «Buscando… N teléfonos NEXO cerca» y cada teléfono sale con su nombre al contestar (las pruebas (1) y (3) de abajo cambian: no hay «+» sobre uno sin identificar).
