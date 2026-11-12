@@ -90,6 +90,10 @@
      "prueba": "contacto reinstalado"
     },
     {
+     "fallo": "3019 (diagnóstico S24 del dueño 12-11, con el vivo nx09acdb61): con un enlace ya listo con un contacto, el escaneo lo veía por su dirección de ANUNCIO (otra distinta de la de conexión), la daba por desconectada y abría un segundo enlace; el limpiador de repetidos lo cerraba al minuto y vuelta a empezar (cada ~60 s). 3019: no se abre otro si ya hay uno listo y sano (MTU > 23) o si esa dirección se acaba de cerrar por repetida. dupscan.js (contraprueba 3018: 2 cierres en 90 s; 3019: 0)",
+     "prueba": "sin segundo enlace por la dirección de anuncio"
+    },
+    {
      "fallo": "3016 (dueño 12-11, diagnóstico S23 con la 3014): con un contacto cuyo enlace seguía «vivo» (pings contestados) pero que no confirmaba, el S23 reenviaba 2 textos cortos sin pausa más de 16 min («ACK timeout 1..5/5» → «Pending fallo» → 0,3 s → «Reenviando», una vuelta cada ~22 s). 3016: tras una vuelta sin ningún éxito y todo por falta de confirmación, la siguiente espera 15→30→60 s (tope 2 min); una confirmación de ese contacto la quita. resendloop.js (contraprueba 3015: 6 vueltas en 150 s; 3016: 3)",
      "prueba": "reenvío sin pausa a un contacto que no confirma"
     }

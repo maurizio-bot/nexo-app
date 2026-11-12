@@ -650,8 +650,16 @@ export const BLE_CONNECTION_METHODS = {
       this.renderContactsList();
       this.renderOnlineStrip();
       var state = this._getDeviceState(deviceId);
+      // 3019 (diagnóstico S24 del dueño 12-11, vivo nx09acdb61): si ya hay un enlace LISTO y sano con este contacto por OTRA
+      // dirección (Android usa una para anunciarse y otra para conectarse), no se abre un segundo: el limpiador de enlaces
+      // repetidos lo cerraba al minuto y el escaneo lo volvía a abrir (conectar/cerrar cada ~60 s). Sí se abre si el que hay
+      // va al mínimo (MTU 23: el nuevo puede ser mejor) o si esta dirección se acaba de cerrar por repetida.
+      var readyOther = (typeof this._bleReadyFor === 'function') ? this._bleReadyFor(nx) : null;
+      var readyMtu = readyOther ? ((this._mtuByDevice && this._mtuByDevice.get(readyOther)) || 185) : 0;
+      var dupCooling = !!(this._dupClosedUntil && (this._dupClosedUntil.get(nd) || 0) > Date.now());
+      var haveGoodLink = !!readyOther && readyOther !== nd && readyMtu > 23;
       // v6.1.6: también desde ERROR (p.ej. se conectó cuando el otro tenía la app cerrada)
-      if (state.state === BLE_STATES.DISCONNECTED || state.state === BLE_STATES.ERROR) {
+      if ((state.state === BLE_STATES.DISCONNECTED || state.state === BLE_STATES.ERROR) && !haveGoodLink && !dupCooling) {
         this._autoConnectGATT(deviceId, device);
       }
       return;
