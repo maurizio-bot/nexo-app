@@ -81,8 +81,8 @@ function _nameOf(nx) { var c = _getBLEContacts().find(function(x) { return _norm
 function _recompute() {
   _all.forEach(function(o, nx) {
     var why = '';
-    if (o.ph && _minePh && _mine && _mine.img && _same(o.ph, _minePh)) why = 'es la misma que la tuya';
-    else if (o.ph) _all.forEach(function(p, ny) { if (!why && ny !== nx && p.ph && (p.at || 0) <= (o.at || 0) && _same(o.ph, p.ph)) why = 'es la misma que la de ' + ny; });
+    if (o.ph && _minePh && _mine && _mine.img && _same(o.ph, _minePh)) why = 'es la misma que la tuya';   // i18n-ok (registro del diagnóstico)
+    else if (o.ph) _all.forEach(function(p, ny) { if (!why && ny !== nx && p.ph && (p.at || 0) <= (o.at || 0) && _same(o.ph, p.ph)) why = 'es la misma que la de ' + ny; });   // i18n-ok
     var shown = _cache.get(nx) === o.img;
     if (why) {
       if (shown || !o.hid) console.warn('[AVATAR] Foto de perfil de ' + nx + ' no se muestra: ' + why + ' (copiada)');
