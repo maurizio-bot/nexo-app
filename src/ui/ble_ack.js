@@ -695,6 +695,13 @@ export class BleAckSystem {
     var r = this._blobOut.get(fileId);
     return (r && r.expires > Date.now()) ? r : null;
   }
+  // 3030: ¿este archivo ya va por el buzón de archivos de este contacto? 'subiendo' | 'en su buzón' | ''
+  _blobBusyFor(fileId, cid) {
+    if (!fileId) return '';
+    if (this._blobOutRunning && this._blobOutRunning.has(fileId)) return 'subiendo';
+    var r = this._blobRecord(fileId), k = _normId(cid);
+    return (r && r.to && k && r.to[k]) ? 'en su buzón' : '';
+  }
   _stageBlobOnce(fileId, data, meta) {
     var self = this, net = self.ble && self.ble.net;
     var live = self._blobRecord(fileId);
@@ -1851,6 +1858,15 @@ export class BleAckSystem {
             if (window.vaultRemoveOutgoingTransfer) window.vaultRemoveOutgoingTransfer(cid, tx.transferId).catch(function(){});
             return;
           }
+          // 3030 (diagnóstico A55 12-11 11:36): un archivo que YA va por el buzón de archivos de este contacto (subiendo, o con el
+          // puntero en su buzón) no se reanuda por otro camino: antes salía a la vez por el buzón y por un Bluetooth recién
+          // aparecido (MTU 23, 1421 trozos, «Max window retries»). Con el puntero ya entregado al buzón, el registro sobra.
+          var viaBlob = self._blobBusyFor(tx.transferId, cid);
+          if (viaBlob) {
+            console.log('[BleAckSystem] ' + tx.transferId + ' ya va por el buzón de archivos de ' + cid + ' (' + viaBlob + '): no se reanuda por otro camino');
+            if (viaBlob === 'en su buzón' && window.vaultRemoveOutgoingTransfer) window.vaultRemoveOutgoingTransfer(cid, tx.transferId).catch(function(){});
+            return;
+          }
           // dedup: si ya está en vuelo (un ChatStream real) o ya encolada, no la metas otra vez (resumeOutgoingTransfers
           // se llama en cada evento de enlace; sin esto se recreaba el enjambre en cada reconexión)
           if (self.outgoingStreams.has(tx.transferId) || self._resumeSeen.has(tx.transferId)) return;
@@ -1895,6 +1911,7 @@ export class BleAckSystem {
   // golpe). Devuelve la promesa del envío (o null si no hay camino). El registro se borra al entregarse.
   _resumeRunOne(job) {
     var self = this, cid = job.cid, tx = job.tx, contactDeviceId = job.contactDeviceId;
+    if (self._blobBusyFor(tx.transferId, cid)) return null;   // 3030: pudo pasar al buzón de archivos mientras esperaba en la cola
     // v3.10.0: por el mejor camino de ahora (Wi-Fi, Bluetooth); el guardado puede ser un Wi-Fi que ya no está
     var content = tx.chunks.map(function(c) { return (typeof c === 'string') ? c : (c.data || c.d || ''); }).join('');
     var isFileTx = tx.type === 'file';   // FIX: respetar tx.type (una foto/vídeo interrumpido no se reenvía como texto plano)
