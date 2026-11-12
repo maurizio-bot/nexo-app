@@ -144,6 +144,7 @@ export function _netFileAutoRetry(type, isNet, reachable, elapsedMs, budgetMs) {
 // apareció ningún camino mejor, se intenta IGUAL por Bluetooth (crawl) — así un contacto SOLO-Bluetooth nunca pierde el
 // archivo; solo se evita el martilleo inútil mientras pueda llegar Wi-Fi. Las fotos/vistas previas chicas (por debajo
 // del tope) SÍ se mandan por MTU 23 (caben en pocos minutos). Un enlace sano negocia MTU >= 185.
+const LONG_TEXT_TINY_BLE = 4000;           // 3032: texto (cifrado o no) desde este tamaño no va por un Bluetooth de MTU mínimo si hay internet
 const TINY_MTU = 50;                      // MTU <= esto es el caso degenerado (23): negociación inestable / enlace al límite
 const BLE_TINY_MTU_DEFER_CHARS = 300000;  // archivo (base64) por encima de esto NO se arranca por MTU mínimo: queda pendiente
 const MTU_DEFER_MAX_WAIT_MS = 300000;     // 5 min esperando un camino mejor; luego se intenta igual por Bluetooth (no perder)
@@ -396,8 +397,24 @@ export class BleAckSystem {
     return active;
   }
   // _fromPrep: llamada interna con el texto ya cifrado por este mismo envío
+  // 3032 (diagnóstico vivo 3018 12-11 13:45 y regla del dueño 04-11 «internet antes que Bluetooth»): un texto LARGO a un
+  // contacto cuyo Bluetooth está al MÍNIMO (MTU 23: ~20 bytes por escritura, cientos de trozos) y que está EN LÍNEA por internet
+  // va por internet. Antes un diagnóstico de 57 KB salió por un Bluetooth MTU 23 en 288 trozos con el otro en línea por datos.
+  // Solo con el MTU conocido y mínimo; un puente Jump (dst/fwd) no se toca.
+  _avoidTinyBleText(deviceId, content, meta) {
+    if (!deviceId || !content || content.length < LONG_TEXT_TINY_BLE || _isNetDevice(deviceId) || _isLanDevice(deviceId) || (meta && (meta.dst || meta.fwd))) return deviceId;
+    var ble = this.ble, net = ble && ble.net;
+    if (!net || typeof net.canReach !== 'function' || typeof ble.getMtu !== 'function') return deviceId;
+    var mtu = ble.getMtu(deviceId);
+    if (!mtu || mtu > TINY_MTU) return deviceId;
+    var cid = _normId((meta && meta.to) || (ble._macToNexoId && ble._macToNexoId.get(_normMac(deviceId))) || '');
+    if (!cid || !net.canReach(cid)) return deviceId;
+    console.log('[ChatStream] Texto largo (' + Math.round(content.length / 1024) + ' KB) con el Bluetooth al mínimo (MTU ' + mtu + ') y ' + cid + ' en línea por internet: va por internet');
+    return 'net:' + cid;
+  }
   sendChunkedMessage(deviceId, content, meta, messageId, seq, _fromPrep) {
     var self = this;
+    deviceId = self._avoidTinyBleText(deviceId, content, meta);
     var dst = meta && meta.dst, to = meta && meta.to;
     // Ronda 2767 (revisión): el mismo texto largo no sale dos veces a la vez. Al reconectar arrancaban varios reenvíos
     // de lo pendiente y cada uno lo cifraba otra vez (distinto): el otro mezclaba los trozos de los dos, no lo podía
