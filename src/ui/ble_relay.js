@@ -595,6 +595,8 @@ export class BleRelay {
     var cAt = self._connecting.get(nx);
     if (cAt && Date.now() - cAt < CONNECT_DEDUP_MS) return true;
     var isContact = self._isContact(nx);
+    // 3033: un contacto con el Bluetooth en pausa (GATT roto, no_service repetido) tampoco se reconecta por aquí
+    if (isContact && typeof ble._btPaused === 'function' && ble._btPaused(nx)) return false;
     if (!isContact) {
       var t = self.transient.get(nx);
       if (t && Date.now() - t.since < 15000) return true; // conectando

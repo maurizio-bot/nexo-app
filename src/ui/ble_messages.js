@@ -29,7 +29,7 @@ export const BLE_MESSAGE_METHODS = {
       if (!nx) return;
       var getPending = (window.vaultGetPendingMessages && typeof window.vaultGetPendingMessages === 'function')
         ? window.vaultGetPendingMessages(nx)
-        : _vaultLoadMessages(nx).then(function(msgs) { return msgs.filter(_isResendable); });
+        : _vaultLoadMessages(nx).then(function(msgs) { return msgs.filter(function(m) { return _isResendable(m, nx); }); });
       getPending.then(function(pending) {
         if (!pending || pending.length === 0) return;
         console.log('[BLEInterface]', nx, 'tiene', pending.length, 'pending');
@@ -881,7 +881,8 @@ export const BLE_MESSAGE_METHODS = {
         self._markPeerLost(uuid);
         // v6.4.0: sin enlace directo: buscar camino por otros teléfonos NEXO (Jump bajo demanda)
         if (self.relay) self.relay.discover(uuid);
-        if (!isConnecting && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
+        // 3033: con el Bluetooth en pausa (GATT roto) no se fuerza la conexión: el texto espera por internet/Wi-Fi/Jump
+        if (!isConnecting && !(typeof self._btPaused === 'function' && self._btPaused(uuid)) && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
           console.log('[BLEInterface] sendChatMessage: forcing connectToDevice for', deviceId);
           _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId }).catch(function() {});
         }
@@ -1196,7 +1197,7 @@ export const BLE_MESSAGE_METHODS = {
               nudged = true;
               console.log('[BLEInterface] sendFile: contacto no listo (' + (st.state || '?') + '), buscando…');
               self._markPeerLost(uuid);
-              if (dev && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice') && st.state !== BLE_STATES.CONNECTING) {
+              if (dev && !(typeof self._btPaused === 'function' && self._btPaused(uuid)) && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice') && st.state !== BLE_STATES.CONNECTING) {
                 _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: dev }).catch(function() {});
               }
             }
@@ -1283,7 +1284,7 @@ export const BLE_MESSAGE_METHODS = {
     var getPending = (window.vaultGetPendingMessages && typeof window.vaultGetPendingMessages === 'function')
       ? window.vaultGetPendingMessages(nexoId)
       : _vaultLoadMessages(nexoId).then(function(msgs) {
-          return msgs.filter(_isResendable);
+          return msgs.filter(function(m) { return _isResendable(m, nexoId); });
         });
     // No reenviar lo que sigue en vuelo en esta sesión (cola JS, ACK pendiente o stream activo); se mira antes de cargar
     // los adjuntos de disco (antes se cargaban todos en cada vuelta)

@@ -310,6 +310,10 @@
     {
      "fallo": "3009 (canal de diagnósticos 11-11: «zombi» 3 de 7 síntomas, siempre con la app del otro dormida): el ping del vigilante Bluetooth lo contestaba solo el JS; con la app del otro congelada nadie contestaba y se tiraba un enlace sano (y se rehacía en bucle). 3009: el nativo contesta el pong con la app en segundo plano o cerrada (Kotlin nativePong; native_mock lo replica). zombifalso.js (contraprueba --sin-pong-nativo: zombi)",
      "prueba": "«zombi» falso con la app del otro DORMIDA"
+    },
+    {
+     "fallo": "3033 (diagnóstico S24 3027/3028 12-11 22:25 con el Motorola de GATT roto): «sin servicio GATT 21 veces: pauso Bluetooth 600 s» y aun así conectar/cortar cada 1–3 s. El resultado de escaneo llega con el contacto en nexoId (sin deviceUUID) y _autoConnectGATT buscaba la pausa por la DIRECCIÓN: nunca la encontraba. Jump (_connect) y el envío de texto/archivo tampoco miraban la pausa. 3033: _btPauseKey/_btPaused por NEXO ID en las cuatro puertas. cola3033.js (contraprueba 3032: escaneo y Jump conectan en pausa)",
+     "prueba": "con el Bluetooth en pausa por GATT roto"
     }
    ]
   },
@@ -414,6 +418,10 @@
     {
      "fallo": "3009 (diagnóstico b2987: texto de grupo a la tablet dormida, 8 reintentos y ✗): un texto troceado (o la copia de grupo de un miembro) a una app congelada agotaba la ventana y quedaba ✗ aunque el enlace estuviera vivo (el nativo del otro avisa pero no confirma textos troceados). 3009: queda ⏳ (PEER_ABSENT) y lo reenvía la cola de pendientes; llega al despertar. textsleep.js (contraprueba 3007: failed)",
      "prueba": "texto troceado (o copia de grupo) a una app CONGELADA"
+    },
+    {
+     "fallo": "3033 (diagnósticos S24 y Honor 12-11 22:06–22:25): copias ocultas de estados mandadas por builds anteriores con la foto DENTRO (112 KB → 424–779 trozos por Bluetooth) y del formato sin sid seguían en la cola de reenvío tras actualizar; la sin sid además le borraba al otro los estados de ahora. 3033: estados.staleStatusCopy en la cola (_isResendable con el contacto, vaultGetPendingMessages, transferencias guardadas): no se reenvían, se borran y el estado activo se manda en el formato de ahora. Foto de perfil: viaja con cuándo la puso su dueño (t); con dos iguales se ve la original y se esconde la copia (antes empataban y el Honor escondía las dos). cola3033.js",
+     "prueba": "las copias viejas de estados en cola"
     }
    ]
   },

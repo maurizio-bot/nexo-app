@@ -1985,6 +1985,8 @@ export class BleAckSystem {
         var isHd = /_hd$/.test(tx.transferId);
         var m = byId[isHd ? tx.transferId.replace(/_hd$/, '') : tx.transferId];
         var done = !!m && (isHd ? m.hdStatus === 'sent' : (m.status === 'delivered' || m.status === 'read'));
+        // 3033: la transferencia guardada de una copia vieja de un estado (foto dentro, 424–779 trozos) se borra sin reanudarla
+        if (!done && m && !isHd && m.hidden === true && typeof window.NEXO_staleStatusCopy === 'function' && window.NEXO_staleStatusCopy(m, cid)) done = true;
         if (done && window.vaultRemoveOutgoingTransfer) window.vaultRemoveOutgoingTransfer(cid, tx.transferId).catch(function(){});
         return !done;
       });

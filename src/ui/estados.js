@@ -57,6 +57,9 @@ var _seen = new Map();        // NEXO ID → Set(sid) ya vistos (para abrir en e
 var _iLiked = new Set();      // 'nx|sid' a los que ya di me gusta
 var _sqOut = new Map(), _sqIn = new Map(); // freno de «sq» por contacto
 var _started = false;
+var _loaded = false;          // 3033: mis estados ya leídos del disco
+var _unsent = [];             // 3033: [nx, sid] a volver a mandar en el formato de ahora (si llegan antes de leer _sent)
+var _staleDone = new Set();   // 3033: copias viejas ya borradas (id)
 
 function _pl() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 function _load(name) {
@@ -136,12 +139,50 @@ export function makeStatusImage(file) {
   });
 }
 
+// 3033 (diagnósticos S24 y Honor 12-11 22:06–22:25): copias ocultas de estados mandadas por builds anteriores con la foto
+// DENTRO (112 KB → 424–779 trozos por Bluetooth) seguían en la cola de reenvío y volvían a saturar la radio tras actualizar.
+// Una copia mía de un estado que ya no se manda así (media en línea por encima del tope de ahora), de un estado que ya no
+// está activo, o del estado único sin sid (builds < 3032) NO se reenvía: se borra. Si el estado sigue activo se marca «no
+// mandado» a ese contacto y sendStatusTo se lo manda en el formato de ahora (puntero o «se pide al verla») al conectar.
+// Las bajas (del) y «sin estado» (t vacío) sí se reenvían.
+var STALE_INLINE = INLINE_SEND_MAX + 4096;
+export function staleStatusCopy(m, cid) {
+  if (!m || m.hidden !== true || m._own !== true || typeof m.content !== 'string') return false;
+  var c = m.content;
+  if (c.indexOf('nexo_act') < 0 || !/"act":"st"/.test(c)) return false;
+  var a = null;
+  try { a = JSON.parse(c); } catch (e) { return false; }
+  if (!a || a.type !== 'nexo_act' || a.act !== 'st' || a.del) return false;
+  var sid = SID_RE.test(String(a.sid || '')) ? String(a.sid) : '';
+  var why = '';
+  if (c.length > STALE_INLINE) why = 'media dentro, ' + Math.round(c.length / 1024) + ' KB';   // i18n-ok (registro)
+  else if (!sid && a.t) why = 'formato anterior';                                              // i18n-ok
+  else if (sid && _loaded && !_mine.items.some(function(x) { return x.sid === sid && _active(x); })) why = 'ya no está activo'; // i18n-ok
+  if (!why) return false;
+  var id = m.msgId || m.messageId || m.id, nx = _normId(cid || m.contactNexoId || '');
+  // se borra cuando se sabe de quién es (la cola de pendientes lo pasa; el filtro genérico _isResendable, no)
+  if (id && NX_RE.test(nx) && !_staleDone.has(id)) {
+    _staleDone.add(id);
+    console.log('[ESTADO] Copia vieja de un estado para ' + nx + ' (' + why + '): no se reenvía, se borra'); // i18n-ok
+    {
+      vaultDeleteMessage(nx, id).catch(function() {});
+      if (sid) { if (_loaded) _unmarkSent(nx, sid); else _unsent.push([nx, sid]); }
+    }
+  }
+  return true;
+}
+function _unmarkSent(nx, sid) {
+  if (_sent[nx] && _sent[nx][sid]) { delete _sent[nx][sid]; _save(SENT_FILE, _sent); }
+}
+
 export function estadosInit() {
   if (_started) return;
   _started = true;
   Promise.all([_load(MY_FILE), _load(SENT_FILE)]).then(function(r) {
     _mine.items = _fromFile(r[0]).map(function(it) { it.likes = it.likes || {}; it.comments = it.comments || []; return it; });
     if (r[1] && typeof r[1] === 'object') { Object.keys(r[1]).forEach(function(k) { _sent[k] = (r[1][k] && typeof r[1][k] === 'object') ? r[1][k] : {}; }); }
+    _loaded = true;
+    _unsent.splice(0).forEach(function(p) { _unmarkSent(p[0], p[1]); }); // 3033
     _renderStrip();
   });
   // Los estados de los contactos que los tienen (ste en el contacto)
@@ -844,5 +885,6 @@ if (typeof window !== 'undefined') {
   window.NEXO_setMyStatus = setMyStatus; window.NEXO_statusOf = statusOf; window.NEXO_applyStatus = applyStatus;
   window.NEXO_likeStatus = likeStatus; window.NEXO_likeReceived = likeReceived; window.NEXO_myLikes = myLikes; // pruebas (tests/sim/estados.js)
   window.NEXO_addMyStatus = addMyStatus; window.NEXO_statusesOf = statusesOf; window.NEXO_myStatuses = myStatuses; window.NEXO_removeMyStatus = removeMyStatus;
+  window.NEXO_staleStatusCopy = staleStatusCopy; // 3033: la cola de reenvío (ble_helpers._isResendable, ble_ack) lo consulta
   window.NEXO_commentStatus = commentStatus; window.NEXO_myComments = myComments; window.NEXO_whoLiked = whoLiked; window.NEXO_requestStatuses = requestStatuses; window.NEXO_statusMedia = statusMedia; window.NEXO_statusMediaIn = statusMediaIn; // 3032
 }

@@ -160,11 +160,18 @@ export function paintAvatar(el, nx, textEl) {
 // A un contacto que aún no tiene la versión actual
 export function sendAvatarTo(nx) {
   nx = _normId(nx);
-  if (!_mine || !_mine.h || !NX_RE.test(nx) || _sent[nx] === _mine.h || _contactIds().indexOf(nx) < 0) return;
-  var id = _sendTextTo(nx, JSON.stringify({ type: 'nexo_act', act: 'av', h: _mine.h, img: _mine.img || '' }), '', true);
+  // 3033: también va CUÁNDO la puse (t): con dos contactos con la misma foto, el otro muestra la de quien la puso antes y
+  // esconde la copia (antes, sin fecha, empataban y escondía las dos; diagnóstico del Honor 12-11). La marca «:t» hace que se
+  // mande una vez más a quien ya la tenía sin fecha.
+  if (!_mine || !_mine.h || !NX_RE.test(nx)) return;
+  var mark = _mine.h + ':t';
+  if (_sent[nx] === mark || _contactIds().indexOf(nx) < 0) return;
+  var act = { type: 'nexo_act', act: 'av', h: _mine.h, img: _mine.img || '' };
+  if (_mine.img && _mine.at) act.t = _mine.at;
+  var id = _sendTextTo(nx, JSON.stringify(act), '', true);
   if (!id) return;
   _outIds.set(id, nx);
-  _sent[nx] = _mine.h;
+  _sent[nx] = mark;
   _save(SENT_FILE, _sent);
   console.log('[AVATAR] Foto de perfil ' + (_mine.img ? 'mandada' : 'quitada') + ' a ' + nx);
 }
@@ -195,6 +202,9 @@ export function applyAvatar(sender, act) {
   var nx = _normId(sender), img = typeof act.img === 'string' ? act.img : '', h = String(act.h || '').substring(0, 20);
   if (!NX_RE.test(nx) || !h || (img && (!IMG_RE.test(img) || img.length > MAX_LEN))) return;
   var prev = _all.get(nx), at = (prev && prev.img === img) ? prev.at : Date.now();
+  // 3033: si trae cuándo la puso su dueño (t), manda esa fecha (acotada: no en el futuro ni antes de 2024)
+  var tSet = Number(act.t);
+  if (img && tSet > 1704067200000 && tSet <= Date.now() + 60000) at = tSet;
   _save('nexo_av_' + nx + '.json', { h: h, img: img, at: at });
   var contacts = _getBLEContacts(), c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
   if (c && c.avh !== (img ? h : '')) { c.avh = img ? h : ''; _saveBLEContacts(contacts); }
@@ -226,3 +236,5 @@ export function makeAvatar(file) {
     r.readAsDataURL(file);
   });
 }
+
+if (typeof window !== 'undefined') { window.NEXO_applyAvatar = applyAvatar; window.NEXO_avatarOf = avatarOf; } // pruebas (tests/sim/cola3033.js)

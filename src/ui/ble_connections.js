@@ -229,7 +229,7 @@ export const BLE_CONNECTION_METHODS = {
     try {
       var w = (typeof window !== 'undefined') ? window : null;
       var p = (w && typeof w.vaultGetPendingMessages === 'function') ? w.vaultGetPendingMessages(nx)
-        : (w ? _vaultLoadMessages(nx).then(function(msgs) { return msgs.filter(_isResendable); }) : null);
+        : (w ? _vaultLoadMessages(nx).then(function(msgs) { return msgs.filter(function(m) { return _isResendable(m, nx); }); }) : null);
       if (!p) return Promise.resolve(true);
       var selfW = this;
       return Promise.resolve(p).then(function(pending) { return !!(pending && pending.length) || (typeof selfW._citaPendingFrom === 'function' && selfW._citaPendingFrom(nx)); }, function() { return true; }); // Fase D: esperar un archivo grande también es «pendiente»
@@ -451,7 +451,7 @@ export const BLE_CONNECTION_METHODS = {
   _lostPeersWithPending() {
     var peers = Array.from(this._lostPeers);
     return Promise.all(peers.map(function(nx) {
-      return _vaultLoadMessages(nx).then(function(msgs) { return (msgs || []).some(_isResendable) ? nx : null; }).catch(function() { return null; });
+      return _vaultLoadMessages(nx).then(function(msgs) { return (msgs || []).some(function(m) { return _isResendable(m, nx); }) ? nx : null; }).catch(function() { return null; });
     })).then(function(r) { return r.filter(Boolean); });
   },
 
@@ -772,6 +772,20 @@ export const BLE_CONNECTION_METHODS = {
     this.togglePanel();
   },
 
+  // 3033: NEXO ID con el que se guarda la pausa de Bluetooth de una dirección/contacto
+  _btPauseKey(deviceId, device) {
+    var nx = (device && (device.deviceUUID || device.nexoId)) || '';
+    if (!nx && deviceId && this._macToNexoId) nx = this._macToNexoId.get(_normMac(deviceId)) || '';
+    return _normId(nx || deviceId);
+  },
+  // 3033: ¿Bluetooth en pausa con este contacto (no_service repetido)? Lo consultan también Jump y los envíos
+  _btPaused(nxOrDevice) {
+    if (!this._bleCooldownUntil || !nxOrDevice) return 0;
+    var k = /^nx/i.test(String(nxOrDevice)) ? _normId(nxOrDevice) : this._btPauseKey(nxOrDevice, null);
+    var cd = this._bleCooldownUntil.get(k) || 0;
+    return cd > Date.now() ? cd - Date.now() : 0;
+  },
+
   _autoConnectGATT(deviceId, device, opts) {
     var self = this;
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'connectToDevice')) return Promise.resolve();
@@ -783,7 +797,10 @@ export const BLE_CONNECTION_METHODS = {
     // contacto sigue llegando por internet/Wi-Fi/Jump (la pausa es SOLO del Bluetooth). Una conexión MANUAL del usuario
     // (opts.manual, p.ej. tocar «Agregar») SÍ pasa, porque es intención explícita.
     if (!(opts && opts.manual) && self._bleCooldownUntil) {
-      var nxCd = _normId((device && device.deviceUUID) || deviceId);
+      // 3033 (diagnóstico S24 12-11 22:25, Motorola con el GATT roto: «pauso Bluetooth 600 s» y aun así conectar/cortar cada
+      // 1–3 s, 21 veces): el resultado de escaneo trae el contacto en nexoId (no en deviceUUID) y se buscaba la pausa por la
+      // DIRECCIÓN → nunca la encontraba y volvía a conectar. Ahora se busca por su NEXO ID venga como venga.
+      var nxCd = self._btPauseKey(deviceId, device);
       var cd = self._bleCooldownUntil.get(nxCd) || 0;
       if (cd > Date.now()) { console.log('[BLEInterface] Auto-conexion omitida: ' + nxCd + ' en pausa Bluetooth (no_service), ' + Math.round((cd - Date.now()) / 1000) + ' s'); return Promise.resolve(); }
     }

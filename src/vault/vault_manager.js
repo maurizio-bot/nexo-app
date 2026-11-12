@@ -1007,7 +1007,11 @@ export async function vaultGetPendingMessages(contactNexoId) {
   if (!contactNexoId) return [];
   var cid = _normId(contactNexoId);
   var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
-  var pending = messages.filter(function(m) { return m._own === true && (m.status === 'pending' || m.status === 'failed'); });
+  var pending = messages.filter(function(m) {
+    if (m._own !== true || !(m.status === 'pending' || m.status === 'failed')) return false;
+    // 3033: copia oculta vieja de un estado (ver estados.staleStatusCopy): no se reenvía
+    return !(m.hidden === true && typeof window !== 'undefined' && typeof window.NEXO_staleStatusCopy === 'function' && window.NEXO_staleStatusCopy(m, cid));
+  });
   pending.sort(function(a, b) {
     var tsA = a.timestamp || 0, tsB = b.timestamp || 0;
     if (tsA !== tsB) return tsA - tsB;

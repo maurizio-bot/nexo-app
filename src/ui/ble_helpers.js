@@ -632,8 +632,11 @@ export function _isControlPacket(content) {
 // Mensajes propios que deben reenviarse. Incluye 'sending'/'queued': tras cerrar la app ya no hay
 // nada en vuelo y antes se quedaban así para siempre. Adjuntos en 'sending' los reanuda
 // resumeOutgoingTransfers (ble_ack), no aquí, para no duplicar la transferencia.
-export function _isResendable(m) {
+// cid (3033, opcional): de qué contacto es (como callback de filter llega el índice: se ignora)
+export function _isResendable(m, cid) {
   if (!m || m._own !== true) return false;
+  // 3033: copia oculta de un estado que ya no se manda así (foto dentro de builds anteriores, estado vencido): no se reenvía
+  if (m.hidden === true && typeof window !== 'undefined' && typeof window.NEXO_staleStatusCopy === 'function' && window.NEXO_staleStatusCopy(m, typeof cid === 'string' ? cid : '')) return false;
   if (m.status === 'pending' || m.status === 'failed') return true;
   // v6.1.9: también adjuntos. Si la transferencia sigue viva, _isMsgInFlight la excluye y
   // ble_ack.sendFile reutiliza la que esté en curso con el mismo id (no se duplica).

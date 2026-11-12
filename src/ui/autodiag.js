@@ -215,7 +215,7 @@ export function autoDiagScanPending() {
   var bi = (typeof window !== 'undefined') ? window.bleInterface : null;
   if (!bi || typeof bi.linkOf !== 'function' || typeof window.vaultLoadMessages !== 'function') return Promise.resolve(null);
   // Pendientes del contacto: la API del vault si está expuesta; si no, el historial filtrado como hace el reenvío de pendientes
-  var pend = function(nx) { return (typeof window.vaultGetPendingMessages === 'function') ? window.vaultGetPendingMessages(nx) : window.vaultLoadMessages(nx).then(function(l) { return (l || []).filter(_isResendable); }); };
+  var pend = function(nx) { return (typeof window.vaultGetPendingMessages === 'function') ? window.vaultGetPendingMessages(nx) : window.vaultLoadMessages(nx).then(function(l) { return (l || []).filter(function(m) { return _isResendable(m, nx); }); }); };
   var oldMs = _knob('NEXO_AUTODIAG_OLD_MS', OLD_PENDING_MS), now = Date.now(), found = null;
   var reach = (_getBLEContacts() || []).map(function(c) { return _normId(c.nexoId || c.deviceUUID); }).filter(function(nx) { try { return !!nx && bi.linkOf(nx) !== 'none'; } catch (e) { return false; } });
   return reach.reduce(function(p, nx) {

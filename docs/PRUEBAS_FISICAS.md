@@ -1,6 +1,6 @@
 # Pruebas físicas pendientes (dueño 12-11: «la lista de las pruebas físicas que hacen falta»)
 
-Con la **3029 (nightly-3026) o posterior en TODOS los teléfonos** (el actualizador de Perfil → Ajustes lo hace solo).
+Con la **3033 (nightly-3030) o posterior en TODOS los teléfonos** (el actualizador de Perfil → Ajustes lo hace solo).
 Si algo falla: **Perfil → Copiar diagnóstico** en los dos teléfonos y pegármelo. Cada prueba dice qué tiene que pasar.
 Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 
@@ -14,6 +14,10 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
    repite el mismo envío (no llega el aviso «reintentos» de un `fxs_…`).
 4. **Bluetooth con un teléfono que no responde (3025).** Uno con el Bluetooth del otro apagado 5 min: el primero deja de
    insistir (en su diagnóstico sale «pausa» y no 20 líneas «no_service» seguidas).
+
+4a. **Pausa de Bluetooth (3033).** S24 y Motorola juntos 10 min con la app abierta: si sale «pauso Bluetooth» en el
+   diagnóstico del S24, debe salir UNA vez (no 15–20 seguidas) y los mensajes siguen por Wi-Fi/internet.
+4c. **Foto de perfil (3033).** En el Honor: tu foto se ve en tu contacto y la copia del otro contacto sale con iniciales.
 
 4b. **Estados v3 (3032).** Publica 3 estados (uno con foto grande): en otro teléfono salen «(3)», se recorren con ‹ ›, la foto
    carga al abrirla. Dale me gusta y comenta uno: en «Mis estados» del dueño se ve quién y el comentario. En Contactos, desliza

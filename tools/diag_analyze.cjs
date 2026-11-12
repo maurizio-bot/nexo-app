@@ -20,7 +20,7 @@ const FIRMAS = [
   { id: 'no_confirma_reenvio', re: /no confirma lo reenviado/, min: 3, que: 'el contacto no confirma lo reenviado (espera creciente activa; mirar su diagnóstico emparejado)', arreglo: null },
   { id: 'openchat_mac_vieja', re: /openChat: forcing connectToDevice/, min: 3, que: 'abrir un chat forzaba la dirección Bluetooth vieja', arreglo: 3017 },
   { id: 'enlace_repetido_bucle', re: /Dedup: cierro enlace repetido/, min: 3, que: 'enlace Bluetooth repetido que se abre y se cierra (3019: por el escaneo; 3027: cada lado cerraba uno distinto)', arreglo: 3027 },
-  { id: 'no_service_bucle', re: /desconectado: no_service/, min: 8, que: 'reconexión Bluetooth sin servicio NEXO en bucle (la pausa no saltaba: el corte-eco la reiniciaba)', arreglo: 3025 },
+  { id: 'no_service_bucle', re: /desconectado: no_service/, min: 8, que: 'reconexión Bluetooth sin servicio NEXO en bucle (3025: la pausa no saltaba, el corte-eco la reiniciaba; 3033: el escaneo y Jump se la saltaban)', arreglo: 3033 },
   { id: 'repeticion_no_descifra', re: /No se pudo descifrar (el archivo|el mensaje) .*protocolo 2/, min: 3, que: 'algo ya recibido que vuelve a llegar mucho después no se reconocía como repetido (no se confirmaba y el otro lo reenviaba)', arreglo: 3029 },
   { id: 'fenix_duplicado', re: /sendFile EN COLA .*fileId=fxs_/, min: 2, que: 'respaldo Fénix repetido al mismo contacto (el reintento guardado se sumaba al de Fénix)', arreglo: 3026 },
   { id: 'contacto_reinstalado', re: /se llama igual que .* reinstalado|contacto_duplicado/, min: 1, que: 'contacto duplicado por reinstalación', arreglo: 3018 },
