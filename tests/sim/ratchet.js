@@ -86,6 +86,22 @@ function check(name, ok, detail) { results.push({ name, ok: !!ok }); quiet((ok ?
     if (r.text !== 'turno ' + i) okAll = false;
   }
   check('conversación alterna (6 turnos)', okAll);
+  // 3029 (diagnóstico A55 12-11: «No se pudo descifrar el archivo fxs_…_27fd» ×25 y el emisor reenviando sin fin): una
+  // REPETICIÓN de algo ya recibido muchas vueltas atrás (más de 5 cadenas) debe dar DUP (se confirma) y no BAD (no se confirma
+  // → el otro lo reenvía para siempre).
+  const viejo = await enc(A, B, 'ya recibido hace rato', 'v0');
+  const rv = await dec(B, A, viejo, 'v0');
+  okAll = rv.text === 'ya recibido hace rato';
+  for (let i = 0; i < 16; i++) {
+    const x = await enc(i % 2 ? A : B, i % 2 ? B : A, 'vuelta ' + i, 'u' + i);
+    const r = await dec(i % 2 ? B : A, i % 2 ? A : B, x, 'u' + i);
+    if (r.text !== 'vuelta ' + i) okAll = false;
+  }
+  B = await phone('B');   // sin la memoria de textos recientes: el camino de un archivo grande
+  const rvDup = await dec(B, A, viejo, 'v0');
+  check('repetición de algo recibido 8 vueltas atrás → DUP (no BAD)', okAll && rvDup.err === 'DUP', JSON.stringify(rvDup));
+  const sigue = await enc(A, B, 'después de la repetición', 'v1');
+  check('y la conversación sigue', (await dec(B, A, sigue, 'v1')).text === 'después de la repetición');
 
   // Pérdidas y llegada tardía
   const l = [];

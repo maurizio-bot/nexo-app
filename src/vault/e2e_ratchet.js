@@ -29,6 +29,15 @@ var PQ_FILE = 'nexo_ratchet_pq.json'; // v1.1: claves ML-KEM de los contactos (1
 var PREFIX = 'E2:';
 var MAX_SKIP = 1000;          // mensajes saltados como máximo en una cadena
 var MAX_SKIPPED_KEYS = 300;   // claves de mensajes aún no recibidos guardadas por sesión
+// 3029 (diagnóstico A55 12-11: «No se pudo descifrar el archivo fxs_…_27fd» ×25 y el emisor reenviando sin fin): las claves
+// públicas de cadenas ANTERIORES del otro se recuerdan para reconocer una repetición (DUP → se confirma). Con solo 5, algo
+// recibido hace más de 5 vueltas de conversación se tomaba como un paso nuevo del ratchet → «no se pudo descifrar» → sin
+// confirmación → el otro lo reenviaba para siempre. Una clave nueva de verdad es aleatoria: nunca coincide con una vieja.
+var OLD_DHR_MAX = 120;
+// Se guarda solo el principio de cada clave (24 caracteres ≈ 144 bits: sin choques en la práctica) para no agrandar el
+// almacén, que se reescribe en cada mensaje. Las de builds anteriores (clave entera) también se reconocen.
+function _dhTag(dh) { return String(dh || '').substring(0, 24); }
+function _isOldDhr(s, dh) { var o = s.oldDhr || []; return o.indexOf(dh) >= 0 || o.indexOf(_dhTag(dh)) >= 0; }
 var MAX_SESSIONS_PER_KEY = 3; // por contacto y clave de identidad (inicios simultáneos)
 var MAX_KEYS_PER_PEER = 2;    // claves de identidad distintas a la vez por contacto (una aceptada + una pendiente)
 var SPK_ROTATE_MS = 30 * 86400000;
@@ -403,10 +412,10 @@ async function _tryDecrypt(s0, p, outerAd) {
   } else {
     if (h.dh === s.dhr && h.n < s.nr) throw _err('Mensaje ya recibido', 'DUP');
     // Cadena anterior sin clave guardada: ya se recibió (o caducó); no es un paso nuevo del ratchet
-    if (s.oldDhr && s.oldDhr.indexOf(h.dh) >= 0) throw _err('Mensaje ya recibido', 'DUP');
+    if (_isOldDhr(s, h.dh)) throw _err('Mensaje ya recibido', 'DUP');
     if (h.dh !== s.dhr) {
       await _skip(s, h.pn);
-      if (s.dhr) { s.oldDhr = (s.oldDhr || []).concat([s.dhr]).slice(-5); }
+      if (s.dhr) { s.oldDhr = (s.oldDhr || []).concat([_dhTag(s.dhr)]).slice(-OLD_DHR_MAX); }
       s.pn = s.ns; s.ns = 0; s.nr = 0; s.dhr = h.dh;
       var r1 = await _kdfRK(s.rk, await _dh(s.dhs.priv, s.dhr));
       s.rk = r1.rk; s.ckr = r1.ck;
