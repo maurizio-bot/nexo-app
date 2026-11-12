@@ -1042,6 +1042,10 @@
     {
      "fallo": "3033 (dueño 12-11 22:41: «me aparecieron nueve mensajes nuevos y no vi ninguno», S24 3028): una acción oculta (estado, foto de perfil, me gusta, reacción, borrar) va callada solo si su id está en _quietOut, que vive en memoria; al reenviarla desde la cola tras reiniciar la app salía como mensaje NUEVO (sobre con n/q ausente) y el nativo del otro avisaba «N mensajes nuevos» que no existían. 3033: _markHiddenQuiet en _resendPendingMessages y al reanudar transferencias. cola3033.js §4 (contraprueba 3032: llega sin q)",
      "prueba": "llega CALLADA (avisos fantasma"
+    },
+    {
+     "fallo": "3034 (diagnóstico automático de …c95d 12-11, entrega_lenta 2761 s): la app que manda estuvo en segundo plano (congelada) de 15:42 a 16:29; el otro recibió y confirmó al momento pero la ✓✓ solo se procesó al volver → síntoma falso. 3034: diag_state no cuenta entrega lenta si la app estuvo en segundo plano desde que salió el mensaje. diagplus.js D5b (contraprueba 3033)",
+     "prueba": "diagnóstico más claro"
     }
    ]
   },

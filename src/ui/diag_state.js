@@ -17,6 +17,10 @@ var SLOW_MS = 2 * 60 * 1000;     // «entrega lenta»: más de 2 min con camino
 var _trace = new Map();          // msgId -> { nx, t0, via0, ev: [[t, estado, vía]] }
 var _peerBuild = Object.create(null); // nx -> build que dijo en su kx
 var _power = null, _powerAt = 0;
+// 3034 (diagnóstico de …c95d 12-11: «entrega lenta 2761 s»): con la app en segundo plano el teléfono no se entera de la ✓✓
+// hasta volver (la app está congelada), aunque el otro lo recibió al momento. Lo lento era ESTE teléfono dormido, no la
+// entrega: si la app estuvo en segundo plano desde que salió el mensaje, no cuenta como «entrega lenta».
+var _hidden = false, _backAt = 0;
 
 function _bi() { return (typeof window !== 'undefined' && window.bleInterface) || null; }
 function _tail(nx) { nx = _normId(nx); return nx ? '…' + nx.slice(-4) : '?'; }
@@ -64,7 +68,8 @@ function _onStatus(e) {
   tr.ev.push([now, d.status, via]);
   if (tr.ev.length > 12) tr.ev.splice(1, 1);
   var slowMs = (typeof window.NEXO_DIAG_SLOW_MS === 'number' && window.NEXO_DIAG_SLOW_MS >= 0) ? window.NEXO_DIAG_SLOW_MS : SLOW_MS; // perilla de prueba
-  if ((d.status === 'delivered') && !tr.slow && tr.via0 !== 'none' && now - tr.t0 > slowMs) {
+  var asleep = _hidden || _backAt > tr.t0; // 3034: la app estuvo en segundo plano mientras esperaba la ✓✓
+  if ((d.status === 'delivered') && !tr.slow && !asleep && tr.via0 !== 'none' && now - tr.t0 > slowMs) {
     tr.slow = true;
     try { window.dispatchEvent(new CustomEvent('nexo:diag:symptom', { detail: { kind: 'entrega_lenta', info: tr.nx + ' ' + id + ' ' + Math.round((now - tr.t0) / 1000) + ' s, camino al mandar ' + tr.via0 } })); } catch (e3) {}
   }
@@ -83,6 +88,14 @@ export function diagStateInit() {
   if (_inited || typeof window === 'undefined') return;
   _inited = true;
   window.addEventListener('nexo:ble:ackStatus', _onStatus);
+  if (typeof document !== 'undefined') {
+    _hidden = document.visibilityState === 'hidden';
+    document.addEventListener('visibilitychange', function() {
+      var h = document.visibilityState === 'hidden';
+      if (_hidden && !h) _backAt = Date.now();
+      _hidden = h;
+    });
+  }
   setTimeout(_refreshPower, 3000);
   setInterval(_refreshPower, 60000);
 }

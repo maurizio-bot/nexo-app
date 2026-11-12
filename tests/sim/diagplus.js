@@ -106,6 +106,21 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
   await sleep(1800);
   A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:ackStatus', { detail: { msgId: 'msgLENTO0001', status: 'delivered' } }));
   r.D5_entrega_lenta = await waitFor(() => symsA().includes('entrega_lenta'), 5000) !== null;
+  // 3034 (diagnóstico de …c95d 12-11): si la app de A estuvo en segundo plano mientras esperaba la ✓✓, NO es entrega lenta
+  {
+    const syms = []; A.win.addEventListener('nexo:diag:symptom', (e) => { if (e && e.detail) syms.push(String(e.detail.kind) + ' ' + String(e.detail.info || '')); });
+    biA.ackSystem.pendingAcks.set('msgDORMIDO01', { msgId: 'msgDORMIDO01', deviceId: [...biA._deviceStates.keys()].find((k) => biA._macToNexoId.get(k) === idB) || 'bbbbbbbbbb02', resolve() {}, reject() {}, timer: null });
+    A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:ackStatus', { detail: { msgId: 'msgDORMIDO01', status: 'sending' } }));
+    biA.ackSystem.pendingAcks.delete('msgDORMIDO01');
+    const d = A.win.document; let vis = 'visible';
+    Object.defineProperty(d, 'visibilityState', { configurable: true, get: () => vis });
+    vis = 'hidden'; d.dispatchEvent(new A.win.Event('visibilitychange'));
+    await sleep(1800);
+    vis = 'visible'; d.dispatchEvent(new A.win.Event('visibilitychange'));
+    A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:ackStatus', { detail: { msgId: 'msgDORMIDO01', status: 'delivered' } }));
+    await sleep(1500);
+    r.D5b_dormido_no_es_lento = !syms.some((x) => /entrega_lenta .*msgDORMIDO01/.test(x));
+  }
   // límites nuevos (sin perilla): 10 min entre envíos, 30 por día
   A.win.NEXO_AUTODIAG_GAP_MS = undefined;
   r.D6_hueco_10_min = adA().report('error', 'otro') === 'espera';
@@ -115,7 +130,7 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
   r.contenido_en_diagnostico = /hola B|hola A/.test(txt);
   r.errores = logs.filter((l) => / error: /.test(l) && !/Not implemented|ResizeObserver/.test(l)).slice(0, 3);
   const ok = typeof r.emparejados_s === 'number' && r.reporte === 'enviado' && typeof r.llega_a_B_s === 'number' && r.D1_estado_y_zona && r.D1_contacto_camino_y_build && r.D1b_wifi_y_rapidos && r.D2_linea_de_tiempo && r.D3_compactado && r.estado_antes_del_registro &&
-    r.D4_apagado_no_manda && typeof r.D4_par_manda_s === 'number' && r.D4_A_no_pide_por_un_pedido && r.D5_enlace_abre_cierra && r.D5_entrega_lenta && r.D6_hueco_10_min && r.D6_pasa_tras_10_min && !r.contenido_en_diagnostico && !r.errores.length;
+    r.D4_apagado_no_manda && typeof r.D4_par_manda_s === 'number' && r.D4_A_no_pide_por_un_pedido && r.D5_enlace_abre_cierra && r.D5_entrega_lenta && r.D5b_dormido_no_es_lento && r.D6_hueco_10_min && r.D6_pasa_tras_10_min && !r.contenido_en_diagnostico && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('DIAGPLUS ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_diagplus.txt'), logs.join('\n') + '\n\n===== TEXTO =====\n' + txt.substring(0, 6000));
