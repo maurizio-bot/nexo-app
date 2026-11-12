@@ -5,9 +5,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 
 ## 🆕 12-11 (diagnósticos S24, S23, Redmi y HONOR con la 3014) — en curso
 - **Hecho 3015/3016:** nota de voz como archivo; confirmación por Wi-Fi con la app dormida; espera creciente al reenviar; envío por internet no frena la búsqueda Bluetooth (detalle en `ESTADO.md`).
-- **3017 (en preparación):** al abrir un chat se usa el mejor camino vivo y no la dirección Bluetooth guardada (que puede ser una conexión ya cerrada por repetida o una dirección rotada): `openstale.js` (contraprueba 3016: FALLO).
-- **3018 (en preparación, opción A del dueño):** contacto duplicado por reinstalar NEXO (NEXO ID nuevo): al agregar uno con el mismo nombre que otro que no se alcanza, se pregunta «¿es el mismo teléfono reinstalado?» y, si sí, el chat y lo pendiente pasan al nuevo. `reinstall.js`. OJO: un texto pendiente pasado al contacto nuevo salió como «leído» sin llegar (las confirmaciones por número de orden del contacto viejo no valen para el nuevo): resolver antes de subir.
-- **Abierto:** una foto por puente Jump con el puente dormido (S23 22:13, 73 s) cuando internet no estaba «listo para archivos».
+- **Hecho 3017/3018/3019:** dirección vieja al abrir chat, contacto reinstalado (opción A) y segundo enlace por la dirección de anuncio (detalle en `ESTADO.md`).
+- **Abierto (sin reproducir):** una foto de 57 KB del S23 al S24 salió por el Redmi como puente Bluetooth (22:13:49, justo tras usar la cámara, que desconecta y reconecta todos los enlaces) con internet «no listo para archivos» (relés fallando); 73 s sin una sola confirmación, luego por internet en 2 s. Posibles causas: puente con la app dormida, enlace recién rehecho a medias, o internet descartado por un fallo pasajero de los relés. Hace falta reproducirlo antes de tocar nada.
 - **Wi-Fi Direct:** sigue sin probarse (en la prueba del dueño el Wi-Fi estaba apagado).
 
 ## 🔎 «Agregar»: todo NEXO cercano al instante (3012) y foto de perfil equivocada (dueño 11-11) — en prueba del dueño
