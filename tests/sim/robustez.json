@@ -549,6 +549,10 @@
     {
      "fallo": "3007 (OK del dueño 11-11 «(a)»): un archivo grande por internet que se cortaba más de 30 min o con un reinicio de la app de cualquiera de los dos volvía a empezar de cero (intento nuevo = marca 'a' distinta; el receptor solo guardaba en memoria). 3007: el emisor guarda el contenido cifrado + su marca en el teléfono y al reanudar manda lo mismo sin releer el adjunto; el receptor guarda bloques de 64 trozos y tras reiniciarse rehace lo recibido. bigresume.js (contraprueba 3006: no guarda nada)",
      "prueba": "archivo grande por internet que SIGUE DONDE IBA"
+    },
+    {
+     "fallo": "3015 (dueño 12-11, diagnósticos S24 + S23 con la 3014): la nota de voz iba como TEXTO troceado (1761 trozos de 360 letras para 22 s) y no como archivo: minutos por Bluetooth, «Cola de escritura llena», textos del otro sin confirmar, y cada reintento la cifraba de nuevo y el receptor tiraba lo recibido. 3015: la nota de voz va (y se reenvía) por el camino de archivos (binario, Wi-Fi/Wi-Fi Direct si se puede); la cabecera lleva su duración y tipo de audio.",
+     "prueba": "nota de voz por Bluetooth como ARCHIVO"
     }
    ]
   },

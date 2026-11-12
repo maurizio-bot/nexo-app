@@ -156,7 +156,10 @@ export function _sendAttachment(type, payload, meta, opts) {
     if (window.vaultAppendMessage) vaultAppendMessage(contactId, localMsg);
   } catch (e) {}
 
-  if ((type === 'image' || type === 'video' || type === 'file') && window.bleInterface && window.bleInterface.sendFile) {
+  // 3015 (dueño 12-11, diagnósticos S24 + S23): la nota de voz también va como ARCHIVO (binario, trozos grandes, Wi-Fi/Wi-Fi Direct
+  // si se puede). Como texto troceado una de 22 s eran 1761 trozos de 360 letras: minutos por Bluetooth, tapaba el enlace y cada
+  // reintento la cifraba de nuevo y el otro tiraba lo recibido. (La ubicación y lo pequeño siguen como texto.)
+  if ((type === 'image' || type === 'video' || type === 'file' || type === 'audio') && window.bleInterface && window.bleInterface.sendFile) {
     _sendFileFor(contactId, msgId, type, payload, meta, opts);
     return msgId;
   }

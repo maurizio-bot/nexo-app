@@ -984,6 +984,8 @@ export class BleAckSystem {
           mime: msg.mt || msg.mime,
           size: msg.fs || msg.size,
           format: msg.ft || msg.format,
+          duration: (typeof msg.du === 'number' && msg.du > 0 && msg.du < 86400) ? msg.du : undefined, // 3015: nota de voz
+          mimeType: (typeof msg.am === 'string' && /^audio\/[a-z0-9.+-]+(;[ a-z0-9=.,"-]*)?$/i.test(msg.am) && msg.am.length < 80) ? msg.am : undefined,
           width: msg.w || msg.width,
           height: msg.h || msg.height,
           hdFor: msg.hf || null,
@@ -2559,6 +2561,9 @@ ChatStream.prototype._buildChunk = function(idx) {
     if (this.meta.mime) obj.mt = this.meta.mime;
     if (this.meta.size) obj.fs = this.meta.size;
     if (this.meta.format) obj.ft = this.meta.format;
+    // 3015: nota de voz como archivo: su duración y su tipo de audio (la burbuja los muestra)
+    if (this.meta.duration) obj.du = this.meta.duration;
+    if (this.meta.mimeType) obj.am = this.meta.mimeType;
     // FIX: width/height se perdían (nunca se empaquetaban), quedaban null en el receptor
     if (this.meta.width) obj.w = this.meta.width;
     if (this.meta.height) obj.h = this.meta.height;

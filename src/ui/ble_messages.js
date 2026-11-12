@@ -1396,7 +1396,8 @@ export const BLE_MESSAGE_METHODS = {
           !bigMeta &&
           (attachmentType === 'image' ||
            attachmentType === 'video' ||
-           attachmentType === 'file')
+           attachmentType === 'file' ||
+           attachmentType === 'audio')   // 3015: la nota de voz se reenvía como archivo (como al enviarla)
         ) {
           if (!self.ackSystem || typeof self.ackSystem.sendFile !== 'function') {
             console.warn('[BLEInterface] AckSystem sin sendFile para pending:', mid);
