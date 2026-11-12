@@ -87,6 +87,14 @@ async function openChatWith(p, name) {
   ack.incomingBuffers.set('ph2', { isChat: false, meta: { type: 'photo' }, lastActivity: Date.now() });
   r.user_in_ocupa = biA._transferActive() === true;
   clear();
+  // 3016 (dueño 12-11): ARCHIVO de usuario POR INTERNET (net:) → no ocupa la radio para la re-búsqueda (radioOnly),
+  // pero Fénix sigue cediendo (sin radioOnly sí cuenta)
+  ack.outgoingStreams.set('nt1', { type: 'file', aborted: false, deviceId: 'net:' + idB, meta: { type: 'file' }, lastAckAt: Date.now() });
+  r.net_out_no_frena_radio = biA._transferActive(true) === false && biA._transferActive() === true;
+  clear();
+  ack.incomingBuffers.set('nt2', { isChat: false, deviceId: 'net:' + idB, meta: { type: 'photo' }, lastActivity: Date.now() });
+  r.net_in_no_frena_radio = biA._transferActive(true) === false;
+  clear();
 
   // ---- 2) bucle de re-búsqueda end-to-end ----
   const prep = () => {
@@ -115,6 +123,15 @@ async function openChatWith(p, name) {
   r.bucle_sigue_vivo = !!biA._reconnectScanTimer; // no murió: reintenta al terminar la transferencia
   if (biA._reconnectScanTimer) { clearTimeout(biA._reconnectScanTimer); biA._reconnectScanTimer = null; }
   clear();
+  // (c) 3016: ARCHIVO de usuario por INTERNET en curso → SÍ escanea (no usa la radio Bluetooth)
+  clear(); prep();
+  ack.outgoingStreams.set('nt3', { type: 'file', aborted: false, deviceId: 'net:' + idB, meta: { type: 'file' }, lastAckAt: Date.now() });
+  const sNet0 = scans(nA);
+  biA._startReconnectScanLoop();
+  await sleep(2600);
+  r.net_no_frena_escaneo = scans(nA) > sNet0;
+  if (biA._reconnectScanTimer) { clearTimeout(biA._reconnectScanTimer); biA._reconnectScanTimer = null; }
+  clear();
 
   // ---- 3) Fénix CEDE la radio a la actividad del usuario (#dueño 04-11) ----
   // «las conversaciones del user tienen SIEMPRE la prioridad sobre fénix; en esa situación fénix se para hasta que el
@@ -139,6 +156,7 @@ async function openChatWith(p, name) {
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.conecta && r.hay_ack && r.vacio_libre && r.fenix_out_libre && r.user_out_ocupa &&
     r.fenix_in_libre && r.user_in_ocupa && r.fenix_no_frena_escaneo && r.user_si_frena_escaneo && r.bucle_sigue_vivo &&
+    r.net_out_no_frena_radio && r.net_in_no_frena_radio && r.net_no_frena_escaneo &&
     r.hay_fenix && r.fenix_cede_con_usuario && r.fenix_trabaja_sin_usuario && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('SCANFENIX ' + JSON.stringify(r));

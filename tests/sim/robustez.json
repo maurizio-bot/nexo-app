@@ -72,6 +72,10 @@
     {
      "fallo": "2852: «escaneo lento otra vez... debería ser instantáneo» (dueño 31-10). Un respaldo Fénix de FONDO sobre un enlace degradado (MTU 23 «ready» pero lentísimo) daba _transferActive()=true hasta 15 min y el bucle de re-búsqueda saltaba su turno (y _stopAutoScan lo paraba al arrancar) → escaneo de contactos PARADO. 2854: un respaldo Fénix ya no pausa el escaneo; una foto/archivo que el usuario espera sí lo pausa como antes",
      "prueba": "escaneo lento por respaldo FÉNIX"
+    },
+    {
+     "fallo": "3016 (dueño 12-11, diagnóstico S24 con la 3014): un archivo grande (APK de 25 MB) al S23 que iba POR INTERNET (relés, 2213 trozos, >30 min) dejaba la re-búsqueda de contactos por Bluetooth parada todo ese rato («Re-búsqueda aplazada: transferencia en curso» cada 15 s) y además paraba el escaneo al empezar. Un envío por internet no usa la radio. 3016: la re-búsqueda y el paro del escaneo ya no cuentan los envíos por internet (Fénix sigue cediendo ante cualquier envío del usuario). scanfenix.js (contraprueba 3015: falla net_no_frena_escaneo)",
+     "prueba": "escaneo lento por respaldo FÉNIX"
     }
    ],
    "debiles": [

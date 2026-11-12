@@ -829,7 +829,7 @@ export class BleAckSystem {
     var finalMeta = self._fileMeta(meta, base64Data.length);
     console.log('[BleAckSystem] sendFile START fileId=' + fileId + ' type=' + finalMeta.type + ' bytes(b64)=' + base64Data.length + ' to=' + deviceId);
     // #129 (dueño 31-10): un respaldo FÉNIX de fondo NO debe parar el escaneo de contactos (sí lo hace una foto/archivo que el usuario espera).
-    if (self.ble && typeof self.ble._stopAutoScan === 'function' && finalMeta.type !== 'fenix') self.ble._stopAutoScan();
+    if (self.ble && typeof self.ble._stopAutoScan === 'function' && finalMeta.type !== 'fenix' && !_isNetDevice(deviceId)) self.ble._stopAutoScan();   // 3016: por internet no usa la radio
     var stream = new ChatStream(self, deviceId, fileId, base64Data, finalMeta, 'file');
     self.outgoingStreams.set(fileId, stream);
     // 3007: archivo grande del usuario por internet → se guarda (cifrado) para poder seguir donde iba; se borra al entregarse
@@ -1002,7 +1002,7 @@ export class BleAckSystem {
       };
       self.incomingBuffers.set(msgId, buf);
       // #129 (dueño 31-10): recibir un respaldo FÉNIX de fondo tampoco debe parar el escaneo de contactos.
-      if (!buf.isChat && buf.meta.type !== 'fenix' && self.ble && typeof self.ble._stopAutoScan === 'function') self.ble._stopAutoScan();
+      if (!buf.isChat && buf.meta.type !== 'fenix' && !_isNetDevice(deviceId) && self.ble && typeof self.ble._stopAutoScan === 'function') self.ble._stopAutoScan();
       buf.assemblyTimer = setTimeout(function() {
         if (self.incomingBuffers.has(msgId)) {
           console.warn('[BleAckSystem] Assembly timeout msgId=' + msgId);
@@ -1084,7 +1084,7 @@ export class BleAckSystem {
       }
     }, _assemblyTimeoutFor(true, false, total));
     self.incomingBuffers.set(msgId, buf);
-    if (self.ble && typeof self.ble._stopAutoScan === 'function') self.ble._stopAutoScan();
+    if (!_isNetDevice(buf.deviceId) && self.ble && typeof self.ble._stopAutoScan === 'function') self.ble._stopAutoScan();
     console.log('[BleAckSystem] ' + msgId + ': sigo recibiendo el archivo grande donde iba (' + buf.received + ' de ' + total + ' trozos guardados en el teléfono)');
     return buf;
   }

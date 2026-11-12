@@ -368,7 +368,7 @@ export const BLE_CONNECTION_METHODS = {
       var go = function() {
         // v6.1.13: escanear comparte la radio con las conexiones; durante una transferencia de archivo
         // se salta este turno (en el teléfono real la foto/vídeo iba más lenta)
-        if (self._transferActive()) { console.log('[BLEInterface] Re-búsqueda aplazada: transferencia en curso'); return; }
+        if (self._transferActive(true)) { console.log('[BLEInterface] Re-búsqueda aplazada: transferencia en curso'); return; }
         if (!self._cameraBlePaused && !self.isScanning) {
           self._reconnectScanAttempts++;
           console.log('[BLEInterface] Re-búsqueda de contactos', activeLost, presence ? '(+presencia)' : '', 'intento', self._reconnectScanAttempts, hidden ? 'oculta' : '');
@@ -392,18 +392,21 @@ export const BLE_CONNECTION_METHODS = {
     _safeNativeCall(self.nativePlugin, 'stopScan', {}).then(function() { self.isScanning = false; self.updateScanButton(); }).catch(function() { self.isScanning = false; });
   },
 
-  _transferActive() {
+  // 3016 (diagnóstico del dueño 12-11): con radioOnly, una transferencia que va POR INTERNET (net:) no cuenta: no usa la
+  // radio Bluetooth y un APK de 25 MB por relés tardaba >30 min con la re-búsqueda de contactos PARADA todo ese rato.
+  _transferActive(radioOnly) {
     var ack = this.ackSystem;
     if (!ack) return false;
     var busy = false, now = Date.now();
+    var viaNet = function(d) { d = (d || '').toString().toLowerCase(); return d.indexOf('net:') === 0 || /^netnx[0-9a-z]{8}$/.test(d); };
     // v6.2.0: solo si el otro sigue confirmando (si cerró la app a mitad, el flujo sigue vivo hasta su
     // tiempo máximo y sin re-búsqueda no se le volvía a encontrar para continuar)
     // #129 (dueño 31-10, «escaneo lento»): un respaldo FÉNIX (type:'fenix') es tarea de FONDO y nadie lo espera. Sobre un
     // enlace degradado (MTU 23 «ready» pero lentísimo, «Cola de escritura llena») arrastra hasta 15 min y dejaba el escaneo
     // de contactos PARADO todo ese rato. Solo las transferencias que el usuario sí espera (foto/vídeo/archivo) pausan el
     // escaneo; un respaldo Fénix no debe frenar el descubrimiento de contactos.
-    if (ack.outgoingStreams) ack.outgoingStreams.forEach(function(st) { if (st && st.type === 'file' && !st.aborted && !(st.meta && st.meta.type === 'fenix') && now - (st.lastAckAt || 0) < 10000) busy = true; });
-    if (!busy && ack.incomingBuffers) ack.incomingBuffers.forEach(function(b) { if (b && !b.isChat && !(b.meta && b.meta.type === 'fenix') && now - (b.lastActivity || 0) < 5000) busy = true; });
+    if (ack.outgoingStreams) ack.outgoingStreams.forEach(function(st) { if (st && st.type === 'file' && !st.aborted && !(st.meta && st.meta.type === 'fenix') && !(radioOnly && viaNet(st.deviceId)) && now - (st.lastAckAt || 0) < 10000) busy = true; });
+    if (!busy && ack.incomingBuffers) ack.incomingBuffers.forEach(function(b) { if (b && !b.isChat && !(b.meta && b.meta.type === 'fenix') && !(radioOnly && viaNet(b.deviceId)) && now - (b.lastActivity || 0) < 5000) busy = true; });
     return busy;
   },
 
