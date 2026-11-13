@@ -4,7 +4,7 @@ Con la **3033 (nightly-3030) o posterior en TODOS los teléfonos** (el actualiza
 Si algo falla: **Perfil → Copiar diagnóstico** en los dos teléfonos y pegármelo. Cada prueba dice qué tiene que pasar.
 Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 
-## 0. Lo nuevo del 13-11 (APK 3032 a 3035)
+## 0. Lo nuevo del 13-11 (APK 3032 a 3039)
 1. **GIF del teclado (3032).** En el S23, abre un chat y manda un GIF o sticker desde el teclado de Samsung o Gboard: sale
    como imagen y llega al otro (ya no «No es posible introducir este contenido aquí»).
 2. **Vídeo de TikTok en estados (3032).** Guarda un vídeo de TikTok y súbelo como estado: se publica (recomprimido a ≤ 4,6 MB).
@@ -37,6 +37,15 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 14. **Compartir pantalla en grupo (3037).** Llamada de grupo de 3 en la misma Wi-Fi: uno toca «Pantalla» → aviso → «Compartir»
     → permiso de Android. Los otros dos ven su pantalla grande con «Pantalla de …»; arriba en el suyo, barra roja «Detener».
     Si falla, diagnóstico de los tres (líneas «[GCALL] Compartiendo la pantalla…» / «comparte su pantalla»).
+16. **Vídeo por el puente con Wi-Fi Direct (3038).** A sin datos ni Wi-Fi conectado (pero con el Wi-Fi ENCENDIDO), junto a B
+    con internet por Wi-Fi: A manda a un contacto lejano un vídeo de 2–4 MB → llega (antes quedaba ⏳). En el diagnóstico de A:
+    «[GW] Wi-Fi Direct al puente …: N trozo(s)». Si dice «no funcionó», igual llega por Bluetooth (más lento).
+17. **Salir del Wi-Fi chateando (3039).** A y B en la misma Wi-Fi: A apaga el Wi-Fi y manda un texto en el mismo segundo → le
+    llega a B en 1–2 s por Bluetooth (antes 12–20 s).
+18. **Perder el internet con un NEXO cerca (3039).** A con datos, B cerca con internet: A apaga datos y Wi-Fi y manda un texto
+    a un contacto lejano → sale en ~10 s y el chat dice «por puente» (antes ~1,5 min).
+19. **Vuelve el internet (3039).** Siguiendo la anterior, A vuelve a encender los datos: en ≤ 15 s el chat deja de decir
+    «por puente» (antes hasta 2 min).
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 
