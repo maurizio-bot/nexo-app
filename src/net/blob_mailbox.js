@@ -35,6 +35,7 @@ export var BLOB_TTL_SEC = 7 * 86400;              // caducidad en los relés (NI
 export var MAX_CONCURRENT = 3;                    // bajadas pesadas a la vez; el resto en cola
 export var THUMB_MAX_BYTES = 16 * 1024;
 export var FETCH_BATCH = 16;                      // ids por REQ
+export var PUBLISH_ENOUGH = 2, PUBLISH_GRACE_MS = 1500; // 3042: réplica suficiente para seguir con el siguiente trozo
 export var PUBLISH_PARALLEL = 3;                  // trozos publicándose a la vez (ritmo acotado por relé)
 export var BLOB_KIND = 1064;                      // kind de los eventos-trozo: NO 1059 (los relés con NIP-42 solo dejan leer 1059 al etiquetado)
 
@@ -156,8 +157,9 @@ export async function stageBlob(net, dataB64, opts) {
   var relays = [], chunks = new Array(pieces.length), ids = new Array(pieces.length), minRep = Infinity;
   var publishOne = async function(i) {
     var ev = net.blobEvent(sk, _bytesToB64(pieces[i]), exp);
-    var ok = await net.publishEach(ev, timeout);
-    if (!ok.length) ok = await net.publishEach(ev, timeout); // un reintento (el mismo evento: mismo id)
+    // 3042: con 2 relés que lo guardaron se sigue (1,5 s de margen para los demás): un relé muerto ya no frena cada tanda 10 s
+    var ok = await net.publishEach(ev, timeout, { enough: PUBLISH_ENOUGH, graceMs: PUBLISH_GRACE_MS });
+    if (!ok.length) ok = await net.publishEach(ev, timeout, { enough: PUBLISH_ENOUGH, graceMs: PUBLISH_GRACE_MS }); // un reintento (el mismo evento: mismo id)
     if (!ok.length) throw Object.assign(new Error('Ningún relé guardó el trozo ' + i), { code: 'NET_DOWN' });
     ok.forEach(function(u) { if (relays.indexOf(u) < 0) relays.push(u); });
     chunks[i] = { i: i, n: pieces[i].length, id: ev.id, r: ok.map(function(u) { return relays.indexOf(u); }) };

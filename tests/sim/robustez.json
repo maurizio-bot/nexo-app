@@ -637,6 +637,10 @@
     {
      "fallo": "3035 (dueño 13-11, captura del S23): el teclado de Samsung no podía insertar GIF/stickers («No es posible introducir este contenido aquí»): el WebView no anunciaba tipos de imagen al teclado. 3035: NexoWebView.java (commitContent → window.__nexoKeyboardImage) + layout bridge_layout_main.xml; keyboard_media.js lo manda tal cual (GIF animado, sin miniatura fija). kbgif.js (la parte nativa se valida en la APK)",
      "prueba": "GIF y stickers del teclado"
+    },
+    {
+     "fallo": "3042 (dueño 13-11 21:29, S24 APK 3032: «cargué un gif y se está tardando mucho»): GIF de 4,6 MB a un contacto sin conexión → buzón de archivos (117 trozos, 3 a la vez); cada tanda esperaba a TODOS los relés y con un relé abierto pero muerto (nos.lol, nostr.mom) esperaba el tope de 10 s → ~6 min. 3042: publishEach({enough:2, graceMs:1500}) en stageBlob. blobslow.js (contraprueba 3041: 30 s; ahora ~4,7 s)",
+     "prueba": "subir al buzón de archivos con un relé muerto"
     }
    ]
   },

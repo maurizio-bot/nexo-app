@@ -879,17 +879,25 @@ export class NetLink {
     });
   }
   // Publica en TODOS los relés abiertos y devuelve los que dijeron OK (acá importa la RÉPLICA, no «al menos uno»)
-  publishEach(ev, timeoutMs) {
+  // opts (3042, dueño 13-11: un GIF de 4,6 MB tardaba ~6 min en subir al buzón de archivos): { enough, graceMs } — con
+  // `enough` relés que ya dijeron OK se espera como mucho graceMs más a los demás y se sigue (antes, un relé abierto pero
+  // muerto hacía esperar el tope entero, 10 s, a CADA tanda de trozos)
+  publishEach(ev, timeoutMs, opts) {
     var self = this;
     return new Promise(function(resolve) {
       var open = [];
       self.relays.forEach(function(r, u) { if (r.open && !r.gw) open.push({ r: r, u: u }); }); // el buzón de archivos no pasa por un puente
       if (!open.length) { resolve([]); return; }
-      var oks = [], left = open.length, done = false;
-      var finish = function() { if (done) return; done = true; clearTimeout(timer); open.forEach(function(o) { o.r.waits.delete(ev.id); }); resolve(oks); };
+      var oks = [], left = open.length, done = false, grace = null;
+      var enough = opts && opts.enough ? Math.min(opts.enough, open.length) : open.length;
+      var finish = function() { if (done) return; done = true; clearTimeout(timer); clearTimeout(grace); open.forEach(function(o) { o.r.waits.delete(ev.id); }); resolve(oks); };
       var timer = setTimeout(finish, timeoutMs || 10000);
       open.forEach(function(o) {
-        o.r.waits.set(ev.id, function(ok) { if (ok && oks.indexOf(o.u) < 0) oks.push(o.u); if (--left === 0) finish(); });
+        o.r.waits.set(ev.id, function(ok) {
+          if (ok && oks.indexOf(o.u) < 0) oks.push(o.u);
+          if (--left === 0) { finish(); return; }
+          if (oks.length >= enough && !grace) grace = setTimeout(finish, (opts && opts.graceMs) || 1500);
+        });
         if (!self._send(o.r, ['EVENT', ev])) { o.r.waits.delete(ev.id); if (--left === 0) finish(); }
       });
     });
