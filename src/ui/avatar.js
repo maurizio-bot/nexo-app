@@ -95,7 +95,32 @@ function _recompute() {
   });
 }
 function _keep(nx, img, at) {
-  return _phash(img).then(function(ph) { _all.set(nx, { img: img, at: at || 0, ph: ph }); });
+  return _phash(img).then(function(ph) { _all.set(nx, { img: img, at: at || 0, ph: ph }); if (!ph) _phRetrySoon(); });
+}
+// 3059 (dueño 13-11: «¿por qué Roberto aparece con mi foto de perfil todavía? se supone que ya lo arreglaste»): la copia se esconde
+// comparando huellas; si al abrir la app una huella no se pudo calcular a tiempo (2 s, con la app arrancando y muchas fotos a la
+// vez) —la mía o la del contacto—, no se comparaba y la copia se veía hasta que alguien cambiara de foto. Ahora las huellas que
+// faltan se vuelven a intentar (a los 4 s, 12 s, 40 s y 2 min) y, en cuanto están, se vuelve a decidir qué se muestra.
+var _phTry = 0, _phTimer = null, PH_RETRY_MS = [4000, 12000, 40000, 120000];
+function _phMissing() {
+  var miss = !!(_mine && _mine.img && !_minePh);
+  _all.forEach(function(o) { if (!o.ph) miss = true; });
+  return miss;
+}
+function _phRetrySoon() {
+  if (_phTimer || _phTry >= PH_RETRY_MS.length) return;
+  _phTimer = setTimeout(function() {
+    _phTimer = null; _phTry++;
+    var jobs = [];
+    if (_mine && _mine.img && !_minePh) { var mi = _mine.img; jobs.push(_phash(mi).then(function(ph) { if (_mine && _mine.img === mi) _minePh = ph; })); }
+    _all.forEach(function(o) { if (!o.ph) jobs.push(_phash(o.img).then(function(ph) { o.ph = ph; })); });
+    Promise.all(jobs).then(function() {
+      var still = _phMissing();
+      console.log('[AVATAR] Huellas de fotos que faltaban: ' + (still ? 'aún falta alguna (otro intento más tarde)' : 'listas') + ' (intento ' + _phTry + ')');
+      _recompute();
+      if (still) _phRetrySoon();
+    }).catch(function() {});
+  }, PH_RETRY_MS[_phTry]);
 }
 /** 3028: ¿esta foto es la de perfil de algún contacto? → su nombre (o null). Perfil no deja ponerla como propia. */
 export function avatarClash(url) {
@@ -122,7 +147,7 @@ export function avatarInit() {
     if (_mine && _mine.img) console.log('[AVATAR] Este teléfono tiene foto de perfil propia (' + Math.round(_mine.img.length / 1024) + ' KB, puesta: ' + (_mine.at ? new Date(_mine.at).toISOString().substring(0, 16) : 'fecha desconocida') + ')');
     if (r[1] && typeof r[1] === 'object') _sent = r[1];
     if (_mine && _mine.img) _emit('me');
-    return _phash(_mine && _mine.img).then(function(ph) { _minePh = ph; });
+    return _phash(_mine && _mine.img).then(function(ph) { _minePh = ph; if (_mine && _mine.img && !ph) { console.warn('[AVATAR] Huella de mi foto: no se pudo calcular al abrir (se reintenta)'); _phRetrySoon(); } });
   }).then(function() {
     // Las fotos de los contactos (solo de los que la tienen: avh en el contacto); 3028: se muestran tras comparar huellas
     return Promise.all(_getBLEContacts().map(function(c) {
@@ -184,7 +209,7 @@ export function setMyAvatar(dataUrl) {
   console.log('[AVATAR] Foto de perfil propia puesta ahora desde Perfil (' + Math.round(dataUrl.length / 1024) + ' KB)');
   _emit('me');
   _sendToAll();
-  _phash(dataUrl).then(function(ph) { if (_mine && _mine.img === dataUrl) { _minePh = ph; _recompute(); } });
+  _phash(dataUrl).then(function(ph) { if (_mine && _mine.img === dataUrl) { _minePh = ph; if (!ph) { _phTry = 0; _phRetrySoon(); } _recompute(); } });
   return true;
 }
 export function clearMyAvatar() {

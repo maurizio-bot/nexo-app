@@ -2,7 +2,8 @@
 // guardó en la galería la foto de perfil de un contacto (7 KB, desde el visor) y 9 s después se puso como propia en Perfil.
 // A = el dueño (con foto P). B y C (contactos de A, con versión vieja: no comparan) ponen una COPIA re-comprimida de P (otros
 // bytes, misma imagen). Se espera (3028):
-//  1. A NO muestra la foto de B ni la de C (es la misma que la suya); tampoco tras reiniciar A.
+//  1. A NO muestra la foto de B ni la de C (es la misma que la suya); tampoco tras reiniciar A, ni (3059) si al reiniciar no le
+//     dio tiempo a calcular las huellas (se reintenta).
 //  2. Si B cambia a una foto distinta, A sí la muestra.
 //  3. Perfil no deja poner como propia la foto de un contacto (C, ya con la versión nueva, intenta otra copia de P: rechazada).
 //  4. El visor de la foto de un contacto no tiene «Guardar en galería».
@@ -103,6 +104,15 @@ const avFile = async (p, nx) => { try { const r0 = await p.win.Capacitor.Plugins
   r.A_fila_B_reinicio = whose(rowStyle(A, 'B'));
   r.A_fila_C_reinicio = whose(rowStyle(A, 'C'));
   r.A_mi_perfil_reinicio = await myProfilePhoto(A);
+  // 1b. (3059, dueño 13-11: «¿por qué Roberto aparece con mi foto todavía?») A se reinicia y al abrir no le da tiempo a calcular
+  //     las huellas (la suya y las de B y C; en el teléfono: 2 s con la app arrancando): antes las copias se veían hasta que alguien
+  //     cambiara de foto; ahora se reintenta y se esconden solas (a los 4 s / 12 s)
+  state.A.off = true;
+  A.win.close(); nA.destroyActivity(); await sleep(1500); nA.load(); A = await boot('A', nA);
+  await sleep(2500); A.win.bleInterface.renderContactsList(); await sleep(300);
+  r.A_huella_lenta_al_abrir = whose(rowStyle(A, 'B'));
+  state.A.off = false;
+  r.A_huella_lenta_ocultas = await wait(async () => { A.win.bleInterface.renderContactsList(); await sleep(100); return whose(rowStyle(A, 'B')) === 'ninguna' && whose(rowStyle(A, 'C')) === 'ninguna'; }, 30);
   // 2. B cambia a una foto distinta: A la muestra
   state.B.next = Q_B; await pickPhoto(B);
   r.A_ve_foto_nueva_B = await wait(() => whose(rowStyle(A, 'B')) === 'Q_B', 60);
@@ -119,7 +129,7 @@ const avFile = async (p, nx) => { try { const r0 = await p.win.Capacitor.Plugins
   r.avatar_logs = logs.filter((l) => /\[AVATAR\]/.test(l)).map((l) => l.substring(10)).slice(-14);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.B_ve_foto_de_A && r.C_ve_foto_de_A && r.B_puso_copia === 'P_B' && r.A_recibe_B && r.A_recibe_C && r.A_fila_B === 'ninguna' && r.A_fila_C === 'ninguna' && r.A_mi_perfil === 'P' &&
-    r.A_fila_B_reinicio === 'ninguna' && r.A_fila_C_reinicio === 'ninguna' && r.A_mi_perfil_reinicio === 'P' && r.A_ve_foto_nueva_B && r.A_fila_C_sigue_oculta === 'ninguna' &&
+    r.A_fila_B_reinicio === 'ninguna' && r.A_fila_C_reinicio === 'ninguna' && r.A_mi_perfil_reinicio === 'P' && r.A_huella_lenta_ocultas && r.A_ve_foto_nueva_B && r.A_fila_C_sigue_oculta === 'ninguna' &&
     r.C_mi_perfil_tras_rechazo === 'P_C' && r.C_rechazo_log && r.visor_abre && r.visor_sin_guardar && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('AVATARDUP ' + JSON.stringify(r));
