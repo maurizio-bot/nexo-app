@@ -29,6 +29,11 @@ var GSILENCE_MS = 15000;     // un tramo sin recibir nada en 15 s → se cierra 
 var GMISS_MS = 30000;        // #dueño 31-10: una invitación entrante sin contestar en 30 s → perdida («llamada perdida de grupo»)
 var GINVITE_MAX_AGE = 60000; // #dueño 31-10: una invitación más vieja que esto (re-entrega del buzón tras colgar/reabrir) se ignora: no re-suena
 var GDEAD_MS = 180000;
+// Dueño 13-11, compartir pantalla parte 2 (llamada de GRUPO): como la 1-a-1 (lado largo 960, ≤ 5 imágenes por segundo). El
+// estado («comparto la pantalla») va a cada tramo como paquete cifrado 'c' al empezar/terminar y cada 5 s mientras dure (así
+// lo sabe también el que entra tarde); las versiones anteriores lo ignoran.
+var GSCREEN_LONG = 960, GSCREEN_FPS = 5, GSTATE_EVERY_MS = 5000, GSTATE_TAIL_MS = 10000;
+function _plugGC() { return (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _emit(name, detail) { try { window.dispatchEvent(new CustomEvent(name, { detail: detail })); } catch (e) {} }
@@ -56,8 +61,8 @@ export class GroupCall {
   _nidSelf() { var b = this.ble; return _nid(b && (b.localNexoId || (b.getLocalNexoId && b.getLocalNexoId()))); }
   state() {
     var g = this.gc; if (!g) return null;
-    var legs = []; g.legs.forEach(function(l, nx) { legs.push({ nx: nx, state: l.state, talking: !!l.talking, reconnecting: !!l.reconnecting }); });
-    return { gid: g.gid, dir: g.dir, state: g.state, video: !!g.video, cameraOn: !!g.cameraOn, muted: !!g.muted, legs: legs, members: Array.from(g.roster), chatId: g.chatId || '' };
+    var legs = []; g.legs.forEach(function(l, nx) { legs.push({ nx: nx, state: l.state, talking: !!l.talking, reconnecting: !!l.reconnecting, peerScreen: !!l.peerScreen }); });
+    return { gid: g.gid, dir: g.dir, state: g.state, video: !!g.video, cameraOn: !!g.cameraOn, muted: !!g.muted, screen: !!g.screen, legs: legs, members: Array.from(g.roster), chatId: g.chatId || '' };
   }
   _set(o) { if (!this.gc) return; if (o) Object.assign(this.gc, o); _emit('nexo:gcall', this.state()); }
 
@@ -152,6 +157,51 @@ export class GroupCall {
     this._set(null);
   }
 
+  // Dueño 13-11: COMPARTIR PANTALLA en la llamada de GRUPO (parte 2). Igual que la 1-a-1: el nativo pide el permiso de
+  // Android y manda ~5 imágenes por segundo (onScreenFrame); la captura compartida (hub) las codifica EN LUGAR de la cámara y
+  // la malla las reparte a cada tramo por su camino de vídeo (Wi-Fi). Los demás saben que es una pantalla (estado 'c').
+  shareScreen(on) {
+    var self = this, g = this.gc, pl = _plugGC();
+    if (!g || g.state !== 'active' || !g.hub) return Promise.resolve(false);
+    if (!on) { self._screenStop('detenido'); return Promise.resolve(false); }
+    if (g.screen) return Promise.resolve(true);
+    if (!pl || typeof pl.screenShareStart !== 'function') return Promise.reject(Object.assign(new Error('Este teléfono no puede compartir la pantalla'), { code: 'SCREEN_NA' }));
+    self._screenHooks(pl);
+    return pl.screenShareStart({ maxLong: GSCREEN_LONG, fps: GSCREEN_FPS }).then(function(r) {
+      if (!r || !r.granted) return false;
+      if (self.gc !== g || g.state !== 'active') { try { pl.screenShareStop(); } catch (e) {} return false; }
+      g.screen = true;
+      if (g.hub && g.hub.screen) { try { g.hub.screen(true); } catch (e) {} }
+      var n = 0; g.legs.forEach(function(l) { if (l.state === 'active') n++; });
+      console.log('[GCALL] Compartiendo la pantalla con el grupo (' + n + ' tramo(s))');
+      self._set(null); self._sendStateAll();
+      return true;
+    });
+  }
+  _screenHooks(pl) {
+    var self = this;
+    if (self._scrHooked || !pl || typeof pl.addListener !== 'function') return;
+    self._scrHooked = true;
+    pl.addListener('onScreenFrame', function(ev) { var g = self.gc; if (g && g.screen && g.hub && g.hub.screenFrame && ev && typeof ev.d === 'string') g.hub.screenFrame(ev.d, Number(ev.w) || 0, Number(ev.h) || 0); });
+    pl.addListener('onScreenShareStopped', function() { var g = self.gc; if (g && g.screen) self._screenStop('parada por el sistema', true); });
+  }
+  _screenStop(why, byNative) {
+    var g = this.gc; if (!g || !g.screen) return;
+    g.screen = false; g._scrOffUntil = Date.now() + GSTATE_TAIL_MS;
+    var pl = _plugGC();
+    if (!byNative && pl && typeof pl.screenShareStop === 'function') { try { pl.screenShareStop(); } catch (e) {} }
+    if (g.hub && g.hub.screen) { try { g.hub.screen(false); } catch (e) {} }
+    console.log('[GCALL] Dejo de compartir la pantalla (' + why + ')');
+    this._set(null); this._sendStateAll();
+  }
+  // Estado propio a cada tramo activo (cifrado, kind 'c'): ¿comparto la pantalla?, ¿cámara encendida?
+  _sendStateAll() {
+    var self = this, g = this.gc; if (!g || g.state !== 'active' || !g.cryptoKey) return;
+    g._stAt = Date.now();
+    var bytes = new TextEncoder().encode(JSON.stringify({ scr: !!g.screen, cam: !!g.cameraOn }));
+    g.legs.forEach(function(l) { if (l.state === 'active') self._sendTo(l, bytes, 'c'); });
+  }
+
   // Cámara de delante / de detrás (igual que la 1-a-1); devuelve una promesa con la orientación final.
   flip() {
     var g = this.gc; if (!g || !g.hub || !g.hub.flip) return Promise.resolve();
@@ -222,6 +272,8 @@ export class GroupCall {
       if (l.state === 'active' || l.state === 'offering' || l.state === 'waiting') alive++;
     });
     if (alive === 0 && now - g.startedAt > silence) { self._finish('empty'); return; }
+    // compartir pantalla: el estado se repite cada 5 s mientras comparto (y un rato después de parar), para el que entró tarde
+    if ((g.screen || now < (g._scrOffUntil || 0)) && now - (g._stAt || 0) >= GSTATE_EVERY_MS) self._sendStateAll();
     self._set(null);
   }
 
@@ -249,7 +301,7 @@ export class GroupCall {
     // #138: el VÍDEO (kind 'v', ~300 kb/s) solo por Wi-Fi (lan:); por Bluetooth no cabe (igual que la videollamada 1-a-1).
     if (kind === 'v' && String(link).indexOf('lan:') !== 0) return;
     // nº de secuencia propio por tipo: la voz y el vídeo no comparten contador (ni la marca anti-repetición del receptor)
-    var seq = kind === 'v' ? (l.sendVSeq = (l.sendVSeq || 0) + 1) : l.sendSeq++;
+    var seq = kind === 'v' ? (l.sendVSeq = (l.sendVSeq || 0) + 1) : kind === 'c' ? (l.sendCSeq = (l.sendCSeq || 0) + 1) : l.sendSeq++;
     var iv = crypto.getRandomValues(new Uint8Array(12));
     // AAD: gid|emisor|<tipo>nº → una voz/imagen de un par no se puede hacer pasar por otro (voz = tipo vacío, compat. 2852)
     var ad = new TextEncoder().encode(g.gid + '|' + me + '|' + (kind || '') + seq);
@@ -268,7 +320,7 @@ export class GroupCall {
     var leg = null; g.legs.forEach(function(l) { if (l.id === p.c) leg = l; });
     if (!leg || !g.cryptoKey) return false;
     var k = p.k || '';
-    if (k && k !== 'v') return true; // en grupo solo se añade el vídeo ('v'); otros kinds de la 1-a-1 no se usan aquí
+    if (k && k !== 'v' && k !== 'c') return true; // en grupo: voz, vídeo ('v') y estado ('c', compartir pantalla); lo demás no
     var raw; try { raw = _unb64GC(p.d); } catch (e) { return true; }
     if (raw.length < 29) return true;
     // AAD con el emisor = el par de ese tramo y el tipo (voz = vacío; vídeo = 'v')
@@ -279,6 +331,12 @@ export class GroupCall {
       if (leg.seen.has(sk)) return; leg.seen.add(sk); if (leg.seen.size > 1000) leg.seen.delete(leg.seen.values().next().value);
       leg.lastRx = Date.now();
       if (k === 'v') { if (g.hub && g.hub.playVideo) g.hub.playVideo(leg.nx, new Uint8Array(pt)); return; } // imagen del par
+      if (k === 'c') { // estado del par: ¿comparte su pantalla? (para verla entera y sin espejo)
+        var o = null; try { o = JSON.parse(new TextDecoder().decode(pt)); } catch (e) {}
+        var scr = !!(o && o.scr === true);
+        if (scr !== !!leg.peerScreen) { leg.peerScreen = scr; console.log('[GCALL] ' + leg.nx + (scr ? ' comparte su pantalla' : ' dejó de compartir su pantalla')); self._set(null); }
+        return;
+      }
       if (pt.byteLength <= 2) return; // «sigo aquí» sin voz
       if (g.hub && g.hub.play) g.hub.play(leg.nx, new Uint8Array(pt), p.s); // mezcla: el hub reproduce por tramo
     }).catch(function() {});
@@ -358,6 +416,7 @@ export class GroupCall {
 
   _finish(why) {
     var self = this, g = self.gc; if (!g) return;
+    if (g.screen) self._screenStop('colgó'); // la captura de pantalla no sigue tras colgar
     clearTimeout(self._ringTimer); clearInterval(self._watch);
     if (g.hub && g.hub.stop) try { g.hub.stop(); } catch (e) {}
     self._markDead(g.gid);

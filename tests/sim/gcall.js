@@ -14,6 +14,14 @@ if (typeof global.atob !== 'function') global.atob = (s) => Buffer.from(s, 'base
 const _events = [];
 if (typeof global.CustomEvent !== 'function') global.CustomEvent = function (type, init) { this.type = type; this.detail = init && init.detail; };
 global.window = { dispatchEvent(ev) { _events.push(ev); }, NEXO_GCALL_RING_MS: 45000 };
+// Dueño 13-11, compartir pantalla parte 2: el nativo de prueba (permiso concedido; las imágenes y el «Android la paró» se
+// disparan a mano por sus oyentes)
+const scr = { starts: [], stops: 0, ls: {} };
+global.window.Capacitor = { Plugins: { NexoBLE: {
+  screenShareStart(o) { scr.starts.push(o); return Promise.resolve({ granted: true }); },
+  screenShareStop() { scr.stops++; return Promise.resolve(); },
+  addListener(ev, fn) { (scr.ls[ev] = scr.ls[ev] || []).push(fn); return Promise.resolve({ remove() {} }); },
+} } };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const _n = (x) => (x || '').toString().toLowerCase().trim();
@@ -49,6 +57,7 @@ function makeHub(rec) {
       camera(on) { hub.camOn = !!on; },  // #138: encender/apagar MI cámara
       flip() { hub.flipped = true; return Promise.resolve('user'); }, // #138
       mute(on) { hub.muted = !!on; },  // #dueño 31-10: silenciar la captura compartida
+      screen(on) { hub.scrOn = !!on; }, screenFrame(d, w, h) { hub.scrFrames = (hub.scrFrames || 0) + 1; hub.scrLast = [d, w, h]; }, // 13-11: compartir pantalla
       emit(bytes) { hub._onPacket(bytes); },  // simula salida del micrófono
       emitVideo(bytes) { if (hub._onVideoPacket) hub._onVideoPacket(bytes); },  // #138: simula imagen de la cámara
     };
@@ -122,6 +131,32 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
   A.camera(false);
   r.camara_off = A.state().cameraOn === false && recA.hub.camOn === false;
 
+  // Dueño 13-11, COMPARTIR PANTALLA en la llamada de GRUPO (parte 2): A comparte → permiso del nativo (960 px, 5 por segundo),
+  // la captura compartida pasa a la pantalla y B y C saben que es una pantalla (estado cifrado 'c') para verla entera.
+  const legOf = (inst, nx) => (inst.state().legs || []).find((l) => _n(l.nx) === nx) || {};
+  r.pantalla_empieza = (await A.shareScreen(true)) === true && A.state().screen === true && recA.hub.scrOn === true &&
+    scr.starts.length === 1 && scr.starts[0].maxLong === 960 && scr.starts[0].fps === 5;
+  await sleep(80);
+  r.pantalla_B_y_C_lo_saben = legOf(B, A_ID).peerScreen === true && legOf(C, A_ID).peerScreen === true && !legOf(A, B_ID).peerScreen;
+  // las imágenes del nativo entran en la captura compartida; lo codificado se reparte como la cámara (solo Wi-Fi)
+  (scr.ls.onScreenFrame || []).forEach((fn) => fn({ d: '/9j/AAAA', w: 540, h: 960 }));
+  r.pantalla_imagen_a_la_captura = recA.hub.scrFrames === 1 && recA.hub.scrLast[1] === 540;
+  recB.playedV = []; recA.hub.emitVideo(new Uint8Array([9, 8, 7, 6]));
+  await sleep(80);
+  r.pantalla_B_la_ve = recB.playedV.some((x) => _n(x.nx) === A_ID);
+  // el que perdió el aviso (o entró tarde) lo recibe en ≤ 5 s: el estado se repite mientras se comparte
+  B.gc.legs.get(A_ID).peerScreen = false;
+  r.pantalla_aviso_repetido_s = null;
+  for (let i = 0; i < 70 && r.pantalla_aviso_repetido_s === null; i++) { await sleep(100); if (legOf(B, A_ID).peerScreen === true) r.pantalla_aviso_repetido_s = i / 10; }
+  // Android corta la captura (el usuario la detuvo desde el aviso del sistema) → deja de compartir y B y C lo saben
+  (scr.ls.onScreenShareStopped || []).forEach((fn) => fn({}));
+  await sleep(80);
+  r.pantalla_parada_por_android = A.state().screen === false && recA.hub.scrOn === false && legOf(B, A_ID).peerScreen === false && legOf(C, A_ID).peerScreen === false;
+  // otra vez, y «Detener» desde la app: el nativo para la captura
+  await A.shareScreen(true); const st0 = scr.stops;
+  await A.shareScreen(false);
+  r.pantalla_detener = A.state().screen === false && scr.stops === st0 + 1;
+
   // Cableado (build 2846, #128): la invariante en la que se apoya ble_messages. Un `vf` cuyo id de tramo NO es de este
   // grupo → onFrame devuelve FALSE (así la app lo deja pasar a la llamada 1-a-1 de calls.js; no se lo traga el grupo).
   r.onframe_ajeno_false = A.onFrame({ type: 'vf', c: 'cl1a1ajeno', s: 1, d: 'AA==' }, 'lan') === false;
@@ -138,7 +173,9 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
   r.descarta_manipulado = recB.played.length === before;
 
   // C cuelga → A y B cierran SU tramo con C, la llamada sigue entre A y B
+  await C.shareScreen(true); const stC = scr.stops; // colgar mientras comparte: la captura de pantalla no sigue
   C.hangup();
+  r.pantalla_colgar = scr.stops === stC + 1;
   await sleep(120);
   r.C_colgo = C.gc === null;
   r.A_cierra_C = legState(A, C_ID) === 'gone' || legState(A, C_ID) === null;
@@ -221,6 +258,8 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
     r.onframe_ajeno_false && r.onframe_propio_true && r.parse_ok && r.parse_basura &&
     r.silenciar && r.reactivar &&
     r.camara_on && r.B_ve_a_A && r.C_ve_a_A && r.voz_no_es_video && r.camara_off &&
+    r.pantalla_empieza && r.pantalla_B_y_C_lo_saben && r.pantalla_imagen_a_la_captura && r.pantalla_B_la_ve && r.pantalla_aviso_repetido_s !== null &&
+    r.pantalla_parada_por_android && r.pantalla_detener && r.pantalla_colgar &&
     r.C_colgo && r.A_cierra_C && r.B_cierra_C && r.A_sigue_con_B &&
     r.F_suena && r.agregado_malla && r.A_oye_a_F && r.B_oye_a_F && r.no_duplica &&
     r.DE_activa && r.chatId_guardado && r.reconnecting && r.tramo_perdido && r.D_corto && r.corte_empty;

@@ -55,6 +55,10 @@ export function createGroupMedia(opts) {
     playVideo: function(nx, bytes) { if (stopped || !nx || !bytes) return; var d = decoderFor(nx); if (d && d.playVideo) { try { d.playVideo(bytes); } catch (e) {} } },
     // #138: encender/apagar MI cámara (la captura compartida). Al encenderla, onVideoPacket empieza a difundir mi imagen.
     camera: function(on) { try { if (cap && cap.camera) cap.camera(!!on); } catch (e) {} },
+    // Dueño 13-11 (compartir pantalla, parte 2): la captura compartida manda la PANTALLA en lugar de la cámara; las imágenes
+    // del nativo (onScreenFrame) entran por screenFrame. call_media.js es el mismo de la 1-a-1 (parte 1).
+    screen: function(on) { try { if (cap && cap.screen) cap.screen(!!on); } catch (e) {} },
+    screenFrame: function(b64, w, h) { try { if (cap && cap.screenFrame) cap.screenFrame(b64, w, h); } catch (e) {} },
     // #138: cámara de delante/detrás (devuelve promesa con la orientación final).
     flip: function() { try { return cap && cap.flip ? Promise.resolve(cap.flip()) : Promise.resolve(); } catch (e) { return Promise.resolve(); } },
     // #138: elementos para pintar la rejilla de vídeo (los coloca groupcall_ui). OJO: createCallMedia DEVUELVE el objeto

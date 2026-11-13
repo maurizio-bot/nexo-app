@@ -18,6 +18,7 @@ function makeMk(log) {
       play: function (bytes) { inst.played.push(bytes); },
       playVideo: function (bytes) { inst.playedV.push(bytes); }, // #138
       camera: function (on) { inst.cameraArg = on; }, // #138
+      screen: function (on) { inst.screenArg = on; }, screenFrame: function (d, w, h) { inst.scrFrame = [d, w, h]; }, // 13-11: pantalla
       flip: function () { inst.flipped = true; return Promise.resolve('user'); }, // #138
       remoteLive: function () { return true; },
     };
@@ -98,13 +99,19 @@ function makeMk(log) {
   // Apagar la cámara.
   hubV.camera(false);
   r.camara_apaga = logV[0].cameraArg === false;
+  // Dueño 13-11, compartir pantalla parte 2: la captura COMPARTIDA (la que difunde a todos) pasa a la pantalla y recibe sus
+  // imágenes; los decodificadores de los tramos no se tocan
+  hubV.screen(true); hubV.screenFrame('/9j/AA', 540, 960);
+  r.pantalla_a_la_captura = logV[0].screenArg === true && !!logV[0].scrFrame && logV[0].scrFrame[2] === 960 && logV.slice(1).every((d) => d.screenArg === undefined);
+  hubV.screen(false);
+  r.pantalla_apaga = logV[0].screenArg === false;
   hubV.stop();
 
   const ok = r.cap_es_captura && r.start_abre_micro && r.difunde && r.un_decoder_por_tramo &&
     r.decoder_reutilizado && r.decoder_arranca && r.mute_solo_captura && r.drop_cierra &&
     r.drop_recrea && r.stop_todo && r.stop_no_crea &&
     r.cap_video_capaz && r.camara_enciende && r.difunde_video && r.video_por_tramo && r.flip_ok && r.camara_apaga &&
-    r.local_video_el && r.remote_canvas_el;
+    r.local_video_el && r.remote_canvas_el && r.pantalla_a_la_captura && r.pantalla_apaga;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('GCALLMEDIA ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);

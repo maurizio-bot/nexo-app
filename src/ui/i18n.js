@@ -63,6 +63,7 @@ var STRINGS = {
   st_weak_signal: { es: 'señal débil', it: 'segnale debole', en: 'weak signal' },
   st_offline: { es: 'Sin conexión', it: 'Non connesso', en: 'Offline' },
   st_jump: { es: 'Por Jump', it: 'Tramite Jump', en: 'Via Jump' },
+  call_screen_of: { es: 'Pantalla de', it: 'Schermo di', en: 'Screen of' },
   st_via_gw: { es: 'por puente', it: 'tramite ponte', en: 'via bridge' },
   st_connecting: { es: 'Conectando…', it: 'Connessione…', en: 'Connecting…' },
 

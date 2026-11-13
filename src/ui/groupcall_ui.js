@@ -155,11 +155,53 @@ function _render(st) {
     // #138 (dueño 31-10): CÁMARA on/off (sin re-llamar: activar la cámara pasa la llamada a vídeo) y GIRAR (delante/detrás).
     if (st.state === 'active') bt.appendChild(_btn(st.cameraOn ? t('call_camera_off', 'Cámara no') : t('call_camera', 'Cámara'), 'gc-add', function() { var g = _gcall(); if (g) g.camera(!st.cameraOn); }));
     if (st.state === 'active' && st.cameraOn) bt.appendChild(_btn(t('call_flip', 'Girar'), 'gc-add', function() { var g = _gcall(); if (g && g.flip) g.flip(); }));
+    // Dueño 13-11, compartir pantalla parte 2: en la llamada de grupo (aviso antes, como la 1-a-1; si ya comparto, «Detener»)
+    if (st.state === 'active' && gcall && typeof gcall.shareScreen === 'function') bt.appendChild(_btn(st.screen ? t('call_screen_stop', 'Detener') : t('call_screen', 'Pantalla'), st.screen ? 'gc-red' : 'gc-add', function() {
+      var g = _gcall(); if (!g) return;
+      if (st.screen) { g.shareScreen(false); return; }
+      _gScreenAsk(el, function() {
+        g.shareScreen(true).then(function(ok) { if (!ok) _showInfoToast(t('call_screen_no', 'No se compartió la pantalla'), 2500); })
+          .catch(function(err) { _showInfoToast((err && err.message) || t('call_screen_no', 'No se compartió la pantalla'), 3500); });
+      });
+    }));
     // #dueño 31-10: ALTAVOZ/AURICULAR (como la 1-a-1); en grupo arranca en altavoz (manos libres).
     if (st.state === 'active') bt.appendChild(_btn(_gcSpeaker ? t('call_speaker', 'Altavoz') : t('call_earpiece', 'Auricular'), 'gc-add', function() { _gcSpeaker = !_gcSpeaker; _gAudioMode(true); _render(st); }));
     bt.appendChild(_btn(t('call_hangup', 'Colgar'), 'gc-red', function() { if (_gcall()) _gcall().hangup(); }));
   }
+  _gScreenBar(el, st);
   _renderVideo(st); // #138: rejilla de vídeo (reconciliada, sin recrear los <canvas>/<video> → sin parpadeo)
+}
+
+// Dueño 13-11, compartir pantalla parte 2: barra roja arriba mientras comparto (tocarla detiene) y aviso antes de empezar
+function _gScreenBar(el, st) {
+  var bar = el.querySelector('.gc-scrbar');
+  if (!st || !st.screen || st.state !== 'active') { if (bar) bar.remove(); return; }
+  if (bar) return;
+  bar = document.createElement('div');
+  bar.className = 'gc-scrbar';
+  bar.style.cssText = 'position:absolute;top:0;left:0;right:0;z-index:5;padding:calc(8px + env(safe-area-inset-top,0px)) 12px 8px;background:#dc2626;color:#fff;font-size:14px;font-weight:600;text-align:center;cursor:pointer;';
+  bar.textContent = t('call_screen_on', 'Compartiendo tu pantalla · Detener');
+  bar.addEventListener('click', function(e) { e.stopPropagation(); var g = _gcall(); if (g && g.shareScreen) g.shareScreen(false); });
+  el.appendChild(bar);
+}
+function _gScreenAsk(el, onYes) {
+  if (document.getElementById('nexo-gscr-ask')) return;
+  var ov = document.createElement('div');
+  ov.id = 'nexo-gscr-ask';
+  ov.style.cssText = 'position:absolute;inset:0;z-index:6;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:24px;';
+  var box = document.createElement('div');
+  box.style.cssText = 'max-width:340px;background:#141826;border-radius:16px;padding:18px;color:#fff;font-size:15px;line-height:1.4;';
+  var txt = document.createElement('div'); txt.textContent = t('call_screen_ask', 'Se verá TODO lo que haya en tu pantalla, también las notificaciones que lleguen. Android te pedirá permiso.');
+  var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;margin-top:16px;';
+  var no = document.createElement('button'); no.className = 'gc-ask-no'; no.textContent = t('cancel', 'Cancelar');
+  no.style.cssText = 'padding:10px 16px;border:none;border-radius:12px;background:rgba(255,255,255,0.14);color:#fff;font-size:15px;';
+  var yes = document.createElement('button'); yes.className = 'gc-ask-yes'; yes.textContent = t('call_screen_go', 'Compartir');
+  yes.style.cssText = 'padding:10px 16px;border:none;border-radius:12px;background:#16a34a;color:#fff;font-size:15px;font-weight:600;';
+  row.appendChild(no); row.appendChild(yes); box.appendChild(txt); box.appendChild(row); ov.appendChild(box);
+  ov.addEventListener('click', function(e) { e.stopPropagation(); if (e.target === ov) ov.remove(); });
+  no.addEventListener('click', function(e) { e.stopPropagation(); ov.remove(); });
+  yes.addEventListener('click', function(e) { e.stopPropagation(); ov.remove(); onYes(); });
+  el.appendChild(ov);
 }
 
 // #138: coloca/actualiza las baldosas de vídeo SIN recrearlas (si se recrearan en cada evento, la imagen parpadearía).
@@ -175,7 +217,8 @@ function _renderVideo(st) {
     if (!l || l.state !== 'active') return;
     var nx = _normId(l.nx);
     var ce = gcall.remoteVideoEl ? gcall.remoteVideoEl(nx) : null;
-    if (ce) want.push({ key: nx, el: ce, label: _memberName(nx), mirror: false });
+    // compartir pantalla (parte 2): la pantalla de un participante se ve grande, ENTERA (sin recortar) y con su nombre
+    if (ce) want.push({ key: nx, el: ce, label: l.peerScreen ? t('call_screen_of', 'Pantalla de') + ' ' + _memberName(nx) : _memberName(nx), mirror: false, screen: !!l.peerScreen });
   });
   want.forEach(function(w) {
     seen[w.key] = 1;
@@ -187,7 +230,11 @@ function _renderVideo(st) {
       lab.style.cssText = 'position:absolute;left:6px;bottom:4px;font-size:11px;background:rgba(0,0,0,0.55);padding:1px 7px;border-radius:8px;';
       tile.appendChild(lab); grid.appendChild(tile);
     }
-    if (w.el.parentNode !== tile) { w.el.style.cssText = 'width:100%;height:100%;object-fit:cover;' + (w.mirror ? 'transform:scaleX(-1);' : ''); tile.insertBefore(w.el, tile.firstChild); }
+    var fit = 'width:100%;height:100%;object-fit:' + (w.screen ? 'contain' : 'cover') + ';' + (w.mirror ? 'transform:scaleX(-1);' : '');
+    if (w.el.parentNode !== tile) tile.insertBefore(w.el, tile.firstChild);
+    if (w.el.style.cssText !== fit) w.el.style.cssText = fit;
+    tile.style.width = w.screen ? '100%' : '150px'; tile.style.height = w.screen ? '55vh' : '112px';
+    tile.classList.toggle('gc-tile-screen', !!w.screen);
     var lb = tile.querySelector('.gc-tile-lab'); if (lb) lb.textContent = w.label;
   });
   Array.prototype.slice.call(grid.querySelectorAll('.gc-tile')).forEach(function(tl) { if (!seen[tl.getAttribute('data-nx')]) tl.remove(); });
