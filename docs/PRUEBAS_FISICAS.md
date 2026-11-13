@@ -4,7 +4,7 @@ Con la **3033 (nightly-3030) o posterior en TODOS los teléfonos** (el actualiza
 Si algo falla: **Perfil → Copiar diagnóstico** en los dos teléfonos y pegármelo. Cada prueba dice qué tiene que pasar.
 Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 
-## 0. Lo nuevo del 13-11 (APK 3032 a 3039)
+## 0. Lo nuevo del 13-11 (APK 3032 a 3042)
 1. **GIF del teclado (3032).** En el S23, abre un chat y manda un GIF o sticker desde el teclado de Samsung o Gboard: sale
    como imagen y llega al otro (ya no «No es posible introducir este contenido aquí»).
 2. **Vídeo de TikTok en estados (3032).** Guarda un vídeo de TikTok y súbelo como estado: se publica (recomprimido a ≤ 4,6 MB).
@@ -57,6 +57,13 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 23. **Videollamada por internet DIRECTA (3041).** Lejos uno del otro (cada uno con su internet, Tor apagado): videollamada →
     en unos segundos la imagen se ve bien (como por Wi-Fi). Diagnóstico de los dos: «[P2P] Conexión DIRECTA por internet».
     Si dice «Sin conexión directa … la red no deja», se ve en imágenes pequeñas (por relés). Prueba también con datos móviles.
+24. **Volver a llamar por Bluetooth con un contacto dormido cerca (3042).** Lo del diagnóstico de las 07:28: videollamada S24–vivo
+    por Wi-Fi, apaga el Wi-Fi de los dos (la voz sigue por Bluetooth) → la imagen del otro ya no se congela: cambia cada ~4 s.
+    Cuelga y vuelve a llamar por Bluetooth: tiene que sonar en el vivo en unos segundos, aunque la tablet esté cerca con mensajes
+    pendientes. Diagnóstico: «En llamada: … espera a colgar» y, al colgar, «Llamada terminada: sale lo que esperaba».
+25. **Contacto dormido (3042).** Con la tablet (u otro) con la app dormida y mensajes pendientes para ella: el diagnóstico del S24
+    dice «primero una prueba» y «no confirma ni la prueba: los otros N esperan». Al abrir la app de la tablet le llega todo en
+    menos de 2 min.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 

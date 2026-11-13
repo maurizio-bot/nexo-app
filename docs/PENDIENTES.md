@@ -3,6 +3,15 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 13-11 (diagnóstico del dueño 07:28, 3058) — en prueba
+- **Hecho 3058:** en llamada, lo de fondo por Bluetooth espera a colgar; a un contacto dormido primero una prueba; el puente
+  Jump espera tras fallar; la cámara de una videollamada que sigue por Bluetooth va en imágenes cada 4 s (`radiollamada.js`).
+- **Sin comprobar:** que el atasco fuera de la radio compartida del teléfono (el simulador tiene una cola por enlace y no lo
+  reproduce; el registro del S24 del momento exacto de la llamada fallida venía cortado). Lo dice la prueba física §0.24.
+- **Tablet …ab2f (Galaxy Tab A7 Lite):** conectada por Bluetooth pero con la app dormida y build desconocida; que el dueño la
+  abra/actualice o le permita segundo plano.
+- **Empezar una videollamada solo con Bluetooth:** sigue sin poder (solo voz); con 3058 solo la que ya iba sigue con imágenes.
+
 ## 🆕 13-11 (compartir pantalla parte 3, 3054) — falta
 - **Hecho 3055 (dueño: «sí, manda las diapositivas también por relés»):** por internet por relés la pantalla va en diapositivas.
   **Hecho 3056 (dueño: «sí, la cámara también en baja calidad por relés»):** la cámara por relés en imágenes pequeñas (240 px cada 2 s).
