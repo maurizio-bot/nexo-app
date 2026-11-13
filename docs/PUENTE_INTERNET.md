@@ -64,11 +64,35 @@ Comprueba:
 
 Contraprueba con la build 3035: nada llega.
 
-## Falta (partes 2 y 3)
-- **Parte 2:**
-  - puentes que GUARDAN la respuesta un rato y te la pasan cuando te ven, aunque en ese momento ya no tengan internet;
-  - conectarse a un NEXO desconocido cercano solo para pedirle internet (hoy: los vecinos con enlace, contactos o
-    enlaces «de paso» de Jump).
+## Parte 2 (3043): el regreso cuando el puente de la ida ya se fue
+La pregunta del dueño: «si el teléfono que hace de puente ya no está para el regreso, ya no me van a encontrar».
+
+Lo que se vio al probarlo (contraprueba con la 3042):
+- **La ida ya funcionaba con desconocidos.** Al mandar sin internet, Jump busca camino y se conecta «de paso» con
+  los NEXO cercanos (aunque no sean contactos); la parte 1 les pregunta si tienen internet y el texto sale.
+- **El regreso no.** Si ese puente se iba y yo no tenía nada pendiente, nadie buscaba otro: la respuesta se quedaba
+  en MI buzón de los relés hasta que yo volviera a mandar algo.
+
+Qué hace la 3043 (`gw_link.js`, `_seekStrangers`): sin internet propio y sin ningún vecino conectado que preste el
+suyo, se prueba con NEXO desconocidos cercanos (los 2 de mejor señal; si no hay nadie visto en el último minuto,
+escanea primero):
+- cada 30 s si hay algo mío esperando (Jump buscó camino para un mensaje mío hace menos de 3 min);
+- cada minuto durante 30 min después de usar un puente (espero respuestas);
+- cada 10 min si no (para recoger lo mío sin gastar radio en un apagón general, donde nadie tiene internet).
+
+Por teléfono rige además la espera por fallos de Jump (1, 2, 4… hasta 15 min con uno que no conecta; nada a −90 dBm
+o peor). La conexión de paso que hace de puente no se cierra por falta de uso mientras presta internet.
+
+Prueba `puente2.js`: A sin internet ni contactos cerca; sin nada pendiente no toca a nadie; manda y sale por un
+desconocido S; S se va, C contesta y otro desconocido T que pasa cerca le recoge la respuesta (15 s). Contraprueba
+3042: la respuesta sin S no llega.
+
+**Se deja (por ahora) «puentes que GUARDAN la respuesta»:** con «recoge lo mío» por cualquier puente, la respuesta
+ya espera en los relés (cifrada, solo para mí) y la recoge cualquier NEXO con internet que pase cerca. Guardarla
+además en el teléfono del puente solo ayudaría si ese mismo teléfono me vuelve a ver SIN internet, y obliga a
+que los puentes guarden mensajes ajenos. Se retoma si las pruebas del dueño lo piden.
+
+## Falta (parte 3)
 - **Parte 3:**
   - fotos pequeñas por el puente;
   - indicador «por puente» en el chat.

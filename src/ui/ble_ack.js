@@ -81,6 +81,10 @@ const MAX_WINDOW_RETRIES = 8;
 // PUENTE Jump que no confirma ni un trozo en tantas ventanas se suelta y el archivo sale por el siguiente camino (buzón de archivos,
 // internet); ese puente queda fuera para archivos BRIDGE_STALL_MS. Un puente vivo confirma la ventana 0 en ~1 s.
 const BRIDGE_STALL_RETRIES = 2;
+// 3044 (diagnósticos automáticos 13-11, S24 APK 3032/3033 → vivo por Wi-Fi local, síntoma «reintentos»): un respaldo Fénix sin un
+// solo trozo confirmado tras estas ventanas, con el enlace VIVO, es una app dormida al otro lado (el sistema la congela en segundo
+// plano): se rinde y queda para más tarde (Fénix salta a ese custodio un rato), sin 8 reenvíos ni diagnóstico. Solo Fénix (#129).
+const FENIX_SILENT_RETRIES = 2;
 const BT_RECHUNK_WRITES = 8; // 3022: un trozo de más escrituras Bluetooth que esto se rehace al pasar a Bluetooth (ver tooBigFor)
 const BRIDGE_STALL_MS = 5 * 60 * 1000;
 // #dueño 09-11 (diagnóstico S24 12:15): un flujo saliente > XFER_STUCK_MS sin NINGÚN ACK ya no cuenta como «transferencia
@@ -2796,6 +2800,12 @@ ChatStream.prototype._onWindowTimeout = function() {
       return;
     }
     self.windowRetryCount++;
+    // 3044: respaldo Fénix con el enlace vivo y ni un trozo confirmado → la app del otro duerme: se rinde (ver FENIX_SILENT_RETRIES)
+    if (self.meta && self.meta.type === 'fenix' && self.windowStart === 0 && self.windowRetryCount >= FENIX_SILENT_RETRIES) {
+      console.log('[ChatStream] Respaldo Fénix: el otro no confirma ni un trozo en ' + self.windowRetryCount + ' ventanas (su app duerme): se rinde, queda para más tarde msgId=' + self.msgId);
+      self._giveUpPending();
+      return;
+    }
     // 3021: archivo por un PUENTE Jump que no confirmó ni un trozo → soltar el puente (ver BRIDGE_STALL_RETRIES)
     if (self.type === 'file' && self.meta && self.meta.dst && self.windowStart === 0 && self.windowRetryCount >= BRIDGE_STALL_RETRIES && !_isNetDevice(self.deviceId)) {
       var dstS = _normId(self.meta.dst), viaS = '';

@@ -21,7 +21,7 @@ function makeBle(nx, caps) {
     _quietOut: new Set(), _callOut: new Set(),
     _bleReadyFor() { return caps.bt ? ('BT:' + nx) : null; },
     lan: { quality() { return { up: !!caps.wifi }; }, canReach() { return !!caps.wifi; } },
-    net: { canReach() { return !!caps.net; }, mailboxOk() { return false; } },
+    net: { canReach() { return !!caps.net; }, mailboxOk() { return false; }, via() { return caps.tor ? 'tor' : 'relés'; }, tor: { ready: !!caps.torReady }, peers: new Map(caps.torUp ? [[nx, { torUp: true }]] : []) },
     sendChatMessage() { return Promise.resolve(); },
     _sendMessageNative() { return Promise.resolve(); },
   };
@@ -47,6 +47,17 @@ function mockMedia() { return { start() { return Promise.resolve({ codec: 'opus'
   calls = createCalls(makeBle(NX, {}), mockMedia);
   r.nada_no_llama = calls._link(NX) === null && calls.canCall(NX) === false;
 
+  // 2b) Diagnóstico (13-11, S24 APK 3033: videollamada por internet con «vídeo enviado 0» que el registro decía «por Bluetooth»):
+  // el camino se nombra bien; por internet dice si va por relés (el vídeo no sale) o por Tor directo, y cómo está Tor
+  const said = (caps) => { const cc = createCalls(makeBle(NX, caps), mockMedia); const out = []; const ol = console.log; console.log = (x) => out.push(String(x)); try { cc._diag({ nx: NX, startedAt: Date.now(), video: true }); } finally { console.log = ol; } const m = out.join(' ').match(/, por (.*)$/); return m ? m[1] : null; };
+  r.diag_net_reles = said({ net: true });
+  r.diag_net_tor = said({ net: true, tor: true });
+  r.diag_net_tor_arrancado = said({ net: true, torReady: true, torUp: true });
+  r.diag_bt = said({ bt: true });
+  r.diag_wifi = said({ wifi: true });
+  r.diag_ok = r.diag_net_reles === 'internet (relés: el vídeo no sale; Tor sin arrancar)' && r.diag_net_tor === 'internet (Tor directo)' &&
+    r.diag_net_tor_arrancado === 'internet (relés: el vídeo no sale; Tor listo, enlace con él abierto sin confirmar)' && r.diag_bt === 'Bluetooth' && r.diag_wifi === 'Wi-Fi';
+
   // 3) Reconexión: una llamada activa que deja de recibir → «Reconectando…» → se corta con 'lost'
   calls = createCalls(makeBle(NX, { net: true }), mockMedia);
   events = [];
@@ -59,7 +70,7 @@ function mockMedia() { return { start() { return Promise.resolve({ codec: 'opus'
   r.corta_lost = !!fin && fin.reason === 'lost';
   r.llamada_cerrada = calls.call === null;
 
-  const ok = r.net_link && r.net_canCall && r.net_canVideo && r.wifi_pref && r.bt_voz && r.nada_no_llama &&
+  const ok = r.net_link && r.net_canCall && r.net_canVideo && r.wifi_pref && r.bt_voz && r.nada_no_llama && r.diag_ok &&
     r.reconnecting && r.corta_lost && r.llamada_cerrada;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('CALLRECON ' + JSON.stringify(r));

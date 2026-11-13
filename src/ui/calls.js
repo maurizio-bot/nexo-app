@@ -354,7 +354,7 @@ export class Calls {
         // ronda 2772: filtros de voz: tiempo con el micrófono bajado por la voz del otro, hablando los dos, en silencio; eco medido
         (m.fx ? ', filtros: bajado ' + pct(m.fx.duck) + ', los dos ' + pct(m.fx.dt) + ', silencio ' + pct(m.fx.gate) + ', eco ' + Math.round(20 * Math.log10(m.fx.echo || 1e-3)) + ' dB' + (m.fx.delayMs >= 0 ? ' a ' + m.fx.delayMs + ' ms' : '') + (m.fx.headset ? ', con cascos' : '') : '') +
         (m.aec ? ', cancelador de eco ' + m.aec : '') + (m.opus ? ', Opus ' + m.opus : '') : ', sin audio') +
-      ', por ' + (link ? (link.indexOf('lan:') === 0 ? 'Wi-Fi' : 'Bluetooth') : 'ningún camino'));
+      ', por ' + this._linkLabel(link, c.nx));
     // Ronda 2769: pistas y vídeo de los dos sentidos (para ver en el diagnóstico por qué no se ve o no se oye)
     if (m && (m.micTrack || m.video)) {
       var v = m.video;
@@ -365,6 +365,19 @@ export class Calls {
           '; del otro: decodificadas ' + v.decoded + (v.rxSize ? ' de ' + v.rxSize : '') + ', decodificador ' + v.dec + (v.decErr ? ', fallos ' + v.decErr : '') + (v.keyReq ? ', pedidas completas ' + v.keyReq : '') +
           (c.peerCam ? ', su cámara ' + c.peerCam : '') + (c.peerMic && c.peerMic !== 'on' ? ', su micrófono ' + c.peerMic : '') : ''));
     }
+  }
+
+  // 3044 (diagnóstico S24 APK 3033 13-11: videollamada por internet con «vídeo enviado 0» que el registro llamaba «por Bluetooth»):
+  // nombre del camino para el diagnóstico. Por internet dice si va por relés (el vídeo no sale: _videoLinkOk) o por Tor
+  // directo, y en qué está Tor (para ver en el próximo diagnóstico por qué no hubo imagen).
+  _linkLabel(link, nx) {
+    if (!link) return 'ningún camino';
+    if (link.indexOf('lan:') === 0) return 'Wi-Fi';
+    if (link.indexOf('net:') !== 0) return 'Bluetooth';
+    var n = this.ble && this.ble.net;
+    if (n && typeof n.via === 'function' && n.via(_nid(nx)) === 'tor') return 'internet (Tor directo)';
+    var p = n && n.peers && typeof n.peers.get === 'function' ? n.peers.get(_nid(nx)) : null;
+    return 'internet (relés: el vídeo no sale; Tor ' + (n && n.tor && n.tor.ready ? 'listo' : 'sin arrancar') + (p && p.torUp ? ', enlace con él abierto sin confirmar' : '') + ')';
   }
 
   _sendPacket(bytes, kind) {
