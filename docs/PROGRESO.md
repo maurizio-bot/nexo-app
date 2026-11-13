@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-11-13 (builds **2935–3066**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3066 (APK 3044) — la foto de perfil ligada a su dueño por una huella que reconoce recortes y capturas («Es mi foto» en el perfil de un contacto) y tope de 5 MB para la foto de perfil**; antes 3064 (APK 3043): Perfil rechaza fotos que un contacto tuvo antes, adjunto ilegible que ya no se relee entre sesiones, sin ráfagas de Bluetooth con un contacto.
+Última actualización: 2026-11-13 (builds **2935–3067**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3067 (APK 3045) — el cifrado se recupera solo cuando un contacto vuelve a un estado anterior (antes, tras reiniciarse en una videollamada, todo lo suyo se tiraba como «ya recibido» para siempre)**; antes 3066 (APK 3044): la foto de perfil ligada a su dueño («Es mi foto») y tope de 5 MB.
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
