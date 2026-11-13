@@ -673,7 +673,7 @@ export class BleAckSystem {
       // Y un flujo por relés a un contacto AUSENTE no sirve de nada (la ventana espera confirmaciones EN VIVO: se quedaba
       // «Ventana sin ACK con el enlace caído» con el archivo entero en memoria): por internet solo si el contacto está EN
       // LÍNEA (canReach); si no, queda ⏳ pendiente y lo reanuda _netUp/_netOnline (los ≤ 5 MB ya fueron al buzón de archivos).
-      var netOk = net && typeof net.canReach === 'function' && net.canReach(cid) && (net.filesOk(cid) || (net.mailboxOk(cid) && data && data.length <= NET_MAX_B64_BYTES));
+      var netOk = net && typeof net.canReach === 'function' && net.canReach(cid) && (net.filesOk(cid) || (net.mailboxFilesOk(cid) && data && data.length <= NET_MAX_B64_BYTES));
       if (!netOk) {
         var en = new Error('Contacto no disponible: queda pendiente'); en.code = 'PEER_ABSENT';
         return Promise.reject(en);
@@ -1952,7 +1952,7 @@ export class BleAckSystem {
     var net = self.ble && self.ble.net;
     // 2970: un archivo por internet solo con el contacto EN LÍNEA (canReach); el buzón de relés no sirve para un flujo con
     // ventanas de confirmación (ver _sendFileBest). Los ≤ 5 MB a un ausente van por el buzón de archivos desde el reenvío de pendientes.
-    if (_isNetDevice(devId) && !(net && typeof net.canReach === 'function' && net.canReach(cid) && (tx.type === 'file' ? (net.filesOk(cid) || net.mailboxOk(cid)) : true))) devId = contactDeviceId;
+    if (_isNetDevice(devId) && !(net && typeof net.canReach === 'function' && net.canReach(cid) && (tx.type === 'file' ? (net.filesOk(cid) || net.mailboxFilesOk(cid)) : true))) devId = contactDeviceId;
     if (!devId) return null;
     // #dueño 09-11 (diagnóstico S24 12:15, APK de 35 MB a la tablet por Bluetooth): un archivo que NO cabe por Bluetooth y cuyo
     // único camino de AHORA es un Bluetooth queda ⏳ SIN sellarlo ni partirlo (antes: sendFile lo sellaba entero para que

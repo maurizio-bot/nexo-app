@@ -124,6 +124,12 @@ function _phoneLine(bi) {
   if (net) {
     var open = 0; try { open = net._openCount(); } catch (e) {}
     parts.push('relés abiertos ' + open + (net.wifi ? ' (Wi-Fi)' : ' (datos/otra)'));
+    // dueño 13-11: puente a internet por un NEXO cercano (gw_link.js): por cuáles salgo yo y a cuántos les presto el mío
+    try {
+      var gs = net.gw && net.gw.summary();
+      if (gs && gs.bridges.length) parts.push('internet POR PUENTE: ' + gs.bridges.join(', '));
+      if (gs && (gs.serving || gs.stats.sessions)) parts.push('presto internet a ' + gs.serving + ' ahora (' + gs.stats.sessions + ' sesiones, ' + gs.stats.up + ' subidos, ' + gs.stats.rejected + ' rechazados)');
+    } catch (e) {}
   }
   // 3023: Wi-Fi ENCENDIDO o APAGADO (no es lo mismo que «sin red»: Wi-Fi Direct lo necesita encendido) y caminos rápidos propios
   try { var wd = bi && bi.wifiDirect; if (wd && wd.status) parts.push('Wi-Fi ' + (wd.status.wifiOn === false ? 'APAGADO' : wd.status.wifiOn ? 'encendido' : '?') + ' · Wi-Fi Direct ' + (wd.supported && wd.supported() ? 'sí' : 'no')); } catch (e) {}

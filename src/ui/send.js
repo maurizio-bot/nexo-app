@@ -53,7 +53,7 @@ export var GROUP_MAX_BYTES = Math.floor(GROUP_MAX_CHARS * 3 / 4) - 4096; // lo q
 var GROUP_BLOB_MIN_CHARS = 60000;
 export function _groupBlobCap() {
   var bi = window.bleInterface, ack = bi && bi.ackSystem, net = bi && bi.net;
-  if (!ack || typeof ack.stageBlobFor !== 'function' || !net || typeof net.online !== 'function' || !net.online() || window.NEXO_BLOB_MAILBOX === false) return 0;
+  if (!ack || typeof ack.stageBlobFor !== 'function' || !net || typeof net.online !== 'function' || !net.online() || (typeof net.gwOnly === 'function' && net.gwOnly()) || window.NEXO_BLOB_MAILBOX === false) return 0;
   return BLOB_MAILBOX_MAX_BYTES;
 }
 

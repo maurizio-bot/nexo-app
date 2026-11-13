@@ -160,6 +160,12 @@ export const BLE_MESSAGE_METHODS = {
       try { pg = JSON.parse(raw); } catch (e) {}
       if (pg && self.bigFiles.handle(pg, data.deviceId)) return Promise.resolve(null);
     }
+    // Dueño 13-11: puente a internet por un NEXO cercano (gw_link.js): lo de un teléfono sin internet o del que le presta el suyo
+    if (raw.indexOf('"type":"ig"') >= 0 && self.net && self.net.gw) {
+      var pgw = null;
+      try { pgw = JSON.parse(raw); } catch (e) {}
+      if (pgw && pgw.type === 'ig' && self.net.gw.handle(pgw, data.deviceId)) return Promise.resolve(null);
+    }
     // Fénix: pingeo, borrado y petición de recuperación (directos, sin 'to')
     if (/"type":"f[poqd]"/.test(raw) && self.fenix) {
       var pf = null;
@@ -927,7 +933,7 @@ export const BLE_MESSAGE_METHODS = {
     if (typeof self._bleReadyFor === 'function' && self._bleReadyFor(nx)) return null;
     var byRef = pointerReusable(meta && meta.blobPtr);
     if (!byRef && (typeof net.canReach !== 'function' || net.canReach(nx))) return null;
-    if (!net.mailboxOk(nx) || !blobMailboxEligible(base64Data, meta)) return null;
+    if (!net.mailboxFilesOk(nx) || !blobMailboxEligible(base64Data, meta)) return null; // 13-11: no por un puente
     return self.ackSystem._sendFileViaBlobMailbox(nx, fileId, base64Data, meta);
   },
   // ===== Fase B/C: llegó un PUNTERO a un archivo del buzón de relés (1-a-1 o dentro de un sobre de GRUPO) =====
@@ -1016,7 +1022,7 @@ export const BLE_MESSAGE_METHODS = {
     if (!nx || !fileId || !net || !bytes || bytes <= BLOB_MAILBOX_MAX_BYTES) return false; // ≤ 5 MB: eso es el buzón de archivos
     if (meta && (meta.dst || meta.fwd || meta.big || meta.hdFor)) return false;
     if (type !== 'image' && type !== 'video' && type !== 'file') return false;
-    if (typeof net.canReach !== 'function' || net.canReach(nx) || typeof net.mailboxOk !== 'function' || !net.mailboxOk(nx)) return false;
+    if (typeof net.canReach !== 'function' || net.canReach(nx) || typeof net.mailboxFilesOk !== 'function' || !net.mailboxFilesOk(nx)) return false;
     if (self.lan && typeof self.lan.canReach === 'function' && self.lan.canReach(nx)) return false;
     if (typeof self._bleReadyFor === 'function' && self._bleReadyFor(nx)) return false;
     var out = self._citaOutMap(), prev = out.get(String(fileId));
@@ -1160,7 +1166,7 @@ export const BLE_MESSAGE_METHODS = {
             // está en línea van por Tor directo/Wi-Fi (filesOk); si no, al buzón de los relés (mailboxOk) y llegan cuando
             // abre, igual que los textos. Bajo un tope (~6 MB de archivo): los más grandes son la fase 2 (Tor). Antes solo
             // salían con los dos en Wi-Fi; por eso una foto a un contacto lejano/desconectado no llegaba.
-            var netMediaOk = self.net && (self.net.filesOk(uuid) || (self.net.mailboxOk(uuid) && base64Data.length <= NET_MAX_B64_BYTES));
+            var netMediaOk = self.net && (self.net.filesOk(uuid) || (self.net.mailboxFilesOk(uuid) && base64Data.length <= NET_MAX_B64_BYTES)); // 13-11: por un puente no
             var netNo = !!_netNx(dev) && !netMediaOk;
             if (netNo) dev = self._bleReadyFor(uuid) || dev;
             var st = self._getDeviceState(dev);
@@ -1346,7 +1352,7 @@ export const BLE_MESSAGE_METHODS = {
         // Fase B (build 2969): sin enlace ni ruta pero CON internet propio y el contacto AUSENTE → los ARCHIVOS pendientes
         // (foto/vídeo/archivo ≤ 5 MB) van al BUZÓN DE ARCHIVOS (cifrados en los relés + puntero en su buzón); el resto sigue
         // en espera (toque FCM, Fase A). Antes TODO quedaba ⏳ hasta coincidir en línea.
-        blobOnly = !!(self.net && typeof self.net.mailboxOk === 'function' && self.net.mailboxOk(nexoId) && !self.net.canReach(nexoId) && list.some(blobCandidate));
+        blobOnly = !!(self.net && typeof self.net.mailboxFilesOk === 'function' && self.net.mailboxFilesOk(nexoId) && !self.net.canReach(nexoId) && list.some(blobCandidate));
         if (blobOnly) list = list.filter(blobCandidate);
         else if (list.length) { console.log('[BLEInterface] ' + list.length + ' pending para ' + nexoId + ': sin enlace ni ruta, quedan en espera'); self._noteWakePending(nexoId); if (self.relay) self.relay.discover(nexoId); list.forEach(function(m) { try { self._fileCitaFromMsg(nexoId, m); } catch (e) {} }); return []; }
       }
@@ -1454,7 +1460,7 @@ export const BLE_MESSAGE_METHODS = {
           // 3021: el puente de esta ruta no confirmó ni un trozo de un archivo hace poco (relay.bridgeStalled): el archivo NO vuelve
           // por él; va al buzón de archivos si se puede y, si no, queda ⏳ (lo de texto sigue por el puente con su custodia)
           var stalledFile = !!(relayDst && rh && self.relay && typeof self.relay.isBridgeStalled === 'function' && self.relay.isBridgeStalled(rh.via));
-          if (stalledFile && !(self.net && typeof self.net.mailboxOk === 'function' && self.net.mailboxOk(nxKey) && blobCandidate(msg))) {
+          if (stalledFile && !(self.net && typeof self.net.mailboxFilesOk === 'function' && self.net.mailboxFilesOk(nxKey) && blobCandidate(msg))) {
             console.log('[JUMP] ' + mid + ': el puente ' + rh.via + ' no avanzó con archivos hace poco y no hay buzón de archivos: queda en espera');
             _vaultUpdateMessageStatus(nexoId, mid, 'pending');
             try { if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(mid, 'pending'); } catch (e4) {}

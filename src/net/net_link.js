@@ -37,6 +37,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { hmac } from '@noble/hashes/hmac.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 import { e2eIdentityDH, e2eMyPublicKey } from '../vault/e2e_crypto.js';
+import { GwLink } from './gw_link.js';
 
 var DEFAULT_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net', 'wss://nostr.mom'];
 
@@ -149,6 +150,7 @@ export class NetLink {
     this.tor = { ready: false, onion: '', port: 0, starting: false, triedAt: 0, error: '' };
     this._tagSig = '';
     this._timer = null;
+    this.gw = new GwLink(this); // dueño 13-11: puente a internet por un NEXO cercano (gw_link.js)
   }
 
   relayUrls() {
@@ -253,6 +255,7 @@ export class NetLink {
   async tick() {
     var self = this, now = Date.now(), pl = _plugin();
     if (!self.me()) return;
+    try { self.gw.tick(); } catch (e) { console.warn('[GW] ' + (e && e.message)); }
     try { var st = pl && typeof pl.lanStatus === 'function' ? await pl.lanStatus() : null; self.wifi = !!(st && st.wifi); } catch (e) {}
     var changed = await self._refreshTags();
     if (changed) self._bgConfig();
@@ -287,11 +290,22 @@ export class NetLink {
 
   _openCount() { var n = 0; this.relays.forEach(function(r) { if (r.open) n++; }); return n; }
   online() { return this._openCount() > 0; }
-  canReach(nexoId) { var p = this.peers.get(_nid(nexoId)); return !!(p && p.up && (this.online() || p.torOk) && this.pairs.has(_nid(nexoId))); }
+  // Dueño 13-11: en línea SOLO por un puente (otro NEXO cercano presta su internet, gw_link.js). Por ahí van textos;
+  // archivos y fotos no (filesOk/mailboxFilesOk): quedan ⏳ hasta tener internet propio o un camino directo.
+  _realOpenCount() { var n = 0; this.relays.forEach(function(r) { if (r.open && !r.gw) n++; }); return n; }
+  gwOnly() { return this._openCount() > 0 && this._realOpenCount() === 0; }
+  canReach(nexoId) {
+    var nx = _nid(nexoId), p = this.peers.get(nx);
+    // por el puente, un contacto con Bluetooth directo listo va por su Bluetooth (no «internet» por el Bluetooth de otro)
+    if (this.gwOnly() && this.ble && typeof this.ble._bleReadyFor === 'function' && this.ble._bleReadyFor(nx)) return false;
+    return !!(p && p.up && (this.online() || p.torOk) && this.pairs.has(nx));
+  }
   via(nexoId) { var p = this.peers.get(_nid(nexoId)); return p && p.torOk ? 'tor' : 'relés'; }
   bothWifi(nexoId) { var p = this.peers.get(_nid(nexoId)); return !!(this.wifi && p && p.wifi); }
   // Archivos por internet solo si los dos están en Wi-Fi (con datos móviles cuestan dinero)
-  filesOk(nexoId) { return this.canReach(nexoId) && this.bothWifi(nexoId); }
+  filesOk(nexoId) { return this.canReach(nexoId) && this.bothWifi(nexoId) && !this.gwOnly(); }
+  // Buzón para ARCHIVOS/fotos (y el buzón de archivos): como mailboxOk, pero no por un puente (solo textos)
+  mailboxFilesOk(nexoId) { return this.mailboxOk(nexoId) && !this.gwOnly(); }
   // Buzón: dejarle un texto aunque no esté en línea
   mailboxOk(nexoId) {
     var nx = _nid(nexoId);
@@ -303,7 +317,7 @@ export class NetLink {
     var self = this, r = self.relays.get(url) || { backoff: 2000, waits: new Map() };
     self.relays.set(url, r);
     var ws;
-    try { ws = new WebSocket(url); } catch (e) { r.retryAt = Date.now() + r.backoff; return; }
+    try { ws = r.factory ? r.factory() : new WebSocket(url); } catch (e) { r.retryAt = Date.now() + r.backoff; return; }
     r.ws = ws; r.open = false;
     ws.onopen = function() {
       r.open = true; r.backoff = 2000; r.openedAt = Date.now(); r.rxAt = r.openedAt;
@@ -426,7 +440,7 @@ export class NetLink {
     var keys = self.tagKeys.slice(0, 40), pending = keys.length;
     r.authed = false;
     keys.forEach(function(sk) {
-      var ev = _event(sk, 22242, [['relay', url], ['challenge', challenge]], '');
+      var ev = _event(sk, 22242, [['relay', r.realUrl || url], ['challenge', challenge]], ''); // por un puente: el relé de verdad
       r.waits.set(ev.id, function() { if (--pending === 0) { r.authed = true; if (r.needSub) { r.needSub = false; self._subscribe(r); } } });
       self._send(r, ['AUTH', ev]);
     });
@@ -741,6 +755,7 @@ export class NetLink {
       var peer = this.peers.get(_nid(nx)); if (!peer || !peer.fcmToken) return;
       var url = this.senderUrl(); if (!url) return;
       if (typeof fetch !== 'function') return;
+      var viaGw = this.gwOnly(); // sin internet propio: el «toque» lo pide el puente (gw_link.js)
       // M1 (auditoría 28-10): throttle por par — como mucho un toque cada WAKE_MIN_MS (una ráfaga de textos despierta
       // una sola vez; NetBg ya baja el resto en esa sesión). #130 (dueño 30-10): una llamada tiene su propio throttle
       // (CALL_WAKE_MIN_MS), más corto y aparte, para que SIEMPRE despierte aunque un texto reciente haya gastado el de
@@ -754,6 +769,7 @@ export class NetLink {
         peer._wakeAt = now;
       }
       var self = this;
+      if (viaGw) { this.gw.wake(peer.fcmToken); return; }
       fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: peer.fcmToken }) })
         .then(function(res) {
           // 404 = token caducado/desregistrado: lo olvidamos para pedir uno nuevo en el próximo saludo
@@ -843,7 +859,7 @@ export class NetLink {
   // Los trozos de un archivo cifrado van como eventos BLOB_KIND SIN etiqueta p (se bajan por id: el relé no correlaciona
   // quién baja qué), con caducidad; se publican en TODOS los relés abiertos (réplica) y se piden a UN relé por id.
   randomKey() { return schnorr.utils.randomSecretKey(); }
-  openRelayUrls() { var out = []; this.relays.forEach(function(r, u) { if (r.open) out.push(u); }); return out; }
+  openRelayUrls() { var out = []; this.relays.forEach(function(r, u) { if (r.open && !r.gw) out.push(u); }); return out; }
   blobEvent(sk, contentB64, expiresSec) { return _event(sk, BLOB_KIND, [['expiration', String(expiresSec)]], contentB64); }
   // NIP-09: pedir el borrado de los trozos (firmado con la clave del blob) al confirmar; best-effort (la caducidad es la garantía)
   blobDeleteEvent(sk, ids) { return _event(sk, 5, (ids || []).map(function(id) { return ['e', id]; }), ''); }
@@ -867,7 +883,7 @@ export class NetLink {
     var self = this;
     return new Promise(function(resolve) {
       var open = [];
-      self.relays.forEach(function(r, u) { if (r.open) open.push({ r: r, u: u }); });
+      self.relays.forEach(function(r, u) { if (r.open && !r.gw) open.push({ r: r, u: u }); }); // el buzón de archivos no pasa por un puente
       if (!open.length) { resolve([]); return; }
       var oks = [], left = open.length, done = false;
       var finish = function() { if (done) return; done = true; clearTimeout(timer); open.forEach(function(o) { o.r.waits.delete(ev.id); }); resolve(oks); };

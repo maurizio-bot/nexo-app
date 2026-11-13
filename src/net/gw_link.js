@@ -1,0 +1,372 @@
+/**
+ * NEXO — PUENTE A INTERNET por un NEXO cercano (dueño 13-11, parte 1: solo textos)
+ *
+ * «Mando un mensaje y no tengo internet: sale por Bluetooth a alguien cercano que sí tiene, ese lo sube al buzón de
+ * internet y le llega a mi contacto; la respuesta vuelve por ahí». Y la RED (dueño 13-11): si el puente de la ida ya no
+ * está para el regreso, no se pierde nada — la respuesta queda en MI buzón de los relés y cualquier NEXO con internet
+ * que esté cerca me la recoge («recoge lo mío»); se usan hasta 3 puentes a la vez. Sin ubicación (Bluetooth declara
+ * neverForLocation): la cercanía la da el propio enlace.
+ *
+ * Cómo: el teléfono sin internet (A) usa al vecino (B) como si fuera un RELÉ más. Para net_link.js es una conexión de
+ * relé «virtual» (clave gw:<nexoId de B>) cuyo «socket» manda cada frame NIP-01 por Bluetooth/Wi-Fi local a B; B abre
+ * su PROPIA conexión al relé que A eligió (uno de los que B usa) y le pasa los frames en los dos sentidos. Todo lo de
+ * net_link sigue igual por encima: el sobre va cifrado para el contacto (B no lo puede leer: ve un evento firmado con
+ * una clave de un solo uso), la suscripción a MIS etiquetas es la que recoge lo mío, el saludo dice «en línea», el
+ * ✓ es «un relé lo guardó» y el ✓✓ vuelve cuando lo confirma el contacto.
+ *
+ * Paquetes por Bluetooth ({v:1,type:'ig',op,from,s,…}; la parte nativa los ignora: BgInbox → IGNORE):
+ *   A→B  q  ¿tienes internet para prestarme?          B→A  a  sí (u: relés que uso) / no (u: [])
+ *   A→B  o  abre la sesión s con el relé u            B→A  k  abierta (ok:1) / no (ok:0)
+ *   A→B  f  frame para el relé (d)                    B→A  e  frame del relé (d)
+ *   A→B  c  cierra la sesión s                        B→A  x  la sesión s se cerró
+ *   A→B  w  «toque» FCM al token t (el despertador del contacto también sale por el puente)
+ *
+ * Límites del que presta (para que no se abuse de su internet): solo eventos de mensajes privados (kind 1059) firmados
+ * y del tamaño de un texto, suscripciones solo a esos mensajes, AUTH (NIP-42) y CLOSE; nada de archivos (el buzón de
+ * archivos no pasa por el puente: net_link.gwOnly() los deja ⏳). Tope por minuto y por día, pocas sesiones a la vez,
+ * nada con la batería baja (Jump.canRelay) y un interruptor (localStorage nexo_gw_share = '0' lo apaga).
+ */
+import { netEventValid } from './net_link.js';
+
+var GW_KIND = 1059;                 // mensajes privados (el KIND de net_link)
+var GW_AFTER_MS = 8000;             // sin relés propios al menos esto → buscar puente
+var GW_MAX = 3;                     // puentes a la vez (dueño: «al menos dos opciones más»)
+var GW_ASK_MS = 30000;              // a un mismo vecino se le pregunta como mucho cada 30 s
+var GW_NO_MS = 120000;              // un vecino que dijo «no» no se vuelve a preguntar en 2 min
+var GW_OFFER_TTL_MS = 90000;        // una oferta «sí» vale 90 s si no se usa
+var GW_OPEN_MS = 10000;             // la sesión tiene que abrirse en 10 s
+var GW_REAL_BACK_MS = 5000;         // volvió el internet propio y sigue 5 s → se sueltan los puentes
+var SRV_MAX_SESSIONS = 4;           // sesiones a la vez en el que presta
+var SRV_IDLE_MS = 10 * 60000;       // sesión callada 10 min → se cierra
+var SRV_EV_PER_MIN = 40;            // eventos por minuto por sesión
+var SRV_EV_PER_DAY = 1500;          // eventos por día por teléfono que pide
+var SRV_UP_MAX = 70000;             // tamaño máximo de un frame que sube (un evento de texto cabe de sobra)
+var SRV_DOWN_MAX = 200000;          // tamaño máximo de un frame que baja
+var SRV_WAKE_MIN_MS = 8000;         // un toque por token cada 8 s como mucho
+var SRV_WAKE_PER_HOUR = 60;
+var TX_TRIES = 3;
+
+function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
+function _isNx(x) { return /^nx[0-9a-z]{8}$/.test(x); }
+function _rid() { var a = new Uint8Array(6); crypto.getRandomValues(a); return Array.from(a, function(b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
+function _host(u) { return String(u || '').replace(/^wss?:\/\//, '').replace(/\/.*$/, ''); }
+function _shareOn() { try { return !(typeof localStorage !== 'undefined' && localStorage.getItem('nexo_gw_share') === '0'); } catch (e) { return true; } }
+function _disabled() { return typeof window !== 'undefined' && window.NEXO_GW === false; }
+
+// ¿Este frame NIP-01 puede subir por el puente? (lo que A le pide al relé a través de B)
+export function gwAllowUp(str) {
+  if (typeof str !== 'string' || str.length > SRV_UP_MAX) return '';
+  var m; try { m = JSON.parse(str); } catch (e) { return ''; }
+  if (!Array.isArray(m) || typeof m[0] !== 'string') return '';
+  if (m[0] === 'EVENT') { var ev = m[1]; return (m.length === 2 && ev && ev.kind === GW_KIND && netEventValid(ev)) ? 'EVENT' : ''; }
+  if (m[0] === 'AUTH') { var ea = m[1]; return (m.length === 2 && ea && ea.kind === 22242 && netEventValid(ea)) ? 'AUTH' : ''; }
+  if (m[0] === 'CLOSE') return (m.length === 2 && typeof m[1] === 'string' && m[1].length <= 64) ? 'CLOSE' : '';
+  if (m[0] === 'REQ') {
+    if (m.length !== 3 || typeof m[1] !== 'string' || m[1].length > 64) return '';
+    var f = m[2];
+    if (!f || typeof f !== 'object' || Array.isArray(f)) return '';
+    var ks = Object.keys(f);
+    for (var i = 0; i < ks.length; i++) {
+      var k = ks[i], v = f[k];
+      if (k === 'kinds') { if (!Array.isArray(v) || v.length !== 1 || v[0] !== GW_KIND) return ''; }
+      else if (k === '#p') { if (!Array.isArray(v) || v.length > 400 || v.some(function(x) { return typeof x !== 'string' || !/^[0-9a-f]{64}$/.test(x); })) return ''; }
+      else if (k === 'ids') { if (!Array.isArray(v) || v.length > 1 || v.some(function(x) { return typeof x !== 'string' || !/^[0-9a-f]{64}$/.test(x); })) return ''; } // la pregunta de comprobación (3011)
+      else if (k === 'since' || k === 'limit') { if (typeof v !== 'number' || !isFinite(v) || v < 0) return ''; }
+      else return '';
+    }
+    // una suscripción de mensajes (kinds + #p) o la comprobación (ids): nada de «tráeme todo»
+    if (!(f.kinds && f['#p']) && !f.ids) return '';
+    return 'REQ';
+  }
+  return '';
+}
+
+// Socket «virtual»: lo que net_link manda al relé sale por Bluetooth hacia el puente
+function VSock(gw, br, sid, url) {
+  this.gw = gw; this.br = br; this.s = sid; this.url = url;
+  this.onopen = null; this.onmessage = null; this.onclose = null; this.onerror = null;
+  this._closed = false;
+  var self = this;
+  this._openTimer = setTimeout(function() { if (!self._opened) { console.warn('[GW] El puente ' + br.nx + ' no abrió la sesión a tiempo'); self._end(); } }, GW_OPEN_MS);
+  gw._tx(br.dev, { op: 'o', s: sid, u: url });
+}
+VSock.prototype.send = function(str) { if (this._closed) throw new Error('cerrado'); this.gw._tx(this.br.dev, { op: 'f', s: this.s, d: String(str) }); };
+VSock.prototype.close = function() { if (this._closed) return; this.gw._tx(this.br.dev, { op: 'c', s: this.s }); this._end(); };
+VSock.prototype._end = function() {
+  if (this._closed) return;
+  this._closed = true; clearTimeout(this._openTimer);
+  this.gw.socks.delete(this.s);
+  if (!this._opened) this.br.fails = (this.br.fails || 0) + 1; // un puente que no abre dos veces se suelta (tick)
+  var fn = this.onclose; if (typeof fn === 'function') { try { fn(); } catch (e) {} }
+};
+
+export class GwLink {
+  constructor(net) {
+    this.net = net;
+    // lado del que NO tiene internet (cliente)
+    this.offers = new Map();   // nx del vecino → { dev, urls, at }
+    this.asked = new Map();    // nx → cuándo se le preguntó / hasta cuándo no (no)
+    this.bridges = new Map();  // nx → { nx, dev, url, key }
+    this.socks = new Map();    // sid → VSock
+    this._realOffSince = 0;
+    this._realOnSince = 0;
+    // lado del que presta (servidor)
+    this.sess = new Map();     // from|sid → { ws, dev, from, url, open, rxAt, evMin: [], buf: [] }
+    this.daily = new Map();    // from → { day, n }
+    this.wakes = new Map();    // token → cuándo; from → [tiempos]
+    this.stats = { up: 0, down: 0, rejected: 0, sessions: 0 };
+  }
+
+  ble() { return this.net && this.net.ble; }
+  me() { return this.net ? this.net.me() : ''; }
+
+  // Vecinos con enlace listo (Bluetooth o Wi-Fi local; nunca «net:», que sería internet sobre internet)
+  _neighbors() {
+    var ble = this.ble(), out = new Map();
+    try {
+      var rel = ble && ble.relay;
+      var m = rel && typeof rel._computeNeighbors === 'function' ? rel._computeNeighbors() : (rel && rel.neighbors) || new Map();
+      m.forEach(function(dev, nx) { if (_isNx(_nid(nx)) && !/^net/i.test(String(dev))) out.set(_nid(nx), dev); });
+    } catch (e) {}
+    return out;
+  }
+
+  _tx(dev, o, tries) {
+    var ble = this.ble(), self = this;
+    if (!ble || typeof ble._sendMessageNative !== 'function' || !dev) return;
+    var pkt = Object.assign({ v: 1, type: 'ig', from: this.me() }, o);
+    var str = JSON.stringify(pkt);
+    ble._sendMessageNative(dev, str, null).catch(function(e) {
+      var n = (tries || 0) + 1;
+      if (n < TX_TRIES) setTimeout(function() { self._tx(dev, o, n); }, 300 * n);
+    });
+  }
+
+  // ---------- entrada (ble_messages._prePayload) ----------
+  handle(p, deviceId) {
+    if (!p || p.type !== 'ig' || typeof p.op !== 'string') return false;
+    if (_disabled()) return true;
+    var from = _nid(p.from);
+    if (!_isNx(from) || from === this.me()) return true;
+    switch (p.op) {
+      case 'q': this._srvAsk(from, deviceId); break;
+      case 'o': this._srvOpen(from, deviceId, p); break;
+      case 'f': this._srvUp(from, deviceId, p); break;
+      case 'c': this._srvClose(from + '|' + p.s, 'el otro la cerró', true); break;
+      case 'w': this._srvWake(from, p); break;
+      case 'a': this._cliOffer(from, deviceId, p); break;
+      case 'k': this._cliOpened(p); break;
+      case 'e': this._cliFrame(p); break;
+      case 'x': { var vs = this.socks.get(String(p.s)); if (vs) { console.log('[GW] El puente ' + from + ' cerró la sesión'); vs._end(); } break; }
+    }
+    return true;
+  }
+
+  // ---------- cliente: el teléfono SIN internet ----------
+  _realOpen() { var n = 0; this.net.relays.forEach(function(r) { if (r.open && !r.gw) n++; }); return n; }
+
+  tick() {
+    if (_disabled()) return;
+    var now = Date.now(), net = this.net, self = this;
+    this._srvTick(now);
+    var real = this._realOpen();
+    if (real > 0) {
+      this._realOffSince = 0;
+      if (!this._realOnSince) this._realOnSince = now;
+      if (this.bridges.size && now - this._realOnSince >= GW_REAL_BACK_MS) {
+        console.log('[GW] Volvió el internet propio: suelto ' + this.bridges.size + ' puente(s)');
+        this.bridges.forEach(function(b) { self._drop(b, null); });
+      }
+      return;
+    }
+    this._realOnSince = 0;
+    if (!this._realOffSince) this._realOffSince = now;
+    // Sin contactos por internet no hay nada que recoger ni mandar
+    if (!net.inTags.size && !net.reqTags.size) return;
+    if (now - this._realOffSince < GW_AFTER_MS) return;
+    var nb = this._neighbors();
+    // Puentes que ya no están cerca: se sueltan (lo mío sigue en el buzón; otro lo recoge)
+    this.bridges.forEach(function(b) { if (nb.get(b.nx) !== b.dev && !nb.has(b.nx)) self._drop(b, 'ya no está cerca'); else if (nb.has(b.nx)) b.dev = nb.get(b.nx); });
+    // Puentes caídos: se reabre la sesión (o se suelta si ya no ofrece)
+    this.bridges.forEach(function(b) {
+      if ((b.fails || 0) >= 2) { self.asked.set(b.nx, now + GW_NO_MS); self.offers.delete(b.nx); self._drop(b, 'no abre la sesión'); return; }
+      var r = net.relays.get(b.key);
+      if (r && !r.ws && now >= (r.retryAt || 0)) net._connect(b.key);
+      else if (r && r.open && b.sock) b.fails = 0;
+    });
+    if (this.bridges.size >= GW_MAX) return;
+    // Ofertas vigentes → puentes nuevos (repartiendo los relés: cada puente a uno distinto si se puede)
+    var used = new Set(); this.bridges.forEach(function(b) { used.add(b.url); });
+    this.offers.forEach(function(o, nx) {
+      if (self.bridges.size >= GW_MAX || self.bridges.has(nx) || !nb.has(nx) || now - o.at > GW_OFFER_TTL_MS || !o.urls.length) return;
+      var url = o.urls.find(function(u) { return !used.has(u); }) || o.urls[self.bridges.size % o.urls.length];
+      used.add(url);
+      self._use(nx, nb.get(nx), url);
+    });
+    if (this.bridges.size >= GW_MAX) return;
+    // Preguntar a los vecinos
+    nb.forEach(function(dev, nx) {
+      if (self.bridges.has(nx)) return;
+      var t = self.asked.get(nx) || 0;
+      if (now < t) return;
+      self.asked.set(nx, now + GW_ASK_MS);
+      self._tx(dev, { op: 'q' });
+    });
+  }
+
+  _cliOffer(from, dev, p) {
+    var urls = Array.isArray(p.u) ? p.u.filter(function(u) { return typeof u === 'string' && /^wss?:\/\//.test(u) && u.length < 200; }).slice(0, 8) : [];
+    if (!urls.length) { this.asked.set(from, Date.now() + GW_NO_MS); this.offers.delete(from); return; }
+    this.offers.set(from, { dev: dev, urls: urls, at: Date.now() });
+    if (!this.bridges.has(from) && this.bridges.size < GW_MAX && !this._realOpen()) this.tick();
+  }
+
+  _use(nx, dev, url) {
+    var self = this, net = this.net, key = 'gw:' + nx;
+    var b = { nx: nx, dev: dev, url: url, key: key };
+    this.bridges.set(nx, b);
+    var r = net.relays.get(key) || { backoff: 2000, waits: new Map() };
+    r.gw = nx; r.realUrl = url;
+    r.factory = function() { var sid = _rid(); var vs = new VSock(self, b, sid, url); self.socks.set(sid, vs); b.sock = vs; return vs; };
+    r.retryAt = 0;
+    net.relays.set(key, r);
+    console.log('[GW] Sin internet propio: uso a ' + nx + ' de puente (relé ' + _host(url) + '; ' + this.bridges.size + ' de ' + GW_MAX + ')');
+    net._connect(key);
+  }
+
+  _drop(b, why) {
+    var net = this.net, r = net.relays.get(b.key);
+    this.bridges.delete(b.nx);
+    if (why) console.log('[GW] Suelto el puente ' + b.nx + ' (' + why + ')');
+    if (r) { try { if (r.ws) r.ws.close(); } catch (e) {} net.relays.delete(b.key); }
+  }
+
+  _cliOpened(p) {
+    var vs = this.socks.get(String(p.s));
+    if (!vs || vs._closed) return;
+    if (!p.ok) { console.warn('[GW] El puente ' + vs.br.nx + ' no pudo abrir la sesión' + (p.why ? ' (' + String(p.why).slice(0, 60) + ')' : '')); this.offers.delete(vs.br.nx); this.bridges.delete(vs.br.nx); this.net.relays.delete(vs.br.key); vs._end(); return; }
+    vs._opened = true; clearTimeout(vs._openTimer);
+    console.log('[GW] Conectado a internet por el puente ' + vs.br.nx + ' (relé ' + _host(vs.url) + ')');
+    var fn = vs.onopen; if (typeof fn === 'function') { try { fn(); } catch (e) {} }
+  }
+
+  _cliFrame(p) {
+    var vs = this.socks.get(String(p.s));
+    if (!vs || vs._closed || !vs._opened || typeof p.d !== 'string') return;
+    var fn = vs.onmessage; if (typeof fn === 'function') { try { fn({ data: p.d }); } catch (e) {} }
+  }
+
+  // El «toque» FCM del contacto (el despertador va por HTTPS, que este teléfono no tiene): lo pide un puente
+  wake(token) {
+    var it = this.bridges.values().next();
+    if (it.done || !token) return false;
+    this._tx(it.value.dev, { op: 'w', t: String(token) });
+    return true;
+  }
+
+  // Para el diagnóstico y la interfaz
+  summary() {
+    var out = [];
+    this.bridges.forEach(function(b) { out.push(b.nx + (b.sock && b.sock._opened ? '' : ' (abriendo)')); });
+    return { bridges: out, serving: this.sess.size, stats: this.stats };
+  }
+
+  // ---------- servidor: el teléfono que PRESTA su internet ----------
+  _canShare() {
+    if (!_shareOn() || _disabled()) return '';
+    if (!this._realOpen()) return 'sin internet';
+    var rel = this.ble() && this.ble().relay;
+    if (rel && typeof rel.canRelay === 'function' && !rel.canRelay()) return 'batería baja';
+    return 'ok';
+  }
+  _realUrls() { var out = []; this.net.relays.forEach(function(r, u) { if (r.open && !r.gw) out.push(u); }); return out; }
+
+  _srvAsk(from, dev) {
+    var why = this._canShare();
+    this._tx(dev, { op: 'a', u: why === 'ok' ? this._realUrls() : [] });
+  }
+
+  _srvOpen(from, dev, p) {
+    var self = this, sid = String(p.s || ''), key = from + '|' + sid, url = String(p.u || '');
+    var no = function(why) { self.stats.rejected++; self._tx(dev, { op: 'k', s: sid, ok: 0, why: why }); };
+    if (!/^[0-9a-f]{12}$/.test(sid)) return;
+    var why = this._canShare();
+    if (why !== 'ok') return no(why);
+    if (this._realUrls().indexOf(url) < 0) return no('relé desconocido');
+    // una sesión por teléfono que pide (la anterior se cierra) y pocas en total
+    this.sess.forEach(function(s, k) { if (s.from === from) self._srvClose(k, 'sesión nueva', false); });
+    if (this.sess.size >= SRV_MAX_SESSIONS) return no('ocupado');
+    var ws;
+    try { ws = new WebSocket(url); } catch (e) { return no('no conecta'); }
+    var s = { ws: ws, dev: dev, from: from, sid: sid, url: url, open: false, rxAt: Date.now(), evMin: [] };
+    this.sess.set(key, s);
+    this.stats.sessions++;
+    ws.onopen = function() { s.open = true; s.rxAt = Date.now(); console.log('[GW] Presto internet a ' + from + ' (relé ' + _host(url) + ')'); self._tx(dev, { op: 'k', s: sid, ok: 1 }); };
+    ws.onmessage = function(ev) {
+      var d = ev && ev.data;
+      if (typeof d !== 'string' || d.length > SRV_DOWN_MAX) return;
+      self.stats.down++;
+      self._tx(s.dev, { op: 'e', s: sid, d: d });
+    };
+    ws.onclose = function() { if (self.sess.get(key) === s) { self.sess.delete(key); self._tx(s.dev, { op: s.open ? 'x' : 'k', s: sid, ok: 0 }); } };
+    ws.onerror = function() {};
+  }
+
+  _srvUp(from, dev, p) {
+    var key = from + '|' + String(p.s || ''), s = this.sess.get(key);
+    if (!s || !s.open) return;
+    s.dev = dev; s.rxAt = Date.now();
+    var kind = gwAllowUp(p.d);
+    if (!kind) { this.stats.rejected++; return; }
+    if (kind === 'EVENT') {
+      var now = Date.now(), id = '';
+      try { id = JSON.parse(p.d)[1].id; } catch (e) {}
+      s.evMin = s.evMin.filter(function(t) { return now - t < 60000; });
+      var day = new Date().toISOString().substring(0, 10), d = this.daily.get(from);
+      if (!d || d.day !== day) { d = { day: day, n: 0 }; this.daily.set(from, d); }
+      if (s.evMin.length >= SRV_EV_PER_MIN || d.n >= SRV_EV_PER_DAY) {
+        this.stats.rejected++;
+        // se le contesta como un relé (rechazado): su envío falla enseguida y queda ⏳ (no espera 12 s)
+        this._tx(s.dev, { op: 'e', s: s.sid, d: JSON.stringify(['OK', id, false, 'rate-limited: tope del puente']) });
+        return;
+      }
+      s.evMin.push(now); d.n++;
+    }
+    try { s.ws.send(p.d); this.stats.up++; } catch (e) {}
+  }
+
+  _srvClose(key, why, quiet) {
+    var s = this.sess.get(key);
+    if (!s) return;
+    this.sess.delete(key);
+    try { s.ws.onclose = null; s.ws.close(); } catch (e) {}
+    if (!quiet) this._tx(s.dev, { op: 'x', s: s.sid });
+    console.log('[GW] Dejo de prestar internet a ' + s.from + ' (' + why + ')');
+  }
+
+  _srvTick(now) {
+    var self = this;
+    if (!this.sess.size) return;
+    var share = this._canShare();
+    var nb = this._neighbors();
+    this.sess.forEach(function(s, k) {
+      if (share !== 'ok') self._srvClose(k, share, false);
+      else if (now - s.rxAt > SRV_IDLE_MS) self._srvClose(k, 'sin actividad', false);
+      else if (!nb.has(s.from) && now - s.rxAt > 60000) self._srvClose(k, 'ya no está cerca', true);
+    });
+  }
+
+  _srvWake(from, p) {
+    var t = String(p.t || ''), now = Date.now(), net = this.net;
+    if (t.length < 20 || t.length > 4096 || this._canShare() !== 'ok') return;
+    if (now - (this.wakes.get(t) || 0) < SRV_WAKE_MIN_MS) return;
+    var hk = 'h|' + from, list = (this.wakes.get(hk) || []).filter(function(x) { return now - x < 3600000; });
+    if (list.length >= SRV_WAKE_PER_HOUR) return;
+    list.push(now); this.wakes.set(hk, list); this.wakes.set(t, now);
+    if (this.wakes.size > 500) this.wakes.delete(this.wakes.keys().next().value);
+    var url = net.senderUrl && net.senderUrl();
+    if (!url || typeof fetch !== 'function') return;
+    // SOLO el token (como el despertador normal), nunca contenido
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: t }) }).catch(function() {});
+  }
+}
