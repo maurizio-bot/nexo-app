@@ -28,6 +28,11 @@ var _mine = null;             // { h, img } (img '' = sin foto)
 var _cache = new Map();       // NEXO ID → data URL (solo las que se MUESTRAN)
 var _all = new Map();         // NEXO ID → { img, at, ph } todas las recibidas (también las que no se muestran por copiadas)
 var _minePh = null;           // huella de mi foto
+// 3060 (dueño 13-11: «Roberto aparece con mi foto de perfil todavía»; ese día el dueño cambió su foto dos veces): también se esconde
+// la copia de una foto que FUE mía (huellas de mis fotos anteriores, con desde cuándo la tuve; 5 como mucho, 180 días). Solo si el
+// contacto la puso después de que yo la pusiera (si la tenía él antes, el original es el suyo).
+var _past = [];               // [{ b, c, at, until }]
+var PAST_MAX = 5, PAST_KEEP_MS = 180 * 86400000;
 var _sent = {};               // NEXO ID → h que ya se le mandó
 var _outIds = new Map();      // id de la copia oculta → NEXO ID (se borra al entregarse)
 var _started = false;
@@ -82,6 +87,7 @@ function _recompute() {
   _all.forEach(function(o, nx) {
     var why = '';
     if (o.ph && _minePh && _mine && _mine.img && _same(o.ph, _minePh)) why = 'es la misma que la tuya';   // i18n-ok (registro del diagnóstico)
+    else if (o.ph) _past.forEach(function(q) { if (!why && (o.at || 0) >= (q.at || 0) && _same(o.ph, q)) why = 'es una foto que tuviste tú'; });   // i18n-ok
     else if (o.ph) _all.forEach(function(p, ny) { if (!why && ny !== nx && p.ph && (p.at || 0) <= (o.at || 0) && _same(o.ph, p.ph)) why = 'es la misma que la de ' + ny; });   // i18n-ok
     var shown = _cache.get(nx) === o.img;
     if (why) {
@@ -142,6 +148,7 @@ export function avatarInit() {
   _started = true;
   Promise.all([_load(MY_FILE), _load(SENT_FILE)]).then(function(r) {
     if (r[0] && typeof r[0].h === 'string') _mine = { h: r[0].h, img: IMG_RE.test(r[0].img || '') ? r[0].img : '', at: Number(r[0].at) || 0 };
+    if (r[0] && Array.isArray(r[0].past)) _past = r[0].past.filter(function(q) { return q && typeof q.b === 'string' && q.b.length === 64 && Array.isArray(q.c) && Date.now() - (Number(q.until) || 0) < PAST_KEEP_MS; }).slice(-PAST_MAX);
     // 3012 (dueño 11-11: un contacto salió con una foto que no era la suya; el registro de Marcos mostró que la mandó ese teléfono
     // como SU foto): al diagnóstico, si este teléfono tiene foto propia y desde cuándo (las puestas antes de la 3012: «fecha desconocida»)
     if (_mine && _mine.img) console.log('[AVATAR] Este teléfono tiene foto de perfil propia (' + Math.round(_mine.img.length / 1024) + ' KB, puesta: ' + (_mine.at ? new Date(_mine.at).toISOString().substring(0, 16) : 'fecha desconocida') + ')');
@@ -166,6 +173,16 @@ export function avatarInit() {
   });
 }
 
+// 3060: para el diagnóstico: qué foto tiene este contacto aquí (se ve / copia escondida y por qué / sin foto) y a cuánto está de la mía
+export function avatarDiag(nx) {
+  nx = _normId(nx);
+  var o = _all.get(nx);
+  if (!o) return 'sin foto';
+  var d = '';
+  if (o.ph && _minePh && typeof o.ph.b === 'string' && typeof _minePh.b === 'string') { var n = 0; for (var i = 0; i < 64; i++) if (o.ph.b.charAt(i) !== _minePh.b.charAt(i)) n++; d = ', a ' + n + '/64 de la tuya'; }
+  else if (!o.ph) d = ', sin huella';
+  return (o.hid ? 'foto copiada (escondida)' : 'foto') + d + (_past.length ? ', fotos tuyas anteriores ' + _past.length : '');
+}
 export function avatarOf(nx) { return nx === 'me' ? myAvatar() : (_cache.get(_normId(nx)) || null); }
 export function myAvatar() { return (_mine && _mine.img) || null; }
 
@@ -202,10 +219,26 @@ export function sendAvatarTo(nx) {
 }
 function _sendToAll() { _contactIds().forEach(sendAvatarTo); }
 
+// 3060: la foto que deja de ser mía pasa a la lista de «fotos que tuve» (con su huella; si no la había, se calcula)
+function _archiveMine() {
+  var old = _mine, oldPh = _minePh;
+  if (!old || !old.img) return;
+  var push = function(ph) {
+    if (!ph || typeof ph.b !== 'string') return;
+    _past = _past.filter(function(q) { return !_same(q, ph); });
+    _past.push({ b: ph.b, c: ph.c, at: old.at || 0, until: Date.now() });
+    _past = _past.slice(-PAST_MAX);
+    _saveMine();
+    _recompute();
+  };
+  if (oldPh) push(oldPh); else _phash(old.img).then(push).catch(function() {});
+}
+function _saveMine() { _save(MY_FILE, Object.assign({}, _mine || {}, { past: _past })); }
 export function setMyAvatar(dataUrl) {
   if (!IMG_RE.test(dataUrl || '') || dataUrl.length > MAX_LEN) return false;
+  _archiveMine();
   _mine = { h: _hash(dataUrl), img: dataUrl, at: Date.now() };
-  _save(MY_FILE, _mine);
+  _saveMine();
   console.log('[AVATAR] Foto de perfil propia puesta ahora desde Perfil (' + Math.round(dataUrl.length / 1024) + ' KB)');
   _emit('me');
   _sendToAll();
@@ -213,8 +246,9 @@ export function setMyAvatar(dataUrl) {
   return true;
 }
 export function clearMyAvatar() {
+  _archiveMine();
   _mine = { h: 'x' + Date.now().toString(36), img: '', at: Date.now() };
-  _save(MY_FILE, _mine);
+  _saveMine();
   console.log('[AVATAR] Foto de perfil propia quitada desde Perfil');
   _minePh = null;
   _emit('me');
@@ -262,4 +296,4 @@ export function makeAvatar(file) {
   });
 }
 
-if (typeof window !== 'undefined') { window.NEXO_applyAvatar = applyAvatar; window.NEXO_avatarOf = avatarOf; } // pruebas (tests/sim/cola3033.js)
+if (typeof window !== 'undefined') { window.NEXO_applyAvatar = applyAvatar; window.NEXO_avatarOf = avatarOf; window.NEXO_avatarDiag = avatarDiag; } // pruebas (tests/sim/cola3033.js)

@@ -153,6 +153,7 @@ function _contactRows(bi) {
     try { var fast = []; if (bi.wifiDirect && bi.wifiDirect.peers && bi.wifiDirect.peers.has(nx)) fast.push('WD'); if (bi.bigFiles && bi.bigFiles.peers && bi.bigFiles.peers.has(nx)) fast.push('grandes'); if (bi.bigFiles && bi.bigFiles.l2Peers && bi.bigFiles.l2Peers.has(nx)) fast.push('L2CAP'); p.push('rápidos: ' + (fast.length ? fast.join('+') : 'ninguno')); } catch (e) {}
     try { if (bi._lostPeers && bi._lostPeers.has(nx)) p.push('se le busca'); } catch (e) {}
     try { var bo = bi._resendBackoff && bi._resendBackoff.get(nx); if (bo && bo.n) p.push('reenvío en espera ×' + bo.n); } catch (e) {}
+    try { if (typeof window.NEXO_avatarDiag === 'function') p.push(window.NEXO_avatarDiag(nx)); } catch (e) {} // 3060: estado de su foto de perfil
     if (c.lastSeen) p.push('visto ' + _hhmmss(c.lastSeen));
     p.push('build ' + (_peerBuild[nx] || '?'));
     return '  ' + _tail(nx) + ': ' + p.join(' · ');

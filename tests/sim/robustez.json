@@ -821,7 +821,7 @@
      "prueba": "mensaje CORTADO por el aire"
     },
     {
-     "fallo": "Dueño 13-11 (3060): «¿por qué Roberto aparece con mi foto de perfil todavía?». La copia de la foto se esconde comparando huellas de imagen; si al abrir la app no daba tiempo a calcular una (2 s con la app arrancando: la mía o la del contacto), no se comparaba y la copia se veía hasta que alguien cambiara de foto. Ahora las huellas que faltan se reintentan (4 s, 12 s, 40 s, 2 min). avatardup.js paso 1b (contraprueba 3059: la copia sigue visible).",
+     "fallo": "Dueño 13-11 (3060): «¿por qué Roberto aparece con mi foto de perfil todavía?». La copia de la foto se esconde comparando huellas de imagen; si al abrir la app no daba tiempo a calcular una (2 s con la app arrancando: la mía o la del contacto), no se comparaba y la copia se veía hasta que alguien cambiara de foto. Ahora las huellas que faltan se reintentan (4 s, 12 s, 40 s, 2 min). avatardup.js paso 1b (contraprueba 3059: la copia sigue visible). Y (3061; ese día el dueño cambió su foto dos veces) la copia de una foto que FUE tuya también se esconde (huellas de tus 5 fotos anteriores, 180 días, si el otro la puso después que tú); el diagnóstico dice por contacto si su foto se ve o está escondida y a cuánto está de la tuya. avatardup.js paso 5 (contraprueba 3060: al cambiar tu foto la copia vieja vuelve a verse).",
      "prueba": "foto de perfil COPIADA"
     }
    ],
