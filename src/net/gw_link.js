@@ -32,7 +32,8 @@ import { netEventValid } from './net_link.js';
 var GW_KIND = 1059;                 // mensajes privados (el KIND de net_link)
 var GW_AFTER_MS = 8000;             // sin relés propios al menos esto → buscar puente
 var GW_MAX = 3;                     // puentes a la vez (dueño: «al menos dos opciones más»)
-var GW_ASK_MS = 30000;              // a un mismo vecino se le pregunta como mucho cada 30 s
+var GW_ASK_MS = 30000;              // a un mismo vecino se le pregunta como mucho cada 30 s (si no contesta: 1, 2, 4… hasta 5 min)
+var GW_ASK_MAX_MS = 300000;
 var GW_NO_MS = 120000;              // un vecino que dijo «no» no se vuelve a preguntar en 2 min
 var GW_OFFER_TTL_MS = 90000;        // una oferta «sí» vale 90 s si no se usa
 var GW_OPEN_MS = 10000;             // la sesión tiene que abrirse en 10 s
@@ -105,7 +106,8 @@ export class GwLink {
     this.net = net;
     // lado del que NO tiene internet (cliente)
     this.offers = new Map();   // nx del vecino → { dev, urls, at }
-    this.asked = new Map();    // nx → cuándo se le preguntó / hasta cuándo no (no)
+    this.asked = new Map();    // nx → hasta cuándo no se le vuelve a preguntar
+    this.unanswered = new Map(); // nx → preguntas seguidas sin respuesta (espera creciente: no gastar batería en un vecino dormido)
     this.bridges = new Map();  // nx → { nx, dev, url, key }
     this.socks = new Map();    // sid → VSock
     this._realOffSince = 0;
@@ -209,12 +211,15 @@ export class GwLink {
       if (self.bridges.has(nx)) return;
       var t = self.asked.get(nx) || 0;
       if (now < t) return;
-      self.asked.set(nx, now + GW_ASK_MS);
+      var n = self.unanswered.get(nx) || 0;
+      self.unanswered.set(nx, n + 1);
+      self.asked.set(nx, now + Math.min(GW_ASK_MAX_MS, GW_ASK_MS * Math.pow(2, n)));
       self._tx(dev, { op: 'q' });
     });
   }
 
   _cliOffer(from, dev, p) {
+    this.unanswered.delete(from);
     var urls = Array.isArray(p.u) ? p.u.filter(function(u) { return typeof u === 'string' && /^wss?:\/\//.test(u) && u.length < 200; }).slice(0, 8) : [];
     if (!urls.length) { this.asked.set(from, Date.now() + GW_NO_MS); this.offers.delete(from); return; }
     this.offers.set(from, { dev: dev, urls: urls, at: Date.now() });
