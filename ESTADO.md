@@ -21,7 +21,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **13-11 (bloque 3060–3062, va con 3058–3059 en la APK 3042 si pasa la batería b3062):** dueño: «¿por qué Roberto aparece con mi
+- **13-11 (bloque 3060–3062 + 3058–3059 = APK 3042, batería 225/225, índice 63,3):** dueño: «¿por qué Roberto aparece con mi
   foto de perfil?» → «se mezcló mi foto con otro contacto y eso no debe pasar» + «me comentan que los estados no se cargan de forma
   robusta». Revisado en el código cómo se decide de quién es cada foto (remitente descifrado E2E; no hay camino que ponga la foto
   de uno en otro). Registro del Motorola de Roberto (NX0G6EF54E): Perfil rechazó la foto del dueño 6 veces (08:32–08:34), pero a las
