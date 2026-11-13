@@ -11,8 +11,11 @@
  * Cada copia queda (oculta) en el chat del miembro: si no está a alcance se reenvía sola como cualquier mensaje.
  * Fotos, notas de voz, ubicación, contactos y archivos (hasta ~1 MB) van igual, dentro del sobre (fase 2, 2758); el
  * vídeo, solo la previa. La copia oculta de cada miembro se borra al confirmarse que le llegó.
+ * 3071 (desatasco, modo adelanto 13-11): si el sobre es pequeño (texto, puntero de foto/archivo), la copia se guarda hasta que
+ * el miembro lo LEE o pasan 6 h: su nativo puede dar ✓✓ con la app cerrada sin poder descifrarlo (atasco del cifrado) y el
+ * desatasco (resync.js) la reenvía desde ahí. Sin copia, ese mensaje de grupo se perdía para él.
  */
-import { vaultDeleteMessage } from '../vault/vault_manager.js';
+import { vaultDeleteMessage, vaultPatchMessage } from '../vault/vault_manager.js';
 import { _failStatus } from './ble_helpers.js';
 import { t } from './i18n.js';
 
@@ -21,6 +24,9 @@ var GID_RE = /^gr[0-9a-z]{8}$/;
 var NX_RE = /^nx[0-9a-z]{8}$/;
 var MAX_MEMBERS = 32;
 var STATUS_RANK = { failed: 0, pending: 1, sending: 2, sent: 3, delivered: 4, read: 5 };
+var KEEP_MS = 6 * 3600000;        // 3071: tanto como la ventana del desatasco (resync.js WINDOW_MAX_MS)
+var KEEP_MAX_CHARS = 64 * 1024;   // 3071: solo sobres pequeños (con fotos dentro del sobre ocuparía una vez por miembro)
+var SWEEP_EVERY_MS = 10 * 60000;
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
@@ -71,10 +77,30 @@ export class Groups {
     var pl = _plugin();
     // Solo los estados de los 200 últimos mensajes propios
     var ids = Object.keys(this.st);
-    if (ids.length > 200) ids.slice(0, ids.length - 200).forEach(function(k) { delete this.st[k]; }, this);
+    if (ids.length > 200) ids.slice(0, ids.length - 200).forEach(function(k) { this._dropKept(k); delete this.st[k]; }, this);
     if (pl && typeof pl.saveToFile === 'function') pl.saveToFile({ filename: STORE_FILE, content: JSON.stringify({ groups: this.list, st: this.st }) }).catch(function() {});
   }
   _me() { return _nid(this.ble && this.ble.localNexoId); }
+
+  // 3071: borrar las copias guardadas (ya entregadas) de un mensaje propio; las que no llegaron siguen (son su reintento)
+  _dropKept(msgId) {
+    var e = this.st[msgId];
+    if (!e || !e.k) return;
+    e.k = 0;
+    Object.keys(e.m || {}).forEach(function(nx) {
+      if ((STATUS_RANK[e.m[nx]] || 0) >= STATUS_RANK.delivered) vaultDeleteMessage(nx, msgId + '_' + nx.substring(2)).catch(function() {});
+    });
+  }
+  // 3071: las copias guardadas de más de KEEP_MS se borran (como mucho una pasada cada 10 min; desde _onMemberStatus, con el
+  // almacén ya abierto: al cargar puede no estarlo y el borrado fallaría en silencio)
+  _sweepKept() {
+    var now = Date.now(), self = this;
+    if (now - (this._sweptAt || 0) < SWEEP_EVERY_MS) return;
+    this._sweptAt = now;
+    var n = 0;
+    Object.keys(this.st).forEach(function(id) { var e = self.st[id]; if (e && e.k && now - (e.t || 0) > KEEP_MS) { self._dropKept(id); n++; } });
+    if (n) this._save();
+  }
 
   isGroup(id) { return isGroupId(id) && !!this.list[_nid(id)]; }
   get(id) { return this.list[_nid(id)] || null; }
@@ -117,7 +143,7 @@ export class Groups {
     var envO = { type: 'nexo_grp', g: g.id, n: g.name, m: g.members, i: msgId, c: wire };
     if (cards && cards.length) envO.k = cards;
     var env = JSON.stringify(envO);
-    self.st[msgId] = { g: g.id, m: {} };
+    self.st[msgId] = { g: g.id, m: {}, t: Date.now(), k: env.length <= KEEP_MAX_CHARS ? 1 : 0 };
     to.forEach(function(nx) { self.st[msgId].m[nx] = 'sending'; });
     self._save();
     to.forEach(function(nx) {
@@ -151,8 +177,12 @@ export class Groups {
     // del grupo clavada en ○. Solo se bloquea un retroceso REAL desde un estado ya confirmado (p. ej. delivered→sent).
     if ((STATUS_RANK[status] || 0) <= (STATUS_RANK[per[nx]] || 0) && !(per[nx] === 'failed' && status !== 'failed') && per[nx] !== 'sending') return;
     per[nx] = status;
-    // Ya le llegó: la copia oculta de su chat sobra (con fotos o archivos ocuparía el tamaño una vez por miembro)
-    if (STATUS_RANK[status] >= STATUS_RANK.delivered) vaultDeleteMessage(nx, wid).catch(function() {});
+    // Ya le llegó: la copia oculta de su chat sobra (con fotos o archivos ocuparía el tamaño una vez por miembro).
+    // 3071: un sobre pequeño se guarda hasta que lo lee (o 6 h, _sweepKept): su ✓✓ pudo darlo su nativo sin poder descifrarlo
+    var kept = !!this.st[mm[1]].k;
+    if (STATUS_RANK[status] >= STATUS_RANK.delivered && (!kept || status === 'read')) vaultDeleteMessage(nx, wid).catch(function() {});
+    else if (kept && STATUS_RANK[status] >= STATUS_RANK.delivered) vaultPatchMessage(nx, wid, { status: status }).catch(function() {});
+    this._sweepKept();
     // #131: la burbuja del grupo muestra el MEJOR progreso común, como WhatsApp — NO el mínimo crudo (un miembro
     // inalcanzable, atascado en 'sending'/'pending'/'failed', dejaba la burbuja en ○ aunque a otro ya le hubiera llegado).
     // ✓✓ (entregado) solo cuando TODOS confirman; ✓ (enviado) en cuanto salió para alguien; ○/⏳ solo mientras no ha

@@ -434,6 +434,10 @@
     {
      "fallo": "3069: el mismo desfase cuando el que arranca atrasado pierde también lo apuntado aparte: lo detectan el otro (al recibir) y él (al no poder leer); se recupera igual",
      "prueba": "DESATASCO sin el número de guardado"
+    },
+    {
+     "fallo": "3071 (modo adelanto 13-11): en un GRUPO, la copia de cada miembro se borraba con su ✓✓, que puede darlo su nativo con la app cerrada sin poder descifrar: tras un atasco del cifrado, esos mensajes de grupo se perdían para él (el desatasco no tenía de dónde reenviarlos). Ahora un sobre pequeño se guarda hasta que lo lee o 6 h. desync.js --perdidos --grupo (contraprueba 3069: nunca llegan; 3071: ≈1,3 s)",
+     "prueba": "DESATASCO en GRUPO"
     }
    ],
    "debiles": [
