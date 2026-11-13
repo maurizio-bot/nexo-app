@@ -708,7 +708,10 @@ export class BLEInterface {
           var nsId = _normId(peerUUID);
           if (data.reason === 'no_service') {
             // 3025: la racha caduca si el último no_service fue hace más de 10 min (fallos sueltos de días distintos no suman)
-            var nsLast = self._noServiceLast.get(nsId) || 0;
+            // 3063 (diagnóstico automático S24 13-11 10:23, «enlace_abre_cierra» con el vivo, su app cerrada): la pausa máxima (10 min)
+            // duraba lo mismo que la caducidad, así que al acabar la pausa la racha ya había caducado y volvía a empezar de cero: 4
+            // intentos (8 cortes) en ráfaga cada 10 min. La caducidad cuenta desde el FIN de la pausa, no desde el último no_service.
+            var nsLast = Math.max(self._noServiceLast.get(nsId) || 0, self._bleCooldownUntil.get(nsId) || 0);
             var streak = (Date.now() - nsLast > self._noServiceDecayMs ? 0 : (self._noServiceStreak.get(nsId) || 0)) + 1;
             self._noServiceStreak.set(nsId, streak);
             self._noServiceLast.set(nsId, Date.now());

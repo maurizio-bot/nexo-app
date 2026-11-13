@@ -6,6 +6,10 @@
 //   1) 4 no_service seguidos → se fija la pausa (cooldown) y la racha llega a 4.
 //   2) (3025) el patrón real: no_service + corte sin motivo (eco del servidor) ×4 → pausa (antes el corte borraba la
 //      racha y la pausa no saltaba nunca); la racha caduca a los 10 min sin no_service.
+//   2b) (3063, diagnóstico automático S24 13-11 10:23 «enlace_abre_cierra» con el vivo, su app cerrada): la pausa máxima (10 min)
+//      dura lo mismo que la caducidad de la racha, así que al acabar la pausa la racha ya había caducado y volvía a empezar de
+//      cero: 4 intentos (8 cortes) en ráfaga cada 10 min y el aviso «abre y cierra». Ahora la racha cuenta desde el FIN de la pausa:
+//      el primer no_service tras una pausa larga vuelve a pausar en el acto.
 //   3) al conectar bien (peerReady) se olvida racha y pausa.
 //   4) con el contacto en pausa y siendo el único «perdido», el bucle de re-búsqueda NO escanea (deja de martillar);
 //      sin pausa, sí escanea.
@@ -94,6 +98,12 @@ async function openChatWith(p, name) {
   biA._noServiceStreak.set(idB, 3); if (biA._noServiceLast) biA._noServiceLast.set(idB, Date.now() - 11 * 60000); biA._bleCooldownUntil.delete(idB);
   nA.emit('onDeviceDisconnected', { deviceId: bMac, reason: 'no_service' }); await sleep(40);
   r.racha_caduca = biA._noServiceStreak.get(idB) === 1 && !((biA._bleCooldownUntil.get(idB) || 0) > Date.now());
+  // 2b) racha 9 con pausa de 10 min que acabó hace 1 min (el último no_service fue hace 11 min): uno nuevo sigue la racha y vuelve
+  //     a pausar 10 min en el acto (antes: racha 1 y sin pausa → ráfaga de intentos y «enlace_abre_cierra»)
+  biA._noServiceStreak.set(idB, 9); if (biA._noServiceLast) biA._noServiceLast.set(idB, Date.now() - 11 * 60000); biA._bleCooldownUntil.set(idB, Date.now() - 60000);
+  nA.emit('onDeviceDisconnected', { deviceId: bMac, reason: 'no_service' }); await sleep(40);
+  r.tras_pausa_larga_racha = biA._noServiceStreak.get(idB) || 0;
+  r.tras_pausa_larga_vuelve_a_pausar = ((biA._bleCooldownUntil.get(idB) || 0) - Date.now()) > 9 * 60000;
 
   // ---- 3) al conectar bien (peerReady) se olvida racha y pausa ----
   biA._noServiceStreak.set(idB, 5); biA._bleCooldownUntil.set(idB, Date.now() + 300000);
@@ -144,7 +154,7 @@ async function openChatWith(p, name) {
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.conecta && r.hay_enlace && r.papel_enlace_conservado && r.racha_4 && r.pausa_fijada && r.aviso_pausa &&
-    r.patron_real_pausa && r.racha_caduca && r.peerready_limpia && r.pausa_no_escanea && r.bucle_sigue_vivo && r.activo_si_escanea &&
+    r.patron_real_pausa && r.racha_caduca && r.tras_pausa_larga_racha === 10 && r.tras_pausa_larga_vuelve_a_pausar && r.peerready_limpia && r.pausa_no_escanea && r.bucle_sigue_vivo && r.activo_si_escanea &&
     r.auto_en_pausa_no_conecta && r.manual_en_pausa_si_conecta && r.auto_sin_pausa_si_conecta && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NOSERVICE ' + JSON.stringify(r));

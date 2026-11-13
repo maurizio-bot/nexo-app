@@ -294,6 +294,10 @@
     {
      "fallo": "2993 (diagnóstico automático del dueño, vivo 10-11 16:46, build 2987, síntoma «reintentos»): un mensaje de GRUPO al tablet, que va por el puente del S24, agotó sus 8 reintentos de ventana en 31 s y quedó ✗ mientras una foto de 212 KB salía por ese mismo Bluetooth (la radio estaba ocupada, no muerta). Ahora un texto cuya ventana vence mientras otro envío avanza (ACKs en los últimos 8 s) espera con backoff hasta 3 min sin gastar reintento ni reenviar",
      "prueba": "un texto que espera mientras otro envío avanza"
+    },
+    {
+     "fallo": "Diagnóstico automático S24 3041 13-11 10:23 («enlace_abre_cierra», vivo con la app cerrada), 3064: la pausa máxima por no_service (10 min) duraba lo mismo que la caducidad de la racha: al acabar la pausa la racha volvía a cero y había 4 intentos (8 cortes) en ráfaga cada 10 min, con el aviso «abre y cierra». La caducidad cuenta desde el fin de la pausa. noservice.js paso 2b (contraprueba 3063: racha 1, sin pausa)",
+     "prueba": "no_service"
     }
    ],
    "debiles": [
