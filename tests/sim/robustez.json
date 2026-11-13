@@ -269,7 +269,7 @@
     },
     {
      "fallo": "3044 (diagnósticos automáticos del dueño 13-11, S24 APK 3032 22:25 y APK 3033 23:14, síntoma «reintentos»): un respaldo Fénix de 393 KB al vivo por Wi-Fi local reenviaba la ventana 0 ocho veces (~70 s, 8 × 288 KB) sin un trozo confirmado: el enlace estaba vivo (un texto por ese Wi-Fi llegó con ✓✓) pero la APP del vivo dormía (el sistema la congela en segundo plano). La regla 2976 solo rendía el respaldo con el Bluetooth MUERTO. 3044: un respaldo Fénix sin un trozo confirmado en 2 ventanas se rinde (PEER_ABSENT, Fénix salta a ese custodio un rato) sin diagnóstico; lo del usuario no cambia (#129). fenixsilent.js (contraprueba 3043: 5+ reenvíos y síntoma «reintentos»)",
-     "prueba": "respaldo Fénix a una app dormida con el enlace vivo"
+     "prueba": "respaldo Fénix a una app DORMIDA con el enlace vivo"
     },
     {
      "fallo": "3002 (diagnóstico automático del 11-11, S24 14:55): un TEXTO por Bluetooth con el enlace atascado: el nativo soltó el mensaje («Write fallo… descartado entero» → onWriteDropped → _markBleDead) y el JS, sin otro camino, reenviaba la ventana 8 veces (~64 s sobre un enlace muerto, «Max window retries») y lo marcaba ✗; el freno de la 2976 solo cubría a Fénix. 3002: _onWindowTimeout rinde también el texto de usuario (no el archivo) sobre un Bluetooth ya marcado muerto → ⏳ pendiente (PEER_ABSENT) y se reenvía solo al volver un camino. textdead.js (antes: no se rendía en 20 s)",
@@ -746,11 +746,15 @@
     },
     {
      "fallo": "Dueño 13-11 (idea nueva, no un fallo): un teléfono SIN internet no podía escribir a un contacto lejano aunque tuviera al lado otro NEXO con internet (Jump solo llega por Bluetooth). Parte 1 (3036): puente a internet — el teléfono sin internet usa a hasta 3 NEXO cercanos con internet como relé (gw_link.js: sesión por Bluetooth, el vecino abre el relé y pasa los frames; solo mensajes privados firmados, topes por minuto/día, batería; sin interruptor por decisión del dueño); la respuesta vuelve por cualquier puente cercano (la suscripción a MIS etiquetas, «recoge lo mío»); fotos y archivos no pasan por el puente (gwOnly). puente.js (contraprueba 3035: nada llega)",
-     "prueba": "texto sin internet con un NEXO cercano que sí tiene"
+     "prueba": "PUENTE a internet por un NEXO cercano"
     },
     {
      "fallo": "Dueño 13-11 («si el teléfono que hace de puente ya no está para el regreso, ya no me van a encontrar»): parte 2 (3043). Al MANDAR, la 3042 ya encontraba de puente a un NEXO desconocido (Jump conecta de paso y la parte 1 le pide internet), pero si ese puente se iba y yo no tenía nada pendiente, nadie buscaba otro: la respuesta se quedaba en MI buzón para siempre. 3043: sin puente, se prueba con NEXO desconocidos cercanos (los 2 de mejor señal; si no hay nadie visto en el último minuto, escanea): cada 30 s con algo mío esperando, cada minuto durante 30 min tras usar un puente (espero respuestas) y cada 10 min si no (sin gastar radio en un apagón general); rige la espera por fallos de Jump (passfar.js) y la conexión de paso que hace de puente no se cierra por falta de uso. puente2.js (contraprueba 3042: la respuesta sin el primer puente no llega)",
-     "prueba": "la respuesta vuelve aunque el puente de la ida se haya ido"
+     "prueba": "PUENTE a internet parte 2"
+    },
+    {
+     "fallo": "3045 (diagnóstico S24 APK 3033 13-11 22:53: «500 sobre(s) que el teléfono recibió en segundo plano: entran ya» tras una llamada por internet en segundo plano): con la app viva, lo que guardó la parte nativa eran repetidos (la app ya los había procesado y _onEvent los descarta por `seen`), pero el registro los contaba como nuevos y confundía el diagnóstico. 3045: _drainBg cuenta solo los nuevos y dice cuántos estaban repetidos. bgdrain.js (repetidos_no_entran; contraprueba 3044: «3 sobre(s) … entran ya»)",
+     "prueba": "mensajes recibidos en segundo plano ya en el chat al volver"
     }
    ],
    "debiles": [
@@ -982,7 +986,7 @@
     },
     {
      "fallo": "Dueño 13-11 (idea nueva): compartir pantalla en la videollamada (parte 1, 1-a-1). 3039: ScreenShare.kt/ScreenShareService (MediaProjection, permiso de Android cada vez, servicio mediaProjection) manda JPEG ~5/s (lado largo 960); call_media.screen/screenFrame los manda en lugar de la cámara (1/s con la pantalla quieta, completa cada 10); calls.shareScreen con estado scr para el otro; calls_ui: botón Pantalla, aviso antes, barra roja Detener, la del otro entera, sin espejo y con zoom de dos dedos. calls2 --case=pantalla (contraprueba 3038: sin botón) y callmedia.js §23",
-     "prueba": "compartir pantalla en videollamada"
+     "prueba": "llamadas: pantalla"
     },
     {
      "fallo": "3044 (diagnóstico S24 APK 3033 13-11 22:51: videollamada con …c95d, 199 s con «vídeo enviado 0 / recibido 0»): el registro decía «por Bluetooth» pero iba por INTERNET (la etiqueta solo distinguía Wi-Fi); por internet el vídeo solo sale con Tor directo y por relés no (01-11, P1), y no se veía por qué. 3044: el diagnóstico de la llamada nombra el camino de verdad: «internet (Tor directo)» o «internet (relés: el vídeo no sale; Tor listo/sin arrancar…)». callrecon.js (diag_*; antes: «Bluetooth»)",

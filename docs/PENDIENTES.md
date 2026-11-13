@@ -3,6 +3,19 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 13-11 (diagnósticos S24 APK 3032/3033, Honor 3031, vivo 3028) — abiertos tras la 3045
+- **Videollamada por internet sin imagen** (S24 22:51, 199 s, «vídeo enviado 0»): por internet el vídeo solo sale con Tor
+  DIRECTO (01-11, P1) y en esos 199 s no lo hubo. Desde la 3044 el diagnóstico dice «internet (relés: el vídeo no sale; Tor
+  listo/sin arrancar…)». Con el próximo diagnóstico: ¿arranca Tor en sus teléfonos? Si no arranca nunca, decidir con el dueño
+  vídeo de baja calidad por relés (parte 3 de «compartir pantalla»: calidad según camino).
+- **Escucha nativa repetida durante una llamada en segundo plano** (S24 22:53: «500 sobres» que ya tenía): con la app viva por la
+  llamada, la parte nativa (NetBg, `handleOnPause`) también abre los relés y guarda cada paquete de voz → doble descarga y
+  escrituras en disco (la app los descarta al volver: `seen`; desde la 3045 el registro lo dice). Plan: no arrancar NetBg con
+  `BleService.inCall`; al colgar en segundo plano, la app reconfigura `since` (`_bgConfig`) y entonces arranca NetBg (si no,
+  bajaría otra vez toda la llamada). Sin prueba posible en el simulador (no modela NetBg): hacerlo con prueba física.
+- **Vivo y Honor congelan NEXO en segundo plano** (Vivo «oído hace 1105 s» con el Wi-Fi local vivo; Honor «segundo plano permitido
+  NO»): ajustes del dueño en cada teléfono (`docs/PRUEBAS_FISICAS.md` §0.5 y §0.9).
+
 ## 🆕 12-11 (diagnósticos S24, S23, Redmi y HONOR con la 3014) — en curso
 - **Hecho 3015/3016:** nota de voz como archivo; confirmación por Wi-Fi con la app dormida; espera creciente al reenviar; envío por internet no frena la búsqueda Bluetooth (detalle en `ESTADO.md`).
 - **Hecho 3017/3018/3019:** dirección vieja al abrir chat, contacto reinstalado (opción A) y segundo enlace por la dirección de anuncio (detalle en `ESTADO.md`).

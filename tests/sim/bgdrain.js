@@ -115,12 +115,21 @@ async function freshB(B) { const net = B.win.bleInterface.net; net._closeAll(); 
   const ok3 = await waitFor(async () => { for (const t of textos) if (!(await got(t)())) return false; return true; }, 15000);
   r.al_volver_estan_s = ok3;
   r.log_drain = logs.some((l) => /\[B\].*recibió en segundo plano: entran ya/.test(l));
+  // 3044 (diagnóstico S24 APK 3033 22:53: «500 sobre(s) … entran ya» tras una llamada en segundo plano, con la app viva todo
+  // el rato: eran repetidos, ya vistos). El registro cuenta solo los nuevos y dice cuántos estaban repetidos.
+  const nLog0 = logs.length;
+  setVisible(B, false); await sleep(500);
+  nB.netBgInbox = evs.slice(); // los mismos sobres otra vez (la app ya los tenía)
+  setVisible(B, true); await sleep(2500);
+  const nuevos = logs.slice(nLog0).filter((l) => /\[B\].*\[NET\].*segundo plano/.test(l));
+  r.log_repetidos = nuevos.map((l) => l.replace(/^.*\[NET\] /, '')).slice(0, 2);
+  r.repetidos_no_entran = !nuevos.some((l) => /entran ya/.test(l)) && nuevos.some((l) => new RegExp(evs.length + ' repetido').test(l));
   // al abrir el chat ya están
   await openChatWith(B, 'A'); await sleep(500);
   const bubbles = Array.from(B.win.document.querySelectorAll('#messages-container .message, .message')).map((e) => e.textContent || '');
   r.en_el_chat = textos.every((t) => bubbles.some((b) => b.indexOf(t) >= 0));
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch|ECONNREFUSED|WebSocket/.test(l)).slice(0, 5);
-  const ok = r.antes_llega_s !== null && r.eventos_guardados > 0 && ok3 !== null && ok3 <= 3 && r.en_el_chat && !r.errores.length;
+  const ok = r.antes_llega_s !== null && r.eventos_guardados > 0 && ok3 !== null && ok3 <= 3 && r.repetidos_no_entran && r.en_el_chat && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('BGDRAIN ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_bgdrain.txt'), logs.join('\n'));

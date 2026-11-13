@@ -481,14 +481,18 @@ export class NetLink {
     var res = null;
     try { res = await pl.netBgDrain(); } catch (e) { return 0; }
     var evs = (res && Array.isArray(res.events)) ? res.events : [];
-    var n = 0;
+    // 3044 (diagnóstico S24 APK 3033: «500 sobre(s) … entran ya» tras una llamada en segundo plano con la app viva: eran
+    // repetidos que la app ya había procesado; _onEvent los descarta, pero el registro los contaba como nuevos)
+    var n = 0, dup = 0;
     for (var i = 0; i < evs.length && i < 600; i++) {
       var ev = null;
       try { ev = typeof evs[i] === 'string' ? JSON.parse(evs[i]) : evs[i]; } catch (e) { ev = null; }
       if (!ev || typeof ev !== 'object') continue;
+      if (typeof ev.id === 'string' && this.seen.has(ev.id)) { dup++; continue; }
       try { await this._onEvent(ev); n++; } catch (e) {}
     }
-    if (n) console.log('[NET] ' + n + ' sobre(s) que el teléfono recibió en segundo plano: entran ya (sin esperar a los relés)');
+    if (n) console.log('[NET] ' + n + ' sobre(s) que el teléfono recibió en segundo plano: entran ya (sin esperar a los relés)' + (dup ? '; ' + dup + ' repetido(s) ya vistos' : ''));
+    else if (dup) console.log('[NET] Lo recibido en segundo plano ya lo tenía la app: ' + dup + ' repetido(s), nada nuevo');
     return n;
   }
 
