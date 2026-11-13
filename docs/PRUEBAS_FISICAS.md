@@ -77,6 +77,12 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     puedes volver a poner tu foto anterior.
 31. **Vivo con la app cerrada (3043).** Cierra NEXO del todo en el vivo y deja el S24 cerca 30 min: no debe llegar el diagnóstico
     automático «enlace_abre_cierra» del vivo.
+32. **«Es mi foto» (3044).** Abre el perfil de Roberto (⋮ → Perfil), toca «Es mi foto» y otra vez para confirmar: su foto deja de
+    verse en tu teléfono (también tras cerrar y abrir NEXO). El diagnóstico del S24 dice en Roberto «foto copiada (escondida)».
+33. **Foto recortada o con borde (3044).** En otro teléfono, haz una captura de tu foto (perfil de un contacto → tocar la foto),
+    recórtala un poco o ponle un marco, y ponla en Perfil: la rechaza («es la foto de perfil de …»).
+34. **Tope de 5 MB (3044).** En Perfil, elige una foto de más de 5 MB (por ejemplo, una de la cámara a máxima resolución): sale «La
+    foto pesa más de 5 MB: elige una más pequeña». Una normal se acepta.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 

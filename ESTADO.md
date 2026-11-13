@@ -21,6 +21,15 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **13-11 (bloque 3065–3066, será la APK 3044 si pasa la batería b3066; la APK 3043 se publicó 18:14 UTC):** dueño: «cualquier cosa
+  subida por un user se debe ligar a su ID así ya no hay error» + «tope a 5 MB». Todo lo que manda un usuario ya va firmado con su ID
+  (sin camino para atribuirlo a otro); lo de Roberto fue una COPIA de la imagen subida como suya. 3065: huella v2 (`img_print.js`):
+  miniatura 48×48 alineada en los dos sentidos (recorte ↔ entera) + color Cb/Cr en el encaje; medida en Chrome de verdad
+  (`huella_real.js`, retratos generados): recortes 97 % (v1 5 %), bordes 100 % (v1 0 %), capturas recortadas 85 % (v1 35 %), 0 fotos
+  distintas confundidas y misma plantilla 0/90 (v1 12/90); ~4–6 ms por comparación en escritorio (con memoria). «Es mi foto» en el
+  perfil de un contacto (`claimAvatarMine`: pasa a mis fotos de antes con at 0 → escondida; `avatardup.js` 9). 3066: foto de perfil
+  ≤ 5 MB al elegirla (`AVATAR_MAX_BYTES`; antes sin tope; `avatardup.js` 10). Estados ya tienen tope 5 MB (3032); chat: se comprime
+  pero sin tope al elegir (preguntado al dueño). Pruebas físicas §0.32–0.34.
 - **13-11 (bloque 3063–3064 = APK 3043, batería 225/225; la APK 3042 se publicó 17:17 UTC):** diagnósticos del dueño 09:18–10:23. 3063: (a) la
   foto que sale en Roberto la puso el Motorola en Perfil a las 08:38:31 (9 KB), 20 s después de que Perfil rechazara la foto ACTUAL del
   dueño; el dueño la había cambiado a las 08:35 → casi seguro su foto anterior (sin confirmar). Perfil compara también con las fotos que
