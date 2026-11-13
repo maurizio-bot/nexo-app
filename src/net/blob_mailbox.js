@@ -155,11 +155,16 @@ export async function stageBlob(net, dataB64, opts) {
   var exp = Math.floor(Date.now() / 1000) + (o.ttlSec || BLOB_TTL_SEC);
   var timeout = o.publishTimeoutMs || 10000;
   var relays = [], chunks = new Array(pieces.length), ids = new Array(pieces.length), minRep = Infinity;
+  // Puente a internet, parte 4: sin internet propio, el puente fija trozos a la vez y esperas (Wi-Fi Direct: tandas grandes en
+  // un paquete; Bluetooth: un trozo son segundos de radio). Se vuelve a mirar en cada tanda: si Wi-Fi Direct falla, lo que
+  // sigue va al ritmo de Bluetooth.
+  var tmo = function() { return net.blobPublishMs ? net.blobPublishMs(timeout) : timeout; };
   var publishOne = async function(i) {
+    var tms = tmo();
     var ev = net.blobEvent(sk, _bytesToB64(pieces[i]), exp);
     // 3042: con 2 relés que lo guardaron se sigue (1,5 s de margen para los demás): un relé muerto ya no frena cada tanda 10 s
-    var ok = await net.publishEach(ev, timeout, { enough: PUBLISH_ENOUGH, graceMs: PUBLISH_GRACE_MS });
-    if (!ok.length) ok = await net.publishEach(ev, timeout, { enough: PUBLISH_ENOUGH, graceMs: PUBLISH_GRACE_MS }); // un reintento (el mismo evento: mismo id)
+    var ok = await net.publishEach(ev, tms, { enough: PUBLISH_ENOUGH, graceMs: PUBLISH_GRACE_MS });
+    if (!ok.length) ok = await net.publishEach(ev, tms, { enough: PUBLISH_ENOUGH, graceMs: PUBLISH_GRACE_MS }); // un reintento (el mismo evento: mismo id)
     if (!ok.length) throw Object.assign(new Error('Ningún relé guardó el trozo ' + i), { code: 'NET_DOWN' });
     ok.forEach(function(u) { if (relays.indexOf(u) < 0) relays.push(u); });
     chunks[i] = { i: i, n: pieces[i].length, id: ev.id, r: ok.map(function(u) { return relays.indexOf(u); }) };
@@ -167,9 +172,10 @@ export async function stageBlob(net, dataB64, opts) {
     if (ok.length < minRep) minRep = ok.length;
     if (o.onProgress) o.onProgress(i + 1, pieces.length);
   };
-  for (var b = 0; b < pieces.length; b += PUBLISH_PARALLEL) {       // 4) publicar, ritmo acotado
-    var batch = [];
-    for (var j = b; j < Math.min(b + PUBLISH_PARALLEL, pieces.length); j++) batch.push(publishOne(j));
+  for (var b = 0; b < pieces.length;) {                             // 4) publicar, ritmo acotado
+    var par = (net.blobPar && net.blobPar()) || PUBLISH_PARALLEL, batch = [];
+    for (var j = b; j < Math.min(b + par, pieces.length); j++) batch.push(publishOne(j));
+    b += par;
     await Promise.all(batch);
   }
   var pointer = { v: 1, kind: 'file-pointer', alg: 'AES-256-GCM', k: _bytesToB64(enc.k), nonce: _bytesToB64(enc.nonce), hash: hash,
@@ -201,11 +207,15 @@ export async function fetchBlob(net, ptr, opts) {
     // lo que este relé debería tener según el puntero; si no sabemos (otro relé), se le pide todo lo que falta
     var want = left.filter(function(i) { var c = ptr.chunks[i]; return ri < 0 || !c.r || !c.r.length || c.r.indexOf(ri) >= 0; });
     if (!want.length) continue;
-    for (var b = 0; b < want.length; b += FETCH_BATCH) {
-      var ids = want.slice(b, b + FETCH_BATCH).filter(function(i) { return !parts[i]; }).map(function(i) { return ptr.chunks[i].id; });
+    for (var b = 0; b < want.length;) {
+      // parte 4 del puente: por Wi-Fi Direct al puente se piden más de una vez (un paquete) y se espera más
+      var fb = (net.blobFetchBatch && net.blobFetchBatch(url)) || FETCH_BATCH, fms = o.timeoutMs || 15000;
+      if (net.blobFetchMs) fms = net.blobFetchMs(url, fms);
+      var ids = want.slice(b, b + fb).filter(function(i) { return !parts[i]; }).map(function(i) { return ptr.chunks[i].id; });
+      b += fb;
       if (!ids.length) continue;
       var evs = [];
-      try { evs = await net.fetchEvents(url, ids, o.timeoutMs || 15000); } catch (e) { evs = []; }
+      try { evs = await net.fetchEvents(url, ids, fms); } catch (e) { evs = []; }
       for (var e2 = 0; e2 < evs.length; e2++) {
         var ev = evs[e2], c = ev && byId.get(ev.id);
         if (!c || parts[c.i]) continue;

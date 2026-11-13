@@ -932,7 +932,8 @@ export const BLE_MESSAGE_METHODS = {
     if (self.lan && typeof self.lan.canReach === 'function' && self.lan.canReach(nx)) return null;
     if (typeof self._bleReadyFor === 'function' && self._bleReadyFor(nx)) return null;
     var byRef = pointerReusable(meta && meta.blobPtr);
-    if (!byRef && (typeof net.canReach !== 'function' || net.canReach(nx))) return null;
+    var bridged = typeof net.viaBridge === 'function' && net.viaBridge(nx); // puente parte 4: en línea, pero por un puente
+    if (!byRef && !bridged && (typeof net.canReach !== 'function' || net.canReach(nx))) return null;
     if (!net.mailboxFilesOk(nx, base64Data && base64Data.length) || !blobMailboxEligible(base64Data, meta)) return null; // por un puente: solo lo pequeño (parte 3)
     return self.ackSystem._sendFileViaBlobMailbox(nx, fileId, base64Data, meta);
   },
@@ -1162,6 +1163,8 @@ export const BLE_MESSAGE_METHODS = {
             // Fase C (2971): el adjunto ya vive en los relés (puntero vigente: reenvío de algo recibido/enviado por el buzón) y el
             // contacto está solo por internet → va POR REFERENCIA (0 subidas) aunque esté en línea; con Bluetooth/Wi-Fi, directo
             if (_netNx(dev) && meta && meta.blobPtr) { var viaRef = self._fileToBlobMailbox(uuid, fileId, base64Data, meta); if (viaRef) { viaRef.then(resolve, reject); return; } }
+            // Puente parte 4: por internet con un puente de por medio (yo o él), al buzón de archivos (paquete por Wi-Fi Direct al puente)
+            if (_netNx(dev) && self.net && typeof self.net.viaBridge === 'function' && self.net.viaBridge(uuid)) { var viaGw = self._fileToBlobMailbox(uuid, fileId, base64Data, meta); if (viaGw) { viaGw.then(resolve, reject); return; } }
             // Ronda 2780 (pedido del dueño): fotos y archivos medianos SIEMPRE se pueden mandar por internet. Si el otro
             // está en línea van por Tor directo/Wi-Fi (filesOk); si no, al buzón de los relés (mailboxOk) y llegan cuando
             // abre, igual que los textos. Bajo un tope (~6 MB de archivo): los más grandes son la fase 2 (Tor). Antes solo

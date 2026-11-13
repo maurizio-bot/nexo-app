@@ -205,9 +205,11 @@ export class WifiDirect {
   }
 
   // Envío: resuelve cuando el otro confirma que lo tiene; rechaza si hay que ir por Bluetooth
-  send(deviceId, fileId, data, meta) {
-    var self = this;
-    var peer = self._nexoOf(deviceId);
+  // opts (puente a internet, parte 4: gw_link.js): { offerMs: espera corta a que el otro monte el grupo, gw: 1 (el
+  // fallo lo lleva el puente: sin castigo de 10 min con un contacto), nx: con quién (puede no ser contacto) }
+  send(deviceId, fileId, data, meta, opts) {
+    var self = this, o = opts || {};
+    var peer = o.nx || self._nexoOf(deviceId);
     self.busy = true;
     var t0 = Date.now();
     return self._ensurePermission().then(function(ok) {
@@ -217,7 +219,7 @@ export class WifiDirect {
       if (ws && ws.wifiOn === false) { var eOff = new Error('Wi-Fi apagado en este teléfono'); eOff.wifiOff = 'me'; throw eOff; }
       return new Promise(function(resolve, reject) {
         var st = { reject: reject };
-        var offerTimer = setTimeout(function() { self.out.delete(fileId); reject(new Error('sin respuesta')); }, OFFER_TIMEOUT_MS);
+        var offerTimer = setTimeout(function() { self.out.delete(fileId); reject(new Error('sin respuesta')); }, o.offerMs || OFFER_TIMEOUT_MS);
         st.onNo = function(why) { clearTimeout(offerTimer); self.out.delete(fileId); var eNo = new Error('el otro no puede (' + (why || '?') + ')'); if (WIFI_OFF_RE.test(String(why || ''))) eNo.wifiOff = 'peer'; reject(eNo); };
         st.onCreds = function(c) {
           clearTimeout(offerTimer);
@@ -253,7 +255,7 @@ export class WifiDirect {
       console.warn('[WIFI-DIRECT] ' + fileId + ': ' + (e && e.message) + ' → por Bluetooth');
       // 3013: Wi-Fi apagado (aquí, o lo dijo el otro, o lo dijo Android al unirse) no es un fallo de Wi-Fi Direct: sin castigo
       if (e && (e.wifiOff || e.code === 'WD_WIFI_OFF')) self._wifiOffNote(e.wifiOff === 'peer');
-      else self.noteFail(peer, e && e.message);
+      else if (!o.gw) self.noteFail(peer, e && e.message);
       throw e;
     });
   }
@@ -359,6 +361,17 @@ export class WifiDirect {
     self.incoming.delete(id);
     self.busy = false;
     if (!inc) return;
+    // Puente a internet (parte 4): un paquete de frames del relé (trozos del buzón ya cifrados para el contacto: aquí no
+    // hay nada que abrir) → gw_link.js, que lo valida como si hubiera llegado por Bluetooth
+    var gwDir = inc.meta && inc.meta.gw;
+    if (gwDir === 'u' || gwDir === 'd') {
+      var gw = self.ble && self.ble.net && self.ble.net.gw;
+      if (ev.error || !ev.data || !gw) { console.warn('[WIFI-DIRECT] Paquete del puente ' + id + ' fallido: ' + (ev.error || 'vacío')); return; }
+      console.log('[WIFI-DIRECT] Paquete del puente ' + id + ' (' + Math.round(ev.data.length / 1024) + ' KB)' + (ev.readMs ? ', lectura ' + Math.round(ev.readMs / 100) / 10 + ' s' : ''));
+      gw.wdIn(inc.from, inc.deviceId, ev.data, gwDir);
+      self._ctl(inc.deviceId, { type: 'wf', id: id }).catch(function() {});
+      return;
+    }
     if (ev.error || !ev.data || !e2eAnyEncrypted(ev.data)) {
       console.warn('[WIFI-DIRECT] Recepción de ' + id + ' fallida: ' + (ev.error || 'contenido no válido'));
       return;

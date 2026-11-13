@@ -1,11 +1,15 @@
 // Dueño 13-11 — PUENTE A INTERNET, parte 3: FOTOS PEQUEÑAS por el puente e indicador «por puente».
 // A sin internet usa a B1 (con internet, cerca) de puente; C está lejos (solo internet):
-//   1. el filtro del que presta deja pasar los trozos del buzón de archivos y pedir hasta 16 por id (no «tráeme todo»);
+//   1. el filtro del que presta deja pasar los trozos del buzón de archivos y pedir hasta 48 por id (parte 4: 48 de una vez por
+//      Wi-Fi Direct; no «tráeme todo»);
 //   2. el subtítulo del chat de A con C dice «por puente»;
 //   3. A manda a C un archivo pequeño (120 KB): llega idéntico;
 //   4. un archivo grande (1 MB) NO sale por el puente: queda ⏳ (no «enviando» clavado) y no llega;
 //   5. C manda a A un archivo pequeño: le llega por el puente;
-//   6. el que presta lleva la cuenta de bytes de A (tope por hora y por día).
+//   6. el que presta lleva la cuenta de bytes de A (tope por hora y por día);
+//   7. (parte 4) C → A una foto de 290 KB por Bluetooth: no se pierde ningún trozo con la cola de radio llena.
+// Contraprueba 3049 del paso 7: la foto llegaba en 60 s gastando 2046 KB del que presta (trozos perdidos y vueltos a mandar);
+// con la parte 4, 22 s y 885 KB en total (tope del paso 6: < 1500 KB).
 // Contraprueba 3046: 2, 3 y 6 fallan (las fotos de A quedaban ⏳: «por un puente, solo textos»).
 // Uso: node puente3.js <dir_build>
 'use strict';
@@ -78,7 +82,7 @@ async function findMsg(p, from, b64, own) {
     const gw = await importSrc('net/gw_link.js'), nl = await importSrc('net/net_link.js');
     const sk = new Uint8Array(32).fill(7), P = 'a'.repeat(64), H = (n) => Array.from({ length: n }, (_, k) => k.toString(16).padStart(64, '0'));
     const blob = nl.netMakeEvent(sk, 1064, [], 'x'), raro = nl.netMakeEvent(sk, 1, [], 'x');
-    const cases = [[['EVENT', blob], 'BLOB'], [['EVENT', raro], ''], [['REQ', 'b1', { ids: H(16) }], 'REQ'], [['REQ', 'b2', { ids: H(17) }], ''],
+    const cases = [[['EVENT', blob], 'BLOB'], [['EVENT', raro], ''], [['REQ', 'b1', { ids: H(16) }], 'REQ'], [['REQ', 'b2', { ids: H(49) }], ''],
       [['REQ', 'b3', { kinds: [1064] }], ''], [['REQ', 'b4', { ids: [] }], ''], [['REQ', 's1', { kinds: [1059], '#p': [P] }], 'REQ']];
     r.filtro = cases.map(([f, want]) => gw.gwAllowUp(JSON.stringify(f)) === want ? 1 : 0).join('');
   } catch (e) { r.filtro = 'error ' + String(e && e.message).slice(0, 80); }
@@ -121,13 +125,17 @@ async function findMsg(p, from, b64, own) {
   await openChatWith(C, 'A');
   const deC = await sendFile(C, 'foto_de_c.jpg', 90000), deCB64 = deC.toString('base64');
   r.de_c_llega_s = await waitFor(async () => !!(await findMsg(A, idC, deCB64, false)), 90000);
+  // 7. (parte 4) C → A: una foto de 290 KB (8 trozos de ~55 KB) baja por Bluetooth sin perder trozos: con la cola de radio llena
+  //    el puente espera y sigue EN ORDEN (antes: 3 reintentos en 1 s y se perdía; el EOSE se adelantaba y la foto no se armaba)
+  const deC2 = await sendFile(C, 'foto_290kb.jpg', 290 * 1024), deC2B64 = deC2.toString('base64');
+  r.de_c_290kb_s = await waitFor(async () => !!(await findMsg(A, idC, deC2B64, false)), 150000);
   // 6. el que presta lleva la cuenta de bytes de A
   const bb = B1.win.bleInterface.net.gw && B1.win.bleInterface.net.gw.blobBytes && B1.win.bleInterface.net.gw.blobBytes.get(idA);
   r.bytes_contados_kb = bb ? Math.round(bb.d / 1024) : 0;
   r.b1_ve_archivos = (await B1.win.vaultLoadMessages(idA)).concat(await B1.win.vaultLoadMessages(idC)).filter((m) => m.attachmentType).length;
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch|ECONNREFUSED|WebSocket/.test(l)).slice(0, 5);
   const ok = r.filtro === '1111111' && r.puente_s !== null && r.subtitulo_s !== null && r.chico_llega_s !== null && r.grande_no_llega && r.grande_estado === 'pending' &&
-    r.de_c_llega_s !== null && r.bytes_contados_kb >= 150 && r.b1_ve_archivos === 0 && !r.errores.length;
+    r.de_c_llega_s !== null && r.de_c_290kb_s !== null && r.bytes_contados_kb >= 150 && r.bytes_contados_kb < 1500 && r.b1_ve_archivos === 0 && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('PUENTE3 ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_puente3.txt'), logs.join('\n'));

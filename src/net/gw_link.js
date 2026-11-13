@@ -62,6 +62,24 @@ export var GW_FILE_MAX_B64 = 400 * 1024;
 var SRV_BLOB_PER_HOUR = 2 * 1024 * 1024;  // bytes (subida + bajada) por teléfono que pide, por hora: todo lo que sube y lo que
 var SRV_BLOB_PER_DAY = 10 * 1024 * 1024;  // baja de más de SRV_BYTES_MIN (un texto no cuenta; una foto, sí: buzón o en línea)
 var SRV_BYTES_MIN = 4096;
+// Puente por WI-FI DIRECT (dueño 13-11: «el cambio de Bluetooth/Wi-Fi Direct también al puente Bluetooth/internet, y que el
+// cambio sea ágil»). Los TEXTOS siguen por Bluetooth (montar Wi-Fi Direct cuesta ~5 s); lo PESADO (los trozos del buzón de
+// archivos de una foto/archivo) va en UN paquete por Wi-Fi Direct al puente, que lo mete en la sesión del relé de A (las
+// confirmaciones vuelven por el camino de siempre); al bajar, el puente junta lo que pidió A y se lo devuelve por Wi-Fi Direct.
+// Si Wi-Fi Direct no está o no contesta en GW_WD_OFFER_MS, ese mismo paquete sigue por Bluetooth al instante y Wi-Fi Direct
+// con ese puente se aparta GW_WD_COOL_MS (sin esperas largas en cada envío).
+export var GW_WD_FILE_MAX_B64 = Math.ceil(5 * 1024 * 1024 * 4 / 3) + 8; // con Wi-Fi Direct al puente: hasta 5 MB (el buzón de archivos)
+var GW_WD_MIN = 60000;              // menos que esto (en caracteres) no compensa montar el Wi-Fi Direct: por Bluetooth
+var GW_WD_OFFER_MS = 8000;          // el otro no monta el Wi-Fi Direct en este tiempo → por Bluetooth
+var GW_WD_COOL_MS = 2 * 60000;      // falló con ese teléfono: lo pesado por Bluetooth estos minutos (sin esperas en cada envío)
+var GW_WD_BUSY_MS = 4000;           // Wi-Fi Direct ocupado con otra cosa (un archivo con un contacto): esto como mucho, luego Bluetooth
+var GW_BULK_WAIT_MS = 80;           // juntar los trozos que se publican a la vez en un paquete
+export var GW_BULK_PAR = 24;        // trozos por paquete por Wi-Fi Direct (~1,3 MB); por Bluetooth, los de siempre (3)
+export var GW_BULK_FETCH = 48;      // trozos que se piden por id de una vez por Wi-Fi Direct (por Bluetooth, 16)
+var SRV_BULK_GAP_MS = 40;           // el puente mete los trozos del paquete en el relé espaciados (sin saturarlo)
+var SRV_BULK_EOSE_MS = 6000;        // bajada en paquete: como mucho se junta esto y se manda lo que haya
+var TX_BUSY_MS = 400, TX_BUSY_MAX_MS = 60000; // Bluetooth con la cola llena: se espera y se reintenta EN ORDEN (no se pierde)
+var SRV_WIFI_PER_HOUR = 20 * 1024 * 1024, SRV_WIFI_PER_DAY = 100 * 1024 * 1024; // el que presta está en Wi-Fi (no gasta datos)
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _isNx(x) { return /^nx[0-9a-z]{8}$/.test(x); }
@@ -92,7 +110,7 @@ export function gwAllowUp(str) {
       var k = ks[i], v = f[k];
       if (k === 'kinds') { if (!Array.isArray(v) || v.length !== 1 || v[0] !== GW_KIND) return ''; }
       else if (k === '#p') { if (!Array.isArray(v) || v.length > 400 || v.some(function(x) { return typeof x !== 'string' || !/^[0-9a-f]{64}$/.test(x); })) return ''; }
-      else if (k === 'ids') { if (!Array.isArray(v) || !v.length || v.length > FETCH_BATCH || v.some(function(x) { return typeof x !== 'string' || !/^[0-9a-f]{64}$/.test(x); })) return ''; } // la comprobación (3011) y los trozos de una foto (parte 3)
+      else if (k === 'ids') { if (!Array.isArray(v) || !v.length || v.length > Math.max(FETCH_BATCH, GW_BULK_FETCH) || v.some(function(x) { return typeof x !== 'string' || !/^[0-9a-f]{64}$/.test(x); })) return ''; } // la comprobación (3011) y los trozos de una foto (parte 3)
       else if (k === 'since' || k === 'limit') { if (typeof v !== 'number' || !isFinite(v) || v < 0) return ''; }
       else return '';
     }
@@ -110,13 +128,21 @@ function VSock(gw, br, sid, url) {
   this._closed = false;
   var self = this;
   this._openTimer = setTimeout(function() { if (!self._opened) { console.warn('[GW] El puente ' + br.nx + ' no abrió la sesión a tiempo'); self._end(); } }, GW_OPEN_MS);
-  gw._tx(br.dev, { op: 'o', s: sid, u: url });
+  gw._tx(br.dev, { op: 'o', s: sid, u: url, wd: gw._wdCan() ? 1 : 0 });
 }
-VSock.prototype.send = function(str) { if (this._closed) throw new Error('cerrado'); this.gw._tx(this.br.dev, { op: 'f', s: this.s, d: String(str) }); };
+VSock.prototype.send = function(str) {
+  if (this._closed) throw new Error('cerrado');
+  str = String(str);
+  if (this.gw._bulkUp(this, str)) return; // parte 4: un trozo de foto/archivo va en el paquete por Wi-Fi Direct
+  var o = { op: 'f', s: this.s, d: str };
+  if (this.gw._bulkReq(this, str)) o.b = 1; // parte 4: «tráeme estos trozos por Wi-Fi Direct»
+  this.gw._tx(this.br.dev, o);
+};
 VSock.prototype.close = function() { if (this._closed) return; this.gw._tx(this.br.dev, { op: 'c', s: this.s }); this._end(); };
 VSock.prototype._end = function() {
   if (this._closed) return;
   this._closed = true; clearTimeout(this._openTimer);
+  if (this.bulk) { clearTimeout(this.bulk.timer); this.bulk = null; }
   this.gw.socks.delete(this.s);
   if (!this._opened) this.br.fails = (this.br.fails || 0) + 1; // un puente que no abre dos veces se suelta (tick)
   var fn = this.onclose; if (typeof fn === 'function') { try { fn(); } catch (e) {} }
@@ -138,7 +164,11 @@ export class GwLink {
     this.daily = new Map();    // from → { day, n }
     this.blobBytes = new Map(); // parte 3: from → { h0, h, day, d } (bytes de lo grande, subida + bajada)
     this.wakes = new Map();    // token → cuándo; from → [tiempos]
-    this.stats = { up: 0, down: 0, rejected: 0, sessions: 0 };
+    this.stats = { up: 0, down: 0, rejected: 0, sessions: 0, wd: 0, wdKB: 0, wdFail: 0 };
+    // parte 4: los dos lados
+    this.txq = new Map();      // dev → { items, busy } (envío en orden por Bluetooth)
+    this.wdUntil = new Map();  // nx → hasta cuándo no se usa Wi-Fi Direct con él (falló)
+    this._wdChain = null;      // una transferencia de Wi-Fi Direct del puente a la vez
   }
 
   ble() { return this.net && this.net.ble; }
@@ -155,15 +185,29 @@ export class GwLink {
     return out;
   }
 
-  _tx(dev, o, tries) {
-    var ble = this.ble(), self = this;
+  // Parte 4: por Bluetooth, EN ORDEN y sin perder nada por la cola llena. Android acepta un mensaje entero o ninguno (cola de
+  // ~500 trozos de radio; el frame de un trozo de foto son ~110): antes, con la cola llena se reintentaba 3 veces en 1 s y se
+  // perdía, y un EOSE pequeño podía adelantarse a los trozos que bajaban (la foto quedaba incompleta).
+  _tx(dev, o) {
+    var ble = this.ble();
     if (!ble || typeof ble._sendMessageNative !== 'function' || !dev) return;
     var pkt = Object.assign({ v: 1, type: 'ig', from: this.me() }, o);
     try { if (ble.relay && typeof ble.relay._touch === 'function') ble.relay._touch(dev); } catch (e) {} // una conexión de paso en uso no se cierra
-    var str = JSON.stringify(pkt);
-    ble._sendMessageNative(dev, str, null).catch(function(e) {
-      var n = (tries || 0) + 1;
-      if (n < TX_TRIES) setTimeout(function() { self._tx(dev, o, n); }, 300 * n);
+    var q = this.txq.get(dev);
+    if (!q) { q = { items: [], busy: false }; this.txq.set(dev, q); }
+    if (q.items.length >= 400) { if (!q.said) { q.said = true; console.warn('[GW] Cola de envío al vecino llena: se descarta'); } return; }
+    q.items.push({ str: JSON.stringify(pkt), t0: Date.now(), tries: 0 });
+    if (!q.busy) this._txPump(dev, q);
+  }
+  _txPump(dev, q) {
+    var self = this, ble = this.ble(), it = q.items[0];
+    if (!it || !ble) { q.busy = false; q.said = false; if (this.txq.get(dev) === q && !q.items.length) this.txq.delete(dev); return; }
+    q.busy = true;
+    ble._sendMessageNative(dev, it.str, null).then(function() { q.items.shift(); self._txPump(dev, q); }, function(e) {
+      var busy = /BLE_BUSY|llena|busy/i.test(String((e && e.code) || '') + ' ' + String((e && e.message) || ''));
+      it.tries++;
+      if (busy ? Date.now() - it.t0 < TX_BUSY_MAX_MS : it.tries < TX_TRIES) { setTimeout(function() { self._txPump(dev, q); }, busy ? TX_BUSY_MS : 300 * it.tries); return; }
+      q.items.shift(); self._txPump(dev, q);
     });
   }
 
@@ -281,20 +325,23 @@ export class GwLink {
     this.unanswered.delete(from);
     var urls = Array.isArray(p.u) ? p.u.filter(function(u) { return typeof u === 'string' && /^wss?:\/\//.test(u) && u.length < 200; }).slice(0, 8) : [];
     if (!urls.length) { this.asked.set(from, Date.now() + GW_NO_MS); this.offers.delete(from); return; }
-    this.offers.set(from, { dev: dev, urls: urls, at: Date.now() });
+    // parte 4: ¿puede recibir/mandar lo pesado por Wi-Fi Direct? ¿está en Wi-Fi (no gasta sus datos)?
+    this.offers.set(from, { dev: dev, urls: urls, at: Date.now(), wd: p.wd === 1, wifi: p.w === 1 });
     if (!this.bridges.has(from) && this.bridges.size < GW_MAX && !this._realOpen()) this.tick();
   }
 
   _use(nx, dev, url) {
     var self = this, net = this.net, key = 'gw:' + nx;
-    var b = { nx: nx, dev: dev, url: url, key: key };
+    var of = this.offers.get(nx) || {};
+    var b = { nx: nx, dev: dev, url: url, key: key, wd: !!of.wd, wifi: !!of.wifi };
     this.bridges.set(nx, b);
     var r = net.relays.get(key) || { backoff: 2000, waits: new Map() };
     r.gw = nx; r.realUrl = url;
     r.factory = function() { var sid = _rid(); var vs = new VSock(self, b, sid, url); self.socks.set(sid, vs); b.sock = vs; return vs; };
     r.retryAt = 0;
     net.relays.set(key, r);
-    console.log('[GW] Sin internet propio: uso a ' + nx + ' de puente (relé ' + _host(url) + '; ' + this.bridges.size + ' de ' + GW_MAX + ')');
+    console.log('[GW] Sin internet propio: uso a ' + nx + ' de puente (relé ' + _host(url) + '; ' + this.bridges.size + ' de ' + GW_MAX + ')' +
+      (b.wd ? (this._wdCan() ? ', fotos y archivos por Wi-Fi Direct' : ', Wi-Fi Direct no disponible en este teléfono') : ''));
     net._connect(key);
   }
 
@@ -335,6 +382,151 @@ export class GwLink {
     return { bridges: out, serving: this.sess.size, stats: this.stats };
   }
 
+  // ---------- parte 4: lo pesado por WI-FI DIRECT con el puente (los dos lados) ----------
+  _wd() { var b = this.ble(); return b && b.wifiDirect; }
+  // ¿Puede ESTE teléfono usar Wi-Fi Direct ahora? (permiso ya concedido: al que presta nunca se le pide nada)
+  _wdCan() {
+    var wd = this._wd();
+    if (!wd || typeof wd.supported !== 'function' || !wd.supported() || typeof wd.send !== 'function') return false;
+    var st = wd.status || {};
+    return !!st.granted && st.wifiOn !== false;
+  }
+  _wdCooling(nx) { return Date.now() < (this.wdUntil.get(nx) || 0); }
+  // Cliente: ¿lo pesado con este puente va por Wi-Fi Direct?
+  wdUp(b) { return !!(b && b.wd && b.sock && b.sock._opened && !b.sock._closed && !this._wdCooling(b.nx) && this._wdCan()); }
+  wdAny() { var self = this, any = false; this.bridges.forEach(function(b) { if (self.wdUp(b)) any = true; }); return any; }
+  _bridgeOfRelay(r) { return r && r.gw ? this.bridges.get(r.gw) || null : null; }
+  // Tamaño máximo de un adjunto por el puente: con Wi-Fi Direct y el que presta en Wi-Fi, lo del buzón de archivos (5 MB);
+  // si no, fotos pequeñas (sus datos móviles no se gastan en vídeos)
+  fileMaxB64() {
+    var self = this, big = false;
+    this.bridges.forEach(function(b) { if (b.wifi && self.wdUp(b)) big = true; });
+    return big ? GW_WD_FILE_MAX_B64 : GW_FILE_MAX_B64;
+  }
+  // Para blob_mailbox (vía net_link): trozos a la vez y esperas cuando todo va por puentes
+  blobPar() { return this.wdAny() ? GW_BULK_PAR : 0; }
+  // ¿Este relé-puente sirve para publicar un trozo? Si algún puente tiene Wi-Fi Direct, solo esos (uno sin él cargaría la
+  // radio Bluetooth con la tanda grande y haría esperar a todos)
+  blobRelayOk(r) { var b = this._bridgeOfRelay(r); return !this.wdAny() || this.wdUp(b); }
+  publishMs(t) { return this.wdAny() ? 180000 : Math.max(t || 0, 60000); } // por Bluetooth un trozo son ~3 s de radio
+  fetchBatch(r) { return this.wdUp(this._bridgeOfRelay(r)) ? GW_BULK_FETCH : FETCH_BATCH; }
+  fetchMs(r, t) { return this.wdUp(this._bridgeOfRelay(r)) ? 60000 : Math.max(t || 0, 30000); } // sin progreso tanto tiempo (net_link)
+
+  // Cliente: un trozo del buzón que sale → al paquete (se manda a los GW_BULK_WAIT_MS o al juntar GW_BULK_PAR)
+  _bulkUp(vs, str) {
+    if (str.length < SRV_BYTES_MIN || str.indexOf('["EVENT"') !== 0 || str.indexOf('"kind":' + BLOB_KIND) < 0 || !this.wdUp(vs.br)) return false;
+    var self = this, q = vs.bulk || (vs.bulk = { frames: [], timer: null });
+    q.frames.push(str);
+    if (q.frames.length >= GW_BULK_PAR) this._bulkFlush(vs);
+    else if (!q.timer) q.timer = setTimeout(function() { self._bulkFlush(vs); }, GW_BULK_WAIT_MS);
+    return true;
+  }
+  _bulkFlush(vs) {
+    var q = vs.bulk, self = this;
+    if (!q) return;
+    clearTimeout(q.timer); q.timer = null;
+    var frames = q.frames; q.frames = [];
+    if (!frames.length || vs._closed) return;
+    var total = 0; frames.forEach(function(f) { total += f.length; });
+    var ble = function() { frames.forEach(function(f) { if (!vs._closed) self._tx(vs.br.dev, { op: 'f', s: vs.s, d: f }); }); };
+    if (total < GW_WD_MIN) { ble(); return; }
+    this._wdRun(vs.br.nx, vs.br.dev, 'u', 'gw1\n' + vs.s + '\n' + frames.join('\n'), frames.length).then(function(ok) { if (!ok) ble(); });
+  }
+  // Cliente: ¿pedir estos trozos «por Wi-Fi Direct»? (el puente junta lo que baja hasta el EOSE y lo manda en un paquete)
+  _bulkReq(vs, str) { return str.indexOf('["REQ"') === 0 && str.indexOf('"ids":[') > 0 && this.wdUp(vs.br); }
+
+  // Una transferencia de Wi-Fi Direct del puente a la vez. Resuelve true si llegó; false → el que llama manda por Bluetooth.
+  _wdRun(nx, dev, dir, data, n) {
+    var self = this, again = true;
+    var job = function() {
+      var wd = self._wd();
+      if (!wd || !self._wdCan() || self._wdCooling(nx)) return Promise.resolve(false);
+      return self._wdIdle(wd, GW_WD_BUSY_MS).then(function(idle) {
+        if (!idle) { console.log('[GW] Wi-Fi Direct ocupado con otra transferencia: ' + n + ' trozo(s) por Bluetooth'); return false; }
+        var id = 'gw' + dir + _rid(), t0 = Date.now();
+        return wd.send(dev, id, data, { gw: dir }, { offerMs: GW_WD_OFFER_MS, gw: 1, nx: nx }).then(function() {
+          var s = (Date.now() - t0) / 1000;
+          self.stats.wd++; self.stats.wdKB += Math.round(data.length / 1024);
+          console.log('[GW] Wi-Fi Direct ' + (dir === 'u' ? 'al puente ' : 'a ') + nx + ': ' + n + ' trozo(s), ' + Math.round(data.length / 1024) + ' KB en ' + s.toFixed(1) + ' s');
+          return true;
+        }, function(e) {
+          // el otro está con otra transferencia (p. ej. la bajada mientras subo): un reintento en un momento, si no, Bluetooth
+          if (/ocupado/i.test(String(e && e.message))) {
+            if (again) { again = false; return new Promise(function(res) { setTimeout(res, 2500); }).then(job); }
+            console.log('[GW] El otro tiene Wi-Fi Direct ocupado: ' + n + ' trozo(s) por Bluetooth'); return false;
+          }
+          self.stats.wdFail++;
+          self.wdUntil.set(nx, Date.now() + GW_WD_COOL_MS);
+          console.warn('[GW] Wi-Fi Direct con ' + nx + ' no funcionó (' + String(e && e.message).slice(0, 60) + '): lo pesado por Bluetooth ' + Math.round(GW_WD_COOL_MS / 60000) + ' min');
+          return false;
+        });
+      });
+    };
+    var p = (this._wdChain || Promise.resolve()).then(job, job);
+    this._wdChain = p.catch(function() {});
+    return p.catch(function() { return false; });
+  }
+  _wdIdle(wd, ms) {
+    if (!wd.busy && !(wd.incoming && wd.incoming.size)) return Promise.resolve(true);
+    return new Promise(function(res) {
+      var t0 = Date.now(), iv = setInterval(function() {
+        if (!wd.busy && !(wd.incoming && wd.incoming.size)) { clearInterval(iv); res(true); }
+        else if (Date.now() - t0 > ms) { clearInterval(iv); res(false); }
+      }, 150);
+    });
+  }
+
+  // Llegó un paquete del puente por Wi-Fi Direct (wifi_direct.js, meta.gw). 'u': soy el que presta (trozos para el relé);
+  // 'd': soy el que pidió (lo que bajó del relé)
+  wdIn(from, dev, data, dir) {
+    from = _nid(from);
+    if (_disabled() || typeof data !== 'string' || data.indexOf('gw1\n') !== 0) return false;
+    var lines = data.split('\n'), sid = lines[1], frames = lines.slice(2), self = this;
+    if (!/^[0-9a-f]{12}$/.test(sid || '') || !frames.length) return false;
+    if (dir === 'u') {
+      var s = this.sess.get(from + '|' + sid);
+      if (!s || !s.open) return false;
+      // al relé espaciados (como si hubieran llegado de uno en uno; los mismos filtros y topes de siempre)
+      frames.forEach(function(f, i) { setTimeout(function() { if (self.sess.get(from + '|' + sid) === s) self._srvUp(from, s.dev, { s: sid, d: f }); }, i * SRV_BULK_GAP_MS); });
+      return true;
+    }
+    if (dir === 'd') {
+      var vs = this.socks.get(sid);
+      if (!vs || vs._closed || !vs._opened || vs.br.nx !== from) return false;
+      frames.forEach(function(f) { self._cliFrame({ s: sid, d: f }); });
+      return true;
+    }
+    return false;
+  }
+
+  // Servidor: el que pide sabe usar Wi-Fi Direct y yo también (y no falló hace poco con él)
+  _srvWdOk(s) { return !!(s.wd && this._wdCan() && !this._wdCooling(s.from)); }
+  _bulkMark(s, str) {
+    if (!this._srvWdOk(s)) return;
+    var sub = ''; try { sub = JSON.parse(str)[1]; } catch (e) {}
+    if (!sub || s.bulk.has(sub) || s.bulk.size >= 4) return;
+    var self = this, e = { frames: [], bytes: 0 };
+    e.timer = setTimeout(function() { self._bulkEnd(s, sub); }, SRV_BULK_EOSE_MS);
+    s.bulk.set(sub, e);
+  }
+  _bulkDown(s, d) {
+    var m = /^\["(EVENT|EOSE|CLOSED)","([^"\\]{1,64})"/.exec(d.slice(0, 90));
+    var e = m && s.bulk.get(m[2]);
+    if (!e || d.indexOf('\n') >= 0) return false;
+    e.frames.push(d); e.bytes += d.length;
+    if (m[1] !== 'EVENT') this._bulkEnd(s, m[2]);
+    return true;
+  }
+  _bulkEnd(s, sub, drop) {
+    var e = s.bulk.get(sub), self = this;
+    if (!e) return;
+    s.bulk.delete(sub); clearTimeout(e.timer);
+    if (drop || !e.frames.length) return;
+    var ble = function() { e.frames.forEach(function(f) { self._tx(s.dev, { op: 'e', s: s.sid, d: f }); }); };
+    if (e.bytes < GW_WD_MIN || !this._srvWdOk(s)) { ble(); return; }
+    this._wdRun(s.from, s.dev, 'd', 'gw1\n' + s.sid + '\n' + e.frames.join('\n'), e.frames.length).then(function(ok) { if (!ok) ble(); });
+  }
+
   // ---------- servidor: el teléfono que PRESTA su internet ----------
   _canShare() {
     if (_disabled()) return '';
@@ -347,7 +539,8 @@ export class GwLink {
 
   _srvAsk(from, dev) {
     var why = this._canShare();
-    this._tx(dev, { op: 'a', u: why === 'ok' ? this._realUrls() : [] });
+    var ok = why === 'ok';
+    this._tx(dev, { op: 'a', u: ok ? this._realUrls() : [], wd: ok && this._wdCan() ? 1 : 0, w: ok && this.net.wifi ? 1 : 0 });
   }
 
   _srvOpen(from, dev, p) {
@@ -362,7 +555,7 @@ export class GwLink {
     if (this.sess.size >= SRV_MAX_SESSIONS) return no('ocupado');
     var ws;
     try { ws = new WebSocket(url); } catch (e) { return no('no conecta'); }
-    var s = { ws: ws, dev: dev, from: from, sid: sid, url: url, open: false, rxAt: Date.now(), evMin: [] };
+    var s = { ws: ws, dev: dev, from: from, sid: sid, url: url, open: false, rxAt: Date.now(), evMin: [], wd: p.wd === 1, bulk: new Map() };
     this.sess.set(key, s);
     this.stats.sessions++;
     ws.onopen = function() { s.open = true; s.rxAt = Date.now(); console.log('[GW] Presto internet a ' + from + ' (relé ' + _host(url) + ')'); self._tx(dev, { op: 'k', s: sid, ok: 1 }); };
@@ -372,6 +565,7 @@ export class GwLink {
       // parte 3: lo grande que baja (una foto, un trozo de archivo) también gasta del tope de bytes de quien lo pidió
       if (d.length > SRV_BYTES_MIN && !self._blobSpend(from, d.length)) { self.stats.rejected++; return; }
       self.stats.down++;
+      if (s.bulk.size && self._bulkDown(s, d)) return; // parte 4: trozos pedidos «por Wi-Fi Direct»: se juntan
       self._tx(s.dev, { op: 'e', s: sid, d: d });
     };
     ws.onclose = function() { if (self.sess.get(key) === s) { self.sess.delete(key); self._tx(s.dev, { op: s.open ? 'x' : 'k', s: sid, ok: 0 }); } };
@@ -384,13 +578,16 @@ export class GwLink {
     s.dev = dev; s.rxAt = Date.now();
     var kind = gwAllowUp(p.d);
     if (!kind) { this.stats.rejected++; return; }
+    if (kind === 'REQ' && p.b === 1) this._bulkMark(s, p.d);
+    else if (kind === 'CLOSE' && s.bulk.size) { try { this._bulkEnd(s, JSON.parse(p.d)[1], true); } catch (e) {} }
     if ((kind === 'BLOB' || (kind === 'EVENT' && p.d.length > SRV_BYTES_MIN)) && !this._blobSpend(from, p.d.length)) {
       var bid = ''; try { bid = JSON.parse(p.d)[1].id; } catch (e) {}
       this.stats.rejected++;
       this._tx(s.dev, { op: 'e', s: s.sid, d: JSON.stringify(['OK', bid, false, 'rate-limited: tope de archivos del puente']) });
       return;
     }
-    if (kind === 'EVENT' || kind === 'BLOB') {
+    // los trozos de fotos/archivos los acota el tope de BYTES (parte 4: un archivo de 5 MB son ~95 trozos); los mensajes, esto
+    if (kind === 'EVENT') {
       var now = Date.now(), id = '';
       try { id = JSON.parse(p.d)[1].id; } catch (e) {}
       s.evMin = s.evMin.filter(function(t) { return now - t < 60000; });
@@ -413,7 +610,8 @@ export class GwLink {
     if (!b) { b = { h0: now, h: 0, day: day, d: 0 }; this.blobBytes.set(from, b); }
     if (now - b.h0 >= 3600000) { b.h0 = now; b.h = 0; }
     if (b.day !== day) { b.day = day; b.d = 0; }
-    if (b.h + n > SRV_BLOB_PER_HOUR || b.d + n > SRV_BLOB_PER_DAY) {
+    var wifi = !!(this.net && this.net.wifi); // parte 4: en Wi-Fi no gasta datos del que presta: tope más alto
+    if (b.h + n > (wifi ? SRV_WIFI_PER_HOUR : SRV_BLOB_PER_HOUR) || b.d + n > (wifi ? SRV_WIFI_PER_DAY : SRV_BLOB_PER_DAY)) {
       if (!b.said || now - b.said > 600000) { b.said = now; console.log('[GW] ' + from + ' llegó al tope de datos por el puente (' + Math.round(b.h / 1024) + ' KB esta hora, ' + Math.round(b.d / 1024) + ' KB hoy)'); }
       return false;
     }
@@ -426,6 +624,7 @@ export class GwLink {
     var s = this.sess.get(key);
     if (!s) return;
     this.sess.delete(key);
+    if (s.bulk) { s.bulk.forEach(function(e) { clearTimeout(e.timer); }); s.bulk.clear(); }
     try { s.ws.onclose = null; s.ws.close(); } catch (e) {}
     if (!quiet) this._tx(s.dev, { op: 'x', s: s.sid });
     console.log('[GW] Dejo de prestar internet a ' + s.from + ' (' + why + ')');

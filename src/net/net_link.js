@@ -306,11 +306,23 @@ export class NetLink {
   filesOk(nexoId) { return this.canReach(nexoId) && this.bothWifi(nexoId) && !this.gwOnly(); }
   // Buzón para ARCHIVOS/fotos (y el buzón de archivos): como mailboxOk; por un puente solo lo pequeño (parte 3 del puente,
   // dueño 13-11: fotos y notas de voz del chat hasta GW_FILE_MAX_B64 caracteres). Sin tamaño (b64len) no pasa por un puente.
+  // Parte 4: con Wi-Fi Direct al puente y el puente en Wi-Fi, hasta lo que admite el buzón de archivos (gw.fileMaxB64).
   mailboxFilesOk(nexoId, b64len) {
     if (!this.mailboxOk(nexoId)) return false;
     if (!this.gwOnly()) return true;
-    return typeof b64len === 'number' && b64len > 0 && b64len <= GW_FILE_MAX_B64;
+    var max = this.gw && typeof this.gw.fileMaxB64 === 'function' ? this.gw.fileMaxB64() : GW_FILE_MAX_B64;
+    return typeof b64len === 'number' && b64len > 0 && b64len <= max;
   }
+  // Parte 4 del puente: una foto/archivo con este contacto por internet va al BUZÓN DE ARCHIVOS aunque esté en línea (yo sin
+  // internet propio, o él está por un puente): sus trozos el puente los acota por bytes y los lleva en un paquete por Wi-Fi
+  // Direct; como mensajes sueltos irían de uno en uno por Bluetooth
+  viaBridge(nexoId) { var p = this.peers.get(_nid(nexoId)); return this.gwOnly() || !!(p && p.gw && p.up); }
+  // Parte 4 del puente (blob_mailbox.js): sin internet propio, trozos a la vez y esperas según el camino al puente (Wi-Fi
+  // Direct: tandas grandes en un paquete; Bluetooth: un trozo son ~3 s de radio). 0 = lo de siempre.
+  blobPar() { return this.gwOnly() && this.gw ? this.gw.blobPar() : 0; }
+  blobPublishMs(t) { return this.gwOnly() && this.gw ? this.gw.publishMs(t) : t; }
+  blobFetchBatch(url) { var r = this._relayFor(url); return r && r.gw && this.gw ? this.gw.fetchBatch(r) : 0; }
+  blobFetchMs(url, t) { var r = this._relayFor(url); return r && r.gw && this.gw ? this.gw.fetchMs(r, t) : t; }
   // Buzón: dejarle un texto aunque no esté en línea
   mailboxOk(nexoId) {
     var nx = _nid(nexoId);
@@ -547,7 +559,7 @@ export class NetLink {
       this.state.peerFcm[nx] = o.f; this._saveState();
     }
     // Solo lo reciente cuenta para "en línea" (lo guardado de hace rato es del buzón)
-    if (now - t < UP_MS && t > (peer.lastRx || 0)) { peer.lastRx = t; peer.wifi = !!o.w; }
+    if (now - t < UP_MS && t > (peer.lastRx || 0)) { peer.lastRx = t; peer.wifi = !!o.w; peer.gw = !!o.g; }
     if (o.h) {
       // Saludo: contestar si hace rato que no le saludamos (así los dos se ven en línea enseguida)
       if (now - t < UP_MS && now - (peer.helloAt || 0) > 20000) this._hello(nx);
@@ -724,6 +736,7 @@ export class NetLink {
     if (!c || !(this.online() || (tp && tp.torUp))) throw Object.assign(new Error('Sin internet con ' + nx), { code: 'NET_DOWN' });
     var pair = await this._pair(nx, c.publicKey);
     var body = { t: Date.now(), w: this.wifi ? 1 : 0 };
+    if (this.gwOnly()) body.g = 1; // puente parte 4: «estoy por un puente»: mándame fotos/archivos al buzón de archivos
     if (opts && opts.hello) { body.h = 1; if (this.tor.ready && this.tor.onion) { body.o = this.tor.onion; body.op = this.tor.port; } if (this.fcmToken) body.f = this.fcmToken; }
     // #130b (dueño 31-10): una oferta de llamada/videollamada (1-a-1 o invitación de grupo) marca el sobre con cl:1, para
     // que la escucha nativa de internet en segundo plano (NetBg) la saque como LLAMADA a pantalla completa (enciende el
@@ -924,10 +937,15 @@ export class NetLink {
       self.relays.forEach(function(r, u) { if (r.open && !r.gw) open.push({ r: r, u: u }); });
       // Sin relés propios: un trozo del buzón de archivos sale por los puentes (parte 3; el puente lo acota por bytes). Lo demás
       // (borrados, el canal de diagnósticos…) no pasa por un puente. Se informa la URL del relé de verdad (va en el puntero).
-      if (!open.length && ev && ev.kind === BLOB_KIND) self.relays.forEach(function(r) { if (r.open && r.gw && r.realUrl && !open.some(function(o) { return o.u === r.realUrl; })) open.push({ r: r, u: r.realUrl }); });
+      var viaGw = false;
+      if (!open.length && ev && ev.kind === BLOB_KIND) {
+        viaGw = true;
+        self.relays.forEach(function(r) { if (r.open && r.gw && r.realUrl && !open.some(function(o) { return o.u === r.realUrl; }) && (!self.gw || typeof self.gw.blobRelayOk !== 'function' || self.gw.blobRelayOk(r))) open.push({ r: r, u: r.realUrl }); });
+      }
       if (!open.length) { resolve([]); return; }
       var oks = [], left = open.length, done = false, grace = null;
       var enough = opts && opts.enough ? Math.min(opts.enough, open.length) : open.length;
+      if (viaGw && opts && opts.enough) enough = 1; // puente parte 4: un relé (por cualquier puente) ya lo tiene; los demás, con margen
       var finish = function() { if (done) return; done = true; clearTimeout(timer); clearTimeout(grace); open.forEach(function(o) { o.r.waits.delete(ev.id); }); resolve(oks); };
       var timer = setTimeout(finish, timeoutMs || 10000);
       open.forEach(function(o) {
@@ -949,7 +967,12 @@ export class NetLink {
       if (!r.fetches) r.fetches = new Map();
       var finish = function() { if (done) return; done = true; clearTimeout(timer); r.fetches.delete(sub); try { self._send(r, ['CLOSE', sub]); } catch (e) {} resolve(got); };
       var timer = setTimeout(finish, timeoutMs || 15000);
-      r.fetches.set(sub, { onEvent: function(ev) { if (ev && typeof ev.id === 'string' && ids.indexOf(ev.id) >= 0) { got.push(ev); if (got.length >= ids.length) finish(); } }, done: finish });
+      // Por un puente (parte 4) el tope es SIN PROGRESO: por Bluetooth cada trozo tarda segundos en llegar y no hay que cortar
+      // una bajada que avanza
+      r.fetches.set(sub, { onEvent: function(ev) {
+        if (ev && typeof ev.id === 'string' && ids.indexOf(ev.id) >= 0) { got.push(ev); if (got.length >= ids.length) { finish(); return; } }
+        if (r.gw && !done) { clearTimeout(timer); timer = setTimeout(finish, timeoutMs || 15000); }
+      }, done: finish });
       if (!self._send(r, ['REQ', sub, { ids: ids }])) finish();
     });
   }
