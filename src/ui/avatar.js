@@ -23,6 +23,7 @@ import { _getBLEContacts, _normId, _saveBLEContacts } from './ble_helpers.js';
 import { _sendTextTo } from './send.js';
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
+import { printOfImage, printSame, printScore, printValid } from './img_print.js';
 
 var MY_FILE = 'nexo_my_avatar.json', SENT_FILE = 'nexo_av_sent.json', HIST_FILE = 'nexo_av_hist.json';
 var IMG_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/;
@@ -38,7 +39,7 @@ var _minePh = null;           // huella de mi foto
 // la copia de una foto que FUE mía (huellas de mis fotos anteriores, con desde cuándo la tuve; 5 como mucho, 180 días). Solo si el
 // contacto la puso después de que yo la pusiera (si la tenía él antes, el original es el suyo).
 var _past = [];               // [{ b, c, at, until }]
-var PAST_MAX = 5, PAST_KEEP_MS = 180 * 86400000;
+var PAST_MAX = 8, PAST_KEEP_MS = 180 * 86400000;   // 3065: 8 (también las que el dueño marca «Es mi foto»)
 // 3063 (diagnóstico del Motorola 13-11: a las 08:38:31 Perfil aceptó una foto de 9 KB, 20 s después de rechazar la foto actual del
 // dueño; el dueño la había cambiado a las 08:35 y lo más probable es que fuera la de antes): Perfil compara también con las fotos que
 // cada contacto TUVO (huellas de las 5 últimas por contacto, 180 días), no solo con la actual.
@@ -66,35 +67,18 @@ function _phash(url) {
   if (!url) return Promise.resolve(null);
   if (typeof window.NEXO_avatarPHash === 'function') { try { return Promise.resolve(window.NEXO_avatarPHash(url) || null); } catch (e) { return Promise.resolve(null); } }
   return new Promise(function(resolve) {
-    setTimeout(function() { resolve(null); }, 2000);   // sin huella a tiempo (imagen que no carga): no se compara
+    setTimeout(function() { resolve(null); }, 2000);   // sin huella a tiempo (imagen que no carga): no se compara (se reintenta)
     try {
       var im = new Image();
       im.onerror = function() { resolve(null); };
-      im.onload = function() {
-        try {
-          var cv = document.createElement('canvas'); cv.width = 9; cv.height = 8;
-          var cx = cv.getContext('2d'); cx.drawImage(im, 0, 0, 9, 8);
-          var d = cx.getImageData(0, 0, 9, 8).data, bits = '', r = 0, g = 0, b = 0, lum = function(i) { return d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114; };
-          for (var y = 0; y < 8; y++) for (var x = 0; x < 8; x++) { var i = (y * 9 + x) * 4; bits += lum(i) > lum(i + 4) ? '1' : '0'; }
-          for (var k = 0; k < d.length; k += 4) { r += d[k]; g += d[k + 1]; b += d[k + 2]; }
-          resolve({ b: bits, c: [Math.round(r / 72), Math.round(g / 72), Math.round(b / 72)] });
-        } catch (e) { resolve(null); }
-      };
+      // 3065: huella v2 (img_print.js): además de la de 8×8, una miniatura para reconocer recortes, bordes y capturas
+      im.onload = function() { try { resolve(printOfImage(im, function() { return document.createElement('canvas'); })); } catch (e) { resolve(null); } };
       im.src = url;
     } catch (e) { resolve(null); }
   });
 }
-// Misma foto: ≤ 8 de 64 bits distintos y color medio parecido. Una imagen casi lisa (huella sin dibujo) no se compara.
-function _same(p, q) {
-  if (!p || !q || typeof p.b !== 'string' || typeof q.b !== 'string' || p.b.length !== 64 || q.b.length !== 64) return false;
-  var ones = p.b.split('1').length - 1;
-  if (ones < 4 || ones > 60) return false;
-  var dist = 0; for (var i = 0; i < 64; i++) if (p.b.charAt(i) !== q.b.charAt(i)) dist++;
-  if (dist > 8) return false;
-  var pc = p.c || [], qc = q.c || [];
-  for (var j = 0; j < 3; j++) if (Math.abs((pc[j] || 0) - (qc[j] || 0)) > 24) return false;
-  return true;
-}
+// Misma foto (3065: img_print.printSame — alineando miniaturas si las dos huellas las traen; si no, la de 8×8 como antes)
+function _same(p, q) { return printSame(p, q); }
 function _nameOf(nx) { var c = _getBLEContacts().find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; }); return (c && c.name) || nx; }
 // Qué fotos se muestran: la de un contacto NO si es la mía, ni si otro contacto tenía la misma desde antes (empate: ninguna).
 function _recompute() {
@@ -123,6 +107,8 @@ function _keep(nx, img, at) {
   // 3062: si mientras se calculaba la huella llegó otra (o «quitada»), esta ya no vale
   return _phash(img).then(function(ph) { if (_gen.get(nx) !== g) return; _all.set(nx, { img: img, at: at || 0, ph: ph }); if (!ph) _phRetrySoon(); });
 }
+// Lo que se guarda de una huella (3065: con la miniatura y el color si los trae)
+function _keepPrint(ph, extra) { var o = { b: ph.b, c: ph.c }; if (typeof ph.t === 'string') o.t = ph.t; if (typeof ph.k === 'string') o.k = ph.k; return Object.assign(o, extra || {}); }
 // 3063: la foto que un contacto deja de tener pasa a su historial (con su huella; si no la había, se calcula)
 function _histAdd(nx, old) {
   if (!old || !old.img) return;
@@ -130,7 +116,7 @@ function _histAdd(nx, old) {
     if (!ph || typeof ph.b !== 'string') return;
     var now = Date.now();
     var l = (_hist[nx] || []).filter(function(q) { return q && now - (Number(q.until) || 0) < PAST_KEEP_MS && !_same(q, ph); });
-    l.push({ b: ph.b, c: ph.c, until: now });
+    l.push(_keepPrint(ph, { until: now }));
     _hist[nx] = l.slice(-PAST_MAX);
     _save(HIST_FILE, _hist);
   };
@@ -190,9 +176,9 @@ export function avatarInit() {
   if (_started) return;
   _started = true;
   Promise.all([_load(MY_FILE), _load(SENT_FILE), _load(HIST_FILE)]).then(function(r) {
-    if (r[2] && typeof r[2] === 'object') Object.keys(r[2]).forEach(function(nx) { if (NX_RE.test(nx) && Array.isArray(r[2][nx])) _hist[nx] = r[2][nx].filter(function(q) { return q && typeof q.b === 'string' && q.b.length === 64 && Array.isArray(q.c) && Date.now() - (Number(q.until) || 0) < PAST_KEEP_MS; }).slice(-PAST_MAX); });
+    if (r[2] && typeof r[2] === 'object') Object.keys(r[2]).forEach(function(nx) { if (NX_RE.test(nx) && Array.isArray(r[2][nx])) _hist[nx] = r[2][nx].filter(function(q) { return printValid(q) && Date.now() - (Number(q.until) || 0) < PAST_KEEP_MS; }).slice(-PAST_MAX); });
     if (r[0] && typeof r[0].h === 'string' && !_mine) _mine = { h: r[0].h, img: IMG_RE.test(r[0].img || '') ? r[0].img : '', at: Number(r[0].at) || 0 };
-    if (r[0] && Array.isArray(r[0].past)) _past = r[0].past.filter(function(q) { return q && typeof q.b === 'string' && q.b.length === 64 && Array.isArray(q.c) && Date.now() - (Number(q.until) || 0) < PAST_KEEP_MS; }).slice(-PAST_MAX);
+    if (r[0] && Array.isArray(r[0].past)) _past = r[0].past.filter(function(q) { return printValid(q) && Date.now() - (Number(q.until) || 0) < PAST_KEEP_MS; }).slice(-PAST_MAX);
     // 3012 (dueño 11-11: un contacto salió con una foto que no era la suya; el registro de Marcos mostró que la mandó ese teléfono
     // como SU foto): al diagnóstico, si este teléfono tiene foto propia y desde cuándo (las puestas antes de la 3012: «fecha desconocida»)
     if (_mine && _mine.img) console.log('[AVATAR] Este teléfono tiene foto de perfil propia (' + Math.round(_mine.img.length / 1024) + ' KB, puesta: ' + (_mine.at ? new Date(_mine.at).toISOString().substring(0, 16) : 'fecha desconocida') + ')');
@@ -225,6 +211,8 @@ export function avatarDiag(nx) {
   var d = '';
   if (o.ph && _minePh && typeof o.ph.b === 'string' && typeof _minePh.b === 'string') { var n = 0; for (var i = 0; i < 64; i++) if (o.ph.b.charAt(i) !== _minePh.b.charAt(i)) n++; d = ', a ' + n + '/64 de la tuya'; } // i18n-ok: diagnóstico
   else if (!o.ph) d = ', sin huella';
+  var sc = (o.ph && _minePh) ? printScore(o.ph, _minePh) : null;
+  if (sc) d += ', parecido ' + Math.round(sc.lum * 100) + '%' + (sc.color !== null ? ' color ' + Math.round(sc.color) : ''); // i18n-ok: diagnóstico
   return (o.hid ? 'foto copiada (escondida)' : 'foto') + d + (_past.length ? ', fotos tuyas anteriores ' + _past.length : '');
 }
 export function avatarOf(nx) { return nx === 'me' ? myAvatar() : (_cache.get(_normId(nx)) || null); }
@@ -270,7 +258,7 @@ function _archiveMine() {
   var push = function(ph) {
     if (!ph || typeof ph.b !== 'string') return;
     _past = _past.filter(function(q) { return !_same(q, ph); });
-    _past.push({ b: ph.b, c: ph.c, at: old.at || 0, until: Date.now() });
+    _past.push(_keepPrint(ph, { at: old.at || 0, until: Date.now() }));
     _past = _past.slice(-PAST_MAX);
     _saveMine();
     _recompute();
@@ -298,6 +286,25 @@ export function clearMyAvatar() {
   _emit('me');
   _sendToAll();
   _recompute();
+}
+
+// 3065 (dueño 13-11: «cualquier cosa subida por un user se debe ligar a su ID»): «Es mi foto» — el dueño marca la foto de un contacto
+// como suya (una copia que la huella no reconoció, o de una foto suya de antes de la 3042): pasa a sus fotos y deja de verse en ese
+// contacto aquí (y en cualquier otro que la ponga). No toca el teléfono del otro.
+export function claimAvatarMine(nx) {
+  nx = _normId(nx);
+  var o = _all.get(nx);
+  if (!o || !o.img) return Promise.resolve(false);
+  return (o.ph ? Promise.resolve(o.ph) : _phash(o.img)).then(function(ph) {
+    if (!ph || typeof ph.b !== 'string') return false;
+    _past = _past.filter(function(q) { return !_same(q, ph); });
+    _past.push(_keepPrint(ph, { at: 0, until: Date.now(), mine: 1 }));
+    _past = _past.slice(-PAST_MAX);
+    _saveMine();
+    console.warn('[AVATAR] El dueño marcó la foto de ' + nx + ' como suya («Es mi foto»): no se muestra');
+    _recompute();
+    return true;
+  });
 }
 
 // Lo que llega de un contacto (chat_actions._applyChatAction)

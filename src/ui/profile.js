@@ -10,7 +10,7 @@ import { _diagnosticText } from './diag.js';
 import { updaterInnerHtml, renderUpdaterSection } from './updater.js'; // 2986: actualizador automático
 import { autoDiagInnerHtml, renderAutoDiagSection, autoDiagNewCount } from './autodiag.js'; // 2974: diagnóstico automático al desarrollador
 import { startReceiveAccount, startSendAccount } from './move_account.js';
-import { avatarClash, clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
+import { avatarClash, avatarOf, claimAvatarMine, clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
 import { myProfile, setMyProfile } from './profile_data.js';
 import { getContactProfile, profileShareResend } from './profile_share.js';
 import { getCommonContacts, psiEnsure } from './psi.js'; // #dueño 04-11 paso 3: contactos en común (PSI)
@@ -160,6 +160,8 @@ function _openContactProfile(uuid) {
     '<div style="font-size:26px;font-weight:800;">' + t('prof_contact_title', 'Perfil') + '</div></div>' +
     '<div class="nx-card" style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;">' +
     '<div class="nx-av" id="nexo-cp-av" style="width:92px;height:92px;font-size:34px;"></div>' +
+    // 3065 (dueño 13-11): si la foto de este contacto es TUYA (una copia), un toque (y otro para confirmar) la deja de mostrar aquí
+    '<button id="nexo-cp-mine" class="nx-link" style="display:none;font-size:13px;">' + t('prof_cp_mine', 'Es mi foto') + '</button>' +
     '<div style="font-size:21px;font-weight:800;word-break:break-word;">' + _esc(name) + '</div>' +
     '<div class="nx-idtxt">' + t('prof_cp_nexoid', 'NEXO ID') + '</div><b style="letter-spacing:0.5px;">' + _esc(nx.toUpperCase()) + '</b>' +
     '<div class="nx-sub">' + (online ? '🟢 ' + t('prof_cp_online', 'En línea') : '⚪ ' + t('prof_cp_offline', 'Desconectado')) + '</div>' +
@@ -171,6 +173,22 @@ function _openContactProfile(uuid) {
     '</div>';
   document.body.appendChild(sheet);
   try { paintAvatar(sheet.querySelector('#nexo-cp-av'), nx); } catch (e) {}
+  (function () {
+    var mineBtn = sheet.querySelector('#nexo-cp-mine');
+    if (!mineBtn || !avatarOf(nx)) return;
+    mineBtn.style.display = '';
+    var armed = 0;
+    mineBtn.onclick = function () {
+      if (Date.now() - armed > 5000) { armed = Date.now(); mineBtn.textContent = t('prof_cp_mine_sure', '¿Es tuya? Toca otra vez para confirmar'); return; }
+      claimAvatarMine(nx).then(function (ok) {
+        if (!ok) return;
+        mineBtn.style.display = 'none';
+        var av = sheet.querySelector('#nexo-cp-av');
+        if (av) { av.style.backgroundImage = ''; av.classList.remove('nx-has-photo'); av.textContent = String(name || '?').charAt(0).toUpperCase(); }
+        if (_showInfoToast) _showInfoToast(t('prof_cp_mine_done', 'Listo: esa foto ya no se verá en ') + name, 3500);
+      });
+    };
+  })();
   // #dueño 04-11 paso 3: si está en línea, (re)calcular contactos en común al abrir la ficha y refrescar la tarjeta en vivo.
   if (online) { try { psiEnsure(nx); } catch (e) {} }
   (function () {

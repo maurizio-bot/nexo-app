@@ -17,6 +17,8 @@
 //  8. (3063, Motorola 13-11 08:38:31: Perfil aceptó una foto 20 s después de rechazar la actual del dueño; él la había cambiado a
 //     las 08:35) Perfil rechaza también una foto que un contacto TUVO antes (C intenta una copia de la foto ANTERIOR de A), también
 //     tras reiniciar; y el dueño sí puede volver a poner una foto suya de antes aunque un contacto tenga una copia.
+//  9. (3065, dueño 13-11: «cualquier cosa subida por un user se debe ligar a su ID») «Es mi foto»: una copia que la huella no
+//     reconoce (B pone Z_B) se sigue viendo; A abre el perfil de B, toca «Es mi foto» dos veces y deja de verse (también tras reiniciar).
 // El simulador no tiene canvas: la huella de la imagen la da window.NEXO_avatarPHash (las fotos de la prueba la llevan escrita).
 // Uso: node avatardup.js <dir_build>
 'use strict';
@@ -31,7 +33,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const X = '0110'.repeat(16), X2 = '1110' + '0110'.repeat(14) + '0111', Q = '0011'.repeat(16);
 const mk = (bits, rgb, salt) => 'data:image/jpeg;base64,' + Buffer.from('PH|' + bits + '|' + rgb.join(',') + '|' + salt + '|' + 'x'.repeat(7000)).toString('base64');
 const R_BITS = '1001'.repeat(16), S_BITS = '1100'.repeat(16);
-const P = mk(X, [120, 100, 90], 'a'), P_B = mk(X2, [122, 101, 88], 'b'), P_C = mk(X, [119, 99, 91], 'c'), P_D = mk(X2, [121, 100, 90], 'd'), Q_B = mk(Q, [40, 160, 200], 'q'), R_A = mk(R_BITS, [200, 60, 60], 'r'), R_E = mk(R_BITS, [202, 61, 58], 'e'), P_F = mk(X, [121, 99, 90], 'f'), S_B = mk(S_BITS, [30, 200, 60], 's');
+const P = mk(X, [120, 100, 90], 'a'), P_B = mk(X2, [122, 101, 88], 'b'), P_C = mk(X, [119, 99, 91], 'c'), P_D = mk(X2, [121, 100, 90], 'd'), Q_B = mk(Q, [40, 160, 200], 'q'), R_A = mk(R_BITS, [200, 60, 60], 'r'), R_E = mk(R_BITS, [202, 61, 58], 'e'), P_F = mk(X, [121, 99, 90], 'f'), Z_B = mk('0101'.repeat(16), [90, 140, 70], 'z'), S_B = mk(S_BITS, [30, 200, 60], 's');
 const phashOf = (url) => { const m = /^PH\|([01]{64})\|(\d+),(\d+),(\d+)\|/.exec(Buffer.from(String(url).split(',')[1] || '', 'base64').toString('latin1')); return m ? { b: m[1], c: [+m[2], +m[3], +m[4]] } : null; };
 class DL extends ResourceLoader { constructor(d) { super(); this.d = d; } fetch(u) { const f = path.join(this.d, decodeURIComponent(new URL(u).pathname)); return fs.existsSync(f) ? Promise.resolve(fs.readFileSync(f)) : Promise.reject(new Error('x')); } }
 const logs = [];
@@ -70,7 +72,7 @@ function sendText(p, t) { const i = p.win.document.getElementById('message-input
 const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) return true; await sleep(200); } return false; };
 const rowPhoto = (p, name) => { const row = Array.from(p.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).find((r) => (r.querySelector('.ble-contact-name') || {}).textContent === name); const av = row && row.querySelector('.ble-contact-avatar'); return !!(av && /url\(["']?data:image\/jpeg/.test(av.getAttribute('style') || '')); };
 const rowStyle = (p, name) => { const row = Array.from(p.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).find((r) => (r.querySelector('.ble-contact-name') || {}).textContent === name); const av = row && row.querySelector('.ble-contact-avatar'); return row ? ((av && av.getAttribute('style')) || '') : null; };
-const NAMES = { P, P_B, P_C, P_D, Q_B, R_A, R_E, S_B, P_F };
+const NAMES = { P, P_B, P_C, P_D, Q_B, R_A, R_E, S_B, P_F, Z_B };
 const whose = (st) => { if (st === null) return 'sin fila'; for (const k of Object.keys(NAMES)) if (st.indexOf(NAMES[k]) >= 0) return k; return /data:image/.test(st) ? 'otra' : 'ninguna'; };
 async function pickPhoto(p) {
   p.win.dispatchEvent(new p.win.CustomEvent('nexo:ui:profile')); await sleep(400);
@@ -190,6 +192,23 @@ const avFile = async (p, nx) => { try { const r0 = await p.win.Capacitor.Plugins
     state.A.next = P; await pickPhoto(A); await sleep(1500);
     r.A_vuelve_a_su_foto = await myProfilePhoto(A);
   }
+  // 9. «Es mi foto»
+  {
+    state.B.next = Z_B; await pickPhoto(B);
+    r.A_ve_Z_B = await wait(() => { A.win.bleInterface.renderContactsList(); return whose(rowStyle(A, 'B')) === 'Z_B'; }, 60);
+    if (typeof A.win.NEXO_openContactProfile === 'function') A.win.NEXO_openContactProfile(idB);
+    await sleep(400);
+    const btn = A.win.document.getElementById('nexo-cp-mine');
+    r.boton_es_mi_foto = !!btn && btn.style.display !== 'none';
+    if (btn) { click(A.win, btn); await sleep(200); click(A.win, btn); }
+    await sleep(1200);
+    { const sh = A.win.document.getElementById('nexo-contact-profile'); if (sh) sh.remove(); }
+    A.win.bleInterface.renderContactsList(); await sleep(300);
+    r.A_fila_B_tras_es_mi_foto = whose(rowStyle(A, 'B'));
+    A.win.close(); nA.destroyActivity(); await sleep(1500); nA.load(); A = await boot('A', nA);
+    await sleep(2500); A.win.bleInterface.renderContactsList(); await sleep(300);
+    r.A_fila_B_es_mi_foto_reinicio = whose(rowStyle(A, 'B'));
+  }
   r.avatar_logs = logs.filter((l) => /\[AVATAR\]/.test(l)).map((l) => l.substring(10)).slice(-24);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.B_ve_foto_de_A && r.C_ve_foto_de_A && r.B_puso_copia === 'P_B' && r.A_recibe_B && r.A_recibe_C && r.A_fila_B === 'ninguna' && r.A_fila_C === 'ninguna' && r.A_mi_perfil === 'P' &&
@@ -198,7 +217,8 @@ const avFile = async (p, nx) => { try { const r0 = await p.win.Capacitor.Plugins
     r.A_mi_perfil_nuevo === 'R_A' && r.A_fila_C_tras_cambiar_mi_foto === 'ninguna' && r.A_fila_B_tras_cambiar_mi_foto === 'Q_B' && r.A_fila_C_tras_cambiar_y_reiniciar === 'ninguna' &&
     /escondida/.test(r.diag_foto_C || '') && r.C_tiene_foto_nueva_de_A && r.C_perfil_al_abrir === 'P_C' && r.C_rechazo_al_abrir_log &&
     r.B_sin_foto && r.A_fila_B_final === 'ninguna' && r.A_archivo_B_final === 'ninguna' &&
-    r.C_perfil_foto_vieja_de_A === 'P_C' && r.A_vuelve_a_su_foto === 'P' && !r.errores.length;
+    r.C_perfil_foto_vieja_de_A === 'P_C' && r.A_vuelve_a_su_foto === 'P' &&
+    r.A_ve_Z_B && r.boton_es_mi_foto && r.A_fila_B_tras_es_mi_foto === 'ninguna' && r.A_fila_B_es_mi_foto_reinicio === 'ninguna' && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('AVATARDUP ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_avatardup.txt'), logs.join('\n'));

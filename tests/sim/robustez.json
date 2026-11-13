@@ -847,6 +847,14 @@
     {
      "fallo": "Diagnóstico del Motorola 13-11 (3063): a las 08:38:31 Perfil aceptó una foto de 9 KB 20 s después de rechazar la foto ACTUAL del dueño; él la había cambiado a las 08:35 y lo más probable es que fuera la de antes: Perfil solo comparaba con la foto actual de cada contacto. Ahora también con las que tuvo (5 últimas, 180 días), y el dueño sí puede volver a una foto suya. avatardup.js paso 8 (contraprueba 3062: aceptada; el dueño no podía volver a su foto)",
      "prueba": "foto de perfil COPIADA"
+    },
+    {
+     "fallo": "Dueño 13-11 (3065): «cualquier cosa subida por un user se debe ligar a su ID así ya no hay error». La huella de la foto (dHash 8×8) no reconocía un recorte de la cara ni la foto con borde (en Chrome: 5 % y 0 %), y confundía fotos de la misma plantilla con otra persona (13 %). Huella v2 (img_print.js): miniatura 48×48 alineada en los dos sentidos + color: recortes 97 %, bordes 100 %, capturas 85–100 %, ninguna foto distinta confundida. Y «Es mi foto» en el perfil de un contacto para una copia que se escape. huella_real.js (Chrome) y avatardup.js paso 9 (contraprueba 3064: sin botón, la copia se ve)",
+     "prueba": "foto de perfil COPIADA"
+    },
+    {
+     "fallo": "3065: medición de la huella de la foto de perfil en Chrome de verdad (retratos generados: re-guardado, captura del visor, captura recortada, recorte de la cara, borde, brillo; fotos distintas y de la misma plantilla)",
+     "prueba": "huella de la foto de perfil en Chrome"
     }
    ],
    "debiles": [
