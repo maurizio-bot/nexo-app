@@ -5,7 +5,7 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 
 ## 🆕 13-11 (compartir pantalla parte 3, 3054) — falta
 - **Hecho 3055 (dueño: «sí, manda las diapositivas también por relés»):** por internet por relés la pantalla va en diapositivas.
-  La CÁMARA por relés sigue sin imagen (solo se preguntó por la pantalla): si el dueño la quiere en imágenes de baja calidad, se hace igual.
+  **Hecho 3056 (dueño: «sí, la cámara también en baja calidad por relés»):** la cámara por relés en imágenes pequeñas (240 px cada 2 s).
 - **Llamada de GRUPO por Bluetooth:** la pantalla compartida solo va por Wi-Fi (como el vídeo de grupo); diapositivas por los
   tramos Bluetooth, después.
 - **Llamada de voz (sin vídeo):** no tiene botón «Pantalla»; compartir pantalla en una llamada de voz por Bluetooth, después.

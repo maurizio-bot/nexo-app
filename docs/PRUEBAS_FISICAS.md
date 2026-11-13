@@ -51,6 +51,9 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     viéndose, como imágenes que cambian cada ~5 s. Diagnóstico: «Pantalla girada» y «diapositivas de pantalla».
 21. **Archivo grande para alguien lejano (3040).** En el vivo, lo pendiente de 25 MB para …707a ya no se lee del disco cada vez
     que ve al S24 (el diagnóstico dice «no caben por Bluetooth: esperan Wi-Fi/internet»).
+22. **Videollamada por internet por relés (3041).** Lejos uno del otro y sin Tor: se ve al otro en imágenes pequeñas que cambian
+    cada ~2 s (antes, sin imagen) y, si compartes la pantalla, en diapositivas cada ~5 s. El diagnóstico dice «relés: vídeo en
+    imágenes pequeñas».
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 

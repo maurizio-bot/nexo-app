@@ -781,6 +781,10 @@
      "prueba": "MEDICIÓN de caminos"
     },
     {
+     "fallo": "Decisión del dueño 13-11 («sí, la cámara también en baja calidad por relés»), 3056: por internet por relés la videollamada no tenía imagen de la cámara. Ahora va en imágenes pequeñas (240 px cada 2 s) por el canal de diapositivas; por Bluetooth no (le quitaría aire a la voz); por Wi-Fi y Tor directo, el vídeo. netvideo.js (camara_*; contraprueba 3055) y el diagnóstico dice «relés: vídeo en imágenes pequeñas» (callrecon.js)",
+     "prueba": "vídeo por INTERNET"
+    },
+    {
      "fallo": "Decisión del dueño 13-11 («sí, manda las diapositivas también por relés»), 3055: por internet por relés (sin Tor directo) la pantalla compartida no se veía (el vídeo no sale por relés). Ahora va en diapositivas como por Bluetooth; por Wi-Fi y Tor directo sigue el vídeo. netvideo.js (diapos_*; contraprueba 3054)",
      "prueba": "vídeo por INTERNET"
     },
