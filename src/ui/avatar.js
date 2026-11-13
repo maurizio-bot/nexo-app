@@ -179,7 +179,7 @@ export function avatarDiag(nx) {
   var o = _all.get(nx);
   if (!o) return 'sin foto';
   var d = '';
-  if (o.ph && _minePh && typeof o.ph.b === 'string' && typeof _minePh.b === 'string') { var n = 0; for (var i = 0; i < 64; i++) if (o.ph.b.charAt(i) !== _minePh.b.charAt(i)) n++; d = ', a ' + n + '/64 de la tuya'; }
+  if (o.ph && _minePh && typeof o.ph.b === 'string' && typeof _minePh.b === 'string') { var n = 0; for (var i = 0; i < 64; i++) if (o.ph.b.charAt(i) !== _minePh.b.charAt(i)) n++; d = ', a ' + n + '/64 de la tuya'; } // i18n-ok: diagnóstico
   else if (!o.ph) d = ', sin huella';
   return (o.hid ? 'foto copiada (escondida)' : 'foto') + d + (_past.length ? ', fotos tuyas anteriores ' + _past.length : '');
 }
