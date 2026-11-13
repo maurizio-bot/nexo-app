@@ -29,6 +29,7 @@ var MY_FILE = 'nexo_my_avatar.json', SENT_FILE = 'nexo_av_sent.json', HIST_FILE 
 var IMG_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/;
 var MAX_LEN = 60000;          // ~45 KB de imagen como mucho (las nuestras: 10–15 KB)
 var SIZE = 160;
+export var AVATAR_MAX_BYTES = 5 * 1024 * 1024;   // 3066 (dueño 13-11): la foto que se elige para el perfil, como mucho 5 MB
 var NX_RE = /^nx[0-9a-z]{8}$/;
 
 var _mine = null;             // { h, img } (img '' = sin foto)
@@ -331,6 +332,7 @@ export function applyAvatar(sender, act) {
 
 // Cuadrada, 160 px, JPEG (el simulador no tiene canvas: window.NEXO_makeAvatar)
 export function makeAvatar(file) {
+  if (file && file.size > AVATAR_MAX_BYTES) return Promise.reject(new Error(t('prof_photo_big', 'La foto pesa más de 5 MB: elige una más pequeña')));
   if (typeof window.NEXO_makeAvatar === 'function') return Promise.resolve(window.NEXO_makeAvatar(file));
   return new Promise(function(resolve, reject) {
     var r = new FileReader();

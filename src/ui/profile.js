@@ -10,7 +10,7 @@ import { _diagnosticText } from './diag.js';
 import { updaterInnerHtml, renderUpdaterSection } from './updater.js'; // 2986: actualizador automático
 import { autoDiagInnerHtml, renderAutoDiagSection, autoDiagNewCount } from './autodiag.js'; // 2974: diagnóstico automático al desarrollador
 import { startReceiveAccount, startSendAccount } from './move_account.js';
-import { avatarClash, avatarOf, claimAvatarMine, clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
+import { AVATAR_MAX_BYTES, avatarClash, avatarOf, claimAvatarMine, clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
 import { myProfile, setMyProfile } from './profile_data.js';
 import { getContactProfile, profileShareResend } from './profile_share.js';
 import { getCommonContacts, psiEnsure } from './psi.js'; // #dueño 04-11 paso 3: contactos en común (PSI)
@@ -79,6 +79,13 @@ function _openProfileSheet() {
       var f = inp.files && inp.files[0];
       inp.remove();
       if (!f) return;
+      // 3066 (dueño 13-11: «revisa el tamaño de la foto que se puede subir y pon un tope a 5 MB»): antes no había tope (se leía
+      // entera, pesara lo que pesara)
+      if (f.size > AVATAR_MAX_BYTES) {
+        console.warn('[AVATAR] Foto de Perfil rechazada: pesa ' + (f.size / 1048576).toFixed(1) + ' MB (tope 5 MB)');
+        if (_showInfoToast) _showInfoToast(t('prof_photo_big', 'La foto pesa más de 5 MB: elige una más pequeña'), 3500);
+        return;
+      }
       // 3028 (dueño 12-11): la foto de perfil de un contacto no se puede poner como propia
       makeAvatar(f).then(function(url) { return avatarClash(url).then(function(who) { return { url: url, who: who }; }); }).then(function(r) {
         var url = r.url;

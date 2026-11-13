@@ -855,6 +855,10 @@
     {
      "fallo": "3065: medición de la huella de la foto de perfil en Chrome de verdad (retratos generados: re-guardado, captura del visor, captura recortada, recorte de la cara, borde, brillo; fotos distintas y de la misma plantilla)",
      "prueba": "huella de la foto de perfil en Chrome"
+    },
+    {
+     "fallo": "Dueño 13-11 (3066): «revisa el tamaño de la foto que se puede subir y pon un tope a 5 MB». La foto de perfil no tenía tope: se leía entera, pesara lo que pesara. Ahora Perfil no acepta una de más de 5 MB (aviso «La foto pesa más de 5 MB»). avatardup.js paso 10 (contraprueba 3065: aceptada)",
+     "prueba": "foto de perfil COPIADA"
     }
    ],
    "debiles": [

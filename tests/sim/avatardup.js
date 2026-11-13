@@ -19,6 +19,7 @@
 //     tras reiniciar; y el dueño sí puede volver a poner una foto suya de antes aunque un contacto tenga una copia.
 //  9. (3065, dueño 13-11: «cualquier cosa subida por un user se debe ligar a su ID») «Es mi foto»: una copia que la huella no
 //     reconoce (B pone Z_B) se sigue viendo; A abre el perfil de B, toca «Es mi foto» dos veces y deja de verse (también tras reiniciar).
+// 10. (3066, dueño 13-11: «pon un tope a 5 MB») Perfil no acepta una foto de más de 5 MB (antes no había tope); una de 4 MB sí.
 // El simulador no tiene canvas: la huella de la imagen la da window.NEXO_avatarPHash (las fotos de la prueba la llevan escrita).
 // Uso: node avatardup.js <dir_build>
 'use strict';
@@ -74,11 +75,11 @@ const rowPhoto = (p, name) => { const row = Array.from(p.win.document.querySelec
 const rowStyle = (p, name) => { const row = Array.from(p.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).find((r) => (r.querySelector('.ble-contact-name') || {}).textContent === name); const av = row && row.querySelector('.ble-contact-avatar'); return row ? ((av && av.getAttribute('style')) || '') : null; };
 const NAMES = { P, P_B, P_C, P_D, Q_B, R_A, R_E, S_B, P_F, Z_B };
 const whose = (st) => { if (st === null) return 'sin fila'; for (const k of Object.keys(NAMES)) if (st.indexOf(NAMES[k]) >= 0) return k; return /data:image/.test(st) ? 'otra' : 'ninguna'; };
-async function pickPhoto(p) {
+async function pickPhoto(p, bytes) {
   p.win.dispatchEvent(new p.win.CustomEvent('nexo:ui:profile')); await sleep(400);
   click(p.win, p.win.document.getElementById('nexo-av-pick')); await sleep(200);
   const inp = Array.from(p.win.document.querySelectorAll('input[type=file]')).find((i) => i.accept === 'image/*');
-  if (inp) { Object.defineProperty(inp, 'files', { configurable: true, value: [new p.win.File([Buffer.alloc(100)], 'yo.jpg', { type: 'image/jpeg' })] }); inp.dispatchEvent(new p.win.Event('change')); }
+  if (inp) { Object.defineProperty(inp, 'files', { configurable: true, value: [new p.win.File([Buffer.alloc(bytes || 100)], 'yo.jpg', { type: 'image/jpeg' })] }); inp.dispatchEvent(new p.win.Event('change')); }
   await sleep(800);
   const c = p.win.document.getElementById('nexo-profile-close'); if (c) click(p.win, c);
   await sleep(200);
@@ -209,6 +210,14 @@ const avFile = async (p, nx) => { try { const r0 = await p.win.Capacitor.Plugins
     await sleep(2500); A.win.bleInterface.renderContactsList(); await sleep(300);
     r.A_fila_B_es_mi_foto_reinicio = whose(rowStyle(A, 'B'));
   }
+  // 10. tope de 5 MB: A (con P) elige una foto de 6 MB (sería R_A) → rechazada; una de 4 MB → aceptada
+  {
+    const n10 = logs.length;
+    state.A.next = R_A; await pickPhoto(A, 6 * 1024 * 1024); await sleep(500);
+    r.A_6MB_rechazada = (await myProfilePhoto(A)) === 'P' && logs.slice(n10).some((l) => /\[A\].*Foto de Perfil rechazada: pesa 6\.0 MB/.test(l));
+    await pickPhoto(A, 4 * 1024 * 1024); await sleep(500);
+    r.A_4MB_aceptada = (await myProfilePhoto(A)) === 'R_A';
+  }
   r.avatar_logs = logs.filter((l) => /\[AVATAR\]/.test(l)).map((l) => l.substring(10)).slice(-24);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.B_ve_foto_de_A && r.C_ve_foto_de_A && r.B_puso_copia === 'P_B' && r.A_recibe_B && r.A_recibe_C && r.A_fila_B === 'ninguna' && r.A_fila_C === 'ninguna' && r.A_mi_perfil === 'P' &&
@@ -218,7 +227,7 @@ const avFile = async (p, nx) => { try { const r0 = await p.win.Capacitor.Plugins
     /escondida/.test(r.diag_foto_C || '') && r.C_tiene_foto_nueva_de_A && r.C_perfil_al_abrir === 'P_C' && r.C_rechazo_al_abrir_log &&
     r.B_sin_foto && r.A_fila_B_final === 'ninguna' && r.A_archivo_B_final === 'ninguna' &&
     r.C_perfil_foto_vieja_de_A === 'P_C' && r.A_vuelve_a_su_foto === 'P' &&
-    r.A_ve_Z_B && r.boton_es_mi_foto && r.A_fila_B_tras_es_mi_foto === 'ninguna' && r.A_fila_B_es_mi_foto_reinicio === 'ninguna' && !r.errores.length;
+    r.A_ve_Z_B && r.boton_es_mi_foto && r.A_fila_B_tras_es_mi_foto === 'ninguna' && r.A_fila_B_es_mi_foto_reinicio === 'ninguna' && r.A_6MB_rechazada && r.A_4MB_aceptada && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('AVATARDUP ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_avatardup.txt'), logs.join('\n'));
