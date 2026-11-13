@@ -959,6 +959,10 @@
     {
      "fallo": "GRAVE (diagnóstico real 01-11, dueño): con la videollamada por internet en curso (vídeo OK) entró una llamada TELEFÓNICA y la de NEXO se cortó/trabó. Causa: al perder el micro por la telefónica, el vigilante de «15 s sin audio» cortaba los dos lados, y el audio peleaba por reanudarse. 2870: el nativo avisa del foco de audio (onCallInterruption); calls RETIENE la llamada (held) — silencia el micro, avisa al otro (hold) para que su vigilante tampoco corte — y al volver el foco (rechazada/colgada) reanuda (unhold, micro restaurado, vigilante reiniciado). Nunca se cae; preserva el silencio manual. Prueba callhold.js",
      "prueba": "no corta la llamada/videollamada NEXO"
+    },
+    {
+     "fallo": "Dueño 13-11 (idea nueva): compartir pantalla en la videollamada (parte 1, 1-a-1). 3039: ScreenShare.kt/ScreenShareService (MediaProjection, permiso de Android cada vez, servicio mediaProjection) manda JPEG ~5/s (lado largo 960); call_media.screen/screenFrame los manda en lugar de la cámara (1/s con la pantalla quieta, completa cada 10); calls.shareScreen con estado scr para el otro; calls_ui: botón Pantalla, aviso antes, barra roja Detener, la del otro entera, sin espejo y con zoom de dos dedos. calls2 --case=pantalla (contraprueba 3038: sin botón) y callmedia.js §23",
+     "prueba": "compartir pantalla en videollamada"
     }
    ],
    "debiles": [

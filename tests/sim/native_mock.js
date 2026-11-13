@@ -193,6 +193,8 @@ class NativePhone {
 
   // Volver a la app / pasar a segundo plano (Activity onResume/onPause). Solo el Kotlin nuevo lo avisa
   // al JS (opts.appStateEvents); el JS ve además visibilitychange si el WebView lo emite.
+  // 13-11: Android corta la captura de pantalla (el usuario la detuvo desde el aviso del sistema)
+  screenStopBySystem() { if (this.screenTimer) { clearInterval(this.screenTimer); this.screenTimer = null; this.emit('onScreenShareStopped', {}); } }
   setFrozen(on) {
     this.jsFrozen = !!on;
     if (!on && this.frozenQ) { const q = this.frozenQ; this.frozenQ = []; q.forEach(([e, d]) => this.emit(e, d)); }
@@ -1251,6 +1253,19 @@ class NativePhone {
       // algún permiso; "Arreglar" lo concede como si el usuario lo aceptara en los ajustes)
       alertSettings: wrap('alertSettings', (c) => { const a = Object.assign({ notifications: true, fullScreen: true, battery: true }, self.opts.alerts || {}, self.alertFix || {}); c.resolve(Object.assign({}, a, { wakeOnMessage: self.wakeOnMsg !== false, vendor: self.opts.vendor || '' })); }), // (2772: fabricante)
       setWakeOnMessage: wrap('setWakeOnMessage', (c, a) => { self.wakeOnMsg = a.on !== false; c.resolve({}); }),
+      // 13-11 (Kotlin ScreenShareService): compartir pantalla. opts.screenDenied = el usuario dice que no al aviso de Android.
+      // Con permiso, una imagen (JPEG mínimo) cada 1000/fps ms hasta screenShareStop; screenStopBySystem() = Android la corta.
+      screenShareStart: wrap('screenShareStart', (c, a) => {
+        self.stats.screenAsks = (self.stats.screenAsks || 0) + 1;
+        if (self.opts.screenDenied) return setTimeout(() => c.resolve({ granted: false }), 300);
+        if (!self.screenTimer) {
+          self.stats.screenStarts = (self.stats.screenStarts || 0) + 1;
+          const jpg = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
+          self.screenTimer = setInterval(() => { self.stats.screenFrames = (self.stats.screenFrames || 0) + 1; self.emit('onScreenFrame', { d: jpg, w: 444, h: 960 }); }, Math.round(1000 / (Number(a.fps) || 5)));
+        }
+        setTimeout(() => c.resolve({ granted: true }), 300);
+      }),
+      screenShareStop: wrap('screenShareStop', (c) => { self.stats.screenStops = (self.stats.screenStops || 0) + 1; if (self.screenTimer) { clearInterval(self.screenTimer); self.screenTimer = null; self.emit('onScreenShareStopped', {}); } c.resolve({}); }),
       openAlertSetting: wrap('openAlertSetting', (c, a) => { (self.alertOpened = self.alertOpened || []).push(a.what); self.alertFix = Object.assign({}, self.alertFix, { [a.what]: true }); c.resolve({ opened: true }); }),
       callScreenDone: wrap('callScreenDone', (c) => { self.overLock = false; c.resolve({}); }),
       callAction: wrap('callAction', (c) => {

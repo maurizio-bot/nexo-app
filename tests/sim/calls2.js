@@ -78,6 +78,9 @@ async function boot(name, native, cfg = {}) {
             t = setInterval(() => { const f = new Uint8Array(42); f[0] = name.charCodeAt(0); f[1] = (n >> 8) & 255; f[2] = n & 255; f.fill(0x5a, 3); n++; media.sent++; const p = new Uint8Array(4 + f.length); p[0] = 1; p[1] = 1; p[2] = 0; p[3] = f.length; p.set(f, 4); o.onPacket(p); }, 100); return Promise.resolve({ codec: 'opus', video: false }); },
           play(bytes) { if (bytes.length > 6) media.played.push({ from: String.fromCharCode(bytes[4]), n: (bytes[5] << 8) | bytes[6], at: realNow() }); },
           playVideo() {}, mute() {},
+          // 13-11: compartir pantalla (como call_media.screen / screenFrame)
+          screen(on) { m.screenOn = !!on; (m.screenCalls = m.screenCalls || []).push(!!on); return true; },
+          screenFrame(d, w, h) { if (m.screenOn) { m.frames = (m.frames || 0) + 1; m.lastFrame = { w, h }; } },
           requestKey() { m.keyReq++; },
           remoteLive() { return m.live; },
           stop() { if (t) media.live--; clearInterval(t); t = null; }
@@ -150,6 +153,67 @@ const CASES = {
     A.win.bleInterface.calls.hangup();
     r.ok = r.wifi && r.en_llamada && r.es_videollamada && r.hay_manejador && r.a_solo_el_otro &&
       r.css_oculta_mi_imagen && r.b_mini_flotante && r.toque_restaura_completa;
+    return r;
+  },
+  // 13-11 (dueño): COMPARTIR PANTALLA en la videollamada (parte 1). A comparte: aviso antes de empezar, permiso de Android
+  // (nativo), las imágenes de la pantalla van a la videollamada en lugar de la cámara, barra roja «Detener» en A y en B la
+  // pantalla de A entera y sin espejo. Detener (barra), volver a compartir, Android la corta, y al colgar no sigue capturando.
+  // Si el usuario dice que no en el aviso de Android, no pasa nada (y se lo dice).
+  async 'pantalla'() {
+    const { nA, A, B, idA, idB } = await setup({}, { wifi: 'casa' });
+    const r = { wifi: await wait(() => A.win.bleInterface.calls.canVideo(idB) && B.win.bleInterface.calls.canVideo(idA), 60) };
+    click(A.win, A.win.document.getElementById('nexo-video-btn'));
+    await wait(() => st(B) === 'ringing', 20);
+    accept(B);
+    r.en_llamada = await wait(() => st(A) === 'active' && st(B) === 'active', 15);
+    await sleep(1200);
+    const dA = A.win.document, dB = B.win.document, scrA = () => dA.getElementById('nexo-call-screen'), scrB = () => dB.getElementById('nexo-call-screen');
+    const btn = () => dA.querySelector('#nexo-call-screen .call-screen');
+    r.boton = !!btn();
+    // 1. tocar «Pantalla»: primero el aviso (nada se captura todavía)
+    click(A.win, btn()); await sleep(300);
+    r.aviso = !!dA.getElementById('nexo-scr-ask') && /TODO/.test(dA.getElementById('nexo-scr-ask').textContent);
+    r.sin_captura_antes = !(nA.stats.screenAsks > 0);
+    click(A.win, dA.querySelector('#nexo-scr-ask .nc-ask-yes'));
+    r.comparte = await wait(() => !!A.win.bleInterface.calls.call && A.win.bleInterface.calls.call.screen === true, 5);
+    r.media_en_pantalla = !!(A.media.cur && A.media.cur.screenOn);
+    r.imagenes = await wait(() => (A.media.cur.frames || 0) >= 3, 5);
+    r.barra_roja = await wait(() => !!dA.querySelector('#nexo-call-screen .nc-scrbar'), 3);
+    r.B_sabe = await wait(() => !!B.win.bleInterface.calls.call && B.win.bleInterface.calls.call.peerScreen === true, 8);
+    r.B_vista_entera = await wait(() => !!scrB() && scrB().classList.contains('nc-peer-screen') && !scrB().classList.contains('nc-fill'), 4);
+    const rv = dB.querySelector('#nexo-call-screen .call-remote-video');
+    r.B_sin_espejo = !rv || !/scaleX\(-1\)/.test(rv.style.transform || '');
+    // 2. detener desde la barra roja: vuelve a la cámara, el nativo para, B lo sabe
+    click(A.win, dA.querySelector('#nexo-call-screen .nc-scrbar'));
+    r.detenido = await wait(() => A.win.bleInterface.calls.call && A.win.bleInterface.calls.call.screen === false && !A.media.cur.screenOn, 4);
+    r.nativo_paro = (nA.stats.screenStops || 0) >= 1 && !nA.screenTimer;
+    r.B_vuelve_a_camara = await wait(() => B.win.bleInterface.calls.call && B.win.bleInterface.calls.call.peerScreen === false && !scrB().classList.contains('nc-peer-screen'), 8);
+    r.sin_barra = !dA.querySelector('#nexo-call-screen .nc-scrbar');
+    // 3. otra vez, y Android la corta (aviso del sistema): la llamada sigue con la cámara
+    click(A.win, btn()); await sleep(300); click(A.win, dA.querySelector('#nexo-scr-ask .nc-ask-yes'));
+    r.otra_vez = await wait(() => A.win.bleInterface.calls.call.screen === true, 5);
+    nA.screenStopBySystem();
+    r.android_la_corta = await wait(() => A.win.bleInterface.calls.call && A.win.bleInterface.calls.call.screen === false && !A.media.cur.screenOn, 4);
+    r.sigue_la_llamada = st(A) === 'active' && st(B) === 'active';
+    // 4. compartiendo y cuelga: la captura no sigue
+    click(A.win, btn()); await sleep(300); click(A.win, dA.querySelector('#nexo-scr-ask .nc-ask-yes'));
+    await wait(() => A.win.bleInterface.calls.call.screen === true, 5);
+    A.win.bleInterface.calls.hangup();
+    r.colgar_para = await wait(() => !nA.screenTimer, 4);
+    r.sin_barra_al_colgar = await wait(() => !dA.querySelector('.nc-scrbar'), 3);
+    // 5. el usuario dice que no al aviso de Android: no se comparte y se le dice
+    nA.opts.screenDenied = true;
+    await sleep(3000);
+    click(A.win, dA.getElementById('nexo-video-btn'));
+    await wait(() => st(B) === 'ringing', 20); accept(B);
+    await wait(() => st(A) === 'active' && st(B) === 'active', 15); await sleep(1200);
+    click(A.win, btn()); await sleep(300); click(A.win, dA.querySelector('#nexo-scr-ask .nc-ask-yes'));
+    await sleep(1500);
+    r.no_permiso_no_comparte = !!A.win.bleInterface.calls.call && !A.win.bleInterface.calls.call.screen && !nA.screenTimer;
+    A.win.bleInterface.calls.hangup();
+    r.ok = r.wifi && r.en_llamada && r.boton && r.aviso && r.sin_captura_antes && r.comparte && r.media_en_pantalla && r.imagenes && r.barra_roja &&
+      r.B_sabe && r.B_vista_entera && r.B_sin_espejo && r.detenido && r.nativo_paro && r.B_vuelve_a_camara && r.sin_barra && r.otra_vez &&
+      r.android_la_corta && r.sigue_la_llamada && r.colgar_para && r.sin_barra_al_colgar && r.no_permiso_no_comparte;
     return r;
   },
   async 'rechazar-cerrada'() {

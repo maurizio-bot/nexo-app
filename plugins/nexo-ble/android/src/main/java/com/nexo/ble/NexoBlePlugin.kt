@@ -3959,6 +3959,41 @@ class NexoBlePlugin : Plugin() {
         return try { svc.foreground() } catch (e: Exception) { Log.w(TAG, "Servicio en llamada: ${e.message}"); "error (${e.javaClass.simpleName})" }
     }
 
+    // 13-11 (dueño): COMPARTIR PANTALLA en la videollamada. Pide el permiso de Android (aviso del sistema, cada vez) y, si
+    // el usuario acepta, ScreenShareService captura la pantalla y cada imagen llega a la app como onScreenFrame {d: JPEG en
+    // base64, w, h}; si Android corta la captura, onScreenShareStopped. Resuelve { granted }.
+    @PluginMethod
+    fun screenShareStart(call: PluginCall) {
+        if (ScreenShareService.running) { call.resolve(JSObject().put("granted", true)); return }
+        try {
+            val mpm = context.getSystemService(android.media.projection.MediaProjectionManager::class.java)
+            if (mpm == null) { call.reject("Este teléfono no puede compartir la pantalla", "SCREEN_NA"); return }
+            startActivityForResult(call, mpm.createScreenCaptureIntent(), "screenSharePicked")
+        } catch (e: Exception) { call.reject("No se pudo pedir el permiso de pantalla: ${e.message}", "SCREEN_NA") }
+    }
+
+    @ActivityCallback
+    private fun screenSharePicked(call: PluginCall?, result: ActivityResult) {
+        if (call == null) return
+        val data = result.data
+        if (result.resultCode != android.app.Activity.RESULT_OK || data == null) { call.resolve(JSObject().put("granted", false)); return }
+        ScreenShareService.listener = { d, w, h -> notifyListeners("onScreenFrame", JSObject().put("d", d).put("w", w).put("h", h)) }
+        ScreenShareService.onStopped = { notifyListeners("onScreenShareStopped", JSObject()) }
+        val i = Intent(context, ScreenShareService::class.java)
+            .putExtra("code", result.resultCode).putExtra("data", data)
+            .putExtra("maxLong", call.getInt("maxLong", 960) ?: 960).putExtra("fps", call.getInt("fps", 5) ?: 5)
+        try {
+            ContextCompat.startForegroundService(context, i)
+            call.resolve(JSObject().put("granted", true))
+        } catch (e: Exception) { call.reject("No se pudo empezar a compartir la pantalla: ${e.message}", "SCREEN_NA") }
+    }
+
+    @PluginMethod
+    fun screenShareStop(call: PluginCall) {
+        ScreenShareService.stop(context)
+        call.resolve()
+    }
+
     // #dueño 01-11: la VIDEOLLAMADA marca pipVideo mientras está activa; así, al irse de la app con el gesto de inicio
     // (deslizar hacia arriba), MainActivity entra en Picture-in-Picture (miniatura flotante) y el audio/vídeo no se cortan
     // (ya corre el servicio en primer plano de la llamada). Al colgar, el JS lo apaga.

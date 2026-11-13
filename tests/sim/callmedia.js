@@ -101,6 +101,8 @@ function env(o) {
       close() { this.state = 'closed'; }
     };
     window.VideoFrame = class { close() {} };
+    // 13-11 (compartir pantalla): <img> del JPEG que manda el nativo; carga al momento con el tamaño que diga window._imgSize
+    window.Image = class { set src(v) { this._src = v; const sz = window._imgSize || [1080, 2340]; this.naturalWidth = sz[0]; this.naturalHeight = sz[1]; setTimeout(() => this.onload && this.onload(), 0); } get src() { return this._src; } };
     window.EncodedVideoChunk = class { constructor(i) { Object.assign(this, i); } };
   }
   if (o.opus) {
@@ -463,6 +465,39 @@ const mk = (e, extra) => e.mod.createCallMedia(Object.assign({ onPacket() {}, co
     const dbr = (a, b) => (a > 0 && b > 0 ? Math.round(20 * Math.log10(a / b) * 10) / 10 : null);
     r.eco_en_llamada = { filtros: !!fxMod, eco_baja_dB: dbr(sinF.eco, conF.eco), voz_propia_dB: dbr(conF.ambos, conF.voz) };
   }
+  // --- 13-11 (dueño): compartir pantalla ---
+  // 23. En plena videollamada se comparte la pantalla (1080x2340): codificador nuevo con la forma de la pantalla y el lado
+  //     largo en 960 (las letras se leen), la cámara se apaga mientras tanto, con la pantalla quieta ~1 imagen por segundo
+  //     (no 15); al dejar de compartir vuelve la cámara con su forma (360x480) y la siguiente imagen es completa.
+  {
+    const e = env({ vp8: true });
+    const m = mk(e, { video: true, onVideoPacket() {} });
+    await m.start();
+    const vid = e.videos[e.videos.length - 1];
+    vid.videoWidth = 480; vid.videoHeight = 640;
+    await sleep(400);
+    const vt = () => e.tracks.find((t) => t.kind === 'video' && !t.stopped);
+    const okApi = typeof m.screen === 'function' && typeof m.screenFrame === 'function';
+    let cfgS = {}, porSeg = null, camApagada = null, primeraCompleta = false;
+    if (okApi) {
+      m.screen(true);
+      e.window._imgSize = [1080, 2340];
+      m.screenFrame('AAAA', 1080, 2340);
+      await sleep(400);
+      cfgS = (e.window._cfgs || []).slice(-1)[0] || {};
+      camApagada = !!(vt() && vt().enabled === false);
+      const n0 = e.encoded.length;
+      await sleep(400); // la primera imagen ya salió
+      primeraCompleta = !!(e.encoded[n0 - 1] && e.encoded[n0 - 1].key) || !!(e.encoded[n0] && e.encoded[n0].key);
+      const n1 = e.encoded.length; await sleep(3000); porSeg = Math.round((e.encoded.length - n1) / 3 * 10) / 10;
+      m.screen(false);
+      await sleep(400);
+    }
+    const cfgC = (e.window._cfgs || []).slice(-1)[0] || {};
+    r.compartir_pantalla = { api: okApi, pantalla: cfgS.width + 'x' + cfgS.height, imagenes_por_s_quieta: porSeg, camara_apagada: camApagada, primera_completa: primeraCompleta,
+      vuelve_camara: cfgC.width + 'x' + cfgC.height, camara_encendida: !!(vt() && vt().enabled !== false) };
+    m.stop();
+  }
   const c1 = r.colgar_mientras_abre_el_micro, v = r.video_sin_camara, p6 = r.camara_ocupada_un_momento, p7 = r.camara_ocupada_5s;
   const checks = {
     colgar_mientras_abre_el_micro: c1.micros_abiertos === 0 && c1.audio_abierto === 0 && c1.voz_tras_colgar === 0,
@@ -488,6 +523,7 @@ const mk = (e, extra) => e.mod.createCallMedia(Object.assign({ onPacket() {}, co
     decodificador_parado: r.decodificador_parado.pide_completa_ms !== null && r.decodificador_parado.pide_completa_ms < 4500 && r.decodificador_parado.decodificadores >= 2 && r.decodificador_parado.se_ve && r.decodificador_parado.en_vivo === true,
     girar_telefono: r.girar_telefono.vertical === '360x480' && r.girar_telefono.apaisada === '480x360' && r.girar_telefono.siguiente_completa,
     eco_en_llamada: r.eco_en_llamada.eco_baja_dB >= 9 && r.eco_en_llamada.voz_propia_dB >= -6,
+    compartir_pantalla: r.compartir_pantalla.api && r.compartir_pantalla.pantalla === '444x960' && r.compartir_pantalla.imagenes_por_s_quieta !== null && r.compartir_pantalla.imagenes_por_s_quieta >= 0.6 && r.compartir_pantalla.imagenes_por_s_quieta <= 1.7 && r.compartir_pantalla.camara_apagada && r.compartir_pantalla.primera_completa && r.compartir_pantalla.vuelve_camara === '360x480' && r.compartir_pantalla.camara_encendida,
     sin_micro: r.sin_micro.empieza && r.sin_micro.mic === false && r.sin_micro.estado === 'none' && r.sin_micro.sigo_aqui >= 2 && r.sin_micro.hueco_max_ms !== null && r.sin_micro.hueco_max_ms < 3500,
   };
   r.fallan = Object.keys(checks).filter((k) => !checks[k]);

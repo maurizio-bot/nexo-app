@@ -31,6 +31,8 @@ function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _emit(name, detail) { try { window.dispatchEvent(new CustomEvent(name, { detail: detail })); } catch (e) {} }
 // #dueño 01-11: avisar al nativo que hay (o dejó de haber) una VIDEOLLAMADA activa, para que al irse de la app con el
 // gesto de inicio entre en Picture-in-Picture (miniatura flotante) sin cortar audio/vídeo.
+function _plug() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
+var SCREEN_LONG = 960, SCREEN_FPS = 5; // compartir pantalla: lado largo de la imagen (las letras se leen) y como mucho 5 por segundo
 function _pipActive(on) { try { var p = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE; if (p && typeof p.setPipActive === 'function') p.setPipActive({ on: !!on }); } catch (e) {} }
 // #dueño 02-11 (ConnectionService parte 2): avisar al nativo del ciclo de vida de la llamada SALIENTE para que Telecom la
 // trate como una llamada real (convivencia con una llamada del teléfono, mandos del coche/auriculares/reloj, foco de
@@ -206,6 +208,45 @@ export class Calls {
     return c.media.flip().then(function(f) { if (self.call === c) { self._set({ facing: f }); if (c.camState) self._sendState(c); } return f; });
   }
 
+  // Dueño 13-11: COMPARTIR PANTALLA en la videollamada (parte 1: 1-a-1). El nativo pide el permiso de Android (aviso del
+  // sistema, cada vez) y captura la pantalla a ~5 imágenes por segundo (MediaProjection, ScreenShare.kt); cada imagen llega
+  // aquí (onScreenFrame) y la videollamada la manda EN LUGAR de la cámara (call_media.screen/screenFrame), por el mismo
+  // camino cifrado. El otro sabe que es una pantalla (estado 'c' con scr) para verla entera y sin espejo.
+  shareScreen(on) {
+    var self = this, c = this.call, pl = _plug();
+    if (!c || c.state !== 'active' || !c.video) return Promise.resolve(false);
+    if (!on) { self._screenStop(c, 'detenido'); return Promise.resolve(false); }
+    if (c.screen) return Promise.resolve(true);
+    if (!pl || typeof pl.screenShareStart !== 'function') return Promise.reject(Object.assign(new Error('Este teléfono no puede compartir la pantalla'), { code: 'SCREEN_NA' }));
+    self._screenHooks(pl);
+    return pl.screenShareStart({ maxLong: SCREEN_LONG, fps: SCREEN_FPS }).then(function(r) {
+      if (!r || !r.granted) return false;
+      if (self.call !== c || c.state !== 'active') { try { pl.screenShareStop(); } catch (e) {} return false; }
+      c.screen = true;
+      if (c.media && typeof c.media.screen === 'function') c.media.screen(true);
+      console.log('[CALL] Compartiendo la pantalla con ' + c.nx);
+      self._set({ screen: true }); self._sendState(c);
+      return true;
+    });
+  }
+  _screenHooks(pl) {
+    var self = this;
+    if (self._scrHooked || !pl || typeof pl.addListener !== 'function') return;
+    self._scrHooked = true;
+    pl.addListener('onScreenFrame', function(ev) { var c = self.call; if (c && c.screen && c.media && typeof c.media.screenFrame === 'function' && ev && typeof ev.d === 'string') c.media.screenFrame(ev.d, Number(ev.w) || 0, Number(ev.h) || 0); });
+    // Android paró la captura (el usuario la detuvo desde el aviso del sistema, o se bloqueó el teléfono)
+    pl.addListener('onScreenShareStopped', function() { var c = self.call; if (c && c.screen) self._screenStop(c, 'parada por el sistema', true); });
+  }
+  _screenStop(c, why, byNative) {
+    if (!c || !c.screen) return;
+    c.screen = false;
+    var pl = _plug();
+    if (!byNative && pl && typeof pl.screenShareStop === 'function') { try { pl.screenShareStop(); } catch (e) {} }
+    if (c.media && typeof c.media.screen === 'function') c.media.screen(false);
+    console.log('[CALL] Dejo de compartir la pantalla (' + why + ')');
+    if (this.call === c) { this._set({ screen: false }); this._sendState(c); }
+  }
+
   mute(on) { var c = this.call; if (!c) return; c.muted = !!on; if (c.media && c.media.mute) c.media.mute(!!on); _emit('nexo:call', this.state()); }
 
   // #dueño 01-11 (GRAVE): entró/salió una llamada TELEFÓNICA (el nativo lo avisa por el foco de audio, onCallInterruption).
@@ -294,7 +335,8 @@ export class Calls {
   _sendState(c) {
     c.stateAt = Date.now();
     // (ronda 2772: front = cámara de delante: el otro la ve en espejo, si lo tiene puesto)
-    this._sendPacket(new TextEncoder().encode(JSON.stringify({ cam: c.camState || 'none', mic: c.micState || 'on', front: (c.facing || 'user') === 'user' })), 'c');
+    // (13-11: scr = estoy compartiendo la pantalla; las versiones anteriores lo ignoran)
+    this._sendPacket(new TextEncoder().encode(JSON.stringify({ cam: c.camState || 'none', mic: c.micState || 'on', front: (c.facing || 'user') === 'user', scr: !!c.screen })), 'c');
   }
 
   // ¿Se ve la imagen del otro? (si no, la pantalla muestra su foto y el motivo en vez de negro)
@@ -385,7 +427,11 @@ export class Calls {
         try { s2 = JSON.parse(new TextDecoder().decode(new Uint8Array(pt))); } catch (e) {}
         var okv = function(v) { return /^(on|off|retry|none)$/.test(String(v)) ? v : null; };
         var front = s2 && typeof s2.front === 'boolean' ? s2.front : null; // ronda 2772 (las versiones anteriores no lo mandan)
-        if (s2 && (okv(s2.cam) !== cc.peerCam || okv(s2.mic) !== cc.peerMic || front !== cc.peerFront)) { cc.peerCam = okv(s2.cam); cc.peerMic = okv(s2.mic); cc.peerFront = front; _emit('nexo:call', self.state()); }
+        var scr = !!(s2 && s2.scr === true); // 13-11: el otro comparte su pantalla
+        if (s2 && (okv(s2.cam) !== cc.peerCam || okv(s2.mic) !== cc.peerMic || front !== cc.peerFront || scr !== !!cc.peerScreen)) {
+          if (scr !== !!cc.peerScreen) console.log('[CALL] ' + cc.nx + (scr ? ' comparte su pantalla' : ' dejó de compartir su pantalla'));
+          cc.peerCam = okv(s2.cam); cc.peerMic = okv(s2.mic); cc.peerFront = front; cc.peerScreen = scr; _emit('nexo:call', self.state());
+        }
         return;
       }
       if (vid) { self.stats.gotV = (self.stats.gotV || 0) + 1; if (cc.media && cc.media.playVideo) cc.media.playVideo(new Uint8Array(pt)); return; }
@@ -461,6 +507,7 @@ export class Calls {
     self._dropOffer(c.offerMid);
     clearTimeout(self._ringTimer); clearInterval(self._silenceTimer);
     _pipActive(false); // llamada terminada → ya no entrar en miniatura
+    if (c.screen) this._screenStop(c, 'colgó'); // 13-11: la captura de pantalla no sigue tras colgar
     if (notifyPeer) self._signal(c.nx, 'end');
     var secs = c.startedAt ? Math.round((Date.now() - c.startedAt) / 1000) : 0;
     if (c.startedAt) try { self._diag(c, 'Al colgar (' + secs + ' s)'); } catch (e) {}

@@ -18,6 +18,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <!-- Ronda 2770: micrófono con la pantalla bloqueada u otra app durante una llamada (BleService.foreground) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- 13-11 (dueño): compartir pantalla en la videollamada (MediaProjection, ScreenShareService) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     
     <!-- UBICACIÓN: FINE sin maxSdkVersion (requerido por Capacitor Geolocation en Android 12+) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -96,6 +98,14 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|microphone" />
+
+        <!-- 13-11 (dueño): compartir pantalla en la videollamada. Android exige un servicio en primer plano de tipo
+             mediaProjection mientras se captura la pantalla (con el permiso que el usuario da cada vez). -->
+        <service
+            android:name="com.nexo.ble.ScreenShareService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
 
         <!-- Build 2880 (#dueño): llamada entrante tipo WhatsApp/Signal (ConnectionService autogestionado / Telecom).
              El sistema trata la llamada de NEXO como una llamada real (foco de audio, Doze, Bluetooth). Gratis y

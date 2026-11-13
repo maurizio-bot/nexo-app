@@ -135,6 +135,11 @@ export function createCallMedia(opts) {
   // re-llamar). Por defecto true (la videollamada 1-a-1 abre la cámara al empezar, como siempre).
   var wantVideo = !!opts.video, camStart = opts.cameraStart !== false, venc = null, vdec = null, vTimer = null, vN = 0, vIn = 0, vGotKey = false, camOn = camStart, vcanvas = null, vctx = null;
   var facing = 'user', forceKey = false, localV = null;
+  // 13-11 (dueño): compartir pantalla. Las imágenes llegan del nativo (JPEG) y se mandan en lugar de la cámara; se codifica
+  // solo cuando hay imagen nueva (como mucho SCR_FPS por segundo) y, con la pantalla quieta, una cada segundo (el otro no la
+  // da por perdida); lado largo SCR_LONG para que las letras se lean.
+  var screenOn = false, scrImg = null, scrNew = false, scrEncAt = 0, scrW = 0, scrH = 0, scrN = 0;
+  var SCR_LONG = 960, SCR_FPS = 5;
   var vstats = window.NEXO_callVideoStats = { sent: 0, keys: 0, decoded: 0, bytes: 0, frames: 0, keyReq: 0, encErr: 0, decErr: 0 };
   window.NEXO_callAudioStats = { samples: 0, seconds: 0, energy: 0 }; // por llamada
   var media;
@@ -361,9 +366,10 @@ export function createCallMedia(opts) {
   // Ronda 2772: tamaño de la imagen que se manda: la forma de la cámara (vertical u horizontal) con el lado largo en
   // VLONG (sin cámara aún, el de antes); el VP8 pide medidas pares
   function sendSize() {
-    var sw = localV && localV.videoWidth, sh = localV && localV.videoHeight;
+    var sw = localV && localV.videoWidth, sh = localV && localV.videoHeight, lim = VLONG;
+    if (screenOn && scrW && scrH) { sw = scrW; sh = scrH; lim = SCR_LONG; }
     if (!sw || !sh) return { w: VW, h: VH };
-    var k = Math.min(1, VLONG / Math.max(sw, sh));
+    var k = Math.min(1, lim / Math.max(sw, sh));
     return { w: Math.max(2, Math.round(sw * k / 2) * 2), h: Math.max(2, Math.round(sh * k / 2) * 2) };
   }
   function _vbitrate(w, h) { return Math.round(Math.max(300000, Math.min(600000, w * h * FPS * 0.16))); }
@@ -386,8 +392,9 @@ export function createCallMedia(opts) {
   }
 
   function encodeTick() {
-    if (stopped || !camOn) return;
+    if (stopped || (!camOn && !screenOn)) return;
     if (!venc || venc.state === 'closed') { if (Date.now() - vencMadeAt > 1000) makeEncoder(); return; } // ronda 2769: falló: uno nuevo (como mucho uno por segundo)
+    if (screenOn) { encodeScreen(); return; }
     if (venc.state !== 'configured' || !localV || localV.readyState < 2 || venc.encodeQueueSize > 3) return;
     // Ronda 2772: la cámara cambió de forma o de tamaño (al abrir, girar el teléfono, la otra cámara): codificador nuevo
     var sz = sendSize();
@@ -400,6 +407,29 @@ export function createCallMedia(opts) {
       lastFrameAt = Date.now(); vstats.frames++;
     } catch (e) {}
     try { if (f) f.close(); } catch (e) {}
+  }
+
+  // 13-11: una imagen de la pantalla (si hay nueva, o la misma cada segundo), con una completa cada 10
+  function encodeScreen() {
+    var now = Date.now();
+    if (!scrImg || venc.state !== 'configured' || venc.encodeQueueSize > 2) return;
+    if (now - scrEncAt < 1000 / SCR_FPS || (!scrNew && now - scrEncAt < 1000)) return;
+    var sz = sendSize();
+    if (sz.w !== vcanvas.width || sz.h !== vcanvas.height) { vcanvas.width = sz.w; vcanvas.height = sz.h; makeEncoder(); return; }
+    var f = null;
+    try {
+      vctx.drawImage(scrImg, 0, 0, vcanvas.width, vcanvas.height);
+      f = new window.VideoFrame(vcanvas, { timestamp: Math.round(vN * 1e6 / FPS) });
+      venc.encode(f, { keyFrame: forceKey || scrN % 10 === 0 }); vN++; scrN++; forceKey = false;
+      scrNew = false; scrEncAt = now; lastFrameAt = now; vstats.frames++;
+    } catch (e) {}
+    try { if (f) f.close(); } catch (e) {}
+  }
+  // El codificador y el temporizador también sin cámara (la pantalla se puede compartir aunque la cámara no abriera)
+  function ensureVideoPipe() {
+    if (!vcanvas) { vcanvas = document.createElement('canvas'); vcanvas.width = VW; vcanvas.height = VH; vctx = vcanvas.getContext('2d'); }
+    if (!venc || venc.state === 'closed') makeEncoder();
+    if (!vTimer) vTimer = setInterval(encodeTick, Math.round(1000 / FPS));
   }
 
   // Vídeo propio: <video> con la cámara, codificador y temporizador (una vez; una cámara nueva entra en el mismo <video>)
@@ -454,7 +484,7 @@ export function createCallMedia(opts) {
     }
     // Sin voz que mandar (sin micrófono, audio en pausa): un paquete vacío cada 2 s, para que el otro no corte
     if (now - lastSentAt > 2000) { lastSentAt = now; try { onPacket(_pack(codec || 2, [])); } catch (e) {} }
-    if (wantVideo && camOn && camState !== 'none') watchCam(now, visible);
+    if (wantVideo && camOn && camState !== 'none' && !screenOn) watchCam(now, visible);
     // Llega vídeo del otro pero no sale imagen: imagen completa y, si sigue, decodificador nuevo
     if (rxVideoAt && now - rxVideoAt < 2000) {
       var since = lastDecodedAt || firstRxAt;
@@ -564,6 +594,22 @@ export function createCallMedia(opts) {
       if (!vt || vt.readyState === 'ended') { camTries = 0; camNextTry = 0; setState('retry'); openCam('encendida'); }
       else setState('on');
     },
+    // 13-11: compartir pantalla (on) / volver a la cámara (off). La cámara se apaga mientras tanto (batería) y vuelve como estaba.
+    screen: function(on) {
+      if (stopped || !wantVideo || typeof window.VideoEncoder !== 'function') return false;
+      screenOn = !!on; scrImg = null; scrNew = false; scrEncAt = 0; scrN = 0; scrW = scrH = 0;
+      try { if (stream) stream.getVideoTracks().forEach(function(t) { t.enabled = !screenOn && camOn; }); } catch (e) {}
+      if (screenOn) ensureVideoPipe();
+      forceKey = true; lastFrameAt = Date.now();
+      return true;
+    },
+    screenFrame: function(b64, w, h) {
+      if (!screenOn || stopped || typeof b64 !== 'string' || !b64) return;
+      var img = new window.Image();
+      img.onload = function() { if (!screenOn) return; scrImg = img; scrW = img.naturalWidth || w || 0; scrH = img.naturalHeight || h || 0; scrNew = true; };
+      img.src = 'data:image/jpeg;base64,' + b64;
+    },
+    screenOn: function() { return screenOn; },
     // Ronda 2769: la app vuelve a la vista (la cámara se pierde en segundo plano): se reintenta ya
     wake: function() {
       if (stopped) return;

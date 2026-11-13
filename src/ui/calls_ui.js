@@ -95,7 +95,8 @@ var _IC = {
   flip: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><path d="M9.5 13.5a2.5 2.5 0 0 0 4.6 1.3M14.5 12.5a2.5 2.5 0 0 0-4.6-1.3"/><path d="M14 15l.3-1.8 1.7.6M10 11l-.3 1.8-1.7-.6"/>',
   phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
-  addp: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M15 11h6"/>'
+  addp: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M15 11h6"/>',
+  screen: '<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M12 15V8M9 11l3-3 3 3"/>'
 };
 function _svg(name, size) {
   return '<svg width="' + (size || 26) + '" height="' + (size || 26) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + _IC[name] + '</svg>';
@@ -148,6 +149,14 @@ function _style() {
     // Ronda 2769: sin imagen del otro (su cámara apagada, sin cámara o aún sin imagen): su foto y el motivo, no negro
     '#nexo-call-screen.nc-video.nc-live.nc-novideo .nc-center{opacity:1}',
     '#nexo-call-screen.nc-novideo .call-remote-video{visibility:hidden}',
+    // 13-11 (dueño): compartir pantalla. Barra roja arriba mientras comparto (tocarla detiene); el aviso antes de empezar;
+    // la pantalla del otro se ve ENTERA (nunca recortada) y sin espejo, y se puede ampliar con dos dedos
+    '#nexo-call-screen .nc-scrbar{position:absolute;left:0;right:0;top:0;z-index:12;background:#dc2626;color:#fff;font-size:14px;font-weight:600;text-align:center;padding:calc(env(safe-area-inset-top,0px) + 8px) 12px 8px;cursor:pointer}',
+    '#nexo-call-screen.nc-peer-screen .call-remote-video.nc-full{object-fit:contain !important;background:#000;transform-origin:0 0}',
+    '#nexo-scr-ask{position:absolute;inset:0;z-index:20;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:16px}',
+    '#nexo-scr-ask .nc-ask-box{background:#1f2937;color:#fff;border-radius:16px;padding:18px;max-width:340px;font-size:15px;line-height:1.4}',
+    '#nexo-scr-ask .nc-ask-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}',
+    '#nexo-scr-ask button{border:none;border-radius:10px;padding:10px 16px;font-size:15px;font-weight:600;min-height:44px}',
     '#nexo-call-screen .nc-warnbar{display:none;margin-top:8px;font-size:13px;color:#fbbf24;text-shadow:0 1px 8px rgba(0,0,0,.7);text-align:center}',
     '#nexo-call-screen.nc-video.nc-live .nc-warnbar:not(:empty){display:block}',
     '#nexo-call-screen .nc-mini{display:none;font-size:17px;font-weight:600;text-shadow:0 1px 8px rgba(0,0,0,.6)}',
@@ -336,12 +345,61 @@ function _videoLayout(el, st) {
   if (big) { big.classList.remove('nc-pip'); big.classList.add('nc-full'); big.style.left = ''; big.style.top = ''; }
   if (small) { small.classList.remove('nc-full'); small.classList.add('nc-pip'); _placePip(el, small); _makeDraggable(el, small); }
   if (v.local) v.local.style.transform = (st.facing || 'user') === 'user' ? 'scaleX(-1)' : 'none'; // la de delante, como un espejo
-  if (v.remote) v.remote.style.transform = st.peerFront === true && mirrorPeerPref() ? 'scaleX(-1)' : 'none';
-  el.classList.toggle('nc-fill', _fit.user ? _fit.user === 'fill' : _autoFill(el, big));
-  if (v.local) v.local.style.visibility = st.cameraOff || (st.camState && st.camState !== 'on') ? 'hidden' : '';
+  // 13-11: la pantalla del otro, entera y sin espejo (con el zoom de dos dedos si lo hay)
+  el.classList.toggle('nc-peer-screen', !!st.peerScreen);
+  if (v.remote) v.remote.style.transform = st.peerScreen ? _zoomCss() : (st.peerFront === true && mirrorPeerPref() ? 'scaleX(-1)' : 'none');
+  if (!st.peerScreen) _zoom.s = 1;
+  else _pinchZoom(el, v.remote);
+  el.classList.toggle('nc-fill', !st.peerScreen && (_fit.user ? _fit.user === 'fill' : _autoFill(el, big)));
+  if (v.local) v.local.style.visibility = st.screen || st.cameraOff || (st.camState && st.camState !== 'on') ? 'hidden' : '';
+  _screenBar(el, st);
   el.classList.add('nc-live');
   // Ronda 2769: sin imagen del otro, su foto y el motivo (antes la pantalla quedaba negra)
   el.classList.toggle('nc-novideo', !!(st.peerCam && st.peerCam !== 'on') || !calls.remoteVideoLive());
+}
+
+// 13-11: compartir pantalla — barra roja mientras comparto (tocarla detiene) y aviso antes de empezar
+function _screenBar(el, st) {
+  var bar = el.querySelector('.nc-scrbar');
+  if (!st.screen) { if (bar) bar.remove(); return; }
+  if (bar) return;
+  bar = document.createElement('div');
+  bar.className = 'nc-scrbar';
+  bar.textContent = t('call_screen_on', 'Compartiendo tu pantalla · Detener');
+  bar.onclick = function(e) { e.stopPropagation(); var c = _calls(); if (c) c.shareScreen(false); };
+  el.appendChild(bar);
+}
+function _screenAsk(el, onYes) {
+  if (document.getElementById('nexo-scr-ask')) return;
+  var ov = document.createElement('div');
+  ov.id = 'nexo-scr-ask';
+  ov.innerHTML = '<div class="nc-ask-box"><div class="nc-ask-txt"></div><div class="nc-ask-btns"><button class="nc-ask-no"></button><button class="nc-ask-yes" style="background:#16a34a;color:#fff"></button></div></div>';
+  ov.querySelector('.nc-ask-txt').textContent = t('call_screen_ask', 'Se verá TODO lo que haya en tu pantalla, también las notificaciones que lleguen. Android te pedirá permiso.');
+  ov.querySelector('.nc-ask-no').textContent = t('cancel', 'Cancelar');
+  ov.querySelector('.nc-ask-yes').textContent = t('call_screen_go', 'Compartir');
+  ov.onclick = function(e) { e.stopPropagation(); if (e.target === ov) ov.remove(); };
+  ov.querySelector('.nc-ask-no').onclick = function(e) { e.stopPropagation(); ov.remove(); };
+  ov.querySelector('.nc-ask-yes').onclick = function(e) { e.stopPropagation(); ov.remove(); onYes(); };
+  el.appendChild(ov);
+}
+// Zoom de dos dedos sobre la pantalla del otro (escala 1–4, se arrastra con dos dedos)
+var _zoom = { s: 1, x: 0, y: 0 };
+function _zoomCss() { return _zoom.s > 1.01 ? 'translate(' + _zoom.x + 'px,' + _zoom.y + 'px) scale(' + _zoom.s + ')' : 'none'; }
+function _pinchZoom(el, target) {
+  if (!target || target._pinch) return;
+  target._pinch = true;
+  var g = null;
+  var d = function(t0) { var a = t0[0], b = t0[1]; return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); };
+  var mid = function(t0) { return { x: (t0[0].clientX + t0[1].clientX) / 2, y: (t0[0].clientY + t0[1].clientY) / 2 }; };
+  el.addEventListener('touchstart', function(e) { if (!el.classList.contains('nc-peer-screen') || e.touches.length !== 2) return; g = { d: d(e.touches), m: mid(e.touches), s: _zoom.s, x: _zoom.x, y: _zoom.y }; }, { passive: true });
+  el.addEventListener('touchmove', function(e) {
+    if (!g || e.touches.length !== 2) return;
+    var s = Math.max(1, Math.min(4, g.s * d(e.touches) / (g.d || 1))), m = mid(e.touches);
+    _zoom.s = s; _zoom.x = m.x - (g.m.x - g.x) * s / g.s; _zoom.y = m.y - (g.m.y - g.y) * s / g.s;
+    if (s <= 1.01) { _zoom.x = 0; _zoom.y = 0; }
+    target.style.transform = _zoomCss();
+  }, { passive: true });
+  el.addEventListener('touchend', function(e) { if (e.touches.length < 2) g = null; }, { passive: true });
 }
 
 // Ronda 2769: avisos de la llamada: mi micrófono, el del otro y mi cámara (en ese orden de importancia)
@@ -397,7 +455,8 @@ function _render(st) {
       old.classList.remove('nc-live', 'nc-hide', 'nc-waiting');
       var s0 = old.querySelector('.call-status');
       if (s0 && st) { s0.classList.remove('nc-warn'); s0.textContent = st.reason === 'busy' ? t('call_end_busy', 'Ocupado') : st.reason === 'rejected' ? t('call_end_rejected', 'Rechazada') : st.reason === 'unanswered' ? t('call_end_no_answer', 'No contesta') : st.reason === 'lost' ? t('call_end_lost', 'Se cortó') : st.reason === 'missed' ? t('call_end_missed', 'Llamada perdida') : t('call_end_finished', 'Llamada terminada') + (st.seconds ? ' · ' + _fmt(st.seconds) : ''); }
-      Array.prototype.forEach.call(old.querySelectorAll('.call-remote-video, .call-local-video'), function(n) { n.remove(); });
+      Array.prototype.forEach.call(old.querySelectorAll('.call-remote-video, .call-local-video, .nc-scrbar, #nexo-scr-ask'), function(n) { n.remove(); });
+      old.classList.remove('nc-peer-screen'); _zoom = { s: 1, x: 0, y: 0 };
       var bt0 = old.querySelector('.call-buttons'); bt0.innerHTML = '';
       // #dueño: si se CORTÓ por mala conexión ('lost'), la pantalla da 5 s para «Volver a llamar» y luego se cierra y
       // vuelve al chat del contacto donde se hizo la llamada. Cualquier otro final se quita en 1,4 s como siempre.
@@ -471,6 +530,14 @@ function _render(st) {
     };
     upd(); _tick = setInterval(upd, 1000);
     if (st.video) bt.appendChild(_btn('flip', t('call_flip', 'Girar'), 'call-flip', function() { calls.flipCamera(); }));
+    // 13-11 (dueño): compartir pantalla (aviso antes; si ya comparto, «Detener»)
+    if (st.video && typeof calls.shareScreen === 'function') bt.appendChild(_btn('screen', st.screen ? t('call_screen_stop', 'Detener') : t('call_screen', 'Pantalla'), 'call-screen', function() {
+      if (st.screen) { calls.shareScreen(false); return; }
+      _screenAsk(el, function() {
+        calls.shareScreen(true).then(function(ok) { if (!ok) _showInfoToast(t('call_screen_no', 'No se compartió la pantalla'), 2500); })
+          .catch(function(err) { _showInfoToast((err && err.message) || t('call_screen_no', 'No se compartió la pantalla'), 3500); });
+      });
+    }, st.screen ? 'nc-red' : ''));
     if (st.video) bt.appendChild(_btn(st.cameraOff ? 'camOff' : 'cam', st.cameraOff ? t('call_camera_off', 'Cámara no') : t('call_camera', 'Cámara'), 'call-camera', function() { calls.camera(!!st.cameraOff); }, st.cameraOff ? 'nc-on' : ''));
     bt.appendChild(_btn(st.muted ? 'micOff' : 'mic', st.muted ? t('call_muted', 'Silenciado') : t('call_mute', 'Silenciar'), 'call-mute', function() { calls.mute(!st.muted); }, st.muted ? 'nc-on' : ''));
     // Altavoz / auricular (en la videollamada, altavoz de entrada)
