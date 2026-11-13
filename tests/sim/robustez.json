@@ -314,6 +314,10 @@
     {
      "fallo": "3033 (diagnóstico S24 3027/3028 12-11 22:25 con el Motorola de GATT roto): «sin servicio GATT 21 veces: pauso Bluetooth 600 s» y aun así conectar/cortar cada 1–3 s. El resultado de escaneo llega con el contacto en nexoId (sin deviceUUID) y _autoConnectGATT buscaba la pausa por la DIRECCIÓN: nunca la encontraba. Jump (_connect) y el envío de texto/archivo tampoco miraban la pausa. 3033: _btPauseKey/_btPaused por NEXO ID en las cuatro puertas. cola3033.js (contraprueba 3032: escaneo y Jump conectan en pausa)",
      "prueba": "con el Bluetooth en pausa por GATT roto"
+    },
+    {
+     "fallo": "3037 (diagnóstico del dueño 13-11, S24 APK 3030 con el Vivo …db61, 19:03–19:45): textos al Vivo fallando por Bluetooth 40 min con «BT listo» y el vigilante saltando el ping/zombie todo el rato («transferencia activa»): un texto largo pendiente se reanudaba cada 10–30 s y cada flujo nuevo traía su hora de inicio, así que el «> 20 s sin ACK no protege» (2973) nunca se cumplía. 3037: hasActiveTransfer cuenta también cuándo se oyó por última vez cualquier cosa de ese teléfono (_lastPongTime): callado > 20 s → un flujo sin ACK propio no protege. xferstuck.js (contraprueba 3036: protege)",
+     "prueba": "texto largo que se reanuda sobre un enlace que no contesta"
     }
    ]
   },

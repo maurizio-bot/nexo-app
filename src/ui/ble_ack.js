@@ -364,7 +364,17 @@ export class BleAckSystem {
     // ACK no «protege» el enlace. Antes el vigilante saltaba el ping/zombie PARA SIEMPRE («transferencia activa») mientras cada
     // pendiente se arrastraba 8 reintentos de ventana sobre un enlace muerto y, al abortar, arrancaba el siguiente sobre el
     // mismo. Atascado → se pinga; sin pong, zombi → se rehace el enlace y lo pendiente se reanuda por el nuevo (como siempre).
-    this.outgoingStreams.forEach(function(s) { if (!busy && s && !s.aborted && same(s.deviceId) && now - (s.lastAckAt || s.startTime || now) < XFER_STUCK_MS) busy = true; });
+    // 3037 (dueño 13-11, S24 3030 con el Vivo …db61, 19:03–19:45): un texto largo pendiente se REANUDABA cada 10–30 s y cada flujo
+    // nuevo trae su propia hora de inicio: contado solo desde ella, nunca pasaba de 20 s y el vigilante se saltó el ping/zombie
+    // 40 min con un enlace que no confirmaba nada. Ahora también cuenta cuándo se oyó por última vez CUALQUIER cosa de ese teléfono
+    // (_lastPongTime, cada paquete recibido): si lleva > XFER_STUCK_MS callado, un flujo sin ACK propio no protege el enlace.
+    var heard = 0, ble = this.ble;
+    try { if (ble && ble._lastPongTime) ble._lastPongTime.forEach(function(t, k) { if (t > heard && same(k)) heard = t; }); } catch (e) {}
+    this.outgoingStreams.forEach(function(s) {
+      if (busy || !s || s.aborted || !same(s.deviceId)) return;
+      if (s.lastAckAt) { if (now - s.lastAckAt < XFER_STUCK_MS) busy = true; return; }
+      if (now - (s.startTime || now) < XFER_STUCK_MS && (!heard || now - heard < XFER_STUCK_MS)) busy = true;
+    });
     this.incomingBuffers.forEach(function(b) { if (!busy && b && now - (b.lastActivity || 0) < 30000 && same(b.deviceId)) busy = true; });
     return busy;
   }
