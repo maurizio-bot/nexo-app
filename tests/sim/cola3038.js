@@ -4,6 +4,7 @@
 //     3038: tras darlo por ilegible queda ✗ con la marca attMissing: ni reenvío automático ni «pendiente viejo»; «Reintentar» la quita.
 //  §2 un texto largo para …ab2f (ausente) arrancaba en cada reenvío de OTRO contacto (cada 15–30 s, casi 2 h) y se rendía a los 10 s.
 //     3038: tras rendirse, la reanudación espera 15 s, 30 s… 10 min, salvo que el enlace de ESE contacto esté listo.
+//  §4 (3041, Honor …c1ee 21:25): la transferencia de una copia de estado ya borrada del historial (huérfana) se borra, no se reanuda.
 //  §3 (3040, aviso «openchat_mac_vieja» 21:15 / S24 21:28): abrir el chat de un contacto en pausa Bluetooth no fuerza la conexión.
 // Uso: node cola3038.js <dir_build>
 'use strict';
@@ -64,6 +65,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
 
   // §2 espera creciente al reanudar: una transferencia de un contacto ausente C que siempre se rinde
   const ack = biA.ackSystem, idC = 'nx0zz3038c';
+  const orig = { gp: A.win.vaultGetPendingOutgoingTransfers, drop: ack._dropDeliveredTransfers, run: ack._resumeRunOne };
   const tx = { transferId: 'msg_resume_3038', status: 'pending', type: 'chat', chunks: ['x'], meta: {} };
   let runs = 0;
   const realContacts = biA.getBLEContacts;
@@ -95,9 +97,25 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     r.s3_sin_pausa_fuerza = conn > 0;
     biA.nativePlugin.connectToDevice = realConn;
   }
+  // §4 (3041, diagnóstico Honor …c1ee 21:25): la transferencia de una copia de estado cuyo mensaje ya no está (huérfana) se borra
+  //    sin reanudarla; un texto normal sin mensaje en el historial NO se toca (p. ej. copias de grupo, guardadas en el grupo)
+  {
+    A.win.vaultGetPendingOutgoingTransfers = orig.gp; ack._dropDeliveredTransfers = orig.drop;
+    let runs4 = []; ack._resumeRunOne = (j) => { runs4.push(j.tx.transferId); return Promise.reject(new Error('x')); };
+    const big = 'x'.repeat(2000);
+    const st = JSON.stringify({ type: 'nexo_act', act: 'st', sid: 'st3041aaaa', m: 'data:image/jpeg;base64,' + big });
+    await A.win.vaultCreateOutgoingTransfer(idB, 'msg_orphan_st_3041', 'chat', 2, [st.slice(0, 1000), st.slice(1000)], {}, '');
+    await A.win.vaultCreateOutgoingTransfer(idB, 'msg_orphan_txt_3041', 'chat', 1, ['hola, texto normal largo'], {}, '');
+    ack._resumeFail && ack._resumeFail.clear(); ack._resumeScanAt = 0; ack._resumeScanBusy = false;
+    ack.resumeOutgoingTransfers(); await sleep(1500);
+    const left = (await A.win.vaultGetPendingOutgoingTransfers(idB)).map((t) => t.transferId);
+    r.s4_estado_huerfano_borrado = left.indexOf('msg_orphan_st_3041') < 0 && runs4.indexOf('msg_orphan_st_3041') < 0;
+    r.s4_texto_sigue = left.indexOf('msg_orphan_txt_3041') >= 0 && runs4.indexOf('msg_orphan_txt_3041') >= 0;
+    ack._resumeRunOne = orig.run;
+  }
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT/.test(l)).slice(0, 5);
   const ok = r.enlace && r.s1_estado === 'failed' && r.s1_marca && r.s1_no_relee && r.s1_reintentar_vuelve &&
-    r.s2_primera === 1 && r.s2_en_espera === 1 && r.s2_su_enlace === 2 && r.s2_tras_espera === 3 && r.s3_en_pausa_no_fuerza && r.s3_sin_pausa_fuerza && !r.errores.length;
+    r.s2_primera === 1 && r.s2_en_espera === 1 && r.s2_su_enlace === 2 && r.s2_tras_espera === 3 && r.s3_en_pausa_no_fuerza && r.s3_sin_pausa_fuerza && r.s4_estado_huerfano_borrado && r.s4_texto_sigue && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('COLA3038 ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_cola3038.txt'), logs.join('\n'));

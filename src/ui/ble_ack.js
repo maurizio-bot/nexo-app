@@ -156,6 +156,13 @@ const MTU_DEFER_MAX_WAIT_MS = 300000;     // 5 min esperando un camino mejor; lu
 // hilo principal del WebView se saturaba (timers + logs + reconstruir el contenido de cada una) y la app se CONGELABA
 // (ANR). Ahora se reanudan como mucho MAX_RESUME_CONCURRENT a la vez (el resto en cola) y el contenido se reconstruye
 // perezosamente al arrancar cada una, no todas de golpe.
+// 3041: ¿la transferencia guardada es la copia de un estado (acción oculta nexo_act «st»)? (se mira el principio del contenido)
+function _isStatusTx(tx) {
+  try {
+    var c0 = tx && tx.chunks && tx.chunks.length ? tx.chunks.slice(0, 3).map(function(c) { return (typeof c === 'string') ? c : (c && (c.data || c.d)) || ''; }).join('') : '';
+    return c0.indexOf('"type":"nexo_act"') >= 0 && /"act":"st"/.test(c0);
+  } catch (e) { return false; }
+}
 const RESUME_FAIL_BASE_MS = 15000, RESUME_FAIL_MAX_MS = 600000; // 3038: espera tras una reanudación que se rindió (15 s, 30 s… 10 min)
 const RESUME_SCAN_GAP_MS = 2500;          // 3003: mínimo entre dos escaneos completos de transferencias pendientes (resumeOutgoingTransfers)
 const MAX_RESUME_CONCURRENT = 3;          // transferencias reanudadas a la vez (global); el resto espera en cola
@@ -2020,6 +2027,10 @@ export class BleAckSystem {
         if (!done && m && m.hidden === true && self.ble && typeof self.ble._markHiddenQuiet === 'function') self.ble._markHiddenQuiet([m]);
         // 3033: la transferencia guardada de una copia vieja de un estado (foto dentro, 424–779 trozos) se borra sin reanudarla
         if (!done && m && !isHd && m.hidden === true && typeof window.NEXO_staleStatusCopy === 'function' && window.NEXO_staleStatusCopy(m, cid)) done = true;
+        // 3041 (diagnóstico Honor …c1ee 13-11 21:25: «Resume: 2/3/4 outgoing» de 766 trozos a 5 contactos en cada arranque, el
+        // Bluetooth atascado): la copia vieja del estado ya se había borrado del historial (3033) pero su transferencia quedó
+        // HUÉRFANA y, sin mensaje con qué compararla, se reanudaba siempre. Una transferencia de un estado sin su mensaje se borra.
+        if (!done && !m && !isHd && _isStatusTx(tx)) { console.log('[ESTADO] Transferencia huérfana de un estado para ' + cid + ' (' + tx.transferId + '): se borra sin reanudar'); done = true; }
         if (done && window.vaultRemoveOutgoingTransfer) window.vaultRemoveOutgoingTransfer(cid, tx.transferId).catch(function(){});
         return !done;
       });

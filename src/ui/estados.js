@@ -172,6 +172,8 @@ export function staleStatusCopy(m, cid) {
     console.log('[ESTADO] Copia vieja de un estado para ' + nx + ' (' + why + '): no se reenvía, se borra'); // i18n-ok
     {
       vaultDeleteMessage(nx, id).catch(function() {});
+      // 3041: y su transferencia guardada (si no, quedaba huérfana y se reanudaba en cada arranque)
+      try { if (typeof window !== 'undefined' && typeof window.vaultRemoveOutgoingTransfer === 'function') window.vaultRemoveOutgoingTransfer(nx, id).catch(function() {}); } catch (e) {}
       if (sid) { if (_loaded) _unmarkSent(nx, sid); else _unsent.push([nx, sid]); }
     }
   }
