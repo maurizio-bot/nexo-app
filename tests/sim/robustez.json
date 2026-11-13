@@ -641,6 +641,10 @@
     {
      "fallo": "3049 (dueño 13-11 02:10, S24 APK 3034 → vivo por Bluetooth, los dos con Wi-Fi Direct, APK de 25 MB: «nunca se activó Wi-Fi Direct»): al volver del selector de archivos la app limpia los estados de enlace con > 10 s (_cleanupStaleStates) y los rehace ~70 ms después; el archivo se eligió en ese hueco → «sin camino local para archivos grandes» → se leyó entero como adjunto y quedó ⏳ «no caben por Bluetooth: esperan Wi-Fi/internet» (el vivo recibió ese minuto un respaldo de 384 KB por Wi-Fi Direct: funcionaba). 3049: si antes de abrir el selector había camino (Wi-Fi, Wi-Fi Direct o L2CAP) y al elegir no, se espera hasta 4 s a que vuelva. bigpick.js (contraprueba 3048; el simulador imita la respuesta tardía de Android con connectedDelayMs)",
      "prueba": "archivo grande elegido AL VOLVER del selector"
+    },
+    {
+     "fallo": "Dueño 13-11 (3071, opción A): una foto del chat no tenía tope al elegirla: una de la galería de 6 MB o más se leía entera en memoria para comprimirla. Ahora más de 5 MB no se manda (aviso) ni se lee; las demás de la tanda siguen. photocap.js (contraprueba 3069: la lee entera)",
+     "prueba": "fotos del chat de hasta 5 MB"
     }
    ],
    "debiles": [

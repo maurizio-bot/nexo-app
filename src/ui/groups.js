@@ -11,7 +11,7 @@
  * Cada copia queda (oculta) en el chat del miembro: si no está a alcance se reenvía sola como cualquier mensaje.
  * Fotos, notas de voz, ubicación, contactos y archivos (hasta ~1 MB) van igual, dentro del sobre (fase 2, 2758); el
  * vídeo, solo la previa. La copia oculta de cada miembro se borra al confirmarse que le llegó.
- * 3071 (desatasco, modo adelanto 13-11): si el sobre es pequeño (texto, puntero de foto/archivo), la copia se guarda hasta que
+ * 3071 (desatasco, modo adelanto 13-11): si el sobre es pequeño (≤ 16 KB: texto, puntero de foto/archivo), la copia se guarda hasta que
  * el miembro lo LEE o pasan 6 h: su nativo puede dar ✓✓ con la app cerrada sin poder descifrarlo (atasco del cifrado) y el
  * desatasco (resync.js) la reenvía desde ahí. Sin copia, ese mensaje de grupo se perdía para él.
  */
@@ -25,7 +25,8 @@ var NX_RE = /^nx[0-9a-z]{8}$/;
 var MAX_MEMBERS = 32;
 var STATUS_RANK = { failed: 0, pending: 1, sending: 2, sent: 3, delivered: 4, read: 5 };
 var KEEP_MS = 6 * 3600000;        // 3071: tanto como la ventana del desatasco (resync.js WINDOW_MAX_MS)
-var KEEP_MAX_CHARS = 64 * 1024;   // 3071: solo sobres pequeños (con fotos dentro del sobre ocuparía una vez por miembro)
+var KEEP_MAX_CHARS = 16 * 1024;   // 3071: solo sobres pequeños: textos y punteros (una foto o archivo DENTRO del sobre ocuparía
+                                  // su tamaño una vez por miembro: esa copia se sigue borrando con el ✓✓, groups.js de la batería)
 var SWEEP_EVERY_MS = 10 * 60000;
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }

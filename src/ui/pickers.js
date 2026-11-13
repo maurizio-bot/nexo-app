@@ -3,7 +3,7 @@
  * del sistema, lectura, compresión de fotos, miniatura de PDF y límites de tamaño. _sendAttachment lo da main.js.
  */
 import { _closeAttachMenu, _showInfoToast, _showPermissionError } from './ui_bits.js';
-import { _capAttachments, GALLERY_MAX } from './attach_cap.js';
+import { _capAttachments, _photoTooBig, GALLERY_MAX } from './attach_cap.js';
 import { _compressImageBase64, _extOf, _isPdf, _mimeOf, _pdfThumb, _readFileBase64 } from './file_tools.js';
 import { _getCurrentContactId } from './chat_format.js';
 import { _hideCameraPreviewOverlay, _photoTarget, _stopCameraPreview } from './camera.js';
@@ -90,6 +90,12 @@ function _sendGalleryItems(files, i) {
     // v9.9.30: el vídeo no se lee entero: se recodifica una previa y el original va como HD si cabe
     try { _sendVideo(file, { name: file.name, size: file.size, mime: file.type }); } catch (e) { console.warn('[ATTACH] vídeo galería: ' + (e && e.message)); }
     setTimeout(next, 500);
+    return;
+  }
+  if (_photoTooBig(file)) {
+    console.log('[ATTACH] Foto de ' + (file.size / 1048576).toFixed(1) + ' MB: más de 5 MB, no se manda');
+    try { _showInfoToast(t('chat_photo_big', 'La foto pesa más de 5 MB: elige una más pequeña'), 4500); } catch (e) {}
+    next();
     return;
   }
   _readFileBase64(file).then(function(base64) {

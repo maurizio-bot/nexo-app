@@ -764,6 +764,7 @@ var STRINGS = {
   prof_cp_offline: { es: "Desconectado", it: "Disconnesso", en: "Offline" },
   prof_cp_chat: { es: "Abrir chat", it: "Apri la chat", en: "Open chat" },
   prof_photo_big: { es: "La foto pesa más de 5 MB: elige una más pequeña", it: "La foto supera i 5 MB: scegline una più piccola", en: "The photo is over 5 MB: pick a smaller one" },
+  chat_photo_big: { es: "La foto pesa más de 5 MB: elige una más pequeña", it: "La foto supera i 5 MB: scegline una più piccola", en: "The photo is over 5 MB: pick a smaller one" },
   prof_cp_mine: { es: "Es mi foto", it: "È la mia foto", en: "It's my photo" },
   prof_cp_mine_sure: { es: "¿Es tuya? Toca otra vez para confirmar", it: "È tua? Tocca di nuovo per confermare", en: "Is it yours? Tap again to confirm" },
   prof_cp_mine_done: { es: "Listo: esa foto ya no se verá en ", it: "Fatto: quella foto non si vedrà più su ", en: "Done: that photo will no longer show on " },

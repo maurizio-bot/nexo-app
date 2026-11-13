@@ -17,3 +17,8 @@ export function _capAttachments(files, max) {
   var m = (typeof max === 'number' && max > 0) ? Math.floor(max) : GALLERY_MAX;
   return { send: arr.slice(0, m), dropped: Math.max(0, arr.length - m) };
 }
+
+// 3071 (dueño 13-11, opción A): una foto del chat de más de 5 MB no se manda (como la de perfil, 3066, y los estados, 3032).
+// Se mira el tamaño ANTES de leerla: una foto enorme ya no se carga entera en memoria para comprimirla.
+export var PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+export function _photoTooBig(file) { return !!file && (file.type || '').indexOf('video') !== 0 && typeof file.size === 'number' && file.size > PHOTO_MAX_BYTES; }
