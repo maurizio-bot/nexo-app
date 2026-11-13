@@ -10,7 +10,7 @@ import { groupAttachment, parseGroupEnvelope } from './groups.js';
 import { NET_MAX_B64_BYTES } from './media_limits.js';
 import { parseCallSignal } from './calls.js';
 import { parseGroupCallSignal } from './group_call.js';
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _attMissDecision, _attMissCooling, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus, _tooBigForBt } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _attMissDecision, _attMissCooling, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus, _tooBigForBt, BT_FILE_MAX_CHARS } from './ble_helpers.js';
 import { blobPointerIn, validatePointer, fetchBlob, blobMailboxEligible, pointerReusable, loadBlobSeen, saveBlobSeen, citaIn, validateCita, loadCitaIn, saveCitaIn, loadCitaOut, saveCitaOut, _fetchRetryDelay, _b64Bytes as _blobB64Bytes, MAX_CONCURRENT as BLOB_MAX_CONCURRENT, MAILBOX_MAX_BYTES as BLOB_MAILBOX_MAX_BYTES } from '../net/blob_mailbox.js'; // Fase B (2969): buzón de ARCHIVOS
 
 
@@ -1187,6 +1187,12 @@ export const BLE_MESSAGE_METHODS = {
             // (una copia en los relés + toque FCM) si el archivo puede ir por ahí; con puntero vigente va por referencia (0 bytes).
             // Un puente por Bluetooth (local, gratis) sí va primero.
             if (rh && _netNx(rh.deviceId)) { var viaBlobJ = self._fileToBlobMailbox(uuid, fileId, base64Data, meta); if (viaBlobJ) { viaBlobJ.then(resolve, reject); return; } }
+            // 3053 (diagnóstico del vivo 12-11 22:00): un archivo que no cabe por Bluetooth no sale por Jump, aunque el primer tramo
+            // sea Wi-Fi: algún tramo siguiente es Bluetooth (el puente no tiene Wi-Fi ni internet con él, si no iría directo)
+            if (rh && typeof base64Data === 'string' && base64Data.length > BT_FILE_MAX_CHARS && !(meta && meta.big)) {
+              console.log('[JUMP] ' + fileId + ' (' + Math.round(base64Data.length * 3 / 4 / 1024) + ' KB) no cabe por Bluetooth: no va por el puente ' + rh.via + ', espera Wi-Fi/internet con ' + uuid);
+              rh = null;
+            }
             if (rh) {
               deviceId = rh.deviceId;
               meta = Object.assign({}, meta || {}, { dst: uuid });
@@ -1391,7 +1397,9 @@ export const BLE_MESSAGE_METHODS = {
           list = list.filter(function(m) { return noGw.indexOf(m) < 0; });
         }
       }
-      if ((btDirect || btHop) && !betterPath) {
+      // 3053: por CUALQUIER puente Jump (también si el primer tramo es Wi-Fi: el vivo leía 75 MB del disco en cada vuelta para
+      // mandarlos por el S24 y fallar después)
+      if ((btDirect || btHop || !!rh) && !betterPath) {
         var grandes = list.filter(tooBigForBt);
         if (grandes.length) { console.log('[BLEInterface] ' + grandes.length + ' archivo(s) grande(s) para ' + nexoId + ' no caben por Bluetooth: esperan Wi-Fi/internet (sin leer del disco)'); list = list.filter(function(m) { return !tooBigForBt(m); }); }
       }

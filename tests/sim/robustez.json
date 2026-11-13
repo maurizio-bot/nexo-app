@@ -781,6 +781,10 @@
      "prueba": "MEDICIÓN de caminos"
     },
     {
+     "fallo": "Diagnóstico del vivo (3031, 12-11 22:00), 3053: 3 archivos de ~25 MB pendientes para un contacto lejano desde hacía 11 días; cada vez que veía al S24 por Wi-Fi lo usaba de puente Jump: leía 75 MB del disco y los mandaba por él para fallar después (el siguiente tramo es Bluetooth). La regla 2974 solo miraba puentes por Bluetooth; ahora un archivo que no cabe por Bluetooth no va por ningún puente Jump (ni al mandarlo ni al reenviar) y espera Wi-Fi/internet sin leerse del disco. jumpgrande.js (contraprueba 3052)",
+     "prueba": "archivo grande NO va por un puente Jump"
+    },
+    {
      "fallo": "Medición de caminos (3052): al volver el internet propio, el puente se soltaba ~24 s después (latido de 15 s) ocupando al que presta; ahora a los ~6 s (margen de 5 s justo). caminos.js suelta_puente_s ≤ 15 (contraprueba 3051: 24 s)",
      "prueba": "MEDICIÓN de caminos"
     },
