@@ -21,12 +21,15 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **13-11 (3071, modo adelanto; batería b3071 en curso):** lo que quedó del desatasco: los mensajes de GRUPO. Cada mensaje de
+- **13-11 (3071, modo adelanto + foto 5 MB; batería b3071 en curso, la 1.ª se paró por el fallo de grupos):** lo que quedó del desatasco: los mensajes de GRUPO. Cada mensaje de
   grupo va a cada miembro como copia oculta en su chat, y esa copia se BORRABA con su ✓✓ (que puede dar su nativo con la app
   cerrada sin poder descifrar): tras un atasco, esos mensajes se perdían para él. Reproducido (`desync.js --perdidos --grupo`,
   3069: nunca llegan). Ahora un sobre pequeño (texto o puntero de foto/archivo, ≤ 64 KB) se guarda hasta que el miembro lo LEE
   o pasan 6 h (`groups.js` `_sweepKept`), con su estado al día; el desatasco la encuentra y la reenvía (≈1,3 s, sin duplicados,
-  ninguna copia atascada en pendiente). Límite: un sobre grande (foto dentro del sobre, sin relés) se sigue borrando con el ✓✓.
+  ninguna copia atascada en pendiente). Límite: un sobre de más de 16 KB (foto o archivo DENTRO del sobre, sin relés) se sigue
+  borrando con el ✓✓ (la batería pilló que con 64 KB quedaba la copia de un archivo de 30 KB: `groups.js` «copias_borradas»).
+  También en 3071, dueño (opción A): foto del chat de más de 5 MB no se manda ni se lee entera (aviso; `photocap.js`, contraprueba
+  3069: la leía entera). El probador nx16386482 ya está en la 3046.
 - **13-11 (3070 = APK 3047, nativo):** 3 diagnósticos pegados sin comentario (Motorola auto 3044 14:42; S24 auto
   3045 15:17 «3 cierres por enlace repetido»; S24 manual 16:27). Motorola: en segundo plano `relay.damus.io` se cerraba cada 25–100 s
   durante ~1 h y el nativo (`NetBg.kt`) lo reabría a los ~10 s siempre: abrir ponía los fallos a cero. Ahora, como en la app (P5),
