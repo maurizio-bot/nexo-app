@@ -64,6 +64,8 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 25. **Contacto dormido (3042).** Con la tablet (u otro) con la app dormida y mensajes pendientes para ella: el diagnóstico del S24
     dice «primero una prueba» y «no confirma ni la prueba: los otros N esperan». Al abrir la app de la tablet le llega todo en
     menos de 2 min.
+26. **Estados vistos (3042).** Mira los estados de alguien (el aro se pone gris), cierra NEXO del todo y vuelve a abrirla: el aro
+    sigue gris (antes volvía a azul, como nuevos). Un estado nuevo de esa persona sí vuelve a poner el aro azul.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 

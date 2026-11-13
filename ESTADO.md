@@ -21,6 +21,13 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **13-11 (bloque 3059, va con la 3058 en la APK 3042 si pasa la batería b3059):** dueño: «cuando ves un estado se quita el marcador azul,
+  pero al cerrar y volver a abrir la app vuelven a aparecer como nuevos» → lo visto y los me gusta de estados se guardan
+  (`nexo_status_seen.json`, 2 días; `estados3.js` paso 9, contraprueba 3057). Diagnóstico automático del Motorola (3040,
+  «par:enlace_abre_cierra» pedido por el vivo, 07:39): al conectar como cliente se pidió el MTU y 19 ms después salió una escritura →
+  201 ×50 en 5 s → MTU 133 → caída (status 8) y el mensaje de 2,3 KB descartado; nativo: por el enlace cliente las escrituras esperan a
+  MTU + notificaciones (máx. 4 s; `WriteRetry.waitForClientSetup`, prueba JVM). No comprobado que eso tumbara el enlace (status 8 =
+  se perdió la señal): quita el atasco de 5 s al conectar.
 - **13-11 (bloque 3058, será la APK 3042 si pasa la batería):** diagnóstico del dueño 07:28 (S24 + vivo en la 3039, sin la 3040
   instalada): videollamada por Wi-Fi OK; al apagar el Wi-Fi la voz siguió por Bluetooth y la cámara se congeló; al colgar y volver
   a llamar por Bluetooth la oferta no llegó (ni el «colgar» del vivo) mientras el S24 y el vivo (como puente) le reenviaban todo a
