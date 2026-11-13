@@ -30,7 +30,16 @@ export function _blobToB64(blob) {
 // si el teléfono no puede; nunca se queda colgada (vigilante general).
 // v9.9.32: vídeo temporal dentro de la pantalla (Android no decodifica vídeos ocultos), AudioContext
 // reanudado o sin audio si sigue suspendido, vigilante de atascos y registro [VIDEO] de cada paso.
-export function _makeVideoPreview(blob, knownDuration) {
+// 3035 (dueño 13-11: «en los estados poder subir videos de otras apps tipo TikTok»): un video bajado de otra app suele pasar
+// de 5 MB y antes el estado se quedaba con la previa de 240p. Con opts.hdTargetBytes el HD (720p) se recodifica con el bitrate
+// justo para caber en ese tamaño según la duración (entre 350 kbps y el de siempre), y se hace aunque el original sea chico.
+export function _hdBpsFor(durSec, targetBytes) {
+  var d = Math.max(1, Number(durSec) || 0);
+  var bps = Math.round(targetBytes * 8 / d) - 64000; // menos el audio (64 kbps)
+  return Math.max(350000, Math.min(HD_REENCODE_BPS, bps));
+}
+export function _makeVideoPreview(blob, knownDuration, opts) {
+  opts = opts || {};
   return new Promise(function(resolve) {
     var done = false, cleanup = [], t0 = Date.now();
     function log(m) { console.log('[VIDEO] ' + m + ' (' + Math.round((Date.now() - t0) / 100) / 10 + ' s)'); }
@@ -80,7 +89,8 @@ export function _makeVideoPreview(blob, knownDuration) {
           catch (e) { return finish(null, 'MediaRecorder: ' + e.message); }
           // v9.9.35: original grande (galería: 1080p/4K, decenas de MB) → en la misma pasada un HD 720p
           // recodificado; antes ese HD superaba el límite y solo viajaba la previa
-          var needHd = blob.size > HD_DIRECT_MAX_BYTES || Math.max(w, h) > HD_MAX_SIDE;
+          var needHd = !!opts.hdTargetBytes || blob.size > HD_DIRECT_MAX_BYTES || Math.max(w, h) > HD_MAX_SIDE;
+          var hdBps = opts.hdTargetBytes ? _hdBpsFor(dur, opts.hdTargetBytes) : HD_REENCODE_BPS; // 3035
           var hdRec = null, hdParts = [], hdCanvas = null, hdCtx = null, hw = 0, hh = 0;
           if (needHd) {
             try {
@@ -90,9 +100,9 @@ export function _makeVideoPreview(blob, knownDuration) {
               hdCtx = hdCanvas.getContext('2d');
               var hdTracks = hdCanvas.captureStream(24).getVideoTracks().slice();
               audioTracks.forEach(function(t) { hdTracks.push(t.clone()); });
-              hdRec = new MediaRecorder(new MediaStream(hdTracks), Object.assign(mime ? { mimeType: mime } : {}, { videoBitsPerSecond: HD_REENCODE_BPS, audioBitsPerSecond: 64000 }));
+              hdRec = new MediaRecorder(new MediaStream(hdTracks), Object.assign(mime ? { mimeType: mime } : {}, { videoBitsPerSecond: hdBps, audioBitsPerSecond: 64000 }));
               hdRec.ondataavailable = function(e) { if (e.data && e.data.size) hdParts.push(e.data); };
-              log('Previa: también HD ' + hw + 'x' + hh + ' (original ' + w + 'x' + h + ', ' + Math.round(blob.size / 1024) + ' KB)');
+              log('Previa: también HD ' + hw + 'x' + hh + ' a ' + Math.round(hdBps / 1000) + ' kbps (original ' + w + 'x' + h + ', ' + Math.round(blob.size / 1024) + ' KB)');
             } catch (e) { hdRec = null; log('Previa: sin HD recodificado (' + e.message + ')'); }
           }
           var parts = [], thumb = null, frames = 0, lastT = -1, stuck = 0, pendingStops = hdRec ? 2 : 1, out = null;

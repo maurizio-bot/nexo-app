@@ -44,8 +44,21 @@ export function _setupBackButton() {
     // o el botón cierran primero el visor/estado/cámara y luego el chat, en vez de salir de la app de golpe.
     window.__nexoHandleBack = function() {
       try {
+        // 3035 (dueño 13-11: «¿los gestos de regreso están en todas las pantallas?»): faltaban la guía de bienvenida, el aviso
+        // de batería, los menús (mensaje, grupo, adjuntar), las hojas (reenviar, compartir contactos, elegir contacto, cobrar,
+        // ficha del grupo, fondo de pantalla), el juego NEXO y la búsqueda del chat. Las llamadas NO se cierran con atrás.
+        var wel = document.getElementById('nexo-welcome-overlay');
+        if (wel) { var wsk = document.getElementById('nexo-welcome-skip'); if (wsk) wsk.click(); else wel.remove(); return true; }
+        var bat = document.getElementById('nexo-bat-overlay');
+        if (bat) { var bsk = document.getElementById('nexo-bat-skip'); if (bsk) bsk.click(); else bat.remove(); return true; }
         var sted = document.getElementById('sticker-editor');
         if (sted) { sted.remove(); return true; } // 2878: editor de stickers (el modal más alto)
+        var smalls = ['nexo-msg-menu', 'nexo-group-menu', 'nexo-contact-picker', 'cobro-sheet', 'nexo-forward-sheet', 'nexo-share-sheet', 'nexo-group-sheet', 'nexo-wp-sheet'];
+        for (var si = 0; si < smalls.length; si++) { var sm = document.getElementById(smalls[si]); if (sm) { sm.remove(); return true; } }
+        var amenu = document.getElementById('attach-menu');
+        if (amenu && amenu.classList.contains('visible')) { amenu.classList.add('hidden'); amenu.classList.remove('visible'); return true; }
+        var ngame = document.getElementById('nexo-game-overlay');
+        if (ngame) { if (typeof ngame.__nexoClose === 'function') ngame.__nexoClose(); else ngame.remove(); return true; }
         var gpick = document.getElementById('game-picker-overlay');
         if (gpick) { if (typeof window.__nexoCloseGamePicker === 'function') window.__nexoCloseGamePicker(); else gpick.remove(); return true; } // salón de juegos
         var grank = document.getElementById('game-rank-overlay');
@@ -79,6 +92,7 @@ export function _setupBackButton() {
           try { if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') window.bleInterface.togglePanel(); else { blePanel.classList.remove('active'); var _bov = document.getElementById('ble-overlay'); if (_bov) _bov.classList.remove('active'); } } catch (e) {}
           return true;
         }
+        if (typeof window.__nexoCloseSearch === 'function' && window.__nexoCloseSearch()) return true; // 3035: búsqueda del chat
         if (document.body.classList.contains('chat-view-active')) { _doChatBack(); return true; }
         return false;
       } catch (e) { return false; }

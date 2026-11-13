@@ -34,11 +34,22 @@ export var STICKER_SET = Object.freeze({
   ok: 'assets/stickers/ok.png',
   fiesta: 'assets/stickers/fiesta.png',
   cohete: 'assets/stickers/cohete.png',
-  nexo: 'assets/stickers/nexo.png'
+  nexo: 'assets/stickers/nexo.png',   // ya no sale en la rejilla (dueño 13-11: «quitando la N»); se sigue viendo si llega
+  // 3035 (dueño 13-11: «agregando más caritas … 🥰😍🤩🫡🤔😒😫🤬😋😘🤤»; 😍 = corazon_ojos y 🤩 = estrella ya estaban)
+  carinosa: 'assets/stickers/carinosa.png',     // 🥰
+  saludo: 'assets/stickers/saludo.png',         // 🫡
+  pensando: 'assets/stickers/pensando.png',     // 🤔
+  fastidio: 'assets/stickers/fastidio.png',     // 😒
+  cansado: 'assets/stickers/cansado.png',       // 😫
+  furia: 'assets/stickers/furia.png',           // 🤬
+  rico: 'assets/stickers/rico.png',             // 😋
+  beso: 'assets/stickers/beso.png',             // 😘
+  babeo: 'assets/stickers/babeo.png'            // 🤤
 });
 
 // Orden de la rejilla del selector.
-export var STICKER_ORDER = ['risa', 'feliz', 'corazon_ojos', 'guino', 'estrella', 'sorpresa', 'triste', 'nerd', 'corazon', 'fuego', 'manos', 'ok', 'fiesta', 'cohete', 'nexo'];
+// 3035: sin «nexo» (la N) y con las caritas nuevas junto a las demás caras; los objetos al final.
+export var STICKER_ORDER = ['risa', 'feliz', 'carinosa', 'corazon_ojos', 'estrella', 'beso', 'guino', 'rico', 'babeo', 'sorpresa', 'pensando', 'saludo', 'nerd', 'fastidio', 'triste', 'cansado', 'furia', 'corazon', 'fuego', 'manos', 'ok', 'fiesta', 'cohete'];
 
 // Devuelve la RUTA de imagen del sticker del pack (de confianza, del repo), o null si el id no existe (→ respaldo 🎟️).
 // El id lo pone el emisor, pero SOLO sirve para ELEGIR entre rutas fijas conocidas (nunca se construye con su texto).
