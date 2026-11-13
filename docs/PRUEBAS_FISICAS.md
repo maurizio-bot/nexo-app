@@ -94,6 +94,9 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 37. **Relé en segundo plano (3047, Motorola).** Deja el Motorola con la 3047 una hora en segundo plano (app abierta detrás, pantalla
     apagada) y luego manda su diagnóstico: las líneas «[NET] Relé …: cerrada» ya no salen cada ~25 s; si un relé se corta enseguida,
     dicen «(intento nº N: el siguiente en X s)» con esperas que crecen hasta 300 s.
+38. **Bluetooth del Motorola tras apagar y encender (3048).** Con NEXO cerrado en el Motorola, apaga y enciende su Bluetooth.
+    Desde el S24 (sin Wi-Fi ni datos) mándale un texto: debe llegar por Bluetooth en segundos. Antes: «sin servicio» hasta abrir
+    NEXO en el Motorola. En su diagnóstico: «Bluetooth encendido: rehago el servidor GATT».
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 
