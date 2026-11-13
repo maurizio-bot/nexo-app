@@ -3,6 +3,15 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 13-11 (puente parte 4 y medición de caminos, 3050–3051)
+- **Probar en teléfonos** el puente con Wi-Fi Direct (que presta conectado a su Wi-Fi a la vez) y los cambios de camino:
+  `docs/PRUEBAS_FISICAS.md` §0.16–0.19. Informe del simulador: `docs/MEDICION_CAMINOS.md`.
+- **Aviso nativo de «hay red» para datos móviles:** hoy solo hay `lanWatchWifi` (Wi-Fi); con datos móviles la vuelta del
+  internet propio se nota por el reintento (≤ 15 s desde la 3051). Un `registerDefaultNetworkCallback` → evento a la app lo
+  bajaría a ~1 s. Nativo (Kotlin): sin SDK de Android aquí para compilarlo antes; hacerlo con cuidado y vigilar la APK.
+- **Soltar el puente al volver el internet propio** tarda ~24 s (margen de 5 s + latido de 15 s): no molesta (lo propio ya sale
+  por el internet propio), solo ocupa un rato al que presta.
+
 ## 🆕 13-11 (diagnósticos S24 APK 3032/3033, Honor 3031, vivo 3028) — abiertos tras la 3045
 - **Videollamada por internet sin imagen** (S24 22:51, 199 s, «vídeo enviado 0»): por internet el vídeo solo sale con Tor
   DIRECTO (01-11, P1) y en esos 199 s no lo hubo. Desde la 3044 el diagnóstico dice «internet (relés: el vídeo no sale; Tor
