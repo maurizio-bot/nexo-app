@@ -54,6 +54,9 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 22. **Videollamada por internet por relés (3041).** Lejos uno del otro y sin Tor: se ve al otro en imágenes pequeñas que cambian
     cada ~2 s (antes, sin imagen) y, si compartes la pantalla, en diapositivas cada ~5 s. El diagnóstico dice «relés: vídeo en
     imágenes pequeñas».
+23. **Videollamada por internet DIRECTA (3041).** Lejos uno del otro (cada uno con su internet, Tor apagado): videollamada →
+    en unos segundos la imagen se ve bien (como por Wi-Fi). Diagnóstico de los dos: «[P2P] Conexión DIRECTA por internet».
+    Si dice «Sin conexión directa … la red no deja», se ve en imágenes pequeñas (por relés). Prueba también con datos móviles.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 

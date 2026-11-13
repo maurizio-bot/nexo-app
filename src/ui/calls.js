@@ -14,6 +14,7 @@
  * videollamada, el vídeo se para y la voz sigue por Bluetooth.
  */
 import { t } from './i18n.js';
+import { createCallP2P } from './call_p2p.js';
 
 var RING_MS = 45000;
 var SILENCE_MS = 12000;
@@ -24,6 +25,7 @@ var WEAK_MS = 4000;
 // el reloj del otro más de 60 s adelantado, nunca sonaba)
 var OFFER_MAX_AGE_MS = 600000;
 var DEAD_MS = 180000;
+var P2P_RETRY_MS = 60000;   // conexión directa que no se pudo / se cortó: se vuelve a probar al minuto (la red pudo cambiar)
 
 var DIAG_EVERY_MS = 5000;
 
@@ -56,6 +58,26 @@ export class Calls {
     this.call = null;                   // { id, nx, dir:'out'|'in', state, key, startedAt, ... }
     this.stats = { sent: 0, got: 0, bad: 0 };
     this._dead = new Map(); // ronda 2768: ids de llamadas ya terminadas (aquí o según el otro): no vuelven a sonar
+    // Dueño 13-11 («directo por defecto»): por internet, conexión DIRECTA entre los dos teléfonos (call_p2p.js, WebRTC)
+    var self = this;
+    this.p2p = createCallP2P({
+      signal: function(nx, o) { var c = self.call; if (c && c.nx === nx) self._signal(nx, 'rtc', o); },
+      onMessage: function(nx, str) { var pk = null; try { pk = JSON.parse(str); } catch (e) {} if (pk && pk.type === 'vf') self.onFrame(pk, 'p2p:' + nx); },
+      onOpen: function(nx) { var c = self.call; if (c && c.nx === nx) { c.p2pOk = true; self._set({ direct: true }); } },
+      onDown: function(nx) { var c = self.call; if (c && c.nx === nx) { c.p2pOk = false; c.p2pRetryAt = Date.now() + P2P_RETRY_MS; self._set({ direct: false }); } },
+      // «Usar Tor siempre» (Ajustes) = no quiero que vean mi IP: sin conexión directa
+      privacy: function() { var n = self.ble && self.ble.net; return !!(n && typeof n.torManual === 'function' && n.torManual()); }
+    });
+  }
+  // ¿Probar la conexión directa por internet? (la abre el que llama; el otro contesta su oferta)
+  _p2pTick(c) {
+    var p2p = this.p2p, ble = this.ble;
+    if (!c || c.state !== 'active' || c.dir !== 'out' || !p2p || !p2p.enabled() || p2p.ready(c.nx) || p2p.trying(c.nx)) return;
+    if (Date.now() < (c.p2pRetryAt || 0)) return;
+    var lan = ble && ble.lan && typeof ble.lan.canReach === 'function' && ble.lan.canReach(c.nx);
+    var net = ble && ble.net && typeof ble.net.canReach === 'function' && ble.net.canReach(c.nx);
+    if (lan || !net) return; // misma Wi-Fi: ya va directo; sin internet con él: nada que hacer
+    p2p.start(c.nx);
   }
   _markDead(id) { var now = Date.now(), d = this._dead; d.set(id, now); d.forEach(function(t, k) { if (now - t > DEAD_MS) d.delete(k); }); }
   _ignored(nx, why) { _emit('nexo:callIgnored', { nx: nx, why: why }); }
@@ -82,6 +104,8 @@ export class Calls {
     var q = ble.lan && typeof ble.lan.quality === 'function' ? ble.lan.quality(nx) : null;
     var wifi = ble.lan && typeof ble.lan.canReach === 'function' && ble.lan.canReach(nx) && q && q.up;
     if (wifi && !(preferBle && bt)) return 'lan:' + nx;
+    // Dueño 13-11: conexión DIRECTA por internet (WebRTC) abierta → por ahí (voz y vídeo con calidad de Wi-Fi)
+    if (this.p2p && this.p2p.ready(nx)) return 'p2p:' + nx;
     if (bt) return bt;
     // #dueño: sin enlace directo, por INTERNET (relés). Así la llamada/videollamada funciona aunque no estén cerca ni en
     // el mismo Wi-Fi, y una llamada en curso se mantiene si se cae el Bluetooth/Wi-Fi (failover: _sendFrame reelige cada vez).
@@ -98,6 +122,7 @@ export class Calls {
   _videoLinkOk(link, nexoId) {
     if (!link) return false;
     if (link.indexOf('lan:') === 0) return true;
+    if (link.indexOf('p2p:') === 0) return true; // conexión directa por internet: vídeo siempre
     if (link.indexOf('net:') === 0) { var n = this.ble && this.ble.net; return !!(n && typeof n.via === 'function' && n.via(_nid(nexoId)) === 'tor'); }
     return false;
   }
@@ -323,9 +348,11 @@ export class Calls {
       self._wakeHook = true;
       document.addEventListener('visibilitychange', function() { var cc = self.call; if (document.visibilityState === 'visible' && cc && cc.media && typeof cc.media.wake === 'function') cc.media.wake(); });
     }
+    self._p2pTick(c); // dueño 13-11: por internet, conexión directa (la abre el que llama)
     self._silenceTimer = setInterval(function() {
       var cc = self.call;
       if (!cc || cc.id !== c.id) return;
+      self._p2pTick(cc);
       // #dueño (internet): mala conexión → aviso «Reconectando…»; si no se restablece en 15 s, se corta.
       var rmax = (typeof window !== 'undefined' && window.NEXO_CALL_RECONNECT_MS) || RECONNECT_MS;
       var wmin = (typeof window !== 'undefined' && window.NEXO_CALL_WEAK_MS) || WEAK_MS;
@@ -385,6 +412,7 @@ export class Calls {
   _linkLabel(link, nx) {
     if (!link) return 'ningún camino';
     if (link.indexOf('lan:') === 0) return 'Wi-Fi';
+    if (link.indexOf('p2p:') === 0) return 'internet directo'; // i18n-ok: texto del diagnóstico
     if (link.indexOf('net:') !== 0) return 'Bluetooth';
     var n = this.ble && this.ble.net;
     if (n && typeof n.via === 'function' && n.via(_nid(nx)) === 'tor') return 'internet (Tor directo)';
@@ -417,6 +445,7 @@ export class Calls {
       if (kind === 'v') self.stats.sentV = (self.stats.sentV || 0) + 1; else if (kind === 's') self.stats.sentS = (self.stats.sentS || 0) + 1; else if (!kind && bytes.length <= 2) self.stats.sentKeep = (self.stats.sentKeep || 0) + 1; else if (kind !== 'k' && kind !== 'c') self.stats.sent++;
       var pk = { type: 'vf', c: c.id, s: seq, d: _b64(out) };
       if (kind) pk.k = kind;
+      if (String(link).indexOf('p2p:') === 0) { if (self.p2p.send(c.nx, JSON.stringify(pk))) return; link = self._link(c.nx); if (!link || String(link).indexOf('p2p:') === 0) return; }
       return self.ble._sendMessageNative(link, JSON.stringify(pk), null);
     }).catch(function() {});
   }
@@ -444,7 +473,7 @@ export class Calls {
       cc.lastRx = Date.now();
       // Ronda 2768: se sigue el camino por el que llega la voz del otro (si se le cayó el Wi-Fi sin cierre limpio, aquí
       // aún parecía arriba y la voz seguía saliendo por él: el otro dejaba de oír y cortaba a los 12 s)
-      if (via && !/^(lan|net)/i.test(String(via))) cc.rxBleAt = Date.now(); else if (via) cc.rxBleAt = 0;
+      if (via && !/^(lan|net|p2p)/i.test(String(via))) cc.rxBleAt = Date.now(); else if (via) cc.rxBleAt = 0;
       if (fin) { self._finish('ended', false); return; } // el otro colgó (aviso por el canal de la voz)
       // Ronda 2769: el otro no tiene mi imagen (manda una completa) / estado de su cámara y su micrófono
       if (k === 'k') { if (cc.media && typeof cc.media.requestKey === 'function') cc.media.requestKey(); return; }
@@ -508,6 +537,7 @@ export class Calls {
       return;
     }
     if (o.op === 'ring') return;
+    if (o.op === 'rtc') { if (self.p2p) self.p2p.onSignal(nx, o); return; } // dueño 13-11: conexión directa por internet
     // #dueño 01-11 (GRAVE): el otro entró/salió de una llamada telefónica y retuvo la suya. Marcar peerHeld para que
     // NUESTRO vigilante tampoco corte por silencio mientras él está en pausa; al volver (unhold) reiniciar el reloj.
     if (o.op === 'hold' || o.op === 'unhold') {
@@ -536,6 +566,7 @@ export class Calls {
     _pipActive(false); // llamada terminada → ya no entrar en miniatura
     if (c.screen) this._screenStop(c, 'colgó'); // 13-11: la captura de pantalla no sigue tras colgar
     if (notifyPeer) self._signal(c.nx, 'end');
+    if (self.p2p) self.p2p.close(c.nx); // la conexión directa es de esta llamada
     var secs = c.startedAt ? Math.round((Date.now() - c.startedAt) / 1000) : 0;
     if (c.startedAt) try { self._diag(c, 'Al colgar (' + secs + ' s)'); } catch (e) {}
     if (c.media && c.media.stop) { try { c.media.stop(); } catch (e) {} }

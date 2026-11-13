@@ -478,7 +478,7 @@ var STRINGS = {
   attach_sticker: { es: "Stickers", it: "Sticker", en: "Stickers" },
   attach_games: { es: "Juegos", it: "Giochi", en: "Games" },
   attach_search: { es: "Buscar", it: "Cerca", en: "Search" },
-  prof_tor_label: { es: "Usar Tor siempre (oculta tu IP; va más lento). El vídeo y los archivos grandes por internet ya lo usan solos.", it: "Usa sempre Tor (nasconde il tuo IP; più lento). Le videochiamate e i file grandi via internet lo usano già da soli.", en: "Always use Tor (hides your IP; slower). Video calls and large files over the internet already use it automatically." },
+  prof_tor_label: { es: "Usar Tor siempre (oculta tu IP; va más lento). Sin esto, las llamadas por internet van directas entre los dos teléfonos: el otro puede ver tu IP.", it: "Usa sempre Tor (nasconde il tuo IP; più lento). Senza, le chiamate via internet vanno dirette tra i due telefoni: l'altro può vedere il tuo IP.", en: "Always use Tor (hides your IP; slower). Without it, calls over the internet go directly between the two phones: the other person can see your IP." },
   prof_diag_sub: { es: "Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.", it: "Registro di ciò che fa l'app (include la sessione precedente). Copialo e incollalo per esaminare un errore.", en: "Log of what the app does (includes the previous session). Copy and paste it to review a problem." },
   prof_diag_copy: { es: "Copiar diagnóstico", it: "Copia diagnostica", en: "Copy diagnostics" },
   // 2974: diagnóstico automático al desarrollador

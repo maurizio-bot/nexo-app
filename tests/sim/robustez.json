@@ -781,6 +781,10 @@
      "prueba": "MEDICIÓN de caminos"
     },
     {
+     "fallo": "Dueño 13-11 («no me gusta que solo con Tor se habilite el vídeo; debería de ser siempre» → «sí, directo por defecto»), 3057: por internet el vídeo solo salía con Tor directo (lento y apagado en el S24); por relés no hay vídeo. Ahora la llamada abre una conexión DIRECTA entre los dos teléfonos (WebRTC con STUN público, sin servidor propio) y la voz y el vídeo van por ella, cifrados como siempre; si la red no la deja, sigue por los relés; «Usar Tor siempre» la desactiva (el otro vería tu IP). callp2p.js (contraprueba 3056)",
+     "prueba": "llamadas por internet DIRECTAS"
+    },
+    {
      "fallo": "Decisión del dueño 13-11 («sí, la cámara también en baja calidad por relés»), 3056: por internet por relés la videollamada no tenía imagen de la cámara. Ahora va en imágenes pequeñas (240 px cada 2 s) por el canal de diapositivas; por Bluetooth no (le quitaría aire a la voz); por Wi-Fi y Tor directo, el vídeo. netvideo.js (camara_*; contraprueba 3055) y el diagnóstico dice «relés: vídeo en imágenes pequeñas» (callrecon.js)",
      "prueba": "vídeo por INTERNET"
     },

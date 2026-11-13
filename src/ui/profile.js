@@ -261,7 +261,7 @@ function _openSettingsSheet() {
       [['system', t('prof_haptics_system', 'Como el sistema (recomendado)')], ['on', t('prof_haptics_on', 'Siempre')], ['off', t('prof_haptics_off', 'Nunca')]].map(function(o) { return '<option value="' + o[0] + '"' + (o[0] === hapticMode() ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>') +
     // v9.9.51: internet (relés públicos y Tor, src/net/net_link.js)
     card('🌐', t('internet'), '<div id="nexo-net-status" class="nx-sub"></div>' +
-      '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> ' + t('prof_tor_label', 'Usar Tor siempre (oculta tu IP; va más lento). El vídeo y los archivos grandes por internet ya lo usan solos.') + '</label>') +
+      '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> ' + t('prof_tor_label', 'Usar Tor siempre (oculta tu IP; va más lento). Sin esto, las llamadas por internet van directas entre los dos teléfonos: el otro puede ver tu IP.') + '</label>') +
     // Ronda 2808 (pedido del dueño «rendimiento api de nexo»): medición en vivo del rendimiento de NEXO
     perfSectionHtml() +
     // #dueño 05-11: volver a ver la guía de bienvenida (welcome_guide.js) cuando se quiera
