@@ -4,6 +4,7 @@
 //     3038: tras darlo por ilegible queda ✗ con la marca attMissing: ni reenvío automático ni «pendiente viejo»; «Reintentar» la quita.
 //  §2 un texto largo para …ab2f (ausente) arrancaba en cada reenvío de OTRO contacto (cada 15–30 s, casi 2 h) y se rendía a los 10 s.
 //     3038: tras rendirse, la reanudación espera 15 s, 30 s… 10 min, salvo que el enlace de ESE contacto esté listo.
+//  §3 (3040, aviso «openchat_mac_vieja» 21:15 / S24 21:28): abrir el chat de un contacto en pausa Bluetooth no fuerza la conexión.
 // Uso: node cola3038.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -65,6 +66,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const ack = biA.ackSystem, idC = 'nx0zz3038c';
   const tx = { transferId: 'msg_resume_3038', status: 'pending', type: 'chat', chunks: ['x'], meta: {} };
   let runs = 0;
+  const realContacts = biA.getBLEContacts;
   biA.getBLEContacts = () => [{ nexoId: idC, deviceId: 'CC:CC:CC:CC:CC:03' }];
   A.win.vaultGetPendingOutgoingTransfers = (cid) => Promise.resolve(cid === idC ? [Object.assign({}, tx)] : []);
   ack._dropDeliveredTransfers = (c, l) => Promise.resolve(l);
@@ -77,9 +79,25 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   await scan('CC:CC:CC:CC:CC:03'); r.s2_su_enlace = runs; // 2: su propio enlace listo → sin esperar
   const f = ack._resumeFail && ack._resumeFail.get(tx.transferId); if (f) f.at = Date.now() - 3600000;
   await scan(); r.s2_tras_espera = runs;             // 3: pasada la espera, vuelve a probar
+  biA.getBLEContacts = realContacts; // (§2 lo cambió)
+  // §3 (diagnóstico S24 21:28 con …707a, Bluetooth apagado): abrir el chat de un contacto en pausa Bluetooth no fuerza la
+  //    conexión (antes: otro no_service y la pausa crecía); sin pausa, sí (como siempre)
+  {
+    radio.block(nA, nB); await sleep(2500);
+    let conn = 0; const realConn = biA.nativePlugin.connectToDevice;
+    biA.nativePlugin.connectToDevice = function () { conn++; return Promise.resolve({ connected: false }); };
+    biA._bleCooldownUntil = biA._bleCooldownUntil || new Map();
+    biA._bleCooldownUntil.set(idB, Date.now() + 60000);
+    await biA.openChat(idB).catch(() => {}); await sleep(300);
+    r.s3_en_pausa_no_fuerza = conn === 0;
+    biA._bleCooldownUntil.delete(idB);
+    await biA.openChat(idB).catch(() => {}); await sleep(300);
+    r.s3_sin_pausa_fuerza = conn > 0;
+    biA.nativePlugin.connectToDevice = realConn;
+  }
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT/.test(l)).slice(0, 5);
   const ok = r.enlace && r.s1_estado === 'failed' && r.s1_marca && r.s1_no_relee && r.s1_reintentar_vuelve &&
-    r.s2_primera === 1 && r.s2_en_espera === 1 && r.s2_su_enlace === 2 && r.s2_tras_espera === 3 && !r.errores.length;
+    r.s2_primera === 1 && r.s2_en_espera === 1 && r.s2_su_enlace === 2 && r.s2_tras_espera === 3 && r.s3_en_pausa_no_fuerza && r.s3_sin_pausa_fuerza && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('COLA3038 ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_cola3038.txt'), logs.join('\n'));

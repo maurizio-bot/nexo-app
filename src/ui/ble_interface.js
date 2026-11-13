@@ -952,7 +952,12 @@ export class BLEInterface {
         _safeDispatchEvent('nexo:vault:messagesLoaded', { contactId: uuid });
         resolve();
         if (deviceId && !isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
-          if (!isConnecting) {
+          // 3040 (diagnóstico S24 13-11 21:28 con …707a, que tenía el Bluetooth apagado): abrir el chat forzaba la conexión
+          // aunque ese contacto estuviera en pausa Bluetooth (no_service repetido): otro no_service y una pausa más larga.
+          // Con la pausa puesta no se fuerza (el mensaje sale por internet/Wi-Fi/Jump; la pausa se acaba sola).
+          var paused = typeof self._btPaused === 'function' ? (self._btPaused(uuid) || self._btPaused(deviceId)) : 0;
+          if (paused) console.log('[BLEInterface] openChat: ' + _normId(uuid) + ' en pausa Bluetooth (' + Math.round(paused / 1000) + ' s): no fuerzo la conexión');
+          else if (!isConnecting) {
             console.log('[BLEInterface] openChat: forcing connectToDevice for', deviceId);
             _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId }).catch(function() {});
           }
