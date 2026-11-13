@@ -3,6 +3,15 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 13-11 (foto de perfil «mezclada» y estados, 3060–3062) — en prueba
+- **Hecho:** Perfil espera a tener cargadas las fotos de los contactos (al abrir la app aceptaba la del dueño: Motorola 08:33:20);
+  gana el aviso de foto más reciente; copias de fotos que fueron del dueño escondidas; estados/me gusta que llegan al abrir la app
+  ya no borran ni se pierden. Pruebas físicas §0.27–0.29.
+- **Falta confirmar:** por qué el S24 siguió con la foto en Roberto tras quitarla a las 08:33:43 → diagnóstico del S24 y del
+  Motorola con la 3042 (línea de foto por contacto).
+- **Idea si vuelve a pasar:** comparar fotos aunque estén recortadas o con borde (la huella 8×8 actual no las reconoce). Delicado:
+  no debe confundir fotos distintas que se parecen.
+
 ## 🆕 13-11 (diagnóstico del dueño 07:28, 3058) — en prueba
 - **Hecho 3058:** en llamada, lo de fondo por Bluetooth espera a colgar; a un contacto dormido primero una prueba; el puente
   Jump espera tras fallar; la cámara de una videollamada que sigue por Bluetooth va en imágenes cada 4 s (`radiollamada.js`).

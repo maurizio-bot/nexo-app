@@ -21,6 +21,20 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **13-11 (bloque 3060–3062, va con 3058–3059 en la APK 3042 si pasa la batería b3062):** dueño: «¿por qué Roberto aparece con mi
+  foto de perfil?» → «se mezcló mi foto con otro contacto y eso no debe pasar» + «me comentan que los estados no se cargan de forma
+  robusta». Revisado en el código cómo se decide de quién es cada foto (remitente descifrado E2E; no hay camino que ponga la foto
+  de uno en otro). Registro del Motorola de Roberto (NX0G6EF54E): Perfil rechazó la foto del dueño 6 veces (08:32–08:34), pero a las
+  08:33:20 —10 s después de que la app se reiniciara al elegir de la galería— la ACEPTÓ (4 KB) y la quitaron a las 08:33:43. Causa
+  reproducida: al abrir la app las fotos de los contactos aún se cargaban (Perfil no tenía con qué comparar) y la carga pisaba la
+  foto recién puesta. 3060: huellas que faltan se reintentan; 3061: también se esconden copias de fotos que FUERON del dueño (5, 180
+  días) + `avatarDiag` en el diagnóstico; 3062: Perfil espera a las fotos cargadas, gana el aviso de foto más reciente (hora en
+  cada aviso, también «quitada»), y vuelve la comprobación «copia de la foto de otro contacto» (quedó muerta en la 3060; cola3033 lo
+  pilló). Estados 3062: lo que llega al abrir la app mientras se leen del disco (estado, me gusta, comentario, petición) espera a
+  la lectura (antes B pasaba de 10 estados de A a 1 y el me gusta se perdía). Descartado: foto de estado publicada sin internet
+  (sí se ve luego por internet: estadosbig paso 4). SIN confirmar por qué el S24 seguía mostrando la foto en Roberto después de
+  08:33:43 (el diagnóstico del S24 empieza a las 08:38 y no tiene líneas de foto): con la 3042, pedir diagnóstico del S24 (dice
+  por contacto si la foto se ve o está escondida) y del Motorola. Pruebas físicas §0.27–0.29.
 - **13-11 (bloque 3059, va con la 3058 en la APK 3042 si pasa la batería b3059):** dueño: «cuando ves un estado se quita el marcador azul,
   pero al cerrar y volver a abrir la app vuelven a aparecer como nuevos» → lo visto y los me gusta de estados se guardan
   (`nexo_status_seen.json`, 2 días; `estados3.js` paso 9, contraprueba 3057). Diagnóstico automático del Motorola (3040,

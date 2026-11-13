@@ -66,6 +66,13 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     menos de 2 min.
 26. **Estados vistos (3042).** Mira los estados de alguien (el aro se pone gris), cierra NEXO del todo y vuelve a abrirla: el aro
     sigue gris (antes volvía a azul, como nuevos). Un estado nuevo de esa persona sí vuelve a poner el aro azul.
+27. **Foto de perfil al abrir la app (3042).** En el Motorola de Roberto: cierra NEXO del todo, ábrela y, nada más abrir,
+    Perfil → poner TU foto: la rechaza igual («es la foto de perfil de …»). Antes, en los primeros segundos la aceptaba.
+28. **Foto quitada que vuelve (3042).** Un contacto pone una foto y la quita estando lejos de ti; cuando vuelve a estar cerca,
+    en tu lista sale con sus iniciales, no con la foto que quitó. El diagnóstico del S24 dice ahora, por contacto, «foto»,
+    «foto copiada (escondida)» o «sin foto», y a cuánto está de la tuya.
+29. **Estados al abrir la app (3042).** Con varios estados de alguien en tu teléfono, cierra NEXO; que esa persona publique uno
+    nuevo y abre NEXO enseguida: tienes el nuevo y los de antes (antes podías quedarte solo con el nuevo).
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 
