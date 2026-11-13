@@ -8,7 +8,7 @@ Direct; A recorre los caminos uno tras otro. Los tiempos son del **simulador** (
 ~3,5 s de montaje, relés locales): en los teléfonos reales cambian los números absolutos (Bluetooth binario medido por el dueño
 ~18 KB/s; montar Wi-Fi Direct ~5 s), pero el **orden de los caminos y los saltos entre ellos** son los de la app.
 
-## Resultado (3051)
+## Resultado (3051; columna «3050» = contraprueba, la misma prueba en la build anterior)
 
 ### Velocidad (texto = mediana de 3)
 | Camino | Texto | Archivo |
@@ -24,28 +24,28 @@ Direct; A recorre los caminos uno tras otro. Los tiempos son del **simulador** (
 ### Reactividad (cuánto tarda en estar listo un camino)
 | Qué | 3050 | 3051 |
 |---|---|---|
-| El puente se arma al perder el internet propio | ~113 s | **8,4 s** |
-| Vuelve el internet propio y se usa | ~74 s | **1,0 s** |
-| Se suelta el puente al volver el internet propio | 104 s | 24 s |
+| El puente se arma al perder el internet propio | 101,7 s | **8,4 s** |
+| Vuelve el internet propio y se usa | 121,9 s (otra corrida: 74 s) | **1,0 s** |
+| Se suelta el puente al volver el internet propio | 151,7 s | 24 s |
 | Wi-Fi local entre los dos / internet en línea / Bluetooth al volver | 0,2 s / 0,2 s / 0 s | igual |
 
 ### Cambio (un texto mandado JUSTO al caerse el camino que se usaba)
 | Cambio | 3050 | 3051 |
 |---|---|---|
-| Sale del Wi-Fi → Bluetooth | 20,1 s | **0,2 s** |
+| Sale del Wi-Fi → Bluetooth | 12,4 s (otra corrida: 20,1 s) | **0,2 s** |
 | Se corta el Bluetooth → internet | 0,2 s | 0,2 s |
-| Pierde el internet → puente/Jump | 0,2–113 s | **0,2 s** |
+| Pierde el internet → puente/Jump | 100,9 s | **0,2 s** |
 | Vuelve el internet propio | 0,2 s | 0,2 s |
 
 ### Robustez
 21 textos medidos: 0 perdidos, 0 duplicados.
 
 ## Lo que la medición encontró y se arregló (3051)
-1. **Salir del Wi-Fi: 20 s.** El texto se había resuelto por el Wi-Fi un instante antes de saberse del corte; se reintentaba 5
+1. **Salir del Wi-Fi: 12–20 s.** El texto se había resuelto por el Wi-Fi un instante antes de saberse del corte; se reintentaba 5
    veces por el Wi-Fi caído (~8 s) y luego quedaba ⏳ ~12 s. Ahora, al primer «Sin Wi-Fi», va por el camino listo (`ble_ack._doSend`).
-2. **El internet propio tardaba ~74 s en volver a usarse.** La pausa entre reintentos crecía hasta 2 min. Ahora, sin ningún relé
+2. **El internet propio tardaba 74–122 s en volver a usarse.** La pausa entre reintentos crecía hasta 2 min. Ahora, sin ningún relé
    propio abierto, como mucho 15 s (el reintento va a su hora, no al latido de 15 s) y al entrar a un Wi-Fi, al instante.
-3. **El puente tardaba ~113 s en armarse.** (a) El vecino había dicho «no tengo internet» hace poco y no se le volvía a
+3. **El puente tardaba ~100 s en armarse.** (a) El vecino había dicho «no tengo internet» hace poco y no se le volvía a
    preguntar en 2 min → ahora el que presta avisa en cuanto tiene internet a quien le preguntó; (b) el plazo de 8 s se contaba
    desde el latido siguiente → ahora desde el corte; (c) los contactos seguían «en línea por internet» ~2 min tras perder el
    último relé (los envíos se reintentaban por internet) → ahora dejan de estarlo al instante.
