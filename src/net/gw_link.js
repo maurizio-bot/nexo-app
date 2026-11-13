@@ -169,6 +169,7 @@ export class GwLink {
     this.txq = new Map();      // dev → { items, busy } (envío en orden por Bluetooth)
     this.wdUntil = new Map();  // nx → hasta cuándo no se usa Wi-Fi Direct con él (falló)
     this._wdChain = null;      // una transferencia de Wi-Fi Direct del puente a la vez
+    this.askedBy = new Map();  // 3050 (servidor): nx → { dev, at } a quien dije «no» (sin internet): se le avisa al tenerlo
   }
 
   ble() { return this.net && this.net.ble; }
@@ -203,10 +204,11 @@ export class GwLink {
     var self = this, ble = this.ble(), it = q.items[0];
     if (!it || !ble) { q.busy = false; q.said = false; if (this.txq.get(dev) === q && !q.items.length) this.txq.delete(dev); return; }
     q.busy = true;
+    if (!it.t1) it.t1 = Date.now(); // la espera por cola llena cuenta desde que le toca (no desde que entró a la fila)
     ble._sendMessageNative(dev, it.str, null).then(function() { q.items.shift(); self._txPump(dev, q); }, function(e) {
       var busy = /BLE_BUSY|llena|busy/i.test(String((e && e.code) || '') + ' ' + String((e && e.message) || ''));
       it.tries++;
-      if (busy ? Date.now() - it.t0 < TX_BUSY_MAX_MS : it.tries < TX_TRIES) { setTimeout(function() { self._txPump(dev, q); }, busy ? TX_BUSY_MS : 300 * it.tries); return; }
+      if (busy ? Date.now() - it.t1 < TX_BUSY_MAX_MS : it.tries < TX_TRIES) { setTimeout(function() { self._txPump(dev, q); }, busy ? TX_BUSY_MS : 300 * it.tries); return; }
       q.items.shift(); self._txPump(dev, q);
     });
   }
@@ -241,6 +243,7 @@ export class GwLink {
     var real = this._realOpen();
     if (real > 0) {
       this._realOffSince = 0; this._seekAt = 0; this._bridgeAt = 0;
+      if (this.askedBy.size) this._offerAskers(now);
       if (!this._realOnSince) this._realOnSince = now;
       if (this.bridges.size && now - this._realOnSince >= GW_REAL_BACK_MS) {
         console.log('[GW] Volvió el internet propio: suelto ' + this.bridges.size + ' puente(s)');
@@ -317,6 +320,14 @@ export class GwLink {
       // Nadie visto en el último minuto: escaneo (como Jump al buscar camino) y pruebo con lo que aparezca
       rel._scan().then(function() { if (!self.bridges.size && !self._realOpen() && !_disabled()) self._seekStrangers(self._neighbors(), Date.now(), true); }).catch(function() {});
     }
+  }
+  // Medición de caminos (3050): se acaba de caer el último relé propio → buscar puente a los GW_AFTER_MS justos (no al siguiente
+  // latido de 15 s). Antes: el puente tardaba hasta ~2 min en armarse.
+  realLost() {
+    var self = this;
+    if (!this._realOffSince) this._realOffSince = Date.now(); // el plazo GW_AFTER_MS cuenta desde el corte (no desde el siguiente latido)
+    clearTimeout(this._lostTimer);
+    this._lostTimer = setTimeout(function() { if (!self._realOpen()) self.tick(); }, GW_AFTER_MS + 200);
   }
   // ¿Está este vecino haciendo de puente? (Jump no cierra su conexión de paso por falta de uso)
   isBridge(nx) { return this.bridges.has(_nid(nx)); }
@@ -539,8 +550,23 @@ export class GwLink {
 
   _srvAsk(from, dev) {
     var why = this._canShare();
+    // 3050: quien me preguntó y le dije «no» se entera en cuanto tenga internet (antes no volvía a preguntar en 2 min)
+    if (why !== 'ok') { this.askedBy.set(from, { dev: dev, at: Date.now() }); if (this.askedBy.size > 50) this.askedBy.delete(this.askedBy.keys().next().value); }
+    else this.askedBy.delete(from);
     var ok = why === 'ok';
     this._tx(dev, { op: 'a', u: ok ? this._realUrls() : [], wd: ok && this._wdCan() ? 1 : 0, w: ok && this.net.wifi ? 1 : 0 });
+  }
+
+  // 3050: tengo internet otra vez → «sí» a los vecinos que me preguntaron hace poco (≤ 10 min) y siguen cerca
+  _offerAskers(now) {
+    var self = this, nb = this._neighbors();
+    if (this._canShare() !== 'ok') return;
+    this.askedBy.forEach(function(a, nx) {
+      self.askedBy.delete(nx);
+      if (now - a.at > 600000 || !nb.has(nx)) return;
+      console.log('[GW] Ya tengo internet: se lo ofrezco a ' + nx + ' (me había preguntado)');
+      self._srvAsk(nx, nb.get(nx));
+    });
   }
 
   _srvOpen(from, dev, p) {
@@ -578,7 +604,7 @@ export class GwLink {
     s.dev = dev; s.rxAt = Date.now();
     var kind = gwAllowUp(p.d);
     if (!kind) { this.stats.rejected++; return; }
-    if (kind === 'REQ' && p.b === 1) this._bulkMark(s, p.d);
+    if (kind === 'REQ' && p.b === 1) { s.wd = true; this._bulkMark(s, p.d); } // lo pide «por Wi-Fi Direct»: ahora sí puede
     else if (kind === 'CLOSE' && s.bulk.size) { try { this._bulkEnd(s, JSON.parse(p.d)[1], true); } catch (e) {} }
     if ((kind === 'BLOB' || (kind === 'EVENT' && p.d.length > SRV_BYTES_MIN)) && !this._blobSpend(from, p.d.length)) {
       var bid = ''; try { bid = JSON.parse(p.d)[1].id; } catch (e) {}

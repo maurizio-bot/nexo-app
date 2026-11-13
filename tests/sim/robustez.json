@@ -767,6 +767,22 @@
     {
      "fallo": "Dueño 13-11 («el cambio de Bluetooth/Wi-Fi Direct también al puente Bluetooth/internet, y que el cambio sea ágil»), parte 4 (3050): por el puente todo iba por Bluetooth (una foto de 2 MB ≈ 2 min de radio) y solo cabían fotos de ~300 KB. 3050: con Wi-Fi Direct en los dos y el que presta en Wi-Fi, los trozos del buzón de archivos van al puente en paquetes por Wi-Fi Direct (24 trozos, ~1,3 MB) y lo que baja se junta hasta el EOSE y vuelve en un paquete; hasta 5 MB; si Wi-Fi Direct falla, ese paquete sigue por Bluetooth al instante y 2 min sin intentarlo; los textos siguen por Bluetooth. Además, por Bluetooth el puente manda EN ORDEN y espera con la cola de radio llena (antes se perdían trozos y el EOSE se adelantaba). puente4.js (contraprueba 3049: 2 MB no llega) y puente3.js paso 7 (3049: 290 KB en 60 s y 2046 KB del que presta; 3050: 22 s y 885 KB)",
      "prueba": "PUENTE a internet parte 4"
+    },
+    {
+     "fallo": "Medición de caminos del dueño (13-11, 3051): un texto mandado justo al salir del Wi-Fi se reintentaba 5 veces por el Wi-Fi caído y quedaba ⏳ (20 s en llegar por Bluetooth); ahora pasa al camino listo al primer fallo.",
+     "prueba": "MEDICIÓN de caminos"
+    },
+    {
+     "fallo": "Medición de caminos del dueño (13-11, 3051): al volver la señal, el internet propio tardaba ~74 s en usarse (la pausa de reintento crecía hasta 2 min); ahora, sin ningún relé abierto, como mucho 15 s y al entrar a un Wi-Fi al instante.",
+     "prueba": "MEDICIÓN de caminos"
+    },
+    {
+     "fallo": "Medición de caminos del dueño (13-11, 3051): al perder su internet, el puente tardaba ~113 s en armarse (el vecino había dicho «no» sin internet hace poco y no se le volvía a preguntar en 2 min; el plazo de 8 s se contaba desde el latido siguiente) y los contactos seguían «en línea por internet» ~2 min (envíos reintentados por internet). Ahora el que presta avisa en cuanto tiene internet, el puente se busca a los 8 s justos y los contactos dejan de estar en línea al caerse el último relé.",
+     "prueba": "MEDICIÓN de caminos"
+    },
+    {
+     "fallo": "Medición de caminos del dueño (13-11, 3051): un archivo de 2 MB por el puente con Wi-Fi Direct no llegaba: mientras se subía al buzón de archivos el reenvío de pendientes lo mandaba otra vez trozo a trozo por el puente y chocaba con su tope; y en la bajada, una fila larga por Bluetooth descartaba trozos por esperar su turno. Ahora lo que se está subiendo cuenta como «en vuelo», el reenvío va al buzón de archivos y la espera por cola llena cuenta desde que le toca.",
+     "prueba": "MEDICIÓN de caminos"
     }
    ],
    "debiles": [

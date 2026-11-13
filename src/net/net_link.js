@@ -72,6 +72,7 @@ var RELAY_PROBE_MS = 5000;          // tiempo para contestar a la pregunta de co
 var RELAY_IDLE_PROBE_MS = 120000;   // un relé callado más que esto (con la app a la vista) se comprueba
 var RELAY_BG_PROBE_MS = 10000;      // al volver a la app tras al menos esto en segundo plano, se comprueban todos
 var RELAY_PROBE_ID = '0000000000000000000000000000000000000000000000000000000000000000';
+var RELAY_OFFLINE_RETRY_MS = 15000; // medición de caminos (3050): sin NINGÚN relé propio abierto, se reintenta como mucho cada 15 s
 var RELAY_MIN_OTHERS = 2;           // solo se aparta si quedan al menos tantos OTROS relés abiertos (no quedarse sin red)
 var WAKE_MIN_MS = 8000;       // M1 (auditoría 28-10): como mucho un «toque» FCM por par cada 8 s (ráfaga de textos)
 var CALL_WAKE_MIN_MS = 3000;  // #130 (dueño 30-10): una llamada insiste en despertar — throttle propio, más corto y
@@ -193,7 +194,8 @@ export class NetLink {
       }
     });
     if (pl && typeof pl.addListener === 'function') {
-      pl.addListener('onLanNet', function() { self.tick(); });
+      // Entró a una red Wi-Fi: si no tengo internet propio, reconectar YA (antes se esperaba la pausa de reintento, hasta 2 min)
+      pl.addListener('onLanNet', function() { if (!self._realOpenCount()) self.relays.forEach(function(r) { if (!r.gw && !r.ws) { r.retryAt = 0; r.backoff = 2000; } }); self.tick(); });
       if (typeof pl.torStart === 'function') {
         pl.addListener('onTorReady', function(ev) { self._onTorReady(ev); });
         pl.addListener('onTorUp', function(ev) { var p = self._peer(_nid(ev && ev.nx)); p.torUp = true; p.torOk = false; self._hello(_nid(ev.nx)); });
@@ -269,7 +271,7 @@ export class NetLink {
     });
     // En línea / desconectado
     self.peers.forEach(function(p, nx) {
-      var up = now - (p.lastRx || 0) < UP_MS;
+      var up = now - (p.lastRx || 0) < UP_MS && (self.online() || !!p.torUp); // 3050: sin relés no está «en línea por internet»
       // Pasó a Wi-Fi estando en línea: lo que esperaba (archivos) puede salir ya
       if (up && p.up && p.wifi && !p.wifiWas && self.wifi && self.ble && typeof self.ble._netUp === 'function') self.ble._netUp(nx);
       p.wifiWas = !!p.wifi;
@@ -339,6 +341,8 @@ export class NetLink {
     ws.onopen = function() {
       r.open = true; r.backoff = 2000; r.openedAt = Date.now(); r.rxAt = r.openedAt;
       self._subscribe(r);
+      // 3050: a los vecinos a los que dije «no tengo internet», se lo ofrezco ya
+      if (!r.gw && self.gw && self.gw.askedBy && self.gw.askedBy.size) setTimeout(function() { try { self.gw._offerAskers(Date.now()); } catch (e) {} }, 500);
       if (self._openCount() === 1) {
         console.log('[NET] Conectado a internet por relés públicos');
         setTimeout(function() { self._helloAll(!self._greeted); }, 300); // avisar a los contactos de que estoy
@@ -356,9 +360,25 @@ export class NetLink {
       if (r._sidelined) { if (!r._sidelinedLog) { console.log('[NET] Relé inestable ' + _relayHost(url) + ': lo aparto ~' + Math.round(delay / 60000) + ' min (se cae sin parar)'); r._sidelinedLog = true; } }
       else { r._sidelinedLog = false; }
       r.waits.forEach(function(fn) { fn(false); }); r.waits.clear();
-      if (was && !self.online()) console.log('[NET] Sin relés: internet no disponible');
+      if (was && !self.online()) { console.log('[NET] Sin relés: internet no disponible'); self._peersDown(); }
+      if (was && !r.gw && !self._realOpenCount() && self.gw && typeof self.gw.realLost === 'function') self.gw.realLost();
+      // 3050: sin internet propio, el reintento va a su hora (no al siguiente latido de 15 s): al volver la señal se nota en ≤ 15 s
+      if (!r.gw && !self._realOpenCount()) setTimeout(function() {
+        if (!r.ws && self.relays.get(url) === r && Date.now() >= (r.retryAt || 0) && (self.inTags.size || self.reqTags.size)) self._connect(url);
+      }, delay + 50);
     };
     ws.onerror = function() {};
+  }
+  // Medición de caminos (3050): sin NINGÚN relé (ni propio ni por puente) los contactos dejan de estar «en línea por internet» YA
+  // (antes seguían así hasta que caducaba su último saludo, ~2 min): sus envíos y el puente de Jump por internet pasan al
+  // Bluetooth al momento (se vio un texto reintentado 5 veces por «internet» y en cola casi 2 min). Tor directo no depende de esto.
+  _peersDown() {
+    var self = this;
+    self.peers.forEach(function(p, nx) {
+      if (!p.up || p.torUp) return;
+      p.up = false;
+      if (self.ble && typeof self.ble._netDown === 'function') { try { self.ble._netDown(nx); } catch (e) {} }
+    });
   }
   // P5 (dueño 01-11): relés abiertos distintos de `url` (para decidir si se puede apartar uno que flapea sin quedarse sin red)
   _openRelaysExcept(url) { var n = 0; this.relays.forEach(function(r, u) { if (u !== url && r.open) n++; }); return n; }
@@ -380,6 +400,10 @@ export class NetLink {
     }
     r._sidelined = false;
     var delay = r.backoff;
+    // Medición de caminos (dueño 13-11, 3050): sin internet propio la pausa crecía hasta 2 min; al volver la señal (datos
+    // móviles o Wi-Fi) la app tardaba ~75 s en darse cuenta y seguía por el puente. Sin ningún relé propio abierto, como mucho
+    // RELAY_OFFLINE_RETRY_MS (sin red, el intento falla al instante y no gasta). Con otros relés abiertos, la pausa de siempre.
+    if (!this._realOpenCount()) delay = Math.min(delay, RELAY_OFFLINE_RETRY_MS);
     r.retryAt = now + delay;
     r.backoff = Math.min(r.backoff * 2, 120000);
     return delay;
@@ -416,7 +440,7 @@ export class NetLink {
     if (ws) { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null; try { ws.close(); } catch (e) {} }
     r.open = false; r.ws = null; r.sub = null; r.openedAt = 0; r.probing = false;
     r.waits.forEach(function(fn) { try { fn(false, 'conexión muerta'); } catch (e) {} }); r.waits.clear();
-    if (was && !this.online()) console.log('[NET] Sin relés: internet no disponible');
+    if (was && !this.online()) { console.log('[NET] Sin relés: internet no disponible'); this._peersDown(); }
     r.retryAt = 0; r.backoff = 2000;
     this._connect(url);
   }

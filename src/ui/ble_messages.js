@@ -76,6 +76,9 @@ export const BLE_MESSAGE_METHODS = {
     if (ack && ack.preparing && ack.preparing.has(msgId)) return true;
     if (ack && ack._chatPrep && ack._chatPrep.has(msgId)) return true;
     if (this.wifiDirect && this.wifiDirect.out.has(msgId)) return true;
+    // 3050 (medición de caminos): subiéndose al buzón de archivos (por un puente son decenas de segundos). Antes el reenvío de
+    // pendientes lo volvía a mandar a la vez, trozo a trozo por el puente, y chocaba con su tope de eventos
+    if (ack && ack._blobOutRunning && ack._blobOutRunning.has(msgId)) return true;
     return false;
   },
 
@@ -1318,7 +1321,7 @@ export const BLE_MESSAGE_METHODS = {
     var st = deviceId ? self._getDeviceState(deviceId) : {};
     var direct = st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY;
     var rh = direct ? null : (self.relay && self.relay.relayHop(nexoId));
-    var blobOnly = false;
+    var blobOnly = false, bridgedNet = false;
     // #dueño 09-11 (diagnóstico S24 12:15, APK de 35 MB a la tablet conectada por Bluetooth): con enlace Bluetooth DIRECTO y
     // sin Wi-Fi/internet con el contacto, un archivo que NO cabe por Bluetooth (> tope BLE en base64) NO se carga del disco.
     // Antes cada «Reenviando pending» (evento de enlace, vuelta al frente, flush) leía los 35 MB («leyendo lento (adjunto)»),
@@ -1357,6 +1360,9 @@ export const BLE_MESSAGE_METHODS = {
       // 3003: un adjunto que acaba de fallar al leerse del disco se enfría (no se relee 25 MB en cada vuelta); sigue ⏳ pendiente
       var nowCool = Date.now();
       list = list.filter(function(m) { return !(m && (m.attachmentRef || m.attachmentType) && _attMissCooling(self._attMiss, idOf(m), nowCool)); });
+      // 3050: con un puente de por medio (yo sin internet propio, o él por un puente) y solo internet con él, los archivos van al
+      // buzón de archivos (en paquetes por Wi-Fi Direct al puente), no trozo a trozo como mensajes por el puente
+      bridgedNet = !!(direct && deviceId && /^net/i.test(String(deviceId)) && self.net && typeof self.net.viaBridge === 'function' && self.net.viaBridge(nexoId));
       if (!direct && !rh) {
         // Fase B (build 2969): sin enlace ni ruta pero CON internet propio y el contacto AUSENTE → los ARCHIVOS pendientes
         // (foto/vídeo/archivo ≤ 5 MB) van al BUZÓN DE ARCHIVOS (cifrados en los relés + puntero en su buzón); el resto sigue
@@ -1502,7 +1508,8 @@ export const BLE_MESSAGE_METHODS = {
             attachmentMeta || {},
             (relayDst && !stalledFile) ? { dst: relayDst } : { to: nxKey }
           );
-          doSend = (blobOnly || stalledFile)
+          var gwBlob = bridgedNet && blobCandidate(msg) && self.net.mailboxFilesOk(nxKey, blobLen(msg));
+          doSend = (blobOnly || stalledFile || gwBlob)
             ? function() { // Fase B (2969): al buzón de archivos (si justo dejó de aplicar, queda pendiente)
               return self._fileToBlobMailbox(nxKey, mid, attachmentPayload, fileMeta) ||
                 Promise.reject(Object.assign(new Error('Contacto no disponible: queda pendiente'), { code: 'PEER_ABSENT' }));
@@ -1515,7 +1522,7 @@ export const BLE_MESSAGE_METHODS = {
                 fileMeta
               );
             };
-          console.log('[BLEInterface] Reenviando ADJUNTO' + ((blobOnly || stalledFile) ? ' al buzón de archivos' : '') + ':', attachmentType, mid);
+          console.log('[BLEInterface] Reenviando ADJUNTO' + ((blobOnly || stalledFile || gwBlob) ? ' al buzón de archivos' : '') + ':', attachmentType, mid);
         } else {
           var txt;
           if (bigMeta) txt = JSON.stringify({ type: 'attachment', attachmentType: 'file', payload: 'big', meta: attachmentMeta });

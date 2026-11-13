@@ -1706,6 +1706,18 @@ export class BleAckSystem {
         entry.timer = setTimeout(function() { self._onAckTimeout(entry.msgId); }, delay);
       })
       .catch(function(err) {
+        // Medición de caminos (dueño 13-11, 3050): el Wi-Fi se cayó justo al mandar (el texto se resolvió por el Wi-Fi un
+        // instante antes de que se supiera del corte, y el traspaso de lo «en vuelo» ya había pasado): se reintentaba 5 veces
+        // por el Wi-Fi caído (~8 s) y después quedaba ⏳ otros ~12 s (20 s en total). Ahora va ya por el camino listo.
+        if (err && err.code === 'LAN_DOWN' && _isLanDevice(entry.deviceId) && self.ble && typeof self.ble._resolveDeviceIdForNexoId === 'function') {
+          var lnx = String(entry.deviceId).toLowerCase().replace(/^lan:?/, ''), nextDev = self.ble._resolveDeviceIdForNexoId(lnx);
+          if (nextDev && !_isLanDevice(nextDev)) {
+            console.log('[BleAckSystem] ' + entry.msgId + ': el Wi-Fi con ' + lnx + ' se cayó al mandar → sigue por ' + (_isNetDevice(nextDev) ? 'internet' : 'Bluetooth'));
+            entry.deviceId = nextDev;
+            self._doSend(entry);
+            return;
+          }
+        }
         if (entry.retries < self.maxRetries) {
           entry.retries++;
           console.warn('[BleAckSystem] Envio nativo fallo msgId=' + entry.msgId + ', reintento ' + entry.retries + '/' + self.maxRetries);
