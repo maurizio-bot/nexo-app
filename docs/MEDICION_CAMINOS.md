@@ -26,7 +26,7 @@ Direct; A recorre los caminos uno tras otro. Los tiempos son del **simulador** (
 |---|---|---|
 | El puente se arma al perder el internet propio | 101,7 s | **8,4 s** |
 | Vuelve el internet propio y se usa | 121,9 s (otra corrida: 74 s) | **1,0 s** |
-| Se suelta el puente al volver el internet propio | 151,7 s | 24 s |
+| Se suelta el puente al volver el internet propio | 151,7 s | 24 s (3052: **6,4 s**) |
 | Wi-Fi local entre los dos / internet en línea / Bluetooth al volver | 0,2 s / 0,2 s / 0 s | igual |
 
 ### Cambio (un texto mandado JUSTO al caerse el camino que se usaba)

@@ -329,6 +329,14 @@ export class GwLink {
     clearTimeout(this._lostTimer);
     this._lostTimer = setTimeout(function() { if (!self._realOpen()) self.tick(); }, GW_AFTER_MS + 200);
   }
+  // 3052: volvió un relé propio → soltar los puentes a los GW_REAL_BACK_MS justos (antes al latido siguiente: ~24 s ocupando al que presta)
+  realBack() {
+    var self = this;
+    if (!this.bridges.size) return;
+    if (!this._realOnSince) this._realOnSince = Date.now();
+    clearTimeout(this._backTimer);
+    this._backTimer = setTimeout(function() { if (self._realOpen()) self.tick(); }, GW_REAL_BACK_MS + 200);
+  }
   // ¿Está este vecino haciendo de puente? (Jump no cierra su conexión de paso por falta de uso)
   isBridge(nx) { return this.bridges.has(_nid(nx)); }
 

@@ -221,6 +221,7 @@ function makeFile(name, bytes) { let h = 0; for (const ch of name) h = (h * 33 +
   tope('tras_volver_internet_texto_s', ca.tras_volver_internet_texto_s, 10);
   tope('puente_listo_s', re.puente_listo_s, 20);
   tope('internet_vuelve_s', re.internet_vuelve_s, 25);
+  tope('suelta_puente_s', re.suelta_puente_s, 15); // 3052 (contraprueba 3051: 24 s)
   tope('archivo_2mb_puente_wd_s', v.archivo_2mb_puente_wd_s, 60);
   tope('archivo_1_5mb_puente_wd_bajada_s', v.archivo_1_5mb_puente_wd_bajada_s, 60);
   r.lento = lento;

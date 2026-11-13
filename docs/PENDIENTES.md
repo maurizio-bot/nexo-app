@@ -9,8 +9,7 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - **Aviso nativo de «hay red» para datos móviles:** hoy solo hay `lanWatchWifi` (Wi-Fi); con datos móviles la vuelta del
   internet propio se nota por el reintento (≤ 15 s desde la 3051). Un `registerDefaultNetworkCallback` → evento a la app lo
   bajaría a ~1 s. Nativo (Kotlin): sin SDK de Android aquí para compilarlo antes; hacerlo con cuidado y vigilar la APK.
-- **Soltar el puente al volver el internet propio** tarda ~24 s (margen de 5 s + latido de 15 s): no molesta (lo propio ya sale
-  por el internet propio), solo ocupa un rato al que presta.
+- **Hecho 3052:** soltar el puente al volver el internet propio tardaba ~24 s (latido de 15 s); ahora ~6 s.
 
 ## 🆕 13-11 (diagnósticos S24 APK 3032/3033, Honor 3031, vivo 3028) — abiertos tras la 3045
 - **Videollamada por internet sin imagen** (S24 22:51, 199 s, «vídeo enviado 0»): por internet el vídeo solo sale con Tor

@@ -341,6 +341,7 @@ export class NetLink {
     ws.onopen = function() {
       r.open = true; r.backoff = 2000; r.openedAt = Date.now(); r.rxAt = r.openedAt;
       self._subscribe(r);
+      if (!r.gw && self.gw && typeof self.gw.realBack === 'function') self.gw.realBack(); // 3052: soltar los puentes a tiempo
       // 3050: a los vecinos a los que dije «no tengo internet», se lo ofrezco ya
       if (!r.gw && self.gw && self.gw.askedBy && self.gw.askedBy.size) setTimeout(function() { try { self.gw._offerAskers(Date.now()); } catch (e) {} }, 500);
       if (self._openCount() === 1) {

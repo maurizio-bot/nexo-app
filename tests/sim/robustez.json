@@ -781,6 +781,10 @@
      "prueba": "MEDICIÓN de caminos"
     },
     {
+     "fallo": "Medición de caminos (3052): al volver el internet propio, el puente se soltaba ~24 s después (latido de 15 s) ocupando al que presta; ahora a los ~6 s (margen de 5 s justo). caminos.js suelta_puente_s ≤ 15 (contraprueba 3051: 24 s)",
+     "prueba": "MEDICIÓN de caminos"
+    },
+    {
      "fallo": "Medición de caminos del dueño (13-11, 3051): un archivo de 2 MB por el puente con Wi-Fi Direct no llegaba: mientras se subía al buzón de archivos el reenvío de pendientes lo mandaba otra vez trozo a trozo por el puente y chocaba con su tope; y en la bajada, una fila larga por Bluetooth descartaba trozos por esperar su turno. Ahora lo que se está subiendo cuenta como «en vuelo», el reenvío va al buzón de archivos y la espera por cola llena cuenta desde que le toca.",
      "prueba": "MEDICIÓN de caminos"
     }
