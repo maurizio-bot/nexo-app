@@ -426,6 +426,10 @@
     {
      "fallo": "3033 (dueño 12-11 22:41, S24 3028: «si me llega un mensaje ya debe de quedarse en el chat y no cargarse cuando yo abro el chat»): con la app en segundo plano NetBg recibía y avisaba (y mandaba ✓✓) pero no guardaba nada; al volver la app pedía todo otra vez a los relés (17 s con un relé que no contestaba). 3033: NetBg.keepForApp/drainForApp + netBgDrain; net_link._drainBg al arrancar y al volver procesa los eventos guardados por _onEvent. bgdrain.js (contraprueba 3032: con los relés caídos no llegan); NetBgTest (JVM)",
      "prueba": "mensajes recibidos en segundo plano ya en el chat al volver"
+    },
+    {
+     "fallo": "3034 (diagnóstico S24 APK 3029, 12-11 17:54: «reenvio_sin_fin» con …db61, 3 vueltas): lo que no se confirmaba eran acciones ocultas (estado/foto de perfil al reconectar) a un teléfono con la app congelada; su nativo confirma textos al avisar (2833) pero las ocultas (q:1) ni se avisaban ni se confirmaban. 3034: backgroundNotify confirma también las ocultas, sin aviso (Kotlin; mock con contraprueba NEXO_OLD_QUIETACK=1). ocultaack.js",
+     "prueba": "acción oculta a un teléfono con la app congelada"
     }
    ]
   },

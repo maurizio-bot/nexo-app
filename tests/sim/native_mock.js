@@ -561,7 +561,17 @@ class NativePhone {
   _bgNotify(json, fromAddress, lanNx) {
     if (this.appActive !== false || this.closedMode || this.opts.noBgNotify) return;
     const info = NativePhone.classifyClosed(json, this.advertisingId);
-    if (!info.msgId || info.quiet || (info.kind !== 'MESSAGE' && info.kind !== 'NOTIFY_ONLY')) return;
+    if (!info.msgId) return;
+    // Kotlin 3034: una acción oculta (q:1) no se avisa pero SÍ se confirma (contraprueba: NEXO_OLD_QUIETACK=1, nativo ≤ 3033)
+    if (info.quiet) {
+      if (info.kind === 'MESSAGE' && !info.call && process.env.NEXO_OLD_QUIETACK !== '1') this._uptimeTimeout(() => {
+        if (this.appActive !== false || this.closedMode) return;
+        if (fromAddress) this._sendDeliveredAck(fromAddress, info);
+        else if (lanNx) this._sendDeliveredAckLan(lanNx, info);
+      }, 4000);
+      return;
+    }
+    if (info.kind !== 'MESSAGE' && info.kind !== 'NOTIFY_ONLY') return;
     // Kotlin 2763: una llamada suena ya (aviso de llamada del teléfono)
     if (info.call || info.what === 'call') { this._incomingCall(info.from, this._notifName(info.from), false, info.msgId, { bg: true }); return; }
     this._uptimeTimeout(() => {

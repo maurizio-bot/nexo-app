@@ -896,7 +896,19 @@ class NexoBlePlugin : Plugin() {
         if (!appInBackground || closedMode) return
         val ctx = appCtx ?: return
         val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
-        if (info.msgId.isEmpty() || info.quiet) return
+        if (info.msgId.isEmpty()) return
+        // 3034 (diagnóstico S24 12-11 17:54, «reenvio_sin_fin» con …db61): una acción OCULTA (estado, foto de perfil, me gusta;
+        // marca q:1) que llega con la app en segundo plano/congelada no se avisa, pero tampoco se CONFIRMABA (solo los textos,
+        // al avisar, desde 2833) → el otro la reenviaba sin fin hasta que esta app volviera. Ahora se confirma igual, sin aviso
+        // (como con la app cerrada, closedReceive).
+        if (info.quiet) {
+            if (info.kind == BgInbox.Kind.MESSAGE && !info.call) mainHandler.postDelayed({
+                if (!appInBackground) return@postDelayed
+                if (deviceId != null) sendDeliveredAck(deviceId, info)
+                else if (lanNx != null) sendDeliveredAckLan(lanNx, info)
+            }, BG_NOTIFY_DELAY_MS)
+            return
+        }
         // #dueño 08-11: si tenés ABIERTO el chat de este remitente (o grupo), NO avisar: lo estás leyendo. Solo acá (aviso de
         // respaldo de 2.º plano); con la app CERRADA (closedReceive) sí se avisa, porque ahí no hay un chat abierto a la vista.
         if (activeChatNx.isNotEmpty() && (info.from.lowercase() == activeChatNx || info.group.lowercase() == activeChatNx)) return
