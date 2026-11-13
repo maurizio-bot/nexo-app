@@ -4,8 +4,8 @@ Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar c
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
 ## 🆕 13-11 (compartir pantalla parte 3, 3054) — falta
-- **Decisión del dueño:** por internet por RELÉS (sin Tor directo) ¿la pantalla en diapositivas como por Bluetooth? (y la cámara en
-  imágenes de baja calidad, ver «Videollamada por internet sin imagen»). Hoy por relés no sale imagen.
+- **Hecho 3055 (dueño: «sí, manda las diapositivas también por relés»):** por internet por relés la pantalla va en diapositivas.
+  La CÁMARA por relés sigue sin imagen (solo se preguntó por la pantalla): si el dueño la quiere en imágenes de baja calidad, se hace igual.
 - **Llamada de GRUPO por Bluetooth:** la pantalla compartida solo va por Wi-Fi (como el vídeo de grupo); diapositivas por los
   tramos Bluetooth, después.
 - **Llamada de voz (sin vídeo):** no tiene botón «Pantalla»; compartir pantalla en una llamada de voz por Bluetooth, después.

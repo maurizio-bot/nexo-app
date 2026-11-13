@@ -781,6 +781,10 @@
      "prueba": "MEDICIÓN de caminos"
     },
     {
+     "fallo": "Decisión del dueño 13-11 («sí, manda las diapositivas también por relés»), 3055: por internet por relés (sin Tor directo) la pantalla compartida no se veía (el vídeo no sale por relés). Ahora va en diapositivas como por Bluetooth; por Wi-Fi y Tor directo sigue el vídeo. netvideo.js (diapos_*; contraprueba 3054)",
+     "prueba": "vídeo por INTERNET"
+    },
+    {
      "fallo": "Compartir pantalla parte 3 (dueño 13-11), 3054: si la videollamada perdía el Wi-Fi y seguía por Bluetooth, la pantalla compartida dejaba de verse (el vídeo no cabe por Bluetooth). Ahora va en diapositivas (imagen pequeña cada ~5 s si cambia, en partes intercaladas con la voz) y el otro la ve donde va el vídeo. calls2.js --case=pantalla-bt (contraprueba 3053: no llega ninguna)",
      "prueba": "llamadas: pantalla-bt"
     },

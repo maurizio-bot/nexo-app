@@ -34,7 +34,18 @@ const { importSrc } = require('./srcmod');
   // canVideo sigue permisivo por internet (para PODER iniciar la videollamada; el audio va enseguida)
   // (no dependemos de _link aquí; solo comprobamos el gate de fotogramas, que es lo que fallaba)
 
-  const ok = r.lan_ok && r.net_tor_ok && r.net_reles_no && r.bt_no && r.sin_enlace_no;
+  // Compartir pantalla parte 3 (3055, dueño 13-11): donde el vídeo no va, la pantalla va en DIAPOSITIVAS: por Bluetooth y por
+  // relés (antes, por relés no salía ninguna imagen); por Wi-Fi y por Tor directo, no (va el vídeo)
+  viaVal = 'relés';
+  r.diapos_reles = typeof calls._slidesLinkOk === 'function' && calls._slidesLinkOk('net:nxb0000002', 'nxb0000002') === true;
+  r.diapos_bt = typeof calls._slidesLinkOk === 'function' && calls._slidesLinkOk('aa:bb:cc:dd:ee:ff', 'nxb0000002') === true;
+  viaVal = 'tor';
+  r.diapos_no_tor = typeof calls._slidesLinkOk === 'function' && calls._slidesLinkOk('net:nxb0000002', 'nxb0000002') === false;
+  r.diapos_no_wifi = typeof calls._slidesLinkOk === 'function' && calls._slidesLinkOk('lan:nxb0000002', 'nxb0000002') === false;
+  r.diapos_no_sin_enlace = typeof calls._slidesLinkOk === 'function' && calls._slidesLinkOk(null, 'nxb0000002') === false;
+
+  const ok = r.lan_ok && r.net_tor_ok && r.net_reles_no && r.bt_no && r.sin_enlace_no &&
+    r.diapos_reles && r.diapos_bt && r.diapos_no_tor && r.diapos_no_wifi && r.diapos_no_sin_enlace;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NETVIDEO ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);

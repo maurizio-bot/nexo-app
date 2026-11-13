@@ -101,9 +101,11 @@ export class Calls {
     if (link.indexOf('net:') === 0) { var n = this.ble && this.ble.net; return !!(n && typeof n.via === 'function' && n.via(_nid(nexoId)) === 'tor'); }
     return false;
   }
-  // Compartir pantalla parte 3: ¿la pantalla va en diapositivas? Por Bluetooth sí (el vídeo no cabe). Por relés de internet
-  // (sin Tor directo) aún no: lo decide el dueño (pendiente).
-  _slidesLink(c) { var l = this._link(c.nx); return !!l && !/^(lan|net)/i.test(String(l)); }
+  // Compartir pantalla parte 3: ¿la pantalla va en diapositivas? Cuando el vídeo no puede ir por el camino de ahora: por
+  // Bluetooth (no cabe) y por internet por RELÉS sin Tor directo (dueño 13-11: «sí, manda las diapositivas también por relés»).
+  // Por Wi-Fi y por Tor directo va el vídeo.
+  _slidesLinkOk(link, nexoId) { return !!link && !this._videoLinkOk(link, nexoId); }
+  _slidesLink(c) { return this._slidesLinkOk(this._link(c.nx), c.nx); }
   state() { return this.call ? Object.assign({}, this.call, { key: undefined, cryptoKey: undefined, media: undefined }) : null; }
 
   _set(o) {
