@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-11-13 (builds **2935–3054**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3054 (APK 3040) — compartir pantalla parte 3 (diapositivas por Bluetooth, girar), archivos grandes fuera de Jump y puente que se suelta en ~6 s**. Antes: 3051 (APK 3039) — medición de caminos y cambios ágiles (salir del Wi-Fi, internet que vuelve, puente en ~8 s).
+Última actualización: 2026-11-13 (builds **2935–3057**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3057 (APK 3041) — llamadas por internet directas (WebRTC) por defecto; pantalla y cámara en imágenes pequeñas por relés (3055–3056)**. Antes: 3054 (APK 3040) — compartir pantalla parte 3, archivos grandes fuera de Jump; 3051 (APK 3039) — medición de caminos y cambios ágiles (salir del Wi-Fi, internet que vuelve, puente en ~8 s).
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
