@@ -92,8 +92,12 @@ ya espera en los relés (cifrada, solo para mí) y la recoge cualquier NEXO con 
 además en el teléfono del puente solo ayudaría si ese mismo teléfono me vuelve a ver SIN internet, y obliga a
 que los puentes guarden mensajes ajenos. Se retoma si las pruebas del dueño lo piden.
 
-## Falta (parte 3)
-- **Parte 3:**
-  - fotos pequeñas por el puente;
-  - indicador «por puente» en el chat.
+## Falta (parte 3) — plan (13-11, para la tanda siguiente a la APK 3035)
+- **Fotos pequeñas por el puente** (hasta ~300 KB ya comprimidas; vídeos y archivos grandes siguen ⏳ hasta tener internet propio):
+  - subida: `gwAllowUp` deja pasar también los eventos-trozo del buzón de archivos (`BLOB_KIND` 1064, ≤ 60 KB cada uno, firmados);
+  - bajada: la REQ de trozos (`kinds:[1064]` + `ids` ≤ 16, `FETCH_BATCH`) para que el que no tiene internet pueda recoger una foto;
+  - topes del que presta: además de 40 eventos/min y 1500/día, un tope de BYTES (p. ej. 2 MB/h y 10 MB/día por teléfono que pide);
+  - `mailboxFilesOk` / `send.js` / `ble_messages.js` (1169, 936): por un puente sí, si el archivo cabe en el tope de foto pequeña;
+  - prueba: `puente.js` con una foto de 100 KB que llega y otra de 2 MB que queda ⏳; contraprueba 3035 (las dos ⏳).
+- **Indicador «por puente»** en el chat: el subtítulo del chat dice «internet por puente» (icono de puente) mientras `gwOnly()`.
 - Cambiar la etiqueta del buzón cada cierto tiempo, para que un puente no sepa qué buzón es de quién.
