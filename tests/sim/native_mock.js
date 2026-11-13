@@ -938,7 +938,8 @@ class NativePhone {
         const devices = [];
         self.clients.forEach((cl) => { if (cl.state === 'connected') devices.push({ id: cl.peer.address, address: cl.peer.address, direction: 'outgoing', role: 'client', ready: !!cl.rxReady }); });
         self.serverConnected.forEach((peer, mac) => devices.push({ id: peer.initAddress, address: peer.initAddress, direction: 'incoming', role: 'server', ready: !!self.serverNotif.get(mac) }));
-        c.resolve({ devices });
+        // 13-11 (S24 02:10): en el teléfono la respuesta llega un momento después (~70 ms); opts.connectedDelayMs lo imita
+        if (self.opts.connectedDelayMs) setTimeout(() => c.resolve({ devices }), self.opts.connectedDelayMs); else c.resolve({ devices });
       }),
       // Wi-Fi Direct (opts.wifiDirect: lo tiene; opts.wdFail: unirse al grupo falla). El receptor crea el
       // grupo con credenciales; el emisor solo se une con ellas y a alcance; ~2 MB/s.

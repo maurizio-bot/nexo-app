@@ -609,6 +609,10 @@
     {
      "fallo": "3006 (diagnóstico S24 11-11 07:48, aún con la 3004): el APK de 25 MB a un contacto por internet se abortó en el instante en que el emisor lo vio «ya no está en línea por internet» (_netDown → relink sin camino → abort → ⏳) y el siguiente intento empezaba de cero; la 3005 no lo cubría (solo el receptor que calla sin salir de línea). 3006: relink deja vivo un archivo grande por internet sin otro camino (espera en la rama «enlace caído», sin reenviar, con el toque de despertador, hasta 30 min sin ACK) y al volver el contacto sigue donde iba. netsilence.js C3 (contraprueba en 3005: envío abortado, 30 % reenviado = todo lo ya mandado; 3006: vivo, 3 %)",
      "prueba": "el que recibe un archivo grande por internet se calla o se reinicia a mitad"
+    },
+    {
+     "fallo": "3049 (dueño 13-11 02:10, S24 APK 3034 → vivo por Bluetooth, los dos con Wi-Fi Direct, APK de 25 MB: «nunca se activó Wi-Fi Direct»): al volver del selector de archivos la app limpia los estados de enlace con > 10 s (_cleanupStaleStates) y los rehace ~70 ms después; el archivo se eligió en ese hueco → «sin camino local para archivos grandes» → se leyó entero como adjunto y quedó ⏳ «no caben por Bluetooth: esperan Wi-Fi/internet» (el vivo recibió ese minuto un respaldo de 384 KB por Wi-Fi Direct: funcionaba). 3049: si antes de abrir el selector había camino (Wi-Fi, Wi-Fi Direct o L2CAP) y al elegir no, se espera hasta 4 s a que vuelva. bigpick.js (contraprueba 3048; el simulador imita la respuesta tardía de Android con connectedDelayMs)",
+     "prueba": "archivo grande elegido AL VOLVER del selector"
     }
    ],
    "debiles": [

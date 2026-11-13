@@ -7,7 +7,7 @@ import { _capAttachments, GALLERY_MAX } from './attach_cap.js';
 import { _compressImageBase64, _extOf, _isPdf, _mimeOf, _pdfThumb, _readFileBase64 } from './file_tools.js';
 import { _getCurrentContactId } from './chat_format.js';
 import { _hideCameraPreviewOverlay, _photoTarget, _stopCameraPreview } from './camera.js';
-import { _maxB64For, _tooBigMessage } from './media_limits.js';
+import { _maxB64For, _tooBigMessage, MAX_BLE_FILE_BYTES } from './media_limits.js';
 import { _sendVideo } from './video_send.js';
 import { BIG_MAX_BYTES } from './big_file.js';
 import { groupBigRoute } from './group_media.js';
@@ -107,9 +107,38 @@ function _sendGalleryItems(files, i) {
   }).catch(_readFailed).then(next, next); // seguir con la siguiente pase lo que pase con esta
 }
 
+// 13-11 (dueño, S24 → vivo 02:10, APK de 25 MB: «nunca se activó Wi-Fi Direct»): al volver del selector, la app da por
+// viejos los estados de enlace con > 10 s (_cleanupStaleStates) y los rehace un momento después («Conexión existente
+// recuperada al arrancar», ~70 ms); el archivo elegido caía en ese hueco → «sin camino local para archivos grandes» → se
+// leía entero como adjunto y quedaba ⏳ «esperan Wi-Fi/internet», aunque Wi-Fi Direct funcionaba. Si ANTES de abrir el
+// selector había camino (Wi-Fi, Wi-Fi Direct o Bluetooth L2CAP) y justo ahora no, se espera a que vuelva (hasta 4 s).
+var BIG_ROUTE_WAIT_MS = 4000;
+function _bigRoute(cid) { var bigs = window.bleInterface && window.bleInterface.bigFiles; try { return bigs && cid ? bigs.route(cid) : null; } catch (e) { return null; } }
+function _waitBigRoute(cid, ms) {
+  return new Promise(function(resolve) {
+    var t0 = Date.now();
+    (function poll() { var r = _bigRoute(cid); if (r || Date.now() - t0 >= ms) { resolve(r); return; } setTimeout(poll, 150); })();
+  });
+}
+
 export function _handleFile() {
   _closeAttachMenu();
+  var cid0 = _getCurrentContactId(), route0 = cid0 && !isGroupId(cid0) ? _bigRoute(cid0) : null;
   _pickFile('*/*', 'Archivo', function(file) {
+    var cidW = _getCurrentContactId();
+    if (route0 && cidW === cid0 && file && file.size > MAX_BLE_FILE_BYTES && !_bigRoute(cidW)) {
+      console.log('[ATTACH] Al volver del selector el enlace con ' + cidW + ' se está rehaciendo (antes: ' + route0 + '): espero para mandarlo como archivo grande');
+      _waitBigRoute(cidW, BIG_ROUTE_WAIT_MS).then(function(r) {
+        console.log(r ? '[ATTACH] Camino para el archivo grande: ' + r : '[ATTACH] El camino local no volvió en ' + (BIG_ROUTE_WAIT_MS / 1000) + ' s: se decide sin él');
+        _fileChosen(file);
+      });
+      return;
+    }
+    _fileChosen(file);
+  });
+}
+
+function _fileChosen(file) {
     // Comprobar antes de leer: leer un archivo enorme ya congela el WebView
     var cidF = _getCurrentContactId();
     var maxB64 = _maxB64For(cidF);
@@ -145,5 +174,4 @@ export function _handleFile() {
         console.log('[ATTACH] Archivo:', _extOf(file.name), mime, tr && tr.thumb ? 'con miniatura' : '');
       });
     }).catch(_readFailed);
-  });
 }

@@ -31,6 +31,9 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 13. **Foto por el puente (3036).** El teléfono A sin datos ni Wi-Fi, junto a otro NEXO con internet: el chat con un contacto
     lejano dice «por puente». Manda una foto: llega. Manda un vídeo: queda ⏳ hasta que A tenga internet propio. Que el
     contacto lejano te mande una foto: te llega por el puente.
+15. **APK grande por Wi-Fi Direct (3037).** S24 y Vivo juntos por Bluetooth, los dos con el Wi-Fi ENCENDIDO (sin estar en la misma
+    red): manda el APK de 25 MB desde el selector de archivos. Tiene que salir como archivo grande (tarjeta «Enviando N %») y
+    llegar; en el diagnóstico del S24: «[ATTACH] … espero para mandarlo como archivo grande» (a veces) y «[WIFI-DIRECT]».
 14. **Compartir pantalla en grupo (3037).** Llamada de grupo de 3 en la misma Wi-Fi: uno toca «Pantalla» → aviso → «Compartir»
     → permiso de Android. Los otros dos ven su pantalla grande con «Pantalla de …»; arriba en el suyo, barra roja «Detener».
     Si falla, diagnóstico de los tres (líneas «[GCALL] Compartiendo la pantalla…» / «comparte su pantalla»).
