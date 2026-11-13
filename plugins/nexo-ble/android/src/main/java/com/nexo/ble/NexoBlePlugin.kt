@@ -1242,13 +1242,18 @@ class NexoBlePlugin : Plugin() {
                         isAdvertisingActive = false
                         stopScanInternal()
                         cleanupAllConnections()
+                        // 3072 (diagnóstico del Motorola 13-11 17:54): al apagarse el Bluetooth (o reiniciarse solo) el servidor GATT
+                        // muere, pero la referencia seguía puesta: al volver, autoStart veía «ya iniciado» y no lo rehacía → el anuncio
+                        // NEXO salía pero sin servicio («sin servicio GATT» para el S24 y el Honor) hasta reabrir la app. Se suelta aquí.
+                        try { stopGattServer() } catch (e: Exception) { }
                         notifyListeners("onBluetoothStateChanged", JSObject()
                             .put("state", "off")
                             .put("enabled", false)
                         )
                     }
                     BluetoothAdapter.STATE_ON -> {
-                        remLog("INFO", "BT_STATE", "Bluetooth encendido")
+                        remLog("INFO", "BT_STATE", "Bluetooth encendido" + if (bluetoothGattServer != null) ": rehago el servidor GATT (el de antes ya no sirve)" else "")
+                        if (bluetoothGattServer != null) try { stopGattServer() } catch (e: Exception) { }
                         notifyListeners("onBluetoothStateChanged", JSObject()
                             .put("state", "on")
                             .put("enabled", true)
