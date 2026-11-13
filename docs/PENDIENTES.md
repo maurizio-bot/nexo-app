@@ -3,6 +3,18 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 13-11 (prueba del dueño: puente a internet con «solo Bluetooth», S24 3047 17:42–17:44) — DECISIÓN PENDIENTE
+- Nada se perdió: los 9 textos al S23 escritos sin internet esperaron y salieron al volver el Wi-Fi (17:44:53, ✓✓ 17:44:55).
+- El puente no se armó porque ningún vecino podía prestar internet: el vivo (nx09acdb61, enlace BT listo) recibió 3 preguntas
+  (17:42:46, 17:43:23, 17:44:23: los envíos de 48 bytes) y no contestó: su app estaba dormida (tampoco contestó la comprobación
+  Wi-Fi en 180 s; el vivo congela el JS) y no se le veía internet. El Motorola (nx0g6ef54e, con datos) no muestra el servicio NEXO
+  por Bluetooth («sin servicio» 7 veces, el mismo fallo que vio el Honor) → no se le puede hablar por BT.
+- Propuesto al dueño: (A) que el NATIVO del que presta (NetBg ya tiene los relés abiertos en segundo plano) haga de puente sin
+  despertar la app; (B) dejarlo así (presta solo quien tiene NEXO abierto). Grande: nativo + JS + prueba física.
+- Pequeño (para la 3072): con internet caído, `sendChatMessage` forzaba `connectToDevice('net:…')` (el nativo lo ve como
+  «netnx…» y no hace nada; 8 veces en 2 min): no forzar conexión Bluetooth para un destino `net:`.
+- Motorola: pedir su diagnóstico justo al abrir NEXO para ver por qué su servidor Bluetooth (GATT) no publica el servicio.
+
 ## 🆕 13-11 (relé en segundo plano del Motorola, 3070) — en prueba
 - Hecho: el nativo ya no reabre cada 10 s un relé que se corta enseguida (la espera crece hasta 5 min; `NetBgBackoffTest`).
 - Por mirar en el próximo diagnóstico del Motorola: su enlace Wi-Fi con el vivo se rehace cada pocos minutos (sin pérdidas vistas).
