@@ -106,6 +106,9 @@ export class Calls {
   // Por Wi-Fi y por Tor directo va el vídeo.
   _slidesLinkOk(link, nexoId) { return !!link && !this._videoLinkOk(link, nexoId); }
   _slidesLink(c) { return this._slidesLinkOk(this._link(c.nx), c.nx); }
+  // Dueño 13-11 («sí, la cámara también en baja calidad por relés»): la cámara en imágenes pequeñas SOLO por relés (por
+  // Bluetooth no: le quitaría aire a la voz)
+  _camSlidesLinkOk(link, nexoId) { return !!link && String(link).indexOf('net:') === 0 && !this._videoLinkOk(link, nexoId); }
   state() { return this.call ? Object.assign({}, this.call, { key: undefined, cryptoKey: undefined, media: undefined }) : null; }
 
   _set(o) {
@@ -298,6 +301,7 @@ export class Calls {
         // Compartir pantalla parte 3: por Bluetooth (sin vídeo) la pantalla va en diapositivas ('s')
         onSlidePacket: function(bytes) { if (self.call === c) self._sendPacket(bytes, 's'); },
         wantSlides: function() { return self.call === c && self._slidesLink(c); },
+        wantCamSlides: function() { return self.call === c && self._camSlidesLinkOk(self._link(c.nx), c.nx); },
         // Ronda 2769: la imagen del otro se paró: que mande una completa ('k'); estado de mi cámara y micrófono ('c')
         onNeedKey: function() { if (self.call === c) self._sendPacket(new Uint8Array([1]), 'k'); },
         onState: function(s) {
@@ -376,7 +380,7 @@ export class Calls {
   }
 
   // 3044 (diagnóstico S24 APK 3033 13-11: videollamada por internet con «vídeo enviado 0» que el registro llamaba «por Bluetooth»):
-  // nombre del camino para el diagnóstico. Por internet dice si va por relés (el vídeo no sale: _videoLinkOk) o por Tor
+  // nombre del camino para el diagnóstico. Por internet dice si va por relés (3055: vídeo en imágenes pequeñas) o por Tor
   // directo, y en qué está Tor (para ver en el próximo diagnóstico por qué no hubo imagen).
   _linkLabel(link, nx) {
     if (!link) return 'ningún camino';
@@ -386,7 +390,7 @@ export class Calls {
     if (n && typeof n.via === 'function' && n.via(_nid(nx)) === 'tor') return 'internet (Tor directo)';
     var p = n && n.peers && typeof n.peers.get === 'function' ? n.peers.get(_nid(nx)) : null;
     var ts = n && typeof n.torState === 'function' ? n.torState() : (n && n.tor && n.tor.ready ? 'listo' : 'sin arrancar');
-    return 'internet (relés: el vídeo no sale; Tor ' + ts + (p && p.torUp ? ', enlace con él abierto sin confirmar' : '') + ')'; // i18n-ok: texto del diagnóstico
+    return 'internet (relés: vídeo en imágenes pequeñas; Tor ' + ts + (p && p.torUp ? ', enlace con él abierto sin confirmar' : '') + ')'; // i18n-ok: texto del diagnóstico
   }
 
   _sendPacket(bytes, kind) {

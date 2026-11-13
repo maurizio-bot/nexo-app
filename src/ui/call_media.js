@@ -146,6 +146,11 @@ export function createCallMedia(opts) {
   // ahora es así; opts.onSlidePacket(parte) la manda. El otro las junta (slidePart) y las pinta donde va el vídeo.
   var SLIDE_LONG = 360, SLIDE_Q = 0.45, SLIDE_MS = 5000, SLIDE_KEEP_MS = 15000, SLIDE_PART = 1800, SLIDE_GAP_MS = 120, SLIDE_MAX = 40000;
   var wantSlides = typeof opts.wantSlides === 'function' ? opts.wantSlides : function() { return false; };
+  // Dueño 13-11 («sí, la cámara también en baja calidad por relés»): por internet por relés (sin Tor directo) la CÁMARA va en
+  // imágenes pequeñas (CAM_SLIDE_LONG, cada CAM_SLIDE_MS) por el mismo canal de diapositivas; opts.wantCamSlides() lo dice.
+  var CAM_SLIDE_LONG = 240, CAM_SLIDE_Q = 0.4, CAM_SLIDE_MS = 2000;
+  var wantCamSlides = typeof opts.wantCamSlides === 'function' ? opts.wantCamSlides : function() { return false; };
+  var camSlideAt = 0;
   var slideAt = 0, slideNew = false, slideId = 0, slideCanvas = null, slideSending = false, slidesIn = new Map(), lastSlideAt = 0;
   var vstats = window.NEXO_callVideoStats = { sent: 0, keys: 0, decoded: 0, bytes: 0, frames: 0, keyReq: 0, encErr: 0, decErr: 0 };
   window.NEXO_callAudioStats = { samples: 0, seconds: 0, energy: 0 }; // por llamada
@@ -402,6 +407,7 @@ export function createCallMedia(opts) {
     if (stopped || (!camOn && !screenOn)) return;
     if (!venc || venc.state === 'closed') { if (Date.now() - vencMadeAt > 1000) makeEncoder(); return; } // ronda 2769: falló: uno nuevo (como mucho uno por segundo)
     if (screenOn) { if (wantSlides()) slideTick(); else encodeScreen(); return; }
+    if (wantCamSlides()) { camSlideTick(); return; } // por relés: la cámara en imágenes pequeñas
     if (venc.state !== 'configured' || !localV || localV.readyState < 2 || venc.encodeQueueSize > 3) return;
     // Ronda 2772: la cámara cambió de forma o de tamaño (al abrir, girar el teléfono, la otra cámara): codificador nuevo
     var sz = sendSize();
@@ -452,11 +458,30 @@ export function createCallMedia(opts) {
     if (!bytes || bytes.length < 100 || bytes.length > SLIDE_MAX) return;
     sendSlide(bytes);
   }
+  // Por relés: una imagen pequeña de la cámara cada CAM_SLIDE_MS
+  function camSlideTick() {
+    var now = Date.now();
+    if (!camOn || slideSending || !localV || localV.readyState < 2 || typeof opts.onSlidePacket !== 'function' || now - camSlideAt < CAM_SLIDE_MS) return;
+    camSlideAt = now;
+    var bytes = null;
+    try {
+      var vw = localV.videoWidth || 320, vh = localV.videoHeight || 240, k = Math.min(1, CAM_SLIDE_LONG / Math.max(vw, vh));
+      if (!slideCanvas) slideCanvas = document.createElement('canvas');
+      slideCanvas.width = Math.max(2, Math.round(vw * k)); slideCanvas.height = Math.max(2, Math.round(vh * k));
+      slideCanvas.getContext('2d').drawImage(localV, 0, 0, slideCanvas.width, slideCanvas.height);
+      var url = slideCanvas.toDataURL('image/jpeg', CAM_SLIDE_Q), bin = atob(url.slice(url.indexOf(',') + 1));
+      bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    } catch (e) { bytes = null; }
+    if (!bytes || bytes.length < 100 || bytes.length > SLIDE_MAX) return;
+    lastFrameAt = now; vstats.camSlides = (vstats.camSlides || 0) + 1;
+    sendSlide(bytes);
+  }
   function sendSlide(bytes) {
     var id = slideId = (slideId + 1) & 255, n = Math.ceil(bytes.length / SLIDE_PART), i = 0;
     slideSending = true; vstats.slides = (vstats.slides || 0) + 1;
     (function next() {
-      if (stopped || !screenOn || i >= n) { slideSending = false; return; }
+      if (stopped || i >= n) { slideSending = false; return; }
       var part = bytes.subarray(i * SLIDE_PART, Math.min(bytes.length, (i + 1) * SLIDE_PART)), b = new Uint8Array(3 + part.length);
       b[0] = id; b[1] = i; b[2] = n; b.set(part, 3);
       try { opts.onSlidePacket(b); } catch (e) {}

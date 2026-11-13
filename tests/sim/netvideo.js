@@ -44,8 +44,18 @@ const { importSrc } = require('./srcmod');
   r.diapos_no_wifi = typeof calls._slidesLinkOk === 'function' && calls._slidesLinkOk('lan:nxb0000002', 'nxb0000002') === false;
   r.diapos_no_sin_enlace = typeof calls._slidesLinkOk === 'function' && calls._slidesLinkOk(null, 'nxb0000002') === false;
 
+  // La CÁMARA en imágenes pequeñas (3055, dueño 13-11: «sí, la cámara también en baja calidad por relés»): solo por relés
+  const cs = (l) => typeof calls._camSlidesLinkOk === 'function' && calls._camSlidesLinkOk(l, 'nxb0000002');
+  viaVal = 'relés';
+  r.camara_reles = cs('net:nxb0000002') === true;
+  r.camara_no_bt = cs('aa:bb:cc:dd:ee:ff') === false && typeof calls._camSlidesLinkOk === 'function';
+  r.camara_no_wifi = cs('lan:nxb0000002') === false && typeof calls._camSlidesLinkOk === 'function';
+  viaVal = 'tor';
+  r.camara_no_tor = cs('net:nxb0000002') === false && typeof calls._camSlidesLinkOk === 'function';
+
   const ok = r.lan_ok && r.net_tor_ok && r.net_reles_no && r.bt_no && r.sin_enlace_no &&
-    r.diapos_reles && r.diapos_bt && r.diapos_no_tor && r.diapos_no_wifi && r.diapos_no_sin_enlace;
+    r.diapos_reles && r.diapos_bt && r.diapos_no_tor && r.diapos_no_wifi && r.diapos_no_sin_enlace &&
+    r.camara_reles && r.camara_no_bt && r.camara_no_wifi && r.camara_no_tor;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NETVIDEO ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);
