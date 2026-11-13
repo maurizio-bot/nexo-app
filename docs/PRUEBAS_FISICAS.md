@@ -15,6 +15,12 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
    tiene internet sale «internet POR PUENTE: …» y en el del otro «presto internet a 1».
 5. **Vivo en segundo plano (3033).** En el Vivo: Ajustes → Batería → NEXO → permitir actividad en segundo plano. Con su
    pantalla apagada, mándale un texto por Bluetooth: tiene que llegar ✓✓ sin abrir su app. Si no, diagnóstico del Vivo.
+7. **Compartir pantalla (3034).** En una videollamada por Wi-Fi: toca «Pantalla» → aviso → «Compartir» → permiso de Android.
+   El otro ve tu pantalla entera (puede ampliar con dos dedos); arriba en el tuyo, barra roja «Detener». Detén con la barra y
+   vuelve la cámara. Si falla, diagnóstico de los dos (líneas «[CALL] Compartiendo la pantalla…» / «ScreenShare»).
+8. **GIF a alguien sin conexión (3034).** Manda un GIF grande a un contacto apagado: el ✓ sale en ~1 min (antes ~6).
+9. **Honor (3034).** Tras actualizar, el Honor ya no reenvía estados viejos al abrir (su diagnóstico sin «766 chunks»). En el
+   Honor: Ajustes → Batería → NEXO → permitir segundo plano.
 6. **APK de 25 MB viejo (3033).** El que salía «pendiente viejo» a …c1ee/…707a queda ✗ con «Reintentar» y ya no avisa.
 
 ## A. Lo arreglado hoy (12-11) — rápidas, 2–3 min cada una
