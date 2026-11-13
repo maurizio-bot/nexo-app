@@ -69,7 +69,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   //     pasan 6 min: se simula moviendo atrás la hora guardada del primer intento)
   {
     const mid2 = 'msg_attmiss_3063';
-    await A.win.vaultAppendMessage(idB, { msgId: mid2, _own: true, status: 'pending', timestamp: Date.now() - 3 * 3600000, content: '[adjunto]', attachmentType: 'file', attachmentMeta: { name: 'app.apk', size: 26531840 } });
+    await A.win.vaultAppendMessage(idB, { msgId: mid2, _own: true, status: 'pending', timestamp: Date.now() - 3 * 3600000, content: '[adjunto]', attachmentType: 'file', attachmentMeta: { name: 'app.zip', size: 61440 } }); // por Bluetooth (uno de 25 MB ni se intenta: espera Wi-Fi/internet)
     const ronda = async () => { biA._attMiss = {}; biA._resendPendingMessages(idB); await sleep(1500); };
     const get2 = async () => (await A.win.vaultLoadMessages(idB)).find((x) => x.msgId === mid2);
     await ronda();

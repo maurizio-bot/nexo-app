@@ -450,6 +450,10 @@
     {
      "fallo": "3041 (diagnóstico Honor …c1ee 13-11 21:25, APK 3031): en cada arranque reanudaba textos de 766 trozos a 5 contactos y atascaba el Bluetooth: copias viejas de estados con foto dentro cuyo mensaje 3033 ya había borrado del historial, pero su transferencia quedó huérfana (sin mensaje con qué compararla, se reanudaba siempre). 3041: _dropDeliveredTransfers borra la transferencia de un estado sin su mensaje (no toca otros textos) y staleStatusCopy borra también la transferencia. cola3038.js §4 (contraprueba 3038)",
      "prueba": "transferencia huérfana de un estado viejo"
+    },
+    {
+     "fallo": "Diagnósticos automáticos S24 3041 (13-11 09:18–09:22), 3063: el APK de 25 MB del 10-11 a 3 contactos seguía «pendiente viejo» 4117 min y se volvía a leer del disco cada vez que su contacto aparecía: la cuenta de intentos fallidos vivía solo en memoria y la app se cerraba antes de juntar 3 en 5 min. Ahora se guarda con el mensaje. cola3038.js §1b (contraprueba 3062: sigue pendiente)",
+     "prueba": "adjunto ilegible y transferencia que se rinde al reanudar"
     }
    ]
   },
@@ -835,6 +839,10 @@
     {
      "fallo": "Dueño 13-11 (3062): «me comentan que los estados no se están cargando de forma robusta». Al abrir la app, un estado que llegaba mientras se leían del disco los que ya había de ese contacto pisaba el archivo con solo él (B pasaba de 10 estados de A a 1), y un me gusta o comentario a uno de mis estados se perdía (aún no estaban leídos). Ahora lo que llega en esos segundos espera a que termine la lectura. estados3.js paso 10 (contraprueba 3061: 1 de 10 y el me gusta perdido)",
      "prueba": "Estados v3"
+    },
+    {
+     "fallo": "Diagnóstico del Motorola 13-11 (3063): a las 08:38:31 Perfil aceptó una foto de 9 KB 20 s después de rechazar la foto ACTUAL del dueño; él la había cambiado a las 08:35 y lo más probable es que fuera la de antes: Perfil solo comparaba con la foto actual de cada contacto. Ahora también con las que tuvo (5 últimas, 180 días), y el dueño sí puede volver a una foto suya. avatardup.js paso 8 (contraprueba 3062: aceptada; el dueño no podía volver a su foto)",
+     "prueba": "foto de perfil COPIADA"
     }
    ],
    "debiles": [
