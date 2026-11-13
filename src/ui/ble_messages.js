@@ -1618,8 +1618,14 @@ export const BLE_MESSAGE_METHODS = {
           else if (attachmentType && attachmentPayload) txt = JSON.stringify({ type: 'attachment', attachmentType: attachmentType, payload: attachmentPayload, meta: attachmentMeta || {} });
           else if (attachmentType) {
             // 2995: no se marca ✗ a la primera (puede estar a medio escribir tras un reinicio): queda ⏳ y se reintenta; solo tras 3 fallos y 5 min
-            var miss = _attMissDecision(self._attMiss || (self._attMiss = {}), mid, Date.now());
+            // 3063 (diagnósticos S24 3041 13-11: el APK de 25 MB del 10-11 seguía «pendiente viejo» 4117 min y se releía del disco cada
+            // vez que su contacto aparecía): la cuenta de intentos vivía solo en memoria y la app se cerraba antes de juntar 3 en 5 min.
+            // Ahora se guarda con el mensaje (attMissN/attMissT0): varias sesiones cortas también lo dan por ilegible.
+            var memoAM = self._attMiss || (self._attMiss = {});
+            if (!memoAM[mid] && Number(msg.attMissN) > 0) memoAM[mid] = { n: Number(msg.attMissN), t0: Number(msg.attMissT0) || Date.now() };
+            var miss = _attMissDecision(memoAM, mid, Date.now());
             if (miss === 'wait') {
+              try { if (typeof window.vaultPatchMessage === 'function') window.vaultPatchMessage(nexoId, mid, { attMissN: memoAM[mid].n, attMissT0: memoAM[mid].t0 }); } catch (e6) {}
               console.log('[BLEInterface] Adjunto pendiente sin sus datos (aún no se lee del teléfono): queda ⏳ y se reintenta', mid);
               sendNext();
               return;

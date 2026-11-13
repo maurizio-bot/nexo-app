@@ -6,6 +6,9 @@
 //     3038: tras rendirse, la reanudación espera 15 s, 30 s… 10 min, salvo que el enlace de ESE contacto esté listo.
 //  §4 (3041, Honor …c1ee 21:25): la transferencia de una copia de estado ya borrada del historial (huérfana) se borra, no se reanuda.
 //  §3 (3040, aviso «openchat_mac_vieja» 21:15 / S24 21:28): abrir el chat de un contacto en pausa Bluetooth no fuerza la conexión.
+//  §1b (3063, diagnósticos automáticos S24 3041 13-11 09:18–09:22: el APK de 25 MB del 10-11 seguía «pendiente viejo» 4117 min y se
+//     releía del disco cada vez que su contacto aparecía): la cuenta de intentos fallidos vivía solo en memoria y la app se cerraba
+//     antes de juntar 3 intentos en 5 min. Ahora se guarda con el mensaje: varias sesiones cortas también lo dan por ilegible.
 // Uso: node cola3038.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -62,6 +65,23 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   if (typeof A.win.vaultPatchMessage === 'function') await A.win.vaultPatchMessage(idB, mid, { attMissing: false });
   const k2 = logs.length; biA._attMiss = {}; biA._resendPendingMessages(idB); await sleep(1500);
   r.s1_reintentar_vuelve = logs.slice(k2).some((l) => /\[A\].*(se cargan .*adjunto|Adjunto pendiente sin sus datos)/.test(l));
+  // §1b (3063) otro adjunto ilegible en TRES sesiones cortas (al «reiniciar» se pierde lo que había en memoria; entre la 2.ª y la 3.ª
+  //     pasan 6 min: se simula moviendo atrás la hora guardada del primer intento)
+  {
+    const mid2 = 'msg_attmiss_3063';
+    await A.win.vaultAppendMessage(idB, { msgId: mid2, _own: true, status: 'pending', timestamp: Date.now() - 3 * 3600000, content: '[adjunto]', attachmentType: 'file', attachmentMeta: { name: 'app.apk', size: 26531840 } });
+    const ronda = async () => { biA._attMiss = {}; biA._resendPendingMessages(idB); await sleep(1500); };
+    const get2 = async () => (await A.win.vaultLoadMessages(idB)).find((x) => x.msgId === mid2);
+    await ronda();
+    await ronda();
+    const m2 = await get2();
+    r.s1b_cuenta_guardada = m2 ? (m2.attMissN || 0) : -1;
+    if (m2 && m2.attMissT0) await A.win.vaultPatchMessage(idB, mid2, { attMissT0: m2.attMissT0 - 360000 });
+    await ronda();
+    await waitFor(async () => { const x = await get2(); return x && x.status === 'failed'; }, 8000);
+    const m3 = await get2();
+    r.s1b_estado = m3 && m3.status; r.s1b_marca = !!(m3 && m3.attMissing);
+  }
 
   // §2 espera creciente al reanudar: una transferencia de un contacto ausente C que siempre se rinde
   const ack = biA.ackSystem, idC = 'nx0zz3038c';
@@ -114,7 +134,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     ack._resumeRunOne = orig.run;
   }
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT/.test(l)).slice(0, 5);
-  const ok = r.enlace && r.s1_estado === 'failed' && r.s1_marca && r.s1_no_relee && r.s1_reintentar_vuelve &&
+  const ok = r.enlace && r.s1_estado === 'failed' && r.s1_marca && r.s1b_cuenta_guardada === 2 && r.s1b_estado === 'failed' && r.s1b_marca && r.s1_no_relee && r.s1_reintentar_vuelve &&
     r.s2_primera === 1 && r.s2_en_espera === 1 && r.s2_su_enlace === 2 && r.s2_tras_espera === 3 && r.s3_en_pausa_no_fuerza && r.s3_sin_pausa_fuerza && r.s4_estado_huerfano_borrado && r.s4_texto_sigue && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('COLA3038 ' + JSON.stringify(r));

@@ -24,7 +24,7 @@ import { _sendTextTo } from './send.js';
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
 
-var MY_FILE = 'nexo_my_avatar.json', SENT_FILE = 'nexo_av_sent.json';
+var MY_FILE = 'nexo_my_avatar.json', SENT_FILE = 'nexo_av_sent.json', HIST_FILE = 'nexo_av_hist.json';
 var IMG_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/;
 var MAX_LEN = 60000;          // ~45 KB de imagen como mucho (las nuestras: 10–15 KB)
 var SIZE = 160;
@@ -39,6 +39,10 @@ var _minePh = null;           // huella de mi foto
 // contacto la puso después de que yo la pusiera (si la tenía él antes, el original es el suyo).
 var _past = [];               // [{ b, c, at, until }]
 var PAST_MAX = 5, PAST_KEEP_MS = 180 * 86400000;
+// 3063 (diagnóstico del Motorola 13-11: a las 08:38:31 Perfil aceptó una foto de 9 KB, 20 s después de rechazar la foto actual del
+// dueño; el dueño la había cambiado a las 08:35 y lo más probable es que fuera la de antes): Perfil compara también con las fotos que
+// cada contacto TUVO (huellas de las 5 últimas por contacto, 180 días), no solo con la actual.
+var _hist = {};               // NEXO ID → [{ b, c, until }]
 var _sent = {};               // NEXO ID → h que ya se le mandó
 var _outIds = new Map();      // id de la copia oculta → NEXO ID (se borra al entregarse)
 var _started = false;
@@ -119,6 +123,19 @@ function _keep(nx, img, at) {
   // 3062: si mientras se calculaba la huella llegó otra (o «quitada»), esta ya no vale
   return _phash(img).then(function(ph) { if (_gen.get(nx) !== g) return; _all.set(nx, { img: img, at: at || 0, ph: ph }); if (!ph) _phRetrySoon(); });
 }
+// 3063: la foto que un contacto deja de tener pasa a su historial (con su huella; si no la había, se calcula)
+function _histAdd(nx, old) {
+  if (!old || !old.img) return;
+  var push = function(ph) {
+    if (!ph || typeof ph.b !== 'string') return;
+    var now = Date.now();
+    var l = (_hist[nx] || []).filter(function(q) { return q && now - (Number(q.until) || 0) < PAST_KEEP_MS && !_same(q, ph); });
+    l.push({ b: ph.b, c: ph.c, until: now });
+    _hist[nx] = l.slice(-PAST_MAX);
+    _save(HIST_FILE, _hist);
+  };
+  if (old.ph) push(old.ph); else _phash(old.img).then(push).catch(function() {});
+}
 // 3059 (dueño 13-11: «¿por qué Roberto aparece con mi foto de perfil todavía? se supone que ya lo arreglaste»): la copia se esconde
 // comparando huellas; si al abrir la app una huella no se pudo calcular a tiempo (2 s, con la app arrancando y muchas fotos a la
 // vez) —la mía o la del contacto—, no se comparaba y la copia se veía hasta que alguien cambiara de foto. Ahora las huellas que
@@ -151,15 +168,19 @@ export function avatarClash(url) {
   var tmo = new Promise(function(r) { setTimeout(function() { late = true; r(); }, READY_MAX_MS); });
   return Promise.race([_ready, tmo]).then(function() {
     if (late) console.warn('[AVATAR] Perfil: las fotos de los contactos no terminaron de cargarse; comparo con las que hay');
-    if (!_all.size) return null;   // ningún contacto con foto: nada con qué comparar
+    if (!_all.size && !Object.keys(_hist).length) return null;   // ningún contacto con foto (ni de antes): nada con qué comparar
     // las que quedaron sin huella (la imagen no cargó a tiempo) se vuelven a intentar
     var miss = [];
     _all.forEach(function(o) { if (!o.ph) miss.push(_phash(o.img).then(function(ph) { o.ph = ph; })); });
     return Promise.all(miss);
-  }).then(function() { return _all.size ? _phash(url) : null; }).then(function(ph) {
+  }).then(function() { return (_all.size || Object.keys(_hist).length) ? _phash(url) : null; }).then(function(ph) {
     if (!ph) return null;
-    var hit = null;
+    var hit = null, now = Date.now();
+    // 3063: una foto que fue MÍA (la vuelvo a poner) no se rechaza aunque un contacto tenga o haya tenido una copia
+    if (_past.some(function(q) { return _same(ph, q); })) return null;
     _all.forEach(function(o, nx) { if (!hit && o.ph && _same(ph, o.ph)) hit = nx; });
+    // 3063: o una que ese contacto TUVO antes
+    if (!hit) Object.keys(_hist).forEach(function(nx) { (_hist[nx] || []).forEach(function(q) { if (!hit && q && now - (Number(q.until) || 0) < PAST_KEEP_MS && _same(ph, q)) { hit = nx; console.warn('[AVATAR] Perfil: esa foto la tuvo antes ' + _nameOf(nx)); } }); });
     return hit ? _nameOf(hit) : null;
   });
 }
@@ -168,7 +189,8 @@ function _contactIds() { return _getBLEContacts().map(function(c) { return _norm
 export function avatarInit() {
   if (_started) return;
   _started = true;
-  Promise.all([_load(MY_FILE), _load(SENT_FILE)]).then(function(r) {
+  Promise.all([_load(MY_FILE), _load(SENT_FILE), _load(HIST_FILE)]).then(function(r) {
+    if (r[2] && typeof r[2] === 'object') Object.keys(r[2]).forEach(function(nx) { if (NX_RE.test(nx) && Array.isArray(r[2][nx])) _hist[nx] = r[2][nx].filter(function(q) { return q && typeof q.b === 'string' && q.b.length === 64 && Array.isArray(q.c) && Date.now() - (Number(q.until) || 0) < PAST_KEEP_MS; }).slice(-PAST_MAX); });
     if (r[0] && typeof r[0].h === 'string' && !_mine) _mine = { h: r[0].h, img: IMG_RE.test(r[0].img || '') ? r[0].img : '', at: Number(r[0].at) || 0 };
     if (r[0] && Array.isArray(r[0].past)) _past = r[0].past.filter(function(q) { return q && typeof q.b === 'string' && q.b.length === 64 && Array.isArray(q.c) && Date.now() - (Number(q.until) || 0) < PAST_KEEP_MS; }).slice(-PAST_MAX);
     // 3012 (dueño 11-11: un contacto salió con una foto que no era la suya; el registro de Marcos mostró que la mandó ese teléfono
@@ -291,6 +313,7 @@ export function applyAvatar(sender, act) {
   var tAct = tSet > 0 && isFinite(tSet) ? tSet : 0;
   if (tAct && c && Number(c.avt) > tAct) { console.log('[AVATAR] Aviso de foto de ' + nx + ' más viejo que el último que llegó: no se aplica'); return; }
   _live.add(nx);
+  if (prev && prev.img && prev.img !== img) _histAdd(nx, prev);   // 3063
   _save('nexo_av_' + nx + '.json', { h: h, img: img, at: at });
   if (c && (c.avh !== (img ? h : '') || (tAct && c.avt !== tAct))) { c.avh = img ? h : ''; if (tAct) c.avt = tAct; _saveBLEContacts(contacts); }
   console.log('[AVATAR] Foto de perfil de ' + nx + ': ' + (img ? 'nueva' : 'quitada'));

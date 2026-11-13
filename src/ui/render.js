@@ -834,7 +834,7 @@ function _retrySend(cid, msgId, div) {
   // 3038: un adjunto marcado «no se pudo leer» vuelve a probarse (el usuario decide)
   if (bi && bi._attMiss) delete bi._attMiss[msgId];
   if (bi && bi.ackSystem && bi.ackSystem._resumeFail) bi.ackSystem._resumeFail.delete(msgId); // 3038: sin esperar
-  if (typeof window.vaultPatchMessage === 'function') cleared = cleared.then(function() { return window.vaultPatchMessage(cid, msgId, { attMissing: false }); }).catch(function() {});
+  if (typeof window.vaultPatchMessage === 'function') cleared = cleared.then(function() { return window.vaultPatchMessage(cid, msgId, { attMissing: false, attMissN: 0, attMissT0: 0 }); }).catch(function() {});
   cleared.then(function() {
     try { if (bi && typeof bi._resendPendingMessages === 'function') bi._resendPendingMessages(cid); } catch (e) {}
     try { if (bi && bi.ackSystem && typeof bi.ackSystem.resumeOutgoingTransfers === 'function') bi.ackSystem.resumeOutgoingTransfers(); } catch (e) {}
