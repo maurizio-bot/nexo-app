@@ -4,6 +4,19 @@ Con la **3033 (nightly-3030) o posterior en TODOS los teléfonos** (el actualiza
 Si algo falla: **Perfil → Copiar diagnóstico** en los dos teléfonos y pegármelo. Cada prueba dice qué tiene que pasar.
 Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 
+## 0. Lo nuevo del 13-11 (APK 3032 y 3033)
+1. **GIF del teclado (3032).** En el S23, abre un chat y manda un GIF o sticker desde el teclado de Samsung o Gboard: sale
+   como imagen y llega al otro (ya no «No es posible introducir este contenido aquí»).
+2. **Vídeo de TikTok en estados (3032).** Guarda un vídeo de TikTok y súbelo como estado: se publica (recomprimido a ≤ 4,6 MB).
+3. **Stickers y gesto atrás (3032).** El panel de stickers ya no tiene la N y trae las caritas nuevas; el gesto atrás cierra
+   menús, hojas, búsqueda y juegos antes de salir del chat.
+4. **Puente a internet (3033).** Un teléfono SIN datos ni Wi-Fi junto a otro NEXO con internet (contacto suyo, por
+   Bluetooth): manda un texto a un contacto LEJOS → le llega y sale ✓✓; la respuesta te llega. En el diagnóstico del que no
+   tiene internet sale «internet POR PUENTE: …» y en el del otro «presto internet a 1».
+5. **Vivo en segundo plano (3033).** En el Vivo: Ajustes → Batería → NEXO → permitir actividad en segundo plano. Con su
+   pantalla apagada, mándale un texto por Bluetooth: tiene que llegar ✓✓ sin abrir su app. Si no, diagnóstico del Vivo.
+6. **APK de 25 MB viejo (3033).** El que salía «pendiente viejo» a …c1ee/…707a queda ✗ con «Reintentar» y ya no avisa.
+
 ## A. Lo arreglado hoy (12-11) — rápidas, 2–3 min cada una
 1. **Foto de perfil (3028).** En tu teléfono: Roberto y Marcos salen con sus iniciales, no con tu foto. Toca la foto de
    un contacto: se abre grande **sin** botón de guardar. En otro teléfono, Perfil → poner TU foto: la rechaza con
