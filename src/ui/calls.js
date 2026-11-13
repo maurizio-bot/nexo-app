@@ -101,6 +101,9 @@ export class Calls {
     if (link.indexOf('net:') === 0) { var n = this.ble && this.ble.net; return !!(n && typeof n.via === 'function' && n.via(_nid(nexoId)) === 'tor'); }
     return false;
   }
+  // Compartir pantalla parte 3: ¿la pantalla va en diapositivas? Por Bluetooth sí (el vídeo no cabe). Por relés de internet
+  // (sin Tor directo) aún no: lo decide el dueño (pendiente).
+  _slidesLink(c) { var l = this._link(c.nx); return !!l && !/^(lan|net)/i.test(String(l)); }
   state() { return this.call ? Object.assign({}, this.call, { key: undefined, cryptoKey: undefined, media: undefined }) : null; }
 
   _set(o) {
@@ -290,6 +293,9 @@ export class Calls {
     try {
       media = self.mediaFactory({ onPacket: function(bytes) { self._sendPacket(bytes); }, codecs: c.peerCodecs || 'opus,ulaw',
         video: !!c.video, onVideoPacket: function(bytes) { self._sendPacket(bytes, 'v'); },
+        // Compartir pantalla parte 3: por Bluetooth (sin vídeo) la pantalla va en diapositivas ('s')
+        onSlidePacket: function(bytes) { if (self.call === c) self._sendPacket(bytes, 's'); },
+        wantSlides: function() { return self.call === c && self._slidesLink(c); },
         // Ronda 2769: la imagen del otro se paró: que mande una completa ('k'); estado de mi cámara y micrófono ('c')
         onNeedKey: function() { if (self.call === c) self._sendPacket(new Uint8Array([1]), 'k'); },
         onState: function(s) {
@@ -348,7 +354,7 @@ export class Calls {
     var m = c.media && typeof c.media.stats === 'function' ? c.media.stats() : null, st = this.stats;
     var link = this._link(c.nx), pct = function(x) { return Math.round((x || 0) * 1000) / 10 + ' %'; };
     console.log('[CALL] ' + (prefix || Math.round((Date.now() - c.startedAt) / 1000) + ' s') + ': voz enviada ' + st.sent + ', recibida ' + st.got +
-      (st.bad ? ' (' + st.bad + ' ilegibles)' : '') + (st.sentKeep || st.gotKeep ? ', sin voz ("sigo aquí") enviados ' + (st.sentKeep || 0) + ' / recibidos ' + (st.gotKeep || 0) : '') + (c.video ? ', vídeo enviado ' + (st.sentV || 0) + ' / recibido ' + (st.gotV || 0) : '') +
+      (st.bad ? ' (' + st.bad + ' ilegibles)' : '') + (st.sentKeep || st.gotKeep ? ', sin voz ("sigo aquí") enviados ' + (st.sentKeep || 0) + ' / recibidos ' + (st.gotKeep || 0) : '') + (c.video ? ', vídeo enviado ' + (st.sentV || 0) + ' / recibido ' + (st.gotV || 0) : '') + (st.sentS || st.gotS ? ', diapositivas de pantalla (partes) enviadas ' + (st.sentS || 0) + ' / recibidas ' + (st.gotS || 0) : '') +
       (m ? ', reproducido ' + Math.round(m.playedS) + ' s (nivel ' + pct(m.playedLevel) + '), micrófono ' + (m.mic ? 'activo' : 'NO') + ' nivel ' + pct(m.micLevel) +
         ' pico ' + pct(m.micPeak) + ', audio ' + m.ctx + ', ' + m.codec + (c.peerCodecs ? ' (el otro: ' + c.peerCodecs + ')' : '') +
         // ronda 2772: filtros de voz: tiempo con el micrófono bajado por la voz del otro, hablando los dos, en silencio; eco medido
@@ -396,13 +402,13 @@ export class Calls {
     // cualquier camino. Antes el vídeo solo salía por lan: → la videollamada por internet conectaba pero no mandaba imagen.
     if (kind === 'v' && !self._videoLinkOk(link, c.nx)) return;
     // Ronda 2769: 'k' (pide imagen completa) y 'c' (estado de cámara y micrófono) con su propia numeración
-    var seq = kind === 'v' ? c.vSeq++ : kind === 'e' ? 0 : (kind === 'k' || kind === 'c') ? (c.cSeq = (c.cSeq || 0) + 1) : c.sendSeq++;
+    var seq = kind === 'v' ? c.vSeq++ : kind === 's' ? (c.sSeq = (c.sSeq || 0) + 1) : kind === 'e' ? 0 : (kind === 'k' || kind === 'c') ? (c.cSeq = (c.cSeq || 0) + 1) : c.sendSeq++;
     var iv = crypto.getRandomValues(new Uint8Array(12));
     var ad = new TextEncoder().encode(c.id + '|' + (c.dir === 'out' ? 'o' : 'i') + '|' + (kind || '') + seq);
     crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: ad }, c.cryptoKey, bytes).then(function(ct) {
       var out = new Uint8Array(12 + ct.byteLength); out.set(iv, 0); out.set(new Uint8Array(ct), 12);
       // (ronda 2769: los "sigo aquí" sin voz, de 2 bytes, aparte: si no, el diagnóstico los daba por voz)
-      if (kind === 'v') self.stats.sentV = (self.stats.sentV || 0) + 1; else if (!kind && bytes.length <= 2) self.stats.sentKeep = (self.stats.sentKeep || 0) + 1; else if (kind !== 'k' && kind !== 'c') self.stats.sent++;
+      if (kind === 'v') self.stats.sentV = (self.stats.sentV || 0) + 1; else if (kind === 's') self.stats.sentS = (self.stats.sentS || 0) + 1; else if (!kind && bytes.length <= 2) self.stats.sentKeep = (self.stats.sentKeep || 0) + 1; else if (kind !== 'k' && kind !== 'c') self.stats.sent++;
       var pk = { type: 'vf', c: c.id, s: seq, d: _b64(out) };
       if (kind) pk.k = kind;
       return self.ble._sendMessageNative(link, JSON.stringify(pk), null);
@@ -417,7 +423,7 @@ export class Calls {
     try { raw = _unb64(p.d); } catch (e) { return; }
     if (raw.length < 29) return;
     var k = p.k || '';
-    if (k && !/^[veck]$/.test(k)) return;
+    if (k && !/^[vecks]$/.test(k)) return;
     var vid = k === 'v', fin = k === 'e';
     var ad = new TextEncoder().encode(c.id + '|' + (c.dir === 'out' ? 'i' : 'o') + '|' + k + p.s);
     crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.subarray(0, 12), additionalData: ad }, c.cryptoKey, raw.subarray(12)).then(function(pt) {
@@ -449,6 +455,7 @@ export class Calls {
         return;
       }
       if (vid) { self.stats.gotV = (self.stats.gotV || 0) + 1; if (cc.media && cc.media.playVideo) cc.media.playVideo(new Uint8Array(pt)); return; }
+      if (k === 's') { self.stats.gotS = (self.stats.gotS || 0) + 1; if (cc.media && typeof cc.media.slidePart === 'function') cc.media.slidePart(new Uint8Array(pt)); return; } // parte 3: diapositiva de su pantalla
       if (pt.byteLength <= 2) { self.stats.gotKeep = (self.stats.gotKeep || 0) + 1; return; } // ronda 2769: "sigo aquí" del otro (sin voz que mandar)
       self.stats.got++;
       if (cc.media && cc.media.play) cc.media.play(new Uint8Array(pt), p.s);

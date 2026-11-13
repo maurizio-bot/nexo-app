@@ -140,6 +140,13 @@ export function createCallMedia(opts) {
   // da por perdida); lado largo SCR_LONG para que las letras se lean.
   var screenOn = false, scrImg = null, scrNew = false, scrEncAt = 0, scrW = 0, scrH = 0, scrN = 0;
   var SCR_LONG = 960, SCR_FPS = 5;
+  // Compartir pantalla parte 3 (dueño 13-11): por Bluetooth no cabe vídeo; la pantalla va como DIAPOSITIVAS: una imagen pequeña
+  // (lado largo SLIDE_LONG, JPEG) cuando cambia, como mucho cada SLIDE_MS (y la misma cada SLIDE_KEEP_MS), en partes de
+  // SLIDE_PART bytes espaciadas SLIDE_GAP_MS (intercaladas con la voz: no la cortan). opts.wantSlides() dice si el camino de
+  // ahora es así; opts.onSlidePacket(parte) la manda. El otro las junta (slidePart) y las pinta donde va el vídeo.
+  var SLIDE_LONG = 360, SLIDE_Q = 0.45, SLIDE_MS = 5000, SLIDE_KEEP_MS = 15000, SLIDE_PART = 1800, SLIDE_GAP_MS = 120, SLIDE_MAX = 40000;
+  var wantSlides = typeof opts.wantSlides === 'function' ? opts.wantSlides : function() { return false; };
+  var slideAt = 0, slideNew = false, slideId = 0, slideCanvas = null, slideSending = false, slidesIn = new Map(), lastSlideAt = 0;
   var vstats = window.NEXO_callVideoStats = { sent: 0, keys: 0, decoded: 0, bytes: 0, frames: 0, keyReq: 0, encErr: 0, decErr: 0 };
   window.NEXO_callAudioStats = { samples: 0, seconds: 0, energy: 0 }; // por llamada
   var media;
@@ -394,7 +401,7 @@ export function createCallMedia(opts) {
   function encodeTick() {
     if (stopped || (!camOn && !screenOn)) return;
     if (!venc || venc.state === 'closed') { if (Date.now() - vencMadeAt > 1000) makeEncoder(); return; } // ronda 2769: falló: uno nuevo (como mucho uno por segundo)
-    if (screenOn) { encodeScreen(); return; }
+    if (screenOn) { if (wantSlides()) slideTick(); else encodeScreen(); return; }
     if (venc.state !== 'configured' || !localV || localV.readyState < 2 || venc.encodeQueueSize > 3) return;
     // Ronda 2772: la cámara cambió de forma o de tamaño (al abrir, girar el teléfono, la otra cámara): codificador nuevo
     var sz = sendSize();
@@ -424,6 +431,38 @@ export function createCallMedia(opts) {
       scrNew = false; scrEncAt = now; lastFrameAt = now; vstats.frames++;
     } catch (e) {}
     try { if (f) f.close(); } catch (e) {}
+  }
+  // Parte 3: una diapositiva de la pantalla (por Bluetooth), en partes intercaladas con la voz
+  function slideTick() {
+    var now = Date.now();
+    if (!scrImg || slideSending || typeof opts.onSlidePacket !== 'function') return;
+    if (now - slideAt < (slideNew ? SLIDE_MS : SLIDE_KEEP_MS)) return;
+    var bytes = null;
+    try {
+      if (!slideCanvas) slideCanvas = document.createElement('canvas');
+      var k = Math.min(1, SLIDE_LONG / Math.max(scrW || 1, scrH || 1));
+      slideCanvas.width = Math.max(2, Math.round((scrW || SLIDE_LONG) * k)); slideCanvas.height = Math.max(2, Math.round((scrH || SLIDE_LONG) * k));
+      slideCanvas.getContext('2d').drawImage(scrImg, 0, 0, slideCanvas.width, slideCanvas.height);
+      var q = SLIDE_Q, url = slideCanvas.toDataURL('image/jpeg', q);
+      while (url.length * 3 / 4 > SLIDE_MAX && q > 0.2) { q -= 0.1; url = slideCanvas.toDataURL('image/jpeg', q); }
+      var bin = atob(url.slice(url.indexOf(',') + 1)); bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    } catch (e) { bytes = null; }
+    slideAt = now; slideNew = false;
+    if (!bytes || bytes.length < 100 || bytes.length > SLIDE_MAX) return;
+    sendSlide(bytes);
+  }
+  function sendSlide(bytes) {
+    var id = slideId = (slideId + 1) & 255, n = Math.ceil(bytes.length / SLIDE_PART), i = 0;
+    slideSending = true; vstats.slides = (vstats.slides || 0) + 1;
+    (function next() {
+      if (stopped || !screenOn || i >= n) { slideSending = false; return; }
+      var part = bytes.subarray(i * SLIDE_PART, Math.min(bytes.length, (i + 1) * SLIDE_PART)), b = new Uint8Array(3 + part.length);
+      b[0] = id; b[1] = i; b[2] = n; b.set(part, 3);
+      try { opts.onSlidePacket(b); } catch (e) {}
+      i++;
+      setTimeout(next, SLIDE_GAP_MS);
+    })();
   }
   // El codificador y el temporizador también sin cámara (la pantalla se puede compartir aunque la cámara no abriera)
   function ensureVideoPipe() {
@@ -562,7 +601,7 @@ export function createCallMedia(opts) {
     // Ronda 2769: el otro no tiene imagen: la siguiente que sale es completa
     requestKey: function() { forceKey = true; },
     // ¿Se está viendo la imagen del otro? (si no, la pantalla muestra su foto en vez de negro)
-    remoteLive: function() { return !!lastDecodedAt && Date.now() - lastDecodedAt < 2500; },
+    remoteLive: function() { var now = Date.now(); return (!!lastDecodedAt && now - lastDecodedAt < 2500) || (!!lastSlideAt && now - lastSlideAt < 2 * SLIDE_KEEP_MS); },
     // Ronda 2762: cámara de delante / de detrás (se suelta la actual antes de abrir la otra: muchos teléfonos no
     // abren dos a la vez); si la otra no abre, se vuelve a la de antes. Imagen completa al cambiar.
     facing: function() { return facing; },
@@ -606,10 +645,39 @@ export function createCallMedia(opts) {
     screenFrame: function(b64, w, h) {
       if (!screenOn || stopped || typeof b64 !== 'string' || !b64) return;
       var img = new window.Image();
-      img.onload = function() { if (!screenOn) return; scrImg = img; scrW = img.naturalWidth || w || 0; scrH = img.naturalHeight || h || 0; scrNew = true; };
+      img.onload = function() { if (!screenOn) return; scrImg = img; scrW = img.naturalWidth || w || 0; scrH = img.naturalHeight || h || 0; scrNew = true; slideNew = true; };
       img.src = 'data:image/jpeg;base64,' + b64;
     },
     screenOn: function() { return screenOn; },
+    // Parte 3: una parte de una diapositiva del otro ([id, i, n, datos…]); con todas, se pinta donde va su vídeo
+    slidePart: function(b) {
+      if (stopped || !b || b.length < 4) return false;
+      var id = b[0], i = b[1], n = b[2];
+      if (!n || n > 40 || i >= n) return false;
+      var e = slidesIn.get(id);
+      if (!e || e.n !== n) { e = { n: n, parts: new Array(n), got: 0, at: Date.now() }; slidesIn.set(id, e); }
+      if (!e.parts[i]) { e.parts[i] = b.subarray(3); e.got++; }
+      slidesIn.forEach(function(x, k) { if (k !== id && Date.now() - x.at > 30000) slidesIn.delete(k); });
+      if (e.got < n) return false;
+      slidesIn.delete(id);
+      var len = 0; e.parts.forEach(function(p) { len += p.length; });
+      var all = new Uint8Array(len), o = 0; e.parts.forEach(function(p) { all.set(p, o); o += p.length; });
+      vstats.slidesIn = (vstats.slidesIn || 0) + 1; lastSlideAt = Date.now();
+      try {
+        var url = URL.createObjectURL(new Blob([all], { type: 'image/jpeg' })), img = new window.Image();
+        img.onload = function() {
+          try {
+            if (!media.remoteCanvas) media.remoteCanvas = document.createElement('canvas');
+            var c = media.remoteCanvas, w = img.naturalWidth || 0, h = img.naturalHeight || 0;
+            if (w && h && (c.width !== w || c.height !== h)) { c.width = w; c.height = h; }
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          } catch (e2) {}
+          try { URL.revokeObjectURL(url); } catch (e3) {}
+        };
+        img.src = url;
+      } catch (e4) {}
+      return true;
+    },
     // Ronda 2769: la app vuelve a la vista (la cámara se pierde en segundo plano): se reintenta ya
     wake: function() {
       if (stopped) return;

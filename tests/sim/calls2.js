@@ -79,11 +79,23 @@ async function boot(name, native, cfg = {}) {
           play(bytes) { if (bytes.length > 6) media.played.push({ from: String.fromCharCode(bytes[4]), n: (bytes[5] << 8) | bytes[6], at: realNow() }); },
           playVideo() {}, mute() {},
           // 13-11: compartir pantalla (como call_media.screen / screenFrame)
-          screen(on) { m.screenOn = !!on; (m.screenCalls = m.screenCalls || []).push(!!on); return true; },
+          screen(on) {
+            m.screenOn = !!on; (m.screenCalls = m.screenCalls || []).push(!!on);
+            // parte 3 (como call_media.slideTick): con un camino sin vídeo, diapositivas en 3 partes
+            clearInterval(m.slideT); m.slideT = null;
+            if (on) m.slideT = setInterval(() => {
+              if (!m.screenOn || typeof o.wantSlides !== 'function' || !o.wantSlides()) return;
+              const id = (m.slideId = ((m.slideId || 0) + 1) & 255);
+              for (let i = 0; i < 3; i++) { const b = new Uint8Array(3 + 500); b[0] = id; b[1] = i; b[2] = 3; b.fill(i + 1, 3); o.onSlidePacket(b); }
+              m.slidesSent = (m.slidesSent || 0) + 1;
+            }, 600);
+            return true;
+          },
+          slidePart(b) { m.slideParts = (m.slideParts || 0) + 1; if (b && b[2] === 3 && b.length === 503) m.slidePartsOk = (m.slidePartsOk || 0) + 1; return true; },
           screenFrame(d, w, h) { if (m.screenOn) { m.frames = (m.frames || 0) + 1; m.lastFrame = { w, h }; } },
           requestKey() { m.keyReq++; },
           remoteLive() { return m.live; },
-          stop() { if (t) media.live--; clearInterval(t); t = null; }
+          stop() { if (t) media.live--; clearInterval(t); t = null; clearInterval(m.slideT); }
         };
         return m;
       };
@@ -214,6 +226,33 @@ const CASES = {
     r.ok = r.wifi && r.en_llamada && r.boton && r.aviso && r.sin_captura_antes && r.comparte && r.media_en_pantalla && r.imagenes && r.barra_roja &&
       r.B_sabe && r.B_vista_entera && r.B_sin_espejo && r.detenido && r.nativo_paro && r.B_vuelve_a_camara && r.sin_barra && r.otra_vez &&
       r.android_la_corta && r.sigue_la_llamada && r.colgar_para && r.sin_barra_al_colgar && r.no_permiso_no_comparte;
+    return r;
+  },
+  // Compartir pantalla parte 3 (dueño 13-11): la videollamada empieza por Wi-Fi compartiendo la pantalla; se va el Wi-Fi y
+  // sigue por Bluetooth: la pantalla sigue llegando en DIAPOSITIVAS (por Wi-Fi no: va el vídeo).
+  async 'pantalla-bt'() {
+    const { nA, nB, A, B, idA, idB } = await setup({}, { wifi: 'casa' });
+    const r = { wifi: await wait(() => A.win.bleInterface.calls.canVideo(idB) && B.win.bleInterface.calls.canVideo(idA), 60) };
+    click(A.win, A.win.document.getElementById('nexo-video-btn'));
+    await wait(() => st(B) === 'ringing', 20);
+    accept(B);
+    r.en_llamada = await wait(() => st(A) === 'active' && st(B) === 'active', 15);
+    await sleep(1200);
+    const dA = A.win.document;
+    click(A.win, dA.querySelector('#nexo-call-screen .call-screen')); await sleep(300);
+    click(A.win, dA.querySelector('#nexo-scr-ask .nc-ask-yes'));
+    r.comparte = await wait(() => !!A.win.bleInterface.calls.call && A.win.bleInterface.calls.call.screen === true, 5);
+    await sleep(3000);
+    r.por_wifi_sin_diapositivas = !(A.media.cur.slidesSent > 0);
+    // se va el Wi-Fi: la llamada sigue por Bluetooth y la pantalla, en diapositivas
+    nA.setWifi(null); nB.setWifi(null);
+    r.sigue_por_bluetooth = await wait(() => { const l = A.win.bleInterface.calls._link(idB); return !!l && !/^(lan|net)/i.test(l) && st(A) === 'active'; }, 30);
+    r.diapositivas_llegan = await wait(() => (B.media.cur.slidePartsOk || 0) >= 6, 30);
+    r.partes_enviadas = A.media.cur.slidesSent || 0;
+    r.partes_recibidas = B.media.cur.slideParts || 0;
+    r.diag = (A.win.bleInterface.calls.stats || {}).sentS || 0;
+    A.win.bleInterface.calls.hangup();
+    r.ok = r.wifi && r.en_llamada && r.comparte && r.por_wifi_sin_diapositivas && r.sigue_por_bluetooth && r.diapositivas_llegan && r.diag > 0;
     return r;
   },
   async 'rechazar-cerrada'() {

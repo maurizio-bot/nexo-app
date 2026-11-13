@@ -59,6 +59,7 @@ class ScreenShareService : Service() {
     private var height = 0
     private var everyMs = 200L
     private var stopping = false
+    private var maxLongPx = 960
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -68,6 +69,7 @@ class ScreenShareService : Service() {
         @Suppress("DEPRECATION")
         val data: Intent? = intent.getParcelableExtra("data")
         val maxLong = intent.getIntExtra("maxLong", 960).coerceIn(240, 1920)
+        maxLongPx = maxLong
         val fps = intent.getIntExtra("fps", 5).coerceIn(1, 15)
         everyMs = (1000L / fps).coerceAtLeast(66L)
         // Android 10+: el servicio tiene que estar en primer plano (tipo mediaProjection) ANTES de pedir la proyección
@@ -107,9 +109,35 @@ class ScreenShareService : Service() {
     private val tick: Runnable = object : Runnable {
         override fun run() {
             if (!running) return
+            try { checkRotation() } catch (e: Throwable) { Log.w(TAG, "giro: ${e.message}") }
             try { grab() } catch (e: Throwable) { Log.w(TAG, "imagen: ${e.message}") }
             handler?.postDelayed(this, everyMs)
         }
+    }
+
+    // Parte 3 (dueño 13-11): al GIRAR el teléfono la captura cambia de forma (si no, la pantalla girada salía aplastada en la
+    // imagen de siempre). Se mira el tamaño real de la pantalla en cada vuelta; si cambió de vertical a horizontal (o al revés),
+    // pantalla virtual y lector nuevos con la forma nueva (la app ya rehace el vídeo al cambiar el tamaño de la imagen).
+    private fun checkRotation() {
+        val d = display ?: return
+        val disp = getSystemService(DisplayManager::class.java)?.getDisplay(android.view.Display.DEFAULT_DISPLAY) ?: return
+        val pt = android.graphics.Point()
+        disp.getRealSize(pt) // (obsoleto desde Android 12, sigue dando el tamaño real con el giro)
+        val sw = pt.x.coerceAtLeast(1)
+        val sh = pt.y.coerceAtLeast(1)
+        if ((sw > sh) == (width > height)) return
+        val k = minOf(1.0, maxLongPx.toDouble() / maxOf(sw, sh))
+        val w = ((sw * k).toInt() / 2 * 2).coerceAtLeast(2)
+        val h = ((sh * k).toInt() / 2 * 2).coerceAtLeast(2)
+        val old = reader
+        val r = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
+        width = w
+        height = h
+        d.resize(w, h, resources.displayMetrics.densityDpi)
+        d.setSurface(r.surface)
+        reader = r
+        try { old?.close() } catch (e: Throwable) {}
+        Log.i(TAG, "Pantalla girada: ahora ${w}x$h")
     }
 
     private fun grab() {
