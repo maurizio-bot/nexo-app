@@ -697,7 +697,7 @@ export class BleAckSystem {
       // Y un flujo por relés a un contacto AUSENTE no sirve de nada (la ventana espera confirmaciones EN VIVO: se quedaba
       // «Ventana sin ACK con el enlace caído» con el archivo entero en memoria): por internet solo si el contacto está EN
       // LÍNEA (canReach); si no, queda ⏳ pendiente y lo reanuda _netUp/_netOnline (los ≤ 5 MB ya fueron al buzón de archivos).
-      var netOk = net && typeof net.canReach === 'function' && net.canReach(cid) && (net.filesOk(cid) || (net.mailboxFilesOk(cid) && data && data.length <= NET_MAX_B64_BYTES));
+      var netOk = net && typeof net.canReach === 'function' && net.canReach(cid) && (net.filesOk(cid) || (net.mailboxFilesOk(cid, data && data.length) && data && data.length <= NET_MAX_B64_BYTES));
       if (!netOk) {
         var en = new Error('Contacto no disponible: queda pendiente'); en.code = 'PEER_ABSENT';
         return Promise.reject(en);

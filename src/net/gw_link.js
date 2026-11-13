@@ -21,13 +21,15 @@
  *   A→B  c  cierra la sesión s                        B→A  x  la sesión s se cerró
  *   A→B  w  «toque» FCM al token t (el despertador del contacto también sale por el puente)
  *
- * Límites del que presta (para que no se abuse de su internet): solo eventos de mensajes privados (kind 1059) firmados
- * y del tamaño de un texto, suscripciones solo a esos mensajes, AUTH (NIP-42) y CLOSE; nada de archivos (el buzón de
- * archivos no pasa por el puente: net_link.gwOnly() los deja ⏳). Tope por minuto y por día, pocas sesiones a la vez,
+ * Límites del que presta (para que no se abuse de su internet): solo eventos de mensajes privados (kind 1059) y trozos del
+ * buzón de archivos (parte 3: fotos y notas de voz pequeñas, hasta GW_FILE_MAX_B64) firmados, suscripciones solo a esos
+ * mensajes, pedir trozos por id (≤ 16), AUTH (NIP-42) y CLOSE; vídeos y archivos grandes quedan ⏳ (net_link.mailboxFilesOk).
+ * Tope de BYTES por teléfono que pide (2 MB/h, 10 MB/día), de eventos por minuto y por día, pocas sesiones a la vez,
  * y nada con la batería baja (Jump.canRelay). SIN interruptor (dueño 13-11: «si alguien escoge NEXO es para estar comunicado,
  * no para romper esa red»): todo NEXO con internet presta el suyo, con estos topes.
  */
 import { netEventValid } from './net_link.js';
+import { BLOB_KIND, FETCH_BATCH } from './blob_mailbox.js';
 
 var GW_KIND = 1059;                 // mensajes privados (el KIND de net_link)
 var GW_AFTER_MS = 8000;             // sin relés propios al menos esto → buscar puente
@@ -53,6 +55,13 @@ var SRV_DOWN_MAX = 200000;          // tamaño máximo de un frame que baja
 var SRV_WAKE_MIN_MS = 8000;         // un toque por token cada 8 s como mucho
 var SRV_WAKE_PER_HOUR = 60;
 var TX_TRIES = 3;
+// Parte 3 (dueño 13-11): FOTOS PEQUEÑAS por el puente. Los trozos del buzón de archivos (BLOB_KIND, ≤ 60 KB cada uno) pasan
+// en los dos sentidos con un tope de BYTES por teléfono que pide; un adjunto de hasta GW_FILE_MAX_B64 caracteres (≈ 300 KB:
+// una foto o una nota de voz del chat) sale por el puente; vídeos y archivos grandes siguen ⏳ hasta tener internet propio.
+export var GW_FILE_MAX_B64 = 400 * 1024;
+var SRV_BLOB_PER_HOUR = 2 * 1024 * 1024;  // bytes (subida + bajada) por teléfono que pide, por hora: todo lo que sube y lo que
+var SRV_BLOB_PER_DAY = 10 * 1024 * 1024;  // baja de más de SRV_BYTES_MIN (un texto no cuenta; una foto, sí: buzón o en línea)
+var SRV_BYTES_MIN = 4096;
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _isNx(x) { return /^nx[0-9a-z]{8}$/.test(x); }
@@ -65,7 +74,13 @@ export function gwAllowUp(str) {
   if (typeof str !== 'string' || str.length > SRV_UP_MAX) return '';
   var m; try { m = JSON.parse(str); } catch (e) { return ''; }
   if (!Array.isArray(m) || typeof m[0] !== 'string') return '';
-  if (m[0] === 'EVENT') { var ev = m[1]; return (m.length === 2 && ev && ev.kind === GW_KIND && netEventValid(ev)) ? 'EVENT' : ''; }
+  if (m[0] === 'EVENT') {
+    var ev = m[1];
+    if (m.length !== 2 || !ev || !netEventValid(ev)) return '';
+    if (ev.kind === GW_KIND) return 'EVENT';
+    if (ev.kind === BLOB_KIND) return 'BLOB'; // parte 3: trozo del buzón de archivos (foto pequeña)
+    return '';
+  }
   if (m[0] === 'AUTH') { var ea = m[1]; return (m.length === 2 && ea && ea.kind === 22242 && netEventValid(ea)) ? 'AUTH' : ''; }
   if (m[0] === 'CLOSE') return (m.length === 2 && typeof m[1] === 'string' && m[1].length <= 64) ? 'CLOSE' : '';
   if (m[0] === 'REQ') {
@@ -77,7 +92,7 @@ export function gwAllowUp(str) {
       var k = ks[i], v = f[k];
       if (k === 'kinds') { if (!Array.isArray(v) || v.length !== 1 || v[0] !== GW_KIND) return ''; }
       else if (k === '#p') { if (!Array.isArray(v) || v.length > 400 || v.some(function(x) { return typeof x !== 'string' || !/^[0-9a-f]{64}$/.test(x); })) return ''; }
-      else if (k === 'ids') { if (!Array.isArray(v) || v.length > 1 || v.some(function(x) { return typeof x !== 'string' || !/^[0-9a-f]{64}$/.test(x); })) return ''; } // la pregunta de comprobación (3011)
+      else if (k === 'ids') { if (!Array.isArray(v) || !v.length || v.length > FETCH_BATCH || v.some(function(x) { return typeof x !== 'string' || !/^[0-9a-f]{64}$/.test(x); })) return ''; } // la comprobación (3011) y los trozos de una foto (parte 3)
       else if (k === 'since' || k === 'limit') { if (typeof v !== 'number' || !isFinite(v) || v < 0) return ''; }
       else return '';
     }
@@ -121,6 +136,7 @@ export class GwLink {
     // lado del que presta (servidor)
     this.sess = new Map();     // from|sid → { ws, dev, from, url, open, rxAt, evMin: [], buf: [] }
     this.daily = new Map();    // from → { day, n }
+    this.blobBytes = new Map(); // parte 3: from → { h0, h, day, d } (bytes de lo grande, subida + bajada)
     this.wakes = new Map();    // token → cuándo; from → [tiempos]
     this.stats = { up: 0, down: 0, rejected: 0, sessions: 0 };
   }
@@ -353,6 +369,8 @@ export class GwLink {
     ws.onmessage = function(ev) {
       var d = ev && ev.data;
       if (typeof d !== 'string' || d.length > SRV_DOWN_MAX) return;
+      // parte 3: lo grande que baja (una foto, un trozo de archivo) también gasta del tope de bytes de quien lo pidió
+      if (d.length > SRV_BYTES_MIN && !self._blobSpend(from, d.length)) { self.stats.rejected++; return; }
       self.stats.down++;
       self._tx(s.dev, { op: 'e', s: sid, d: d });
     };
@@ -366,7 +384,13 @@ export class GwLink {
     s.dev = dev; s.rxAt = Date.now();
     var kind = gwAllowUp(p.d);
     if (!kind) { this.stats.rejected++; return; }
-    if (kind === 'EVENT') {
+    if ((kind === 'BLOB' || (kind === 'EVENT' && p.d.length > SRV_BYTES_MIN)) && !this._blobSpend(from, p.d.length)) {
+      var bid = ''; try { bid = JSON.parse(p.d)[1].id; } catch (e) {}
+      this.stats.rejected++;
+      this._tx(s.dev, { op: 'e', s: s.sid, d: JSON.stringify(['OK', bid, false, 'rate-limited: tope de archivos del puente']) });
+      return;
+    }
+    if (kind === 'EVENT' || kind === 'BLOB') {
       var now = Date.now(), id = '';
       try { id = JSON.parse(p.d)[1].id; } catch (e) {}
       s.evMin = s.evMin.filter(function(t) { return now - t < 60000; });
@@ -381,6 +405,21 @@ export class GwLink {
       s.evMin.push(now); d.n++;
     }
     try { s.ws.send(p.d); this.stats.up++; } catch (e) {}
+  }
+
+  // Parte 3: ¿le queda tope de bytes de archivos a este teléfono? (lo gasta si sí)
+  _blobSpend(from, n) {
+    var now = Date.now(), day = new Date().toISOString().substring(0, 10), b = this.blobBytes.get(from);
+    if (!b) { b = { h0: now, h: 0, day: day, d: 0 }; this.blobBytes.set(from, b); }
+    if (now - b.h0 >= 3600000) { b.h0 = now; b.h = 0; }
+    if (b.day !== day) { b.day = day; b.d = 0; }
+    if (b.h + n > SRV_BLOB_PER_HOUR || b.d + n > SRV_BLOB_PER_DAY) {
+      if (!b.said || now - b.said > 600000) { b.said = now; console.log('[GW] ' + from + ' llegó al tope de datos por el puente (' + Math.round(b.h / 1024) + ' KB esta hora, ' + Math.round(b.d / 1024) + ' KB hoy)'); }
+      return false;
+    }
+    b.h += n; b.d += n;
+    if (this.blobBytes.size > 200) this.blobBytes.delete(this.blobBytes.keys().next().value);
+    return true;
   }
 
   _srvClose(key, why, quiet) {

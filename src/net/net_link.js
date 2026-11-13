@@ -37,7 +37,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { hmac } from '@noble/hashes/hmac.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 import { e2eIdentityDH, e2eMyPublicKey } from '../vault/e2e_crypto.js';
-import { GwLink } from './gw_link.js';
+import { GwLink, GW_FILE_MAX_B64 } from './gw_link.js';
 
 var DEFAULT_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net', 'wss://nostr.mom'];
 
@@ -304,8 +304,13 @@ export class NetLink {
   bothWifi(nexoId) { var p = this.peers.get(_nid(nexoId)); return !!(this.wifi && p && p.wifi); }
   // Archivos por internet solo si los dos están en Wi-Fi (con datos móviles cuestan dinero)
   filesOk(nexoId) { return this.canReach(nexoId) && this.bothWifi(nexoId) && !this.gwOnly(); }
-  // Buzón para ARCHIVOS/fotos (y el buzón de archivos): como mailboxOk, pero no por un puente (solo textos)
-  mailboxFilesOk(nexoId) { return this.mailboxOk(nexoId) && !this.gwOnly(); }
+  // Buzón para ARCHIVOS/fotos (y el buzón de archivos): como mailboxOk; por un puente solo lo pequeño (parte 3 del puente,
+  // dueño 13-11: fotos y notas de voz del chat hasta GW_FILE_MAX_B64 caracteres). Sin tamaño (b64len) no pasa por un puente.
+  mailboxFilesOk(nexoId, b64len) {
+    if (!this.mailboxOk(nexoId)) return false;
+    if (!this.gwOnly()) return true;
+    return typeof b64len === 'number' && b64len > 0 && b64len <= GW_FILE_MAX_B64;
+  }
   // Buzón: dejarle un texto aunque no esté en línea
   mailboxOk(nexoId) {
     var nx = _nid(nexoId);
@@ -873,7 +878,21 @@ export class NetLink {
   // Los trozos de un archivo cifrado van como eventos BLOB_KIND SIN etiqueta p (se bajan por id: el relé no correlaciona
   // quién baja qué), con caducidad; se publican en TODOS los relés abiertos (réplica) y se piden a UN relé por id.
   randomKey() { return schnorr.utils.randomSecretKey(); }
-  openRelayUrls() { var out = []; this.relays.forEach(function(r, u) { if (r.open && !r.gw) out.push(u); }); return out; }
+  // Sin relés propios, los relés de verdad a los que llego por los puentes (parte 3: fotos pequeñas por el puente)
+  openRelayUrls() {
+    var out = [];
+    this.relays.forEach(function(r, u) { if (r.open && !r.gw) out.push(u); });
+    if (!out.length) this.relays.forEach(function(r) { if (r.open && r.gw && r.realUrl && out.indexOf(r.realUrl) < 0) out.push(r.realUrl); });
+    return out;
+  }
+  // El relé (propio o por un puente) con el que hablar para esta URL de relé de verdad
+  _relayFor(url) {
+    var r = this.relays.get(url);
+    if (r && r.open) return r;
+    var g = null;
+    this.relays.forEach(function(x) { if (!g && x.gw && x.open && x.realUrl === url) g = x; });
+    return g || r || null;
+  }
   blobEvent(sk, contentB64, expiresSec) { return _event(sk, BLOB_KIND, [['expiration', String(expiresSec)]], contentB64); }
   // NIP-09: pedir el borrado de los trozos (firmado con la clave del blob) al confirmar; best-effort (la caducidad es la garantía)
   blobDeleteEvent(sk, ids) { return _event(sk, 5, (ids || []).map(function(id) { return ['e', id]; }), ''); }
@@ -881,8 +900,10 @@ export class NetLink {
   ensureRelay(url, waitMs) {
     var self = this;
     if (!_relaySafe(url)) return Promise.resolve(false);
-    var r = self.relays.get(url);
+    var r = self._relayFor(url);
     if (r && r.open) return Promise.resolve(true);
+    if (self.gwOnly()) return Promise.resolve(false); // sin internet propio no se puede abrir otro relé (solo los de los puentes)
+    r = self.relays.get(url);
     if (!r || (!r.ws && (!r.retryAt || r.retryAt <= Date.now()))) { try { self._connect(url); } catch (e) { return Promise.resolve(false); } }
     return new Promise(function(resolve) {
       var t0 = Date.now(), iv = setInterval(function() {
@@ -900,7 +921,10 @@ export class NetLink {
     var self = this;
     return new Promise(function(resolve) {
       var open = [];
-      self.relays.forEach(function(r, u) { if (r.open && !r.gw) open.push({ r: r, u: u }); }); // el buzón de archivos no pasa por un puente
+      self.relays.forEach(function(r, u) { if (r.open && !r.gw) open.push({ r: r, u: u }); });
+      // Sin relés propios: un trozo del buzón de archivos sale por los puentes (parte 3; el puente lo acota por bytes). Lo demás
+      // (borrados, el canal de diagnósticos…) no pasa por un puente. Se informa la URL del relé de verdad (va en el puntero).
+      if (!open.length && ev && ev.kind === BLOB_KIND) self.relays.forEach(function(r) { if (r.open && r.gw && r.realUrl && !open.some(function(o) { return o.u === r.realUrl; })) open.push({ r: r, u: r.realUrl }); });
       if (!open.length) { resolve([]); return; }
       var oks = [], left = open.length, done = false, grace = null;
       var enough = opts && opts.enough ? Math.min(opts.enough, open.length) : open.length;
@@ -918,7 +942,7 @@ export class NetLink {
   }
   // Pide eventos por id a UN relé (REQ con filtro ids) y devuelve los que llegaron hasta el EOSE o el tope de tiempo
   fetchEvents(url, ids, timeoutMs) {
-    var self = this, r = self.relays.get(url);
+    var self = this, r = self._relayFor(url);
     if (!r || !r.open || !ids || !ids.length) return Promise.resolve([]);
     return new Promise(function(resolve) {
       var sub = 'bf' + bytesToHex(_rnd(6)), got = [], done = false;

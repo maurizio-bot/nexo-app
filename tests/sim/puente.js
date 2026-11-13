@@ -7,7 +7,8 @@
 //   2. A → C: el texto llega a C y en A queda ✓✓ (la confirmación vuelve por el puente).
 //   3. C → A: la respuesta llega a A («recoge lo mío»).
 //   4. B1 se va (fuera de alcance): C → A y A → C siguen por B2.
-//   5. B1 y B2 no ven el texto (va cifrado para el contacto) y por el puente no pasan archivos (ni eventos del buzón de archivos).
+//   5. B1 y B2 no ven el texto (va cifrado para el contacto); aquí no se mandan archivos, así que no hay trozos del buzón
+//      (las fotos pequeñas por el puente, con su tope de bytes, las prueba puente3.js: parte 3).
 // Contraprueba: la build anterior (sin puente) no entrega nada (paso 2 falla).
 // Uso: node puente.js <dir_build>
 'use strict';
@@ -69,7 +70,7 @@ function shutdown(p) { try { p.win.bleInterface.net._closeAll(); p.win.bleInterf
     const gw = await importSrc('net/gw_link.js'), nl = await importSrc('net/net_link.js');
     const sk = new Uint8Array(32).fill(7), P = 'a'.repeat(64);
     const ev = nl.netMakeEvent(sk, 1059, [['p', P]], 'x'), blob = nl.netMakeEvent(sk, 1064, [], 'x'), bad = Object.assign({}, ev, { content: 'y' });
-    const cases = [[['EVENT', ev], 'EVENT'], [['EVENT', blob], ''], [['EVENT', bad], ''], [['REQ', 's1', { kinds: [1059], '#p': [P], since: 1 }], 'REQ'],
+    const cases = [[['EVENT', ev], 'EVENT'], [['EVENT', blob], 'BLOB'], [['EVENT', bad], ''], [['REQ', 's1', { kinds: [1059], '#p': [P], since: 1 }], 'REQ'],
       [['REQ', 's2', { kinds: [1064] }], ''], [['REQ', 's3', {}], ''], [['REQ', 's4', { kinds: [1059], authors: [P] }], ''], [['REQ', 'pb', { ids: ['0'.repeat(64)], limit: 1 }], 'REQ'],
       [['CLOSE', 's1'], 'CLOSE'], [['COUNT', 's1', {}], ''], [['AUTH', nl.netMakeEvent(sk, 22242, [['relay', 'x']], '')], 'AUTH']];
     r.filtro_ok = cases.every(([f, want]) => gw.gwAllowUp(JSON.stringify(f)) === want);

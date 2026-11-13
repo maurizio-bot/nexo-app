@@ -933,7 +933,7 @@ export const BLE_MESSAGE_METHODS = {
     if (typeof self._bleReadyFor === 'function' && self._bleReadyFor(nx)) return null;
     var byRef = pointerReusable(meta && meta.blobPtr);
     if (!byRef && (typeof net.canReach !== 'function' || net.canReach(nx))) return null;
-    if (!net.mailboxFilesOk(nx) || !blobMailboxEligible(base64Data, meta)) return null; // 13-11: no por un puente
+    if (!net.mailboxFilesOk(nx, base64Data && base64Data.length) || !blobMailboxEligible(base64Data, meta)) return null; // por un puente: solo lo pequeño (parte 3)
     return self.ackSystem._sendFileViaBlobMailbox(nx, fileId, base64Data, meta);
   },
   // ===== Fase B/C: llegó un PUNTERO a un archivo del buzón de relés (1-a-1 o dentro de un sobre de GRUPO) =====
@@ -1166,7 +1166,7 @@ export const BLE_MESSAGE_METHODS = {
             // está en línea van por Tor directo/Wi-Fi (filesOk); si no, al buzón de los relés (mailboxOk) y llegan cuando
             // abre, igual que los textos. Bajo un tope (~6 MB de archivo): los más grandes son la fase 2 (Tor). Antes solo
             // salían con los dos en Wi-Fi; por eso una foto a un contacto lejano/desconectado no llegaba.
-            var netMediaOk = self.net && (self.net.filesOk(uuid) || (self.net.mailboxFilesOk(uuid) && base64Data.length <= NET_MAX_B64_BYTES)); // 13-11: por un puente no
+            var netMediaOk = self.net && (self.net.filesOk(uuid) || (self.net.mailboxFilesOk(uuid, base64Data.length) && base64Data.length <= NET_MAX_B64_BYTES)); // por un puente: solo lo pequeño (parte 3)
             var netNo = !!_netNx(dev) && !netMediaOk;
             if (netNo) dev = self._bleReadyFor(uuid) || dev;
             var st = self._getDeviceState(dev);
@@ -1296,6 +1296,12 @@ export const BLE_MESSAGE_METHODS = {
       var size = (p && typeof p === 'string') ? p.length : (mm && Number(mm.size)) || 0;
       return !size || size <= BLOB_MAILBOX_MAX_BYTES * 4 / 3 + 8;
     };
+    // Parte 3 del puente: tamaño del adjunto (para mailboxFilesOk: por un puente solo lo pequeño; 0 = no se sabe → no)
+    var blobLen = function(m) {
+      var p = m.attachmentPayload, mm = m.attachmentMeta;
+      if (!p && m.content && typeof m.content === 'string' && m.content.charAt(0) === '{') { try { var pr = JSON.parse(m.content); if (pr && pr.type === 'attachment') { p = pr.payload; mm = pr.meta; } } catch (e) {} }
+      return (p && typeof p === 'string') ? p.length : (mm && Number(mm.size)) || 0;
+    };
     var getPending = (window.vaultGetPendingMessages && typeof window.vaultGetPendingMessages === 'function')
       ? window.vaultGetPendingMessages(nexoId)
       : _vaultLoadMessages(nexoId).then(function(msgs) {
@@ -1352,9 +1358,29 @@ export const BLE_MESSAGE_METHODS = {
         // Fase B (build 2969): sin enlace ni ruta pero CON internet propio y el contacto AUSENTE → los ARCHIVOS pendientes
         // (foto/vídeo/archivo ≤ 5 MB) van al BUZÓN DE ARCHIVOS (cifrados en los relés + puntero en su buzón); el resto sigue
         // en espera (toque FCM, Fase A). Antes TODO quedaba ⏳ hasta coincidir en línea.
-        blobOnly = !!(self.net && typeof self.net.mailboxFilesOk === 'function' && self.net.mailboxFilesOk(nexoId) && !self.net.canReach(nexoId) && list.some(blobCandidate));
-        if (blobOnly) list = list.filter(blobCandidate);
+        var blobFits = function(m) { return blobCandidate(m) && self.net.mailboxFilesOk(nexoId, blobLen(m)); }; // parte 3: por un puente, solo lo pequeño
+        blobOnly = !!(self.net && typeof self.net.mailboxFilesOk === 'function' && self.net.mailboxOk(nexoId) && !self.net.canReach(nexoId) && list.some(blobFits));
+        if (blobOnly) list = list.filter(blobFits);
         else if (list.length) { console.log('[BLEInterface] ' + list.length + ' pending para ' + nexoId + ': sin enlace ni ruta, quedan en espera'); self._noteWakePending(nexoId); if (self.relay) self.relay.discover(nexoId); list.forEach(function(m) { try { self._fileCitaFromMsg(nexoId, m); } catch (e) {} }); return []; }
+      }
+      // Parte 3 del puente (13-11): sin internet propio (solo por un puente) y sin Bluetooth/Wi-Fi con el contacto, un archivo que NO
+      // pasa por el puente (más de GW_FILE_MAX_B64: vídeo, archivo grande) no se lee del disco en cada vuelta ni se intenta: queda ⏳
+      // hasta tener internet propio (antes: 1 MB leído del disco cada ~20 s y la burbuja de vuelta a «enviando»). Tamaño desconocido: se intenta.
+      var gwNow = !!(self.net && typeof self.net.gwOnly === 'function' && self.net.gwOnly());
+      if (!gwNow && self._gwWaitSaid) self._gwWaitSaid = null; // con internet propio otra vez: la próxima vez que falte se vuelve a avisar
+      if (gwNow && !btDirect && !btHop && !(self.lan && typeof self.lan.canReach === 'function' && self.lan.canReach(nexoId))) {
+        var noGw = list.filter(function(m) { if (!(m && (m.attachmentRef || m.attachmentType))) return false; var n = blobLen(m); return n > 0 && !self.net.mailboxFilesOk(nexoId, n); });
+        if (noGw.length) {
+          self._gwWaitSaid = self._gwWaitSaid || new Set();
+          var nuevos = noGw.filter(function(m) { return !self._gwWaitSaid.has(idOf(m)); });
+          if (nuevos.length) console.log('[BLEInterface] ' + noGw.length + ' archivo(s) para ' + nexoId + ' no pasan por el puente (sin internet propio): esperan internet (sin leer del disco)');
+          nuevos.forEach(function(m) {
+            var id = idOf(m); self._gwWaitSaid.add(id);
+            _vaultUpdateMessageStatus(nexoId, id, 'pending');
+            try { if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(id, 'pending'); } catch (e) {}
+          });
+          list = list.filter(function(m) { return noGw.indexOf(m) < 0; });
+        }
       }
       if ((btDirect || btHop) && !betterPath) {
         var grandes = list.filter(tooBigForBt);
@@ -1460,7 +1486,7 @@ export const BLE_MESSAGE_METHODS = {
           // 3021: el puente de esta ruta no confirmó ni un trozo de un archivo hace poco (relay.bridgeStalled): el archivo NO vuelve
           // por él; va al buzón de archivos si se puede y, si no, queda ⏳ (lo de texto sigue por el puente con su custodia)
           var stalledFile = !!(relayDst && rh && self.relay && typeof self.relay.isBridgeStalled === 'function' && self.relay.isBridgeStalled(rh.via));
-          if (stalledFile && !(self.net && typeof self.net.mailboxFilesOk === 'function' && self.net.mailboxFilesOk(nxKey) && blobCandidate(msg))) {
+          if (stalledFile && !(self.net && typeof self.net.mailboxFilesOk === 'function' && blobCandidate(msg) && self.net.mailboxFilesOk(nxKey, blobLen(msg)))) {
             console.log('[JUMP] ' + mid + ': el puente ' + rh.via + ' no avanzó con archivos hace poco y no hay buzón de archivos: queda en espera');
             _vaultUpdateMessageStatus(nexoId, mid, 'pending');
             try { if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(mid, 'pending'); } catch (e4) {}

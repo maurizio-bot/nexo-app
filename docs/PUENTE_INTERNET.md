@@ -92,12 +92,16 @@ ya espera en los relés (cifrada, solo para mí) y la recoge cualquier NEXO con 
 además en el teléfono del puente solo ayudaría si ese mismo teléfono me vuelve a ver SIN internet, y obliga a
 que los puentes guarden mensajes ajenos. Se retoma si las pruebas del dueño lo piden.
 
-## Falta (parte 3) — plan (13-11, para la tanda siguiente a la APK 3035)
-- **Fotos pequeñas por el puente** (hasta ~300 KB ya comprimidas; vídeos y archivos grandes siguen ⏳ hasta tener internet propio):
-  - subida: `gwAllowUp` deja pasar también los eventos-trozo del buzón de archivos (`BLOB_KIND` 1064, ≤ 60 KB cada uno, firmados);
-  - bajada: la REQ de trozos (`kinds:[1064]` + `ids` ≤ 16, `FETCH_BATCH`) para que el que no tiene internet pueda recoger una foto;
-  - topes del que presta: además de 40 eventos/min y 1500/día, un tope de BYTES (p. ej. 2 MB/h y 10 MB/día por teléfono que pide);
-  - `mailboxFilesOk` / `send.js` / `ble_messages.js` (1169, 936): por un puente sí, si el archivo cabe en el tope de foto pequeña;
-  - prueba: `puente.js` con una foto de 100 KB que llega y otra de 2 MB que queda ⏳; contraprueba 3035 (las dos ⏳).
-- **Indicador «por puente»** en el chat: el subtítulo del chat dice «internet por puente» (icono de puente) mientras `gwOnly()`.
+## Parte 3 (3047): fotos pequeñas por el puente e indicador «por puente»
+- **Fotos y notas de voz pequeñas** (hasta `GW_FILE_MAX_B64` = 400 000 caracteres en base64, ≈ 300 KB: una foto del chat ya
+  comprimida pesa ~30–150 KB) salen por el puente, tanto al buzón de archivos (contacto ausente: trozos `BLOB_KIND` 1064)
+  como en directo a un contacto en línea. Vídeos y archivos grandes quedan ⏳ hasta tener internet propio, **sin leerse del
+  disco en cada vuelta** del reenvío de pendientes (antes: 1 MB leído cada ~20 s y la burbuja de vuelta a «enviando»).
+- **Bajar** una foto por el puente: se pueden pedir hasta 16 trozos por id (`FETCH_BATCH`); nunca «tráeme todo».
+- **Tope de bytes del que presta**: todo lo que sube y lo que baja de más de 4 KB cuenta para el teléfono que pide: 2 MB por
+  hora y 10 MB por día (un texto no cuenta). Al pasarse, el puente contesta «rechazado» y lo de A queda ⏳.
+- **Indicador**: el subtítulo del chat dice «En línea · (internet) · por puente» mientras A sale por un puente.
+- Prueba `puente3.js` (contraprueba 3046: el filtro, la foto de A y el subtítulo fallan; la foto de C a A ya llegaba).
+
+## Falta
 - Cambiar la etiqueta del buzón cada cierto tiempo, para que un puente no sepa qué buzón es de quién.

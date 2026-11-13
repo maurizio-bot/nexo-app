@@ -224,11 +224,14 @@ function _subtitleFor(via, mtu) {
   // P2 (dueño 01-11): contacto dormido al que acabamos de mandar el «toque» FCM al abrir el chat; mientras llega su
   // presencia mostramos «Conectando…» (antes el subtítulo quedaba VACÍO y el dueño no veía el tipo de conexión).
   if (via === 'waking') return { html: _t('st_connecting', 'Conectando…'), text: _t('st_connecting', 'Conectando…') };
+  // Parte 3 del puente (dueño 13-11): en línea por internet pero SIN internet propio → «por puente» (otro NEXO presta el suyo)
+  var gw = via === 'gw'; if (gw) via = 'internet';
   if (!_VIA_ICON[via]) return { html: '', text: '' };
   var weak = via === 'bluetooth' && mtu > 0 && mtu < 60;
-  var online = _t('st_online', 'En línea'), weakTxt = _t('st_weak_signal', 'señal débil');
-  var word = online + ' · ' + _VIA_WORD[via] + (weak ? ' · ' + weakTxt : '');
-  var html = online + ' · <span class="via-ico" role="img" aria-label="' + _VIA_WORD[via] + '">' + _VIA_ICON[via] + '</span>' + (weak ? ' · <span class="via-weak">⚠ ' + weakTxt + '</span>' : '');
+  var online = _t('st_online', 'En línea'), weakTxt = _t('st_weak_signal', 'señal débil'), gwTxt = _t('st_via_gw', 'por puente');
+  var word = online + ' · ' + _VIA_WORD[via] + (weak ? ' · ' + weakTxt : '') + (gw ? ' · ' + gwTxt : '');
+  var html = online + ' · <span class="via-ico" role="img" aria-label="' + _VIA_WORD[via] + '">' + _VIA_ICON[via] + '</span>' + (weak ? ' · <span class="via-weak">⚠ ' + weakTxt + '</span>' : '') +
+    (gw ? ' · <span class="via-gw">' + gwTxt + '</span>' : '');
   return { html: html, text: word };
 }
 try { if (typeof window !== 'undefined') window.__nexoViaSubtitle = _subtitleFor; } catch (e) {} // gancho de pruebas (puro)
@@ -242,6 +245,7 @@ function _refreshLinkSubtitle() {
   var via = bi.linkOf(cid);
   // P2: sin enlace todavía pero despertando al contacto → «Conectando…» (al formarse el enlace, el via real manda)
   if (via === 'none' && typeof bi.isWaking === 'function' && bi.isWaking(cid)) via = 'waking';
+  if (via === 'internet' && bi.net && typeof bi.net.gwOnly === 'function' && bi.net.gwOnly()) via = 'gw'; // parte 3 del puente
   var mtu = (via === 'bluetooth' && typeof bi.getMtu === 'function' && bi._activeChatDeviceId) ? bi.getMtu(bi._activeChatDeviceId) : 0;
   var r = _subtitleFor(via, mtu);
   sub.innerHTML = r.html;       // solo SVG estático + texto fijo (sin datos del remitente)

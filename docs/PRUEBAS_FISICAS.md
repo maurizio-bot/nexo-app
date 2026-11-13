@@ -28,6 +28,9 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     de A: «[GW] Sin internet ni puente: pruebo con … de paso» y «uso a … de puente».
 11. **Respaldo al Vivo dormido (3035).** S24 y Vivo en la misma Wi-Fi, el Vivo con la app en segundo plano un rato: ya no
     llega el aviso automático «reintentos (file fxs_…)» del S24.
+13. **Foto por el puente (3036).** El teléfono A sin datos ni Wi-Fi, junto a otro NEXO con internet: el chat con un contacto
+    lejano dice «por puente». Manda una foto: llega. Manda un vídeo: queda ⏳ hasta que A tenga internet propio. Que el
+    contacto lejano te mande una foto: te llega por el puente.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 

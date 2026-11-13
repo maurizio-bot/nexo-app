@@ -278,6 +278,9 @@ export function _sendFileFor(contactId, msgId, type, payload, meta, opts) {
         // Dejar en 'sending' o 'sent' y dejar que el ackSystem / resumeOutgoingTransfers
         // se encargue. Nunca poner "!" por una interrupción leve.
         console.log('[ATTACH] Rechazo transitorio — no se marca failed');
+        // Parte 3 del puente (13-11; regla del dueño 07-11: «esperando» ⏳ pronto, no ○ clavado): «Contacto no disponible: queda
+        // pendiente» (p. ej. un archivo grande sin internet propio, que no pasa por un puente) se muestra ⏳ y lo reenvían los pendientes
+        if (err && err.code === 'PEER_ABSENT') { _updateMessageStatus(msgId, 'pending'); _updateMessageStorageStatus(msgId, 'pending', contactId); }
         return;
       }
 
