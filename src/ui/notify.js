@@ -11,6 +11,9 @@
  * Con el bloqueo de la app activado la notificación no lleva el texto del mensaje.
  */
 var MAX_SEEN = 2000;
+// 3069 (desatasco, resync.js): lo ya contado se guarda en el teléfono (los últimos SEEN_KEEP). Tras reiniciar, un mensaje que el otro
+// REENVÍA (desatasco del cifrado, o cualquier reenvío por id) y que ya estaba aquí no vuelve a avisar ni a sumar «no leídos»
+var SEEN_FILE = 'nexo_notify_seen.json', SEEN_KEEP = 500;
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
@@ -30,7 +33,9 @@ export class Notifier {
     this.seen = new Map();                     // msgId de lo ya contado
     this.notified = new Set();                 // chats con notificación puesta
     this.unreadIds = new Map();                // chat → msgId sin leer (al abrirlo se confirma su lectura)
+    this._seenWait = null;                     // 3069: lo que llega antes de leer lo guardado espera (un instante)
     var self = this;
+    this._loadSeen();
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() { if (_visible()) self.onVisible(); });
     if (typeof window !== 'undefined') {
       window.addEventListener('nexo:unread', function(e) { self._onUnread((e && e.detail) || {}); });
@@ -46,15 +51,40 @@ export class Notifier {
     }
   }
 
+  _loadSeen() {
+    var self = this, pl = _plugin();
+    if (!pl || typeof pl.loadFromFile !== 'function') return;
+    self._seenWait = [];
+    var done = function() { var q = self._seenWait || []; self._seenWait = null; q.forEach(function(m) { self.incoming(m); }); };
+    var t = setTimeout(done, 3000); // sin respuesta del disco: no se retiene nada más
+    Promise.resolve(pl.loadFromFile({ filename: SEEN_FILE })).then(function(r) {
+      if (r && r.exists && r.content) {
+        var arr = JSON.parse(r.content);
+        if (Array.isArray(arr)) arr.forEach(function(k) { if (typeof k === 'string' && !self.seen.has(k)) self.seen.set(k, 0); });
+      }
+    }).catch(function() {}).then(function() { clearTimeout(t); if (self._seenWait) done(); });
+  }
+  _saveSeenSoon() {
+    var self = this;
+    if (self._seenT) return;
+    self._seenT = setTimeout(function() {
+      self._seenT = null;
+      var keys = Array.from(self.seen.keys());
+      _call('saveToFile', { filename: SEEN_FILE, content: JSON.stringify(keys.slice(Math.max(0, keys.length - SEEN_KEEP))) });
+    }, 3000);
+  }
+
   // Mensaje recibido. m: { cid, name, msgId, preview }
   incoming(m) {
     var cid = _nid(m && m.cid);
     if (!cid) return;
+    if (this._seenWait) { this._seenWait.push(m); return; }
     var key = cid + '|' + (m.msgId || '');
     if (m.msgId) {
       if (this.seen.has(key)) return;
       this.seen.set(key, Date.now());
       if (this.seen.size > MAX_SEEN) this.seen.delete(this.seen.keys().next().value);
+      this._saveSeenSoon();
     }
     // #dueño 08-11: el chat que tenés ABIERTO nunca avisa ni suma no-leídos, AUNQUE la app esté un instante en segundo plano
     // (un parpadeo del sistema). Al volver ya ves el mensaje, así que una notificación de la persona que estás leyendo no

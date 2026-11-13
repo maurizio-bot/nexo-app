@@ -120,6 +120,7 @@ import { avatarInit } from './ui/avatar.js';
 import { usageInit } from './ui/usage_stats.js'; // 2989: resumen diario de uso (solo números)
 import { updaterInit } from './ui/updater.js'; // 2986: actualizador automático del APK de probadores
 import { autoDiagInit, autoDiagReceived } from './ui/autodiag.js'; // 2974: diagnóstico automático al desarrollador
+import { resyncInit } from './ui/resync.js'; // 3069: desatasco automático del cifrado
 import { profileInit } from './ui/profile_data.js';
 import { profileShareInit } from './ui/profile_share.js';
 import { psiInit } from './ui/psi.js';
@@ -206,6 +207,8 @@ var _notifier = createNotifier({
     setTimeout(function() { window.dispatchEvent(new CustomEvent('nexo:ble:sendReadReceipt', { detail: { nexoId: nexoId, msgId: msgId } })); }, 400);
   }
 });
+window.NEXO_notifier = _notifier; // 3069: para el diagnóstico y las pruebas (no leídos por chat)
+
 initE2E().then(function() { return ratchetInit(); }).catch(function(e) { console.warn('[E2E] init:', e && e.message); });
 
 // Ronda 2826 (pedido del dueño 29-10): el transporte del chat (Wi-Fi / Internet / Bluetooth) se muestra como SÍMBOLO
@@ -312,14 +315,8 @@ window.addEventListener('nexo:groups', function() {
   if (b && typeof b.renderContactsList === 'function') b.renderContactsList();
   _refreshLinkSubtitle();
 });
-// 3067: el cifrado vio que lo de un contacto llega con números de mensaje ya usados (su teléfono volvió a un estado de cifrado
-// anterior; e2e_ratchet.js _retire): se le manda ENSEGUIDA un aviso oculto pequeño, que ya sale por una sesión nueva. Al
-// leerlo, su teléfono pasa a esa sesión y lo suyo vuelve a llegar, sin esperar a que se le escriba algo (sin Wi-Fi entre los
-// dos, nada más lo haría). Builds anteriores lo leen y lo ignoran (chat_actions: acción desconocida).
-window.addEventListener('nexo:e2e:resync', function(e) {
-  var nx = e && e.detail && e.detail.nexoId;
-  if (nx) _sendTextTo(nx, JSON.stringify({ type: 'nexo_act', act: 'e2e' }), '', true);
-});
+// 3067/3069: desatasco automático del cifrado (avisar al otro, pedir y reenviar lo que no se pudo leer): resync.js
+resyncInit();
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installGroupButton); else installGroupButton();
 // Ronda 2759: botón 👤 (Perfil) en la cabecera
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installProfileButton); else installProfileButton();

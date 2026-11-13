@@ -300,6 +300,8 @@ export const BLE_MESSAGE_METHODS = {
         // Reintento de uno ya descifrado (tras reiniciar no queda el texto): confirmarlo si se guardó
         if (e && e.code === 'DUP') { self._ackIfStored(data.deviceId, sender, p.msgId, viaRelay ? _normId(p.from) : null); return null; }
         console.warn('[E2E] No se pudo descifrar un mensaje de ' + (p.from || '?') + ': ' + (e && e.message));
+        // 3069: desatasco (resync.js): se apunta para pedírselo otra vez; si era de una sesión ya hecha, puede ser un atasco
+        if (typeof window.NEXO_resyncNote === 'function' && e && (e.code === 'DESYNC' || (e.code === 'BAD' && _e2Established(p.payload.text)))) window.NEXO_resyncNote(sender, p.msgId, e.code);
         return null;
       });
     }
@@ -1716,3 +1718,10 @@ export const BLE_MESSAGE_METHODS = {
     });
   }
 };
+
+// 3069: ¿texto cifrado del protocolo 2 en una sesión ya hecha? (cabecera de 3 campos: no es un primer mensaje X3DH)
+function _e2Established(packed) {
+  if (typeof packed !== 'string' || packed.indexOf('E2:') !== 0) return false;
+  var hs = packed.substring(3).split(':')[0];
+  return hs.split('.').length === 3;
+}

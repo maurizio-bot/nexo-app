@@ -154,6 +154,34 @@ function check(name, ok, detail) { results.push({ name, ok: !!ok }); quiet((ok ?
   const fAfter = await enc(F, E, 'sigo en la misma sesión', 'fa');
   check('y F no abre sesión nueva por ellas', fields(fAfter) === 3, 'campos ' + fields(fAfter));
 
+  // 7) 3069: el que arranca ATRASADO lo sabe él mismo (número de guardado menor que el apuntado aparte) y abre sesiones nuevas
+  let G = await phone('G');
+  const Hh = await phone('H');
+  await Hh.run((m) => m.ratchetNotePeerBundle(G.nx, G.bundle));
+  await G.run((m) => m.ratchetNotePeerBundle(Hh.nx, Hh.bundle));
+  check('G y H hablan', (await talk(G, Hh, 2)) && (await talk(Hh, G, 1)) && (await talk(G, Hh, 2)));
+  G = await phone('G'); // reinicio normal: nada raro
+  check('reinicio normal: no dice «atrasado»', !logs.some((l) => /ATRASADO/.test(l)) && (await G.run((m) => m.ratchetRollbackInfo())) === null);
+  const snapG = stores.G['nexo_ratchet.json'];   // solo el estado (el número apuntado aparte sigue al día)
+  check('G manda 5 más (H los lee)', (await talk(G, Hh, 5)) && (await talk(Hh, G, 1)));
+  stores.G['nexo_ratchet.json'] = snapG;
+  logs.length = 0;
+  G = await phone('G');
+  const info = await G.run((m) => m.ratchetRollbackInfo());
+  check('G se da cuenta de que arrancó atrasado (y lo dice en el diagnóstico)', !!info && info.lost >= 5 && info.nxs.indexOf(Hh.nx) >= 0 && logs.some((l) => /ATRASADO/.test(l)), JSON.stringify(info) + ' ' + (logs.find((l) => /ATRASADO/.test(l)) || '').substring(0, 160));
+  const g1 = await enc(G, Hh, 'G tras arrancar atrasado', 'g1');
+  check('lo primero que manda G ya abre sesión nueva', fields(g1) >= 6, 'campos ' + fields(g1));
+  check('y H lo lee', (await dec(Hh, G, g1, 'g1')).text === 'G tras arrancar atrasado');
+  check('y siguen en los dos sentidos', (await talk(Hh, G, 2)) && (await talk(G, Hh, 3)));
+
+  // 8) 3069: ratchetResync (lo pide la app al no poder leer algo de un contacto): retira una vez, no otra en 10 min
+  const rs1 = await Hh.run((m) => m.ratchetResync(G.nx, "prueba"));
+  const rs2 = await Hh.run((m) => m.ratchetResync(G.nx, "prueba"));
+  const h1 = await enc(Hh, G, 'H tras pedir sesión nueva', 'h1');
+  check('ratchetResync: retira una vez (no dos seguidas)', rs1 === true && rs2 === false, rs1 + " " + rs2);
+  check('ratchetResync: lo siguiente abre sesión nueva y se lee', fields(h1) >= 6 && (await dec(G, Hh, h1, 'h1')).text === 'H tras pedir sesión nueva');
+  check('ratchetResync: y siguen', (await talk(G, Hh, 2)) && (await talk(Hh, G, 2)));
+
   const fails = results.filter((r) => !r.ok).length;
   quiet('RESULTADO ' + (fails ? 'FALLO ' + fails + ' de ' + results.length : 'OK ' + results.length + ' comprobaciones'));
   fs.rmSync(tmp, { recursive: true, force: true });

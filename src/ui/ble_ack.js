@@ -2077,6 +2077,8 @@ export class BleAckSystem {
       }).catch(function(e) {
         if (e && e.code === 'DUP') { if (done) done(true); return; }
         console.warn('[E2E] No se pudo descifrar el mensaje ' + msgId + ':', e && e.message);
+        // 3069: desatasco (resync.js): apuntarlo para pedirlo otra vez (y, si era de una sesión ya hecha, puede ser un atasco)
+        if (typeof window.NEXO_resyncNote === 'function' && e && (e.code === 'DESYNC' || (e.code === 'BAD' && /^E2:[^:.]+\.[^:.]+\.[^:.]+:/.test(content)))) window.NEXO_resyncNote(from, msgId, e.code);
         if (done) done(false);
       });
       return;

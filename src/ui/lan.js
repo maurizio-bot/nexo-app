@@ -126,6 +126,9 @@ export class LanLink {
   canReach(nexoId) {
     var nx = _nid(nexoId), l = this.links.get(nx);
     if (!l || !l.routable) return false;
+    // 3069: comprobándose otra vez tras un desfase de cifrado (recheck): lo nuevo va por otro camino si lo hay (el otro, recién
+    // arrancado, aún no da por bueno este Wi-Fi y descarta lo que le llegue por él)
+    if (l.rechecking && Date.now() < l.rechecking && this._otherPath(nx)) return false;
     // 3022 (prueba del dueño 12-11, los dos apagan el Wi-Fi con el Bluetooth listo): en el margen de un corte (regla del dueño
     // 23-10: se espera a que vuelva) lo NUEVO no va al Wi-Fi caído si hay otro camino listo; antes el nativo fallaba 5 veces por
     // texto y llegaban a los ~40 s. Un archivo a medias sigue esperando el margen (no se re-resuelve: va con su enlace).
@@ -134,6 +137,16 @@ export class LanLink {
       if (this.ble.net && this.ble.net.canReach(nx)) return false;
       if (typeof this.ble._bleReadyFor === 'function' && this.ble._bleReadyFor(nx)) return false;
     }
+    return true;
+  }
+  // 3069 (desatasco, resync.js): desfase de cifrado con este contacto → el Wi-Fi se vuelve a comprobar YA (con la sesión nueva) en vez
+  // de esperar a la vuelta de 10 s; mientras, lo nuevo sale por Bluetooth/internet si hay (canReach). Lo que llegue por Wi-Fi se sigue
+  // aceptando (la conexión ya estaba comprobada).
+  recheck(nexoId) {
+    var nx = _nid(nexoId), l = this.links.get(nx);
+    if (!l || !l.up) return false;
+    l.rechecking = Date.now() + 15000;
+    this._verify(nx);
     return true;
   }
   // 3023: margen tras un corte con este contacto (ver GRACE_*): promedio de sus últimas reconexiones + 2 s, entre 2 y 5 s
@@ -267,14 +280,21 @@ export class LanLink {
         var id2 = 'lw' + _rand();
         var c2 = await e2eSealText(t, r.text, e2eOuterAd(me, nx, id2));
         this._raw(nx, { v: 1, type: 'lw', from: me, to: nx, id: id2, re: o.id, c: c2 });
-        if (!l.verified && !l.nonce) this._verify(nx); // el otro también tiene que demostrar quién es
-      } catch (e) { console.warn('[WIFI] Comprobación de ' + nx + ' ilegible: ' + (e && e.message)); }
+        // el otro también tiene que demostrar quién es. 3069: si mi comprobación anterior quedó sin respuesta (p. ej. cifrada con una
+        // sesión que ya no le sirve), se repite ya: su comprobación me acaba de traer la sesión buena
+        if (!l.verified && (!l.nonce || Date.now() - (l.reLvAt || 0) > 1000)) { if (l.nonce) l.reLvAt = Date.now(); this._verify(nx); }
+      } catch (e) {
+        console.warn('[WIFI] Comprobación de ' + nx + ' ilegible: ' + (e && e.message));
+        if (typeof window.NEXO_resyncNote === 'function' && e && (e.code === 'BAD' || e.code === 'DESYNC')) window.NEXO_resyncNote(nx, null, e.code); // 3069
+      }
       return;
     }
     if (o && o.type === 'lw') {
       try {
         var r2 = await e2eOpenText(nx, o.c, e2eOuterAd(nx, me, o.id));
-        if (l.nonce && r2.text === l.nonce && !l.verified) {
+        if (l.nonce && r2.text === l.nonce && l.verified && l.rechecking) { l.rechecking = 0; console.log('[WIFI] Wi-Fi con ' + nx + ' comprobado otra vez tras el desfase de cifrado'); }
+        else if (l.nonce && r2.text === l.nonce && !l.verified) {
+          l.rechecking = 0;
           l.verified = true;
           var again = l.routable;
           l.routable = true; l.graceUntil = 0;

@@ -426,6 +426,14 @@
     {
      "fallo": "Mismo desfase de cifrado sin Wi-Fi entre los dos (solo Bluetooth): nada lo destrababa hasta que el otro escribiera algo; ahora un aviso oculto de sesión nueva sale al detectarlo (desync.js --sin-wifi; contraprueba 3066: nunca)",
      "prueba": "cifrado que vuelve atrás, solo Bluetooth"
+    },
+    {
+     "fallo": "Dueño 13-11 (3069): mensajes confirmados ✓✓ que el otro no pudo leer (el nativo del Nubia los confirmó con la app cerrada y luego, con el cifrado atrasado, no los pudo descifrar: 5 mensajes del S24 de 12:36–12:40 perdidos). Desatasco automático: detectar (en los dos lados y al arrancar), apuntar lo ilegible, avisar por una sesión nueva, purgar envíos con cifrado viejo y reenviar lo pedido y lo de la ventana; el Wi-Fi se vuelve a comprobar al momento. desync.js --perdidos (contraprueba 3068: los 3 se pierden; 3069: llegan en ≈1 s)",
+     "prueba": "DESATASCO automático"
+    },
+    {
+     "fallo": "3069: el mismo desfase cuando el que arranca atrasado pierde también lo apuntado aparte: lo detectan el otro (al recibir) y él (al no poder leer); se recupera igual",
+     "prueba": "DESATASCO sin el número de guardado"
     }
    ],
    "debiles": [
@@ -1291,6 +1299,10 @@
     },
     {
      "fallo": "Diagnóstico S24 13-11 (3067): el Nubia se reinició en plena videollamada y su estado de cifrado quedó ATRÁS de lo que ya había mandado; reutilizaba números de mensaje (mismas claves, otro contenido) y el S24 lo tiraba como repetición para siempre, mientras él no podía leer lo nuevo del S24: Wi-Fi sin comprobar 8 min y nada llegaba en ningún sentido. Ahora cada sesión recuerda una huella de lo recibido y el largo de las cadenas viejas: el desfase se detecta, la sesión se retira y se abre una nueva (ratchet_desync.js; contraprueba 3066: 0 de 10)",
+     "prueba": "cifrado que vuelve ATRÁS"
+    },
+    {
+     "fallo": "3069: el teléfono que arranca con el estado de cifrado atrasado no lo sabía (solo lo notaba el otro). Ahora cada guardado lleva un número y se apunta aparte: al arrancar se detecta, se dice en el diagnóstico (cuántos guardados se perdieron y de cuándo) y se abren sesiones nuevas (ratchet_desync.js 7)",
      "prueba": "cifrado que vuelve ATRÁS"
     }
    ],

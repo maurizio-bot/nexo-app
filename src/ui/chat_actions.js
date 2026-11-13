@@ -599,7 +599,7 @@ export function _renderReactions(msgEl, reactions, isOwn) {
 // Recibido: el contacto eliminó para todos uno de SUS mensajes
 export function _applyChatAction(senderId, act) {
   if (act && act.act === 'av') { applyAvatar(senderId, act); return; } // ronda 2765: foto de perfil (avatar.js)
-  if (act && act.act === 'e2e') return; // 3067: aviso de sesión de cifrado nueva (main.js): basta con haberlo descifrado
+  if (act && act.act === 'e2e') { if (typeof window.NEXO_resyncOnAct === 'function') window.NEXO_resyncOnAct(senderId, act); return; } // 3067/3069: desatasco del cifrado (resync.js)
   if (act && act.act === 'wp') { applyChatWallpaper(senderId, act); return; } // ronda 2890: fondo de chat compartido (wallpaper.js)
   if (act && act.act === 'st') { applyStatus(senderId, act); return; } // ronda 2799: Estado (Stream fase 1, estados.js)
   if (act && act.act === 'sl') { likeReceived(senderId, act); return; } // ronda 2906: «me gusta» a mi estado (estados.js fase 2)

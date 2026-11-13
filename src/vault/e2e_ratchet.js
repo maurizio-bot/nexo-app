@@ -26,6 +26,11 @@ import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
 
 var STORE_FILE = 'nexo_ratchet.json';
 var PQ_FILE = 'nexo_ratchet_pq.json'; // v1.1: claves ML-KEM de los contactos (1,6 KB cada una), aparte
+// 3069 (dueño 13-11: «entender por qué fue el atasco y, si pasa, que se resuelva solo»): cada guardado lleva un número que
+// sube (sv) y, DESPUÉS de guardar el estado, se apunta aparte en este archivo pequeño. Al arrancar, si el estado cargado tiene un
+// número MENOR que el apuntado, el estado volvió atrás (lo del Nubia a las 12:32): se dice en el diagnóstico con cuántos
+// guardados se perdieron y se abren sesiones nuevas con todos (ver _selfRollback).
+var HW_FILE = 'nexo_ratchet_hw.json';
 var PREFIX = 'E2:';
 var MAX_SKIP = 1000;          // mensajes saltados como máximo en una cadena
 var MAX_SKIPPED_KEYS = 300;   // claves de mensajes aún no recibidos guardadas por sesión
@@ -83,6 +88,8 @@ var RECENT_MAX_CHARS = 65536;
 
 var _store = null;
 var _initP = null;
+var _hwLoaded = null;     // 3069: lo apuntado en HW_FILE al arrancar
+var _rollback = null;     // 3069: { lost, since } si el estado se cargó atrasado
 var _lock = Promise.resolve();
 var _recent = new Map(); // texto cifrado → resultado (reintentos idénticos)
 
@@ -188,7 +195,10 @@ async function _save() {
     peers[nx] = c;
   });
   if (_pqDirty) { _pqDirty = false; await pl.saveToFile({ filename: PQ_FILE, content: JSON.stringify(pq) }); }
+  _store.sv = (_store.sv || 0) + 1;
+  _store.at = Date.now();
   await pl.saveToFile({ filename: STORE_FILE, content: JSON.stringify(Object.assign({}, _store, { peers: peers })) });
+  await pl.saveToFile({ filename: HW_FILE, content: JSON.stringify({ sv: _store.sv, at: _store.at }) }); // 3069: después del estado
 }
 
 async function _newSpk(id) {
@@ -227,6 +237,7 @@ export function ratchetInit() {
       if (pl && typeof pl.loadFromFile === 'function') {
         var r = await pl.loadFromFile({ filename: STORE_FILE });
         if (r && r.exists && r.content) _store = JSON.parse(r.content);
+        try { var rh = await pl.loadFromFile({ filename: HW_FILE }); _hwLoaded = rh && rh.exists && rh.content ? JSON.parse(rh.content) : null; } catch (eh) { _hwLoaded = null; } // 3069
         var rq = _store ? await pl.loadFromFile({ filename: PQ_FILE }) : null;
         var pqs = (rq && rq.exists && rq.content) ? JSON.parse(rq.content) : {};
         Object.keys(pqs).forEach(function(nx) {
@@ -235,6 +246,7 @@ export function ratchetInit() {
         });
       }
     } catch (e) { console.warn('[E2E] No se pudo cargar el estado del protocolo 2:', e && e.message); }
+    if (_store && _store.v === 1 && _store.ik === e2eMyPublicKey()) await _selfRollback(); // 3069
     if (!_store || _store.v !== 1 || _store.ik !== e2eMyPublicKey()) {
       // Primera vez (o identidad nueva tras reinstalar): todo nuevo
       var skp = await _subtle().generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
@@ -469,6 +481,7 @@ async function _tryDecrypt(s0, p, outerAd) {
   }
   var pt = await _open(mk, p.ct, aad);
   _rxNote(s, h, p.ct);
+  s.rxAt = Date.now(); // 3069: última vez que se leyó algo suyo por esta sesión (desde ahí se le pide reenviar)
   s.pending = null; // el otro ya tiene la sesión: no hace falta repetir la cabecera inicial
   s.stale = false;
   s.used = Date.now();
@@ -562,18 +575,63 @@ function _retire(nx, sid, why) {
   var peer = _store.peers[nx], now = Date.now();
   if (!peer || peer.ik !== s.rik) { console.warn('[E2E] Desfase de cifrado con ' + nx + ' (' + why + '), pero sin su paquete de claves: no se puede abrir sesión nueva aún'); return false; }
   // Ya retirada: algo suyo aún va por la sesión vieja (no ha leído la nueva) → recordárselo con otro aviso, como mucho 1/min
-  if (s.retired) { if (now - (_nudgeAt[nx] || 0) > 60000) { _nudgeAt[nx] = now; _resyncEvent(nx); } return false; }
+  if (s.retired) { if (now - (_nudgeAt[nx] || 0) > 60000) { _nudgeAt[nx] = now; _resyncEvent(nx, { why: 'recordatorio' }); } return false; }
   if (now - (_rekeyAt[nx] || 0) < REKEY_EVERY_MS) return false;
-  list.forEach(function(x) { if (x.rik === s.rik && !x.retired) x.retired = now; });
+  var lastOk = 0;
+  list.forEach(function(x) { if (x.rik === s.rik) { lastOk = Math.max(lastOk, Number(x.rxAt) || 0); if (!x.retired) x.retired = now; } });
   _rekeyAt[nx] = _nudgeAt[nx] = now;
   console.warn('[E2E] Desfase de cifrado con ' + nx + ': ' + why + '. Se abre una sesión nueva con él (lo suyo vuelve a llegar cuando la lea)');
-  _resyncEvent(nx);
+  _resyncEvent(nx, { since: lastOk, why: 'desfase' });
   return true;
 }
 var _nudgeAt = {};
 // La app le manda enseguida un aviso cifrado pequeño (ya por la sesión nueva) para que no espere a que se le escriba algo
-function _resyncEvent(nx) {
-  try { if (typeof window.dispatchEvent === 'function') window.dispatchEvent(new CustomEvent('nexo:e2e:resync', { detail: { nexoId: nx } })); } catch (e) {}
+function _resyncEvent(nx, extra) {
+  var d = Object.assign({ nexoId: nx }, extra || {});
+  try { if (typeof window.dispatchEvent === 'function') window.dispatchEvent(new CustomEvent('nexo:e2e:resync', { detail: d })); } catch (e) {}
+}
+
+// 3069: ¿el estado se cargó ATRASADO? (número de guardado menor que el apuntado después del último guardado). Siempre deja en el
+// diagnóstico de qué guardado arrancó y de cuándo es (si algún día vuelve a pasar, se ve el hueco). Si volvió atrás: las sesiones
+// con cada contacto quedan retiradas para enviar (siguen leyendo lo que aún llegue por ellas), lo próximo abre sesiones nuevas y la
+// app avisa a esos contactos de que reenvíen lo que mandaron desde el último guardado bueno (resync.js).
+async function _selfRollback() {
+  var sv = Number(_store.sv) || 0, hw = _hwLoaded, now = Date.now();
+  var age = _store.at ? Math.round((now - _store.at) / 1000) : null;
+  console.log('[E2E] Estado de cifrado: guardado nº ' + sv + (age !== null ? ', de hace ' + age + ' s' : '') + (hw ? ' (último apuntado: nº ' + hw.sv + ')' : ''));
+  if (!hw || !(Number(hw.sv) > sv)) return;
+  var nxs = [];
+  Object.keys(_store.sessions || {}).forEach(function(nx) {
+    var peer = _store.peers && _store.peers[nx], any = false;
+    (_store.sessions[nx] || []).forEach(function(x) { if (peer && x.rik === peer.ik && !x.retired) { x.retired = now; any = true; } });
+    if (any) { nxs.push(nx); _rekeyAt[nx] = _nudgeAt[nx] = now; }
+  });
+  _rollback = { lost: Number(hw.sv) - sv, since: Number(hw.at) || 0, at: now, nxs: nxs };
+  console.warn('[E2E] El estado de cifrado se cargó ATRASADO: guardado nº ' + sv + ', pero el último fue el nº ' + hw.sv + ' (' + _rollback.lost +
+    ' guardado(s) perdido(s); el último ' + (hw.at ? 'hace ' + Math.round((now - hw.at) / 1000) + ' s' : 'sin hora') + '). Sesiones nuevas con ' + nxs.length + ' contacto(s)');
+  _store.sv = Number(hw.sv); // el número sigue subiendo desde el último de verdad
+  await _save();
+  // La app aún arranca: el aviso a cada contacto sale en unos segundos (resync.js lo manda por el camino que haya)
+  setTimeout(function() { nxs.forEach(function(nx) { _resyncEvent(nx, { since: _rollback.since, why: 'rollback' }); }); }, 4000);
+}
+export function ratchetRollbackInfo() { return _rollback; }
+
+// 3069: no se pudo leer algo de este contacto en una sesión que debería servir (la app lo pide: resync.js). Como el desfase
+// detectado al recibir (DESYNC), pero desde el otro lado: se retiran sus sesiones para enviar y lo próximo abre una nueva (como
+// mucho cada 10 min; si ya estaban retiradas, solo se le recuerda con otro aviso, 1/min). Devuelve true si se retiraron.
+export function ratchetResync(nexoId, why) {
+  return _serial(async function() {
+    await ratchetInit();
+    var nx = _nid(nexoId);
+    if (!_store) return false;
+    var peer = _store.peers[nx];
+    var list = _sessionsFor(nx).filter(function(x) { return peer && x.rik === peer.ik; });
+    var s = list.filter(function(x) { return !x.retired; })[0] || list[0];
+    if (!s) return false;
+    var ok = _retire(nx, s.id, why || 'no se pudo leer lo suyo');
+    if (ok) await _save();
+    return ok;
+  });
 }
 
 // El contacto recuperó su cuenta con Fénix (misma identidad, sesiones perdidas con su teléfono): se borran las

@@ -15,6 +15,11 @@ const { Radio, NativePhone, installWebCrypto } = require('./native_mock');
 
 const buildDir = path.resolve(process.argv[2]);
 const noWifi = process.argv.includes('--sin-wifi');
+// 3069 --perdidos: A manda 3 textos justo después de que B arranca atrasado (como el S24 12:36–12:40): ninguno debe perderse ni
+// duplicarse; --sin-contador: B pierde también el número apuntado aparte (no puede darse cuenta solo: lo detecta A o al no leer)
+const lost = process.argv.includes('--perdidos');
+const noHw = process.argv.includes('--sin-contador');
+const TAG = lost ? (noHw ? 'DESATASCOSC' : 'DESATASCO') : (noWifi ? 'DESYNCBT' : 'DESYNC');
 // --b=<dir_build>: B (el que se reinicia con el cifrado atrasado) con otra build (p. ej. el Nubia aún en una anterior)
 const bArg = process.argv.find((a) => a.startsWith('--b='));
 const buildB = bArg ? path.resolve(bArg.substring(4)) : buildDir;
@@ -81,19 +86,50 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   if (!noWifi) r.wifi_al_principio_s = await waitFor(() => viaA() === 'wifi' && viaB() === 'wifi', 30000);
   // Copia del cifrado de B; después siguen hablando en los dos sentidos (las cadenas avanzan)
   const snap = nB.files.get('nexo_ratchet.json');
+  const snapHw = nB.files.get('nexo_ratchet_hw.json');
   let ok = true;
   for (let i = 0; i < 4; i++) {
     sendText(A, 'a' + i); ok = ok && (await waitFor(() => got(B, idA, 'a' + i), 20000)) !== null;
     sendText(B, 'b' + i); ok = ok && (await waitFor(() => got(A, idB, 'b' + i), 20000)) !== null;
   }
   r.conversacion_tras_la_copia = ok;
+  // --perdidos: B ve un último mensaje de A (sin contestar) antes de cerrarse: en el desatasco A se lo reenvía (está en su ventana)
+  //  y B, que ya lo tenía, no debe mostrarlo dos veces ni sumarlo a «no leídos»
+  let vId0 = null;
+  if (lost) {
+    // B con el chat cerrado: le llega y avisa (no leído, sin «leído» de vuelta → A lo tiene como entregado y entra en su ventana)
+    B.win.bleInterface._activeChatDeviceId = null;
+    sendText(A, 'visto antes'); r.visto_antes_llega = (await waitFor(() => got(B, idA, 'visto antes'), 20000)) !== null; await sleep(3500);
+    vId0 = ((await A.win.vaultLoadMessages(idB)).find((m) => m._own && m.content === 'visto antes') || {}).msgId;
+    r.visto_antes_avisado = !!(B.win.NEXO_notifier && (B.win.NEXO_notifier.unreadIds.get(idA) || []).indexOf(vId0) >= 0);
+  }
   // B se reinicia y su cifrado vuelve a la copia
   B.win.close(); nB.destroyActivity(); await sleep(1500);
   nB.files.set('nexo_ratchet.json', snap);
+  if (process.env.DUMP) fs.writeFileSync(process.env.DUMP, snap);
+  // --perdidos: con la app de B CERRADA, A manda 3 textos; el nativo de B los guarda y confirma la entrega (✓✓) sin poder leerlos
+  //  (así se perdieron los del S24 de 12:36–12:40: el Nubia los confirmó y luego no los pudo descifrar)
+  if (lost) {
+    for (let i = 0; i < 3; i++) { sendText(A, 'perdido ' + i); await sleep(400); }
+    const deliv = async () => { const ms = await A.win.vaultLoadMessages(idB); return [0, 1, 2].every((i) => ms.some((m) => m.content === 'perdido ' + i && (m.status === 'delivered' || m.status === 'read'))); };
+    r.perdidos_con_dobles_s = await waitFor(deliv, 30000);
+    r.bandeja_cerrada = (nB.bgInbox || []).length;
+  }
+  if (noHw) { if (snapHw === undefined) nB.files.delete('nexo_ratchet_hw.json'); else nB.files.set('nexo_ratchet_hw.json', snapHw); }
   nB.load(); B = await boot('B', nB, buildB);
+  // --perdidos: qué mensajes SUMAN «no leídos» en B tras arrancar (medido en el momento: abrir el chat luego los pone a cero)
+  const countedB = [];
+  if (lost && B.win.NEXO_notifier) {
+    const nf = B.win.NEXO_notifier, orig = nf.incoming.bind(nf);
+    nf.incoming = function(m) { const c = String((m && m.cid) || '').toLowerCase(), b0 = (nf.unreadIds.get(c) || []).length; orig(m); if ((nf.unreadIds.get(c) || []).length > b0) countedB.push(m.msgId); };
+  }
   if (!noWifi) B.win.bleInterface.lan.start();
   const mark = logs.length;
   const t0 = Date.now();
+  // --perdidos: cuánto tardan en llegar los 3 desde que B arranca (en paralelo a lo demás)
+  let tLost = null;
+  if (lost) { (async () => { const tt = await waitFor(async () => { try { const ms = await Promise.race([B.win.vaultLoadMessages(idA), sleep(1500).then(() => [])]); return [0, 1, 2].every((i) => ms.some((m) => m.content === 'perdido ' + i && !m._own)); } catch (e) { return false; } }, 120000); tLost = tt; })(); }
+
   // 1) Wi-Fi comprobado otra vez
   if (!noWifi) r.wifi_tras_reinicio_s = await waitFor(() => viaA() === 'wifi' && viaB() === 'wifi', 90000);
   // 2) Texto de B a A
@@ -105,9 +141,27 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const after = logs.slice(mark);
   r.ya_recibido_en_A = after.filter((l) => /^\S+ \[A\].*(Mensaje ya recibido)/.test(l)).length;
   r.desfase_detectado = after.some((l) => /\[A\].*Desfase de cifrado/.test(l));
+  if (lost) r.visto_antes_reenviado = logs.slice(mark).some((l) => /\[A\].*Desatasco con .*reenvío [4-9] mensaje/.test(l));
+  if (lost) {
+    const all3 = async () => { const ms = await B.win.vaultLoadMessages(idA); return [0, 1, 2].every((i) => ms.some((m) => m.content === 'perdido ' + i && !m._own)); };
+    r.perdidos_llegan_s = await waitFor(all3, 90000);
+    r.perdidos_desde_arranque_s = tLost;
+    await sleep(3000); // por si llegara alguno repetido
+    const msB = await B.win.vaultLoadMessages(idA), msA = await A.win.vaultLoadMessages(idB);
+    r.duplicados_B = ['perdido 0', 'perdido 1', 'perdido 2', 'A tras reiniciar B'].filter((t) => msB.filter((m) => m.content === t).length > 1).length;
+    r.duplicados_A = ['B tras reiniciar'].filter((t) => msA.filter((m) => m.content === t).length > 1).length;
+    r.visto_antes_copias_B = msB.filter((m) => m.content === 'visto antes').length;
+    r.visto_antes_no_leido_otra_vez = !!vId0 && countedB.indexOf(vId0) >= 0;
+    r.no_leidos_nuevos_B = countedB.length;
+    r.burbujas_aviso = [A, B].reduce((n, p) => n + Array.from(p.win.document.querySelectorAll('.message')).filter((d) => /nexo_act|"e2e"|"rst"/.test(d.textContent)).length, 0);
+    const after2 = logs.slice(mark);
+    r.desatasco = after2.some((l) => /Desatasco con .*reenvío [1-9]/.test(l));
+    r.atrasado_solo = after2.some((l) => /\[B\].*ATRASADO/.test(l));
+  }
   r.segundos_total = Math.round((Date.now() - t0) / 1000);
-  r.resultado = ((noWifi || r.wifi_tras_reinicio_s !== null) && r.texto_B_a_A_s !== null && r.texto_A_a_B_s !== null && r.conversacion_tras_la_copia) ? 'OK' : 'FALLO';
-  console.log((noWifi ? 'DESYNCBT ' : 'DESYNC ') + JSON.stringify(r));
-  fs.writeFileSync(path.join(__dirname, noWifi ? 'last_logs_desyncbt.txt' : 'last_logs_desync.txt'), logs.join('\n'));
+  r.resultado = ((noWifi || r.wifi_tras_reinicio_s !== null) && r.texto_B_a_A_s !== null && r.texto_A_a_B_s !== null && r.conversacion_tras_la_copia &&
+    (!lost || (r.perdidos_llegan_s !== null && r.duplicados_B === 0 && r.duplicados_A === 0 && r.burbujas_aviso === 0 && r.visto_antes_copias_B === 1 && r.visto_antes_avisado && r.visto_antes_reenviado && !r.visto_antes_no_leido_otra_vez))) ? 'OK' : 'FALLO';
+  console.log(TAG + ' ' + JSON.stringify(r));
+  fs.writeFileSync(path.join(__dirname, 'last_logs_' + TAG.toLowerCase() + '.txt'), logs.join('\n'));
   process.exit(0);
 })().catch((e) => { console.error('FALLO:', e.stack); fs.writeFileSync(path.join(__dirname, 'last_logs_desync.txt'), logs.join('\n')); process.exit(1); });
