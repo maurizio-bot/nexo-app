@@ -635,6 +635,16 @@ export class NetLink {
     if (!on && pl && typeof pl.torStop === 'function') { this._torNeeded = false; pl.torStop().catch(function() {}); this.tor.ready = false; this.tor.onion = ''; this.peers.forEach(function(p) { p.torUp = p.torOk = false; }); }
     else this.tick();
   }
+  // 3046 (diagnóstico S24 APK 3033 13-11: videollamada por internet sin imagen y ni una línea de Tor en el registro): estado
+  // de Tor en palabras, para el diagnóstico (cabecera ESTADO y línea de la llamada)
+  torState() {
+    var t = this.tor || {};
+    if (this.state && this.state.tor === false) return 'APAGADO en Ajustes';
+    if (t.ready) return 'listo';
+    if (t.starting) return 'arrancando';
+    if (t.error) return 'falló (' + String(t.error).slice(0, 60) + ')';
+    return this.torWanted() ? 'pedido' : 'sin usar';
+  }
   // Pide Tor para ESTA sesión (vídeo/archivo grande por internet). No hace nada si el usuario lo apagó a mano. Devuelve si
   // ya está listo; si no, lo intenta arrancar (tarda unos segundos la 1ª vez) y los caminos que lo necesitan esperan a via==='tor'.
   ensureTor() { if (this.state.tor === false) return false; this._torNeeded = true; this.tick(); return this.tor.ready; }

@@ -53,10 +53,12 @@ function mockMedia() { return { start() { return Promise.resolve({ codec: 'opus'
   r.diag_net_reles = said({ net: true });
   r.diag_net_tor = said({ net: true, tor: true });
   r.diag_net_tor_arrancado = said({ net: true, torReady: true, torUp: true });
+  r.diag_net_tor_apagado = (() => { const cc = createCalls(Object.assign(makeBle(NX, { net: true }), {}), mockMedia); cc.ble.net.torState = () => 'APAGADO en Ajustes'; const out = []; const ol = console.log; console.log = (x) => out.push(String(x)); try { cc._diag({ nx: NX, startedAt: Date.now(), video: true }); } finally { console.log = ol; } const m = out.join(' ').match(/, por (.*)$/); return m ? m[1] : null; })();
   r.diag_bt = said({ bt: true });
   r.diag_wifi = said({ wifi: true });
   r.diag_ok = r.diag_net_reles === 'internet (relés: el vídeo no sale; Tor sin arrancar)' && r.diag_net_tor === 'internet (Tor directo)' &&
-    r.diag_net_tor_arrancado === 'internet (relés: el vídeo no sale; Tor listo, enlace con él abierto sin confirmar)' && r.diag_bt === 'Bluetooth' && r.diag_wifi === 'Wi-Fi';
+    r.diag_net_tor_arrancado === 'internet (relés: el vídeo no sale; Tor listo, enlace con él abierto sin confirmar)' && r.diag_bt === 'Bluetooth' && r.diag_wifi === 'Wi-Fi' &&
+    r.diag_net_tor_apagado === 'internet (relés: el vídeo no sale; Tor APAGADO en Ajustes)';
 
   // 3) Reconexión: una llamada activa que deja de recibir → «Reconectando…» → se corta con 'lost'
   calls = createCalls(makeBle(NX, { net: true }), mockMedia);

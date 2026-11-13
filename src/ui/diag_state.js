@@ -124,6 +124,7 @@ function _phoneLine(bi) {
   if (net) {
     var open = 0; try { open = net._openCount(); } catch (e) {}
     parts.push('relés abiertos ' + open + (net.wifi ? ' (Wi-Fi)' : ' (datos/otra)'));
+    try { if (typeof net.torState === 'function') parts.push('Tor ' + net.torState()); } catch (e) {} // 3046
     // dueño 13-11: puente a internet por un NEXO cercano (gw_link.js): por cuáles salgo yo y a cuántos les presto el mío
     try {
       var gs = net.gw && net.gw.summary();
@@ -145,7 +146,7 @@ function _contactRows(bi) {
     var nx = _normId(c.nexoId || c.deviceUUID), p = [];
     try { p.push('camino ' + bi.linkOf(nx)); } catch (e) { p.push('camino ?'); }
     try { var r = bi._bleReadyFor(nx); if (r) p.push('BT listo MTU ' + ((bi._mtuByDevice && bi._mtuByDevice.get(r)) || '?')); } catch (e) {}
-    try { var np = bi.net && bi.net.peers && bi.net.peers.get(nx); if (np) p.push('internet ' + (np.up ? 'en línea' + (np.wifi ? ' (Wi-Fi)' : ' (datos)') : 'fuera') + (np.lastRx ? ', oído hace ' + Math.round((now - np.lastRx) / 1000) + ' s' : '')); } catch (e) {}
+    try { var np = bi.net && bi.net.peers && bi.net.peers.get(nx); if (np) p.push('internet ' + (np.up ? 'en línea' + (np.wifi ? ' (Wi-Fi)' : ' (datos)') : 'fuera') + (np.lastRx ? ', oído hace ' + Math.round((now - np.lastRx) / 1000) + ' s' : '') + (np.torOk ? ', Tor directo' : np.torUp ? ', Tor abierto sin confirmar' : '')); } catch (e) {}
     try { if (bi.lan && bi.lan.canReach(nx)) p.push('Wi-Fi local'); } catch (e) {}
     if (!c.nt) p.push('sin internet anunciado');
     // 3023: qué caminos rápidos tiene ese contacto (los anuncia en su kx): Wi-Fi Direct, archivos grandes, L2CAP

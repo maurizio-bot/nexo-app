@@ -377,7 +377,8 @@ export class Calls {
     var n = this.ble && this.ble.net;
     if (n && typeof n.via === 'function' && n.via(_nid(nx)) === 'tor') return 'internet (Tor directo)';
     var p = n && n.peers && typeof n.peers.get === 'function' ? n.peers.get(_nid(nx)) : null;
-    return 'internet (relés: el vídeo no sale; Tor ' + (n && n.tor && n.tor.ready ? 'listo' : 'sin arrancar') + (p && p.torUp ? ', enlace con él abierto sin confirmar' : '') + ')';
+    var ts = n && typeof n.torState === 'function' ? n.torState() : (n && n.tor && n.tor.ready ? 'listo' : 'sin arrancar');
+    return 'internet (relés: el vídeo no sale; Tor ' + ts + (p && p.torUp ? ', enlace con él abierto sin confirmar' : '') + ')';
   }
 
   _sendPacket(bytes, kind) {

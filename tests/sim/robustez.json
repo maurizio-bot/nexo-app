@@ -991,6 +991,10 @@
     {
      "fallo": "3044 (diagnóstico S24 APK 3033 13-11 22:51: videollamada con …c95d, 199 s con «vídeo enviado 0 / recibido 0»): el registro decía «por Bluetooth» pero iba por INTERNET (la etiqueta solo distinguía Wi-Fi); por internet el vídeo solo sale con Tor directo y por relés no (01-11, P1), y no se veía por qué. 3044: el diagnóstico de la llamada nombra el camino de verdad: «internet (Tor directo)» o «internet (relés: el vídeo no sale; Tor listo/sin arrancar…)». callrecon.js (diag_*; antes: «Bluetooth»)",
      "prueba": "llamadas/videollamadas por INTERNET + reconexión"
+    },
+    {
+     "fallo": "3046 (mismo diagnóstico S24 APK 3033: videollamada por internet sin imagen y ni una línea de Tor en el registro): no había forma de saber si Tor arrancó, falló o estaba apagado en Ajustes (si lo está, ni a demanda arranca y por internet nunca hay vídeo). 3046: la cabecera ESTADO dice «Tor sin usar / pedido / arrancando / listo / falló (…) / APAGADO en Ajustes» y cada contacto «Tor directo» o «Tor abierto sin confirmar»; la línea de la llamada usa el mismo estado. diagplus.js D1c_tor y callrecon.js (contraprueba 3045: sin Tor en la cabecera)",
+     "prueba": "diagnóstico más claro (3020"
     }
    ],
    "debiles": [

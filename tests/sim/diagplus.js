@@ -79,6 +79,8 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
   r.D1_fila_del_contacto = rowB.substring(0, 160);
   r.D1_contacto_camino_y_build = /camino bluetooth/.test(rowB) && /BT listo MTU \d+/.test(rowB) && /build dev/.test(rowB);
   r.D1b_wifi_y_rapidos = /Teléfono: app en (primer|segundo) plano/.test(txt) && /Wi-Fi (encendido|APAGADO|\?) · Wi-Fi Direct (sí|no)/.test(txt) && /rápidos: /.test(rowB); // 3023
+  // 3046: el estado de Tor en la cabecera (videollamada por internet sin imagen y ni una línea de Tor en el registro)
+  r.D1c_tor = (txt.match(/ · Tor (sin usar|pedido|arrancando|listo|APAGADO en Ajustes|falló \([^)]*\))/) || [''])[0];
   r.D2_linea_de_tiempo = !!ownA && new RegExp(ownA.messageId.slice(-8) + ' → ' + tailB + ' \\(camino al mandar bluetooth\\): .*(delivered|read)').test(txt);
   r.D3_compactado = /Re-búsqueda de contactos prueba intento 0\n\s+↳ ×39 más iguales hasta \d\d:\d\d:\d\d/.test(txt);
   r.estado_antes_del_registro = txt.indexOf('===== ESTADO') >= 0 && txt.indexOf('===== ESTADO') < txt.indexOf('===== SESIÓN ACTUAL');
@@ -129,7 +131,7 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
 
   r.contenido_en_diagnostico = /hola B|hola A/.test(txt);
   r.errores = logs.filter((l) => / error: /.test(l) && !/Not implemented|ResizeObserver/.test(l)).slice(0, 3);
-  const ok = typeof r.emparejados_s === 'number' && r.reporte === 'enviado' && typeof r.llega_a_B_s === 'number' && r.D1_estado_y_zona && r.D1_contacto_camino_y_build && r.D1b_wifi_y_rapidos && r.D2_linea_de_tiempo && r.D3_compactado && r.estado_antes_del_registro &&
+  const ok = typeof r.emparejados_s === 'number' && r.reporte === 'enviado' && typeof r.llega_a_B_s === 'number' && r.D1_estado_y_zona && r.D1_contacto_camino_y_build && r.D1b_wifi_y_rapidos && !!r.D1c_tor && r.D2_linea_de_tiempo && r.D3_compactado && r.estado_antes_del_registro &&
     r.D4_apagado_no_manda && typeof r.D4_par_manda_s === 'number' && r.D4_A_no_pide_por_un_pedido && r.D5_enlace_abre_cierra && r.D5_entrega_lenta && r.D5b_dormido_no_es_lento && r.D6_hueco_10_min && r.D6_pasa_tras_10_min && !r.contenido_en_diagnostico && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('DIAGPLUS ' + JSON.stringify(r));
