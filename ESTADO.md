@@ -21,6 +21,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **13-11 (bloque 3063–3064 = APK 3043, batería 225/225; la APK 3042 se publicó 17:17 UTC):** diagnósticos del dueño 09:18–10:23. 3063: (a) la
+  foto que sale en Roberto la puso el Motorola en Perfil a las 08:38:31 (9 KB), 20 s después de que Perfil rechazara la foto ACTUAL del
+  dueño; el dueño la había cambiado a las 08:35 → casi seguro su foto anterior (sin confirmar). Perfil compara también con las fotos que
+  cada contacto TUVO (5, 180 días; `nexo_av_hist.json`) y deja al dueño volver a una foto suya (`avatardup.js` 8). (b) El APK de 25 MB del
+  10-11 a 3 contactos («pendiente_viejo» 4117 min) no se puede leer y se releía cada vez que su contacto aparecía: la cuenta de intentos
+  se guarda con el mensaje (`attMissN/attMissT0`; `cola3038.js` §1b). 3064: vivo con la app cerrada → la racha de no_service caducaba
+  justo al acabar la pausa de 10 min → 4 intentos en ráfaga cada 10 min y «enlace_abre_cierra»; ahora la caducidad cuenta desde el fin de
+  la pausa (`noservice.js` 2b). Pendiente: que el dueño confirme si la foto de Roberto es su foto anterior.
 - **13-11 (bloque 3060–3062 + 3058–3059 = APK 3042, batería 225/225, índice 63,3):** dueño: «¿por qué Roberto aparece con mi
   foto de perfil?» → «se mezcló mi foto con otro contacto y eso no debe pasar» + «me comentan que los estados no se cargan de forma
   robusta». Revisado en el código cómo se decide de quién es cada foto (remitente descifrado E2E; no hay camino que ponga la foto

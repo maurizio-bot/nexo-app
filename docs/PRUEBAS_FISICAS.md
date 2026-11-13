@@ -73,6 +73,10 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     «foto copiada (escondida)» o «sin foto», y a cuánto está de la tuya.
 29. **Estados al abrir la app (3042).** Con varios estados de alguien en tu teléfono, cierra NEXO; que esa persona publique uno
     nuevo y abre NEXO enseguida: tienes el nuevo y los de antes (antes podías quedarte solo con el nuevo).
+30. **Foto anterior (3043).** Cambia tu foto de perfil. En otro teléfono, Perfil → poner tu foto ANTERIOR: la rechaza. Y tú sí
+    puedes volver a poner tu foto anterior.
+31. **Vivo con la app cerrada (3043).** Cierra NEXO del todo en el vivo y deja el S24 cerca 30 min: no debe llegar el diagnóstico
+    automático «enlace_abre_cierra» del vivo.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 
