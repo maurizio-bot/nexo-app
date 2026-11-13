@@ -91,6 +91,9 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     deberías notarlo: en segundos se reenvía solo lo que no se pudo leer (sin duplicados ni avisos dobles). En el diagnóstico salen
     «[E2E] Desatasco con …» y, en el que arrancó atrasado, «El estado de cifrado se cargó ATRASADO …»: si ves esa línea, mándame el
     diagnóstico de los dos (es la pista de la causa). Cada arranque dice también «Estado de cifrado: guardado nº …».
+37. **Relé en segundo plano (3047, Motorola).** Deja el Motorola con la 3047 una hora en segundo plano (app abierta detrás, pantalla
+    apagada) y luego manda su diagnóstico: las líneas «[NET] Relé …: cerrada» ya no salen cada ~25 s; si un relé se corta enseguida,
+    dicen «(intento nº N: el siguiente en X s)» con esperas que crecen hasta 300 s.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 
