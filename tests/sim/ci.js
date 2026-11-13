@@ -291,7 +291,11 @@ function runOne(sc) {
 (async () => {
   // CI_ONLY=texto: solo los escenarios cuyo nombre lo contiene
   const only = process.env.CI_ONLY;
-  const queue = SCENARIOS.filter((sc) => !only || sc.name.includes(only)), results = [];
+  // CI_RESUME=<salida de una corrida anterior>: se saltan las que ya pasaron (✓) en ella (un reinicio del contenedor corta la batería)
+  const passed = new Set();
+  if (process.env.CI_RESUME) { try { require('fs').readFileSync(process.env.CI_RESUME, 'utf8').split('\n').forEach((l) => { const m = /^✓ (.*) \(\d+ s\)$/.exec(l); if (m) passed.add(m[1]); }); } catch (e) {} }
+  const queue = SCENARIOS.filter((sc) => (!only || sc.name.includes(only)) && !passed.has(sc.name)), results = [];
+  if (passed.size) console.log('(se retoma: ' + passed.size + ' ya pasaron en ' + process.env.CI_RESUME + ')');
   await Promise.all(Array.from({ length: PARALLEL }, async () => {
     while (queue.length) {
       const r = await runOne(queue.shift());
