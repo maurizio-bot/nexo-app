@@ -110,6 +110,9 @@ function _reset() { if (_active) _toggle(); }
 
 // #dueño 05-11: la lupa salió de la cabecera; ahora se abre desde el menú «+» (data-type="search", app_setup.js).
 export function openChatSearch() { _buildBar(); if (!_active) _toggle(); }
+// 3035 (dueño 13-11: «¿los gestos de regreso están en todas las pantallas?»): el gesto atrás cierra la búsqueda abierta
+export function closeChatSearch() { if (!_active) return false; _toggle(); return true; }
+if (typeof window !== 'undefined') window.__nexoCloseSearch = closeChatSearch;
 
 export function installSearchUi() {
   // Ya NO se instala el botón en la cabecera (menos amontonamiento; el nombre queda centrado). Se conserva el reset.

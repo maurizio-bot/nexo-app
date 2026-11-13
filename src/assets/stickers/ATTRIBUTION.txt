@@ -1,4 +1,4 @@
-Stickers del pack de NEXO (build 2879).
+Stickers del pack de NEXO (build 2879; caritas nuevas en la 3035: carinosa, saludo, pensando, fastidio, cansado, furia, rico, beso, babeo).
 
 Los emojis 3D (todos los *.png salvo nexo.png) provienen de Microsoft Fluent Emoji,
 bajo licencia MIT: https://github.com/microsoft/fluentui-emoji  (archivos "3D").

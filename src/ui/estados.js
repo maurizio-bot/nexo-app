@@ -42,6 +42,7 @@ var SQ_GAP_MS = 15000;                  // una petición «sq» por contacto cad
 // contacto le llega solo el puntero dentro del estado; el que lo ve lo baja y lo verifica. Sin internet (o si el puntero no
 // sirve) lo pide al dueño por el enlace directo («sm») y le llega como archivo («stmedia»). Se guarda aparte (no en la lista).
 var BIG_MAX = 5 * 1024 * 1024;          // bytes reales de la media de un estado
+var VID_HD_TARGET = Math.round(4.6 * 1024 * 1024); // 3035: un video grande se recodifica para caber aquí (margen bajo BIG_MAX)
 var INLINE_SEND_MAX = 24 * 1024;        // al publicar, solo va dentro del estado una media de hasta ~24 KB (data URI)
 var BIG_TTL_SEC = 26 * 3600;            // en los relés: lo que dura el estado y un margen
 var SM_GAP_MS = 20000;                  // una petición/envío «sm» por contacto y estado cada 20 s como mucho
@@ -680,9 +681,12 @@ function _compose() {
     }
     var mk = (typeof window.NEXO_makeVideoPreview === 'function') ? window.NEXO_makeVideoPreview : _makeVideoPreview;
     vidBtn.textContent = '🎥 ' + t('est_processing', 'Procesando…'); vidBtn.disabled = true;
-    Promise.resolve(mk(f)).then(function(res) {
+    // 3035 (dueño 13-11: videos de otras apps, tipo TikTok): más de 5 MB → se recodifica en 720p con el bitrate justo para
+    // caber (VID_HD_TARGET); si ese HD no sale o no cabe, la previa liviana de siempre.
+    Promise.resolve(mk(f, undefined, { hdTargetBytes: VID_HD_TARGET })).then(function(res) {
       vidBtn.textContent = '🎥 ' + t('est_add_video', 'Video'); vidBtn.disabled = false;
       if (!res || res.tooLong || !res.size) { _toast(res && res.tooLong ? t('est_vid_too_long', 'El video es muy largo para un estado') : t('est_vid_fail', 'No se pudo preparar el video')); return; }
+      if (res.hd && res.hd.size > 0 && res.hd.size <= BIG_MAX) { console.log('[ESTADO] Video de ' + Math.round(f.size / 1024) + ' KB → 720p de ' + Math.round(res.hd.size / 1024) + ' KB'); res = res.hd; } // i18n-ok
       return _blobToB64(res).then(function(b64) {
         var d = 'data:' + ((res.type || 'video/webm').split(';')[0]) + ';base64,' + b64;
         if (!_validVid(d) && !_bigOf(d)) { _toast(t('est_vid_too_big', 'El video quedó muy pesado para un estado')); return; }
@@ -882,6 +886,7 @@ function _attachPull() {
 var PULL_PX = 70;
 
 if (typeof window !== 'undefined') {
+  window.NEXO_composeStatus = _compose; // 3035: pruebas (tests/sim/pedidos13.js)
   window.NEXO_setMyStatus = setMyStatus; window.NEXO_statusOf = statusOf; window.NEXO_applyStatus = applyStatus;
   window.NEXO_likeStatus = likeStatus; window.NEXO_likeReceived = likeReceived; window.NEXO_myLikes = myLikes; // pruebas (tests/sim/estados.js)
   window.NEXO_addMyStatus = addMyStatus; window.NEXO_statusesOf = statusesOf; window.NEXO_myStatuses = myStatuses; window.NEXO_removeMyStatus = removeMyStatus;

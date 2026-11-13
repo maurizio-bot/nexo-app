@@ -221,6 +221,9 @@ function _openSettingsSheet() {
     '<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 14px;gap:10px;">' +
     '<div style="display:flex;align-items:center;gap:8px;min-width:0;"><button id="nexo-settings-back" class="nx-btn" style="width:auto;margin:0;padding:9px 13px;">' + t('settings_back') + '</button><div style="font-size:26px;font-weight:800;">' + t('settings_title') + '</div></div>' +
     '<button id="nexo-settings-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;flex-shrink:0;">' + t('close') + '</button></div>' +
+    // 2986: actualizaciones (interruptor + «Buscar ahora»). 3035 (dueño 13-11: «la parte de actualización debería de estar
+    // encima de todo porque entrando uno actualiza»): es la PRIMERA tarjeta de Ajustes.
+    card('⬆️', t('upd_title', 'Actualizaciones'), updaterInnerHtml()) +
     // #132 (pedido del dueño): selección de idioma (es/it/en). Por defecto el del teléfono; al cambiarlo se guarda y la app recarga para aplicarlo en todas las pantallas.
     card('🗣️', t('language'), '<div class="nx-sub" style="margin-bottom:8px;">' + t('language_hint') + '</div>' +
       '<select id="nexo-lang-select" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +
@@ -261,8 +264,6 @@ function _openSettingsSheet() {
       '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> ' + t('prof_tor_label', 'Usar Tor siempre (oculta tu IP; va más lento). El vídeo y los archivos grandes por internet ya lo usan solos.') + '</label>') +
     // Ronda 2808 (pedido del dueño «rendimiento api de nexo»): medición en vivo del rendimiento de NEXO
     perfSectionHtml() +
-    // 2986: actualizaciones (interruptor + «Buscar ahora»)
-    card('⬆️', t('upd_title', 'Actualizaciones'), updaterInnerHtml()) +
     // #dueño 05-11: volver a ver la guía de bienvenida (welcome_guide.js) cuando se quiera
     card('👋', t('welcome_settings_title', 'Guía de bienvenida'), '<div class="nx-sub" style="margin-bottom:8px;">' + t('welcome_settings_sub', 'Vuelve a ver la introducción: cómo agregar un contacto y mandar tu primer mensaje.') + '</div>' +
       '<button id="nexo-show-welcome" class="nx-btn">' + t('welcome_settings_btn', 'Ver la guía otra vez') + '</button>') +

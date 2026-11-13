@@ -1262,6 +1262,10 @@
     {
      "fallo": "Foto de perfil «cruzada» (dueño 11-11: Marcos agregó a Austin y salió con la foto del dueño, también en Perfil). El registro del teléfono de Marcos (canal directo) muestra que esa foto llegó del teléfono de Austin como SU foto de perfil (acción 'av' cifrada con su identidad, 11,5 KB): no es un cruce al recibir. No se encontró ningún camino del código por el que una foto ajena pase a ser la propia (se revisó guardado, pase de cuenta, Fénix, copia de seguridad de Android, selectores de archivo); pendiente de saber con el dueño si esa foto se puso a mano en ese teléfono. 3012: el diagnóstico dice si el teléfono tiene foto propia y desde cuándo. avatarcruce.js (A con foto; B agrega a C: nada cruzado)",
      "prueba": "foto de perfil al agregar un contacto"
+    },
+    {
+     "fallo": "3035 (dueño 13-11: «¿los gestos de regreso están en todas las pantallas?»): el atrás del sistema no cerraba menús (mensaje, grupo, adjuntar), hojas (reenviar, compartir, elegir contacto, cobrar, ficha del grupo, fondo), el juego NEXO, la búsqueda del chat, la bienvenida ni el aviso de batería. Además: Actualizaciones arriba en Ajustes, stickers sin N y con caritas nuevas, y video de otras apps en estados en 720p ≤ 5 MB. pedidos13.js",
+     "prueba": "pedidos del dueño 13-11"
     }
    ]
   },
