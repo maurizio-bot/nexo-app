@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-11-13 (builds **2935–3068**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3068 (APK 3046) — el aviso «enlace abre y cierra» ya no salta por un contacto con la app cerrada**; antes 3067 (APK 3045): el cifrado se recupera solo cuando un contacto vuelve a un estado anterior.
+Última actualización: 2026-11-13 (builds **2935–3070**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3069–3070 (APK 3047) — desatasco automático del cifrado (lo ilegible se pide y se reenvía solo) y relé en segundo plano que ya no se reabre sin fin**; antes 3068 (APK 3046): el aviso «enlace abre y cierra» ya no salta por un contacto con la app cerrada.
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
