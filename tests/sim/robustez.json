@@ -617,6 +617,10 @@
     {
      "fallo": "3015 (dueño 12-11, diagnósticos S24 + S23 con la 3014): la nota de voz iba como TEXTO troceado (1761 trozos de 360 letras para 22 s) y no como archivo: minutos por Bluetooth, «Cola de escritura llena», textos del otro sin confirmar, y cada reintento la cifraba de nuevo y el receptor tiraba lo recibido. 3015: la nota de voz va (y se reenvía) por el camino de archivos (binario, Wi-Fi/Wi-Fi Direct si se puede); la cabecera lleva su duración y tipo de audio.",
      "prueba": "nota de voz por Bluetooth como ARCHIVO"
+    },
+    {
+     "fallo": "3035 (dueño 13-11, captura del S23): el teclado de Samsung no podía insertar GIF/stickers («No es posible introducir este contenido aquí»): el WebView no anunciaba tipos de imagen al teclado. 3035: NexoWebView.java (commitContent → window.__nexoKeyboardImage) + layout bridge_layout_main.xml; keyboard_media.js lo manda tal cual (GIF animado, sin miniatura fija). kbgif.js (la parte nativa se valida en la APK)",
+     "prueba": "GIF y stickers del teclado"
     }
    ]
   },

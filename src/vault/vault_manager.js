@@ -798,6 +798,7 @@ async function _thumbLoad(name) {
 function _thumbCreate(msgId, b64, format) {
   var name = vaultThumbFileName(msgId);
   if (_thumbBusy[name] || _thumbFailed[name] || typeof document === 'undefined' || !b64 || typeof b64 !== 'string') return;
+  if (String(format || '').toLowerCase() === 'gif') return; // 3035: un GIF (p. ej. del teclado) se ve animado: sin miniatura fija
   _thumbBusy[name] = true;
   try {
     var img = new Image();
