@@ -156,6 +156,7 @@ const MTU_DEFER_MAX_WAIT_MS = 300000;     // 5 min esperando un camino mejor; lu
 // hilo principal del WebView se saturaba (timers + logs + reconstruir el contenido de cada una) y la app se CONGELABA
 // (ANR). Ahora se reanudan como mucho MAX_RESUME_CONCURRENT a la vez (el resto en cola) y el contenido se reconstruye
 // perezosamente al arrancar cada una, no todas de golpe.
+const RESUME_FAIL_BASE_MS = 15000, RESUME_FAIL_MAX_MS = 600000; // 3038: espera tras una reanudación que se rindió (15 s, 30 s… 10 min)
 const RESUME_SCAN_GAP_MS = 2500;          // 3003: mínimo entre dos escaneos completos de transferencias pendientes (resumeOutgoingTransfers)
 const MAX_RESUME_CONCURRENT = 3;          // transferencias reanudadas a la vez (global); el resto espera en cola
 // v3.10.0: Wi-Fi normal (lan.js): trozos grandes por la misma red
@@ -329,6 +330,8 @@ export class BleAckSystem {
     this._resumeQueue = [];          // trabajos pendientes de reanudar { cid, tx, contactDeviceId }
     this._resumeActive = 0;          // transferencias reanudadas en vuelo ahora mismo
     this._resumeSeen = new Set();    // transferId ya en cola o en vuelo (no encolar dos veces)
+    this._resumeFail = new Map();    // 3038: transferId → { n, at } reanudaciones seguidas que se rindieron
+    this._resumeHint = new Set();    // 3038: contactos cuyo enlace acaba de servir (sus transferencias se reanudan sin esperar)
     this._done = new Map();     // id → cuándo se confirmó (entregado o leído): no se reenvía
     this.incomingBuffers = new Map();
     this.pendingFragments = new Map();
@@ -1858,9 +1861,12 @@ export class BleAckSystem {
     this.pendingOutgoingFiles.delete(fileId);
     this._dispatchFileProgress(fileId, 0, 0, 'cancelled');
   }
-  resumeOutgoingTransfers() {
+  // deviceId (opcional, 3038): el enlace de ESE contacto está listo (el reenvío de sus pendientes llama con él): sus transferencias se
+  // reanudan aunque estén en espera por haberse rendido antes; las de los demás respetan su espera.
+  resumeOutgoingTransfers(deviceId) {
     var self = this;
     if (!window.vaultGetPendingOutgoingTransfers) return;
+    if (deviceId) { var hx = self._resolveNexoId(deviceId); if (hx) self._resumeHint.add(_normId(hx)); }
     // 3003 (diagnóstico automático S24 build 3001, 11-11 03:42: la app arrancó 3 veces en 1 min con un APK de 25 MB pendiente para tres
     // contactos): cada «Reenviando pending para X» y cada evento de enlace llamaba aquí, y esto recorre TODOS los contactos leyendo el
     // almacén de transferencias (trozos base64 de los archivos grandes, ~450–750 ms cada lectura): N reenvíos × 21 contactos en segundos →
@@ -1876,6 +1882,7 @@ export class BleAckSystem {
     }
     self._resumeScanAt = nowS;
     self._resumeScanBusy = true;
+    var hints = self._resumeHint; self._resumeHint = new Set();
     var scans = [];
     var contacts = (self.ble && typeof self.ble.getBLEContacts === 'function') ? self.ble.getBLEContacts() : [];
     contacts.forEach(function(contact) {
@@ -1907,6 +1914,11 @@ export class BleAckSystem {
           // dedup: si ya está en vuelo (un ChatStream real) o ya encolada, no la metas otra vez (resumeOutgoingTransfers
           // se llama en cada evento de enlace; sin esto se recreaba el enjambre en cada reconexión)
           if (self.outgoingStreams.has(tx.transferId) || self._resumeSeen.has(tx.transferId)) return;
+          // 3038 (diagnóstico S24 13-11 19:04–20:42: un texto largo para …ab2f, AUSENTE, arrancaba cada 15–30 s en cada reenvío de OTRO
+          // contacto, iba por un Bluetooth que el nativo ya había soltado y se rendía a los 10 s; así casi 2 h, y cada arranque además
+          // «protegía» el enlace del vigilante): tras rendirse espera 15 s, 30 s… hasta 10 min, salvo que su propio enlace esté listo.
+          var rf = self._resumeFail.get(tx.transferId);
+          if (rf && !hints.has(cid) && nowS - rf.at < Math.min(RESUME_FAIL_MAX_MS, RESUME_FAIL_BASE_MS * Math.pow(2, rf.n - 1))) return;
           self._resumeSeen.add(tx.transferId);
           self._resumeQueue.push({ cid: cid, tx: tx, contactDeviceId: contact.deviceId });
         });
@@ -1930,7 +1942,15 @@ export class BleAckSystem {
         };
         var p;
         try { p = self._resumeRunOne(j); } catch (e) { p = null; }
-        if (p && typeof p.then === 'function') p.then(done, done); else done();
+        // 3038: salió → se olvida su cuenta; se rindió → la siguiente reanudación espera más (ver resumeOutgoingTransfers)
+        var ok = function() { self._resumeFail.delete(j.tx.transferId); done(); };
+        var fail = function() {
+          var f = self._resumeFail.get(j.tx.transferId) || { n: 0 };
+          f.n++; f.at = Date.now(); self._resumeFail.set(j.tx.transferId, f);
+          if (self._resumeFail.size > 500) self._resumeFail.delete(self._resumeFail.keys().next().value);
+          done();
+        };
+        if (p && typeof p.then === 'function') p.then(ok, fail); else done();
       })(job);
     }
   }

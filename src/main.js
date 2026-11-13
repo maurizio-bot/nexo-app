@@ -91,7 +91,7 @@ import { createAckSystem } from './ui/ble_ack.js';
 import {
   initVault,
   vaultLoadContacts, vaultSaveContacts, vaultSaveContact, vaultLoadMessages, vaultLoadRecent, vaultSaveMessages,
-  vaultAppendMessage, vaultUpdateMessageStatus, vaultGetOrCreateContact, vaultFindContactByNexoId,
+  vaultAppendMessage, vaultUpdateMessageStatus, vaultPatchMessage, vaultGetOrCreateContact, vaultFindContactByNexoId,
   vaultCreateTransfer, vaultAppendChunk, vaultGetTransfer, vaultCompleteTransfer,
   vaultGetIncompleteTransfers, vaultGetPendingOutgoingTransfers, vaultCreateOutgoingTransfer,
   vaultSetOutgoingChunkAcked, vaultIncrementOutgoingTimeout, vaultRemoveOutgoingTransfer,
@@ -343,6 +343,7 @@ window.vaultSaveMessages = vaultSaveMessages;
 window.vaultAppendMessage = vaultAppendMessage;
 window.vaultDeleteMessage = vaultDeleteMessage; // gancho de pruebas (tests/sim/chatthumbs.js)
 window.vaultUpdateMessageStatus = vaultUpdateMessageStatus;
+window.vaultPatchMessage = vaultPatchMessage; // 3038
 window.vaultGetOrCreateContact = vaultGetOrCreateContact;
 window.vaultFindContactByNexoId = vaultFindContactByNexoId;
 window.vaultCreateTransfer = vaultCreateTransfer;

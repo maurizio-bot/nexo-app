@@ -1004,12 +1004,26 @@ export async function vaultUpdateMessageStatus(contactNexoId, msgId, status) {
   }
   return false;
 }
+// 3038: cambiar campos de un mensaje (sin tocar su estado), p. ej. quitar la marca «adjunto ilegible» al reintentar a mano
+export async function vaultPatchMessage(contactNexoId, msgId, patch) {
+  var cid = _normId(contactNexoId);
+  if (!cid || !msgId || !patch) return false;
+  return _withMsgLock(cid, async function() {
+    var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
+    var idx = messages.findIndex(function(m) { return (m.msgId || m.messageId || m.id) === msgId; });
+    if (idx < 0) return false;
+    messages[idx] = Object.assign({}, messages[idx], patch);
+    _persistMessages(cid, messages);
+    return true;
+  });
+}
 export async function vaultGetPendingMessages(contactNexoId) {
   if (!contactNexoId) return [];
   var cid = _normId(contactNexoId);
   var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
   var pending = messages.filter(function(m) {
     if (m._own !== true || !(m.status === 'pending' || m.status === 'failed')) return false;
+    if (m.attMissing === true) return false; // 3038: adjunto que no se pudo leer del teléfono: solo se reintenta a mano
     // 3033: copia oculta vieja de un estado (ver estados.staleStatusCopy): no se reenvía
     return !(m.hidden === true && typeof window !== 'undefined' && typeof window.NEXO_staleStatusCopy === 'function' && window.NEXO_staleStatusCopy(m, cid));
   });

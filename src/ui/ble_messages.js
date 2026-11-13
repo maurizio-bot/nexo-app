@@ -1501,8 +1501,11 @@ export const BLE_MESSAGE_METHODS = {
               sendNext();
               return;
             }
-            console.warn('[BLEInterface] Adjunto pendiente sin sus datos (no se pudo leer del teléfono tras varios intentos): no se reenvía', mid);
+            console.warn('[BLEInterface] Adjunto pendiente sin sus datos (no se pudo leer del teléfono tras varios intentos): no se reenvía solo (✗, «Reintentar» a mano)', mid);
             _vaultUpdateMessageStatus(nexoId, mid, 'failed');
+            // 3038: marca para no volver a leerlo del disco en cada vuelta (25 MB cada 15–60 s durante días); «Reintentar» la quita
+            try { if (typeof window.vaultPatchMessage === 'function') window.vaultPatchMessage(nexoId, mid, { attMissing: true }); } catch (e5) {}
+            if (self._attMiss) delete self._attMiss[mid];
             try { if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(mid, 'failed'); } catch (e3) {}
             sendNext();
             return;

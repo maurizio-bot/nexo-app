@@ -831,6 +831,10 @@ function _retrySend(cid, msgId, div) {
   // 3004: «reintentar» a mano borra la cuenta del freno de bucle de arranque de este mensaje (el usuario decide volver a probar)
   var cleared = (typeof window.vaultBigSendEnd === 'function') ? window.vaultBigSendEnd(msgId).catch(function() {}) : Promise.resolve();
   if (bi && bi._bigBlockedNoted) bi._bigBlockedNoted.delete(msgId);
+  // 3038: un adjunto marcado «no se pudo leer» vuelve a probarse (el usuario decide)
+  if (bi && bi._attMiss) delete bi._attMiss[msgId];
+  if (bi && bi.ackSystem && bi.ackSystem._resumeFail) bi.ackSystem._resumeFail.delete(msgId); // 3038: sin esperar
+  if (typeof window.vaultPatchMessage === 'function') cleared = cleared.then(function() { return window.vaultPatchMessage(cid, msgId, { attMissing: false }); }).catch(function() {});
   cleared.then(function() {
     try { if (bi && typeof bi._resendPendingMessages === 'function') bi._resendPendingMessages(cid); } catch (e) {}
     try { if (bi && bi.ackSystem && typeof bi.ackSystem.resumeOutgoingTransfers === 'function') bi.ackSystem.resumeOutgoingTransfers(); } catch (e) {}

@@ -434,6 +434,10 @@
     {
      "fallo": "3034 (diagnóstico S24 APK 3029, 12-11 17:54: «reenvio_sin_fin» con …db61, 3 vueltas): lo que no se confirmaba eran acciones ocultas (estado/foto de perfil al reconectar) a un teléfono con la app congelada; su nativo confirma textos al avisar (2833) pero las ocultas (q:1) ni se avisaban ni se confirmaban. 3034: backgroundNotify confirma también las ocultas, sin aviso (Kotlin; mock con contraprueba NEXO_OLD_QUIETACK=1). ocultaack.js",
      "prueba": "acción oculta a un teléfono con la app congelada"
+    },
+    {
+     "fallo": "3038 (diagnósticos del dueño 13-11, S24 APK 3031 20:06–20:42): (1) un APK de 25 MB a …c1ee/…707a que no se podía leer del teléfono (56 h) se volvía a cargar del disco en cada vuelta y daba «pendiente viejo» sin fin; (2) un texto largo para …ab2f (ausente) arrancaba en cada reenvío de otro contacto (cada 15–30 s, ~2 h) por un Bluetooth ya soltado. 3038: marca attMissing (✗, fuera del reenvío automático y del diagnóstico; «Reintentar» la quita; vaultPatchMessage) y espera creciente por transferencia al reanudar (_resumeFail; sin espera si su propio enlace está listo). cola3038.js (contraprueba 3037)",
+     "prueba": "adjunto ilegible y transferencia que se rinde al reanudar"
     }
    ]
   },

@@ -637,6 +637,9 @@ export function _isResendable(m, cid) {
   if (!m || m._own !== true) return false;
   // 3033: copia oculta de un estado que ya no se manda así (foto dentro de builds anteriores, estado vencido): no se reenvía
   if (m.hidden === true && typeof window !== 'undefined' && typeof window.NEXO_staleStatusCopy === 'function' && window.NEXO_staleStatusCopy(m, typeof cid === 'string' ? cid : '')) return false;
+  // 3038 (diagnóstico S24 13-11: APK de 25 MB a …c1ee y …707a, 56 h ⏳/✗ releyéndose del disco cada vuelta): un adjunto que no se pudo
+  // leer del teléfono tras varios intentos queda ✗ con «Reintentar» y ya no entra solo en el reenvío (ni en «pendiente viejo»)
+  if (m.attMissing === true) return false;
   if (m.status === 'pending' || m.status === 'failed') return true;
   // v6.1.9: también adjuntos. Si la transferencia sigue viva, _isMsgInFlight la excluye y
   // ble_ack.sendFile reutiliza la que esté en curso con el mismo id (no se duplica).
