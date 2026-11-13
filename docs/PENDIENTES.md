@@ -3,6 +3,10 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 13-11 (relé en segundo plano del Motorola, 3070) — en prueba
+- Hecho: el nativo ya no reabre cada 10 s un relé que se corta enseguida (la espera crece hasta 5 min; `NetBgBackoffTest`).
+- Por mirar en el próximo diagnóstico del Motorola: su enlace Wi-Fi con el vivo se rehace cada pocos minutos (sin pérdidas vistas).
+
 ## 🆕 13-11 (desatasco automático, 3069) — en prueba
 - Hecho (ver ESTADO): detectar en los dos lados y al arrancar, pedir/reenviar lo ilegible, Wi-Fi comprobado al momento, sin avisos dobles.
 - Falta: la causa raíz del estado atrasado (con la 3047 cada arranque deja el número de guardado en el diagnóstico); mensajes de GRUPO

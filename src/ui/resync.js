@@ -53,7 +53,7 @@ export function resyncNote(fromNx, msgId, code) {
       _badT[nx] = setTimeout(function() {
         _badT[nx] = null;
         if (Date.now() - (_gotRst[nx] || 0) < 60000) { _schedule(nx, 0); return; }
-        ratchetResync(nx, 'no se pudo leer lo suyo').then(function(retired) { if (!retired) _schedule(nx, 0); }).catch(function() { _schedule(nx, 0); });
+        ratchetResync(nx, 'no se pudo leer lo suyo').then(function(retired) { if (!retired) _schedule(nx, 0); }).catch(function() { _schedule(nx, 0); }); // i18n-ok (razón para el diagnóstico)
       }, BAD_RESYNC_MS);
     }
     return;
@@ -106,7 +106,7 @@ export function resyncOnAct(senderId, act) {
     if (Array.isArray(act.need) && act.need.length) _resend(nx, act.need, 0, false);
     return;
   }
-  if (act.st !== 'rst') return; // 3067: el aviso sin más ('e2e' a secas) solo servía para pasar a la sesión nueva
+  if (act.st !== 'rst') return; // 3067: el aviso sin más (solo e2e) servía para pasar a la sesión nueva
   _gotRst[nx] = Date.now();
   if (_badT[nx]) { clearTimeout(_badT[nx]); _badT[nx] = null; }
   var need = Array.isArray(act.need) ? act.need.slice(0, NEED_MAX).map(String) : [];

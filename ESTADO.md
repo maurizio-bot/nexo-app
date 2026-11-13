@@ -21,6 +21,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **13-11 (3070, nativo, va en la misma APK 3047):** 3 diagnósticos pegados sin comentario (Motorola auto 3044 14:42; S24 auto
+  3045 15:17 «3 cierres por enlace repetido»; S24 manual 16:27). Motorola: en segundo plano `relay.damus.io` se cerraba cada 25–100 s
+  durante ~1 h y el nativo (`NetBg.kt`) lo reabría a los ~10 s siempre: abrir ponía los fallos a cero. Ahora, como en la app (P5),
+  solo cuenta como buena una conexión que duró ≥ 1 min; si no, la espera crece 10/20/40/80/160 s → 5 min (`NetBgBackoffTest`, suite
+  Kotlin 158/158). Su enlace Wi-Fi con el vivo también se rehace cada pocos minutos (sin pérdidas; queda mirado). S24 «repetido»:
+  coincidió con borrar y volver a añadir al Nubia (15:16:47–53) y volver a la app; no se ve fallo. S24 16:27: Wi-Fi Direct con el
+  Honor sigue sin poder crear el grupo y cae a Bluetooth (pendiente #198). Batería 3069: la prueba de traducciones falló por 2 textos
+  internos nuevos de `resync.js` (marcados `i18n-ok`, auditoría OK).
 - **13-11 (bloque 3069, será la APK 3047 si pasa la batería b3069):** dueño: «A) pero también quiero un desatasco automático… detectar
   el atasco por cualquier red, guardar los mensajes, avisar al otro, purgar y avisar que está listo, que el otro vuelva a mandar; lo más
   rápido posible, sin que el usuario se percate; y entender por qué fue y corregirlo». Diagnóstico del Nubia (3045, 15:17): ya hablan,
