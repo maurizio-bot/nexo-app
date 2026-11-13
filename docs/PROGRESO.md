@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-11-13 (builds **2935–3067**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3067 (APK 3045) — el cifrado se recupera solo cuando un contacto vuelve a un estado anterior (antes, tras reiniciarse en una videollamada, todo lo suyo se tiraba como «ya recibido» para siempre)**; antes 3066 (APK 3044): la foto de perfil ligada a su dueño («Es mi foto») y tope de 5 MB.
+Última actualización: 2026-11-13 (builds **2935–3068**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3068 (APK 3046) — el aviso «enlace abre y cierra» ya no salta por un contacto con la app cerrada**; antes 3067 (APK 3045): el cifrado se recupera solo cuando un contacto vuelve a un estado anterior.
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).

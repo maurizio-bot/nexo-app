@@ -21,6 +21,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **13-11 (3068 = APK 3046, batería 229/229, índice 63,5):** diagnósticos automáticos del S24 (15:04, recién en 3045) y del Honor
+  (13:29 y 14:43): «enlace_abre_cierra» falso con contactos de app cerrada (vivo, Motorola): los intentos «sin servicio» y su eco
+  contaban como desconexiones. Ahora solo cuenta un enlace que llegó a estar listo (`noservice.js` 5). Del Honor queda abierto: 3
+  mensajes grandes al S24 que no terminan de salir por un Bluetooth a MTU 23 y que ve al S24 sin internet (PENDIENTES).
 - **13-11 (bloque 3067 = APK 3045, batería 229/229, índice 63,5; la APK 3044 = 3065–3066 se publicó 19:44 UTC):**
   diagnóstico manual del S24 (3043) 12:35 y 12:40 local: el Nubia (3041) se reinició en plena videollamada (su vídeo y voz se paran a
   las 12:32:26, «lost» a 82 s) y desde entonces cada ~12 s «[WIFI] Comprobación de nx10b6f4ac ilegible: Mensaje ya recibido» y nada
