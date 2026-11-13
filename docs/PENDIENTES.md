@@ -9,8 +9,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 
 ## 🆕 13-11 (desatasco automático, 3069) — en prueba
 - Hecho (ver ESTADO): detectar en los dos lados y al arrancar, pedir/reenviar lo ilegible, Wi-Fi comprobado al momento, sin avisos dobles.
-- Falta: la causa raíz del estado atrasado (con la 3047 cada arranque deja el número de guardado en el diagnóstico); mensajes de GRUPO
-  ilegibles no entran aún en el reenvío (solo 1-a-1); un atrasado SIN el paquete de claves del otro no abre sesión él (la abre el otro).
+- Falta: la causa raíz del estado atrasado (con la 3047 cada arranque deja el número de guardado en el diagnóstico); un atrasado SIN
+  el paquete de claves del otro no abre sesión él (la abre el otro).
+- 3071 (en prueba): los mensajes de GRUPO ya entran en el reenvío (copia guardada hasta leído o 6 h); queda fuera solo un sobre
+  grande (foto dentro del sobre, sin relés).
 
 ## 🆕 13-11 (cifrado que vuelve atrás, 3067) — en prueba
 - Diagnóstico S24 12:35/12:40: tras reiniciarse el Nubia en una videollamada, 8 min de «Comprobación … ilegible: Mensaje ya recibido»
