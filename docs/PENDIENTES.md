@@ -14,6 +14,13 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - Pequeño (para la 3072): con internet caído, `sendChatMessage` forzaba `connectToDevice('net:…')` (el nativo lo ve como
   «netnx…» y no hace nada; 8 veces en 2 min): no forzar conexión Bluetooth para un destino `net:`.
 - Motorola: pedir su diagnóstico justo al abrir NEXO para ver por qué su servidor Bluetooth (GATT) no publica el servicio.
+- 2.º diagnóstico (17:49): **el puente SÍ funcionó** con el Honor (nx1905c1ee, «Austin»): 17:49:38 «[GW] Conectado a internet por
+  el puente nx1905c1ee» (2 min después de quitar el Wi-Fi: el Honor tenía el Bluetooth ocupado con sus mensajes grandes de 114 KB).
+- «Leído» que no llega del Honor: sus 4 textos por BT quedaron ✓✓ entregados (17:48:53–17:49:31), ningún acuse de lectura en el
+  registro nativo (los de 118 bytes son los «entregado»). O no abrió el chat, o tiene apagadas las confirmaciones de lectura, o el
+  acuse se perdió (es de un solo intento si el enlace parecía listo). Pedido el diagnóstico del Honor.
+- Detalle: el 1.er texto al Honor se vio ✗ 1 s (17:48:51, ACK agotado mientras el enlace BT se rehacía 17:48:45–50) y salió al
+  reconectar: mientras el contacto se está reconectando, mejor «pendiente» que ✗.
 
 ## 🆕 13-11 (relé en segundo plano del Motorola, 3070) — en prueba
 - Hecho: el nativo ya no reabre cada 10 s un relé que se corta enseguida (la espera crece hasta 5 min; `NetBgBackoffTest`).
