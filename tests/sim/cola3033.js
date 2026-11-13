@@ -74,6 +74,10 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   const viejo2 = { msgId: 'msg' + ts + 'viejo2bb', messageId: 'msg' + ts + 'viejo2bb', contactNexoId: idB, _own: true, hidden: true, status: 'pending', timestamp: ts, seq: 0,
     content: JSON.stringify({ type: 'nexo_act', act: 'st', t: 'estado viejo', ts: ts }) };
   await A.win.vaultAppendMessage(idB, viejo1); await A.win.vaultAppendMessage(idB, viejo2);
+  // 3035: una petición «sq» (deslizar para actualizar) de hace 10 min, sin entregar: caducó, no se reenvía
+  const sqVieja = { msgId: 'msg' + ts + 'sqvieja1', messageId: 'msg' + ts + 'sqvieja1', contactNexoId: idB, _own: true, hidden: true, status: 'pending', timestamp: ts - 600000, seq: 0,
+    content: JSON.stringify({ type: 'nexo_act', act: 'sq', ts: ts - 600000 }) };
+  await A.win.vaultAppendMessage(idB, sqVieja);
   // 4. (avisos fantasma, dueño 12-11: «nueve mensajes nuevos y no vi ninguno») mientras B no está, A publica otro estado:
   //    su copia oculta queda en cola; tras reiniciar A se reenvía y en B debe llegar CALLADA (sin «mensaje nuevo»)
   //    (una baja de estado: acción oculta que sí se reenvía; en la app real, lo mismo pasa con fotos de perfil, me gusta, etc.)
@@ -101,7 +105,7 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   r.no_sale_la_vieja = !after.some((l) => /\[A\].*(viejo1aa|viejo2bb)/.test(l) && /START|Reenvi|_splitChunks|sendFile/.test(l)) && !after.some((l) => /\[A\].*_splitChunks: (\d{3,}) chunks/.test(l));
   r.trozos_grandes = (after.filter((l) => /\[A\].*_splitChunks: \d+ chunks/.test(l)).map((l) => +/(\d+) chunks/.exec(l)[1]).sort((a, b) => b - a)[0]) || 0;
   const vA = await A.win.vaultLoadMessages(idB);
-  r.viejas_borradas = !vA.some((m) => /viejo[12]/.test(m.msgId || ''));
+  r.viejas_borradas = !vA.some((m) => /viejo[12]|sqvieja1/.test(m.msgId || ''));
   r.B_sin_foto_vieja = !(B.win.NEXO_statusesOf(idA) || []).some((x) => x.img && x.img.length > 100000);
   r.B_sin_estado_viejo = !(B.win.NEXO_statusesOf(idA) || []).some((x) => x.t === 'estado viejo' || x.lg);
   r.B_sigue_con_su_estado = (B.win.NEXO_statusesOf(idA) || []).some((x) => x.sid === sid);

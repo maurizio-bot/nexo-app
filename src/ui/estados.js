@@ -36,6 +36,7 @@ var NX_RE = /^nx[0-9a-z]{8}$/;
 var MAX_ITEMS = 10;
 var MAX_COMMENTS = 50;
 var SID_RE = /^[a-z0-9]{4,24}$/;
+var SQ_STALE_MS = 120000;                // 3035: una petición «sq» sin entregar caduca a los 2 min (no se reenvía)
 var SQ_GAP_MS = 15000;                  // una petición «sq» por contacto cada 15 s como mucho (en los dos sentidos)
 // 3032 (dueño 12-11: «que se puedan subir estados de al menos 5 MB»): una foto/video/audio que no cabe en la acción oculta
 // (topes de arriba) viaja aparte, hasta BIG_MAX: con internet se sube UNA vez cifrada al buzón de archivos (relés) y a cada
@@ -150,13 +151,17 @@ var STALE_INLINE = INLINE_SEND_MAX + 4096;
 export function staleStatusCopy(m, cid) {
   if (!m || m.hidden !== true || m._own !== true || typeof m.content !== 'string') return false;
   var c = m.content;
-  if (c.indexOf('nexo_act') < 0 || !/"act":"st"/.test(c)) return false;
+  if (c.indexOf('nexo_act') < 0 || !/"act":"s[tq]"/.test(c)) return false;
   var a = null;
   try { a = JSON.parse(c); } catch (e) { return false; }
-  if (!a || a.type !== 'nexo_act' || a.act !== 'st' || a.del) return false;
+  if (!a || a.type !== 'nexo_act') return false;
   var sid = SID_RE.test(String(a.sid || '')) ? String(a.sid) : '';
   var why = '';
-  if (c.length > STALE_INLINE) why = 'media dentro, ' + Math.round(c.length / 1024) + ' KB';   // i18n-ok (registro)
+  // 3035 (diagnóstico S24 APK 3029, 12-11 18:51: «reenvio_sin_fin» con la tablet): la petición «sq» (deslizar para actualizar
+  // los estados) quedaba en la cola y se reenviaba sin fin a un teléfono dormido; pasados 2 min ya no sirve: se borra.
+  if (a.act === 'sq') { if (!(Date.now() - (Number(a.ts) || 0) > SQ_STALE_MS)) return false; why = 'petición de estados vieja'; } // i18n-ok
+  else if (a.act !== 'st' || a.del) return false;
+  else if (c.length > STALE_INLINE) why = 'media dentro, ' + Math.round(c.length / 1024) + ' KB';   // i18n-ok (registro)
   else if (!sid && a.t) why = 'formato anterior';                                              // i18n-ok
   else if (sid && _loaded && !_mine.items.some(function(x) { return x.sid === sid && _active(x); })) why = 'ya no está activo'; // i18n-ok
   if (!why) return false;
