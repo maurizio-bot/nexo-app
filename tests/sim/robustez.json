@@ -815,6 +815,10 @@
     {
      "fallo": "Dueño 13-11 (3059): al ver un estado se quitaba el aro azul, pero al cerrar y volver a abrir la app volvían a salir como nuevos (lo visto y los me gusta vivían solo en memoria). Ahora se guardan en el teléfono (nexo_status_seen.json, 2 días). estados3.js paso 9 (contraprueba 3057: aro azul tras reiniciar)",
      "prueba": "Estados v3"
+    },
+    {
+     "fallo": "Diagnóstico automático del Motorola (3040, «enlace_abre_cierra» con el vivo, 07:50), 3059: se perdió el último trozo de un mensaje y su resto se quedó en el búfer de reensamblaje del nativo; todo lo que llegó detrás (pings, acuses, el saludo) se pegaba a ese resto durante 6 s → el vivo parecía «zombi» y se cortó el enlace. Kotlin: un trozo que empieza un mensaje con un pendiente que no se completa descarta el resto al momento (SafeJson.startsMessage, prueba JVM). trozocortado.js (contraprueba --kotlin3058: el texto corto no llega en 20 s; con 3059 en 0,4 s). Además: al conectar como cliente, nada se escribe ni se parte en trozos hasta terminar el MTU (WriteRetry.waitForClientSetup).",
+     "prueba": "mensaje CORTADO por el aire"
     }
    ],
    "debiles": [

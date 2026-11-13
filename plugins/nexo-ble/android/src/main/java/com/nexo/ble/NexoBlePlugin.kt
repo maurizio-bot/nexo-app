@@ -405,6 +405,17 @@ class NexoBlePlugin : Plugin() {
             remLog("WARN", "REASSEMBLY", "Mensaje incompleto de $macNorm descartado (resincronizado)")
             messageBuffers.remove(macNorm)
         }
+        // 3059 (diagnóstico automático del Motorola 13-11 07:50): un mensaje quedó cortado (se perdió un trozo) y su resto se tragó
+        // todo lo que llegó detrás —pings, acuses, el saludo— hasta vencer el plazo (6 s): el vivo parecía muerto y se cortó el
+        // enlace. Si llega un trozo que EMPIEZA un mensaje (SafeJson.startsMessage) y con lo pendiente no se forma
+        // ningún mensaje, lo pendiente era un resto cortado: fuera ya, y se sigue con lo nuevo. (Los mensajes de un enlace llegan
+        // uno detrás de otro, nunca mezclados: si empieza uno nuevo, el anterior ya no se va a completar.)
+        val pend = messageBuffers[macNorm]
+        if (pend != null && pend.isNotEmpty() && SafeJson.startsMessage(chunk) && tryExtractCompleteJson(pend.toString() + chunk) == null) {
+            remLog("WARN", "REASSEMBLY", "Mensaje cortado de $macNorm descartado al llegar otro entero (${pend.length} car.): resincronizado al momento")
+            messageBuffers.remove(macNorm)
+            messageBufferSince.remove(macNorm)
+        }
         if (messageBuffers[macNorm].isNullOrEmpty()) messageBufferSince[macNorm] = System.currentTimeMillis()
         val buffer = messageBuffers.getOrPut(macNorm) { StringBuilder() }
         buffer.append(chunk)
@@ -2154,6 +2165,14 @@ class NexoBlePlugin : Plugin() {
     // v2723: un mensaje entra entero en la cola o no entra (antes, con la cola llena se descartaban trozos del
     // medio y el otro teléfono recibía un mensaje mutilado: "mensaje de código" en el chat y foto parada)
     private fun sendChunkedOrSingle(macNorm: String, rawDeviceId: String, message: String): SendResult {
+        // 3059 (diagnóstico automático del S24 13-11 07:51, tablet recién conectada): un mensaje que llega mientras el enlace CLIENTE
+        // aún negocia el MTU se partía en trozos de 20 bytes (70 escrituras para 1,4 KB) aunque segundos después el MTU fuera 512.
+        // Ahora espera entero en la cola de pendientes y se parte al terminar la puesta en marcha (startNotifications), con el MTU real.
+        val srvReadyNow = serverConnectedDevices[macNorm] != null && serverNotificationEnabled.getOrDefault(macNorm, false)
+        if (!srvReadyNow && clientRxCharacteristics[macNorm] != null && clientSetupDone[macNorm] == false) {
+            pendingMessageQueue.getOrPut(macNorm) { mutableListOf() }.add(message)
+            return SendResult(true, "queued")
+        }
         // Ronda 2757: por bytes reales (MTU - 3, máx. 512 por atributo), sin cortar caracteres (Utf8Split, BinFrame.kt)
         val maxBytes = ((negotiatedMtu[macNorm] ?: 23) - 3).coerceIn(20, 512)
         val chunks = Utf8Split.split(message, maxBytes)

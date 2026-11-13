@@ -32,4 +32,12 @@ object SafeJson {
         }
         return false
     }
+
+    // 3059 (diagnóstico automático del Motorola 13-11 07:50): ¿este trozo EMPIEZA un mensaje de NEXO? Cada mensaje se parte en
+    // trozos por su cuenta, así que un mensaje nuevo siempre empieza al principio de un trozo, y empieza así: {"v": / {"t":" /
+    // {"type":" (un trozo del medio de otro mensaje casi nunca: tendría que cortar justo antes de un objeto interno que empiece
+    // igual). Sirve para resincronizar al momento cuando un mensaje quedó cortado (se perdió un trozo): antes ese resto se tragaba
+    // todo lo que llegaba detrás durante 5–10 s (pings sin respuesta → «zombi» → enlace cortado).
+    fun startsMessage(chunk: String): Boolean =
+        chunk.startsWith("{\"v\":") || chunk.startsWith("{\"t\":\"") || chunk.startsWith("{\"type\":\"")
 }

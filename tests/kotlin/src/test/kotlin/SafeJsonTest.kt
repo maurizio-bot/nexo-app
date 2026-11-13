@@ -27,4 +27,19 @@ class SafeJsonTest {
         val hondo = "[".repeat(5000) + "]".repeat(5000)
         assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify(hondo, "nx99999999").kind)
     }
+
+    // 3059: resincronizar al momento cuando un mensaje quedó cortado (diagnóstico del Motorola 13-11 07:50)
+    @Test fun reconoceElPrincipioDeUnMensaje() {
+        assertTrue(SafeJson.startsMessage("{\"v\":1,\"type\":\"ping\",\"pingId\":\"p1\"}"), "un ping")
+        assertTrue(SafeJson.startsMessage("{\"v\":2,\"t\":\"ba\",\"m\":\"msg1\""), "el principio de un acuse")
+        assertTrue(SafeJson.startsMessage("{\"type\":\"kx\",\"rq\":1"), "el saludo")
+    }
+
+    @Test fun unTrozoDelMedioNoEmpiezaMensaje() {
+        assertFalse(SafeJson.startsMessage("dos\"},\"ts\":5}"), "el final de un mensaje")
+        assertFalse(SafeJson.startsMessage("{\"text\":\"hola\"}"), "un objeto interno")
+        assertFalse(SafeJson.startsMessage("{\\\"v\\\":1}"), "un mensaje metido como texto (comillas escapadas)")
+        assertFalse(SafeJson.startsMessage(" {\"v\":1}"), "no empieza al principio del trozo")
+        assertFalse(SafeJson.startsMessage(""), "vacío")
+    }
 }

@@ -418,7 +418,8 @@ class NativePhone {
     const first = this._sendSingleChunk(macNorm, chunks[0], { mid, last: chunks.length === 1 });
     if (!first.sent) return { sent: false, mode: '' };
     // opts.dropMidEvery = N: cada N mensajes de varios trozos se pierde uno del medio (prueba la resincronización)
-    const lose = this.opts.dropMidEvery && chunks.length >= 3 && mid % this.opts.dropMidEvery === 0 ? 1 : -1;
+    // (opts.dropLast: se pierde el ÚLTIMO trozo: el mensaje nunca se cierra; diagnóstico del Motorola 13-11 07:50)
+    const lose = this.opts.dropMidEvery && chunks.length >= 3 && mid % this.opts.dropMidEvery === 0 ? (this.opts.dropLast ? chunks.length - 1 : 1) : -1;
     if (lose > 0) this.stats.mutilated = (this.stats.mutilated || 0) + 1;
     chunks.slice(1).forEach((c, k) => { if (k + 1 !== lose) this._sendSingleChunk(macNorm, c, { mid, last: k === chunks.length - 2 }); });
     return { sent: true, mode: first.mode };
@@ -450,6 +451,13 @@ class NativePhone {
     clearTimeout(this.bufTimers.get(mac));
     if (!this.opts.kotlin2722 && this.buffers.get(mac) && Date.now() - (this.bufSince.get(mac) || Date.now()) > 10000) {
       this.buffers.delete(mac); this.stats.resyncs = (this.stats.resyncs || 0) + 1;
+    }
+    // Kotlin 3059 (SafeJson.startsMessage): llega un trozo que EMPIEZA un mensaje y con lo pendiente no se forma ninguno → lo
+    // pendiente era un mensaje cortado (se perdió un trozo): fuera ya (antes se tragaba lo que venía detrás 5–10 s). opts.kotlin3058: como antes
+    const pend3059 = this.buffers.get(mac);
+    if (!this.opts.kotlin3058 && pend3059 && /^\{"(v":|t":"|type":")/.test(chunk) && !extractJson(pend3059 + chunk)) {
+      this.buffers.delete(mac); this.stats.resyncs3059 = (this.stats.resyncs3059 || 0) + 1;
+      this._remLog('WARN', 'REASSEMBLY', 'Mensaje cortado de ' + mac + ' descartado al llegar otro entero (' + pend3059.length + ' car.): resincronizado al momento');
     }
     if (!this.buffers.get(mac)) this.bufSince.set(mac, Date.now());
     let buf = (this.buffers.get(mac) || '') + chunk;
