@@ -4,7 +4,7 @@ Con la **3033 (nightly-3030) o posterior en TODOS los teléfonos** (el actualiza
 Si algo falla: **Perfil → Copiar diagnóstico** en los dos teléfonos y pegármelo. Cada prueba dice qué tiene que pasar.
 Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 
-## 0. Lo nuevo del 13-11 (APK 3032 y 3033)
+## 0. Lo nuevo del 13-11 (APK 3032 a 3035)
 1. **GIF del teclado (3032).** En el S23, abre un chat y manda un GIF o sticker desde el teclado de Samsung o Gboard: sale
    como imagen y llega al otro (ya no «No es posible introducir este contenido aquí»).
 2. **Vídeo de TikTok en estados (3032).** Guarda un vídeo de TikTok y súbelo como estado: se publica (recomprimido a ≤ 4,6 MB).
@@ -22,6 +22,14 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 9. **Honor (3034).** Tras actualizar, el Honor ya no reenvía estados viejos al abrir (su diagnóstico sin «766 chunks»). En el
    Honor: Ajustes → Batería → NEXO → permitir segundo plano.
 6. **APK de 25 MB viejo (3033).** El que salía «pendiente viejo» a …c1ee/…707a queda ✗ con «Reintentar» y ya no avisa.
+10. **Puente con un desconocido y el regreso (3035).** Teléfono A sin datos ni Wi-Fi; cerca, un NEXO con internet que NO es
+    contacto de A (B). A le escribe a un contacto LEJOS (C): llega ✓✓. Luego aleja B (o apágale el Bluetooth) y pon cerca
+    otro NEXO con internet (D, tampoco contacto). C contesta: a A le llega en 1–2 min sin que A mande nada. En el diagnóstico
+    de A: «[GW] Sin internet ni puente: pruebo con … de paso» y «uso a … de puente».
+11. **Respaldo al Vivo dormido (3035).** S24 y Vivo en la misma Wi-Fi, el Vivo con la app en segundo plano un rato: ya no
+    llega el aviso automático «reintentos (file fxs_…)» del S24.
+12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
+    «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 
 ## A. Lo arreglado hoy (12-11) — rápidas, 2–3 min cada una
 1. **Foto de perfil (3028).** En tu teléfono: Roberto y Marcos salen con sus iniciales, no con tu foto. Toca la foto de
