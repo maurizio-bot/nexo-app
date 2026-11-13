@@ -46,6 +46,11 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     a un contacto lejano → sale en ~10 s y el chat dice «por puente» (antes ~1,5 min).
 19. **Vuelve el internet (3039).** Siguiendo la anterior, A vuelve a encender los datos: en ≤ 15 s el chat deja de decir
     «por puente» (antes hasta 2 min).
+20. **Pantalla girada y por Bluetooth (3040).** En una videollamada por Wi-Fi comparte la pantalla y GIRA el teléfono: el otro
+    la ve en horizontal sin aplastar. Luego apaga el Wi-Fi de los dos (la llamada sigue por Bluetooth): la pantalla sigue
+    viéndose, como imágenes que cambian cada ~5 s. Diagnóstico: «Pantalla girada» y «diapositivas de pantalla».
+21. **Archivo grande para alguien lejano (3040).** En el vivo, lo pendiente de 25 MB para …707a ya no se lee del disco cada vez
+    que ve al S24 (el diagnóstico dice «no caben por Bluetooth: esperan Wi-Fi/internet»).
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 

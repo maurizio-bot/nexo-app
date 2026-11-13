@@ -3,6 +3,13 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 13-11 (compartir pantalla parte 3, 3054) — falta
+- **Decisión del dueño:** por internet por RELÉS (sin Tor directo) ¿la pantalla en diapositivas como por Bluetooth? (y la cámara en
+  imágenes de baja calidad, ver «Videollamada por internet sin imagen»). Hoy por relés no sale imagen.
+- **Llamada de GRUPO por Bluetooth:** la pantalla compartida solo va por Wi-Fi (como el vídeo de grupo); diapositivas por los
+  tramos Bluetooth, después.
+- **Llamada de voz (sin vídeo):** no tiene botón «Pantalla»; compartir pantalla en una llamada de voz por Bluetooth, después.
+
 ## 🆕 13-11 (puente parte 4 y medición de caminos, 3050–3051)
 - **Probar en teléfonos** el puente con Wi-Fi Direct (que presta conectado a su Wi-Fi a la vez) y los cambios de camino:
   `docs/PRUEBAS_FISICAS.md` §0.16–0.19. Informe del simulador: `docs/MEDICION_CAMINOS.md`.
