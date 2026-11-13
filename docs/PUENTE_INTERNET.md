@@ -37,8 +37,8 @@ menos dos opciones más». La triangulación por ubicación quedó descartada (d
   - Nada de «tráeme todo» ni del buzón de archivos.
 - **Topes:** 40 eventos por minuto por sesión, 1500 por día por teléfono, 4 sesiones a la vez y una por teléfono. Una
   sesión se cierra a los 10 min sin actividad.
-- **Cuándo no presta:** con la batería baja (regla de Jump) ni con el interruptor apagado. El interruptor es
-  `localStorage nexo_gw_share = '0'`; falta ponerlo en Ajustes (parte 3).
+- **Cuándo no presta:** solo con la batería baja (regla de Jump). **Sin interruptor** (dueño 13-11: «si alguien escoge
+  NEXO es para estar comunicado, no para romper esa red»): todo NEXO con internet presta el suyo, con estos topes.
 - **Cuándo funciona:** el que presta tiene que tener la app viva (a la vista o en segundo plano sin congelar). Con la
   app congelada no contesta y A suelta ese puente. El nativo ignora estos paquetes (`BgInbox` → IGNORE).
 
@@ -70,7 +70,6 @@ Contraprueba con la build 3035: nada llega.
   - conectarse a un NEXO desconocido cercano solo para pedirle internet (hoy: los vecinos con enlace, contactos o
     enlaces «de paso» de Jump).
 - **Parte 3:**
-  - interruptor «Prestar mi internet a NEXO cercanos» en Ajustes;
   - fotos pequeñas por el puente;
   - indicador «por puente» en el chat.
 - Cambiar la etiqueta del buzón cada cierto tiempo, para que un puente no sepa qué buzón es de quién.

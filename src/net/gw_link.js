@@ -24,7 +24,8 @@
  * Límites del que presta (para que no se abuse de su internet): solo eventos de mensajes privados (kind 1059) firmados
  * y del tamaño de un texto, suscripciones solo a esos mensajes, AUTH (NIP-42) y CLOSE; nada de archivos (el buzón de
  * archivos no pasa por el puente: net_link.gwOnly() los deja ⏳). Tope por minuto y por día, pocas sesiones a la vez,
- * nada con la batería baja (Jump.canRelay) y un interruptor (localStorage nexo_gw_share = '0' lo apaga).
+ * y nada con la batería baja (Jump.canRelay). SIN interruptor (dueño 13-11: «si alguien escoge NEXO es para estar comunicado,
+ * no para romper esa red»): todo NEXO con internet presta el suyo, con estos topes.
  */
 import { netEventValid } from './net_link.js';
 
@@ -50,7 +51,6 @@ function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _isNx(x) { return /^nx[0-9a-z]{8}$/.test(x); }
 function _rid() { var a = new Uint8Array(6); crypto.getRandomValues(a); return Array.from(a, function(b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
 function _host(u) { return String(u || '').replace(/^wss?:\/\//, '').replace(/\/.*$/, ''); }
-function _shareOn() { try { return !(typeof localStorage !== 'undefined' && localStorage.getItem('nexo_gw_share') === '0'); } catch (e) { return true; } }
 function _disabled() { return typeof window !== 'undefined' && window.NEXO_GW === false; }
 
 // ¿Este frame NIP-01 puede subir por el puente? (lo que A le pide al relé a través de B)
@@ -273,7 +273,7 @@ export class GwLink {
 
   // ---------- servidor: el teléfono que PRESTA su internet ----------
   _canShare() {
-    if (!_shareOn() || _disabled()) return '';
+    if (_disabled()) return '';
     if (!this._realOpen()) return 'sin internet';
     var rel = this.ble() && this.ble().relay;
     if (rel && typeof rel.canRelay === 'function' && !rel.canRelay()) return 'batería baja';

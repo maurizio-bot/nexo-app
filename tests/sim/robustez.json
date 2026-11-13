@@ -721,7 +721,7 @@
      "prueba": "Wi-Fi con la app del otro DORMIDA"
     },
     {
-     "fallo": "Dueño 13-11 (idea nueva, no un fallo): un teléfono SIN internet no podía escribir a un contacto lejano aunque tuviera al lado otro NEXO con internet (Jump solo llega por Bluetooth). Parte 1 (3036): puente a internet — el teléfono sin internet usa a hasta 3 NEXO cercanos con internet como relé (gw_link.js: sesión por Bluetooth, el vecino abre el relé y pasa los frames; solo mensajes privados firmados, topes por minuto/día, batería, interruptor); la respuesta vuelve por cualquier puente cercano (la suscripción a MIS etiquetas, «recoge lo mío»); fotos y archivos no pasan por el puente (gwOnly). puente.js (contraprueba 3035: nada llega)",
+     "fallo": "Dueño 13-11 (idea nueva, no un fallo): un teléfono SIN internet no podía escribir a un contacto lejano aunque tuviera al lado otro NEXO con internet (Jump solo llega por Bluetooth). Parte 1 (3036): puente a internet — el teléfono sin internet usa a hasta 3 NEXO cercanos con internet como relé (gw_link.js: sesión por Bluetooth, el vecino abre el relé y pasa los frames; solo mensajes privados firmados, topes por minuto/día, batería; sin interruptor por decisión del dueño); la respuesta vuelve por cualquier puente cercano (la suscripción a MIS etiquetas, «recoge lo mío»); fotos y archivos no pasan por el puente (gwOnly). puente.js (contraprueba 3035: nada llega)",
      "prueba": "texto sin internet con un NEXO cercano que sí tiene"
     }
    ],
