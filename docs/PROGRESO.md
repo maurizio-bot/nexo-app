@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-11-13 (builds **2935–3046**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3046 (APK 3035) — puente a internet parte 2 (el regreso aunque el puente de la ida se haya ido), respaldo Fénix a una app dormida, estado de Tor y camino real en el diagnóstico de la llamada, y sobres repetidos del segundo plano**.
+Última actualización: 2026-11-13 (builds **2935–3047**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3047 (APK 3036) — puente a internet parte 3: fotos pequeñas por el puente, tope de datos del que presta e indicador «por puente»**. Antes: 3046 (APK 3035) — puente parte 2, respaldo Fénix a una app dormida y estado de Tor en el diagnóstico.
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
