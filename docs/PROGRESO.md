@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-11-13 (builds **2935–3049**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3049 (APK 3037) — compartir pantalla en la llamada de grupo y archivo grande elegido al volver del selector sale por Wi-Fi Direct**. Antes: 3047 (APK 3036) — puente a internet parte 3: fotos pequeñas por el puente, tope de datos e indicador «por puente».
+Última actualización: 2026-11-13 (builds **2935–3050**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3050 (APK 3038) — puente a internet parte 4: fotos y archivos por Wi-Fi Direct con el puente (hasta 5 MB), vuelta inmediata a Bluetooth**. Antes: 3049 (APK 3037) — compartir pantalla en la llamada de grupo y archivo grande elegido al volver del selector sale por Wi-Fi Direct.
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).

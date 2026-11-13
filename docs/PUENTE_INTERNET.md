@@ -103,5 +103,32 @@ que los puentes guarden mensajes ajenos. Se retoma si las pruebas del dueño lo 
 - **Indicador**: el subtítulo del chat dice «En línea · (internet) · por puente» mientras A sale por un puente.
 - Prueba `puente3.js` (contraprueba 3046: el filtro, la foto de A y el subtítulo fallan; la foto de C a A ya llegaba).
 
+## Parte 4 (3050): Bluetooth/Wi-Fi Direct también en el puente, con cambio ágil
+Pedido del dueño (13-11): «el cambio de Bluetooth/Wi-Fi Direct también al puente Bluetooth/internet, y que el cambio sea ágil».
+- **Qué va por dónde**: los textos siguen por Bluetooth (montar Wi-Fi Direct cuesta ~5 s; un texto tarda menos que eso). Lo
+  pesado —los trozos del buzón de archivos de una foto, vídeo o archivo— va al puente en **un paquete por Wi-Fi Direct**
+  (hasta 24 trozos, ~1,3 MB) y el puente los mete en la sesión del relé de A como si hubieran llegado por Bluetooth (mismos
+  filtros y topes; las confirmaciones vuelven por el camino de siempre). Al **bajar**, A pide hasta 48 trozos marcados «por
+  Wi-Fi Direct»; el puente junta lo que llega del relé hasta el EOSE (máx. 20 s) y se lo da a A en un paquete.
+- **Cuándo**: los dos con Wi-Fi Direct y permiso ya concedido (al que presta nunca se le pide nada: anuncia `wd:1` en su «sí»
+  solo si ya lo tiene) y el Wi-Fi encendido. Con el puente **en Wi-Fi** (no gasta sus datos) el tope por adjunto sube a 5 MB
+  (lo que admite el buzón de archivos) y el tope de bytes a 20 MB/h y 100 MB/día; con datos móviles siguen 2 MB/h y 10 MB/día
+  y solo fotos pequeñas.
+- **Cambio ágil**: si el otro no monta el grupo en 8 s o unirse falla, **ese mismo paquete sigue por Bluetooth al instante** y
+  con ese teléfono no se vuelve a probar Wi-Fi Direct en 2 min (sin esperas en cada envío; luego se vuelve a intentar). Si el
+  otro está ocupado con otra transferencia, un reintento a los 2,5 s y si no, Bluetooth.
+- **Sin internet propio o con el contacto por un puente**, una foto/archivo a un contacto en línea va por el buzón de archivos
+  (no trozo a trozo como mensajes): el saludo lleva `g:1` («estoy por un puente»).
+- **Bluetooth más firme** (también para la parte 3): el puente manda por Bluetooth en orden y, con la cola de radio llena,
+  espera y sigue (antes: 3 reintentos en 1 s y el trozo se perdía; el EOSE podía adelantarse a los trozos). Las esperas de
+  subida/bajada por el puente cuentan «sin progreso», no un tope fijo (por Bluetooth un trozo son ~3 s de radio).
+- Medido en el simulador (`puente4.js`): 2 MB de A a C en 16 s (3 paquetes por Wi-Fi Direct; por Bluetooth serían ~2 min);
+  1,5 MB de C a A en 7 s (1 paquete); con Wi-Fi Direct roto, 600 KB por Bluetooth en 48 s y lo siguiente sin intentarlo.
+  `puente3.js` paso 7: 290 KB de C a A por Bluetooth en 22 s y 885 KB del que presta (3049: 60 s y 2046 KB).
+- Diagnóstico: `[GW] Wi-Fi Direct al puente …: N trozo(s), X KB en Y s`, `[GW] Wi-Fi Direct con … no funcionó (…): lo pesado
+  por Bluetooth 2 min`, `[WIFI-DIRECT] Paquete del puente …`.
+
 ## Falta
+- Probarlo en teléfonos reales (Wi-Fi Direct con el que presta conectado a su Wi-Fi a la vez: la mayoría de los Android lo
+  permite; si alguno no, se verá «no funcionó» en el diagnóstico y todo sigue por Bluetooth).
 - Cambiar la etiqueta del buzón cada cierto tiempo, para que un puente no sepa qué buzón es de quién.
