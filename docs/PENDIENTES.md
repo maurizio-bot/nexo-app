@@ -19,6 +19,7 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - **Hecho 3052:** soltar el puente al volver el internet propio tardaba ~24 s (latido de 15 s); ahora ~6 s.
 
 ## 🆕 13-11 (diagnósticos S24 APK 3032/3033, Honor 3031, vivo 3028) — abiertos tras la 3045
+- **Respuesta (diagnóstico S24 3039, 13-11 06:31): «Tor APAGADO en Ajustes»** en el S24 → por internet nunca hubo Tor directo; desde la 3041 por relés va en imágenes pequeñas (3056). Para vídeo de verdad por internet: Tor encendido en los dos.
 - **Videollamada por internet sin imagen** (S24 22:51, 199 s, «vídeo enviado 0»): por internet el vídeo solo sale con Tor
   DIRECTO (01-11, P1) y en esos 199 s no lo hubo. Desde la 3044 el diagnóstico dice «internet (relés: el vídeo no sale; Tor
   listo/sin arrancar…)». Con el próximo diagnóstico: ¿arranca Tor en sus teléfonos? Si no arranca nunca, decidir con el dueño
