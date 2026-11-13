@@ -418,6 +418,10 @@
     {
      "fallo": "Chat lento al crecer (fluidez, #dueño 02-11): al abrir en frío un chat con mucho historial, vaultLoadMessages leía+descifraba+parseaba el archivo ENTERO (hasta 2000 msg) → «leyendo lento 800 ms». 2888: archivo de COLA pequeño (últimos 80) que se lee rápido para pintar al instante; el completo se carga perezosamente (al subir a ver anteriores o al enviar). El completo sigue siendo la fuente de verdad intacta (cola = caché aditiva); no se pierde historial. Prueba chatlento.js (apertura en frío lee ≤80, y tras leer la cola + enviar, el disco conserva los 300+1, no se trunca)",
      "prueba": "chat lento al crecer"
+    },
+    {
+     "fallo": "Mismo desfase de cifrado sin Wi-Fi entre los dos (solo Bluetooth): nada lo destrababa hasta que el otro escribiera algo; ahora un aviso oculto de sesión nueva sale al detectarlo (desync.js --sin-wifi; contraprueba 3066: nunca)",
+     "prueba": "cifrado que vuelve atrás, solo Bluetooth"
     }
    ],
    "debiles": [
@@ -859,6 +863,10 @@
     {
      "fallo": "Dueño 13-11 (3066): «revisa el tamaño de la foto que se puede subir y pon un tope a 5 MB». La foto de perfil no tenía tope: se leía entera, pesara lo que pesara. Ahora Perfil no acepta una de más de 5 MB (aviso «La foto pesa más de 5 MB»). avatardup.js paso 10 (contraprueba 3065: aceptada)",
      "prueba": "foto de perfil COPIADA"
+    },
+    {
+     "fallo": "Diagnóstico S24 13-11 (3067): «[WIFI] Comprobación de nx10b6f4ac ilegible: Mensaje ya recibido» cada ~12 s durante 8 min tras reiniciarse el Nubia: el Wi-Fi no se volvía a comprobar nunca. desync.js (contraprueba 3066: Wi-Fi y textos nunca; 3067: Wi-Fi en ~11 s, textos en <1 s)",
+     "prueba": "cifrado que vuelve atrás, de punta a punta con Wi-Fi"
     }
    ],
    "debiles": [
@@ -1276,6 +1284,10 @@
     {
      "fallo": "Auditoría (cerrado en 2998): no se comprobaba la firma Schnorr ni el id (sha256) del evento Nostr del buzón; un relé podía tocar fecha/etiquetas",
      "prueba": "auditoría (defensa en profundidad)"
+    },
+    {
+     "fallo": "Diagnóstico S24 13-11 (3067): el Nubia se reinició en plena videollamada y su estado de cifrado quedó ATRÁS de lo que ya había mandado; reutilizaba números de mensaje (mismas claves, otro contenido) y el S24 lo tiraba como repetición para siempre, mientras él no podía leer lo nuevo del S24: Wi-Fi sin comprobar 8 min y nada llegaba en ningún sentido. Ahora cada sesión recuerda una huella de lo recibido y el largo de las cadenas viejas: el desfase se detecta, la sesión se retira y se abre una nueva (ratchet_desync.js; contraprueba 3066: 0 de 10)",
+     "prueba": "cifrado que vuelve ATRÁS"
     }
    ],
    "debiles": [

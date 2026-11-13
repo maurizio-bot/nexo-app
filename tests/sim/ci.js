@@ -262,12 +262,15 @@ const SCENARIOS = [
   { name: 'camino de envío (regla del dueño: Wi-Fi, internet, Bluetooth; sin brincar)', args: ['route.js'], tag: 'ROUTE', checks: { resultado: (v) => v === 'OK' } },
   { name: 'BT muerto → internet al toque (regla del dueño 04-11): cuando el nativo suelta un mensaje por un enlace Bluetooth atascado/muerto (onWriteDropped → _markBleDead), ese BT se marca muerto un rato y el resolvedor de camino SALTA a internet (no se queda pegado al BT muerto, «internet antes que un Bluetooth muerto»); al recibir algo por ese BT (prueba de vida) se re-habilita; sin internet no deja al contacto sin camino', args: ['deadbt.js'], tag: 'DEADBT', logs: 'last_logs_deadbt.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'Double Ratchet y poscuántico', args: ['ratchet.js'], tag: null },
+  { name: 'cifrado que vuelve ATRÁS (3067, diagnóstico S24 13-11 12:32–12:40: el Nubia se reinició en plena videollamada y 8 min de «Mensaje ya recibido»): un teléfono reinicia con una copia anterior de su estado de cifrado y reutiliza números de mensaje → el otro lo detecta (mismo número con otro contenido, o un número imposible en una cadena vieja), retira la sesión y abre una nueva; lo de los dos vuelve a llegar. Repeticiones verdaderas (72 de 8 cadenas, tras reiniciar) siguen siendo solo DUP, sin sesión nueva', args: ['ratchet_desync.js'], tag: null },
+  { name: 'cifrado que vuelve atrás, de punta a punta con Wi-Fi (3067): tras reiniciar B con una copia vieja del cifrado, el Wi-Fi vuelve a comprobarse y los textos llegan en los dos sentidos (antes: «Comprobación ilegible: Mensaje ya recibido» sin fin y nada llegaba)', args: ['desync.js'], tag: 'DESYNC', logs: 'last_logs_desync.txt', checks: { resultado: (v) => v === 'OK', wifi_tras_reinicio_s: (v) => typeof v === 'number' && v < 60, texto_B_a_A_s: (v) => typeof v === 'number' && v < 60, texto_A_a_B_s: (v) => typeof v === 'number' && v < 60, desfase_detectado: isTrue } },
+  { name: 'cifrado que vuelve atrás, solo Bluetooth (3067): sin Wi-Fi entre los dos destraba el aviso oculto de sesión nueva (main.js nexo:e2e:resync); textos en los dos sentidos', args: ['desync.js', '--sin-wifi'], tag: 'DESYNCBT', logs: 'last_logs_desyncbt.txt', checks: { resultado: (v) => v === 'OK', texto_B_a_A_s: (v) => typeof v === 'number' && v < 60, texto_A_a_B_s: (v) => typeof v === 'number' && v < 60, desfase_detectado: isTrue } },
 ];
 
 function runOne(sc) {
   return new Promise((resolve) => {
     const t0 = Date.now();
-    const args = sc.args[0] === 'ratchet.js' ? sc.args : [sc.args[0], buildDir, ...sc.args.slice(1)];
+    const args = (sc.args[0] === 'ratchet.js' || sc.args[0] === 'ratchet_desync.js') ? sc.args : [sc.args[0], buildDir, ...sc.args.slice(1)];
     const child = spawn(process.execPath, args, { cwd: __dirname });
     let out = '';
     child.stdout.on('data', (d) => (out += d));

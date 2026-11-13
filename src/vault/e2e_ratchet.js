@@ -43,6 +43,42 @@ var MAX_KEYS_PER_PEER = 2;    // claves de identidad distintas a la vez por cont
 var SPK_ROTATE_MS = 30 * 86400000;
 var SEEN_EK_MAX = 1000;
 var RECENT_MAX = 200;
+// 3067 (diagnóstico del S24 13-11: el Nubia se reinició en plena videollamada y 8 min de «Mensaje ya recibido»): si el
+// estado guardado de un contacto vuelve ATRÁS (reinicio con una copia anterior), su teléfono reutiliza números de mensaje que
+// aquí ya se recibieron: mismas claves, OTRO contenido. Antes se tiraba como repetición (DUP) para siempre y él tampoco podía
+// leer lo nuevo de aquí. Ahora cada sesión recuerda los últimos números recibidos con una huella del contenido (8 letras de
+// la etiqueta de autenticación): mismo número con otra huella = desfase seguro (no una repetición) → la sesión queda
+// retirada para enviar y lo siguiente que se le mande abre una sesión NUEVA (X3DH con su paquete de claves); al leerla, su
+// teléfono pasa a ella y todo vuelve a llegar. Si la huella ya se olvidó: de cada cadena anterior se guarda cuántos mensajes
+// dijo él haber mandado en ella (pn al cambiar de cadena); un número MAYOR en esa cadena vieja es imposible para un teléfono
+// al día (lo tardío o repetido siempre es menor) → también desfase. Sin falsos avisos: una repetición nunca da ninguna de las dos.
+var RX_MAX = 48;                    // números recibidos que recuerda cada sesión (≈1 KB)
+var OLD_N_MAX = 8;                  // largo de las últimas cadenas anteriores
+var REKEY_EVERY_MS = 10 * 60000;    // como mucho una sesión nueva por desfase cada 10 min por contacto
+var _rekeyAt = {};                  // nx → hora de la última sesión nueva por desfase
+function _rxKey(h) { return String(h.dh || '').substring(1, 7) + '.' + h.n + '='; }
+function _rxTag(ct) { return _b64(ct.subarray(Math.max(0, ct.length - 6))); }
+function _rxNote(s, h, ct) {
+  var k = _rxKey(h);
+  s.rx = (s.rx || []).filter(function(x) { return x.indexOf(k) !== 0; });
+  s.rx.push(k + _rxTag(ct));
+  if (s.rx.length > RX_MAX) s.rx = s.rx.slice(-RX_MAX);
+}
+// 'diff': ese número ya llegó con OTRO contenido; 'same': repetición del mismo; null: no se sabe
+function _rxCheck(s, h, ct) {
+  var k = _rxKey(h), e = (s.rx || []).filter(function(x) { return x.indexOf(k) === 0; })[0];
+  if (!e) return null;
+  return e.substring(k.length) === _rxTag(ct) ? 'same' : 'diff';
+}
+function _oldLen(s, dh) { var t = _dhTag(dh), e = (s.oldN || []).filter(function(x) { return x[0] === t; })[0]; return e ? e[1] : -1; }
+function _dupOrDesync(s, h, ct) {
+  var c = _rxCheck(s, h, ct), e, len = h.dh !== s.dhr ? _oldLen(s, h.dh) : -1;
+  if (c === 'diff') e = _err('Número de mensaje ya usado con otro contenido: su estado de cifrado volvió atrás', 'DESYNC');
+  else if (c === null && len >= 0 && h.n >= len) e = _err('Mensaje nº ' + h.n + ' en una cadena suya que terminó en ' + len + ': su estado de cifrado volvió atrás', 'DESYNC');
+  else e = _err('Mensaje ya recibido', 'DUP');
+  e.sid = s.id;
+  return e;
+}
 var RECENT_MAX_CHARS = 65536;
 
 var _store = null;
@@ -302,7 +338,7 @@ export function ratchetIsE2(s) { return typeof s === 'string' && s.indexOf(PREFI
 export function ratchetCanEncrypt(nexoId, peerIk) {
   if (!_store) return false;
   var nx = _nid(nexoId);
-  var list = (_store.sessions[nx] || []).filter(function(s) { return s.rik === peerIk && s.cks && !s.stale; });
+  var list = (_store.sessions[nx] || []).filter(function(s) { return s.rik === peerIk && s.cks && !s.stale && !s.retired; });
   var p = _store.peers[nx];
   return list.length > 0 || !!(p && p.ik === peerIk);
 }
@@ -410,12 +446,15 @@ async function _tryDecrypt(s0, p, outerAd) {
     delete s.skipped[key];
     s.skippedOrder = s.skippedOrder.filter(function(k) { return k !== key; });
   } else {
-    if (h.dh === s.dhr && h.n < s.nr) throw _err('Mensaje ya recibido', 'DUP');
+    if (h.dh === s.dhr && h.n < s.nr) throw _dupOrDesync(s, h, p.ct);
     // Cadena anterior sin clave guardada: ya se recibió (o caducó); no es un paso nuevo del ratchet
-    if (_isOldDhr(s, h.dh)) throw _err('Mensaje ya recibido', 'DUP');
+    if (_isOldDhr(s, h.dh)) throw _dupOrDesync(s, h, p.ct);
     if (h.dh !== s.dhr) {
       await _skip(s, h.pn);
-      if (s.dhr) { s.oldDhr = (s.oldDhr || []).concat([_dhTag(s.dhr)]).slice(-OLD_DHR_MAX); }
+      if (s.dhr) {
+        s.oldDhr = (s.oldDhr || []).concat([_dhTag(s.dhr)]).slice(-OLD_DHR_MAX);
+        s.oldN = (s.oldN || []).concat([[_dhTag(s.dhr), h.pn]]).slice(-OLD_N_MAX); // 3067: cuántos mandó en esa cadena
+      }
       s.pn = s.ns; s.ns = 0; s.nr = 0; s.dhr = h.dh;
       var r1 = await _kdfRK(s.rk, await _dh(s.dhs.priv, s.dhr));
       s.rk = r1.rk; s.ckr = r1.ck;
@@ -429,6 +468,7 @@ async function _tryDecrypt(s0, p, outerAd) {
     mk = c.mk;
   }
   var pt = await _open(mk, p.ct, aad);
+  _rxNote(s, h, p.ct);
   s.pending = null; // el otro ya tiene la sesión: no hace falta repetir la cabecera inicial
   s.stale = false;
   s.used = Date.now();
@@ -441,7 +481,7 @@ export function ratchetEncrypt(nexoId, peerIk, bytes, outerAd) {
     await ratchetInit();
     var nx = _nid(nexoId);
     if (!_store) throw _err('Protocolo 2 no disponible', 'NO_KEY');
-    var s = _sessionsFor(nx).filter(function(x) { return x.rik === peerIk && x.cks && !x.stale; })[0];
+    var s = _sessionsFor(nx).filter(function(x) { return x.rik === peerIk && x.cks && !x.stale && !x.retired; })[0];
     if (!s) {
       var peer = _store.peers[nx];
       if (!peer || peer.ik !== peerIk) throw _err('Sin paquete de claves del contacto', 'NO_KEY');
@@ -500,12 +540,40 @@ export function ratchetDecrypt(nexoId, packed, outerAd) {
         }
         return out;
       } catch (e) {
-        if (!lastErr || (e && e.code === 'DUP')) lastErr = e;
+        if (!lastErr || (e && e.code === 'DESYNC') || (e && e.code === 'DUP' && lastErr.code !== 'DESYNC')) lastErr = e;
       }
+    }
+    if (lastErr && lastErr.code === 'DESYNC') {
+      lastErr.rekeyed = _retire(nx, lastErr.sid, lastErr.message);
+      if (lastErr.rekeyed) await _save();
+      throw lastErr;
     }
     if (lastErr && lastErr.code === 'DUP') throw lastErr;
     throw _err('No se pudo descifrar (protocolo 2)', 'BAD');
   });
+}
+
+// 3067: desfase con un contacto → sus sesiones (de esa clave) dejan de usarse para ENVIAR (siguen descifrando lo que aún
+// llegue por ellas); lo próximo que se le mande abre una sesión nueva. Solo con su paquete de claves (sin él no se podría
+// enviarle nada) y como mucho cada 10 min. Devuelve true si se retiraron.
+function _retire(nx, sid, why) {
+  var list = _sessionsFor(nx), s = list.filter(function(x) { return x.id === sid; })[0];
+  if (!s) return false;
+  var peer = _store.peers[nx], now = Date.now();
+  if (!peer || peer.ik !== s.rik) { console.warn('[E2E] Desfase de cifrado con ' + nx + ' (' + why + '), pero sin su paquete de claves: no se puede abrir sesión nueva aún'); return false; }
+  // Ya retirada: algo suyo aún va por la sesión vieja (no ha leído la nueva) → recordárselo con otro aviso, como mucho 1/min
+  if (s.retired) { if (now - (_nudgeAt[nx] || 0) > 60000) { _nudgeAt[nx] = now; _resyncEvent(nx); } return false; }
+  if (now - (_rekeyAt[nx] || 0) < REKEY_EVERY_MS) return false;
+  list.forEach(function(x) { if (x.rik === s.rik && !x.retired) x.retired = now; });
+  _rekeyAt[nx] = _nudgeAt[nx] = now;
+  console.warn('[E2E] Desfase de cifrado con ' + nx + ': ' + why + '. Se abre una sesión nueva con él (lo suyo vuelve a llegar cuando la lea)');
+  _resyncEvent(nx);
+  return true;
+}
+var _nudgeAt = {};
+// La app le manda enseguida un aviso cifrado pequeño (ya por la sesión nueva) para que no espere a que se le escriba algo
+function _resyncEvent(nx) {
+  try { if (typeof window.dispatchEvent === 'function') window.dispatchEvent(new CustomEvent('nexo:e2e:resync', { detail: { nexoId: nx } })); } catch (e) {}
 }
 
 // El contacto recuperó su cuenta con Fénix (misma identidad, sesiones perdidas con su teléfono): se borran las
