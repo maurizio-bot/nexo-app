@@ -39,6 +39,7 @@ var AD_INTERVAL_MS = 30000;
 var ROUTE_TTL_MS = 95000;
 var QUEUE_FILE = 'nexo_relay_queue.json';
 var QUEUE_MAX_AGE_MS = 86400000;
+var HOP_FAIL_BASE_MS = 15000, HOP_FAIL_MAX_MS = 120000; // 3058: espera tras no poder reenviar por un camino (15 s, 30 s… 2 min)
 var QUEUE_MAX = 200;
 var QUEUE_MAX_BYTES = 30000000; // lo guardado de paso para otros (fotos, textos largos) no pasa de ~30 MB
 var SEEN_TTL_MS = 3600000;
@@ -434,6 +435,21 @@ export class BleRelay {
     }
     // Nunca de vuelta al teléfono del que llegó (evita bucles con rutas viejas)
     if (item.prev && _mac(hop.deviceId) === item.prev) return;
+    var btHop = !/^(lan|net)/i.test(String(hop.deviceId));
+    // 3058 (diagnóstico del dueño 13-11 07:28): en llamada, lo que este teléfono guarda para otro (custodia) no sale por Bluetooth
+    // hasta colgar (la radio es de la llamada; al colgar ble_messages._afterCallRadio vacía la cola)
+    if (btHop && self.ble && typeof self.ble._callBusy === 'function' && self.ble._callBusy()) {
+      if (!self._callHoldSaid) { self._callHoldSaid = true; console.log('[JUMP] En llamada: lo guardado para otros espera a colgar para salir por Bluetooth'); }
+      return;
+    }
+    self._callHoldSaid = false;
+    // 3058: el vivo le reenviaba a la tablet (app dormida, lejos) lo guardado cada 15–30 s, 5 intentos cada vez. Tras un fallo por
+    // ese mismo camino (destino + siguiente teléfono) se espera 15 s, 30, 60… hasta 2 min; un camino nuevo se prueba al momento
+    var fk = item.dst + '|' + _mac(hop.deviceId), fw = self._hopFail && self._hopFail.get(fk);
+    if (fw && Date.now() < fw.until) {
+      if (!fw.timer) fw.timer = setTimeout(function() { fw.timer = null; self._flushQueue(); }, fw.until - Date.now() + 50);
+      return;
+    }
     self._touch(hop.deviceId);
     self._sending.add(sk);
     item.tries++;
@@ -449,12 +465,21 @@ export class BleRelay {
     }
     p.then(function() {
       self._sending.delete(sk);
+      if (self._hopFail) { var ok = self._hopFail.get(fk); if (ok) { clearTimeout(ok.timer); self._hopFail.delete(fk); } }
       console.log('[JUMP] Reenviado ' + item.kind + ' ' + item.id + ' hacia ' + item.dst + (hop.direct ? ' (directo)' : ' por ' + hop.via));
       self._remove(item);
     }).catch(function(e) {
       self._sending.delete(sk);
       if (e && e.message === 'datos perdidos') { self._remove(item); return; }
-      console.warn('[JUMP] No se pudo reenviar ' + item.id + ': ' + (e && e.message) + ' (queda en espera)');
+      var f = null;
+      if (item.kind !== 'pkt' || item.reliable) {
+        self._hopFail = self._hopFail || new Map();
+        f = self._hopFail.get(fk) || { n: 0, until: 0, timer: null };
+        f.n++; f.until = Date.now() + Math.min(HOP_FAIL_MAX_MS, HOP_FAIL_BASE_MS * Math.pow(2, f.n - 1));
+        self._hopFail.set(fk, f);
+        if (self._hopFail.size > 200) self._hopFail.delete(self._hopFail.keys().next().value);
+      }
+      console.warn('[JUMP] No se pudo reenviar ' + item.id + ': ' + (e && e.message) + ' (queda en espera' + (f ? '; por este camino otra vez en ' + Math.round((f.until - Date.now()) / 1000) + ' s' : '') + ')');
     });
   }
 

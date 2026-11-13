@@ -782,6 +782,22 @@ export const BLE_MESSAGE_METHODS = {
       if (q && q.length) { queue = queue.concat(q); self._pendingMessageQueue.delete(k); }
     });
     if (queue.length === 0) return;
+    // 3058: en llamada, lo que esperaba en memoria para este contacto (escrito cuando no estaba) no sale por Bluetooth hasta colgar;
+    // las señales de llamada (cs…/gcs…) sí salen (p. ej. la oferta que esperaba a que apareciera el otro)
+    if (self._callBusy() && !/^(lan|net)/i.test(String(deviceId))) {
+      var isSig = function(it) { return /^g?cs/.test(String(it.messageId || '')); };
+      var later = queue.filter(function(it) { return !isSig(it); });
+      if (later.length) {
+        var hk = nxQ ? 'nx:' + _normId(nxQ) : _normMac(deviceId);
+        self._pendingMessageQueue.set(hk, later.concat(self._pendingMessageQueue.get(hk) || []));
+        self._callHeld = self._callHeld || new Set();
+        var hnx = nxQ ? _normId(nxQ) : null;
+        if (hnx && !self._callHeld.has(hnx)) console.log('[BLEInterface] En llamada: ' + later.length + ' mensaje(s) en espera para ' + hnx + ' por Bluetooth esperan a colgar (la radio es de la llamada)');
+        if (hnx) self._callHeld.add(hnx);
+        queue = queue.filter(isSig);
+        if (!queue.length) return;
+      }
+    }
     queue.forEach(function(item) {
       // v6.1.6: con confirmación y reintentos. Antes salía una sola vez sin ack: si el otro teléfono
       // acababa de abrir la app y su JS aún no escuchaba, se perdía mostrando ✓.
@@ -1247,6 +1263,44 @@ export const BLE_MESSAGE_METHODS = {
     });
   },
 
+  // 3058 (diagnóstico del dueño 13-11 07:28, S24 + vivo en la 3039): al apagar el Wi-Fi en una videollamada, la voz siguió por
+  // Bluetooth, pero al colgar y volver a llamar la oferta no llegó en 10 s, el «colgar» del vivo tampoco, y el Motorola vio al
+  // S24 «zombi». A la vez los dos le mandaban por Bluetooth, una y otra vez, lo pendiente a la tablet (lejos y con la app dormida:
+  // directo, y el vivo como puente Jump). Regla: con una LLAMADA en curso (sonando o hablando, de 2 o de grupo) la radio
+  // Bluetooth es de la llamada: lo de fondo que iría por Bluetooth (reenvío de pendientes, reanudaciones, custodias Jump, Fénix)
+  // espera a colgar y entonces sale. Lo nuevo que escribe el usuario y las señales de la llamada salen como siempre; lo que
+  // va por Wi-Fi o internet no espera.
+  _callBusy() { return !!((this.calls && this.calls.call) || (this.gcall && this.gcall.gc)); },
+  // ¿Lo de fondo para este contacto iría por Bluetooth (directo o por un puente Bluetooth) estando en llamada? → espera a colgar
+  _callRadioHold(nexoId, why) {
+    var self = this, nx = _normId(nexoId);
+    if (!nx || !self._callBusy()) return false;
+    var dev = self._resolveDeviceIdForNexoId(nx);
+    if (dev && /^(lan|net)/i.test(String(dev))) return false;
+    if (!dev) { var rh = self.relay && self.relay.relayHop(nx); if (!rh || /^(lan|net)/i.test(String(rh.deviceId))) return false; }
+    self._callHeld = self._callHeld || new Set();
+    if (!self._callHeld.has(nx)) console.log('[BLEInterface] En llamada: ' + (why || 'lo pendiente') + ' para ' + nx + ' por Bluetooth espera a colgar (la radio es de la llamada)');
+    self._callHeld.add(nx);
+    return true;
+  },
+  // Al colgar (calls.js / group_call.js): sale lo que esperó (después de la señal de colgar)
+  _afterCallRadio() {
+    var self = this;
+    clearTimeout(self._afterCallT);
+    self._afterCallT = setTimeout(function() {
+      if (self._callBusy()) return;
+      var held = self._callHeld ? Array.from(self._callHeld) : [];
+      self._callHeld = new Set();
+      if (held.length) console.log('[BLEInterface] Llamada terminada: sale lo que esperaba por Bluetooth (' + held.join(', ') + ')');
+      held.forEach(function(nx) {
+        try { var dev = self._resolveDeviceIdForNexoId(nx); if (dev) self._processPendingMessages(dev); } catch (e) {}
+        try { self._resendPendingMessages(nx); } catch (e) {}
+      });
+      try { if (self.ackSystem && typeof self.ackSystem.resumeOutgoingTransfers === 'function') self.ackSystem.resumeOutgoingTransfers(); } catch (e) {}
+      try { if (self.relay && typeof self.relay._flushQueue === 'function') self.relay._flushQueue(); } catch (e) {}
+    }, 1500);
+  },
+
   // 3033: los mensajes guardados como ocultos (acciones) se reenvían sin aviso en el otro teléfono (ver _resendPendingMessages)
   _markHiddenQuiet(list) {
     var self = this;
@@ -1279,6 +1333,11 @@ export const BLE_MESSAGE_METHODS = {
     }
     var cur = self._resendRun.get(nxKey);
     if (cur && Date.now() - cur.at < 30000) { cur.again = true; return; }
+    if (self._callRadioHold(nxKey)) return; // 3058: en llamada, lo pendiente por Bluetooth espera a colgar
+    // 3058 (la tablet del diagnóstico 07:28: conectada, con la app dormida y lejos): si la vuelta anterior no confirmó NADA, esta
+    // empieza por UNA prueba (lo más corto, sin reanudar lo grande): si se confirma sigue todo al momento; si no, no se manda el
+    // resto (antes: los 6 pendientes, uno de 55 trozos, ~1,5 min de radio por vuelta, y otra vez a los 15–120 s)
+    var probe = !!(bo && bo.n >= 1);
     var run = { at: Date.now(), again: false, ok: 0, noAck: 0, other: 0 };
     self._resendRun.set(nxKey, run);
     var finish = function() {
@@ -1434,11 +1493,31 @@ export const BLE_MESSAGE_METHODS = {
           pending.forEach(function(m) { self._noteRelayedOut(m.msgId || m.messageId || m.id, relayDst); });
         }
       } else {
-        console.log('[BLEInterface] Reenviando', pending.length, 'pending para', nexoId);
-        if (self.ackSystem && typeof self.ackSystem.resumeOutgoingTransfers === 'function') {
+        console.log('[BLEInterface] Reenviando', pending.length, 'pending para', nexoId + (probe && pending.length > 1 ? ' (primero una prueba: la vuelta anterior no confirmó nada)' : ''));
+        if (!probe && self.ackSystem && typeof self.ackSystem.resumeOutgoingTransfers === 'function') {
           try { self.ackSystem.resumeOutgoingTransfers(deviceId); } catch (e) {}
         }
       }
+      // 3058: la prueba es lo más corto (un texto antes que un adjunto)
+      if (probe && pending.length > 1) {
+        var sizeOf = function(m) { return (m.attachmentType || m.attachmentRef ? 1e9 : 0) + String(m.content || m.text || '').length; };
+        pending = pending.slice().sort(function(a, b) { return sizeOf(a) - sizeOf(b); });
+      }
+      // 3058: tras el primero de una vuelta de prueba: confirmado → sigue todo (y lo grande se reanuda); sin confirmar → se para aquí
+      var probeDone = function() {
+        if (!probe) return false;
+        probe = false;
+        if (run.ok > 0) {
+          if (direct && self.ackSystem && typeof self.ackSystem.resumeOutgoingTransfers === 'function') { try { self.ackSystem.resumeOutgoingTransfers(deviceId); } catch (e) {} }
+          return false;
+        }
+        if (run.noAck > 0 && idx < pending.length) {
+          console.log('[BLEInterface] ' + nxKey + ': no confirma ni la prueba: los otros ' + (pending.length - idx) + ' pendiente(s) esperan a la próxima vuelta (no se martilla el enlace)');
+          finish();
+          return true;
+        }
+        return false;
+      };
       var idx = 0;
       function sendNext() {
         run.at = Date.now();
@@ -1599,6 +1678,7 @@ export const BLE_MESSAGE_METHODS = {
           .then(function() {
             console.log('[BLEInterface] Pending OK:', mid);
             run.ok++;
+            probeDone();
             _vaultUpdateMessageStatus(nexoId, mid, 'sent');
             try {
               if (window.NEXO_updateMessageStatus) {
@@ -1610,6 +1690,7 @@ export const BLE_MESSAGE_METHODS = {
           .catch(function(e) {
             console.warn('[BLEInterface] Pending fallo:', mid, e.message);
             if (/ACK timeout/i.test((e && e.message) || '')) run.noAck++; else run.other++;
+            if (probeDone()) return;
             // No marcar failed de forma agresiva si es transitorio
             var isTransient = /timeout|abort|network|disconnected|not ready|busy|interrupted|temporary/i.test(e.message || '') || _failStatus(e) === 'pending';
             if (!isTransient) {

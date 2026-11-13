@@ -807,6 +807,10 @@
     {
      "fallo": "Medición de caminos del dueño (13-11, 3051): un archivo de 2 MB por el puente con Wi-Fi Direct no llegaba: mientras se subía al buzón de archivos el reenvío de pendientes lo mandaba otra vez trozo a trozo por el puente y chocaba con su tope; y en la bajada, una fila larga por Bluetooth descartaba trozos por esperar su turno. Ahora lo que se está subiendo cuenta como «en vuelo», el reenvío va al buzón de archivos y la espera por cola llena cuenta desde que le toca.",
      "prueba": "MEDICIÓN de caminos"
+    },
+    {
+     "fallo": "Diagnóstico del dueño (13-11 07:28, S24 + vivo con la 3039), 3058: al apagar el Wi-Fi en una videollamada la voz siguió por Bluetooth pero, al colgar y volver a llamar, la oferta no llegó en 10 s (ni el «colgar» del vivo) y el Motorola vio al S24 «zombi»; a la vez el S24 y el vivo (como puente) le mandaban una y otra vez a la tablet (lejos, app dormida) todo lo pendiente por Bluetooth. Ahora: con una llamada en curso lo de fondo por Bluetooth (pendientes, reanudaciones, custodias Jump, Fénix) espera a colgar; a un contacto que no confirmó nada se le manda primero una prueba (no todo); el puente Jump espera 15 s…2 min tras fallar por un camino; y la cámara de una videollamada que sigue por Bluetooth va en imágenes cada 4 s. radiollamada.js (contraprueba 3057), netvideo.js. El atasco de la radio compartida del teléfono no se reproduce en el simulador (cola por enlace): queda la prueba física.",
+     "prueba": "radio de la LLAMADA y contacto DORMIDO"
     }
    ],
    "debiles": [

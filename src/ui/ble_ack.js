@@ -1942,6 +1942,11 @@ export class BleAckSystem {
           // «protegía» el enlace del vigilante): tras rendirse espera 15 s, 30 s… hasta 10 min, salvo que su propio enlace esté listo.
           var rf = self._resumeFail.get(tx.transferId);
           if (rf && !hints.has(cid) && nowS - rf.at < Math.min(RESUME_FAIL_MAX_MS, RESUME_FAIL_BASE_MS * Math.pow(2, rf.n - 1))) return;
+          // 3058 (la tablet del diagnóstico 07:28): un contacto que no confirmó NADA en la última vuelta de pendientes (en espera de
+          // reenvío) no recibe reanudaciones en cada evento de enlace (cada ~2,5 s un texto de 37 trozos): primero la prueba de la
+          // vuelta de pendientes; en cuanto confirma algo se quita la espera y esto sigue (ble_messages, vuelta de prueba)
+          var zb = self.ble && self.ble._resendBackoff && self.ble._resendBackoff.get(cid);
+          if (zb && zb.n >= 1 && !hints.has(cid)) return;
           self._resumeSeen.add(tx.transferId);
           self._resumeQueue.push({ cid: cid, tx: tx, contactDeviceId: contact.deviceId });
         });
@@ -1985,6 +1990,7 @@ export class BleAckSystem {
     var ble = this.ble;
     if (!ble) return false;
     if (ble._foreground === true) return true;
+    if (typeof ble._callBusy === 'function' && ble._callBusy()) return true; // 3058: en llamada, la radio es de la llamada
     return !!(typeof ble._bleCongested === 'function' && ble._bleCongested(deviceId));
   }
   // Reanuda UNA transferencia: resuelve el mejor camino de AHORA y reconstruye el contenido perezosamente (no todas de
@@ -2017,6 +2023,8 @@ export class BleAckSystem {
     // redundancia de Fénix cubre el respaldo. Tapa el hueco del diagnóstico: la REANUDACIÓN saltaba el freno que el respaldo ya
     // respeta al elegir (2951/2952). Solo afecta a Fénix: lo del usuario (texto/foto/archivo) se reanuda siempre.
     if ((tx.type === 'fenix' || (tx.meta && tx.meta.type === 'fenix')) && self._fenixDeferNow(devId)) return null;
+    // 3058: en llamada, una reanudación por Bluetooth espera a colgar (la radio es de la llamada; ble_messages._callRadioHold)
+    if (!_isNetDevice(devId) && !_isLanDevice(devId) && self.ble && typeof self.ble._callRadioHold === 'function' && self.ble._callRadioHold(cid, 'la reanudación de ' + tx.transferId)) return null;
     // Ronda 2766: a quién va (es su chat): si la conexión resulta ser de otro, no sale por ella
     var txMeta = Object.assign({}, tx.meta || {}, (tx.meta && tx.meta.dst) ? {} : { to: cid });
     var resumePromise = isFileTx

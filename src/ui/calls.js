@@ -131,9 +131,20 @@ export class Calls {
   // Por Wi-Fi y por Tor directo va el vídeo.
   _slidesLinkOk(link, nexoId) { return !!link && !this._videoLinkOk(link, nexoId); }
   _slidesLink(c) { return this._slidesLinkOk(this._link(c.nx), c.nx); }
-  // Dueño 13-11 («sí, la cámara también en baja calidad por relés»): la cámara en imágenes pequeñas SOLO por relés (por
-  // Bluetooth no: le quitaría aire a la voz)
-  _camSlidesLinkOk(link, nexoId) { return !!link && String(link).indexOf('net:') === 0 && !this._videoLinkOk(link, nexoId); }
+  // Dueño 13-11 («sí, la cámara también en baja calidad por relés»): la cámara en imágenes pequeñas por relés. 3058 (diagnóstico
+  // 07:28: videollamada por Wi-Fi, se apagó el Wi-Fi y la imagen del otro se quedó congelada): en una VIDEOLLAMADA que sigue por
+  // Bluetooth, también por Bluetooth, más espaciadas (_camSlideMs: la voz va primero). Empezar una videollamada solo con Bluetooth
+  // sigue sin poder (canVideo).
+  _camSlidesLinkOk(link, nexoId) {
+    if (!link || this._videoLinkOk(link, nexoId)) return false;
+    var l = String(link);
+    if (l.indexOf('net:') === 0) return true;
+    if (/^(lan|p2p):/.test(l)) return false;
+    var c = this.call;
+    return !!(c && c.video && c.nx === _nid(nexoId));
+  }
+  // Cada cuánto una imagen de la cámara: por relés 2 s; por Bluetooth 4 s
+  _camSlideMs(link) { return link && String(link).indexOf('net:') === 0 ? 2000 : 4000; }
   state() { return this.call ? Object.assign({}, this.call, { key: undefined, cryptoKey: undefined, media: undefined }) : null; }
 
   _set(o) {
@@ -327,6 +338,7 @@ export class Calls {
         onSlidePacket: function(bytes) { if (self.call === c) self._sendPacket(bytes, 's'); },
         wantSlides: function() { return self.call === c && self._slidesLink(c); },
         wantCamSlides: function() { return self.call === c && self._camSlidesLinkOk(self._link(c.nx), c.nx); },
+        camSlideMs: function() { return self._camSlideMs(self._link(c.nx)); },
         // Ronda 2769: la imagen del otro se paró: que mande una completa ('k'); estado de mi cámara y micrófono ('c')
         onNeedKey: function() { if (self.call === c) self._sendPacket(new Uint8Array([1]), 'k'); },
         onState: function(s) {
@@ -571,6 +583,7 @@ export class Calls {
     if (c.startedAt) try { self._diag(c, 'Al colgar (' + secs + ' s)'); } catch (e) {}
     if (c.media && c.media.stop) { try { c.media.stop(); } catch (e) {} }
     self.call = null;
+    if (self.ble && typeof self.ble._afterCallRadio === 'function') { try { self.ble._afterCallRadio(); } catch (e) {} } // 3058: sale lo que esperó a colgar
     console.log('[CALL] Fin (' + reason + ', ' + secs + ' s; voz enviada ' + self.stats.sent + ', recibida ' + self.stats.got + ')');
     _emit('nexo:call', { id: c.id, nx: c.nx, dir: c.dir, state: 'ended', reason: reason, seconds: secs, video: !!c.video });
     self._log(c.nx, reason, secs, c.dir === 'out', c.video);

@@ -150,6 +150,7 @@ export function createCallMedia(opts) {
   // imágenes pequeñas (CAM_SLIDE_LONG, cada CAM_SLIDE_MS) por el mismo canal de diapositivas; opts.wantCamSlides() lo dice.
   var CAM_SLIDE_LONG = 240, CAM_SLIDE_Q = 0.4, CAM_SLIDE_MS = 2000;
   var wantCamSlides = typeof opts.wantCamSlides === 'function' ? opts.wantCamSlides : function() { return false; };
+  var camSlideMs = typeof opts.camSlideMs === 'function' ? opts.camSlideMs : function() { return CAM_SLIDE_MS; }; // 3058: por Bluetooth, 4 s
   var camSlideAt = 0;
   var slideAt = 0, slideNew = false, slideId = 0, slideCanvas = null, slideSending = false, slidesIn = new Map(), lastSlideAt = 0;
   var vstats = window.NEXO_callVideoStats = { sent: 0, keys: 0, decoded: 0, bytes: 0, frames: 0, keyReq: 0, encErr: 0, decErr: 0 };
@@ -407,7 +408,7 @@ export function createCallMedia(opts) {
     if (stopped || (!camOn && !screenOn)) return;
     if (!venc || venc.state === 'closed') { if (Date.now() - vencMadeAt > 1000) makeEncoder(); return; } // ronda 2769: falló: uno nuevo (como mucho uno por segundo)
     if (screenOn) { if (wantSlides()) slideTick(); else encodeScreen(); return; }
-    if (wantCamSlides()) { camSlideTick(); return; } // por relés: la cámara en imágenes pequeñas
+    if (wantCamSlides()) { camSlideTick(); return; } // por relés o Bluetooth: la cámara en imágenes pequeñas
     if (venc.state !== 'configured' || !localV || localV.readyState < 2 || venc.encodeQueueSize > 3) return;
     // Ronda 2772: la cámara cambió de forma o de tamaño (al abrir, girar el teléfono, la otra cámara): codificador nuevo
     var sz = sendSize();
@@ -458,10 +459,10 @@ export function createCallMedia(opts) {
     if (!bytes || bytes.length < 100 || bytes.length > SLIDE_MAX) return;
     sendSlide(bytes);
   }
-  // Por relés: una imagen pequeña de la cámara cada CAM_SLIDE_MS
+  // Por relés (y, 3058, por Bluetooth en una videollamada): una imagen pequeña de la cámara cada camSlideMs()
   function camSlideTick() {
     var now = Date.now();
-    if (!camOn || slideSending || !localV || localV.readyState < 2 || typeof opts.onSlidePacket !== 'function' || now - camSlideAt < CAM_SLIDE_MS) return;
+    if (!camOn || slideSending || !localV || localV.readyState < 2 || typeof opts.onSlidePacket !== 'function' || now - camSlideAt < (Number(camSlideMs()) || CAM_SLIDE_MS)) return;
     camSlideAt = now;
     var bytes = null;
     try {

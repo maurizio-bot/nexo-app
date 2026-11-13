@@ -421,6 +421,7 @@ export class GroupCall {
     if (g.hub && g.hub.stop) try { g.hub.stop(); } catch (e) {}
     self._markDead(g.gid);
     self.gc = null;
+    if (self.ble && typeof self.ble._afterCallRadio === 'function') { try { self.ble._afterCallRadio(); } catch (e) {} } // 3058: sale lo que esperó a colgar
     _emit('nexo:gcall', null);
     // #130 (dueño 31-10): al cortarse, la pantalla da «Volver a llamar» y vuelve al chat del grupo (como la 1-a-1). Se
     // mandan el chat del grupo (si se llamó desde uno) y los miembros, para rehacer la llamada.

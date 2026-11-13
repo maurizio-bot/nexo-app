@@ -52,10 +52,19 @@ const { importSrc } = require('./srcmod');
   r.camara_no_wifi = cs('lan:nxb0000002') === false && typeof calls._camSlidesLinkOk === 'function';
   viaVal = 'tor';
   r.camara_no_tor = cs('net:nxb0000002') === false && typeof calls._camSlidesLinkOk === 'function';
+  // 3058 (diagnóstico 07:28): en una VIDEOLLAMADA que sigue por Bluetooth, la cámara también en imágenes (cada 4 s; por relés 2 s);
+  // en una llamada de voz, no
+  calls.call = { nx: 'nxb0000002', video: true };
+  r.camara_bt_en_videollamada = cs('aa:bb:cc:dd:ee:ff') === true && calls._camSlideMs('aa:bb:cc:dd:ee:ff') === 4000 && calls._camSlideMs('net:nxb0000002') === 2000;
+  r.camara_no_wifi_en_videollamada = cs('lan:nxb0000002') === false;
+  calls.call = { nx: 'nxb0000002', video: false };
+  r.camara_no_bt_en_voz = cs('aa:bb:cc:dd:ee:ff') === false;
+  calls.call = null;
 
   const ok = r.lan_ok && r.net_tor_ok && r.net_reles_no && r.bt_no && r.sin_enlace_no &&
     r.diapos_reles && r.diapos_bt && r.diapos_no_tor && r.diapos_no_wifi && r.diapos_no_sin_enlace &&
-    r.camara_reles && r.camara_no_bt && r.camara_no_wifi && r.camara_no_tor;
+    r.camara_reles && r.camara_no_bt && r.camara_no_wifi && r.camara_no_tor &&
+    r.camara_bt_en_videollamada && r.camara_no_wifi_en_videollamada && r.camara_no_bt_en_voz;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NETVIDEO ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);
