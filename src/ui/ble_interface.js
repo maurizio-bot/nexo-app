@@ -693,7 +693,12 @@ export class BLEInterface {
         if (contact) peerUUID = contact.nexoId || contact.deviceUUID;
         // Ronda 2760: al diagnóstico (con la dirección: puede haber varios enlaces con el mismo contacto)
         console.log('[BLEInterface] Enlace ' + (peerUUID || '?') + ' (' + _normMac(deviceId).slice(-4) + ') desconectado' + (data.reason ? ': ' + data.reason : ''));
-        if (typeof self._noteLinkFlap === 'function') self._noteLinkFlap(peerUUID || self._macToNexoId.get(_normMac(deviceId)), 'desconexion'); // 3020
+        // 3068 (diagnóstico automático S24 13-11 15:04, recién actualizado: «enlace_abre_cierra» con el Motorola, su app cerrada): solo
+        // cuenta como «abre y cierra» un enlace que llegó a estar LISTO (peerReady). Los intentos «sin servicio» (no_service y su eco
+        // sin motivo ~1 s después) nunca abrieron nada: los frena la pausa por no_service y ya salen en el diagnóstico; contarlos
+        // aquí daba la alarma cada vez que el otro tiene la app cerrada (y tras reiniciar la app, que vuelve a probar 4 veces).
+        var flapNx = peerUUID || self._macToNexoId.get(_normMac(deviceId));
+        if (typeof self._noteLinkFlap === 'function' && flapNx && self._notifiedPeers.has(_normMac(deviceId) + ':' + _normId(flapNx))) self._noteLinkFlap(flapNx, 'desconexion'); // 3020
         self.connectedDevices.delete(deviceId);
         self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
         self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.OFFLINE, since: Date.now() });

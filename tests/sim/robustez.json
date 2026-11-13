@@ -298,6 +298,10 @@
     {
      "fallo": "Diagnóstico automático S24 3041 13-11 10:23 («enlace_abre_cierra», vivo con la app cerrada), 3064: la pausa máxima por no_service (10 min) duraba lo mismo que la caducidad de la racha: al acabar la pausa la racha volvía a cero y había 4 intentos (8 cortes) en ráfaga cada 10 min, con el aviso «abre y cierra». La caducidad cuenta desde el fin de la pausa. noservice.js paso 2b (contraprueba 3063: racha 1, sin pausa)",
      "prueba": "no_service"
+    },
+    {
+     "fallo": "Diagnóstico automático S24 13-11 15:04 (recién actualizado a la 3045): «enlace_abre_cierra» con el Motorola de app cerrada. Los intentos «sin servicio» (no_service y su eco) contaban como desconexiones de un enlace que abre y cierra, aunque nunca abrieron nada y ya los frena la pausa; tras reiniciar la app (4 intentos) saltaba la alarma. Ahora solo cuenta un enlace que llegó a estar listo (noservice.js 5; contraprueba 3067: aviso falso)",
+     "prueba": "GATT roto / no_service"
     }
    ],
    "debiles": [

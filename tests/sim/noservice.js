@@ -11,6 +11,9 @@
 //      cero: 4 intentos (8 cortes) en ráfaga cada 10 min y el aviso «abre y cierra». Ahora la racha cuenta desde el FIN de la pausa:
 //      el primer no_service tras una pausa larga vuelve a pausar en el acto.
 //   3) al conectar bien (peerReady) se olvida racha y pausa.
+//   5) (3068, diagnóstico automático S24 13-11 15:04, recién actualizado a la 3045, «enlace_abre_cierra» con el Motorola de app
+//      cerrada): todos esos intentos «sin servicio» NO dan el aviso «abre y cierra» (nunca abrieron nada); un enlace que sí llega
+//      a estar listo y se cae 6 veces en 10 min SÍ lo da.
 //   4) con el contacto en pausa y siendo el único «perdido», el bucle de re-búsqueda NO escanea (deja de martillar);
 //      sin pausa, sí escanea.
 // Uso: node noservice.js <dir_build>
@@ -62,7 +65,12 @@ async function openChatWith(p, name) {
   await openChatWith(A, 'B'); sendText(A, 'hola'); await sleep(1500);
   r.conecta = await wait(async () => (await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'hola'), 30);
 
-  // Parar el vigilante y el bucle para que la prueba sea determinista
+  // Avisos de diagnóstico automático que levanta A (3068)
+  const syms = [];
+  A.win.addEventListener('nexo:diag:symptom', (e) => syms.push(e.detail && e.detail.kind));
+  const readyKey = Array.from(biA._notifiedPeers).find((k) => k.endsWith(':' + idB));
+
+    // Parar el vigilante y el bucle para que la prueba sea determinista
   if (typeof biA._stopConnectionSupervisor === 'function') biA._stopConnectionSupervisor();
   if (biA._reconnectScanTimer) { clearTimeout(biA._reconnectScanTimer); biA._reconnectScanTimer = null; }
   if (biA.isScanning && typeof biA.toggleScan === 'function') { await biA.toggleScan(); }
@@ -152,10 +160,17 @@ async function openChatWith(p, name) {
   r.auto_sin_pausa_si_conecta = connCalls > c0;
   biA.nativePlugin.connectToDevice = realConn;
 
+  // ---- 5) 3068: tanto «sin servicio» (secciones 1, 2, 2b: más de 12 cortes) no da el aviso «abre y cierra»… ----
+  r.cortes_sin_servicio_aviso = syms.filter((k) => k === 'enlace_abre_cierra').length;
+  //      …y 6 caídas de un enlace que SÍ llegó a estar listo, sí
+  r.clave_listo = !!readyKey;
+  for (let k = 0; k < 6 && readyKey; k++) { biA._notifiedPeers.add(readyKey); nA.emit('onDeviceDisconnected', { deviceId: bMac }); await sleep(40); }
+  r.enlace_listo_que_cae_aviso = syms.filter((k) => k === 'enlace_abre_cierra').length;
+
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.conecta && r.hay_enlace && r.papel_enlace_conservado && r.racha_4 && r.pausa_fijada && r.aviso_pausa &&
     r.patron_real_pausa && r.racha_caduca && r.tras_pausa_larga_racha === 10 && r.tras_pausa_larga_vuelve_a_pausar && r.peerready_limpia && r.pausa_no_escanea && r.bucle_sigue_vivo && r.activo_si_escanea &&
-    r.auto_en_pausa_no_conecta && r.manual_en_pausa_si_conecta && r.auto_sin_pausa_si_conecta && !r.errores.length;
+    r.auto_en_pausa_no_conecta && r.manual_en_pausa_si_conecta && r.auto_sin_pausa_si_conecta && r.cortes_sin_servicio_aviso === 0 && r.clave_listo && r.enlace_listo_que_cae_aviso === 1 && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NOSERVICE ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_noservice.txt'), logs.join('\n'));
