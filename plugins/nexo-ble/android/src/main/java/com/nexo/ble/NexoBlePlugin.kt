@@ -215,6 +215,8 @@ class NexoBlePlugin : Plugin() {
     private val writeQueueTimeouts = ConcurrentHashMap<String, Runnable>()
     private val writeRetryCount = ConcurrentHashMap<String, Int>()
     private val writeDropStreak = ConcurrentHashMap<String, Int>() // #129: mensajes SEGUIDOS descartados por enlace (atasco real)
+    private val clientSetupDone = ConcurrentHashMap<String, Boolean>() // 3059: enlace cliente con MTU y notificaciones ya hechos
+    private val clientSetupWaitSince = ConcurrentHashMap<String, Long>() // 3059: desde cuándo esperan las escrituras a eso
     private val nxidToMacMap = ConcurrentHashMap<String, String>()
     private var quickScanLatch: java.util.concurrent.CountDownLatch? = null
     private var quickScanResultMac: String? = null
@@ -1794,6 +1796,7 @@ class NexoBlePlugin : Plugin() {
                 }
                 val txChar = service.getCharacteristic(NexoBleSpec.TX_CHARACTERISTIC_UUID)
                 val rxChar = service.getCharacteristic(NexoBleSpec.RX_CHARACTERISTIC_UUID)
+                clientSetupDone[macNorm] = false // 3059: hasta que terminen MTU y notificaciones, las escrituras por aquí esperan
                 clientTxCharacteristics[macNorm] = txChar
                 clientRxCharacteristics[macNorm] = rxChar
                 // Ronda 2757 (plan punto 8): Android hace UNA operación GATT a la vez. Antes se pedía el MTU y en el
@@ -1811,6 +1814,7 @@ class NexoBlePlugin : Plugin() {
             private fun startNotifications(gatt: BluetoothGatt, address: String) {
                 if (setupDone) return
                 setupDone = true
+                clientSetupDone[macNorm] = true // 3059: ya se puede escribir por este enlace (lo que esperaba sale ahora)
                 val txChar = clientTxCharacteristics[macNorm]
                 txChar?.let { characteristic ->
                     try {
@@ -1832,6 +1836,7 @@ class NexoBlePlugin : Plugin() {
                 }
                 notifyListeners("onServicesReady", JSObject().put("deviceId", address).put("servicesReady", true))
                 processPendingMessages(macNorm)
+                mainHandler.post { processWriteQueue(macNorm) }
             }
 
             override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
@@ -2013,6 +2018,7 @@ class NexoBlePlugin : Plugin() {
         writeQueueProcessing.remove(macNorm)
         writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         negotiatedMtu.remove(macNorm)
+        clientSetupDone.remove(macNorm); clientSetupWaitSince.remove(macNorm)
         notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", rawDeviceId))
         call.resolve(JSObject().put("disconnected", true))
     }
@@ -2043,6 +2049,7 @@ class NexoBlePlugin : Plugin() {
         writeQueueProcessing.remove(macNorm)
         writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         negotiatedMtu.remove(macNorm)
+        clientSetupDone.remove(macNorm); clientSetupWaitSince.remove(macNorm)
         mainHandler.postDelayed({ startAutoReconnect(macNorm) }, 500)
         call.resolve(JSObject().put("reconnecting", true))
     }
@@ -2177,6 +2184,24 @@ class NexoBlePlugin : Plugin() {
         if (writeQueueProcessing[macNorm] == true) return
         val queue = writeQueues[macNorm] ?: return
         val item = synchronized(queue) { if (queue.isEmpty()) null else queue[0] } ?: return
+        // 3059: por el enlace CLIENTE no se escribe mientras se negocia el MTU / se activan las notificaciones (WriteRetry.waitForClientSetup)
+        val srvReady = serverConnectedDevices[item.macNorm] != null && serverNotificationEnabled.getOrDefault(item.macNorm, false)
+        val viaClient = !srvReady && clientRxCharacteristics[item.macNorm] != null
+        if (viaClient && clientSetupDone[item.macNorm] != true) {
+            val now = System.currentTimeMillis()
+            val since = clientSetupWaitSince.getOrPut(macNorm) { now }
+            if (WriteRetry.waitForClientSetup(true, false, now - since)) {
+                writeQueueProcessing[macNorm] = true
+                mainHandler.postDelayed({
+                    writeQueueProcessing.remove(macNorm)
+                    processWriteQueue(macNorm)
+                }, WriteRetry.SETUP_WAIT_STEP_MS)
+                return
+            }
+            clientSetupDone[item.macNorm] = true // pasado el plazo se da por hecho (una vez): no se vuelve a esperar ni a avisar
+            remLog("WARN", "SEND", "Enlace $macNorm sin terminar MTU/notificaciones en ${WriteRetry.SETUP_WAIT_MAX_MS / 1000} s: se escribe igual")
+        }
+        clientSetupWaitSince.remove(macNorm)
         val result = sendSingleChunk(item.macNorm, item.rawDeviceId, item.chunk, item.bytes)
         if (!result.sent) {
             // Android rechaza la escritura si aún está ocupado con la anterior (muy frecuente con la radio

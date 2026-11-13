@@ -33,6 +33,19 @@ object WriteRetry {
     // N=2 (no 1) para no soltar la cola por una congestión transitoria de un solo mensaje (lo normal con MTU 23).
     const val FLUSH_AFTER_DROPS = 2
 
+    // 3059 (diagnóstico automático del Motorola 13-11 07:39, «par:enlace_abre_cierra» con el vivo): al conectar como CLIENTE se
+    // pide el MTU y 19 ms después ya salía una escritura. Android hace UNA operación GATT a la vez: esa escritura se quedó detrás
+    // del MTU, el enlace dio «ocupado» (201) 50 veces en 5 s, el MTU acabó en error 133 y la conexión se cayó; el mensaje de
+    // 2,3 KB que esperaba se descartó. Ahora, por un enlace CLIENTE, las escrituras esperan a que termine la puesta en marcha
+    // (MTU + notificaciones; el plugin la da por hecha a los 2 s aunque el MTU no conteste), mirando cada SETUP_WAIT_STEP_MS y sin
+    // gastar reintentos; como mucho SETUP_WAIT_MAX_MS (luego salen igual). Por el lado SERVIDOR (notify) no hay que esperar.
+    const val SETUP_WAIT_STEP_MS = 100L
+    const val SETUP_WAIT_MAX_MS = 4000L
+
+    /** ¿Esperar antes de escribir? viaClient: sale por el enlace cliente; setupDone: MTU y notificaciones ya hechos. */
+    fun waitForClientSetup(viaClient: Boolean, setupDone: Boolean, waitedMs: Long): Boolean =
+        viaClient && !setupDone && waitedMs < SETUP_WAIT_MAX_MS
+
     data class Decision(val drop: Boolean, val delayMs: Long)
 
     /** streak = cuántos mensajes SEGUIDOS se descartaron a este enlace (se reinicia en cuanto una escritura sale bien). */

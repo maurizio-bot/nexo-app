@@ -2,6 +2,7 @@
 // pueda ver quién lo puso», «en Contactos con scroll abajo que actualice los estados»; decidió: hasta 10 y comentarios que ve
 // SOLO el dueño). A publica 3 → B tiene los 3 y los recorre (1/3, 2/3…); me gusta y comentario por estado, A ve quién y qué
 // (B no ve comentarios); quitar uno; tope de 10; deslizar hacia abajo recupera los estados; tras reiniciar sigue todo.
+// 3059: lo VISTO y los me gusta de B siguen tras reiniciar B (antes volvían a salir como nuevos).
 // Uso: node estados3.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -114,11 +115,29 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#main-estados-s
   A.win.close(); nA.destroyActivity(); await sleep(1500); nA.load(); A = await boot('A', nA); await sleep(1500);
   r.tras_reiniciar = A.win.NEXO_myStatuses().length === 10 && A.win.NEXO_whoLiked(s2).length === 1 && A.win.NEXO_myComments(s3).length === 1;
 
+  // 9. (3059, dueño 13-11: «cuando ves un estado se quita el marcador azul, pero al cerrar y volver a abrir la app vuelven a aparecer
+  //    como nuevos») B ve los 10 de A (aro gris) y se reinicia: siguen vistos (aro gris) y su me gusta del 2.º sigue dado
+  const ring = (p) => { const c = chips(p).find((x) => /\(10\)/.test(x.textContent)); const d = c && c.querySelector('div'); return d ? String(d.style.borderColor || '') : null; };
+  const gris = (v) => /255,\s*255,\s*255,\s*0\.25/.test(v || '');
+  const chip10 = chips(B).find((c) => /\(10\)/.test(c.textContent));
+  if (chip10) { click(B.win, chip10); await sleep(300); }
+  for (let i = 0; i < 12 && pos() !== '10/10'; i++) { click(B.win, B.win.document.getElementById('estado-next')); await sleep(150); }
+  r.B_vio_los_10 = pos() === '10/10';
+  ov(B); await sleep(1200);
+  r.aro_gris_antes = gris(ring(B));
+  B.win.close(); nB.destroyActivity(); await sleep(1500); nB.load(); B = await boot('B', nB); await sleep(1500);
+  await wait(() => (B.win.NEXO_statusesOf(idA) || []).length === 10, 30);
+  await sleep(1500);
+  r.aro_tras_reiniciar = ring(B);
+  r.vistos_tras_reiniciar = gris(r.aro_tras_reiniciar);
+  r.like_tras_reiniciar = typeof B.win.NEXO_iLiked === 'function' && B.win.NEXO_iLiked(idA, s2) === true;
+
   r.errores = logs.filter((l) => /TypeError|undefined is not|No se pudo descifrar/.test(l)).slice(0, 4);
   const ok = r.emparejados && r.tres_sids && r.B_tiene_tres && r.B_no_mensaje_visible && r.tira_cuenta_3 && r.visor_empieza_1 && r.visor_siguiente_2 &&
     r.like_llega_con_quien && r.like_solo_en_el_2 && r.comentario_llega_a_A && r.comentario_no_en_otro && r.B_no_ve_comentarios &&
     r.mis_estados_abre && r.mis_estados_quien_like && r.mis_estados_comentario && r.quitar_uno_en_B && r.diez_activos && r.once_rechazado && r.B_tiene_diez &&
-    r.B_sin_estados && r.indicador_soltar && r.indicador_actualizando && r.deslizar_recupera && r.tras_reiniciar && r.errores.length === 0;
+    r.B_sin_estados && r.indicador_soltar && r.indicador_actualizando && r.deslizar_recupera && r.tras_reiniciar &&
+    r.B_vio_los_10 && r.aro_gris_antes && r.vistos_tras_reiniciar && r.like_tras_reiniciar && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('ESTADOS3 ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_estados3.txt'), logs.join('\n'));

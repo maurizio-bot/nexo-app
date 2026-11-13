@@ -54,4 +54,15 @@ class WriteRetryTest {
         assertTrue(WriteRetry.shouldFlushStuckQueue(WriteRetry.FLUSH_AFTER_DROPS + 3), "por encima del tope también")
         assertEquals(2, WriteRetry.FLUSH_AFTER_DROPS, "el tope es 2 (no 1): no reaccionar a una congestión de un solo mensaje")
     }
+
+    // 3059 (diagnóstico del Motorola 13-11 07:39): por el enlace CLIENTE no se escribe mientras se negocia el MTU (Android hace una
+    // operación GATT a la vez: una escritura 19 ms después del MTU dejó el enlace «ocupado» 5 s y se cayó)
+    @Test fun esperaAlMtuSoloPorElEnlaceCliente() {
+        assertTrue(WriteRetry.waitForClientSetup(viaClient = true, setupDone = false, waitedMs = 0), "cliente sin MTU/notificaciones: espera")
+        assertTrue(WriteRetry.waitForClientSetup(true, false, WriteRetry.SETUP_WAIT_MAX_MS - 1), "aún dentro del plazo: espera")
+        assertFalse(WriteRetry.waitForClientSetup(true, true, 0), "ya hecho: escribe")
+        assertFalse(WriteRetry.waitForClientSetup(false, false, 0), "por el lado servidor (notify) no espera")
+        assertFalse(WriteRetry.waitForClientSetup(true, false, WriteRetry.SETUP_WAIT_MAX_MS), "pasado el plazo escribe igual (no se atasca)")
+        assertTrue(WriteRetry.SETUP_WAIT_MAX_MS > 2000, "el plazo cubre los 2 s que el plugin espera al MTU antes de seguir")
+    }
 }

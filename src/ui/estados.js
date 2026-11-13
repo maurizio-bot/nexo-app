@@ -18,6 +18,9 @@ import { t } from './i18n.js';
 import { stageBlob, fetchBlob, validatePointer } from '../net/blob_mailbox.js';
 
 var MY_FILE = 'nexo_my_status.json', SENT_FILE = 'nexo_status_sent.json';
+// 3059 (dueño 13-11: «cuando ves un estado se quita el marcador azul, pero al cerrar y volver a abrir la app vuelven a aparecer
+// como nuevos»): lo visto (y a qué di me gusta) vivía solo en memoria. Ahora se guarda en el teléfono; lo de más de 2 días se olvida.
+var SEEN_FILE = 'nexo_status_seen.json', SEEN_KEEP_MS = 48 * 3600 * 1000;
 var TTL_MS = 24 * 60 * 60 * 1000;      // caduca a las 24 h
 var MAX_LEN = 280;                      // texto de estado como mucho
 var IMG_DIM = 1600;                     // foto de estado: lado mayor como mucho (3032: hasta 5 MB, antes 720 px / 150 KB)
@@ -108,6 +111,41 @@ function _fromFile(o) {
   return raw.map(function(x) { var it = _item(x); if (it && x.lg) it.lg = 1; if (it && x.likes && typeof x.likes === 'object') it.likes = x.likes; if (it && Array.isArray(x.comments)) it.comments = x.comments.slice(-MAX_COMMENTS); return it; }).filter(_active);
 }
 function _saveMine() { _save(MY_FILE, { v: 3, items: _mine.items }); }
+// 3059: lo visto y los me gusta, en disco ({ seen: { nx: { sid: ts } }, liked: { 'nx|sid': ts } })
+var _seenAt = {}, _likedAt = {}, _seenT = null, _seenLoaded = false;
+function _markSeen(nx, sid) {
+  var s = _seen.get(nx); if (!s) { s = new Set(); _seen.set(nx, s); }
+  if (s.has(sid) && _seenAt[nx] && _seenAt[nx][sid]) return;
+  s.add(sid); (_seenAt[nx] = _seenAt[nx] || {})[sid] = Date.now();
+  _saveSeenSoon();
+}
+function _saveSeenSoon() {
+  if (!_seenLoaded) return; // aún no se leyó lo guardado: se guarda al terminar de leer (se juntan las dos cosas)
+  clearTimeout(_seenT);
+  _seenT = setTimeout(function() {
+    var old = Date.now() - SEEN_KEEP_MS;
+    Object.keys(_seenAt).forEach(function(nx) {
+      Object.keys(_seenAt[nx]).forEach(function(sid) { if (_seenAt[nx][sid] < old) delete _seenAt[nx][sid]; });
+      if (!Object.keys(_seenAt[nx]).length) delete _seenAt[nx];
+    });
+    Object.keys(_likedAt).forEach(function(k) { if (_likedAt[k] < old) delete _likedAt[k]; });
+    _save(SEEN_FILE, { v: 1, seen: _seenAt, liked: _likedAt });
+  }, 400);
+}
+function _loadSeen() {
+  return _load(SEEN_FILE).then(function(o) {
+    var sAt = (o && o.seen && typeof o.seen === 'object') ? o.seen : {}, lAt = (o && o.liked && typeof o.liked === 'object') ? o.liked : {};
+    Object.keys(sAt).forEach(function(nx) {
+      if (!NX_RE.test(nx) || !sAt[nx] || typeof sAt[nx] !== 'object') return;
+      var set = _seen.get(nx); if (!set) { set = new Set(); _seen.set(nx, set); }
+      _seenAt[nx] = _seenAt[nx] || {};
+      Object.keys(sAt[nx]).forEach(function(sid) { var ts = Number(sAt[nx][sid]) || 0; set.add(sid); if (!_seenAt[nx][sid]) _seenAt[nx][sid] = ts; });
+    });
+    Object.keys(lAt).forEach(function(k) { _iLiked.add(k); if (!_likedAt[k]) _likedAt[k] = Number(lAt[k]) || 0; });
+    _seenLoaded = true;
+    if (Object.keys(_seenAt).length || Object.keys(_likedAt).length) _saveSeenSoon();
+  });
+}
 function _saveContact(nx) { _save('nexo_status_' + nx + '.json', { v: 3, items: _cache.get(nx) || [] }); }
 function _markSte(nx, has) {
   try {
@@ -186,7 +224,7 @@ function _unmarkSent(nx, sid) {
 export function estadosInit() {
   if (_started) return;
   _started = true;
-  Promise.all([_load(MY_FILE), _load(SENT_FILE)]).then(function(r) {
+  Promise.all([_load(MY_FILE), _load(SENT_FILE), _loadSeen()]).then(function(r) {
     _mine.items = _fromFile(r[0]).map(function(it) { it.likes = it.likes || {}; it.comments = it.comments || []; return it; });
     if (r[1] && typeof r[1] === 'object') { Object.keys(r[1]).forEach(function(k) { _sent[k] = (r[1][k] && typeof r[1][k] === 'object') ? r[1][k] : {}; }); }
     _loaded = true;
@@ -436,7 +474,7 @@ export function likeStatus(nx, sid) {
   var it = _sidOrLatest(statusesOf(nx), sid);
   if (!NX_RE.test(nx) || !it || _iLiked.has(nx + '|' + it.sid)) return false;
   var ok = !!_sendAct(nx, { type: 'nexo_act', act: 'sl', sid: it.sid, ts: Date.now() });
-  if (ok) _iLiked.add(nx + '|' + it.sid);
+  if (ok) { _iLiked.add(nx + '|' + it.sid); _likedAt[nx + '|' + it.sid] = Date.now(); _saveSeenSoon(); }
   return ok;
 }
 export function iLiked(nx, sid) { return _iLiked.has(_normId(nx) + '|' + sid); }
@@ -733,7 +771,7 @@ function _view(c) {
   o.appendChild(box);
   var paint = function() {
     var it = items[idx];
-    seen.add(it.sid);
+    _markSeen(c.nx, it.sid); // 3059: queda guardado (no vuelve a salir como nuevo al reabrir la app)
     box.innerHTML = '';
     // 2999 (dueño 10-11): tocar el NOMBRE del dueño del estado abre el chat con él
     var head = document.createElement('div'); head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
@@ -895,6 +933,7 @@ var PULL_PX = 70;
 if (typeof window !== 'undefined') {
   window.NEXO_composeStatus = _compose; // 3035: pruebas (tests/sim/pedidos13.js)
   window.NEXO_setMyStatus = setMyStatus; window.NEXO_statusOf = statusOf; window.NEXO_applyStatus = applyStatus;
+  window.NEXO_iLiked = iLiked; // 3059: pruebas (tests/sim/estados3.js)
   window.NEXO_likeStatus = likeStatus; window.NEXO_likeReceived = likeReceived; window.NEXO_myLikes = myLikes; // pruebas (tests/sim/estados.js)
   window.NEXO_addMyStatus = addMyStatus; window.NEXO_statusesOf = statusesOf; window.NEXO_myStatuses = myStatuses; window.NEXO_removeMyStatus = removeMyStatus;
   window.NEXO_staleStatusCopy = staleStatusCopy; // 3033: la cola de reenvío (ble_helpers._isResendable, ble_ack) lo consulta
