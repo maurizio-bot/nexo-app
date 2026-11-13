@@ -24,13 +24,21 @@ class NetBg(
     private val log: (String) -> Unit = {},
 ) {
     class Contact(val nx: String, val name: String, val kraw: ByteArray)
-    private class Relay(val url: String) { var ws: WsClient? = null; var retryAt = 0L; var fails = 0; var authed = false }
+    private class Relay(val url: String) { var ws: WsClient? = null; var retryAt = 0L; var fails = 0; var authed = false; var openedAt = 0L }
 
     companion object {
         const val FOR_APP_MAX = 500                    // 3033: eventos guardados para la app como mucho
         const val FOR_APP_MAX_CHARS = 4_000_000L       // y como mucho ~4 MB (lo más viejo sale primero)
         const val KIND = 1059
         private val SUB = "nexobg"
+        // 3069 (diagnóstico automático del Motorola 13-11 14:42, app en segundo plano): relay.damus.io se cerraba cada 25–100 s
+        // durante casi una hora y se volvía a abrir a los ~10 s. Abrir la conexión ponía los fallos a cero, aunque el relé la
+        // cortara enseguida: la espera nunca crecía (batería). Como en la app (net_link P5): solo una conexión que DURÓ al menos
+        // RELAY_STABLE_MS cuenta como buena; una que se cae antes suma un fallo y la espera crece (10 s, 20 s, 40 s… hasta 5 min).
+        const val RELAY_STABLE_MS = 60_000L
+        // Fallos tras cerrarse una conexión que duró `livedMs` (0 = no llegó a abrir)
+        fun failsAfterClose(fails: Int, livedMs: Long): Int = (if (livedMs >= RELAY_STABLE_MS) 0 else fails) + 1
+        fun retryDelayMs(fails: Int): Long = minOf(300000L, 5000L * (1L shl minOf(fails, 6)))
         fun day(offsetDays: Int, now: Long = System.currentTimeMillis()): String {
             val f = SimpleDateFormat("yyyy-MM-dd", Locale.US); f.timeZone = TimeZone.getTimeZone("UTC")
             return f.format(Date(now + offsetDays * 86400000L))
@@ -183,18 +191,22 @@ class NetBg(
     private fun connect(r: Relay) {
         try {
             r.authed = false
+            r.openedAt = 0L // si se cierra sin llegar a abrir, no cuenta el tiempo de la conexión anterior
             val ws = WsClient(r.url, { onRelayText(r, it) }, { why ->
-                r.ws = null; r.fails++
-                r.retryAt = System.currentTimeMillis() + minOf(300000L, 5000L * (1L shl minOf(r.fails, 6)))
-                if (running) log("Relé ${r.url}: $why")
+                val now = System.currentTimeMillis()
+                r.ws = null
+                r.fails = failsAfterClose(r.fails, if (r.openedAt > 0) now - r.openedAt else 0L)
+                r.retryAt = now + retryDelayMs(r.fails)
+                if (running) log("Relé ${r.url}: $why" + (if (r.fails > 1) " (intento nº ${r.fails}: el siguiente en ${retryDelayMs(r.fails) / 1000} s)" else ""))
             })
             r.ws = ws
             ws.connect()
-            r.fails = 0
+            r.openedAt = System.currentTimeMillis() // 3069: abrir no basta para dar el relé por bueno (ver RELAY_STABLE_MS)
             subscribe(r)
         } catch (e: Exception) {
-            r.ws = null; r.fails++
-            r.retryAt = System.currentTimeMillis() + minOf(300000L, 5000L * (1L shl minOf(r.fails, 6)))
+            r.ws = null
+            r.fails = failsAfterClose(r.fails, 0L)
+            r.retryAt = System.currentTimeMillis() + retryDelayMs(r.fails)
         }
     }
 
