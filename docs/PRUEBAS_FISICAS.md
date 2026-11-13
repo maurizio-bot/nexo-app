@@ -83,6 +83,10 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     recórtala un poco o ponle un marco, y ponla en Perfil: la rechaza («es la foto de perfil de …»).
 34. **Tope de 5 MB (3044).** En Perfil, elige una foto de más de 5 MB (por ejemplo, una de la cámara a máxima resolución): sale «La
     foto pesa más de 5 MB: elige una más pequeña». Una normal se acepta.
+35. **Cifrado que se recupera solo (3045).** Con el S24 en la 3045 (basta con él) y el Nubia junto, en el mismo Wi-Fi: haz una
+    videollamada y, a la mitad, cierra la app del Nubia a la fuerza (Ajustes → Apps → NEXO → Forzar detención) y vuelve a abrirla.
+    En menos de 1 min el Wi-Fi entre los dos vuelve a «comprobado» y un texto del Nubia llega al S24 (antes: «Mensaje ya recibido»
+    cada 12 s y nada llegaba). Si vuelve a pasar, en el diagnóstico del S24 saldrá «[E2E] Desfase de cifrado con …».
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 

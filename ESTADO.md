@@ -21,6 +21,17 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **13-11 (bloque 3067, será la APK 3045 si pasa la batería b3067; la APK 3044 = 3065–3066 subida 18:5x UTC, batería 226/226):**
+  diagnóstico manual del S24 (3043) 12:35 y 12:40 local: el Nubia (3041) se reinició en plena videollamada (su vídeo y voz se paran a
+  las 12:32:26, «lost» a 82 s) y desde entonces cada ~12 s «[WIFI] Comprobación de nx10b6f4ac ilegible: Mensaje ya recibido» y nada
+  llegaba en ningún sentido. Causa reproducida: el estado de cifrado del que se reinicia vuelve a una copia ANTERIOR → reutiliza números
+  de mensaje (mismas claves, otro contenido; además es reutilizar claves = riesgo de seguridad) → el otro lo tira como repetición para
+  siempre y él no puede leer lo nuevo del otro. 3067: cada sesión recuerda 48 números recibidos con huella del contenido + el largo de
+  las últimas 8 cadenas del otro; desfase (DESYNC) → sesiones con él retiradas para enviar → lo próximo abre sesión nueva (X3DH) y un
+  aviso oculto (`nexo_act` 'e2e', main.js) la lleva enseguida. `ratchet_desync.js` 23/23 (contraprueba 3066: 0 de 10), `desync.js`
+  Wi-Fi 11 s y textos <1 s (3066: nunca), `--sin-wifi` igual, y mezclado S24 3067 + Nubia 3066 también se recupera (basta con
+  actualizar el que detecta). SIN causa raíz de por qué el estado del Nubia volvió atrás (los guardados se esperan antes de mandar
+  y son atómicos): pedido el diagnóstico del Nubia (SESIÓN ANTERIOR). Pruebas físicas §0.35.
 - **13-11 (bloque 3065–3066, será la APK 3044 si pasa la batería b3066; la APK 3043 se publicó 18:14 UTC):** dueño: «cualquier cosa
   subida por un user se debe ligar a su ID así ya no hay error» + «tope a 5 MB». Todo lo que manda un usuario ya va firmado con su ID
   (sin camino para atribuirlo a otro); lo de Roberto fue una COPIA de la imagen subida como suya. 3065: huella v2 (`img_print.js`):

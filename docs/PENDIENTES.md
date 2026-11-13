@@ -3,6 +3,14 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 13-11 (cifrado que vuelve atrás, 3067) — en prueba
+- Diagnóstico S24 12:35/12:40: tras reiniciarse el Nubia en una videollamada, 8 min de «Comprobación … ilegible: Mensaje ya recibido»
+  y nada llegaba. 3067 detecta el desfase y abre sesión nueva sola (pruebas físicas §0.35). **Falta la causa raíz**: por qué el estado de
+  cifrado del Nubia volvió atrás (los guardados se esperan antes de mandar y el reemplazo es atómico). Pedido el diagnóstico del Nubia
+  (SESIÓN ANTERIOR); hipótesis a revisar: el WebView rehecho tras morir (`onRenderProcessGone` → `recreate()`) deja vivo el plugin
+  anterior con su cola de guardados (un guardado viejo puede pisar uno nuevo), o algo restaura `nexo_ratchet.json` desde una copia.
+  Importa también por seguridad: reutilizar números de mensaje es reutilizar claves.
+
 ## 🆕 13-11 (foto de perfil «mezclada» y estados, 3060–3062) — en prueba
 - **Hecho:** Perfil espera a tener cargadas las fotos de los contactos (al abrir la app aceptaba la del dueño: Motorola 08:33:20);
   gana el aviso de foto más reciente; copias de fotos que fueron del dueño escondidas; estados/me gusta que llegan al abrir la app
