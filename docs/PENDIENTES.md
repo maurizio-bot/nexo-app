@@ -3,7 +3,15 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
-## 🆕 13-11 (prueba del dueño: puente a internet con «solo Bluetooth», S24 3047 17:42–17:44) — DECISIÓN PENDIENTE
+## 🆕 13-11 (prueba del dueño: puente a internet con «solo Bluetooth», S24 3047 17:42–17:44) — DUEÑO ELIGIÓ A (+ búsqueda)
+- **Decisión del dueño (13-11):** «la opción A está bien: cualquier NEXO, esté dormido o no, tiene que servir de puente. Lo que falta
+  es que el vivo fue la única opción: si el vivo u otro no sirve, se tiene que buscar otro, y así sucesivamente hasta encontrar un
+  puente válido». Plan: **3072 (JS)** búsqueda en cadena — candidatos = TODO NEXO cercano (contactos con enlace, contactos cerca SIN
+  enlace —hoy no se preguntan: `_seekStrangers` excluye contactos y `_neighbors` solo ve enlaces abiertos—, desconocidos y anónimos),
+  por señal; quien no contesta en pocos segundos o dice «no» → el siguiente, sin esperar el latido; los de Bluetooth roto
+  (no_service) al final; cada paso en el diagnóstico («[GW] Pregunto a … / no contesta → pruebo con …»). **3073+ (nativo)**: el que
+  presta con la app dormida contesta y hace de puente desde el nativo (NetBg ya tiene los relés abiertos en segundo plano).
+- Hecho real del 17:42: en esos 2 min solo se veían 2 NEXO (vivo y Motorola); el Motorola se intentó 7 veces (Bluetooth sin NEXO).
 - Nada se perdió: los 9 textos al S23 escritos sin internet esperaron y salieron al volver el Wi-Fi (17:44:53, ✓✓ 17:44:55).
 - El puente no se armó porque ningún vecino podía prestar internet: el vivo (nx09acdb61, enlace BT listo) recibió 3 preguntas
   (17:42:46, 17:43:23, 17:44:23: los envíos de 48 bytes) y no contestó: su app estaba dormida (tampoco contestó la comprobación
