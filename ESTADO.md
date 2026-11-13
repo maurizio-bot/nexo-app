@@ -27,7 +27,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   «par:enlace_abre_cierra» pedido por el vivo, 07:39): al conectar como cliente se pidió el MTU y 19 ms después salió una escritura →
   201 ×50 en 5 s → MTU 133 → caída (status 8) y el mensaje de 2,3 KB descartado; nativo: por el enlace cliente las escrituras esperan a
   MTU + notificaciones (máx. 4 s; `WriteRetry.waitForClientSetup`, prueba JVM). No comprobado que eso tumbara el enlace (status 8 =
-  se perdió la señal): quita el atasco de 5 s al conectar.
+  se perdió la señal): quita el atasco de 5 s al conectar. Más diagnósticos automáticos (Motorola/S24/vivo 07:40–08:31): (a) en el
+  Motorola se perdió el ÚLTIMO trozo de un mensaje del vivo y el resto se tragó 6 s de pings/acuses/saludo → «zombi» y enlace
+  cortado → nativo: un trozo que empieza un mensaje descarta el resto cortado al momento (`SafeJson.startsMessage`, JVM;
+  `trozocortado.js`, contraprueba --kotlin3058: el corto no llega en 20 s; ahora 0,4 s); (b) S24→tablet: 70 escrituras de 20 bytes al
+  conectar → lo que llega mientras se negocia el MTU espera entero y se parte con el MTU real; (c) «no_service» del vivo = su app
+  cerrada (pausa de 30 s, correcto); (d) S24 «pendiente_viejo» 40 min = app congelada con la pantalla apagada en ahorro de batería.
 - **13-11 (bloque 3058, será la APK 3042 si pasa la batería):** diagnóstico del dueño 07:28 (S24 + vivo en la 3039, sin la 3040
   instalada): videollamada por Wi-Fi OK; al apagar el Wi-Fi la voz siguió por Bluetooth y la cámara se congeló; al colgar y volver
   a llamar por Bluetooth la oferta no llegó (ni el «colgar» del vivo) mientras el S24 y el vivo (como puente) le reenviaban todo a
