@@ -11,6 +11,13 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   anterior con su cola de guardados (un guardado viejo puede pisar uno nuevo), o algo restaura `nexo_ratchet.json` desde una copia.
   Importa también por seguridad: reutilizar números de mensaje es reutilizar claves.
 
+## 🆕 13-11 (Honor: mensajes grandes que no terminan de salir al S24) — abierto
+- Diagnósticos automáticos del Honor 13:29 (3041) y 14:43 (3043): lleva >2 h reanudando 3 mensajes grandes al S24 (766, 206 y 158
+  trozos; uno es su diagnóstico de 22 KB que el S24 SÍ recibió a las 12:26:43) por un Bluetooth a MTU 23, y además ve al S24 «internet
+  fuera» (el S24 tenía 4 relés abiertos). Descartado: que el S24 no confirme una repetición tras reiniciarse (en flujos por trozos un DUP
+  se confirma, `ble_ack._dispatchChunkedMessageComplete`). Por mirar con los dos diagnósticos a la vez: por qué el Honor no vio la
+  confirmación de 12:26 y por qué ve al S24 sin internet; y si lo grande debería esperar a Wi-Fi/internet en vez de un BT a MTU 23.
+
 ## 🆕 13-11 (foto de perfil «mezclada» y estados, 3060–3062) — en prueba
 - **Hecho:** Perfil espera a tener cargadas las fotos de los contactos (al abrir la app aceptaba la del dueño: Motorola 08:33:20);
   gana el aviso de foto más reciente; copias de fotos que fueron del dueño escondidas; estados/me gusta que llegan al abrir la app
