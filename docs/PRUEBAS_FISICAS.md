@@ -87,6 +87,10 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     videollamada y, a la mitad, cierra la app del Nubia a la fuerza (Ajustes → Apps → NEXO → Forzar detención) y vuelve a abrirla.
     En menos de 1 min el Wi-Fi entre los dos vuelve a «comprobado» y un texto del Nubia llega al S24 (antes: «Mensaje ya recibido»
     cada 12 s y nada llegaba). Si vuelve a pasar, en el diagnóstico del S24 saldrá «[E2E] Desfase de cifrado con …».
+36. **Desatasco automático (3047).** Con los dos teléfonos en la 3047: usa NEXO normal. Si algún día vuelve a haber un atasco, ya no
+    deberías notarlo: en segundos se reenvía solo lo que no se pudo leer (sin duplicados ni avisos dobles). En el diagnóstico salen
+    «[E2E] Desatasco con …» y, en el que arrancó atrasado, «El estado de cifrado se cargó ATRASADO …»: si ves esa línea, mándame el
+    diagnóstico de los dos (es la pista de la causa). Cada arranque dice también «Estado de cifrado: guardado nº …».
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 

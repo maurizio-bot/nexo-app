@@ -21,6 +21,21 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **13-11 (bloque 3069, será la APK 3047 si pasa la batería b3069):** dueño: «A) pero también quiero un desatasco automático… detectar
+  el atasco por cualquier red, guardar los mensajes, avisar al otro, purgar y avisar que está listo, que el otro vuelva a mandar; lo más
+  rápido posible, sin que el usuario se percate; y entender por qué fue y corregirlo». Diagnóstico del Nubia (3045, 15:17): ya hablan,
+  pero 5 mensajes del S24 de 12:36–12:40 se perdieron (su nativo los confirmó ✓✓ con la app cerrada y luego no los pudo descifrar).
+  3069: (1) detectar en los dos lados: al recibir (DESYNC de 3067, o «no se pudo leer» de un contacto en sesión ya hecha) y AL ARRANCAR
+  (número de guardado en `nexo_ratchet.json` + `nexo_ratchet_hw.json` apuntado después: si el cargado es menor, «se cargó ATRASADO»);
+  (2) apuntar los ids ilegibles; (3) aviso oculto `{act:'e2e', st:'rst', need, since}` por la sesión nueva (`resync.js`); (4) el otro
+  purga envíos con cifrado viejo y olvida el «ya entregado» (`ack._done`), contesta `st:'ok'`; (5) reenvía lo pedido y su ventana
+  (desde la última vez que leyó algo del otro, sin los ya leídos, máx. 60/6 h); el que detecta reenvía lo suyo sin esperar (sirve con
+  el otro en una build anterior). Wi-Fi: se vuelve a comprobar al momento (11 s → ~1 s). `notify.js`: lo ya avisado se guarda en el
+  teléfono (un reenvío de algo que ya estaba no avisa ni suma no leídos; contraprueba sin eso: sí suma). `desync.js --perdidos`: los 3
+  ✓✓ ilegibles llegan ≈1 s tras arrancar el atrasado (3068: nunca), sin duplicados; también `--sin-contador`, `--sin-wifi`, y con el
+  atrasado en 3068 (≈12 s). Causa raíz: AÚN sin ver (el diagnóstico del Nubia ya no tenía lo de las 12:32); desde 3069 cada arranque
+  dice «Estado de cifrado: guardado nº N, de hace X s (último apuntado: nº M)», y si vuelve a pasar se verá cuántos guardados se
+  perdieron y cuándo. Hipótesis por mirar: guardado viejo de una instancia anterior del plugin tras `recreate()`. Pruebas §0.36.
 - **13-11 (3068 = APK 3046, batería 229/229, índice 63,5):** diagnósticos automáticos del S24 (15:04, recién en 3045) y del Honor
   (13:29 y 14:43): «enlace_abre_cierra» falso con contactos de app cerrada (vivo, Motorola): los intentos «sin servicio» y su eco
   contaban como desconexiones. Ahora solo cuenta un enlace que llegó a estar listo (`noservice.js` 5). Del Honor queda abierto: 3
