@@ -429,7 +429,7 @@ export class BleRelay {
     // Sin camino: si está a la vista, conectar; si no, buscarlo (con espera creciente) y reintentar
     if (!hop) {
       if (self._seenRecently(item.dst)) self._connectNearby(item.dst);
-      else if (item.origin === self.me() || self.canRelay()) self.discover(item.dst);
+      else if (item.origin === self.me() || self.canRelay()) self.discover(item.dst, false, item.origin !== self.me());
       return;
     }
     // Nunca de vuelta al teléfono del que llegó (evita bucles con rutas viejas)
@@ -632,6 +632,8 @@ export class BleRelay {
       if (nx.indexOf('anon:') !== 0 && self._isContact(nx)) { self.transient.delete(nx); return; }
       // Si algo de la cola va por él, se mantiene
       var busy = self.queue.some(function(q) { var r = self.routes.get(q.dst); return q.dst === nx || (r && r.via === nx); });
+      // 13-11 (puente a internet, parte 2): un NEXO de paso que nos presta su internet tampoco se cierra
+      try { var gw = self.ble && self.ble.net && self.ble.net.gw; if (!busy && gw && typeof gw.isBridge === 'function' && gw.isBridge(nx)) busy = true; } catch (e) {}
       // 3012 (regla del dueño: todo NEXO cercano sale al instante, también con MUCHOS cerca): con «Agregar» abierto y sin hueco,
       // uno que YA dijo quién es (está en la lista con su nombre) suelta su conexión para el siguiente; al tocar «+» se reconecta
       var known = force && addOpen && !busy && self.transient.size >= cap && t.idAt && now - t.idAt > ANON_KNOWN_HOLD_MS;
@@ -693,10 +695,12 @@ export class BleRelay {
 
   // ---------- búsqueda de camino bajo demanda ----------
   // Llamar cuando un mensaje propio no tiene enlace directo ni ruta
-  discover(dst, force) {
+  // notMine: se busca para un paquete ajeno que llevo (Jump), no para uno mío
+  discover(dst, force, notMine) {
     var self = this, d = _nid(dst), now = Date.now();
     if (!_isNx(d) || d === self.me()) return;
     if (self.nextHop(d)) return;
+    if (!notMine) self.needAt = now; // puente a internet (gw_link): hay algo mío sin camino → buscar puente también entre desconocidos
     // Visto hace nada: lo más cercano es ir directo; si en 8 s no hay enlace, se busca puente
     if (!force && self._seenRecently(d, NEARBY_FRESH_MS)) {
       self._connectNearby(d);

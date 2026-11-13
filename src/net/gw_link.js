@@ -35,6 +35,12 @@ var GW_MAX = 3;                     // puentes a la vez (dueño: «al menos dos 
 var GW_ASK_MS = 30000;              // a un mismo vecino se le pregunta como mucho cada 30 s (si no contesta: 1, 2, 4… hasta 5 min)
 var GW_ASK_MAX_MS = 300000;
 var GW_NO_MS = 120000;              // un vecino que dijo «no» no se vuelve a preguntar en 2 min
+var GW_SEEK_MS = 30000;             // parte 2: sin puente y CON algo mío esperando, como mucho cada 30 s se prueba con NEXO desconocidos cercanos
+var GW_SEEK_RECENT_MS = 60000;      // … sin nada que mandar pero con un puente usado hace < 30 min (espero respuestas): cada minuto
+var GW_RECENT_MS = 30 * 60000;
+var GW_SEEK_IDLE_MS = 10 * 60000;   // … si no, solo cada 10 min (para «recoge lo mío»): no gastar radio en un apagón general
+var GW_NEED_MS = 3 * 60000;         // «algo mío esperando» = Jump buscó camino para un mensaje propio hace menos de 3 min
+var GW_SEEK_N = 2;                  // … con 2 a la vez (los de mejor señal)
 var GW_OFFER_TTL_MS = 90000;        // una oferta «sí» vale 90 s si no se usa
 var GW_OPEN_MS = 10000;             // la sesión tiene que abrirse en 10 s
 var GW_REAL_BACK_MS = 5000;         // volvió el internet propio y sigue 5 s → se sueltan los puentes
@@ -137,6 +143,7 @@ export class GwLink {
     var ble = this.ble(), self = this;
     if (!ble || typeof ble._sendMessageNative !== 'function' || !dev) return;
     var pkt = Object.assign({ v: 1, type: 'ig', from: this.me() }, o);
+    try { if (ble.relay && typeof ble.relay._touch === 'function') ble.relay._touch(dev); } catch (e) {} // una conexión de paso en uso no se cierra
     var str = JSON.stringify(pkt);
     ble._sendMessageNative(dev, str, null).catch(function(e) {
       var n = (tries || 0) + 1;
@@ -173,7 +180,7 @@ export class GwLink {
     this._srvTick(now);
     var real = this._realOpen();
     if (real > 0) {
-      this._realOffSince = 0;
+      this._realOffSince = 0; this._seekAt = 0; this._bridgeAt = 0;
       if (!this._realOnSince) this._realOnSince = now;
       if (this.bridges.size && now - this._realOnSince >= GW_REAL_BACK_MS) {
         console.log('[GW] Volvió el internet propio: suelto ' + this.bridges.size + ' puente(s)');
@@ -196,6 +203,7 @@ export class GwLink {
       if (r && !r.ws && now >= (r.retryAt || 0)) net._connect(b.key);
       else if (r && r.open && b.sock) b.fails = 0;
     });
+    if (this.bridges.size) this._bridgeAt = now;
     if (this.bridges.size >= GW_MAX) return;
     // Ofertas vigentes → puentes nuevos (repartiendo los relés: cada puente a uno distinto si se puede)
     var used = new Set(); this.bridges.forEach(function(b) { used.add(b.url); });
@@ -216,7 +224,42 @@ export class GwLink {
       self.asked.set(nx, now + Math.min(GW_ASK_MAX_MS, GW_ASK_MS * Math.pow(2, n)));
       self._tx(dev, { op: 'q' });
     });
+    // Parte 2 (dueño 13-11: «cualquier NEXO cercano»): sin ningún puente, se conecta «de paso» (como Jump) con NEXO cercanos que
+    // no son contactos —vistos al escanear por su NEXO ID o por su código rotativo— solo para preguntarles; los de mejor señal.
+    // Parte 2 (dueño 13-11: «si el teléfono que hizo de puente ya no está para el regreso, ya no me van a encontrar»): ningún
+    // vecino conectado presta internet → NEXO desconocidos cercanos, de paso. Con algo mío esperando, cada 30 s (Jump ya
+    // conecta de paso por eso mismo); sin nada que mandar pero con un puente usado hace poco —espero la respuesta, que
+    // quedó en MI buzón—, cada minuto; si no, cada 10 min. Por teléfono rige además la espera por fallos de Jump (1, 2, 4… min).
+    var rel = this.ble() && this.ble().relay, need = !!(rel && now - (rel.needAt || 0) < GW_NEED_MS);
+    var recent = !!this._bridgeAt && now - this._bridgeAt < GW_RECENT_MS;
+    var every = need ? GW_SEEK_MS : recent ? GW_SEEK_RECENT_MS : GW_SEEK_IDLE_MS;
+    var since = this._seekAt || (need || recent ? 0 : this._realOffSince);
+    if (!this.bridges.size && now - since >= every) { this._seekAt = now; this._seekStrangers(nb, now); }
   }
+
+  // again: segunda vuelta tras un escaneo propio (sin nada que mandar no hay re-búsqueda de contactos que escanee)
+  _seekStrangers(nb, now, again) {
+    var ble = this.ble(), rel = ble && ble.relay, self = this, tried = 0;
+    if (!rel || typeof rel._connect !== 'function') return;
+    var fresh = function(v) { return v && now - (v.ts || 0) < 60000; };
+    var byRssi = function(a, b) { return (b.rssi || -100) - (a.rssi || -100); };
+    var known = [];
+    if (rel.nearby) rel.nearby.forEach(function(v, nx) {
+      if (fresh(v) && !nb.has(nx) && now >= (self.asked.get(nx) || 0) && !(typeof rel._isContact === 'function' && rel._isContact(nx))) known.push({ nx: nx, dev: v.deviceId, rssi: v.rssi });
+    });
+    known.sort(byRssi).slice(0, GW_SEEK_N).forEach(function(c) { if (rel._connect(c.nx, c.dev)) tried++; });
+    if (tried < GW_SEEK_N && rel.anon && typeof rel._connectAnon === 'function') {
+      var an = []; rel.anon.forEach(function(a) { if (fresh(a)) an.push(a); });
+      an.sort(byRssi).slice(0, GW_SEEK_N - tried).forEach(function(a) { if (rel._connectAnon(a.deviceId, true)) tried++; });
+    }
+    if (tried) console.log('[GW] Sin internet ni puente: pruebo con ' + tried + ' NEXO cercano(s) de paso');
+    else if (!again && typeof rel._scan === 'function') {
+      // Nadie visto en el último minuto: escaneo (como Jump al buscar camino) y pruebo con lo que aparezca
+      rel._scan().then(function() { if (!self.bridges.size && !self._realOpen() && !_disabled()) self._seekStrangers(self._neighbors(), Date.now(), true); }).catch(function() {});
+    }
+  }
+  // ¿Está este vecino haciendo de puente? (Jump no cierra su conexión de paso por falta de uso)
+  isBridge(nx) { return this.bridges.has(_nid(nx)); }
 
   _cliOffer(from, dev, p) {
     this.unanswered.delete(from);

@@ -743,6 +743,10 @@
     {
      "fallo": "Dueño 13-11 (idea nueva, no un fallo): un teléfono SIN internet no podía escribir a un contacto lejano aunque tuviera al lado otro NEXO con internet (Jump solo llega por Bluetooth). Parte 1 (3036): puente a internet — el teléfono sin internet usa a hasta 3 NEXO cercanos con internet como relé (gw_link.js: sesión por Bluetooth, el vecino abre el relé y pasa los frames; solo mensajes privados firmados, topes por minuto/día, batería; sin interruptor por decisión del dueño); la respuesta vuelve por cualquier puente cercano (la suscripción a MIS etiquetas, «recoge lo mío»); fotos y archivos no pasan por el puente (gwOnly). puente.js (contraprueba 3035: nada llega)",
      "prueba": "texto sin internet con un NEXO cercano que sí tiene"
+    },
+    {
+     "fallo": "Dueño 13-11 («si el teléfono que hace de puente ya no está para el regreso, ya no me van a encontrar»): parte 2 (3043). Al MANDAR, la 3042 ya encontraba de puente a un NEXO desconocido (Jump conecta de paso y la parte 1 le pide internet), pero si ese puente se iba y yo no tenía nada pendiente, nadie buscaba otro: la respuesta se quedaba en MI buzón para siempre. 3043: sin puente, se prueba con NEXO desconocidos cercanos (los 2 de mejor señal; si no hay nadie visto en el último minuto, escanea): cada 30 s con algo mío esperando, cada minuto durante 30 min tras usar un puente (espero respuestas) y cada 10 min si no (sin gastar radio en un apagón general); rige la espera por fallos de Jump (passfar.js) y la conexión de paso que hace de puente no se cierra por falta de uso. puente2.js (contraprueba 3042: la respuesta sin el primer puente no llega)",
+     "prueba": "la respuesta vuelve aunque el puente de la ida se haya ido"
     }
    ],
    "debiles": [
