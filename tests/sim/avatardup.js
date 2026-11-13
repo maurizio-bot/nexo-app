@@ -8,6 +8,12 @@
 //  3. Perfil no deja poner como propia la foto de un contacto (C, ya con la versión nueva, intenta otra copia de P: rechazada).
 //  4. El visor de la foto de un contacto no tiene «Guardar en galería».
 //  5. (3060) A cambia su foto: la copia de su foto ANTERIOR sigue escondida (también tras reiniciar) y el diagnóstico lo dice.
+//  6. (3062, registro del Motorola 13-11: rechazó la foto del dueño a las 08:32:57, la app se reinició a las 08:33:10 al elegir
+//     de la galería y a las 08:33:20 la ACEPTÓ; a las 08:33:31 la volvía a rechazar) Perfil justo al abrir la app, con las fotos
+//     de los contactos aún cargándose: tiene que rechazar la copia igual (antes: no había con qué comparar y la aceptaba).
+//  7. (3062) Un aviso de foto VIEJO que llega después de uno nuevo no gana: B pone una foto y la quita con A fuera de alcance;
+//     al volver, el «quitada» (corto) adelanta a la foto (larga, en trozos) y la foto llegaba la última: A se quedaba con una
+//     foto que B ya no tiene. Ahora cada aviso lleva cuándo se hizo y A se queda con el más reciente.
 // El simulador no tiene canvas: la huella de la imagen la da window.NEXO_avatarPHash (las fotos de la prueba la llevan escrita).
 // Uso: node avatardup.js <dir_build>
 'use strict';
@@ -21,19 +27,22 @@ const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeO
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const X = '0110'.repeat(16), X2 = '1110' + '0110'.repeat(14) + '0111', Q = '0011'.repeat(16);
 const mk = (bits, rgb, salt) => 'data:image/jpeg;base64,' + Buffer.from('PH|' + bits + '|' + rgb.join(',') + '|' + salt + '|' + 'x'.repeat(7000)).toString('base64');
-const R_BITS = '1001'.repeat(16);
-const P = mk(X, [120, 100, 90], 'a'), P_B = mk(X2, [122, 101, 88], 'b'), P_C = mk(X, [119, 99, 91], 'c'), P_D = mk(X2, [121, 100, 90], 'd'), Q_B = mk(Q, [40, 160, 200], 'q'), R_A = mk(R_BITS, [200, 60, 60], 'r');
+const R_BITS = '1001'.repeat(16), S_BITS = '1100'.repeat(16);
+const P = mk(X, [120, 100, 90], 'a'), P_B = mk(X2, [122, 101, 88], 'b'), P_C = mk(X, [119, 99, 91], 'c'), P_D = mk(X2, [121, 100, 90], 'd'), Q_B = mk(Q, [40, 160, 200], 'q'), R_A = mk(R_BITS, [200, 60, 60], 'r'), R_E = mk(R_BITS, [202, 61, 58], 'e'), S_B = mk(S_BITS, [30, 200, 60], 's');
 const phashOf = (url) => { const m = /^PH\|([01]{64})\|(\d+),(\d+),(\d+)\|/.exec(Buffer.from(String(url).split(',')[1] || '', 'base64').toString('latin1')); return m ? { b: m[1], c: [+m[2], +m[3], +m[4]] } : null; };
 class DL extends ResourceLoader { constructor(d) { super(); this.d = d; } fetch(u) { const f = path.join(this.d, decodeURIComponent(new URL(u).pathname)); return fs.existsSync(f) ? Promise.resolve(fs.readFileSync(f)) : Promise.reject(new Error('x')); } }
 const logs = [];
-const state = { A: { off: false, next: P }, B: { off: true, next: P_B }, C: { off: true, next: P_C } };
+const state = { A: { off: false, next: P }, B: { off: true, next: P_B }, C: { off: true, next: P_C, slowAv: 0 } };
 async function boot(name, native) {
   const vc = new VirtualConsole();
   ['log', 'warn', 'error'].forEach((l) => vc.on(l, (...a) => logs.push(`${new Date().toISOString().substring(14, 23)} [${name}] ${l}: ` + a.map(String).join(' ').substring(0, 250))));
   const dom = new JSDOM(fs.readFileSync(path.join(buildDir, 'dist', 'index.html'), 'utf8'), {
     url: 'https://' + name.toLowerCase() + '.nexo.test/index.html', runScripts: 'dangerously', resources: new DL(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(win) { win.CapacitorCustomPlatform = { name: 'android' }; require('./native_mock').installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {};
-      win.NEXO_makeAvatar = () => state[name].next; win.NEXO_avatarPHash = (url) => (state[name].off ? null : phashOf(url)); },
+      win.NEXO_makeAvatar = () => state[name].next; win.NEXO_avatarPHash = (url) => (state[name].off ? null : phashOf(url));
+      // 6: al abrir, las fotos de los contactos tardan en cargarse (en el teléfono: descifrar archivos con la app arrancando)
+      const pl = win.Capacitor.Plugins.NexoBLE, lf = pl.loadFromFile;
+      pl.loadFromFile = (o) => (state[name].slowAv && /^nexo_av_/.test(String(o && o.filename)) ? sleep(state[name].slowAv).then(() => lf.call(pl, o)) : lf.call(pl, o)); },
   });
   const win = dom.window;
   for (let i = 0; i < 100 && !(win.NEXO && win.NEXO.initialized); i++) await sleep(100);
@@ -58,7 +67,7 @@ function sendText(p, t) { const i = p.win.document.getElementById('message-input
 const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) return true; await sleep(200); } return false; };
 const rowPhoto = (p, name) => { const row = Array.from(p.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).find((r) => (r.querySelector('.ble-contact-name') || {}).textContent === name); const av = row && row.querySelector('.ble-contact-avatar'); return !!(av && /url\(["']?data:image\/jpeg/.test(av.getAttribute('style') || '')); };
 const rowStyle = (p, name) => { const row = Array.from(p.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).find((r) => (r.querySelector('.ble-contact-name') || {}).textContent === name); const av = row && row.querySelector('.ble-contact-avatar'); return row ? ((av && av.getAttribute('style')) || '') : null; };
-const NAMES = { P, P_B, P_C, P_D, Q_B, R_A };
+const NAMES = { P, P_B, P_C, P_D, Q_B, R_A, R_E, S_B };
 const whose = (st) => { if (st === null) return 'sin fila'; for (const k of Object.keys(NAMES)) if (st.indexOf(NAMES[k]) >= 0) return k; return /data:image/.test(st) ? 'otra' : 'ninguna'; };
 async function pickPhoto(p) {
   p.win.dispatchEvent(new p.win.CustomEvent('nexo:ui:profile')); await sleep(400);
@@ -139,13 +148,42 @@ const avFile = async (p, nx) => { try { const r0 = await p.win.Capacitor.Plugins
   await sleep(2500); A.win.bleInterface.renderContactsList(); await sleep(300);
   r.A_fila_C_tras_cambiar_y_reiniciar = whose(rowStyle(A, 'C'));
   r.diag_foto_C = typeof A.win.NEXO_avatarDiag === 'function' ? A.win.NEXO_avatarDiag(idC) : null;
-  r.avatar_logs = logs.filter((l) => /\[AVATAR\]/.test(l)).map((l) => l.substring(10)).slice(-14);
+  // 6. C (versión nueva) ya tiene la foto actual de A (R_A); se reinicia y, nada más abrir, con las fotos de sus contactos aún
+  //    cargándose (8 s), elige en Perfil una copia de R_A: rechazada
+  const idA = A.win.bleInterface.localNexoId.toLowerCase();
+  r.C_tiene_foto_nueva_de_A = await wait(async () => (await avFile(C, idA)) === 'R_A', 60);
+  state.C.slowAv = 8000; state.C.next = R_E;
+  C.win.close(); nC.destroyActivity(); await sleep(1500); nC.load(); C = await boot('C', nC);
+  const nLog = logs.length;
+  await pickPhoto(C);
+  const after = () => logs.slice(nLog).filter((l) => /^\S+ \[C\]/.test(l));
+  await wait(() => after().some((l) => /Foto de Perfil rechazada|Foto de perfil propia puesta ahora/.test(l)), 40);
+  await sleep(500);
+  state.C.slowAv = 0;
+  r.C_perfil_al_abrir = await myProfilePhoto(C);
+  r.C_rechazo_al_abrir_log = after().some((l) => /Foto de Perfil rechazada/.test(l)) && !after().some((l) => /Foto de perfil propia puesta ahora/.test(l));
+  // 7. B pone otra foto (S_B) y la quita con A fuera de alcance; al volver, A no debe quedarse con S_B
+  const idB2 = idB;
+  radio.block(nA, nB); await sleep(1500);
+  state.B.next = S_B; await pickPhoto(B); await sleep(1500);
+  B.win.dispatchEvent(new B.win.CustomEvent('nexo:ui:profile')); await sleep(400);
+  click(B.win, B.win.document.getElementById('nexo-av-clear')); await sleep(300);
+  { const c = B.win.document.getElementById('nexo-profile-close'); if (c) click(B.win, c); }
+  r.B_sin_foto = (await myProfilePhoto(B)) === 'ninguna';
+  await sleep(2000);
+  radio.unblock(nA, nB);
+  r.A_recibe_quitada = await wait(async () => { const f = await avFile(A, idB2); return f === 'ninguna'; }, 90);
+  await sleep(25000); A.win.bleInterface.renderContactsList(); await sleep(300);
+  r.A_fila_B_final = whose(rowStyle(A, 'B'));
+  r.A_archivo_B_final = await avFile(A, idB2);
+  r.avatar_logs = logs.filter((l) => /\[AVATAR\]/.test(l)).map((l) => l.substring(10)).slice(-24);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.B_ve_foto_de_A && r.C_ve_foto_de_A && r.B_puso_copia === 'P_B' && r.A_recibe_B && r.A_recibe_C && r.A_fila_B === 'ninguna' && r.A_fila_C === 'ninguna' && r.A_mi_perfil === 'P' &&
     r.A_fila_B_reinicio === 'ninguna' && r.A_fila_C_reinicio === 'ninguna' && r.A_mi_perfil_reinicio === 'P' && r.A_huella_lenta_ocultas && r.A_ve_foto_nueva_B && r.A_fila_C_sigue_oculta === 'ninguna' &&
     r.C_mi_perfil_tras_rechazo === 'P_C' && r.C_rechazo_log && r.visor_abre && r.visor_sin_guardar &&
     r.A_mi_perfil_nuevo === 'R_A' && r.A_fila_C_tras_cambiar_mi_foto === 'ninguna' && r.A_fila_B_tras_cambiar_mi_foto === 'Q_B' && r.A_fila_C_tras_cambiar_y_reiniciar === 'ninguna' &&
-    /escondida/.test(r.diag_foto_C || '') && !r.errores.length;
+    /escondida/.test(r.diag_foto_C || '') && r.C_tiene_foto_nueva_de_A && r.C_perfil_al_abrir === 'P_C' && r.C_rechazo_al_abrir_log &&
+    r.B_sin_foto && r.A_fila_B_final === 'ninguna' && r.A_archivo_B_final === 'ninguna' && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('AVATARDUP ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_avatardup.txt'), logs.join('\n'));

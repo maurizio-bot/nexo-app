@@ -823,6 +823,18 @@
     {
      "fallo": "Dueño 13-11 (3060): «¿por qué Roberto aparece con mi foto de perfil todavía?». La copia de la foto se esconde comparando huellas de imagen; si al abrir la app no daba tiempo a calcular una (2 s con la app arrancando: la mía o la del contacto), no se comparaba y la copia se veía hasta que alguien cambiara de foto. Ahora las huellas que faltan se reintentan (4 s, 12 s, 40 s, 2 min). avatardup.js paso 1b (contraprueba 3059: la copia sigue visible). Y (3061; ese día el dueño cambió su foto dos veces) la copia de una foto que FUE tuya también se esconde (huellas de tus 5 fotos anteriores, 180 días, si el otro la puso después que tú); el diagnóstico dice por contacto si su foto se ve o está escondida y a cuánto está de la tuya. avatardup.js paso 5 (contraprueba 3060: al cambiar tu foto la copia vieja vuelve a verse).",
      "prueba": "foto de perfil COPIADA"
+    },
+    {
+     "fallo": "Dueño 13-11 (3062): «se mezcló mi foto con otro contacto y eso no debe pasar». Registro del Motorola de Roberto: Perfil rechazó la foto del dueño a las 08:32:57, la app se reinició a las 08:33:10 al elegir de la galería y a las 08:33:20 la ACEPTÓ (a las 08:33:31 la volvía a rechazar). Al abrir la app las fotos de los contactos aún se estaban cargando: no había con qué comparar y Perfil aceptaba cualquiera; y al terminar la carga, la foto recién puesta se pisaba con la anterior (el teléfono creía tener una y sus contactos recibían otra). Ahora Perfil espera a tener las fotos cargadas. avatardup.js paso 6 (contraprueba 3061: aceptada)",
+     "prueba": "foto de perfil COPIADA"
+    },
+    {
+     "fallo": "3062: un aviso de foto de perfil VIEJO ganaba al nuevo: B pone una foto y la quita con A fuera de alcance; al volver, el «quitada» (corto) adelantaba a la foto (larga, en trozos) y A se quedaba con una foto que B ya no tenía. Ahora cada aviso lleva cuándo se hizo (también «quitada») y gana el más reciente. Además: la comprobación «copia de la foto de otro contacto» quedó sin ejecutarse en la 3060 (cola3033 lo detectó). avatardup.js paso 7 y cola3033.js (contraprueba 3061: A con la foto quitada; copia ajena visible)",
+     "prueba": "foto de perfil COPIADA"
+    },
+    {
+     "fallo": "Dueño 13-11 (3062): «me comentan que los estados no se están cargando de forma robusta». Al abrir la app, un estado que llegaba mientras se leían del disco los que ya había de ese contacto pisaba el archivo con solo él (B pasaba de 10 estados de A a 1), y un me gusta o comentario a uno de mis estados se perdía (aún no estaban leídos). Ahora lo que llega en esos segundos espera a que termine la lectura. estados3.js paso 10 (contraprueba 3061: 1 de 10 y el me gusta perdido)",
+     "prueba": "Estados v3"
     }
    ],
    "debiles": [

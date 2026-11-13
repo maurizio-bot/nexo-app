@@ -2,6 +2,9 @@
 // cifrada al buzón de archivos y a cada contacto le llega solo el puntero dentro del estado; el que la ve la baja, la verifica
 // y la guarda (nada en el chat). (2) Sin internet, un video de 700 KB sale sin puntero; el que lo ve lo pide al dueño por
 // Bluetooth («sm») y le llega como archivo de estado («stmedia»), tampoco en el chat; el visor lo muestra.
+// (4) 3062 (dueño 13-11: «me comentan que los estados no se están cargando de forma robusta»): A publica una foto SIN internet
+// (en el teléfono: al volver de la galería los relés aún se están conectando) y lejos de B; luego los dos tienen internet pero no
+// Bluetooth: B tiene que poder verla (antes: sin puntero y sin enlace directo, «No se pudo bajar todavía» para siempre).
 // Uso: node estadosbig.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -138,9 +141,27 @@ const statusOf = (p, msgId) => { const s = p.win.document.querySelector('.msg-st
   r.mediana_sin_cientos_de_trozos = r.mediana_trozos.every((n) => n < 60);
   const it3 = (B.win.NEXO_statusesOf(idA) || []).find((x) => x.sid === s3);
   r.mediana_se_ve_al_pedirla = !!it3 && (await Promise.race([B.win.NEXO_statusMedia(idA, it3), sleep(90000).then(() => null)])) === MED;
+  // ===== 4. (3062) Foto publicada SIN internet y lejos de B; luego internet sin Bluetooth: B la ve =====
+  [A, B].forEach((p) => { p.win.bleInterface.net._closeAll(); p.win.bleInterface.net.relays.forEach((rl) => { rl.retryAt = Date.now() + 9e6; }); });
+  radio.block(nA, nB);
+  r.A_sin_internet = await waitFor(() => !A.win.bleInterface.net.online(), 20000) !== null;
+  await sleep(1500);
+  const FOTO4 = mk('image/jpeg', 300, 11);
+  const s4 = A.win.NEXO_addMyStatus('foto sin internet', FOTO4, 'image/jpeg');
+  await sleep(3000);
+  r.sin_internet_sin_puntero = !((A.win.NEXO_myStatuses().find((x) => x.sid === s4) || {}).ptr);
+  [A, B].forEach((p) => { p.win.bleInterface.net.relays.forEach((rl) => { rl.retryAt = 0; }); p.win.bleInterface.net.tick(); });
+  r.vuelve_internet = await waitFor(() => A.win.bleInterface.linkOf(idB) === 'internet' && B.win.bleInterface.linkOf(idA) === 'internet', 90000) !== null;
+  r.B_recibe_estado_4 = await waitFor(() => (B.win.NEXO_statusesOf(idA) || []).some((x) => x.sid === s4), 90000) !== null;
+  const it4 = (B.win.NEXO_statusesOf(idA) || []).find((x) => x.sid === s4);
+  const t4 = Date.now();
+  const d4 = it4 ? await Promise.race([B.win.NEXO_statusMedia(idA, it4), sleep(150000).then(() => null)]) : null;
+  r.B_ve_foto_publicada_sin_internet = d4 === FOTO4;
+  r.B_ve_foto_4_s = Math.round((Date.now() - t4) / 1000);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.por_internet && r.publicada && r.subida_una_vez && r.trozos_en_reles > 0 && r.B_recibe_puntero && r.B_estado_sin_foto_en_linea && r.B_baja_y_ve_la_foto && r.B_la_guarda && r.B_sin_adjunto_en_chat &&
-    r.bt_de_nuevo && r.B_recibe_video_sin_puntero && r.B_pide_y_ve_el_video && r.pedido_log && r.B_sin_adjunto_en_chat_2 && r.visor_muestra_video && r.mediana_llega_sin_foto_en_linea && r.mediana_sin_cientos_de_trozos && r.mediana_se_ve_al_pedirla && !r.errores.length;
+    r.bt_de_nuevo && r.B_recibe_video_sin_puntero && r.B_pide_y_ve_el_video && r.pedido_log && r.B_sin_adjunto_en_chat_2 && r.visor_muestra_video && r.mediana_llega_sin_foto_en_linea && r.mediana_sin_cientos_de_trozos && r.mediana_se_ve_al_pedirla &&
+    r.A_sin_internet && r.sin_internet_sin_puntero && r.vuelve_internet && r.B_recibe_estado_4 && r.B_ve_foto_publicada_sin_internet && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('ESTADOSBIG ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_estadosbig.txt'), logs.join('\n'));

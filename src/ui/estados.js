@@ -65,6 +65,12 @@ var _started = false;
 var _loaded = false;          // 3033: mis estados ya leídos del disco
 var _unsent = [];             // 3033: [nx, sid] a volver a mandar en el formato de ahora (si llegan antes de leer _sent)
 var _staleDone = new Set();   // 3033: copias viejas ya borradas (id)
+// 3062 (dueño 13-11: «me comentan que los estados no se están cargando de forma robusta»): al abrir la app, lo que llega mientras
+// se leen del disco los estados (los míos y los de cada contacto) espera a que termine la lectura. Antes, un estado que llegaba
+// en esos segundos pisaba el archivo del contacto con solo él (se perdían los que ya tenía) y un me gusta o comentario a uno de
+// mis estados se perdía (aún no estaban leídos).
+var _mineP = null;            // lectura de mis estados en curso
+var _loading = new Map();     // NEXO ID → lectura de sus estados en curso
 
 function _pl() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 function _load(name) {
@@ -224,18 +230,23 @@ function _unmarkSent(nx, sid) {
 export function estadosInit() {
   if (_started) return;
   _started = true;
-  Promise.all([_load(MY_FILE), _load(SENT_FILE), _loadSeen()]).then(function(r) {
-    _mine.items = _fromFile(r[0]).map(function(it) { it.likes = it.likes || {}; it.comments = it.comments || []; return it; });
+  _mineP = Promise.all([_load(MY_FILE), _load(SENT_FILE), _loadSeen()]).then(function(r) {
+    var disk = _fromFile(r[0]).map(function(it) { it.likes = it.likes || {}; it.comments = it.comments || []; return it; });
+    // 3062: uno publicado mientras se leía el disco se suma (no se pierde ni pisa los de antes)
+    var added = _mine.items.filter(function(x) { return !disk.some(function(y) { return y.sid === x.sid; }); });
+    _mine.items = disk.concat(added);
+    if (added.length) _saveMine();
     if (r[1] && typeof r[1] === 'object') { Object.keys(r[1]).forEach(function(k) { _sent[k] = (r[1][k] && typeof r[1][k] === 'object') ? r[1][k] : {}; }); }
     _loaded = true;
     _unsent.splice(0).forEach(function(p) { _unmarkSent(p[0], p[1]); }); // 3033
+    _mineP = null;
     _renderStrip();
-  });
+  }).catch(function() { _mineP = null; });
   // Los estados de los contactos que los tienen (ste en el contacto)
   _getBLEContacts().forEach(function(c) {
     var nx = _normId(c.nexoId || c.deviceUUID);
     if (!c.ste || !NX_RE.test(nx)) return;
-    _load('nexo_status_' + nx + '.json').then(function(o) { var l = _fromFile(o); if (l.length) { _cache.set(nx, l); _emit(nx); } });
+    _loading.set(nx, _load('nexo_status_' + nx + '.json').then(function(o) { _loading.delete(nx); var l = _fromFile(o); if (l.length) { _cache.set(nx, l); _emit(nx); } }, function() { _loading.delete(nx); }));
   });
   window.addEventListener('nexo:ble:peerReady', function(e) {
     var nx = _normId(e && e.detail && e.detail.nexoId);
@@ -280,7 +291,7 @@ export function addMyStatus(text, img, mime, aud, amime, vid, vmime) {
   if (act.length >= MAX_ITEMS) { _toast(t('est_max', 'Ya tienes 10 estados: quita uno para publicar otro')); return null; }
   var it = { sid: _newSid(), t: text, ts: Date.now(), img: img, mime: img ? (mime || 'image/jpeg') : '', aud: aud, amime: aud ? (amime || 'audio/webm') : '', vid: vid, vmime: vid ? (vmime || 'video/webm') : '', big: big, ptr: null, likes: {}, comments: [] };
   _mine.items = act.concat([it]);
-  _saveMine();
+  if (!_mineP) _saveMine();   // 3062: si aún se leen del disco, se guarda al sumarlo a los de antes (no pisa el archivo)
   if (big) {
     _save(_mediaFile('me', it.sid), { d: bigData }); _media.set('me|' + it.sid, bigData);
     // con internet: se sube UNA vez al buzón de archivos y el puntero va dentro del estado; sin internet, sale sin puntero
@@ -344,6 +355,7 @@ function _broadcastItem(nx, s) {
 // Manda a nx los estados activos que aún no tiene (force: todos otra vez, p. ej. si los pidió con «sq»)
 export function sendStatusTo(nx, force) {
   nx = _normId(nx);
+  if (_mineP) { _mineP.then(function() { sendStatusTo(nx, force); }); return 0; }   // 3062: tras leer mis estados
   var act = myStatuses();
   if (!act.length || !NX_RE.test(nx) || _contactIds().indexOf(nx) < 0) return 0;
   var s = _sent[nx] = (_sent[nx] && typeof _sent[nx] === 'object') ? _sent[nx] : {};
@@ -359,6 +371,8 @@ export function sendStatusTo(nx, force) {
 export function applyStatus(senderNx, act) {
   var nx = _normId(senderNx);
   if (!NX_RE.test(nx) || !act) return;
+  var pend = _loading.get(nx);
+  if (pend) { pend.then(function() { applyStatus(senderNx, act); }); return; }   // 3062: tras leer los que ya tenía de él
   // Robustez (auditoría 2800): el ts lo pone el OTRO teléfono; uno en el futuro (reloj malo o malicioso) haría que su estado
   // nunca caducara. Se acota a «ahora». Un ts negativo/no numérico también cae a ahora.
   var now = Date.now();
@@ -434,6 +448,7 @@ function _requestMedia(nx, it) {
 }
 // Me piden la media de uno de mis estados: se la mando como archivo («stmedia») por el enlace directo de ahora
 export function statusMediaRequested(senderNx, act) {
+  if (_mineP) { _mineP.then(function() { statusMediaRequested(senderNx, act); }); return true; }   // 3062
   var nx = _normId(senderNx), sid = act && SID_RE.test(String(act.sid || '')) ? String(act.sid) : '';
   var it = sid ? myStatuses().find(function(x) { return x.sid === sid && x.big; }) : null;
   var bi = window.bleInterface, ack = bi && bi.ackSystem, now = Date.now(), key = nx + '|' + sid;
@@ -480,6 +495,7 @@ export function likeStatus(nx, sid) {
 export function iLiked(nx, sid) { return _iLiked.has(_normId(nx) + '|' + sid); }
 // A MÍ me llegó un me gusta (de senderNx) a uno de mis estados
 export function likeReceived(senderNx, act) {
+  if (_mineP) { _mineP.then(function() { likeReceived(senderNx, act); }); return; }   // 3062: tras leer mis estados
   var nx = _normId(senderNx);
   var it = _sidOrLatest(myStatuses(), act && SID_RE.test(String(act.sid || '')) ? String(act.sid) : '');
   if (!NX_RE.test(nx) || !it) return;
@@ -510,6 +526,7 @@ export function commentStatus(nx, sid, text) {
 }
 // A MÍ me comentaron un estado
 export function commentReceived(senderNx, act) {
+  if (_mineP) { _mineP.then(function() { commentReceived(senderNx, act); }); return; }   // 3062: tras leer mis estados
   var nx = _normId(senderNx);
   var text = act && typeof act.t === 'string' ? act.t.trim().substring(0, MAX_LEN) : '';
   var it = _sidOrLatest(myStatuses(), act && SID_RE.test(String(act.sid || '')) ? String(act.sid) : '');

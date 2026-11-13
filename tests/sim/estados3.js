@@ -3,6 +3,9 @@
 // SOLO el dueño). A publica 3 → B tiene los 3 y los recorre (1/3, 2/3…); me gusta y comentario por estado, A ve quién y qué
 // (B no ve comentarios); quitar uno; tope de 10; deslizar hacia abajo recupera los estados; tras reiniciar sigue todo.
 // 3059: lo VISTO y los me gusta de B siguen tras reiniciar B (antes volvían a salir como nuevos).
+// 3062 (dueño 13-11: «me comentan que los estados no se están cargando de forma robusta»): si a B le llega un estado de A en los
+// primeros segundos tras abrir la app, mientras aún lee del disco los que ya tenía de A, no se pierde nada (antes el que llegaba
+// pisaba el archivo con solo él, o la lectura del disco lo borraba al terminar).
 // Uso: node estados3.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -15,12 +18,15 @@ const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeO
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DL extends ResourceLoader { constructor(d) { super(); this.d = d; } fetch(u) { const f = path.join(this.d, decodeURIComponent(new URL(u).pathname)); return fs.existsSync(f) ? Promise.resolve(fs.readFileSync(f)) : Promise.reject(new Error('x')); } }
 const logs = [];
+const slow = { status: 0 };   // 3062: lectura lenta de los estados guardados de los contactos (ms)
 async function boot(name, native) {
   const vc = new VirtualConsole();
   ['log', 'warn', 'error'].forEach((l) => vc.on(l, (...a) => logs.push(`[${name}] ${l}: ` + a.map(String).join(' ').substring(0, 250))));
   const dom = new JSDOM(fs.readFileSync(path.join(buildDir, 'dist', 'index.html'), 'utf8'), {
     url: 'https://' + name.toLowerCase() + '.nexo.test/index.html', runScripts: 'dangerously', resources: new DL(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
-    beforeParse(win) { win.CapacitorCustomPlatform = { name: 'android' }; installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {}; },
+    beforeParse(win) { win.CapacitorCustomPlatform = { name: 'android' }; installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {};
+      const pl = win.Capacitor.Plugins.NexoBLE, lf = pl.loadFromFile;
+      pl.loadFromFile = (o) => (slow.status && /^nexo_(my_)?status_/.test(String(o && o.filename)) ? sleep(slow.status).then(() => lf.call(pl, o)) : lf.call(pl, o)); },
   });
   const win = dom.window;
   for (let i = 0; i < 100 && !(win.NEXO && win.NEXO.initialized); i++) await sleep(100);
@@ -132,12 +138,32 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#main-estados-s
   r.vistos_tras_reiniciar = gris(r.aro_tras_reiniciar);
   r.like_tras_reiniciar = typeof B.win.NEXO_iLiked === 'function' && B.win.NEXO_iLiked(idA, s2) === true;
 
+  // 10. (3062) B se reinicia; mientras lee del disco los 10 estados de A (6 s), le llega uno nuevo de A: al final tiene el nuevo y
+  //     los de antes (10 como mucho: el más viejo sale)
+  slow.status = 6000;
+  B.win.close(); nB.destroyActivity(); await sleep(1500); nB.load(); B = await boot('B', nB);
+  B.win.NEXO_applyStatus(idA, { type: 'nexo_act', act: 'st', sid: 'nuevo3062', t: 'llega al abrir', ts: Date.now() });
+  await sleep(8000);
+  slow.status = 0;
+  const finB = (B.win.NEXO_statusesOf(idA) || []);
+  r.al_abrir_llega_nuevo = finB.length;
+  r.al_abrir_conserva_todo = finB.length === 10 && finB.some((x) => x.sid === 'nuevo3062');
+  const fileB = await B.win.Capacitor.Plugins.NexoBLE.loadFromFile({ filename: 'nexo_status_' + idA + '.json' });
+  r.al_abrir_archivo = (() => { try { return JSON.parse(fileB.content).items.length; } catch (e) { return -1; } })();
+  //     y A se reinicia; mientras lee sus estados del disco (6 s), le llega un me gusta de B al 3.º: no se pierde
+  const s3b = A.win.NEXO_myStatuses()[2].sid, likes0 = A.win.NEXO_whoLiked(s3b).length;
+  slow.status = 6000;
+  A.win.close(); nA.destroyActivity(); await sleep(1500); nA.load(); A = await boot('A', nA);
+  A.win.NEXO_likeReceived(idB, { type: 'nexo_act', act: 'sl', sid: s3b, ts: Date.now() });
+  await sleep(8000);
+  slow.status = 0;
+  r.al_abrir_like = A.win.NEXO_whoLiked(s3b).length === likes0 + 1 && A.win.NEXO_myStatuses().length === 10;
   r.errores = logs.filter((l) => /TypeError|undefined is not|No se pudo descifrar/.test(l)).slice(0, 4);
   const ok = r.emparejados && r.tres_sids && r.B_tiene_tres && r.B_no_mensaje_visible && r.tira_cuenta_3 && r.visor_empieza_1 && r.visor_siguiente_2 &&
     r.like_llega_con_quien && r.like_solo_en_el_2 && r.comentario_llega_a_A && r.comentario_no_en_otro && r.B_no_ve_comentarios &&
     r.mis_estados_abre && r.mis_estados_quien_like && r.mis_estados_comentario && r.quitar_uno_en_B && r.diez_activos && r.once_rechazado && r.B_tiene_diez &&
     r.B_sin_estados && r.indicador_soltar && r.indicador_actualizando && r.deslizar_recupera && r.tras_reiniciar &&
-    r.B_vio_los_10 && r.aro_gris_antes && r.vistos_tras_reiniciar && r.like_tras_reiniciar && r.errores.length === 0;
+    r.B_vio_los_10 && r.aro_gris_antes && r.vistos_tras_reiniciar && r.like_tras_reiniciar && r.al_abrir_conserva_todo && r.al_abrir_archivo === 10 && r.al_abrir_like && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('ESTADOS3 ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_estados3.txt'), logs.join('\n'));
