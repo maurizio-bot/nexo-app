@@ -115,7 +115,7 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     vuelva (con NEXO cerrado), le llega el aviso del GRUPO (antes: nada).
 43. **Sin «zombi» falso con contactos de internet (3050).** Deja NEXO en segundo plano un rato y vuelve: en el registro nativo del
     diagnóstico ya no salen «connectToDevice raw='net:nx…'» ni «zombi» de un contacto que solo está por internet.
-46. **Bluetooth solo de emergencia (3052, los dos en la 3051).** S24 y S23 juntos, los dos con datos móviles (sin Wi-Fi) y
+46. **Bluetooth solo de emergencia (3052, los dos en la 3052).** S24 y S23 juntos, los dos con datos móviles (sin Wi-Fi) y
     Bluetooth encendido. Manda un texto y una foto: deben ir por internet aunque el Bluetooth esté listo. En el diagnóstico del
     que manda: «[VELOCIDAD] internet enviado: …» para la foto (no «Bluetooth enviado»). Apaga los datos de uno: el siguiente
     mensaje sale por Bluetooth (la emergencia).
