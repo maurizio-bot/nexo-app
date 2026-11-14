@@ -1189,6 +1189,10 @@
     {
      "fallo": "Dueño 13-11, compartir pantalla parte 2 (3048): en una llamada de GRUPO no se podía compartir la pantalla (solo en la 1-a-1). 3048: group_call.shareScreen (permiso del nativo, 960 px, 5/s), la captura compartida manda la pantalla en lugar de la cámara a todos los tramos, estado cifrado 'c' a cada tramo (al empezar/terminar y cada 5 s: el que entra tarde o perdió el aviso lo sabe), Android la corta → se avisa, colgar la para; en la pantalla: botón «Pantalla» con aviso, barra roja «Detener» y la pantalla del otro grande, entera y «Pantalla de …». gcall.js, gcallmedia.js y gscreenui.js (contraprueba 3047)",
      "prueba": "COMPARTIR PANTALLA en la llamada de GRUPO"
+    },
+    {
+     "fallo": "3098 (diagnósticos Honor 3055 y S24 3054 del 14-11 16:07–16:18): en 4 videollamadas el S24 nunca vio al Honor: la cámara de NEXO estaba bloqueada en el Honor («Cámara: NotAllowedError» tres veces → solo voz) y el aviso decía «Tu cámara no funciona: solo voz», sin forma de arreglarlo desde la llamada. 3098: con el permiso bloqueado el aviso dice «NEXO no tiene permiso para la cámara: toca aquí para darlo», abre la ficha de permisos de NEXO (nativo openAlertSetting what:'app') y al volver se pide la cámara otra vez. camdenied.js (Chromium): 3097 = «solo voz», nada que tocar, sin imagen; 3098 = aviso, ficha abierta y B ve a A a los 0,4 s de volver",
+     "prueba": "cámara BLOQUEADA en una videollamada"
     }
    ],
    "debiles": [

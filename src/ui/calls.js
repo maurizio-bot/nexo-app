@@ -249,6 +249,15 @@ export class Calls {
   videoViews() { var m = this.call && this.call.media; return m ? { local: m.localVideo || null, remote: m.remoteCanvas || null } : { local: null, remote: null }; }
 
   // Cámara apagada / encendida en una videollamada
+  // 3098: la cámara está bloqueada para NEXO (permiso denegado): se abre la ficha de la app (Permisos) y, al volver, se reintenta
+  askCamPermission() {
+    var c = this.call; if (!c) return false;
+    c._camPermAsked = true;
+    console.log('[CALL] Cámara bloqueada: abro los permisos de NEXO');
+    var pl = this.ble && this.ble.nativePlugin;
+    try { if (pl && typeof pl.openAlertSetting === 'function') { pl.openAlertSetting({ what: 'app' }).catch(function() {}); return true; } } catch (e) {}
+    return false;
+  }
   camera(on) { var c = this.call; if (!c) return; c.cameraOff = !on; if (c.media && c.media.camera) c.media.camera(!!on); _emit('nexo:call', this.state()); }
 
   // Ronda 2762: girar la cámara (videollamada)
@@ -351,7 +360,7 @@ export class Calls {
         onState: function(s) {
           if (self.call !== c || !s) return;
           c.camState = s.cam; c.micState = s.mic;
-          self._set({ camState: s.cam, micState: s.mic, micError: s.mic === 'none' ? (s.micErr || 'sin micrófono') : '' });
+          self._set({ camState: s.cam, micState: s.mic, micError: s.mic === 'none' ? (s.micErr || 'sin micrófono') : '', camError: s.cam === 'none' ? (s.camErr || '') : '' });
           self._sendState(c);
         } });
     } catch (e) { console.warn('[CALL] Sin audio: ' + (e && e.message)); }
@@ -365,7 +374,12 @@ export class Calls {
     // Ronda 2769: al volver a la app (la cámara se pierde en segundo plano), cámara y audio otra vez ya
     if (!self._wakeHook && typeof document !== 'undefined') {
       self._wakeHook = true;
-      document.addEventListener('visibilitychange', function() { var cc = self.call; if (document.visibilityState === 'visible' && cc && cc.media && typeof cc.media.wake === 'function') cc.media.wake(); });
+      document.addEventListener('visibilitychange', function() {
+        var cc = self.call; if (document.visibilityState !== 'visible' || !cc || !cc.media) return;
+        if (typeof cc.media.wake === 'function') cc.media.wake();
+        // 3098: vuelve de Ajustes (fue a dar el permiso de la cámara desde el aviso): se pide otra vez, una vez
+        if (cc._camPermAsked && typeof cc.media.retryCam === 'function') { cc._camPermAsked = false; cc.media.retryCam(); }
+      });
     }
     self._p2pTick(c); // dueño 13-11: por internet, conexión directa (la abre el que llama)
     self._silenceTimer = setInterval(function() {

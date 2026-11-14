@@ -235,6 +235,7 @@ var STRINGS = {
   call_peer_mic_broken: { es: " no funciona: no se le oye", it: " non funziona: non si sente", en: " isn't working: can't hear them" },
   call_cam_retrying: { es: "Tu cámara no está disponible: reintentando…", it: "La tua fotocamera non è disponibile: nuovo tentativo…", en: "Your camera isn't available: retrying…" },
   call_cam_voice_only: { es: "Tu cámara no funciona: solo voz", it: "La tua fotocamera non funziona: solo voce", en: "Your camera isn't working: voice only" },
+  call_cam_no_perm: { es: "NEXO no tiene permiso para la cámara: toca aquí para darlo", it: "NEXO non ha il permesso per la fotocamera: tocca qui per darlo", en: "NEXO has no camera permission: tap here to allow it" },
   call_peer_cam_off: { es: "Cámara apagada", it: "Fotocamera spenta", en: "Camera off" },
   call_peer_cam_none: { es: "Sin cámara: solo voz", it: "Nessuna fotocamera: solo voce", en: "No camera: voice only" },
   call_peer_cam_retry: { es: "Su cámara no está disponible", it: "La sua fotocamera non è disponibile", en: "Their camera isn't available" },

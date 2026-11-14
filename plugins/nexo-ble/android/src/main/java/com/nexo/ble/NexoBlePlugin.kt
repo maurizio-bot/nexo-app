@@ -3144,7 +3144,7 @@ class NexoBlePlugin : Plugin() {
     }
     @PluginMethod
     fun setWakeOnMessage(call: PluginCall) { MsgNotifier.get(context).setWakeOnMsg(call.getBoolean("on", true) == true); call.resolve() }
-    // Abre el ajuste del sistema que falta: what = notifications | fullScreen | battery | vendor
+    // Abre el ajuste del sistema que falta: what = notifications | fullScreen | battery | vendor | app
     @PluginMethod
     fun openAlertSetting(call: PluginCall) {
         val ctx = context
@@ -3175,6 +3175,8 @@ class NexoBlePlugin : Plugin() {
         }
         val i = when (call.getString("what")) {
             "battery" -> Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg)
+            // 3098: la ficha de la app (Permisos: cámara bloqueada en una videollamada)
+            "app" -> Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg)
             "fullScreen" -> if (Build.VERSION.SDK_INT >= 34) Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkg) else null
             else -> Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName)
         }

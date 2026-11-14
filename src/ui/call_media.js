@@ -704,6 +704,13 @@ export function createCallMedia(opts) {
       } catch (e4) {}
       return true;
     },
+    // 3098 (diagnóstico Honor 3055 14-11 16:16: «Cámara: NotAllowedError» tres veces → solo voz en 4 llamadas; el permiso de
+    // cámara de NEXO estaba bloqueado): el usuario dio el permiso en Ajustes y vuelve: se pide la cámara otra vez, de cero
+    retryCam: function() {
+      if (stopped || !wantVideo) return;
+      camTries = 0; camDenied = 0; camNextTry = 0; camErr = '';
+      setState('retry'); openCam('permiso');
+    },
     // Ronda 2769: la app vuelve a la vista (la cámara se pierde en segundo plano): se reintenta ya
     wake: function() {
       if (stopped) return;

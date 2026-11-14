@@ -124,6 +124,7 @@ function _style() {
     '#nexo-call-screen .call-status{font-size:15px;opacity:.82;margin-top:8px;font-variant-numeric:tabular-nums;text-align:center}',
     '#nexo-call-screen .call-status.nc-warn{color:#fbbf24;opacity:1}',
     '#nexo-call-screen .call-note{font-size:12px;opacity:.6;margin-top:6px;text-align:center;padding:0 24px}',
+    '#nexo-call-screen .call-note.nc-tap{opacity:1;color:#FFD54F;text-decoration:underline;cursor:pointer;pointer-events:auto}',
     '#nexo-call-screen .nc-bottom{position:absolute;left:0;right:0;bottom:0;z-index:3;padding:0 8px calc(26px + env(safe-area-inset-bottom,0px));transition:transform .3s,opacity .3s}',
     '#nexo-call-screen .call-buttons{margin:0 auto;max-width:440px;display:flex;justify-content:space-around;align-items:flex-start;padding:16px 6px 12px;border-radius:30px;background:rgba(20,21,42,.55);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.09);box-shadow:0 10px 40px rgba(0,0,0,.35)}',
     '#nexo-call-screen .call-buttons.nc-incoming{background:none;border:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;justify-content:space-between;max-width:320px;padding:0 18px}',
@@ -474,9 +475,12 @@ function _warnText(st, name) {
   if (st.micState === 'none' || st.micError) return t('call_no_mic', 'Sin micrófono') + (why ? ' (' + why + ')' : '') + ': ' + name + t('call_cant_hear_you', ' no te oye');
   if (st.peerMic === 'retry' || st.peerMic === 'none') return t('call_peer_mic_prefix', 'El micrófono de ') + name + t('call_peer_mic_broken', ' no funciona: no se le oye');
   if (st.video && st.camState === 'retry' && !st.cameraOff) return t('call_cam_retrying', 'Tu cámara no está disponible: reintentando…');
+  if (st.video && st.camState === 'none' && _camBlocked(st)) return t('call_cam_no_perm', 'NEXO no tiene permiso para la cámara: toca aquí para darlo');
   if (st.video && st.camState === 'none') return t('call_cam_voice_only', 'Tu cámara no funciona: solo voz');
   return '';
 }
+// 3098: la cámara no abre porque el permiso de NEXO está bloqueado (el Honor del 14-11: tres «NotAllowedError» y solo voz)
+function _camBlocked(st) { return !!st && st.camState === 'none' && /NotAllowed|PermissionDenied/.test(String(st.camError || '')); }
 // Lo que se ve en lugar de la imagen del otro (el vídeo solo va por Wi-Fi: por Bluetooth, solo voz)
 // `isBt` es un booleano (no el texto ya traducido) para no depender del idioma en la lógica.
 function _peerVideoText(st, isBt) {
@@ -546,6 +550,10 @@ function _render(st) {
   bt.innerHTML = ''; bt.classList.remove('nc-incoming', 'nc-many');
   // Ronda 2769: con el estado de la cámara (si lo hay) en vez de "sin cámara" fijo al empezar (ahora se reintenta)
   note.textContent = st.camState || st.micState ? _warnText(st, name) : st.micError ? t('call_no_mic', 'Sin micrófono') + (_devErr(st.micError) ? ': ' + _devErr(st.micError) : '') : st.video && st.videoOk === false ? t('call_no_cam_this_phone', 'Sin cámara en este teléfono: solo voz') : '';
+  // 3098: con la cámara bloqueada, el aviso se toca y abre los permisos de NEXO (al volver, se reintenta la cámara)
+  var camAsk = st.state === 'active' && st.video && _camBlocked(st) && !(st.micState === 'retry' || st.micState === 'none' || st.micError);
+  note.classList.toggle('nc-tap', camAsk);
+  note.onclick = camAsk ? function() { haptic('confirm'); calls.askCamPermission(); } : null;
   var warnbar = el.querySelector('.nc-warnbar');
   if (st.state === 'calling') {
     status.classList.remove('nc-warn');
