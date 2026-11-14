@@ -9,6 +9,7 @@
 import { t } from './i18n.js';
 import { _showInfoToast, _pickContact } from './ui_bits.js';
 import { _getCurrentContactId, _normId } from './chat_format.js';
+import { callButton, ensureCallStyle, fitCallLabels } from './calls_ui.js';
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
 function _gcall() { var b = _bi(); return b && b.gcall; }
@@ -26,6 +27,7 @@ function _legLabel(state, reconnecting) {
   return t('grp_leg_connecting', 'Conectando…');
 }
 
+var _GC_BTNS_CSS = 'display:flex;gap:16px;justify-content:center;flex-wrap:wrap;padding:14px 0 6px;';
 function _screen() {
   var el = document.getElementById('nexo-gcall-screen');
   if (el) return el;
@@ -42,7 +44,7 @@ function _screen() {
     // #138: rejilla de vídeo (mi vista + imagen de cada tramo). Vacía/oculta hasta que alguien enciende la cámara.
     '<div class="gc-video" style="margin-top:16px;width:100%;max-width:360px;display:none;flex-wrap:wrap;gap:8px;justify-content:center;"></div>' +
     '<div class="gc-members" style="margin-top:18px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px;flex:1;overflow:auto;"></div>' +
-    '<div class="gc-buttons" style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;padding:14px 0 6px;"></div>';
+    '<div class="gc-buttons" style="' + _GC_BTNS_CSS + '"></div>';
   (document.body || document.documentElement).appendChild(el);
   return el;
 }
@@ -138,35 +140,44 @@ function _render(st) {
   var bt = el.querySelector('.gc-buttons');
   bt.innerHTML = '';
   if (st.state === 'ringing') {
+    bt.className = 'gc-buttons';
+    bt.style.cssText = _GC_BTNS_CSS;
     bt.appendChild(_btn(t('call_reject', 'Rechazar'), 'gc-red', function() { if (_gcall()) _gcall().reject(); }));
     bt.appendChild(_btn(t('grp_join', 'Entrar'), 'gc-green', function() { if (_gcall()) _gcall().accept(); }));
   } else {
+    // 14-11 (tras el pedido del dueño de la 1-a-1: «los botones de abajo quedan muy anchos»): la misma fila de círculos con
+    // nombre que la videollamada 1-a-1 (antes, botones de texto de 120 px: con vídeo, 4 filas en un teléfono de 360–412)
+    ensureCallStyle();
+    bt.style.cssText = '';
+    var B = function(icon, label, cls, fn, extra) { bt.appendChild(callButton(icon, label, cls, fn, extra)); };
     // #dueño 31-10: SILENCIAR mi micrófono (como en la 1-a-1); el hub comparte una captura, así deja de mandar mi voz.
-    if (st.state === 'active') bt.appendChild(_btn(st.muted ? t('call_muted', 'Silenciado') : t('call_mute', 'Silenciar'), 'gc-add', function() { var g = _gcall(); if (g) g.mute(!st.muted); }));
+    if (st.state === 'active') B(st.muted ? 'micOff' : 'mic', st.muted ? t('call_muted', 'Silenciado') : t('call_mute', 'Silenciar'), 'gc-add', function() { var g = _gcall(); if (g) g.mute(!st.muted); }, st.muted ? 'nc-on' : '');
     // #130 (dueño 31-10): AGREGAR un contacto a la llamada de grupo en curso (selector de contactos → gcall.addMember).
-    if (st.state === 'active') bt.appendChild(_btn(t('call_add', 'Agregar'), 'gc-add', function() {
+    if (st.state === 'active') B('addp', t('call_add', 'Agregar'), 'gc-add', function() {
       var gcall = _gcall(); if (!gcall) return;
       var cur = gcall.state ? gcall.state() : null;
       var ex = ((cur && cur.members) || []).concat([_me()]);
       _pickContact({ title: t('call_add_pick', 'Agregar a la llamada'), exclude: ex, onPick: function(nx) {
         gcall.addMember(nx).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); });
       } });
-    }));
+    });
     // #138 (dueño 31-10): CÁMARA on/off (sin re-llamar: activar la cámara pasa la llamada a vídeo) y GIRAR (delante/detrás).
-    if (st.state === 'active') bt.appendChild(_btn(st.cameraOn ? t('call_camera_off', 'Cámara no') : t('call_camera', 'Cámara'), 'gc-add', function() { var g = _gcall(); if (g) g.camera(!st.cameraOn); }));
-    if (st.state === 'active' && st.cameraOn) bt.appendChild(_btn(t('call_flip', 'Girar'), 'gc-add', function() { var g = _gcall(); if (g && g.flip) g.flip(); }));
+    if (st.state === 'active') B(st.cameraOn ? 'cam' : 'camOff', st.cameraOn ? t('call_camera_off', 'Cámara no') : t('call_camera', 'Cámara'), 'gc-add', function() { var g = _gcall(); if (g) g.camera(!st.cameraOn); });
+    if (st.state === 'active' && st.cameraOn) B('flip', t('call_flip', 'Girar'), 'gc-add', function() { var g = _gcall(); if (g && g.flip) g.flip(); });
     // Dueño 13-11, compartir pantalla parte 2: en la llamada de grupo (aviso antes, como la 1-a-1; si ya comparto, «Detener»)
-    if (st.state === 'active' && gcall && typeof gcall.shareScreen === 'function') bt.appendChild(_btn(st.screen ? t('call_screen_stop', 'Detener') : t('call_screen', 'Pantalla'), st.screen ? 'gc-red' : 'gc-add', function() {
+    if (st.state === 'active' && gcall && typeof gcall.shareScreen === 'function') B('screen', st.screen ? t('call_screen_stop', 'Detener') : t('call_screen', 'Pantalla'), st.screen ? 'gc-red' : 'gc-add', function() {
       var g = _gcall(); if (!g) return;
       if (st.screen) { g.shareScreen(false); return; }
       _gScreenAsk(el, function() {
         g.shareScreen(true).then(function(ok) { if (!ok) _showInfoToast(t('call_screen_no', 'No se compartió la pantalla'), 2500); })
           .catch(function(err) { _showInfoToast((err && err.message) || t('call_screen_no', 'No se compartió la pantalla'), 3500); });
       });
-    }));
+    }, st.screen ? 'nc-red' : '');
     // #dueño 31-10: ALTAVOZ/AURICULAR (como la 1-a-1); en grupo arranca en altavoz (manos libres).
-    if (st.state === 'active') bt.appendChild(_btn(_gcSpeaker ? t('call_speaker', 'Altavoz') : t('call_earpiece', 'Auricular'), 'gc-add', function() { _gcSpeaker = !_gcSpeaker; _gAudioMode(true); _render(st); }));
-    bt.appendChild(_btn(t('call_hangup', 'Colgar'), 'gc-red', function() { if (_gcall()) _gcall().hangup(); }));
+    if (st.state === 'active') B(_gcSpeaker ? 'speaker' : 'ear', _gcSpeaker ? t('call_speaker', 'Altavoz') : t('call_earpiece', 'Auricular'), 'gc-add', function() { _gcSpeaker = !_gcSpeaker; _gAudioMode(true); _render(st); }, _gcSpeaker ? 'nc-on' : '');
+    B('phone', t('call_hangup', 'Colgar'), 'gc-red', function() { if (_gcall()) _gcall().hangup(); }, 'nc-red call-hangup');
+    bt.className = 'gc-buttons nc-row' + (bt.children.length >= 6 ? ' nc-many' : '');
+    fitCallLabels(bt);
   }
   _gScreenBar(el, st);
   _renderVideo(st); // #138: rejilla de vídeo (reconciliada, sin recrear los <canvas>/<video> → sin parpadeo)

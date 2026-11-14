@@ -132,7 +132,7 @@ function _style() {
     '#nexo-call-screen .nc-btn .nc-ic{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.13);transition:transform .15s,background .2s,color .2s}',
     '#nexo-call-screen .nc-btn.nc-on .nc-ic{background:#fff;color:#14152a}',
     '#nexo-call-screen .nc-btn.nc-red .nc-ic{background:#ef4444;box-shadow:0 8px 24px rgba(239,68,68,.45)}',
-    '#nexo-call-screen .nc-btn.nc-red .nc-ic svg{transform:rotate(135deg)}',
+    '#nexo-call-screen .nc-btn.nc-red:not(.call-screen) .nc-ic svg{transform:rotate(135deg)}', // (14-11: «Detener» de compartir pantalla no se gira)
     '#nexo-call-screen .nc-btn.nc-big .nc-ic{width:72px;height:72px}',
     // 14-11 (dueño, APK 3052: «los botones de abajo de la videollamada quedan muy anchos y el de colgar ni se ve en pantalla»):
     // en la videollamada van 7 botones y con 62 px de mínimo cada uno no cabían en un teléfono (360–412 de ancho): el de
@@ -145,6 +145,17 @@ function _style() {
     '#nexo-call-screen .call-buttons:not(.nc-incoming) .nc-btn .nc-ic{width:min(56px,calc(100% - 6px));height:clamp(36px,11.4vw,56px)}',
     '@supports (aspect-ratio:1/1){#nexo-call-screen .call-buttons:not(.nc-incoming) .nc-btn .nc-ic{height:auto;aspect-ratio:1/1}}',
     '#nexo-call-screen .call-buttons:not(.nc-incoming) .nc-btn>span:last-child{max-width:calc(100% - 4px);text-align:center;overflow:hidden;text-overflow:ellipsis}',
+    // 14-11 (tras el pedido del dueño de la 1-a-1): la llamada de GRUPO tenía botones de texto de 120 px que, con vídeo, en un
+    // teléfono de 360–412 ocupaban 4 filas (248 px, casi un tercio de la pantalla). Ahora la misma fila de círculos que la 1-a-1.
+    '#nexo-gcall-screen .gc-buttons.nc-row{display:flex;flex-wrap:nowrap;justify-content:space-around;align-items:flex-start;gap:0;width:calc(100% + 24px);max-width:440px;margin:0 -12px;padding:14px 4px 10px;box-sizing:border-box;border-radius:30px;background:rgba(20,21,42,.55);border:1px solid rgba(255,255,255,.09);box-shadow:0 10px 40px rgba(0,0,0,.35)}',
+    '#nexo-gcall-screen .nc-btn{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:none;color:#fff;cursor:pointer;padding:0;flex:1 1 0;min-width:0;max-width:76px;line-height:1.15;font-size:11.5px;-webkit-tap-highlight-color:transparent}',
+    '#nexo-gcall-screen .gc-buttons.nc-many .nc-btn{font-size:clamp(9.5px,2.65vw,11.5px)}',
+    '#nexo-gcall-screen .nc-btn .nc-ic{width:min(56px,calc(100% - 6px));height:clamp(36px,11.4vw,56px);border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.13);transition:background .2s,color .2s}',
+    '@supports (aspect-ratio:1/1){#nexo-gcall-screen .nc-btn .nc-ic{height:auto;aspect-ratio:1/1}}',
+    '#nexo-gcall-screen .nc-btn.nc-on .nc-ic{background:#fff;color:#14152a}',
+    '#nexo-gcall-screen .nc-btn.nc-red .nc-ic{background:#ef4444;box-shadow:0 8px 24px rgba(239,68,68,.45)}',
+    '#nexo-gcall-screen .nc-btn.call-hangup .nc-ic svg{transform:rotate(135deg)}',
+    '#nexo-gcall-screen .nc-btn>span:last-child{max-width:calc(100% - 4px);text-align:center;overflow:hidden;text-overflow:ellipsis}',
     '#nexo-call-screen .nc-btn.nc-green .nc-ic{background:linear-gradient(135deg,#22c55e,#00c8ff);box-shadow:0 10px 30px rgba(34,197,94,.5);animation:ncBounce 1.4s ease-in-out infinite}',
     '@keyframes ncBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}',
     '#nexo-call-screen .call-remote-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:1}',
@@ -261,21 +272,33 @@ if (typeof window !== 'undefined') {
 // vez de cortarlo. Se mira al dibujar los botones y al girar o cambiar el tamaño de la pantalla.
 function _fitLabels(bt) {
   if (!bt || bt.classList.contains('nc-incoming')) return;
-  Array.prototype.forEach.call(bt.querySelectorAll('.nc-btn > span:last-child'), function(l) {
+  // nunca rompe la pantalla de la llamada: sin medidas (o sin Range.getBoundingClientRect), los nombres quedan como están
+  try { Array.prototype.forEach.call(bt.querySelectorAll('.nc-btn > span:last-child'), function(l) {
     l.style.fontSize = '';
     // medida fina (no clientWidth/scrollWidth, que redondean: «Silenciado» se pasaba 0,3 px y salía «Silencia…»)
-    var w = l.getBoundingClientRect().width, rg = document.createRange(); rg.selectNodeContents(l);
+    var w = l.getBoundingClientRect().width;
+    if (!w || typeof document.createRange !== 'function') return;
+    var rg = document.createRange(); rg.selectNodeContents(l);
+    if (typeof rg.getBoundingClientRect !== 'function') return;
     var sw = rg.getBoundingClientRect().width;
-    if (!w || sw <= w + 0.05) return;
+    if (sw <= w + 0.05) return;
     var fs = parseFloat(getComputedStyle(l).fontSize) || 11;
     l.style.fontSize = Math.max(8, Math.floor(fs * w / sw * 0.98 * 10) / 10) + 'px';
-  });
+  }); } catch (e) {}
 }
 var _fitOnResize = false;
 function _watchFit() {
   if (_fitOnResize) return; _fitOnResize = true;
-  window.addEventListener('resize', function() { var el = document.getElementById('nexo-call-screen'); if (el) _fitLabels(el.querySelector('.call-buttons')); });
+  window.addEventListener('resize', function() {
+    var el = document.getElementById('nexo-call-screen'); if (el) _fitLabels(el.querySelector('.call-buttons'));
+    var g = document.getElementById('nexo-gcall-screen'); if (g) _fitLabels(g.querySelector('.gc-buttons.nc-row'));
+  });
 }
+
+// 14-11: la pantalla de la llamada de GRUPO (groupcall_ui.js) usa los mismos botones redondos, estilos y ajuste de nombres
+export function callButton(icon, label, cls, fn, extra) { return _btn(icon, label, cls, fn, extra); }
+export function ensureCallStyle() { _style(); }
+export function fitCallLabels(bt) { _fitLabels(bt); _watchFit(); }
 
 function _btn(icon, label, cls, fn, extra) {
   var b = document.createElement('button');

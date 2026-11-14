@@ -1536,6 +1536,10 @@
     {
      "fallo": "Dueño 14-11 (APK 3052): «debes de ajustar el tamaño de los botones en la parte de abajo de la videollamada, quedan muy anchos y prácticamente el botón de terminar llamada ni se ve en pantalla». 7 botones de 62 px mínimo no cabían en 360–412 de ancho y colgar, el último, quedaba fuera. 3090 (calls_ui.js): cada botón toma su parte del ancho (hasta 76 px), el círculo se encoge con él (42 px a 360) y un nombre que no cabe baja de letra lo justo (medida fina: «Silenciado» se pasaba 0,3 px). videoframe.js a 360/384/412 en español e italiano: 3089 no caben y colgar fuera; 3090 caben",
      "prueba": "y los 7 botones de abajo caben"
+    },
+    {
+     "fallo": "Tras el pedido del dueño 14-11 sobre la videollamada 1-a-1: la llamada de GRUPO tenía botones de texto de 120 px que, con vídeo, en un teléfono de 360–412 ocupaban 4 filas (248 px de 778, casi un tercio de la pantalla). 3092 (groupcall_ui.js + calls_ui.js): la misma fila de círculos con nombre que la 1-a-1 (96 px); el ajuste de nombres nunca rompe la pantalla (sin medidas, no toca nada). gcbotones.js: 3091 = 4 filas; 3092 = 1 fila",
+     "prueba": "llamada de GRUPO: los 7 botones en una sola fila"
     }
    ]
   },
