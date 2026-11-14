@@ -82,6 +82,8 @@ export function _toggleAttachMenu() {
   if (menu) {
     menu.classList.toggle('hidden');
     menu.classList.toggle('visible');
+    // 3073: al abrir «adjuntar», despertar al otro mientras se elige la foto/archivo
+    if (menu.classList.contains('visible')) { try { if (typeof window.NEXO_prewake === 'function') window.NEXO_prewake('al abrir adjuntar'); } catch (e) {} }
   }
 }
 

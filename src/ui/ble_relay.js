@@ -626,10 +626,13 @@ export class BleRelay {
       var t = self.transient.get(nx);
       if (t && Date.now() - t.since < 15000) return true; // conectando
       var nRec = self.nearby.get(nx);
-      if (!self._passOk(deviceId, nRec && nRec.rssi) || !self._passTry(deviceId)) return false; // 3024
+      if (!self._passOk(deviceId, nRec && nRec.rssi)) return false; // 3024
       if (t) self.transient.delete(nx);
       if (self.transient.size >= MAX_TRANSIENT) self._closeIdleTransient(true);
       if (self.transient.size >= MAX_TRANSIENT) return false;
+      // 3072: el intento se apunta solo si de verdad se conecta (antes, sin hueco, contaba igual y a la siguiente vuelta ese
+      // teléfono quedaba castigado 1 min: el puente en cadena no llegaba al candidato bueno)
+      if (!self._passTry(deviceId)) return false;
       self.transient.set(nx, { deviceId: deviceId, since: Date.now(), lastUse: Date.now() });
     }
     self._connecting.set(nx, Date.now()); // #D1: marcar connect en vuelo (dedup); se reintenta pasada la ventana
@@ -670,6 +673,22 @@ export class BleRelay {
       console.log('[JUMP] Cierro conexión de paso con ' + nx + ' (sin uso)');
       if (pl && typeof pl.disconnectDevice === 'function') pl.disconnectDevice({ deviceId: t.deviceId }).catch(function() {});
     });
+  }
+
+  // 3072 (puente en cadena): suelta la conexión de paso con un NEXO que no contestó (dormido) para que el hueco lo use el siguiente
+  // candidato; no si algo de la cola va por él o si ya hace de puente
+  releaseTransient(nx, why) {
+    var self = this, t = self.transient.get(nx), pl = self.ble && self.ble.nativePlugin;
+    if (!t) return false;
+    var busy = self.queue.some(function(q) { var r = self.routes.get(q.dst); return q.dst === nx || (r && r.via === nx); });
+    try { var gw = self.ble && self.ble.net && self.ble.net.gw; if (gw && typeof gw.isBridge === 'function' && gw.isBridge(nx)) busy = true; } catch (e) {}
+    if (busy) return false;
+    self.transient.delete(nx);
+    self._closedT = self._closedT || new Map();
+    self._closedT.set(_mac(t.deviceId), Date.now()); if (self._closedT.size > 100) self._closedT.delete(self._closedT.keys().next().value);
+    console.log('[JUMP] Cierro conexión de paso con ' + nx + (why ? ' (' + why + ')' : ''));
+    if (pl && typeof pl.disconnectDevice === 'function') pl.disconnectDevice({ deviceId: t.deviceId }).catch(function() {});
+    return true;
   }
 
   _connectNearby(dst) {

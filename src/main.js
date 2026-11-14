@@ -208,6 +208,21 @@ var _notifier = createNotifier({
   }
 });
 window.NEXO_notifier = _notifier; // 3069: para el diagnóstico y las pruebas (no leídos por chat)
+// 3073 (dueño 14-11): despertar al otro ANTES de mandar algo pesado (al abrir «adjuntar» o al empezar a grabar un audio). En un
+// grupo, a cada miembro (el toque tiene freno de 8 s por contacto).
+window.NEXO_prewake = function(why) {
+  try {
+    var bi = window.bleInterface, cid = _getCurrentContactId();
+    if (!bi || !cid || typeof bi._wakeSleepingPeer !== 'function') return;
+    var gs = bi.groups;
+    if (gs && gs.isGroup && gs.isGroup(cid)) {
+      var g = gs.get(cid), me = _normId(bi.localNexoId);
+      ((g && g.members) || []).forEach(function(m) { if (_normId(m) !== me) bi._wakeSleepingPeer(m, why); });
+      return;
+    }
+    bi._wakeSleepingPeer(cid, why);
+  } catch (e) {}
+};
 
 initE2E().then(function() { return ratchetInit(); }).catch(function(e) { console.warn('[E2E] init:', e && e.message); });
 

@@ -43,6 +43,12 @@ var GW_RECENT_MS = 30 * 60000;
 var GW_SEEK_IDLE_MS = 10 * 60000;   // … si no, solo cada 10 min (para «recoge lo mío»): no gastar radio en un apagón general
 var GW_NEED_MS = 3 * 60000;         // «algo mío esperando» = Jump buscó camino para un mensaje propio hace menos de 3 min
 var GW_SEEK_N = 2;                  // … con 2 a la vez (los de mejor señal)
+// 3072 (dueño 13-11: «si el vivo no sirve o otro teléfono no sirve, se tiene que buscar otro, y así sucesivamente hasta encontrar
+// un puente válido»): BÚSQUEDA EN CADENA. Al preguntar, si en GW_ANSWER_MS nadie ofreció (dormido, sin internet), se prueba en el
+// acto con los siguientes NEXO cercanos —contactos sin enlace incluidos— sin esperar al latido de 15/30 s; así hasta dar con uno
+// (o como mucho GW_CHAIN_MS seguidos; luego, el ritmo de siempre). Cada paso queda en el diagnóstico.
+var GW_ANSWER_MS = 5000;
+var GW_CHAIN_MS = 3 * 60000;
 var GW_OFFER_TTL_MS = 90000;        // una oferta «sí» vale 90 s si no se usa
 var GW_OPEN_MS = 10000;             // la sesión tiene que abrirse en 10 s
 var GW_REAL_BACK_MS = 5000;         // volvió el internet propio y sigue 5 s → se sueltan los puentes
@@ -155,6 +161,8 @@ export class GwLink {
     this.offers = new Map();   // nx del vecino → { dev, urls, at }
     this.asked = new Map();    // nx → hasta cuándo no se le vuelve a preguntar
     this.unanswered = new Map(); // nx → preguntas seguidas sin respuesta (espera creciente: no gastar batería en un vecino dormido)
+    this.askAt = new Map();    // 3072: nx → cuándo se le preguntó (sin respuesta aún): a los GW_ANSWER_MS se pasa al siguiente
+    this._chainTimer = null; this._chainSince = 0;
     this.bridges = new Map();  // nx → { nx, dev, url, key }
     this.socks = new Map();    // sid → VSock
     this._realOffSince = 0;
@@ -242,7 +250,7 @@ export class GwLink {
     this._srvTick(now);
     var real = this._realOpen();
     if (real > 0) {
-      this._realOffSince = 0; this._seekAt = 0; this._bridgeAt = 0;
+      this._realOffSince = 0; this._seekAt = 0; this._bridgeAt = 0; this._chainSince = 0; this.askAt.clear();
       if (this.askedBy.size) this._offerAskers(now);
       if (!this._realOnSince) this._realOnSince = now;
       if (this.bridges.size && now - this._realOnSince >= GW_REAL_BACK_MS) {
@@ -278,6 +286,7 @@ export class GwLink {
     });
     if (this.bridges.size >= GW_MAX) return;
     // Preguntar a los vecinos
+    var askedNow = 0;
     nb.forEach(function(dev, nx) {
       if (self.bridges.has(nx)) return;
       var t = self.asked.get(nx) || 0;
@@ -286,7 +295,10 @@ export class GwLink {
       self.unanswered.set(nx, n + 1);
       self.asked.set(nx, now + Math.min(GW_ASK_MAX_MS, GW_ASK_MS * Math.pow(2, n)));
       self._tx(dev, { op: 'q' });
+      self.askAt.set(nx, now); askedNow++;
+      console.log('[GW] Sin internet propio: pregunto a ' + nx + ' si me presta el suyo');
     });
+    if (askedNow) this._armChain();
     // Parte 2 (dueño 13-11: «cualquier NEXO cercano»): sin ningún puente, se conecta «de paso» (como Jump) con NEXO cercanos que
     // no son contactos —vistos al escanear por su NEXO ID o por su código rotativo— solo para preguntarles; los de mejor señal.
     // Parte 2 (dueño 13-11: «si el teléfono que hizo de puente ya no está para el regreso, ya no me van a encontrar»): ningún
@@ -307,8 +319,9 @@ export class GwLink {
     var fresh = function(v) { return v && now - (v.ts || 0) < 60000; };
     var byRssi = function(a, b) { return (b.rssi || -100) - (a.rssi || -100); };
     var known = [];
+    // 3072: también los CONTACTOS cercanos sin enlace (antes solo desconocidos); uno con el Bluetooth en pausa lo descarta _connect
     if (rel.nearby) rel.nearby.forEach(function(v, nx) {
-      if (fresh(v) && !nb.has(nx) && now >= (self.asked.get(nx) || 0) && !(typeof rel._isContact === 'function' && rel._isContact(nx))) known.push({ nx: nx, dev: v.deviceId, rssi: v.rssi });
+      if (fresh(v) && !nb.has(nx) && !self.bridges.has(nx) && now >= (self.asked.get(nx) || 0)) known.push({ nx: nx, dev: v.deviceId, rssi: v.rssi });
     });
     known.sort(byRssi).slice(0, GW_SEEK_N).forEach(function(c) { if (rel._connect(c.nx, c.dev)) tried++; });
     if (tried < GW_SEEK_N && rel.anon && typeof rel._connectAnon === 'function') {
@@ -318,8 +331,39 @@ export class GwLink {
     if (tried) console.log('[GW] Sin internet ni puente: pruebo con ' + tried + ' NEXO cercano(s) de paso');
     else if (!again && typeof rel._scan === 'function') {
       // Nadie visto en el último minuto: escaneo (como Jump al buscar camino) y pruebo con lo que aparezca
-      rel._scan().then(function() { if (!self.bridges.size && !self._realOpen() && !_disabled()) self._seekStrangers(self._neighbors(), Date.now(), true); }).catch(function() {});
+      rel._scan().then(function() { if (!self.bridges.size && !self._realOpen() && !_disabled() && self._seekStrangers(self._neighbors(), Date.now(), true)) self._askSoon(); }).catch(function() {});
     }
+    return tried;
+  }
+
+  // 3072: búsqueda en cadena (ver GW_ANSWER_MS)
+  _armChain() {
+    var self = this;
+    if (this._chainTimer) return;
+    this._chainTimer = setTimeout(function() { self._chainTimer = null; self._chainNext(); }, GW_ANSWER_MS);
+  }
+  _askSoon() {
+    // a los recién conectados se les pregunta en cuanto estén listos (el latido de net_link es cada 15 s)
+    var self = this;
+    [2500, 6000].forEach(function(ms) { setTimeout(function() { if (!_disabled() && !self._realOpen() && self.bridges.size < GW_MAX) self.tick(); }, ms); });
+  }
+  _chainNext() {
+    if (_disabled() || this._realOpen() || this.bridges.size) { this._chainSince = 0; return; }
+    var now = Date.now(), self = this;
+    var offer = false;
+    this.offers.forEach(function(o) { if (now - o.at <= GW_OFFER_TTL_MS && o.urls.length) offer = true; });
+    if (offer) { this.tick(); return; }
+    if (!this._chainSince) this._chainSince = now;
+    else if (now - this._chainSince > GW_CHAIN_MS) return; // sin suerte en 3 min: sigue el ritmo de siempre
+    var silent = [];
+    this.askAt.forEach(function(t, nx) { if (now - t >= GW_ANSWER_MS - 50) { silent.push(nx); self.askAt.delete(nx); } });
+    if (silent.length) console.log('[GW] ' + silent.join(', ') + (silent.length > 1 ? ' no contestan' : ' no contesta') + ' en ' + (GW_ANSWER_MS / 1000) + ' s (dormido o sin servicio): pruebo con otro NEXO cercano');
+    // su hueco de conexión de paso queda para el siguiente candidato (si no, los dormidos ocupan los 3 y nunca se prueba a otro)
+    var rel = this.ble() && this.ble().relay;
+    if (rel && typeof rel.releaseTransient === 'function') silent.forEach(function(nx) { rel.releaseTransient(nx, 'no presta internet: hueco para otro'); });
+    this._seekAt = now;
+    if (this._seekStrangers(this._neighbors(), now)) this._askSoon();
+    else this.tick(); // quizá ya hay vecinos nuevos (o se acaba de conectar uno): se les pregunta
   }
   // Medición de caminos (3050): se acaba de caer el último relé propio → buscar puente a los GW_AFTER_MS justos (no al siguiente
   // latido de 15 s). Antes: el puente tardaba hasta ~2 min en armarse.
@@ -343,7 +387,13 @@ export class GwLink {
   _cliOffer(from, dev, p) {
     this.unanswered.delete(from);
     var urls = Array.isArray(p.u) ? p.u.filter(function(u) { return typeof u === 'string' && /^wss?:\/\//.test(u) && u.length < 200; }).slice(0, 8) : [];
-    if (!urls.length) { this.asked.set(from, Date.now() + GW_NO_MS); this.offers.delete(from); return; }
+    this.askAt.delete(from);
+    if (!urls.length) {
+      this.asked.set(from, Date.now() + GW_NO_MS); this.offers.delete(from);
+      // 3072: no tiene internet para prestar → al siguiente, sin esperar
+      if (!this.bridges.size && !this._realOpen()) { console.log('[GW] ' + from + ' no tiene internet para prestar: pruebo con otro NEXO cercano'); var self = this; setTimeout(function() { self._chainNext(); }, 50); }
+      return;
+    }
     // parte 4: ¿puede recibir/mandar lo pesado por Wi-Fi Direct? ¿está en Wi-Fi (no gasta sus datos)?
     this.offers.set(from, { dev: dev, urls: urls, at: Date.now(), wd: p.wd === 1, wifi: p.w === 1 });
     if (!this.bridges.has(from) && this.bridges.size < GW_MAX && !this._realOpen()) this.tick();
@@ -354,6 +404,7 @@ export class GwLink {
     var of = this.offers.get(nx) || {};
     var b = { nx: nx, dev: dev, url: url, key: key, wd: !!of.wd, wifi: !!of.wifi };
     this.bridges.set(nx, b);
+    this._chainSince = 0; this.askAt.clear();
     var r = net.relays.get(key) || { backoff: 2000, waits: new Map() };
     r.gw = nx; r.realUrl = url;
     r.factory = function() { var sid = _rid(); var vs = new VSock(self, b, sid, url); self.socks.set(sid, vs); b.sock = vs; return vs; };

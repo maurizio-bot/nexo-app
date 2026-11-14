@@ -44,6 +44,15 @@ const { importSrc } = require('./srcmod');
   s4._wakingPeer.t -= 31000;
   r.waking_caduca = BLE_LINK_METHODS.isWaking.call(s4, 'nxb0000002') === false;
 
+  // --- 1b) 3073 (dueño 14-11): con motivo (al abrir el chat / adjuntar / grabar audio) despierta AUNQUE haya Bluetooth o
+  // internet (su app puede dormir aunque su nativo reciba textos); con Wi-Fi comprobado (app despierta) no
+  var s5 = mkSelf('internet', true);
+  r.chat_internet_toca = BLE_LINK_METHODS._wakeSleepingPeer.call(s5, 'nxb0000002', 'al abrir el chat') === 'waking' && s5._calls.length === 1;
+  var s6 = mkSelf('bluetooth', true);
+  r.chat_bt_toca = BLE_LINK_METHODS._wakeSleepingPeer.call(s6, 'nxb0000002', 'al grabar un audio') === 'waking' && s6._calls.length === 1;
+  var s7 = mkSelf('wifi', true);
+  r.chat_wifi_no_toca = BLE_LINK_METHODS._wakeSleepingPeer.call(s7, 'nxb0000002', 'al abrir el chat') === 'wifi' && s7._calls.length === 0;
+
   // --- 2) NetLink.wakeFor: solo con token + internet; reusa _wake (toque FCM) ---
   var fetches = 0;
   var realFetch = global.fetch;
@@ -65,13 +74,23 @@ const { importSrc } = require('./srcmod');
     net.online = function () { return false; };
     net.peers.set('nxe0000005', { fcmToken: 'otro-token-0123456789abcd', up: false });
     r.wakefor_offline_no = net.wakeFor('nxe0000005') === false && fetches === 0;
+    // 3073: con motivo queda en el diagnóstico; el freno de 8 s sigue (dos aperturas seguidas = un toque)
+    net.online = function () { return true; };
+    net.peers.set('nxf0000006', { fcmToken: 'tercer-token-0123456789ab', up: true });
+    var logged = [], realLog = console.log;
+    console.log = function () { logged.push(Array.from(arguments).join(' ')); };
+    fetches = 0;
+    try { net.wakeFor('nxf0000006', 'al abrir el chat'); net.wakeFor('nxf0000006', 'al abrir adjuntar'); } finally { console.log = realLog; }
+    r.motivo_en_diagnostico = logged.some(function (l) { return /\[WAKE\] toque a nxf0000006 \(al abrir el chat\)/.test(l); });
+    r.freno_8s = fetches === 1;
   } finally {
     if (realFetch) global.fetch = realFetch; else { try { delete global.fetch; } catch (e) {} }
   }
 
   const ok = r.dormido_toca && r.dormido_marca_waking && r.isWaking_otro_no && r.con_wifi_no_toca &&
     r.con_internet_no_toca && r.con_bt_no_toca && r.sin_token_no_waking && r.waking_caduca &&
-    r.wakefor_con_token && r.wakefor_manda_toque && r.wakefor_sin_token && r.wakefor_offline_no;
+    r.wakefor_con_token && r.wakefor_manda_toque && r.wakefor_sin_token && r.wakefor_offline_no &&
+    r.chat_internet_toca && r.chat_bt_toca && r.chat_wifi_no_toca && r.motivo_en_diagnostico && r.freno_8s;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('WAKEOPEN ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);

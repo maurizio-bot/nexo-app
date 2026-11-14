@@ -954,12 +954,13 @@ export class BLEInterface {
         // P2 (dueño 01-11): si el contacto está DORMIDO (sin enlace vivo), pedir el «toque» FCM AL ABRIR el chat (no solo
         // al enviar): el 1er mensaje ya no espera ni se pierde y el subtítulo pasa a «Conectando…» hasta que llega la
         // presencia del otro (entonces se ve el tipo real: Wi-Fi / Bluetooth / internet). Si ya hay enlace, no hace nada.
-        try { if (typeof self._wakeSleepingPeer === 'function') self._wakeSleepingPeer(uuid); } catch (e) {}
+        try { if (typeof self._wakeSleepingPeer === 'function') self._wakeSleepingPeer(uuid, 'al abrir el chat'); } catch (e) {} // 3073: también con enlace (su app puede dormir)
         // v6.1.12: solo se avisa; main.js dibuja la última página del historial. Antes se cargaba aquí
         // TODO el historial leyendo de disco todos sus adjuntos y main.js lo dibujaba entero
         _safeDispatchEvent('nexo:vault:messagesLoaded', { contactId: uuid });
         resolve();
-        if (deviceId && !isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
+        // 3072: un destino «net:» (solo por internet) no es un Bluetooth: no hay nada que conectar (el nativo lo veía como «netnx…»)
+        if (deviceId && !/^(net|lan):/i.test(String(deviceId)) && !isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
           // 3040 (diagnóstico S24 13-11 21:28 con …707a, que tenía el Bluetooth apagado): abrir el chat forzaba la conexión
           // aunque ese contacto estuviera en pausa Bluetooth (no_service repetido): otro no_service y una pausa más larga.
           // Con la pausa puesta no se fuerza (el mensaje sale por internet/Wi-Fi/Jump; la pausa se acaba sola).

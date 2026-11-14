@@ -887,6 +887,10 @@
     {
      "fallo": "Diagnóstico S24 13-11 (3067): «[WIFI] Comprobación de nx10b6f4ac ilegible: Mensaje ya recibido» cada ~12 s durante 8 min tras reiniciarse el Nubia: el Wi-Fi no se volvía a comprobar nunca. desync.js (contraprueba 3066: Wi-Fi y textos nunca; 3067: Wi-Fi en ~11 s, textos en <1 s)",
      "prueba": "cifrado que vuelve atrás, de punta a punta con Wi-Fi"
+    },
+    {
+     "fallo": "Dueño 13-11 (3072): el puente a internet solo preguntaba a los vecinos con enlace y a 2 desconocidos cada 30 s; los que no contestaban (dormidos) se quedaban con los huecos de conexión de paso y además el intento se apuntaba aunque no hubiera hueco (castigo de 1 min): con varios NEXO dormidos cerca, nunca se llegaba al bueno. Ahora búsqueda en cadena: 5 s sin respuesta o «no tengo internet» → suelta el hueco y prueba el siguiente (contactos sin enlace incluidos). puente5.js (contraprueba 3071: nunca en 150 s; 3072: ≈24 s)",
+     "prueba": "PUENTE EN CADENA"
     }
    ],
    "debiles": [
@@ -1206,6 +1210,10 @@
      "fallo": "G1: startForeground sin try/catch al despertar por FCM → posible crash del proceso (Android 12+/14+) (auditoría 28-10, arreglado 2820)",
      "prueba": null,
      "fuera": "nativo: compila en CI; prueba del dueño al despertar por FCM en Android 14+"
+    },
+    {
+     "fallo": "Dueño 14-11 (3073): un texto llega al instante pero un audio o un archivo tardan: el otro tiene la app dormida (su nativo recibe textos y confirma) y para bajar un audio o confirmar trozos hace falta su app. Al abrir el chat solo se mandaba el «toque» si no había enlace. Ahora también con Bluetooth/internet al abrir el chat, al abrir «adjuntar» y al empezar a grabar un audio (freno de 8 s por contacto). wakeopen.js (contraprueba 3071)",
+     "prueba": "toque al ABRIR el chat"
     }
    ],
    "debiles": [

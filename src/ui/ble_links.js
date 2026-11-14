@@ -305,11 +305,17 @@ export const BLE_LINK_METHODS = {
   // internet para que despierte ANTES de que el usuario escriba — así el 1er mensaje no espera ni se pierde, el enlace se
   // forma antes y aparece el tipo de conexión. Si ya hay enlace (Wi-Fi/Bluetooth/internet), no hace nada. El propio _wake
   // tiene throttle por par, así que abrir el chat varias veces no spamea. Devuelve 'waking' si lanzó el toque, o el via.
-  _wakeSleepingPeer(nexoId) {
+  // 3073 (dueño 14-11: «con un texto no hay problema, pero con un audio o un archivo se tarda en despertar el otro… manda un
+  // despertador cuando uno entra al chat»): con `why` (al abrir el chat, al abrir «adjuntar» o al empezar a grabar un audio) se
+  // despierta AUNQUE haya enlace Bluetooth o el otro parezca en línea por internet: eso lo sostiene su parte nativa con la app
+  // dormida (los textos pasan, pero un audio o un archivo necesitan su app despierta para bajarlo y confirmar los trozos). Solo
+  // el Wi-Fi comprobado garantiza su app despierta. El toque tiene su freno por contacto (8 s) en net_link.
+  _wakeSleepingPeer(nexoId, why) {
     var nx = _normId(nexoId);
     var via = this.linkOf(nx);
-    if (via === 'wifi' || via === 'bluetooth' || via === 'internet') return via; // ya hay enlace vivo: nada que despertar
-    var woke = !!(this.net && typeof this.net.wakeFor === 'function' && this.net.wakeFor(nx));
+    if (via === 'wifi') return via; // Wi-Fi comprobado: su app contestó, está despierta
+    if (!why && (via === 'bluetooth' || via === 'internet')) return via; // ya hay enlace vivo: nada que despertar
+    var woke = !!(this.net && typeof this.net.wakeFor === 'function' && this.net.wakeFor(nx, why));
     if (woke) this._wakingPeer = { nx: nx, t: Date.now() };
     return woke ? 'waking' : via;
   },

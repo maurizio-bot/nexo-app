@@ -807,7 +807,7 @@ export class NetLink {
   setSender(url) { this.state.senderUrl = String(url == null ? '' : url); this._saveState(); }
   // Pide al enviador que dispare el «toque» de Google al token del contacto. SOLO viaja el token (nunca el contenido);
   // el mensaje ya va cifrado por el camino normal. Defensivo: si no hay token/enviador o falla la red, no pasa nada.
-  _wake(nx, isCall) {
+  _wake(nx, isCall, why) {
     try {
       var peer = this.peers.get(_nid(nx)); if (!peer || !peer.fcmToken) return;
       var url = this.senderUrl(); if (!url) return;
@@ -826,6 +826,7 @@ export class NetLink {
         peer._wakeAt = now;
       }
       var self = this;
+      if (why) console.log('[WAKE] toque a ' + _nid(nx) + ' (' + why + '): que su app esté despierta antes de que salga algo pesado'); // i18n-ok
       if (viaGw) { this.gw.wake(peer.fcmToken); return; }
       fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: peer.fcmToken }) })
         .then(function(res) {
@@ -877,13 +878,13 @@ export class NetLink {
   // ANTES de que el usuario escriba — así el 1er mensaje no espera ni se pierde, el enlace se forma antes y aparece el tipo
   // de conexión. Solo si tenemos su token FCM y hay internet (relés abiertos). Reusa el throttle de _wake (una ráfaga de
   // aperturas no spamea). Devuelve true si hay a quién/por dónde despertar, para que la interfaz muestre «Conectando…».
-  wakeFor(nexoId) {
+  wakeFor(nexoId, why) {
     try {
       var nx = _nid(nexoId);
       var peer = this.peers.get(nx);
       if (!peer || !peer.fcmToken) return false;
       if (!this.senderUrl() || !this.online()) return false;
-      this._wake(nx, false);
+      this._wake(nx, false, why);
       return true;
     } catch (e) { return false; }
   }

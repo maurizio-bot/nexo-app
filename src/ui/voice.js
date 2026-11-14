@@ -183,6 +183,7 @@ async function _startVoiceRecording() {
     _voiceStarting = false; // arranque terminado: a partir de acá manda _isRecording (el 2.º toque ya para/envía)
     _updateMicIcon(true);
     console.log('[ATTACH] Grabando voz...');
+    try { if (typeof window.NEXO_prewake === 'function') window.NEXO_prewake('al grabar un audio'); } catch (e) {} // 3073: que esté despierto al terminar
   } catch (err) {
     _voiceStarting = false; // falló el arranque: liberar la guarda para poder reintentar
     console.log('[ATTACH:VOICE] Error:', err.name, err.message);

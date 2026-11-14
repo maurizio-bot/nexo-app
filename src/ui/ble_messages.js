@@ -909,7 +909,8 @@ export const BLE_MESSAGE_METHODS = {
         // v6.4.0: sin enlace directo: buscar camino por otros teléfonos NEXO (Jump bajo demanda)
         if (self.relay) self.relay.discover(uuid);
         // 3033: con el Bluetooth en pausa (GATT roto) no se fuerza la conexión: el texto espera por internet/Wi-Fi/Jump
-        if (!isConnecting && !(typeof self._btPaused === 'function' && self._btPaused(uuid)) && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
+        // 3072: ni un destino «net:»/«lan:» (no es un Bluetooth; el nativo lo veía como «netnx…» y no hacía nada)
+        if (!isConnecting && !/^(net|lan):/i.test(String(deviceId)) && !(typeof self._btPaused === 'function' && self._btPaused(uuid)) && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
           console.log('[BLEInterface] sendChatMessage: forcing connectToDevice for', deviceId);
           _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId }).catch(function() {});
         }
