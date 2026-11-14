@@ -17,6 +17,14 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   tiene, cada vez que vuelve la app; se rinden solos en ~10 s pero mientras hacen esperar al envío real («otro envío avanza por la
   radio»). Mirar con su diagnóstico.
 - **realme (nx0v74707a):** sigue en la build 3032, batería 13 %, Bluetooth apagado en su diagnóstico: que se actualice.
+- **vivo (nx09acdb61), diagnósticos automáticos 14-11 01:36 UTC:** está en la **3044** (vieja). Su app estuvo congelada de 14:10 a
+  19:36 (5,5 h) en segundo plano aunque Android la da por «exenta»: el nativo siguió recibiendo (60 sobres entraron al abrirla). Eso
+  explica que no confirmara lo que el S24 le pasaba como puente (19:08–19:15). Al despertar: ~30 «Enlace ? desconectado» de golpe y
+  una ráfaga de ~150 escrituras Bluetooth en 160 ms (respuestas a trozos atrasados de horas) a 6 enlaces que la app acababa de dar
+  por caídos (inofensivo, pero es trabajo tirado: mirar si al despertar conviene descartar lo atrasado de enlaces ya caídos). Una
+  línea «Server notify failed … DeadObjectException» de su servidor Bluetooth: vigilar si se repite (podría ser el servidor GATT
+  muerto, como el Motorola, sin pasar por apagar/encender). El otro (20:00 UTC del 13-11, Motorola «sin servicio» ×4) es viejo: ya
+  arreglado en la 3048.
 
 ## 🆕 13-11 (prueba del dueño: puente a internet con «solo Bluetooth», S24 3047 17:42–17:44) — DUEÑO ELIGIÓ A (+ búsqueda)
 - **Decisión del dueño (13-11):** «la opción A está bien: cualquier NEXO, esté dormido o no, tiene que servir de puente. Lo que falta
