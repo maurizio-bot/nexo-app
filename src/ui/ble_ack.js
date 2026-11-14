@@ -411,7 +411,7 @@ export class BleAckSystem {
       self._upgradedAt.set(id, now);
       if (self._upgradedAt.size > 200) self._upgradedAt.delete(self._upgradedAt.keys().next().value);
       console.log('[ChatStream] ' + id + ': ' + (lanOk ? 'Wi-Fi' : 'internet') + ' listo con ' + nx + ' (' + (why || 'repaso') + rateTxt +
-        '): el archivo deja el Bluetooth y sigue por ' + (lanOk ? 'el Wi-Fi' : 'internet') + ' (' + Math.round(left / 1365) + ' KB por mandar)');
+        '): el archivo deja el Bluetooth y sigue por ' + (lanOk ? 'el Wi-Fi' : 'internet') + ' (' + Math.round(left / 1365) + ' KB por mandar)'); // i18n-ok: registro para el diagnóstico
       self._restartStream(st, id, next);
       moved++;
     });
@@ -822,7 +822,9 @@ export class BleAckSystem {
     var type = (meta && meta.type) || 'file';
     self._dispatchFileProgress(fileId, 0, 1, 'sending', 1);
     console.log('[BLOB] ' + fileId + ' (' + type + ', ' + Math.round(data.length * 3 / 4 / 1024) + ' KB) → buzón de archivos: cifro una vez y subo trozos a los relés');
+    var tUp = Date.now(); // 3081: velocidad de subida al buzón de archivos
     var p = stageBlob(net, data, { onProgress: function(i, n) { self._dispatchFileProgress(fileId, i, n, 'sending', Math.max(1, Math.round(95 * i / n))); } }).then(function(res) {
+      try { if (typeof window.NEXO_noteSpeed === 'function') window.NEXO_noteSpeed('buzon', 'out', Math.round(data.length * 3 / 4), Date.now() - tUp); } catch (e) {}
       var rec = { expires: res.pointer.expires * 1000, rec: res.outRecord, ptr: res.pointer, to: {} };
       self._blobOut.set(fileId, rec); saveBlobOut(self._blobOut);
       console.log('[BLOB] ' + fileId + ': ' + res.pointer.chunks.length + ' trozos en ' + res.pointer.relays.length + ' relés (réplica mínima ' + res.replication + ')');
@@ -1095,7 +1097,7 @@ export class BleAckSystem {
       var resolvedType = msg.tp || msg.type || (type === 'f' ? 'file' : null);
       var resolvedFrom = from || msg.fr || 'unknown';
       buf = {
-        chunks: new Map(), total: total,
+        chunks: new Map(), total: total, t0: Date.now(), // 3081: t0 = llegó el primer trozo (velocidad de recepción)
         meta: {
           f: msg.f || 'NEXO',
           fr: resolvedFrom,
@@ -1348,6 +1350,10 @@ export class BleAckSystem {
     if (buf.isChat) {
       self._dispatchChunkedMessageComplete(senderId, assembled, buf.meta, deviceId, msgId, done);
     } else {
+      // 3081: velocidad real de esta recepción (desde el primer trozo hasta tenerlo entero)
+      if (buf.t0 && !(buf.meta && (buf.meta.hp > 0 || _isFenixTx(buf.meta))) && typeof window.NEXO_noteSpeed === 'function') {
+        try { window.NEXO_noteSpeed(_isLanDevice(deviceId) ? 'wifi' : (_isNetDevice(deviceId) ? 'internet' : 'bluetooth'), 'in', Math.round(String(assembled || '').length * 3 / 4), Date.now() - buf.t0); } catch (e) {}
+      }
       self._dispatchFileComplete(msgId, assembled, buf.meta, done);
       self._dispatchFileProgress(msgId, buf.total, buf.total, 'received', 100);
     }
@@ -3066,6 +3072,10 @@ ChatStream.prototype._finish = function() {
   // Velocidad real por salto (la usa el selector de camino de Jump)
   var relay = this.ackSystem.ble && this.ackSystem.ble.relay;
   if (relay && this.type === 'file') relay.noteSpeed(this.content.length, Date.now() - this.startTime);
+  // 3081: velocidad real de este envío directo hasta la ✓✓ (para el diagnóstico y el resumen diario)
+  if (this.type === 'file' && !this.meta.fwd && !this.meta.dst && !_isFenixTx(this.meta) && typeof window.NEXO_noteSpeed === 'function') {
+    try { window.NEXO_noteSpeed(_isLanDevice(this.deviceId) ? 'wifi' : (_isNetDevice(this.deviceId) ? 'internet' : 'bluetooth'), 'out', Math.round(String(this.content || '').length * 3 / 4), Date.now() - this.startTime); } catch (e) {}
+  }
   // Jump: el ack final de un puente es custodia (✓); el ✓✓ llega con el ack del destino
   if (!this.meta.fwd) this.ackSystem._dispatchStatus(this.msgId, this.meta.dst ? 'sent' : 'delivered');
   // v3.4.0: entregado → fuera del registro de salientes (si no, se reenviaba al abrir la app o reconectar)

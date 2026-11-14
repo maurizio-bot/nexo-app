@@ -303,6 +303,7 @@ export class LanLink {
             console.log('[WIFI] Wi-Fi con ' + nx + ' recuperado' + (recMs ? ' en ' + (recMs / 1000).toFixed(1) + ' s' : ''));
           } else {
             console.log('[WIFI] Conectado con ' + nx + ' por Wi-Fi (comprobado)');
+            try { if (l.upAt && typeof window.NEXO_noteConnect === 'function') window.NEXO_noteConnect('wifi', Date.now() - l.upAt); } catch (e) {} // 3081
             if (this.ble && typeof this.ble._lanUp === 'function') this.ble._lanUp(nx);
           }
         }

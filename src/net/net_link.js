@@ -336,6 +336,7 @@ export class NetLink {
     var self = this, r = self.relays.get(url) || { backoff: 2000, waits: new Map() };
     self.relays.set(url, r);
     var ws;
+    if (!self._openCount()) self._netTryAt = self._netTryAt || Date.now(); // 3081: desde cuándo se intenta tener internet
     try { ws = r.factory ? r.factory() : new WebSocket(url); } catch (e) { r.retryAt = Date.now() + r.backoff; return; }
     r.ws = ws; r.open = false;
     ws.onopen = function() {
@@ -346,6 +347,8 @@ export class NetLink {
       if (!r.gw && self.gw && self.gw.askedBy && self.gw.askedBy.size) setTimeout(function() { try { self.gw._offerAskers(Date.now()); } catch (e) {} }, 500);
       if (self._openCount() === 1) {
         console.log('[NET] Conectado a internet por relés públicos');
+        try { if (self._netTryAt && typeof window.NEXO_noteConnect === 'function') window.NEXO_noteConnect('internet', Date.now() - self._netTryAt); } catch (e) {} // 3081
+        self._netTryAt = 0;
         setTimeout(function() { self._helloAll(!self._greeted); }, 300); // avisar a los contactos de que estoy
         // Ronda 2780 (pedido del dueño): volvió el internet → reenviar fotos/archivos/textos que quedaron en espera
         if (self.ble && typeof self.ble._netOnline === 'function') setTimeout(function() { self.ble._netOnline(); }, 800);

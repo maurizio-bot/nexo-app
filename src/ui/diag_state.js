@@ -180,6 +180,8 @@ export function diagStateText() {
   }
   var tr = _traceRows();
   if (tr.length) { out.push('Mensajes propios recientes (línea de tiempo):'); out = out.concat(tr); }
+  // 3081: velocidad real de hoy por camino y cuánto tarda cada camino en quedar listo (usage_stats)
+  try { var sp = typeof window.NEXO_speedLines === 'function' ? window.NEXO_speedLines() : []; if (sp.length) { out.push('Velocidad de hoy por camino:'); out = out.concat(sp); } } catch (e) {} // i18n-ok
   return out.join('\n') + '\n';
 }
 

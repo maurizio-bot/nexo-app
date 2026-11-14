@@ -814,6 +814,13 @@ export class BLEInterface {
     meta = meta || {};
     if (!deviceId) return;
     var stateObj = Object.assign({}, meta, { state: state, timestamp: Date.now() });
+    // 3081: cuánto tarda una conexión Bluetooth en quedar lista (desde «conectando» hasta lista para hablar), para el diagnóstico
+    var prevC = this._deviceStates.get(_normMac(deviceId));
+    if (!/^(lan|net)/i.test(String(deviceId))) {
+      if (state === BLE_STATES.CONNECTING) stateObj.connAt = (prevC && prevC.state === BLE_STATES.CONNECTING && prevC.connAt) || Date.now();
+      else if (prevC && prevC.connAt && (state === BLE_STATES.READY_TO_CHAT || state === BLE_STATES.NOTIFICATIONS_READY)) { try { if (typeof window.NEXO_noteConnect === 'function') window.NEXO_noteConnect('bluetooth', Date.now() - prevC.connAt); } catch (e) {} }
+      else if (prevC && prevC.connAt && state !== BLE_STATES.DISCONNECTED) stateObj.connAt = prevC.connAt;
+    }
     // 3027: el papel del enlace (cliente/servidor) se conserva entre cambios de estado del MISMO enlace (lo usa el dedup
     // para desempatar igual que el otro teléfono); al desconectarse se olvida
     if (!('role' in meta) && state !== BLE_STATES.DISCONNECTED) {

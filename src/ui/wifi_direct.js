@@ -250,6 +250,7 @@ export class WifiDirect {
     }).then(function() {
       self.busy = false;
       console.log('[WIFI-DIRECT] ' + fileId + ' entregado en ' + Math.round((Date.now() - t0) / 100) / 10 + ' s');
+      try { if (typeof window.NEXO_noteSpeed === 'function') window.NEXO_noteSpeed('wifi-direct', 'out', Math.round(String(data || '').length * 3 / 4), Date.now() - t0); } catch (e) {} // 3081
     }, function(e) {
       self.busy = false;
       console.warn('[WIFI-DIRECT] ' + fileId + ': ' + (e && e.message) + ' → por Bluetooth');

@@ -51,6 +51,56 @@ function _hook(kind, cid, m, prevStatus) {
   } catch (e) {}
 }
 
+// 3081 (paso 3 del dueño 14-11: «medir en el diagnóstico la velocidad real de cada camino en mis teléfonos»): por día, cada archivo
+// enviado/recibido por un camino (bytes, tiempo hasta la ✓✓ o hasta tenerlo entero) y cuánto tardó cada camino en quedar listo.
+// Solo números (ni nombres ni contenido). Lo anotan ble_ack (Bluetooth/Wi-Fi/internet), wifi_direct, el buzón de archivos, lan,
+// net_link y ble_interface (conexión Bluetooth) por window.NEXO_noteSpeed / NEXO_noteConnect (sin importar este módulo: sin ciclos).
+var VIAS = { wifi: 'Wi-Fi local', 'wifi-direct': 'Wi-Fi Direct', internet: 'internet', buzon: 'buzón de archivos', bluetooth: 'Bluetooth' }; // i18n-ok: texto para el desarrollador
+var VIA_ORDER = ['wifi', 'wifi-direct', 'internet', 'buzon', 'bluetooth'];
+function _kbs(bytes, ms) { return (bytes / 1024) / Math.max(0.001, ms / 1000); }
+function _n1(x) { return (Math.round(x * 10) / 10).toString().replace('.', ','); }
+export function usageNoteSpeed(via, dir, bytes, ms) {
+  try {
+    if (!VIAS[via] || !(bytes > 0) || !(ms > 0) || (dir !== 'out' && dir !== 'in')) return;
+    var o = _load(), day = _day(o, usageDayKey()), k = via + '|' + dir, rate = _kbs(bytes, ms);
+    day.v = day.v || {};
+    var e = day.v[k] || (day.v[k] = { n: 0, b: 0, ms: 0, lo: rate, hi: rate });
+    e.n++; e.b += bytes; e.ms += ms; e.lo = Math.min(e.lo, rate); e.hi = Math.max(e.hi, rate);
+    _save(o);
+    console.log('[VELOCIDAD] ' + VIAS[via] + ' ' + (dir === 'out' ? 'enviado' : 'recibido') + ': ' + _n1(bytes / 1024) + ' KB en ' + _n1(ms / 1000) + ' s = ' + _n1(rate) + ' KB/s'); // i18n-ok
+  } catch (err) {}
+}
+export function usageNoteConnect(via, ms) {
+  try {
+    if (!VIAS[via] || !(ms >= 0) || ms > 600000) return;
+    var o = _load(), day = _day(o, usageDayKey());
+    day.k = day.k || {};
+    var e = day.k[via] || (day.k[via] = { n: 0, ms: 0, lo: ms, hi: ms });
+    e.n++; e.ms += ms; e.lo = Math.min(e.lo, ms); e.hi = Math.max(e.hi, ms);
+    _save(o);
+    console.log('[VELOCIDAD] ' + VIAS[via] + ' listo en ' + _n1(ms / 1000) + ' s'); // i18n-ok
+  } catch (err) {}
+}
+/** Líneas de velocidad y conexión de un día (para el resumen diario y el diagnóstico); [] si no hay datos. */
+export function usageSpeedLines(key) {
+  var d = _load()[key || usageDayKey()], out = [];
+  if (!d) return out;
+  VIA_ORDER.forEach(function(v) {
+    var parts = [];
+    ['out', 'in'].forEach(function(dir) {
+      var e = d.v && d.v[v + '|' + dir]; if (!e || !e.n) return;
+      parts.push((dir === 'out' ? 'enviados ' : 'recibidos ') + e.n + ', media ' + _n1(_kbs(e.b, e.ms)) + ' KB/s' + (e.n > 1 ? ' (de ' + _n1(e.lo) + ' a ' + _n1(e.hi) + ')' : '')); // i18n-ok
+    });
+    if (parts.length) out.push('  archivos por ' + VIAS[v] + ': ' + parts.join(' · ')); // i18n-ok
+  });
+  var con = VIA_ORDER.filter(function(v) { return d.k && d.k[v] && d.k[v].n; }).map(function(v) {
+    var e = d.k[v]; return VIAS[v] + ' ' + _n1(e.ms / e.n / 1000) + ' s (' + (e.n === 1 ? '1 vez' : e.n + ' veces, de ' + _n1(e.lo / 1000) + ' a ' + _n1(e.hi / 1000)) + ')'; // i18n-ok
+  });
+  if (con.length) out.push('  conexión lista en (media): ' + con.join(' · ')); // i18n-ok
+  return out;
+}
+if (typeof window !== 'undefined') { window.NEXO_noteSpeed = usageNoteSpeed; window.NEXO_noteConnect = usageNoteConnect; window.NEXO_speedLines = usageSpeedLines; }
+
 /** Texto del resumen de un día (solo números). */
 export function usageSummaryText(key) {
   var d = _load()[key]; if (!d) return null;
@@ -60,7 +110,8 @@ export function usageSummaryText(key) {
     'mensajes enviados: ' + d.s + ' · recibidos: ' + d.r + '\n' +
     'de los enviados: llegaron (✓✓) ' + d.d + ' · leídos ' + d.rd + '\n' + // i18n-ok: texto para el desarrollador
     'por tipo (enviados y recibidos): texto ' + (d.t.texto || 0) + ' · adjuntos: ' + tipos + '\n' +
-    'chats con actividad: ' + (d.c ? d.c.length : 0) + ' de ' + contactos + ' contactos';
+    'chats con actividad: ' + (d.c ? d.c.length : 0) + ' de ' + contactos + ' contactos' + // i18n-ok
+    (function() { var sl = usageSpeedLines(key); return sl.length ? '\nvelocidad por camino:\n' + sl.join('\n') : ''; })(); // i18n-ok: 3081
 }
 
 /** Manda el resumen del último día COMPLETO sin enviar (el de hoy no: está a medias). Devuelve el estado, p. ej. 'enviado', 'ya_enviado', 'sin_datos'. */

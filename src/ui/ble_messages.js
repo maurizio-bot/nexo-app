@@ -975,7 +975,7 @@ export const BLE_MESSAGE_METHODS = {
     if (why) { console.warn('[BLOB] Puntero de ' + senderUUID + ' rechazado (' + why + '): no se baja nada'); return; }
     if (!self._blobIn) self._blobIn = new Map();
     if (self._blobIn.has(messageId)) return; // ya bajando / en cola
-    var job = { deviceId: deviceId, senderUUID: senderUUID, messageId: messageId, att: att, data: data, ackTo: ackTo, genv: genv || null, tries: 0, running: false, timer: null };
+    var job = { deviceId: deviceId, senderUUID: senderUUID, messageId: messageId, att: att, data: data, ackTo: ackTo, genv: genv || null, tries: 0, running: false, timer: null, t0: Date.now() };
     self._blobIn.set(messageId, job);
     console.log('[BLOB] Puntero de ' + senderUUID + (genv ? ' (grupo ' + genv.g + ')' : '') + ' (' + att.attachmentType + ', ' + att.ptr.chunks.length + ' trozos, ' + Math.round(att.ptr.raw / 1024) + ' KB): bajo del buzón de archivos');
     self._blobRunQueue();
@@ -995,6 +995,8 @@ export const BLE_MESSAGE_METHODS = {
   _blobComplete(j, b64, how) {
     var self = this;
     self._blobIn.delete(j.messageId);
+    // 3081: velocidad de bajada del buzón de archivos (desde que llegó el puntero; incluye esperas y reintentos)
+    try { if (j.t0 && typeof window.NEXO_noteSpeed === 'function') window.NEXO_noteSpeed('buzon', 'in', _blobB64Bytes(b64), Date.now() - j.t0); } catch (e) {}
     var meta = Object.assign({}, j.att.meta || {}); delete meta.ptr; meta.blobPtr = j.att.ptr; // Fase C: un reenvío va por referencia
     var full = { type: 'attachment', attachmentType: j.att.attachmentType, payload: b64, meta: meta };
     var chat = j.genv ? _normId(j.genv.g) : _normId(j.senderUUID);
@@ -1016,7 +1018,7 @@ export const BLE_MESSAGE_METHODS = {
       if (running >= BLOB_MAX_CONCURRENT || j.running || j.timer) return;
       running++; j.running = true; j.tries++;
       self._blobTryLocal(j).then(function(local) {
-        if (local) return self._blobComplete(j, local, 'ya lo tenía (mismo archivo, no se baja nada)');
+        if (local) { j.t0 = 0; return self._blobComplete(j, local, 'ya lo tenía (mismo archivo, no se baja nada)'); }
         return fetchBlob(self.net, j.att.ptr, { log: function(s) { console.log(s); } }).then(function(res) {
           self._blobComplete(j, res.b64, 'bajado y verificado (' + res.relays + ' relés, ' + res.bad + ' trozos malos descartados)');
         });

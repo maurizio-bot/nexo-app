@@ -915,6 +915,10 @@
     {
      "fallo": "Diagnóstico S23→Redmi 14-11 21:46 (3047) y dueño («el Bluetooth es la emergencia… siempre el más rápido»): un vídeo HD de 2,9 MB salió por Bluetooth a ~0,4 KB/s porque al empezar no había otro camino y siguió así aunque un minuto después el Wi-Fi de los dos quedó comprobado. 3080: un archivo por Bluetooth pasa al Wi-Fi local en cuanto está comprobado, y a internet si el Bluetooth medido va más lento que internet (~9 KB/s). Al rehacerlo, las confirmaciones del intento anterior (otro troceado) ya no lo daban por terminado sin que el otro lo tuviera, y el primer trozo lleva rs:1 para que el receptor empiece de cero al momento. upgrade.js --caso=wifi (3079: 39 s por Bluetooth; 3080: 5,6 s) y --caso=net (3079: 55 s; 3080: 20 s)",
      "prueba": "archivo que deja el Bluetooth al quedar listo el Wi-Fi"
+    },
+    {
+     "fallo": "Dueño 14-11 (paso 3): no había números de los teléfonos reales sobre la velocidad de cada camino ni sobre cuánto tarda cada uno en quedar listo (solo los del simulador). 3081: cada archivo enviado/recibido por Bluetooth, Wi-Fi local, Wi-Fi Direct, internet o el buzón de archivos anota tamaño, tiempo y KB/s, y cada camino su tiempo hasta quedar listo; sale en el diagnóstico y en el resumen diario (solo números). velocidad.js (contraprueba 3080: no anota nada)",
+     "prueba": "velocidad real por camino en el diagnóstico"
     }
    ],
    "debiles": [
