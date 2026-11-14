@@ -4,6 +4,16 @@ Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar c
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
 ## 🆕 14-11 noche (llamadas, orden del dueño: «empieza por las llamadas»; y su idea del despertador)
+- **Entrega:** 3084–3089 = **APK 3053** (batería 249/249, Kotlin 155/155, índice 65). Pruebas físicas 52–57 (con el S24, el vivo y
+  la tablet; el S23 no está a mano).
+- **Pruebas del dueño con la 3052 (14-11):** Wi-Fi local OK; videollamada por Wi-Fi OK; avisos con la app cerrada: **con la pantalla
+  apagada no suena ni hay notificación** (con la pantalla encendida llegan puntuales y el audio se oye bien) → abierto en #87, esperan
+  los diagnósticos del S24 y del vivo.
+- **Hecho en la rama (va en la APK siguiente tras su batería):** videollamada, botones de abajo «muy anchos, el de colgar ni se ve»
+  (dueño): 7 botones de 62 px mínimo no cabían en 360–412 de ancho. Ahora cada botón toma su parte del ancho (hasta 76 px), el círculo
+  se encoge con él (42 px a 360) y un nombre que no cabe baja de letra (no menos de 8 px; medida fina: «Silenciado» se pasaba 0,3 px).
+  `videoframe.js` mide 360/384/412 en español e italiano, también «Silenciado»/«Cámara no»/«Altoparlante»: 3089 no caben y colgar
+  queda fuera; ahora caben y colgar se ve entero. En la llamada de voz (4 botones) la letra queda como antes.
 - **Hecho 3087:** con la app cerrada, la llamada deja de sonar en cuanto el que llama cuelga (antes hasta 45 s): «colgar» lleva por
   fuera el id de la oferta (ce), como la oferta lleva cl:1; nativo por Bluetooth y por internet (calls2 colgar-cerrada: 0,2 s).
 - **Hecho 3088 (idea del dueño: «cada mensaje a un teléfono dormido lleve su despertador hasta que haya confirmación»):** el toque FCM

@@ -21,7 +21,19 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **14-11 tarde (3084–3085, en la rama; van en la APK siguiente a la 3051, batería de la 3085 en curso):** dueño: «si un contacto no
+- **14-11 noche (3086–3089 = APK 3053 con 3084–3085; batería 249/249, índice 65; Kotlin 155/155):** (1) **3086** (causa del
+  «reenvío sin fin» del vivo): con el chat abierto y la app dormida, el aviso nativo de respaldo se saltaba entero, ✓✓ incluida; ahora
+  la ✓✓ sale siempre y el aviso solo se calla < 15 s en segundo plano (`BgNotifyPolicy.kt`; chatabierto.js O1–O3). (2) **3087:** con
+  la app cerrada, la llamada deja de sonar en cuanto el que llama cuelga (marca `ce:<oferta>` por fuera; `BgInbox.callEnd`,
+  `MsgNotifier.cancelCallFor`, NetBg onCallEnd; calls2 colgar-cerrada 45 s → 0,2 s). (3) **3088** (idea del dueño): cada mensaje a
+  un teléfono dormido lleva su despertador hasta la ✓✓ aunque se le vea alcanzable (`_wakeStuckPending`; wakesched k). (4) **3089:**
+  el aviso con la app cerrada dice «Videollamada entrante» (marca `cv:1` en el sobre, en la cabecera del primer trozo y en internet;
+  calls2 video-aviso). Micrófono medido sin cambios (0 % de pérdida con 200–400 ms de bloqueo). Pruebas del dueño con la 3052: Wi-Fi
+  local, mensajes y videollamada OK; **avisos con la pantalla apagada: no suena ni avisa (FALLA, #87; esperan diagnósticos S24 +
+  vivo)**; videollamada: botones de abajo demasiado anchos y colgar fuera de pantalla → **arreglado en la rama** (cada botón toma su
+  parte del ancho, nombres que no caben bajan de letra; `videoframe.js` mide 360/384/412 en español e italiano: antes no cabían y
+  colgar quedaba fuera; ahora caben todos), va en la APK siguiente tras su batería. Pruebas físicas nuevas: 52–57.
+- **14-11 tarde (3084–3085 = APK 3053, batería 249/249 con la 3089):** dueño: «si un contacto no
   está al alcance del Bluetooth ni siquiera debería intentarlo» y «el S24 cambia de Wi-Fi a datos muy rápido, ¿por qué nosotros somos
   lentos?». (1) **3084:** Bluetooth solo a quien está cerca (enlace listo, visto al escanear < 2 min o enlace caído < 1 min); si no,
   ningún intento de conexión (repaso de pendientes, reconexión, abrir chat, mandar): va por internet/Wi-Fi o espera, y se conecta solo

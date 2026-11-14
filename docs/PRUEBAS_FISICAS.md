@@ -134,19 +134,19 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     vivo. En el diagnóstico del S24 ya no deben salir, para la tablet, «Resume: … outgoing» seguido de «Texto sobre un Bluetooth que
     el nativo ya soltó», ni en el registro nativo «Write fallo … durante ~6 s» hacia su dirección; sale una vez «sin enlace Bluetooth
     ahora: espera a que vuelva». Cuando la tablet vuelve, lo suyo le llega.
-52. **Bluetooth solo con quien está cerca (próxima APK).** Con varios contactos lejos y algo pendiente para ellos, sal y vuelve a NEXO
+52. **Bluetooth solo con quien está cerca (3053).** Con varios contactos lejos y algo pendiente para ellos, sal y vuelve a NEXO
     en el S24. En el registro nativo del diagnóstico ya no salen tandas de «connectToDevice … Device no en cache» hacia ellos; en el
     de la app, una vez por contacto: «no está cerca por Bluetooth (no visto en 2 min): no intento conectar».
-53. **Wi-Fi a datos al instante (próxima APK).** Con el S24 en Wi-Fi y en un chat por internet, apaga el Wi-Fi (pasa a datos). Que
+53. **Wi-Fi a datos al instante (3053).** Con el S24 en Wi-Fi y en un chat por internet, apaga el Wi-Fi (pasa a datos). Que
     el otro te escriba enseguida: debe llegarte en segundos. En el diagnóstico: «Cambio de red: Wi-Fi → datos móviles» y «Relés
     listos tras el cambio de red en X s».
-54. **Chat abierto y app dormida (próxima APK, los dos actualizados).** En el vivo deja abierto el chat del S24 y apaga la pantalla un
+54. **Chat abierto y app dormida (3053, los dos actualizados).** En el vivo deja abierto el chat del S24 y apaga la pantalla un
     buen rato. Escríbele desde el S24: debe salirte la doble palomita en segundos y al vivo la notificación (antes: nada hasta abrir).
-55. **Colgar con la app cerrada (próxima APK, los dos).** Con NEXO cerrado en el S23, llámalo desde el S24 y cuelga a los 2–3 s: el S23
+55. **Colgar con la app cerrada (3053, los dos).** Con NEXO cerrado en el vivo, llámalo desde el S24 y cuelga a los 2–3 s: el vivo
     debe dejar de sonar al momento (antes, hasta 45 s).
-56. **Aviso de videollamada (próxima APK, los dos).** Con NEXO cerrado o en segundo plano en el S23, hazle una VIDEOllamada desde el
+56. **Aviso de videollamada (3053, los dos).** Con NEXO cerrado o en segundo plano en el vivo, hazle una VIDEOllamada desde el
     S24: el aviso debe decir «Videollamada entrante».
-57. **Despertador hasta la confirmación (próxima APK).** Escribe a alguien con la app dormida (pantalla apagada un rato) que tenga
+57. **Despertador hasta la confirmación (3053).** Escribe a alguien con la app dormida (pantalla apagada un rato) que tenga
     internet: en tu diagnóstico salen varios «[WAKE] toque a nx… (intento N …)» espaciados (30 s, 2 min…) hasta que llega la doble
     palomita, y ahí paran.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
