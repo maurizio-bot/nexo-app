@@ -99,21 +99,21 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     NEXO en el Motorola. En su diagnóstico: «Bluetooth encendido: rehago el servidor GATT».
 39. **Fotos del chat hasta 5 MB (3048).** Elige en la galería una foto de más de 5 MB (una de la cámara a máxima resolución): sale
     «La foto pesa más de 5 MB: elige una más pequeña» y no se manda; si eliges varias, las demás sí salen.
-40. **Puente en cadena (3049).** S24 sin Wi-Fi ni datos (solo Bluetooth); cerca, el vivo con la app dormida y la tablet (u otro)
+40. **Puente en cadena (3050).** S24 sin Wi-Fi ni datos (solo Bluetooth); cerca, el vivo con la app dormida y la tablet (u otro)
     con internet y NEXO abierto. Manda un texto a alguien lejos (el S23): debe salir en ≤ 30 s por el que sí tiene internet. En el
     diagnóstico del S24: «[GW] … no contesta(n) en 5 s (dormido o sin servicio): pruebo con otro NEXO cercano» y luego «Conectado a
     internet por el puente nx…».
-41. **Despertador (3049).** Abre el chat de un contacto que tiene NEXO cerrado (también al tocar «adjuntar» o al grabar un audio):
+41. **Despertador (3050).** Abre el chat de un contacto que tiene NEXO cerrado (también al tocar «adjuntar» o al grabar un audio):
     en tu diagnóstico sale «[WAKE] toque a nx… (al abrir el chat)». Luego manda un audio: debe llegar antes que hoy.
-42. **Audio que el otro aún no bajó (3049, los dos teléfonos en la 3049).** Con NEXO cerrado en el S24, el S23 le manda un audio.
+42. **Audio que el otro aún no bajó (3050, los dos teléfonos en la 3050).** Con NEXO cerrado en el S24, el S23 le manda un audio.
     Abre el S24 unos minutos después: el audio baja y se oye (antes: «Faltan 5 de 5 trozos» para siempre). En el diagnóstico del
     S23, «[BLOB] … confirmado por todos: pedí borrar sus N trozos» sale solo DESPUÉS de que el S24 lo bajó, no al marcar ✓✓.
-44. **Avisos limpios (3049, todos en la 3049).** Con NEXO cerrado en el S24 un rato: ya no debe salir «NEXO · Mensaje nuevo» sin
+44. **Avisos limpios (3050, todos en la 3050).** Con NEXO cerrado en el S24 un rato: ya no debe salir «NEXO · Mensaje nuevo» sin
     mensaje (ni cuando un probador te manda su diagnóstico). Cada mensaje de verdad avisa una vez, con el nombre de quien lo manda;
     uno de grupo, en el grupo. En el registro nativo, cada toque dice «Despierto: sin aviso (lo pone el mensaje cuando llegue)».
-45. **Mensaje de grupo pendiente (3049).** Escribe en un grupo con un miembro sin conexión; cierra y abre NEXO; cuando el miembro
+45. **Mensaje de grupo pendiente (3050).** Escribe en un grupo con un miembro sin conexión; cierra y abre NEXO; cuando el miembro
     vuelva (con NEXO cerrado), le llega el aviso del GRUPO (antes: nada).
-43. **Sin «zombi» falso con contactos de internet (3049).** Deja NEXO en segundo plano un rato y vuelve: en el registro nativo del
+43. **Sin «zombi» falso con contactos de internet (3050).** Deja NEXO en segundo plano un rato y vuelve: en el registro nativo del
     diagnóstico ya no salen «connectToDevice raw='net:nx…'» ni «zombi» de un contacto que solo está por internet.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
