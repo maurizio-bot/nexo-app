@@ -919,6 +919,10 @@
     {
      "fallo": "Dueño 14-11 (paso 3): no había números de los teléfonos reales sobre la velocidad de cada camino ni sobre cuánto tarda cada uno en quedar listo (solo los del simulador). 3081: cada archivo enviado/recibido por Bluetooth, Wi-Fi local, Wi-Fi Direct, internet o el buzón de archivos anota tamaño, tiempo y KB/s, y cada camino su tiempo hasta quedar listo; sale en el diagnóstico y en el resumen diario (solo números). velocidad.js (contraprueba 3080: no anota nada)",
      "prueba": "velocidad real por camino en el diagnóstico"
+    },
+    {
+     "fallo": "Pendiente del realme 13-11 (Bluetooth apagado) y dueño 14-11 («el Bluetooth es la emergencia»): la app no escuchaba el aviso nativo de Bluetooth apagado/encendido ni usaba isBluetoothEnabled al arrancar; tras volver a encenderlo seguía sin buscar hasta 60 s: sin internet y con la app del otro cerrada, un texto tardaba 59,6 s en salir por Bluetooth (3081). 3082: escucha onBluetoothStateChanged (al encenderse busca y reintenta lo pendiente al momento; al apagarse deja de buscar) y usa el estado del arranque: 3,6 s.",
+     "prueba": "Bluetooth que se apaga y se enciende"
     }
    ],
    "debiles": [

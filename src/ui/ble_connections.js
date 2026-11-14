@@ -506,6 +506,25 @@ export const BLE_CONNECTION_METHODS = {
     }
     self._btOffUntil = Date.now() + 60000;
   },
+  // 3082 (btoff.js; dueño 14-11: «el Bluetooth es la emergencia»): el aviso nativo de Bluetooth apagado/encendido
+  // (onBluetoothStateChanged) no tenía quien lo escuchara: al volver a encenderlo la app seguía creyéndolo apagado hasta 60 s
+  // (sin buscar): sin internet y con la app del otro cerrada, un texto tardaba ~60 s en salir por Bluetooth. Ahora, al encenderse,
+  // se busca y se reintenta lo pendiente enseguida; al apagarse, se deja de buscar al momento (sin esperar a que falle un escaneo).
+  _onBtState(data) {
+    var self = this;
+    var on = !!(data && (data.enabled === true || data.state === 'on'));
+    if (!on) { self._noteBtOff(); return; }
+    var wasOff = self._btOffLogged || self._btIsOff();
+    self._btOffUntil = 0; self._btOffLogged = false;
+    if (!wasOff) return;
+    console.log('[BLEInterface] Bluetooth encendido otra vez: busco y reintento lo pendiente'); // i18n-ok: registro para el diagnóstico
+    self._lastAutoScanAt = 0;
+    // el nativo rehace el servidor GATT y el anuncio al encenderse (Kotlin 3072): un momento antes de buscar
+    setTimeout(function() {
+      try { self._startPresenceSearch(120000); } catch (e) {}
+      try { self._flushAllPendingMessages(); } catch (e) {}
+    }, 800);
+  },
 
   _autoScanForKnownContacts(opts) {
     var self = this;

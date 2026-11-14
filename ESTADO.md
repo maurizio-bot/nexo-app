@@ -21,6 +21,21 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **14-11 (3079–3082 = APK 3051, batería de la 3082 en curso):** orden de trabajo acordado con el dueño (regla: «el Bluetooth
+  es la emergencia, solo por si no hay otro camino; fuera de eso, siempre el más rápido»). (1) **3079:** con internet disponible
+  (también con datos móviles) textos y archivos van por internet antes que por un Bluetooth listo (antes el Bluetooth listo iba
+  primero si no estaban los dos en Wi-Fi; `_resolveDeviceIdForNexoId`; btemerg.js E1–E3, sin internet el Bluetooth sigue de
+  emergencia). (2) **3080:** un archivo que ya va por Bluetooth se pasa al camino rápido a mitad: al quedar listo el Wi-Fi local
+  (siempre) o internet (si el Bluetooth medido va por debajo de ~12 KB/s tras 8 s); ≥ 100 KB por mandar, 60 s de espera entre
+  cambios (`ble_ack.upgradeLinks`/`upgradeAll`, `rs:1` para que el otro empiece de cero; upgrade.js --caso=wifi|net). (3) **3081:**
+  velocidad real por camino: cada envío y recepción de archivo y cada conexión que queda lista se anota («[VELOCIDAD] …») y sale en
+  el diagnóstico («Velocidad de hoy por camino:») y en el resumen diario (`usage_stats.js`; velocidad.js V1–V4). (4) **3082**
+  (pendiente del realme, Bluetooth apagado): la app no escuchaba el aviso nativo de Bluetooth apagado/encendido; al volver a
+  encenderlo seguía sin buscar hasta 60 s (sin internet y con la app del otro cerrada, un texto tardaba 59,6 s en salir por
+  Bluetooth). Ahora escucha `onBluetoothStateChanged` (al encenderse busca y reintenta lo pendiente al momento: 3,6 s) y usa el
+  estado del arranque (`_onBtState`; btonoff.js B1–B4; el modo «Bluetooth apagado» del simulador es `NativePhone.setBt`). Paso 4 (archivos
+  por internet en conexión directa) PREPARADO en PENDIENTES, falta el OK del dueño; pasos 5 (Wi-Fi Direct) y 6 (puente con app
+  dormida) después.
 - **14-11 (3076–3078, van en la APK 3050 —la «3049» se cortó por tiempo en el servidor— con 3072–3075; batería 238/238, índice 63,8):** dueño: «las notificaciones se mezclan… las de cuando
   recibo un diagnóstico me aparecen como notificación, luego fantasmas… mensaje que llegue, notificación que llegue, puntual, que no
   se repita». (1) **Causa principal:** cada toque FCM ponía «NEXO · Mensaje nuevo» (`NexoFcmService.wakeNotice`) aunque no hubiera

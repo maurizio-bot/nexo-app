@@ -640,6 +640,14 @@ class NativePhone {
     else if (info.kind === 'NOTIFY_ONLY') notify(NativePhone.whatText(info.what));
   }
 
+  // 3082 (realme 13-11 18:55): Bluetooth APAGADO en este teléfono (no solo lejos): isBluetoothEnabled → enabled:false, escanear
+  // falla («Bluetooth desactivado», como el Kotlin), ningún enlace, y el aviso onBluetoothStateChanged (registerBluetoothStateReceiver).
+  setBt(on) {
+    this.btOff = !on;
+    this.setOffline(!on);
+    if (!this.destroyed) this.emit('onBluetoothStateChanged', { state: on ? 'on' : 'off', enabled: !!on });
+  }
+
   // ---- fuera de alcance (simula alejarse) ----
   setOffline(off) {
     this.offline = off;
@@ -787,7 +795,7 @@ class NativePhone {
       },
       checkBLEStatus: wrap('checkBLEStatus', (c) => c.resolve({ allGranted: true, scanGranted: true, connectGranted: true, advertiseGranted: true, locationGranted: true, notificationsGranted: true, foregroundConnectedGranted: true, serverReady: true })),
       initializeBLE: wrap('initializeBLE', (c) => { self.emit('onServerReady', { ready: true, source: 'permissions_already_granted' }); c.resolve({ granted: true }); }),
-      isBluetoothEnabled: wrap('isBluetoothEnabled', (c) => c.resolve({ enabled: true, canAdvertise: self.serviceRunning, serverReady: true })),
+      isBluetoothEnabled: wrap('isBluetoothEnabled', (c) => c.resolve({ enabled: !self.btOff, canAdvertise: !self.btOff && self.serviceRunning, serverReady: !self.btOff })),
       isAdvertising: wrap('isAdvertising', (c) => c.resolve({ isAdvertising: self.serviceRunning })),
       startAdvertising: wrap('startAdvertising', (c) => { self.serviceRunning = true; c.resolve({ started: true }); }),
       stopAdvertising: wrap('stopAdvertising', (c) => { self.serviceRunning = false; c.resolve({ stopped: true }); }),
@@ -803,6 +811,7 @@ class NativePhone {
       }),
       getLocalDeviceInfo: wrap('getLocalDeviceInfo', (c) => c.resolve({ deviceName: self.name, deviceAddress: '' })),
       startScan: wrap('startScan', (c, a) => {
+        if (self.btOff) return c.reject('Bluetooth desactivado');
         c.resolve({ started: true });
         // Android 8.1+: con la pantalla apagada un escaneo sin filtro no entrega resultados
         if (self.appActive === false && !(a && a.filtered)) { self.stats.screenOffScans = (self.stats.screenOffScans || 0) + 1; return; }

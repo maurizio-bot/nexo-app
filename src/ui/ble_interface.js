@@ -529,6 +529,8 @@ export class BLEInterface {
     if (!_hasNativeMethod(self.nativePlugin, 'isBluetoothEnabled')) return Promise.resolve();
     return _safeNativeCall(self.nativePlugin, 'isBluetoothEnabled', {})
       .then(function(btState) {
+        // 3082: Bluetooth apagado al abrir la app: se sabe ya (antes, solo cuando fallaba el primer escaneo)
+        if (btState && btState.enabled === false && typeof self._noteBtOff === 'function') self._noteBtOff();
         var canAdv = btState && btState.canAdvertise;
         var serverReady = btState && btState.serverReady;
         if ((canAdv || serverReady) && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
@@ -560,6 +562,10 @@ export class BLEInterface {
     });
     // Ronda 2766: el nativo paró la búsqueda (a los 15 s): la app ya no busca (antes se quedaba en "buscando" y ninguna
     // búsqueda automática volvía a arrancar)
+    // 3082: Bluetooth apagado/encendido por el usuario (Kotlin registerBluetoothStateReceiver)
+    this._nativeBtStateListener = this.nativePlugin.addListener('onBluetoothStateChanged', function(data) {
+      try { self._onBtState(data); } catch (e) {}
+    });
     this._nativeScanStoppedListener = this.nativePlugin.addListener('onScanStopped', function() {
       try { if (self.isScanning) { self.isScanning = false; self._autoScanActive = false; self.updateScanButton(); } } catch (e) {}
     });

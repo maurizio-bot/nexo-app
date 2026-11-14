@@ -115,6 +115,21 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     vuelva (con NEXO cerrado), le llega el aviso del GRUPO (antes: nada).
 43. **Sin «zombi» falso con contactos de internet (3050).** Deja NEXO en segundo plano un rato y vuelve: en el registro nativo del
     diagnóstico ya no salen «connectToDevice raw='net:nx…'» ni «zombi» de un contacto que solo está por internet.
+46. **Bluetooth solo de emergencia (3051, los dos en la 3051).** S24 y S23 juntos, los dos con datos móviles (sin Wi-Fi) y
+    Bluetooth encendido. Manda un texto y una foto: deben ir por internet aunque el Bluetooth esté listo. En el diagnóstico del
+    que manda: «[VELOCIDAD] internet enviado: …» para la foto (no «Bluetooth enviado»). Apaga los datos de uno: el siguiente
+    mensaje sale por Bluetooth (la emergencia).
+47. **Archivo que cambia al Wi-Fi a mitad (3051).** Con el Wi-Fi apagado en uno, empieza a mandar un vídeo de 2–5 MB por
+    Bluetooth; a los pocos segundos enciende el Wi-Fi (la misma red que el otro). El vídeo debe seguir por el Wi-Fi y terminar
+    mucho antes. En el diagnóstico: «el archivo deja el Bluetooth y sigue por el Wi-Fi (N KB por mandar)».
+48. **Velocidad por camino (3051).** Tras mandar un par de fotos o vídeos, Perfil → Copiar diagnóstico: sale el bloque
+    «Velocidad de hoy por camino:» con cuántos KB/s dio cada camino (Wi-Fi local, internet, buzón de archivos, Bluetooth) y en
+    cuántos segundos quedó lista cada conexión. Mándame ese diagnóstico: con esos números decidimos el paso 4.
+49. **Resumen diario con velocidades (3051).** Al día siguiente, el resumen diario automático trae al final «velocidad por
+    camino:» con los mismos datos del día.
+50. **Bluetooth que vuelve (3051).** S24 sin Wi-Fi ni datos, con el Bluetooth APAGADO; el S23 cerca con NEXO cerrado. Enciende el
+    Bluetooth del S24 y mándale un texto al S23: debe salir en segundos (antes, hasta un minuto). En el diagnóstico del S24:
+    «Bluetooth encendido otra vez: busco y reintento lo pendiente».
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 

@@ -25,8 +25,9 @@ Orden: 1) Bluetooth solo de emergencia (3079) · 2) un archivo que va por Blueto
   toques sin mensaje se mandan (el despertador al abrir un chat de la 3073 es uno).
 - **Abierto (menor):** un probador con build anterior a la 3033 puede mandar un oculto sin marca → «Mensaje nuevo» que se quita al
   abrir la app (falta quitarlo en cuanto la app lo procesa en segundo plano: método nativo para olvidar un id concreto).
-- **Abierto (menor, realme 13-11 18:55, 3047):** con el Bluetooth APAGADO, al abrir la app se intentó mandar por una dirección
-  Bluetooth guardada: 2 escrituras de ~6 s fallidas y 90 trozos soltados antes de que la app viera que estaba apagado.
+- **Hecho 3082 (realme 13-11, Bluetooth APAGADO):** en sus diagnósticos 3047 la app ya veía el apagado en < 1 s y dejaba lo
+  pendiente en espera (lo de forzar la conexión al abrir el chat se quitó en 3040/3078). Lo que sí fallaba: el aviso nativo de
+  apagado/encendido no se escuchaba y, al volver a encender el Bluetooth, la app no buscaba hasta 60 s (btonoff.js: 59,6 s → 3,6 s).
 
 ## 🆕 14-11 (diagnósticos S23 18:34, realme 3032, S24 19:10 y 19:15) — 3075 hecho, en la APK 3050
 - **Hecho 3075:** los trozos de un audio/archivo del buzón se borraban con el ✓✓ que da el NATIVO del otro al llegar el aviso (antes
