@@ -657,6 +657,10 @@
     {
      "fallo": "Diagnóstico S24 14-11 19:14 (3047): al volver al frente, el repaso de pendientes pedía al Bluetooth nativo conectar a contactos cuyo camino guardado es de internet/Wi-Fi («connectToDevice raw='net:nx…'» ×14) y dejaba un enlace fantasma «conectando»; con el realme, un «zombi» falso de ese enlace. 3072 había tapado abrir el chat y el envío; 3075 tapa la propia auto-conexión. netconn.js (contraprueba 3074: pide «net:…» y deja el fantasma)",
      "prueba": "Bluetooth no se pide para caminos de internet/Wi-Fi"
+    },
+    {
+     "fallo": "Dueño 14-11 (3076): «las notificaciones de cuando recibo un diagnóstico me aparecen como notificación, luego notificaciones fantasmas». (1) Cada toque FCM ponía un aviso «NEXO · Mensaje nuevo» (NexoFcmService.wakeNotice), hubiera o no mensaje; el Motorola tocaba al S24 cada pocos minutos «por pendientes» que eran sus diagnósticos automáticos. Ahora el toque solo despierta (aviso neutro solo si el servicio no arranca; NotifGhostTest) y no se toca por pendientes que son solo ocultos (wakesched.js j). (2) Al revés: la copia de un mensaje de GRUPO pendiente se reenviaba «callada» (q:1) por estar oculta en el chat del que manda → el miembro con la app cerrada no se enteraba; ahora avisa y cae en el grupo (notifghost.js G5; contraprueba 3075: sin aviso). (3) Por internet en segundo plano el aviso de un mensaje de grupo caía en el chat 1-a-1 (NetBg.groupOf; NetBgTest)",
+     "prueba": "avisos limpios (diagnósticos, toques, grupos)"
     }
    ],
    "debiles": [

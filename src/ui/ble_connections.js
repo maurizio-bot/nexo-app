@@ -4,7 +4,7 @@
  * esperar a que un enlace esté listo.
  */
 import { t } from './i18n.js';
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _netNx, _lanNx, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _dupBleLinksToClose, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages, _wakeShouldFire, _wakeAdvance, _wakeNewEntry, WAKE_GIVEUP_MS } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _netNx, _lanNx, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _dupBleLinksToClose, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages, _wakeShouldFire, _wakeAdvance, _wakeNewEntry, WAKE_GIVEUP_MS, _isQuietHidden } from './ble_helpers.js';
 
 
 export const BLE_CONNECTION_METHODS = {
@@ -232,7 +232,10 @@ export const BLE_CONNECTION_METHODS = {
         : (w ? _vaultLoadMessages(nx).then(function(msgs) { return msgs.filter(function(m) { return _isResendable(m, nx); }); }) : null);
       if (!p) return Promise.resolve(true);
       var selfW = this;
-      return Promise.resolve(p).then(function(pending) { return !!(pending && pending.length) || (typeof selfW._citaPendingFrom === 'function' && selfW._citaPendingFrom(nx)); }, function() { return true; }); // Fase D: esperar un archivo grande también es «pendiente»
+      // 3076 (dueño 14-11: «las notificaciones de cuando recibo un diagnóstico me aparecen como notificación»): solo cuenta lo que el
+      // otro va a LEER. Un diagnóstico automático, un estado o una foto de perfil pendientes no le despiertan con un toque FCM (el
+      // Motorola tocaba al S24 cada pocos minutos «por pendientes» que eran sus diagnósticos); llegan cuando coincidan.
+      return Promise.resolve(p).then(function(pending) { return (pending || []).some(function(m) { return !_isQuietHidden(m); }) || (typeof selfW._citaPendingFrom === 'function' && selfW._citaPendingFrom(nx)); }, function() { return true; }); // Fase D: esperar un archivo grande también es «pendiente»
     } catch (e) { return Promise.resolve(true); }
   },
 

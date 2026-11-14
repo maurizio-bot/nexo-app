@@ -20,7 +20,10 @@ import javax.crypto.spec.SecretKeySpec
 class NetBg(
     // #130b (dueño 31-10): isCall = el sobre venía marcado como oferta de llamada (cl:1). Con la app en segundo plano o
     // congelada, el que escucha (NexoBlePlugin) saca la LLAMADA a pantalla completa en vez del aviso de mensaje normal.
-    private val onMessage: (nx: String, name: String, msgId: String, isCall: Boolean) -> Unit,
+    // 3076 (dueño 14-11, notificaciones «sincronizadas»): group = id del grupo si el mensaje es de un GRUPO (lo lleva el sobre
+    // por fuera, env.g, igual que por Bluetooth); vacío si es 1-a-1. Así el aviso cae en el grupo y no en el chat del que lo manda
+    // (al tocarlo se abría el chat 1-a-1 y no había nada nuevo).
+    private val onMessage: (nx: String, name: String, msgId: String, isCall: Boolean, group: String) -> Unit,
     private val log: (String) -> Unit = {},
 ) {
     class Contact(val nx: String, val name: String, val kraw: ByteArray)
@@ -39,6 +42,12 @@ class NetBg(
         // Fallos tras cerrarse una conexión que duró `livedMs` (0 = no llegó a abrir)
         fun failsAfterClose(fails: Int, livedMs: Long): Int = (if (livedMs >= RELAY_STABLE_MS) 0 else fails) + 1
         fun retryDelayMs(fails: Int): Long = minOf(300000L, 5000L * (1L shl minOf(fails, 6)))
+        private val GID = Regex("^gr[0-9a-z]{8}$")
+        // 3076: id del grupo del mensaje que va dentro del sobre (p = sobre type:'chat' con g), o "" (1-a-1, o no se entiende)
+        fun groupOf(p: String): String {
+            if (p.isEmpty() || p[0] != '{' || SafeJson.reject(p)) return ""
+            return try { JSONObject(p).optString("g").lowercase().takeIf { GID.matches(it) } ?: "" } catch (e: Exception) { "" }
+        }
         fun day(offsetDays: Int, now: Long = System.currentTimeMillis()): String {
             val f = SimpleDateFormat("yyyy-MM-dd", Locale.US); f.timeZone = TimeZone.getTimeZone("UTC")
             return f.format(Date(now + offsetDays * 86400000L))
@@ -257,7 +266,7 @@ class NetBg(
         keepForApp(ev.toString())   // 3033: para la app al volver (mensajes, confirmaciones, acciones: lo procesa como si llegara)
         val n = o.optString("n")
         // #130b: cl:1 = oferta de llamada (1-a-1 o invitación de grupo) → pantalla de llamada, no aviso de mensaje
-        if (n.isNotEmpty()) { onMessage(c.nx, c.name, n, o.optInt("cl") == 1); publishDeliveryAck(c, n) }
+        if (n.isNotEmpty()) { onMessage(c.nx, c.name, n, o.optInt("cl") == 1, groupOf(o.optString("p"))); publishDeliveryAck(c, n) }
     }
 
     // #87 (entrega con la app CERRADA): al reconocer un sobre con un mensaje NUEVO de la pareja, devolvemos su

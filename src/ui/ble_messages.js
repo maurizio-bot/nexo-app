@@ -10,7 +10,7 @@ import { groupAttachment, parseGroupEnvelope } from './groups.js';
 import { NET_MAX_B64_BYTES } from './media_limits.js';
 import { parseCallSignal } from './calls.js';
 import { parseGroupCallSignal } from './group_call.js';
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _attMissDecision, _attMissCooling, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus, _tooBigForBt, BT_FILE_MAX_CHARS } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _attMissDecision, _attMissCooling, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus, _tooBigForBt, BT_FILE_MAX_CHARS, _isGroupCopy, _groupCopyGid } from './ble_helpers.js';
 import { blobPointerIn, validatePointer, fetchBlob, blobMailboxEligible, pointerReusable, loadBlobSeen, saveBlobSeen, citaIn, validateCita, loadCitaIn, saveCitaIn, loadCitaOut, saveCitaOut, _fetchRetryDelay, _b64Bytes as _blobB64Bytes, MAX_CONCURRENT as BLOB_MAX_CONCURRENT, MAILBOX_MAX_BYTES as BLOB_MAILBOX_MAX_BYTES } from '../net/blob_mailbox.js'; // Fase B (2969): buzón de ARCHIVOS
 
 
@@ -1307,11 +1307,21 @@ export const BLE_MESSAGE_METHODS = {
   },
 
   // 3033: los mensajes guardados como ocultos (acciones) se reenvían sin aviso en el otro teléfono (ver _resendPendingMessages)
+  // 3076 (notifghost.js G5): la COPIA de un mensaje de grupo también se guarda oculta en el chat del miembro, pero para él es un
+  // mensaje: no va callada (antes salía con q:1 y el miembro con la app cerrada no se enteraba) y recupera el id del grupo para
+  // que su aviso caiga en el grupo y no en el chat 1-a-1 (ese mapa vivía solo en memoria y se perdía al reiniciar la app).
   _markHiddenQuiet(list) {
     var self = this;
     (list || []).forEach(function(m) {
       var id = m && (m.msgId || m.messageId || m.id);
-      if (id && m.hidden === true) { self._quietOut = self._quietOut || new Set(); self._quietOut.add(id); }
+      if (!id || m.hidden !== true) return;
+      if (_isGroupCopy(m)) {
+        var gid = _groupCopyGid(m);
+        if (gid) { self._groupOut = self._groupOut || new Map(); self._groupOut.set(id, gid); if (self._groupOut.size > 500) self._groupOut.delete(self._groupOut.keys().next().value); }
+        if (self._quietOut) self._quietOut.delete(id);
+        return;
+      }
+      self._quietOut = self._quietOut || new Set(); self._quietOut.add(id);
     });
   },
 

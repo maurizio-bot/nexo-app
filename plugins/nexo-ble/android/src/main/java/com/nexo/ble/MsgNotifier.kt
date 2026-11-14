@@ -297,6 +297,9 @@ class MsgNotifier(private val ctx: Context) {
     fun sync(counts: Map<String, Int>) {
         val (remove, update) = book.sync(counts)
         val nm = NotificationManagerCompat.from(ctx)
+        // 3076: el aviso genérico del toque FCM (builds anteriores: «NEXO · Mensaje nuevo» en cada despertar) no es de ningún chat:
+        // los contadores de la app mandan, así que al sincronizar se quita (si había mensajes, ya tienen su propio aviso)
+        try { nm.cancel(NexoFcmService.WAKE_NOTIF_ID) } catch (e: Exception) { }
         remove.forEach { try { nm.cancel(notifId(it)) } catch (e: Exception) { } }
         update.forEach { post(it, alert = false) }
     }

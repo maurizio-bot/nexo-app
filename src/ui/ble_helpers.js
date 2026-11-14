@@ -633,6 +633,25 @@ export function _isControlPacket(content) {
 // nada en vuelo y antes se quedaban así para siempre. Adjuntos en 'sending' los reanuda
 // resumeOutgoingTransfers (ble_ack), no aquí, para no duplicar la transferencia.
 // cid (3033, opcional): de qué contacto es (como callback de filter llega el índice: se ignora)
+// 3076 (dueño 14-11, notificaciones): en el chat de quien manda se guardan como «ocultos» dos cosas muy distintas:
+//  - acciones sin nada que leer (diagnóstico automático, estado, foto de perfil, me gusta, borrar, juego…): van «calladas»
+//    (sin aviso en el otro) y no merecen despertarle con un toque FCM;
+//  - la COPIA de un mensaje de GRUPO para un miembro (id gm…_xxxxxxxx, sobre nexo_grp): oculta solo en el chat 1-a-1 del que
+//    manda, pero para el miembro ES un mensaje: tiene que avisar y despertar. Antes las dos se trataban igual al reenviar.
+export function _isGroupCopy(m) {
+  if (!m) return false;
+  var id = String(m.msgId || m.messageId || m.id || '');
+  if (/^gm[0-9a-z]+_[0-9a-z]{8}$/.test(id)) return true;
+  return typeof m.content === 'string' && m.content.indexOf('"type":"nexo_grp"') >= 0;
+}
+export function _isQuietHidden(m) { return !!m && m.hidden === true && !_isGroupCopy(m); }
+// Id del grupo de una copia de grupo (para el aviso con la app del otro cerrada: BgInbox lee env.g); '' si no es copia
+export function _groupCopyGid(m) {
+  if (!_isGroupCopy(m) || typeof m.content !== 'string') return '';
+  var g = /"g":"(gr[0-9a-z]{8})"/.exec(m.content);
+  return g ? g[1] : '';
+}
+
 export function _isResendable(m, cid) {
   if (!m || m._own !== true) return false;
   // 3033: copia oculta de un estado que ya no se manda así (foto dentro de builds anteriores, estado vencido): no se reenvía

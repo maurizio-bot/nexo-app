@@ -30,7 +30,7 @@ class NexoFcmService : FirebaseMessagingService() {
     companion object {
         const val PREFS = "nexo_fcm"
         const val PREF_TOKEN = "token"
-        private const val WAKE_NOTIF_ID = 4600
+        const val WAKE_NOTIF_ID = 4600
         private const val TAG = "NEXO_FCM"
     }
 
@@ -57,14 +57,20 @@ class NexoFcmService : FirebaseMessagingService() {
         // 1) Arrancar el servicio de NEXO para que empiece a bajar el buzón (NetBg) y el Bluetooth. Un "toque" de ALTA
         //    prioridad de FCM da permiso temporal para arrancar un servicio en primer plano desde segundo plano (como
         //    WhatsApp). Defensivo: si el sistema no lo permite, el aviso de abajo igual despierta al dueño.
+        var started = false
         try {
             val svc = Intent(this, BleService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(svc) else startService(svc)
+            started = true
         } catch (e: Throwable) { nlog("No se pudo arrancar el servicio al despertar: ${e.message}", "WARN") }
 
-        // 2) Aviso visible: prueba de que NEXO despertó con la app cerrada. El contenido real lo muestra NEXO cuando
-        //    baja el mensaje del buzón; aquí solo "tienes algo nuevo".
-        try { wakeNotice() } catch (e: Throwable) { nlog("Aviso de despertar: ${e.message}", "WARN") }
+        // 2) 3076 (dueño 14-11: «notificaciones fantasmas… la de cuando recibo un diagnóstico me aparece como notificación»): ANTES
+        //    cada toque ponía un aviso «NEXO · Mensaje nuevo», hubiera o no un mensaje: el toque no dice nada (solo despierta) y
+        //    se manda también por cosas que no se leen (diagnósticos, estados) o al abrir un chat (3073). Ahora el toque solo
+        //    despierta; el aviso lo pone el mensaje DE VERDAD cuando llega (NetBg/Bluetooth: uno por mensaje, sin repetir).
+        //    Solo si el servicio no pudo arrancar (sin él no baja nada) queda un aviso que no promete un mensaje.
+        if (FcmWakePolicy.noticeAfterWake(started)) try { wakeNotice() } catch (e: Throwable) { nlog("Aviso de despertar: ${e.message}", "WARN") }
+        else nlog("Despierto: sin aviso (lo pone el mensaje cuando llegue)")
     }
 
     private fun wakeNotice() {
@@ -82,7 +88,7 @@ class NexoFcmService : FirebaseMessagingService() {
         val b = NotificationCompat.Builder(this, MsgNotifier.CHANNEL_ID)
             .setSmallIcon(MsgNotifier.msgIcon(this))
             .setContentTitle("NEXO")
-            .setContentText("Mensaje nuevo")
+            .setContentText("Puede haber mensajes nuevos: abre NEXO")
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)

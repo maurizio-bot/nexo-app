@@ -188,6 +188,23 @@ const { importSrc } = require('./srcmod');
     I._wakeStillPending = function () { return Promise.reject(new Error('bóveda rota')).catch(function () { return true; }); };
     clock += 60000; await tick(I);
     r.boveda_rota_toca_igual = I._toques.length === 1;
+    // j) 3076 (dueño 14-11: «la notificación de cuando recibo un diagnóstico»): si lo pendiente son solo cosas que no se leen
+    //    (diagnóstico automático, estado, foto de perfil: ocultas), NO se toca; una copia de un mensaje de GRUPO (también oculta en
+    //    el chat del que manda, pero es un mensaje para el otro) o un texto normal SÍ.
+    var hadWin = typeof global.window !== 'undefined', oldWin = global.window;
+    var pend = [];
+    global.window = { vaultGetPendingMessages: function () { return Promise.resolve(pend.slice()); } };
+    try {
+      pend = [{ msgId: 'msg1aaaa', hidden: true, content: '{"type":"nexo_diag"}' }, { msgId: 'msg2bbbb', hidden: true, content: '{"type":"nexo_act","act":"st"}' }];
+      var J = mkSelf('none', 'waking'); J._noteWakePending('nxj0000011'); clock += 60000; await tick(J);
+      r.solo_ocultos_no_toca = J._toques.length === 0 && !J._pendingWake.has('nxj0000011');
+      pend = [{ msgId: 'gm1794622257098xyz_0j000001', hidden: true, content: '{"type":"nexo_grp","g":"grabcdefgh","c":"hola"}' }];
+      var K = mkSelf('none', 'waking'); K._noteWakePending('nxj0000001'); clock += 60000; await tick(K);
+      r.copia_de_grupo_toca = K._toques.length === 1;
+      pend = [{ msgId: 'msg3cccc', hidden: true, content: '{"type":"nexo_diag"}' }, { msgId: 'msg4dddd', content: 'hola' }];
+      var L = mkSelf('none', 'waking'); L._noteWakePending('nxl0000013'); clock += 60000; await tick(L);
+      r.texto_normal_toca = L._toques.length === 1;
+    } finally { if (hadWin) global.window = oldWin; else delete global.window; }
   } finally { Date.now = realNow; Math.random = realRandom; }
 
   // Calendario a la vista (pedido del dueño): un toque por línea, con su instante y el intervalo desde el anterior.

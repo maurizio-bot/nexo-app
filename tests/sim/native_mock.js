@@ -528,7 +528,7 @@ class NativePhone {
     n.ids.add(mid); n.name = name || n.name; n.text = text || ''; n.posts = (n.posts || 0) + 1;
     if (this.wakeOnMsg !== false) this._wake(); // Kotlin 2765: MsgNotifier.post enciende la pantalla (si se deja en Perfil)
     this.notifications.set(id, n); this.msgChat.set(mid, id);
-    this.notifLog.push(Object.assign({ t: Date.now(), chatId: id, name: n.name, text: text || '', count: n.base + n.ids.size }, flags || {}));
+    this.notifLog.push(Object.assign({ t: Date.now(), chatId: id, name: n.name, text: text || '', count: n.base + n.ids.size, msgId: mid }, flags || {}));
     return n.base + n.ids.size;
   }
   // Kotlin 2763 MsgNotifier.incomingCall; ronda 2768 (CallDedupe): un aviso por oferta (mismo remitente y mismo id de la

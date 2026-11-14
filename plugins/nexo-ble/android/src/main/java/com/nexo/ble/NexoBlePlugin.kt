@@ -2948,7 +2948,7 @@ class NexoBlePlugin : Plugin() {
         // Ronda 2774 (el dueño: con la pantalla apagada no llegan por Wi-Fi/internet): al recibir por internet en segundo
         // plano se renueva el wakelock (rxWake), igual que por Bluetooth y Wi-Fi, para que dé tiempo a avisar antes de que
         // el teléfono vuelva a dormir.
-        netBgShared ?: NetBg({ nx, name, msgId, isCall ->
+        netBgShared ?: NetBg({ nx, name, msgId, isCall, group ->
             if (appInBackground) rxWake()
             // #130b (dueño 31-10): una oferta de llamada/videollamada que llega por internet con la app en segundo plano o
             // congelada tiene que salir a PANTALLA COMPLETA (enciende el teléfono, Contestar/Rechazar), como la 1-a-1 por
@@ -2960,8 +2960,11 @@ class NexoBlePlugin : Plugin() {
                 // 3008: reenvío de un mensaje que este teléfono ya tiene → sin «Mensaje nuevo» (la ✓✓ sí se devuelve, para que el otro pare)
                 nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): ese mensaje ya estaba en el teléfono (reenvío): sin aviso")
             } else {
-                nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): aviso de mensaje nuevo por internet")
-                MsgNotifier.get(context).message(nx, name, msgId, "", true)
+                // 3076: un mensaje de GRUPO avisa en el grupo, con su nombre y quién lo manda (como por Bluetooth: notifyMessage)
+                val gname = groupName(group)
+                nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): aviso de mensaje nuevo por internet" + if (gname != null) " (grupo $group)" else "")
+                if (gname != null) MsgNotifier.get(context).message(group, gname, msgId, "$name: Mensaje nuevo", true)
+                else MsgNotifier.get(context).message(nx, name, msgId, "", true)
             }
         }, { nlog()?.add("INFO", "NET", it); Log.i("NEXO_NET", it) }).also { netBgShared = it }
     }
