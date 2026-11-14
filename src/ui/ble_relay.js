@@ -438,7 +438,7 @@ export class BleRelay {
     var btHop = !/^(lan|net)/i.test(String(hop.deviceId));
     // 3058 (diagnóstico del dueño 13-11 07:28): en llamada, lo que este teléfono guarda para otro (custodia) no sale por Bluetooth
     // hasta colgar (la radio es de la llamada; al colgar ble_messages._afterCallRadio vacía la cola)
-    if (btHop && self.ble && typeof self.ble._callBusy === 'function' && self.ble._callBusy()) {
+    if (btHop && self.ble && (typeof self.ble._callUsesBle === 'function' ? self.ble._callUsesBle() : (typeof self.ble._callBusy === 'function' && self.ble._callBusy()))) { // 3097: solo si la llamada va por Bluetooth
       if (!self._callHoldSaid) { self._callHoldSaid = true; console.log('[JUMP] En llamada: lo guardado para otros espera a colgar para salir por Bluetooth'); }
       return;
     }

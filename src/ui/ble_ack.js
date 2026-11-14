@@ -2080,7 +2080,7 @@ export class BleAckSystem {
     var ble = this.ble;
     if (!ble) return false;
     if (ble._foreground === true) return true;
-    if (typeof ble._callBusy === 'function' && ble._callBusy()) return true; // 3058: en llamada, la radio es de la llamada
+    if (typeof ble._callUsesBle === 'function' ? ble._callUsesBle() : (typeof ble._callBusy === 'function' && ble._callBusy())) return true; // 3058/3097: en llamada POR Bluetooth, la radio es de la llamada
     return !!(typeof ble._bleCongested === 'function' && ble._bleCongested(deviceId));
   }
   // Reanuda UNA transferencia: resuelve el mejor camino de AHORA y reconstruye el contenido perezosamente (no todas de

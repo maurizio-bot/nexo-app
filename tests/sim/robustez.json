@@ -1078,6 +1078,10 @@
     {
      "fallo": "Punto débil de llamadas: con la app cerrada o dormida, el aviso nativo decía «Llamada entrante» también en una videollamada (la señal va cifrada). 3089: la oferta de videollamada lleva por fuera cv:1 —en el sobre, en la cabecera del primer trozo (la oferta va troceada) y en el sobre de internet—; el nativo (BgInbox.video → incomingCall, NetBg) dice «Videollamada entrante» (calls2 video-aviso: 3088 decía llamada, 3089 videollamada; CallEndTest y NetBgTest en JVM).",
      "prueba": "llamadas: video-aviso"
+    },
+    {
+     "fallo": "3097 (diagnóstico S24 3054 14-11 16:15–16:19): en una videollamada por Wi-Fi con el Xiaomi, «En llamada: lo pendiente para nx1e50c95d por Bluetooth espera a colgar (la radio es de la llamada)»: lo del S23, que solo se alcanzaba por Bluetooth, esperó 4,5 min. La regla de la 3058 apartaba el Bluetooth con CUALQUIER llamada en curso. 3097: solo si la llamada (o algún tramo de la de grupo) va por Bluetooth ahora; por Wi-Fi, internet directo o relés, lo de fondo sale. llamadawifi.js: 3096 = nada llega durante la llamada (al colgar, en 2,8 s); 3097 = llegan los 3 a los 7,3 s de volver C, la voz sigue; radiollamada.js L (llamada por Bluetooth) sigue igual",
+     "prueba": "llamada por Wi-Fi no aparta el Bluetooth"
     }
    ],
    "debiles": [

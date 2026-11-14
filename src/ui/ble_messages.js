@@ -791,7 +791,7 @@ export const BLE_MESSAGE_METHODS = {
     if (queue.length === 0) return;
     // 3058: en llamada, lo que esperaba en memoria para este contacto (escrito cuando no estaba) no sale por Bluetooth hasta colgar;
     // las señales de llamada (cs…/gcs…) sí salen (p. ej. la oferta que esperaba a que apareciera el otro)
-    if (self._callBusy() && !/^(lan|net)/i.test(String(deviceId))) {
+    if (self._callUsesBle() && !/^(lan|net)/i.test(String(deviceId))) {
       var isSig = function(it) { return /^g?cs/.test(String(it.messageId || '')); };
       var later = queue.filter(function(it) { return !isSig(it); });
       if (later.length) {
@@ -1289,10 +1289,24 @@ export const BLE_MESSAGE_METHODS = {
   // espera a colgar y entonces sale. Lo nuevo que escribe el usuario y las señales de la llamada salen como siempre; lo que
   // va por Wi-Fi o internet no espera.
   _callBusy() { return !!((this.calls && this.calls.call) || (this.gcall && this.gcall.gc)); },
+  // 3097 (diagnóstico S24 3054 14-11 16:15–16:19: videollamada por Wi-Fi con el Xiaomi y lo del S23, que solo iba por Bluetooth,
+  // esperó 4,5 min a colgar): la radio Bluetooth solo es de la llamada si la llamada va POR Bluetooth (alguno de sus tramos ahora).
+  // Por Wi-Fi, internet directo o relés, el Bluetooth queda libre para lo de fondo. Ante la duda (error al mirar), como antes.
+  _callUsesBle() {
+    if (!this._callBusy()) return false;
+    var isBle = function(l) { return !!l && !/^(lan|net|p2p|wd):/i.test(String(l)); };
+    try {
+      var calls = this.calls, c = calls && calls.call;
+      if (c && typeof calls._link === 'function' && isBle(calls._link(_normId(c.nx)))) return true;
+      var g = this.gcall, gc = g && g.gc, hit = false;
+      if (gc && gc.legs && typeof g._link === 'function') gc.legs.forEach(function(leg, nx) { if (!hit && isBle(g._link(_normId(nx)))) hit = true; });
+      return hit;
+    } catch (e) { return true; }
+  },
   // ¿Lo de fondo para este contacto iría por Bluetooth (directo o por un puente Bluetooth) estando en llamada? → espera a colgar
   _callRadioHold(nexoId, why) {
     var self = this, nx = _normId(nexoId);
-    if (!nx || !self._callBusy()) return false;
+    if (!nx || !self._callUsesBle()) return false;
     var dev = self._resolveDeviceIdForNexoId(nx);
     if (dev && /^(lan|net)/i.test(String(dev))) return false;
     if (!dev) { var rh = self.relay && self.relay.relayHop(nx); if (!rh || /^(lan|net)/i.test(String(rh.deviceId))) return false; }
