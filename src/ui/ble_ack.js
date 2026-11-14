@@ -1897,7 +1897,10 @@ export class BleAckSystem {
         entry.resolve();
         if (!entry.quiet) this._dispatchStatus(ackMsgId, status);
         if (!entry.quiet && !entry.raw && entry.t0) {
-          console.log('[SEND] Texto entregado en ' + (Date.now() - entry.t0) + ' ms (cifrar ' + entry.seal + ' ms, salir por Bluetooth ' +
+          // 3096 (wifivuelve): el camino de verdad (antes decía «Bluetooth» siempre, también por Wi-Fi o internet: confundía el diagnóstico)
+          var dvia = String(entry.deviceId || '').toLowerCase();
+          dvia = /^lan:?nx/.test(dvia) ? 'Wi-Fi' : /^net:?nx/.test(dvia) ? 'internet' : /^wd:?nx/.test(dvia) ? 'Wi-Fi Direct' : 'Bluetooth';
+          console.log('[SEND] Texto entregado en ' + (Date.now() - entry.t0) + ' ms (cifrar ' + entry.seal + ' ms, salir por ' + dvia + ' ' +
             entry.outMs + ' ms, reintentos ' + entry.retries + ')');
         }
       } else {

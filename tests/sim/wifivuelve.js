@@ -111,7 +111,9 @@ function pickFile(p, name, b) {
   const k2 = logs.length;
   sendText(B, 'ya con Wi-Fi');
   r.V2_llega_s = await waitFor(() => vaultMsgs(A, idB).then((l) => l.some((m) => m.content === 'ya con Wi-Fi')), 20000);
-  r.V2_por_wifi = (nA.lanRx || 0) > 0 || logs.slice(k2).some((l) => /\[B\].*(por Wi-Fi|lan:)/.test(l));
+  // (3096: el registro de entrega dice el camino de verdad; antes ponía «Bluetooth» siempre y la prueba miraba otras líneas)
+  await waitFor(() => logs.slice(k2).some((l) => /\[B\].*\[SEND\] Texto entregado .*salir por /.test(l)), 5000);
+  r.V2_por_wifi = logs.slice(k2).some((l) => /\[B\].*\[SEND\] Texto entregado .*salir por Wi-Fi /.test(l));
   // V3: el archivo pasa al Wi-Fi y llega entero
   const v3 = await waitFor(async () => !!(await findMsg(A, idB, b64, false)), 60000);
   r.V3_archivo_llega_s = v3 === null ? null : Math.round((Date.now() - t0) / 100) / 10;
