@@ -338,6 +338,10 @@
     {
      "fallo": "3040 (aviso «openchat_mac_vieja» del lector 13-11 21:15; S24 21:28 con …707a con el Bluetooth apagado): abrir el chat forzaba la conexión Bluetooth aunque ese contacto estuviera en pausa (no_service repetido): otro no_service y la pausa crecía (30 → 60 → 120 s). 3040: openChat no fuerza la conexión durante la pausa. cola3038.js §3 (contraprueba 3038)",
      "prueba": "abrir el chat de un contacto en pausa Bluetooth"
+    },
+    {
+     "fallo": "Diagnóstico automático S24 14-11 11:52 («enlace_abre_cierra», nx09acdb61 6 desconexiones en 10 min, el vivo recién actualizado): el enlace REPETIDO que la propia app cierra (Dedup 6dad a las 11:50:21 y 11:51:39) contaba también como «desconexión», además de como «repetido»: aviso falso y un diagnóstico de 20 KB por la radio. 3093: lo cerrado por la deduplicación (enfriamiento _dupClosedUntil) no cuenta como corte. noservice 6): 3092 = 1 aviso falso; 3093 = 0",
+     "prueba": "GATT roto / no_service"
     }
    ]
   },

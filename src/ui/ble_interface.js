@@ -706,7 +706,11 @@ export class BLEInterface {
         // sin motivo ~1 s después) nunca abrieron nada: los frena la pausa por no_service y ya salen en el diagnóstico; contarlos
         // aquí daba la alarma cada vez que el otro tiene la app cerrada (y tras reiniciar la app, que vuelve a probar 4 veces).
         var flapNx = peerUUID || self._macToNexoId.get(_normMac(deviceId));
-        if (typeof self._noteLinkFlap === 'function' && flapNx && self._notifiedPeers.has(_normMac(deviceId) + ':' + _normId(flapNx))) self._noteLinkFlap(flapNx, 'desconexion'); // 3020
+        // 3093 (diagnóstico automático S24 14-11 11:52, «enlace_abre_cierra» con el vivo): el enlace REPETIDO que la propia app
+        // acaba de cerrar (Dedup) contaba también como «desconexión»: con sus cierres por repetido ya contados aparte, daba un
+        // aviso falso de enlace que se cae (y un diagnóstico de 20 KB por la radio). Lo cerrado por la deduplicación no cuenta.
+        var dupClosed = !!(self._dupClosedUntil && (self._dupClosedUntil.get(_normMac(deviceId)) || 0) > Date.now());
+        if (typeof self._noteLinkFlap === 'function' && flapNx && !dupClosed && self._notifiedPeers.has(_normMac(deviceId) + ':' + _normId(flapNx))) self._noteLinkFlap(flapNx, 'desconexion'); // 3020
         self.connectedDevices.delete(deviceId);
         self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
         self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.OFFLINE, since: Date.now() });

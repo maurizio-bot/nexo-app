@@ -11,6 +11,7 @@
 //      cero: 4 intentos (8 cortes) en ráfaga cada 10 min y el aviso «abre y cierra». Ahora la racha cuenta desde el FIN de la pausa:
 //      el primer no_service tras una pausa larga vuelve a pausar en el acto.
 //   3) al conectar bien (peerReady) se olvida racha y pausa.
+//   6) (3093, S24 14-11 11:52) las caídas de un enlace que la deduplicación acaba de cerrar no cuentan como «desconexión».
 //   5) (3068, diagnóstico automático S24 13-11 15:04, recién actualizado a la 3045, «enlace_abre_cierra» con el Motorola de app
 //      cerrada): todos esos intentos «sin servicio» NO dan el aviso «abre y cierra» (nunca abrieron nada); un enlace que sí llega
 //      a estar listo y se cae 6 veces en 10 min SÍ lo da.
@@ -166,11 +167,19 @@ async function openChatWith(p, name) {
   r.clave_listo = !!readyKey;
   for (let k = 0; k < 6 && readyKey; k++) { biA._notifiedPeers.add(readyKey); nA.emit('onDeviceDisconnected', { deviceId: bMac }); await sleep(40); }
   r.enlace_listo_que_cae_aviso = syms.filter((k) => k === 'enlace_abre_cierra').length;
+  // ---- 6) 3093 (diagnóstico automático S24 14-11 11:52, «enlace_abre_cierra» con el vivo): 6 caídas de un enlace listo que la
+  //        DEDUPLICACIÓN acaba de cerrar (enlace repetido) no son «desconexiones» (sus cierres ya cuentan como «repetido»)
+  if (biA._flapLog) biA._flapLog.clear(); if (biA._flapSaid) biA._flapSaid.clear();
+  const sym6 = syms.filter((k) => k === 'enlace_abre_cierra').length;
+  const macN = String(readyKey || '').split(':')[0] || String(bMac || '').toLowerCase().replace(/[:-]/g, '');
+  for (let k = 0; k < 6 && readyKey; k++) { biA._dupClosedUntil.set(macN, Date.now() + 60000); biA._notifiedPeers.add(readyKey); nA.emit('onDeviceDisconnected', { deviceId: bMac }); await sleep(40); }
+  r.repetido_cerrado_no_es_corte = syms.filter((k) => k === 'enlace_abre_cierra').length - sym6;
+  biA._dupClosedUntil.clear();
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.conecta && r.hay_enlace && r.papel_enlace_conservado && r.racha_4 && r.pausa_fijada && r.aviso_pausa &&
     r.patron_real_pausa && r.racha_caduca && r.tras_pausa_larga_racha === 10 && r.tras_pausa_larga_vuelve_a_pausar && r.peerready_limpia && r.pausa_no_escanea && r.bucle_sigue_vivo && r.activo_si_escanea &&
-    r.auto_en_pausa_no_conecta && r.manual_en_pausa_si_conecta && r.auto_sin_pausa_si_conecta && r.cortes_sin_servicio_aviso === 0 && r.clave_listo && r.enlace_listo_que_cae_aviso === 1 && !r.errores.length;
+    r.auto_en_pausa_no_conecta && r.manual_en_pausa_si_conecta && r.auto_sin_pausa_si_conecta && r.cortes_sin_servicio_aviso === 0 && r.clave_listo && r.enlace_listo_que_cae_aviso === 1 && r.repetido_cerrado_no_es_corte === 0 && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NOSERVICE ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_noservice.txt'), logs.join('\n'));
