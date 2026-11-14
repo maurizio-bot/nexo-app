@@ -1868,7 +1868,7 @@ export class BleAckSystem {
       var status = ack.type === 'read_receipt' ? 'read' : 'delivered';
       // 3096: el ✓✓ de un texto que aún va en trozos (lo da el nativo del otro con su app dormida): sin reenvíos rápidos (ver PEER_SAFE_*)
       var osSafe = this.outgoingStreams && this.outgoingStreams.get(ackMsgId);
-      if (osSafe && !osSafe.aborted && osSafe.type !== 'file' && !osSafe.peerSafeAt) {
+      if (osSafe && !osSafe.aborted && osSafe.type === 'chat' && !osSafe.peerSafeAt) {
         osSafe.peerSafeAt = Date.now();
         console.log('[ChatStream] ' + ackMsgId + ': el teléfono del otro ya lo tiene (✓✓) aunque su app no ha confirmado los trozos: no se reenvía mientras duerme');
       }
@@ -2554,7 +2554,7 @@ ChatStream.prototype.start = function() {
         // un vídeo HD o un archivo grande por un Bluetooth lento no terminaba nunca
         if (Date.now() - (self.lastAckAt || 0) < 60000 && Date.now() - self.startTime < 7200000) { armGlobal(300000); return; }
         // 3096: texto que el teléfono del otro ya tiene (✓✓) esperando a que su app despierte: no es un fallo (ver PEER_SAFE_*)
-        if (self.type !== 'file' && self.peerSafeAt && Date.now() - self.peerSafeAt < PEER_SAFE_MAX_MS && !(self.lastAckAt > self.peerSafeAt)) { armGlobal(60000); return; }
+        if (self.type === 'chat' && self.peerSafeAt && Date.now() - self.peerSafeAt < PEER_SAFE_MAX_MS && !(self.lastAckAt > self.peerSafeAt)) { armGlobal(60000); return; }
         // #124 (build 2840): el contacto está AUSENTE (sin camino; p. ej. apagado y solo por internet, net.canReach
         // falso). NO es un fallo: el archivo queda EN ESPERA (store-and-forward). Los trozos ya están en el buzón de
         // relés y, al conectarse el contacto (_netUp → resumeOutgoingTransfers) o al reabrir la app, se entrega. Se
@@ -2918,7 +2918,7 @@ ChatStream.prototype._onWindowTimeout = function() {
     self._busyWaitMs = 0;
     // 3096: el teléfono del otro ya tiene el texto (✓✓ de su nativo) y su app duerme: no se reenvía la ventana ni se gasta reintento
     // (si su app ya confirmó algún trozo después del ✓✓, está despierta: lo de siempre, para que reciba lo que le falte)
-    if (self.type !== 'file' && self.peerSafeAt && Date.now() - self.peerSafeAt < PEER_SAFE_MAX_MS && !(self.lastAckAt > self.peerSafeAt)) {
+    if (self.type === 'chat' && self.peerSafeAt && Date.now() - self.peerSafeAt < PEER_SAFE_MAX_MS && !(self.lastAckAt > self.peerSafeAt)) {
       self._safeWaitMs = Math.min(Math.max((self._safeWaitMs || 0) * 2, PEER_SAFE_FIRST_MS), PEER_SAFE_CAP_MS);
       console.log('[ChatStream] El teléfono del otro ya tiene el texto (✓✓) y su app duerme: no reenvío (reviso en ' + Math.round(self._safeWaitMs / 1000) + ' s) msgId=' + self.msgId);
       self._startWindowTimer(self._safeWaitMs);
