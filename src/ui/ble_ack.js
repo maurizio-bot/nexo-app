@@ -1779,7 +1779,7 @@ export class BleAckSystem {
       if (nbHit) nbk.delete(ackMsgId);
       if (bmap && bnx && bmap.has(bnx) && !nbHit) { var bb = bmap.get(bnx), bble = this.ble; if (bb && bb.timer) clearTimeout(bb.timer); bmap.delete(bnx); setTimeout(function() { try { bble._resendPendingMessages(bnx); } catch (e) {} }, 300); }
       // FIX v3.2.13: dedup por tipo+id; antes el 'ack' de un mensaje hacía descartar su 'read_receipt'
-      var ackKey = ack.type + ':' + ackMsgId;
+      var ackKey = ack.type + (ack.got === 1 ? ':got' : '') + ':' + ackMsgId; // 3075: el «ya lo bajé» no se descarta por repetido
       var entry = this.pendingAcks.get(ackMsgId);
       // v3.4.0: un ack repetido también resuelve un reenvío que lo espera (antes se descartaba y el
       // mensaje, ya entregado, acababa en rojo tras 5 reintentos)
@@ -1790,7 +1790,10 @@ export class BleAckSystem {
         this.receivedAcks.delete(first);
       }
       var status = ack.type === 'read_receipt' ? 'read' : 'delivered';
-      if (status === 'delivered' && this._blobOut && this._blobOut.size) this._blobCleanup(ackMsgId, ack.from); // Fase B/C: el archivo ya está en el otro teléfono (en grupo, en ESE miembro)
+      // Fase B/C: el archivo ya está en el otro teléfono (en grupo, en ESE miembro) → se borran sus trozos de los relés.
+      // 3075 (S23→S24 14-11 18:34: «Faltan 5 de 5 trozos»): NO con el ✓✓ a secas, que lo da el nativo en segundo plano al llegar el
+      // aviso SIN haber bajado nada; solo con el «ya lo bajé» de su app (got) o con su «leído». Si no llega ninguno, caducan solos.
+      if (this._blobOut && this._blobOut.size && ((status === 'delivered' && ack.got === 1) || status === 'read')) this._blobCleanup(ackMsgId, ack.from);
       // 3004 (investigación 11-11): un «leído» de un ARCHIVO propio que todavía no se entregó es el de su tarjeta de cita (mismo id;
       // los teléfonos con versiones anteriores lo siguen mandando): no lo da por leído ni por hecho. Antes lo marcaba ✓✓, dejaba de
       // reenviarse y, si la app se reiniciaba antes de entregarlo, se perdía en silencio.
@@ -1822,13 +1825,15 @@ export class BleAckSystem {
     } catch (e) { return false; }
   }
   // routeTo: origen de un mensaje que llegó por otro teléfono (Jump): el ack vuelve dirigido a él
-  sendAck(deviceId, msgId, routeTo) { this._sendReceipt('ack', deviceId, msgId, routeTo); }
+  // extra (3075): { got: 1 } = «ya BAJÉ el archivo del buzón» (lo manda la app al terminar; el ✓✓ del nativo en segundo plano no lo lleva)
+  sendAck(deviceId, msgId, routeTo, extra) { this._sendReceipt('ack', deviceId, msgId, routeTo, extra); }
   sendReadReceipt(deviceId, msgId, routeTo) { this._sendReceipt('read_receipt', deviceId, msgId, routeTo); }
   // Auditoría C1 (ronda 2777): la confirmación se firma con el secreto de la pareja (si el contacto es proto 2 y hay
   // clave) para que el emisor pueda comprobar que es de verdad. `a` es un campo más: los contactos antiguos lo ignoran.
-  _sendReceipt(type, deviceId, msgId, routeTo) {
+  _sendReceipt(type, deviceId, msgId, routeTo, extra) {
     var self = this, myNx = (this.ble && this.ble.localNexoId) || 'unknown';
     var obj = { v: 1, type: type, msgId: msgId, from: myNx, ts: Date.now() };
+    if (extra && extra.got === 1) obj.got = 1;
     var target = _normId(routeTo) || _normId(this._resolveNexoId(deviceId));
     var out = function() {
       if (routeTo) { obj.to = String(routeTo).toLowerCase(); self._sendRouted(obj, deviceId); return; }

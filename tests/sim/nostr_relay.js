@@ -89,6 +89,13 @@ class NostrRelay {
         const bad = this._valid(ev);
         if (bad) { this.stats.rejected.push(bad); send(['OK', ev && ev.id, false, bad]); return; }
         if (this._expired(ev, now)) { send(['OK', ev.id, false, 'invalid: expired']); return; }
+        // honorDeletes (3075): como los relés reales (NIP-09), un evento kind 5 borra los eventos que cita (del mismo autor)
+        if (this.opts.honorDeletes && ev.kind === 5) {
+          const ids = (ev.tags || []).filter((t) => t[0] === 'e').map((t) => t[1]);
+          const before = this.events.length;
+          this.events = this.events.filter((x) => !(ids.indexOf(x.id) >= 0 && x.pubkey === ev.pubkey));
+          this.stats.deleted = (this.stats.deleted || 0) + (before - this.events.length);
+        }
         if (!this.events.some((x) => x.id === ev.id)) {
           this.events.push(ev); this.stats.published++;
           this.wss.clients.forEach((c) => c.subs && c.subs.forEach((filters, sub) => {

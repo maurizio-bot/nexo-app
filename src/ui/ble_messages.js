@@ -501,8 +501,10 @@ export const BLE_MESSAGE_METHODS = {
         // BLE a medias del mismo msgId (el emisor empezó por Bluetooth y acabó por otra vía), ciérralo: así no caduca a los
         // 120 s con un «Assembly timeout» ni un falso «fallo» de un mensaje que SÍ llegó.
         if (messageId && self.ackSystem && typeof self.ackSystem.dropAssembly === 'function') self.ackSystem.dropAssembly(messageId);
+        // 3075: el ✓✓ de un adjunto que llegó por el buzón de archivos dice «ya lo bajé» (got): solo así el otro borra sus trozos
+        var ackExtra = data && data._blobResolved ? { got: 1 } : null;
         if (messageId && self._receivedMessageIds.has(messageId)) {
-          if (!isControl && self.ackSystem) self.ackSystem.sendAck(deviceId, messageId, ackTo);
+          if (!isControl && self.ackSystem) self.ackSystem.sendAck(deviceId, messageId, ackTo, ackExtra);
           return;
         }
         if (messageId) {
@@ -512,7 +514,7 @@ export const BLE_MESSAGE_METHODS = {
             var first = self._receivedMessageIds.values().next().value;
             self._receivedMessageIds.delete(first);
           }
-          if (!isControl && self.ackSystem) self.ackSystem.sendAck(deviceId, messageId, ackTo);
+          if (!isControl && self.ackSystem) self.ackSystem.sendAck(deviceId, messageId, ackTo, ackExtra);
         }
         var attachmentData = null;
         if (ctrl && ctrl.payload && ctrl.payload.attachment) attachmentData = ctrl.payload.attachment;
@@ -1234,7 +1236,7 @@ export const BLE_MESSAGE_METHODS = {
               nudged = true;
               console.log('[BLEInterface] sendFile: contacto no listo (' + (st.state || '?') + '), buscando…');
               self._markPeerLost(uuid);
-              if (dev && !(typeof self._btPaused === 'function' && self._btPaused(uuid)) && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice') && st.state !== BLE_STATES.CONNECTING) {
+              if (dev && !/^(net|lan|wd):/i.test(String(dev)) && !(typeof self._btPaused === 'function' && self._btPaused(uuid)) && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice') && st.state !== BLE_STATES.CONNECTING) {
                 _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: dev }).catch(function() {});
               }
             }

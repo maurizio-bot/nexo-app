@@ -649,6 +649,14 @@
     {
      "fallo": "Diagnóstico S24 14-11 18:41 (3073): un audio del S23 subido a UN solo relé no bajaba («faltan 5 de 5 trozos») mientras ese relé estaba apartado por inestable (5 min): ensureRelay no lo abría. Ahora para bajar un archivo el relé del puntero se abre igual. blobside.js (contraprueba 3072: «faltan 4 de 4»)",
      "prueba": "archivo cuyo único relé está apartado"
+    },
+    {
+     "fallo": "Diagnósticos S23 18:34 y S24 19:08 (14-11, 3047): el que manda un audio por el buzón de archivos borraba sus trozos de los relés al llegarle el ✓✓ que da el NATIVO del otro en segundo plano en cuanto entra el aviso, ANTES de que su app baje nada → «Faltan 5 de 5 trozos» para siempre. 3075: se borran solo con el «ya lo bajé» de la app del otro (✓✓ con got) o con su «leído»; si no llega ninguno, caducan solos (7 días). blobnative.js (contraprueba 3074: borra antes y B falla)",
+     "prueba": "audio que el otro aún no bajó (✓✓ del nativo)"
+    },
+    {
+     "fallo": "Diagnóstico S24 14-11 19:14 (3047): al volver al frente, el repaso de pendientes pedía al Bluetooth nativo conectar a contactos cuyo camino guardado es de internet/Wi-Fi («connectToDevice raw='net:nx…'» ×14) y dejaba un enlace fantasma «conectando»; con el realme, un «zombi» falso de ese enlace. 3072 había tapado abrir el chat y el envío; 3075 tapa la propia auto-conexión. netconn.js (contraprueba 3074: pide «net:…» y deja el fantasma)",
+     "prueba": "Bluetooth no se pide para caminos de internet/Wi-Fi"
     }
    ],
    "debiles": [
