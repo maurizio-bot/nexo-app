@@ -102,7 +102,9 @@ function pickFile(p, name, b) {
   // B ENCIENDE el Wi-Fi (la misma red de casa)
   const t0 = Date.now();
   nB.setNetwork('wifi', 'casa');
-  const v1 = await waitFor(() => linkB() === 'wifi' || !!(B.win.bleInterface.lan && B.win.bleInterface.lan.links && B.win.bleInterface.lan.links.has(idA)), 30000);
+  // (3096: listo = la app ya lo usa —Wi-Fi comprobado, linkOf 'wifi'—, no solo la conexión abierta: con eso, lo escrito en ese instante
+  // podía salir aún por Bluetooth mientras se comprobaba la identidad y la V2 fallaba por carrera, 1 de cada varias en la batería)
+  const v1 = await waitFor(() => linkB() === 'wifi', 30000);
   r.V1_wifi_listo_s = v1 === null ? null : Math.round((Date.now() - t0) / 100) / 10;
   r.despues = linkB();
   // V2: lo que escribe ahora sale por Wi-Fi
