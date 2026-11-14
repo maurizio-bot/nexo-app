@@ -308,7 +308,11 @@ export class BLEInterface {
     // v6.10.0: misma red Wi-Fi (enlace comprobado): por ahí, es lo más rápido
     if (this.lan && this.lan.canReach(nx)) return _lanId(nx);
     // v6.13.0 (regla del dueño): los dos en Wi-Fi, aunque sean módems distintos → por internet antes que Bluetooth
-    if (this.net && this.net.canReach(nx) && this.net.bothWifi(nx)) return _netId(nx);
+    // 3079 (dueño 14-11: «el Bluetooth es la emergencia, solo por si no hay otro camino; fuera de eso, siempre el más rápido»):
+    // también con datos móviles, internet va ANTES que un Bluetooth listo (antes, sin estar los dos en Wi-Fi, el Bluetooth listo
+    // iba primero para ahorrar datos: textos y fotos salían por Bluetooth con internet disponible; btemerg.js). canReach ya
+    // excluye el internet que llega solo por un PUENTE si con ese contacto hay Bluetooth directo (net_link.canReach).
+    if (this.net && this.net.canReach(nx)) return _netId(nx);
 
     // #dueño 06-11 (diagnóstico: un APK de 25 MB a un contacto en línea por internet se iba por BLUETOOTH, partido en
     // 148 mil trozos, y nunca llegaba): un archivo DEMASIADO GRANDE para Bluetooth prefiere internet ANTES que un
@@ -322,8 +326,6 @@ export class BLEInterface {
     // Ronda 2760: el de MTU más alto si hay varios (_bleReadyFor)
     var ready = this._bleReadyFor(nx);
     if (ready) return ready;
-    // Internet con datos móviles en alguno: después del Bluetooth listo (antes que una dirección sin conectar)
-    if (this.net && this.net.canReach(nx)) return _netId(nx);
 
     // 1. Mapeo vivo
     // (ronda 2764: no una dirección que consta como de otro contacto)

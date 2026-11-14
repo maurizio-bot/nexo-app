@@ -907,6 +907,10 @@
     {
      "fallo": "Batería de la 3049 (14-11): resume.js y radiollamada.js fallaban desde la 3072 (contraprueba: 3072 = APK 3048 OK, 3073 FALLO). La búsqueda en cadena del puente a internet, ante un «no tengo internet» de un vecino, buscaba desconocidos con su escaneo aunque no hubiera nada propio esperando: gastaba el cupo de escaneos de Android (la búsqueda automática siguiente no salía) y abría conexiones de paso en plena llamada. 3076: la cadena solo corre con algo esperando salir (o un puente usado hace poco); puente5.js sigue ≈24 s",
      "prueba": "volver a la app (Wi-Fi sigue), BUSCAR se para solo"
+    },
+    {
+     "fallo": "Dueño 14-11 (3079): «el Bluetooth es la emergencia, solo se ocupa por si no hay otro camino; fuera de eso, siempre el más rápido». Con un contacto en línea por internet pero sin estar los dos en Wi-Fi (uno con datos móviles), un Bluetooth listo iba primero (regla vieja para ahorrar datos): textos y fotos salían por Bluetooth con internet disponible. Ahora internet va antes que un Bluetooth listo (resolvedor y Wi-Fi degradado); bigroute.js y tinytext.js actualizados a la regla nueva. btemerg.js (contraprueba 3078: texto y archivo por Bluetooth)",
+     "prueba": "Bluetooth solo de emergencia"
     }
    ],
    "debiles": [

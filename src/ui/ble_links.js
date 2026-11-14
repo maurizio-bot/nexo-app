@@ -96,8 +96,8 @@ export const BLE_LINK_METHODS = {
   _lanDegraded(nexoId, on) {
     var nx = _normId(nexoId);
     if (on) {
-      // Ronda 2760 (regla del dueño): Wi-Fi muy malo → internet (los dos en Wi-Fi); si no, Bluetooth
-      var to = (this.net && this.net.canReach(nx) && this.net.bothWifi(nx)) ? _netId(nx) : this._bleReadyFor(nx);
+      // Ronda 2760 (regla del dueño): Wi-Fi muy malo → internet; si no, Bluetooth (3079: también con datos móviles, Bluetooth de emergencia)
+      var to = (this.net && this.net.canReach(nx)) ? _netId(nx) : this._bleReadyFor(nx);
       if (to && this.ackSystem && typeof this.ackSystem.relink === 'function') this.ackSystem.relink(_lanId(nx), to, { keepTooBig: true }); // 2975: lo grande sigue por el Wi-Fi (degradado ≠ caído)
     }
     _safeDispatchEvent('nexo:ble:linkChange', { nexoId: nx, via: this.linkOf(nx) });

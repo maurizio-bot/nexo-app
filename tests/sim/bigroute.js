@@ -88,7 +88,9 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const isNet = (d) => typeof d === 'string' && /net/i.test(d);
   var devBle = A.bi._resolveDeviceIdForNexoId(idB, false);
   var devNet = A.bi._resolveDeviceIdForNexoId(idB, true);
-  r.sin_preferNet_elige_bluetooth = !isNet(devBle);                        // sin la pista = Bluetooth (el camino viejo que fallaba)
+  // 3079 (dueño 14-11: «el Bluetooth es la emergencia»): ya sin la pista el resolvedor elige internet (antes: Bluetooth, el camino
+  // viejo que fallaba). El embudo de abajo sigue comprobándose igual.
+  r.sin_preferNet_elige_internet = isNet(devBle);
   r.con_preferNet_elige_internet = isNet(devNet);                          // con la pista (archivo grande) = internet (el arreglo)
 
   // (2) DE PUNTA A PUNTA por el camino ChatStream (el que usó el APK del dueño): un base64 GRANDE (> tope BLE) por
@@ -103,7 +105,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   //      —por el que pasan TODOS los envíos de archivo— debe RE-RUTEAR un archivo grande por internet/Wi-Fi igual, para que
   //      ningún camino pueda arrastrar algo pesado por Bluetooth cuando hay algo mejor. Simulamos ese camino.
   var btDevRe = A.bi._resolveDeviceIdForNexoId(idB, false);                // Bluetooth, como resolvía el reintento (sin la pista)
-  r.reintento_resuelve_bluetooth = !isNet(btDevRe);                        // el camino del reintento resolvía Bluetooth
+  r.reintento_resuelve_internet = isNet(btDevRe);                          // 3079: el reintento también resuelve internet
   const nBeforeRe = logs.length;
   try { var pRe = A.bi.ackSystem.sendFile(btDevRe, 'bigresend1', bigB64, { type: 'file', to: idB, fileName: 'resend.bin' }); if (pRe && pRe.catch) pRe.catch(function () {}); } catch (e) {}
   await waitFor(() => logs.slice(nBeforeRe).some((l) => /sendFile START/.test(l) && /bigresend1/.test(l)), 8000);
@@ -121,8 +123,8 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.en_internet !== null && r.ble_vivo && r.no_bothwifi &&
-    r.sin_preferNet_elige_bluetooth && r.con_preferNet_elige_internet &&
-    r.reintento_resuelve_bluetooth && r.reintento_embudo_internet &&
+    r.sin_preferNet_elige_internet && r.con_preferNet_elige_internet &&
+    r.reintento_resuelve_internet && r.reintento_embudo_internet &&
     r.grande_llega_s !== null && r.ruteado_por_internet && r.sin_tromba_bluetooth && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('BIGROUTE ' + JSON.stringify(r));

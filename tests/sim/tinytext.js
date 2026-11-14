@@ -1,6 +1,7 @@
 // 3032 (diagnóstico vivo 3018 12-11 13:45; regla del dueño 04-11 «internet antes que Bluetooth»): un texto LARGO a un contacto
 // cuyo Bluetooth está al MÍNIMO (MTU 23) y que está EN LÍNEA por internet (datos móviles) salía por el Bluetooth en cientos de
-// trozos (un diagnóstico de 57 KB = 288 trozos). Ahora va por internet. Un texto CORTO sigue por Bluetooth.
+// trozos (un diagnóstico de 57 KB = 288 trozos). Ahora va por internet. 3079 (dueño 14-11: «el Bluetooth es la emergencia»): con
+// internet, también el texto CORTO va por internet; el Bluetooth (aquí al mínimo) solo si no hay otro camino.
 // Uso: node tinytext.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -84,7 +85,7 @@ const statusOf = (p, msgId) => { const s = p.win.document.querySelector('.msg-st
   await openChatWith(B, 'A'); sendText(B, 'hola A'); await sleep(3000);
   const netA = () => A.win.bleInterface.net;
   netA().tick(); B.win.bleInterface.net.tick();
-  r.bt_y_internet = await waitFor(() => A.win.bleInterface.linkOf(idB) === 'bluetooth' && netA().canReach(idB) && A.win.bleInterface.getMtu(A.win.bleInterface._bleReadyFor(idB)) === 23, 60000) !== null;
+  r.bt_y_internet = await waitFor(() => !!A.win.bleInterface._bleReadyFor(idB) && netA().canReach(idB) && A.win.bleInterface.getMtu(A.win.bleInterface._bleReadyFor(idB)) === 23, 60000) !== null;
   r.no_ambos_wifi = !netA().bothWifi(idB);
   // texto corto: sigue por Bluetooth
   await openChatWith(A, 'B');
@@ -102,7 +103,8 @@ const statusOf = (p, msgId) => { const s = p.win.document.querySelector('.msg-st
   r.trozos_bt_largo = nuevos.filter((l) => /\[ChatStream\] START .*type=chat totalChunks=(\d+)/.test(l) && Number(/totalChunks=(\d+)/.exec(l)[1]) >= 20).length;
   r.largo_sin_trozos_bt = r.trozos_bt_largo === 0;
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
-  const ok = r.bt_y_internet && r.no_ambos_wifi && r.corto_llega && r.corto_no_por_internet && r.largo_llega && r.largo_por_internet_log && r.largo_sin_trozos_bt && !r.errores.length;
+  // 3079: el largo va por internet ya desde el resolvedor (el aviso «Texto largo… MTU 23… va por internet» queda solo como información)
+  const ok = r.bt_y_internet && r.no_ambos_wifi && r.corto_llega && r.corto_no_por_internet && r.largo_llega && r.largo_sin_trozos_bt && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('TINYTEXT ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_tinytext.txt'), logs.join('\n'));
