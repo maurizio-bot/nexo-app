@@ -165,6 +165,11 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     las fotos de perfil y los estados de los contactos cercanos se ponen al día.
 62. **Foto en los avisos (APK siguiente).** Con NEXO en segundo plano, que te escriba un contacto con foto de perfil: el aviso
     lleva su foto redonda.
+63. **Texto largo con la app del otro dormida (3096, APK posterior a la 3055).** Con el S24 en la pantalla apagada un buen rato y
+    los dos por internet (sin Bluetooth entre ellos), manda desde el vivo un texto largo (pega un párrafo grande). Debe salir la doble
+    palomita y quedarse así (no volver al reloj). En el diagnóstico del vivo: «El teléfono del otro ya tiene el texto (✓✓) y su app
+    duerme: no reenvío (reviso en 15 s)», sin la lista de «reenvío» cada pocos segundos. Al encender el S24, el texto está entero y una
+    sola vez.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 

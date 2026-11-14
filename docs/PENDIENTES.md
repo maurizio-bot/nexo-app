@@ -8,15 +8,12 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   cambios (Wi-Fi local con el S24 a las 13:03:34, internet a las 13:03:58, Bluetooth apagado 13:03:45 y encendido 13:04:31 al
   momento). Lo lento: el Wi-Fi local esperó 80,7 s porque la «comprobación» de identidad la contesta la APP del S24, que dormía
   (al abrirla, 8,3 s). **Decisión del dueño (seguridad):** que esa comprobación la conteste el nativo con la app dormida.
-- **Abierto (medio, delicado): reenvíos inútiles de textos LARGOS por internet a una app dormida.** El vivo mandó 3 textos de
-  ~20 KB (5 trozos cada uno) al S24 dormido; el NetBg del S24 confirmaba ✓✓ CADA sobre-trozo (guardado para la app), pero el
-  ChatStream del vivo seguía reenviando la ventana cada ~4–5 s (8 reintentos, ~50 s) esperando los ACK por trozo que solo da la
-  app; al abrirla, 109 sobres acumulados. Además, tras 8 reintentos el texto vuelve a ⏳ (pisa el ✓✓) y la cola lo reenvía
-  entero. Idea: con el ✓✓ del nativo (y la ruta net:) esperar sin reenviar (15→60 s, sin gastar reintento, con el tope global
-  re-armado) hasta que la app del otro dé señales (NACK/ACK final), con un tope (p. ej. 10 min) tras el que vuelve el
-  comportamiento de siempre. Ojo: el NetBg confirma con el primer trozo aunque falten otros (el ✓✓ no prueba que estén todos).
-  Por Bluetooth NO pasa (el nativo no confirma los textos en trozos: NOTIFY_ONLY). Para reproducirlo hace falta que el
-  simulador imite el NetBg (recibir por los relés con la app congelada y confirmar).
+- **Arreglado en la 3096 (falta la prueba física 63): reenvíos inútiles de textos LARGOS por internet a una app dormida.** El vivo
+  mandó 3 textos de ~20 KB (en trozos) al S24 dormido; el NetBg del S24 confirmaba ✓✓, pero el vivo seguía reenviando la ventana cada
+  ~4–5 s (8 reintentos, ~50 s) esperando la confirmación de cada trozo, que solo da la app; al abrirla, 109 sobres acumulados, y tras 8
+  reintentos el texto volvía a ⏳. 3096: con el ✓✓ del nativo, el texto espera sin reenviar ni gastar reintentos (15, 30, 60 s; tope
+  10 min, luego lo de siempre); si la app del otro confirma algún trozo, está despierta y vuelve lo normal para que reciba lo que le
+  falte. textonet.js: 3095 = 8 reenvíos en 40 s y no llega en 1 min al despertar; 3096 = 0 reenvíos, sigue ✓✓, llega en 3 s.
 - **Diagnósticos automáticos 11:46–11:52 (vivo 3048 recién actualizado a 3052 y S24 3052):** sin la prueba de pantalla apagada
   (esa falta). Entregas al vivo y a la tablet bien (Wi-Fi local, internet y Bluetooth; la conexión lista en 0,3–1,8 s). Detalle
   menor, para la próxima tanda: «enlace_abre_cierra» del S24 con el vivo cuenta como «desconexión» también el enlace repetido que el
