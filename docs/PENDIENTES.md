@@ -3,7 +3,21 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
-## 🆕 14-11 (notificaciones, dueño: «mensaje que llegue, notificación que llegue, puntual, que no se repita») — 3076–3078 en la APK 3050
+## 🆕 14-11 (orden de trabajo acordado con el dueño: caminos) — 1, 2 y 3 hechos (3079–3081), 4 PREPARADO, falta su OK
+Orden: 1) Bluetooth solo de emergencia (3079) · 2) un archivo que va por Bluetooth pasa al camino rápido al quedar listo (3080) ·
+3) velocidad real por camino en el diagnóstico y el resumen diario (3081) · 4) internet rápido para archivos · 5) Wi-Fi Direct (#198)
+· 6) puente con la app dormida (opción A).
+- **Paso 4, propuesta (mediano-grande: se pregunta antes):** hoy por internet los archivos van por los relés (~8–10 KB/s medido en
+  los teléfonos), por el buzón de archivos (trozos en relés) o por Tor directo (lento; apagado en el S24). Propuesta: usar para
+  archivos la conexión DIRECTA que ya usan las llamadas (`call_p2p.js`, WebRTC con STUN público, sin servidor propio), con un canal
+  fiable y ordenado. Montaje estimado 3–6 s (juntar direcciones ≤ 4 s + pasarlas por los relés 1–2 s + abrir ~1 s); velocidad = la
+  del internet más lento de los dos (a medir con el paso 3). Para archivos de más de ~200 KB a un contacto en línea por internet; lo
+  pequeño sigue por relés. Si la red no deja la conexión directa en 20 s (algunas redes móviles o de empresa), sigue por los relés
+  como hoy, sin perder nada. Privacidad: igual que en las llamadas, el otro ve tu dirección de internet; con «Usar Tor siempre» no
+  se usa. El contenido sigue cifrado de extremo a extremo. Pruebas con Chromium real en el simulador (como las llamadas).
+  Sin datos reales aún de si la conexión directa abre en sus teléfonos (no hubo llamadas por internet desde la 3043).
+
+ «mensaje que llegue, notificación que llegue, puntual, que no se repita») — 3076–3078 en la APK 3050
 - **Hecho:** sin «Mensaje nuevo» por cada toque FCM; sin toques por pendientes ocultos (diagnósticos, estados, fotos de perfil); los
   mensajes de grupo reenviados vuelven a avisar y caen en el grupo (también por internet en segundo plano). Detalle en `ESTADO.md`.
 - **Vigilar (FCM):** Google puede bajar de prioridad los toques de ALTA prioridad que no acaban en un aviso visible. El registro
