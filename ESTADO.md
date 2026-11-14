@@ -21,6 +21,13 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **14-11 noche (3097–3098 = APK 3057; batería 256/256, índice 66):** diagnósticos 22:12–22:21 (S24 3054; Xiaomi 3046 y Honor 3032 se
+  actualizaron solos a la 3055; S23 sigue en la 3048). (1) **3097**: `_callUsesBle()` (ble_messages): la radio Bluetooth solo es de la
+  llamada si la llamada (o un tramo de la de grupo) va POR Bluetooth; antes cualquier llamada apartaba el Bluetooth y lo del S23
+  esperó 4,5 min (`llamadawifi.js`; `radiollamada.js` L sigue igual). (2) **3098**: cámara bloqueada (Honor: NotAllowedError ×3, solo
+  voz): aviso «NEXO no tiene permiso para la cámara: toca aquí para darlo» → `calls.askCamPermission()` → nativo
+  `openAlertSetting({what:'app'})`; al volver, `media.retryCam()` una vez (`camdenied.js`, Chromium). Pendiente preguntado al dueño:
+  una llamada de grupo quedó abierta 4 min en el S24 (16:15–16:19) tras colgar con el Xiaomi.
 - **14-11 noche (3096 = APK 3056; batería 254/254, índice 65,9):** (1) **3096** (diagnósticos vivo y S24 13:03–13:05): un texto largo
   por internet a una app dormida, ya confirmado ✓✓ por su nativo, no se reenvía cada 4 s ni vuelve a ⏳: espera 15→30→60 s sin gastar
   reintentos (tope 10 min); si la app del otro confirma algún trozo, lo de siempre. Solo textos (`type === 'chat'`, no Fénix).
