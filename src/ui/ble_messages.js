@@ -688,6 +688,7 @@ export const BLE_MESSAGE_METHODS = {
         if (!dst && self._groupOut && self._groupOut.has(msgId)) env.g = self._groupOut.get(msgId);
         // Ronda 2759: oferta de llamada: con la app del otro cerrada, su aviso dice "Llamada entrante" (BgInbox.kt)
         if (self._callOut && self._callOut.has(msgId)) env.cl = 1;
+        if (self._callVideoOut && self._callVideoOut.has(msgId)) env.cv = 1; // 3089: videollamada (el aviso nativo lo dice)
         // 3087: «colgar» del que llama: el id de su oferta por fuera, para que el nativo del otro deje de sonar con la app cerrada
         if (self._callEndOut && self._callEndOut.has(msgId)) env.ce = self._callEndOut.get(msgId);
         // Sobre de paso hacia una build anterior (lo desenvuelve como texto del puente): sin aviso si no es para ella

@@ -389,6 +389,20 @@ const CASES = {
     r.ok = r.vuelve_detras_s !== null && r.contestar_descartado && r.oferta_vieja_detras && r.oferta_vieja_sin_aviso && r.B_no_suena;
     return r;
   },
+  // 3089 (punto débil de llamadas: «con la app cerrada el aviso dice "Llamada" también en videollamada»): la oferta de VIDEOllamada
+  // lleva por fuera cv:1 → el aviso nativo de B (app en segundo plano y congelada, la señal no se puede leer) dice videollamada
+  async 'video-aviso'() {
+    const { nB, A, B, idA, idB, hide } = await setup({}, { wifi: 'casa' });
+    const r = { wifi: await wait(() => A.win.bleInterface.calls.canVideo(idB) && B.win.bleInterface.calls.canVideo(idA), 60) };
+    hide(B, true); nB.setFrozen(true); await sleep(1000);
+    click(A.win, A.win.document.getElementById('nexo-video-btn'));
+    r.aviso = await wait(() => !!nB.callNotif, 20);
+    r.aviso_es_video = !!(nB.callNotif && nB.callNotif.video);
+    nB.setFrozen(false);
+    A.win.bleInterface.calls.hangup();
+    r.ok = r.wifi && r.aviso && r.aviso_es_video;
+    return r;
+  },
   async 'video-estado'() {
     const { nA, nB, A, B, idA, idB } = await setup({}, { wifi: 'casa' });
     const r = { wifi: await wait(() => A.win.bleInterface.calls.canVideo(idB) && B.win.bleInterface.calls.canVideo(idA), 60) };

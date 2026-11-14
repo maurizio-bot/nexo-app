@@ -505,13 +505,13 @@ class NativePhone {
     me = String(me || '').toLowerCase(); const mine = NX.test(me);
     if (mine && NX.test(String(o.dn || '').toLowerCase()) && String(o.dn).toLowerCase() !== me) return { kind: 'IGNORE' }; // Kotlin 2764
     const what = () => (o.t === 'c' ? (o.cl === 1 ? 'call' : 'text') : (o.tp || 'file'));
-    if (o.type === 'chat' && o.msgId && NX.test(from) && !o.to) return { kind: 'MESSAGE', from, msgId: o.msgId, quiet: o.q === 1, call: o.cl === 1, callEnd: /^cs[0-9a-f]{12}$/.test(String(o.ce || '')) ? o.ce : '', group: /^gr[0-9a-z]{8}$/.test(String(o.g || '').toLowerCase()) ? String(o.g).toLowerCase() : '' };
+    if (o.type === 'chat' && o.msgId && NX.test(from) && !o.to) return { kind: 'MESSAGE', from, msgId: o.msgId, quiet: o.q === 1, call: o.cl === 1, callEnd: /^cs[0-9a-f]{12}$/.test(String(o.ce || '')) ? o.ce : '', video: o.cv === 1, group: /^gr[0-9a-z]{8}$/.test(String(o.g || '').toLowerCase()) ? String(o.g).toLowerCase() : '' };
     if (mine && o.type === 'chat' && o.msgId && NX.test(from) && String(o.to).toLowerCase() === me) return { kind: 'NOTIFY_ONLY', from, msgId: o.msgId, quiet: o.q === 1, what: 'text' };
     // 3012 (BgInbox.kt): un sobre sellado con id al azar («sx…»: confirmación, clave) no avisa; con q:1 (acción oculta) tampoco. NEXO_OLD_SX=1: nativo de antes (contraprueba)
     if (mine && o.type === 'sx' && o.msgId && String(o.to).toLowerCase() === me) { if (process.env.NEXO_OLD_SX !== '1' && String(o.msgId).indexOf('sx') === 0) return { kind: 'IGNORE', from: '', msgId: '' }; return { kind: 'NOTIFY_ONLY', from: '', msgId: o.msgId, quiet: process.env.NEXO_OLD_SX !== '1' && o.q === 1, what: 'text' }; }
-    if (mine && (o.t === 'c' || o.t === 'f') && o.i === 0 && String(o.dt || '').toLowerCase() === me) return { kind: 'NOTIFY_ONLY', from: NX.test(from) ? from : '', msgId: o.m, quiet: o.q === 1, what: what() };
+    if (mine && (o.t === 'c' || o.t === 'f') && o.i === 0 && String(o.dt || '').toLowerCase() === me) return { kind: 'NOTIFY_ONLY', from: NX.test(from) ? from : '', msgId: o.m, quiet: o.q === 1, what: what(), video: o.cv === 1 };
     if ((o.type === 'ack' || o.type === 'read_receipt') && o.msgId && !o.to) return { kind: 'RECEIPT', from, msgId: o.msgId };
-    if ((o.t === 'c' || o.t === 'f') && o.i === 0 && NX.test(from) && !o.dt) return { kind: 'NOTIFY_ONLY', from, msgId: o.m, quiet: o.q === 1, what: what(), group: /^gr[0-9a-z]{8}$/.test(String(o.g || '').toLowerCase()) ? String(o.g).toLowerCase() : '' };
+    if ((o.t === 'c' || o.t === 'f') && o.i === 0 && NX.test(from) && !o.dt) return { kind: 'NOTIFY_ONLY', from, msgId: o.m, quiet: o.q === 1, what: what(), video: o.cv === 1, group: /^gr[0-9a-z]{8}$/.test(String(o.g || '').toLowerCase()) ? String(o.g).toLowerCase() : '' };
     return { kind: 'IGNORE' };
   }
   // MsgNotifier.message + UnreadBook (Kotlin): un aviso por chat; el mismo msgId no avisa dos veces; si ya se avisó en
@@ -611,7 +611,7 @@ class NativePhone {
     const silent = chatOpen && bgFor >= 0 && bgFor < 15000;
     if (info.kind !== 'MESSAGE' && info.kind !== 'NOTIFY_ONLY') return;
     // Kotlin 2763: una llamada suena ya (aviso de llamada del teléfono)
-    if (info.call || info.what === 'call') { if (!silent) this._incomingCall(info.from, this._notifName(info.from), false, info.msgId, { bg: true }); return; }
+    if (info.call || info.what === 'call') { if (!silent) this._incomingCall(info.from, this._notifName(info.from), !!info.video, info.msgId, { bg: true }); return; }
     this._uptimeTimeout(() => {
       if (this.appActive !== false || this.closedMode || (this.msgChat && this.msgChat.has(String(info.msgId)))) return;
       if (info.kind === 'MESSAGE') {
@@ -662,10 +662,10 @@ class NativePhone {
       this.bgInbox.push({ d: fromAddress, c: json, t: Date.now() });
       this._sendDeliveredAck(fromAddress, info);
       if (info.callEnd) this._callEnded(info.from, info.callEnd);
-      if (info.call) this._incomingCall(info.from, this._notifName(info.from), false, info.msgId, { closed: true });
+      if (info.call) this._incomingCall(info.from, this._notifName(info.from), !!info.video, info.msgId, { closed: true }); // Kotlin 3089: video
       else if (!info.quiet) this._notifyMsg(info, { closed: true });
     } else if (info.kind === 'RECEIPT') this.bgInbox.push({ d: fromAddress, c: json, t: Date.now() });
-    else if (info.kind === 'NOTIFY_ONLY' && info.what === 'call') this._incomingCall(info.from, this._notifName(info.from), false, info.msgId, { closed: true });
+    else if (info.kind === 'NOTIFY_ONLY' && info.what === 'call') this._incomingCall(info.from, this._notifName(info.from), !!info.video, info.msgId, { closed: true });
     else if (info.kind === 'NOTIFY_ONLY' && this._groupName(info.group)) { const who = this._notifName(info.from), w = NativePhone.whatText(info.what); this._postNotif(info.group, this._groupName(info.group), info.msgId, who !== 'NEXO' ? who + ': ' + (w || 'Mensaje nuevo') : w, { closed: true }); }
     else if (info.kind === 'NOTIFY_ONLY') notify(NativePhone.whatText(info.what));
   }

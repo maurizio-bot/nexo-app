@@ -799,6 +799,8 @@ export class NetLink {
     // 3087: «colgar» del que llama (env.ce = id de su oferta) también por fuera del sobre: la escucha nativa de internet (NetBg) deja
     // de sonar al momento con la app cerrada
     if (body.p) { var ceM = /"ce":"(cs[0-9a-f]{12})"/.exec(body.p); if (ceM) body.ce = ceM[1]; }
+    // 3089: oferta de VIDEOllamada (env.cv o la señal cruda con v:1): la escucha nativa de internet dice «Videollamada entrante»
+    if (body.cl && body.p && (/"cv":1/.test(body.p) || (/"nexo_call"/.test(body.p) && /"op":"offer"/.test(body.p) && /"v":1/.test(body.p)))) body.cv = 1;
     // Build 2967 (Fase A, docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md §6 «token en los dos sentidos»): la MARCA del buzón de un
     // mensaje NUEVO lleva también mi token FCM. Antes iba SOLO en el saludo, que caduca en el relé a los 10 min (TTL_HELLO):
     // un contacto dormido horas leía mi mensaje (TTL 7 días) pero no mi token → no podía tocarme a mí (mutuo) ni despertarme

@@ -159,6 +159,9 @@ export class Calls {
     if (!ble || typeof ble.sendChatMessage !== 'function') return Promise.resolve();
     var mid = 'cs' + _hex(6);
     if (op === 'offer') { ble._callOut = ble._callOut || new Set(); ble._callOut.add(mid); if (c) c.offerMid = mid; }
+    // 3089 (punto débil: «con la app cerrada el aviso dice "Llamada" también en videollamada»): la oferta de VIDEOllamada lleva por
+    // fuera cv:1 (como cl:1), para que el nativo del otro diga «Videollamada entrante» sin poder descifrar la señal
+    if (op === 'offer' && c && c.video) { ble._callVideoOut = ble._callVideoOut || new Set(); ble._callVideoOut.add(mid); if (ble._callVideoOut.size > 50) ble._callVideoOut.delete(ble._callVideoOut.values().next().value); }
     // Ronda 2760: las señales (salvo la llamada entrante) no son mensajes: sin aviso en el otro teléfono
     if (op !== 'offer') { ble._quietOut = ble._quietOut || new Set(); ble._quietOut.add(mid); }
     // 3087 (punto débil de llamadas: «con la app cerrada, si el que llama cuelga, sigue sonando hasta 45 s»): la señal va cifrada y

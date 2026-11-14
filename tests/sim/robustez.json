@@ -1080,10 +1080,6 @@
      "d": "«Rechazar» con la app cerrada: el que llama no se entera (decisión §4.7)"
     },
     {
-     "g": "leve",
-     "d": "Con la app cerrada el aviso dice «Llamada» también en videollamada"
-    },
-    {
      "g": "media",
      "d": "El audio del micrófono se procesa en el hilo de la interfaz (ScriptProcessor): si se atasca, cortes (pasar a AudioWorklet)"
     },
@@ -1096,6 +1092,10 @@
     {
      "fallo": "Punto débil de llamadas: con la app CERRADA (o dormida), si el que llama colgaba, el aviso de llamada seguía sonando hasta 45 s: la señal de colgar va cifrada y el nativo no la leía (calls2 colgar-cerrada, 3086: no deja de sonar). 3087: «colgar» del que llama lleva por fuera el id de su oferta (ce), como la oferta lleva cl:1; el nativo (BgInbox.callEnd, MsgNotifier.cancelCallFor, NetBg por internet) quita la llamada que suena al momento (0,2 s en el simulador; CallEndTest en JVM).",
      "prueba": "llamadas: colgar-cerrada"
+    },
+    {
+     "fallo": "Punto débil de llamadas: con la app cerrada o dormida, el aviso nativo decía «Llamada entrante» también en una videollamada (la señal va cifrada). 3089: la oferta de videollamada lleva por fuera cv:1 —en el sobre, en la cabecera del primer trozo (la oferta va troceada) y en el sobre de internet—; el nativo (BgInbox.video → incomingCall, NetBg) dice «Videollamada entrante» (calls2 video-aviso: 3088 decía llamada, 3089 videollamada; CallEndTest y NetBgTest en JVM).",
+     "prueba": "llamadas: video-aviso"
     }
    ]
   },

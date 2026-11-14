@@ -893,7 +893,7 @@ class NexoBlePlugin : Plugin() {
     // aparte que la app quita al abrirse (no es un contacto)
     private fun notifyOnly(ctx: Context, info: BgInbox.Info) {
         if (info.quiet) return
-        if (info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false, info.msgId); return }
+        if (info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.video, info.msgId); return }
         val chat = info.from.ifEmpty { "nexo_jump" }
         val what = when (info.what) { "image" -> "📷 Foto"; "video" -> "🎥 Vídeo"; "audio" -> "🎤 Nota de voz"; "call" -> "📞 Llamada entrante"; "text" -> ""; else -> "📎 Archivo" }
         val gname = groupName(info.group) // ronda 2763: de un grupo, en el chat del grupo con su nombre
@@ -932,7 +932,7 @@ class NexoBlePlugin : Plugin() {
         val silent = BgNotifyPolicy.silentForOpenChat(chatOpen, System.currentTimeMillis() - bgSinceMs)
         if (info.kind != BgInbox.Kind.MESSAGE && info.kind != BgInbox.Kind.NOTIFY_ONLY) return
         // Llamada: suena ya (si la app está viva también la avisa: es el mismo aviso, no sale dos veces)
-        if (info.call || info.what == "call") { if (!silent) MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false, info.msgId); return }
+        if (info.call || info.what == "call") { if (!silent) MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.video, info.msgId); return }
         mainHandler.postDelayed({
             if (!appInBackground || MsgNotifier.get(ctx).book.hasMsg(info.msgId)) return@postDelayed
             if (info.kind == BgInbox.Kind.MESSAGE) {
@@ -961,7 +961,7 @@ class NexoBlePlugin : Plugin() {
                 // 3087: el que llama colgó → deja de sonar ya
                 if (info.callEnd.isNotEmpty() && MsgNotifier.get(ctx).cancelCallFor(info.from, info.callEnd)) nlog()?.add("INFO", "BT_CERRADA", "${info.from} colgó: la llamada deja de sonar")
                 // Ronda 2763: una llamada suena como una llamada del teléfono (aviso con tono, Contestar / Rechazar)
-                if (info.call) MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false, info.msgId)
+                if (info.call) MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.video, info.msgId)
                 else if (!info.quiet) notifyMessage(ctx, info)
             }
             BgInbox.Kind.RECEIPT -> inbox().add(deviceId, json)
@@ -2958,14 +2958,14 @@ class NexoBlePlugin : Plugin() {
         // Ronda 2774 (el dueño: con la pantalla apagada no llegan por Wi-Fi/internet): al recibir por internet en segundo
         // plano se renueva el wakelock (rxWake), igual que por Bluetooth y Wi-Fi, para que dé tiempo a avisar antes de que
         // el teléfono vuelva a dormir.
-        netBgShared ?: NetBg({ nx, name, msgId, isCall, group ->
+        netBgShared ?: NetBg({ nx, name, msgId, isCall, group, video ->
             if (appInBackground) rxWake()
             // #130b (dueño 31-10): una oferta de llamada/videollamada que llega por internet con la app en segundo plano o
             // congelada tiene que salir a PANTALLA COMPLETA (enciende el teléfono, Contestar/Rechazar), como la 1-a-1 por
             // Bluetooth y como las llamadas de grupo. Antes salía como «mensaje nuevo» porque NetBg solo miraba el msgId.
             if (isCall) {
                 nlog()?.add("INFO", "NET", "oferta de llamada de $nx por internet (msgId $msgId): pantalla de llamada")
-                MsgNotifier.get(context).incomingCall(nx, name, false, msgId)
+                MsgNotifier.get(context).incomingCall(nx, name, video, msgId) // 3089: «Videollamada entrante» si lo es
             } else if (SeenMsgs.has(context, msgId)) {
                 // 3008: reenvío de un mensaje que este teléfono ya tiene → sin «Mensaje nuevo» (la ✓✓ sí se devuelve, para que el otro pare)
                 nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): ese mensaje ya estaba en el teléfono (reenvío): sin aviso")

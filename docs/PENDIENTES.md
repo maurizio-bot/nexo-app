@@ -14,8 +14,12 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   app (como se explicó). Lo demás que se ve ya está arreglado: «Resume: 4 outgoing» de la tablet con «Write fallo ~6 s» (3083, ya en
   la APK 3052; además la 3052 caducó esos 4 registros viejos), y 6 «connectToDevice … Device no en cache» a contactos lejanos al
   volver la app (3084, va en la próxima). La 3052 ya mide: «internet listo en 0,5 s», «Bluetooth listo en 0,6 s».
-- **Siguiente en llamadas:** aviso «Videollamada» con la app cerrada; micrófono fuera del hilo de la interfaz (AudioWorklet); y con los
-  diagnósticos de llamadas que se le pidieron al dueño, vídeo por internet sin imagen.
+- **Hecho 3089:** con la app cerrada o dormida, el aviso dice «Videollamada entrante» si lo es (cv:1 por fuera: sobre, cabecera del
+  primer trozo —la oferta va troceada— y sobre de internet; calls2 video-aviso).
+- **Hecho (entorno de pruebas):** la prueba Kotlin AtRestStoreTest dejaba una carpeta temporal de hasta ~230 MB por prueba y nunca la
+  borraba: 631 carpetas llenaron el disco de la sesión (las pruebas fallaban con «No space left on device»). Ahora se borran al acabar.
+- **Siguiente en llamadas:** micrófono fuera del hilo de la interfaz (AudioWorklet); y con los diagnósticos de llamadas que se le
+  pidieron al dueño, vídeo por internet sin imagen.
 
 ## 🆕 14-11 tarde (dueño: «tenemos que hacer algo con los atascos… si un contacto no está al alcance del Bluetooth ni siquiera
 ## debería intentarlo… el S24 cambia de Wi-Fi a datos muy rápido, ¿por qué nosotros somos lentos?»)

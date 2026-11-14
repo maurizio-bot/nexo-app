@@ -2820,6 +2820,7 @@ ChatStream.prototype._buildChunk = function(idx) {
     // Ronda 2759: oferta de llamada troceada: con la app del otro cerrada, su aviso dice "Llamada entrante" (BgInbox.kt)
     var bi0 = typeof window !== 'undefined' && window.bleInterface;
     if (this.type === 'chat' && bi0 && bi0._callOut && bi0._callOut.has(this.msgId)) obj.cl = 1;
+    if (this.type === 'chat' && bi0 && bi0._callVideoOut && bi0._callVideoOut.has(this.msgId)) obj.cv = 1; // 3089: videollamada (aviso nativo)
     // Ronda 2760: texto largo oculto (acción, señal de llamada): sin aviso en el otro teléfono (BgInbox.kt)
     var bq = typeof window !== 'undefined' && window.bleInterface;
     if (this.type === 'chat' && bq && bq._quietOut && bq._quietOut.has(this.msgId)) obj.q = 1;

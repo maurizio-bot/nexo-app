@@ -24,7 +24,8 @@ import org.json.JSONObject
 class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
     enum class Kind { MESSAGE, RECEIPT, NOTIFY_ONLY, IGNORE }
     // 3087: callEnd = id de la oferta que el que llama acaba de colgar (marca ce del sobre); vacío si no es eso
-    class Info(val kind: Kind, val from: String, val msgId: String, val quiet: Boolean, val what: String, val call: Boolean = false, val group: String = "", val callEnd: String = "")
+    // 3089: video = la oferta de llamada es de VIDEOllamada (marca cv:1 del sobre, o v:1 en la señal cruda)
+    class Info(val kind: Kind, val from: String, val msgId: String, val quiet: Boolean, val what: String, val call: Boolean = false, val group: String = "", val callEnd: String = "", val video: Boolean = false)
 
     companion object {
         private val NX = Regex("^nx[0-9a-z]{8}$")
@@ -53,7 +54,7 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
             // con cl:1) debe tratarse como LLAMADA (pantalla completa que enciende el teléfono), no como un aviso de mensaje.
             // Antes se perdía aquí → salía como notificación de texto. Aplica a contactos y a grupos.
             if (type == "nexo_call" && o.optString("op") == "offer" && NX.matches(from))
-                return Info(Kind.NOTIFY_ONLY, from, o.optString("id").ifEmpty { o.optString("msgId") }, false, "call", true)
+                return Info(Kind.NOTIFY_ONLY, from, o.optString("id").ifEmpty { o.optString("msgId") }, false, "call", true, video = o.optInt("v") == 1)
             if (type == "nexo_gcall" && o.optString("op") == "invite" && NX.matches(from))
                 return Info(Kind.NOTIFY_ONLY, from, o.optString("gid").ifEmpty { o.optString("id") }, false, "call", true)
             if (type == "chat" && o.optString("msgId").isNotEmpty() && NX.matches(from)) {
@@ -61,12 +62,12 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
                 // ronda 2763: mensaje de grupo directo: el id del grupo (para el nombre en el aviso)
                 if (to.isEmpty()) return Info(Kind.MESSAGE, from, o.optString("msgId"), o.optInt("q") == 1, "text", o.optInt("cl") == 1,
                     o.optString("g").lowercase().takeIf { GID.matches(it) } ?: "",
-                    o.optString("ce").takeIf { CALL_ID.matches(it) } ?: "")
+                    o.optString("ce").takeIf { CALL_ID.matches(it) } ?: "", o.optInt("cv") == 1)
                 // #130 (informe del dueño 30-10): una OFERTA de llamada dirigida (to = mi NEXO ID; por net/Jump/FCM)
                 // llevaba la marca cl:1 pero aquí se perdía (what="text", call=false) → salía como aviso de texto, no
                 // como la pantalla de llamada entrante. Ahora se propaga la marca → incomingCall (CallStyle, pantalla
                 // completa que enciende el teléfono), igual que la ruta no dirigida (abajo).
-                if (mine && to == me.lowercase()) { val cl = o.optInt("cl") == 1; return Info(Kind.NOTIFY_ONLY, from, o.optString("msgId"), o.optInt("q") == 1, if (cl) "call" else "text", cl) }
+                if (mine && to == me.lowercase()) { val cl = o.optInt("cl") == 1; return Info(Kind.NOTIFY_ONLY, from, o.optString("msgId"), o.optInt("q") == 1, if (cl) "call" else "text", cl, video = o.optInt("cv") == 1) }
             }
             if (mine && type == "sx" && o.optString("to").lowercase() == me.lowercase() && o.optString("msgId").isNotEmpty()) {
                 // 3012 (dueño 11-11: «llega la notificación pero no hay un mensaje nuevo»; su diagnóstico: «Aviso tocado: abro el
@@ -80,12 +81,12 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
             if (mine && (t == "c" || t == "f") && o.optInt("i", -1) == 0 && o.optString("dt").lowercase() == me.lowercase())
                 // #130: una oferta de llamada por trozos y DIRIGIDA (dt = mi NEXO ID, por Jump) también lleva cl:1 y
                 // debe ser «call» (pantalla completa), como la ruta no dirigida de abajo. Antes caía a "text".
-                return Info(Kind.NOTIFY_ONLY, if (NX.matches(from)) from else "", o.optString("m"), o.optInt("q") == 1, if (t == "c") (if (o.optInt("cl") == 1) "call" else "text") else o.optString("tp").ifEmpty { "file" }, o.optInt("cl") == 1)
+                return Info(Kind.NOTIFY_ONLY, if (NX.matches(from)) from else "", o.optString("m"), o.optInt("q") == 1, if (t == "c") (if (o.optInt("cl") == 1) "call" else "text") else o.optString("tp").ifEmpty { "file" }, o.optInt("cl") == 1, video = o.optInt("cv") == 1)
             if ((type == "ack" || type == "read_receipt") && o.optString("msgId").isNotEmpty() && o.optString("to").isEmpty())
                 return Info(Kind.RECEIPT, from, o.optString("msgId"), true, type)
             if ((t == "c" || t == "f") && o.optInt("i", -1) == 0 && NX.matches(from) && o.optString("dt").isEmpty())
                 return Info(Kind.NOTIFY_ONLY, from, o.optString("m"), o.optInt("q") == 1, if (t == "c") (if (o.optInt("cl") == 1) "call" else "text") else o.optString("tp").ifEmpty { "file" },
-                    group = o.optString("g").lowercase().takeIf { GID.matches(it) } ?: "")
+                    group = o.optString("g").lowercase().takeIf { GID.matches(it) } ?: "", video = o.optInt("cv") == 1)
             return Info(Kind.IGNORE, from, "", false, "")
         }
     }

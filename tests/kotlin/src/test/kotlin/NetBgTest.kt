@@ -68,7 +68,10 @@ class NetBgTest {
             val kraw = ByteArray(32) { (it * 7 + 3).toByte() }
             val ackKey = ByteArray(32) { (it * 5 + 1).toByte() }   // #87: la clave con la que se firma la confirmación de entrega
             val got = CopyOnWriteArrayList<String>()
-            val bg = NetBg({ nx, name, msgId, isCall, group -> got.add("$nx|$name|$msgId" + (if (isCall) "|CALL" else "") + (if (group.isNotEmpty()) "|$group" else "")) })
+            val ended = CopyOnWriteArrayList<String>()
+            // 3089: video = oferta de VIDEOllamada (cv:1); 3087: onCallEnd = el que llama colgó (ce)
+            val bg = NetBg({ nx, name, msgId, isCall, group, video -> got.add("$nx|$name|$msgId" + (if (isCall) "|CALL" else "") + (if (video) "|VIDEO" else "") + (if (group.isNotEmpty()) "|$group" else "")) },
+                {}, { nx, offer -> ended.add("$nx|$offer") })
             bg.configure("nxbbbbbbbb", listOf(url), System.currentTimeMillis() - 60000, listOf(NetBg.Contact("nxaaaaaaaa", "Ana", kraw)))
             bg.setAckKeys(mapOf("nxaaaaaaaa" to ackKey))
             bg.start()
@@ -81,18 +84,22 @@ class NetBgTest {
             // #130b (dueño 31-10): una oferta de llamada (sobre marcado cl:1) sale como LLAMADA (pantalla completa), no
             // como aviso de mensaje. Aplica a 1-a-1 (nexo_call) y a la invitación de grupo (nexo_gcall), que viajan igual.
             send("{\"t\":1,\"p\":\"x\",\"n\":\"cl9\",\"cl\":1}")
+            // 3089: oferta de VIDEOllamada (cl:1 y cv:1): «Videollamada entrante»; 3087: «colgar» del que llama (ce) quita lo que suena
+            send("{\"t\":1,\"p\":\"x\",\"n\":\"cv7\",\"cl\":1,\"cv\":1}")
+            send("{\"t\":1,\"p\":\"x\",\"ce\":\"cs0123456789ab\"}")
             // 3076: mensaje de un GRUPO (el sobre lleva g por fuera): avisa con el id del grupo (el aviso cae en el grupo)
             send("{\"t\":1,\"p\":\"{\\\"type\\\":\\\"chat\\\",\\\"msgId\\\":\\\"gm1_ab\\\",\\\"g\\\":\\\"grabcdefgh\\\"}\",\"n\":\"gm1_ab\"}")
             // Para otro contacto (otra pareja): no se ve
             w.write("{\"kraw\":\"${Secp256k1.hex(ByteArray(32))}\",\"from\":\"nxcccccccc\",\"to\":\"nxbbbbbbbb\",\"body\":{\"t\":1,\"p\":\"x\",\"n\":\"m9\"}}\n"); w.flush()
             val t0 = System.currentTimeMillis()
-            while (got.size < 4 && System.currentTimeMillis() - t0 < 10000) Thread.sleep(100)
+            while (got.size < 5 && System.currentTimeMillis() - t0 < 10000) Thread.sleep(100)
             Thread.sleep(800)
-            assertEquals(listOf("nxaaaaaaaa|Ana|m1", "nxaaaaaaaa|Ana|m2", "nxaaaaaaaa|Ana|cl9|CALL", "nxaaaaaaaa|Ana|gm1_ab|grabcdefgh"), got.toList())
+            assertEquals(listOf("nxaaaaaaaa|Ana|m1", "nxaaaaaaaa|Ana|m2", "nxaaaaaaaa|Ana|cl9|CALL", "nxaaaaaaaa|Ana|cv7|CALL|VIDEO", "nxaaaaaaaa|Ana|gm1_ab|grabcdefgh"), got.toList())
+            assertEquals(listOf("nxaaaaaaaa|cs0123456789ab"), ended.toList(), "el que llama colgó: la llamada que suena se quita")
             // 3033: lo recibido queda guardado para la app (evento del relé tal cual): confirmación + 2 mensajes + oferta; ni el
             // saludo ni lo de otra pareja. Al recogerlo se vacía.
             val kept = bg.drainForApp()
-            assertEquals(5, kept.size, "eventos guardados para la app: $kept")
+            assertEquals(7, kept.size, "eventos guardados para la app: $kept")
             kept.forEach { val e = JSONObject(it); assertTrue(e.has("id") && e.has("sig") && e.has("content"), "evento completo (la app verifica la firma)") }
             assertTrue(bg.drainForApp().isEmpty(), "al recogerlo se vacía")
             // #87: NetBg devolvió la confirmación de ENTREGA (✓✓) de cada mensaje NUEVO, por el buzón del EMISOR (su
@@ -115,7 +122,7 @@ class NetBgTest {
                 assertNotNull(body, "la confirmación de entrega no se abre con la clave de la pareja")
                 val a = JSONObject(body!!.getString("p")); acks[a.getString("msgId")] = a
             }
-            assertEquals(setOf("m1", "m2", "cl9", "gm1_ab"), acks.keys, "una confirmación de entrega por cada mensaje/oferta nuevos (y solo por esos)")
+            assertEquals(setOf("m1", "m2", "cl9", "cv7", "gm1_ab"), acks.keys, "una confirmación de entrega por cada mensaje/oferta nuevos (y solo por esos)")
             for ((msgId, a) in acks) {
                 assertEquals("ack", a.getString("type"))
                 assertEquals("nxbbbbbbbb", a.getString("from"))

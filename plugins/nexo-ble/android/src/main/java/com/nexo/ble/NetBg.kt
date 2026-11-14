@@ -23,7 +23,8 @@ class NetBg(
     // 3076 (dueño 14-11, notificaciones «sincronizadas»): group = id del grupo si el mensaje es de un GRUPO (lo lleva el sobre
     // por fuera, env.g, igual que por Bluetooth); vacío si es 1-a-1. Así el aviso cae en el grupo y no en el chat del que lo manda
     // (al tocarlo se abría el chat 1-a-1 y no había nada nuevo).
-    private val onMessage: (nx: String, name: String, msgId: String, isCall: Boolean, group: String) -> Unit,
+    // 3089: video = la oferta es de VIDEOllamada (cv:1 por fuera del sobre)
+    private val onMessage: (nx: String, name: String, msgId: String, isCall: Boolean, group: String, video: Boolean) -> Unit,
     private val log: (String) -> Unit = {},
     // 3087: el que llama colgó (el sobre lleva ce = id de su oferta): la llamada que suena se quita al momento
     private val onCallEnd: (nx: String, offerId: String) -> Unit = { _, _ -> },
@@ -270,7 +271,7 @@ class NetBg(
         val ce = o.optString("ce")
         if (BgInbox.CALL_ID.matches(ce)) onCallEnd(c.nx, ce)
         // #130b: cl:1 = oferta de llamada (1-a-1 o invitación de grupo) → pantalla de llamada, no aviso de mensaje
-        if (n.isNotEmpty()) { onMessage(c.nx, c.name, n, o.optInt("cl") == 1, groupOf(o.optString("p"))); publishDeliveryAck(c, n) }
+        if (n.isNotEmpty()) { onMessage(c.nx, c.name, n, o.optInt("cl") == 1, groupOf(o.optString("p")), o.optInt("cv") == 1); publishDeliveryAck(c, n) }
     }
 
     // #87 (entrega con la app CERRADA): al reconocer un sobre con un mensaje NUEVO de la pareja, devolvemos su

@@ -9,7 +9,11 @@ import kotlin.test.*
 
 class AtRestStoreTest {
     private fun key(): SecretKey = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
-    private fun tmp(): File = Files.createTempDirectory("nexo-atrest").toFile()
+    // 14-11: cada prueba dejaba su carpeta temporal (hasta ~230 MB con los archivos grandes) y nunca se borraba: 631 carpetas llenaron
+    // el disco del entorno de pruebas. Ahora se apuntan y se borran al terminar cada prueba.
+    private val dirs = mutableListOf<File>()
+    private fun tmp(): File = Files.createTempDirectory("nexo-atrest").toFile().also { dirs.add(it) }
+    @AfterTest fun limpiar() { dirs.forEach { try { it.deleteRecursively() } catch (e: Exception) { } }; dirs.clear() }
 
     @Test fun escribeCifradoYLee() {
         val d = tmp(); val k = key(); val s = AtRestStore(d) { k }
