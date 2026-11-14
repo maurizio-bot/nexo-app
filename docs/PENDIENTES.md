@@ -4,6 +4,19 @@ Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar c
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
 ## 🆕 14-11 noche (llamadas, orden del dueño: «empieza por las llamadas»; y su idea del despertador)
+- **Diagnósticos 13:03–13:05 (vivo 3052 con el Wi-Fi recién encendido; S24 3052 en segundo plano):** la app SÍ se enteró de los
+  cambios (Wi-Fi local con el S24 a las 13:03:34, internet a las 13:03:58, Bluetooth apagado 13:03:45 y encendido 13:04:31 al
+  momento). Lo lento: el Wi-Fi local esperó 80,7 s porque la «comprobación» de identidad la contesta la APP del S24, que dormía
+  (al abrirla, 8,3 s). **Decisión del dueño (seguridad):** que esa comprobación la conteste el nativo con la app dormida.
+- **Abierto (medio, delicado): reenvíos inútiles de textos LARGOS por internet a una app dormida.** El vivo mandó 3 textos de
+  ~20 KB (5 trozos cada uno) al S24 dormido; el NetBg del S24 confirmaba ✓✓ CADA sobre-trozo (guardado para la app), pero el
+  ChatStream del vivo seguía reenviando la ventana cada ~4–5 s (8 reintentos, ~50 s) esperando los ACK por trozo que solo da la
+  app; al abrirla, 109 sobres acumulados. Además, tras 8 reintentos el texto vuelve a ⏳ (pisa el ✓✓) y la cola lo reenvía
+  entero. Idea: con el ✓✓ del nativo (y la ruta net:) esperar sin reenviar (15→60 s, sin gastar reintento, con el tope global
+  re-armado) hasta que la app del otro dé señales (NACK/ACK final), con un tope (p. ej. 10 min) tras el que vuelve el
+  comportamiento de siempre. Ojo: el NetBg confirma con el primer trozo aunque falten otros (el ✓✓ no prueba que estén todos).
+  Por Bluetooth NO pasa (el nativo no confirma los textos en trozos: NOTIFY_ONLY). Para reproducirlo hace falta que el
+  simulador imite el NetBg (recibir por los relés con la app congelada y confirmar).
 - **Diagnósticos automáticos 11:46–11:52 (vivo 3048 recién actualizado a 3052 y S24 3052):** sin la prueba de pantalla apagada
   (esa falta). Entregas al vivo y a la tablet bien (Wi-Fi local, internet y Bluetooth; la conexión lista en 0,3–1,8 s). Detalle
   menor, para la próxima tanda: «enlace_abre_cierra» del S24 con el vivo cuenta como «desconexión» también el enlace repetido que el
