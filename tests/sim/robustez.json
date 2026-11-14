@@ -1080,8 +1080,8 @@
      "d": "«Rechazar» con la app cerrada: el que llama no se entera (decisión §4.7)"
     },
     {
-     "g": "media",
-     "d": "El audio del micrófono se procesa en el hilo de la interfaz (ScriptProcessor): si se atasca, cortes (pasar a AudioWorklet)"
+     "g": "leve",
+     "d": "El audio del micrófono se procesa en el hilo de la interfaz (ScriptProcessor). Medido 14-11 en Chromium real con el hilo atascado 200–400 ms cada segundo: 0 % de muestras perdidas (llegan tarde, no se pierden); AudioWorklet no mejora (0–0,5 %). Falta confirmarlo en Android"
     },
     {
      "g": "leve",

@@ -18,8 +18,12 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   primer trozo —la oferta va troceada— y sobre de internet; calls2 video-aviso).
 - **Hecho (entorno de pruebas):** la prueba Kotlin AtRestStoreTest dejaba una carpeta temporal de hasta ~230 MB por prueba y nunca la
   borraba: 631 carpetas llenaron el disco de la sesión (las pruebas fallaban con «No space left on device»). Ahora se borran al acabar.
-- **Siguiente en llamadas:** micrófono fuera del hilo de la interfaz (AudioWorklet); y con los diagnósticos de llamadas que se le
-  pidieron al dueño, vídeo por internet sin imagen.
+- **Medido, no se cambia (14-11):** «micrófono en el hilo de la interfaz → cortes». En Chromium real con el hilo atascado 200–400 ms
+  cada segundo, el método actual (ScriptProcessor) perdió 0 % de muestras (llegan tarde, enteras) y AudioWorklet 0–0,5 %: el cambio no
+  gana nada. Queda como punto leve hasta confirmarlo en Android.
+- **Siguiente en llamadas:** con los diagnósticos que se le pidieron al dueño (videollamada por internet y llamada por Bluetooth), el
+  vídeo por internet sin imagen y el eco. Y una decisión suya: «Rechazar» con la app cerrada firmado por el nativo (opción 3 de §4.7)
+  para que el que llama se entere al momento.
 
 ## 🆕 14-11 tarde (dueño: «tenemos que hacer algo con los atascos… si un contacto no está al alcance del Bluetooth ni siquiera
 ## debería intentarlo… el S24 cambia de Wi-Fi a datos muy rápido, ¿por qué nosotros somos lentos?»)
