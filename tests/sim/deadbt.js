@@ -1,9 +1,11 @@
 // BT muerto → internet al toque (regla del dueño 04-11: «internet antes que un Bluetooth muerto»; y «bajá los 9 s»).
 // Dos teléfonos reales en jsdom, emparejados por Bluetooth. Comprueba el RESOLVEDOR de camino:
-//   (1) con el BT vivo, el resolvedor elige el Bluetooth (como siempre).
+//   (1) 3079 (dueño 14-11: «el Bluetooth es la emergencia»): con el BT vivo e internet, el resolvedor elige internet; sin
+//       internet, el Bluetooth vivo (la emergencia).
 //   (2) cuando el nativo suelta un mensaje (_markBleDead, lo que dispara 'onWriteDropped'), ese BT se marca muerto y el
 //       resolvedor SALTA a internet (net:) — no se queda pegado al Bluetooth muerto.
-//   (3) recibir algo por ese BT (prueba de vida, _clearBleDead) lo vuelve a habilitar → el resolvedor vuelve al Bluetooth.
+//   (3) recibir algo por ese BT (prueba de vida, _clearBleDead) lo vuelve a habilitar → sin internet, el resolvedor vuelve al
+//       Bluetooth.
 // Uso: node deadbt.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -55,7 +57,7 @@ const isBtMac = (d) => !!d && !/^(lan|net)/i.test(String(d));
   r.emparejados = await wait(async () => (await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'hola'), 30);
 
   // Hacer a B alcanzable por internet (en el sim no hay relés → si net es null, inyecto uno mínimo). canReach(idB)=true,
-  // bothWifi=false para NO ganarle al BT por la vía "ambos en Wi-Fi" (así el BT vivo se elige primero, como en la realidad).
+  // bothWifi=false (uno con datos móviles: desde la 3079 internet gana igual al Bluetooth listo).
   r.net_antes = !!bi.net;
   if (!bi.net) bi.net = {};
   bi.net.canReach = function (x) { return String(x || '').toLowerCase().indexOf(idB) >= 0; };
@@ -63,30 +65,36 @@ const isBtMac = (d) => !!d && !/^(lan|net)/i.test(String(d));
   bi.net.filesOk = bi.net.filesOk || function () { return true; };
   bi.net.mailboxOk = bi.net.mailboxOk || function () { return true; };
 
-  // (1) con el BT vivo, el resolvedor elige el Bluetooth
+  // (1) 3079 (dueño 14-11: «el Bluetooth es la emergencia, solo por si no hay otro camino; fuera de eso, siempre el más rápido»): con el
+  //     BT vivo E internet, el resolvedor elige internet (antes de la 3079, el Bluetooth listo iba primero si no estaban los dos en Wi-Fi)
   var dev1 = bi._resolveDeviceIdForNexoId(idB);
-  r.bt_vivo_elige_bt = isBtMac(dev1);
-  var btMac = dev1;
+  r.con_internet_elige_internet = isNet(dev1);
+  // (1b) sin internet, el BT vivo es la emergencia: se elige
+  var netOn = bi.net.canReach;
+  bi.net.canReach = function () { return false; };
+  var btMac = bi._resolveDeviceIdForNexoId(idB);
+  r.sin_internet_bt_emergencia = isBtMac(btMac);
+  bi.net.canReach = netOn;
 
-  // (2) el nativo soltó un mensaje por ese BT → se marca muerto → el resolvedor SALTA a internet
+  // (2) el nativo soltó un mensaje por ese BT → se marca muerto → con internet, internet (no se queda pegado al Bluetooth muerto)
   bi._markBleDead(btMac);
   var dev2 = bi._resolveDeviceIdForNexoId(idB);
   r.dev2 = String(dev2); // para el log: debe ser net:...
   r.bt_muerto_salta_internet = isNet(dev2);
 
-  // (3) recibir algo por ese BT (prueba de vida) lo re-habilita → vuelve a elegir Bluetooth
+  // (3) recibir algo por ese BT (prueba de vida) lo re-habilita → sin internet, vuelve a ser el camino de emergencia
   bi._clearBleDead(btMac);
+  bi.net.canReach = function () { return false; };
   var dev3 = bi._resolveDeviceIdForNexoId(idB);
   r.prueba_de_vida_vuelve_bt = isBtMac(dev3);
 
   // (4) si NO hay otro camino (sin internet), marcar muerto NO rompe: sigue dando el BT (no deja al contacto sin camino)
   bi._markBleDead(btMac);
-  if (bi.net) { bi.net.canReach = function () { return false; }; }
   var dev4 = bi._resolveDeviceIdForNexoId(idB);
   r.sin_internet_no_rompe = !!dev4; // da algo (el BT u otra dirección), no null
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|is not a function/.test(l) && /error/.test(l)).slice(0, 4);
-  const ok = r.emparejados && r.bt_vivo_elige_bt && r.bt_muerto_salta_internet && r.prueba_de_vida_vuelve_bt && r.sin_internet_no_rompe && r.errores.length === 0;
+  const ok = r.emparejados && r.con_internet_elige_internet && r.sin_internet_bt_emergencia && r.bt_muerto_salta_internet && r.prueba_de_vida_vuelve_bt && r.sin_internet_no_rompe && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('DEADBT ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_deadbt.txt'), logs.join('\n'));
