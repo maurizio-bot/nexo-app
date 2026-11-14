@@ -150,10 +150,10 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 57. **Despertador hasta la confirmación (3053).** Escribe a alguien con la app dormida (pantalla apagada un rato) que tenga
     internet: en tu diagnóstico salen varios «[WAKE] toque a nx… (intento N …)» espaciados (30 s, 2 min…) hasta que llega la doble
     palomita, y ahí paran.
-58. **Botones de la videollamada (APK siguiente a la 3053).** En una videollamada por Wi-Fi, en el S24 y en el vivo: los 7
+58. **Botones de la videollamada (3054).** En una videollamada por Wi-Fi, en el S24 y en el vivo: los 7
     botones de abajo caben en la pantalla y el rojo de colgar se ve entero; con «Silenciar» y «Cámara» tocados, los nombres se
     leen enteros («Silenciado», «Cámara no»).
-59. **Pantalla apagada con el chat abierto (APK siguiente a la 3053, el vivo).** En el vivo abre el chat del S24 y apaga la
+59. **Pantalla apagada con el chat abierto (3054, el vivo).** En el vivo abre el chat del S24 y apaga la
     pantalla. Espera unos 20 s y escríbele desde el S24: al vivo le debe sonar el aviso (antes, nada mientras su app seguía
     despierta). Si lo escribes en los primeros segundos tras apagar, no avisa (es el «parpadeo» del 08-11). Al encender la
     pantalla, el aviso se quita y el S24 ve «leído».
