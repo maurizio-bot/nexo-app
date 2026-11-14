@@ -42,7 +42,7 @@ export const BLE_MESSAGE_METHODS = {
           else {
             self._markPeerLost(nx);
             if (state.state !== BLE_STATES.CONNECTING && state.state !== BLE_STATES.DISCOVERING_SERVICES) {
-              self._autoConnectGATT(deviceId, { name: contact.name, deviceUUID: nx });
+              self._autoConnectGATT(deviceId, { name: contact.name, deviceUUID: nx }, { why: 'pendientes' });
             }
           }
         } else { self._markPeerLost(nx); self._autoScanForKnownContacts(); }
@@ -912,7 +912,9 @@ export const BLE_MESSAGE_METHODS = {
         if (self.relay) self.relay.discover(uuid);
         // 3033: con el Bluetooth en pausa (GATT roto) no se fuerza la conexión: el texto espera por internet/Wi-Fi/Jump
         // 3072: ni un destino «net:»/«lan:» (no es un Bluetooth; el nativo lo veía como «netnx…» y no hacía nada)
-        if (!isConnecting && !_isPathDev(deviceId) && !(typeof self._btPaused === 'function' && self._btPaused(uuid)) && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
+        // 3084: ni a quien no está cerca por Bluetooth (no visto hace poco): el texto va por internet/Wi-Fi/Jump o espera a verlo
+        if (!isConnecting && !_isPathDev(deviceId) && typeof self._btNearby === 'function' && !self._btNearby(uuid)) self._btFarSkip(uuid, 'al mandar');
+        else if (!isConnecting && !_isPathDev(deviceId) && !(typeof self._btPaused === 'function' && self._btPaused(uuid)) && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
           console.log('[BLEInterface] sendChatMessage: forcing connectToDevice for', deviceId);
           _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId }).catch(function() {});
         }
@@ -1238,7 +1240,9 @@ export const BLE_MESSAGE_METHODS = {
               nudged = true;
               console.log('[BLEInterface] sendFile: contacto no listo (' + (st.state || '?') + '), buscando…');
               self._markPeerLost(uuid);
-              if (dev && !_isPathDev(dev) && !(typeof self._btPaused === 'function' && self._btPaused(uuid)) && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice') && st.state !== BLE_STATES.CONNECTING) {
+              // 3084: ni a quien no está cerca por Bluetooth
+              if (dev && !_isPathDev(dev) && typeof self._btNearby === 'function' && !self._btNearby(uuid)) self._btFarSkip(uuid, 'al mandar un archivo');
+              else if (dev && !_isPathDev(dev) && !(typeof self._btPaused === 'function' && self._btPaused(uuid)) && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice') && st.state !== BLE_STATES.CONNECTING) {
                 _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: dev }).catch(function() {});
               }
             }

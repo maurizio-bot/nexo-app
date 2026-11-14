@@ -293,7 +293,7 @@ export const BLE_CONNECTION_METHODS = {
     if ((self._reconnectAttempts.get(deviceId) || 0) % 2 === 0) self._autoScanForKnownContacts(); // una vuelta sí y otra no
     if (nx) {
       var contact = _getContactByUUID(nx);
-      if (contact && contact.deviceId) setTimeout(function() { self._autoConnectGATT(contact.deviceId, { name: contact.name, deviceUUID: nx }); }, 800);
+      if (contact && contact.deviceId) setTimeout(function() { self._autoConnectGATT(contact.deviceId, { name: contact.name, deviceUUID: nx }, { why: 'reconexión' }); }, 800);
     }
     // Ronda 2766 (revisión): la espera crece de verdad (antes el contador se borraba antes de cada reintento, siempre
     // eran 2 s y cada vuelta lanzaba una búsqueda; Android ignora más de 5 en 30 s: a partir de ahí las búsquedas
@@ -809,10 +809,38 @@ export const BLE_CONNECTION_METHODS = {
     return cd > Date.now() ? cd - Date.now() : 0;
   },
 
+  // 3084 (dueño 14-11: «si un contacto no está al alcance del Bluetooth ni siquiera debería intentarlo; siempre primero las vías
+  // más rápidas»; diagnóstico S24 08:06: al volver la app se pedía conectar por Bluetooth a los 15 contactos con algo pendiente, por
+  // su dirección guardada, sin haberlos visto: cada intento ocupa la cola de conexiones de Android unos segundos y retrasa las de
+  // verdad). Cerca = enlace listo, visto al escanear hace < 2 min, o enlace caído hace < 1 min (sigue al lado: reconexión rápida).
+  // Si no, no se intenta: lo suyo va por internet/Wi-Fi o espera, y en cuanto el escaneo lo vea se conecta solo (onDeviceFound).
+  _btNearby(nx) {
+    nx = _normId(nx);
+    if (!/^nx[0-9a-z]{8}$/.test(nx)) return true;   // un NEXO sin identificar (de paso): lo decide Jump
+    if (typeof this._bleReadyFor === 'function' && this._bleReadyFor(nx)) return true;
+    if (this.relay && typeof this.relay._seenRecently === 'function' && this.relay._seenRecently(nx, 120000)) return true;
+    var lost = this._linkLostAt && this._linkLostAt.get(nx);
+    return !!(lost && Date.now() - lost < 60000);
+  },
+  _btFarSkip(nx, why) {
+    nx = _normId(nx);
+    this._btFarLogAt = this._btFarLogAt || new Map();
+    var now = Date.now();
+    if (now - (this._btFarLogAt.get(nx) || 0) < 300000) return;
+    this._btFarLogAt.set(nx, now);
+    if (this._btFarLogAt.size > 300) this._btFarLogAt.delete(this._btFarLogAt.keys().next().value);
+    console.log('[BLEInterface] ' + nx + ': no está cerca por Bluetooth (no visto en 2 min): no intento conectar (' + why + '); va por internet/Wi-Fi o espera a verlo'); // i18n-ok: registro para el diagnóstico
+  },
+
   _autoConnectGATT(deviceId, device, opts) {
     var self = this;
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'connectToDevice')) return Promise.resolve();
     if (!deviceId) return Promise.resolve();
+    // 3084: no a quien no está cerca (salvo el «Agregar» del usuario, que es intención explícita)
+    if (!(opts && opts.manual) && !_isPathDev(deviceId)) {
+      var nxNear = self._btPauseKey(deviceId, device);
+      if (nxNear && !self._btNearby(nxNear)) { self._btFarSkip(nxNear, (opts && opts.why) || 'reconexión'); return Promise.resolve(); }
+    }
     // 3075 (diagnóstico S24 14-11 19:14): un camino guardado de internet / Wi-Fi local / Wi-Fi Direct («net:nx…», «lan:nx…»,
     // «wd:nx…») NO es una dirección Bluetooth: pedir al nativo conectar ahí dejaba un enlace fantasma «conectando» y, con el
     // realme, un «zombi» falso (pings a un Bluetooth que no existe). Esos caminos los lleva su propia capa; aquí no se toca nada.

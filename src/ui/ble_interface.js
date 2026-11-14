@@ -743,6 +743,8 @@ export class BLEInterface {
           _autoScanStart();
         }
         if (self.relay) self.relay.onLinkChange();
+        // 3084: el enlace se acaba de caer: sigue «cerca» 1 min para la reconexión rápida (_btNearby)
+        if (peerUUID && /^nx[0-9a-z]{8}$/.test(_normId(peerUUID))) { self._linkLostAt = self._linkLostAt || new Map(); self._linkLostAt.set(_normId(peerUUID), Date.now()); if (self._linkLostAt.size > 300) self._linkLostAt.delete(self._linkLostAt.keys().next().value); }
         _safeDispatchEvent('nexo:ble:deviceDisconnected', { deviceId: deviceId, deviceUUID: peerUUID });
         if (self.isAdvertising && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
           _safeNativeCall(self.nativePlugin, 'startAdvertising', {}).catch(function() {});
@@ -981,6 +983,7 @@ export class BLEInterface {
           // Con la pausa puesta no se fuerza (el mensaje sale por internet/Wi-Fi/Jump; la pausa se acaba sola).
           var paused = typeof self._btPaused === 'function' ? (self._btPaused(uuid) || self._btPaused(deviceId)) : 0;
           if (paused) console.log('[BLEInterface] openChat: ' + _normId(uuid) + ' en pausa Bluetooth (' + Math.round(paused / 1000) + ' s): no fuerzo la conexión');
+          else if (typeof self._btNearby === 'function' && !self._btNearby(uuid)) self._btFarSkip(uuid, 'al abrir el chat'); // 3084
           else if (!isConnecting) {
             console.log('[BLEInterface] openChat: forcing connectToDevice for', deviceId);
             _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId }).catch(function() {});

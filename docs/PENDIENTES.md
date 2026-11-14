@@ -3,6 +3,20 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 14-11 tarde (dueño: «tenemos que hacer algo con los atascos… si un contacto no está al alcance del Bluetooth ni siquiera
+## debería intentarlo… el S24 cambia de Wi-Fi a datos muy rápido, ¿por qué nosotros somos lentos?»)
+Orden: (1) Bluetooth solo a quien está cerca · (2) Wi-Fi ↔ datos al instante · (3) atascos: prevenir y avisar.
+- **(1) Hecho 3084 (en la rama, va en la APK siguiente a la 3051):** cerca = enlace listo, visto al escanear hace < 2 min o enlace
+  caído hace < 1 min. Si no, ningún intento de conexión Bluetooth (repaso de pendientes, reconexión, abrir chat, mandar texto o
+  archivo): va por internet/Wi-Fi o espera, y se conecta solo cuando el escaneo lo ve (btcerca.js: 3083 = 2 intentos, 3084 = 0).
+- **(2) Por hacer:** hoy la app solo escucha «entré a un Wi-Fi» (y solo reconecta si no tenía relés); al PERDER el Wi-Fi no hace nada:
+  las conexiones a los relés quedan colgadas del Wi-Fi viejo hasta que fallan o hasta la comprobación de relés callados (120 s con la
+  app a la vista). Arreglo: aviso nativo de «cambió la red por defecto» (Wi-Fi ↔ datos) → reconectar relés y revisar el Wi-Fi local al
+  momento; medir en el diagnóstico cuánto tarda cada cambio (esperado 2–5 s: relés 1–4 s medidos). Necesita Kotlin.
+- **(3) Por hacer:** avisar y prevenir atascos: si un contacto con enlace sano no confirma lo tuyo pero sí lo demás (el vivo del
+  08:09), pedir el desatasco desde el que manda sin esperar al otro y avisar al usuario («el teléfono de X no puede leer tus mensajes:
+  que actualice NEXO»), y avisar de contactos con versión vieja (no se sabe su versión: «build ?»).
+
 ## 🆕 14-11 (orden de trabajo acordado con el dueño: caminos) — 1, 2 y 3 hechos (3079–3081), 4 PREPARADO, falta su OK
 Orden: 1) Bluetooth solo de emergencia (3079) · 2) un archivo que va por Bluetooth pasa al camino rápido al quedar listo (3080) ·
 3) velocidad real por camino en el diagnóstico y el resumen diario (3081) · 4) internet rápido para archivos · 5) Wi-Fi Direct (#198)

@@ -927,6 +927,10 @@
     {
      "fallo": "Diagnóstico S24 14-11 08:09 (build 3050): «Resume: 4 outgoing para nx1e29ab2f» (la tablet, ausente desde el día anterior) arrancaba sus 4 textos largos por la dirección Bluetooth guardada, sin enlace, en cada vuelta de reenvío al vivo (app dormida, no confirmaba): 13 escrituras a ciegas, «Write fallo ~6 s… descartado entero (20 trozos)» en el nativo y «se rinde» a los 10 s, mientras lo del vivo esperaba. Reproducido (resumeciego.js, 3082: 72 escrituras a ciegas). 3083: la reanudación por Bluetooth directo espera a que el contacto tenga enlace listo (0 escrituras; lo de la tablet llega al volver).",
      "prueba": "sin escrituras a ciegas a un contacto ausente"
+    },
+    {
+     "fallo": "Dueño 14-11: «si un contacto no está al alcance del Bluetooth ni siquiera debería intentarlo; siempre primero las vías más rápidas». Diagnóstico S24 08:06: al volver la app, el repaso de pendientes pedía conectar por Bluetooth (dirección guardada) a los 15 contactos con algo pendiente sin haberlos visto; también al abrir su chat y al mandarle algo (btcerca.js, 3083: 2 intentos a contactos lejanos). 3084: Bluetooth solo con quien está cerca (enlace listo, visto al escanear hace < 2 min o enlace caído hace < 1 min); si no, va por internet/Wi-Fi o espera, y se conecta solo cuando el escaneo lo ve.",
+     "prueba": "Bluetooth solo a quien está cerca"
     }
    ],
    "debiles": [
