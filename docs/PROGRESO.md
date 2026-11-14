@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-11-13 (builds **2935–3070**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3069–3070 (APK 3047) — desatasco automático del cifrado (lo ilegible se pide y se reenvía solo) y relé en segundo plano que ya no se reabre sin fin**; antes 3068 (APK 3046): el aviso «enlace abre y cierra» ya no salta por un contacto con la app cerrada.
+Última actualización: 2026-11-14 (builds **2935–3072**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3071–3072 (APK 3048) — desatasco también en grupos, fotos del chat hasta 5 MB y el Bluetooth del Motorola que se queda «sin servicio» tras apagarse y encenderse**; antes 3069–3070 (APK 3047): desatasco automático del cifrado y relé en segundo plano que ya no se reabre sin fin.
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).

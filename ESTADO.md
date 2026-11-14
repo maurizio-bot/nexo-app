@@ -21,7 +21,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **13-11 (3071, modo adelanto + foto 5 MB; batería b3071 en curso, la 1.ª se paró por el fallo de grupos):** lo que quedó del desatasco: los mensajes de GRUPO. Cada mensaje de
+- **13-11 (3071–3072 = APK 3048, batería 233/233, índice 63,7):** lo que quedó del desatasco: los mensajes de GRUPO. Cada mensaje de
   grupo va a cada miembro como copia oculta en su chat, y esa copia se BORRABA con su ✓✓ (que puede dar su nativo con la app
   cerrada sin poder descifrar): tras un atasco, esos mensajes se perdían para él. Reproducido (`desync.js --perdidos --grupo`,
   3069: nunca llegan). Ahora un sobre pequeño (texto o puntero de foto/archivo, ≤ 64 KB) se guarda hasta que el miembro lo LEE

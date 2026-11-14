@@ -97,6 +97,8 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 38. **Bluetooth del Motorola tras apagar y encender (3048).** Con NEXO cerrado en el Motorola, apaga y enciende su Bluetooth.
     Desde el S24 (sin Wi-Fi ni datos) mándale un texto: debe llegar por Bluetooth en segundos. Antes: «sin servicio» hasta abrir
     NEXO en el Motorola. En su diagnóstico: «Bluetooth encendido: rehago el servidor GATT».
+39. **Fotos del chat hasta 5 MB (3048).** Elige en la galería una foto de más de 5 MB (una de la cámara a máxima resolución): sale
+    «La foto pesa más de 5 MB: elige una más pequeña» y no se manda; si eliges varias, las demás sí salen.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 

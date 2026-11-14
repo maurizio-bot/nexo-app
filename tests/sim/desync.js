@@ -121,7 +121,8 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   if (process.env.DUMP) fs.writeFileSync(process.env.DUMP, snap);
   // --perdidos: con la app de B CERRADA, A manda 3 textos; el nativo de B los guarda y confirma la entrega (✓✓) sin poder leerlos
   //  (así se perdieron los del S24 de 12:36–12:40: el Nubia los confirmó y luego no los pudo descifrar)
-  const lostCid = grp ? () => gid : () => idB;
+  const lostCid = grp ? () => gid : () => idB;     // el chat de los perdidos en A
+  const lostCidB = grp ? () => gid : () => idA;    // y en B
   if (lost) {
     if (grp) { await closeChat(A); await openChatWith(A, GNAME); }
     for (let i = 0; i < 3; i++) { sendText(A, 'perdido ' + i); await sleep(400); }
@@ -144,7 +145,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const t0 = Date.now();
   // --perdidos: cuánto tardan en llegar los 3 desde que B arranca (en paralelo a lo demás)
   let tLost = null;
-  if (lost) { (async () => { const tt = await waitFor(async () => { try { const ms = await Promise.race([B.win.vaultLoadMessages(lostCid()), sleep(1500).then(() => [])]); return [0, 1, 2].every((i) => ms.some((m) => m.content === 'perdido ' + i && !m._own)); } catch (e) { return false; } }, 120000); tLost = tt; })(); }
+  if (lost) { (async () => { const tt = await waitFor(async () => { try { const ms = await Promise.race([B.win.vaultLoadMessages(lostCidB()), sleep(1500).then(() => [])]); return [0, 1, 2].every((i) => ms.some((m) => m.content === 'perdido ' + i && !m._own)); } catch (e) { return false; } }, 120000); tLost = tt; })(); }
 
   // 1) Wi-Fi comprobado otra vez
   if (!noWifi) r.wifi_tras_reinicio_s = await waitFor(() => viaA() === 'wifi' && viaB() === 'wifi', 90000);
@@ -159,7 +160,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.desfase_detectado = after.some((l) => /\[A\].*Desfase de cifrado/.test(l));
   if (lost) r.visto_antes_reenviado = logs.slice(mark).some((l) => (grp ? /\[A\].*Desatasco con .*reenvío [1-9]/ : /\[A\].*Desatasco con .*reenvío [4-9] mensaje/).test(l));
   if (lost) {
-    const all3 = async () => { const ms = await B.win.vaultLoadMessages(lostCid()); return [0, 1, 2].every((i) => ms.some((m) => m.content === 'perdido ' + i && !m._own)); };
+    const all3 = async () => { const ms = await B.win.vaultLoadMessages(lostCidB()); return [0, 1, 2].every((i) => ms.some((m) => m.content === 'perdido ' + i && !m._own)); };
     r.perdidos_llegan_s = await waitFor(all3, 90000);
     r.perdidos_desde_arranque_s = tLost;
     await sleep(3000); // por si llegara alguno repetido
