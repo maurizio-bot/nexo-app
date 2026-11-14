@@ -58,11 +58,13 @@ Orden: 1) Bluetooth solo de emergencia (3079) · 2) un archivo que va por Blueto
 - **Hecho 3083 (diagnóstico S24 14-11 08:09):** «Resume: 4 outgoing para nx1e29ab2f» (la tablet, ausente) arrancaba sus textos
   largos por la dirección Bluetooth guardada, sin enlace, en cada vuelta de reenvío a OTRO contacto (el vivo dormido): escrituras a
   ciegas y «Write fallo ~6 s… descartado» en el nativo. Ahora espera a que ese contacto tenga enlace listo (resumeciego.js: 72 → 0).
-- **Abierto (diagnóstico S24 14-11 08:09):** el vivo (nx09acdb61, enlace Bluetooth listo, MTU 517) confirmó en 4 s la petición de
-  diagnóstico (oculta) pero NO dos textos del dueño (8gj2911l y zpzxhbx9: 5 vueltas, «reenvio_sin_fin»); el nativo del S24 los
-  escribió bien. Hipótesis sin confirmar: el vivo no puede descifrarlos (si sigue en la 3044 no tiene el desatasco del cifrado de la
-  3069) o su app los descarta. Falta su diagnóstico (el S24 se lo pidió a las 08:08:47; a las 14:15 UTC aún no había llegado al
-  canal). Los dos textos quedaron también en su buzón de internet (red de seguridad), que el vivo no tenía.
+- **Explicado (diagnóstico S24 14-11 08:09 + el del vivo 08:49, build 3048):** NO era un atasco del cifrado. El NATIVO del vivo
+  recibió los dos textos a las 08:10 («RX chunk… JSON extraído len=590», una y otra vez) y contestó los pings (pong nativo), pero su
+  APP estaba dormida por el sistema («reposo del sistema: sí», 1186 despertares por mensajes) y sin internet (Wi-Fi apagado, sin
+  datos: el toque FCM no podía llegar). Entraron a las 08:49:05, al abrir el dueño la app. Lo que lo evitaría: que el nativo trate una
+  app DORMIDA como una CERRADA (guarda, confirma ✓✓ y avisa con notificación; la app descifra al abrirse) → es la opción A del dueño
+  (puente/respuesta nativa con la app dormida). Al despertar el vivo soltó ~100 escrituras en 0,1 s a 3 direcciones (respuestas
+  atrasadas): ya anotado arriba como trabajo tirado.
 - **realme (nx0v74707a):** sigue en la build 3032, batería 13 %, Bluetooth apagado en su diagnóstico: que se actualice.
 - **vivo (nx09acdb61), diagnósticos automáticos 14-11 01:36 UTC:** está en la **3044** (vieja). Su app estuvo congelada de 14:10 a
   19:36 (5,5 h) en segundo plano aunque Android la da por «exenta»: el nativo siguió recibiendo (60 sobres entraron al abrirla). Eso
