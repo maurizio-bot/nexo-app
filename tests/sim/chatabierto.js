@@ -5,7 +5,9 @@
 // segundo plano y el sistema le congela la app:
 //  O1  a los 2 s (un parpadeo) A le escribe: A ve ✓✓ en ≤ 10 s y B no recibe aviso (sigue la regla del dueño);
 //  O2  a los 20 s A le escribe otra vez: A ve ✓✓ en ≤ 10 s y B recibe el aviso;
-//  O3  la app de B despierta: los dos textos están en su chat, una vez cada uno.
+//  O3  la app de B despierta: los dos textos están en su chat, una vez cada uno;
+//  O4–O6 (dueño 14-11, pantalla apagada con la app DESPIERTA y el chat abierto): en un parpadeo no avisa; pasados 15 s, sí; al
+//      encender la pantalla el aviso se quita y queda leído.
 // Uso: node chatabierto.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -98,9 +100,36 @@ async function ownStatus(p, peer, text) { const m = (await p.win.vaultLoadMessag
   await sleep(6000);
   const inB = await B.win.vaultLoadMessages(idA);
   r.O3_en_chat = ['mientras miro', 'te escribo dormido'].map((t) => inB.filter((m) => !m._own && m.content === t).length);
+  // Dueño 14-11 (APK 3052, «a pantalla apagada no suena ni hay notificaciones; a pantalla encendida llegan puntuales»; S24 12:00:
+  // 10 textos al vivo, ✓✓ en 1 s cada uno y leídos a las 12:18): B APAGA LA PANTALLA con el chat de A abierto pero su app sigue
+  // DESPIERTA (el teléfono no la congela enseguida): la que recibe y confirma es la app, y su regla «el chat abierto nunca avisa»
+  // no tenía límite de tiempo → callaba el aviso para siempre. Ahora, como en el nativo (3086): solo en un parpadeo (< 15 s).
+  //  O4  pantalla apagada hace 2 s (un parpadeo): A ve ✓✓ y B no recibe aviso;
+  //  O5  pantalla apagada hace 20 s: A ve ✓✓ y B recibe el aviso (y le cuenta como no leído);
+  //  O6  B enciende la pantalla: el chat abierto queda leído y el aviso se quita.
+  B.setActive(false);
+  await sleep(2000);
+  sendText(A, 'pantalla recién apagada');
+  await sleep(300);
+  const s4 = await ownStatus(A, idB, 'pantalla recién apagada');
+  const o4 = await waitFor(async () => /delivered|read/.test((await ownStatus(A, idB, 'pantalla recién apagada')).st || ''), 10000);
+  r.O4_entregado_s = o4;
+  await sleep(500);
+  r.O4_aviso_en_b = s4.id ? notifHas(nB, s4.id) : null;
+  await sleep(Math.max(0, 20000 - 2800 - (o4 === null ? 10 : o4) * 1000)); // (o4 puede ser 0: llegó al momento)
+  sendText(A, 'pantalla apagada hace rato');
+  await sleep(300);
+  const s5 = await ownStatus(A, idB, 'pantalla apagada hace rato');
+  r.O5_entregado_s = await waitFor(async () => /delivered|read/.test((await ownStatus(A, idB, 'pantalla apagada hace rato')).st || ''), 10000);
+  r.O5_aviso_en_b = s5.id ? await waitFor(() => notifHas(nB, s5.id), 6000) !== null : null;
+  B.setActive(true);
+  await sleep(3000);
+  r.O6_aviso_quitado = s5.id ? !notifHas(nB, s5.id) : null;
+  r.O6_leido_en_a = await waitFor(async () => (await ownStatus(A, idB, 'pantalla apagada hace rato')).st === 'read', 10000) !== null;
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|net::ERR|fetch/.test(l)).slice(0, 5);
   const ok = r.b_chat_abierto && r.O1_entregado_s !== null && r.O1_aviso_en_b === false && r.O2_entregado_s !== null && r.O2_aviso_en_b === true &&
-    r.O3_en_chat[0] === 1 && r.O3_en_chat[1] === 1 && !r.errores.length;
+    r.O3_en_chat[0] === 1 && r.O3_en_chat[1] === 1 && r.O4_entregado_s !== null && r.O4_aviso_en_b === false && r.O5_entregado_s !== null &&
+    r.O5_aviso_en_b === true && r.O6_aviso_quitado === true && r.O6_leido_en_a && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('CHATABIERTO ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_chatabierto.txt'), logs.join('\n'));

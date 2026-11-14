@@ -23,6 +23,10 @@ function _call(name, args) {
   try { return Promise.resolve(pl[name](args || {})).catch(function() { return null; }); } catch (e) { return Promise.resolve(null); }
 }
 function _visible() { return typeof document === 'undefined' || document.visibilityState !== 'hidden'; }
+// Dueño 14-11 (APK 3052: «a pantalla apagada no suena ni hay notificaciones; a pantalla encendida llegan puntuales»): el chat
+// ABIERTO calla su aviso solo en un PARPADEO a segundo plano, como el nativo (BgNotifyPolicy.OPEN_CHAT_GRACE_MS, 3086). Pasado ese
+// margen (pantalla apagada, otra app encima) avisa como cualquier otro chat.
+var OPEN_CHAT_GRACE_MS = 15000;
 
 export class Notifier {
   constructor(opts) {
@@ -36,7 +40,10 @@ export class Notifier {
     this._seenWait = null;                     // 3069: lo que llega antes de leer lo guardado espera (un instante)
     var self = this;
     this._loadSeen();
-    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() { if (_visible()) self.onVisible(); });
+    this._hiddenAt = _visible() ? 0 : Date.now(); // desde cuándo la app no está a la vista (0 = a la vista)
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() {
+      if (_visible()) { self._hiddenAt = 0; self.onVisible(); } else if (!self._hiddenAt) self._hiddenAt = Date.now();
+    });
     if (typeof window !== 'undefined') {
       window.addEventListener('nexo:unread', function(e) { self._onUnread((e && e.detail) || {}); });
       // #dueño 08-11: avisar al NATIVO qué chat está ABIERTO, para que el aviso de respaldo (el que da el nativo cuando el
@@ -89,9 +96,11 @@ export class Notifier {
     // #dueño 08-11: el chat que tenés ABIERTO nunca avisa ni suma no-leídos, AUNQUE la app esté un instante en segundo plano
     // (un parpadeo del sistema). Al volver ya ves el mensaje, así que una notificación de la persona que estás leyendo no
     // tiene sentido y molesta. Antes el corte solo valía con la app A LA VISTA (open && _visible): abierto + app oculta
-    // sumaba no-leído y mandaba notificación de ese chat. Ahora: con el chat abierto SIEMPRE se corta. La confirmación de
+    // sumaba no-leído y mandaba notificación de ese chat. Ahora: con el chat abierto se corta (a la vista o en un parpadeo, abajo). La confirmación de
     // leído sale al toque si la app está a la vista; en segundo plano se guarda y se manda al volver (onVisible → _onUnread).
-    var open = _nid(this.currentChat()) === cid;
+    // 14-11: «siempre» era demasiado: con la pantalla apagada y la app aún despierta, el chat abierto callaba para siempre (el
+    // vivo recibió y confirmó 10 textos sin un solo aviso). Ahora solo a la vista o en un parpadeo (< 15 s) a segundo plano.
+    var open = _nid(this.currentChat()) === cid && (_visible() || (this._hiddenAt > 0 && Date.now() - this._hiddenAt < OPEN_CHAT_GRACE_MS));
     if (open) {
       if (m.msgId) {
         if (_visible() && this.sendRead) this.sendRead(cid, m.msgId);

@@ -981,7 +981,7 @@
    "telefono": {
     "estado": "antes",
     "por": "25-10 (2771): interferencias en el micrófono (eco); 2768: en videollamada a veces no se oía (arreglos en la 2769, 2770 y 2772, sin probar)",
-    "nota": "dueño (PROGRESO ~l.533): «con batería Sin restricciones las llamadas ya [funcionan]»; hace llamadas. Últimos arreglos (2874 colgar) a re-confirmar"
+    "nota": "dueño (PROGRESO ~l.533): «con batería Sin restricciones las llamadas ya [funcionan]»; hace llamadas. Últimos arreglos (2874 colgar) a re-confirmar; 14-11: en las videollamadas el eco y el ruido «mejoró significativamente» (dueño); la llamada solo de voz, sin probar hoy"
    },
    "revision": {
     "n": 1,
@@ -1105,7 +1105,7 @@
    "peso": 7,
    "telefono": {
     "estado": "ok",
-    "por": "14-11 (3052): videollamada por Wi-Fi S24↔vivo de un minuto: se ve y se oye bien (dueño); los botones de abajo quedan demasiado anchos y el de colgar casi no se ve (Interfaz)",
+    "por": "14-11 (3052): videollamadas por Wi-Fi S24↔vivo (2,5 min) y S24↔tablet (2 min) del dueño: se ve y se oye bien; girar el teléfono en horizontal y en vertical, el otro se adapta (también con la tablet); el ruido y el eco «mejoró significativamente»; compartir pantalla «bastante práctica, funciona correctamente». Diagnósticos S24 y tablet: vídeo en los dos sentidos, Opus, la imagen cambia de 480x360 a 360x480 al girar y la cámara vuelve sola 6 s después de dejar de compartir. Los botones de abajo, demasiado anchos (Interfaz): arreglados en la 3090",
     "nota": "dueño base 2858: «el vídeo ya se ve» (videollamada funciona); quedan detalles de UX de grupo"
    },
    "revision": {
@@ -1208,7 +1208,7 @@
    "peso": 10,
    "telefono": {
     "estado": "falla",
-    "por": "14-11 (3052, vivo con NEXO cerrado): con la pantalla ENCENDIDA los avisos llegan puntuales, uno por mensaje, y el audio se oye; con la pantalla APAGADA no suena ni llega ningún aviso (dueño). Pendiente su diagnóstico",
+    "por": "14-11 (3052, vivo): con la pantalla ENCENDIDA los avisos llegan puntuales, uno por mensaje, y el audio se oye; con la pantalla APAGADA no suena ni llega ningún aviso (dueño). Causa vista en el diagnóstico del S24 (12:00: 10 textos al vivo con ✓✓ en 1 s cada uno y leídos a las 12:18): la app del vivo seguía despierta con el chat del S24 abierto y su regla «el chat abierto nunca avisa» no tenía límite de tiempo. Arreglado en la 3091 (chatabierto O4–O6), falta confirmarlo en el teléfono",
     "nota": "dueño 28-10 base 2823: «Probada a fondo para la ENTREGA con app cerrada + pantalla apagada ✓»; cambió desde entonces (FCM despertador), a re-confirmar en la última"
    },
    "revision": {
@@ -1304,6 +1304,10 @@
     {
      "fallo": "Idea del dueño 14-11: «cada mensaje que se le manda a un teléfono dormido lleve su despertador hasta que haya confirmación de que despertó». El calendario de toques FCM quitaba al contacto en cuanto se veía alcanzable (Bluetooth o internet) aunque su app durmiera y no confirmara (el vivo del 14-11: Bluetooth sano, 40 min sin ✓✓ y sin toques); y un mensaje por un Bluetooth listo nunca entraba al calendario (solo un toque suelto de la red de seguridad). 3088: sin ✓✓ a los ~10 s entra al calendario y sigue ahí, con el mismo freno (30 s → 2 m → 8 m…), mientras haya algo suyo sin confirmar hace más de 20 s; al confirmar, sale (wakesched k).",
      "prueba": "Fase A entrega offline"
+    },
+    {
+     "fallo": "Dueño 14-11 (APK 3052): «a pantalla apagada no suena ni hay notificaciones; a pantalla encendida llegan puntuales». Diagnóstico S24 12:00: 10 textos al vivo, ✓✓ en 1 s cada uno y leídos a las 12:18. Con la pantalla apagada y la app aún despierta, la que recibe y confirma es la app, y su regla del 08-11 «el chat abierto nunca avisa» no tenía límite: callaba para siempre. 3091 (notify.js): como el nativo (3086), el chat abierto solo calla en un parpadeo (< 15 s fuera de la vista); después avisa y cuenta como no leído; al volver, el aviso se quita y queda leído. chatabierto O5: 3089 sin aviso, 3091 con aviso",
+     "prueba": "chat abierto y app dormida"
     }
    ]
   },
@@ -1514,10 +1518,6 @@
     {
      "g": "leve",
      "d": "Sin la foto del contacto en sus notificaciones"
-    },
-    {
-     "g": "media",
-     "d": "Videollamada: los botones de abajo quedan demasiado anchos y el de colgar casi no se ve en pantalla (dueño 14-11, 3052)"
     }
    ],
    "fallos": [
@@ -1532,6 +1532,10 @@
     {
      "fallo": "3035 (dueño 13-11: «¿los gestos de regreso están en todas las pantallas?»): el atrás del sistema no cerraba menús (mensaje, grupo, adjuntar), hojas (reenviar, compartir, elegir contacto, cobrar, ficha del grupo, fondo), el juego NEXO, la búsqueda del chat, la bienvenida ni el aviso de batería. Además: Actualizaciones arriba en Ajustes, stickers sin N y con caritas nuevas, y video de otras apps en estados en 720p ≤ 5 MB. pedidos13.js",
      "prueba": "pedidos del dueño 13-11"
+    },
+    {
+     "fallo": "Dueño 14-11 (APK 3052): «debes de ajustar el tamaño de los botones en la parte de abajo de la videollamada, quedan muy anchos y prácticamente el botón de terminar llamada ni se ve en pantalla». 7 botones de 62 px mínimo no cabían en 360–412 de ancho y colgar, el último, quedaba fuera. 3090 (calls_ui.js): cada botón toma su parte del ancho (hasta 76 px), el círculo se encoge con él (42 px a 360) y un nombre que no cabe baja de letra lo justo (medida fina: «Silenciado» se pasaba 0,3 px). videoframe.js a 360/384/412 en español e italiano: 3089 no caben y colgar fuera; 3090 caben",
+     "prueba": "y los 7 botones de abajo caben"
     }
    ]
   },

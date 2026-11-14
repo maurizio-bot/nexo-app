@@ -15,7 +15,7 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
    tiene internet sale «internet POR PUENTE: …» y en el del otro «presto internet a 1».
 5. **Vivo en segundo plano (3033).** En el Vivo: Ajustes → Batería → NEXO → permitir actividad en segundo plano. Con su
    pantalla apagada, mándale un texto por Bluetooth: tiene que llegar ✓✓ sin abrir su app. Si no, diagnóstico del Vivo.
-7. **Compartir pantalla (3034).** En una videollamada por Wi-Fi: toca «Pantalla» → aviso → «Compartir» → permiso de Android.
+7. ✅ (dueño 14-11, APK 3052, S24↔tablet: «bastante práctica, funciona correctamente») **Compartir pantalla (3034).** En una videollamada por Wi-Fi: toca «Pantalla» → aviso → «Compartir» → permiso de Android.
    El otro ve tu pantalla entera (puede ampliar con dos dedos); arriba en el tuyo, barra roja «Detener». Detén con la barra y
    vuelve la cámara. Si falla, diagnóstico de los dos (líneas «[CALL] Compartiendo la pantalla…» / «ScreenShare»).
 8. **GIF a alguien sin conexión (3034).** Manda un GIF grande a un contacto apagado: el ✓ sale en ~1 min (antes ~6).
@@ -46,7 +46,8 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     a un contacto lejano → sale en ~10 s y el chat dice «por puente» (antes ~1,5 min).
 19. **Vuelve el internet (3039).** Siguiendo la anterior, A vuelve a encender los datos: en ≤ 15 s el chat deja de decir
     «por puente» (antes hasta 2 min).
-20. **Pantalla girada y por Bluetooth (3040).** En una videollamada por Wi-Fi comparte la pantalla y GIRA el teléfono: el otro
+20. ✅ en parte (dueño 14-11, APK 3052: girar en horizontal y vertical en la videollamada, también con la tablet, el otro se adapta;
+    falta la parte por Bluetooth) **Pantalla girada y por Bluetooth (3040).** En una videollamada por Wi-Fi comparte la pantalla y GIRA el teléfono: el otro
     la ve en horizontal sin aplastar. Luego apaga el Wi-Fi de los dos (la llamada sigue por Bluetooth): la pantalla sigue
     viéndose, como imágenes que cambian cada ~5 s. Diagnóstico: «Pantalla girada» y «diapositivas de pantalla».
 21. **Archivo grande para alguien lejano (3040).** En el vivo, lo pendiente de 25 MB para …707a ya no se lee del disco cada vez
@@ -149,6 +150,13 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 57. **Despertador hasta la confirmación (3053).** Escribe a alguien con la app dormida (pantalla apagada un rato) que tenga
     internet: en tu diagnóstico salen varios «[WAKE] toque a nx… (intento N …)» espaciados (30 s, 2 min…) hasta que llega la doble
     palomita, y ahí paran.
+58. **Botones de la videollamada (APK siguiente a la 3053).** En una videollamada por Wi-Fi, en el S24 y en el vivo: los 7
+    botones de abajo caben en la pantalla y el rojo de colgar se ve entero; con «Silenciar» y «Cámara» tocados, los nombres se
+    leen enteros («Silenciado», «Cámara no»).
+59. **Pantalla apagada con el chat abierto (APK siguiente a la 3053, el vivo).** En el vivo abre el chat del S24 y apaga la
+    pantalla. Espera unos 20 s y escríbele desde el S24: al vivo le debe sonar el aviso (antes, nada mientras su app seguía
+    despierta). Si lo escribes en los primeros segundos tras apagar, no avisa (es el «parpadeo» del 08-11). Al encender la
+    pantalla, el aviso se quita y el S24 ve «leído».
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 
