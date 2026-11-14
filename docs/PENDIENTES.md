@@ -4,6 +4,16 @@ Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar c
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
 ## 🆕 14-11 noche (llamadas, orden del dueño: «empieza por las llamadas»; y su idea del despertador)
+- **Diagnósticos 22:12–22:21 (S24 3054, Xiaomi 3046→3055, Honor 3032→3055; S23 sigue en la 3048):** (1) **3097**: en la videollamada
+  por Wi-Fi con el Xiaomi, lo del S23 (solo por Bluetooth) esperó 4,5 min a colgar («la radio es de la llamada»); ahora el
+  Bluetooth solo se aparta si la llamada va por Bluetooth (`llamadawifi.js`). (2) **3098**: en 4 videollamadas el S24 nunca vio al
+  Honor: su cámara de NEXO bloqueada («NotAllowedError» ×3 → solo voz); ahora el aviso lo dice y se toca para abrir los permisos
+  (`camdenied.js`). Al dueño: en el Honor, Ajustes → Apps → NEXO → Permisos → Cámara, y batería sin restricciones (tiene el ahorro
+  activo y «segundo plano permitido NO»: la app se cerraba al salir, 16:11 y 16:18). (3) **Pregunta al dueño:** una llamada de
+  GRUPO quedó abierta 4 min en el S24 (16:15:38–16:19:43, «gcsc…» a nx16386482 y nx0ed4a8be) tras colgar con el Xiaomi: ¿agregó a
+  alguien? Si nadie contesta, ¿debió cerrarse sola antes? (4) Menor: tras un corte del Wi-Fi local el registro dice «sigue por
+  Bluetooth» aunque con el Honor no haya Bluetooth (va por internet). (5) Xiaomi 3046: «Confirmación sin firma válida de
+  nx1e50c95d» ×6 al arrancar (el S23 en la 3048): versiones viejas, a revisar si sigue con las dos al día.
 - **Diagnósticos 13:03–13:05 (vivo 3052 con el Wi-Fi recién encendido; S24 3052 en segundo plano):** la app SÍ se enteró de los
   cambios (Wi-Fi local con el S24 a las 13:03:34, internet a las 13:03:58, Bluetooth apagado 13:03:45 y encendido 13:04:31 al
   momento). Lo lento: el Wi-Fi local esperó 80,7 s porque la «comprobación» de identidad la contesta la APP del S24, que dormía

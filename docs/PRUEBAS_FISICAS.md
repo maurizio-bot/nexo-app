@@ -170,6 +170,13 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     palomita y quedarse así (no volver al reloj). En el diagnóstico del vivo: «El teléfono del otro ya tiene el texto (✓✓) y su app
     duerme: no reenvío (reviso en 15 s)», sin la lista de «reenvío» cada pocos segundos. Al encender el S24, el texto está entero y una
     sola vez.
+64. **Llamada por Wi-Fi sin frenar el Bluetooth (APK siguiente a la 3056).** S24 y Xiaomi en el mismo Wi-Fi; el S23 lejos con algo
+    tuyo pendiente (escríbele mientras está lejos). Llama al Xiaomi y, hablando, acércate al S23: lo pendiente le llega durante la
+    llamada (antes esperaba a colgar). En tu diagnóstico ya no sale «En llamada: lo pendiente … espera a colgar» si la llamada va
+    por Wi-Fi.
+65. **Cámara bloqueada (APK siguiente a la 3056, el Honor).** Si en el Honor la cámara de NEXO sigue bloqueada, en una
+    videollamada debe salir en amarillo «NEXO no tiene permiso para la cámara: toca aquí para darlo»; al tocarlo se abre la ficha
+    de NEXO (Permisos → Cámara → Permitir); al volver a la llamada, el S24 ve al Honor en unos segundos.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 
