@@ -4,6 +4,12 @@ Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar c
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
 ## 🆕 14-11 noche (llamadas, orden del dueño: «empieza por las llamadas»; y su idea del despertador)
+- **Diagnósticos automáticos 11:46–11:52 (vivo 3048 recién actualizado a 3052 y S24 3052):** sin la prueba de pantalla apagada
+  (esa falta). Entregas al vivo y a la tablet bien (Wi-Fi local, internet y Bluetooth; la conexión lista en 0,3–1,8 s). Detalle
+  menor, para la próxima tanda: «enlace_abre_cierra» del S24 con el vivo cuenta como «desconexión» también el enlace repetido que el
+  propio S24 cierra (Dedup 6dad a las 11:50:21 y 11:51:39, ya contado como «repetido»), y el nativo lo sigue teniendo abierto
+  («Conexión existente recuperada al arrancar: 7F:9A…» 8 s después): no contar como corte lo cerrado por la deduplicación
+  (`_dupClosedUntil`) y mirar por qué el cierre no se cumple en el nativo (enlace de servidor).
 - **Entrega:** 3084–3089 = **APK 3053** (batería 249/249, Kotlin 155/155, índice 65). Pruebas físicas 52–57 (con el S24, el vivo y
   la tablet; el S23 no está a mano).
 - **Pruebas del dueño con la 3052 (14-11):** Wi-Fi local OK; videollamada por Wi-Fi OK; avisos con la app cerrada: **con la pantalla
