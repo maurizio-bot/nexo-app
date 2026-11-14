@@ -18,8 +18,13 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   (esa falta). Entregas al vivo y a la tablet bien (Wi-Fi local, internet y Bluetooth; la conexión lista en 0,3–1,8 s). Detalle
   menor, para la próxima tanda: «enlace_abre_cierra» del S24 con el vivo cuenta como «desconexión» también el enlace repetido que el
   propio S24 cierra (Dedup 6dad a las 11:50:21 y 11:51:39, ya contado como «repetido»), y el nativo lo sigue teniendo abierto
-  («Conexión existente recuperada al arrancar: 7F:9A…» 8 s después): no contar como corte lo cerrado por la deduplicación
-  (`_dupClosedUntil`) y mirar por qué el cierre no se cumple en el nativo (enlace de servidor).
+  («Conexión existente recuperada al arrancar: 7F:9A…» 8 s después). **Lo primero, hecho en la 3093** (lo cerrado por la
+  deduplicación ya no cuenta como corte). **Lo segundo, analizado (14-11 noche), no se cambia:** el enlace que sigue abierto es uno
+  que abrió el OTRO teléfono (el S24 es ahí el «servidor»), y el cierre nativo (`disconnectDevice`) solo cierra los que abrió uno
+  mismo. La regla de la 3027 ya reparte el trabajo: ese mismo enlace lo cierra el otro teléfono desde su lado, y ahí sí se cumple;
+  solo queda abierto mientras la app del otro duerme, y sin daño (al mandar se elige el mejor enlace). Cerrarlo a la fuerza desde el
+  servidor sería peor: el nativo del otro lo toma como caída y reconecta solo (`startAutoReconnect`), y volvería el abrir y cerrar.
+  Si hiciera falta, la vía buena es avisar al otro antes de cerrar para que no reconecte (cambio de protocolo, para más adelante).
 - **Entrega:** 3084–3089 = **APK 3053** (batería 249/249, Kotlin 155/155, índice 65). Pruebas físicas 52–57 (con el S24, el vivo y
   la tablet; el S23 no está a mano).
 - **Pruebas del dueño con la 3052 (14-11):** Wi-Fi local OK; videollamada por Wi-Fi OK; avisos con la app cerrada: **con la pantalla
