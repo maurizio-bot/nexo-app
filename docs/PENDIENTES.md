@@ -9,10 +9,12 @@ Orden: (1) Bluetooth solo a quien está cerca · (2) Wi-Fi ↔ datos al instante
 - **(1) Hecho 3084 (en la rama, va en la APK siguiente a la 3051):** cerca = enlace listo, visto al escanear hace < 2 min o enlace
   caído hace < 1 min. Si no, ningún intento de conexión Bluetooth (repaso de pendientes, reconexión, abrir chat, mandar texto o
   archivo): va por internet/Wi-Fi o espera, y se conecta solo cuando el escaneo lo ve (btcerca.js: 3083 = 2 intentos, 3084 = 0).
-- **(2) Por hacer:** hoy la app solo escucha «entré a un Wi-Fi» (y solo reconecta si no tenía relés); al PERDER el Wi-Fi no hace nada:
-  las conexiones a los relés quedan colgadas del Wi-Fi viejo hasta que fallan o hasta la comprobación de relés callados (120 s con la
-  app a la vista). Arreglo: aviso nativo de «cambió la red por defecto» (Wi-Fi ↔ datos) → reconectar relés y revisar el Wi-Fi local al
-  momento; medir en el diagnóstico cuánto tarda cada cambio (esperado 2–5 s: relés 1–4 s medidos). Necesita Kotlin.
+- **(2) Hecho 3085 (en la rama, nativo + app):** la app solo escuchaba «entré a un Wi-Fi»; al pasar de Wi-Fi a datos sus conexiones a
+  los relés quedaban colgadas de la red vieja (redcambio.js, 3084: lo que le mandaban tardaba 28 s en entrar). Ahora el nativo avisa de
+  cada cambio de tipo de la red por defecto (`NetChange.kt` + `watchDefaultNetwork`, Kotlin 151/151 en JVM; el enganche Android se
+  compila solo en el servidor) y la app rehace las conexiones por la nueva al momento (0,7 s en el simulador). En el diagnóstico:
+  «[NET] Cambio de red: Wi-Fi → datos móviles» y «Relés listos tras el cambio de red en X s» (y en «Velocidad de hoy por camino»).
+  Falta medirlo en los teléfonos: el Wi-Fi local y Wi-Fi Direct no se tocaron.
 - **(3) Por hacer:** avisar y prevenir atascos: si un contacto con enlace sano no confirma lo tuyo pero sí lo demás (el vivo del
   08:09), pedir el desatasco desde el que manda sin esperar al otro y avisar al usuario («el teléfono de X no puede leer tus mensajes:
   que actualice NEXO»), y avisar de contactos con versión vieja (no se sabe su versión: «build ?»).

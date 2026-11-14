@@ -33,7 +33,7 @@ class NostrRelay {
     this.wss = new WebSocket.Server({ port });
     await new Promise((r) => this.wss.on('listening', r));
     this.url = 'ws://127.0.0.1:' + this.wss.address().port;
-    this.wss.on('connection', (ws) => this._conn(ws));
+    this.wss.on('connection', (ws, req) => { ws.tag = String((req && req.url) || ''); this._conn(ws); });
     return this.url;
   }
   stop() { if (this.wss) this.wss.clients.forEach((c) => c.terminate()); return new Promise((r) => (this.wss ? this.wss.close(() => r()) : r())); }
@@ -42,6 +42,8 @@ class NostrRelay {
   // Conexiones MUDAS (pruebas, diagnóstico S24 3010): las que ya están abiertas siguen abiertas pero el relé no lee ni manda
   // nada por ellas — como una conexión muerta tras un rato en segundo plano, que el teléfono aún cree abierta. Las nuevas van bien.
   muteAll() { this.wss.clients.forEach((c) => { c.mute = true; }); }
+  // 3085: solo las de un teléfono (su dirección de relé lleva «?p=<nombre>»): las conexiones que quedan colgadas del Wi-Fi viejo
+  muteTag(tag) { let n = 0; this.wss.clients.forEach((c) => { if ((c.tag || '').indexOf(tag) >= 0) { c.mute = true; n++; } }); return n; }
 
   _valid(ev) {
     const { schnorr, sha256, hex, unhex } = noble;

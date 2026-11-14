@@ -1074,6 +1074,7 @@ class NexoBlePlugin : Plugin() {
         appCtx = activity.applicationContext
         live = this
         takeOverFromClosed()
+        watchDefaultNetwork() // 3085: avisar a la app de Wi-Fi ↔ datos al momento
         // Seguridad fase 3: cifrar en segundo plano lo que aún esté en claro (archivos de versiones anteriores)
         // (prioridad baja; de lo ya cifrado solo se lee la cabecera)
         Thread {
@@ -1166,6 +1167,7 @@ class NexoBlePlugin : Plugin() {
     override fun handleOnDestroy() {
         super.handleOnDestroy()
         if (live === this) live = null
+        unwatchDefaultNetwork() // 3085
         // Ronda 2770: la app se cierra con una llamada en curso: se suelta todo lo de la llamada (si no, el sensor de
         // proximidad seguía apagando la pantalla hasta 4 h, la música de otras apps no volvía y el audio quedaba en modo
         // llamada)
@@ -3446,6 +3448,43 @@ class NexoBlePlugin : Plugin() {
     fun lanStop(call: PluginCall) {
         lanStopAll()
         call.resolve(JSObject().put("stopped", true))
+    }
+
+    // 3085 (dueño 14-11: «el S24 cambia de Wi-Fi a datos en automático y muy rápido, ¿por qué nosotros somos lentos?»): la app solo
+    // sabía de «entré a un Wi-Fi» (lanWatchWifi); al pasar de Wi-Fi a datos sus conexiones a los relés quedaban colgadas de la red
+    // vieja. Se avisa de cada cambio de TIPO de la red por defecto (NetChange) y la app reconecta al momento (net_link._onNetChange).
+    private var defNetCb: android.net.ConnectivityManager.NetworkCallback? = null
+    private val netTracker = NetChange.Tracker()
+    private fun watchDefaultNetwork() {
+        if (defNetCb != null || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+        try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onCapabilitiesChanged(network: android.net.Network, caps: android.net.NetworkCapabilities) {
+                    val t = NetChange.typeOf(
+                        caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI),
+                        caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR),
+                        caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET),
+                        caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN))
+                    mainHandler.post { reportNetType(t) }
+                }
+                override fun onLost(network: android.net.Network) {
+                    // Al cambiar de red Android puede avisar de la pérdida de la vieja DESPUÉS de dar la nueva: solo «sin red» si de verdad no hay
+                    mainHandler.post { try { if (cm.activeNetwork == null) reportNetType("none") } catch (e: Exception) { } }
+                }
+            }
+            cm.registerDefaultNetworkCallback(cb)
+            defNetCb = cb
+        } catch (e: Exception) { remLog("WARN", "NET", "Sin aviso de cambio de red: ${e.message}") }
+    }
+    private fun unwatchDefaultNetwork() {
+        defNetCb?.let { cb -> try { (context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).unregisterNetworkCallback(cb) } catch (e: Exception) { } }
+        defNetCb = null
+    }
+    private fun reportNetType(t: String) {
+        val prev = netTracker.update(t) ?: return
+        remLog("INFO", "NET", "Red por defecto: $prev → $t")
+        notifyListeners("onNetChange", JSObject().put("type", t).put("prev", prev))
     }
 
     // Al conectarse a una red Wi-Fi: escanear ya (una a una) y avisar a la app (vuelve a anunciarse y buscar)

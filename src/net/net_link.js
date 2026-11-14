@@ -196,6 +196,8 @@ export class NetLink {
     if (pl && typeof pl.addListener === 'function') {
       // Entró a una red Wi-Fi: si no tengo internet propio, reconectar YA (antes se esperaba la pausa de reintento, hasta 2 min)
       pl.addListener('onLanNet', function() { if (!self._realOpenCount()) self.relays.forEach(function(r) { if (!r.gw && !r.ws) { r.retryAt = 0; r.backoff = 2000; } }); self.tick(); });
+      // 3085: cambió la red por defecto del teléfono (Wi-Fi ↔ datos móviles; Kotlin watchDefaultNetwork)
+      pl.addListener('onNetChange', function(ev) { try { self._onNetChange(ev); } catch (e) {} });
       if (typeof pl.torStart === 'function') {
         pl.addListener('onTorReady', function(ev) { self._onTorReady(ev); });
         pl.addListener('onTorUp', function(ev) { var p = self._peer(_nid(ev && ev.nx)); p.torUp = true; p.torOk = false; self._hello(_nid(ev.nx)); });
@@ -345,6 +347,11 @@ export class NetLink {
       if (!r.gw && self.gw && typeof self.gw.realBack === 'function') self.gw.realBack(); // 3052: soltar los puentes a tiempo
       // 3050: a los vecinos a los que dije «no tengo internet», se lo ofrezco ya
       if (!r.gw && self.gw && self.gw.askedBy && self.gw.askedBy.size) setTimeout(function() { try { self.gw._offerAskers(Date.now()); } catch (e) {} }, 500);
+      if (self._netChangeAt && !r.gw) {
+        console.log('[NET] Relés listos tras el cambio de red en ' + ((Date.now() - self._netChangeAt) / 1000).toFixed(1).replace('.', ',') + ' s'); // i18n-ok: registro (3085)
+        try { if (typeof window.NEXO_noteConnect === 'function') window.NEXO_noteConnect('internet', Date.now() - self._netChangeAt); } catch (e) {}
+        self._netChangeAt = 0;
+      }
       if (self._openCount() === 1) {
         console.log('[NET] Conectado a internet por relés públicos');
         try { if (self._netTryAt && typeof window.NEXO_noteConnect === 'function') window.NEXO_noteConnect('internet', Date.now() - self._netTryAt); } catch (e) {} // 3081
@@ -432,6 +439,24 @@ export class NetLink {
       }, RELAY_PROBE_MS);
     });
   }
+  // 3085 (dueño 14-11: «el S24 cambia de Wi-Fi a datos en automático y muy rápido, ¿por qué nosotros somos lentos?»): la app solo
+  // escuchaba «entré a un Wi-Fi»; al pasar de Wi-Fi a datos (o al revés) sus conexiones a los relés quedaban colgadas de la red vieja
+  // —abiertas para la app, muertas de verdad— hasta que fallaban o hasta la comprobación de relés callados (redcambio.js: lo que le
+  // mandaban tardaba 28 s en entrar). Ahora, al cambiar la red, se cierran y se abren por la nueva al momento, y se mide cuánto tardan.
+  _onNetChange(ev) {
+    var self = this, t = String((ev && ev.type) || ''), prev = String((ev && ev.prev) || '');
+    var NAMES = { wifi: 'Wi-Fi', cell: 'datos móviles', eth: 'cable', vpn: 'VPN', none: 'sin red', other: 'otra red' }; // i18n-ok: registro
+    var nm = function(x) { return NAMES[x] || x || '?'; };
+    console.log('[NET] Cambio de red: ' + nm(prev) + ' → ' + nm(t) + (t === 'none' ? ': espero a que vuelva' : ': reconecto los relés ya')); // i18n-ok: registro para el diagnóstico
+    if (t === 'none') { self._netChangeAt = 0; return; }
+    self._netChangeAt = Date.now();
+    self.relays.forEach(function(r, u) {
+      if (r.gw) return;   // los puentes Bluetooth no dependen de la red del teléfono
+      if (r.ws) self._dropDead(u, r, 'cambio de red');
+      else { r.retryAt = 0; r.backoff = 2000; }
+    });
+    self.tick();
+  }
   // 3011: los relés que no dijeron nada desde `since` (a un envío sin respuesta de ninguno) se dan por muertos
   _dropSilent(since, why) {
     var self = this;
@@ -440,7 +465,7 @@ export class NetLink {
   // 3011: cierra una conexión muerta SIN esperar su cierre (en una conexión muerta puede tardar minutos) y reconecta ya
   _dropDead(url, r, why) {
     var ws = r.ws, was = r.open;
-    console.warn('[NET] Relé ' + _relayHost(url) + ' no contesta (' + why + '): conexión muerta, reconecto');
+    console.warn('[NET] Relé ' + _relayHost(url) + (why === 'cambio de red' ? ': la red cambió, reconecto por la nueva' : ' no contesta (' + why + '): conexión muerta, reconecto')); // i18n-ok: registro
     if (ws) { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null; try { ws.close(); } catch (e) {} }
     r.open = false; r.ws = null; r.sub = null; r.openedAt = 0; r.probing = false;
     r.waits.forEach(function(fn) { try { fn(false, 'conexión muerta'); } catch (e) {} }); r.waits.clear();

@@ -931,6 +931,10 @@
     {
      "fallo": "Dueño 14-11: «si un contacto no está al alcance del Bluetooth ni siquiera debería intentarlo; siempre primero las vías más rápidas». Diagnóstico S24 08:06: al volver la app, el repaso de pendientes pedía conectar por Bluetooth (dirección guardada) a los 15 contactos con algo pendiente sin haberlos visto; también al abrir su chat y al mandarle algo (btcerca.js, 3083: 2 intentos a contactos lejanos). 3084: Bluetooth solo con quien está cerca (enlace listo, visto al escanear hace < 2 min o enlace caído hace < 1 min); si no, va por internet/Wi-Fi o espera, y se conecta solo cuando el escaneo lo ve.",
      "prueba": "Bluetooth solo a quien está cerca"
+    },
+    {
+     "fallo": "Dueño 14-11: «el S24 cambia de Wi-Fi a datos en automático y muy rápido, ¿por qué nosotros somos lentos?». La app solo escuchaba «entré a un Wi-Fi»; al pasar de Wi-Fi a datos sus conexiones a los relés quedaban colgadas de la red vieja hasta que fallaban o hasta la comprobación de relés callados (redcambio.js, 3084: lo que le mandaban tardaba 28 s en entrar). 3085: aviso nativo de cambio de la red por defecto (NetChange.kt + watchDefaultNetwork) y la app rehace las conexiones por la nueva al momento (0,7 s); el diagnóstico apunta «Cambio de red» y «Relés listos tras el cambio de red en X s».",
+     "prueba": "Wi-Fi ↔ datos al instante"
     }
    ],
    "debiles": [

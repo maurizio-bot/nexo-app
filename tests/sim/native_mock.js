@@ -267,6 +267,14 @@ class NativePhone {
 
   // ---- Wi-Fi normal (modelo de LanHub + NSD) ----
   get wifiNet() { return this._wifiNet === undefined ? (this.opts.wifi || null) : this._wifiNet; }
+  // 3085 (dueño 14-11: «el S24 cambia de Wi-Fi a datos muy rápido, ¿por qué nosotros somos lentos?»): cambia la red por defecto
+  // (Kotlin watchDefaultNetwork → onNetChange). type: 'wifi' | 'cell' | 'none'. Al dejar el Wi-Fi también se sale de su red local.
+  setNetwork(type, wifiNet) {
+    const prev = this.netType || (this.wifiNet ? 'wifi' : 'cell');
+    this.netType = type;
+    if (type === 'wifi') this.setWifi(wifiNet || this.wifiNet || 'casa'); else this.setWifi(null);
+    if (prev !== type && !this.destroyed && !this.opts.noNetChange) this.emit('onNetChange', { type, prev });
+  }
   setWifi(net) {
     const prev = this.wifiNet;
     this._wifiNet = net || null;
