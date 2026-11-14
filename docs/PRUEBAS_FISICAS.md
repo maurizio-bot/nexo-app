@@ -157,6 +157,14 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
     pantalla. Espera unos 20 s y escríbele desde el S24: al vivo le debe sonar el aviso (antes, nada mientras su app seguía
     despierta). Si lo escribes en los primeros segundos tras apagar, no avisa (es el «parpadeo» del 08-11). Al encender la
     pantalla, el aviso se quita y el S24 ve «leído».
+60. **Encender el Wi-Fi en medio de una charla por Bluetooth (3053, el vivo y el S24 en el mismo Wi-Fi).** Con el Wi-Fi del vivo
+    APAGADO, escríbanse por Bluetooth. Enciende el Wi-Fi del vivo y, a los 2–3 s, escribe: debe llegar al momento. En el diagnóstico
+    del vivo: «Cambio de red: … → Wi-Fi», «Conectado con nx… por Wi-Fi» y «Wi-Fi local listo en X s» (en el simulador, 0,5 s). Si no
+    pasa, Perfil → Copiar diagnóstico en los dos justo después.
+61. **Deslizar para actualizar (APK siguiente).** En Contactos, desliza hacia abajo: sale «Actualizando estados, fotos y chats…»;
+    las fotos de perfil y los estados de los contactos cercanos se ponen al día.
+62. **Foto en los avisos (APK siguiente).** Con NEXO en segundo plano, que te escriba un contacto con foto de perfil: el aviso
+    lleva su foto redonda.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 
