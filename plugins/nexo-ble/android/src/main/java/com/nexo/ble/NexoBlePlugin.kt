@@ -924,14 +924,17 @@ class NexoBlePlugin : Plugin() {
         }
         // #dueño 08-11: si tenés ABIERTO el chat de este remitente (o grupo), NO avisar: lo estás leyendo. Solo acá (aviso de
         // respaldo de 2.º plano); con la app CERRADA (closedReceive) sí se avisa, porque ahí no hay un chat abierto a la vista.
-        if (activeChatNx.isNotEmpty() && (info.from.lowercase() == activeChatNx || info.group.lowercase() == activeChatNx)) return
+        // 3086 (diagnósticos S24 08:09 y vivo 08:49 del 14-11): solo en un parpadeo a segundo plano (BgNotifyPolicy) y solo el AVISO:
+        // la confirmación de entrega sale siempre (antes se saltaba todo, para siempre, y el otro reenviaba sin fin).
+        val chatOpen = activeChatNx.isNotEmpty() && (info.from.lowercase() == activeChatNx || info.group.lowercase() == activeChatNx)
+        val silent = BgNotifyPolicy.silentForOpenChat(chatOpen, System.currentTimeMillis() - bgSinceMs)
         if (info.kind != BgInbox.Kind.MESSAGE && info.kind != BgInbox.Kind.NOTIFY_ONLY) return
         // Llamada: suena ya (si la app está viva también la avisa: es el mismo aviso, no sale dos veces)
-        if (info.call || info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false, info.msgId); return }
+        if (info.call || info.what == "call") { if (!silent) MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false, info.msgId); return }
         mainHandler.postDelayed({
             if (!appInBackground || MsgNotifier.get(ctx).book.hasMsg(info.msgId)) return@postDelayed
             if (info.kind == BgInbox.Kind.MESSAGE) {
-                notifyMessage(ctx, info)
+                if (!silent) notifyMessage(ctx, info)
                 // #87 / dueño 29-10 (2833): el JS no confirmó en 4 s (lo normal: lo confirma él, pero algunos teléfonos —
                 // el Vivo del dueño— congelan la app y el JS no corre). Al avisar, mandar también la confirmación de
                 // ENTREGA firmada por Bluetooth, para que el emisor vea el ✓✓ sin esperar a que la app vuelva.
@@ -939,7 +942,7 @@ class NexoBlePlugin : Plugin() {
                 // era falso con el JS congelado) y el emisor reenviaba sin fin; ahora vuelve por la misma conexión Wi-Fi.
                 if (deviceId != null) sendDeliveredAck(deviceId, info)
                 else if (lanNx != null) sendDeliveredAckLan(lanNx, info)
-            } else notifyOnly(ctx, info)
+            } else if (!silent) notifyOnly(ctx, info)
         }, BG_NOTIFY_DELAY_MS)
     }
 
@@ -1158,6 +1161,7 @@ class NexoBlePlugin : Plugin() {
         super.handleOnPause()
         remLog("INFO", "LIFECYCLE", "handleOnPause")
         appInBackground = true
+        bgSinceMs = System.currentTimeMillis() // 3086: desde cuándo (BgNotifyPolicy)
         energyLog("En segundo plano")
         // La app deja de estar a la vista: la escucha nativa de internet toma el relevo (la app la reconfigura al
         // ocultarse con lo último que vio)
@@ -3527,6 +3531,7 @@ class NexoBlePlugin : Plugin() {
     // de un contacto por el SOCKS de Tor. Lo que viaja ya va cifrado por la app (sobre de pareja + E2E).
     private var torSvc: org.torproject.jni.TorService? = null
     @Volatile private var appInBackground = false
+    @Volatile private var bgSinceMs = 0L // 3086: cuándo pasó la app a segundo plano
     private var torBind: android.content.ServiceConnection? = null
     private var torHub: LanHub? = null
     @Volatile private var torOnion = ""

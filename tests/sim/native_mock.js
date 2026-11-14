@@ -224,6 +224,7 @@ class NativePhone {
     const iv = setInterval(() => { const now = Date.now(); if (this._awake()) left -= now - last; last = now; if (left <= 0) { clearInterval(iv); fn(); } }, 50);
   }
   setAppActive(active) {
+    if (!active && this.appActive !== false) this.bgSince = Date.now(); // Kotlin 3086 (bgSinceMs)
     this.appActive = !!active;
     if (this.opts.appStateEvents) this.emit('onAppStateChange', { isActive: !!active });
   }
@@ -589,19 +590,29 @@ class NativePhone {
       }, 4000);
       return;
     }
+    // Kotlin 2965 (#dueño 08-11) con el chat de ese remitente abierto (setActiveChat). opts.openChatRule: 'old' = Kotlin ≤ 3085 (ni
+    // aviso NI confirmación, aunque la app lleve horas dormida: el vivo del 14-11); 'new' = Kotlin 3086 (BgNotifyPolicy: el aviso solo
+    // se calla en los primeros 15 s en segundo plano; la confirmación sale siempre). Sin la opción, el simulador no mira el chat abierto.
+    const rule = this.opts.openChatRule;
+    const ac = this.activeChatNx || '';
+    const chatOpen = !!rule && !!ac && (String(info.from || '').toLowerCase() === ac || String(info.group || '').toLowerCase() === ac);
+    if (chatOpen && rule === 'old') return;
+    const bgFor = Date.now() - (this.bgSince || 0);
+    const silent = chatOpen && bgFor >= 0 && bgFor < 15000;
     if (info.kind !== 'MESSAGE' && info.kind !== 'NOTIFY_ONLY') return;
     // Kotlin 2763: una llamada suena ya (aviso de llamada del teléfono)
-    if (info.call || info.what === 'call') { this._incomingCall(info.from, this._notifName(info.from), false, info.msgId, { bg: true }); return; }
+    if (info.call || info.what === 'call') { if (!silent) this._incomingCall(info.from, this._notifName(info.from), false, info.msgId, { bg: true }); return; }
     this._uptimeTimeout(() => {
       if (this.appActive !== false || this.closedMode || (this.msgChat && this.msgChat.has(String(info.msgId)))) return;
       if (info.kind === 'MESSAGE') {
-        this._notifyMsg(info, { bg: true });
+        if (!silent) this._notifyMsg(info, { bg: true });
         // #87 / dueño 29-10 (2833): al avisar con el JS congelado (el Vivo lo congela y no pudo confirmar), mandar
         // también la confirmación de ENTREGA firmada, para que el emisor vea el ✓✓ sin esperar a que la app vuelva.
         // 3016: si llegó por Wi-Fi local (lanNx), la confirmación vuelve por esa misma conexión Wi-Fi
         if (fromAddress) this._sendDeliveredAck(fromAddress, info);
         else if (lanNx && !process.env.NEXO_OLD_LANACK) this._sendDeliveredAckLan(lanNx, info);   // contraprueba: NEXO_OLD_LANACK=1 (nativo ≤ 3015)
       }
+      else if (silent) { /* 3086: chat abierto en un parpadeo: sin aviso */ }
       else if (this._groupName(info.group)) { const who = this._notifName(info.from), w = NativePhone.whatText(info.what); this._postNotif(info.group, this._groupName(info.group), info.msgId, who !== 'NEXO' ? who + ': ' + (w || 'Mensaje nuevo') : w, { bg: true }); }
       else this._postNotif(info.from || 'nexo_jump', info.from ? this._notifName(info.from) : 'NEXO', info.msgId, NativePhone.whatText(info.what), { bg: true });
     }, 4000);
@@ -803,6 +814,7 @@ class NativePhone {
       },
       checkBLEStatus: wrap('checkBLEStatus', (c) => c.resolve({ allGranted: true, scanGranted: true, connectGranted: true, advertiseGranted: true, locationGranted: true, notificationsGranted: true, foregroundConnectedGranted: true, serverReady: true })),
       initializeBLE: wrap('initializeBLE', (c) => { self.emit('onServerReady', { ready: true, source: 'permissions_already_granted' }); c.resolve({ granted: true }); }),
+      setActiveChat: wrap('setActiveChat', (c) => { self.activeChatNx = String(c.getString('chatId') || '').toLowerCase().trim(); c.resolve(); }),
       isBluetoothEnabled: wrap('isBluetoothEnabled', (c) => c.resolve({ enabled: !self.btOff, canAdvertise: !self.btOff && self.serviceRunning, serverReady: !self.btOff })),
       isAdvertising: wrap('isAdvertising', (c) => c.resolve({ isAdvertising: self.serviceRunning })),
       startAdvertising: wrap('startAdvertising', (c) => { self.serviceRunning = true; c.resolve({ started: true }); }),
