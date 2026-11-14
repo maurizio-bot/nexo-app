@@ -21,6 +21,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **14-11 noche (3094–3095 = APK 3055; batería 253/253, índice 65,3):** (1) **3094** (dueño: el aviso de mensaje sin la foto del
+  contacto): la app pasa la foto de cada contacto al nativo (`setNotifAvatar`, solo en memoria, 64 fotos de hasta 64 KB) y el aviso
+  la pone redonda (`NotifAvatars.kt`, `MsgNotifier`; `fotoaviso.js`, Kotlin `NotifAvatarsTest`). (2) **3095** (dueño: «con el gesto
+  quiero actualizar la pantalla completa: estados, fotos de los estados y de los perfiles, y que los chats estén sincronizados»): el
+  deslizar en Contactos pide estados y foto (`sq` con `av:1`: el otro la reenvía aunque crea que ya la tengo; freno de 15 s por
+  contacto), reenvía lo pendiente, comprueba los relés y vuelve a pedir lo de internet de los últimos minutos (`net.refresh`;
+  `refresco.js`). En la rama, para la APK siguiente: **3096** texto largo por internet con la app del otro dormida: con el ✓✓ de su
+  nativo ya no se reenvía la ventana de trozos cada 4 s ni vuelve a ⏳ (`textonet.js`: 8 reenvíos → 0; llega en 3 s al despertar).
 - **14-11 tarde-noche (3090–3093 = APK 3054; batería 250/250, índice 65,2):** (1) **3090** (dueño, APK 3052: «los botones de abajo de la
   videollamada quedan muy anchos y el de colgar ni se ve»): cada botón toma su parte del ancho (hasta 76 px), el círculo se encoge con
   él y un nombre que no cabe baja de letra (medida fina con Range); `videoframe.js` mide 360/384/412 en es/it. (2) **3091** (dueño: «a
