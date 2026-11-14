@@ -33,7 +33,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   08:49: los 2 textos sin confirmar eran su app DORMIDA por el sistema (el nativo sí los recibió a las 08:10), no el cifrado.
   Propuestas al dueño, esperan su OK: app dormida = app cerrada (el nativo guarda, da ✓✓ y avisa) y desatasco del cifrado desde el
   que manda + aviso + versión de cada contacto.
-- **14-11 (3079–3083 = APK 3051, batería 244/244, índice 63,8; deadbt.js puesta al día con la regla de la 3079):** orden de trabajo acordado con el dueño (regla: «el Bluetooth
+- **14-11 (3079–3083 = APK 3052 —el run 3051 lo cortó una carrera de la prueba Kotlin LanBeaconTest, ya robusta—, batería 244/244, índice 63,8; deadbt.js puesta al día con la regla de la 3079):** orden de trabajo acordado con el dueño (regla: «el Bluetooth
   es la emergencia, solo por si no hay otro camino; fuera de eso, siempre el más rápido»). (1) **3079:** con internet disponible
   (también con datos móviles) textos y archivos van por internet antes que por un Bluetooth listo (antes el Bluetooth listo iba
   primero si no estaban los dos en Wi-Fi; `_resolveDeviceIdForNexoId`; btemerg.js E1–E3, sin internet el Bluetooth sigue de
