@@ -184,6 +184,11 @@ const NET_TOR_PREFER_CHUNKS = 1000;   // del lado del que recibe: tantos trozos 
 var TEXT_BUSY_GRACE_MS = 180000;   // 2993: cuánto puede un texto esperar sin gastar reintentos detrás de otro envío (ver _onWindowTimeout)
 var LINK_DOWN_WAIT_FILE_MS = 15000; // y para un archivo por internet (mantiene vivo el toque de despertador)
 var LINK_DOWN_WAIT_MAX_MS = 30000; // 2985: tope de la espera con el enlace caído (ver _onWindowTimeout)
+// 3096 (diagnósticos vivo y S24 14-11 13:03–13:05): un TEXTO en trozos que el teléfono del otro ya confirmó (✓✓ de su nativo: NetBg lo
+// guardó para la app) no se reenvía mientras su app duerme: lo recoge de los relés al despertar (pide lo de los últimos minutos). Antes
+// se reenviaba la ventana cada ~4 s (el S24 acumuló 109 sobres) y a los 8 reintentos volvía a ⏳. Espera creciente, sin gastar
+// reintentos, hasta PEER_SAFE_MAX_MS desde el ✓✓; pasado eso, lo de siempre.
+var PEER_SAFE_FIRST_MS = 15000, PEER_SAFE_CAP_MS = 60000, PEER_SAFE_MAX_MS = 600000;
 const NET_CHAT_CHUNK = 8000;
 const NET_TEXT_ONE = 20000;     // un texto (ya cifrado) hasta este tamaño va en un solo paquete (buzón)
 const PTR_ONE_MAX = 12000;      // 3031: puntero del buzón de archivos sin cifrar; cifrado (relleno + base64) queda < NET_TEXT_ONE
@@ -1861,6 +1866,12 @@ export class BleAckSystem {
         this.receivedAcks.delete(first);
       }
       var status = ack.type === 'read_receipt' ? 'read' : 'delivered';
+      // 3096: el ✓✓ de un texto que aún va en trozos (lo da el nativo del otro con su app dormida): sin reenvíos rápidos (ver PEER_SAFE_*)
+      var osSafe = this.outgoingStreams && this.outgoingStreams.get(ackMsgId);
+      if (osSafe && !osSafe.aborted && osSafe.type !== 'file' && !osSafe.peerSafeAt) {
+        osSafe.peerSafeAt = Date.now();
+        console.log('[ChatStream] ' + ackMsgId + ': el teléfono del otro ya lo tiene (✓✓) aunque su app no ha confirmado los trozos: no se reenvía mientras duerme');
+      }
       // Fase B/C: el archivo ya está en el otro teléfono (en grupo, en ESE miembro) → se borran sus trozos de los relés.
       // 3075 (S23→S24 14-11 18:34: «Faltan 5 de 5 trozos»): NO con el ✓✓ a secas, que lo da el nativo en segundo plano al llegar el
       // aviso SIN haber bajado nada; solo con el «ya lo bajé» de su app (got) o con su «leído». Si no llega ninguno, caducan solos.
@@ -2542,6 +2553,8 @@ ChatStream.prototype.start = function() {
         // Ronda 2767 (revisión): si sigue avanzando (confirmaciones en el último minuto) se le da más tiempo, hasta 2 h:
         // un vídeo HD o un archivo grande por un Bluetooth lento no terminaba nunca
         if (Date.now() - (self.lastAckAt || 0) < 60000 && Date.now() - self.startTime < 7200000) { armGlobal(300000); return; }
+        // 3096: texto que el teléfono del otro ya tiene (✓✓) esperando a que su app despierte: no es un fallo (ver PEER_SAFE_*)
+        if (self.type !== 'file' && self.peerSafeAt && Date.now() - self.peerSafeAt < PEER_SAFE_MAX_MS && !(self.lastAckAt > self.peerSafeAt)) { armGlobal(60000); return; }
         // #124 (build 2840): el contacto está AUSENTE (sin camino; p. ej. apagado y solo por internet, net.canReach
         // falso). NO es un fallo: el archivo queda EN ESPERA (store-and-forward). Los trozos ya están en el buzón de
         // relés y, al conectarse el contacto (_netUp → resumeOutgoingTransfers) o al reabrir la app, se entrega. Se
@@ -2903,6 +2916,14 @@ ChatStream.prototype._onWindowTimeout = function() {
       return;
     }
     self._busyWaitMs = 0;
+    // 3096: el teléfono del otro ya tiene el texto (✓✓ de su nativo) y su app duerme: no se reenvía la ventana ni se gasta reintento
+    // (si su app ya confirmó algún trozo después del ✓✓, está despierta: lo de siempre, para que reciba lo que le falte)
+    if (self.type !== 'file' && self.peerSafeAt && Date.now() - self.peerSafeAt < PEER_SAFE_MAX_MS && !(self.lastAckAt > self.peerSafeAt)) {
+      self._safeWaitMs = Math.min(Math.max((self._safeWaitMs || 0) * 2, PEER_SAFE_FIRST_MS), PEER_SAFE_CAP_MS);
+      console.log('[ChatStream] El teléfono del otro ya tiene el texto (✓✓) y su app duerme: no reenvío (reviso en ' + Math.round(self._safeWaitMs / 1000) + ' s) msgId=' + self.msgId);
+      self._startWindowTimer(self._safeWaitMs);
+      return;
+    }
     // 3002 (diagnóstico automático del 11-11, S24 14:55): un TEXTO por Bluetooth cuyo enlace el nativo ya soltó («Write fallo…
     // descartado entero» → _markBleDead) reenviaba la ventana 8 veces (~64 s) sobre un enlace muerto y acababa ✗ («Max window
     // retries»). Un texto no se pierde por eso: se rinde YA y queda ⏳ pendiente (PEER_ABSENT); se reenvía solo al volver un camino

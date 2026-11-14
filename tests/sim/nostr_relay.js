@@ -33,7 +33,7 @@ class NostrRelay {
     this.wss = new WebSocket.Server({ port });
     await new Promise((r) => this.wss.on('listening', r));
     this.url = 'ws://127.0.0.1:' + this.wss.address().port;
-    this.wss.on('connection', (ws, req) => { ws.tag = String((req && req.url) || ''); this._conn(ws); });
+    this.wss.on('connection', (ws, req) => { ws.tag = String((req && req.url) || ''); if (this._asleep && Array.from(this._asleep).some((t) => ws.tag.indexOf(t) >= 0)) ws.mute = true; this._conn(ws); });
     return this.url;
   }
   stop() { if (this.wss) this.wss.clients.forEach((c) => c.terminate()); return new Promise((r) => (this.wss ? this.wss.close(() => r()) : r())); }
@@ -44,6 +44,9 @@ class NostrRelay {
   muteAll() { this.wss.clients.forEach((c) => { c.mute = true; }); }
   // 3085: solo las de un teléfono (su dirección de relé lleva «?p=<nombre>»): las conexiones que quedan colgadas del Wi-Fi viejo
   muteTag(tag) { let n = 0; this.wss.clients.forEach((c) => { if ((c.tag || '').indexOf(tag) >= 0) { c.mute = true; n++; } }); return n; }
+  // 3096: la app de un teléfono DUERME (su JS no corre): sus conexiones quedan mudas y las que intente abrir también, hasta wakeTag
+  sleepTag(tag) { (this._asleep = this._asleep || new Set()).add(tag); return this.muteTag(tag); }
+  wakeTag(tag) { if (this._asleep) this._asleep.delete(tag); }
 
   _valid(ev) {
     const { schnorr, sha256, hex, unhex } = noble;
