@@ -21,6 +21,7 @@ export const BLE_LINK_METHODS = {
     if (this.relay) this.relay.onLinkChange();
     this._processPendingMessages(id);
     this._resendPendingMessages(nx);
+    try { if (this.ackSystem && typeof this.ackSystem.upgradeLinks === 'function') this.ackSystem.upgradeLinks(nx, 'Wi-Fi comprobado'); } catch (e) {} // 3080
     _safeDispatchEvent('nexo:ble:linkChange', { nexoId: nx, via: 'wifi' });
   },
 
@@ -120,6 +121,7 @@ export const BLE_LINK_METHODS = {
     if (this.relay) this.relay.onLinkChange();
     this._processPendingMessages(id);
     this._resendPendingMessages(nx);
+    try { if (this.ackSystem && typeof this.ackSystem.upgradeLinks === 'function') this.ackSystem.upgradeLinks(nx, 'en línea por internet'); } catch (e) {} // 3080
     _safeDispatchEvent('nexo:ble:linkChange', { nexoId: nx, via: this.linkOf(nx) });
   },
 

@@ -188,6 +188,10 @@ const NET_CHAT_CHUNK = 8000;
 const NET_TEXT_ONE = 20000;     // un texto (ya cifrado) hasta este tamaño va en un solo paquete (buzón)
 const PTR_ONE_MAX = 12000;      // 3031: puntero del buzón de archivos sin cifrar; cifrado (relleno + base64) queda < NET_TEXT_ONE
 function _isLanDevice(deviceId) { var d = (deviceId || '').toString().toLowerCase(); return d.indexOf('lan:') === 0 || /^lannx[0-9a-z]{8}$/.test(d); }
+// 3080: un archivo por Bluetooth pasa al camino rápido (upgradeLinks) si le quedan al menos UPGRADE_MIN_LEFT letras; a internet,
+// solo si el Bluetooth medido en ese envío (tras UPGRADE_MEASURE_MS) va por debajo de UPGRADE_NET_RATE letras/s (~9 KB/s: lo
+// medido por los relés en los teléfonos del dueño, 14-11); el mismo envío no se mueve otra vez antes de UPGRADE_COOLDOWN_MS
+const UPGRADE_MIN_LEFT = 100000, UPGRADE_MEASURE_MS = 8000, UPGRADE_NET_RATE = 12000, UPGRADE_COOLDOWN_MS = 60000;
 const BLE_FILE_MAX_CHARS = 3100000; // tope por Bluetooth (main.js MAX_BLE_B64_BYTES + cabecera de cifrado)
 const BLE_HD_MAX_CHARS = 9500000;   // HD de vídeo (main.js MAX_HD_B64_BYTES + relleno y cabecera de cifrado)
 // Robustez (auditoría 2804): tope de trozos por mensaje. El mayor mensaje real (BLE_HD_MAX_CHARS) troceado al mínimo
@@ -371,6 +375,61 @@ export class BleAckSystem {
   }
   // Ronda 2760: ¿hay un archivo o texto largo yendo o viniendo con ese teléfono? (el vigilante de la conexión no la
   // corta mientras tanto; lo preguntaba desde siempre pero no existía y cortaba enlaces a mitad de una foto)
+  // 3080 (dueño 14-11: «el Bluetooth es la emergencia… siempre el camino más rápido»; diagnóstico S23→Redmi 21:46: un vídeo HD de
+  // 2,9 MB salió por Bluetooth a ~0,4 KB/s porque al empezar no había otro camino, y siguió así aunque un minuto después el Wi-Fi
+  // de los dos quedó comprobado). Un archivo que va por Bluetooth con un contacto pasa al camino rápido en cuanto está listo:
+  //  - Wi-Fi local: siempre (es el más rápido de todos); se rehace a su medida (segundos para megas).
+  //  - internet: solo si el archivo cabe por internet (las mismas reglas que _sendFileBest) y el Bluetooth, medido en ESTE envío,
+  //    va más lento que lo que da internet por los relés (UPGRADE_NET_RATE); si el Bluetooth va bien, cambiar lo haría más lento.
+  // No se mueve lo que ya casi terminó (UPGRADE_MIN_LEFT), lo de Jump/puente, los respaldos Fénix, ni dos veces seguidas el mismo
+  // envío en UPGRADE_COOLDOWN_MS (si el camino nuevo se cae, relink lo devuelve al Bluetooth y no se rebota sin parar).
+  upgradeLinks(nexoId, why) {
+    var self = this, nx = _normId(nexoId), ble = self.ble, now = Date.now(), moved = 0;
+    if (!nx || !ble) return 0;
+    var lanOk = !!(ble.lan && typeof ble.lan.canReach === 'function' && ble.lan.canReach(nx));
+    var net = ble.net, netOk = !lanOk && !!(net && typeof net.canReach === 'function' && net.canReach(nx));
+    if (!lanOk && !netOk) return 0;
+    self._upgradedAt = self._upgradedAt || new Map();
+    self.outgoingStreams.forEach(function(st, id) {
+      if (!st || st.aborted || st.type !== 'file' || _isLanDevice(st.deviceId) || _isNetDevice(st.deviceId)) return;
+      if (st.meta && (st.meta.dst || st.meta.fwd || _isFenixTx(st.meta))) return;
+      if (_normId(st._dn || self._resolveNexoId(st.deviceId)) !== nx) return;
+      if (now - (self._upgradedAt.get(id) || 0) < UPGRADE_COOLDOWN_MS) return;
+      var len = String(st.content || '').length, done = Math.min(len, (st.windowStart || 0) * (st.chunkSize || 0)), left = len - done;
+      if (left < UPGRADE_MIN_LEFT) return;
+      var next, rateTxt = '';
+      if (lanOk) next = 'lan:' + nx;
+      else {
+        var fits = (typeof net.filesOk === 'function' && net.filesOk(nx)) ||
+          (typeof net.mailboxFilesOk === 'function' && net.mailboxFilesOk(nx, len) && len <= NET_MAX_B64_BYTES);
+        if (!fits) return;
+        var el = now - (st.startTime || now), rate = el > 0 ? done / (el / 1000) : 0;
+        if (el < UPGRADE_MEASURE_MS || rate >= UPGRADE_NET_RATE) return;
+        rateTxt = ', Bluetooth a ' + Math.round(rate / 1365 * 10) / 10 + ' KB/s';
+        next = 'net:' + nx;
+      }
+      self._upgradedAt.set(id, now);
+      if (self._upgradedAt.size > 200) self._upgradedAt.delete(self._upgradedAt.keys().next().value);
+      console.log('[ChatStream] ' + id + ': ' + (lanOk ? 'Wi-Fi' : 'internet') + ' listo con ' + nx + ' (' + (why || 'repaso') + rateTxt +
+        '): el archivo deja el Bluetooth y sigue por ' + (lanOk ? 'el Wi-Fi' : 'internet') + ' (' + Math.round(left / 1365) + ' KB por mandar)');
+      self._restartStream(st, id, next);
+      moved++;
+    });
+    return moved;
+  }
+  // 3080: el repaso del vigilante (cada ~6 s) mira los archivos que van por Bluetooth (el camino rápido pudo quedar listo sin
+  // aviso, o el Bluetooth se volvió lento a mitad)
+  upgradeAll(why) {
+    var self = this, seen = new Set();
+    self.outgoingStreams.forEach(function(st) {
+      if (!st || st.aborted || st.type !== 'file' || _isLanDevice(st.deviceId) || _isNetDevice(st.deviceId)) return;
+      var nx = _normId(st._dn || self._resolveNexoId(st.deviceId));
+      if (nx && /^nx[0-9a-z]{8}$/.test(nx)) seen.add(nx);
+    });
+    var n = 0;
+    seen.forEach(function(nx) { n += self.upgradeLinks(nx, why); });
+    return n;
+  }
   hasActiveTransfer(deviceId) {
     var nx = this._resolveNexoId(deviceId), now = Date.now(), self = this, busy = false;
     var same = function(d) { return d && (_normMac(d) === _normMac(deviceId) || self._resolveNexoId(d) === nx); };
@@ -615,6 +674,7 @@ export class BleAckSystem {
     if (self.outgoingStreams.get(id) === st) self.outgoingStreams.delete(id);
     console.log('[ChatStream] ' + id + ': sus trozos no caben por el enlace nuevo: se vuelve a empezar con trozos a su medida');
     var ns = new ChatStream(self, next, id, st.content, st.meta, st.type);
+    ns._restart = true; // 3080: su primer trozo lleva rs:1 → el receptor suelta YA lo del intento anterior (no espera 4 s)
     self.outgoingStreams.set(id, ns);
     ns._promise = ns.start();
     ns._promise.then(function() {
@@ -1005,7 +1065,7 @@ export class BleAckSystem {
     // Ronda 2767: otro intento del mismo mensaje (marca 'a' distinta: cifrado otra vez, distinto). Sus trozos no se
     // mezclan con los del anterior (antes salía ilegible y se perdía): si el anterior está parado, se empieza de nuevo
     if (buf && (msg.a || '') !== (buf.a || '')) {
-      if (Date.now() - (buf.lastActivity || 0) < 4000) return;
+      if (Date.now() - (buf.lastActivity || 0) < 4000 && msg.rs !== 1) return;
       console.warn('[BleAckSystem] ' + msgId + ': llega otro intento: se empieza de nuevo');
       if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
       if (buf.ackTimer) clearTimeout(buf.ackTimer);
@@ -1017,7 +1077,8 @@ export class BleAckSystem {
     // emisor lo manda directo): si lo que había a medias está parado, se empieza con el nuevo (antes se mezclaban los
     // trozos y no se completaba nunca); si los dos siguen activos, se sigue con el primero
     if (buf && buf.total !== total) {
-      if (Date.now() - (buf.lastActivity || 0) < 4000) return;
+      // 3080: rs:1 = el emisor dejó el intento anterior a propósito (cambio de camino): no hay dos envíos vivos, se empieza ya
+      if (Date.now() - (buf.lastActivity || 0) < 4000 && msg.rs !== 1) return;
       console.warn('[BleAckSystem] ' + msgId + ' llega troceado distinto (' + buf.total + ' → ' + total + ' trozos): se empieza de nuevo');
       if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
       self.incomingBuffers.delete(msgId);
@@ -1348,6 +1409,10 @@ export class BleAckSystem {
     var isFinal = msg.f === 1;
     var stream = this.outgoingStreams.get(msgId);
     if (!stream) return;
+    // 3080 (upgrade.js: al pasar un archivo del Bluetooth al Wi-Fi, las confirmaciones que seguían llegando del intento por
+    // Bluetooth —otro troceado: 1400 trozos frente a 35— daban por recibidos los 35 nuevos y el envío «terminaba» sin que el otro
+    // tuviera nada). Una confirmación parcial de OTRO troceado (n distinto) no es de este intento; la final sí vale (lo tiene entero).
+    if (!isFinal && total && stream.total && total !== stream.total) return;
     if (msg.bf) this.markBin(stream.deviceId);
     stream.lastAckAt = Date.now(); stream._downWaitMs = 0;
     if (isFinal) {
@@ -2727,6 +2792,7 @@ ChatStream.prototype._buildChunk = function(idx) {
     if (this.meta.pages) obj.pg = this.meta.pages;
     if (this.meta.dst) obj.dt = this.meta.dst;
     if (this.meta.hp) obj.hp = this.meta.hp;
+    if (this._restart) obj.rs = 1; // 3080: intento nuevo del mismo envío (cambio de camino): el receptor empieza de cero al momento
     // Ronda 2764: a quién va (directo; se fija la primera vez: aunque la conexión resulte ser de otro, sigue siendo
     // para el mismo); el que lo recibe lo ignora si no es él
     var bdn = this.ble;

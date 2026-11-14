@@ -59,6 +59,7 @@ export const BLE_CONNECTION_METHODS = {
 
   _runSupervisorCycle() {
     var self = this;
+    try { if (self.ackSystem && typeof self.ackSystem.upgradeAll === 'function') self.ackSystem.upgradeAll('repaso'); } catch (e) {} // 3080
     // Build 2967 (Fase A, entrega offline): tocar (wake FCM) a los contactos con PENDIENTES, ANTES de la compuerta de abajo
     // (que corta si no hay enlaces vivos — justo el caso offline). El propio tick tiene su freno de 30 s.
     self._tickWakePending();

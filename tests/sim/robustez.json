@@ -911,6 +911,10 @@
     {
      "fallo": "Dueño 14-11 (3079): «el Bluetooth es la emergencia, solo se ocupa por si no hay otro camino; fuera de eso, siempre el más rápido». Con un contacto en línea por internet pero sin estar los dos en Wi-Fi (uno con datos móviles), un Bluetooth listo iba primero (regla vieja para ahorrar datos): textos y fotos salían por Bluetooth con internet disponible. Ahora internet va antes que un Bluetooth listo (resolvedor y Wi-Fi degradado); bigroute.js y tinytext.js actualizados a la regla nueva. btemerg.js (contraprueba 3078: texto y archivo por Bluetooth)",
      "prueba": "Bluetooth solo de emergencia"
+    },
+    {
+     "fallo": "Diagnóstico S23→Redmi 14-11 21:46 (3047) y dueño («el Bluetooth es la emergencia… siempre el más rápido»): un vídeo HD de 2,9 MB salió por Bluetooth a ~0,4 KB/s porque al empezar no había otro camino y siguió así aunque un minuto después el Wi-Fi de los dos quedó comprobado. 3080: un archivo por Bluetooth pasa al Wi-Fi local en cuanto está comprobado, y a internet si el Bluetooth medido va más lento que internet (~9 KB/s). Al rehacerlo, las confirmaciones del intento anterior (otro troceado) ya no lo daban por terminado sin que el otro lo tuviera, y el primer trozo lleva rs:1 para que el receptor empiece de cero al momento. upgrade.js --caso=wifi (3079: 39 s por Bluetooth; 3080: 5,6 s) y --caso=net (3079: 55 s; 3080: 20 s)",
+     "prueba": "archivo que deja el Bluetooth al quedar listo el Wi-Fi"
     }
    ],
    "debiles": [
