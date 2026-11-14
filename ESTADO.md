@@ -21,7 +21,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **14-11 (3076–3078, van en la APK 3049 con 3072–3075; batería en curso):** dueño: «las notificaciones se mezclan… las de cuando
+- **14-11 (3076–3078, van en la APK 3049 con 3072–3075; batería 238/238, índice 63,8):** dueño: «las notificaciones se mezclan… las de cuando
   recibo un diagnóstico me aparecen como notificación, luego fantasmas… mensaje que llegue, notificación que llegue, puntual, que no
   se repita». (1) **Causa principal:** cada toque FCM ponía «NEXO · Mensaje nuevo» (`NexoFcmService.wakeNotice`) aunque no hubiera
   mensaje; el Motorola tocaba al S24 «por pendientes» que eran sus diagnósticos. Ahora el toque solo despierta (aviso neutro solo si
@@ -34,7 +34,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   solo con algo esperando (puente5 ≈24 s). El informe de cada hora (`tools/diag_analyze.cjs`) ya no avisa de 2 falsas alarmas
   (diaganalyze.js C6). (5) 3078: la forma «netnx…» (sin dos puntos) también se trata como internet (netconn.js N4). Abierto: un
   probador con build anterior a la 3033 aún puede mandar ocultos sin la marca (el aviso se quita al abrir la app).
-- **14-11 (3072–3075 = APK 3049, batería en curso):** (1) **3072 puente en cadena** (dueño: «si el vivo no sirve u otro no sirve, se
+- **14-11 (3072–3075 = APK 3049 con 3076–3078, batería 238/238):** (1) **3072 puente en cadena** (dueño: «si el vivo no sirve u otro no sirve, se
   busca otro, y así hasta encontrar un puente válido»): sin internet propio se pregunta a TODO NEXO cercano (contactos con o sin
   enlace, desconocidos, anónimos); 5 s sin respuesta o «no tengo» → suelta su hueco de conexión de paso y prueba el siguiente
   (`gw_link.js` `_chainNext`, `ble_relay.js` `releaseTransient`; `puente5.js`: 3071 nunca en 150 s, 3072 ≈24 s). También: no forzar

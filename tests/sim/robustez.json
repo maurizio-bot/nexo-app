@@ -302,6 +302,10 @@
     {
      "fallo": "Diagnóstico automático S24 13-11 15:04 (recién actualizado a la 3045): «enlace_abre_cierra» con el Motorola de app cerrada. Los intentos «sin servicio» (no_service y su eco) contaban como desconexiones de un enlace que abre y cierra, aunque nunca abrieron nada y ya los frena la pausa; tras reiniciar la app (4 intentos) saltaba la alarma. Ahora solo cuenta un enlace que llegó a estar listo (noservice.js 5; contraprueba 3067: aviso falso)",
      "prueba": "GATT roto / no_service"
+    },
+    {
+     "fallo": "Diagnóstico S24 14-11 19:14 (3047): al volver al frente, el repaso de pendientes pedía al Bluetooth nativo conectar a contactos cuyo camino guardado es de internet/Wi-Fi («connectToDevice raw='net:nx…'» ×14) y dejaba un enlace fantasma «conectando»; con el realme, un «zombi» falso de ese enlace. 3072 había tapado abrir el chat y el envío; 3075 tapa la propia auto-conexión. netconn.js (contraprueba 3074: pide «net:…» y deja el fantasma)",
+     "prueba": "Bluetooth no se pide para caminos de internet/Wi-Fi"
     }
    ],
    "debiles": [
@@ -652,19 +656,7 @@
     },
     {
      "fallo": "Diagnósticos S23 18:34 y S24 19:08 (14-11, 3047): el que manda un audio por el buzón de archivos borraba sus trozos de los relés al llegarle el ✓✓ que da el NATIVO del otro en segundo plano en cuanto entra el aviso, ANTES de que su app baje nada → «Faltan 5 de 5 trozos» para siempre. 3075: se borran solo con el «ya lo bajé» de la app del otro (✓✓ con got) o con su «leído»; si no llega ninguno, caducan solos (7 días). blobnative.js (contraprueba 3074: borra antes y B falla)",
-     "prueba": "audio que el otro aún no bajó (✓✓ del nativo)"
-    },
-    {
-     "fallo": "Diagnóstico S24 14-11 19:14 (3047): al volver al frente, el repaso de pendientes pedía al Bluetooth nativo conectar a contactos cuyo camino guardado es de internet/Wi-Fi («connectToDevice raw='net:nx…'» ×14) y dejaba un enlace fantasma «conectando»; con el realme, un «zombi» falso de ese enlace. 3072 había tapado abrir el chat y el envío; 3075 tapa la propia auto-conexión. netconn.js (contraprueba 3074: pide «net:…» y deja el fantasma)",
-     "prueba": "Bluetooth no se pide para caminos de internet/Wi-Fi"
-    },
-    {
-     "fallo": "Dueño 14-11 (3076): «las notificaciones de cuando recibo un diagnóstico me aparecen como notificación, luego notificaciones fantasmas». (1) Cada toque FCM ponía un aviso «NEXO · Mensaje nuevo» (NexoFcmService.wakeNotice), hubiera o no mensaje; el Motorola tocaba al S24 cada pocos minutos «por pendientes» que eran sus diagnósticos automáticos. Ahora el toque solo despierta (aviso neutro solo si el servicio no arranca; NotifGhostTest) y no se toca por pendientes que son solo ocultos (wakesched.js j). (2) Al revés: la copia de un mensaje de GRUPO pendiente se reenviaba «callada» (q:1) por estar oculta en el chat del que manda → el miembro con la app cerrada no se enteraba; ahora avisa y cae en el grupo (notifghost.js G5; contraprueba 3075: sin aviso). (3) Por internet en segundo plano el aviso de un mensaje de grupo caía en el chat 1-a-1 (NetBg.groupOf; NetBgTest)",
-     "prueba": "avisos limpios (diagnósticos, toques, grupos)"
-    },
-    {
-     "fallo": "Batería de la 3049 (14-11): resume.js y radiollamada.js fallaban desde la 3072 (contraprueba: 3072 = APK 3048 OK, 3073 FALLO). La búsqueda en cadena del puente a internet, ante un «no tengo internet» de un vecino, buscaba desconocidos con su escaneo aunque no hubiera nada propio esperando: gastaba el cupo de escaneos de Android (la búsqueda automática siguiente no salía) y abría conexiones de paso en plena llamada. 3076: la cadena solo corre con algo esperando salir (o un puente usado hace poco); puente5.js sigue ≈24 s",
-     "prueba": "búsqueda en cadena solo cuando hace falta"
+     "prueba": "audio que el otro aún no bajó"
     }
    ],
    "debiles": [
@@ -911,6 +903,10 @@
     {
      "fallo": "Dueño 13-11 (3072): el puente a internet solo preguntaba a los vecinos con enlace y a 2 desconocidos cada 30 s; los que no contestaban (dormidos) se quedaban con los huecos de conexión de paso y además el intento se apuntaba aunque no hubiera hueco (castigo de 1 min): con varios NEXO dormidos cerca, nunca se llegaba al bueno. Ahora búsqueda en cadena: 5 s sin respuesta o «no tengo internet» → suelta el hueco y prueba el siguiente (contactos sin enlace incluidos). puente5.js (contraprueba 3071: nunca en 150 s; 3072: ≈24 s)",
      "prueba": "PUENTE EN CADENA"
+    },
+    {
+     "fallo": "Batería de la 3049 (14-11): resume.js y radiollamada.js fallaban desde la 3072 (contraprueba: 3072 = APK 3048 OK, 3073 FALLO). La búsqueda en cadena del puente a internet, ante un «no tengo internet» de un vecino, buscaba desconocidos con su escaneo aunque no hubiera nada propio esperando: gastaba el cupo de escaneos de Android (la búsqueda automática siguiente no salía) y abría conexiones de paso en plena llamada. 3076: la cadena solo corre con algo esperando salir (o un puente usado hace poco); puente5.js sigue ≈24 s",
+     "prueba": "volver a la app (Wi-Fi sigue), BUSCAR se para solo"
     }
    ],
    "debiles": [
@@ -1234,6 +1230,10 @@
     {
      "fallo": "Dueño 14-11 (3073): un texto llega al instante pero un audio o un archivo tardan: el otro tiene la app dormida (su nativo recibe textos y confirma) y para bajar un audio o confirmar trozos hace falta su app. Al abrir el chat solo se mandaba el «toque» si no había enlace. Ahora también con Bluetooth/internet al abrir el chat, al abrir «adjuntar» y al empezar a grabar un audio (freno de 8 s por contacto). wakeopen.js (contraprueba 3071)",
      "prueba": "toque al ABRIR el chat"
+    },
+    {
+     "fallo": "Dueño 14-11 (3076): «las notificaciones de cuando recibo un diagnóstico me aparecen como notificación, luego notificaciones fantasmas». (1) Cada toque FCM ponía un aviso «NEXO · Mensaje nuevo» (NexoFcmService.wakeNotice), hubiera o no mensaje; el Motorola tocaba al S24 cada pocos minutos «por pendientes» que eran sus diagnósticos automáticos. Ahora el toque solo despierta (aviso neutro solo si el servicio no arranca; NotifGhostTest) y no se toca por pendientes que son solo ocultos (wakesched.js j). (2) Al revés: la copia de un mensaje de GRUPO pendiente se reenviaba «callada» (q:1) por estar oculta en el chat del que manda → el miembro con la app cerrada no se enteraba; ahora avisa y cae en el grupo (notifghost.js G5; contraprueba 3075: sin aviso). (3) Por internet en segundo plano el aviso de un mensaje de grupo caía en el chat 1-a-1 (NetBg.groupOf; NetBgTest)",
+     "prueba": "avisos limpios"
     }
    ],
    "debiles": [
