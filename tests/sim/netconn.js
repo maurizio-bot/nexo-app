@@ -6,7 +6,9 @@
 // A y B emparejados por Bluetooth; B se aleja; A deja un texto pendiente; el camino guardado de B en A pasa a «net:nx…»:
 //  N1  el repaso de pendientes NO pide al nativo conectar a «net:…» (ni a «lan:…»);
 //  N2  ni deja un enlace fantasma «conectando» con ese camino;
-//  N3  el texto sigue pendiente (no ✗).
+//  N3  el texto sigue pendiente (no ✗);
+//  N4  (3077, diagnósticos S23/realme 13-11 18:00–18:56: «connectToDevice raw='netnx1n36c283'») igual con la forma SIN dos puntos
+//      («netnx…»), en el repaso de pendientes y al ABRIR el chat.
 // Uso: node netconn.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -101,8 +103,19 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.N2_estado_net = (s && s.state) || null;
   r.N2_fantasma = !!(A.win.bleInterface.connectedDevices && A.win.bleInterface.connectedDevices.has(NETDEV)) || r.N2_estado_net === 'connecting';
   r.N3_estado_texto = String(await st());
+  // N4: la forma sin dos puntos («netnx…»), en el repaso y al abrir el chat
+  const NETDEV2 = 'net' + idB;
+  const cs2 = A.win.vaultLoadContacts(); const cB2 = cs2.find((c) => String(c.nexoId || c.deviceUUID || '').toLowerCase() === idB);
+  if (cB2) { cB2.deviceId = NETDEV2; A.win.vaultSaveContacts(cs2); }
+  try { A.win.bleInterface.connectedDevices.delete(NETDEV2); } catch (e) {}
+  nA.connLog.length = 0;
+  A.win.bleInterface._flushAllPendingMessages(); await sleep(2500);
+  try { await A.win.bleInterface.openChat(idB); } catch (e) {}
+  await sleep(2500);
+  r.N4_pedidas = nA.connLog.slice(0, 8);
+  r.N4_pide_bt_a_netnx = nA.connLog.some((d) => /^(net|lan|wd):?nx/i.test(d));
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
-  const ok = r.camino_net_puesto && !r.N1_pide_bt_a_net && !r.N2_fantasma && !/failed/.test(r.N3_estado_texto) && r.N3_estado_texto !== 'null' && !r.errores.length;
+  const ok = r.camino_net_puesto && !r.N1_pide_bt_a_net && !r.N4_pide_bt_a_netnx && !r.N2_fantasma && !/failed/.test(r.N3_estado_texto) && r.N3_estado_texto !== 'null' && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NETCONN ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_netconn.txt'), logs.join('\n'));

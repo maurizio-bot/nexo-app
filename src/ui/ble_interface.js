@@ -13,7 +13,7 @@ import { callCodecs, createCallMedia } from './call_media.js';
 import { createVoiceFx } from './call_voice_fx.js';
 import { createNet } from '../net/net_link.js';
 import { createFenix } from '../fenix/fenix.js';
-import { BLE_NEXO_ID_VAULT_FILE, BLE_PINNED_VAULT_FILE, BLE_UUID_VAULT_FILE, BLE_SEQ_COUNTER_FILE, GRADIENTS, _blePinnedCache, _bleUUIDCache, _getGradientForUUID, _getInitials, _generateNexoId, _saveNexoIdToVault, _loadNexoIdFromVault, _getOrCreateNexoId, _lanId, _netId, _netNx, _vNx, _lanNx, _isProtocolShaped, _chatKind, _cut, _messagePreview, _formatTime, _generateUUID, _loadDeviceUUID, _normId, _normMac, _getBLEContacts, _saveBLEContacts, _addBLEContact, _removeBLEContact, _isBLEContact, _getContactByUUID, _getContactByDeviceId, _getPinnedContacts, _togglePinnedContact, _loadPinnedFromVault, _loadSeqCounter, _saveSeqCounter, _isPinned, BLE_STATES, SUPERVISOR_STATES, _hasNativeMethod, _safeNativeCall, _safeDispatchEvent, _showToast, _isControlPacket, _isResendable, _failStatus, _vaultUpdateMessageStatus, _vaultGetOrCreateContact, _vaultAppendMessage, _hydrateAttachments, _vaultLoadMessages, _autoScanRegister, _autoScanUnregister, _autoScanStart } from './ble_helpers.js';
+import { BLE_NEXO_ID_VAULT_FILE, BLE_PINNED_VAULT_FILE, BLE_UUID_VAULT_FILE, BLE_SEQ_COUNTER_FILE, GRADIENTS, _blePinnedCache, _bleUUIDCache, _getGradientForUUID, _getInitials, _generateNexoId, _saveNexoIdToVault, _loadNexoIdFromVault, _getOrCreateNexoId, _lanId, _netId, _netNx, _vNx, _lanNx, _isProtocolShaped, _chatKind, _cut, _messagePreview, _formatTime, _generateUUID, _loadDeviceUUID, _normId, _normMac, _getBLEContacts, _saveBLEContacts, _addBLEContact, _removeBLEContact, _isBLEContact, _getContactByUUID, _getContactByDeviceId, _getPinnedContacts, _togglePinnedContact, _loadPinnedFromVault, _loadSeqCounter, _saveSeqCounter, _isPinned, BLE_STATES, SUPERVISOR_STATES, _hasNativeMethod, _safeNativeCall, _safeDispatchEvent, _showToast, _isControlPacket, _isResendable, _failStatus, _vaultUpdateMessageStatus, _vaultGetOrCreateContact, _vaultAppendMessage, _hydrateAttachments, _vaultLoadMessages, _autoScanRegister, _autoScanUnregister, _autoScanStart, _isPathDev } from './ble_helpers.js';
 import { BLE_UI_METHODS } from './ble_ui.js';
 import { BLE_CONTACT_METHODS } from './ble_contacts.js';
 import { BLE_LINK_METHODS } from './ble_links.js';
@@ -960,7 +960,7 @@ export class BLEInterface {
         _safeDispatchEvent('nexo:vault:messagesLoaded', { contactId: uuid });
         resolve();
         // 3072: un destino «net:» (solo por internet) no es un Bluetooth: no hay nada que conectar (el nativo lo veía como «netnx…»)
-        if (deviceId && !/^(net|lan):/i.test(String(deviceId)) && !isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
+        if (deviceId && !_isPathDev(deviceId) && !isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
           // 3040 (diagnóstico S24 13-11 21:28 con …707a, que tenía el Bluetooth apagado): abrir el chat forzaba la conexión
           // aunque ese contacto estuviera en pausa Bluetooth (no_service repetido): otro no_service y una pausa más larga.
           // Con la pausa puesta no se fuerza (el mensaje sale por internet/Wi-Fi/Jump; la pausa se acaba sola).

@@ -4,7 +4,7 @@
  * esperar a que un enlace esté listo.
  */
 import { t } from './i18n.js';
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _netNx, _lanNx, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _dupBleLinksToClose, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages, _wakeShouldFire, _wakeAdvance, _wakeNewEntry, WAKE_GIVEUP_MS, _isQuietHidden } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _netNx, _lanNx, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _dupBleLinksToClose, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages, _wakeShouldFire, _wakeAdvance, _wakeNewEntry, WAKE_GIVEUP_MS, _isQuietHidden, _isPathDev } from './ble_helpers.js';
 
 
 export const BLE_CONNECTION_METHODS = {
@@ -796,7 +796,7 @@ export const BLE_CONNECTION_METHODS = {
     // 3075 (diagnóstico S24 14-11 19:14): un camino guardado de internet / Wi-Fi local / Wi-Fi Direct («net:nx…», «lan:nx…»,
     // «wd:nx…») NO es una dirección Bluetooth: pedir al nativo conectar ahí dejaba un enlace fantasma «conectando» y, con el
     // realme, un «zombi» falso (pings a un Bluetooth que no existe). Esos caminos los lleva su propia capa; aquí no se toca nada.
-    if (/^(net|lan|wd):/i.test(String(deviceId))) return Promise.resolve();
+    if (_isPathDev(deviceId)) return Promise.resolve();
     // #87 / A2 (análisis 02-11, batería): si este contacto está en PAUSA de Bluetooth (no_service repetido → backoff),
     // NO auto-reconectar aunque el escaneo lo vea o un mensaje lo quiera enviar. Era la OTRA puerta por la que se saltaba
     // el backoff y se volvía a martillar la radio (los «627 despertares» del diagnóstico del Vivo). El tick de re-búsqueda

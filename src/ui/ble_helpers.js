@@ -246,6 +246,13 @@ export function _rssiToBars(rssi) {
   return 1;                    // lejos
 }
 
+// 3077 (diagnósticos S23 y realme 13-11 18:00–18:56, build 3047: «connectToDevice raw='netnx1n36c283'»): un camino que NO es una
+// dirección Bluetooth —internet, Wi-Fi local o Wi-Fi Direct— llega con dos puntos («net:nx…») o ya normalizado sin ellos («netnx…»).
+// Las protecciones de 3072/3075 solo miraban la forma con dos puntos: la otra seguía pidiendo al nativo una conexión Bluetooth.
+export function _isPathDev(deviceId) {
+  var d = (deviceId || '').toString().toLowerCase();
+  return /^(net|lan|wd):?nx[0-9a-z]{8}$/.test(d);
+}
 export function _lanNx(deviceId) {
   var d = (deviceId || '').toString().toLowerCase();
   if (d.indexOf('lan:') === 0) return d.substring(4);
