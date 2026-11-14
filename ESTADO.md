@@ -21,6 +21,16 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **14-11 tarde-noche (3090–3093 = APK 3054; batería 250/250, índice 65,2):** (1) **3090** (dueño, APK 3052: «los botones de abajo de la
+  videollamada quedan muy anchos y el de colgar ni se ve»): cada botón toma su parte del ancho (hasta 76 px), el círculo se encoge con
+  él y un nombre que no cabe baja de letra (medida fina con Range); `videoframe.js` mide 360/384/412 en es/it. (2) **3091** (dueño: «a
+  pantalla apagada no suena ni hay notificaciones»; S24 12:00: 10 textos al vivo con ✓✓ en 1 s y sin aviso): la regla del 08-11 «el
+  chat abierto no avisa» no tenía límite; ahora solo calla < 15 s fuera de la vista (notify.js, como el nativo 3086; chatabierto
+  O4–O6). (3) **3092**: llamada de grupo con la misma fila de botones redondos (antes 4 filas de texto); el ajuste de nombres nunca
+  rompe la pantalla (`gcbotones.js`). (4) **3093**: el enlace repetido que cierra la deduplicación no cuenta como «desconexión»
+  (aviso falso «enlace_abre_cierra»). En la rama, para la APK siguiente: 3094 foto del contacto en los avisos (solo en memoria),
+  3095 deslizar para actualizar refresca estados, fotos, pendientes e internet; prueba `wifivuelve` (encender el Wi-Fi a mitad de
+  una charla por Bluetooth: 0,5 s en el simulador).
 - **14-11 noche (3086–3089 = APK 3053 con 3084–3085; batería 249/249, índice 65; Kotlin 155/155):** (1) **3086** (causa del
   «reenvío sin fin» del vivo): con el chat abierto y la app dormida, el aviso nativo de respaldo se saltaba entero, ✓✓ incluida; ahora
   la ✓✓ sale siempre y el aviso solo se calla < 15 s en segundo plano (`BgNotifyPolicy.kt`; chatabierto.js O1–O3). (2) **3087:** con
