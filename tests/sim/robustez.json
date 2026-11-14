@@ -346,8 +346,8 @@
    "nombre": "Mensajes (cortos, largos, pendientes, orden)",
    "peso": 15,
    "telefono": {
-    "estado": "reciente",
-    "por": "2960: el dueño probó y dijo «todo bien»; usa los textos a diario y funcionan. Pendiente de confirmar el 2963 (nota de voz doble), armado a partir de su diagnóstico del 2960 y aún sin re-probar en teléfono",
+    "estado": "ok",
+    "por": "14-11 (3052): textos, foto y audio S24→vivo por Wi-Fi local y con la app cerrada: llegan y el audio se oye (dueño)",
     "nota": "dueño: textos y mensajería a diario, OK en 2960; un arreglo de nota de voz (2963) pendiente de re-confirmar"
    },
    "revision": {
@@ -702,7 +702,7 @@
    "peso": 10,
    "telefono": {
     "estado": "ok",
-    "por": "08-11: el dueño confirmó físicamente los DOS caminos que nunca se habían probado en teléfonos — INTERNET (un archivo grande llegó SOLO, autónomo, de una Wi-Fi a OTRA distinta; diagnósticos 08-11) y JUMP (captura «S24 Ultra — POR JUMP»: el puente por teléfonos intermedios funciona, primera vez que lo prueba). El Wi-Fi ya funcionaba (2728–2761). No hay un cambio de CAMINO sin probar encima (el 2964 solo achica el payload del fondo, no toca el transporte)",
+    "por": "14-11 (3052): Wi-Fi local S24→vivo, texto y foto: OK (dueño). 08-11: el dueño confirmó físicamente los DOS caminos que nunca se habían probado en teléfonos — INTERNET (un archivo grande llegó SOLO, autónomo, de una Wi-Fi a OTRA distinta; diagnósticos 08-11) y JUMP (captura «S24 Ultra — POR JUMP»: el puente por teléfonos intermedios funciona, primera vez que lo prueba). El Wi-Fi ya funcionaba (2728–2761). No hay un cambio de CAMINO sin probar encima (el 2964 solo achica el payload del fondo, no toca el transporte)",
     "nota": "dueño: Wi-Fi, internet (archivo grande entre dos redes distintas) y Jump, los tres confirmados físicamente el 08-11 (internet y Jump por primera vez). Quedan afinamientos (velocidad por Tor, Wi-Fi Direct) como puntos débiles, no el camino en sí"
    },
    "revision": {
@@ -1104,8 +1104,8 @@
    "nombre": "Videollamadas",
    "peso": 7,
    "telefono": {
-    "estado": "antes",
-    "por": "25-10 (2771): imagen muy cerca y deformada, y al revés que la propia; 2768 (Vivo ↔ S24): a veces sin cámara, negro y sin voz (arreglos en la 2769 y la 2772, sin probar)",
+    "estado": "ok",
+    "por": "14-11 (3052): videollamada por Wi-Fi S24↔vivo de un minuto: se ve y se oye bien (dueño); los botones de abajo quedan demasiado anchos y el de colgar casi no se ve (Interfaz)",
     "nota": "dueño base 2858: «el vídeo ya se ve» (videollamada funciona); quedan detalles de UX de grupo"
    },
    "revision": {
@@ -1207,8 +1207,8 @@
    "nombre": "Avisos, segundo plano y app cerrada",
    "peso": 10,
    "telefono": {
-    "estado": "antes",
-    "por": "26-10: con la app CERRADA + pantalla apagada no llegan mensajes ni avisos (ni Wi-Fi ni internet) hasta abrir la app (tarea #87, nativo, sin arreglar). La 2772 arregló el caso de pantalla apagada con la app viva",
+    "estado": "falla",
+    "por": "14-11 (3052, vivo con NEXO cerrado): con la pantalla ENCENDIDA los avisos llegan puntuales, uno por mensaje, y el audio se oye; con la pantalla APAGADA no suena ni llega ningún aviso (dueño). Pendiente su diagnóstico",
     "nota": "dueño 28-10 base 2823: «Probada a fondo para la ENTREGA con app cerrada + pantalla apagada ✓»; cambió desde entonces (FCM despertador), a re-confirmar en la última"
    },
    "revision": {
@@ -1514,6 +1514,10 @@
     {
      "g": "leve",
      "d": "Sin la foto del contacto en sus notificaciones"
+    },
+    {
+     "g": "media",
+     "d": "Videollamada: los botones de abajo quedan demasiado anchos y el de colgar casi no se ve en pantalla (dueño 14-11, 3052)"
     }
    ],
    "fallos": [
