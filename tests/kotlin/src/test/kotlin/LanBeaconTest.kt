@@ -66,8 +66,9 @@ class LanBeaconTest {
         val ra = Rec(); val rb = Rec()
         val a = LanBeacon(ra, 47905); val b = LanBeacon(rb, 47906)
         a.start(tA, pa); b.start(tB, pb)
-        a.probe(listOf(InetSocketAddress(lo, 47906)))
-        assertTrue(waitFor { ra.peers.isNotEmpty() })
+        // La pregunta va por UDP: si sale antes de que el otro escuche, se pierde (servidor de la APK 3051, 14-11: falló así). La app
+        // vuelve a preguntar en cada repaso; aquí se repite la pregunta cada 300 ms hasta 6 s
+        assertTrue(waitFor(6000) { if (ra.peers.isEmpty()) { a.probe(listOf(InetSocketAddress(lo, 47906))); Thread.sleep(300) }; ra.peers.isNotEmpty() })
         val (_, host, port) = ra.peers[0]
         hubA.connect(host, port)
         assertTrue(waitFor { hubA.isUp("nxbbbbbbbb") && hubB.isUp("nxaaaaaaaa") })
