@@ -124,7 +124,7 @@ function _style() {
     '#nexo-call-screen .call-status{font-size:15px;opacity:.82;margin-top:8px;font-variant-numeric:tabular-nums;text-align:center}',
     '#nexo-call-screen .call-status.nc-warn{color:#fbbf24;opacity:1}',
     '#nexo-call-screen .call-note{font-size:12px;opacity:.6;margin-top:6px;text-align:center;padding:0 24px}',
-    '#nexo-call-screen .nc-bottom{position:absolute;left:0;right:0;bottom:0;z-index:3;padding:0 14px calc(26px + env(safe-area-inset-bottom,0px));transition:transform .3s,opacity .3s}',
+    '#nexo-call-screen .nc-bottom{position:absolute;left:0;right:0;bottom:0;z-index:3;padding:0 8px calc(26px + env(safe-area-inset-bottom,0px));transition:transform .3s,opacity .3s}',
     '#nexo-call-screen .call-buttons{margin:0 auto;max-width:440px;display:flex;justify-content:space-around;align-items:flex-start;padding:16px 6px 12px;border-radius:30px;background:rgba(20,21,42,.55);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.09);box-shadow:0 10px 40px rgba(0,0,0,.35)}',
     '#nexo-call-screen .call-buttons.nc-incoming{background:none;border:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;justify-content:space-between;max-width:320px;padding:0 18px}',
     '#nexo-call-screen .call-buttons:empty{display:none}',
@@ -134,6 +134,17 @@ function _style() {
     '#nexo-call-screen .nc-btn.nc-red .nc-ic{background:#ef4444;box-shadow:0 8px 24px rgba(239,68,68,.45)}',
     '#nexo-call-screen .nc-btn.nc-red .nc-ic svg{transform:rotate(135deg)}',
     '#nexo-call-screen .nc-btn.nc-big .nc-ic{width:72px;height:72px}',
+    // 14-11 (dueño, APK 3052: «los botones de abajo de la videollamada quedan muy anchos y el de colgar ni se ve en pantalla»):
+    // en la videollamada van 7 botones y con 62 px de mínimo cada uno no cabían en un teléfono (360–412 de ancho): el de
+    // colgar, el último, quedaba fuera. Ahora cada botón toma su parte del ancho (hasta 76 px), el círculo se encoge con él
+    // (hasta 56 px) y el nombre baja un poco de tamaño: siempre caben todos y colgar se ve entero (en la llamada entrante,
+    // sin cambios).
+    '#nexo-call-screen .call-buttons:not(.nc-incoming){padding:14px 4px 10px}',
+    '#nexo-call-screen .call-buttons:not(.nc-incoming) .nc-btn{flex:1 1 0;min-width:0;max-width:76px;gap:6px;line-height:1.15}',
+    '#nexo-call-screen .call-buttons.nc-many .nc-btn{font-size:clamp(9.5px,2.65vw,11.5px)}',
+    '#nexo-call-screen .call-buttons:not(.nc-incoming) .nc-btn .nc-ic{width:min(56px,calc(100% - 6px));height:clamp(36px,11.4vw,56px)}',
+    '@supports (aspect-ratio:1/1){#nexo-call-screen .call-buttons:not(.nc-incoming) .nc-btn .nc-ic{height:auto;aspect-ratio:1/1}}',
+    '#nexo-call-screen .call-buttons:not(.nc-incoming) .nc-btn>span:last-child{max-width:calc(100% - 4px);text-align:center;overflow:hidden;text-overflow:ellipsis}',
     '#nexo-call-screen .nc-btn.nc-green .nc-ic{background:linear-gradient(135deg,#22c55e,#00c8ff);box-shadow:0 10px 30px rgba(34,197,94,.5);animation:ncBounce 1.4s ease-in-out infinite}',
     '@keyframes ncBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}',
     '#nexo-call-screen .call-remote-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:1}',
@@ -243,6 +254,27 @@ if (typeof window !== 'undefined') {
       }
     } catch (e) {}
   };
+}
+
+// 14-11 (dueño): con los botones al ancho del teléfono, un nombre largo de una sola palabra (en italiano «Altoparlante»,
+// «Interrompi»; o con la letra del sistema agrandada) puede no caber: se le baja la letra lo justo (no menos de 8 px), en
+// vez de cortarlo. Se mira al dibujar los botones y al girar o cambiar el tamaño de la pantalla.
+function _fitLabels(bt) {
+  if (!bt || bt.classList.contains('nc-incoming')) return;
+  Array.prototype.forEach.call(bt.querySelectorAll('.nc-btn > span:last-child'), function(l) {
+    l.style.fontSize = '';
+    // medida fina (no clientWidth/scrollWidth, que redondean: «Silenciado» se pasaba 0,3 px y salía «Silencia…»)
+    var w = l.getBoundingClientRect().width, rg = document.createRange(); rg.selectNodeContents(l);
+    var sw = rg.getBoundingClientRect().width;
+    if (!w || sw <= w + 0.05) return;
+    var fs = parseFloat(getComputedStyle(l).fontSize) || 11;
+    l.style.fontSize = Math.max(8, Math.floor(fs * w / sw * 0.98 * 10) / 10) + 'px';
+  });
+}
+var _fitOnResize = false;
+function _watchFit() {
+  if (_fitOnResize) return; _fitOnResize = true;
+  window.addEventListener('resize', function() { var el = document.getElementById('nexo-call-screen'); if (el) _fitLabels(el.querySelector('.call-buttons')); });
 }
 
 function _btn(icon, label, cls, fn, extra) {
@@ -488,7 +520,7 @@ function _render(st) {
   var status = el.querySelector('.call-status'), note = el.querySelector('.call-note'), bt = el.querySelector('.call-buttons'), mini = el.querySelector('.nc-mini');
   var lock = el.querySelector('.nc-lock span'), via = _linkText(st.nx);
   lock.textContent = t('call_e2e', 'Cifrada de extremo a extremo') + (via ? ' · ' + via : '');
-  bt.innerHTML = ''; bt.classList.remove('nc-incoming');
+  bt.innerHTML = ''; bt.classList.remove('nc-incoming', 'nc-many');
   // Ronda 2769: con el estado de la cámara (si lo hay) en vez de "sin cámara" fijo al empezar (ahora se reintenta)
   note.textContent = st.camState || st.micState ? _warnText(st, name) : st.micError ? t('call_no_mic', 'Sin micrófono') + (_devErr(st.micError) ? ': ' + _devErr(st.micError) : '') : st.video && st.videoOk === false ? t('call_no_cam_this_phone', 'Sin cámara en este teléfono: solo voz') : '';
   var warnbar = el.querySelector('.nc-warnbar');
@@ -557,6 +589,8 @@ function _render(st) {
       } });
     }));
     bt.appendChild(_btn('phone', t('call_hangup', 'Colgar'), 'call-hangup', function() { haptic('confirm'); calls.hangup(); }, 'nc-red'));
+    bt.classList.toggle('nc-many', bt.children.length >= 6); // videollamada (7): letra algo menor; voz (4): como siempre
+    _fitLabels(bt); _watchFit();
     if (!_render._modeFor || _render._modeFor !== st.id) { _render._modeFor = st.id; _speaker = !!st.video; _audioMode(true); _render(calls.state()); return; }
     if (st.video) _autoHide(el);
   }

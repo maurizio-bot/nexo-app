@@ -8,7 +8,9 @@
 //  - espejo con la cámara de delante: B ve a A como A se ve a sí mismo (el rojo a la derecha, como en un espejo); el
 //    espejo lo pone B al mostrarla (los píxeles que llegan van al derecho) y se quita en Perfil; con la de detrás,
 //    sin espejo (el rojo a la izquierda: lo que se enseña, por ejemplo un papel, se lee bien);
-//  - se_ve_entera: B ve la imagen entera (cabe en la pantalla) y con dos toques la amplía a toda la pantalla.
+//  - se_ve_entera: B ve la imagen entera (cabe en la pantalla) y con dos toques la amplía a toda la pantalla;
+//  - botones (dueño 14-11): a 360, 384 y 412 de ancho los 7 botones de abajo caben, el de colgar se ve entero y los nombres
+//    se leen enteros, en español y en italiano (también los más largos: «Silenciado», «Cámara no», «Altoparlante»).
 // Uso: node videoframe.js <dir_build> [--seconds=5]
 'use strict';
 const fs = require('fs');
@@ -143,12 +145,47 @@ const look = (page) => page.evaluate(([SQ]) => {
   await click(A, '#nexo-call-screen .call-flip'); await sleep(3000);
   r.trasera = await look(B);
   r.decodificadas_B = await B.evaluate(() => (window.NEXO_callVideoStats || {}).decoded || 0);
+  // Botones de abajo (dueño 14-11, build 3052: «quedan muy anchos y prácticamente el botón de terminar llamada ni se ve en
+  // pantalla»): en anchos de teléfono reales (360 vivo/gama media, 384 S24 Ultra, 412) los 7 botones de A caben, ninguno se
+  // sale de la pantalla, el de colgar se ve entero, los nombres se leen enteros y los círculos siguen siendo fáciles de tocar
+  r.botones = {};
+  const rerender = async () => { for (let i = 0; i < 2; i++) { await click(A, '#nexo-call-screen .call-mute'); await sleep(400); } };
+  let largosOn = false;
+  for (const [lang, ww, largos] of [['es', 360], ['es', 384], ['es', 412], ['it', 360], ['it', 384], ['es', 360, 1], ['it', 360, 1]]) {
+    if (largos && !largosOn) { largosOn = true; await click(A, '#nexo-call-screen .call-mute'); await sleep(400); await click(A, '#nexo-call-screen .call-camera'); await sleep(800); }
+    await A.evaluate((l) => { window.NEXO_FORCE_LANG = l; }, lang); await rerender();
+    const w = lang + ' ' + ww + (largos ? ' silenciado y sin cámara' : '');
+    await A.setViewportSize({ width: ww, height: Math.round(ww * 2.16) });
+    await A.evaluate(() => document.getElementById('nexo-call-screen').classList.remove('nc-hide')); await sleep(500);
+    if (process.env.VF_SHOTS) { // VF_SHOTS=<carpeta>: capturas (solo la pantalla de llamada: la del nombre del simulador queda encima)
+      await A.evaluate(() => document.querySelectorAll('body > *:not(#nexo-call-screen)').forEach((e) => { e.dataset.vfv = e.style.visibility; e.style.visibility = 'hidden'; }));
+      await A.screenshot({ path: path.join(process.env.VF_SHOTS, 'botones_' + String(w).replace(/ /g, '_') + '.png') });
+      await A.evaluate(() => document.querySelectorAll('body > *:not(#nexo-call-screen)').forEach((e) => { e.style.visibility = e.dataset.vfv || ''; }));
+    }
+    r.botones[w] = await A.evaluate(() => {
+      const W = window.innerWidth, H = window.innerHeight;
+      const bs = Array.from(document.querySelectorAll('#nexo-call-screen .call-buttons .nc-btn'));
+      const rs = bs.map((b) => b.getBoundingClientRect());
+      const ic = bs.map((b) => b.querySelector('.nc-ic').getBoundingClientRect());
+      const hb = document.querySelector('#nexo-call-screen .call-hangup .nc-ic');
+      const h = hb && hb.getBoundingClientRect();
+      const labs = bs.map((b) => b.querySelector('span:last-child'));
+      const anchoTexto = (l) => { const rg = document.createRange(); rg.selectNodeContents(l); return rg.getBoundingClientRect().width; };
+      // medida fina: el texto entero (Range) no puede pasar del recuadro del nombre (que se corta con «…») ni del botón
+      const cortadas = labs.filter((l) => anchoTexto(l) > l.getBoundingClientRect().width + 0.05 || l.getBoundingClientRect().width > l.parentNode.getBoundingClientRect().width + 0.5).map((l) => l.textContent);
+      const pisan = rs.some((a, i) => i > 0 && a.left < rs[i - 1].right - 0.5);
+      return { nombres: labs.map((l) => l.textContent).join(' · '), letra_min: Math.min(...labs.map((l) => parseFloat(getComputedStyle(l).fontSize))), botones: bs.length, caben: rs.every((x) => x.left >= -0.5 && x.right <= W + 0.5 && x.bottom <= H + 0.5) && !pisan,
+        colgar_visible: !!h && h.left >= 0 && h.right <= W && h.top >= 0 && h.bottom <= H, nombres_cortados: cortadas, circulo_min: Math.round(Math.min(...ic.map((x) => x.width))) };
+    });
+  }
+  await A.setViewportSize({ width: 393, height: 851 }); await sleep(300);
   await click(A, '#nexo-call-screen .call-hangup'); await sleep(1200);
   r.errores = logs.filter((l) => /PAGEERROR|Vídeo \((codificar|recibir)\)/.test(l)).slice(0, 5);
   const f = r.frontal || {}, t = r.trasera || {}, se = r.sin_espejo || {};
   const ok = Math.abs((f.proporcion || 0) - CW / CH) < 0.04 && Math.abs((f.cuadrado || 0) - 1) < 0.12 && f.izquierda === 'azul' && f.derecha === 'rojo' &&
     f.pixeles_izquierda === 'rojo' && se.izquierda === 'rojo' && t.izquierda === 'rojo' && t.derecha === 'azul' && f.parte_visible >= 0.99 && r.dos_toques === 'cover' && r.dos_toques_otra_vez === 'contain' &&
-    r.decodificadas_B >= seconds * 8 && !r.errores.length;
+    r.decodificadas_B >= seconds * 8 && !r.errores.length &&
+    Object.values(r.botones).every((b) => b.botones >= 7 && b.caben && b.colgar_visible && !b.nombres_cortados.length && b.circulo_min >= 40 && b.letra_min >= 8);
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('VIDEOFRAME ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_videoframe.txt'), logs.join('\n'));
