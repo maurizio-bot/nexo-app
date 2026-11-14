@@ -21,6 +21,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **14-11 noche (3096 = APK 3056; batería 254/254, índice 65,9):** (1) **3096** (diagnósticos vivo y S24 13:03–13:05): un texto largo
+  por internet a una app dormida, ya confirmado ✓✓ por su nativo, no se reenvía cada 4 s ni vuelve a ⏳: espera 15→30→60 s sin gastar
+  reintentos (tope 10 min); si la app del otro confirma algún trozo, lo de siempre. Solo textos (`type === 'chat'`, no Fénix).
+  `textonet.js` (relé con `sleepTag`/`wakeTag`: la app dormida no reabre conexiones). (2) El registro «[SEND] Texto entregado … salir
+  por X» dice el camino real (antes «Bluetooth» siempre: engañaba en los diagnósticos). (3) `wifivuelve.js` espera a que la app use el
+  Wi-Fi (linkOf 'wifi') y mira la línea de entrega. (4) **Registro de robustez corregido:** 37 fallos anotados desde el 11-11 en una
+  lista que `robustez.js` no cuenta → «modos» (de ahí casi toda la subida 65,3 → 65,9). Nuevos fallos: SIEMPRE en `modos`.
+  Analizado y no cambiado: el enlace repetido que el nativo no cierra es de servidor (lo cierra el otro; forzarlo = reconexión en bucle).
 - **14-11 noche (3094–3095 = APK 3055; batería 253/253, índice 65,3):** (1) **3094** (dueño: el aviso de mensaje sin la foto del
   contacto): la app pasa la foto de cada contacto al nativo (`setNotifAvatar`, solo en memoria, 64 fotos de hasta 64 KB) y el aviso
   la pone redonda (`NotifAvatars.kt`, `MsgNotifier`; `fotoaviso.js`, Kotlin `NotifAvatarsTest`). (2) **3095** (dueño: «con el gesto

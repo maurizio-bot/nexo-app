@@ -120,15 +120,7 @@
     {
      "fallo": "3024 (diagnóstico del vivo 12-11 07:12–07:13): al buscar un puente Jump intentaba conectar «de paso» cada ~minuto con un NEXO a −92/−95 dBm que nunca conectaba: radio gastada. 3024: para buscar puentes no se conecta de paso con nadie (conocido o desconocido) con señal de −90 o peor, y al que no conecta se le espera 1, 2, 4… hasta 15 min; «Agregar» no cambia (regla del dueño 11-11). passfar.js (contraprueba 3023: 2 intentos al lejano en 4 min)",
      "prueba": "conexiones de paso para Jump"
-    }
-   ],
-   "debiles": [
-    {
-     "g": "media",
-     "d": "Android 8–11: sin la ubicación activada no escanea y no se avisa"
-    }
-   ],
-   "fallos": [
+    },
     {
      "fallo": "3009 (dueño 11-11: «el scan Bluetooth está lento»; diagnóstico S24 10:14): cada teléfono anuncia por dos direcciones (normal 1M y LARGO ALCANCE LE Coded, mismo código); la app se conectaba también a la de largo alcance de teléfonos al lado (rssi -49/-63) y esas conexiones fallaban 133/147 tras 2–10 s, repetidas, ocupando la cola de conexiones mientras la normal entraba en < 0,5 s. 3009: el nativo marca 'coded' en el hallazgo y la app ignora esa copia si vio el mismo código por la normal hace < 20 s. codedscan.js (contraprueba 3008: se conecta a la copia)",
      "prueba": "Bluetooth lento por la dirección de LARGO ALCANCE"
@@ -136,6 +128,12 @@
     {
      "fallo": "3012 (regla del dueño 11-11: «cualquiera que tiene NEXO debe aparecer al instante en un escaneo»; antes: «se tardó mucho en aparecer al agregarlo»). Registro del teléfono de Marcos 13:45–13:47 (canal directo): con «Agregar» abierto, a cada NEXO cercano sin reconocer se le conectaba pero «quién eres» solo se preguntaba al volver a verlo en el escaneo ≥ 10 s después (11 s por teléfono); solo 3 conexiones de paso a la vez y había más teléfonos (la tableta con la app dormida no contesta y ocupaba hueco); Austin se identificó justo con la pantalla cerrada y al reabrirla no salía; la copia de largo alcance vista antes que la normal sí se usaba (3009). 3012: (1) fila al instante por cada NEXO que el escaneo ve («identificando…» → su nombre; «+» en una sin nombre = se agrega al contestar); (2) se pregunta al quedar lista la conexión (_linkReadyUnknown, también lado servidor) con un kx LIGERO (~300 letras, sin paquete de claves); (3) hasta 6 de paso con «Agregar» abierto y el que no contesta en 4,5 s suelta su hueco; (4) el nativo contesta «quién soy» con la app dormida o cerrada (tarjeta kx: setKxCard/nativeKx, Kotlin sin compilar aquí); (5) lo identificado se recuerda (_noteKxPeer) y se reconoce por su código rotativo sin conectar (_kxTok), sale al abrir (_listKnownNearby) y su clave se guarda al agregar; (6) la copia de largo alcance sin la normal espera 3 s. addlento.js (contraprueba 3011: Austin 21,5 s y 4,7 s al reabrir, la dormida nunca; 3012: filas en 0,2 s, Austin 0,2 s, la dormida 0 s, reabrir 0 s); codedscan.js L3",
      "prueba": "todo NEXO cercano sale AL INSTANTE en «Agregar»"
+    }
+   ],
+   "debiles": [
+    {
+     "g": "media",
+     "d": "Android 8–11: sin la ubicación activada no escanea y no se avisa"
     }
    ]
   },
@@ -306,6 +304,26 @@
     {
      "fallo": "Diagnóstico S24 14-11 19:14 (3047): al volver al frente, el repaso de pendientes pedía al Bluetooth nativo conectar a contactos cuyo camino guardado es de internet/Wi-Fi («connectToDevice raw='net:nx…'» ×14) y dejaba un enlace fantasma «conectando»; con el realme, un «zombi» falso de ese enlace. 3072 había tapado abrir el chat y el envío; 3075 tapa la propia auto-conexión. netconn.js (contraprueba 3074: pide «net:…» y deja el fantasma)",
      "prueba": "Bluetooth no se pide para caminos de internet/Wi-Fi"
+    },
+    {
+     "fallo": "3009 (canal de diagnósticos 11-11: «zombi» 3 de 7 síntomas, siempre con la app del otro dormida): el ping del vigilante Bluetooth lo contestaba solo el JS; con la app del otro congelada nadie contestaba y se tiraba un enlace sano (y se rehacía en bucle). 3009: el nativo contesta el pong con la app en segundo plano o cerrada (Kotlin nativePong; native_mock lo replica). zombifalso.js (contraprueba --sin-pong-nativo: zombi)",
+     "prueba": "«zombi» falso con la app del otro DORMIDA"
+    },
+    {
+     "fallo": "3033 (diagnóstico S24 3027/3028 12-11 22:25 con el Motorola de GATT roto): «sin servicio GATT 21 veces: pauso Bluetooth 600 s» y aun así conectar/cortar cada 1–3 s. El resultado de escaneo llega con el contacto en nexoId (sin deviceUUID) y _autoConnectGATT buscaba la pausa por la DIRECCIÓN: nunca la encontraba. Jump (_connect) y el envío de texto/archivo tampoco miraban la pausa. 3033: _btPauseKey/_btPaused por NEXO ID en las cuatro puertas. cola3033.js (contraprueba 3032: escaneo y Jump conectan en pausa)",
+     "prueba": "con el Bluetooth en pausa por GATT roto"
+    },
+    {
+     "fallo": "3037 (diagnóstico del dueño 13-11, S24 APK 3030 con el Vivo …db61, 19:03–19:45): textos al Vivo fallando por Bluetooth 40 min con «BT listo» y el vigilante saltando el ping/zombie todo el rato («transferencia activa»): un texto largo pendiente se reanudaba cada 10–30 s y cada flujo nuevo traía su hora de inicio, así que el «> 20 s sin ACK no protege» (2973) nunca se cumplía. 3037: hasActiveTransfer cuenta también cuándo se oyó por última vez cualquier cosa de ese teléfono (_lastPongTime): callado > 20 s → un flujo sin ACK propio no protege. xferstuck.js (contraprueba 3036: protege)",
+     "prueba": "vigilante del enlace con un texto largo que se reanuda"
+    },
+    {
+     "fallo": "3040 (aviso «openchat_mac_vieja» del lector 13-11 21:15; S24 21:28 con …707a con el Bluetooth apagado): abrir el chat forzaba la conexión Bluetooth aunque ese contacto estuviera en pausa (no_service repetido): otro no_service y la pausa crecía (30 → 60 → 120 s). 3040: openChat no fuerza la conexión durante la pausa. cola3038.js §3 (contraprueba 3038)",
+     "prueba": "adjunto ilegible y reanudación con espera"
+    },
+    {
+     "fallo": "Diagnóstico automático S24 14-11 11:52 («enlace_abre_cierra», nx09acdb61 6 desconexiones en 10 min, el vivo recién actualizado): el enlace REPETIDO que la propia app cierra (Dedup 6dad a las 11:50:21 y 11:51:39) contaba también como «desconexión», además de como «repetido»: aviso falso y un diagnóstico de 20 KB por la radio. 3093: lo cerrado por la deduplicación (enfriamiento _dupClosedUntil) no cuenta como corte. noservice 6): 3092 = 1 aviso falso; 3093 = 0",
+     "prueba": "GATT roto / no_service"
     }
    ],
    "debiles": [
@@ -320,28 +338,6 @@
     {
      "g": "leve",
      "d": "Algunos teléfonos se quedan en MTU 23 (falta renegociar)"
-    }
-   ],
-   "fallos": [
-    {
-     "fallo": "3009 (canal de diagnósticos 11-11: «zombi» 3 de 7 síntomas, siempre con la app del otro dormida): el ping del vigilante Bluetooth lo contestaba solo el JS; con la app del otro congelada nadie contestaba y se tiraba un enlace sano (y se rehacía en bucle). 3009: el nativo contesta el pong con la app en segundo plano o cerrada (Kotlin nativePong; native_mock lo replica). zombifalso.js (contraprueba --sin-pong-nativo: zombi)",
-     "prueba": "«zombi» falso con la app del otro DORMIDA"
-    },
-    {
-     "fallo": "3033 (diagnóstico S24 3027/3028 12-11 22:25 con el Motorola de GATT roto): «sin servicio GATT 21 veces: pauso Bluetooth 600 s» y aun así conectar/cortar cada 1–3 s. El resultado de escaneo llega con el contacto en nexoId (sin deviceUUID) y _autoConnectGATT buscaba la pausa por la DIRECCIÓN: nunca la encontraba. Jump (_connect) y el envío de texto/archivo tampoco miraban la pausa. 3033: _btPauseKey/_btPaused por NEXO ID en las cuatro puertas. cola3033.js (contraprueba 3032: escaneo y Jump conectan en pausa)",
-     "prueba": "con el Bluetooth en pausa por GATT roto"
-    },
-    {
-     "fallo": "3037 (diagnóstico del dueño 13-11, S24 APK 3030 con el Vivo …db61, 19:03–19:45): textos al Vivo fallando por Bluetooth 40 min con «BT listo» y el vigilante saltando el ping/zombie todo el rato («transferencia activa»): un texto largo pendiente se reanudaba cada 10–30 s y cada flujo nuevo traía su hora de inicio, así que el «> 20 s sin ACK no protege» (2973) nunca se cumplía. 3037: hasActiveTransfer cuenta también cuándo se oyó por última vez cualquier cosa de ese teléfono (_lastPongTime): callado > 20 s → un flujo sin ACK propio no protege. xferstuck.js (contraprueba 3036: protege)",
-     "prueba": "texto largo que se reanuda sobre un enlace que no contesta"
-    },
-    {
-     "fallo": "3040 (aviso «openchat_mac_vieja» del lector 13-11 21:15; S24 21:28 con …707a con el Bluetooth apagado): abrir el chat forzaba la conexión Bluetooth aunque ese contacto estuviera en pausa (no_service repetido): otro no_service y la pausa crecía (30 → 60 → 120 s). 3040: openChat no fuerza la conexión durante la pausa. cola3038.js §3 (contraprueba 3038)",
-     "prueba": "abrir el chat de un contacto en pausa Bluetooth"
-    },
-    {
-     "fallo": "Diagnóstico automático S24 14-11 11:52 («enlace_abre_cierra», nx09acdb61 6 desconexiones en 10 min, el vivo recién actualizado): el enlace REPETIDO que la propia app cierra (Dedup 6dad a las 11:50:21 y 11:51:39) contaba también como «desconexión», además de como «repetido»: aviso falso y un diagnóstico de 20 KB por la radio. 3093: lo cerrado por la deduplicación (enfriamiento _dupClosedUntil) no cuenta como corte. noservice 6): 3092 = 1 aviso falso; 3093 = 0",
-     "prueba": "GATT roto / no_service"
     }
    ]
   },
@@ -446,19 +442,7 @@
     {
      "fallo": "3071 (modo adelanto 13-11): en un GRUPO, la copia de cada miembro se borraba con su ✓✓, que puede darlo su nativo con la app cerrada sin poder descifrar: tras un atasco del cifrado, esos mensajes de grupo se perdían para él (el desatasco no tenía de dónde reenviarlos). Ahora un sobre pequeño se guarda hasta que lo lee o 6 h. desync.js --perdidos --grupo (contraprueba 3069: nunca llegan; 3071: ≈1,3 s)",
      "prueba": "DESATASCO en GRUPO"
-    }
-   ],
-   "debiles": [
-    {
-     "g": "media",
-     "d": "Con la app cerrada, el nativo confirma ✓✓ antes de que la app lo descifre (si la app falla al arrancar, se pierde con ✓✓)"
     },
-    {
-     "g": "leve",
-     "d": "Si el receptor perdió lo que llevaba, pide de nuevo todos los trozos sin límite de ritmo"
-    }
-   ],
-   "fallos": [
     {
      "fallo": "3009 (diagnóstico b2987: texto de grupo a la tablet dormida, 8 reintentos y ✗): un texto troceado (o la copia de grupo de un miembro) a una app congelada agotaba la ventana y quedaba ✗ aunque el enlace estuviera vivo (el nativo del otro avisa pero no confirma textos troceados). 3009: queda ⏳ (PEER_ABSENT) y lo reenvía la cola de pendientes; llega al despertar. textsleep.js (contraprueba 3007: failed)",
      "prueba": "texto troceado (o copia de grupo) a una app CONGELADA"
@@ -477,19 +461,29 @@
     },
     {
      "fallo": "3038 (diagnósticos del dueño 13-11, S24 APK 3031 20:06–20:42): (1) un APK de 25 MB a …c1ee/…707a que no se podía leer del teléfono (56 h) se volvía a cargar del disco en cada vuelta y daba «pendiente viejo» sin fin; (2) un texto largo para …ab2f (ausente) arrancaba en cada reenvío de otro contacto (cada 15–30 s, ~2 h) por un Bluetooth ya soltado. 3038: marca attMissing (✗, fuera del reenvío automático y del diagnóstico; «Reintentar» la quita; vaultPatchMessage) y espera creciente por transferencia al reanudar (_resumeFail; sin espera si su propio enlace está listo). cola3038.js (contraprueba 3037)",
-     "prueba": "adjunto ilegible y transferencia que se rinde al reanudar"
+     "prueba": "adjunto ilegible y reanudación con espera"
     },
     {
      "fallo": "3041 (diagnóstico Honor …c1ee 13-11 21:25, APK 3031): en cada arranque reanudaba textos de 766 trozos a 5 contactos y atascaba el Bluetooth: copias viejas de estados con foto dentro cuyo mensaje 3033 ya había borrado del historial, pero su transferencia quedó huérfana (sin mensaje con qué compararla, se reanudaba siempre). 3041: _dropDeliveredTransfers borra la transferencia de un estado sin su mensaje (no toca otros textos) y staleStatusCopy borra también la transferencia. cola3038.js §4 (contraprueba 3038)",
-     "prueba": "transferencia huérfana de un estado viejo"
+     "prueba": "adjunto ilegible y reanudación con espera"
     },
     {
      "fallo": "Diagnósticos automáticos S24 3041 (13-11 09:18–09:22), 3063: el APK de 25 MB del 10-11 a 3 contactos seguía «pendiente viejo» 4117 min y se volvía a leer del disco cada vez que su contacto aparecía: la cuenta de intentos fallidos vivía solo en memoria y la app se cerraba antes de juntar 3 en 5 min. Ahora se guarda con el mensaje. cola3038.js §1b (contraprueba 3062: sigue pendiente)",
-     "prueba": "adjunto ilegible y transferencia que se rinde al reanudar"
+     "prueba": "adjunto ilegible y reanudación con espera"
     },
     {
      "fallo": "3096 (diagnósticos vivo y S24 14-11 13:03–13:05): el vivo mandaba 3 textos largos (van en trozos) por internet al S24 con la app dormida; el nativo del S24 ya los guardaba y confirmaba ✓✓, pero el vivo seguía reenviando la ventana de trozos cada ~4 s durante ~50 s (esperaba la confirmación de cada trozo, que solo da la app): el S24 acumuló 109 sobres al despertar, y tras 8 reintentos el texto volvía a ⏳ y la cola lo reenviaba entero. 3096: con el ✓✓ del nativo, el texto espera sin reenviar ni gastar reintentos (revisa a los 15, 30 y 60 s, hasta 10 min); si la app del otro confirma algún trozo, está despierta y sigue lo de siempre. textonet.js: 3095 = 8 reenvíos en 40 s y al despertar no le llega en 1 min; 3096 = 0 reenvíos, sigue ✓✓ y le llega entero en 3 s",
      "prueba": "texto LARGO por internet con la app del otro dormida"
+    }
+   ],
+   "debiles": [
+    {
+     "g": "media",
+     "d": "Con la app cerrada, el nativo confirma ✓✓ antes de que la app lo descifre (si la app falla al arrancar, se pierde con ✓✓)"
+    },
+    {
+     "g": "leve",
+     "d": "Si el receptor perdió lo que llevaba, pide de nuevo todos los trozos sin límite de ritmo"
     }
    ]
   },
@@ -665,6 +659,22 @@
     {
      "fallo": "Diagnósticos S23 18:34 y S24 19:08 (14-11, 3047): el que manda un audio por el buzón de archivos borraba sus trozos de los relés al llegarle el ✓✓ que da el NATIVO del otro en segundo plano en cuanto entra el aviso, ANTES de que su app baje nada → «Faltan 5 de 5 trozos» para siempre. 3075: se borran solo con el «ya lo bajé» de la app del otro (✓✓ con got) o con su «leído»; si no llega ninguno, caducan solos (7 días). blobnative.js (contraprueba 3074: borra antes y B falla)",
      "prueba": "audio que el otro aún no bajó"
+    },
+    {
+     "fallo": "3007 (OK del dueño 11-11 «(a)»): un archivo grande por internet que se cortaba más de 30 min o con un reinicio de la app de cualquiera de los dos volvía a empezar de cero (intento nuevo = marca 'a' distinta; el receptor solo guardaba en memoria). 3007: el emisor guarda el contenido cifrado + su marca en el teléfono y al reanudar manda lo mismo sin releer el adjunto; el receptor guarda bloques de 64 trozos y tras reiniciarse rehace lo recibido. bigresume.js (contraprueba 3006: no guarda nada)",
+     "prueba": "archivo grande por internet que SIGUE DONDE IBA"
+    },
+    {
+     "fallo": "3015 (dueño 12-11, diagnósticos S24 + S23 con la 3014): la nota de voz iba como TEXTO troceado (1761 trozos de 360 letras para 22 s) y no como archivo: minutos por Bluetooth, «Cola de escritura llena», textos del otro sin confirmar, y cada reintento la cifraba de nuevo y el receptor tiraba lo recibido. 3015: la nota de voz va (y se reenvía) por el camino de archivos (binario, Wi-Fi/Wi-Fi Direct si se puede); la cabecera lleva su duración y tipo de audio.",
+     "prueba": "nota de voz por Bluetooth como ARCHIVO"
+    },
+    {
+     "fallo": "3035 (dueño 13-11, captura del S23): el teclado de Samsung no podía insertar GIF/stickers («No es posible introducir este contenido aquí»): el WebView no anunciaba tipos de imagen al teclado. 3035: NexoWebView.java (commitContent → window.__nexoKeyboardImage) + layout bridge_layout_main.xml; keyboard_media.js lo manda tal cual (GIF animado, sin miniatura fija). kbgif.js (la parte nativa se valida en la APK)",
+     "prueba": "GIF y stickers del teclado"
+    },
+    {
+     "fallo": "3042 (dueño 13-11 21:29, S24 APK 3032: «cargué un gif y se está tardando mucho»): GIF de 4,6 MB a un contacto sin conexión → buzón de archivos (117 trozos, 3 a la vez); cada tanda esperaba a TODOS los relés y con un relé abierto pero muerto (nos.lol, nostr.mom) esperaba el tope de 10 s → ~6 min. 3042: publishEach({enough:2, graceMs:1500}) en stageBlob. blobslow.js (contraprueba 3041: 30 s; ahora ~4,7 s)",
+     "prueba": "buzón de archivos con un relé muerto"
     }
    ],
    "debiles": [
@@ -683,24 +693,6 @@
     {
      "g": "leve",
      "d": "Si se perdió la confirmación final, el archivo se manda entero otra vez"
-    }
-   ],
-   "fallos": [
-    {
-     "fallo": "3007 (OK del dueño 11-11 «(a)»): un archivo grande por internet que se cortaba más de 30 min o con un reinicio de la app de cualquiera de los dos volvía a empezar de cero (intento nuevo = marca 'a' distinta; el receptor solo guardaba en memoria). 3007: el emisor guarda el contenido cifrado + su marca en el teléfono y al reanudar manda lo mismo sin releer el adjunto; el receptor guarda bloques de 64 trozos y tras reiniciarse rehace lo recibido. bigresume.js (contraprueba 3006: no guarda nada)",
-     "prueba": "archivo grande por internet que SIGUE DONDE IBA"
-    },
-    {
-     "fallo": "3015 (dueño 12-11, diagnósticos S24 + S23 con la 3014): la nota de voz iba como TEXTO troceado (1761 trozos de 360 letras para 22 s) y no como archivo: minutos por Bluetooth, «Cola de escritura llena», textos del otro sin confirmar, y cada reintento la cifraba de nuevo y el receptor tiraba lo recibido. 3015: la nota de voz va (y se reenvía) por el camino de archivos (binario, Wi-Fi/Wi-Fi Direct si se puede); la cabecera lleva su duración y tipo de audio.",
-     "prueba": "nota de voz por Bluetooth como ARCHIVO"
-    },
-    {
-     "fallo": "3035 (dueño 13-11, captura del S23): el teclado de Samsung no podía insertar GIF/stickers («No es posible introducir este contenido aquí»): el WebView no anunciaba tipos de imagen al teclado. 3035: NexoWebView.java (commitContent → window.__nexoKeyboardImage) + layout bridge_layout_main.xml; keyboard_media.js lo manda tal cual (GIF animado, sin miniatura fija). kbgif.js (la parte nativa se valida en la APK)",
-     "prueba": "GIF y stickers del teclado"
-    },
-    {
-     "fallo": "3042 (dueño 13-11 21:29, S24 APK 3032: «cargué un gif y se está tardando mucho»): GIF de 4,6 MB a un contacto sin conexión → buzón de archivos (117 trozos, 3 a la vez); cada tanda esperaba a TODOS los relés y con un relé abierto pero muerto (nos.lol, nostr.mom) esperaba el tope de 10 s → ~6 min. 3042: publishEach({enough:2, graceMs:1500}) en stageBlob. blobslow.js (contraprueba 3041: 30 s; ahora ~4,7 s)",
-     "prueba": "subir al buzón de archivos con un relé muerto"
     }
    ]
   },
@@ -947,6 +939,18 @@
     {
      "fallo": "Diagnósticos S24 08:09 y vivo 08:49 del 14-11: el vivo, con el chat del S24 abierto al irse a segundo plano y la app dormida por el sistema 40 min, recibió (su nativo) dos textos y nunca los confirmó: el aviso de respaldo del nativo se saltaba entero para el chat abierto (regla del dueño 08-11), confirmación incluida, y para siempre; el S24 reenviaba sin fin. El simulador no imitaba esa regla (por eso no saltaba). 3086 (Kotlin, BgNotifyPolicy): la confirmación sale siempre y el aviso solo se calla en un parpadeo a segundo plano (< 15 s). chatabierto.js: 3085 = nunca ✓✓; 3086 = ✓✓ en 4 s.",
      "prueba": "chat abierto y app dormida"
+    },
+    {
+     "fallo": "3011 (diagnóstico S24 3010, 11-11 19:25 UTC): tras 12 min en segundo plano, al volver, las conexiones a los relés seguían «abiertas» pero muertas (el teléfono no se entera hasta minutos después); los textos al buzón de internet esperaban 12 s sin respuesta, 5 reintentos, y quedaban ✗ («Los relés no respondieron»). 3011 (net_link.js): al volver a la app tras ≥ 10 s se hace una pregunta mínima a cada relé y el que no contesta en 5 s se reconecta; lo mismo con un relé callado > 2 min, y si un envío no tiene respuesta de ninguno, los relés que no dijeron nada se reconectan (el reintento va por una conexión nueva). relaymudo.js (relé de pruebas con conexiones «mudas»).",
+     "prueba": "relés que no contestan al volver de segundo plano"
+    },
+    {
+     "fallo": "3012 (dueño 11-11: «primero es Wi-Fi Direct… no veo que funcione»). Diagnósticos 08 y 10-11: «No se pudo crear el grupo (2)» en los dos teléfonos (2 = «ocupado»: Android no puede levantar Wi-Fi Direct; lo más común, el Wi-Fi apagado). La app lo intentaba igual, fallaba y dejaba al contacto 10 min «por Bluetooth» aunque se encendiera el Wi-Fi; nadie avisaba al usuario. 3012 (JS): el estado se lee antes de cada intento; con el Wi-Fi apagado (aquí o en el otro) no se intenta, se avisa y no hay castigo; si falla el montaje, se reprueba a los 2 min. Pendiente la parte nativa (reintentos y estado en el diagnóstico).",
+     "prueba": "Wi-Fi Direct con el Wi-Fi apagado"
+    },
+    {
+     "fallo": "Dueño 14-11: «cuando estoy en Bluetooth y activo yo el Wi-Fi, la aplicación no se da cuenta; debería darse cuenta del cambio de conexión e inmediatamente cambiar de conexión en los chats». Lo que ya hay: Bluetooth encendido/apagado (3082), red Wi-Fi nueva (aviso nativo: busca en la red al momento) y Wi-Fi ↔ datos (3085, va en la APK 3053). Reproducido en el simulador con la 3093: el Wi-Fi local queda listo en 0,5 s, lo siguiente sale por Wi-Fi y un archivo a mitad pasa del Bluetooth al Wi-Fi (wifivuelve.js, guarda). Si en el teléfono no pasa, falta el diagnóstico de ese momento. 3096: la batería lo marcó una vez como fallo; la causa era la prueba (daba el Wi-Fi por listo al abrirse la conexión, antes de comprobarse) y el registro de entrega, que decía «salir por Bluetooth» siempre aunque saliera por Wi-Fi o internet (también engañaba en los diagnósticos del dueño). Ahora el registro dice el camino de verdad y la prueba espera a que la app use el Wi-Fi: 3 de 3, el texto sale «por Wi-Fi» a los 0,6 s",
+     "prueba": "Wi-Fi que se ENCIENDE en medio de una charla por Bluetooth"
     }
    ],
    "debiles": [
@@ -969,20 +973,6 @@
     {
      "g": "grave",
      "d": "Informe del dueño (2780): con Wi-Fi bueno la app se pasa a «Internet» y no deja llamar/videollamar; debe mantener el Wi-Fi si está conectado y bueno (sospecha: el tráfico de la propia videollamada marca el enlace «malo»). Tarea #83, para 2781. 2975: la sospecha se confirmó en el diagnóstico del dueño (13:35) con una transferencia: la ida y vuelta se infla por la carga del propio enlace; ahora la ida y vuelta alta no cuenta mientras hay una transferencia por ese enlace (lanload.js); una videollamada NO pasa por el sistema de flujos, así que para ella sigue abierto. Queda medir en teléfono que una videollamada por Wi-Fi ya no «se pasa a Internet»"
-    }
-   ],
-   "fallos": [
-    {
-     "fallo": "3011 (diagnóstico S24 3010, 11-11 19:25 UTC): tras 12 min en segundo plano, al volver, las conexiones a los relés seguían «abiertas» pero muertas (el teléfono no se entera hasta minutos después); los textos al buzón de internet esperaban 12 s sin respuesta, 5 reintentos, y quedaban ✗ («Los relés no respondieron»). 3011 (net_link.js): al volver a la app tras ≥ 10 s se hace una pregunta mínima a cada relé y el que no contesta en 5 s se reconecta; lo mismo con un relé callado > 2 min, y si un envío no tiene respuesta de ninguno, los relés que no dijeron nada se reconectan (el reintento va por una conexión nueva). relaymudo.js (relé de pruebas con conexiones «mudas»).",
-     "prueba": "relés que no contestan al volver de segundo plano"
-    },
-    {
-     "fallo": "3012 (dueño 11-11: «primero es Wi-Fi Direct… no veo que funcione»). Diagnósticos 08 y 10-11: «No se pudo crear el grupo (2)» en los dos teléfonos (2 = «ocupado»: Android no puede levantar Wi-Fi Direct; lo más común, el Wi-Fi apagado). La app lo intentaba igual, fallaba y dejaba al contacto 10 min «por Bluetooth» aunque se encendiera el Wi-Fi; nadie avisaba al usuario. 3012 (JS): el estado se lee antes de cada intento; con el Wi-Fi apagado (aquí o en el otro) no se intenta, se avisa y no hay castigo; si falla el montaje, se reprueba a los 2 min. Pendiente la parte nativa (reintentos y estado en el diagnóstico).",
-     "prueba": "Wi-Fi Direct con el Wi-Fi apagado"
-    },
-    {
-     "fallo": "Dueño 14-11: «cuando estoy en Bluetooth y activo yo el Wi-Fi, la aplicación no se da cuenta; debería darse cuenta del cambio de conexión e inmediatamente cambiar de conexión en los chats». Lo que ya hay: Bluetooth encendido/apagado (3082), red Wi-Fi nueva (aviso nativo: busca en la red al momento) y Wi-Fi ↔ datos (3085, va en la APK 3053). Reproducido en el simulador con la 3093: el Wi-Fi local queda listo en 0,5 s, lo siguiente sale por Wi-Fi y un archivo a mitad pasa del Bluetooth al Wi-Fi (wifivuelve.js, guarda). Si en el teléfono no pasa, falta el diagnóstico de ese momento. 3096: la batería lo marcó una vez como fallo; la causa era la prueba (daba el Wi-Fi por listo al abrirse la conexión, antes de comprobarse) y el registro de entrega, que decía «salir por Bluetooth» siempre aunque saliera por Wi-Fi o internet (también engañaba en los diagnósticos del dueño). Ahora el registro dice el camino de verdad y la prueba espera a que la app use el Wi-Fi: 3 de 3, el texto sale «por Wi-Fi» a los 0,6 s",
-     "prueba": "Wi-Fi que se ENCIENDE en medio de una charla por Bluetooth"
     }
    ]
   },
@@ -1080,6 +1070,14 @@
     {
      "fallo": "Al llamar no siempre despertaba al otro: la oferta de llamada quedaba silenciada por el throttle de 8 s de los textos (chateando y luego llamo). Ahora la llamada insiste con su propio toque, aparte (informe del dueño 30-10, #130)",
      "prueba": "se pide el toque"
+    },
+    {
+     "fallo": "Punto débil de llamadas: con la app CERRADA (o dormida), si el que llama colgaba, el aviso de llamada seguía sonando hasta 45 s: la señal de colgar va cifrada y el nativo no la leía (calls2 colgar-cerrada, 3086: no deja de sonar). 3087: «colgar» del que llama lleva por fuera el id de su oferta (ce), como la oferta lleva cl:1; el nativo (BgInbox.callEnd, MsgNotifier.cancelCallFor, NetBg por internet) quita la llamada que suena al momento (0,2 s en el simulador; CallEndTest en JVM).",
+     "prueba": "llamadas: colgar-cerrada"
+    },
+    {
+     "fallo": "Punto débil de llamadas: con la app cerrada o dormida, el aviso nativo decía «Llamada entrante» también en una videollamada (la señal va cifrada). 3089: la oferta de videollamada lleva por fuera cv:1 —en el sobre, en la cabecera del primer trozo (la oferta va troceada) y en el sobre de internet—; el nativo (BgInbox.video → incomingCall, NetBg) dice «Videollamada entrante» (calls2 video-aviso: 3088 decía llamada, 3089 videollamada; CallEndTest y NetBgTest en JVM).",
+     "prueba": "llamadas: video-aviso"
     }
    ],
    "debiles": [
@@ -1098,16 +1096,6 @@
     {
      "g": "leve",
      "d": "Sin DTX: se manda voz también en los silencios (batería y datos)"
-    }
-   ],
-   "fallos": [
-    {
-     "fallo": "Punto débil de llamadas: con la app CERRADA (o dormida), si el que llama colgaba, el aviso de llamada seguía sonando hasta 45 s: la señal de colgar va cifrada y el nativo no la leía (calls2 colgar-cerrada, 3086: no deja de sonar). 3087: «colgar» del que llama lleva por fuera el id de su oferta (ce), como la oferta lleva cl:1; el nativo (BgInbox.callEnd, MsgNotifier.cancelCallFor, NetBg por internet) quita la llamada que suena al momento (0,2 s en el simulador; CallEndTest en JVM).",
-     "prueba": "llamadas: colgar-cerrada"
-    },
-    {
-     "fallo": "Punto débil de llamadas: con la app cerrada o dormida, el aviso nativo decía «Llamada entrante» también en una videollamada (la señal va cifrada). 3089: la oferta de videollamada lleva por fuera cv:1 —en el sobre, en la cabecera del primer trozo (la oferta va troceada) y en el sobre de internet—; el nativo (BgInbox.video → incomingCall, NetBg) dice «Videollamada entrante» (calls2 video-aviso: 3088 decía llamada, 3089 videollamada; CallEndTest y NetBgTest en JVM).",
-     "prueba": "llamadas: video-aviso"
     }
    ]
   },
@@ -1280,23 +1268,7 @@
     {
      "fallo": "Dueño 14-11 (3076): «las notificaciones de cuando recibo un diagnóstico me aparecen como notificación, luego notificaciones fantasmas». (1) Cada toque FCM ponía un aviso «NEXO · Mensaje nuevo» (NexoFcmService.wakeNotice), hubiera o no mensaje; el Motorola tocaba al S24 cada pocos minutos «por pendientes» que eran sus diagnósticos automáticos. Ahora el toque solo despierta (aviso neutro solo si el servicio no arranca; NotifGhostTest) y no se toca por pendientes que son solo ocultos (wakesched.js j). (2) Al revés: la copia de un mensaje de GRUPO pendiente se reenviaba «callada» (q:1) por estar oculta en el chat del que manda → el miembro con la app cerrada no se enteraba; ahora avisa y cae en el grupo (notifghost.js G5; contraprueba 3075: sin aviso). (3) Por internet en segundo plano el aviso de un mensaje de grupo caía en el chat 1-a-1 (NetBg.groupOf; NetBgTest)",
      "prueba": "avisos limpios"
-    }
-   ],
-   "debiles": [
-    {
-     "g": "media",
-     "d": "Vivo: si congela la app, solo lo evitan sus ajustes (inicio automático, alto consumo en segundo plano); NEXO los abre (Perfil) pero no puede comprobarlos"
     },
-    {
-     "g": "grave",
-     "d": "App CERRADA (deslizada) + pantalla apagada: no llegan mensajes ni avisos por Wi-Fi ni por internet hasta abrir la app; el par en el mismo Wi-Fi se pasa a «Internet» (informe del dueño 26-10, tarea #87). La recepción (LanHub/NetBg/BgInbox) vive en el proceso del WebView y solo sobrevive si Android no mata el proceso. 2785: se añadió WifiLock (FULL_HIGH_PERF) mientras NetBg escucha en segundo plano/cerrada (Android duerme la radio Wi-Fi con la pantalla apagada y tira el socket del relé) + registro nativo persistente (NativeLog) que ahora sí muestra en el diagnóstico qué hizo el nativo con la app cerrada (antes remLog solo iba a logcat/puente, muerto con la app cerrada, por eso el diagnóstico salía vacío en el hueco). SIGUE ABIERTO: nativo, no reproducible en el simulador; pendiente de confirmar en los dos teléfonos con el nuevo diagnóstico (ver si NetBg escuchó y vio el sobre del relé)"
-    },
-    {
-     "g": "media",
-     "d": "Al recibir con la pantalla apagada se enciende la pantalla pero el aviso solo sale como icono en la barra, sin contenido ni heads-up (informe del dueño 26-10, tarea #89); probable importancia del canal de mensajes o que no se llegó a postear el aviso del mensaje"
-    }
-   ],
-   "fallos": [
     {
      "fallo": "3007 (dueño 11-11, captura «Alex pi · Mensaje nuevo» y al entrar nada): el aviso nativo con la app cerrada solo miraba si el SOBRE ya había llegado, no si el MENSAJE ya estaba; un reenvío de algo ya recibido avisaba «Mensaje nuevo». 3007: SeenMsgs.kt + markMsgsSeen desde la app + dedupe en los avisos nativos. notifseen.js (contraprueba 3006: 1 aviso falso)",
      "prueba": "sin «Mensaje nuevo» por un REENVÍO"
@@ -1320,6 +1292,20 @@
     {
      "fallo": "Dueño 14-11 (APK 3052): «a pantalla apagada no suena ni hay notificaciones; a pantalla encendida llegan puntuales». Diagnóstico S24 12:00: 10 textos al vivo, ✓✓ en 1 s cada uno y leídos a las 12:18. Con la pantalla apagada y la app aún despierta, la que recibe y confirma es la app, y su regla del 08-11 «el chat abierto nunca avisa» no tenía límite: callaba para siempre. 3091 (notify.js): como el nativo (3086), el chat abierto solo calla en un parpadeo (< 15 s fuera de la vista); después avisa y cuenta como no leído; al volver, el aviso se quita y queda leído. chatabierto O5: 3089 sin aviso, 3091 con aviso",
      "prueba": "chat abierto y app dormida"
+    }
+   ],
+   "debiles": [
+    {
+     "g": "media",
+     "d": "Vivo: si congela la app, solo lo evitan sus ajustes (inicio automático, alto consumo en segundo plano); NEXO los abre (Perfil) pero no puede comprobarlos"
+    },
+    {
+     "g": "grave",
+     "d": "App CERRADA (deslizada) + pantalla apagada: no llegan mensajes ni avisos por Wi-Fi ni por internet hasta abrir la app; el par en el mismo Wi-Fi se pasa a «Internet» (informe del dueño 26-10, tarea #87). La recepción (LanHub/NetBg/BgInbox) vive en el proceso del WebView y solo sobrevive si Android no mata el proceso. 2785: se añadió WifiLock (FULL_HIGH_PERF) mientras NetBg escucha en segundo plano/cerrada (Android duerme la radio Wi-Fi con la pantalla apagada y tira el socket del relé) + registro nativo persistente (NativeLog) que ahora sí muestra en el diagnóstico qué hizo el nativo con la app cerrada (antes remLog solo iba a logcat/puente, muerto con la app cerrada, por eso el diagnóstico salía vacío en el hueco). SIGUE ABIERTO: nativo, no reproducible en el simulador; pendiente de confirmar en los dos teléfonos con el nuevo diagnóstico (ver si NetBg escuchó y vio el sobre del relé)"
+    },
+    {
+     "g": "media",
+     "d": "Al recibir con la pantalla apagada se enciende la pantalla pero el aviso solo sale como icono en la barra, sin contenido ni heads-up (informe del dueño 26-10, tarea #89); probable importancia del canal de mensajes o que no se llegó a postear el aviso del mensaje"
     }
    ]
   },
@@ -1520,15 +1506,7 @@
     {
      "fallo": "Bluetooth apagado: la app repetía «Auto-scan fallo»/«Re-búsqueda» y daba un «zombi» falso de un enlace que ya no existía (Nubia, dueño 10-11)",
      "prueba": "Bluetooth APAGADO"
-    }
-   ],
-   "debiles": [
-    {
-     "g": "leve",
-     "d": "Sin «Tu nombre»: los contactos ven el nombre Bluetooth del teléfono (decisión del dueño)"
-    }
-   ],
-   "fallos": [
+    },
     {
      "fallo": "3007 (dueño 11-11): en el actualizador, al cerrar la ventana mientras bajaba y volver, pedía descargar otra vez (bajar e instalar iban juntos y lo bajado no se reutilizaba). 3007: «Descargar» e «Instalar» separados; la descarga sigue con la ventana cerrada, avisa al terminar y el único botón es «Instalar». updater.js (contraprueba 3006: falla)",
      "prueba": "actualizador automático del APK de probadores"
@@ -1556,6 +1534,12 @@
     {
      "fallo": "Dueño 14-11: «cuando se hace la actualización con el desliz de arriba hacia abajo en la pantalla de contactos quiero que actualices las fotos de los estados y de los perfiles… la pantalla completa; y aprovechar el gesto para que los chats estén sincronizados con los otros dispositivos». Antes el gesto solo pedía los estados; una foto de perfil que no llegó o se perdió no volvía nunca (el otro cree que ya la tengo). 3095: el gesto pide estados y foto (sq con av:1: el otro la reenvía aunque crea que ya la tengo; freno de 15 s por contacto), reenvía lo pendiente, comprueba los relés, vuelve a pedir lo de internet de los últimos minutos y avisa de que estoy en línea; textos «Desliza para actualizar» / «Actualizando estados, fotos y chats…». refresco.js: 3093 la foto no vuelve; 3095 vuelve en 1,4 s",
      "prueba": "deslizar para actualizar en Contactos refresca TODO"
+    }
+   ],
+   "debiles": [
+    {
+     "g": "leve",
+     "d": "Sin «Tu nombre»: los contactos ven el nombre Bluetooth del teléfono (decisión del dueño)"
     }
    ]
   },
