@@ -21,6 +21,19 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **14-11 (3076–3078, van en la APK 3049 con 3072–3075; batería en curso):** dueño: «las notificaciones se mezclan… las de cuando
+  recibo un diagnóstico me aparecen como notificación, luego fantasmas… mensaje que llegue, notificación que llegue, puntual, que no
+  se repita». (1) **Causa principal:** cada toque FCM ponía «NEXO · Mensaje nuevo» (`NexoFcmService.wakeNotice`) aunque no hubiera
+  mensaje; el Motorola tocaba al S24 «por pendientes» que eran sus diagnósticos. Ahora el toque solo despierta (aviso neutro solo si
+  el servicio no arranca: `FcmWakePolicy`), `MsgNotifier.sync` quita el aviso viejo, y no se toca por pendientes que son solo ocultos
+  (`_wakeStillPending` con `_isQuietHidden`; wakesched.js j). (2) Al revés: la COPIA de un mensaje de grupo (oculta en el chat del que
+  manda) se reenviaba «callada» (q:1) → el miembro con la app cerrada no se enteraba; ahora avisa y recupera su grupo (`_markHiddenQuiet`
+  + `_groupCopyGid`; notifghost.js G5, contraprueba 3075). (3) Por internet en segundo plano el aviso de un grupo caía en el 1-a-1:
+  `NetBg.groupOf` (NetBgTest, NotifGhostTest; Kotlin 30/30). (4) 3077: la búsqueda en cadena del puente (3072) escaneaba ante un «no
+  tengo internet» aunque no hubiera nada esperando → rompía resume.js y radiollamada.js (contraprueba 3072 OK / 3073 FALLO); ahora
+  solo con algo esperando (puente5 ≈24 s). El informe de cada hora (`tools/diag_analyze.cjs`) ya no avisa de 2 falsas alarmas
+  (diaganalyze.js C6). (5) 3078: la forma «netnx…» (sin dos puntos) también se trata como internet (netconn.js N4). Abierto: un
+  probador con build anterior a la 3033 aún puede mandar ocultos sin la marca (el aviso se quita al abrir la app).
 - **14-11 (3072–3075 = APK 3049, batería en curso):** (1) **3072 puente en cadena** (dueño: «si el vivo no sirve u otro no sirve, se
   busca otro, y así hasta encontrar un puente válido»): sin internet propio se pregunta a TODO NEXO cercano (contactos con o sin
   enlace, desconocidos, anónimos); 5 s sin respuesta o «no tengo» → suelta su hueco de conexión de paso y prueba el siguiente

@@ -3,6 +3,17 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 14-11 (notificaciones, dueño: «mensaje que llegue, notificación que llegue, puntual, que no se repita») — 3076–3078 en la APK 3049
+- **Hecho:** sin «Mensaje nuevo» por cada toque FCM; sin toques por pendientes ocultos (diagnósticos, estados, fotos de perfil); los
+  mensajes de grupo reenviados vuelven a avisar y caen en el grupo (también por internet en segundo plano). Detalle en `ESTADO.md`.
+- **Vigilar (FCM):** Google puede bajar de prioridad los toques de ALTA prioridad que no acaban en un aviso visible. El registro
+  nativo dice en cada toque «Despierta recibido (data=…, prio=X/Y)»: si pasa a prio 2/1 (normal/alta), hay que revisar cuántos
+  toques sin mensaje se mandan (el despertador al abrir un chat de la 3073 es uno).
+- **Abierto (menor):** un probador con build anterior a la 3033 puede mandar un oculto sin marca → «Mensaje nuevo» que se quita al
+  abrir la app (falta quitarlo en cuanto la app lo procesa en segundo plano: método nativo para olvidar un id concreto).
+- **Abierto (menor, realme 13-11 18:55, 3047):** con el Bluetooth APAGADO, al abrir la app se intentó mandar por una dirección
+  Bluetooth guardada: 2 escrituras de ~6 s fallidas y 90 trozos soltados antes de que la app viera que estaba apagado.
+
 ## 🆕 14-11 (diagnósticos S23 18:34, realme 3032, S24 19:10 y 19:15) — 3075 hecho, en la APK 3049
 - **Hecho 3075:** los trozos de un audio/archivo del buzón se borraban con el ✓✓ que da el NATIVO del otro al llegar el aviso (antes
   de bajarlo) → «Faltan 5 de 5 trozos». Ahora solo con el «ya lo bajé» (✓✓ con `got`) o el «leído». Si el otro está en una build

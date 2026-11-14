@@ -108,6 +108,11 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 42. **Audio que el otro aún no bajó (3049, los dos teléfonos en la 3049).** Con NEXO cerrado en el S24, el S23 le manda un audio.
     Abre el S24 unos minutos después: el audio baja y se oye (antes: «Faltan 5 de 5 trozos» para siempre). En el diagnóstico del
     S23, «[BLOB] … confirmado por todos: pedí borrar sus N trozos» sale solo DESPUÉS de que el S24 lo bajó, no al marcar ✓✓.
+44. **Avisos limpios (3049, todos en la 3049).** Con NEXO cerrado en el S24 un rato: ya no debe salir «NEXO · Mensaje nuevo» sin
+    mensaje (ni cuando un probador te manda su diagnóstico). Cada mensaje de verdad avisa una vez, con el nombre de quien lo manda;
+    uno de grupo, en el grupo. En el registro nativo, cada toque dice «Despierto: sin aviso (lo pone el mensaje cuando llegue)».
+45. **Mensaje de grupo pendiente (3049).** Escribe en un grupo con un miembro sin conexión; cierra y abre NEXO; cuando el miembro
+    vuelva (con NEXO cerrado), le llega el aviso del GRUPO (antes: nada).
 43. **Sin «zombi» falso con contactos de internet (3049).** Deja NEXO en segundo plano un rato y vuelve: en el registro nativo del
     diagnóstico ya no salen «connectToDevice raw='net:nx…'» ni «zombi» de un contacto que solo está por internet.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
