@@ -242,14 +242,14 @@ export function paintAvatar(el, nx, textEl) {
 }
 
 // A un contacto que aún no tiene la versión actual
-export function sendAvatarTo(nx) {
+export function sendAvatarTo(nx, force) {
   nx = _normId(nx);
   // 3033: también va CUÁNDO la puse (t): con dos contactos con la misma foto, el otro muestra la de quien la puso antes y
   // esconde la copia (antes, sin fecha, empataban y escondía las dos; diagnóstico del Honor 12-11). La marca «:t» hace que se
   // mande una vez más a quien ya la tenía sin fecha.
   if (!_mine || !_mine.h || !NX_RE.test(nx)) return;
   var mark = _mine.h + ':t';
-  if (_sent[nx] === mark || _contactIds().indexOf(nx) < 0) return;
+  if ((_sent[nx] === mark && !force) || _contactIds().indexOf(nx) < 0) return;
   var act = { type: 'nexo_act', act: 'av', h: _mine.h, img: _mine.img || '' };
   if (_mine.at) act.t = _mine.at;   // 3062: también al quitarla (el que la recibe se queda con el aviso más reciente)
   var id = _sendTextTo(nx, JSON.stringify(act), '', true);
@@ -259,7 +259,17 @@ export function sendAvatarTo(nx) {
   _save(SENT_FILE, _sent);
   console.log('[AVATAR] Foto de perfil ' + (_mine.img ? 'mandada' : 'quitada') + ' a ' + nx);
 }
-function _sendToAll() { _contactIds().forEach(sendAvatarTo); }
+function _sendToAll() { _contactIds().forEach(function(nx) { sendAvatarTo(nx); }); }
+// 3095 (dueño 14-11, deslizar para actualizar): el otro me pide mi foto otra vez (pudo perderla o no llegarle): se la reenvío
+// aunque crea que ya la tiene; como mucho una vez cada 15 s por contacto
+var _avAsked = new Map();
+export function avatarQueryReceived(senderNx) {
+  var nx = _normId(senderNx), now = Date.now();
+  if (!NX_RE.test(nx) || now - (_avAsked.get(nx) || 0) < 15000) return false;
+  _avAsked.set(nx, now);
+  sendAvatarTo(nx, true);
+  return true;
+}
 
 // 3060: la foto que deja de ser mía pasa a la lista de «fotos que tuve» (con su huella; si no la había, se calcula)
 function _archiveMine() {

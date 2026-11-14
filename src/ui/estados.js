@@ -406,11 +406,28 @@ export function requestStatuses() {
     var via = 'none'; try { via = bi && typeof bi.linkOf === 'function' ? bi.linkOf(nx) : 'none'; } catch (e) {}
     if (via === 'none' || now - (_sqOut.get(nx) || 0) < SQ_GAP_MS) return;
     _sqOut.set(nx, now);
-    if (_sendAct(nx, { type: 'nexo_act', act: 'sq', ts: now })) n++;
+    // 3095 (dueño 14-11: «con ese gesto quiero actualizar la pantalla completa… los estados y las fotos de perfiles»): av:1 = «y
+    // mándame tu foto de perfil otra vez» (el otro la reenvía aunque crea que ya la tengo)
+    if (_sendAct(nx, { type: 'nexo_act', act: 'sq', ts: now, av: 1 })) n++;
   });
   _contactIds().forEach(function(nx) { statusesOf(nx); }); // de paso, fuera los caducados
   _renderStrip();
   console.log('[ESTADO] Actualizar: pedidos a ' + n + ' contacto(s)');
+  return n;
+}
+
+// 3095 (dueño 14-11: «con ese gesto quiero actualizar la pantalla completa: los estados y las fotos de perfiles; y aprovechar para
+// que los chats estén sincronizados entre mi teléfono y los otros»): deslizar hacia abajo en Contactos ahora (1) pide a cada contacto
+// con enlace sus estados y su foto de perfil (una petición, con el freno de 15 s por contacto), (2) reenvía lo mío que esté pendiente,
+// (3) pone al día lo de internet (comprueba los relés, vuelve a pedir lo de los últimos minutos y avisa de que estoy en línea) y
+// (4) vuelve a dibujar la lista. Ligero: nada se manda dos veces y los mensajes ya entregados no se repiten.
+export function refreshAll() {
+  var bi = window.bleInterface, n = requestStatuses(), net = bi && bi.net, r = null;
+  try { if (bi && typeof bi._flushAllPendingMessages === 'function') bi._flushAllPendingMessages(); } catch (e) {}
+  try { if (net && typeof net.refresh === 'function') r = net.refresh('deslizar para actualizar'); } catch (e) {}
+  try { if (bi && typeof bi.renderContactsList === 'function') bi.renderContactsList(); } catch (e) {}
+  console.log('[ACTUALIZAR] Deslizar: estados y fotos pedidos a ' + n + ' contacto(s); pendientes reenviados; internet: ' +
+    (r ? r.relays + ' relé(s) comprobados, lo reciente pedido otra vez' : 'sin conexión'));
   return n;
 }
 
@@ -937,10 +954,10 @@ function _attachPull() {
   cv.addEventListener('touchmove', function(e) {
     if (y0 === null || !e.touches || !e.touches[0]) return;
     dy = e.touches[0].clientY - y0;
-    if (dy > 20) showInd(dy > PULL_PX ? '↻ ' + t('est_pull_release', 'Suelta para actualizar los estados') : '↓ ' + t('est_pull', 'Desliza para actualizar los estados'));
+    if (dy > 20) showInd(dy > PULL_PX ? '↻ ' + t('est_pull_release', 'Suelta para actualizar') : '↓ ' + t('est_pull', 'Desliza para actualizar'));
   }, { passive: true });
   cv.addEventListener('touchend', function() {
-    if (y0 !== null && dy > PULL_PX) { showInd('↻ ' + t('est_refreshing', 'Actualizando estados…')); requestStatuses(); hideInd(1500); }
+    if (y0 !== null && dy > PULL_PX) { showInd('↻ ' + t('est_refreshing', 'Actualizando estados, fotos y chats…')); refreshAll(); hideInd(1500); }
     else hideInd(0);
     y0 = null; dy = 0;
   }, { passive: true });
@@ -954,5 +971,5 @@ if (typeof window !== 'undefined') {
   window.NEXO_likeStatus = likeStatus; window.NEXO_likeReceived = likeReceived; window.NEXO_myLikes = myLikes; // pruebas (tests/sim/estados.js)
   window.NEXO_addMyStatus = addMyStatus; window.NEXO_statusesOf = statusesOf; window.NEXO_myStatuses = myStatuses; window.NEXO_removeMyStatus = removeMyStatus;
   window.NEXO_staleStatusCopy = staleStatusCopy; // 3033: la cola de reenvío (ble_helpers._isResendable, ble_ack) lo consulta
-  window.NEXO_commentStatus = commentStatus; window.NEXO_myComments = myComments; window.NEXO_whoLiked = whoLiked; window.NEXO_requestStatuses = requestStatuses; window.NEXO_statusMedia = statusMedia; window.NEXO_statusMediaIn = statusMediaIn; // 3032
+  window.NEXO_commentStatus = commentStatus; window.NEXO_myComments = myComments; window.NEXO_whoLiked = whoLiked; window.NEXO_requestStatuses = requestStatuses; window.NEXO_refreshAll = refreshAll; window.NEXO_statusMedia = statusMedia; window.NEXO_statusMediaIn = statusMediaIn; // 3032
 }

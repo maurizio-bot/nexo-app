@@ -1078,6 +1078,17 @@ export class NetLink {
   greet() { var self = this; return this.tick().then(function() { self._helloAll(true); }); }
 
   // Saludo a los contactos: al conectar (o al volver a la app) a todos; después, cada minuto a los que están en línea
+  // 3095 (dueño 14-11, deslizar para actualizar en Contactos: «que haya una sincronización entre lo que veo yo y lo que hay en los
+  // otros dispositivos»): comprobar los relés (el que no contesta se rehace), volver a pedir a cada relé abierto lo de los últimos
+  // minutos (desde lo último visto − 10 min: lo ya recibido se descarta solo) y avisar a los contactos de que estoy en línea.
+  refresh(why) {
+    var self = this, n = 0;
+    if (!self.online()) return { relays: 0 };
+    self._probeRelays(why || 'actualizar', 0);
+    self.relays.forEach(function(r) { if (r.open && r.ws) { self._subscribe(r); n++; } });
+    self._helloAll(true);
+    return { relays: n };
+  }
   _helloAll(force) {
     var self = this, now = Date.now();
     if (!self.online()) return;

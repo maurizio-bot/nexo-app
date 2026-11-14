@@ -1544,6 +1544,10 @@
     {
      "fallo": "Punto débil «sin la foto del contacto en sus notificaciones» (cola del dueño 14-11). 3094: la foto que la app MUESTRA de cada contacto (no las copias escondidas, 3028) pasa al nativo con setNotifAvatar SOLO EN MEMORIA (Kotlin NotifAvatars: 64 fotos como mucho, 64 KB cada una; nunca se escribe: no toca el cifrado en reposo) y MsgNotifier la pone redonda en el aviso; con el proceso muerto, sin foto como antes. fotoaviso.js: 3093 sin foto; 3094 con foto (segundo plano y app cerrada) y sin ella si el contacto la quita. Kotlin NotifAvatarsTest",
      "prueba": "foto del contacto en sus avisos"
+    },
+    {
+     "fallo": "Dueño 14-11: «cuando se hace la actualización con el desliz de arriba hacia abajo en la pantalla de contactos quiero que actualices las fotos de los estados y de los perfiles… la pantalla completa; y aprovechar el gesto para que los chats estén sincronizados con los otros dispositivos». Antes el gesto solo pedía los estados; una foto de perfil que no llegó o se perdió no volvía nunca (el otro cree que ya la tengo). 3095: el gesto pide estados y foto (sq con av:1: el otro la reenvía aunque crea que ya la tengo; freno de 15 s por contacto), reenvía lo pendiente, comprueba los relés, vuelve a pedir lo de internet de los últimos minutos y avisa de que estoy en línea; textos «Desliza para actualizar» / «Actualizando estados, fotos y chats…». refresco.js: 3093 la foto no vuelve; 3095 vuelve en 1,4 s",
+     "prueba": "deslizar para actualizar en Contactos refresca TODO"
     }
    ]
   },
