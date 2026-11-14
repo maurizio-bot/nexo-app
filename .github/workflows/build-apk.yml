@@ -24,7 +24,9 @@ jobs:
     runs-on: ubuntu-24.04
     # El paso «Chromium» (playwright install, sin caché) tarda ~9 min fijos; con la batería del simulador (~19-20 min)
     # el job rozaba los 30 min y GitHub lo cortaba como «cancelado» (builds 2935 attempt 1 y 2). 45 da margen de sobra.
-    timeout-minutes: 45
+    # 14-11 (APK 3049, run 43552006942): la batería creció a 238 pruebas y tardó 43 min en el servidor: GitHub cortó el job a los
+    # 45 min como «cancelado» sin ningún fallo. 75 deja margen para seguir sumando pruebas.
+    timeout-minutes: 75
     steps:
       - name: Checkout
         uses: actions/checkout@v4
