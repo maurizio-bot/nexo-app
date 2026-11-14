@@ -661,6 +661,10 @@
     {
      "fallo": "Dueño 14-11 (3076): «las notificaciones de cuando recibo un diagnóstico me aparecen como notificación, luego notificaciones fantasmas». (1) Cada toque FCM ponía un aviso «NEXO · Mensaje nuevo» (NexoFcmService.wakeNotice), hubiera o no mensaje; el Motorola tocaba al S24 cada pocos minutos «por pendientes» que eran sus diagnósticos automáticos. Ahora el toque solo despierta (aviso neutro solo si el servicio no arranca; NotifGhostTest) y no se toca por pendientes que son solo ocultos (wakesched.js j). (2) Al revés: la copia de un mensaje de GRUPO pendiente se reenviaba «callada» (q:1) por estar oculta en el chat del que manda → el miembro con la app cerrada no se enteraba; ahora avisa y cae en el grupo (notifghost.js G5; contraprueba 3075: sin aviso). (3) Por internet en segundo plano el aviso de un mensaje de grupo caía en el chat 1-a-1 (NetBg.groupOf; NetBgTest)",
      "prueba": "avisos limpios (diagnósticos, toques, grupos)"
+    },
+    {
+     "fallo": "Batería de la 3049 (14-11): resume.js y radiollamada.js fallaban desde la 3072 (contraprueba: 3072 = APK 3048 OK, 3073 FALLO). La búsqueda en cadena del puente a internet, ante un «no tengo internet» de un vecino, buscaba desconocidos con su escaneo aunque no hubiera nada propio esperando: gastaba el cupo de escaneos de Android (la búsqueda automática siguiente no salía) y abría conexiones de paso en plena llamada. 3076: la cadena solo corre con algo esperando salir (o un puente usado hace poco); puente5.js sigue ≈24 s",
+     "prueba": "búsqueda en cadena solo cuando hace falta"
     }
    ],
    "debiles": [

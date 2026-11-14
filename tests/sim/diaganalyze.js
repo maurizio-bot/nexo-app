@@ -4,7 +4,10 @@
 //   C2: saca zona horaria, teléfono, caminos por contacto y los mensajes con problema (lentos / sin entregar);
 //   C3: detecta bucles (líneas compactadas «↳ ×N» y, en uno viejo, las más repetidas);
 //   C4: firmas conocidas: con build >= la del arreglo dice REAPARECE y pide aviso; con build anterior, «falta actualizar»;
-//   C5: privacidad: no salen NEXO ID completos ni direcciones MAC.
+//   C5: privacidad: no salen NEXO ID completos ni direcciones MAC;
+//   C6 (3076, avisos de la tarea de cada hora del 14-11): en una build con el arreglo, «abrir un chat prueba la dirección
+//       guardada» (sin otro camino, a propósito desde 3017) y «sin servicio» CON la pausa funcionando solo informan (sin aviso);
+//       «sin servicio» sin la pausa sí avisa.
 // Uso: node diaganalyze.js   (no necesita build)
 'use strict';
 const fs = require('fs'), path = require('path'), os = require('os'), { execFileSync } = require('child_process');
@@ -33,6 +36,13 @@ fs.writeFileSync(fj, JSON.stringify({ list: [{ sym: 'enlace_abre_cierra', info: 
 fs.writeFileSync(ft, viejo);
 const run = (f) => execFileSync('node', [tool, f], { encoding: 'utf8' });
 const a = run(fj), b = run(ft);
+const mk = (lines) => ['NEXO diagnóstico 2026-11-14T01:15:00.000Z', 'NEXO ID: NX1N36C283', 'Build: 3047', 'UA: x', '===== SESIÓN ACTUAL ====='].concat(lines).join('\n');
+const nosvc = Array.from({ length: 9 }, (_, i) => '14:00:' + String(10 + i).padStart(2, '0') + '.000 [BLEInterface] Enlace nx0g6ef54e (3bc2) desconectado: no_service');
+const fc = path.join(dir, 'c.txt'), fd = path.join(dir, 'e.txt');
+fs.writeFileSync(fc, mk(Array.from({ length: 3 }, (_, i) => '18:53:0' + i + '.000 [BLEInterface] openChat: forcing connectToDevice for 53a2dd6c656c')
+  .concat(nosvc, ['14:00:20.000 W [BLEInterface] nx0g6ef54e sin servicio GATT 4 veces: pauso Bluetooth 30 s (sigo por internet/Wi-Fi/Jump)'])));
+fs.writeFileSync(fd, mk(nosvc));
+const c = run(fc), e = run(fd);
 const r = { prueba: 'diaganalyze' };
 r.C1_json_y_texto = /DIAGNÓSTICOS: 1 · enlace_abre_cierra ×1/.test(a) && /■ manual · build 3014/.test(b);
 r.C2_estado = /zona UTC-06:00/.test(a) && /teléfono: .*batería 55%/.test(a) && /…de12: camino bluetooth · BT listo MTU 517/.test(a) && /mensajes: 3 recientes, 2 con problema/.test(a) && /bbbb2222.*\[LENTO\]/.test(a) && /cccc3333.*pending/.test(a);
@@ -40,8 +50,10 @@ r.C3_bucles = /BUCLE ×31 \(hasta 03:58:00\): .*Re-búsqueda/.test(a) && /BUCLE 
 r.C4_firmas = /firma enlace_repetido_bucle ×3: .*REAPARECE: arreglado en 3027 y este teléfono tiene la 3028/.test(a) && /firma sin_internet ×1: .*informativo/.test(a) && /AVISAR: sí \(enlace_repetido_bucle reaparece en 3028\)/.test(a) &&
   /firma openchat_mac_vieja ×30: .*ya arreglado en 3017: este teléfono tiene la 3014 \(falta actualizar\)/.test(b) && /AVISAR: no/.test(b);
 r.C5_privacidad = !/nx0abcde12|nx0zz9b3b3|NX1N36C283|aa:bb:cc|cc:cc:cc/i.test(a + b);
+r.C6_sin_falsas_alarmas = /firma openchat_mac_vieja ×3: .*informativo: desde 3017/.test(c) && /firma no_service_bucle ×9: .*informativo: la pausa funciona/.test(c) && /AVISAR: no/.test(c) &&
+  /firma no_service_bucle ×9: .*REAPARECE/.test(e) && /AVISAR: sí \(no_service_bucle reaparece en 3047\)/.test(e);
 fs.rmSync(dir, { recursive: true, force: true });
-const ok = r.C1_json_y_texto && r.C2_estado && r.C3_bucles && r.C4_firmas && r.C5_privacidad;
+const ok = r.C1_json_y_texto && r.C2_estado && r.C3_bucles && r.C4_firmas && r.C5_privacidad && r.C6_sin_falsas_alarmas;
 r.resultado = ok ? 'OK' : 'FALLO';
 if (!ok) { console.error(a); console.error(b); }
 console.log('DIAGANALYZE ' + JSON.stringify(r));

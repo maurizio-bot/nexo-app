@@ -18,9 +18,16 @@ const FIRMAS = [
   { id: 'busqueda_frenada_net', re: /Re-búsqueda aplazada: transferencia en curso/, min: 8, que: 'búsqueda Bluetooth frenada por un envío por internet', arreglo: 3016 },
   { id: 'reenvio_sin_pausa', re: /Pending OK:/, min: 60, que: 'reenvío de pendientes sin pausa (muchos «Pending OK» en 30 min)', arreglo: 3016 },
   { id: 'no_confirma_reenvio', re: /no confirma lo reenviado/, min: 3, que: 'el contacto no confirma lo reenviado (espera creciente activa; mirar su diagnóstico emparejado)', arreglo: null },
-  { id: 'openchat_mac_vieja', re: /openChat: forcing connectToDevice/, min: 3, que: 'abrir un chat forzaba la dirección Bluetooth vieja', arreglo: 3017 },
+  // 3076 (avisos de la tarea de cada hora del 14-11, «reaparece» en la APK 3047): desde 3017 abrir un chat SIN otro camino vivo
+  // prueba la dirección Bluetooth guardada a propósito (el realme sin internet: conectó, MTU 23). La línea es la misma, así que
+  // tras el arreglo solo informa (no avisa).
+  { id: 'openchat_mac_vieja', re: /openChat: forcing connectToDevice/, min: 3, que: 'abrir un chat forzaba la dirección Bluetooth vieja', arreglo: 3017,
+    trasArreglo: 'desde 3017 abrir un chat sin otro camino vivo prueba la dirección guardada a propósito (no es fallo)' },
   { id: 'enlace_repetido_bucle', re: /Dedup: cierro enlace repetido/, min: 3, que: 'enlace Bluetooth repetido que se abre y se cierra (3019: por el escaneo; 3027: cada lado cerraba uno distinto)', arreglo: 3027 },
-  { id: 'no_service_bucle', re: /desconectado: no_service/, min: 8, que: 'reconexión Bluetooth sin servicio NEXO en bucle (3025: la pausa no saltaba, el corte-eco la reiniciaba; 3033: el escaneo y Jump se la saltaban)', arreglo: 3033 },
+  // 3076: si se ve la pausa («pauso Bluetooth»), la protección funciona: es el otro teléfono el que no muestra el servicio
+  // (Motorola con el servidor Bluetooth muerto, arreglado en el nativo de la APK 3048), no el bucle de antes
+  { id: 'no_service_bucle', re: /desconectado: no_service/, min: 8, que: 'reconexión Bluetooth sin servicio NEXO en bucle (3025: la pausa no saltaba, el corte-eco la reiniciaba; 3033: el escaneo y Jump se la saltaban)', arreglo: 3033,
+    frenoVisto: /sin servicio GATT \d+ veces: pauso Bluetooth/, conFreno: 'la pausa funciona: el otro teléfono no muestra el servicio NEXO (su Bluetooth; Motorola: arreglado en el nativo de la APK 3048)' },
   { id: 'repeticion_no_descifra', re: /No se pudo descifrar (el archivo|el mensaje) .*protocolo 2/, min: 3, que: 'algo ya recibido que vuelve a llegar mucho después no se reconocía como repetido (no se confirmaba y el otro lo reenviaba)', arreglo: 3029 },
   { id: 'fenix_duplicado', re: /sendFile EN COLA .*fileId=fxs_/, min: 2, que: 'respaldo Fénix repetido al mismo contacto (el reintento guardado se sumaba al de Fénix)', arreglo: 3026 },
   { id: 'contacto_reinstalado', re: /se llama igual que .* reinstalado|contacto_duplicado/, min: 1, que: 'contacto duplicado por reinstalación', arreglo: 3018 },
@@ -92,6 +99,8 @@ function analizar(d) {
     if (f.info) estado = 'informativo';
     else if (f.arreglo == null) estado = 'abierto (sin arreglo aún)';
     else if (build == null) estado = 'arreglado en ' + f.arreglo + ' (build desconocida)';
+    else if (build >= f.arreglo && f.trasArreglo) estado = 'informativo: ' + f.trasArreglo;
+    else if (build >= f.arreglo && f.frenoVisto && f.frenoVisto.test(src)) estado = 'informativo: ' + f.conFreno;
     else if (build >= f.arreglo) { estado = 'REAPARECE: arreglado en ' + f.arreglo + ' y este teléfono tiene la ' + build; alerts.push(f.id + ' reaparece en ' + build); }
     else estado = 'ya arreglado en ' + f.arreglo + ': este teléfono tiene la ' + build + ' (falta actualizar)';
     out.push('  firma ' + f.id + ' ×' + n + ': ' + f.que + ' → ' + estado);

@@ -361,6 +361,12 @@ export class GwLink {
     // su hueco de conexión de paso queda para el siguiente candidato (si no, los dormidos ocupan los 3 y nunca se prueba a otro)
     var rel = this.ble() && this.ble().relay;
     if (rel && typeof rel.releaseTransient === 'function') silent.forEach(function(nx) { rel.releaseTransient(nx, 'no presta internet: hueco para otro'); });
+    // 3076 (batería de la 3049: resume.js y radiollamada.js fallaban desde la 3072): un «no tengo internet» de un vecino lanzaba
+    // la búsqueda de desconocidos (con su escaneo) aunque no hubiera NADA mío esperando: gastaba el cupo de escaneos de Android
+    // y conexiones de paso en plena llamada. La cadena es para cuando algo espera salir (o espero respuesta de un puente
+    // reciente); si no, sigue el ritmo de siempre del latido (cada 10 min).
+    var needNow = !!(rel && now - (rel.needAt || 0) < GW_NEED_MS) || (!!this._bridgeAt && now - this._bridgeAt < GW_RECENT_MS);
+    if (!needNow) { this._chainSince = 0; return; }
     this._seekAt = now;
     if (this._seekStrangers(this._neighbors(), now)) this._askSoon();
     else this.tick(); // quizá ya hay vecinos nuevos (o se acaba de conectar uno): se les pregunta
