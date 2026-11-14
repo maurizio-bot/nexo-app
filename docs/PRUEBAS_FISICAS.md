@@ -130,6 +130,10 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 50. **Bluetooth que vuelve (3051).** S24 sin Wi-Fi ni datos, con el Bluetooth APAGADO; el S23 cerca con NEXO cerrado. Enciende el
     Bluetooth del S24 y mándale un texto al S23: debe salir en segundos (antes, hasta un minuto). En el diagnóstico del S24:
     «Bluetooth encendido otra vez: busco y reintento lo pendiente».
+51. **Sin escrituras a ciegas (3051).** Con la tablet lejos (o apagada) y algo pendiente para ella, abre NEXO en el S24 cerca del
+    vivo. En el diagnóstico del S24 ya no deben salir, para la tablet, «Resume: … outgoing» seguido de «Texto sobre un Bluetooth que
+    el nativo ya soltó», ni en el registro nativo «Write fallo … durante ~6 s» hacia su dirección; sale una vez «sin enlace Bluetooth
+    ahora: espera a que vuelva». Cuando la tablet vuelve, lo suyo le llega.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 

@@ -39,9 +39,14 @@ Orden: 1) Bluetooth solo de emergencia (3079) · 2) un archivo que va por Blueto
   nativo) pero no confirma lo que el S24 le pasa como puente Bluetooth para otros contactos (ACK timeout ×5, «la app del otro no
   contesta» tras 8 reintentos; queda ⏳, no se pierde). Lo resuelve el puente nativo (que el nativo reenvíe sin despertar la app) o
   un toque FCM al puente cuando no confirma (por estudiar).
-- **Menor:** «Resume: 4 outgoing para nx1e29ab2f» (tablet, vista a las 12:41) arranca envíos por un Bluetooth que el nativo ya no
-  tiene, cada vez que vuelve la app; se rinden solos en ~10 s pero mientras hacen esperar al envío real («otro envío avanza por la
-  radio»). Mirar con su diagnóstico.
+- **Hecho 3083 (diagnóstico S24 14-11 08:09):** «Resume: 4 outgoing para nx1e29ab2f» (la tablet, ausente) arrancaba sus textos
+  largos por la dirección Bluetooth guardada, sin enlace, en cada vuelta de reenvío a OTRO contacto (el vivo dormido): escrituras a
+  ciegas y «Write fallo ~6 s… descartado» en el nativo. Ahora espera a que ese contacto tenga enlace listo (resumeciego.js: 72 → 0).
+- **Abierto (diagnóstico S24 14-11 08:09):** el vivo (nx09acdb61, enlace Bluetooth listo, MTU 517) confirmó en 4 s la petición de
+  diagnóstico (oculta) pero NO dos textos del dueño (8gj2911l y zpzxhbx9: 5 vueltas, «reenvio_sin_fin»); el nativo del S24 los
+  escribió bien. Hipótesis sin confirmar: el vivo no puede descifrarlos (si sigue en la 3044 no tiene el desatasco del cifrado de la
+  3069) o su app los descarta. Falta su diagnóstico (el S24 se lo pidió a las 08:08:47; a las 14:15 UTC aún no había llegado al
+  canal). Los dos textos quedaron también en su buzón de internet (red de seguridad), que el vivo no tenía.
 - **realme (nx0v74707a):** sigue en la build 3032, batería 13 %, Bluetooth apagado en su diagnóstico: que se actualice.
 - **vivo (nx09acdb61), diagnósticos automáticos 14-11 01:36 UTC:** está en la **3044** (vieja). Su app estuvo congelada de 14:10 a
   19:36 (5,5 h) en segundo plano aunque Android la da por «exenta»: el nativo siguió recibiendo (60 sobres entraron al abrirla). Eso

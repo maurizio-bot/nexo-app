@@ -21,7 +21,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **14-11 (3079–3082 = APK 3051, batería de la 3082 en curso):** orden de trabajo acordado con el dueño (regla: «el Bluetooth
+- **14-11 (3079–3083 = APK 3051, batería de la 3083 en curso):** orden de trabajo acordado con el dueño (regla: «el Bluetooth
   es la emergencia, solo por si no hay otro camino; fuera de eso, siempre el más rápido»). (1) **3079:** con internet disponible
   (también con datos móviles) textos y archivos van por internet antes que por un Bluetooth listo (antes el Bluetooth listo iba
   primero si no estaban los dos en Wi-Fi; `_resolveDeviceIdForNexoId`; btemerg.js E1–E3, sin internet el Bluetooth sigue de
@@ -33,7 +33,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   (pendiente del realme, Bluetooth apagado): la app no escuchaba el aviso nativo de Bluetooth apagado/encendido; al volver a
   encenderlo seguía sin buscar hasta 60 s (sin internet y con la app del otro cerrada, un texto tardaba 59,6 s en salir por
   Bluetooth). Ahora escucha `onBluetoothStateChanged` (al encenderse busca y reintenta lo pendiente al momento: 3,6 s) y usa el
-  estado del arranque (`_onBtState`; btonoff.js B1–B4; el modo «Bluetooth apagado» del simulador es `NativePhone.setBt`). Paso 4 (archivos
+  estado del arranque (`_onBtState`; btonoff.js B1–B4; el modo «Bluetooth apagado» del simulador es `NativePhone.setBt`). (5) **3083**
+  (diagnóstico S24 08:09 pegado por el dueño): «Resume: 4 outgoing» de la tablet AUSENTE arrancaba sus textos largos por la dirección
+  Bluetooth guardada, sin enlace, en cada vuelta de reenvío al vivo (app dormida): escrituras a ciegas y «Write fallo ~6 s» en el
+  nativo. Ahora la reanudación por Bluetooth directo espera al enlace listo de ese contacto (`_resumeRunOne`; resumeciego.js: 3082 =
+  72 escrituras a ciegas, 3083 = 0). Abierto del mismo diagnóstico: el vivo confirmó la petición de diagnóstico pero NO dos textos del
+  dueño (5 vueltas); falta su diagnóstico para saber por qué (el S24 se lo pidió). Paso 4 (archivos
   por internet en conexión directa) PREPARADO en PENDIENTES, falta el OK del dueño; pasos 5 (Wi-Fi Direct) y 6 (puente con app
   dormida) después.
 - **14-11 (3076–3078, van en la APK 3050 —la «3049» se cortó por tiempo en el servidor— con 3072–3075; batería 238/238, índice 63,8):** dueño: «las notificaciones se mezclan… las de cuando

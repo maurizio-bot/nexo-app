@@ -923,6 +923,10 @@
     {
      "fallo": "Pendiente del realme 13-11 (Bluetooth apagado) y dueño 14-11 («el Bluetooth es la emergencia»): la app no escuchaba el aviso nativo de Bluetooth apagado/encendido ni usaba isBluetoothEnabled al arrancar; tras volver a encenderlo seguía sin buscar hasta 60 s: sin internet y con la app del otro cerrada, un texto tardaba 59,6 s en salir por Bluetooth (3081). 3082: escucha onBluetoothStateChanged (al encenderse busca y reintenta lo pendiente al momento; al apagarse deja de buscar) y usa el estado del arranque: 3,6 s.",
      "prueba": "Bluetooth que se apaga y se enciende"
+    },
+    {
+     "fallo": "Diagnóstico S24 14-11 08:09 (build 3050): «Resume: 4 outgoing para nx1e29ab2f» (la tablet, ausente desde el día anterior) arrancaba sus 4 textos largos por la dirección Bluetooth guardada, sin enlace, en cada vuelta de reenvío al vivo (app dormida, no confirmaba): 13 escrituras a ciegas, «Write fallo ~6 s… descartado entero (20 trozos)» en el nativo y «se rinde» a los 10 s, mientras lo del vivo esperaba. Reproducido (resumeciego.js, 3082: 72 escrituras a ciegas). 3083: la reanudación por Bluetooth directo espera a que el contacto tenga enlace listo (0 escrituras; lo de la tablet llega al volver).",
+     "prueba": "sin escrituras a ciegas a un contacto ausente"
     }
    ],
    "debiles": [

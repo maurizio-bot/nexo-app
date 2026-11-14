@@ -2099,6 +2099,20 @@ export class BleAckSystem {
     // redundancia de Fénix cubre el respaldo. Tapa el hueco del diagnóstico: la REANUDACIÓN saltaba el freno que el respaldo ya
     // respeta al elegir (2951/2952). Solo afecta a Fénix: lo del usuario (texto/foto/archivo) se reanuda siempre.
     if ((tx.type === 'fenix' || (tx.meta && tx.meta.type === 'fenix')) && self._fenixDeferNow(devId)) return null;
+    // 3083 (diagnóstico S24 14-11 08:09, resumeciego.js): un envío directo por Bluetooth a un contacto SIN enlace listo (la tablet,
+    // ausente desde ayer, en su dirección guardada) arrancaba en cada vuelta de reenvío de OTRO contacto: 13 escrituras a ciegas, «Write
+    // fallo ~6 s… descartado» en el nativo y «se rinde» a los 10 s, mientras lo del otro esperaba. Ahora espera sin escribir: lo reanuda
+    // su propio enlace al quedar listo (el reenvío de sus pendientes llama con él) o un camino de internet/Wi-Fi.
+    if (!_isNetDevice(devId) && !_isLanDevice(devId) && !(tx.meta && (tx.meta.dst || tx.meta.fwd)) && self.ble && typeof self.ble._bleReadyFor === 'function' && !self.ble._bleReadyFor(cid)) {
+      self._resumeWaitLog = self._resumeWaitLog || new Map();
+      var lw = self._resumeWaitLog.get(tx.transferId) || 0;
+      if (Date.now() - lw > 600000) {
+        self._resumeWaitLog.set(tx.transferId, Date.now());
+        if (self._resumeWaitLog.size > 500) self._resumeWaitLog.delete(self._resumeWaitLog.keys().next().value);
+        console.log('[BleAckSystem] ' + tx.transferId + ': ' + cid + ' sin enlace Bluetooth ahora: espera a que vuelva (no se escribe a ciegas)'); // i18n-ok: registro para el diagnóstico
+      }
+      return null;
+    }
     // 3058: en llamada, una reanudación por Bluetooth espera a colgar (la radio es de la llamada; ble_messages._callRadioHold)
     if (!_isNetDevice(devId) && !_isLanDevice(devId) && self.ble && typeof self.ble._callRadioHold === 'function' && self.ble._callRadioHold(cid, 'la reanudación de ' + tx.transferId)) return null;
     // Ronda 2766: a quién va (es su chat): si la conexión resulta ser de otro, no sale por ella
