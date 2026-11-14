@@ -3,6 +3,21 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 14-11 (diagnósticos S23 18:34, realme 3032, S24 19:10 y 19:15) — 3075 hecho, en la APK 3049
+- **Hecho 3075:** los trozos de un audio/archivo del buzón se borraban con el ✓✓ que da el NATIVO del otro al llegar el aviso (antes
+  de bajarlo) → «Faltan 5 de 5 trozos». Ahora solo con el «ya lo bajé» (✓✓ con `got`) o el «leído». Si el otro está en una build
+  anterior (no manda `got`), los trozos esperan a su «leído» o caducan en 7 días (`blobnative.js`).
+- **Hecho 3075:** el repaso de pendientes pedía al Bluetooth conectar a caminos `net:`/`lan:` (14 veces al volver al frente) y dejaba
+  un enlace fantasma; con el realme, un «zombi» falso. Tapado en la propia auto-conexión (`netconn.js`).
+- **Abierto (parte de la opción A, puente nativo):** el vivo (nx09acdb61) con la app dormida: su nativo contesta los pings (pong
+  nativo) pero no confirma lo que el S24 le pasa como puente Bluetooth para otros contactos (ACK timeout ×5, «la app del otro no
+  contesta» tras 8 reintentos; queda ⏳, no se pierde). Lo resuelve el puente nativo (que el nativo reenvíe sin despertar la app) o
+  un toque FCM al puente cuando no confirma (por estudiar).
+- **Menor:** «Resume: 4 outgoing para nx1e29ab2f» (tablet, vista a las 12:41) arranca envíos por un Bluetooth que el nativo ya no
+  tiene, cada vez que vuelve la app; se rinden solos en ~10 s pero mientras hacen esperar al envío real («otro envío avanza por la
+  radio»). Mirar con su diagnóstico.
+- **realme (nx0v74707a):** sigue en la build 3032, batería 13 %, Bluetooth apagado en su diagnóstico: que se actualice.
+
 ## 🆕 13-11 (prueba del dueño: puente a internet con «solo Bluetooth», S24 3047 17:42–17:44) — DUEÑO ELIGIÓ A (+ búsqueda)
 - **Decisión del dueño (13-11):** «la opción A está bien: cualquier NEXO, esté dormido o no, tiene que servir de puente. Lo que falta
   es que el vivo fue la única opción: si el vivo u otro no sirve, se tiene que buscar otro, y así sucesivamente hasta encontrar un

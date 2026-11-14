@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-11-14 (builds **2935–3072**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3071–3072 (APK 3048) — desatasco también en grupos, fotos del chat hasta 5 MB y el Bluetooth del Motorola que se queda «sin servicio» tras apagarse y encenderse**; antes 3069–3070 (APK 3047): desatasco automático del cifrado y relé en segundo plano que ya no se reabre sin fin.
+Última actualización: 2026-11-14 (builds **2935–3075**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3072–3075 (APK 3049) — puente a internet en cadena, despertador al abrir el chat/adjuntar/grabar, el audio que el que manda borraba antes de que el otro lo bajara y el zombi falso con contactos de internet**; antes 3071–3072 (APK 3048): desatasco también en grupos, fotos del chat hasta 5 MB y el Bluetooth del Motorola que se queda «sin servicio» tras apagarse y encenderse; antes 3069–3070 (APK 3047): desatasco automático del cifrado y relé en segundo plano que ya no se reabre sin fin.
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).

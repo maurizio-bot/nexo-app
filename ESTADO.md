@@ -21,6 +21,18 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **14-11 (3072–3075 = APK 3049, batería en curso):** (1) **3072 puente en cadena** (dueño: «si el vivo no sirve u otro no sirve, se
+  busca otro, y así hasta encontrar un puente válido»): sin internet propio se pregunta a TODO NEXO cercano (contactos con o sin
+  enlace, desconocidos, anónimos); 5 s sin respuesta o «no tengo» → suelta su hueco de conexión de paso y prueba el siguiente
+  (`gw_link.js` `_chainNext`, `ble_relay.js` `releaseTransient`; `puente5.js`: 3071 nunca en 150 s, 3072 ≈24 s). También: no forzar
+  Bluetooth a `net:`/`lan:` al abrir el chat y al enviar. (2) **3073 despertador** (dueño): toque FCM al abrir un chat, al abrir
+  «adjuntar» y al grabar un audio, aunque el otro parezca en línea (su nativo da presencia con la app dormida); freno de 8 s por
+  contacto (`wakeopen.js`). (3) **3074**: un archivo cuyo único relé está apartado por inestable se baja igual (`blobside.js`).
+  (4) **3075** (diagnósticos S23 18:34 y S24 19:08): la causa REAL del audio «Faltan 5 de 5 trozos»: el que manda borraba los trozos
+  con el ✓✓ que da el nativo del otro al llegar el aviso, antes de bajarlo. Ahora solo con el «ya lo bajé» de su app (✓✓ con
+  `got:1`) o su «leído» (`blobnative.js`, con `honorDeletes` en el relé simulado; contraprueba 3074: borra antes y B falla). Y el
+  repaso de pendientes ya no pide Bluetooth para caminos `net:`/`lan:` (zombi falso con el realme; `netconn.js`). Abierto: puente
+  nativo con la app dormida (opción A del dueño; el vivo del diagnóstico 19:15 no confirma lo que se le pasa como puente).
 - **13-11 (3071–3072 = APK 3048, batería 233/233, índice 63,7):** lo que quedó del desatasco: los mensajes de GRUPO. Cada mensaje de
   grupo va a cada miembro como copia oculta en su chat, y esa copia se BORRABA con su ✓✓ (que puede dar su nativo con la app
   cerrada sin poder descifrar): tras un atasco, esos mensajes se perdían para él. Reproducido (`desync.js --perdidos --grupo`,
