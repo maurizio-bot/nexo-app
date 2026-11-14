@@ -21,7 +21,14 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   despertar la app; (B) dejarlo así (presta solo quien tiene NEXO abierto). Grande: nativo + JS + prueba física.
 - Pequeño (para la 3072): con internet caído, `sendChatMessage` forzaba `connectToDevice('net:…')` (el nativo lo ve como
   «netnx…» y no hace nada; 8 veces en 2 min): no forzar conexión Bluetooth para un destino `net:`.
-- Motorola: pedir su diagnóstico justo al abrir NEXO para ver por qué su servidor Bluetooth (GATT) no publica el servicio.
+- Motorola: **causa CONFIRMADA y arreglada en 3072** con sus diagnósticos automáticos viejos (3041 11:42, 3044 14:42): «Bluetooth
+  apagado/encendido» de 2–4 s (10:22:52, 10:23:45, 13:54:21) → «Advertising auto-iniciado» SIN «GATT_SERVER Iniciado», y desde ahí
+  ninguna conexión entrante a su servidor hasta reabrir la app. Antes del corte sí había conexiones entrantes. Queda saber quién
+  apaga el Bluetooth del Motorola 2–4 s (¿la pila que se reinicia sola?).
+- «Leído» del Honor: SÍ llegó (17:49:57–58, los 4 en azul). Austin abrió el chat desde el aviso a las 17:48:56 y pasó a otro chat a
+  las 17:49:07; los dos primeros se marcaron leídos recién al volver a abrir el chat (~17:49:57). Por revisar en el simulador:
+  ¿abrir el chat desde la notificación manda el «leído» de lo que ya estaba? (posible fallo; sin confirmar).
+- 3070 funciona en la calle: el Honor (3047) registra «Relé relay.damus.io: cerrada (intento nº 5: el siguiente en 160 s)».
 - 2.º diagnóstico (17:49): **el puente SÍ funcionó** con el Honor (nx1905c1ee, «Austin»): 17:49:38 «[GW] Conectado a internet por
   el puente nx1905c1ee» (2 min después de quitar el Wi-Fi: el Honor tenía el Bluetooth ocupado con sus mensajes grandes de 114 KB).
 - «Leído» que no llega del Honor: sus 4 textos por BT quedaron ✓✓ entregados (17:48:53–17:49:31), ningún acuse de lectura en el
