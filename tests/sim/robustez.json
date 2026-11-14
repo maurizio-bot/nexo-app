@@ -1518,10 +1518,6 @@
     {
      "g": "leve",
      "d": "Sin «Tu nombre»: los contactos ven el nombre Bluetooth del teléfono (decisión del dueño)"
-    },
-    {
-     "g": "leve",
-     "d": "Sin la foto del contacto en sus notificaciones"
     }
    ],
    "fallos": [
@@ -1544,6 +1540,10 @@
     {
      "fallo": "Tras el pedido del dueño 14-11 sobre la videollamada 1-a-1: la llamada de GRUPO tenía botones de texto de 120 px que, con vídeo, en un teléfono de 360–412 ocupaban 4 filas (248 px de 778, casi un tercio de la pantalla). 3092 (groupcall_ui.js + calls_ui.js): la misma fila de círculos con nombre que la 1-a-1 (96 px); el ajuste de nombres nunca rompe la pantalla (sin medidas, no toca nada). gcbotones.js: 3091 = 4 filas; 3092 = 1 fila",
      "prueba": "llamada de GRUPO: los 7 botones en una sola fila"
+    },
+    {
+     "fallo": "Punto débil «sin la foto del contacto en sus notificaciones» (cola del dueño 14-11). 3094: la foto que la app MUESTRA de cada contacto (no las copias escondidas, 3028) pasa al nativo con setNotifAvatar SOLO EN MEMORIA (Kotlin NotifAvatars: 64 fotos como mucho, 64 KB cada una; nunca se escribe: no toca el cifrado en reposo) y MsgNotifier la pone redonda en el aviso; con el proceso muerto, sin foto como antes. fotoaviso.js: 3093 sin foto; 3094 con foto (segundo plano y app cerrada) y sin ella si el contacto la quita. Kotlin NotifAvatarsTest",
+     "prueba": "foto del contacto en sus avisos"
     }
    ]
   },

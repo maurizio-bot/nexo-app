@@ -61,7 +61,16 @@ function _load(name) {
 }
 function _save(name, obj) { var pl = _pl(); if (pl && typeof pl.saveToFile === 'function') pl.saveToFile({ filename: name, content: JSON.stringify(obj) }).catch(function() {}); }
 function _hash(s) { var h = 2166136261; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); }
-function _emit(nx) { try { window.dispatchEvent(new CustomEvent('nexo:avatar', { detail: { nx: nx } })); } catch (e) {} }
+function _emit(nx) { try { window.dispatchEvent(new CustomEvent('nexo:avatar', { detail: { nx: nx } })); } catch (e) {} _toNotif(nx); }
+// 3094 (cola del dueño 14-11: «sin la foto del contacto en sus notificaciones»): la foto que se MUESTRA de cada contacto pasa al
+// nativo para sus avisos, SOLO EN MEMORIA (no se escribe en el teléfono: no toca el cifrado en reposo). Con la app cerrada del
+// todo (proceso muerto) el aviso sale sin foto hasta que la app vuelva a abrirse. Una copia escondida (3028) no se manda.
+function _toNotif(nx) {
+  if (!NX_RE.test(nx || '')) return;
+  var pl = _pl();
+  if (!pl || typeof pl.setNotifAvatar !== 'function') return;
+  try { Promise.resolve(pl.setNotifAvatar({ chatId: nx, img: _cache.get(nx) || '' })).catch(function() {}); } catch (e) {}
+}
 // 3028: huella de la imagen (dHash 8×8 de grises + color medio). Una copia re-comprimida o re-escalada da la misma (o casi).
 // El simulador no tiene canvas: window.NEXO_avatarPHash(dataUrl) → { b: '0101…' (64), c: [r, g, b] } o null.
 function _phash(url) {

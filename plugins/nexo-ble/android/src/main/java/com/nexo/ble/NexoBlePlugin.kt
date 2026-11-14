@@ -3211,6 +3211,18 @@ class NexoBlePlugin : Plugin() {
 
     // ===== Notificaciones de mensajes (MsgNotifier): las pide notify.js con la app en segundo plano =====
     @PluginMethod
+    fun setNotifAvatar(call: PluginCall) {
+        // 3094: la foto que la app MUESTRA de este contacto, para sus avisos (solo en memoria; img vacía = quitarla)
+        val chatId = call.getString("chatId") ?: run { call.reject("falta chatId"); return }
+        val img = call.getString("img") ?: ""
+        val bytes = if (img.isEmpty()) null else try {
+            android.util.Base64.decode(NotifAvatars.base64Part(img), android.util.Base64.DEFAULT)
+        } catch (e: IllegalArgumentException) { null }
+        NotifAvatars.put(chatId, bytes)
+        call.resolve()
+    }
+
+    @PluginMethod
     fun notifyMessage(call: PluginCall) {
         val chatId = call.getString("chatId") ?: run { call.reject("falta chatId"); return }
         val count = MsgNotifier.get(context).message(chatId, call.getString("name") ?: "NEXO", call.getString("msgId") ?: System.currentTimeMillis().toString(), call.getString("text") ?: "")

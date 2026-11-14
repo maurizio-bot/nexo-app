@@ -316,6 +316,21 @@ class MsgNotifier(private val ctx: Context) {
         update.forEach { post(it, alert = false) }
     }
 
+    private fun avatarBitmap(chatId: String): android.graphics.Bitmap? {
+        val bytes = NotifAvatars.get(chatId) ?: return null
+        return try {
+            val src = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+            val side = minOf(src.width, src.height).coerceAtLeast(1)
+            val out = android.graphics.Bitmap.createBitmap(side, side, android.graphics.Bitmap.Config.ARGB_8888)
+            val cv = android.graphics.Canvas(out)
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+            cv.drawCircle(side / 2f, side / 2f, side / 2f, paint)
+            paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_IN)
+            cv.drawBitmap(src, ((side - src.width) / 2f), ((side - src.height) / 2f), paint)
+            out
+        } catch (e: Exception) { Log.w(TAG, "Foto del aviso ilegible: ${e.message}"); null }
+    }
+
     private fun post(chatId: String, alert: Boolean) {
         val c = book.get(chatId) ?: return
         val nm = NotificationManagerCompat.from(ctx)
@@ -344,6 +359,8 @@ class MsgNotifier(private val ctx: Context) {
             .setAutoCancel(true)
             .setOnlyAlertOnce(!alert)
             .setContentIntent(pi)
+        // 3094: la foto del contacto (la que la app le pasó, solo en memoria), redonda; sin foto, como antes
+        avatarBitmap(chatId)?.let { b.setLargeIcon(it) }
         try { nm.notify(notifId(chatId), b.build()) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones"); return }
         if (alert && wakeOnMsg()) wakeScreen(5000)
     }

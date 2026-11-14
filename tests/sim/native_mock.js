@@ -537,7 +537,8 @@ class NativePhone {
     n.ids.add(mid); n.name = name || n.name; n.text = text || ''; n.posts = (n.posts || 0) + 1;
     if (this.wakeOnMsg !== false) this._wake(); // Kotlin 2765: MsgNotifier.post enciende la pantalla (si se deja en Perfil)
     this.notifications.set(id, n); this.msgChat.set(mid, id);
-    this.notifLog.push(Object.assign({ t: Date.now(), chatId: id, name: n.name, text: text || '', count: n.base + n.ids.size, msgId: mid }, flags || {}));
+    n.photo = !!(this.notifAvatars && this.notifAvatars.get(id)); // 3094: MsgNotifier.post pone la foto del contacto si la tiene
+    this.notifLog.push(Object.assign({ t: Date.now(), chatId: id, name: n.name, text: text || '', count: n.base + n.ids.size, msgId: mid, photo: n.photo }, flags || {}));
     return n.base + n.ids.size;
   }
   // Kotlin 2763 MsgNotifier.incomingCall; ronda 2768 (CallDedupe): un aviso por oferta (mismo remitente y mismo id de la
@@ -1295,6 +1296,14 @@ class NativePhone {
       }),
       markMsgsSeen: wrap('markMsgsSeen', (c, a) => { if (!self.seenMsgs) self.seenMsgs = new Set(); ((a && a.ids) || []).forEach((x) => self.seenMsgs.add(String(x))); c.resolve({ count: ((a && a.ids) || []).length }); }),
       notifyMessage: wrap('notifyMessage', (c, a) => { c.resolve({ count: self._postNotif(a.chatId, a.name, a.msgId, a.text, {}) }); }),
+      // 3094 (Kotlin NotifAvatars + setNotifAvatar): la foto del contacto para sus avisos, solo en memoria (img '' = quitarla)
+      setNotifAvatar: wrap('setNotifAvatar', (c, a) => {
+        const id = String((a && a.chatId) || '').toLowerCase(), img = String((a && a.img) || '');
+        if (!id) return c.reject('falta chatId');
+        if (!self.notifAvatars) self.notifAvatars = new Map();
+        if (img && img.length <= 90000) self.notifAvatars.set(id, img); else self.notifAvatars.delete(id);
+        c.resolve({});
+      }),
       // Ronda 2763 (MsgNotifier.incomingCall): aviso de llamada con tono; Contestar / Rechazar quedan en pendingAnswer / pendingDecline
       notifyCall: wrap('notifyCall', (c, a) => { self._incomingCall(a.chatId, a.name, !!a.video, a.offerId || '', {}); c.resolve({}); }),
       clearCall: wrap('clearCall', (c) => { self.callNotif = null; c.resolve({}); }),
