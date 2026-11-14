@@ -21,6 +21,18 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **14-11 tarde (3084–3085, en la rama; van en la APK siguiente a la 3051, batería de la 3085 en curso):** dueño: «si un contacto no
+  está al alcance del Bluetooth ni siquiera debería intentarlo» y «el S24 cambia de Wi-Fi a datos muy rápido, ¿por qué nosotros somos
+  lentos?». (1) **3084:** Bluetooth solo a quien está cerca (enlace listo, visto al escanear < 2 min o enlace caído < 1 min); si no,
+  ningún intento de conexión (repaso de pendientes, reconexión, abrir chat, mandar): va por internet/Wi-Fi o espera, y se conecta solo
+  al verlo (`_btNearby`/`_btFarSkip`; btcerca.js: 3083 = 2 intentos a lejanos, 3084 = 0). Idea del dueño «hazlo por scan»: ya era así,
+  al abrir el chat o mandar se escanea al momento (K4 0,8 s / K5 0,5 s con el otro con la app cerrada). (2) **3085:** aviso nativo de
+  cambio de la red por defecto (`NetChange.kt` + `watchDefaultNetwork` → `onNetChange`) y la app rehace las conexiones a los relés
+  por la nueva al momento (`net_link._onNetChange`; redcambio.js: 28 s → 0,7 s); el diagnóstico apunta «Cambio de red» y «Relés
+  listos tras el cambio de red en X s». El enganche Android solo compila en el servidor (Kotlin JVM 151/151). (3) Diagnóstico del vivo
+  08:49: los 2 textos sin confirmar eran su app DORMIDA por el sistema (el nativo sí los recibió a las 08:10), no el cifrado.
+  Propuestas al dueño, esperan su OK: app dormida = app cerrada (el nativo guarda, da ✓✓ y avisa) y desatasco del cifrado desde el
+  que manda + aviso + versión de cada contacto.
 - **14-11 (3079–3083 = APK 3051, batería 244/244, índice 63,8; deadbt.js puesta al día con la regla de la 3079):** orden de trabajo acordado con el dueño (regla: «el Bluetooth
   es la emergencia, solo por si no hay otro camino; fuera de eso, siempre el más rápido»). (1) **3079:** con internet disponible
   (también con datos móviles) textos y archivos van por internet antes que por un Bluetooth listo (antes el Bluetooth listo iba
