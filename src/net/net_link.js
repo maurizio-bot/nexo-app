@@ -936,13 +936,17 @@ export class NetLink {
   // NIP-09: pedir el borrado de los trozos (firmado con la clave del blob) al confirmar; best-effort (la caducidad es la garantía)
   blobDeleteEvent(sk, ids) { return _event(sk, 5, (ids || []).map(function(id) { return ['e', id]; }), ''); }
   // Conectar a demanda a un relé del puntero que no tengamos (solo wss:// o localhost); resuelve true si quedó abierto
-  ensureRelay(url, waitMs) {
+  // force (3073, diagnóstico S24 14-11 18:41: un audio del S23 «faltan 5 de 5 trozos» una y otra vez): para bajar un archivo cuyo
+  // único relé está apartado por inestable o esperando su reintento, se intenta igual una vez (si no, el archivo no baja nunca
+  // mientras dure el apartado: 5 min)
+  ensureRelay(url, waitMs, force) {
     var self = this;
     if (!_relaySafe(url)) return Promise.resolve(false);
     var r = self._relayFor(url);
     if (r && r.open) return Promise.resolve(true);
     if (self.gwOnly()) return Promise.resolve(false); // sin internet propio no se puede abrir otro relé (solo los de los puentes)
     r = self.relays.get(url);
+    if (force && r && !r.ws && r.retryAt > Date.now()) { console.log('[NET] Relé ' + _relayHost(url) + ' apartado, pero tiene un archivo que hace falta: lo abro igual'); r.retryAt = 0; } // i18n-ok
     if (!r || (!r.ws && (!r.retryAt || r.retryAt <= Date.now()))) { try { self._connect(url); } catch (e) { return Promise.resolve(false); } }
     return new Promise(function(resolve) {
       var t0 = Date.now(), iv = setInterval(function() {

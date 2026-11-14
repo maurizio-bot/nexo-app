@@ -645,6 +645,10 @@
     {
      "fallo": "Dueño 13-11 (3071, opción A): una foto del chat no tenía tope al elegirla: una de la galería de 6 MB o más se leía entera en memoria para comprimirla. Ahora más de 5 MB no se manda (aviso) ni se lee; las demás de la tanda siguen. photocap.js (contraprueba 3069: la lee entera)",
      "prueba": "fotos del chat de hasta 5 MB"
+    },
+    {
+     "fallo": "Diagnóstico S24 14-11 18:41 (3073): un audio del S23 subido a UN solo relé no bajaba («faltan 5 de 5 trozos») mientras ese relé estaba apartado por inestable (5 min): ensureRelay no lo abría. Ahora para bajar un archivo el relé del puntero se abre igual. blobside.js (contraprueba 3072: «faltan 4 de 4»)",
+     "prueba": "archivo cuyo único relé está apartado"
     }
    ],
    "debiles": [

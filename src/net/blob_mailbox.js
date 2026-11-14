@@ -194,7 +194,7 @@ export async function fetchBlob(net, ptr, opts) {
   var urls = [];
   for (var k = 0; k < ptr.relays.length; k++) {
     var u = ptr.relays[k];
-    try { if (await net.ensureRelay(u, o.connectMs || 6000)) urls.push(u); } catch (e) {}
+    try { if (await net.ensureRelay(u, o.connectMs || 6000, true)) urls.push(u); } catch (e) {} // 3073: aunque esté apartado
   }
   (net.openRelayUrls ? net.openRelayUrls() : []).forEach(function(u) { if (urls.indexOf(u) < 0) urls.push(u); });
   if (!urls.length) throw Object.assign(new Error('Sin relés para bajar el archivo'), { code: 'NET_DOWN' });
