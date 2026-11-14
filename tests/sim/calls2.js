@@ -271,6 +271,21 @@ const CASES = {
     r.ok = r.puede_llamar && r.suena && r.rechazar && !again.length && r.avisos_de_llamada === 1;
     return r;
   },
+  // 3087 (punto débil de llamadas): B con la app CERRADA; A llama y cuelga mientras a B le suena. Antes el aviso seguía sonando hasta
+  // 45 s (la señal de colgar va cifrada y el nativo no la leía); debe dejar de sonar en ≤ 5 s (por Bluetooth: marca ce)
+  async 'colgar-cerrada'() {
+    const { nB, A, B, idB } = await setup();
+    await closeApp(B);
+    const r = { puede_llamar: await wait(() => A.win.bleInterface.calls.canCall(idB), 30) };
+    callBtn(A);
+    r.suena = await wait(() => !!nB.callNotif, 20);
+    await sleep(1500);
+    const t0 = realNow();
+    A.win.bleInterface.calls.hangup();
+    r.deja_de_sonar_s = await wait(() => !nB.callNotif, 12) ? Math.round((realNow() - t0) / 100) / 10 : null;
+    r.ok = r.puede_llamar && r.suena && r.deja_de_sonar_s !== null && r.deja_de_sonar_s <= 5;
+    return r;
+  },
   async 'rechazar-viva'() {
     const { nB, A, B, hide } = await setup();
     hide(B, true); await sleep(1000);

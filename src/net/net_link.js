@@ -796,6 +796,9 @@ export class NetLink {
     // teléfono, Contestar/Rechazar), no como un aviso de mensaje. El síntoma del dueño era justo ese: con la pantalla
     // apagada sonaba y llegaba «un mensaje nuevo» en vez de la pantalla de llamada.
     else { body.p = String(content); var nid = this._newMsgId(body.p); if (nid) body.n = nid; var callOffer = nid ? this._isCallOffer(body.p) : false; if (callOffer) body.cl = 1; }
+    // 3087: «colgar» del que llama (env.ce = id de su oferta) también por fuera del sobre: la escucha nativa de internet (NetBg) deja
+    // de sonar al momento con la app cerrada
+    if (body.p) { var ceM = /"ce":"(cs[0-9a-f]{12})"/.exec(body.p); if (ceM) body.ce = ceM[1]; }
     // Build 2967 (Fase A, docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md §6 «token en los dos sentidos»): la MARCA del buzón de un
     // mensaje NUEVO lleva también mi token FCM. Antes iba SOLO en el saludo, que caduca en el relé a los 10 min (TTL_HELLO):
     // un contacto dormido horas leía mi mensaje (TTL 7 días) pero no mi token → no podía tocarme a mí (mutuo) ni despertarme

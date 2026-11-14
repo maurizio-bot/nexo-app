@@ -253,7 +253,7 @@ const SCENARIOS = [
     subt_senal_debil: isTrue, nombre_es_textarea: isTrue,
     emoji_1: (v) => v === 1, emoji_2: (v) => v === 2, emoji_piel: (v) => v === 1, emoji_bandera: (v) => v === 1,
     emoji_muchos: (v) => v === 0, emoji_texto: (v) => v === 0, emoji_mixto: (v) => v === 0, errores: isEmpty } },
-  ...['rechazar-cerrada', 'rechazar-viva', 'contestar-viejo', 'cruce', 'reloj', 'oferta-vieja', 'bloqueo', 'repetida', 'wifi-uno', 'video-estado', 'sin-micro', 'timbre', 'pip', 'pantalla', 'pantalla-bt'].map((c) => (
+  ...['rechazar-cerrada', 'colgar-cerrada', 'rechazar-viva', 'contestar-viejo', 'cruce', 'reloj', 'oferta-vieja', 'bloqueo', 'repetida', 'wifi-uno', 'video-estado', 'sin-micro', 'timbre', 'pip', 'pantalla', 'pantalla-bt'].map((c) => (
     { name: 'llamadas: ' + c, args: ['calls2.js', '--case=' + c], tag: 'CALLS2', logs: 'last_logs_calls2_' + c + '.txt', checks: { resultado: (v) => v === 'OK' } })),
   { name: 'pasar la cuenta a un teléfono nuevo', args: ['move.js', '--io-delay=25'], tag: 'MOVE', checks: { resultado: (v) => v === 'OK' } },
   { name: 'avisos por Bluetooth: segundo plano, app congelada, pantalla apagada y cerrada', args: ['notify.js', '--via=ble'], tag: 'NOTIFY', checks: { resultado: (v) => v === 'OK' } },

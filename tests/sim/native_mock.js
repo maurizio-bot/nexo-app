@@ -505,7 +505,7 @@ class NativePhone {
     me = String(me || '').toLowerCase(); const mine = NX.test(me);
     if (mine && NX.test(String(o.dn || '').toLowerCase()) && String(o.dn).toLowerCase() !== me) return { kind: 'IGNORE' }; // Kotlin 2764
     const what = () => (o.t === 'c' ? (o.cl === 1 ? 'call' : 'text') : (o.tp || 'file'));
-    if (o.type === 'chat' && o.msgId && NX.test(from) && !o.to) return { kind: 'MESSAGE', from, msgId: o.msgId, quiet: o.q === 1, call: o.cl === 1, group: /^gr[0-9a-z]{8}$/.test(String(o.g || '').toLowerCase()) ? String(o.g).toLowerCase() : '' };
+    if (o.type === 'chat' && o.msgId && NX.test(from) && !o.to) return { kind: 'MESSAGE', from, msgId: o.msgId, quiet: o.q === 1, call: o.cl === 1, callEnd: /^cs[0-9a-f]{12}$/.test(String(o.ce || '')) ? o.ce : '', group: /^gr[0-9a-z]{8}$/.test(String(o.g || '').toLowerCase()) ? String(o.g).toLowerCase() : '' };
     if (mine && o.type === 'chat' && o.msgId && NX.test(from) && String(o.to).toLowerCase() === me) return { kind: 'NOTIFY_ONLY', from, msgId: o.msgId, quiet: o.q === 1, what: 'text' };
     // 3012 (BgInbox.kt): un sobre sellado con id al azar («sx…»: confirmación, clave) no avisa; con q:1 (acción oculta) tampoco. NEXO_OLD_SX=1: nativo de antes (contraprueba)
     if (mine && o.type === 'sx' && o.msgId && String(o.to).toLowerCase() === me) { if (process.env.NEXO_OLD_SX !== '1' && String(o.msgId).indexOf('sx') === 0) return { kind: 'IGNORE', from: '', msgId: '' }; return { kind: 'NOTIFY_ONLY', from: '', msgId: o.msgId, quiet: process.env.NEXO_OLD_SX !== '1' && o.q === 1, what: 'text' }; }
@@ -550,6 +550,15 @@ class NativePhone {
     this.callNotif = { from: f, video: !!video, offer: offerId || '' }; this._wake();
     this.notifLog.push(Object.assign({ t: now, chatId: f, name, text: '📞 Llamada entrante', call: true, offer: offerId || '' }, flags || {}));
   }
+  // Kotlin 3087 (MsgNotifier.cancelCallFor / BgInbox.endsRinging): «colgar» del que llama (ce = id de su oferta) quita el aviso de
+  // llamada que suena, si es de ese remitente y de esa oferta
+  _callEnded(from, offerId) {
+    const n = this.callNotif, f = String(from || '').toLowerCase();
+    if (!n || n.from !== f || (n.offer && offerId && n.offer !== offerId)) return false;
+    this.callNotif = null; this.callEndedAt = Date.now();
+    this.notifLog.push({ t: Date.now(), chatId: f, callEnd: true, offer: offerId || '' });
+    return true;
+  }
   // Lo que el dueño toca en el aviso de llamada (Kotlin: CallDeclineReceiver / intent de Contestar). Ronda 2768: con la
   // oferta; "Rechazar" con la app viva se le entrega ya (onCallAction) y sigue apuntado para cuando suene
   declineFromNotification() {
@@ -583,6 +592,7 @@ class NativePhone {
     if (!info.msgId) return;
     // Kotlin 3034: una acción oculta (q:1) no se avisa pero SÍ se confirma (contraprueba: NEXO_OLD_QUIETACK=1, nativo ≤ 3033)
     if (info.quiet) {
+      if (info.kind === 'MESSAGE' && info.callEnd) this._callEnded(info.from, info.callEnd); // Kotlin 3087
       if (info.kind === 'MESSAGE' && !info.call && process.env.NEXO_OLD_QUIETACK !== '1') this._uptimeTimeout(() => {
         if (this.appActive !== false || this.closedMode) return;
         if (fromAddress) this._sendDeliveredAck(fromAddress, info);
@@ -651,6 +661,7 @@ class NativePhone {
     if (info.kind === 'MESSAGE') {
       this.bgInbox.push({ d: fromAddress, c: json, t: Date.now() });
       this._sendDeliveredAck(fromAddress, info);
+      if (info.callEnd) this._callEnded(info.from, info.callEnd);
       if (info.call) this._incomingCall(info.from, this._notifName(info.from), false, info.msgId, { closed: true });
       else if (!info.quiet) this._notifyMsg(info, { closed: true });
     } else if (info.kind === 'RECEIPT') this.bgInbox.push({ d: fromAddress, c: json, t: Date.now() });

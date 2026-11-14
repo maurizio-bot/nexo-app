@@ -25,6 +25,8 @@ class NetBg(
     // (al tocarlo se abría el chat 1-a-1 y no había nada nuevo).
     private val onMessage: (nx: String, name: String, msgId: String, isCall: Boolean, group: String) -> Unit,
     private val log: (String) -> Unit = {},
+    // 3087: el que llama colgó (el sobre lleva ce = id de su oferta): la llamada que suena se quita al momento
+    private val onCallEnd: (nx: String, offerId: String) -> Unit = { _, _ -> },
 ) {
     class Contact(val nx: String, val name: String, val kraw: ByteArray)
     private class Relay(val url: String) { var ws: WsClient? = null; var retryAt = 0L; var fails = 0; var authed = false; var openedAt = 0L }
@@ -265,6 +267,8 @@ class NetBg(
         if (o.optInt("h") == 1) return
         keepForApp(ev.toString())   // 3033: para la app al volver (mensajes, confirmaciones, acciones: lo procesa como si llegara)
         val n = o.optString("n")
+        val ce = o.optString("ce")
+        if (BgInbox.CALL_ID.matches(ce)) onCallEnd(c.nx, ce)
         // #130b: cl:1 = oferta de llamada (1-a-1 o invitación de grupo) → pantalla de llamada, no aviso de mensaje
         if (n.isNotEmpty()) { onMessage(c.nx, c.name, n, o.optInt("cl") == 1, groupOf(o.optString("p"))); publishDeliveryAck(c, n) }
     }

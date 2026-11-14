@@ -915,6 +915,8 @@ class NexoBlePlugin : Plugin() {
         // al avisar, desde 2833) → el otro la reenviaba sin fin hasta que esta app volviera. Ahora se confirma igual, sin aviso
         // (como con la app cerrada, closedReceive).
         if (info.quiet) {
+            // 3087: el que llama colgó (la app dormida no lo puede leer) → deja de sonar ya
+            if (info.kind == BgInbox.Kind.MESSAGE && info.callEnd.isNotEmpty()) MsgNotifier.get(ctx).cancelCallFor(info.from, info.callEnd)
             if (info.kind == BgInbox.Kind.MESSAGE && !info.call) mainHandler.postDelayed({
                 if (!appInBackground) return@postDelayed
                 if (deviceId != null) sendDeliveredAck(deviceId, info)
@@ -956,6 +958,8 @@ class NexoBlePlugin : Plugin() {
             BgInbox.Kind.MESSAGE -> {
                 if (!inbox().add(deviceId, json)) { Log.w("NEXO_REM", "Buzón lleno: mensaje de ${info.from} sin guardar"); return }
                 sendDeliveredAck(deviceId, info)
+                // 3087: el que llama colgó → deja de sonar ya
+                if (info.callEnd.isNotEmpty() && MsgNotifier.get(ctx).cancelCallFor(info.from, info.callEnd)) nlog()?.add("INFO", "BT_CERRADA", "${info.from} colgó: la llamada deja de sonar")
                 // Ronda 2763: una llamada suena como una llamada del teléfono (aviso con tono, Contestar / Rechazar)
                 if (info.call) MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false, info.msgId)
                 else if (!info.quiet) notifyMessage(ctx, info)
@@ -2972,7 +2976,10 @@ class NexoBlePlugin : Plugin() {
                 if (gname != null) MsgNotifier.get(context).message(group, gname, msgId, "$name: Mensaje nuevo", true)
                 else MsgNotifier.get(context).message(nx, name, msgId, "", true)
             }
-        }, { nlog()?.add("INFO", "NET", it); Log.i("NEXO_NET", it) }).also { netBgShared = it }
+        }, { nlog()?.add("INFO", "NET", it); Log.i("NEXO_NET", it) }, { nx, offer ->
+            // 3087: el que llama colgó (sobre con ce, por internet) → deja de sonar ya
+            if (MsgNotifier.get(context).cancelCallFor(nx, offer)) nlog()?.add("INFO", "NET", "$nx colgó: la llamada deja de sonar")
+        }).also { netBgShared = it }
     }
 
     @PluginMethod

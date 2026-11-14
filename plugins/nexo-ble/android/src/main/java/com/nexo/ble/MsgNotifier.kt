@@ -195,8 +195,12 @@ class MsgNotifier(private val ctx: Context) {
     // Llamada entrante: suena con el tono de llamada hasta contestar, rechazar o 45 s; a pantalla completa si el sistema
     // lo permite (si no, aviso grande arriba). Contestar abre NEXO y contesta; Rechazar quita el aviso y, al abrirse
     // NEXO, la llamada se rechaza. Ronda 2768: offerId = id del mensaje de la oferta; un aviso por oferta (CallDedupe).
+    // 3087: la llamada que suena ahora (para que «colgar» del que llama la quite: cancelCallFor)
+    @Volatile private var ringFrom = ""
+    @Volatile private var ringOffer = ""
     fun incomingCall(from: String, name: String, video: Boolean, offerId: String = "") {
         if (!calls.first(from, offerId)) { Log.i(TAG, "Oferta de llamada ya avisada: sin aviso nuevo"); return }
+        ringFrom = from.lowercase(); ringOffer = offerId
         val nm = NotificationManagerCompat.from(ctx)
         if (!nm.areNotificationsEnabled()) { Log.w(TAG, "Notificaciones desactivadas: llamada sin aviso"); return }
         // El aviso CallStyle probado se muestra SIEMPRE (cero regresión si Telecom no está / falla / lo trata raro un
@@ -263,7 +267,15 @@ class MsgNotifier(private val ctx: Context) {
         wakeScreen(20000) // por si el sistema no deja la pantalla completa (Android 14: permiso aparte)
     }
 
+    // 3087: el que llama colgó (marca ce): si es la llamada que suena, deja de sonar ya (antes, hasta 45 s con la app cerrada)
+    fun cancelCallFor(from: String, offerId: String): Boolean {
+        if (!BgInbox.endsRinging(ringFrom, ringOffer, from, offerId)) return false
+        cancelCall()
+        return true
+    }
+
     fun cancelCall() {
+        ringFrom = ""; ringOffer = ""
         try { NotificationManagerCompat.from(ctx).cancel(CALL_NOTIF_ID) } catch (e: Exception) { }
         // Build 2880: cerrar también la llamada Telecom (si la hubo), para que el sistema suelte el foco de audio.
         try { CallTelecom.endActive() } catch (e: Throwable) { }

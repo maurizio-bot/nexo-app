@@ -161,6 +161,10 @@ export class Calls {
     if (op === 'offer') { ble._callOut = ble._callOut || new Set(); ble._callOut.add(mid); if (c) c.offerMid = mid; }
     // Ronda 2760: las señales (salvo la llamada entrante) no son mensajes: sin aviso en el otro teléfono
     if (op !== 'offer') { ble._quietOut = ble._quietOut || new Set(); ble._quietOut.add(mid); }
+    // 3087 (punto débil de llamadas: «con la app cerrada, si el que llama cuelga, sigue sonando hasta 45 s»): la señal va cifrada y
+    // el nativo del otro no la puede leer; ahora «colgar» del que llama lleva por fuera el id de su oferta (ce), como la oferta lleva
+    // cl:1, y el nativo del otro deja de sonar al momento (BgInbox.callEnd / NetBg). Solo el id: el contenido sigue cifrado.
+    if (op === 'end' && c && c.dir === 'out' && c.offerMid) { ble._callEndOut = ble._callEndOut || new Map(); ble._callEndOut.set(mid, c.offerMid); if (ble._callEndOut.size > 50) ble._callEndOut.delete(ble._callEndOut.keys().next().value); }
     var p = ble.sendChatMessage(nx, JSON.stringify(o), mid).catch(function(e) { console.warn('[CALL] Señal ' + op + ' no enviada: ' + (e && e.message)); });
     // Build 2837 (pedido del dueño): una llamada/videollamada tiene que SONAR aunque el otro esté dormido en ahorro de
     // batería. Además del envío local (Bluetooth/Wi-Fi), la OFERTA se publica YA en el buzón de relés, que dispara el

@@ -23,10 +23,17 @@ import org.json.JSONObject
  */
 class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
     enum class Kind { MESSAGE, RECEIPT, NOTIFY_ONLY, IGNORE }
-    class Info(val kind: Kind, val from: String, val msgId: String, val quiet: Boolean, val what: String, val call: Boolean = false, val group: String = "")
+    // 3087: callEnd = id de la oferta que el que llama acaba de colgar (marca ce del sobre); vacío si no es eso
+    class Info(val kind: Kind, val from: String, val msgId: String, val quiet: Boolean, val what: String, val call: Boolean = false, val group: String = "", val callEnd: String = "")
 
     companion object {
         private val NX = Regex("^nx[0-9a-z]{8}$")
+        // 3087 (punto débil de llamadas: «con la app cerrada, si el que llama cuelga, sigue sonando hasta 45 s»): la señal de colgar va
+        // cifrada; el que llama pone por fuera el id de su oferta (ce, el mismo «cs…» que llevaba la oferta con cl:1)
+        val CALL_ID = Regex("^cs[0-9a-f]{12}$")
+        // ¿Ese «colgar» corresponde a la llamada que está sonando? (mismo remitente y, si se sabe, la misma oferta)
+        fun endsRinging(ringFrom: String, ringOffer: String, from: String, offer: String): Boolean =
+            ringFrom.isNotEmpty() && ringFrom == from.lowercase() && CALL_ID.matches(offer) && (ringOffer.isEmpty() || ringOffer == offer)
         private val GID = Regex("^gr[0-9a-z]{8}$")
         // me: mi NEXO ID (para reconocer lo que llega por Jump); vacío = no se mira
         fun classify(json: String, me: String = ""): Info {
@@ -53,7 +60,8 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
                 val to = o.optString("to").lowercase()
                 // ronda 2763: mensaje de grupo directo: el id del grupo (para el nombre en el aviso)
                 if (to.isEmpty()) return Info(Kind.MESSAGE, from, o.optString("msgId"), o.optInt("q") == 1, "text", o.optInt("cl") == 1,
-                    o.optString("g").lowercase().takeIf { GID.matches(it) } ?: "")
+                    o.optString("g").lowercase().takeIf { GID.matches(it) } ?: "",
+                    o.optString("ce").takeIf { CALL_ID.matches(it) } ?: "")
                 // #130 (informe del dueño 30-10): una OFERTA de llamada dirigida (to = mi NEXO ID; por net/Jump/FCM)
                 // llevaba la marca cl:1 pero aquí se perdía (what="text", call=false) → salía como aviso de texto, no
                 // como la pantalla de llamada entrante. Ahora se propaga la marca → incomingCall (CallStyle, pantalla
