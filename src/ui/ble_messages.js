@@ -941,6 +941,10 @@ export const BLE_MESSAGE_METHODS = {
       setTimeout(function() {
         try {
           if (self.ackSystem && self.ackSystem.isDone(msgId)) return;    // ya entregado/leído por Bluetooth: nada
+          // 3088 (idea del dueño 14-11: «cada mensaje que se le manda a un teléfono dormido lleve su despertador hasta que haya
+          // confirmación de que despertó»): sin ✓✓ a los ~10 s, el contacto entra al calendario de toques (30 s → 2 m → 8 m…) y
+          // sigue ahí aunque parezca alcanzable, mientras lo suyo siga sin confirmar (_tickWakePending)
+          if (typeof self._noteWakePending === 'function') self._noteWakePending(nx);
           if (!self.net || !self.net.mailboxOk(nx)) return;              // sin internet/token: no se puede (el reintento Bluetooth sigue)
           console.log('[NET] red de seguridad de entrega: ' + msgId + ' sin confirmar por Bluetooth → buzón + toque FCM');
           self._sendViaNetMailbox(nx, content, msgId, seq).catch(function() {});

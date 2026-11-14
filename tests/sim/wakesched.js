@@ -156,6 +156,22 @@ const { importSrc } = require('./srcmod');
     C2._noteWakePending('nxd0000005');
     clock += 60000; await tick(C2);
     r.alcanzable_al_tocar_sale = C2._toques.length === 1 && !C2._pendingWake.has('nxd0000005');
+    // k) 3088 (idea del dueño 14-11: «cada mensaje a un teléfono dormido lleva su despertador hasta que haya confirmación»; el vivo:
+    //    Bluetooth sano y app dormida 40 min sin que nadie lo despertara): alcanzable por Bluetooth pero con lo suyo SIN CONFIRMAR hace
+    //    rato → se le sigue tocando (con motivo, aunque haya enlace) con el mismo freno; en cuanto confirma, sale de la lista
+    var K = mkSelf('bluetooth', 'waking'), whys = [], stuck = true;
+    K._wakeSleepingPeer = function (nx, why) { K._toques.push({ nx: nx, t: clock }); whys.push(why); return 'waking'; };
+    K._wakeStuckPending = function () { return Promise.resolve(stuck); };
+    K._noteWakePending('nxk0000011');
+    var tk0 = clock;
+    await tick(K);
+    clock = tk0 + 6000; await tick(K);
+    clock = tk0 + 46000; await tick(K);
+    r.k_alcanzable_sin_confirmar_sigue_tocando = K._toques.length === 2 && whys.every((w) => w === 'sin confirmar') && K._pendingWake.has('nxk0000011');
+    stuck = false;
+    clock = tk0 + 46000 + 130000; await tick(K);
+    r.k_al_confirmar_sale = K._toques.length === 2 && !K._pendingWake.has('nxk0000011');
+
     // e) no se pudo tocar (sin token / sin internet → 'none') → se reintenta en el próximo tick SIN avanzar el freno ni rendirse
     var E = mkSelf('none', 'none');
     E._noteWakePending('nxe0000006');

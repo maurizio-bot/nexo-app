@@ -201,7 +201,12 @@ export const BLE_CONNECTION_METHODS = {
     self._lastWakeTick = now;
     self._pendingWake.forEach(function(entry, nx) {
       var via = (typeof self.linkOf === 'function') ? self.linkOf(nx) : null;
-      if (via === 'wifi' || via === 'bluetooth' || via === 'internet') { self._pendingWake.delete(nx); return; } // ya alcanzable → lo entrega el camino normal
+      if (via === 'wifi') { self._pendingWake.delete(nx); return; } // Wi-Fi comprobado: su app contestó → lo entrega el camino normal
+      // 3088 (idea del dueño 14-11: «cada mensaje a un teléfono dormido lleva su despertador hasta que haya confirmación»): con un
+      // enlace Bluetooth o internet que PARECE vivo, la app del otro puede estar dormida (el vivo del 14-11: Bluetooth sano, nativo
+      // contestando, 40 min sin confirmar y sin nadie que lo despertara). Ya no sale de la lista por verse alcanzable: sale cuando
+      // no queda nada suyo sin confirmar desde hace un rato; mientras, se le sigue tocando con el mismo freno creciente.
+      var reach = (via === 'bluetooth' || via === 'internet');
       var d = _wakeShouldFire(entry, now, WAKE_GIVEUP_MS);
       if (d === 'wait') return;
       if (d === 'passive') {
@@ -210,18 +215,39 @@ export const BLE_CONNECTION_METHODS = {
       }
       // d === 'fire': antes de tocar, confirmar que SIGUE habiendo pendientes (si ya se entregaron por otro camino —buzón+ack
       // con el otro en 2.º plano, Jump— no hay a quién despertar y la entrada se va sola). Asíncrono (lee la bóveda) y raro.
-      self._wakeStillPending(nx).then(function(still) {
+      var stillP = reach ? (typeof self._wakeStuckPending === 'function' ? self._wakeStuckPending(nx) : Promise.resolve(false)) : self._wakeStillPending(nx);
+      stillP.then(function(still) {
         if (!self._pendingWake || self._pendingWake.get(nx) !== entry) return; // la entrada cambió mientras tanto
-        if (!still) { self._pendingWake.delete(nx); console.log('[WAKE] ' + nx + ' ya no tiene pendientes: fin del toque'); return; }
-        var fired = (typeof self._wakeSleepingPeer === 'function') ? self._wakeSleepingPeer(nx) : null;
+        if (!still) { self._pendingWake.delete(nx); console.log('[WAKE] ' + nx + (reach ? ' alcanzable y sin nada atascado: fin del toque' : ' ya no tiene pendientes: fin del toque')); return; } // i18n-ok: registro
+        // con enlace aparente, el toque va igual (why): su app no confirma
+        var fired = (typeof self._wakeSleepingPeer === 'function') ? self._wakeSleepingPeer(nx, reach ? 'sin confirmar' : undefined) : null;
         if (fired === 'waking') {
           self._pendingWake.set(nx, _wakeAdvance(entry, now, Math.random()));
-          console.log('[WAKE] toque a ' + nx + ' (intento ' + (entry.attempt + 1) + ', por pendientes)');
+          console.log('[WAKE] toque a ' + nx + ' (intento ' + (entry.attempt + 1) + (reach ? ', enlace ' + via + ' pero sin confirmar' : ', por pendientes') + ')'); // i18n-ok: registro
         } else if (fired === 'wifi' || fired === 'bluetooth' || fired === 'internet') {
           self._pendingWake.delete(nx); // se volvió alcanzable justo al tocar
         } // else (falsy): no se pudo tocar (sin token/internet) → se reintenta en el próximo tick, sin avanzar el backoff
       });
     });
+  },
+
+  // 3088: con un enlace que parece vivo, ¿hay algo suyo (que vaya a LEER) sin confirmar desde hace más de WAKE_STUCK_MS? Mira los
+  // mensajes propios del chat en estado pendiente/enviando/enviado (sin ✓✓). Sin bóveda o ante un error: no (no se toca de más).
+  _wakeStuckPending(nx) {
+    try {
+      var w = (typeof window !== 'undefined') ? window : null;
+      if (!w || typeof _vaultLoadMessages !== 'function') return Promise.resolve(false);
+      var now = Date.now();
+      return _vaultLoadMessages(nx).then(function(msgs) {
+        return (msgs || []).some(function(m) {
+          if (!m || !m._own || m.deleted || _isQuietHidden(m)) return false;
+          var st = m.status || '';
+          if (st !== 'pending' && st !== 'sending' && st !== 'sent') return false;
+          var t = Number(m.timestamp || m.ts || 0);
+          return t > 0 && now - t > 20000 && now - t < 7 * 24 * 3600000;
+        });
+      }, function() { return false; });
+    } catch (e) { return Promise.resolve(false); }
   },
 
   // ¿Sigue habiendo mensajes pendientes para este contacto? Lee la bóveda (igual que el flush); sin bóveda (sim puro) o

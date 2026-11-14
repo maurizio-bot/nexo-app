@@ -3,6 +3,20 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 14-11 noche (llamadas, orden del dueño: «empieza por las llamadas»; y su idea del despertador)
+- **Hecho 3087:** con la app cerrada, la llamada deja de sonar en cuanto el que llama cuelga (antes hasta 45 s): «colgar» lleva por
+  fuera el id de la oferta (ce), como la oferta lleva cl:1; nativo por Bluetooth y por internet (calls2 colgar-cerrada: 0,2 s).
+- **Hecho 3088 (idea del dueño: «cada mensaje a un teléfono dormido lleve su despertador hasta que haya confirmación»):** el toque FCM
+  ya no se calla al ver al otro alcanzable: mientras haya algo suyo sin ✓✓ hace más de 20 s, sigue con el freno creciente (30 s → 2 m
+  → 8 m → 30 m…); al confirmar, para (wakesched k). Un mensaje por Bluetooth listo sin ✓✓ a los ~10 s entra al calendario. Límite: si
+  el dormido no tiene internet (el vivo a las 08:10), el toque FCM no le llega: ahí sirve la 3086 (su nativo confirma y avisa).
+- **Diagnósticos S24 11:04/11:05 (3050 → 3052) y resumen del vivo:** los 2 textos al vivo se entregaron a las 11:04 al despertar su
+  app (como se explicó). Lo demás que se ve ya está arreglado: «Resume: 4 outgoing» de la tablet con «Write fallo ~6 s» (3083, ya en
+  la APK 3052; además la 3052 caducó esos 4 registros viejos), y 6 «connectToDevice … Device no en cache» a contactos lejanos al
+  volver la app (3084, va en la próxima). La 3052 ya mide: «internet listo en 0,5 s», «Bluetooth listo en 0,6 s».
+- **Siguiente en llamadas:** aviso «Videollamada» con la app cerrada; micrófono fuera del hilo de la interfaz (AudioWorklet); y con los
+  diagnósticos de llamadas que se le pidieron al dueño, vídeo por internet sin imagen.
+
 ## 🆕 14-11 tarde (dueño: «tenemos que hacer algo con los atascos… si un contacto no está al alcance del Bluetooth ni siquiera
 ## debería intentarlo… el S24 cambia de Wi-Fi a datos muy rápido, ¿por qué nosotros somos lentos?»)
 Orden: (1) Bluetooth solo a quien está cerca · (2) Wi-Fi ↔ datos al instante · (3) atascos: prevenir y avisar.

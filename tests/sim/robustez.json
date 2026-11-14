@@ -1300,6 +1300,10 @@
     {
      "fallo": "3034 (diagnóstico automático de …c95d 12-11, entrega_lenta 2761 s): la app que manda estuvo en segundo plano (congelada) de 15:42 a 16:29; el otro recibió y confirmó al momento pero la ✓✓ solo se procesó al volver → síntoma falso. 3034: diag_state no cuenta entrega lenta si la app estuvo en segundo plano desde que salió el mensaje. diagplus.js D5b (contraprueba 3033)",
      "prueba": "diagnóstico más claro"
+    },
+    {
+     "fallo": "Idea del dueño 14-11: «cada mensaje que se le manda a un teléfono dormido lleve su despertador hasta que haya confirmación de que despertó». El calendario de toques FCM quitaba al contacto en cuanto se veía alcanzable (Bluetooth o internet) aunque su app durmiera y no confirmara (el vivo del 14-11: Bluetooth sano, 40 min sin ✓✓ y sin toques); y un mensaje por un Bluetooth listo nunca entraba al calendario (solo un toque suelto de la red de seguridad). 3088: sin ✓✓ a los ~10 s entra al calendario y sigue ahí, con el mismo freno (30 s → 2 m → 8 m…), mientras haya algo suyo sin confirmar hace más de 20 s; al confirmar, sale (wakesched k).",
+     "prueba": "Fase A entrega offline"
     }
    ]
   },
