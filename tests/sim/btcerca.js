@@ -5,7 +5,10 @@
 // segundo plano y vuelve:
 //  K1  ningún intento de conexión Bluetooth a C, D ni E mientras están lejos (al volver la app, al abrir el chat de C, al mandarle);
 //  K2  B (cerca) sigue recibiendo al momento;
-//  K3  C vuelve: el escaneo lo ve, se conecta solo y su mensaje le llega (≤ 45 s).
+//  K3  C vuelve: el escaneo lo ve, se conecta solo y su mensaje le llega (≤ 45 s);
+//  K4  (idea del dueño 14-11: «hazlo por scan, es rápido»; ya era así: al mandar se escanea al momento) D vuelve con su app cerrada
+//      (él no busca) y A le escribe: el escaneo de ese momento lo ve y le llega en ≤ 10 s (medido 0,8 s, igual en 3085);
+//  K5  E vuelve con su app cerrada y A solo abre su chat: el enlace queda listo en ≤ 10 s (medido 0,5 s).
 // Uso: node btcerca.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -96,8 +99,28 @@ const hexOf = (a) => a.toLowerCase().replace(/[^0-9a-f]/g, '');
   const tBack = Date.now();
   const ok3 = await waitFor(async () => (await has(P.C, id.A, (m) => m.content === 'para C lejos')) && has(P.C, id.A, (m) => m.content === 'otra para C'), 90000);
   r.K3_c_llega_s = ok3 === null ? null : Math.round((Date.now() - tBack) / 100) / 10;
+  // K4 (idea del dueño 14-11: «hazlo por scan, es rápido»): D vuelve con su app CERRADA (él no busca; su Bluetooth sí recibe) y A le
+  // escribe en ese momento: el escaneo que se lanza al mandar lo ve y se conecta
+  P.D.win.close(); nat.D.destroyActivity();
+  await sleep(1000);
+  nat.D.setOffline(false);
+  const tD = Date.now();
+  await openChatWith(A, 'D'); sendText(A, 'D ya volvió');
+  await sleep(300);
+  const ownD = (await A.win.vaultLoadMessages(id.D)).find((m) => m._own && m.content === 'D ya volvió');
+  const midD = ownD && (ownD.msgId || ownD.messageId);
+  const k4 = midD ? await waitFor(() => (nat.D.bgInbox || []).some((x) => String(x.c || '').indexOf(midD) >= 0), 90000) : null;
+  r.K4_d_cerrada_llega_s = k4 === null ? null : Math.round((Date.now() - tD) / 100) / 10;
+  // K5: E vuelve con su app cerrada y A SOLO abre su chat (sin mandar aún): el escaneo de ese momento lo ve y el enlace queda listo
+  P.E.win.close(); nat.E.destroyActivity(); await sleep(1000);
+  nat.E.setOffline(false);
+  const tE = Date.now();
+  await openChatWith(A, 'E');
+  const k5 = await waitFor(() => !!biA._bleReadyFor(id.E), 90000);
+  r.K5_e_enlace_s = k5 === null ? null : Math.round((Date.now() - tE) / 100) / 10;
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|net::ERR|fetch/.test(l)).slice(0, 5);
-  const ok = r.emparejados && r.K1_intentos_bt_a_lejanos === 0 && r.K2_b_llega_s !== null && r.K2_b_llega_s <= 10 && r.K3_c_llega_s !== null && r.K3_c_llega_s <= 45 && !r.errores.length;
+  const ok = r.emparejados && r.K1_intentos_bt_a_lejanos === 0 && r.K2_b_llega_s !== null && r.K2_b_llega_s <= 10 && r.K3_c_llega_s !== null && r.K3_c_llega_s <= 45 &&
+    r.K4_d_cerrada_llega_s !== null && r.K4_d_cerrada_llega_s <= 10 && r.K5_e_enlace_s !== null && r.K5_e_enlace_s <= 10 && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('BTCERCA ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_btcerca.txt'), logs.join('\n'));
