@@ -90,8 +90,8 @@ publicación y primeros usuarios; febrero campaña previa y la prueba de fuego.
 3. **Fecha exacta de EDC 2027** y **meta de descargas** para el evento.
 4. **Seguridad:** revisar adjuntos por su contenido real; relleno de mensajes en los puentes; comprobar identidad en la Wi-Fi;
    «Rechazar» firmado; confirmaciones firmadas.
-5. **Privacidad del proyecto en GitHub** (recomendación: documentos de negocio a privado; el código puede seguir público) y la
-   cuenta «noone4224» con permiso de escritura.
+5. **Privacidad del proyecto en GitHub:** ✓ «noone4224» quitado por el dueño (15-11; no tenía ningún commit) y ✓ «Todos los
+   derechos reservados» a nombre de Maurizio Amistani (LICENSE, README, package.json). Falta decidir: documentos de negocio a privado.
 6. **Pagos:** país (México), empresa y socio — después de EDC.
 
 ## Lo que te toca (pruebas físicas, lista corta)
