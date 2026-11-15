@@ -1548,6 +1548,10 @@
      "prueba": "NOVEDADES de cada versión"
     },
     {
+     "fallo": "3107 (dueño 15-11, mismo pedido): el aviso del sistema «Hay una versión nueva» (el del botón «Actualizar» con la app fuera de la vista) no decía qué traía. 3107: la parte web le pasa las novedades ya en el idioma de la app (updateNotify notes, ≤ 1500) y el nativo las pone al desplegar el aviso (BigTextStyle). updater.js aviso_sistema_con_novedades: 3106 = sin novedades; 3107 = con las del idioma, sin etiquetas",
+     "prueba": "actualizador automático del APK de probadores"
+    },
+    {
      "fallo": "Foto de perfil «cruzada» (dueño 11-11: Marcos agregó a Austin y salió con la foto del dueño, también en Perfil). El registro del teléfono de Marcos (canal directo) muestra que esa foto llegó del teléfono de Austin como SU foto de perfil (acción 'av' cifrada con su identidad, 11,5 KB): no es un cruce al recibir. No se encontró ningún camino del código por el que una foto ajena pase a ser la propia (se revisó guardado, pase de cuenta, Fénix, copia de seguridad de Android, selectores de archivo); pendiente de saber con el dueño si esa foto se puso a mano en ese teléfono. 3012: el diagnóstico dice si el teléfono tiene foto propia y desde cuándo. avatarcruce.js (A con foto; B agrega a C: nada cruzado)",
      "prueba": "foto de perfil al agregar un contacto"
     },

@@ -11,6 +11,19 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- El aviso «Hay una versión nueva» muestra lo que trae al desplegarlo.
+</es-419>
+<it-IT>
+- L'avviso «C'è una nuova versione» mostra le novità quando lo apri.
+</it-IT>
+<en-US>
+- The «New version available» notice shows what's new when you expand it.
+</en-US>
+<!-- /APK -->
+
+## Historial
+
+### APK 3060 (15-11-2026)
 - Dos llamadas a la vez, con la pantalla dividida.
 - Al contestar la segunda, la otra queda en espera; «Reanudar» cambia de una a otra.
 - Con dos llamadas, los botones de llamar se apagan.
@@ -18,28 +31,6 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Al agregar a alguien a una llamada, quien ya estaba entra solo al grupo.
 - En grupo, todos se oyen aunque contesten a destiempo.
 - Lo nuevo de cada versión, junto al botón de actualizar.
-</es-419>
-<it-IT>
-- Due chiamate insieme, con lo schermo diviso.
-- Rispondendo alla seconda, l'altra va in attesa; «Riprendi» passa dall'una all'altra.
-- Con due chiamate, i pulsanti di chiamata si spengono.
-- «Messaggio»: rispondi con un testo a chi ti chiama mentre sei in un'altra chiamata.
-- Aggiungendo qualcuno a una chiamata, chi c'era già entra da solo nel gruppo.
-- Nel gruppo tutti si sentono anche se rispondono in momenti diversi.
-- Le novità di ogni versione, accanto al pulsante di aggiornamento.
-</it-IT>
-<en-US>
-- Two calls at once, with a split screen.
-- When you answer the second, the other goes on hold; «Resume» switches between them.
-- With two calls, the call buttons are turned off.
-- «Message»: reply with a text to someone calling while you're on another call.
-- When you add someone to a call, the person already there joins the group on their own.
-- In a group, everyone hears each other even if they answer at different times.
-- What's new in each version, next to the update button.
-</en-US>
-<!-- /APK -->
-
-## Historial
 
 ### APK 3059 (15-11-2026)
 - En una llamada de grupo, quien no contesta en 45 segundos sale como «No contestó».
