@@ -21,6 +21,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **15-11 madrugada (3100–3101 = APK 3059; batería 259/259, índice 66):** pedido del dueño (15-11, tras probar la 3057): agregó a
+  alguien a una llamada, no contestó y se quedó en dos llamadas a la vez. **3100**: el invitado de una llamada de grupo que no contesta
+  en 45 s queda «No contestó» y sale de la lista; si no queda nadie, la llamada termina (`group_call._inviteTimeout`, `gcnoanswer.js`).
+  **3101** (#220 fase 1): con una llamada 1-a-1 y una de grupo a la vez, pantalla dividida: la 1-a-1 arriba y la de grupo abajo, cada
+  una con sus botones y su colgar a la vista; al colgar una, la otra vuelve a toda la pantalla (`calls_ui.syncCallSplit`,
+  `html.nc-split`; `splitcall.js`, Chromium). En la rama, para la APK siguiente: **3102** (#220 fase 2) una segunda llamada 1-a-1
+  suena abajo en vez de dar «ocupado» (`ble.calls2`, lane 2, `call2.js`). En curso: **#222** (máximo dos llamadas, la otra en espera
+  sola al contestar, responder con mensaje).
 - **15-11 madrugada (3099 = APK 3058; batería 257/257, índice 66):** diagnósticos 17:48–17:50 (S24 3054, S23 3048 con ahorro de
   batería y sin relés). **3099**: con una transferencia en curso la re-búsqueda de perdidos se aplaza como mucho `SCAN_HOLD_MAX_MS`
   (3 min) seguidos; luego una vuelta igual (ble_connections tick/go; perilla `NEXO_SCAN_HOLD_MAX_MS`); un hueco largo entre vueltas
