@@ -62,7 +62,7 @@ export const BLE_CONTACT_METHODS = {
   // opts.quiet (ronda 2758, miembros de un grupo): sin resaltarlos como "nuevo contacto"
   addSharedContacts(list, sharedBy, opts) {
     var self = this;
-    var res = { added: [], existing: [] }, keyFilled = false, bundles = [];
+    var res = { added: [], existing: [] }, keyFilled = false, bundles = [], addedIds = [];
     var me = _normId(self.localNexoId);
     var contacts = _getBLEContacts();
     (Array.isArray(list) ? list.slice(0, 500) : []).forEach(function(c) { // 2805: tope anti-DoS (lista enorme de un contacto)
@@ -90,12 +90,13 @@ export const BLE_CONTACT_METHODS = {
         pkHearsay: (pk && _normId(sharedBy)) ? 1 : undefined // H3 (07-11): clave «de oídas» (tarjeta/grupo) → sin verificar hasta contacto directo o número de seguridad
       });
       if (pk && c.b2) bundles.push([nx, c.b2]);
-      res.added.push(name);
+      res.added.push(name); addedIds.push(nx);
       self._markPeerLost(nx);
     });
     if (keyFilled && !res.added.length) _saveBLEContacts(contacts);
     if (res.added.length) {
       _saveBLEContacts(contacts);
+      addedIds.forEach(function(nx) { _safeDispatchEvent('nexo:ble:contactAdded', { nexoId: nx }); }); // 3129: foto y datos de nuevo
       self.renderContactsList();
       self._startPresenceSearch(120000);
       console.log('[BLEInterface] Contactos compartidos agregados:', res.added.join(', '));

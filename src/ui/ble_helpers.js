@@ -471,6 +471,7 @@ export function _addBLEContact(contact) {
     lastMessage: ''
   });
   _saveBLEContacts(contacts);
+  _safeDispatchEvent('nexo:ble:contactAdded', { nexoId: uuid }); // 3129: su foto y sus datos se piden de nuevo (avatar.js)
   return true;
 }
 
@@ -488,6 +489,7 @@ export function _removeBLEContact(deviceUUID) {
   var uuid = _normId(deviceUUID);
   var contacts = _getBLEContacts().filter(function(c) { return _normId(c.nexoId || c.deviceUUID) !== uuid; });
   _saveBLEContacts(contacts);
+  _safeDispatchEvent('nexo:ble:contactRemoved', { nexoId: uuid }); // 3129: se olvida su foto (avatar.js)
 }
 
 export function _isBLEContact(deviceUUID) {

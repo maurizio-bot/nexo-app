@@ -132,6 +132,14 @@
     {
      "fallo": "3099 (diagnóstico automático S24 3054 14-11 17:48: «busqueda_frenada, 48 min sin buscar a 16 contacto(s): transferencia en curso»): el S23 (3048) le mandaba algo por Bluetooth a un trozo por segundo y, mientras durara, el S24 no buscaba a ningún contacto perdido (14 con pendientes); además 46 de esos 48 min la app estaba en segundo plano y el aviso los contaba, y «Relés listos tras el cambio de red en 3173,6 s» también medía el rato en segundo plano. 3099: tras 3 min seguidos de búsqueda aplazada por una transferencia, una vuelta igual (y otra cada 3 min); un hueco largo entre vueltas (app suspendida) vuelve a contar desde cero; la medida del cambio de red se abandona al irse a segundo plano. scanhold.js: 3098 = 0 búsquedas en 70 s y aviso «48 min»; 3099 = 2 búsquedas y sin aviso falso",
      "prueba": "búsqueda de contactos con una transferencia que no acaba"
+    },
+    {
+     "fallo": "3129 (dueño 15-11, vivo y S24: «eliminé mi contacto del vivo y lo volví a agregar buscándolo… mi foto de perfil real no es la que él ve»): al borrar un contacto su foto seguía en memoria y en el disco, y al volver a agregarlo el otro no la reenviaba (creía que ya la tenía): se quedaba la vieja. 3129: al borrar se olvida; al agregar se pide la de ahora; en cada conexión se pregunta con su huella si está al día. fotorenueva.js (contraprueba 3128: F1, F2 y F3 fallan)",
+     "prueba": "FOTO DE PERFIL al día al BORRAR y VOLVER A AGREGAR (3129"
+    },
+    {
+     "fallo": "3129 (PLAN etapa 2): no había forma de invitar a alguien lejano con un enlace; el campo «Agregar por NEXO ID» cortaba lo pegado a 10 letras. 3129: enlace de invitación (código de un uso, 7 días) por WhatsApp/TikTok/Más; pegar el enlace o el texto entero agrega; la solicitud llega marcada y se acepta a mano. invitacion.js",
+     "prueba": "ENLACE DE INVITACIÓN (3129"
     }
    ],
    "debiles": [

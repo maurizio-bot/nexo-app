@@ -604,7 +604,8 @@ export function _applyChatAction(senderId, act) {
   if (act && act.act === 'st') { applyStatus(senderId, act); return; } // ronda 2799: Estado (Stream fase 1, estados.js)
   if (act && act.act === 'sl') { likeReceived(senderId, act); return; } // ronda 2906: «me gusta» a mi estado (estados.js fase 2)
   if (act && act.act === 'sc') { commentReceived(senderId, act); return; } // 3032: comentario a mi estado (solo lo veo yo)
-  if (act && act.act === 'sq') { statusQueryReceived(senderId); if (act.av) avatarQueryReceived(senderId); return; }   // 3032: me piden mis estados (deslizar para actualizar); 3095: y mi foto
+  if (act && act.act === 'sq') { statusQueryReceived(senderId); if (act.av) avatarQueryReceived(senderId); return; }
+  if (act && act.act === 'avq') { avatarQueryReceived(senderId, typeof act.h === 'string' ? act.h.substring(0, 20) : ''); return; } // 3129: ¿mi foto que tiene está al día?   // 3032: me piden mis estados (deslizar para actualizar); 3095: y mi foto
   if (act && act.act === 'sm') { statusMediaRequested(senderId, act); return; } // 3032: me piden la media grande de un estado
   if (act && act.act === 'prof') { applyContactProfile(senderId, act); return; } // #dueño 04-11: datos de perfil completos (profile_share.js)
   if (act && act.act === 'psi') { psiOnAction(senderId, act); return; } // #dueño 04-11 paso 3: contactos en común (PSI, psi.js)

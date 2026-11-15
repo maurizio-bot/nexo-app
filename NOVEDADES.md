@@ -12,19 +12,24 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Mejoras de estabilidad.
+- Invita a tus amigos a NEXO con un enlace por WhatsApp, TikTok o donde quieras: al tocarlo te agregan.
+- Si borras un contacto y lo vuelves a agregar, ves su foto de perfil de ahora, no una vieja.
 </es-419>
 <it-IT>
-- Miglioramenti di stabilità.
+- Invita i tuoi amici su NEXO con un link via WhatsApp, TikTok o dove vuoi: toccandolo ti aggiungono.
+- Se elimini un contatto e lo aggiungi di nuovo, vedi la sua foto profilo attuale, non una vecchia.
 </it-IT>
 <en-US>
-- Stability improvements.
+- Invite your friends to NEXO with a link on WhatsApp, TikTok or anywhere: tapping it adds you.
+- If you delete a contact and add them again, you see their current profile photo, not an old one.
 </en-US>
 <pt-BR>
-- Melhorias de estabilidade.
+- Convide seus amigos para o NEXO com um link pelo WhatsApp, TikTok ou onde quiser: ao tocar, eles adicionam você.
+- Se você apagar um contato e adicioná-lo de novo, verá a foto de perfil atual dele, não uma antiga.
 </pt-BR>
 <fr-FR>
-- Améliorations de stabilité.
+- Invitez vos amis sur NEXO avec un lien par WhatsApp, TikTok ou ailleurs : en le touchant, ils vous ajoutent.
+- Si vous supprimez un contact puis l'ajoutez de nouveau, vous voyez sa photo de profil actuelle, pas une ancienne.
 </fr-FR>
 <!-- /APK -->
 

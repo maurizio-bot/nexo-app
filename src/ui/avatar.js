@@ -205,8 +205,10 @@ export function avatarInit() {
   }).then(_recompute).catch(function() {}).then(function() { _readyRes(); });
   window.addEventListener('nexo:ble:peerReady', function(e) {
     var nx = _normId(e && e.detail && e.detail.nexoId);
-    if (NX_RE.test(nx)) setTimeout(function() { sendAvatarTo(nx); }, 4000);
+    if (NX_RE.test(nx)) setTimeout(function() { sendAvatarTo(nx); _checkFresh(nx); }, 4000);
   });
+  window.addEventListener('nexo:ble:contactRemoved', function(e) { avatarForget(e && e.detail && e.detail.nexoId); });
+  window.addEventListener('nexo:ble:contactAdded', function(e) { var nx = e && e.detail && e.detail.nexoId; setTimeout(function() { avatarRefresh(nx); }, 1500); });
   window.addEventListener('nexo:ble:ackStatus', function(e) {
     var d = e && e.detail, nx = d && _outIds.get(d.msgId);
     if (nx && (d.status === 'delivered' || d.status === 'read')) { _outIds.delete(d.msgId); vaultDeleteMessage(nx, d.msgId).catch(function() {}); }
@@ -263,12 +265,57 @@ function _sendToAll() { _contactIds().forEach(function(nx) { sendAvatarTo(nx); }
 // 3095 (dueño 14-11, deslizar para actualizar): el otro me pide mi foto otra vez (pudo perderla o no llegarle): se la reenvío
 // aunque crea que ya la tiene; como mucho una vez cada 15 s por contacto
 var _avAsked = new Map();
-export function avatarQueryReceived(senderNx) {
+export function avatarQueryReceived(senderNx, theirH) {
   var nx = _normId(senderNx), now = Date.now();
-  if (!NX_RE.test(nx) || now - (_avAsked.get(nx) || 0) < 15000) return false;
+  if (!NX_RE.test(nx)) return false;
+  // 3129: si dice qué foto mía tiene (theirH) y es la de ahora, no hace falta mandarla (la pregunta va en cada conexión)
+  if (typeof theirH === 'string' && _mine && _mine.h && theirH === (_mine.img ? _mine.h : '')) return false;
+  // 3129: sin foto propia no hay nada que mandar y la espera de 15 s no se gasta (si no, la petición de un contacto que se borró y
+  // se volvió a agregar en esos 15 s se perdía)
+  if (!_mine || !_mine.h) return false;
+  // la pregunta con huella (avq) solo llega si la suya NO es la de ahora: basta un freno corto contra repetidos; «deslizar» (sq) 15 s
+  if (now - (_avAsked.get(nx) || 0) < (typeof theirH === 'string' ? 3000 : 15000)) return false;
   _avAsked.set(nx, now);
   sendAvatarTo(nx, true);
   return true;
+}
+
+// 3129 (dueño 15-11, vivo: «eliminé mi contacto y lo volví a agregar buscándolo… mi foto de perfil real no es la que él ve, sacó la foto
+// de otro lado… al agregar o volver a agregar un contacto la información se tiene que renovar; no puede tener información vieja»):
+// (1) al BORRAR un contacto se olvida aquí todo lo de su foto (la guardada, la que se muestra, su historial y la marca «ya le mandé
+// la mía»): antes quedaba en memoria y en el disco y, al volver a agregarlo, salía la vieja; (2) al AGREGARLO (nuevo o de vuelta) se le
+// piden su foto y sus estados y se le manda la mía aunque este teléfono creyera que ya la tenía; (3) en cada conexión (una vez por
+// sesión y contacto) se le pregunta en corto si la foto que tengo suya es la de ahora (avq con su huella): si no, la reenvía.
+export function avatarForget(nx) {
+  nx = _normId(nx);
+  if (!NX_RE.test(nx)) return;
+  _gen.set(nx, (_gen.get(nx) || 0) + 1);
+  _all.delete(nx); _live.delete(nx); _checked.delete(nx);
+  var shown = _cache.delete(nx);
+  if (_hist[nx]) { delete _hist[nx]; _save(HIST_FILE, _hist); }
+  if (_sent[nx]) { delete _sent[nx]; _save(SENT_FILE, _sent); }
+  var pl = _pl(); if (pl && typeof pl.deleteFile === 'function') pl.deleteFile({ filename: 'nexo_av_' + nx + '.json' }).catch(function() {});
+  if (shown) _emit(nx);
+  _recompute();
+  console.log('[AVATAR] Contacto borrado: olvido su foto (' + nx + ')');
+}
+export function avatarRefresh(nx) {
+  nx = _normId(nx);
+  if (!NX_RE.test(nx) || _contactIds().indexOf(nx) < 0) return;
+  if (_sent[nx]) { delete _sent[nx]; _save(SENT_FILE, _sent); }
+  _checked.add(nx);
+  var id = _sendTextTo(nx, JSON.stringify({ type: 'nexo_act', act: 'sq', ts: Date.now(), av: 1 }), '', true);
+  if (id) _outIds.set(id, nx);
+  sendAvatarTo(nx, true);
+  console.log('[AVATAR] Contacto nuevo: le pido su foto y le mando la mía (' + nx + ')');
+}
+var _checked = new Set();     // 3129: contactos a los que ya se preguntó en esta sesión si su foto está al día
+function _checkFresh(nx) {
+  if (_checked.has(nx) || _contactIds().indexOf(nx) < 0) return;
+  _checked.add(nx);
+  var c = _getBLEContacts().find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+  var id = _sendTextTo(nx, JSON.stringify({ type: 'nexo_act', act: 'avq', h: (c && c.avh) || '' }), '', true);
+  if (id) _outIds.set(id, nx);
 }
 
 // 3060: la foto que deja de ser mía pasa a la lista de «fotos que tuve» (con su huella; si no la había, se calcula)
