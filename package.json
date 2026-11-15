@@ -1,6 +1,8 @@
 {
   "name": "nexo-v9",
   "version": "9.0.0",
+  "private": true,
+  "license": "UNLICENSED",
   "description": "Arquitectura Soberana",
   "type": "module",
   "main": "src/main.js",
