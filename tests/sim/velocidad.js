@@ -110,10 +110,13 @@ function pickFile(p, name, b) {
   // V3: diagnóstico y resumen diario
   const diag = typeof A.win.NEXO_diagText === 'function' ? A.win.NEXO_diagText() : '';
   r.V3_diag = /Velocidad de hoy por camino:\n  archivos por Wi-Fi local: enviados 1, media [\d,]+ KB\/s/.test(diag) && /archivos por Bluetooth: enviados 1/.test(diag) && /conexión lista en \(media\): .*Wi-Fi local/.test(diag);
+  // V5 (3117, dueño 15-11: «agrega a tus diagnósticos el nombre del contacto»): la fila del contacto lleva su nombre
+  const idB5 = B.win.bleInterface.localNexoId.toLowerCase();
+  r.V5_nombre = new RegExp('…' + idB5.slice(-4) + ' \\(B\\): camino').test(diag);
   const lines = A.win.NEXO_speedLines ? A.win.NEXO_speedLines() : [];
   r.V3_lineas = lines.slice(0, 4);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|net::ERR|fetch/.test(l)).slice(0, 5);
-  const ok = r.V4_bluetooth_listo && r.V1_llega_s !== null && r.V1_A_anota && r.V1_B_anota && r.V2_wifi_listo_s !== null && r.V2_llega_s !== null && r.V2_A_anota && r.V2_wifi_mas_rapido && r.V3_diag && !r.errores.length;
+  const ok = r.V4_bluetooth_listo && r.V1_llega_s !== null && r.V1_A_anota && r.V1_B_anota && r.V2_wifi_listo_s !== null && r.V2_llega_s !== null && r.V2_A_anota && r.V2_wifi_mas_rapido && r.V3_diag && r.V5_nombre && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('VELOCIDAD ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_velocidad.txt'), logs.join('\n'));

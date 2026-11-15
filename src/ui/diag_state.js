@@ -24,6 +24,15 @@ var _hidden = false, _backAt = 0;
 
 function _bi() { return (typeof window !== 'undefined' && window.bleInterface) || null; }
 function _tail(nx) { nx = _normId(nx); return nx ? '…' + nx.slice(-4) : '?'; }
+// 3117 (dueño 15-11: «agrega a tus diagnósticos el nombre del contacto, así podré decirte quién es; por ID no lo sé»): el nombre con
+// que el teléfono tiene guardado al contacto, junto a su ID corto. Recortado y sin caracteres que rompan la línea.
+function _nameOf(nx) {
+  nx = _normId(nx); if (!nx) return '';
+  var c = null; try { c = (_getBLEContacts() || []).find(function(x) { return x && _normId(x.nexoId || x.deviceUUID) === nx; }); } catch (e) {}
+  var n = c ? String(c.name || c.displayName || '') : '';
+  n = n.replace(/[\r\n():·→]/g, ' ').replace(/\s+/g, ' ').trim();
+  return n ? ' (' + n.slice(0, 24) + ')' : '';
+}
 function _hhmmss(ts) { var d = new Date(ts); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2); }
 
 // La build del otro (kx «bd»): solo dígitos, corta
@@ -156,14 +165,14 @@ function _contactRows(bi) {
     try { if (typeof window.NEXO_avatarDiag === 'function') p.push(window.NEXO_avatarDiag(nx)); } catch (e) {} // 3060: estado de su foto de perfil
     if (c.lastSeen) p.push('visto ' + _hhmmss(c.lastSeen));
     p.push('build ' + (_peerBuild[nx] || '?'));
-    return '  ' + _tail(nx) + ': ' + p.join(' · ');
+    return '  ' + _tail(nx) + _nameOf(nx) + ': ' + p.join(' · ');
   });
 }
 
 function _traceRows() {
   var out = [];
   _trace.forEach(function(tr, id) {
-    out.push('  ' + id.slice(-8) + ' → ' + _tail(tr.nx) + ' (camino al mandar ' + tr.via0 + '): ' + tr.ev.map(function(e) {
+    out.push('  ' + id.slice(-8) + ' → ' + _tail(tr.nx) + _nameOf(tr.nx) + ' (camino al mandar ' + tr.via0 + '): ' + tr.ev.map(function(e) {
       return _hhmmss(e[0]) + ' ' + e[1] + (e[2] ? '/' + e[2] : '');
     }).join(' → ') + (tr.slow ? '  [LENTO]' : ''));
   });

@@ -71,7 +71,7 @@ function analizar(d) {
   if (zona) out.push('  zona ' + zona[1]); else out.push('  (sin sección ESTADO: build anterior a la 3020)');
   if (tel) out.push('  teléfono: ' + mask(tel[1]));
   // contactos
-  const filas = est.split('\n').filter((l) => /^ {2}…[0-9a-z]{4}: /.test(l));
+  const filas = est.split('\n').filter((l) => /^ {2}…[0-9a-z]{4}(?: \([^)]*\))?: /.test(l)); // 3117: con el nombre del contacto
   filas.forEach((l) => out.push('  ' + mask(l.trim())));
   // mensajes con problemas
   const msgs = est.split('\n').filter((l) => /^ {2}\S{8} → /.test(l));
