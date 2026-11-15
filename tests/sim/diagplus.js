@@ -75,13 +75,15 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
   const txt = (adB().inbox().find((e) => e.from === idA && e.sym === 'zombi') || {}).text || '';
   const tailB = '…' + idB.slice(-4);
   r.D1_estado_y_zona = /===== ESTADO/.test(txt) && /Zona horaria: UTC[+-]\d\d:\d\d/.test(txt) && /Teléfono: .*batería \d+%.*red /.test(txt);
-  const rowB = (txt.split('\n').find((l) => l.indexOf('  ' + tailB + ':') === 0) || '');
+  // 3117: tras el ID corto puede ir el nombre del contacto («…db61 (Roberto)»)
+  const rowRe = new RegExp('^  ' + tailB + '(?: \\([^)]*\\))?: ');
+  const rowB = (txt.split('\n').find((l) => rowRe.test(l)) || '');
   r.D1_fila_del_contacto = rowB.substring(0, 160);
   r.D1_contacto_camino_y_build = /camino bluetooth/.test(rowB) && /BT listo MTU \d+/.test(rowB) && /build dev/.test(rowB);
   r.D1b_wifi_y_rapidos = /Teléfono: app en (primer|segundo) plano/.test(txt) && /Wi-Fi (encendido|APAGADO|\?) · Wi-Fi Direct (sí|no)/.test(txt) && /rápidos: /.test(rowB); // 3023
   // 3046: el estado de Tor en la cabecera (videollamada por internet sin imagen y ni una línea de Tor en el registro)
   r.D1c_tor = (txt.match(/ · Tor (sin usar|pedido|arrancando|listo|APAGADO en Ajustes|falló \([^)]*\))/) || [''])[0];
-  r.D2_linea_de_tiempo = !!ownA && new RegExp(ownA.messageId.slice(-8) + ' → ' + tailB + ' \\(camino al mandar bluetooth\\): .*(delivered|read)').test(txt);
+  r.D2_linea_de_tiempo = !!ownA && new RegExp(ownA.messageId.slice(-8) + ' → ' + tailB + '(?: \\([^)]*\\))? \\(camino al mandar bluetooth\\): .*(delivered|read)').test(txt);
   r.D3_compactado = /Re-búsqueda de contactos prueba intento 0\n\s+↳ ×39 más iguales hasta \d\d:\d\d:\d\d/.test(txt);
   r.estado_antes_del_registro = txt.indexOf('===== ESTADO') >= 0 && txt.indexOf('===== ESTADO') < txt.indexOf('===== SESIÓN ACTUAL');
 
