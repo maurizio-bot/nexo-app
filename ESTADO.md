@@ -21,14 +21,18 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **15-11 madrugada, en la rama (3102–3103; batería de la 3103 en curso):** **3102** segunda llamada 1-a-1 entrante abajo
-  (`ble.calls2`, lane 2; `_callSignal` reparte por id/contacto; con dos, «ocupado»). **3103** (#222): `ble._callList/_callCount/
+- **15-11 madrugada (3102–3106 = APK 3060; batería 263/263, índice 66,1):** **3102** segunda llamada 1-a-1 entrante abajo
+  (`ble.calls2`, lane 2; `_callSignal` reparte por id/contacto; con dos, «ocupado»). **3103–3104** (#222): `ble._callList/_callCount/
   _holdOthers/_resumeLoneCall` (ble_messages); `calls.hold(on)` y la pausa por llamada telefónica comparten `_applyHold` (userHold
-  + phoneHold → held; señales 'hold'/'unhold' → peerHeld; en espera no se reproduce ni se manda imagen); `group_call.hold(on)`
-  (hub en silencio, sin reproducir, señal 'hold' a cada tramo → leg.peerHeld); tope de dos en `calls.start` y `gcall.start`;
-  UI: `holdButton/replyButton/callCount/holdLabel` (calls_ui), `call_reply.js` (hoja «Responder con mensaje», `_sendTextTo`),
-  botones del chat apagados con dos y la segunda saliente por `calls2`. Pruebas: `callwait.js` (3102 falla, 3103 OK), `call2.js`
-  (B en espera), `callhold.js` (la de la telefónica, intacta salvo mirar `c.muted`).
+  + phoneHold → held; señales 'hold'/'unhold' → peerHeld; en espera no se reproduce ni se manda imagen); `group_call.hold(on)`;
+  tope de dos en `calls.start` y `gcall.start`; UI `holdButton/replyButton/callCount/holdLabel`, `call_reply.js` («Mensaje»);
+  botones del chat apagados con dos; la segunda saliente por `calls2` (`callwait.js`). **3105** (dueño 15-11): novedades de cada
+  versión: `NOVEDADES.md` (bloque <!-- APK -->, formato de Google Play ≤ 500 por idioma; regla en CLAUDE.md) → descripción del
+  lanzamiento (workflow `body_path`) → nativo `UpdateSpec.cleanNotes/notesOf` → app «¿Qué trae?» y Ajustes (`updater.js` 8,
+  `novedades.js`). **3106** (#221): «Agregar» lleva el id de la 1-a-1 (up) y el que estaba entra solo (`_upgradeFrom`, 20 s);
+  y en grupo el «offer» que llega mientras suena se guarda (`earlyOffers`) y se acepta al contestar: antes dos invitados que
+  contestaban a destiempo no se oían (`gcupgrade.js`). En la rama: **3107** el aviso del sistema de actualización con novedades.
+  Pedidos nuevos del dueño (15-11): portugués y francés; revisión semanal de archivos grandes (fin de semana).
 - **15-11 madrugada (3100–3101 = APK 3059; batería 259/259, índice 66):** pedido del dueño (15-11, tras probar la 3057): agregó a
   alguien a una llamada, no contestó y se quedó en dos llamadas a la vez. **3100**: el invitado de una llamada de grupo que no contesta
   en 45 s queda «No contestó» y sale de la lista; si no queda nadie, la llamada termina (`group_call._inviteTimeout`, `gcnoanswer.js`).
