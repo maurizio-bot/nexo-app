@@ -1550,6 +1550,10 @@
     {
      "fallo": "Dueño 14-11: «cuando se hace la actualización con el desliz de arriba hacia abajo en la pantalla de contactos quiero que actualices las fotos de los estados y de los perfiles… la pantalla completa; y aprovechar el gesto para que los chats estén sincronizados con los otros dispositivos». Antes el gesto solo pedía los estados; una foto de perfil que no llegó o se perdió no volvía nunca (el otro cree que ya la tengo). 3095: el gesto pide estados y foto (sq con av:1: el otro la reenvía aunque crea que ya la tengo; freno de 15 s por contacto), reenvía lo pendiente, comprueba los relés, vuelve a pedir lo de internet de los últimos minutos y avisa de que estoy en línea; textos «Desliza para actualizar» / «Actualizando estados, fotos y chats…». refresco.js: 3093 la foto no vuelve; 3095 vuelve en 1,4 s",
      "prueba": "deslizar para actualizar en Contactos refresca TODO"
+    },
+    {
+     "fallo": "#220 fase 1 (dueño 15-11: «al final estaba en dos llamadas diferentes al mismo tiempo… hay que hacer un arreglo de pantalla donde se puedan ver las dos pantallas al mismo tiempo, la pantalla dividida y con sus respectivos botones»; S24 14-11 16:16–16:19, una 1-a-1 con el Honor y una de grupo con el Xiaomi): la pantalla de la 1-a-1 tapaba entera la de grupo (su «Colgar» no se podía tocar). 3101: con las dos a la vez, pantalla dividida (1-a-1 arriba, grupo abajo), más compactas, cada una con sus botones; al colgar una, la otra vuelve a toda la pantalla. splitcall.js (Chromium): 3100 = superpuestas, colgar del grupo tapado; 3101 = divididas en 360/384/412. Pendiente (fases 2–4): dos 1-a-1 a la vez, cámara compartida entre las dos, nativo con dos llamadas",
+     "prueba": "DOS llamadas a la vez con la pantalla dividida"
     }
    ],
    "debiles": [

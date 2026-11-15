@@ -9,7 +9,7 @@
 import { t } from './i18n.js';
 import { _showInfoToast, _pickContact } from './ui_bits.js';
 import { _getCurrentContactId, _normId } from './chat_format.js';
-import { callButton, ensureCallStyle, fitCallLabels } from './calls_ui.js';
+import { callButton, ensureCallStyle, fitCallLabels, syncCallSplit } from './calls_ui.js';
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
 function _gcall() { var b = _bi(); return b && b.gcall; }
@@ -61,7 +61,7 @@ function _btn(label, cls, fn) {
   return b;
 }
 
-function _remove() { var el = document.getElementById('nexo-gcall-screen'); if (el) el.remove(); if (_gcAudioFor) { _gcAudioFor = null; _gAudioMode(false); } }
+function _remove() { var el = document.getElementById('nexo-gcall-screen'); if (el) el.remove(); if (_gcAudioFor) { _gcAudioFor = null; _gAudioMode(false); } syncCallSplit(); }
 
 // #130 (dueño 31-10): al cortarse la llamada de grupo, volver al chat del grupo donde se hizo (como la 1-a-1)
 function _openChatOf(cid) { try { var b = _bi(); cid = _normId(cid); if (b && typeof b.openChat === 'function' && cid) b.openChat(cid).catch(function() {}); } catch (e) {} }
@@ -108,6 +108,7 @@ function _render(st) {
   // Al entrar en activa (una vez por llamada): arrancar el modo de audio de comunicación; al cambiar de llamada, reiniciar.
   if (st.state === 'active' && _gcAudioFor !== st.gid) { _gcAudioFor = st.gid; _gcSpeaker = true; _gAudioMode(true); }
   var el = _screen();
+  ensureCallStyle(); syncCallSplit(); // #220: con la 1-a-1 también abierta, pantalla dividida
   var me = _me();
   el.querySelector('.gc-e2e').textContent = t('call_e2e', 'Cifrada de extremo a extremo');
   // El gid de la llamada es propio (gc…), no el id del chat de grupo, así que el título es genérico.

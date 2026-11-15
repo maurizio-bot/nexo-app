@@ -105,6 +105,7 @@ function _svg(name, size) {
 // Estilos (una vez)
 function _style() {
   if (document.getElementById('nexo-call-style')) return;
+  _watchSplit();
   var st = document.createElement('style');
   st.id = 'nexo-call-style';
   st.textContent = [
@@ -125,6 +126,25 @@ function _style() {
     '#nexo-call-screen .call-status.nc-warn{color:#fbbf24;opacity:1}',
     '#nexo-call-screen .call-note{font-size:12px;opacity:.6;margin-top:6px;text-align:center;padding:0 24px}',
     '#nexo-call-screen .call-note.nc-tap{opacity:1;color:#FFD54F;text-decoration:underline;cursor:pointer;pointer-events:auto}',
+    // #220 fase 1 (dueño 15-11): dos llamadas a la vez (1-a-1 + grupo) → pantalla dividida: la 1-a-1 arriba, la de grupo abajo,
+    // cada una con sus botones (antes la 1-a-1 tapaba entera la de grupo). Las dos, más compactas.
+    'html.nc-split #nexo-call-screen{inset:0 0 50% 0;border-bottom:2px solid rgba(255,255,255,.22)}',
+    'html.nc-split #nexo-call-screen .nc-top{padding:calc(6px + env(safe-area-inset-top,0px)) 12px 6px;gap:4px}',
+    'html.nc-split #nexo-call-screen .nc-center{top:14%}',
+    'html.nc-split #nexo-call-screen .nc-av-wrap,html.nc-split #nexo-call-screen .nc-av{width:60px;height:60px}',
+    'html.nc-split #nexo-call-screen .nc-av-wrap{margin-bottom:6px}',
+    'html.nc-split #nexo-call-screen .nc-av{font-size:22px}',
+    'html.nc-split #nexo-call-screen .call-name{font-size:18px}',
+    'html.nc-split #nexo-call-screen .call-status{font-size:13px;margin-top:2px}',
+    'html.nc-split #nexo-call-screen .nc-bottom{padding-bottom:6px}',
+    'html.nc-split #nexo-call-screen .call-buttons:not(.nc-incoming){padding:8px 4px 6px}',
+    'html.nc-split #nexo-gcall-screen{inset:50% 0 0 0 !important;padding:8px 12px calc(6px + env(safe-area-inset-bottom,0px)) !important;overflow:hidden}',
+    'html.nc-split #nexo-gcall-screen .gc-pill{display:none !important}',
+    'html.nc-split #nexo-gcall-screen .gc-title{margin-top:2px !important;font-size:16px !important}',
+    'html.nc-split #nexo-gcall-screen .gc-status{margin-top:2px !important;font-size:12px !important}',
+    'html.nc-split #nexo-gcall-screen .gc-video{margin-top:6px !important;max-height:42%;overflow:hidden}',
+    'html.nc-split #nexo-gcall-screen .gc-members{margin-top:6px !important;gap:6px !important;min-height:0}',
+    'html.nc-split #nexo-gcall-screen .gc-buttons{flex-shrink:0;padding:6px 0 2px !important}',
     '#nexo-call-screen .nc-bottom{position:absolute;left:0;right:0;bottom:0;z-index:3;padding:0 8px calc(26px + env(safe-area-inset-bottom,0px));transition:transform .3s,opacity .3s}',
     '#nexo-call-screen .call-buttons{margin:0 auto;max-width:440px;display:flex;justify-content:space-around;align-items:flex-start;padding:16px 6px 12px;border-radius:30px;background:rgba(20,21,42,.55);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.09);box-shadow:0 10px 40px rgba(0,0,0,.35)}',
     '#nexo-call-screen .call-buttons.nc-incoming{background:none;border:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;justify-content:space-between;max-width:320px;padding:0 18px}',
@@ -252,7 +272,7 @@ function _autoHide(el) {
 //  (a) al ENTRAR en la miniatura → `nc-pipwin`: se ve solo el vídeo del otro (sin controles ni mi imagen).
 //  (b) al SALIR (volver a la app) → la llamada queda como MINI flotante (`nc-appmini`) y debajo se usa la app normal
 //      (contactos / último chat); tocar la mini la vuelve a abrir completa.
-function _setAppMini(on) { var el = document.getElementById('nexo-call-screen'); if (el) el.classList.toggle('nc-appmini', !!on); }
+function _setAppMini(on) { var el = document.getElementById('nexo-call-screen'); if (el) el.classList.toggle('nc-appmini', !!on); syncCallSplit(); }
 if (typeof window !== 'undefined') {
   window.__nexoPipChanged = function(active) {
     try {
@@ -297,6 +317,22 @@ function _watchFit() {
 }
 
 // 14-11: la pantalla de la llamada de GRUPO (groupcall_ui.js) usa los mismos botones redondos, estilos y ajuste de nombres
+// #220 fase 1: con las dos pantallas de llamada a la vez (1-a-1 a la vista, no minimizada, y la de grupo) → pantalla dividida
+export function syncCallSplit() {
+  if (typeof document === 'undefined' || !document.documentElement) return false;
+  var one = document.getElementById('nexo-call-screen'), grp = document.getElementById('nexo-gcall-screen');
+  var on = !!(one && grp && !one.classList.contains('nc-appmini'));
+  if (on !== document.documentElement.classList.contains('nc-split')) {
+    document.documentElement.classList.toggle('nc-split', on);
+    console.log('[CALL] ' + (on ? 'Dos llamadas a la vez: pantalla dividida' : 'Una sola llamada: pantalla entera'));
+  }
+  return on;
+}
+var _splitObs = null;
+function _watchSplit() {
+  if (_splitObs || typeof MutationObserver !== 'function' || !document.body) return;
+  try { _splitObs = new MutationObserver(function() { syncCallSplit(); }); _splitObs.observe(document.body, { childList: true }); } catch (e) {}
+}
 export function callButton(icon, label, cls, fn, extra) { return _btn(icon, label, cls, fn, extra); }
 export function ensureCallStyle() { _style(); }
 export function fitCallLabels(bt) { _fitLabels(bt); _watchFit(); }
@@ -525,9 +561,9 @@ function _render(st) {
           var c2 = _calls(); if (!c2) return; clearTimeout(_rmTimer); _rmTimer = null;
           c2.start(lnx, lvideo).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); });
         }, 'nc-green'));
-        clearTimeout(_rmTimer); _rmTimer = setTimeout(function() { _rmTimer = null; old.remove(); _openChatOf(lnx); }, 5000);
+        clearTimeout(_rmTimer); _rmTimer = setTimeout(function() { _rmTimer = null; old.remove(); syncCallSplit(); _openChatOf(lnx); }, 5000);
       } else {
-        clearTimeout(_rmTimer); _rmTimer = setTimeout(function() { _rmTimer = null; old.remove(); }, 1400);
+        clearTimeout(_rmTimer); _rmTimer = setTimeout(function() { _rmTimer = null; old.remove(); syncCallSplit(); }, 1400);
       }
     }
     _render._modeFor = null; _speaker = false; _pip = { swapped: false, corner: 'tr' };
@@ -536,6 +572,7 @@ function _render(st) {
   }
   clearTimeout(_rmTimer); _rmTimer = null; // ronda 2768: una llamada nueva no pierde su pantalla por el borrado de la anterior
   var el = _screen(), name = _name(st.nx);
+  syncCallSplit(); // #220: con la de grupo también abierta, pantalla dividida
   el.classList.toggle('nc-video', !!st.video);
   el.classList.toggle('nc-waiting', st.state === 'calling' || st.state === 'ringing');
   var av = el.querySelector('.nc-av');
