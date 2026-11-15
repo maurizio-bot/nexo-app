@@ -24,7 +24,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **15-11: PLAN MAESTRO en `docs/PLAN.md`** (pedido del dueño: «aterrizar lo que no está aterrizado, metas reales y fechas, palomita
   a lo hecho; el orden lo llevas tú»). 5 etapas hasta EDC (feb 2027). Índice 66,1 → 70,5 contando la evidencia de los diagnósticos
   (criterio del dueño), anotada área por área en `tests/sim/robustez.json` («telefono.por»).
-- **15-11 mañana, en la rama (3111–3116; batería de la 3116 en curso):** reestructuración JS completa (ningún .js > 1.000 líneas):
+- **15-11 mañana (3111–3116 = APK 3062; batería 264/265, la que falta —velocidad— pasa en su versión anterior; índice 70,4):** reestructuración JS completa (ningún .js > 1.000 líneas):
   ble_messages.js (3111, `tools/partir_obj.cjs`), vault_manager.js (3112, puerta que reexporta; `tools/partir_mod.cjs`), net_link.js
   (3113, `tools/partir_class.cjs`), ble_interface.js (3115) y main.js (3116, solo declaraciones a main_chats.js; `tools/partir_extraer.cjs`).
   Cada una con `tools/partir_check.cjs` (piezas idénticas, nada suelto, nadie cambia un dato importado). **3114** (dueño: «si un servidor
