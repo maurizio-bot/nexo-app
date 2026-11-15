@@ -21,7 +21,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **15-11 08:15 — en la rama, sin publicar (irán en la APK 3066, cuando compile la 3118 en GitHub):** **3118** NexoBlePlugin.kt
+- **15-11 09:45 — APK 3066 (3118, 3120–3123; batería 268/268, índice 70,5; esta corrida es la primera compilación real del nativo
+  partido: si no compila, no se publica):** **3118** NexoBlePlugin.kt
   4.752 → 844 en 17 archivos (Plugin*.kt; cada @PluginMethod nuevo = puerta de una línea en la clase + cuerpo «…Impl» en su archivo);
   la corrida 3063 (compilación de prueba) se canceló: sus pruebas iban a fallar en diagplus (nombres de la 3117, la prueba se
   corrigió después) y no habría llegado a compilar; la compilación de verdad será la propia corrida de la APK 3066 (si no compila,
