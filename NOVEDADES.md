@@ -12,38 +12,29 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- NEXO ya está en portugués y en francés.
-- Los avisos del teléfono (mensajes, llamadas, actualizaciones) salen en el idioma de la app.
-- El diagnóstico registra si la app se cierra y por qué, y cuántos datos usa NEXO, para arreglar fallos más rápido.
-- Mejoras internas para que la app sea más estable y fácil de mantener.
+- Mejoras de estabilidad y correcciones.
 </es-419>
 <it-IT>
-- NEXO ora è anche in portoghese e in francese.
-- Le notifiche del telefono (messaggi, chiamate, aggiornamenti) arrivano nella lingua dell'app.
-- La diagnosi registra se l'app si chiude e perché, e quanti dati usa NEXO, per risolvere i problemi più in fretta.
-- Miglioramenti interni per rendere l'app più stabile e facile da mantenere.
+- Miglioramenti di stabilità e correzioni.
 </it-IT>
 <en-US>
-- NEXO is now available in Portuguese and French.
-- Phone notifications (messages, calls, updates) now appear in the app's language.
-- Diagnostics record when and why the app closes, and how much data NEXO uses, to fix problems faster.
-- Internal improvements to make the app more stable and easier to maintain.
+- Stability improvements and fixes.
 </en-US>
 <pt-BR>
-- O NEXO agora está em português e em francês.
-- As notificações do celular (mensagens, chamadas, atualizações) aparecem no idioma do app.
-- O diagnóstico registra se o app fecha e por quê, e quantos dados o NEXO usa, para corrigir falhas mais rápido.
-- Melhorias internas para deixar o app mais estável e fácil de manter.
+- Melhorias de estabilidade e correções.
 </pt-BR>
 <fr-FR>
-- NEXO est désormais disponible en portugais et en français.
-- Les notifications du téléphone (messages, appels, mises à jour) s'affichent dans la langue de l'app.
-- Le diagnostic enregistre quand et pourquoi l'app se ferme, et la quantité de données utilisée par NEXO, pour corriger les problèmes plus vite.
-- Améliorations internes pour rendre l'app plus stable et plus facile à maintenir.
+- Améliorations de stabilité et corrections.
 </fr-FR>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3066 (15-11-2026)
+- NEXO ya está en portugués y en francés.
+- Los avisos del teléfono (mensajes, llamadas, actualizaciones) salen en el idioma de la app.
+- El diagnóstico registra si la app se cierra y por qué, y cuántos datos usa NEXO, para arreglar fallos más rápido.
+- Mejoras internas para que la app sea más estable y fácil de mantener.
 
 ### APK 3065 (15-11-2026; la 3062 y la 3064 se cancelaron al construirse: esta las lleva juntas)
 - Si un servidor de internet falla, la app usa otro de reserva en segundos, sin que lo notes.

@@ -11,10 +11,11 @@ publicación y primeros usuarios; febrero campaña previa y la prueba de fuego.
 ## Calendario por etapas
 
 ### Etapa 1 — Base sólida (16 al 30 de noviembre)
-- [x] Reestructuración del código de la app: ningún archivo de más de 1.000 líneas (6 de 7 hechos el 15-11).
-- [ ] Reestructuración del puente con Android (4.753 → 844 líneas en 17 archivos, 15-11) — falta que compile en GitHub y la prueba en
-      los teléfonos.
-- [ ] Idiomas: portugués de Brasil y francés; avisos del teléfono en el idioma de la app (hoy salen en español).
+- [x] Reestructuración del código de la app: ningún archivo de más de 1.000 líneas (los 7, 15-11).
+- [x] Reestructuración del puente con Android (4.753 → 844 líneas en 17 archivos; compila, APK 3066). Falta solo que el dueño use la
+      3066 con normalidad (si algo del Bluetooth o los avisos se porta raro, decirlo).
+- [x] Idiomas: portugués de Brasil y francés; avisos del teléfono en el idioma de la app (APK 3066). Falta mirar en el teléfono que
+      los textos largos quepan en los botones.
 - [ ] Despertar la app del otro antes de mandarle un archivo grande (hoy se gastan reintentos con apps dormidas).
 - [ ] Atascos, lo que falta del plan del 14-11 (aprobado por el dueño): si un contacto con enlace sano no confirma lo tuyo,
       pedir el desatasco desde el que manda y avisar «el teléfono de X no puede leer tus mensajes». Lo demás ya está (ver abajo).
@@ -78,7 +79,7 @@ publicación y primeros usuarios; febrero campaña previa y la prueba de fuego.
   espera no gasta reintentos (2993); sobre un Bluetooth caído o una app congelada queda en espera, no fallido (3002, 3009);
   desatasco automático, también en grupos (3069, 3071); Bluetooth solo de emergencia y solo a quien está cerca (3079, 3084); un
   archivo que va por Bluetooth se pasa a mitad al Wi-Fi o a internet (3080).
-- ✓ 5 idiomas pedidos: español, italiano e inglés hechos; portugués y francés en la etapa 1.
+- ✓ 5 idiomas: español, italiano, inglés, portugués de Brasil y francés (APK 3066), también en los avisos del teléfono.
 
 ## Decisiones del dueño (en orden de urgencia)
 1. **Cuenta de Google Play: personal o empresa** (antes del 15-12). Una empresa hay que constituirla (lleva semanas).
