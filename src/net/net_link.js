@@ -550,7 +550,11 @@ export class NetLink {
     self._greeted = true;
     self._netContacts().forEach(function(c) {
       var nx = _nid(c.nexoId || c.deviceUUID), p = self.peers.get(nx) || {};
-      if (force || first || (p.up && now - (p.helloAt || 0) > HELLO_MS)) self._hello(nx);
+      // 3133 (saludonuevo.js; destapado por blobfan.js en la 3129): un contacto que pasa a tener internet con los relés YA abiertos
+      // (se conocieron en persona después de abrir la app) no recibía saludo: solo se saludaba al abrir los relés y luego a los que
+      // ya estaban en línea; si los dos tenían internet de antes, ninguno saludaba y no se veían en línea por internet hasta reabrir
+      // la app. Ahora, al que aún no se saludó en esta sesión, un saludo (uno solo: helloAt queda puesto).
+      if (force || first || !p.helloAt || (p.up && now - (p.helloAt || 0) > HELLO_MS)) self._hello(nx);
     });
   }
 }

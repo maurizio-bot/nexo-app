@@ -869,4 +869,5 @@ export default {
   req_from_invite: "aceitou seu convite",
   media_saved_ok_video: "Vídeo salvo na sua galeria (pasta NEXO)",
   media_saved_already: "Já está na sua galeria (pasta NEXO)",
+  invite_share_fail: "Não foi possível compartilhar o convite",
 };

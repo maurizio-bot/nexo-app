@@ -869,4 +869,5 @@ export default {
   req_from_invite: "accepted your invitation",
   media_saved_ok_video: "Video saved to your gallery (NEXO folder)",
   media_saved_already: "Already in your gallery (NEXO folder)",
+  invite_share_fail: "Couldn't share the invitation",
 };

@@ -1003,6 +1003,10 @@
     {
      "fallo": "3130 (diagnóstico S24 3069 15-11 13:51, con la línea nueva «bajado de los relés»: 10,1 MB en 34 min, 8,8 MB YA VISTOS; deslizó 4 veces en 3 s): «deslizar para actualizar» volvía a pedir a CADA relé abierto los últimos 10 min aunque estuviera entregando en vivo. 3130: solo a un relé callado (30 s sin nada) y como mucho una vez por minuto. llamadareles.js L4 (contraprueba 3129: vuelve a pedir al que entrega en vivo)",
      "prueba": "DATOS de una LLAMADA por RELÉS (3128"
+    },
+    {
+     "fallo": "3133 (destapado por blobfan.js en la 3129: el aviso oculto nuevo de la foto cambió el orden en que se guardan las claves): el saludo cifrado «estoy en línea» solo salía al abrir los relés (a los contactos que ya había) y después solo a los que ya estaban en línea; dos teléfonos con internet ya abierto que se conocían en persona DESPUÉS no se saludaban nunca: no se veían en línea por internet hasta reabrir la app o deslizar, y al cortarse el Bluetooth no pasaban a internet. 3133: al contacto que aún no se saludó en esta sesión, un saludo (uno solo). saludonuevo.js S1–S3 (contraprueba 3128 y 3132: S1 y S2 fallan)",
+     "prueba": "SALUDO AL CONTACTO NUEVO con internet ya encendido (3133"
     }
    ],
    "debiles": [

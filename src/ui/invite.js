@@ -71,14 +71,14 @@ export function inviteCodeOk(code) { return CODE_RE.test(String(code || '')); }
 /** Compartir una invitación nueva por WhatsApp / TikTok / el menú del teléfono. Devuelve una promesa con el camino ('copiado' si solo se pudo copiar). */
 export function shareInvite(target, myId) {
   var inv = createInvite(myId);
-  if (!inv) return Promise.reject(new Error('sin NEXO ID'));
+  if (!inv) return Promise.reject(new Error(t('invite_share_fail', 'No se pudo compartir la invitación')));
   var pl = (typeof window !== 'undefined') && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
   var pkgs = SHARE_TARGETS[target] || [];
   console.log('[INVITE] invitación nueva (' + target + '), caduca en 7 días');
   if (pl && typeof pl.shareText === 'function') return Promise.resolve(pl.shareText({ text: inv.text, pkgs: pkgs })).then(function(r) { return (r && r.via) || target; });
   if (typeof navigator !== 'undefined' && navigator.share) return navigator.share({ text: inv.text }).then(function() { return 'menu'; });
   if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(inv.text).then(function() { return 'copiado'; });
-  return Promise.reject(new Error('no se pudo compartir'));
+  return Promise.reject(new Error(t('invite_share_fail', 'No se pudo compartir la invitación')));
 }
 
 // Gancho de pruebas

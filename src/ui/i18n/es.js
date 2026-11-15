@@ -869,4 +869,5 @@ export default {
   req_from_invite: "aceptó tu invitación",
   media_saved_ok_video: "Vídeo guardado en tu galería (carpeta NEXO)",
   media_saved_already: "Ya está en tu galería (carpeta NEXO)",
+  invite_share_fail: "No se pudo compartir la invitación",
 };
