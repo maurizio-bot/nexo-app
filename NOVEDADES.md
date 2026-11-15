@@ -45,12 +45,10 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 ## Historial
 
-### APK 3064 (15-11-2026)
-- El diagnóstico muestra el nombre de cada contacto y cuánta batería gasta el teléfono con NEXO, para encontrar fallos más rápido.
-
-### APK 3062 (15-11-2026)
+### APK 3065 (15-11-2026; la 3062 y la 3064 se cancelaron al construirse: esta las lleva juntas)
 - Si un servidor de internet falla, la app usa otro de reserva en segundos, sin que lo notes.
-- Mejoras internas para que la app sea más fácil de mantener y más estable.
+- El diagnóstico muestra el nombre de cada contacto y cuánta batería gasta el teléfono con NEXO, para encontrar fallos más rápido.
+- Mejoras internas para que la app sea más estable y fácil de mantener.
 
 ### APK 3061 (15-11-2026)
 - Al abrir Ajustes ves al momento si hay versión nueva: «Actualizar a la versión N».

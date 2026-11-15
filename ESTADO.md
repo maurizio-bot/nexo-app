@@ -21,15 +21,17 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **15-11 08:15 — en la rama, sin publicar (irán en la APK 3065, cuando compile la 3118 en GitHub):** **3118** NexoBlePlugin.kt
+- **15-11 08:15 — en la rama, sin publicar (irán en la APK 3066, cuando compile la 3118 en GitHub):** **3118** NexoBlePlugin.kt
   4.752 → 844 en 17 archivos (Plugin*.kt; cada @PluginMethod nuevo = puerta de una línea en la clase + cuerpo «…Impl» en su archivo);
   compilación de prueba = corrida **3063** (workflow_dispatch: solo compila). **3120** cierres de la app y su motivo + fallos guardados
   al caer + datos de NEXO por red en el diagnóstico (`diag_exits.js`, ExitReasons/CrashLog; `cierres.js`). **3121** textos partidos
   en un archivo por idioma (`src/ui/i18n/`). **3122** avisos del nativo en el idioma de la app (NativeText/NativeLang, setAppLang).
   **3123** portugués de Brasil y francés (`idiomas5.js`); NOVEDADES en 5 idiomas. Ya no queda ningún archivo de más de 1.000 líneas.
-- **15-11 (3117 + 3119 = APK 3064; batería 266/266 con diagplus.js al día por los nombres; índice 70,5):** **3117** el diagnóstico
+- **15-11 (3111–3117 + 3119 = APK 3065; batería 266/266 con diagplus.js al día por los nombres; índice 70,5):** **3117** el diagnóstico
   lleva el nombre del contacto junto a su ID corto; **3119** tiempo de uso y gasto de batería por hora (a la vista y detrás). La
-  corrida 3063 fue la compilación de prueba de la 3118 (no es APK).
+  corrida 3063 fue la compilación de prueba de la 3118 (no es APK); la 3062 se CANCELÓ sola al subir la 3064 (el workflow cancela la
+  build en curso de NEXOCHAT): la 3065 lleva todo (3111–3117 y 3119) y sus novedades juntan las dos. Regla: no subir a NEXOCHAT
+  mientras se construye otra APK.
 - **15-11: PLAN MAESTRO en `docs/PLAN.md`** (pedido del dueño: «aterrizar lo que no está aterrizado, metas reales y fechas, palomita
   a lo hecho; el orden lo llevas tú»). 5 etapas hasta EDC (feb 2027). Índice 66,1 → 70,5 contando la evidencia de los diagnósticos
   (criterio del dueño), anotada área por área en `tests/sim/robustez.json` («telefono.por»).
