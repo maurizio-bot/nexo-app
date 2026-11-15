@@ -13,7 +13,11 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   en la llamada que suena estando en otra (`callwait.js`).
 - **Falta (dos llamadas):** la segunda no pasa por la llamada del sistema (Telecom): con la app cerrada avisa como mensaje y no
   como llamada; «Mensaje» desde la pantalla de bloqueo; cámara: en el teléfono real, dos videollamadas a la vez comparten una sola
-  cámara (sin probar); **#221** al «Agregar» a una llamada 1-a-1, el que ya estaba entra solo (sin volver a contestar).
+  cámara (sin probar).
+- **Hecho 3106 (#221):** al «Agregar» a una llamada 1-a-1, el que ya estaba entra solo a la de grupo; y en grupo, dos invitados que
+  contestan a destiempo ya se oyen (antes no, venía de siempre). **3105:** novedades de cada versión junto al botón de actualizar
+  (`NOVEDADES.md`, formato de Google Play; regla en CLAUDE.md). Falta: el aviso del sistema «Hay una versión nueva» aún no lleva
+  las novedades (solo el aviso de dentro de la app y Ajustes).
 
 ## 🆕 14-11 noche (llamadas, orden del dueño: «empieza por las llamadas»; y su idea del despertador)
 - **Diagnósticos 22:12–22:21 (S24 3054, Xiaomi 3046→3055, Honor 3032→3055; S23 sigue en la 3048):** (1) **3097**: en la videollamada
