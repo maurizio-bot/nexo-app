@@ -23,6 +23,11 @@ var _busy = false, _pct = -1, _listening = false;
 // bajado (nunca vuelve a bajar). El estado se le pregunta al nativo (mode: 'status') al abrir Ajustes, al volver a la app y mientras
 // baja, así que al reabrir la ventana se ve «Descargando… X %» o «Instalar», nunca otra vez «Descargar».
 var _ready = 0, _pollT = null;
+// 3110 (dueño 15-11: «al pulsar el botón de ajuste se inicia en automático la búsqueda… que no diga búsqueda sino actualiza a la última
+// versión»): al abrir Ajustes se consulta sola (como mucho una vez cada SETTINGS_GAP_MS: GitHub limita las consultas sin cuenta) y el
+// botón dice lo que hay: «Actualizar a la versión N», «Tienes la última versión» o, si no se pudo consultar, «Volver a intentar».
+var SETTINGS_GAP_MS = 2 * 60 * 1000, _settingsAt = 0, _lastCheck = null, _checking = false;
+function _settingsGap() { var v = (typeof window !== 'undefined') ? window.NEXO_UPDATER_SETTINGS_GAP_MS : undefined; return (typeof v === 'number' && v >= 0) ? v : SETTINGS_GAP_MS; }
 
 function _lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function _lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -142,13 +147,17 @@ export function updaterInstall() {
 // 2991 (pedido del dueño): en Perfil → Ajustes el botón es «Buscar ahora» y, cuando hay una versión nueva, pasa a «Instalar actualización (N)»
 // (y al tocarlo baja e instala); mientras baja muestra el avance. Se mantiene al día desde aquí (consulta, avance, descarte).
 function _installLabel(a) { return t('upd_install_btn', 'Instalar actualización') + ' (' + a.build + ')'; }
-function _downloadLabel(a) { return t('upd_download_btn', 'Descargar actualización') + ' (' + a.build + ')'; }
+function _downloadLabel(a) { return t('upd_update_to', 'Actualizar a la versión') + ' ' + a.build; }
 // Lo que muestra Ajustes según el estado (el mismo al dibujarlo y al actualizarlo): { label, status, disabled }
 function _settingsView() {
   var a = updaterAvailable(), me = updaterBuildNum();
   if (a && _busy) return { label: t('upd_downloading', 'Descargando…') + (_pct > 0 ? ' ' + _pct + ' %' : ''), status: t('upd_bg_toast', 'Descargando la actualización. Puedes seguir usando NEXO: te aviso al terminar.'), disabled: true };
   if (a && _ready === a.build) return { label: _installLabel(a), status: t('upd_ready_status', 'Descargada: lista para instalar') + ' (' + a.build + ')', disabled: false };
   if (a) return { label: _downloadLabel(a), status: t('upd_new', 'Hay una versión nueva de NEXO') + ' (' + a.build + ')', disabled: false };
+  if (_checking) return { label: t('upd_checking', 'Buscando…'), status: t('upd_current', 'Tu versión') + ': ' + (me != null ? me : 'dev'), disabled: true };
+  if (_lastCheck === 'current') return { label: t('upd_latest_btn', 'Tienes la última versión'), status: t('upd_uptodate', 'Ya tienes la última') + ' (' + (me != null ? me : 'dev') + ')', disabled: true };
+  if (_lastCheck === 'error') return { label: t('upd_retry', 'Volver a intentar'), status: t('upd_error', 'No se pudo consultar. Revisa tu internet.'), disabled: false };
+  if (_lastCheck === 'unsupported') return { label: t('upd_check_now', 'Buscar ahora'), status: t('upd_unsupported', 'Esta versión no se actualiza sola.'), disabled: true };
   return { label: t('upd_check_now', 'Buscar ahora'), status: t('upd_current', 'Tu versión') + ': ' + (me != null ? me : 'dev'), disabled: false };
 }
 // 3105: «Lo nuevo en la versión N» (la que se ofrece, encima del botón) y «Lo nuevo de tu versión» (la instalada)
@@ -175,7 +184,7 @@ function _syncSettings() {
     if (!btn) return;
     var v = _settingsView();
     btn.disabled = v.disabled; btn.textContent = v.label;
-    if (st && (v.disabled || updaterAvailable())) st.textContent = v.status;
+    if (st) st.textContent = v.status;
   } catch (e) {}
 }
 
@@ -294,21 +303,18 @@ export function renderUpdaterSection(sheet) {
   var box = sheet.querySelector('#nexo-updater-on'), btn = sheet.querySelector('#nexo-updater-now'), st = sheet.querySelector('#nexo-updater-status');
   if (box) box.onchange = function() { setUpdaterEnabled(box.checked); };
   // 3008: se dibuja con el estado de AHORA (bajando / bajada / por bajar) y se le pregunta al nativo por si cambió con la ventana cerrada
-  if (st) st.textContent = _settingsView().status;
+  var check = function() {
+    _checking = true; _syncSettings();
+    updaterCheck(true).then(function(r) { _checking = false; _lastCheck = r && r.state === 'newer' ? null : (r && r.state); _syncSettings(); });
+  };
   _syncSettings(); _refreshState();
+  // 3110: al abrir Ajustes se mira sola si hay una nueva (si no hay ya una conocida y no se miró hace nada)
+  if (!updaterAvailable() && updaterBuildNum() != null && Date.now() - _settingsAt >= _settingsGap()) { _settingsAt = Date.now(); check(); }
   if (btn) btn.onclick = function() {
     var av = updaterAvailable();
     if (av && _ready === av.build) { updaterInstall(); return; }   // ya bajada: «Instalar actualización (N)»
-    if (av) { if (!_busy) updaterDownload(); return; }             // hay una nueva: «Descargar actualización (N)»
-    if (st) st.textContent = t('upd_checking', 'Buscando…');
-    updaterCheck(true).then(function(r) {
-      if (!st) return;
-      var me = updaterBuildNum();
-      if (r.state === 'newer') { st.textContent = t('upd_new', 'Hay una versión nueva de NEXO') + ' (' + r.build + ')'; _syncSettings(); }
-      else if (r.state === 'current') st.textContent = t('upd_uptodate', 'Ya tienes la última') + ' (' + (me != null ? me : 'dev') + ')';
-      else if (r.state === 'unsupported') st.textContent = t('upd_unsupported', 'Esta versión no se actualiza sola.');
-      else st.textContent = t('upd_error', 'No se pudo consultar. Revisa tu internet.');
-    });
+    if (av) { if (!_busy) updaterDownload(); return; }             // hay una nueva: «Actualizar a la versión N»
+    _settingsAt = Date.now(); check();                             // «Volver a intentar» (o sin consulta todavía)
   };
 }
 

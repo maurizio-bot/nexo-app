@@ -62,6 +62,7 @@ var MAX_RELAY_FRAME = 300000; // SEC-4 (auditoría 28-10): tope de un frame de r
 // P5 (dueño 01-11): un relé que FLAPEA (abre y se cae enseguida, muchas veces) desestabiliza internet (en el diagnóstico
 // damus.io se cerró 37×). Se detecta por conexiones de vida corta y se aparta un rato — pero SOLO si quedan otros relés
 // abiertos (mejor un relé que flapea que quedarse sin internet).
+var NET_CHANGE_SETTLE_MS = 250;      // 3109: avisos de cambio de red más juntos que esto se tratan como uno (el último manda)
 var RELAY_STABLE_MS = 20000;        // una conexión de relé de menos de esto cuenta como «flap» (abrió y se cayó enseguida)
 var RELAY_FLAP_WINDOW_MS = 300000;  // ventana para contar flaps (5 min)
 var RELAY_FLAP_MAX = 3;             // nº de flaps en la ventana para considerar el relé inestable
@@ -445,11 +446,22 @@ export class NetLink {
   // escuchaba «entré a un Wi-Fi»; al pasar de Wi-Fi a datos (o al revés) sus conexiones a los relés quedaban colgadas de la red vieja
   // —abiertas para la app, muertas de verdad— hasta que fallaban o hasta la comprobación de relés callados (redcambio.js: lo que le
   // mandaban tardaba 28 s en entrar). Ahora, al cambiar la red, se cierran y se abren por la nueva al momento, y se mide cuánto tardan.
+  // 3109 (diagnóstico S23 3057 15-11 19:46:10: al volver la app llegaron 4 avisos en 3 ms —Wi-Fi → sin red → datos → Wi-Fi → datos— y
+  // cada uno cerró y reabrió TODOS los relés: 3 vueltas de conexiones a medias; luego más de un minuto sin relés por datos): los avisos
+  // seguidos se juntan (NET_CHANGE_SETTLE_MS) y se actúa una sola vez, con la red en la que quedó.
   _onNetChange(ev) {
     var self = this, t = String((ev && ev.type) || ''), prev = String((ev && ev.prev) || '');
+    if (!self._netBurst) self._netBurst = { from: prev, seq: [] };
+    self._netBurst.seq.push(t);
+    clearTimeout(self._netBurstT);
+    self._netBurstT = setTimeout(function() { var b = self._netBurst; self._netBurst = null; if (b) self._applyNetChange(b.from, b.seq); }, NET_CHANGE_SETTLE_MS);
+  }
+  _applyNetChange(prev, seq) {
+    var self = this, t = seq[seq.length - 1];
     var NAMES = { wifi: 'Wi-Fi', cell: 'datos móviles', eth: 'cable', vpn: 'VPN', none: 'sin red', other: 'otra red' }; // i18n-ok: registro
     var nm = function(x) { return NAMES[x] || x || '?'; };
-    console.log('[NET] Cambio de red: ' + nm(prev) + ' → ' + nm(t) + (t === 'none' ? ': espero a que vuelva' : ': reconecto los relés ya')); // i18n-ok: registro para el diagnóstico
+    var burst = seq.length > 1 ? ' (' + seq.length + ' avisos seguidos: ' + [prev].concat(seq).map(nm).join(' → ') + '; una sola vez)' : ''; // i18n-ok: registro
+    console.log('[NET] Cambio de red: ' + nm(prev) + ' → ' + nm(t) + burst + (t === 'none' ? ': espero a que vuelva' : ': reconecto los relés ya')); // i18n-ok: registro para el diagnóstico
     if (t === 'none') { self._netChangeAt = 0; return; }
     self._netChangeAt = Date.now();
     self.relays.forEach(function(r, u) {

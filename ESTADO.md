@@ -21,6 +21,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **15-11 mañana (en la rama, tras la APK 3060):** dueño: «primero reestructura, tener todo bien claro, y de ahí la implementación»
+  (idiomas portugués y francés, luego lo demás). **Revisión semanal (fin de semana):** ningún archivo > 1.000 líneas; `tests/sim/tamano.js`
+  + `tamano.json` (lista de pendientes con tope); cada partición se comprueba con `tools/partir_check.cjs <ref> <viejo> <nuevos…>` (piezas
+  idénticas + ningún nombre suelto). **3108**: ble_ack.js partido en 6 (`tools/partir_ack.cjs`; 217/217 piezas iguales); batería en
+  curso. Sin probar aún (después de la batería): **3109** avisos de cambio de red seguidos se juntan (250 ms; S23 19:46:10, 4 avisos en
+  3 ms) — `redcambio.js` W4; **3110** Ajustes consulta sola la actualización y el botón dice «Actualizar a la versión N» / «Tienes la
+  última versión» (pedido del dueño). Siguiente: despertar antes de mandar un archivo a una app dormida (S23→…6482, 8 reintentos);
+  partir ble_messages.js, vault_manager.js, net_link.js, ble_interface.js, main.js y NexoBlePlugin.kt; luego idiomas (tabla por idioma).
 - **15-11 madrugada (3102–3106 = APK 3060; batería 263/263, índice 66,1):** **3102** segunda llamada 1-a-1 entrante abajo
   (`ble.calls2`, lane 2; `_callSignal` reparte por id/contacto; con dos, «ocupado»). **3103–3104** (#222): `ble._callList/_callCount/
   _holdOthers/_resumeLoneCall` (ble_messages); `calls.hold(on)` y la pausa por llamada telefónica comparten `_applyHold` (userHold

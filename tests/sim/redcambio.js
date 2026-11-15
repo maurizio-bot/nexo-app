@@ -5,7 +5,8 @@
 // de Wi-Fi a datos (sus conexiones a los relés quedan mudas, como en el teléfono) y al momento:
 //  W1  B le escribe: a A le llega en ≤ 10 s;
 //  W2  A le escribe a B: le llega en ≤ 10 s;
-//  W3  en el diagnóstico de A queda el cambio y cuánto tardaron los relés en volver.
+//  W3  en el diagnóstico de A queda el cambio y cuánto tardaron los relés en volver;
+//  W4  (3109) una ráfaga de avisos de red (como al volver la app) reabre los relés una sola vez y lo siguiente llega igual.
 // Uso: node redcambio.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -112,10 +113,22 @@ function pickFile(p, name, b) {
   await openChatWith(A, 'B'); sendText(A, 'desde los datos');
   const w2 = await waitFor(() => vaultMsgs(B, idA).then((l) => l.some((m) => m.content === 'desde los datos')), 60000);
   r.W2_b_recibe_s = w2 === null ? null : Math.round((Date.now() - t2) / 100) / 10;
+  // W4 (3109, diagnóstico S23 3057 19:46:10): al volver la app llegan varios avisos de red seguidos (Wi-Fi → sin red → datos → Wi-Fi →
+  // datos en 3 ms): los relés se reabren UNA vez (antes, una por aviso) y lo que llega después entra igual
+  await sleep(2000);
+  const k4 = logs.length;
+  r.mudas4 = r1.muteTag('p=A') + r2.muteTag('p=A');
+  ['none', 'cell', 'wifi', 'cell'].forEach((n) => nA.setNetwork(n));
+  await sleep(2500);
+  r.W4_reaperturas = logs.slice(k4).filter((l) => /\[A\].*la red cambió, reconecto por la nueva/.test(l)).length;
+  const t4 = Date.now();
+  await openChatWith(B, 'A'); sendText(B, 'tras la rafaga');
+  const w4 = await waitFor(() => vaultMsgs(A, idB).then((l) => l.some((m) => m.content === 'tras la rafaga')), 60000);
+  r.W4_a_recibe_s = w4 === null ? null : Math.round((Date.now() - t4) / 100) / 10;
   r.W3_registro = logs.slice(k0).filter((l) => /\[A\].*\[NET\] (Cambio de red|Relés listos tras el cambio)/.test(l)).map((l) => l.replace(/^.*\[NET\] /, '').substring(0, 110));
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|net::ERR|fetch/.test(l)).slice(0, 5);
   const ok = r.en_internet && r.mudas > 0 && r.W1_a_recibe_s !== null && r.W1_a_recibe_s <= 10 && r.W2_b_recibe_s !== null && r.W2_b_recibe_s <= 10 &&
-    r.W3_registro.length >= 2 && !r.errores.length;
+    r.W3_registro.length >= 2 && r.W4_reaperturas > 0 && r.W4_reaperturas <= 2 && r.W4_a_recibe_s !== null && r.W4_a_recibe_s <= 10 && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('REDCAMBIO ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_redcambio.txt'), logs.join('\n'));

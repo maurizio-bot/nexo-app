@@ -114,13 +114,16 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   U().setEnabled(true);
 
   // (5) Perfil → Ajustes: tarjeta «Actualizaciones»
-  win.dispatchEvent(new win.CustomEvent('nexo:ui:settings')); await sleep(300);
+  // 3110 (dueño 15-11): al abrir Ajustes se consulta sola y el botón dice lo que hay (sin «Buscar ahora»)
+  win.NEXO_UPDATER_SETTINGS_GAP_MS = 0;
+  win.__upd.nextCheck = { build: 2000, tag: 'nightly-2000', url: URL_NEW, size: 1 };
+  const c5 = win.__upd.checks;
+  win.dispatchEvent(new win.CustomEvent('nexo:ui:settings')); await sleep(400);
   const sheet = doc.getElementById('nexo-settings-sheet');
   r.tarjeta_ajustes = !!(sheet && sheet.querySelector('#nexo-updater-on') && sheet.querySelector('#nexo-updater-now'));
   if (sheet) {
-    win.__upd.nextCheck = { build: 2000, tag: 'nightly-2000', url: URL_NEW, size: 1 };
-    sheet.querySelector('#nexo-updater-now').click(); await sleep(400);
-    r.buscar_ahora_informa = /Ya tienes la última/.test(sheet.querySelector('#nexo-updater-status').textContent);
+    const b5 = sheet.querySelector('#nexo-updater-now');
+    r.buscar_ahora_informa = win.__upd.checks === c5 + 1 && /Ya tienes la última/.test(sheet.querySelector('#nexo-updater-status').textContent) && /Tienes la última versión/.test(b5.textContent) && b5.disabled === true;
   }
 
   // (6) 3008 (dueño 11-11): «Buscar ahora» encuentra una versión nueva → «Descargar actualización (N)»; al tocarlo baja. Si se cierra la
@@ -130,14 +133,16 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     win.__upd.ready = 0; win.__upd.autoFinish = false;
     win.__upd.nextCheck = { build: 2005, tag: 'nightly-2005', url: URL_NEW, size: 25000000 };
     win.localStorage.removeItem('nexo_upd_snooze');
-    sheet.querySelector('#nexo-updater-now').click(); await sleep(500);
-    const b6 = sheet.querySelector('#nexo-updater-now');
-    r.boton_pasa_a_descargar = /Descargar actualización \(2005\)/.test(b6.textContent) && /2005/.test(sheet.querySelector('#nexo-updater-status').textContent);
+    sheet.parentNode && sheet.parentNode.removeChild(sheet);   // 3110: se vuelve a abrir Ajustes y la consulta sola encuentra la 2005
+    win.dispatchEvent(new win.CustomEvent('nexo:ui:settings')); await sleep(500);
+    const sheet6 = doc.getElementById('nexo-settings-sheet');
+    const b6 = sheet6.querySelector('#nexo-updater-now');
+    r.boton_pasa_a_descargar = /Actualizar a la versión 2005/.test(b6.textContent) && /2005/.test(sheet6.querySelector('#nexo-updater-status').textContent);
     const antes = win.__upd.downloads.length;
     b6.click(); await sleep(300);
     r.boton_descarga = win.__upd.downloads.length === antes + 1 && win.__upd.downloads[antes] === URL_NEW;
     // se cierra la ventana (toque afuera) mientras baja y se vuelve a abrir
-    sheet.parentNode && sheet.parentNode.removeChild(sheet);
+    sheet6.parentNode && sheet6.parentNode.removeChild(sheet6);
     win.dispatchEvent(new win.CustomEvent('nexo:ui:settings')); await sleep(400);
     const sheet2 = doc.getElementById('nexo-settings-sheet');
     const b7 = sheet2 && sheet2.querySelector('#nexo-updater-now');
