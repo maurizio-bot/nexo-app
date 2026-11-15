@@ -21,6 +21,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **15-11 madrugada (3099 = APK 3058; batería 257/257, índice 66):** diagnósticos 17:48–17:50 (S24 3054, S23 3048 con ahorro de
+  batería y sin relés). **3099**: con una transferencia en curso la re-búsqueda de perdidos se aplaza como mucho `SCAN_HOLD_MAX_MS`
+  (3 min) seguidos; luego una vuelta igual (ble_connections tick/go; perilla `NEXO_SCAN_HOLD_MAX_MS`); un hueco largo entre vueltas
+  (app suspendida) vuelve a contar; `net_link` abandona la medida del cambio de red al irse a segundo plano (`scanhold.js`). En la
+  rama, para la APK siguiente: **3100** invitado de llamada de grupo que no contesta → «No contestó» a los 45 s (`gcnoanswer.js`).
+  Pedido nuevo del dueño (15-11): **dos llamadas a la vez con la pantalla dividida** (máximo 2; tarea #220, por fases).
 - **14-11 noche (3097–3098 = APK 3057; batería 256/256, índice 66):** diagnósticos 22:12–22:21 (S24 3054; Xiaomi 3046 y Honor 3032 se
   actualizaron solos a la 3055; S23 sigue en la 3048). (1) **3097**: `_callUsesBle()` (ble_messages): la radio Bluetooth solo es de la
   llamada si la llamada (o un tramo de la de grupo) va POR Bluetooth; antes cualquier llamada apartaba el Bluetooth y lo del S23
