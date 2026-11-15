@@ -26,6 +26,7 @@ var GMAX_AUDIO = 5;          // tope de participantes en audio (malla N²; ≤5 
 var GRING_MS = 45000;        // invitación sin contestar
 var GWEAK_MS = 4000;         // #130 (dueño 31-10): un tramo sin voz > esto → «Reconectando…» (como la 1-a-1), sin cerrarlo
 var GSILENCE_MS = 15000;     // un tramo sin recibir nada en 15 s → se cierra (los demás siguen); como el corte 1-a-1
+var GUPGRADE_MS = 20000;     // #221: la invitación de «Agregar» llega como mucho 20 s después de colgar la 1-a-1 (si no, suena)
 var GMISS_MS = 30000;        // #dueño 31-10: una invitación entrante sin contestar en 30 s → perdida («llamada perdida de grupo»)
 var GINVITE_MAX_AGE = 60000; // #dueño 31-10: una invitación más vieja que esto (re-entrega del buzón tras colgar/reabrir) se ignora: no re-suena
 var GDEAD_MS = 180000;
@@ -91,8 +92,10 @@ export class GroupCall {
 
   // Iniciar una llamada de grupo con una lista de contactos (members: [nexoId]). video reservado para la Fase 2.
   // chatId (opcional): el id del chat de grupo desde el que se llama, para volver a él si la llamada se corta (#130 dueño).
-  start(members, video, chatId) {
-    var self = this, me = self._nidSelf();
+  // #221 (dueño 15-11): opts.upgrade = { nx, id } cuando sale de «Agregar» en una llamada 1-a-1: a ese contacto la invitación le lleva
+  // el id de la llamada que teníamos (up) y entra solo, sin volver a contestar (solo si de verdad estaba en esa llamada conmigo).
+  start(members, video, chatId, opts) {
+    var self = this, me = self._nidSelf(), up = opts && opts.upgrade;
     if (self.gc) return Promise.reject(new Error(t('grp_call_busy', 'Ya hay una llamada en curso')));
     // #222 (dueño 15-11): máximo dos llamadas a la vez (contando las 1-a-1)
     if (self.ble && typeof self.ble._callCount === 'function' && self.ble._callCount() >= 2) return Promise.reject(new Error(t('call_max_two', 'Ya tienes dos llamadas a la vez. Cuelga una para llamar a alguien más')));
@@ -113,7 +116,11 @@ export class GroupCall {
       if (!self.gc || self.gc.gid !== gid) return;
       self.gc.cryptoKey = k;
       // invitar a cada miembro con el roster y la clave de grupo
-      list.forEach(function(nx) { self._signal(nx, 'invite', { roster: Array.from(roster), k: key, co: self._codecs(), v: video ? 1 : 0 }); });
+      list.forEach(function(nx) {
+        var ex = { roster: Array.from(roster), k: key, co: self._codecs(), v: video ? 1 : 0 };
+        if (up && _nid(up.nx) === nx && typeof up.id === 'string') ex.up = up.id; // #221
+        self._signal(nx, 'invite', ex);
+      });
     });
   }
 
@@ -132,6 +139,7 @@ export class GroupCall {
       if (nx === me) return;
       var l = self._leg(nx);
       if (nx === g.host) { self._signal(nx, 'accept', {}); l.state = 'active'; } // al que invitó: aceptar
+      else if (g.earlyOffers && g.earlyOffers.has(nx)) { self._signal(nx, 'accept', {}); l.state = 'active'; } // 3106: me lo abrió mientras sonaba
       // #130 (dueño 31-10): si entro TARDE (me agregaron a una llamada ya en curso, late:1), abro el tramo con TODOS (los que
       // ya estaban no van a iniciar hacia mí); si no, la regla normal: el NEXO ID menor manda 'offer' y el otro espera.
       else if (g.late || me < nx) { self._signal(nx, 'offer', {}); l.state = 'offering'; }
@@ -387,9 +395,10 @@ export class GroupCall {
       // la memoria de llamadas terminadas) NO debe volver a sonar. Una invitación de verdad llega al instante.
       if (o.ts && Date.now() - Number(o.ts) > GINVITE_MAX_AGE) return;
       if (g) { if (g.gid === o.gid) return; self._signal(nx, 'leave', { gid: o.gid }); return; } // ya en otra llamada → ocupado (si es la MISMA, es re-entrega: ignorar, no avisar «leave»)
+      var upg = o.up ? self._upgradeFrom(nx, o.up) : null; // #221: viene de «Agregar» en la llamada que tenía con él
       // #220 (dueño 15-11: «dos llamadas al mismo tiempo y nada más»): con dos 1-a-1 en curso, la de grupo no entra (ocupado)
       var b1 = self.ble && self.ble.calls && self.ble.calls.call, b2 = self.ble && self.ble.calls2 && self.ble.calls2.call;
-      if (b1 && b2) { self._signal(nx, 'leave', { gid: o.gid }); return; }
+      if (b1 && b2 && !(upg && upg.live)) { self._signal(nx, 'leave', { gid: o.gid }); return; }
       if (typeof o.k !== 'string' || !/^[0-9a-f]{64}$/.test(o.k)) return;
       var roster = new Set((o.roster || []).map(_nid)); roster.add(nx); roster.add(me);
       if (roster.size > GMAX_AUDIO) return;
@@ -398,7 +407,17 @@ export class GroupCall {
       // grupo»); los que sí contestaron siguen entre ellos.
       clearTimeout(self._ringTimer);
       self._ringTimer = setTimeout(function() { if (self.gc && self.gc.gid === o.gid && self.gc.state === 'ringing') self._finish('missed'); }, window.NEXO_GCALL_MISS_MS || GMISS_MS);
-      self._importKey(o.k).then(function(k) { if (self.gc && self.gc.gid === o.gid) { self.gc.cryptoKey = k; _emit('nexo:gcall', self.state()); _emit('nexo:gcallRing', { gid: o.gid, from: nx, members: Array.from(roster) }); } });
+      if (upg && upg.live) { try { upg.lane._finish('ended', false); } catch (e) {} } // la 1-a-1 que pasa a grupo (él ya colgó la suya)
+      self._importKey(o.k).then(function(k) {
+        if (!self.gc || self.gc.gid !== o.gid) return;
+        self.gc.cryptoKey = k;
+        if (upg) { // #221: entra solo (sin sonar ni volver a contestar)
+          console.log('[GCALL] Entro solo a la llamada de grupo de ' + nx + ': venía de la llamada con él');
+          self.accept();
+          return;
+        }
+        _emit('nexo:gcall', self.state()); _emit('nexo:gcallRing', { gid: o.gid, from: nx, members: Array.from(roster) });
+      });
       return;
     }
     if (!g || g.gid !== o.gid) {
@@ -412,6 +431,9 @@ export class GroupCall {
     if (o.op === 'end') { if (g.dir === 'in' && nx === g.host) self._finish('ended'); else self._dropLeg(nx); return; }
     // El que INICIÓ (dir 'out', 'calling') pasa a activo con la PRIMERA aceptación (arranca su micrófono compartido)
     if (g.dir === 'out' && g.state === 'calling' && o.op === 'accept') { clearTimeout(self._ringTimer); self._set({ state: 'active' }); self._begin(); }
+    // 3106 (lo destapó #221): un compañero que ya contestó me abre el tramo mientras a mí todavía me suena; antes se perdía y, si yo
+    // tenía el NEXO ID mayor, al contestar esperaba un «offer» que ya no iba a llegar: los dos no se oían. Se guarda y se contesta al entrar.
+    if (o.op === 'offer' && g.dir === 'in' && g.state === 'ringing' && g.roster.has(nx)) { (g.earlyOffers = g.earlyOffers || new Set()).add(nx); return; }
     if (g.state !== 'active') return; // offer/accept solo cuando ya estoy en la llamada
     if (o.op === 'hold' || o.op === 'unhold') { // #222: el otro puso la llamada de grupo en espera (está en otra)
       var hl = g.legs.get(nx); if (hl) { hl.peerHeld = o.op === 'hold'; hl.lastRx = Date.now(); console.log('[GCALL] ' + nx + (hl.peerHeld ? ' te puso en espera' : ' volvió')); }
@@ -431,6 +453,20 @@ export class GroupCall {
   // 3100 (dueño 15-11: «agregué otro dispositivo, nunca le apareció o nunca aceptó, entonces quedó ahí»; S24 14-11 16:15–16:19):
   // la llamada pasa a activa con el primero que contesta y el que no contestaba quedaba «Conectando…» para siempre. Cada invitado
   // tiene los mismos 45 s que la llamada entera: si no entra, «No contestó» y sale (si no queda nadie, la llamada termina).
+  // #221: ¿la invitación viene de «Agregar» en una llamada 1-a-1 que tenía de verdad con ese contacto? La que sigue en curso (su
+  // «colgar» aún no llegó) o la que terminó hace menos de GUPGRADE_MS. Con cualquier otro id o contacto, suena como siempre.
+  _upgradeFrom(nx, id) {
+    var b = this.ble, lanes = [b && b.calls, b && b.calls2], now = Date.now();
+    for (var i = 0; i < lanes.length; i++) {
+      var l = lanes[i]; if (!l) continue;
+      var c = l.call;
+      if (c && c.id === id && _nid(c.nx) === nx && c.state === 'active') return { live: true, lane: l };
+      var e = l.lastEnded;
+      if (e && e.id === id && _nid(e.nx) === nx && e.active && now - e.at < GUPGRADE_MS) return { live: false, lane: l };
+    }
+    return null;
+  }
+
   _inviteTimeout(nx) {
     var self = this, g = self.gc; if (!g) return;
     var gid = g.gid;

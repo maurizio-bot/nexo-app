@@ -696,13 +696,14 @@ function _render(st) {
     bt.appendChild(_btn('addp', t('call_add', 'Agregar'), 'call-add', function() {
       if (callCount() > 1) { _showInfoToast(t('call_max_two_grp', 'Con dos llamadas a la vez no se puede pasar a llamada de grupo'), 3500); return; } // #222
       var cur = calls.state(); if (!cur) return;
-      var peer = cur.nx, me = _normId(_bi() && _bi().localNexoId);
+      var peer = cur.nx, upId = cur.id, me = _normId(_bi() && _bi().localNexoId);
       var gcall = _bi() && _bi().gcall;
       if (!gcall) { _showInfoToast(t('grp_call_na', 'Las llamadas de grupo no están disponibles'), 3000); return; }
       _pickContact({ title: t('call_add_pick', 'Agregar a la llamada'), exclude: [peer, me], onPick: function(nx) {
         _showInfoToast(t('call_to_group', 'Convirtiendo en llamada de grupo…'), 2500);
         try { calls.hangup(); } catch (e) {}
-        setTimeout(function() { gcall.start([peer, nx], false).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); }); }, 400);
+        // #221 (dueño 15-11): el que ya estaba en la llamada entra solo a la de grupo (lleva el id de esta llamada), sin volver a contestar
+        setTimeout(function() { gcall.start([peer, nx], false, null, { upgrade: { nx: peer, id: upId } }).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); }); }, 400);
       } });
     }, two ? 'nc-off' : ''));
     bt.appendChild(_btn('phone', t('call_hangup', 'Colgar'), 'call-hangup', function() { haptic('confirm'); calls.hangup(); }, 'nc-red'));

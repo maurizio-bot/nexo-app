@@ -11,25 +11,31 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Dos llamadas a la vez: la segunda suena abajo y la pantalla se divide en dos.
-- Al contestar la segunda, la otra queda en espera; con «Reanudar» cambias de una a otra.
-- Máximo dos llamadas: con dos, los botones de llamar se apagan.
-- «Mensaje»: si te llaman estando en otra llamada, responde con una frase lista o tu propio texto.
-- Ahora ves lo nuevo de cada versión junto al botón de actualizar.
+- Dos llamadas a la vez, con la pantalla dividida.
+- Al contestar la segunda, la otra queda en espera; «Reanudar» cambia de una a otra.
+- Con dos llamadas, los botones de llamar se apagan.
+- «Mensaje»: responde con un texto a quien te llama estando en otra llamada.
+- Al agregar a alguien a una llamada, quien ya estaba entra solo al grupo.
+- En grupo, todos se oyen aunque contesten a destiempo.
+- Lo nuevo de cada versión, junto al botón de actualizar.
 </es-419>
 <it-IT>
-- Due chiamate insieme: la seconda squilla in basso e lo schermo si divide in due.
-- Rispondendo alla seconda, l'altra va in attesa; con «Riprendi» passi dall'una all'altra.
-- Massimo due chiamate: con due, i pulsanti di chiamata si spengono.
-- «Messaggio»: se ti chiamano mentre sei in un'altra chiamata, rispondi con una frase pronta o un tuo testo.
-- Ora vedi le novità di ogni versione accanto al pulsante di aggiornamento.
+- Due chiamate insieme, con lo schermo diviso.
+- Rispondendo alla seconda, l'altra va in attesa; «Riprendi» passa dall'una all'altra.
+- Con due chiamate, i pulsanti di chiamata si spengono.
+- «Messaggio»: rispondi con un testo a chi ti chiama mentre sei in un'altra chiamata.
+- Aggiungendo qualcuno a una chiamata, chi c'era già entra da solo nel gruppo.
+- Nel gruppo tutti si sentono anche se rispondono in momenti diversi.
+- Le novità di ogni versione, accanto al pulsante di aggiornamento.
 </it-IT>
 <en-US>
-- Two calls at once: the second one rings at the bottom and the screen splits in two.
-- When you answer the second, the other goes on hold; tap «Resume» to switch between them.
-- Up to two calls: with two, the call buttons are turned off.
-- «Message»: if someone calls while you're on another call, reply with a ready-made phrase or your own text.
-- You now see what's new in each version next to the update button.
+- Two calls at once, with a split screen.
+- When you answer the second, the other goes on hold; «Resume» switches between them.
+- With two calls, the call buttons are turned off.
+- «Message»: reply with a text to someone calling while you're on another call.
+- When you add someone to a call, the person already there joins the group on their own.
+- In a group, everyone hears each other even if they answer at different times.
+- What's new in each version, next to the update button.
 </en-US>
 <!-- /APK -->
 

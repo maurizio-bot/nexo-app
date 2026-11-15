@@ -1098,6 +1098,14 @@
     {
      "fallo": "#222 (dueño 15-11: «solo pueden ser dos llamadas independientes al mismo tiempo… no debe ser posible realizar otra llamada más… contestar y poder pausar la otra en automático y poderla revisar manualmente… un botón de contestación rápida… o ingresar un texto»): con dos llamadas los tres se oían a la vez, se podía llamar a un tercero y al grupo, no había espera ni respuesta con mensaje, y la segunda solo podía ser entrante. 3103: al empezar a hablar en una, la otra pasa sola a EN ESPERA (micro en silencio, ni voz ni imagen del otro, mi imagen no sale, el otro ve «Te puso en espera»; la misma retención que la llamada telefónica, sumadas); «En espera»/«Reanudar» en cada mitad (también la de grupo); al colgar, la que queda vuelve sola; con dos llamadas los botones de llamar (también los del grupo) apagados y el modelo lo rechaza; llamar a un segundo contacto desde su chat sale por la segunda línea; una llamada que suena estando en otra tiene «Mensaje» (frases listas o «Escribir…»): la rechaza y el texto le llega al chat. callwait.js: 3102 = A oye a B y no sale la segunda, sin botones; 3103 = todo",
      "prueba": "MÁXIMO DOS llamadas, EN ESPERA y RESPONDER CON MENSAJE"
+    },
+    {
+     "fallo": "#221 (dueño 15-11: al «Agregar» a alguien a una llamada 1-a-1, el que ya estaba tenía que volver a contestar la de grupo). 3106: la invitación al que ya estaba lleva el id de la llamada que se tenía (up); entra solo si de verdad estaba en esa llamada con el que agrega (en curso, y entonces la cierra sin avisar, o colgada hace menos de 20 s); con otro id, otro contacto o una vieja, suena como siempre. gcupgrade.js U1–U4: 3105 = suena y hay que contestar; 3106 = entra solo",
+     "prueba": "AGREGAR a una llamada 1-a-1"
+    },
+    {
+     "fallo": "3106 (lo destapó #221; venía de siempre): en una llamada de grupo, si dos invitados contestan a destiempo y el que contesta después tiene el NEXO ID mayor, el «abrir tramo» del primero le llegaba mientras le sonaba y se perdía; al contestar esperaba uno que ya no llegaba: esos dos no se oían (cada uno solo oía al que llamó). 3106: el que suena guarda ese «abrir tramo» y lo acepta al entrar. gcupgrade.js U0: 3105 = tramo B–C «offering»/«waiting»; 3106 = activo en los dos",
+     "prueba": "AGREGAR a una llamada 1-a-1"
     }
    ],
    "debiles": [

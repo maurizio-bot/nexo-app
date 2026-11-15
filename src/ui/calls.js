@@ -623,6 +623,7 @@ export class Calls {
     var secs = c.startedAt ? Math.round((Date.now() - c.startedAt) / 1000) : 0;
     if (c.startedAt) try { self._diag(c, 'Al colgar (' + secs + ' s)'); } catch (e) {}
     if (c.media && c.media.stop) { try { c.media.stop(); } catch (e) {} }
+    self.lastEnded = { id: c.id, nx: c.nx, at: Date.now(), active: !!c.startedAt }; // #221: «Agregar» la pasa a grupo y el otro entra solo
     self.call = null;
     if (self.ble && typeof self.ble._afterCallRadio === 'function') { try { self.ble._afterCallRadio(); } catch (e) {} } // 3058: sale lo que esperó a colgar
     if (self.ble && typeof self.ble._resumeLoneCall === 'function') { try { self.ble._resumeLoneCall(); } catch (e) {} } // #222: la que quedó en espera vuelve
