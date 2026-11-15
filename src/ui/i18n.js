@@ -60,7 +60,17 @@ export function setLang(l) {
   _lang = l;
   try { if (typeof localStorage !== 'undefined') localStorage.setItem('nexo_lang', l); } catch (e) {}
   try { if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('nexo:lang', { detail: { lang: l } })); } catch (e) {}
+  syncNativeLang();
   return l;
+}
+
+// 3122: los avisos del teléfono (los pone el nativo, también con la app cerrada) en el idioma de la app: se le dice al arrancar y al
+// cambiarlo. Sin nativo (simulador) no hace nada.
+export function syncNativeLang() {
+  try {
+    var pl = (typeof window !== 'undefined') && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
+    if (pl && typeof pl.setAppLang === 'function') Promise.resolve(pl.setAppLang({ lang: getLang() })).catch(function() {});
+  } catch (e) {}
 }
 
 // Texto por clave en el idioma actual; cae al español y luego a la clave (o al fallback dado). Nunca lanza.

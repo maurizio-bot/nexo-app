@@ -171,12 +171,12 @@ class ScreenShareService : Service() {
         return try {
             val nm = getSystemService(NotificationManager::class.java)
             if (Build.VERSION.SDK_INT >= 26 && nm?.getNotificationChannel(CHANNEL_ID) == null) {
-                nm?.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Compartir pantalla", NotificationManager.IMPORTANCE_LOW))
+                nm?.createNotificationChannel(NotificationChannel(CHANNEL_ID, NativeLang.t(this, "ch_screen"), NotificationManager.IMPORTANCE_LOW))
             }
             val n: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_menu_share)
                 .setContentTitle("NEXO")
-                .setContentText("Compartiendo tu pantalla en la videollamada")
+                .setContentText(NativeLang.t(this, "screen_sharing"))
                 .setOngoing(true)
                 .build()
             if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)

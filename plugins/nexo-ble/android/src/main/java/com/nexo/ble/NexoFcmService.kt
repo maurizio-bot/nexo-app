@@ -89,7 +89,7 @@ class NexoFcmService : FirebaseMessagingService() {
         val b = NotificationCompat.Builder(this, MsgNotifier.CHANNEL_ID)
             .setSmallIcon(MsgNotifier.msgIcon(this))
             .setContentTitle("NEXO")
-            .setContentText("Puede haber mensajes nuevos: abre NEXO")
+            .setContentText(NativeLang.t(this, "fcm_maybe"))
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)

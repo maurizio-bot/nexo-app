@@ -46,9 +46,9 @@ private fun NexoBlePlugin.notifyOnly(ctx: Context, info: BgInbox.Info) {
     if (info.quiet) return
     if (info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.video, info.msgId); return }
     val chat = info.from.ifEmpty { "nexo_jump" }
-    val what = when (info.what) { "image" -> "📷 Foto"; "video" -> "🎥 Vídeo"; "audio" -> "🎤 Nota de voz"; "call" -> "📞 Llamada entrante"; "text" -> ""; else -> "📎 Archivo" }
+    val what = when (info.what) { "image" -> NativeLang.t(ctx, "msg_photo"); "video" -> NativeLang.t(ctx, "msg_video"); "audio" -> NativeLang.t(ctx, "msg_voice"); "call" -> NativeLang.t(ctx, "call_in"); "text" -> ""; else -> NativeLang.t(ctx, "msg_file") } // 3122: en el idioma de la app
     val gname = groupName(info.group) // ronda 2763: de un grupo, en el chat del grupo con su nombre
-    if (gname != null) { val who = netBgShared?.nameOf(info.from); MsgNotifier.get(ctx).message(info.group, gname, info.msgId, if (who != null) "$who: ${what.ifEmpty { "Mensaje nuevo" }}" else what, true); return }
+    if (gname != null) { val who = netBgShared?.nameOf(info.from); MsgNotifier.get(ctx).message(info.group, gname, info.msgId, if (who != null) "$who: ${what.ifEmpty { NativeLang.t(ctx, "msg_new") }}" else what, true); return }
     MsgNotifier.get(ctx).message(chat, if (info.from.isEmpty()) "NEXO" else netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId, what, true)
 }
 
@@ -276,7 +276,7 @@ internal fun NexoBlePlugin.netBg(): NetBg = netBgShared ?: synchronized(NexoBleP
             // 3076: un mensaje de GRUPO avisa en el grupo, con su nombre y quién lo manda (como por Bluetooth: notifyMessage)
             val gname = groupName(group)
             nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): aviso de mensaje nuevo por internet" + if (gname != null) " (grupo $group)" else "")
-            if (gname != null) MsgNotifier.get(context).message(group, gname, msgId, "$name: Mensaje nuevo", true)
+            if (gname != null) MsgNotifier.get(context).message(group, gname, msgId, "$name: " + NativeLang.t(context, "msg_new"), true)
             else MsgNotifier.get(context).message(nx, name, msgId, "", true)
         }
     }, { nlog()?.add("INFO", "NET", it); Log.i("NEXO_NET", it) }, { nx, offer ->

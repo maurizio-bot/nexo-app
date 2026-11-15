@@ -154,10 +154,10 @@ class BleService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "NEXO BLE Service",
+                NativeLang.t(this, "svc_channel"),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Servicio BLE en segundo plano"
+                description = NativeLang.t(this@BleService, "svc_channel_desc")
                 setShowBadge(false)
             }
             val manager = getSystemService(NotificationManager::class.java)
@@ -172,8 +172,8 @@ class BleService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("NEXO BLE")
-            .setContentText("Anunciando dispositivo NEXO...")
+            .setContentTitle(NativeLang.t(this, "svc_title"))
+            .setContentText(NativeLang.t(this, "svc_text"))
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setContentIntent(pendingIntent)
             .setOngoing(true)

@@ -286,3 +286,22 @@ internal fun NexoBlePlugin.syncUnreadImpl(call: PluginCall) {
     MsgNotifier.get(context).sync(counts)
     call.resolve()
 }
+
+// 3122: la app dice su idioma (al arrancar y al cambiarlo) para que los avisos del teléfono salgan en él; se guarda (NativeLang) y
+// se renombran al momento los canales que ya existen (Android deja cambiar nombre y descripción de un canal creado).
+internal fun NexoBlePlugin.setAppLangImpl(call: PluginCall) {
+    val ctx = context
+    val before = NativeLang.get(ctx)
+    NativeLang.set(ctx, call.getString("lang"))
+    val now = NativeLang.get(ctx)
+    if (now != before && android.os.Build.VERSION.SDK_INT >= 26) {
+        try {
+            val nm = ctx.getSystemService(android.app.NotificationManager::class.java)
+            listOf(MsgNotifier.CHANNEL_ID to ("ch_messages" to "ch_messages_desc"), MsgNotifier.CALL_CHANNEL_ID to ("ch_calls" to "ch_calls_desc"),
+                MsgNotifier.UPDATE_CHANNEL_ID to ("ch_updates" to "ch_updates_desc")).forEach { (id, k) ->
+                nm?.getNotificationChannel(id)?.let { ch -> ch.name = NativeText.t(now, k.first); ch.description = NativeText.t(now, k.second); nm.createNotificationChannel(ch) }
+            }
+        } catch (e: Throwable) {}
+    }
+    call.resolve(com.getcapacitor.JSObject().put("lang", now))
+}

@@ -102,7 +102,7 @@ import {
 } from './vault/vault_manager.js';
 import { initBLEInterface } from './ui/ble_interface.js';
 import { initAppLock, securitySectionHtml, renderSecuritySection, lockEnabled } from './ui/app_lock.js';
-import { applyStaticI18n, t as _t } from './ui/i18n.js'; // #132 idioma: traducir el HTML estático + textos de estado
+import { applyStaticI18n, syncNativeLang, t as _t } from './ui/i18n.js'; // #132 idioma: traducir el HTML estático + textos de estado
 import { initPerf } from './ui/perf.js';
 import { initPress } from './ui/press.js'; // NEXO Touch (build 2968): un motor de presionado + háptica del sistema
 import { batteryGuard } from './ui/battery_prompt.js';
@@ -350,6 +350,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 // #132 idioma: traducir el HTML estático marcado con data-i18n (pestañas, cámara, placeholders…). Al cambiar idioma la
 // app recarga, así que basta con aplicarlo al arrancar.
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function() { applyStaticI18n(); }); else applyStaticI18n();
+try { syncNativeLang(); } catch (e) {} // 3122: avisos del teléfono en el idioma de la app
 
 window.vaultSaveContact = vaultSaveContact;
 // ronda 2894 (auditoría): expuestos para tests/sim/vaultdurable.js (durabilidad del vault)

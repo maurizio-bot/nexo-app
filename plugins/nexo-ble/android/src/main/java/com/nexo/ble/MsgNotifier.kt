@@ -74,8 +74,8 @@ class MsgNotifier(private val ctx: Context) {
 
     init {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(CHANNEL_ID, "Mensajes", NotificationManager.IMPORTANCE_HIGH)
-            ch.description = "Mensajes nuevos de tus contactos"
+            val ch = NotificationChannel(CHANNEL_ID, NativeLang.t(ctx, "ch_messages"), NotificationManager.IMPORTANCE_HIGH)
+            ch.description = NativeLang.t(ctx, "ch_messages_desc")
             ch.setShowBadge(true)
             ctx.getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
             createCallChannel(ctx)
@@ -87,8 +87,8 @@ class MsgNotifier(private val ctx: Context) {
     // canal y no deja cambiarlo luego, así que para cambiar el tono se borra y se vuelve a crear (setCallRingtone).
     private fun createCallChannel(ctx: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val cc = NotificationChannel(CALL_CHANNEL_ID, "Llamadas", NotificationManager.IMPORTANCE_HIGH)
-        cc.description = "Llamadas y videollamadas entrantes"
+        val cc = NotificationChannel(CALL_CHANNEL_ID, NativeLang.t(ctx, "ch_calls"), NotificationManager.IMPORTANCE_HIGH)
+        cc.description = NativeLang.t(ctx, "ch_calls_desc")
         cc.setSound(callRingtoneUri(ctx),
             AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
         cc.enableVibration(true); cc.vibrationPattern = longArrayOf(0, 900, 700, 900)
@@ -123,8 +123,8 @@ class MsgNotifier(private val ctx: Context) {
         val nm = NotificationManagerCompat.from(ctx)
         if (!nm.areNotificationsEnabled()) { Log.w(TAG, "Notificaciones desactivadas: sin aviso de actualización"); return }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(UPDATE_CHANNEL_ID, "Actualizaciones", NotificationManager.IMPORTANCE_DEFAULT)
-            ch.description = "Avisa cuando hay una versión nueva de NEXO"
+            val ch = NotificationChannel(UPDATE_CHANNEL_ID, NativeLang.t(ctx, "ch_updates"), NotificationManager.IMPORTANCE_DEFAULT)
+            ch.description = NativeLang.t(ctx, "ch_updates_desc")
             ctx.getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
         }
         val launch = notifLaunchIntent(ctx) ?: return
@@ -135,17 +135,17 @@ class MsgNotifier(private val ctx: Context) {
         val mb = if (sizeBytes > 0) " (" + maxOf(1L, sizeBytes / 1048576L) + " MB)" else ""
         val b = NotificationCompat.Builder(ctx, UPDATE_CHANNEL_ID)
             .setSmallIcon(msgIcon(ctx))
-            .setContentTitle("Hay una versión nueva de NEXO ($build)")
-            .setContentText("Toca «Actualizar» para instalarla$mb")
+            .setContentTitle(NativeLang.t(ctx, "upd_title", "b" to build))
+            .setContentText(NativeLang.t(ctx, "upd_text", "mb" to mb))
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
             // 3107 (dueño 15-11: «donde está el botón de actualizar, lo que se tocó y lo que se actualizó»): al desplegar el aviso, las
             // novedades de esa versión (ya en el idioma de la app; las manda la parte web, recortadas)
-            .apply { val nt = notes.trim().take(1500); if (nt.isNotEmpty()) setStyle(NotificationCompat.BigTextStyle().bigText("Toca «Actualizar» para instalarla$mb\n\n$nt")) }
+            .apply { val nt = notes.trim().take(1500); if (nt.isNotEmpty()) setStyle(NotificationCompat.BigTextStyle().bigText(NativeLang.t(ctx, "upd_text", "mb" to mb) + "\n\n$nt")) }
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(openPi)
-            .addAction(0, "Actualizar", installPi)
+            .addAction(0, NativeLang.t(ctx, "upd_action"), installPi)
         try { nm.notify(UPDATE_NOTIF_ID, b.build()) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones") }
     }
 
@@ -155,8 +155,8 @@ class MsgNotifier(private val ctx: Context) {
         val nm = NotificationManagerCompat.from(ctx)
         if (!nm.areNotificationsEnabled()) { Log.w(TAG, "Notificaciones desactivadas: sin aviso de actualización bajada"); return }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(UPDATE_CHANNEL_ID, "Actualizaciones", NotificationManager.IMPORTANCE_DEFAULT)
-            ch.description = "Avisa cuando hay una versión nueva de NEXO"
+            val ch = NotificationChannel(UPDATE_CHANNEL_ID, NativeLang.t(ctx, "ch_updates"), NotificationManager.IMPORTANCE_DEFAULT)
+            ch.description = NativeLang.t(ctx, "ch_updates_desc")
             ctx.getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
         }
         val launch = notifLaunchIntent(ctx) ?: return
@@ -165,13 +165,13 @@ class MsgNotifier(private val ctx: Context) {
         val installPi = PendingIntent.getActivity(ctx, 3995, Intent(launch).putExtra(EXTRA_UPDATE_INSTALL, build).putExtra(EXTRA_CALL_TOKEN, callIntentToken).addFlags(fl), pf)
         val b = NotificationCompat.Builder(ctx, UPDATE_CHANNEL_ID)
             .setSmallIcon(msgIcon(ctx))
-            .setContentTitle("NEXO $build descargada")
-            .setContentText("Toca «Instalar» para actualizar")
+            .setContentTitle(NativeLang.t(ctx, "upd_ready_title", "b" to build))
+            .setContentText(NativeLang.t(ctx, "upd_ready_text"))
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setContentIntent(installPi)
-            .addAction(0, "Instalar", installPi)
+            .addAction(0, NativeLang.t(ctx, "upd_install"), installPi)
         try { nm.notify(UPDATE_NOTIF_ID, b.build()) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones") }
     }
 
@@ -238,7 +238,7 @@ class MsgNotifier(private val ctx: Context) {
             val person = androidx.core.app.Person.Builder().setName(name.ifBlank { "NEXO" }).setImportant(true).build()
             NotificationCompat.Builder(ctx, CALL_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_phone_call)
-                .setContentText(if (video) "Videollamada entrante · NEXO" else "Llamada entrante · NEXO")
+                .setContentText(NativeLang.t(ctx, if (video) "vcall_in_nexo" else "call_in_nexo"))
                 .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -253,7 +253,7 @@ class MsgNotifier(private val ctx: Context) {
             NotificationCompat.Builder(ctx, CALL_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_phone_call)
                 .setContentTitle(name.ifBlank { "NEXO" })
-                .setContentText(if (video) "Videollamada entrante · NEXO" else "Llamada entrante · NEXO")
+                .setContentText(NativeLang.t(ctx, if (video) "vcall_in_nexo" else "call_in_nexo"))
                 .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -261,8 +261,8 @@ class MsgNotifier(private val ctx: Context) {
                 .setTimeoutAfter(45000)
                 .setContentIntent(openPi)
                 .setFullScreenIntent(openPi, true)
-                .addAction(0, "Rechazar", declinePi)
-                .addAction(0, "Contestar", answerPi)
+                .addAction(0, NativeLang.t(ctx, "call_decline"), declinePi)
+                .addAction(0, NativeLang.t(ctx, "call_answer"), answerPi)
                 .build()
         }
         n.flags = n.flags or Notification.FLAG_INSISTENT // el tono se repite hasta que se atiende
@@ -339,7 +339,7 @@ class MsgNotifier(private val ctx: Context) {
         val nm = NotificationManagerCompat.from(ctx)
         if (!nm.areNotificationsEnabled()) { Log.w(TAG, "Notificaciones desactivadas por el usuario"); return }
         val n = c.count
-        val text = if (n > 1) "$n mensajes nuevos" else c.last.ifBlank { "Mensaje nuevo" }
+        val text = if (n > 1) NativeLang.t(ctx, "msg_new_n", "n" to n) else c.last.ifBlank { NativeLang.t(ctx, "msg_new") }
         val launch = notifLaunchIntent(ctx) ?: return
         launch.putExtra(EXTRA_CHAT, chatId)
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -347,7 +347,7 @@ class MsgNotifier(private val ctx: Context) {
         val pub = NotificationCompat.Builder(ctx, CHANNEL_ID)
             .setSmallIcon(msgIcon(ctx))
             .setContentTitle("NEXO")
-            .setContentText(if (n > 1) "$n mensajes nuevos" else "Mensaje nuevo")
+            .setContentText(if (n > 1) NativeLang.t(ctx, "msg_new_n", "n" to n) else NativeLang.t(ctx, "msg_new"))
             .build()
         val b = NotificationCompat.Builder(ctx, CHANNEL_ID)
             .setSmallIcon(msgIcon(ctx))

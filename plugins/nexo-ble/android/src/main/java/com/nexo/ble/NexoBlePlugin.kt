@@ -321,7 +321,7 @@ class NexoBlePlugin : Plugin() {
     internal fun notifyMessage(ctx: Context, info: BgInbox.Info) {
         val who = netBgShared?.nameOf(info.from)
         val gname = groupName(info.group)
-        if (gname != null) MsgNotifier.get(ctx).message(info.group, gname, info.msgId, if (who != null) "$who: Mensaje nuevo" else "", true)
+        if (gname != null) MsgNotifier.get(ctx).message(info.group, gname, info.msgId, if (who != null) "$who: " + NativeLang.t(ctx, "msg_new") else "", true)
         else MsgNotifier.get(ctx).message(info.from, who ?: "NEXO", info.msgId, "", true)
     }
 
@@ -810,6 +810,7 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod fun getPowerStatus(call: PluginCall) = getPowerStatusImpl(call)
     @PluginMethod fun getExitReasons(call: PluginCall) = getExitReasonsImpl(call)
+    @PluginMethod fun setAppLang(call: PluginCall) = setAppLangImpl(call)
 
     // ===== Wi-Fi Direct: fotos, vídeos y archivos con el contacto a alcance (mucho más rápido que BLE) =====
     // El que recibe crea un grupo con nombre y contraseña aleatorios (Android 10+: el otro se une sin aviso
