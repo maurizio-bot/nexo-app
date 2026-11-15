@@ -2,7 +2,6 @@
   "nota": "Archivos de más de 1.000 líneas pendientes de partir (revisión de fin de semana, dueño 15-11). Tope = lo que medían el 15-11 + ~60 líneas de margen para arreglos. Al partir uno, se quita de aquí.",
   "topes": {
     "plugins/nexo-ble/android/src/main/java/com/nexo/ble/NexoBlePlugin.kt": 4810,
-    "src/vault/vault_manager.js": 1610,
     "src/net/net_link.js": 1165,
     "src/ui/ble_interface.js": 1155,
     "src/main.js": 1090

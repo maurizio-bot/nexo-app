@@ -85,6 +85,14 @@ for (const f of newPaths) {
   for (const [k, v] of pieces(src)) { const kk = newP.has(k) ? k + '@' + f : k; newP.set(kk, v); }
   const declared = topNames(src), used = usedNames(src);
   for (const n of used) if (oldTop.has(n) && !declared.has(n)) problems.push(f + ': usa «' + n + '» sin declararlo ni importarlo');
+  // un nombre IMPORTADO no se puede cambiar (fallaría al ejecutarse): ningún archivo puede asignar a lo que importa
+  const importedHere = new Set(); parse(src).body.forEach((n) => { if (n.type === 'ImportDeclaration') n.specifiers.forEach((s) => importedHere.add(s.local.name)); });
+  (function walk(n) {
+    if (!n || typeof n.type !== 'string') return;
+    const id = n.type === 'AssignmentExpression' ? n.left : n.type === 'UpdateExpression' ? n.argument : null;
+    if (id && id.type === 'Identifier' && importedHere.has(id.name)) problems.push(f + ': cambia «' + id.name + '», que importa de otro archivo');
+    for (const k in n) { const v = n[k]; if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object' && v.type) walk(v); }
+  })(parse(src));
   const lines = src.split('\n').length;
   if (lines > 1000) problems.push(f + ': ' + lines + ' líneas (> 1000)');
 }
