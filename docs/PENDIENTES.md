@@ -6,6 +6,16 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 15-11 noche (dueño) — llamadas, para la 3071
+- **Tono «tuuu… tuuu…» al llamar (dueño: «no escucho el clásico sonido de que está entrando la llamada»):** hoy es un pitido WebAudio
+  de 425 Hz con volumen 0,12 (calls_ui._startTone(false)); con la llamada saliente ya en Telecom/modo llamada no se oye. Plan: tono del
+  sistema (ToneGenerator TONE_SUP_RINGTONE por STREAM_VOICE_CALL: suena por auricular, altavoz o Bluetooth) mientras suena del otro lado.
+- **Contestar con manos libres Bluetooth (Jhonnatan, Xiaomi, en moto: «no pudo contestar directo, se tuvo que parar»):** la entrante se
+  registra en Telecom (CallTelecom.startIncoming) y NexoConnection.onAnswer abre la app con startActivity; en Xiaomi eso pide «Mostrar
+  ventanas emergentes mientras se ejecuta en segundo plano» (el asistente de batería solo menciona «Inicio automático»). Además
+  CallTelecom/NexoConnection solo escriben en logcat: el diagnóstico no dice si Telecom aceptó la llamada ni si el manos libres la
+  contestó. Plan: pasarlo al registro nativo del diagnóstico, aviso de Xiaomi, y pedir el diagnóstico de Jhonnatan tras un intento.
+
 ## 🆕 15-11 (diagnósticos S24 3067 08:24 y 08:41) — 3127 y 3128 hechos, en la rama (APK 3069 tras la batería)
 - **08:24** → 3127: nota de voz pequeña a la app dormida del S23 reenviada entera cada 8 s (sondeo cada 15 s); texto por el puente
   vivo Y reintentado cada 2 min ~10 h (espera creciente hasta 10 min); cierres «ISOLATED» contados aparte.
