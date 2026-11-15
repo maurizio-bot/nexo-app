@@ -6,6 +6,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 15-11 23:46 — resúmenes diarios del 14-11 (builds viejas 3055 y 3059; regla del dueño: no se arreglan versiones viejas)
+- Nada roto: 5 enviados / 4 entregados (3 leídos) en uno; 1 recibido en el otro. Solo para mirar en la última versión: la conexión por
+  Wi-Fi local tardó de media 4,9 s (hasta 8,8 s), más que internet (2,6 s) y Bluetooth (0,5 s). Comparar con un resumen de la 3070.
+
 ## 🆕 15-11 noche — APK 3070 (3129–3133) en batería
 - Hecho en la rama: enlace de invitación (falta la página web en el GitHub del dueño: publicarla es cosa suya), foto de perfil al
   día al borrar y volver a agregar, guardar en la galería con respuesta, deslizar para actualizar sin bajar repetidos, notas de voz
