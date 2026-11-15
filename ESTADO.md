@@ -21,6 +21,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **15-11 madrugada, en la rama (3102–3103; batería de la 3103 en curso):** **3102** segunda llamada 1-a-1 entrante abajo
+  (`ble.calls2`, lane 2; `_callSignal` reparte por id/contacto; con dos, «ocupado»). **3103** (#222): `ble._callList/_callCount/
+  _holdOthers/_resumeLoneCall` (ble_messages); `calls.hold(on)` y la pausa por llamada telefónica comparten `_applyHold` (userHold
+  + phoneHold → held; señales 'hold'/'unhold' → peerHeld; en espera no se reproduce ni se manda imagen); `group_call.hold(on)`
+  (hub en silencio, sin reproducir, señal 'hold' a cada tramo → leg.peerHeld); tope de dos en `calls.start` y `gcall.start`;
+  UI: `holdButton/replyButton/callCount/holdLabel` (calls_ui), `call_reply.js` (hoja «Responder con mensaje», `_sendTextTo`),
+  botones del chat apagados con dos y la segunda saliente por `calls2`. Pruebas: `callwait.js` (3102 falla, 3103 OK), `call2.js`
+  (B en espera), `callhold.js` (la de la telefónica, intacta salvo mirar `c.muted`).
 - **15-11 madrugada (3100–3101 = APK 3059; batería 259/259, índice 66):** pedido del dueño (15-11, tras probar la 3057): agregó a
   alguien a una llamada, no contestó y se quedó en dos llamadas a la vez. **3100**: el invitado de una llamada de grupo que no contesta
   en 45 s queda «No contestó» y sale de la lista; si no queda nadie, la llamada termina (`group_call._inviteTimeout`, `gcnoanswer.js`).

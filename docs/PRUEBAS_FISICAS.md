@@ -185,6 +185,13 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 68. **Llamada normal y de grupo a la vez (APK 3059).** Estando en una llamada con alguien, entra (o acepta) una llamada de grupo:
     la pantalla se parte en dos, la llamada normal arriba y la de grupo abajo, cada una con su colgar a la vista. Cuelga una:
     la otra pasa a toda la pantalla. (La segunda llamada normal a la vez llega en la APK siguiente.)
+69. **Dos llamadas normales a la vez (APK siguiente a la 3059).** En llamada con A, que te llame B: suena abajo con «Rechazar»,
+    «Mensaje» y «Contestar». Contesta: la de A pasa sola a «En espera» (A ve «Te puso en espera» y no te oye). Toca «Reanudar» en
+    la de A: vuelve A y B queda en espera. Cuelga una: la otra vuelve sola.
+70. **Máximo dos y responder con mensaje (misma APK).** Con dos llamadas, abre el chat de un tercero: los botones de llamar se ven
+    apagados y al tocarlos dice «Ya tienes dos llamadas…». Con una llamada en curso, que te llame otro: toca «Mensaje» y elige
+    una frase (o «Escribir…»): al otro se le corta y le llega el texto en el chat. También: llamar tú a un segundo contacto
+    desde su chat estando en una llamada.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 

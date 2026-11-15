@@ -3,6 +3,18 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 15-11 (dos llamadas a la vez, pedido del dueño tras probar la 3057)
+- **Hecho (APK 3059):** 3100 invitado de grupo que no contesta → «No contestó» a los 45 s; 3101 llamada 1-a-1 + de grupo a la vez en
+  pantalla dividida.
+- **Hecho en la rama (APK siguiente, tras la batería):** 3102 segunda llamada 1-a-1 entrante suena abajo (`call2.js`); 3103 (#222)
+  máximo dos (botones de llamar del chat y del grupo apagados, el modelo también lo rechaza), la otra pasa sola a «En espera» al
+  contestar (micro en silencio, ni voz ni imagen; el otro ve «Te puso en espera»), «En espera/Reanudar» en cada mitad (también la
+  de grupo), al colgar la que queda vuelve sola, llamar a un segundo contacto desde su chat, «Mensaje» (frases listas o «Escribir…»)
+  en la llamada que suena estando en otra (`callwait.js`).
+- **Falta (dos llamadas):** la segunda no pasa por la llamada del sistema (Telecom): con la app cerrada avisa como mensaje y no
+  como llamada; «Mensaje» desde la pantalla de bloqueo; cámara: en el teléfono real, dos videollamadas a la vez comparten una sola
+  cámara (sin probar); **#221** al «Agregar» a una llamada 1-a-1, el que ya estaba entra solo (sin volver a contestar).
+
 ## 🆕 14-11 noche (llamadas, orden del dueño: «empieza por las llamadas»; y su idea del despertador)
 - **Diagnósticos 22:12–22:21 (S24 3054, Xiaomi 3046→3055, Honor 3032→3055; S23 sigue en la 3048):** (1) **3097**: en la videollamada
   por Wi-Fi con el Xiaomi, lo del S23 (solo por Bluetooth) esperó 4,5 min a colgar («la radio es de la llamada»); ahora el
