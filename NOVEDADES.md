@@ -17,6 +17,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Al guardar una foto o un vídeo en tu galería, el botón se pone verde y te dice dónde quedó.
 - Deslizar para actualizar gasta muchos menos datos.
 - Escucha las notas de voz a 1.5× o 2× con el botón de velocidad.
+- Un contacto que agregas en persona sale en línea por internet al momento.
 </es-419>
 <it-IT>
 - Invita i tuoi amici su NEXO con un link via WhatsApp, TikTok o dove vuoi: toccandolo ti aggiungono.
@@ -24,6 +25,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Quando salvi una foto o un video nella galleria, il pulsante diventa verde e ti dice dove è finito.
 - Scorrere per aggiornare consuma molti meno dati.
 - Ascolta i vocali a 1.5× o 2× con il pulsante di velocità.
+- Un contatto aggiunto di persona risulta subito online via internet.
 </it-IT>
 <en-US>
 - Invite your friends to NEXO with a link on WhatsApp, TikTok or anywhere: tapping it adds you.
@@ -31,6 +33,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - When you save a photo or video to your gallery, the button turns green and tells you where it went.
 - Pull to refresh uses much less data.
 - Listen to voice notes at 1.5× or 2× with the speed button.
+- A contact you add in person shows as online over the internet right away.
 </en-US>
 <pt-BR>
 - Convide seus amigos para o NEXO com um link pelo WhatsApp, TikTok ou onde quiser: ao tocar, eles adicionam você.
@@ -38,13 +41,15 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Ao salvar uma foto ou um vídeo na galeria, o botão fica verde e mostra onde ficou.
 - Deslizar para atualizar gasta muito menos dados.
 - Ouça as mensagens de voz em 1.5× ou 2× com o botão de velocidade.
+- Um contato adicionado pessoalmente aparece on-line pela internet na hora.
 </pt-BR>
 <fr-FR>
-- Invitez vos amis sur NEXO avec un lien par WhatsApp, TikTok ou ailleurs : en le touchant, ils vous ajoutent.
-- Si vous supprimez un contact puis l'ajoutez de nouveau, vous voyez sa photo de profil actuelle, pas une ancienne.
-- Quand vous enregistrez une photo ou une vidéo dans la galerie, le bouton devient vert et indique où elle se trouve.
-- Glisser pour actualiser consomme beaucoup moins de données.
-- Écoutez les messages vocaux en 1.5× ou 2× avec le bouton de vitesse.
+- Invitez vos amis sur NEXO par un lien WhatsApp, TikTok ou autre : en le touchant, ils vous ajoutent.
+- Un contact supprimé puis ajouté de nouveau montre sa photo de profil actuelle, pas une ancienne.
+- En enregistrant une photo ou une vidéo dans la galerie, le bouton devient vert et indique où elle est.
+- Glisser pour actualiser consomme bien moins de données.
+- Écoutez les vocaux en 1.5× ou 2× avec le bouton de vitesse.
+- Un contact ajouté en personne apparaît aussitôt en ligne par internet.
 </fr-FR>
 <!-- /APK -->
 

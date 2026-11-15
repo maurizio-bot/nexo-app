@@ -6,6 +6,12 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 15-11 noche — APK 3070 (3129–3133) en batería
+- Hecho en la rama: enlace de invitación (falta la página web en el GitHub del dueño: publicarla es cosa suya), foto de perfil al
+  día al borrar y volver a agregar, guardar en la galería con respuesta, deslizar para actualizar sin bajar repetidos, notas de voz
+  a 1,5×/2×, y **3133** saludo al contacto nuevo con internet ya abierto (fallo antiguo destapado por blobfan.js; saludonuevo.js).
+- Abierto: ¿la invitación se acepta sola si trae un código válido mío? (pregunta al dueño sin respuesta; mientras, a mano, SEC-2).
+
 ## 🆕 15-11 noche (dueño) — ANTI-SUPLANTACIÓN y texto en los avisos, para la 3071 (decisiones del dueño)
 - **Dueño: «lo de guardar la llave en Android es seguro, sí se puede hacer»** → con la app cerrada, el aviso lleva el texto del mensaje:
   la parte nativa descifra solo para el aviso con la llave guardada en el almacén de llaves de Android (Keystore). Por defecto se ve el

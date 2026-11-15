@@ -21,6 +21,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **15-11 noche — APK 3070 EN BATERÍA (3129–3133; b3133 = bbdaf82c; `scratchpad/ci3133.txt`).** **3129** enlace de invitación
+  (invite.js, InviteLink.kt, PluginShare.kt; se acepta a mano) + foto de perfil al día al borrar y volver a agregar (fotorenueva.js).
+  **3130** guardar en la galería con respuesta (savegallery.js G3–G5). **3131** deslizar para actualizar solo pide a relés callados;
+  lo oculto no es «entrega lenta». **3132** notas de voz a 1,5×/2× (voicechain.js). **3133** saludo al contacto NUEVO con internet ya
+  abierto: fallo antiguo (también en 3128) que destapó blobfan.js en la 3129 (el aviso oculto «avq» de la foto cambió el orden de las
+  claves): dos teléfonos con los relés abiertos que se conocían después nunca se saludaban (saludonuevo.js). Si la batería sale verde:
+  subir a NEXOCHAT (sin otra build en curso), vigilar que compile el nativo nuevo (InviteLink/PluginShare/intent-filter) y avisar.
+  Siguiente (3071): tono «tuuu» nativo, contestar con manos libres (Xiaomi), anti-suplantación y texto en avisos (Keystore).
 - **15-11 17:17 — APK 3069 PUBLICADA (3127 + 3128; batería 273/273, índice 70,6; blobe2e marcó un falso fallo por el nombre viejo de su comprobación, repetida sola: 15/15).** APK 3068 publicada
   (14:54). La batería de la 3127 sola se paró al 30 % para correr una sola con todo. **3127** (S24 3067 08:24): archivo pequeño
   por internet a una app dormida sondea 1 trozo cada 15 s; reintento Jump hasta 10 min; cierres «ISOLATED» aparte. **3128** (S24
