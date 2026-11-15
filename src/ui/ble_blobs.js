@@ -10,16 +10,30 @@ export const BLE_BLOB_METHODS = {
   // puntero VIGENTE (meta.blobPtr: ya vive en los relés —reenvío de algo recibido o enviado por el buzón—) va POR REFERENCIA
   // también a un contacto EN LÍNEA solo por internet (0 subidas); con Bluetooth/Wi-Fi listos sigue el camino local directo.
   // Devuelve la promesa del envío (✓ al guardarse el puntero) o null si no aplica.
-  _fileToBlobMailbox(nexoId, fileId, base64Data, meta) {
+  _fileToBlobMailbox(nexoId, fileId, base64Data, meta, online) {
     var self = this, nx = _normId(nexoId), net = self.net;
     if (!nx || !net || !self.ackSystem || typeof self.ackSystem._sendFileViaBlobMailbox !== 'function') return null;
     if (self.lan && typeof self.lan.canReach === 'function' && self.lan.canReach(nx)) return null;
     if (typeof self._bleReadyFor === 'function' && self._bleReadyFor(nx)) return null;
     var byRef = pointerReusable(meta && meta.blobPtr);
     var bridged = typeof net.viaBridge === 'function' && net.viaBridge(nx); // puente parte 4: en línea, pero por un puente
-    if (!byRef && !bridged && (typeof net.canReach !== 'function' || net.canReach(nx))) return null;
+    // 3128: EN LÍNEA solo por los relés (sin Tor directo) también va al buzón de archivos (ver _blobOnlineOk)
+    var relaysOnline = !!online && self._blobOnlineOk(nx);
+    if (!byRef && !bridged && !relaysOnline && (typeof net.canReach !== 'function' || net.canReach(nx))) return null;
     if (!net.mailboxFilesOk(nx, base64Data && base64Data.length) || !blobMailboxEligible(base64Data, meta)) return null; // por un puente: solo lo pequeño (parte 3)
     return self.ackSystem._sendFileViaBlobMailbox(nx, fileId, base64Data, meta);
+  },
+  // 3128 (diagnóstico S24 3067 15-11 08:41, «Velocidad de hoy»: archivos por internet 2,1 KB/s de media; por el buzón de archivos
+  // 116 KB/s al subir y 54 KB/s al bajar): una foto o nota de voz a un contacto EN LÍNEA solo por los relés iba como flujo por
+  // trozos (cada ventana espera la confirmación del otro a través de los relés y, con su app dormida, no avanza: una nota de voz
+  // de 53 s = 1,2 MB a ~2 KB/s son ~10 min) y cada trozo le llegaba repetido por cada relé. Ahora va al buzón de archivos: se
+  // cifra una vez, se sube en trozos de 40 KB sin esperar a nadie y el otro baja cada trozo de UN relé, por su id. Por Tor
+  // directo (una conexión entre los dos, sin relés) sigue el flujo por trozos. Perilla de pruebas: NEXO_BLOB_ONLINE = false.
+  _blobOnlineOk(nx) {
+    var net = this.net;
+    if (typeof window !== 'undefined' && window.NEXO_BLOB_ONLINE === false) return false;
+    if (!net || typeof net.canReach !== 'function' || !net.canReach(nx)) return false;
+    return !(typeof net.via === 'function' && net.via(nx) === 'tor');
   },
   // ===== Fase B/C: llegó un PUNTERO a un archivo del buzón de relés (1-a-1 o dentro de un sobre de GRUPO) =====
   // Orden obligatorio: techos anti-DoS (validatePointer, sin reservar nada) → ¿ya tengo este blob? (dedup local por huella,
@@ -251,6 +265,8 @@ export const BLE_BLOB_METHODS = {
             if (_netNx(dev) && meta && meta.blobPtr) { var viaRef = self._fileToBlobMailbox(uuid, fileId, base64Data, meta); if (viaRef) { viaRef.then(resolve, reject); return; } }
             // Puente parte 4: por internet con un puente de por medio (yo o él), al buzón de archivos (paquete por Wi-Fi Direct al puente)
             if (_netNx(dev) && self.net && typeof self.net.viaBridge === 'function' && self.net.viaBridge(uuid)) { var viaGw = self._fileToBlobMailbox(uuid, fileId, base64Data, meta); if (viaGw) { viaGw.then(resolve, reject); return; } }
+            // 3128: en línea solo por los relés → buzón de archivos (rápido y sin esperar a que su app conteste); > 5 MB, flujo por trozos
+            if (_netNx(dev)) { var viaOn = self._fileToBlobMailbox(uuid, fileId, base64Data, meta, true); if (viaOn) { viaOn.then(resolve, reject); return; } }
             // Ronda 2780 (pedido del dueño): fotos y archivos medianos SIEMPRE se pueden mandar por internet. Si el otro
             // está en línea van por Tor directo/Wi-Fi (filesOk); si no, al buzón de los relés (mailboxOk) y llegan cuando
             // abre, igual que los textos. Bajo un tope (~6 MB de archivo): los más grandes son la fase 2 (Tor). Antes solo

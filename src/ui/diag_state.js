@@ -73,13 +73,16 @@ function _onStatus(e) {
   }
   if (!tr.nx && dev) tr.nx = _nxOfDev(bi, dev);
   var last = tr.ev[tr.ev.length - 1];
+  // 3128 (diagnóstico S24 3067 15-11 08:41): una foto ✓✓ y leída en 4 s recibió otra confirmación por otro camino 3,5 min
+  // después y salía «entrega_lenta 217 s». Solo la PRIMERA confirmación mide la entrega; las repetidas quedan en la línea de tiempo.
+  var doneBefore = tr.ev.some(function(x) { return x[1] === 'delivered' || x[1] === 'read'; });
   var via = dev ? _viaKind(dev) : '';
   if (last && last[1] === d.status && last[2] === via) return;
-  tr.ev.push([now, d.status, via]);
+  tr.ev.push([now, d.status, via, doneBefore && (d.status === 'delivered' || d.status === 'read') ? 1 : 0]);
   if (tr.ev.length > 12) tr.ev.splice(1, 1);
   var slowMs = (typeof window.NEXO_DIAG_SLOW_MS === 'number' && window.NEXO_DIAG_SLOW_MS >= 0) ? window.NEXO_DIAG_SLOW_MS : SLOW_MS; // perilla de prueba
   var asleep = _hidden || _backAt > tr.t0; // 3034: la app estuvo en segundo plano mientras esperaba la ✓✓
-  if ((d.status === 'delivered') && !tr.slow && !asleep && tr.via0 !== 'none' && now - tr.t0 > slowMs) {
+  if ((d.status === 'delivered') && !doneBefore && !tr.slow && !asleep && tr.via0 !== 'none' && now - tr.t0 > slowMs) {
     tr.slow = true;
     try { window.dispatchEvent(new CustomEvent('nexo:diag:symptom', { detail: { kind: 'entrega_lenta', info: tr.nx + ' ' + id + ' ' + Math.round((now - tr.t0) / 1000) + ' s, camino al mandar ' + tr.via0 } })); } catch (e3) {}
   }
@@ -175,7 +178,7 @@ function _traceRows() {
   var out = [];
   _trace.forEach(function(tr, id) {
     out.push('  ' + id.slice(-8) + ' → ' + _tail(tr.nx) + _nameOf(tr.nx) + ' (camino al mandar ' + tr.via0 + '): ' + tr.ev.map(function(e) {
-      return _hhmmss(e[0]) + ' ' + e[1] + (e[2] ? '/' + e[2] : '');
+      return _hhmmss(e[0]) + ' ' + e[1] + (e[2] ? '/' + e[2] : '') + (e[3] ? ' (repetida)' : ''); // i18n-ok: texto para el desarrollador
     }).join(' → ') + (tr.slow ? '  [LENTO]' : ''));
   });
   return out.slice(-25);
@@ -194,6 +197,7 @@ export function diagStateText() {
   // 3081: velocidad real de hoy por camino y cuánto tarda cada camino en quedar listo (usage_stats)
   try { var sp = typeof window.NEXO_speedLines === 'function' ? window.NEXO_speedLines() : []; if (sp.length) { out.push('Velocidad de hoy por camino:'); out = out.concat(sp); } } catch (e) {} // i18n-ok
   try { var pw = window.__nexoPower && typeof window.__nexoPower.lines === 'function' ? window.__nexoPower.lines() : []; if (pw.length) { out.push('Uso de hoy:'); out = out.concat(pw.map(function(l) { return '  ' + l; })); } } catch (e) {} // i18n-ok: 3119
+  try { var rl = bi && bi.net && typeof bi.net.rxLine === 'function' ? bi.net.rxLine() : ''; if (rl) out.push('  ' + rl); } catch (e) {} // 3128: datos que llegan de los relés
   try { out = out.concat(exitsLines()); } catch (e) {} // 3120: cierres de la app y su motivo
   return out.join('\n') + '\n';
 }

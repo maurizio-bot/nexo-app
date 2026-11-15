@@ -200,13 +200,34 @@ export const netRelays = {
     this._send(r, ['REQ', r.sub, { kinds: [KIND], '#p': Array.from(this.inTags.keys()).concat(Array.from(this.reqTags.keys())), since: since }]);
   },
 
+  // 3128: cuenta de lo bajado de los relés desde que arrancó la app (todo y por relé)
+  _rxStat(url) {
+    var st = this._rx || (this._rx = { since: Date.now(), all: { bytes: 0, ev: 0, dup: 0, dupBytes: 0 }, by: new Map() });
+    var h = _relayHost(url), one = st.by.get(h);
+    if (!one) { one = { bytes: 0, dupBytes: 0 }; st.by.set(h, one); }
+    return { all: st.all, one: one };
+  },
+  rxLine() {
+    var st = this._rx;
+    if (!st || !st.all.bytes) return '';
+    var mb = function(b) { return b >= 1048576 ? (Math.round(b / 104857.6) / 10).toString().replace('.', ',') + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB'; };
+    var by = Array.from(st.by.entries()).filter(function(e) { return e[1].bytes > 0; }).sort(function(a, b) { return b[1].bytes - a[1].bytes; }).slice(0, 6)
+      .map(function(e) { return e[0] + ' ' + mb(e[1].bytes) + (e[1].dupBytes ? ' (repetido ' + mb(e[1].dupBytes) + ')' : ''); }); // i18n-ok: texto para el desarrollador
+    return 'bajado de los relés desde que se abrió la app (hace ' + Math.max(1, Math.round((Date.now() - st.since) / 60000)) + ' min): ' + mb(st.all.bytes) + ', ' + // i18n-ok
+      st.all.ev + ' eventos, ' + st.all.dup + ' ya vistos (' + mb(st.all.dupBytes) + ')' + (by.length ? ' · ' + by.join(' · ') : ''); // i18n-ok
+  },
+
   _onRelayMsg(url, r, data) {
     var m;
     // SEC-4 (auditoría 28-10): un relé malicioso podría mandar un frame enorme → pico de memoria del WebView. Igual que
     // el nativo (SafeJson), se descarta lo que exceda con holgura un evento legítimo antes de analizarlo.
     if (typeof data === 'string' && data.length > MAX_RELAY_FRAME) { console.warn('[NET] Frame de relé demasiado grande (' + data.length + '): descartado'); return; }
+    var len = typeof data === 'string' ? data.length : 0, rx = this._rxStat(url);
+    rx.all.bytes += len; rx.one.bytes += len;
     try { m = JSON.parse(data); } catch (e) { return; }
     if (!Array.isArray(m)) return;
+    // 3128 (diagnóstico S24 3067: 66 MB en 17 min sin saber de dónde): lo que llega de cada relé y cuánto era REPETIDO (ya visto)
+    if (m[0] === 'EVENT' && m[2] && typeof m[2].id === 'string') { rx.all.ev++; if (this.seen && this.seen.has(m[2].id)) { rx.all.dup++; rx.all.dupBytes += len; rx.one.dupBytes += len; } }
     // Fase B (2969): respuestas a una bajada por id (fetchEvents) — van a su recolector, no al buzón
     if (r.fetches && typeof m[1] === 'string' && r.fetches.has(m[1])) {
       var fj = r.fetches.get(m[1]);

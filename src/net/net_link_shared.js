@@ -27,6 +27,11 @@ var UP_MS = 150000;           // visto hace menos: en línea
 var HELLO_MS = 60000;         // saludo a los contactos en línea mientras la app está abierta
 var TICK_MS = 15000;
 var TTL_MSG = 7 * 86400, TTL_CHUNK = 86400, TTL_HELLO = 600; // caducidad en los relés (s)
+// 3128 (diagnóstico S24 3067 15-11: 176 MB en el día; una llamada de 12,6 min por relés y, ya colgada, 66 MB más en 17 min):
+// las partes de voz/imagen de una llamada por relés caducaban a los 7 días como un mensaje. Cada vez que un relé se caía y
+// volvía (damus.io «se cae sin parar»), la nueva suscripción (desde lo último visto − 10 min) volvía a bajar hasta 10 min de
+// llamada. Una parte de llamada vieja no sirve: caduca a los 2 min y el relé deja de guardarla y de mandarla otra vez.
+var TTL_RT = 120;
 var MAX_CONTENT = 60000;      // tamaño máximo de un evento que aceptan los relés habituales (~64 KB)
 var MAX_RELAY_FRAME = 300000; // SEC-4 (auditoría 28-10): tope de un frame de relé antes de analizarlo (como SafeJson nativo)
 // P5 (dueño 01-11): un relé que FLAPEA (abre y se cae enseguida, muchas veces) desestabiliza internet (en el diagnóstico
@@ -106,4 +111,4 @@ function _reqScalar(id, day) { return _scalar(sha256(_utf8('NEXO-REQ-v1|' + _nid
 function _reqTagPub(id, day) { return bytesToHex(schnorr.getPublicKey(_reqScalar(id, day))); }
 function _reqAesKey(id) { return sha256(_utf8('NEXO-REQ-ENC-v1|' + _nid(id))); }
 
-export { DEFAULT_RELAYS, SPARE_RELAYS, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, _relaySafe, KIND, BLOB_KIND, UP_MS, HELLO_MS, TICK_MS, TTL_MSG, TTL_CHUNK, TTL_HELLO, MAX_CONTENT, MAX_RELAY_FRAME, NET_CHANGE_SETTLE_MS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_FLAP_PENALTY_MS, RELAY_PROBE_MS, RELAY_IDLE_PROBE_MS, RELAY_BG_PROBE_MS, RELAY_PROBE_ID, RELAY_OFFLINE_RETRY_MS, RELAY_MIN_OTHERS, WAKE_MIN_MS, CALL_WAKE_MIN_MS, XFER_WAKE_MIN_MS, DEFAULT_SENDER, STATE_FILE, N, _nid, _relayHost, _plugin, _day, _utf8, _b64, _unb64, _cat, _rnd, _scalar, _event, _reqScalar, _reqTagPub, _reqAesKey };
+export { DEFAULT_RELAYS, SPARE_RELAYS, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, _relaySafe, KIND, BLOB_KIND, UP_MS, HELLO_MS, TICK_MS, TTL_MSG, TTL_CHUNK, TTL_HELLO, TTL_RT, MAX_CONTENT, MAX_RELAY_FRAME, NET_CHANGE_SETTLE_MS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_FLAP_PENALTY_MS, RELAY_PROBE_MS, RELAY_IDLE_PROBE_MS, RELAY_BG_PROBE_MS, RELAY_PROBE_ID, RELAY_OFFLINE_RETRY_MS, RELAY_MIN_OTHERS, WAKE_MIN_MS, CALL_WAKE_MIN_MS, XFER_WAKE_MIN_MS, DEFAULT_SENDER, STATE_FILE, N, _nid, _relayHost, _plugin, _day, _utf8, _b64, _unb64, _cat, _rnd, _scalar, _event, _reqScalar, _reqTagPub, _reqAesKey };

@@ -8,7 +8,8 @@
 //      verifica, descifra y guarda el archivo IDÉNTICO como un adjunto normal; A recibe ✓✓, pide BORRAR los trozos (kind 5,
 //      NIP-09) y limpia su registro.
 //  (3) El mismo puntero llega otra vez (dos vías / reenvío) → dedup: una sola copia y ni una bajada más.
-//  (4) Con B EN LÍNEA (Wi-Fi los dos) un archivo NO pasa por el buzón de archivos: camino directo de siempre, ni un trozo nuevo.
+//  (4) 3128: con B EN LÍNEA solo por los relés, un archivo TAMBIÉN va al buzón de archivos (antes: flujo por trozos por los relés,
+//      2,1 KB/s de media en el S24 del dueño; el buzón de archivos, 116 KB/s): llega y no abre ningún flujo por trozos.
 // Uso: node blobe2e.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -163,14 +164,15 @@ const statusOf = (p, msgId) => { const s = p.win.document.querySelector('.msg-st
   r.dedup_una_copia = before === 1 && after === 1 && !(B.win.bleInterface._blobIn && B.win.bleInterface._blobIn.size);
   r.dedup_sin_bajar_de_nuevo = relays.map((x) => x.stats.reqIds || 0).join(',') === reqIds0;
 
-  // ===== (4) con B EN LÍNEA el archivo NO pasa por el buzón de archivos (camino directo de siempre) =====
+  // ===== (4) 3128: con B EN LÍNEA solo por los relés el archivo va al buzón de archivos (antes: flujo por trozos por los relés) =====
   r.de_vuelta_en_linea_s = await waitFor(() => viaA() === 'internet' && netA().canReach(idB), 60000);
   const blob1 = count1064();
   const foto2 = await sendFile(A, 'foto_en_linea.jpg', 120000);
   const b64b = foto2.toString('base64');
   r.en_linea_llega_s = await waitFor(async () => !!(await findMsg(B, idA, b64b, false)), 90000);
   const m2 = await findMsg(A, idB, b64b, true);
-  r.en_linea_no_usa_buzon_de_archivos = count1064() === blob1 && !!m2 && !(ackA()._blobOut && ackA()._blobOut.has(m2.messageId)) && logs.filter((l) => /\[A\].*\[BLOB\].*buzón de archivos/.test(l)).length === 1;
+  r.en_linea_va_por_buzon_de_archivos = count1064() > blob1 && !!m2 && logs.filter((l) => /\[A\].*\[BLOB\].*buzón de archivos/.test(l)).length === 2 &&
+    !logs.some((l) => m2 && new RegExp('\\[A\\].*sendFile START fileId=' + m2.messageId + ' .*to=net').test(l));
 
   // ===== (5) 2970 (diagnóstico del dueño S24 09-11, APK de 25 MB a la tablet): archivo > 5 MB a un contacto conectado por
   //     BLUETOOTH pero AUSENTE por internet → queda ⏳ UNA vez. Antes se re-reanudaba cada ~1,5 s («hasBetter» tomaba

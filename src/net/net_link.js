@@ -33,7 +33,7 @@
  * Relés de prueba: window.NEXO_NET_RELAYS.
  */
 import { GwLink, GW_FILE_MAX_B64 } from './gw_link.js';
-import { DEFAULT_RELAYS, SPARE_RELAYS, _relaySafe, _nid, _plugin, STATE_FILE, RELAY_BG_PROBE_MS, TICK_MS, _cat, _utf8, _scalar, _day, _reqScalar, _reqTagPub, UP_MS, RELAY_IDLE_PROBE_MS, netEventValid, _unb64, _reqAesKey, TTL_CHUNK, TTL_MSG, _rnd, _b64, MAX_CONTENT, TTL_HELLO, _event, KIND, HELLO_MS } from './net_link_shared.js';
+import { DEFAULT_RELAYS, SPARE_RELAYS, _relaySafe, _nid, _plugin, STATE_FILE, RELAY_BG_PROBE_MS, TICK_MS, _cat, _utf8, _scalar, _day, _reqScalar, _reqTagPub, UP_MS, RELAY_IDLE_PROBE_MS, netEventValid, _unb64, _reqAesKey, TTL_CHUNK, TTL_MSG, TTL_RT, _rnd, _b64, MAX_CONTENT, TTL_HELLO, _event, KIND, HELLO_MS } from './net_link_shared.js';
 import { e2eIdentityDH, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { hmac } from '@noble/hashes/hmac.js';
@@ -412,6 +412,7 @@ export class NetLink {
 
   // ---------- enviar ----------
   _ttlFor(content) {
+    if (/^\{"type":"vf"/.test(content)) return TTL_RT; // 3128: parte de llamada (1-a-1 o de grupo)
     if (/^\{"v":1,"t":"[cf]"/.test(content)) return TTL_CHUNK;
     return TTL_MSG;
   }
