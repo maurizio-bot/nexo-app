@@ -1290,6 +1290,25 @@ export const BLE_MESSAGE_METHODS = {
   // espera a colgar y entonces sale. Lo nuevo que escribe el usuario y las señales de la llamada salen como siempre; lo que
   // va por Wi-Fi o internet no espera.
   _callBusy() { return !!((this.calls && this.calls.call) || (this.calls2 && this.calls2.call) || (this.gcall && this.gcall.gc)); },
+  // #222 (dueño 15-11: «contestar y poder pausar la otra en automático y poderla revisar manualmente»): las llamadas a la vez
+  // (1-a-1 primera, 1-a-1 segunda, grupo; máximo 2). Al empezar a hablar en una, las demás en curso pasan a EN ESPERA; al colgar,
+  // si queda una sola y estaba en espera por el usuario, vuelve sola.
+  _callList() { var l = []; if (this.calls && this.calls.call) l.push(this.calls); if (this.calls2 && this.calls2.call) l.push(this.calls2); if (this.gcall && this.gcall.gc) l.push(this.gcall); return l; },
+  _callActive(x) { return x === this.gcall ? !!(x.gc && x.gc.state === 'active') : !!(x.call && x.call.state === 'active'); },
+  _callHeldByUser(x) { return x === this.gcall ? !!(x.gc && x.gc.held) : !!(x.call && x.call.userHold); },
+  _callCount() { return this._callList().length; },
+  _holdOthers(keep) {
+    var self = this;
+    self._callList().forEach(function(x) { if (x !== keep && self._callActive(x) && !self._callHeldByUser(x) && typeof x.hold === 'function') x.hold(true); });
+  },
+  _resumeLoneCall() {
+    var self = this;
+    clearTimeout(self._resumeT);
+    self._resumeT = setTimeout(function() {
+      var act = self._callList().filter(function(x) { return self._callActive(x); });
+      if (act.length === 1 && self._callHeldByUser(act[0]) && typeof act[0].hold === 'function') act[0].hold(false);
+    }, 300);
+  },
   // #220 fase 2: ¿a qué llamada va esta señal? A la que la tiene (por id o por el contacto); una llamada NUEVA con la primera ya
   // ocupada con otro contacto va a la segunda; con dos llamadas ya en curso (contando la de grupo), la primera contesta «ocupado».
   _callSignal(from, o, mid) {

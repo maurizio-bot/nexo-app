@@ -17,6 +17,7 @@ import { _getGradientForUUID, _getInitials } from './ble_helpers.js';
 import { _hideCameraPreviewOverlay } from './camera.js';
 import { vaultAppendMessage, vaultFindContactByNexoId } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
+import { openCallReply, closeCallReply } from './call_reply.js';
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
 function _calls() { var b = _bi(); return b && b.calls; }
@@ -98,8 +99,29 @@ var _IC = {
   phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   addp: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M15 11h6"/>',
-  screen: '<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M12 15V8M9 11l3-3 3 3"/>'
+  screen: '<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M12 15V8M9 11l3-3 3 3"/>',
+  pause: '<rect x="6.5" y="5" width="3.5" height="14" rx="1"/><rect x="14" y="5" width="3.5" height="14" rx="1"/>',
+  play: '<path d="M8 5.5l11 6.5-11 6.5z"/>',
+  msg: '<path d="M4 5h16v11H10l-5 4v-4H4z"/><path d="M8 9.5h8M8 12.5h5"/>'
 };
+// #222 (dueño 15-11: «solo pueden ser dos llamadas independientes al mismo tiempo»): cuántas llamadas hay (1-a-1 ×2 y la de grupo)
+export function callCount() { var b = _bi(); return b && typeof b._callCount === 'function' ? b._callCount() : 0; }
+// Etiqueta de una llamada en espera (la puse yo / me puso el otro); '' si no
+export function holdLabel(st) {
+  if (!st) return '';
+  if (st.userHold) return t('call_on_hold', 'En espera');
+  if (st.peerHeld) return t('call_peer_hold', 'Te puso en espera');
+  return '';
+}
+// Botón «En espera» / «Reanudar» (solo con dos llamadas a la vez o si ésta ya está en espera)
+export function holdButton(calls, st) {
+  var on = !!(st && (st.userHold || st.held && st.gid));
+  return _btn(on ? 'play' : 'pause', on ? t('call_resume', 'Reanudar') : t('call_hold', 'En espera'), 'call-hold', function() { haptic('confirm'); calls.hold(!on); }, on ? 'nc-on' : '');
+}
+// Botón «Mensaje» en una llamada que suena estando en otra: la rechaza y le manda un texto al que llama
+export function replyButton(nx, reject) {
+  return _btn('msg', t('call_qr_btn', 'Mensaje'), 'call-reply', function() { haptic('confirm'); openCallReply(nx, _name(nx), reject); });
+}
 function _svg(name, size) {
   return '<svg width="' + (size || 26) + '" height="' + (size || 26) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + _IC[name] + '</svg>';
 }
@@ -171,6 +193,7 @@ function _style() {
     '#nexo-call-screen .nc-btn{display:flex;flex-direction:column;align-items:center;gap:7px;background:none;border:none;color:#fff;font-size:11.5px;cursor:pointer;padding:0;min-width:62px;-webkit-tap-highlight-color:transparent}',
     '#nexo-call-screen .nc-btn .nc-ic{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.13);transition:transform .15s,background .2s,color .2s}',
     '#nexo-call-screen .nc-btn.nc-on .nc-ic{background:#fff;color:#14152a}',
+    '.nc-btn.nc-off{opacity:.4}', // #222: apagado (con dos llamadas a la vez), al tocarlo dice por qué
     '#nexo-call-screen .nc-btn.nc-red .nc-ic{background:#ef4444;box-shadow:0 8px 24px rgba(239,68,68,.45)}',
     '#nexo-call-screen .nc-btn.nc-red:not(.call-screen) .nc-ic svg{transform:rotate(135deg)}', // (14-11: «Detener» de compartir pantalla no se gira)
     '#nexo-call-screen .nc-btn.nc-big .nc-ic{width:72px;height:72px}',
@@ -564,6 +587,7 @@ function _render(st) {
   clearInterval(_tick);
   if (!st || st.state === 'ended') {
     _stopTone(); clearTimeout(_hideTimer);
+    if (st) closeCallReply(st.nx);
     var old = document.getElementById('nexo-call-screen');
     if (old) {
       old.classList.remove('nc-live', 'nc-hide', 'nc-waiting');
@@ -590,6 +614,7 @@ function _render(st) {
     return;
   }
   clearTimeout(_rmTimer); _rmTimer = null; // ronda 2768: una llamada nueva no pierde su pantalla por el borrado de la anterior
+  if (st.state !== 'ringing') closeCallReply(st.nx);
   var el = _screen(), name = _name(st.nx);
   syncCallSplit(); // #220: con la de grupo también abierta, pantalla dividida
   el.classList.toggle('nc-video', !!st.video);
@@ -621,6 +646,7 @@ function _render(st) {
     status.textContent = st.video ? t('call_incoming_video', 'Videollamada entrante') : t('call_incoming_voice', 'Llamada de voz entrante');
     bt.classList.add('nc-incoming');
     bt.appendChild(_btn('phone', t('call_reject', 'Rechazar'), 'call-reject', function() { calls.reject(); }, 'nc-red nc-big'));
+    if (callCount() > 1) { var rnx = st.nx; bt.appendChild(replyButton(rnx, function() { var c = _calls(); if (c && c.call && c.call.nx === rnx && c.call.state === 'ringing') c.reject(); })); } // #222
     // Ronda 2778 (pedido del dueño): contestar deslizando hacia arriba; el toque también vale
     var acc = _btn(st.video ? 'cam' : 'phone', t('call_swipe_or_tap', 'Desliza o toca'), 'call-accept', function() { haptic('confirm'); calls.accept(); }, 'nc-green nc-big nc-swipe-up');
     _makeSwipeAccept(acc, function() { calls.accept(); _autoHide(el); });
@@ -633,9 +659,10 @@ function _render(st) {
       // #dueño (internet): mala conexión → «Reconectando…» (lo marca calls.js); antes de eso, «Conexión inestable…»
       var recon = !!cur.reconnecting;
       var weak = !recon && cur.lastRx && Date.now() - cur.lastRx > 3000;
-      var slabel = recon ? t('call_reconnecting', 'Reconectando…') : weak ? t('call_unstable', 'Conexión inestable…') : dur;
+      var hl = holdLabel(cur); // #222: en espera (yo o el otro): ni «inestable» ni «reconectando»
+      var slabel = hl ? hl + ' · ' + dur : recon ? t('call_reconnecting', 'Reconectando…') : weak ? t('call_unstable', 'Conexión inestable…') : dur;
       status.textContent = slabel;
-      status.classList.toggle('nc-warn', recon || !!weak);
+      status.classList.toggle('nc-warn', !hl && (recon || !!weak));
       mini.textContent = name + ' · ' + slabel;
       var via2 = _linkText(st.nx);
       lock.textContent = t('call_e2e', 'Cifrada de extremo a extremo') + (via2 ? ' · ' + via2 : '');
@@ -664,7 +691,10 @@ function _render(st) {
     // #130 (dueño 31-10): AGREGAR un contacto a la llamada 1-a-1 → se convierte en llamada de GRUPO (el contacto actual + el
     // nuevo). Cuelga la 1-a-1 y arranca el grupo (el otro recibe la invitación de grupo). El grupo es de voz (el vídeo de
     // grupo es Fase 2); por eso se arranca como audio aunque la 1-a-1 fuera vídeo.
+    var two = callCount() > 1;
+    if (two || st.userHold) bt.appendChild(holdButton(calls, st)); // #222: en espera / reanudar
     bt.appendChild(_btn('addp', t('call_add', 'Agregar'), 'call-add', function() {
+      if (callCount() > 1) { _showInfoToast(t('call_max_two_grp', 'Con dos llamadas a la vez no se puede pasar a llamada de grupo'), 3500); return; } // #222
       var cur = calls.state(); if (!cur) return;
       var peer = cur.nx, me = _normId(_bi() && _bi().localNexoId);
       var gcall = _bi() && _bi().gcall;
@@ -674,7 +704,7 @@ function _render(st) {
         try { calls.hangup(); } catch (e) {}
         setTimeout(function() { gcall.start([peer, nx], false).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); }); }, 400);
       } });
-    }));
+    }, two ? 'nc-off' : ''));
     bt.appendChild(_btn('phone', t('call_hangup', 'Colgar'), 'call-hangup', function() { haptic('confirm'); calls.hangup(); }, 'nc-red'));
     bt.classList.toggle('nc-many', bt.children.length >= 6); // videollamada (7): letra algo menor; voz (4): como siempre
     _fitLabels(bt); _watchFit();
@@ -738,12 +768,7 @@ function _installButton() {
   b.title = t('call_btn_call_title', 'Llamar');
   b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>'; // ronda 2763: icono dibujado (antes un emoji)
   b.style.cssText = 'width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;font-size:18px;cursor:pointer;flex-shrink:0;margin-left:6px;';
-  b.addEventListener('click', function(e) {
-    e.stopPropagation();
-    var calls = _calls(), cid = _getCurrentContactId();
-    if (!calls || !cid) return;
-    calls.start(cid).catch(function(err) { _showInfoToast(err.message, 3500); });
-  });
+  b.addEventListener('click', function(e) { e.stopPropagation(); _startCall(_getCurrentContactId(), false); });
   actions.appendChild(b);
   // Videollamada (solo con el contacto en el mismo Wi-Fi)
   var v = document.createElement('button');
@@ -751,24 +776,45 @@ function _installButton() {
   v.title = t('call_btn_video_title', 'Videollamada');
   v.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="12" height="10" rx="2"/><path d="M15 11l6-3v8l-6-3z"/></svg>'; // ronda 2763: icono dibujado (antes un emoji)
   v.style.cssText = b.style.cssText;
-  v.addEventListener('click', function(e) {
-    e.stopPropagation();
-    var calls = _calls(), cid = _getCurrentContactId();
-    if (!calls || !cid) return;
-    calls.start(cid, true).catch(function(err) { _showInfoToast(err.message, 3500); });
-  });
+  v.addEventListener('click', function(e) { e.stopPropagation(); _startCall(_getCurrentContactId(), true); });
   actions.appendChild(v);
+}
+// #222 (dueño 15-11): llamar desde el chat. Con una llamada en curso con otro contacto, la nueva va por la SEGUNDA línea (la
+// primera queda en espera al contestar el otro); con dos llamadas a la vez (contando la de grupo), no se puede llamar a nadie más.
+function _startCall(cid, video) {
+  var b = _bi(), c1 = b && b.calls, c2 = b && b.calls2, nx = _normId(cid);
+  if (!c1 || !nx) return;
+  if (callCount() >= 2) { haptic('confirm'); _showInfoToast(t('call_max_two', 'Ya tienes dos llamadas a la vez. Cuelga una para llamar a alguien más'), 3500); return; }
+  var busyWith = [c1.call, c2 && c2.call].filter(Boolean).some(function(c) { return _normId(c.nx) === nx; });
+  if (busyWith) { _showInfoToast(t('call_already_with', 'Ya estás en una llamada con este contacto'), 3000); return; }
+  var lane = c1.call && c2 ? c2 : c1;
+  lane.start(nx, !!video).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); });
 }
 function _refreshButton() {
   var cid = _getCurrentContactId(), gs = _bi() && _bi().groups, show = cid && !(gs && gs.isGroup(cid)) ? '' : 'none';
-  ['nexo-call-btn', 'nexo-video-btn'].forEach(function(id) { var b = document.getElementById(id); if (b) b.style.display = show; });
+  var full = callCount() >= 2; // #222: con dos llamadas, apagados (se ven, y al tocarlos dicen por qué)
+  ['nexo-call-btn', 'nexo-video-btn'].forEach(function(id) {
+    var b = document.getElementById(id); if (!b) return;
+    b.style.display = show; b.style.opacity = full ? '0.35' : ''; b.setAttribute('aria-disabled', full ? 'true' : 'false');
+    b.title = full ? t('call_max_two_short', 'Ya tienes dos llamadas') : (id === 'nexo-call-btn' ? t('call_btn_call_title', 'Llamar') : t('call_btn_video_title', 'Videollamada'));
+  });
 }
+export function refreshCallButtons() { _refreshButton(); }
 
 // Ronda 2769: la cámara del chat (fotos y vídeos) abierta debajo de la llamada tenía ocupada la cámara y, grabando
 // vídeo, el micrófono: la llamada no podía abrirlos. Al empezar la llamada se cierra.
 function _releaseChatCamera() {
   var ov = document.getElementById('camera-preview-overlay');
   if (ov && !ov.classList.contains('hidden')) { console.log('[CALL] Se cierra la cámara del chat: la usa la llamada'); _hideCameraPreviewOverlay(); }
+}
+
+var _lastCount = -1;
+function _onCountChange() {
+  var n = callCount();
+  if (n === _lastCount) return;
+  _lastCount = n;
+  _refreshButton();
+  var c = _calls(); if (c && c.call && c.call.state !== 'ended') _render(c.state());
 }
 
 export function installCallsUi() {
@@ -781,7 +827,11 @@ export function installCallsUi() {
     // Ronda 2765: acabó la llamada: si la app se abrió encima de la pantalla de bloqueo por ella, vuelve detrás
     if (!st || st.state === 'ended') _lockScreenDone();
     _render(st);
+    _onCountChange();
   });
+  // #222: lo que depende de cuántas llamadas hay (botón «En espera», «Mensaje», botones del chat) se rehace al cambiar
+  window.addEventListener('nexo:call2', _onCountChange);
+  window.addEventListener('nexo:gcall', _onCountChange);
   // Abierta por una llamada que ya no está (se cortó antes de abrir): detrás de la pantalla de bloqueo
   setTimeout(function() { var c = _calls(); if (!c || !c.call) _lockScreenDone(); }, 8000);
   // Ronda 2768: una oferta que no suena (ocupado, vieja, ya terminada, cruce): fuera el aviso nativo que ya sonaba y, sin

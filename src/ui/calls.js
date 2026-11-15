@@ -196,6 +196,8 @@ export class Calls {
   start(nexoId, video) {
     var self = this, nx = _nid(nexoId);
     if (self.call) return Promise.reject(new Error(t('call_err_already', 'Ya hay una llamada')));
+    // #222 (dueño 15-11: «solo pueden ser dos llamadas independientes al mismo tiempo»): con dos (contando la de grupo), no
+    if (self.ble && typeof self.ble._callCount === 'function' && self.ble._callCount() >= 2) return Promise.reject(new Error(t('call_max_two', 'Ya tienes dos llamadas a la vez. Cuelga una para llamar a alguien más')));
     if (!self._link(nx)) return Promise.reject(new Error(t('call_err_need_near', 'Para llamar hace falta Bluetooth, Wi-Fi o internet con el contacto')));
     if (video && !self.canVideo(nx)) return Promise.reject(new Error(t('call_err_need_wifi_video', 'Para una videollamada hace falta Wi-Fi o internet (por Bluetooth solo voz)')));
     // Si la llamada va por INTERNET, el único camino en tiempo real es Tor directo (los relés tienen segundos de retraso).
@@ -311,34 +313,44 @@ export class Calls {
     if (this.call === c) { this._set({ screen: false }); this._sendState(c); }
   }
 
-  mute(on) { var c = this.call; if (!c) return; c.muted = !!on; if (c.media && c.media.mute) c.media.mute(!!on); _emit(this._ev, this.state()); }
+  mute(on) { var c = this.call; if (!c) return; c.muted = !!on; if (c.media && c.media.mute) c.media.mute(!!on || !!c.held); _emit(this._ev, this.state()); }
+  // #222 (dueño 15-11: «contestar y poder pausar la otra en automático y poderla revisar manualmente»): EN ESPERA por el usuario
+  // (otra llamada a la vez). Misma retención que la de la llamada telefónica (micrófono callado, el otro avisado con 'hold' para que
+  // ninguno corte por silencio) y además no se oye ni se ve al otro. Las dos esperas (usuario y teléfono) se suman.
+  hold(on) {
+    var c = this.call; if (!c || c.state !== 'active') return;
+    if (!on && this.ble && typeof this.ble._holdOthers === 'function') this.ble._holdOthers(this); // reanudar esta = la otra en espera
+    c.userHold = !!on;
+    this._applyHold(c, on ? 'En espera (otra llamada)' : 'Reanudada');
+  }
+  _applyHold(c, why) {
+    var self = this, want = !!(c.userHold || c.phoneHold);
+    if (want === !!c.held) { self._set({ held: want, userHold: !!c.userHold }); return; }
+    c.held = want;
+    if (want) {
+      if (c.media && c.media.mute) try { c.media.mute(true); } catch (e) {}
+      self._signal(c.nx, 'hold');
+    } else {
+      c.lastRx = Date.now();                       // vigilante limpio: no contar el tiempo en pausa
+      if (c.media && c.media.mute) try { c.media.mute(!!c.muted); } catch (e) {} // el silencio que el usuario tenga puesto
+      if (c.media && typeof c.media.wake === 'function') try { c.media.wake(); } catch (e) {} // re-tomar micro/cámara/audio
+      self._signal(c.nx, 'unhold');
+    }
+    self._set({ held: want, userHold: !!c.userHold });
+    console.log('[CALL] ' + why + ' (' + c.nx + ')');
+  }
 
   // #dueño 01-11 (GRAVE): entró/salió una llamada TELEFÓNICA (el nativo lo avisa por el foco de audio, onCallInterruption).
   // RETENER la llamada NEXO sin cortarla: al perder el foco (paused=true) silenciar el micro, avisar al otro «en pausa»
   // (hold) para que NINGUNO corte por silencio, y NO pelear por el audio; al volver el foco (paused=false, p.ej. se rechazó
   // o colgó la telefónica) reanudar: micro, reiniciar el vigilante y avisar «sigo» (unhold). La llamada nunca se cae.
   _onInterruption(paused) {
-    var self = this, c = self.call;
+    var c = this.call;
     if (!c || c.state !== 'active') return;
-    if (paused) {
-      if (c.held) return;
-      c.held = true;
-      c._mutedBefore = !!c.muted;                 // recordar el silencio MANUAL del usuario (para restaurarlo al volver)
-      if (c.media && c.media.mute) try { c.media.mute(true); } catch (e) {}
-      self._signal(c.nx, 'hold');
-      self._set({ held: true });
-      console.log('[CALL] En pausa por llamada telefónica (retenida, sin cortar)');
-    } else {
-      if (!c.held) return;
-      c.held = false;
-      c.lastRx = Date.now();                       // vigilante limpio: no contar el tiempo en pausa
-      if (c.media && c.media.mute) try { c.media.mute(!!c._mutedBefore); } catch (e) {}
-      if (c.media && typeof c.media.wake === 'function') try { c.media.wake(); } catch (e) {} // re-tomar micro/cámara/audio
-      self._signal(c.nx, 'unhold');
-      self._set({ held: false });
-      console.log('[CALL] Reanudada tras la llamada telefónica');
-    }
+    c.phoneHold = !!paused;
+    this._applyHold(c, paused ? 'En pausa por llamada telefónica (retenida, sin cortar)' : 'Reanudada tras la llamada telefónica');
   }
+
 
   // La llamada empieza: micrófono y altavoz
   _begin() {
@@ -347,13 +359,14 @@ export class Calls {
     c.startedAt = Date.now(); c.lastRx = Date.now();
     self.stats = { sent: 0, got: 0, bad: 0 }; // por llamada (el diagnóstico de cada una)
     self._set({ state: 'active', startedAt: c.startedAt });
+    if (self.ble && typeof self.ble._holdOthers === 'function') { try { self.ble._holdOthers(self); } catch (e) {} } // #222: la otra llamada, en espera sola
     if (self.lane === 1) _telecom('active');  // parte 2: la saliente por Telecom pasa a activa (la entrante no pasa por aquí: no-op)
     console.log('[CALL] En llamada con ' + c.nx + ' (' + c.id + ')');
     if (c.video && self.lane === 1) _pipActive(true); // videollamada → habilitar la miniatura (PiP) al irse de la app
     var media;
     try {
       media = self.mediaFactory({ onPacket: function(bytes) { self._sendPacket(bytes); }, codecs: c.peerCodecs || 'opus,ulaw',
-        video: !!c.video, onVideoPacket: function(bytes) { self._sendPacket(bytes, 'v'); },
+        video: !!c.video, onVideoPacket: function(bytes) { if (!c.held) self._sendPacket(bytes, 'v'); }, // #222: en espera, mi imagen no sale
         // Compartir pantalla parte 3: por Bluetooth (sin vídeo) la pantalla va en diapositivas ('s')
         onSlidePacket: function(bytes) { if (self.call === c) self._sendPacket(bytes, 's'); },
         wantSlides: function() { return self.call === c && self._slidesLink(c); },
@@ -526,6 +539,7 @@ export class Calls {
         }
         return;
       }
+      if (cc.held && (vid || !k)) return; // #222: llamada en espera: ni su voz ni su imagen (el enlace sigue vivo)
       if (vid) { self.stats.gotV = (self.stats.gotV || 0) + 1; if (cc.media && cc.media.playVideo) cc.media.playVideo(new Uint8Array(pt)); return; }
       if (k === 's') { self.stats.gotS = (self.stats.gotS || 0) + 1; if (cc.media && typeof cc.media.slidePart === 'function') cc.media.slidePart(new Uint8Array(pt)); return; } // parte 3: diapositiva de su pantalla
       if (pt.byteLength <= 2) { self.stats.gotKeep = (self.stats.gotKeep || 0) + 1; return; } // ronda 2769: "sigo aquí" del otro (sin voz que mandar)
@@ -609,6 +623,7 @@ export class Calls {
     if (c.media && c.media.stop) { try { c.media.stop(); } catch (e) {} }
     self.call = null;
     if (self.ble && typeof self.ble._afterCallRadio === 'function') { try { self.ble._afterCallRadio(); } catch (e) {} } // 3058: sale lo que esperó a colgar
+    if (self.ble && typeof self.ble._resumeLoneCall === 'function') { try { self.ble._resumeLoneCall(); } catch (e) {} } // #222: la que quedó en espera vuelve
     console.log('[CALL] Fin (' + reason + ', ' + secs + ' s; voz enviada ' + self.stats.sent + ', recibida ' + self.stats.got + ')');
     _emit(self._ev, { id: c.id, nx: c.nx, dir: c.dir, state: 'ended', reason: reason, seconds: secs, video: !!c.video });
     self._log(c.nx, reason, secs, c.dir === 'out', c.video);

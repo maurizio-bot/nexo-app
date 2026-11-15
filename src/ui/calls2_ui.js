@@ -6,7 +6,8 @@
  * Suena dentro de la app (no pasa por la llamada del sistema): Contestar / Rechazar; en curso: Silenciar, Cámara (videollamada),
  * Colgar. Con la app en segundo plano, aviso de mensaje «Llamada de X (estás en otra llamada)».
  */
-import { callButton, ensureCallStyle, fitCallLabels, syncCallSplit } from './calls_ui.js';
+import { callButton, ensureCallStyle, fitCallLabels, syncCallSplit, callCount, holdLabel, holdButton, replyButton } from './calls_ui.js';
+import { closeCallReply } from './call_reply.js';
 import { vaultFindContactByNexoId } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
 
@@ -56,6 +57,7 @@ function _render(st) {
     clearInterval(_tick); _tick = null;
     var old = document.getElementById('nexo-call2-screen');
     if (!old) { syncCallSplit(); return; }
+    if (st) closeCallReply(st.nx);
     var s0 = old.querySelector('.c2-status');
     if (s0 && st) s0.textContent = st.reason === 'busy' ? t('call_end_busy', 'Ocupado') : st.reason === 'rejected' ? t('call_end_rejected', 'Rechazada') : t('call_end_finished', 'Llamada terminada');
     old.querySelector('.call-buttons').innerHTML = '';
@@ -64,6 +66,7 @@ function _render(st) {
   }
   var el = _screen();
   syncCallSplit();
+  if (st.state !== 'ringing') closeCallReply(st.nx);
   el.querySelector('.c2-tag').textContent = t('call2_second', 'Segunda llamada');
   el.querySelector('.c2-name').textContent = _name(st.nx);
   var status = el.querySelector('.c2-status'), bt = el.querySelector('.call-buttons');
@@ -72,16 +75,19 @@ function _render(st) {
   if (st.state === 'ringing') {
     status.textContent = st.video ? t('call_incoming_video', 'Videollamada entrante') : t('call_incoming_voice', 'Llamada entrante');
     bt.appendChild(callButton('phone', t('call_reject', 'Rechazar'), 'call-reject', function() { calls.reject(); }, 'nc-red'));
+    // #222: «Mensaje» (frases listas o escribir): rechaza y le manda el texto al que llama
+    var rnx = st.nx; bt.appendChild(replyButton(rnx, function() { var c = _calls2(); if (c && c.call && c.call.nx === rnx && c.call.state === 'ringing') c.reject(); }));
     bt.appendChild(callButton(st.video ? 'cam' : 'phone', t('call2_accept', 'Contestar'), 'call-accept', function() { calls.accept(); }, 'nc-green'));
     _notifyHidden(st);
   } else if (st.state === 'calling') {
     status.textContent = st.video ? t('call_videocalling', 'Videollamada…') : t('call_calling', 'Llamando…');
     bt.appendChild(callButton('phone', t('call_hangup', 'Colgar'), 'call-hangup', function() { calls.hangup(); }, 'nc-red'));
   } else {
-    var upd = function() { var s = calls.state(); if (s && s.startedAt) status.textContent = _fmt((Date.now() - s.startedAt) / 1000); };
+    var upd = function() { var s = calls.state(); if (s && s.startedAt) { var hl = holdLabel(s); status.textContent = (hl ? hl + ' · ' : '') + _fmt((Date.now() - s.startedAt) / 1000); } };
     upd(); _tick = setInterval(upd, 1000);
     bt.appendChild(callButton(st.muted ? 'micOff' : 'mic', st.muted ? t('call_muted', 'Silenciado') : t('call_mute', 'Silenciar'), 'call-mute', function() { calls.mute(!calls.state().muted); }, st.muted ? 'nc-on' : ''));
     if (st.video) bt.appendChild(callButton(st.cameraOff ? 'camOff' : 'cam', st.cameraOff ? t('call_camera_off', 'Cámara no') : t('call_camera', 'Cámara'), 'call-camera', function() { calls.camera(!!calls.state().cameraOff); }, st.cameraOff ? 'nc-on' : ''));
+    if (callCount() > 1 || st.userHold) bt.appendChild(holdButton(calls, st)); // #222: en espera / reanudar
     bt.appendChild(callButton('phone', t('call_hangup', 'Colgar'), 'call-hangup', function() { calls.hangup(); }, 'nc-red'));
     if (st.video) _attachVideo(el, calls);
   }
@@ -95,6 +101,14 @@ function _notifyHidden(st) {
   if (pl && typeof pl.notifyMessage === 'function') pl.notifyMessage({ chatId: st.nx, name: _name(st.nx), msgId: 'c2_' + (st.id || ''), text: t('call2_notif', '📞 Llamada (estás en otra llamada)'), count: 1 }).catch(function() {});
 }
 
+var _lastCount = -1;
+function _onCountChange() { // #222: el botón «En espera» depende de cuántas llamadas hay
+  var n = callCount(); if (n === _lastCount) return; _lastCount = n;
+  var c = _calls2(); if (c && c.call && c.call.state !== 'ended') _render(c.state());
+}
+
 export function installCalls2Ui() {
-  window.addEventListener('nexo:call2', function(e) { _render(e && e.detail); });
+  window.addEventListener('nexo:call2', function(e) { _render(e && e.detail); _lastCount = callCount(); });
+  window.addEventListener('nexo:call', _onCountChange);
+  window.addEventListener('nexo:gcall', _onCountChange);
 }

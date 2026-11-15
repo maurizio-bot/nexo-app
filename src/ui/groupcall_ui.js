@@ -9,7 +9,8 @@
 import { t } from './i18n.js';
 import { _showInfoToast, _pickContact } from './ui_bits.js';
 import { _getCurrentContactId, _normId } from './chat_format.js';
-import { callButton, ensureCallStyle, fitCallLabels, syncCallSplit } from './calls_ui.js';
+import { callButton, ensureCallStyle, fitCallLabels, syncCallSplit, callCount, holdButton, replyButton } from './calls_ui.js';
+import { closeCallReply } from './call_reply.js';
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
 function _gcall() { var b = _bi(); return b && b.gcall; }
@@ -25,6 +26,7 @@ function _legLabel(state, reconnecting) {
   if (state === 'lost') return t('grp_leg_lost', 'Sin señal');
   if (state === 'gone') return t('grp_leg_gone', 'Salió');
   if (state === 'noanswer') return t('grp_leg_noanswer', 'No contestó'); // 3100
+  if (state === 'held') return t('call_peer_hold', 'Te puso en espera'); // #222
   return t('grp_leg_connecting', 'Conectando…');
 }
 
@@ -118,7 +120,8 @@ function _render(st) {
   var status = el.querySelector('.gc-status');
   if (st.state === 'ringing') status.textContent = t('grp_ring_in', 'Llamada de grupo entrante');
   else if (st.state === 'calling') status.textContent = t('grp_calling', 'Llamando…');
-  else status.textContent = '';
+  else status.textContent = st.held ? t('call_on_hold', 'En espera') : ''; // #222
+  if (st.state !== 'ringing' && st.host) closeCallReply(st.host);
 
   // Lista de participantes: yo + cada miembro con el estado de su tramo
   var legByNx = {};
@@ -136,7 +139,7 @@ function _render(st) {
     var sub = document.createElement('span');
     // «Reconectando…» en ámbar, «Sin señal» en rojo (como los avisos de mala conexión de la 1-a-1); el resto, tenue
     sub.style.cssText = 'font-size:12px;opacity:0.8;color:' + (lg && lg.state === 'lost' ? '#ff6b6b' : (lg && lg.reconnecting ? '#ffc23d' : 'rgba(255,255,255,0.7)')) + ';';
-    sub.textContent = nx === me ? '' : _legLabel(lg && lg.state, lg && lg.reconnecting);
+    sub.textContent = nx === me ? '' : _legLabel(lg && lg.state === 'active' && lg.peerHeld ? 'held' : lg && lg.state, lg && lg.reconnecting);
     row.appendChild(name); row.appendChild(sub);
     box.appendChild(row);
   });
@@ -147,6 +150,8 @@ function _render(st) {
     bt.className = 'gc-buttons';
     bt.style.cssText = _GC_BTNS_CSS;
     bt.appendChild(_btn(t('call_reject', 'Rechazar'), 'gc-red', function() { if (_gcall()) _gcall().reject(); }));
+    // #222: entra estando en otra llamada → «Mensaje» al que invita (rechaza y le manda el texto)
+    if (callCount() > 1 && st.host) { var hnx = st.host, gid0 = st.gid; ensureCallStyle(); bt.appendChild(replyButton(hnx, function() { var g = _gcall(); if (g && g.gc && g.gc.gid === gid0 && g.gc.state === 'ringing') g.reject(); })); }
     bt.appendChild(_btn(t('grp_join', 'Entrar'), 'gc-green', function() { if (_gcall()) _gcall().accept(); }));
   } else {
     // 14-11 (tras el pedido del dueño de la 1-a-1: «los botones de abajo quedan muy anchos»): la misma fila de círculos con
@@ -179,6 +184,7 @@ function _render(st) {
     }, st.screen ? 'nc-red' : '');
     // #dueño 31-10: ALTAVOZ/AURICULAR (como la 1-a-1); en grupo arranca en altavoz (manos libres).
     if (st.state === 'active') B(_gcSpeaker ? 'speaker' : 'ear', _gcSpeaker ? t('call_speaker', 'Altavoz') : t('call_earpiece', 'Auricular'), 'gc-add', function() { _gcSpeaker = !_gcSpeaker; _gAudioMode(true); _render(st); }, _gcSpeaker ? 'nc-on' : '');
+    if (st.state === 'active' && (st.held || callCount() > 1) && gcall) bt.appendChild(holdButton(gcall, st)); // #222: en espera / reanudar
     B('phone', t('call_hangup', 'Colgar'), 'gc-red', function() { if (_gcall()) _gcall().hangup(); }, 'nc-red call-hangup');
     bt.className = 'gc-buttons nc-row' + (bt.children.length >= 6 ? ' nc-many' : '');
     fitCallLabels(bt);
@@ -262,6 +268,10 @@ var _GBTN_STYLE = 'width:38px;height:38px;border-radius:50%;background:rgba(255,
 function _startGroupCall(video) {
   var gcall = _gcall(), gs = _groups(), cid = _getCurrentContactId();
   if (!gcall || !gs || !cid) return;
+  // #222 (dueño 15-11: «tampoco se puede habilitar llamadas del grupo si ya hay dos llamadas corriendo, al igual que si estás en una
+  // llamada de grupo»)
+  if (gcall.gc) { _showInfoToast(t('grp_call_busy', 'Ya hay una llamada en curso'), 3000); return; }
+  if (callCount() >= 2) { _showInfoToast(t('call_max_two', 'Ya tienes dos llamadas a la vez. Cuelga una para llamar a alguien más'), 3500); return; }
   var g = gs.get(cid);
   if (!g || !g.members) return;
   gcall.start(g.members, !!video, cid).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); });
@@ -292,7 +302,8 @@ function _installGroupButton() {
 function _refreshGroupButton() {
   var cid = _getCurrentContactId(), gs = _groups();
   var show = cid && gs && typeof gs.isGroup === 'function' && gs.isGroup(cid) ? '' : 'none';
-  ['nexo-gcall-btn', 'nexo-gvideo-btn'].forEach(function(id) { var b = document.getElementById(id); if (b) b.style.display = show; });
+  var g = _gcall(), off = !!(g && g.gc) || callCount() >= 2; // #222: apagados con dos llamadas o ya en una de grupo
+  ['nexo-gcall-btn', 'nexo-gvideo-btn'].forEach(function(id) { var b = document.getElementById(id); if (!b) return; b.style.display = show; b.style.opacity = off ? '0.35' : ''; b.setAttribute('aria-disabled', off ? 'true' : 'false'); });
 }
 
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
@@ -317,6 +328,13 @@ function _applyGroupCallAction(r) {
   else if (r && (r.declined || r.declinedOffer)) { try { gc.reject(); } catch (e) {} }
 }
 
+var _lastGKey = '';
+function _onCountChange() { // #222: los botones de llamar al grupo dependen de cuántas llamadas hay
+  var g = _gcall(), k = callCount() + '|' + !!(g && g.gc);
+  if (k === _lastGKey) return; _lastGKey = k;
+  _refreshGroupButton();
+}
+
 export function installGroupCallUi() {
   _installGroupButton();
   window.addEventListener('nexo:gcall', function(e) {
@@ -324,13 +342,18 @@ export function installGroupCallUi() {
     if (st) _removeEnded(); // una llamada nueva/en curso quita la pantalla de «Volver a llamar» si quedaba
     if (!st || st.state === 'active') _clearCallNotif(); // contestada/terminada: fuera el aviso de llamada entrante
     _render(st);
+    _onCountChange();
   });
+  window.addEventListener('nexo:call', _onCountChange);
+  window.addEventListener('nexo:call2', _onCountChange);
   window.addEventListener('nexo:gcallRing', function(e) { _removeEnded(); var gc = _gcall(); _render(gc && gc.state ? gc.state() : null); _notifyGroupIncoming(e && e.detail); });
   // #130 (dueño 31-10): si se cortó por quedarse sin nadie (empty) y sabemos el chat del grupo, 5 s de «Volver a llamar» y
   // volver a ese chat (como la 1-a-1). Cualquier otro final (colgar, rechazar, no contesta) cierra la pantalla sin más.
   window.addEventListener('nexo:gcallEnded', function(e) {
     _clearCallNotif();
     var d = e && e.detail;
+    _onCountChange();
+    if (d && d.host) closeCallReply(_normId(d.host));
     if (d && d.why === 'empty' && _normId(d.chatId)) { _showEnded(d); return; }
     _remove();
     // #dueño 31-10: no contesté una llamada de grupo (perdida) → aviso «Llamada de grupo perdida». En segundo plano, como

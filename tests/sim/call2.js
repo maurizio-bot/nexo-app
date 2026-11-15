@@ -2,7 +2,7 @@
 // mismo tiempo y nada más; si se necesitan más personas, la de grupo»). Antes, una segunda llamada 1-a-1 recibía «ocupado». A, B, C y D
 // por Bluetooth; A habla con B:
 //  T1  C llama a A: a A le suena ABAJO (segunda llamada), la de B sigue (antes: C recibía «ocupado»);
-//  T2  A contesta: las dos activas, pantalla dividida; A oye a B y a C, y B y C oyen a A;
+//  T2  A contesta: las dos activas, pantalla dividida; A oye a C y la de B queda EN ESPERA (#222: A no la oye; el enlace sigue);
 //  T3  D llama a A con dos en curso: D recibe «ocupado» (máximo 2);
 //  T4  A cuelga a C: la de B sigue (la voz de B sigue llegando) y la pantalla vuelve a ser una.
 // Uso: node call2.js <dir_build>
@@ -132,7 +132,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.T4_una_pantalla = !doc(P.A).documentElement.classList.contains('nc-split') && !doc(P.A).getElementById('nexo-call2-screen');
   r.errores = logs.filter((l) => /Error procesando|No se pudo descifrar|ilegible|PAGEERROR/.test(l)).slice(0, 3);
   const ok = typeof r.AB_activa_s === 'number' && typeof r.T1_suena_abajo_s === 'number' && r.T1_pantalla2 && r.T1_B_sigue &&
-    typeof r.T2_dos_activas_s === 'number' && r.T2_dividida && r.T2_A_oye_B > 20 && r.T2_A_oye_C > 20 && r.T2_B_oye_A > 20 && r.T2_C_oye_A > 20 &&
+    typeof r.T2_dos_activas_s === 'number' && r.T2_dividida && r.T2_A_oye_B === 0 && r.T2_A_oye_C > 20 && r.T2_C_oye_A > 20 &&
     r.T3_D_fin === 'busy' && r.T3_A_sigue_con_dos && r.T4_B_sigue && r.T4_una_pantalla && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('CALL2 ' + JSON.stringify(r));
