@@ -3,6 +3,28 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 15-11 tarde (plan del dueño: «primero reestructura, luego la implementación»)
+- **Revisión semanal (fin de semana, dueño 15-11):** ningún archivo > 1.000 líneas (`tests/sim/tamano.js` + `tamano.json`; cada
+  partición con `tools/partir_check.cjs`). Hecho: ble_ack.js (3108). Siguen: ble_messages.js, vault_manager.js, net_link.js,
+  ble_interface.js, main.js, NexoBlePlugin.kt (este con compilación de prueba antes de publicar).
+- **Idiomas portugués (Brasil) y francés:** tabla de textos partida por idioma; avisos del teléfono (nativo) en el idioma de la app
+  (hoy siempre en español); NOVEDADES en 5 idiomas.
+- **Enlace de invitación (dueño 15-11, WhatsApp y TikTok):** en «Agregar contacto», «Invitar a NEXO» con accesos a WhatsApp, TikTok y
+  «Más» (menú de compartir del teléfono); sin leer la agenda. El enlace lleva NEXO ID + código de comprobación (de un uso / caduca).
+  **Decisión del dueño:** la página web del enlace (gratis en GitHub, pública, o dominio propio).
+- **De la revisión del análisis de Grok (dueño: «agrega esos 5 puntos»):**
+  1. Revisar cada adjunto que llega por su contenido real (tipo verdadero, tamaño), no solo por lo que dice el mensaje. **Visto bueno del
+     dueño (seguridad).**
+  2. Pruebas de Fénix con guardianes que mienten, tardan o mandan trozos dañados (no las hay).
+  3. Reglas claras para cada llamada entre la parte web y la de Android (que lo que llega al nativo se compruebe).
+  4. Cuotas de espacio por contacto (que nadie llene el teléfono) y qué se borra primero si se llena.
+  5. Un archivo grande a una app que no contesta: despertarla primero y mandar cuando responda; enfriar un enlace que falla seguido
+     (diagnóstico S23 3057 19:46: vídeo HD a …6482 con 8 reintentos en 64 s).
+- **Esperan visto bueno del dueño (seguridad):** el punto 1 de arriba; relleno de los mensajes que pasan por puentes (que no se
+  adivine nada por su tamaño); y los tres de antes: comprobar la identidad en la Wi-Fi (nativo), «Rechazar» firmado y confirmaciones
+  firmadas.
+- **Difusión:** `docs/DIFUSION.md` (cómo invitar, qué decir y qué no, qué falta antes de una difusión amplia).
+
 ## 🆕 15-11 (dos llamadas a la vez, pedido del dueño tras probar la 3057)
 - **Hecho (APK 3059):** 3100 invitado de grupo que no contesta → «No contestó» a los 45 s; 3101 llamada 1-a-1 + de grupo a la vez en
   pantalla dividida.
