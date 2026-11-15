@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-11-15 (builds **2935–3128**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3127–3128 (APK 3069, batería 273/273, índice 70,6)** — archivo pequeño por internet a una app dormida en sondeo cada 15 s; reintento por un puente que falla hasta 10 min; las partes de una llamada por relés caducan a los 2 min (66 MB en 17 min con la llamada colgada) y el diagnóstico dice lo bajado de cada relé; foto o nota de voz a un contacto en línea por relés va al buzón de archivos (2,1 → 116 KB/s); una confirmación repetida no es «entrega lenta».
+Última actualización: 2026-11-15 (builds **2935–3138**; el detalle vivo build por build está en `ESTADO.md`). Lo último: **3129–3133 + 3138 (APK 3070, batería 276/276, índice 70,6)** — enlace de invitación, foto de perfil al día, guardar en la galería con respuesta, deslizar sin repetidos, notas de voz 1,5×/2×, saludo al contacto nuevo por internet y freno aparte para la petición automática de estados.
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).

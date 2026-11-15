@@ -21,11 +21,16 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **15-11 23:50 — APK 3070 subida a NEXOCHAT (3129–3133 + 3138; batería 276/276, índice 70,6).** 3138: la petición automática de
+  foto y estados al agregar un contacto gastaba el freno de «pedir estados» y el deslizar del usuario no traía nada (estados3.js). La
+  batería se cortó 3 veces por reinicios del contenedor (se retoma con `CI_RESUME=<salida> node ci.js …`; para una APK, correrla con
+  las pruebas de SU commit: copia en `/home/user/wt3070`). Vigilar que compile el nativo nuevo (InviteLink/PluginShare/intent-filter).
 - **15-11 noche — rama, para la APK 3071 (sin publicar):** **3134** tono «tuuu» nativo al llamar (`ringback`), Telecom al registro
   nativo, aviso Xiaomi de ventanas emergentes (calls2.js tono-saliente). **3135** pregunta de «reinstalado» con aviso de impostor,
   doble confirmación y chat unido «sin verificar» en rojo (reinstall.js R1/R5/R6). **3136** aviso de nombre repetido en la bandeja de
-  solicitudes (invitacion.js I6) y aviso en cobros de contactos sin verificar (cobro.js). Fénix revisado: sin cambios. La APK 3070 se
-  sube desde 459f41d0 (sin 3134–3136) con un commit encima sin [skip ci]; luego se une a la rama.
+  solicitudes (invitacion.js I6) y aviso en cobros de contactos sin verificar (cobro.js). **3137** guardianes de Fénix elegidos por la app según los días con
+  Bluetooth (dueño: «los tiene que elegir la aplicación»; fenixcerca.js). Pendiente del dueño: recuperación por internet de los
+  guardianes lejanos (propuesta: espera de 24 h, veto del teléfono viejo y aviso de llamar).
 - **15-11 noche — APK 3070 EN BATERÍA (3129–3133; b3133 = bbdaf82c; `scratchpad/ci3133.txt`).** **3129** enlace de invitación
   (invite.js, InviteLink.kt, PluginShare.kt; se acepta a mano) + foto de perfil al día al borrar y volver a agregar (fotorenueva.js).
   **3130** guardar en la galería con respuesta (savegallery.js G3–G5). **3131** deslizar para actualizar solo pide a relés callados;
