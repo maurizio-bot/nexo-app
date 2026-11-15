@@ -13,6 +13,7 @@ import { _msgContactMap } from './chat_state.js';
 import { _objectURLRegistry } from './media_limits.js';
 import { _renderContactCard } from './share_contacts.js';
 import { _renderCobroCard } from './cobro.js';
+import { haptic } from './haptics.js'; // 3131: tick al cambiar la velocidad de una nota de voz
 import { _renderE2EBanner } from './e2e_banner.js';
 import { _setHdBadge } from './video_send.js';
 import { isGroupId } from './groups.js';
@@ -68,6 +69,17 @@ var _curVoiceStop = null;
 // 2977 (pedido del dueño 09-11): notas de voz SEGUIDAS se reproducen una tras otra (como WhatsApp). Al terminar una, si la
 // burbuja siguiente del chat también es una nota de voz, arranca sola (un toque en ⏸ la para, como siempre). Un texto, una
 // foto o cualquier otra cosa en medio corta la cadena.
+
+// 3131 (dueño 15-11): velocidad de las notas de voz (1×, 1.5×, 2×), una para todas y recordada (como WhatsApp)
+var VOICE_RATES = [1, 1.5, 2], VOICE_RATE_KEY = 'nexo_voice_rate';
+function _voiceRate() { try { var v = Number(localStorage.getItem(VOICE_RATE_KEY)); return VOICE_RATES.indexOf(v) >= 0 ? v : 1; } catch (e) { return 1; } }
+function _rateLabel(v) { return String(v) + '×'; }
+function _setVoiceRate(v) {
+  try { localStorage.setItem(VOICE_RATE_KEY, String(v)); } catch (e) {}
+  try { Array.prototype.forEach.call(document.querySelectorAll('.vn-rate'), function(b) { b.textContent = _rateLabel(v); }); } catch (e) {}
+  try { window.dispatchEvent(new CustomEvent('nexo:voiceRate', { detail: { rate: v } })); } catch (e) {}
+}
+
 export function _nextVoiceButton(fromEl) {
   var m = (fromEl && typeof fromEl.closest === 'function') ? fromEl.closest('.message') : null;
   var el = m ? m.nextElementSibling : null;
@@ -535,7 +547,10 @@ export function _renderMessage(msg, skipSave) {
         }
         audioHtml += '</div>';
         audioHtml += '<div id="' + audioId + '_time" style="font-size:11px;color:#aaa;margin-top:3px;">00:00 / ' + durStr + '</div>';
-        audioHtml += '</div></div>';
+        audioHtml += '</div>';
+        // 3131 (dueño 15-11: «el botón de ×1.5 y ×2 para acelerar al escuchar un audio»): velocidad de las notas de voz
+        audioHtml += '<button id="' + audioId + '_rate" class="vn-rate" style="flex-shrink:0;min-width:42px;height:26px;padding:0 8px;border-radius:13px;background:rgba(255,255,255,0.18);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">' + _rateLabel(_voiceRate()) + '</button>';
+        audioHtml += '</div>';
         contentDiv.innerHTML = audioHtml;
         setTimeout(function() {
           var btn = document.getElementById(audioId + '_play');
@@ -588,10 +603,20 @@ export function _renderMessage(msg, skipSave) {
             _stopPlayback();
             if (timeEl) timeEl.textContent = t('chat_error', 'Error');
           };
+          var rateBtn = document.getElementById(audioId + '_rate');
+          if (rateBtn) rateBtn.onclick = function(e) {
+            e.stopPropagation();
+            var next = VOICE_RATES[(VOICE_RATES.indexOf(_voiceRate()) + 1) % VOICE_RATES.length];
+            _setVoiceRate(next);
+            try { haptic('tick'); } catch (eh) {}
+          };
+          var onRate = function() { try { audioEl.playbackRate = _voiceRate(); } catch (er) {} };
+          window.addEventListener('nexo:voiceRate', onRate);
           btn.onclick = function(e) {
             e.stopPropagation();
             if (!playing) {
               _stopVoicePlayback(); // para cualquier otra nota de voz que esté sonando
+              onRate(); // 3131: a la velocidad elegida
               audioEl.play().then(function() {
                 btn.innerHTML = '⏸';
                 playing = true;

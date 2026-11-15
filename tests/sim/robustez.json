@@ -1650,6 +1650,10 @@
     {
      "fallo": "3129 (dueño 15-11: «cuando abro una foto y toco la flechita para la descarga, ese botón no tiene ningún tipo de retroalimentación para que sepa que sí la bajó»): el botón solo se aclaraba y al terminar salía el aviso ROJO de errores, igual para guardado que para fallo. 3129: el botón gira mientras guarda, VERDE con palomita (y vibra) al terminar y un aviso azul dice dónde quedó (carpeta NEXO); otro toque no duplica; si falla o no contesta en 20 s, ROJO. savegallery.js G3–G5 (contraprueba 3128: fallan)",
      "prueba": "guardar en galería (#92)"
+    },
+    {
+     "fallo": "3132 (dueño 15-11, lo pidió Jhonnatan: «el botón de ×1.5 y ×2 para acelerar la velocidad al escuchar un audio»): no había velocidad en las notas de voz. 3132: botón 1× → 1.5× → 2× en cada nota, una velocidad para todas y recordada; la que suena se acelera al momento y la siguiente en cadena arranca a esa velocidad. voicechain.js V1–V5 (contraprueba 3131: no hay botón)",
+     "prueba": "voicechain"
     }
    ],
    "debiles": [

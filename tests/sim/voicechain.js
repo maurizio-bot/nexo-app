@@ -3,6 +3,8 @@
 // cosa en medio corta la cadena. A y B por Bluetooth: A manda dos notas seguidas, un texto y una tercera nota. En B: ▶ en la
 // primera → al terminar, la segunda suena sola (y la primera vuelve a ▶); al terminar la segunda, la tercera NO (hay un texto en
 // medio). El <audio> de jsdom no reproduce: se simula play/pause y el evento 'ended'.
+// 3131 (dueño 15-11: «el botón de ×1.5 y ×2 para acelerar al escuchar un audio»): cada nota tiene su botón de velocidad (1×); al
+// tocarlo pasa a 1.5× en TODAS y la que suena se acelera; otra vez 2×, otra vez 1×; la siguiente en cadena arranca a la velocidad elegida.
 // Uso: node voicechain.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -105,9 +107,24 @@ async function sendVoice(p) { micTap(p); await sleep(500); click(p.win, $(p, 'vo
   audios.filter((a) => a.__playing).forEach((a) => a.dispatchEvent(new B.win.Event('ended'))); await sleep(900);
   r.fin_limpio = !audios.some((a) => a.__playing) && btns().every((b) => b.innerHTML === '▶');
 
+  // 3131: velocidad
+  const rates = () => Array.from(B.win.document.querySelectorAll('#messages-container .message .vn-rate'));
+  r.V1_boton_en_cada_nota = rates().length === 3 && rates().every((b) => b.textContent === '1×');
+  click(B.win, btns()[0]); await sleep(400);
+  click(B.win, rates()[0]); await sleep(200);
+  const playingNow = () => audios.filter((a) => a.__playing);
+  r.V2_a_1_5 = rates().every((b) => b.textContent === '1.5×') && playingNow().length === 1 && playingNow()[0].playbackRate === 1.5;
+  // termina la primera → la segunda arranca sola a 1.5×
+  playingNow().forEach((a) => a.dispatchEvent(new B.win.Event('ended'))); await sleep(900);
+  r.V3_cadena_a_1_5 = playingNow().length === 1 && playingNow()[0].playbackRate === 1.5;
+  click(B.win, rates()[1]); await sleep(200);
+  r.V4_a_2 = rates().every((b) => b.textContent === '2×') && playingNow()[0].playbackRate === 2;
+  click(B.win, rates()[1]); await sleep(200);
+  r.V5_vuelve_a_1 = rates().every((b) => b.textContent === '1×') && playingNow()[0].playbackRate === 1;
+  playingNow().forEach((a) => a.dispatchEvent(new B.win.Event('ended'))); await sleep(900);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
   const ok = r.contactos && r.dos_notas_llegan_s !== null && r.tres_notas_llegan_s !== null && r.reproductores === 3 && r.texto_entre_2_y_3 && r.primera_suena && r.primera_vuelve_a_play &&
-    r.segunda_arranca_sola && r.tercera_no_arranca && r.tercera_a_mano && r.fin_limpio && !r.errores.length;
+    r.segunda_arranca_sola && r.tercera_no_arranca && r.tercera_a_mano && r.fin_limpio && r.V1_boton_en_cada_nota && r.V2_a_1_5 && r.V3_cadena_a_1_5 && r.V4_a_2 && r.V5_vuelve_a_1 && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('VOICECHAIN ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_voicechain.txt'), logs.join('\n'));
