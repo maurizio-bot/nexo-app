@@ -483,7 +483,7 @@ export const ackIncoming = {
     }
     // 3005: el otro volvió a confirmar durante el «sondeo» → ritmo normal ya (no esperar al minuto del sondeo)
     if (stream._probing) {
-      stream._probing = false; stream.windowRetryCount = 0;
+      stream._probing = false; stream.windowRetryCount = 0; stream._sleepSince = 0; // 3124: también el sondeo de una app dormida
       console.log('[BleAckSystem] El otro volvió a confirmar: sigo al ritmo normal msgId=' + msgId);
       if (!stream.aborted && stream._windowResolve && stream.windowStart < stream.total) {
         if (stream.timer) { clearTimeout(stream.timer); stream.timer = null; }

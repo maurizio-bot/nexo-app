@@ -1,4 +1,4 @@
-import { FILE_CHUNK_SIZE, CHAT_CHUNK_SIZE, FILE_WINDOW_SIZE, CHAT_WINDOW_SIZE, FILE_WINDOW_TIMEOUT_MS, CHAT_WINDOW_TIMEOUT_MS, _isLanDevice, _isNetDevice, LAN_PSEUDO_MTU, LAN_FILE_CHUNK, LAN_CHAT_CHUNK, NET_FILE_CHUNK, NET_CHAT_CHUNK, SMALL_MTU_MIN_CHUNK, FILE_PACING_DELAY_MS, CHAT_PACING_DELAY_MS, GLOBAL_TIMEOUT_MS, INTERACTIVE_MAX_CHARS, MAX_WINDOW_RETRIES, BT_RECHUNK_WRITES, BLE_FILE_MAX_CHARS, TINY_MTU, BLE_TINY_MTU_DEFER_CHARS, MTU_DEFER_MAX_WAIT_MS, _noResumeTx, NET_TOR_PREFER_CHUNKS, FILE_GLOBAL_TIMEOUT_MS, PEER_SAFE_MAX_MS, BULK_PRIO, BULK_YIELD_MAX_MS, BULK_YIELD_STEP_MS, _b64BodyStart, _normMac, _isBusyErr, _busyBackoffMs, _fenixYieldBle, _netFileAutoRetry, NET_FILE_AUTORETRY_BUDGET_MS, _binOk, PROTOCOL_VERSION, _nxOf, _chunkCheck, LINK_DOWN_WAIT_FILE_MS, LINK_DOWN_WAIT_MAX_MS, TEXT_BUSY_GRACE_MS, PEER_SAFE_FIRST_MS, PEER_SAFE_CAP_MS, FENIX_SILENT_RETRIES, BRIDGE_STALL_RETRIES, _normId, BRIDGE_STALL_MS, NET_BIG_MIN_CHUNKS, NET_SILENT_FULL_RETRIES, NET_SILENT_PROBE_MS, _isFenixTx } from './ble_ack_shared.js';
+import { FILE_CHUNK_SIZE, CHAT_CHUNK_SIZE, FILE_WINDOW_SIZE, CHAT_WINDOW_SIZE, FILE_WINDOW_TIMEOUT_MS, CHAT_WINDOW_TIMEOUT_MS, _isLanDevice, _isNetDevice, LAN_PSEUDO_MTU, LAN_FILE_CHUNK, LAN_CHAT_CHUNK, NET_FILE_CHUNK, NET_CHAT_CHUNK, SMALL_MTU_MIN_CHUNK, FILE_PACING_DELAY_MS, CHAT_PACING_DELAY_MS, GLOBAL_TIMEOUT_MS, INTERACTIVE_MAX_CHARS, MAX_WINDOW_RETRIES, BT_RECHUNK_WRITES, BLE_FILE_MAX_CHARS, TINY_MTU, BLE_TINY_MTU_DEFER_CHARS, MTU_DEFER_MAX_WAIT_MS, _noResumeTx, NET_TOR_PREFER_CHUNKS, FILE_GLOBAL_TIMEOUT_MS, PEER_SAFE_MAX_MS, BULK_PRIO, BULK_YIELD_MAX_MS, BULK_YIELD_STEP_MS, _b64BodyStart, _normMac, _isBusyErr, _busyBackoffMs, _fenixYieldBle, _netFileAutoRetry, NET_FILE_AUTORETRY_BUDGET_MS, _binOk, PROTOCOL_VERSION, _nxOf, _chunkCheck, LINK_DOWN_WAIT_FILE_MS, LINK_DOWN_WAIT_MAX_MS, TEXT_BUSY_GRACE_MS, PEER_SAFE_FIRST_MS, PEER_SAFE_CAP_MS, FENIX_SILENT_RETRIES, BRIDGE_STALL_RETRIES, _normId, BRIDGE_STALL_MS, NET_BIG_MIN_CHUNKS, NET_SILENT_FULL_RETRIES, NET_SILENT_PROBE_MS, SLEEP_FILE_RETRIES, SLEEP_PROBE_MS, SLEEP_PROBE_MAX_MS, _isFenixTx } from './ble_ack_shared.js';
 // ChatStream: un envío troceado en curso (ventanas, reintentos, confirmaciones). Reestructuración 15-11: antes, al final de ble_ack.js.
 function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.ackSystem = ackSystem;
@@ -638,6 +638,29 @@ ChatStream.prototype._onWindowTimeout = function() {
       if (dstS && bleS && typeof bleS._resendPendingMessages === 'function') setTimeout(function() { try { bleS._resendPendingMessages(dstS); } catch (e) {} }, 500);
       return;
     }
+    // 3124: ARCHIVO del usuario por un enlace local con la app del otro dormida (ni un trozo confirmado, enlace vivo) → toque para
+    // despertarlo y sondeo de 1 trozo cada SLEEP_PROBE_MS en vez de la ventana entera; tras SLEEP_PROBE_MAX_MS sin respuesta, ⏳
+    if (self.type === 'file' && !_isNetDevice(self.deviceId) && !(self.meta && (self.meta.dst || _isFenixTx(self.meta))) &&
+        self.windowStart === 0 && self.windowRetryCount >= SLEEP_FILE_RETRIES) {
+      var nowS = Date.now();
+      if (!self._sleepSince) {
+        self._sleepSince = nowS;
+        var nxS = self._peerNexoId();
+        console.log('[ChatStream] Archivo sin un trozo confirmado en ' + self.windowRetryCount + ' ventanas con el enlace vivo: la app del otro duerme; la despierto y pruebo con 1 trozo cada ' + Math.round(SLEEP_PROBE_MS / 1000) + ' s msgId=' + self.msgId);
+        try { if (nxS && self.ble && typeof self.ble._wakeSleepingPeer === 'function') self.ble._wakeSleepingPeer(nxS, 'archivo sin confirmar'); } catch (e) {}
+        try { if (nxS && self.ble && typeof self.ble._noteWakePending === 'function') self.ble._noteWakePending(nxS); } catch (e) {}
+      }
+      if (nowS - self._sleepSince < SLEEP_PROBE_MAX_MS) {
+        self.windowRetryCount = SLEEP_FILE_RETRIES;
+        self._probing = true;
+        self._probe(SLEEP_PROBE_MS);
+        return;
+      }
+      console.log('[ChatStream] La app del otro no despertó en ' + Math.round(SLEEP_PROBE_MAX_MS / 60000) + ' min: el archivo queda pendiente y sale cuando vuelva msgId=' + self.msgId);
+      try { self.ackSystem._dispatchStatus(self.msgId, 'pending'); } catch (e) {}
+      self._giveUpPending();
+      return;
+    }
     // 3005: archivo grande por internet y el otro no confirma → «sondeo» (1 trozo por minuto) en vez de reenviar la ventana
     // entera cada 8 s al vacío. Mantiene el contador en el tope mientras siga el presupuesto de reintento solo (2 h, contacto
     // alcanzable); si se acaba, cae al tope de siempre (abajo).
@@ -695,16 +718,24 @@ ChatStream.prototype._textOnDeadBle = function() {
 };
 // 3005: «sondeo» de un archivo grande por internet cuyo receptor no confirma: reenvía SOLO el primer trozo sin confirmar y
 // revisa en NET_SILENT_PROBE_MS. Si el otro lo tiene a medias, lo confirma (→ ritmo normal); si lo perdió, pide lo que falta (NACK).
-ChatStream.prototype._probe = function() {
+ChatStream.prototype._probe = function(everyMs) {
   var self = this;
+  var gapMs = everyMs || NET_SILENT_PROBE_MS; // 3124: el sondeo de una app dormida por un enlace local va cada SLEEP_PROBE_MS
   var idx = self.windowStart;
   while (idx < self.total && self.ackedMask[idx]) idx++;
   self._retxGen = (self._retxGen || 0) + 1;   // corta una cadena de reenvío en curso
   if (idx < self.total) {
-    console.log('[ChatStream] Sondeo: reenvío solo el trozo ' + idx + ' (reviso en ' + Math.round(NET_SILENT_PROBE_MS / 1000) + ' s) msgId=' + self.msgId);
+    console.log('[ChatStream] Sondeo: reenvío solo el trozo ' + idx + ' (reviso en ' + Math.round(gapMs / 1000) + ' s) msgId=' + self.msgId);
     self._sendChunk(idx).then(function() { self._nativeFails = 0; }, function() {});
   }
-  self._startWindowTimer(NET_SILENT_PROBE_MS);
+  self._startWindowTimer(gapMs);
+};
+// 3124: el NEXO ID del otro extremo de este flujo (para despertarlo): el destinatario del archivo o el dueño del enlace
+ChatStream.prototype._peerNexoId = function() {
+  var dev = this.deviceId;
+  try { if (this.meta && this.meta.to) return _normId(this.meta.to); } catch (e) {}
+  try { if (_isLanDevice(dev)) return _normId(String(dev).replace(/^lan:/i, '')); } catch (e) {}
+  try { return _normId(this.ble && this.ble._macToNexoId && this.ble._macToNexoId.get(_normMac(dev))) || ''; } catch (e) { return ''; }
 };
 ChatStream.prototype._retransmitWindow = function() {
   var self = this;
