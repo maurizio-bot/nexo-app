@@ -12,33 +12,28 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Una nota de voz o una foto por internet a alguien con la app dormida ya no gasta tus datos reenviándose: espera a que despierte.
-- Las fotos y notas de voz por internet llegan mucho más rápido.
-- Las llamadas por internet gastan menos datos.
+- Mejoras de estabilidad.
 </es-419>
 <it-IT>
-- Un vocale o una foto via internet a chi ha l'app in pausa non consuma più i tuoi dati rinviandosi: aspetta che si svegli.
-- Foto e vocali via internet arrivano molto più velocemente.
-- Le chiamate via internet consumano meno dati.
+- Miglioramenti di stabilità.
 </it-IT>
 <en-US>
-- A voice note or photo sent over the internet to someone whose app is asleep no longer uses up your data resending: it waits for them to wake up.
-- Photos and voice notes over the internet arrive much faster.
-- Calls over the internet use less data.
+- Stability improvements.
 </en-US>
 <pt-BR>
-- Uma mensagem de voz ou foto pela internet para alguém com o app adormecido não gasta mais seus dados reenviando: espera ele acordar.
-- Fotos e mensagens de voz pela internet chegam muito mais rápido.
-- As chamadas pela internet gastam menos dados.
+- Melhorias de estabilidade.
 </pt-BR>
 <fr-FR>
-- Un message vocal ou une photo envoyés par internet à quelqu'un dont l'app est en veille ne consomment plus vos données en boucle : ils attendent son réveil.
-- Les photos et messages vocaux par internet arrivent beaucoup plus vite.
-- Les appels par internet consomment moins de données.
+- Améliorations de stabilité.
 </fr-FR>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3069 (15-11-2026)
+- Una nota de voz o una foto por internet a alguien con la app dormida ya no gasta tus datos reenviándose: espera a que despierte.
+- Las fotos y notas de voz por internet llegan mucho más rápido.
+- Las llamadas por internet gastan menos datos.
 
 ### APK 3068 (15-11-2026)
 - Un mensaje largo que pasa por el teléfono de otro contacto ya no se queda reenviándose si ese teléfono está dormido: busca otro camino.
