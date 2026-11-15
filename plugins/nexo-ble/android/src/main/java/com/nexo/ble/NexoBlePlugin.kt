@@ -212,6 +212,7 @@ class NexoBlePlugin : Plugin() {
     override fun handleOnNewIntent(intent: Intent) {
         super.handleOnNewIntent(intent)
         checkNotificationIntent(intent)
+        checkInviteIntent(intent) // 3129: enlace de invitación (PluginShare.kt)
     }
 
     // ===== Recibir por Bluetooth con la app cerrada (ronda 2758, plan del dueño punto 12; BgInbox.kt) =====
@@ -354,6 +355,7 @@ class NexoBlePlugin : Plugin() {
             } catch (e: Throwable) { remLog("WARN", "AT_REST", "Migración: ${e.message}") }
         }.apply { priority = Thread.MIN_PRIORITY }.start()
         checkNotificationIntent()
+        checkInviteIntent() // 3129: la app se abrió con un enlace de invitación
         loadNexoMappings()
         remLog("INFO", "LIFECYCLE", "load - auto-starting GATT server, ${nxidToMacMap.size} mapeos cargados")
         registerBluetoothStateReceiver()
@@ -811,6 +813,7 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod fun getPowerStatus(call: PluginCall) = getPowerStatusImpl(call)
     @PluginMethod fun getExitReasons(call: PluginCall) = getExitReasonsImpl(call)
     @PluginMethod fun setAppLang(call: PluginCall) = setAppLangImpl(call)
+    @PluginMethod fun shareText(call: PluginCall) = shareTextImpl(call) // 3129: invitación por WhatsApp/TikTok/menú (PluginShare.kt)
 
     // ===== Wi-Fi Direct: fotos, vídeos y archivos con el contacto a alcance (mucho más rápido que BLE) =====
     // El que recibe crea un grupo con nombre y contraseña aleatorios (Android 10+: el otro se une sin aviso

@@ -330,7 +330,7 @@ export class NetLink {
     if (!/^nx[0-9a-z]{8}$/.test(from) || from === this.me()) return;
     if (typeof o.pk !== 'string' || !/^[A-Za-z0-9+/=]{80,100}$/.test(o.pk)) return;
     if (this.ble && typeof this.ble._onNetRequest === 'function') {
-      this.ble._onNetRequest({ id: from, pk: o.pk, name: String(o.name || '').replace(/[<>]/g, '').slice(0, 40), kind: o.t, ph: typeof o.ph === 'string' ? o.ph.replace(/[<>]/g, '').slice(0, 16) : '', em: typeof o.em === 'string' ? o.em.replace(/[<>]/g, '').slice(0, 24) : '' });
+      this.ble._onNetRequest({ id: from, pk: o.pk, name: String(o.name || '').replace(/[<>]/g, '').slice(0, 40), kind: o.t, ph: typeof o.ph === 'string' ? o.ph.replace(/[<>]/g, '').slice(0, 16) : '', em: typeof o.em === 'string' ? o.em.replace(/[<>]/g, '').slice(0, 24) : '', ic: typeof o.ic === 'string' && /^[2-9A-HJ-NP-Z]{8}$/.test(o.ic) ? o.ic : '' });
     }
   }
 
@@ -501,6 +501,7 @@ export class NetLink {
     // NUNCA viajan acá: llegan por el canal seguro recién al aceptar. Enmascarado = reconocer sin regalar el dato.
     if (extra && typeof extra.ph === 'string' && extra.ph) payload.ph = extra.ph.slice(0, 16);
     if (extra && typeof extra.em === 'string' && extra.em) payload.em = extra.em.slice(0, 24);
+    if (extra && typeof extra.ic === 'string' && /^[2-9A-HJ-NP-Z]{8}$/.test(extra.ic)) payload.ic = extra.ic; // 3129: código de su enlace de invitación
     var key = await crypto.subtle.importKey('raw', _reqAesKey(to), 'AES-GCM', false, ['encrypt']);
     var iv = _rnd(12);
     var ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, _utf8(JSON.stringify(payload))));

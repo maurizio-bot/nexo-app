@@ -6,6 +6,7 @@
 import { t } from './i18n.js';
 import { BLE_STATES, _getBLEContacts, _lanId, _netId, _netNx, _normId, _normMac, _safeDispatchEvent, _saveBLEContacts, _vNx } from './ble_helpers.js';
 import { myProfile, maskPhone, maskEmail } from './profile_data.js'; // #dueño 04-11 (perfil 2b): datos enmascarados en la solicitud
+import { takeInviteCode, inviteCodeOk } from './invite.js'; // 3129: enlace de invitación
 
 // #dueño 04-11 (regla de caminos): cuando el Bluetooth SUELTA un mensaje (enlace muerto/atascado, p. ej. MTU 23), ese
 // enlace se considera muerto este rato y NO se elige para enviar → el resolvedor cae a internet/Wi-Fi («internet antes
@@ -215,14 +216,16 @@ export const BLE_LINK_METHODS = {
   },
 
   // Mandar una solicitud de contacto a un NEXO ID. Devuelve una promesa (error legible si falla).
-  addByNexoId(id) {
+  addByNexoId(id, inviteCode) {
     var self = this, nx = _normId(id);
     if (!/^nx[0-9a-z]{8}$/.test(nx)) return Promise.reject(new Error(t('add_err_badid', 'Ese no parece un NEXO ID (empieza por NX y 8 más)')));
     if (nx === _normId(self.localNexoId)) return Promise.reject(new Error(t('add_err_self', 'Ese es tu propio ID')));
     if (_getBLEContacts().some(function(c) { return _normId(c.nexoId || c.deviceUUID) === nx; })) return Promise.reject(new Error(t('add_err_dup', 'Ya tienes a ese contacto')));
     if (!self.net) return Promise.reject(new Error(t('add_err_nonet', 'Esta versión no tiene internet')));
     var _mp = myProfile(); // perfil 2b: mando mis datos ENMASCARADOS (los completos van al aceptar, por E2E)
-    return self.net.sendRequest(nx, 'req', self.localDeviceName || '', { ph: maskPhone(_mp.phone), em: maskEmail(_mp.email) }).then(function() {
+    var extra = { ph: maskPhone(_mp.phone), em: maskEmail(_mp.email) };
+    if (inviteCodeOk(inviteCode)) extra.ic = inviteCode; // 3129: viene de su enlace de invitación (en su bandeja: «aceptó tu invitación»)
+    return self.net.sendRequest(nx, 'req', self.localDeviceName || '', extra).then(function() {
       var out = self._reqStore('nexo_req_out').filter(function(x) { return x.id !== nx; });
       out.unshift({ id: nx, at: Date.now() });
       self._reqSave('nexo_req_out', out);
@@ -246,8 +249,11 @@ export const BLE_LINK_METHODS = {
     // va a la BANDEJA para confirmarla a conciencia; al confirmar se agrega «sin verificar» y conviene comparar el número de
     // seguridad. La 'acc' a una solicitud mía se marca (acc:true) para mostrarla como «aceptó tu solicitud».
     if (isMyAcc) self._reqSave('nexo_req_out', out.filter(function(x) { return x.id !== nx; })); // ya respondió: fuera de salientes
-    var inbox = self._reqStore('nexo_req_in').filter(function(x) { return x.id !== nx; });
-    inbox.unshift({ id: nx, pk: pk, name: name, ph: (info && info.ph) || '', em: (info && info.em) || '', at: Date.now(), acc: isMyAcc });
+    var all = self._reqStore('nexo_req_in'), prev = all.find(function(x) { return x.id === nx; });
+    // 3129: trae el código de una invitación MÍA vigente → «aceptó tu invitación» (un uso). Se sigue aceptando a mano (SEC-2).
+    var inv = !!(prev && prev.inv) || (!isMyAcc && !!(info && info.ic) && takeInviteCode(info.ic, true));
+    var inbox = all.filter(function(x) { return x.id !== nx; });
+    inbox.unshift({ id: nx, pk: pk, name: name, ph: (info && info.ph) || '', em: (info && info.em) || '', at: Date.now(), acc: isMyAcc, inv: inv });
     self._reqSave('nexo_req_in', inbox);
     _safeDispatchEvent('nexo:ble:reqIncoming', { id: nx, name: name, count: inbox.length, acc: isMyAcc });
   },

@@ -89,6 +89,10 @@ export const bleNativeEvents = {
     this._nativeServerReadyListener = this.nativePlugin.addListener('onServerReady', function(data) {
       try { console.log('[BLEInterface] onServerReady:', data); } catch (e) {}
     });
+    // 3129: la app se abrió (o volvió) con un enlace de invitación (InviteLink.kt ya validó dirección, ID y código)
+    this._nativeInviteListener = this.nativePlugin.addListener('onInviteLink', function(data) {
+      try { console.log('[INVITE] abierto con una invitación de ' + String((data && data.id) || '').toUpperCase()); self._pendingInvite = { id: data && data.id, code: (data && data.code) || '' }; _safeDispatchEvent('nexo:invite', self._pendingInvite); } catch (e) {}
+    });
   },
 
   _setupNativeConnectionListeners() {

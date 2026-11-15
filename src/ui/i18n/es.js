@@ -860,4 +860,11 @@ export default {
   req_banner_one: "solicitud para ti",
   req_banner_many: "solicitudes para ti",
   req_banner_tap: "toca para ver",
+  invite_title: "Invitar a NEXO",
+  invite_sub: "Manda un enlace: quien lo toque te agrega. Vale 7 días y para una persona.",
+  invite_more: "Más",
+  invite_text: "Te invito a NEXO: mensajes y llamadas aunque no haya señal, sin número de teléfono y cifrado de punta a punta. Toca aquí para agregarme: {link}",
+  invite_copied: "Invitación copiada: pégala donde quieras.",
+  invite_opened: "Te invitó {id}: toca «Agregar» para mandarle la solicitud.",
+  req_from_invite: "aceptó tu invitación",
 };

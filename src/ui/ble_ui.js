@@ -6,6 +6,7 @@
 import { haptic } from './haptics.js'; // NEXO Touch (2968): háptica del sistema
 import { avatarOf, paintAvatar } from './avatar.js';
 import { t } from './i18n.js'; // #132 idioma
+import { parseInvite, shareInvite } from './invite.js'; // 3129: enlace de invitación
 import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isBLEContact, _isPinned, _normId, _rssiToBars, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
 
 // #dueño 08-11 (scan rápido): barritas de señal (como el wifi) para una fila de contacto encontrado — de un vistazo se ve
@@ -147,10 +148,18 @@ export const BLE_UI_METHODS = {
       '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>' +
       '<input id="ble-search-input" type="search" placeholder="' + t('ph_search_contact', 'Buscar por nombre o NEXO ID') + '" autocomplete="off" spellcheck="false">' +
       '</div>' +
+      // 3129 (PLAN etapa 2; dueño 15-11: «WhatsApp y TikTok»): invitar con un enlace (invite.js)
+      '<div class="ble-section-label">' + t('invite_title', 'Invitar a NEXO') + '</div>' +
+      '<div id="ble-invite-row" style="display:flex;gap:8px;padding:0 12px 2px;">' +
+      '<button id="ble-inv-whatsapp" data-inv="whatsapp" style="flex:1;min-width:0;padding:9px 6px;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">WhatsApp</button>' +
+      '<button id="ble-inv-tiktok" data-inv="tiktok" style="flex:1;min-width:0;padding:9px 6px;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">TikTok</button>' +
+      '<button id="ble-inv-more" data-inv="more" style="flex:1;min-width:0;padding:9px 6px;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">' + t('invite_more', 'Más') + '</button>' +
+      '</div>' +
+      '<div id="ble-invite-note" style="font-size:11px;opacity:.7;text-align:center;padding:2px 12px 6px;">' + t('invite_sub', 'Manda un enlace: quien lo toque te agrega. Vale 7 días y para una persona.') + '</div>' +
       // Ronda 2779 (pedido del dueño): agregar a alguien que no está cerca con su NEXO ID (te lo pasa por WhatsApp)
       '<div class="ble-section-label">' + t('add_by_id', 'Agregar por NEXO ID (está lejos)') + '</div>' +
       '<div id="ble-addid-row" style="display:flex;gap:8px;padding:0 12px 4px;">' +
-      '<input id="ble-addid-input" type="text" placeholder="' + t('ph_addid', 'NX……… (su NEXO ID)') + '" autocomplete="off" spellcheck="false" maxlength="10" style="flex:1;min-width:0;padding:9px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-size:14px;text-transform:uppercase;">' +
+      '<input id="ble-addid-input" type="text" placeholder="' + t('ph_addid', 'NX……… (su NEXO ID)') + '" autocomplete="off" spellcheck="false" maxlength="600" style="flex:1;min-width:0;padding:9px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-size:14px;text-transform:uppercase;">' +
       '<button id="ble-addid-btn" style="flex-shrink:0;padding:9px 16px;border-radius:12px;border:none;background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;font-size:14px;font-weight:600;cursor:pointer;">' + t('add', 'Agregar') + '</button>' +
       '</div>' +
       '<div id="ble-addid-note" style="font-size:12px;opacity:.85;text-align:center;padding:0 12px 6px;min-height:1px;"></div>' +
@@ -237,15 +246,39 @@ export const BLE_UI_METHODS = {
       if (!addIdInput) return;
       var v = String(addIdInput.value || '').trim().toUpperCase();
       if (!v) return;
-      var m = v.match(/NX[0-9A-Z]{8}/); // si pegó un mensaje entero ("Agrégame… ID: NX…"), saca el ID
-      if (m) v = m[0];
+      // si pegó un mensaje entero ("Agrégame… ID: NX…") o un enlace de invitación (3129), saca el ID y el código
+      var inv = parseInvite(v), code = '';
+      if (inv) { v = inv.id.toUpperCase(); code = inv.code; }
       if (addNote) { addNote.style.color = ''; addNote.textContent = t('add_sending', 'Enviando solicitud…'); }
       if (typeof self.addByNexoId !== 'function') { if (addNote) addNote.textContent = t('add_unsupported', 'Esta versión no lo permite.'); return; }
-      self.addByNexoId(v).then(function() {
+      self.addByNexoId(v, code).then(function() {
         addIdInput.value = '';
         if (addNote) { addNote.style.color = '#22c55e'; addNote.textContent = t('ble_req_sent', 'Solicitud enviada a {id}. Aparecerás cuando la acepte.').replace(/\{id\}/g, v); }
       }).catch(function(e) { if (addNote) { addNote.style.color = '#fbbf24'; addNote.textContent = (e && e.message) || t('ble_req_fail', 'No se pudo enviar la solicitud.'); } });
     };
+    // 3129: invitar por WhatsApp / TikTok / el menú del teléfono (una invitación nueva por toque: código de un uso, 7 días)
+    ['whatsapp', 'tiktok', 'more'].forEach(function(k) {
+      var b = document.getElementById('ble-inv-' + k);
+      if (!b) return;
+      b.addEventListener('click', function() {
+        shareInvite(k, self.localNexoId).then(function(via) {
+          if (via === 'copiado') _showToast(t('invite_copied', 'Invitación copiada: pégala donde quieras.'), 'info');
+        }).catch(function(e) { _showToast((e && e.message) || t('invite_copied', 'Invitación copiada: pégala donde quieras.'), 'info'); });
+      });
+    });
+    // 3129: la app se abrió con un enlace de invitación (nativo onInviteLink → nexo:invite): «Agregar» abierto con su ID puesto
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      var onInvite = function(e) {
+        var d = (e && e.detail) || {}, id = String(d.id || '').toUpperCase();
+        self._pendingInvite = null;
+        if (!/^NX[0-9A-Z]{8}$/.test(id) || !addIdInput) return;
+        if (!self.elements.panel.classList.contains('active')) self.togglePanel();
+        addIdInput.value = id + (d.code ? '-' + d.code : '');
+        if (addNote) { addNote.style.color = '#22c55e'; addNote.textContent = t('invite_opened', 'Te invitó {id}: toca «Agregar» para mandarle la solicitud.').replace(/\{id\}/g, id); }
+      };
+      window.addEventListener('nexo:invite', onInvite);
+      if (self._pendingInvite) onInvite({ detail: self._pendingInvite }); // llegó antes de que existiera la pantalla
+    }
     if (addIdBtn) addIdBtn.addEventListener('click', doAddId);
     if (addIdInput) addIdInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); doAddId(); } });
     if (typeof window !== 'undefined' && window.addEventListener) {
@@ -532,7 +565,7 @@ export const BLE_UI_METHODS = {
       var nm = document.createElement('div'); nm.style.cssText = 'font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
       nm.textContent = req.name || String(req.id || '').toUpperCase();
       var sub = document.createElement('div'); sub.style.cssText = 'font-size:11px;opacity:.7;';
-      sub.textContent = String(req.id || '').toUpperCase() + (req.acc ? ' · aceptó tu solicitud — confirmá' : ' · quiere agregarte');
+      sub.textContent = String(req.id || '').toUpperCase() + (req.acc ? ' · aceptó tu solicitud — confirmá' : req.inv ? ' · ' + t('req_from_invite', 'aceptó tu invitación') : ' · quiere agregarte'); // 3129
       info.appendChild(nm); info.appendChild(sub);
       // #dueño 04-11 (perfil 2b): tarjeta de validación — tel/correo ENMASCARADOS que llegaron en la solicitud (reconocer
       // sin regalar el dato). Los datos COMPLETOS y la foto aparecen al ACEPTAR (por el canal seguro E2E).

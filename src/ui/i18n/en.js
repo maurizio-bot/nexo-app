@@ -860,4 +860,11 @@ export default {
   req_banner_one: "request for you",
   req_banner_many: "requests for you",
   req_banner_tap: "tap to see",
+  invite_title: "Invite to NEXO",
+  invite_sub: "Send a link: whoever taps it adds you. Valid for 7 days and one person.",
+  invite_more: "More",
+  invite_text: "Join me on NEXO: messages and calls even with no signal, no phone number, end-to-end encrypted. Tap here to add me: {link}",
+  invite_copied: "Invitation copied: paste it anywhere.",
+  invite_opened: "{id} invited you: tap «Add» to send them the request.",
+  req_from_invite: "accepted your invitation",
 };
