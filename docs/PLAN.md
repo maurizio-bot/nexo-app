@@ -17,8 +17,10 @@ publicación y primeros usuarios; febrero campaña previa y la prueba de fuego.
 - [x] Idiomas: portugués de Brasil y francés; avisos del teléfono en el idioma de la app (APK 3066). Falta mirar en el teléfono que
       los textos largos quepan en los botones.
 - [x] Despertar la app del otro antes de mandarle un archivo grande (APK 3067: toque + sondeo, sin reenvíos enteros).
-- [ ] Atascos, lo que falta del plan del 14-11 (aprobado por el dueño): si un contacto con enlace sano no confirma lo tuyo,
-      pedir el desatasco desde el que manda y avisar «el teléfono de X no puede leer tus mensajes». Lo demás ya está (ver abajo).
+- [x] Atascos: un desatasco del cifrado que se repite con el mismo contacto manda un diagnóstico automático (3126). El «desatasco
+      desde el que manda» no hizo falta: el caso que lo motivó (vivo, 14-11 08:09) era la app dormida (arreglado en 3086) y el
+      desatasco ya se detecta en los dos lados desde la 3069; reiniciar el cifrado a ciegas desde el que manda podría causar
+      el atasco que quiere evitar. Si algún diagnóstico muestra el bucle, se decide con datos.
 - [ ] Avisos con la pantalla apagada: prueba física del dueño y, si falla, arreglo.
 - [ ] Pruebas físicas clave (ver «Lo que te toca»).
 - **Cumplido cuando:** batería en verde, índice ≥ 75 y las pruebas físicas clave sin fallos.

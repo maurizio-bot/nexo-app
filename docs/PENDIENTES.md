@@ -152,7 +152,10 @@ Orden: (1) Bluetooth solo a quien está cerca · (2) Wi-Fi ↔ datos al instante
   compila solo en el servidor) y la app rehace las conexiones por la nueva al momento (0,7 s en el simulador). En el diagnóstico:
   «[NET] Cambio de red: Wi-Fi → datos móviles» y «Relés listos tras el cambio de red en X s» (y en «Velocidad de hoy por camino»).
   Falta medirlo en los teléfonos: el Wi-Fi local y Wi-Fi Direct no se tocaron.
-- **(3) Por hacer:** avisar y prevenir atascos: si un contacto con enlace sano no confirma lo tuyo pero sí lo demás (el vivo del
+- **(3) Revisado 15-11 (3126):** el caso del vivo 08:09 era la app dormida (arreglado en 3086) y el desatasco del cifrado ya se
+  detecta en los dos lados (3069). Hecho: un desatasco que se repite (3 en 30 min con el mismo contacto) manda un diagnóstico
+  automático «desatasco_bucle» (`desatascobucle.js`). No se hace el reinicio a ciegas desde el que manda (podría causar el atasco)
+  ni avisos para versiones viejas (regla del dueño 14-11). Texto original: avisar y prevenir atascos: si un contacto con enlace sano no confirma lo tuyo pero sí lo demás (el vivo del
   08:09), pedir el desatasco desde el que manda sin esperar al otro y avisar al usuario («el teléfono de X no puede leer tus mensajes:
   que actualice NEXO»), y avisar de contactos con versión vieja (no se sabe su versión: «build ?»).
 

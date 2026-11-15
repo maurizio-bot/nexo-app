@@ -478,6 +478,10 @@
     {
      "fallo": "3096 (diagnósticos vivo y S24 14-11 13:03–13:05): el vivo mandaba 3 textos largos (van en trozos) por internet al S24 con la app dormida; el nativo del S24 ya los guardaba y confirmaba ✓✓, pero el vivo seguía reenviando la ventana de trozos cada ~4 s durante ~50 s (esperaba la confirmación de cada trozo, que solo da la app): el S24 acumuló 109 sobres al despertar, y tras 8 reintentos el texto volvía a ⏳ y la cola lo reenviaba entero. 3096: con el ✓✓ del nativo, el texto espera sin reenviar ni gastar reintentos (revisa a los 15, 30 y 60 s, hasta 10 min); si la app del otro confirma algún trozo, está despierta y sigue lo de siempre. textonet.js: 3095 = 8 reenvíos en 40 s y al despertar no le llega en 1 min; 3096 = 0 reenvíos, sigue ✓✓ y le llega entero en 3 s",
      "prueba": "texto LARGO por internet con la app del otro dormida"
+    },
+    {
+     "fallo": "3126 (atascos, PLAN etapa 1; dueño 15-11: «sigue con los atascos»): si el desatasco automático del cifrado (3069) se repetía con el mismo contacto sin arreglarse, nadie se enteraba. 3126: 3 desatascos en 30 min con el mismo contacto → diagnóstico automático «desatasco_bucle» y firma grave en el analizador, para verlo con datos (sin tocar el cifrado). desatascobucle.js (contraprueba 3125: nada)",
+     "prueba": "DESATASCO que se REPITE"
     }
    ],
    "debiles": [

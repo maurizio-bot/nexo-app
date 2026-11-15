@@ -32,6 +32,20 @@ var _timer = {};     // nx → temporizador del aviso
 var _rstAt = {};     // nx → hora del último aviso mandado
 var _badT = {};      // nx → temporizador del «abrir sesión nueva» por no poder leer
 var _gotRst = {};    // nx → hora del último aviso recibido de él
+// 3126 (atascos, PLAN etapa 1; dueño 15-11: «sigue con los atascos»): un desatasco que se REPITE con el mismo contacto (avisos
+// mandados o recibidos) LOOP_N veces en LOOP_MS no se está arreglando solo: queda en el diagnóstico y manda un diagnóstico
+// automático («desatasco_bucle») para verlo con datos. No cambia nada del cifrado ni del desatasco.
+var LOOP_N = 3, LOOP_MS = 30 * 60000;
+var _loopLog = {};   // nx → horas de los avisos (mandados y recibidos) en la ventana
+function _now() { return (typeof window !== 'undefined' && typeof window.NEXO_RESYNC_NOW === 'function') ? window.NEXO_RESYNC_NOW() : Date.now(); }
+function _noteLoop(nx, dir) {
+  var now = _now();
+  var arr = _loopLog[nx] = (_loopLog[nx] || []).filter(function(t) { return now - t < LOOP_MS; });
+  arr.push(now);
+  if (arr.length !== LOOP_N) return;
+  console.warn('[E2E] Desatasco con ' + nx + ' repetido ' + arr.length + ' veces en ' + Math.max(1, Math.round((now - arr[0]) / 60000)) + ' min: no se está arreglando solo');
+  try { window.dispatchEvent(new CustomEvent('nexo:diag:symptom', { detail: { kind: 'desatasco_bucle', info: nx + ' ×' + arr.length + ' (' + dir + ')' } })); } catch (e) {}
+}
 var _inited = false;
 
 function _isContact(nx) {
@@ -77,6 +91,7 @@ function _flush(nx) {
   _rstAt[nx] = Date.now();
   var act = { type: 'nexo_act', act: 'e2e', st: 'rst', need: need, since: since };
   var id = _sendTextTo(nx, JSON.stringify(act), '', true);
+  _noteLoop(nx, 'le pido');
   console.log('[E2E] Desatasco con ' + nx + ': le pido que reenvíe ' + need.length + ' mensaje(s) que no pude leer' + (since ? ' y lo suyo desde ' + new Date(since).toISOString().substring(11, 19) : '') + (id ? '' : ' (no salió)'));
 }
 
@@ -108,6 +123,7 @@ export function resyncOnAct(senderId, act) {
   }
   if (act.st !== 'rst') return; // 3067: el aviso sin más (solo e2e) servía para pasar a la sesión nueva
   _gotRst[nx] = Date.now();
+  _noteLoop(nx, 'me pide');
   if (_badT[nx]) { clearTimeout(_badT[nx]); _badT[nx] = null; }
   var need = Array.isArray(act.need) ? act.need.slice(0, NEED_MAX).map(String) : [];
   _resend(nx, need, Number(act.since) || 0, true);
