@@ -21,6 +21,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **15-11 14:00 — APK 3068 (3125 + 3126; batería 271/271, índice 70,6):** **3125** un texto troceado por un puente Jump dormido
+  se suelta a las 2 ventanas como un archivo (`jumpfwd.js`: 8 reenvíos en 35 s → 1 en 7,8 s; diagnóstico S24 3059 00:08).
+  **3126** desatasco del cifrado repetido (3 en 30 min) → diagnóstico automático «desatasco_bucle» (`desatascobucle.js`); el
+  desatasco «desde el que manda» no se hizo (razones en PLAN/PENDIENTES). También: LICENSE «Todos los derechos reservados» (Maurizio
+  Amistani), noone4224 quitado por el dueño. Pendiente del dueño: crear el repo privado «nexo-privado» para los documentos de negocio
+  y las auditorías de seguridad (luego los muevo y dejo dicho dónde están).
 - **15-11 13:00 — APK 3067 (3124; batería 269/269, índice 70,5):** archivo del usuario a una app DORMIDA por Bluetooth o Wi-Fi: sin
   un trozo confirmado en 2 ventanas (enlace vivo, no atascado) → toque para despertarla y sondeo de 1 trozo cada 10 s; 3 min sin
   despertar → ⏳ (`dormidafile.js`: 3123 = 5 ventanas enteras en 45 s, 3124 = 1). fileflap/fileabsent/filepend prueban la regla de
