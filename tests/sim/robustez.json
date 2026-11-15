@@ -1340,6 +1340,10 @@
     {
      "fallo": "3120 (captura del dueño 15-11: Samsung decía «NEXO se bloqueó más de 10 veces en la última semana» —era el bucle del APK de 25 MB del 10-11, arreglado en 2995/3004/3005–3007— y el diagnóstico no registraba ningún cierre ni su motivo; tampoco los datos que usa NEXO). 3120: cierres de los últimos 7 días que guarda Android (getHistoricalProcessExitReasons, Android 11+) con su motivo, ⚠ para fallo/congelada/sin memoria, el hilo principal de una congelada y los fallos guardados al caer (CrashLog); un cierre con problema nuevo manda UN diagnóstico automático «cierre_fallo»; datos de NEXO por Wi-Fi y por datos móviles en el resumen diario. cierres.js (contraprueba 3119: no existe)",
      "prueba": "CIERRES DE LA APP y DATOS"
+    },
+    {
+     "fallo": "3121–3123 (dueño 15-11: «agregar un idioma o dos… portugués y francés»): la app solo estaba en español, italiano e inglés, y los avisos del teléfono (los pone el nativo, también con la app cerrada) salían SIEMPRE en español. 3121: la tabla de textos partida en un archivo por idioma (2.493/2.493 textos idénticos); 3122: NativeText/NativeLang (los avisos del nativo en el idioma que dice la app); 3123: portugués de Brasil y francés (831 textos cada uno). idiomas5.js (contraprueba 3120: 3 idiomas)",
+     "prueba": "NEXO EN 5 IDIOMAS"
     }
    ],
    "debiles": [

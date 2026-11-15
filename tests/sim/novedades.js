@@ -16,7 +16,7 @@ const { importSrc } = require('./srcmod');
   for (const l of lines) { if (l === '<!-- APK -->') { f = true; continue; } if (l === '<!-- /APK -->') { f = false; continue; } if (f) out.push(l); }
   const block = out.join('\n');
   r.bloque = block.length > 0;
-  const langs = { 'es-419': 'es', 'it-IT': 'it', 'en-US': 'en' };
+  const langs = { 'es-419': 'es', 'it-IT': 'it', 'en-US': 'en', 'pt-BR': 'pt', 'fr-FR': 'fr' }; // 3123: + portugués y francés
   r.idiomas = {};
   for (const tag of Object.keys(langs)) {
     const m = block.match(new RegExp('<' + tag + '>\\n([\\s\\S]*?)\\n</' + tag + '>'));

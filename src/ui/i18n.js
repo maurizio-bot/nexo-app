@@ -1,6 +1,6 @@
 /**
  * i18n.js (#132, pedido del dueño 30-10) — selección de idioma de NEXO.
- * Idiomas: español (es), italiano (it), inglés (en). Para añadir uno: su archivo en src/ui/i18n/ (mismas claves), importarlo
+ * Idiomas: español (es), italiano (it), inglés (en), portugués de Brasil (pt) y francés (fr) (3123). Para añadir uno: su archivo en src/ui/i18n/ (mismas claves), importarlo
  * aquí en TABLES y sumarlo a LANGS/LANG_NAMES.
  *   - Por DEFECTO se ajusta al idioma del TELÉFONO (navigator.language, el mismo criterio que cobro.js usa para la moneda
  *     «del país/idioma del teléfono»). NO usa GPS ni pide permisos (encaja con la privacidad de NEXO). El dueño confirmó
@@ -17,13 +17,15 @@
 import ES from './i18n/es.js';
 import IT from './i18n/it.js';
 import EN from './i18n/en.js';
+import PT from './i18n/pt.js'; // 3123 (dueño 15-11): portugués de Brasil
+import FR from './i18n/fr.js'; // 3123: francés
 
-export var LANGS = ['es', 'it', 'en'];
-export var LANG_NAMES = { es: 'Español', it: 'Italiano', en: 'English' };
+export var LANGS = ['es', 'it', 'en', 'pt', 'fr'];
+export var LANG_NAMES = { es: 'Español', it: 'Italiano', en: 'English', pt: 'Português (Brasil)', fr: 'Français' };
 
 // Textos: un archivo por idioma en src/ui/i18n/ (reestructuración 15-11, tools/partir_i18n.cjs). El español es el texto original
 // (el simulador se fija a español, así que las pruebas que comprueban textos en español siguen pasando) y el respaldo de todos.
-var TABLES = { es: ES, it: IT, en: EN };
+var TABLES = { es: ES, it: IT, en: EN, pt: PT, fr: FR };
 
 // El idioma del teléfono (navigator.language), reducido a dos letras; si no es uno de los nuestros → español.
 function detectLang() {

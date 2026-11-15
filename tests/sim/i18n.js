@@ -32,12 +32,12 @@ global.window = { dispatchEvent(ev) { if (ev && ev.type === 'nexo:lang') lastLan
   store = {}; navLang = 'en-US'; m._resetForTest();
   r.default_en = m.getLang() === 'en' && m.t('settings_title') === 'Settings';
 
-  // 3) Idioma del teléfono desconocido (p. ej. francés) → español (base)
-  store = {}; navLang = 'fr-FR'; m._resetForTest();
+  // 3) Idioma del teléfono desconocido (p. ej. alemán; el francés ya está desde la 3123) → español (base)
+  store = {}; navLang = 'de-DE'; m._resetForTest();
   r.desconocido_cae_a_es = m.getLang() === 'es' && m.t('settings_title') === 'Ajustes';
 
-  // 4) La elección guardada manda sobre el del teléfono (teléfono en francés, guardado italiano)
-  store = { nexo_lang: 'it' }; navLang = 'fr-FR'; m._resetForTest();
+  // 4) La elección guardada manda sobre el del teléfono (teléfono en alemán, guardado italiano)
+  store = { nexo_lang: 'it' }; navLang = 'de-DE'; m._resetForTest();
   r.guardado_manda = m.getLang() === 'it' && m.t('language') === 'Lingua';
 
   // 5) setLang cambia t(), guarda y avisa
