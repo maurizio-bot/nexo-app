@@ -627,7 +627,9 @@ ChatStream.prototype._onWindowTimeout = function() {
       return;
     }
     // 3021: archivo por un PUENTE Jump que no confirmó ni un trozo → soltar el puente (ver BRIDGE_STALL_RETRIES)
-    if (self.type === 'file' && self.meta && self.meta.dst && self.windowStart === 0 && self.windowRetryCount >= BRIDGE_STALL_RETRIES && !_isNetDevice(self.deviceId)) {
+    // 3125 (diagnóstico S24 3059 00:08, «zombi …db61»: un TEXTO largo suyo por un puente con la app dormida, ventana 0 reenviada
+    // entera cada 12 s): también un texto troceado por un puente se suelta a las 2 ventanas sin un trozo confirmado
+    if ((self.type === 'file' || self.type === 'chat') && self.meta && self.meta.dst && self.windowStart === 0 && self.windowRetryCount >= BRIDGE_STALL_RETRIES && !_isNetDevice(self.deviceId)) {
       var dstS = _normId(self.meta.dst), viaS = '';
       try { viaS = _normId(self.ble && self.ble._macToNexoId && self.ble._macToNexoId.get(_normMac(self.deviceId))); } catch (e) {}
       console.warn('[ChatStream] Puente ' + (viaS || self.deviceId) + ' sin confirmar ni un trozo de ' + self.msgId + ' tras ' + self.windowRetryCount + ' ventanas: lo suelto y va por otro camino (buzón/internet) a ' + dstS);

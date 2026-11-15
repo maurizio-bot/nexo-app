@@ -13,18 +13,23 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <!-- APK -->
 <es-419>
 - Si mandas un archivo a alguien con la app dormida, NEXO la despierta y espera a que conteste, sin gastar batería reenviándolo.
+- Un mensaje largo que pasa por el teléfono de otro contacto ya no se queda reenviándose si ese teléfono está dormido: busca otro camino.
 </es-419>
 <it-IT>
 - Se invii un file a qualcuno con l'app in pausa, NEXO la sveglia e aspetta che risponda, senza consumare batteria rinviandolo.
+- Un messaggio lungo che passa dal telefono di un altro contatto non resta più a rinviarsi se quel telefono dorme: cerca un'altra strada.
 </it-IT>
 <en-US>
 - If you send a file to someone whose app is asleep, NEXO wakes it up and waits for it to answer, without wasting battery resending.
+- A long message passing through another contact's phone no longer keeps resending if that phone is asleep: it looks for another way.
 </en-US>
 <pt-BR>
 - Se você enviar um arquivo para alguém com o app adormecido, o NEXO o desperta e espera a resposta, sem gastar bateria reenviando.
+- Uma mensagem longa que passa pelo celular de outro contato não fica mais se reenviando se esse celular estiver adormecido: procura outro caminho.
 </pt-BR>
 <fr-FR>
 - Si vous envoyez un fichier à quelqu'un dont l'app est en veille, NEXO la réveille et attend sa réponse, sans gaspiller la batterie à le renvoyer.
+- Un long message qui passe par le téléphone d'un autre contact ne se renvoie plus en boucle si ce téléphone est en veille : il cherche un autre chemin.
 </fr-FR>
 <!-- /APK -->
 

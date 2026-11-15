@@ -967,6 +967,10 @@
     {
      "fallo": "Dueño 14-11: «cuando estoy en Bluetooth y activo yo el Wi-Fi, la aplicación no se da cuenta; debería darse cuenta del cambio de conexión e inmediatamente cambiar de conexión en los chats». Lo que ya hay: Bluetooth encendido/apagado (3082), red Wi-Fi nueva (aviso nativo: busca en la red al momento) y Wi-Fi ↔ datos (3085, va en la APK 3053). Reproducido en el simulador con la 3093: el Wi-Fi local queda listo en 0,5 s, lo siguiente sale por Wi-Fi y un archivo a mitad pasa del Bluetooth al Wi-Fi (wifivuelve.js, guarda). Si en el teléfono no pasa, falta el diagnóstico de ese momento. 3096: la batería lo marcó una vez como fallo; la causa era la prueba (daba el Wi-Fi por listo al abrirse la conexión, antes de comprobarse) y el registro de entrega, que decía «salir por Bluetooth» siempre aunque saliera por Wi-Fi o internet (también engañaba en los diagnósticos del dueño). Ahora el registro dice el camino de verdad y la prueba espera a que la app use el Wi-Fi: 3 de 3, el texto sale «por Wi-Fi» a los 0,6 s",
      "prueba": "Wi-Fi que se ENCIENDE en medio de una charla por Bluetooth"
+    },
+    {
+     "fallo": "3125 (diagnóstico automático S24 3059, 15-11 00:08, «zombi …db61»): un TEXTO largo propio que iba por un puente Jump con la app dormida reenviaba la ventana 0 entera cada 12 s (reintento 6 al volver la app); la regla 3021 de soltar un puente que no confirma solo valía para archivos. 3125: también los textos por un puente se sueltan a las 2 ventanas sin un trozo confirmado y el puente queda marcado. jumpfwd.js (contraprueba 3124: 8 reenvíos en 35 s; 3125: 1 en 7,8 s)",
+     "prueba": "TEXTO largo por un PUENTE Jump dormido"
     }
    ],
    "debiles": [
