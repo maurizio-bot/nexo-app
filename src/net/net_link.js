@@ -182,7 +182,9 @@ export class NetLink {
     self._drainPending = true; // 3033: al arrancar, lo que la parte nativa recibió con la app cerrada entra ya (ver _drainBg)
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() {
       // A segundo plano: la parte nativa sigue desde lo último que vio la app
-      if (document.visibilityState === 'hidden') { self._bgSinceDirty = true; self._hiddenAt = Date.now(); self._bgConfig(); }
+      // 3099 (S24 3054 14-11 17:48: «Relés listos tras el cambio de red en 3173,6 s»): lo que tarde con la app en segundo plano no es
+      // lo que tarda en conectar: la medida del cambio de red se abandona al irse (no entra en la velocidad del diagnóstico)
+      if (document.visibilityState === 'hidden') { self._bgSinceDirty = true; self._hiddenAt = Date.now(); self._netChangeAt = 0; self._bgConfig(); }
       if (document.visibilityState === 'visible') {
         // Tras un rato en segundo plano las conexiones pueden haberse caído: reconectar ya (sin esperar la pausa)
         self.relays.forEach(function(r) { r.retryAt = 0; r.backoff = 2000; });

@@ -6,6 +6,8 @@
 import { t } from './i18n.js';
 import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _netNx, _lanNx, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _dupBleLinksToClose, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages, _wakeShouldFire, _wakeAdvance, _wakeNewEntry, WAKE_GIVEUP_MS, _isQuietHidden, _isPathDev } from './ble_helpers.js';
 
+// 3099: con una transferencia en curso la re-búsqueda de contactos perdidos se aplaza, pero como mucho esto seguido: luego una vuelta
+var SCAN_HOLD_MAX_MS = 180000;
 
 export const BLE_CONNECTION_METHODS = {
   _startConnectionSupervisor() {
@@ -418,13 +420,22 @@ export const BLE_CONNECTION_METHODS = {
         // v6.1.13: escanear comparte la radio con las conexiones; durante una transferencia de archivo
         // se salta este turno (en el teléfono real la foto/vídeo iba más lenta)
         if (self._transferActive(true)) {
-          console.log('[BLEInterface] Re-búsqueda aplazada: transferencia en curso');
+          var nowP = Date.now();
+          var holdMax = (typeof window !== 'undefined' && window.NEXO_SCAN_HOLD_MAX_MS) || SCAN_HOLD_MAX_MS;
+          // 3099 (S24 3054 14-11 17:48: «48 min sin buscar … transferencia en curso», 46 de ellos con la app en segundo plano): un
+          // hueco largo entre vueltas es la app suspendida, no «sin buscar»: se vuelve a contar desde aquí
+          if (self._scanHeldLastAt && nowP - self._scanHeldLastAt > Math.max(3 * interval, 120000)) { self._scanHeldSince = 0; self._scanHeldSaid = false; }
+          self._scanHeldLastAt = nowP;
+          if (!self._scanHeldSince) self._scanHeldSince = nowP;
+          var held = nowP - self._scanHeldSince;
+          if (held < holdMax) { console.log('[BLEInterface] Re-búsqueda aplazada: transferencia en curso'); return; }
           // 3020: búsqueda frenada más de 3 min seguidos (contactos perdidos sin buscarse) → síntoma, una vez por racha
-          var nowP = Date.now(); if (!self._scanHeldSince) self._scanHeldSince = nowP;
-          if (!self._scanHeldSaid && nowP - self._scanHeldSince > 180000) { self._scanHeldSaid = true; _safeDispatchEvent('nexo:diag:symptom', { kind: 'busqueda_frenada', info: Math.round((nowP - self._scanHeldSince) / 60000) + ' min sin buscar a ' + activeLost.length + ' contacto(s): transferencia en curso' }); }
-          return;
-        }
-        self._scanHeldSince = 0; self._scanHeldSaid = false;
+          if (!self._scanHeldSaid) { self._scanHeldSaid = true; _safeDispatchEvent('nexo:diag:symptom', { kind: 'busqueda_frenada', info: Math.round(held / 60000) + ' min sin buscar a ' + activeLost.length + ' contacto(s): transferencia en curso; se busca igual' }); }
+          // 3099: una transferencia que no acaba (el S23 mandaba un trozo por segundo) no deja sin buscar a los demás: una vuelta
+          // cada SCAN_HOLD_MAX_MS aunque siga (comparte la radio unos segundos; lo pendiente de los perdidos no espera para siempre)
+          console.log('[BLEInterface] Re-búsqueda aplazada ' + Math.round(held / 1000) + ' s por una transferencia: busco igual (una vuelta)');
+          self._scanHeldSince = nowP;
+        } else { self._scanHeldSince = 0; self._scanHeldSaid = false; self._scanHeldLastAt = 0; }
         if (!self._cameraBlePaused && !self.isScanning) {
           self._reconnectScanAttempts++;
           console.log('[BLEInterface] Re-búsqueda de contactos', activeLost, presence ? '(+presencia)' : '', 'intento', self._reconnectScanAttempts, hidden ? 'oculta' : '');
