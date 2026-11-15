@@ -21,7 +21,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
-- **15-11 15:20 — 3127 + 3128 en la rama (dd099266; batería COMPLETA pendiente sobre b3128 → APK 3069).** APK 3068 publicada
+- **15-11 16:20 — APK 3069 (3127 + 3128; batería 273/273, índice 70,6; blobe2e marcó un falso fallo por el nombre viejo de su comprobación, repetida sola: 15/15).** APK 3068 publicada
   (14:54). La batería de la 3127 sola se paró al 30 % para correr una sola con todo. **3127** (S24 3067 08:24): archivo pequeño
   por internet a una app dormida sondea 1 trozo cada 15 s; reintento Jump hasta 10 min; cierres «ISOLATED» aparte. **3128** (S24
   3067 08:41): (1) partes de llamada por relés caducan a los 2 min (antes 7 días: cada reconexión de un relé volvía a bajar hasta
