@@ -21,6 +21,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **15-11 (3117 + 3119 = APK 3064; batería 266/266 con diagplus.js al día por los nombres; índice 70,5):** **3117** el diagnóstico
+  lleva el nombre del contacto junto a su ID corto; **3119** tiempo de uso y gasto de batería por hora (a la vista y detrás). La
+  corrida 3063 fue la compilación de prueba de la 3118 (no es APK).
 - **15-11: PLAN MAESTRO en `docs/PLAN.md`** (pedido del dueño: «aterrizar lo que no está aterrizado, metas reales y fechas, palomita
   a lo hecho; el orden lo llevas tú»). 5 etapas hasta EDC (feb 2027). Índice 66,1 → 70,5 contando la evidencia de los diagnósticos
   (criterio del dueño), anotada área por área en `tests/sim/robustez.json` («telefono.por»).
