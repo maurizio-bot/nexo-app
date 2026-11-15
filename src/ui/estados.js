@@ -393,10 +393,12 @@ export function applyStatus(senderNx, act) {
   _emit(nx);
 }
 // Pidieron mis estados (deslizar para actualizar en su lista): se los reenvío todos (con freno)
-export function statusQueryReceived(senderNx) {
-  var nx = _normId(senderNx), now = Date.now();
-  if (!NX_RE.test(nx) || now - (_sqIn.get(nx) || 0) < SQ_GAP_MS) return 0;
-  _sqIn.set(nx, now);
+// 3138 (estados3.js en la batería de la 3133): la petición automática que sale al agregar un contacto (avatar.js, 3129) gastaba el
+// freno de 15 s y el «deslizar para actualizar» del usuario justo después no traía nada. Ahora la automática (auto) tiene su freno aparte.
+export function statusQueryReceived(senderNx, auto) {
+  var nx = _normId(senderNx), now = Date.now(), key = nx + (auto ? ':auto' : '');
+  if (!NX_RE.test(nx) || now - (_sqIn.get(key) || 0) < SQ_GAP_MS) return 0;
+  _sqIn.set(key, now);
   return sendStatusTo(nx, true);
 }
 // Deslizar hacia abajo en Contactos: pedir los estados a los contactos a la vista (enlace vivo o internet)
