@@ -52,13 +52,14 @@ retoques; la prueba de fuego sería ese evento». Fecha exacta de EDC 2027 por c
   base para la meta «un día entero de batería». Siguientes: (a) la misma pantalla al final del día; (b) el martes salió en naranja
   «Problema detectado en aplicación»: ver qué app fue; (c) **datos que usa NEXO en el diagnóstico** (bytes por Wi-Fi y datos móviles,
   con la cuenta de Android de la propia app; nativo, después de partir NexoBlePlugin.kt).
-- **🔴 NEXO «se bloqueó más de 10 veces en la última semana» (Samsung, captura del dueño del martes 10-11; era la barra naranja).** No
-  lo sabíamos: el diagnóstico NO registra los cierres de la app. El renderizado de la pantalla ya se rehace solo (MainActivity, ronda
-  2774), así que serían fallos del lado de Android, congelamientos u otra cosa. **Siguiente, primero de todo al terminar de partir
-  NexoBlePlugin.kt:** en el diagnóstico, los cierres de la app y su motivo (fallo, congelada, sin memoria, actualización, cierre forzado;
-  lista que guarda Android, desde Android 11) y, para los fallos, las primeras líneas del error (guardadas al caer). Ese 10-11:
-  NEXO 8,4 % del día (WhatsApp 17,1 %), 1 h 11 min a la vista y 10 h 48 min detrás, CPU 33 min, 14 min de bloqueo de suspensión,
-  364 búsquedas Bluetooth, **2,1 millones de paquetes por Wi-Fi** y 41.717 por datos (día de pruebas de archivos grandes).
+- **NEXO «se bloqueó más de 10 veces en la última semana» (Samsung, captura del dueño del martes 10-11; la barra naranja) — causa
+  CONOCIDA y arreglada (el dueño lo recordó):** fue el bucle del APK de 25 MB (reenvíos que se sumaban hasta cerrar la app; 10-11, 2994;
+  `docs/INVESTIGACION_BUCLE_APK_2026-11-11.md`): arreglado en la 2995 (de a uno), 3004 (registro de salientes) y 3005–3007 (seguir donde
+  iba, trozos en disco). Evidencia: de miércoles a sábado Samsung ya no marca problemas (barras azules). Sigue pendiente, sin urgencia,
+  la «build forense» de entonces: cierres de la app y su motivo en el diagnóstico (`getHistoricalProcessExitReasons`, error guardado al
+  caer), para confirmarlo con datos y porque Google Play mide los cierres (por encima de ~1 % baja la visibilidad); va con el nativo,
+  tras partir NexoBlePlugin.kt. Ese 10-11: NEXO 8,4 % del día (WhatsApp 17,1 %), 1 h 11 min a la vista y 10 h 48 min detrás, CPU
+  33 min, 14 min de bloqueo de suspensión, 364 búsquedas Bluetooth, 2,1 millones de paquetes por Wi-Fi y 41.717 por datos.
 
 ## 🆕 15-11 (dos llamadas a la vez, pedido del dueño tras probar la 3057)
 - **Hecho (APK 3059):** 3100 invitado de grupo que no contesta → «No contestó» a los 45 s; 3101 llamada 1-a-1 + de grupo a la vez en
