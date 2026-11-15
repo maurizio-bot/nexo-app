@@ -11,13 +11,19 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Si un servidor de internet falla, la app usa otro de reserva en segundos, sin que lo notes.
 - El diagnóstico muestra el nombre de cada contacto y cuánta batería gasta el teléfono con NEXO, para encontrar fallos más rápido.
+- Mejoras internas para que la app sea más estable y fácil de mantener.
 </es-419>
 <it-IT>
+- Se un server internet non risponde, l'app ne usa uno di riserva in pochi secondi, senza che te ne accorga.
 - La diagnosi mostra il nome di ogni contatto e quanta batteria consuma il telefono con NEXO, per trovare i problemi più in fretta.
+- Miglioramenti interni per rendere l'app più stabile e facile da mantenere.
 </it-IT>
 <en-US>
+- If an internet server fails, the app switches to a backup within seconds, without you noticing.
 - Diagnostics now show each contact's name and how much battery the phone uses with NEXO, to find problems faster.
+- Internal improvements to make the app more stable and easier to maintain.
 </en-US>
 <!-- /APK -->
 
