@@ -1488,6 +1488,14 @@
     {
      "fallo": "3135 (dueño 15-11, tras un vídeo de una cuenta de WhatsApp robada pidiendo dinero: «ese tipo de cosas no quiero que puedan pasar con nosotros»): la pregunta «¿es el mismo teléfono, reinstalado?» (3018) unía un NEXO ID NUEVO con el MISMO NOMBRE al chat del contacto viejo con un solo «sí»: un impostor con el nombre de tu amigo heredaba su chat y lo que tenías pendiente para él. 3135: la pregunta avisa del impostor, hay una segunda («¿lo comprobaste por llamada o en persona?»; si no, queda aparte) y el chat unido queda en rojo «sin verificar» hasta marcar verificado el número de seguridad. reinstall.js R1, R5, R6 (contraprueba 3134: una sola pregunta, sin aviso ni marca)",
      "prueba": "contacto reinstalado"
+    },
+    {
+     "fallo": "3136 (anti-suplantación, dueño 15-11): una solicitud por NEXO ID con el MISMO nombre que un contacto que ya tengo llegaba como cualquier otra (un impostor con el nombre de tu amigo). 3136: en la bandeja sale en rojo «Ya tienes a… con otro NEXO ID… puede ser un impostor; confírmalo con una llamada». invitacion.js I6 (contraprueba 3134: sin aviso)",
+     "prueba": "ENLACE DE INVITACIÓN (3129"
+    },
+    {
+     "fallo": "3136 (anti-suplantación, dueño 15-11: cuenta robada pidiendo dinero): un cobro que te piden no decía nada de quién lo pide. 3136: si no está verificado el número de seguridad, aviso ámbar «antes de pagar, confirma con una llamada»; con señal de riesgo (unido por el nombre, clave de oídas o cambiada), en rojo «no pagues sin llamarle»; verificado, sin aviso. cobro.js (contraprueba 3134: sin aviso)",
+     "prueba": "cobros (pagos Fase 1)"
     }
    ],
    "debiles": [

@@ -97,11 +97,23 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.tarjeta_receptor = /Te piden un cobro/.test(bCard) && /1\.?500/.test(bCard) && /Mercado Pago/.test(bCard);
   // Botón copiar en el receptor
   r.boton_copiar = !!B.win.document.querySelector('#messages-container .message.other .cobro-copy');
+  // 3135 (anti-suplantación): el cobro que me piden avisa si quien lo pide no está verificado (ámbar); verificado, sin aviso; con señal
+  // de riesgo (unido por el nombre / clave de oídas), en rojo. El que lo manda no ve aviso. Contraprueba 3134: sin aviso.
+  const warnB = () => B.win.document.querySelector('#messages-container .message.other .cobro-warn');
+  r.aviso_receptor = !!warnB() && /llamada/.test(warnB().textContent) && /ffd76a/i.test(warnB().getAttribute('style') || '');
+  r.sin_aviso_emisor = !A.win.document.querySelector('#messages-container .message.own .cobro-warn');
+  const reopenB = async () => { B.win.dispatchEvent(new B.win.CustomEvent('nexo:ble:closeChat', { detail: {} })); await sleep(400); await openChat(B); await sleep(1000); };
+  try { B.win.bleInterface.setContactVerified(idA, true); } catch (e) {}
+  await reopenB();
+  r.verificado_sin_aviso = !!B.win.document.querySelector('#messages-container .message.other .cobro-copy') && !warnB();
+  try { B.win.bleInterface.setContactVerified(idA, false); const cs = B.win.vaultLoadContacts(); const c = cs.find((x) => String(x.nexoId || '').toLowerCase() === idA); if (c) { c.mergeUnverified = 1; B.win.vaultSaveContacts(cs); } } catch (e) {}
+  await reopenB();
+  r.aviso_rojo = !!warnB() && /ff8a80/i.test(warnB().getAttribute('style') || '');
   // Inyección: el concepto peligroso NO debe ejecutarse ni meter un <img src=x>
   r.sin_inyeccion = !A.win.__cxss && !B.win.__cxss && !B.win.document.querySelector('#messages-container img[src="x"]') && !A.win.document.querySelector('#messages-container img[src="x"]');
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|No se pudo|Error procesando/.test(l)).slice(0, 4);
-  const ok = r.hoja_abrio && r.hoja_se_cerro && r.llega_a_B && r.meta_ok && r.tarjeta_emisor && r.tarjeta_receptor && r.boton_copiar && r.sin_inyeccion && r.errores.length === 0;
+  const ok = r.hoja_abrio && r.hoja_se_cerro && r.llega_a_B && r.meta_ok && r.tarjeta_emisor && r.tarjeta_receptor && r.boton_copiar && r.sin_inyeccion && r.aviso_receptor && r.sin_aviso_emisor && r.verificado_sin_aviso && r.aviso_rojo && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('COBRO ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_cobro.txt'), logs.join('\n'));

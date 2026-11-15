@@ -103,7 +103,22 @@ function _fmtMonto(n) {
 
 // Dibuja la tarjeta de cobro en el chat (emisor y receptor). `cob` = meta {importe, moneda, concepto, metodo}.
 // `msg._own`: si es un cobro que mandé yo (lo veo como "enviado") o uno que me mandan (botón para pagar/copiar).
-export function _renderCobroCard(container, cob, msg) {
+// 3135 (anti-suplantación, dueño 15-11: un vídeo de una cuenta robada pidiendo dinero, «ese tipo de cosas no quiero que puedan pasar
+// con nosotros»): un cobro que me piden lleva un aviso si quien lo pide no tiene el número de seguridad verificado (ámbar) y en
+// rojo si hay señal de riesgo (unido por el nombre a otro contacto, clave «de oídas» o clave cambiada sin aceptar).
+function _cobroWarn(fromNx) {
+  var bi = window.bleInterface, nx = String(fromNx || '').toLowerCase();
+  if (!nx || !bi || typeof bi.getBLEContacts !== 'function') return '';
+  var c = (bi.getBLEContacts() || []).find(function(x) { return String(x.nexoId || x.deviceUUID || '').toLowerCase() === nx; });
+  var name = (c && c.name) || nx.toUpperCase();
+  if (c && c.publicKey && c.verified === c.publicKey && !c.pendingKey) return '';
+  var risky = !c || c.pendingKey || c.pkHearsay || c.mergeUnverified;
+  var txt = risky
+    ? t('media_cobro_risky', '⚠️ Cuidado: {name} NO está verificado (contacto nuevo con el nombre de otro, o clave cambiada). No pagues sin llamarle antes.')
+    : t('media_cobro_unverified', '⚠️ Antes de pagar, confirma con una llamada que de verdad te lo pide {name}: no han verificado el número de seguridad.');
+  return '<div class="cobro-warn" style="padding:8px 12px 0;font-size:12px;line-height:1.35;color:' + (risky ? '#ff8a80' : '#ffd76a') + ';">' + _esc(txt.replace('{name}', name)) + '</div>';
+}
+export function _renderCobroCard(container, cob, msg, fromNx) {
   var importe = _fmtMonto(cob && cob.importe);
   var moneda = _esc((cob && cob.moneda) || '');
   var concepto = String((cob && cob.concepto) || '');
@@ -117,6 +132,7 @@ export function _renderCobroCard(container, cob, msg) {
   html += '<div style="display:flex;align-items:center;gap:6px;padding:9px 12px 4px;font-size:12px;color:#8fe0ab;">💵 ' + (own ? t('media_cobro_sent', 'Cobro enviado') : t('media_cobro_request', 'Te piden un cobro')) + '</div>';
   html += '<div style="padding:0 12px;font-size:24px;font-weight:800;color:#fff;line-height:1.15;">' + importe + ' <span style="font-size:13px;font-weight:600;opacity:0.8;">' + moneda + '</span></div>';
   if (concepto) html += '<div style="padding:2px 12px 0;font-size:13px;color:#cfd8d2;">' + _esc(concepto) + '</div>';
+  if (!own) html += _cobroWarn(fromNx);
   if (metodo) html += '<div style="padding:8px 12px 0;font-size:12px;color:#9aa;">' + t('media_cobro_how_pay', 'Cómo pagar: ') + '<span style="color:#dfe;">' + _esc(metodo) + '</span></div>';
   html += '<div style="display:flex;gap:8px;padding:10px 12px 12px;">';
   if (metodo && esURL) html += '<a href="' + _attr(metodo.trim()) + '" target="_blank" rel="noopener" style="flex:1;text-align:center;padding:8px;background:rgba(34,197,94,0.3);border-radius:8px;color:#fff;text-decoration:none;font-size:13px;">' + t('media_cobro_open_link', 'Abrir enlace') + '</a>';

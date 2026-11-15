@@ -7,6 +7,8 @@
 //  I3  C usa el MISMO enlace después: su solicitud llega como una normal (el código es de UN uso);
 //  I4  un código de hace 8 días ya no vale; uno ajeno o mal formado tampoco;
 //  I5  la app de B se abre con el enlace (nativo onInviteLink): «Agregar» abierto con el ID de A puesto y el aviso de quién invitó.
+//  I6  3135 (anti-suplantación): C se pone el MISMO nombre que B (ya contacto de A): su solicitud sale en la bandeja de A con el aviso
+//      rojo «Ya tienes a… con otro NEXO ID… puede ser un impostor» (contraprueba 3134: sin aviso).
 // Contraprueba: en la 3128 no hay «Invitar a NEXO» (I1 falla) y el campo corta lo pegado a 10 letras.
 // Uso: node invitacion.js <dir_build>
 'use strict';
@@ -96,10 +98,14 @@ async function addByText(p, text) {
   r.I2_conectados = await waitFor(() => !!hasContact(A, idB) && !!hasContact(B, idA) && A.bi.net.canReach(idB) && B.bi.net.canReach(idA), 40000);
 
   // I3: C usa el mismo enlace después → solicitud normal (código de un uso)
+  C.win.bleInterface.localDeviceName = B.win.bleInterface.localDeviceName; // I6: C se pone el nombre de B
   await addByText(C, String(sh.text || ''));
   r.I3_A_ve_solicitud_C = await waitFor(() => A.bi.pendingRequests().some((x) => x.id === idC), 20000);
   const reqC = A.bi.pendingRequests().find((x) => x.id === idC) || {};
   r.I3_sin_marca = r.I3_A_ve_solicitud_C && reqC.inv !== true && !hasContact(A, idC);
+  try { A.bi.renderRequests(); } catch (e) {}
+  r.I6_aviso = ((A.win.document.querySelector('#ble-requests-list .ble-req-twin') || {}).textContent || '').slice(0, 200);
+  r.I6_ok = /impostor/.test(r.I6_aviso) && r.I6_aviso.indexOf(idB.toUpperCase()) >= 0 && A.win.document.querySelectorAll('#ble-requests-list .ble-req-twin').length === 1;
 
   // I4: caducidad y códigos ajenos
   const inv = A.win.__nexoInvite;
@@ -125,7 +131,7 @@ async function addByText(p, text) {
   r.I5_campo = inpB ? inpB.value : '';
   r.I5_ok = !!inpB && inpB.value === idA.toUpperCase() + '-ABCDEFGH' && noteB.indexOf(idA.toUpperCase()) >= 0 && /invitó/.test(noteB) && B.win.document.getElementById('ble-panel').classList.contains('active');
 
-  const ok = r.en_internet && r.I1_ok && r.I2_A_ve_solicitud && r.I2_marca_invitacion && r.I2_no_entra_sola && r.I2_bandeja_dice && r.I2_conectados && r.I3_sin_marca && r.I4_ok && r.I5_ok;
+  const ok = r.en_internet && r.I1_ok && r.I2_A_ve_solicitud && r.I2_marca_invitacion && r.I2_no_entra_sola && r.I2_bandeja_dice && r.I2_conectados && r.I3_sin_marca && r.I4_ok && r.I5_ok && r.I6_ok;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('INVITACION ' + JSON.stringify(r));
   if (!ok) console.log(logs.filter((l) => /INVITE|solicitud|error/i.test(l)).slice(-30).join('\n'));

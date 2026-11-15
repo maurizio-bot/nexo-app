@@ -567,6 +567,13 @@ export const BLE_UI_METHODS = {
       var sub = document.createElement('div'); sub.style.cssText = 'font-size:11px;opacity:.7;';
       sub.textContent = String(req.id || '').toUpperCase() + (req.acc ? ' · aceptó tu solicitud — confirmá' : req.inv ? ' · ' + t('req_from_invite', 'aceptó tu invitación') : ' · quiere agregarte'); // 3129
       info.appendChild(nm); info.appendChild(sub);
+      // 3135 (anti-suplantación, dueño 15-11): ya tengo a alguien con este nombre → es OTRO teléfono (o un impostor)
+      var twin = (typeof self._twinByName === 'function' && !req.acc) ? self._twinByName(req.name, req.id) : null;
+      if (twin) {
+        var tw = document.createElement('div'); tw.className = 'ble-req-twin'; tw.style.cssText = 'font-size:11px;color:#ff8a80;margin-top:3px;white-space:normal;';
+        tw.textContent = t('req_same_name', '⚠️ Ya tienes a «{name}» con otro NEXO ID ({id}). Es otro teléfono: puede ser un impostor. Confírmalo con una llamada antes de aceptar.').replace('{name}', twin.name || '').replace('{id}', String(twin.nexoId || twin.deviceUUID || '').toUpperCase());
+        info.appendChild(tw);
+      }
       // #dueño 04-11 (perfil 2b): tarjeta de validación — tel/correo ENMASCARADOS que llegaron en la solicitud (reconocer
       // sin regalar el dato). Los datos COMPLETOS y la foto aparecen al ACEPTAR (por el canal seguro E2E).
       if (req.ph || req.em) {

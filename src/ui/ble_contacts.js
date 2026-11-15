@@ -145,6 +145,18 @@ export const BLE_CONTACT_METHODS = {
   // el MISMO nombre que uno que ya está (y que ahora no se alcanza por ningún camino) se pregunta si es el mismo teléfono
   // reinstalado; si sí, el chat viejo y lo pendiente pasan al nuevo (lo pendiente sale cifrado con la clave nueva al enviarse)
   // y el viejo se borra. Nunca se une sin preguntar: dos personas pueden llamarse igual.
+  // 3135 (anti-suplantación): un contacto que YA tengo con este mismo nombre y otro NEXO ID (para avisar en una solicitud nueva)
+  _twinByName(name, exceptNexoId) {
+    var norm = function(x) { return String(x || '').replace(/\s+/g, ' ').trim().toLowerCase(); };
+    var n = norm(name), ex = _normId(exceptNexoId || ''), self = this;
+    if (!n || n === 'nexo') return null;
+    return _getBLEContacts().find(function(c) {
+      var o = _normId(c.nexoId || c.deviceUUID);
+      if (!o || o === ex || !/^nx[0-9a-z]{8}$/.test(o)) return false;
+      if (self.groups && typeof self.groups.isGroup === 'function' && self.groups.isGroup(o)) return false;
+      return norm(c.name) === n;
+    }) || null;
+  },
   _reinstallCandidates(newNexoId) {
     var self = this, nx = _normId(newNexoId);
     var norm = function(s) { return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase(); };

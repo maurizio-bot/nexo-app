@@ -517,7 +517,7 @@ export function _renderMessage(msg, skipSave) {
       } else if (attachment.type === 'contact') {
         _renderContactCard(contentDiv, attachment.meta || {}, msg);
       } else if (attachment.type === 'cobro') {
-        _renderCobroCard(contentDiv, attachment.meta || {}, msg);
+        _renderCobroCard(contentDiv, attachment.meta || {}, msg, msg._own ? '' : (msg.senderNexoId || (msg.groupId ? '' : _getCurrentContactId()) || '')); // 3135: quién lo pide (aviso si no está verificado)
       } else if (attachment.type === 'audio') {
         var dur = (attachment.meta && attachment.meta.duration) ? attachment.meta.duration : 0;
         var durStr = _fmtTime(dur);
