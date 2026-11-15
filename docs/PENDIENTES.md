@@ -6,6 +6,15 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 15-11 (resúmenes diarios del 14-11: S23 3057, vivo …db61 3052, …ab2f 3052)
+- **Wi-Fi Direct lento:** el S23 mandó 1 archivo por Wi-Fi Direct a 53,9 KB/s (y el 15-11 373 KB en 5 s ≈ 75 KB/s). Debería ser de
+  MB/s. Sin saber el tamaño no se distingue si es el armado del grupo (~4 s) o el ritmo de envío. Prueba física pedida: un vídeo de
+  ~20 MB por Wi-Fi Direct y mirar «Velocidad de hoy por camino». Si sale lento con un archivo grande, investigar el ritmo (ventana,
+  trozo) por ese camino.
+- **Teléfonos en la 3052 (…db61 y …ab2f):** Wi-Fi local listo en ~11 s de media (hasta 81 s), internet hasta 22 s; el S23 en la 3057:
+  0,3 s. Que actualicen (regla 14-11: no se arregla nada para versiones viejas).
+- Internet: el S23 manda a 34,7 KB/s por relés; el vivo RECIBE archivos por internet a 872 KB/s de media (buzón de archivos).
+
 ## 🆕 15-11 tarde (plan del dueño: «primero reestructura, luego la implementación»)
 - **Revisión semanal (fin de semana, dueño 15-11):** ningún archivo > 1.000 líneas (`tests/sim/tamano.js` + `tamano.json`; cada
   partición con `tools/partir_check.cjs`). Hecho: ble_ack.js (3108). Siguen: ble_messages.js, vault_manager.js, net_link.js,
