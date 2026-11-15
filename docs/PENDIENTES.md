@@ -11,7 +11,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   (hoy siempre en español); NOVEDADES en 5 idiomas.
 - **Enlace de invitación (dueño 15-11, WhatsApp y TikTok):** en «Agregar contacto», «Invitar a NEXO» con accesos a WhatsApp, TikTok y
   «Más» (menú de compartir del teléfono); sin leer la agenda. El enlace lleva NEXO ID + código de comprobación (de un uso / caduca).
-  **Decisión del dueño:** la página web del enlace (gratis en GitHub, pública, o dominio propio).
+  **Aprobado por el dueño (15-11: «tu ajuste me parece bien, hazlo de esa forma»)**; va después de los idiomas. Falta su decisión de la
+  página web del enlace (gratis en GitHub, pública, o dominio propio); la parte de la app se hace igual, con la dirección configurable.
 - **De la revisión del análisis de Grok (dueño: «agrega esos 5 puntos»):**
   1. Revisar cada adjunto que llega por su contenido real (tipo verdadero, tamaño), no solo por lo que dice el mensaje. **Visto bueno del
      dueño (seguridad).**
