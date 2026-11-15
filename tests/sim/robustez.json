@@ -146,8 +146,8 @@
    "nombre": "Conexión Bluetooth y enlace",
    "peso": 10,
    "telefono": {
-    "estado": "reciente",
-    "por": "2960: el dueño probó la fase «conectar» y dijo «todo bien»; sus diagnósticos del 08-11 confirman el dedup de enlaces repetidos funcionando y Bluetooth + archivos grandes OK. Pendiente de confirmar el 2962 (nativo #129: soltar la cola de un BT atascado), armado encima a partir de ese mismo diagnóstico y aún sin re-probar en teléfono",
+    "estado": "ok",
+    "por": "15-11 (diagnósticos automáticos S23 3057 y S24 3059, criterio del dueño: «los diagnósticos deben contar como pruebas reales»): enlaces Bluetooth con MTU 517 que se abren y se recuperan solos al volver la app, enlace muerto detectado y reconectado (00:08:21), audios entregados por Bluetooth a 12–16 KB/s",
     "nota": "dueño: todo (mensajes, llamadas, archivos) viaja por el enlace Bluetooth/Wi-Fi; probado y OK en 2960, con un cambio nativo (2962) pendiente de re-confirmar"
    },
    "revision": {
@@ -496,8 +496,8 @@
    "nombre": "Fotos, vídeos y archivos",
    "peso": 10,
    "telefono": {
-    "estado": "reciente",
-    "por": "2960: el dueño probó y dijo «parece que Bluetooth y archivos grandes ok 2960»; sus diagnósticos del 08-11 confirman un archivo grande que viaja SOLO por internet (autonomía 2957) y el envío de fotos. Pendiente de confirmar el 2961 (mandar varias fotos de una), armado encima y aún sin re-probar en teléfono",
+    "estado": "ok",
+    "por": "15-11 (diagnósticos S23 3057 19:46–19:47): audios por Bluetooth entregados (12–16 KB/s), uno por Wi-Fi Direct S23→S24 de 373 KB en 5,2 s (primera vez que se ve funcionar Wi-Fi Direct en los teléfonos del dueño) y archivos por internet a 34,7 KB/s. Lo que no llegó fue a apps dormidas (pendiente: despertar antes de mandar)",
     "nota": "dueño: envía/recibe fotos y vídeos; archivos grandes OK en 2960 (incluso autónomo por internet); multi-foto (2961) pendiente de re-confirmar. Quedan casos por internet abiertos (#99), no el envío en sí"
    },
    "revision": {
@@ -993,8 +993,8 @@
    "nombre": "Llamadas de voz",
    "peso": 10,
    "telefono": {
-    "estado": "antes",
-    "por": "25-10 (2771): interferencias en el micrófono (eco); 2768: en videollamada a veces no se oía (arreglos en la 2769, 2770 y 2772, sin probar)",
+    "estado": "reciente",
+    "por": "15-11 (dueño, con la 3057): estuvo en dos llamadas a la vez (una normal y una de grupo) y le parecieron «muy buenas»; 14-11: videollamadas por Wi-Fi S24↔Xiaomi de varios minutos (diagnóstico). Después cambiaron (3102–3106: dos llamadas, espera, «Mensaje») sin volver a probarse",
     "nota": "dueño (PROGRESO ~l.533): «con batería Sin restricciones las llamadas ya [funcionan]»; hace llamadas. Últimos arreglos (2874 colgar) a re-confirmar; 14-11: en las videollamadas el eco y el ruido «mejoró significativamente» (dueño); la llamada solo de voz, sin probar hoy"
    },
    "revision": {
@@ -1247,8 +1247,8 @@
    "nombre": "Avisos, segundo plano y app cerrada",
    "peso": 10,
    "telefono": {
-    "estado": "falla",
-    "por": "14-11 (3052, vivo): con la pantalla ENCENDIDA los avisos llegan puntuales, uno por mensaje, y el audio se oye; con la pantalla APAGADA no suena ni llega ningún aviso (dueño). Causa vista en el diagnóstico del S24 (12:00: 10 textos al vivo con ✓✓ en 1 s cada uno y leídos a las 12:18): la app del vivo seguía despierta con el chat del S24 abierto y su regla «el chat abierto nunca avisa» no tenía límite de tiempo. Arreglado en la 3091 (chatabierto O4–O6), falta confirmarlo en el teléfono",
+    "estado": "antes",
+    "por": "14-11 (dueño, 3052, vivo): con la pantalla APAGADA no llegaba ningún aviso (último informe físico). Desde entonces, arreglos 3086–3092 y, en los diagnósticos del 15-11, avisos que llegan y abren el chat con la app en segundo plano (S23 19:46: «Aviso tocado: abro el chat») y 46 despertares por mensaje en el S24. Falta la prueba física con la pantalla apagada (la nº 1 de la lista corta)",
     "nota": "dueño 28-10 base 2823: «Probada a fondo para la ENTREGA con app cerrada + pantalla apagada ✓»; cambió desde entonces (FCM despertador), a re-confirmar en la última"
    },
    "revision": {
@@ -1442,8 +1442,8 @@
    "nombre": "Grupos",
    "peso": 5,
    "telefono": {
-    "estado": "antes",
-    "por": "Pedido probar desde la 2758/2765; sin respuesta aún",
+    "estado": "reciente",
+    "por": "15-11 (dueño, con la 3057): llamada de grupo real agregando a otra persona (la que no contestó se quedó «Conectando…», arreglado en la 3100). Después cambiaron (3100–3106) sin volver a probarse",
     "nota": "dueño base 2858: llamada/videollamada de grupo probada, «lo menos peor», el vídeo se ve (ya NO es «nunca probado»)"
    },
    "revision": {
