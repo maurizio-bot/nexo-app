@@ -15,6 +15,8 @@ publicación y primeros usuarios; febrero campaña previa y la prueba de fuego.
 - [ ] Reestructuración del puente con Android (4.753 líneas) — en curso.
 - [ ] Idiomas: portugués de Brasil y francés; avisos del teléfono en el idioma de la app (hoy salen en español).
 - [ ] Despertar la app del otro antes de mandarle un archivo grande (hoy se gastan reintentos con apps dormidas).
+- [ ] Atascos, lo que falta del plan del 14-11 (aprobado por el dueño): si un contacto con enlace sano no confirma lo tuyo,
+      pedir el desatasco desde el que manda y avisar «el teléfono de X no puede leer tus mensajes». Lo demás ya está (ver abajo).
 - [ ] Avisos con la pantalla apagada: prueba física del dueño y, si falla, arreglo.
 - [ ] Pruebas físicas clave (ver «Lo que te toca»).
 - **Cumplido cuando:** batería en verde, índice ≥ 75 y las pruebas físicas clave sin fallos.
@@ -71,6 +73,10 @@ publicación y primeros usuarios; febrero campaña previa y la prueba de fuego.
 - ✓ Fénix (respaldo repartido entre contactos de confianza) y pasar la cuenta a otro teléfono (falta la prueba física).
 - ✓ Actualizador automático con novedades de cada versión; diagnóstico automático y resumen diario.
 - ✓ Servidores de paso de reserva (si uno falla, otro en segundos).
+- ✓ Atascos (tras el bucle del APK de 25 MB del 10-11): envíos de a uno y que siguen donde iban (2995–3007); un mensaje que
+  espera no gasta reintentos (2993); sobre un Bluetooth caído o una app congelada queda en espera, no fallido (3002, 3009);
+  desatasco automático, también en grupos (3069, 3071); Bluetooth solo de emergencia y solo a quien está cerca (3079, 3084); un
+  archivo que va por Bluetooth se pasa a mitad al Wi-Fi o a internet (3080).
 - ✓ 5 idiomas pedidos: español, italiano e inglés hechos; portugués y francés en la etapa 1.
 
 ## Decisiones del dueño (en orden de urgencia)
