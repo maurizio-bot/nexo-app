@@ -11,13 +11,19 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Al abrir Ajustes ves al momento si hay versión nueva: «Actualizar a la versión N».
 - El aviso «Hay una versión nueva» muestra lo que trae al desplegarlo.
+- Al volver a la app tras un cambio de red, se reconecta una sola vez y más rápido.
 </es-419>
 <it-IT>
+- Aprendo Impostazioni vedi subito se c'è una nuova versione: «Aggiorna alla versione N».
 - L'avviso «C'è una nuova versione» mostra le novità quando lo apri.
+- Tornando all'app dopo un cambio di rete, si riconnette una sola volta e più in fretta.
 </it-IT>
 <en-US>
+- Open Settings and see right away if there's a new version: «Update to version N».
 - The «New version available» notice shows what's new when you expand it.
+- After a network change, the app reconnects only once and faster.
 </en-US>
 <!-- /APK -->
 

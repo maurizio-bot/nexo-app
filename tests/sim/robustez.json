@@ -941,6 +941,10 @@
      "prueba": "Wi-Fi ↔ datos al instante"
     },
     {
+     "fallo": "3109 (diagnóstico S23 3057 15-11 19:46:10): al volver la app llegaron 4 avisos de cambio de red en 3 ms (Wi-Fi → sin red → datos → Wi-Fi → datos) y cada uno cerró y reabrió TODOS los relés: 3 vueltas de conexiones a medias; luego más de un minuto sin relés por datos. 3109: los avisos seguidos (250 ms) se juntan y se actúa una vez con la red en la que quedó; el registro dice cuántos avisos se juntaron. redcambio.js W4: 3108 = 6 reaperturas; 3110 = 2 (una por relé) y lo siguiente llega en 0,7 s",
+     "prueba": "Wi-Fi ↔ datos al instante"
+    },
+    {
      "fallo": "Diagnósticos S24 08:09 y vivo 08:49 del 14-11: el vivo, con el chat del S24 abierto al irse a segundo plano y la app dormida por el sistema 40 min, recibió (su nativo) dos textos y nunca los confirmó: el aviso de respaldo del nativo se saltaba entero para el chat abierto (regla del dueño 08-11), confirmación incluida, y para siempre; el S24 reenviaba sin fin. El simulador no imitaba esa regla (por eso no saltaba). 3086 (Kotlin, BgNotifyPolicy): la confirmación sale siempre y el aviso solo se calla en un parpadeo a segundo plano (< 15 s). chatabierto.js: 3085 = nunca ✓✓; 3086 = ✓✓ en 4 s.",
      "prueba": "chat abierto y app dormida"
     },
@@ -1546,6 +1550,10 @@
     {
      "fallo": "3105 (dueño 15-11: «donde está el botón de actualizar, lo que se tocó y lo que se actualizó… una breve descripción… para tener ya un antecedente para cuando se suba a Google Play»): las actualizaciones no decían qué traían (el lanzamiento llevaba notas automáticas de GitHub, sin nada para el usuario). 3105: NOVEDADES.md con el bloque de la próxima APK en el formato de Google Play (es-419, it-IT, en-US, ≤ 500 caracteres cada uno); el workflow lo pone como descripción del lanzamiento; el nativo (UpdateSpec.cleanNotes/notesOf) la devuelve solo si viene en ese formato, recortada y sin caracteres de control; la app muestra el idioma propio en el aviso («¿Qué trae?») y en Ajustes («Lo nuevo en la versión N» y «Lo nuevo de tu versión»), siempre como texto. updater.js (8): 3104 = sin novedades; 3105 = todo; novedades.js comprueba el bloque y los 500 caracteres; Kotlin UpdateSpecTest.novedadesSoloEnFormatoDeGooglePlay",
      "prueba": "NOVEDADES de cada versión"
+    },
+    {
+     "fallo": "3110 (dueño 15-11: «al pulsar el botón de ajuste se inicia en automático la búsqueda… que no diga búsqueda sino que diga actualiza a la última versión»): en Ajustes había que tocar «Buscar ahora» para saber si había una versión nueva. 3110: al abrir Ajustes se consulta sola (como mucho cada 2 min: GitHub limita las consultas) y el botón dice lo que hay: «Actualizar a la versión N», «Tienes la última versión» (apagado) o «Volver a intentar». updater.js (5)–(6): 3108 = «Buscar ahora» sin consultar; 3110 = consulta sola y botón claro",
+     "prueba": "actualizador automático del APK de probadores"
     },
     {
      "fallo": "3107 (dueño 15-11, mismo pedido): el aviso del sistema «Hay una versión nueva» (el del botón «Actualizar» con la app fuera de la vista) no decía qué traía. 3107: la parte web le pasa las novedades ya en el idioma de la app (updateNotify notes, ≤ 1500) y el nativo las pone al desplegar el aviso (BigTextStyle). updater.js aviso_sistema_con_novedades: 3106 = sin novedades; 3107 = con las del idioma, sin etiquetas",
