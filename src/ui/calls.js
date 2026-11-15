@@ -321,11 +321,11 @@ export class Calls {
     var c = this.call; if (!c || c.state !== 'active') return;
     if (!on && this.ble && typeof this.ble._holdOthers === 'function') this.ble._holdOthers(this); // reanudar esta = la otra en espera
     c.userHold = !!on;
-    this._applyHold(c, on ? 'En espera (otra llamada)' : 'Reanudada');
+    if (this._applyHold(c)) console.log('[CALL] ' + (on ? 'En espera (otra llamada)' : 'Reanudada') + ' (' + c.nx + ')');
   }
-  _applyHold(c, why) {
+  _applyHold(c) { // true si cambió (las dos esperas, usuario y teléfono, se suman)
     var self = this, want = !!(c.userHold || c.phoneHold);
-    if (want === !!c.held) { self._set({ held: want, userHold: !!c.userHold }); return; }
+    if (want === !!c.held) { self._set({ held: want, userHold: !!c.userHold }); return false; }
     c.held = want;
     if (want) {
       if (c.media && c.media.mute) try { c.media.mute(true); } catch (e) {}
@@ -337,7 +337,7 @@ export class Calls {
       self._signal(c.nx, 'unhold');
     }
     self._set({ held: want, userHold: !!c.userHold });
-    console.log('[CALL] ' + why + ' (' + c.nx + ')');
+    return true;
   }
 
   // #dueño 01-11 (GRAVE): entró/salió una llamada TELEFÓNICA (el nativo lo avisa por el foco de audio, onCallInterruption).
@@ -348,7 +348,9 @@ export class Calls {
     var c = this.call;
     if (!c || c.state !== 'active') return;
     c.phoneHold = !!paused;
-    this._applyHold(c, paused ? 'En pausa por llamada telefónica (retenida, sin cortar)' : 'Reanudada tras la llamada telefónica');
+    if (!this._applyHold(c)) return;
+    if (paused) console.log('[CALL] En pausa por llamada telefónica (retenida, sin cortar) (' + c.nx + ')');
+    else console.log('[CALL] Reanudada tras la llamada telefónica (' + c.nx + ')');
   }
 
 
