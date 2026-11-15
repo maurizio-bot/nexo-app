@@ -7,14 +7,24 @@
 const fs = require('fs');
 const path = require('path');
 const root = path.resolve(__dirname, '../..');
-const src = fs.readFileSync(path.join(root, 'src/ui/i18n.js'), 'utf8');
-const a = src.indexOf('var STRINGS = {'), b = src.indexOf('\n};', a);
-if (a < 0 || b < 0) { console.log('I18N_AUDIT {"resultado":"FALLO","error":"no encuentro la tabla STRINGS"}'); process.exit(1); }
-const STR = new Function('return ' + src.slice(a + 'var STRINGS = '.length, b + 2))();
+// Reestructuración 15-11: un archivo por idioma (src/ui/i18n/<idioma>.js, «export default { clave: 'texto' }»). Se juntan aquí en
+// la forma de antes ({ clave: { es, it, en } }) para que el resto de la auditoría no cambie; las claves y el orden mandan en español.
+const LANGS = (/export var LANGS = \[([^\]]*)\]/.exec(fs.readFileSync(path.join(root, 'src/ui/i18n.js'), 'utf8')) || [, "'es','it','en'"])[1].split(',').map((x) => x.trim().replace(/['"]/g, '')).filter(Boolean);
+const TAB = {};
+for (const l of LANGS) {
+  const f = path.join(root, 'src/ui/i18n', l + '.js');
+  if (!fs.existsSync(f)) { console.log('I18NAUDIT ' + JSON.stringify({ resultado: 'FALLO', error: 'falta el archivo del idioma ' + l })); process.exit(1); }
+  const txt = fs.readFileSync(f, 'utf8'), a = txt.indexOf('export default {'), b = txt.lastIndexOf('\n};');
+  TAB[l] = new Function('return ' + txt.slice(a + 'export default '.length, b + 2))();
+}
+const STR = {};
+for (const k of Object.keys(TAB.es)) { STR[k] = {}; for (const l of LANGS) if (k in TAB[l]) STR[k][l] = TAB[l][k]; }
 const keys = Object.keys(STR);
+// claves que están en otro idioma y no en español (sobran o se escribieron mal)
+const deMas = []; for (const l of LANGS) for (const k of Object.keys(TAB[l])) if (!(k in TAB.es)) deMas.push(k + ':' + l);
 
 function walk(d, out) { for (const f of fs.readdirSync(d)) { const p = path.join(d, f); const s = fs.statSync(p); if (s.isDirectory()) walk(p, out); else if (/\.js$/.test(f)) out.push(p); } return out; }
-const files = walk(path.join(root, 'src'), []).filter((f) => !/[\\/]ui[\\/]i18n\.js$/.test(f));
+const files = walk(path.join(root, 'src'), []).filter((f) => !/[\\/]ui[\\/]i18n(\.js$|[\\/])/.test(f));
 const used = new Map(); // clave -> [archivo...]
 const re = /\bt\(\s*(['"])([a-zA-Z0-9_.]+)\1\s*(?:,|\))/g;
 for (const f of files) {
@@ -32,21 +42,22 @@ const VACIAS_OK = new Set(['grp_ago_prefix:it', 'grp_ago_prefix:en']); // vacía
 const faltan = [], vacias = [], iguales = [], sinTabla = [], sinUso = [];
 for (const k of keys) {
   const v = STR[k];
-  for (const l of ['es', 'it', 'en']) if (!v || typeof v[l] !== 'string' || !v[l].trim()) { (v && l in v ? (VACIAS_OK.has(k + ':' + l) ? null : vacias) : faltan)?.push(k + ':' + l); }
-  if (v && v.es && v.it && v.en) {
-    const same = (x) => x === v.es && v.es.length > 3 && /[a-záéíóúñ]{4,}/i.test(v.es) && !(v.es === v.it && v.es === v.en);
-    if (same(v.it)) iguales.push(k + ':it');
-    if (same(v.en)) iguales.push(k + ':en');
+  for (const l of LANGS) if (!v || typeof v[l] !== 'string' || !v[l].trim()) { (v && l in v ? (VACIAS_OK.has(k + ':' + l) ? null : vacias) : faltan)?.push(k + ':' + l); }
+  if (v && LANGS.every((l) => v[l])) {
+    const otros = LANGS.filter((l) => l !== 'es');
+    const same = (x) => x === v.es && v.es.length > 3 && /[a-záéíóúñ]{4,}/i.test(v.es) && !otros.every((l) => v[l] === v.es);
+    otros.forEach((l) => { if (same(v[l])) iguales.push(k + ':' + l); });
   }
   if (!used.has(k)) sinUso.push(k);
 }
 for (const [k, fs_] of used) if (!(k in STR)) sinTabla.push(k + '  (' + Array.from(fs_).slice(0, 2).join(', ') + ')');
 
-const ok = !faltan.length && !vacias.length && !sinTabla.length;
-const r = { prueba: 'i18n_audit', resultado: ok ? 'OK' : 'FALLO', claves: keys.length, usadas: used.size, faltan_idioma: faltan.length, vacias: vacias.length, usadas_sin_tabla: sinTabla.length, iguales_al_es: iguales.length, sin_uso: sinUso.length };
+const ok = !faltan.length && !vacias.length && !sinTabla.length && !deMas.length;
+const r = { prueba: 'i18n_audit', resultado: ok ? 'OK' : 'FALLO', idiomas: LANGS.join(','), de_mas: deMas.length, claves: keys.length, usadas: used.size, faltan_idioma: faltan.length, vacias: vacias.length, usadas_sin_tabla: sinTabla.length, iguales_al_es: iguales.length, sin_uso: sinUso.length };
 console.log('I18NAUDIT ' + JSON.stringify(r));
 const show = (t, a_) => { if (a_.length) console.log('\n' + t + ' (' + a_.length + '):\n  ' + a_.slice(0, 60).join('\n  ') + (a_.length > 60 ? '\n  …' : '')); };
 show('Claves con idioma que falta o vacío', faltan.concat(vacias));
+show('Claves que no están en español (sobran o mal escritas)', deMas);
 show('Claves USADAS que no están en la tabla (en it/en se verá el respaldo en español)', sinTabla);
 show('Traducción igual al español (posible sin traducir)', iguales);
 
