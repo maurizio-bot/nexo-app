@@ -47,6 +47,11 @@ export const netRelays = {
       if (was && !self.online()) { console.log('[NET] Sin relés: internet no disponible'); self._peersDown(); }
       if (was && !r.gw && !self._realOpenCount() && self.gw && typeof self.gw.realLost === 'function') self.gw.realLost();
       if (!was && r.fails >= RELAY_DEAD_FAILS) self._spareCheck(); // 3114: no conecta → reserva al momento (sin esperar al latido)
+      // 3114: un relé que se cae (o cuyo primer reintento falla) vuelve a probarse a su hora (unos segundos) aunque haya otros abiertos:
+      // así uno caído de verdad se nota en segundos y entra el de reserva (antes esperaba al latido de 15 s y tardaba ~30 s)
+      else if (!r.gw && self._realOpenCount() && self._sparePool().length && !r._sidelined) setTimeout(function() {
+        if (!r.ws && self.relays.get(url) === r && (r.fails || 0) < RELAY_DEAD_FAILS) self._connect(url);
+      }, delay + 50);
       // 3050: sin internet propio, el reintento va a su hora (no al siguiente latido de 15 s): al volver la señal se nota en ≤ 15 s
       if (!r.gw && !self._realOpenCount()) setTimeout(function() {
         if (!r.ws && self.relays.get(url) === r && Date.now() >= (r.retryAt || 0) && (self.inTags.size || self.reqTags.size)) self._connect(url);

@@ -945,6 +945,10 @@
      "prueba": "Wi-Fi ↔ datos al instante"
     },
     {
+     "fallo": "3114 (dueño 15-11: «si un servidor no funciona se ocupa otro… rápido, no debe detectarse en el uso diario»; diagnósticos S24 3059 y S23 3057: relay.damus.io rechazó la conexión toda la noche, 26 intentos, uno cada 5 min). Solo había 4 relés fijos. 3114: relés de reserva en orden fijo (los dos teléfonos eligen el mismo); uno de los de siempre que no conecta 2 veces seguidas (la segunda a los pocos segundos) se da por caído y entra el siguiente de reserva para tener 3 sanos; cuando los de siempre vuelven, se sueltan. relevo.js: 3113 = sin reserva, con los de siempre caídos no llega nada; 3114 = reserva en 6,2 s, mensajes en 0,2 s, se suelta en 7,8 s",
+     "prueba": "RELÉS DE RESERVA"
+    },
+    {
      "fallo": "Diagnósticos S24 08:09 y vivo 08:49 del 14-11: el vivo, con el chat del S24 abierto al irse a segundo plano y la app dormida por el sistema 40 min, recibió (su nativo) dos textos y nunca los confirmó: el aviso de respaldo del nativo se saltaba entero para el chat abierto (regla del dueño 08-11), confirmación incluida, y para siempre; el S24 reenviaba sin fin. El simulador no imitaba esa regla (por eso no saltaba). 3086 (Kotlin, BgNotifyPolicy): la confirmación sale siempre y el aviso solo se calla en un parpadeo a segundo plano (< 15 s). chatabierto.js: 3085 = nunca ✓✓; 3086 = ✓✓ en 4 s.",
      "prueba": "chat abierto y app dormida"
     },

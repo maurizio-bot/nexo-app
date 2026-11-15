@@ -119,7 +119,7 @@ function pickFile(p, name, b) {
   r.R3_suelta_s = await waitFor(() => [0, 1, 2].every((i) => openOn(A, i)) && !openOn(A, 3) && !openOn(A, 4), 90000);
   r.R3_registro = logs.filter((l) => /\[A\].*\[NET\] (Relé de reserva|Los relés de siempre vuelven)/.test(l)).map((l) => l.replace(/^.*\[NET\] /, '').substring(0, 120));
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|net::ERR|fetch|WebSocket/.test(l)).slice(0, 5);
-  const ok = r.en_internet && typeof r.R1_reserva_s === 'number' && r.R1_reserva_s <= 20 && typeof r.R1_sigue_s === 'number' && r.R1_sigue_s <= 15 &&
+  const ok = r.en_internet && typeof r.R1_reserva_s === 'number' && r.R1_reserva_s <= 12 && typeof r.R1_sigue_s === 'number' && r.R1_sigue_s <= 15 &&
     typeof r.R2_llega_s === 'number' && r.R2_llega_s <= 30 && typeof r.R3_suelta_s === 'number' && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('RELEVO ' + JSON.stringify(r));
