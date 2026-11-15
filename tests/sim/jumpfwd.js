@@ -6,6 +6,7 @@
 // Prueba: A y B por Bluetooth; la app de B duerme (enlace vivo); A pasa por B un texto largo (5.000 caracteres) para un tercero.
 //  F1 A suelta el flujo en ≤ 30 s (contraprueba 3124: agota los 8 reintentos);   F2 como mucho 2 ventanas enteras reenviadas;
 //  F3 B queda marcado como puente que no responde.
+//  F4 (3127) el reintento por un camino que falla espera 15 s, 30 s… hasta 10 min (antes, como mucho 2 min: ~300 intentos en 10 h).
 // Uso: node jumpfwd.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -77,8 +78,11 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const win = logs.slice(n0);
   r.F2_ventanas_reenviadas = win.filter((l) => /\[A\].*Window timeout, reenviando ventana.*fwd_dormido_1/.test(l)).length;
   r.F3_puente_fuera = stalled.some((s) => s.indexOf(idB) >= 0 || s.toLowerCase().replace(/[^0-9a-f]/g, '').indexOf(String(macB).toLowerCase().replace(/[^0-9a-f]/g, '')) >= 0);
+  // F4 (3127): el reintento por un camino que falla espera cada vez más, hasta 10 min (antes 2)
+  try { const RL = await import(require('url').pathToFileURL(path.join(buildDir, 'src/ui/ble_relay.js')).href); r.F4_esperas_s = [1, 2, 4, 5, 6, 7, 20].map((n) => RL._hopFailWaitMs(n) / 1000); } catch (e) { r.F4_esperas_s = String(e && e.message); }
+  r.F4_tope_10_min = Array.isArray(r.F4_esperas_s) && r.F4_esperas_s.join(',') === '15,30,120,240,480,600,600';
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
-  const ok = r.emparejados_s !== null && r.F1_suelta_s !== null && r.F1_suelta_s <= 30 && r.F2_ventanas_reenviadas <= 2 && r.F3_puente_fuera && !r.errores.length;
+  const ok = r.emparejados_s !== null && r.F1_suelta_s !== null && r.F1_suelta_s <= 30 && r.F2_ventanas_reenviadas <= 2 && r.F3_puente_fuera && r.F4_tope_10_min && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('JUMPFWD ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_jumpfwd.txt'), logs.join('\n'));

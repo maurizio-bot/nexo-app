@@ -1,4 +1,4 @@
-import { FILE_CHUNK_SIZE, CHAT_CHUNK_SIZE, FILE_WINDOW_SIZE, CHAT_WINDOW_SIZE, FILE_WINDOW_TIMEOUT_MS, CHAT_WINDOW_TIMEOUT_MS, _isLanDevice, _isNetDevice, LAN_PSEUDO_MTU, LAN_FILE_CHUNK, LAN_CHAT_CHUNK, NET_FILE_CHUNK, NET_CHAT_CHUNK, SMALL_MTU_MIN_CHUNK, FILE_PACING_DELAY_MS, CHAT_PACING_DELAY_MS, GLOBAL_TIMEOUT_MS, INTERACTIVE_MAX_CHARS, MAX_WINDOW_RETRIES, BT_RECHUNK_WRITES, BLE_FILE_MAX_CHARS, TINY_MTU, BLE_TINY_MTU_DEFER_CHARS, MTU_DEFER_MAX_WAIT_MS, _noResumeTx, NET_TOR_PREFER_CHUNKS, FILE_GLOBAL_TIMEOUT_MS, PEER_SAFE_MAX_MS, BULK_PRIO, BULK_YIELD_MAX_MS, BULK_YIELD_STEP_MS, _b64BodyStart, _normMac, _isBusyErr, _busyBackoffMs, _fenixYieldBle, _netFileAutoRetry, NET_FILE_AUTORETRY_BUDGET_MS, _binOk, PROTOCOL_VERSION, _nxOf, _chunkCheck, LINK_DOWN_WAIT_FILE_MS, LINK_DOWN_WAIT_MAX_MS, TEXT_BUSY_GRACE_MS, PEER_SAFE_FIRST_MS, PEER_SAFE_CAP_MS, FENIX_SILENT_RETRIES, BRIDGE_STALL_RETRIES, _normId, BRIDGE_STALL_MS, NET_BIG_MIN_CHUNKS, NET_SILENT_FULL_RETRIES, NET_SILENT_PROBE_MS, SLEEP_FILE_RETRIES, SLEEP_PROBE_MS, SLEEP_PROBE_MAX_MS, _isFenixTx } from './ble_ack_shared.js';
+import { FILE_CHUNK_SIZE, CHAT_CHUNK_SIZE, FILE_WINDOW_SIZE, CHAT_WINDOW_SIZE, FILE_WINDOW_TIMEOUT_MS, CHAT_WINDOW_TIMEOUT_MS, _isLanDevice, _isNetDevice, LAN_PSEUDO_MTU, LAN_FILE_CHUNK, LAN_CHAT_CHUNK, NET_FILE_CHUNK, NET_CHAT_CHUNK, SMALL_MTU_MIN_CHUNK, FILE_PACING_DELAY_MS, CHAT_PACING_DELAY_MS, GLOBAL_TIMEOUT_MS, INTERACTIVE_MAX_CHARS, MAX_WINDOW_RETRIES, BT_RECHUNK_WRITES, BLE_FILE_MAX_CHARS, TINY_MTU, BLE_TINY_MTU_DEFER_CHARS, MTU_DEFER_MAX_WAIT_MS, _noResumeTx, NET_TOR_PREFER_CHUNKS, FILE_GLOBAL_TIMEOUT_MS, PEER_SAFE_MAX_MS, BULK_PRIO, BULK_YIELD_MAX_MS, BULK_YIELD_STEP_MS, _b64BodyStart, _normMac, _isBusyErr, _busyBackoffMs, _fenixYieldBle, _netFileAutoRetry, NET_FILE_AUTORETRY_BUDGET_MS, _binOk, PROTOCOL_VERSION, _nxOf, _chunkCheck, LINK_DOWN_WAIT_FILE_MS, LINK_DOWN_WAIT_MAX_MS, TEXT_BUSY_GRACE_MS, PEER_SAFE_FIRST_MS, PEER_SAFE_CAP_MS, FENIX_SILENT_RETRIES, BRIDGE_STALL_RETRIES, _normId, BRIDGE_STALL_MS, NET_BIG_MIN_CHUNKS, NET_SILENT_FULL_RETRIES, NET_SILENT_PROBE_MS, SLEEP_FILE_RETRIES, SLEEP_PROBE_MS, SLEEP_PROBE_MAX_MS, NET_SMALL_PROBE_MS, _isFenixTx } from './ble_ack_shared.js';
 // ChatStream: un envío troceado en curso (ventanas, reintentos, confirmaciones). Reestructuración 15-11: antes, al final de ble_ack.js.
 function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.ackSystem = ackSystem;
@@ -666,15 +666,18 @@ ChatStream.prototype._onWindowTimeout = function() {
     // 3005: archivo grande por internet y el otro no confirma → «sondeo» (1 trozo por minuto) en vez de reenviar la ventana
     // entera cada 8 s al vacío. Mantiene el contador en el tope mientras siga el presupuesto de reintento solo (2 h, contacto
     // alcanzable); si se acaba, cae al tope de siempre (abajo).
-    if (_isNetDevice(self.deviceId) && self.type === 'file' && self.total >= NET_BIG_MIN_CHUNKS && self.windowRetryCount > NET_SILENT_FULL_RETRIES) {
+    // 3127: también un archivo PEQUEÑO por internet del que el otro no confirmó ni un trozo (su app duerme), con 1 trozo cada 15 s
+    var netBig = self.total >= NET_BIG_MIN_CHUNKS;
+    if (_isNetDevice(self.deviceId) && self.type === 'file' && (netBig || self.windowStart === 0) && self.windowRetryCount > NET_SILENT_FULL_RETRIES) {
       if (self.windowRetryCount > self.maxWindowRetries && self._netFileAutoRetryNow()) {
         self.windowRetryCount = self.maxWindowRetries;
         try { self.ackSystem._dispatchStatus(self.msgId, 'pending'); } catch (e) {}
       }
       if (self.windowRetryCount <= self.maxWindowRetries) {
-        if (!self._probing) console.log('[ChatStream] El otro no confirma: pruebo con 1 trozo cada ' + Math.round(NET_SILENT_PROBE_MS / 1000) + ' s hasta que conteste msgId=' + self.msgId);
+        var gapN = netBig ? NET_SILENT_PROBE_MS : NET_SMALL_PROBE_MS;
+        if (!self._probing) console.log('[ChatStream] El otro no confirma: pruebo con 1 trozo cada ' + Math.round(gapN / 1000) + ' s hasta que conteste msgId=' + self.msgId);
         self._probing = true;
-        self._probe();
+        self._probe(gapN);
         return;
       }
     }

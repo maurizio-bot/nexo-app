@@ -39,7 +39,10 @@ var AD_INTERVAL_MS = 30000;
 var ROUTE_TTL_MS = 95000;
 var QUEUE_FILE = 'nexo_relay_queue.json';
 var QUEUE_MAX_AGE_MS = 86400000;
-var HOP_FAIL_BASE_MS = 15000, HOP_FAIL_MAX_MS = 120000; // 3058: espera tras no poder reenviar por un camino (15 s, 30 s… 2 min)
+var HOP_FAIL_BASE_MS = 15000, HOP_FAIL_MAX_MS = 600000; // 3058: espera tras no poder reenviar por un camino (15 s, 30 s…); 3127: tope 10 min (antes 2)
+// 3127 (diagnóstico S24 3067 15-11: un texto suyo por un puente con la app dormida se reintentaba cada 2 min desde la noche anterior, ~10 h):
+// cuanto más falla un camino, más se espera, hasta 10 min; vuelve a 15 s en cuanto ese camino entrega algo.
+export function _hopFailWaitMs(n) { return Math.min(HOP_FAIL_MAX_MS, HOP_FAIL_BASE_MS * Math.pow(2, Math.max(0, (n || 1) - 1))); }
 var QUEUE_MAX = 200;
 var QUEUE_MAX_BYTES = 30000000; // lo guardado de paso para otros (fotos, textos largos) no pasa de ~30 MB
 var SEEN_TTL_MS = 3600000;
@@ -475,7 +478,7 @@ export class BleRelay {
       if (item.kind !== 'pkt' || item.reliable) {
         self._hopFail = self._hopFail || new Map();
         f = self._hopFail.get(fk) || { n: 0, until: 0, timer: null };
-        f.n++; f.until = Date.now() + Math.min(HOP_FAIL_MAX_MS, HOP_FAIL_BASE_MS * Math.pow(2, f.n - 1));
+        f.n++; f.until = Date.now() + _hopFailWaitMs(f.n);
         self._hopFail.set(fk, f);
         if (self._hopFail.size > 200) self._hopFail.delete(self._hopFail.keys().next().value);
       }

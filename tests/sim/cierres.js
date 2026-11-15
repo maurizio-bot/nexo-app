@@ -7,6 +7,7 @@
 //  C4  Android < 11 lo dice en una línea;
 //  C5  datos de NEXO del día por Wi-Fi y por datos móviles; un reinicio del teléfono (la cuenta vuelve a cero) no suma;
 //  C6  el analizador de diagnósticos reconoce la firma «cierre_con_problema».
+//  3127: los cierres del proceso que dibuja la pantalla («[ISOLATED NOT NEEDED]», diagnóstico S24 3067) se cuentan aparte.
 // Contraprueba: en la 3119 no existe diag_exits.js ni la línea de datos.
 // Uso: node cierres.js [dir_build]
 'use strict';
@@ -26,7 +27,8 @@ const fresh = (rel, tag) => import(pathToFileURL(path.join(buildDir, 'src', rel)
     exits: [
       { t: now - 5 * H, reason: 16, label: 'actualización de la app', problem: false, fg: false },
       { t: now - 2 * H, reason: 4, label: 'FALLO (error en la app)', problem: true, fg: true },
-      { t: now - 72 * H, reason: 6, label: 'CONGELADA (no respondía)', problem: true, fg: false, trace: '"main" prio=5 tid=1 Blocked\n  at com.nexo.ble.PluginGatt.connect(PluginGatt.kt:10)' }
+      { t: now - 72 * H, reason: 6, label: 'CONGELADA (no respondía)', problem: true, fg: false, trace: '"main" prio=5 tid=1 Blocked\n  at com.nexo.ble.PluginGatt.connect(PluginGatt.kt:10)' },
+      { t: now - 5 * H, reason: 13, label: 'otro motivo del sistema', problem: false, fg: false, desc: '[ISOLATED NOT NEEDED] isolated not needed' }
     ],
     crashes: '15-11 13:00:00 hilo main: java.lang.IllegalStateException: cola llena\n    at com.nexo.ble.PluginBleSend.enqueue(PluginBleSend.kt:42)\n'
   };
@@ -44,7 +46,8 @@ const fresh = (rel, tag) => import(pathToFileURL(path.join(buildDir, 'src', rel)
   await E.exitsInit(); await wait(60);
   const L = E.exitsLines();
   r.lineas = L.slice(0, 6);
-  r.C1_cabecera = L.some((l) => /Cierres de la app \(7 días\): 3, 2 con problema · memoria máx\. de la app 512 MB/.test(l));
+  r.C1_cabecera = L.some((l) => /Cierres de la app \(7 días\): 3, 2 con problema \(\+1 del proceso que dibuja la pantalla, normales\) · memoria máx\. de la app 512 MB/.test(l));
+  r.C1_sin_isolated = !L.some((l) => /ISOLATED/.test(l)); // 3127
   r.C1_marca = L.filter((l) => /^ {2}⚠ /.test(l)).length === 2 && L.some((l) => /^ {2}\d\d-\d\d \d\d:\d\d actualización de la app \(detrás\)/.test(l));
   r.C1_orden = L.findIndex((l) => /FALLO/.test(l)) < L.findIndex((l) => /actualización/.test(l));
   r.C1_congelada = L.some((l) => /Hilo principal en la congelada/.test(l)) && L.some((l) => /^ {4}\s*at com\.nexo\.ble\.PluginGatt\.connect/.test(l));
@@ -82,7 +85,7 @@ const fresh = (rel, tag) => import(pathToFileURL(path.join(buildDir, 'src', rel)
   const txt = '===== ESTADO (15:00:00 hora local) =====\n' + L.join('\n') + '\n';
   let an = ''; try { const a = analizar({ text: txt, sym: 'cierre_fallo', build: 3120 }); an = typeof a === 'string' ? a : JSON.stringify(a); } catch (e) { an = 'ERROR ' + e.message; }
   r.C6_firma = /cierre_con_problema ×2/.test(an);
-  const ok = r.C1_cabecera && r.C1_marca && r.C1_orden && r.C1_congelada && r.C1_fallos && r.C2_uno && r.C3_no_repite && r.C3_nuevo && r.C4_viejo && r.C5_datos && r.C6_firma;
+  const ok = r.C1_cabecera && r.C1_sin_isolated && r.C1_marca && r.C1_orden && r.C1_congelada && r.C1_fallos && r.C2_uno && r.C3_no_repite && r.C3_nuevo && r.C4_viejo && r.C5_datos && r.C6_firma;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('CIERRES ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);

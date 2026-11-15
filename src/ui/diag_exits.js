@@ -16,7 +16,11 @@ function _p2(n) { return (n < 10 ? '0' : '') + n; }
 function _when(ms) { var d = new Date(ms); return _p2(d.getDate()) + '-' + _p2(d.getMonth() + 1) + ' ' + _p2(d.getHours()) + ':' + _p2(d.getMinutes()); }
 function _seen() { try { return Number(localStorage.getItem(SEEN_KEY)) || 0; } catch (e) { return 0; } }
 function _setSeen(v) { try { localStorage.setItem(SEEN_KEY, String(v)); } catch (e) {} }
-function _list() { return (_res && Array.isArray(_res.exits)) ? _res.exits.slice().sort(function(a, b) { return (b.t || 0) - (a.t || 0); }) : []; }
+// 3127 (diagnóstico S24 3067): Android también apunta los cierres del proceso aparte que dibuja la pantalla («[ISOLATED NOT NEEDED]»,
+// al actualizar o al quedar sin uso). Son normales: se cuentan aparte para que no tapen los de la app.
+function _isIsolated(e) { return /isolated/i.test(String((e && e.desc) || '')); }
+function _all() { return (_res && Array.isArray(_res.exits)) ? _res.exits.slice().sort(function(a, b) { return (b.t || 0) - (a.t || 0); }) : []; }
+function _list() { return _all().filter(function(e) { return !_isIsolated(e); }); }
 function _row(e) { return _when(e.t) + ' ' + (e.label || ('motivo ' + e.reason)) + (e.fg ? ' (a la vista)' : ' (detrás)') + (e.desc ? ' — ' + e.desc : ''); } // i18n-ok: texto para el desarrollador
 
 /** Líneas para el diagnóstico (vacío si aún no se pidió al nativo o no hay nativo). */
@@ -24,8 +28,9 @@ export function exitsLines() {
   if (!_res) return [];
   var out = [];
   if (_res.sdk && _res.sdk < 30) return ['Cierres de la app: Android ' + _res.sdk + ' no los guarda (hace falta Android 11)']; // i18n-ok
-  var list = _list(), bad = list.filter(function(e) { return e.problem; });
+  var list = _list(), bad = list.filter(function(e) { return e.problem; }), iso = _all().length - list.length;
   out.push('Cierres de la app (7 días): ' + list.length + (bad.length ? ', ' + bad.length + ' con problema' : ', ninguno con problema') + // i18n-ok
+    (iso ? ' (+' + iso + ' del proceso que dibuja la pantalla, normales)' : '') + // i18n-ok
     (_res.maxMemMb ? ' · memoria máx. de la app ' + _res.maxMemMb + ' MB' : '') + (_res.error ? ' · error al leerlos: ' + _res.error : '')); // i18n-ok
   list.slice(0, MAX_ROWS).forEach(function(e) { out.push('  ' + (e.problem ? '⚠ ' : '') + _row(e)); });
   if (list.length > MAX_ROWS) out.push('  … y ' + (list.length - MAX_ROWS) + ' más'); // i18n-ok

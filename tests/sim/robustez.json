@@ -975,6 +975,10 @@
     {
      "fallo": "3125 (diagnóstico automático S24 3059, 15-11 00:08, «zombi …db61»): un TEXTO largo propio que iba por un puente Jump con la app dormida reenviaba la ventana 0 entera cada 12 s (reintento 6 al volver la app); la regla 3021 de soltar un puente que no confirma solo valía para archivos. 3125: también los textos por un puente se sueltan a las 2 ventanas sin un trozo confirmado y el puente queda marcado. jumpfwd.js (contraprueba 3124: 8 reenvíos en 35 s; 3125: 1 en 7,8 s)",
      "prueba": "TEXTO largo por un PUENTE Jump dormido"
+    },
+    {
+     "fallo": "3127 (diagnóstico S24 3067 15-11 08:01): una nota de voz de 56 KB al S23 dormido y con datos móviles tardó 138 s: la ventana ENTERA (todo el audio) se reenviaba cada 8 s; el sondeo de la 3005 solo valía para archivos de ≥ 64 trozos. 3127: un archivo pequeño por internet sin un trozo confirmado sondea 1 trozo cada 15 s (los relés guardan lo publicado). netsmall.js (contraprueba 3126: 40 trozos en 60 s; 3127: 10, y llega en 3 s al despertar). Mismo diagnóstico: un texto por un puente dormido se reintentaba cada 2 min ~10 h → el reintento por un camino que falla espera hasta 10 min (jumpfwd F4)",
+     "prueba": "ARCHIVO PEQUEÑO por INTERNET a una app DORMIDA"
     }
    ],
    "debiles": [

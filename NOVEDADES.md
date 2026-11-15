@@ -13,18 +13,23 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <!-- APK -->
 <es-419>
 - Un mensaje largo que pasa por el teléfono de otro contacto ya no se queda reenviándose si ese teléfono está dormido: busca otro camino.
+- Una nota de voz o una foto por internet a alguien con la app dormida ya no gasta tus datos reenviándose: espera a que despierte.
 </es-419>
 <it-IT>
 - Un messaggio lungo che passa dal telefono di un altro contatto non resta più a rinviarsi se quel telefono dorme: cerca un'altra strada.
+- Un vocale o una foto via internet a chi ha l'app in pausa non consuma più i tuoi dati rinviandosi: aspetta che si svegli.
 </it-IT>
 <en-US>
 - A long message passing through another contact's phone no longer keeps resending if that phone is asleep: it looks for another way.
+- A voice note or photo sent over the internet to someone whose app is asleep no longer uses up your data resending: it waits for them to wake up.
 </en-US>
 <pt-BR>
 - Uma mensagem longa que passa pelo celular de outro contato não fica mais se reenviando se esse celular estiver adormecido: procura outro caminho.
+- Uma mensagem de voz ou foto pela internet para alguém com o app adormecido não gasta mais seus dados reenviando: espera ele acordar.
 </pt-BR>
 <fr-FR>
 - Un long message qui passe par le téléphone d'un autre contact ne se renvoie plus en boucle si ce téléphone est en veille : il cherche un autre chemin.
+- Un message vocal ou une photo envoyés par internet à quelqu'un dont l'app est en veille ne consomment plus vos données en boucle : ils attendent son réveil.
 </fr-FR>
 <!-- /APK -->
 
