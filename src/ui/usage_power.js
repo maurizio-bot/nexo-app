@@ -7,6 +7,9 @@
  *   bajó se reparte según cuánto de ese rato estuvo la app a la vista.
  * Límite honesto: Android no le dice a una app cuánto gasta ELLA SOLA (eso está en Ajustes → Batería → Uso por app); esto es lo que gasta
  * el TELÉFONO mientras NEXO está a la vista o detrás, que es una buena aproximación para comparar versiones y días.
+ * 3120: también los DATOS que usa NEXO (bytes recibidos + enviados, cuenta de Android de la propia app desde que se encendió el
+ * teléfono): entre dos muestras se suma lo que creció, por Wi-Fi o por datos móviles si las dos muestras estaban en la misma red
+ * (si no, «al cambiar de red»). Va aunque esté cargando. Un reinicio del teléfono pone la cuenta en cero: ese tramo no se cuenta.
  * Solo números, en localStorage (`nexo_power`, 14 días). Sale en el resumen diario y en el diagnóstico.
  * Perillas de prueba: window.NEXO_POWER_NOW (reloj), window.NEXO_POWER_SAMPLE_MS.
  */
@@ -19,7 +22,8 @@ function _lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 function _load() { try { var o = JSON.parse(_lsGet(KEY) || '{}'); return (o && typeof o === 'object') ? o : {}; } catch (e) { return {}; } }
 function _save(o) { var ks = Object.keys(o).sort(); while (ks.length > KEEP_DAYS) delete o[ks.shift()]; _lsSet(KEY, JSON.stringify(o)); }
 function _dayKey(ms) { var d = new Date(ms), p = function(n) { return (n < 10 ? '0' : '') + n; }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
-function _day(o, k) { return o[k] || (o[k] = { fg: 0, fm: 0, fd: 0, bm: 0, bd: 0 }); }
+function _day(o, k) { var d = o[k] || (o[k] = { fg: 0, fm: 0, fd: 0, bm: 0, bd: 0 }); if (d.nw == null) { d.nw = 0; d.nm = 0; d.no = 0; } return d; }
+function _mb(b) { return b >= 1048576 ? _n1(b / 1048576) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB'; }
 function _n1(x) { return (Math.round(x * 10) / 10).toString().replace('.', ','); }
 function _plugin() { return (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 
@@ -32,6 +36,14 @@ export function powerAccount(prev, cur, visMs) {
   return { fgMs: v, fgDrop: drop * share, bgMs: dt - v, bgDrop: drop * (1 - share) };
 }
 
+/** 3120: datos de NEXO entre dos muestras ({bytes, net: 'wifi'|'movil'|'otra'}); null si falta el dato o el teléfono se reinició. */
+export function dataAccount(prev, cur) {
+  if (!prev || !cur || typeof prev.rx !== 'number' || typeof cur.rx !== 'number' || typeof prev.tx !== 'number' || typeof cur.tx !== 'number') return null;
+  var b = (cur.rx + cur.tx) - (prev.rx + prev.tx); if (!(b >= 0)) return null; // la cuenta volvió a cero: se reinició el teléfono
+  var net = (prev.net && prev.net === cur.net) ? (cur.net === 'Wi-Fi' ? 'wifi' : (cur.net === 'datos móviles' ? 'movil' : 'otra')) : 'otra';
+  return { bytes: b, net: net };
+}
+
 /** Líneas de un día: tiempo a la vista y gasto sin cargar (solo con datos suficientes: 20 min a la vista / 1 h en segundo plano). */
 export function powerLines(key) {
   var d = _load()[key || _dayKey(_now())]; if (!d) return [];
@@ -41,6 +53,14 @@ export function powerLines(key) {
   if (d.fm >= 20 * 60000) parts.push('a la vista ' + _n1(d.fd / (d.fm / 3600000)) + ' %/h (en ' + Math.round(d.fm / 60000) + ' min)'); // i18n-ok: texto para el desarrollador
   if (d.bm >= 3600000) parts.push('en segundo plano ' + _n1(d.bd / (d.bm / 3600000)) + ' %/h (en ' + _n1(d.bm / 3600000) + ' h)'); // i18n-ok: texto para el desarrollador
   if (parts.length) out.push('batería sin cargar (todo el teléfono): ' + parts.join(' · ')); // i18n-ok: texto para el desarrollador
+  var nt = (d.nw || 0) + (d.nm || 0) + (d.no || 0);
+  if (nt > 0) {
+    var dp = [];
+    if (d.nw > 0) dp.push('Wi-Fi ' + _mb(d.nw)); // i18n-ok: texto para el desarrollador
+    if (d.nm > 0) dp.push('datos móviles ' + _mb(d.nm)); // i18n-ok: texto para el desarrollador
+    if (d.no > 0) dp.push('al cambiar de red u otra ' + _mb(d.no)); // i18n-ok: texto para el desarrollador
+    out.push('datos de NEXO (recibidos + enviados): ' + _mb(nt) + ' (' + dp.join(' · ') + ')'); // i18n-ok: texto para el desarrollador
+  }
   return out;
 }
 
@@ -58,9 +78,11 @@ function _sample() {
   var vis = _visAccum; _visAccum = 0;
   return Promise.resolve(pl.getPowerStatus()).then(function(r) {
     if (!r || typeof r.level !== 'number') return null;
-    var cur = { at: _now(), level: r.level, charging: !!r.charging };
+    var cur = { at: _now(), level: r.level, charging: !!r.charging, rx: r.rx, tx: r.tx, net: r.net };
     var a = powerAccount(_last, cur, vis);
     if (a) _note(function(d) { d.fm += a.fgMs; d.fd += a.fgDrop; d.bm += a.bgMs; d.bd += a.bgDrop; });
+    var da = dataAccount(_last, cur);
+    if (da && da.bytes > 0) _note(function(d) { if (da.net === 'wifi') d.nw += da.bytes; else if (da.net === 'movil') d.nm += da.bytes; else d.no += da.bytes; });
     _last = cur;
     return a;
   }).catch(function() { return null; });
@@ -85,4 +107,4 @@ export function powerInit() {
 }
 
 // Gancho de pruebas
-try { if (typeof window !== 'undefined') window.__nexoPower = { lines: powerLines, account: powerAccount, sample: _sample }; } catch (e) {}
+try { if (typeof window !== 'undefined') window.__nexoPower = { lines: powerLines, account: powerAccount, data: dataAccount, sample: _sample }; } catch (e) {}

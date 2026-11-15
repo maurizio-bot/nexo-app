@@ -32,13 +32,15 @@ const FIRMAS = [
   { id: 'fenix_duplicado', re: /sendFile EN COLA .*fileId=fxs_/, min: 2, que: 'respaldo Fénix repetido al mismo contacto (el reintento guardado se sumaba al de Fénix)', arreglo: 3026 },
   { id: 'contacto_reinstalado', re: /se llama igual que .* reinstalado|contacto_duplicado/, min: 1, que: 'contacto duplicado por reinstalación', arreglo: 3018 },
   { id: 'sin_internet', re: /sin internet anunciado/, min: 1, que: 'contacto sin «tiene internet» guardado: no se lee su buzón (normal si su app es muy vieja; desde la 3020 se guarda al agregarlo)', arreglo: null, soloEstado: true, info: true },
+  // 3120: cierres de la app que Android guardó con motivo de problema (fallo, congelada, sin memoria) — sección «Cierres de la app»
+  { id: 'cierre_con_problema', re: /^ {2}⚠ \d\d-\d\d \d\d:\d\d /m, min: 1, que: 'la app se cerró por un fallo, congelada o sin memoria (ver «Cierres de la app» y «Fallos guardados al caer»)', arreglo: null },
   { id: 'blob_rechazado', re: /\[BLOB\] Puntero .* rechazado/, min: 1, que: 'archivo del buzón rechazado (versión/algoritmo)', arreglo: null },
   { id: 'gatt_133', re: /status[= ]133|GATT_ERROR|BT_ERR/, min: 5, que: 'errores GATT 133 repetidos (radio Bluetooth del teléfono)', arreglo: null },
   { id: 'reles_caidos', re: /\[NET\] Sin relés: internet no disponible/, min: 3, que: 'relés de internet que se caen varias veces', arreglo: null },
   { id: 'error_codigo', re: /\[ERROR\]|\[PROMESA\]/, min: 1, que: 'error de código', arreglo: null },
 ];
 // Síntomas graves por sí mismos (aviso al teléfono aunque no sean nuevos)
-const GRAVES = /^(error|promesa|par:error)$/;
+const GRAVES = /^(error|promesa|par:error|cierre_fallo)$/; // 3120: un cierre de la app por fallo, congelada o sin memoria
 
 const mask = (s) => String(s || '')
   .replace(/\b(?:[0-9A-F]{2}:){5}[0-9A-F]{2}\b/gi, '··:··')

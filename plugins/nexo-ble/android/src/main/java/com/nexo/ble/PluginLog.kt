@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.util.Log
+import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.PluginCall
 import java.io.File
@@ -102,6 +103,13 @@ internal fun NexoBlePlugin.getPowerStatusImpl(call: PluginCall) {
             }
             out.put("net", net)
         } catch (e: Exception) {}
+        // 3120: bytes que NEXO recibió y mandó desde que se encendió el teléfono (cuenta de Android de la propia app; el JS
+        // resta entre muestras para los datos del día). -1 = el teléfono no lo da.
+        try {
+            val uid = android.os.Process.myUid()
+            val rx = android.net.TrafficStats.getUidRxBytes(uid); val tx = android.net.TrafficStats.getUidTxBytes(uid)
+            if (rx >= 0 && tx >= 0) out.put("rx", rx).put("tx", tx)
+        } catch (e: Throwable) {}
         try {
             val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
             val m = wm.javaClass.getDeclaredMethod("isWifiApEnabled")
@@ -112,4 +120,42 @@ internal fun NexoBlePlugin.getPowerStatusImpl(call: PluginCall) {
     } catch (e: Exception) {
         call.reject("Estado de batería no disponible: ${e.message}")
     }
+}
+
+// 3120: cierres de la app de los últimos 7 días con su motivo (Android 11+), el hilo principal de un ANR y los fallos guardados
+// por CrashLog. Lo pide el diagnóstico una vez al arrancar (los cierres solo cambian cuando el proceso muere).
+internal fun NexoBlePlugin.getExitReasonsImpl(call: PluginCall) {
+    val out = JSObject()
+    val arr = JSArray()
+    out.put("sdk", Build.VERSION.SDK_INT)
+    try {
+        if (Build.VERSION.SDK_INT >= 30) {
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val since = System.currentTimeMillis() - 7L * 24 * 3600 * 1000
+            for (e in am.getHistoricalProcessExitReasons(context.packageName, 0, 20)) {
+                if (e.timestamp < since) continue
+                val o = JSObject().put("t", e.timestamp).put("reason", e.reason).put("label", ExitReasons.label(e.reason))
+                    .put("problem", ExitReasons.isProblem(e.reason))
+                    .put("fg", e.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND)
+                    .put("pssKb", e.pss).put("rssKb", e.rss)
+                if (!e.description.isNullOrBlank()) o.put("desc", ExitReasons.clip(e.description, 200))
+                if (e.reason == ExitReasons.ANR) {
+                    try {
+                        e.traceInputStream?.use { ins ->
+                            val buf = CharArray(200000)
+                            val n = ins.bufferedReader().read(buf)
+                            if (n > 0) o.put("trace", ExitReasons.anrMain(String(buf, 0, n)))
+                        }
+                    } catch (t: Throwable) {}
+                }
+                arr.put(o)
+            }
+        }
+    } catch (e: Throwable) {
+        out.put("error", ExitReasons.clip(e.message, 120))
+    }
+    out.put("exits", arr)
+    try { val f = File(context.filesDir, ExitReasons.FILE); if (f.exists()) out.put("crashes", f.readText().take(ExitReasons.MAX_FILE_CHARS)) } catch (e: Throwable) {}
+    try { out.put("maxMemMb", Runtime.getRuntime().maxMemory() / 1048576) } catch (e: Throwable) {}
+    call.resolve(out)
 }

@@ -11,6 +11,7 @@
  * Síntoma «entrega_lenta»: un texto propio que tardó más de SLOW_MS en llegar habiendo camino al mandarlo.
  */
 import { _getBLEContacts, _normId, _normMac } from './ble_helpers.js';
+import { exitsInit, exitsLines } from './diag_exits.js'; // 3120: cierres de la app
 
 var TRACE_MAX = 40;              // mensajes con línea de tiempo (los más recientes)
 var SLOW_MS = 2 * 60 * 1000;     // «entrega lenta»: más de 2 min con camino
@@ -107,6 +108,7 @@ export function diagStateInit() {
   }
   setTimeout(_refreshPower, 3000);
   setInterval(_refreshPower, 60000);
+  setTimeout(function() { try { exitsInit(); } catch (e) {} }, 2000); // 3120: una vez por arranque
 }
 
 function _tz() {
@@ -192,6 +194,7 @@ export function diagStateText() {
   // 3081: velocidad real de hoy por camino y cuánto tarda cada camino en quedar listo (usage_stats)
   try { var sp = typeof window.NEXO_speedLines === 'function' ? window.NEXO_speedLines() : []; if (sp.length) { out.push('Velocidad de hoy por camino:'); out = out.concat(sp); } } catch (e) {} // i18n-ok
   try { var pw = window.__nexoPower && typeof window.__nexoPower.lines === 'function' ? window.__nexoPower.lines() : []; if (pw.length) { out.push('Uso de hoy:'); out = out.concat(pw.map(function(l) { return '  ' + l; })); } } catch (e) {} // i18n-ok: 3119
+  try { out = out.concat(exitsLines()); } catch (e) {} // 3120: cierres de la app y su motivo
   return out.join('\n') + '\n';
 }
 

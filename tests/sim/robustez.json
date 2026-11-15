@@ -1336,6 +1336,10 @@
     {
      "fallo": "3119 (dueño 15-11: «¿ya implementaste en los diagnósticos el tiempo de uso de la aplicación y cuánto gasta NEXO de batería?»): no se medía; el diagnóstico solo decía el nivel del momento y si había ahorro de batería, y el resumen diario solo si se abrió la app. 3119: tiempo a la vista por día y % por hora sin cargar, a la vista y en segundo plano (lo que gasta el teléfono mientras NEXO corre: Android no da el gasto de una sola app); en el resumen diario y en el diagnóstico. bateria.js: 6 %/h a la vista, 2 %/h detrás, lo cargado no cuenta",
      "prueba": "TIEMPO DE USO y BATERÍA"
+    },
+    {
+     "fallo": "3120 (captura del dueño 15-11: Samsung decía «NEXO se bloqueó más de 10 veces en la última semana» —era el bucle del APK de 25 MB del 10-11, arreglado en 2995/3004/3005–3007— y el diagnóstico no registraba ningún cierre ni su motivo; tampoco los datos que usa NEXO). 3120: cierres de los últimos 7 días que guarda Android (getHistoricalProcessExitReasons, Android 11+) con su motivo, ⚠ para fallo/congelada/sin memoria, el hilo principal de una congelada y los fallos guardados al caer (CrashLog); un cierre con problema nuevo manda UN diagnóstico automático «cierre_fallo»; datos de NEXO por Wi-Fi y por datos móviles en el resumen diario. cierres.js (contraprueba 3119: no existe)",
+     "prueba": "CIERRES DE LA APP y DATOS"
     }
    ],
    "debiles": [

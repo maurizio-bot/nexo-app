@@ -51,6 +51,7 @@ class NexoFcmService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        CrashLog.install(this) // 3120: el proceso puede arrancar por un aviso de FCM sin pantalla ni servicio
         super.onMessageReceived(message)
         nlog("Despierta recibido (data=${message.data.size}, prio=${message.priority}/${message.originalPriority})")
 

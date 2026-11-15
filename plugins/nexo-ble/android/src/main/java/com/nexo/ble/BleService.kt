@@ -64,6 +64,7 @@ class BleService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "onCreate")
+        CrashLog.install(this) // 3120
         live = this
         createNotificationChannel()
     }

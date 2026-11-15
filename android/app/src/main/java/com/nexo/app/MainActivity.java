@@ -32,6 +32,8 @@ public class MainActivity extends BridgeActivity {
     } catch (Exception e) { Log.w("NEXO", "Pantalla de llamada sobre el bloqueo: " + e.getMessage()); }
 
     super.onCreate(savedInstanceState);
+    // 3120: guardar las primeras líneas de un fallo al caer (lo lee el diagnóstico: «Cierres de la app»)
+    try { com.nexo.ble.CrashLog.install(getApplicationContext()); } catch (Throwable t) {}
     // Con el teléfono girado Android deja libre la franja de la cámara frontal y la pinta con el fondo de la ventana
     // (gris en el tema del sistema): el mismo fondo oscuro que la app
     getWindow().setBackgroundDrawable(new ColorDrawable(0xFF070812));

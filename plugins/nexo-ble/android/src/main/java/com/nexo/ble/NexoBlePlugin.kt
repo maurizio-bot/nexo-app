@@ -339,6 +339,7 @@ class NexoBlePlugin : Plugin() {
     override fun load() {
         super.load()
         appCtx = activity.applicationContext
+        CrashLog.install(appCtx) // 3120: guardar las primeras líneas de un fallo al caer (diagnóstico)
         live = this
         takeOverFromClosed()
         watchDefaultNetwork() // 3085: avisar a la app de Wi-Fi ↔ datos al momento
@@ -808,6 +809,7 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod fun pdfThumbnail(call: PluginCall) = pdfThumbnailImpl(call)
 
     @PluginMethod fun getPowerStatus(call: PluginCall) = getPowerStatusImpl(call)
+    @PluginMethod fun getExitReasons(call: PluginCall) = getExitReasonsImpl(call)
 
     // ===== Wi-Fi Direct: fotos, vídeos y archivos con el contacto a alcance (mucho más rápido que BLE) =====
     // El que recibe crea un grupo con nombre y contraseña aleatorios (Android 10+: el otro se une sin aviso
