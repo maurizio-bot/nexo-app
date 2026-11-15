@@ -12,19 +12,19 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Mejoras de estabilidad y correcciones.
+- Si mandas un archivo a alguien con la app dormida, NEXO la despierta y espera a que conteste, sin gastar batería reenviándolo.
 </es-419>
 <it-IT>
-- Miglioramenti di stabilità e correzioni.
+- Se invii un file a qualcuno con l'app in pausa, NEXO la sveglia e aspetta che risponda, senza consumare batteria rinviandolo.
 </it-IT>
 <en-US>
-- Stability improvements and fixes.
+- If you send a file to someone whose app is asleep, NEXO wakes it up and waits for it to answer, without wasting battery resending.
 </en-US>
 <pt-BR>
-- Melhorias de estabilidade e correções.
+- Se você enviar um arquivo para alguém com o app adormecido, o NEXO o desperta e espera a resposta, sem gastar bateria reenviando.
 </pt-BR>
 <fr-FR>
-- Améliorations de stabilité et corrections.
+- Si vous envoyez un fichier à quelqu'un dont l'app est en veille, NEXO la réveille et attend sa réponse, sans gaspiller la batterie à le renvoyer.
 </fr-FR>
 <!-- /APK -->
 
