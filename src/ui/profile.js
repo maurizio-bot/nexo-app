@@ -494,6 +494,8 @@ function _renderFenixStatus() {
   if (fx.recovery) txt = _fenixRecoveryText || t('prof_fenix_searching', 'Buscando contactos cerca…');
   else if (!st.active) txt = t('prof_fenix_will_pre', 'Tu cuenta se protegerá sola cuando tengas ') + st.min + t('prof_fenix_will_mid', ' contactos con NEXO actualizado (tienes ') + st.eligible + ').';
   else txt = t('prof_fenix_protected', '🔥 Cuenta protegida: ') + st.delivered + t('prof_net_of', ' de ') + (st.n * st.copies) + t('prof_fenix_frags', ' fragmentos entregados (') + st.copies + (st.copies > 1 ? t('prof_fenix_copies', ' copias') : t('prof_fenix_copy', ' copia')) + t('prof_fenix_recover_with', '). Se recupera con ') + st.t + t('prof_fenix_contacts', ' contactos.') + (st.lost ? ' ' + st.lost + t('prof_fenix_lost', ' contacto(s) perdidos: sus fragmentos pasan a otros.') : '');
+  // 3137: los guardianes los elige la app por cómo te conectas (nadie los elige a mano)
+  if (st.active && !fx.recovery && (st.near || st.far)) txt += t('prof_fenix_close', '\nGuardianes elegidos por la app según cómo te conectas: {near} cercanos (te ves con ellos por Bluetooth: se recupera en persona) y {far} por internet o Wi-Fi.').replace('{near}', st.near || 0).replace('{far}', st.far || 0);
   // v9.9.50: Fénix fase 2 (mensajes de texto en segmentos, 2 copias)
   if (st.active && st.segs) txt += t('prof_fenix_msgs', '\n💬 Mensajes protegidos: ') + st.msgs + ' (' + st.segsSafe + t('prof_net_of', ' de ') + st.segs + t('prof_fenix_segs', ' segmentos ya en 2 contactos).');
   if (st.guarding) txt += t('prof_fenix_guard_pre', '\nGuardas fragmentos de ') + st.guarding + t('prof_fenix_guard_post', ' contacto(s) (no puedes leerlos).');

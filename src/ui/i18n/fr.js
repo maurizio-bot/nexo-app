@@ -554,6 +554,7 @@ export default {
   prof_fenix_recover_with: "). Il se récupère avec ",
   prof_fenix_contacts: " contacts.",
   prof_fenix_lost: " contact(s) perdu(s) : leurs fragments passent à d'autres.",
+  prof_fenix_close: "\nGardiens choisis par l'app selon votre façon de vous connecter : {near} proches (vous vous voyez par Bluetooth : récupération en personne) et {far} par internet ou Wi-Fi.",
   prof_fenix_msgs: "\n💬 Messages protégés : ",
   prof_fenix_segs: " segments déjà chez 2 contacts).",
   prof_fenix_guard_pre: "\nVous gardez des fragments de ",

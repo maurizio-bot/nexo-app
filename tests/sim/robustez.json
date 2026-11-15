@@ -1496,6 +1496,10 @@
     {
      "fallo": "3136 (anti-suplantación, dueño 15-11: cuenta robada pidiendo dinero): un cobro que te piden no decía nada de quién lo pide. 3136: si no está verificado el número de seguridad, aviso ámbar «antes de pagar, confirma con una llamada»; con señal de riesgo (unido por el nombre, clave de oídas o cambiada), en rojo «no pagues sin llamarle»; verificado, sin aviso. cobro.js (contraprueba 3134: sin aviso)",
      "prueba": "cobros (pagos Fase 1)"
+    },
+    {
+     "fallo": "3137 (dueño 15-11: «si mis contactos están todos en el extranjero, ¿cómo voy a comprobar que es mi teléfono?… los guardianes los tiene que elegir la aplicación, si los elige el usuario los puede elegir el impostor»): los guardianes de Fénix eran los 10 contactos con el mensaje más reciente, sin mirar si se ven en persona, y la recuperación pide estar cerca (Bluetooth) de 6. 3137: la app apunta los días distintos con Bluetooth con cada contacto y elige primero a los cercanos (≥ 3 días en 60); si no alcanzan, los más recientes marcados «por internet»; un contacto que pasa a cercano toma el fragmento de uno por internet (2 al día); el guardián sabe cuál es (para la recuperación por internet). fenixcerca.js C1–C6 (contraprueba 3136: no existe)",
+     "prueba": "GUARDIANES DE FÉNIX ELEGIDOS POR LA APP"
     }
    ],
    "debiles": [

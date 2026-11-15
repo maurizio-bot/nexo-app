@@ -35,6 +35,7 @@ var MSGS_FILE = 'nexo_fenix_msgs.json';    // dueño: segmentos de mensajes (cif
 var IDENTITY_FILE = 'nexo_e2e_identity.json';
 var RATCHET_FILE = 'nexo_ratchet.json';
 var NEXO_ID_FILE = 'nexo_advertising_id.json';
+var CLOSE_FILE = 'nexo_fenix_close.json';  // 3137: días con Bluetooth con cada contacto (para elegir los guardianes; nadie lo elige a mano)
 var DAY = 86400000;
 var CFG = { n: 10, t: 6, min: 10, mirror: 20, pingMs: DAY, lostMs: 7 * DAY, tickMs: 60000, rebuildMs: 600000,
   maxOwners: 50, maxBlob: 400000, resetMs: 7 * DAY,
@@ -46,7 +47,10 @@ var CFG = { n: 10, t: 6, min: 10, mirror: 20, pingMs: DAY, lostMs: 7 * DAY, tick
   recMax: 5, recWinMs: 3600000,
   // Lentitud en Bluetooth (#dueño 07-11): si una entrega de respaldo a un custodio falla (enlace atascado), no se le vuelve a
   // mandar por este rato (la redundancia en otros custodios cubre el respaldo; no se martilla la radio ni se retrasan los chats)
-  segColdMs: 300000 };
+  segColdMs: 300000,
+  // 3137 (dueño 15-11: «los guardianes los tiene que elegir la aplicación… en base a la forma en la que me conecto»): un contacto con
+  // Bluetooth en closeMinDays días distintos (de los últimos closeWinDays) es CERCANO; cuántos cambios de guardián por día, como mucho
+  closeMinDays: 3, closeWinDays: 60, closeKeepDays: 90, swapsPerDay: 2 };
 
 // Lentitud en Bluetooth (#dueño 07-11): ¿SALTAR a este custodio en esta vuelta del respaldo Fénix? Se salta si está en
 // cooldown por un fallo reciente (un envío de respaldo que falla muele la radio 2–8 min por los reintentos de ventana y
@@ -105,6 +109,42 @@ function _save(name, content) {
   return pl.saveToFile({ filename: name, content: content }).catch(function() {});
 }
 
+// 3137 (dueño 15-11: «si yo he tenido muchos contactos vía Bluetooth… es una persona cercana… si en ningún momento he usado Bluetooth
+// con alguien, no está tan cercano y no lo puedo ocupar para recuperar la cuenta a través del Bluetooth… si no hay, ocupar los
+// contactos más recientes, pero que sea una recuperación vía internet o Wi-Fi»; y: «los guardianes los tiene que elegir la
+// aplicación; si los elige el usuario, los puede elegir el impostor»). Los guardianes los elige la app sola por CÓMO te conectas:
+// primero los CERCANOS (Bluetooth en varios días distintos) y, si no alcanzan, los más recientes, marcados como «por internet».
+// Apunta el día de una conexión por Bluetooth con nx (uno por día; se olvida lo de hace más de keepDays). true si cambió.
+export function _fenixNoteBt(close, nx, now, keepDays) {
+  if (!close || !nx) return false;
+  var day = Math.floor(now / DAY), keep = keepDays || 90, list = Array.isArray(close[nx]) ? close[nx] : [];
+  var fresh = list.filter(function(d) { return typeof d === 'number' && day - d < keep; });
+  var changed = fresh.length !== list.length;
+  if (fresh.indexOf(day) < 0) { fresh.push(day); changed = true; }
+  if (fresh.length > keep) fresh = fresh.slice(-keep);
+  close[nx] = fresh;
+  return changed;
+}
+// Días distintos con Bluetooth con nx en los últimos winDays
+export function _fenixBtDays(close, nx, now, winDays) {
+  var day = Math.floor(now / DAY), w = winDays || 60, list = (close && Array.isArray(close[nx])) ? close[nx] : [];
+  return list.filter(function(d) { return day - d < w && d <= day; }).length;
+}
+// Orden de los posibles guardianes: los cercanos (Bluetooth en ≥ minDays días) primero, por días y luego por el último mensaje;
+// después los demás por el último mensaje. Cada uno sale con _fxVia: 'bt' (se recupera en persona) o 'net' (por internet/Wi-Fi).
+export function _fenixRank(list, close, now, cfg) {
+  var min = (cfg && cfg.closeMinDays) || 3, win = (cfg && cfg.closeWinDays) || 60;
+  var out = (list || []).map(function(c) {
+    var nx = _nid(c.nexoId || c.deviceUUID), d = _fenixBtDays(close, nx, now, win);
+    return Object.assign({}, c, { _btDays: d, _fxVia: d >= min ? 'bt' : 'net' });
+  });
+  return out.sort(function(a, b) {
+    if (a._fxVia !== b._fxVia) return a._fxVia === 'bt' ? -1 : 1;
+    if (a._fxVia === 'bt' && a._btDays !== b._btDays) return b._btDays - a._btDays;
+    return (b.lastMessageAt || 0) - (a.lastMessageAt || 0);
+  });
+}
+
 export class Fenix {
   constructor(ble) {
     this.ble = ble;
@@ -120,6 +160,7 @@ export class Fenix {
     this.msgs = null;              // fase 2, dueño: { lastTs, recent, segs: [{ id, ts, n, blob, bh, holders }] }
     this.levels = new Map();       // nexoId → nivel de Fénix que anunció (fx del kx)
     this.askedSegs = {};           // tras recuperar: a quién ya se le pidieron los segmentos
+    this.close = {};               // 3137: nexoId → días con Bluetooth (CLOSE_FILE)
     this._busy = false;
     this._timer = null;
     this.ready = null;
@@ -128,7 +169,8 @@ export class Fenix {
   init() {
     var self = this;
     if (self.ready) return self.ready;
-    self.ready = Promise.all([_load(STATE_FILE), _load(STORE_FILE), _load(MSGS_FILE)]).then(function(r) {
+    self.ready = Promise.all([_load(STATE_FILE), _load(STORE_FILE), _load(MSGS_FILE), _load(CLOSE_FILE)]).then(function(r) {
+      try { if (r[3]) self.close = JSON.parse(r[3]) || {}; } catch (e) {}
       try { if (r[0]) self.state = JSON.parse(r[0]); } catch (e) {}
       try { if (r[1]) self.store = JSON.parse(r[1]) || { owners: {} }; } catch (e) {}
       try { if (r[2]) self.msgs = JSON.parse(r[2]); } catch (e) {}
@@ -160,6 +202,7 @@ export class Fenix {
   _saveState() { return _save(STATE_FILE, JSON.stringify(this.state)); }
   _saveStore() { return _save(STORE_FILE, JSON.stringify(this.store)); }
   _saveMsgs() { return _save(MSGS_FILE, JSON.stringify(this.msgs)); }
+  _saveClose() { return _save(CLOSE_FILE, JSON.stringify(this.close)); }
 
   // Para el kx: 'rs' durante unos días tras recuperar (los contactos empiezan sesiones nuevas del protocolo 2)
   resetMark() { var s = this.state; return (s && s.restoredAt && Date.now() - s.restoredAt < this.cfg.resetMs) ? s.restoredAt : 0; }
@@ -170,6 +213,8 @@ export class Fenix {
     if (!_isNx(nx)) return;
     self.peers.add(nx);
     self.levels.set(nx, Number(level) || 1);
+    // 3137: conexión por Bluetooth (no por internet ni Wi-Fi) → un día más de cercanía con este contacto
+    if (deviceId && !/^(lan|net)/i.test(String(deviceId)) && _fenixNoteBt(self.close, nx, Date.now(), self.cfg.closeKeepDays)) self._saveClose();
     if (self.recovery) self._askForRecovery(nx, deviceId);
     // Cuenta recién recuperada: pedirle los segmentos de mensajes que guarde (una vez por contacto)
     if (self.resetMark() && (Number(level) || 1) >= 2 && !self.askedSegs[nx] && deviceId) {
@@ -182,9 +227,37 @@ export class Fenix {
 
   // ---------- dueño ----------
   _eligible() {
-    return this._contacts().filter(function(c) {
+    var list = this._contacts().filter(function(c) {
       return c && c.publicKey && !c.pendingKey && c.proto === 2 && c.fx && _isNx(_nid(c.nexoId || c.deviceUUID));
-    }).sort(function(a, b) { return (b.lastMessageAt || 0) - (a.lastMessageAt || 0); });
+    });
+    return _fenixRank(list, this.close, Date.now(), this.cfg); // 3137: cercanos (Bluetooth) primero
+  }
+
+  // 3137: cada guardián sabe si es «cercano» (se recupera en persona) o «por internet»; un cercano sin fragmento reemplaza a uno por
+  // internet (como mucho swapsPerDay al día: el que deja de serlo borra el suyo al volver a verse, como un perdido). true si cambió.
+  _rebalance(el) {
+    var s = this.state, now = Date.now(), via = {}, changed = false, self = this;
+    el.forEach(function(c) { via[_nid(c.nexoId || c.deviceUUID)] = c._fxVia; });
+    Object.keys(s.nodes).forEach(function(nx) {
+      var n = s.nodes[nx], v = via[nx] || 'net';
+      if (n.lost || n.via === v) return;
+      var was = n.via; n.via = v; changed = true;
+      if (v === 'net' || was === 'net') n.ep = -1; // el guardián tiene que saber si puede contestar por internet: se le entrega de nuevo
+    });
+    var day = Math.floor(now / DAY);
+    if (!s.swaps || s.swaps.day !== day) s.swaps = { day: day, n: 0 };
+    var held = {};
+    Object.keys(s.nodes).forEach(function(nx) { if (!s.nodes[nx].lost) held[nx] = true; });
+    var newClose = el.filter(function(c) { var nx = _nid(c.nexoId || c.deviceUUID); return c._fxVia === 'bt' && !held[nx] && !s.nodes[nx]; });
+    var order = el.map(function(c) { return _nid(c.nexoId || c.deviceUUID); });
+    var far = Object.keys(held).filter(function(nx) { return s.nodes[nx].via === 'net'; })
+      .sort(function(a, b) { return order.indexOf(a) - order.indexOf(b); }); // el último = el contacto menos reciente
+    while (newClose.length && far.length && s.swaps.n < (self.cfg.swapsPerDay || 2)) {
+      var drop = far.pop(), n = s.nodes[drop], inn = newClose.shift();
+      n.lost = true; n.lostAt = now; n.why = 'cercano'; s.swaps.n++; changed = true;
+      console.log('[FENIX] ' + _nid(inn.nexoId || inn.deviceUUID) + ' es cercano (Bluetooth ' + inn._btDays + ' días): toma el fragmento ' + n.idx + ' de ' + drop + ' (por internet)');
+    }
+    return changed;
   }
 
   status() {
@@ -197,6 +270,8 @@ export class Fenix {
       copies: el >= this.cfg.mirror ? 2 : 1,
       delivered: nodes.filter(function(x) { return !x.lost && x.ep === s.ep; }).length,
       lost: nodes.filter(function(x) { return x.lost; }).length,
+      near: nodes.filter(function(x) { return !x.lost && x.via === 'bt'; }).length, // 3137: guardianes cercanos (en persona)
+      far: nodes.filter(function(x) { return !x.lost && x.via !== 'bt'; }).length,  // 3137: por internet o Wi-Fi
       guarding: Object.keys(this.store.owners).length + Object.keys(this.store.segs || {}).filter(function(o) { return !this.store.owners[o]; }, this).length,
       msgs: segs.reduce(function(a, g) { return a + (g.n || 0); }, 0), segs: segs.length,
       segsSafe: segs.filter(function(g) { return Object.keys(g.holders || {}).filter(function(h) { return g.holders[h].ok; }).length >= copies; }).length };
@@ -243,6 +318,7 @@ export class Fenix {
         console.warn('[FENIX] Nodo ' + nx + ' perdido (' + (!elSet[nx] ? 'ya no es contacto válido' : 'sin pingeo') + '): su fragmento ' + n.idx + ' pasa a otro contacto');
       }
     });
+    if (this._rebalance(el)) changed = true; // 3137
     if (this._assign(el)) changed = true;
     if (changed) await this._saveState();
     await this._msgTick(el);
@@ -280,11 +356,12 @@ export class Fenix {
     var used = {};
     Object.keys(s.nodes).forEach(function(nx) { used[nx] = true; });
     var free = el.map(function(c) { return _nid(c.nexoId || c.deviceUUID); }).filter(function(nx) { return !used[nx]; });
+    var via = {}; el.forEach(function(c) { via[_nid(c.nexoId || c.deviceUUID)] = c._fxVia || 'net'; }); // 3137
     for (var idx = 1; idx <= s.n; idx++) {
       var holders = Object.keys(s.nodes).filter(function(nx) { return s.nodes[nx].idx === idx && !s.nodes[nx].lost; }).length;
       while (holders < copies && free.length) {
         var nx = free.shift();
-        s.nodes[nx] = { idx: idx, assignedAt: now, ep: -1, lastPing: 0, lastProof: 0 };
+        s.nodes[nx] = { idx: idx, assignedAt: now, ep: -1, lastPing: 0, lastProof: 0, via: via[nx] || 'net' };
         holders++; changed = true;
         console.log('[FENIX] Fragmento ' + idx + ' → ' + nx + (copies > 1 ? ' (copia ' + holders + ')' : ''));
       }
@@ -332,7 +409,7 @@ export class Fenix {
     self.inflight.add(nx);
     var ep = s.ep;
     var payload = { v: 1, k: 'put', o: self.me(), name: self.ble.localDeviceName || '', ep: ep, n: s.n, t: s.t, idx: node.idx,
-      share: s.shares[node.idx - 1], blob: s.blob, bh: s.bh };
+      share: s.shares[node.idx - 1], blob: s.blob, bh: s.bh, rv: node.via === 'net' ? 'net' : 'bt' }; // 3137: cercano o por internet
     var id = 'fx_' + Date.now() + '_' + _hex(_rand(3));
     try {
       await self.ble.ackSystem.sendFile(dev, id, _jsonB64(payload), { type: 'fenix', fx: 'put' });
@@ -441,7 +518,7 @@ export class Fenix {
     if (cur && cur.ep > p.ep) return;
     if (!cur && Object.keys(this.store.owners).length >= this.cfg.maxOwners) { console.warn('[FENIX] Límite de contactos guardados'); return; }
     this.store.owners[from] = { idx: p.idx, share: p.share, blob: p.blob, bh: p.bh, ep: p.ep, n: p.n, t: p.t,
-      name: String(p.name || '').substring(0, 40), ts: Date.now(), lastPing: Date.now() };
+      name: String(p.name || '').substring(0, 40), ts: Date.now(), lastPing: Date.now(), rv: p.rv === 'net' ? 'net' : 'bt' }; // 3137
     console.log('[FENIX] Guardo el fragmento ' + p.idx + ' de ' + from + ' (copia v' + p.ep + '; no puedo leerlo)');
     await this._saveStore();
   }
