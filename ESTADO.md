@@ -21,6 +21,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **15-11 13:00 — APK 3067 (3124; batería 269/269, índice 70,5):** archivo del usuario a una app DORMIDA por Bluetooth o Wi-Fi: sin
+  un trozo confirmado en 2 ventanas (enlace vivo, no atascado) → toque para despertarla y sondeo de 1 trozo cada 10 s; 3 min sin
+  despertar → ⏳ (`dormidafile.js`: 3123 = 5 ventanas enteras en 45 s, 3124 = 1). fileflap/fileabsent/filepend prueban la regla de
+  siempre con un trozo ya confirmado. Siguiente (PLAN etapa 1): desatasco desde el que manda + aviso; adelantar enlace de invitación.
 - **15-11 10:30 — APK 3066 PUBLICADA (3118, 3120–3123; batería 268/268 aquí y en GitHub, índice 70,5; el nativo partido compiló):** **3118** NexoBlePlugin.kt
   4.752 → 844 en 17 archivos (Plugin*.kt; cada @PluginMethod nuevo = puerta de una línea en la clase + cuerpo «…Impl» en su archivo);
   la corrida 3063 (compilación de prueba) se canceló: sus pruebas iban a fallar en diagplus (nombres de la 3117, la prueba se

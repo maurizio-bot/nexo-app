@@ -16,7 +16,7 @@ publicación y primeros usuarios; febrero campaña previa y la prueba de fuego.
       3066 con normalidad (si algo del Bluetooth o los avisos se porta raro, decirlo).
 - [x] Idiomas: portugués de Brasil y francés; avisos del teléfono en el idioma de la app (APK 3066). Falta mirar en el teléfono que
       los textos largos quepan en los botones.
-- [ ] Despertar la app del otro antes de mandarle un archivo grande (hoy se gastan reintentos con apps dormidas).
+- [x] Despertar la app del otro antes de mandarle un archivo grande (APK 3067: toque + sondeo, sin reenvíos enteros).
 - [ ] Atascos, lo que falta del plan del 14-11 (aprobado por el dueño): si un contacto con enlace sano no confirma lo tuyo,
       pedir el desatasco desde el que manda y avisar «el teléfono de X no puede leer tus mensajes». Lo demás ya está (ver abajo).
 - [ ] Avisos con la pantalla apagada: prueba física del dueño y, si falla, arreglo.
