@@ -50,6 +50,9 @@ Claude el 15-11 (prueba del «usuario normal»). Antecedentes: `docs/DICIEMBRE.m
 - **Ola 1 (ahora):** probadores (familia y amigos del dueño).
 - **Ola 2:** cuando estén los puntos 1 a 3, grupos chicos completos (una familia entera, un equipo de trabajo).
 - **Ola 3:** tienda + TikTok, con videos cortos.
+- **Meta del dueño (15-11): EDC México, febrero 2027** — la primera oportunidad grande. En un festival casi no hay señal: es justo lo que
+  NEXO resuelve. Campaña ANTES del evento («bájala antes de ir: allá no hay señal») y, en el evento, pasarla de teléfono a teléfono.
+  Ideas de video: «encontré a mis amigos sin señal» (punto de encuentro), «mensajes en medio de la multitud».
 
 ## 6. Mensajes listos (México)
 - **Invitación corta (la que va con el enlace):** «Te invito a NEXO: mensajes y llamadas aunque no haya señal, sin número de teléfono y

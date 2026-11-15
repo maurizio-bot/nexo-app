@@ -3,6 +3,27 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🎯 META (dueño 15-11): NEXO al 100 % en Google Play para EDC México (festival de música electrónica, febrero 2027)
+«Tenerlo listo en diciembre para subirlo a Google Play; entre enero y febrero compartirlo, primeras descargas, pruebas y últimos
+retoques; la prueba de fuego sería ese evento». Fecha exacta de EDC 2027 por confirmar (suele ser a finales de febrero).
+- **Versión para la tienda (lo que Google Play exige y hoy no está):** apuntar a un Android más reciente (hoy `targetSdkVersion 34`;
+  Play pide al menos 35 y para 2027 probablemente 36) y probarlo; quitar el actualizador propio y el permiso de instalar apps
+  (`REQUEST_INSTALL_PACKAGES`, no se admite en Play); justificar los permisos delicados (pantalla completa en llamadas, ignorar el ahorro
+  de batería, servicios en primer plano de ubicación/micrófono/pantalla, ubicación) y quitar los que no hagan falta; firma de
+  publicación (llave del dueño, Play App Signing); política de privacidad y términos en `nexo-7994a.web.app`; formulario de seguridad
+  de datos; ficha en 3–5 idiomas, capturas, icono 512 px.
+- **Cuenta de Google Play (dueño):** si es personal y nueva, Google pide (regla vigente que conozco; confirmarlo al crearla) una prueba
+  cerrada con al menos 12 personas durante 14 días seguidos antes de poder publicar → empezarla a más tardar a mediados de diciembre.
+- **Para el festival (idea de Claude, a validar con el dueño):** «modo multitud» (cientos de NEXO cerca: no conectar con desconocidos
+  sin límite, primero los contactos, cuidar la batería, saltos para llegar al amigo que está lejos dentro del recinto) con prueba en el
+  simulador con muchos teléfonos; agregar por QR rápido; ubicación / punto de encuentro sin señal («¿dónde están?»); batería para un
+  día entero. Allá no habrá señal: la gente tiene que bajarla ANTES (campaña previa); Google Play permite pasar apps de teléfono a
+  teléfono sin internet (comprobarlo cuando esté publicada).
+- **Página de invitación y privacidad:** en `nexo-7994a.web.app` (Firebase, mismo proyecto que los avisos), publicada sola desde GitHub
+  (el dueño no la quiere subir a mano: hará falta un secreto de Firebase en GitHub cuando toque). Es planeación: se hace antes de Play.
+- **Calendario propuesto:** nov–mediados de dic: reestructuración, idiomas, invitación, versión para la tienda, modo multitud, pruebas
+  físicas clave → mediados de dic: cuenta y prueba cerrada → enero: publicación y primeros usuarios → febrero: campaña previa y EDC.
+
 ## 🆕 15-11 tarde (plan del dueño: «primero reestructura, luego la implementación»)
 - **Revisión semanal (fin de semana, dueño 15-11):** ningún archivo > 1.000 líneas (`tests/sim/tamano.js` + `tamano.json`; cada
   partición con `tools/partir_check.cjs`). Hecho: ble_ack.js (3108). Siguen: ble_messages.js, vault_manager.js, net_link.js,

@@ -21,6 +21,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **META DEL DUEÑO (15-11): Google Play al 100 % para EDC México (febrero 2027).** Plan y requisitos de la tienda en `docs/PENDIENTES.md`
+  (🎯 META): versión para la tienda (Android más reciente, sin actualizador propio, permisos justificados, firma, privacidad), prueba
+  cerrada de 14 días desde mediados de diciembre, modo multitud para el festival. Difusión: `docs/DIFUSION.md`.
 - **15-11 mañana (en la rama, tras la APK 3060):** dueño: «primero reestructura, tener todo bien claro, y de ahí la implementación»
   (idiomas portugués y francés, luego lo demás). **Revisión semanal (fin de semana):** ningún archivo > 1.000 líneas; `tests/sim/tamano.js`
   + `tamano.json` (lista de pendientes con tope); cada partición se comprueba con `tools/partir_check.cjs <ref> <viejo> <nuevos…>` (piezas
