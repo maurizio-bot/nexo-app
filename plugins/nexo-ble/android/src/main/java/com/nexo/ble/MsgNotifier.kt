@@ -119,7 +119,7 @@ class MsgNotifier(private val ctx: Context) {
 
     // Aviso de actualización disponible: tocarlo abre NEXO; «Actualizar» abre NEXO e inicia la descarga + instalador (el sistema pide
     // su confirmación; Android no deja instalar sin ese toque). Un solo aviso (id fijo): si llega otro número, sustituye al anterior.
-    fun updateAvailable(build: Int, sizeBytes: Long) {
+    fun updateAvailable(build: Int, sizeBytes: Long, notes: String = "") {
         val nm = NotificationManagerCompat.from(ctx)
         if (!nm.areNotificationsEnabled()) { Log.w(TAG, "Notificaciones desactivadas: sin aviso de actualización"); return }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -138,6 +138,9 @@ class MsgNotifier(private val ctx: Context) {
             .setContentTitle("Hay una versión nueva de NEXO ($build)")
             .setContentText("Toca «Actualizar» para instalarla$mb")
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+            // 3107 (dueño 15-11: «donde está el botón de actualizar, lo que se tocó y lo que se actualizó»): al desplegar el aviso, las
+            // novedades de esa versión (ya en el idioma de la app; las manda la parte web, recortadas)
+            .apply { val nt = notes.trim().take(1500); if (nt.isNotEmpty()) setStyle(NotificationCompat.BigTextStyle().bigText("Toca «Actualizar» para instalarla$mb\n\n$nt")) }
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)

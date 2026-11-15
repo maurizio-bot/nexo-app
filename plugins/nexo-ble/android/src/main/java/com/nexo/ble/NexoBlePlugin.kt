@@ -739,7 +739,8 @@ class NexoBlePlugin : Plugin() {
     fun updateNotify(call: PluginCall) {
         val b = call.getInt("build") ?: 0
         val size = (call.getDouble("size") ?: 0.0).toLong()
-        if (b > 0) MsgNotifier.get(context).updateAvailable(b, size)
+        val notes = call.getString("notes") ?: ""   // 3107: novedades de esa versión (texto)
+        if (b > 0) MsgNotifier.get(context).updateAvailable(b, size, notes)
         call.resolve()
     }
 

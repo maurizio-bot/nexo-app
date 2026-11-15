@@ -190,7 +190,7 @@ function _maybeNotify() {
     if (typeof document !== 'undefined' && document.visibilityState === 'visible') return;
     if (parseInt(_lsGet(KEY_NOTIFIED), 10) === a.build) return;
     _lsSet(KEY_NOTIFIED, String(a.build));
-    Promise.resolve(pl.updateNotify({ build: a.build, size: a.size || 0 })).catch(function() {});
+    Promise.resolve(pl.updateNotify({ build: a.build, size: a.size || 0, notes: updaterNotesText(a.notes, _lang()).slice(0, 1500) })).catch(function() {}); // 3107: con sus novedades
     console.log('[UPDATER] aviso del sistema por la versión ' + a.build);
   } catch (e) {}
 }

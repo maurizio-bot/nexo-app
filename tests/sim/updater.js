@@ -35,7 +35,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
       // 3008: updateInstall con mode: 'status' | 'download' (baja; termina cuando la prueba llama a finish()) | 'open' (instalador con lo ya bajado)
       win.__upd = { checks: 0, installs: [], downloads: [], opens: [], ready: 0, dl: 0, pending: null, autoFinish: true, nextDownload: null, nextOpen: { opened: true }, nextCheck: { build: 2005, tag: 'nightly-2005', url: URL_NEW, size: 25000000 }, notifs: [], cancels: 0 };
       win.__upd.finish = () => { const u = win.__upd, b = u.dl; if (!b) return; u.ready = b; u.dl = 0; nA.emit('onUpdateProgress', { pct: 100 }); nA.emit('onUpdateReady', { build: b }); if (u.pending) { const f = u.pending; u.pending = null; f({ ready: true }); } };
-      pl.updateNotify = async (a) => { win.__upd.notifs.push(a && a.build); };
+      pl.updateNotify = async (a) => { win.__upd.notifs.push(a && a.build); win.__upd.notifNotes = a && a.notes; };
       pl.updateNotifyCancel = async () => { win.__upd.cancels++; };
       pl.updateCheck = async (a) => { win.__upd.checks++; win.__upd.lastArgs = a || null; return win.__upd.nextCheck; };
       pl.updateInstall = (a) => {
@@ -209,9 +209,17 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   win.__upd.nextCheck = { build: 2008, tag: 'nightly-2008', url: URL_NEW.replace('2005', '2008'), size: 26000000 };   // un lanzamiento sin novedades
   await U().check(true); await sleep(300);
   r.sin_novedades_sin_enlace = !!banner() && !banner().querySelector('#nexo-update-whatsnew');
+  // 3107: el aviso del sistema «Hay una versión nueva» lleva las novedades (texto del idioma de la app)
+  win.__upd.nextCheck = { build: 2009, tag: 'nightly-2009', url: URL_NEW.replace('2005', '2009'), size: 26000000, notes: NOTES };
+  await U().check(true); await sleep(200);
+  win.localStorage.removeItem('nexo_upd_notified'); win.localStorage.removeItem('nexo_upd_snooze');
+  let vis2 = 'hidden'; Object.defineProperty(doc, 'visibilityState', { configurable: true, get: () => vis2 });
+  doc.dispatchEvent(new win.Event('visibilitychange')); await sleep(200);
+  r.aviso_sistema_con_novedades = win.__upd.notifs[win.__upd.notifs.length - 1] === 2009 && /Dos llamadas a la vez/.test(String(win.__upd.notifNotes || '')) && !/Two calls|<es-419>/.test(String(win.__upd.notifNotes || ''));
+  vis2 = 'visible';
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|Assembly timeout|net::ERR|fetch/.test(l)).slice(0, 5);
-  const keys = ['gancho', 'consulta_sola', 'aviso_con_numero', 'disponible', 'ahora_no_quita', 'auto_limitada', 'manual_consulta', 'silenciado_no_vuelve', 'bajada_fallida_reintentable', 'descarga', 'sin_permiso', 'reintento_posible', 'instala', 'mismo_numero_nada', 'dev_no_consulta', 'apagado_no_consulta', 'apagado_sin_aviso', 'tarjeta_ajustes', 'buscar_ahora_informa', 'boton_pasa_a_descargar', 'boton_descarga', 'reabrir_sigue_descargando', 'no_vuelve_a_bajar', 'avisa_al_terminar', 'aviso_solo_instalar', 'abre_ya_con_instalar', 'instalar_sin_bajar', 'visible_sin_aviso_sistema', 'ya_bajada_no_avisa_nueva', 'aviso_al_salir', 'una_vez_por_numero', 'numero_nuevo_avisa', 'boton_aviso_instala', 'instalar_quita_aviso', 'al_ya_no_aplicar_quita_aviso', 'novedades_pide_actual', 'novedades_aviso', 'novedades_hoja', 'novedades_ajustes', 'novedades_idioma', 'sin_novedades_sin_enlace'];
+  const keys = ['gancho', 'consulta_sola', 'aviso_con_numero', 'disponible', 'ahora_no_quita', 'auto_limitada', 'manual_consulta', 'silenciado_no_vuelve', 'bajada_fallida_reintentable', 'descarga', 'sin_permiso', 'reintento_posible', 'instala', 'mismo_numero_nada', 'dev_no_consulta', 'apagado_no_consulta', 'apagado_sin_aviso', 'tarjeta_ajustes', 'buscar_ahora_informa', 'boton_pasa_a_descargar', 'boton_descarga', 'reabrir_sigue_descargando', 'no_vuelve_a_bajar', 'avisa_al_terminar', 'aviso_solo_instalar', 'abre_ya_con_instalar', 'instalar_sin_bajar', 'visible_sin_aviso_sistema', 'ya_bajada_no_avisa_nueva', 'aviso_al_salir', 'una_vez_por_numero', 'numero_nuevo_avisa', 'boton_aviso_instala', 'instalar_quita_aviso', 'al_ya_no_aplicar_quita_aviso', 'novedades_pide_actual', 'novedades_aviso', 'novedades_hoja', 'novedades_ajustes', 'novedades_idioma', 'sin_novedades_sin_enlace', 'aviso_sistema_con_novedades'];
   const ok = typeof r.aviso_s === 'number' && keys.every((k) => r[k] === true) && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('UPDATER ' + JSON.stringify(r));
