@@ -1658,6 +1658,10 @@
     {
      "fallo": "3132 (dueño 15-11, lo pidió Jhonnatan: «el botón de ×1.5 y ×2 para acelerar la velocidad al escuchar un audio»): no había velocidad en las notas de voz. 3132: botón 1× → 1.5× → 2× en cada nota, una velocidad para todas y recordada; la que suena se acelera al momento y la siguiente en cadena arranca a esa velocidad. voicechain.js V1–V5 (contraprueba 3131: no hay botón)",
      "prueba": "voicechain"
+    },
+    {
+     "fallo": "3138 (estados3.js en la batería de la 3133, contraprueba 3128 OK / 3129 FALLO): la petición automática de foto y estados al agregar un contacto (3129, avatar.js) gastaba el freno de 15 s de «pedir estados» del otro y el «deslizar para actualizar» del usuario justo después no traía nada. 3138: la automática lleva auto:1 y tiene su freno aparte",
+     "prueba": "Estados v3 (3032"
     }
    ],
    "debiles": [

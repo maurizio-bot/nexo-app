@@ -304,7 +304,7 @@ export function avatarRefresh(nx) {
   if (!NX_RE.test(nx) || _contactIds().indexOf(nx) < 0) return;
   if (_sent[nx]) { delete _sent[nx]; _save(SENT_FILE, _sent); }
   _checked.add(nx);
-  var id = _sendTextTo(nx, JSON.stringify({ type: 'nexo_act', act: 'sq', ts: Date.now(), av: 1 }), '', true);
+  var id = _sendTextTo(nx, JSON.stringify({ type: 'nexo_act', act: 'sq', ts: Date.now(), av: 1, auto: 1 }), '', true); // 3138: auto = no gasta el freno de «deslizar»
   if (id) _outIds.set(id, nx);
   sendAvatarTo(nx, true);
   console.log('[AVATAR] Contacto nuevo: le pido su foto y le mando la mía (' + nx + ')');
