@@ -23,7 +23,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
 - **15-11 08:15 — en la rama, sin publicar (irán en la APK 3066, cuando compile la 3118 en GitHub):** **3118** NexoBlePlugin.kt
   4.752 → 844 en 17 archivos (Plugin*.kt; cada @PluginMethod nuevo = puerta de una línea en la clase + cuerpo «…Impl» en su archivo);
-  compilación de prueba = corrida **3063** (workflow_dispatch: solo compila). **3120** cierres de la app y su motivo + fallos guardados
+  la corrida 3063 (compilación de prueba) se canceló: sus pruebas iban a fallar en diagplus (nombres de la 3117, la prueba se
+  corrigió después) y no habría llegado a compilar; la compilación de verdad será la propia corrida de la APK 3066 (si no compila,
+  no se publica). Batería de la rama en curso: `scratchpad/ci3123.txt` (b3123 = 44b0a8f2). **3120** cierres de la app y su motivo + fallos guardados
   al caer + datos de NEXO por red en el diagnóstico (`diag_exits.js`, ExitReasons/CrashLog; `cierres.js`). **3121** textos partidos
   en un archivo por idioma (`src/ui/i18n/`). **3122** avisos del nativo en el idioma de la app (NativeText/NativeLang, setAppLang).
   **3123** portugués de Brasil y francés (`idiomas5.js`); NOVEDADES en 5 idiomas. Ya no queda ningún archivo de más de 1.000 líneas.
