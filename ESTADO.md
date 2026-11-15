@@ -21,6 +21,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **15-11 noche — rama, para la APK 3071 (sin publicar):** **3134** tono «tuuu» nativo al llamar (`ringback`), Telecom al registro
+  nativo, aviso Xiaomi de ventanas emergentes (calls2.js tono-saliente). **3135** pregunta de «reinstalado» con aviso de impostor,
+  doble confirmación y chat unido «sin verificar» en rojo (reinstall.js R1/R5/R6). **3136** aviso de nombre repetido en la bandeja de
+  solicitudes (invitacion.js I6) y aviso en cobros de contactos sin verificar (cobro.js). Fénix revisado: sin cambios. La APK 3070 se
+  sube desde 459f41d0 (sin 3134–3136) con un commit encima sin [skip ci]; luego se une a la rama.
 - **15-11 noche — APK 3070 EN BATERÍA (3129–3133; b3133 = bbdaf82c; `scratchpad/ci3133.txt`).** **3129** enlace de invitación
   (invite.js, InviteLink.kt, PluginShare.kt; se acepta a mano) + foto de perfil al día al borrar y volver a agregar (fotorenueva.js).
   **3130** guardar en la galería con respuesta (savegallery.js G3–G5). **3131** deslizar para actualizar solo pide a relés callados;

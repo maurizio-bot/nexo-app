@@ -12,6 +12,20 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   a 1,5×/2×, y **3133** saludo al contacto nuevo con internet ya abierto (fallo antiguo destapado por blobfan.js; saludonuevo.js).
 - Abierto: ¿la invitación se acepta sola si trae un código válido mío? (pregunta al dueño sin respuesta; mientras, a mano, SEC-2).
 
+## 🆕 15-11 noche — hecho en la rama para la APK 3071 (3134–3136, sin publicar)
+- **3134** tono «tuuu» de la llamada saliente puesto por el teléfono (Kotlin `ringback`, ToneGenerator por el canal de llamada);
+  lo que hace Telecom con la llamada (aviso, contestar y si se abrió NEXO, rechazar, colgar, por dónde suena) al registro nativo del
+  diagnóstico; Xiaomi/Redmi/Poco: el aviso pide también «Ventanas emergentes en segundo plano». **Falta:** compilar el nativo (CI) y la
+  prueba del dueño: oír el tono al llamar; y un diagnóstico de Jhonnatan tras contestar con manos libres.
+- **3135** «¿es el mismo teléfono, reinstalado?»: avisa del impostor, segunda confirmación y chat unido en rojo «sin verificar».
+- **3136** solicitud con el nombre de un contacto que ya tengo → aviso rojo en la bandeja; cobro de un contacto sin verificar →
+  «antes de pagar, confirma con una llamada» (rojo con señal de riesgo).
+- **Fénix revisado (sin cambios):** rehacer una cuenta pide estar CERCA (Bluetooth) de 6 de 10 guardianes y que cada uno confirme
+  en pantalla quién es («ayúdale solo si la persona está contigo»), con tope de peticiones por hora: no se puede rehacer una ajena a
+  distancia.
+- **Queda de este bloque:** texto del mensaje en el aviso con la app cerrada (llave en el Keystore de Android; «Ocultar el texto en
+  los avisos» por chat). Es nativo y toca el cifrado: va en su propio bloque, con su prueba.
+
 ## 🆕 15-11 noche (dueño) — ANTI-SUPLANTACIÓN y texto en los avisos, para la 3071 (decisiones del dueño)
 - **Dueño: «lo de guardar la llave en Android es seguro, sí se puede hacer»** → con la app cerrada, el aviso lleva el texto del mensaje:
   la parte nativa descifra solo para el aviso con la llave guardada en el almacén de llaves de Android (Keystore). Por defecto se ve el
