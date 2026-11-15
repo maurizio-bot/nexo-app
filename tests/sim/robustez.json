@@ -1086,6 +1086,10 @@
     {
      "fallo": "3097 (diagnóstico S24 3054 14-11 16:15–16:19): en una videollamada por Wi-Fi con el Xiaomi, «En llamada: lo pendiente para nx1e50c95d por Bluetooth espera a colgar (la radio es de la llamada)»: lo del S23, que solo se alcanzaba por Bluetooth, esperó 4,5 min. La regla de la 3058 apartaba el Bluetooth con CUALQUIER llamada en curso. 3097: solo si la llamada (o algún tramo de la de grupo) va por Bluetooth ahora; por Wi-Fi, internet directo o relés, lo de fondo sale. llamadawifi.js: 3096 = nada llega durante la llamada (al colgar, en 2,8 s); 3097 = llegan los 3 a los 7,3 s de volver C, la voz sigue; radiollamada.js L (llamada por Bluetooth) sigue igual",
      "prueba": "llamada por Wi-Fi no aparta el Bluetooth"
+    },
+    {
+     "fallo": "3100 (dueño 15-11: «agregué otro dispositivo, pero nunca le apareció o nunca aceptó, entonces quedó ahí»; S24 3054 14-11 16:15–16:19): la llamada de grupo pasa a activa con el primero que contesta y el invitado que no contestaba quedaba «Conectando…» para siempre (la llamada siguió 4 min). 3100: cada invitado tiene 45 s; si no entra, «No contestó» y sale; si no queda nadie, termina. gcnoanswer.js: 3099 = «invitando» para siempre; 3100 = «no contestó» a los 45 s",
+     "prueba": "llamada de GRUPO con un invitado que no contesta"
     }
    ],
    "debiles": [

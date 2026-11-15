@@ -101,7 +101,7 @@ export class GroupCall {
     var gid = 'gc' + Date.now().toString(36) + _hex(4), key = _hex(32);
     var roster = new Set([me].concat(list));
     self.gc = { gid: gid, dir: 'out', state: 'calling', key: key, video: !!video, legs: new Map(), roster: roster, startedAt: 0, createdAt: Date.now(), chatId: _nid(chatId) || '' };
-    list.forEach(function(nx) { self._leg(nx).state = 'inviting'; });
+    list.forEach(function(nx) { self._leg(nx).state = 'inviting'; self._inviteTimeout(nx); });
     _emit('nexo:gcall', self.state());
     self._ringTimer = setTimeout(function() {
       // nadie entró en 45 s → se cancela
@@ -224,6 +224,7 @@ export class GroupCall {
     if (g.roster.size + 1 > GMAX_AUDIO) return Promise.reject(new Error(t('grp_max_a', 'Máximo ') + GMAX_AUDIO + t('grp_max_call', ' en una llamada de grupo')));
     g.roster.add(nx);
     self._leg(nx).state = 'inviting';
+    self._inviteTimeout(nx);
     self._set(null);
     return self._signal(nx, 'invite', { roster: Array.from(g.roster), k: g.key, co: self._codecs(), v: g.video ? 1 : 0, late: 1 });
   }
@@ -400,6 +401,25 @@ export class GroupCall {
       l.state = 'active';
     }
     self._set(null);
+  }
+
+  // 3100 (dueño 15-11: «agregué otro dispositivo, nunca le apareció o nunca aceptó, entonces quedó ahí»; S24 14-11 16:15–16:19):
+  // la llamada pasa a activa con el primero que contesta y el que no contestaba quedaba «Conectando…» para siempre. Cada invitado
+  // tiene los mismos 45 s que la llamada entera: si no entra, «No contestó» y sale (si no queda nadie, la llamada termina).
+  _inviteTimeout(nx) {
+    var self = this, g = self.gc; if (!g) return;
+    var gid = g.gid;
+    setTimeout(function() {
+      var gg = self.gc, l = gg && gg.gid === gid && gg.legs.get(nx);
+      if (!l || l.state !== 'inviting' || gg.state !== 'active') return; // sin contestar nadie, la cierra el temporizador general
+      l.state = 'noanswer';
+      gg.roster.delete(nx);
+      console.log('[GCALL] ' + nx + ' no contestó: sale de la llamada');
+      self._set(null);
+      var alive = 0;
+      gg.legs.forEach(function(ll) { if (ll.state === 'active' || ll.state === 'offering' || ll.state === 'waiting' || ll.state === 'inviting') alive++; });
+      if (gg.roster.size <= 1 || alive === 0) self._finish('empty');
+    }, window.NEXO_GCALL_RING_MS || GRING_MS);
   }
 
   _dropLeg(nx) {

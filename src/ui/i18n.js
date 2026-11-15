@@ -393,6 +393,7 @@ var STRINGS = {
   grp_leg_connecting: { es: "Conectando…", it: "Connessione…", en: "Connecting…" },
   grp_leg_lost: { es: "Sin señal", it: "Nessun segnale", en: "No signal" },
   grp_leg_gone: { es: "Salió", it: "Uscito", en: "Left" },
+  grp_leg_noanswer: { es: "No contestó", it: "Non ha risposto", en: "Didn't answer" },
 
   // Perfil y Ajustes - Fase 2f
   prof_title: { es: "Perfil", it: "Profilo", en: "Profile" },

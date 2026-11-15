@@ -24,6 +24,7 @@ function _legLabel(state, reconnecting) {
   if (state === 'offering' || state === 'waiting' || state === 'inviting' || state === 'new') return t('grp_leg_connecting', 'Conectando…');
   if (state === 'lost') return t('grp_leg_lost', 'Sin señal');
   if (state === 'gone') return t('grp_leg_gone', 'Salió');
+  if (state === 'noanswer') return t('grp_leg_noanswer', 'No contestó'); // 3100
   return t('grp_leg_connecting', 'Conectando…');
 }
 
