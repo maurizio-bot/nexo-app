@@ -1,53 +1,22 @@
 package com.nexo.ble
 
-import android.app.ActivityManager
-import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
-import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
-import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattServer
-import android.bluetooth.BluetoothGattServerCallback
-import android.bluetooth.BluetoothManager
-import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.bluetooth.le.BluetoothLeScanner
-import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanFilter
-import android.bluetooth.le.ScanResult
-import android.bluetooth.le.ScanSettings
-import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Color
-import android.graphics.pdf.PdfRenderer
-import android.media.RingtoneManager
-import android.net.Uri
 import android.net.wifi.WifiManager
-import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.os.ParcelFileDescriptor
-import android.os.ParcelUuid
-import android.provider.Settings
 import android.util.Base64
-import android.content.ContentValues
-import android.media.MediaScannerConnection
-import android.os.Environment
-import android.provider.MediaStore
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import android.view.WindowManager
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
-import androidx.fragment.app.FragmentActivity
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -56,10 +25,6 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import android.util.Log
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
-import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -69,20 +34,8 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import androidx.activity.result.ActivityResult
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
-import java.nio.charset.Charset
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
-import org.json.JSONObject
-
-// 3008: número de la actualización que se está bajando ahora (0 = ninguna). Fuera del plugin: si la pantalla se rehace (y con ella el
-// plugin), la descarga en curso sigue en su hilo y no se empieza otra.
-internal object UpdDownload { @Volatile var build: Int = 0 }
 
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -98,518 +51,172 @@ internal object UpdDownload { @Volatile var build: Int = 0 }
     ]
 )
 class NexoBlePlugin : Plugin() {
-
+    // 3118 (reestructuración 15-11): los cuerpos de casi todos los métodos están en archivos por tema del mismo paquete
+    // (extensiones de esta clase, movidos tal cual):
+    //   PluginLog.kt — Registros y diagnóstico: errores de Bluetooth, registro nativo (NativeLog), energía y estado de batería
+    //   PluginRx.kt — Recibir por Bluetooth: juntar los trozos de cada mensaje y el mapa NEXO ID ↔ MAC
+    //   PluginBackground.kt — App cerrada y segundo plano: recibir con la app cerrada, avisos de respaldo, ✓✓ y saludo nativos, FCM e internet en segundo plano (NetBg)
+    //   PluginUpdate.kt — Actualizador del APK de probadores (UpdateSpec): buscar, avisar, bajar e instalar
+    //   PluginBtState.kt — Bluetooth: estado, permisos, servidor GATT (arranque, sus llamadas y parada) y limpieza
+    //   PluginGatt.kt — Bluetooth: conexiones GATT como cliente, keepalive y reconexión
+    //   PluginBleSend.kt — Bluetooth: enviar (cola de escrituras, trozos y ritmo)
+    //   PluginScan.kt — Bluetooth: escaneo, anuncio y servicio en primer plano
+    //   PluginStorage.kt — Archivos de la app, cifrado en reposo, huella y pantalla segura
+    //   PluginAlerts.kt — Avisos: tocar una notificación, llamada entrante, pantalla de bloqueo, tonos y notificaciones de mensajes
+    //   PluginCalls.kt — Llamadas: modo de sonido, audio en llamada, foco, pantalla compartida y PiP
+    //   PluginLan.kt — Wi-Fi de la misma red (LanHub + NSD) y aviso de cambio de red (Wi-Fi ↔ datos)
+    //   PluginTor.kt — Tor: TorService, servicio oculto y LanHub por SOCKS
+    //   PluginFiles.kt — Archivos recibidos (abrir, galería, miniatura de PDF) y archivos grandes (BigFile, red local y L2CAP)
+    //   PluginMove.kt — Pasar la cuenta a un teléfono nuevo (AccountMove)
+    //   PluginWifiDirect.kt — Wi-Fi Direct: fotos, vídeos y archivos con el contacto a alcance
+    //   PluginHaptic.kt — NEXO Touch: háptica del sistema
+    // Aquí se quedan los campos (en su orden de inicialización), el companion, los override del ciclo de vida, los
+    // @Synchronized y las puertas de una línea de cada @PluginMethod (Capacitor los busca en la clase).
     companion object {
         // Ronda 2758 (punto 12): la instancia que siguió recibiendo con la app cerrada; la nueva la releva al abrir
-        @Volatile private var orphan: NexoBlePlugin? = null
-        @Volatile private var netBgShared: NetBg? = null
+        @Volatile internal var orphan: NexoBlePlugin? = null
+        @Volatile internal var netBgShared: NetBg? = null
         // Ronda 2785 (#87): registro nativo persistente en disco (NativeLog.kt), compartido por el proceso (lo usan el
         // plugin y NetBg, también con la app cerrada). Para que el diagnóstico muestre qué hizo el nativo sin WebView.
-        @Volatile private var nativeLogShared: NativeLog? = null
+        @Volatile internal var nativeLogShared: NativeLog? = null
         // Auditoría C1 (ronda 2777): clave por contacto (NEXO ID → clave de firma, derivada del secreto de la pareja por
         // la app) para FIRMAR la confirmación (✓✓) que se manda con la app cerrada. Es estática: la pone la app
         // (setAckKeys) y vive en el proceso (sobrevive con la app cerrada, como la config de internet); no va a disco.
-        private val ackKeys = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+        internal val ackKeys = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
         // Firma corta (base64 de 12 bytes) de una confirmación, igual que e2eAckTag en la app (HMAC-SHA256 de
         // "nexo-ack|<campos>" con la clave de la pareja).
-        private fun ackTag(key: ByteArray, fields: String): String {
+        internal fun ackTag(key: ByteArray, fields: String): String {
             val mac = Mac.getInstance("HmacSHA256"); mac.init(SecretKeySpec(key, "HmacSHA256"))
             val full = mac.doFinal(("nexo-ack|" + fields).toByteArray(Charsets.UTF_8))
             return Base64.encodeToString(full.copyOf(12), Base64.NO_WRAP)
         }
         // Ronda 2768: la instancia con la app viva (abierta o en segundo plano), para avisarle de "Rechazar"
-        @Volatile private var live: NexoBlePlugin? = null
+        @Volatile internal var live: NexoBlePlugin? = null
         // "Rechazar" en el aviso de llamada (CallDeclineReceiver): con la app viva, la app rechaza ya, cifrado (antes el
         // que llama seguía en "Llamando…" hasta "No contesta"); con la app cerrada queda apuntado para cuando se abra
         fun declinedFromNotification(tap: CallTap) { live?.onDeclineTapped(tap) }
         // Build 2882 (parte 2): Telecom (coche/auriculares/reloj/pantalla de bloqueo) pidió COLGAR una llamada activa o
         // saliente (NexoConnection.onDisconnect). Avisar al JS para que termine la llamada NEXO por su lado.
         fun telecomEnded(from: String) { live?.onTelecomEnded(from) }
-        private const val TAG = "NexoBlePlugin"
-        private const val SCAN_TIMEOUT_MS = 15000L
-        private const val RECONNECT_DELAY_MS = 3000L
-        private const val MAX_RECONNECT_DELAY_MS = 30000L
-        private const val MAX_RECONNECT_ATTEMPTS = 10
-        private const val MESSAGE_REASSEMBLY_TIMEOUT_MS = 5000L
-        private const val MESSAGE_MAX_PENDING_MS = 10000L
+        internal const val TAG = "NexoBlePlugin"
+        internal const val SCAN_TIMEOUT_MS = 15000L
+        internal const val RECONNECT_DELAY_MS = 3000L
+        internal const val MAX_RECONNECT_DELAY_MS = 30000L
+        internal const val MAX_RECONNECT_ATTEMPTS = 10
+        internal const val MESSAGE_REASSEMBLY_TIMEOUT_MS = 5000L
+        internal const val MESSAGE_MAX_PENDING_MS = 10000L
         // Auditoría: el reensamblado de TEXTO acumulaba por tiempo pero sin tope de bytes → un vecino podía mandar trozos
         // sin cerrar nunca el JSON y hacer crecer la memoria. Un mensaje de texto/acción legítimo de NEXO no se acerca a
         // esto (el sobre va ~1 MB como mucho); al pasarse se descarta el buffer de ese enlace y se resincroniza.
-        private const val MESSAGE_BUFFER_MAX_CHARS = 8 * 1024 * 1024
-        private const val KEEPALIVE_INTERVAL_MS = 10000L
-        private const val MTU_REQUEST = 512
+        internal const val MESSAGE_BUFFER_MAX_CHARS = 8 * 1024 * 1024
+        internal const val KEEPALIVE_INTERVAL_MS = 10000L
+        internal const val MTU_REQUEST = 512
         // #dueño 01-11 (velocidad BLE): si el teléfono rechaza 512 el MTU se queda en 23 (20 B/escritura, ~20× más
         // lento). Algunos stacks de Android descartan en silencio peticiones >512. Por eso el reintento pide 247 (el
         // punto óptimo con DLE: 251 B por paquete de enlace entra en uno solo), que casi todos aceptan: así un teléfono
         // que no da 512 cae a 247 (~90–100 kB/s) en vez de a 23 (~2 kB/s). La investigación (Nordic/Memfault) lo respalda.
-        private const val MTU_REQUEST_FALLBACK = 247
-        private const val BG_NOTIFY_DELAY_MS = 4000L
+        internal const val MTU_REQUEST_FALLBACK = 247
+        internal const val BG_NOTIFY_DELAY_MS = 4000L
         private const val RX_WAKE_MS = 15000L // ronda 2772: despierto tras recibir con la app en segundo plano (rxWake)
         private val RX_EVENTS = setOf("onPayloadReceived", "onLanMessage", "onTorMessage", "onWifiDirectReceived", "onBigProgress", "onBigDone")
-        private const val MAX_QUEUE_SIZE = 500
+        internal const val MAX_QUEUE_SIZE = 500
         // === FIX F0: Pacing conservador para evitar saturación del stack BLE nativo ===
         private const val WRITE_DELAY_MS = 40L               // Client writes: 40ms entre operaciones
         private const val SERVER_NOTIFY_DELAY_MS = 80L       // Server notifications: 80ms entre notifies
-        private const val CLIENT_WRITE_TIMEOUT_MS = 300L     // Timeout de respaldo si no llega onCharacteristicWrite
-        private const val SERVER_NOTIFY_TIMEOUT_MS = 200L    // Timeout de respaldo si no llega onNotificationSent
+        internal const val CLIENT_WRITE_TIMEOUT_MS = 300L     // Timeout de respaldo si no llega onCharacteristicWrite
+        internal const val SERVER_NOTIFY_TIMEOUT_MS = 200L    // Timeout de respaldo si no llega onNotificationSent
         // === FIN FIX F0 ===
-        private const val MANUFACTURER_ID = 0xFFFF
-        private const val NEXO_MAGIC_HIGH: Byte = 0x4E
-        private const val NEXO_MAGIC_LOW: Byte = 0x58
-        private const val SCAN_DEBOUNCE_MS = 1000L
-        private const val MIN_RSSI = -95
-        private const val NXID_MAC_MAP_FILE = "nexo_nxid_mac_map.json"
+        internal const val MANUFACTURER_ID = 0xFFFF
+        internal const val NEXO_MAGIC_HIGH: Byte = 0x4E
+        internal const val NEXO_MAGIC_LOW: Byte = 0x58
+        internal const val SCAN_DEBOUNCE_MS = 1000L
+        internal const val MIN_RSSI = -95
+        internal const val NXID_MAC_MAP_FILE = "nexo_nxid_mac_map.json"
         // Ronda 2785 (#87): registro nativo persistente (NativeLog.kt). En claro y en append desde varios hilos (también
         // con la app cerrada o bloqueada, cuando el cifrado en reposo puede no tener la clave); por eso se excluye del
         // cifrado en reposo (skip). Solo metadatos (nunca el contenido de un mensaje).
-        private const val NATIVE_LOG_FILE = "nexo_native_log.txt"
+        internal const val NATIVE_LOG_FILE = "nexo_native_log.txt"
     }
-    private var bluetoothGattServer: BluetoothGattServer? = null
-    private var serverTxCharacteristic: BluetoothGattCharacteristic? = null
-    private var serverRxCharacteristic: BluetoothGattCharacteristic? = null
-    private val serverConnectedDevices = ConcurrentHashMap<String, BluetoothDevice>()
-    private val serverNotificationEnabled = ConcurrentHashMap<String, Boolean>()
-    private val gattClients = ConcurrentHashMap<String, BluetoothGatt>()
-    private val clientRxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
-    private val clientTxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
-    private val clientConnectionStates = ConcurrentHashMap<String, Int>()
-    private var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
-    private var bluetoothScanner: BluetoothLeScanner? = null
-    private val scanResults = Collections.synchronizedList(mutableListOf<JSObject>())
-    private val scannedDevices = ConcurrentHashMap<String, BluetoothDevice>()
+    internal var bluetoothGattServer: BluetoothGattServer? = null
+    internal var serverTxCharacteristic: BluetoothGattCharacteristic? = null
+    internal var serverRxCharacteristic: BluetoothGattCharacteristic? = null
+    internal val serverConnectedDevices = ConcurrentHashMap<String, BluetoothDevice>()
+    internal val serverNotificationEnabled = ConcurrentHashMap<String, Boolean>()
+    internal val gattClients = ConcurrentHashMap<String, BluetoothGatt>()
+    internal val clientRxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
+    internal val clientTxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
+    internal val clientConnectionStates = ConcurrentHashMap<String, Int>()
+    internal var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
+    internal var bluetoothScanner: BluetoothLeScanner? = null
+    internal val scanResults = Collections.synchronizedList(mutableListOf<JSObject>())
+    internal val scannedDevices = ConcurrentHashMap<String, BluetoothDevice>()
     // Largo alcance (LE Coded PHY): cuándo se vio por última vez cada dispositivo en 1M y en Coded
-    private val seen1M = ConcurrentHashMap<String, Long>()
-    private val seenCoded = ConcurrentHashMap<String, Long>()
-    private val codedLinks = ConcurrentHashMap.newKeySet<String>()
-    private val mainHandler = Handler(Looper.getMainLooper())
+    internal val seen1M = ConcurrentHashMap<String, Long>()
+    internal val seenCoded = ConcurrentHashMap<String, Long>()
+    internal val codedLinks = ConcurrentHashMap.newKeySet<String>()
+    internal val mainHandler = Handler(Looper.getMainLooper())
     // Ronda 2766 (revisión): al pararse sola a los 15 s, se avisa a la app (antes seguía creyendo que buscaba y ya no
     // volvía a buscar: "Agregar" sin nadie y el botón en PARAR)
-    private val scanTimeoutRunnable = Runnable { stopScanInternal(); notifyListeners("onScanStopped", JSObject().put("reason", "timeout")) }
-    private val reconnectTimers = ConcurrentHashMap<String, Runnable>()
-    private val reconnectAttempts = ConcurrentHashMap<String, Int>()
-    private val reconnectDelays = ConcurrentHashMap<String, Long>()
-    private val keepAliveTimers = ConcurrentHashMap<String, Runnable>()
-    private val pendingMessageQueue = ConcurrentHashMap<String, MutableList<String>>()
-    private val pendingCalls = ConcurrentHashMap<String, PluginCall>()
-    private var messageReceiver: BroadcastReceiver? = null
-    private var bluetoothStateReceiver: BroadcastReceiver? = null
-    private var isAdvertisingActive = false
-    private var nexoAdvertisingId: String? = null
+    internal val scanTimeoutRunnable = Runnable { stopScanInternal(); notifyListeners("onScanStopped", JSObject().put("reason", "timeout")) }
+    internal val reconnectTimers = ConcurrentHashMap<String, Runnable>()
+    internal val reconnectAttempts = ConcurrentHashMap<String, Int>()
+    internal val reconnectDelays = ConcurrentHashMap<String, Long>()
+    internal val keepAliveTimers = ConcurrentHashMap<String, Runnable>()
+    internal val pendingMessageQueue = ConcurrentHashMap<String, MutableList<String>>()
+    internal val pendingCalls = ConcurrentHashMap<String, PluginCall>()
+    internal var messageReceiver: BroadcastReceiver? = null
+    internal var bluetoothStateReceiver: BroadcastReceiver? = null
+    internal var isAdvertisingActive = false
+    internal var nexoAdvertisingId: String? = null
     // ID rotativo (ronda 2755): clave de los códigos, hasta cuándo se anuncia el NEXO ID y duración de la época
-    private var ridKey: String? = null
-    private var ridVisibleUntil = 0L
-    private var ridEpochS = 900L
-    private val messageBuffers = ConcurrentHashMap<String, StringBuilder>()
-    private val messageBufferTimers = ConcurrentHashMap<String, Runnable>()
-    private val messageBufferSince = ConcurrentHashMap<String, Long>() // desde cuándo hay algo pendiente
-    private val lastScanNotifyTime = ConcurrentHashMap<String, Long>()
+    internal var ridKey: String? = null
+    internal var ridVisibleUntil = 0L
+    internal var ridEpochS = 900L
+    internal val messageBuffers = ConcurrentHashMap<String, StringBuilder>()
+    internal val messageBufferTimers = ConcurrentHashMap<String, Runnable>()
+    internal val messageBufferSince = ConcurrentHashMap<String, Long>() // desde cuándo hay algo pendiente
+    internal val lastScanNotifyTime = ConcurrentHashMap<String, Long>()
     // #87/diagnóstico: el scan encuentra anuncios muchas veces por segundo; escribir cada uno en el registro nativo
     // (NativeLog, anillo de 48 KB) lo inundaba y echaba fuera lo útil (p. ej. el Token FCM) en un minuto, y hacía el
     // diagnóstico enorme (queja del dueño, 2812). Al registro nativo va como mucho una línea por dispositivo cada 20 s;
     // el resto solo a logcat. No cambia nada de lo que hace el escaneo, solo cuánto se persiste.
-    private val scanLogLast = ConcurrentHashMap<String, Long>()
-    private val SCAN_LOG_MIN_MS = 20000L
-    private val negotiatedMtu = ConcurrentHashMap<String, Int>()
-    private val writeQueues = ConcurrentHashMap<String, MutableList<WriteQueueItem>>()
-    private val writeQueueProcessing = ConcurrentHashMap<String, Boolean>()
-    private val writeQueueTimeouts = ConcurrentHashMap<String, Runnable>()
-    private val writeRetryCount = ConcurrentHashMap<String, Int>()
-    private val writeDropStreak = ConcurrentHashMap<String, Int>() // #129: mensajes SEGUIDOS descartados por enlace (atasco real)
-    private val clientSetupDone = ConcurrentHashMap<String, Boolean>() // 3059: enlace cliente con MTU y notificaciones ya hechos
-    private val clientSetupWaitSince = ConcurrentHashMap<String, Long>() // 3059: desde cuándo esperan las escrituras a eso
-    private val nxidToMacMap = ConcurrentHashMap<String, String>()
-    private var quickScanLatch: java.util.concurrent.CountDownLatch? = null
-    private var quickScanResultMac: String? = null
+    internal val scanLogLast = ConcurrentHashMap<String, Long>()
+    internal val SCAN_LOG_MIN_MS = 20000L
+    internal val negotiatedMtu = ConcurrentHashMap<String, Int>()
+    internal val writeQueues = ConcurrentHashMap<String, MutableList<WriteQueueItem>>()
+    internal val writeQueueProcessing = ConcurrentHashMap<String, Boolean>()
+    internal val writeQueueTimeouts = ConcurrentHashMap<String, Runnable>()
+    internal val writeRetryCount = ConcurrentHashMap<String, Int>()
+    internal val writeDropStreak = ConcurrentHashMap<String, Int>() // #129: mensajes SEGUIDOS descartados por enlace (atasco real)
+    internal val clientSetupDone = ConcurrentHashMap<String, Boolean>() // 3059: enlace cliente con MTU y notificaciones ya hechos
+    internal val clientSetupWaitSince = ConcurrentHashMap<String, Long>() // 3059: desde cuándo esperan las escrituras a eso
+    internal val nxidToMacMap = ConcurrentHashMap<String, String>()
+    internal var quickScanLatch: java.util.concurrent.CountDownLatch? = null
+    internal var quickScanResultMac: String? = null
     // msgId: de qué mensaje es el trozo (un mensaje nunca se parte: o salen todos sus trozos o ninguno más)
     // isHigh: ALTA prioridad = texto/control/ack (sendMessage); BAJA = trozo de archivo (sendBinary). Pacing 2b (#141):
     // el ALTA salta por delante de los trozos de archivo en la cola (WritePacing.insertIndex). Por defecto ALTA.
-    private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String, val msgId: Long = 0L, val bytes: ByteArray? = null, val isHigh: Boolean = true)
+    internal data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String, val msgId: Long = 0L, val bytes: ByteArray? = null, val isHigh: Boolean = true)
     // Trozos binarios de archivos (BinFrame.kt): se juntan aparte de los mensajes de texto
-    private val binAssembler = BinAssembler()
-    private val writeMsgCounter = java.util.concurrent.atomic.AtomicLong()
-    private data class JsonExtraction(val json: String, val remainder: String)
+    internal val binAssembler = BinAssembler()
+    internal val writeMsgCounter = java.util.concurrent.atomic.AtomicLong()
+    internal data class JsonExtraction(val json: String, val remainder: String)
     // Solo estas etiquetas cruzan a la app (diagnóstico). El resto (uno por cada trozo enviado o recibido) solo
     // va a logcat: la 2722 los escuchaba todos y miles de avisos por foto saturaban el puente (fotos paradas).
-    private val remLogToJs = setOf("AT_REST", "FILE_IO", "BT_ERR", "FCM")
+    internal val remLogToJs = setOf("AT_REST", "FILE_IO", "BT_ERR", "FCM")
     // Errores de Bluetooth al enviar o recibir (ronda 2755): al diagnóstico, como mucho uno de cada tipo cada 5 s
     // (si fallan seguidas serían miles y saturarían el puente con la app, como en la 2722)
-    private val btErrLast = ConcurrentHashMap<String, Long>()
-    private fun btErr(kind: String, message: String) {
-        val now = System.currentTimeMillis()
-        if (now - (btErrLast[kind] ?: 0L) < 5000) { Log.w("NEXO_REM", "[WARN][SEND] $message"); return }
-        btErrLast[kind] = now
-        remLog("WARN", "BT_ERR", message)
-    }
-    // Ronda 2785 (#87): registro nativo persistente (NativeLog.kt). Compartido por el proceso: lo usan el plugin y la
-    // escucha de internet (NetBg), también con la app cerrada (cuando el WebView —y diag.js— ya no existe).
-    private fun nlog(): NativeLog? {
-        val ctx = appCtx ?: return null
-        return nativeLogShared ?: synchronized(NexoBlePlugin::class.java) {
-            nativeLogShared ?: NativeLog(File(ctx.filesDir, NATIVE_LOG_FILE)).also { nativeLogShared = it }
-        }
-    }
-    private fun remLog(level: String, tag: String, message: String) {
-        Log.i("NEXO_REM", "[$level][$tag] $message")
-        // A disco (persiste con la app cerrada); no el detalle por trozo (ese va solo a logcat, no pasa por remLog)
-        try { nlog()?.add(level, tag, message) } catch (e: Exception) { }
-        if (tag !in remLogToJs) return
-        try {
-            notifyListeners("onRemLog", JSObject()
-                .put("level", level)
-                .put("tag", tag)
-                .put("message", message)
-                .put("timestamp", System.currentTimeMillis())
-            )
-        } catch (e: Exception) { }
-    }
+    internal val btErrLast = ConcurrentHashMap<String, Long>()
+
     // La actividad es singleTask: tocar una notificación con la app abierta llega aquí
     override fun handleOnNewIntent(intent: Intent) {
         super.handleOnNewIntent(intent)
         checkNotificationIntent(intent)
     }
-    private fun checkNotificationIntent(given: Intent? = null) {
-        try {
-            val intent = given ?: activity.intent
-            if (intent != null) {
-                // Auditoría (ronda 2774): la pantalla principal está exportada; solo hacemos caso a "contestar"/"abrir
-                // llamada" si el intent trae nuestro testigo (va dentro del PendingIntent del aviso, que otras apps no
-                // pueden leer). Sin esto, otra app del teléfono podía descolgar sola una llamada que estuviera sonando.
-                val callTokenOk = intent.getStringExtra(MsgNotifier.EXTRA_CALL_TOKEN) == MsgNotifier.callIntentToken
-                // Ronda 2765: abierta por una llamada (pantalla completa, tocar el aviso o Contestar): se ve encima de la
-                // pantalla de bloqueo y la enciende, hasta que acaba la llamada (callScreenDone)
-                if (callTokenOk && (intent.getStringExtra(MsgNotifier.EXTRA_ANSWER) != null || intent.getStringExtra(MsgNotifier.EXTRA_CALL_FROM) != null)) showOverLock(true)
-                // Ronda 2763: "Contestar" en el aviso de llamada (ronda 2768: solo para esa oferta)
-                val answer = if (callTokenOk) intent.getStringExtra(MsgNotifier.EXTRA_ANSWER) else null
-                if (answer != null) {
-                    val offer = intent.getStringExtra(MsgNotifier.EXTRA_CALL_OFFER) ?: ""
-                    MsgNotifier.pendingAnswer = CallTap(answer.lowercase(), System.currentTimeMillis(), offer)
-                    MsgNotifier.get(activity.applicationContext).cancelCall()
-                    notifyListeners("onCallAction", JSObject().put("answer", answer.lowercase()).put("answerOffer", offer), true)
-                    intent.removeExtra(MsgNotifier.EXTRA_ANSWER)
-                    intent.removeExtra(MsgNotifier.EXTRA_CALL_OFFER)
-                }
-                // 2994: botón «Actualizar» del aviso de versión nueva (mismo testigo): la app baja e instala
-                if (callTokenOk && intent.hasExtra(MsgNotifier.EXTRA_UPDATE_INSTALL)) {
-                    val ub = intent.getIntExtra(MsgNotifier.EXTRA_UPDATE_INSTALL, 0)
-                    MsgNotifier.get(activity.applicationContext).cancelUpdate()
-                    notifyListeners("onUpdateAction", JSObject().put("install", true).put("build", ub), true)
-                    intent.removeExtra(MsgNotifier.EXTRA_UPDATE_INSTALL)
-                }
-                // 2995: el aviso genérico «Mensaje nuevo» (despertar por FCM) no trae chat: la app decide con sus no leídos
-                if (intent.hasExtra(MsgNotifier.EXTRA_WAKE_TAP)) {
-                    remLog("INFO", "NOTIF", "Aviso genérico «Mensaje nuevo» tocado: la app abre el chat del último mensaje sin leer")
-                    notifyListeners("onNotificationOpened", JSObject().put("deviceId", "").put("source", "wake"), true)
-                    intent.removeExtra(MsgNotifier.EXTRA_WAKE_TAP)
-                }
-                val deviceId = intent.getStringExtra("nexo_chat_device_id")
-                if (deviceId != null) {
-                    remLog("INFO", "NOTIF", "Aviso de mensaje tocado: abre el chat " + deviceId)
-                    // 2995: con la app CERRADA este aviso sale al cargar el plugin, antes de que exista el JS; sin «retener» se
-                    // perdía (y el extra se borra justo después). Retenido hasta que el JS escuche.
-                    notifyListeners("onNotificationOpened", JSObject()
-                        .put("deviceId", deviceId)
-                        .put("source", "notification")
-                    , true)
-                    intent.removeExtra("nexo_chat_device_id")
-                }
-            }
-        } catch (e: Exception) { }
-    }
-    // FIX: Parser JSON que respeta strings y escapes (no cuenta {/} dentro de strings)
-    private fun tryExtractCompleteJson(buffer: String): JsonExtraction? {
-        if (buffer.isBlank()) return null
-        var i = 0
-        while (i < buffer.length) {
-            while (i < buffer.length && buffer[i] != '{') i++
-            if (i >= buffer.length) return null
-            val startIdx = i
-            var braceCount = 0
-            var inString = false
-            var escapeNext = false
-            var j = i
-            while (j < buffer.length) {
-                val c = buffer[j]
-                if (escapeNext) {
-                    escapeNext = false
-                    j++
-                    continue
-                }
-                if (c == '\\') {
-                    escapeNext = true
-                    j++
-                    continue
-                }
-                if (c == '"') {
-                    inString = !inString
-                    j++
-                    continue
-                }
-                if (!inString) {
-                    if (c == '{') {
-                        braceCount++
-                    } else if (c == '}') {
-                        braceCount--
-                        if (braceCount == 0) {
-                            val candidate = buffer.substring(startIdx, j + 1)
-                            // Auditoría: un JSON de fuera descomunal o demasiado anidado hace que el parser recursivo de
-                            // org.json lance StackOverflowError (NO es Exception → mataba la app a distancia con un
-                            // paquete). Se criba antes con SafeJson (O(n), sin recursión, ya probado en JVM) y además el
-                            // catch pasa a Throwable (atrapa StackOverflowError/OutOfMemoryError y resincroniza).
-                            if (SafeJson.reject(candidate)) { i = startIdx + 1; break }
-                            return try {
-                                JSONObject(candidate)
-                                JsonExtraction(candidate, buffer.substring(j + 1))
-                            } catch (e: Throwable) {
-                                i = startIdx + 1
-                                break
-                            }
-                        }
-                    }
-                }
-                j++
-            }
-            if (j >= buffer.length) return null
-        }
-        return null
-    }
-    // Ronda 2753: lo que llega por Bluetooth son bytes. Un trozo binario (BinFrame) se junta aparte y se entrega a la
-    // app como cabecera + datos en base64; lo demás es el texto de siempre (antes se convertía cada escritura a texto).
-    private fun processReceivedBytes(deviceId: String, value: ByteArray, source: String) {
-        val out = binAssembler.feed(normalizeMac(deviceId), value, System.currentTimeMillis())
-        if (out.dropped > 0) btErr("bin_drop", "Trozo binario incompleto de ${normalizeMac(deviceId)} descartado")
-        out.frames.forEach { f ->
-            if (closedMode) { closedReceive(deviceId, f.header); return@forEach }
-            backgroundNotify(f.header, deviceId)
-            notifyListeners("onPayloadReceived", JSObject()
-                .put("deviceId", deviceId)
-                .put("content", f.header)
-                .put("data", f.header)
-                .put("bin", Base64.encodeToString(f.data, Base64.NO_WRAP))
-                .put("source", source)
-                .put("timestamp", System.currentTimeMillis())
-                .put("reassembled", true),
-                true
-            )
-        }
-        out.text?.let { processReceivedChunk(deviceId, it.toString(Charsets.UTF_8), source) }
-    }
 
-    private fun processReceivedChunk(deviceId: String, chunk: String, source: String) {
-        val macNorm = normalizeMac(deviceId)
-        messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
-        // v2723: si lo pendiente lleva más de 10 s sin formar un mensaje, es un mensaje mutilado (se perdió un
-        // trozo): fuera, y se sigue con lo que llega. Antes solo se limpiaba tras 5 s SIN trozos nuevos, y con
-        // los reenvíos llegando sin parar nunca se limpiaba: todo lo siguiente quedaba tragado (foto parada).
-        val pendingSince = messageBufferSince[macNorm]
-        if (pendingSince != null && System.currentTimeMillis() - pendingSince > MESSAGE_MAX_PENDING_MS && messageBuffers[macNorm]?.isNotEmpty() == true) {
-            remLog("WARN", "REASSEMBLY", "Mensaje incompleto de $macNorm descartado (resincronizado)")
-            messageBuffers.remove(macNorm)
-        }
-        // 3059 (diagnóstico automático del Motorola 13-11 07:50): un mensaje quedó cortado (se perdió un trozo) y su resto se tragó
-        // todo lo que llegó detrás —pings, acuses, el saludo— hasta vencer el plazo (6 s): el vivo parecía muerto y se cortó el
-        // enlace. Si llega un trozo que EMPIEZA un mensaje (SafeJson.startsMessage) y con lo pendiente no se forma
-        // ningún mensaje, lo pendiente era un resto cortado: fuera ya, y se sigue con lo nuevo. (Los mensajes de un enlace llegan
-        // uno detrás de otro, nunca mezclados: si empieza uno nuevo, el anterior ya no se va a completar.)
-        val pend = messageBuffers[macNorm]
-        if (pend != null && pend.isNotEmpty() && SafeJson.startsMessage(chunk) && tryExtractCompleteJson(pend.toString() + chunk) == null) {
-            remLog("WARN", "REASSEMBLY", "Mensaje cortado de $macNorm descartado al llegar otro entero (${pend.length} car.): resincronizado al momento")
-            messageBuffers.remove(macNorm)
-            messageBufferSince.remove(macNorm)
-        }
-        if (messageBuffers[macNorm].isNullOrEmpty()) messageBufferSince[macNorm] = System.currentTimeMillis()
-        val buffer = messageBuffers.getOrPut(macNorm) { StringBuilder() }
-        buffer.append(chunk)
-        // Auditoría: tope de bytes por enlace (no solo por tiempo) — si el buffer crece sin formar un mensaje, se
-        // descarta y se resincroniza (el emisor legítimo reenvía por la capa de ACK; un inundador no agota la memoria).
-        if (buffer.length > MESSAGE_BUFFER_MAX_CHARS) {
-            remLog("WARN", "REASSEMBLY", "Buffer de $macNorm pasó el tope (${buffer.length} chars) sin formar mensaje: descartado (posible inundación)")
-            messageBuffers.remove(macNorm)
-            messageBufferSince.remove(macNorm)
-            messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
-            messageBufferTimers.remove(macNorm)
-            return
-        }
-        var remaining = buffer.toString()
-        var extractedCount = 0
-        while (true) {
-            val extraction = tryExtractCompleteJson(remaining)
-            if (extraction != null) {
-                remLog("INFO", "REASSEMBLY", "JSON extraído de $macNorm len=${extraction.json.length}")
-                // retainUntilConsumed=true: si el JS aún no escucha (app recién abierta, WebView
-                // recargando), Capacitor guarda el mensaje y lo entrega al registrarse el listener.
-                // Sin esto Capacitor lo DESCARTA (Plugin.notifyListeners) y el mensaje se perdía.
-                // 3009: con la app en segundo plano o cerrada, el nativo contesta el ping del vigilante del otro (ver nativePong)
-                if ((appInBackground || closedMode) && extraction.json.length < 400 && extraction.json.contains("\"ping\"")) nativePong(deviceId, extraction.json)
-                // 3012 (regla del dueño 11-11: «cualquiera que tiene NEXO debe aparecer al instante en un escaneo»): con la app en
-                // segundo plano, dormida o cerrada, el nativo contesta «quién soy» a quien lo pregunta (ver nativeKx)
-                if ((appInBackground || closedMode) && extraction.json.length < 6000 && extraction.json.contains("\"type\":\"kx\"") && extraction.json.contains("\"rq\":1")) nativeKx(deviceId)
-                if (!closedMode) backgroundNotify(extraction.json, deviceId)
-                if (closedMode) closedReceive(deviceId, extraction.json)
-                else notifyListeners("onPayloadReceived", JSObject()
-                    .put("deviceId", deviceId)
-                    .put("content", extraction.json)
-                    .put("data", extraction.json)
-                    .put("source", source)
-                    .put("timestamp", System.currentTimeMillis())
-                    .put("reassembled", true),
-                    true
-                )
-                remaining = extraction.remainder
-                extractedCount++
-                messageBufferSince[macNorm] = System.currentTimeMillis()
-            } else {
-                break
-            }
-        }
-        if (remaining.isEmpty()) {
-            messageBuffers.remove(macNorm)
-            messageBufferTimers.remove(macNorm)
-            messageBufferSince.remove(macNorm)
-        } else {
-            messageBuffers[macNorm] = StringBuilder(remaining)
-            val timeoutRunnable = Runnable {
-                remLog("WARN", "REASSEMBLY", "Timeout reensamblaje para $macNorm, descartando buffer")
-                messageBuffers.remove(macNorm)
-                messageBufferTimers.remove(macNorm)
-            }
-            messageBufferTimers[macNorm] = timeoutRunnable
-            mainHandler.postDelayed(timeoutRunnable, MESSAGE_REASSEMBLY_TIMEOUT_MS)
-        }
-    }
-    // === FIN FIX vFIX-3 ===
-    private fun loadNexoMappings() {
-        try {
-            val file = File(activity.filesDir, NXID_MAC_MAP_FILE)
-            if (!file.exists()) return
-            val content = FileInputStream(file).use { fis ->
-                InputStreamReader(fis, Charsets.UTF_8).use { it.readText() }
-            }
-            val json = JSONObject(content)
-            val mapObj = json.optJSONObject("map") ?: return
-            mapObj.keys().forEach { key ->
-                val value = mapObj.optString(key, "")
-                if (value.isNotEmpty()) {
-                    nxidToMacMap[key.lowercase()] = value.lowercase().replace(":", "").replace("-", "")
-                }
-            }
-            remLog("INFO", "NXID_MAP", "Cargados ${nxidToMacMap.size} mapeos")
-        } catch (e: Exception) {
-            remLog("WARN", "NXID_MAP", "Error cargando mapeos: ${e.message}")
-        }
-    }
-    private fun saveNexoMappings() {
-        try {
-            val json = JSONObject()
-            val mapObj = JSONObject()
-            nxidToMacMap.forEach { (k, v) -> mapObj.put(k, v) }
-            json.put("map", mapObj)
-            json.put("savedAt", System.currentTimeMillis())
-            val file = File(activity.filesDir, NXID_MAC_MAP_FILE)
-            FileOutputStream(file).use { fos ->
-                OutputStreamWriter(fos, Charsets.UTF_8).use { it.write(json.toString()) }
-            }
-        } catch (e: Exception) {
-            remLog("WARN", "NXID_MAP", "Error guardando mapeos: ${e.message}")
-        }
-    }
-    private fun putRidExtras(intent: Intent) {
-        intent.putExtra("rid_key", ridKey ?: "")
-        intent.putExtra("visible_until", ridVisibleUntil)
-        intent.putExtra("rid_epoch_s", ridEpochS)
-    }
-
-    private fun registerNexoMapping(nexoId: String, mac: String) {
-        val nid = nexoId.lowercase().trim()
-        // Solo NEXO ID: los códigos rotativos ("R…") cambian cada 15 min y llenarían el archivo de mapeos
-        if (!nid.startsWith("nx")) return
-        val nmac = normalizeMac(mac)
-        if (nid.isEmpty() || nmac.isEmpty()) return
-        val existing = nxidToMacMap[nid]
-        if (existing == nmac) return
-        nxidToMacMap[nid] = nmac
-        saveNexoMappings()
-        remLog("INFO", "NXID_MAP", "Registrado $nid ↔ $mac")
-    }
-    private fun classifyDeviceId(id: String): String {
-        val trimmed = id.trim()
-        if (trimmed.isEmpty()) return "empty"
-        if (trimmed.length == 10 && trimmed.startsWith("NX", ignoreCase = true) &&
-            trimmed.substring(2).all { it.isLetterOrDigit() }) {
-            return "nxid"
-        }
-        val clean = trimmed.replace(":", "").replace("-", "").replace(".", "").lowercase()
-        if (clean.length == 12 && clean.all { it in '0'..'9' || it in 'a'..'f' }) {
-            return "mac"
-        }
-        if (trimmed.matches(Regex("^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$"))) {
-            return "mac"
-        }
-        return "invalid"
-    }
-    private fun resolveMacForNexoId(nexoId: String): String? {
-        val nid = nexoId.lowercase().trim()
-        val cachedMac = nxidToMacMap[nid]
-        remLog("INFO", "NXID_RESOLVE", "Buscando $nid en el aire...")
-        val foundMac = quickScanForNexoId(nid, 5000)
-        if (foundMac != null) {
-            if (foundMac != cachedMac) {
-                remLog("INFO", "NXID_RESOLVE", "MAC cambió para $nid: $cachedMac → $foundMac")
-                registerNexoMapping(nid, foundMac)
-            }
-            return foundMac
-        }
-        if (cachedMac != null) {
-            remLog("WARN", "NXID_RESOLVE", "$nid no encontrado en scan, usando caché: $cachedMac")
-            return cachedMac
-        }
-        remLog("WARN", "NXID_RESOLVE", "$nid no resuelto")
-        return null
-    }
-    private fun quickScanForNexoId(targetNexoId: String, timeoutMs: Long = 5000): String? {
-        val ctx = activity.applicationContext
-        val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val adapter = bluetoothManager.adapter ?: return null
-        if (!adapter.isEnabled) return null
-        val scanner = adapter.bluetoothLeScanner ?: return null
-        quickScanResultMac = null
-        quickScanLatch = java.util.concurrent.CountDownLatch(1)
-        val callback = object : ScanCallback() {
-            override fun onScanResult(callbackType: Int, result: ScanResult?) {
-                result?.device?.let { device ->
-                    val nexoId = extractNexoIdFromScanRecord(result.scanRecord)
-                    if (nexoId != null && nexoId.equals(targetNexoId, ignoreCase = true)) {
-                        val macNorm = normalizeMac(device.address)
-                        quickScanResultMac = macNorm
-                        quickScanLatch?.countDown()
-                        remLog("INFO", "QUICK_SCAN", "Encontrado $targetNexoId en ${device.address}")
-                    }
-                }
-            }
-            override fun onScanFailed(errorCode: Int) {
-                quickScanLatch?.countDown()
-            }
-        }
-        try {
-            val settings = scanSettings()
-            scanner.startScan(emptyList(), settings, callback)
-        } catch (e: SecurityException) {
-            quickScanLatch?.countDown()
-            return null
-        }
-        val found = try {
-            quickScanLatch?.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS) ?: false
-        } catch (e: InterruptedException) {
-            false
-        }
-        try { scanner.stopScan(callback) } catch (e: Exception) { }
-        quickScanLatch = null
-
-        return if (found) quickScanResultMac else null
-    }
     // ===== Recibir por Bluetooth con la app cerrada (ronda 2758, plan del dueño punto 12; BgInbox.kt) =====
-    @Volatile private var closedMode = false
-    private var appCtx: Context? = null
-    private fun inbox(): BgInbox = BgInbox(File((appCtx ?: activity.applicationContext).filesDir, "nexo_bg_inbox.jsonl"))
+    @Volatile internal var closedMode = false
+    internal var appCtx: Context? = null
 
     // Con la app cerrada no hay a quién avisar (el puente con la app ya no existe)
     override fun notifyListeners(eventName: String?, data: JSObject?, retainUntilConsumed: Boolean) {
@@ -618,6 +225,11 @@ class NexoBlePlugin : Plugin() {
         if (appInBackground && eventName != null && eventName in RX_EVENTS) rxWake()
         super.notifyListeners(eventName, data, retainUntilConsumed)
     }
+
+    // 3118: notifyListeners de Capacitor es protected y las extensiones de los otros archivos no lo ven; estas dos
+    // envolturas (y las extensiones del mismo nombre al final de este archivo) les dejan llamarlo igual que antes.
+    internal fun notifyListenersExt(eventName: String?, data: JSObject?) = notifyListeners(eventName, data)
+    internal fun notifyListenersExt(eventName: String?, data: JSObject?, retainUntilConsumed: Boolean) = notifyListeners(eventName, data, retainUntilConsumed)
 
     // ===== Ronda 2772: recibir con la pantalla apagada (informe del dueño: "aunque ambos teléfonos tienen Wi-Fi, si mando
     // un mensaje y el otro tiene la pantalla apagada no llegan los mensajes, y lo mismo con las notificaciones") =====
@@ -628,8 +240,8 @@ class NexoBlePlugin : Plugin() {
     // con cada mensaje). Android lo permite en reposo (Doze) a las apps con servicio en primer plano (BleService); Google
     // Play vigila que no pase de 2 h al día: aquí son 15 s por mensaje. Reproducido en tests/sim/notify.js (fase 1c).
     private var rxWakeLock: android.os.PowerManager.WakeLock? = null
-    @Volatile private var rxWakes = 0
-    @Synchronized private fun rxWake() {
+    @Volatile internal var rxWakes = 0
+    @Synchronized internal fun rxWake() {
         val ctx = appCtx ?: return
         try {
             val wl = rxWakeLock ?: (ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager)
@@ -647,7 +259,7 @@ class NexoBlePlugin : Plugin() {
     // (y entonces rxWake da 15 s para avisar). Solo mientras NetBg escucha (en segundo plano/cerrada); se suelta al
     // volver a la app. No aplica a datos móviles (ahí no hay WifiLock); el dueño prueba por Wi-Fi.
     private var wifiLock: android.net.wifi.WifiManager.WifiLock? = null
-    @Synchronized private fun wifiLockHold(on: Boolean) {
+    @Synchronized internal fun wifiLockHold(on: Boolean) {
         try {
             val ctx = appCtx ?: return
             if (on) {
@@ -673,7 +285,7 @@ class NexoBlePlugin : Plugin() {
     //     onResume la suelta), así que no la toco acá (NetBg puede seguir necesitándola en segundo plano).
     private var xferWakeLock: android.os.PowerManager.WakeLock? = null
     private var xferLogAt = 0L
-    @Synchronized private fun xferAwakeHold(on: Boolean) {
+    @Synchronized internal fun xferAwakeHold(on: Boolean) {
         val ctx = appCtx ?: return
         try {
             if (on) {
@@ -691,309 +303,26 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { Log.w(TAG, "xferAwakeHold: ${e.message}") }
     }
 
-    // Lo llama el JS (ble_ack.js) al recibir bloques de un archivo GRANDE por internet (tomar) y al completarlo (soltar).
-    @PluginMethod
-    fun xferKeepAwake(call: PluginCall) {
-        xferAwakeHold(call.getBoolean("on") ?: false)
-        call.resolve()
-    }
+    @PluginMethod fun xferKeepAwake(call: PluginCall) = xferKeepAwakeImpl(call)
 
-    // 2985 (pedido del dueño 10-11: «actualizaciones automáticas»). Solo para el APK de probadores (la versión de Google Play se
-    // actualiza por Play). La lógica de decisión vive en UpdateSpec (pura, probada en JVM). updateCheck consulta los lanzamientos
-    // públicos del repositorio; updateInstall descarga el APK (solo https y hosts de GitHub, con tope de tamaño) y lo abre en el
-    // instalador del sistema, que pide su confirmación y exige la misma firma que la app instalada.
-    @PluginMethod
-    fun updateCheck(call: PluginCall) {
-        val current = call.getInt("current")   // 3105: la versión instalada, para devolver también sus novedades
-        Thread {
-            var c: java.net.HttpURLConnection? = null
-            try {
-                c = (java.net.URL("https://api.github.com/repos/maurizio-bot/nexo-app/releases?per_page=8").openConnection() as java.net.HttpURLConnection).apply {
-                    connectTimeout = 10_000; readTimeout = 15_000
-                    setRequestProperty("Accept", "application/vnd.github+json")
-                    setRequestProperty("User-Agent", "NEXO-updater")
-                }
-                if (c.responseCode != 200) { call.resolve(JSObject().put("build", JSONObject.NULL).put("reason", "http_" + c.responseCode)); return@Thread }
-                val buf = ByteArrayOutputStream()
-                c.inputStream.use { ins ->
-                    val chunk = ByteArray(8192)
-                    while (true) {
-                        val n = ins.read(chunk); if (n < 0) break
-                        buf.write(chunk, 0, n)
-                        if (buf.size() > UpdateSpec.MAX_JSON_BYTES) { call.resolve(JSObject().put("build", JSONObject.NULL).put("reason", "too_big")); return@Thread }
-                    }
-                }
-                val json = buf.toString("UTF-8")
-                val l = UpdateSpec.pickLatest(json)
-                val cur = UpdateSpec.notesOf(json, current)
-                if (l == null) call.resolve(JSObject().put("build", JSONObject.NULL).put("reason", "none").put("curNotes", cur))
-                else call.resolve(JSObject().put("build", l.build).put("tag", l.tag).put("url", l.url).put("size", l.size).put("notes", l.notes).put("curNotes", cur))
-            } catch (e: Exception) {
-                call.resolve(JSObject().put("build", JSONObject.NULL).put("reason", "net"))
-            } finally { try { c?.disconnect() } catch (e: Exception) {} }
-        }.start()
-    }
+    @PluginMethod fun updateCheck(call: PluginCall) = updateCheckImpl(call)
 
-    // 2994: aviso del sistema «Hay una versión nueva» con botón «Actualizar» (lo pide la parte web al encontrar una más nueva)
-    @PluginMethod
-    fun updateNotify(call: PluginCall) {
-        val b = call.getInt("build") ?: 0
-        val size = (call.getDouble("size") ?: 0.0).toLong()
-        val notes = call.getString("notes") ?: ""   // 3107: novedades de esa versión (texto)
-        if (b > 0) MsgNotifier.get(context).updateAvailable(b, size, notes)
-        call.resolve()
-    }
+    @PluginMethod fun updateNotify(call: PluginCall) = updateNotifyImpl(call)
 
     @PluginMethod
     fun updateNotifyCancel(call: PluginCall) { MsgNotifier.get(context).cancelUpdate(); call.resolve() }
 
-    // 3008 (dueño 11-11: «si pulso afuera mientras descargo y luego vuelvo me hace volver a descargar»): descarga y apertura SEPARADAS.
-    // mode = "download": solo baja (sigue aunque se cierre la ventana o se salga de la app), a nexo-update-<build>.apk; al terminar avisa
-    //   (evento onUpdateReady + aviso del sistema «Instalar»). Si ya está bajado no vuelve a bajar; si ya se está bajando, no empieza otra.
-    // mode = "open": abre el instalador con lo YA bajado (sin descargar). mode = "status": ¿bajado? ¿bajando?
-    // Sin mode: como antes (baja y abre).
-    @PluginMethod
-    fun updateInstall(call: PluginCall) {
-        val url0 = call.getString("url")
-        val mode = call.getString("mode") ?: ""
-        val build = call.getInt("build") ?: 0
-        val updDir = File(activity.cacheDir, "nexo_open").also { it.mkdirs() }
-        val readyFile: File? = if (build > 0) File(updDir, "nexo-update-$build.apk") else null
-        val isReady = readyFile != null && readyFile.isFile && readyFile.length() > 0L
-        if (mode == "status") {
-            call.resolve(JSObject().put("ready", isReady).put("downloading", build > 0 && UpdDownload.build == build)); return
-        }
-        if (mode == "open") {
-            if (readyFile == null || !isReady) { call.resolve(JSObject().put("opened", false).put("reason", "missing")); return }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
-                activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + context.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                call.resolve(JSObject().put("opened", false).put("reason", "install_permission")); return
-            }
-            try { launchView(readyFile, "application/vnd.android.package-archive"); MsgNotifier.get(context).cancelUpdate(); call.resolve(JSObject().put("opened", true)) }
-            catch (e: ActivityNotFoundException) { call.resolve(JSObject().put("opened", false).put("reason", "no_app")) }
-            catch (e: Exception) { call.resolve(JSObject().put("opened", false).put("reason", "launch")) }
-            return
-        }
-        if (!UpdateSpec.isAllowedStartUrl(url0)) { call.resolve(JSObject().put("opened", false).put("reason", "bad_url")); return }
-        val dlOnly = mode == "download" && readyFile != null
-        if (dlOnly) {
-            if (isReady) { call.resolve(JSObject().put("ready", true)); return }
-            if (UpdDownload.build == build) { call.resolve(JSObject().put("downloading", true)); return }
-            UpdDownload.build = build
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
-            // Android pide permitir a NEXO instalar apps (una sola vez); al volver, el usuario toca «Actualizar» otra vez
-            activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + context.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            call.resolve(JSObject().put("opened", false).put("reason", "install_permission")); return
-        }
-        Thread {
-            var c: java.net.HttpURLConnection? = null
-            try {
-                var url = url0 as String
-                var hops = 0
-                while (true) {
-                    c = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
-                        connectTimeout = 15_000; readTimeout = 30_000; instanceFollowRedirects = false
-                        setRequestProperty("User-Agent", "NEXO-updater")
-                    }
-                    val code = c.responseCode
-                    if (code in 300..399) {
-                        val loc = c.getHeaderField("Location")
-                        val next = try { java.net.URL(java.net.URL(url), loc ?: "").toString() } catch (e: Exception) { "" }
-                        c.disconnect()
-                        if (++hops > 5 || !UpdateSpec.isAllowedRedirect(next)) { call.resolve(JSObject().put("opened", false).put("reason", "bad_redirect")); return@Thread }
-                        url = next; continue
-                    }
-                    if (code != 200) { call.resolve(JSObject().put("opened", false).put("reason", "http_$code")); return@Thread }
-                    break
-                }
-                val total = c!!.contentLengthLong
-                if (total > UpdateSpec.MAX_APK_BYTES) { call.resolve(JSObject().put("opened", false).put("reason", "too_big")); return@Thread }
-                val dir = updDir
-                dir.listFiles()?.forEach { if (it.name.startsWith("nexo-update")) it.delete() }
-                val out = if (dlOnly) File(dir, "nexo-update-$build.part") else File(dir, "nexo-update.apk")
-                var done = 0L; var lastPct = -1
-                FileOutputStream(out).use { os ->
-                    c!!.inputStream.use { ins ->
-                        val chunk = ByteArray(64 * 1024)
-                        while (true) {
-                            val n = ins.read(chunk); if (n < 0) break
-                            done += n
-                            if (done > UpdateSpec.MAX_APK_BYTES) throw java.io.IOException("demasiado grande")
-                            os.write(chunk, 0, n)
-                            val pct = if (total > 0) (done * 100 / total).toInt() else -1
-                            if (pct >= 0 && pct != lastPct && pct % 5 == 0) {
-                                lastPct = pct
-                                mainHandler.post { try { notifyListeners("onUpdateProgress", JSObject().put("pct", pct).put("done", done).put("total", total)) } catch (e: Exception) {} }
-                            }
-                        }
-                    }
-                }
-                if (total > 0 && done != total) { out.delete(); call.resolve(JSObject().put("opened", false).put("reason", "incomplete")); return@Thread }
-                if (dlOnly && readyFile != null) {
-                    if (!out.renameTo(readyFile)) { out.delete(); call.resolve(JSObject().put("opened", false).put("reason", "rename")); return@Thread }
-                    UpdDownload.build = 0
-                    remLog("INFO", "UPDATE", "Actualización $build descargada (${readyFile.length()} bytes): lista para instalar")
-                    try { MsgNotifier.get(context).updateReady(build) } catch (e: Exception) {}
-                    mainHandler.post { try { notifyListeners("onUpdateReady", JSObject().put("build", build)) } catch (e: Exception) {} }
-                    call.resolve(JSObject().put("ready", true))
-                    return@Thread
-                }
-                mainHandler.post {
-                    try { launchView(out, "application/vnd.android.package-archive"); call.resolve(JSObject().put("opened", true)) }
-                    catch (e: ActivityNotFoundException) { call.resolve(JSObject().put("opened", false).put("reason", "no_app")) }
-                    catch (e: Exception) { call.resolve(JSObject().put("opened", false).put("reason", "launch")) }
-                }
-            } catch (e: Exception) {
-                remLog("WARN", "UPDATE", "No se pudo bajar la actualización: ${e.message}")
-                call.resolve(JSObject().put("opened", false).put("reason", "net"))
-            } finally {
-                try { c?.disconnect() } catch (e: Exception) {}
-                if (dlOnly && UpdDownload.build == build) UpdDownload.build = 0
-            }
-        }.start()
-    }
-
-    // Ronda 2772: estado de energía para el diagnóstico (lo que puede impedir recibir con la pantalla apagada)
-    private fun energyLog(why: String) {
-        try {
-            val ctx = appCtx ?: return
-            val pm = ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-            val sb = StringBuilder("$why: segundo plano permitido ").append(if (pm.isIgnoringBatteryOptimizations(ctx.packageName)) "sí" else "NO")
-                .append(", reposo del sistema ").append(if (pm.isDeviceIdleMode) "sí" else "no")
-            if (Build.VERSION.SDK_INT >= 28) {
-                val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-                val b = (ctx.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager).appStandbyBucket
-                sb.append(", restringida por el sistema ").append(if (am.isBackgroundRestricted) "SÍ" else "no")
-                    .append(", grupo ").append(when (b) { 5 -> "exenta"; 10 -> "activa"; 20 -> "de uso"; 30 -> "frecuente"; 40 -> "rara"; 45 -> "RESTRINGIDA"; else -> "$b" })
-            }
-            sb.append(", despertares por mensajes ").append(rxWakes).append(", fabricante ").append(Build.MANUFACTURER)
-            remLog("INFO", "ENERGIA", sb.toString())
-        } catch (e: Exception) { }
-    }
+    @PluginMethod fun updateInstall(call: PluginCall) = updateInstallImpl(call)
 
     // Ronda 2763: nombre de un grupo (nexo_groups.json, cifrado en reposo) para el aviso con la app cerrada
-    @Volatile private var groupNames: Pair<Long, Map<String, String>>? = null
-    private fun groupName(gid: String): String? {
-        if (gid.isEmpty()) return null
-        val now = System.currentTimeMillis()
-        val cached = groupNames
-        val map = if (cached != null && now - cached.first < 60000) cached.second else try {
-            val g = JSONObject(atRest().read("nexo_groups.json") ?: "{}").optJSONObject("groups")
-            val m = HashMap<String, String>()
-            g?.keys()?.forEach { k -> g.optJSONObject(k)?.optString("name")?.takeIf { it.isNotEmpty() }?.let { m[k.lowercase()] = it } }
-            groupNames = now to m; m
-        } catch (e: Exception) { emptyMap() }
-        return map[gid.lowercase()]
-    }
+    @Volatile internal var groupNames: Pair<Long, Map<String, String>>? = null
+
     // Aviso de un mensaje (con la app cerrada o en segundo plano): en un grupo, en el chat del grupo con su nombre
-    private fun notifyMessage(ctx: Context, info: BgInbox.Info) {
+    internal fun notifyMessage(ctx: Context, info: BgInbox.Info) {
         val who = netBgShared?.nameOf(info.from)
         val gname = groupName(info.group)
         if (gname != null) MsgNotifier.get(ctx).message(info.group, gname, info.msgId, if (who != null) "$who: Mensaje nuevo" else "", true)
         else MsgNotifier.get(ctx).message(info.from, who ?: "NEXO", info.msgId, "", true)
-    }
-
-    // Aviso de "solo notificación" (BgInbox.Kind.NOTIFY_ONLY): sin remitente (Jump con remitente oculto) va a un chat
-    // aparte que la app quita al abrirse (no es un contacto)
-    private fun notifyOnly(ctx: Context, info: BgInbox.Info) {
-        if (info.quiet) return
-        if (info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.video, info.msgId); return }
-        val chat = info.from.ifEmpty { "nexo_jump" }
-        val what = when (info.what) { "image" -> "📷 Foto"; "video" -> "🎥 Vídeo"; "audio" -> "🎤 Nota de voz"; "call" -> "📞 Llamada entrante"; "text" -> ""; else -> "📎 Archivo" }
-        val gname = groupName(info.group) // ronda 2763: de un grupo, en el chat del grupo con su nombre
-        if (gname != null) { val who = netBgShared?.nameOf(info.from); MsgNotifier.get(ctx).message(info.group, gname, info.msgId, if (who != null) "$who: ${what.ifEmpty { "Mensaje nuevo" }}" else what, true); return }
-        MsgNotifier.get(ctx).message(chat, if (info.from.isEmpty()) "NEXO" else netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId, what, true)
-    }
-
-    // Ronda 2760: con la app en segundo plano el aviso lo da la app (notify.js), pero algunos teléfonos (Vivo del dueño)
-    // congelan la app en segundo plano y no avisaba nadie. Ahora el nativo mira lo que llega (Bluetooth o Wi-Fi) y, si
-    // a los 4 s la app no ha avisado de ese mensaje, avisa él (sin texto: va cifrado). Mismo msgId = un solo aviso.
-    // 3016: lanNx = llegó por Wi-Fi local desde ese NEXO ID (la confirmación vuelve por esa misma conexión)
-    private fun backgroundNotify(json: String, deviceId: String? = null, lanNx: String? = null) {
-        if (!appInBackground || closedMode) return
-        val ctx = appCtx ?: return
-        val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
-        if (info.msgId.isEmpty()) return
-        // 3034 (diagnóstico S24 12-11 17:54, «reenvio_sin_fin» con …db61): una acción OCULTA (estado, foto de perfil, me gusta;
-        // marca q:1) que llega con la app en segundo plano/congelada no se avisa, pero tampoco se CONFIRMABA (solo los textos,
-        // al avisar, desde 2833) → el otro la reenviaba sin fin hasta que esta app volviera. Ahora se confirma igual, sin aviso
-        // (como con la app cerrada, closedReceive).
-        if (info.quiet) {
-            // 3087: el que llama colgó (la app dormida no lo puede leer) → deja de sonar ya
-            if (info.kind == BgInbox.Kind.MESSAGE && info.callEnd.isNotEmpty()) MsgNotifier.get(ctx).cancelCallFor(info.from, info.callEnd)
-            if (info.kind == BgInbox.Kind.MESSAGE && !info.call) mainHandler.postDelayed({
-                if (!appInBackground) return@postDelayed
-                if (deviceId != null) sendDeliveredAck(deviceId, info)
-                else if (lanNx != null) sendDeliveredAckLan(lanNx, info)
-            }, BG_NOTIFY_DELAY_MS)
-            return
-        }
-        // #dueño 08-11: si tenés ABIERTO el chat de este remitente (o grupo), NO avisar: lo estás leyendo. Solo acá (aviso de
-        // respaldo de 2.º plano); con la app CERRADA (closedReceive) sí se avisa, porque ahí no hay un chat abierto a la vista.
-        // 3086 (diagnósticos S24 08:09 y vivo 08:49 del 14-11): solo en un parpadeo a segundo plano (BgNotifyPolicy) y solo el AVISO:
-        // la confirmación de entrega sale siempre (antes se saltaba todo, para siempre, y el otro reenviaba sin fin).
-        val chatOpen = activeChatNx.isNotEmpty() && (info.from.lowercase() == activeChatNx || info.group.lowercase() == activeChatNx)
-        val silent = BgNotifyPolicy.silentForOpenChat(chatOpen, System.currentTimeMillis() - bgSinceMs)
-        if (info.kind != BgInbox.Kind.MESSAGE && info.kind != BgInbox.Kind.NOTIFY_ONLY) return
-        // Llamada: suena ya (si la app está viva también la avisa: es el mismo aviso, no sale dos veces)
-        if (info.call || info.what == "call") { if (!silent) MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.video, info.msgId); return }
-        mainHandler.postDelayed({
-            if (!appInBackground || MsgNotifier.get(ctx).book.hasMsg(info.msgId)) return@postDelayed
-            if (info.kind == BgInbox.Kind.MESSAGE) {
-                if (!silent) notifyMessage(ctx, info)
-                // #87 / dueño 29-10 (2833): el JS no confirmó en 4 s (lo normal: lo confirma él, pero algunos teléfonos —
-                // el Vivo del dueño— congelan la app y el JS no corre). Al avisar, mandar también la confirmación de
-                // ENTREGA firmada por Bluetooth, para que el emisor vea el ✓✓ sin esperar a que la app vuelva.
-                // 3016 (diagnóstico S23 del dueño 12-11): por Wi-Fi local NO se confirmaba («esa vía confirma por su cuenta»
-                // era falso con el JS congelado) y el emisor reenviaba sin fin; ahora vuelve por la misma conexión Wi-Fi.
-                if (deviceId != null) sendDeliveredAck(deviceId, info)
-                else if (lanNx != null) sendDeliveredAckLan(lanNx, info)
-            } else if (!silent) notifyOnly(ctx, info)
-        }, BG_NOTIFY_DELAY_MS)
-    }
-
-    // Lo que llega con la app cerrada: al buzón, confirmación de entrega y notificación (ver BgInbox)
-    private fun closedReceive(deviceId: String, json: String) {
-        val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
-        val ctx = appCtx ?: return
-        // Ronda 2785 (#87): dejar constancia en el registro nativo (persiste con la app cerrada; sin contenido)
-        nlog()?.add("INFO", "BT_CERRADA", "llega por Bluetooth: ${info.kind} de ${info.from.ifEmpty { "?" }}${if (info.msgId.isNotEmpty()) " (msgId ${info.msgId})" else ""}${if (info.call) " [llamada]" else ""}")
-        when (info.kind) {
-            BgInbox.Kind.MESSAGE -> {
-                if (!inbox().add(deviceId, json)) { Log.w("NEXO_REM", "Buzón lleno: mensaje de ${info.from} sin guardar"); return }
-                sendDeliveredAck(deviceId, info)
-                // 3087: el que llama colgó → deja de sonar ya
-                if (info.callEnd.isNotEmpty() && MsgNotifier.get(ctx).cancelCallFor(info.from, info.callEnd)) nlog()?.add("INFO", "BT_CERRADA", "${info.from} colgó: la llamada deja de sonar")
-                // Ronda 2763: una llamada suena como una llamada del teléfono (aviso con tono, Contestar / Rechazar)
-                if (info.call) MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.video, info.msgId)
-                else if (!info.quiet) notifyMessage(ctx, info)
-            }
-            BgInbox.Kind.RECEIPT -> inbox().add(deviceId, json)
-            BgInbox.Kind.NOTIFY_ONLY -> notifyOnly(ctx, info)
-            BgInbox.Kind.IGNORE -> {}
-        }
-    }
-
-    // #87 (C1, ronda 2777): confirmación de ENTREGA firmada al emisor (el mensaje ya está a salvo en este teléfono). La
-    // usan el modo cerrado (closedReceive) y, desde 2833, el aviso de respaldo en segundo plano (backgroundNotify) cuando
-    // el teléfono congela la app (p. ej. el Vivo del dueño) y el JS no pudo confirmar: así el emisor ve el ✓✓ aunque el
-    // JS no corra. Se firma con la clave de la pareja (si la app nos la dio) para que el emisor sepa que es de verdad y no
-    // de un tercero que espió el msgId. El emisor deduplica por tipo+id (un ack doble es inofensivo); sin la clave va sin
-    // firma y el emisor proto-2 lo ignora (se recupera al reabrir, cuando el JS manda el ack firmado del buzón).
-    // 3009 (PENDIENTES 12a, «zombi» falso: 3 de 7 síntomas del canal de diagnósticos): con la app en segundo plano o cerrada el
-    // JS puede estar dormido y no contestar el ping del vigilante del otro teléfono → «sin respuesta a 2 pings» → el otro tiraba
-    // un enlace Bluetooth SANO y lo rehacía en bucle. Si llega un ping por un enlace vivo, contesta el nativo con el mismo
-    // pong que el JS (ble_messages.js). El otro resuelve con el primero; uno repetido (si el JS también contesta) se ignora.
-    private fun nativePong(deviceId: String, json: String) {
-        try {
-            val o = JSONObject(json)
-            if (o.optString("type") != "ping") return
-            val pingId = o.optString("pingId")
-            if (pingId.isEmpty() || pingId.length > 80) return
-            val me = (nexoAdvertisingId ?: "").lowercase()
-            val pong = JSONObject().put("v", 1).put("type", "pong").put("pingId", pingId).put("ts", System.currentTimeMillis()).put("fromNexoId", me).put("nb", 1)
-            sendChunkedOrSingle(normalizeMac(deviceId), deviceId, pong.toString())
-        } catch (e: Exception) { }
     }
 
     // 3012 (regla del dueño 11-11): un teléfono con «Agregar» abierto pregunta «quién eres» (kx con rq:1) a los NEXO cercanos
@@ -1002,83 +331,10 @@ class NexoBlePlugin : Plugin() {
     // «tarjeta» que la app le dejó (setKxCard): el mismo kx que manda la app (NEXO ID, clave pública, nombre y capacidades), sin el
     // paquete de claves del protocolo 2 (ese llega cuando la app despierta). Solo datos públicos: lo mismo que ya contesta la app
     // despierta a quien pregunta. Como mucho una vez cada 8 s por conexión.
-    @Volatile private var kxCard: String? = null
-    private val kxCardSentAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
-    private fun kxCardPrefs() = (appCtx ?: context).getSharedPreferences("nexo_ble_prefs", Context.MODE_PRIVATE)
-    private fun nativeKx(deviceId: String) {
-        try {
-            val mac = normalizeMac(deviceId)
-            val now = System.currentTimeMillis()
-            if (now - (kxCardSentAt[mac] ?: 0L) < 8000) return
-            val card = kxCard ?: try { kxCardPrefs().getString("kx_card", null) } catch (e: Exception) { null }
-            if (card.isNullOrEmpty()) return
-            kxCardSentAt[mac] = now
-            if (kxCardSentAt.size > 200) kxCardSentAt.clear()
-            sendChunkedOrSingle(mac, deviceId, card)
-            remLog("INFO", "SEND", "kx nativo (app dormida o cerrada) a $mac")
-        } catch (e: Exception) { }
-    }
+    @Volatile internal var kxCard: String? = null
+    internal val kxCardSentAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
-    @PluginMethod
-    fun setKxCard(call: PluginCall) {
-        val card = call.getString("card") ?: ""
-        // Solo un kx bien formado y corto (datos públicos); nada más se guarda ni se contesta
-        val ok = card.length in 40..1500 && try { val o = JSONObject(card); o.optString("type") == "kx" && o.optString("from").length == 10 && o.optString("pk").isNotEmpty() && !o.has("rq") } catch (e: Exception) { false }
-        if (!ok) { call.reject("tarjeta no válida"); return }
-        kxCard = card
-        try { kxCardPrefs().edit().putString("kx_card", card).apply() } catch (e: Exception) { }
-        call.resolve(JSObject().put("ok", true))
-    }
-
-    private fun deliveredAckJson(info: BgInbox.Info): String? {
-        val me = (nexoAdvertisingId ?: "").lowercase()
-        if (me.isEmpty() || info.from.isEmpty()) return null
-        val ackObj = JSONObject().put("v", 1).put("type", "ack").put("msgId", info.msgId).put("from", me).put("ts", System.currentTimeMillis())
-        val k = ackKeys[info.from]
-        if (k != null) ackObj.put("a", ackTag(k, "ack|${info.msgId}|$me|${info.from}"))
-        return ackObj.toString()
-    }
-
-    private fun sendDeliveredAck(deviceId: String, info: BgInbox.Info) {
-        val json = deliveredAckJson(info) ?: return
-        sendChunkedOrSingle(normalizeMac(deviceId), deviceId, json)
-    }
-
-    // 3016: confirmación de entrega por Wi-Fi local, solo al mismo NEXO que lo mandó por esa conexión (remitente = par)
-    private fun sendDeliveredAckLan(nx: String, info: BgInbox.Info) {
-        val peer = nx.lowercase()
-        if (peer.isEmpty() || info.from.lowercase() != peer) return
-        val json = deliveredAckJson(info) ?: return
-        val hub = lanHub ?: return
-        lanSendExec.execute { try { hub.send(peer, json) } catch (e: Exception) { } }
-    }
-
-    // La app se abre: la instancia anterior (si siguió recibiendo) se retira y lo guardado se entrega a la app
-    private fun takeOverFromClosed() {
-        val old = orphan
-        if (old != null && old !== this) {
-            orphan = null
-            try { old.endClosedMode() } catch (e: Exception) { }
-        }
-        val list = try { inbox().drain() } catch (e: Exception) { emptyList() }
-        if (list.isNotEmpty()) remLog("INFO", "FILE_IO", "Con la app cerrada llegaron ${list.size} mensaje(s)/confirmación(es) por Bluetooth")
-        val now = System.currentTimeMillis()
-        list.forEach { item ->
-            notifyListeners("onPayloadReceived", JSObject().put("deviceId", item.deviceId).put("content", item.json).put("data", item.json)
-                .put("source", "closed").put("timestamp", if (item.ts in 1..now) item.ts else now).put("reassembled", true), true)
-        }
-    }
-
-    // La instancia vieja deja el Bluetooth a la nueva (cierra sus conexiones y su servidor; el anuncio sigue en el servicio)
-    private fun endClosedMode() {
-        closedMode = false
-        cleanupAllConnections()
-        try { unregisterServerReceivers() } catch (e: Exception) { }
-        try { unregisterBluetoothStateReceiver() } catch (e: Exception) { }
-        try { stopGattServer() } catch (e: Exception) { }
-        writeQueues.clear(); writeQueueProcessing.clear()
-        writeQueueTimeouts.forEach { (_, r) -> mainHandler.removeCallbacks(r) }; writeQueueTimeouts.clear()
-    }
+    @PluginMethod fun setKxCard(call: PluginCall) = setKxCardImpl(call)
 
     override fun load() {
         super.load()
@@ -1104,43 +360,7 @@ class NexoBlePlugin : Plugin() {
         logFcmToken()
     }
 
-    // FCM «despertador» (#87): apunta en el diagnóstico el token de este teléfono (su "dirección" para despertarlo; NO
-    // es secreto). Fase 1: sirve para mandarle un "toque" de prueba desde la consola de Firebase/el enviador y ver que
-    // NEXO cerrada despierta. Defensivo: si Firebase/Play Services no está, solo deja un aviso (no afecta al resto).
-    private fun logFcmToken() {
-        try {
-            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-                // SEC-3 (03-11): el token COMPLETO ya no va al diagnóstico. Es la «dirección» para despertar este
-                // teléfono; un diagnóstico compartido (con soporte, un foro…) lo filtraría y cualquiera podría despertarlo
-                // (gasto de batería). Solo un prefijo + largo, para confirmar que hay token sin que sea usable.
-                if (task.isSuccessful) remLog("INFO", "FCM", "Token FCM: ${task.result?.take(12)}... (${task.result?.length} car.)")
-                else remLog("WARN", "FCM", "Token FCM no disponible: ${task.exception?.message}")
-            }
-        } catch (e: Throwable) { remLog("WARN", "FCM", "FCM no inicializado (¿sin Play Services?): ${e.message}") }
-    }
-
-    // FCM «despertador» (#87, Fase 2): la app (net_link.js) pide el token de ESTE teléfono para compartirlo con sus
-    // contactos (en el saludo cifrado) y que puedan despertarlo con el app cerrada. El token NO es secreto. Se da el
-    // fresco de FirebaseMessaging; si no hay (sin Play Services), el guardado por onNewToken, o vacío.
-    @PluginMethod
-    fun getFcmToken(call: PluginCall) {
-        val prefs = try { context.getSharedPreferences(NexoFcmService.PREFS, Context.MODE_PRIVATE) } catch (e: Exception) { null }
-        try {
-            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-                val tok = if (task.isSuccessful) (task.result ?: "") else ""
-                if (tok.isNotEmpty()) {
-                    try { prefs?.edit()?.putString(NexoFcmService.PREF_TOKEN, tok)?.apply() } catch (e: Exception) {}
-                    call.resolve(JSObject().put("token", tok))
-                } else {
-                    val saved = try { prefs?.getString(NexoFcmService.PREF_TOKEN, "") ?: "" } catch (e: Exception) { "" }
-                    call.resolve(JSObject().put("token", saved).put("error", task.exception?.message ?: "sin token"))
-                }
-            }
-        } catch (e: Throwable) {
-            val saved = try { prefs?.getString(NexoFcmService.PREF_TOKEN, "") ?: "" } catch (e2: Exception) { "" }
-            call.resolve(JSObject().put("token", saved).put("error", e.message ?: "FCM no disponible"))
-        }
-    }
+    @PluginMethod fun getFcmToken(call: PluginCall) = getFcmTokenImpl(call)
     override fun handleOnResume() {
         super.handleOnResume()
         appInBackground = false
@@ -1226,168 +446,8 @@ class NexoBlePlugin : Plugin() {
         writeQueueTimeouts.clear()
         negotiatedMtu.clear()
     }
-    private fun isScanning(): Boolean {
-        return bluetoothScanner != null
-    }
-    private fun reconnectKnownDevices() {
-        val ctx = activity.applicationContext
-        val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val adapter = bluetoothManager.adapter
-        if (adapter == null || !adapter.isEnabled) return
-        gattClients.forEach { (macNorm, gatt) ->
-            val state = clientConnectionStates[macNorm] ?: BluetoothProfile.STATE_DISCONNECTED
-            if (state != BluetoothProfile.STATE_CONNECTED && state != BluetoothProfile.STATE_CONNECTING) {
-                remLog("INFO", "FOREGROUND", "Auto-reconnect a $macNorm al volver de background")
-                reconnectAttempts[macNorm] = 0
-                reconnectDelays.remove(macNorm)
-                startAutoReconnect(macNorm)
-            }
-        }
-    }
-    private fun registerBluetoothStateReceiver() {
-        if (bluetoothStateReceiver != null) return
-        bluetoothStateReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                if (intent.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
-                val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
-                when (state) {
-                    BluetoothAdapter.STATE_OFF -> {
-                        remLog("WARN", "BT_STATE", "Bluetooth apagado")
-                        isAdvertisingActive = false
-                        stopScanInternal()
-                        cleanupAllConnections()
-                        // 3072 (diagnóstico del Motorola 13-11 17:54): al apagarse el Bluetooth (o reiniciarse solo) el servidor GATT
-                        // muere, pero la referencia seguía puesta: al volver, autoStart veía «ya iniciado» y no lo rehacía → el anuncio
-                        // NEXO salía pero sin servicio («sin servicio GATT» para el S24 y el Honor) hasta reabrir la app. Se suelta aquí.
-                        try { stopGattServer() } catch (e: Exception) { }
-                        notifyListeners("onBluetoothStateChanged", JSObject()
-                            .put("state", "off")
-                            .put("enabled", false)
-                        )
-                    }
-                    BluetoothAdapter.STATE_ON -> {
-                        remLog("INFO", "BT_STATE", "Bluetooth encendido" + if (bluetoothGattServer != null) ": rehago el servidor GATT (el de antes ya no sirve)" else "")
-                        if (bluetoothGattServer != null) try { stopGattServer() } catch (e: Exception) { }
-                        notifyListeners("onBluetoothStateChanged", JSObject()
-                            .put("state", "on")
-                            .put("enabled", true)
-                        )
-                        autoStartGattServerAndAdvertising()
-                    }
-                }
-            }
-        }
-        val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                activity.registerReceiver(bluetoothStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                activity.registerReceiver(bluetoothStateReceiver, filter)
-            }
-        } catch (e: Exception) {
-            remLog("WARN", "BT_STATE", "No se pudo registrar receiver: ${e.message}")
-        }
-    }
-    private fun unregisterBluetoothStateReceiver() {
-        bluetoothStateReceiver?.let {
-            try { activity.unregisterReceiver(it) } catch (e: Exception) { }
-            bluetoothStateReceiver = null
-        }
-    }
-    private fun autoStartGattServerAndAdvertising() {
-        val ctx = activity.applicationContext
-        if (!checkCoreBLEPermissions(ctx)) {
-            remLog("WARN", "AUTO_START", "Permisos no concedidos, no se puede auto-start")
-            return
-        }
-        val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val adapter = bluetoothManager.adapter
-        if (adapter == null || !adapter.isEnabled) {
-            remLog("WARN", "AUTO_START", "Bluetooth no disponible")
-            return
-        }
-        if (bluetoothGattServer == null) {
-            startGattServer()
-        }
-        if (!isAdvertisingActive) {
-            try {
-                val intent = Intent(ctx, BleService::class.java)
-                nexoAdvertisingId?.let { id ->
-                    intent.putExtra("nexo_advertising_id", id)
-                }
-                putRidExtras(intent)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    ctx.startForegroundService(intent)
-                } else {
-                    ctx.startService(intent)
-                }
-                registerServerReceivers()
-                isAdvertisingActive = true
-                notifyListeners("onAdvertiseStarted", JSObject().put("started", true).put("source", "auto_start"))
-                remLog("INFO", "AUTO_START", "Advertising auto-iniciado")
-            } catch (e: Exception) {
-                remLog("WARN", "AUTO_START", "Fallo auto-start advertising: ${e.message}")
-            }
-        }
-    }
-    private fun cleanupAllConnections() {
-        gattClients.forEach { (mac, gatt) ->
-            try {
-                gatt.disconnect()
-                gatt.close()
-                remLog("INFO", "CLEANUP", "GATT client cerrado: $mac")
-            } catch (e: Exception) {
-                remLog("WARN", "CLEANUP", "Error cerrando GATT client $mac: ${e.message}")
-            }
-        }
-        gattClients.clear()
-        clientRxCharacteristics.clear()
-        clientTxCharacteristics.clear()
-        clientConnectionStates.clear()
-        reconnectTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
-        reconnectTimers.clear()
-        reconnectAttempts.clear()
-        reconnectDelays.clear()
-        keepAliveTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
-        keepAliveTimers.clear()
-        pendingMessageQueue.clear()
-        messageBuffers.clear()
-        binAssembler.clearAll()
-        messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
-        messageBufferTimers.clear()
-        lastScanNotifyTime.clear()
-        writeQueues.clear()
-        writeQueueProcessing.clear()
-        writeQueueTimeouts.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
-        writeQueueTimeouts.clear()
-        negotiatedMtu.clear()
-    }
-    @PluginMethod
-    fun checkBLEStatus(call: PluginCall) {
-        remLog("INFO", "PERMISSIONS", "checkBLEStatus")
-        val ctx = activity.applicationContext
-        val result = JSObject()
-        val scanGranted = isGranted(ctx, android.Manifest.permission.BLUETOOTH_SCAN)
-        val connectGranted = isGranted(ctx, android.Manifest.permission.BLUETOOTH_CONNECT)
-        val advertiseGranted = isGranted(ctx, android.Manifest.permission.BLUETOOTH_ADVERTISE)
-        val locationGranted = isGranted(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION)
-        val notificationsGranted = isGranted(ctx, android.Manifest.permission.POST_NOTIFICATIONS)
-        val foregroundConnectedGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            isGranted(ctx, android.Manifest.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE)
-        } else true
-        val allGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            scanGranted && connectGranted && advertiseGranted && foregroundConnectedGranted
-        } else locationGranted
-        result.put("scanGranted", scanGranted)
-        result.put("connectGranted", connectGranted)
-        result.put("advertiseGranted", advertiseGranted)
-        result.put("locationGranted", locationGranted)
-        result.put("notificationsGranted", notificationsGranted)
-        result.put("foregroundConnectedGranted", foregroundConnectedGranted)
-        result.put("allGranted", allGranted)
-        result.put("serverReady", bluetoothGattServer != null)
-        call.resolve(result)
-    }
+
+    @PluginMethod fun checkBLEStatus(call: PluginCall) = checkBLEStatusImpl(call)
     @PluginMethod
     fun initializeBLE(call: PluginCall) {
         remLog("INFO", "PERMISSIONS", "initializeBLE")
@@ -1416,1352 +476,45 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    @PermissionCallback
-    fun permissionsCallback(call: PluginCall) {
-        val ctx = activity.applicationContext
-        val granted = checkCoreBLEPermissions(ctx)
-        if (granted) {
-            startGattServer()
-            autoStartGattServerAndAdvertising()
-            notifyListeners("onServerReady", JSObject().put("ready", true).put("source", "permissions_callback"))
-        }
-        call.resolve(JSObject().put("granted", granted))
-    }
+    @PermissionCallback fun permissionsCallback(call: PluginCall) = permissionsCallbackImpl(call)
 
-    private fun isGranted(ctx: Context, permission: String): Boolean =
-        ContextCompat.checkSelfPermission(ctx, permission) == PackageManager.PERMISSION_GRANTED
+    internal val gattServerCallback = newGattServerCallback()
 
-    private fun checkCoreBLEPermissions(ctx: Context): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            isGranted(ctx, android.Manifest.permission.BLUETOOTH_SCAN) &&
-            isGranted(ctx, android.Manifest.permission.BLUETOOTH_CONNECT) &&
-            isGranted(ctx, android.Manifest.permission.BLUETOOTH_ADVERTISE) &&
-            isGranted(ctx, android.Manifest.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE)
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            isGranted(ctx, android.Manifest.permission.BLUETOOTH_SCAN) &&
-            isGranted(ctx, android.Manifest.permission.BLUETOOTH_CONNECT) &&
-            isGranted(ctx, android.Manifest.permission.BLUETOOTH_ADVERTISE)
-        } else isGranted(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION)
-    }
+    @PluginMethod fun connectToDevice(call: PluginCall) = connectToDeviceImpl(call)
 
-    private fun normalizeMac(mac: String): String {
-        return mac.replace(":", "").replace("-", "").replace(".", "").lowercase()
-    }
+    @PluginMethod fun disconnectDevice(call: PluginCall) = disconnectDeviceImpl(call)
 
-    private fun formatMacForAndroid(mac: String): String? {
-        val clean = mac.replace(":", "").replace("-", "").replace(".", "").lowercase()
-        if (clean.length != 12 || !clean.all { it in '0'..'9' || it in 'a'..'f' }) {
-            return null
-        }
-        return clean.chunked(2).joinToString(":")
-    }
+    @PluginMethod fun forceReconnect(call: PluginCall) = forceReconnectImpl(call)
 
-    private fun startGattServer() {
-        if (bluetoothGattServer != null) {
-            remLog("INFO", "GATT_SERVER", "Ya iniciado")
-            return
-        }
-        try {
-            val ctx = activity.applicationContext
-            val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-            val adapter = bluetoothManager.adapter
-            if (adapter == null || !adapter.isEnabled) {
-                remLog("ERROR", "GATT_SERVER", "Bluetooth no disponible")
-                return
-            }
-            bluetoothGattServer = bluetoothManager.openGattServer(ctx, gattServerCallback)
-            val service = android.bluetooth.BluetoothGattService(
-                NexoBleSpec.NEXO_SERVICE_UUID,
-                android.bluetooth.BluetoothGattService.SERVICE_TYPE_PRIMARY
-            )
-            serverTxCharacteristic = BluetoothGattCharacteristic(
-                NexoBleSpec.TX_CHARACTERISTIC_UUID,
-                BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ,
-                BluetoothGattCharacteristic.PERMISSION_READ
-            ).apply {
-                addDescriptor(BluetoothGattDescriptor(
-                    NexoBleSpec.CCCD_UUID,
-                    BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE
-                ))
-            }
-            serverRxCharacteristic = BluetoothGattCharacteristic(
-                NexoBleSpec.RX_CHARACTERISTIC_UUID,
-                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
-                BluetoothGattCharacteristic.PERMISSION_WRITE
-            )
-            service.addCharacteristic(serverTxCharacteristic)
-            service.addCharacteristic(serverRxCharacteristic)
-            val success = bluetoothGattServer?.addService(service) ?: false
-            remLog("INFO", "GATT_SERVER", "Iniciado: addService=$success")
-            if (success) {
-                notifyListeners("onServerReady", JSObject().put("ready", true).put("source", "gatt_server_started"))
-            }
-        } catch (e: Exception) {
-            remLog("ERROR", "GATT_SERVER", "Error: ${e.message}")
-        }
-    }
+    @PluginMethod fun reconnectDevice(call: PluginCall) = reconnectDeviceImpl(call)
 
-    private fun stopGattServer() {
-        try {
-            bluetoothGattServer?.close()
-            bluetoothGattServer = null
-            serverConnectedDevices.clear()
-            remLog("INFO", "GATT_SERVER", "Detenido")
-        } catch (e: Exception) {
-            remLog("WARN", "GATT_SERVER", "Error deteniendo: ${e.message}")
-        }
-    }
+    @PluginMethod fun sendBinary(call: PluginCall) = sendBinaryImpl(call)
 
-    private val gattServerCallback = object : BluetoothGattServerCallback() {
-        override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
-            val mac = normalizeMac(device.address)
-            remLog("INFO", "GATT_SERVER", "Connection $mac status=$status newState=$newState")
-            if (newState == BluetoothProfile.STATE_CONNECTED) {
-                serverConnectedDevices[mac] = device
-                notifyListeners("onDeviceConnected", JSObject()
-                    .put("deviceId", device.address)
-                    .put("direction", "incoming")
-                    .put("role", "server")
-                    .put("servicesReady", true)
-                )
-            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                serverConnectedDevices.remove(mac)
-                serverNotificationEnabled.remove(mac)
-                messageBuffers.remove(mac); binAssembler.reset(normalizeMac(mac))
-                messageBufferTimers.remove(mac)?.let { mainHandler.removeCallbacks(it) }
-                notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", device.address))
-                if (isAdvertisingActive) {
-                    remLog("INFO", "GATT_SERVER", "Reanudando advertising tras desconexion")
-                    try {
-                        val ctx = activity.applicationContext
-                        val intent = Intent(ctx, BleService::class.java)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            ctx.startForegroundService(intent)
-                        } else {
-                            ctx.startService(intent)
-                        }
-                    } catch (e: Exception) {
-                        remLog("WARN", "GATT_SERVER", "No se pudo reanudar advertising: ${e.message}")
-                    }
-                }
-            }
-        }
+    @PluginMethod fun sendMessage(call: PluginCall) = sendMessageImpl(call)
 
-        override fun onCharacteristicWriteRequest(
-            device: BluetoothDevice,
-            requestId: Int,
-            characteristic: BluetoothGattCharacteristic,
-            preparedWrite: Boolean,
-            responseNeeded: Boolean,
-            offset: Int,
-            value: ByteArray?
-        ) {
-            if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
-                val mac = device.address
-                remLog("INFO", "GATT_SERVER", "RX chunk from $mac: len=${value?.size ?: 0}")
-                processReceivedBytes(mac, value ?: ByteArray(0), "gatt_server")
-                if (responseNeeded) {
-                    bluetoothGattServer?.sendResponse(
-                        device,
-                        requestId,
-                        BluetoothGatt.GATT_SUCCESS,
-                        offset,
-                        value
-                    )
-                }
-            }
-        }
+    internal data class SendResult(val sent: Boolean, val mode: String)
 
-        override fun onDescriptorWriteRequest(
-            device: BluetoothDevice,
-            requestId: Int,
-            descriptor: BluetoothGattDescriptor,
-            preparedWrite: Boolean,
-            responseNeeded: Boolean,
-            offset: Int,
-            value: ByteArray?
-        ) {
-            if (descriptor.uuid == NexoBleSpec.CCCD_UUID) {
-                val macNorm = normalizeMac(device.address)
-                val enabled = value?.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == true ||
-                              value?.contentEquals(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE) == true
-                serverNotificationEnabled[macNorm] = enabled
-                descriptor.value = value
-                if (responseNeeded) {
-                    bluetoothGattServer?.sendResponse(
-                        device,
-                        requestId,
-                        BluetoothGatt.GATT_SUCCESS,
-                        offset,
-                        value
-                    )
-                }
-                remLog("INFO", "GATT_SERVER", "CCCD escrito por ${device.address} enabled=$enabled")
-            }
-        }
+    @PluginMethod fun setAdvertisingData(call: PluginCall) = setAdvertisingDataImpl(call)
 
-        // Android confirma que la notificación salió: enviar la siguiente de la cola
-        override fun onNotificationSent(device: BluetoothDevice, status: Int) {
-            val macNorm = normalizeMac(device.address)
-            mainHandler.post { onWriteDone(macNorm) }
-        }
+    @PluginMethod fun startAdvertising(call: PluginCall) = startAdvertisingImpl(call)
 
-        // FIX: Registrar MTU negociado cuando actuamos como servidor (Android 12+)
-        override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
-            val macNorm = normalizeMac(device.address)
-            val effectiveMtu = if (mtu > 23) mtu else 23
-            negotiatedMtu[macNorm] = effectiveMtu
-            remLog("INFO", "GATT_SERVER", "MTU changed $macNorm mtu=$effectiveMtu")
-        }
-    }
+    @PluginMethod fun startScan(call: PluginCall) = startScanImpl(call)
 
-    @PluginMethod
-    fun connectToDevice(call: PluginCall) {
-        try {
-            val rawDeviceId = call.getString("deviceId") ?: call.getString("address") ?: ""
-            remLog("INFO", "GATT_CLIENT", "connectToDevice raw='$rawDeviceId'")
-            if (rawDeviceId.isEmpty()) {
-                call.reject("deviceId requerido", "INVALID_DEVICE_ID")
-                return
-            }
+    @PluginMethod fun stopScan(call: PluginCall) = stopScanImpl(call)
 
-            val idType = classifyDeviceId(rawDeviceId)
-            if (idType == "invalid") {
-                call.reject("ID invalido: no es NXID ni MAC", "INVALID_DEVICE_ID")
-                return
-            }
+    internal val scanCallback = newScanCallback()
 
-            val macNorm: String
-            val resolvedNexoId: String?
-            if (idType == "nxid") {
-                resolvedNexoId = rawDeviceId.trim()
-                val resolvedMac = resolveMacForNexoId(resolvedNexoId)
-                if (resolvedMac == null) {
-                    call.reject("NXID no resuelto a MAC: $rawDeviceId. Intenta escanear primero.", "NXID_UNRESOLVED")
-                    return
-                }
-                macNorm = resolvedMac
-                remLog("INFO", "GATT_CLIENT", "connectToDevice NXID='$resolvedNexoId' → MAC='$macNorm'")
-            } else {
-                macNorm = normalizeMac(rawDeviceId)
-                resolvedNexoId = null
-                remLog("INFO", "GATT_CLIENT", "connectToDevice MAC='$macNorm'")
-            }
+    @PluginMethod fun isBluetoothEnabled(call: PluginCall) = isBluetoothEnabledImpl(call)
 
-            val existingState = clientConnectionStates[macNorm]
-            if (existingState == BluetoothProfile.STATE_CONNECTING) {
-                remLog("WARN", "GATT_CLIENT", "Conexion ya en progreso para $macNorm")
-                call.resolve(JSObject().put("connected", false).put("error", "Connection already in progress").put("deviceId", rawDeviceId))
-                return
-            }
-            if (gattClients.containsKey(macNorm) && existingState == BluetoothProfile.STATE_CONNECTED) {
-                remLog("INFO", "GATT_CLIENT", "Ya conectado a $macNorm")
-                call.resolve(JSObject()
-                    .put("connected", true)
-                    .put("alreadyConnected", true)
-                    .put("deviceId", rawDeviceId)
-                )
-                return
-            }
+    @PluginMethod fun getLocalDeviceInfo(call: PluginCall) = getLocalDeviceInfoImpl(call)
 
-            val ctx = activity.applicationContext
-            val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-            val adapter = bluetoothManager.adapter
-            if (adapter == null || !adapter.isEnabled) {
-                call.reject("Bluetooth no disponible", "BLUETOOTH_UNAVAILABLE")
-                return
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !isGranted(ctx, android.Manifest.permission.BLUETOOTH_CONNECT)) {
-                call.reject("BLUETOOTH_CONNECT no concedido", "PERMISSION_DENIED")
-                return
-            }
-            val device: BluetoothDevice = scannedDevices[macNorm] ?: run {
-                remLog("WARN", "GATT_CLIENT", "Device no en cache, intentando getRemoteDevice para $macNorm")
-                val macFormatted = formatMacForAndroid(rawDeviceId)
-                if (macFormatted == null) {
-                    call.reject("MAC invalida: $rawDeviceId", "INVALID_MAC")
-                    return
-                }
-                try {
-                    adapter.getRemoteDevice(macFormatted)
-                } catch (e: IllegalArgumentException) {
-                    call.reject("MAC invalida para Bluetooth API: $macFormatted", "INVALID_MAC")
-                    return
-                } catch (e: SecurityException) {
-                    call.reject("Permiso BLUETOOTH_CONNECT requerido para conectar", "PERMISSION_DENIED")
-                    return
-                }
-            }
-            remLog("INFO", "GATT_CLIENT", "Usando device: ${device.address} (cache=${scannedDevices.containsKey(macNorm)})")
+    @PluginMethod fun getConnectedDevices(call: PluginCall) = getConnectedDevicesImpl(call)
 
-            gattClients[macNorm]?.let { oldGatt ->
-                try { oldGatt.disconnect(); oldGatt.close() } catch (e: Exception) { }
-            }
-            pendingCalls[macNorm] = call
-            call.setKeepAlive(true)
-            val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                connectLe(ctx, device, macNorm)
-            } else {
-                device.connectGatt(ctx, false, createGattClientCallback(macNorm))
-            }
-            if (gatt == null) {
-                pendingCalls.remove(macNorm)
-                call.reject("No se pudo iniciar GATT", "GATT_NULL")
-                return
-            }
-            gattClients[macNorm] = gatt
-            clientConnectionStates[macNorm] = BluetoothProfile.STATE_CONNECTING
-            reconnectAttempts[macNorm] = 0
-            reconnectDelays.remove(macNorm)
-            remLog("INFO", "GATT_CLIENT", "Conexion iniciada a $macNorm")
-            mainHandler.postDelayed({
-                if (pendingCalls.containsKey(macNorm)) {
-                    remLog("WARN", "GATT_CLIENT", "Timeout conectando a $macNorm")
-                    pendingCalls.remove(macNorm)
-                    gattClients[macNorm]?.let { g -> try { g.disconnect(); g.close() } catch (e: Exception) { } }
-                    gattClients.remove(macNorm)
-                    clientConnectionStates.remove(macNorm)
-                    notifyListeners("onConnectionFailed", JSObject()
-                        .put("deviceId", rawDeviceId)
-                        .put("reason", "Connection timeout")
-                        .put("recoverable", true)
-                    )
-                }
-            }, 15000)
-        } catch (e: Exception) {
-            remLog("ERROR", "GATT_CLIENT", "Fatal connectToDevice: ${e.message}")
-            call.reject("Error interno: ${e.message}", "INTERNAL_ERROR")
-        }
-    }
+    internal val advertiseCallback = newAdvertiseCallback()
 
-    private fun createGattClientCallback(macNorm: String): BluetoothGattCallback {
-        return object : BluetoothGattCallback() {
-            override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-                val address = gatt.device?.address ?: ""
-                remLog("INFO", "GATT_CLIENT_CB", "onConnectionStateChange $address status=$status newState=$newState")
-                clientConnectionStates[macNorm] = newState
-                val pendingCall = pendingCalls[macNorm]
-                if (status != BluetoothGatt.GATT_SUCCESS && newState != BluetoothProfile.STATE_CONNECTED) {
-                    remLog("WARN", "GATT_CLIENT_CB", "Error de conexion status=$status, forzando reconexion")
-                    pendingCall?.let {
-                        it.resolve(JSObject().put("connected", false).put("deviceId", address).put("error", "Connection error $status"))
-                        pendingCalls.remove(macNorm)
-                    }
-                    // Ronda 2766 (revisión): las caídas de verdad llegan así (8 = fuera de alcance, 19 = el otro la cerró):
-                    // se avisa a la app y se limpia como en una desconexión normal. Antes la app seguía viendo el enlace
-                    // listo (contacto "en línea", se le mandaba por ahí) hasta que el vigilante lo cortaba
-                    notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", address).put("status", status))
-                    stopKeepAlive(macNorm)
-                    gattClients.remove(macNorm)
-                    clientRxCharacteristics.remove(macNorm)
-                    clientTxCharacteristics.remove(macNorm)
-                    clientConnectionStates.remove(macNorm)
-                    messageBuffers.remove(macNorm); binAssembler.reset(macNorm)
-                    messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-                    try { gatt.close() } catch (e: Exception) { }
-                    startAutoReconnect(macNorm)
-                    return
-                }
-                if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    reconnectAttempts[macNorm] = 0
-                    reconnectDelays.remove(macNorm)
-                    pendingCall?.let {
-                        it.resolve(JSObject().put("connected", true).put("alreadyConnected", false).put("deviceId", address))
-                        pendingCalls.remove(macNorm)
-                    }
-                    notifyListeners("onDeviceConnected", JSObject()
-                        .put("deviceId", address)
-                        .put("direction", "outgoing")
-                        .put("role", "client")
-                        .put("servicesReady", false)
-                    )
-                    try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                            gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
-                            remLog("INFO", "GATT_CLIENT_CB", "ConnectionPriority HIGH set para $address")
-                        }
-                        // PHY 2M (2 Mbps) si ambos lo soportan; si no, Android se queda en 1M
-                        // (no con un enlace de largo alcance: 2M tiene menos alcance y se cortaría)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !codedLinks.contains(normalizeMac(address))) {
-                            gatt.setPreferredPhy(BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_OPTION_NO_PREFERRED)
-                        }
-                    } catch (e: Exception) {
-                        remLog("WARN", "GATT_CLIENT_CB", "No se pudo setear priority: ${e.message}")
-                    }
-                    try { gatt.discoverServices() } catch (e: SecurityException) {
-                        remLog("ERROR", "GATT_CLIENT_CB", "SecurityException discoverServices: ${e.message}")
-                    }
-                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    pendingCall?.let {
-                        it.resolve(JSObject().put("connected", false).put("deviceId", address).put("error", "Disconnected"))
-                        pendingCalls.remove(macNorm)
-                    }
-                    notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", address))
-                    stopKeepAlive(macNorm)
-                    gattClients.remove(macNorm)
-                    clientRxCharacteristics.remove(macNorm)
-                    clientTxCharacteristics.remove(macNorm)
-                    clientConnectionStates.remove(macNorm)
-                    messageBuffers.remove(macNorm); binAssembler.reset(macNorm)
-                    messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-                    try { gatt.close() } catch (e: Exception) { }
-                    startAutoReconnect(macNorm)
-                }
-            }
+    @PluginMethod fun stopAdvertising(call: PluginCall) = stopAdvertisingImpl(call)
 
-            override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-                val address = gatt.device?.address ?: ""
-                remLog("INFO", "GATT_CLIENT_CB", "onServicesDiscovered $address status=$status")
-                if (status != BluetoothGatt.GATT_SUCCESS) {
-                    notifyListeners("onConnectionFailed", JSObject().put("deviceId", address).put("reason", "Service discovery failed"))
-                    closeClientWithoutService(gatt, macNorm, address)
-                    return
-                }
-                val service = gatt.getService(NexoBleSpec.NEXO_SERVICE_UUID) ?: run {
-                    // El otro teléfono tiene la app cerrada (su servidor GATT no está). Antes la conexión
-                    // quedaba abierta sin servicio y "ya conectado" impedía reconectar al reabrir.
-                    notifyListeners("onConnectionFailed", JSObject().put("deviceId", address).put("reason", "NEXO service not found"))
-                    closeClientWithoutService(gatt, macNorm, address)
-                    return
-                }
-                val txChar = service.getCharacteristic(NexoBleSpec.TX_CHARACTERISTIC_UUID)
-                val rxChar = service.getCharacteristic(NexoBleSpec.RX_CHARACTERISTIC_UUID)
-                clientSetupDone[macNorm] = false // 3059: hasta que terminen MTU y notificaciones, las escrituras por aquí esperan
-                clientTxCharacteristics[macNorm] = txChar
-                clientRxCharacteristics[macNorm] = rxChar
-                // Ronda 2757 (plan punto 8): Android hace UNA operación GATT a la vez. Antes se pedía el MTU y en el
-                // acto se activaban las notificaciones: a menudo se perdía la petición de MTU y la conexión se quedaba
-                // en 23 bytes (20 por escritura: todo ~20 veces más lento). Ahora: MTU primero; las notificaciones
-                // cuando contesta (o a los 2 s si no contesta).
-                val asked = try { Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && gatt.requestMtu(MTU_REQUEST) } catch (e: Exception) { false }
-                remLog("INFO", "GATT_CLIENT_CB", "MTU request $MTU_REQUEST para $address: " + if (asked) "pedido" else "no se pudo pedir")
-                if (asked) mainHandler.postDelayed({ startNotifications(gatt, address) }, 2000) else startNotifications(gatt, address)
-            }
-
-            private var setupDone = false
-            private var mtuRetries = 0
-            // Activar las notificaciones del otro (una sola vez por conexión) y avisar de que está listo
-            private fun startNotifications(gatt: BluetoothGatt, address: String) {
-                if (setupDone) return
-                setupDone = true
-                clientSetupDone[macNorm] = true // 3059: ya se puede escribir por este enlace (lo que esperaba sale ahora)
-                val txChar = clientTxCharacteristics[macNorm]
-                txChar?.let { characteristic ->
-                    try {
-                        gatt.setCharacteristicNotification(characteristic, true)
-                        val descriptor = characteristic.getDescriptor(NexoBleSpec.CCCD_UUID)
-                        if (descriptor != null) {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
-                            } else {
-                                @Suppress("DEPRECATION")
-                                descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                                @Suppress("DEPRECATION")
-                                gatt.writeDescriptor(descriptor)
-                            }
-                        }
-                    } catch (e: SecurityException) {
-                        remLog("ERROR", "GATT_CLIENT_CB", "SecurityException notifications: ${e.message}")
-                    }
-                }
-                notifyListeners("onServicesReady", JSObject().put("deviceId", address).put("servicesReady", true))
-                processPendingMessages(macNorm)
-                mainHandler.post { processWriteQueue(macNorm) }
-            }
-
-            override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
-                val address = gatt.device?.address ?: ""
-                val effectiveMtu = if (status == BluetoothGatt.GATT_SUCCESS && mtu > 23) mtu else 23
-                negotiatedMtu[macNorm] = effectiveMtu
-                remLog("INFO", "GATT_CLIENT_CB", "MTU changed $address mtu=$effectiveMtu status=$status")
-                if (effectiveMtu <= 23) btErr("mtu_small", "MTU mínimo (23) con $macNorm (status=$status)" + if (mtuRetries > 0) " tras reintentar" else "")
-                mainHandler.post { startNotifications(gatt, address) }
-            }
-
-            override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
-                val address = gatt.device?.address ?: ""
-                if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == NexoBleSpec.CCCD_UUID) {
-                    notifyListeners("onNotificationsEnabled", JSObject().put("deviceId", address).put("notificationsEnabled", true))
-                    startKeepAlive(macNorm)
-                    // MTU aún mínimo: se pide otra vez (una), ya sin nada más en curso, pero con el valor SEGURO 247
-                    // (no 512): un teléfono que rechazó 512 suele aceptar 247, y así no se queda en 23 (~20× más lento).
-                    if ((negotiatedMtu[macNorm] ?: 23) <= 23 && mtuRetries < 1) {
-                        mtuRetries++
-                        val again = try { gatt.requestMtu(MTU_REQUEST_FALLBACK) } catch (e: Exception) { false }
-                        remLog("INFO", "GATT_CLIENT_CB", "MTU otra vez (247, valor seguro) para $address: $again")
-                    }
-                }
-            }
-
-            @Suppress("DEPRECATION")
-            override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
-                val address = gatt.device?.address ?: ""
-                val macNormLocal = normalizeMac(address)
-                if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
-                    if (status != BluetoothGatt.GATT_SUCCESS) {
-                        remLog("WARN", "GATT_CLIENT_CB", "onCharacteristicWrite FAILED $address status=$status")
-                    }
-                    mainHandler.post { onWriteDone(macNormLocal) }
-                }
-            }
-
-            @Suppress("DEPRECATION")
-            override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-                if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
-                    val address = gatt.device?.address ?: ""
-                    remLog("INFO", "GATT_CLIENT_CB", "Received chunk (legacy) from $address: len=${characteristic.value?.size ?: 0}")
-                    processReceivedBytes(address, characteristic.value ?: ByteArray(0), "gatt_client")
-                }
-            }
-
-            // NUEVO: Soporte para Android 13+ onCharacteristicChanged con payload directo
-            @Suppress("DEPRECATION")
-            override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
-                if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
-                    val address = gatt.device?.address ?: ""
-                    remLog("INFO", "GATT_CLIENT_CB", "Received chunk (API 33+) from $address: len=${value.size}")
-                    processReceivedBytes(address, value, "gatt_client")
-                }
-            }
-        }
-    }
-
-    private fun closeClientWithoutService(gatt: BluetoothGatt, macNorm: String, address: String) {
-        try { gatt.disconnect(); gatt.close() } catch (e: Exception) { }
-        gattClients.remove(macNorm)
-        clientRxCharacteristics.remove(macNorm)
-        clientTxCharacteristics.remove(macNorm)
-        clientConnectionStates.remove(macNorm)
-        notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", address).put("reason", "no_service"))
-    }
-
-    private fun startKeepAlive(macNorm: String) {
-        stopKeepAlive(macNorm)
-        val runnable = object : Runnable {
-            override fun run() {
-                val gatt = gattClients[macNorm]
-                val state = clientConnectionStates[macNorm]
-                if (gatt != null && state == BluetoothProfile.STATE_CONNECTED) {
-                    try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                            gatt.readRemoteRssi()
-                        }
-                    } catch (e: Exception) {
-                        remLog("WARN", "KEEPALIVE", "Error keep-alive $macNorm: ${e.message}")
-                        stopKeepAlive(macNorm)
-                        return
-                    }
-                    mainHandler.postDelayed(this, KEEPALIVE_INTERVAL_MS)
-                }
-            }
-        }
-        keepAliveTimers[macNorm] = runnable
-        mainHandler.postDelayed(runnable, KEEPALIVE_INTERVAL_MS)
-        remLog("INFO", "KEEPALIVE", "Iniciado para $macNorm")
-    }
-
-    private fun stopKeepAlive(macNorm: String) {
-        keepAliveTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-    }
-
-    private fun getReconnectDelay(macNorm: String): Long {
-        val attempts = reconnectAttempts[macNorm] ?: 0
-        val exp = (RECONNECT_DELAY_MS * (1L shl attempts.coerceAtMost(4))).coerceAtMost(MAX_RECONNECT_DELAY_MS)
-        // C-1 (07-11): jitter "igual" (misma regla que el JS _jitteredBackoff en ble_helpers.js): suelo = exp/2 + mitad
-        // aleatoria. Sin esto, si varios teléfonos se cortan a la vez (el dueño de un grupo se va, concierto, el coche se
-        // apaga) TODOS reintentaban en el MISMO instante y chocaban en la radio (GATT 133, ventana de escaneo 5/30 s llena
-        // para todos a la vez). El jitter los reparte en el tiempo. Resultado en [exp/2, exp].
-        val half = exp / 2
-        return half + (Math.random() * half).toLong()
-    }
-
-    private fun startAutoReconnect(macNorm: String) {
-        val currentAttempts = reconnectAttempts[macNorm] ?: 0
-        if (currentAttempts >= MAX_RECONNECT_ATTEMPTS) {
-            remLog("WARN", "RECONNECT", "Max reintentos alcanzado para $macNorm")
-            return
-        }
-        reconnectAttempts[macNorm] = currentAttempts + 1
-        val delayMs = getReconnectDelay(macNorm)
-        reconnectDelays[macNorm] = delayMs
-        reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        val runnable = Runnable {
-            remLog("INFO", "RECONNECT", "Intentando reconectar a $macNorm (intento ${reconnectAttempts[macNorm]}, delay=${delayMs}ms)")
-            val ctx = activity.applicationContext
-            val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-            val adapter = bluetoothManager.adapter
-            if (adapter == null || !adapter.isEnabled) return@Runnable
-            val device = scannedDevices[macNorm]
-            if (device == null) {
-                remLog("WARN", "RECONNECT", "No hay device cacheado para $macNorm, no se puede reconectar")
-                return@Runnable
-            }
-            try {
-                gattClients[macNorm]?.let { old ->
-                    try { old.disconnect(); old.close() } catch (e: Exception) { }
-                }
-                val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    connectLe(ctx, device, macNorm)
-                } else {
-                    device.connectGatt(ctx, false, createGattClientCallback(macNorm))
-                }
-                if (gatt != null) {
-                    gattClients[macNorm] = gatt
-                    clientConnectionStates[macNorm] = BluetoothProfile.STATE_CONNECTING
-                }
-            } catch (e: Exception) {
-                remLog("ERROR", "RECONNECT", "Fallo reconexion $macNorm: ${e.message}")
-            }
-        }
-        reconnectTimers[macNorm] = runnable
-        mainHandler.postDelayed(runnable, delayMs)
-    }
-
-    @PluginMethod
-    fun disconnectDevice(call: PluginCall) {
-        val rawDeviceId = call.getString("deviceId") ?: ""
-        if (rawDeviceId.isEmpty()) {
-            call.reject("deviceId requerido")
-            return
-        }
-        val idType = classifyDeviceId(rawDeviceId)
-        val macNorm = if (idType == "nxid") {
-            resolveMacForNexoId(rawDeviceId.trim()) ?: rawDeviceId.trim().lowercase()
-        } else {
-            normalizeMac(rawDeviceId)
-        }
-        remLog("INFO", "GATT_CLIENT", "disconnectDevice raw=$rawDeviceId resolved=$macNorm")
-        reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        reconnectAttempts.remove(macNorm)
-        reconnectDelays.remove(macNorm)
-        stopKeepAlive(macNorm)
-        gattClients[macNorm]?.let { gatt -> try { gatt.disconnect(); gatt.close() } catch (e: Exception) { } }
-        gattClients.remove(macNorm)
-        clientRxCharacteristics.remove(macNorm)
-        clientTxCharacteristics.remove(macNorm)
-        clientConnectionStates.remove(macNorm)
-        messageBuffers.remove(macNorm); binAssembler.reset(macNorm)
-        messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        pendingCalls.remove(macNorm)
-        pendingMessageQueue.remove(macNorm)
-        writeQueues.remove(macNorm)
-        writeQueueProcessing.remove(macNorm)
-        writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        negotiatedMtu.remove(macNorm)
-        clientSetupDone.remove(macNorm); clientSetupWaitSince.remove(macNorm)
-        notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", rawDeviceId))
-        call.resolve(JSObject().put("disconnected", true))
-    }
-
-    @PluginMethod
-    fun forceReconnect(call: PluginCall) {
-        val rawDeviceId = call.getString("deviceId") ?: ""
-        if (rawDeviceId.isEmpty()) {
-            call.reject("deviceId requerido")
-            return
-        }
-        val idType = classifyDeviceId(rawDeviceId)
-        val macNorm = if (idType == "nxid") {
-            resolveMacForNexoId(rawDeviceId.trim()) ?: rawDeviceId.trim().lowercase()
-        } else {
-            normalizeMac(rawDeviceId)
-        }
-        remLog("INFO", "GATT_CLIENT", "forceReconnect raw=$rawDeviceId resolved=$macNorm")
-        reconnectAttempts[macNorm] = 0
-        reconnectDelays.remove(macNorm)
-        stopKeepAlive(macNorm)
-        gattClients[macNorm]?.let { gatt -> try { gatt.disconnect(); gatt.close() } catch (e: Exception) { } }
-        gattClients.remove(macNorm)
-        clientConnectionStates.remove(macNorm)
-        messageBuffers.remove(macNorm); binAssembler.reset(macNorm)
-        messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        writeQueues.remove(macNorm)
-        writeQueueProcessing.remove(macNorm)
-        writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        negotiatedMtu.remove(macNorm)
-        clientSetupDone.remove(macNorm); clientSetupWaitSince.remove(macNorm)
-        mainHandler.postDelayed({ startAutoReconnect(macNorm) }, 500)
-        call.resolve(JSObject().put("reconnecting", true))
-    }
-
-    @PluginMethod
-    fun reconnectDevice(call: PluginCall) {
-        val rawDeviceId = call.getString("deviceId") ?: ""
-        if (rawDeviceId.isEmpty()) {
-            call.reject("deviceId requerido")
-            return
-        }
-        val idType = classifyDeviceId(rawDeviceId)
-        val macNorm = if (idType == "nxid") {
-            resolveMacForNexoId(rawDeviceId.trim()) ?: rawDeviceId.trim().lowercase()
-        } else {
-            normalizeMac(rawDeviceId)
-        }
-        remLog("INFO", "GATT_CLIENT", "reconnectDevice manual raw=$rawDeviceId resolved=$macNorm")
-        reconnectAttempts[macNorm] = 0
-        reconnectDelays.remove(macNorm)
-        startAutoReconnect(macNorm)
-        call.resolve(JSObject().put("reconnecting", true))
-    }
-
-    // Ronda 2753: un trozo de archivo en binario (BinFrame): cabecera JSON + datos (llegan en base64 por el puente de
-    // la app, pero por la radio van como bytes). La app solo lo usa si el otro teléfono avisó de que lo entiende.
-    @PluginMethod
-    fun sendBinary(call: PluginCall) {
-        val rawDeviceId = call.getString("deviceId") ?: ""
-        val header = call.getString("header") ?: ""
-        val data = try { Base64.decode(call.getString("data") ?: "", Base64.NO_WRAP) } catch (e: Exception) { null }
-        if (rawDeviceId.isEmpty() || header.isEmpty() || data == null) { call.reject("deviceId, header y data requeridos"); return }
-        if (classifyDeviceId(rawDeviceId) == "invalid") { call.reject("ID invalido: no es NXID ni MAC", "INVALID_DEVICE_ID"); return }
-        mainHandler.post {
-            val macNorm = if (classifyDeviceId(rawDeviceId) == "nxid") resolveMacForNexoId(rawDeviceId.trim()) else normalizeMac(rawDeviceId)
-            if (macNorm == null) { call.reject("NXID no resuelto a MAC: $rawDeviceId", "NXID_UNRESOLVED"); return@post }
-            val frame = try { BinFrame.encode(header, data) } catch (e: Exception) { call.reject(e.message ?: "trozo binario no válido"); return@post }
-            val mtu = negotiatedMtu[macNorm] ?: 23
-            val writes = BinFrame.split(frame, (mtu - 3).coerceIn(20, 512))
-            val queue = writeQueues.getOrPut(macNorm) { java.util.Collections.synchronizedList(mutableListOf()) }
-            val msgId = writeMsgCounter.incrementAndGet()
-            val ok = synchronized(queue) {
-                if (queue.isNotEmpty() && queue.size + writes.size > MAX_QUEUE_SIZE) false
-                // pacing 2b (#141): trozo de archivo = BAJA prioridad (isHigh=false) → al final de la cola (texto/ack lo adelanta)
-                else { writes.forEach { queue.add(WriteQueueItem(macNorm, rawDeviceId, "", msgId, it, false)) }; true }
-            }
-            if (!ok) { call.reject("Cola de escritura llena para $macNorm", "BLE_BUSY"); return@post }
-            remLog("INFO", "SEND", "sendBinary MAC='$macNorm' bytes=${frame.size} writes=${writes.size}")
-            processWriteQueue(macNorm)
-            call.resolve(JSObject().put("sent", true).put("mode", "queued").put("deviceId", rawDeviceId).put("mtu", mtu))
-        }
-    }
-
-    // === FIX vFIX-3: sendMessage corre SIEMPRE en mainHandler (single-threaded) ===
-    @PluginMethod
-    fun sendMessage(call: PluginCall) {
-        val rawDeviceId = call.getString("deviceId") ?: ""
-        val message = call.getString("message") ?: call.getString("content") ?: ""
-
-        if (rawDeviceId.isEmpty()) {
-            call.reject("deviceId requerido")
-            return
-        }
-        val idType = classifyDeviceId(rawDeviceId)
-        if (idType == "invalid") {
-            call.reject("ID invalido: no es NXID ni MAC", "INVALID_DEVICE_ID")
-            return
-        }
-
-        mainHandler.post {
-            val macNorm: String
-            if (idType == "nxid") {
-                val resolvedMac = resolveMacForNexoId(rawDeviceId.trim())
-                if (resolvedMac == null) {
-                    call.reject("NXID no resuelto a MAC: $rawDeviceId", "NXID_UNRESOLVED")
-                    return@post
-                }
-                macNorm = resolvedMac
-                remLog("INFO", "SEND", "sendMessage NXID='$rawDeviceId' → MAC='$macNorm' len=${message.length}")
-            } else {
-                macNorm = normalizeMac(rawDeviceId)
-                remLog("INFO", "SEND", "sendMessage MAC='$macNorm' len=${message.length}")
-            }
-
-            val result = sendChunkedOrSingle(macNorm, rawDeviceId, message)
-            // MTU negociado: el JS ajusta el tamaño de los trozos de archivos (ble_ack.js)
-            val mtu = negotiatedMtu[macNorm] ?: 23
-            if (result.sent) {
-                call.resolve(JSObject().put("sent", true).put("mode", result.mode).put("deviceId", rawDeviceId).put("mtu", mtu))
-            } else {
-                // v2729: solo pasa con la cola de escritura llena (el mensaje entero no cabe). "Ocupado": la app lo
-                // reintenta en un momento. Antes se aparcaba en la cola de pendientes (solo se vaciaba al reconectar)
-                // y la app lo daba por enviado: el último trozo de cada ventana esperaba a que venciera su espera.
-                call.reject("Cola de escritura llena para $macNorm", "BLE_BUSY")
-            }
-        }
-    }
-
-
-    private data class SendResult(val sent: Boolean, val mode: String)
-
-    // v2723: un mensaje entra entero en la cola o no entra (antes, con la cola llena se descartaban trozos del
-    // medio y el otro teléfono recibía un mensaje mutilado: "mensaje de código" en el chat y foto parada)
-    private fun sendChunkedOrSingle(macNorm: String, rawDeviceId: String, message: String): SendResult {
-        // 3059 (diagnóstico automático del S24 13-11 07:51, tablet recién conectada): un mensaje que llega mientras el enlace CLIENTE
-        // aún negocia el MTU se partía en trozos de 20 bytes (70 escrituras para 1,4 KB) aunque segundos después el MTU fuera 512.
-        // Ahora espera entero en la cola de pendientes y se parte al terminar la puesta en marcha (startNotifications), con el MTU real.
-        val srvReadyNow = serverConnectedDevices[macNorm] != null && serverNotificationEnabled.getOrDefault(macNorm, false)
-        if (!srvReadyNow && clientRxCharacteristics[macNorm] != null && clientSetupDone[macNorm] == false) {
-            pendingMessageQueue.getOrPut(macNorm) { mutableListOf() }.add(message)
-            return SendResult(true, "queued")
-        }
-        // Ronda 2757: por bytes reales (MTU - 3, máx. 512 por atributo), sin cortar caracteres (Utf8Split, BinFrame.kt)
-        val maxBytes = ((negotiatedMtu[macNorm] ?: 23) - 3).coerceIn(20, 512)
-        val chunks = Utf8Split.split(message, maxBytes)
-        val queue = writeQueues.getOrPut(macNorm) { java.util.Collections.synchronizedList(mutableListOf()) }
-        val msgId = writeMsgCounter.incrementAndGet()
-        synchronized(queue) {
-            // (un mensaje más grande que la cola entera entra cuando está vacía: si no, esperaría para siempre)
-            if (queue.isNotEmpty() && queue.size + chunks.size > MAX_QUEUE_SIZE) {
-                remLog("WARN", "SEND", "Cola llena para $macNorm: el mensaje espera (no se parte)")
-                return SendResult(false, "")
-            }
-            // pacing 2b (#141): texto/control/ack = ALTA prioridad → se inserta DELANTE de los trozos de archivo ya
-            // encolados (sin mover el item en vuelo, índice 0), para no esperar a que termine un archivo lento (MTU 23).
-            var at = WritePacing.insertIndex(queue.map { it.isHigh }, true)
-            chunks.forEach { queue.add(at, WriteQueueItem(macNorm, rawDeviceId, it, msgId)); at++ }
-        }
-        // La cola se procesa solo en el hilo principal (los callbacks de Android también llegan ahí)
-        mainHandler.post { processWriteQueue(macNorm) }
-        return SendResult(true, "queued")
-    }
-
-    // === FIX F0: Pacing diferenciado server vs client ===
-    // Control de flujo por callback (v2): una escritura en vuelo por dispositivo; la siguiente sale en
-    // cuanto Android confirma la anterior (onCharacteristicWrite como cliente, onNotificationSent como
-    // servidor), con un timeout de respaldo. Antes: esperas fijas de 40/80 ms y reintentos con
-    // Thread.sleep en el hilo principal (congelaban la interfaz).
-    private fun processWriteQueue(macNorm: String) {
-        if (writeQueueProcessing[macNorm] == true) return
-        val queue = writeQueues[macNorm] ?: return
-        val item = synchronized(queue) { if (queue.isEmpty()) null else queue[0] } ?: return
-        // 3059: por el enlace CLIENTE no se escribe mientras se negocia el MTU / se activan las notificaciones (WriteRetry.waitForClientSetup)
-        val srvReady = serverConnectedDevices[item.macNorm] != null && serverNotificationEnabled.getOrDefault(item.macNorm, false)
-        val viaClient = !srvReady && clientRxCharacteristics[item.macNorm] != null
-        if (viaClient && clientSetupDone[item.macNorm] != true) {
-            val now = System.currentTimeMillis()
-            val since = clientSetupWaitSince.getOrPut(macNorm) { now }
-            if (WriteRetry.waitForClientSetup(true, false, now - since)) {
-                writeQueueProcessing[macNorm] = true
-                mainHandler.postDelayed({
-                    writeQueueProcessing.remove(macNorm)
-                    processWriteQueue(macNorm)
-                }, WriteRetry.SETUP_WAIT_STEP_MS)
-                return
-            }
-            clientSetupDone[item.macNorm] = true // pasado el plazo se da por hecho (una vez): no se vuelve a esperar ni a avisar
-            remLog("WARN", "SEND", "Enlace $macNorm sin terminar MTU/notificaciones en ${WriteRetry.SETUP_WAIT_MAX_MS / 1000} s: se escribe igual")
-        }
-        clientSetupWaitSince.remove(macNorm)
-        val result = sendSingleChunk(item.macNorm, item.rawDeviceId, item.chunk, item.bytes)
-        if (!result.sent) {
-            // Android rechaza la escritura si aún está ocupado con la anterior (muy frecuente con la radio
-            // cargada, MTU 23). B1 (dueño 03-11): el rechazo es TRANSITORIO (la escritura sale en cuanto el stack
-            // drena), así que se reintenta el MISMO trozo hasta ~9 s con un ritmo que se va espaciando (WriteRetry,
-            // puro y probado en JVM; menos radio/batería en la cola larga); solo si ni así se puede, fuera el RESTO
-            // DE ESE MENSAJE entero (no mutilado). Antes se rendía a los ~1,8 s y una congestión normal de MTU 23
-            // perdía el mensaje. En una desconexión REAL la cola se vacía sola (manejador de desconexión) y esto ni
-            // corre, así que no se espera 9 s con el enlace caído.
-            val attempts = (writeRetryCount[macNorm] ?: 0) + 1
-            val decision = WriteRetry.decide(attempts)
-            val delay = decision.delayMs
-            if (!decision.drop) {
-                writeRetryCount[macNorm] = attempts
-            } else {
-                writeRetryCount.remove(macNorm)
-                val dropped = synchronized(queue) { val before = queue.size; queue.removeAll { it.msgId == item.msgId }; before - queue.size }
-                btErr("drop", "Write fallo para $macNorm durante ~${WriteRetry.maxWaitMs() / 1000} s (enlace congestionado/atascado): mensaje descartado entero ($dropped trozos" + (if (item.bytes != null) ", binario ${item.bytes.size} B" else "") + ")")
-                // #dueño 04-11: avisar a la capa de arriba que este enlace BT soltó un mensaje (muerto/atascado) → re-rutea
-                // por internet/Wi-Fi al toque en vez de seguir martillando el Bluetooth («internet antes que un BT muerto»).
-                notifyListeners("onWriteDropped", JSObject().put("mac", macNorm))
-                // #129 (dueño 08-11): tras N mensajes SEGUIDOS descartados al mismo enlace, está atascado de verdad → soltar
-                // TODA la cola de ese MAC de una, en vez de moler cada mensaje ~6 s (el martilleo de ~2 min del diagnóstico).
-                // La capa de arriba ya re-rutea/reintenta por otro camino (onWriteDropped + resume). El streak se reinicia
-                // en cuanto una escritura sale bien (onWriteDone) o al limpiar la cola (desconexión).
-                val streak = (writeDropStreak[macNorm] ?: 0) + 1
-                writeDropStreak[macNorm] = streak
-                if (WriteRetry.shouldFlushStuckQueue(streak)) {
-                    writeDropStreak.remove(macNorm)
-                    val restantes = synchronized(queue) { val n = queue.size; queue.clear(); n }
-                    if (restantes > 0) btErr("flush", "Enlace $macNorm atascado ($streak mensajes seguidos sin salir): suelto $restantes trozo(s) más en cola para no martillarlo (se reintentan por otro camino)")
-                }
-            }
-            // Bloquear la cola durante la espera: otras llamadas no deben gastar los reintentos de golpe
-            writeQueueProcessing[macNorm] = true
-            mainHandler.postDelayed({
-                writeQueueProcessing.remove(macNorm)
-                processWriteQueue(macNorm)
-            }, delay)
-            return
-        }
-        writeRetryCount.remove(macNorm)
-        writeDropStreak.remove(macNorm) // #129: salió una escritura → el enlace NO está atascado, reiniciar el conteo de atasco
-        removeHead(queue, item)
-        writeQueueProcessing[macNorm] = true
-        val timeoutMs = if (result.mode == "gatt_server") SERVER_NOTIFY_TIMEOUT_MS else CLIENT_WRITE_TIMEOUT_MS
-        val timeoutRunnable = Runnable {
-            writeQueueTimeouts.remove(macNorm)
-            onWriteDone(macNorm)
-        }
-        writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        writeQueueTimeouts[macNorm] = timeoutRunnable
-        mainHandler.postDelayed(timeoutRunnable, timeoutMs)
-    }
-
-    private fun removeHead(queue: MutableList<WriteQueueItem>, item: WriteQueueItem) {
-        synchronized(queue) { if (queue.isNotEmpty() && queue[0] === item) queue.removeAt(0) }
-    }
-
-    // Llamado (en el hilo principal) cuando Android confirma la escritura/notificación o vence el timeout
-    private fun onWriteDone(macNorm: String) {
-        writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        writeQueueProcessing.remove(macNorm)
-        processWriteQueue(macNorm)
-    }
-    // === FIN FIX F0 ===
-
-    // === FIX F0: Timeout de client write reducido y chunk size con margen ===
-    private fun sendSingleChunk(macNorm: String, rawDeviceId: String, chunk: String, bytes: ByteArray? = null): SendResult {
-        val data = bytes ?: chunk.toByteArray(Charsets.UTF_8)
-
-        val remoteDevice = serverConnectedDevices[macNorm]
-        val srvTx = serverTxCharacteristic
-        val srv = bluetoothGattServer
-        val srvEnabled = serverNotificationEnabled.getOrDefault(macNorm, false)
-
-        if (remoteDevice != null && srv != null && srvTx != null && srvEnabled) {
-            try {
-                val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    srv.notifyCharacteristicChanged(remoteDevice, srvTx, false, data) == BluetoothGatt.GATT_SUCCESS
-                } else {
-                    @Suppress("DEPRECATION")
-                    srvTx.value = data
-                    @Suppress("DEPRECATION")
-                    srv.notifyCharacteristicChanged(remoteDevice, srvTx, false)
-                }
-                if (success) {
-                    remLog("INFO", "SEND", "GATT Server chunk sent to $macNorm len=${chunk.length}")
-                    return SendResult(true, "gatt_server")
-                }
-            } catch (e: Exception) {
-                btErr("notify_ex", "Server notify failed for $macNorm (${data.size} B): ${e.message}")
-            }
-        }
-
-        val rxChar = clientRxCharacteristics[macNorm]
-        val gatt = gattClients[macNorm]
-
-        if (gatt != null && rxChar != null && clientConnectionStates[macNorm] == BluetoothProfile.STATE_CONNECTED) {
-            try {
-                var writeInitiated = false
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    val status = gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
-                    if (status == BluetoothGatt.GATT_SUCCESS) {
-                        writeInitiated = true
-                        remLog("INFO", "SEND", "GATT Client chunk sent (NO_RESPONSE) to $macNorm len=${chunk.length}")
-                    } else {
-                        remLog("WARN", "SEND", "NO_RESPONSE fallo status=$status, intentando DEFAULT para $macNorm")
-                        val fallbackStatus = gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-                        if (fallbackStatus == BluetoothGatt.GATT_SUCCESS) {
-                            writeInitiated = true
-                            remLog("INFO", "SEND", "GATT Client chunk sent (DEFAULT fallback) to $macNorm len=${chunk.length}")
-                        }
-                    }
-                } else {
-                    @Suppress("DEPRECATION")
-                    rxChar.value = data
-                    @Suppress("DEPRECATION")
-                    rxChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                    @Suppress("DEPRECATION")
-                    writeInitiated = gatt.writeCharacteristic(rxChar)
-                    if (!writeInitiated) {
-                        remLog("WARN", "SEND", "NO_RESPONSE fallo (legacy), intentando DEFAULT para $macNorm")
-                        @Suppress("DEPRECATION")
-                        rxChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                        @Suppress("DEPRECATION")
-                        writeInitiated = gatt.writeCharacteristic(rxChar)
-                        if (writeInitiated) {
-                            remLog("INFO", "SEND", "GATT Client chunk sent (DEFAULT fallback legacy) to $macNorm len=${chunk.length}")
-                        }
-                    } else {
-                        remLog("INFO", "SEND", "GATT Client chunk sent (NO_RESPONSE legacy) to $macNorm len=${chunk.length}")
-                    }
-                }
-                if (writeInitiated) {
-                    return SendResult(true, "gatt_client")
-                }
-            } catch (e: Exception) {
-                btErr("write_ex", "GATT Client write exception (${data.size} B): ${e.message}")
-            }
-        }
-
-        return SendResult(false, "")
-    }
-    // === FIN FIX F0 ===
-
-    private fun processPendingMessages(macNorm: String) {
-        val queue = pendingMessageQueue.remove(macNorm) ?: return
-        val gatt = gattClients[macNorm]
-        val rxChar = clientRxCharacteristics[macNorm]
-        if (gatt != null && rxChar != null && clientConnectionStates[macNorm] == BluetoothProfile.STATE_CONNECTED) {
-            queue.forEachIndexed { index, msg ->
-                mainHandler.postDelayed({
-                    val result = sendChunkedOrSingle(macNorm, "", msg)
-                    if (result.sent) {
-                        remLog("INFO", "PENDING_QUEUE", "Mensaje encolado enviado a $macNorm")
-                    } else {
-                        remLog("WARN", "PENDING_QUEUE", "Fallo enviando mensaje encolado a $macNorm")
-                    }
-                }, index * 200L)
-            }
-        } else {
-            remLog("WARN", "PENDING_QUEUE", "No se pudieron enviar ${queue.size} mensajes encolados, conexion no lista")
-            queue.forEach { msg ->
-                val q = pendingMessageQueue.getOrPut(macNorm) { mutableListOf() }
-                q.add(msg)
-            }
-        }
-    }
-
-    @PluginMethod
-    fun setAdvertisingData(call: PluginCall) {
-        val nexoId = call.getString("nexoId") ?: run {
-            call.reject("nexoId requerido")
-            return
-        }
-        nexoAdvertisingId = nexoId
-        val rk = call.getString("ridKey")
-        if (rk != null && rk.length == 64 && rk.all { it in '0'..'9' || it in 'a'..'f' }) {
-            ridKey = rk
-            ridVisibleUntil = (call.getDouble("visibleUntil") ?: 0.0).toLong()
-            ridEpochS = (call.getInt("epochS") ?: 900).toLong().coerceAtLeast(1L)
-        } else if (rk != null) ridKey = null
-        remLog("INFO", "ADVERTISING", "NEXO ID set: $nexoId" + if (ridKey != null) (if (System.currentTimeMillis() < ridVisibleUntil) " (visible ${(ridVisibleUntil - System.currentTimeMillis()) / 1000} s)" else " (código rotativo)") else "")
-        val ctx = activity.applicationContext
-        val intent = Intent(ctx, BleService::class.java)
-        intent.putExtra("nexo_advertising_id", nexoId)
-        putRidExtras(intent)
-        intent.putExtra("action", "UPDATE_ADVERTISING_DATA")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            ctx.startForegroundService(intent)
-        } else {
-            ctx.startService(intent)
-        }
-        call.resolve(JSObject().put("set", true).put("nexoId", nexoId))
-    }
-
-    @PluginMethod
-    fun startAdvertising(call: PluginCall) {
-        remLog("INFO", "ADVERTISING", "startAdvertising")
-        val ctx = activity.applicationContext
-        val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val adapter = bluetoothManager.adapter
-        if (adapter == null || !adapter.isEnabled) {
-            call.reject("Bluetooth desactivado")
-            return
-        }
-        if (!checkCoreBLEPermissions(ctx)) {
-            call.reject("Permisos BLE no concedidos")
-            return
-        }
-        autoStartGattServerAndAdvertising()
-        call.resolve(JSObject().put("started", true))
-    }
-
-    @PluginMethod
-    fun startScan(call: PluginCall) {
-        remLog("INFO", "SCAN", "startScan")
-        val ctx = activity.applicationContext
-        val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val adapter = bluetoothManager.adapter
-        if (adapter == null || !adapter.isEnabled) {
-            call.reject("Bluetooth desactivado")
-            return
-        }
-        val hasScanPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            isGranted(ctx, android.Manifest.permission.BLUETOOTH_SCAN)
-        } else {
-            isGranted(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION)
-        }
-        if (!hasScanPermission) {
-            call.reject("BLUETOOTH_SCAN/LOCATION no concedido")
-            return
-        }
-        autoStartGattServerAndAdvertising()
-        bluetoothScanner = adapter.bluetoothLeScanner
-        scanResults.clear()
-        scannedDevices.clear()
-        lastScanNotifyTime.clear()
-        val settings = scanSettings()
-        // filtered=true (re-búsqueda con la app oculta): solo anuncios NEXO. Sin filtro Android no
-        // entrega resultados con la pantalla apagada.
-        val filters = if (call.getBoolean("filtered", false) == true) listOf(
-            ScanFilter.Builder()
-                .setManufacturerData(MANUFACTURER_ID, byteArrayOf(NEXO_MAGIC_HIGH, NEXO_MAGIC_LOW), byteArrayOf(0xFF.toByte(), 0xFF.toByte()))
-                .build()
-        ) else emptyList()
-        try {
-            bluetoothScanner?.startScan(filters, settings, scanCallback)
-            mainHandler.removeCallbacks(scanTimeoutRunnable)
-            mainHandler.postDelayed(scanTimeoutRunnable, SCAN_TIMEOUT_MS)
-            call.resolve(JSObject().put("started", true))
-        } catch (e: SecurityException) {
-            call.reject("Permiso BLUETOOTH_SCAN no concedido")
-        }
-    }
-
-    @PluginMethod
-    fun stopScan(call: PluginCall) {
-        stopScanInternal()
-        call.resolve(JSObject().put("stopped", true))
-    }
-
-    private fun stopScanInternal() {
-        mainHandler.removeCallbacks(scanTimeoutRunnable)
-        try { bluetoothScanner?.stopScan(scanCallback) } catch (e: Exception) { }
-        bluetoothScanner = null
-        scannedDevices.clear()
-    }
-
-    private fun extractNexoIdFromScanRecord(scanRecord: android.bluetooth.le.ScanRecord?): String? {
-        if (scanRecord == null) return null
-        val manufacturerData = scanRecord.manufacturerSpecificData ?: return null
-        if (manufacturerData.size() == 0) return null
-        for (i in 0 until manufacturerData.size()) {
-            val key = manufacturerData.keyAt(i)
-            val data = manufacturerData.get(key) ?: continue
-            if (data.size >= 4) {
-                val b0 = data[0].toInt() and 0xFF
-                val b1 = data[1].toInt() and 0xFF
-                if (b0 == 0x4E && b1 == 0x58) {
-                    val nexoId = String(data, 2, data.size - 2, Charsets.UTF_8)
-                    // Auditoría (ronda 2774): el anuncio lo pone cualquiera por radio. Solo se acepta si tiene la forma de
-                    // un NEXO ID (nx + 8) o de un código rotativo (R + 9 en base32): así un anuncio con basura no llega a
-                    // la app como un "dispositivo" ni envenena el mapa NEXO ID→dirección.
-                    if (!AdvertisedId.valid(nexoId)) {
-                        remLog("WARN", "SCAN", "Anuncio NEXO con ID mal formado en 0x${key.toString(16)}: se ignora")
-                        return null
-                    }
-                    // Solo a logcat (no al registro nativo): la línea "Device found" de abajo ya anota el NEXO ID por
-                    // dispositivo y con límite de frecuencia; esta por anuncio inundaba el diagnóstico.
-                    Log.i("NEXO_REM", "[INFO][SCAN] NEXO ID found in manufacturer ID 0x${key.toString(16)}: $nexoId")
-                    return nexoId
-                }
-            }
-        }
-        return null
-    }
-
-    private fun codedSupported(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
-        return try {
-            val bm = activity.applicationContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-            bm.adapter?.isLeCodedPhySupported == true
-        } catch (e: Exception) { false }
-    }
-
-    // Escaneo: con largo alcance también los anuncios extendidos en LE Coded (setLegacy(false) entrega los dos)
-    private fun scanSettings(): ScanSettings {
-        val b = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-        if (codedSupported()) b.setLegacy(false).setPhy(ScanSettings.PHY_LE_ALL_SUPPORTED)
-        return b.build()
-    }
-
-    // Conectar: en LE Coded solo si ese teléfono solo se ve por largo alcance (en 1M es más rápido)
-    private fun connectLe(ctx: Context, device: BluetoothDevice, macNorm: String): BluetoothGatt? {
-        val now = System.currentTimeMillis()
-        val coded = codedSupported() && now - (seenCoded[macNorm] ?: 0L) < 60000L && now - (seen1M[macNorm] ?: 0L) > 10000L
-        if (coded) codedLinks.add(macNorm) else codedLinks.remove(macNorm)
-        if (coded && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            remLog("INFO", "GATT_CLIENT", "Conectando a $macNorm por largo alcance (LE Coded)")
-            return device.connectGatt(ctx, false, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE,
-                BluetoothDevice.PHY_LE_1M_MASK or BluetoothDevice.PHY_LE_CODED_MASK)
-        }
-        return device.connectGatt(ctx, false, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE)
-    }
-
-    private val scanCallback = object : ScanCallback() {
-        override fun onScanResult(callbackType: Int, result: ScanResult?) {
-            result?.device?.let { device ->
-                val name = result.scanRecord?.deviceName ?: try { device.name } catch (e: SecurityException) { null } ?: "Unknown"
-                val addr = device.address
-                val macNorm = normalizeMac(addr)
-                val rssi = result.rssi
-
-                if (rssi < MIN_RSSI) {
-                    return@let
-                }
-
-                scannedDevices[macNorm] = device
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && result.primaryPhy == BluetoothDevice.PHY_LE_CODED) seenCoded[macNorm] = System.currentTimeMillis()
-                else seen1M[macNorm] = System.currentTimeMillis()
-
-                val nexoId = extractNexoIdFromScanRecord(result.scanRecord)
-
-                if (nexoId != null) {
-                    registerNexoMapping(nexoId, addr)
-                }
-
-                val scanMsg = "Device found: $name ($addr) NEXO=$nexoId rssi=$rssi - cacheado"
-                val nowScanLog = System.currentTimeMillis()
-                if (nowScanLog - (scanLogLast[macNorm] ?: 0L) > SCAN_LOG_MIN_MS) {
-                    scanLogLast[macNorm] = nowScanLog
-                    remLog("INFO", "SCAN", scanMsg) // al registro nativo: como mucho 1 vez cada 20 s por dispositivo
-                } else {
-                    Log.i("NEXO_REM", "[INFO][SCAN] $scanMsg") // el resto, solo a logcat (no inunda el diagnóstico)
-                }
-
-                val item = JSObject().apply {
-                    put("deviceId", addr)
-                    put("name", name)
-                    put("rssi", rssi)
-                    if (nexoId != null) {
-                        put("nexoId", nexoId)
-                    }
-                    // 3009: visto por el conjunto de anuncio de LARGO ALCANCE (LE Coded, otra dirección del mismo teléfono): la app no
-                    // se conecta a esa copia si al mismo teléfono lo ve cerca por la dirección normal (ble_interface._onScanFound)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && result.primaryPhy == BluetoothDevice.PHY_LE_CODED) put("coded", true)
-                }
-
-                synchronized(scanResults) {
-                    if (scanResults.none { normalizeMac(it.getString("deviceId") ?: "") == macNorm }) {
-                        scanResults.add(item)
-                    }
-                }
-
-                val now = System.currentTimeMillis()
-                val lastNotify = lastScanNotifyTime[macNorm]
-                if (lastNotify == null || (now - lastNotify) >= SCAN_DEBOUNCE_MS) {
-                    lastScanNotifyTime[macNorm] = now
-                    notifyListeners("onDeviceFound", item)
-                }
-            }
-        }
-
-        override fun onScanFailed(errorCode: Int) {
-            notifyListeners("onScanFailed", JSObject().put("errorCode", errorCode))
-        }
-    }
-
-    @PluginMethod
-    fun isBluetoothEnabled(call: PluginCall) {
-        val ctx = activity.applicationContext
-        val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val adapter = bluetoothManager.adapter
-        val enabled = adapter != null && adapter.isEnabled
-        call.resolve(JSObject()
-            .put("enabled", enabled)
-            .put("canAdvertise", enabled && isAdvertisingActive)
-            .put("serverReady", bluetoothGattServer != null)
-        )
-    }
-
-    @PluginMethod
-    fun getLocalDeviceInfo(call: PluginCall) {
-        val ctx = activity.applicationContext
-        val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val adapter = bluetoothManager.adapter
-        call.resolve(JSObject()
-            .put("deviceName", adapter?.name ?: "NEXO Device")
-            .put("deviceAddress", try { adapter?.address ?: "" } catch (e: SecurityException) { "" })
-            .put("codedPhy", codedSupported()) // largo alcance (LE Coded PHY)
-        )
-    }
-
-    @PluginMethod
-    fun getConnectedDevices(call: PluginCall) {
-        val devices = JSArray()
-        gattClients.forEach { (mac, gatt) ->
-            val state = clientConnectionStates[mac] ?: BluetoothProfile.STATE_DISCONNECTED
-            if (state == BluetoothProfile.STATE_CONNECTED) {
-                val addr = gatt.device?.address ?: mac.chunked(2).joinToString(":").uppercase()
-                val device = JSObject()
-                    .put("id", addr)
-                    .put("address", addr)
-                    .put("name", try { gatt.device?.name } catch (e: SecurityException) { null } ?: "NEXO Peer")
-                    .put("direction", "outgoing")
-                    .put("role", "client")
-                    .put("ready", clientRxCharacteristics.containsKey(mac))
-                devices.put(device)
-            }
-        }
-        serverConnectedDevices.forEach { (mac, device) ->
-            val item = JSObject()
-                .put("id", device.address)
-                .put("address", device.address)
-                .put("name", try { device.name } catch (e: SecurityException) { null } ?: "NEXO Peer")
-                .put("direction", "incoming")
-                .put("role", "server")
-                .put("ready", serverNotificationEnabled.getOrDefault(mac, false))
-            devices.put(item)
-        }
-        call.resolve(JSObject().put("devices", devices))
-    }
-
-    private fun registerServerReceivers() {
-        if (messageReceiver != null) return
-        messageReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                when (intent.action) {
-                    NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED -> {
-                        val addr = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
-                        notifyListeners("onDeviceConnected", JSObject()
-                            .put("deviceId", addr)
-                            .put("direction", "incoming")
-                            .put("role", "server")
-                        )
-                    }
-                    NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED -> {
-                        val addr = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
-                        notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", addr))
-                    }
-                }
-            }
-        }
-        val filter = IntentFilter().apply {
-            addAction(NexoBleSpec.ACTION_BLE_MESSAGE_RECEIVED)
-            addAction(NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED)
-            addAction(NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED)
-        }
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                activity.registerReceiver(messageReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                activity.registerReceiver(messageReceiver, filter)
-            }
-        } catch (e: Exception) { }
-    }
-
-    private fun unregisterServerReceivers() {
-        messageReceiver?.let {
-            try { activity.unregisterReceiver(it) } catch (e: Exception) { }
-            messageReceiver = null
-        }
-    }
-
-    private fun stopAdvertisingInternal() {
-        isAdvertisingActive = false
-        try { bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback) } catch (e: Exception) { }
-    }
-
-    private val advertiseCallback = object : android.bluetooth.le.AdvertiseCallback() {
-        override fun onStartSuccess(settingsInEffect: android.bluetooth.le.AdvertiseSettings?) {
-            isAdvertisingActive = true
-            remLog("INFO", "ADVERTISING", "Started")
-        }
-        override fun onStartFailure(errorCode: Int) {
-            isAdvertisingActive = false
-            remLog("ERROR", "ADVERTISING", "Failed: $errorCode")
-        }
-    }
-
-    @PluginMethod
-    fun stopAdvertising(call: PluginCall) {
-        val ctx = activity.applicationContext
-        try {
-            isAdvertisingActive = false
-            ctx.stopService(Intent(ctx, BleService::class.java))
-            unregisterServerReceivers()
-            call.resolve(JSObject().put("stopped", true))
-        } catch (e: Exception) {
-            call.reject("Error: ${e.message}")
-        }
-    }
-
-    @PluginMethod
-    fun isAdvertising(call: PluginCall) {
-        val ctx = activity.applicationContext
-        val manager = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val running = manager.getRunningServices(Integer.MAX_VALUE).any { it.service.className == BleService::class.java.name }
-        call.resolve(JSObject().put("isAdvertising", running))
-    }
+    @PluginMethod fun isAdvertising(call: PluginCall) = isAdvertisingImpl(call)
 
     @PluginMethod
     fun startBLEAdvertising(call: PluginCall) = startAdvertising(call)
@@ -2772,86 +525,22 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun scanForDevices(call: PluginCall) = startScan(call)
 
-    @PluginMethod
-    fun startListeningMessages(call: PluginCall) {
-        registerServerReceivers()
-        call.resolve(JSObject().put("listening", true))
-    }
+    @PluginMethod fun startListeningMessages(call: PluginCall) = startListeningMessagesImpl(call)
 
     // Los archivos se leen y guardan fuera del hilo de los plugins (Capacitor los ejecuta todos en uno, en fila):
     // así guardar o leer un vídeo no hace esperar a sendMessage ni a los guardados pequeños (claves, historial).
     // Cada archivo va siempre al mismo hilo (el orden de guardar/leer un mismo archivo se mantiene); los grandes
     // (adjuntos, HD y cola de Jump) tienen el suyo.
-    private val ioSmall = java.util.concurrent.Executors.newSingleThreadExecutor()
-    private val ioBig = java.util.concurrent.Executors.newSingleThreadExecutor()
-    private fun ioFor(name: String) = if (name.startsWith("nexo_att_") || name.startsWith("nexo_relay_")) ioBig else ioSmall
-    private fun ioRun(name: String, op: String, call: PluginCall, block: () -> Unit) {
-        ioFor(name).execute {
-            val t0 = System.currentTimeMillis()
-            try { block() } catch (e: Throwable) { call.reject("Error $op archivo: ${e.message}") }
-            val ms = System.currentTimeMillis() - t0
-            // Sin el nombre (puede llevar el NEXO ID de un contacto): solo el tipo
-            if (ms > 300) remLog("WARN", "FILE_IO", "$op lento: ${ms} ms (${if (ioFor(name) === ioBig) "adjunto" else name.substringBefore("_nx").substringBefore(".")})")
-        }
-    }
+    internal val ioSmall = java.util.concurrent.Executors.newSingleThreadExecutor()
+    internal val ioBig = java.util.concurrent.Executors.newSingleThreadExecutor()
 
-    @PluginMethod
-    fun saveToFile(call: PluginCall) {
-        val filename = call.getString("filename") ?: run {
-            call.reject("filename requerido")
-            return
-        }
-        if (moveFrozen) { call.resolve(JSObject().put("success", true).put("frozen", true)); return } // pasando la cuenta
-        val content = call.getString("content") ?: run {
-            call.reject("content requerido")
-            return
-        }
-        val path = File(context.filesDir, filename).absolutePath
-        ioRun(filename, "guardando", call) {
-            atRest().write(filename, content) // cifrado en reposo (AtRestStore)
-            call.resolve(JSObject().put("success", true).put("path", path))
-        }
-    }
+    @PluginMethod fun saveToFile(call: PluginCall) = saveToFileImpl(call)
 
-    @PluginMethod
-    fun loadFromFile(call: PluginCall) {
-        val filename = call.getString("filename") ?: run {
-            call.reject("filename requerido")
-            return
-        }
-        val path = File(context.filesDir, filename).absolutePath
-        ioRun(filename, "leyendo", call) {
-            val content = atRest().read(filename)
-            if (content == null) call.resolve(JSObject().put("exists", false).put("content", ""))
-            else call.resolve(JSObject().put("exists", true).put("content", content).put("path", path))
-        }
-    }
+    @PluginMethod fun loadFromFile(call: PluginCall) = loadFromFileImpl(call)
 
-    // Ronda 2785 (#87): registro nativo persistente (NativeLog.kt) para el diagnóstico. Aparte de loadFromFile porque
-    // ese pasa por el cifrado en reposo (AtRestStore) y este se escribe en claro —append desde varios hilos, también con
-    // la app cerrada o bloqueada—. Solo metadatos (nunca el contenido de un mensaje). Al abrir la app, diag.js lo mete en
-    // Perfil → Copiar diagnóstico para ver qué hizo el nativo mientras la app estaba cerrada.
-    @PluginMethod
-    fun readNativeLog(call: PluginCall) {
-        try {
-            val log = nlog()
-            val content = log?.read() ?: ""
-            if (call.getData().optBoolean("clear", false)) log?.clear()
-            call.resolve(JSObject().put("content", content))
-        } catch (e: Exception) { call.resolve(JSObject().put("content", "")) }
-    }
+    @PluginMethod fun readNativeLog(call: PluginCall) = readNativeLogImpl(call)
 
-    @PluginMethod
-    fun deleteFile(call: PluginCall) {
-        val filename = call.getString("filename") ?: run {
-            call.reject("filename requerido")
-            return
-        }
-        if (moveFrozen) { call.resolve(JSObject().put("deleted", false).put("frozen", true)); return }
-        ioRun(filename, "borrando", call) {
-            call.resolve(JSObject().put("deleted", atRest().delete(filename)))
-        }
-    }
+    @PluginMethod fun deleteFile(call: PluginCall) = deleteFileImpl(call)
 
     // ===== Seguridad fase 3: cifrado en reposo, huella y capturas =====
     // Clave de datos (AES-256) aleatoria, guardada envuelta (AES-GCM) con una clave del Android Keystore que no
@@ -2860,11 +549,11 @@ class NexoBlePlugin : Plugin() {
     private val atRestAlias = "nexo_at_rest_wrap_v1"
     @Volatile private var atRestKey: SecretKey? = null
     @Volatile private var atRestFailed = false
-    @Volatile private var atRestMigration = "en curso"
+    @Volatile internal var atRestMigration = "en curso"
     private var atRestStore: AtRestStore? = null
 
     @Synchronized
-    private fun atRest(): AtRestStore {
+    internal fun atRest(): AtRestStore {
         atRestStore?.let { return it }
         val st = AtRestStore(context.filesDir) { atRestDataKey() }
         st.skip = setOf(NXID_MAC_MAP_FILE, NATIVE_LOG_FILE) // los lee y escribe el propio Kotlin, en claro
@@ -2874,7 +563,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     @Synchronized
-    private fun atRestDataKey(): SecretKey? {
+    internal fun atRestDataKey(): SecretKey? {
         atRestKey?.let { return it }
         if (atRestFailed) return null
         return try {
@@ -2915,325 +604,47 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    @PluginMethod
-    fun atRestStatus(call: PluginCall) {
-        call.resolve(JSObject().put("active", atRestDataKey() != null).put("migration", atRestMigration))
-    }
+    @PluginMethod fun atRestStatus(call: PluginCall) = atRestStatusImpl(call)
 
-    // Ronda 2803 (pedido del dueño #103): «Face ID opcional». Por defecto exige biometría FUERTE (Clase 3) en API 30+,
-    // que en muchos teléfonos deja fuera el ROSTRO (es Clase 2/débil, se engaña con una foto) y solo ofrece la huella.
-    // Si el usuario activa el «desbloqueo rápido por rostro (menos seguro)», se permite BIOMETRIC_WEAK y entonces el
-    // rostro Clase 2 también desbloquea. Es solo una puerta de presencia (no cifra nada), así que el cambio es seguro;
-    // el aviso de «menos seguro» es honesto. En API <30 ya se usaba WEAK (STRONG+credential daba problemas ahí).
-    private fun biometricAuthenticators(allowWeak: Boolean): Int =
-        if (allowWeak || Build.VERSION.SDK_INT < 30) BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        else BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+    @PluginMethod fun biometricStatus(call: PluginCall) = biometricStatusImpl(call)
 
-    @PluginMethod
-    fun biometricStatus(call: PluginCall) {
-        val r = BiometricManager.from(context).canAuthenticate(biometricAuthenticators(call.getBoolean("allowWeak", false) == true))
-        call.resolve(JSObject().put("available", r == BiometricManager.BIOMETRIC_SUCCESS).put("code", r))
-    }
+    @PluginMethod fun biometricAuth(call: PluginCall) = biometricAuthImpl(call)
 
-    // Huella / cara / PIN del teléfono. Resuelve { ok: true } o { ok: false, reason }
-    @PluginMethod
-    fun biometricAuth(call: PluginCall) {
-        val act = activity as? FragmentActivity ?: run { call.resolve(JSObject().put("ok", false).put("reason", "sin actividad")); return }
-        val title = call.getString("title") ?: "Desbloquear NEXO"
-        val subtitle = call.getString("subtitle") ?: ""
-        val allowWeak = call.getBoolean("allowWeak", false) == true   // #103: desbloqueo rápido por rostro (opcional)
-        act.runOnUiThread {
-            try {
-                val prompt = BiometricPrompt(act, ContextCompat.getMainExecutor(context), object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) { call.resolve(JSObject().put("ok", true)) }
-                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) { call.resolve(JSObject().put("ok", false).put("reason", errString.toString()).put("code", errorCode)) }
-                })
-                val info = BiometricPrompt.PromptInfo.Builder().setTitle(title).setSubtitle(subtitle).setAllowedAuthenticators(biometricAuthenticators(allowWeak)).build()
-                prompt.authenticate(info)
-            } catch (e: Exception) {
-                call.resolve(JSObject().put("ok", false).put("reason", e.message ?: "error"))
-            }
-        }
-    }
+    @PluginMethod fun netBgConfig(call: PluginCall) = netBgConfigImpl(call)
 
-    // ===== Internet en segundo plano (NetBg): escucha los relés mientras la app no está a la vista =====
-    // Una por proceso: sigue aunque se cierre la actividad mientras el servicio de Bluetooth mantiene el proceso
-    private fun netBg(): NetBg = netBgShared ?: synchronized(NexoBlePlugin::class.java) {
-        // Ronda 2774 (el dueño: con la pantalla apagada no llegan por Wi-Fi/internet): al recibir por internet en segundo
-        // plano se renueva el wakelock (rxWake), igual que por Bluetooth y Wi-Fi, para que dé tiempo a avisar antes de que
-        // el teléfono vuelva a dormir.
-        netBgShared ?: NetBg({ nx, name, msgId, isCall, group, video ->
-            if (appInBackground) rxWake()
-            // #130b (dueño 31-10): una oferta de llamada/videollamada que llega por internet con la app en segundo plano o
-            // congelada tiene que salir a PANTALLA COMPLETA (enciende el teléfono, Contestar/Rechazar), como la 1-a-1 por
-            // Bluetooth y como las llamadas de grupo. Antes salía como «mensaje nuevo» porque NetBg solo miraba el msgId.
-            if (isCall) {
-                nlog()?.add("INFO", "NET", "oferta de llamada de $nx por internet (msgId $msgId): pantalla de llamada")
-                MsgNotifier.get(context).incomingCall(nx, name, video, msgId) // 3089: «Videollamada entrante» si lo es
-            } else if (SeenMsgs.has(context, msgId)) {
-                // 3008: reenvío de un mensaje que este teléfono ya tiene → sin «Mensaje nuevo» (la ✓✓ sí se devuelve, para que el otro pare)
-                nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): ese mensaje ya estaba en el teléfono (reenvío): sin aviso")
-            } else {
-                // 3076: un mensaje de GRUPO avisa en el grupo, con su nombre y quién lo manda (como por Bluetooth: notifyMessage)
-                val gname = groupName(group)
-                nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): aviso de mensaje nuevo por internet" + if (gname != null) " (grupo $group)" else "")
-                if (gname != null) MsgNotifier.get(context).message(group, gname, msgId, "$name: Mensaje nuevo", true)
-                else MsgNotifier.get(context).message(nx, name, msgId, "", true)
-            }
-        }, { nlog()?.add("INFO", "NET", it); Log.i("NEXO_NET", it) }, { nx, offer ->
-            // 3087: el que llama colgó (sobre con ce, por internet) → deja de sonar ya
-            if (MsgNotifier.get(context).cancelCallFor(nx, offer)) nlog()?.add("INFO", "NET", "$nx colgó: la llamada deja de sonar")
-        }).also { netBgShared = it }
-    }
+    @PluginMethod fun netBgDrain(call: PluginCall) = netBgDrainImpl(call)
 
-    @PluginMethod
-    fun netBgConfig(call: PluginCall) {
-        val me = call.getString("me") ?: run { call.reject("falta me"); return }
-        val relays = ArrayList<String>(); val list = ArrayList<NetBg.Contact>()
-        try {
-            call.getArray("relays")?.let { for (i in 0 until it.length()) relays.add(it.getString(i)) }
-            call.getArray("contacts")?.let { for (i in 0 until it.length()) { val o = it.getJSONObject(i); list.add(NetBg.Contact(o.getString("nx").lowercase(), o.optString("name"), Secp256k1.unhex(o.getString("kraw")))) } }
-        } catch (e: Exception) { call.reject("configuración ilegible"); return }
-        val since = (call.getData().optLong("since", 0L))
-        netBg().configure(me, relays, since, list)
-        netBg().setAckKeys(HashMap(ackKeys))   // #87: para confirmar la ENTREGA (✓✓) con la app cerrada
-        if (appInBackground && list.isNotEmpty()) { wifiLockHold(true); netBg().start() }
-        call.resolve(JSObject().put("contacts", list.size).put("running", netBg().running))
-    }
+    @PluginMethod fun setAckKeys(call: PluginCall) = setAckKeysImpl(call)
 
-    // 3033: lo que la escucha de internet en segundo plano recibió (eventos del relé, cifrados) para que la app lo procese
-    // al volver sin esperar a los relés (ver NetBg.drainForApp)
-    @PluginMethod
-    fun netBgDrain(call: PluginCall) {
-        val list = try { netBgShared?.drainForApp() ?: emptyList() } catch (e: Exception) { emptyList<String>() }
-        val arr = JSArray()
-        for (s in list) arr.put(s)
-        call.resolve(JSObject().put("events", arr))
-    }
+    @PluginMethod fun notifyCall(call: PluginCall) = notifyCallImpl(call)
 
-    // Auditoría C1 (ronda 2777): la app nos da, por contacto, la clave con la que firmar la confirmación (✓✓) del modo
-    // cerrado (ver closedReceive). La clave (base64) la deriva la app del secreto de la pareja; aquí solo se guarda en
-    // memoria del proceso. Se reemplaza el conjunto en cada llamada.
-    @PluginMethod
-    fun setAckKeys(call: PluginCall) {
-        try {
-            val arr = call.getArray("keys")
-            ackKeys.clear()
-            if (arr != null) for (i in 0 until arr.length()) {
-                val o = arr.getJSONObject(i)
-                val nx = o.getString("nx").lowercase()
-                val key = Base64.decode(o.getString("key"), Base64.NO_WRAP)
-                if (Regex("^nx[0-9a-z]{8}$").matches(nx) && key.isNotEmpty()) ackKeys[nx] = key
-            }
-            netBgShared?.setAckKeys(HashMap(ackKeys))   // #87: que el modo cerrado por internet también pueda firmar el ✓✓
-            call.resolve(JSObject().put("keys", ackKeys.size))
-        } catch (e: Exception) { call.reject("claves de confirmación ilegibles") }
-    }
-
-    // ===== Ronda 2763: llamada entrante como una llamada del teléfono (calls_ui.js) =====
-    @PluginMethod
-    fun notifyCall(call: PluginCall) {
-        val from = (call.getString("chatId") ?: "").lowercase()
-        if (from.isEmpty()) { call.reject("chatId requerido"); return }
-        MsgNotifier.get(context).incomingCall(from, call.getString("name") ?: "NEXO", call.getBoolean("video", false) == true, call.getString("offerId") ?: "")
-        call.resolve()
-    }
-    // Ronda 2768: "Rechazar" tocado con la app viva (ver declinedFromNotification). Sigue apuntado (pendingDecline): si la
-    // app aún no tenía la llamada sonando (oferta a medias, app congelada), lo recoge al sonar; va atado a esa oferta
-    private fun onDeclineTapped(tap: CallTap) {
-        if (closedMode) return
-        notifyListeners("onCallAction", JSObject().put("declined", tap.from).put("declinedOffer", tap.offer), true)
-    }
-    // Build 2882 (parte 2): el sistema pidió colgar la llamada activa/saliente (ver telecomEnded). El JS (ble_interface)
-    // cuelga la llamada NEXO en curso si es de ese contacto.
-    private fun onTelecomEnded(from: String) {
-        if (closedMode) return
-        notifyListeners("onTelecomEnd", JSObject().put("nx", from), true)
-    }
     @PluginMethod
     fun clearCall(call: PluginCall) { MsgNotifier.get(context).cancelCall(); call.resolve() }
 
-    // Build 2882 (parte 2): puente del ciclo de vida de la llamada SALIENTE con Telecom (self-managed). Lo llama calls.js:
-    //   op="out"    al empezar a llamar  → placeCall (la llamada aparece como real: coche/auriculares/foco de audio)
-    //   op="active" cuando el otro contesta → la conexión Telecom pasa a activa
-    //   op="end"    al colgar/terminar     → se cierra la conexión Telecom
-    // Best-effort y aditivo: si Telecom no está o falla, NEXO llama EXACTAMENTE como hasta ahora. Nunca rechaza (el JS no
-    // depende del resultado). La entrante (parte 1) NO pasa por aquí: se registra sola al llegar la oferta.
-    @PluginMethod
-    fun telecom(call: PluginCall) {
-        val op = call.getString("op") ?: ""
-        var ok = false
-        try {
-            when (op) {
-                "out" -> {
-                    val to = (call.getString("to") ?: "").lowercase()
-                    if (to.isNotEmpty()) {
-                        val name = netBgShared?.nameOf(to) ?: "NEXO"
-                        ok = CallTelecom.startOutgoing(context, to, name, call.getBoolean("video", false) == true)
-                    }
-                }
-                "active" -> { CallTelecom.setActive(); ok = true }
-                "end" -> { CallTelecom.endActive(); ok = true }
-            }
-        } catch (e: Throwable) { Log.w(TAG, "telecom($op): ${e.message}") }
-        call.resolve(JSObject().put("ok", ok))
-    }
+    @PluginMethod fun telecom(call: PluginCall) = telecomImpl(call)
 
-    // ===== Ronda 2765: avisos con la pantalla apagada =====
-    private fun showOverLock(on: Boolean) {
-        val act = activity ?: return
-        act.runOnUiThread {
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) { act.setShowWhenLocked(on); act.setTurnScreenOn(on) }
-                else {
-                    @Suppress("DEPRECATION")
-                    val f = android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-                    if (on) act.window.addFlags(f) else act.window.clearFlags(f)
-                }
-            } catch (e: Exception) { Log.w(TAG, "Pantalla de bloqueo: ${e.message}") }
-        }
-    }
     // Acabó la llamada (o no había ninguna): la app vuelve a quedar detrás de la pantalla de bloqueo (sin desbloquear no
     // se ven los chats)
     @PluginMethod
     fun callScreenDone(call: PluginCall) { showOverLock(false); call.resolve() }
 
-    // Tono de llamada/videollamada (ronda 2774, pedido del dueño): el actual (nombre y uri). Por defecto es el tono de
-    // llamada del propio teléfono; vale para llamadas y videollamadas (mismo canal de avisos).
-    @PluginMethod
-    fun getCallRingtone(call: PluginCall) {
-        val ctx = context
-        call.resolve(JSObject().put("title", MsgNotifier.get(ctx).callRingtoneTitle(ctx)).put("uri", MsgNotifier.get(ctx).callRingtoneUri(ctx).toString()))
-    }
+    @PluginMethod fun getCallRingtone(call: PluginCall) = getCallRingtoneImpl(call)
 
-    // Abre el selector de tonos del teléfono (los guardados en el dispositivo) con el actual marcado; "Predeterminado"
-    // vuelve al tono de llamada del teléfono. Lo elegido se aplica recreando el canal (ringtonePicked).
-    @PluginMethod
-    fun pickCallRingtone(call: PluginCall) {
-        val ctx = context
-        val current = MsgNotifier.get(ctx).callRingtoneUri(ctx)
-        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
-            .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_RINGTONE)
-            .putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Tono de llamada de NEXO")
-            .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
-            .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
-            .putExtra(RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
-            .putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, current)
-        try { startActivityForResult(call, intent, "ringtonePicked") }
-        catch (e: Exception) { call.reject("No se pudo abrir el selector de tonos: ${e.message}") }
-    }
+    @PluginMethod fun pickCallRingtone(call: PluginCall) = pickCallRingtoneImpl(call)
 
-    @ActivityCallback
-    @Suppress("DEPRECATION") // getParcelableExtra(name) está obsoleto en API 33+ pero sigue funcionando en todas
-    private fun ringtonePicked(call: PluginCall?, result: ActivityResult) {
-        if (call == null) return
-        if (result.resultCode != android.app.Activity.RESULT_OK) { call.resolve(JSObject().put("changed", false)); return }
-        val ctx = context
-        // EXTRA_RINGTONE_PICKED_URI: null = "Predeterminado" (el del teléfono) o silencio; se guarda "" para volver al del teléfono
-        val picked = result.data?.getParcelableExtra<android.net.Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
-        MsgNotifier.get(ctx).setCallRingtone(ctx, picked?.toString() ?: "")
-        call.resolve(JSObject().put("changed", true).put("title", MsgNotifier.get(ctx).callRingtoneTitle(ctx)).put("uri", MsgNotifier.get(ctx).callRingtoneUri(ctx).toString()))
-    }
+    @ActivityCallback private fun ringtonePicked(call: PluginCall?, result: ActivityResult) = ringtonePickedImpl(call, result)
 
-    // Qué falta para que los avisos y las llamadas lleguen con la pantalla apagada (Perfil)
-    @PluginMethod
-    fun alertSettings(call: PluginCall) {
-        val ctx = context
-        val notif = androidx.core.app.NotificationManagerCompat.from(ctx).areNotificationsEnabled()
-        val full = if (Build.VERSION.SDK_INT >= 34) (ctx.getSystemService(android.app.NotificationManager::class.java)?.canUseFullScreenIntent() ?: true) else true
-        val pm = ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-        val battery = pm.isIgnoringBatteryOptimizations(ctx.packageName)
-        call.resolve(JSObject().put("notifications", notif).put("fullScreen", full).put("battery", battery)
-            .put("wakeOnMessage", MsgNotifier.get(ctx).wakeOnMsg()).put("vendor", Build.MANUFACTURER.lowercase()))
-    }
+    @PluginMethod fun alertSettings(call: PluginCall) = alertSettingsImpl(call)
     @PluginMethod
     fun setWakeOnMessage(call: PluginCall) { MsgNotifier.get(context).setWakeOnMsg(call.getBoolean("on", true) == true); call.resolve() }
-    // Abre el ajuste del sistema que falta: what = notifications | fullScreen | battery | vendor | app
-    @PluginMethod
-    fun openAlertSetting(call: PluginCall) {
-        val ctx = context
-        val pkg = android.net.Uri.parse("package:" + ctx.packageName)
-        // Ronda 2772: ajustes propios del fabricante para dejar a NEXO en segundo plano (Vivo: inicio automático y alto
-        // consumo en segundo plano; Samsung: batería; Xiaomi, Oppo, Huawei: inicio automático). Cada fabricante los
-        // esconde en un sitio; si ninguno abre, la ficha de la app
-        if (call.getString("what") == "vendor") {
-            val m = Build.MANUFACTURER.lowercase()
-            val comps = when {
-                m.contains("vivo") || m.contains("iqoo") -> listOf("com.vivo.permissionmanager/.activity.BgStartUpManagerActivity",
-                    "com.iqoo.secure/.ui.phoneoptimize.AddWhiteListActivity", "com.iqoo.secure/.ui.phoneoptimize.BgStartUpManager")
-                m.contains("samsung") -> listOf("com.samsung.android.lool/com.samsung.android.sm.ui.battery.BatteryActivity")
-                m.contains("xiaomi") || m.contains("redmi") || m.contains("poco") -> listOf("com.miui.securitycenter/com.miui.permcenter.autostart.AutoStartManagementActivity")
-                m.contains("oppo") || m.contains("realme") || m.contains("oneplus") -> listOf("com.coloros.safecenter/.permission.startup.StartupAppListActivity")
-                m.contains("huawei") || m.contains("honor") -> listOf("com.huawei.systemmanager/.startupmgr.ui.StartupNormalAppListActivity")
-                else -> emptyList()
-            }
-            for (cn in comps) {
-                try {
-                    activity.startActivity(Intent().setComponent(android.content.ComponentName.unflattenFromString(cn)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    call.resolve(JSObject().put("opened", true).put("screen", cn)); return
-                } catch (e: Exception) { }
-            }
-            try { activity.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); call.resolve(JSObject().put("opened", true).put("fallback", true)) }
-            catch (e: Exception) { call.resolve(JSObject().put("opened", false)) }
-            return
-        }
-        val i = when (call.getString("what")) {
-            "battery" -> Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg)
-            // 3098: la ficha de la app (Permisos: cámara bloqueada en una videollamada)
-            "app" -> Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg)
-            "fullScreen" -> if (Build.VERSION.SDK_INT >= 34) Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkg) else null
-            else -> Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName)
-        }
-        if (i == null) { call.resolve(JSObject().put("opened", false)); return }
-        try { activity.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); call.resolve(JSObject().put("opened", true)) }
-        catch (e: Exception) {
-            // Algunos fabricantes no tienen esa pantalla: la de la app
-            try { activity.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); call.resolve(JSObject().put("opened", true).put("fallback", true)) }
-            catch (e2: Exception) { call.resolve(JSObject().put("opened", false)) }
-        }
-    }
-    // Lo que se tocó en el aviso (Contestar / Rechazar) en los últimos 90 s; se entrega una vez
-    @PluginMethod
-    fun callAction(call: PluginCall) {
-        val now = System.currentTimeMillis()
-        val a = MsgNotifier.pendingAnswer?.takeIf { now - it.at < 90000 }
-        val d = MsgNotifier.pendingDecline?.takeIf { now - it.at < 90000 }
-        MsgNotifier.pendingAnswer = null; MsgNotifier.pendingDecline = null
-        val out = JSObject()
-        if (a != null) out.put("answer", a.from).put("answerOffer", a.offer)
-        if (d != null) out.put("declined", d.from).put("declinedOffer", d.offer)
-        call.resolve(out)
-    }
+    @PluginMethod fun openAlertSetting(call: PluginCall) = openAlertSettingImpl(call)
+    @PluginMethod fun callAction(call: PluginCall) = callActionImpl(call)
 
-    // 3008: la app avisa de los mensajes que YA recibió (con la app abierta), para que un reenvío de alguno con la app cerrada no
-    // salga como «Mensaje nuevo» (ver SeenMsgs)
-    @PluginMethod
-    fun markMsgsSeen(call: PluginCall) {
-        val ids = ArrayList<String>()
-        try { call.getArray("ids")?.let { for (i in 0 until it.length()) { val v = it.optString(i); if (v.isNotEmpty()) ids.add(v) } } } catch (e: Exception) {}
-        if (ids.isNotEmpty()) SeenMsgs.add(context, ids)
-        call.resolve(JSObject().put("count", ids.size))
-    }
+    @PluginMethod fun markMsgsSeen(call: PluginCall) = markMsgsSeenImpl(call)
 
-    // ===== Notificaciones de mensajes (MsgNotifier): las pide notify.js con la app en segundo plano =====
-    @PluginMethod
-    fun setNotifAvatar(call: PluginCall) {
-        // 3094: la foto que la app MUESTRA de este contacto, para sus avisos (solo en memoria; img vacía = quitarla)
-        val chatId = call.getString("chatId") ?: run { call.reject("falta chatId"); return }
-        val img = call.getString("img") ?: ""
-        val bytes = if (img.isEmpty()) null else try {
-            android.util.Base64.decode(NotifAvatars.base64Part(img), android.util.Base64.DEFAULT)
-        } catch (e: IllegalArgumentException) { null }
-        NotifAvatars.put(chatId, bytes)
-        call.resolve()
-    }
+    @PluginMethod fun setNotifAvatar(call: PluginCall) = setNotifAvatarImpl(call)
 
-    @PluginMethod
-    fun notifyMessage(call: PluginCall) {
-        val chatId = call.getString("chatId") ?: run { call.reject("falta chatId"); return }
-        val count = MsgNotifier.get(context).message(chatId, call.getString("name") ?: "NEXO", call.getString("msgId") ?: System.currentTimeMillis().toString(), call.getString("text") ?: "")
-        call.resolve(JSObject().put("count", count))
-    }
+    @PluginMethod fun notifyMessage(call: PluginCall) = notifyMessageImpl(call)
 
     // Android 13+: pedir el permiso de notificaciones si falta (quien ya tenía los de Bluetooth no pasaba por aquí)
     @PluginMethod
@@ -3243,1264 +654,172 @@ class NexoBlePlugin : Plugin() {
         }
         requestPermissionForAlias("postNotifications", call, "notificationPermCallback")
     }
-    @PermissionCallback
-    private fun notificationPermCallback(call: PluginCall) {
-        val ok = getPermissionState("postNotifications") == com.getcapacitor.PermissionState.GRANTED
-        remLog("INFO", "PERMISSIONS", "Notificaciones: " + if (ok) "permitidas" else "denegadas")
-        call.resolve(JSObject().put("granted", ok))
-    }
+    @PermissionCallback private fun notificationPermCallback(call: PluginCall) = notificationPermCallbackImpl(call)
 
     // #dueño 08-11: qué chat tiene abierto la app AHORA (NEXO ID en minúsculas, o "" si ninguno). Lo pone el JS al abrir/cerrar
     // un chat (notify.js). El aviso de respaldo en segundo plano (backgroundNotify) NO avisa de este chat: no debe llegar una
     // notificación de la persona que tenés en pantalla, aunque la app pase un instante a segundo plano.
-    @Volatile private var activeChatNx: String = ""
+    @Volatile internal var activeChatNx: String = ""
 
-    @PluginMethod
-    fun setActiveChat(call: PluginCall) {
-        activeChatNx = (call.getString("chatId") ?: "").lowercase().trim()
-        call.resolve()
-    }
+    @PluginMethod fun setActiveChat(call: PluginCall) = setActiveChatImpl(call)
 
-    @PluginMethod
-    fun clearChatNotification(call: PluginCall) {
-        val chatId = call.getString("chatId") ?: run { call.reject("falta chatId"); return }
-        MsgNotifier.get(context).clear(chatId)
-        call.resolve()
-    }
+    @PluginMethod fun clearChatNotification(call: PluginCall) = clearChatNotificationImpl(call)
 
-    // Los contadores de la app mandan: ajusta o quita las notificaciones puestas (también las de segundo plano)
-    @PluginMethod
-    fun syncUnread(call: PluginCall) {
-        val counts = HashMap<String, Int>()
-        try {
-            val arr = call.getArray("chats")
-            if (arr != null) for (i in 0 until arr.length()) {
-                val o = arr.getJSONObject(i)
-                counts[o.optString("chatId").lowercase()] = o.optInt("count", 0)
-            }
-        } catch (e: Exception) { }
-        MsgNotifier.get(context).sync(counts)
-        call.resolve()
-    }
+    @PluginMethod fun syncUnread(call: PluginCall) = syncUnreadImpl(call)
 
-    // Bloquear capturas y grabación de pantalla (y ocultar NEXO en "recientes")
-    @PluginMethod
-    fun setSecureScreen(call: PluginCall) {
-        val on = call.getBoolean("on") ?: false
-        val act = activity ?: run { call.reject("sin actividad"); return }
-        act.runOnUiThread {
-            if (on) act.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else act.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-            call.resolve(JSObject().put("on", on))
-        }
-    }
+    @PluginMethod fun setSecureScreen(call: PluginCall) = setSecureScreenImpl(call)
 
-    @PluginMethod
-    fun listFiles(call: PluginCall) {
-        try {
-            val dir: File = activity.filesDir
-            val fileArray: Array<File>? = dir.listFiles()
-            val fileNames: List<String> = if (fileArray != null) {
-                fileArray.map { file: File -> file.name }
-            } else {
-                emptyList<String>()
-            }
-            val arr = JSArray()
-            for (name in fileNames) {
-                arr.put(name)
-            }
-            call.resolve(JSObject().put("files", arr))
-        } catch (e: Exception) {
-            call.reject("Error listando archivos: ${e.message}")
-        }
-    }
+    @PluginMethod fun listFiles(call: PluginCall) = listFilesImpl(call)
 
     // ===== Wi-Fi normal (misma red): LanHub (TCP) + NSD (mDNS, como Bonjour en iPhone) =====
     // Cada teléfono se anuncia como "_nexo._tcp" con una marca del día (t) que solo sus contactos saben calcular
     // (sin NEXO ID a la vista). Al encontrar la marca de un contacto, la app pide conectar; los mensajes son los
     // mismos JSON que por Bluetooth (ya cifrados). La app comprueba cada conexión con el cifrado antes de usarla.
-    private var lanHub: LanHub? = null
-    private var nsdManager: android.net.nsd.NsdManager? = null
-    private var nsdReg: android.net.nsd.NsdManager.RegistrationListener? = null
-    private var nsdDisc: android.net.nsd.NsdManager.DiscoveryListener? = null
-    private var lanMcLock: WifiManager.MulticastLock? = null
+    internal var lanHub: LanHub? = null
+    internal var nsdManager: android.net.nsd.NsdManager? = null
+    internal var nsdReg: android.net.nsd.NsdManager.RegistrationListener? = null
+    internal var nsdDisc: android.net.nsd.NsdManager.DiscoveryListener? = null
+    internal var lanMcLock: WifiManager.MulticastLock? = null
     // Escaneo activo de la red (LanBeacon): por si el router no deja pasar el anuncio mDNS
-    private var lanBeacon: LanBeacon? = null
-    private var lanNetCb: android.net.ConnectivityManager.NetworkCallback? = null
-    @Volatile private var lanLastSweep = 0L
-    @Volatile private var lanMyId = ""
-    private var lanToken = ""
-    private var lanServiceName = ""
-    private val nsdResolveQueue = java.util.concurrent.ConcurrentLinkedQueue<android.net.nsd.NsdServiceInfo>()
-    @Volatile private var nsdResolving = false
-    private val lanSendExec = java.util.concurrent.Executors.newSingleThreadExecutor()
+    internal var lanBeacon: LanBeacon? = null
+    internal var lanNetCb: android.net.ConnectivityManager.NetworkCallback? = null
+    @Volatile internal var lanLastSweep = 0L
+    @Volatile internal var lanMyId = ""
+    internal var lanToken = ""
+    internal var lanServiceName = ""
+    internal val nsdResolveQueue = java.util.concurrent.ConcurrentLinkedQueue<android.net.nsd.NsdServiceInfo>()
+    @Volatile internal var nsdResolving = false
+    internal val lanSendExec = java.util.concurrent.Executors.newSingleThreadExecutor()
 
-    private fun lanOnWifi(): Boolean = try {
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-        val caps = cm.getNetworkCapabilities(cm.activeNetwork)
-        caps != null && (caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET))
-    } catch (e: Exception) { false }
+    @PluginMethod fun lanStatus(call: PluginCall) = lanStatusImpl(call)
 
-    @PluginMethod
-    fun lanStatus(call: PluginCall) {
-        // Calidad de cada conexión (latido nativo): ida y vuelta media y tiempo sin recibir
-        val peers = JSArray()
-        lanHub?.quality()?.forEach { (nx, rtt, idle) -> peers.put(JSObject().put("nx", nx).put("rtt", rtt).put("idle", idle)) }
-        call.resolve(JSObject().put("supported", true).put("wifi", lanOnWifi()).put("running", lanHub != null).put("port", lanHub?.port ?: 0).put("peers", peers))
-    }
+    @PluginMethod fun lanStart(call: PluginCall) = lanStartImpl(call)
 
-    @PluginMethod
-    fun lanStart(call: PluginCall) {
-        val nx = call.getString("nexoId")?.lowercase() ?: run { call.reject("nexoId requerido"); return }
-        val token = call.getString("token") ?: run { call.reject("token requerido"); return }
-        try {
-            lanMyId = nx
-            // (ronda 2772: tiempos con elapsedRealtime, que cuenta con el teléfono dormido; ver LanHub.tick)
-            val hub = lanHub ?: LanHub({ lanMyId }, object : LanHub.Listener {
-                override fun onUp(nx: String) { remLog("INFO", "LAN", "Conectado con $nx por Wi-Fi"); notifyListeners("onLanUp", JSObject().put("nx", nx), true) }
-                override fun onDown(nx: String) { remLog("INFO", "LAN", "Sin Wi-Fi con $nx"); notifyListeners("onLanDown", JSObject().put("nx", nx), true) }
-                override fun onMessage(nx: String, text: String) { backgroundNotify(text, null, nx); notifyListeners("onLanMessage", JSObject().put("nx", nx).put("content", text), true) }
-                override fun onLog(level: String, message: String) { remLog(level, "LAN", message) }
-            }, clock = { android.os.SystemClock.elapsedRealtime() }).also { lanHub = it }
-            val port = hub.start()
-            // Escaneo activo: pregunta a toda la red (difusión) y, de vez en cuando o al entrar en una red, una a una
-            val beacon = lanBeacon ?: LanBeacon(object : LanBeacon.Listener {
-                override fun onPeer(token: String, host: String, port: Int) {
-                    notifyListeners("onLanPeer", JSObject().put("token", token).put("host", host).put("port", port).put("src", "scan"))
-                }
-                override fun onLog(level: String, message: String) { remLog(level, "LAN", message) }
-            }).also { lanBeacon = it }
-            beacon.start(token, port)
-            val now = System.currentTimeMillis()
-            val sweep = call.getBoolean("sweep", false) == true || now - lanLastSweep > 300000L
-            if (sweep) lanLastSweep = now
-            if (lanOnWifi()) beacon.scan(sweep)
-            lanWatchWifi()
-            val nsd = nsdManager ?: (context.getSystemService(Context.NSD_SERVICE) as android.net.nsd.NsdManager).also { nsdManager = it }
-            if (lanMcLock == null) {
-                val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-                lanMcLock = wm.createMulticastLock("nexo-lan").apply { setReferenceCounted(false); acquire() }
-            }
-            // Anuncio (se rehace si cambia la marca del día)
-            if (nsdReg == null || token != lanToken) {
-                nsdReg?.let { try { nsd.unregisterService(it) } catch (e: Exception) {} }
-                lanToken = token
-                lanServiceName = "NEXO-" + wdRandom(6)
-                val info = android.net.nsd.NsdServiceInfo().apply {
-                    serviceName = lanServiceName; serviceType = "_nexo._tcp"; setPort(port); setAttribute("t", token)
-                }
-                val reg = object : android.net.nsd.NsdManager.RegistrationListener {
-                    override fun onServiceRegistered(si: android.net.nsd.NsdServiceInfo) { lanServiceName = si.serviceName; remLog("INFO", "LAN", "Anunciado en la red (puerto $port)") }
-                    override fun onRegistrationFailed(si: android.net.nsd.NsdServiceInfo, code: Int) { remLog("WARN", "LAN", "No se pudo anunciar ($code)"); if (nsdReg === this) nsdReg = null }
-                    override fun onServiceUnregistered(si: android.net.nsd.NsdServiceInfo) {}
-                    override fun onUnregistrationFailed(si: android.net.nsd.NsdServiceInfo, code: Int) {}
-                }
-                nsdReg = reg
-                nsd.registerService(info, android.net.nsd.NsdManager.PROTOCOL_DNS_SD, reg)
-            }
-            // Búsqueda (se reinicia en cada llamada: Android a veces deja de informar)
-            nsdDisc?.let { try { nsd.stopServiceDiscovery(it) } catch (e: Exception) {} }
-            val disc = object : android.net.nsd.NsdManager.DiscoveryListener {
-                override fun onDiscoveryStarted(t: String) {}
-                override fun onDiscoveryStopped(t: String) {}
-                override fun onStartDiscoveryFailed(t: String, code: Int) { remLog("WARN", "LAN", "Búsqueda fallida ($code)"); if (nsdDisc === this) nsdDisc = null }
-                override fun onStopDiscoveryFailed(t: String, code: Int) {}
-                override fun onServiceFound(si: android.net.nsd.NsdServiceInfo) {
-                    if (si.serviceName == lanServiceName) return
-                    nsdResolveQueue.add(si); lanResolveNext()
-                }
-                override fun onServiceLost(si: android.net.nsd.NsdServiceInfo) {}
-            }
-            nsdDisc = disc
-            nsd.discoverServices("_nexo._tcp", android.net.nsd.NsdManager.PROTOCOL_DNS_SD, disc)
-            call.resolve(JSObject().put("port", port).put("wifi", lanOnWifi()))
-        } catch (e: Exception) {
-            call.reject("Wi-Fi no disponible: ${e.message}", "LAN_UNAVAILABLE")
-        }
-    }
+    @PluginMethod fun lanConnect(call: PluginCall) = lanConnectImpl(call)
 
-    // Android resuelve de uno en uno
-    @Suppress("DEPRECATION")
-    private fun lanResolveNext() {
-        val nsd = nsdManager ?: return
-        if (nsdResolving) return
-        val si = nsdResolveQueue.poll() ?: return
-        nsdResolving = true
-        try {
-            nsd.resolveService(si, object : android.net.nsd.NsdManager.ResolveListener {
-                override fun onServiceResolved(info: android.net.nsd.NsdServiceInfo) {
-                    nsdResolving = false
-                    val host = info.host?.hostAddress
-                    val t = info.attributes["t"]?.let { String(it, Charsets.UTF_8) }
-                    if (host != null && t != null && t != lanToken) {
-                        notifyListeners("onLanPeer", JSObject().put("token", t).put("host", host).put("port", info.port).put("src", "mdns"))
-                    }
-                    lanResolveNext()
-                }
-                override fun onResolveFailed(info: android.net.nsd.NsdServiceInfo, code: Int) {
-                    nsdResolving = false
-                    if (code == android.net.nsd.NsdManager.FAILURE_ALREADY_ACTIVE) { nsdResolveQueue.add(info); mainHandler.postDelayed({ lanResolveNext() }, 300) }
-                    else lanResolveNext()
-                }
-            })
-        } catch (e: Exception) { nsdResolving = false; lanResolveNext() }
-    }
+    @PluginMethod fun lanSend(call: PluginCall) = lanSendImpl(call)
 
-    @PluginMethod
-    fun lanConnect(call: PluginCall) {
-        val host = call.getString("host") ?: run { call.reject("host requerido"); return }
-        val port = call.getInt("port") ?: run { call.reject("port requerido"); return }
-        val hub = lanHub ?: run { call.reject("Wi-Fi no iniciado", "LAN_UNAVAILABLE"); return }
-        hub.connect(host, port)
-        call.resolve(JSObject().put("connecting", true))
-    }
+    @PluginMethod fun lanDrop(call: PluginCall) = lanDropImpl(call)
 
-    // Fuera del hilo de los plugins (un archivo grande tarda en escribirse) y en orden
-    @PluginMethod
-    fun lanSend(call: PluginCall) {
-        val nx = call.getString("nx") ?: run { call.reject("nx requerido"); return }
-        val content = call.getString("content") ?: run { call.reject("content requerido"); return }
-        val hub = lanHub ?: run { call.reject("Wi-Fi no iniciado", "LAN_DOWN"); return }
-        lanSendExec.execute {
-            if (hub.send(nx, content)) call.resolve(JSObject().put("sent", true))
-            else call.reject("Sin conexión Wi-Fi con $nx", "LAN_DOWN")
-        }
-    }
-
-    @PluginMethod
-    fun lanDrop(call: PluginCall) {
-        val nx = call.getString("nx") ?: run { call.reject("nx requerido"); return }
-        lanHub?.close(nx)
-        call.resolve(JSObject().put("dropped", true))
-    }
-
-    @PluginMethod
-    fun lanStop(call: PluginCall) {
-        lanStopAll()
-        call.resolve(JSObject().put("stopped", true))
-    }
+    @PluginMethod fun lanStop(call: PluginCall) = lanStopImpl(call)
 
     // 3085 (dueño 14-11: «el S24 cambia de Wi-Fi a datos en automático y muy rápido, ¿por qué nosotros somos lentos?»): la app solo
     // sabía de «entré a un Wi-Fi» (lanWatchWifi); al pasar de Wi-Fi a datos sus conexiones a los relés quedaban colgadas de la red
     // vieja. Se avisa de cada cambio de TIPO de la red por defecto (NetChange) y la app reconecta al momento (net_link._onNetChange).
-    private var defNetCb: android.net.ConnectivityManager.NetworkCallback? = null
-    private val netTracker = NetChange.Tracker()
-    private fun watchDefaultNetwork() {
-        if (defNetCb != null || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
-        try {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-            val cb = object : android.net.ConnectivityManager.NetworkCallback() {
-                override fun onCapabilitiesChanged(network: android.net.Network, caps: android.net.NetworkCapabilities) {
-                    val t = NetChange.typeOf(
-                        caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI),
-                        caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR),
-                        caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET),
-                        caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN))
-                    mainHandler.post { reportNetType(t) }
-                }
-                override fun onLost(network: android.net.Network) {
-                    // Al cambiar de red Android puede avisar de la pérdida de la vieja DESPUÉS de dar la nueva: solo «sin red» si de verdad no hay
-                    mainHandler.post { try { if (cm.activeNetwork == null) reportNetType("none") } catch (e: Exception) { } }
-                }
-            }
-            cm.registerDefaultNetworkCallback(cb)
-            defNetCb = cb
-        } catch (e: Exception) { remLog("WARN", "NET", "Sin aviso de cambio de red: ${e.message}") }
-    }
-    private fun unwatchDefaultNetwork() {
-        defNetCb?.let { cb -> try { (context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).unregisterNetworkCallback(cb) } catch (e: Exception) { } }
-        defNetCb = null
-    }
-    private fun reportNetType(t: String) {
-        val prev = netTracker.update(t) ?: return
-        remLog("INFO", "NET", "Red por defecto: $prev → $t")
-        notifyListeners("onNetChange", JSObject().put("type", t).put("prev", prev))
-    }
-
-    // Al conectarse a una red Wi-Fi: escanear ya (una a una) y avisar a la app (vuelve a anunciarse y buscar)
-    private fun lanWatchWifi() {
-        if (lanNetCb != null) return
-        try {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-            val req = android.net.NetworkRequest.Builder().addTransportType(android.net.NetworkCapabilities.TRANSPORT_WIFI).build()
-            val cb = object : android.net.ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: android.net.Network) {
-                    mainHandler.postDelayed({
-                        lanLastSweep = System.currentTimeMillis()
-                        lanBeacon?.scan(true)
-                        notifyListeners("onLanNet", JSObject().put("wifi", true))
-                    }, 1500)
-                }
-            }
-            cm.registerNetworkCallback(req, cb)
-            lanNetCb = cb
-        } catch (e: Exception) { remLog("WARN", "LAN", "Sin aviso de red Wi-Fi: ${e.message}") }
-    }
-
-    private fun lanStopAll() {
-        lanNetCb?.let { cb -> try { (context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).unregisterNetworkCallback(cb) } catch (e: Exception) {} }
-        lanNetCb = null
-        lanBeacon?.stop(); lanBeacon = null
-        val nsd = nsdManager
-        nsdReg?.let { try { nsd?.unregisterService(it) } catch (e: Exception) {} }
-        nsdDisc?.let { try { nsd?.stopServiceDiscovery(it) } catch (e: Exception) {} }
-        nsdReg = null; nsdDisc = null
-        try { lanMcLock?.release() } catch (e: Exception) {}
-        lanMcLock = null
-        lanHub?.stop(); lanHub = null
-    }
+    internal var defNetCb: android.net.ConnectivityManager.NetworkCallback? = null
+    internal val netTracker = NetChange.Tracker()
 
     // ===== Tor (internet sin relés, sin que nadie vea la IP): TorService + servicio oculto + LanHub por SOCKS =====
     // La app (net_link.js) pide torStart con su NEXO ID; aquí se arranca Tor (librería oficial tor-android), se crea
     // el servicio oculto (.onion, clave guardada cifrada en nexo_tor_key.json: la dirección no cambia) que lleva al
     // LanHub de Tor (solo escucha en 127.0.0.1) y se avisa con onTorReady { onion }. torConnect conecta a la .onion
     // de un contacto por el SOCKS de Tor. Lo que viaja ya va cifrado por la app (sobre de pareja + E2E).
-    private var torSvc: org.torproject.jni.TorService? = null
-    @Volatile private var appInBackground = false
-    @Volatile private var bgSinceMs = 0L // 3086: cuándo pasó la app a segundo plano
-    private var torBind: android.content.ServiceConnection? = null
-    private var torHub: LanHub? = null
-    @Volatile private var torOnion = ""
-    @Volatile private var torStarting = false
-    private val torExec = java.util.concurrent.Executors.newSingleThreadExecutor()
-    private val torSendExec = java.util.concurrent.Executors.newSingleThreadExecutor()
-    private val TOR_PORT = 9878
-    private val TOR_KEY_FILE = "nexo_tor_key.json"
+    internal var torSvc: org.torproject.jni.TorService? = null
+    @Volatile internal var appInBackground = false
+    @Volatile internal var bgSinceMs = 0L // 3086: cuándo pasó la app a segundo plano
+    internal var torBind: android.content.ServiceConnection? = null
+    internal var torHub: LanHub? = null
+    @Volatile internal var torOnion = ""
+    @Volatile internal var torStarting = false
+    internal val torExec = java.util.concurrent.Executors.newSingleThreadExecutor()
+    internal val torSendExec = java.util.concurrent.Executors.newSingleThreadExecutor()
+    internal val TOR_PORT = 9878
+    internal val TOR_KEY_FILE = "nexo_tor_key.json"
 
-    @PluginMethod
-    fun torStatus(call: PluginCall) {
-        val peers = JSArray()
-        torHub?.quality()?.forEach { (nx, rtt, idle) -> peers.put(JSObject().put("nx", nx).put("rtt", rtt).put("idle", idle)) }
-        call.resolve(JSObject().put("supported", true).put("running", torSvc != null).put("onion", torOnion).put("port", TOR_PORT)
-            .put("starting", torStarting).put("peers", peers))
-    }
+    @PluginMethod fun torStatus(call: PluginCall) = torStatusImpl(call)
 
-    @PluginMethod
-    fun torStart(call: PluginCall) {
-        val nx = call.getString("nexoId")?.lowercase() ?: run { call.reject("nexoId requerido"); return }
-        if (torOnion.isNotEmpty() && torHub != null) { call.resolve(JSObject().put("onion", torOnion).put("port", TOR_PORT)); return }
-        if (torStarting) { call.resolve(JSObject().put("starting", true)); return }
-        torStarting = true
-        call.resolve(JSObject().put("starting", true))
-        torExec.execute {
-            try {
-                remLog("INFO", "TOR", "Arrancando Tor…")
-                val svc = torBindService() ?: throw Exception("no arranca el servicio de Tor")
-                // Esperar a Tor listo (circuito armado) y a su puerto SOCKS
-                val t0 = System.currentTimeMillis()
-                var ctl = svc.torControlConnection
-                while (System.currentTimeMillis() - t0 < 180000L) {
-                    ctl = svc.torControlConnection
-                    val boot = try { ctl?.getInfo("status/bootstrap-phase") ?: "" } catch (e: Exception) { "" }
-                    if (ctl != null && boot.contains("PROGRESS=100") && svc.getSocksPort() > 0) break
-                    Thread.sleep(1000)
-                }
-                if (ctl == null || svc.getSocksPort() <= 0) throw Exception("Tor no terminó de arrancar")
-                val proxy = java.net.Proxy(java.net.Proxy.Type.SOCKS, java.net.InetSocketAddress("127.0.0.1", svc.getSocksPort()))
-                val hub = torHub ?: LanHub({ nx }, object : LanHub.Listener {
-                    override fun onUp(nx: String) { remLog("INFO", "TOR", "Conectado con $nx por Tor"); notifyListeners("onTorUp", JSObject().put("nx", nx), true) }
-                    override fun onDown(nx: String) { notifyListeners("onTorDown", JSObject().put("nx", nx), true) }
-                    override fun onMessage(nx: String, text: String) { notifyListeners("onTorMessage", JSObject().put("nx", nx).put("content", text), true) }
-                    override fun onLog(level: String, message: String) { remLog(level, "TOR", message) }
-                }, 15000L, 90000L, proxy, java.net.InetAddress.getByName("127.0.0.1"), { android.os.SystemClock.elapsedRealtime() }).also { torHub = it }
-                val port = hub.start()
-                // Servicio oculto: misma dirección siempre (clave guardada cifrada)
-                val saved = try { atRest().read(TOR_KEY_FILE)?.let { org.json.JSONObject(it).optString("k") } } catch (e: Exception) { null }
-                val res = ctl.addOnion(if (saved.isNullOrEmpty()) "NEW:ED25519-V3" else saved, mapOf(TOR_PORT to "127.0.0.1:$port"))
-                // Ronda 2765: jtorctl devuelve "onionAddress"/"onionPrivKey" (TorOnion.kt); antes se leía ServiceID y nunca
-                // se encontraba la dirección ("sin dirección .onion" en los teléfonos)
-                TorOnion.privateKey(res)?.let { atRest().write(TOR_KEY_FILE, org.json.JSONObject().put("k", it).toString()) }
-                torOnion = TorOnion.address(res) ?: throw Exception("sin dirección .onion (respuesta: " + res.keys.joinToString() + ")")
-                remLog("INFO", "TOR", "Tor listo en " + (System.currentTimeMillis() - t0) / 1000 + " s")
-                notifyListeners("onTorReady", JSObject().put("onion", torOnion).put("port", TOR_PORT), true)
-            } catch (e: Exception) {
-                remLog("WARN", "TOR", "Tor no disponible: ${e.message}")
-                notifyListeners("onTorReady", JSObject().put("error", e.message ?: "error"), true)
-            } finally { torStarting = false }
-        }
-    }
+    @PluginMethod fun torStart(call: PluginCall) = torStartImpl(call)
 
-    // Enlazar con TorService (en este proceso) y esperar a tenerlo
-    private fun torBindService(): org.torproject.jni.TorService? {
-        torSvc?.let { return it }
-        val latch = java.util.concurrent.CountDownLatch(1)
-        val conn = object : android.content.ServiceConnection {
-            override fun onServiceConnected(name: android.content.ComponentName?, binder: android.os.IBinder?) {
-                torSvc = (binder as? org.torproject.jni.TorService.LocalBinder)?.service
-                latch.countDown()
-            }
-            override fun onServiceDisconnected(name: android.content.ComponentName?) { torSvc = null; torOnion = "" }
-        }
-        torBind = conn
-        mainHandler.post { context.bindService(Intent(context, org.torproject.jni.TorService::class.java), conn, Context.BIND_AUTO_CREATE) }
-        latch.await(60, java.util.concurrent.TimeUnit.SECONDS)
-        return torSvc
-    }
+    @PluginMethod fun torConnect(call: PluginCall) = torConnectImpl(call)
 
-    @PluginMethod
-    fun torConnect(call: PluginCall) {
-        val host = call.getString("host") ?: run { call.reject("host requerido"); return }
-        val port = call.getInt("port") ?: TOR_PORT
-        val hub = torHub ?: run { call.reject("Tor no listo", "TOR_DOWN"); return }
-        if (!host.endsWith(".onion")) { call.reject("solo direcciones .onion"); return }
-        hub.connect(host, port)
-        call.resolve(JSObject().put("connecting", true))
-    }
+    @PluginMethod fun torSend(call: PluginCall) = torSendImpl(call)
 
-    @PluginMethod
-    fun torSend(call: PluginCall) {
-        val nx = call.getString("nx") ?: run { call.reject("nx requerido"); return }
-        val content = call.getString("content") ?: run { call.reject("content requerido"); return }
-        val hub = torHub ?: run { call.reject("Tor no listo", "TOR_DOWN"); return }
-        torSendExec.execute {
-            if (hub.send(nx, content)) call.resolve(JSObject().put("sent", true))
-            else call.reject("Sin conexión Tor con $nx", "TOR_DOWN")
-        }
-    }
+    @PluginMethod fun torDrop(call: PluginCall) = torDropImpl(call)
 
-    @PluginMethod
-    fun torDrop(call: PluginCall) {
-        val nx = call.getString("nx") ?: run { call.reject("nx requerido"); return }
-        torHub?.close(nx)
-        call.resolve(JSObject().put("dropped", true))
-    }
+    @PluginMethod fun torStop(call: PluginCall) = torStopImpl(call)
 
-    @PluginMethod
-    fun torStop(call: PluginCall) {
-        torStopAll()
-        call.resolve(JSObject().put("stopped", true))
-    }
+    @PluginMethod fun openFile(call: PluginCall) = openFileImpl(call)
 
-    private fun torStopAll() {
-        torHub?.stop(); torHub = null
-        torOnion = ""
-        torBind?.let { try { context.unbindService(it) } catch (e: Exception) {} }
-        torBind = null; torSvc = null
-    }
-
-    // ===== Archivos recibidos: abrir con otra app y miniatura de PDF =====
-
-    // Nombre seguro para un archivo en la caché (llega del otro teléfono)
-    private fun safeFileName(name: String?): String {
-        val clean = (name ?: "").substringAfterLast('/').substringAfterLast('\\')
-            .replace(Regex("[^A-Za-z0-9._ ()\\-]"), "_").trim().trimStart('.')
-        return (if (clean.isEmpty()) "archivo" else clean).take(80)
-    }
-
-    private fun writeCacheFile(dirName: String, name: String, b64: String): File {
-        val dir = File(activity.cacheDir, dirName)
-        dir.mkdirs()
-        // Los abiertos hace más de un día ya no hacen falta
-        val old = System.currentTimeMillis() - 86400000L
-        dir.listFiles()?.forEach { if (it.lastModified() < old) it.delete() }
-        val file = File(dir, name)
-        FileOutputStream(file).use { it.write(Base64.decode(b64, Base64.DEFAULT)) }
-        return file
-    }
-
-    // Escribe el archivo en la caché y lo abre con la app que corresponda (lector de PDF, instalador
-    // de APK…) mediante el FileProvider de la app. Devuelve opened=false con reason si no se puede.
-    @PluginMethod
-    fun openFile(call: PluginCall) {
-        val b64 = call.getString("base64") ?: run { call.reject("base64 requerido"); return }
-        val name = safeFileName(call.getString("name"))
-        var mime = call.getString("mime") ?: ""
-        if (!mime.contains('/')) {
-            mime = android.webkit.MimeTypeMap.getSingleton()
-                .getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream"
-        }
-        try {
-            val isApk = mime == "application/vnd.android.package-archive" || name.lowercase().endsWith(".apk")
-            if (isApk) mime = "application/vnd.android.package-archive"
-            if (isApk && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                !context.packageManager.canRequestPackageInstalls()) {
-                // Android pide permitir a NEXO instalar apps (una sola vez)
-                val s = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + context.packageName))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                activity.startActivity(s)
-                call.resolve(JSObject().put("opened", false).put("reason", "install_permission"))
-                return
-            }
-            val file = writeCacheFile("nexo_open", name, b64)
-            launchView(file, mime)
-            call.resolve(JSObject().put("opened", true))
-        } catch (e: ActivityNotFoundException) {
-            call.resolve(JSObject().put("opened", false).put("reason", "no_app"))
-        } catch (e: Exception) {
-            remLog("WARN", "FILE", "No se pudo abrir el archivo: ${e.message}")
-            call.reject("Error abriendo archivo: ${e.message}")
-        }
-    }
-
-    private fun launchView(file: File, mime: String) {
-        val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
-        val intent = Intent(Intent.ACTION_VIEW)
-            .setDataAndType(uri, mime)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-        activity.startActivity(intent)
-        remLog("INFO", "FILE", "Abriendo archivo ($mime, ${file.length()} bytes)")
-    }
-
-    // Ronda 2801 (pedido del dueño #92): guardar una foto/vídeo del chat en la GALERÍA del teléfono.
-    // API 29+ (lo normal): MediaStore con RELATIVE_PATH e IS_PENDING, sin pedir permiso (almacenamiento acotado).
-    // API 26-28: carpeta pública clásica + MediaScanner (usa WRITE_EXTERNAL_STORAGE, declarado hasta API 29).
-    // Devuelve { saved:true } o { saved:false, reason } (nunca lanza; la interfaz muestra un aviso claro).
-    @PluginMethod
-    fun saveToGallery(call: PluginCall) {
-        val b64 = call.getString("base64") ?: run { call.reject("base64 requerido"); return }
-        val reqName = safeFileName(call.getString("name"))
-        var mime = call.getString("mime") ?: ""
-        if (!mime.contains('/')) {
-            mime = android.webkit.MimeTypeMap.getSingleton()
-                .getMimeTypeFromExtension(reqName.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream"
-        }
-        val isVideo = mime.startsWith("video")
-        val isImage = mime.startsWith("image")
-        val name = if (reqName.contains('.')) reqName
-            else reqName + "." + (android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mime) ?: if (isVideo) "mp4" else "jpg")
-        try {
-            val bytes = Base64.decode(b64, Base64.DEFAULT)
-            val resolver = context.contentResolver
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val collection = when {
-                    isVideo -> MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                    isImage -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                    else -> MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                }
-                val relDir = (when {
-                    isVideo -> Environment.DIRECTORY_MOVIES
-                    isImage -> Environment.DIRECTORY_PICTURES
-                    else -> Environment.DIRECTORY_DOWNLOADS
-                }) + "/NEXO"
-                val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-                    put(MediaStore.MediaColumns.MIME_TYPE, mime)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, relDir)
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                }
-                val uri = resolver.insert(collection, values)
-                    ?: run { call.resolve(JSObject().put("saved", false).put("reason", "no_uri")); return }
-                resolver.openOutputStream(uri)?.use { it.write(bytes) } ?: throw java.io.IOException("sin stream")
-                val done = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
-                resolver.update(uri, done, null, null)
-                remLog("INFO", "FILE", "Guardado en galería ($mime, ${bytes.size} bytes)")
-                call.resolve(JSObject().put("saved", true))
-            } else {
-                val baseDir = Environment.getExternalStoragePublicDirectory(when {
-                    isVideo -> Environment.DIRECTORY_MOVIES
-                    isImage -> Environment.DIRECTORY_PICTURES
-                    else -> Environment.DIRECTORY_DOWNLOADS
-                })
-                val dir = File(baseDir, "NEXO").also { it.mkdirs() }
-                val outFile = File(dir, name)
-                FileOutputStream(outFile).use { it.write(bytes) }
-                MediaScannerConnection.scanFile(context, arrayOf(outFile.absolutePath), arrayOf(mime), null)
-                remLog("INFO", "FILE", "Guardado en galería (legacy, ${bytes.size} bytes)")
-                call.resolve(JSObject().put("saved", true))
-            }
-        } catch (e: SecurityException) {
-            call.resolve(JSObject().put("saved", false).put("reason", "permiso"))
-        } catch (e: Exception) {
-            remLog("WARN", "FILE", "No se pudo guardar en galería: ${e.message}")
-            call.resolve(JSObject().put("saved", false).put("reason", "error"))
-        }
-    }
+    @PluginMethod fun saveToGallery(call: PluginCall) = saveToGalleryImpl(call)
 
     // ===== Archivos grandes (ronda 2756, BigFile.kt): nunca enteros en la memoria de la app =====
-    private val bigWriters = ConcurrentHashMap<String, BigWriter>()
-    private fun bigDir() = File(context.filesDir, "nexo_big").also { it.mkdirs() }
-    private fun bigProgress(id: String, dir: String): BigNet.Progress {
-        var last = 0L
-        return BigNet.Progress { b, t ->
-            val now = System.currentTimeMillis()
-            if (now - last >= 400 || b >= t) { last = now; notifyListeners("onBigProgress", JSObject().put("id", id).put("dir", dir).put("bytes", b).put("total", t)) }
-        }
-    }
-    private fun bigDone(id: String, dir: String, error: String?) {
-        if (error != null) remLog("WARN", "FILE_IO", "Archivo grande $id ($dir): $error")
-        else remLog("INFO", "FILE_IO", "Archivo grande $id ($dir): completo")
-        notifyListeners("onBigDone", JSObject().put("id", id).put("dir", dir).put("ok", error == null).put("error", error ?: ""), true)
-    }
+    internal val bigWriters = ConcurrentHashMap<String, BigWriter>()
 
-    // Emisor: la app pasa el archivo a trozos (base64) y aquí se cifra a disco con la clave del archivo
-    @PluginMethod
-    fun bigBegin(call: PluginCall) {
-        val id = BigFile.safeId(call.getString("id") ?: "")
-        val key = try { BigFile.key(call.getString("key") ?: "") } catch (e: Exception) { call.reject("clave no válida"); return }
-        if (id.isEmpty()) { call.reject("id requerido"); return }
-        bigWriters.remove(id)?.abort()
-        bigWriters[id] = BigWriter(BigFile.encFile(bigDir(), id), key, id)
-        call.resolve(JSObject().put("ok", true))
-    }
+    @PluginMethod fun bigBegin(call: PluginCall) = bigBeginImpl(call)
 
-    @PluginMethod
-    fun bigAppend(call: PluginCall) {
-        val id = BigFile.safeId(call.getString("id") ?: "")
-        val w = bigWriters[id] ?: run { call.reject("sin preparar", "BIG_NONE"); return }
-        try {
-            val last = call.getBoolean("last", false) == true
-            w.append(Base64.decode(call.getString("data") ?: "", Base64.NO_WRAP), last)
-            if (last) bigWriters.remove(id)
-            call.resolve(JSObject().put("bytes", w.plainBytes).put("enc", w.file.length()))
-        } catch (e: Exception) {
-            bigWriters.remove(id); w.abort()
-            call.reject("No se pudo preparar: ${e.message}", "BIG_WRITE")
-        }
-    }
+    @PluginMethod fun bigAppend(call: PluginCall) = bigAppendImpl(call)
 
-    @PluginMethod
-    fun bigStatus(call: PluginCall) {
-        val f = BigFile.encFile(bigDir(), call.getString("id") ?: "")
-        call.resolve(JSObject().put("have", f.exists() && !bigWriters.containsKey(BigFile.safeId(call.getString("id") ?: ""))).put("bytes", if (f.exists()) f.length() else 0))
-    }
+    @PluginMethod fun bigStatus(call: PluginCall) = bigStatusImpl(call)
 
-    @PluginMethod
-    fun bigDelete(call: PluginCall) {
-        val id = BigFile.safeId(call.getString("id") ?: "")
-        bigWriters.remove(id)?.abort()
-        BigFile.encFile(bigDir(), id).delete()
-        call.resolve(JSObject().put("ok", true))
-    }
+    @PluginMethod fun bigDelete(call: PluginCall) = bigDeleteImpl(call)
 
-    // Receptor por el mismo Wi-Fi: abre un puerto para esta transferencia (solo acepta id + token) y devuelve el puerto
-    @PluginMethod
-    fun bigServe(call: PluginCall) {
-        val id = BigFile.safeId(call.getString("id") ?: "")
-        val token = call.getString("token") ?: ""
-        if (id.isEmpty() || token.length < 16) { call.reject("id y token requeridos"); return }
-        try {
-            val server = java.net.ServerSocket(0)
-            server.soTimeout = 60000
-            call.resolve(JSObject().put("port", server.localPort))
-            Thread {
-                try { BigNet.serve(server, id, token, BigFile.encFile(bigDir(), id), BigFile.MAX_BYTES * 11 / 10, bigProgress(id, "in")); bigDone(id, "in", null) }
-                catch (e: Exception) { bigDone(id, "in", e.message ?: "error") }
-                finally { try { server.close() } catch (e: Exception) {} }
-            }.start()
-        } catch (e: Exception) { call.reject("Puerto no disponible: ${e.message}", "BIG_SOCKET") }
-    }
+    @PluginMethod fun bigServe(call: PluginCall) = bigServeImpl(call)
 
-    // Emisor por el mismo Wi-Fi: a la dirección del contacto en la conexión Wi-Fi (LanHub) y al puerto que abrió
-    @PluginMethod
-    fun bigSendLan(call: PluginCall) {
-        val id = BigFile.safeId(call.getString("id") ?: "")
-        val nx = (call.getString("nx") ?: "").lowercase()
-        val port = call.getInt("port") ?: 0
-        val token = call.getString("token") ?: ""
-        val file = BigFile.encFile(bigDir(), id)
-        val addr = lanHub?.address(nx) ?: run { call.reject("Sin Wi-Fi con $nx", "LAN_DOWN"); return }
-        if (!file.exists() || port <= 0) { call.reject("Nada que enviar", "BIG_NONE"); return }
-        Thread {
-            try {
-                java.net.Socket().use { s ->
-                    s.connect(java.net.InetSocketAddress(addr, port), 10000)
-                    s.soTimeout = 60000
-                    BigNet.send(s, id, token, file, bigProgress(id, "out"))
-                }
-                bigDone(id, "out", null)
-                call.resolve(JSObject().put("ok", true).put("bytes", file.length()))
-            } catch (e: Exception) {
-                bigDone(id, "out", e.message ?: "error")
-                call.reject("Envío fallido: ${e.message}", "BIG_SEND")
-            }
-        }.start()
-    }
+    @PluginMethod fun bigSendLan(call: PluginCall) = bigSendLanImpl(call)
 
     // ===== Pasar la cuenta a un teléfono nuevo (ronda 2759, plan del dueño punto 15, AccountMove.kt) =====
-    private val moveSkip get() = setOf(NXID_MAC_MAP_FILE)
+    internal val moveSkip get() = setOf(NXID_MAC_MAP_FILE)
     // Mientras se pasa la cuenta (y hasta reiniciar) la app no escribe nada: lo que tenga en memoria ya no vale
-    @Volatile private var moveFrozen = false
-    private fun moveRestart() = mainHandler.postDelayed({ try { activity.recreate() } catch (e: Exception) {} }, 1500)
-    private fun moveEvent(name: String, o: JSObject) = notifyListeners(name, o, name == "onMoveDone")
+    @Volatile internal var moveFrozen = false
 
-    // IP de este teléfono en el Wi-Fi (o en su punto de acceso)
-    private fun wifiIp(): String? = try {
-        java.net.NetworkInterface.getNetworkInterfaces().toList()
-            .filter { it.isUp && !it.isLoopback }
-            .sortedBy { if (it.name.startsWith("wlan")) 0 else if (it.name.startsWith("ap") || it.name.startsWith("swlan")) 1 else 2 }
-            .flatMap { it.inetAddresses.toList() }
-            .firstOrNull { it is java.net.Inet4Address && it.isSiteLocalAddress }?.hostAddress
-    } catch (e: Exception) { null }
+    @PluginMethod fun moveReceive(call: PluginCall) = moveReceiveImpl(call)
 
-    // Teléfono NUEVO: abre un puerto y espera la cuenta; antes de confirmar la guarda (si falla, el viejo no borra nada)
-    @PluginMethod
-    fun moveReceive(call: PluginCall) {
-        val ip = wifiIp() ?: run { call.reject("Conecta este teléfono a un Wi-Fi (el mismo que el otro)", "NO_WIFI"); return }
-        try {
-            val id = "move" + BigFile.token().take(12)
-            val token = BigFile.token()
-            val keyHex = BigFile.token() + BigFile.token()
-            val server = java.net.ServerSocket(0)
-            server.soTimeout = 10 * 60000
-            call.resolve(JSObject().put("ip", ip).put("port", server.localPort).put("id", id).put("token", token).put("key", keyHex))
-            remLog("INFO", "FILE_IO", "[MOVE] Esperando la cuenta en $ip:${server.localPort}")
-            Thread {
-                val recv = File(context.cacheDir, "$id.enc")
-                try {
-                    var stats: AccountMove.Stats? = null
-                    BigNet.serve(server, id, token, recv, BigFile.MAX_BYTES * 11 / 10, BigNet.Progress { b, t ->
-                        moveEvent("onMoveProgress", JSObject().put("dir", "in").put("bytes", b).put("total", t))
-                    }) {
-                        val key = BigFile.key(keyHex)
-                        // Primero comprobar que se descifra entero; luego fuera lo de antes y dentro lo nuevo
-                        BigReader.decrypt(recv, key, id, object : java.io.OutputStream() { override fun write(b: Int) {}; override fun write(b: ByteArray, off: Int, len: Int) {} })
-                        moveFrozen = true
-                        AccountMove.wipe(context.filesDir, moveSkip, bigDir())
-                        val pin = java.io.PipedInputStream(1 shl 16); val pout = java.io.PipedOutputStream(pin)
-                        var decErr: Throwable? = null
-                        val dec = Thread { try { pout.use { BigReader.decrypt(recv, key, id, it) } } catch (e: Throwable) { decErr = e } }
-                        dec.start()
-                        stats = pin.use { AccountMove.import(it, moveSkip, { n, txt -> atRest().write(n, txt) }, bigDir()) }
-                        dec.join(); decErr?.let { throw it }
-                    }
-                    remLog("INFO", "FILE_IO", "[MOVE] Cuenta recibida: ${stats?.files} archivos, ${stats?.bigFiles} grandes, ${(stats?.bytes ?: 0) / 1024} KB")
-                    moveEvent("onMoveDone", JSObject().put("dir", "in").put("ok", true).put("files", stats?.files ?: 0).put("bytes", stats?.bytes ?: 0))
-                    moveRestart() // la app arranca de nuevo, ya con la cuenta
-                } catch (e: Exception) {
-                    remLog("WARN", "FILE_IO", "[MOVE] No se recibió la cuenta: ${e.message}")
-                    moveEvent("onMoveDone", JSObject().put("dir", "in").put("ok", false).put("error", e.message ?: "error"))
-                    if (moveFrozen) { moveFrozen = false; moveRestart() } // se borró lo (vacío) de antes: arrancar limpio
-                } finally { try { server.close() } catch (e: Exception) {}; recv.delete() }
-            }.start()
-        } catch (e: Exception) { call.reject("No se pudo abrir el puerto: ${e.message}", "MOVE_SOCKET") }
-    }
+    @PluginMethod fun moveSend(call: PluginCall) = moveSendImpl(call)
 
-    // Teléfono VIEJO: empaqueta y manda la cuenta; con la confirmación del nuevo, la borra de aquí y deja de anunciarse
-    @PluginMethod
-    fun moveSend(call: PluginCall) {
-        val ip = call.getString("ip") ?: ""; val port = call.getInt("port") ?: 0
-        val id = call.getString("id") ?: ""; val token = call.getString("token") ?: ""; val keyHex = call.getString("key") ?: ""
-        val key = try { BigFile.key(keyHex) } catch (e: Exception) { call.reject("Código no válido", "MOVE_QR"); return }
-        if (ip.isEmpty() || port <= 0 || !id.startsWith("move") || token.length < 16) { call.reject("Código no válido", "MOVE_QR"); return }
-        moveFrozen = true
-        Thread {
-            val enc = File(context.cacheDir, "$id.out.enc")
-            try {
-                val w = BigWriter(enc, key, id)
-                val st = BigWriterStream(w).use { AccountMove.export(context.filesDir, moveSkip, { n -> atRest().read(n) }, bigDir(), it) }
-                remLog("INFO", "FILE_IO", "[MOVE] Cuenta empaquetada: ${st.files} archivos, ${st.bigFiles} grandes, ${st.bytes / 1024} KB")
-                java.net.Socket().use { s ->
-                    s.connect(java.net.InetSocketAddress(ip, port), 10000)
-                    s.soTimeout = 10 * 60000 // el nuevo la guarda antes de confirmar
-                    BigNet.send(s, id, token, enc, BigNet.Progress { b, t -> moveEvent("onMoveProgress", JSObject().put("dir", "out").put("bytes", b).put("total", t)) })
-                }
-                // Confirmado: la cuenta ya está en el otro teléfono. Aquí deja de existir (nada de recibir ni enviar con ella)
-                mainHandler.post {
-                    try { cleanupAllConnections() } catch (e: Exception) {}
-                    try { stopAdvertisingInternal() } catch (e: Exception) {}
-                    try { stopGattServer() } catch (e: Exception) {}
-                }
-                val n = AccountMove.wipe(context.filesDir, moveSkip, bigDir())
-                remLog("INFO", "FILE_IO", "[MOVE] Cuenta pasada al otro teléfono; $n archivos borrados aquí")
-                moveEvent("onMoveDone", JSObject().put("dir", "out").put("ok", true).put("files", st.files).put("bytes", st.bytes))
-                call.resolve(JSObject().put("ok", true).put("files", st.files).put("bytes", st.bytes))
-                moveRestart() // arranca vacía, como recién instalada
-            } catch (e: Exception) {
-                moveFrozen = false // aquí sigue todo como estaba
-                remLog("WARN", "FILE_IO", "[MOVE] No se pasó la cuenta: ${e.message}")
-                moveEvent("onMoveDone", JSObject().put("dir", "out").put("ok", false).put("error", e.message ?: "error"))
-                call.reject("No se pudo pasar la cuenta: ${e.message}", "MOVE_SEND")
-            } finally { enc.delete() }
-        }.start()
-    }
+    @PluginMethod fun ringerMode(call: PluginCall) = ringerModeImpl(call)
 
-    // Ronda 2770: modo del timbre (normal / vibrar / silencio) y "No molestar": el tono de llamada de la app lo respeta
-    // (antes sonaba como multimedia aunque el teléfono estuviera en silencio)
-    @PluginMethod
-    fun ringerMode(call: PluginCall) {
-        try {
-            val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-            val mode = when (am.ringerMode) {
-                android.media.AudioManager.RINGER_MODE_SILENT -> "silent"
-                android.media.AudioManager.RINGER_MODE_VIBRATE -> "vibrate"
-                else -> "normal"
-            }
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-            val dnd = nm.currentInterruptionFilter > android.app.NotificationManager.INTERRUPTION_FILTER_ALL
-            call.resolve(JSObject().put("mode", mode).put("dnd", dnd))
-        } catch (e: Exception) { call.reject("Timbre: ${e.message}") }
-    }
-
-    // ===== Llamadas de voz (ronda 2758, calls.js): audio en modo llamada (auricular y cancelación de eco del sistema) =====
-    // Ronda 2761 (informe del dueño: en una videollamada el Samsung no oía nada): en Android 12+ la salida se elige con
-    // setCommunicationDevice (isSpeakerphoneOn está obsoleto y algunos fabricantes lo ignoran); se devuelve por dónde
-    // sale y los volúmenes (llamada y multimedia: el audio de la app sale como multimedia) para el diagnóstico.
-    @PluginMethod
-    fun callAudio(call: PluginCall) {
-        try {
-            val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-            val on = call.getBoolean("on", false) == true
-            val speaker = on && call.getBoolean("speaker", false) == true
-            if (on) {
-                am.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
-                if (Build.VERSION.SDK_INT >= 31) {
-                    val want = if (speaker) android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER else android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
-                    val dev = am.availableCommunicationDevices.firstOrNull { it.type == want }
-                    if (dev != null) am.setCommunicationDevice(dev)
-                }
-                @Suppress("DEPRECATION")
-                am.isSpeakerphoneOn = speaker
-                callScreen(true, !speaker)
-                callFgs = callForeground(true)
-                callFocus(am, true)
-            } else {
-                if (Build.VERSION.SDK_INT >= 31) try { am.clearCommunicationDevice() } catch (e: Exception) { }
-                am.mode = android.media.AudioManager.MODE_NORMAL
-                @Suppress("DEPRECATION")
-                am.isSpeakerphoneOn = false
-                callScreen(false, false)
-                callFgs = callForeground(false)
-                callFocus(am, false)
-            }
-            val out = JSObject().put("mode", am.mode).put("fgs", callFgs).put("focus", callFocusState)
-            @Suppress("DEPRECATION")
-            out.put("speakerOn", am.isSpeakerphoneOn)
-            if (Build.VERSION.SDK_INT >= 31) out.put("device", when (am.communicationDevice?.type) {
-                android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "altavoz"; android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "auricular"
-                android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO, android.media.AudioDeviceInfo.TYPE_BLE_HEADSET -> "Bluetooth"
-                android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET, android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES, android.media.AudioDeviceInfo.TYPE_USB_HEADSET -> "cascos"
-                null -> "ninguno"; else -> "otro (${am.communicationDevice?.type})" })
-            val vc = android.media.AudioManager.STREAM_VOICE_CALL; val mu = android.media.AudioManager.STREAM_MUSIC
-            out.put("volCall", "${am.getStreamVolume(vc)}/${am.getStreamMaxVolume(vc)}").put("volMedia", "${am.getStreamVolume(mu)}/${am.getStreamMaxVolume(mu)}")
-            call.resolve(out)
-        } catch (e: Exception) { call.reject("Audio de llamada: ${e.message}") }
-    }
+    @PluginMethod fun callAudio(call: PluginCall) = callAudioImpl(call)
 
     // Ronda 2769 (informe del dueño: en videollamadas el S24 salía "sin cámara", el otro veía negro y no se le oía): en
     // llamada la pantalla no se apaga sola; si se apagaba por el tiempo de pantalla, NEXO pasaba a segundo plano y Android
     // le quitaba la cámara y silenciaba el micrófono. Con el auricular, el sensor de proximidad apaga la pantalla al
     // acercarla a la oreja sin sacar a NEXO de primer plano (como el teléfono). Se quita al colgar.
-    @Volatile private var proximityLock: android.os.PowerManager.WakeLock? = null
+    @Volatile internal var proximityLock: android.os.PowerManager.WakeLock? = null
 
     // Ronda 2770: durante la llamada el servicio en primer plano también es de micrófono (BleService.foreground): con la
     // pantalla bloqueada o en otra app, el micrófono sigue (antes Android 11+ daba silencio y el otro dejaba de oír)
-    @Volatile private var callFgs = ""
-    private fun callForeground(on: Boolean): String {
-        BleService.inCall = on
-        val svc = BleService.live ?: return if (on) "sin servicio" else ""
-        return try { svc.foreground() } catch (e: Exception) { Log.w(TAG, "Servicio en llamada: ${e.message}"); "error (${e.javaClass.simpleName})" }
-    }
+    @Volatile internal var callFgs = ""
 
-    // 13-11 (dueño): COMPARTIR PANTALLA en la videollamada. Pide el permiso de Android (aviso del sistema, cada vez) y, si
-    // el usuario acepta, ScreenShareService captura la pantalla y cada imagen llega a la app como onScreenFrame {d: JPEG en
-    // base64, w, h}; si Android corta la captura, onScreenShareStopped. Resuelve { granted }.
-    @PluginMethod
-    fun screenShareStart(call: PluginCall) {
-        if (ScreenShareService.running) { call.resolve(JSObject().put("granted", true)); return }
-        try {
-            val mpm = context.getSystemService(android.media.projection.MediaProjectionManager::class.java)
-            if (mpm == null) { call.reject("Este teléfono no puede compartir la pantalla", "SCREEN_NA"); return }
-            startActivityForResult(call, mpm.createScreenCaptureIntent(), "screenSharePicked")
-        } catch (e: Exception) { call.reject("No se pudo pedir el permiso de pantalla: ${e.message}", "SCREEN_NA") }
-    }
+    @PluginMethod fun screenShareStart(call: PluginCall) = screenShareStartImpl(call)
 
-    @ActivityCallback
-    private fun screenSharePicked(call: PluginCall?, result: ActivityResult) {
-        if (call == null) return
-        val data = result.data
-        if (result.resultCode != android.app.Activity.RESULT_OK || data == null) { call.resolve(JSObject().put("granted", false)); return }
-        ScreenShareService.listener = { d, w, h -> notifyListeners("onScreenFrame", JSObject().put("d", d).put("w", w).put("h", h)) }
-        ScreenShareService.onStopped = { notifyListeners("onScreenShareStopped", JSObject()) }
-        val i = Intent(context, ScreenShareService::class.java)
-            .putExtra("code", result.resultCode).putExtra("data", data)
-            .putExtra("maxLong", call.getInt("maxLong", 960) ?: 960).putExtra("fps", call.getInt("fps", 5) ?: 5)
-        try {
-            ContextCompat.startForegroundService(context, i)
-            call.resolve(JSObject().put("granted", true))
-        } catch (e: Exception) { call.reject("No se pudo empezar a compartir la pantalla: ${e.message}", "SCREEN_NA") }
-    }
+    @ActivityCallback private fun screenSharePicked(call: PluginCall?, result: ActivityResult) = screenSharePickedImpl(call, result)
 
-    @PluginMethod
-    fun screenShareStop(call: PluginCall) {
-        ScreenShareService.stop(context)
-        call.resolve()
-    }
+    @PluginMethod fun screenShareStop(call: PluginCall) = screenShareStopImpl(call)
 
-    // #dueño 01-11: la VIDEOLLAMADA marca pipVideo mientras está activa; así, al irse de la app con el gesto de inicio
-    // (deslizar hacia arriba), MainActivity entra en Picture-in-Picture (miniatura flotante) y el audio/vídeo no se cortan
-    // (ya corre el servicio en primer plano de la llamada). Al colgar, el JS lo apaga.
-    @PluginMethod
-    fun setPipActive(call: PluginCall) {
-        BleService.pipVideo = call.getBoolean("on", false) ?: false
-        call.resolve()
-    }
+    @PluginMethod fun setPipActive(call: PluginCall) = setPipActiveImpl(call)
 
-    // Entrar YA en miniatura (PiP), p. ej. desde un botón «minimizar» de la pantalla de llamada.
-    @PluginMethod
-    fun enterPip(call: PluginCall) {
-        var ok = false
-        try {
-            val act = activity
-            if (act != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                ok = true
-                act.runOnUiThread {
-                    try {
-                        val params = android.app.PictureInPictureParams.Builder()
-                            .setAspectRatio(android.util.Rational(9, 16)).build()
-                        act.enterPictureInPictureMode(params)
-                    } catch (e: Exception) { remLog("WARN", "PIP", "enterPip: ${e.message}") }
-                }
-            }
-        } catch (e: Exception) { remLog("WARN", "PIP", "enterPip: ${e.message}") }
-        call.resolve(JSObject().put("ok", ok))
-    }
+    @PluginMethod fun enterPip(call: PluginCall) = enterPipImpl(call)
 
     // Ronda 2770: foco de audio durante la llamada (la música u otro audio de otra app se para y vuelve al colgar; antes
     // seguía sonando encima de la llamada)
-    @Volatile private var focusReq: android.media.AudioFocusRequest? = null
-    @Volatile private var callFocusState = ""
-    private val focusHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private var focusTries = 0
-    private fun callFocus(am: android.media.AudioManager, on: Boolean) {
-        try {
-            if (on) {
-                if (focusReq != null) return
-                val attrs = android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build()
-                val req = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                    .setAudioAttributes(attrs)
-                    // #dueño 02-11 (diagnóstico: «foco de audio: no (0)» → Spotify volvía a sonar al CONTESTAR): aceptar la
-                    // concesión diferida para que, si el stack de audio no está listo al contestar (Bluetooth SCO/Telecom
-                    // asentándose), el sistema conceda el foco en cuanto pueda en vez de FALLAR y dejar que la música vuelva.
-                    .setAcceptsDelayedFocusGain(true)
-                    .setWillPauseWhenDucked(true)
-                    .setOnAudioFocusChangeListener { change ->
-                        remLog("INFO", "CALL", "Foco de audio: $change")
-                        // #dueño 01-11 (GRAVE): si entra una llamada TELEFÓNICA, NEXO pierde el foco (change < 0). Avisar al JS
-                        // para PAUSAR (retener) la llamada NEXO sin cortarla; al recuperar el foco (change == GAIN, p.ej. se
-                        // rechazó o colgó la telefónica), reanudar. Antes solo se registraba y la videollamada se trababa/caía.
-                        try { notifyListeners("onCallInterruption", JSObject().put("paused", change < 0).put("focus", change)) } catch (e: Exception) {}
-                    }.build()
-                focusReq = req
-                focusTries = 0
-                requestFocusWithRetry(am)
-            } else {
-                focusHandler.removeCallbacksAndMessages(null)
-                focusReq?.let { am.abandonAudioFocusRequest(it) }
-                focusReq = null
-                callFocusState = ""
-            }
-        } catch (e: Exception) { callFocusState = "error (${e.javaClass.simpleName})"; Log.w(TAG, "Foco de audio: ${e.message}") }
-    }
-    // #dueño 02-11: pedir el foco y, si FALLA (0), reintentar un par de veces mientras siga la llamada (el fallo al
-    // contestar era transitorio). GRANTED/DELAYED → NEXO retiene el audio y la música vuelve solo al colgar (abandon).
-    private fun requestFocusWithRetry(am: android.media.AudioManager) {
-        val req = focusReq ?: return
-        val r = try { am.requestAudioFocus(req) } catch (e: Exception) { android.media.AudioManager.AUDIOFOCUS_REQUEST_FAILED }
-        callFocusState = when (r) {
-            android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> "sí"
-            android.media.AudioManager.AUDIOFOCUS_REQUEST_DELAYED -> "diferido"
-            else -> "no ($r)"
-        }
-        if (r == android.media.AudioManager.AUDIOFOCUS_REQUEST_FAILED && focusReq === req && focusTries < 3) {
-            val delay = longArrayOf(250L, 700L, 1500L)[focusTries]
-            focusTries++
-            focusHandler.postDelayed({ if (focusReq === req && BleService.inCall) requestFocusWithRetry(am) }, delay)
-        }
-    }
+    @Volatile internal var focusReq: android.media.AudioFocusRequest? = null
+    @Volatile internal var callFocusState = ""
+    internal val focusHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    internal var focusTries = 0
 
-    private fun callScreen(on: Boolean, earpiece: Boolean) {
-        val act = activity
-        act?.runOnUiThread {
-            try {
-                val f = android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-                if (on) act.window.addFlags(f) else act.window.clearFlags(f)
-            } catch (e: Exception) { Log.w(TAG, "Pantalla en llamada: ${e.message}") }
-        }
-        try {
-            val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-            if (on && earpiece) {
-                if (proximityLock == null && pm.isWakeLockLevelSupported(android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK)) {
-                    val wl = pm.newWakeLock(android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "nexo:llamada")
-                    wl.setReferenceCounted(false)
-                    wl.acquire(4 * 60 * 60 * 1000L)
-                    proximityLock = wl
-                }
-            } else {
-                val wl = proximityLock
-                proximityLock = null
-                if (wl != null && wl.isHeld) wl.release(android.os.PowerManager.RELEASE_FLAG_WAIT_FOR_NO_PROXIMITY)
-            }
-        } catch (e: Exception) { Log.w(TAG, "Sensor de proximidad: ${e.message}") }
-    }
+    @PluginMethod fun l2Info(call: PluginCall) = l2InfoImpl(call)
 
-    // ===== Archivos grandes por Bluetooth L2CAP (ronda 2758, plan del dueño punto 13) =====
-    // Canal de flujo directo sobre la conexión Bluetooth (Android 10+): sin GATT, sin trozos con confirmación ni
-    // base64; lo mismo que por el Wi-Fi (BigNet), con un canal L2CAP en vez de un puerto. Más lento que el Wi-Fi.
-    private fun l2Adapter(): android.bluetooth.BluetoothAdapter? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
-        val ctx = appCtx ?: activity.applicationContext
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !isGranted(ctx, android.Manifest.permission.BLUETOOTH_CONNECT)) return null
-        val a = (ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
-        return if (a != null && a.isEnabled) a else null
-    }
+    @PluginMethod fun bigServeL2(call: PluginCall) = bigServeL2Impl(call)
 
-    @PluginMethod
-    fun l2Info(call: PluginCall) {
-        call.resolve(JSObject().put("ok", l2Adapter() != null).put("sdk", Build.VERSION.SDK_INT))
-    }
+    @PluginMethod fun bigSendL2(call: PluginCall) = bigSendL2Impl(call)
 
-    // Receptor: abre un canal L2CAP para esta transferencia (solo acepta id + token) y devuelve su número (PSM)
-    @android.annotation.SuppressLint("MissingPermission", "NewApi") // comprobados en l2Adapter()
-    @PluginMethod
-    fun bigServeL2(call: PluginCall) {
-        val id = BigFile.safeId(call.getString("id") ?: "")
-        val token = call.getString("token") ?: ""
-        if (id.isEmpty() || token.length < 16) { call.reject("id y token requeridos"); return }
-        val adapter = l2Adapter() ?: run { call.reject("L2CAP no disponible (Android 10+ y Bluetooth activo)", "L2_NONE"); return }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
-        try {
-            val server = adapter.listenUsingInsecureL2capChannel()
-            val psm = server.psm
-            call.resolve(JSObject().put("psm", psm))
-            remLog("INFO", "FILE_IO", "[L2CAP] Esperando $id en el canal $psm")
-            Thread {
-                val until = System.currentTimeMillis() + 60000
-                try {
-                    while (true) {
-                        val left = until - System.currentTimeMillis()
-                        if (left <= 0) throw Exception("Accept timed out")
-                        val sock = server.accept(left.toInt())
-                        val ok = try { BigNet.receive(sock.inputStream, sock.outputStream, id, token, BigFile.encFile(bigDir(), id), BigFile.MAX_BYTES * 11 / 10, bigProgress(id, "in")) }
-                                 finally { try { sock.close() } catch (e: Exception) {} }
-                        if (ok) break
-                    }
-                    bigDone(id, "in", null)
-                } catch (e: Exception) { bigDone(id, "in", "L2CAP: " + (e.message ?: "error")) }
-                finally { try { server.close() } catch (e: Exception) {} }
-            }.start()
-        } catch (e: Exception) { call.reject("Canal L2CAP no disponible: ${e.message}", "L2_SOCKET") }
-    }
+    @PluginMethod fun bigOpen(call: PluginCall) = bigOpenImpl(call)
 
-    // Emisor: al teléfono de esa conexión Bluetooth, al canal que abrió
-    @android.annotation.SuppressLint("MissingPermission", "NewApi") // comprobados en l2Adapter()
-    @PluginMethod
-    fun bigSendL2(call: PluginCall) {
-        val id = BigFile.safeId(call.getString("id") ?: "")
-        val raw = call.getString("deviceId") ?: ""
-        val psm = call.getInt("psm") ?: 0
-        val token = call.getString("token") ?: ""
-        val file = BigFile.encFile(bigDir(), id)
-        val adapter = l2Adapter() ?: run { call.reject("L2CAP no disponible", "L2_NONE"); return }
-        if (!file.exists() || psm <= 0) { call.reject("Nada que enviar", "BIG_NONE"); return }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
-        val mac = normalizeMac(raw)
-        val device = gattClients[mac]?.device ?: serverConnectedDevices[mac] ?: scannedDevices[mac]
-            ?: formatMacForAndroid(raw)?.let { try { adapter.getRemoteDevice(it.uppercase()) } catch (e: Exception) { null } }
-            ?: run { call.reject("Dirección no válida: $raw", "INVALID_MAC"); return }
-        Thread {
-            try {
-                val t0 = System.currentTimeMillis()
-                device.createInsecureL2capChannel(psm).use { s ->
-                    s.connect()
-                    remLog("INFO", "FILE_IO", "[L2CAP] Canal abierto con $mac en ${System.currentTimeMillis() - t0} ms")
-                    BigNet.send(s.inputStream, s.outputStream, id, token, file, bigProgress(id, "out"))
-                }
-                val ms = System.currentTimeMillis() - t0
-                remLog("INFO", "FILE_IO", "[L2CAP] $id: ${file.length() / 1024} KB en ${ms / 1000} s (${if (ms > 0) file.length() / ms else 0} KB/s)")
-                bigDone(id, "out", null)
-                call.resolve(JSObject().put("ok", true).put("bytes", file.length()).put("ms", ms))
-            } catch (e: Exception) {
-                bigDone(id, "out", "L2CAP: " + (e.message ?: "error"))
-                call.reject("Envío fallido: ${e.message}", "BIG_SEND")
-            }
-        }.start()
-    }
+    @PluginMethod fun pdfThumbnail(call: PluginCall) = pdfThumbnailImpl(call)
 
-    // Abrir: se descifra a la caché y se abre como cualquier archivo (instalador de APK, lector de PDF…)
-    @PluginMethod
-    fun bigOpen(call: PluginCall) {
-        val id = BigFile.safeId(call.getString("id") ?: "")
-        val name = safeFileName(call.getString("name"))
-        var mime = call.getString("mime") ?: ""
-        if (!mime.contains('/')) mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream"
-        val enc = BigFile.encFile(bigDir(), id)
-        if (!enc.exists()) { call.resolve(JSObject().put("opened", false).put("reason", "missing")); return }
-        val key = try { BigFile.key(call.getString("key") ?: "") } catch (e: Exception) { call.reject("clave no válida"); return }
-        val isApk = mime == "application/vnd.android.package-archive" || name.lowercase().endsWith(".apk")
-        if (isApk) mime = "application/vnd.android.package-archive"
-        if (isApk && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
-            activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + context.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            call.resolve(JSObject().put("opened", false).put("reason", "install_permission")); return
-        }
-        Thread {
-            try {
-                val dir = File(activity.cacheDir, "nexo_open").also { it.mkdirs() }
-                val old = System.currentTimeMillis() - 86400000L
-                dir.listFiles()?.forEach { if (it.lastModified() < old) it.delete() }
-                val out = File(dir, name)
-                FileOutputStream(out).use { BigReader.decrypt(enc, key, id, it) }
-                mainHandler.post {
-                    try { launchView(out, mime); call.resolve(JSObject().put("opened", true)) }
-                    catch (e: ActivityNotFoundException) { call.resolve(JSObject().put("opened", false).put("reason", "no_app")) }
-                    catch (e: Exception) { call.reject("Error abriendo archivo: ${e.message}") }
-                }
-            } catch (e: Exception) {
-                remLog("WARN", "FILE_IO", "Archivo grande $id no se pudo abrir: ${e.message}")
-                call.reject("No se pudo abrir: ${e.message}", "BIG_OPEN")
-            }
-        }.start()
-    }
-
-    // Primera página de un PDF como JPEG (base64) con el lector de PDF de Android, y número de páginas
-    @PluginMethod
-    fun pdfThumbnail(call: PluginCall) {
-        val b64 = call.getString("base64") ?: run { call.reject("base64 requerido"); return }
-        val width = (call.getInt("width") ?: 320).coerceIn(64, 1024)
-        var tmp: File? = null
-        var pfd: ParcelFileDescriptor? = null
-        var renderer: PdfRenderer? = null
-        try {
-            tmp = writeCacheFile("nexo_pdf", "thumb_" + System.nanoTime() + ".pdf", b64)
-            pfd = ParcelFileDescriptor.open(tmp, ParcelFileDescriptor.MODE_READ_ONLY)
-            renderer = PdfRenderer(pfd)
-            val pages = renderer.pageCount
-            if (pages < 1) { call.reject("PDF sin páginas"); return }
-            val page = renderer.openPage(0)
-            val h = (width.toFloat() * page.height / page.width.coerceAtLeast(1)).toInt().coerceIn(1, width * 2)
-            val bmp = Bitmap.createBitmap(width, h, Bitmap.Config.ARGB_8888)
-            bmp.eraseColor(Color.WHITE)
-            page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            page.close()
-            val out = ByteArrayOutputStream()
-            bmp.compress(Bitmap.CompressFormat.JPEG, 70, out)
-            bmp.recycle()
-            call.resolve(JSObject().put("thumb", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)).put("pages", pages))
-        } catch (e: Exception) {
-            call.reject("PDF no legible: ${e.message}")
-        } finally {
-            try { renderer?.close() } catch (e: Exception) {}
-            try { pfd?.close() } catch (e: Exception) {}
-            tmp?.delete()
-        }
-    }
-
-    // Jump: nivel de batería, si está cargando y si está en ahorro de energía (con poca batería el
-    // teléfono deja de hacer de puente para otros)
-    @PluginMethod
-    fun getPowerStatus(call: PluginCall) {
-        try {
-            val bm = context.getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
-            val level = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
-            val charging = bm.isCharging
-            val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-            val out = JSObject().put("level", level).put("charging", charging).put("powerSave", pm.isPowerSaveMode)
-            // 3020 (diagnóstico más claro, dueño 12-11): Doze, pantalla, optimización de batería, red activa y punto de acceso.
-            // Cada dato por separado: si uno falla en algún modelo, los demás siguen.
-            try { out.put("idle", pm.isDeviceIdleMode) } catch (e: Exception) {}
-            try { out.put("interactive", pm.isInteractive) } catch (e: Exception) {}
-            try { out.put("ignoringOpt", pm.isIgnoringBatteryOptimizations(context.packageName)) } catch (e: Exception) {}
-            try {
-                val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-                val caps = cm.getNetworkCapabilities(cm.activeNetwork)
-                val net = when {
-                    caps == null -> "ninguna"
-                    caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
-                    caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "datos móviles"
-                    caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) -> "VPN"
-                    else -> "otra"
-                }
-                out.put("net", net)
-            } catch (e: Exception) {}
-            try {
-                val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
-                val m = wm.javaClass.getDeclaredMethod("isWifiApEnabled")
-                m.isAccessible = true
-                out.put("hotspot", m.invoke(wm) as Boolean)
-            } catch (e: Throwable) {}
-            call.resolve(out)
-        } catch (e: Exception) {
-            call.reject("Estado de batería no disponible: ${e.message}")
-        }
-    }
+    @PluginMethod fun getPowerStatus(call: PluginCall) = getPowerStatusImpl(call)
 
     // ===== Wi-Fi Direct: fotos, vídeos y archivos con el contacto a alcance (mucho más rápido que BLE) =====
     // El que recibe crea un grupo con nombre y contraseña aleatorios (Android 10+: el otro se une sin aviso
     // del sistema) y abre un socket; el que envía se une, manda el contenido (ya cifrado de extremo a
     // extremo) y espera la confirmación. El grupo se cierra al terminar. Bluetooth sigue siendo el canal de
     // control (por ahí viajan las credenciales, cifradas).
-    private var p2pManager: WifiP2pManager? = null
-    private var p2pChannel: WifiP2pManager.Channel? = null
-    private var wdServer: java.net.ServerSocket? = null
-    private val WD_MAX_BYTES = 40_000_000L
+    internal var p2pManager: WifiP2pManager? = null
+    internal var p2pChannel: WifiP2pManager.Channel? = null
+    internal var wdServer: java.net.ServerSocket? = null
+    internal val WD_MAX_BYTES = 40_000_000L
 
-    private fun p2pInit(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
-        if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_DIRECT)) return false
-        if (p2pManager == null) {
-            p2pManager = context.getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
-            p2pChannel = p2pManager?.initialize(context, Looper.getMainLooper(), null)
-        }
-        return p2pManager != null && p2pChannel != null
-    }
-
-    private fun wdPermissionGranted(): Boolean =
-        if (Build.VERSION.SDK_INT >= 33) isGranted(context, "android.permission.NEARBY_WIFI_DEVICES")
-        else isGranted(context, android.Manifest.permission.ACCESS_FINE_LOCATION)
-
-    private fun wdRandom(n: Int): String {
-        val chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
-        val rnd = java.security.SecureRandom()
-        return (1..n).map { chars[rnd.nextInt(chars.length)] }.joinToString("")
-    }
-
-    // 3013 (dueño 11-11: «no veo que funcione Wi-Fi Direct»; diagnósticos 08 y 10-11: «No se pudo crear el grupo (2)» en los dos
-    // teléfonos): el 2 es «ocupado», que Android contesta cuando no puede levantar Wi-Fi Direct en ese momento (Wi-Fi apagado,
-    // interfaz ocupada, operación en curso). Antes se rendía al primer fallo y el diagnóstico no decía por qué.
-    private fun wdWifiOn(): Boolean = try {
-        (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.isWifiEnabled ?: false
-    } catch (e: Exception) { false }
-
-    // Canal nuevo con el servicio de Wi-Fi Direct (el anterior puede haberse quedado sin servicio)
-    private fun p2pReset() {
-        try { if (Build.VERSION.SDK_INT >= 27) p2pChannel?.close() } catch (e: Exception) {}
-        p2pManager = null
-        p2pChannel = null
-        p2pInit()
-    }
-
-    // Estado de Wi-Fi Direct en una línea, para el diagnóstico (no espera más de 1,5 s)
-    @android.annotation.SuppressLint("MissingPermission")
-    private fun wdState(cb: (String) -> Unit) {
-        val parts = java.util.concurrent.ConcurrentHashMap<String, String>()
-        val done = java.util.concurrent.atomic.AtomicBoolean(false)
-        fun finish() {
-            if (!done.compareAndSet(false, true)) return
-            cb("Wi-Fi " + (if (wdWifiOn()) "encendido" else "APAGADO") + ", Wi-Fi Direct " + (parts["p2p"] ?: "?") +
-                ", grupo " + (parts["grupo"] ?: "?") + ", app " + (if (appInBackground) "en segundo plano" else "en primer plano"))
-        }
-        try {
-            val m = p2pManager
-            val ch = p2pChannel
-            if (m == null || ch == null) { parts["p2p"] = "sin canal"; finish(); return }
-            mainHandler.postDelayed({ finish() }, 1500)
-            if (Build.VERSION.SDK_INT >= 29) m.requestP2pState(ch) { st ->
-                parts["p2p"] = if (st == WifiP2pManager.WIFI_P2P_STATE_ENABLED) "activo" else "inactivo"
-                if (parts.containsKey("grupo")) finish()
-            }
-            m.requestGroupInfo(ch) { g ->
-                parts["grupo"] = if (g == null) "ninguno" else if ((g.networkName ?: "").endsWith("-NEXO")) "propio" else "de otra app"
-                if (parts.containsKey("p2p") || Build.VERSION.SDK_INT < 29) finish()
-            }
-        } catch (e: Exception) { parts["p2p"] = "error ${e.message}"; finish() }
-    }
-
-    private fun wdTearDown() {
-        mainHandler.post {
-            val m = p2pManager
-            val ch = p2pChannel
-            if (m != null && ch != null) {
-                try { m.removeGroup(ch, null) } catch (e: Exception) {}
-                try { m.cancelConnect(ch, null) } catch (e: Exception) {}
-            }
-        }
-    }
-
-    @PluginMethod
-    fun wifiDirectStatus(call: PluginCall) {
-        val supported = p2pInit()
-        val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-        call.resolve(JSObject().put("supported", supported).put("granted", wdPermissionGranted()).put("wifiOn", wm?.isWifiEnabled ?: false))
-    }
+    @PluginMethod fun wifiDirectStatus(call: PluginCall) = wifiDirectStatusImpl(call)
 
     @PluginMethod
     fun requestWifiDirectPermission(call: PluginCall) {
@@ -4508,245 +827,18 @@ class NexoBlePlugin : Plugin() {
         requestPermissionForAlias(if (Build.VERSION.SDK_INT >= 33) "nearbyWifi" else "location", call, "wifiDirectPermCallback")
     }
 
-    @PermissionCallback
-    fun wifiDirectPermCallback(call: PluginCall) {
-        call.resolve(JSObject().put("granted", wdPermissionGranted()))
-    }
+    @PermissionCallback fun wifiDirectPermCallback(call: PluginCall) = wifiDirectPermCallbackImpl(call)
 
-    @android.annotation.SuppressLint("MissingPermission")
-    @PluginMethod
-    fun wifiDirectHost(call: PluginCall) {
-        val transferId = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
-        val bigToken = call.getString("bigToken")?.takeIf { it.length >= 16 }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !p2pInit() || !wdPermissionGranted()) {
-            call.reject("Wi-Fi Direct no disponible", "WD_UNAVAILABLE"); return
-        }
-        if (!wdWifiOn()) {
-            remLog("WARN", "WIFI_DIRECT", "No se monta el grupo para $transferId: Wi-Fi APAGADO (Wi-Fi Direct lo necesita encendido, aunque no haya red)")
-            call.reject("Wi-Fi apagado", "WD_WIFI_OFF"); return
-        }
-        val name = "DIRECT-" + wdRandom(2) + "-NEXO"
-        val pass = wdRandom(16)
-        val cfg = WifiP2pConfig.Builder().setNetworkName(name).setPassphrase(pass)
-            .enablePersistentMode(false).setGroupOperatingBand(WifiP2pConfig.GROUP_OWNER_BAND_AUTO).build()
-        // Esperas antes de cada reintento (en total ~5 s; la oferta del otro espera 25 s)
-        val retryMs = longArrayOf(700, 1500, 2500)
-        var start: (Int) -> Unit = { _ -> }
-        fun create(attempt: Int) {
-            val m = p2pManager
-            val ch = p2pChannel
-            if (m == null || ch == null) { call.reject("Wi-Fi Direct no disponible", "WD_UNAVAILABLE"); return }
-            m.createGroup(ch, cfg, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() {
-                    try {
-                        try { wdServer?.close() } catch (e: Exception) {}
-                        val server = java.net.ServerSocket(0)
-                        server.soTimeout = 90000
-                        wdServer = server
-                        remLog("INFO", "WIFI_DIRECT", "Grupo creado para $transferId, puerto ${server.localPort}")
-                        call.resolve(JSObject().put("ssid", name).put("passphrase", pass).put("port", server.localPort))
-                        // Archivo grande (ronda 2756): del socket al disco, sin pasar por la app
-                        if (bigToken != null) Thread {
-                            try { BigNet.serve(server, BigFile.safeId(transferId), bigToken, BigFile.encFile(bigDir(), transferId), BigFile.MAX_BYTES * 11 / 10, bigProgress(BigFile.safeId(transferId), "in")); bigDone(BigFile.safeId(transferId), "in", null) }
-                            catch (e: Exception) { bigDone(BigFile.safeId(transferId), "in", e.message ?: "error") }
-                            finally { try { server.close() } catch (e: Exception) {}; if (wdServer === server) wdServer = null; wdTearDown() }
-                        }.start()
-                        else Thread { wdReceive(server, transferId) }.start()
-                    } catch (e: Exception) {
-                        wdTearDown()
-                        call.reject("Socket no disponible: ${e.message}", "WD_SOCKET")
-                    }
-                }
-                override fun onFailure(reason: Int) {
-                    if (!wdWifiOn()) {
-                        remLog("WARN", "WIFI_DIRECT", "Crear grupo para $transferId falló ($reason): Wi-Fi APAGADO")
-                        call.reject("Wi-Fi apagado", "WD_WIFI_OFF")
-                    } else if (attempt < retryMs.size) {
-                        remLog("WARN", "WIFI_DIRECT", "Crear grupo para $transferId falló ($reason), intento ${attempt + 1}: se reintenta en ${retryMs[attempt]} ms")
-                        mainHandler.postDelayed({
-                            if (attempt == 1) p2pReset()   // al segundo reintento, canal nuevo
-                            start(attempt + 1)
-                        }, retryMs[attempt])
-                    } else wdState { st ->
-                        remLog("WARN", "WIFI_DIRECT", "No se pudo crear el grupo para $transferId ($reason) tras ${attempt + 1} intentos. Estado: $st")
-                        call.reject("No se pudo crear el grupo ($reason; $st)", "WD_GROUP")
-                    }
-                }
-            })
-        }
-        start = { attempt ->
-            val m = p2pManager
-            val ch = p2pChannel
-            if (m == null || ch == null) call.reject("Wi-Fi Direct no disponible", "WD_UNAVAILABLE")
-            else m.removeGroup(ch, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() { create(attempt) }
-                override fun onFailure(reason: Int) { create(attempt) }
-            })
-        }
-        mainHandler.post { start(0) }
-    }
+    @PluginMethod fun wifiDirectHost(call: PluginCall) = wifiDirectHostImpl(call)
 
-    private fun wdReceive(server: java.net.ServerSocket, transferId: String) {
-        try {
-            server.accept().use { sock ->
-                sock.soTimeout = 30000
-                val tRead = System.currentTimeMillis()
-                val input = java.io.DataInputStream(java.io.BufferedInputStream(sock.getInputStream()))
-                val h = JSONObject(input.readUTF())
-                if (h.optString("id") != transferId) throw Exception("transferencia distinta")
-                val len = h.optLong("len")
-                if (len <= 0 || len > WD_MAX_BYTES) throw Exception("tamaño no válido")
-                val buf = ByteArray(len.toInt())
-                input.readFully(buf)
-                sock.getOutputStream().apply { write(1); flush() }
-                val readMs = System.currentTimeMillis() - tRead
-                remLog("INFO", "WIFI_DIRECT", "Recibido $transferId ($len bytes) en $readMs ms")
-                notifyListeners("onWifiDirectReceived", JSObject().put("transferId", transferId).put("data", String(buf, Charsets.UTF_8)).put("bytes", len)
-                    .put("readMs", readMs).put("ts", System.currentTimeMillis()), true)
-            }
-        } catch (e: Exception) {
-            remLog("WARN", "WIFI_DIRECT", "Recepción fallida $transferId: ${e.message}")
-            notifyListeners("onWifiDirectReceived", JSObject().put("transferId", transferId).put("error", e.message ?: "error"), true)
-        } finally {
-            try { server.close() } catch (e: Exception) {}
-            if (wdServer === server) wdServer = null
-            wdTearDown()
-        }
-    }
+    @PluginMethod fun wifiDirectSend(call: PluginCall) = wifiDirectSendImpl(call)
 
-    @android.annotation.SuppressLint("MissingPermission")
-    @PluginMethod
-    fun wifiDirectSend(call: PluginCall) {
-        val ssid = call.getString("ssid") ?: run { call.reject("ssid requerido"); return }
-        val pass = call.getString("passphrase") ?: run { call.reject("passphrase requerido"); return }
-        val port = call.getInt("port") ?: run { call.reject("port requerido"); return }
-        val transferId = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
-        // Archivo grande (ronda 2756): se manda el archivo cifrado del disco (bigToken) en vez de "data"
-        val bigToken = call.getString("bigToken")?.takeIf { it.length >= 16 }
-        val bigFile = if (bigToken != null) BigFile.encFile(bigDir(), transferId) else null
-        if (bigFile != null && !bigFile.exists()) { call.reject("Nada que enviar", "BIG_NONE"); return }
-        val data = if (bigFile != null) "" else (call.getString("data") ?: run { call.reject("data requerido"); return })
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !p2pInit() || !wdPermissionGranted()) {
-            call.reject("Wi-Fi Direct no disponible", "WD_UNAVAILABLE"); return
-        }
-        if (!wdWifiOn()) {
-            remLog("WARN", "WIFI_DIRECT", "No se envía $transferId por Wi-Fi Direct: Wi-Fi APAGADO")
-            call.reject("Wi-Fi apagado", "WD_WIFI_OFF"); return
-        }
-        val m = p2pManager!!
-        val ch = p2pChannel!!
-        val t0 = System.currentTimeMillis()
-        // Tiempo que tardó el contenido en pasar de la app (WebView) a Android
-        val jsTs = call.getLong("jsTs") ?: t0
-        val bridgeMs = (t0 - jsTs).coerceAtLeast(0)
-        val cfg = WifiP2pConfig.Builder().setNetworkName(ssid).setPassphrase(pass).build()
-        fun push(addr: java.net.InetAddress) {
-            val tJoined = System.currentTimeMillis()
-            Thread {
-                if (bigFile != null) {
-                    try {
-                        java.net.Socket().use { s ->
-                            s.connect(java.net.InetSocketAddress(addr, port), 10000)
-                            s.soTimeout = 60000
-                            BigNet.send(s, BigFile.safeId(transferId), bigToken!!, bigFile, bigProgress(BigFile.safeId(transferId), "out"))
-                        }
-                        bigDone(BigFile.safeId(transferId), "out", null)
-                        call.resolve(JSObject().put("ok", true).put("bytes", bigFile.length()).put("joinMs", tJoined - t0).put("xferMs", System.currentTimeMillis() - tJoined))
-                    } catch (e: Exception) {
-                        bigDone(BigFile.safeId(transferId), "out", e.message ?: "error")
-                        call.reject("Envío fallido: ${e.message}", "WD_SEND")
-                    } finally { wdTearDown() }
-                } else try {
-                    val bytes = data.toByteArray(Charsets.UTF_8)
-                    java.net.Socket().use { s ->
-                        s.connect(java.net.InetSocketAddress(addr, port), 10000)
-                        s.soTimeout = 60000
-                        val out = java.io.DataOutputStream(java.io.BufferedOutputStream(s.getOutputStream()))
-                        out.writeUTF(JSONObject().put("id", transferId).put("len", bytes.size).toString())
-                        out.write(bytes)
-                        out.flush()
-                        if (s.getInputStream().read() != 1) throw Exception("sin confirmación")
-                    }
-                    val now = System.currentTimeMillis()
-                    val ms = now - t0
-                    remLog("INFO", "WIFI_DIRECT", "Enviado $transferId (${bytes.size} bytes) en $ms ms (unirse ${tJoined - t0} ms, envío ${now - tJoined} ms, de la app a Android $bridgeMs ms)")
-                    call.resolve(JSObject().put("ok", true).put("ms", ms).put("bytes", bytes.size)
-                        .put("joinMs", tJoined - t0).put("xferMs", now - tJoined).put("bridgeMs", bridgeMs))
-                } catch (e: Exception) {
-                    call.reject("Envío fallido: ${e.message}", "WD_SEND")
-                } finally {
-                    wdTearDown()
-                }
-            }.start()
-        }
-        fun waitGroup(attempt: Int) {
-            m.requestConnectionInfo(ch) { info ->
-                val addr = info?.groupOwnerAddress
-                if (info != null && info.groupFormed && addr != null) push(addr)
-                else if (attempt < 80) mainHandler.postDelayed({ waitGroup(attempt + 1) }, 250)
-                else wdState { st ->
-                    remLog("WARN", "WIFI_DIRECT", "No se pudo entrar al grupo del otro para $transferId en 20 s. Estado: $st")
-                    wdTearDown(); call.reject("El grupo no se formó ($st)", "WD_TIMEOUT")
-                }
-            }
-        }
-        mainHandler.post {
-            m.connect(ch, cfg, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() { waitGroup(0) }
-                override fun onFailure(reason: Int) {
-                    wdState { st ->
-                        remLog("WARN", "WIFI_DIRECT", "No se pudo conectar al grupo del otro para $transferId ($reason). Estado: $st")
-                        call.reject("No se pudo conectar ($reason; $st)", "WD_CONNECT")
-                    }
-                }
-            })
-        }
-    }
+    @PluginMethod fun haptic(call: PluginCall) = hapticImpl(call)
 
-    // ===== NEXO Touch (build 2968, dueño 09-11): háptica del SISTEMA =====
-    // kind: tick|confirm|reject|long|gesture|segment · mode: 'system' (View.performHapticFeedback: la misma sensación que
-    // el teclado de Android, respeta «Vibración al tocar» del teléfono, sin permiso) | 'on' (siempre: efecto predefinido
-    // vía Vibrator; VIBRATE ya está declarado). El mapa sensación→constante es puro (HapticKinds, probado en JVM).
-    private fun vibratorOf(): android.os.Vibrator? = try {
-        if (Build.VERSION.SDK_INT >= 31) (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager)?.defaultVibrator
-        else context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
-    } catch (e: Exception) { null }
-
-    @PluginMethod
-    fun haptic(call: PluginCall) {
-        val kind = call.getString("kind") ?: "tick"
-        val mode = call.getString("mode") ?: "system"
-        val sdk = Build.VERSION.SDK_INT
-        try {
-            val run = Runnable {
-                try {
-                    if (HapticKinds.usesVibrator(mode, sdk)) {
-                        val vib = vibratorOf()
-                        if (vib != null && vib.hasVibrator()) vib.vibrate(android.os.VibrationEffect.createPredefined(HapticKinds.predefinedFor(kind)))
-                    } else {
-                        val c = HapticKinds.constantFor(kind, sdk)
-                        val v = bridge?.webView
-                        if (v != null && c != HapticKinds.NONE) v.performHapticFeedback(c)
-                    }
-                } catch (e: Exception) {}
-            }
-            val act = activity
-            if (act != null) act.runOnUiThread(run) else run.run()
-        } catch (e: Exception) {}
-        call.resolve()
-    }
-
-    // Capacidades del motor háptico (para el diagnóstico y para afinar con el dueño: ¿amplitud? ¿primitivas?)
-    @PluginMethod
-    fun hapticCaps(call: PluginCall) {
-        val r = JSObject()
-        try {
-            val vib = vibratorOf()
-            r.put("sdk", Build.VERSION.SDK_INT)
-            r.put("hasVibrator", vib?.hasVibrator() ?: false)
-            r.put("amplitude", vib != null && vib.hasAmplitudeControl())
-            r.put("primitives", vib != null && Build.VERSION.SDK_INT >= 31 && vib.areAllPrimitivesSupported(android.os.VibrationEffect.Composition.PRIMITIVE_CLICK, android.os.VibrationEffect.Composition.PRIMITIVE_TICK))
-        } catch (e: Exception) {}
-        call.resolve(r)
-    }
+    @PluginMethod fun hapticCaps(call: PluginCall) = hapticCapsImpl(call)
 }
+
+// 3118: desde las extensiones (PluginXxx.kt) el notifyListeners protected de Capacitor no se ve; Kotlin elige entonces
+// estas, que pasan por las envolturas internal de la clase. Dentro de la clase se sigue usando el de Capacitor (y el override).
+internal fun NexoBlePlugin.notifyListeners(eventName: String?, data: JSObject?) = notifyListenersExt(eventName, data)
+internal fun NexoBlePlugin.notifyListeners(eventName: String?, data: JSObject?, retainUntilConsumed: Boolean) = notifyListenersExt(eventName, data, retainUntilConsumed)
