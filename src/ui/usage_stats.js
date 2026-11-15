@@ -12,6 +12,7 @@ import { vaultSetUsageHook } from '../vault/vault_manager.js';
 import { _getBLEContacts, _showToast } from './ble_helpers.js';
 import { autoDiagSendSummary, autoDiagBuild } from './autodiag.js';
 import { t } from './i18n.js';
+import { powerInit, powerLines } from './usage_power.js'; // 3119: tiempo de uso y batería
 
 var KEY = 'nexo_usage', KEY_SENT = 'nexo_usage_sent', KEY_TRY = 'nexo_usage_try', KEY_FIRST = 'nexo_usage_first';
 var KEEP_DAYS = 14, RETRY_MS = 60 * 60 * 1000;
@@ -111,7 +112,8 @@ export function usageSummaryText(key) {
     'de los enviados: llegaron (✓✓) ' + d.d + ' · leídos ' + d.rd + '\n' + // i18n-ok: texto para el desarrollador
     'por tipo (enviados y recibidos): texto ' + (d.t.texto || 0) + ' · adjuntos: ' + tipos + '\n' +
     'chats con actividad: ' + (d.c ? d.c.length : 0) + ' de ' + contactos + ' contactos' + // i18n-ok
-    (function() { var sl = usageSpeedLines(key); return sl.length ? '\nvelocidad por camino:\n' + sl.join('\n') : ''; })(); // i18n-ok: 3081
+    (function() { var sl = usageSpeedLines(key); return sl.length ? '\nvelocidad por camino:\n' + sl.join('\n') : ''; })() + // i18n-ok: 3081
+    (function() { var pw = powerLines(key); return pw.length ? '\n' + pw.join('\n') : ''; })(); // i18n-ok: 3119 tiempo de uso y batería
 }
 
 /** Manda el resumen del último día COMPLETO sin enviar (el de hoy no: está a medias). Devuelve el estado, p. ej. 'enviado', 'ya_enviado', 'sin_datos'. */
@@ -138,6 +140,7 @@ export function usageMaybeSend(force) {
 
 /** Arranque (main.js): engancha los contadores, marca el día como «abierta» y, ya con la app en marcha, manda el resumen pendiente. */
 export function usageInit() {
+  powerInit(); // 3119
   try {
     vaultSetUsageHook(_hook);
     var o = _load(); _day(o, usageDayKey()).o = 1; _save(o);

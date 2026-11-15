@@ -1332,6 +1332,10 @@
     {
      "fallo": "Dueño 14-11 (APK 3052): «a pantalla apagada no suena ni hay notificaciones; a pantalla encendida llegan puntuales». Diagnóstico S24 12:00: 10 textos al vivo, ✓✓ en 1 s cada uno y leídos a las 12:18. Con la pantalla apagada y la app aún despierta, la que recibe y confirma es la app, y su regla del 08-11 «el chat abierto nunca avisa» no tenía límite: callaba para siempre. 3091 (notify.js): como el nativo (3086), el chat abierto solo calla en un parpadeo (< 15 s fuera de la vista); después avisa y cuenta como no leído; al volver, el aviso se quita y queda leído. chatabierto O5: 3089 sin aviso, 3091 con aviso",
      "prueba": "chat abierto y app dormida"
+    },
+    {
+     "fallo": "3119 (dueño 15-11: «¿ya implementaste en los diagnósticos el tiempo de uso de la aplicación y cuánto gasta NEXO de batería?»): no se medía; el diagnóstico solo decía el nivel del momento y si había ahorro de batería, y el resumen diario solo si se abrió la app. 3119: tiempo a la vista por día y % por hora sin cargar, a la vista y en segundo plano (lo que gasta el teléfono mientras NEXO corre: Android no da el gasto de una sola app); en el resumen diario y en el diagnóstico. bateria.js: 6 %/h a la vista, 2 %/h detrás, lo cargado no cuenta",
+     "prueba": "TIEMPO DE USO y BATERÍA"
     }
    ],
    "debiles": [
