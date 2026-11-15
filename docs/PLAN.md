@@ -12,7 +12,8 @@ publicación y primeros usuarios; febrero campaña previa y la prueba de fuego.
 
 ### Etapa 1 — Base sólida (16 al 30 de noviembre)
 - [x] Reestructuración del código de la app: ningún archivo de más de 1.000 líneas (6 de 7 hechos el 15-11).
-- [ ] Reestructuración del puente con Android (4.753 líneas) — en curso.
+- [ ] Reestructuración del puente con Android (4.753 → 844 líneas en 17 archivos, 15-11) — falta que compile en GitHub y la prueba en
+      los teléfonos.
 - [ ] Idiomas: portugués de Brasil y francés; avisos del teléfono en el idioma de la app (hoy salen en español).
 - [ ] Despertar la app del otro antes de mandarle un archivo grande (hoy se gastan reintentos con apps dormidas).
 - [ ] Atascos, lo que falta del plan del 14-11 (aprobado por el dueño): si un contacto con enlace sano no confirma lo tuyo,
