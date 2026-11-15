@@ -306,7 +306,7 @@ export default {
   media_hd_waiting: "HD en espera",
   media_save_gallery: "Guardar en galería",
   media_save_unsupported: "Guardar: esta versión no puede guardar en la galería",
-  media_saved_ok: "Guardado en la galería",
+  media_saved_ok: "Guardada en tu galería (carpeta NEXO)",
   media_saved_fail: "No se pudo guardar en la galería",
   media_page_sing: " página",
   media_page_plur: " páginas",
@@ -867,4 +867,6 @@ export default {
   invite_copied: "Invitación copiada: pégala donde quieras.",
   invite_opened: "Te invitó {id}: toca «Agregar» para mandarle la solicitud.",
   req_from_invite: "aceptó tu invitación",
+  media_saved_ok_video: "Vídeo guardado en tu galería (carpeta NEXO)",
+  media_saved_already: "Ya está en tu galería (carpeta NEXO)",
 };

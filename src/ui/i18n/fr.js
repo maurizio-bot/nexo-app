@@ -306,7 +306,7 @@ export default {
   media_hd_waiting: "HD en attente",
   media_save_gallery: "Enregistrer dans la galerie",
   media_save_unsupported: "Enregistrer : cette version ne peut pas enregistrer dans la galerie",
-  media_saved_ok: "Enregistré dans la galerie",
+  media_saved_ok: "Enregistrée dans votre galerie (dossier NEXO)",
   media_saved_fail: "Impossible d'enregistrer dans la galerie",
   media_page_sing: " page",
   media_page_plur: " pages",
@@ -867,4 +867,6 @@ export default {
   invite_copied: "Invitation copiée : collez-la où vous voulez.",
   invite_opened: "{id} vous a invité : touchez « Ajouter » pour lui envoyer la demande.",
   req_from_invite: "a accepté votre invitation",
+  media_saved_ok_video: "Vidéo enregistrée dans votre galerie (dossier NEXO)",
+  media_saved_already: "Déjà dans votre galerie (dossier NEXO)",
 };

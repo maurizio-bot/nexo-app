@@ -1638,6 +1638,10 @@
     {
      "fallo": "#220 fase 1 (dueño 15-11: «al final estaba en dos llamadas diferentes al mismo tiempo… hay que hacer un arreglo de pantalla donde se puedan ver las dos pantallas al mismo tiempo, la pantalla dividida y con sus respectivos botones»; S24 14-11 16:16–16:19, una 1-a-1 con el Honor y una de grupo con el Xiaomi): la pantalla de la 1-a-1 tapaba entera la de grupo (su «Colgar» no se podía tocar). 3101: con las dos a la vez, pantalla dividida (1-a-1 arriba, grupo abajo), más compactas, cada una con sus botones; al colgar una, la otra vuelve a toda la pantalla. splitcall.js (Chromium): 3100 = superpuestas, colgar del grupo tapado; 3101 = divididas en 360/384/412. Pendiente (fases 2–4): dos 1-a-1 a la vez, cámara compartida entre las dos, nativo con dos llamadas",
      "prueba": "DOS llamadas a la vez con la pantalla dividida"
+    },
+    {
+     "fallo": "3129 (dueño 15-11: «cuando abro una foto y toco la flechita para la descarga, ese botón no tiene ningún tipo de retroalimentación para que sepa que sí la bajó»): el botón solo se aclaraba y al terminar salía el aviso ROJO de errores, igual para guardado que para fallo. 3129: el botón gira mientras guarda, VERDE con palomita (y vibra) al terminar y un aviso azul dice dónde quedó (carpeta NEXO); otro toque no duplica; si falla o no contesta en 20 s, ROJO. savegallery.js G3–G5 (contraprueba 3128: fallan)",
+     "prueba": "guardar en galería (#92)"
     }
    ],
    "debiles": [

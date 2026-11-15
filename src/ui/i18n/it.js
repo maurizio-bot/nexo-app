@@ -306,7 +306,7 @@ export default {
   media_hd_waiting: "HD in attesa",
   media_save_gallery: "Salva nella galleria",
   media_save_unsupported: "Salvataggio: questa versione non può salvare nella galleria",
-  media_saved_ok: "Salvato nella galleria",
+  media_saved_ok: "Salvata nella tua galleria (cartella NEXO)",
   media_saved_fail: "Impossibile salvare nella galleria",
   media_page_sing: " pagina",
   media_page_plur: " pagine",
@@ -867,4 +867,6 @@ export default {
   invite_copied: "Invito copiato: incollalo dove vuoi.",
   invite_opened: "Ti ha invitato {id}: tocca «Aggiungi» per mandargli la richiesta.",
   req_from_invite: "ha accettato il tuo invito",
+  media_saved_ok_video: "Video salvato nella tua galleria (cartella NEXO)",
+  media_saved_already: "È già nella tua galleria (cartella NEXO)",
 };

@@ -6,7 +6,8 @@ import { _extOf, _fileIcon, _fmtSize, _isPdf, _mimeOf, _pdfThumb } from './file_
 import { _getCurrentContactId } from './chat_format.js';
 import { _makeVideoThumb } from './video_tools.js';
 import { _msgContactMap } from './chat_state.js';
-import { _releaseMedia, _showPermissionError } from './ui_bits.js';
+import { _releaseMedia, _showPermissionError, _showInfoToast } from './ui_bits.js';
+import { haptic } from './haptics.js'; // 3129: el botón de guardar vibra al terminar
 import { vaultLoadFile, vaultSetMessageFields } from '../vault/vault_manager.js';
 import { isGroupId } from './groups.js';
 import { bigToGroup } from './group_media.js';
@@ -37,6 +38,7 @@ export function _openFullscreenMedia(src, type, noSave) {
   if (!noSave) {
     var dlBtn = document.createElement('button');
     dlBtn.className = 'fs-save-btn';
+    dlBtn.setAttribute('data-state', 'idle');
     dlBtn.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" fill="#fff"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>';
     dlBtn.title = t('media_save_gallery', 'Guardar en galería');
     dlBtn.style.cssText = 'position:absolute;top:16px;left:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;';
@@ -127,11 +129,46 @@ function _blobToB64(blob) {
     r.readAsDataURL(blob);
   });
 }
+// 3129 (dueño 15-11: «la flechita para la descarga no tiene ningún tipo de retroalimentación para que el usuario sepa que sí la
+// bajó»): antes solo se aclaraba el botón y, al terminar, salía un aviso ROJO (el de los errores) igual para «guardado» que para
+// «falló». Ahora el propio botón cuenta lo que pasa: gira mientras guarda; al terminar se pone VERDE con una palomita (y vibra) y un
+// aviso azul dice dónde quedó; si falla, ROJO con el motivo. Otra vez el mismo botón: «ya está en tu galería» (no se duplica).
+// Si el teléfono no contesta en 20 s, cuenta como fallo (perilla de pruebas: NEXO_SAVE_TIMEOUT_MS).
+var _ICON_DL = '<svg viewBox="0 0 24 24" width="26" height="26" fill="#fff"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>';
+var _ICON_OK = '<svg viewBox="0 0 24 24" width="26" height="26" fill="#fff"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
+var _ICON_FAIL = '<svg viewBox="0 0 24 24" width="26" height="26" fill="#fff"><path d="M11 7h2v7h-2zm0 9h2v2h-2z"/></svg>';
+var _ICON_SPIN = '<span style="width:22px;height:22px;border-radius:50%;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;display:block;animation:nxspin .8s linear infinite;"></span>';
+function _saveBtnState(btn, st) {
+  if (!btn) return;
+  btn.setAttribute('data-state', st);
+  if (!document.getElementById('nx-spin-style')) { var stl = document.createElement('style'); stl.id = 'nx-spin-style'; stl.textContent = '@keyframes nxspin{to{transform:rotate(360deg)}}'; document.head.appendChild(stl); }
+  btn.innerHTML = st === 'saving' ? _ICON_SPIN : st === 'ok' ? _ICON_OK : st === 'fail' ? _ICON_FAIL : _ICON_DL;
+  btn.style.background = st === 'ok' ? 'rgba(34,197,94,0.95)' : st === 'fail' ? 'rgba(239,68,68,0.95)' : 'rgba(255,255,255,0.15)';
+  btn.style.opacity = '1';
+  btn.title = st === 'ok' ? t('media_saved_ok', 'Guardada en tu galería') : t('media_save_gallery', 'Guardar en galería');
+}
 export function _saveMediaToGallery(src, type, btn) {
   var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
   if (!pl || typeof pl.saveToGallery !== 'function') { _showPermissionError(t('media_save_unsupported', 'Guardar: esta versión no puede guardar en la galería')); return; }
-  if (btn) btn.style.opacity = '0.5';
-  var done = function(ok) { if (btn) btn.style.opacity = '1'; _showPermissionError(ok ? t('media_saved_ok', 'Guardado en la galería') : t('media_saved_fail', 'No se pudo guardar en la galería')); };
+  var st = btn && btn.getAttribute('data-state');
+  if (st === 'saving') return;
+  if (st === 'ok') { _showInfoToast(t('media_saved_already', 'Ya está en tu galería (carpeta NEXO)'), 2500); haptic('tick'); return; }
+  _saveBtnState(btn, 'saving');
+  var finished = false;
+  var limit = (typeof window.NEXO_SAVE_TIMEOUT_MS === 'number') ? window.NEXO_SAVE_TIMEOUT_MS : 20000;
+  var timer = setTimeout(function() { done(false); }, limit);
+  var done = function(ok) {
+    if (finished) return;
+    finished = true; clearTimeout(timer);
+    if (ok) {
+      _saveBtnState(btn, 'ok'); haptic('confirm');
+      _showInfoToast(type === 'video' ? t('media_saved_ok_video', 'Vídeo guardado en tu galería (carpeta NEXO)') : t('media_saved_ok', 'Guardada en tu galería'), 3000);
+    } else {
+      _saveBtnState(btn, 'fail'); haptic('reject');
+      _showPermissionError(t('media_saved_fail', 'No se pudo guardar en la galería'));
+      setTimeout(function() { if (btn && btn.getAttribute('data-state') === 'fail') _saveBtnState(btn, 'idle'); }, 3500);
+    }
+  };
   var send = function(b64, mime) {
     if (!b64) { done(false); return; }
     pl.saveToGallery({ base64: b64, name: 'NEXO_' + Date.now() + '.' + _extForMime(mime), mime: mime })

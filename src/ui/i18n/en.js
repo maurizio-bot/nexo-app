@@ -306,7 +306,7 @@ export default {
   media_hd_waiting: "HD pending",
   media_save_gallery: "Save to gallery",
   media_save_unsupported: "Save: this version can't save to the gallery",
-  media_saved_ok: "Saved to gallery",
+  media_saved_ok: "Saved to your gallery (NEXO folder)",
   media_saved_fail: "Couldn't save to the gallery",
   media_page_sing: " page",
   media_page_plur: " pages",
@@ -867,4 +867,6 @@ export default {
   invite_copied: "Invitation copied: paste it anywhere.",
   invite_opened: "{id} invited you: tap «Add» to send them the request.",
   req_from_invite: "accepted your invitation",
+  media_saved_ok_video: "Video saved to your gallery (NEXO folder)",
+  media_saved_already: "Already in your gallery (NEXO folder)",
 };
