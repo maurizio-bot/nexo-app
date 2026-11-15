@@ -1081,6 +1081,8 @@ class NativePhone {
       callAudio: wrap('callAudio', (c, a) => { self.callAudioOn = a.on === true; self.callSpeaker = a.on === true && a.speaker === true; self.keepScreenOn = a.on === true; self.proximity = a.on === true && a.speaker !== true; /* Kotlin 2769 callScreen */ self.callFgs = a.on === true ? 'micrófono' : 'normal'; /* Kotlin 2770 BleService.foreground */ self.audioFocus = a.on === true; /* Kotlin 2770 callFocus */ c.resolve({ fgs: self.callFgs, focus: a.on === true ? 'sí' : '', mode: a.on ? 3 : 0, speakerOn: self.callSpeaker, device: a.on ? (self.callSpeaker ? 'altavoz' : 'auricular') : 'ninguno', volCall: '5/7', volMedia: '9/15' }); }),
       // Kotlin 2770 ringerMode: modo del timbre (self.ringer: 'normal' | 'vibrate' | 'silent') y "No molestar" (self.dnd)
       ringerMode: wrap('ringerMode', (c) => c.resolve({ mode: self.ringer || 'normal', dnd: !!self.dnd })),
+      // Kotlin 3134 ringback: tono de llamada saliente del sistema (ToneGenerator por el canal de llamada); se anota on/off
+      ringback: wrap('ringback', (c, a) => { self.ringbackOn = a.on === true; (self.ringbackLog = self.ringbackLog || []).push(a.on === true); c.resolve({ on: a.on === true }); }),
       l2Info: wrap('l2Info', (c) => c.resolve({ ok: !self.opts.noL2, sdk: self.opts.noL2 ? 28 : 33 })),
       bigServeL2: wrap('bigServeL2', (c, a) => {
         if (self.opts.noL2) return c.reject('L2CAP no disponible (Android 10+ y Bluetooth activo)', 'L2_NONE');

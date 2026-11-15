@@ -19,12 +19,40 @@ class NexoConnection(
     private val offer: String
 ) : Connection() {
 
+    // 3134 (Jhonnatan 15-11, Xiaomi, en moto con manos libres Bluetooth: «no pudo contestar directo, se tuvo que parar»): lo que
+    // hace el sistema con la llamada queda en el registro nativo, que va al diagnóstico: aviso mostrado, contestar (y si NEXO se
+    // pudo abrir), rechazar, colgar y por dónde suena (auricular, altavoz, Bluetooth). Antes solo iba a logcat y no se veía nada.
+    private fun nl(level: String, msg: String) {
+        Log.i("NexoConnection", msg)
+        try {
+            val l = NexoBlePlugin.nativeLogShared ?: synchronized(NexoBlePlugin::class.java) {
+                NexoBlePlugin.nativeLogShared ?: NativeLog(java.io.File(ctx.filesDir, NexoBlePlugin.NATIVE_LOG_FILE)).also { NexoBlePlugin.nativeLogShared = it }
+            }
+            l.add(level, "TELECOM", msg)
+        } catch (e: Throwable) {}
+    }
+    private fun who(): String = from.takeLast(4)
+
     // self-managed: la app pone su propia UI de llamada entrante → el aviso CallStyle probado.
     override fun onShowIncomingCallUi() {
-        try { MsgNotifier.get(ctx).postCallNotification(from, name, video, offer) } catch (e: Throwable) {}
+        nl("INFO", "Llamada entrante de …${who()}: aviso de llamada del sistema")
+        try { MsgNotifier.get(ctx).postCallNotification(from, name, video, offer) } catch (e: Throwable) { nl("WARN", "Aviso de llamada: ${e.message}") }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onCallAudioStateChanged(st: android.telecom.CallAudioState?) {
+        val s = st ?: return
+        val r = when (s.route) {
+            android.telecom.CallAudioState.ROUTE_BLUETOOTH -> "Bluetooth"; android.telecom.CallAudioState.ROUTE_SPEAKER -> "altavoz"
+            android.telecom.CallAudioState.ROUTE_WIRED_HEADSET -> "cascos"; android.telecom.CallAudioState.ROUTE_EARPIECE -> "auricular"
+            else -> "otro (${s.route})"
+        }
+        val bt = (s.supportedRouteMask and android.telecom.CallAudioState.ROUTE_BLUETOOTH) != 0
+        nl("INFO", "Llamada …${who()}: suena por $r" + (if (bt && r != "Bluetooth") " (hay Bluetooth)" else ""))
     }
 
     override fun onAnswer() {
+        nl("INFO", "Contestar desde el sistema (aviso, manos libres o reloj): …${who()}")
         try {
             setActive()
             // Igual que tocar «Contestar» en el aviso (MsgNotifier.incomingCall / checkNotificationIntent).
@@ -36,18 +64,23 @@ class NexoConnection(
                     .putExtra(MsgNotifier.EXTRA_CALL_TOKEN, MsgNotifier.callIntentToken)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 ctx.startActivity(launch)
-            }
+                nl("INFO", "Contestada: se abre NEXO")
+            } else nl("WARN", "Contestada pero no se pudo abrir NEXO (sin actividad)")
             try { MsgNotifier.get(ctx).cancelCall() } catch (e: Throwable) {}
-        } catch (e: Throwable) { Log.w("NexoConnection", "onAnswer: ${e.message}") }
+        } catch (e: Throwable) { nl("WARN", "Contestar falló: ${e.message} (Xiaomi: «ventanas emergentes en segundo plano»)") }
     }
 
-    override fun onReject() { declineAndClose() }
-    override fun onReject(replyMessage: String?) { declineAndClose() }
+    override fun onReject() { nl("INFO", "Rechazada desde el sistema: …${who()}"); declineAndClose() }
+    override fun onReject(replyMessage: String?) { nl("INFO", "Rechazada desde el sistema: …${who()}"); declineAndClose() }
     // Build 2882 (parte 2): mientras SUENA una entrante, colgar desde el sistema = rechazar (camino de siempre, parte 1,
     // que el JS solo aplica mientras suena). Ya activa, o una SALIENTE (marcando / en curso): el usuario colgó/canceló
     // desde el coche, los auriculares, el reloj o la pantalla de bloqueo → avisar a NEXO para que termine por su lado.
-    override fun onDisconnect() { if (state == Connection.STATE_RINGING) declineAndClose() else systemEnd() }
-    override fun onAbort() { if (state == Connection.STATE_RINGING) declineAndClose() else systemEnd() }
+    override fun onDisconnect() { nl("INFO", "Colgar desde el sistema (${stateName()}): …${who()}"); if (state == Connection.STATE_RINGING) declineAndClose() else systemEnd() }
+    override fun onAbort() { nl("INFO", "Llamada cortada por el sistema (${stateName()}): …${who()}"); if (state == Connection.STATE_RINGING) declineAndClose() else systemEnd() }
+    private fun stateName(): String = when (state) {
+        Connection.STATE_RINGING -> "sonando"; Connection.STATE_DIALING -> "marcando"; Connection.STATE_ACTIVE -> "en curso"
+        Connection.STATE_HOLDING -> "en espera"; else -> "estado $state"
+    }
 
     /** El sistema (coche/auriculares/reloj) pidió colgar una llamada activa o saliente: NEXO la termina por su lado. */
     private fun systemEnd() {

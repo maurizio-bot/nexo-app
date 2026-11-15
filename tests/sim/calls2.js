@@ -510,6 +510,45 @@ const CASES = {
       r.oculta.suena && r.oculta.pitidos === 0 && r.oculta.aviso_sistema;
     return r;
   },
+  // 3134 (dueño 15-11: «cuando marco a un contacto no escucho el clásico sonido del tuuu… tuuu…»): el tono de la llamada SALIENTE lo
+  // pone el teléfono (Kotlin ringback, por el canal de llamada) y no el pitido de la app; se para al contestar y al colgar; sin ese
+  // método en el nativo, el pitido de siempre. Contraprueba 3133: el nativo nunca suena (solo el pitido de la app).
+  async 'tono-saliente'() {
+    const { nA, A, B } = await setup({ A: { toneSpy: true } });
+    const r = {};
+    const hang = async () => { click(A.win, A.win.document.querySelector('#nexo-call-screen .call-hangup')); await wait(() => !A.win.bleInterface.calls.call && !B.win.bleInterface.calls.call, 10); await sleep(1500); };
+    // (1) A llama y B contesta
+    nA.ringbackLog = []; let t0 = A.media.tones || 0;
+    callBtn(A);
+    await wait(() => st(B) === 'ringing', 20);
+    await sleep(3000);
+    r.llamando = { nativo: nA.ringbackOn === true, encendidos: nA.ringbackLog.filter(Boolean).length, pitidos_app: (A.media.tones || 0) - t0 };
+    accept(B);
+    r.en_llamada = await wait(() => st(A) === 'active' && st(B) === 'active', 15);
+    await sleep(500);
+    r.contesta_apaga = nA.ringbackOn === false;
+    await hang();
+    // (2) A llama y cuelga sin que contesten
+    nA.ringbackLog = [];
+    callBtn(A);
+    await wait(() => st(B) === 'ringing', 20);
+    await sleep(1500);
+    const on2 = nA.ringbackOn === true;
+    await hang();
+    r.colgar_apaga = on2 && nA.ringbackOn === false;
+    // (3) sin el método en el nativo: el pitido de la app
+    const plA = A.win.Capacitor.Plugins.NexoBLE, keep = plA.ringback;
+    delete plA.ringback;
+    t0 = A.media.tones || 0;
+    callBtn(A);
+    await wait(() => st(B) === 'ringing', 20);
+    await sleep(1500);
+    r.sin_nativo_pitidos = (A.media.tones || 0) - t0;
+    await hang();
+    plA.ringback = keep;
+    r.ok = r.llamando.nativo && r.llamando.encendidos === 1 && r.llamando.pitidos_app === 0 && r.en_llamada && r.contesta_apaga && r.colgar_apaga && r.sin_nativo_pitidos > 0;
+    return r;
+  },
   async 'repetida'() {
     const { nA, nB, A, B } = await setup();
     callBtn(A);

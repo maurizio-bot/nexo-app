@@ -1162,6 +1162,10 @@
     {
      "fallo": "3128 (diagnóstico S24 3067 15-11 08:41: 176 MB de NEXO en el día; una videollamada de 12,6 min por relés con el S23 en datos móviles y, ya colgada, 66 MB más en 17 min; relay.damus.io «se cae sin parar»): las partes de voz/imagen de una llamada por relés caducaban a los 7 días como un mensaje; cada reconexión de un relé (suscripción desde lo último visto − 10 min) volvía a bajar hasta 10 min de llamada. 3128: caducan a los 2 min (tras colgar una reconexión no baja nada; en llamada, como mucho 2 min) y el diagnóstico dice lo bajado de cada relé y lo repetido. llamadareles.js (contraprueba 3127: 400 partes, 610 KB por relé y por caída)",
      "prueba": "DATOS de una LLAMADA por RELÉS (3128"
+    },
+    {
+     "fallo": "3134 (dueño 15-11: «cuando marco a un contacto no escucho el clásico sonido del tuuu… tuuu…»): el tono de la llamada saliente era un pitido de la app (WebAudio, 425 Hz a volumen 0,12, como multimedia) que con la llamada ya en el modo de llamada del sistema (Telecom) no se oía. 3134: el tono lo pone el teléfono (Kotlin ringback: ToneGenerator TONE_SUP_RINGTONE por el canal de llamada: auricular, altavoz o manos libres Bluetooth), se para al contestar o colgar (y solo a los 70 s si la app se cae); sin ese método, el pitido de siempre. calls2.js tono-saliente (contraprueba 3133: el nativo nunca suena)",
+     "prueba": "llamadas: tono-saliente"
     }
    ],
    "debiles": [

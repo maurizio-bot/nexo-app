@@ -214,3 +214,39 @@ internal fun NexoBlePlugin.callScreen(on: Boolean, earpiece: Boolean) {
         }
     } catch (e: Exception) { Log.w(TAG, "Sensor de proximidad: ${e.message}") }
 }
+
+// 3134 (dueño 15-11: «cuando marco a un contacto no escucho el clásico sonido del tuuu… tuuu…»): tono de llamada SALIENTE del
+// sistema (ToneGenerator TONE_SUP_RINGTONE, el «está sonando» del país) por el canal de llamada: sale por el auricular, el altavoz o
+// el manos libres Bluetooth, como en una llamada normal (el pitido de la app iba como multimedia y con la llamada en el modo de
+// llamada del sistema no se oía). La app lo para al contestar o colgar; por si la app se cae, se para solo a los 70 s.
+private val ringbackLock = Any()
+private var ringbackGen: android.media.ToneGenerator? = null
+private val ringbackMain = android.os.Handler(android.os.Looper.getMainLooper())
+private val ringbackStop = Runnable { ringbackOff() }
+
+private fun ringbackOff() {
+    synchronized(ringbackLock) {
+        ringbackMain.removeCallbacks(ringbackStop)
+        val g = ringbackGen ?: return
+        ringbackGen = null
+        try { g.stopTone() } catch (e: Exception) { }
+        try { g.release() } catch (e: Exception) { }
+    }
+}
+
+internal fun NexoBlePlugin.ringbackImpl(call: PluginCall) {
+    try {
+        val on = call.getBoolean("on", false) == true
+        ringbackOff()
+        if (on) {
+            val g = android.media.ToneGenerator(android.media.AudioManager.STREAM_VOICE_CALL, 80)
+            if (!g.startTone(android.media.ToneGenerator.TONE_SUP_RINGTONE)) {
+                try { g.release() } catch (e: Exception) { }
+                call.reject("el tono no arrancó"); return
+            }
+            synchronized(ringbackLock) { ringbackGen = g }
+            ringbackMain.postDelayed(ringbackStop, 70_000L)
+        }
+        call.resolve(JSObject().put("on", on))
+    } catch (e: Exception) { ringbackOff(); call.reject("Tono de llamada: ${e.message}") }
+}

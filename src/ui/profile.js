@@ -440,8 +440,8 @@ function _renderAlertSettings() {
     ];
     // Ronda 2772: lo que cada fabricante esconde aparte y Android no deja comprobar (con su pantalla, si se encuentra)
     var VEND = { vivo: t('prof_vend_vivo', 'Vivo: activa «Inicio automático» y «Alto consumo en segundo plano» para NEXO'), iqoo: t('prof_vend_iqoo', 'iQOO: activa «Inicio automático» y «Alto consumo en segundo plano» para NEXO'),
-      samsung: t('prof_vend_samsung', 'Samsung: batería de NEXO «Sin restricciones» y que no esté en «Apps en suspensión»'), xiaomi: t('prof_vend_xiaomi', 'Xiaomi: activa «Inicio automático» para NEXO'),
-      redmi: t('prof_vend_redmi', 'Redmi: activa «Inicio automático» para NEXO'), poco: t('prof_vend_poco', 'Poco: activa «Inicio automático» para NEXO'), oppo: t('prof_vend_oppo', 'Oppo: permite el inicio automático de NEXO'),
+      samsung: t('prof_vend_samsung', 'Samsung: batería de NEXO «Sin restricciones» y que no esté en «Apps en suspensión»'), xiaomi: t('prof_vend_xiaomi', 'Xiaomi: activa «Inicio automático» y, en Otros permisos, «Ventanas emergentes en segundo plano» para NEXO'),
+      redmi: t('prof_vend_redmi', 'Redmi: activa «Inicio automático» y, en Otros permisos, «Ventanas emergentes en segundo plano» para NEXO'), poco: t('prof_vend_poco', 'Poco: activa «Inicio automático» y, en Otros permisos, «Ventanas emergentes en segundo plano» para NEXO'), oppo: t('prof_vend_oppo', 'Oppo: permite el inicio automático de NEXO'),
       realme: t('prof_vend_realme', 'Realme: permite el inicio automático de NEXO'), oneplus: t('prof_vend_oneplus', 'OnePlus: permite el inicio automático de NEXO'), huawei: t('prof_vend_huawei', 'Huawei: en «Inicio de apps», NEXO a mano y todo activado'),
       honor: t('prof_vend_honor', 'Honor: en «Inicio de apps», NEXO a mano y todo activado') };
     var vk = Object.keys(VEND).filter(function(k) { return String(r.vendor || '').indexOf(k) >= 0; })[0];

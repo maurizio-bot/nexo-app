@@ -26,8 +26,30 @@ function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && win
 
 var _tick = null, _ring = null, _speaker = false, _rmTimer = null;
 
-// Timbre (entrante) o tono de llamada (saliente) con WebAudio; vibración en la entrante
+// 3134 (dueño 15-11: «cuando marco a un contacto no escucho el clásico sonido del tuuu… tuuu…»): el tono de la llamada SALIENTE
+// lo pone el teléfono (Kotlin ringback: el «está sonando» del sistema por el canal de llamada, que sale por el auricular, el altavoz
+// o el manos libres Bluetooth). Antes era un pitido de la app (WebAudio, 425 Hz a volumen 0,12, como multimedia) que con la llamada
+// ya en el modo de llamada del sistema no se oía. Sin ese método en el nativo (o si falla), el pitido de siempre.
 function _startTone(incoming, vibrateOnly) {
+  _stopTone();
+  var pl = !incoming && !vibrateOnly ? _plugin() : null;
+  if (pl && typeof pl.ringback === 'function') {
+    var rg = _ring = { ctx: null, timer: null, native: true };
+    Promise.resolve(pl.ringback({ on: true })).then(function() {
+      if (_ring === rg) console.log('[CALL] Tono de llamada saliente: el del teléfono');
+    }).catch(function(e) {
+      if (_ring !== rg) return;
+      _ring = null;
+      console.warn('[CALL] Tono del teléfono: ' + (e && e.message) + ' (pitido de la app)');
+      var c = _calls(), s = c && c.state();
+      if (s && s.state === 'calling') _startWebTone(false);
+    });
+    return;
+  }
+  _startWebTone(incoming, vibrateOnly);
+}
+// Timbre (entrante) o tono de llamada (saliente) con WebAudio; vibración en la entrante
+function _startWebTone(incoming, vibrateOnly) {
   _stopTone();
   var AC = window.AudioContext || window.webkitAudioContext;
   var ctx = null;
@@ -45,6 +67,7 @@ function _startTone(incoming, vibrateOnly) {
 }
 function _stopTone() {
   if (!_ring) return;
+  if (_ring.native) { var pl = _plugin(); if (pl && typeof pl.ringback === 'function') Promise.resolve(pl.ringback({ on: false })).catch(function() {}); }
   clearInterval(_ring.timer);
   try { if (_ring.ctx) _ring.ctx.close(); } catch (e) {}
   _ring = null;
