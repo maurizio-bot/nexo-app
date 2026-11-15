@@ -3,6 +3,13 @@ import { schnorr } from '@noble/curves/secp256k1.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 // Constantes y ayudantes de NetLink (reestructuración 15-11: antes, la cabecera de net_link.js).
 var DEFAULT_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net', 'wss://nostr.mom'];
+// 3114 (dueño 15-11: «si un servidor no funciona se ocupa otro y eso debe ser algo rápido, no debe detectarse en el uso diario»): relés
+// de RESERVA, en este orden (los dos teléfonos eligen el mismo: así se siguen encontrando). Uno de los de siempre que no conecta
+// RELAY_DEAD_FAILS veces seguidas se da por caído y entra el siguiente de reserva para tener RELAY_TARGET_OPEN sanos; cuando los de
+// siempre vuelven, se sueltan. Solo con los relés por defecto (con una lista propia o en el simulador: window.NEXO_SPARE_RELAYS).
+var SPARE_RELAYS = ['wss://offchain.pub', 'wss://relay.snort.social', 'wss://nostr.oxtr.dev', 'wss://relay.nostr.bg', 'wss://nostr-pub.wellorder.net'];
+var RELAY_TARGET_OPEN = 3;
+var RELAY_DEAD_FAILS = 2;
 
 // F9 (auditoría ronda 2774): solo relés CIFRADOS (wss://). Por un relé en claro (ws://) un espía de la red vería las
 // ETIQUETAS de tu suscripción (las 'p' de tu buzón) y podría ligarte a tus contactos. Se permite ws:// únicamente a
@@ -99,4 +106,4 @@ function _reqScalar(id, day) { return _scalar(sha256(_utf8('NEXO-REQ-v1|' + _nid
 function _reqTagPub(id, day) { return bytesToHex(schnorr.getPublicKey(_reqScalar(id, day))); }
 function _reqAesKey(id) { return sha256(_utf8('NEXO-REQ-ENC-v1|' + _nid(id))); }
 
-export { DEFAULT_RELAYS, _relaySafe, KIND, BLOB_KIND, UP_MS, HELLO_MS, TICK_MS, TTL_MSG, TTL_CHUNK, TTL_HELLO, MAX_CONTENT, MAX_RELAY_FRAME, NET_CHANGE_SETTLE_MS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_FLAP_PENALTY_MS, RELAY_PROBE_MS, RELAY_IDLE_PROBE_MS, RELAY_BG_PROBE_MS, RELAY_PROBE_ID, RELAY_OFFLINE_RETRY_MS, RELAY_MIN_OTHERS, WAKE_MIN_MS, CALL_WAKE_MIN_MS, XFER_WAKE_MIN_MS, DEFAULT_SENDER, STATE_FILE, N, _nid, _relayHost, _plugin, _day, _utf8, _b64, _unb64, _cat, _rnd, _scalar, _event, _reqScalar, _reqTagPub, _reqAesKey };
+export { DEFAULT_RELAYS, SPARE_RELAYS, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, _relaySafe, KIND, BLOB_KIND, UP_MS, HELLO_MS, TICK_MS, TTL_MSG, TTL_CHUNK, TTL_HELLO, MAX_CONTENT, MAX_RELAY_FRAME, NET_CHANGE_SETTLE_MS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_FLAP_PENALTY_MS, RELAY_PROBE_MS, RELAY_IDLE_PROBE_MS, RELAY_BG_PROBE_MS, RELAY_PROBE_ID, RELAY_OFFLINE_RETRY_MS, RELAY_MIN_OTHERS, WAKE_MIN_MS, CALL_WAKE_MIN_MS, XFER_WAKE_MIN_MS, DEFAULT_SENDER, STATE_FILE, N, _nid, _relayHost, _plugin, _day, _utf8, _b64, _unb64, _cat, _rnd, _scalar, _event, _reqScalar, _reqTagPub, _reqAesKey };

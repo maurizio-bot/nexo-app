@@ -33,7 +33,7 @@
  * Relés de prueba: window.NEXO_NET_RELAYS.
  */
 import { GwLink, GW_FILE_MAX_B64 } from './gw_link.js';
-import { DEFAULT_RELAYS, _relaySafe, _nid, _plugin, STATE_FILE, RELAY_BG_PROBE_MS, TICK_MS, _cat, _utf8, _scalar, _day, _reqScalar, _reqTagPub, UP_MS, RELAY_IDLE_PROBE_MS, netEventValid, _unb64, _reqAesKey, TTL_CHUNK, TTL_MSG, _rnd, _b64, MAX_CONTENT, TTL_HELLO, _event, KIND, HELLO_MS } from './net_link_shared.js';
+import { DEFAULT_RELAYS, SPARE_RELAYS, _relaySafe, _nid, _plugin, STATE_FILE, RELAY_BG_PROBE_MS, TICK_MS, _cat, _utf8, _scalar, _day, _reqScalar, _reqTagPub, UP_MS, RELAY_IDLE_PROBE_MS, netEventValid, _unb64, _reqAesKey, TTL_CHUNK, TTL_MSG, _rnd, _b64, MAX_CONTENT, TTL_HELLO, _event, KIND, HELLO_MS } from './net_link_shared.js';
 import { e2eIdentityDH, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { hmac } from '@noble/hashes/hmac.js';
@@ -63,7 +63,13 @@ export class NetLink {
     this.gw = new GwLink(this); // dueño 13-11: puente a internet por un NEXO cercano (gw_link.js)
   }
 
-  relayUrls() {
+  // 3114: los relés de siempre + los de reserva que estén en uso
+  relayUrls() { var base = this._baseRelayUrls(), on = (this._spareOn || []).filter(function(u) { return base.indexOf(u) < 0; }); return on.length ? base.concat(on) : base; }
+  _sparePool() {
+    var cfg = (typeof window !== 'undefined') ? window.NEXO_NET_RELAYS : undefined, sp = (typeof window !== 'undefined') ? window.NEXO_SPARE_RELAYS : undefined;
+    return ((cfg === undefined ? (sp || SPARE_RELAYS) : (sp || [])) || []).filter(_relaySafe);
+  }
+  _baseRelayUrls() {
     // NEXO_NET_RELAYS puede estar SIN definir (producción normal → relés por defecto) o ser una lista EXPLÍCITA,
     // incluida la lista vacía (el simulador la usa para decir "sin internet").
     var cfg = (typeof window !== 'undefined') ? window.NEXO_NET_RELAYS : undefined;
@@ -176,6 +182,7 @@ export class NetLink {
     if (changed) self._bgConfig();
     if (!self.inTags.size && !self.reqTags.size) { self._closeAll(); return; }
     if (self._drainPending && self.inTags.size) { self._drainPending = false; self._drainBg(); }
+    self._spareCheck(); // 3114: ¿falta algún relé sano? → uno de reserva
     var urls = self.relayUrls();
     urls.forEach(function(u) {
       var r = self.relays.get(u);

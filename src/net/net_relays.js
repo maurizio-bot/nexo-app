@@ -1,4 +1,4 @@
-import { _relayHost, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_MIN_OTHERS, RELAY_FLAP_PENALTY_MS, RELAY_OFFLINE_RETRY_MS, _rnd, RELAY_PROBE_ID, RELAY_PROBE_MS, NET_CHANGE_SETTLE_MS, KIND, MAX_RELAY_FRAME, _event } from './net_link_shared.js';
+import { _relayHost, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_MIN_OTHERS, RELAY_FLAP_PENALTY_MS, RELAY_OFFLINE_RETRY_MS, _rnd, RELAY_PROBE_ID, RELAY_PROBE_MS, NET_CHANGE_SETTLE_MS, KIND, MAX_RELAY_FRAME, _event } from './net_link_shared.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 // Métodos de NetLink: RELÉS: conectar, caídas y relés inestables, cambios de red, comprobar los callados, suscribirse y lo que llega de ellos.
 // Reestructuración 15-11: movidos TAL CUAL desde net_link.js, que los une a la clase (como métodos normales).
@@ -13,7 +13,8 @@ export const netRelays = {
     try { ws = r.factory ? r.factory() : new WebSocket(url); } catch (e) { r.retryAt = Date.now() + r.backoff; return; }
     r.ws = ws; r.open = false;
     ws.onopen = function() {
-      r.open = true; r.backoff = 2000; r.openedAt = Date.now(); r.rxAt = r.openedAt;
+      r.open = true; r.backoff = 2000; r.openedAt = Date.now(); r.rxAt = r.openedAt; r.fails = 0;
+      self._spareCheck(); // 3114: volvió uno de los de siempre → quizá sobra el de reserva
       self._subscribe(r);
       if (!r.gw && self.gw && typeof self.gw.realBack === 'function') self.gw.realBack(); // 3052: soltar los puentes a tiempo
       // 3050: a los vecinos a los que dije «no tengo internet», se lo ofrezco ya
@@ -35,6 +36,7 @@ export const netRelays = {
     ws.onmessage = function(ev) { r.rxAt = Date.now(); self._onRelayMsg(url, r, ev.data); };
     ws.onclose = function() {
       var was = r.open;
+      if (!was) r.fails = (r.fails || 0) + 1; // 3114: intentos seguidos que no llegaron a abrir
       var stableFor = r.openedAt ? (Date.now() - r.openedAt) : 0; r.openedAt = 0;
       r.open = false; r.ws = null; r.sub = null;
       // P5: decide el retraso (reintento normal con backoff, o apartar el relé si flapea y quedan otros)
@@ -44,6 +46,7 @@ export const netRelays = {
       r.waits.forEach(function(fn) { fn(false); }); r.waits.clear();
       if (was && !self.online()) { console.log('[NET] Sin relés: internet no disponible'); self._peersDown(); }
       if (was && !r.gw && !self._realOpenCount() && self.gw && typeof self.gw.realLost === 'function') self.gw.realLost();
+      if (!was && r.fails >= RELAY_DEAD_FAILS) self._spareCheck(); // 3114: no conecta → reserva al momento (sin esperar al latido)
       // 3050: sin internet propio, el reintento va a su hora (no al siguiente latido de 15 s): al volver la señal se nota en ≤ 15 s
       if (!r.gw && !self._realOpenCount()) setTimeout(function() {
         if (!r.ws && self.relays.get(url) === r && Date.now() >= (r.retryAt || 0) && (self.inTags.size || self.reqTags.size)) self._connect(url);
@@ -90,6 +93,34 @@ export const netRelays = {
     r.backoff = Math.min(r.backoff * 2, 120000);
     return delay;
   },
+  // 3114 (dueño 15-11): con menos de RELAY_TARGET_OPEN relés sanos entre los de siempre y los de reserva en uso, entra el siguiente de
+  // reserva (en orden fijo). Solo si hay internet: algún relé abierto o, si caen TODOS los de siempre, la red dice que hay conexión
+  // (sin red fallan todos y no tiene sentido probar más). Cuando los de siempre vuelven a bastar, se sueltan los de reserva.
+  _spareCheck() {
+    var self = this, pool = self._sparePool(); if (!pool.length) return;
+    var base = self._baseRelayUrls(); self._spareOn = self._spareOn || [];
+    var isDown = function(u) { var r = self.relays.get(u); return !!(r && !r.open && ((r.fails || 0) >= RELAY_DEAD_FAILS || r._sidelined)); };
+    var want = Math.min(RELAY_TARGET_OPEN, base.length);
+    var healthy = base.concat(self._spareOn).filter(function(u) { return !isDown(u); }).length;
+    var allBaseDown = base.length > 0 && base.every(isDown);
+    var online = self._realOpenCount() > 0 || (allBaseDown && !(typeof navigator !== 'undefined' && navigator.onLine === false));
+    if (healthy < want && online) {
+      var next = pool.filter(function(u) { return base.indexOf(u) < 0 && self._spareOn.indexOf(u) < 0 && !isDown(u); })[0];
+      if (!next) return;
+      self._spareOn.push(next);
+      console.log('[NET] Relé de reserva ' + _relayHost(next) + ': no conecta ' + base.concat(self._spareOn).filter(isDown).map(_relayHost).join(', ')); // i18n-ok: registro
+      self._connect(next);
+      try { self._bgConfig(); } catch (e) {}
+      return;
+    }
+    var baseOpen = base.filter(function(u) { var r = self.relays.get(u); return !!(r && r.open); }).length;
+    if (self._spareOn.length && baseOpen >= want) {
+      var drop = self._spareOn.splice(0);
+      drop.forEach(function(u) { var r = self.relays.get(u); if (r && r.ws) { r.ws.onclose = null; r.ws.onopen = null; try { r.ws.close(); } catch (e) {} } self.relays.delete(u); });
+      console.log('[NET] Los relés de siempre vuelven a estar bien: suelto los de reserva (' + drop.map(_relayHost).join(', ') + ')'); // i18n-ok: registro
+      try { self._bgConfig(); } catch (e) {}
+    }
+  },
   _closeAll() { this.relays.forEach(function(r) { try { if (r.ws) r.ws.close(); } catch (e) {} }); },
   _send(r, arr) { try { if (r.ws && r.open) { r.ws.send(JSON.stringify(arr)); return true; } } catch (e) {} return false; },
   // 3011: pregunta mínima (una búsqueda por un id que no existe: todo relé contesta EOSE) a los relés abiertos; el que no dice
@@ -134,6 +165,7 @@ export const netRelays = {
     self._netChangeAt = Date.now();
     self.relays.forEach(function(r, u) {
       if (r.gw) return;   // los puentes Bluetooth no dependen de la red del teléfono
+      r.fails = 0; // 3114: los fallos de la red vieja no cuentan para la reserva
       if (r.ws) self._dropDead(u, r, 'cambio de red');
       else { r.retryAt = 0; r.backoff = 2000; }
     });
