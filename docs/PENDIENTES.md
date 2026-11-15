@@ -46,6 +46,12 @@ retoques; la prueba de fuego sería ese evento». Fecha exacta de EDC 2027 por c
   adivine nada por su tamaño); y los tres de antes: comprobar la identidad en la Wi-Fi (nativo), «Rechazar» firmado y confirmaciones
   firmadas.
 - **Difusión:** `docs/DIFUSION.md` (cómo invitar, qué decir y qué no, qué falta antes de una difusión amplia).
+- **Batería real de NEXO (captura del dueño, S24, 15-11 01:18, recién puesta la APK 3061):** NEXO 0,2 % de un 3 % del teléfono en el
+  día (Claude 1,1 %, Instagram 0,8 %); 21 min de uso (2 a la vista, 19 detrás); 0 activaciones, 0 min de bloqueo de suspensión, CPU
+  < 1 min; 11 búsquedas Bluetooth; **62.528 paquetes por Wi-Fi** (gran parte, la descarga de la APK; el resto, a vigilar). Es la línea
+  base para la meta «un día entero de batería». Siguientes: (a) la misma pantalla al final del día; (b) el martes salió en naranja
+  «Problema detectado en aplicación»: ver qué app fue; (c) **datos que usa NEXO en el diagnóstico** (bytes por Wi-Fi y datos móviles,
+  con la cuenta de Android de la propia app; nativo, después de partir NexoBlePlugin.kt).
 
 ## 🆕 15-11 (dos llamadas a la vez, pedido del dueño tras probar la 3057)
 - **Hecho (APK 3059):** 3100 invitado de grupo que no contesta → «No contestó» a los 45 s; 3101 llamada 1-a-1 + de grupo a la vez en
