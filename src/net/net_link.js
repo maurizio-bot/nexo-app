@@ -44,6 +44,7 @@ import { netTor } from './net_tor.js';
 import { netWake } from './net_wake.js';
 import { netPublish } from './net_publish.js';
 
+var REFRESH_QUIET_MS = 30000, REFRESH_GAP_MS = 60000; // 3130: deslizar no vuelve a pedir a un relé que entrega en vivo, y 1 vez/min
 export class NetLink {
   constructor(ble) {
     this.ble = ble;
@@ -525,11 +526,20 @@ export class NetLink {
   // 3095 (dueño 14-11, deslizar para actualizar en Contactos: «que haya una sincronización entre lo que veo yo y lo que hay en los
   // otros dispositivos»): comprobar los relés (el que no contesta se rehace), volver a pedir a cada relé abierto lo de los últimos
   // minutos (desde lo último visto − 10 min: lo ya recibido se descarta solo) y avisar a los contactos de que estoy en línea.
+  // 3130 (diagnóstico S24 3069 15-11 13:51, línea nueva «bajado de los relés»: 10,1 MB en 34 min, 8,8 MB YA VISTOS; deslizó 4 veces
+  // en 3 s y cada vez cada relé volvía a mandar los últimos 10 min): solo se vuelve a pedir a un relé que lleva un rato callado (el que
+  // está entregando en vivo ya lo trae todo) y como mucho una vez por minuto; la comprobación de los relés sigue en cada deslizar.
   refresh(why) {
-    var self = this, n = 0;
+    var self = this, n = 0, now = Date.now();
     if (!self.online()) return { relays: 0 };
     self._probeRelays(why || 'actualizar', 0);
-    self.relays.forEach(function(r) { if (r.open && r.ws) { self._subscribe(r); n++; } });
+    self.relays.forEach(function(r) {
+      if (!r.open || !r.ws) return;
+      n++;
+      if (now - (r.rxAt || 0) < REFRESH_QUIET_MS || now - (r.refreshAt || 0) < REFRESH_GAP_MS) return;
+      r.refreshAt = now;
+      self._subscribe(r);
+    });
     self._helloAll(true);
     return { relays: n };
   }

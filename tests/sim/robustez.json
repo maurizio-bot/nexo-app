@@ -494,6 +494,10 @@
     {
      "fallo": "3128 (diagnóstico S24 3067 15-11 08:41): una foto ✓✓ y leída en 4 s recibió una 2.ª confirmación por otro camino (el puente vivo Y) 3,5 min después y el diagnóstico la dio por «entrega_lenta 217 s» (y mandó un diagnóstico automático). 3128: solo la PRIMERA confirmación mide la entrega; las repetidas salen en la línea de tiempo como «(repetida)». diagplus.js D5c (contraprueba 3127: entrega_lenta falsa)",
      "prueba": "diagnóstico más claro (3020"
+    },
+    {
+     "fallo": "3130 (diagnóstico de …5928 15-11 13:51): «entrega_lenta 294 s» de un aviso OCULTO (la petición de estados y foto al deslizar) a un teléfono con la app cerrada; y «(repetida)» salía también en «leído» tras «entregado». 3130: lo oculto no se mide; «(repetida)» solo si ya hubo uno igual o mayor. diagplus.js D5d/D5e (contraprueba 3129: fallan)",
+     "prueba": "diagnóstico más claro (3020"
     }
    ],
    "debiles": [
@@ -995,6 +999,10 @@
     {
      "fallo": "3127 (diagnóstico S24 3067 15-11 08:01): una nota de voz de 56 KB al S23 dormido y con datos móviles tardó 138 s: la ventana ENTERA (todo el audio) se reenviaba cada 8 s; el sondeo de la 3005 solo valía para archivos de ≥ 64 trozos. 3127: un archivo pequeño por internet sin un trozo confirmado sondea 1 trozo cada 15 s (los relés guardan lo publicado). netsmall.js (contraprueba 3126: 40 trozos en 60 s; 3127: 10, y llega en 3 s al despertar). Mismo diagnóstico: un texto por un puente dormido se reintentaba cada 2 min ~10 h → el reintento por un camino que falla espera hasta 10 min (jumpfwd F4)",
      "prueba": "ARCHIVO PEQUEÑO por INTERNET a una app DORMIDA"
+    },
+    {
+     "fallo": "3130 (diagnóstico S24 3069 15-11 13:51, con la línea nueva «bajado de los relés»: 10,1 MB en 34 min, 8,8 MB YA VISTOS; deslizó 4 veces en 3 s): «deslizar para actualizar» volvía a pedir a CADA relé abierto los últimos 10 min aunque estuviera entregando en vivo. 3130: solo a un relé callado (30 s sin nada) y como mucho una vez por minuto. llamadareles.js L4 (contraprueba 3129: vuelve a pedir al que entrega en vivo)",
+     "prueba": "DATOS de una LLAMADA por RELÉS (3128"
     }
    ],
    "debiles": [

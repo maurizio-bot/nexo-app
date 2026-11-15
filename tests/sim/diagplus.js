@@ -135,6 +135,22 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
     A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:ackStatus', { detail: { msgId: 'msgREPETID1', status: 'delivered' } }));
     await sleep(1500);
     r.D5c_repetida_no_es_lenta = !syms.some((x) => /entrega_lenta .*msgREPETID1/.test(x));
+    // 3130 (diagnóstico de …5928 15-11 13:51): un aviso OCULTO (pedir estados/foto) a una app cerrada no es entrega lenta
+    biA._quietOut = biA._quietOut || new Set(); biA._quietOut.add('msgOCULTO01');
+    biA.ackSystem.pendingAcks.set('msgOCULTO01', { msgId: 'msgOCULTO01', deviceId: [...biA._deviceStates.keys()].find((k) => biA._macToNexoId.get(k) === idB) || 'bbbbbbbbbb02', resolve() {}, reject() {}, timer: null });
+    A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:ackStatus', { detail: { msgId: 'msgOCULTO01', status: 'sending' } }));
+    biA.ackSystem.pendingAcks.delete('msgOCULTO01');
+    await sleep(1800);
+    A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:ackStatus', { detail: { msgId: 'msgOCULTO01', status: 'delivered' } }));
+    await sleep(1500);
+    r.D5d_oculto_no_es_lento = !syms.some((x) => /entrega_lenta .*msgOCULTO01/.test(x));
+    // 3130: «(repetida)» solo en lo realmente repetido (leído tras entregado es lo normal)
+    let tl = ''; try { tl = String(await A.win.NEXO_diagText()); } catch (e) {}
+    const row = (tl.split('\n').find((l) => /PETID1 →/i.test(l)) || '');
+    r.D5e_fila = row.slice(0, 200);
+    const parts = row.split('→').map((x) => x.trim());
+    r.D5e_leido_no_repetida = parts.some((x) => /^\d\d:\d\d:\d\d read/.test(x) && !/repetida/.test(x)) && parts.some((x) => /^\d\d:\d\d:\d\d delivered.*\(repetida\)/.test(x)) &&
+      parts.filter((x) => /^\d\d:\d\d:\d\d delivered/.test(x)).length === 2;
   }
   // límites nuevos (sin perilla): 10 min entre envíos, 30 por día
   A.win.NEXO_AUTODIAG_GAP_MS = undefined;
@@ -145,7 +161,7 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
   r.contenido_en_diagnostico = /hola B|hola A/.test(txt);
   r.errores = logs.filter((l) => / error: /.test(l) && !/Not implemented|ResizeObserver/.test(l)).slice(0, 3);
   const ok = typeof r.emparejados_s === 'number' && r.reporte === 'enviado' && typeof r.llega_a_B_s === 'number' && r.D1_estado_y_zona && r.D1_contacto_camino_y_build && r.D1b_wifi_y_rapidos && !!r.D1c_tor && r.D2_linea_de_tiempo && r.D3_compactado && r.estado_antes_del_registro &&
-    r.D4_apagado_no_manda && typeof r.D4_par_manda_s === 'number' && r.D4_A_no_pide_por_un_pedido && r.D5_enlace_abre_cierra && r.D5_entrega_lenta && r.D5b_dormido_no_es_lento && r.D5c_repetida_no_es_lenta && r.D6_hueco_10_min && r.D6_pasa_tras_10_min && !r.contenido_en_diagnostico && !r.errores.length;
+    r.D4_apagado_no_manda && typeof r.D4_par_manda_s === 'number' && r.D4_A_no_pide_por_un_pedido && r.D5_enlace_abre_cierra && r.D5_entrega_lenta && r.D5b_dormido_no_es_lento && r.D5c_repetida_no_es_lenta && r.D5d_oculto_no_es_lento && r.D5e_leido_no_repetida && r.D6_hueco_10_min && r.D6_pasa_tras_10_min && !r.contenido_en_diagnostico && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('DIAGPLUS ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_diagplus.txt'), logs.join('\n') + '\n\n===== TEXTO =====\n' + txt.substring(0, 6000));

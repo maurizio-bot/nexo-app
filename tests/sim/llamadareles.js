@@ -7,6 +7,8 @@
 //      nueva no baja NINGUNA (3127: las 400 otra vez, ~0,5 MB por relé y por caída);
 //      durante la llamada, una caída solo vuelve a bajar los últimos 2 min (no 10);
 //  L3  el diagnóstico dice cuánto se bajó de los relés y cuánto era repetido (por relé).
+//  L4  3130 (diagnóstico S24 3069 13:51: 8,8 de 10,1 MB bajados YA VISTOS; deslizó 4 veces en 3 s): «deslizar para actualizar» solo
+//      vuelve a pedir a un relé callado (no al que entrega en vivo) y como mucho una vez por minuto.
 // Contraprueba: en la 3127 L1 y L2 fallan y no hay línea de datos de los relés.
 // Uso: node llamadareles.js [dir_build]
 'use strict';
@@ -87,7 +89,16 @@ const deps = path.join(__dirname, '.deps/node_modules');
   }
   r.L3_ok = hasLine && /bajado de los relés desde que se abrió la app \(hace 1 min\): \d+ KB, 5 eventos, 4 ya vistos \(\d+ KB\) · relay\.damus\.io \d+ KB \(repetido \d+ KB\) · nos\.lol \d+ KB \(repetido \d+ KB\)/.test(r.L3_linea || '');
 
-  const ok = r.L1_ok && r.L2_tras_colgar_no_baja && r.L2_en_llamada_solo_2_min && r.L3_ok;
+  // ---- L4: deslizar para actualizar no vuelve a pedir a los relés que entregan en vivo ----
+  const n4 = new NetLink({ localNexoId: 'nxa0000001' });
+  const subs = [];
+  n4.relays = new Map([['wss://vivo.test', { open: true, ws: {}, rxAt: Date.now() - 2000 }], ['wss://callado.test', { open: true, ws: {}, rxAt: Date.now() - 90000 }]]);
+  n4._probeRelays = () => {}; n4._helloAll = () => {}; n4.online = () => true;
+  n4._subscribe = (rl) => { subs.push(rl === n4.relays.get('wss://vivo.test') ? 'vivo' : 'callado'); };
+  for (let i = 0; i < 4; i++) n4.refresh('prueba');
+  r.L4_pedidos = subs.join(',');
+  r.L4_ok = subs.join(',') === 'callado';
+  const ok = r.L1_ok && r.L2_tras_colgar_no_baja && r.L2_en_llamada_solo_2_min && r.L3_ok && r.L4_ok;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('LLAMADARELES ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);

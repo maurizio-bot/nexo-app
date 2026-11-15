@@ -15,26 +15,31 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Invita a tus amigos a NEXO con un enlace por WhatsApp, TikTok o donde quieras: al tocarlo te agregan.
 - Si borras un contacto y lo vuelves a agregar, ves su foto de perfil de ahora, no una vieja.
 - Al guardar una foto o un vídeo en tu galería, el botón se pone verde y te dice dónde quedó.
+- Deslizar para actualizar gasta muchos menos datos.
 </es-419>
 <it-IT>
 - Invita i tuoi amici su NEXO con un link via WhatsApp, TikTok o dove vuoi: toccandolo ti aggiungono.
 - Se elimini un contatto e lo aggiungi di nuovo, vedi la sua foto profilo attuale, non una vecchia.
 - Quando salvi una foto o un video nella galleria, il pulsante diventa verde e ti dice dove è finito.
+- Scorrere per aggiornare consuma molti meno dati.
 </it-IT>
 <en-US>
 - Invite your friends to NEXO with a link on WhatsApp, TikTok or anywhere: tapping it adds you.
 - If you delete a contact and add them again, you see their current profile photo, not an old one.
 - When you save a photo or video to your gallery, the button turns green and tells you where it went.
+- Pull to refresh uses much less data.
 </en-US>
 <pt-BR>
 - Convide seus amigos para o NEXO com um link pelo WhatsApp, TikTok ou onde quiser: ao tocar, eles adicionam você.
 - Se você apagar um contato e adicioná-lo de novo, verá a foto de perfil atual dele, não uma antiga.
 - Ao salvar uma foto ou um vídeo na galeria, o botão fica verde e mostra onde ficou.
+- Deslizar para atualizar gasta muito menos dados.
 </pt-BR>
 <fr-FR>
 - Invitez vos amis sur NEXO avec un lien par WhatsApp, TikTok ou ailleurs : en le touchant, ils vous ajoutent.
 - Si vous supprimez un contact puis l'ajoutez de nouveau, vous voyez sa photo de profil actuelle, pas une ancienne.
 - Quand vous enregistrez une photo ou une vidéo dans la galerie, le bouton devient vert et indique où elle se trouve.
+- Glisser pour actualiser consomme beaucoup moins de données.
 </fr-FR>
 <!-- /APK -->
 
