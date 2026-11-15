@@ -179,10 +179,15 @@ export const BLE_CONTACT_METHODS = {
     var old = cands[0], oldNx = _normId(old.nexoId || old.deviceUUID), name = old.name || '';
     console.log('[ADD] ' + nx + ' se llama igual que ' + oldNx + ' (sin camino ahora): se pregunta si es el mismo teléfono reinstalado');
     try { window.dispatchEvent(new CustomEvent('nexo:diag:symptom', { detail: { kind: 'contacto_duplicado', info: oldNx + ' → ' + nx + ' (mismo nombre)' } })); } catch (e) {} // 3020
+    // 3135 (dueño 15-11, tras un vídeo de una cuenta de WhatsApp robada pidiendo dinero: «ese tipo de cosas no quiero que puedan pasar
+    // con nosotros»): un impostor que se pone el nombre de tu amigo heredaba su chat (y lo que tenías pendiente para él) con un «sí».
+    // Ahora la pregunta avisa del impostor y pide una SEGUNDA confirmación («¿lo comprobaste por llamada o en persona?»; si no, queda
+    // aparte), y el chat unido queda marcado en rojo «sin verificar» hasta comparar el número de seguridad (e2e_banner.js).
     setTimeout(function() {
       var ok = false;
-      try { ok = window.confirm(t('merge_reinstall_q', '«{name}» ya estaba en tus contactos con otro NEXO ID. ¿Es el mismo teléfono, reinstalado? Si dices que sí, el chat anterior y lo pendiente pasan a este y el contacto viejo se borra.').replace('{name}', name)); } catch (e) { ok = false; }
-      if (!ok) { console.log('[ADD] ' + nx + ': el usuario dice que NO es el mismo que ' + oldNx); return; }
+      try { ok = window.confirm(t('merge_reinstall_q', '«{name}» ya estaba en tus contactos con otro NEXO ID. ¿Es su mismo teléfono, reinstalado? Cuidado: un impostor puede ponerse el mismo nombre. Si dices que sí, el chat anterior y lo pendiente pasan a este y el contacto viejo se borra.').replace('{name}', name)); } catch (e) { ok = false; }
+      if (ok) { try { ok = window.confirm(t('merge_reinstall_sure', '¿Lo comprobaste con {name} por llamada o en persona? Si no estás seguro, di que no: el contacto nuevo queda aparte y no recibe nada del chat anterior.').replace('{name}', name)); } catch (e) { ok = false; } }
+      if (!ok) { console.log('[ADD] ' + nx + ': el usuario dice que NO es el mismo que ' + oldNx + ' (o no lo comprobó)'); return; }
       self._mergeContactInto(oldNx, nx).catch(function(e) { console.warn('[ADD] No se pudo unir ' + oldNx + ' con ' + nx + ': ' + ((e && e.message) || e)); });
     }, 600);
   },
@@ -232,9 +237,11 @@ export const BLE_CONTACT_METHODS = {
     if (saved === false) throw new Error('no se pudo guardar el chat unido');
     await window.vaultSaveMessages(oldNx, []);
     var all = _getBLEContacts(), oc = all.find(function(c) { return _normId(c.nexoId || c.deviceUUID) === oldNx; }), nc = all.find(function(c) { return _normId(c.nexoId || c.deviceUUID) === nx; });
-    if (oc && nc) {
-      if (oc.pinned && !nc.pinned) nc.pinned = oc.pinned;
-      nc.unreadCount = (nc.unreadCount || 0) + (oc.unreadCount || 0);
+    if (nc) {
+      if (oc && oc.pinned && !nc.pinned) nc.pinned = oc.pinned;
+      if (oc) nc.unreadCount = (nc.unreadCount || 0) + (oc.unreadCount || 0);
+      // 3135: unido por el nombre = SIN VERIFICAR (aviso rojo en el chat) hasta comparar el número de seguridad (setContactVerified)
+      if (nc.verified !== nc.publicKey || !nc.publicKey) { nc.mergeUnverified = 1; nc.mergedFrom = oldNx; }
       _saveBLEContacts(all);
     }
     [self._lostPeers, self._pendingWake, self._resendBackoff, self._nexoIdToMac].forEach(function(m) { try { if (m && typeof m.delete === 'function') m.delete(oldNx); } catch (e) {} });

@@ -232,7 +232,7 @@ export const BLE_KEY_METHODS = {
     var contacts = _getBLEContacts();
     var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
     if (!c || !c.publicKey || c.pendingKey) return false;
-    if (on) { c.verified = c.publicKey; delete c.pkHearsay; } else delete c.verified; // H3: verificar el número de seguridad confirma la clave «de oídas»
+    if (on) { c.verified = c.publicKey; delete c.pkHearsay; delete c.mergeUnverified; } else delete c.verified; // 3135: y la de «unido por el nombre» // H3: verificar el número de seguridad confirma la clave «de oídas»
     _saveBLEContacts(contacts);
     _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false, verified: !!on });
     return true;

@@ -7,6 +7,9 @@
 //  R2  (sí) el contacto viejo desaparece, el chat de B2 tiene los 3 textos y el viejo queda vacío;
 //  R3  el texto pendiente le llega a B2 y queda entregado (cifrado con la clave nueva);
 //  R4  (no) con otro contacto «B» nuevo y la respuesta «no», no se une nada.
+// 3135 (anti-suplantación, dueño 15-11): R1 la pregunta avisa del impostor y hay una SEGUNDA («¿lo comprobaste por llamada o en
+//  persona?»); R5 sí a la primera y no a la segunda → no se une; R6 el chat unido queda «sin verificar» (aviso rojo en el chat)
+//  hasta marcar verificado el número de seguridad. Contraprueba 3134: una sola pregunta sin aviso y sin marca.
 // Uso: node reinstall.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -80,8 +83,8 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   [nA, nB].forEach((n) => { radio.add(n); n.load(); });
   const A = await boot('A', nA); const B = await boot('B', nB);
   const idB = B.win.bleInterface.localNexoId.toLowerCase(), idA = A.win.bleInterface.localNexoId.toLowerCase();
-  let asked = 0, answer = true;
-  A.win.confirm = () => { asked++; return answer; };
+  let asked = 0, answer = true; const texts = [];
+  A.win.confirm = (msg) => { asked++; texts.push(String(msg || '')); return Array.isArray(answer) ? !!answer.shift() : answer; };
   A.win.bleInterface.togglePanel(); const paired = await addFound(A, 'B'); A.win.bleInterface.togglePanel();
   if (!paired) { console.log('REINSTALL ' + JSON.stringify(Object.assign(r, { resultado: 'FALLO', error: 'no empareja' }))); process.exit(1); }
   await openChatWith(A, 'B'); sendText(A, 'uno'); await sleep(2000); sendText(A, 'dos'); await sleep(2000);
@@ -103,13 +106,22 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   A.win.bleInterface.togglePanel(); const p2 = await addFound(A, 'B'); A.win.bleInterface.togglePanel();
   r.agrega_B2 = p2;
   r.R1_pregunta_s = await waitFor(() => asked > askedBefore, 10000);
+  await sleep(1500);
   r.R1_veces = asked - askedBefore;
-  await sleep(2500);
+  r.R1_avisa_impostor = /impostor/i.test(texts[askedBefore] || '');
+  r.R1_segunda = /comprobaste/.test(texts[askedBefore + 1] || '');
+  await sleep(1000);
   const contacts = A.win.vaultLoadContacts().map((c) => String(c.nexoId || c.deviceUUID || '').toLowerCase());
   r.R2_viejo_borrado = !contacts.includes(idB) && contacts.includes(idB2);
   const m2 = (await A.win.vaultLoadMessages(idB2)).filter((m) => m._own).map((m) => m.content);
   r.R2_textos_en_nuevo = ['uno', 'dos', 'tres pendiente'].every((t) => m2.includes(t));
   r.R2_viejo_vacio = (await A.win.vaultLoadMessages(idB)).length === 0;
+  // R6: unido = sin verificar (marca y aviso rojo en el chat) hasta verificar el número de seguridad
+  const cB2 = () => A.win.bleInterface.getBLEContacts().find((c) => String(c.nexoId || '').toLowerCase() === idB2) || {};
+  r.R6_marca = cB2().mergeUnverified === 1;
+  await openChatWith(A, 'B'); await sleep(800);
+  r.R6_aviso = ((A.win.document.querySelector('.e2e-text') || {}).textContent || '').slice(0, 90);
+  r.R6_aviso_ok = /NO está verificado/.test(r.R6_aviso);
   r.R3_llega_s = await waitFor(async () => (await B2.win.vaultLoadMessages(idA)).some((m) => !m._own && m.content === 'tres pendiente'), 60000);
   r.R3_entregado_s = await waitFor(async () => { const m = (await A.win.vaultLoadMessages(idB2)).find((x) => x._own && x.content === 'tres pendiente'); return m && /delivered|read/.test(m.status); }, 30000);
   // R4: B2 se va, llega B3 (otro «B») y la respuesta es «no»
@@ -124,8 +136,19 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const c4 = A.win.vaultLoadContacts().map((c) => String(c.nexoId || c.deviceUUID || '').toLowerCase());
   r.R4_pregunto = asked > askedR4;
   r.R4_no_une = c4.includes(idB2) && c4.includes(idB3) && (await A.win.vaultLoadMessages(idB2)).some((m) => m._own && m.content === 'uno');
+  // R5: otro «B» nuevo; sí a la primera pregunta y no a la segunda → no se une
+  const idB4 = 'nx0zz9b4b4'; const askedR5 = asked; answer = [true, false];
+  const cs5 = A.win.vaultLoadContacts(); cs5.push({ nexoId: idB4, deviceUUID: idB4, name: 'B', deviceId: null, addedAt: Date.now(), lastSeen: 0 }); A.win.vaultSaveContacts(cs5);
+  if (typeof A.win.bleInterface._offerReinstallMerge === 'function') A.win.bleInterface._offerReinstallMerge(idB4);
+  await waitFor(() => asked > askedR5, 10000); await sleep(2500);
+  const c5 = A.win.vaultLoadContacts().map((c) => String(c.nexoId || c.deviceUUID || '').toLowerCase());
+  r.R5_preguntas = asked - askedR5;
+  r.R5_no_une = c5.includes(idB2) && c5.includes(idB4) && (await A.win.vaultLoadMessages(idB2)).some((m) => m._own && m.content === 'uno');
+  // R6 (fin): al verificar el número de seguridad se quita la marca
+  try { A.win.bleInterface.setContactVerified(idB2, true); } catch (e) {}
+  r.R6_verificar_quita = !cB2().mergeUnverified;
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
-  const ok = r.id_distinto && r.agrega_B2 && r.R1_veces === 1 && r.R2_viejo_borrado && r.R2_textos_en_nuevo && r.R2_viejo_vacio && r.R3_llega_s !== null && r.R3_entregado_s !== null && r.R4_pregunto && r.R4_no_une && !r.errores.length;
+  const ok = r.id_distinto && r.agrega_B2 && r.R1_veces === 2 && r.R1_avisa_impostor && r.R1_segunda && r.R2_viejo_borrado && r.R2_textos_en_nuevo && r.R2_viejo_vacio && r.R3_llega_s !== null && r.R3_entregado_s !== null && r.R4_pregunto && r.R4_no_une && r.R5_preguntas === 2 && r.R5_no_une && r.R6_marca && r.R6_aviso_ok && r.R6_verificar_quita && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('REINSTALL ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_reinstall.txt'), logs.join('\n'));

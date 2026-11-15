@@ -1484,6 +1484,10 @@
     {
      "fallo": "3069: el teléfono que arranca con el estado de cifrado atrasado no lo sabía (solo lo notaba el otro). Ahora cada guardado lleva un número y se apunta aparte: al arrancar se detecta, se dice en el diagnóstico (cuántos guardados se perdieron y de cuándo) y se abren sesiones nuevas (ratchet_desync.js 7)",
      "prueba": "cifrado que vuelve ATRÁS"
+    },
+    {
+     "fallo": "3135 (dueño 15-11, tras un vídeo de una cuenta de WhatsApp robada pidiendo dinero: «ese tipo de cosas no quiero que puedan pasar con nosotros»): la pregunta «¿es el mismo teléfono, reinstalado?» (3018) unía un NEXO ID NUEVO con el MISMO NOMBRE al chat del contacto viejo con un solo «sí»: un impostor con el nombre de tu amigo heredaba su chat y lo que tenías pendiente para él. 3135: la pregunta avisa del impostor, hay una segunda («¿lo comprobaste por llamada o en persona?»; si no, queda aparte) y el chat unido queda en rojo «sin verificar» hasta marcar verificado el número de seguridad. reinstall.js R1, R5, R6 (contraprueba 3134: una sola pregunta, sin aviso ni marca)",
+     "prueba": "contacto reinstalado"
     }
    ],
    "debiles": [
