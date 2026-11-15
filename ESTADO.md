@@ -21,6 +21,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **15-11 mañana (3107–3110 = APK 3061; batería 264/264, índice 66,1):** **3107** el aviso del sistema «Hay una versión nueva» lleva
+  las novedades; **3108** reestructuración: ble_ack.js partido en 6 (217/217 piezas iguales; batería 262 + las 2 pruebas cambiadas, en
+  su versión anterior, OK); **3109** avisos de cambio de red seguidos se juntan (S23 19:46:10; `redcambio.js` W4: 6 → 2 reaperturas);
+  **3110** Ajustes consulta sola la actualización y el botón dice «Actualizar a la versión N» / «Tienes la última versión».
 - **META DEL DUEÑO (15-11): Google Play al 100 % para EDC México (febrero 2027).** Plan y requisitos de la tienda en `docs/PENDIENTES.md`
   (🎯 META): versión para la tienda (Android más reciente, sin actualizador propio, permisos justificados, firma, privacidad), prueba
   cerrada de 14 días desde mediados de diciembre, modo multitud para el festival. Difusión: `docs/DIFUSION.md`.
