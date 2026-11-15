@@ -177,6 +177,11 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 65. **Cámara bloqueada (3057, el Honor).** Si en el Honor la cámara de NEXO sigue bloqueada, en una
     videollamada debe salir en amarillo «NEXO no tiene permiso para la cámara: toca aquí para darlo»; al tocarlo se abre la ficha
     de NEXO (Permisos → Cámara → Permitir); al volver a la llamada, el S24 ve al Honor en unos segundos.
+66. **Búsqueda con una transferencia lenta (3058).** Mientras el S23 te manda algo grande por Bluetooth (o cualquier envío
+    lento), aleja y acerca otro contacto con algo pendiente: a los ~3 min tu S24 lo vuelve a encontrar y le llega (antes, nada
+    hasta que acababa la transferencia). En el diagnóstico: «Re-búsqueda aplazada … busco igual (una vuelta)».
+67. **Llamada de grupo con alguien que no contesta (APK siguiente a la 3058).** En una llamada, agrega a alguien que no va a
+    contestar: a los 45 s sale «No contestó» y desaparece de «Conectando…»; si cuelgan todos los demás, la llamada se cierra sola.
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 
