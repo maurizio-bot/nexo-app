@@ -3,26 +3,8 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
-## 🎯 META (dueño 15-11): NEXO al 100 % en Google Play para EDC México (festival de música electrónica, febrero 2027)
-«Tenerlo listo en diciembre para subirlo a Google Play; entre enero y febrero compartirlo, primeras descargas, pruebas y últimos
-retoques; la prueba de fuego sería ese evento». Fecha exacta de EDC 2027 por confirmar (suele ser a finales de febrero).
-- **Versión para la tienda (lo que Google Play exige y hoy no está):** apuntar a un Android más reciente (hoy `targetSdkVersion 34`;
-  Play pide al menos 35 y para 2027 probablemente 36) y probarlo; quitar el actualizador propio y el permiso de instalar apps
-  (`REQUEST_INSTALL_PACKAGES`, no se admite en Play); justificar los permisos delicados (pantalla completa en llamadas, ignorar el ahorro
-  de batería, servicios en primer plano de ubicación/micrófono/pantalla, ubicación) y quitar los que no hagan falta; firma de
-  publicación (llave del dueño, Play App Signing); política de privacidad y términos en `nexo-7994a.web.app`; formulario de seguridad
-  de datos; ficha en 3–5 idiomas, capturas, icono 512 px.
-- **Cuenta de Google Play (dueño):** si es personal y nueva, Google pide (regla vigente que conozco; confirmarlo al crearla) una prueba
-  cerrada con al menos 12 personas durante 14 días seguidos antes de poder publicar → empezarla a más tardar a mediados de diciembre.
-- **Para el festival (idea de Claude, a validar con el dueño):** «modo multitud» (cientos de NEXO cerca: no conectar con desconocidos
-  sin límite, primero los contactos, cuidar la batería, saltos para llegar al amigo que está lejos dentro del recinto) con prueba en el
-  simulador con muchos teléfonos; agregar por QR rápido; ubicación / punto de encuentro sin señal («¿dónde están?»); batería para un
-  día entero. Allá no habrá señal: la gente tiene que bajarla ANTES (campaña previa); Google Play permite pasar apps de teléfono a
-  teléfono sin internet (comprobarlo cuando esté publicada).
-- **Página de invitación y privacidad:** en `nexo-7994a.web.app` (Firebase, mismo proyecto que los avisos), publicada sola desde GitHub
-  (el dueño no la quiere subir a mano: hará falta un secreto de Firebase en GitHub cuando toque). Es planeación: se hace antes de Play.
-- **Calendario propuesto:** nov–mediados de dic: reestructuración, idiomas, invitación, versión para la tienda, modo multitud, pruebas
-  físicas clave → mediados de dic: cuenta y prueba cerrada → enero: publicación y primeros usuarios → febrero: campaña previa y EDC.
+## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
+(`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
 ## 🆕 15-11 tarde (plan del dueño: «primero reestructura, luego la implementación»)
 - **Revisión semanal (fin de semana, dueño 15-11):** ningún archivo > 1.000 líneas (`tests/sim/tamano.js` + `tamano.json`; cada
@@ -45,7 +27,7 @@ retoques; la prueba de fuego sería ese evento». Fecha exacta de EDC 2027 por c
 - **Esperan visto bueno del dueño (seguridad):** el punto 1 de arriba; relleno de los mensajes que pasan por puentes (que no se
   adivine nada por su tamaño); y los tres de antes: comprobar la identidad en la Wi-Fi (nativo), «Rechazar» firmado y confirmaciones
   firmadas.
-- **Difusión:** `docs/DIFUSION.md` (cómo invitar, qué decir y qué no, qué falta antes de una difusión amplia).
+- **Difusión:** `nexo-private/negocio/DIFUSION.md` (cómo invitar, qué decir y qué no, qué falta antes de una difusión amplia).
 - **Batería real de NEXO (captura del dueño, S24, 15-11 01:18, recién puesta la APK 3061):** NEXO 0,2 % de un 3 % del teléfono en el
   día (Claude 1,1 %, Instagram 0,8 %); 21 min de uso (2 a la vista, 19 detrás); 0 activaciones, 0 min de bloqueo de suspensión, CPU
   < 1 min; 11 búsquedas Bluetooth; **62.528 paquetes por Wi-Fi** (gran parte, la descarga de la APK; el resto, a vigilar). Es la línea
@@ -435,17 +417,7 @@ automático de punta a punta y que las actualizaciones sean automáticas. Orden:
 6. ✅ **(HECHO en la 2995, `btoff.js`; marcado el 11-11)** **Bluetooth apagado: dejar de insistir y avisar** (diagnóstico del dueño 10-11 17:49, teléfono Nubia, build 2984): con «Bluetooth desactivado» la app repite «Re-búsqueda»/«Auto-scan fallo» y llega a dar un «zombi» de un enlace que no existe por Bluetooth (genera diagnósticos de ruido). Debería saltarse el escaneo y los pings BLE y mostrar «Enciende Bluetooth» una vez. Además ese teléfono tiene las notificaciones denegadas (no verá ni mensajes ni el aviso de actualización) y está en la 2984 (sin actualizador: instalar a mano la 2993+ una vez).
 Cola de tareas pequeñas para cuando el dueño no está: `docs/COLA_DE_PULIDO.md`.
 
-## 🧭 Estrategia y negocio (conversación del dueño 10-11) — detalle en `docs/CONVERSACION_ESTRATEGIA_2026-11-10.md`
-- 💡 **Plan de pago con servidor propio y buzón garantizado** (idea del dueño aprobada: «muy buena, tiene sustentabilidad, que no
-  se nos olvide»): opcional, para empresas y como extra de Plus; continuidad como WhatsApp sin quitar lo gratis. Falta diseño
-  técnico corto, precio y revisar obligaciones sobre datos. Va en NEXO Equipos de `PLAN_NEGOCIO.md` §4.
-- 🎓 **Siembra en universidades** con conocidos del dueño: antes, decidir diagnóstico automático encendido/apagado, avisar el
-  muro de iPhone y medir entrega, no instalaciones.
-- 🏢 **Piloto con una empresa o un evento** (10 a 20 personas, un mes): el dueño aún no conoce una empresa.
-- 🛒 **Ruta a Google Play:** compilación de producción firmada, política de privacidad, seguridad de datos con el diagnóstico,
-  permisos delicados, regla de 12 testers/14 días (verificar) y **búsqueda de marca** («Nexo» es una empresa cripto).
-- 🔁 **Difusión sin internet** (pasar el APK entre teléfonos): idea sin validar; revisar política de Play.
-- Hilos por platicar: el «plus» de NEXO en una frase, qué promesa va primero, simplificar antes de agregar, código abierto.
+## 🧭 Estrategia y negocio — en el repositorio PRIVADO `maurizio-bot/nexo-private` (`negocio/PENDIENTES_NEGOCIO.md`).
 
 ## 📬 Entrega OFFLINE sin servidor propio (diseño 08/09-11; dueño: «vamos a estudiarlo bien, no quiero fallas») — Fase A ✅ (2967) · Fase B ✅ (2969/2970) · Fase C ✅ (2971) · Fase D ✅ (2972) · E pendiente
 Docs: `docs/DISENO_ENTREGA_OFFLINE_2026-11-08.md` (diseño v2: cita FCM, cifrar-una-vez, blob compartido, fan-out por
@@ -986,7 +958,7 @@ Siguen dependiendo del dueño: pagos con saldo real/recargas (socio/proveedor #1
 índice de robustez (medición inicial **45,3 sobre 100**; lo que más baja: casi nada confirmado en los teléfonos desde la
 2765) y rutina diaria. Con la 2772: **44**. Con la 2774 (auditoría de seguridad): **41,8** — baja porque se añadió un área nueva y exigente
 «Seguridad frente a ataques» (peso 10) con 9 puntos débiles abiertos que sacó la auditoría; no es regresión (la
-seguridad mejoró: 8 arreglos + 16 pruebas, batería 51/51, Kotlin 87/87; ver `docs/AUDITORIA.md` y §0c). Con la 2777
+seguridad mejoró: 8 arreglos + 16 pruebas, batería 51/51, Kotlin 87/87; ver `nexo-private/seguridad/AUDITORIA.md` y §0c). Con la 2777
 (fase 2, C1 arreglado): **42,1** — las confirmaciones (✓✓) ya van firmadas con la pareja (un punto débil grave menos,
 una prueba más), batería 52/52, Kotlin 90/90. Informe del dueño: 2778 (llamadas: menos ruido, pantalla al entrar llamada,
 contestar deslizando) y 2779 (alta por ID: agregar a alguien lejano con su NEXO ID + solicitudes aceptar/eliminar; batería
@@ -1032,7 +1004,7 @@ Lo que más falta ya no es código nuevo, sino confirmar en el mundo real lo que
   negocio y de "Cobros".
 
 ## 0c. Auditoría de seguridad y robustez (ronda 2774): lo que queda
-Informe completo, modelo de amenazas y plan: `docs/AUDITORIA.md`. En la 2774 se arreglaron 8 cosas (Wi-Fi: saludo
+Informe completo, modelo de amenazas y plan: `nexo-private/seguridad/AUDITORIA.md`. En la 2774 se arreglaron 8 cosas (Wi-Fi: saludo
 gigante, avalancha, archivo abortado, inundación de escaneo; JSON anidado que cerraba la app; intent de llamada
 exportado; anuncio con ID mal formado; grupos que reescribían la lista y colaban claves) y la recuperación del WebView.
 Queda, por prioridad (cada uno necesita un cambio de protocolo y probarse en los dos teléfonos del dueño):
@@ -1205,7 +1177,7 @@ cerrado — en cuyo caso el #87 de mensajes ya está, y solo queda la llamada ce
   Rechazar (2763). Falta: probar en teléfonos (eco, volumen, Bluetooth con MTU pequeño).
 - **Videollamadas**: hechas en la 2758 (mismo Wi-Fi). Falta: por Wi-Fi Direct (hoy su enlace es por transferencia,
   no continuo), probar en teléfonos. Cámara trasera: hecho (botón Girar, 2762).
-- **Pagos**: investigación en `docs/PAGOS_PROPUESTA.md` (regla de oro: lo que exige licencia es CUSTODIAR el dinero; si
+- **Pagos**: investigación en `nexo-private/negocio/PAGOS_PROPUESTA.md` (regla de oro: lo que exige licencia es CUSTODIAR el dinero; si
   NEXO nunca toca fondos, es "mensajería de cobros" sin licencia). **Fase 1 HECHA en la 2787**: el adjunto **"Cobro"**
   en el menú (💵) — importe, moneda, concepto y "cómo te pagan" (alias/CBU, enlace/QR de Mercado Pago/PayPal, o
   efectivo); viaja cifrado como cualquier mensaje (Bluetooth/Wi-Fi/Jump/internet); tarjeta en el chat con "Copiar datos"
@@ -1217,7 +1189,7 @@ cerrado — en cuyo caso el #87 de mensajes ya está, y solo queda la llamada ce
   Fase 2.
 - **Stream** (vídeos tipo TikTok + estados de contactos, gestos: tap arriba izq. vídeos, arriba der. estados, doble tap
   "me gusta", deslizar der→izq comentarios, izq→der volver): **SIN DECIDIR** (sí/no; solo cercanos o con servidor).
-  **Propuesta en `docs/STREAM_PROPUESTA.md`** (27-10): los 3 caminos (A solo-cercanos / B buzón de relés / C servidor);
+  **Propuesta en `nexo-private/negocio/STREAM_PROPUESTA.md`** (27-10): los 3 caminos (A solo-cercanos / B buzón de relés / C servidor);
   recomendación = empezar por **"Estados" entre contactos, E2E, 24 h** (sin servidor, un tipo de mensaje con caducidad,
   como el cobro); el feed público global necesitaría servidor (C). Falta que el dueño decida arquitectura y alcance.
 - **Chats de grupo**: hechos en la 2758 (textos y adjuntos de hasta ~1 MB); HD de vídeo y archivos grandes (hasta
@@ -1292,7 +1264,7 @@ cerrado — en cuyo caso el #87 de mensajes ya está, y solo queda la llamada ce
 1. Stream: ¿sí o no? ¿solo cercanos o con servidor?
 2. ~~Internet: punto de encuentro~~ — decidido el 23-10: relés públicos + Tor, sin servidor propio por ahora
    (ronda 2739). Queda abierto si más adelante se quiere un servidor propio.
-3. Pagos: modelo y país. Propuesta en `docs/PLAN_NEGOCIO.md` (25-10), con las decisiones de su §8: país, ¿código
+3. Pagos: modelo y país. Propuesta en `nexo-private/negocio/PLAN_NEGOCIO.md` (25-10), con las decisiones de su §8: país, ¿código
    abierto?, empresa, nombre del módulo de pagos, precio de NEXO Plus.
 4. iPhone: ¿cuenta de Apple?
 5. ~~Identificador Bluetooth rotativo~~ — decidido el 24-10 ("empieza por el 4"): hecho en la ronda 2756 con la

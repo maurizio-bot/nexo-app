@@ -270,4 +270,4 @@ Resumen de lo cerrado en esta tanda (todo con batería verde y APK): seguridad �
 hombre en el medio al agregar por número (2949), clave «de oídas» de tarjetas/grupos (2950), control sin
 autenticar (2953); Bluetooth — Fénix no martilla un enlace atascado (2951) y la regla «el usuario es dueño de
 la radio» (2952). El análisis de la lentitud está en `docs/DIAGNOSTICO_BT_LENTITUD_2026-11-07.md` y el de
-seguridad en `docs/SEGURIDAD_ATAQUE_2026-11-07.md`.
+seguridad en `nexo-private/seguridad/SEGURIDAD_ATAQUE_2026-11-07.md`.

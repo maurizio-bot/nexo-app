@@ -3,7 +3,9 @@
 App de mensajería P2P por Bluetooth LE (Capacitor 5 + plugin nativo Kotlin `plugins/nexo-ble`).
 El dueño habla español: responder en español.
 
-**LO PRIMERO: leer `docs/PLAN.md`** (plan maestro con etapas, fechas y la meta EDC México feb 2027; el dueño delega en Claude el orden y el ritmo) **y `ESTADO.md`** (en la raíz) — es el resumen vivo del estado y el punto de encuentro entre el
+**LO PRIMERO: leer `nexo-private/negocio/PLAN.md`** (repositorio PRIVADO `maurizio-bot/nexo-private`, desde el 15-11: conectarlo a la
+sesión con add_repo y clonarlo en `/home/user/nexo-private`; ahí van el plan, lo de negocio y las auditorías de seguridad, que NO
+deben volver al público) (plan maestro con etapas, fechas y la meta EDC México feb 2027; el dueño delega en Claude el orden y el ritmo) **y `ESTADO.md`** (en la raíz) — es el resumen vivo del estado y el punto de encuentro entre el
 Claude de la compu y el Claude del teléfono. Mantenerlo actualizado al terminar cada bloque (es lo que lee el otro Claude).
 
 Antes de empezar, leer `docs/PROGRESO.md` (estado, historial de builds y pendientes),

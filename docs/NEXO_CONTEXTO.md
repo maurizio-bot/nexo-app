@@ -7,7 +7,7 @@
 > Actualizar la sección "Estado actual" cada vez que se cierre un avance importante.
 > **Ojo (22-oct, build 2714):** las secciones 4 y 5 describen el código de `f9f35ab`. Desde entonces se corrigió
 > casi todo lo que listan (hallazgo A, rendimiento, cifrado, Jump, Wi-Fi Direct...). El estado al día está en
-> `docs/PROGRESO.md` y `docs/SEGURIDAD.md`; este documento vale sobre todo por la visión (1–3) y Fénix (7).
+> `docs/PROGRESO.md` y `nexo-private/seguridad/SEGURIDAD.md`; este documento vale sobre todo por la visión (1–3) y Fénix (7).
 
 ---
 

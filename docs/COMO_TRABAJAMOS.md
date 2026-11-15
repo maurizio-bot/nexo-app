@@ -75,7 +75,7 @@ recomendación de Claude y qué pasa si se espera. El dueño contesta con una le
 dueño en su teléfono y, para seguridad, con una auditoría humana externa.
 
 ## 5. Estacionamiento de ideas (para las ideas que llegan de repente)
-La idea no se descarta ni se construye al momento: **se anota en `docs/IDEAS.md` con tres preguntas** (¿para quién?, ¿qué
+La idea no se descarta ni se construye al momento: **se anota en `nexo-private/negocio/IDEAS.md` con tres preguntas** (¿para quién?, ¿qué
 problema resuelve?, ¿cómo sabremos que funcionó?), Claude da su opinión y una opción de tamaño, y el dueño decide si pasa a la
 cola, se pospone o se descarta. Si el dueño dice «urgente», se hace primero sin trámite.
 
