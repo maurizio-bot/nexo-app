@@ -30,6 +30,9 @@ actualizarlos al terminar cada bloque de trabajo.
 - **Versiones viejas (dueño 14-11):** la app aún no está en la tienda; se arregla la ÚLTIMA versión. No dar peso a los teléfonos con
   versiones anteriores (sí o sí tendrán que actualizar) ni engordar la app con compatibilidad o avisos pensados para ellas.
 - Para cambios que no deben generar APK (solo docs), añadir `[skip ci]` al mensaje del commit.
+- **Novedades de cada APK (dueño 15-11):** antes de entregar una APK, escribir en `NOVEDADES.md` (bloque `<!-- APK -->`) lo nuevo,
+  breve y para el usuario, en español, italiano e inglés (formato de Google Play, ≤ 500 caracteres por idioma). La app lo muestra
+  junto al botón de actualizar; tras publicar, pasar el bloque al historial con su número.
 - Método obligatorio: reproducir el fallo en `tests/sim`, corregir, confirmar con la batería y solo
   entonces subir. No afirmar nada no comprobado. Respetar la estructura existente (NEXO ID, vault).
 - No usar `npm run build:web` en el repo: borra `dist/`, que tiene archivos versionados.

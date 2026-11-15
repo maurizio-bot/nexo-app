@@ -37,7 +37,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
       win.__upd.finish = () => { const u = win.__upd, b = u.dl; if (!b) return; u.ready = b; u.dl = 0; nA.emit('onUpdateProgress', { pct: 100 }); nA.emit('onUpdateReady', { build: b }); if (u.pending) { const f = u.pending; u.pending = null; f({ ready: true }); } };
       pl.updateNotify = async (a) => { win.__upd.notifs.push(a && a.build); };
       pl.updateNotifyCancel = async () => { win.__upd.cancels++; };
-      pl.updateCheck = async () => { win.__upd.checks++; return win.__upd.nextCheck; };
+      pl.updateCheck = async (a) => { win.__upd.checks++; win.__upd.lastArgs = a || null; return win.__upd.nextCheck; };
       pl.updateInstall = (a) => {
         const u = win.__upd, mode = a && a.mode, b = a && a.build;
         if (mode === 'status') return Promise.resolve({ ready: u.ready === b, downloading: u.dl === b });
@@ -185,8 +185,33 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.al_ya_no_aplicar_quita_aviso = win.__upd.cancels > canB;
   vis = 'visible';
 
+  // (8) 3105 (dueño 15-11: «donde está el botón de actualizar, lo que se tocó y lo que se actualizó… una breve descripción»): las
+  //     novedades de la versión nueva (descripción de su lanzamiento, formato de Google Play por idioma) en el aviso («¿Qué trae?») y en
+  //     Ajustes, y las de la versión instalada («Lo nuevo de tu versión»). Siempre como texto.
+  const NOTES = '<es-419>\n- Dos llamadas a la vez <img src=x>\n</es-419>\n<it-IT>\n- Due chiamate insieme\n</it-IT>\n<en-US>\n- Two calls at once\n</en-US>';
+  win.__upd.ready = 0;
+  win.__upd.nextCheck = { build: 2007, tag: 'nightly-2007', url: URL_NEW.replace('2005', '2007'), size: 26000000, notes: NOTES, curNotes: '<es-419>\n- Lo de la 2000\n</es-419>' };
+  win.localStorage.removeItem('nexo_upd_snooze');
+  await U().check(true); await sleep(300);
+  r.novedades_pide_actual = !!(win.__upd.lastArgs && win.__upd.lastArgs.current === 2000);
+  const bnN = banner(), wn = bnN && bnN.querySelector('#nexo-update-whatsnew');
+  r.novedades_aviso = !!wn && /Qué trae/.test(wn.textContent);
+  if (wn) wn.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  await sleep(200);
+  const shN = doc.getElementById('nexo-update-notes-sheet');
+  r.novedades_hoja = !!shN && /2007/.test(shN.textContent) && /Dos llamadas a la vez/.test(shN.textContent) && !/Two calls/.test(shN.textContent) && !shN.querySelector('img');
+  if (shN) shN.remove();
+  const oldS = doc.getElementById('nexo-settings-sheet'); if (oldS && oldS.parentNode) oldS.parentNode.removeChild(oldS);
+  win.dispatchEvent(new win.CustomEvent('nexo:ui:settings')); await sleep(400);
+  const s9 = doc.getElementById('nexo-settings-sheet'), nb = s9 && s9.querySelector('#nexo-updater-notes'), nt = (nb && nb.textContent) || '';
+  r.novedades_ajustes = /Lo nuevo en la versión 2007/.test(nt) && /Dos llamadas a la vez/.test(nt) && /Lo nuevo de tu versión \(2000\)/.test(nt) && /Lo de la 2000/.test(nt) && !nb.querySelector('img');
+  r.novedades_idioma = U().notesText(NOTES, 'it') === '- Due chiamate insieme' && U().notesText(NOTES, 'en') === '- Two calls at once' && /Dos llamadas/.test(U().notesText(NOTES, 'fr')) && U().notesText('**Full Changelog**: https://x', 'es') === '';
+  win.__upd.nextCheck = { build: 2008, tag: 'nightly-2008', url: URL_NEW.replace('2005', '2008'), size: 26000000 };   // un lanzamiento sin novedades
+  await U().check(true); await sleep(300);
+  r.sin_novedades_sin_enlace = !!banner() && !banner().querySelector('#nexo-update-whatsnew');
+
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|Assembly timeout|net::ERR|fetch/.test(l)).slice(0, 5);
-  const keys = ['gancho', 'consulta_sola', 'aviso_con_numero', 'disponible', 'ahora_no_quita', 'auto_limitada', 'manual_consulta', 'silenciado_no_vuelve', 'bajada_fallida_reintentable', 'descarga', 'sin_permiso', 'reintento_posible', 'instala', 'mismo_numero_nada', 'dev_no_consulta', 'apagado_no_consulta', 'apagado_sin_aviso', 'tarjeta_ajustes', 'buscar_ahora_informa', 'boton_pasa_a_descargar', 'boton_descarga', 'reabrir_sigue_descargando', 'no_vuelve_a_bajar', 'avisa_al_terminar', 'aviso_solo_instalar', 'abre_ya_con_instalar', 'instalar_sin_bajar', 'visible_sin_aviso_sistema', 'ya_bajada_no_avisa_nueva', 'aviso_al_salir', 'una_vez_por_numero', 'numero_nuevo_avisa', 'boton_aviso_instala', 'instalar_quita_aviso', 'al_ya_no_aplicar_quita_aviso'];
+  const keys = ['gancho', 'consulta_sola', 'aviso_con_numero', 'disponible', 'ahora_no_quita', 'auto_limitada', 'manual_consulta', 'silenciado_no_vuelve', 'bajada_fallida_reintentable', 'descarga', 'sin_permiso', 'reintento_posible', 'instala', 'mismo_numero_nada', 'dev_no_consulta', 'apagado_no_consulta', 'apagado_sin_aviso', 'tarjeta_ajustes', 'buscar_ahora_informa', 'boton_pasa_a_descargar', 'boton_descarga', 'reabrir_sigue_descargando', 'no_vuelve_a_bajar', 'avisa_al_terminar', 'aviso_solo_instalar', 'abre_ya_con_instalar', 'instalar_sin_bajar', 'visible_sin_aviso_sistema', 'ya_bajada_no_avisa_nueva', 'aviso_al_salir', 'una_vez_por_numero', 'numero_nuevo_avisa', 'boton_aviso_instala', 'instalar_quita_aviso', 'al_ya_no_aplicar_quita_aviso', 'novedades_pide_actual', 'novedades_aviso', 'novedades_hoja', 'novedades_ajustes', 'novedades_idioma', 'sin_novedades_sin_enlace'];
   const ok = typeof r.aviso_s === 'number' && keys.every((k) => r[k] === true) && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('UPDATER ' + JSON.stringify(r));

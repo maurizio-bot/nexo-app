@@ -16,8 +16,31 @@ object UpdateSpec {
     const val REPO_PATH_PREFIX = "/maurizio-bot/nexo-app/releases/download/nightly-"
     const val MAX_APK_BYTES = 150L * 1024 * 1024   // ~6 veces un APK actual (25 MB): más que eso no es nuestro APK
     const val MAX_JSON_BYTES = 1_000_000           // la lista de lanzamientos no pasa de unos cientos de KB
+    const val MAX_NOTES_CHARS = 4000               // novedades de una versión (Google Play admite 500 por idioma; 3 idiomas + margen)
 
-    data class Latest(val build: Int, val tag: String, val url: String, val size: Long)
+    data class Latest(val build: Int, val tag: String, val url: String, val size: Long, val notes: String = "")
+
+    /** 3105 (dueño 15-11: «que venga una breve descripción de lo que se hizo… para cuando ya se suba a Google Play»): las NOVEDADES de
+     *  una versión son la descripción de su lanzamiento (el workflow la toma de NOVEDADES.md). Solo si viene en el formato de Google
+     *  Play (bloques por idioma `<es-419>…</es-419>`): los lanzamientos viejos traen notas automáticas de GitHub, que no son para el
+     *  usuario. Se recorta y se quitan los caracteres de control (la parte web la muestra como texto, nunca como HTML). */
+    fun cleanNotes(body: String?): String {
+        if (body == null) return ""
+        if (!Regex("<(es|it|en)(-[A-Za-z0-9]{2,3})?>").containsMatchIn(body)) return ""
+        val t = body.replace("\r", "").filter { it == '\n' || it == '\t' || it >= ' ' }.trim()
+        return if (t.length > MAX_NOTES_CHARS) t.substring(0, MAX_NOTES_CHARS) else t
+    }
+
+    /** Novedades del lanzamiento `nightly-<build>` (la versión instalada, para «Lo nuevo de tu versión»); "" si no está. */
+    fun notesOf(json: String?, build: Int?): String {
+        if (json == null || build == null || json.length > MAX_JSON_BYTES) return ""
+        val arr = try { JSONArray(json) } catch (e: Exception) { return "" }
+        for (i in 0 until arr.length()) {
+            val rel = arr.optJSONObject(i) ?: continue
+            if (parseBuild(rel.optString("tag_name", "")) == build) return cleanNotes(rel.optString("body", ""))
+        }
+        return ""
+    }
 
     /** «nightly-2984» → 2984; cualquier otra cosa → null. */
     fun parseBuild(tag: String?): Int? {
@@ -58,7 +81,7 @@ object UpdateSpec {
             if (!isAllowedStartUrl(url)) continue
             val size = asset.optLong("size", 0L)
             if (size <= 0L || size > MAX_APK_BYTES) continue
-            best = Latest(b, tag, url, size)
+            best = Latest(b, tag, url, size, cleanNotes(rel.optString("body", "")))
         }
         return best
     }

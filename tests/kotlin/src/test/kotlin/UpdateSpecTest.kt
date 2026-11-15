@@ -49,9 +49,27 @@ class UpdateSpecTest {
         assertFalse(UpdateSpec.isAllowedRedirect(null))
     }
 
-    private fun rel(tag: String, name: String = "nexo-$tag.apk", size: Long = 25_000_000, draft: Boolean = false, url: String? = null): String {
+    private fun rel(tag: String, name: String = "nexo-$tag.apk", size: Long = 25_000_000, draft: Boolean = false, url: String? = null, body: String? = null): String {
         val u = url ?: "$base/$tag/$name"
-        return """{"tag_name":"$tag","draft":$draft,"prerelease":true,"assets":[{"name":"$name","size":$size,"browser_download_url":"$u"}]}"""
+        val b = if (body == null) "" else ",\"body\":" + org.json.JSONObject.quote(body)
+        return """{"tag_name":"$tag","draft":$draft,"prerelease":true$b,"assets":[{"name":"$name","size":$size,"browser_download_url":"$u"}]}"""
+    }
+
+    // 3105 (dueño 15-11): novedades de cada versión (descripción del lanzamiento, formato de Google Play por idioma)
+    @Test fun novedadesSoloEnFormatoDeGooglePlay() {
+        val play = "<es-419>\n- Dos llamadas a la vez\n</es-419>\n<en-US>\n- Two calls at once\n</en-US>"
+        val json = "[" + listOf(rel("nightly-3060", body = play), rel("nightly-3059", body = "**Full Changelog**: https://github.com/x/y/compare/a...b")).joinToString(",") + "]"
+        val l = UpdateSpec.pickLatest(json)!!
+        assertEquals(3060, l.build)
+        assertTrue(l.notes.contains("Dos llamadas a la vez"))
+        assertEquals("", UpdateSpec.notesOf(json, 3059))          // notas automáticas de GitHub: no son para el usuario
+        assertTrue(UpdateSpec.notesOf(json, 3060).contains("Two calls"))
+        assertEquals("", UpdateSpec.notesOf(json, 3001))          // no está en la lista
+        assertEquals("", UpdateSpec.notesOf(json, null))
+        assertEquals("", UpdateSpec.cleanNotes(null))
+        assertEquals(UpdateSpec.MAX_NOTES_CHARS, UpdateSpec.cleanNotes("<es>" + "x".repeat(9000)).length)  // recortada
+        assertFalse(UpdateSpec.cleanNotes("<es>\u0007hola\r\n</es>").contains("\u0007"))                  // sin caracteres de control
+        assertEquals("", UpdateSpec.pickLatest("[" + rel("nightly-3061") + "]")!!.notes)                     // sin descripción
     }
 
     @Test fun eligeElNightlyDeNumeroMasAlto() {

@@ -10,10 +10,10 @@
  * - Lo único que sale del teléfono es una petición pública a GitHub (sin ningún dato del usuario; GitHub ve la IP, como cualquier web).
  * Perillas de prueba (tests/sim): window.NEXO_BUILD, NEXO_UPDATER, NEXO_UPDATER_GAP_MS.
  */
-import { t } from './i18n.js';
+import { t, getLang } from './i18n.js';
 import { _showToast } from './ble_helpers.js';
 
-var KEY_ON = 'nexo_updater', KEY_LAST = 'nexo_upd_last', KEY_AVAIL = 'nexo_upd_avail', KEY_SNOOZE = 'nexo_upd_snooze', KEY_NOTIFIED = 'nexo_upd_notified';
+var KEY_ON = 'nexo_updater', KEY_LAST = 'nexo_upd_last', KEY_AVAIL = 'nexo_upd_avail', KEY_SNOOZE = 'nexo_upd_snooze', KEY_NOTIFIED = 'nexo_upd_notified', KEY_CUR = 'nexo_upd_curnotes';
 var GAP_MS = 6 * 60 * 60 * 1000;      // una consulta cada 6 h como mucho
 var SNOOZE_MS = 24 * 60 * 60 * 1000;  // «Ahora no» calla ESE número un día
 var _busy = false, _pct = -1, _listening = false;
@@ -38,6 +38,24 @@ export function updaterAvailable() { var a = _json(KEY_AVAIL), me = updaterBuild
 function _gap() { var v = (typeof window !== 'undefined') ? window.NEXO_UPDATER_GAP_MS : undefined; return (typeof v === 'number' && v >= 0) ? v : GAP_MS; }
 function _snoozed(a) { var s = _json(KEY_SNOOZE); return !!(s && a && s.build === a.build && typeof s.until === 'number' && Date.now() < s.until); }
 
+// 3105 (dueño 15-11: «donde está el botón de actualizar, lo que se tocó y lo que se actualizó… una breve descripción… para tener ya
+// un antecedente para cuando se suba a Google Play»): las NOVEDADES de cada versión son la descripción de su lanzamiento (el workflow
+// la toma de NOVEDADES.md), en el formato de Google Play: un bloque por idioma `<es-419>…</es-419>`, `<it-IT>…`, `<en-US>…`. Se
+// muestra el del idioma de la app (si falta, el español). Siempre como TEXTO (nunca HTML).
+export function updaterNotesText(raw, lang) {
+  raw = String(raw || ''); lang = String(lang || 'es').slice(0, 2).toLowerCase();
+  var re = /<([a-z]{2})(?:-[A-Za-z0-9]{2,3})?>([\s\S]*?)<\/\1(?:-[A-Za-z0-9]{2,3})?>/g, m, by = {};
+  while ((m = re.exec(raw))) if (!by[m[1]]) by[m[1]] = m[2].trim();
+  return by[lang] || by.es || by.en || '';
+}
+function _lang() { try { return getLang(); } catch (e) { return 'es'; } }
+/** Novedades de la versión nueva (la que se ofrece) y de la instalada, ya en el idioma de la app; '' si no hay. */
+export function updaterNotes() {
+  var a = updaterAvailable(), c = _json(KEY_CUR), me = updaterBuildNum();
+  return { next: a ? updaterNotesText(a.notes, _lang()) : '', nextBuild: a ? a.build : null,
+    current: (c && me != null && c.build === me) ? updaterNotesText(c.notes, _lang()) : '', currentBuild: me };
+}
+
 /** Consulta si hay una versión nueva. manual=true: ignora el límite de tiempo y el interruptor. Resuelve {state, build?}:
  *  'newer' | 'current' | 'error' | 'unsupported' | 'skipped'. */
 export function updaterCheck(manual) {
@@ -46,9 +64,10 @@ export function updaterCheck(manual) {
   if (!manual && !updaterEnabled()) return Promise.resolve({ state: 'skipped' });
   if (!manual && Date.now() - (parseInt(_lsGet(KEY_LAST), 10) || 0) < _gap()) { _renderBanner(); return Promise.resolve({ state: 'skipped' }); }
   _lsSet(KEY_LAST, String(Date.now()));
-  return Promise.resolve(pl.updateCheck()).then(function(r) {
+  return Promise.resolve(pl.updateCheck({ current: me })).then(function(r) {
+    if (r && typeof r.curNotes === 'string' && r.curNotes) _lsSet(KEY_CUR, JSON.stringify({ build: me, notes: r.curNotes.slice(0, 4000) })); // 3105
     if (r && typeof r.build === 'number' && r.build > me && /^https:\/\//.test(String(r.url || ''))) {
-      _lsSet(KEY_AVAIL, JSON.stringify({ build: r.build, url: r.url, size: r.size || 0 }));
+      _lsSet(KEY_AVAIL, JSON.stringify({ build: r.build, url: r.url, size: r.size || 0, notes: typeof r.notes === 'string' ? r.notes.slice(0, 4000) : '' }));
       console.log('[UPDATER] hay una versión nueva: ' + r.build + ' (esta es la ' + me + ')');
       _renderBanner(); _emit(); _maybeNotify(); _refreshState();
       return { state: 'newer', build: r.build };
@@ -132,8 +151,26 @@ function _settingsView() {
   if (a) return { label: _downloadLabel(a), status: t('upd_new', 'Hay una versión nueva de NEXO') + ' (' + a.build + ')', disabled: false };
   return { label: t('upd_check_now', 'Buscar ahora'), status: t('upd_current', 'Tu versión') + ': ' + (me != null ? me : 'dev'), disabled: false };
 }
+// 3105: «Lo nuevo en la versión N» (la que se ofrece, encima del botón) y «Lo nuevo de tu versión» (la instalada)
+function _notesBlock(title, text) {
+  var d = document.createElement('div');
+  d.className = 'nexo-upd-notes';
+  d.style.cssText = 'margin:6px 0 10px;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,0.06);';
+  var h = document.createElement('div'); h.style.cssText = 'font-weight:700;font-size:13px;margin-bottom:4px;'; h.textContent = title;
+  var b = document.createElement('div'); b.style.cssText = 'font-size:13px;line-height:1.45;white-space:pre-wrap;opacity:0.92;'; b.textContent = text;
+  d.appendChild(h); d.appendChild(b);
+  return d;
+}
+function _renderNotes() {
+  var box = document.getElementById('nexo-updater-notes'); if (!box) return;
+  var n = updaterNotes();
+  box.innerHTML = '';
+  if (n.next) box.appendChild(_notesBlock(t('upd_notes_next', 'Lo nuevo en la versión') + ' ' + n.nextBuild, n.next));
+  if (n.current) box.appendChild(_notesBlock(t('upd_notes_current', 'Lo nuevo de tu versión') + ' (' + n.currentBuild + ')', n.current));
+}
 function _syncSettings() {
   try {
+    _renderNotes();
     var btn = document.getElementById('nexo-updater-now'), st = document.getElementById('nexo-updater-status');
     if (!btn) return;
     var v = _settingsView();
@@ -177,15 +214,41 @@ function _renderBanner() {
       : ready ? ('NEXO ' + a.build + ' ' + t('upd_ready', 'descargada'))
       : (t('upd_new', 'Hay una versión nueva de NEXO') + ' (' + a.build + ')' + mb);
     var btnCss = 'background:#fff;color:#102;border:none;border-radius:10px;padding:8px 12px;font-weight:700;';
-    b.innerHTML = '<span style="font-size:18px;">⬆️</span><span style="flex:1;min-width:0;" id="nexo-update-text"></span>' +
+    var nn = updaterNotesText(a.notes, _lang());
+    b.innerHTML = '<span style="font-size:18px;">⬆️</span><span style="flex:1;min-width:0;"><span id="nexo-update-text"></span>' +
+      (nn ? '<span id="nexo-update-whatsnew" style="display:block;font-size:12px;font-weight:600;text-decoration:underline;opacity:0.95;cursor:pointer;margin-top:2px;"></span>' : '') + '</span>' +
       (_busy ? '' : ready
         ? '<button id="nexo-update-now" style="' + btnCss + '">' + t('upd_install', 'Instalar') + '</button>'   // ya bajada: el único botón es «Instalar»
         : '<button id="nexo-update-now" style="' + btnCss + '">' + t('upd_download', 'Descargar') + '</button>' +
           '<button id="nexo-update-later" style="background:transparent;color:#fff;border:none;padding:8px 6px;opacity:0.9;">' + t('upd_later', 'Ahora no') + '</button>');
     b.querySelector('#nexo-update-text').textContent = text;
+    var wn = b.querySelector('#nexo-update-whatsnew');
+    if (wn) { wn.textContent = t('upd_whatsnew', '¿Qué trae?'); wn.onclick = function(e) { e.stopPropagation(); _openNotesSheet(a, nn); }; }
     var now = b.querySelector('#nexo-update-now'), later = b.querySelector('#nexo-update-later');
     if (now) now.onclick = function() { if (ready) updaterInstall(); else updaterDownload(); };
     if (later) later.onclick = function() { _lsSet(KEY_SNOOZE, JSON.stringify({ build: a.build, until: Date.now() + SNOOZE_MS })); _removeBanner(); _notifyCancel(); };
+  } catch (e) {}
+}
+
+// 3105: hoja con las novedades de la versión nueva y su botón (Descargar / Instalar)
+function _openNotesSheet(a, text) {
+  try {
+    var old = document.getElementById('nexo-update-notes-sheet'); if (old) old.remove();
+    var ov = document.createElement('div'); ov.id = 'nexo-update-notes-sheet';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9500;display:flex;flex-direction:column;justify-content:flex-end;background:rgba(0,0,0,0.55);';
+    var sh = document.createElement('div');
+    sh.style.cssText = 'background:#14152a;color:#fff;border-radius:18px 18px 0 0;max-height:75vh;display:flex;flex-direction:column;gap:10px;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));box-sizing:border-box;';
+    var h = document.createElement('div'); h.style.cssText = 'font-size:16px;font-weight:700;'; h.textContent = t('upd_notes_next', 'Lo nuevo en la versión') + ' ' + a.build;
+    var body = document.createElement('div'); body.style.cssText = 'overflow:auto;font-size:14px;line-height:1.5;white-space:pre-wrap;'; body.textContent = text;
+    var ready = _ready === a.build;
+    var go = document.createElement('button'); go.style.cssText = 'background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:12px;font-size:15px;font-weight:700;';
+    go.textContent = ready ? t('upd_install', 'Instalar') : t('upd_download', 'Descargar');
+    go.onclick = function() { ov.remove(); if (ready) updaterInstall(); else if (!_busy) updaterDownload(); };
+    var close = document.createElement('button'); close.style.cssText = 'background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:12px;padding:12px;font-size:15px;font-weight:600;';
+    close.textContent = t('chat_close', 'Cerrar'); close.onclick = function() { ov.remove(); };
+    ov.onclick = function(e) { if (e.target === ov) ov.remove(); };
+    sh.appendChild(h); sh.appendChild(body); if (!_busy) sh.appendChild(go); sh.appendChild(close);
+    ov.appendChild(sh); document.body.appendChild(ov);
   } catch (e) {}
 }
 
@@ -223,6 +286,7 @@ export function updaterInnerHtml() {
   return '<div class="nx-sub" style="margin-bottom:8px;">' + t('upd_sub', 'NEXO avisa cuando hay una versión nueva y la baja con un toque. Solo se consulta GitHub (público): no se manda nada tuyo.') + '</div>' +
     '<label class="nx-row" style="display:flex;align-items:center;gap:10px;"><input type="checkbox" id="nexo-updater-on"' + (updaterEnabled() ? ' checked' : '') + '><span>' + t('upd_auto', 'Buscar versiones nuevas solo') + '</span></label>' +
     '<div class="nx-sub" id="nexo-updater-status" style="margin:6px 0;"></div>' +
+    '<div id="nexo-updater-notes"></div>' +
     '<button id="nexo-updater-now" class="nx-btn nx-btn-primary"></button>';
 }
 export function renderUpdaterSection(sheet) {
@@ -249,4 +313,4 @@ export function renderUpdaterSection(sheet) {
 }
 
 // Gancho de pruebas (tests/sim/updater.js)
-try { if (typeof window !== 'undefined') window.__nexoUpdater = { check: updaterCheck, install: updaterInstall, download: updaterDownload, available: updaterAvailable, enabled: updaterEnabled, setEnabled: setUpdaterEnabled, state: function() { return { busy: _busy, ready: _ready, pct: _pct }; } }; } catch (e) {}
+try { if (typeof window !== 'undefined') window.__nexoUpdater = { notes: updaterNotes, notesText: updaterNotesText, check: updaterCheck, install: updaterInstall, download: updaterDownload, available: updaterAvailable, enabled: updaterEnabled, setEnabled: setUpdaterEnabled, state: function() { return { busy: _busy, ready: _ready, pct: _pct }; } }; } catch (e) {}

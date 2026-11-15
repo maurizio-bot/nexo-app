@@ -704,6 +704,7 @@ class NexoBlePlugin : Plugin() {
     // instalador del sistema, que pide su confirmación y exige la misma firma que la app instalada.
     @PluginMethod
     fun updateCheck(call: PluginCall) {
+        val current = call.getInt("current")   // 3105: la versión instalada, para devolver también sus novedades
         Thread {
             var c: java.net.HttpURLConnection? = null
             try {
@@ -722,9 +723,11 @@ class NexoBlePlugin : Plugin() {
                         if (buf.size() > UpdateSpec.MAX_JSON_BYTES) { call.resolve(JSObject().put("build", JSONObject.NULL).put("reason", "too_big")); return@Thread }
                     }
                 }
-                val l = UpdateSpec.pickLatest(buf.toString("UTF-8"))
-                if (l == null) call.resolve(JSObject().put("build", JSONObject.NULL).put("reason", "none"))
-                else call.resolve(JSObject().put("build", l.build).put("tag", l.tag).put("url", l.url).put("size", l.size))
+                val json = buf.toString("UTF-8")
+                val l = UpdateSpec.pickLatest(json)
+                val cur = UpdateSpec.notesOf(json, current)
+                if (l == null) call.resolve(JSObject().put("build", JSONObject.NULL).put("reason", "none").put("curNotes", cur))
+                else call.resolve(JSObject().put("build", l.build).put("tag", l.tag).put("url", l.url).put("size", l.size).put("notes", l.notes).put("curNotes", cur))
             } catch (e: Exception) {
                 call.resolve(JSObject().put("build", JSONObject.NULL).put("reason", "net"))
             } finally { try { c?.disconnect() } catch (e: Exception) {} }

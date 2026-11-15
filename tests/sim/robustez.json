@@ -1536,6 +1536,10 @@
      "prueba": "actualizador automático del APK de probadores"
     },
     {
+     "fallo": "3105 (dueño 15-11: «donde está el botón de actualizar, lo que se tocó y lo que se actualizó… una breve descripción… para tener ya un antecedente para cuando se suba a Google Play»): las actualizaciones no decían qué traían (el lanzamiento llevaba notas automáticas de GitHub, sin nada para el usuario). 3105: NOVEDADES.md con el bloque de la próxima APK en el formato de Google Play (es-419, it-IT, en-US, ≤ 500 caracteres cada uno); el workflow lo pone como descripción del lanzamiento; el nativo (UpdateSpec.cleanNotes/notesOf) la devuelve solo si viene en ese formato, recortada y sin caracteres de control; la app muestra el idioma propio en el aviso («¿Qué trae?») y en Ajustes («Lo nuevo en la versión N» y «Lo nuevo de tu versión»), siempre como texto. updater.js (8): 3104 = sin novedades; 3105 = todo; novedades.js comprueba el bloque y los 500 caracteres; Kotlin UpdateSpecTest.novedadesSoloEnFormatoDeGooglePlay",
+     "prueba": "NOVEDADES de cada versión"
+    },
+    {
      "fallo": "Foto de perfil «cruzada» (dueño 11-11: Marcos agregó a Austin y salió con la foto del dueño, también en Perfil). El registro del teléfono de Marcos (canal directo) muestra que esa foto llegó del teléfono de Austin como SU foto de perfil (acción 'av' cifrada con su identidad, 11,5 KB): no es un cruce al recibir. No se encontró ningún camino del código por el que una foto ajena pase a ser la propia (se revisó guardado, pase de cuenta, Fénix, copia de seguridad de Android, selectores de archivo); pendiente de saber con el dueño si esa foto se puso a mano en ese teléfono. 3012: el diagnóstico dice si el teléfono tiene foto propia y desde cuándo. avatarcruce.js (A con foto; B agrega a C: nada cruzado)",
      "prueba": "foto de perfil al agregar un contacto"
     },

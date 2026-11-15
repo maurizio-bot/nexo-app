@@ -198,6 +198,15 @@ jobs:
           name: ${{ env.APK_FILE }}
           path: ${{ env.APK_FILE }}
 
+      # 3105 (dueño 15-11): la descripción del lanzamiento son las NOVEDADES de esta versión (bloque <!-- APK --> de NOVEDADES.md,
+      # formato de Google Play por idioma). La app la muestra junto al botón de actualizar. Sin bloque válido, un texto genérico.
+      - name: Novedades de esta versión
+        if: github.ref == 'refs/heads/NEXOCHAT'
+        run: |
+          awk '/^<!-- APK -->$/{f=1;next} /^<!-- \/APK -->$/{f=0} f' NOVEDADES.md > release_notes.txt || true
+          if ! grep -q '<es-419>' release_notes.txt; then printf '<es-419>\nMejoras y correcciones.\n</es-419>\n' > release_notes.txt; fi
+          cat release_notes.txt
+
       - name: Create Release with APK
         if: github.ref == 'refs/heads/NEXOCHAT'
         uses: softprops/action-gh-release@v2
@@ -206,4 +215,5 @@ jobs:
           name: "NEXO Nightly Build #${{ github.run_number }}"
           prerelease: true
           files: ${{ env.APK_FILE }}
-          generate_release_notes: true
+          body_path: release_notes.txt
+          generate_release_notes: false
