@@ -93,6 +93,9 @@ function sendFile(p, name, type, bytes) {
   // Enlace ARRIBA → al pasar el tope de reintentos, aborta (igual que antes). El cambio es CON QUÉ ESTADO queda.
   forceWindow();
   st._linkUp = function () { return true; };
+  // 3124: el otro ya había confirmado algún trozo (windowStart > 0): es la regla de siempre al agotar reintentos. Con NI UN trozo
+  // confirmado y el enlace vivo, la app del otro duerme y entra la regla 3124 (toque + sondeo; dormidafile.js)
+  st.windowStart = 1; st.ackedMask = [true];
   for (let k = 0; k <= st.maxWindowRetries + 1 && !st.aborted; k++) st._onWindowTimeout();
   r.aborta = st.aborted === true;
   r.estado_archivo = seen[st.msgId] || '(ninguno)';

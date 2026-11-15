@@ -641,7 +641,7 @@ ChatStream.prototype._onWindowTimeout = function() {
     // 3124: ARCHIVO del usuario por un enlace local con la app del otro dormida (ni un trozo confirmado, enlace vivo) → toque para
     // despertarlo y sondeo de 1 trozo cada SLEEP_PROBE_MS en vez de la ventana entera; tras SLEEP_PROBE_MAX_MS sin respuesta, ⏳
     if (self.type === 'file' && !_isNetDevice(self.deviceId) && !(self.meta && (self.meta.dst || _isFenixTx(self.meta))) &&
-        self.windowStart === 0 && self.windowRetryCount >= SLEEP_FILE_RETRIES) {
+        self.windowStart === 0 && self.windowRetryCount >= SLEEP_FILE_RETRIES && !self._textOnDeadBle()) { // un Bluetooth atascado no es una app dormida
       var nowS = Date.now();
       if (!self._sleepSince) {
         self._sleepSince = nowS;
