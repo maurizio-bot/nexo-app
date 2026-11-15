@@ -67,6 +67,8 @@ function _startIncomingTone() {
 
 // Modo de audio del teléfono en llamada (Kotlin callAudio): auricular o altavoz
 function _audioMode(on) {
+  // #220: al colgar una, si sigue otra llamada (la segunda o la de grupo), el teléfono sigue en modo llamada
+  if (!on) { var bo = _bi(); if (bo && ((bo.calls2 && bo.calls2.call) || (bo.gcall && bo.gcall.gc))) return; }
   try {
     var pl = _plugin();
     if (pl && typeof pl.callAudio === 'function') pl.callAudio({ on: !!on, speaker: !!on && _speaker }).then(function(r) {
@@ -145,6 +147,23 @@ function _style() {
     'html.nc-split #nexo-gcall-screen .gc-video{margin-top:6px !important;max-height:42%;overflow:hidden}',
     'html.nc-split #nexo-gcall-screen .gc-members{margin-top:6px !important;gap:6px !important;min-height:0}',
     'html.nc-split #nexo-gcall-screen .gc-buttons{flex-shrink:0;padding:6px 0 2px !important}',
+    // #220 fase 2: la SEGUNDA llamada 1-a-1 (calls2_ui.js): sola, toda la pantalla; con la primera, la mitad de abajo
+    '#nexo-call2-screen{position:fixed;inset:0;z-index:2147483640;color:#fff;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:calc(16px + env(safe-area-inset-top,0px)) 8px calc(16px + env(safe-area-inset-bottom,0px));box-sizing:border-box;background:linear-gradient(160deg,#0a0a15,#1a1033 60%,#0b1a33)}',
+    'html.nc-split #nexo-call2-screen{inset:50% 0 0 0;padding:8px 8px calc(6px + env(safe-area-inset-bottom,0px))}',
+    '#nexo-call2-screen .c2-video{position:absolute;inset:0;z-index:0;width:100%;height:100%;object-fit:cover;background:#000}',
+    '#nexo-call2-screen .c2-head{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:4px;text-shadow:0 2px 10px rgba(0,0,0,.5)}',
+    '#nexo-call2-screen .c2-tag{font-size:11px;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.12)}',
+    '#nexo-call2-screen .c2-name{font-size:20px;font-weight:700;text-align:center}',
+    '#nexo-call2-screen .c2-status{font-size:13px;opacity:.85;font-variant-numeric:tabular-nums}',
+    '#nexo-call2-screen .call-buttons{position:relative;z-index:1;width:100%;max-width:440px;margin:0 auto;display:flex;flex-wrap:nowrap;justify-content:space-around;align-items:flex-start;padding:10px 4px 8px;box-sizing:border-box;border-radius:30px;background:rgba(20,21,42,.55);border:1px solid rgba(255,255,255,.09)}',
+    '#nexo-call2-screen .nc-btn{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:none;color:#fff;cursor:pointer;padding:0;flex:1 1 0;min-width:0;max-width:76px;line-height:1.15;font-size:11.5px;-webkit-tap-highlight-color:transparent}',
+    '#nexo-call2-screen .nc-btn .nc-ic{width:min(56px,calc(100% - 6px));height:clamp(36px,11.4vw,56px);border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.13)}',
+    '@supports (aspect-ratio:1/1){#nexo-call2-screen .nc-btn .nc-ic{height:auto;aspect-ratio:1/1}}',
+    '#nexo-call2-screen .nc-btn.nc-on .nc-ic{background:#fff;color:#14152a}',
+    '#nexo-call2-screen .nc-btn.nc-red .nc-ic{background:#ef4444;box-shadow:0 8px 24px rgba(239,68,68,.45)}',
+    '#nexo-call2-screen .nc-btn.nc-green .nc-ic{background:linear-gradient(135deg,#22c55e,#00c8ff);box-shadow:0 10px 30px rgba(34,197,94,.5)}',
+    '#nexo-call2-screen .nc-btn.call-hangup .nc-ic svg,#nexo-call2-screen .nc-btn.call-reject .nc-ic svg{transform:rotate(135deg)}',
+    '#nexo-call2-screen .nc-btn>span:last-child{max-width:calc(100% - 4px);text-align:center;overflow:hidden;text-overflow:ellipsis}',
     '#nexo-call-screen .nc-bottom{position:absolute;left:0;right:0;bottom:0;z-index:3;padding:0 8px calc(26px + env(safe-area-inset-bottom,0px));transition:transform .3s,opacity .3s}',
     '#nexo-call-screen .call-buttons{margin:0 auto;max-width:440px;display:flex;justify-content:space-around;align-items:flex-start;padding:16px 6px 12px;border-radius:30px;background:rgba(20,21,42,.55);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.09);box-shadow:0 10px 40px rgba(0,0,0,.35)}',
     '#nexo-call-screen .call-buttons.nc-incoming{background:none;border:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;justify-content:space-between;max-width:320px;padding:0 18px}',
@@ -320,7 +339,7 @@ function _watchFit() {
 // #220 fase 1: con las dos pantallas de llamada a la vez (1-a-1 a la vista, no minimizada, y la de grupo) → pantalla dividida
 export function syncCallSplit() {
   if (typeof document === 'undefined' || !document.documentElement) return false;
-  var one = document.getElementById('nexo-call-screen'), grp = document.getElementById('nexo-gcall-screen');
+  var one = document.getElementById('nexo-call-screen'), grp = document.getElementById('nexo-gcall-screen') || document.getElementById('nexo-call2-screen');
   var on = !!(one && grp && !one.classList.contains('nc-appmini'));
   if (on !== document.documentElement.classList.contains('nc-split')) {
     document.documentElement.classList.toggle('nc-split', on);

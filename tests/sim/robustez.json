@@ -1090,6 +1090,10 @@
     {
      "fallo": "3100 (dueño 15-11: «agregué otro dispositivo, pero nunca le apareció o nunca aceptó, entonces quedó ahí»; S24 3054 14-11 16:15–16:19): la llamada de grupo pasa a activa con el primero que contesta y el invitado que no contestaba quedaba «Conectando…» para siempre (la llamada siguió 4 min). 3100: cada invitado tiene 45 s; si no entra, «No contestó» y sale; si no queda nadie, termina. gcnoanswer.js: 3099 = «invitando» para siempre; 3100 = «no contestó» a los 45 s",
      "prueba": "llamada de GRUPO con un invitado que no contesta"
+    },
+    {
+     "fallo": "#220 fase 2 (dueño 15-11: «se pueden hacer dos videollamadas o dos llamadas al mismo tiempo y nada más; si se necesitan más, la de grupo»): una segunda llamada 1-a-1 recibía «ocupado». 3102: segunda instancia de llamadas (calls2, «nexo:call2», calls2_ui.js en la mitad de abajo); las señales van a la llamada que las tiene (por id o contacto) y una nueva con la primera ocupada con otro va a la segunda; con dos en curso (contando la de grupo) «ocupado»; la segunda no pasa por la llamada del sistema (Telecom) ni por la miniatura; el modo de audio sigue mientras quede una. call2.js: 3101 = C recibe «ocupado»; 3102 = suena abajo, los tres se oyen, D «ocupado», al colgar sigue la otra. Pendiente: llamar a un segundo contacto desde la app (hoy solo entrante), cámara compartida en el teléfono real, Telecom con dos llamadas",
+     "prueba": "SEGUNDA llamada 1-a-1 a la vez"
     }
    ],
    "debiles": [

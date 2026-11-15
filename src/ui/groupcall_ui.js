@@ -99,6 +99,8 @@ function _showEnded(detail) {
 // (peor eco) y no había altavoz/auricular. En grupo el altavoz arranca encendido (manos libres); el botón lo cambia.
 var _gcSpeaker = true, _gcAudioFor = null;
 function _gAudioMode(on) {
+  // #220: al colgar la de grupo, si sigue una 1-a-1, el teléfono sigue en modo llamada
+  if (!on) { var bo = window.bleInterface; if (bo && ((bo.calls && bo.calls.call) || (bo.calls2 && bo.calls2.call))) return; }
   try { var pl = _plugin(); if (pl && typeof pl.callAudio === 'function') pl.callAudio({ on: !!on, speaker: !!on && _gcSpeaker }).catch(function() {}); } catch (e) {}
 }
 

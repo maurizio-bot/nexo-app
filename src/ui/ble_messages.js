@@ -154,6 +154,7 @@ export const BLE_MESSAGE_METHODS = {
         // #128: primero a la llamada de GRUPO (onFrame devuelve true si el tramo es suyo); si no, a la 1-a-1
         if (self.gcall && self.gcall.onFrame(pv0, data.deviceId)) return Promise.resolve(null);
         if (self.calls) self.calls.onFrame(pv0, data.deviceId); // ronda 2768: y por dónde llegó
+        if (self.calls2) self.calls2.onFrame(pv0, data.deviceId); // #220: la segunda llamada (cada una solo acepta los suyos, por id)
         return Promise.resolve(null);
       }
     }
@@ -531,7 +532,7 @@ export const BLE_MESSAGE_METHODS = {
         var csig = !grp && !attachmentData ? parseCallSignal(msgContent) : null;
         // Ronda 2768: solo señales que llegaron cifradas de extremo a extremo (una sin cifrar la puede escribir cualquiera)
         if (csig) {
-          if (self.calls && senderUUID && ctrl && ctrl.payload && ctrl.payload.e2e === true) self.calls.onSignal(senderUUID, csig, messageId);
+          if (self.calls && senderUUID && ctrl && ctrl.payload && ctrl.payload.e2e === true) self._callSignal(senderUUID, csig, messageId);
           else console.warn('[CALL] Señal sin cifrar descartada (de ' + senderUUID + ')');
           return;
         }
@@ -1288,7 +1289,23 @@ export const BLE_MESSAGE_METHODS = {
   // Bluetooth es de la llamada: lo de fondo que iría por Bluetooth (reenvío de pendientes, reanudaciones, custodias Jump, Fénix)
   // espera a colgar y entonces sale. Lo nuevo que escribe el usuario y las señales de la llamada salen como siempre; lo que
   // va por Wi-Fi o internet no espera.
-  _callBusy() { return !!((this.calls && this.calls.call) || (this.gcall && this.gcall.gc)); },
+  _callBusy() { return !!((this.calls && this.calls.call) || (this.calls2 && this.calls2.call) || (this.gcall && this.gcall.gc)); },
+  // #220 fase 2: ¿a qué llamada va esta señal? A la que la tiene (por id o por el contacto); una llamada NUEVA con la primera ya
+  // ocupada con otro contacto va a la segunda; con dos llamadas ya en curso (contando la de grupo), la primera contesta «ocupado».
+  _callSignal(from, o, mid) {
+    var c1 = this.calls, c2 = this.calls2;
+    if (!c2 || !o) return c1 && c1.onSignal(from, o, mid);
+    var nx = _normId(from), a = c1 && c1.call, b = c2.call, id = o.id;
+    if (b && (b.id === id || (b.nx === nx && o.op !== 'offer'))) return c2.onSignal(from, o, mid);
+    if (a && (a.id === id || a.nx === nx)) return c1.onSignal(from, o, mid);
+    var busy = (a ? 1 : 0) + (b ? 1 : 0) + (this.gcall && this.gcall.gc ? 1 : 0);
+    if (o.op === 'offer' && busy === 1 && !b && (a || (this.gcall && this.gcall.gc))) {
+      if (!a) return c1.onSignal(from, o, mid); // con la de grupo en curso, la nueva 1-a-1 va a la primera
+      console.log('[CALL] Segunda llamada (de ' + nx + ') mientras hablas con ' + a.nx + ': suena abajo');
+      return c2.onSignal(from, o, mid);
+    }
+    return c1.onSignal(from, o, mid); // con dos en curso, la primera contesta «ocupado» (máximo 2)
+  },
   // 3097 (diagnóstico S24 3054 14-11 16:15–16:19: videollamada por Wi-Fi con el Xiaomi y lo del S23, que solo iba por Bluetooth,
   // esperó 4,5 min a colgar): la radio Bluetooth solo es de la llamada si la llamada va POR Bluetooth (alguno de sus tramos ahora).
   // Por Wi-Fi, internet directo o relés, el Bluetooth queda libre para lo de fondo. Ante la duda (error al mirar), como antes.
@@ -1298,6 +1315,8 @@ export const BLE_MESSAGE_METHODS = {
     try {
       var calls = this.calls, c = calls && calls.call;
       if (c && typeof calls._link === 'function' && isBle(calls._link(_normId(c.nx)))) return true;
+      var calls2 = this.calls2, c2 = calls2 && calls2.call;
+      if (c2 && typeof calls2._link === 'function' && isBle(calls2._link(_normId(c2.nx)))) return true;
       var g = this.gcall, gc = g && g.gc, hit = false;
       if (gc && gc.legs && typeof g._link === 'function') gc.legs.forEach(function(leg, nx) { if (!hit && isBle(g._link(_normId(nx)))) hit = true; });
       return hit;

@@ -370,6 +370,9 @@ export class GroupCall {
       // la memoria de llamadas terminadas) NO debe volver a sonar. Una invitación de verdad llega al instante.
       if (o.ts && Date.now() - Number(o.ts) > GINVITE_MAX_AGE) return;
       if (g) { if (g.gid === o.gid) return; self._signal(nx, 'leave', { gid: o.gid }); return; } // ya en otra llamada → ocupado (si es la MISMA, es re-entrega: ignorar, no avisar «leave»)
+      // #220 (dueño 15-11: «dos llamadas al mismo tiempo y nada más»): con dos 1-a-1 en curso, la de grupo no entra (ocupado)
+      var b1 = self.ble && self.ble.calls && self.ble.calls.call, b2 = self.ble && self.ble.calls2 && self.ble.calls2.call;
+      if (b1 && b2) { self._signal(nx, 'leave', { gid: o.gid }); return; }
       if (typeof o.k !== 'string' || !/^[0-9a-f]{64}$/.test(o.k)) return;
       var roster = new Set((o.roster || []).map(_nid)); roster.add(nx); roster.add(me);
       if (roster.size > GMAX_AUDIO) return;

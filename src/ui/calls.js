@@ -52,8 +52,12 @@ export function parseCallSignal(content) {
 }
 
 export class Calls {
-  constructor(ble, mediaFactory) {
+  constructor(ble, mediaFactory, opts) {
     this.ble = ble;
+    // #220 fase 2 (dueño 15-11: «se pueden hacer dos videollamadas o dos llamadas al mismo tiempo y nada más»): la SEGUNDA
+    // llamada 1-a-1 es otra instancia (lane 2) con sus propios avisos ('nexo:call2') y su mitad de pantalla (calls2_ui.js)
+    this.lane = (opts && opts.lane) === 2 ? 2 : 1;
+    this._ev = this.lane === 2 ? 'nexo:call2' : 'nexo:call';
     this.mediaFactory = mediaFactory;   // (opts) => media (call_media.js); se puede cambiar (pruebas)
     this.call = null;                   // { id, nx, dir:'out'|'in', state, key, startedAt, ... }
     this.stats = { sent: 0, got: 0, bad: 0 };
@@ -150,7 +154,7 @@ export class Calls {
   _set(o) {
     if (!this.call) return;
     Object.assign(this.call, o);
-    _emit('nexo:call', this.state());
+    _emit(this._ev, this.state());
   }
 
   _signal(nx, op, extra) {
@@ -200,8 +204,8 @@ export class Calls {
     if (startLink && startLink.indexOf('net:') === 0 && self.ble && self.ble.net && typeof self.ble.net.ensureTor === 'function') self.ble.net.ensureTor();
     var id = 'cl' + Date.now().toString(36) + _hex(4), key = _hex(32);
     self.call = { id: id, nx: nx, dir: 'out', state: 'calling', key: key, createdAt: Date.now(), sendSeq: 0, vSeq: 0, lastRx: 0, video: !!video };
-    _emit('nexo:call', self.state());
-    _telecom('out', { to: nx, video: !!video });  // parte 2: la saliente aparece como llamada real del sistema
+    _emit(self._ev, self.state());
+    if (self.lane === 1) _telecom('out', { to: nx, video: !!video });  // parte 2: la saliente aparece como llamada real del sistema
     console.log('[CALL] Llamando a ' + nx + ' (' + id + ')');
     self._ringTimer = setTimeout(function() { if (self.call && self.call.id === id && self.call.state === 'calling') self._finish('unanswered', true); }, window.NEXO_CALL_RING_MS || RING_MS);
     return Promise.all([self._importKey(key), self._codecs()]).then(function(r) {
@@ -258,7 +262,7 @@ export class Calls {
     try { if (pl && typeof pl.openAlertSetting === 'function') { pl.openAlertSetting({ what: 'app' }).catch(function() {}); return true; } } catch (e) {}
     return false;
   }
-  camera(on) { var c = this.call; if (!c) return; c.cameraOff = !on; if (c.media && c.media.camera) c.media.camera(!!on); _emit('nexo:call', this.state()); }
+  camera(on) { var c = this.call; if (!c) return; c.cameraOff = !on; if (c.media && c.media.camera) c.media.camera(!!on); _emit(this._ev, this.state()); }
 
   // Ronda 2762: girar la cámara (videollamada)
   flipCamera() {
@@ -307,7 +311,7 @@ export class Calls {
     if (this.call === c) { this._set({ screen: false }); this._sendState(c); }
   }
 
-  mute(on) { var c = this.call; if (!c) return; c.muted = !!on; if (c.media && c.media.mute) c.media.mute(!!on); _emit('nexo:call', this.state()); }
+  mute(on) { var c = this.call; if (!c) return; c.muted = !!on; if (c.media && c.media.mute) c.media.mute(!!on); _emit(this._ev, this.state()); }
 
   // #dueño 01-11 (GRAVE): entró/salió una llamada TELEFÓNICA (el nativo lo avisa por el foco de audio, onCallInterruption).
   // RETENER la llamada NEXO sin cortarla: al perder el foco (paused=true) silenciar el micro, avisar al otro «en pausa»
@@ -343,9 +347,9 @@ export class Calls {
     c.startedAt = Date.now(); c.lastRx = Date.now();
     self.stats = { sent: 0, got: 0, bad: 0 }; // por llamada (el diagnóstico de cada una)
     self._set({ state: 'active', startedAt: c.startedAt });
-    _telecom('active');  // parte 2: la saliente por Telecom pasa a activa (la entrante no pasa por aquí: no-op)
+    if (self.lane === 1) _telecom('active');  // parte 2: la saliente por Telecom pasa a activa (la entrante no pasa por aquí: no-op)
     console.log('[CALL] En llamada con ' + c.nx + ' (' + c.id + ')');
-    if (c.video) _pipActive(true); // videollamada → habilitar la miniatura (PiP) al irse de la app
+    if (c.video && self.lane === 1) _pipActive(true); // videollamada → habilitar la miniatura (PiP) al irse de la app
     var media;
     try {
       media = self.mediaFactory({ onPacket: function(bytes) { self._sendPacket(bytes); }, codecs: c.peerCodecs || 'opus,ulaw',
@@ -518,7 +522,7 @@ export class Calls {
         var scr = !!(s2 && s2.scr === true); // 13-11: el otro comparte su pantalla
         if (s2 && (okv(s2.cam) !== cc.peerCam || okv(s2.mic) !== cc.peerMic || front !== cc.peerFront || scr !== !!cc.peerScreen)) {
           if (scr !== !!cc.peerScreen) console.log('[CALL] ' + cc.nx + (scr ? ' comparte su pantalla' : ' dejó de compartir su pantalla'));
-          cc.peerCam = okv(s2.cam); cc.peerMic = okv(s2.mic); cc.peerFront = front; cc.peerScreen = scr; _emit('nexo:call', self.state());
+          cc.peerCam = okv(s2.cam); cc.peerMic = okv(s2.mic); cc.peerFront = front; cc.peerScreen = scr; _emit(self._ev, self.state());
         }
         return;
       }
@@ -558,7 +562,7 @@ export class Calls {
       var inLink = self._link(nx);
       if (inLink && inLink.indexOf('net:') === 0 && self.ble && self.ble.net && typeof self.ble.net.ensureTor === 'function') self.ble.net.ensureTor();
       console.log('[CALL] Llamada entrante de ' + nx + ' (' + o.id + ')');
-      _emit('nexo:call', self.state());
+      _emit(self._ev, self.state());
       self._signal(nx, 'ring'); // ¿sigue llamando? (si no, contesta 'end' y deja de sonar)
       self._ringTimer = setTimeout(function() { if (self.call && self.call.id === o.id && self.call.state === 'ringing') self._finish('missed', true); }, window.NEXO_CALL_RING_MS || RING_MS);
       return;
@@ -592,11 +596,11 @@ export class Calls {
   _finish(reason, notifyPeer) {
     var self = this, c = self.call;
     if (!c) return;
-    _telecom('end');  // parte 2: cerrar la llamada Telecom saliente (idempotente; no-op si no había)
+    if (self.lane === 1) _telecom('end');  // parte 2 (#220: la segunda llamada no pasa por Telecom): cerrar la llamada Telecom saliente (idempotente; no-op si no había)
     self._markDead(c.id);
     self._dropOffer(c.offerMid);
     clearTimeout(self._ringTimer); clearInterval(self._silenceTimer);
-    _pipActive(false); // llamada terminada → ya no entrar en miniatura
+    if (self.lane === 1) _pipActive(false); // llamada terminada → ya no entrar en miniatura
     if (c.screen) this._screenStop(c, 'colgó'); // 13-11: la captura de pantalla no sigue tras colgar
     if (notifyPeer) self._signal(c.nx, 'end');
     if (self.p2p) self.p2p.close(c.nx); // la conexión directa es de esta llamada
@@ -606,7 +610,7 @@ export class Calls {
     self.call = null;
     if (self.ble && typeof self.ble._afterCallRadio === 'function') { try { self.ble._afterCallRadio(); } catch (e) {} } // 3058: sale lo que esperó a colgar
     console.log('[CALL] Fin (' + reason + ', ' + secs + ' s; voz enviada ' + self.stats.sent + ', recibida ' + self.stats.got + ')');
-    _emit('nexo:call', { id: c.id, nx: c.nx, dir: c.dir, state: 'ended', reason: reason, seconds: secs, video: !!c.video });
+    _emit(self._ev, { id: c.id, nx: c.nx, dir: c.dir, state: 'ended', reason: reason, seconds: secs, video: !!c.video });
     self._log(c.nx, reason, secs, c.dir === 'out', c.video);
   }
 
@@ -623,4 +627,4 @@ export class Calls {
   }
 }
 
-export function createCalls(ble, mediaFactory) { return new Calls(ble, mediaFactory); }
+export function createCalls(ble, mediaFactory, opts) { return new Calls(ble, mediaFactory, opts); }

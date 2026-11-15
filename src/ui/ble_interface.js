@@ -121,6 +121,8 @@ export class BLEInterface {
     var mf = function(o) { return (window.NEXO_callMediaFactory || createCallMedia)(Object.assign({ voiceFx: createVoiceFx }, o)); };
     mf.codecs = function() { return window.NEXO_callMediaFactory ? 'opus,ulaw' : callCodecs(); };
     this.calls = createCalls(this, mf);
+    // #220 fase 2 (dueño 15-11): una SEGUNDA llamada 1-a-1 a la vez (máximo 2 llamadas en total, contando la de grupo)
+    this.calls2 = createCalls(this, mf, { lane: 2 });
     // #128: llamadas en grupo (malla, group_call.js) con medios reales (call_group_media.js sobre call_media.js: un
     // micrófono compartido + un decodificador por tramo). El simulador inyecta window.NEXO_gcallMediaFactory (sin
     // micrófono/WebAudio); el audio real lo prueba el dueño en los teléfonos.
