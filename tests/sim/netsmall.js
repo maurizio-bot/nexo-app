@@ -35,6 +35,7 @@ async function boot(name, native) {
   const dom = new JSDOM(fs.readFileSync(path.join(buildDir, 'dist', 'index.html'), 'utf8'), {
     url: 'https://' + name.toLowerCase() + '.nexo.test/index.html', runScripts: 'dangerously', resources: new DL(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(win) {
+      win.NEXO_BLOB_ONLINE = false; // 3128: ≤ 5 MB a un contacto en línea va al buzón de archivos; aquí se mide el flujo por trozos (sigue para > 5 MB, Tor y reanudaciones)
       win.NEXO_NET_RELAYS = RELAYS; win.CapacitorCustomPlatform = { name: 'android' }; installWebCrypto(win);
       const pl = native.plugin(); instrument(native, pl, name);
       win.Capacitor = { Plugins: { NexoBLE: pl } }; win.HTMLElement.prototype.scrollTo = function () {};

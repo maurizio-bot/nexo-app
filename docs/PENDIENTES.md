@@ -6,6 +6,22 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 15-11 (diagnósticos S24 3067 08:24 y 08:41) — 3127 y 3128 hechos, en la rama (APK 3069 tras la batería)
+- **08:24** → 3127: nota de voz pequeña a la app dormida del S23 reenviada entera cada 8 s (sondeo cada 15 s); texto por el puente
+  vivo Y reintentado cada 2 min ~10 h (espera creciente hasta 10 min); cierres «ISOLATED» contados aparte.
+- **08:41** → 3128: (1) **datos**: 109,6 MB a las 08:24 → 176,1 MB a las 08:41 (Wi-Fi), +66 MB en 17 min con la videollamada (12,6 min por
+  relés: el P2P con el S23 en datos móviles falló) ya colgada. Causa: las partes de llamada caducaban a 7 días y cada reconexión de un
+  relé (damus.io «se cae sin parar», suscripción desde lo último visto − 10 min) volvía a bajar hasta 10 min de llamada → caducan a
+  2 min + línea «bajado de los relés» en el diagnóstico para MEDIRLO en el próximo. (2) **nota de voz por internet a 2,1 KB/s** (flujo por
+  trozos a un contacto en línea) → buzón de archivos (116 KB/s). (3) «entrega_lenta 217 s» falsa por una 2.ª confirmación de la foto.
+- **Abierto (no hecho, por ahora):** (a) con la app en segundo plano DURANTE una llamada, la escucha nativa (NetBg) también baja cada
+  parte de la llamada («500 repetidos» al volver): el doble de datos; idea: que NetBg no escuche mientras la app tiene una llamada
+  activa (nativo; medir antes con la línea nueva). (b) Cada parte llega una vez POR RELÉ abierto (3×): una llamada por relés cuesta
+  ~3× lo necesario; idea: partes de llamada a 2 relés. (c) La raíz: el P2P (WebRTC) falla con datos móviles (NAT de la operadora) y la
+  llamada cae a los relés; sin servidor TURN propio no hay arreglo completo (decisión del dueño si algún día). (d) Velocidad de Wi-Fi
+  Direct del 08:41: 1 envío al puente, 3,3 MB/s de transferencia y 3 s para unirse al grupo (la «media 255 KB/s» incluye esos 3 s):
+  falta la prueba del vídeo de ~20 MB del dueño.
+
 ## 🆕 15-11 (resúmenes diarios del 14-11: S23 3057, vivo …db61 3052, …ab2f 3052)
 - **Wi-Fi Direct lento:** el S23 mandó 1 archivo por Wi-Fi Direct a 53,9 KB/s (y el 15-11 373 KB en 5 s ≈ 75 KB/s). Debería ser de
   MB/s. Sin saber el tamaño no se distingue si es el armado del grupo (~4 s) o el ritmo de envío. Prueba física pedida: un vídeo de

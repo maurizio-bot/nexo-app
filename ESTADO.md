@@ -21,6 +21,15 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **15-11 15:20 — 3127 + 3128 en la rama (dd099266; batería COMPLETA pendiente sobre b3128 → APK 3069).** APK 3068 publicada
+  (14:54). La batería de la 3127 sola se paró al 30 % para correr una sola con todo. **3127** (S24 3067 08:24): archivo pequeño
+  por internet a una app dormida sondea 1 trozo cada 15 s; reintento Jump hasta 10 min; cierres «ISOLATED» aparte. **3128** (S24
+  3067 08:41): (1) partes de llamada por relés caducan a los 2 min (antes 7 días: cada reconexión de un relé volvía a bajar hasta
+  10 min de llamada; 66 MB en 17 min con la llamada colgada) + línea «bajado de los relés … ya vistos» en el diagnóstico
+  (`llamadareles.js`); (2) foto/nota de voz ≤ 5 MB a un contacto EN LÍNEA solo por relés → buzón de archivos (antes flujo por
+  trozos: 2,1 KB/s frente a 116 KB/s; `blobe2e.js` (4) cambió de sentido; Tor directo sigue por trozos; perilla NEXO_BLOB_ONLINE);
+  (3) una confirmación repetida no es «entrega lenta» (`diagplus.js` D5c). Pendiente: la prueba del vídeo de ~20 MB por Wi-Fi
+  Direct del dueño (en el 08:41 solo hubo 1 envío WD: 3,3 MB/s de transferencia, 3 s para unirse al grupo).
 - **15-11 14:15 — Documentos PRIVADOS:** el plan maestro, lo de negocio (15 documentos + pendientes de negocio) y las 6 auditorías
   de seguridad se mudaron al repositorio PRIVADO `maurizio-bot/nexo-private` (`negocio/`, `seguridad/`; pedido del dueño). Se
   conecta con add_repo y se clona en `/home/user/nexo-private`. Lo técnico sigue aquí. El público sigue público (el actualizador de
