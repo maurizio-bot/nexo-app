@@ -180,8 +180,11 @@ Se marca aquí lo confirmado (✅) o lo que falló (❌ + diagnóstico).
 66. **Búsqueda con una transferencia lenta (3058).** Mientras el S23 te manda algo grande por Bluetooth (o cualquier envío
     lento), aleja y acerca otro contacto con algo pendiente: a los ~3 min tu S24 lo vuelve a encontrar y le llega (antes, nada
     hasta que acababa la transferencia). En el diagnóstico: «Re-búsqueda aplazada … busco igual (una vuelta)».
-67. **Llamada de grupo con alguien que no contesta (APK siguiente a la 3058).** En una llamada, agrega a alguien que no va a
+67. **Llamada de grupo con alguien que no contesta (APK 3059).** En una llamada, agrega a alguien que no va a
     contestar: a los 45 s sale «No contestó» y desaparece de «Conectando…»; si cuelgan todos los demás, la llamada se cierra sola.
+68. **Llamada normal y de grupo a la vez (APK 3059).** Estando en una llamada con alguien, entra (o acepta) una llamada de grupo:
+    la pantalla se parte en dos, la llamada normal arriba y la de grupo abajo, cada una con su colgar a la vista. Cuelga una:
+    la otra pasa a toda la pantalla. (La segunda llamada normal a la vez llega en la APK siguiente.)
 12. **Videollamada por internet (3035).** Si no se ve la imagen, manda el diagnóstico: la línea «[CALL] … s: …» ahora dice
     «por internet (relés: el vídeo no sale; Tor …)» o «por internet (Tor directo)» en vez de «por Bluetooth».
 
