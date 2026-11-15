@@ -6,6 +6,20 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 15-11 noche (dueño) — ANTI-SUPLANTACIÓN y texto en los avisos, para la 3071 (decisiones del dueño)
+- **Dueño: «lo de guardar la llave en Android es seguro, sí se puede hacer»** → con la app cerrada, el aviso lleva el texto del mensaje:
+  la parte nativa descifra solo para el aviso con la llave guardada en el almacén de llaves de Android (Keystore). Por defecto se ve el
+  texto; en cada chat «Ocultar el texto en los avisos» (idea del dueño tras el comentario de Jhonnatan: «que fuera más selectivo»); en la
+  pantalla bloqueada, lo que diga Android (versión pública «Mensaje nuevo»). Hoy con la app viva ya sale el texto (notify.js).
+- **Dueño: «vi un video de alguien a quien le entraron al WhatsApp y pedían dinero… ese tipo de cosas no quiero que puedan pasar»**.
+  Ya protegido: sin número ni código SMS que robar; sin sesiones web; pasar la cuenta pide los dos teléfonos en el mismo Wi-Fi + QR del
+  viejo; clave cambiada = mensajes retenidos + aviso rojo «puede ser un impostor». **HUECO encontrado:** el aviso de «¿es el mismo
+  teléfono, reinstalado?» (3018, `_offerReinstallMerge`) une un NEXO ID NUEVO con el MISMO NOMBRE al chat del contacto viejo si el
+  usuario dice que sí → un impostor con el nombre de tu amigo hereda su chat. Plan: (1) la pregunta advierte del impostor, por defecto
+  «No», y pide verificar (llamada o número de seguridad en persona); (2) unido = «sin verificar» en rojo hasta verificarlo; (3) solicitud
+  o contacto nuevo con el nombre de uno que ya tienes → aviso «es otro teléfono»; (4) cobro/petición de dinero de un contacto sin
+  verificar → aviso «llámale antes de pagar». Revisar también que el respaldo Fénix no permita rehacer una cuenta ajena.
+
 ## 🆕 15-11 noche (dueño) — llamadas, para la 3071
 - **Tono «tuuu… tuuu…» al llamar (dueño: «no escucho el clásico sonido de que está entrando la llamada»):** hoy es un pitido WebAudio
   de 425 Hz con volumen 0,12 (calls_ui._startTone(false)); con la llamada saliente ya en Telecom/modo llamada no se oye. Plan: tono del
