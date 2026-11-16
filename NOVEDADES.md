@@ -12,48 +12,46 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Al llamar oyes el «tuuu… tuuu…» mientras suena del otro lado.
+- Más protección contra impostores: aviso si alguien usa el nombre de un contacto que ya tienes, doble confirmación para unir un chat y aviso antes de pagar un cobro de alguien sin verificar.
+- El respaldo de tu cuenta elige solo a tus contactos más cercanos como guardianes.
+- En Xiaomi, Redmi y Poco te decimos qué permiso activar para contestar con manos libres.
+</es-419>
+<it-IT>
+- Quando chiami senti il «tuuu… tuuu…» mentre squilla dall'altra parte.
+- Più protezione dagli impostori: avviso se qualcuno usa il nome di un tuo contatto, doppia conferma per unire una chat e avviso prima di pagare una richiesta di chi non è verificato.
+- Il backup del tuo account sceglie da solo i contatti più vicini come custodi.
+- Su Xiaomi, Redmi e Poco ti diciamo quale permesso attivare per rispondere in vivavoce.
+</it-IT>
+<en-US>
+- When you call, you hear the ringing tone while the other phone rings.
+- More protection against impostors: a warning if someone uses the name of a contact you already have, a double confirmation to merge a chat, and a warning before paying a request from someone unverified.
+- Your account backup picks your closest contacts as guardians on its own.
+- On Xiaomi, Redmi and Poco we tell you which permission to turn on to answer hands-free.
+</en-US>
+<pt-BR>
+- Ao ligar, você ouve o «tuuu… tuuu…» enquanto toca do outro lado.
+- Mais proteção contra impostores: aviso se alguém usa o nome de um contato que você já tem, dupla confirmação para unir uma conversa e aviso antes de pagar uma cobrança de alguém não verificado.
+- O backup da sua conta escolhe sozinho seus contatos mais próximos como guardiões.
+- Em Xiaomi, Redmi e Poco dizemos qual permissão ativar para atender no viva-voz.
+</pt-BR>
+<fr-FR>
+- Quand vous appelez, vous entendez la tonalité pendant que ça sonne de l'autre côté.
+- Plus de protection contre les imposteurs : alerte si quelqu'un prend le nom d'un de vos contacts, double confirmation pour fusionner une conversation et alerte avant de payer la demande d'une personne non vérifiée.
+- La sauvegarde de votre compte choisit seule vos contacts les plus proches comme gardiens.
+- Sur Xiaomi, Redmi et Poco, on vous indique quelle autorisation activer pour répondre en mains libres.
+</fr-FR>
+<!-- /APK -->
+
+## Historial
+
+### APK 3070 (16-11-2026)
 - Invita a tus amigos a NEXO con un enlace por WhatsApp, TikTok o donde quieras: al tocarlo te agregan.
 - Si borras un contacto y lo vuelves a agregar, ves su foto de perfil de ahora, no una vieja.
 - Al guardar una foto o un vídeo en tu galería, el botón se pone verde y te dice dónde quedó.
 - Deslizar para actualizar gasta muchos menos datos.
 - Escucha las notas de voz a 1.5× o 2× con el botón de velocidad.
 - Un contacto que agregas en persona sale en línea por internet al momento.
-</es-419>
-<it-IT>
-- Invita i tuoi amici su NEXO con un link via WhatsApp, TikTok o dove vuoi: toccandolo ti aggiungono.
-- Se elimini un contatto e lo aggiungi di nuovo, vedi la sua foto profilo attuale, non una vecchia.
-- Quando salvi una foto o un video nella galleria, il pulsante diventa verde e ti dice dove è finito.
-- Scorrere per aggiornare consuma molti meno dati.
-- Ascolta i vocali a 1.5× o 2× con il pulsante di velocità.
-- Un contatto aggiunto di persona risulta subito online via internet.
-</it-IT>
-<en-US>
-- Invite your friends to NEXO with a link on WhatsApp, TikTok or anywhere: tapping it adds you.
-- If you delete a contact and add them again, you see their current profile photo, not an old one.
-- When you save a photo or video to your gallery, the button turns green and tells you where it went.
-- Pull to refresh uses much less data.
-- Listen to voice notes at 1.5× or 2× with the speed button.
-- A contact you add in person shows as online over the internet right away.
-</en-US>
-<pt-BR>
-- Convide seus amigos para o NEXO com um link pelo WhatsApp, TikTok ou onde quiser: ao tocar, eles adicionam você.
-- Se você apagar um contato e adicioná-lo de novo, verá a foto de perfil atual dele, não uma antiga.
-- Ao salvar uma foto ou um vídeo na galeria, o botão fica verde e mostra onde ficou.
-- Deslizar para atualizar gasta muito menos dados.
-- Ouça as mensagens de voz em 1.5× ou 2× com o botão de velocidade.
-- Um contato adicionado pessoalmente aparece on-line pela internet na hora.
-</pt-BR>
-<fr-FR>
-- Invitez vos amis sur NEXO par un lien WhatsApp, TikTok ou autre : en le touchant, ils vous ajoutent.
-- Un contact supprimé puis ajouté de nouveau montre sa photo de profil actuelle, pas une ancienne.
-- En enregistrant une photo ou une vidéo dans la galerie, le bouton devient vert et indique où elle est.
-- Glisser pour actualiser consomme bien moins de données.
-- Écoutez les vocaux en 1.5× ou 2× avec le bouton de vitesse.
-- Un contact ajouté en personne apparaît aussitôt en ligne par internet.
-</fr-FR>
-<!-- /APK -->
-
-## Historial
 
 ### APK 3069 (15-11-2026)
 - Una nota de voz o una foto por internet a alguien con la app dormida ya no gasta tus datos reenviándose: espera a que despierte.

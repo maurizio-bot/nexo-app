@@ -21,6 +21,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **16-11 00:42 — APK 3070 PUBLICADA (corrida 3070 en verde; el nativo nuevo compiló).** Novedades al historial; el bloque ya trae
+  las de la 3071 (3134–3137).
 - **15-11 23:50 — APK 3070 subida a NEXOCHAT (3129–3133 + 3138; batería 276/276, índice 70,6).** 3138: la petición automática de
   foto y estados al agregar un contacto gastaba el freno de «pedir estados» y el deslizar del usuario no traía nada (estados3.js). La
   batería se cortó 3 veces por reinicios del contenedor (se retoma con `CI_RESUME=<salida> node ci.js …`; para una APK, correrla con
