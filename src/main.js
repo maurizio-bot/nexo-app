@@ -109,6 +109,7 @@ import { batteryGuard } from './ui/battery_prompt.js';
 import { welcomeGuide } from './ui/welcome_guide.js'; // #dueño 05-11: guía de bienvenida la primera vez (antes del aviso de batería)
 import { nameGate, loadDisplayName, applyDisplayName } from './ui/display_name.js'; // #dueño 06-11: nombre fijo (pedido 1 vez, no se cambia)
 import { createNotifier } from './ui/notify.js';
+import { isPreviewHidden, loadHidePreview } from './ui/chat_hide_preview.js';
 import { initE2E } from './vault/e2e_crypto.js';
 import { ratchetInit, ratchetSafetyNumber, ratchetPeerBundle, ratchetSessionPq } from './vault/e2e_ratchet.js';
 import { safetyQrPayload, checkSafetyQr, showSafetyQr, openQrScanner } from './ui/qr_verify.js';
@@ -195,11 +196,12 @@ initAppLock({ toast: function(t, ms) { _showInfoToast(t, ms); } });
 initPress(); // NEXO Touch (build 2968, dueño 09-11): hundirse/onda/pulso + tick háptico + áreas de toque
 initPerf(); // ronda 2808: medición de rendimiento (pasiva: escucha eventos ya existentes)
 // v9.9.52: mensajes sin leer y notificaciones (todas las vías de llegada pasan por _handleIncomingMessage)
+loadHidePreview(); // opción por chat «Ocultar el texto en los avisos»
 var _notifier = createNotifier({
   ble: function() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; },
   // El chat abierto según ble_interface (lo pone openChat y lo quita cualquier cierre del chat)
   currentChat: function() { var b = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface); return b ? b._activeChatDeviceId : _getCurrentContactId(); },
-  hidePreview: function() { return lockEnabled(); },
+  hidePreview: function(cid) { return lockEnabled() || isPreviewHidden(cid); }, // + opción por chat «Ocultar el texto en los avisos»
   sendRead: function(nexoId, msgId) {
     // Build 2835 (pedido del dueño): si apagaste las confirmaciones de lectura en Ajustes, no se manda el acuse (el
     // otro no ve el ✓✓ azul). El "entregado" gris no se toca.

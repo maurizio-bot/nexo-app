@@ -119,7 +119,7 @@ export class Notifier {
     // Notificación del teléfono solo con la app en segundo plano (a la vista ya se ve la burbuja numerada)
     if (!_visible()) {
       this.notified.add(cid);
-      _call('notifyMessage', { chatId: cid, name: m.name || 'NEXO', msgId: m.msgId || String(Date.now()), text: this.hidePreview() ? '' : (m.preview || ''), count: count });
+      _call('notifyMessage', { chatId: cid, name: m.name || 'NEXO', msgId: m.msgId || String(Date.now()), text: this.hidePreview(cid) ? '' : (m.preview || ''), count: count });
     }
   }
 

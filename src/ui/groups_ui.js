@@ -10,6 +10,7 @@ import { vaultLoadContacts } from '../vault/vault_manager.js';
 import { _renderMessage } from './render.js';
 import { _showInfoToast } from './ui_bits.js';
 import { t } from './i18n.js';
+import { isPreviewHidden, toggleHidePreview } from './chat_hide_preview.js';
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
 function _groups() { var b = _bi(); return b && b.groups; }
@@ -160,6 +161,7 @@ export function openGroupMenu(gid) {
     sheet.appendChild(b);
   };
   add('💬  ' + t('prof_open', 'Abrir'), 'gm-open', function() { openGroupChat(g.id); });
+  add(isPreviewHidden(g.id) ? '👁  ' + t('chat_show_preview', 'Mostrar el texto en los avisos') : '🙈  ' + t('chat_hide_preview', 'Ocultar el texto en los avisos'), 'gm-hidetext', function() { toggleHidePreview(g.id); });
   add('🚪  ' + t('prof_group_leave', 'Salir del grupo'), 'gm-leave', function() {
     gs.leave(g.id);
     var bi = _bi();

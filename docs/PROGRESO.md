@@ -1972,3 +1972,4 @@ Internet; Vídeos cuando haya núcleos o servidor).
 `gesture_engine.js`, `vault_fs.js`, `vault_panel.js`.
 
 3143 (16-11): borrado `src/auth/*` (onboarding + webauthn_helper: nadie los importaba; la huella queda en `plugins/nexo-auth`). Se conservan `src/net/*`, `crypto_vault.js`, `pulse_algorithm.js` y `gesture_engine.js` (sin importar, pero guardados a propósito para Wi-Fi/datos, cifrado en reposo y Stream, ver arriba). Gestos: deslizar para responder más fiable y deslizar a la izquierda (>100 px) con el dedo en el botón de grabar cancela la nota (`tests/sim/gestos.js`).
+3144 (16-11): opción por chat «Ocultar el texto en los avisos» (menú del contacto y del grupo; `src/ui/chat_hide_preview.js`, guardada por NEXO ID; `notify.js` pregunta `hidePreview(cid)` y manda texto vacío → el nativo dice «Mensaje nuevo»), 5 idiomas, prueba `tests/sim/avisoschat.js`. Límite: con la app CERRADA el aviso lo arma el nativo (BgInbox) sin conocer la opción.

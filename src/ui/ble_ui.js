@@ -8,6 +8,7 @@ import { avatarOf, paintAvatar } from './avatar.js';
 import { t } from './i18n.js'; // #132 idioma
 import { parseInvite, shareInvite } from './invite.js'; // 3129: enlace de invitación
 import { personAvatar } from './person_avatar.js'; // 3140: el círculo de color de Contactos
+import { isPreviewHidden, toggleHidePreview } from './chat_hide_preview.js';
 import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isBLEContact, _isPinned, _normId, _rssiToBars, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
 
 // #dueño 08-11 (scan rápido): barritas de señal (como el wifi) para una fila de contacto encontrado — de un vistazo se ve
@@ -753,7 +754,7 @@ export const BLE_UI_METHODS = {
     menu.className = 'ble-contact-menu';
     var isPinned = _isPinned(uuid);
     // Ronda 2771: "Cambiar nombre" (el nombre del chat ya se podía tocar y cambiar, pero nada lo decía)
-    menu.innerHTML = '<div class="ble-menu-item" data-action="pin">' + (isPinned ? '&#x2606; Desfijar' : '&#x2605; Fijar') + '</div><div class="ble-menu-item" data-action="rename">&#x270F;&#xFE0F; Cambiar nombre</div><div class="ble-menu-item" data-action="profile">&#x1F464; Perfil</div><div class="ble-menu-item ble-menu-delete" data-action="delete">&#x1F5D1; Eliminar</div>';
+    menu.innerHTML = '<div class="ble-menu-item" data-action="pin">' + (isPinned ? '&#x2606; Desfijar' : '&#x2605; Fijar') + '</div><div class="ble-menu-item" data-action="rename">&#x270F;&#xFE0F; Cambiar nombre</div><div class="ble-menu-item" data-action="hidetext">' + (isPreviewHidden(uuid) ? '&#x1F441; ' + t('chat_show_preview', 'Mostrar el texto en los avisos') : '&#x1F648; ' + t('chat_hide_preview', 'Ocultar el texto en los avisos')) + '</div><div class="ble-menu-item" data-action="profile">&#x1F464; Perfil</div><div class="ble-menu-item ble-menu-delete" data-action="delete">&#x1F5D1; Eliminar</div>';
     var rect = btn.getBoundingClientRect();
     menu.style.right = (window.innerWidth - rect.right) + 'px';
     // #dueño 05-11: el menú se abría SIEMPRE hacia abajo (top = rect.bottom), así que en los contactos del final de
@@ -773,6 +774,7 @@ export const BLE_UI_METHODS = {
     menu.addEventListener('click', function(e) {
       var action = e.target.dataset.action;
       if (action === 'pin') { _togglePinnedContact(uuid); self.renderContactsList(); }
+      else if (action === 'hidetext') { toggleHidePreview(uuid); }
       else if (action === 'delete') { self.removeContact(uuid); }
       else if (action === 'profile') { _safeDispatchEvent('nexo:ble:goToProfile', { deviceUUID: uuid }); }
       else if (action === 'rename') {

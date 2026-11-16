@@ -1400,6 +1400,10 @@
     {
      "fallo": "3121–3123 (dueño 15-11: «agregar un idioma o dos… portugués y francés»): la app solo estaba en español, italiano e inglés, y los avisos del teléfono (los pone el nativo, también con la app cerrada) salían SIEMPRE en español. 3121: la tabla de textos partida en un archivo por idioma (2.493/2.493 textos idénticos); 3122: NativeText/NativeLang (los avisos del nativo en el idioma que dice la app); 3123: portugués de Brasil y francés (831 textos cada uno). idiomas5.js (contraprueba 3120: 3 idiomas)",
      "prueba": "NEXO EN 5 IDIOMAS"
+    },
+    {
+     "fallo": "Dueño 16-11: pidió poder ocultar el texto de los avisos solo en algunos chats (antes solo había el interruptor global del bloqueo de la app). 3144: opción «Ocultar el texto en los avisos» en el menú del contacto y del grupo (chat_hide_preview.js, guardada por NEXO ID); notify.js pregunta hidePreview(cid) y manda texto vacío (el nativo dice «Mensaje nuevo»). Límite: con la app CERRADA el aviso lo arma el nativo (BgInbox) sin conocer la opción. avisoschat.js (contraprueba 3143: no existe)",
+     "prueba": "AVISOS POR CHAT"
     }
    ],
    "debiles": [

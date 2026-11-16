@@ -665,6 +665,8 @@ export default {
   prof_group_create_n_post: " persone)",
   prof_group_no_contacts: "Non hai ancora contatti.",
   prof_group_leave: "Esci dal gruppo",
+  chat_hide_preview: "Nascondi il testo nelle notifiche",
+  chat_show_preview: "Mostra il testo nelle notifiche",
   prof_qr_aim: "Inquadra il QR",
   prof_qr_no_cam: "Fotocamera non disponibile",
   prof_qr_cam_fail: "Impossibile aprire la fotocamera: ",
