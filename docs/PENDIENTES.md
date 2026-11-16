@@ -10,6 +10,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - **3139 hecho (rama, APK 3071):** dos enlaces Bluetooth S24↔Yaelito y cada teléfono cerró uno distinto (el S24 por el MTU que creía ver,
   Yaelito por el desempate común): el S24 mandaba por el muerto (texto largo 8 reintentos sin confirmar, puente que no abre, «zombi»)
   mientras lo de Yaelito entraba por el bueno. Ahora con papeles distintos manda siempre el desempate común (bledup.js 11).
+- **Contexto del dueño:** en su coche, S24 solo Bluetooth, S23 con internet, Yaelito quizá solo Bluetooth; quería probar el puente
+  Bluetooth→internet. Lo que pasó: 18:43:21 el puente por el S23 SÍ funcionó (internet en 7,1 s); con la app en segundo plano ~7 min se
+  cayó el enlace con el S23 (su app dormida: el puente aún necesita la app del que presta despierta, el nativo es la 3073+); al volver, el
+  puente por Yaelito no abrió por el fallo de la 3139. Lo de «jump» fueron rutas para los mensajes mientras no había puente.
 - Visto también: S24 sin red propia usó de puente al S23 y luego a Yaelito (bien); 15,5 MB bajados de los relés, 12,7 MB repetidos
   (relay.primal.net 9 MB): el arreglo de deslizar (3131) ya va en la 3070; si sigue alto con la 3070, mirar las reconexiones del relé.
 - Wi-Fi local lento solo en builds viejas (3055: 8,6 s de media); en la 3069 del S24, 0,5 s: no hay nada que arreglar.
