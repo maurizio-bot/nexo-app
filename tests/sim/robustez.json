@@ -344,6 +344,10 @@
     {
      "fallo": "3167 (diagnóstico S24↔realme 3075 16-11 15:17, «enlace_abre_cierra»): el desempate de enlaces repetidos no cerraba el enlace ENTRANTE (disconnectDevice solo cerraba el de cliente): seguía vivo un enlace de MTU 23 y cada mensaje salía por los dos; y el otro lado lo reabría solo al cortarse. 3167: cancelConnection en el servidor (server:true); 3167b: el que pierde un enlace de cliente con otro listo cancela sus reintentos y el escaneo no lo reabre. dupserver.js (contrapruebas 0df3ee28 y 69e317c4)",
      "prueba": "enlace repetido ENTRANTE que de verdad s"
+    },
+    {
+     "fallo": "3168: con los dos enlaces de un contacto cayéndose a la vez, el primero marcaba su dirección «cortada por el otro» (3167b) y el escaneo no la reabría en 10 min. radiollamada.js L (contraprueba b3167)",
+     "prueba": "radio de la LLAMADA y contacto DORMIDO"
     }
    ],
    "debiles": [

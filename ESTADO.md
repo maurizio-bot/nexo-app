@@ -21,6 +21,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **16-11 17:35 (México) — APK 3079 subida (3167/3167b + 3168).** La 3078 se paró en radiollamada L (regresión de 3167b, arreglada en 3168).
 - **16-11 16:19 (México) — APK 3077 PUBLICADA (16:08; 3158–3166).** APK 3078 subida con 3167/3167b (enlace Bluetooth repetido
   ENTRANTE que no se cerraba y que el otro reabría; NATIVO: disconnectDevice server:true → cancelConnection) + importcss.js.
   En el teléfono: que salga «[GATT_SERVER] … newState=0» tras el cancelConnection y «cortado por el otro … no lo reabro».
