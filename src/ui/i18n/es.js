@@ -69,6 +69,7 @@ export default {
   chat_delete_all: "🗑  Eliminar para todos",
   chat_cancel: "Cancelar",
   chat_replying_to: "Respondiendo a ",
+  voice_slide_cancel: "‹ Desliza para cancelar",
   chat_you_obj: "ti",
   chat_editing_msg: "✏️ Editando mensaje",
   chat_copied: "Copiado",

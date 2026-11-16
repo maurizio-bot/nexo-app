@@ -11,7 +11,7 @@ import { _handleFile, _handleGallery } from './pickers.js';
 import { _handleLocation } from './location.js';
 import { _handleCobro } from './cobro.js';
 import { _handleShareContacts } from './share_contacts.js';
-import { _handleVoiceToggle, _prewarmMic } from './voice.js';
+import { _handleVoiceToggle, _prewarmMic, voiceSlideStart, voiceSlideMove, voiceSlideEnd } from './voice.js';
 import { _msgContactMap } from './chat_state.js';
 import { _noteContactMessage } from './send.js';
 import { _renderMessage, _updateMessageStatus, _updateMessageStorageStatus } from './render.js';
@@ -343,16 +343,22 @@ export function _setupMessageInput() {
       if (!btn.classList.contains('mic-mode')) return;
       _prewarmMic(); // #dueño 07-11: el micrófono empieza a encenderse ya, durante el toque
       _isLongPress = false;
+      try { voiceSlideStart(e.touches && e.touches[0] ? e.touches[0].clientX : null); } catch (er) {} // 3143: deslizar a la izquierda cancela la nota
       _longPressTimer = setTimeout(function() {
         _isLongPress = true;
         _handleVoiceToggle();
       }, LONG_PRESS_MS);
     }, { passive: true });
+    btn.addEventListener('touchmove', function(e) {
+      try { if (e.touches && e.touches[0]) voiceSlideMove(e.touches[0].clientX); } catch (er) {}
+    }, { passive: true });
     btn.addEventListener('touchend', function() {
       if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+      try { voiceSlideEnd(); } catch (er) {}
     });
     btn.addEventListener('touchcancel', function() {
       if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+      try { voiceSlideEnd(); } catch (er) {}
     });
     window.addEventListener('resize', function() {
       var s = document.getElementById('messages-container');

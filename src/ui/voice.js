@@ -1,4 +1,3 @@
-        haptic('confirm'); // NEXO Touch (2968): nota de voz grabada y enviada
 /**
  * NEXO — Notas de voz: grabar, con barra de controles para PAUSAR/REANUDAR, BORRAR antes de enviar y ENVIAR
  * (ronda 2781, pedido del dueño). Al empezar a grabar se para cualquier nota de voz que esté sonando. _sendAttachment
@@ -92,12 +91,17 @@ function _voiceBar() {
   time.id = 'voice-time';
   time.style.cssText = 'font-variant-numeric:tabular-nums;font-size:15px;min-width:44px;text-align:center;';
   time.textContent = '0:00';
+  // 3143: pista mientras se mantiene el dedo en el botón de grabar (se muestra solo entonces)
+  var hint = document.createElement('span');
+  hint.id = 'voice-slide-hint';
+  hint.style.cssText = 'display:none;font-size:13px;white-space:nowrap;color:var(--nx-text,#fff);opacity:0.75;';
+  hint.textContent = t('voice_slide_cancel', '‹ Desliza para cancelar');
   var pause = mk('voice-pause', '⏸');
   var send = mk('voice-send', '➤', 'linear-gradient(135deg,#00c8ff,#a855f7)');
   cancel.onclick = function (e) { e.stopPropagation(); _cancelVoiceRecording(); };
   pause.onclick = function (e) { e.stopPropagation(); _pauseResumeVoice(); };
   send.onclick = function (e) { e.stopPropagation(); _finishVoiceRecording(); };
-  bar.appendChild(cancel); bar.appendChild(dot); bar.appendChild(time); bar.appendChild(pause); bar.appendChild(send);
+  bar.appendChild(cancel); bar.appendChild(dot); bar.appendChild(time); bar.appendChild(hint); bar.appendChild(pause); bar.appendChild(send);
   document.body.appendChild(bar);
   return bar;
 }
@@ -121,6 +125,30 @@ export async function _handleVoiceToggle() {
   if (_isRecording) { _finishVoiceRecording(); return; }
   await _startVoiceRecording();
 }
+
+// 3143: deslizar el dedo a la IZQUIERDA (más de 100 px) mientras se mantiene pulsado el botón de grabar cancela la nota
+// (no se envía), con la pista «‹ Desliza para cancelar» y una vibración. Soltar sin deslizar deja todo como antes.
+export var SLIDE_CANCEL_PX = 100;
+var _slideX0 = null, _slideCancelled = false, _cancelPending = false;
+function _slideHint(show, prog, armed) {
+  var h = document.getElementById('voice-slide-hint');
+  if (!h) return;
+  h.style.display = show ? '' : 'none';
+  if (show) { h.style.opacity = String(0.55 + 0.45 * (prog || 0)); h.style.color = armed ? '#ff6b6b' : ''; }
+}
+export function voiceSlideStart(x) { _slideX0 = (typeof x === 'number') ? x : null; _slideCancelled = false; _slideHint(false); }
+export function voiceSlideMove(x) {
+  if (_slideX0 === null || _slideCancelled || typeof x !== 'number') return;
+  if (!_isRecording && !_voiceStarting) return;
+  _voiceBar(); _slideHint(true, Math.min(1, Math.max(0, (_slideX0 - x) / SLIDE_CANCEL_PX)), (_slideX0 - x) > SLIDE_CANCEL_PX * 0.8);
+  if (_slideX0 - x > SLIDE_CANCEL_PX) {
+    _slideCancelled = true;
+    haptic('reject'); // vibración: nota cancelada
+    _slideHint(false);
+    if (_isRecording) _cancelVoiceRecording(); else _cancelPending = true; // si aún está arrancando el micrófono, se cancela al arrancar
+  }
+}
+export function voiceSlideEnd() { _slideX0 = null; _slideHint(false); return _slideCancelled; }
 
 async function _startVoiceRecording() {
   // #dueño 08-11 (nota de voz doble): guarda de reentrada. Si ya se está grabando o YA hay un arranque en vuelo (otro
@@ -169,6 +197,7 @@ async function _startVoiceRecording() {
         var fmt = (audioMimeType || 'webm').split('/')[1];
         if (fmt.indexOf(';') > -1) fmt = fmt.split(';')[0];
         _sendAttachment('audio', base64, { format: fmt, duration: duration, mimeType: audioMimeType || 'audio/webm' });
+        haptic('confirm'); // NEXO Touch (2968): nota de voz grabada y enviada (3143: la línea estaba suelta al inicio del archivo)
         console.log('[ATTACH] Audio enviado, duracion:', duration);
       };
       reader.readAsDataURL(blob);
@@ -180,11 +209,13 @@ async function _startVoiceRecording() {
     };
     try { _mediaRecorder.start(100); } catch (tsErr) { _mediaRecorder.start(); }
     _isRecording = true;
+    if (_cancelPending) { _cancelPending = false; _voiceStarting = false; _cancelVoiceRecording(); return; } // 3143: se deslizó para cancelar durante el arranque
     _voiceStarting = false; // arranque terminado: a partir de acá manda _isRecording (el 2.º toque ya para/envía)
     _updateMicIcon(true);
     console.log('[ATTACH] Grabando voz...');
     try { if (typeof window.NEXO_prewake === 'function') window.NEXO_prewake('al grabar un audio'); } catch (e) {} // 3073: que esté despierto al terminar
   } catch (err) {
+    _cancelPending = false;
     _voiceStarting = false; // falló el arranque: liberar la guarda para poder reintentar
     console.log('[ATTACH:VOICE] Error:', err.name, err.message);
     if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') _showPermissionError(t('call_voice_perm_mic', 'micrófono'));

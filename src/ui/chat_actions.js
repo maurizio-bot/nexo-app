@@ -165,49 +165,75 @@ export function _setupMessageActions() {
   if (!mc || mc._nexoActions) return;
   mc._nexoActions = true;
   mc.style.touchAction = 'pan-y';
-  var timer = null, startX = 0, startY = 0, target = null, swiping = false, fired = false, lastTapId = null, lastTapAt = 0;
+  var timer = null, startX = 0, startY = 0, lastDx = 0, lastDy = 0, target = null, swiping = false, fired = false, lastTapId = null, lastTapAt = 0, ptr = null;
+  var REPLY_PX = 60; // 3143: cuánto hay que deslizar para responder
   var bubbleOf = function(e) {
     var m = e.target && e.target.closest ? e.target.closest('.message') : null;
     return (m && m.dataset.msgId && !m.classList.contains('progress-placeholder')) ? m : null;
   };
+  // 3143: un mensaje que aún no está en el vault (recién enviado, o con otro id) se puede responder igual: se arma desde la burbuja
+  var domMsg = function(div) {
+    var tx = div.querySelector('.msg-text'), own = div.classList.contains('own');
+    var att = div.querySelector('img,video,audio,.audio-player,[data-fullscreen-type]');
+    var txt = tx ? tx.textContent : (div.querySelector('.msg-content') || div).textContent;
+    return { msgId: div.dataset.msgId, _own: own, content: att && !tx ? '' : String(txt || ''), attachmentType: (!tx && att) ? (att.tagName === 'VIDEO' ? 'video' : (att.tagName === 'AUDIO' || (att.className || '').indexOf('audio') > -1 ? 'audio' : 'image')) : undefined };
+  };
+  var reply = function(div) {
+    var id = div.dataset.msgId, cid = _getCurrentContactId();
+    if (!id || !cid) return;
+    _findMessage(cid, id).then(function(m) { _startReply(id, m || domMsg(div)); });
+  };
+  var resetBubble = function(t) {
+    _hideReplyHint();
+    window.__nexoBubbleSwiping = false;
+    t.style.transition = 'transform 0.15s';
+    t.style.transform = '';
+    setTimeout(function() { t.style.transition = ''; }, 200);
+  };
   mc.addEventListener('pointerdown', function(e) {
+    if (e.isPrimary === false) return;   // 3143: un segundo dedo (pellizco) no empieza otro gesto
     var m = bubbleOf(e);
     if (!m) return;
-    target = m; startX = e.clientX; startY = e.clientY; swiping = false; fired = false;
+    target = m; ptr = e.pointerId; startX = e.clientX; startY = e.clientY; lastDx = 0; lastDy = 0; swiping = false; fired = false;
     clearTimeout(timer);
     timer = setTimeout(function() { fired = true; _openMsgMenu(m); }, 500);
   });
   mc.addEventListener('pointermove', function(e) {
-    if (!target) return;
+    if (!target || (ptr !== null && e.pointerId !== ptr)) return;
     var dx = e.clientX - startX, dy = e.clientY - startY;
+    lastDx = dx; lastDy = dy;
     if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearTimeout(timer);
-    // Deslizar la burbuja = responder. A la derecha (lejos del borde izquierdo, que es "volver") o a la izquierda
-    // (lo que pidió el dueño): en ambos sentidos.
-    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5 && (dx > 0 ? startX > 40 : true)) {
-      swiping = true;
+    // Deslizar la burbuja = responder. A la derecha (lejos del borde izquierdo, que es "volver") o a la izquierda.
+    // 3143: antes exigía |dx| > 1,5·|dy| en CADA movimiento (un pulgar siempre se desvía un poco hacia abajo y el gesto no
+    // arrancaba) y, una vez arrancado, volvía a perderse si el dedo bajaba. Ahora basta |dx| > |dy| para empezar y,
+    // empezado, el gesto queda fijado como horizontal hasta soltar.
+    if (!swiping && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) && (dx > 0 ? startX > 40 : true)) {
+      swiping = true; window.__nexoBubbleSwiping = true;
+    }
+    if (swiping) {
       var tx = dx > 0 ? Math.min(dx, 80) : Math.max(dx, -80);
       target.style.transform = 'translateX(' + tx + 'px)';
       _showReplyHint(target, tx);
     }
   });
+  // 3143: ya fijado el gesto horizontal, que el navegador no lo cambie por un scroll vertical (se perdía el desliz con un pointercancel)
+  mc.addEventListener('touchmove', function(e) { if (swiping && e.cancelable) e.preventDefault(); }, { passive: false });
   var end = function(e) {
     clearTimeout(timer);
     if (!target) return;
+    if (ptr !== null && e.pointerId !== undefined && e.pointerId !== ptr) return;
     var t = target;
-    var dx = (typeof e.clientX === 'number' ? e.clientX : startX) - startX;
-    var dy = (typeof e.clientY === 'number' ? e.clientY : startY) - startY;
-    target = null;
+    // 3143: se usa lo último medido en pointermove (un pointercancel trae clientX = 0 y daba un desplazamiento falso)
+    var dx = lastDx, dy = lastDy, cancelled = e.type === 'pointercancel';
+    target = null; ptr = null;
     if (swiping) {
       swiping = false;
-      _hideReplyHint();
-      t.style.transition = 'transform 0.15s';
-      t.style.transform = '';
-      setTimeout(function() { t.style.transition = ''; }, 200);
-      if (Math.abs(dx) > 60) _startReply(t.dataset.msgId);   // responder deslizando (izquierda o derecha)
+      resetBubble(t);
+      if (Math.abs(dx) > REPLY_PX) reply(t);   // responder deslizando (izquierda o derecha)
       return;
     }
     // Doble toque en la burbuja = reaccionar con ❤️ (en fotos/vídeos no: ahí el doble toque amplía en el visor)
-    if (!fired && Math.abs(dx) < 12 && Math.abs(dy) < 12) {
+    if (!fired && !cancelled && Math.abs(dx) < 12 && Math.abs(dy) < 12) {
       var now = Date.now(), id = t.dataset.msgId;
       if (lastTapId === id && now - lastTapAt < 320) { lastTapId = null; lastTapAt = 0; _doubleTapBubble(t); }
       else { lastTapId = id; lastTapAt = now; }

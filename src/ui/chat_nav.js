@@ -238,6 +238,7 @@ export function _setupPullToClose() {
     }, { passive: true });
     mc.addEventListener('touchmove', function(e) {
       if (!active || !e.touches || !e.touches[0]) return;
+      if (window.__nexoBubbleSwiping) { active = false; app.style.transform = ''; app.style.opacity = ''; return; } // 3143: un desliz de burbuja no es «cerrar el chat»
       cY = e.touches[0].clientY;
       var dy = cY - sY;
       if (dy <= 0 || mc.scrollTop > 2) { active = false; app.style.transform = ''; app.style.opacity = ''; return; }
