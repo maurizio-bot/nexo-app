@@ -19,49 +19,12 @@ import { _renderE2EBanner } from './e2e_banner.js';
 import { _setHdBadge } from './video_send.js';
 import { isGroupId } from './groups.js';
 import { personAvatar } from './person_avatar.js';
-import { vaultAppendMessage, vaultConsumeOnceMessage, vaultHydrateAttachments, vaultLoadFile, vaultLoadMessages, vaultLoadRecent, vaultUpdateMessageStatus } from '../vault/vault_manager.js';
+import { _renderOnceBubble } from './once_bubble.js';   // #94 «ver una vez» (foto y, desde la 3163, vídeo)
+import { vaultAppendMessage, vaultHydrateAttachments, vaultLoadFile, vaultLoadMessages, vaultLoadRecent, vaultUpdateMessageStatus } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
 
 
 export var _renderedMessageCount = 0;
-
-// #94 «ver una vez»: burbuja especial de un medio de una sola vista. El emisor ve «Foto de una vez · enviada» (sin
-// previa, como en WhatsApp). El receptor ve «Toca para ver · una vez»; al tocarla, el medio se CONSUME al instante
-// (se borra del disco y se marca onceSeen; la vista actual usa la copia en memoria) y la burbuja queda «Abierta».
-function _onceEye() {
-  return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;flex-shrink:0;"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
-}
-function _renderOnceBubble(contentDiv, msg, attachment, isOwn) {
-  var seen = !!(msg.onceSeen || (attachment.meta && attachment.meta.onceSeen));
-  contentDiv.style.minWidth = '150px';
-  if (isOwn) {
-    contentDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;opacity:0.92;">' + _onceEye() + '<span>' + t('chat_once_photo_sent', 'Foto de una vez · enviada') + '</span></div>';
-    return;
-  }
-  if (seen) {
-    contentDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;opacity:0.6;">' + _onceEye() + '<span style="font-style:italic;">' + t('chat_once_opened', 'Abierta') + '</span></div>';
-    return;
-  }
-  var wrap = document.createElement('div');
-  wrap.className = 'msg-once-tap';
-  wrap.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;color:#00d4ff;font-weight:600;';
-  wrap.innerHTML = _onceEye() + '<span>' + t('chat_once_tap', 'Toca para ver · una vez') + '</span>';
-  wrap.addEventListener('click', function(e) {
-    e.stopPropagation();
-    var payload = attachment.payload || msg.attachmentPayload;
-    if (!payload) return;
-    var fmt = (attachment.meta && attachment.meta.format) || 'jpeg';
-    var src = 'data:image/' + fmt + ';base64,' + payload;
-    var cid = _getCurrentContactId();
-    var mid = msg.msgId || msg.messageId;
-    // Consumir YA (aunque cierren la app): borra el blob y marca visto; la vista de ahora usa la copia en memoria
-    try { vaultConsumeOnceMessage(cid, mid); } catch (err) {}
-    if (msg) { msg.onceSeen = true; msg.attachmentPayload = null; }
-    contentDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;opacity:0.6;">' + _onceEye() + '<span style="font-style:italic;">' + t('chat_once_opened', 'Abierta') + '</span></div>';
-    _openFullscreenMedia(src, 'image', true);   // noSave: una foto «de una vez» se consume, no se guarda en galería
-  });
-  contentDiv.appendChild(wrap);
-}
 
 // Ronda 2781 (informe del dueño): una sola nota de voz suena a la vez, y el audio que está sonando se PARA al empezar a
 // grabar otra o al entrar/empezar una llamada o videollamada. _curVoiceStop guarda la función de pausa del reproductor

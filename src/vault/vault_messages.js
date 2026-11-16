@@ -68,7 +68,9 @@ export async function vaultHydrateAttachments(messages, opts) {
       copy.attachmentMeta = Object.assign({}, _fm, { lazyRef: ref });
       out.push(copy); continue;
     }
-    if (opts && opts.thumbs && m.attachmentType === 'video' && ref && !m.attachmentDisplayUrl && !(m.attachmentMeta && (m.attachmentMeta.once || !m.attachmentMeta.thumb))) {
+    // 3163: un vídeo «ver una vez» tampoco se lee al abrir el chat (su burbuja no lo enseña; se lee del teléfono al tocarla, once_bubble.js)
+    var _vOnce = !!(m.attachmentMeta && m.attachmentMeta.once);
+    if (opts && opts.thumbs && m.attachmentType === 'video' && ref && !m.attachmentDisplayUrl && (_vOnce || !(m.attachmentMeta && !m.attachmentMeta.thumb))) {
       copy.attachmentPayload = 'L';
       copy.attachmentMeta = Object.assign({}, copy.attachmentMeta || m.attachmentMeta || {}, { lazyRef: ref });
       out.push(copy); continue;
@@ -484,6 +486,8 @@ export async function vaultConsumeOnceMessage(contactNexoId, msgId) {
     var m = messages[idx];
     if (m.onceSeen) return true;
     var meta = Object.assign({}, m.attachmentMeta || {}, { once: true, onceSeen: true });
+    // 3163: tampoco queda la miniatura (un fotograma del vídeo) ni el puntero del buzón de archivos (con su llave se podría volver a bajar)
+    delete meta.thumb; delete meta.blobPtr;
     // Borrar también content/text: el content de un adjunto puede llevar el payload como JSON y lo resucitaría al
     // reabrir el chat. Se conservan attachmentType y attachmentMeta.once para que la burbuja muestre «Abierta».
     messages[idx] = Object.assign({}, m, { onceSeen: true, content: '', text: '', attachmentPayload: null, attachmentRef: null, hdRef: null, hdStatus: null, attachmentMeta: meta });
@@ -529,7 +533,7 @@ export async function vaultReactMessage(contactNexoId, msgId, reactorNexoId, emo
   });
 }
 
-// v2.3.3: el vídeo HD sustituye al adjunto (previa) de un mensaje ya recibido
+// v2.3.3: el vídeo HD sustituye al adjunto (previa) de un mensaje ya recibido. Devuelve true, false (no está) o 'onceSeen' (3163)
 export async function vaultReplaceAttachment(contactNexoId, msgId, payload, metaPatch) {
   if (!contactNexoId || !msgId || !payload) return false;
   var cid = _normId(contactNexoId);
@@ -537,6 +541,8 @@ export async function vaultReplaceAttachment(contactNexoId, msgId, payload, meta
     var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
     var idx = messages.findIndex(function(m) { return m.msgId === msgId; });
     if (idx < 0) return false;
+    // 3163: un «ver una vez» ya abierto no revive: el HD que llega después se tira sin guardarlo
+    if (messages[idx].onceSeen) return 'onceSeen';
     var m = Object.assign({}, messages[idx]);
     var ref = m.attachmentRef || _attFileName(msgId);
     vaultSaveFile(ref, payload);

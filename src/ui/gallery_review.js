@@ -3,8 +3,9 @@
  * para palomear varias, quiero que apliques ese concepto en la esquina puesta con el "ojo", o sea que al mandar varias también
  * puedes elegir cuáles de una sola vista»). Al volver del selector del sistema (pickers.js, con `multiple`) sale una cuadrícula con
  * las miniaturas de lo elegido y, en la ESQUINA de cada FOTO, un círculo con el ojo (el mismo concepto que el puntito del selector):
- * tocarlo marca o desmarca esa foto como «ver una vez» (#94, como el 👁 de la revisión de la cámara). Los vídeos van sin ojo (el
- * «una vez» es solo para fotos, como en la cámara), con su indicador de vídeo. «Enviar (N)» devuelve qué fotos van de una vez y
+ * tocarlo marca o desmarca esa foto como «ver una vez» (#94, como el 👁 de la revisión de la cámara). 3163 (dueño 16-11: «hay que
+ * aplicar lo de una sola vista a vídeos también»): los VÍDEOS también llevan su ojo (además de su indicador de vídeo) y la revisión
+ * sale aunque solo se elijan vídeos. «Enviar (N)» devuelve cuáles van de una vez y
  * pickers.js manda todo como siempre (mismo orden, de a una, mismos topes); la ✕ «Cancelar» o el atrás de Android (chat_nav.js,
  * por __nexoClose) cierran sin mandar nada. Las miniaturas son URL de objeto del propio archivo (no se lee ni se copia la foto
  * entera en memoria) y se liberan al cerrar. El aspecto vive en nexo_theme.css (.nx-grev…).
@@ -19,14 +20,8 @@ var PLAY_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="#fff" aria
 function _isVideo(f) { return !!f && String(f.type || '').indexOf('video') === 0; }
 function _objUrl(f) { try { return URL.createObjectURL(f); } catch (e) { return ''; } }
 
-// ¿Hay alguna foto en lo elegido? Si solo hay vídeos no hay nada que marcar: se mandan directo, como antes de la 3160.
-export function _galleryHasPhoto(files) {
-  for (var i = 0; files && i < files.length; i++) if (files[i] && !_isVideo(files[i])) return true;
-  return false;
-}
-
 // files: lo elegido (ya con el tope GALLERY_MAX). opts.eyes === false: sin ojos (solo revisar y mandar). onSend(once): once[i] es
-// true si la foto i va «ver una vez». Cancelar no llama a nada.
+// true si la foto o el vídeo i va «ver una vez». Cancelar no llama a nada.
 export function _openGalleryReview(files, opts, onSend) {
   var old = document.getElementById('nexo-gallery-review');
   if (old) { if (typeof old.__nexoClose === 'function') old.__nexoClose(); else old.remove(); }
@@ -41,7 +36,7 @@ export function _openGalleryReview(files, opts, onSend) {
   var cancelTxt = t('media_cancel', 'Cancelar');
   ov.innerHTML = '<div class="nx-page-head"><div class="nx-page-title">' + t('grev_title', 'Antes de enviar') + '</div>' +
     '<button id="nexo-grev-cancel" class="nx-round-btn" type="button" aria-label="' + cancelTxt + '" title="' + cancelTxt + '">' + SHEET_CLOSE_SVG + '</button></div>' +
-    (eyes ? '<div class="nx-grev-hint">' + EYE_SVG + '<span>' + t('grev_hint', 'Toca el ojo de una foto para que se vea una sola vez') + '</span></div>' : '') +
+    (eyes ? '<div class="nx-grev-hint">' + EYE_SVG + '<span>' + t('grev_hint', 'Toca el ojo de una foto o un vídeo para que se vea una sola vez') + '</span></div>' : '') +
     '<div class="nx-grev-grid"></div>' +
     '<div class="nx-grev-bar"><button id="nexo-grev-send" class="nx-grev-send" type="button"></button></div>';
   var grid = ov.querySelector('.nx-grev-grid');
@@ -70,7 +65,8 @@ export function _openGalleryReview(files, opts, onSend) {
       vb.setAttribute('aria-label', t('grev_video', 'Vídeo'));
       vb.innerHTML = PLAY_SVG;
       cell.appendChild(vb);
-    } else if (eyes) {
+    }
+    if (eyes) {
       var eye = document.createElement('button');
       eye.type = 'button';
       eye.className = 'nx-grev-eye';

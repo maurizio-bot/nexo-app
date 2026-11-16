@@ -74,11 +74,13 @@ export function bigToGroup(gid, id) {
 // ===== Vídeo HD =====
 
 // Emisor: el HD de un vídeo del grupo (la previa ya salió con id msgId)
-export function registerGroupHd(gid, msgId, b64, mime) {
+// 3163: once = vídeo «ver una vez»: el HD de cada miembro lleva la marca (se guarda con el grupo: vale también al reanudar)
+export function registerGroupHd(gid, msgId, b64, mime, once) {
   startGroupMedia();
   var gs = _gs(), st = gs && gs.st[msgId];
   if (!st || !b64) return;
   st.hd = { mime: mime, n: {} };
+  if (once) st.hd.once = 1;
   gs._save();
   _hdMem[msgId] = b64;
   vaultSaveFile(vaultHdFileName(msgId), b64);
@@ -106,7 +108,9 @@ function _hdTo(base, nx) {
     if (!b64) throw new Error('el HD ya no está');
     console.log('[VIDEO] HD de ' + base + ' a ' + nx + ' (grupo, ' + Math.round(b64.length / 1024) + ' KB)');
     _badge(base);
-    return bi.sendFile(nx, key + '_hd', b64, { type: 'video', hdFor: key, mime: mime, format: _videoFormat(mime), size: b64.length });
+    var hm = { type: 'video', hdFor: key, mime: mime, format: _videoFormat(mime), size: b64.length };
+    if (st.hd.once) hm.once = true;
+    return bi.sendFile(nx, key + '_hd', b64, hm);
   }).then(function() {
     st.hd.n[nx] = 'sent';
     gs._save();

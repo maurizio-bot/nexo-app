@@ -19,17 +19,22 @@ import { viewerGestures, viewerSlide } from './media_swipe.js';   // 3159: desli
 export function _closeFullscreenMedia() {
   var ov = document.getElementById('fullscreen-media-overlay');
   if (!ov) return;
+  var onClose = ov.__nexoOnClose; ov.__nexoOnClose = null;
   _releaseMedia(ov);
   ov.remove();
+  if (typeof onClose === 'function') { try { onClose(); } catch (e) {} }
 }
 
 // 3159 (dueño 16-11): `fromEl` = la burbuja desde la que se abrió (render.js); con ella, el visor se desliza de lado entre las fotos
 // y vídeos del chat (media_swipe.js). Sin ella («ver una vez», foto de un contacto) solo se cierra.
-export function _openFullscreenMedia(src, type, noSave, fromEl) {
+// 3163: onClose = se llama al cerrar el visor (por donde sea: deslizar, tocar fuera, «atrás» u otro visor); el vídeo «ver una vez»
+// libera ahí su URL.
+export function _openFullscreenMedia(src, type, noSave, fromEl, onClose) {
   _closeFullscreenMedia();
-  if (!src) { console.warn('[VIDEO] Sin fuente para el visor'); return; }
+  if (!src) { console.warn('[VIDEO] Sin fuente para el visor'); if (typeof onClose === 'function') { try { onClose(); } catch (e) {} } return; }
   var overlay = document.createElement('div');
   overlay.id = 'fullscreen-media-overlay';
+  if (typeof onClose === 'function') overlay.__nexoOnClose = onClose;
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:5000;overflow:hidden;touch-action:none;';
   // 3159 (dueño 16-11: «para salir de las fotos y regresar al chat con deslizar hacia arriba, ya quita la x»): ya no hay X. Se cierra
   // deslizando hacia arriba (o abajo), tocando fuera de la foto o con el «atrás» de Android (chat_nav.js → __nexoCloseMedia).
@@ -43,7 +48,7 @@ export function _openFullscreenMedia(src, type, noSave, fromEl) {
     _releaseMedia(slide);
     slide.textContent = '';
     if (ty === 'image') slide.appendChild(_viewerImage(s));
-    else if (ty === 'video') slide.appendChild(_viewerVideo(s));
+    else if (ty === 'video') slide.appendChild(_viewerVideo(s, noSave));
     if (noSave) return;
     leave();
     var key = el || overlay, had = saveBtns.get(key);
@@ -131,12 +136,19 @@ function _viewerImage(src) {
   }, { passive: false });
   return img;
 }
-function _viewerVideo(src) {
+function _viewerVideo(src, noSave) {
   var video = document.createElement('video');
   video.src = src;
   video.controls = true;
   video.autoplay = true;
   video.playsInline = true;
+  if (noSave) {
+    // 3163: vídeo «ver una vez»: el reproductor tampoco ofrece descargarlo ni sacarlo a una ventana flotante
+    video.setAttribute('controlsList', 'nodownload noremoteplayback');
+    video.setAttribute('disablepictureinpicture', '');
+    try { video.disablePictureInPicture = true; } catch (e) {}
+    video.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+  }
   video.style.cssText = 'max-width:95vw;max-height:85vh;border-radius:8px;background:#000;';
   video.onerror = function() { console.warn('[VIDEO] El visor no pudo reproducir: código ' + (video.error && video.error.code)); };
   return video;

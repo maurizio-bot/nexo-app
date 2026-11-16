@@ -155,6 +155,7 @@ function preload(native, me, others, history) {
     await click(A.page, '.attach-menu-item[data-type="gallery"]'); await sleep(500);
     const inputs = await A.page.$$('input[type=file]');
     await inputs[inputs.length - 1].setInputFiles({ name: 'clip.mp4', mimeType: media.videoMime, buffer: Buffer.from(media.video, 'base64') });
+    await sleep(500); await click(A.page, '#nexo-gallery-review #nexo-grev-send'); // 3163: el vídeo también pasa por la revisión (ojo «ver una vez»)
     const lat = [];
     await sleep(1000); lat.push(await sendText(A, 'texto durante video 1'));
     let first = 0, hd = 0;

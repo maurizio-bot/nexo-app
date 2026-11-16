@@ -33,7 +33,7 @@ export var _cameraTimer = null;      // v9.9.46: contador de grabación
 export var _cameraTorchOn = false;
 
 export var _cameraReview = null;     // { type: 'photo'|'video', b64, w, h, blob, url, mime, duration }
-var _cameraReviewOnce = false;       // #94 «ver una vez»: la foto en revisión se marcó para verse una sola vez
+var _cameraReviewOnce = false;       // #94 «ver una vez»: la foto (o, desde la 3163, el vídeo) en revisión se marcó para verse una sola vez
 
 export function _showCameraPreviewOverlay() {
   var overlay = document.getElementById('camera-preview-overlay');
@@ -330,10 +330,11 @@ export function _pauseBleForCamera() {
 // Revisión antes de enviar
 export function _showReview(r) {
   _cameraReview = r;
-  // #94: cada revisión empieza sin «una vez»; el toggle solo para fotos (el vídeo de una vez queda para más adelante)
+  // #94: cada revisión empieza sin «una vez». 3163 (dueño 16-11: «hay que aplicar lo de una sola vista a vídeos también»): el 👁
+  // también en la revisión de un vídeo grabado
   _cameraReviewOnce = false;
   var onceBtn = document.getElementById('cam-review-once');
-  if (onceBtn) { onceBtn.style.display = (r.type === 'photo') ? 'inline-flex' : 'none'; onceBtn.classList.remove('active'); }
+  if (onceBtn) { onceBtn.style.display = 'inline-flex'; onceBtn.classList.remove('active'); }
   var box = document.getElementById('cam-review'), media = document.getElementById('cam-review-media');
   if (!box || !media) return;
   media.innerHTML = '';
@@ -349,6 +350,8 @@ export function _showReview(r) {
   }
   box.classList.remove('hidden');
 }
+
+if (typeof window !== 'undefined') window.NEXO_cameraReview = _showReview; // pruebas (tests/sim/videounavez.js: revisión de un vídeo grabado)
 
 export function _closeReview() {
   var r = _cameraReview;
@@ -368,7 +371,7 @@ export function _retakeReview() {
 export function _sendReview() {
   var r = _cameraReview;
   if (!r) return;
-  var once = _cameraReviewOnce && r.type === 'photo'; // #94: «ver una vez» solo para fotos por ahora
+  var once = !!_cameraReviewOnce; // #94 «ver una vez» (foto y, desde la 3163, vídeo)
   _cameraReview = null; // la URL del vídeo se libera al cerrar; el blob sigue vivo para enviarlo
   _cameraReviewOnce = false;
   var url = r.url;
@@ -376,11 +379,11 @@ export function _sendReview() {
   if (url) { try { URL.revokeObjectURL(url); } catch (e) {} }
   _waitForBLEReady(4500).then(function() {
     if (r.type === 'photo') _sendAttachment('image', r.b64, { format: 'jpeg', width: r.w, height: r.h, once: once });
-    else _sendVideo(r.blob, { format: _videoFormat(r.mime), duration: r.duration });
+    else _sendVideo(r.blob, once ? { format: _videoFormat(r.mime), duration: r.duration, once: true } : { format: _videoFormat(r.mime), duration: r.duration });
   });
 }
 
-// #94: alternar «ver una vez» en la revisión de la foto (👁). Se ata en _bindCameraPreviewHandlers.
+// #94: alternar «ver una vez» en la revisión (👁; foto o vídeo). Se ata en _bindCameraPreviewHandlers.
 function _toggleReviewOnce() {
   _cameraReviewOnce = !_cameraReviewOnce;
   var b = document.getElementById('cam-review-once');

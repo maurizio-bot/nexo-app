@@ -85,6 +85,8 @@ export default {
   chat_once_photo_sent: "Photo à voir une fois · envoyée",
   chat_once_opened: "Ouverte",
   chat_once_tap: "Appuyez pour voir · une fois",
+  chat_once_video_sent: "Vidéo à voir une fois · envoyée",
+  chat_once_opened_video: "Ouverte",
   chat_hd_waiting: "HD en attente",
   chat_hd_preview: "Aperçu · HD en route",
   chat_location: "Position",
@@ -913,6 +915,6 @@ export default {
   notif_banner_btn: "Activer",
   notif_banner_close: "Masquer pendant 24 h",
   grev_title: "Avant d'envoyer",
-  grev_hint: "Touchez l'œil d'une photo pour qu'elle ne soit vue qu'une fois",
+  grev_hint: "Touchez l'œil d'une photo ou d'une vidéo pour qu'elle ne soit vue qu'une fois",
   grev_video: "Vidéo",
 };

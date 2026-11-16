@@ -121,7 +121,9 @@ export const BLE_BLOB_METHODS = {
   _fileCitaBytes(nexoId, fileId, bytes, meta) {
     var self = this, nx = _normId(nexoId), net = self.net, type = (meta && meta.type) || 'file';
     if (!nx || !fileId || !net || !bytes || bytes <= BLOB_MAILBOX_MAX_BYTES) return false; // ≤ 5 MB: eso es el buzón de archivos
-    if (meta && (meta.dst || meta.fwd || meta.big || meta.hdFor)) return false;
+    // 3163: ni un «ver una vez» (el vídeo original > 5 MB): su aviso sería una burbuja «una vez» sin vídeo que se gastaría al tocarla;
+    // queda ⏳ y sale directo (con la marca) cuando coincidan
+    if (meta && (meta.dst || meta.fwd || meta.big || meta.hdFor || meta.once)) return false;
     if (type !== 'image' && type !== 'video' && type !== 'file') return false;
     if (typeof net.canReach !== 'function' || net.canReach(nx) || typeof net.mailboxFilesOk !== 'function' || !net.mailboxFilesOk(nx)) return false;
     if (self.lan && typeof self.lan.canReach === 'function' && self.lan.canReach(nx)) return false;

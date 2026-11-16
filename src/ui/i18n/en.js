@@ -85,6 +85,8 @@ export default {
   chat_once_photo_sent: "View once photo · sent",
   chat_once_opened: "Opened",
   chat_once_tap: "Tap to view · once",
+  chat_once_video_sent: "View once video · sent",
+  chat_once_opened_video: "Opened",
   chat_hd_waiting: "HD waiting",
   chat_hd_preview: "Preview · HD on the way",
   chat_location: "Location",
@@ -913,6 +915,6 @@ export default {
   notif_banner_btn: "Turn on",
   notif_banner_close: "Hide for 24 hours",
   grev_title: "Before sending",
-  grev_hint: "Tap a photo's eye so it can only be viewed once",
+  grev_hint: "Tap the eye on a photo or video so it can only be viewed once",
   grev_video: "Video",
 };

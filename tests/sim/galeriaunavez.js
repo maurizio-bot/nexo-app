@@ -1,10 +1,10 @@
 // 3160 (dueño 16-11: «cuando subo varias fotos, tienen el puntito para palomear varias, quiero que apliques ese concepto en la
 // esquina puesta con el "ojo", o sea que al mandar varias también puedes elegir cuáles de una sola vista»).
 // A elige en la galería 3 fotos y 1 vídeo (f1, f2, clip, f3). Antes de mandar debe salir la revisión (#nexo-gallery-review) con 4
-// miniaturas (URL de objeto) y 3 ojos (el vídeo sin ojo y con su indicador); A enciende el ojo de la 2.ª foto → «Enviar (4)» → salen
+// miniaturas (URL de objeto) y 4 ojos (3163: el vídeo también, además de su indicador); A enciende el ojo de la 2.ª foto → «Enviar (4)» → salen
 // las 4 en el orden elegido, de a una: f2 con «ver una vez», f1 y f3 normales, y así le llegan a B; las URL se liberan al cerrar.
 // Además: UNA sola foto → también revisión; la ✕ «Cancelar» y el atrás de Android (__nexoHandleBack) cierran sin mandar nada; solo
-// un vídeo → directo, sin revisión (como antes); en un GRUPO (A+B) el «una vez» viaja en el sobre del grupo (meta.once) y B lo ve
+// un vídeo → 3163: también revisión (con su ojo; sin tocarlo sale normal); en un GRUPO (A+B) el «una vez» viaja en el sobre del grupo (meta.once) y B lo ve
 // como «Toca para ver · una vez», así que ahí también hay ojo.
 // Antes (≤ 3159): al volver del selector se mandaba todo enseguida, sin revisión y sin forma de marcar «ver una vez».
 // jsdom no decodifica imágenes (ni load ni error) ni tiene URL.createObjectURL: el compresor recibe un «error» y manda la foto
@@ -108,7 +108,7 @@ const desc = (m) => (m.attachmentType === 'video' ? 'video' : (m.attachmentMeta 
   r.miniaturas_url = cells.every((c) => /^blob:/.test((c.querySelector('img,video') || {}).src || ''));
   r.tipos = cells.map((c) => (c.querySelector('video') ? 'video' : c.querySelector('img') ? 'foto' : '?'));
   r.ojos = ov.querySelectorAll('.nx-grev-eye').length;
-  r.video_sin_ojo_con_indicador = !cells[2].querySelector('.nx-grev-eye') && !!cells[2].querySelector('.nx-grev-vid');
+  r.video_con_ojo_e_indicador = !!cells[2].querySelector('.nx-grev-eye') && !!cells[2].querySelector('.nx-grev-vid');   // 3163
   r.ojos_en_las_fotos = [0, 1, 3].every((i) => !!cells[i].querySelector('.nx-grev-eye'));
   r.nada_antes_de_enviar = (await own(A, idB)).length === 0;
   const sendBtn = ov.querySelector('#nexo-grev-send');
@@ -161,11 +161,13 @@ const desc = (m) => (m.attachmentType === 'video' ? 'video' : (m.attachmentMeta 
   click(A.win, ov4 && ov4.querySelector('#nexo-grev-send'));
   r.una_foto_una_vez = await waitFor(async () => (await own(A, idB)).some((m) => desc(m) === 'unica.jpg*'), 8000);
 
-  // 5) Solo un vídeo → sin revisión, directo (como antes)
+  // 5) Solo un vídeo → 3163: también revisión, con su ojo; sin tocarlo, «Enviar (1)» lo manda normal
   const nv = (await own(A, idB)).filter((m) => m.attachmentType === 'video').length;
   await pick(A, [video('solo.mp4')]);
-  r.solo_video_sin_revision = !review(A);
-  r.solo_video_sale = await waitFor(async () => (await own(A, idB)).filter((m) => m.attachmentType === 'video').length > nv, 8000);
+  const ov5 = review(A);
+  r.solo_video_revision_con_ojo = !!ov5 && ov5.querySelectorAll('.nx-grev-eye').length === 1;
+  click(A.win, ov5 && ov5.querySelector('#nexo-grev-send'));
+  r.solo_video_sale = await waitFor(async () => (await own(A, idB)).filter((m) => m.attachmentType === 'video' && !(m.attachmentMeta && m.attachmentMeta.once)).length > nv, 8000);
 
   // 6) Grupo A+B: el ojo también está y el «una vez» llega en el sobre del grupo
   A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:closeChat', { detail: {} })); await sleep(300);
@@ -186,12 +188,12 @@ const desc = (m) => (m.attachmentType === 'video' ? 'video' : (m.attachmentMeta 
   r.grupo_B_burbuja_una_vez = gb.length === 1 && !gb[0].querySelector('img');
 
   r.errores = logs.filter((l) => /TypeError|ReferenceError|undefined is not|No se pudo descifrar/.test(l)).slice(0, 4);
-  const ok = r.revision_aparece && r.miniaturas === 4 && r.miniaturas_url && JSON.stringify(r.tipos) === '["foto","foto","video","foto"]' && r.ojos === 3 &&
-    r.video_sin_ojo_con_indicador && r.ojos_en_las_fotos && r.nada_antes_de_enviar && r.boton === 'Enviar (4)' && r.ojo_2_encendido && r.ojo_3_apagado &&
+  const ok = r.revision_aparece && r.miniaturas === 4 && r.miniaturas_url && JSON.stringify(r.tipos) === '["foto","foto","video","foto"]' && r.ojos === 4 &&
+    r.video_con_ojo_e_indicador && r.ojos_en_las_fotos && r.nada_antes_de_enviar && r.boton === 'Enviar (4)' && r.ojo_2_encendido && r.ojo_3_apagado &&
     r.revision_cerrada && r.urls_liberadas && r.orden_y_marcas_ok && r.B_marcas_ok &&
     r.una_foto_revision && r.una_foto_ojo && r.cancelar_cierra && r.cancelar_no_manda && r.cancelar_libera &&
     r.atras_cancela && r.atras_chat_sigue && r.boton_una === 'Enviar (1)' && r.una_foto_una_vez &&
-    r.solo_video_sin_revision && r.solo_video_sale &&
+    r.solo_video_revision_con_ojo && r.solo_video_sale &&
     r.grupo_en_B && r.grupo_ojos === 2 && r.grupo_marcas_ok && r.grupo_B_burbuja_una_vez && r.errores.length === 0;
   finish(ok);
 })().catch((e) => { console.error('FALLO:', e.stack); fs.writeFileSync(path.join(__dirname, 'last_logs_galeriaunavez.txt'), logs.join('\n')); process.exit(1); });

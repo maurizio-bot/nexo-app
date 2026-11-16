@@ -37,10 +37,16 @@ export function _showOwnPreparing(show) {
 }
 
 // Envía un vídeo: previa rápida + HD automático (o el original si no se puede recodificar)
+// 3163 (dueño 16-11: «hay que aplicar lo de una sola vista a vídeos también»): meta.once = «ver una vez». La marca viaja en la
+// meta de TODO lo que sale (previa, original por Wi-Fi Direct, el HD aparte y el de cada miembro de un grupo) y el vídeo de una vez
+// va SIN miniatura (sería un fotograma que queda en el otro teléfono después de abrirlo).
 export function _sendVideo(blob, meta) {
   var contactId = _getCurrentContactId();
   if (!contactId || !blob) return;
   meta = Object.assign({}, meta || {});
+  var once = !!meta.once;
+  if (!once) delete meta.once;
+  var thumbOf = function(src) { return once ? Promise.resolve(null) : _makeVideoThumb(src, 320); };
   var mime = (blob.type || meta.mime || 'video/webm').split(';')[0];
   _showOwnPreparing(true);
   var makePreview = (typeof window.NEXO_makeVideoPreview === 'function') ? window.NEXO_makeVideoPreview : _makeVideoPreview;
@@ -50,7 +56,7 @@ export function _sendVideo(blob, meta) {
   // v9.9.42: si Wi-Fi Direct falla, el mismo mensaje sigue como previa + HD por Bluetooth (_videoViaBle)
   if (_wdReach(contactId) && Math.ceil(blob.size / 3) * 4 <= WD_MAX_B64_BYTES) {
     console.log('[VIDEO] Original por Wi-Fi Direct (' + Math.round(blob.size / 1024) + ' KB)');
-    return Promise.all([_blobToB64(blob), _makeVideoThumb(blob, 320)]).then(function(r) {
+    return Promise.all([_blobToB64(blob), thumbOf(blob)]).then(function(r) {
       _showOwnPreparing(false);
       _sendAttachment('video', r[0], Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), thumb: r[1] || null, wdOnly: true }), {
         onWdFail: function(msgId) { _videoViaBle(contactId, msgId, blob, meta, mime, makePreview, tStart); }
@@ -67,7 +73,7 @@ export function _sendVideo(blob, meta) {
       // Sin previa: se envía el original (como antes), con miniatura si se puede
       if (blob.size > MAX_BLE_FILE_BYTES) { _showPermissionError(_tooBigMessage(blob.size, contactId)); return; }
       console.log('[VIDEO] Enviando el original sin previa (' + Math.round(blob.size / 1024) + ' KB)');
-      return Promise.all([_blobToB64(blob), _makeVideoThumb(blob, 320)]).then(function(r) {
+      return Promise.all([_blobToB64(blob), thumbOf(blob)]).then(function(r) {
         _sendAttachment('video', r[0], Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), thumb: r[1] || null }));
       });
     }
@@ -79,7 +85,7 @@ export function _sendVideo(blob, meta) {
     // Ronda 2764: en un grupo el HD va a cada miembro cuando le llega la previa (group_media.js)
     var gsV = window.bleInterface && window.bleInterface.groups, inGroupV = !!(gsV && gsV.isGroup(contactId));
     if (!withHd) console.log('[VIDEO] Sin HD: ' + Math.round(hdBlob.size / 1024) + ' KB supera el límite');
-    var thumbP = preview.thumb ? Promise.resolve(preview.thumb) : _makeVideoThumb(blob, 320);
+    var thumbP = once ? Promise.resolve(null) : (preview.thumb ? Promise.resolve(preview.thumb) : _makeVideoThumb(blob, 320));
     return Promise.all([_blobToB64(preview), withHd ? _blobToB64(hdBlob) : Promise.resolve(null), thumbP]).then(function(r) {
       preview.thumb = r[2] || null;
       // v9.9.35: la burbuja propia se pinta desde una URL del archivo (antes decodificaba el base64 del
@@ -88,10 +94,10 @@ export function _sendVideo(blob, meta) {
       try { displayUrl = URL.createObjectURL(hdBlob); _objectURLRegistry.push(displayUrl); } catch (e) {}
       var msgId = _sendAttachment('video', r[0], Object.assign({}, meta, { mime: pMime, format: _videoFormat(pMime), preview: !!r[1], hdSize: r[1] ? hdBlob.size : 0, thumb: preview.thumb || null }),
         r[1] ? { displayUrl: displayUrl, displayMime: hdMime } : null);
-      if (msgId && r[1] && inGroupV) registerGroupHd(contactId, msgId, r[1], hdMime);
+      if (msgId && r[1] && inGroupV) registerGroupHd(contactId, msgId, r[1], hdMime, once);
       else if (msgId && r[1]) {
         _videoTimes[msgId] = { t0: tStart, previewKB: Math.round(preview.size / 1024), hdKB: Math.round(hdBlob.size / 1024) };
-        _registerHd(contactId, msgId, r[1], hdMime);
+        _registerHd(contactId, msgId, r[1], hdMime, once);
       }
     });
   }).catch(function(e) {
@@ -122,14 +128,15 @@ export function _videoViaBle(cid, msgId, blob, meta, mime, makePreview, tStart) 
     var hdBlob = preview.hd || blob;
     var hdMime = (hdBlob.type || mime).split(';')[0];
     var withHd = Math.ceil(hdBlob.size / 3) * 4 <= MAX_HD_B64_BYTES;
-    var thumbP = preview.thumb ? Promise.resolve(preview.thumb) : _makeVideoThumb(blob, 320);
+    var onceV = !!(meta && meta.once);   // 3163: el «ver una vez» sigue siéndolo por Bluetooth (y sin miniatura)
+    var thumbP = onceV ? Promise.resolve(null) : (preview.thumb ? Promise.resolve(preview.thumb) : _makeVideoThumb(blob, 320));
     return Promise.all([_blobToB64(preview), withHd ? _blobToB64(hdBlob) : Promise.resolve(null), thumbP]).then(function(r) {
       var pm = Object.assign({}, meta, { mime: pMime, format: _videoFormat(pMime), preview: !!r[1], hdSize: r[1] ? hdBlob.size : 0, thumb: r[2] || null, wdOnly: false });
       return vaultReplaceAttachment(cid, msgId, r[0], pm).then(function() {
         _sendFileFor(cid, msgId, 'video', r[0], pm);
         if (r[1]) {
           _videoTimes[msgId] = { t0: tStart, previewKB: Math.round(preview.size / 1024), hdKB: Math.round(hdBlob.size / 1024) };
-          _registerHd(cid, msgId, r[1], hdMime);
+          _registerHd(cid, msgId, r[1], hdMime, onceV);
         }
       });
     });
@@ -139,20 +146,22 @@ export function _videoViaBle(cid, msgId, blob, meta, mime, makePreview, tStart) 
   });
 }
 
-export function _registerHd(cid, msgId, hdB64, mime) {
+export function _registerHd(cid, msgId, hdB64, mime, once) {
   var ref = vaultHdFileName(msgId);
-  _hdOutbox[msgId] = { cid: cid, mime: mime, b64: hdB64 };
+  _hdOutbox[msgId] = { cid: cid, mime: mime, b64: hdB64, once: !!once };
   vaultSaveFile(ref, hdB64);
   vaultSetMessageFields(cid, msgId, { hdRef: ref, hdStatus: 'pending', hdMime: mime });
   _setHdBadge(msgId, t('media_hd_waiting', 'HD en espera'));
 }
 
 // Emisor: manda el original cuando la previa ya llegó (o al reconectar si quedó a medias)
-export function _startHd(cid, msgId) {
+// 3163: once = el vídeo es «ver una vez» (de la memoria o, al reanudar, del mensaje guardado): el HD lleva la marca
+export function _startHd(cid, msgId, once) {
   var bi = window.bleInterface || (window.NEXO.app && window.NEXO.app.bleInterface);
   if (!cid || !msgId || _hdInFlight[msgId] || !bi || typeof bi.sendFile !== 'function') return;
   _hdInFlight[msgId] = true;
   var entry = _hdOutbox[msgId] || {};
+  var hdOnce = !!(once || entry.once);
   var getB64 = entry.b64 ? Promise.resolve(entry.b64) : vaultLoadFile(vaultHdFileName(msgId));
   getB64.then(function(b64) {
     if (!b64) { delete _hdInFlight[msgId]; return; }
@@ -161,7 +170,9 @@ export function _startHd(cid, msgId) {
     vaultSetMessageFields(cid, msgId, { hdStatus: 'sending' });
     if (_videoTimes[msgId]) _videoTimes[msgId].hdStart = Date.now();
     _setHdBadge(msgId, 'HD 0%');
-    return bi.sendFile(cid, msgId + '_hd', b64, { type: 'video', hdFor: msgId, mime: mime, format: _videoFormat(mime), size: b64.length })
+    var hm = { type: 'video', hdFor: msgId, mime: mime, format: _videoFormat(mime), size: b64.length };
+    if (hdOnce) hm.once = true;
+    return bi.sendFile(cid, msgId + '_hd', b64, hm)
       .then(function() { _onHdSent(cid, msgId); })
       .catch(function(err) {
         delete _hdInFlight[msgId];
@@ -194,7 +205,7 @@ export function _resumeHdForMsg(msgId) {
     if (!cid) return;
     vaultLoadMessages(cid).then(function(msgs) {
       var m = (msgs || []).find(function(x) { return x.msgId === msgId; });
-      if (m && m._own && m.hdRef && m.hdStatus !== 'sent') _startHd(cid, msgId);
+      if (m && m._own && m.hdRef && m.hdStatus !== 'sent') _startHd(cid, msgId, !!(m.attachmentMeta && m.attachmentMeta.once));
     }).catch(function() {});
   });
 }
@@ -204,18 +215,22 @@ export function _resumeHdTransfers(cid) {
   vaultLoadMessages(cid).then(function(msgs) {
     (msgs || []).forEach(function(m) {
       if (m._own && m.hdRef && (m.hdStatus === 'pending' || m.hdStatus === 'sending') &&
-          (m.status === 'delivered' || m.status === 'read')) _startHd(cid, m.msgId);
+          (m.status === 'delivered' || m.status === 'read')) _startHd(cid, m.msgId, !!(m.attachmentMeta && m.attachmentMeta.once));
     });
   }).catch(function() {});
 }
 
 // Receptor: el HD sustituye a la previa del mismo mensaje
 // Ronda 2764: el HD de un vídeo de grupo (msgId = la copia 'gm…_xxxxxxxx') va al chat del grupo
+// 3163: un vídeo «ver una vez» conserva la marca con el HD (vaultReplaceAttachment mezcla la meta); si ya se ABRIÓ, el HD que llega
+// tarde se tira (no se guarda: no revive), y un HD «ver una vez» sin su previa no se guarda como vídeo (se vio o se borró)
 export function _applyHdUpgrade(cid, msgId, payload, meta) {
   var mime = (meta.mime || 'video/webm').split(';')[0];
   (isGroupWire(msgId) ? videoGroupChatOf(cid, msgId) : Promise.resolve(null)).then(function(gid) {
     return vaultReplaceAttachment(gid || cid, msgId, payload, { mime: mime, format: _videoFormat(mime), hd: true, preview: false });
   }).then(function(ok) {
+    if (ok === 'onceSeen') { console.log('[VIDEO] HD de ' + msgId + ' descartado: era «ver una vez» y ya se abrió'); return; }
+    if (!ok && meta.once) { console.log('[VIDEO] HD «ver una vez» de ' + msgId + ' sin su previa: no se guarda'); return; }
     if (!ok) {
       // Sin la previa guardada: se guarda como vídeo normal
       _handleIncomingMessage({ msgId: msgId, messageId: msgId, attachmentType: 'video', attachmentPayload: payload,
