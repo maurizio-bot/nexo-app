@@ -14,7 +14,6 @@ import { _pickAvatar, SHEET_CLOSE_SVG } from './share_contacts.js';
 import { _showInfoToast } from './ui_bits.js';
 import { _getPinnedContacts } from './ble_helpers.js';
 import { _cancelEdit, _cancelReply } from './chat_actions.js';
-import '../styles/links.css';
 
 export var SHARED_TEXT_MAX = 4000;
 var _pending = null, _waiting = false;

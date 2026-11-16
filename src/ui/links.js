@@ -13,7 +13,6 @@
  */
 import { t } from './i18n.js';
 import { _showInfoToast } from './ui_bits.js';
-import '../styles/links.css';
 
 var MAX_URL = 2048;      // más largo: se deja como texto
 var MAX_LINKS = 30;      // enlaces tocables por mensaje (el resto, texto)
