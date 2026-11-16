@@ -19,6 +19,8 @@ import { t } from './i18n.js';
 var SKIP_LIMIT = 3; // tras posponerlo esta veces, deja de aparecer solo (sigue en Ajustes)
 var DONE_KEY = 'nexo_bat_prompt_done';
 var SKIP_KEY = 'nexo_bat_prompt_skips';
+var SKIP_AT_KEY = 'nexo_bat_prompt_skip_at'; // 3153: cuándo se pospuso por última vez
+var RETRY_MS = 7 * 24 * 3600 * 1000;       // agotados los avisos, vuelve como mucho 1 vez cada 7 días mientras siga sin exención
 
 // Fabricantes que esconden ajustes propios de inicio automático / segundo plano (Android no los deja comprobar).
 // Mismos que el botón «Abrir» de Perfil → Ajustes (openAlertSetting what:'vendor') y la lista nativa del plugin.
@@ -88,7 +90,8 @@ export function batteryGuard(opts) {
   var proceed = function (r) {
     if (!r) { done('error'); return; }
     if (r.battery === true) { _set(DONE_KEY, '1'); done('exempt'); return; } // el sistema ya deja a NEXO en segundo plano
-    if (skips >= SKIP_LIMIT) { done('skipped-enough'); return; } // ya se pospuso bastante; queda en Ajustes
+    var skipAt = parseInt(_get(SKIP_AT_KEY) || '0', 10) || 0;
+    if (skips >= SKIP_LIMIT && !(skipAt > 0 && Date.now() - skipAt >= RETRY_MS)) { done('skipped-enough'); return; } // ya se pospuso bastante; queda en Ajustes
     _showOverlay(pl, r, done);
   };
 
@@ -120,6 +123,7 @@ function _showOverlay(pl, settings, done) {
   function _finish(reason) { if (finished) return; finished = true; _cleanup(); done(reason); }
   function _skip() {
     _set(SKIP_KEY, String((parseInt(_get(SKIP_KEY) || '0', 10) || 0) + 1));
+    _set(SKIP_AT_KEY, String(Date.now()));
     _finish('skip');
   }
 

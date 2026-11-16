@@ -900,4 +900,7 @@ export default {
   fe_claim_q: "Un autre téléphone est en train de récupérer votre compte NEXO. Si ce n'est PAS vous, touchez OK pour l'en empêcher (le déverrouillage de NEXO ou de votre téléphone vous sera demandé).",
   fe_veto_auth: "Confirmez que ce n'est pas vous",
   fe_veto_nolock: "Pour l'en empêcher, votre téléphone a besoin d'un verrouillage d'écran (empreinte, visage, schéma ou code). Activez-le dans les réglages du téléphone.",
+  notif_banner_text: "Activez les notifications de NEXO pour recevoir messages et appels lorsque l'app est fermée.",
+  notif_banner_btn: "Activer",
+  notif_banner_close: "Masquer pendant 24 h",
 };

@@ -21,6 +21,7 @@ import { initBLEInterface } from './ui/ble_interface.js';
 import { createAckSystem } from './ui/ble_ack.js';
 import { loadDisplayName, nameGate, applyDisplayName } from './ui/display_name.js';
 import { welcomeGuide } from './ui/welcome_guide.js';
+import { notifBannerInit } from './ui/notif_banner.js';
 import { avatarInit } from './ui/avatar.js';
 import { updaterInit } from './ui/updater.js';
 import { usageInit } from './ui/usage_stats.js';
@@ -416,7 +417,7 @@ async function initializeNexoApp() {
     // siempre. Si ya se vio la guía, welcomeGuide llama a _askBackgroundOnce al instante → mismo comportamiento de antes.
     // #dueño 06-11: ANTES de la bienvenida, la 1.ª vez se pide el NOMBRE (obligatorio, no se puede cambiar después; evita
     // perfiles falsos). Si ya está fijado, nameGate pasa de largo (y aplica el nombre). Luego la guía y el aviso de batería.
-    setTimeout(function() { _notifier.syncNative(); Promise.resolve(_notifier.ensurePermission()).then(function() { loadDisplayName().then(function() { nameGate(window.bleInterface, { onDone: function() { welcomeGuide({ onDone: _askBackgroundOnce }); } }); }); }).catch(function() {}); }, 4000);
+    setTimeout(function() { _notifier.syncNative(); Promise.resolve(_notifier.ensurePermission()).then(function(pr) { try { notifBannerInit(!!(pr && pr.granted === false)); } catch (e) {} loadDisplayName().then(function() { nameGate(window.bleInterface, { onDone: function() { welcomeGuide({ onDone: _askBackgroundOnce }); } }); }); }).catch(function() {}); }, 4000);
     var initPromise = window.NEXO.app.init();
     var timeoutPromise = new Promise(function(resolve, reject) {
       setTimeout(function() { reject(new Error('INIT_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.CONNECT) ? NEXO_CONFIG.TIMEOUTS.CONNECT + 3000 : 13000);

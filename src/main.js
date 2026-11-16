@@ -333,7 +333,7 @@ function _askBackgroundOnce() {
   var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
   if (!pl || typeof pl.alertSettings !== 'function') return;
   pl.alertSettings().then(function(r) {
-    if (!r || r.notifications === false) return;
+    if (!r) return; // 3153: con las notificaciones denegadas también se pide lo de la batería (Honor: ambas faltaban y no salía nada)
     // Lo fundamental para recibir en segundo plano: que el ahorro de batería no congele NEXO. Ronda 2811 (pedido del
     // dueño): ya no se salta en mudo al ajuste del sistema, sino una pantalla clara COMO UN PERMISO (battery_prompt.js)
     // que explica por qué y, en los teléfonos agresivos (Vivo, Samsung…), guía además al inicio automático.

@@ -900,4 +900,7 @@ export default {
   fe_claim_q: "Another phone is recovering your NEXO account. If it is NOT you, tap OK to stop it (you will be asked for your NEXO or phone unlock).",
   fe_veto_auth: "Confirm it is not you",
   fe_veto_nolock: "To stop it, your phone needs a screen lock (fingerprint, face, pattern or PIN). Set one in your phone settings.",
+  notif_banner_text: "Turn on NEXO notifications to get messages and calls while the app is closed.",
+  notif_banner_btn: "Turn on",
+  notif_banner_close: "Hide for 24 hours",
 };

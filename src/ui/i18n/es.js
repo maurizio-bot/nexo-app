@@ -900,4 +900,7 @@ export default {
   fe_claim_q: "Otro teléfono está recuperando tu cuenta de NEXO. Si NO eres tú, toca Aceptar para impedirlo (se te pedirá el desbloqueo de NEXO o el de tu teléfono).",
   fe_veto_auth: "Confirma que no eres tú",
   fe_veto_nolock: "Para impedirlo, tu teléfono necesita un bloqueo de pantalla (huella, cara, patrón o PIN). Ponlo en los ajustes del teléfono.",
+  notif_banner_text: "Activa las notificaciones de NEXO para recibir mensajes y llamadas con la app cerrada.",
+  notif_banner_btn: "Activar",
+  notif_banner_close: "Ocultar 24 horas",
 };
