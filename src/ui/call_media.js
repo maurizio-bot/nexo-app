@@ -665,6 +665,15 @@ export function createCallMedia(opts) {
       try { if (enc && enc.state !== 'closed') enc.close(); } catch (e) {}
       console.log('[CALL] El otro no tiene Opus: μ-law');
     },
+    // 3155 (dueño 16-11): una llamada de VOZ pasa a videollamada sin colgar («Vídeo»): la misma captura pasa a tener cámara
+    // (camera=true la abre ya; false = capaz de vídeo con la cámara apagada: el otro, que la enciende cuando quiere)
+    enableVideo: function(camera) {
+      if (stopped || !stream) return Promise.resolve(false);
+      if (wantVideo) { if (camera) media.camera(true); return Promise.resolve(true); }
+      wantVideo = true; camOn = !!camera; camTries = 0; camDenied = 0; camNextTry = 0;
+      if (!camOn) { setState('off'); return Promise.resolve(true); }
+      return openCam('').then(function(ok) { return !!ok; });
+    },
     // #224 (dueño 16-11: «cuando hago una videollamada con otro contacto y luego agrego un contacto a la videollamada, no debería
     // quitarse toda la parte de video»): la 1-a-1 pasa a la de grupo SIN cortar: la misma captura (micrófono y cámara abiertos,
     // mi imagen en pantalla) y el mismo decodificador del otro (su imagen sigue en el mismo sitio). Solo cambia a dónde va lo que

@@ -272,6 +272,28 @@ export class Calls {
     return out;
   }
 
+  // 3155 (dueño 16-11): «Vídeo» en una llamada de VOZ: pasa a videollamada sin colgar (misma llamada, misma captura: se le suma la
+  // cámara). El otro lo sabe por el estado ('c', vid) y pasa a vídeo con su cámara apagada (la enciende con «Cámara» si quiere).
+  // Como al llamar con vídeo: hace falta Wi-Fi o internet (por Bluetooth solo voz).
+  toVideo() {
+    var self = this, c = self.call;
+    if (!c || c.state !== 'active' || c.video || !c.media || typeof c.media.enableVideo !== 'function') return Promise.resolve(false);
+    if (!self.canVideo(c.nx)) return Promise.reject(new Error(t('call_err_need_wifi_video', 'Para una videollamada hace falta Wi-Fi o internet (por Bluetooth solo voz)')));
+    c.video = true; c.cameraOff = false;
+    if (self.lane === 1) _pipActive(true);
+    console.log('[CALL] Pasa a videollamada (' + c.nx + ')');
+    self._set({ video: true, cameraOff: false });
+    self._sendState(c);
+    return Promise.resolve(c.media.enableVideo(true)).then(function(ok) { if (self.call === c) self._sendState(c); return ok; });
+  }
+  _peerToVideo(c) { // el otro pasó la llamada a vídeo
+    if (c.video || !c.media || typeof c.media.enableVideo !== 'function') return;
+    c.video = true; c.cameraOff = true;
+    if (this.lane === 1) _pipActive(true);
+    console.log('[CALL] ' + c.nx + ' pasó la llamada a vídeo (mi cámara, apagada hasta que la encienda)');
+    c.media.enableVideo(false);
+  }
+
   // Imagen propia y del otro (videollamada) para la pantalla
   videoViews() { var m = this.call && this.call.media; return m ? { local: m.localVideo || null, remote: m.remoteCanvas || null } : { local: null, remote: null }; }
 
@@ -460,7 +482,8 @@ export class Calls {
     c.stateAt = Date.now();
     // (ronda 2772: front = cámara de delante: el otro la ve en espejo, si lo tiene puesto)
     // (13-11: scr = estoy compartiendo la pantalla; las versiones anteriores lo ignoran)
-    this._sendPacket(new TextEncoder().encode(JSON.stringify({ cam: c.camState || 'none', mic: c.micState || 'on', front: (c.facing || 'user') === 'user', scr: !!c.screen })), 'c');
+    // (3155: vid = es videollamada; si el otro la tenía de voz, pasa a vídeo sin colgar)
+    this._sendPacket(new TextEncoder().encode(JSON.stringify({ cam: c.camState || 'none', mic: c.micState || 'on', front: (c.facing || 'user') === 'user', scr: !!c.screen, vid: !!c.video })), 'c');
   }
 
   // ¿Se ve la imagen del otro? (si no, la pantalla muestra su foto y el motivo en vez de negro)
@@ -568,6 +591,7 @@ export class Calls {
         var okv = function(v) { return /^(on|off|retry|none)$/.test(String(v)) ? v : null; };
         var front = s2 && typeof s2.front === 'boolean' ? s2.front : null; // ronda 2772 (las versiones anteriores no lo mandan)
         var scr = !!(s2 && s2.scr === true); // 13-11: el otro comparte su pantalla
+        if (s2 && s2.vid === true && !cc.video) { self._peerToVideo(cc); _emit(self._ev, self.state()); } // 3155
         if (s2 && (okv(s2.cam) !== cc.peerCam || okv(s2.mic) !== cc.peerMic || front !== cc.peerFront || scr !== !!cc.peerScreen)) {
           if (scr !== !!cc.peerScreen) console.log('[CALL] ' + cc.nx + (scr ? ' comparte su pantalla' : ' dejó de compartir su pantalla'));
           cc.peerCam = okv(s2.cam); cc.peerMic = okv(s2.mic); cc.peerFront = front; cc.peerScreen = scr; _emit(self._ev, self.state());
