@@ -312,21 +312,31 @@ body::before {
 
 /* Perfil */
 #nexo-profile-sheet, #nexo-settings-sheet, #nexo-contact-profile { background: transparent !important; padding: 0 !important; }
-#nexo-profile-sheet::before, #nexo-settings-sheet::before, #nexo-contact-profile::before { content: ''; position: fixed; inset: 0; z-index: -1; background: inherit; }
 #nexo-profile-sheet .nx-profile-in, #nexo-settings-sheet .nx-profile-in, #nexo-contact-profile .nx-profile-in { padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 24px; display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; background: var(--nx-bg); } /* 3140: liso, como Contactos */
-.nx-card { background: var(--nx-surface); border: 1px solid var(--nx-line); border-radius: 20px; padding: 14px 14px 12px; margin-bottom: 12px; }
+.nx-card { background: var(--nx-surface); border: 1px solid var(--nx-line); border-radius: var(--nx-radius); padding: 14px 14px 12px; margin-bottom: 12px; }
 .nx-h { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; margin: 0 0 8px; }
-.nx-h .nx-ico { width: 30px; height: 30px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--nx-grad); font-size: 15px; }
+.nx-h .nx-ico { width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--nx-surface-2); border: 1px solid var(--nx-line); box-sizing: border-box; font-size: 15px; flex-shrink: 0; } /* 3140: redondo y neutro, como los botones de Contactos */
 .nx-sub { font-size: 12px; color: var(--nx-muted); margin-bottom: 10px; white-space: pre-line; line-height: 1.45; }
 .nx-btn { width: 100%; padding: 12px; border-radius: 14px; border: 1px solid var(--nx-line); background: var(--nx-surface-2); color: #fff; font-size: 14px; font-weight: 600; margin-bottom: 8px; cursor: pointer; }
-.nx-btn-primary { background: var(--nx-grad); border: none; box-shadow: 0 8px 22px rgba(0, 200, 255, 0.3); }
+.nx-btn-primary { background: var(--nx-grad); border: none; box-shadow: 0 10px 30px rgba(0, 200, 255, 0.35), 0 4px 12px rgba(168, 85, 247, 0.35); }
 .nx-id-card { display: flex; align-items: center; gap: 14px; }
-.nx-id-card .nx-av { width: 58px; height: 58px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; background: var(--nx-grad); box-shadow: 0 8px 24px rgba(0, 200, 255, 0.3); }
+.nx-id-card .nx-av { width: 58px; height: 58px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; flex-shrink: 0; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08), 0 6px 18px rgba(0, 0, 0, 0.35); } /* 3140: el color lo da .ble-gradient-N (como en Contactos) */
 .nx-id-card .nx-idtxt { font-size: 12px; color: var(--nx-muted); }
 .nx-id-card b { display: block; font-size: 19px; color: #fff; letter-spacing: 0.6px; margin-top: 2px; }
 #nexo-profile-sheet label, #nexo-settings-sheet label { color: var(--nx-text); }
 #nexo-profile-sheet input[type="checkbox"], #nexo-settings-sheet input[type="checkbox"] { accent-color: #00c8ff; width: 18px; height: 18px; }
-#nexo-diag-text { background: rgba(0, 0, 0, 0.45) !important; border: 1px solid var(--nx-line) !important; border-radius: 14px !important; }
+#nexo-diag-text { background: rgba(0, 0, 0, 0.45) !important; border: 1px solid var(--nx-line) !important; border-radius: 14px !important; color: var(--nx-muted) !important; }
+/* 3140 (zona Perfil/Ajustes): campos y desplegables con la paleta NEXO (antes cajas #111 con borde gris) */
+#nexo-profile-sheet input[type="tel"], #nexo-profile-sheet input[type="email"], #nexo-settings-sheet select {
+  background: var(--nx-surface) !important; border: 1px solid var(--nx-line) !important; border-radius: 14px !important; color: var(--nx-text) !important; font-family: inherit; }
+#nexo-profile-sheet input[type="tel"]:focus, #nexo-profile-sheet input[type="email"]:focus, #nexo-settings-sheet select:focus {
+  border-color: rgba(255, 255, 255, 0.22) !important; outline: none; box-shadow: none; }
+#nexo-profile-sheet input::placeholder { color: var(--nx-muted); }
+#nexo-settings-sheet select option { background: #0e0f1e; color: var(--nx-text); }
+#nexo-profile-sheet .nx-btn, #nexo-settings-sheet .nx-btn, #nexo-contact-profile .nx-btn { font-family: inherit; }
+#nexo-profile-sheet .nx-page-title, #nexo-settings-sheet .nx-page-title, #nexo-contact-profile .nx-page-title { padding-left: 2px; }
+/* Avisos con la pantalla apagada: «listo» con una ✓ celeste (no el ✅ verde) */
+.nx-alert-row .nx-ok { color: var(--nx-cyan); font-weight: 800; }
 
 /* Panel de agregar contactos */
 #ble-panel .ble-search-bar { background: var(--nx-surface) !important; border: 1px solid var(--nx-line) !important; border-radius: 14px !important; }
@@ -363,7 +373,7 @@ body::before {
   min-height: 42px; padding: 0 20px !important; font-weight: 600; }
 /* 3140 (zona hojas): título arriba a la izquierda, como «Contactos» */
 #nexo-move-screen .move-title { position: absolute; top: env(safe-area-inset-top, 0px); left: 18px; right: 18px; min-height: 64px; display: flex; align-items: center; }
-#nexo-fenix-ask { background: var(--nx-sheet) !important; border: 1px solid var(--nx-line) !important; border-radius: 22px !important; }
+#nexo-fenix-ask { background: rgba(3, 4, 10, 0.78) !important; } /* 3140: solo la capa oscura; la tarjeta lleva var(--nx-sheet) y el radio NEXO (profile.js) */
 #ble-panel { background: var(--nx-bg) !important; color: var(--nx-text); } /* 3140: liso, como Contactos */
 /* 3140 (zona Agregar contactos): cabecera de 64 px con el título a la izquierda, sin línea (como #main-header) */
 #ble-panel .ble-header { background: transparent !important; border-bottom: none !important; flex-direction: row; align-items: center; justify-content: flex-start;

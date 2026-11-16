@@ -128,7 +128,7 @@ const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows
   const ok = r.muestra_aviso_bateria && r.pide_segundo_plano && r.paso_fabricante && r.abre_fabricante_inicio && r.aviso_cerrado &&
     r.A_no_pide && r.pide_pantalla_completa && r.contactos && r.perfil_antes.length === 4 && r.perfil_antes.filter((t) => /^⚠️/.test(t)).length === 1 && r.boton_arreglar &&
     r.fabricante.fila && r.fabricante.boton === 'Abrir' && r.fabricante.abre &&
-    r.abre_ajuste && r.perfil_despues.filter((t) => !/^📱/.test(t)).every((t) => /^✅/.test(t)) && r.encender_por_defecto && r.mensaje_enciende && r.sin_opcion_no_enciende && r.llamada_suena && r.llamada_enciende &&
+    r.abre_ajuste && r.perfil_despues.filter((t) => !/^📱/.test(t)).every((t) => /^(✅|✓)/.test(t)) && r.encender_por_defecto && r.mensaje_enciende && r.sin_opcion_no_enciende && r.llamada_suena && r.llamada_enciende &&
     r.vuelve_tras_el_bloqueo && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('ALERTS ' + JSON.stringify(r));

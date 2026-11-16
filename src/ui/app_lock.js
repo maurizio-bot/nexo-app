@@ -163,13 +163,13 @@ export function securitySectionHtml() {
   var opts = AFTER_OPTIONS.map(function(o) { return '<option value="' + o.ms + '">' + o.label + '</option>'; }).join('');
   var row = 'display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;font-size:14px;';
   return '<div class="nx-h"><span class="nx-ico">🔐</span>' + t('security') + '</div>' +
-    '<div id="nexo-sec-atrest" style="font-size:12px;opacity:0.8;margin-bottom:8px;"></div>' +
-    '<label style="' + row + '"><span>' + t('prof_lock_toggle', 'Bloquear NEXO con huella o PIN') + '</span><input type="checkbox" id="nexo-sec-lock" style="width:22px;height:22px;"></label>' +
-    '<label id="nexo-sec-after-row" style="' + row + '"><span>' + t('prof_lock_askwhen', 'Pedirla') + '</span><select id="nexo-sec-after" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:7px;">' + opts + '</select></label>' +
-    '<label id="nexo-sec-facefast-row" style="' + row + '"><span>' + t('prof_lock_facefast', 'Desbloqueo rápido por rostro') + ' <span style="opacity:0.6;font-size:11px;">' + t('prof_lock_less_secure', '(menos seguro)') + '</span></span><input type="checkbox" id="nexo-sec-facefast" style="width:22px;height:22px;"></label>' +
-    '<label style="' + row + '"><span>' + t('prof_lock_screenshots', 'Bloquear capturas de pantalla') + '</span><input type="checkbox" id="nexo-sec-secure" style="width:22px;height:22px;"></label>' +
-    '<div id="nexo-sec-msg" style="font-size:13px;color:#7fdcff;min-height:0;margin-bottom:4px;"></div>' +
-    '<div style="font-size:11px;opacity:0.6;margin-bottom:2px;">' + t('prof_lock_sec_note', 'Con las capturas bloqueadas NEXO tampoco se ve en "recientes" ni en grabaciones. Con el bloqueo los mensajes siguen llegando.') + '</div>';
+    '<div id="nexo-sec-atrest" style="font-size:12px;color:var(--nx-muted);margin-bottom:8px;"></div>' +
+    '<label style="' + row + '"><span>' + t('prof_lock_toggle', 'Bloquear NEXO con huella o PIN') + '</span><input type="checkbox" id="nexo-sec-lock"></label>' +
+    '<label id="nexo-sec-after-row" style="' + row + '"><span>' + t('prof_lock_askwhen', 'Pedirla') + '</span><select id="nexo-sec-after" style="padding:7px 10px;">' + opts + '</select></label>' +
+    '<label id="nexo-sec-facefast-row" style="' + row + '"><span>' + t('prof_lock_facefast', 'Desbloqueo rápido por rostro') + ' <span style="color:var(--nx-muted);font-size:12px;">' + t('prof_lock_less_secure', '(menos seguro)') + '</span></span><input type="checkbox" id="nexo-sec-facefast"></label>' +
+    '<label style="' + row + '"><span>' + t('prof_lock_screenshots', 'Bloquear capturas de pantalla') + '</span><input type="checkbox" id="nexo-sec-secure"></label>' +
+    '<div id="nexo-sec-msg" style="font-size:13px;color:var(--nx-cyan);min-height:0;margin-bottom:4px;"></div>' +
+    '<div style="font-size:12px;color:var(--nx-muted);margin-bottom:2px;">' + t('prof_lock_sec_note', 'Con las capturas bloqueadas NEXO tampoco se ve en "recientes" ni en grabaciones. Con el bloqueo los mensajes siguen llegando.') + '</div>';
 }
 
 // Aviso dentro de Perfil (la hoja tapa los avisos normales) o, si no está abierto, aviso normal

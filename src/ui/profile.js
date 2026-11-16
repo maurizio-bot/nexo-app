@@ -14,7 +14,8 @@ import { AVATAR_MAX_BYTES, avatarClash, avatarOf, claimAvatarMine, clearMyAvatar
 import { myProfile, setMyProfile } from './profile_data.js';
 import { getContactProfile, profileShareResend } from './profile_share.js';
 import { getCommonContacts, psiEnsure } from './psi.js'; // #dueño 04-11 paso 3: contactos en común (PSI)
-import { _getBLEContacts, _normId } from './ble_helpers.js';
+import { _getBLEContacts, _normId, _getGradientForUUID, _getInitials } from './ble_helpers.js';
+import { personAvatar, personAvatarHtml, paintPersonAvatars } from './person_avatar.js'; // 3140: el círculo de color de Contactos
 import { hasListWallpaper, hasChatWallpaper, setListWallpaper, clearListWallpaper, setChatWallpaper, clearChatWallpaper, makeWallpaper } from './wallpaper.js';
 import { mirrorPeerPref, setMirrorPeerPref } from './calls_ui.js';
 import { readReceiptsOn, setReadReceiptsOn } from './chat_state.js';
@@ -39,7 +40,7 @@ function _openProfileSheet() {
   sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;color:#fff;box-sizing:border-box;font-family:inherit;overflow-y:auto;';
   sheet.innerHTML = '<div class="nx-profile-in">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 14px;">' +
-    '<div style="font-size:26px;font-weight:800;">' + t('prof_title', 'Perfil') + '</div><button id="nexo-profile-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;">' + t('close') + '</button></div>' +
+    '<div class="nx-page-title">' + t('prof_title', 'Perfil') + '</div><button id="nexo-profile-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;">' + t('close') + '</button></div>' +
     '<div class="nx-card nx-id-card"><div class="nx-av" id="nexo-profile-av" title="' + t('prof_change_photo', 'Cambiar foto') + '" style="cursor:pointer;"></div><div style="flex:1;min-width:0;"><div class="nx-idtxt">' + t('prof_my_id', 'Mi NEXO ID') + '</div><b id="nexo-profile-id"></b>' +
     '<div id="nexo-profile-seen" class="nx-idtxt" style="margin-top:2px;"></div>' +
     '<div><button id="nexo-av-pick" class="nx-link">' + t('prof_change_photo', 'Cambiar foto') + '</button> <button id="nexo-av-clear" class="nx-link" style="display:none;">' + t('prof_remove', 'Quitar') + '</button> <button id="nexo-id-share" class="nx-link">' + t('prof_share_my_id', 'Compartir mi ID') + '</button></div></div></div>' +
@@ -52,7 +53,7 @@ function _openProfileSheet() {
     '<input id="nexo-prof-phone" type="tel" autocomplete="off" maxlength="24" placeholder="' + t('prof_field_phone', 'Teléfono') + '" style="width:100%;box-sizing:border-box;padding:12px;margin-bottom:8px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +
     '<input id="nexo-prof-email" type="email" autocomplete="off" maxlength="80" placeholder="' + t('prof_field_email', 'Correo') + '" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;"></div>' +
     // Ronda 2807: el resto (seguridad, avisos, llamadas, internet, diagnóstico, cuenta) se abre en Ajustes
-    '<button id="nexo-open-settings" class="nx-btn nx-btn-primary" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;font-size:16px;padding:14px;">⚙️ ' + t('settings_title', 'Ajustes') + '</button>' +
+    '<button id="nexo-open-settings" class="nx-btn nx-btn-primary" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;font-size:16px;padding:14px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' + t('settings_title', 'Ajustes') + '</button>' +
     '<div class="nx-sub" style="text-align:center;margin-top:2px;">' + t('prof_settings_sub', 'Seguridad, avisos, llamadas, internet, diagnóstico y tu cuenta (Fénix, cambiar de teléfono).') + '</div>' +
     // Ronda 2810 (pedido del dueño): el gesto secreto de la «N» vive en el espacio negro de ABAJO de Perfil, no en
     // Ajustes (donde el scroll se comía el trazo). touch-action:none → aquí el dedo dibuja, no hace scroll.
@@ -64,11 +65,13 @@ function _openProfileSheet() {
   // display_name.js). Es el MISMO en todos lados (lista, ficha, al agregar por ID, al compartir) y NO se puede cambiar.
   var myName = String(bi.localDeviceName || '').trim();
   sheet.querySelector('#nexo-profile-seen').textContent = myName ? t('prof_seen_pre', 'Tus contactos te ven como «') + myName + t('prof_seen_post', '» (no se puede cambiar)') : '';
-  var initials = function(n) { var w = n.split(/\s+/).filter(Boolean); return ((w[0] || '').charAt(0) + (w[1] || '').charAt(0)).toUpperCase(); };
   // Ronda 2765: foto de perfil (avatar.js): tocar el círculo o "Cambiar foto"
   var avEl = sheet.querySelector('#nexo-profile-av'), clr = sheet.querySelector('#nexo-av-clear');
   var paintMine = function() {
-    avEl.style.backgroundImage = ''; avEl.textContent = (myName && initials(myName)) || String(bi.localNexoId || '?').replace(/^NX/i, '').charAt(0).toUpperCase() || 'N';
+    // 3140: el mismo círculo de color con el que me ven mis contactos (degradado según mi NEXO ID, iniciales como en Contactos);
+    // reasignar la clase quita también el nx-has-photo que dejaba la inicial invisible tras «Quitar»
+    avEl.className = 'nx-av ' + _getGradientForUUID(_normId(bi.localNexoId || 'me'));
+    avEl.style.backgroundImage = ''; avEl.textContent = (myName && _getInitials(myName)) || String(bi.localNexoId || '?').replace(/^NX/i, '').charAt(0).toUpperCase() || 'N';
     paintAvatar(avEl, 'me'); clr.style.display = myAvatar() ? '' : 'none';
   };
   paintMine();
@@ -148,8 +151,8 @@ function _openContactProfile(uuid) {
   if (prof && (prof.phone || prof.email || (prof.name && prof.name !== name))) {
     datosHtml = '<div class="nx-card" style="margin-top:10px;display:flex;flex-direction:column;gap:4px;text-align:left;">';
     if (prof.name && prof.name !== name) datosHtml += '<div class="nx-idtxt">' + t('prof_cp_name', 'Nombre') + '</div><b>' + _esc(prof.name) + '</b>';
-    if (prof.phone) datosHtml += '<div class="nx-idtxt" style="margin-top:6px;">📱 ' + t('prof_cp_phone', 'Teléfono') + '</div><b>' + _esc(prof.phone) + '</b>';
-    if (prof.email) datosHtml += '<div class="nx-idtxt" style="margin-top:6px;">✉️ ' + t('prof_cp_email', 'Correo') + '</div><b>' + _esc(prof.email) + '</b>';
+    if (prof.phone) datosHtml += '<div class="nx-idtxt" style="margin-top:6px;">' + t('prof_cp_phone', 'Teléfono') + '</div><b>' + _esc(prof.phone) + '</b>';
+    if (prof.email) datosHtml += '<div class="nx-idtxt" style="margin-top:6px;">' + t('prof_cp_email', 'Correo') + '</div><b>' + _esc(prof.email) + '</b>';
     datosHtml += '</div>';
   } else {
     datosHtml = '<div class="nx-sub" style="text-align:center;margin-top:6px;">' + t('prof_cp_none', 'Este contacto todavía no compartió su teléfono ni correo.') + '</div>';
@@ -164,22 +167,29 @@ function _openContactProfile(uuid) {
   // #dueño 05-11: sin botón de regreso — se cierra con el gesto/atrás (estándar de la app, chat_nav.js), como el resto.
   sheet.innerHTML = '<div class="nx-profile-in">' +
     '<div style="display:flex;align-items:center;margin:4px 0 14px;">' +
-    '<div style="font-size:26px;font-weight:800;">' + t('prof_contact_title', 'Perfil') + '</div></div>' +
+    '<div class="nx-page-title">' + t('prof_contact_title', 'Perfil') + '</div></div>' +
     '<div class="nx-card" style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;">' +
-    '<div class="nx-av" id="nexo-cp-av" style="width:92px;height:92px;font-size:34px;"></div>' +
+    '<div id="nexo-cp-av"></div>' + // 3140: aquí va el círculo de color de Contactos (personAvatar, abajo)
     // 3065 (dueño 13-11): si la foto de este contacto es TUYA (una copia), un toque (y otro para confirmar) la deja de mostrar aquí
     '<button id="nexo-cp-mine" class="nx-link" style="display:none;font-size:13px;">' + t('prof_cp_mine', 'Es mi foto') + '</button>' +
     '<div style="font-size:21px;font-weight:800;word-break:break-word;">' + _esc(name) + '</div>' +
     '<div class="nx-idtxt">' + t('prof_cp_nexoid', 'NEXO ID') + '</div><b style="letter-spacing:0.5px;">' + _esc(nx.toUpperCase()) + '</b>' +
-    '<div class="nx-sub">' + (online ? '🟢 ' + t('prof_cp_online', 'En línea') : '⚪ ' + t('prof_cp_offline', 'Desconectado')) + '</div>' +
+    '<div class="nx-sub"' + (online ? ' style="color:var(--nx-cyan);"' : '') + '>' + (online ? t('prof_cp_online', 'En línea') : t('prof_cp_offline', 'Desconectado')) + '</div>' +
     '</div>' +
     datosHtml +
     commonHtml +
     '<div style="display:flex;gap:8px;margin-top:10px;">' +
-    '<button id="nexo-cp-chat" class="nx-btn nx-btn-primary" style="flex:1;">💬 ' + t('prof_cp_chat', 'Abrir chat') + '</button></div>' +
+    '<button id="nexo-cp-chat" class="nx-btn nx-btn-primary" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z"/></svg>' + t('prof_cp_chat', 'Abrir chat') + '</button></div>' +
     '</div>';
   document.body.appendChild(sheet);
-  try { paintAvatar(sheet.querySelector('#nexo-cp-av'), nx); } catch (e) {}
+  (function () {   // 3140: el círculo de color de Contactos (con su foto si la hay), 92 px; en línea = aro celeste
+    var ph = sheet.querySelector('#nexo-cp-av');
+    var av = personAvatar(nx, name, 92);
+    av.id = 'nexo-cp-av';
+    if (online) av.style.boxShadow = '0 0 0 3px var(--nx-bg), 0 0 0 5px var(--nx-cyan), 0 6px 18px rgba(0,0,0,.35)';
+    if (ph) ph.replaceWith(av);
+  })();
+  try { paintPersonAvatars(sheet.querySelector('#nexo-cp-common')); } catch (e) {}
   (function () {
     var mineBtn = sheet.querySelector('#nexo-cp-mine');
     if (!mineBtn || !avatarOf(nx)) return;
@@ -191,7 +201,7 @@ function _openContactProfile(uuid) {
         if (!ok) return;
         mineBtn.style.display = 'none';
         var av = sheet.querySelector('#nexo-cp-av');
-        if (av) { av.style.backgroundImage = ''; av.classList.remove('nx-has-photo'); av.textContent = String(name || '?').charAt(0).toUpperCase(); }
+        if (av) { av.style.backgroundImage = ''; av.classList.remove('nx-has-photo'); av.textContent = _getInitials(name); }
         if (_showInfoToast) _showInfoToast(t('prof_cp_mine_done', 'Listo: esa foto ya no se verá en ') + name, 3500);
       });
     };
@@ -202,7 +212,7 @@ function _openContactProfile(uuid) {
     var onPsi = function (e) {
       var box = document.getElementById('nexo-cp-common');
       if (!box) { window.removeEventListener('nexo:psi', onPsi); return; }   // ficha cerrada → soltar el listener
-      if (e && e.detail && _normId(e.detail.nx) === nx) box.innerHTML = _commonInner(nx, online);
+      if (e && e.detail && _normId(e.detail.nx) === nx) { box.innerHTML = _commonInner(nx, online); paintPersonAvatars(box); }
     };
     window.addEventListener('nexo:psi', onPsi);
   })();
@@ -224,7 +234,9 @@ function _commonInner(nx, online) {
     var cnx = _normId(id);
     var c = all.find(function (x) { return _normId(x.nexoId || x.deviceUUID) === cnx; }) || {};
     var name = String(c.name || '').trim() || cnx.toUpperCase();
-    return '<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.08);">👤 ' + _esc(name) + '</div>';
+    // 3140: fila como las de Contactos (círculo de color + nombre), sin línea
+    return '<div class="nx-common-row" style="display:flex;align-items:center;gap:12px;padding:6px 0;">' + personAvatarHtml(cnx, name, 40) +
+      '<span class="ble-contact-name" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _esc(name) + '</span></div>';
   }).join('');
 }
 window.addEventListener('nexo:ble:goToProfile', function (e) { var d = (e && e.detail) || {}; if (d.deviceUUID) _openContactProfile(d.deviceUUID); });
@@ -244,7 +256,7 @@ function _openSettingsSheet() {
   var card = function(ico, title, body) { return '<div class="nx-card"><div class="nx-h"><span class="nx-ico">' + ico + '</span>' + title + '</div>' + body + '</div>'; };
   sheet.innerHTML = '<div class="nx-profile-in">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 14px;gap:10px;">' +
-    '<div style="display:flex;align-items:center;gap:8px;min-width:0;"><button id="nexo-settings-back" class="nx-btn" style="width:auto;margin:0;padding:9px 13px;">' + t('settings_back') + '</button><div style="font-size:26px;font-weight:800;">' + t('settings_title') + '</div></div>' +
+    '<div style="display:flex;align-items:center;gap:8px;min-width:0;"><button id="nexo-settings-back" class="nx-btn" style="width:auto;margin:0;padding:9px 13px;">' + t('settings_back') + '</button><div class="nx-page-title">' + t('settings_title') + '</div></div>' +
     '<button id="nexo-settings-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;flex-shrink:0;">' + t('close') + '</button></div>' +
     // 2986: actualizaciones (interruptor + «Buscar ahora»). 3035 (dueño 13-11: «la parte de actualización debería de estar
     // encima de todo porque entrando uno actualiza»): es la PRIMERA tarjeta de Ajustes.
@@ -286,7 +298,7 @@ function _openSettingsSheet() {
       [['system', t('prof_haptics_system', 'Como el sistema (recomendado)')], ['on', t('prof_haptics_on', 'Siempre')], ['off', t('prof_haptics_off', 'Nunca')]].map(function(o) { return '<option value="' + o[0] + '"' + (o[0] === hapticMode() ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>') +
     // v9.9.51: internet (relés públicos y Tor, src/net/net_link.js)
     card('🌐', t('internet'), '<div id="nexo-net-status" class="nx-sub"></div>' +
-      '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> ' + t('prof_tor_label', 'Usar Tor siempre (oculta tu IP; va más lento). Sin esto, las llamadas por internet van directas entre los dos teléfonos: el otro puede ver tu IP.') + '</label>') +
+      '<label style="display:flex;align-items:flex-start;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor" style="margin-top:2px;flex-shrink:0;"> ' + t('prof_tor_label', 'Usar Tor siempre (oculta tu IP; va más lento). Sin esto, las llamadas por internet van directas entre los dos teléfonos: el otro puede ver tu IP.') + '</label>') +
     // Ronda 2808 (pedido del dueño «rendimiento api de nexo»): medición en vivo del rendimiento de NEXO
     perfSectionHtml() +
     // #dueño 05-11: volver a ver la guía de bienvenida (welcome_guide.js) cuando se quiera
@@ -294,7 +306,7 @@ function _openSettingsSheet() {
       '<button id="nexo-show-welcome" class="nx-btn">' + t('welcome_settings_btn', 'Ver la guía otra vez') + '</button>') +
     card('🩺', t('diagnostics'), '<div class="nx-sub">' + t('prof_diag_sub', 'Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.') + '</div>' +
       '<button id="nexo-diag-copy" class="nx-btn nx-btn-primary">' + t('prof_diag_copy', 'Copiar diagnóstico') + '</button>' +
-      '<textarea id="nexo-diag-text" readonly style="min-height:220px;width:100%;box-sizing:border-box;color:#9fe;font-size:10px;font-family:monospace;padding:8px;"></textarea>') +
+      '<textarea id="nexo-diag-text" readonly style="min-height:220px;width:100%;box-sizing:border-box;color:var(--nx-muted);font-size:10px;font-family:monospace;padding:8px;"></textarea>') +
     // 2974: diagnóstico automático al desarrollador (interruptor, últimos envíos; en el teléfono del desarrollador, la bandeja)
     card('📡', t('autodiag_title', 'Diagnóstico automático'), autoDiagInnerHtml()) +
     '</div>';
@@ -450,10 +462,12 @@ function _renderAlertSettings() {
     rows.forEach(function(x) {
       var row = document.createElement('div');
       row.className = 'nx-alert-row';
-      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.08);';
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;';
       var lbl = document.createElement('div');
       lbl.style.cssText = 'font-size:14px;';
-      lbl.textContent = x.info ? '📱 ' + x.t : (x.ok ? '✅ ' : '⚠️ ') + x.t + (x.ok ? '' : ' — ' + x.no);
+      // 3140: la marca de «listo» es una ✓ celeste (no el ✅ verde); lo pendiente sigue con ⚠️ y su botón
+      if (x.ok && !x.info) { var ok = document.createElement('span'); ok.className = 'nx-ok'; ok.textContent = '✓'; lbl.appendChild(ok); lbl.appendChild(document.createTextNode(' ' + x.t)); }
+      else lbl.textContent = x.info ? '📱 ' + x.t : '⚠️ ' + x.t + ' — ' + x.no;
       row.appendChild(lbl);
       if (!x.ok) {
         var b = document.createElement('button');
@@ -531,7 +545,8 @@ window.addEventListener('nexo:fenix:request', function(e) {
   box.id = 'nexo-fenix-ask';
   box.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;';
   var card = document.createElement('div');
-  card.style.cssText = 'background:#11121f;color:#fff;border-radius:16px;padding:18px;max-width:340px;width:100%;font-size:14px;';
+  card.className = 'nx-fenix-card';
+  card.style.cssText = 'background:var(--nx-sheet);color:#fff;border:1px solid var(--nx-line);border-radius:var(--nx-radius);padding:18px;max-width:340px;width:100%;font-size:14px;';
   var h = document.createElement('div');
   h.style.cssText = 'font-size:17px;font-weight:700;margin-bottom:8px;';
   h.textContent = t('prof_fenix_req_title', '🔥 Recuperar una cuenta');
@@ -543,14 +558,14 @@ window.addEventListener('nexo:fenix:request', function(e) {
   d.choices.forEach(function(c) {
     var b = document.createElement('button');
     b.className = 'fenix-yes';
-    b.style.cssText = 'display:block;width:100%;margin-bottom:8px;padding:10px;border:none;border-radius:10px;background:#00c8ff;color:#fff;font-size:15px;';
+    b.style.cssText = 'display:block;width:100%;margin-bottom:8px;padding:12px;border:none;border-radius:14px;background:var(--nx-grad);color:#fff;font-size:15px;font-weight:600;font-family:inherit;';
     b.textContent = t('prof_fenix_is', 'Es ') + c.name;
     b.onclick = function() { close(); fx.answerRecovery(d.rid, c.nx); };
     card.appendChild(b);
   });
   var no = document.createElement('button');
   no.className = 'fenix-no';
-  no.style.cssText = 'display:block;width:100%;padding:10px;border:none;border-radius:10px;background:rgba(255,255,255,0.15);color:#fff;font-size:15px;';
+  no.style.cssText = 'display:block;width:100%;padding:12px;border:1px solid var(--nx-line);border-radius:14px;background:var(--nx-surface-2);color:#fff;font-size:15px;font-weight:600;font-family:inherit;';
   no.textContent = t('prof_fenix_dunno', 'No lo sé / no es nadie de ellos');
   no.onclick = function() { close(); fx.answerRecovery(d.rid, null); };
   card.appendChild(no);

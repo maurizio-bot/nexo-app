@@ -293,7 +293,7 @@ export function updaterInit() {
 export function updaterInnerHtml() {
   var me = updaterBuildNum();
   return '<div class="nx-sub" style="margin-bottom:8px;">' + t('upd_sub', 'NEXO avisa cuando hay una versión nueva y la baja con un toque. Solo se consulta GitHub (público): no se manda nada tuyo.') + '</div>' +
-    '<label class="nx-row" style="display:flex;align-items:center;gap:10px;"><input type="checkbox" id="nexo-updater-on"' + (updaterEnabled() ? ' checked' : '') + '><span>' + t('upd_auto', 'Buscar versiones nuevas solo') + '</span></label>' +
+    '<label class="nx-row" style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-updater-on"' + (updaterEnabled() ? ' checked' : '') + '><span>' + t('upd_auto', 'Buscar versiones nuevas solo') + '</span></label>' +
     '<div class="nx-sub" id="nexo-updater-status" style="margin:6px 0;"></div>' +
     '<div id="nexo-updater-notes"></div>' +
     '<button id="nexo-updater-now" class="nx-btn nx-btn-primary"></button>';

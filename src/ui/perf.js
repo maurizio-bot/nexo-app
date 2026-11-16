@@ -118,7 +118,7 @@ export function renderPerfSection() {
   rows.push([t('prof_perf_transfer', 'Transferencia de archivos'),
     s.transfer ? (t('prof_perf_typical', 'tiempo típico ') + _fmtS(s.transfer.med) + ' · ' + s.archivos + t('prof_perf_files', ' archivo(s)')) : t('prof_perf_nodata', 'sin datos aún')]);
   box.innerHTML = rows.map(function (r) {
-    return '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.08);font-size:14px;">' +
-      '<span style="opacity:0.85;">' + r[0] + '</span><b style="text-align:right;">' + r[1] + '</b></div>';
+    return '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:7px 0;font-size:14px;">' +
+      '<span style="color:var(--nx-muted);">' + r[0] + '</span><b style="text-align:right;">' + r[1] + '</b></div>';
   }).join('');
 }
