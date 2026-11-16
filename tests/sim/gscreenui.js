@@ -5,6 +5,8 @@
 //   3. la pantalla de otro participante se ve GRANDE, entera (object-fit: contain) y con «Pantalla de …»; al dejar de
 //      compartir vuelve a ser una baldosa normal.
 // Contraprueba 3047: sin botón ni baldosa de pantalla.
+// 3157: con 1–2 personas la de grupo usa la pantalla nueva (gcall_stage, 3152): ahí también «Pantalla de …», visible
+// aunque haya una sola persona; con 3 o más, la rejilla. Contraprueba 3156: el letrero decía solo el nombre y oculto.
 // Uso: node gscreenui.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -66,10 +68,14 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const emit = () => w.dispatchEvent(new w.CustomEvent('nexo:gcall', { detail: JSON.parse(JSON.stringify(st)) }));
   const btnOf = (txt) => Array.from(d.querySelectorAll('#nexo-gcall-screen .gc-buttons button')).find((b) => b.textContent === txt);
   emit(); await sleep(200);
-  // 3. la pantalla del otro: grande, entera y con su nombre
-  const tile = d.querySelector('#nexo-gcall-screen .gc-tile[data-nx="' + B + '"]');
-  r.baldosa_pantalla = !!tile && tile.classList.contains('gc-tile-screen') && /contain/.test(canvas.style.cssText) && !/scaleX\(-1\)/.test(canvas.style.cssText);
-  r.etiqueta = tile ? (tile.querySelector('.gc-tile-lab') || {}).textContent : null;
+  // 3. la pantalla del otro: grande, entera y con su nombre. 3157: con 1–2 personas la videollamada de grupo usa la
+  // pantalla nueva (gcall_stage, 3152), que no ponía «Pantalla de …» (y con una sola persona ocultaba el letrero).
+  const gcs = (nx) => d.querySelector('#nexo-gcall-screen .gcs-tile[data-nx="' + nx + '"]');
+  const shown = (el) => !!el && w.getComputedStyle(el).display !== 'none';
+  const stile = gcs(B), slab = stile && stile.querySelector('.gcs-lab');
+  r.escenario_pantalla = !!stile && stile.classList.contains('gcs-screen') && w.getComputedStyle(canvas).objectFit === 'contain' && !/scaleX\(-1\)/.test(canvas.style.transform);
+  r.escenario_etiqueta = slab ? slab.textContent : null;
+  r.escenario_etiqueta_visible = shown(slab);
   // 1. botón «Pantalla» → aviso → «Compartir»
   const bp = btnOf('Pantalla');
   r.boton_pantalla = !!bp;
@@ -91,12 +97,25 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.barra_detiene = calls[1] === false;
   emit(); await sleep(150);
   r.barra_se_va = !d.querySelector('#nexo-gcall-screen .gc-scrbar');
-  // el otro deja de compartir: vuelve a baldosa normal (recortada para llenar)
+  // el otro deja de compartir: vuelve a baldosa normal (recortada para llenar), sin «Pantalla de»
+  st.legs[0].peerScreen = false; emit(); await sleep(150);
+  const stile2 = gcs(B), slab2 = stile2 && stile2.querySelector('.gcs-lab');
+  r.escenario_vuelve = !!stile2 && !stile2.classList.contains('gcs-screen') && w.getComputedStyle(canvas).objectFit === 'cover' && !!slab2 && !/^Pantalla de /.test(slab2.textContent) && !shown(slab2);
+  // con 3 personas o más: la rejilla de siempre
+  const C = 'nxb0000003', D2 = 'nxb0000004', cvs = { [B]: canvas, [C]: d.createElement('canvas'), [D2]: d.createElement('canvas') };
+  w.bleInterface.gcall.remoteVideoEl = (nx) => cvs[nx] || null;
+  st.members = [B, C, D2];
+  st.legs = [B, C, D2].map((nx) => ({ nx, state: 'active', talking: false, reconnecting: false, peerScreen: nx === B }));
+  emit(); await sleep(200);
+  const tile = d.querySelector('#nexo-gcall-screen .gc-tile[data-nx="' + B + '"]');
+  r.baldosa_pantalla = !!tile && tile.classList.contains('gc-tile-screen') && /contain/.test(canvas.style.cssText) && !/scaleX\(-1\)/.test(canvas.style.cssText);
+  r.etiqueta = tile ? (tile.querySelector('.gc-tile-lab') || {}).textContent : null;
   st.legs[0].peerScreen = false; emit(); await sleep(150);
   const tile2 = d.querySelector('#nexo-gcall-screen .gc-tile[data-nx="' + B + '"]');
   r.vuelve_normal = !!tile2 && !tile2.classList.contains('gc-tile-screen') && /cover/.test(canvas.style.cssText);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
-  const ok = r.baldosa_pantalla && /^Pantalla de /.test(r.etiqueta || '') && r.boton_pantalla && r.aviso && r.compartir_llama && r.barra_roja && r.boton_detener &&
+  const ok = r.escenario_pantalla && /^Pantalla de /.test(r.escenario_etiqueta || '') && r.escenario_etiqueta_visible && r.escenario_vuelve &&
+    r.baldosa_pantalla && /^Pantalla de /.test(r.etiqueta || '') && r.boton_pantalla && r.aviso && r.compartir_llama && r.barra_roja && r.boton_detener &&
     r.barra_detiene && r.barra_se_va && r.vuelve_normal && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('GSCREENUI ' + JSON.stringify(r));

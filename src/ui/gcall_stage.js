@@ -74,6 +74,7 @@ function _css() {
     '#nexo-gcall-screen .nc-btn.gcs-cancel .nc-ic svg{transform:rotate(135deg)}',
     '.gcs-lab{position:absolute;left:10px;bottom:8px;z-index:2;font-size:12px;background:rgba(0,0,0,.55);padding:2px 8px;border-radius:8px;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.gcs-n1 .gcs-lab,.gcs-tile.gcs-wait .gcs-lab,.gcs-tile.gcs-novideo .gcs-lab{display:none}',
+    '.gcs-n1 .gcs-tile.gcs-screen:not(.gcs-novideo):not(.gcs-wait) .gcs-lab{display:block}',
     '.gcs-tile.gcs-down .gcs-lab{top:10px;bottom:auto}.gcs-tile.gcs-full .gcs-lab{bottom:150px}', // (no debajo de los botones)
     '.gcs-tile.gcs-mini .gcs-avw,.gcs-tile.gcs-mini .gcs-avw .nx-person-av{width:48px !important;height:48px !important;min-width:48px !important;font-size:18px !important}',
     '.gcs-tile.gcs-mini .gcs-pname{font-size:12px}.gcs-tile.gcs-mini .gcs-pst,.gcs-tile.gcs-mini .gcs-cancel,.gcs-tile.gcs-mini .gcs-lab{display:none !important}',
@@ -180,6 +181,8 @@ export function renderStage(el, st, gcall, opts) {
     tl.classList.toggle('gcs-wait', !inCall);
     tl.classList.toggle('gcs-novideo', inCall && !live);
     tl.classList.toggle('gcs-screen', !!l.peerScreen);
+    // 3157: compartiendo su pantalla, el letrero lo dice (también con una sola persona, donde si no va oculto)
+    tl.querySelector('.gcs-lab').textContent = l.peerScreen ? t('call_screen_of', 'Pantalla de') + ' ' + name : name;
     var ps = tl.querySelector('.gcs-pst');
     ps.textContent = !inCall ? t('call_calling', 'Llamando…') : l.peerCam === false ? t('call_peer_cam_off', 'Cámara apagada') : l.reconnecting ? t('call_reconnecting', 'Reconectando…') : t('call_waiting_image', 'Esperando imagen…');
     // «Cancelar»: solo quien invitó, mientras le suena
