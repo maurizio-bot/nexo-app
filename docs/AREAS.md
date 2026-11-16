@@ -42,6 +42,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Wi-Fi Direct: un envío real bien el 15-11 (3,3 MB/s); falta el vídeo de ~20 MB (PENDIENTES 15-11, resúmenes del 14-11). ×2
 
 **Falta**
+- Diagnóstico S23 3073 (16-11): cierre por FALLO nativo a las 11:13, en segundo plano, justo tras quitar la app de recientes con la llamada de grupo fantasma viva (arreglada en la APK siguiente); sin traza en el diagnóstico: vigilar si se repite. Además, con la app cerrada (y ahorro de batería) los mensajes del S24 esperaron ~12 min hasta abrirla (#87). «Internet listo» del S23: media 20,7 s, máx. 119,6 s al cambiar de red (el relé propio lo debe bajar).
 - Diagnóstico S24 3073 (16-11): el Wi-Fi con el vivo se abre y se cierra cada ~3 min porque la app del vivo duerme y no contesta la comprobación (con Bluetooth listo); revisar si conviene dejar de reintentar tan seguido. Internet listo en 0,6 s (el 15-11 eran 13,7 s): no se repitió.
 - Camino preparado al abrir el chat (dueño 16-11: saludo por internet al abrir y repaso al empezar a escribir) — en curso, 3147.
 - Resúmenes del 15-11 (build 3070): el S24 tardó en tener internet listo 13,7 s de media (máx. 119 s, 21 veces); el S23 gastó 11,6 %/h de batería en segundo plano (todo el teléfono) y 50,9 MB de datos móviles en NEXO. Revisar en cuanto haya diagnóstico de la 3073.
@@ -101,6 +102,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Contestar con manos libres Bluetooth en Xiaomi: aviso hecho, falta el diagnóstico de Jhonnatan (3134). ×2
 
 **Falta**
+- Diagnóstico S23/S24 3073 (16-11 11:12): la videollamada se cortó («Fin lost») al pasar el S23 de Wi-Fi a datos; debe aguantar el cambio («Reconectando…», reinicio de la conexión directa o seguir por relés). En cola con el modelo de llamadas.
 - Diagnóstico S24 3073 (16-11 10:40): al agregar a un contacto, la videollamada 1-a-1 TERMINA y empieza una de grupo sin vídeo (es la queja del dueño; en curso, 3152). Justo después, una llamada nueva con la app en segundo plano al contestar el otro: 219 s sin micrófono ni cámara propios (el otro no oía nada); el micrófono y la cámara se piden al contestar y, en segundo plano, se quedan esperando — en curso con el mismo trabajo. Visto desde el S23: al colgar la de grupo, el aviso de fin solo le llegó al tercero; el S23 se quedó con una llamada de grupo «fantasma» que volvió sola («Reanudada») al terminar la siguiente llamada (en curso, mismo trabajo).
 - Eco: la voz propia vuelve, sobre todo en grupo (PENDIENTES #128 punto 7). ×2
 - Gasto de datos por relés: escucha nativa doble durante la llamada y cada parte por 3 relés (PENDIENTES 15-11 08:41). ×2
