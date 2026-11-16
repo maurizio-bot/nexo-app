@@ -45,6 +45,8 @@ import { netWake } from './net_wake.js';
 import { netPublish } from './net_publish.js';
 
 var REFRESH_QUIET_MS = 30000, REFRESH_GAP_MS = 60000; // 3130: deslizar no vuelve a pedir a un relé que entrega en vivo, y 1 vez/min
+var PROBE_MS = 20000;         // 3147: saludo al abrir el chat / al escribir, como mucho uno cada 20 s por contacto
+
 export class NetLink {
   constructor(ble) {
     this.ble = ble;
@@ -199,6 +201,11 @@ export class NetLink {
       if (up !== !!p.up) {
         p.up = up;
         console.log('[NET] ' + nx + (up ? ' en línea por internet' + (p.wifi ? ' (Wi-Fi)' : ' (datos móviles)') : ' ya no está en línea por internet'));
+        if (up && p.probeT0 && now - p.probeT0 < 60000) { // 3147: contestó al saludo de abrir el chat
+          console.log('[RUTA] ' + nx + ' contesta: listo por internet ' + (now - p.probeT0) + ' ms después de abrir el chat'); // i18n-ok
+          try { if (typeof window.NEXO_noteConnect === 'function') window.NEXO_noteConnect('ruta', now - p.probeT0); } catch (e) {}
+        }
+        if (up) p.probeT0 = 0;
         if (self.ble) { if (up && typeof self.ble._netUp === 'function') self.ble._netUp(nx); else if (!up && typeof self.ble._netDown === 'function') self.ble._netDown(nx); }
       }
     });
@@ -516,6 +523,19 @@ export class NetLink {
     this.peers.set(nx, p);
     p.helloAt = Date.now();
     this.send(nx, '', { hello: true }).catch(function() {});
+  }
+  // 3147 (dueño 16-11: «preparar el mejor camino al ABRIR el chat, para que enviar sea instantáneo»): un saludo cifrado ya (el
+  // otro contesta y se ve en línea por internet en ~1 s) si hace > 20 s que no le saludamos ni sabemos de él. Lo llaman abrir el
+  // chat y empezar a escribir (ble_interface _prepRoute); como mucho uno cada 20 s por contacto. Sin relés abiertos no hace nada.
+  probe(nexoId, why) {
+    var nx = _nid(nexoId), now = Date.now();
+    if (!/^nx[0-9a-z]{8}$/.test(nx) || !this.pairs.has(nx) || !this.online()) return false;
+    var p = this._peer(nx);
+    if (now - (p.helloAt || 0) < PROBE_MS || now - (p.lastRx || 0) < PROBE_MS) return false;
+    p.probeT0 = p.up ? 0 : now;
+    console.log('[RUTA] ' + (why || 'Al abrir el chat') + ': saludo por internet a ' + nx + (p.up ? ' (ya en línea, se refresca)' : ' (sin noticias suyas hace ' + (p.lastRx ? Math.round((now - p.lastRx) / 1000) + ' s)' : 'esta sesión)'))); // i18n-ok
+    this._hello(nx);
+    return true;
   }
   // Alta por ID (ronda 2779): tras agregar un contacto nuevo (al aceptar una solicitud o al llegar la aceptación de la
   // mía), forzar el saludo para que los dos se vean en línea enseguida (el saludo normal del tick no saluda a un contacto
