@@ -77,6 +77,8 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Foto de perfil al día y sin copias (3028, 3129). ×1
 
 **Falta**
+- Visor de fotos: deslizar entre fotos y vídeos del chat, deslizar arriba/abajo para cerrar, sin «X» (dueño 16-11; en curso, 3159). ×1
+- Mandar varias fotos eligiendo cuáles van de «ver una vez» (ojo en la esquina; dueño 16-11; en curso, 3160). Después: «ver una vez» también para vídeos (dueño 16-11). ×1
 - Texto del mensaje en el aviso con la app cerrada (llave en el Keystore; aprobado; PENDIENTES 15-11 noche «anti-suplantación»). ×2
 - Punto de encuentro sin señal («¿dónde están?»), para EDC (plan, etapa 4). ×2
 - Buscador en todos los chats (hoy solo dentro de un chat). ×1
@@ -85,6 +87,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Adjuntos de grupo por Bluetooth de más de ~1 MB (robustez.json «grupos»). ×1
 
 **Espera decisión del dueño**
+- Vídeos de TikTok/Instagram/Facebook (dueño 16-11): propuesta (1) enlaces tocables con tarjeta del sitio, abre en su app; (2) NEXO en el menú «Compartir» de Android (nativo); volver con el gesto de atrás (deslizar desde abajo es «inicio» del sistema). Después: vista previa generada por quien manda. Ver dentro de NEXO: no por ahora (inicio de sesión, abrir la seguridad de la app). ×1
 - Ninguna abierta.
 
 ## 4. Llamadas — 59 %
