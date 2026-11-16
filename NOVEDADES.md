@@ -12,48 +12,46 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Desliza entre las fotos y videos de un chat; para salir, desliza hacia arriba o abajo. Guardar quedó abajo a la derecha.
+- Al mandar fotos de la galería, toca el ojo de las que quieras que se vean una sola vez.
+- Arreglado: guardar un video en la galería.
+- Arreglado: el «leído» al abrir un chat desde el aviso.
+</es-419>
+<it-IT>
+- Scorri tra le foto e i video di una chat; per uscire, scorri in alto o in basso. Salva ora è in basso a destra.
+- Inviando foto dalla galleria, tocca l'occhio di quelle che vuoi far vedere una sola volta.
+- Risolto: salvare un video nella galleria.
+- Risolto: il «letto» aprendo una chat dalla notifica.
+</it-IT>
+<en-US>
+- Swipe between a chat's photos and videos; swipe up or down to close. Save is now at the bottom right.
+- When sending photos from the gallery, tap the eye on the ones you want seen only once.
+- Fixed: saving a video to the gallery.
+- Fixed: "read" receipts when opening a chat from a notification.
+</en-US>
+<pt-BR>
+- Deslize entre as fotos e vídeos de uma conversa; para sair, deslize para cima ou para baixo. Salvar agora fica no canto inferior direito.
+- Ao enviar fotos da galeria, toque no olho das que você quer que sejam vistas só uma vez.
+- Corrigido: salvar um vídeo na galeria.
+- Corrigido: o «lido» ao abrir uma conversa pela notificação.
+</pt-BR>
+<fr-FR>
+- Glissez entre les photos et vidéos d'un chat ; pour sortir, glissez vers le haut ou le bas. Enregistrer est maintenant en bas à droite.
+- En envoyant des photos de la galerie, touchez l'œil de celles à voir une seule fois.
+- Corrigé : enregistrer une vidéo dans la galerie.
+- Corrigé : le « lu » en ouvrant un chat depuis une notification.
+</fr-FR>
+<!-- /APK -->
+
+## Historial
+
+### APK 3075 (16-11-2026; la 3074 se paró en las pruebas: esta la lleva)
 - Al abrir un chat, NEXO prepara el camino para que tu mensaje salga al instante.
 - Los emojis solos se ven grandes y sin burbuja.
 - Si las notificaciones están apagadas, te avisamos y te llevamos a activarlas.
 - Agregar a alguien a una videollamada ya no corta el video; con doble toque agrandas a uno.
 - Llamadas: «atrás» las minimiza en una barra arriba, la de voz pasa a video sin colgar y aguantan el cambio de Wi-Fi a datos.
 - Arreglado: el otro no te oía si salías de la app mientras sonaba.
-</es-419>
-<it-IT>
-- Aprendo una chat, NEXO prepara la strada perché il messaggio parta subito.
-- Le emoji da sole si vedono grandi e senza fumetto.
-- Se le notifiche sono spente, te lo diciamo e ti portiamo ad attivarle.
-- Aggiungendo qualcuno a una videochiamata il video resta; doppio tocco per ingrandirne uno.
-- Chiamate: «indietro» le riduce a una barra in alto, la vocale passa a video senza chiudere e reggono il cambio da Wi-Fi a dati.
-- Risolto: l'altro non ti sentiva se uscivi dall'app mentre squillava.
-</it-IT>
-<en-US>
-- Opening a chat, NEXO prepares the route so your message goes out instantly.
-- Emojis sent alone show big, without a bubble.
-- If notifications are off, we tell you and take you to turn them on.
-- Adding someone to a video call no longer cuts the video; double tap to enlarge one.
-- Calls: Back shrinks them to a bar at the top, voice switches to video without hanging up, and calls survive Wi-Fi to data.
-- Fixed: the other person couldn't hear you if you left the app while it rang.
-</en-US>
-<pt-BR>
-- Ao abrir uma conversa, o NEXO prepara o caminho para a mensagem sair na hora.
-- Emojis sozinhos aparecem grandes e sem balão.
-- Se as notificações estão desligadas, avisamos e levamos você a ativá-las.
-- Adicionar alguém a uma videochamada não corta mais o vídeo; dois toques ampliam um.
-- Chamadas: «voltar» as reduz a uma barra no topo, a de voz vira vídeo sem desligar e aguentam a troca de Wi-Fi para dados.
-- Corrigido: o outro não te ouvia se você saía do app enquanto tocava.
-</pt-BR>
-<fr-FR>
-- En ouvrant un chat, NEXO prépare le chemin pour un envoi immédiat.
-- Les emojis seuls s'affichent en grand, sans bulle.
-- Notifications coupées ? On vous le dit et on vous emmène les activer.
-- Ajouter quelqu'un à un appel vidéo ne coupe plus la vidéo ; double appui pour agrandir.
-- Appels : « Retour » les réduit à une barre en haut, la voix passe en vidéo sans raccrocher et ils tiennent du Wi-Fi aux données.
-- Corrigé : on ne vous entendait plus si vous quittiez l'app pendant la sonnerie.
-</fr-FR>
-<!-- /APK -->
-
-## Historial
 
 ### APK 3073 (16-11-2026; la 3071 y la 3072 se pararon en las pruebas: esta las lleva juntas)
 - Al llamar oyes el «tuuu… tuuu…» mientras suena del otro lado.
