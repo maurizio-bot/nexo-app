@@ -3,7 +3,48 @@
 Lo que trae cada versión, contado para el usuario (pedido del dueño 15-11: «que venga una breve descripción de lo que se hizo, para
 que el user cuando la descargue pueda verificar qué es lo que se implementó… para cuando se suba a Google Play»).
 
-- El bloque entre `<!-- APK -->` y `<!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
+- El bloque entre `<!-- APK -->
+<es-419>
+- Al llamar oyes el «tuuu… tuuu…» mientras suena del otro lado.
+- Más protección contra impostores al agregar contactos, unir chats y pagar cobros.
+- Tu respaldo elige solo a tus contactos más cercanos como guardianes.
+- Desliza un mensaje a la derecha para responderlo. En la nota de voz: desliza a la izquierda para cancelar o mantén y suelta para enviar.
+- Oculta el texto de los avisos de un chat desde sus opciones.
+- Ajustes por secciones y el mismo estilo limpio en toda la app, también en las llamadas.
+</es-419>
+<it-IT>
+- Quando chiami senti il «tuuu… tuuu…» mentre squilla dall'altra parte.
+- Più protezione dagli impostori quando aggiungi contatti, unisci chat e paghi richieste.
+- Il backup sceglie da solo i contatti più vicini come custodi.
+- Scorri un messaggio a destra per rispondere. Nel vocale: scorri a sinistra per annullare o tieni premuto e rilascia per inviare.
+- Nascondi il testo delle notifiche di una chat dalle sue opzioni.
+- Impostazioni divise in sezioni e lo stesso stile pulito in tutta l'app, anche nelle chiamate.
+</it-IT>
+<en-US>
+- When you call, you hear the ringing tone while the other phone rings.
+- More protection against impostors when adding contacts, merging chats and paying requests.
+- Your backup picks your closest contacts as guardians on its own.
+- Swipe a message right to reply. In voice notes: swipe left to cancel, or hold and release to send.
+- Hide the text of a chat's notifications from its options.
+- Settings split into sections and the same clean look across the app, calls included.
+</en-US>
+<pt-BR>
+- Ao ligar, você ouve o «tuuu… tuuu…» enquanto toca do outro lado.
+- Mais proteção contra impostores ao adicionar contatos, unir conversas e pagar cobranças.
+- O backup escolhe sozinho seus contatos mais próximos como guardiões.
+- Deslize uma mensagem para a direita para responder. No áudio: deslize para a esquerda para cancelar ou segure e solte para enviar.
+- Oculte o texto das notificações de uma conversa nas opções dela.
+- Ajustes por seções e o mesmo estilo limpo em todo o app, inclusive nas chamadas.
+</pt-BR>
+<fr-FR>
+- Quand vous appelez, vous entendez la tonalité pendant que ça sonne.
+- Plus de protection contre les imposteurs : ajout de contacts, fusion de chats et paiements.
+- La sauvegarde choisit seule vos contacts les plus proches comme gardiens.
+- Glissez un message à droite pour répondre. Vocal : glissez à gauche pour annuler, ou maintenez et relâchez pour envoyer.
+- Masquez le texte des notifications d'un chat dans ses options.
+- Réglages par sections et même style épuré partout, appels compris.
+</fr-FR>
+<!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
   y la app lo muestra junto al botón de actualizar (Perfil → Ajustes → Actualizaciones, y «¿Qué trae?» en el aviso de abajo).
 - Formato de Google Play (se pega tal cual en «Novedades de esta versión»): un bloque por idioma (español, italiano, inglés y, desde
   la 3123, portugués de Brasil y francés), **máximo 500 caracteres** cada uno
