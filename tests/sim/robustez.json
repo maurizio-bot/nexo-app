@@ -1186,6 +1186,10 @@
     {
      "fallo": "3155 (dueño 16-11: «al salir de la llamada para ver los chats, una barra arriba como la de WhatsApp»): con una llamada en curso no se podía usar la app (la pantalla de la llamada lo tapaba todo y «atrás» no hacía nada con ella). 3155: «atrás» o la flecha de arriba a la izquierda minimizan la llamada (1-a-1 de voz o vídeo y la de grupo): barra arriba con con quién y cuánto lleva, Silenciar y Colgar, la app baja lo que mide la barra; tocarla vuelve; en la miniatura del sistema la llamada se ve entera; mientras suena una entrante no se minimiza. llamadamini.js b/bv y agregarvideo.js g (contraprueba 3152: «atrás» no hace nada)",
      "prueba": "llamada MINIMIZADA y de VOZ a VÍDEO sin colgar"
+    },
+    {
+     "fallo": "3156 (diagnóstico S24/S23 3073 16-11 11:12: videollamada directa por internet; el S23 pasó de Wi-Fi a datos: «Cambio de red… reconecto los relés», «Sin relés: internet no disponible», «Sin enlace: buscando por Bluetooth» y «Fin (lost, 104 s)»; el S24 vio «Se cortó la conexión directa… sigue por los relés» y 40 ms después «Fin (lost, 103 s)»): la llamada se daba por perdida a los 15 s sin voz aunque fuera un cambio de red, y la conexión directa caída no se volvía a probar hasta el minuto. 3156: por internet (o tras un cambio de red) aguanta «Reconectando…» hasta 30 s; al cambiar de red la conexión directa se rehace por la nueva (el que recibe se lo pide al que llama: 'rtc' again) y una que se cortó se reintenta a los 3 s (unas pocas veces); mientras, sigue por los relés en cuanto vuelven. cambiored.js (contraprueba 3155: «Fin (lost)» a los 15 s del corte)",
+     "prueba": "llamada que CAMBIA DE RED sin cortarse"
     }
    ],
    "debiles": [
