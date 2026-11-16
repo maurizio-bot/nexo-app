@@ -9,7 +9,8 @@
 import { t } from './i18n.js';
 import { _showInfoToast, _pickContact } from './ui_bits.js';
 import { _getCurrentContactId, _normId } from './chat_format.js';
-import { callButton, ensureCallStyle, fitCallLabels, syncCallSplit, callCount, holdButton, replyButton } from './calls_ui.js';
+import { callButton, ensureCallStyle, fitCallLabels, syncCallSplit, callCount, holdButton, replyButton, dropHandedOffScreen } from './calls_ui.js';
+import { stageWanted, renderStage, clearStage } from './gcall_stage.js';
 import { closeCallReply } from './call_reply.js';
 import { personAvatar } from './person_avatar.js';
 
@@ -110,8 +111,10 @@ function _gAudioMode(on) {
 function _render(st) {
   var gcall = _gcall();
   if (!st) { _remove(); return; }
+  // #224: la que hereda una videollamada 1-a-1 («Agregar») ya está en llamada aunque todavía no haya contestado nadie
+  var live = st.state === 'active' || (st.state === 'calling' && !!st.adopt);
   // Al entrar en activa (una vez por llamada): arrancar el modo de audio de comunicación; al cambiar de llamada, reiniciar.
-  if (st.state === 'active' && _gcAudioFor !== st.gid) { _gcAudioFor = st.gid; _gcSpeaker = true; _gAudioMode(true); }
+  if (live && _gcAudioFor !== st.gid) { _gcAudioFor = st.gid; _gcSpeaker = true; _gAudioMode(true); }
   var el = _screen();
   ensureCallStyle(); syncCallSplit(); // #220: con la 1-a-1 también abierta, pantalla dividida
   var me = _me();
@@ -161,9 +164,9 @@ function _render(st) {
     bt.style.cssText = '';
     var B = function(icon, label, cls, fn, extra) { bt.appendChild(callButton(icon, label, cls, fn, extra)); };
     // #dueño 31-10: SILENCIAR mi micrófono (como en la 1-a-1); el hub comparte una captura, así deja de mandar mi voz.
-    if (st.state === 'active') B(st.muted ? 'micOff' : 'mic', st.muted ? t('call_muted', 'Silenciado') : t('call_mute', 'Silenciar'), 'gc-add', function() { var g = _gcall(); if (g) g.mute(!st.muted); }, st.muted ? 'nc-on' : '');
+    if (live) B(st.muted ? 'micOff' : 'mic', st.muted ? t('call_muted', 'Silenciado') : t('call_mute', 'Silenciar'), 'gc-add', function() { var g = _gcall(); if (g) g.mute(!st.muted); }, st.muted ? 'nc-on' : '');
     // #130 (dueño 31-10): AGREGAR un contacto a la llamada de grupo en curso (selector de contactos → gcall.addMember).
-    if (st.state === 'active') B('addp', t('call_add', 'Agregar'), 'gc-add', function() {
+    if (live) B('addp', t('call_add', 'Agregar'), 'gc-add', function() {
       var gcall = _gcall(); if (!gcall) return;
       var cur = gcall.state ? gcall.state() : null;
       var ex = ((cur && cur.members) || []).concat([_me()]);
@@ -172,10 +175,10 @@ function _render(st) {
       } });
     });
     // #138 (dueño 31-10): CÁMARA on/off (sin re-llamar: activar la cámara pasa la llamada a vídeo) y GIRAR (delante/detrás).
-    if (st.state === 'active') B(st.cameraOn ? 'cam' : 'camOff', st.cameraOn ? t('call_camera_off', 'Cámara no') : t('call_camera', 'Cámara'), 'gc-add', function() { var g = _gcall(); if (g) g.camera(!st.cameraOn); });
-    if (st.state === 'active' && st.cameraOn) B('flip', t('call_flip', 'Girar'), 'gc-add', function() { var g = _gcall(); if (g && g.flip) g.flip(); });
+    if (live) B(st.cameraOn ? 'cam' : 'camOff', st.cameraOn ? t('call_camera_off', 'Cámara no') : t('call_camera', 'Cámara'), 'gc-add', function() { var g = _gcall(); if (g) g.camera(!st.cameraOn); });
+    if (live && st.cameraOn) B('flip', t('call_flip', 'Girar'), 'gc-add', function() { var g = _gcall(); if (g && g.flip) g.flip(); });
     // Dueño 13-11, compartir pantalla parte 2: en la llamada de grupo (aviso antes, como la 1-a-1; si ya comparto, «Detener»)
-    if (st.state === 'active' && gcall && typeof gcall.shareScreen === 'function') B('screen', st.screen ? t('call_screen_stop', 'Detener') : t('call_screen', 'Pantalla'), st.screen ? 'gc-red' : 'gc-add', function() {
+    if (live && gcall && typeof gcall.shareScreen === 'function') B('screen', st.screen ? t('call_screen_stop', 'Detener') : t('call_screen', 'Pantalla'), st.screen ? 'gc-red' : 'gc-add', function() {
       var g = _gcall(); if (!g) return;
       if (st.screen) { g.shareScreen(false); return; }
       _gScreenAsk(el, function() {
@@ -184,14 +187,20 @@ function _render(st) {
       });
     }, st.screen ? 'nc-red' : '');
     // #dueño 31-10: ALTAVOZ/AURICULAR (como la 1-a-1); en grupo arranca en altavoz (manos libres).
-    if (st.state === 'active') B(_gcSpeaker ? 'speaker' : 'ear', _gcSpeaker ? t('call_speaker', 'Altavoz') : t('call_earpiece', 'Auricular'), 'gc-add', function() { _gcSpeaker = !_gcSpeaker; _gAudioMode(true); _render(st); }, _gcSpeaker ? 'nc-on' : '');
+    if (live) B(_gcSpeaker ? 'speaker' : 'ear', _gcSpeaker ? t('call_speaker', 'Altavoz') : t('call_earpiece', 'Auricular'), 'gc-add', function() { _gcSpeaker = !_gcSpeaker; _gAudioMode(true); _render(st); }, _gcSpeaker ? 'nc-on' : '');
     if (st.state === 'active' && (st.held || callCount() > 1) && gcall) bt.appendChild(holdButton(gcall, st)); // #222: en espera / reanudar
     B('phone', t('call_hangup', 'Colgar'), 'gc-red', function() { if (_gcall()) _gcall().hangup(); }, 'nc-red call-hangup');
     bt.className = 'gc-buttons nc-row' + (bt.children.length >= 6 ? ' nc-many' : '');
     fitCallLabels(bt);
   }
   _gScreenBar(el, st);
-  _renderVideo(st); // #138: rejilla de vídeo (reconciliada, sin recrear los <canvas>/<video> → sin parpadeo)
+  // #224: videollamada de 2 o 3 personas → como la 1-a-1 (mitades, la mía pequeña); con más, la rejilla de siempre. Las imágenes
+  // pasan de un sitio a otro sin recrearse (primero se colocan en el nuevo y luego se quita el viejo)
+  var stg = stageWanted(st, me);
+  el.classList.toggle('gc-stagemode', stg);
+  if (stg) { renderStage(el, st, gcall, { me: me, name: _memberName }); var gv = el.querySelector('.gc-video'); if (gv) { gv.innerHTML = ''; gv.style.display = 'none'; } }
+  else { _renderVideo(st); clearStage(el); } // #138: rejilla de vídeo (reconciliada, sin recrear los <canvas>/<video> → sin parpadeo)
+  dropHandedOffScreen(); // #224: la pantalla de la 1-a-1 que pasó a grupo se quita cuando ésta ya tiene sus imágenes
 }
 
 // Dueño 13-11, compartir pantalla parte 2: barra roja arriba mientras comparto (tocarla detiene) y aviso antes de empezar

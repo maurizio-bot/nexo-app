@@ -171,10 +171,13 @@ export class GroupCall {
     if (g.roster.size <= 1 || !self._alive(true)) self._finish('empty');
     return true;
   }
-  // ¿Cuántos tramos siguen (o pueden seguir)? (con invitados: también los que aún suenan)
+  // ¿Cuántos tramos siguen (o pueden seguir)? (con invitados: también los que aún suenan). 3152 (diagnóstico S23 16-11: la de
+  // grupo de «Agregar» quedó viva sin nadie —el que invitó colgó y el tercero nunca contestó— y volvió sola, con la cámara, al colgar
+  // la siguiente llamada): si el que invitó ya se fue, los que todavía no entraron no me retienen en la llamada.
   _alive(withInvited) {
     var g = this.gc, n = 0; if (!g) return 0;
-    g.legs.forEach(function(l) { if (l.state === 'active' || l.state === 'offering' || l.state === 'waiting' || (withInvited && l.state === 'inviting')) n++; });
+    var hostGone = g.dir === 'in' && !!g.host && !g.roster.has(g.host);
+    g.legs.forEach(function(l) { if (l.state === 'active' || (!hostGone && (l.state === 'offering' || l.state === 'waiting')) || (withInvited && l.state === 'inviting')) n++; });
     return n;
   }
   // #224: me voy sin haber entrado (rechazo, no contesté, el que invitó colgó): se lo digo a TODOS, no solo al que invitó (los que
@@ -330,7 +333,7 @@ export class GroupCall {
   // Vigilante por segundo: cierra tramos mudos (sin tumbar la llamada) y termina si no queda nadie
   _tick() {
     var self = this, g = self.gc; if (!g || g.state !== 'active') return;
-    var now = Date.now(), alive = 0, me = self._nidSelf();
+    var now = Date.now(), me = self._nidSelf();
     var weak = window.NEXO_GCALL_WEAK_MS || GWEAK_MS, silence = window.NEXO_GCALL_SILENCE_MS || GSILENCE_MS;
     g.legs.forEach(function(l, nx) {
       if (l.state === 'active') {
@@ -340,9 +343,8 @@ export class GroupCall {
         if (l.lastRx && gap > silence) { l.state = 'lost'; l.reconnecting = false; }
         else l.reconnecting = !!(l.lastRx && gap > weak);
       } else if (l.reconnecting) l.reconnecting = false;
-      if (l.state === 'active' || l.state === 'offering' || l.state === 'waiting') alive++;
     });
-    if (alive === 0 && now - g.startedAt > silence) { self._finish('empty'); return; }
+    if (!self._alive(false) && now - g.startedAt > silence) { self._finish('empty'); return; }
     // compartir pantalla: el estado se repite cada 5 s mientras comparto (y un rato después de parar), para el que entró tarde
     if ((g.screen || now < (g._scrOffUntil || 0)) && now - (g._stAt || 0) >= GSTATE_EVERY_MS) self._sendStateAll();
     self._set(null);
@@ -538,9 +540,7 @@ export class GroupCall {
       gg.roster.delete(nx);
       console.log('[GCALL] ' + nx + ' no contestó: sale de la llamada');
       self._set(null);
-      var alive = 0;
-      gg.legs.forEach(function(ll) { if (ll.state === 'active' || ll.state === 'offering' || ll.state === 'waiting' || ll.state === 'inviting') alive++; });
-      if (gg.roster.size <= 1 || alive === 0) self._finish('empty');
+      if (gg.roster.size <= 1 || !self._alive(true)) self._finish('empty');
     }, window.NEXO_GCALL_RING_MS || GRING_MS);
   }
 
@@ -551,9 +551,7 @@ export class GroupCall {
     if (g.hub && g.hub.drop) try { g.hub.drop(nx); } catch (e) {} // #128 inc.2: liberar el decodificador del que se fue
     this._set(null);
     // si no queda nadie vivo, terminar
-    var alive = 0, me = this._nidSelf();
-    g.legs.forEach(function(ll) { if (ll.state === 'active' || ll.state === 'offering' || ll.state === 'waiting') alive++; });
-    if (g.roster.size <= 1 || (g.startedAt && alive === 0)) this._finish('empty');
+    if (g.roster.size <= 1 || (g.startedAt && !this._alive(false))) this._finish('empty'); // (3152: el que invitó se fue y nadie más entró: fin)
   }
 
   _finish(why) {
