@@ -1638,7 +1638,7 @@
    "peso": 5,
    "telefono": {
     "estado": "ok",
-    "por": "Se usa a diario; lo de la 2771 no está probado",
+    "por": "16-11 (dueño, APK 3075 en el S24 y el vivo): deslizar hacia abajo para actualizar fotos de perfil y estados funciona (3131/3138). Antes: Se usa a diario; lo de la 2771 no está probado",
     "nota": "dueño 02-11 (chat): «2875 ok 2876 ok ... probadas y funcionales» (gestos-atrás 2875, botones de grupo 2876); interfaz sin cambios desde entonces"
    },
    "revision": {
