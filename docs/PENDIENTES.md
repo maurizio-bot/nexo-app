@@ -6,6 +6,19 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 16-11 mañana — decisiones del dueño tras la opinión de Grok
+- **Código muerto:** quitar (p. ej. src/auth sin uso).
+- **Diagnóstico visible:** SE QUEDA mientras haya probadores («es nuestra única fuente de diagnóstico»); al subir a Google Play se
+  esconde pero sigue vivo por detrás.
+- **Bienvenida ≤ 40 s (cuanto menos, mejor):** introducción breve + foto + retrato vivo + firma viva + huella. Implementar YA pero
+  OCULTO (bandera de desarrollo): ni usuarios nuevos ni actualizaciones deben verlo hasta que el dueño lo active.
+- **NO avisos de camino** («por Bluetooth», «esperando que despierte»): para el usuario es magia; solo palomitas. Lo de «conectado/
+  en línea por…» queda SOLO mientras probamos y se quita en la app terminada (confunde: un usuario creyó que «conectado» = en línea).
+- **Gestos:** deslizar para cancelar una nota de voz; deslizar de izquierda a derecha sobre un mensaje = responder (hoy falla a
+  veces) y la cita aparece en la barra de escribir como en «Responder» del menú.
+- **Invitar con un motivo fuerte:** pendiente de propuestas.
+- **iPhone y relés propios:** esperan a que NEXO dé ingresos (MacBook y servidores son gasto del dueño).
+
 ## 🆕 16-11 03:17 — diagnóstico automático S24 3069 «zombi» con Yaelito (3070) + resúmenes viejos
 - **3139 hecho (rama, APK 3071):** dos enlaces Bluetooth S24↔Yaelito y cada teléfono cerró uno distinto (el S24 por el MTU que creía ver,
   Yaelito por el desempate común): el S24 mandaba por el muerto (texto largo 8 reintentos sin confirmar, puente que no abre, «zombi»)
