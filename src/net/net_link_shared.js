@@ -10,6 +10,20 @@ var DEFAULT_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.prim
 var SPARE_RELAYS = ['wss://offchain.pub', 'wss://relay.snort.social', 'wss://nostr.oxtr.dev', 'wss://relay.nostr.bg', 'wss://nostr-pub.wellorder.net'];
 var RELAY_TARGET_OPEN = 3;
 var RELAY_DEAD_FAILS = 2;
+// 3151 (dueño 16-11: «NEXO tendrá su PROPIO servidor de relé, de pago, para que mensajes y archivos vayan tan rápido como en WhatsApp;
+// los públicos quedan de respaldo»). Relés PROPIOS (strfry tras TLS; qué debe aceptar: docs/SERVIDOR_PROPIO.md). VACÍO = todo como
+// siempre (solo públicos). Con alguno (net_own.js): se conecta primero; se leen los mensajes de él y de UN público (no de todos: cada
+// evento llegaba repetido por cada relé); lo pesado (trozos del buzón de archivos, partes de llamada, trozos de un archivo en vivo) va
+// solo a él; se quedan OWN_PUBLIC_BACKUP públicos abiertos para publicar mensajes y saludos (contactos que aún solo leen los públicos)
+// y para caer a ellos en segundos si el propio falla; al volver sano, se vuelve a él. Pruebas: window.NEXO_OWN_RELAYS (una lista
+// explícita de relés de prueba, window.NEXO_NET_RELAYS, sin NEXO_OWN_RELAYS = sin propio: el simulador nunca sale al servidor real).
+var OWN_RELAYS = [];
+var OWN_PUBLIC_BACKUP = 2;         // públicos abiertos junto al propio (el resto de la lista pasa a la reserva)
+var OWN_RETRY_MAX_MS = 10000;      // el propio caído se reintenta como mucho cada 10 s (se vuelve a él en segundos, no en minutos)
+var OWN_FLAP_PENALTY_MS = 60000;   // el propio que flapea se aparta 1 min (no 5: es el camino rápido)
+var OWN_BLOB_PAR = 8;              // trozos del buzón de archivos a la vez hacia el propio (no tiene los límites de ritmo de los públicos)
+var OWN_BAD_MS = 30000;            // el propio no guardó algo que iba solo a él: 30 s todo va a todos los relés
+var OWN_ANNOUNCE_GAP_MS = 5000;    // aviso a los contactos de «leo del propio / ya no» como mucho cada 5 s
 
 // F9 (auditoría ronda 2774): solo relés CIFRADOS (wss://). Por un relé en claro (ws://) un espía de la red vería las
 // ETIQUETAS de tu suscripción (las 'p' de tu buzón) y podría ligarte a tus contactos. Se permite ws:// únicamente a
@@ -111,4 +125,4 @@ function _reqScalar(id, day) { return _scalar(sha256(_utf8('NEXO-REQ-v1|' + _nid
 function _reqTagPub(id, day) { return bytesToHex(schnorr.getPublicKey(_reqScalar(id, day))); }
 function _reqAesKey(id) { return sha256(_utf8('NEXO-REQ-ENC-v1|' + _nid(id))); }
 
-export { DEFAULT_RELAYS, SPARE_RELAYS, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, _relaySafe, KIND, BLOB_KIND, UP_MS, HELLO_MS, TICK_MS, TTL_MSG, TTL_CHUNK, TTL_HELLO, TTL_RT, MAX_CONTENT, MAX_RELAY_FRAME, NET_CHANGE_SETTLE_MS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_FLAP_PENALTY_MS, RELAY_PROBE_MS, RELAY_IDLE_PROBE_MS, RELAY_BG_PROBE_MS, RELAY_PROBE_ID, RELAY_OFFLINE_RETRY_MS, RELAY_MIN_OTHERS, WAKE_MIN_MS, CALL_WAKE_MIN_MS, XFER_WAKE_MIN_MS, DEFAULT_SENDER, STATE_FILE, N, _nid, _relayHost, _plugin, _day, _utf8, _b64, _unb64, _cat, _rnd, _scalar, _event, _reqScalar, _reqTagPub, _reqAesKey };
+export { DEFAULT_RELAYS, SPARE_RELAYS, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, OWN_RELAYS, OWN_PUBLIC_BACKUP, OWN_RETRY_MAX_MS, OWN_FLAP_PENALTY_MS, OWN_BLOB_PAR, OWN_BAD_MS, OWN_ANNOUNCE_GAP_MS, _relaySafe, KIND, BLOB_KIND, UP_MS, HELLO_MS, TICK_MS, TTL_MSG, TTL_CHUNK, TTL_HELLO, TTL_RT, MAX_CONTENT, MAX_RELAY_FRAME, NET_CHANGE_SETTLE_MS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_FLAP_PENALTY_MS, RELAY_PROBE_MS, RELAY_IDLE_PROBE_MS, RELAY_BG_PROBE_MS, RELAY_PROBE_ID, RELAY_OFFLINE_RETRY_MS, RELAY_MIN_OTHERS, WAKE_MIN_MS, CALL_WAKE_MIN_MS, XFER_WAKE_MIN_MS, DEFAULT_SENDER, STATE_FILE, N, _nid, _relayHost, _plugin, _day, _utf8, _b64, _unb64, _cat, _rnd, _scalar, _event, _reqScalar, _reqTagPub, _reqAesKey };

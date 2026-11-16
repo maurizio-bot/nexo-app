@@ -30,10 +30,10 @@
  *   acciones como borrar). Con la app en segundo plano la parte nativa (NetBg.kt) escucha los relés con las mismas
  *   etiquetas (le damos el secreto de cada pareja con netBgConfig) y, al ver 'n', pone la notificación. El mensaje
  *   sigue cifrado de extremo a extremo hasta que la app lo recoge.
- * Relés de prueba: window.NEXO_NET_RELAYS.
+ * Relés de prueba: window.NEXO_NET_RELAYS. Relé PROPIO (3151): OWN_RELAYS / window.NEXO_OWN_RELAYS (net_own.js).
  */
 import { GwLink, GW_FILE_MAX_B64 } from './gw_link.js';
-import { DEFAULT_RELAYS, SPARE_RELAYS, _relaySafe, _nid, _plugin, STATE_FILE, RELAY_BG_PROBE_MS, TICK_MS, _cat, _utf8, _scalar, _day, _reqScalar, _reqTagPub, UP_MS, RELAY_IDLE_PROBE_MS, netEventValid, _unb64, _reqAesKey, TTL_CHUNK, TTL_MSG, TTL_RT, _rnd, _b64, MAX_CONTENT, TTL_HELLO, _event, KIND, HELLO_MS } from './net_link_shared.js';
+import { DEFAULT_RELAYS, SPARE_RELAYS, OWN_PUBLIC_BACKUP, OWN_BLOB_PAR, _relaySafe, _nid, _plugin, STATE_FILE, RELAY_BG_PROBE_MS, TICK_MS, _cat, _utf8, _scalar, _day, _reqScalar, _reqTagPub, UP_MS, RELAY_IDLE_PROBE_MS, netEventValid, _unb64, _reqAesKey, TTL_CHUNK, TTL_MSG, TTL_RT, _rnd, _b64, MAX_CONTENT, TTL_HELLO, _event, KIND, HELLO_MS } from './net_link_shared.js';
 import { e2eIdentityDH, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { hmac } from '@noble/hashes/hmac.js';
@@ -43,6 +43,7 @@ import { netRelays } from './net_relays.js';
 import { netTor } from './net_tor.js';
 import { netWake } from './net_wake.js';
 import { netPublish } from './net_publish.js';
+import { netOwn } from './net_own.js';
 
 var REFRESH_QUIET_MS = 30000, REFRESH_GAP_MS = 60000; // 3130: deslizar no vuelve a pedir a un relé que entrega en vivo, y 1 vez/min
 var PROBE_MS = 20000;         // 3147: saludo al abrir el chat / al escribir, como mucho uno cada 20 s por contacto
@@ -69,9 +70,19 @@ export class NetLink {
   relayUrls() { var base = this._baseRelayUrls(), on = (this._spareOn || []).filter(function(u) { return base.indexOf(u) < 0; }); return on.length ? base.concat(on) : base; }
   _sparePool() {
     var cfg = (typeof window !== 'undefined') ? window.NEXO_NET_RELAYS : undefined, sp = (typeof window !== 'undefined') ? window.NEXO_SPARE_RELAYS : undefined;
-    return ((cfg === undefined ? (sp || SPARE_RELAYS) : (sp || [])) || []).filter(_relaySafe);
+    var pool = ((cfg === undefined ? (sp || SPARE_RELAYS) : (sp || [])) || []).filter(_relaySafe);
+    if (!this._ownList().length) return pool;
+    // 3151: con relé propio, los públicos de siempre que no quedaron junto a él van primero en la reserva
+    var base = this._baseRelayUrls(), rest = this._pubRelayUrls().filter(function(u) { return base.indexOf(u) < 0; });
+    return rest.concat(pool.filter(function(u) { return rest.indexOf(u) < 0 && base.indexOf(u) < 0; }));
   }
+  // 3151: con relé propio, él primero y OWN_PUBLIC_BACKUP públicos de respaldo; sin él, los públicos de siempre
   _baseRelayUrls() {
+    var pub = this._pubRelayUrls(), own = this._ownList();
+    if (!own.length) return pub;
+    return own.concat(pub.filter(function(u) { return own.indexOf(u) < 0; }).slice(0, OWN_PUBLIC_BACKUP));
+  }
+  _pubRelayUrls() {
     // NEXO_NET_RELAYS puede estar SIN definir (producción normal → relés por defecto) o ser una lista EXPLÍCITA,
     // incluida la lista vacía (el simulador la usa para decir "sin internet").
     var cfg = (typeof window !== 'undefined') ? window.NEXO_NET_RELAYS : undefined;
@@ -185,6 +196,7 @@ export class NetLink {
     if (!self.inTags.size && !self.reqTags.size) { self._closeAll(); return; }
     if (self._drainPending && self.inTags.size) { self._drainPending = false; self._drainBg(); }
     self._spareCheck(); // 3114: ¿falta algún relé sano? → uno de reserva
+    self._ownSync(); // 3151: suscripciones según el relé propio (sin propio no hace nada)
     var urls = self.relayUrls();
     urls.forEach(function(u) {
       var r = self.relays.get(u);
@@ -248,7 +260,8 @@ export class NetLink {
   viaBridge(nexoId) { var p = this.peers.get(_nid(nexoId)); return this.gwOnly() || !!(p && p.gw && p.up); }
   // Parte 4 del puente (blob_mailbox.js): sin internet propio, trozos a la vez y esperas según el camino al puente (Wi-Fi
   // Direct: tandas grandes en un paquete; Bluetooth: un trozo son ~3 s de radio). 0 = lo de siempre.
-  blobPar() { return this.gwOnly() && this.gw ? this.gw.blobPar() : 0; }
+  // 3151: hacia el relé propio sano, OWN_BLOB_PAR trozos a la vez (no tiene los límites de ritmo de los públicos)
+  blobPar() { if (this.gwOnly() && this.gw) return this.gw.blobPar(); return this.blobTargets() ? OWN_BLOB_PAR : 0; }
   blobPublishMs(t) { return this.gwOnly() && this.gw ? this.gw.publishMs(t) : t; }
   blobFetchBatch(url) { var r = this._relayFor(url); return r && r.gw && this.gw ? this.gw.fetchBatch(r) : 0; }
   blobFetchMs(url, t) { var r = this._relayFor(url); return r && r.gw && this.gw ? this.gw.fetchMs(r, t) : t; }
@@ -355,6 +368,7 @@ export class NetLink {
     }
     // Solo lo reciente cuenta para "en línea" (lo guardado de hace rato es del buzón)
     if (now - t < UP_MS && t > (peer.lastRx || 0)) { peer.lastRx = t; peer.wifi = !!o.w; peer.gw = !!o.g; }
+    if (o.h && now - t < UP_MS && t >= (peer.roT || 0)) { peer.ro = o.ro === 1; peer.roT = t; } // 3151: ¿lee del relé propio?
     if (o.h) {
       // Saludo: contestar si hace rato que no le saludamos (así los dos se ven en línea enseguida)
       if (now - t < UP_MS && now - (peer.helloAt || 0) > 20000) this._hello(nx);
@@ -448,7 +462,7 @@ export class NetLink {
     var pair = await this._pair(nx, c.publicKey);
     var body = { t: Date.now(), w: this.wifi ? 1 : 0 };
     if (this.gwOnly()) body.g = 1; // puente parte 4: «estoy por un puente»: mándame fotos/archivos al buzón de archivos
-    if (opts && opts.hello) { body.h = 1; if (this.tor.ready && this.tor.onion) { body.o = this.tor.onion; body.op = this.tor.port; } if (this.fcmToken) body.f = this.fcmToken; }
+    if (opts && opts.hello) { body.h = 1; if (this.tor.ready && this.tor.onion) { body.o = this.tor.onion; body.op = this.tor.port; } if (this.fcmToken) body.f = this.fcmToken; if (this._ownHealthy()) body.ro = 1; } // 3151: ro = «leo del relé propio»
     // #130b (dueño 31-10): una oferta de llamada/videollamada (1-a-1 o invitación de grupo) marca el sobre con cl:1, para
     // que la escucha nativa de internet en segundo plano (NetBg) la saque como LLAMADA a pantalla completa (enciende el
     // teléfono, Contestar/Rechazar), no como un aviso de mensaje. El síntoma del dueño era justo ese: con la pantalla
@@ -483,7 +497,8 @@ export class NetLink {
     var ttl = (opts && opts.hello) ? TTL_HELLO : this._ttlFor(String(content || ''));
     var tag = this._tag(pair, nx, _day(0));
     var ev = _event(schnorr.utils.randomSecretKey(), KIND, [['p', tag.pub], ['expiration', String(Math.floor(Date.now() / 1000) + ttl)]], b64);
-    var pub = this._publish(ev);
+    // 3151: lo pesado (parte de llamada, trozo de un archivo en vivo) solo al relé propio si los dos leemos de él (net_own.js)
+    var pub = this._publishOwn(ev, (opts && opts.hello) || ttl === TTL_MSG ? null : this._ownOnlyFor(nx));
     // FCM «despertador» (#87, Fase 2): salió por el buzón de los relés (si fuera por Tor directo ya habría vuelto
     // arriba). M1 (auditoría 28-10): pedir el «toque» SOLO por un mensaje nuevo de verdad (nid: texto nuevo o primer
     // trozo de un archivo) — NUNCA por cada trozo/ack/control; un archivo grande serían miles de toques = cuota de FCM
@@ -521,6 +536,7 @@ export class NetLink {
     var p = this.peers.get(nx) || {};
     this.peers.set(nx, p);
     p.helloAt = Date.now();
+    p.helloOwn = this._ownHealthy(); // 3151: este saludo dice «leo del propio» (ro)
     this.send(nx, '', { hello: true }).catch(function() {});
   }
   // 3147 (dueño 16-11: «preparar el mejor camino al ABRIR el chat, para que enviar sea instantáneo»): un saludo cifrado ya (el
@@ -578,9 +594,9 @@ export class NetLink {
   }
 }
 
-// Reestructuración 15-11: métodos de NetLink repartidos en net_relays.js, net_tor.js, net_wake.js, net_publish.js; se unen a la clase como sus métodos normales.
+// Reestructuración 15-11: métodos de NetLink repartidos en net_relays.js, net_tor.js, net_wake.js, net_publish.js (y net_own.js, 3151); se unen a la clase como sus métodos normales.
 function _mixNetLink(o) { Object.getOwnPropertyNames(o).forEach(function(k) { Object.defineProperty(NetLink.prototype, k, { value: o[k], writable: true, configurable: true, enumerable: false }); }); }
-_mixNetLink(netRelays); _mixNetLink(netTor); _mixNetLink(netWake); _mixNetLink(netPublish);
+_mixNetLink(netRelays); _mixNetLink(netTor); _mixNetLink(netWake); _mixNetLink(netPublish); _mixNetLink(netOwn);
 export function createNet(ble) { return new NetLink(ble); }
 
 // Lo que otros archivos importan de aquí (ahora en net_link_shared.js)

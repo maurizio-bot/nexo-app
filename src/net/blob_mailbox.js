@@ -24,6 +24,8 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 
+// 3151: el mismo con el relé propio (no se agranda): un puntero tiene UN tamaño de trozo, y si el propio cae a mitad de la subida los
+// trozos que faltan van a los públicos (tope ~64 KB); el que recibe sigue con los mismos techos (MAX_CHUNK_BYTES, MAX_RELAY_FRAME)
 export var CHUNK_RAW_BYTES = 40 * 1024;          // 40 KB → base64 ≈ 54,6 KB + evento < ~60 KB del relé (lección 2964: el tope es sobre lo YA codificado)
 export var MAILBOX_MAX_BYTES = 5 * 1024 * 1024;   // lo que se stagea en relés en Fase B (~125 trozos)
 export var RELAY_REPLICATION = 3;                 // objetivo: cada trozo en ≥3 relés (los que haya abiertos)
@@ -162,8 +164,12 @@ export async function stageBlob(net, dataB64, opts) {
   var publishOne = async function(i) {
     var tms = tmo();
     var ev = net.blobEvent(sk, _bytesToB64(pieces[i]), exp);
+    // 3151: con el relé propio sano, el trozo va SOLO a él (una copia: en datos móviles no se paga el archivo 3 veces, y sin los
+    // límites de ritmo de los públicos); si no lo guarda, a los públicos como siempre
+    var only = net.blobTargets ? net.blobTargets() : null, ok = [];
+    if (only) { ok = await net.publishEach(ev, tms, { enough: 1, only: only }); if (!ok.length && net.ownMarkBad) net.ownMarkBad('no guardó un trozo del buzón de archivos'); }
     // 3042: con 2 relés que lo guardaron se sigue (1,5 s de margen para los demás): un relé muerto ya no frena cada tanda 10 s
-    var ok = await net.publishEach(ev, tms, { enough: PUBLISH_ENOUGH, graceMs: PUBLISH_GRACE_MS });
+    if (!ok.length) ok = await net.publishEach(ev, tms, { enough: PUBLISH_ENOUGH, graceMs: PUBLISH_GRACE_MS });
     if (!ok.length) ok = await net.publishEach(ev, tms, { enough: PUBLISH_ENOUGH, graceMs: PUBLISH_GRACE_MS }); // un reintento (el mismo evento: mismo id)
     if (!ok.length) throw Object.assign(new Error('Ningún relé guardó el trozo ' + i), { code: 'NET_DOWN' });
     ok.forEach(function(u) { if (relays.indexOf(u) < 0) relays.push(u); });
@@ -177,6 +183,13 @@ export async function stageBlob(net, dataB64, opts) {
     for (var j = b; j < Math.min(b + par, pieces.length); j++) batch.push(publishOne(j));
     b += par;
     await Promise.all(batch);
+  }
+  // 3151: el relé propio, primero en el puntero (el que recibe lo intenta antes que a los públicos)
+  var own = net.ownRelayUrls ? net.ownRelayUrls() : [];
+  if (own.length && relays.length > 1) {
+    var order = relays.filter(function(u) { return own.indexOf(u) >= 0; }).concat(relays.filter(function(u) { return own.indexOf(u) < 0; }));
+    chunks.forEach(function(c) { c.r = c.r.map(function(x) { return order.indexOf(relays[x]); }); });
+    relays = order;
   }
   var pointer = { v: 1, kind: 'file-pointer', alg: 'AES-256-GCM', k: _bytesToB64(enc.k), nonce: _bytesToB64(enc.nonce), hash: hash,
     size: enc.ct.length, raw: bytes.length, chunk: CHUNK_RAW_BYTES, chunks: chunks, relays: relays, expires: exp };

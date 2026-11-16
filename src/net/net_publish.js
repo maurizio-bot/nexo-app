@@ -51,16 +51,16 @@ export const netPublish = {
   // Publica en TODOS los relés abiertos y devuelve los que dijeron OK (acá importa la RÉPLICA, no «al menos uno»)
   // opts (3042, dueño 13-11: un GIF de 4,6 MB tardaba ~6 min en subir al buzón de archivos): { enough, graceMs } — con
   // `enough` relés que ya dijeron OK se espera como mucho graceMs más a los demás y se sigue (antes, un relé abierto pero
-  // muerto hacía esperar el tope entero, 10 s, a CADA tanda de trozos)
+  // muerto hacía esperar el tope entero, 10 s, a CADA tanda de trozos). only (3151): solo a esos relés (el propio)
   publishEach(ev, timeoutMs, opts) {
-    var self = this;
+    var self = this, only = opts && opts.only;
     return new Promise(function(resolve) {
       var open = [];
-      self.relays.forEach(function(r, u) { if (r.open && !r.gw) open.push({ r: r, u: u }); });
+      self.relays.forEach(function(r, u) { if (r.open && !r.gw && (!only || only.indexOf(u) >= 0)) open.push({ r: r, u: u }); });
       // Sin relés propios: un trozo del buzón de archivos sale por los puentes (parte 3; el puente lo acota por bytes). Lo demás
       // (borrados, el canal de diagnósticos…) no pasa por un puente. Se informa la URL del relé de verdad (va en el puntero).
       var viaGw = false;
-      if (!open.length && ev && ev.kind === BLOB_KIND) {
+      if (!open.length && ev && ev.kind === BLOB_KIND && !only) {
         viaGw = true;
         self.relays.forEach(function(r) { if (r.open && r.gw && r.realUrl && !open.some(function(o) { return o.u === r.realUrl; }) && (!self.gw || typeof self.gw.blobRelayOk !== 'function' || self.gw.blobRelayOk(r))) open.push({ r: r, u: r.realUrl }); });
       }
@@ -99,11 +99,12 @@ export const netPublish = {
     });
   },
 
-  _publish(ev) {
+  // only (3151): solo a esos relés (lo pesado al relé propio, net_own.js); sin only, a todos los abiertos como siempre
+  _publish(ev, only) {
     var self = this;
     return new Promise(function(resolve, reject) {
       var open = [];
-      self.relays.forEach(function(r) { if (r.open) open.push(r); });
+      self.relays.forEach(function(r, u) { if (r.open && (!only || only.indexOf(u) >= 0)) open.push(r); });
       if (!open.length) { reject(Object.assign(new Error('Sin relés'), { code: 'NET_DOWN' })); return; }
       var left = open.length, done = false, why = '';
       // L3 (auditoría 28-10): al cerrar la promesa (OK, rechazo o timeout) se quita ev.id de TODOS los relés abiertos;
@@ -112,7 +113,7 @@ export const netPublish = {
       var cleanup = function() { open.forEach(function(r) { r.waits.delete(ev.id); }); };
       var tSent = Date.now();
       // 3011: sin respuesta de NINGÚN relé → los que no dijeron nada desde el envío están muertos: se reconectan (el reintento va por una conexión nueva)
-      var timer = setTimeout(function() { if (!done) { done = true; cleanup(); self._dropSilent(tSent, 'sin respuesta a un envío'); reject(Object.assign(new Error('Los relés no respondieron'), { code: 'NET_DOWN' })); } }, 12000);
+      var timer = setTimeout(function() { if (!done) { done = true; cleanup(); self._dropSilent(tSent, 'sin respuesta a un envío', only); reject(Object.assign(new Error('Los relés no respondieron'), { code: 'NET_DOWN' })); } }, 12000);
       open.forEach(function(r) {
         r.waits.set(ev.id, function(ok, msg) {
           if (done) return;

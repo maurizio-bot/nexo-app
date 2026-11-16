@@ -1,4 +1,4 @@
-import { _relayHost, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_MIN_OTHERS, RELAY_FLAP_PENALTY_MS, RELAY_OFFLINE_RETRY_MS, _rnd, RELAY_PROBE_ID, RELAY_PROBE_MS, NET_CHANGE_SETTLE_MS, KIND, MAX_RELAY_FRAME, _event } from './net_link_shared.js';
+import { _relayHost, OWN_RETRY_MAX_MS, OWN_FLAP_PENALTY_MS, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_MIN_OTHERS, RELAY_FLAP_PENALTY_MS, RELAY_OFFLINE_RETRY_MS, _rnd, RELAY_PROBE_ID, RELAY_PROBE_MS, NET_CHANGE_SETTLE_MS, KIND, MAX_RELAY_FRAME, _event } from './net_link_shared.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 // Métodos de NetLink: RELÉS: conectar, caídas y relés inestables, cambios de red, comprobar los callados, suscribirse y lo que llega de ellos.
 // Reestructuración 15-11: movidos TAL CUAL desde net_link.js, que los une a la clase (como métodos normales).
@@ -8,14 +8,16 @@ export const netRelays = {
   _connect(url) {
     var self = this, r = self.relays.get(url) || { backoff: 2000, waits: new Map() };
     self.relays.set(url, r);
+    r.url = url; // 3151: para saber qué suscripción le toca (net_own.js)
     var ws;
     if (!self._openCount()) self._netTryAt = self._netTryAt || Date.now(); // 3081: desde cuándo se intenta tener internet
     try { ws = r.factory ? r.factory() : new WebSocket(url); } catch (e) { r.retryAt = Date.now() + r.backoff; return; }
     r.ws = ws; r.open = false;
     ws.onopen = function() {
-      r.open = true; r.backoff = 2000; r.openedAt = Date.now(); r.rxAt = r.openedAt; r.fails = 0;
+      r.open = true; r.backoff = 2000; r.openedAt = Date.now(); r.rxAt = r.openedAt; r.fails = 0; r.eoseOnce = false;
       self._spareCheck(); // 3114: volvió uno de los de siempre → quizá sobra el de reserva
       self._subscribe(r);
+      self._ownSync(); // 3151: con relé propio, cada suscripción donde toca (sin él no hace nada)
       if (!r.gw && self.gw && typeof self.gw.realBack === 'function') self.gw.realBack(); // 3052: soltar los puentes a tiempo
       // 3050: a los vecinos a los que dije «no tengo internet», se lo ofrezco ya
       if (!r.gw && self.gw && self.gw.askedBy && self.gw.askedBy.size) setTimeout(function() { try { self.gw._offerAskers(Date.now()); } catch (e) {} }, 500);
@@ -25,7 +27,7 @@ export const netRelays = {
         self._netChangeAt = 0;
       }
       if (self._openCount() === 1) {
-        console.log('[NET] Conectado a internet por relés públicos');
+        console.log('[NET] Conectado a internet por ' + (self._isOwn(url) ? 'el relé propio ' + _relayHost(url) : 'relés públicos')); // i18n-ok: registro
         try { if (self._netTryAt && typeof window.NEXO_noteConnect === 'function') window.NEXO_noteConnect('internet', Date.now() - self._netTryAt); } catch (e) {} // 3081
         self._netTryAt = 0;
         setTimeout(function() { self._helloAll(!self._greeted); }, 300); // avisar a los contactos de que estoy
@@ -38,12 +40,15 @@ export const netRelays = {
       var was = r.open;
       if (!was) r.fails = (r.fails || 0) + 1; // 3114: intentos seguidos que no llegaron a abrir
       var stableFor = r.openedAt ? (Date.now() - r.openedAt) : 0; r.openedAt = 0;
-      r.open = false; r.ws = null; r.sub = null;
+      r.open = false; r.ws = null; r.sub = null; r.eoseOnce = false;
       // P5: decide el retraso (reintento normal con backoff, o apartar el relé si flapea y quedan otros)
       var delay = self._noteRelayClose(r, url, stableFor);
       if (r._sidelined) { if (!r._sidelinedLog) { console.log('[NET] Relé inestable ' + _relayHost(url) + ': lo aparto ~' + Math.round(delay / 60000) + ' min (se cae sin parar)'); r._sidelinedLog = true; } }
       else { r._sidelinedLog = false; }
       r.waits.forEach(function(fn) { fn(false); }); r.waits.clear();
+      self._ownSync(); // 3151: se cayó el propio → a leer de todos los públicos ya; se cayó el lector → el siguiente
+      // 3151: el propio caído se reintenta a su hora (≤ OWN_RETRY_MAX_MS) aunque haya otros abiertos: se vuelve a él en segundos
+      if (self._isOwn(url) && !r._sidelined) setTimeout(function() { if (!r.ws && self.relays.get(url) === r) self._connect(url); }, delay + 50);
       if (was && !self.online()) { console.log('[NET] Sin relés: internet no disponible'); self._peersDown(); }
       if (was && !r.gw && !self._realOpenCount() && self.gw && typeof self.gw.realLost === 'function') self.gw.realLost();
       if (!was && r.fails >= RELAY_DEAD_FAILS) self._spareCheck(); // 3114: no conecta → reserva al momento (sin esperar al latido)
@@ -83,10 +88,12 @@ export const netRelays = {
     } else if (stableFor >= RELAY_STABLE_MS) {
       r.flapTimes = []; // estuvo estable: no arrastrar flaps antiguos
     }
+    var own = this._isOwn(url); // 3151: el relé propio se aparta menos y se reintenta más seguido (es el camino rápido)
     if ((r.flapTimes || []).length >= RELAY_FLAP_MAX && this._openRelaysExcept(url) >= RELAY_MIN_OTHERS) {
+      var pen = own ? OWN_FLAP_PENALTY_MS : RELAY_FLAP_PENALTY_MS;
       r._sidelined = true;
-      r.retryAt = now + RELAY_FLAP_PENALTY_MS;
-      return RELAY_FLAP_PENALTY_MS;
+      r.retryAt = now + pen;
+      return pen;
     }
     r._sidelined = false;
     var delay = r.backoff;
@@ -94,8 +101,9 @@ export const netRelays = {
     // móviles o Wi-Fi) la app tardaba ~75 s en darse cuenta y seguía por el puente. Sin ningún relé propio abierto, como mucho
     // RELAY_OFFLINE_RETRY_MS (sin red, el intento falla al instante y no gasta). Con otros relés abiertos, la pausa de siempre.
     if (!this._realOpenCount()) delay = Math.min(delay, RELAY_OFFLINE_RETRY_MS);
+    if (own) delay = Math.min(delay, OWN_RETRY_MAX_MS);
     r.retryAt = now + delay;
-    r.backoff = Math.min(r.backoff * 2, 120000);
+    r.backoff = Math.min(r.backoff * 2, own ? OWN_RETRY_MAX_MS : 120000);
     return delay;
   },
   // 3114 (dueño 15-11): con menos de RELAY_TARGET_OPEN relés sanos entre los de siempre y los de reserva en uso, entra el siguiente de
@@ -124,6 +132,7 @@ export const netRelays = {
       drop.forEach(function(u) { var r = self.relays.get(u); if (r && r.ws) { r.ws.onclose = null; r.ws.onopen = null; try { r.ws.close(); } catch (e) {} } self.relays.delete(u); });
       console.log('[NET] Los relés de siempre vuelven a estar bien: suelto los de reserva (' + drop.map(_relayHost).join(', ') + ')'); // i18n-ok: registro
       try { self._bgConfig(); } catch (e) {}
+      self._ownSync(); // 3151: si el lector era uno de reserva, otro
     }
   },
   _closeAll() { this.relays.forEach(function(r) { try { if (r.ws) r.ws.close(); } catch (e) {} }); },
@@ -177,17 +186,19 @@ export const netRelays = {
     self.tick();
   },
   // 3011: los relés que no dijeron nada desde `since` (a un envío sin respuesta de ninguno) se dan por muertos
-  _dropSilent(since, why) {
+  // only (3151): el envío iba solo a esos (el relé propio): los demás no tenían por qué contestar
+  _dropSilent(since, why, only) {
     var self = this;
-    self.relays.forEach(function(r, u) { if (r.open && r.ws && (r.rxAt || 0) < since) self._dropDead(u, r, why); });
+    self.relays.forEach(function(r, u) { if (r.open && r.ws && (r.rxAt || 0) < since && (!only || only.indexOf(u) >= 0)) self._dropDead(u, r, why); });
   },
   // 3011: cierra una conexión muerta SIN esperar su cierre (en una conexión muerta puede tardar minutos) y reconecta ya
   _dropDead(url, r, why) {
     var ws = r.ws, was = r.open;
     console.warn('[NET] Relé ' + _relayHost(url) + (why === 'cambio de red' ? ': la red cambió, reconecto por la nueva' : ' no contesta (' + why + '): conexión muerta, reconecto')); // i18n-ok: registro
     if (ws) { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null; try { ws.close(); } catch (e) {} }
-    r.open = false; r.ws = null; r.sub = null; r.openedAt = 0; r.probing = false;
+    r.open = false; r.ws = null; r.sub = null; r.openedAt = 0; r.probing = false; r.eoseOnce = false;
     r.waits.forEach(function(fn) { try { fn(false, 'conexión muerta'); } catch (e) {} }); r.waits.clear();
+    this._ownSync(); // 3151: el propio muerto → leer de todos los públicos mientras se reconecta
     if (was && !this.online()) { console.log('[NET] Sin relés: internet no disponible'); this._peersDown(); }
     r.retryAt = 0; r.backoff = 2000;
     this._connect(url);
@@ -195,6 +206,7 @@ export const netRelays = {
 
   _subscribe(r) {
     if (r.sub) this._send(r, ['CLOSE', r.sub]);
+    if (!this._subWanted(r)) { r.sub = null; return; } // 3151: con el relé propio sano, este público solo publica (net_own.js)
     r.sub = 'nx' + bytesToHex(_rnd(6));
     var since = Math.max(0, Math.floor((this.state.lastSeen || (Date.now() - 2 * 86400000)) / 1000) - 600);
     this._send(r, ['REQ', r.sub, { kinds: [KIND], '#p': Array.from(this.inTags.keys()).concat(Array.from(this.reqTags.keys())), since: since }]);
@@ -236,6 +248,7 @@ export const netRelays = {
       return;
     }
     if (m[0] === 'EVENT' && m[1] === r.sub && m[2]) this._onEvent(m[2]);
+    else if (m[0] === 'EOSE' && m[1] === r.sub && !r.eoseOnce) { r.eoseOnce = true; this._ownSync(); } // 3151: suscripción confirmada
     else if (m[0] === 'OK') { var fn = r.waits.get(m[1]); if (fn) { r.waits.delete(m[1]); fn(!!m[2], m[3]); } }
     else if (m[0] === 'AUTH' && typeof m[1] === 'string') { r.challenge = m[1]; this._auth(url, r, m[1]); }
     else if (m[0] === 'CLOSED' && m[1] === r.sub) {
