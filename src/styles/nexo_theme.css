@@ -311,7 +311,7 @@ body::before {
 .ble-new-device { background: transparent !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; padding: 0 !important; }
 .ble-btn-add-small { background: var(--nx-grad) !important; box-shadow: 0 3px 10px rgba(0, 200, 255, 0.35); }
 .ble-bottom-bar, .ble-status-bar { background: transparent !important; border-top: none !important; color: var(--nx-muted) !important; } /* 3140: sin franjas ni líneas */
-.ble-bottom-bar { padding: 8px 16px 12px !important; }
+.ble-bottom-bar { padding: 8px 16px 12px !important; justify-content: flex-end !important; } /* BUSCAR/PARAR siempre a la derecha, como el botón de Contactos */
 .ble-btn-scan-round { width: 56px !important; height: 56px !important; background: var(--nx-grad) !important; box-shadow: 0 10px 30px rgba(0, 200, 255, 0.35), 0 4px 12px rgba(168, 85, 247, 0.35) !important; border: none !important; }
 /* 3140: buscando = el mismo degradado NEXO (la etiqueta PARAR ya lo dice) con un pulso celeste, sin rojo/naranja */
 .ble-btn-scan-round.scanning { background: var(--nx-grad) !important; animation: nx-scan-pulse 1.6s ease-in-out infinite !important; }
