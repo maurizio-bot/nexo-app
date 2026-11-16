@@ -37,6 +37,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Archivo a una app dormida: despertar primero y sondear (3124, 3127). ×1
 
 **En prueba del dueño**
+- Camino preparado al abrir el chat: saludo por internet al abrir y repaso al empezar a escribir (3147, APK 3075). ×1
 - Entrega sin coincidir: despertador FCM por pendientes, buzón de archivos, cita para > 5 MB (fases A–D, 2967–2972; §A.19/A.22/A.24). ×3
 - Desatasco del cifrado en los dos lados y aviso si se repite (3067, 3069, 3126). ×2
 - Wi-Fi Direct: un envío real bien el 15-11 (3,3 MB/s); falta el vídeo de ~20 MB (PENDIENTES 15-11, resúmenes del 14-11). ×2
@@ -44,7 +45,6 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 **Falta**
 - Diagnóstico S23 3073 (16-11): cierre por FALLO nativo a las 11:13, en segundo plano, justo tras quitar la app de recientes con la llamada de grupo fantasma viva (arreglada en la APK siguiente); sin traza en el diagnóstico: vigilar si se repite. Además, con la app cerrada (y ahorro de batería) los mensajes del S24 esperaron ~12 min hasta abrirla (#87). «Internet listo» del S23: media 20,7 s, máx. 119,6 s al cambiar de red (el relé propio lo debe bajar).
 - Diagnóstico S24 3073 (16-11): el Wi-Fi con el vivo se abre y se cierra cada ~3 min porque la app del vivo duerme y no contesta la comprobación (con Bluetooth listo); revisar si conviene dejar de reintentar tan seguido. Internet listo en 0,6 s (el 15-11 eran 13,7 s): no se repitió.
-- Camino preparado al abrir el chat (dueño 16-11: saludo por internet al abrir y repaso al empezar a escribir) — en curso, 3147.
 - Resúmenes del 15-11 (build 3070): el S24 tardó en tener internet listo 13,7 s de media (máx. 119 s, 21 veces); el S23 gastó 11,6 %/h de batería en segundo plano (todo el teléfono) y 50,9 MB de datos móviles en NEXO. Revisar en cuanto haya diagnóstico de la 3073.
 - Entrega con la app CERRADA y la pantalla APAGADA: no suena ni avisa (#87; PENDIENTES 14-11 noche, «Pruebas del dueño con la 3052»). ×3
 - Puente nativo: que preste internet un teléfono con la app dormida (opción A, 3073+; PENDIENTES 13-11 y 16-11 03:17). ×3
@@ -95,6 +95,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Llamadas y videollamadas de grupo: malla, agregar, «No contestó», invitados a destiempo (2839–2857, 3100, 3106). ×3
 
 **En prueba del dueño**
+- APK 3075: agregar a una videollamada sin cortar el vídeo (3152), llamada minimizada en una barra y de voz a vídeo sin colgar (3155), aguanta el cambio de Wi-Fi a datos (3156), «Pantalla de …» en la de grupo (3157). ×1
 - Dos llamadas a la vez: espera, «Mensaje», pantalla dividida (3101–3104). ×2
 - Compartir pantalla, partes 1–3 (3054–3056). ×2
 - Tono «tuuu» del teléfono al llamar (3134, APK 3071). ×1
@@ -102,8 +103,6 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Contestar con manos libres Bluetooth en Xiaomi: aviso hecho, falta el diagnóstico de Jhonnatan (3134). ×2
 
 **Falta**
-- Diagnóstico S23/S24 3073 (16-11 11:12): la videollamada se cortó («Fin lost») al pasar el S23 de Wi-Fi a datos; debe aguantar el cambio («Reconectando…», reinicio de la conexión directa o seguir por relés). En cola con el modelo de llamadas.
-- Diagnóstico S24 3073 (16-11 10:40): al agregar a un contacto, la videollamada 1-a-1 TERMINA y empieza una de grupo sin vídeo (es la queja del dueño; en curso, 3152). Justo después, una llamada nueva con la app en segundo plano al contestar el otro: 219 s sin micrófono ni cámara propios (el otro no oía nada); el micrófono y la cámara se piden al contestar y, en segundo plano, se quedan esperando — en curso con el mismo trabajo. Visto desde el S23: al colgar la de grupo, el aviso de fin solo le llegó al tercero; el S23 se quedó con una llamada de grupo «fantasma» que volvió sola («Reanudada») al terminar la siguiente llamada (en curso, mismo trabajo).
 - Eco: la voz propia vuelve, sobre todo en grupo (PENDIENTES #128 punto 7). ×2
 - Gasto de datos por relés: escucha nativa doble durante la llamada y cada parte por 3 relés (PENDIENTES 15-11 08:41). ×2
 - Segunda llamada por la llamada del sistema con la app cerrada, «Mensaje» desde la pantalla de bloqueo, una cámara para dos (PENDIENTES 15-11). ×2
