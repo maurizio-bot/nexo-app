@@ -137,6 +137,14 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 
 **Espera decisión del dueño**
 - Logo y sonidos (ya rechazó un logo dos veces; COLA_DE_PULIDO C).
+- Cambio de nombre (16-11, nombre en estudio: Ecco/Eko): inventario del logo revisado. Se basa en la «N» y cambia en:
+  ícono adaptativo + PNG antiguos (`ic_nexo_foreground`, `mipmap-*/ic_launcher*`), arranque (`ic_splash_logo`), aviso
+  (`ic_stat_message`, silueta blanca), cabecera de Contactos (`src/assets/nexo_logo.png`, el único con «NEXO» escrito),
+  estampa `stickers/nexo.png` (ya oculta) y gesto «N» + nombre del juego «Defensor NEXO». Se conservan círculo y colores
+  del dueño; solo cambia la letra. Textos: ~96 «NEXO» por idioma + `app_name`. Antes de publicar: decidir si cambia
+  `com.nexo.app` (no se puede cambiar tras publicar; los probadores reinstalarían). El prefijo «NX» del ID no se toca sin
+  el dueño. Peso muerto: `src/assets/logo.png` (red de círculos, 1,7 MB ×2 en `dist`) nunca se muestra (`#splash-logo`
+  no existe en la página): quitarlo en la próxima APK.
 
 ## 6. Negocio y dinero — 23 %
 Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
