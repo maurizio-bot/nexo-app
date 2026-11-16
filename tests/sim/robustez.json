@@ -718,7 +718,7 @@
     },
     {
      "fallo": "3162 (visto en la 3159; ya pasaba): guardar un VÍDEO en la galería fallaba siempre: se leía su URL blob: con fetch y la CSP no deja leer blob:. 3162: blob_registry.js recuerda el Blob de cada URL de la app. visorfotos.js video_llega_al_nativo (contraprueba 3160)",
-     "prueba": "VISOR"
+     "prueba": "visor de fotos (3159"
     }
    ],
    "debiles": [
