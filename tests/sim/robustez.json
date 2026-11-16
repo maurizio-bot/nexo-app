@@ -1178,6 +1178,14 @@
     {
      "fallo": "3134 (dueño 15-11: «cuando marco a un contacto no escucho el clásico sonido del tuuu… tuuu…»): el tono de la llamada saliente era un pitido de la app (WebAudio, 425 Hz a volumen 0,12, como multimedia) que con la llamada ya en el modo de llamada del sistema (Telecom) no se oía. 3134: el tono lo pone el teléfono (Kotlin ringback: ToneGenerator TONE_SUP_RINGTONE por el canal de llamada: auricular, altavoz o manos libres Bluetooth), se para al contestar o colgar (y solo a los 70 s si la app se cae); sin ese método, el pitido de siempre. calls2.js tono-saliente (contraprueba 3133: el nativo nunca suena)",
      "prueba": "llamadas: tono-saliente"
+    },
+    {
+     "fallo": "3155 (dueño 16-11): no había forma de pasar una llamada de voz a videollamada sin colgar. 3155: «Vídeo» en la llamada de voz: la misma llamada pasa a vídeo (la captura suma la cámara, el otro lo sabe por el estado de la llamada y pasa a vídeo con su cámara apagada; la enciende con «Cámara»); como al llamar con vídeo, hace falta Wi-Fi o internet. llamadamini.js v (contraprueba 3152: sin botón)",
+     "prueba": "llamada MINIMIZADA y de VOZ a VÍDEO sin colgar"
+    },
+    {
+     "fallo": "3155 (dueño 16-11: «al salir de la llamada para ver los chats, una barra arriba como la de WhatsApp»): con una llamada en curso no se podía usar la app (la pantalla de la llamada lo tapaba todo y «atrás» no hacía nada con ella). 3155: «atrás» o la flecha de arriba a la izquierda minimizan la llamada (1-a-1 de voz o vídeo y la de grupo): barra arriba con con quién y cuánto lleva, Silenciar y Colgar, la app baja lo que mide la barra; tocarla vuelve; en la miniatura del sistema la llamada se ve entera; mientras suena una entrante no se minimiza. llamadamini.js b/bv y agregarvideo.js g (contraprueba 3152: «atrás» no hace nada)",
+     "prueba": "llamada MINIMIZADA y de VOZ a VÍDEO sin colgar"
     }
    ],
    "debiles": [
@@ -1297,6 +1305,10 @@
     {
      "fallo": "3152 (diagnóstico S24 3073 16-11 10:40:39–10:44:23: videollamada de 219 s en la que el S24 no mandó NADA —«micrófono con pista no; cámara , pista no», «voz enviada 0», «vídeo enviado 0»— y recibía bien; la app pasó a segundo plano 2 s después de llamar y el otro contestó con ella oculta): micrófono, cámara y el modo llamada del teléfono (con él, el servicio con permiso de micrófono, que Android solo deja arrancar con la app a la vista) se pedían al CONTESTAR el otro; el getUserMedia pedido con la app oculta no contestó en toda la llamada. 3152: la saliente (primera línea) los abre al LLAMAR (uno se ve mientras suena; lo de antes de contestar no sale; al contestar, μ-law si el otro no tiene Opus); y un pedido que se quedó sin contestar con la app oculta se abandona y se repite al volver a la app (call_media unstick). agregarvideo.js m1/m2 (contraprueba 3151: voz 0, vídeo 0)",
      "prueba": "AGREGAR a una VIDEOLLAMADA sin quitar el vídeo"
+    },
+    {
+     "fallo": "3155 (dueño 16-11: «la videollamada minimizada sale con todos los botones apretados en la ventanita»): en la miniatura del sistema (PiP) la pantalla de la llamada solo quitaba los botones si llegaba el aviso del sistema (__nexoPipChanged), y la de grupo nunca (ni pasaba a la miniatura). 3155: la ventanita enseña solo la imagen de los demás también por el tamaño de la ventana (≤ 300 de ancho) y en la de grupo (mitades sin botones, cabecera, mi imagen ni nombres); la videollamada de grupo también pasa a la miniatura. llamadamini.js p y agregarvideo.js g (contraprueba 3152: 4 botones y 2 textos en la ventanita)",
+     "prueba": "llamada MINIMIZADA y de VOZ a VÍDEO sin colgar"
     }
    ],
    "debiles": [

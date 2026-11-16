@@ -294,6 +294,7 @@ function _style() {
     '@media (max-width:300px){#nexo-call-screen .nc-top,#nexo-call-screen .nc-bottom,#nexo-call-screen .nc-pip,#nexo-call-screen .nc-min,#nexo-call-screen .nc-scrbar,#nexo-call-screen.nc-video.nc-live .nc-center{display:none!important}#nexo-call-screen .nc-full{object-fit:cover}#nexo-call-screen .nc-av-wrap,#nexo-call-screen .nc-av{width:64px;height:64px;font-size:24px}#nexo-call-screen .call-name{font-size:18px}}',
     // 3155: minimizar la llamada (barra arriba, call_bar.js): flecha arriba a la izquierda (también con el gesto «atrás»)
     '#nexo-call-screen .nc-min{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));left:12px;z-index:5;width:40px;height:40px;border-radius:50%;border:none;padding:0;display:none;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,.1);cursor:pointer;transition:opacity .3s}',
+    '#nexo-call-screen.nc-canmin .nc-top{padding-left:62px;padding-right:62px}',
     '#nexo-call-screen.nc-canmin .nc-min{display:flex}#nexo-call-screen.nc-hide .nc-min{opacity:0;pointer-events:none}html.nc-split #nexo-call-screen .nc-min,#nexo-call-screen.nc-appmini .nc-min,#nexo-call-screen.nc-pipwin .nc-min{display:none!important}',
     // (b) al VOLVER a la app desde la miniatura, la llamada queda como MINI flotante (no a pantalla completa) y debajo se
     // usa la app (contactos/último chat). Tocar la mini la vuelve a abrir completa.
