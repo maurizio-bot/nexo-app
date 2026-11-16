@@ -245,6 +245,8 @@ function _style() {
     '@keyframes ncBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}',
     '#nexo-call-screen .call-remote-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:1}',
     '#nexo-call-screen .call-local-video{object-fit:cover;background:#1a1b2e}',
+    // 3152: la videollamada saliente abre la cámara al llamar: mientras suena, uno se ve detrás (atenuado), como en WhatsApp
+    '#nexo-call-screen .call-local-video.nc-preview{position:absolute;inset:0;width:100%;height:100%;z-index:1;border:none;border-radius:0;opacity:.55}',
     '#nexo-call-screen .nc-pip{position:absolute;z-index:4;width:104px;height:148px;border-radius:16px;border:2px solid rgba(255,255,255,.75);box-shadow:0 8px 26px rgba(0,0,0,.5);touch-action:none;transition:left .22s,top .22s}',
     '#nexo-call-screen .nc-full{position:absolute;inset:0;width:100%;height:100%;z-index:1;border-radius:0;border:none;object-fit:contain}',
     // Ronda 2772 (informe del dueño: "la imagen se ve muy cerca"): la imagen grande se ve entera salvo que a toda la
@@ -293,6 +295,7 @@ function _style() {
 
 function _screen() {
   var el = document.getElementById('nexo-call-screen');
+  if (el && el.classList.contains('nc-gone')) { el.remove(); el = null; } // #224: la que pasó a grupo no se reutiliza
   if (el) return el;
   _style();
   el = document.createElement('div');
@@ -386,7 +389,7 @@ function _watchFit() {
 export function syncCallSplit() {
   if (typeof document === 'undefined' || !document.documentElement) return false;
   var one = document.getElementById('nexo-call-screen'), grp = document.getElementById('nexo-gcall-screen') || document.getElementById('nexo-call2-screen');
-  var on = !!(one && grp && !one.classList.contains('nc-appmini'));
+  var on = !!(one && grp && !one.classList.contains('nc-appmini') && !one.classList.contains('nc-gone')); // (#224: la que pasó a grupo no cuenta)
   if (on !== document.documentElement.classList.contains('nc-split')) {
     document.documentElement.classList.toggle('nc-split', on);
     console.log('[CALL] ' + (on ? 'Dos llamadas a la vez: pantalla dividida' : 'Una sola llamada: pantalla entera'));
@@ -399,6 +402,8 @@ function _watchSplit() {
   try { _splitObs = new MutationObserver(function() { syncCallSplit(); }); _splitObs.observe(document.body, { childList: true }); } catch (e) {}
 }
 export function callButton(icon, label, cls, fn, extra) { return _btn(icon, label, cls, fn, extra); }
+// #224: la pantalla de la videollamada que pasó a grupo se quita cuando la de grupo ya tiene sus imágenes (groupcall_ui.js)
+export function dropHandedOffScreen() { var el = document.getElementById('nexo-call-screen'); if (el && el.classList.contains('nc-gone')) { el.remove(); syncCallSplit(); } }
 export function ensureCallStyle() { _style(); }
 export function fitCallLabels(bt) { _fitLabels(bt); _watchFit(); }
 
@@ -498,6 +503,7 @@ function _videoLayout(el, st) {
   var v = calls.videoViews();
   if (v.remote && v.remote.parentNode !== el) { v.remote.classList.add('call-remote-video'); el.insertBefore(v.remote, el.querySelector('.nc-top')); }
   if (v.local && v.local.parentNode !== el) { v.local.classList.add('call-local-video'); el.appendChild(v.local); }
+  if (v.local) v.local.classList.remove('nc-preview'); // 3152: la vista previa de mientras sonaba pasa a ser la pequeña
   var big = _pip.swapped ? v.local : v.remote, small = _pip.swapped ? v.remote : v.local;
   if (big) { big.classList.remove('nc-pip'); big.classList.add('nc-full'); big.style.left = ''; big.style.top = ''; }
   if (small) { small.classList.remove('nc-full'); small.classList.add('nc-pip'); _placePip(el, small); _makeDraggable(el, small); }
@@ -605,9 +611,29 @@ function _linkText(nx) {
 // #dueño: al cerrarse la llamada cortada, volver al chat del contacto donde se hizo
 function _openChatOf(nx) { try { var b = _bi(); if (b && typeof b.openChat === 'function') b.openChat(_normId(nx)).catch(function() {}); } catch (e) {} }
 
+// 3152: la videollamada saliente abre la cámara al llamar: mientras suena, uno se ve a pantalla completa detrás
+function _preview(el, st) {
+  var calls = _calls(), v = st.video && calls && typeof calls.videoViews === 'function' ? calls.videoViews() : null, lv = v && v.local;
+  if (!lv) return;
+  if (lv.parentNode !== el) { lv.classList.add('call-local-video'); el.insertBefore(lv, el.querySelector('.nc-top')); }
+  lv.classList.remove('nc-pip', 'nc-full'); lv.classList.add('nc-preview'); lv.style.left = ''; lv.style.top = '';
+  lv.style.transform = (st.facing || 'user') === 'user' ? 'scaleX(-1)' : 'none';
+  lv.style.visibility = st.cameraOff || (st.camState && st.camState !== 'on') ? 'hidden' : '';
+}
+
 function _render(st) {
   var calls = _calls();
   clearInterval(_tick);
+  // #224: la videollamada pasó a llamada de GRUPO sin cortar («Agregar»): la pantalla se queda tal cual (con sus imágenes) hasta que
+  // la de grupo las toma (dropHandedOffScreen); sin «Llamada terminada», sin dejar el modo llamada del teléfono
+  if (st && st.state === 'ended' && st.reason === 'upgrade') {
+    _stopTone(); clearTimeout(_hideTimer); closeCallReply(st.nx);
+    var up = document.getElementById('nexo-call-screen');
+    if (up) { up.classList.add('nc-gone'); clearTimeout(_rmTimer); _rmTimer = setTimeout(function() { _rmTimer = null; dropHandedOffScreen(); }, 4000); }
+    _render._modeFor = null; _pip = { swapped: false, corner: 'tr' };
+    syncCallSplit();
+    return;
+  }
   if (!st || st.state === 'ended') {
     _stopTone(); clearTimeout(_hideTimer);
     if (st) closeCallReply(st.nx);
@@ -662,7 +688,12 @@ function _render(st) {
   if (st.state === 'calling') {
     status.classList.remove('nc-warn');
     status.textContent = st.video ? t('call_videocalling', 'Videollamada…') : t('call_calling', 'Llamando…');
+    if (st.video) _preview(el, st);
     bt.appendChild(_btn('phone', t('call_hangup', 'Colgar'), 'call-hangup', function() { haptic('confirm'); calls.hangup(); }, 'nc-red'));
+    // 3152 (diagnóstico S24 16-11: la app pasó a segundo plano mientras sonaba y en toda la llamada no salió ni voz ni imagen): el
+    // modo llamada del teléfono —y con él el servicio con permiso de micrófono, que Android solo deja arrancar con la app a la
+    // vista— se pone al LLAMAR, no al contestar el otro (micrófono y cámara ya se abren al llamar, calls.js)
+    if (_render._modeFor !== st.id) { _render._modeFor = st.id; _speaker = !!st.video; _audioMode(true); }
     if (!_ring) _startTone(false);
   } else if (st.state === 'ringing') {
     status.classList.remove('nc-warn');
@@ -712,8 +743,7 @@ function _render(st) {
     // Altavoz / auricular (en la videollamada, altavoz de entrada)
     bt.appendChild(_btn(_speaker ? 'speaker' : 'ear', _speaker ? t('call_speaker', 'Altavoz') : t('call_earpiece', 'Auricular'), 'call-speaker', function() { _speaker = !_speaker; _audioMode(true); _render(calls.state()); }, _speaker ? 'nc-on' : ''));
     // #130 (dueño 31-10): AGREGAR un contacto a la llamada 1-a-1 → se convierte en llamada de GRUPO (el contacto actual + el
-    // nuevo). Cuelga la 1-a-1 y arranca el grupo (el otro recibe la invitación de grupo). El grupo es de voz (el vídeo de
-    // grupo es Fase 2); por eso se arranca como audio aunque la 1-a-1 fuera vídeo.
+    // nuevo). De voz: cuelga la 1-a-1 y arranca el grupo (el otro entra solo, #221). #224: de vídeo, pasa a grupo SIN cortar.
     var two = callCount() > 1;
     if (two || st.userHold) bt.appendChild(holdButton(calls, st)); // #222: en espera / reanudar
     bt.appendChild(_btn('addp', t('call_add', 'Agregar'), 'call-add', function() {
@@ -723,6 +753,17 @@ function _render(st) {
       var gcall = _bi() && _bi().gcall;
       if (!gcall) { _showInfoToast(t('grp_call_na', 'Las llamadas de grupo no están disponibles'), 3000); return; }
       _pickContact({ title: t('call_add_pick', 'Agregar a la llamada'), exclude: [peer, me], onPick: function(nx) {
+        // #224 (dueño 16-11: «cuando hago una videollamada con otro contacto y luego agrego un contacto a la videollamada, no debería
+        // quitarse toda la parte de video»): la videollamada pasa a la de grupo SIN cortar: la misma cámara, la imagen del otro en el
+        // mismo sitio (arriba) y el nuevo sonando abajo; el otro entra solo (sin colgar: su lado hace lo mismo). De voz, como antes.
+        var ad = typeof calls.handoff === 'function' ? calls.handoff() : null;
+        if (ad) {
+          gcall.start([peer, nx], true, null, { upgrade: { nx: peer, id: upId }, adopt: ad }).catch(function(err) {
+            if (!(gcall.gc && gcall.gc.adopt)) { try { ad.media.stop(); } catch (e) {} }
+            _showInfoToast((err && err.message) || 'Error', 3500);
+          });
+          return;
+        }
         _showInfoToast(t('call_to_group', 'Convirtiendo en llamada de grupo…'), 2500);
         try { calls.hangup(); } catch (e) {}
         // #221 (dueño 15-11): el que ya estaba en la llamada entra solo a la de grupo (lleva el id de esta llamada), sin volver a contestar
@@ -849,7 +890,7 @@ export function installCallsUi() {
     if (st && st.state === 'ringing') { _notifyIncoming(st); _checkCallAction(); }
     else _clearCallNotif(); // contestada, colgada, perdida…: fuera el aviso que suena
     // Ronda 2765: acabó la llamada: si la app se abrió encima de la pantalla de bloqueo por ella, vuelve detrás
-    if (!st || st.state === 'ended') _lockScreenDone();
+    if (!st || (st.state === 'ended' && st.reason !== 'upgrade')) _lockScreenDone(); // (#224: la que pasa a grupo sigue)
     _render(st);
     _onCountChange();
   });

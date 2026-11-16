@@ -164,9 +164,9 @@ function _render(st) {
     bt.style.cssText = '';
     var B = function(icon, label, cls, fn, extra) { bt.appendChild(callButton(icon, label, cls, fn, extra)); };
     // #dueño 31-10: SILENCIAR mi micrófono (como en la 1-a-1); el hub comparte una captura, así deja de mandar mi voz.
-    if (live) B(st.muted ? 'micOff' : 'mic', st.muted ? t('call_muted', 'Silenciado') : t('call_mute', 'Silenciar'), 'gc-add', function() { var g = _gcall(); if (g) g.mute(!st.muted); }, st.muted ? 'nc-on' : '');
+    if (live) B(st.muted ? 'micOff' : 'mic', st.muted ? t('call_muted', 'Silenciado') : t('call_mute', 'Silenciar'), 'gc-add gc-k-mute', function() { var g = _gcall(); if (g) g.mute(!st.muted); }, st.muted ? 'nc-on' : '');
     // #130 (dueño 31-10): AGREGAR un contacto a la llamada de grupo en curso (selector de contactos → gcall.addMember).
-    if (live) B('addp', t('call_add', 'Agregar'), 'gc-add', function() {
+    if (live) B('addp', t('call_add', 'Agregar'), 'gc-add gc-k-addp', function() {
       var gcall = _gcall(); if (!gcall) return;
       var cur = gcall.state ? gcall.state() : null;
       var ex = ((cur && cur.members) || []).concat([_me()]);
@@ -175,10 +175,10 @@ function _render(st) {
       } });
     });
     // #138 (dueño 31-10): CÁMARA on/off (sin re-llamar: activar la cámara pasa la llamada a vídeo) y GIRAR (delante/detrás).
-    if (live) B(st.cameraOn ? 'cam' : 'camOff', st.cameraOn ? t('call_camera_off', 'Cámara no') : t('call_camera', 'Cámara'), 'gc-add', function() { var g = _gcall(); if (g) g.camera(!st.cameraOn); });
-    if (live && st.cameraOn) B('flip', t('call_flip', 'Girar'), 'gc-add', function() { var g = _gcall(); if (g && g.flip) g.flip(); });
+    if (live) B(st.cameraOn ? 'cam' : 'camOff', st.cameraOn ? t('call_camera_off', 'Cámara no') : t('call_camera', 'Cámara'), 'gc-add gc-k-cam', function() { var g = _gcall(); if (g) g.camera(!st.cameraOn); });
+    if (live && st.cameraOn) B('flip', t('call_flip', 'Girar'), 'gc-add gc-k-flip', function() { var g = _gcall(); if (g && g.flip) g.flip(); });
     // Dueño 13-11, compartir pantalla parte 2: en la llamada de grupo (aviso antes, como la 1-a-1; si ya comparto, «Detener»)
-    if (live && gcall && typeof gcall.shareScreen === 'function') B('screen', st.screen ? t('call_screen_stop', 'Detener') : t('call_screen', 'Pantalla'), st.screen ? 'gc-red' : 'gc-add', function() {
+    if (live && gcall && typeof gcall.shareScreen === 'function') B('screen', st.screen ? t('call_screen_stop', 'Detener') : t('call_screen', 'Pantalla'), (st.screen ? 'gc-red' : 'gc-add') + ' gc-k-screen', function() {
       var g = _gcall(); if (!g) return;
       if (st.screen) { g.shareScreen(false); return; }
       _gScreenAsk(el, function() {
@@ -187,9 +187,12 @@ function _render(st) {
       });
     }, st.screen ? 'nc-red' : '');
     // #dueño 31-10: ALTAVOZ/AURICULAR (como la 1-a-1); en grupo arranca en altavoz (manos libres).
-    if (live) B(_gcSpeaker ? 'speaker' : 'ear', _gcSpeaker ? t('call_speaker', 'Altavoz') : t('call_earpiece', 'Auricular'), 'gc-add', function() { _gcSpeaker = !_gcSpeaker; _gAudioMode(true); _render(st); }, _gcSpeaker ? 'nc-on' : '');
+    if (live) B(_gcSpeaker ? 'speaker' : 'ear', _gcSpeaker ? t('call_speaker', 'Altavoz') : t('call_earpiece', 'Auricular'), 'gc-add gc-k-spk', function() { _gcSpeaker = !_gcSpeaker; _gAudioMode(true); _render(st); }, _gcSpeaker ? 'nc-on' : '');
     if (st.state === 'active' && (st.held || callCount() > 1) && gcall) bt.appendChild(holdButton(gcall, st)); // #222: en espera / reanudar
     B('phone', t('call_hangup', 'Colgar'), 'gc-red', function() { if (_gcall()) _gcall().hangup(); }, 'nc-red call-hangup');
+    // #224: con la pantalla como la 1-a-1, los botones en el mismo orden que en la 1-a-1 (Girar, Pantalla, Cámara, Silenciar, Altavoz,
+    // En espera, Agregar, Colgar): al «Agregar», la barra no cambia
+    if (stageWanted(st, me)) ['gc-k-flip', 'gc-k-screen', 'gc-k-cam', 'gc-k-mute', 'gc-k-spk', 'call-hold', 'gc-k-addp', 'call-hangup'].forEach(function(k) { var b = bt.querySelector('.' + k); if (b) bt.appendChild(b); });
     bt.className = 'gc-buttons nc-row' + (bt.children.length >= 6 ? ' nc-many' : '');
     fitCallLabels(bt);
   }
