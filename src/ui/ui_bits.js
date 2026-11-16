@@ -20,8 +20,8 @@ export function _pickContact(opts) {
   ov.id = 'nexo-contact-picker';
   ov.style.cssText = 'position:fixed;inset:0;z-index:2147483646;display:flex;flex-direction:column;justify-content:flex-end;background:rgba(0,0,0,0.55);';
   var sheet = document.createElement('div');
-  sheet.style.cssText = 'background:#14152a;color:#fff;border-radius:18px 18px 0 0;max-height:70vh;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
-  var h = document.createElement('div'); h.style.cssText = 'font-size:16px;font-weight:700;margin-bottom:10px;padding:0 10px;'; h.textContent = opts.title || t('call_add_pick', 'Agregar a la llamada');
+  sheet.style.cssText = 'background:var(--nx-sheet);color:#fff;border-radius:18px 18px 0 0;max-height:70vh;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
+  var h = document.createElement('div'); h.className = 'nx-page-title'; h.style.cssText = 'font-size:22px;margin-bottom:10px;padding:0 10px;flex:none;'; h.textContent = opts.title || t('call_add_pick', 'Agregar a la llamada');
   var list = document.createElement('div'); list.style.cssText = 'overflow:auto;display:flex;flex-direction:column;gap:2px;';
   var contacts = (vaultLoadContacts() || []).filter(function(c) { var id = (c && c.nexoId || '').toLowerCase(); return id && !exclude[id]; });
   if (!contacts.length) { var em = document.createElement('div'); em.style.cssText = 'color:var(--nx-muted);font-size:15px;line-height:1.5;padding:12px 10px;'; em.textContent = t('call_add_none', 'No hay contactos para agregar'); list.appendChild(em); }

@@ -563,13 +563,18 @@ export function myComments(sid) {
   return it ? (it.comments || []).map(function(c) { return { nx: c.nx, name: _contactName(c.nx), t: c.t, ts: c.ts }; }) : [];
 }
 
+// 3141: si llegan varios avisos a la vez, el nuevo reemplaza al anterior (antes se encimaban unos sobre otros)
+var _toastTimer = null;
 function _toast(msg) {
   try {
+    var old = document.getElementById('nexo-est-toast'); if (old) old.remove();
+    clearTimeout(_toastTimer);
     var el = document.createElement('div');
+    el.id = 'nexo-est-toast';
     el.style.cssText = 'position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:var(--nx-sheet);border:1px solid var(--nx-line);color:#fff;padding:10px 16px;border-radius:16px;z-index:7000;font-size:14px;max-width:80%;text-align:center;';
     el.textContent = msg;
     document.body.appendChild(el);
-    setTimeout(function() { try { el.remove(); } catch (e) {} }, 3000);
+    _toastTimer = setTimeout(function() { try { el.remove(); } catch (e) {} }, 3000);
   } catch (e) {}
 }
 

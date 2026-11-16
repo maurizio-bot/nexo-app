@@ -476,3 +476,21 @@ body::before {
    y el botón redondo de chat por DEBAJO de avisos y hojas (actualizar 9000, novedades y diagnóstico 9500) en vez de encima. */
 button, input, textarea, select { font-family: inherit; }
 #ble-fab-btn { z-index: 8000 !important; }
+
+/* ====== 3142 Ajustes por secciones (dueño 16-11: «un menú enorme, infinito: dividirlo por partes»): Ajustes abre una lista corta de
+   secciones (icono de línea, título y una línea) y cada una enseña su propio panel. El fondo y la cabecera son los de Contactos. ====== */
+#nexo-settings-sheet { background: var(--nx-bg); }
+.nx-set-pane { display: none; }
+.nx-set-pane.on { display: block; }
+.nx-set-list { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
+.nx-set-row { display: flex; align-items: center; gap: 14px; width: 100%; box-sizing: border-box; padding: 12px 14px; min-height: 66px; text-align: left; font-family: inherit; color: var(--nx-text);
+  background: var(--nx-surface); border: 1px solid var(--nx-line); border-radius: var(--nx-radius); cursor: pointer; }
+.nx-set-row:active { background: var(--nx-surface-2); }
+.nx-set-ico { width: 42px; height: 42px; min-width: 42px; border-radius: 50%; background: var(--nx-surface-2); display: inline-flex; align-items: center; justify-content: center; }
+.nx-set-ico svg { width: 21px; height: 21px; fill: none; stroke: #00c8ff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.nx-set-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nx-set-t { font-size: 16px; font-weight: 700; }
+.nx-set-d { font-size: 12.5px; color: var(--nx-muted); line-height: 1.3; }
+.nx-set-go { width: 18px; height: 18px; min-width: 18px; fill: none; stroke: var(--nx-muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* Dentro de una sección sí hay botón redondo de volver (en la lista sigue mandando el gesto atrás, regla de 01-11 de arriba) */
+#nexo-settings-sheet.nx-in-sec #nexo-settings-back { display: inline-flex !important; }

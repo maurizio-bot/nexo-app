@@ -156,23 +156,22 @@ function _style() {
   var st = document.createElement('style');
   st.id = 'nexo-call-style';
   st.textContent = [
-    '#nexo-call-screen{position:fixed;inset:0;z-index:2147483645;color:#fff;overflow:hidden;background:#05060d;user-select:none;-webkit-user-select:none;font-family:inherit}',
-    '#nexo-call-screen .nc-bg{position:absolute;inset:-20%;z-index:0;background:radial-gradient(circle at 28% 22%,rgba(0,200,255,.30),transparent 45%),radial-gradient(circle at 76% 72%,rgba(168,85,247,.32),transparent 50%),linear-gradient(160deg,#0a0a15,#14152a 60%,#0b1a33);animation:ncAurora 14s ease-in-out infinite alternate}',
-    '@keyframes ncAurora{from{transform:translate(0,0) scale(1)}to{transform:translate(-4%,3%) scale(1.08)}}',
+    '#nexo-call-screen{position:fixed;inset:0;z-index:2147483645;color:#fff;overflow:hidden;background:var(--nx-bg);user-select:none;-webkit-user-select:none;font-family:inherit}',
+    '#nexo-call-screen .nc-bg{position:absolute;inset:-20%;z-index:0;background:var(--nx-bg)}',
     '#nexo-call-screen .nc-top{position:absolute;top:0;left:0;right:0;z-index:3;padding:calc(16px + env(safe-area-inset-top,0px)) 16px 36px;display:flex;flex-direction:column;align-items:center;gap:8px;transition:opacity .3s}',
     '#nexo-call-screen .nc-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.08);font-size:11.5px;opacity:.85}',
     '#nexo-call-screen .nc-center{position:absolute;top:19%;left:0;right:0;z-index:2;display:flex;flex-direction:column;align-items:center;transition:opacity .3s}',
     '#nexo-call-screen .nc-av-wrap{position:relative;width:132px;height:132px;margin-bottom:24px}',
-    '#nexo-call-screen .nc-av{position:relative;z-index:1;width:132px;height:132px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:700;color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.12),0 14px 44px rgba(0,200,255,.28)}',
+    '#nexo-call-screen .nc-av{position:relative;z-index:1;width:132px;height:132px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:700;color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.08),0 6px 18px rgba(0,0,0,.35)}',
     '#nexo-call-screen .nc-ring{position:absolute;inset:0;border-radius:50%;border:2px solid rgba(0,200,255,.6);opacity:0}',
     '#nexo-call-screen.nc-waiting .nc-ring{animation:ncPulse 2.4s ease-out infinite}',
     '#nexo-call-screen .nc-ring.r2{animation-delay:.8s;border-color:rgba(168,85,247,.6)}#nexo-call-screen .nc-ring.r3{animation-delay:1.6s}',
     '@keyframes ncPulse{0%{transform:scale(1);opacity:.9}100%{transform:scale(1.85);opacity:0}}',
-    '#nexo-call-screen .call-name{font-size:28px;font-weight:700;text-align:center;padding:0 24px;text-shadow:0 2px 12px rgba(0,0,0,.4)}',
+    '#nexo-call-screen .call-name{font-size:28px;font-weight:800;text-align:center;padding:0 24px;letter-spacing:-0.3px}',
     '#nexo-call-screen .call-status{font-size:15px;opacity:.82;margin-top:8px;font-variant-numeric:tabular-nums;text-align:center}',
-    '#nexo-call-screen .call-status.nc-warn{color:#fbbf24;opacity:1}',
+    '#nexo-call-screen .call-status.nc-warn{color:#ff8a80;opacity:1}',
     '#nexo-call-screen .call-note{font-size:12px;opacity:.6;margin-top:6px;text-align:center;padding:0 24px}',
-    '#nexo-call-screen .call-note.nc-tap{opacity:1;color:#FFD54F;text-decoration:underline;cursor:pointer;pointer-events:auto}',
+    '#nexo-call-screen .call-note.nc-tap{opacity:1;color:var(--nx-cyan);text-decoration:underline;cursor:pointer;pointer-events:auto}',
     // #220 fase 1 (dueño 15-11): dos llamadas a la vez (1-a-1 + grupo) → pantalla dividida: la 1-a-1 arriba, la de grupo abajo,
     // cada una con sus botones (antes la 1-a-1 tapaba entera la de grupo). Las dos, más compactas.
     'html.nc-split #nexo-call-screen{inset:0 0 50% 0;border-bottom:2px solid rgba(255,255,255,.22)}',
@@ -193,28 +192,28 @@ function _style() {
     'html.nc-split #nexo-gcall-screen .gc-members{margin-top:6px !important;gap:6px !important;min-height:0}',
     'html.nc-split #nexo-gcall-screen .gc-buttons{flex-shrink:0;padding:6px 0 2px !important}',
     // #220 fase 2: la SEGUNDA llamada 1-a-1 (calls2_ui.js): sola, toda la pantalla; con la primera, la mitad de abajo
-    '#nexo-call2-screen{position:fixed;inset:0;z-index:2147483640;color:#fff;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:calc(16px + env(safe-area-inset-top,0px)) 8px calc(16px + env(safe-area-inset-bottom,0px));box-sizing:border-box;background:linear-gradient(160deg,#0a0a15,#1a1033 60%,#0b1a33)}',
+    '#nexo-call2-screen{position:fixed;inset:0;z-index:2147483640;color:#fff;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:calc(16px + env(safe-area-inset-top,0px)) 8px calc(16px + env(safe-area-inset-bottom,0px));box-sizing:border-box;background:var(--nx-bg)}',
     'html.nc-split #nexo-call2-screen{inset:50% 0 0 0;padding:8px 8px calc(6px + env(safe-area-inset-bottom,0px))}',
     '#nexo-call2-screen .c2-video{position:absolute;inset:0;z-index:0;width:100%;height:100%;object-fit:cover;background:#000}',
     '#nexo-call2-screen .c2-head{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:4px;text-shadow:0 2px 10px rgba(0,0,0,.5)}',
-    '#nexo-call2-screen .c2-tag{font-size:11px;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.12)}',
+    '#nexo-call2-screen .c2-tag{font-size:11px;padding:3px 10px;border-radius:999px;background:var(--nx-surface-2)}',
     '#nexo-call2-screen .c2-name{font-size:20px;font-weight:700;text-align:center}',
     '#nexo-call2-screen .c2-status{font-size:13px;opacity:.85;font-variant-numeric:tabular-nums}',
-    '#nexo-call2-screen .call-buttons{position:relative;z-index:1;width:100%;max-width:440px;margin:0 auto;display:flex;flex-wrap:nowrap;justify-content:space-around;align-items:flex-start;padding:10px 4px 8px;box-sizing:border-box;border-radius:30px;background:rgba(20,21,42,.55);border:1px solid rgba(255,255,255,.09)}',
+    '#nexo-call2-screen .call-buttons{position:relative;z-index:1;width:100%;max-width:440px;margin:0 auto;display:flex;flex-wrap:nowrap;justify-content:space-around;align-items:flex-start;padding:10px 4px 8px;box-sizing:border-box;border-radius:30px;background:var(--nx-glass);border:1px solid var(--nx-line)}',
     '#nexo-call2-screen .nc-btn{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:none;color:#fff;cursor:pointer;padding:0;flex:1 1 0;min-width:0;max-width:76px;line-height:1.15;font-size:11.5px;-webkit-tap-highlight-color:transparent}',
-    '#nexo-call2-screen .nc-btn .nc-ic{width:min(56px,calc(100% - 6px));height:clamp(36px,11.4vw,56px);border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.13)}',
+    '#nexo-call2-screen .nc-btn .nc-ic{width:min(56px,calc(100% - 6px));height:clamp(36px,11.4vw,56px);border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--nx-surface-2);box-shadow:inset 0 0 0 1px var(--nx-line)}',
     '@supports (aspect-ratio:1/1){#nexo-call2-screen .nc-btn .nc-ic{height:auto;aspect-ratio:1/1}}',
     '#nexo-call2-screen .nc-btn.nc-on .nc-ic{background:#fff;color:#14152a}',
     '#nexo-call2-screen .nc-btn.nc-red .nc-ic{background:#ef4444;box-shadow:0 8px 24px rgba(239,68,68,.45)}',
-    '#nexo-call2-screen .nc-btn.nc-green .nc-ic{background:linear-gradient(135deg,#22c55e,#00c8ff);box-shadow:0 10px 30px rgba(34,197,94,.5)}',
+    '#nexo-call2-screen .nc-btn.nc-green .nc-ic{background:var(--nx-grad);box-shadow:0 10px 30px rgba(0,200,255,.35),0 4px 12px rgba(168,85,247,.35)}',
     '#nexo-call2-screen .nc-btn.call-hangup .nc-ic svg,#nexo-call2-screen .nc-btn.call-reject .nc-ic svg{transform:rotate(135deg)}',
     '#nexo-call2-screen .nc-btn>span:last-child{max-width:calc(100% - 4px);text-align:center;overflow:hidden;text-overflow:ellipsis}',
     '#nexo-call-screen .nc-bottom{position:absolute;left:0;right:0;bottom:0;z-index:3;padding:0 8px calc(26px + env(safe-area-inset-bottom,0px));transition:transform .3s,opacity .3s}',
-    '#nexo-call-screen .call-buttons{margin:0 auto;max-width:440px;display:flex;justify-content:space-around;align-items:flex-start;padding:16px 6px 12px;border-radius:30px;background:rgba(20,21,42,.55);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.09);box-shadow:0 10px 40px rgba(0,0,0,.35)}',
+    '#nexo-call-screen .call-buttons{margin:0 auto;max-width:440px;display:flex;justify-content:space-around;align-items:flex-start;padding:16px 6px 12px;border-radius:30px;background:var(--nx-glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid var(--nx-line);box-shadow:0 10px 40px rgba(0,0,0,.35)}',
     '#nexo-call-screen .call-buttons.nc-incoming{background:none;border:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;justify-content:space-between;max-width:320px;padding:0 18px}',
     '#nexo-call-screen .call-buttons:empty{display:none}',
     '#nexo-call-screen .nc-btn{display:flex;flex-direction:column;align-items:center;gap:7px;background:none;border:none;color:#fff;font-size:11.5px;cursor:pointer;padding:0;min-width:62px;-webkit-tap-highlight-color:transparent}',
-    '#nexo-call-screen .nc-btn .nc-ic{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.13);transition:transform .15s,background .2s,color .2s}',
+    '#nexo-call-screen .nc-btn .nc-ic{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--nx-surface-2);box-shadow:inset 0 0 0 1px var(--nx-line);transition:transform .15s,background .2s,color .2s}',
     '#nexo-call-screen .nc-btn.nc-on .nc-ic{background:#fff;color:#14152a}',
     '.nc-btn.nc-off{opacity:.4}', // #222: apagado (con dos llamadas a la vez), al tocarlo dice por qué
     '#nexo-call-screen .nc-btn.nc-red .nc-ic{background:#ef4444;box-shadow:0 8px 24px rgba(239,68,68,.45)}',
@@ -233,16 +232,16 @@ function _style() {
     '#nexo-call-screen .call-buttons:not(.nc-incoming) .nc-btn>span:last-child{max-width:calc(100% - 4px);text-align:center;overflow:hidden;text-overflow:ellipsis}',
     // 14-11 (tras el pedido del dueño de la 1-a-1): la llamada de GRUPO tenía botones de texto de 120 px que, con vídeo, en un
     // teléfono de 360–412 ocupaban 4 filas (248 px, casi un tercio de la pantalla). Ahora la misma fila de círculos que la 1-a-1.
-    '#nexo-gcall-screen .gc-buttons.nc-row{display:flex;flex-wrap:nowrap;justify-content:space-around;align-items:flex-start;gap:0;width:calc(100% + 24px);max-width:440px;margin:0 -12px;padding:14px 4px 10px;box-sizing:border-box;border-radius:30px;background:rgba(20,21,42,.55);border:1px solid rgba(255,255,255,.09);box-shadow:0 10px 40px rgba(0,0,0,.35)}',
+    '#nexo-gcall-screen .gc-buttons.nc-row{display:flex;flex-wrap:nowrap;justify-content:space-around;align-items:flex-start;gap:0;width:calc(100% + 24px);max-width:440px;margin:0 -12px;padding:14px 4px 10px;box-sizing:border-box;border-radius:30px;background:var(--nx-glass);border:1px solid var(--nx-line);box-shadow:0 10px 40px rgba(0,0,0,.35)}',
     '#nexo-gcall-screen .nc-btn{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:none;color:#fff;cursor:pointer;padding:0;flex:1 1 0;min-width:0;max-width:76px;line-height:1.15;font-size:11.5px;-webkit-tap-highlight-color:transparent}',
     '#nexo-gcall-screen .gc-buttons.nc-many .nc-btn{font-size:clamp(9.5px,2.65vw,11.5px)}',
-    '#nexo-gcall-screen .nc-btn .nc-ic{width:min(56px,calc(100% - 6px));height:clamp(36px,11.4vw,56px);border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.13);transition:background .2s,color .2s}',
+    '#nexo-gcall-screen .nc-btn .nc-ic{width:min(56px,calc(100% - 6px));height:clamp(36px,11.4vw,56px);border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--nx-surface-2);box-shadow:inset 0 0 0 1px var(--nx-line);transition:background .2s,color .2s}',
     '@supports (aspect-ratio:1/1){#nexo-gcall-screen .nc-btn .nc-ic{height:auto;aspect-ratio:1/1}}',
     '#nexo-gcall-screen .nc-btn.nc-on .nc-ic{background:#fff;color:#14152a}',
     '#nexo-gcall-screen .nc-btn.nc-red .nc-ic{background:#ef4444;box-shadow:0 8px 24px rgba(239,68,68,.45)}',
     '#nexo-gcall-screen .nc-btn.call-hangup .nc-ic svg{transform:rotate(135deg)}',
     '#nexo-gcall-screen .nc-btn>span:last-child{max-width:calc(100% - 4px);text-align:center;overflow:hidden;text-overflow:ellipsis}',
-    '#nexo-call-screen .nc-btn.nc-green .nc-ic{background:linear-gradient(135deg,#22c55e,#00c8ff);box-shadow:0 10px 30px rgba(34,197,94,.5);animation:ncBounce 1.4s ease-in-out infinite}',
+    '#nexo-call-screen .nc-btn.nc-green .nc-ic{background:var(--nx-grad);box-shadow:0 10px 30px rgba(0,200,255,.35),0 4px 12px rgba(168,85,247,.35);animation:ncBounce 1.4s ease-in-out infinite}',
     '@keyframes ncBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}',
     '#nexo-call-screen .call-remote-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:1}',
     '#nexo-call-screen .call-local-video{object-fit:cover;background:#1a1b2e}',
@@ -262,9 +261,10 @@ function _style() {
     '#nexo-call-screen .nc-scrbar{position:absolute;left:0;right:0;top:0;z-index:12;background:#dc2626;color:#fff;font-size:14px;font-weight:600;text-align:center;padding:calc(env(safe-area-inset-top,0px) + 8px) 12px 8px;cursor:pointer}',
     '#nexo-call-screen.nc-peer-screen .call-remote-video.nc-full{object-fit:contain !important;background:#000;transform-origin:0 0}',
     '#nexo-scr-ask{position:absolute;inset:0;z-index:20;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:16px}',
-    '#nexo-scr-ask .nc-ask-box{background:#1f2937;color:#fff;border-radius:16px;padding:18px;max-width:340px;font-size:15px;line-height:1.4}',
+    '#nexo-scr-ask .nc-ask-box{background:var(--nx-sheet);border:1px solid var(--nx-line);color:#fff;border-radius:var(--nx-radius);padding:18px;max-width:340px;font-size:15px;line-height:1.4}',
     '#nexo-scr-ask .nc-ask-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}',
-    '#nexo-scr-ask button{border:none;border-radius:10px;padding:10px 16px;font-size:15px;font-weight:600;min-height:44px}',
+    '#nexo-scr-ask .nc-ask-no{background:var(--nx-surface-2);border:1px solid var(--nx-line);color:#fff}',
+    '#nexo-scr-ask button{border:none;border-radius:14px;padding:10px 16px;font-size:15px;font-weight:600;min-height:44px}',
     '#nexo-call-screen .nc-warnbar{display:none;margin-top:8px;font-size:13px;color:#fbbf24;text-shadow:0 1px 8px rgba(0,0,0,.7);text-align:center}',
     '#nexo-call-screen.nc-video.nc-live .nc-warnbar:not(:empty){display:block}',
     '#nexo-call-screen .nc-mini{display:none;font-size:17px;font-weight:600;text-shadow:0 1px 8px rgba(0,0,0,.6)}',
@@ -276,7 +276,7 @@ function _style() {
     // valiendo (alternativa).
     '#nexo-call-screen .nc-swipe-up{position:relative;touch-action:none}',
     '#nexo-call-screen .nc-swipe-up .nc-ic{animation:none}',
-    '#nexo-call-screen .nc-swipe-up::before{content:"";position:absolute;left:50%;top:-24px;width:15px;height:15px;margin-left:-8px;border-left:3px solid #22c55e;border-top:3px solid #22c55e;border-radius:2px;animation:ncUp 1.2s ease-in-out infinite;pointer-events:none}',
+    '#nexo-call-screen .nc-swipe-up::before{content:"";position:absolute;left:50%;top:-24px;width:15px;height:15px;margin-left:-8px;border-left:3px solid var(--nx-cyan);border-top:3px solid var(--nx-cyan);border-radius:2px;animation:ncUp 1.2s ease-in-out infinite;pointer-events:none}',
     '@keyframes ncUp{0%,100%{transform:rotate(45deg) translateY(2px);opacity:.3}50%{transform:rotate(45deg) translateY(-6px);opacity:1}}',
     // #dueño 04-11: (a) EN la ventanita del sistema (PiP) se ve SOLO el vídeo del otro — sin controles ni MI imagen pequeña
     // (antes mi imagen 104x148 tapaba al otro en la ventanita chica).
@@ -530,7 +530,7 @@ function _screenAsk(el, onYes) {
   if (document.getElementById('nexo-scr-ask')) return;
   var ov = document.createElement('div');
   ov.id = 'nexo-scr-ask';
-  ov.innerHTML = '<div class="nc-ask-box"><div class="nc-ask-txt"></div><div class="nc-ask-btns"><button class="nc-ask-no"></button><button class="nc-ask-yes" style="background:#16a34a;color:#fff"></button></div></div>';
+  ov.innerHTML = '<div class="nc-ask-box"><div class="nc-ask-txt"></div><div class="nc-ask-btns"><button class="nc-ask-no"></button><button class="nc-ask-yes" style="background:var(--nx-grad);color:#fff"></button></div></div>';
   ov.querySelector('.nc-ask-txt').textContent = t('call_screen_ask', 'Se verá TODO lo que haya en tu pantalla, también las notificaciones que lleguen. Android te pedirá permiso.');
   ov.querySelector('.nc-ask-no').textContent = t('cancel', 'Cancelar');
   ov.querySelector('.nc-ask-yes').textContent = t('call_screen_go', 'Compartir');
@@ -643,7 +643,7 @@ function _render(st) {
   el.classList.toggle('nc-video', !!st.video);
   el.classList.toggle('nc-waiting', st.state === 'calling' || st.state === 'ringing');
   var av = el.querySelector('.nc-av');
-  av.className = 'nc-av ' + _getGradientForUUID(String(st.nx || ''));
+  av.className = 'nc-av ble-contact-avatar nx-person-av ' + _getGradientForUUID(String(st.nx || ''));
   av.style.backgroundImage = '';
   av.textContent = _getInitials(name);
   paintAvatar(av, st.nx); // ronda 2765: foto de perfil

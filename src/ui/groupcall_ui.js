@@ -11,6 +11,7 @@ import { _showInfoToast, _pickContact } from './ui_bits.js';
 import { _getCurrentContactId, _normId } from './chat_format.js';
 import { callButton, ensureCallStyle, fitCallLabels, syncCallSplit, callCount, holdButton, replyButton } from './calls_ui.js';
 import { closeCallReply } from './call_reply.js';
+import { personAvatar } from './person_avatar.js';
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
 function _gcall() { var b = _bi(); return b && b.gcall; }
@@ -37,12 +38,12 @@ function _screen() {
   el = document.createElement('div');
   el.id = 'nexo-gcall-screen';
   el.style.cssText = 'position:fixed;inset:0;z-index:2147483600;display:flex;flex-direction:column;align-items:center;' +
-    'background:radial-gradient(circle at 30% 20%,rgba(0,200,255,.22),transparent 45%),radial-gradient(circle at 75% 75%,rgba(168,85,247,.24),transparent 50%),linear-gradient(160deg,#0a0a15,#14152a 60%,#0b1a33);' +
+    'background:var(--nx-bg);' +
     'color:#fff;font-family:inherit;padding:32px 20px;box-sizing:border-box;';
   el.innerHTML =
-    '<div class="gc-pill" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.08);padding:5px 12px;border-radius:14px;font-size:12px;">' +
+    '<div class="gc-pill" style="display:flex;align-items:center;gap:6px;background:var(--nx-surface-2);padding:5px 12px;border-radius:14px;font-size:12px;">' +
     '<span>🔒</span><span class="gc-e2e"></span></div>' +
-    '<div class="gc-title" style="margin-top:18px;font-size:22px;font-weight:700;text-align:center;"></div>' +
+    '<div class="gc-title" style="margin-top:18px;font-size:22px;font-weight:800;letter-spacing:-0.3px;text-align:center;"></div>' +
     '<div class="gc-status" style="margin-top:6px;font-size:14px;opacity:0.8;"></div>' +
     // #138: rejilla de vídeo (mi vista + imagen de cada tramo). Vacía/oculta hasta que alguien enciende la cámara.
     '<div class="gc-video" style="margin-top:16px;width:100%;max-width:360px;display:none;flex-wrap:wrap;gap:8px;justify-content:center;"></div>' +
@@ -57,7 +58,7 @@ function _btn(label, cls, fn) {
   b.className = 'gc-btn ' + cls;
   b.textContent = label;
   var base = 'min-width:120px;padding:14px 18px;border:none;border-radius:16px;font-size:15px;font-weight:600;color:#fff;cursor:pointer;';
-  var bg = cls === 'gc-red' ? 'background:linear-gradient(135deg,#ff4d4f,#c1121f);' : cls === 'gc-green' ? 'background:linear-gradient(135deg,#22c55e,#00c8ff);' : 'background:rgba(255,255,255,0.14);';
+  var bg = cls === 'gc-red' ? 'background:linear-gradient(135deg,#ff4d4f,#c1121f);' : cls === 'gc-green' ? 'background:var(--nx-grad);box-shadow:0 10px 30px rgba(0,200,255,.35),0 4px 12px rgba(168,85,247,.35);' : 'background:var(--nx-surface-2);border:1px solid var(--nx-line);';
   b.style.cssText = base + bg;
   b.addEventListener('click', function(e) { e.stopPropagation(); fn(); });
   return b;
@@ -78,9 +79,9 @@ function _showEnded(detail) {
   var el = document.createElement('div');
   el.id = 'nexo-gcall-ended';
   el.style.cssText = 'position:fixed;inset:0;z-index:2147483600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;' +
-    'background:radial-gradient(circle at 30% 20%,rgba(0,200,255,.22),transparent 45%),radial-gradient(circle at 75% 75%,rgba(168,85,247,.24),transparent 50%),linear-gradient(160deg,#0a0a15,#14152a 60%,#0b1a33);' +
+    'background:var(--nx-bg);' +
     'color:#fff;font-family:inherit;padding:32px 20px;box-sizing:border-box;';
-  var title = document.createElement('div'); title.style.cssText = 'font-size:22px;font-weight:700;text-align:center;'; title.textContent = t('grp_call_title', 'Llamada de grupo');
+  var title = document.createElement('div'); title.style.cssText = 'font-size:22px;font-weight:800;letter-spacing:-0.3px;text-align:center;'; title.textContent = t('grp_call_title', 'Llamada de grupo');
   var sub = document.createElement('div'); sub.style.cssText = 'font-size:15px;opacity:0.85;'; sub.textContent = t('call_end_lost', 'Se cortó');
   var bar = document.createElement('div'); bar.style.cssText = 'margin-top:20px;';
   bar.appendChild(_btn(t('call_call_again', 'Volver a llamar'), 'gc-green', function() {
@@ -132,15 +133,15 @@ function _render(st) {
     nx = _normId(nx);
     var lg = legByNx[nx];
     var row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.06);border-radius:12px;padding:10px 14px;';
+    row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--nx-radius);';
     var name = document.createElement('span');
-    name.style.cssText = 'font-size:15px;font-weight:600;';
+    name.style.cssText = 'flex:1;min-width:0;font-size:15.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
     name.textContent = nx === me ? t('chat_you', 'Tú') : _memberName(nx);
     var sub = document.createElement('span');
     // «Reconectando…» en ámbar, «Sin señal» en rojo (como los avisos de mala conexión de la 1-a-1); el resto, tenue
-    sub.style.cssText = 'font-size:12px;opacity:0.8;color:' + (lg && lg.state === 'lost' ? '#ff6b6b' : (lg && lg.reconnecting ? '#ffc23d' : 'rgba(255,255,255,0.7)')) + ';';
+    sub.style.cssText = 'font-size:12px;opacity:0.8;color:' + (lg && lg.state === 'lost' ? '#ff8a80' : (lg && lg.reconnecting ? '#ffc23d' : 'rgba(255,255,255,0.7)')) + ';';
     sub.textContent = nx === me ? '' : _legLabel(lg && lg.state === 'active' && lg.peerHeld ? 'held' : lg && lg.state, lg && lg.reconnecting);
-    row.appendChild(name); row.appendChild(sub);
+    row.appendChild(personAvatar(nx, name.textContent)); row.appendChild(name); row.appendChild(sub);
     box.appendChild(row);
   });
 

@@ -85,6 +85,7 @@ export function _setupBackButton() {
         var cprof = document.getElementById('nexo-contact-profile'); // #dueño 05-11: la ficha del contacto se cierra por gesto/atrás (se le quitó el botón), como el resto
         if (cprof) { cprof.remove(); return true; }
         var settings = document.getElementById('nexo-settings-sheet');
+        if (settings && typeof settings.__nexoSecBack === 'function' && settings.__nexoSecBack()) return true; // 3142: desde una sección vuelve a la lista de Ajustes
         if (settings) { settings.remove(); try { window.dispatchEvent(new CustomEvent('nexo:ui:profile')); } catch (e) {} return true; }
         var profile = document.getElementById('nexo-profile-sheet'); if (profile) { profile.remove(); return true; }
         var blePanel = document.getElementById('ble-panel');

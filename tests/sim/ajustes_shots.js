@@ -15,12 +15,22 @@ fs.mkdirSync(out, { recursive: true });
   radio.add(nA); nA.load();
   const logs = [];
   const { page } = await bootPhone(browser, 'A', nA, dist, { phone: true, logs, seedName: 'Ana', lang: 'es' });
-  await page.setViewportSize({ width: 393, height: 3200 });
+  await page.setViewportSize({ width: 393, height: 852 });
   await sleep(800);
   await page.evaluate(() => document.getElementById('nexo-profile-btn').click()); await sleep(600);
   await page.evaluate(() => document.getElementById('nexo-open-settings').click()); await sleep(900);
-  await page.screenshot({ path: path.join(out, 'ajustes_completo.png') });
-  const txt = await page.evaluate(() => { const s = document.getElementById('nexo-settings-sheet'); return s ? s.innerText : 'SIN HOJA'; });
+  // 3142: Ajustes = lista corta de secciones; se captura la lista y cada sección (con el texto de todo el panel)
+  await page.screenshot({ path: path.join(out, 'ajustes_lista.png') });
+  const secs = await page.evaluate(() => Array.from(document.querySelectorAll('.nx-set-row')).map((r) => r.getAttribute('data-sec')));
+  let txt = 'LISTA:\n' + await page.evaluate(() => document.getElementById('nexo-settings-sheet').innerText);
+  for (const k of secs) {
+    await page.evaluate((k) => document.querySelector('.nx-set-row[data-sec="' + k + '"]').click(), k); await sleep(500);
+    await page.setViewportSize({ width: 393, height: 1700 }); await sleep(200);
+    await page.screenshot({ path: path.join(out, 'ajustes_' + k + '.png') });
+    txt += '\n\n=== ' + k + ' ===\n' + await page.evaluate(() => document.getElementById('nexo-settings-sheet').innerText);
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.evaluate(() => document.getElementById('nexo-settings-back').click()); await sleep(250);
+  }
   fs.writeFileSync(path.join(out, 'ajustes_texto.txt'), txt);
   await browser.close();
   console.log('AJUSTES_SHOTS ok ' + txt.length);
