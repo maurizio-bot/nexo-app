@@ -471,3 +471,8 @@ body::before {
 .nx-person-row { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: var(--nx-radius); }
 .nx-person-row.is-pressed { background: var(--nx-surface); }
 .nx-person-av { flex-shrink: 0; }
+
+/* 3140 (revisión visual): controles con la letra de la app (el textarea de Estados y los botones de Permisos salían en monoespaciada)
+   y el botón redondo de chat por DEBAJO de avisos y hojas (actualizar 9000, novedades y diagnóstico 9500) en vez de encima. */
+button, input, textarea, select { font-family: inherit; }
+#ble-fab-btn { z-index: 8000 !important; }
