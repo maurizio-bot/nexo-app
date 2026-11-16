@@ -153,11 +153,11 @@ Modelo (supuesto, no medido en servidores reales): 4 públicos que tardan 1,2–
 conexión, 128 KB/s por conexión, uno con NIP-42; el propio: 300 ms en abrir, 40 ms, sin límite de ritmo, 1 MB/s. El mismo
 escenario sin propio (contraprueba) y con él:
 
-| | Solo públicos | Con propio |
+| (build 3151; dos vueltas dieron lo mismo ± 0,1 s) | Solo públicos | Con propio |
 |---|---|---|
-| Los dos en línea por internet (desde que abren las apps) | 2,2 s | 1,1 s |
-| Texto de A a B (mediana) | 410 ms | 208 ms |
-| Archivo de 2 MB | 50,3 s | 7,5 s |
+| Los dos en línea por internet (desde que abren las apps) | 2,1 s | 1,2 s |
+| Texto de A a B (mediana) | 408 ms | 207 ms |
+| Archivo de 2 MB | 50,2 s | 7,5 s |
 | Subido a los relés (archivo + mensajes) | 10,8 MB | 2,8 MB |
 | Eventos repetidos bajados (A + B) | 46 KB | 18 KB |
 
