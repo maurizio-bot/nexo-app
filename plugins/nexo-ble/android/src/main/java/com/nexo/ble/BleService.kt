@@ -30,7 +30,10 @@ class BleService : Service() {
 
     companion object {
         private const val TAG = "BleService"
-        private const val CHANNEL_ID = "nexo_ble_foreground"
+        // 3165 (dueño 16-11: «al querer ver una notificación de mensaje, esa [la de NEXO BLE] siempre está por delante»): canal
+        // nuevo de importancia MÍNIMA (va a «Silenciosas», plegado, debajo de los mensajes); el viejo (BAJA) se borra
+        private const val CHANNEL_ID = "nexo_ble_quiet"
+        private const val OLD_CHANNEL_ID = "nexo_ble_foreground"
         private const val NOTIFICATION_ID = 1001
         private const val MANUFACTURER_ID = 0xFFFF
         private const val NEXO_MAGIC_HIGH: Byte = 0x4E
@@ -155,13 +158,16 @@ class BleService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 NativeLang.t(this, "svc_channel"),
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_MIN
             ).apply {
                 description = NativeLang.t(this@BleService, "svc_channel_desc")
                 setShowBadge(false)
+                lockscreenVisibility = Notification.VISIBILITY_SECRET
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
+            // 3165: el canal viejo (importancia BAJA) ya no se usa; si Android no deja borrarlo ahora, se intenta en el próximo arranque
+            try { manager?.deleteNotificationChannel(OLD_CHANNEL_ID) } catch (e: Exception) { Log.w(TAG, "Canal viejo del servicio: ${e.message}") }
         }
     }
 
@@ -177,7 +183,15 @@ class BleService : Service() {
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            // 3165: callado, sin hora, como «servicio», en su propio grupo (no se apila con los avisos de mensajes, grupo nexo_msgs)
+            // y ordenado al final; oculto en la pantalla de bloqueo
+            .setSilent(true)
+            .setShowWhen(false)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setGroup("nexo_service")
+            .setSortKey("zzz")
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .build()
     }
 

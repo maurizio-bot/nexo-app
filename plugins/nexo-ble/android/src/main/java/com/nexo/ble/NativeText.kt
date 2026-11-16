@@ -38,10 +38,10 @@ object NativeText {
         "ch_updates" to arrayOf("Actualizaciones", "Aggiornamenti", "Updates", "Atualizações", "Mises à jour"),
         "ch_screen" to arrayOf("Compartir pantalla", "Condivisione schermo", "Screen sharing", "Compartilhar tela", "Partage d'écran"),
         "screen_sharing" to arrayOf("Compartiendo tu pantalla en la videollamada", "Stai condividendo lo schermo nella videochiamata", "Sharing your screen in the video call", "Compartilhando sua tela na videochamada", "Partage de votre écran dans l'appel vidéo"),
-        "svc_channel" to arrayOf("NEXO BLE Service", "NEXO BLE Service", "NEXO BLE Service", "NEXO BLE Service", "NEXO BLE Service"),
-        "svc_channel_desc" to arrayOf("Servicio BLE en segundo plano", "Servizio BLE in background", "BLE service in the background", "Serviço BLE em segundo plano", "Service BLE en arrière-plan"),
-        "svc_title" to arrayOf("NEXO BLE", "NEXO BLE", "NEXO BLE", "NEXO BLE", "NEXO BLE"),
-        "svc_text" to arrayOf("Anunciando dispositivo NEXO...", "Annuncio del dispositivo NEXO...", "Announcing NEXO device...", "Anunciando o dispositivo NEXO...", "Annonce de l'appareil NEXO...")
+        "svc_channel" to arrayOf("Servicio de NEXO", "Servizio di NEXO", "NEXO service", "Serviço do NEXO", "Service NEXO"),
+        "svc_channel_desc" to arrayOf("Mantiene NEXO listo en segundo plano para recibir mensajes y llamadas", "Tiene NEXO pronto in background per ricevere messaggi e chiamate", "Keeps NEXO ready in the background to receive messages and calls", "Mantém o NEXO pronto em segundo plano para receber mensagens e chamadas", "Garde NEXO prêt en arrière-plan pour recevoir messages et appels"),
+        "svc_title" to arrayOf("NEXO", "NEXO", "NEXO", "NEXO", "NEXO"),
+        "svc_text" to arrayOf("Listo para recibir mensajes y llamadas", "Pronto a ricevere messaggi e chiamate", "Ready to receive messages and calls", "Pronto para receber mensagens e chamadas", "Prêt à recevoir messages et appels")
     )
 
     fun keys(): Set<String> = T.keys
