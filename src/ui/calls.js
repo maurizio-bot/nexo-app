@@ -26,6 +26,12 @@ var WEAK_MS = 4000;
 var OFFER_MAX_AGE_MS = 600000;
 var DEAD_MS = 180000;
 var P2P_RETRY_MS = 60000;   // conexión directa que no se pudo / se cortó: se vuelve a probar al minuto (la red pudo cambiar)
+// 3156 (diagnóstico S24/S23 3073 16-11 11:12: videollamada directa por internet; el S23 pasó de Wi-Fi a datos, la conexión directa
+// se cayó, los relés tardaron en volver y a los 15 s los dos la dieron por perdida): una llamada por internet o que cambió de red
+// aguanta «Reconectando…» hasta RECONNECT_NET_MS; la conexión directa se rehace enseguida (P2P_QUICK_MS) por la red nueva y,
+// mientras, sigue por los relés en cuanto vuelven. Como WhatsApp: un cambio de red no corta la llamada.
+var RECONNECT_NET_MS = 30000;
+var P2P_QUICK_MS = 3000, P2P_QUICK_MAX = 6;
 
 var DIAG_EVERY_MS = 5000;
 
@@ -64,11 +70,21 @@ export class Calls {
     this._dead = new Map(); // ronda 2768: ids de llamadas ya terminadas (aquí o según el otro): no vuelven a sonar
     // Dueño 13-11 («directo por defecto»): por internet, conexión DIRECTA entre los dos teléfonos (call_p2p.js, WebRTC)
     var self = this;
+    // 3156: cambio de red del teléfono (Kotlin watchDefaultNetwork → onNetChange), para la llamada en curso
+    try { var plN = _plug(); if (plN && typeof plN.addListener === 'function') plN.addListener('onNetChange', function(ev) { try { self._onNetChange(ev); } catch (e) {} }); } catch (e) {}
     this.p2p = createCallP2P({
       signal: function(nx, o) { var c = self.call; if (c && c.nx === nx) self._signal(nx, 'rtc', o); },
       onMessage: function(nx, str) { var pk = null; try { pk = JSON.parse(str); } catch (e) {} if (pk && pk.type === 'vf') self.onFrame(pk, 'p2p:' + nx); },
       onOpen: function(nx) { var c = self.call; if (c && c.nx === nx) { c.p2pOk = true; self._set({ direct: true }); } },
-      onDown: function(nx) { var c = self.call; if (c && c.nx === nx) { c.p2pOk = false; c.p2pRetryAt = Date.now() + P2P_RETRY_MS; self._set({ direct: false }); } },
+      onDown: function(nx, why, was) {
+        var c = self.call; if (!c || c.nx !== nx) return;
+        c.p2pOk = false;
+        // 3156: se cortó una que funcionaba (o la llamada está en apuros): otra vez enseguida, unas pocas veces; si nunca abrió, al minuto
+        if (was) c.netTrouble = true;
+        var quick = (was || c.netTrouble) && (c.p2pQuick = (c.p2pQuick || 0) + 1) <= P2P_QUICK_MAX;
+        c.p2pRetryAt = Date.now() + (quick ? P2P_QUICK_MS : P2P_RETRY_MS);
+        self._set({ direct: false });
+      },
       // «Usar Tor siempre» (Ajustes) = no quiero que vean mi IP: sin conexión directa
       privacy: function() { var n = self.ble && self.ble.net; return !!(n && typeof n.torManual === 'function' && n.torManual()); }
     });
@@ -82,6 +98,17 @@ export class Calls {
     var net = ble && ble.net && typeof ble.net.canReach === 'function' && ble.net.canReach(c.nx);
     if (lan || !net) return; // misma Wi-Fi: ya va directo; sin internet con él: nada que hacer
     p2p.start(c.nx);
+  }
+  // 3156: la red del teléfono cambió (Wi-Fi ↔ datos) en plena llamada: la conexión directa vieja ya no sirve. El que llama la rehace
+  // ya por la red nueva; el que recibe le pide que la rehaga ('rtc' again: le llega en cuanto la red nueva tiene salida)
+  _onNetChange(ev) {
+    var c = this.call, t = String((ev && ev.type) || '');
+    if (!c || c.state !== 'active' || t === 'none') return;
+    c.netTrouble = true; c.p2pQuick = 0;
+    console.log('[CALL] Cambio de red en la llamada (' + t + '): rehago la conexión directa; aguanta «Reconectando…» hasta ' + Math.round(RECONNECT_NET_MS / 1000) + ' s');
+    if (this.p2p && (this.p2p.ready(c.nx) || this.p2p.trying(c.nx))) { this.p2p.close(c.nx); c.p2pOk = false; this._set({ direct: false }); }
+    if (c.dir === 'out') c.p2pRetryAt = 0;
+    else this._signal(c.nx, 'rtc', { t: 'again' });
   }
   _markDead(id) { var now = Date.now(), d = this._dead; d.set(id, now); d.forEach(function(t, k) { if (now - t > DEAD_MS) d.delete(k); }); }
   _ignored(nx, why) { _emit('nexo:callIgnored', { nx: nx, why: why }); }
@@ -461,7 +488,7 @@ export class Calls {
       if (!cc || cc.id !== c.id) return;
       self._p2pTick(cc);
       // #dueño (internet): mala conexión → aviso «Reconectando…»; si no se restablece en 15 s, se corta.
-      var rmax = (typeof window !== 'undefined' && window.NEXO_CALL_RECONNECT_MS) || RECONNECT_MS;
+      var rmax = (typeof window !== 'undefined' && window.NEXO_CALL_RECONNECT_MS) || (cc.netTrouble ? RECONNECT_NET_MS : RECONNECT_MS); // 3156
       var wmin = (typeof window !== 'undefined' && window.NEXO_CALL_WEAK_MS) || WEAK_MS;
       // #dueño 01-11 (GRAVE): si una llamada TELEFÓNICA interrumpió (held) o el otro avisó que está en pausa (peerHeld),
       // NO contar el silencio ni cortar: la llamada NEXO queda RETENIDA. Se reinicia el reloj del vigilante en cada vuelta
@@ -539,6 +566,7 @@ export class Calls {
       return;
     }
     c.seeking = false;
+    if (!c.netTrouble && /^(net|p2p):/.test(String(link))) c.netTrouble = true; // 3156: por internet: aguanta más un corte
     // #dueño 01-11 (P1): el VÍDEO va por Wi-Fi (lan:) y por INTERNET cuando es Tor DIRECTO (net.via==='tor'). Por relés NO
     // (15 fps los inundaría y llegaría con segundos de retraso = inservible) ni por Bluetooth (no cabe). El audio sigue por
     // cualquier camino. Antes el vídeo solo salía por lan: → la videollamada por internet conectaba pero no mandaba imagen.
@@ -582,6 +610,7 @@ export class Calls {
       // Ronda 2768: se sigue el camino por el que llega la voz del otro (si se le cayó el Wi-Fi sin cierre limpio, aquí
       // aún parecía arriba y la voz seguía saliendo por él: el otro dejaba de oír y cortaba a los 12 s)
       if (via && !/^(lan|net|p2p)/i.test(String(via))) cc.rxBleAt = Date.now(); else if (via) cc.rxBleAt = 0;
+      if (via && /^(net|p2p)/i.test(String(via))) cc.netTrouble = true; // 3156
       if (fin) { self._finish('ended', false); return; } // el otro colgó (aviso por el canal de la voz)
       // Ronda 2769: el otro no tiene mi imagen (manda una completa) / estado de su cámara y su micrófono
       if (k === 'k') { if (cc.media && typeof cc.media.requestKey === 'function') cc.media.requestKey(); return; }
@@ -648,6 +677,11 @@ export class Calls {
       return;
     }
     if (o.op === 'ring') return;
+    if (o.op === 'rtc' && o.t === 'again') { // 3156: el otro cambió de red: rehacer la conexión directa ya (la abre el que llama)
+      c.netTrouble = true; c.p2pQuick = 0;
+      if (c.dir === 'out') { if (self.p2p) self.p2p.close(nx); c.p2pOk = false; c.p2pRetryAt = 0; console.log('[CALL] ' + nx + ' cambió de red: rehago la conexión directa'); self._p2pTick(c); }
+      return;
+    }
     if (o.op === 'rtc') { if (self.p2p) self.p2p.onSignal(nx, o); return; } // dueño 13-11: conexión directa por internet
     // #dueño 01-11 (GRAVE): el otro entró/salió de una llamada telefónica y retuvo la suya. Marcar peerHeld para que
     // NUESTRO vigilante tampoco corte por silencio mientras él está en pausa; al volver (unhold) reiniciar el reloj.
