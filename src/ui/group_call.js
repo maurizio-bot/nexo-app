@@ -45,7 +45,8 @@ export function parseGroupCallSignal(content) {
   try {
     var o = JSON.parse(content);
     if (!o || o.type !== 'nexo_gcall' || typeof o.gid !== 'string' || !/^[a-z0-9]{6,40}$/.test(o.gid)) return null;
-    if (!/^(invite|offer|accept|leave|end)$/.test(o.op || '')) return null;
+    // (3152: «en espera» de #222 —hold/unhold— no pasaba de aquí: llegaba como un mensaje más del chat y el otro nunca lo sabía)
+    if (!/^(invite|offer|accept|leave|end|hold|unhold)$/.test(o.op || '')) return null;
     return o;
   } catch (e) { return null; }
 }
@@ -62,8 +63,9 @@ export class GroupCall {
   _nidSelf() { var b = this.ble; return _nid(b && (b.localNexoId || (b.getLocalNexoId && b.getLocalNexoId()))); }
   state() {
     var g = this.gc; if (!g) return null;
-    var legs = []; g.legs.forEach(function(l, nx) { legs.push({ nx: nx, state: l.state, talking: !!l.talking, reconnecting: !!l.reconnecting, peerScreen: !!l.peerScreen, peerHeld: !!l.peerHeld }); });
-    return { gid: g.gid, dir: g.dir, state: g.state, video: !!g.video, cameraOn: !!g.cameraOn, muted: !!g.muted, screen: !!g.screen, held: !!g.held, host: g.host || '', legs: legs, members: Array.from(g.roster), chatId: g.chatId || '' };
+    var legs = []; g.legs.forEach(function(l, nx) { legs.push({ nx: nx, state: l.state, talking: !!l.talking, reconnecting: !!l.reconnecting, peerScreen: !!l.peerScreen, peerHeld: !!l.peerHeld, peerFront: l.peerFront !== false, peerCam: l.peerCam !== false }); });
+    return { gid: g.gid, dir: g.dir, state: g.state, video: !!g.video, cameraOn: !!g.cameraOn, muted: !!g.muted, screen: !!g.screen, held: !!g.held, host: g.host || '', legs: legs, members: Array.from(g.roster), chatId: g.chatId || '',
+      adopt: g.adopt ? g.adopt.nx : '', since: (g.adopt && g.adopt.since) || g.startedAt || 0, front: !(g.hub && g.hub.facing) || g.hub.facing() === 'user' }; // #224
   }
   _set(o) { if (!this.gc) return; if (o) Object.assign(this.gc, o); _emit('nexo:gcall', this.state()); }
 
@@ -107,6 +109,8 @@ export class GroupCall {
     var roster = new Set([me].concat(list));
     self.gc = { gid: gid, dir: 'out', state: 'calling', key: key, video: !!video, legs: new Map(), roster: roster, startedAt: 0, createdAt: Date.now(), chatId: _nid(chatId) || '' };
     list.forEach(function(nx) { self._leg(nx).state = 'inviting'; self._inviteTimeout(nx); });
+    var ad = opts && opts.adopt; // #224: la videollamada 1-a-1 que pasa a grupo sin cortar (su captura y la imagen del otro)
+    if (ad && ad.media && list.indexOf(_nid(ad.nx)) >= 0) self._adopt(ad);
     _emit('nexo:gcall', self.state());
     self._ringTimer = setTimeout(function() {
       // nadie entró en 45 s → se cancela
@@ -124,6 +128,59 @@ export class GroupCall {
     });
   }
 
+  // #224 (dueño 16-11: «cuando hago una videollamada con otro contacto y luego agrego un contacto a la videollamada, no debería quitarse
+  // toda la parte de video»): la de grupo hereda lo vivo de la videollamada 1-a-1 (calls.handoff): la cámara sigue abierta, la imagen
+  // del otro sigue en su sitio, y su tramo es el primero en la pantalla (arriba). Los medios se montan ya (sin esperar a que entre nadie).
+  _adopt(ad) {
+    var g = this.gc; if (!g || !ad || !ad.media) return;
+    g.adopt = { nx: _nid(ad.nx), media: ad.media, since: ad.startedAt || 0 };
+    g.cameraOn = !ad.cameraOff; g.muted = !!ad.muted;
+    var l = this._leg(g.adopt.nx); if (l && typeof ad.peerFront === 'boolean') l.peerFront = ad.peerFront;
+    this._makeHub();
+    if (!(g.hub && g.hub.adopted)) { try { ad.media.stop(); } catch (e) {} g.adopt = null; } // (medios sin herencia: los de siempre)
+  }
+  _makeHub() {
+    var self = this, g = self.gc; if (!g || g.hub || !self.mediaHubFactory) return;
+    try {
+      // #138 (dueño 31-10): TODA llamada de grupo es CAPAZ de vídeo. Si es VIDEOLLAMADA, la cámara arranca encendida
+      // (cameraStart, el mismo camino probado de la 1-a-1); si es llamada de voz, la cámara empieza apagada y se enciende
+      // con el botón (sin re-llamar). El vídeo se difunde por `onVideoPacket`.
+      g.hub = self.mediaHubFactory({
+        codecs: 'opus,ulaw', video: true, cameraStart: !!g.video, adopt: g.adopt ? { media: g.adopt.media, nx: g.adopt.nx } : null,
+        onPacket: function(bytes) { self._broadcast(bytes); },
+        onVideoPacket: function(bytes) { self._broadcastVideo(bytes); },
+        onNeedKey: function(nx) { self._askKey(nx); }, // #224: la imagen de un tramo se paró: que mande una completa
+      });
+    } catch (e) { console.warn('[GCALL] sin audio: ' + (e && e.message)); }
+  }
+  _askKey(nx) { var g = this.gc, l = g && g.legs.get(_nid(nx)); if (l && l.state === 'active') this._sendTo(l, new Uint8Array([1]), 'k'); }
+  // Un tramo se abre: imagen completa ya (si no, hasta 5 s sin imagen) y mi estado (cámara, cuál, pantalla)
+  _legUp() { var g = this.gc; if (!g) return; if (g.hub && g.hub.requestKey) { try { g.hub.requestKey(); } catch (e) {} } this._sendStateAll(); }
+  remoteLive(nx) { var g = this.gc; return !!(g && g.hub && g.hub.remoteLive && g.hub.remoteLive(_nid(nx))); }
+
+  // #224: «Cancelar» en la baldosa de quien todavía suena: deja de sonarle y la llamada sigue con los demás. Si contesta igual (se
+  // cruzó con la cancelación), se le dice que se fue.
+  cancelInvite(nexoId) {
+    var self = this, g = self.gc, nx = _nid(nexoId), l = g && g.legs.get(nx);
+    if (!l || l.state !== 'inviting') return false;
+    self._signal(nx, 'leave', {});
+    l.state = 'cancelled'; g.roster.delete(nx);
+    (g.cancelled = g.cancelled || new Set()).add(nx);
+    console.log('[GCALL] Invitación a ' + nx + ' cancelada');
+    self._set(null);
+    if (g.roster.size <= 1 || !self._alive(true)) self._finish('empty');
+    return true;
+  }
+  // ¿Cuántos tramos siguen (o pueden seguir)? (con invitados: también los que aún suenan)
+  _alive(withInvited) {
+    var g = this.gc, n = 0; if (!g) return 0;
+    g.legs.forEach(function(l) { if (l.state === 'active' || l.state === 'offering' || l.state === 'waiting' || (withInvited && l.state === 'inviting')) n++; });
+    return n;
+  }
+  // #224: me voy sin haber entrado (rechazo, no contesté, el que invitó colgó): se lo digo a TODOS, no solo al que invitó (los que
+  // ya estaban dentro me tenían como «llamando» y se quedaban esperándome)
+  _leaveAll() { var self = this, g = self.gc, me = self._nidSelf(); if (g) g.roster.forEach(function(nx) { if (nx !== me) self._signal(nx, 'leave', {}); }); }
+
   _codecs() { var c = this.ble && this.ble.calls; return (c && typeof c._codecs === 'function') ? 'opus,ulaw' : 'opus,ulaw'; }
 
   // Contestar una invitación entrante (dir 'in', state 'ringing')
@@ -138,16 +195,16 @@ export class GroupCall {
     g.roster.forEach(function(nx) {
       if (nx === me) return;
       var l = self._leg(nx);
-      if (nx === g.host) { self._signal(nx, 'accept', {}); l.state = 'active'; } // al que invitó: aceptar
-      else if (g.earlyOffers && g.earlyOffers.has(nx)) { self._signal(nx, 'accept', {}); l.state = 'active'; } // 3106: me lo abrió mientras sonaba
+      if (nx === g.host) { self._signal(nx, 'accept', {}); l.state = 'active'; self._legUp(); } // al que invitó: aceptar
+      else if (g.earlyOffers && g.earlyOffers.has(nx)) { self._signal(nx, 'accept', {}); l.state = 'active'; self._legUp(); } // 3106: me lo abrió mientras sonaba
       // #130 (dueño 31-10): si entro TARDE (me agregaron a una llamada ya en curso, late:1), abro el tramo con TODOS (los que
       // ya estaban no van a iniciar hacia mí); si no, la regla normal: el NEXO ID menor manda 'offer' y el otro espera.
-      else if (g.late || me < nx) { self._signal(nx, 'offer', {}); l.state = 'offering'; }
-      else l.state = 'waiting'; // el otro iniciará
+      else if (g.late || me < nx) { self._signal(nx, 'offer', {}); l.state = 'offering'; self._inviteTimeout(nx); }
+      else { l.state = 'waiting'; self._inviteTimeout(nx); } // el otro iniciará (#224: si no entra en 45 s, «No contestó», como en el que invita)
     });
   }
 
-  reject() { var g = this.gc; if (g && g.dir === 'in' && g.state === 'ringing') { this._signal(g.host, 'leave', {}); this._finish('rejected'); } }
+  reject() { var g = this.gc; if (g && g.dir === 'in' && g.state === 'ringing') { this._leaveAll(); this._finish('rejected'); } }
 
   // #dueño 31-10: silenciar/activar MI micrófono en la llamada de grupo (el botón, como en la 1-a-1). No afecta a lo que
   // se oye de los demás; solo deja de mandar mi voz. El hub de medios comparte una sola captura, así que silencia todo.
@@ -220,14 +277,15 @@ export class GroupCall {
   _sendStateAll() {
     var self = this, g = this.gc; if (!g || g.state !== 'active' || !g.cryptoKey) return;
     g._stAt = Date.now();
-    var bytes = new TextEncoder().encode(JSON.stringify({ scr: !!g.screen, cam: !!g.cameraOn }));
+    var bytes = new TextEncoder().encode(JSON.stringify({ scr: !!g.screen, cam: !!g.cameraOn, front: !(g.hub && g.hub.facing) || g.hub.facing() === 'user' })); // #224: front
     g.legs.forEach(function(l) { if (l.state === 'active') self._sendTo(l, bytes, 'c'); });
   }
 
   // Cámara de delante / de detrás (igual que la 1-a-1); devuelve una promesa con la orientación final.
   flip() {
-    var g = this.gc; if (!g || !g.hub || !g.hub.flip) return Promise.resolve();
-    try { return Promise.resolve(g.hub.flip()).catch(function() {}); } catch (e) { return Promise.resolve(); }
+    var self = this, g = this.gc; if (!g || !g.hub || !g.hub.flip) return Promise.resolve();
+    var done = function(f) { if (self.gc === g) { self._sendStateAll(); self._set(null); } return f; }; // #224: los demás, con o sin espejo
+    try { return Promise.resolve(g.hub.flip()).then(done, function() {}); } catch (e) { return Promise.resolve(); }
   }
 
   // #138: elementos de vídeo para la rejilla (los coloca groupcall_ui.js): mi vista propia y la imagen de cada tramo.
@@ -263,20 +321,9 @@ export class GroupCall {
     g.startedAt = Date.now();
     if (self.ble && typeof self.ble._holdOthers === 'function') { try { self.ble._holdOthers(self); } catch (e) {} } // #222: la otra, en espera
     // Micrófono compartido: una captura, un codificador → el paquete codificado va a TODOS los tramos
-    if (self.mediaHubFactory) {
-      try {
-        // #138 (dueño 31-10): TODA llamada de grupo es CAPAZ de vídeo. Si es VIDEOLLAMADA, la cámara arranca encendida
-        // (cameraStart, el mismo camino probado de la 1-a-1); si es llamada de voz, la cámara empieza apagada y se enciende
-        // con el botón (sin re-llamar). El vídeo se difunde por `onVideoPacket`.
-        g.cameraOn = !!g.video;
-        g.hub = self.mediaHubFactory({
-          codecs: 'opus,ulaw', video: true, cameraStart: !!g.video,
-          onPacket: function(bytes) { self._broadcast(bytes); },
-          onVideoPacket: function(bytes) { self._broadcastVideo(bytes); },
-        });
-        if (g.hub && g.hub.start) Promise.resolve(g.hub.start()).catch(function(e) { console.warn('[GCALL] micrófono: ' + (e && e.message)); });
-      } catch (e) { console.warn('[GCALL] sin audio: ' + (e && e.message)); }
-    }
+    if (!g.adopt) g.cameraOn = !!g.video; // (#224: la heredada sigue como estaba)
+    self._makeHub();
+    if (g.hub && g.hub.start && !g.hub.adopted) { try { Promise.resolve(g.hub.start()).catch(function(e) { console.warn('[GCALL] micrófono: ' + (e && e.message)); }); } catch (e) { console.warn('[GCALL] sin audio: ' + (e && e.message)); } }
     self._watch = setInterval(function() { self._tick(); }, 1000);
   }
 
@@ -326,7 +373,7 @@ export class GroupCall {
     // #138: el VÍDEO (kind 'v', ~300 kb/s) solo por Wi-Fi (lan:); por Bluetooth no cabe (igual que la videollamada 1-a-1).
     if (kind === 'v' && String(link).indexOf('lan:') !== 0) return;
     // nº de secuencia propio por tipo: la voz y el vídeo no comparten contador (ni la marca anti-repetición del receptor)
-    var seq = kind === 'v' ? (l.sendVSeq = (l.sendVSeq || 0) + 1) : kind === 'c' ? (l.sendCSeq = (l.sendCSeq || 0) + 1) : l.sendSeq++;
+    var seq = kind === 'v' ? (l.sendVSeq = (l.sendVSeq || 0) + 1) : kind === 'c' || kind === 'k' ? (l.sendCSeq = (l.sendCSeq || 0) + 1) : l.sendSeq++;
     var iv = crypto.getRandomValues(new Uint8Array(12));
     // AAD: gid|emisor|<tipo>nº → una voz/imagen de un par no se puede hacer pasar por otro (voz = tipo vacío, compat. 2852)
     var ad = new TextEncoder().encode(g.gid + '|' + me + '|' + (kind || '') + seq);
@@ -345,7 +392,7 @@ export class GroupCall {
     var leg = null; g.legs.forEach(function(l) { if (l.id === p.c) leg = l; });
     if (!leg || !g.cryptoKey) return false;
     var k = p.k || '';
-    if (k && k !== 'v' && k !== 'c') return true; // en grupo: voz, vídeo ('v') y estado ('c', compartir pantalla); lo demás no
+    if (k && k !== 'v' && k !== 'c' && k !== 'k') return true; // en grupo: voz, vídeo ('v'), estado ('c') y «manda una imagen completa» ('k', #224)
     var raw; try { raw = _unb64GC(p.d); } catch (e) { return true; }
     if (raw.length < 29) return true;
     // AAD con el emisor = el par de ese tramo y el tipo (voz = vacío; vídeo = 'v')
@@ -356,10 +403,13 @@ export class GroupCall {
       if (leg.seen.has(sk)) return; leg.seen.add(sk); if (leg.seen.size > 1000) leg.seen.delete(leg.seen.values().next().value);
       leg.lastRx = Date.now();
       if (g.held && k !== 'c') return; // #222: en espera: ni voz ni imagen (el tramo sigue vivo)
+      if (k === 'k') { if (g.hub && g.hub.requestKey) g.hub.requestKey(); return; } // #224
       if (k === 'v') { if (g.hub && g.hub.playVideo) g.hub.playVideo(leg.nx, new Uint8Array(pt)); return; } // imagen del par
       if (k === 'c') { // estado del par: ¿comparte su pantalla? (para verla entera y sin espejo)
         var o = null; try { o = JSON.parse(new TextDecoder().decode(pt)); } catch (e) {}
         var scr = !!(o && o.scr === true);
+        if (o && typeof o.front === 'boolean' && o.front !== (leg.peerFront !== false)) { leg.peerFront = o.front; self._set(null); } // #224
+        if (o && typeof o.cam === 'boolean' && o.cam !== (leg.peerCam !== false)) { leg.peerCam = o.cam; self._set(null); }
         if (scr !== !!leg.peerScreen) { leg.peerScreen = scr; console.log('[GCALL] ' + leg.nx + (scr ? ' comparte su pantalla' : ' dejó de compartir su pantalla')); self._set(null); }
         return;
       }
@@ -406,8 +456,15 @@ export class GroupCall {
       // #dueño 31-10: si no se contesta en 30 s, la entrante se da por PERDIDA (deja de sonar, queda «llamada perdida de
       // grupo»); los que sí contestaron siguen entre ellos.
       clearTimeout(self._ringTimer);
-      self._ringTimer = setTimeout(function() { if (self.gc && self.gc.gid === o.gid && self.gc.state === 'ringing') self._finish('missed'); }, window.NEXO_GCALL_MISS_MS || GMISS_MS);
-      if (upg && upg.live) { try { upg.lane._finish('ended', false); } catch (e) {} } // la 1-a-1 que pasa a grupo (él ya colgó la suya)
+      self._ringTimer = setTimeout(function() { if (self.gc && self.gc.gid === o.gid && self.gc.state === 'ringing') { self._leaveAll(); self._finish('missed'); } }, window.NEXO_GCALL_MISS_MS || GMISS_MS);
+      if (upg && upg.live) { // la 1-a-1 que pasa a grupo (él ya colgó la suya)
+        // #224: si era videollamada y la de grupo también, la de grupo hereda su captura y la imagen del otro (sin cortar)
+        var ad = null;
+        if (o.v === 1 && typeof upg.lane.handoff === 'function') { try { ad = upg.lane.handoff(); } catch (e) { ad = null; } }
+        if (ad && ad.media && _nid(ad.nx) === nx) self._adopt(ad);
+        else if (ad && ad.media) { try { ad.media.stop(); } catch (e) {} }
+        else { try { upg.lane._finish('ended', false); } catch (e) {} }
+      }
       self._importKey(o.k).then(function(k) {
         if (!self.gc || self.gc.gid !== o.gid) return;
         self.gc.cryptoKey = k;
@@ -426,7 +483,7 @@ export class GroupCall {
     }
     // #dueño 31-10: si TODAVÍA está sonando (no contesté) y el que invitó se va/cuelga → se cancela para mí (deja de sonar)
     // y queda como «llamada perdida de grupo». Antes se quedaba sonando si el grupo tenía 3+ miembros.
-    if ((o.op === 'leave' || o.op === 'end') && g.dir === 'in' && g.state === 'ringing' && nx === g.host) { self._finish('missed'); return; }
+    if ((o.op === 'leave' || o.op === 'end') && g.dir === 'in' && g.state === 'ringing' && nx === g.host) { self._leaveAll(); self._finish('missed'); return; }
     if (o.op === 'leave') { self._dropLeg(nx); return; }
     if (o.op === 'end') { if (g.dir === 'in' && nx === g.host) self._finish('ended'); else self._dropLeg(nx); return; }
     // El que INICIÓ (dir 'out', 'calling') pasa a activo con la PRIMERA aceptación (arranca su micrófono compartido)
@@ -434,6 +491,7 @@ export class GroupCall {
     // 3106 (lo destapó #221): un compañero que ya contestó me abre el tramo mientras a mí todavía me suena; antes se perdía y, si yo
     // tenía el NEXO ID mayor, al contestar esperaba un «offer» que ya no iba a llegar: los dos no se oían. Se guarda y se contesta al entrar.
     if (o.op === 'offer' && g.dir === 'in' && g.state === 'ringing' && g.roster.has(nx)) { (g.earlyOffers = g.earlyOffers || new Set()).add(nx); return; }
+    if (g.cancelled && g.cancelled.has(nx) && (o.op === 'offer' || o.op === 'accept')) { self._signal(nx, 'leave', {}); return; } // #224: le cancelé la invitación
     if (g.state !== 'active') return; // offer/accept solo cuando ya estoy en la llamada
     if (o.op === 'hold' || o.op === 'unhold') { // #222: el otro puso la llamada de grupo en espera (está en otra)
       var hl = g.legs.get(nx); if (hl) { hl.peerHeld = o.op === 'hold'; hl.lastRx = Date.now(); console.log('[GCALL] ' + nx + (hl.peerHeld ? ' te puso en espera' : ' volvió')); }
@@ -441,11 +499,13 @@ export class GroupCall {
     }
     g.roster.add(nx);
     var l = self._leg(nx);
+    var was = l.state;
     if (o.op === 'offer') { // el otro abre el par conmigo → acepto y el tramo queda activo
       self._signal(nx, 'accept', {}); l.state = 'active';
     } else if (o.op === 'accept') {
       l.state = 'active';
     }
+    if (was !== 'active' && l.state === 'active') self._legUp(); // #224
     if (g.held && (o.op === 'offer' || o.op === 'accept')) self._signal(nx, 'hold', {}); // el que entra con la llamada en espera
     self._set(null);
   }
@@ -472,7 +532,8 @@ export class GroupCall {
     var gid = g.gid;
     setTimeout(function() {
       var gg = self.gc, l = gg && gg.gid === gid && gg.legs.get(nx);
-      if (!l || l.state !== 'inviting' || gg.state !== 'active') return; // sin contestar nadie, la cierra el temporizador general
+      // (#224: también el que entró y se quedó esperando a uno que nunca llegó —«offering»/«waiting»—)
+      if (!l || (l.state !== 'inviting' && l.state !== 'offering' && l.state !== 'waiting') || gg.state !== 'active') return; // sin contestar nadie, la cierra el temporizador general
       l.state = 'noanswer';
       gg.roster.delete(nx);
       console.log('[GCALL] ' + nx + ' no contestó: sale de la llamada');
