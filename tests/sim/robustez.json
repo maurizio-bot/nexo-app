@@ -340,6 +340,10 @@
     {
      "fallo": "3139 (diagnóstico automático S24 3069 16-11 00:52, «zombi» con Yaelito 3070): con dos enlaces Bluetooth al mismo contacto, cada teléfono cerró uno distinto: el S24 eligió por el MTU que creía ver (517 en su enlace de cliente, menos en el de servidor) y Yaelito por el desempate común → el S24 mandaba por el enlace que el otro ya había cerrado (texto largo sin confirmar 8 veces, el puente no abría, «sin respuesta a 2 pings») mientras lo de Yaelito entraba por el bueno. 3139: con papeles distintos manda siempre el desempate común; el MTU solo entre enlaces del mismo papel. bledup.js 11 (contraprueba 3137: cierran enlaces distintos)",
      "prueba": "dedup de enlaces Bluetooth repetidos"
+    },
+    {
+     "fallo": "3167 (diagnóstico S24↔realme 3075 16-11 15:17, «enlace_abre_cierra»): el desempate de enlaces repetidos no cerraba el enlace ENTRANTE (disconnectDevice solo cerraba el de cliente): seguía vivo un enlace de MTU 23 y cada mensaje salía por los dos; y el otro lado lo reabría solo al cortarse. 3167: cancelConnection en el servidor (server:true); 3167b: el que pierde un enlace de cliente con otro listo cancela sus reintentos y el escaneo no lo reabre. dupserver.js (contrapruebas 0df3ee28 y 69e317c4)",
+     "prueba": "enlace repetido ENTRANTE que de verdad s"
     }
    ],
    "debiles": [
