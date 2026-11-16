@@ -46,7 +46,6 @@ import { netPublish } from './net_publish.js';
 
 var REFRESH_QUIET_MS = 30000, REFRESH_GAP_MS = 60000; // 3130: deslizar no vuelve a pedir a un relé que entrega en vivo, y 1 vez/min
 var PROBE_MS = 20000;         // 3147: saludo al abrir el chat / al escribir, como mucho uno cada 20 s por contacto
-
 export class NetLink {
   constructor(ble) {
     this.ble = ble;

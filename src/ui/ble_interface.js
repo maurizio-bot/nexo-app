@@ -372,6 +372,7 @@ export class BLEInterface {
         // al enviar): el 1er mensaje ya no espera ni se pierde y el subtítulo pasa a «Conectando…» hasta que llega la
         // presencia del otro (entonces se ve el tipo real: Wi-Fi / Bluetooth / internet). Si ya hay enlace, no hace nada.
         try { if (typeof self._wakeSleepingPeer === 'function') self._wakeSleepingPeer(uuid, 'al abrir el chat'); } catch (e) {} // 3073: también con enlace (su app puede dormir)
+        self._prepRoute(uuid, 'Al abrir el chat', true); // 3147: saludo por internet ya (el Bluetooth, abajo)
         // v6.1.12: solo se avisa; main.js dibuja la última página del historial. Antes se cargaba aquí
         // TODO el historial leyendo de disco todos sus adjuntos y main.js lo dibujaba entero
         _safeDispatchEvent('nexo:vault:messagesLoaded', { contactId: uuid });
@@ -396,6 +397,29 @@ export class BLEInterface {
     });
   }
 
+
+  // 3147 (dueño 16-11: «preparar el mejor camino cuando el usuario ABRE un chat, para que enviar sea instantáneo»): al abrir el chat
+  // y al empezar a escribir, un saludo cifrado por internet (net.probe: el otro contesta y se ve en línea en ~1 s) y, al escribir,
+  // la conexión Bluetooth si está cerca (visto hace < 2 min), sin enlace ni intento en curso y sin pausa. Sin escaneos nuevos
+  // (regla de batería). Como mucho una vez cada 20 s por contacto (el saludo, con el tope de net.probe). Solo contactos 1 a 1.
+  _prepRoute(nexoId, why, internetOnly) {
+    var nx = _normId(nexoId), now = Date.now();
+    if (!/^nx[0-9a-z]{8}$/.test(nx) || (this.groups && typeof this.groups.isGroup === 'function' && this.groups.isGroup(nx))) return;
+    try { if (this.net && typeof this.net.probe === 'function') this.net.probe(nx, why); } catch (e) {}
+    if (internetOnly || !this.nativePlugin || !_hasNativeMethod(this.nativePlugin, 'connectToDevice')) return;
+    this._routeAt = this._routeAt || new Map();
+    if (now - (this._routeAt.get(nx) || 0) < 20000) return;
+    this._routeAt.set(nx, now);
+    if (this._routeAt.size > 200) this._routeAt.delete(this._routeAt.keys().next().value);
+    var dev = this._resolveDeviceIdForNexoId(nx) || ((_getContactByUUID(nx) || {}).deviceId) || null;
+    if (!dev || _isPathDev(dev)) return;
+    var st = this._getDeviceState(dev).state;
+    if (st === BLE_STATES.READY_TO_CHAT || st === BLE_STATES.NOTIFICATIONS_READY || st === BLE_STATES.CONNECTING || st === BLE_STATES.DISCOVERING_SERVICES) return;
+    if (typeof this._btPaused === 'function' && (this._btPaused(nx) || this._btPaused(dev))) return;
+    if (typeof this._btNearby === 'function' && !this._btNearby(nx)) return;
+    console.log('[RUTA] ' + why + ': ' + nx + ' está cerca: conecto por Bluetooth'); // i18n-ok
+    _safeNativeCall(this.nativePlugin, 'connectToDevice', { deviceId: dev }).catch(function() {});
+  }
 
   // ---------------------------------------------------------------------------
   // Visibility / Scan / DOM

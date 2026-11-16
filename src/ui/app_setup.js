@@ -247,6 +247,7 @@ export function _setupMessageInput() {
       var text = input.value.trim();
       if (!text) return;
       input.value = '';
+      _routeTyped = ''; // 3147: el próximo mensaje vuelve a preparar el camino
       _updateBtnState();
       input.focus();
       // Ronda 2782: si estamos editando un mensaje, mandar la edición en vez de crear uno nuevo
@@ -306,6 +307,17 @@ export function _setupMessageInput() {
     };
 
     input.addEventListener('input', _updateBtnState);
+    // 3147 (dueño 16-11): al empezar a escribir un mensaje, preparar el camino (saludo por internet y Bluetooth si está cerca)
+    var _routeTyped = ''; // contacto para el que ya se preparó este mensaje
+    input.addEventListener('input', function() {
+      if (!input.value) { _routeTyped = ''; return; }
+      try {
+        var bi = window.bleInterface, cid = _getCurrentContactId();
+        if (!cid || cid === _routeTyped) return;
+        _routeTyped = cid;
+        if (bi && typeof bi._prepRoute === 'function') bi._prepRoute(cid, 'Al escribir');
+      } catch (e) {}
+    });
     input.addEventListener('keyup', _updateBtnState);
     input.addEventListener('paste', function() { requestAnimationFrame(_updateBtnState); });
     input.addEventListener('cut', function() { requestAnimationFrame(_updateBtnState); });
