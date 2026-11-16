@@ -101,6 +101,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="maurizio-bot.github.io" android:pathPrefix="/nexo-app/i" />
             </intent-filter>
+            <!-- 3161 (dueño 16-11): NEXO en el menú «Compartir» del teléfono, solo texto y enlaces (SharedText.kt valida tipo y tamaño;
+                 la app abre «Enviar a…» y pone el texto en la caja del chat elegido). Fotos y vídeos compartidos: después. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
         <!-- SERVICIO BLE FOREGROUND -->

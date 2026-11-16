@@ -1,0 +1,45 @@
+/* 3161 (dueño 16-11): enlaces que se tocan y la tarjeta de TikTok/Instagram/Facebook/YouTube (src/ui/links.js). Sin imágenes ni logos:
+   el color y la inicial del sitio. Los textos de la tarjeta van en data-t y se pintan con ::before (el texto de la burbuja sigue siendo
+   el mensaje tal cual). Cabe en 360 px. */
+.nx-link {
+  color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px;
+  overflow-wrap: anywhere; -webkit-touch-callout: none;
+}
+/* .msg-content lleva overflow:hidden + radio 12 (render.js, para las esquinas de las fotos): en un texto recortaba la punta de la
+   «h» de «https» en la esquina de arriba y la «/» final. Una burbuja con enlaces no lleva fotos: sin recorte. */
+.msg-content:has(.nx-link) { overflow: visible !important; }
+.message.other .nx-link { color: var(--nx-cyan); }
+.message.own .nx-link { color: #fff; }
+.nx-link-card {
+  display: flex; align-items: center; gap: 10px; box-sizing: border-box; width: 100%; min-width: 180px; max-width: 260px;
+  margin-top: 6px; padding: 8px 10px; border-radius: 14px; background: rgba(0, 0, 0, 0.24); border: 1px solid var(--nx-line);
+  color: var(--nx-text); text-decoration: none; white-space: normal; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+}
+.nx-link-card:active { background: rgba(0, 0, 0, 0.36); }
+.nx-lc-ini {
+  width: 34px; height: 34px; min-width: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  background: var(--nx-lc, var(--nx-grad)); color: #fff; font-weight: 800; font-size: 17px; line-height: 1;
+}
+.nx-lc-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.nx-lc-name { font-size: 14px; font-weight: 700; line-height: 1.25; color: var(--nx-text); }
+.nx-lc-host { font-size: 12px; line-height: 1.3; color: var(--nx-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-lc-ini::before, .nx-lc-name::before, .nx-lc-host::before { content: attr(data-t); }
+.nx-lc-go { font-size: 16px; color: var(--nx-muted); }
+.nx-lc-go::before { content: '↗'; }
+.nx-site-tiktok { --nx-lc: linear-gradient(135deg, #25f4ee, #fe2c55); }
+.nx-site-instagram { --nx-lc: linear-gradient(45deg, #f58529, #dd2a7b, #8134af); }
+.nx-site-facebook { --nx-lc: #1877f2; }
+.nx-site-youtube { --nx-lc: #ff0000; }
+
+/* Hoja «Enviar a…» (lo que se comparte con NEXO desde otra app, src/ui/share_in.js): como Reenviar / Enviar contactos */
+#nexo-sendto-sheet { background: var(--nx-bg) !important; padding-top: 0 !important; }
+#nexo-sendto-search {
+  background: var(--nx-surface); border: 1px solid var(--nx-line); border-radius: var(--nx-radius); color: var(--nx-text);
+  padding: 10px 12px; font-size: 15px; margin-bottom: 8px; outline: none; font-family: inherit;
+}
+#nexo-sendto-search::placeholder { color: var(--nx-muted); }
+.nx-sendto-preview {
+  font-size: 13px; color: var(--nx-muted); background: var(--nx-surface); border-radius: 12px; padding: 8px 10px; margin-bottom: 8px;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere;
+}
+.nx-sendto-empty { color: var(--nx-muted); font-size: 15px; line-height: 1.5; padding: 24px; text-align: center; }

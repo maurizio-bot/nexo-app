@@ -19,6 +19,7 @@ import { stickerAsset, isValidStickerImg, addReceivedSticker } from './stickers.
 import { vaultBlankMessage, vaultDeleteMessage, vaultEditMessage, vaultLoadContacts, vaultLoadFile, vaultLoadMessages, vaultReactMessage, vaultSaveContacts } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
 import { _pickAvatar, SHEET_CLOSE_SVG } from './share_contacts.js';
+import { paintTextWithLinks } from './links.js'; // 3161: enlaces que se tocan (+ tarjeta de TikTok/Instagram/Facebook/YouTube)
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _renderMessage, _sendAttachment, _sendTextTo;
@@ -93,7 +94,8 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
     // 3151 (dueño 16-11: «los emoji del teclado… que no tengan burbuja y que sean más grandes, ni se ven»): el emoji grande solo
     // se aplicaba a los textos envueltos (respuesta/reenvío); los mensajes normales llegan en claro y salían con burbuja y a 16 px
     var pj = _emojiOnly(raw);
-    if (!pj) { contentDiv.textContent = raw; return; }
+    // 3161: con enlaces http/https, se tocan (links.js; nodos DOM, nunca HTML); sin enlaces, como siempre
+    if (!pj) { if (!paintTextWithLinks(contentDiv, raw)) contentDiv.textContent = raw; return; }
     var pe = document.createElement('span');
     pe.className = 'msg-text emoji-jumbo emoji-' + pj;
     pe.textContent = String(raw).trim();
@@ -123,7 +125,7 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
   }
   var ts = document.createElement('span');
   ts.className = 'msg-text';
-  ts.textContent = String(k.t || '');
+  if (!paintTextWithLinks(ts, k.t)) ts.textContent = String(k.t || ''); // 3161: enlaces que se tocan
   // Emoji grande sin burbuja: solo si el mensaje es 1–3 emojis sueltos (no reenviado, no respuesta citada). El CSS quita
   // la burbuja con :has(.msg-text.emoji-jumbo), igual que ya hace con las fotos/vídeos.
   var ej = (!k.fw && !(k.rp && k.rp.id)) ? _emojiOnly(k.t) : 0;
@@ -175,7 +177,7 @@ export function _setupMessageActions() {
   if (!mc || mc._nexoActions) return;
   mc._nexoActions = true;
   mc.style.touchAction = 'pan-y';
-  var timer = null, startX = 0, startY = 0, lastDx = 0, lastDy = 0, target = null, swiping = false, fired = false, lastTapId = null, lastTapAt = 0, ptr = null;
+  var timer = null, startX = 0, startY = 0, lastDx = 0, lastDy = 0, target = null, swiping = false, fired = false, lastTapId = null, lastTapAt = 0, ptr = null, onLink = false;
   var REPLY_PX = 60; // 3143: cuánto hay que deslizar para responder
   var bubbleOf = function(e) {
     var m = e.target && e.target.closest ? e.target.closest('.message') : null;
@@ -205,6 +207,7 @@ export function _setupMessageActions() {
     var m = bubbleOf(e);
     if (!m) return;
     target = m; ptr = e.pointerId; startX = e.clientX; startY = e.clientY; lastDx = 0; lastDy = 0; swiping = false; fired = false;
+    onLink = !!(e.target.closest && e.target.closest('a.nx-link, a.nx-link-card')); // 3161
     clearTimeout(timer);
     timer = setTimeout(function() { fired = true; _openMsgMenu(m); }, 500);
   });
@@ -242,6 +245,8 @@ export function _setupMessageActions() {
       if (Math.abs(dx) > REPLY_PX) reply(t);   // responder deslizando (izquierda o derecha)
       return;
     }
+    // 3161: un toque en un enlace lo abre fuera de NEXO (links.js); no cuenta para el doble toque (la pulsación larga sí abre el menú)
+    if (onLink) { lastTapId = null; return; }
     // Doble toque en la burbuja = reaccionar con ❤️ (en fotos/vídeos no: ahí el doble toque amplía en el visor)
     if (!fired && !cancelled && Math.abs(dx) < 12 && Math.abs(dy) < 12) {
       var now = Date.now(), id = t.dataset.msgId;

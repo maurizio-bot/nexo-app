@@ -1128,6 +1128,14 @@ class NativePhone {
         self.opened.push({ name: c.getString('name'), mime: c.getString('mime'), bytes: Buffer.from(b64, 'base64').length, b64 });
         c.resolve({ opened: true });
       }),
+      // 3161: enlace del chat abierto FUERA de NEXO (Kotlin openUrl: SharedText.httpUrl + Intent.ACTION_VIEW). Se registra la URL.
+      openUrl: wrap('openUrl', (c) => {
+        const u = c.getString('url') || '';
+        const auth = u.replace(/^https?:\/\//i, '').split(/[/?#]/)[0];
+        if (!/^https?:\/\/[^\s\\]+$/i.test(u) || u.length > 2048 || !auth || auth.indexOf('@') >= 0) return c.reject('solo enlaces http/https');
+        (self.openedUrls = self.openedUrls || []).push(u);
+        c.resolve({ opened: true });
+      }),
       pdfThumbnail: wrap('pdfThumbnail', (c) => {
         const b64 = c.getString('base64'); if (!b64) return c.reject('base64 requerido');
         const head = Buffer.from(b64.substring(0, 16), 'base64').toString('latin1');

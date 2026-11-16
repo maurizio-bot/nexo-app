@@ -32,6 +32,7 @@ import { gameStatsInit } from './ui/game_stats.js';
 import { wallpaperInit } from './ui/wallpaper.js';
 import { estadosInit } from './ui/estados.js';
 import { NEXO_DIAG } from './core/nap.js';
+import { shareInInit } from './ui/share_in.js'; // 3161: NEXO en el menú «Compartir» de Android (texto y enlaces)
 // main.js — abrir el chat correcto (desde un aviso, el único sin leer…) y el mensaje que llega.
 // Reestructuración 15-11: movido TAL CUAL desde main.js (solo declaraciones; lo que se ejecuta al arrancar sigue allí, en su orden).
 
@@ -412,6 +413,8 @@ async function initializeNexoApp() {
     } catch (notifErr) {
       console.log('[MAIN] Notificacion listener no disponible:', notifErr);
     }
+    // 3161: un texto o enlace compartido con NEXO desde otra app (el nativo lo retiene hasta aquí; la hoja sale con la app lista)
+    shareInInit();
     // Al arrancar, los contadores de la app mandan sobre las notificaciones que hubiera en el teléfono
     // #dueño 05-11: la PRIMERA vez, la guía de bienvenida (welcome_guide.js) y, al cerrarla, el aviso de batería de
     // siempre. Si ya se vio la guía, welcomeGuide llama a _askBackgroundOnce al instante → mismo comportamiento de antes.
