@@ -78,7 +78,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 
 **Falta**
 - Visor de fotos: deslizar entre fotos y vídeos del chat, deslizar arriba/abajo para cerrar, sin «X» (dueño 16-11; en curso, 3159). ×1
-- Mandar varias fotos eligiendo cuáles van de «ver una vez» (ojo en la esquina; dueño 16-11; en curso, 3160). Después: «ver una vez» también para vídeos (dueño 16-11). ×1
+- Mandar varias fotos eligiendo cuáles van de «ver una vez» (ojo en la esquina; dueño 16-11; hecho 3160; el dueño decidió dejar la pantalla «Antes de enviar» también para quien no usa el ojo: un toque). Después: «ver una vez» también para vídeos (dueño 16-11). ×1
 - Texto del mensaje en el aviso con la app cerrada (llave en el Keystore; aprobado; PENDIENTES 15-11 noche «anti-suplantación»). ×2
 - Punto de encuentro sin señal («¿dónde están?»), para EDC (plan, etapa 4). ×2
 - Buscador en todos los chats (hoy solo dentro de un chat). ×1
