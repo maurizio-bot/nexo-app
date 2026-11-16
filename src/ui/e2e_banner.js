@@ -34,10 +34,12 @@ export function _renderE2EBanner() {
     b.textContent = t('chat_e2e_group', '🔒 Mensajes del grupo cifrados de extremo a extremo: cada mensaje va cifrado para cada persona del grupo.');
     return;
   }
+  // 3148 (Fénix Entorno, oculto): cuenta recuperada sin verificar, veto del teléfono de siempre o las dos llaves hablando → rojo
+  var feRed = !!(c.feConflict || c.feWarn || (c.recoveredAt && c.verified !== c.publicKey));
   b.style.cssText = 'margin:8px auto 12px;max-width:300px;padding:8px 12px;border-radius:10px;font-size:12px;text-align:center;cursor:pointer;white-space:pre-line;' +
-    (c.pendingKey || (c.mergeUnverified && c.verified !== c.publicKey) ? 'background:rgba(255,59,48,0.15);color:#ff8a80;' : 'background:rgba(255,200,0,0.12);color:#ffd76a;');
+    (c.pendingKey || feRed || (c.mergeUnverified && c.verified !== c.publicKey) ? 'background:rgba(255,59,48,0.15);color:#ff8a80;' : 'background:rgba(255,200,0,0.12);color:#ffd76a;');
   // 3140: el tema iguala la tarjeta a la paleta NEXO; con e2e-warn el aviso de clave cambiada / chat unido sigue en rojo
-  b.classList.toggle('e2e-warn', !!(c.pendingKey || (c.mergeUnverified && c.verified !== c.publicKey)));
+  b.classList.toggle('e2e-warn', !!(c.pendingKey || feRed || (c.mergeUnverified && c.verified !== c.publicKey)));
   var bi = window.bleInterface;
   var txt;
   if (c.pendingKey) {
@@ -47,7 +49,11 @@ export function _renderE2EBanner() {
       (held ? ' ' + held + (held === 1 ? t('chat_e2e_held_sing', ' mensaje retenido.') : t('chat_e2e_held_plur', ' mensajes retenidos.')) : '') +
       t('chat_e2e_until_accept', ' Hasta que la aceptes no se muestran sus mensajes nuevos ni se le envía nada.') +
       t('chat_e2e_impostor', ' Si no reinstaló NEXO, puede ser un impostor: comparad las huellas en persona.');
-  } else if (c.mergeUnverified && c.verified !== c.publicKey) txt = t('chat_e2e_merged', '⚠️ Este chat se unió con el de {name} anterior (otro NEXO ID) y NO está verificado: un impostor puede usar el mismo nombre. Toca y comparen el número de seguridad en persona.').replace('{name}', name); // 3135
+  } else if (c.feConflict) txt = t('chat_fe_conflict', '⚠️ El teléfono anterior de {name} sigue hablando después de recuperar su cuenta en otro: uno de los dos puede ser un impostor. Comparen el número de seguridad en persona antes de mandar nada importante.').replace('{name}', name);
+  else if (c.feWarn && !(c.fe && c.fe.st === 'vetoed')) txt = t('chat_fe_disputed', '⚠️ El teléfono de siempre de {name} dijo «no soy yo», pero la recuperación traía una prueba más fuerte. Comparen el número de seguridad en persona.').replace('{name}', name);
+  else if (c.feWarn) txt = t('chat_fe_vetoed', '⚠️ Alguien intentó recuperar la cuenta de {name} en otro teléfono y su teléfono de siempre dijo «no soy yo». Se mantiene la clave de siempre.').replace('{name}', name);
+  else if (c.recoveredAt && c.verified !== c.publicKey) txt = t('chat_fe_recovered', '⚠️ {name} recuperó su cuenta en un teléfono nuevo (lo confirmaron sus guardianes) y NO está verificado. Toca y comparen el número de seguridad en persona.').replace('{name}', name);
+  else if (c.mergeUnverified && c.verified !== c.publicKey) txt = t('chat_e2e_merged', '⚠️ Este chat se unió con el de {name} anterior (otro NEXO ID) y NO está verificado: un impostor puede usar el mismo nombre. Toca y comparen el número de seguridad en persona.').replace('{name}', name); // 3135
   else if (c.publicKey && c.verified === c.publicKey) txt = t('chat_e2e_verified', '🔒✔ Cifrado de extremo a extremo. Verificaste el número de seguridad de ') + name + '.';
   else if (c.publicKey && c.pkHearsay) txt = t('chat_e2e_hearsay_1', '⚠️ La clave de ') + name + t('chat_e2e_hearsay_2', ' llegó en una tarjeta compartida o por un grupo, SIN verificar. Toca y comparen el número de seguridad en persona para confirmar que es de verdad quien dice ser (se confirma sola cuando conecten directo).');
   else if (c.publicKey && c.keyAcceptedAt) txt = t('chat_e2e_accepted', '🔒 Cifrado de extremo a extremo. Aceptaste una clave nueva de ') + name + ' (' + new Date(c.keyAcceptedAt).toLocaleString() + t('chat_e2e_accepted_tail', '). Toca para verificar.');

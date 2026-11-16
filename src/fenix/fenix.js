@@ -28,6 +28,7 @@
 import { ShardCrypto } from './shard_crypto.js';
 import { e2eEncryptB64, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 import { vaultLoadFile, vaultReplaceAttachment } from '../vault/vault_manager.js';
+import { createFenixEntorno } from './fenix_entorno.js'; // 3148: Fénix Entorno (oculto, interruptor de desarrollo)
 
 var STATE_FILE = 'nexo_fenix.json';        // dueño: K, trozos, copia y nodos
 var STORE_FILE = 'nexo_fenix_store.json';  // nodo: lo que guarda de otros
@@ -101,6 +102,7 @@ export class Fenix {
     this.levels = new Map();       // nexoId → nivel de Fénix que anunció (fx del kx)
     this.askedSegs = {};           // tras recuperar: a quién ya se le pidieron los segmentos
     this.close = {};               // 3137: nexoId → días con Bluetooth (CLOSE_FILE)
+    this.ent = createFenixEntorno(ble, this); // 3148: sucesión de llave y veto (sin efecto con el interruptor apagado)
     this._busy = false;
     this._timer = null;
     this.ready = null;
@@ -156,6 +158,7 @@ export class Fenix {
     // 3137: conexión por Bluetooth (no por internet ni Wi-Fi) → un día más de cercanía con este contacto
     if (deviceId && !/^(lan|net)/i.test(String(deviceId)) && _fenixNoteBt(self.close, nx, Date.now(), self.cfg.closeKeepDays)) self._saveClose();
     if (self.recovery) self._askForRecovery(nx, deviceId);
+    if (self.ent) self.ent.onPeer(nx, deviceId); // 3148
     // Cuenta recién recuperada: pedirle los segmentos de mensajes que guarde (una vez por contacto)
     if (self.resetMark() && (Number(level) || 1) >= 2 && !self.askedSegs[nx] && deviceId) {
       self.askedSegs[nx] = Date.now();
@@ -331,6 +334,7 @@ export class Fenix {
     var nodes = {};
     Object.keys(s.nodes).forEach(function(nx) { if (!s.nodes[nx].lost) nodes[nx] = s.nodes[nx].idx; });
     acc.nodes = nodes; acc.n = s.n; acc.t = s.t; acc.ts = now;
+    if (this.ent) await this.ent.decorateAccount(acc); // 3148: sin llaves privadas y con la lista de guardianes firmada
     var ep = (s.ep || 0) + 1;
     var key = await _subtle().importKey('raw', _unhex(s.k), 'AES-GCM', false, ['encrypt']);
     var iv = _rand(12);
@@ -374,6 +378,7 @@ export class Fenix {
   // ---------- paquetes de control ('fp', 'fo', 'fq', 'fd'). true si era de Fénix ----------
   handle(p, deviceId) {
     var self = this;
+    if (p && (p.type === 'fs' || p.type === 'fv') && self.ent) return self.ent.handle(p, deviceId); // 3148
     if (!p || !/^f[poqd]$/.test(p.type || '')) return false;
     var from = _nid(p.from);
     if (!_isNx(from)) return true;
@@ -801,7 +806,7 @@ export class Fenix {
       var c = contacts.find(function(x) { return _nid(x.nexoId || x.deviceUUID) === nx; });
       return { nx: nx, name: (c && c.name) || owners[nx].name || nx.toUpperCase() };
     });
-    this.requests.set(rid, { from: from, deviceId: deviceId, pk: p.pk, ts: Date.now(), answered: false });
+    this.requests.set(rid, { from: from, deviceId: deviceId, pk: p.pk, ts: Date.now(), answered: false, fe: this.ent ? this.ent.reqExtra(p) : null });
     console.log('[FENIX] Un teléfono nuevo (' + from + ') pide recuperar una cuenta: pregunto al usuario');
     try { window.dispatchEvent(new CustomEvent('nexo:fenix:request', { detail: { rid: rid, from: from, name: String(p.nm || '').substring(0, 40), choices: choices } })); } catch (e) {}
   }
@@ -814,6 +819,7 @@ export class Fenix {
     var o = _nid(ownerNx), rec = o && this.store.owners[o];
     if (!rec) { console.log('[FENIX] Petición de recuperación rechazada por el usuario'); return false; }
     var payload = { v: 1, k: 'rec', o: o, ep: rec.ep, n: rec.n, t: rec.t, idx: rec.idx, share: rec.share, blob: rec.blob, bh: rec.bh, by: this.me() };
+    if (req.fe && this.ent) { var fa = await this.ent.attest(o, req); if (fa) payload.fa = fa; } // 3148: atestación firmada
     var data = await e2eEncryptB64(req.pk, _jsonB64(payload)); // solo lo abre ese teléfono
     var dev = await this._ensureLink(req.from, req.deviceId);
     if (!dev) { console.warn('[FENIX] No llego al teléfono nuevo para enviarle el fragmento'); req.answered = false; return false; }
@@ -880,7 +886,7 @@ export class Fenix {
     var pk = e2eMyPublicKey();
     if (!pk) return;
     r.asked[nx] = Date.now();
-    this._ctl(deviceId, { type: 'fq', rid: r.rid, pk: pk, nm: r.name });
+    this._ctl(deviceId, Object.assign({ type: 'fq', rid: r.rid, pk: pk, nm: r.name }, this.ent ? this.ent.askExtra(r) : null)); // 3148
     console.log('[FENIX] Pido ayuda para recuperar a ' + nx);
     this._recoveryEvent('asking');
   }
@@ -899,7 +905,7 @@ export class Fenix {
     if (!r || r.done || !p || !_isNx(_nid(p.o)) || !/^[0-9a-f]{64}$/.test(p.share || '') || !(p.idx >= 1 && p.idx <= 255)) return;
     var o = _nid(p.o);
     r.pieces[o] = r.pieces[o] || {};
-    r.pieces[o][p.idx] = { idx: p.idx, share: p.share, blob: p.blob, ep: p.ep, n: p.n, t: p.t, by: from };
+    r.pieces[o][p.idx] = { idx: p.idx, share: p.share, blob: p.blob, ep: p.ep, n: p.n, t: p.t, by: from, fa: p.fa || null };
     var got = Object.keys(r.pieces[o]).length;
     console.log('[FENIX] Recibido el fragmento ' + p.idx + ' de la cuenta ' + o + ' (' + got + ' de ' + p.t + ')');
     this._recoveryEvent('progress');
@@ -957,8 +963,9 @@ export class Fenix {
     var now = Date.now();
     console.log('[FENIX] Cuenta ' + acc.nexoId + ' recuperada (' + acc.contacts.length + ' contactos): escribiendo y reiniciando');
     await _save(NEXO_ID_FILE, JSON.stringify({ nexoId: acc.nexoId, createdAt: now, restored: true }));
-    await _save(IDENTITY_FILE, acc.identity);
-    if (acc.ratchet && acc.ratchet.ik) await _save(RATCHET_FILE, JSON.stringify({ v: 1, ik: acc.ratchet.ik, sign: acc.ratchet.sign, spks: acc.ratchet.spks, peers: {}, sessions: {}, seenEk: {} }));
+    var keepNew = this.ent ? await this.ent.onRestore(acc, pieces, this.recovery) : false; // 3148: principio A (llave nueva)
+    if (!keepNew) await _save(IDENTITY_FILE, acc.identity);
+    if (!keepNew && acc.ratchet && acc.ratchet.ik) await _save(RATCHET_FILE, JSON.stringify({ v: 1, ik: acc.ratchet.ik, sign: acc.ratchet.sign, spks: acc.ratchet.spks, peers: {}, sessions: {}, seenEk: {} }));
     var contacts = acc.contacts.map(function(c) {
       return { nexoId: c.nexoId, deviceUUID: c.nexoId, name: c.name, publicKey: c.publicKey, proto: c.proto || undefined, proto2At: c.proto2At || undefined,
         fx: c.fx || undefined, verified: c.verified || undefined, addedAt: c.addedAt || now, deviceId: null, lastSeen: 0, online: false, unreadCount: 0, lastMessage: '' };

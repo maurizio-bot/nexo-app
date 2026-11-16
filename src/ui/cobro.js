@@ -112,7 +112,7 @@ function _cobroWarn(fromNx) {
   var c = (bi.getBLEContacts() || []).find(function(x) { return String(x.nexoId || x.deviceUUID || '').toLowerCase() === nx; });
   var name = (c && c.name) || nx.toUpperCase();
   if (c && c.publicKey && c.verified === c.publicKey && !c.pendingKey) return '';
-  var risky = !c || c.pendingKey || c.pkHearsay || c.mergeUnverified;
+  var risky = !c || c.pendingKey || c.pkHearsay || c.mergeUnverified || c.feConflict || c.recoveredAt; // 3148: cuenta recuperada sin verificar
   var txt = risky
     ? t('media_cobro_risky', '⚠️ Cuidado: {name} NO está verificado (contacto nuevo con el nombre de otro, o clave cambiada). No pagues sin llamarle antes.')
     : t('media_cobro_unverified', '⚠️ Antes de pagar, confirma con una llamada que de verdad te lo pide {name}: no han verificado el número de seguridad.');

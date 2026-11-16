@@ -10,6 +10,7 @@ import { createGroupMedia } from './call_group_media.js';
 import { createGroupCall } from './group_call.js';
 import { createNet } from '../net/net_link.js';
 import { createFenix } from '../fenix/fenix.js';
+import { appLockConfirm } from './app_lock.js';
 import { _hasNativeMethod, _safeNativeCall, _normId, _getContactByUUID, _getBLEContacts, _saveBLEContacts, _safeDispatchEvent, BLE_STATES, _isPathDev } from './ble_helpers.js';
 import { BLE_CONNECTION_METHODS } from './ble_connections.js';
 import { BLE_MESSAGE_METHODS } from './ble_messages.js';
@@ -127,6 +128,7 @@ export class BLEInterface {
     this.gcall = createGroupCall(this, gmf);
     this.net = createNet(this);
     this.fenix = createFenix(this);
+    if (this.fenix.ent) this.fenix.ent.gate = appLockConfirm; // 3148: vetar una recuperación pide el desbloqueo de NEXO (si lo hay)
     this._localSeqCounter = 0;
     this._seqCounterLoaded = false;
     this._pendingPings = new Map();

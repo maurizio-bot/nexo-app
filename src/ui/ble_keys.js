@@ -6,6 +6,7 @@
 import { e2eMyPublicKey, e2eOpenAnon, e2eSealAnon, initE2E } from '../vault/e2e_crypto.js';
 import { e2eAllowsE1 } from '../vault/e2e_proto.js';
 import { ratchetForget, ratchetMyBundle, ratchetMyPqId, ratchetNotePeerBundle, ratchetPeerPqId, ratchetResetPeer } from '../vault/e2e_ratchet.js';
+import { feNoteOldKey } from '../fenix/fenix_entorno.js';
 import { _getBLEContacts, _normId, _normMac, _safeDispatchEvent, _saveBLEContacts, _vNx, _vaultLoadMessages } from './ble_helpers.js';
 
 
@@ -93,6 +94,8 @@ export const BLE_KEY_METHODS = {
       _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false });
       return true;
     }
+    // 3148 (Fénix Entorno): la llave ANTERIOR vuelve a hablar tras una sucesión aceptada → conflicto en rojo (y queda retenida, como siempre)
+    if (feNoteOldKey(c, pk, Date.now())) { _saveBLEContacts(contacts); _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false, conflict: true }); }
     if (c.pendingKey !== pk) {
       c.pendingKey = pk;
       c.keyChangedAt = Date.now();
@@ -232,7 +235,7 @@ export const BLE_KEY_METHODS = {
     var contacts = _getBLEContacts();
     var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
     if (!c || !c.publicKey || c.pendingKey) return false;
-    if (on) { c.verified = c.publicKey; delete c.pkHearsay; delete c.mergeUnverified; } else delete c.verified; // 3135: y la de «unido por el nombre» // H3: verificar el número de seguridad confirma la clave «de oídas»
+    if (on) { c.verified = c.publicKey; delete c.pkHearsay; delete c.mergeUnverified; delete c.feConflict; delete c.feWarn; } else delete c.verified; // 3148: y los avisos de Fénix Entorno // 3135: y la de «unido por el nombre» // H3: verificar el número de seguridad confirma la clave «de oídas»
     _saveBLEContacts(contacts);
     _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false, verified: !!on });
     return true;

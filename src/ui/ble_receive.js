@@ -99,8 +99,8 @@ export const BLE_RECEIVE_METHODS = {
       try { pgw = JSON.parse(raw); } catch (e) {}
       if (pgw && pgw.type === 'ig' && self.net.gw.handle(pgw, data.deviceId)) return Promise.resolve(null);
     }
-    // Fénix: pingeo, borrado y petición de recuperación (directos, sin 'to')
-    if (/"type":"f[poqd]"/.test(raw) && self.fenix) {
+    // Fénix: pingeo, borrado y petición de recuperación (directos, sin 'to'); 3148: registro de sucesión y veto ('fs'/'fv', ocultos)
+    if (/"type":"f[poqdsv]"/.test(raw) && self.fenix) {
       var pf = null;
       try { pf = JSON.parse(raw); } catch (e) {}
       if (pf && !pf.to && self.fenix.handle(pf, data.deviceId)) return Promise.resolve(null);
@@ -170,6 +170,7 @@ export const BLE_RECEIVE_METHODS = {
         return Promise.resolve(null);
       }
       if (p.from && p.pk) self._noteSenderKey(p.from, p.pk);
+      if (p.from && p.pk && self.fenix && self.fenix.ent) self.fenix.ent.onKx(p.from, p.pk, data.deviceId); // 3148: llave vieja tras una sucesión
       if (p.from && p.b2) self._notePeerBundle(p.from, p.b2);
       // Ronda 2764: el kx dice quién está al otro lado de esta conexión: si la tenía apuntada como de otro, se corrige
       // (solo si su clave es la que conozco de él: un impostor no se lleva lo de otro)

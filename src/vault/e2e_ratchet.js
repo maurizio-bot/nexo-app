@@ -693,3 +693,10 @@ export async function ratchetSafetyNumber(myNx, theirNx, theirIk) {
   return s.match(/.{5}/g).join(' ');
 }
 export function ratchetMySigningKey() { return _store ? _store.sign.pub : null; }
+// 3148 (Fénix Entorno, oculto): firma con la llave de firma de esta identidad SOLO textos con la etiqueta 'NEXO-FE-' (registro de
+// sucesión, atestación de guardián, lista de guardianes, veto); no sirve para firmar una clave previa ni nada más del protocolo.
+export async function ratchetSignFe(text) {
+  await ratchetInit();
+  if (!_store || String(text).indexOf('NEXO-FE-') !== 0) return null;
+  return _signData(String(text));
+}

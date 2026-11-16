@@ -155,6 +155,13 @@ export function initAppLock(opts) {
 }
 
 export function isAppLocked() { return _locked; }
+
+// 3148 (Fénix Entorno, oculto): el método de desbloqueo que el usuario eligió para NEXO se exige para vetar una recuperación.
+// need=false: no tiene ninguno activado (qué hacer entonces es una decisión abierta del dueño; hoy: veto «sin desbloqueo», más débil).
+export async function appLockConfirm(title) {
+  if (!_prefs.lock) return { need: false, ok: false };
+  return { need: true, ok: await _auth(title, '') };
+}
 // Bloqueo activado: las notificaciones no llevan el texto del mensaje
 export function lockEnabled() { return !!_prefs.lock; }
 

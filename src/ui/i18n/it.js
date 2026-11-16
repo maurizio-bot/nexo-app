@@ -893,4 +893,10 @@ export default {
   set_sec_backup_d: "Fénix e passaggio dell'account a un altro telefono",
   set_sec_diag: "Diagnostica e aiuto",
   set_sec_diag_d: "Copia diagnostica, invio automatico e guida di benvenuto",
+  chat_fe_conflict: "⚠️ Il telefono precedente di {name} continua a parlare dopo che ha recuperato l'account su un altro: uno dei due può essere un impostore. Confrontate il numero di sicurezza di persona prima di mandare qualcosa di importante.",
+  chat_fe_vetoed: "⚠️ Qualcuno ha provato a recuperare l'account di {name} su un altro telefono e il suo telefono di sempre ha detto «non sono io». Resta la chiave di sempre.",
+  chat_fe_disputed: "⚠️ Il telefono di sempre di {name} ha detto «non sono io», ma il recupero aveva una prova più forte. Confrontate il numero di sicurezza di persona.",
+  chat_fe_recovered: "⚠️ {name} ha recuperato l'account su un telefono nuovo (confermato dai suoi guardiani) e NON è verificato. Tocca e confrontate il numero di sicurezza di persona.",
+  fe_claim_q: "Un altro telefono sta recuperando il tuo account NEXO. Se NON sei tu, tocca OK per impedirlo (ti verrà chiesto lo sblocco di NEXO se ce l'hai).",
+  fe_veto_auth: "Conferma che non sei tu",
 };
