@@ -368,3 +368,17 @@ body::before {
 
 /* 2982 (A5): pista bajo el título del selector de stickers */
 .sticker-hint { font-size: 12px; color: var(--nx-muted); text-align: center; margin: -2px 0 8px; }
+
+/* ====== 3140 (dueño 16-11: «la pantalla de agregar contactos… no replicaste el estilo NEXO de Contactos»): la PLANTILLA de su
+   pantalla de Contactos para todas las demás. Fondo liso var(--nx-bg); cabecera de 64 px con el título a la izquierda (26 px, 800,
+   degradado blanco→#b9c4ff, como #main-title); botones redondos de 42 px como los de Perfil y Grupo; personas siempre con su círculo
+   de color (person_avatar.js = el de .ble-contact-avatar). ====== */
+.nx-page-head { display: flex; align-items: center; gap: 10px; min-height: calc(64px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 14px 0 18px; box-sizing: border-box; background: transparent; border: none; }
+.nx-page-title { flex: 1; min-width: 0; margin: 0; text-align: left; font-size: 26px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.15;
+  background: linear-gradient(90deg, #fff 30%, #b9c4ff); -webkit-background-clip: text; background-clip: text; color: transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nx-round-btn { width: 42px; height: 42px; min-width: 42px; border-radius: 50%; background: var(--nx-surface-2); border: 1px solid var(--nx-line); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; font-size: 18px; }
+.nx-round-btn svg { width: 21px; height: 21px; stroke: #fff; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.nx-person-row { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: var(--nx-radius); }
+.nx-person-row.is-pressed { background: var(--nx-surface); }
+.nx-person-av { flex-shrink: 0; }
