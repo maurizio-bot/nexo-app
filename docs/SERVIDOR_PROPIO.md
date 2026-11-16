@@ -171,3 +171,19 @@ servidor, los dos vuelven a él en ~1 s (como mucho ~10 s: el reintento) y lo si
   repetido sigue siendo ×3 (antes ×4). Si hace falta, aplicarle la misma regla del lector.
 - Elegir qué 2 públicos quedan de respaldo (hoy, los dos primeros de `DEFAULT_RELAYS`: relay.damus.io y nos.lol; damus.io
   «se cae sin parar» en los diagnósticos: si sigue así, la reserva lo cubre, pero se puede cambiar el orden).
+
+## 8. Instalación (3154): texto para «Cloud config» al crear el servidor
+
+- `python3 infra/servidor/generar.py relay.<dominio>` escribe el cloud-init para Ubuntu 24.04: compila strfry como su
+  `docs/DEPLOYMENT.md` (dependencias de ese documento, que incluye las de Perl que pide golpe), lo deja en `127.0.0.1:7777` con
+  `db = /var/lib/strfry/`, `realIpHeader = x-forwarded-for` y la política `infra/servidor/nexo-policy.py`; Caddy delante (TLS
+  automático, `wss://`), cortafuegos (22/80/443) y 2 GB de memoria de intercambio para compilar.
+- La política es la del §5 pasada a Python (no hace falta instalar Node): forma exacta de los eventos de NEXO, caducidad ≤ 7 días
+  (+1 h) y **100 eventos/s por IP con ráfaga de 400** (subido de 30/120: en datos móviles muchos usuarios comparten IP).
+  Probada aquí con eventos de muestra (acepta los de NEXO, rechaza kind 1, forma mala, caducidad de 30 días, 60 001 caracteres;
+  en una ráfaga de 500 desde una IP acepta 401).
+- Se actualiza sola: un temporizador trae `nexo-policy.py` de la rama NEXOCHAT cada 6 h y solo la cambia si es Python válido
+  (strfry la recarga al cambiar). No lleva contraseñas ni claves.
+- Comprobado aquí: que la configuración de strfry acepta los cambios (sed sobre su `strfry.conf` real) y que el YAML es válido.
+  **No comprobado aquí:** la compilación de strfry (el entorno no deja instalar paquetes del sistema) ni Caddy: se verá en el
+  servidor (unos 10-15 min tras crearlo).
