@@ -14,6 +14,10 @@ var MAX_SEEN = 2000;
 // 3069 (desatasco, resync.js): lo ya contado se guarda en el teléfono (los últimos SEEN_KEEP). Tras reiniciar, un mensaje que el otro
 // REENVÍA (desatasco del cifrado, o cualquier reenvío por id) y que ya estaba aquí no vuelve a avisar ni a sumar «no leídos»
 var SEEN_FILE = 'nexo_notify_seen.json', SEEN_KEEP = 500;
+// 3158 (PENDIENTES 13-11, leidoaviso.js): los msgId SIN LEER por chat también se guardan. Si Android mata la app después de avisar, al
+// tocar el aviso la app arranca de cero y abre el chat: sin esto no quedaba nada que confirmar (vivían solo en memoria; el contador
+// sí estaba guardado) y el que escribió veía «entregado» para siempre
+var UNREAD_FILE = 'nexo_notify_unread.json', UNREAD_CHATS = 100;
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
@@ -64,12 +68,38 @@ export class Notifier {
     self._seenWait = [];
     var done = function() { var q = self._seenWait || []; self._seenWait = null; q.forEach(function(m) { self.incoming(m); }); };
     var t = setTimeout(done, 3000); // sin respuesta del disco: no se retiene nada más
-    Promise.resolve(pl.loadFromFile({ filename: SEEN_FILE })).then(function(r) {
+    var pSeen = Promise.resolve(pl.loadFromFile({ filename: SEEN_FILE })).then(function(r) {
       if (r && r.exists && r.content) {
         var arr = JSON.parse(r.content);
         if (Array.isArray(arr)) arr.forEach(function(k) { if (typeof k === 'string' && !self.seen.has(k)) self.seen.set(k, 0); });
       }
-    }).catch(function() {}).then(function() { clearTimeout(t); if (self._seenWait) done(); });
+    }).catch(function() {});
+    var pUnread = Promise.resolve(pl.loadFromFile({ filename: UNREAD_FILE })).then(function(r) { // 3158: lo guardado va antes de lo nuevo
+      var o = r && r.exists && r.content ? JSON.parse(r.content) : null;
+      if (o && typeof o === 'object') Object.keys(o).forEach(function(cid) {
+        var cur = self.unreadIds.get(cid) || [];
+        if (Array.isArray(o[cid])) self.unreadIds.set(cid, o[cid].filter(function(id) { return typeof id === 'string' && cur.indexOf(id) < 0; }).concat(cur).slice(-50));
+      });
+    }).catch(function() {});
+    Promise.all([pSeen, pUnread]).then(function() { clearTimeout(t); if (self._seenWait) done(); });
+  }
+  // 3158: guarda/añade un msgId sin leer del chat (el «leído» sale al abrirlo) y lo deja en el teléfono enseguida
+  _keepUnread(cid, msgId) {
+    var ids = this.unreadIds.get(cid) || [];
+    ids.push(msgId);
+    if (ids.length > 50) ids.shift();
+    this.unreadIds.set(cid, ids);
+    this._saveUnreadSoon();
+  }
+  _saveUnreadSoon() {
+    var self = this;
+    if (self._unreadT) return;
+    self._unreadT = setTimeout(function() {
+      self._unreadT = null;
+      var o = {}, keys = Array.from(self.unreadIds.keys());
+      keys.slice(Math.max(0, keys.length - UNREAD_CHATS)).forEach(function(k) { o[k] = self.unreadIds.get(k); });
+      _call('saveToFile', { filename: UNREAD_FILE, content: JSON.stringify(o) });
+    }, 1000);
   }
   _saveSeenSoon() {
     var self = this;
@@ -104,16 +134,11 @@ export class Notifier {
     if (open) {
       if (m.msgId) {
         if (_visible() && this.sendRead) this.sendRead(cid, m.msgId);
-        else if (this.sendRead) { var oids = this.unreadIds.get(cid) || []; oids.push(m.msgId); if (oids.length > 50) oids.shift(); this.unreadIds.set(cid, oids); }
+        else if (this.sendRead) this._keepUnread(cid, m.msgId);
       }
       return;
     }
-    if (m.msgId) {
-      var ids = this.unreadIds.get(cid) || [];
-      ids.push(m.msgId);
-      if (ids.length > 50) ids.shift();
-      this.unreadIds.set(cid, ids);
-    }
+    if (m.msgId) this._keepUnread(cid, m.msgId);
     var bi = this.ble();
     var count = bi && typeof bi.bumpUnread === 'function' ? bi.bumpUnread(cid) : 0;
     // Notificación del teléfono solo con la app en segundo plano (a la vista ya se ve la burbuja numerada)
@@ -139,8 +164,10 @@ export class Notifier {
     var cid = _nid(d.nexoId);
     if (!cid || d.count > 0) return;
     if (!_visible()) return;
+    // 3158: con la app recién arrancada (abrir desde el aviso) se espera a tener lo sin leer guardado (un instante)
+    if (this._seenWait) { var me = this; setTimeout(function() { me._onUnread(d); }, 200); return; }
     var ids = this.unreadIds.get(cid) || [];
-    this.unreadIds.delete(cid);
+    if (this.unreadIds.delete(cid)) this._saveUnreadSoon();
     var self = this;
     if (this.sendRead) ids.forEach(function(id) { self.sendRead(cid, id); });
     // #dueño 04-11: al abrir/leer un chat con la app a la vista se quita SIEMPRE su notificación del teléfono, aunque
