@@ -1686,6 +1686,10 @@
     {
      "fallo": "3138 (estados3.js en la batería de la 3133, contraprueba 3128 OK / 3129 FALLO): la petición automática de foto y estados al agregar un contacto (3129, avatar.js) gastaba el freno de 15 s de «pedir estados» del otro y el «deslizar para actualizar» del usuario justo después no traía nada. 3138: la automática lleva auto:1 y tiene su freno aparte",
      "prueba": "Estados v3 (3032"
+    },
+    {
+     "fallo": "Deslizar un mensaje para responder «no siempre funcionaba» (dueño 16-11: el gesto exigía ir casi recto y un gesto cancelado por el sistema podía responder o no) y deslizar para cancelar una nota de voz (3143)",
+     "prueba": "gestos del chat"
     }
    ],
    "debiles": [
