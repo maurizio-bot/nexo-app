@@ -1015,6 +1015,10 @@
     {
      "fallo": "3147 (dueño 16-11: «preparar el mejor camino al abrir el chat, para que enviar sea instantáneo»): al abrir un chat no se hacía nada por internet; si la presencia del otro había caducado (estuvo sin internet y volvió sin que yo me enterase) nadie saludaba y seguía «sin conexión» hasta su próximo mensaje. 3147: al abrir el chat (y al empezar a escribir) un saludo cifrado si hace > 20 s del último (net.probe), y al escribir la conexión Bluetooth si está cerca; uno cada 20 s por contacto como mucho. rutachat.js (contraprueba 3145: B nunca en línea en 10 s; 3147: 0,5 s)",
      "prueba": "CAMINO PREPARADO AL ABRIR EL CHAT (3147, dueño 16-11)"
+    },
+    {
+     "fallo": "3151 (dueño 16-11: «NEXO tendrá su PROPIO servidor de relé, de pago, para que mensajes y archivos vayan tan rápido como WhatsApp; los públicos de respaldo»; diagnósticos 15-11: archivos por relés a 9–25 KB/s, «internet listo» 13,7 s de media, de 15,5 MB bajados de los relés 12,7 MB REPETIDOS). Solo había relés públicos: cada evento llegaba repetido por cada relé suscrito (4), cada trozo del buzón de archivos se subía a todos (un archivo de 2 MB = ~11 MB subidos) con sus límites de ritmo. 3151 (app lista, servidor aún sin dirección: OWN_RELAYS vacío = como siempre): con relé propio se conecta primero, se lee de él y de UN público, lo pesado y los trozos del buzón van solo a él (una copia, 8 a la vez, primero en el puntero), 2 públicos de respaldo; si cae, en segundos se lee de todos los públicos y lo pesado va a ellos; vuelve solo (reintento ≤ 10 s). releprop.js, contraprueba sin propio: en línea 2,2 → 1,1 s, texto 410 → 208 ms, 2 MB 50,3 → 7,5 s, repetido 46 → 18 KB, subido 10,8 → 2,8 MB; caída: texto por públicos a los 0,5 s; vuelta al propio en 1 s",
+     "prueba": "RELÉ PROPIO (3151"
     }
    ],
    "debiles": [

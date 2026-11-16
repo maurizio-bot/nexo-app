@@ -210,6 +210,11 @@ export class Calls {
     if (self.lane === 1) _telecom('out', { to: nx, video: !!video });  // parte 2: la saliente aparece como llamada real del sistema
     console.log('[CALL] Llamando a ' + nx + ' (' + id + ')');
     self._ringTimer = setTimeout(function() { if (self.call && self.call.id === id && self.call.state === 'calling') self._finish('unanswered', true); }, window.NEXO_CALL_RING_MS || RING_MS);
+    // 3152 (diagnóstico S24 16-11: videollamada de 219 s en la que el S24 no mandó NADA, ni voz ni imagen): el micrófono y la cámara
+    // se pedían al CONTESTAR el otro; la app había pasado a segundo plano 2 s antes y el pedido no contestó en toda la llamada. Ahora
+    // se piden al LLAMAR, con la app a la vista (y uno se ve mientras suena); lo que sale antes de que conteste no se manda. Solo la
+    // primera línea y sin otra llamada en curso (con otra, el micrófono sigue siendo de ésa hasta contestar).
+    if (self.lane === 1 && !(self.ble && typeof self.ble._callCount === 'function' && self.ble._callCount() > 1)) self._makeMedia(self.call);
     return Promise.all([self._importKey(key), self._codecs()]).then(function(r) {
       if (!self.call || self.call.id !== id) return;
       self.call.cryptoKey = r[0];
@@ -249,6 +254,22 @@ export class Calls {
     // También por el canal de la voz (cifrado): si el chat va por un camino que ya no sirve, el otro se entera igual
     if (c.state === 'active') this._sendPacket(new TextEncoder().encode('END'), 'e');
     this._finish(c.state === 'active' ? 'ended' : 'cancelled', false);
+  }
+
+  // #224 (dueño 16-11: «cuando hago una videollamada con otro contacto y luego agrego un contacto a la videollamada, no debería
+  // quitarse toda la parte de video»): la videollamada pasa a la de GRUPO sin cortarse. Se entrega lo que está vivo (la captura con
+  // micrófono y cámara abiertos y el decodificador del otro, con su imagen en pantalla) y la 1-a-1 termina SIN avisar al otro (su lado
+  // hace lo mismo al recibir la invitación del grupo con el id de esta llamada). null si no hay nada que pasar (voz, o sin medios).
+  handoff() {
+    var self = this, c = self.call, m = c && c.media;
+    if (!c || c.state !== 'active' || !c.video || !m || typeof m.retarget !== 'function') return null;
+    if (c.screen) self._screenStop(c, 'pasa a grupo');
+    m.retarget({}); // lo que salga hasta que la de grupo lo tome no va a ninguna parte
+    var out = { media: m, nx: c.nx, id: c.id, video: true, muted: !!c.muted, cameraOff: !!c.cameraOff, peerFront: c.peerFront, startedAt: c.startedAt || 0 };
+    c.media = null;
+    console.log('[CALL] Pasa a llamada de grupo sin cortar la imagen (' + c.nx + ')');
+    self._finish('upgrade', false);
+    return out;
   }
 
   // Imagen propia y del otro (videollamada) para la pantalla
@@ -354,17 +375,9 @@ export class Calls {
   }
 
 
-  // La llamada empieza: micrófono y altavoz
-  _begin() {
-    var self = this, c = self.call;
-    if (!c) return;
-    c.startedAt = Date.now(); c.lastRx = Date.now();
-    self.stats = { sent: 0, got: 0, bad: 0 }; // por llamada (el diagnóstico de cada una)
-    self._set({ state: 'active', startedAt: c.startedAt });
-    if (self.ble && typeof self.ble._holdOthers === 'function') { try { self.ble._holdOthers(self); } catch (e) {} } // #222: la otra llamada, en espera sola
-    if (self.lane === 1) _telecom('active');  // parte 2: la saliente por Telecom pasa a activa (la entrante no pasa por aquí: no-op)
-    console.log('[CALL] En llamada con ' + c.nx + ' (' + c.id + ')');
-    if (c.video && self.lane === 1) _pipActive(true); // videollamada → habilitar la miniatura (PiP) al irse de la app
+  // Micrófono, cámara y sonido de la llamada (call_media.js). 3152: la saliente los abre al llamar (start), la entrante al contestar
+  _makeMedia(c) {
+    var self = this;
     var media;
     try {
       media = self.mediaFactory({ onPacket: function(bytes) { self._sendPacket(bytes); }, codecs: c.peerCodecs || 'opus,ulaw',
@@ -385,11 +398,31 @@ export class Calls {
     } catch (e) { console.warn('[CALL] Sin audio: ' + (e && e.message)); }
     c.media = media || null;
     if (media && media.start) Promise.resolve(media.start()).then(function(info) {
+      if (self.call !== c) return; // (3152: ya colgada mientras se abría)
       if (info && info.codec) {
         console.log('[CALL] Audio: ' + info.codec + (info.mic === false ? ' (sin micrófono por ahora: ' + info.micError + ')' : '') + (c.video ? ', vídeo: ' + (info.video ? 'VP8' : 'no por ahora') : ''));
         self._set(c.video ? { codec: info.codec, videoOk: !!info.video } : { codec: info.codec });
       }
-    }).catch(function(e) { console.warn('[CALL] Micrófono: ' + (e && e.message)); self._set({ micError: (e && e.message) || 'sin micrófono' }); });
+    }).catch(function(e) { console.warn('[CALL] Micrófono: ' + (e && e.message)); if (self.call === c) self._set({ micError: (e && e.message) || 'sin micrófono' }); });
+  }
+
+  // La llamada empieza: micrófono y altavoz
+  _begin() {
+    var self = this, c = self.call;
+    if (!c) return;
+    c.startedAt = Date.now(); c.lastRx = Date.now();
+    self.stats = { sent: 0, got: 0, bad: 0 }; // por llamada (el diagnóstico de cada una)
+    self._set({ state: 'active', startedAt: c.startedAt });
+    if (self.ble && typeof self.ble._holdOthers === 'function') { try { self.ble._holdOthers(self); } catch (e) {} } // #222: la otra llamada, en espera sola
+    if (self.lane === 1) _telecom('active');  // parte 2: la saliente por Telecom pasa a activa (la entrante no pasa por aquí: no-op)
+    console.log('[CALL] En llamada con ' + c.nx + ' (' + c.id + ')');
+    if (c.video && self.lane === 1) _pipActive(true); // videollamada → habilitar la miniatura (PiP) al irse de la app
+    if (!c.media) self._makeMedia(c);
+    else { // 3152: abiertos al llamar: lo que recibe el otro, una imagen completa ya y mi cámara/micrófono para su pantalla
+      if (typeof c.media.setPeerCodecs === 'function') c.media.setPeerCodecs(c.peerCodecs || 'ulaw');
+      if (typeof c.media.requestKey === 'function') c.media.requestKey();
+      if (c.camState || c.micState) self._sendState(c);
+    }
     // Ronda 2769: al volver a la app (la cámara se pierde en segundo plano), cámara y audio otra vez ya
     if (!self._wakeHook && typeof document !== 'undefined') {
       self._wakeHook = true;

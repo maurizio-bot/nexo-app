@@ -168,6 +168,10 @@ export function createCallMedia(opts) {
   var camState = '', micState = '', camErr = '', micErr = '', watchTimer = null;
   var camOpening = false, camTries = 0, camDenied = 0, camNextTry = 0, camReopens = 0, lastFrameAt = 0, playTriedAt = 0;
   var micOpening = false, micNextTry = 0, micReopens = 0, lastResumeAt = 0;
+  // 3152 (diagnóstico S24 16-11: videollamada de 219 s en la que el S24 no mandó NADA): un getUserMedia pedido con la app en
+  // segundo plano no contesta hasta volver (y la llamada entera pasó así). Se apunta cuándo se pidió y cuándo se vio la app oculta:
+  // si al volver a la vista sigue sin contestar, se abandona (lo que llegue tarde se cierra) y se pide otra vez
+  var micGen = 0, camGen = 0, micOpenAt = 0, camOpenAt = 0, hiddenAt = 0;
   var rxVideoAt = 0, firstRxAt = 0, lastDecodedAt = 0, lastKeyReq = 0, stallResetAt = 0;
 
   function setState(cam, micS) {
@@ -251,6 +255,7 @@ export function createCallMedia(opts) {
 
   // Audio: el procesador (y el codificador) se montan una vez; el micrófono se conecta cuando abre (y si se vuelve a abrir)
   function setupAudio() {
+    if (ctx || stopped) return; // (3152: una sola vez, también si el micrófono tardó y se montó antes)
     var AC = window.AudioContext || window.webkitAudioContext;
     ctx = new AC({ sampleRate: RATE });
     // #128 grupo: un decodificador de un tramo solo reproduce → ctx listo (y resume) y nada de micrófono/codificador
@@ -300,7 +305,8 @@ export function createCallMedia(opts) {
 
   function openMic(first) {
     if (micOpening || stopped) return Promise.resolve(false);
-    micOpening = true;
+    micOpening = true; micOpenAt = Date.now();
+    var gen = ++micGen;
     // Ronda 2774 (el dueño seguía oyendo eco/ruido): además de lo estándar, se piden las pistas antiguas de Chrome
     // Android (goog*, se ignoran donde no existan) y mono; echoCancellationType 'system' prefiere el cancelador del
     // teléfono (hardware) cuando lo hay. Lo que no cubra el navegador lo quita el filtro propio (call_voice_fx.js).
@@ -310,6 +316,7 @@ export function createCallMedia(opts) {
       googEchoCancellation: true, googNoiseSuppression: true, googNoiseSuppression2: true,
       googAutoGainControl: true, googHighpassFilter: true, googTypingNoiseDetection: true
     } }, 'Micrófono ocupado').then(function(s) {
+      if (gen !== micGen) { _stopAll(s); return false; } // 3152: llegó tarde (ya se pidió otra vez)
       micOpening = false;
       if (stopped) { _stopAll(s); return false; }
       var t = s.getAudioTracks()[0];
@@ -325,6 +332,7 @@ export function createCallMedia(opts) {
       setState(null, 'on');
       return true;
     }).catch(function(e) {
+      if (gen !== micGen) return false;
       micOpening = false;
       micErr = (e && e.name) || 'error';
       micNextTry = _final(e) ? Infinity : Date.now() + MIC_RETRY_MS;
@@ -338,9 +346,11 @@ export function createCallMedia(opts) {
   // no abren la misma cámara dos veces)
   function openCam(reason, release) {
     if (camOpening || stopped || !wantVideo) return Promise.resolve(false);
-    camOpening = true; camTries++;
+    camOpening = true; camTries++; camOpenAt = Date.now();
+    var gen = ++camGen;
     if (release) stream.getVideoTracks().forEach(function(o) { stream.removeTrack(o); try { o.stop(); } catch (e) {} });
     return openCamStream(facing).then(function(s) {
+      if (gen !== camGen) { _stopAll(s); return false; } // 3152: llegó tarde (ya se pidió otra vez)
       camOpening = false;
       if (stopped) { _stopAll(s); return false; }
       var t = s.getVideoTracks()[0];
@@ -353,6 +363,7 @@ export function createCallMedia(opts) {
       setState(camOn ? 'on' : 'off');
       return startVideo();
     }).catch(function(e) {
+      if (gen !== camGen) return false;
       camOpening = false;
       camErr = (e && e.name) || 'error';
       // #dueño 01-11 (diagnóstico de videollamada «Cámara: NotAllowedError: solo voz»): un permiso denegado al activar
@@ -539,6 +550,7 @@ export function createCallMedia(opts) {
   function watch() {
     if (stopped) return;
     var now = Date.now(), visible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+    unstick(now, visible);
     // Audio en pausa (el sistema lo paró, otra app tomó el audio): se reanuda
     if (ctx && ctx.state === 'suspended' && now - lastResumeAt > 1500) { lastResumeAt = now; console.log('[CALL] Audio en pausa: se reanuda'); ctx.resume().catch(function() {}); }
     // Micrófono cortado por el sistema (o que no abrió): se vuelve a pedir
@@ -557,6 +569,22 @@ export function createCallMedia(opts) {
         needKey('sin imagen ' + Math.round((now - since) / 1000) + ' s');
         if (vdec && now - since > 2 * STALL_MS && now - stallResetAt > 2 * STALL_MS) { stallResetAt = now; console.warn('[CALL] Vídeo (recibir) parado: decodificador nuevo'); resetDecoder(); }
       }
+    }
+  }
+  // 3152: lo que se pidió (o seguía pedido) con la app oculta y, ya a la vista desde hace 1 s, no contesta: se pide otra vez
+  // (con la app a la vista no se toca: puede estar el aviso del permiso del sistema esperando al usuario)
+  function unstick(now, visible) {
+    if (!visible) { hiddenAt = now; return; }
+    if (stopped || noCapture || !hiddenAt || now - hiddenAt < 1000) return;
+    if (micOpening && micOpenAt <= hiddenAt) {
+      console.warn('[CALL] El micrófono no contestó con la app en segundo plano (' + Math.round((now - micOpenAt) / 1000) + ' s): se pide otra vez');
+      micOpening = false; micGen++; micNextTry = 0;
+      openMic(false).then(function() { if (!stopped) setupAudio(); });
+    }
+    if (camOpening && !flipping && camOpenAt <= hiddenAt) {
+      console.warn('[CALL] La cámara no contestó con la app en segundo plano (' + Math.round((now - camOpenAt) / 1000) + ' s): se pide otra vez');
+      camOpening = false; camGen++; camNextTry = 0; camTries = 0;
+      if (camOn && wantVideo) openCam('no contestó');
     }
   }
   function watchCam(now, visible) {
@@ -586,7 +614,9 @@ export function createCallMedia(opts) {
         watchTimer = setInterval(watch, WATCH_MS);
         // Ronda 2769: primero el micrófono y luego la cámara, por separado (antes juntos: si la cámara fallaba, sin voz).
         // Ronda 2772: y el audio de salida después del micrófono (ver arriba: eco); sin micrófono, igual (se oye al otro)
-        return openMic(true).then(function(ok) { if (!stopped) setupAudio(); return ok; });
+        // 3152: si el micrófono tarda (pedido con la app oculta), el sonido del otro no lo espera
+        var slow = setTimeout(function() { if (!stopped && micOpening) { console.warn('[CALL] El micrófono tarda: el sonido del otro ya suena'); setupAudio(); } }, 3000);
+        return openMic(true).then(function(ok) { clearTimeout(slow); if (!stopped) setupAudio(); return ok; });
       }).then(function(micOk) {
         var info = { codec: codec === 1 ? 'opus' : 'ulaw', mic: !!micOk, micError: micOk ? '' : micErr, video: false };
         if (stopped || !wantVideo) { if (!wantVideo) setState('none'); return info; }
@@ -626,6 +656,29 @@ export function createCallMedia(opts) {
     },
     // Ronda 2769: el otro no tiene imagen: la siguiente que sale es completa
     requestKey: function() { forceKey = true; },
+    // 3152: la llamada saliente abre micrófono y cámara al LLAMAR (antes de saber qué recibe el otro): al contestar, μ-law si el
+    // otro no tiene Opus (lo de antes de contestar no salió)
+    setPeerCodecs: function(co) {
+      peerCodecs = String(co || 'ulaw');
+      if (codec !== 1 || peerCodecs.indexOf('opus') >= 0) return;
+      codec = 2; pending = [];
+      try { if (enc && enc.state !== 'closed') enc.close(); } catch (e) {}
+      console.log('[CALL] El otro no tiene Opus: μ-law');
+    },
+    // #224 (dueño 16-11: «cuando hago una videollamada con otro contacto y luego agrego un contacto a la videollamada, no debería
+    // quitarse toda la parte de video»): la 1-a-1 pasa a la de grupo SIN cortar: la misma captura (micrófono y cámara abiertos,
+    // mi imagen en pantalla) y el mismo decodificador del otro (su imagen sigue en el mismo sitio). Solo cambia a dónde va lo que
+    // sale (call_group_media.js); sin destinos, no va a ninguna parte.
+    retarget: function(o) {
+      o = o || {};
+      onPacket = typeof o.onPacket === 'function' ? o.onPacket : function() {};
+      opts.onVideoPacket = typeof o.onVideoPacket === 'function' ? o.onVideoPacket : null;
+      opts.onSlidePacket = null;
+      onState = typeof o.onState === 'function' ? o.onState : function() {};
+      onNeedKey = typeof o.onNeedKey === 'function' ? o.onNeedKey : function() {};
+      wantSlides = function() { return false; }; wantCamSlides = function() { return false; };
+      forceKey = true;
+    },
     // ¿Se está viendo la imagen del otro? (si no, la pantalla muestra su foto en vez de negro)
     remoteLive: function() { var now = Date.now(); return (!!lastDecodedAt && now - lastDecodedAt < 2500) || (!!lastSlideAt && now - lastSlideAt < 2 * SLIDE_KEEP_MS); },
     // Ronda 2762: cámara de delante / de detrás (se suelta la actual antes de abrir la otra: muchos teléfonos no

@@ -25,20 +25,29 @@ export function createGroupMedia(opts) {
   var video = !!opts.video; // capaz de vídeo (la cámara empieza apagada: cameraStart:false)
   var mk = opts._mk || createCallMedia; // inyectable para pruebas (en producción, call_media.js real)
   var stopped = false;
+  var needKey = function(nx) { if (typeof opts.onNeedKey === 'function') { try { opts.onNeedKey(nx); } catch (e) {} } };
+  // #224 (dueño 16-11): «Agregar» en una videollamada 1-a-1: la captura y el decodificador del otro de esa llamada pasan TAL CUAL
+  // a la de grupo (opts.adopt = { media, nx }): ni la cámara se cierra ni su imagen deja de verse. Solo cambia a dónde va lo que sale.
+  var ad = opts.adopt && opts.adopt.media && typeof opts.adopt.media.retarget === 'function' ? opts.adopt.media : null;
+  var adNx = ad ? String(opts.adopt.nx || '') : '';
 
   // Captura compartida: un micrófono + (si procede) una cámara, un codificador → cada paquete va a TODOS los tramos.
   // cameraStart: si es una VIDEOLLAMADA, la cámara se abre al arrancar (como la 1-a-1, camino probado); si no, apagada.
-  var cap = mk({
+  var cap = ad || mk({
     codecs: codecs, video: video, cameraStart: !!opts.cameraStart, voiceFx: opts.voiceFx,
     onPacket: function(bytes) { try { onPacket(bytes); } catch (e) {} },
     onVideoPacket: function(bytes) { try { onVideoPacket(bytes); } catch (e) {} },
   });
 
   var decoders = new Map(); // nx (tramo) → instancia que SOLO reproduce (voz + imagen)
+  if (ad) {
+    ad.retarget({ onPacket: function(bytes) { try { onPacket(bytes); } catch (e) {} }, onVideoPacket: function(bytes) { try { onVideoPacket(bytes); } catch (e) {} }, onNeedKey: function() { needKey(adNx); } });
+    if (adNx) decoders.set(adNx, ad); // su voz y su imagen siguen en el mismo sitio
+  }
   function decoderFor(nx) {
     var d = decoders.get(nx);
     if (!d) {
-      d = mk({ codecs: codecs, video: false, noCapture: true, onPacket: function() {} });
+      d = mk({ codecs: codecs, video: false, noCapture: true, onPacket: function() {}, onNeedKey: function() { needKey(nx); } });
       decoders.set(nx, d);
       if (!stopped && d.start) { try { Promise.resolve(d.start()).catch(function() {}); } catch (e) {} }
     }
@@ -46,8 +55,13 @@ export function createGroupMedia(opts) {
   }
 
   return {
-    // Abre el micrófono una sola vez (la malla ya está activa cuando se llama). La cámara NO: empieza apagada.
-    start: function() { return cap && cap.start ? cap.start() : Promise.resolve(false); },
+    adopted: !!ad,
+    // Abre el micrófono una sola vez (la malla ya está activa cuando se llama). La cámara NO: empieza apagada. (#224: la heredada
+    // de la 1-a-1 ya está abierta.)
+    start: function() { if (ad) return Promise.resolve({ codec: 'heredada' }); return cap && cap.start ? cap.start() : Promise.resolve(false); },
+    // #224: imagen completa ya (entra alguien, o un decodificador la pide); y qué cámara (la de delante se ve como un espejo)
+    requestKey: function() { try { if (cap && cap.requestKey) cap.requestKey(); } catch (e) {} },
+    facing: function() { try { return cap && typeof cap.facing === 'function' ? cap.facing() : 'user'; } catch (e) { return 'user'; } },
     // Voz de un tramo recibida (ya descifrada por group_call): se reproduce en el decodificador de ese tramo. `bytes`
     // es el MISMO formato empaquetado que produce call_media (lo entiende d.play, que hace unpackCallPacket).
     play: function(nx, bytes) { if (stopped || !nx || !bytes) return; var d = decoderFor(nx); if (d && d.play) { try { d.play(bytes); } catch (e) {} } },
@@ -72,7 +86,7 @@ export function createGroupMedia(opts) {
     // La app vuelve al primer plano: reavivar el audio/vídeo.
     wake: function() { try { if (cap && cap.wake) cap.wake(); } catch (e) {} decoders.forEach(function(d) { try { if (d.wake) d.wake(); } catch (e) {} }); },
     // Un tramo se fue: se cierra su decodificador (los demás siguen).
-    drop: function(nx) { var d = decoders.get(nx); if (d) { try { if (d.stop) d.stop(); } catch (e) {} decoders.delete(nx); } },
-    stop: function() { stopped = true; try { if (cap && cap.stop) cap.stop(); } catch (e) {} decoders.forEach(function(d) { try { if (d.stop) d.stop(); } catch (e) {} }); decoders.clear(); },
+    drop: function(nx) { var d = decoders.get(nx); if (d) { try { if (d !== cap && d.stop) d.stop(); } catch (e) {} decoders.delete(nx); } }, // (#224: la heredada es también mi captura)
+    stop: function() { stopped = true; try { if (cap && cap.stop) cap.stop(); } catch (e) {} decoders.forEach(function(d) { try { if (d !== cap && d.stop) d.stop(); } catch (e) {} }); decoders.clear(); },
   };
 }

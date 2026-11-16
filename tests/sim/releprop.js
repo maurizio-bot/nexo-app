@@ -56,8 +56,8 @@ async function openChatWith(p, name) {
   click(p.win, row); await sleep(500); return !!row;
 }
 function sendText(p, t) { const i = p.win.document.getElementById('message-input'); i.value = t; i.dispatchEvent(new p.win.Event('input', { bubbles: true })); click(p.win, p.win.document.getElementById('send-btn')); }
-async function sendFile(p, name, bytes) {
-  const b = Buffer.alloc(bytes); let x = 7; for (let i = 0; i < b.length; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; b[i] = x & 255; }
+async function sendFile(p, name, bytes, seed) {
+  const b = Buffer.alloc(bytes); let x = seed; for (let i = 0; i < b.length; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; b[i] = x & 255; }
   click(p.win, p.win.document.querySelector('.attach-menu-item[data-type="file"]')); await sleep(100);
   const fin = Array.from(p.win.document.querySelectorAll('input[type=file]')).pop();
   Object.defineProperty(fin, 'files', { configurable: true, value: [new p.win.File([b], name, { type: 'application/octet-stream' })] });
@@ -120,7 +120,6 @@ async function findFile(p, chat, b64, own) {
     m.M1_en_linea_s = (await waitFor(() => sees(A, idB) && sees(B, idA), 60000)) === null ? null : Math.round((Date.now() - t0) / 100) / 10;
     await sleep(2000);
     m.reles = net(A).relayUrls().map((u) => (u === OWN ? 'propio' : 'p' + (PUB.indexOf(u) + 1))).join(',');
-    m.suscripciones_B = subs(B);
     // M2: textos
     await openChatWith(A, 'B');
     const tt = [];
@@ -133,15 +132,16 @@ async function findFile(p, chat, b64, own) {
     m.M2_texto_ms = median(tt); m.M2_textos_ms = tt.join(',');
     // M3: archivo de 2 MB
     const tf = Date.now();
-    const file = await sendFile(A, 'archivo_' + mode + '.bin', FILE_BYTES);
+    const file = await sendFile(A, 'archivo_' + mode + '.bin', FILE_BYTES, mode === 'propio' ? 11 : 7); // otro contenido en cada vuelta (B ya tiene el de la anterior)
     const b64 = file.toString('base64');
     m.M3_archivo_s = (await waitFor(() => findFile(B, idA, b64, false).then((x) => !!x), 240000, 300)) === null ? null : Math.round((Date.now() - tf) / 100) / 10;
-    const msgA = await findFile(A, idB, b64, true);
-    const ptr = msgA && msgA.attachmentMeta && msgA.attachmentMeta.blobPtr;
+    const msgB = await findFile(B, idA, b64, false);
+    const ptr = msgB && msgB.attachmentMeta && msgB.attachmentMeta.blobPtr; // el puntero que le llegó a B
     m.puntero_reles = ptr ? ptr.relays.map((u) => (u === OWN ? 'propio' : 'p' + (PUB.indexOf(u) + 1))).join(',') : null;
     m.trozos_por_rele = pubs.concat([own]).map((x) => x.events.filter((e) => e.kind === 1064).length).join(',');
     m.limitados_por_ritmo = pubs.reduce((n, x) => n + (x.stats.rateLimited || 0), 0);
     await sleep(3000);
+    m.suscripciones_B = subs(B); // ya abiertos todos (el último público tarda 4,5 s en abrir)
     // M4: lo repetido (y todo) bajado de los relés por los dos
     const rx = (p) => (net(p)._rx && net(p)._rx.all) || { bytes: 0, dupBytes: 0, dup: 0 };
     m.M4_repetido_kb = Math.round((rx(A).dupBytes + rx(B).dupBytes) / 1024);
@@ -161,8 +161,7 @@ async function findFile(p, chat, b64, own) {
     };
     if (mode === 'propio') {
       // P1: B lee del propio y de un público; trozos solo en el propio; él primero en el puntero; lo pesado solo a él
-      m.P1_B_lee = subs(B);
-      m.P1_ok = m.P1_B_lee.own === 1 && m.P1_B_lee.pub === 1 && m.P1_B_lee.open >= 2;
+      m.P1_ok = m.suscripciones_B.own === 1 && m.suscripciones_B.pub === 1 && m.suscripciones_B.open === 2;
       m.P1_trozos_solo_en_propio = own.events.filter((e) => e.kind === 1064).length > 0 && pubs.every((x) => x.events.filter((e) => e.kind === 1064).length === 0);
       m.P1_propio_primero_en_puntero = !!ptr && ptr.relays[0] === OWN;
       m.P1_pesado = await heavy();
