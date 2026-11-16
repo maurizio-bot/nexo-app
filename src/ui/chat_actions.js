@@ -89,7 +89,17 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
     contentDiv.appendChild(sp);
     return;
   }
-  if (!k || k.type !== 'nexo_txt') { contentDiv.textContent = raw; return; }
+  if (!k || k.type !== 'nexo_txt') {
+    // 3151 (dueño 16-11: «los emoji del teclado… que no tengan burbuja y que sean más grandes, ni se ven»): el emoji grande solo
+    // se aplicaba a los textos envueltos (respuesta/reenvío); los mensajes normales llegan en claro y salían con burbuja y a 16 px
+    var pj = _emojiOnly(raw);
+    if (!pj) { contentDiv.textContent = raw; return; }
+    var pe = document.createElement('span');
+    pe.className = 'msg-text emoji-jumbo emoji-' + pj;
+    pe.textContent = String(raw).trim();
+    contentDiv.appendChild(pe);
+    return;
+  }
   if (k.fw) {
     var fw = document.createElement('div');
     fw.className = 'msg-forwarded';

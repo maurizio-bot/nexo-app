@@ -312,10 +312,11 @@ Consolidado: inline + main.css + ble_styles
    .msg-text { display: block; }
    /* Emoji grande sin burbuja (pedido del dueño): 1–3 emojis sueltos se agrandan; la burbuja se quita (abajo, :has).
       `.msg-text.emoji-jumbo` tiene más especificidad, así que su inline-block gana sobre el block de arriba. */
-   .msg-text.emoji-jumbo { font-size: 40px; line-height: 1.15; display: inline-block; }
-   .msg-text.emoji-jumbo.emoji-1 { font-size: 54px; }
-   .msg-text.emoji-jumbo.emoji-2 { font-size: 44px; }
-   .msg-text.emoji-jumbo.emoji-3 { font-size: 34px; }
+   /* 3151 (dueño 16-11: «al menos 3 veces más grandes»): el texto mide 16 px → 1 emoji 72 px, 2 → 60 px, 3 → 50 px */
+   .msg-text.emoji-jumbo { font-size: 50px; line-height: 1.15; display: inline-block; }
+   .msg-text.emoji-jumbo.emoji-1 { font-size: 72px; }
+   .msg-text.emoji-jumbo.emoji-2 { font-size: 60px; }
+   .msg-text.emoji-jumbo.emoji-3 { font-size: 50px; }
    .message:has(.msg-text.emoji-jumbo) { padding: 2px 4px 4px 4px; }
    /* Sticker (2829): dibujo incorporado, grande y sin burbuja (la burbuja se quita abajo con :has, como el emoji) */
    .msg-sticker { display: inline-block; width: 112px; height: 112px; line-height: 0; }
