@@ -750,7 +750,10 @@ export const BLE_CONNECTION_METHODS = {
       var dupCooling = !!(this._dupClosedUntil && (this._dupClosedUntil.get(nd) || 0) > Date.now()) || !!(this._peerCutUntil && (this._peerCutUntil.get(nd) || 0) > Date.now());
       var haveGoodLink = !!readyOther && readyOther !== nd && readyMtu > 23;
       // v6.1.6: también desde ERROR (p.ej. se conectó cuando el otro tenía la app cerrada)
-      if ((state.state === BLE_STATES.DISCONNECTED || state.state === BLE_STATES.ERROR) && !haveGoodLink && !dupCooling) {
+      // 3168 (APK 3078 parada en radiollamada L): el enfriamiento solo frena si de verdad QUEDA otro enlace listo con el contacto; si
+      // se cayeron los dos a la vez (el primero aún veía al otro «listo»), esta dirección tiene que poder reabrirse ya
+      var cooling = dupCooling && !!readyOther && readyOther !== nd;
+      if ((state.state === BLE_STATES.DISCONNECTED || state.state === BLE_STATES.ERROR) && !haveGoodLink && !cooling) {
         this._autoConnectGATT(deviceId, device);
       }
       return;

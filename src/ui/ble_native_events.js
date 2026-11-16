@@ -184,6 +184,12 @@ export const bleNativeEvents = {
             if (_hasNativeMethod(self.nativePlugin, 'disconnectDevice')) _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: deviceId }).catch(function() {});
           }
         }
+        // 3168: si con este contacto ya no queda NINGÚN enlace listo (p. ej. se cayeron los dos a la vez y el primero aún veía al otro),
+        // se quitan sus marcas de «cortado por el otro»: si no, su dirección quedaba 10 min sin reabrirse (radiollamada L: 54 s sin enlace)
+        if (flapNx && self._peerCutUntil && self._peerCutUntil.size && !(typeof self._bleReadyFor === 'function' && self._bleReadyFor(flapNx))) {
+          var cutNx = _normId(flapNx);
+          Array.from(self._peerCutUntil.keys()).forEach(function(k) { if (_normId(self._macToNexoId.get(k) || '') === cutNx) self._peerCutUntil.delete(k); });
+        }
         self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.OFFLINE, since: Date.now() });
         self._lastPongTime.delete(deviceId);
         self._pingFailCount.delete(deviceId);
