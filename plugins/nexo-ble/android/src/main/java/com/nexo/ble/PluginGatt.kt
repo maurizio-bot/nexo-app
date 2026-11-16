@@ -437,6 +437,22 @@ internal fun NexoBlePlugin.disconnectDeviceImpl(call: PluginCall) {
         normalizeMac(rawDeviceId)
     }
     remLog("INFO", "GATT_CLIENT", "disconnectDevice raw=$rawDeviceId resolved=$macNorm")
+    // 3167 (diagnóstico S24↔realme 3075 16-11 15:17): el desempate de enlaces repetidos (3027) le pide al de NEXO ID menor que cierre
+    // su enlace de SERVIDOR (el otro es cliente de nuestro servidor GATT). Aquí abajo solo se cierra el lado cliente: ese enlace
+    // entrante seguía vivo y se seguía usando (RX y notificaciones por él). Solo con server=true (lo pasa ese desempate) se corta
+    // también la conexión entrante con esa dirección; el resto de llamadas (pausa de cámara, zombi, desconectar) siguen igual.
+    if (call.getBoolean("server", false) == true) {
+        val srvDevice = serverConnectedDevices[macNorm]
+        val srv = bluetoothGattServer
+        if (srvDevice != null && srv != null) {
+            try {
+                srv.cancelConnection(srvDevice) // el corte lo confirma gattServerCallback (STATE_DISCONNECTED) y limpia allí
+                remLog("INFO", "GATT_SERVER", "disconnectDevice server: cancelConnection $macNorm (enlace entrante repetido)")
+            } catch (e: Exception) {
+                remLog("WARN", "GATT_SERVER", "disconnectDevice server: cancelConnection $macNorm falló: ${e.message}")
+            }
+        }
+    }
     reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
     reconnectAttempts.remove(macNorm)
     reconnectDelays.remove(macNorm)

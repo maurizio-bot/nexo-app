@@ -929,12 +929,26 @@ class NativePhone {
         if (waitQ > 0) { self.stats.queuedConnects = (self.stats.queuedConnects || 0) + 1; setTimeout(() => self._connectClient(peer, c), waitQ); return; }
         self._connectClient(peer, c);
       }),
-      disconnectDevice: wrap('disconnectDevice', (c) => {
+      // Kotlin disconnectDeviceImpl: cierra SOLO el lado cliente (gattClients); un enlace ENTRANTE (el otro es cliente de nuestro
+      // servidor GATT) sigue vivo aunque al JS se le avise «desconectado». 3167: con server:true (desempate de repetidos) además
+      // bluetoothGattServer.cancelConnection: cae la conexión entrante y llegan los dos avisos de Android (servidor y cliente del otro)
+      disconnectDevice: wrap('disconnectDevice', (c, a) => {
         const raw = c.getString('deviceId') || '';
         if (!raw) return c.reject('deviceId requerido');
         const mac = self._resolveMac(raw) || raw.toLowerCase();
         const cl = self.clients.get(mac);
         if (cl) { self.clients.delete(mac); cl.peer.serverConnected.delete(norm(self.initAddress)); cl.peer.serverNotif.delete(norm(self.initAddress)); cl.peer.emit('onDeviceDisconnected', { deviceId: self.initAddress }); }
+        const sp = a && a.server === true ? self.serverConnected.get(mac) : null;
+        if (sp) {
+          self.stats.serverCancels = (self.stats.serverCancels || 0) + 1;
+          setTimeout(() => {
+            if (self.serverConnected.get(mac) !== sp) return;
+            self.serverConnected.delete(mac); self.serverNotif.delete(mac); self.buffers.delete(mac); self.bin.reset(mac);
+            self.emit('onDeviceDisconnected', { deviceId: sp.initAddress }); // gattServerCallback STATE_DISCONNECTED
+            const pc = norm(self.address);
+            if (sp.clients.has(pc)) { sp.clients.delete(pc); sp.buffers.delete(pc); sp.bin.reset(pc); sp.emit('onDeviceDisconnected', { deviceId: self.address }); } // su GattClientCallback
+          }, 50);
+        }
         self.pendingQueue.delete(mac);
         self.emit('onDeviceDisconnected', { deviceId: raw });
         c.resolve({ disconnected: true });

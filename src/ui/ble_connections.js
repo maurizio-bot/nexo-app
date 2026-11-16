@@ -178,7 +178,10 @@ export const BLE_CONNECTION_METHODS = {
         self._dupClosedUntil.set(key, now + self._dupCloseCooldownMs);
         console.log('[BLEInterface] Dedup: cierro enlace repetido ' + key + ' de ' + nx + ' (me quedo con el mejor)');
         self._noteLinkFlap(nx, 'repetido');
-        _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: key }).catch(function() {});
+        // 3167 (diagnóstico S24↔realme 3075 16-11 15:17): server:true → el nativo corta también un enlace ENTRANTE (el otro es
+        // cliente de nuestro servidor GATT). Sin eso solo cerraba el lado cliente: el enlace de servidor que 3027 manda cerrar al
+        // de NEXO ID menor seguía vivo y se seguía usando (cada mensaje salía por los dos enlaces).
+        _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: key, server: true }).catch(function() {});
       }
     });
   },
