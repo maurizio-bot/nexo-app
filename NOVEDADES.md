@@ -12,43 +12,30 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Bluetooth más estable: si dos teléfonos quedan conectados dos veces, NEXO cierra la conexión sobrante y se queda con la más rápida.
+</es-419>
+<it-IT>
+- Bluetooth più stabile: se due telefoni restano collegati due volte, NEXO chiude il collegamento in più e tiene il più veloce.
+</it-IT>
+<en-US>
+- Steadier Bluetooth: if two phones end up connected twice, NEXO closes the extra link and keeps the fastest one.
+</en-US>
+<pt-BR>
+- Bluetooth mais estável: se dois telefones ficam conectados duas vezes, o NEXO fecha a conexão extra e fica com a mais rápida.
+</pt-BR>
+<fr-FR>
+- Bluetooth plus stable : si deux téléphones restent connectés deux fois, NEXO ferme la connexion en trop et garde la plus rapide.
+</fr-FR>
+<!-- /APK -->
+
+## Historial
+
+### APK 3077 (16-11-2026; la 3076 se paró en las pruebas: esta la lleva)
 - Desliza entre las fotos y videos de un chat; para salir, desliza arriba o abajo.
 - Al mandar fotos o videos, toca el ojo de los que quieras que se vean una sola vez.
 - Toca un enlace de TikTok, Instagram, Facebook o YouTube y se abre en su app; comparte a NEXO desde «Compartir».
 - El aviso fijo de NEXO ya no tapa tus mensajes.
 - Arreglado: guardar videos en la galería, el «leído» al abrir desde el aviso y letras cortadas en las burbujas.
-</es-419>
-<it-IT>
-- Scorri tra le foto e i video di una chat; per uscire, scorri in alto o in basso.
-- Inviando foto o video, tocca l'occhio di quelli che vuoi far vedere una sola volta.
-- Tocca un link di TikTok, Instagram, Facebook o YouTube e si apre nella sua app; condividi su NEXO da «Condividi».
-- L'avviso fisso di NEXO non copre più i tuoi messaggi.
-- Risolto: salvare video nella galleria, il «letto» aprendo dalla notifica e lettere tagliate nei fumetti.
-</it-IT>
-<en-US>
-- Swipe between a chat's photos and videos; swipe up or down to close.
-- When sending photos or videos, tap the eye on the ones to be seen only once.
-- Tap a TikTok, Instagram, Facebook or YouTube link to open it in its app; share to NEXO from Share.
-- NEXO's ongoing notice no longer covers your messages.
-- Fixed: saving videos to the gallery, "read" when opening from a notification, and cut-off letters in bubbles.
-</en-US>
-<pt-BR>
-- Deslize entre as fotos e vídeos de uma conversa; para sair, deslize para cima ou para baixo.
-- Ao enviar fotos ou vídeos, toque no olho dos que devem ser vistos só uma vez.
-- Toque num link do TikTok, Instagram, Facebook ou YouTube e ele abre no app; compartilhe para o NEXO em «Compartilhar».
-- O aviso fixo do NEXO não cobre mais suas mensagens.
-- Corrigido: salvar vídeos na galeria, o «lido» ao abrir pela notificação e letras cortadas nos balões.
-</pt-BR>
-<fr-FR>
-- Glissez entre les photos et vidéos d'un chat ; pour sortir, glissez vers le haut ou le bas.
-- En envoyant photos ou vidéos, touchez l'œil de celles à voir une seule fois.
-- Touchez un lien TikTok, Instagram, Facebook ou YouTube pour l'ouvrir dans son app ; partagez vers NEXO depuis « Partager ».
-- L'avis permanent de NEXO ne cache plus vos messages.
-- Corrigé : vidéos dans la galerie, le « lu » depuis une notification et lettres coupées dans les bulles.
-</fr-FR>
-<!-- /APK -->
-
-## Historial
 
 ### APK 3075 (16-11-2026; la 3074 se paró en las pruebas: esta la lleva)
 - Al abrir un chat, NEXO prepara el camino para que tu mensaje salga al instante.

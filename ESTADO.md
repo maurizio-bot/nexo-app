@@ -21,6 +21,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **16-11 16:19 (México) — APK 3077 PUBLICADA (16:08; 3158–3166).** APK 3078 subida con 3167/3167b (enlace Bluetooth repetido
+  ENTRANTE que no se cerraba y que el otro reabría; NATIVO: disconnectDevice server:true → cancelConnection) + importcss.js.
+  En el teléfono: que salga «[GATT_SERVER] … newState=0» tras el cancelConnection y «cortado por el otro … no lo reabro».
 - **16-11 15:05 (México) — APK 3077 subida (3158–3166).** La 3076 se paró en 9 pruebas (import de .css en módulos que las pruebas
   cargan con Node; 3166 lo pasa a main.js). Trae además 3163 «ver una vez» para vídeos (+ arreglos de privacidad: puente Jump,
   HD tardío), 3164 sin reenviar «una vez» y letra recortada en burbujas, 3165 aviso fijo del servicio en Silenciosas (NATIVO:
