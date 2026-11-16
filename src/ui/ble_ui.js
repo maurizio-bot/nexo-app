@@ -7,6 +7,7 @@ import { haptic } from './haptics.js'; // NEXO Touch (2968): háptica del sistem
 import { avatarOf, paintAvatar } from './avatar.js';
 import { t } from './i18n.js'; // #132 idioma
 import { parseInvite, shareInvite } from './invite.js'; // 3129: enlace de invitación
+import { personAvatar } from './person_avatar.js'; // 3140: el círculo de color de Contactos
 import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isBLEContact, _isPinned, _normId, _rssiToBars, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
 
 // #dueño 08-11 (scan rápido): barritas de señal (como el wifi) para una fila de contacto encontrado — de un vistazo se ve
@@ -21,7 +22,7 @@ function _signalBarsEl(rssi) {
     wrap.style.cssText = 'display:inline-flex;align-items:flex-end;gap:2px;height:16px;margin-right:12px;flex-shrink:0;';
     for (var i = 1; i <= 4; i++) {
       var b = document.createElement('span');
-      b.style.cssText = 'width:3px;height:' + (4 + i * 3) + 'px;border-radius:1px;background:' + (i <= n ? '#00e0a0' : 'rgba(255,255,255,0.18)') + ';';
+      b.style.cssText = 'width:3px;height:' + (4 + i * 3) + 'px;border-radius:1px;background:' + (i <= n ? 'var(--nx-cyan)' : 'rgba(255,255,255,0.18)') + ';';
       wrap.appendChild(b);
     }
     return wrap;
@@ -138,34 +139,34 @@ export const BLE_UI_METHODS = {
     var panel = document.createElement('div');
     panel.id = 'ble-panel';
     panel.innerHTML =
-      '<div class="ble-header" style="position:relative;display:flex;align-items:center;justify-content:center;padding:10px 20px 14px;">' +
+      '<div class="ble-header nx-page-head" style="position:relative;">' +
       '<button id="ble-panel-back" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,200,255,0.3);transition:transform 0.15s ease;z-index:2;">' +
       '<svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" transform="scale(-1,1) translate(-24,0)"/></svg>' +
       '</button>' +
-      '<div style="text-align:center;"><div class="contacts-title">' + t('add_contacts', 'Agregar contactos') + '</div></div>' +
+      '<div class="contacts-title nx-page-title">' + t('add_contacts', 'Agregar contactos') + '</div>' +
       '</div>' +
       '<div class="ble-search-bar">' +
-      '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
       '<input id="ble-search-input" type="search" placeholder="' + t('ph_search_contact', 'Buscar por nombre o NEXO ID') + '" autocomplete="off" spellcheck="false">' +
       '</div>' +
       // 3129 (PLAN etapa 2; dueño 15-11: «WhatsApp y TikTok»): invitar con un enlace (invite.js)
       '<div class="ble-section-label">' + t('invite_title', 'Invitar a NEXO') + '</div>' +
-      '<div id="ble-invite-row" style="display:flex;gap:8px;padding:0 12px 2px;">' +
+      '<div id="ble-invite-row" style="display:flex;gap:8px;padding:0 16px 2px;">' +
       '<button id="ble-inv-whatsapp" data-inv="whatsapp" style="flex:1;min-width:0;padding:9px 6px;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">WhatsApp</button>' +
       '<button id="ble-inv-tiktok" data-inv="tiktok" style="flex:1;min-width:0;padding:9px 6px;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">TikTok</button>' +
       '<button id="ble-inv-more" data-inv="more" style="flex:1;min-width:0;padding:9px 6px;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">' + t('invite_more', 'Más') + '</button>' +
       '</div>' +
-      '<div id="ble-invite-note" style="font-size:11px;opacity:.7;text-align:center;padding:2px 12px 6px;">' + t('invite_sub', 'Manda un enlace: quien lo toque te agrega. Vale 7 días y para una persona.') + '</div>' +
+      '<div id="ble-invite-note" style="font-size:12px;color:var(--nx-muted);text-align:center;padding:4px 16px 6px;">' + t('invite_sub', 'Manda un enlace: quien lo toque te agrega. Vale 7 días y para una persona.') + '</div>' +
       // Ronda 2779 (pedido del dueño): agregar a alguien que no está cerca con su NEXO ID (te lo pasa por WhatsApp)
       '<div class="ble-section-label">' + t('add_by_id', 'Agregar por NEXO ID (está lejos)') + '</div>' +
-      '<div id="ble-addid-row" style="display:flex;gap:8px;padding:0 12px 4px;">' +
+      '<div id="ble-addid-row" style="display:flex;gap:8px;padding:0 16px 4px;">' +
       '<input id="ble-addid-input" type="text" placeholder="' + t('ph_addid', 'NX……… (su NEXO ID)') + '" autocomplete="off" spellcheck="false" maxlength="600" style="flex:1;min-width:0;padding:9px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-size:14px;text-transform:uppercase;">' +
       '<button id="ble-addid-btn" style="flex-shrink:0;padding:9px 16px;border-radius:12px;border:none;background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;font-size:14px;font-weight:600;cursor:pointer;">' + t('add', 'Agregar') + '</button>' +
       '</div>' +
-      '<div id="ble-addid-note" style="font-size:12px;opacity:.85;text-align:center;padding:0 12px 6px;min-height:1px;"></div>' +
+      '<div id="ble-addid-note" style="font-size:12px;color:var(--nx-muted);text-align:center;padding:0 16px 6px;min-height:1px;"></div>' +
       '<div id="ble-requests" style="display:none;">' +
       '<div class="ble-section-label">' + t('requests_for_you', 'Solicitudes para ti') + '</div>' +
-      '<div id="ble-requests-list" style="padding:0 12px 6px;"></div>' +
+      '<div id="ble-requests-list" style="padding:0 6px 6px;"></div>' +
       '</div>' +
       '<div id="ble-online-label" class="ble-section-label">' + t('online_now', 'En línea ahora') + '</div>' +
       '<div id="ble-online-strip" class="ble-online-strip"></div>' +
@@ -181,7 +182,7 @@ export const BLE_UI_METHODS = {
       '<button id="ble-scan-btn" class="ble-btn-scan-round"></button>' +
       '</div>' +
       '<div id="ble-status-bar" class="ble-status-bar"><span id="ble-status-text"></span></div>' +
-      '<div id="ble-visible-note" style="font-size:11px;opacity:.7;text-align:center;padding:0 12px 6px"></div>';
+      '<div id="ble-visible-note" style="font-size:11px;color:var(--nx-muted);text-align:center;padding:0 16px calc(8px + env(safe-area-inset-bottom,0px))"></div>';
     document.body.appendChild(panel);
     this.elements.panel = panel;
     var overlay = document.createElement('div');
@@ -253,8 +254,8 @@ export const BLE_UI_METHODS = {
       if (typeof self.addByNexoId !== 'function') { if (addNote) addNote.textContent = t('add_unsupported', 'Esta versión no lo permite.'); return; }
       self.addByNexoId(v, code).then(function() {
         addIdInput.value = '';
-        if (addNote) { addNote.style.color = '#22c55e'; addNote.textContent = t('ble_req_sent', 'Solicitud enviada a {id}. Aparecerás cuando la acepte.').replace(/\{id\}/g, v); }
-      }).catch(function(e) { if (addNote) { addNote.style.color = '#fbbf24'; addNote.textContent = (e && e.message) || t('ble_req_fail', 'No se pudo enviar la solicitud.'); } });
+        if (addNote) { addNote.style.color = 'var(--nx-cyan)'; addNote.textContent = t('ble_req_sent', 'Solicitud enviada a {id}. Aparecerás cuando la acepte.').replace(/\{id\}/g, v); }
+      }).catch(function(e) { if (addNote) { addNote.style.color = '#ff8a80'; addNote.textContent = (e && e.message) || t('ble_req_fail', 'No se pudo enviar la solicitud.'); } });
     };
     // 3129: invitar por WhatsApp / TikTok / el menú del teléfono (una invitación nueva por toque: código de un uso, 7 días)
     ['whatsapp', 'tiktok', 'more'].forEach(function(k) {
@@ -274,7 +275,7 @@ export const BLE_UI_METHODS = {
         if (!/^NX[0-9A-Z]{8}$/.test(id) || !addIdInput) return;
         if (!self.elements.panel.classList.contains('active')) self.togglePanel();
         addIdInput.value = id + (d.code ? '-' + d.code : '');
-        if (addNote) { addNote.style.color = '#22c55e'; addNote.textContent = t('invite_opened', 'Te invitó {id}: toca «Agregar» para mandarle la solicitud.').replace(/\{id\}/g, id); }
+        if (addNote) { addNote.style.color = 'var(--nx-cyan)'; addNote.textContent = t('invite_opened', 'Te invitó {id}: toca «Agregar» para mandarle la solicitud.').replace(/\{id\}/g, id); }
       };
       window.addEventListener('nexo:invite', onInvite);
       if (self._pendingInvite) onInvite({ detail: self._pendingInvite }); // llegó antes de que existiera la pantalla
@@ -289,7 +290,7 @@ export const BLE_UI_METHODS = {
       });
       window.addEventListener('nexo:ble:reqAccepted', function(e) {
         self.renderRequests(); self.renderContactsList();
-        if (addNote) { addNote.style.color = '#22c55e'; addNote.textContent = t('add_accepted', '{name} te aceptó. Ya están conectados.').replace(/\{name\}/g, (e.detail && (e.detail.name || e.detail.id)) || t('add_your_contact', 'Tu contacto')); }
+        if (addNote) { addNote.style.color = 'var(--nx-cyan)'; addNote.textContent = t('add_accepted', '{name} te aceptó. Ya están conectados.').replace(/\{name\}/g, (e.detail && (e.detail.name || e.detail.id)) || t('add_your_contact', 'Tu contacto')); }
       });
     }
     // Ronda 2771 (revisión, parte 4): el buscador de "Agregar" filtra tus contactos y los teléfonos encontrados
@@ -560,24 +561,24 @@ export const BLE_UI_METHODS = {
     list.innerHTML = '';
     reqs.forEach(function(req) {
       var row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);';
+      row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--nx-radius);margin:2px 0;';
       var info = document.createElement('div'); info.style.cssText = 'flex:1;min-width:0;';
-      var nm = document.createElement('div'); nm.style.cssText = 'font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      var nm = document.createElement('div'); nm.className = 'ble-contact-name'; nm.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
       nm.textContent = req.name || String(req.id || '').toUpperCase();
-      var sub = document.createElement('div'); sub.style.cssText = 'font-size:11px;opacity:.7;';
+      var sub = document.createElement('div'); sub.style.cssText = 'font-size:12px;color:var(--nx-muted);margin-top:2px;';
       sub.textContent = String(req.id || '').toUpperCase() + (req.acc ? ' · aceptó tu solicitud — confirmá' : req.inv ? ' · ' + t('req_from_invite', 'aceptó tu invitación') : ' · quiere agregarte'); // 3129
       info.appendChild(nm); info.appendChild(sub);
       // 3135 (anti-suplantación, dueño 15-11): ya tengo a alguien con este nombre → es OTRO teléfono (o un impostor)
       var twin = (typeof self._twinByName === 'function' && !req.acc) ? self._twinByName(req.name, req.id) : null;
       if (twin) {
-        var tw = document.createElement('div'); tw.className = 'ble-req-twin'; tw.style.cssText = 'font-size:11px;color:#ff8a80;margin-top:3px;white-space:normal;';
+        var tw = document.createElement('div'); tw.className = 'ble-req-twin'; tw.style.cssText = 'font-size:12px;color:#ff8a80;margin-top:3px;white-space:normal;';
         tw.textContent = t('req_same_name', '⚠️ Ya tienes a «{name}» con otro NEXO ID ({id}). Es otro teléfono: puede ser un impostor. Confírmalo con una llamada antes de aceptar.').replace('{name}', twin.name || '').replace('{id}', String(twin.nexoId || twin.deviceUUID || '').toUpperCase());
         info.appendChild(tw);
       }
       // #dueño 04-11 (perfil 2b): tarjeta de validación — tel/correo ENMASCARADOS que llegaron en la solicitud (reconocer
       // sin regalar el dato). Los datos COMPLETOS y la foto aparecen al ACEPTAR (por el canal seguro E2E).
       if (req.ph || req.em) {
-        var det = document.createElement('div'); det.style.cssText = 'font-size:11px;opacity:.65;margin-top:3px;';
+        var det = document.createElement('div'); det.style.cssText = 'font-size:11px;color:var(--nx-muted);margin-top:3px;';
         var bits = [];
         if (req.ph) bits.push('📱 ' + req.ph);
         if (req.em) bits.push('✉️ ' + req.em);
@@ -585,14 +586,15 @@ export const BLE_UI_METHODS = {
         info.appendChild(det);
       }
       var ok = document.createElement('button'); ok.textContent = req.acc ? 'Confirmar' : 'Aceptar';
-      ok.style.cssText = 'flex-shrink:0;padding:7px 12px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:600;cursor:pointer;';
+      ok.style.cssText = 'flex-shrink:0;padding:7px 12px;border-radius:14px;border:none;background:var(--nx-grad);box-shadow:0 3px 10px rgba(0,200,255,.35);color:#fff;font-weight:600;cursor:pointer;';
       var no = document.createElement('button'); no.textContent = 'Eliminar';
-      no.style.cssText = 'flex-shrink:0;padding:7px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:transparent;color:#fff;cursor:pointer;';
+      no.style.cssText = 'flex-shrink:0;padding:7px 10px;border-radius:14px;border:1px solid var(--nx-line);background:var(--nx-surface-2);color:#fff;cursor:pointer;';
       ok.addEventListener('click', function() {
         ok.disabled = no.disabled = true;
         self.acceptRequest(req.id).then(function() { haptic('confirm'); self.renderRequests(); self.renderContactsList(); }).catch(function() { ok.disabled = no.disabled = false; });
       });
       no.addEventListener('click', function() { self.rejectRequest(req.id); self.renderRequests(); });
+      row.appendChild(personAvatar(req.id, req.name || String(req.id || ''))); // 3140: su círculo de color, como en Contactos
       row.appendChild(info); row.appendChild(ok); row.appendChild(no);
       list.appendChild(row);
     });
@@ -820,7 +822,7 @@ export const BLE_UI_METHODS = {
       note.className = 'ble-anon-note';
       note.dataset.n = String(fresh);
       note.textContent = fresh === 1 ? t('add_anon_one', 'Buscando… 1 teléfono NEXO cerca') : t('add_anon_count', 'Buscando… {n} teléfonos NEXO cerca').replace('{n}', String(fresh));
-      note.style.cssText = 'width:100%;margin:0;text-align:center;font-size:13px;color:rgba(255,255,255,0.65);padding:2px 0;';
+      note.style.cssText = 'width:100%;margin:0;text-align:center;font-size:12px;color:var(--nx-muted);padding:2px 0;';
       bar.appendChild(note);
     }
     newDevices.forEach(function(item) {
@@ -828,17 +830,20 @@ export const BLE_UI_METHODS = {
       var deviceId = item.deviceId;
       var displayName = _niceName(device.name, device.deviceUUID);
       var row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;width:100%;padding:12px 20px;border:2px solid #00c8ff;border-radius:16px;background:rgba(0,20,40,0.9);box-sizing:border-box;';
+      row.className = 'ble-found-row'; // 3140: fila como las de Contactos (estilo en nexo_theme.css)
       var nameSpan = document.createElement('span');
       nameSpan.textContent = displayName;
-      nameSpan.style.cssText = 'color:#fff;font-size:16px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin-right:12px;';
+      nameSpan.className = 'ble-contact-name';
+      nameSpan.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;';
       var addBtn = document.createElement('button');
       addBtn.textContent = '+';
-      addBtn.style.cssText = 'width:40px;height:40px;border-radius:50%;background:#00c8ff;border:none;color:#fff;font-size:20px;font-weight:700;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;';
+      addBtn.className = 'ble-btn-add-small';
       addBtn.addEventListener('click', function(e) {
         e.stopPropagation();
         self._addNewDevice(deviceId);
       });
+      // 3140: el círculo de color (un <div>, sin <span>: el nombre sigue siendo el PRIMER <span> de la fila)
+      row.appendChild(personAvatar(device.deviceUUID || deviceId, displayName));
       row.appendChild(nameSpan);
       // #dueño 08-11 (scan rápido): barritas de señal — se ve quién está más cerca sin re-ordenar la lista.
       var barsEl = _signalBarsEl(device.rssi);

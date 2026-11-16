@@ -306,19 +306,26 @@ body::before {
 #nexo-diag-text { background: rgba(0, 0, 0, 0.45) !important; border: 1px solid var(--nx-line) !important; border-radius: 14px !important; }
 
 /* Panel de agregar contactos */
-#ble-panel { background: var(--nx-bg) !important; }
 #ble-panel .ble-search-bar { background: var(--nx-surface) !important; border: 1px solid var(--nx-line) !important; border-radius: 14px !important; }
-.ble-new-device { background: var(--nx-surface) !important; border: 1px solid rgba(0, 200, 255, 0.35) !important; border-radius: 18px !important; box-shadow: 0 0 0 4px rgba(0, 200, 255, 0.06); }
-.ble-btn-add-small { background: var(--nx-grad) !important; }
-.ble-bottom-bar, .ble-status-bar { background: var(--nx-glass) !important; border-top: 1px solid var(--nx-line) !important; color: var(--nx-muted) !important; }
-.ble-btn-scan-round { background: var(--nx-grad) !important; box-shadow: 0 8px 24px rgba(0, 200, 255, 0.35) !important; border: none !important; }
-.ble-btn-scan-round.scanning { background: linear-gradient(135deg, #ef4444, #f97316) !important; box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4) !important; }
+/* 3140: sin marco propio alrededor de los encontrados (cada fila ya es como las de Contactos) */
+.ble-new-device { background: transparent !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; padding: 0 !important; }
+.ble-btn-add-small { background: var(--nx-grad) !important; box-shadow: 0 3px 10px rgba(0, 200, 255, 0.35); }
+.ble-bottom-bar, .ble-status-bar { background: transparent !important; border-top: none !important; color: var(--nx-muted) !important; } /* 3140: sin franjas ni líneas */
+.ble-bottom-bar { padding: 8px 16px 12px !important; }
+.ble-btn-scan-round { width: 56px !important; height: 56px !important; background: var(--nx-grad) !important; box-shadow: 0 10px 30px rgba(0, 200, 255, 0.35), 0 4px 12px rgba(168, 85, 247, 0.35) !important; border: none !important; }
+/* 3140: buscando = el mismo degradado NEXO (la etiqueta PARAR ya lo dice) con un pulso celeste, sin rojo/naranja */
+.ble-btn-scan-round.scanning { background: var(--nx-grad) !important; animation: nx-scan-pulse 1.6s ease-in-out infinite !important; }
+@keyframes nx-scan-pulse {
+  0%, 100% { box-shadow: 0 10px 30px rgba(0, 200, 255, 0.35), 0 4px 12px rgba(168, 85, 247, 0.35), 0 0 0 0 rgba(0, 200, 255, 0.4); }
+  50% { box-shadow: 0 10px 30px rgba(0, 200, 255, 0.35), 0 4px 12px rgba(168, 85, 247, 0.35), 0 0 0 10px rgba(0, 200, 255, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .ble-btn-scan-round.scanning { animation: none !important; } }
 .ble-btn-scan-round::before { content: 'BUSCAR' !important; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
 .ble-btn-scan-round.scanning::before { content: 'PARAR' !important; }
 .ble-btn-visibility-round { background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important; }
 .ble-btn-visibility-round.active { background: var(--nx-grad) !important; }
 .ble-btn-visibility-round::before { content: 'VER' !important; }
-.ble-section-label { color: var(--nx-muted) !important; letter-spacing: 1px; }
+.ble-section-label { color: var(--nx-muted) !important; letter-spacing: 0; text-transform: none; font-size: 12px; font-weight: 600; } /* 3140: sin MAYÚSCULAS */
 #ble-panel-back { box-shadow: none !important; }
 
 /* Avisos cortos */
@@ -331,8 +338,24 @@ body::before {
 #nexo-move-screen { background: var(--nx-bg) !important; } /* 3140 */
 #nexo-move-screen .move-close { border-radius: 14px !important; background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important; }
 #nexo-fenix-ask { background: var(--nx-sheet) !important; border: 1px solid var(--nx-line) !important; border-radius: 22px !important; }
-#ble-panel { background: var(--nx-bg) !important; } /* 3140: liso, como Contactos */
-#ble-panel .ble-header { background: transparent !important; border-bottom: 1px solid var(--nx-line) !important; padding-top: calc(10px + env(safe-area-inset-top, 0px)) !important; }
+#ble-panel { background: var(--nx-bg) !important; color: var(--nx-text); } /* 3140: liso, como Contactos */
+/* 3140 (zona Agregar contactos): cabecera de 64 px con el título a la izquierda, sin línea (como #main-header) */
+#ble-panel .ble-header { background: transparent !important; border-bottom: none !important; flex-direction: row; align-items: center; justify-content: flex-start;
+  min-height: calc(64px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 14px 0 18px !important; box-sizing: border-box; gap: 0; }
+#ble-panel .ble-header .contacts-title { font-size: 26px; font-weight: 800; letter-spacing: -0.3px; text-align: left;
+  background: linear-gradient(90deg, #fff 30%, #b9c4ff); -webkit-background-clip: text; background-clip: text; color: transparent !important; }
+#ble-panel .ble-search-bar { margin: 8px 16px 12px; }
+#ble-panel .ble-search-bar svg { width: 18px; height: 18px; fill: none; color: var(--nx-muted); }
+#ble-search-input::placeholder, #ble-addid-input::placeholder { color: var(--nx-muted); }
+#ble-addid-input::placeholder { text-transform: none; }
+#ble-panel .ble-section-label { padding: 12px 18px 8px; }
+#ble-invite-row button { background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important; border-radius: 14px !important; min-height: 42px; }
+#ble-addid-input { background: var(--nx-surface) !important; border: 1px solid var(--nx-line) !important; border-radius: 14px !important; }
+#ble-addid-btn { background: var(--nx-grad) !important; border-radius: 14px !important; box-shadow: 0 3px 10px rgba(0, 200, 255, 0.35); }
+#ble-contacts-list .ble-empty { font-size: 15px; line-height: 1.5; padding: 40px 24px; }
+/* Teléfono encontrado: fila como las de Contactos (círculo de color 46, nombre 15.5/600, barritas celestes, «+» NEXO) */
+.ble-found-row { display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; padding: 10px; border-radius: var(--nx-radius); background: transparent; margin: 2px 0; }
+.ble-found-row span[aria-label] { margin-right: 0 !important; }
 #ble-panel-back { background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important; }
 
 /* Ronda 2765: foto de perfil (avatar.js) y enlaces pequeños en Perfil */
