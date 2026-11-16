@@ -12,39 +12,44 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Al abrir un chat, NEXO ya busca el mejor camino para que tu mensaje salga al instante.
-- Los emojis que mandas solos se ven grandes y sin burbuja.
-- Si tienes las notificaciones de NEXO apagadas, te avisamos en Contactos y te llevamos a activarlas.
-- Al agregar a alguien a una videollamada, el video sigue: la pantalla se divide en dos y con doble toque pones a uno en grande.
-- Arreglado: llamadas en las que el otro no te oía si salías de la app mientras sonaba.
+- Al abrir un chat, NEXO prepara el camino para que tu mensaje salga al instante.
+- Los emojis solos se ven grandes y sin burbuja.
+- Si las notificaciones están apagadas, te avisamos y te llevamos a activarlas.
+- Agregar a alguien a una videollamada ya no corta el video; con doble toque agrandas a uno.
+- Llamadas: «atrás» las minimiza en una barra arriba, la de voz pasa a video sin colgar y aguantan el cambio de Wi-Fi a datos.
+- Arreglado: el otro no te oía si salías de la app mientras sonaba.
 </es-419>
 <it-IT>
-- Quando apri una chat, NEXO cerca già la strada migliore perché il tuo messaggio parta subito.
-- Le emoji inviate da sole si vedono grandi e senza fumetto.
-- Se le notifiche di NEXO sono disattivate, te lo diciamo in Contatti e ti portiamo ad attivarle.
-- Aggiungendo qualcuno a una videochiamata il video continua: lo schermo si divide in due e con un doppio tocco ne ingrandisci uno.
-- Risolto: chiamate in cui l'altro non ti sentiva se uscivi dall'app mentre squillava.
+- Aprendo una chat, NEXO prepara la strada perché il messaggio parta subito.
+- Le emoji da sole si vedono grandi e senza fumetto.
+- Se le notifiche sono spente, te lo diciamo e ti portiamo ad attivarle.
+- Aggiungendo qualcuno a una videochiamata il video resta; doppio tocco per ingrandirne uno.
+- Chiamate: «indietro» le riduce a una barra in alto, la vocale passa a video senza chiudere e reggono il cambio da Wi-Fi a dati.
+- Risolto: l'altro non ti sentiva se uscivi dall'app mentre squillava.
 </it-IT>
 <en-US>
-- When you open a chat, NEXO already finds the best route so your message goes out instantly.
-- Emojis sent on their own now show big, without a bubble.
-- If NEXO notifications are off, Contacts tells you and takes you to turn them on.
-- Adding someone to a video call keeps the video: the screen splits in two, and a double tap makes one person full screen.
-- Fixed: calls where the other person couldn't hear you if you left the app while it rang.
+- Opening a chat, NEXO prepares the route so your message goes out instantly.
+- Emojis sent alone show big, without a bubble.
+- If notifications are off, we tell you and take you to turn them on.
+- Adding someone to a video call no longer cuts the video; double tap to enlarge one.
+- Calls: Back shrinks them to a bar at the top, voice switches to video without hanging up, and calls survive Wi-Fi to data.
+- Fixed: the other person couldn't hear you if you left the app while it rang.
 </en-US>
 <pt-BR>
-- Ao abrir uma conversa, o NEXO já procura o melhor caminho para sua mensagem sair na hora.
-- Emojis enviados sozinhos aparecem grandes e sem balão.
-- Se as notificações do NEXO estiverem desligadas, avisamos em Contatos e levamos você para ativá-las.
-- Ao adicionar alguém a uma videochamada, o vídeo continua: a tela se divide em duas e com dois toques você amplia um.
-- Corrigido: chamadas em que o outro não te ouvia se você saía do app enquanto tocava.
+- Ao abrir uma conversa, o NEXO prepara o caminho para a mensagem sair na hora.
+- Emojis sozinhos aparecem grandes e sem balão.
+- Se as notificações estão desligadas, avisamos e levamos você a ativá-las.
+- Adicionar alguém a uma videochamada não corta mais o vídeo; dois toques ampliam um.
+- Chamadas: «voltar» as reduz a uma barra no topo, a de voz vira vídeo sem desligar e aguentam a troca de Wi-Fi para dados.
+- Corrigido: o outro não te ouvia se você saía do app enquanto tocava.
 </pt-BR>
 <fr-FR>
-- Dès que vous ouvrez un chat, NEXO cherche le meilleur chemin pour que votre message parte aussitôt.
-- Les emojis envoyés seuls s'affichent en grand, sans bulle.
-- Si les notifications de NEXO sont désactivées, Contacts vous le signale et vous emmène les activer.
-- Ajouter quelqu'un à un appel vidéo garde la vidéo : l'écran se partage en deux et un double appui agrandit une personne.
-- Corrigé : appels où l'autre ne vous entendait pas si vous quittiez l'app pendant la sonnerie.
+- En ouvrant un chat, NEXO prépare le chemin pour un envoi immédiat.
+- Les emojis seuls s'affichent en grand, sans bulle.
+- Notifications coupées ? On vous le dit et on vous emmène les activer.
+- Ajouter quelqu'un à un appel vidéo ne coupe plus la vidéo ; double appui pour agrandir.
+- Appels : « Retour » les réduit à une barre en haut, la voix passe en vidéo sans raccrocher et ils tiennent du Wi-Fi aux données.
+- Corrigé : on ne vous entendait plus si vous quittiez l'app pendant la sonnerie.
 </fr-FR>
 <!-- /APK -->
 

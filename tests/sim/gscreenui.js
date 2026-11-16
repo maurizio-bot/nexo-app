@@ -62,7 +62,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   w.bleInterface.gcall = {
     state() { return JSON.parse(JSON.stringify(st)); },
     shareScreen(on) { calls.push(on); st.screen = !!on; return Promise.resolve(true); },
-    remoteVideoEl(nx) { return nx === B ? canvas : null; }, localVideoEl() { return null; },
+    remoteVideoEl(nx) { return nx === B ? canvas : null; }, localVideoEl() { return null; }, remoteLive() { return true; }, // llega imagen
     mute() {}, camera() {}, hangup() {}, addMember() { return Promise.resolve(); }, flip() {},
   };
   const emit = () => w.dispatchEvent(new w.CustomEvent('nexo:gcall', { detail: JSON.parse(JSON.stringify(st)) }));

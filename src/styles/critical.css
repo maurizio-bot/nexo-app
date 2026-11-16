@@ -16,12 +16,6 @@ Consolidado: inline + main.css + ble_styles
    justify-content: center;
    transition: opacity 0.5s ease, transform 0.5s ease;
    }
-   #splash-logo {
-   width: 120px;
-   height: 120px;
-   background: url('../assets/logo.png') center/contain no-repeat;
-   animation: pulse 2s infinite;
-   }
    #splash-text {
    margin-top: 20px;
    color: #00c8ff;
