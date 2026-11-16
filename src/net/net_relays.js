@@ -226,7 +226,8 @@ export const netRelays = {
     var by = Array.from(st.by.entries()).filter(function(e) { return e[1].bytes > 0; }).sort(function(a, b) { return b[1].bytes - a[1].bytes; }).slice(0, 6)
       .map(function(e) { return e[0] + ' ' + mb(e[1].bytes) + (e[1].dupBytes ? ' (repetido ' + mb(e[1].dupBytes) + ')' : ''); }); // i18n-ok: texto para el desarrollador
     return 'bajado de los relés desde que se abrió la app (hace ' + Math.max(1, Math.round((Date.now() - st.since) / 60000)) + ' min): ' + mb(st.all.bytes) + ', ' + // i18n-ok
-      st.all.ev + ' eventos, ' + st.all.dup + ' ya vistos (' + mb(st.all.dupBytes) + ')' + (by.length ? ' · ' + by.join(' · ') : ''); // i18n-ok
+      st.all.ev + ' eventos, ' + st.all.dup + ' ya vistos (' + mb(st.all.dupBytes) + ')' + (by.length ? ' · ' + by.join(' · ') : '') + // i18n-ok
+      (this._ownList().length ? ' · relé propio: ' + (this._ownHealthy() ? 'en uso' : 'caído, leo de los públicos') : ''); // i18n-ok: 3151
   },
 
   _onRelayMsg(url, r, data) {
