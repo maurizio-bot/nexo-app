@@ -53,8 +53,20 @@ const { importSrc } = require('./srcmod');
   const cA = _dupBleLinksToClose(ladoA, { iAmLower: true }), cB = _dupBleLinksToClose(ladoB, { iAmLower: false });
   r.cruzado_cierran_el_mismo = cA.length === 1 && same(cA, cB);
   r.cruzado_queda_cliente_del_menor = same(cA, ['enl2']);
-  // el MTU sigue mandando sobre el desempate (los dos ven el mismo MTU del mismo enlace)
-  r.cruzado_mtu_manda = same(_dupBleLinksToClose([L('e1', 23, { role: 'client' }), L('e2', 517, { role: 'server' })], { iAmLower: true }), ['e1']);
+  // 11. 3139 (diagnóstico automático S24 3069 16-11 00:52, «zombi» con Yaelito 3070): NO es verdad que los dos vean el mismo MTU
+  //     del mismo enlace: el S24 veía su enlace de cliente a 517 y el de servidor más bajo; por el MTU cerró el de servidor, y
+  //     Yaelito (NEXO ID menor), por el papel, cerró el otro → el S24 mandaba por un enlace que el otro ya había cerrado (texto
+  //     largo sin confirmar 8 veces, puente que no abre, «sin respuesta a 2 pings»), mientras lo de Yaelito entraba por el bueno.
+  //     Con papeles distintos manda el desempate común (el mismo enlace físico en los dos), no el MTU que cada uno cree ver.
+  //     (contraprueba 3137: cada lado cierra un enlace distinto)
+  const s24 = [L('5817', 517, { role: 'client', since: 100 }), L('7bf3', 23, { role: 'server', since: 50 })];
+  const yae = [L('7bf3', 517, { role: 'client', since: 50 }), L('5817', 185, { role: 'server', since: 100 })];
+  const cS24 = _dupBleLinksToClose(s24, { iAmLower: false }), cYae = _dupBleLinksToClose(yae, { iAmLower: true });
+  r.mtu_distinto_cierran_el_mismo = cS24.length === 1 && same(cS24, cYae) && same(cS24, ['5817']);
+  // con el mismo papel (dos enlaces de cliente, dirección rotativa) sí manda el MTU
+  r.mismo_papel_manda_mtu = same(_dupBleLinksToClose([L('c1', 23, { role: 'client' }), L('c2', 517, { role: 'client' })], { iAmLower: true }), ['c1']);
+  // y un enlace MUERTO nunca se queda aunque sea el del papel preferido
+  r.papel_muerto_no_se_queda = same(_dupBleLinksToClose([L('e1', 517, { role: 'client', dead: true }), L('e2', 517, { role: 'server' })], { iAmLower: true }), ['e1']);
 
   // 9. Robustez ante basura.
   r.sin_dato = same(_dupBleLinksToClose([]), []) && same(_dupBleLinksToClose(null), []) &&

@@ -336,6 +336,10 @@
     {
      "fallo": "Diagnóstico automático S24 14-11 11:52 («enlace_abre_cierra», nx09acdb61 6 desconexiones en 10 min, el vivo recién actualizado): el enlace REPETIDO que la propia app cierra (Dedup 6dad a las 11:50:21 y 11:51:39) contaba también como «desconexión», además de como «repetido»: aviso falso y un diagnóstico de 20 KB por la radio. 3093: lo cerrado por la deduplicación (enfriamiento _dupClosedUntil) no cuenta como corte. noservice 6): 3092 = 1 aviso falso; 3093 = 0",
      "prueba": "GATT roto / no_service"
+    },
+    {
+     "fallo": "3139 (diagnóstico automático S24 3069 16-11 00:52, «zombi» con Yaelito 3070): con dos enlaces Bluetooth al mismo contacto, cada teléfono cerró uno distinto: el S24 eligió por el MTU que creía ver (517 en su enlace de cliente, menos en el de servidor) y Yaelito por el desempate común → el S24 mandaba por el enlace que el otro ya había cerrado (texto largo sin confirmar 8 veces, el puente no abría, «sin respuesta a 2 pings») mientras lo de Yaelito entraba por el bueno. 3139: con papeles distintos manda siempre el desempate común; el MTU solo entre enlaces del mismo papel. bledup.js 11 (contraprueba 3137: cierran enlaces distintos)",
+     "prueba": "dedup de enlaces Bluetooth repetidos"
     }
    ],
    "debiles": [

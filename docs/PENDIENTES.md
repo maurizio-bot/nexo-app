@@ -6,6 +6,14 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 16-11 03:17 — diagnóstico automático S24 3069 «zombi» con Yaelito (3070) + resúmenes viejos
+- **3139 hecho (rama, APK 3071):** dos enlaces Bluetooth S24↔Yaelito y cada teléfono cerró uno distinto (el S24 por el MTU que creía ver,
+  Yaelito por el desempate común): el S24 mandaba por el muerto (texto largo 8 reintentos sin confirmar, puente que no abre, «zombi»)
+  mientras lo de Yaelito entraba por el bueno. Ahora con papeles distintos manda siempre el desempate común (bledup.js 11).
+- Visto también: S24 sin red propia usó de puente al S23 y luego a Yaelito (bien); 15,5 MB bajados de los relés, 12,7 MB repetidos
+  (relay.primal.net 9 MB): el arreglo de deslizar (3131) ya va en la 3070; si sigue alto con la 3070, mirar las reconexiones del relé.
+- Wi-Fi local lento solo en builds viejas (3055: 8,6 s de media); en la 3069 del S24, 0,5 s: no hay nada que arreglar.
+
 ## 🆕 15-11 23:46 — resúmenes diarios del 14-11 (builds viejas 3055 y 3059; regla del dueño: no se arreglan versiones viejas)
 - Nada roto: 5 enviados / 4 entregados (3 leídos) en uno; 1 recibido en el otro. Solo para mirar en la última versión: la conexión por
   Wi-Fi local tardó de media 4,9 s (hasta 8,8 s), más que internet (2,6 s) y Bluetooth (0,5 s). Comparar con un resumen de la 3070.

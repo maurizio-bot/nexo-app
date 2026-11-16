@@ -223,9 +223,12 @@ export function _dupBleLinksToClose(links, opts) {
   for (var i = 1; i < pool.length; i++) {
     var l = pool[i];
     var sameMtu = (l.mtu || 0) === (keep.mtu || 0);
-    var roleTie = sameMtu && prefRole && l.role && keep.role && l.role !== keep.role; // 3027: desempate común
-    var better = (l.mtu || 0) > (keep.mtu || 0) ||
-      (roleTie ? l.role === prefRole : (sameMtu && (l.since || 0) > (keep.since || 0)));
+    // 3139 (diagnóstico S24 3069 16-11 00:52, «zombi» con Yaelito): con papeles distintos manda SIEMPRE el desempate común (el
+    // mismo enlace físico en los dos teléfonos). Antes mandaba el MTU, pero cada lado no ve el mismo MTU del mismo enlace (el S24
+    // veía 517 en su enlace de cliente y menos en el de servidor): cada uno cerraba uno distinto y el S24 mandaba por el muerto.
+    var roleTie = prefRole && l.role && keep.role && l.role !== keep.role; // 3027: desempate común
+    var better = roleTie ? l.role === prefRole
+      : ((l.mtu || 0) > (keep.mtu || 0) || (sameMtu && (l.since || 0) > (keep.since || 0)));
     if (better) keep = l;
   }
   var out = [];
