@@ -337,6 +337,9 @@ body::before {
 #nexo-profile-sheet .nx-page-title, #nexo-settings-sheet .nx-page-title, #nexo-contact-profile .nx-page-title { padding-left: 2px; }
 /* Avisos con la pantalla apagada: «listo» con una ✓ celeste (no el ✅ verde) */
 .nx-alert-row .nx-ok { color: var(--nx-cyan); font-weight: 800; }
+/* Ficha de contacto: etiquetas en gris suave y datos a 15 px (antes heredaban 16 px blancos) */
+#nexo-contact-profile .nx-idtxt { font-size: 12px; color: var(--nx-muted); }
+#nexo-contact-profile .nx-idtxt + b { font-size: 15px; font-weight: 700; color: #fff; }
 
 /* Panel de agregar contactos */
 #ble-panel .ble-search-bar { background: var(--nx-surface) !important; border: 1px solid var(--nx-line) !important; border-radius: 14px !important; }
