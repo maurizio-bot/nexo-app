@@ -127,15 +127,27 @@ const barVisible = (p) => { const b = $(p, 'voice-bar'); return !!b && b.style.d
   r.cancelada_barra_oculta = !barVisible(A);
   await sleep(2500);
   r.cancelada_no_se_envia = (await B.win.vaultLoadMessages(idA)).filter(isVoice).length === notas0;
-  // 7) Soltar sin deslizar (o con un desliz corto) la deja como hoy; ➤ la envía
-  touch('touchstart', 300); await sleep(900);
-  touch('touchmove', 280); touch('touchend', 280); await sleep(300);
-  r.suelta_sigue_grabando = barVisible(A);
-  click(A.win, $(A, 'voice-send')); await sleep(1500);
-  r.voz_llega_s = await wait(async () => (await B.win.vaultLoadMessages(idA)).filter(isVoice).length === notas0 + 1, 40);
+  // 7) 3145: mantener + soltar sin deslizar = la nota se envía sola
+  touch('touchstart', 300); await sleep(1300);
+  r.mantener_graba = barVisible(A);
+  touch('touchmove', 280); touch('touchend', 280);
+  r.suelta_envia = (await wait(async () => (await B.win.vaultLoadMessages(idA)).filter(isVoice).length === notas0 + 1, 40)) !== null;
+  r.suelta_barra_oculta = !barVisible(A);
+  // 8) mantener + deslizar a la izquierda + soltar: no se envía nada
+  await sleep(1500);
+  touch('touchstart', 300); await sleep(1300);
+  touch('touchmove', 150); touch('touchend', 150); await sleep(4000);
+  r.desliza_suelta_no_envia = (await B.win.vaultLoadMessages(idA)).filter(isVoice).length === notas0 + 1 && !barVisible(A);
+  // 9) toque rápido: sigue grabando con su barra; ➤ la envía
+  await sleep(500);
+  const click0 = () => click(A.win, btn);
+  touch('touchstart', 300); await sleep(100); touch('touchend', 300); click0(); await sleep(1500);
+  r.toque_sigue_grabando = barVisible(A);
+  click(A.win, $(A, 'voice-send'));
+  r.voz_llega_s = await wait(async () => (await B.win.vaultLoadMessages(idA)).filter(isVoice).length === notas0 + 2, 40);
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
-  const keys = ['contactos', 'burbuja_recibida', 'burbuja_propia', 'recibido_abre', 'recibido_cita', 'recibido_autor', 'x_quita_la_cita', 'propio_abre', 'propio_cita', 'poco_no_responde', 'vertical_no_responde', 'cancelado_no_responde', 'diagonal_responde', 'izquierda_responde', 'boton_modo_mic', 'graba_al_mantener', 'pista_visible', 'poco_no_cancela', 'cancelada_barra_oculta', 'cancelada_no_se_envia', 'suelta_sigue_grabando'];
+  const keys = ['contactos', 'burbuja_recibida', 'burbuja_propia', 'recibido_abre', 'recibido_cita', 'recibido_autor', 'x_quita_la_cita', 'propio_abre', 'propio_cita', 'poco_no_responde', 'vertical_no_responde', 'cancelado_no_responde', 'diagonal_responde', 'izquierda_responde', 'boton_modo_mic', 'graba_al_mantener', 'pista_visible', 'poco_no_cancela', 'cancelada_barra_oculta', 'cancelada_no_se_envia', 'mantener_graba', 'suelta_envia', 'suelta_barra_oculta', 'desliza_suelta_no_envia', 'toque_sigue_grabando'];
   const ok = keys.every((k) => r[k] === true) && r.voz_llega_s !== null && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('GESTOS ' + JSON.stringify(r));

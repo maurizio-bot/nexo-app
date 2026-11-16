@@ -136,7 +136,7 @@ function _slideHint(show, prog, armed) {
   h.style.display = show ? '' : 'none';
   if (show) { h.style.opacity = String(0.55 + 0.45 * (prog || 0)); h.style.color = armed ? '#ff6b6b' : ''; }
 }
-export function voiceSlideStart(x) { _slideX0 = (typeof x === 'number') ? x : null; _slideCancelled = false; _slideHint(false); }
+export function voiceSlideStart(x) { _slideX0 = (typeof x === 'number') ? x : null; _slideCancelled = false; _releaseSendPending = false; _slideHint(false); }
 export function voiceSlideMove(x) {
   if (_slideX0 === null || _slideCancelled || typeof x !== 'number') return;
   if (!_isRecording && !_voiceStarting) return;
@@ -149,6 +149,18 @@ export function voiceSlideMove(x) {
   }
 }
 export function voiceSlideEnd() { _slideX0 = null; _slideHint(false); return _slideCancelled; }
+
+// 3145: pulsación LARGA en el botón → graba; al SOLTAR se envía sola (como ➤), salvo que se haya deslizado para cancelar.
+// Menos de VOICE_HOLD_MIN_MS de audio se descarta en silencio. Si el micrófono aún arranca al soltar, se envía al arrancar.
+export var VOICE_HOLD_MIN_MS = 500;
+var _releaseSendPending = false;
+export function voiceHoldRelease() {
+  if (_isRecording) {
+    if (_elapsedMs() < VOICE_HOLD_MIN_MS) _cancelVoiceRecording(); else _finishVoiceRecording();
+  } else if (_voiceStarting && !_cancelPending) {
+    _releaseSendPending = true;
+  }
+}
 
 async function _startVoiceRecording() {
   // #dueño 08-11 (nota de voz doble): guarda de reentrada. Si ya se está grabando o YA hay un arranque en vuelo (otro
@@ -211,11 +223,12 @@ async function _startVoiceRecording() {
     _isRecording = true;
     if (_cancelPending) { _cancelPending = false; _voiceStarting = false; _cancelVoiceRecording(); return; } // 3143: se deslizó para cancelar durante el arranque
     _voiceStarting = false; // arranque terminado: a partir de acá manda _isRecording (el 2.º toque ya para/envía)
+    if (_releaseSendPending) { _releaseSendPending = false; setTimeout(voiceHoldRelease, VOICE_HOLD_MIN_MS); } // 3145: se soltó el dedo durante el arranque
     _updateMicIcon(true);
     console.log('[ATTACH] Grabando voz...');
     try { if (typeof window.NEXO_prewake === 'function') window.NEXO_prewake('al grabar un audio'); } catch (e) {} // 3073: que esté despierto al terminar
   } catch (err) {
-    _cancelPending = false;
+    _cancelPending = false; _releaseSendPending = false;
     _voiceStarting = false; // falló el arranque: liberar la guarda para poder reintentar
     console.log('[ATTACH:VOICE] Error:', err.name, err.message);
     if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') _showPermissionError(t('call_voice_perm_mic', 'micrófono'));

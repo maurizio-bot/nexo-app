@@ -11,7 +11,7 @@ import { _handleFile, _handleGallery } from './pickers.js';
 import { _handleLocation } from './location.js';
 import { _handleCobro } from './cobro.js';
 import { _handleShareContacts } from './share_contacts.js';
-import { _handleVoiceToggle, _prewarmMic, voiceSlideStart, voiceSlideMove, voiceSlideEnd } from './voice.js';
+import { _handleVoiceToggle, _prewarmMic, voiceSlideStart, voiceSlideMove, voiceSlideEnd, voiceHoldRelease } from './voice.js';
 import { _msgContactMap } from './chat_state.js';
 import { _noteContactMessage } from './send.js';
 import { _renderMessage, _updateMessageStatus, _updateMessageStorageStatus } from './render.js';
@@ -354,7 +354,10 @@ export function _setupMessageInput() {
     }, { passive: true });
     btn.addEventListener('touchend', function() {
       if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
-      try { voiceSlideEnd(); } catch (er) {}
+      var cancelled = false;
+      try { cancelled = voiceSlideEnd(); } catch (er) {}
+      // 3145: pulsación larga + soltar = enviar la nota (como WhatsApp); el toque rápido sigue grabando hasta ➤
+      if (_isLongPress && !cancelled) { try { voiceHoldRelease(); } catch (er) {} }
     });
     btn.addEventListener('touchcancel', function() {
       if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
