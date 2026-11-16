@@ -46,18 +46,20 @@ function _overlay() {
   if (old) old.remove();
   var o = document.createElement('div');
   o.id = 'nexo-move-screen';
-  o.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0a0a15;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;box-sizing:border-box;text-align:center;font-size:15px;';
+  o.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:var(--nx-bg);color:var(--nx-text);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;box-sizing:border-box;text-align:center;font-size:15px;';
   var qr = document.createElement('div'); qr.className = 'move-qr';
-  var st = document.createElement('div'); st.className = 'move-status'; st.style.cssText = 'max-width:360px;white-space:pre-line;';
+  var st = document.createElement('div'); st.className = 'move-status'; st.style.cssText = 'max-width:360px;white-space:pre-line;line-height:1.5;';
+  // 3140 (zona hojas): título arriba a la izquierda, como en Contactos (antes no se sabía en qué pantalla se estaba)
+  var hd = document.createElement('div'); hd.className = 'nx-page-title move-title'; hd.textContent = t('prof_change_phone', 'Cambiar de teléfono');
   var btn = document.createElement('button'); btn.className = 'move-close'; btn.textContent = t('cancel');
   btn.style.cssText = 'padding:10px 18px;border-radius:10px;border:none;font-size:14px;color:#fff;background:rgba(255,255,255,0.18);';
   btn.onclick = function() { o.remove(); _screen = null; };
-  o.appendChild(qr); o.appendChild(st); o.appendChild(btn);
+  o.appendChild(hd); o.appendChild(qr); o.appendChild(st); o.appendChild(btn);
   document.body.appendChild(o);
   return {
     el: o,
     qr: function(text) {
-      qr.style.cssText = 'background:#fff;padding:10px;border-radius:12px;width:min(78vw,320px);height:min(78vw,320px);';
+      qr.style.cssText = 'background:#fff;padding:10px;border-radius:18px;width:min(78vw,320px);height:min(78vw,320px);';
       qr.dataset.payload = text;
       qr.innerHTML = qrSvg(text);
       var svg = qr.querySelector('svg'); if (svg) { svg.style.width = '100%'; svg.style.height = '100%'; }

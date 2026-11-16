@@ -7,6 +7,7 @@ import { _getCurrentContactId, _normId } from './chat_format.js';
 import { vaultLoadContacts } from '../vault/vault_manager.js';
 import { ratchetPeerBundle } from '../vault/e2e_ratchet.js';
 import { t } from './i18n.js';
+import { personAvatar } from './person_avatar.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _sendAttachment;
@@ -14,6 +15,19 @@ export function shareContactsUse(d) { _sendAttachment = d._sendAttachment; } // 
 
 
 // ===================== v9.9.33: compartir contactos =====================
+// 3140 (zona hojas, dueño 16-11: «que toda la app siga el estilo de MI pantalla de Contactos»): el círculo de color de cada persona en
+// las filas de elegir (Nuevo grupo, Enviar contactos, Reenviar) y en la tarjeta. Es el de Contactos (person_avatar.js), pero la inicial
+// va en data-ini y se pinta con ::before: así el texto de la fila (textContent) sigue siendo solo el nombre (lo leen las pruebas).
+export function _pickAvatar(id, name, size) {
+  var av = personAvatar(id, name, size);
+  av.classList.add('nx-pick-av');
+  av.setAttribute('data-ini', av.textContent);
+  av.textContent = '';
+  return av;
+}
+// La ✕ redonda de cerrar una hoja (como los botones redondos de Contactos)
+export var SHEET_CLOSE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+
 export function _contactsStyles() {
   if (document.getElementById('nexo-share-styles')) return;
   var st = document.createElement('style');
@@ -22,7 +36,7 @@ export function _contactsStyles() {
     '.ble-contact-new{animation:nexoNewContact 1.2s ease-in-out infinite;border-radius:12px}' +
     '.nexo-pick-row{display:flex;align-items:center;gap:12px;padding:12px 8px;border-bottom:1px solid rgba(255,255,255,0.08);cursor:pointer}' +
     '.nexo-pick-row input{width:22px;height:22px;accent-color:#00c8ff;flex-shrink:0}' +
-    '.nexo-card-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid rgba(255,255,255,0.1)}';
+    '.nexo-card-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--nx-line,rgba(255,255,255,0.08))}';
   document.head.appendChild(st);
 }
 
@@ -38,10 +52,10 @@ export function _handleShareContacts() {
   if (old) old.remove();
   var sheet = document.createElement('div');
   sheet.id = 'nexo-share-sheet';
-  sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#0a0a15;color:#fff;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
-  sheet.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
-    '<button id="nexo-share-cancel" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:18px;padding:8px 14px;font-size:14px;">' + t('media_cancel', 'Cancelar') + '</button>' +
-    '<div style="font-size:18px;font-weight:700;">' + t('media_share_title', 'Enviar contactos') + '</div><div style="width:70px"></div></div>' +
+  sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:var(--nx-bg);color:#fff;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
+  sheet.innerHTML = '<div class="nx-page-head nx-sheet-head">' +
+    '<div class="nx-page-title">' + t('media_share_title', 'Enviar contactos') + '</div>' +
+    '<button id="nexo-share-cancel" class="nx-round-btn" aria-label="' + t('media_cancel', 'Cancelar') + '" title="' + t('media_cancel', 'Cancelar') + '">' + SHEET_CLOSE_SVG + '</button></div>' +
     '<input id="nexo-share-search" placeholder="' + t('media_search', 'Buscar...') + '" style="background:rgba(255,255,255,0.08);border:none;border-radius:10px;padding:10px 12px;color:#fff;font-size:15px;margin-bottom:8px;">' +
     '<div id="nexo-share-list" style="flex:1;overflow-y:auto;"></div>' +
     '<button id="nexo-share-send" disabled style="background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:600;margin-top:8px;opacity:0.5;">' + t('media_send', 'Enviar') + '</button>';
@@ -61,7 +75,7 @@ export function _handleShareContacts() {
     var shown = all.filter(function(c) { return !f || String(c.name || '').toLowerCase().indexOf(f) >= 0 || _normId(c.nexoId || c.deviceUUID).indexOf(f) >= 0; });
     if (!shown.length) {
       var empty = document.createElement('div');
-      empty.style.cssText = 'opacity:0.6;padding:24px;text-align:center;';
+      empty.style.cssText = 'color:var(--nx-muted);font-size:15px;line-height:1.5;padding:24px;text-align:center;';
       empty.textContent = all.length ? t('media_no_results', 'Sin resultados') : t('media_no_other_contacts', 'No tienes otros contactos para enviar');
       listEl.appendChild(empty);
     }
@@ -83,11 +97,11 @@ export function _handleShareContacts() {
         } else delete chosen[id];
         refreshBtn();
       };
-      var txt = document.createElement('div');
-      var nm = document.createElement('div'); nm.style.cssText = 'font-size:16px;'; nm.textContent = c.name || id.toUpperCase();
-      var sub = document.createElement('div'); sub.style.cssText = 'font-size:12px;opacity:0.6;'; sub.textContent = id.toUpperCase();
+      var txt = document.createElement('div'); txt.className = 'nx-pick-txt';
+      var nm = document.createElement('div'); nm.className = 'nx-pick-name'; nm.textContent = c.name || id.toUpperCase();
+      var sub = document.createElement('div'); sub.className = 'nx-pick-sub'; sub.textContent = id.toUpperCase();
       txt.appendChild(nm); txt.appendChild(sub);
-      row.appendChild(cb); row.appendChild(txt);
+      row.appendChild(cb); row.appendChild(_pickAvatar(id, c.name || id)); row.appendChild(txt);
       listEl.appendChild(row);
     });
   }
@@ -130,10 +144,10 @@ export function _renderContactCard(container, meta, msg) {
     txt.appendChild(nm); txt.appendChild(sub);
     var go = document.createElement('button');
     go.className = 'contact-card-write';
-    go.style.cssText = 'background:rgba(0,200,255,0.25);color:#fff;border:none;border-radius:8px;padding:4px 8px;font-size:12px;';
+    go.style.cssText = 'background:var(--nx-surface-2,rgba(255,255,255,0.1));color:#fff;border:1px solid var(--nx-line,rgba(255,255,255,0.08));border-radius:14px;padding:4px 10px;font-size:12px;';
     go.textContent = t('media_write', 'Escribir');
     go.onclick = function(e) { e.stopPropagation(); if (bi && bi.openChat) bi.openChat(_normId(c.nexoId)).catch(function() {}); };
-    row.appendChild(txt); row.appendChild(go);
+    row.appendChild(_pickAvatar(String(c.nexoId), String(c.name || '').substring(0, 40) || String(c.nexoId), 36)); row.appendChild(txt); row.appendChild(go);
     card.appendChild(row);
     rows.push({ c: c, go: go });
   });
@@ -142,7 +156,7 @@ export function _renderContactCard(container, meta, msg) {
   if (!msg._own && list.length) {
     var addBtn = document.createElement('button');
     addBtn.className = 'contact-card-add';
-    addBtn.style.cssText = 'width:100%;margin-top:8px;background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:10px;padding:8px;font-size:14px;font-weight:600;';
+    addBtn.style.cssText = 'width:100%;margin-top:8px;background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:14px;padding:8px;font-size:14px;font-weight:600;';
     var pending = list.filter(function(c) { return !isMine(c.nexoId) && !isMe(c.nexoId); }).length;
     addBtn.textContent = pending ? t('media_add_contacts', 'Agregar a contactos') : t('media_already_contacts', 'Ya en tus contactos ✓');
     var doAdd = function(e) {

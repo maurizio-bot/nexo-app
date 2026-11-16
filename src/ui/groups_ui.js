@@ -3,7 +3,7 @@
  * botón 👥 en la cabecera para crear un grupo (nombre + elegir contactos), abrir el chat de un grupo y su menú
  * (miembros y salir del grupo).
  */
-import { _contactsStyles } from './share_contacts.js';
+import { _contactsStyles, _pickAvatar, SHEET_CLOSE_SVG } from './share_contacts.js';
 import { ratchetPeerBundle } from '../vault/e2e_ratchet.js';
 import { _normId } from './chat_format.js';
 import { vaultLoadContacts } from '../vault/vault_manager.js';
@@ -54,12 +54,12 @@ export function openCreateGroupSheet() {
   if (old) old.remove();
   var sheet = document.createElement('div');
   sheet.id = 'nexo-group-sheet';
-  sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#0a0a15;color:#fff;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
-  sheet.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
-    '<button id="nexo-group-cancel" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:18px;padding:8px 14px;font-size:14px;">' + t('cancel') + '</button>' +
-    '<div style="font-size:18px;font-weight:700;">' + t('prof_group_new', 'Nuevo grupo') + '</div><div style="width:70px"></div></div>' +
+  sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:var(--nx-bg);color:#fff;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
+  sheet.innerHTML = '<div class="nx-page-head nx-sheet-head">' +
+    '<div class="nx-page-title">' + t('prof_group_new', 'Nuevo grupo') + '</div>' +
+    '<button id="nexo-group-cancel" class="nx-round-btn" aria-label="' + t('cancel') + '" title="' + t('cancel') + '">' + SHEET_CLOSE_SVG + '</button></div>' +
     '<input id="nexo-group-name" maxlength="60" placeholder="' + t('prof_group_name_ph', 'Nombre del grupo') + '" style="background:rgba(255,255,255,0.08);border:none;border-radius:10px;padding:12px;color:#fff;font-size:16px;margin-bottom:8px;">' +
-    '<div style="font-size:13px;opacity:0.7;margin:4px 2px 6px;">' + t('prof_group_choose', 'Elige quién está en el grupo') + '</div>' +
+    '<div style="font-size:13px;color:var(--nx-muted);margin:4px 2px 6px;">' + t('prof_group_choose', 'Elige quién está en el grupo') + '</div>' +
     '<div id="nexo-group-list" style="flex:1;overflow-y:auto;"></div>' +
     '<button id="nexo-group-create" disabled style="background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:600;margin-top:8px;opacity:0.5;">' + t('prof_group_create', 'Crear grupo') + '</button>';
   document.body.appendChild(sheet);
@@ -76,14 +76,14 @@ export function openCreateGroupSheet() {
     // hay AL MENOS UN contacto. Antes exigía nombre y el dueño veía el botón gris aunque hubiera elegido a alguien.
     btn.textContent = !n ? t('prof_group_need_contact', 'Elige al menos un contacto') : t('prof_group_create_n_pre', 'Crear grupo (') + (n + 1) + t('prof_group_create_n_post', ' personas)');
   }
-  if (!all.length) listEl.innerHTML = '<div style="opacity:0.7;padding:16px 4px;">' + t('prof_group_no_contacts', 'Aún no tienes contactos.') + '</div>';
+  if (!all.length) listEl.innerHTML = '<div style="color:var(--nx-muted);font-size:15px;line-height:1.5;text-align:center;padding:24px;">' + t('prof_group_no_contacts', 'Aún no tienes contactos.') + '</div>';
   all.forEach(function(c) {
     var id = _normId(c.nexoId || c.deviceUUID);
     var row = document.createElement('label');
     row.className = 'nexo-pick-row';
     var cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.nx = id;
-    var nm = document.createElement('div'); nm.textContent = c.name || id.toUpperCase();
-    row.appendChild(cb); row.appendChild(nm);
+    var nm = document.createElement('div'); nm.className = 'nx-pick-name'; nm.textContent = c.name || id.toUpperCase();
+    row.appendChild(cb); row.appendChild(_pickAvatar(id, c.name || id)); row.appendChild(nm);
     cb.addEventListener('change', function() { if (cb.checked) chosen[id] = true; else delete chosen[id]; refresh(); });
     listEl.appendChild(row);
   });

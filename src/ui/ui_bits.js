@@ -6,6 +6,7 @@
 
 import { t } from './i18n.js';
 import { vaultLoadContacts } from '../vault/vault_manager.js';
+import { personAvatar } from './person_avatar.js';
 
 // #130 (dueño 31-10): selector de contactos (hoja inferior) para AGREGAR a alguien a una llamada/videollamada en curso.
 // opts: { title, exclude:[nexoId…], onPick:fn(nexoId) }. Lista los contactos del vault menos los excluidos (los que ya
@@ -20,19 +21,24 @@ export function _pickContact(opts) {
   ov.style.cssText = 'position:fixed;inset:0;z-index:2147483646;display:flex;flex-direction:column;justify-content:flex-end;background:rgba(0,0,0,0.55);';
   var sheet = document.createElement('div');
   sheet.style.cssText = 'background:#14152a;color:#fff;border-radius:18px 18px 0 0;max-height:70vh;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
-  var h = document.createElement('div'); h.style.cssText = 'font-size:16px;font-weight:700;margin-bottom:10px;'; h.textContent = opts.title || t('call_add_pick', 'Agregar a la llamada');
-  var list = document.createElement('div'); list.style.cssText = 'overflow:auto;display:flex;flex-direction:column;gap:6px;';
+  var h = document.createElement('div'); h.style.cssText = 'font-size:16px;font-weight:700;margin-bottom:10px;padding:0 10px;'; h.textContent = opts.title || t('call_add_pick', 'Agregar a la llamada');
+  var list = document.createElement('div'); list.style.cssText = 'overflow:auto;display:flex;flex-direction:column;gap:2px;';
   var contacts = (vaultLoadContacts() || []).filter(function(c) { var id = (c && c.nexoId || '').toLowerCase(); return id && !exclude[id]; });
-  if (!contacts.length) { var em = document.createElement('div'); em.style.cssText = 'opacity:0.7;padding:12px 4px;'; em.textContent = t('call_add_none', 'No hay contactos para agregar'); list.appendChild(em); }
+  if (!contacts.length) { var em = document.createElement('div'); em.style.cssText = 'color:var(--nx-muted);font-size:15px;line-height:1.5;padding:12px 10px;'; em.textContent = t('call_add_none', 'No hay contactos para agregar'); list.appendChild(em); }
   contacts.forEach(function(c) {
+    // 3140 (zona hojas): fila como las de Contactos (círculo de color de la persona + nombre)
     var row = document.createElement('button');
-    row.style.cssText = 'text-align:left;background:rgba(255,255,255,0.07);border:none;color:#fff;border-radius:12px;padding:12px 14px;font-size:15px;cursor:pointer;';
-    row.textContent = c.name || c.displayName || (c.nexoId || '').toUpperCase();
+    row.className = 'nx-person-row';
+    row.style.cssText = 'width:100%;text-align:left;background:transparent;border:none;color:#fff;font-size:15px;cursor:pointer;';
+    var nmTxt = c.name || c.displayName || (c.nexoId || '').toUpperCase();
+    var nm = document.createElement('span'); nm.className = 'ble-contact-name'; nm.textContent = nmTxt;
+    nm.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    row.appendChild(personAvatar(c.nexoId || '', nmTxt)); row.appendChild(nm);
     row.addEventListener('click', function(e) { e.stopPropagation(); ov.remove(); if (opts.onPick) opts.onPick((c.nexoId || '').toLowerCase()); });
     list.appendChild(row);
   });
   var cancel = document.createElement('button');
-  cancel.style.cssText = 'margin-top:12px;background:rgba(255,255,255,0.12);border:none;color:#fff;border-radius:12px;padding:12px;font-size:15px;font-weight:600;cursor:pointer;';
+  cancel.style.cssText = 'margin-top:12px;background:var(--nx-surface-2);border:1px solid var(--nx-line);color:#fff;border-radius:14px;padding:12px;font-size:15px;font-weight:600;cursor:pointer;';
   cancel.textContent = t('misc_cancel', 'Cancelar');
   cancel.addEventListener('click', function(e) { e.stopPropagation(); ov.remove(); });
   sheet.appendChild(h); sheet.appendChild(list); sheet.appendChild(cancel);

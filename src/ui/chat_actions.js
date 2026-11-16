@@ -18,6 +18,7 @@ import { _videoFormat } from './video_tools.js';
 import { stickerAsset, isValidStickerImg, addReceivedSticker } from './stickers.js';
 import { vaultBlankMessage, vaultDeleteMessage, vaultEditMessage, vaultLoadContacts, vaultLoadFile, vaultLoadMessages, vaultReactMessage, vaultSaveContacts } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
+import { _pickAvatar, SHEET_CLOSE_SVG } from './share_contacts.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _renderMessage, _sendAttachment, _sendTextTo;
@@ -395,15 +396,18 @@ export function _openForwardSheet(msg) {
   var chosen = {};
   var box = document.createElement('div');
   box.id = 'nexo-forward-sheet';
-  box.style.cssText = 'position:fixed;inset:0;z-index:6000;background:#0a0a15;color:#fff;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
+  box.style.cssText = 'position:fixed;inset:0;z-index:6000;background:var(--nx-bg);color:#fff;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
+  // 3140 (zona hojas): cabecera como la de Contactos (título a la izquierda, ✕ redonda a la derecha)
   var head = document.createElement('div');
-  head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;';
+  head.className = 'nx-page-head nx-sheet-head';
   var title = document.createElement('div');
-  title.style.cssText = 'font-size:18px;font-weight:700;';
+  title.className = 'nx-page-title';
   title.textContent = t('chat_forward_to', 'Reenviar a…');
   var cancel = document.createElement('button');
-  cancel.textContent = t('chat_cancel', 'Cancelar');
-  cancel.style.cssText = 'background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:16px;padding:8px 14px;';
+  cancel.id = 'nexo-forward-cancel';
+  cancel.className = 'nx-round-btn';
+  cancel.setAttribute('aria-label', t('chat_cancel', 'Cancelar')); cancel.title = t('chat_cancel', 'Cancelar');
+  cancel.innerHTML = SHEET_CLOSE_SVG;
   cancel.onclick = function() { box.remove(); };
   head.appendChild(title); head.appendChild(cancel);
   var list = document.createElement('div');
@@ -416,14 +420,13 @@ export function _openForwardSheet(msg) {
     var id = _normId(c.nexoId || c.deviceUUID);
     var row = document.createElement('label');
     row.className = 'fw-row';
-    row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid rgba(255,255,255,0.06);';
     var cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.onchange = function() { if (cb.checked) chosen[id] = true; else delete chosen[id]; refresh(); };
     var nm = document.createElement('span');
-    nm.className = 'fw-name';
+    nm.className = 'fw-name nx-pick-name';
     nm.textContent = c.name || id.toUpperCase();
-    row.appendChild(cb); row.appendChild(nm);
+    row.appendChild(cb); row.appendChild(_pickAvatar(id, c.name || id)); row.appendChild(nm);
     list.appendChild(row);
   });
   send.onclick = function() {
