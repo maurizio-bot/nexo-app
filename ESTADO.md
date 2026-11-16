@@ -21,6 +21,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **16-11 14:05 (México) — APK 3076 subida a NEXOCHAT (3158–3162).** 3158 «leído» tras arranque en frío; 3159 visor (deslizar,
+  cerrar deslizando, sin X, guardar abajo-derecha); 3160 «Antes de enviar» con ojo; 3161 enlaces tocables + NEXO en «Compartir»
+  (NATIVO nuevo: SharedText.kt, PluginShare.kt openUrl/checkSharedTextIntent, intent-filter SEND: vigilar que compile); 3162 guardar
+  vídeo en galería. En curso (subagente, worktree wtvideo): 3163 «ver una vez» para vídeos. Pendiente del dueño: carpeta de las
+  imágenes de íconos de NEXO en su Google Fotos («Detalles»); nombres (Yump/Rimba propuestos) para revisar marcas.
 - **16-11 13:42 (México) — APK 3075 PUBLICADA (3147–3157).** Novedades al historial. En la rama, para la siguiente: **3158** «leído» al
   abrir desde el aviso tras arranque en frío (leidoaviso.js); **3159** visor: deslizar entre fotos, arriba/abajo cierra, sin X, guardar
   abajo-derecha (visorfotos.js, Chromium); **3160** «Antes de enviar» con ojo por foto (galeriaunavez.js; el dueño la deja); **3162**
