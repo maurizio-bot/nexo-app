@@ -58,6 +58,10 @@ function _css() {
     '.gcs-tile.gcs-screen>.gcs-v{object-fit:contain}',
     '.gcs-ph{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:var(--nx-bg);text-align:center;padding:0 12px}',
     '.gcs-tile.gcs-novideo>.gcs-ph,.gcs-tile.gcs-wait>.gcs-ph{display:flex}',
+    // lo de cada mitad, entre la cabecera de arriba y la fila de botones de abajo (que quedan encima)
+    '.gcs-tile.gcs-full>.gcs-ph{padding:110px 12px 150px}.gcs-tile.gcs-up>.gcs-ph{padding-top:96px}.gcs-tile.gcs-down>.gcs-ph{padding-bottom:128px;justify-content:center}',
+    '.gcs-tile.gcs-down>.gcs-ph .gcs-avw,.gcs-tile.gcs-down>.gcs-ph .gcs-avw .nx-person-av{width:72px !important;height:72px !important;min-width:72px !important;font-size:26px !important}',
+    '.gcs-tile.gcs-down>.gcs-ph{gap:5px}',
     '.gcs-avw{position:relative;width:88px;height:88px}',
     '.gcs-avw .nx-person-av{position:relative;z-index:1;width:88px !important;height:88px !important;min-width:88px !important;font-size:32px !important;border-radius:50%}',
     '.gcs-ring{position:absolute;inset:0;border-radius:50%;border:2px solid rgba(0,200,255,.6);opacity:0}',
@@ -69,6 +73,7 @@ function _css() {
     '#nexo-gcall-screen .nc-btn.gcs-cancel .nc-ic svg{transform:rotate(135deg)}',
     '.gcs-lab{position:absolute;left:10px;bottom:8px;z-index:2;font-size:12px;background:rgba(0,0,0,.55);padding:2px 8px;border-radius:8px;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.gcs-n1 .gcs-lab,.gcs-tile.gcs-wait .gcs-lab,.gcs-tile.gcs-novideo .gcs-lab{display:none}',
+    '.gcs-tile.gcs-down .gcs-lab{top:10px;bottom:auto}.gcs-tile.gcs-full .gcs-lab{bottom:150px}', // (no debajo de los botones)
     '.gcs-tile.gcs-mini .gcs-avw,.gcs-tile.gcs-mini .gcs-avw .nx-person-av{width:48px !important;height:48px !important;min-width:48px !important;font-size:18px !important}',
     '.gcs-tile.gcs-mini .gcs-pname{font-size:12px}.gcs-tile.gcs-mini .gcs-pst,.gcs-tile.gcs-mini .gcs-cancel,.gcs-tile.gcs-mini .gcs-lab{display:none !important}',
     '.gcs-self{position:absolute;z-index:5;top:84px;right:14px;width:104px;height:148px;border-radius:16px;overflow:hidden;border:2px solid rgba(255,255,255,.75);box-shadow:0 8px 26px rgba(0,0,0,.5);background:#1a1b2e}',

@@ -79,6 +79,8 @@ async function boot(browser, name, native) {
   }, methods);
   await page.goto('https://' + name.toLowerCase() + '.nexo.test/index.html');
   await page.waitForFunction(() => window.NEXO && window.NEXO.initialized, null, { timeout: 20000 });
+  // (la pantalla de «¿cómo te llamas?» del primer arranque queda encima de todo en el simulador: en el teléfono ya se puso el nombre)
+  await page.addStyleTag({ content: '#nexo-name-overlay{display:none !important}' });
   await sleep(800);
   return page;
 }
@@ -136,7 +138,7 @@ const buttons = (page) => page.evaluate(() => {
   const labs = bs.map((b) => b.querySelector('span:last-child')).filter(Boolean);
   const ancho = (l) => { const rg = document.createRange(); rg.selectNodeContents(l); return rg.getBoundingClientRect().width; };
   return { nombres: labs.map((l) => l.textContent).join(' · '), n: bs.length, filas, caben: rs.every((x) => x.left >= -0.5 && x.right <= W + 0.5 && x.bottom <= H + 0.5) && !pisan,
-    colgar_entero_y_tocable: !!hr && hr.left >= 0 && hr.right <= W && hr.top >= 0 && hr.bottom <= H && !!hc && hang.contains(hc),
+    colgar_entero_y_tocable: !!hr && hr.left >= 0 && hr.right <= W && hr.top >= 0 && hr.bottom <= H && !!hc && hang.contains(hc), encima_de_colgar: hc && !hang.contains(hc) ? (hc.id || String(hc.className && hc.className.baseVal !== undefined ? hc.className.baseVal : hc.className)) : '',
     circulo_min: Math.round(Math.min(...bs.map((b) => (b.querySelector('.nc-ic') || b).getBoundingClientRect().width))),
     letra_min: Math.min(...labs.map((l) => parseFloat(getComputedStyle(l).fontSize))), cortados: labs.filter((l) => ancho(l) > l.getBoundingClientRect().width + 0.05).map((l) => l.textContent) };
 });

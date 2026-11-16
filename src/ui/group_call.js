@@ -57,6 +57,7 @@ export class GroupCall {
     this.mediaHubFactory = mediaHubFactory; // (opts) => hub de medios (micrófono compartido + mezcla); se inyecta
     this.gc = null;                         // { gid, dir, state, key, cryptoKey, video, legs:Map<nx,leg>, roster:Set, startedAt }
     this._dead = new Map();
+    this._invTs = new Map(); // #224: hora (del que invita) de la última invitación que sonó, por llamada
   }
 
   _markDead(gid) { var now = Date.now(), d = this._dead; d.set(gid, now); d.forEach(function(t, k) { if (now - t > GDEAD_MS) d.delete(k); }); }
@@ -306,6 +307,7 @@ export class GroupCall {
     if (g.roster.has(nx)) return Promise.reject(new Error(t('grp_already_in', 'Ya está en la llamada')));
     if (g.roster.size + 1 > GMAX_AUDIO) return Promise.reject(new Error(t('grp_max_a', 'Máximo ') + GMAX_AUDIO + t('grp_max_call', ' en una llamada de grupo')));
     g.roster.add(nx);
+    if (g.cancelled) g.cancelled.delete(nx); // #224: se le había cancelado y se le vuelve a agregar
     self._leg(nx).state = 'inviting';
     self._inviteTimeout(nx);
     self._set(null);
@@ -442,7 +444,9 @@ export class GroupCall {
     var self = this, nx = _nid(fromNexoId), g = self.gc, me = self._nidSelf();
     if (!o || _nid(o.from) !== nx) return;
     if (o.op === 'invite') {
-      if (self._dead.has(o.gid)) return;
+      // #224: una llamada que ya terminó aquí no vuelve a sonar (re-entregas del buzón)… salvo que me inviten OTRA VEZ a ella (le
+      // cancelaron la invitación y lo vuelven a agregar): una invitación posterior a la última que sonó
+      if (self._dead.has(o.gid) && !(o.late === 1 && Number(o.ts) > (self._invTs.get(o.gid) || Infinity))) return;
       // #dueño 31-10: una invitación VIEJA (re-entrega del buzón de relés después de colgar, o al reabrir la app que perdió
       // la memoria de llamadas terminadas) NO debe volver a sonar. Una invitación de verdad llega al instante.
       if (o.ts && Date.now() - Number(o.ts) > GINVITE_MAX_AGE) return;
@@ -455,6 +459,7 @@ export class GroupCall {
       var roster = new Set((o.roster || []).map(_nid)); roster.add(nx); roster.add(me);
       if (roster.size > GMAX_AUDIO) return;
       self.gc = { gid: o.gid, dir: 'in', state: 'ringing', key: o.k, video: o.v === 1, host: nx, legs: new Map(), roster: roster, startedAt: 0, createdAt: Date.now(), late: o.late === 1 };
+      self._invTs.set(o.gid, Number(o.ts) || 0); if (self._invTs.size > 50) self._invTs.delete(self._invTs.keys().next().value);
       // #dueño 31-10: si no se contesta en 30 s, la entrante se da por PERDIDA (deja de sonar, queda «llamada perdida de
       // grupo»); los que sí contestaron siguen entre ellos.
       clearTimeout(self._ringTimer);
