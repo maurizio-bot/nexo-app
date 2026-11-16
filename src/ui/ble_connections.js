@@ -161,7 +161,8 @@ export const BLE_CONNECTION_METHODS = {
         dead: self._bleCongested(key),
         since: (st && st.since) || 0,
         role: (st && st.role) || null, // 3027: cliente/servidor (desempate común con el otro teléfono)
-        busy: self._hasActiveFileTransfer(key) || (!!activeMac && _normMac(key) === activeMac)
+        // 3167b: uno que el otro ya cortó (y el nativo reabrió) no cuenta como ocupado: si no, nadie lo cerraba de este lado
+        busy: (self._hasActiveFileTransfer(key) || (!!activeMac && _normMac(key) === activeMac)) && !((self._peerCutUntil && self._peerCutUntil.get(_normMac(key))) > now)
       });
       byNexo.set(nx, arr);
     });
@@ -743,9 +744,10 @@ export const BLE_CONNECTION_METHODS = {
       // dirección (Android usa una para anunciarse y otra para conectarse), no se abre un segundo: el limpiador de enlaces
       // repetidos lo cerraba al minuto y el escaneo lo volvía a abrir (conectar/cerrar cada ~60 s). Sí se abre si el que hay
       // va al mínimo (MTU 23: el nuevo puede ser mejor) o si esta dirección se acaba de cerrar por repetida.
+      // 3167b: ni si el OTRO acaba de cortar este enlace (su desempate, 3027): reabrirlo solo daba otro corte (abrir/cerrar cada ~60 s)
       var readyOther = (typeof this._bleReadyFor === 'function') ? this._bleReadyFor(nx) : null;
       var readyMtu = readyOther ? ((this._mtuByDevice && this._mtuByDevice.get(readyOther)) || 185) : 0;
-      var dupCooling = !!(this._dupClosedUntil && (this._dupClosedUntil.get(nd) || 0) > Date.now());
+      var dupCooling = !!(this._dupClosedUntil && (this._dupClosedUntil.get(nd) || 0) > Date.now()) || !!(this._peerCutUntil && (this._peerCutUntil.get(nd) || 0) > Date.now());
       var haveGoodLink = !!readyOther && readyOther !== nd && readyMtu > 23;
       // v6.1.6: también desde ERROR (p.ej. se conectó cuando el otro tenía la app cerrada)
       if ((state.state === BLE_STATES.DISCONNECTED || state.state === BLE_STATES.ERROR) && !haveGoodLink && !dupCooling) {

@@ -112,6 +112,8 @@ class NativePhone {
     this.buffers = new Map(); // macNorm -> string (processReceivedChunk)
     this.bin = new BinAssembler(); // trozos binarios (processReceivedBytes)
     this.pendingQueue = new Map(); // macNorm -> [msg] (Kotlin pendingMessageQueue)
+    this.scanned = new Set(); // macNorm vistos en el escaneo EN CURSO (Kotlin scannedDevices: se vacía al empezar y al parar)
+    this.reconnTimers = new Map(); this.reconnAttempts = new Map(); // Kotlin reconnectTimers / reconnectAttempts
     this.sent = []; // registro de lo que salió por el aire
     this.calls = []; // registro de llamadas JS -> nativo
     this.stats = { saves: 0, saveBytes: 0, maxSave: 0 }; // coste de persistencia (cruza el bridge)
@@ -700,6 +702,7 @@ class NativePhone {
       const cl = this.clients.get(macNorm);
       if (!cl) return;
       cl.state = 'connected';
+      this.reconnAttempts.delete(macNorm);
       if (call) call.resolve({ connected: true, alreadyConnected: false, deviceId: peer.address });
       this.emit('onDeviceConnected', { deviceId: peer.address, direction: 'outgoing', role: 'client', servicesReady: false });
       // Lado servidor del otro teléfono (solo si su servidor GATT está abierto)
@@ -730,6 +733,27 @@ class NativePhone {
         }, 40);
       }, 40);
     }, 60);
+  }
+
+  // 3167b — Kotlin startAutoReconnect (GattClientCallback STATE_DISCONNECTED): el NATIVO vuelve a abrir solo un enlace de cliente
+  // que cortó el otro, a los [exp/2, exp] ms (exp = 3 s · 2^intentos, máx. 30 s; hasta 10 intentos), pero solo si la dirección
+  // sigue en scannedDevices (escaneo en curso). disconnectDevice sobre esa dirección cancela los reintentos (reconnectTimers).
+  // (Por ahora solo lo dispara el corte desde el servidor del otro: disconnectDevice con server:true.)
+  _clientAutoReconnect(macNorm, peer) {
+    const n = this.reconnAttempts.get(macNorm) || 0;
+    if (n >= 10) return;
+    this.reconnAttempts.set(macNorm, n + 1);
+    const exp = Math.min(3000 * Math.pow(2, Math.min(n, 4)), 30000), delay = exp / 2 + Math.random() * exp / 2;
+    clearTimeout(this.reconnTimers.get(macNorm));
+    this.reconnTimers.set(macNorm, setTimeout(() => {
+      this.reconnTimers.delete(macNorm);
+      if (this.btOff || this.offline) return;
+      if (!this.scanned.has(macNorm)) { this.stats.reconnNoCache = (this.stats.reconnNoCache || 0) + 1; return; } // «No hay device cacheado»
+      if (this.clients.has(macNorm)) return;
+      if (peer.offline || !this.radio.inRange(this, peer) || peer.serverUp === false) return this._clientAutoReconnect(macNorm, peer); // 133 → otro intento
+      this.stats.nativeReconnects = (this.stats.nativeReconnects || 0) + 1;
+      this._connectClient(peer, null);
+    }, delay));
   }
 
   _flushPending(macNorm) {
@@ -845,6 +869,7 @@ class NativePhone {
       startScan: wrap('startScan', (c, a) => {
         if (self.btOff) return c.reject('Bluetooth desactivado');
         c.resolve({ started: true });
+        self.scanned.clear(); // Kotlin startScan: scannedDevices.clear()
         // Android 8.1+: con la pantalla apagada un escaneo sin filtro no entrega resultados
         if (self.appActive === false && !(a && a.filtered)) { self.stats.screenOffScans = (self.stats.screenOffScans || 0) + 1; return; }
         // Android: más de 5 startScan en 30 s => el sistema no entrega resultados (sin error)
@@ -881,6 +906,7 @@ class NativePhone {
             // 3012 (registro del teléfono de Marcos, 11-11): cada teléfono anuncia además por una dirección de LARGO ALCANCE (LE Coded)
             // con el mismo código; opts.codedCopy la modela y aquí llega ANTES que la normal (el orden real es arbitrario; este es el malo)
             const ev = { deviceId: p.address, name: p.opts.noAdvName ? 'Unknown' : (p.advertisedVisible() ? p.name : ''), rssi: typeof p.opts.rssi === 'number' ? p.opts.rssi : -50, nexoId: adv };
+            self.scanned.add(norm(p.address)); // Kotlin onScanResult: scannedDevices[macNorm] = device
             if (p.opts.codedCopy && !self.opts.noCodedScan) {
               self.emit('onDeviceFound', { deviceId: codedAddr(p.address), name: 'Unknown', rssi: ev.rssi, nexoId: adv, coded: true });
               setTimeout(() => self.emit('onDeviceFound', ev), 350);
@@ -900,9 +926,9 @@ class NativePhone {
         if (self.opts.scanRepeat !== false) { clearInterval(self._scanTick); self._scanTick = setInterval(() => { if (Date.now() >= self.scanningUntil || self.appActive === false && !(a && a.filtered)) { clearInterval(self._scanTick); return; } tick(); }, 1000); }
         // Kotlin 2766: al pararse sola, avisa (onScanStopped)
         clearTimeout(self._scanStopT); const until = self.scanningUntil;
-        self._scanStopT = setTimeout(() => { if (self.scanningUntil === until) { self.scanningUntil = 0; self.emit('onScanStopped', { reason: 'timeout' }); } }, until - Date.now());
+        self._scanStopT = setTimeout(() => { if (self.scanningUntil === until) { self.scanningUntil = 0; self.scanned.clear(); self.emit('onScanStopped', { reason: 'timeout' }); } }, until - Date.now());
       }),
-      stopScan: wrap('stopScan', (c) => { self.scanningUntil = 0; c.resolve({ stopped: true }); }),
+      stopScan: wrap('stopScan', (c) => { self.scanningUntil = 0; self.scanned.clear(); c.resolve({ stopped: true }); }), // Kotlin stopScanInternal
       connectToDevice: wrap('connectToDevice', (c) => {
         const raw = c.getString('deviceId') || c.getString('address') || '';
         if (!raw) return c.reject('deviceId requerido', 'INVALID_DEVICE_ID');
@@ -936,6 +962,7 @@ class NativePhone {
         const raw = c.getString('deviceId') || '';
         if (!raw) return c.reject('deviceId requerido');
         const mac = self._resolveMac(raw) || raw.toLowerCase();
+        clearTimeout(self.reconnTimers.get(mac)); self.reconnTimers.delete(mac); self.reconnAttempts.delete(mac); // reconnectTimers.remove
         const cl = self.clients.get(mac);
         if (cl) { self.clients.delete(mac); cl.peer.serverConnected.delete(norm(self.initAddress)); cl.peer.serverNotif.delete(norm(self.initAddress)); cl.peer.emit('onDeviceDisconnected', { deviceId: self.initAddress }); }
         const sp = a && a.server === true ? self.serverConnected.get(mac) : null;
@@ -946,7 +973,8 @@ class NativePhone {
             self.serverConnected.delete(mac); self.serverNotif.delete(mac); self.buffers.delete(mac); self.bin.reset(mac);
             self.emit('onDeviceDisconnected', { deviceId: sp.initAddress }); // gattServerCallback STATE_DISCONNECTED
             const pc = norm(self.address);
-            if (sp.clients.has(pc)) { sp.clients.delete(pc); sp.buffers.delete(pc); sp.bin.reset(pc); sp.emit('onDeviceDisconnected', { deviceId: self.address }); } // su GattClientCallback
+            // su GattClientCallback: aviso al JS y startAutoReconnect en el mismo paso (el JS contesta después, como en Android)
+            if (sp.clients.has(pc)) { sp.clients.delete(pc); sp.buffers.delete(pc); sp.bin.reset(pc); sp._clientAutoReconnect(pc, self); sp.emit('onDeviceDisconnected', { deviceId: self.address }); }
           }, 50);
         }
         self.pendingQueue.delete(mac);

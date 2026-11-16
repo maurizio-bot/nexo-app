@@ -167,8 +167,23 @@ export const bleNativeEvents = {
         // aviso falso de enlace que se cae (y un diagnóstico de 20 KB por la radio). Lo cerrado por la deduplicación no cuenta.
         var dupClosed = !!(self._dupClosedUntil && (self._dupClosedUntil.get(_normMac(deviceId)) || 0) > Date.now());
         if (typeof self._noteLinkFlap === 'function' && flapNx && !dupClosed && self._notifiedPeers.has(_normMac(deviceId) + ':' + _normId(flapNx))) self._noteLinkFlap(flapNx, 'desconexion'); // 3020
+        var prevSt = self._getDeviceState(deviceId) || {};
+        var cutClient = !dupClosed && prevSt.role === 'client' && (prevSt.state === BLE_STATES.READY_TO_CHAT || prevSt.state === BLE_STATES.NOTIFICATIONS_READY);
         self.connectedDevices.delete(deviceId);
         self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
+        // 3167b (diagnóstico S24↔realme 3075 16-11 15:17): el otro cortó un enlace nuestro de CLIENTE (p. ej. su desempate de
+        // repetidos, 3027) y con ese contacto queda OTRO enlace listo → el nativo lo reabría solo a los ~1,5–3 s (startAutoReconnect)
+        // y vuelta a empezar. disconnectDevice (sin server) cancela esos reintentos. Si era el ÚNICO enlace no se toca: sigue
+        // reconectando como siempre. Y el desempate ya no lo cuenta «ocupado» (chat abierto) si vuelve a aparecer (_peerCutUntil).
+        if (cutClient && flapNx) {
+          var cutKey = _normMac(deviceId), other = typeof self._bleReadyFor === 'function' ? self._bleReadyFor(flapNx) : null;
+          if (other && _normMac(other) !== cutKey) {
+            self._peerCutUntil = self._peerCutUntil || new Map(); self._peerCutUntil.set(cutKey, Date.now() + 600000);
+            if (self._peerCutUntil.size > 100) self._peerCutUntil.delete(self._peerCutUntil.keys().next().value);
+            console.log('[BLEInterface] Enlace ' + _normId(flapNx) + ' (' + cutKey.slice(-4) + ') cortado por el otro; sigo por (' + _normMac(other).slice(-4) + '): no lo reabro');
+            if (_hasNativeMethod(self.nativePlugin, 'disconnectDevice')) _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: deviceId }).catch(function() {});
+          }
+        }
         self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.OFFLINE, since: Date.now() });
         self._lastPongTime.delete(deviceId);
         self._pingFailCount.delete(deviceId);
