@@ -1556,6 +1556,14 @@
     {
      "fallo": "3148 (Fénix Entorno fase 1, oculto tras el interruptor de desarrollo): al recuperar con Fénix el teléfono nuevo escribía la identidad VIEJA (mismas llaves privadas): los contactos no podían distinguirlo ni deshacerlo y el teléfono de siempre no podía decir «no soy yo». 3148: la cuenta recuperada estrena llave y anuncia un registro de sucesión firmado con atestaciones de los guardianes (comprobables por el contacto o por la lista firmada por la llave vieja); el contacto lo acepta con marca roja «sin verificar» y rechaza firmas malas, guardianes desconocidos, pocas, repeticiones y épocas viejas; el veto firmado del teléfono de siempre (con su desbloqueo) gana antes o después; la llave vieja que sigue hablando queda en conflicto. fenixentorno.js E0–E11 (contraprueba 3147: no existe)",
      "prueba": "FÉNIX ENTORNO fase 1"
+    },
+    {
+     "fallo": "3163: un «ver una vez» (foto o vídeo) que pasaba por un PUENTE Jump llegaba como medio normal (el puente no reenviaba la marca), y el HD de un vídeo que llegaba tras abrirlo lo revivía en el disco. videounavez.js (contraprueba 4a7bed89)",
+     "prueba": "«ver una vez» también para VÍDEOS"
+    },
+    {
+     "fallo": "3164: un «ver una vez» se podía REENVIAR desde el menú de la burbuja (propio o recibido, visto o no). once.js no_se_reenvia (contraprueba 3161)",
+     "prueba": "foto de una vez"
     }
    ],
    "debiles": [
@@ -1754,6 +1762,10 @@
     {
      "fallo": "3151 (dueño 16-11): los emojis del teclado mandados solos salían con burbuja y a 16 px (el emoji grande solo se aplicaba a respuestas y reenvíos). Ahora sin burbuja y ≥ 3 veces el texto, en los dos teléfonos (contraprueba 3149)",
      "prueba": "EMOJI GRANDE Y SIN BURBUJA"
+    },
+    {
+     "fallo": "3164: la burbuja de texto recortaba la punta de la primera letra (overflow hidden + radio 12 para las fotos). emojigrande.js G4 (contraprueba 3161)",
+     "prueba": "EMOJI GRANDE"
     }
    ],
    "debiles": [
