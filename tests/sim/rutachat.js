@@ -84,9 +84,10 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.caducado = !sees(A, idB) && !sees(B, idA);
   const probes = () => logs.filter((l) => l.indexOf('[A]') >= 0 && l.indexOf('[RUTA]') >= 0 && l.indexOf('saludo por internet') >= 0).length;
   // R1: abrir el chat → B por internet
-  const p0 = probes();
+  const p0 = probes(), tOpen = Date.now();
   await openChatWith(A, 'B');
   r.R1_B_por_internet_tras_abrir_s = await waitFor(() => sees(A, idB), 10000);
+  if (r.R1_B_por_internet_tras_abrir_s !== null) r.R1_B_por_internet_tras_abrir_ms = Date.now() - tOpen;
   // R2: el primer texto sale sin esperar
   const t0 = Date.now();
   sendText(A, 'primer texto tras abrir');
@@ -97,14 +98,15 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.R1_saludos_al_abrir = probes() - p0;
   // R3a: abrir y cerrar 5 veces en 10 s
   await sleep(21000);
+  await stale(); // caducado: la 1.ª apertura saluda, las demás no
   const p1 = probes();
   for (let i = 0; i < 5; i++) { await openChatWith(A, 'B'); await sleep(1200); await closeChat(A); }
   r.R3_saludos_5_aperturas = probes() - p1;
   // R3b: otra vez caducado, abrir y escribir (pasados 20 s del último saludo): un saludo como mucho y B vuelve
   await sleep(21000);
   await stale();
-  await openChatWith(A, 'B');
   const p2 = probes();
+  await openChatWith(A, 'B');
   await sleep(25000); await stale(); // pasan 20 s del saludo de abrir; vuelve a caducar
   const p3 = probes();
   const inp = A.win.document.getElementById('message-input');
@@ -115,7 +117,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.R3_saludos_al_abrir_2 = p3 - p2;
   r.estadistica_ruta = logs.some((l) => l.indexOf('[A]') >= 0 && l.indexOf('[VELOCIDAD] internet al abrir el chat listo') >= 0);
   const ok = r.A_y_B_en_linea_s !== null && r.caducado && r.R1_B_por_internet_tras_abrir_s !== null && r.R1_B_por_internet_tras_abrir_s <= 5 &&
-    r.R2_entregado_s !== null && r.R2_entregado_ms_desde_enviar <= 5000 && r.R3_saludos_5_aperturas <= 2 && r.R3_saludos_al_escribir <= 1 && r.R3_B_vuelve_al_escribir_s !== null;
+    r.R2_entregado_s !== null && r.R2_entregado_ms_desde_enviar <= 5000 && r.R3_saludos_5_aperturas >= 1 && r.R3_saludos_5_aperturas <= 2 && r.R3_saludos_al_escribir <= 1 && r.R3_B_vuelve_al_escribir_s !== null;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('RUTACHAT ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_rutachat.txt'), logs.join('\n'));

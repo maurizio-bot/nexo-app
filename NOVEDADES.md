@@ -23,39 +23,19 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Al llamar oyes el «tuuu… tuuu…» mientras suena del otro lado.
-- Más protección contra impostores: aviso si alguien usa el nombre de un contacto que ya tienes, doble confirmación para unir un chat y aviso antes de pagar un cobro de alguien sin verificar.
-- El respaldo de tu cuenta elige solo a tus contactos más cercanos como guardianes.
-- En Xiaomi, Redmi y Poco te decimos qué permiso activar para contestar con manos libres.
-- Todas las pantallas con el mismo estilo limpio de Contactos.
+- Al abrir un chat, NEXO ya busca el mejor camino para que tu mensaje salga al instante.
 </es-419>
 <it-IT>
-- Quando chiami senti il «tuuu… tuuu…» mentre squilla dall'altra parte.
-- Più protezione dagli impostori: avviso se qualcuno usa il nome di un tuo contatto, doppia conferma per unire una chat e avviso prima di pagare una richiesta di chi non è verificato.
-- Il backup del tuo account sceglie da solo i contatti più vicini come custodi.
-- Su Xiaomi, Redmi e Poco ti diciamo quale permesso attivare per rispondere in vivavoce.
-- Tutte le schermate con lo stesso stile pulito dei Contatti.
+- Quando apri una chat, NEXO cerca già la strada migliore perché il tuo messaggio parta subito.
 </it-IT>
 <en-US>
-- When you call, you hear the ringing tone while the other phone rings.
-- More protection against impostors: a warning if someone uses the name of a contact you already have, a double confirmation to merge a chat, and a warning before paying a request from someone unverified.
-- Your account backup picks your closest contacts as guardians on its own.
-- On Xiaomi, Redmi and Poco we tell you which permission to turn on to answer hands-free.
-- All screens now share the same clean look as Contacts.
+- When you open a chat, NEXO already finds the best route so your message goes out instantly.
 </en-US>
 <pt-BR>
-- Ao ligar, você ouve o «tuuu… tuuu…» enquanto toca do outro lado.
-- Mais proteção contra impostores: aviso se alguém usa o nome de um contato que você já tem, dupla confirmação para unir uma conversa e aviso antes de pagar uma cobrança de alguém não verificado.
-- O backup da sua conta escolhe sozinho seus contatos mais próximos como guardiões.
-- Em Xiaomi, Redmi e Poco dizemos qual permissão ativar para atender no viva-voz.
-- Todas as telas com o mesmo estilo limpo de Contatos.
+- Ao abrir uma conversa, o NEXO já procura o melhor caminho para sua mensagem sair na hora.
 </pt-BR>
 <fr-FR>
-- Quand vous appelez, vous entendez la tonalité pendant que ça sonne de l'autre côté.
-- Contre les imposteurs : alerte si quelqu'un prend le nom d'un contact, double confirmation pour fusionner un chat et alerte avant de payer une personne non vérifiée.
-- La sauvegarde de votre compte choisit seule vos contacts les plus proches comme gardiens.
-- Sur Xiaomi, Redmi et Poco, on vous indique quelle autorisation activer pour répondre en mains libres.
-- Même style épuré que Contacts partout.
+- Dès que vous ouvrez un chat, NEXO cherche le meilleur chemin pour que votre message parte aussitôt.
 </fr-FR>
 <!-- /APK -->
 

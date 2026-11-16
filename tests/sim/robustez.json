@@ -1011,6 +1011,10 @@
     {
      "fallo": "3133 (destapado por blobfan.js en la 3129: el aviso oculto nuevo de la foto cambió el orden en que se guardan las claves): el saludo cifrado «estoy en línea» solo salía al abrir los relés (a los contactos que ya había) y después solo a los que ya estaban en línea; dos teléfonos con internet ya abierto que se conocían en persona DESPUÉS no se saludaban nunca: no se veían en línea por internet hasta reabrir la app o deslizar, y al cortarse el Bluetooth no pasaban a internet. 3133: al contacto que aún no se saludó en esta sesión, un saludo (uno solo). saludonuevo.js S1–S3 (contraprueba 3128 y 3132: S1 y S2 fallan)",
      "prueba": "SALUDO AL CONTACTO NUEVO con internet ya encendido (3133"
+    },
+    {
+     "fallo": "3147 (dueño 16-11: «preparar el mejor camino al abrir el chat, para que enviar sea instantáneo»): al abrir un chat no se hacía nada por internet; si la presencia del otro había caducado (estuvo sin internet y volvió sin que yo me enterase) nadie saludaba y seguía «sin conexión» hasta su próximo mensaje. 3147: al abrir el chat (y al empezar a escribir) un saludo cifrado si hace > 20 s del último (net.probe), y al escribir la conexión Bluetooth si está cerca; uno cada 20 s por contacto como mucho. rutachat.js (contraprueba 3145: B nunca en línea en 10 s; 3147: 0,5 s)",
+     "prueba": "CAMINO PREPARADO AL ABRIR EL CHAT (3147, dueño 16-11)"
     }
    ],
    "debiles": [
