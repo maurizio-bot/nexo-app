@@ -102,7 +102,9 @@ const badge = (p) => { const v = videoBubbles(p)[0]; const b = v && v.querySelec
       click(B.win, vidB); await sleep(400);
       const ov = B.win.document.getElementById('fullscreen-media-overlay');
       r['visor_abre_' + (k + 1)] = !!ov;
-      const closeBtn = ov && ov.querySelector('button'); if (closeBtn) click(B.win, closeBtn); await sleep(300);
+      // 3159: el visor ya no tiene X: se cierra tocando fuera del vídeo (o deslizando arriba / «atrás»)
+      if (ov) click(B.win, ov); await sleep(300);
+      r['visor_cierra_' + (k + 1)] = !B.win.document.getElementById('fullscreen-media-overlay');
     }
     r.url_burbuja_destruida = B.win.__revoked.has(vidB.dataset.src);
     r.poster_en_B = ((vidB.querySelector('img.video-thumb') || {}).src || '').substring(0, 30);

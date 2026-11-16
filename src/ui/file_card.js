@@ -12,6 +12,7 @@ import { vaultLoadFile, vaultSetMessageFields } from '../vault/vault_manager.js'
 import { isGroupId } from './groups.js';
 import { bigToGroup } from './group_media.js';
 import { t } from './i18n.js';
+import { viewerGestures, viewerSlide } from './media_swipe.js';   // 3159: deslizar entre fotos y para cerrar
 
 
 export function _closeFullscreenMedia() {
@@ -21,96 +22,123 @@ export function _closeFullscreenMedia() {
   ov.remove();
 }
 
-export function _openFullscreenMedia(src, type, noSave) {
+// 3159 (dueño 16-11): `fromEl` = la burbuja desde la que se abrió (render.js); con ella, el visor se desliza de lado entre las fotos
+// y vídeos del chat (media_swipe.js). Sin ella («ver una vez», foto de un contacto) solo se cierra.
+export function _openFullscreenMedia(src, type, noSave, fromEl) {
   _closeFullscreenMedia();
   if (!src) { console.warn('[VIDEO] Sin fuente para el visor'); return; }
   var overlay = document.createElement('div');
   overlay.id = 'fullscreen-media-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:5000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;';
-  var closeBtn = document.createElement('button');
-  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';   // 3140: icono de trazo 21 en botón redondo de 42, como los de Contactos
-  closeBtn.style.cssText = 'position:absolute;top:calc(14px + env(safe-area-inset-top,0px));right:14px;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.08);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;padding:0;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:5000;overflow:hidden;touch-action:none;';
+  // 3159 (dueño 16-11: «para salir de las fotos y regresar al chat con deslizar hacia arriba, ya quita la x»): ya no hay X. Se cierra
+  // deslizando hacia arriba (o abajo), tocando fuera de la foto o con el «atrás» de Android (chat_nav.js → __nexoCloseMedia).
   // v9.9.31: no revocar src: es la misma URL que usa la burbuja (después no se podía volver a ver);
   // se liberan al salir del chat (_cleanupObjectURLs)
-  closeBtn.onclick = function(e) { if (e) e.stopPropagation(); _closeFullscreenMedia(); };
-  overlay.appendChild(closeBtn);
   // Ronda 2801 (pedido del dueño #92): guardar en la galería. NO en «ver una vez» (noSave): se consumen, no se guardan.
-  if (!noSave) {
-    var dlBtn = document.createElement('button');
-    dlBtn.className = 'fs-save-btn';
-    dlBtn.setAttribute('data-state', 'idle');
-    dlBtn.innerHTML = _ICON_DL;
-    dlBtn.title = t('media_save_gallery', 'Guardar en galería');
-    dlBtn.style.cssText = 'position:absolute;top:calc(14px + env(safe-area-inset-top,0px));left:14px;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.08);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;padding:0;';
-    dlBtn.onclick = function(e) { if (e) e.stopPropagation(); _saveMediaToGallery(src, type, dlBtn); };
-    overlay.appendChild(dlBtn);
-  }
-  if (type === 'image') {
-    var img = document.createElement('img');
-    img.src = src;
-    img.style.cssText = 'max-width:95vw;max-height:85vh;object-fit:contain;border-radius:8px;transition:transform 0.15s ease;cursor:zoom-in;transform-origin:center center;touch-action:none;';
-    // Ronda 2783 (pedido del dueño): ampliar la foto con DOS DEDOS (pellizco: se abren = acercar, se juntan = alejar) o
-    // con DOBLE TOQUE (alterna normal / 2,5x). Con la foto ampliada, un dedo la arrastra para ver el resto. Un toque
-    // solo no hace nada (para cerrar: fuera de la foto o la X).
-    var zScale = 1, ztx = 0, zty = 0, pinch0 = 0, pinchScale0 = 1, panX0 = 0, panY0 = 0, lastTapV = 0, zMoved = false;
-    var zApply = function(anim) {
-      // Ronda 2784 (pedido del dueño): el arrastre no pasa del borde de la foto (su borde se pega al de la pantalla;
-      // nunca se ve negro más allá). El máximo de desplazamiento es la mitad de lo que sobresale la imagen ampliada.
-      var maxX = Math.max(0, (img.offsetWidth * zScale - window.innerWidth) / 2);
-      var maxY = Math.max(0, (img.offsetHeight * zScale - window.innerHeight) / 2);
-      ztx = Math.max(-maxX, Math.min(maxX, ztx));
-      zty = Math.max(-maxY, Math.min(maxY, zty));
-      img.style.transition = anim ? 'transform 0.15s ease' : 'none';
-      img.style.transform = 'translate(' + ztx + 'px,' + zty + 'px) scale(' + zScale + ')';
-      img.style.cursor = zScale > 1 ? 'zoom-out' : 'zoom-in';
-    };
-    var zDist = function(t) { var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return Math.sqrt(dx * dx + dy * dy); };
-    var zClamp = function(v, a, b) { return Math.max(a, Math.min(b, v)); };
-    img.addEventListener('touchstart', function(e) {
-      var t = e.touches || [];
-      zMoved = false;
-      if (t.length >= 2) { pinch0 = zDist(t) || 1; pinchScale0 = zScale; }
-      else if (t.length === 1) { panX0 = t[0].clientX - ztx; panY0 = t[0].clientY - zty; }
-      if (e.cancelable) e.preventDefault();
-    }, { passive: false });
-    img.addEventListener('touchmove', function(e) {
-      var t = e.touches || [];
-      if (t.length >= 2) {
-        zMoved = true;
-        zScale = zClamp(pinchScale0 * (zDist(t) / pinch0), 1, 5);
-        zApply(false);
-        if (e.cancelable) e.preventDefault();
-      } else if (t.length === 1 && zScale > 1) {
-        zMoved = true;
-        ztx = t[0].clientX - panX0; zty = t[0].clientY - panY0;
-        zApply(false);
-        if (e.cancelable) e.preventDefault();
-      }
-    }, { passive: false });
-    img.addEventListener('touchend', function(e) {
-      if ((e.touches && e.touches.length) || 0) return;   // aún queda un dedo en la pantalla
-      if (zScale <= 1.02) { zScale = 1; ztx = 0; zty = 0; zApply(true); }
-      if (!zMoved) {                                       // doble toque (sin pellizco ni arrastre): alternar
-        var now = Date.now();
-        if (now - lastTapV < 320) { lastTapV = 0; if (zScale > 1) { zScale = 1; ztx = 0; zty = 0; } else { zScale = 2.5; } zApply(true); }
-        else lastTapV = now;
-      }
-    }, { passive: false });
-    overlay.appendChild(img);
-  } else if (type === 'video') {
-    var video = document.createElement('video');
-    video.src = src;
-    video.controls = true;
-    video.autoplay = true;
-    video.playsInline = true;
-    video.style.cssText = 'max-width:95vw;max-height:85vh;border-radius:8px;background:#000;';
-    video.onerror = function() { console.warn('[VIDEO] El visor no pudo reproducir: código ' + (video.error && video.error.code)); };
-    overlay.appendChild(video);
-  }
+  // 3159: un botón por cada foto/vídeo que se ve (guarda la que se ve; al volver a una, su botón conserva si ya se guardó).
+  var saveBtn = null, saveBtns = new Map();
+  var leave = function() { if (saveBtn) { saveBtn.remove(); saveBtn = null; } };
+  var show = function(slide, s, ty, el) {
+    _releaseMedia(slide);
+    slide.textContent = '';
+    if (ty === 'image') slide.appendChild(_viewerImage(s));
+    else if (ty === 'video') slide.appendChild(_viewerVideo(s));
+    if (noSave) return;
+    leave();
+    var key = el || overlay, had = saveBtns.get(key);
+    saveBtn = (had && had.src === s) ? had.btn : _viewerSaveBtn(s, ty);
+    saveBtns.set(key, { src: s, btn: saveBtn });
+    overlay.appendChild(saveBtn);
+  };
+  var slide = viewerSlide();
+  overlay.appendChild(slide);
+  show(slide, src, type, fromEl);
   overlay.addEventListener('click', function(e) {
-    if (e.target === overlay) _closeFullscreenMedia();
+    var tg = e.target;
+    if (tg === overlay || (tg && tg.classList && tg.classList.contains('fs-slide'))) _closeFullscreenMedia();   // fuera de la foto
   });
   document.body.appendChild(overlay);
+  viewerGestures(overlay, { slide: slide, el: (!noSave && fromEl) || null, show: show, leave: leave, close: _closeFullscreenMedia });
+}
+// 3159 (dueño 16-11: «quiero que lo muevas a la esquina baja a la derecha por una cuestión ergonómica»): el botón de guardar va ABAJO a la
+// DERECHA, al alcance del pulgar. En un vídeo, por ENCIMA de la barra del reproductor: el vídeo mide como mucho 85vh centrado (su borde
+// de abajo queda a ≥ 7,5vh del borde de la pantalla) y la barra mide ~48 px, así que a 7,5vh + 64 px nunca la tapa.
+function _viewerSaveBtn(src, type) {
+  var dlBtn = document.createElement('button');
+  dlBtn.className = 'fs-save-btn';
+  dlBtn.setAttribute('data-state', 'idle');
+  dlBtn.innerHTML = _ICON_DL;
+  dlBtn.title = t('media_save_gallery', 'Guardar en galería');
+  var bottom = type === 'video' ? 'max(calc(7.5vh + 64px), calc(20px + env(safe-area-inset-bottom,0px)))' : 'calc(20px + env(safe-area-inset-bottom,0px))';
+  dlBtn.style.cssText = 'position:absolute;bottom:' + bottom + ';right:calc(18px + env(safe-area-inset-right,0px));width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.08);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;padding:0;';
+  dlBtn.onclick = function(e) { if (e) e.stopPropagation(); _saveMediaToGallery(src, type, dlBtn); };
+  return dlBtn;
+}
+function _viewerImage(src) {
+  var img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = 'max-width:95vw;max-height:85vh;object-fit:contain;border-radius:8px;transition:transform 0.15s ease;cursor:zoom-in;transform-origin:center center;touch-action:none;';
+  // Ronda 2783 (pedido del dueño): ampliar la foto con DOS DEDOS (pellizco: se abren = acercar, se juntan = alejar) o
+  // con DOBLE TOQUE (alterna normal / 2,5x). Con la foto ampliada, un dedo la arrastra para ver el resto. Un toque
+  // solo no hace nada (para cerrar: fuera de la foto, deslizar arriba o «atrás»).
+  var zScale = 1, ztx = 0, zty = 0, pinch0 = 0, pinchScale0 = 1, panX0 = 0, panY0 = 0, lastTapV = 0, zMoved = false, sx0 = 0, sy0 = 0;
+  var zApply = function(anim) {
+    // Ronda 2784 (pedido del dueño): el arrastre no pasa del borde de la foto (su borde se pega al de la pantalla;
+    // nunca se ve negro más allá). El máximo de desplazamiento es la mitad de lo que sobresale la imagen ampliada.
+    var maxX = Math.max(0, (img.offsetWidth * zScale - window.innerWidth) / 2);
+    var maxY = Math.max(0, (img.offsetHeight * zScale - window.innerHeight) / 2);
+    ztx = Math.max(-maxX, Math.min(maxX, ztx));
+    zty = Math.max(-maxY, Math.min(maxY, zty));
+    img.style.transition = anim ? 'transform 0.15s ease' : 'none';
+    img.style.transform = 'translate(' + ztx + 'px,' + zty + 'px) scale(' + zScale + ')';
+    img.style.cursor = zScale > 1 ? 'zoom-out' : 'zoom-in';
+    img.dataset.zoom = String(zScale);   // 3159: con la foto ampliada, el visor no desliza ni cierra (media_swipe.js)
+  };
+  var zDist = function(t) { var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return Math.sqrt(dx * dx + dy * dy); };
+  var zClamp = function(v, a, b) { return Math.max(a, Math.min(b, v)); };
+  img.addEventListener('touchstart', function(e) {
+    var t = e.touches || [];
+    zMoved = false;
+    if (t.length >= 2) { pinch0 = zDist(t) || 1; pinchScale0 = zScale; }
+    else if (t.length === 1) { panX0 = t[0].clientX - ztx; panY0 = t[0].clientY - zty; sx0 = t[0].clientX; sy0 = t[0].clientY; }
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+  img.addEventListener('touchmove', function(e) {
+    var t = e.touches || [];
+    if (t.length >= 2) {
+      zMoved = true;
+      zScale = zClamp(pinchScale0 * (zDist(t) / pinch0), 1, 5);
+      zApply(false);
+      if (e.cancelable) e.preventDefault();
+    } else if (t.length === 1 && zScale > 1) {
+      zMoved = true;
+      ztx = t[0].clientX - panX0; zty = t[0].clientY - panY0;
+      zApply(false);
+      if (e.cancelable) e.preventDefault();
+    } else if (t.length === 1 && Math.abs(t[0].clientX - sx0) + Math.abs(t[0].clientY - sy0) > 10) {
+      zMoved = true;   // 3159: deslizar (cambiar de foto o cerrar) no cuenta como toque para el doble toque
+    }
+  }, { passive: false });
+  img.addEventListener('touchend', function(e) {
+    if ((e.touches && e.touches.length) || 0) return;   // aún queda un dedo en la pantalla
+    if (zScale <= 1.02) { zScale = 1; ztx = 0; zty = 0; zApply(true); }
+    if (!zMoved) {                                       // doble toque (sin pellizco ni arrastre): alternar
+      var now = Date.now();
+      if (now - lastTapV < 320) { lastTapV = 0; if (zScale > 1) { zScale = 1; ztx = 0; zty = 0; } else { zScale = 2.5; } zApply(true); }
+      else lastTapV = now;
+    }
+  }, { passive: false });
+  return img;
+}
+function _viewerVideo(src) {
+  var video = document.createElement('video');
+  video.src = src;
+  video.controls = true;
+  video.autoplay = true;
+  video.playsInline = true;
+  video.style.cssText = 'max-width:95vw;max-height:85vh;border-radius:8px;background:#000;';
+  video.onerror = function() { console.warn('[VIDEO] El visor no pudo reproducir: código ' + (video.error && video.error.code)); };
+  return video;
 }
 // Ronda 2801 (#92): guardar la foto/vídeo que se está viendo en la GALERÍA del teléfono (plugin nativo saveToGallery).
 // El visor tiene data: URL (foto) o blob: URL (vídeo); de ahí sacamos los bytes en base64 para el nativo.

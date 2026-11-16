@@ -145,7 +145,8 @@ async function sendText(page, t) {
       return v ? { readyState: v.readyState, currentTime: Math.round(v.currentTime * 10) / 10, error: v.error ? v.error.code : null, paused: v.paused } : null;
     });
     res.reproducciones.push(play && play.currentTime > 0 && !play.error ? 'se reproduce (' + play.currentTime + ' s)' : 'NO: ' + JSON.stringify(play));
-    await B.evaluate(() => { const ov = document.getElementById('fullscreen-media-overlay'); const b = ov && ov.querySelector('button'); if (b) b.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    // 3159: el visor ya no tiene X: se cierra tocando fuera del vídeo (o deslizando arriba / «atrás»)
+    await B.evaluate(() => { const ov = document.getElementById('fullscreen-media-overlay'); if (ov) ov.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
     await sleep(500);
   }
   res.reproductores_vivos_B = await B.evaluate(() => window.__videos.filter((v) => v.currentSrc && (v.readyState > 0 || !v.paused) && !v.isConnected).length + ' sueltos (fuera de la pantalla), ' + window.__videos.filter((v) => v.isConnected && v.currentSrc && v.readyState > 0).length + ' en pantalla');

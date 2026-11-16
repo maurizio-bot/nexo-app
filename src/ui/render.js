@@ -5,6 +5,7 @@
  */
 import { _b64ToBlob } from './video_tools.js';
 import { _buildFileCard, _ensureVideoThumb, _openFullscreenMedia } from './file_card.js';
+import { registerViewerSource } from './media_swipe.js';   // 3159: deslizar entre las fotos y vídeos del chat en el visor
 import { _canUpgradeStatus, _getCurrentContactId, _getDomMessageStatus, _normId } from './chat_format.js';
 import { _clearMessageContainer } from './chat_nav.js';
 import { _fillTextBubble, _renderReactions, _renderedMessageIds } from './chat_actions.js';
@@ -360,19 +361,28 @@ export function _renderMessage(msg, skipSave) {
         img.dataset.fullscreenSrc = img.src;
         img.dataset.fullscreenType = 'image';
         if (_thumbOnly) img.dataset.fullRef = attachment.meta.fullRef;
+        // 3159: la foto para el visor, la MISMA para el toque y para deslizar entre fotos dentro del visor (media_swipe.js): con
+        // solo la miniatura, el original se lee al pedirlo (una vez; quien la pida mientras se lee espera a esa lectura)
+        var imgWait = null;
+        var imgSrc = function(cb) {
+          if (!img.dataset.fullRef || img.dataset.fullLoaded) { cb(img.dataset.fullscreenSrc); return; }
+          if (imgWait) { imgWait.push(cb); return; }
+          imgWait = [cb]; img.dataset.fullLoading = '1'; img.style.opacity = '0.6';
+          var fin = function() {
+            img.style.opacity = ''; delete img.dataset.fullLoading;
+            var w = imgWait || []; imgWait = null;
+            w.forEach(function(f) { f(img.dataset.fullscreenSrc); });   // sin el original (borrado) queda la miniatura
+          };
+          vaultLoadFile(img.dataset.fullRef).then(function(b64) {
+            if (b64) { img.dataset.fullscreenSrc = 'data:image/' + (attachment.meta.format || 'jpeg') + ';base64,' + b64; img.dataset.fullLoaded = '1'; }
+            fin();
+          }).catch(fin);
+        };
+        registerViewerSource(img, 'image', imgSrc);
         img.onclick = function(e) {
           e.stopPropagation();
-          if (img.dataset.fullRef && !img.dataset.fullLoaded) {
-            if (img.dataset.fullLoading) return;
-            img.dataset.fullLoading = '1'; img.style.opacity = '0.6';
-            vaultLoadFile(img.dataset.fullRef).then(function(b64) {
-              img.style.opacity = ''; delete img.dataset.fullLoading;
-              if (b64) { img.dataset.fullscreenSrc = 'data:image/' + (attachment.meta.format || 'jpeg') + ';base64,' + b64; img.dataset.fullLoaded = '1'; }
-              _openFullscreenMedia(img.dataset.fullscreenSrc, 'image');   // sin el original (borrado) se abre la miniatura
-            }).catch(function() { img.style.opacity = ''; delete img.dataset.fullLoading; _openFullscreenMedia(img.dataset.fullscreenSrc, 'image'); });
-            return;
-          }
-          _openFullscreenMedia(img.dataset.fullscreenSrc, 'image');
+          if (img.dataset.fullLoading) return;
+          imgSrc(function(s) { _openFullscreenMedia(s, 'image', false, img); });
         };
         img.onload = function() {
           var mc = document.getElementById('messages-container');
@@ -423,23 +433,34 @@ export function _renderMessage(msg, skipSave) {
           videoWrapper.appendChild(hdBadge);
         }
         if (_lazyVid) videoWrapper.dataset.lazyRef = attachment.meta.lazyRef;
-        videoWrapper.onclick = function(e) {
-          e.stopPropagation();
-          if (videoWrapper.dataset.lazyRef && !videoWrapper.dataset.src) {
-            if (videoWrapper.dataset.loading) return;
-            videoWrapper.dataset.loading = '1'; videoWrapper.style.opacity = '0.6';
-            vaultLoadFile(videoWrapper.dataset.lazyRef).then(function(b64) {
-              videoWrapper.style.opacity = ''; delete videoWrapper.dataset.loading;
-              if (!b64) { console.warn('[VIDEO] el vídeo ya no está en el teléfono'); return; }
+        // 3159: el vídeo para el visor, el MISMO para el toque y para deslizar dentro del visor: uno perezoso se lee al pedirlo
+        // (una vez); dataset.src se lee al pedirlo porque el HD lo cambia (video_send.js)
+        var vidWait = null;
+        var vidSrc = function(cb) {
+          if (!videoWrapper.dataset.lazyRef || videoWrapper.dataset.src) { cb(videoWrapper.dataset.src); return; }
+          if (vidWait) { vidWait.push(cb); return; }
+          vidWait = [cb]; videoWrapper.dataset.loading = '1'; videoWrapper.style.opacity = '0.6';
+          var fin = function() {
+            videoWrapper.style.opacity = ''; delete videoWrapper.dataset.loading;
+            var w = vidWait || []; vidWait = null;
+            w.forEach(function(f) { f(videoWrapper.dataset.src || ''); });
+          };
+          vaultLoadFile(videoWrapper.dataset.lazyRef).then(function(b64) {
+            if (!b64) console.warn('[VIDEO] el vídeo ya no está en el teléfono');
+            else {
               try {
                 var u = URL.createObjectURL(_b64ToBlob(b64, vMime)); _objectURLRegistry.push(u);
                 videoWrapper.dataset.src = u; videoWrapper.dataset.fullscreenSrc = u;
-                _openFullscreenMedia(u, 'video');
               } catch (vErr2) { console.warn('[VIDEO] No se pudo preparar el vídeo:', vErr2 && vErr2.message); }
-            }).catch(function() { videoWrapper.style.opacity = ''; delete videoWrapper.dataset.loading; });
-            return;
-          }
-          _openFullscreenMedia(videoWrapper.dataset.src, 'video');
+            }
+            fin();
+          }).catch(fin);
+        };
+        registerViewerSource(videoWrapper, 'video', vidSrc);
+        videoWrapper.onclick = function(e) {
+          e.stopPropagation();
+          if (videoWrapper.dataset.loading) return;
+          vidSrc(function(s) { if (s || !videoWrapper.dataset.lazyRef) _openFullscreenMedia(s, 'video', false, videoWrapper); });
         };
         contentDiv.appendChild(videoWrapper);
       } else if (attachment.type === 'file') {
@@ -482,11 +503,11 @@ export function _renderMessage(msg, skipSave) {
             mediaWrapper.appendChild(fvideo);
             mediaWrapper.appendChild(fplayOverlay);
           }
+          var fEl = isImageFile ? fimg : fvideo, fType = isImageFile ? 'image' : 'video';
+          registerViewerSource(fEl, fType, function(cb) { cb(fEl.dataset.fullscreenSrc); });   // 3159: también al deslizar en el visor
           mediaWrapper.onclick = function(e) {
             e.stopPropagation();
-            var src = isImageFile ? fimg.dataset.fullscreenSrc : fvideo.dataset.fullscreenSrc;
-            var type = isImageFile ? 'image' : 'video';
-            _openFullscreenMedia(src, type);
+            _openFullscreenMedia(fEl.dataset.fullscreenSrc, fType, false, fEl);
           };
           contentDiv.appendChild(mediaWrapper);
         } else {
