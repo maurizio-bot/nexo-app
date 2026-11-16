@@ -179,7 +179,9 @@ const fin = (ok, extra) => {
   // el toque llega al botón (arranca el guardado) sin cambiar ni cerrar. (Aparte, previo a 3159 y también en la 3158: que el nativo
   // reciba el vídeo depende de la CSP de index.html, cuyo connect-src no deja leer la URL blob: del vídeo; se anota como dato.)
   r.tocar_boton_video_guarda = !!(await A.evaluate(() => { const x = document.querySelector('#fullscreen-media-overlay .fs-save-btn'); return x && x.getAttribute('data-state') !== 'idle'; })) && s.abierto && /^blob:/.test(s.vid) && s.contador === '4 / 4';
-  r.dato_video_llega_al_nativo = await A.evaluate(() => window.__saved.length === 2 && window.__saved[1].mime === 'video/webm');
+  // 3162: el vídeo LLEGA al nativo (antes la CSP no dejaba leer su blob: con fetch y el botón se ponía rojo; contraprueba 3160)
+  await sleep(600);
+  r.video_llega_al_nativo = await A.evaluate(() => window.__saved.length === 2 && window.__saved[1].mime === 'video/webm' && (window.__saved[1].base64 || '').length > 100);
   await swipe(b.x, b.y, b.x, b.y - 400, 200); await sleep(600); s = await state();
   r.boton_video_no_cierra = s.abierto && /^blob:/.test(s.vid) && s.contador === '4 / 4';
   // 5) ← en la última: no pasa nada
@@ -255,7 +257,7 @@ const fin = (ok, extra) => {
 
   r.errores = logs.filter((l) => /PAGEERROR|TypeError/.test(l)).slice(0, 4);
   const keys = ['preparado', 'abre_1', 'sin_x', 'boton_abajo_derecha_foto', 'pasa_a_2', 'un_solo_slide', 'guarda_la_que_se_ve', 'tocar_boton_no_cambia', 'boton_vertical_no_cierra', 'boton_lateral_no_cambia',
-    'boton_video_sobre_la_barra', 'tocar_boton_video_guarda', 'boton_video_no_cierra', 'pasa_a_3', 'guardar_nuevo_en_3', 'pasa_al_video', 'ultima_no_pasa', 'vuelve_a_3', 'video_liberado',
+    'boton_video_sobre_la_barra', 'tocar_boton_video_guarda', 'video_llega_al_nativo', 'boton_video_no_cierra', 'pasa_a_3', 'guardar_nuevo_en_3', 'pasa_al_video', 'ultima_no_pasa', 'vuelve_a_3', 'video_liberado',
     'corto_no_cambia', 'tiron_rapido_pasa', 'zoom_doble_toque', 'zoom_arrastre_no_cambia', 'zoom_arrastre_mueve', 'zoom_vertical_no_cierra', 'zoom_vuelve', 'vertical_corto_no_cierra', 'arriba_cierra',
     'abajo_cierra', 'atras', 'video_abre', 'video_barra_no_cierra', 'video_barra_lateral_no_cambia', 'video_arriba_cierra', 'una_vez_no_consumida', 'una_vez_abre', 'una_vez_no_desliza', 'una_vez_arriba_cierra'];
   const ok = keys.every((k) => r[k] === true) && r.contador_1 === '1 / 4' && r.contador_2 === '2 / 4' && r.contador_3 === '3 / 4' && r.contador_4 === '4 / 4' && r.abre_3_contador === '3 / 4' && r.errores.length === 0;

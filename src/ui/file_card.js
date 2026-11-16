@@ -12,6 +12,7 @@ import { vaultLoadFile, vaultSetMessageFields } from '../vault/vault_manager.js'
 import { isGroupId } from './groups.js';
 import { bigToGroup } from './group_media.js';
 import { t } from './i18n.js';
+import { blobForUrl } from './blob_registry.js'; // 3162: el vídeo se guarda sin fetch de su blob: (la CSP no lo deja)
 import { viewerGestures, viewerSlide } from './media_swipe.js';   // 3159: deslizar entre fotos y para cerrar
 
 
@@ -208,8 +209,9 @@ export function _saveMediaToGallery(src, type, btn) {
       var mime = (meta.split(';')[0]) || (type === 'video' ? 'video/mp4' : 'image/jpeg');
       send(src.substring(src.indexOf(',') + 1), mime);
     } else {
-      fetch(src).then(function(r) { return r.blob(); }).then(function(blob) {
-        _blobToB64(blob).then(function(b64) { send(b64, blob.type || (type === 'video' ? 'video/mp4' : 'image/jpeg')); });
+      var known = blobForUrl(src);
+      (known ? Promise.resolve(known) : fetch(src).then(function(r) { return r.blob(); })).then(function(blob) {
+        return _blobToB64(blob).then(function(b64) { send(b64, blob.type || (type === 'video' ? 'video/mp4' : 'image/jpeg')); });
       }).catch(function() { done(false); });
     }
   } catch (e) { done(false); }
