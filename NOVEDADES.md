@@ -16,30 +16,35 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Al mandar fotos de la galería, toca el ojo de las que quieras que se vean una sola vez.
 - Arreglado: guardar un video en la galería.
 - Arreglado: el «leído» al abrir un chat desde el aviso.
+- Toca un enlace de TikTok, Instagram, Facebook o YouTube y se abre en su app; y comparte a NEXO desde «Compartir» en cualquier app.
 </es-419>
 <it-IT>
 - Scorri tra le foto e i video di una chat; per uscire, scorri in alto o in basso. Salva ora è in basso a destra.
 - Inviando foto dalla galleria, tocca l'occhio di quelle che vuoi far vedere una sola volta.
 - Risolto: salvare un video nella galleria.
 - Risolto: il «letto» aprendo una chat dalla notifica.
+- Tocca un link di TikTok, Instagram, Facebook o YouTube e si apre nella sua app; e condividi su NEXO da «Condividi» in qualsiasi app.
 </it-IT>
 <en-US>
 - Swipe between a chat's photos and videos; swipe up or down to close. Save is now at the bottom right.
 - When sending photos from the gallery, tap the eye on the ones you want seen only once.
 - Fixed: saving a video to the gallery.
 - Fixed: "read" receipts when opening a chat from a notification.
+- Tap a TikTok, Instagram, Facebook or YouTube link to open it in its app, and share to NEXO from any app's Share button.
 </en-US>
 <pt-BR>
 - Deslize entre as fotos e vídeos de uma conversa; para sair, deslize para cima ou para baixo. Salvar agora fica no canto inferior direito.
 - Ao enviar fotos da galeria, toque no olho das que você quer que sejam vistas só uma vez.
 - Corrigido: salvar um vídeo na galeria.
 - Corrigido: o «lido» ao abrir uma conversa pela notificação.
+- Toque num link do TikTok, Instagram, Facebook ou YouTube e ele abre no app; e compartilhe para o NEXO pelo «Compartilhar» de qualquer app.
 </pt-BR>
 <fr-FR>
 - Glissez entre les photos et vidéos d'un chat ; pour sortir, glissez vers le haut ou le bas. Enregistrer est maintenant en bas à droite.
 - En envoyant des photos de la galerie, touchez l'œil de celles à voir une seule fois.
 - Corrigé : enregistrer une vidéo dans la galerie.
 - Corrigé : le « lu » en ouvrant un chat depuis une notification.
+- Touchez un lien TikTok, Instagram, Facebook ou YouTube pour l'ouvrir dans son app, et partagez vers NEXO depuis « Partager ».
 </fr-FR>
 <!-- /APK -->
 
