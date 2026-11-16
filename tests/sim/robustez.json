@@ -1512,6 +1512,10 @@
     {
      "fallo": "3137 (dueño 15-11: «si mis contactos están todos en el extranjero, ¿cómo voy a comprobar que es mi teléfono?… los guardianes los tiene que elegir la aplicación, si los elige el usuario los puede elegir el impostor»): los guardianes de Fénix eran los 10 contactos con el mensaje más reciente, sin mirar si se ven en persona, y la recuperación pide estar cerca (Bluetooth) de 6. 3137: la app apunta los días distintos con Bluetooth con cada contacto y elige primero a los cercanos (≥ 3 días en 60); si no alcanzan, los más recientes marcados «por internet»; un contacto que pasa a cercano toma el fragmento de uno por internet (2 al día); el guardián sabe cuál es (para la recuperación por internet). fenixcerca.js C1–C6 (contraprueba 3136: no existe)",
      "prueba": "GUARDIANES DE FÉNIX ELEGIDOS POR LA APP"
+    },
+    {
+     "fallo": "3148 (Fénix Entorno fase 1, oculto tras el interruptor de desarrollo): al recuperar con Fénix el teléfono nuevo escribía la identidad VIEJA (mismas llaves privadas): los contactos no podían distinguirlo ni deshacerlo y el teléfono de siempre no podía decir «no soy yo». 3148: la cuenta recuperada estrena llave y anuncia un registro de sucesión firmado con atestaciones de los guardianes (comprobables por el contacto o por la lista firmada por la llave vieja); el contacto lo acepta con marca roja «sin verificar» y rechaza firmas malas, guardianes desconocidos, pocas, repeticiones y épocas viejas; el veto firmado del teléfono de siempre (con su desbloqueo) gana antes o después; la llave vieja que sigue hablando queda en conflicto. fenixentorno.js E0–E11 (contraprueba 3147: no existe)",
+     "prueba": "FÉNIX ENTORNO fase 1"
     }
    ],
    "debiles": [
