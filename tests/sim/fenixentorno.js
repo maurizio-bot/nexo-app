@@ -14,7 +14,9 @@
 //  E9  la llave vieja sigue hablando tras la sucesión → conflicto marcado y se le reenvía el registro (para que pueda vetar);
 //  E10 interruptor apagado (o APK con número de build) → lo que llega se ignora y se apunta; nada cambia;
 //  E11 fenix.js: el guardián añade su atestación al fragmento y el teléfono nuevo NO escribe la identidad vieja (solo encendido).
-// Contraprueba: en la 3147 no existe fenix_entorno.js.
+//  E12 (3149, revisión) tras un veto, el mismo registro rehecho con una hora posterior NO entra; con atestaciones nuevas, sí;
+//  E13 (3149) un guardián que ya recibió el veto no da fe;  E14 (3149) copia sin llaves privadas + interruptor apagado → no se escriben.
+// Contraprueba: en la 3147 no existe fenix_entorno.js; en la 3148 E12 (el registro rehecho entra), E13 y E14 fallan.
 // Uso: node fenixentorno.js <dir_build>
 'use strict';
 const { importSrc } = require('./srcmod');
@@ -205,7 +207,7 @@ const tick = () => new Promise((r) => setTimeout(r, 30));
   const restore = async () => {
     const nf = new FX.Fenix({ localNexoId: A, getBLEContacts: () => [] }); nf.ent.signer = A1; nf.recovery = { fe: { n: R.n } };
     writes = [];
-    const acc11 = Object.assign({}, acc, { identity: JSON.stringify({ v: 1, priv: A0.privJwk, pub: A0.ik }), ratchet: { ik: A0.ik, sign: { pub: A0.sk }, spks: [] }, contacts: [] });
+    const acc11 = Object.assign({}, acc, { identity: JSON.stringify({ v: 1, priv: A0.privJwk, pub: A0.ik }), ratchet: { ik: A0.ik, sign: { pub: A0.sk }, spks: [] }, contacts: [], feOnly: 0 }); // copia de antes (con privadas)
     await nf._restore(acc11, new Uint8Array(32), ['a'.repeat(64)], 1, pieces.slice(0, 3));
     return { identidad_vieja_escrita: writes.includes('nexo_e2e_identity.json'), registro: !!nf.ent.mine };
   };
@@ -214,10 +216,41 @@ const tick = () => new Promise((r) => setTimeout(r, 30));
   r.E11 = { atestacion_en_fragmento: faOn, sin_interruptor: faOff, restaurar_encendido: rOn, restaurar_apagado: rOff };
   r.E11_ok = faOn === true && faOff === false && !rOn.identidad_vieja_escrita && rOn.registro && rOff.identidad_vieja_escrita && !rOff.registro;
 
+  // E12 (3149, revisión): tras un veto, rehacer EL MISMO registro con una hora posterior no lo salta (en la 3148 sí: 'ok');
+  // con atestaciones NUEVAS (posteriores al veto) la recuperación sigue siendo posible
+  const { cc: c12, e: e12 } = fresh();
+  const vTs = Math.max.apply(null, R.att.map((x) => x.ts)) + 1000;
+  const v12 = await feBuildVeto(A0.sign, { nx: A, ep: 1, old: A0.ik, ts: vTs, au: 'lock' });
+  const st12 = await e12.onVeto(v12, 'devA0');
+  const reTimed = await feBuildRecord(A1.sign, Object.assign({}, R, { ts: vTs + 1000 }));
+  const re12 = await e12.onRecord(reTimed, 'devA1');
+  const n12 = 'f'.repeat(32), att12 = [];
+  for (let i = 0; i < 3; i++) att12.push(await feAttest(GK[i].sign, { nx: A, ep: 1, n: n12, oldIk: A0.ik, nwIk: A1.ik, nwSk: A1.sk, g: G[i], ts: vTs + 2000, ev: ['sh'] }));
+  const fresh12 = await feBuildRecord(A1.sign, { nx: A, ep: 1, ts: vTs + 3000, n: n12, old: { ik: A0.ik, sk: A0.sk }, nw: { ik: A1.ik, sk: A1.sk }, t: 3, att: att12, ros: acc.ros });
+  const nw12 = await e12.onRecord(fresh12, 'devA1');
+  r.E12 = { veto: st12, rehecho_con_hora_nueva: re12, con_atestaciones_nuevas: nw12 };
+  r.E12_ok = st12 === 'store' && re12 === 'vetoed' && nw12 === 'accepted';
+
+  // E13 (3149): un guardián que ya recibió el veto de esa época no da fe
+  const g13 = mkEnt(G[0], GK[0], { list: [{ nexoId: A, publicKey: A0.ik, fe: { ep: 0, vt: { 1: { ts: Date.now(), rk: 1 } } } }] }, {});
+  const a13 = await g13.attest(A, { pk: A1.ik, fe: { n: R.n, nk: A1.sk } });
+  r.E13 = { atestacion_tras_veto: a13 };
+  r.E13_ok = a13 === null;
+
+  // E14 (3149): una copia hecha CON Fénix Entorno (sin llaves privadas) recuperada con el interruptor APAGADO no escribe la
+  // identidad ni el estado de cifrado incompletos (antes: identidad sin privada y llave de firma sin privada en disco)
+  window.NEXO_FENIX_ENTORNO = false;
+  const nf14 = new FX.Fenix({ localNexoId: A, getBLEContacts: () => [] });
+  writes = [];
+  await nf14._restore(Object.assign({}, acc, { contacts: [] }), new Uint8Array(32), ['a'.repeat(64)], 1, pieces.slice(0, 3));
+  window.NEXO_FENIX_ENTORNO = true;
+  r.E14 = { copia_sin_privadas: !!acc.feOnly, identidad_escrita: writes.includes('nexo_e2e_identity.json'), cifrado_escrito: writes.includes('nexo_ratchet.json') };
+  r.E14_ok = r.E14.copia_sin_privadas && !r.E14.identidad_escrita && !r.E14.cifrado_escrito;
+
   // Higiene: ninguna llave privada en el registro
   r.privadas_en_registro = logs.filter((l) => /"d":"|privJwk|secreto/.test(l)).length;
   console.log = oLog; console.warn = oWarn;
-  const ok = r.E0_ok && r.E1_ok && r.E2_ok && r.E3_ok && r.E4_ok && r.E5_ok && r.E6_ok && r.E7_ok && r.E8_ok && r.E9_ok && r.E10_ok && r.E11_ok && r.privadas_en_registro === 0;
+  const ok = r.E0_ok && r.E1_ok && r.E2_ok && r.E3_ok && r.E4_ok && r.E5_ok && r.E6_ok && r.E7_ok && r.E8_ok && r.E9_ok && r.E10_ok && r.E11_ok && r.E12_ok && r.E13_ok && r.E14_ok && r.privadas_en_registro === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('FENIXENTORNO ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);

@@ -964,8 +964,10 @@ export class Fenix {
     console.log('[FENIX] Cuenta ' + acc.nexoId + ' recuperada (' + acc.contacts.length + ' contactos): escribiendo y reiniciando');
     await _save(NEXO_ID_FILE, JSON.stringify({ nexoId: acc.nexoId, createdAt: now, restored: true }));
     var keepNew = this.ent ? await this.ent.onRestore(acc, pieces, this.recovery) : false; // 3148: principio A (llave nueva)
-    if (!keepNew) await _save(IDENTITY_FILE, acc.identity);
-    if (!keepNew && acc.ratchet && acc.ratchet.ik) await _save(RATCHET_FILE, JSON.stringify({ v: 1, ik: acc.ratchet.ik, sign: acc.ratchet.sign, spks: acc.ratchet.spks, peers: {}, sessions: {}, seenEk: {} }));
+    // 3149 (revisión): una copia hecha con Fénix Entorno no trae llaves privadas: sin él, el teléfono nuevo se queda con las suyas
+    if (!keepNew && acc.feOnly) console.warn('[FENIX] La copia no trae llaves privadas (Fénix Entorno): me quedo con mi llave nueva');
+    else if (!keepNew) await _save(IDENTITY_FILE, acc.identity);
+    if (!keepNew && !acc.feOnly && acc.ratchet && acc.ratchet.ik) await _save(RATCHET_FILE, JSON.stringify({ v: 1, ik: acc.ratchet.ik, sign: acc.ratchet.sign, spks: acc.ratchet.spks, peers: {}, sessions: {}, seenEk: {} }));
     var contacts = acc.contacts.map(function(c) {
       return { nexoId: c.nexoId, deviceUUID: c.nexoId, name: c.name, publicKey: c.publicKey, proto: c.proto || undefined, proto2At: c.proto2At || undefined,
         fx: c.fx || undefined, verified: c.verified || undefined, addedAt: c.addedAt || now, deviceId: null, lastSeen: 0, online: false, unreadCount: 0, lastMessage: '' };

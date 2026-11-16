@@ -131,7 +131,11 @@ export async function feCheckRecord(r, c, view) {
   var ros = {};
   if (r.ros && r.ros.nx === r.nx && r.ros.old === r.old.ik && _int(r.ros.ts) && r.ros.ts <= r.ts + FUTURE_MS && Array.isArray(r.ros.g) &&
       await feVerify(view.oldSk, r.ros.sig, _rosBody(r.ros))) r.ros.g.forEach(function(x) { if (_isNx(x[0])) ros[x[0]] = x[1]; });
-  var seenG = {}, strong = 0;
+  // 3149 (revisión): el veto se mide contra la hora de cada ATESTACIÓN (la firma el guardián), no contra la del registro (la pone el
+  // teléfono nuevo: rehaciendo el mismo registro con una hora posterior se saltaba el veto, incluso uno con desbloqueo). Una atestación
+  // anterior o igual a un veto que gana a su prueba no cuenta: tras un veto hacen falta atestaciones nuevas.
+  var vt = fe.vt && fe.vt[r.ep];
+  var seenG = {}, strong = 0, voided = 0;
   for (var i = 0; i < r.att.length; i++) {
     var a = r.att[i] || {}, g = _nid(a.g);
     if (!_isNx(g) || g === r.nx || seenG[g] || !_int(a.ts) || !Array.isArray(a.ev)) { out.bad++; continue; }
@@ -140,13 +144,14 @@ export async function feCheckRecord(r, c, view) {
     var sk = view.keyOf(g) || ros[g];
     if (!sk) { out.unknown++; continue; }
     if (!(await feVerify(sk, a.sig, _attBody(r.nx, r.ep, r.n, r.old.ik, r.nw.ik, r.nw.sk, g, a.ts, a.ev)))) { out.bad++; continue; }
+    var live = a.ev.indexOf('rv') >= 0 && a.ev.indexOf('fv') >= 0; // retrato y firma vivos (fases siguientes)
+    if (vt && a.ts <= vt.ts && vt.rk <= (live ? FE_RANK.live : FE_RANK.att)) { voided++; continue; }
     out.valid++;
-    if (a.ev.indexOf('rv') >= 0 && a.ev.indexOf('fv') >= 0) strong++; // retrato y firma vivos (fases siguientes)
+    if (live) strong++;
   }
   out.need = Math.max(view.minT || 1, r.t);
-  if (out.valid < out.need) { out.why = 'too_few'; return out; }
+  if (out.valid < out.need) { out.why = voided ? 'vetoed' : 'too_few'; return out; }
   out.rank = strong >= out.need ? FE_RANK.live : FE_RANK.att;
-  var vt = fe.vt && fe.vt[r.ep];
   if (vt && vt.ts >= r.ts && vt.rk <= out.rank) { out.why = 'vetoed'; return out; }
   out.ok = true; out.why = 'ok';
   return out;
@@ -284,6 +289,9 @@ export class FenixEntorno {
     var c = this._find(this._contacts(), _nid(owner));
     if (!c || !c.publicKey || c.publicKey === req.pk) return null;
     var ep = ((c.fe && c.fe.ep) || 0) + 1;
+    // 3149 (revisión): si el teléfono de siempre ya dijo «no soy yo» para esta época, este guardián no da fe (con la prueba de hoy,
+    // solo atestación, cualquier veto gana)
+    if (c.fe && c.fe.vt && c.fe.vt[ep]) { console.warn('[FENIX-E] No doy fe para ' + _nid(owner) + ': su teléfono vetó esta recuperación'); return null; }
     var a = await feAttest(this._sign.bind(this), { nx: _nid(owner), ep: ep, n: req.fe.n, oldIk: c.publicKey, nwIk: req.pk, nwSk: req.fe.nk, g: this.me(), ts: Date.now(), ev: ['sh'] });
     if (a) console.log('[FENIX-E] Atestación para la cuenta ' + _nid(owner) + ' (época ' + ep + ')');
     return a;
@@ -294,6 +302,7 @@ export class FenixEntorno {
     var ik = null;
     try { var id = JSON.parse(acc.identity || 'null'); ik = id && id.pub; if (ik) acc.identity = JSON.stringify({ v: 1, pub: ik }); } catch (e) {}
     if (acc.ratchet) acc.ratchet = { ik: acc.ratchet.ik, sign: { pub: acc.ratchet.sign && acc.ratchet.sign.pub } };
+    acc.feOnly = 1; // 3149: marca de copia sin llaves privadas (fenix.js no la escribe si Fénix Entorno está apagado al recuperar)
     var self = this, list = self._contacts();
     var gs = Object.keys(acc.nodes || {}).map(function(g) {
       var gc = self._find(list, g), b = gc && gc.publicKey ? self._bundle(g) : null;
