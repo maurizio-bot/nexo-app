@@ -336,7 +336,9 @@ export function _openMsgMenu(div) {
       sheet.appendChild(rbar);
     }
     if (!deleted) add(t('chat_reply', '↩  Responder'), 'mm-reply', function() { _startReply(id, msg); });
-    if (!deleted) add(t('chat_forward', '↪  Reenviar'), 'mm-forward', function() { _openForwardSheet(msg); });
+    // 3164: una foto o un vídeo de «ver una vez» (propio o recibido, visto o no) no se reenvía: el otro lo mandó para verse una vez
+    var onceMsg = !!(msg.onceSeen || (msg.attachmentMeta && msg.attachmentMeta.once));
+    if (!deleted && !onceMsg) add(t('chat_forward', '↪  Reenviar'), 'mm-forward', function() { _openForwardSheet(msg); });
     // 3032 (dueño 12-11): un sticker PROPIO que me mandaron (con su dibujo) se puede agregar a mis stickers
     var stk = (!isOwn && !deleted) ? _chatKind(msg.content || '') : null;
     if (stk && stk.type === 'nexo_sticker' && isValidStickerImg(stk.img)) {
@@ -542,6 +544,7 @@ async function _forwardPrepare(msg) {
 
 export async function _forwardTo(cid, msg, prep, onSettled) {
   if (msg.attachmentType) {
+    if (msg.onceSeen || (msg.attachmentMeta && msg.attachmentMeta.once)) return false; // 3164: «ver una vez» nunca se reenvía
     if (!prep) prep = await _forwardPrepare(msg);
     var payload = prep.payload;
     var meta = Object.assign({}, prep.meta);

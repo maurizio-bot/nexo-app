@@ -304,6 +304,9 @@ Consolidado: inline + main.css + ble_styles
       se salía unos píxeles; el `overflow:hidden` del .msg-content (que recorta las esquinas de las fotos) le comía la
       primera/última letra en pantallas anchas (Samsung ~412dp). Como bloque, envuelve y no se recorta. */
    .msg-text { display: block; }
+   /* 3164: la burbuja de TEXTO no recorta: render.js pone overflow:hidden + radio 12 a toda .msg-content (para las esquinas de
+      fotos y vídeos) y en un texto se comía la punta de la primera letra («h», «l», «k»…). Con foto, vídeo o lienzo sigue recortando. */
+   .msg-content:not(:has(img, video, canvas, iframe)) { overflow: visible !important; }
    /* Emoji grande sin burbuja (pedido del dueño): 1–3 emojis sueltos se agrandan; la burbuja se quita (abajo, :has).
       `.msg-text.emoji-jumbo` tiene más especificidad, así que su inline-block gana sobre el block de arriba. */
    /* 3151 (dueño 16-11: «al menos 3 veces más grandes»): el texto mide 16 px → 1 emoji 72 px, 2 → 60 px, 3 → 50 px */

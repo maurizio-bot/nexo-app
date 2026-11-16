@@ -4,7 +4,8 @@
 // Chromium real (hace falta :has y getComputedStyle). A le manda a B «hola» (con burbuja), «🤣😋» y «😋»:
 //  G1  en los dos teléfonos los mensajes de solo emoji no tienen burbuja (sin fondo ni degradado ni sombra);
 //  G2  y miden al menos 3 veces el texto normal (≥ 48 px con el texto a 16 px);
-//  G3  el texto normal sigue con su burbuja y su tamaño.
+//  G3  el texto normal sigue con su burbuja y su tamaño;
+//  G4  (3164) y su burbuja no recorta las letras: sin overflow hidden (con el radio de 12 px se comía la punta de la «h»).
 // Contraprueba: en la 3149 G1 y G2 fallan (burbuja y 16 px).
 // Uso: node emojigrande.js <dir_build>
 'use strict';
@@ -35,16 +36,16 @@ const dist = path.resolve(process.argv[2], 'dist');
   const measure = (p) => p.evaluate(() => Array.from(document.querySelectorAll('#messages-container .message')).map((m) => {
     const c = m.querySelector('.msg-content') || m; const tx = m.querySelector('.msg-text');
     const cs = getComputedStyle(m);
-    return { t: (tx || c).textContent.replace(/\d\d:\d\d.*$/, '').trim(), px: parseFloat(getComputedStyle(tx || c).fontSize),
+    return { t: (tx || c).textContent.replace(/\d\d:\d\d.*$/, '').trim(), px: parseFloat(getComputedStyle(tx || c).fontSize), ov: getComputedStyle(c).overflowX,
       burbuja: !(cs.backgroundImage === 'none' && /rgba\(0, 0, 0, 0\)|transparent/.test(cs.backgroundColor) && cs.boxShadow === 'none') };
   }));
   const pick = (list, s) => list.find((x) => x.t.indexOf(s) === 0);
   for (const [name, p] of [['A', A], ['B', B]]) {
     const L = await measure(p);
     const h = pick(L, 'hola'), two = pick(L, '🤣😋'), one = L.find((x) => x.t === '😋');
-    r[name] = { texto: h && { px: h.px, burbuja: h.burbuja }, dos: two && { px: two.px, burbuja: two.burbuja }, uno: one && { px: one.px, burbuja: one.burbuja } };
+    r[name] = { texto: h && { px: h.px, burbuja: h.burbuja, ov: h.ov }, dos: two && { px: two.px, burbuja: two.burbuja }, uno: one && { px: one.px, burbuja: one.burbuja } };
   }
-  const okSide = (s) => s && s.texto && s.dos && s.uno && s.texto.burbuja && !s.dos.burbuja && !s.uno.burbuja && s.dos.px >= 3 * s.texto.px && s.uno.px >= 3 * s.texto.px;
+  const okSide = (s) => s && s.texto && s.dos && s.uno && s.texto.burbuja && s.texto.ov === 'visible' && !s.dos.burbuja && !s.uno.burbuja && s.dos.px >= 3 * s.texto.px && s.uno.px >= 3 * s.texto.px;
   r.G1_G2_G3_A = okSide(r.A); r.G1_G2_G3_B = okSide(r.B);
   const ok = r.G1_G2_G3_A && r.G1_G2_G3_B;
   r.resultado = ok ? 'OK' : 'FALLO';
