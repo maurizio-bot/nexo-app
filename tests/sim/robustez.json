@@ -502,6 +502,10 @@
     {
      "fallo": "3130 (diagnóstico de …5928 15-11 13:51): «entrega_lenta 294 s» de un aviso OCULTO (la petición de estados y foto al deslizar) a un teléfono con la app cerrada; y «(repetida)» salía también en «leído» tras «entregado». 3130: lo oculto no se mide; «(repetida)» solo si ya hubo uno igual o mayor. diagplus.js D5d/D5e (contraprueba 3129: fallan)",
      "prueba": "diagnóstico más claro (3020"
+    },
+    {
+     "fallo": "3158 (PENDIENTES 13-11): al abrir el chat tocando el aviso tras un arranque en frío (Android mató la app después de avisar), lo que ya estaba no mandaba el «leído»: los msgId sin leer vivían solo en memoria y el que escribió se quedaba en «entregado». 3158: se guardan en el teléfono (nexo_notify_unread.json). leidoaviso.js (b) (contraprueba e146b368: 40 s en «entregado»)",
+     "prueba": "leído al abrir el chat TOCANDO EL AVISO"
     }
    ],
    "debiles": [
