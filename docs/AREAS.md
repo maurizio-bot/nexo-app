@@ -42,6 +42,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Wi-Fi Direct: un envío real bien el 15-11 (3,3 MB/s); falta el vídeo de ~20 MB (PENDIENTES 15-11, resúmenes del 14-11). ×2
 
 **Falta**
+- Diagnóstico S24 3073 (16-11): el Wi-Fi con el vivo se abre y se cierra cada ~3 min porque la app del vivo duerme y no contesta la comprobación (con Bluetooth listo); revisar si conviene dejar de reintentar tan seguido. Internet listo en 0,6 s (el 15-11 eran 13,7 s): no se repitió.
 - Camino preparado al abrir el chat (dueño 16-11: saludo por internet al abrir y repaso al empezar a escribir) — en curso, 3147.
 - Resúmenes del 15-11 (build 3070): el S24 tardó en tener internet listo 13,7 s de media (máx. 119 s, 21 veces); el S23 gastó 11,6 %/h de batería en segundo plano (todo el teléfono) y 50,9 MB de datos móviles en NEXO. Revisar en cuanto haya diagnóstico de la 3073.
 - Entrega con la app CERRADA y la pantalla APAGADA: no suena ni avisa (#87; PENDIENTES 14-11 noche, «Pruebas del dueño con la 3052»). ×3
@@ -100,6 +101,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Contestar con manos libres Bluetooth en Xiaomi: aviso hecho, falta el diagnóstico de Jhonnatan (3134). ×2
 
 **Falta**
+- Diagnóstico S24 3073 (16-11 10:40): al agregar a un contacto, la videollamada 1-a-1 TERMINA y empieza una de grupo sin vídeo (es la queja del dueño; en curso, 3152). Justo después, una llamada nueva con la app en segundo plano al contestar el otro: 219 s sin micrófono ni cámara propios (el otro no oía nada); el micrófono y la cámara se piden al contestar y, en segundo plano, se quedan esperando — en curso con el mismo trabajo.
 - Eco: la voz propia vuelve, sobre todo en grupo (PENDIENTES #128 punto 7). ×2
 - Gasto de datos por relés: escucha nativa doble durante la llamada y cada parte por 3 relés (PENDIENTES 15-11 08:41). ×2
 - Segunda llamada por la llamada del sistema con la app cerrada, «Mensaje» desde la pantalla de bloqueo, una cámara para dos (PENDIENTES 15-11). ×2
