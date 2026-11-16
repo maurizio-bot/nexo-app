@@ -1412,6 +1412,10 @@
     {
      "fallo": "Dueño 16-11: pidió poder ocultar el texto de los avisos solo en algunos chats (antes solo había el interruptor global del bloqueo de la app). 3144: opción «Ocultar el texto en los avisos» en el menú del contacto y del grupo (chat_hide_preview.js, guardada por NEXO ID); notify.js pregunta hidePreview(cid) y manda texto vacío (el nativo dice «Mensaje nuevo»). Límite: con la app CERRADA el aviso lo arma el nativo (BgInbox) sin conocer la opción. avisoschat.js (contraprueba 3143: no existe)",
      "prueba": "AVISOS POR CHAT"
+    },
+    {
+     "fallo": "3153 (diagnóstico Honor 3073): notificaciones de NEXO denegadas y la app solo lo apuntaba en el registro; con la app cerrada no llegaban avisos ni llamadas. Ahora aviso en Contactos con «Activar» que lleva al ajuste; y el aviso de batería ya no se calla por tener las notificaciones denegadas y vuelve cada 7 días si sigue la restricción (contraprueba 3151)",
+     "prueba": "AVISO DE NOTIFICACIONES DENEGADAS"
     }
    ],
    "debiles": [
@@ -1706,6 +1710,10 @@
     {
      "fallo": "Deslizar un mensaje para responder «no siempre funcionaba» (dueño 16-11: el gesto exigía ir casi recto y un gesto cancelado por el sistema podía responder o no) y deslizar para cancelar una nota de voz (3143)",
      "prueba": "gestos del chat"
+    },
+    {
+     "fallo": "3151 (dueño 16-11): los emojis del teclado mandados solos salían con burbuja y a 16 px (el emoji grande solo se aplicaba a respuestas y reenvíos). Ahora sin burbuja y ≥ 3 veces el texto, en los dos teléfonos (contraprueba 3149)",
+     "prueba": "EMOJI GRANDE Y SIN BURBUJA"
     }
    ],
    "debiles": [
