@@ -13,18 +13,23 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <!-- APK -->
 <es-419>
 - Al abrir un chat, NEXO ya busca el mejor camino para que tu mensaje salga al instante.
+- Los emojis que mandas solos se ven grandes y sin burbuja.
 </es-419>
 <it-IT>
 - Quando apri una chat, NEXO cerca già la strada migliore perché il tuo messaggio parta subito.
+- Le emoji inviate da sole si vedono grandi e senza fumetto.
 </it-IT>
 <en-US>
 - When you open a chat, NEXO already finds the best route so your message goes out instantly.
+- Emojis sent on their own now show big, without a bubble.
 </en-US>
 <pt-BR>
 - Ao abrir uma conversa, o NEXO já procura o melhor caminho para sua mensagem sair na hora.
+- Emojis enviados sozinhos aparecem grandes e sem balão.
 </pt-BR>
 <fr-FR>
 - Dès que vous ouvrez un chat, NEXO cherche le meilleur chemin pour que votre message parte aussitôt.
+- Les emojis envoyés seuls s'affichent en grand, sans bulle.
 </fr-FR>
 <!-- /APK -->
 
