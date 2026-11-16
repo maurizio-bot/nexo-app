@@ -21,6 +21,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **16-11 12:43 (México) — APK 3075 subida a NEXOCHAT (3147–3157).** La 3074 se paró en `gscreenui`: la pantalla nueva de la
+  videollamada de grupo con 1–2 personas (3152, `gcall_stage.js`) no decía «Pantalla de …» al compartir otro (y con una sola
+  persona ocultaba el letrero). **3157** lo arregla; la prueba cubre la pantalla nueva y la rejilla de 3+ (contraprueba 3156).
+  También quitado el logo viejo sin usar (3,4 MB menos en la APK). Novedades con 3155/3156. Locales que fallan también antes y
+  pasan en GitHub: `gcbotones`, `videoframe` (letra de Chromium). **Nombre:** el dueño propuso «Echo»; recomendé Ecco (plan B
+  Eko), sin respuesta. **Logo:** inventario de lo que cambia con el nombre en `docs/AREAS.md` §5 (todo se basa en la «N»).
 - **16-11 — ESTADO POR ÁREA:** lo vigente ya está en `docs/AREAS.md` (7 áreas con su %, «Hecho / En prueba / Falta / Espera
   decisión»; global 50 %); seguridad y negocio en `nexo-private/AREAS_PRIVADAS.md`. `docs/PENDIENTES.md` queda como historial.
 - **16-11 00:42 — APK 3070 PUBLICADA (corrida 3070 en verde; el nativo nuevo compiló).** Novedades al historial; el bloque ya trae
