@@ -23,10 +23,7 @@
 html, body { background: var(--nx-bg) !important; color: var(--nx-text); }
 body::before {
   content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background:
-    radial-gradient(circle at 18% 8%, rgba(0, 200, 255, 0.16), transparent 42%),
-    radial-gradient(circle at 88% 92%, rgba(168, 85, 247, 0.18), transparent 46%),
-    linear-gradient(170deg, #0a0a15 0%, #10112a 55%, #0b1428 100%);
+  background: var(--nx-bg); /* 3140 (dueño 16-11): fondo liso en toda la app, como su pantalla de Contactos */
 }
 #app { background: transparent !important; }
 
@@ -276,7 +273,7 @@ body::before {
 .mm-item.is-pressed { background: var(--nx-surface-2) !important; }
 /* Pantallas completas (nuevo grupo, enviar contactos, reenviar) */
 #nexo-share-sheet, #nexo-group-sheet, #nexo-forward-sheet {
-  background: radial-gradient(circle at 15% 0%, rgba(0, 200, 255, 0.14), transparent 40%), radial-gradient(circle at 90% 100%, rgba(168, 85, 247, 0.16), transparent 45%), #0a0a15 !important;
+  background: var(--nx-bg) !important; /* 3140: liso, como Contactos */
   padding-top: calc(16px + env(safe-area-inset-top, 0px)) !important;
 }
 #nexo-share-sheet input, #nexo-group-sheet input, #nexo-forward-sheet input, #nexo-share-search, #nexo-group-name {
@@ -293,8 +290,7 @@ body::before {
 /* Perfil */
 #nexo-profile-sheet, #nexo-settings-sheet, #nexo-contact-profile { background: transparent !important; padding: 0 !important; }
 #nexo-profile-sheet::before, #nexo-settings-sheet::before, #nexo-contact-profile::before { content: ''; position: fixed; inset: 0; z-index: -1; background: inherit; }
-#nexo-profile-sheet .nx-profile-in, #nexo-settings-sheet .nx-profile-in, #nexo-contact-profile .nx-profile-in { padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 24px; display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; background:
-  radial-gradient(circle at 20% 0%, rgba(0, 200, 255, 0.16), transparent 40%), radial-gradient(circle at 90% 100%, rgba(168, 85, 247, 0.18), transparent 45%), #0a0a15; }
+#nexo-profile-sheet .nx-profile-in, #nexo-settings-sheet .nx-profile-in, #nexo-contact-profile .nx-profile-in { padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 24px; display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; background: var(--nx-bg); } /* 3140: liso, como Contactos */
 .nx-card { background: var(--nx-surface); border: 1px solid var(--nx-line); border-radius: 20px; padding: 14px 14px 12px; margin-bottom: 12px; }
 .nx-h { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; margin: 0 0 8px; }
 .nx-h .nx-ico { width: 30px; height: 30px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--nx-grad); font-size: 15px; }
@@ -310,7 +306,7 @@ body::before {
 #nexo-diag-text { background: rgba(0, 0, 0, 0.45) !important; border: 1px solid var(--nx-line) !important; border-radius: 14px !important; }
 
 /* Panel de agregar contactos */
-#ble-panel { background: #0a0a15 !important; }
+#ble-panel { background: var(--nx-bg) !important; }
 #ble-panel .ble-search-bar { background: var(--nx-surface) !important; border: 1px solid var(--nx-line) !important; border-radius: 14px !important; }
 .ble-new-device { background: var(--nx-surface) !important; border: 1px solid rgba(0, 200, 255, 0.35) !important; border-radius: 18px !important; box-shadow: 0 0 0 4px rgba(0, 200, 255, 0.06); }
 .ble-btn-add-small { background: var(--nx-grad) !important; }
@@ -332,10 +328,10 @@ body::before {
 }
 
 /* Pasar la cuenta / Fénix */
-#nexo-move-screen { background: radial-gradient(circle at 20% 10%, rgba(0, 200, 255, 0.18), transparent 40%), radial-gradient(circle at 85% 90%, rgba(168, 85, 247, 0.2), transparent 45%), #0a0a15 !important; }
+#nexo-move-screen { background: var(--nx-bg) !important; } /* 3140 */
 #nexo-move-screen .move-close { border-radius: 14px !important; background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important; }
 #nexo-fenix-ask { background: var(--nx-sheet) !important; border: 1px solid var(--nx-line) !important; border-radius: 22px !important; }
-#ble-panel { background: radial-gradient(circle at 15% 0%, rgba(0, 200, 255, 0.14), transparent 40%), radial-gradient(circle at 90% 100%, rgba(168, 85, 247, 0.16), transparent 45%), #0a0a15 !important; }
+#ble-panel { background: var(--nx-bg) !important; } /* 3140: liso, como Contactos */
 #ble-panel .ble-header { background: transparent !important; border-bottom: 1px solid var(--nx-line) !important; padding-top: calc(10px + env(safe-area-inset-top, 0px)) !important; }
 #ble-panel-back { background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important; }
 
