@@ -2,6 +2,8 @@
 
 App de mensajería P2P por Bluetooth LE (Capacitor 5 + plugin nativo Kotlin `plugins/nexo-ble`).
 El dueño habla español: responder en español.
+**Horas siempre en hora de México** (Ciudad de México, UTC−6) al hablar con el dueño (16-11): nunca UTC ni otra zona; los
+diagnósticos ya traen la hora local, y lo de GitHub o los avisos programados (en UTC) se convierte antes de decírselo.
 
 **LO PRIMERO: leer `nexo-private/negocio/PLAN.md`** (repositorio PRIVADO `maurizio-bot/nexo-private`, desde el 15-11: conectarlo a la
 sesión con add_repo y clonarlo en `/home/user/nexo-private`; ahí van el plan, lo de negocio y las auditorías de seguridad, que NO
