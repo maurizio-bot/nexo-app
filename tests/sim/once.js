@@ -73,6 +73,15 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const aBubble = Array.from(A.win.document.querySelectorAll('#messages-container .message.own')).find((m) => /una vez/.test(m.textContent));
   r.A_burbuja_enviada = !!aBubble && /enviada/.test(aBubble.textContent) && !aBubble.querySelector('img');
 
+  // 3164: el menú de la burbuja «una vez» (pulsación larga) no ofrece «Reenviar», ni en B ni en A
+  const ctxMenu = async (p, el) => { if (el) el.dispatchEvent(new p.win.MouseEvent('contextmenu', { bubbles: true, cancelable: true })); await sleep(400);
+    const menu = p.win.document.getElementById('nexo-msg-menu'); const fwd = !!(menu && menu.querySelector('.mm-forward')); const abierto = !!menu;
+    if (menu) { const ov = p.win.document.getElementById('nexo-msg-menu-overlay'); (ov || menu).click(); if (menu.parentNode) menu.remove(); }
+    await sleep(200); return { abierto, fwd }; };
+  const mB = await ctxMenu(B, bBubble() && (bBubble().querySelector('.msg-content') || bBubble())), mA = await ctxMenu(A, aBubble && (aBubble.querySelector('.msg-content') || aBubble));
+  r.menu_sin_reenviar = { B: mB, A: mA };
+  r.no_se_reenvia = mB.abierto && !mB.fwd && mA.abierto && !mA.fwd;
+
   // B toca para ver: se abre a pantalla completa y se consume
   const tap = bBubble() && bBubble().querySelector('.msg-once-tap');
   click(B.win, tap); await sleep(500);
@@ -103,7 +112,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.retransmision_no_revive_ui = !!bBubble() && /Abierta/.test(bBubble().textContent) && !bBubble().querySelector('img');
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|No se pudo descifrar/.test(l)).slice(0, 4);
-  const ok = r.llega_a_B && r.meta_once_en_B === true && r.B_burbuja_una_vez && r.A_burbuja_enviada && r.visor_abierto &&
+  const ok = r.llega_a_B && r.meta_once_en_B === true && r.B_burbuja_una_vez && r.A_burbuja_enviada && r.no_se_reenvia && r.visor_abierto &&
     r.consumido && r.B_burbuja_abierta && r.sigue_consumida && r.reabre_sin_medio &&
     r.retransmision_no_revive_vault && r.retransmision_no_revive_ui && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
