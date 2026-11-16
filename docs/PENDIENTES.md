@@ -1,5 +1,8 @@
 # NEXO — Lo que falta (lista viva)
 
+> **Desde el 16-11 lo vigente está ordenado por área en `docs/AREAS.md` (seguridad y negocio en el privado); esta lista queda como historial.**
+> Lo nuevo se anota en `docs/AREAS.md`, en su área y con su peso, y se recalcula el % de la tabla.
+
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
