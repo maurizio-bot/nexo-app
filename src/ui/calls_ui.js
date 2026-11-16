@@ -504,6 +504,7 @@ function _videoLayout(el, st) {
   if (v.remote && v.remote.parentNode !== el) { v.remote.classList.add('call-remote-video'); el.insertBefore(v.remote, el.querySelector('.nc-top')); }
   if (v.local && v.local.parentNode !== el) { v.local.classList.add('call-local-video'); el.appendChild(v.local); }
   if (v.local) v.local.classList.remove('nc-preview'); // 3152: la vista previa de mientras sonaba pasa a ser la pequeña
+  Array.prototype.forEach.call(el.querySelectorAll('.call-local-video, .call-remote-video'), function(n) { if (n !== v.local && n !== v.remote) n.remove(); }); // (de una llamada anterior: cruce)
   var big = _pip.swapped ? v.local : v.remote, small = _pip.swapped ? v.remote : v.local;
   if (big) { big.classList.remove('nc-pip'); big.classList.add('nc-full'); big.style.left = ''; big.style.top = ''; }
   if (small) { small.classList.remove('nc-full'); small.classList.add('nc-pip'); _placePip(el, small); _makeDraggable(el, small); }

@@ -1289,6 +1289,14 @@
     {
      "fallo": "3098 (diagnósticos Honor 3055 y S24 3054 del 14-11 16:07–16:18): en 4 videollamadas el S24 nunca vio al Honor: la cámara de NEXO estaba bloqueada en el Honor («Cámara: NotAllowedError» tres veces → solo voz) y el aviso decía «Tu cámara no funciona: solo voz», sin forma de arreglarlo desde la llamada. 3098: con el permiso bloqueado el aviso dice «NEXO no tiene permiso para la cámara: toca aquí para darlo», abre la ficha de permisos de NEXO (nativo openAlertSetting what:'app') y al volver se pide la cámara otra vez. camdenied.js (Chromium): 3097 = «solo voz», nada que tocar, sin imagen; 3098 = aviso, ficha abierta y B ve a A a los 0,4 s de volver",
      "prueba": "cámara BLOQUEADA en una videollamada"
+    },
+    {
+     "fallo": "#224 (dueño 16-11: «cuando hago una videollamada con otro contacto y luego agrego un contacto a la videollamada, no debería quitarse toda la parte de video»; S24 3073 16-11 10:40: «Fin (ended, 110 s)» de la 1-a-1 y una de grupo de voz): «Agregar» colgaba la videollamada y arrancaba una llamada de grupo DE VOZ (cámaras cerradas, la imagen del otro fuera, lista de nombres; 1,4 s de pantalla dividida con la 1-a-1 terminando). 3152: la de grupo hereda TAL CUAL la captura y el decodificador de la 1-a-1 (calls.handoff → call_group_media adopt, sin cortar ni reabrir la cámara; el otro hace lo mismo al recibir la invitación con el id de la llamada); la pantalla de grupo de vídeo con 1 o 2 personas se ve como la 1-a-1 (gcall_stage.js): mitades (arriba el que estaba, abajo el invitado «Llamando…» con su círculo y «Cancelar»), la mía pequeña, dos toques = uno a toda la pantalla y el otro pequeño; botones en el orden de la 1-a-1; «Cancelar» deja de sonarle y se le puede volver a agregar. agregarvideo.js a–f (contraprueba 3151: pantalla de voz, imagen fuera)",
+     "prueba": "AGREGAR a una VIDEOLLAMADA sin quitar el vídeo"
+    },
+    {
+     "fallo": "3152 (diagnóstico S24 3073 16-11 10:40:39–10:44:23: videollamada de 219 s en la que el S24 no mandó NADA —«micrófono con pista no; cámara , pista no», «voz enviada 0», «vídeo enviado 0»— y recibía bien; la app pasó a segundo plano 2 s después de llamar y el otro contestó con ella oculta): micrófono, cámara y el modo llamada del teléfono (con él, el servicio con permiso de micrófono, que Android solo deja arrancar con la app a la vista) se pedían al CONTESTAR el otro; el getUserMedia pedido con la app oculta no contestó en toda la llamada. 3152: la saliente (primera línea) los abre al LLAMAR (uno se ve mientras suena; lo de antes de contestar no sale; al contestar, μ-law si el otro no tiene Opus); y un pedido que se quedó sin contestar con la app oculta se abandona y se repite al volver a la app (call_media unstick). agregarvideo.js m1/m2 (contraprueba 3151: voz 0, vídeo 0)",
+     "prueba": "AGREGAR a una VIDEOLLAMADA sin quitar el vídeo"
     }
    ],
    "debiles": [
@@ -1583,6 +1591,14 @@
     {
      "fallo": "2857 (informe del dueño 31-10): el vídeo de la videollamada de GRUPO no se veía. call_group_media.js leía cap.media.localVideo / decoder.media.remoteCanvas, pero createCallMedia DEVUELVE el objeto media directo (sin «.media») → localVideo()/remoteCanvas() daban SIEMPRE null y la rejilla no recibía el <video>/<canvas>. 2858: cap.localVideo / decoder.remoteCanvas; el mock del test se corrigió a la realidad y comprueba que devuelven el elemento real",
      "prueba": "medios de la llamada en grupo"
+    },
+    {
+     "fallo": "3152 (diagnóstico S23 3073 16-11 10:40–10:43): la llamada de grupo de «Agregar» quedó viva en el S23 sin nadie (el que agregó colgó y el tercero nunca contestó): el S23 seguía esperando al tercero («offering/waiting» contaban como vivos para siempre), la puso «en espera» con la siguiente llamada (pantalla dividida) y al colgarla volvió sola con la cámara; solo se fue matando la app. 3152: si el que invitó ya se fue, los que nunca entraron no retienen la llamada (termina); el que entró espera a cada uno como mucho 45 s («No contestó»); quien rechaza, no contesta o deja de sonar se lo dice a TODOS (no solo al que invitó). agregarvideo.js z/m3 (contraprueba 3151: B sigue en la de grupo)",
+     "prueba": "AGREGAR a una VIDEOLLAMADA sin quitar el vídeo"
+    },
+    {
+     "fallo": "3152 (lo destapó #224): «en espera» de una llamada de grupo (#222, señales hold/unhold) no pasaba el filtro de señales: llegaba al chat como un mensaje más y el otro nunca sabía que estaba en espera. gcupgrade.js U5 (contraprueba 3151: no se entiende)",
+     "prueba": "AGREGAR a una llamada 1-a-1"
     }
    ],
    "debiles": [

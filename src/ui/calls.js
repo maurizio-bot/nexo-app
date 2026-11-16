@@ -419,7 +419,7 @@ export class Calls {
     if (c.video && self.lane === 1) _pipActive(true); // videollamada → habilitar la miniatura (PiP) al irse de la app
     if (!c.media) self._makeMedia(c);
     else { // 3152: abiertos al llamar: lo que recibe el otro, una imagen completa ya y mi cámara/micrófono para su pantalla
-      if (typeof c.media.setPeerCodecs === 'function') c.media.setPeerCodecs(c.peerCodecs || 'ulaw');
+      if (typeof c.media.setPeerCodecs === 'function') c.media.setPeerCodecs(c.peerCodecs || 'opus,ulaw');
       if (typeof c.media.requestKey === 'function') c.media.requestKey();
       if (c.camState || c.micState) self._sendState(c);
     }
@@ -596,6 +596,7 @@ export class Calls {
         if (o.id > c.id) { self._ignored(nx, 'cruce'); return; } // la mía gana: el otro contestará la mía
         if (typeof o.k !== 'string' || !/^[0-9a-f]{64}$/.test(o.k)) return;
         clearTimeout(self._ringTimer); self._signal(nx, 'end'); self._markDead(c.id);
+        if (c.media && c.media.stop) { try { c.media.stop(); } catch (e) {} c.media = null; } // (3152: la mía ya tenía micrófono y cámara abiertos)
         self.call = { id: o.id, nx: nx, dir: 'in', state: 'ringing', key: o.k, createdAt: Date.now(), sendSeq: 0, vSeq: 0, lastRx: 0, peerCodecs: o.co || 'ulaw', video: o.v === 1, offerMid: mid || '' };
         return self._importKey(o.k).then(function(k) { if (self.call && self.call.id === o.id) { self.call.cryptoKey = k; console.log('[CALL] Cruce de llamadas con ' + nx + ': se contesta la suya'); self.accept(); } });
       }
