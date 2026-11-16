@@ -55,6 +55,8 @@ export function _setupBackButton() {
         if (bat) { var bsk = document.getElementById('nexo-bat-skip'); if (bsk) bsk.click(); else bat.remove(); return true; }
         var sted = document.getElementById('sticker-editor');
         if (sted) { sted.remove(); return true; } // 2878: editor de stickers (el modal más alto)
+        var grev = document.getElementById('nexo-gallery-review'); // 3160: revisión de la galería = Cancelar (no manda nada)
+        if (grev) { if (typeof grev.__nexoClose === 'function') grev.__nexoClose(); else grev.remove(); return true; }
         var smalls = ['nexo-msg-menu', 'nexo-group-menu', 'nexo-contact-picker', 'cobro-sheet', 'nexo-forward-sheet', 'nexo-share-sheet', 'nexo-group-sheet', 'nexo-wp-sheet'];
         for (var si = 0; si < smalls.length; si++) { var sm = document.getElementById(smalls[si]); if (sm) { sm.remove(); return true; } }
         var amenu = document.getElementById('attach-menu');

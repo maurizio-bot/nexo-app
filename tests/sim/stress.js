@@ -136,6 +136,7 @@ function preload(native, me, others, history) {
       const inputs = await A.page.$$('input[type=file]');
       await inputs[inputs.length - 1].setInputFiles({ name: 'foto' + k + '.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(media.jpeg, 'base64') });
       await sleep(400);
+      await click(A.page, '#nexo-gallery-review #nexo-grev-send'); // 3160: la foto pasa antes por la revisión (ojo «ver una vez»)
       for (let i = 0; i < 3; i++) { lat.push(await sendText(A, 'durante foto ' + k + '-' + i)); await sleep(700); }
     }
     let imgs = 0, txt = 0;

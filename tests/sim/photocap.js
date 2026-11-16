@@ -71,6 +71,8 @@ async function openChatWith(p, name) {
   const big = Buffer.alloc(6 * 1024 * 1024, 7), small = Buffer.alloc(40 * 1024, 9);
   Object.defineProperty(fin, 'files', { configurable: true, value: [new A.win.File([big], 'grande.jpg', { type: 'image/jpeg' }), new A.win.File([small], 'chica.jpg', { type: 'image/jpeg' })] });
   fin.dispatchEvent(new A.win.Event('change'));
+  // 3160: con fotos sale antes la revisión (el ojo «ver una vez» en cada una): se manda tal cual con «Enviar (N)»
+  await sleep(300); click(A.win, A.win.document.querySelector('#nexo-gallery-review #nexo-grev-send'));
   await sleep(4000);
   const after = logs.slice(mark);
   const ms = await A.win.vaultLoadMessages(idB);

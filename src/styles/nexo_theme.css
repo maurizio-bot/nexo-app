@@ -500,3 +500,32 @@ button, input, textarea, select { font-family: inherit; }
 .nx-notif-banner .nx-notif-txt { flex: 1; min-width: 0; color: var(--nx-muted); }
 .nx-notif-banner .nx-notif-go { flex: none; padding: 9px 14px; background: var(--nx-grad); color: #fff; border: none; border-radius: 12px; font-weight: 700; font-size: 13px; cursor: pointer; }
 .nx-notif-banner .nx-notif-x { flex: none; width: 30px; height: 30px; background: transparent; color: var(--nx-muted); border: none; font-size: 15px; cursor: pointer; }
+
+/* ====== 3160 (dueño 16-11: «el puntito para palomear varias… ese concepto en la esquina puesta con el ojo»): revisión de lo elegido
+   en la galería antes de mandarlo (gallery_review.js). Pantalla como las demás (fondo liso, cabecera .nx-page-head con la ✕ =
+   Cancelar), cuadrícula de miniaturas y, en la esquina de cada FOTO, el círculo con el ojo «ver una vez»: apagado = aro blanco
+   sobre sombra (como el puntito del selector); encendido = el acento de la app con brillo (como .cam-review-once.active) y la
+   miniatura con su contorno. El vídeo, sin ojo, con su indicador abajo a la izquierda. Cabe en 360 px (3 columnas de ~108). ====== */
+.nx-grev { position: fixed; inset: 0; z-index: 9200; background: var(--nx-bg); color: var(--nx-text); display: flex; flex-direction: column; box-sizing: border-box; }
+.nx-grev-hint { display: flex; align-items: center; gap: 8px; margin: -4px 16px 10px; color: var(--nx-muted); font-size: 13px; line-height: 1.35; }
+.nx-grev-hint svg { flex-shrink: 0; stroke: var(--nx-cyan); }
+.nx-grev-hint span { text-wrap: balance; }
+.nx-grev-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 0 12px 12px; align-content: start; }
+.nx-grev-two .nx-grev-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.nx-grev-item { position: relative; aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden; background: var(--nx-surface); }
+.nx-grev-media { width: 100%; height: 100%; object-fit: cover; display: block; }
+.nx-grev-item.is-once::after { content: ''; position: absolute; inset: 0; border: 2px solid var(--nx-cyan); border-radius: 10px; box-shadow: inset 0 0 14px rgba(0, 200, 255, 0.4); pointer-events: none; }
+.nx-grev-eye { position: absolute; top: 0; right: 0; z-index: 1; width: 48px; height: 48px; padding: 6px; box-sizing: border-box; border: none; background: transparent;
+  display: flex; align-items: flex-start; justify-content: flex-end; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.nx-grev-dot { width: 30px; height: 30px; border-radius: 50%; box-sizing: border-box; border: 2px solid rgba(255, 255, 255, 0.92); background: rgba(0, 0, 0, 0.38);
+  display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); transition: background 0.15s, box-shadow 0.15s; }
+.nx-grev-eye.active .nx-grev-dot { background: var(--nx-cyan); border-color: #fff; box-shadow: 0 0 10px rgba(0, 200, 255, 0.7); }
+.nx-grev-vid { position: absolute; left: 6px; bottom: 6px; width: 26px; height: 26px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.75);
+  background: rgba(0, 0, 0, 0.55); display: inline-flex; align-items: center; justify-content: center; }
+/* Una sola foto: en grande (como WhatsApp), el ojo en la esquina de la propia foto */
+.nx-grev-one .nx-grev-grid { display: flex; align-items: center; justify-content: center; }
+.nx-grev-one .nx-grev-item { aspect-ratio: auto; max-width: 100%; min-width: 140px; min-height: 140px; display: flex; align-items: center; justify-content: center; }
+.nx-grev-one .nx-grev-media { width: auto; height: auto; max-width: 100%; max-height: calc(100vh - 250px); object-fit: contain; }
+.nx-grev-bar { flex-shrink: 0; padding: 10px 16px max(16px, env(safe-area-inset-bottom)); }
+.nx-grev-send { width: 100%; padding: 14px; border: none; border-radius: 14px; background: var(--nx-grad); color: #fff; font-size: 16px; font-weight: 700; font-family: inherit;
+  box-shadow: 0 4px 14px rgba(0, 200, 255, 0.35); cursor: pointer; }

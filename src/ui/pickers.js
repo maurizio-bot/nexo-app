@@ -14,6 +14,7 @@ import { groupBigRoute } from './group_media.js';
 import { isGroupId } from './groups.js';
 import { GROUP_MAX_BYTES, _groupBlobCap } from './send.js';
 import { t } from './i18n.js';
+import { _galleryHasPhoto, _openGalleryReview } from './gallery_review.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _sendAttachment, _sendBigFile;
@@ -73,7 +74,12 @@ export async function _handleGallery() {
       console.log('[ATTACH] Galería: ' + (picked.send.length + picked.dropped) + ' elegidas, mando ' + picked.send.length + ' (tope ' + GALLERY_MAX + ')');
       try { _showInfoToast(t('misc_gallery_cap', 'Hasta {n} a la vez: mando las primeras {n}.').replace(/\{n\}/g, GALLERY_MAX), 4500); } catch (e) {}
     }
-    _sendGalleryItems(picked.send, 0);
+    // 3160 (dueño 16-11: «al mandar varias también puedes elegir cuáles de una sola vista»): si hay alguna foto (aunque sea UNA),
+    // antes de mandar sale la revisión con las miniaturas y el ojo «ver una vez» en la esquina de cada foto (gallery_review.js); al
+    // «Enviar (N)» sale todo como siempre, con once en las marcadas. También en grupos: el «una vez» viaja en el sobre del grupo
+    // (meta.once) y la burbuja del miembro la consume igual (como la foto de la cámara). Solo vídeos: directo, sin revisión.
+    if (!_galleryHasPhoto(picked.send)) { _sendGalleryItems(picked.send, 0); return; }
+    _openGalleryReview(picked.send, { eyes: true }, function(once) { _sendGalleryItems(picked.send, 0, once); });
   }, true);
 }
 
@@ -81,10 +87,11 @@ export async function _handleGallery() {
 // siguiente. Es a propósito: así nunca hay 10 fotos enteras en memoria a la vez (evita el tipo de crash de archivos
 // enormes, #2941) ni se tapa la radio de golpe; la base ya pacea el envío. Cada foto va como su propio mensaje (como
 // WhatsApp). Los vídeos de la tanda se mandan con _sendVideo (con un respiro entre ellos porque recodificar es pesado).
-function _sendGalleryItems(files, i) {
+// 3160: once[i] === true → esa foto va «ver una vez» (lo marcado en la revisión); sin once, como siempre.
+function _sendGalleryItems(files, i, once) {
   if (!files || i >= files.length) return;
   var file = files[i];
-  var next = function() { _sendGalleryItems(files, i + 1); };
+  var next = function() { _sendGalleryItems(files, i + 1, once); };
   var isVideo = (file.type || '').indexOf('video') === 0;
   if (isVideo) {
     // v9.9.30: el vídeo no se lee entero: se recodifica una previa y el original va como HD si cabe
@@ -101,14 +108,16 @@ function _sendGalleryItems(files, i) {
   _readFileBase64(file).then(function(base64) {
     var pt = _photoTarget(_getCurrentContactId());
     return _compressImageBase64(base64, pt.max, pt.q).then(function(res) {
-      _sendAttachment('image', res.base64, {
+      var meta = {
         name: file.name,
         size: res.base64.length,
         type: 'image/jpeg',
         format: res.format || 'jpeg',
         width: res.width,
         height: res.height
-      });
+      };
+      if (once && once[i]) meta.once = true; // #94 «ver una vez», marcado con el ojo en la revisión (3160)
+      _sendAttachment('image', res.base64, meta);
     });
   }).catch(_readFailed).then(next, next); // seguir con la siguiente pase lo que pase con esta
 }
