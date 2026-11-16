@@ -58,15 +58,15 @@ function _injectStyles() {
   if (document.getElementById('nexo-bat-overlay-styles')) return;
   var style = document.createElement('style');
   style.id = 'nexo-bat-overlay-styles';
-  style.textContent = '#nexo-bat-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.94); z-index: 2147483646; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); }'
-    + ' #nexo-bat-overlay .bat-in { background: #0a0a15; border: 1px solid #00d4ff; border-radius: 16px; padding: 30px 26px; max-width: 360px; width: 90%; text-align: center; color: #fff; box-shadow: 0 0 40px rgba(0,212,255,0.15); box-sizing: border-box; }'
+  style.textContent = '#nexo-bat-overlay { position: fixed; inset: 0; background: var(--nx-bg,#070812); z-index: 2147483646; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); }'
+    + ' #nexo-bat-overlay .bat-in { background: var(--nx-sheet); border: 1px solid var(--nx-line); border-radius: var(--nx-radius); padding: 30px 26px; max-width: 360px; width: 90%; text-align: center; color: #fff; box-shadow: none; box-sizing: border-box; }'
     + ' #nexo-bat-overlay .bat-icon { font-size: 54px; margin-bottom: 10px; }'
-    + ' #nexo-bat-overlay h2 { margin: 0 0 12px; font-size: 20px; color: #00d4ff; }'
-    + ' #nexo-bat-overlay p { margin: 0 0 10px; font-size: 14px; color: #ccc; line-height: 1.5; }'
-    + ' #nexo-bat-overlay .bat-why { background: rgba(255,170,0,0.1); border: 1px solid rgba(255,170,0,0.3); border-radius: 10px; padding: 11px 13px; font-size: 13px; color: #ffcc66; margin: 4px 0 16px; text-align: left; }'
-    + ' #nexo-bat-overlay .bat-ok { color: #00ff88; font-weight: 700; }'
-    + ' #nexo-bat-overlay .bat-primary { display: block; width: 100%; margin: 6px 0; padding: 15px; background: linear-gradient(135deg,#00d4ff,#0099cc); color: #000; border: none; border-radius: 10px; font-weight: 700; font-size: 15px; cursor: pointer; }'
-    + ' #nexo-bat-overlay .bat-ghost { display: block; width: 100%; margin: 4px 0 0; padding: 10px; background: transparent; color: #666; border: none; font-size: 13px; cursor: pointer; }'
+    + ' #nexo-bat-overlay h2 { margin: 0 0 12px; font-size: 22px; font-weight: 800; letter-spacing: -0.3px; color: #fff; }'
+    + ' #nexo-bat-overlay p { margin: 0 0 10px; font-size: 14px; color: var(--nx-muted); line-height: 1.5; }'
+    + ' #nexo-bat-overlay .bat-why { background: var(--nx-surface); border: 1px solid var(--nx-line); border-radius: 14px; padding: 11px 13px; font-size: 13px; color: var(--nx-text); margin: 4px 0 16px; text-align: left; }'
+    + ' #nexo-bat-overlay .bat-ok { color: var(--nx-cyan); font-weight: 700; }'
+    + ' #nexo-bat-overlay .bat-primary { display: block; width: 100%; margin: 6px 0; padding: 15px; background: var(--nx-grad); color: #fff; border: none; border-radius: 14px; font-weight: 700; font-size: 15px; cursor: pointer; box-shadow: 0 10px 30px rgba(0,200,255,0.35), 0 4px 12px rgba(168,85,247,0.35); }'
+    + ' #nexo-bat-overlay .bat-ghost { display: block; width: 100%; margin: 4px 0 0; padding: 10px; background: transparent; color: var(--nx-muted); border: none; font-size: 13px; cursor: pointer; }'
     + '';
   document.head.appendChild(style);
 }

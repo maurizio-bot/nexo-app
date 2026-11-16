@@ -11,6 +11,7 @@ import { _normId } from './ble_helpers.js';
 import { _showInfoToast } from './ui_bits.js';
 import { headToHead, leaderboard } from './game_stats.js';
 import { t } from './i18n.js';
+import { personAvatar } from './person_avatar.js';
 
 var NX_RE = /^nx[0-9a-z]{8}$/;
 
@@ -36,7 +37,7 @@ export function openGamePicker(cid) {
   ov.id = 'game-picker-overlay'; ov.className = 'ttt-overlay game-picker-overlay';
   var panel = document.createElement('div'); panel.className = 'ttt-panel game-picker-panel';
   var head = document.createElement('div'); head.className = 'ttt-head';
-  var title = document.createElement('div'); title.className = 'ttt-title'; title.textContent = t('game_pick_title', '🎮 Elegí un juego'); title.style.fontWeight = '600';
+  var title = document.createElement('div'); title.className = 'ttt-title'; title.textContent = t('game_pick_title', '🎮 Elegí un juego');
   head.appendChild(title);
   var oppName = _contactName(cid);
   var list = document.createElement('div'); list.className = 'game-pick-list';
@@ -76,7 +77,7 @@ function _openLeaderboard() {
   var ov = document.createElement('div'); ov.id = 'game-rank-overlay'; ov.className = 'ttt-overlay game-rank-overlay';
   var panel = document.createElement('div'); panel.className = 'ttt-panel game-rank-panel';
   var head = document.createElement('div'); head.className = 'ttt-head';
-  var title = document.createElement('div'); title.className = 'ttt-title'; title.textContent = t('game_ranking_title', '🏆 Ranking'); title.style.fontWeight = '600';
+  var title = document.createElement('div'); title.className = 'ttt-title'; title.textContent = t('game_ranking_title', '🏆 Ranking');
   head.appendChild(title);
   var listEl = document.createElement('div'); listEl.className = 'game-rank-list';
   if (!rows.length) {
@@ -88,7 +89,7 @@ function _openLeaderboard() {
       var pos = document.createElement('span'); pos.className = 'game-rank-pos'; pos.textContent = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1) + '.';
       var nm = document.createElement('span'); nm.className = 'game-rank-name'; nm.textContent = r.name;
       var sc = document.createElement('span'); sc.className = 'game-rank-score'; sc.textContent = r.w + 'G · ' + r.l + 'P' + (r.d ? (' · ' + r.d + 'E') : '');
-      row.appendChild(pos); row.appendChild(nm); row.appendChild(sc);
+      row.appendChild(pos); row.appendChild(personAvatar(r.nx, r.name, 36)); row.appendChild(nm); row.appendChild(sc);   // 3140: su círculo de color, como en Contactos
       listEl.appendChild(row);
     });
   }

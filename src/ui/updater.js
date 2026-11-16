@@ -215,21 +215,21 @@ function _renderBanner() {
     var b = document.getElementById('nexo-update-banner');
     if (!b) {
       b = document.createElement('div'); b.id = 'nexo-update-banner';
-      b.style.cssText = 'position:fixed;left:12px;right:12px;bottom:max(16px,env(safe-area-inset-bottom));z-index:9000;padding:12px 14px;border-radius:14px;background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;font-weight:600;display:flex;align-items:center;gap:10px;box-shadow:0 6px 22px rgba(0,0,0,0.45);';
+      b.style.cssText = 'position:fixed;left:12px;right:12px;bottom:max(16px,env(safe-area-inset-bottom));z-index:9000;padding:12px 14px;border-radius:var(--nx-radius,18px);background:var(--nx-sheet,#0e0f1e);border:1px solid var(--nx-line,rgba(255,255,255,0.08));backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#fff;font-weight:600;display:flex;align-items:center;gap:10px;box-shadow:0 10px 34px rgba(0,0,0,0.5);';
       document.body.appendChild(b);
     }
     var mb = a.size ? ' (' + Math.max(1, Math.round(a.size / 1048576)) + ' MB)' : '';
     var text = _busy ? (t('upd_downloading', 'Descargando…') + (_pct > 0 ? ' ' + _pct + ' %' : ''))
       : ready ? ('NEXO ' + a.build + ' ' + t('upd_ready', 'descargada'))
       : (t('upd_new', 'Hay una versión nueva de NEXO') + ' (' + a.build + ')' + mb);
-    var btnCss = 'background:#fff;color:#102;border:none;border-radius:10px;padding:8px 12px;font-weight:700;';
+    var btnCss = 'background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));color:#fff;border:none;border-radius:14px;padding:8px 14px;font-weight:700;box-shadow:0 3px 10px rgba(0,200,255,0.35);';
     var nn = updaterNotesText(a.notes, _lang());
-    b.innerHTML = '<span style="font-size:18px;">⬆️</span><span style="flex:1;min-width:0;"><span id="nexo-update-text"></span>' +
+    b.innerHTML = '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M12 20V5M6 11l6-6 6 6"/></svg><span style="flex:1;min-width:0;"><span id="nexo-update-text"></span>' +
       (nn ? '<span id="nexo-update-whatsnew" style="display:block;font-size:12px;font-weight:600;text-decoration:underline;opacity:0.95;cursor:pointer;margin-top:2px;"></span>' : '') + '</span>' +
       (_busy ? '' : ready
         ? '<button id="nexo-update-now" style="' + btnCss + '">' + t('upd_install', 'Instalar') + '</button>'   // ya bajada: el único botón es «Instalar»
         : '<button id="nexo-update-now" style="' + btnCss + '">' + t('upd_download', 'Descargar') + '</button>' +
-          '<button id="nexo-update-later" style="background:transparent;color:#fff;border:none;padding:8px 6px;opacity:0.9;">' + t('upd_later', 'Ahora no') + '</button>');
+          '<button id="nexo-update-later" style="background:transparent;color:var(--nx-muted,#c9cde0);border:none;padding:8px 6px;">' + t('upd_later', 'Ahora no') + '</button>');
     b.querySelector('#nexo-update-text').textContent = text;
     var wn = b.querySelector('#nexo-update-whatsnew');
     if (wn) { wn.textContent = t('upd_whatsnew', '¿Qué trae?'); wn.onclick = function(e) { e.stopPropagation(); _openNotesSheet(a, nn); }; }
@@ -246,14 +246,14 @@ function _openNotesSheet(a, text) {
     var ov = document.createElement('div'); ov.id = 'nexo-update-notes-sheet';
     ov.style.cssText = 'position:fixed;inset:0;z-index:9500;display:flex;flex-direction:column;justify-content:flex-end;background:rgba(0,0,0,0.55);';
     var sh = document.createElement('div');
-    sh.style.cssText = 'background:#14152a;color:#fff;border-radius:18px 18px 0 0;max-height:75vh;display:flex;flex-direction:column;gap:10px;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));box-sizing:border-box;';
-    var h = document.createElement('div'); h.style.cssText = 'font-size:16px;font-weight:700;'; h.textContent = t('upd_notes_next', 'Lo nuevo en la versión') + ' ' + a.build;
+    sh.style.cssText = 'background:#0e0f1e;border:1px solid var(--nx-line,rgba(255,255,255,0.08));border-bottom:none;color:#fff;border-radius:22px 22px 0 0;max-height:75vh;display:flex;flex-direction:column;gap:10px;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));box-sizing:border-box;';
+    var h = document.createElement('div'); h.style.cssText = 'font-size:18px;font-weight:800;letter-spacing:-0.2px;'; h.textContent = t('upd_notes_next', 'Lo nuevo en la versión') + ' ' + a.build;
     var body = document.createElement('div'); body.style.cssText = 'overflow:auto;font-size:14px;line-height:1.5;white-space:pre-wrap;'; body.textContent = text;
     var ready = _ready === a.build;
-    var go = document.createElement('button'); go.style.cssText = 'background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:12px;font-size:15px;font-weight:700;';
+    var go = document.createElement('button'); go.style.cssText = 'background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));color:#fff;border:none;border-radius:14px;padding:12px;font-size:15px;font-weight:700;box-shadow:0 10px 30px rgba(0,200,255,0.35),0 4px 12px rgba(168,85,247,0.35);';
     go.textContent = ready ? t('upd_install', 'Instalar') : t('upd_download', 'Descargar');
     go.onclick = function() { ov.remove(); if (ready) updaterInstall(); else if (!_busy) updaterDownload(); };
-    var close = document.createElement('button'); close.style.cssText = 'background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:12px;padding:12px;font-size:15px;font-weight:600;';
+    var close = document.createElement('button'); close.style.cssText = 'background:var(--nx-surface-2,rgba(255,255,255,0.1));color:#fff;border:1px solid var(--nx-line,rgba(255,255,255,0.08));border-radius:14px;padding:12px;font-size:15px;font-weight:600;';
     close.textContent = t('chat_close', 'Cerrar'); close.onclick = function() { ov.remove(); };
     ov.onclick = function(e) { if (e.target === ov) ov.remove(); };
     sh.appendChild(h); sh.appendChild(body); if (!_busy) sh.appendChild(go); sh.appendChild(close);

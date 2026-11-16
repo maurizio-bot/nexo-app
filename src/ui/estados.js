@@ -10,7 +10,8 @@
  *   borra al entregarse. Caduca a las 24 h (no se muestra ni se guarda lo vencido).
  * - UI: una tira "Estados" arriba de la lista de contactos.
  */
-import { _getBLEContacts, _normId, _saveBLEContacts } from './ble_helpers.js';
+import { _getBLEContacts, _normId, _saveBLEContacts, _getGradientForUUID, _getInitials } from './ble_helpers.js';
+import { paintAvatar } from './avatar.js';
 import { _sendTextTo } from './send.js';
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
 import { _makeVideoPreview, _blobToB64 } from './video_tools.js';
@@ -565,7 +566,7 @@ export function myComments(sid) {
 function _toast(msg) {
   try {
     var el = document.createElement('div');
-    el.style.cssText = 'position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:#0a0a15;border:1px solid #00c8ff;color:#fff;padding:10px 16px;border-radius:12px;z-index:7000;font-size:14px;max-width:80%;text-align:center;';
+    el.style.cssText = 'position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:var(--nx-sheet);border:1px solid var(--nx-line);color:#fff;padding:10px 16px;border-radius:16px;z-index:7000;font-size:14px;max-width:80%;text-align:center;';
     el.textContent = msg;
     document.body.appendChild(el);
     setTimeout(function() { try { el.remove(); } catch (e) {} }, 3000);
@@ -600,17 +601,26 @@ function _strip() {
   }
   return el;
 }
-function _chip(label, sub, onClick, accent, img) {
+// 3140 (dueño 16-11, «como mi pantalla de Contactos»): cada contacto con SU círculo de color (degradado + iniciales o su foto de
+// perfil, igual que en la lista) y el aro de «sin ver» por fuera con un hueco del color del fondo (como la tira «en línea»). El aro
+// sigue siendo el border (celeste = sin ver, gris = visto: lo leen las pruebas) y el hueco es el padding con background-clip.
+function _chip(label, sub, onClick, accent, img, nx) {
   var w = document.createElement('div');
   w.className = 'estado-chip';
   w.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;width:64px;cursor:pointer;';
   var circle = document.createElement('div');
-  circle.style.cssText = 'width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff;overflow:hidden;' +
-    (accent ? 'background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));' : 'background:rgba(255,255,255,0.1);border:2px solid #00c8ff;');
-  if (img) { var im = document.createElement('img'); im.src = img; im.style.cssText = 'width:100%;height:100%;object-fit:cover;'; circle.appendChild(im); }
+  if (nx) {
+    circle.className = 'ble-contact-avatar ' + _getGradientForUUID(nx);
+    circle.style.cssText = 'width:60px;height:60px;box-sizing:border-box;border:2px solid #00c8ff;padding:2px;background-clip:content-box;box-shadow:none;font-size:18px;overflow:hidden;';
+  } else {
+    circle.style.cssText = 'width:52px;height:52px;margin:4px 0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff;overflow:hidden;' +
+      (accent ? 'background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));' : 'background:var(--nx-surface-2);');
+  }
+  if (img) { var im = document.createElement('img'); im.src = img; im.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;'; circle.appendChild(im); }
+  else if (nx) { circle.textContent = _getInitials(label); try { paintAvatar(circle, nx); } catch (e) {} }
   else circle.textContent = accent ? '➕' : (label || '·').substring(0, 1).toUpperCase();
   var nm = document.createElement('div');
-  nm.style.cssText = 'font-size:11px;color:#ccc;max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;';
+  nm.style.cssText = 'font-size:11px;color:var(--nx-muted);max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;';
   nm.textContent = sub || label || '';
   w.appendChild(circle); w.appendChild(nm);
   w.addEventListener('click', function(e) { e.stopPropagation(); onClick(); });
@@ -625,7 +635,7 @@ function _renderStrip() {
   el.appendChild(_chip(t('grp_my_status', 'Mi estado'), mine.length ? t('grp_your_status', 'Tu estado') + (mine.length > 1 ? ' (' + mine.length + ')' : '') : t('grp_my_status', 'Mi estado'), function() { if (mine.length) _myView(); else _compose(); }, !mine.length, myImg));
   if (last && !myImg) { var mc = el.lastChild.querySelector('div'); if (mc) { mc.textContent = (last.t || '·').substring(0, 1).toUpperCase(); mc.style.background = 'var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7))'; } }
   _activeContacts().forEach(function(c) {
-    var ch = _chip(c.name, c.name + (c.n > 1 ? ' (' + c.n + ')' : ''), function() { _view(c); }, false, c.img);
+    var ch = _chip(c.name, c.name + (c.n > 1 ? ' (' + c.n + ')' : ''), function() { _view(c); }, false, c.img, c.nx);
     if (!c.unseen) { var cc = ch.querySelector('div'); if (cc) cc.style.borderColor = 'rgba(255,255,255,0.25)'; }   // ya vistos: aro gris
     el.appendChild(ch);
   });
@@ -655,7 +665,7 @@ function _overlay() {
   if (o) o.remove();
   o = document.createElement('div');
   o.id = 'estado-overlay';
-  o.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:6000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;';
+  o.style.cssText = 'position:fixed;inset:0;background:var(--nx-bg);z-index:6000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;';
   o.addEventListener('click', function(e) { if (e.target === o) o.remove(); });
   document.body.appendChild(o);
   _hideFabWhileOpen();
@@ -664,17 +674,17 @@ function _overlay() {
 function _compose() {
   var o = _overlay();
   var box = document.createElement('div');
-  box.style.cssText = 'background:#0a0a15;border:1px solid #00c8ff;border-radius:16px;padding:20px;max-width:340px;width:100%;color:#fff;display:flex;flex-direction:column;gap:12px;';
-  var h = document.createElement('div'); h.style.cssText = 'font-weight:700;color:#00c8ff;'; h.textContent = t('grp_my_status_24h', 'Mi estado (24 h)');
+  box.style.cssText = 'background:var(--nx-sheet);border:1px solid var(--nx-line);border-radius:var(--nx-radius);padding:20px;max-width:340px;width:100%;color:#fff;display:flex;flex-direction:column;gap:12px;';
+  var h = document.createElement('div'); h.style.cssText = 'font-size:18px;font-weight:800;color:#fff;letter-spacing:-0.2px;'; h.textContent = t('grp_my_status_24h', 'Mi estado (24 h)');
   var m = null;   // 3032: «Publicar» crea un estado NUEVO (hasta 10); los anteriores se ven y se quitan en «Mis estados»
   var picked = { img: '', mime: '', aud: '', amime: '', vid: '', vmime: '' };
   // previa de la foto (si hay)
   var prev = document.createElement('img');
-  prev.style.cssText = 'width:100%;max-height:200px;object-fit:contain;border-radius:10px;background:#000;' + (picked.img ? '' : 'display:none;');
+  prev.style.cssText = 'width:100%;max-height:200px;object-fit:contain;border-radius:14px;background:#000;' + (picked.img ? '' : 'display:none;');
   if (picked.img) prev.src = picked.img;
   // previa del video (si hay)
   var vidPrev = document.createElement('video'); vidPrev.controls = true; vidPrev.playsInline = true;
-  vidPrev.style.cssText = 'width:100%;max-height:200px;border-radius:10px;background:#000;' + (picked.vid ? '' : 'display:none;');
+  vidPrev.style.cssText = 'width:100%;max-height:200px;border-radius:14px;background:#000;' + (picked.vid ? '' : 'display:none;');
   if (picked.vid) vidPrev.src = picked.vid;
   // previa del audio (si hay)
   var audPrev = document.createElement('audio'); audPrev.controls = true;
@@ -684,7 +694,7 @@ function _compose() {
   ta.id = 'estado-input';
   ta.maxLength = MAX_LEN;
   ta.placeholder = t('grp_status_ph', '¿Qué estás pensando?');
-  ta.style.cssText = 'width:100%;min-height:70px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:10px;color:#fff;font-size:15px;padding:10px;outline:none;resize:none;';
+  ta.style.cssText = 'width:100%;min-height:70px;background:var(--nx-surface);border:1px solid var(--nx-line);border-radius:14px;color:#fff;font-size:15px;padding:10px;outline:none;resize:none;';
   // elegir foto
   var fin = document.createElement('input'); fin.type = 'file'; fin.accept = 'image/*'; fin.style.display = 'none';
   fin.addEventListener('change', function() {
@@ -699,7 +709,7 @@ function _compose() {
   var photoBtn = document.createElement('button');
   photoBtn.id = 'estado-foto';
   photoBtn.textContent = '📷 ' + t('est_add_photo', 'Foto');
-  photoBtn.style.cssText = 'flex:1;padding:9px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:10px;color:#fff;cursor:pointer;';
+  photoBtn.style.cssText = 'flex:1;padding:9px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:14px;color:#fff;cursor:pointer;';
   photoBtn.addEventListener('click', function(e) { e.stopPropagation(); fin.click(); });
   // grabar audio (grabador propio, autocontenido; tope AUD_SECS). Un segundo toque detiene.
   var rec = null, recChunks = [], recTimer = null, recStart = 0;
@@ -707,7 +717,7 @@ function _compose() {
   var audBtn = document.createElement('button');
   audBtn.id = 'estado-audio-btn';
   audBtn.textContent = '🎤 ' + t('est_add_audio', 'Audio');
-  audBtn.style.cssText = 'flex:1;padding:9px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:10px;color:#fff;cursor:pointer;';
+  audBtn.style.cssText = 'flex:1;padding:9px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:14px;color:#fff;cursor:pointer;';
   audBtn.addEventListener('click', function(e) {
     e.stopPropagation();
     if (rec && rec.state === 'recording') { _stopRec(); return; }
@@ -742,7 +752,7 @@ function _compose() {
   var vidBtn = document.createElement('button');
   vidBtn.id = 'estado-video-btn';
   vidBtn.textContent = '🎥 ' + t('est_add_video', 'Video');
-  vidBtn.style.cssText = 'flex:1;padding:9px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:10px;color:#fff;cursor:pointer;';
+  vidBtn.style.cssText = 'flex:1;padding:9px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:14px;color:#fff;cursor:pointer;';
   var vfin = document.createElement('input'); vfin.type = 'file'; vfin.accept = 'video/*'; vfin.style.display = 'none';
   vfin.addEventListener('change', function() {
     var f = vfin.files && vfin.files[0]; if (!f) return;
@@ -783,7 +793,7 @@ function _compose() {
   var pub = document.createElement('button');
   pub.id = 'estado-publicar';
   pub.textContent = t('grp_publish', 'Publicar');
-  pub.style.cssText = 'flex:1;padding:11px;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;';
+  pub.style.cssText = 'flex:1;padding:11px;background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));border:none;border-radius:14px;color:#fff;font-weight:700;cursor:pointer;box-shadow:0 10px 30px rgba(0,200,255,0.35),0 4px 12px rgba(168,85,247,0.35);';
   pub.addEventListener('click', function(e) { e.stopPropagation(); _stopRec(); if (addMyStatus(ta.value, picked.img, picked.mime, picked.aud, picked.amime, picked.vid, picked.vmime)) o.remove(); });
   row.appendChild(pub);
   box.appendChild(h); box.appendChild(prev); box.appendChild(vidPrev); box.appendChild(audPrev); box.appendChild(ta);
@@ -811,7 +821,11 @@ function _view(c) {
     box.innerHTML = '';
     // 2999 (dueño 10-11): tocar el NOMBRE del dueño del estado abre el chat con él
     var head = document.createElement('div'); head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
-    var who = document.createElement('div'); who.id = 'estado-who'; who.style.cssText = 'font-weight:700;color:#00c8ff;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:4px 0;';
+    // 3140: el círculo de color de la persona junto a su nombre (hermano de #estado-who, que conserva su «›»)
+    var whoWrap = document.createElement('div'); whoWrap.style.cssText = 'display:flex;align-items:center;gap:10px;min-width:0;';
+    var av = document.createElement('div'); av.className = 'ble-contact-avatar ' + _getGradientForUUID(c.nx); av.style.cssText = 'width:36px;height:36px;font-size:13px;cursor:pointer;';
+    av.textContent = _getInitials(c.name); try { paintAvatar(av, c.nx); } catch (e) {}
+    var who = document.createElement('div'); who.id = 'estado-who'; who.style.cssText = 'font-size:15.5px;font-weight:600;color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:4px 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
     who.textContent = c.name + ' ›'; who.title = t('est_open_chat', 'Abrir el chat');
     who.addEventListener('click', function(e) {
       e.stopPropagation();
@@ -819,9 +833,11 @@ function _view(c) {
       o.remove();
       try { if (bi && typeof bi.openChat === 'function') bi.openChat(c.nx).catch(function() {}); } catch (err) {}
     });
-    var cnt = document.createElement('div'); cnt.id = 'estado-pos'; cnt.style.cssText = 'font-size:12px;color:#aaa;'; cnt.textContent = (idx + 1) + '/' + items.length;
-    head.appendChild(who); head.appendChild(cnt);
-    var when = document.createElement('div'); when.style.cssText = 'font-size:12px;color:#888;'; when.textContent = _ago(it.ts);
+    av.addEventListener('click', function(e) { e.stopPropagation(); who.click(); });
+    whoWrap.appendChild(av); whoWrap.appendChild(who);
+    var cnt = document.createElement('div'); cnt.id = 'estado-pos'; cnt.style.cssText = 'font-size:12px;color:var(--nx-muted);'; cnt.textContent = (idx + 1) + '/' + items.length;
+    head.appendChild(whoWrap); head.appendChild(cnt);
+    var when = document.createElement('div'); when.style.cssText = 'font-size:12px;color:var(--nx-muted);'; when.textContent = _ago(it.ts);
     box.appendChild(head); box.appendChild(when);
     if (it.img) { var im = document.createElement('img'); im.src = it.img; im.style.cssText = 'width:100%;max-height:55vh;object-fit:contain;border-radius:12px;background:#000;'; box.appendChild(im); }
     if (it.vid) { var vd = document.createElement('video'); vd.id = 'estado-video'; vd.controls = true; vd.src = it.vid; vd.playsInline = true; vd.style.cssText = 'width:100%;max-height:55vh;border-radius:12px;background:#000;'; box.appendChild(vd); }
@@ -831,7 +847,7 @@ function _view(c) {
     // ‹ anterior / siguiente ›
     if (items.length > 1) {
       var nav = document.createElement('div'); nav.style.cssText = 'display:flex;gap:10px;';
-      var mk = function(id, label, dis, fn) { var b = document.createElement('button'); b.id = id; b.textContent = label; b.disabled = dis; b.style.cssText = 'flex:1;padding:8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:10px;color:#fff;cursor:pointer;' + (dis ? 'opacity:0.35;' : ''); b.addEventListener('click', function(e) { e.stopPropagation(); fn(); }); return b; };
+      var mk = function(id, label, dis, fn) { var b = document.createElement('button'); b.id = id; b.textContent = label; b.disabled = dis; b.style.cssText = 'flex:1;padding:8px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:14px;color:#fff;cursor:pointer;' + (dis ? 'opacity:0.35;' : ''); b.addEventListener('click', function(e) { e.stopPropagation(); fn(); }); return b; };
       nav.appendChild(mk('estado-prev', '‹', idx === 0, function() { idx--; paint(); }));
       nav.appendChild(mk('estado-next', '›', idx >= items.length - 1, function() { idx++; paint(); }));
       box.appendChild(nav);
@@ -839,7 +855,7 @@ function _view(c) {
     // «Me gusta»
     var like = document.createElement('button');
     like.id = 'estado-like';
-    like.style.cssText = 'align-self:flex-start;padding:9px 16px;background:rgba(255,59,48,0.18);border:1px solid #ff6b9d;border-radius:20px;color:#fff;font-size:15px;cursor:pointer;';
+    like.style.cssText = 'align-self:flex-start;padding:9px 16px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:20px;color:#fff;font-size:15px;cursor:pointer;';
     var liked = iLiked(c.nx, it.sid);
     like.textContent = liked ? '❤️ ' + t('est_liked', 'Te gustó') : '🤍 ' + t('est_like', 'Me gusta');
     like.disabled = liked;
@@ -852,10 +868,10 @@ function _view(c) {
     var crow = document.createElement('div'); crow.style.cssText = 'display:flex;gap:8px;';
     var cin = document.createElement('input'); cin.id = 'estado-comentar-input'; cin.type = 'text'; cin.maxLength = MAX_LEN;
     cin.placeholder = t('est_comment_ph', 'Comentar (solo lo verá ') + c.name + ')';
-    cin.style.cssText = 'flex:1;min-width:0;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:18px;color:#fff;font-size:14px;padding:9px 12px;outline:none;';
+    cin.style.cssText = 'flex:1;min-width:0;background:var(--nx-surface);border:1px solid var(--nx-line);border-radius:18px;color:#fff;font-size:14px;padding:9px 12px;outline:none;';
     cin.addEventListener('click', function(e) { e.stopPropagation(); });
     var cbtn = document.createElement('button'); cbtn.id = 'estado-comentar-btn'; cbtn.textContent = t('est_comment_send', 'Enviar');
-    cbtn.style.cssText = 'padding:9px 14px;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;border-radius:18px;color:#fff;font-weight:700;cursor:pointer;';
+    cbtn.style.cssText = 'padding:9px 14px;background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));border:none;border-radius:18px;color:#fff;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(0,200,255,0.35);';
     cbtn.addEventListener('click', function(e) {
       e.stopPropagation();
       if (commentStatus(c.nx, it.sid, cin.value)) { cin.value = ''; _toast(t('est_comment_sent', 'Comentario enviado a ') + c.name); }
@@ -877,7 +893,7 @@ function _bigEl(box, owner, it) {
   el.style.cssText = css;
   if (tag !== 'img') el.controls = true;
   if (tag === 'video') el.playsInline = true;
-  var ph = document.createElement('div'); ph.id = 'estado-cargando'; ph.style.cssText = 'font-size:13px;color:#00c8ff;'; ph.textContent = '⏳ ' + t('est_loading', 'Cargando…') + ' (' + Math.round(it.big.size / 1024) + ' KB)';
+  var ph = document.createElement('div'); ph.id = 'estado-cargando'; ph.style.cssText = 'font-size:13px;color:var(--nx-muted);'; ph.textContent = '⏳ ' + t('est_loading', 'Cargando…') + ' (' + Math.round(it.big.size / 1024) + ' KB)';
   el.style.display = 'none';
   box.appendChild(ph); box.appendChild(el);
   statusMedia(owner, it).then(function(d) {
@@ -891,44 +907,44 @@ function _myView() {
   var o = _overlay();
   var box = document.createElement('div');
   box.id = 'estado-mios';
-  box.style.cssText = 'background:#0a0a15;border:1px solid #00c8ff;border-radius:16px;padding:16px;max-width:360px;width:100%;max-height:85vh;overflow-y:auto;color:#fff;display:flex;flex-direction:column;gap:12px;';
+  box.style.cssText = 'background:var(--nx-sheet);border:1px solid var(--nx-line);border-radius:var(--nx-radius);padding:16px;max-width:360px;width:100%;max-height:85vh;overflow-y:auto;color:#fff;display:flex;flex-direction:column;gap:12px;';
   var paint = function() {
     var list = myStatuses();
     box.innerHTML = '';
-    var h = document.createElement('div'); h.style.cssText = 'font-weight:700;color:#00c8ff;'; h.textContent = t('est_my_statuses', 'Mis estados') + ' (' + list.length + '/' + MAX_ITEMS + ')';
+    var h = document.createElement('div'); h.style.cssText = 'font-size:18px;font-weight:800;color:#fff;letter-spacing:-0.2px;'; h.textContent = t('est_my_statuses', 'Mis estados') + ' (' + list.length + '/' + MAX_ITEMS + ')';
     box.appendChild(h);
     var nuevo = document.createElement('button'); nuevo.id = 'estado-nuevo';
     nuevo.textContent = '＋ ' + t('est_new', 'Nuevo estado');
     nuevo.disabled = list.length >= MAX_ITEMS;
-    nuevo.style.cssText = 'padding:10px;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer;' + (nuevo.disabled ? 'opacity:0.4;' : '');
+    nuevo.style.cssText = 'padding:10px;background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));border:none;border-radius:14px;color:#fff;font-weight:700;cursor:pointer;box-shadow:0 10px 30px rgba(0,200,255,0.35),0 4px 12px rgba(168,85,247,0.35);' + (nuevo.disabled ? 'opacity:0.4;box-shadow:none;' : '');
     nuevo.addEventListener('click', function(e) { e.stopPropagation(); if (myStatuses().length >= MAX_ITEMS) { _toast(t('est_max', 'Ya tienes 10 estados: quita uno para publicar otro')); return; } _compose(); });
     box.appendChild(nuevo);
     if (!list.length) { o.remove(); return; }
     list.slice().reverse().forEach(function(it) {
       var card = document.createElement('div'); card.className = 'estado-mio'; card.setAttribute('data-sid', it.sid);
-      card.style.cssText = 'border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px;';
+      card.style.cssText = 'background:var(--nx-surface);border:1px solid var(--nx-line);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:6px;';
       var top = document.createElement('div'); top.style.cssText = 'display:flex;gap:10px;align-items:center;';
-      if (it.img) { var im = document.createElement('img'); im.src = it.img; im.style.cssText = 'width:48px;height:48px;object-fit:cover;border-radius:8px;flex-shrink:0;'; top.appendChild(im); }
+      if (it.img) { var im = document.createElement('img'); im.src = it.img; im.style.cssText = 'width:48px;height:48px;object-fit:cover;border-radius:12px;flex-shrink:0;'; top.appendChild(im); }
       var info = document.createElement('div'); info.style.cssText = 'flex:1;min-width:0;';
       var tx = document.createElement('div'); tx.style.cssText = 'font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
       var kk = it.big ? it.big.k : (it.vid ? 'vid' : it.aud ? 'aud' : it.img ? 'img' : '');
       tx.textContent = it.t || (kk === 'vid' ? '🎥 ' + t('est_add_video', 'Video') : kk === 'aud' ? '🎤 ' + t('est_add_audio', 'Audio') : kk === 'img' ? '📷 ' + t('est_add_photo', 'Foto') : '');
-      var wh = document.createElement('div'); wh.style.cssText = 'font-size:11px;color:#888;'; wh.textContent = _ago(it.ts);
+      var wh = document.createElement('div'); wh.style.cssText = 'font-size:11px;color:var(--nx-muted);'; wh.textContent = _ago(it.ts);
       info.appendChild(tx); info.appendChild(wh); top.appendChild(info);
       var del = document.createElement('button'); del.className = 'estado-quitar'; del.textContent = t('grp_remove', 'Quitar');
-      del.style.cssText = 'padding:6px 10px;background:rgba(255,59,48,0.3);border:1px solid #FF3B30;border-radius:8px;color:#fff;font-size:12px;cursor:pointer;flex-shrink:0;';
+      del.style.cssText = 'padding:6px 12px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:14px;color:#ff8a80;font-size:12px;cursor:pointer;flex-shrink:0;';
       del.addEventListener('click', function(e) { e.stopPropagation(); removeMyStatus(it.sid); paint(); });
       top.appendChild(del);
       card.appendChild(top);
       // Quién le dio me gusta
       var who = whoLiked(it.sid);
-      var lk = document.createElement('div'); lk.className = 'estado-likes'; lk.style.cssText = 'font-size:13px;color:#ff6b9d;';
+      var lk = document.createElement('div'); lk.className = 'estado-likes'; lk.style.cssText = 'font-size:13px;color:var(--nx-muted);';
       lk.textContent = who.length ? '❤️ ' + who.length + ' · ' + who.map(function(w) { return w.name; }).join(', ') : '🤍 ' + t('est_no_likes', 'Aún sin me gusta');
       card.appendChild(lk);
       // Comentarios (solo los ves tú)
       myComments(it.sid).forEach(function(cm) {
-        var cr = document.createElement('div'); cr.className = 'estado-comentario'; cr.style.cssText = 'font-size:13px;background:rgba(255,255,255,0.06);border-radius:8px;padding:6px 8px;';
-        var nm = document.createElement('b'); nm.style.color = '#00c8ff'; nm.textContent = cm.name + ': ';
+        var cr = document.createElement('div'); cr.className = 'estado-comentario'; cr.style.cssText = 'font-size:13px;background:var(--nx-surface);border-radius:12px;padding:6px 10px;';
+        var nm = document.createElement('b'); nm.style.color = '#fff'; nm.textContent = cm.name + ': ';
         var ct = document.createElement('span'); ct.textContent = cm.t;
         cr.appendChild(nm); cr.appendChild(ct); card.appendChild(cr);
       });
@@ -948,7 +964,7 @@ function _attachPull() {
   _pullAttached = true;
   var y0 = null, dy = 0, ind = null;
   var showInd = function(txt) {
-    if (!ind) { ind = document.createElement('div'); ind.id = 'estados-pull'; ind.style.cssText = 'text-align:center;font-size:12px;color:#00c8ff;padding:6px 0;'; cv.insertBefore(ind, cv.firstChild); }
+    if (!ind) { ind = document.createElement('div'); ind.id = 'estados-pull'; ind.style.cssText = 'text-align:center;font-size:12px;color:var(--nx-muted);padding:6px 0;'; cv.insertBefore(ind, cv.firstChild); }
     ind.textContent = txt;
   };
   var hideInd = function(ms) { setTimeout(function() { if (ind) { try { ind.remove(); } catch (e) {} ind = null; } }, ms || 0); };

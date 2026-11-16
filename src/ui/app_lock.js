@@ -53,11 +53,11 @@ function _showLock() {
   if (_overlay()) return;
   var o = document.createElement('div');
   o.id = 'nexo-lock';
-  o.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0a0a15;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:inherit;padding:24px;box-sizing:border-box;text-align:center;';
+  o.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:var(--nx-bg,#070812);color:var(--nx-text,#f4f5fb);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:inherit;padding:24px;box-sizing:border-box;text-align:center;';
   o.innerHTML = '<div style="font-size:56px;">🔒</div>' +
-    '<div style="font-size:20px;font-weight:700;">' + t('prof_lock_locked', 'NEXO está bloqueado') + '</div>' +
-    '<div id="nexo-lock-msg" style="font-size:14px;opacity:0.75;min-height:20px;">' + t('prof_lock_use_fp', 'Usa tu huella o el PIN del teléfono') + '</div>' +
-    '<button id="nexo-lock-btn" style="background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:14px;padding:14px 28px;font-size:16px;font-weight:600;">' + t('prof_unlock', 'Desbloquear') + '</button>';
+    '<div style="font-size:22px;font-weight:800;letter-spacing:-0.3px;">' + t('prof_lock_locked', 'NEXO está bloqueado') + '</div>' +
+    '<div id="nexo-lock-msg" style="font-size:14px;color:var(--nx-muted);min-height:20px;">' + t('prof_lock_use_fp', 'Usa tu huella o el PIN del teléfono') + '</div>' +
+    '<button id="nexo-lock-btn" style="background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));color:#fff;border:none;border-radius:14px;padding:14px 28px;font-size:16px;font-weight:600;box-shadow:0 10px 30px rgba(0,200,255,0.35),0 4px 12px rgba(168,85,247,0.35);">' + t('prof_unlock', 'Desbloquear') + '</button>';
   (document.body || document.documentElement).appendChild(o);
   o.querySelector('#nexo-lock-btn').onclick = function() { _unlock(); };
 }

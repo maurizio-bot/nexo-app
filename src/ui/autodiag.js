@@ -61,12 +61,12 @@ export function autoDiagAskOnce() {
     var ov = document.createElement('div'); ov.id = 'nexo-diag-ask';
     ov.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:24px;';
     var box = document.createElement('div');
-    box.style.cssText = 'background:#14152a;color:#fff;max-width:420px;width:100%;border-radius:16px;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,0.5);';
-    var h = document.createElement('div'); h.style.cssText = 'font-size:18px;font-weight:700;margin-bottom:8px;'; h.textContent = t('diag_ask_title', 'Ayudar a mejorar NEXO');
-    var p = document.createElement('div'); p.style.cssText = 'font-size:14px;line-height:1.45;opacity:0.9;margin-bottom:16px;'; p.textContent = t('diag_ask_text', 'Si algo falla, NEXO puede mandar un diagnóstico técnico al desarrollador, y una vez al día un resumen de uso (solo números). Va cifrado y nunca incluye tus mensajes ni nombres. Puedes cambiarlo cuando quieras en Perfil → Ajustes.');
+    box.style.cssText = 'background:var(--nx-sheet,#0e0f1e);border:1px solid var(--nx-line,rgba(255,255,255,0.08));color:#fff;max-width:420px;width:100%;border-radius:var(--nx-radius,18px);padding:20px;box-sizing:border-box;box-shadow:0 10px 40px rgba(0,0,0,0.5);';
+    var h = document.createElement('div'); h.style.cssText = 'font-size:18px;font-weight:800;letter-spacing:-0.2px;margin-bottom:8px;'; h.textContent = t('diag_ask_title', 'Ayudar a mejorar NEXO');
+    var p = document.createElement('div'); p.style.cssText = 'font-size:14px;line-height:1.45;color:var(--nx-muted,#c9cde0);margin-bottom:16px;'; p.textContent = t('diag_ask_text', 'Si algo falla, NEXO puede mandar un diagnóstico técnico al desarrollador, y una vez al día un resumen de uso (solo números). Va cifrado y nunca incluye tus mensajes ni nombres. Puedes cambiarlo cuando quieras en Perfil → Ajustes.');
     var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;';
-    var no = document.createElement('button'); no.id = 'nexo-diag-ask-no'; no.textContent = t('diag_ask_no', 'Ahora no'); no.style.cssText = 'background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.35);border-radius:10px;padding:10px 14px;';
-    var yes = document.createElement('button'); yes.id = 'nexo-diag-ask-yes'; yes.textContent = t('diag_ask_yes', 'Aceptar'); yes.style.cssText = 'background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:10px;padding:10px 16px;font-weight:700;';
+    var no = document.createElement('button'); no.id = 'nexo-diag-ask-no'; no.textContent = t('diag_ask_no', 'Ahora no'); no.style.cssText = 'background:var(--nx-surface-2,rgba(255,255,255,0.1));color:#fff;border:1px solid var(--nx-line,rgba(255,255,255,0.08));border-radius:14px;padding:10px 14px;';
+    var yes = document.createElement('button'); yes.id = 'nexo-diag-ask-yes'; yes.textContent = t('diag_ask_yes', 'Aceptar'); yes.style.cssText = 'background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));color:#fff;border:none;border-radius:14px;padding:10px 16px;font-weight:700;box-shadow:0 3px 10px rgba(0,200,255,0.35);';
     var done = function(on) { setAutoDiagEnabled(on); if (ov.parentNode) ov.parentNode.removeChild(ov); };
     no.onclick = function() { done(false); }; yes.onclick = function() { done(true); };
     row.appendChild(no); row.appendChild(yes); box.appendChild(h); box.appendChild(p); box.appendChild(row); ov.appendChild(box); document.body.appendChild(ov);

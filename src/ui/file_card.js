@@ -28,8 +28,8 @@ export function _openFullscreenMedia(src, type, noSave) {
   overlay.id = 'fullscreen-media-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:5000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;';
   var closeBtn = document.createElement('button');
-  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
-  closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;';
+  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';   // 3140: icono de trazo 21 en botón redondo de 42, como los de Contactos
+  closeBtn.style.cssText = 'position:absolute;top:calc(14px + env(safe-area-inset-top,0px));right:14px;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.08);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;padding:0;';
   // v9.9.31: no revocar src: es la misma URL que usa la burbuja (después no se podía volver a ver);
   // se liberan al salir del chat (_cleanupObjectURLs)
   closeBtn.onclick = function(e) { if (e) e.stopPropagation(); _closeFullscreenMedia(); };
@@ -39,9 +39,9 @@ export function _openFullscreenMedia(src, type, noSave) {
     var dlBtn = document.createElement('button');
     dlBtn.className = 'fs-save-btn';
     dlBtn.setAttribute('data-state', 'idle');
-    dlBtn.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" fill="#fff"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>';
+    dlBtn.innerHTML = _ICON_DL;
     dlBtn.title = t('media_save_gallery', 'Guardar en galería');
-    dlBtn.style.cssText = 'position:absolute;top:16px;left:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;';
+    dlBtn.style.cssText = 'position:absolute;top:calc(14px + env(safe-area-inset-top,0px));left:14px;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.08);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;padding:0;';
     dlBtn.onclick = function(e) { if (e) e.stopPropagation(); _saveMediaToGallery(src, type, dlBtn); };
     overlay.appendChild(dlBtn);
   }
@@ -134,16 +134,16 @@ function _blobToB64(blob) {
 // «falló». Ahora el propio botón cuenta lo que pasa: gira mientras guarda; al terminar se pone VERDE con una palomita (y vibra) y un
 // aviso azul dice dónde quedó; si falla, ROJO con el motivo. Otra vez el mismo botón: «ya está en tu galería» (no se duplica).
 // Si el teléfono no contesta en 20 s, cuenta como fallo (perilla de pruebas: NEXO_SAVE_TIMEOUT_MS).
-var _ICON_DL = '<svg viewBox="0 0 24 24" width="26" height="26" fill="#fff"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>';
-var _ICON_OK = '<svg viewBox="0 0 24 24" width="26" height="26" fill="#fff"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
-var _ICON_FAIL = '<svg viewBox="0 0 24 24" width="26" height="26" fill="#fff"><path d="M11 7h2v7h-2zm0 9h2v2h-2z"/></svg>';
+var _ICON_DL = '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>';
+var _ICON_OK = '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+var _ICON_FAIL = '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v7M12 17.5v.5"/></svg>';
 var _ICON_SPIN = '<span style="width:22px;height:22px;border-radius:50%;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;display:block;animation:nxspin .8s linear infinite;"></span>';
 function _saveBtnState(btn, st) {
   if (!btn) return;
   btn.setAttribute('data-state', st);
   if (!document.getElementById('nx-spin-style')) { var stl = document.createElement('style'); stl.id = 'nx-spin-style'; stl.textContent = '@keyframes nxspin{to{transform:rotate(360deg)}}'; document.head.appendChild(stl); }
   btn.innerHTML = st === 'saving' ? _ICON_SPIN : st === 'ok' ? _ICON_OK : st === 'fail' ? _ICON_FAIL : _ICON_DL;
-  btn.style.background = st === 'ok' ? 'rgba(34,197,94,0.95)' : st === 'fail' ? 'rgba(239,68,68,0.95)' : 'rgba(255,255,255,0.15)';
+  btn.style.background = st === 'ok' ? 'rgba(34,197,94,0.95)' : st === 'fail' ? 'rgba(239,68,68,0.95)' : 'rgba(255,255,255,0.1)';
   btn.style.opacity = '1';
   btn.title = st === 'ok' ? t('media_saved_ok', 'Guardada en tu galería') : t('media_save_gallery', 'Guardar en galería');
 }

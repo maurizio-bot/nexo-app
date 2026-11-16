@@ -32,19 +32,19 @@ function _injectStyles() {
   var s = document.createElement('style');
   s.id = 'nexo-welcome-styles';
   s.textContent = '#nexo-welcome-overlay { position: fixed; inset: 0; z-index: 2147483646; display: flex; align-items: center; justify-content: center; padding: 18px; box-sizing: border-box;'
-    + ' background: radial-gradient(circle at 18% 8%, rgba(0,200,255,0.16), transparent 42%), radial-gradient(circle at 88% 92%, rgba(168,85,247,0.18), transparent 46%), linear-gradient(170deg,#0a0a15 0%,#10112a 55%,#0b1428 100%); }'
+    + ' background: var(--nx-bg,#070812); }'
     + ' #nexo-welcome-overlay .wel-in { width: 100%; max-width: 370px; display: flex; flex-direction: column; color: #fff; text-align: center; box-sizing: border-box; }'
     + ' #nexo-welcome-overlay .wel-icon { font-size: 60px; line-height: 1; margin: 6px 0 14px; }'
-    + ' #nexo-welcome-overlay .wel-title { font-size: 23px; font-weight: 800; margin: 0 0 12px; background: linear-gradient(135deg,#00c8ff,#a855f7); -webkit-background-clip: text; background-clip: text; color: transparent; }'
-    + ' #nexo-welcome-overlay .wel-body { font-size: 15px; line-height: 1.6; color: #cdd3e6; margin: 0 auto; max-width: 320px; min-height: 120px; }'
+    + ' #nexo-welcome-overlay .wel-title { font-size: 26px; font-weight: 800; letter-spacing: -0.3px; margin: 0 0 12px; background: linear-gradient(90deg,#fff 30%,#b9c4ff); -webkit-background-clip: text; background-clip: text; color: transparent; }'
+    + ' #nexo-welcome-overlay .wel-body { font-size: 15px; line-height: 1.6; color: var(--nx-muted); margin: 0 auto; max-width: 320px; min-height: 120px; }'
     + ' #nexo-welcome-overlay .wel-body b { color: #fff; }'
     + ' #nexo-welcome-overlay .wel-dots { display: flex; gap: 7px; justify-content: center; margin: 20px 0 16px; }'
     + ' #nexo-welcome-overlay .wel-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.22); transition: background 0.2s, transform 0.2s; }'
-    + ' #nexo-welcome-overlay .wel-dot.on { background: linear-gradient(135deg,#00c8ff,#a855f7); transform: scale(1.25); }'
-    + ' #nexo-welcome-overlay .wel-primary { display: block; width: 100%; padding: 15px; border: none; border-radius: 14px; font-size: 16px; font-weight: 700; color: #fff; cursor: pointer; background: linear-gradient(135deg,#00c8ff,#a855f7); box-shadow: 0 8px 22px rgba(0,200,255,0.3); }'
+    + ' #nexo-welcome-overlay .wel-dot.on { background: var(--nx-grad); transform: scale(1.25); }'
+    + ' #nexo-welcome-overlay .wel-primary { display: block; width: 100%; padding: 15px; border: none; border-radius: 14px; font-size: 16px; font-weight: 700; color: #fff; cursor: pointer; background: var(--nx-grad); box-shadow: 0 10px 30px rgba(0,200,255,0.35), 0 4px 12px rgba(168,85,247,0.35); }'
     + ''
     + ' #nexo-welcome-overlay .wel-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; min-height: 22px; }'
-    + ' #nexo-welcome-overlay .wel-ghost { background: transparent; color: #8b93ab; border: none; font-size: 14px; padding: 6px 2px; cursor: pointer; }'
+    + ' #nexo-welcome-overlay .wel-ghost { background: transparent; color: var(--nx-muted); border: none; font-size: 14px; padding: 6px 2px; cursor: pointer; }'
     + ' #nexo-welcome-overlay .wel-ghost:disabled { visibility: hidden; }';
   document.head.appendChild(s);
 }

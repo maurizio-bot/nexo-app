@@ -37,7 +37,7 @@ body::before {
 }
 #nexo-profile-btn svg, #nexo-new-group-btn svg { width: 21px; height: 21px; }
 
-#main-contacts-online-strip { border-bottom: 1px solid var(--nx-line) !important; }
+#main-contacts-online-strip { border-bottom: none !important; }
 /* #dueño 05-11: padding-bottom amplio para que el ÚLTIMO contacto se pueda subir por encima del botón flotante
    (bottom:80 + 56 de alto) y su ⋮ no quede tapado/difícil de tocar. */
 #main-contacts-list { padding: 6px 10px 150px !important; }
@@ -49,7 +49,11 @@ body::before {
 .ble-contact-time { color: var(--nx-muted) !important; }
 .ble-unread-badge { background: var(--nx-grad) !important; color: #fff !important; box-shadow: 0 3px 10px rgba(0, 200, 255, 0.35); }
 .ble-divider { background: transparent !important; }
-.ble-online-avatar { box-shadow: 0 0 0 2px #0a0a15, 0 0 0 4px var(--nx-cyan); }
+.ble-online-avatar { box-shadow: 0 0 0 2px var(--nx-bg), 0 0 0 4px var(--nx-cyan); border: none !important; }
+/* 3140 (zona 6): tira «en línea» sin el aro con naranja ni el punto verde (el aro celeste ya dice «en línea»); nombre gris suave */
+.ble-online-avatar::before { display: none !important; }
+.ble-online-dot { display: none !important; }
+.ble-online-name { color: var(--nx-muted) !important; font-size: 11px !important; }
 #main-contacts-empty-msg, .ble-empty { color: var(--nx-muted) !important; }
 .ble-btn-menu { opacity: 0.6; }
 #ble-fab-btn { background: var(--nx-grad) !important; box-shadow: 0 10px 30px rgba(0, 200, 255, 0.35), 0 4px 12px rgba(168, 85, 247, 0.35) !important; border: none !important; }
@@ -121,22 +125,22 @@ body::before {
 /* Editor de stickers (2878): foto + texto/emoji */
 .sticker-editor { position: fixed; inset: 0; z-index: 2660; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.82); padding: 16px; }
 /* #dueño 02-11: más solidez (se veía tenue y costaba leer). Fondo del panel OPACO (no la superficie del tema, que puede quedar translúcida), borde y sombra marcados. */
-.stedit-panel { width: 100%; max-width: 360px; background: #13242d; border: 1px solid rgba(255,255,255,0.10); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 14px 48px rgba(0,0,0,0.65); }
+.stedit-panel { width: 100%; max-width: 360px; background: #0e0f1e; border: 1px solid var(--nx-line); border-radius: var(--nx-radius); padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 14px 48px rgba(0,0,0,0.65); }
 .stedit-head { font-weight: 800; font-size: 18px; color: var(--nx-text, #e8f0f2); }
 .stedit-preview { display: flex; justify-content: center; }
-.stedit-preview canvas { width: 230px; height: 230px; border-radius: 16px; background: #0a1a20; border: 1px solid var(--nx-line, #2a3b44); touch-action: none; cursor: move; }
-.stedit-hint { color: #4fd8dd; font-size: 13px; font-weight: 600; text-align: center; margin-top: -2px; }
+.stedit-preview canvas { width: 230px; height: 230px; border-radius: 16px; background: var(--nx-bg); border: 1px solid var(--nx-line, #2a3b44); touch-action: none; cursor: move; }
+.stedit-hint { color: var(--nx-cyan); font-size: 13px; font-weight: 600; text-align: center; margin-top: -2px; }
 .stedit-row { display: flex; gap: 8px; }
 .stedit-row .nx-btn { flex: 1; margin: 0; }
-#stedit-text, #stedit-emoji { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid #38505c; background: #0c1920; color: #eef5f7; font-size: 15px; }
+#stedit-text, #stedit-emoji { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--nx-line); background: var(--nx-surface); color: var(--nx-text); font-size: 15px; }
 #stedit-text::placeholder, #stedit-emoji::placeholder { color: rgba(238,245,247,0.6); }
 .stedit-actions { display: flex; gap: 8px; margin-top: 2px; }
 .stedit-actions .nx-btn { flex: 1; margin: 0; }
 /* Tres en raya (2830): overlay del juego de 2 jugadores */
 .ttt-overlay { position: fixed; inset: 0; z-index: 2650; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.55); padding: 16px; }
-.ttt-panel { width: 100%; max-width: 360px; background: linear-gradient(160deg, #13223c, #0b1324); border: 1px solid rgba(0,200,255,0.18); border-radius: 16px; padding: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); } /* opaco: var(--nx-surface) es casi transparente y el panel dejaba ver el fondo */
+.ttt-panel { width: 100%; max-width: 360px; background: #0e0f1e; border: 1px solid var(--nx-line); border-radius: var(--nx-radius); padding: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); } /* opaco: var(--nx-surface) es casi transparente y el panel dejaba ver el fondo */
 .ttt-head { text-align: center; color: var(--nx-text, #e8f0f2); margin-bottom: 12px; }
-.ttt-title { font-size: 17px; }
+.ttt-title { font-size: 20px; font-weight: 800; letter-spacing: -0.3px; color: #fff; } /* 3140: blanco liso (el degradado dejaría el emoji del título vacío) */
 .ttt-vs { font-size: 12px; color: var(--nx-muted, #9fb0b5); margin-top: 2px; }
 .ttt-status { font-size: 14px; margin-top: 6px; min-height: 18px; }
 .ttt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -146,14 +150,14 @@ body::before {
 .ttt-cell.ttt-x { color: #38bdf8; }
 .ttt-cell.ttt-o { color: #fb7185; }
 .ttt-foot { display: flex; gap: 10px; margin-top: 14px; }
-.ttt-again, .ttt-close { flex: 1; padding: 11px; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
-.ttt-again { background: #19c3c9; color: #05242a; }
-.ttt-close { background: rgba(255,255,255,0.1); color: #e8f0f2; }
+.ttt-again, .ttt-close { flex: 1; padding: 11px; border: none; border-radius: 14px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.ttt-again { background: var(--nx-grad); color: #fff; box-shadow: 0 3px 10px rgba(0, 200, 255, 0.35); }
+.ttt-close { background: var(--nx-surface-2); border: 1px solid var(--nx-line); color: var(--nx-text); }
 
 /* Conecta 4 (connect4.js) — reusa .ttt-overlay/.ttt-panel/.ttt-head/.ttt-foot; solo el tablero es propio. */
 .c4-panel { max-width: 400px; }
 .c4-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; padding: 8px; border-radius: 14px;
-  background: linear-gradient(160deg, rgba(0,200,255,0.16), rgba(168,85,247,0.16)); border: 1px solid rgba(0,200,255,0.25); }
+  background: linear-gradient(160deg, rgba(0,200,255,0.16), rgba(168,85,247,0.16)); border: 1px solid var(--nx-line); }
 .c4-cell { aspect-ratio: 1 / 1; border: none; border-radius: 50%; padding: 0; cursor: pointer;
   background: rgba(0,0,0,0.38); box-shadow: inset 0 2px 5px rgba(0,0,0,0.5); transition: transform .08s; }
 .c4-cell:disabled { cursor: default; }
@@ -162,39 +166,39 @@ body::before {
 
 /* Salón de juegos (game_menu.js) — reusa .ttt-overlay/.ttt-panel/.ttt-head/.ttt-foot. */
 .game-pick-list { display: flex; flex-direction: column; gap: 10px; }
-.game-pick-item { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid rgba(0,200,255,0.22);
-  border-radius: 12px; background: rgba(255,255,255,0.05); color: var(--nx-text, #e8f0f2); font-size: 15px; font-weight: 600; cursor: pointer; text-align: left; }
-.game-pick-item.is-pressed { background: rgba(0,200,255,0.12); }
+.game-pick-item { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: none;
+  border-radius: 14px; background: var(--nx-surface); color: var(--nx-text, #e8f0f2); font-size: 15px; font-weight: 600; cursor: pointer; text-align: left; }
+.game-pick-item.is-pressed { background: var(--nx-surface-2); }
 .game-pick-emoji { font-size: 24px; line-height: 1; }
 /* #dueño 05-11: marcador cabeza a cabeza a la derecha del juego, y hoja de ranking. */
 .game-pick-name { flex: 1 1 auto; }
-.game-pick-score { margin-left: auto; font-size: 12px; font-weight: 600; color: #19c3c9; white-space: nowrap; flex-shrink: 0; }
+.game-pick-score { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--nx-cyan); white-space: nowrap; flex-shrink: 0; }
 .game-rank-list { display: flex; flex-direction: column; gap: 3px; max-height: 60vh; overflow-y: auto; }
-.game-rank-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,0.04); }
-.game-rank-pos { min-width: 28px; text-align: center; font-size: 16px; font-weight: 700; color: #9fb0b5; flex-shrink: 0; }
-.game-rank-name { flex: 1 1 auto; font-weight: 600; color: #e8f0f2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.game-rank-score { font-size: 13px; font-weight: 700; color: #19c3c9; white-space: nowrap; flex-shrink: 0; }
-.game-rank-empty { text-align: center; color: #9fb0b5; padding: 24px 12px; font-size: 14px; line-height: 1.4; }
+.game-rank-row { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: var(--nx-radius); background: transparent; }
+.game-rank-pos { min-width: 28px; text-align: center; font-size: 16px; font-weight: 700; color: var(--nx-muted); flex-shrink: 0; }
+.game-rank-name { flex: 1 1 auto; min-width: 0; font-size: 15.5px; font-weight: 600; color: var(--nx-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-rank-score { font-size: 13px; font-weight: 700; color: var(--nx-cyan); white-space: nowrap; flex-shrink: 0; }
+.game-rank-empty { text-align: center; color: var(--nx-muted); padding: 24px 12px; font-size: 14px; line-height: 1.4; }
 
 /* Tetris (tetris.js) — overlay propio: tablero (canvas) arriba, controles abajo. */
 /* #dueño 05-11: el tablero se veía MINÚSCULO → panel más ancho, cromo (cabecera/controles/pie) más compacto y alto casi
    completo, para que el tablero (lo calcula tetris.js _sizeCanvas desde la ventana) use casi toda la pantalla sin recortes. */
 .tetris-overlay { position: fixed; inset: 0; z-index: 2650; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75); padding: 6px; }
-.tetris-panel { width: 100%; max-width: 420px; max-height: calc(100vh - 12px); background: linear-gradient(160deg,#13223c,#0b1324); border: 1px solid rgba(0,200,255,0.18); border-radius: 16px; padding: 10px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
-.tetris-head { text-align: center; color: #e8f0f2; }
-.tetris-title { font-size: 16px; font-weight: 700; }
-.tetris-stat { font-size: 12px; color: #9fb0b5; margin-top: 1px; }
+.tetris-panel { width: 100%; max-width: 420px; max-height: calc(100vh - 12px); background: #0e0f1e; border: 1px solid var(--nx-line); border-radius: var(--nx-radius); padding: 10px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+.tetris-head { text-align: center; color: var(--nx-text); }
+.tetris-title { font-size: 18px; font-weight: 800; letter-spacing: -0.3px; color: #fff; }
+.tetris-stat { font-size: 12px; color: var(--nx-muted); margin-top: 1px; }
 .tetris-board-wrap { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
 .tetris-canvas { border-radius: 8px; background: #0a1020; box-shadow: 0 0 0 1px rgba(0,200,255,0.2), 0 6px 20px rgba(0,0,0,0.4); touch-action: manipulation; max-width: 100%; }
 .tetris-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
-.tetris-btn { padding: 9px 0; border: 1px solid rgba(0,200,255,0.22); border-radius: 12px; background: rgba(255,255,255,0.06); color: #e8f0f2; font-size: 18px; font-weight: 700; cursor: pointer; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
-.tetris-btn.is-pressed { background: rgba(0,200,255,0.18); }
+.tetris-btn { padding: 9px 0; border: 1px solid var(--nx-line); border-radius: 14px; background: var(--nx-surface); color: var(--nx-text); font-size: 18px; font-weight: 700; cursor: pointer; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+.tetris-btn.is-pressed { background: var(--nx-surface-2); }
 .tetris-btn.td { grid-column: 1 / 2; }
-.tetris-btn.thd { grid-column: 2 / 4; background: linear-gradient(135deg,#00c8ff,#a855f7); color: #fff; border: none; }
+.tetris-btn.thd { grid-column: 2 / 4; background: var(--nx-grad); color: #fff; border: none; }
 .tetris-foot { display: flex; gap: 10px; }
-.tetris-again, .tetris-close { flex: 1; padding: 11px; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
-.tetris-again { background: #19c3c9; color: #05242a; }
-.tetris-close { background: rgba(255,255,255,0.1); color: #e8f0f2; }
+.tetris-again, .tetris-close { flex: 1; padding: 11px; border: none; border-radius: 14px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.tetris-again { background: var(--nx-grad); color: #fff; box-shadow: 0 3px 10px rgba(0, 200, 255, 0.35); }
+.tetris-close { background: var(--nx-surface-2); border: 1px solid var(--nx-line); color: var(--nx-text); }
 /* Ronda 2789 (informe del dueño): entregado (llegó, sin leer) y leído se veían casi igual porque los dos son ✓✓ y el
    color de "entregado" era casi blanco. Ahora: enviado ✓ gris oscuro, entregado ✓✓ GRIS claro (apagado, "aún sin
    leer"), leído ✓✓ AZUL con brillo. Como WhatsApp: gris hasta que lo leen, y ahí se pone de color. */
@@ -211,10 +215,10 @@ body::before {
 
 /* Buscar en el chat (lupa de la cabecera): ocultar los que no coinciden y resaltar los que sí */
 #nexo-search-btn {
-  width: 40px !important; height: 40px !important; background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important;
+  width: 42px !important; height: 42px !important; background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important;
   display: inline-flex; align-items: center; justify-content: center; padding: 0 !important;
 }
-#nexo-search-btn svg { width: 19px; height: 19px; }
+#nexo-search-btn svg { width: 21px; height: 21px; } /* 3140: 42/21 como llamada y videollamada */
 .message.msg-search-hidden { display: none !important; }
 .message.msg-search-hit { outline: 2px solid var(--nx-cyan) !important; outline-offset: 1px; }
 
@@ -388,6 +392,10 @@ body::before {
   background: var(--nx-sheet) !important; border: 1px solid var(--nx-line) !important; color: var(--nx-text) !important;
   border-radius: 16px !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5) !important;
 }
+/* 3140 (zona 6): un ERROR (permiso denegado, archivo demasiado grande) se distingue de un aviso normal: borde y letra en rojo suave */
+#perm-error-toast.err-toast { border-color: rgba(255, 59, 48, 0.45) !important; color: #ff8a80 !important; }
+/* 3140 (zona 6): hoja «Fondo de este chat» opaca (la .nx-card sola es casi transparente y se veían las burbujas detrás) */
+#nexo-wp-sheet > .nx-card { background: var(--nx-sheet) !important; border-radius: var(--nx-radius) var(--nx-radius) 0 0 !important; }
 
 /* Pasar la cuenta / Fénix */
 #nexo-move-screen { background: var(--nx-bg) !important; } /* 3140 */

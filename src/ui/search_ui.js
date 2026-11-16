@@ -30,7 +30,7 @@ function _buildBar() {
   if (_bar) return _bar;
   _bar = document.createElement('div');
   _bar.id = 'nexo-search-bar';
-  _bar.style.cssText = 'display:none;align-items:center;gap:8px;padding:8px 12px;background:rgba(0,0,0,0.85);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;';
+  _bar.style.cssText = 'display:none;align-items:center;gap:8px;padding:8px 12px;background:transparent;border-bottom:none;flex-shrink:0;';
   var input = document.createElement('input');
   input.id = 'nexo-search-input';
   input.type = 'text';
@@ -38,10 +38,10 @@ function _buildBar() {
   input.setAttribute('autocomplete', 'off');
   input.setAttribute('autocorrect', 'off');
   input.setAttribute('spellcheck', 'false');
-  input.style.cssText = 'flex:1;min-width:0;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:18px;color:#fff;font-size:14px;padding:7px 14px;outline:none;';
+  input.style.cssText = 'flex:1;min-width:0;background:var(--nx-surface);border:1px solid var(--nx-line);border-radius:18px;color:#fff;font-size:14px;padding:7px 14px;outline:none;';
   var count = document.createElement('span');
   count.id = 'nexo-search-count';
-  count.style.cssText = 'font-size:12px;color:#8696a0;flex-shrink:0;min-width:64px;text-align:right;';
+  count.style.cssText = 'font-size:12px;color:var(--nx-muted);flex-shrink:0;min-width:64px;text-align:right;';
   var close = document.createElement('button');
   close.id = 'nexo-search-close';
   close.type = 'button';

@@ -115,7 +115,8 @@ export function _showPermissionError(permName, ms) {
   if (existing) existing.remove();
   var toast = document.createElement('div');
   toast.id = 'perm-error-toast';
-  toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(255,59,48,0.95);color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:10000;backdrop-filter:blur(4px);box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:90vw;text-align:center;';
+  toast.className = 'err-toast';   // 3140: el tema lo pinta como error (rojo suave), distinto de un aviso normal
+  toast.style.cssText = 'position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:rgba(255,59,48,0.95);color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:10000;backdrop-filter:blur(4px);box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:90vw;text-align:center;';
   // Una palabra (micrófono, ubicación…): permiso denegado y dónde darlo; si no, el mensaje tal cual. Ronda 2771: antes
   // solo se reconocían algunos mensajes y salía "Permiso de Demasiado grande… denegado" o "Permiso de (micrófono) no
   // encontrado denegado"
@@ -141,7 +142,7 @@ export function _showInfoToast(text, ms) {
   var toast = document.createElement('div');
   toast.id = 'perm-error-toast';
   toast.className = 'info-toast';
-  toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,130,252,0.95);color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:90vw;text-align:center;';
+  toast.style.cssText = 'position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:rgba(0,130,252,0.95);color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:90vw;text-align:center;';
   toast.textContent = text;
   document.body.appendChild(toast);
   setTimeout(function() { if (toast.parentNode) toast.remove(); }, ms || 4000);
