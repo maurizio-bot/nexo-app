@@ -42,6 +42,8 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Wi-Fi Direct: un envío real bien el 15-11 (3,3 MB/s); falta el vídeo de ~20 MB (PENDIENTES 15-11, resúmenes del 14-11). ×2
 
 **Falta**
+- Camino preparado al abrir el chat (dueño 16-11: saludo por internet al abrir y repaso al empezar a escribir) — en curso, 3147.
+- Resúmenes del 15-11 (build 3070): el S24 tardó en tener internet listo 13,7 s de media (máx. 119 s, 21 veces); el S23 gastó 11,6 %/h de batería en segundo plano (todo el teléfono) y 50,9 MB de datos móviles en NEXO. Revisar en cuanto haya diagnóstico de la 3073.
 - Entrega con la app CERRADA y la pantalla APAGADA: no suena ni avisa (#87; PENDIENTES 14-11 noche, «Pruebas del dueño con la 3052»). ×3
 - Puente nativo: que preste internet un teléfono con la app dormida (opción A, 3073+; PENDIENTES 13-11 y 16-11 03:17). ×3
 - Modo multitud: cientos de NEXO cerca, primero los contactos (meta EDC; ESTADO 15-11). ×3
