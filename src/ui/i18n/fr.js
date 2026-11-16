@@ -897,6 +897,7 @@ export default {
   chat_fe_vetoed: "⚠️ Quelqu'un a essayé de récupérer le compte de {name} sur un autre téléphone et son téléphone habituel a dit « ce n'est pas moi ». La clé habituelle est conservée.",
   chat_fe_disputed: "⚠️ Le téléphone habituel de {name} a dit « ce n'est pas moi », mais la récupération apportait une preuve plus forte. Comparez le numéro de sécurité en personne.",
   chat_fe_recovered: "⚠️ {name} a récupéré son compte sur un nouveau téléphone (confirmé par ses gardiens) et il n'est PAS vérifié. Touchez et comparez le numéro de sécurité en personne.",
-  fe_claim_q: "Un autre téléphone est en train de récupérer votre compte NEXO. Si ce n'est PAS vous, touchez OK pour l'en empêcher (votre déverrouillage NEXO vous sera demandé si vous en avez un).",
+  fe_claim_q: "Un autre téléphone est en train de récupérer votre compte NEXO. Si ce n'est PAS vous, touchez OK pour l'en empêcher (le déverrouillage de NEXO ou de votre téléphone vous sera demandé).",
   fe_veto_auth: "Confirmez que ce n'est pas vous",
+  fe_veto_nolock: "Pour l'en empêcher, votre téléphone a besoin d'un verrouillage d'écran (empreinte, visage, schéma ou code). Activez-le dans les réglages du téléphone.",
 };

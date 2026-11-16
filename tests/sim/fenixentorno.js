@@ -8,15 +8,16 @@
 //  E3  guardianes desconocidos no cuentan;  E4  pocas atestaciones;
 //  E5  repetición (el mismo registro: no se aplica dos veces) y época vieja;
 //  E6  veto ANTES de aceptar: el teléfono viejo recibe el reclamo, pide su desbloqueo y veta; el registro se rechaza;
-//      sin desbloqueo confirmado no hay veto; sin método de desbloqueo, veto «sin desbloqueo»;
+//      sin desbloqueo confirmado no hay veto; 3150 (dueño 16-11, opción 1): sin bloqueo de pantalla en el teléfono, tampoco;
 //  E7  veto DESPUÉS de aceptar: vuelve la llave vieja con aviso; un veto falsificado no hace nada; el registro repetido ya no entra;
-//  E8  gana la prueba más fuerte: veto sin desbloqueo frente a un registro con retrato y firma vivos → solo aviso; con desbloqueo → deshace;
+//  E8  gana la prueba más fuerte: un veto «sin desbloqueo» se rechaza (3150; antes, aviso); con desbloqueo → deshace;
 //  E9  la llave vieja sigue hablando tras la sucesión → conflicto marcado y se le reenvía el registro (para que pueda vetar);
 //  E10 interruptor apagado (o APK con número de build) → lo que llega se ignora y se apunta; nada cambia;
 //  E11 fenix.js: el guardián añade su atestación al fragmento y el teléfono nuevo NO escribe la identidad vieja (solo encendido).
 //  E12 (3149, revisión) tras un veto, el mismo registro rehecho con una hora posterior NO entra; con atestaciones nuevas, sí;
 //  E13 (3149) un guardián que ya recibió el veto no da fe;  E14 (3149) copia sin llaves privadas + interruptor apagado → no se escriben.
-// Contraprueba: en la 3147 no existe fenix_entorno.js; en la 3148 E12 (el registro rehecho entra), E13 y E14 fallan.
+// Contraprueba: en la 3147 no existe fenix_entorno.js; en la 3148 E12 (el registro rehecho entra), E13 y E14 fallan; en la 3149,
+// E6 y E8 (vetaba sin bloqueo de pantalla y el contacto lo tomaba como aviso).
 // Uso: node fenixentorno.js <dir_build>
 'use strict';
 const { importSrc } = require('./srcmod');
@@ -131,10 +132,10 @@ const tick = () => new Promise((r) => setTimeout(r, 30));
   const { cc: c6, e: e6 } = fresh();
   const v6 = await e6.onVeto(V && V.r, 'devA0');
   const rec6 = await e6.onRecord(R, 'devA1');
-  const O2 = mkEnt(A, A0, oldC, {}); O2.claims[R.n] = R; O2.gate = async () => ({ need: false, ok: false });
+  const O2 = mkEnt(A, A0, oldC, {}); O2.claims[R.n] = R; O2.gate = async () => ({ need: true, ok: false, none: true }); // 3150: teléfono sin bloqueo de pantalla
   const vNone = await O2.veto(R.n);
   r.E6 = { reclamo: claim, sin_desbloqueo_confirmado: noAuth, veto: vetoRes, veto_en_contacto: v6, registro: rec6, llave: c6.list[0].publicKey === A0.ik ? 'vieja' : 'nueva', sin_metodo: vNone };
-  r.E6_ok = claim === 'claim' && noAuth === 'auth_failed' && vetoRes === 'sent:lock' && v6 === 'store' && rec6 === 'vetoed' && r.E6.llave === 'vieja' && vNone === 'sent:none';
+  r.E6_ok = claim === 'claim' && noAuth === 'auth_failed' && vetoRes === 'sent:lock' && v6 === 'store' && rec6 === 'vetoed' && r.E6.llave === 'vieja' && vNone === 'no_lock';
 
   // E7: veto DESPUÉS de aceptar (C ya aceptó en E1). Primero vetos falsos
   const fakeX = await feBuildVeto(XK.sign, { nx: A, ep: 1, old: A0.ik, ts: Date.now(), au: 'lock' });
@@ -159,7 +160,7 @@ const tick = () => new Promise((r) => setTimeout(r, 30));
   const strongV = await feBuildVeto(A0.sign, { nx: A, ep: 1, old: A0.ik, ts: Date.now() + 2, au: 'lock' });
   const s8 = await e8.onVeto(strongV, 'devA0');
   r.E8 = { aceptado: acc8, veto_sin_desbloqueo: w8, llave_tras_debil: keyAfterWeak, veto_con_desbloqueo: s8, llave_final: c8.list[0].publicKey === A0.ik ? 'vieja' : 'nueva' };
-  r.E8_ok = acc8 === 'accepted' && w8 === 'warn' && keyAfterWeak === 'nueva' && s8 === 'rollback' && r.E8.llave_final === 'vieja';
+  r.E8_ok = acc8 === 'accepted' && w8 === 'no_lock' && keyAfterWeak === 'nueva' && s8 === 'rollback' && r.E8.llave_final === 'vieja';
 
   // E9: la llave vieja sigue hablando tras la sucesión
   const { cc: c9, e: e9 } = fresh();

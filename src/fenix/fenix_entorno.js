@@ -10,7 +10,8 @@
  * se vio; la hora es razonable; y hay al menos t atestaciones válidas de guardianes distintos que ellos pueden comprobar (los suyos
  * propios o los de la lista firmada por la llave vieja). Aceptado: la llave nueva pasa a ser la del contacto con marca visible
  * (recoveredAt, en rojo hasta verificar el número de seguridad). Nunca se cambia una llave sin este registro (sigue el «clave cambiada»).
- * Principio B (veto, k 'fv'): el teléfono viejo firma «no soy yo» con su llave (pide el desbloqueo de NEXO si el usuario lo tiene).
+ * Principio B (veto, k 'fv'): el teléfono viejo firma «no soy yo» con su llave; exige el desbloqueo de NEXO o, si no lo hay, el bloqueo
+ * de pantalla del teléfono (3150, dueño 16-11); sin ninguno no hay veto y los contactos rechazan los vetos «sin desbloqueo».
  * Gana la prueba más fuerte (rango 1 = más fuerte): 1 teléfono viejo con desbloqueo; 2 guardianes con retrato y firma vivos (fases
  * siguientes); 3 teléfono viejo sin desbloqueo; 4 solo atestaciones (fase 1). Un veto que gana: antes de aceptar, el registro de esa
  * época y anterior al veto se rechaza; después, se vuelve a la llave vieja con aviso. Si la llave vieja sigue hablando tras una
@@ -178,6 +179,7 @@ export async function feCheckVeto(v, c, view) {
   if (!_vetoShape(v)) { out.why = 'shape'; return out; }
   var nx = _nid(c && (c.nexoId || c.deviceUUID)), fe = (c && c.fe) || {};
   if (!c || nx !== v.nx) { out.why = 'not_contact'; return out; }
+  if (v.au !== 'lock') { out.why = 'no_lock'; return out; } // 3150 (dueño 16-11): sin desbloqueo no hay veto
   if (v.ts > view.now + FUTURE_MS) { out.why = 'future'; return out; }
   if (view.now - v.ts > STALE_MS) { out.why = 'stale'; return out; }
   var sk = null;
@@ -421,20 +423,27 @@ export class FenixEntorno {
     self._asking = true;
     setTimeout(function() {
       var yes = false;
-      try { yes = window.confirm(t('fe_claim_q', 'Otro teléfono está recuperando tu cuenta de NEXO. Si NO eres tú, toca Aceptar para impedirlo (se te pedirá tu desbloqueo de NEXO si lo tienes).')); } catch (e) {}
+      try { yes = window.confirm(t('fe_claim_q', 'Otro teléfono está recuperando tu cuenta de NEXO. Si NO eres tú, toca Aceptar para impedirlo (se te pedirá el desbloqueo de NEXO o el de tu teléfono).')); } catch (e) {}
       self._asking = false;
-      if (yes) self.veto(n);
+      if (yes) self.veto(n).then(function(res) {
+        if (res === 'no_lock') { try { window.alert(t('fe_veto_nolock', 'Para impedirlo, tu teléfono necesita un bloqueo de pantalla (huella, cara, patrón o PIN). Ponlo en los ajustes del teléfono.')); } catch (e) {} }
+      });
     }, 0);
   }
   async veto(n) {
     if (!this.on()) return 'off';
     var r = this.claims[n];
     if (!r) return 'no_claim';
-    // El método de desbloqueo que el usuario eligió (si tiene uno) se exige para vetar. Sin ninguno: veto «sin desbloqueo»
-    // (rango 3; decisión abierta del dueño)
-    var g = this.gate ? await this.gate(t('fe_veto_auth', 'Confirma que no eres tú')) : { need: false, ok: false };
-    if (g && g.need && !g.ok) { console.warn('[FENIX-E] Veto cancelado: no se confirmó el desbloqueo'); return 'auth_failed'; }
-    var v = await feBuildVeto(this._sign.bind(this), { nx: this.me(), ep: r.ep, old: this._myIk(), ts: Date.now(), au: g && g.need ? 'lock' : 'none' });
+    // 3150 (dueño 16-11, opción 1): vetar exige el desbloqueo de NEXO o, si no lo hay, el bloqueo de pantalla del teléfono. Sin
+    // ninguno no hay veto (antes: veto «sin desbloqueo», rango 3, con el que un ladrón con el teléfono abierto frenaba al dueño)
+    var g = this.gate ? await this.gate(t('fe_veto_auth', 'Confirma que no eres tú')) : null;
+    if (!g || g.none) {
+      console.warn('[FENIX-E] Veto imposible: el teléfono no tiene bloqueo de pantalla');
+      _ev('nexo:fenix:veto_nolock', { n: n });
+      return 'no_lock';
+    }
+    if (!g.ok) { console.warn('[FENIX-E] Veto cancelado: no se confirmó el desbloqueo'); return 'auth_failed'; }
+    var v = await feBuildVeto(this._sign.bind(this), { nx: this.me(), ep: r.ep, old: this._myIk(), ts: Date.now(), au: 'lock' });
     if (!v) return 'no_key';
     this.out = this.out.concat(v).slice(-5);
     await this._save();

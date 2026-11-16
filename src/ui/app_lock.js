@@ -156,10 +156,12 @@ export function initAppLock(opts) {
 
 export function isAppLocked() { return _locked; }
 
-// 3148 (Fénix Entorno, oculto): el método de desbloqueo que el usuario eligió para NEXO se exige para vetar una recuperación.
-// need=false: no tiene ninguno activado (qué hacer entonces es una decisión abierta del dueño; hoy: veto «sin desbloqueo», más débil).
+// 3148/3150 (Fénix Entorno, oculto): vetar una recuperación exige un desbloqueo de verdad. Dueño 16-11 (opción 1): el de NEXO si
+// está activado y, si no, el bloqueo de pantalla del teléfono (huella, cara, patrón o PIN del sistema: biometricAuth ya admite el
+// del teléfono). Sin ninguno en el teléfono (none) no se puede vetar: un ladrón con el teléfono sin bloqueo no frena al dueño.
 export async function appLockConfirm(title) {
-  if (!_prefs.lock) return { need: false, ok: false };
+  var st = await _call('biometricStatus', { allowWeak: _prefs.faceFast });
+  if (!st || !st.available) return { need: true, ok: false, none: true };
   return { need: true, ok: await _auth(title, '') };
 }
 // Bloqueo activado: las notificaciones no llevan el texto del mensaje

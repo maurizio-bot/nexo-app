@@ -897,6 +897,7 @@ export default {
   chat_fe_vetoed: "⚠️ Alguém tentou recuperar a conta de {name} em outro telefone e o telefone de sempre disse «não sou eu». Fica a chave de sempre.",
   chat_fe_disputed: "⚠️ O telefone de sempre de {name} disse «não sou eu», mas a recuperação trazia uma prova mais forte. Comparem o número de segurança pessoalmente.",
   chat_fe_recovered: "⚠️ {name} recuperou a conta num telefone novo (confirmado pelos seus guardiões) e NÃO está verificado. Toque e comparem o número de segurança pessoalmente.",
-  fe_claim_q: "Outro telefone está recuperando sua conta do NEXO. Se NÃO for você, toque em OK para impedir (será pedido o desbloqueio do NEXO, se você tiver).",
+  fe_claim_q: "Outro telefone está recuperando sua conta do NEXO. Se NÃO for você, toque em OK para impedir (será pedido o desbloqueio do NEXO ou do seu telefone).",
   fe_veto_auth: "Confirme que não é você",
+  fe_veto_nolock: "Para impedir, seu telefone precisa de um bloqueio de tela (digital, rosto, padrão ou PIN). Ative nas configurações do telefone.",
 };
