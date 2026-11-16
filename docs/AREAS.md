@@ -101,7 +101,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Contestar con manos libres Bluetooth en Xiaomi: aviso hecho, falta el diagnóstico de Jhonnatan (3134). ×2
 
 **Falta**
-- Diagnóstico S24 3073 (16-11 10:40): al agregar a un contacto, la videollamada 1-a-1 TERMINA y empieza una de grupo sin vídeo (es la queja del dueño; en curso, 3152). Justo después, una llamada nueva con la app en segundo plano al contestar el otro: 219 s sin micrófono ni cámara propios (el otro no oía nada); el micrófono y la cámara se piden al contestar y, en segundo plano, se quedan esperando — en curso con el mismo trabajo.
+- Diagnóstico S24 3073 (16-11 10:40): al agregar a un contacto, la videollamada 1-a-1 TERMINA y empieza una de grupo sin vídeo (es la queja del dueño; en curso, 3152). Justo después, una llamada nueva con la app en segundo plano al contestar el otro: 219 s sin micrófono ni cámara propios (el otro no oía nada); el micrófono y la cámara se piden al contestar y, en segundo plano, se quedan esperando — en curso con el mismo trabajo. Visto desde el S23: al colgar la de grupo, el aviso de fin solo le llegó al tercero; el S23 se quedó con una llamada de grupo «fantasma» que volvió sola («Reanudada») al terminar la siguiente llamada (en curso, mismo trabajo).
 - Eco: la voz propia vuelve, sobre todo en grupo (PENDIENTES #128 punto 7). ×2
 - Gasto de datos por relés: escucha nativa doble durante la llamada y cada parte por 3 relés (PENDIENTES 15-11 08:41). ×2
 - Segunda llamada por la llamada del sistema con la app cerrada, «Mensaje» desde la pantalla de bloqueo, una cámara para dos (PENDIENTES 15-11). ×2
