@@ -198,7 +198,7 @@ export function _buildFileCard(msg, attachment, mime) {
   mime = _mimeOf(mime, name);
   var card = document.createElement('div');
   card.className = 'file-attachment';
-  card.style.cssText = 'width:220px;max-width:100%;background:rgba(0,0,0,0.3);border-radius:10px;overflow:hidden;cursor:pointer;';
+  card.style.cssText = 'width:220px;max-width:100%;background:rgba(255,255,255,0.12);border-radius:12px;overflow:hidden;cursor:pointer;'; // 3140: superficie clara, sin la caja oscura
   if (_isPdf(mime, name)) {
     var img = document.createElement('img');
     img.className = 'file-thumb';
@@ -211,7 +211,7 @@ export function _buildFileCard(msg, attachment, mime) {
   var row = document.createElement('div');
   row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;';
   var ic = document.createElement('div');
-  ic.style.cssText = 'font-size:26px;line-height:1;';
+  ic.style.cssText = 'width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;font-size:20px;line-height:1;flex-shrink:0;'; // 3140: en un círculo, como en Contactos
   ic.textContent = _fileIcon(mime);
   var txt = document.createElement('div');
   txt.style.cssText = 'min-width:0;flex:1;';

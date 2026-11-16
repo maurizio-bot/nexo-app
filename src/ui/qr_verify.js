@@ -43,14 +43,16 @@ function _overlay(id) {
   if (old) old.remove();
   var o = document.createElement('div');
   o.id = id;
-  o.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(0,0,0,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;color:#fff;font-size:14px;text-align:center;';
+  o.style.cssText = 'position:fixed;inset:0;z-index:10050;background:var(--nx-bg,#070812);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;color:#fff;font-size:14px;text-align:center;';
   document.body.appendChild(o);
   return o;
 }
 function _button(label, primary) {
   var b = document.createElement('button');
   b.textContent = label;
-  b.style.cssText = 'padding:10px 18px;border-radius:10px;border:none;font-size:14px;cursor:pointer;color:#fff;background:' + (primary ? '#00c8ff' : 'rgba(255,255,255,0.18)') + ';';
+  // 3140 (dueño 16-11): fondo liso #070812 y botones redondeados como los de su pantalla de Contactos
+  b.style.cssText = 'padding:10px 18px;border-radius:14px;font-size:14px;cursor:pointer;color:#fff;' +
+    (primary ? 'border:none;background:var(--nx-grad,#00c8ff);box-shadow:0 3px 10px rgba(0,200,255,0.35);' : 'border:1px solid var(--nx-line,rgba(255,255,255,0.08));background:var(--nx-surface-2,rgba(255,255,255,0.1));');
   return b;
 }
 
@@ -60,7 +62,7 @@ export function showSafetyQr(payload, caption) {
   var box = document.createElement('div');
   box.className = 'qr-code';
   box.dataset.payload = payload;
-  box.style.cssText = 'background:#fff;padding:10px;border-radius:12px;width:min(78vw,340px);height:min(78vw,340px);';
+  box.style.cssText = 'background:#fff;padding:10px;border-radius:18px;width:min(78vw,340px);height:min(78vw,340px);';
   box.innerHTML = qrSvg(payload);
   var svg = box.querySelector('svg');
   if (svg) { svg.style.width = '100%'; svg.style.height = '100%'; }
@@ -87,7 +89,7 @@ export function openQrScanner(onText, caption) {
   video.muted = true;
   video.style.cssText = 'width:100%;height:100%;object-fit:cover;';
   var frame = document.createElement('div');
-  frame.style.cssText = 'position:absolute;inset:12%;border:3px solid #00c8ff;border-radius:12px;pointer-events:none;';
+  frame.style.cssText = 'position:absolute;inset:12%;border:2px solid rgba(255,255,255,0.85);border-radius:18px;pointer-events:none;';
   wrap.appendChild(video);
   wrap.appendChild(frame);
   var cap = document.createElement('div');

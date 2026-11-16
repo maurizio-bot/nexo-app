@@ -30,11 +30,14 @@ export function _renderE2EBanner() {
   if (isGroupId(cid)) {
     b.style.cssText = 'margin:8px auto 12px;max-width:300px;padding:8px 12px;border-radius:10px;font-size:12px;text-align:center;white-space:pre-line;';
     b.onclick = null;
+    b.classList.remove('e2e-warn');
     b.textContent = t('chat_e2e_group', '🔒 Mensajes del grupo cifrados de extremo a extremo: cada mensaje va cifrado para cada persona del grupo.');
     return;
   }
   b.style.cssText = 'margin:8px auto 12px;max-width:300px;padding:8px 12px;border-radius:10px;font-size:12px;text-align:center;cursor:pointer;white-space:pre-line;' +
     (c.pendingKey || (c.mergeUnverified && c.verified !== c.publicKey) ? 'background:rgba(255,59,48,0.15);color:#ff8a80;' : 'background:rgba(255,200,0,0.12);color:#ffd76a;');
+  // 3140: el tema iguala la tarjeta a la paleta NEXO; con e2e-warn el aviso de clave cambiada / chat unido sigue en rojo
+  b.classList.toggle('e2e-warn', !!(c.pendingKey || (c.mergeUnverified && c.verified !== c.publicKey)));
   var bi = window.bleInterface;
   var txt;
   if (c.pendingKey) {
@@ -76,7 +79,9 @@ export function _renderE2EBanner() {
         var vb = document.createElement('button');
         vb.className = 'e2e-verify';
         vb.textContent = on ? t('chat_unverify', 'Quitar verificado') : t('chat_mark_verified', 'Marcar como verificado');
-        vb.style.cssText = 'display:block;margin:8px auto 0;padding:6px 10px;border-radius:8px;border:none;font-size:12px;cursor:pointer;background:' + (on ? 'rgba(255,255,255,0.15)' : '#00c8ff') + ';color:#fff;';
+        // 3140: la acción principal con el degradado NEXO y su sombra (antes celeste liso); «Quitar verificado», neutro
+        vb.style.cssText = 'display:block;margin:8px auto 0;padding:7px 14px;border-radius:14px;font-size:12px;cursor:pointer;color:#fff;' +
+          (on ? 'background:var(--nx-surface-2);border:1px solid var(--nx-line);' : 'background:var(--nx-grad);border:none;box-shadow:0 3px 10px rgba(0,200,255,0.35);');
         vb.onclick = function(ev) { ev.stopPropagation(); bi.setContactVerified(cid, !on); };
         fp.appendChild(vb);
         // v9.9.49: o por QR (como Signal): uno lo muestra y el otro lo escanea desde este mismo chat
@@ -86,7 +91,7 @@ export function _renderE2EBanner() {
           var x = document.createElement('button');
           x.className = cls;
           x.textContent = label;
-          x.style.cssText = 'padding:6px 10px;border-radius:8px;border:none;font-size:12px;cursor:pointer;background:rgba(255,255,255,0.15);color:#fff;';
+          x.style.cssText = 'padding:7px 12px;border-radius:14px;border:1px solid var(--nx-line);font-size:12px;cursor:pointer;background:var(--nx-surface-2);color:#fff;'; // 3140: botón redondeado neutro
           x.onclick = function(ev) { ev.stopPropagation(); fn(); };
           qrow.appendChild(x);
         };
@@ -107,7 +112,7 @@ export function _renderE2EBanner() {
       var btn = document.createElement('button');
       btn.className = cls;
       btn.textContent = label;
-      btn.style.cssText = 'padding:6px 10px;border-radius:8px;border:none;font-size:12px;cursor:pointer;' + (cls === 'e2e-accept' ? 'background:#00c8ff;color:#fff;' : 'background:rgba(255,255,255,0.15);color:#fff;');
+      btn.style.cssText = 'padding:7px 12px;border-radius:14px;font-size:12px;cursor:pointer;color:#fff;' + (cls === 'e2e-accept' ? 'background:var(--nx-grad);border:none;box-shadow:0 3px 10px rgba(0,200,255,0.35);' : 'background:var(--nx-surface-2);border:1px solid var(--nx-line);'); // 3140
       btn.onclick = function(ev) { ev.stopPropagation(); fn(); };
       return btn;
     };

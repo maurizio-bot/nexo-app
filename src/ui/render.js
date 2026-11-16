@@ -17,6 +17,7 @@ import { haptic } from './haptics.js'; // 3131: tick al cambiar la velocidad de 
 import { _renderE2EBanner } from './e2e_banner.js';
 import { _setHdBadge } from './video_send.js';
 import { isGroupId } from './groups.js';
+import { personAvatar } from './person_avatar.js';
 import { vaultAppendMessage, vaultConsumeOnceMessage, vaultHydrateAttachments, vaultLoadFile, vaultLoadMessages, vaultLoadRecent, vaultUpdateMessageStatus } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
 
@@ -643,7 +644,15 @@ export function _renderMessage(msg, skipSave) {
       who.style.cssText = 'font-size:12px;font-weight:600;color:#00c8ff;margin:0 0 2px 4px;';
       var gs = window.bleInterface && window.bleInterface.groups;
       who.textContent = gs ? gs.memberName(msg.senderNexoId) : (msg.senderName || '');
-      div.appendChild(who);
+      // 3140 (dueño 16-11: «como mi pantalla de Contactos»): el círculo de color de quien escribió, a la izquierda de su nombre
+      // (fuera de .msg-group-sender y de .msg-content, que las pruebas leen por su texto)
+      var from = document.createElement('div');
+      from.className = 'msg-group-from';
+      var av = personAvatar(msg.senderNexoId, who.textContent, 22);
+      av.classList.add('msg-group-av');
+      from.appendChild(av);
+      from.appendChild(who);
+      div.appendChild(from);
     }
     div.appendChild(contentDiv);
     var metaDiv = document.createElement('div');

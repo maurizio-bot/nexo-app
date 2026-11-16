@@ -116,7 +116,8 @@ import { PREVIEW_MAX_SIDE, PREVIEW_MAX_SECONDS, HD_DIRECT_MAX_BYTES, HD_MAX_SIDE
 import { _extOf, _compressImageBase64, _fmtTime, _readFileBase64, _isPdf, _MIME_BY_EXT, _mimeOf, _pdfThumb, _FILE_ICONS, _fileIcon, _fmtSize } from './ui/file_tools.js';
 import { groupAttachment, isGroupId, parseGroupEnvelope } from './ui/groups.js';
 import { isGroupWire, startGroupMedia } from './ui/group_media.js';
-import { avatarInit } from './ui/avatar.js';
+import { avatarInit, paintAvatar } from './ui/avatar.js';
+import { _getGradientForUUID, _getInitials } from './ui/ble_helpers.js';
 import { usageInit } from './ui/usage_stats.js'; // 2989: resumen diario de uso (solo números)
 import { updaterInit } from './ui/updater.js'; // 2986: actualizador automático del APK de probadores
 import { autoDiagInit, autoDiagReceived } from './ui/autodiag.js'; // 2974: diagnóstico automático al desarrollador
@@ -287,6 +288,33 @@ function _fitContactName() {
 }
 ['nexo:ble:linkChange', 'nexo:ble:deviceDisconnected', 'nexo:ble:openChat'].forEach(function(ev) {
   window.addEventListener(ev, function() { setTimeout(function() { _refreshLinkSubtitle(); _fitContactName(); }, 50); });
+});
+// 3140 (dueño 16-11: «como mi pantalla de Contactos»): el círculo de color del contacto (o del grupo) en la cabecera del chat,
+// el mismo de la lista (degradado según el NEXO ID, iniciales y, si tiene, su foto; un grupo nunca lleva foto)
+var _chatAvId = '';
+function _paintChatAvatar(d) {
+  try {
+    var el = document.getElementById('chat-contact-avatar');
+    if (!el) return;
+    d = d || {};
+    var c = d.contact || {};
+    var id = _normId(d.contactId || c.nexoId || c.deviceUUID || '');
+    var name = d.name || c.name || '';
+    var group = d.transport === 'group' || (id && isGroupId(id));
+    _chatAvId = group ? '' : id;
+    el.className = 'ble-contact-avatar ' + _getGradientForUUID(id || String(name));
+    el.style.backgroundImage = '';
+    el.textContent = _getInitials(name || id);
+    if (!group && id) paintAvatar(el, id);
+  } catch (e) {}
+}
+window.addEventListener('nexo:ble:openChat', function(e) { _paintChatAvatar(e && e.detail); });
+// Si cambia la foto del contacto del chat abierto, se repinta
+window.addEventListener('nexo:avatar', function(e) {
+  var nx = _normId(e && e.detail && e.detail.nx);
+  if (!nx || nx !== _chatAvId) return;
+  var n = document.getElementById('chat-contact-name');
+  _paintChatAvatar({ contactId: nx, name: (n && n.value) || '' });
 });
 function installContactNameAutosize() {
   var n = document.getElementById('chat-contact-name');

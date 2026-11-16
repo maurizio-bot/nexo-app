@@ -57,10 +57,13 @@ body::before {
 #ble-bottom-nav { display: none !important; }
 
 /* ---------- Chat ---------- */
+/* 3140 (zona chat, dueño 16-11: «como mi pantalla de Contactos»): cabecera lisa sin banda de cristal ni línea, 64 px; el círculo
+   de color del contacto/grupo a la izquierda (#chat-contact-avatar, main.js) y el nombre a su lado, alineado a la izquierda */
 #chat-header {
-  background: var(--nx-glass) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--nx-line) !important; min-height: 60px;
+  background: transparent !important; backdrop-filter: none; -webkit-backdrop-filter: none;
+  border-bottom: none !important; min-height: 64px;
 }
+#chat-contact-avatar { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 42px; height: 42px; min-width: 42px; font-size: 15px; flex-shrink: 0; }
 .chat-back-btn { background: var(--nx-surface-2) !important; box-shadow: none !important; border: 1px solid var(--nx-line) !important; }
 /* Dueño 01-11: atrás SOLO por gestos — se ocultan los botones de «atrás»/«cerrar» de las pantallas a pantalla
    completa (chat, Perfil, Ajustes, panel Agregar). El gesto del sistema (window.__nexoHandleBack) y el deslizar
@@ -68,23 +71,28 @@ body::before {
 #chat-back-btn, .chat-back-btn, #ble-panel-back,
 #nexo-settings-back, #nexo-settings-close, #nexo-profile-close { display: none !important; }
 /* Sin botón «atrás» a la izquierda, el nombre del contacto se centra de verdad (se quita el hueco de 44px). */
-#chat-contact-info { padding-left: 100px !important; padding-right: 100px !important; } /* #dueño 05-11: simétrico → nombre centrado (atrás a la izq, llamada/video a la der) */
-#chat-contact-name { font-size: 17px !important; font-weight: 700 !important; }
-#chat-contact-subtitle { color: var(--nx-cyan) !important; font-weight: 600; letter-spacing: 0.6px; }
+/* 3140: el nombre va a la izquierda, junto al círculo (16 de la cabecera + 52 = 14 + 42 + 12, el hueco de la lista de
+   Contactos); a la derecha, el hueco de llamada + videollamada (16 + 96 = 14 + 42 + 6 + 42 + 8) */
+#chat-contact-info { padding: 4px 96px 4px 52px !important; align-items: flex-start !important; text-align: left !important; }
+#chat-contact-name { text-align: left !important; font-size: 20px !important; font-weight: 800 !important; letter-spacing: -0.3px; color: #fff !important; }
+#chat-contact-subtitle { font-size: 12px !important; text-transform: none !important; letter-spacing: 0 !important; font-weight: 500; color: var(--nx-muted) !important; }
+#chat-contact-subtitle .via-ico { color: var(--nx-cyan); } /* el icono del camino (en línea) conserva el celeste */
+#chat-contact-subtitle .via-weak { color: var(--nx-muted) !important; }
+#chat-head-actions { right: 14px !important; }
 /* Dueño 01-11 (plan 2/3): los botones de llamada/videollamada del chat de GRUPO (#nexo-gcall-btn/#nexo-gvideo-btn)
    llevan el mismo «look NEXO» que los del chat de contacto 1-a-1 (antes se quedaban con su estilo inline: 38px, sin
    borde, SVG sin tamaño). El `display` va SIN !important a propósito: así el show/hide inline (según isGroup) gana. */
 #nexo-call-btn, #nexo-video-btn, #nexo-gcall-btn, #nexo-gvideo-btn {
-  width: 40px !important; height: 40px !important; background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important;
+  width: 42px !important; height: 42px !important; background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important;
   display: inline-flex; align-items: center; justify-content: center; padding: 0 !important; /* sin !important: en un grupo se ocultan */
 }
-#nexo-call-btn svg, #nexo-video-btn svg, #nexo-gcall-btn svg, #nexo-gvideo-btn svg { width: 20px; height: 20px; }
+#nexo-call-btn svg, #nexo-video-btn svg, #nexo-gcall-btn svg, #nexo-gvideo-btn svg { width: 21px; height: 21px; } /* 3140: 42/21 como los de Contactos */
 #messages-container { background: transparent !important; }
 /* #dueño 02-11: la burbuja de texto RECORTABA el texto — el radio (20px) era mayor que el padding, así que la esquina
    redondeada comía las letras. Se reduce el radio (14px) para que no recorte; con el padding de critical.css (10px 14px)
    el texto ya no toca el arco. */
 .message { border-radius: 14px !important; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22); }
-.message.own { background: var(--nx-grad) !important; border-bottom-right-radius: 6px !important; }
+.message.own { background: var(--nx-grad) !important; border-bottom-right-radius: 6px !important; border-color: transparent !important; } /* 3140: sin el contorno celeste (transparent: mismo tamaño) */
 .message.other {
   background: rgba(255, 255, 255, 0.08) !important; border: 1px solid var(--nx-line) !important;
   border-bottom-left-radius: 6px !important; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
@@ -190,13 +198,15 @@ body::before {
 /* Ronda 2789 (informe del dueño): entregado (llegó, sin leer) y leído se veían casi igual porque los dos son ✓✓ y el
    color de "entregado" era casi blanco. Ahora: enviado ✓ gris oscuro, entregado ✓✓ GRIS claro (apagado, "aún sin
    leer"), leído ✓✓ AZUL con brillo. Como WhatsApp: gris hasta que lo leen, y ahí se pone de color. */
-.msg-status.status-delivered { color: #8696a0 !important; text-shadow: none !important; }
-.msg-status.status-read { color: #00d4ff !important; text-shadow: 0 0 6px rgba(0, 212, 255, 0.6); }
+.msg-status.status-delivered { color: var(--nx-muted) !important; text-shadow: none !important; } /* 3140: colores de la paleta NEXO */
+.msg-status.status-read { color: var(--nx-cyan) !important; text-shadow: 0 0 6px rgba(0, 200, 255, 0.6); }
 .system-msg { background: var(--nx-surface) !important; border: 1px solid var(--nx-line); color: var(--nx-muted) !important; border-radius: 999px !important; }
 #e2e-banner {
   background: var(--nx-surface) !important; border: 1px solid var(--nx-line) !important; color: var(--nx-muted) !important;
-  border-radius: 14px !important; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border-radius: var(--nx-radius) !important; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
+/* 3140: el aviso de clave cambiada / chat unido sin verificar vuelve a verse en rojo (el !important de arriba lo tapaba) */
+#e2e-banner.e2e-warn { color: #ff8a80 !important; border-color: rgba(255, 59, 48, 0.35) !important; }
 #jump-to-bottom { background: var(--nx-glass) !important; border: 1px solid var(--nx-line) !important; color: #fff !important; }
 
 /* Buscar en el chat (lupa de la cabecera): ocultar los que no coinciden y resaltar los que sí */
@@ -209,12 +219,13 @@ body::before {
 .message.msg-search-hit { outline: 2px solid var(--nx-cyan) !important; outline-offset: 1px; }
 
 /* Barra de escribir */
+/* 3140: opaca (los mensajes pasan por debajo) pero del mismo color que el fondo y sin línea: sin franja abajo */
 #input-area {
-  background: var(--nx-glass) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-  border-top: 1px solid var(--nx-line) !important;
+  background: var(--nx-bg) !important; backdrop-filter: none; -webkit-backdrop-filter: none;
+  border-top: none !important;
 }
 .input-wrapper { background: var(--nx-surface) !important; border: 1px solid var(--nx-line) !important; border-radius: 24px !important; }
-#message-input { background: transparent !important; color: var(--nx-text) !important; }
+#message-input { background: transparent !important; color: var(--nx-text) !important; border: none !important; } /* 3140: sin el segundo anillo gris */
 #message-input::placeholder { color: var(--nx-muted) !important; }
 .attach-btn { background: var(--nx-surface-2) !important; color: #fff !important; border: 1px solid var(--nx-line) !important; }
 .send-btn { background: var(--nx-grad) !important; box-shadow: 0 6px 18px rgba(0, 200, 255, 0.35); border: none !important; }
@@ -231,23 +242,20 @@ body::before {
      traducible desde i18n.js, antes quemada en CSS y faltaban Stickers y Juegos). */
   display: grid !important; grid-template-columns: repeat(4, 1fr); justify-items: center; align-items: start;
   gap: 12px 4px !important; width: min(344px, calc(100vw - 24px)); box-sizing: border-box;
+  /* 3140: de lado a lado con 12 px a cada lado (antes quedaba corrido a la izquierda) y radio 18 como las filas de Contactos */
+  right: 12px; width: auto !important; border-radius: var(--nx-radius) !important;
 }
 .attach-menu-item { flex-direction: column; gap: 5px; background: none !important; width: 100% !important; max-width: 74px; height: auto !important; padding: 6px 2px !important; }
-.attach-menu-item svg { width: 40px !important; height: 40px !important; padding: 10px; box-sizing: border-box; border-radius: 50%; fill: #fff !important; }
-.attach-menu-item[data-type="camera"] svg { background: linear-gradient(135deg, #ff5f6d, #ff3b30); }
-.attach-menu-item[data-type="gallery"] svg { background: linear-gradient(135deg, #00c8ff, #3b82f6); }
-.attach-menu-item[data-type="file"] svg { background: linear-gradient(135deg, #7c3aed, #a855f7); }
-.attach-menu-item[data-type="location"] svg { background: linear-gradient(135deg, #22c55e, #10b981); }
-.attach-menu-item[data-type="contact"] svg { background: linear-gradient(135deg, #f59e0b, #ff6b35); }
-.attach-menu-item[data-type="cobro"] svg { background: linear-gradient(135deg, #14b8a6, #0d9488); }
-.attach-menu-item[data-type="sticker"] svg { background: linear-gradient(135deg, #a855f7, #ec4899); }
-.attach-menu-item[data-type="games"] svg { background: linear-gradient(135deg, #38bdf8, #6366f1); fill: none !important; stroke: #fff; }
+/* 3140 (dueño 16-11): todos los iconos en el mismo círculo neutro de 46 (como los botones redondos de Contactos), sin un color
+   distinto por icono */
+.attach-menu-item svg { width: 46px !important; height: 46px !important; padding: 12px; box-sizing: border-box; border-radius: 50%; fill: #fff !important;
+  background: var(--nx-surface-2); border: 1px solid var(--nx-line); }
+.attach-menu-item[data-type="games"] svg { fill: none !important; stroke: #fff; }
 /* Build 2967 (decisión del dueño 09-11): el botón «Cobro» (pagos) se OCULTA hasta tener algo sólido («no tiene caso
    mostrarlo»). El código de cobros (cobro.js, tarjeta, prueba cobro.js) sigue intacto; para volver a mostrarlo basta
    con borrar esta regla. */
 .attach-menu-item[data-type="cobro"] { display: none !important; }
 .attach-menu-item::after { content: attr(data-label); font-size: 11px; color: var(--nx-muted); white-space: nowrap; }
-.attach-menu-item[data-type="search"] svg { background: linear-gradient(135deg, #3b82f6, #06b6d4); }
 
 /* ---------- Hojas (menú de un mensaje, reenviar, compartir, grupo) ---------- */
 /* Menús que suben desde abajo (fondo oscuro translúcido + hoja de cristal) */
@@ -271,6 +279,17 @@ body::before {
 @keyframes nxUp { from { transform: translateY(40px); opacity: 0.4; } to { transform: none; opacity: 1; } }
 .mm-item { border-radius: 14px !important; padding: 13px 14px !important; font-size: 15px !important; }
 .mm-item.is-pressed { background: var(--nx-surface-2) !important; }
+/* 3140 (zona chat): menú de un mensaje con radio 22 y solo el borde de arriba; cada opción con su icono de trazo (chat_actions.js) */
+#nexo-msg-menu > div { border-radius: 22px 22px 0 0 !important; border-left: none !important; border-right: none !important; }
+#nexo-msg-menu .mm-item { display: flex !important; align-items: center; gap: 12px; }
+#nexo-msg-menu .mm-ico { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; }
+#nexo-msg-menu .mm-ico svg { width: 20px; height: 20px; }
+/* 3140: en un grupo, el círculo de color de quien escribió junto a su nombre (render.js) */
+.msg-group-from { display: flex; align-items: center; gap: 6px; margin: 0 0 3px 2px; }
+.msg-group-from .msg-group-sender { margin: 0 !important; }
+.msg-group-av { width: 22px !important; height: 22px !important; min-width: 22px; font-size: 10px !important; box-shadow: none !important; }
+/* 3140: la tarjeta de un archivo sin el segundo contorno dentro de la burbuja */
+.msg-content .file-attachment { border: none !important; }
 /* Pantallas completas (nuevo grupo, enviar contactos, reenviar) */
 /* 3140 (zona hojas): como la pantalla de Contactos — fondo liso, cabecera de 64 px (.nx-page-head) con el título a la izquierda
    (.nx-page-title) y la ✕ redonda de 42 a la derecha (.nx-round-btn); filas de 66 px con el círculo de color de cada persona */

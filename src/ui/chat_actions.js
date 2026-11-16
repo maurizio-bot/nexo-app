@@ -100,7 +100,7 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
   if (k.rp && k.rp.id) {
     var q = document.createElement('div');
     q.className = 'msg-quote';
-    q.style.cssText = 'border-left:3px solid #00c8ff;background:rgba(0,0,0,0.25);border-radius:6px;padding:4px 8px;margin-bottom:4px;cursor:pointer;font-size:12px;';
+    q.style.cssText = 'border-left:2px solid var(--nx-cyan,#00c8ff);background:rgba(0,0,0,0.25);border-radius:6px;padding:4px 8px;margin-bottom:4px;cursor:pointer;font-size:12px;';
     var who = document.createElement('div');
     who.style.cssText = 'color:#00c8ff;font-weight:600;';
     who.textContent = _normId(k.rp.a) === _myNexoId() ? t('chat_you', 'Tú') : _contactName(k.rp.a);
@@ -236,6 +236,17 @@ function _doubleTapBubble(div) {
   });
 }
 
+// 3140: iconos de trazo (24×24) de las opciones del menú de un mensaje
+var _MM_ICONS = {
+  'mm-reply': '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  'mm-forward': '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+  'mm-sticker-add': '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
+  'mm-copy': '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  'mm-edit': '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  'mm-del-me': '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>',
+  'mm-del-all': '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>',
+  'mm-cancel': '<path d="M18 6L6 18"/><path d="M6 6l12 12"/>'
+};
 export function _openMsgMenu(div) {
   var id = div && div.dataset.msgId, cid = _getCurrentContactId();
   if (!id || !cid) return;
@@ -253,8 +264,19 @@ export function _openMsgMenu(div) {
     var add = function(label, cls, fn, danger) {
       var b = document.createElement('button');
       b.className = 'mm-item ' + cls;
-      b.textContent = label;
-      b.style.cssText = 'display:block;width:100%;text-align:left;padding:14px 20px;background:none;border:none;font-size:16px;color:' + (danger ? '#ff6b6b' : '#fff') + ';';
+      b.style.cssText = 'display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:14px 20px;background:none;border:none;font-size:16px;color:' + (danger ? '#ff6b6b' : '#fff') + ';';
+      // 3140 (dueño 16-11: «como mi pantalla de Contactos»): un icono de trazo igual para todas las opciones en lugar del
+      // glifo/emoji que traía el texto traducido (↩ ↪ ⧉ ✏️ 🗑 ⭐); se quita del texto al mostrarlo
+      var path = _MM_ICONS[cls];
+      if (path) {
+        var ic = document.createElement('span');
+        ic.className = 'mm-ico';
+        ic.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + path + '</svg>'; // SVG fijo (sin datos)
+        b.appendChild(ic);
+      }
+      var lb = document.createElement('span');
+      lb.textContent = String(label || '').replace(/^[^\p{L}\p{N}]+/u, '');
+      b.appendChild(lb);
       b.onclick = function(e) { e.stopPropagation(); close(); fn(); };
       sheet.appendChild(b);
     };
@@ -322,7 +344,7 @@ export function _renderReplyBar() {
   if (!area || !area.parentNode) return;
   var bar = document.createElement('div');
   bar.id = 'reply-bar';
-  bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:0 10px 4px;padding:6px 10px;border-left:3px solid #00c8ff;background:rgba(255,255,255,0.08);border-radius:8px;color:#fff;font-size:13px;';
+  bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:0 10px 4px;padding:6px 10px;border-left:2px solid var(--nx-cyan,#00c8ff);background:rgba(255,255,255,0.08);border-radius:8px;color:#fff;font-size:13px;';
   var txt = document.createElement('div');
   txt.style.cssText = 'flex:1;min-width:0;';
   var who = document.createElement('div');
@@ -367,9 +389,9 @@ export function _renderEditBar() {
   if (!area || !area.parentNode) return;
   var bar = document.createElement('div');
   bar.id = 'edit-bar';
-  bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:0 10px 4px;padding:6px 10px;border-left:3px solid #ffc107;background:rgba(255,255,255,0.08);border-radius:8px;color:#fff;font-size:13px;';
+  bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:0 10px 4px;padding:6px 10px;border-left:2px solid var(--nx-purple,#a855f7);background:rgba(255,255,255,0.08);border-radius:8px;color:#fff;font-size:13px;';
   var txt = document.createElement('div');
-  txt.style.cssText = 'flex:1;min-width:0;color:#ffc107;font-weight:600;';
+  txt.style.cssText = 'flex:1;min-width:0;color:#c9a6ff;font-weight:600;'; // 3140: violeta NEXO (antes amarillo)
   txt.textContent = t('chat_editing_msg', '✏️ Editando mensaje');
   var x = document.createElement('button');
   x.className = 'edit-cancel';
