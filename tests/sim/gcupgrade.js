@@ -5,6 +5,8 @@
 //  U2  el «colgar» de la 1-a-1 aún no le llegó a B (sigue activa con A): B la cierra él (sin avisar) y entra solo;
 //  U3  un id que no es el de la llamada que tuvo con A, o una que terminó hace más de 20 s: suena como siempre;
 //  U4  C nunca estuvo en llamada con A: aunque la invitación lleve up, suena como siempre.
+//  U5  (3152) «en espera» de una llamada de grupo (hold/unhold, #222) se entiende como señal (antes no pasaba del filtro y llegaba al
+//      chat como un mensaje más; el otro nunca sabía que estaba en espera).
 //  U0  (lo destapó U1) sin «Agregar»: B contesta enseguida y C más tarde: el tramo B–C también se forma (antes, el «abrir tramo» de B
 //      le llegaba a C mientras sonaba y se perdía: B y C no se oían).
 // Uso: node gcupgrade.js [dir_build]   (importa src/ui/group_call.js del build)
@@ -64,7 +66,8 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
 
 (async () => {
   const r = { prueba: 'gcupgrade' };
-  const { createGroupCall } = await importSrc('ui/group_call.js');
+  const { createGroupCall, parseGroupCallSignal } = await importSrc('ui/group_call.js');
+  r.U5_espera_es_senal = ['hold', 'unhold'].every((op) => !!parseGroupCallSignal(JSON.stringify({ type: 'nexo_gcall', op, gid: 'gc12345678', from: 'nxa0000001', to: 'nxb0000002', ts: Date.now() })));
   const A_ID = 'nxa0000001', B_ID = 'nxb0000002', C_ID = 'nxc0000003';
   async function setup() {
     for (const k of Object.keys(registry)) delete registry[k];
@@ -119,7 +122,7 @@ function legState(inst, nx) { const l = inst.gc && inst.gc.legs.get(_n(nx)); ret
   await A.start([B_ID, C_ID], false, null, { upgrade: { nx: C_ID, id: 'cl1' } });
   await sleep(120);
   r.U4_ajeno_suena = !!(C.gc && C.gc.state === 'ringing');
-  const ok = r.U0_malla_escalonada && r.U1_B_entra_solo && r.U1_B_no_suena && r.U1_C_suena && r.U1_A_activa && r.U1_malla && r.U2_cierra_la_suya && r.U2_B_entra_solo && r.U3_id_ajeno_suena && r.U3_viejo_suena && r.U4_ajeno_suena;
+  const ok = r.U5_espera_es_senal && r.U0_malla_escalonada && r.U1_B_entra_solo && r.U1_B_no_suena && r.U1_C_suena && r.U1_A_activa && r.U1_malla && r.U2_cierra_la_suya && r.U2_B_entra_solo && r.U3_id_ajeno_suena && r.U3_viejo_suena && r.U4_ajeno_suena;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('GCUPGRADE ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);

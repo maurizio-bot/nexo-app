@@ -16,6 +16,8 @@
 //  m3 (S24) videollamada nueva justo después: micrófono y cámara abiertos en los dos, y B sin otra llamada (sin pantalla dividida);
 //  m1 (S24) la app pasa a segundo plano mientras suena (getUserMedia con la app oculta no contesta): A ya tiene micrófono y cámara
 //     (se abren al llamar) y el modo llamada del teléfono (servicio con micrófono) puesto antes de ocultarse; voz e imagen salen;
+//  timbre (S23) videollamada y llamada de voz entrantes con la app oculta: el mismo aviso de llamada del teléfono y, mientras suenan,
+//     ni micrófono ni cámara ni modo llamada (no reproduce el fallo del S23: en el código los dos caminos son iguales; es una guarda);
 //  m2 contestar con la app oculta (desde el aviso): al volver a la app, el micrófono y la cámara se piden otra vez y salen.
 // Uso: node agregarvideo.js <dir_build>   (AV_SHOTS=<carpeta>: capturas a 384 de ancho)
 'use strict';
@@ -148,12 +150,14 @@ const watchStart = (page, peer) => page.evaluate((peer) => {
   const tr = lv && lv.srcObject && lv.srcObject.getVideoTracks()[0];
   window.__av = { lv, rc, pista: tr ? tr.id : '', n: 0, mi_imagen_fuera: 0, mi_imagen_pausada: 0, pista_muerta: 0, su_imagen_fuera: 0 };
   const m = window.__av;
+  if (!lv || !rc) return false;
   m.t = setInterval(() => { m.n++; if (!document.contains(lv)) m.mi_imagen_fuera++; if (lv.paused) m.mi_imagen_pausada++; const t = lv.srcObject && lv.srcObject.getVideoTracks()[0]; if (!t || t.readyState !== 'live') m.pista_muerta++; if (!document.contains(rc)) m.su_imagen_fuera++; }, 50);
   return !!(lv && rc);
 }, peer);
 const watchEnd = (page, peer) => page.evaluate(async (peer) => {
   const m = window.__av; clearInterval(m.t);
   const g = window.bleInterface.gcall;
+  if (!m || !m.lv || !m.rc) return { sin_imagenes_que_vigilar: true };
   // ¿la imagen del otro sigue cambiando? (huella de una versión pequeña del lienzo cada 150 ms durante 2 s)
   const c = document.createElement('canvas'); c.width = 24; c.height = 18; const cx = c.getContext('2d');
   let last = '', cambios = 0;
@@ -220,6 +224,9 @@ const dblTap = (page, nx) => page.evaluate(async (nx) => {
     await sleep(2500);
   };
 
+  r.fases_con_error = {};
+  const fase = async (n, fn) => { try { await fn(); } catch (e) { r.fases_con_error[n] = String(e && e.message).slice(0, 200); try { await P.A.setViewportSize({ width: 384, height: 830 }); } catch (x) {} try { await hangAll(); } catch (x) {} } };
+  await fase('m1', async () => {
   // ── m1: A llama y pasa a segundo plano mientras suena (2,5 s después, como el S24); B contesta
   let fgsAlOcultar = null;
   r.m1_activa_s = await videoCall('A', 'B', { beforeAnswer: async () => { await sleep(2500); fgsAlOcultar = nat.A.callFgs || null; await P.A.evaluate(() => window.__setHidden(true)); } });
@@ -228,7 +235,29 @@ const dblTap = (page, nx) => page.evaluate(async (nx) => {
   r.m1_A.servicio_al_ocultarse = fgsAlOcultar;
   await P.A.evaluate(() => window.__setHidden(false));
   await hangAll();
+  });
 
+  // ── timbre (S23 16-11: «las videollamadas entrantes no suenan, las de voz sí»): con la app oculta, una videollamada y una de voz
+  // entrantes van por el MISMO aviso de llamada del teléfono (solo cambia el texto) y, mientras suenan, nada toca el micrófono, la
+  // cámara ni el modo de sonido del teléfono (eso pasaría el timbre al auricular)
+  await fase('timbre', async () => {
+  for (const video of [true, false]) {
+    await P.B.evaluate(() => window.__setHidden(true));
+    const g0 = await P.B.evaluate(() => window.__gum.length);
+    nat.B.callNotif = null;
+    await clickRowNamed(P.A, '#main-contacts-list .ble-contact-row', 'B'); await sleep(500);
+    await click(P.A, video ? '#nexo-video-btn' : '#nexo-call-btn'); await closeChat(P.A);
+    const s = await waitFor(() => P.B.evaluate(() => !!(window.bleInterface.calls.call && window.bleInterface.calls.call.state === 'ringing')), 20000);
+    await sleep(1500);
+    r['timbre_' + (video ? 'video' : 'voz')] = { suena_s: s, aviso_del_telefono: nat.B.callNotif ? { video: nat.B.callNotif.video } : null,
+      pedidos_de_microfono_o_camara: (await P.B.evaluate(() => window.__gum.length)) - g0, modo_llamada_mientras_suena: nat.B.callAudioOn === true };
+    await P.A.evaluate(() => window.bleInterface.calls.hangup());
+    await waitFor(async () => (await calls(P.B)).uno === null, 8000);
+    await P.B.evaluate(() => window.__setHidden(false)); await sleep(2000);
+  }
+  });
+
+  await fase('agregar', async () => {
   // ── a/b: A–B en videollamada; A agrega a C
   r.a_activa_s = await videoCall('A', 'B');
   await sleep(3000);
@@ -284,7 +313,9 @@ const dblTap = (page, nx) => page.evaluate(async (nx) => {
   await click(P.A, '#nexo-gcall-screen .gc-buttons .call-hangup');
   r.f_A_cuelga_B_y_C_siguen_s = await waitFor(async () => (await calls(P.A)).grupo === null && (await calls(P.B)).grupo === 'active' && (await layout(P.B)).tiles.length === 1, 10000);
   await hangAll();
+  });
 
+  await fase('z_m3', async () => {
   // ── z: A agrega a C, C no contesta y A cuelga: B tiene que terminar también
   r.z_activa_s = await videoCall('A', 'B');
   await sleep(2000);
@@ -305,7 +336,9 @@ const dblTap = (page, nx) => page.evaluate(async (nx) => {
   r.m3_B_llamadas = await calls(P.B); r.m3_B_dividida = (await layout(P.B)).dividida;
   await hangAll();
   await P.C.evaluate(() => { try { if (window.bleInterface.gcall.gc) window.bleInterface.gcall.reject(); } catch (e) {} });
+  });
 
+  await fase('m2', async () => {
   // ── m2: B contesta con la app oculta (desde el aviso) y vuelve a la app 2 s después
   r.m2_activa_s = await videoCall('A', 'B', { answerHidden: true });
   await sleep(2000);
@@ -314,33 +347,35 @@ const dblTap = (page, nx) => page.evaluate(async (nx) => {
   r.m2_vuelve_s = await waitFor(async () => { const m = await media1(P.B); return m.micro && m.camara && m.voz_enviada > 5 && m.video_enviado > 5; }, 12000);
   r.m2_B = await media1(P.B);
   await hangAll();
+  });
 
   r.errores = logs.filter((l) => /PAGEERROR/.test(l)).slice(0, 5);
   // ── Veredicto
   const num = (v) => typeof v === 'number';
   const sigue = (w) => !!w && w.vigilado_ms >= 1000 && w.mi_imagen_fuera === 0 && w.mi_imagen_pausada === 0 && w.pista_muerta === 0 && w.su_imagen_fuera === 0 && w.misma_pista &&
     w.mi_imagen_ancho > 0 && w.su_imagen_ancho > 0 && w.su_imagen_cambia >= 3 && w.mismo_elemento_mio && w.mismo_elemento_suyo;
-  const pos = (l, nx) => ((l.tiles || []).find((t) => t.nx === nx) || {}).pos;
-  const tile = (l, nx) => (l.tiles || []).find((t) => t.nx === nx) || {};
+  const pos = (l, nx) => (((l || {}).tiles || []).find((t) => t.nx === nx) || {}).pos;
+  const tile = (l, nx) => ((l || {}).tiles || []).find((t) => t.nx === nx) || {};
   const pequeno = (b) => !!b && b.w > 40 && b.w <= 130 && b.h <= 170;
   const mitad = (l, nx, p) => { const b = tile(l, nx).box; return pos(l, nx) === p && !!b && Math.abs(b.h - l.H / 2) <= 3 && (p === 'gcs-up' ? b.y <= 1 : Math.abs(b.y - l.H / 2) <= 3); };
-  const v = {};
-  v.m1 = num(r.m1_activa_s) && r.m1_A.micro && r.m1_A.camara && r.m1_A.voz_enviada > 10 && r.m1_A.video_enviado > 10 && r.m1_A.servicio_al_ocultarse === 'micrófono';
-  v.a = num(r.a_activa_s) && num(r.b_B_dentro_s) && sigue(r.a_A) && sigue(r.a_B) && r.b_A.modo_video && !r.b_A.lista_de_voz && !r.b_A.pantalla_1a1 && !r.b_A.dividida && r.b_B.modo_video && !r.b_B.lista_de_voz && !r.b_B.pantalla_1a1;
+  const v = {}, chk = (fn) => { try { return !!fn(); } catch (e) { return false; } };
+  v.m1 = chk(() => num(r.m1_activa_s) && r.m1_A.micro && r.m1_A.camara && r.m1_A.voz_enviada > 10 && r.m1_A.video_enviado > 10 && r.m1_A.servicio_al_ocultarse === 'micrófono');
+  v.a = chk(() => num(r.a_activa_s) && num(r.b_B_dentro_s) && sigue(r.a_A) && sigue(r.a_B) && r.b_A.modo_video && !r.b_A.lista_de_voz && !r.b_A.pantalla_1a1 && !r.b_A.dividida && r.b_B.modo_video && !r.b_B.lista_de_voz && !r.b_B.pantalla_1a1);
   const wC = tile(r.b_A, id.C);
-  v.b = num(r.b_C_suena_s) && r.b_A.tiles.length === 2 && mitad(r.b_A, id.B, 'gcs-up') && tile(r.b_A, id.B).imagen && mitad(r.b_A, id.C, 'gcs-down') && wC.espera && wC.circulo && wC.nombre === 'C' &&
-    /Llamando/.test(wC.estado) && wC.cancelar_tocable && pequeno(r.b_A.yo) && pos(r.b_B, id.A) === 'gcs-up' && tile(r.b_B, id.C).espera && !tile(r.b_B, id.C).cancelar;
-  v.c = num(r.c_C_deja_de_sonar_s) && num(r.c_B_sin_C_s) && r.c_A.tiles.length === 1 && pos(r.c_A, id.B) === 'gcs-full' && tile(r.c_A, id.B).imagen && pequeno(r.c_A.yo) && r.c_A.modo_video &&
-    r.c_B.tiles.length === 1 && pos(r.c_B, id.A) === 'gcs-full' && !!r.c_A_imagen && r.c_A_imagen.su_imagen_cambia >= 3 && r.c_A_imagen.mismo_elemento_suyo;
-  v.d = num(r.d_C_suena_s) && num(r.d_A_ve_a_C_s) && num(r.d_B_ve_a_C_s) && mitad(r.d_A, id.B, 'gcs-up') && mitad(r.d_A, id.C, 'gcs-down') && tile(r.d_A, id.B).imagen && pequeno(r.d_A.yo);
-  v.e = pos(r.e_doble, id.C) === 'gcs-full' && pos(r.e_doble, id.B) === 'gcs-mini' && pequeno(tile(r.e_doble, id.B).box) && !r.e_doble.botones_ocultos && pequeno(r.e_doble.yo) &&
+  v.b = chk(() => num(r.b_C_suena_s) && r.b_A.tiles.length === 2 && mitad(r.b_A, id.B, 'gcs-up') && tile(r.b_A, id.B).imagen && mitad(r.b_A, id.C, 'gcs-down') && wC.espera && wC.circulo && wC.nombre === 'C' &&
+    /Llamando/.test(wC.estado) && wC.cancelar_tocable && pequeno(r.b_A.yo) && pos(r.b_B, id.A) === 'gcs-up' && tile(r.b_B, id.C).espera && !tile(r.b_B, id.C).cancelar);
+  v.c = chk(() => num(r.c_C_deja_de_sonar_s) && num(r.c_B_sin_C_s) && r.c_A.tiles.length === 1 && pos(r.c_A, id.B) === 'gcs-full' && tile(r.c_A, id.B).imagen && pequeno(r.c_A.yo) && r.c_A.modo_video &&
+    r.c_B.tiles.length === 1 && pos(r.c_B, id.A) === 'gcs-full' && !!r.c_A_imagen && r.c_A_imagen.su_imagen_cambia >= 3 && r.c_A_imagen.mismo_elemento_suyo);
+  v.d = chk(() => num(r.d_C_suena_s) && num(r.d_A_ve_a_C_s) && num(r.d_B_ve_a_C_s) && mitad(r.d_A, id.B, 'gcs-up') && mitad(r.d_A, id.C, 'gcs-down') && tile(r.d_A, id.B).imagen && pequeno(r.d_A.yo));
+  v.e = chk(() => pos(r.e_doble, id.C) === 'gcs-full' && pos(r.e_doble, id.B) === 'gcs-mini' && pequeno(tile(r.e_doble, id.B).box) && !r.e_doble.botones_ocultos && pequeno(r.e_doble.yo) &&
     pos(r.e_doble_otra_vez, id.C) === 'gcs-down' && pos(r.e_doble_otra_vez, id.B) === 'gcs-up' && !r.e_doble_otra_vez.botones_ocultos &&
-    r.e_un_toque.al_instante === false && r.e_un_toque.tras_300ms === true && r.e_un_toque.mitades === 'gcs-up,gcs-down' && r.e_un_toque.otra_vez === false;
-  v.f = Object.values(r.f).every((b) => b.n >= 7 && b.filas === 1 && b.caben && b.colgar_entero_y_tocable && b.circulo_min >= 40 && b.letra_min >= 8 && !b.cortados.length &&
-    /^Girar · Pantalla · Cámara no · Silenciar · Altavoz · Agregar · Colgar$/.test(b.nombres) && b.mitades === 'gcs-up,gcs-down') && num(r.f_A_cuelga_B_y_C_siguen_s);
-  v.z = num(r.z_activa_s) && num(r.z_B_termina_s) && num(r.z_C_deja_de_sonar_s);
-  v.m3 = num(r.m3_activa_s) && r.m3_A.micro && r.m3_A.camara && r.m3_A.video_enviado > 10 && r.m3_B.micro && r.m3_B.video_enviado > 10 && r.m3_B_llamadas.grupo === null && !r.m3_B_dividida;
-  v.m2 = num(r.m2_activa_s) && num(r.m2_vuelve_s) && r.m2_B.micro && r.m2_B.camara;
+    r.e_un_toque.al_instante === false && r.e_un_toque.tras_300ms === true && r.e_un_toque.mitades === 'gcs-up,gcs-down' && r.e_un_toque.otra_vez === false);
+  v.f = chk(() => Object.values(r.f).every((b) => b.n >= 7 && b.filas === 1 && b.caben && b.colgar_entero_y_tocable && b.circulo_min >= 40 && b.letra_min >= 8 && !b.cortados.length &&
+    /^Girar · Pantalla · Cámara no · Silenciar · Altavoz · Agregar · Colgar$/.test(b.nombres) && b.mitades === 'gcs-up,gcs-down') && num(r.f_A_cuelga_B_y_C_siguen_s));
+  v.z = chk(() => num(r.z_activa_s) && num(r.z_B_termina_s) && num(r.z_C_deja_de_sonar_s));
+  v.m3 = chk(() => num(r.m3_activa_s) && r.m3_A.micro && r.m3_A.camara && r.m3_A.video_enviado > 10 && r.m3_B.micro && r.m3_B.video_enviado > 10 && r.m3_B_llamadas.grupo === null && !r.m3_B_dividida);
+  v.timbre = chk(() => ['video', 'voz'].every((k) => { const x = r['timbre_' + k]; return num(x.suena_s) && x.aviso_del_telefono && x.aviso_del_telefono.video === (k === 'video') && x.pedidos_de_microfono_o_camara === 0 && !x.modo_llamada_mientras_suena; }));
+  v.m2 = chk(() => num(r.m2_activa_s) && num(r.m2_vuelve_s) && r.m2_B.micro && r.m2_B.camara);
   r.casos = v;
   const ok = Object.values(v).every(Boolean) && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
