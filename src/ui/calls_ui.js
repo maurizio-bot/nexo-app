@@ -18,6 +18,7 @@ import { _hideCameraPreviewOverlay } from './camera.js';
 import { vaultAppendMessage, vaultFindContactByNexoId } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
 import { openCallReply, closeCallReply } from './call_reply.js';
+import { registerCallBar, minimizeCall, restoreCall, canMinimize } from './call_bar.js';
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
 function _calls() { var b = _bi(); return b && b.calls; }
@@ -125,7 +126,8 @@ var _IC = {
   screen: '<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M12 15V8M9 11l3-3 3 3"/>',
   pause: '<rect x="6.5" y="5" width="3.5" height="14" rx="1"/><rect x="14" y="5" width="3.5" height="14" rx="1"/>',
   play: '<path d="M8 5.5l11 6.5-11 6.5z"/>',
-  msg: '<path d="M4 5h16v11H10l-5 4v-4H4z"/><path d="M8 9.5h8M8 12.5h5"/>'
+  msg: '<path d="M4 5h16v11H10l-5 4v-4H4z"/><path d="M8 9.5h8M8 12.5h5"/>',
+  down: '<path d="M6 9l6 6 6-6"/>'
 };
 // #222 (dueño 15-11: «solo pueden ser dos llamadas independientes al mismo tiempo»): cuántas llamadas hay (1-a-1 ×2 y la de grupo)
 export function callCount() { var b = _bi(); return b && typeof b._callCount === 'function' ? b._callCount() : 0; }
@@ -284,6 +286,15 @@ function _style() {
     // (antes mi imagen 104x148 tapaba al otro en la ventanita chica).
     '#nexo-call-screen.nc-pipwin .nc-top,#nexo-call-screen.nc-pipwin .nc-bottom,#nexo-call-screen.nc-pipwin .nc-center,#nexo-call-screen.nc-pipwin .nc-pip{display:none!important}',
     '#nexo-call-screen.nc-pipwin .nc-full{object-fit:cover}',
+    // 3155 (dueño 16-11: «la videollamada minimizada sale con todos los botones apretados en la ventanita»): la ventanita (miniatura
+    // del sistema o la app en una ventana pequeña) enseña SOLO la imagen del otro, sin botones ni textos: con el aviso del sistema
+    // (html.nx-pip) y, por si no llega, por el tamaño de la ventana (≤ 300 de ancho: ningún teléfono a pantalla completa lo es)
+    'html.nx-pip #nexo-call-screen .nc-top,html.nx-pip #nexo-call-screen .nc-bottom,html.nx-pip #nexo-call-screen .nc-pip,html.nx-pip #nexo-call-screen .nc-min,html.nx-pip #nexo-call-screen .nc-scrbar,html.nx-pip #nexo-call-screen.nc-video.nc-live .nc-center{display:none!important}',
+    'html.nx-pip #nexo-call-screen .nc-full{object-fit:cover}',
+    '@media (max-width:300px){#nexo-call-screen .nc-top,#nexo-call-screen .nc-bottom,#nexo-call-screen .nc-pip,#nexo-call-screen .nc-min,#nexo-call-screen .nc-scrbar,#nexo-call-screen.nc-video.nc-live .nc-center{display:none!important}#nexo-call-screen .nc-full{object-fit:cover}#nexo-call-screen .nc-av-wrap,#nexo-call-screen .nc-av{width:64px;height:64px;font-size:24px}#nexo-call-screen .call-name{font-size:18px}}',
+    // 3155: minimizar la llamada (barra arriba, call_bar.js): flecha arriba a la izquierda (también con el gesto «atrás»)
+    '#nexo-call-screen .nc-min{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));left:12px;z-index:5;width:40px;height:40px;border-radius:50%;border:none;padding:0;display:none;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,.1);cursor:pointer;transition:opacity .3s}',
+    '#nexo-call-screen.nc-canmin .nc-min{display:flex}#nexo-call-screen.nc-hide .nc-min{opacity:0;pointer-events:none}html.nc-split #nexo-call-screen .nc-min,#nexo-call-screen.nc-appmini .nc-min,#nexo-call-screen.nc-pipwin .nc-min{display:none!important}',
     // (b) al VOLVER a la app desde la miniatura, la llamada queda como MINI flotante (no a pantalla completa) y debajo se
     // usa la app (contactos/último chat). Tocar la mini la vuelve a abrir completa.
     '#nexo-call-screen.nc-appmini{inset:auto;right:12px;bottom:96px;width:112px;height:188px;border-radius:18px;overflow:hidden;box-shadow:0 12px 34px rgba(0,0,0,.55);border:2px solid rgba(255,255,255,.55)}',
@@ -304,7 +315,9 @@ function _screen() {
     '<div class="nc-top"><div class="nc-pill nc-lock">' + _svg('lock', 13) + '<span>' + t('call_e2e', 'Cifrada de extremo a extremo') + '</span></div><div class="nc-mini"></div><div class="nc-warnbar"></div></div>' +
     '<div class="nc-center"><div class="nc-av-wrap"><div class="nc-ring"></div><div class="nc-ring r2"></div><div class="nc-ring r3"></div><div class="nc-av"></div></div>' +
     '<div class="call-name"></div><div class="call-status"></div><div class="call-note"></div></div>' +
-    '<div class="nc-bottom"><div class="call-buttons"></div></div>';
+    '<div class="nc-bottom"><div class="call-buttons"></div></div>' +
+    '<button class="nc-min" aria-label="' + t('call_minimize', 'Minimizar') + '">' + _svg('down', 24) + '</button>';
+  el.querySelector('.nc-min').addEventListener('click', function(e) { e.stopPropagation(); haptic('confirm'); minimizeCall('1'); });
   // Videollamada: tocar la pantalla muestra / oculta los controles
   el.addEventListener('click', function(e) {
     if (el.classList.contains('nc-appmini')) { el.classList.remove('nc-appmini'); return; } // mini flotante → volver a pantalla completa
@@ -345,6 +358,8 @@ if (typeof window !== 'undefined') {
   window.__nexoPipChanged = function(active) {
     try {
       var el = document.getElementById('nexo-call-screen');
+      document.documentElement.classList.toggle('nx-pip', !!active); // 3155: también la de grupo (gcall_stage)
+      if (active) restoreCall(); // la ventanita enseña la llamada, no la app con la barra
       if (!el) return;
       if (active) { el.classList.add('nc-pipwin'); el.classList.remove('nc-appmini'); }
       else {
@@ -389,7 +404,7 @@ function _watchFit() {
 export function syncCallSplit() {
   if (typeof document === 'undefined' || !document.documentElement) return false;
   var one = document.getElementById('nexo-call-screen'), grp = document.getElementById('nexo-gcall-screen') || document.getElementById('nexo-call2-screen');
-  var on = !!(one && grp && !one.classList.contains('nc-appmini') && !one.classList.contains('nc-gone')); // (#224: la que pasó a grupo no cuenta)
+  var on = !!(one && grp && !one.classList.contains('nc-appmini') && !one.classList.contains('nc-gone') && !one.classList.contains('nc-minimized') && !grp.classList.contains('nc-minimized')); // (#224: la que pasó a grupo no cuenta; 3155: ni una minimizada)
   if (on !== document.documentElement.classList.contains('nc-split')) {
     document.documentElement.classList.toggle('nc-split', on);
     console.log('[CALL] ' + (on ? 'Dos llamadas a la vez: pantalla dividida' : 'Una sola llamada: pantalla entera'));
@@ -669,6 +684,7 @@ function _render(st) {
   syncCallSplit(); // #220: con la de grupo también abierta, pantalla dividida
   el.classList.toggle('nc-video', !!st.video);
   el.classList.toggle('nc-waiting', st.state === 'calling' || st.state === 'ringing');
+  el.classList.toggle('nc-canmin', canMinimize('1')); // 3155: flecha para minimizar (en curso o llamando)
   var av = el.querySelector('.nc-av');
   av.className = 'nc-av ble-contact-avatar nx-person-av ' + _getGradientForUUID(String(st.nx || ''));
   av.style.backgroundImage = '';
@@ -740,6 +756,12 @@ function _render(st) {
       });
     }, st.screen ? 'nc-red' : ''));
     if (st.video) bt.appendChild(_btn(st.cameraOff ? 'camOff' : 'cam', st.cameraOff ? t('call_camera_off', 'Cámara no') : t('call_camera', 'Cámara'), 'call-camera', function() { calls.camera(!!st.cameraOff); }, st.cameraOff ? 'nc-on' : ''));
+    // 3155 (dueño 16-11): «Vídeo» en una llamada de voz: pasa a videollamada sin colgar (el otro ve mi imagen y enciende la suya si quiere)
+    if (!st.video && typeof calls.toVideo === 'function') bt.appendChild(_btn('cam', t('call_to_video', 'Vídeo'), 'call-tovideo', function() {
+      haptic('confirm');
+      calls.toVideo().then(function(ok) { if (!ok) return; _speaker = true; _audioMode(true); var c2 = _calls(); if (c2) _render(c2.state()); })
+        .catch(function(err) { _showInfoToast((err && err.message) || t('call_err_to_video', 'No se pudo pasar a videollamada'), 3500); });
+    }));
     bt.appendChild(_btn(st.muted ? 'micOff' : 'mic', st.muted ? t('call_muted', 'Silenciado') : t('call_mute', 'Silenciar'), 'call-mute', function() { calls.mute(!st.muted); }, st.muted ? 'nc-on' : ''));
     // Altavoz / auricular (en la videollamada, altavoz de entrada)
     bt.appendChild(_btn(_speaker ? 'speaker' : 'ear', _speaker ? t('call_speaker', 'Altavoz') : t('call_earpiece', 'Auricular'), 'call-speaker', function() { _speaker = !_speaker; _audioMode(true); _render(calls.state()); }, _speaker ? 'nc-on' : ''));
@@ -885,6 +907,14 @@ function _onCountChange() {
 
 export function installCallsUi() {
   _installButton();
+  // 3155: la llamada 1-a-1 minimizada (barra arriba, call_bar.js)
+  registerCallBar('1', {
+    el: function() { return document.getElementById('nexo-call-screen'); },
+    can: function() { var c = _calls(), s = c && c.state(); return !!(s && (s.state === 'active' || s.state === 'calling')); },
+    info: function() { var c = _calls(), s = c && c.state(); return s ? { name: _name(s.nx), since: s.startedAt || 0, muted: !!s.muted, live: s.state === 'active' } : null; },
+    mute: function(on) { var c = _calls(); if (c) c.mute(on); },
+    hangup: function() { var c = _calls(); if (c) { haptic('confirm'); c.hangup(); } }
+  });
   window.addEventListener('nexo:call', function(e) {
     var st = e && e.detail;
     if (st && (st.state === 'active' || st.state === 'calling')) _releaseChatCamera();

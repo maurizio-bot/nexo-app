@@ -10,7 +10,8 @@ import { t } from './i18n.js';
 import { _showInfoToast, _pickContact } from './ui_bits.js';
 import { _getCurrentContactId, _normId } from './chat_format.js';
 import { callButton, ensureCallStyle, fitCallLabels, syncCallSplit, callCount, holdButton, replyButton, dropHandedOffScreen } from './calls_ui.js';
-import { stageWanted, renderStage, clearStage } from './gcall_stage.js';
+import { stageWanted, renderStage, clearStage, stageCss } from './gcall_stage.js';
+import { registerCallBar, minimizeCall, canMinimize } from './call_bar.js';
 import { closeCallReply } from './call_reply.js';
 import { personAvatar } from './person_avatar.js';
 
@@ -49,7 +50,9 @@ function _screen() {
     // #138: rejilla de vídeo (mi vista + imagen de cada tramo). Vacía/oculta hasta que alguien enciende la cámara.
     '<div class="gc-video" style="margin-top:16px;width:100%;max-width:360px;display:none;flex-wrap:wrap;gap:8px;justify-content:center;"></div>' +
     '<div class="gc-members" style="margin-top:18px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px;flex:1;overflow:auto;"></div>' +
-    '<div class="gc-buttons" style="' + _GC_BTNS_CSS + '"></div>';
+    '<div class="gc-buttons" style="' + _GC_BTNS_CSS + '"></div>' +
+    '<button class="gc-min" aria-label="' + t('call_minimize', 'Minimizar') + '"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>';
+  el.querySelector('.gc-min').addEventListener('click', function(e) { e.stopPropagation(); minimizeCall('g'); }); // 3155
   (document.body || document.documentElement).appendChild(el);
   return el;
 }
@@ -116,7 +119,8 @@ function _render(st) {
   // Al entrar en activa (una vez por llamada): arrancar el modo de audio de comunicación; al cambiar de llamada, reiniciar.
   if (live && _gcAudioFor !== st.gid) { _gcAudioFor = st.gid; _gcSpeaker = true; _gAudioMode(true); }
   var el = _screen();
-  ensureCallStyle(); syncCallSplit(); // #220: con la 1-a-1 también abierta, pantalla dividida
+  ensureCallStyle(); stageCss(); syncCallSplit(); // #220: con la 1-a-1 también abierta, pantalla dividida
+  el.classList.toggle('gc-canmin', canMinimize('g')); // 3155: flecha para minimizar
   var me = _me();
   el.querySelector('.gc-e2e').textContent = t('call_e2e', 'Cifrada de extremo a extremo');
   // El gid de la llamada es propio (gc…), no el id del chat de grupo, así que el título es genérico.
@@ -350,6 +354,18 @@ function _onCountChange() { // #222: los botones de llamar al grupo dependen de 
 
 export function installGroupCallUi() {
   _installGroupButton();
+  // 3155: la llamada de grupo minimizada (barra arriba, call_bar.js)
+  registerCallBar('g', {
+    el: function() { return document.getElementById('nexo-gcall-screen'); },
+    can: function() { var g = _gcall(), s = g && g.state ? g.state() : null; return !!(s && (s.state === 'active' || s.state === 'calling')); },
+    info: function() {
+      var g = _gcall(), s = g && g.state ? g.state() : null, me = _me(); if (!s) return null;
+      var others = (s.members || []).map(_normId).filter(function(nx) { return nx && nx !== me; }).map(_memberName);
+      return { name: others.join(' · ') || t('grp_call_title', 'Llamada de grupo'), since: s.since || 0, muted: !!s.muted, live: s.state === 'active' || !!s.adopt };
+    },
+    mute: function(on) { var g = _gcall(); if (g) g.mute(on); },
+    hangup: function() { var g = _gcall(); if (g) g.hangup(); }
+  });
   window.addEventListener('nexo:gcall', function(e) {
     var st = e && e.detail;
     if (st) _removeEnded(); // una llamada nueva/en curso quita la pantalla de «Volver a llamar» si quedaba

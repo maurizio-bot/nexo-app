@@ -9,7 +9,9 @@
 //  d  A agrega otra vez a C y C contesta: abajo, la imagen de C (en A y en B);
 //  e  dos toques en C: C a toda la pantalla y B pequeño flotando (sin tocar los botones); dos toques otra vez: mitades. Un toque
 //     solo oculta / muestra los botones;
-//  f  los botones caben en 360/384/412 de ancho (una fila, colgar entero y tocable, nombres enteros) en el orden de la 1-a-1.
+//  f  los botones caben en 360/384/412 de ancho (una fila, colgar entero y tocable, nombres enteros) en el orden de la 1-a-1;
+//  g  (3155) la de grupo de vídeo pasa a la miniatura del sistema (PiP) y ahí solo se ven las imágenes de los demás (ni botones, ni
+//     textos, ni la mía); al volver, todo; «atrás» la minimiza en una barra arriba («B · C · m:ss») con la app usable debajo.
 // Y los dos fallos del diagnóstico del 16-11 (S24 y S23, APK 3073), en el mismo arnés:
 //  z  (S23) la de grupo de «Agregar» quedaba viva sin nadie: A agrega a C, C no contesta, A cuelga → B también termina (antes B se
 //     quedaba esperando a C para siempre, la ponía «en espera» con la siguiente llamada y volvía sola al colgarla);
@@ -23,94 +25,11 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { Radio, NativePhone } = require('./native_mock');
-const PW = (() => { try { return require('playwright'); } catch (e) { return require('/opt/node22/lib/node_modules/playwright'); } })();
+const { callHarness, click, waitFor, clickRowNamed, closeChat, calls, media1, pipLook, barLook, shotOf, sleep } = require('./callharness');
 
 const buildDir = path.resolve(process.argv[2]);
-const dist = path.join(buildDir, 'dist');
-const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: 25, supervisionMs: 3000, wifi: 'casa', asymmetric: true };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const logs = [];
-const T0 = Date.now();
-const ts = () => String(((Date.now() - T0) / 1000).toFixed(1)).padStart(6) + 's';
-const TYPES = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json', '.woff2': 'font/woff2' };
 const SHOTS = process.env.AV_SHOTS || '';
 
-async function boot(browser, name, native) {
-  const page = await browser.newPage({ viewport: { width: 384, height: 830 }, deviceScaleFactor: SHOTS ? 2 : 1, isMobile: true, hasTouch: true });
-  page.on('console', (m) => logs.push(`${ts()} [${name}] ${m.text()}`.substring(0, 400)));
-  page.on('pageerror', (e) => logs.push(`${ts()} [${name}] PAGEERROR ${e.message}`));
-  await page.route('https://' + name.toLowerCase() + '.nexo.test/**', (route) => {
-    const f = path.join(dist, decodeURIComponent(new URL(route.request().url()).pathname));
-    if (fs.existsSync(f) && fs.statSync(f).isFile()) route.fulfill({ body: fs.readFileSync(f), contentType: TYPES[path.extname(f)] || 'application/octet-stream' });
-    else route.fulfill({ status: 404, body: '' });
-  });
-  const methods = Object.keys(native.plugin()).filter((k) => k !== 'addListener');
-  const forwarded = new Set();
-  await page.exposeFunction('__nexoCall', async (method, args) => {
-    try { return { ok: await native.plugin()[method](args || {}) }; } catch (e) { return { err: e.message, code: e.code }; }
-  });
-  await page.exposeFunction('__nexoAddListener', (event) => {
-    if (forwarded.has(event)) return;
-    forwarded.add(event);
-    native.plugin().addListener(event, (data) => { page.evaluate(([e, d]) => window.__nexoEmit(e, d), [event, data]).catch(() => {}); });
-  });
-  await page.addInitScript((methods) => {
-    window.CapacitorCustomPlatform = { name: 'android' };
-    window.NEXO_FORCE_LANG = 'es';
-    const listeners = {};
-    window.__nexoEmit = (e, d) => (listeners[e] || []).slice().forEach((cb) => { try { cb(d); } catch (x) { console.error('listener ' + e + ': ' + x.message); } });
-    const plugin = {
-      addListener(event, cb) {
-        (listeners[event] = listeners[event] || []).push(cb);
-        window.__nexoAddListener(event);
-        const h = { remove: async () => { const l = listeners[event] || []; const i = l.indexOf(cb); if (i >= 0) l.splice(i, 1); } };
-        const p = Promise.resolve(h); p.remove = h.remove; return p;
-      },
-    };
-    methods.forEach((m) => { plugin[m] = async (args) => { const r = await window.__nexoCall(m, args); if (r.err) { const e = new Error(r.err); e.code = r.code; throw e; } return r.ok; }; });
-    window.Capacitor = { Plugins: { NexoBLE: plugin } };
-    // App en segundo plano (como el S24 del 16-11): la página se ve «oculta» y un getUserMedia pedido así no contesta nunca
-    window.__hidden = false;
-    Object.defineProperty(Document.prototype, 'visibilityState', { configurable: true, get() { return window.__hidden ? 'hidden' : 'visible'; } });
-    Object.defineProperty(Document.prototype, 'hidden', { configurable: true, get() { return !!window.__hidden; } });
-    window.__setHidden = (h) => { window.__hidden = !!h; document.dispatchEvent(new Event('visibilitychange')); };
-    window.__gum = [];
-    const md = navigator.mediaDevices, real = md && md.getUserMedia ? md.getUserMedia.bind(md) : null;
-    if (md) md.getUserMedia = (c) => { const k = c && c.video ? 'cámara' : 'micrófono'; if (window.__hidden) { window.__gum.push(k + ' (oculta: no contesta)'); return new Promise(() => {}); } window.__gum.push(k); return real(c); };
-  }, methods);
-  await page.goto('https://' + name.toLowerCase() + '.nexo.test/index.html');
-  await page.waitForFunction(() => window.NEXO && window.NEXO.initialized, null, { timeout: 20000 });
-  // (la pantalla de «¿cómo te llamas?» del primer arranque queda encima de todo en el simulador: en el teléfono ya se puso el nombre)
-  await page.addStyleTag({ content: '#nexo-name-overlay{display:none !important}' });
-  await sleep(800);
-  return page;
-}
-
-const click = (page, sel) => page.evaluate((s) => { const el = document.querySelector(s); if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true })); return !!el; }, sel);
-async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { if (await fn()) return Math.round((Date.now() - t0) / 100) / 10; } catch (e) {} await sleep(200); } return null; }
-const clickRowNamed = (page, container, name, inner) => page.evaluate(([c, n, inner]) => {
-  const row = Array.from(document.querySelectorAll(c)).find((r) => ((r.querySelector('.ble-contact-name') || r.querySelector('span') || {}).textContent || '').trim() === n);
-  const target = row && (inner ? row.querySelector(inner) : row);
-  if (target) target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  return !!target;
-}, [container, name, inner || '']);
-async function sendText(page, t) {
-  await page.evaluate((t) => { const i = document.getElementById('message-input'); i.value = t; i.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('send-btn').dispatchEvent(new MouseEvent('click', { bubbles: true })); }, t);
-}
-const closeChat = (page) => page.evaluate(() => window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} })));
-
-// Estado de las llamadas de un teléfono
-const calls = (page) => page.evaluate(() => {
-  const bi = window.bleInterface, c = bi.calls.call, g = bi.gcall.gc;
-  return { uno: c ? c.state : null, grupo: g ? g.state : null, tramos: g ? Array.from(g.legs.entries()).map(([nx, l]) => nx + ':' + l.state).join(',') : '' };
-});
-// Medios de la llamada 1-a-1 (¿salen voz e imagen?)
-const media1 = (page) => page.evaluate(() => {
-  const c = window.bleInterface.calls, m = c.call && c.call.media, st = m && m.stats ? m.stats() : null;
-  const lv = m && m.localVideo, tr = lv && lv.srcObject && lv.srcObject.getVideoTracks()[0];
-  return { estado: c.call ? c.call.state : null, voz_enviada: c.stats.sent || 0, video_enviado: c.stats.sentV || 0, micro: !!(st && st.mic), camara: !!(tr && tr.readyState === 'live'), pedidos: window.__gum.slice(-6) };
-});
 // Lo que se ve en la pantalla de la llamada de grupo
 const layout = (page) => page.evaluate(() => {
   const W = innerWidth, H = innerHeight;
@@ -181,48 +100,12 @@ const dblTap = (page, nx) => page.evaluate(async (nx) => {
 
 (async () => {
   const r = { prueba: 'agregarvideo', build: path.basename(buildDir) };
-  const browser = await PW.chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
-  const radio = new Radio(), nat = {}, P = {};
-  ['A', 'B', 'C'].forEach((n, i) => { const h = n.repeat(2); nat[n] = new NativePhone(n, [h, h, h, h, h, '0' + (i + 1)].join(':'), Object.assign({}, opts)); radio.add(nat[n]); nat[n].load(); });
-  for (const n of ['A', 'B', 'C']) P[n] = await boot(browser, n, nat[n]);
-  const id = {}; for (const n of ['A', 'B', 'C']) id[n] = await P[n].evaluate(() => String(window.bleInterface.localNexoId).toLowerCase());
-  // Contactos: A–B, A–C y B–C (la malla del grupo)
-  async function pair(x, y) {
-    const others = ['A', 'B', 'C'].filter((n) => n !== x && n !== y);
-    others.forEach((o) => radio.block(nat[x], nat[o]));
-    await P[x].evaluate(() => window.bleInterface.togglePanel());
-    let ok = false;
-    for (let i = 0; i < 300 && !ok; i++) { await sleep(150); ok = await clickRowNamed(P[x], '#ble-new-device > div', y, 'button'); if (!ok && !(await P[x].evaluate(() => window.bleInterface.isScanning))) await click(P[x], '#ble-scan-btn'); }
-    await sleep(1800);
-    await P[x].evaluate(() => window.bleInterface.togglePanel());
-    await sleep(600);
-    await clickRowNamed(P[x], '#main-contacts-list .ble-contact-row', y); await sleep(500);
-    await sendText(P[x], 'hola ' + y);
-    const keyOf = (a, b) => P[a].evaluate((b) => !!((window.vaultLoadContacts() || []).find((c) => c.name === b) || {}).publicKey, b);
-    await waitFor(() => keyOf(x, y), 20000); await waitFor(() => keyOf(y, x), 20000);
-    await closeChat(P[x]); await sleep(300);
-    others.forEach((o) => radio.unblock(nat[x], nat[o]));
-    return ok;
-  }
-  for (const [x, y] of [['A', 'B'], ['A', 'C'], ['B', 'C']]) if (!(await pair(x, y))) { console.log('AGREGARVIDEO ' + JSON.stringify({ prueba: 'agregarvideo', resultado: 'FALLO', error: 'no empareja ' + x + y })); process.exit(1); }
-  const lanOk = (x, y) => P[x].evaluate((nx) => !!window.bleInterface.calls.canVideo(nx) && !!(window.bleInterface.lan && window.bleInterface.lan.canReach(nx)), id[y]);
-  r.wifi_s = await waitFor(async () => (await lanOk('A', 'B')) && (await lanOk('A', 'C')) && (await lanOk('B', 'C')) && (await lanOk('B', 'A')) && (await lanOk('C', 'A')) && (await lanOk('C', 'B')), 60000);
+  const H = await callHarness({ buildDir, names: ['A', 'B', 'C'], shots: SHOTS });
+  const { P, nat, id, logs } = H;
+  for (const [x, y] of [['A', 'B'], ['A', 'C'], ['B', 'C']]) if (!(await H.pair(x, y))) { console.log('AGREGARVIDEO ' + JSON.stringify({ prueba: 'agregarvideo', resultado: 'FALLO', error: 'no empareja ' + x + y })); process.exit(1); }
+  r.wifi_s = await H.wifiAll();
+  const videoCall = H.call, hangAll = H.hangAll;
 
-  async function videoCall(x, y, opt = {}) {
-    await clickRowNamed(P[x], '#main-contacts-list .ble-contact-row', y); await sleep(500);
-    await click(P[x], '#nexo-video-btn');
-    await closeChat(P[x]);
-    if (opt.beforeAnswer) await opt.beforeAnswer();
-    await waitFor(() => P[y].evaluate(() => !!(window.bleInterface.calls.call && window.bleInterface.calls.call.state === 'ringing')), 20000);
-    if (opt.answerHidden) { await P[y].evaluate(() => window.__setHidden(true)); await sleep(300); await P[y].evaluate(() => window.bleInterface.calls.accept()); } // como «Contestar» en el aviso
-    else await click(P[y], '#nexo-call-screen .call-accept');
-    return waitFor(async () => (await calls(P[x])).uno === 'active' && (await calls(P[y])).uno === 'active', 20000);
-  }
-  const hangAll = async () => {
-    for (const n of ['A', 'B', 'C']) await P[n].evaluate(() => { const bi = window.bleInterface; try { if (bi.calls.call) bi.calls.hangup(); } catch (e) {} try { if (bi.gcall.gc) { if (bi.gcall.gc.state === 'ringing') bi.gcall.reject(); else bi.gcall.hangup(); } } catch (e) {} });
-    await waitFor(async () => { for (const n of ['A', 'B', 'C']) { const c = await calls(P[n]); if (c.uno || c.grupo) return false; } return true; }, 15000);
-    await sleep(2500);
-  };
 
   r.fases_con_error = {};
   const fase = async (n, fn) => { try { await fn(); } catch (e) { r.fases_con_error[n] = String(e && e.message).slice(0, 200); try { await P.A.setViewportSize({ width: 384, height: 830 }); } catch (x) {} try { await hangAll(); } catch (x) {} } };
@@ -309,6 +192,19 @@ const dblTap = (page, nx) => page.evaluate(async (nx) => {
     r.f['ancho ' + w] = Object.assign(await buttons(P.A), { mitades: l.tiles.map((t) => t.pos).join(','), mitad_arriba: (l.tiles[0] || {}).box });
   }
   await P.A.setViewportSize({ width: 384, height: 830 }); await sleep(300);
+  // ── g (3155): la de grupo pasa a la ventanita del sistema al irse de la app (PiP) y ahí solo se ven las imágenes; al volver, todo;
+  //    con «atrás», minimizada: barra arriba y la app debajo; tocar la barra vuelve
+  r.g_pip_activo = nat.A.pipVideo === true;
+  await P.A.setViewportSize({ width: 200, height: 356 }); await P.A.evaluate(() => window.__nexoPipChanged && window.__nexoPipChanged(true)); await sleep(900);
+  r.g_pip = await pipLook(P.A);
+  if (SHOTS) await shotOf(P.A, path.join(SHOTS, 'pip_grupo.png'));
+  await P.A.setViewportSize({ width: 384, height: 830 }); await P.A.evaluate(() => window.__nexoPipChanged && window.__nexoPipChanged(false)); await sleep(900);
+  r.g_pip_vuelve = await pipLook(P.A);
+  r.g_atras = await P.A.evaluate(() => window.__nexoHandleBack());
+  await sleep(500);
+  r.g_barra = await barLook(P.A);
+  await click(P.A, '#nexo-call-bar .ncb-name'); await sleep(600);
+  r.g_barra_vuelve = await barLook(P.A);
   // A cuelga: B y C siguen entre ellos; luego todo fuera
   await click(P.A, '#nexo-gcall-screen .gc-buttons .call-hangup');
   r.f_A_cuelga_B_y_C_siguen_s = await waitFor(async () => (await calls(P.A)).grupo === null && (await calls(P.B)).grupo === 'active' && (await layout(P.B)).tiles.length === 1, 10000);
@@ -372,6 +268,9 @@ const dblTap = (page, nx) => page.evaluate(async (nx) => {
     r.e_un_toque.al_instante === false && r.e_un_toque.tras_300ms === true && r.e_un_toque.mitades === 'gcs-up,gcs-down' && r.e_un_toque.otra_vez === false);
   v.f = chk(() => Object.values(r.f).every((b) => b.n >= 7 && b.filas === 1 && b.caben && b.colgar_entero_y_tocable && b.circulo_min >= 40 && b.letra_min >= 8 && !b.cortados.length &&
     /^Girar · Pantalla · Cámara no · Silenciar · Altavoz · Agregar · Colgar$/.test(b.nombres) && b.mitades === 'gcs-up,gcs-down') && num(r.f_A_cuelga_B_y_C_siguen_s));
+  v.g = chk(() => r.g_pip_activo && r.g_pip.botones === 0 && r.g_pip.textos === 0 && r.g_pip.mi_imagen === 0 && r.g_pip.su_imagen.length === 2 &&
+    r.g_pip_vuelve.botones >= 7 && r.g_pip_vuelve.su_imagen.length === 2 && r.g_atras === true && r.g_barra.barra && r.g_barra.arriba && /^B · C · \d+:\d\d$/.test(r.g_barra.texto) &&
+    !r.g_barra.pantalla_llamada && r.g_barra.app_debajo && r.g_barra.app_baja && !r.g_barra_vuelve.barra && r.g_barra_vuelve.pantalla_llamada);
   v.z = chk(() => num(r.z_activa_s) && num(r.z_B_termina_s) && num(r.z_C_deja_de_sonar_s));
   v.m3 = chk(() => num(r.m3_activa_s) && r.m3_A.micro && r.m3_A.camara && r.m3_A.video_enviado > 10 && r.m3_B.micro && r.m3_B.video_enviado > 10 && r.m3_B_llamadas.grupo === null && !r.m3_B_dividida);
   v.timbre = chk(() => ['video', 'voz'].every((k) => { const x = r['timbre_' + k]; return num(x.suena_s) && x.aviso_del_telefono && x.aviso_del_telefono.video === (k === 'video') && x.pedidos_de_microfono_o_camara === 0 && !x.modo_llamada_mientras_suena; }));
@@ -381,6 +280,6 @@ const dblTap = (page, nx) => page.evaluate(async (nx) => {
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('AGREGARVIDEO ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_agregarvideo.txt'), logs.join('\n'));
-  await browser.close();
+  await H.close();
   process.exit(ok ? 0 : 1);
-})().catch((e) => { console.log('AGREGARVIDEO ' + JSON.stringify({ prueba: 'agregarvideo', resultado: 'FALLO', error: String(e && e.stack || e) })); fs.writeFileSync(path.join(__dirname, 'last_logs_agregarvideo.txt'), logs.join('\n')); process.exit(1); });
+})().catch((e) => { console.log('AGREGARVIDEO ' + JSON.stringify({ prueba: 'agregarvideo', resultado: 'FALLO', error: String(e && e.stack || e) })); process.exit(1); });

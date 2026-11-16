@@ -34,6 +34,8 @@ var GDEAD_MS = 180000;
 // estado («comparto la pantalla») va a cada tramo como paquete cifrado 'c' al empezar/terminar y cada 5 s mientras dure (así
 // lo sabe también el que entra tarde); las versiones anteriores lo ignoran.
 var GSCREEN_LONG = 960, GSCREEN_FPS = 5, GSTATE_EVERY_MS = 5000, GSTATE_TAIL_MS = 10000;
+// 3155: la videollamada de grupo también pasa a la miniatura del sistema (PiP) al irse de la app (como la 1-a-1)
+function _pipGC(on) { var p = _plugGC(); if (p && typeof p.setPipActive === 'function') { try { p.setPipActive({ on: !!on }); } catch (e) {} } }
 function _plugGC() { return (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
@@ -139,6 +141,7 @@ export class GroupCall {
     var l = this._leg(g.adopt.nx); if (l && typeof ad.peerFront === 'boolean') l.peerFront = ad.peerFront;
     this._makeHub();
     if (!(g.hub && g.hub.adopted)) { try { ad.media.stop(); } catch (e) {} g.adopt = null; } // (medios sin herencia: los de siempre)
+    _pipGC(true); // 3155: sigue siendo videollamada
   }
   _makeHub() {
     var self = this, g = self.gc; if (!g || g.hub || !self.mediaHubFactory) return;
@@ -236,6 +239,7 @@ export class GroupCall {
   camera(on) {
     var g = this.gc; if (!g) return;
     g.cameraOn = !!on;
+    if (on) _pipGC(true); // 3155
     if (g.hub && g.hub.camera) { try { g.hub.camera(!!on); } catch (e) {} }
     this._set(null);
   }
@@ -327,6 +331,7 @@ export class GroupCall {
     if (self.ble && typeof self.ble._holdOthers === 'function') { try { self.ble._holdOthers(self); } catch (e) {} } // #222: la otra, en espera
     // Micrófono compartido: una captura, un codificador → el paquete codificado va a TODOS los tramos
     if (!g.adopt) g.cameraOn = !!g.video; // (#224: la heredada sigue como estaba)
+    if (g.video || g.cameraOn) _pipGC(true); // 3155
     self._makeHub();
     if (g.hub && g.hub.start && !g.hub.adopted) { try { Promise.resolve(g.hub.start()).catch(function(e) { console.warn('[GCALL] micrófono: ' + (e && e.message)); }); } catch (e) { console.warn('[GCALL] sin audio: ' + (e && e.message)); } }
     self._watch = setInterval(function() { self._tick(); }, 1000);
@@ -566,6 +571,7 @@ export class GroupCall {
     if (g.hub && g.hub.stop) try { g.hub.stop(); } catch (e) {}
     self._markDead(g.gid);
     self.gc = null;
+    var c1 = self.ble && self.ble.calls && self.ble.calls.call; if (!(c1 && c1.video && c1.state === 'active')) _pipGC(false); // 3155
     if (self.ble && typeof self.ble._afterCallRadio === 'function') { try { self.ble._afterCallRadio(); } catch (e) {} } // 3058: sale lo que esperó a colgar
     if (self.ble && typeof self.ble._resumeLoneCall === 'function') { try { self.ble._resumeLoneCall(); } catch (e) {} } // #222: la que quedó en espera vuelve
     _emit('nexo:gcall', null);

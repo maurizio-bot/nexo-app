@@ -34,6 +34,7 @@ export function stageWanted(st, me) {
   return n >= 1 && n <= 2;
 }
 
+export function stageCss() { _css(); }
 function _css() {
   if (document.getElementById('nexo-gcs-style')) return;
   var s = document.createElement('style');
@@ -79,7 +80,16 @@ function _css() {
     '.gcs-self{position:absolute;z-index:5;top:84px;right:14px;width:104px;height:148px;border-radius:16px;overflow:hidden;border:2px solid rgba(255,255,255,.75);box-shadow:0 8px 26px rgba(0,0,0,.5);background:#1a1b2e}',
     '.gcs-n2:not(.gcs-focus) .gcs-self{width:92px;height:130px}',
     '.gcs-self.gcs-off{display:none}',
-    '.gcs-self>video{width:100%;height:100%;object-fit:cover;display:block}'
+    '.gcs-self>video{width:100%;height:100%;object-fit:cover;display:block}',
+    // 3155: flecha para minimizar (barra arriba, call_bar.js), también con el gesto «atrás»
+    '#nexo-gcall-screen .gc-min{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));left:12px;z-index:8;width:40px;height:40px;border-radius:50%;border:none;padding:0;display:none;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,.1);cursor:pointer}',
+    '#nexo-gcall-screen.gc-canmin .gc-min{display:flex}#nexo-gcall-screen.gcs-hide .gc-min{opacity:0;pointer-events:none}html.nc-split #nexo-gcall-screen .gc-min{display:none !important}',
+    // 3155 (dueño 16-11: «minimizada salen todos los botones apretados»): en la ventanita (miniatura del sistema o ventana ≤ 300 de
+    // ancho) solo las imágenes de los demás: sin botones, cabecera, mi imagen, nombres ni «Cancelar»
+    'html.nx-pip #nexo-gcall-screen>.gc-buttons,html.nx-pip #nexo-gcall-screen .gcs-top,html.nx-pip #nexo-gcall-screen .gcs-self,html.nx-pip #nexo-gcall-screen .gcs-lab,html.nx-pip #nexo-gcall-screen .gcs-cancel,html.nx-pip #nexo-gcall-screen .gcs-pst,html.nx-pip #nexo-gcall-screen .gc-min,html.nx-pip #nexo-gcall-screen .gc-pill,html.nx-pip #nexo-gcall-screen .gc-scrbar{display:none !important}',
+    'html.nx-pip #nexo-gcall-screen .gcs-tile>.gcs-ph{padding:4px !important}',
+    '@media (max-width:300px){#nexo-gcall-screen>.gc-buttons,#nexo-gcall-screen .gcs-top,#nexo-gcall-screen .gcs-self,#nexo-gcall-screen .gcs-lab,#nexo-gcall-screen .gcs-cancel,#nexo-gcall-screen .gcs-pst,#nexo-gcall-screen .gc-min,#nexo-gcall-screen .gc-pill,#nexo-gcall-screen .gc-scrbar{display:none !important}#nexo-gcall-screen .gcs-tile>.gcs-ph{padding:4px !important}}',
+    'html.nx-pip .gcs-avw,html.nx-pip .gcs-avw .nx-person-av{width:44px !important;height:44px !important;min-width:44px !important;font-size:16px !important}'
   ].join('\n');
   document.head.appendChild(s);
 }

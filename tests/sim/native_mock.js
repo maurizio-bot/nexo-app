@@ -1082,6 +1082,8 @@ class NativePhone {
       // Kotlin 2770 ringerMode: modo del timbre (self.ringer: 'normal' | 'vibrate' | 'silent') y "No molestar" (self.dnd)
       ringerMode: wrap('ringerMode', (c) => c.resolve({ mode: self.ringer || 'normal', dnd: !!self.dnd })),
       // Kotlin 3134 ringback: tono de llamada saliente del sistema (ToneGenerator por el canal de llamada); se anota on/off
+      // Kotlin setPipActive (#dueño 01-11): la videollamada en curso pasa a la miniatura del sistema al irse de la app; se anota
+      setPipActive: wrap('setPipActive', (c, a) => { self.pipVideo = a.on === true; c.resolve({}); }),
       ringback: wrap('ringback', (c, a) => { self.ringbackOn = a.on === true; (self.ringbackLog = self.ringbackLog || []).push(a.on === true); c.resolve({ on: a.on === true }); }),
       l2Info: wrap('l2Info', (c) => c.resolve({ ok: !self.opts.noL2, sdk: self.opts.noL2 ? 28 : 33 })),
       bigServeL2: wrap('bigServeL2', (c, a) => {

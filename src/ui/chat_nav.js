@@ -44,6 +44,8 @@ export function _setupBackButton() {
     // o el botón cierran primero el visor/estado/cámara y luego el chat, en vez de salir de la app de golpe.
     window.__nexoHandleBack = function() {
       try {
+        // 3155 (dueño 16-11): con la pantalla de una llamada a la vista, «atrás» la minimiza (barra arriba, call_bar.js)
+        if (typeof window.__nexoCallBack === 'function' && window.__nexoCallBack()) return true;
         // 3035 (dueño 13-11: «¿los gestos de regreso están en todas las pantallas?»): faltaban la guía de bienvenida, el aviso
         // de batería, los menús (mensaje, grupo, adjuntar), las hojas (reenviar, compartir contactos, elegir contacto, cobrar,
         // ficha del grupo, fondo de pantalla), el juego NEXO y la búsqueda del chat. Las llamadas NO se cierran con atrás.
