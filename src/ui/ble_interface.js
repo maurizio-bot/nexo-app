@@ -374,7 +374,7 @@ export class BLEInterface {
         // al enviar): el 1er mensaje ya no espera ni se pierde y el subtítulo pasa a «Conectando…» hasta que llega la
         // presencia del otro (entonces se ve el tipo real: Wi-Fi / Bluetooth / internet). Si ya hay enlace, no hace nada.
         try { if (typeof self._wakeSleepingPeer === 'function') self._wakeSleepingPeer(uuid, 'al abrir el chat'); } catch (e) {} // 3073: también con enlace (su app puede dormir)
-        self._prepRoute(uuid, 'Al abrir el chat', true); // 3147: saludo por internet ya (el Bluetooth, abajo)
+        self._prepRoute(uuid, 'al abrir el chat', true); // 3147: saludo por internet ya (el Bluetooth, abajo) — motivo para el registro, no se muestra // i18n-ok
         // v6.1.12: solo se avisa; main.js dibuja la última página del historial. Antes se cargaba aquí
         // TODO el historial leyendo de disco todos sus adjuntos y main.js lo dibujaba entero
         _safeDispatchEvent('nexo:vault:messagesLoaded', { contactId: uuid });
