@@ -20,7 +20,7 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   compilado contra la API 36 (sin SDK de Android aquí: el CI lo confirma). **Pero el servicio solo NO recibe nada** en un proceso nuevo
   (sin WebView): el servidor GATT y NetBg solo los crea el plugin, y la configuración de NetBg (relés, claves de pareja) y las claves del
   ✓✓ viven en memoria. Lo mismo con el toque FCM de hoy: arranca el servicio, no baja nada y además NO avisa
-  (`FcmWakePolicy.noticeAfterWake(true)` = sin aviso). **Pregunta al dueño (toca cifrado):** guardar esa configuración cifrada en
+  (`FcmWakePolicy.noticeAfterWake(true)` = sin aviso). **Dueño 17-11 06:30: «Ok»** → en curso **3192** (worktree `/home/user/wtheadless`, con 3189 encima de HEAD). Era la pregunta (toca cifrado): guardar esa configuración cifrada en
   reposo (AtRestStore, como los contactos y el ratchet) para que el servicio arranque NetBg solo (~100–150 líneas). Mientras: el toque
   FCM con el proceso muerto debería poner el aviso genérico. Prueba del dueño cuando salga: reiniciar la tableta SIN abrir NEXO y mandarle
   un mensaje desde el S24.
