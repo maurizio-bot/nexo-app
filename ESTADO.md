@@ -21,6 +21,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **17-11 00:20 (México) — APK 3083 PUBLICADA (00:11; 3175–3183). APK subida con 3178–3180** (acuses de leído/✓✓ que se reintentan,
+  bajadas del buzón al tener internet propio, cola de «Bluetooth ocupado»; ciudad semilla 1: leído que no vuelve 10 → 0, perdidos 2 → 0).
+  Estudio EDC hecho: `docs/EDC_LIMITES.md` (en curso 3184 «Agregar» con freno, wtagregar; los grandes esperan al dueño). Nombre: AYNI
+  propuesto (NOMBRE.md), esperando al dueño; diseño 2026 en `nexo-private/negocio/DISENO_2026.md`.
 - **16-11 23:20 (México) — APK 3082 PUBLICADA (22:30; 3173–3174). APK subida con 3175–3177 + 3181–3183:** acciones que llegan antes
   que su mensaje (lápida de «eliminar para todos»), reacciones del agregado (fx), foto de grupo rota por el buzón, misma respuesta al
   tocar en todos los botones (pressall), trampa del juego secreto (juegotrampa) y el vivo siempre arriba (vivoarriba; el diagnóstico dice
