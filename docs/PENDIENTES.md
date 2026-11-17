@@ -19,6 +19,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   OpenStreetMap y las manda dentro del mensaje cifrado; quien recibe no pide nada; sin internet, la tarjeta de hoy). A escala habrá que
   usar un proveedor de mapas (costo, decide el dueño).
 - Pregunta abierta: reacciones y «eliminar para todos» en grupos (hoy solo en el propio teléfono).
+- Diagnóstico de Roberto (= Motorola edge 40 neo, nx0g6ef54e, 3087, 09:32): (1) a las 08:33 publicó un video de estado de 1,7 MB y lo
+  quitó a los 8 s (no se veía: 3200, CSP `media-src` sin `data:`); (2) un teléfono SIN identificar (…0da5) se conectó y desconectó de su
+  servidor GATT cada 36 s durante 14 min con la app en segundo plano (gasto de radio y batería; ¿Zhelowsky 3026, versión vieja?): falta
+  freno en el lado servidor; (3) al volver a la app, 24 `startAdvertising` seguidos (uno por cada desconexión acumulada): agrupar.
 
 ## 🆕 17-11 06:28 — dueño «Ok» a 2 conexiones y 2 copias con datos móviles
 - Diagnóstico S24 06:01 (entrega lenta de una nota de voz al S23 3080, 128 s): del lado del S23 (versión vieja); la subida fue a 6,8 KB/s
