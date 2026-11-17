@@ -33,6 +33,12 @@ export const netRelays = {
         setTimeout(function() { self._helloAll(!self._greeted); }, 300); // avisar a los contactos de que estoy
         // Ronda 2780 (pedido del dueño): volvió el internet → reenviar fotos/archivos/textos que quedaron en espera
         if (self.ble && typeof self.ble._netOnline === 'function') setTimeout(function() { self.ble._netOnline(); }, 800);
+      } else if (!r.gw && self._realOpenCount() === 1) {
+        // 3179 (ciudad 17-11, «Faltan N de N trozos» y la siguiente bajada a los 8 min): de «solo por un puente» a internet PROPIO, lo
+        // que esperaba (bajadas del buzón de archivos que por el puente no salían, archivos que por el puente no pasan) se reintenta
+        // YA. Antes solo se avisaba al abrir la PRIMERA conexión, y la del puente ya contaba.
+        console.log('[NET] Internet propio otra vez (había solo puente): reintento ya lo que esperaba'); // i18n-ok: registro
+        if (self.ble && typeof self.ble._netOnline === 'function') setTimeout(function() { self.ble._netOnline(); }, 800);
       }
     };
     ws.onmessage = function(ev) { r.rxAt = Date.now(); self._onRelayMsg(url, r, ev.data); };

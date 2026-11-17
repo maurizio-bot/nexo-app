@@ -56,6 +56,11 @@ class NostrRelay {
   // aunque sigue recibiendo lo suyo: su confirmación no sale. acceptTag lo deshace.
   rejectTag(tag) { (this._reject = this._reject || new Set()).add(tag); }
   acceptTag(tag) { if (this._reject) this._reject.delete(tag); }
+  // 3179 (blobpuente.js): a las conexiones de ese teléfono no se les sirven los trozos del buzón de archivos (kind) — como un
+  // puente que no consigue pasarlos —; lo demás, sí. showTag lo deshace.
+  hideTag(tag, kind) { (this._hide = this._hide || new Map()).set(tag, kind); }
+  showTag(tag) { if (this._hide) this._hide.delete(tag); }
+  _hidden(ws, ev) { if (!this._hide || !this._hide.size || !ev) return false; for (const [t, k] of this._hide) if ((ws.tag || '').indexOf(t) >= 0 && ev.kind === k) return true; return false; }
 
   _valid(ev) {
     const { schnorr, sha256, hex, unhex } = noble;
@@ -146,7 +151,7 @@ class NostrRelay {
         if (!this.events.some((x) => x.id === ev.id)) {
           this.events.push(ev); this.stats.published++;
           this.wss.clients.forEach((c) => c.subs && c.subs.forEach((filters, sub) => {
-            if (filters.some((f) => this._match(f, ev)) && this._canRead(c, ev)) {
+            if (filters.some((f) => this._match(f, ev)) && this._canRead(c, ev) && !this._hidden(c, ev)) {
               this.stats.delivered++;
               if (this.opts.dropEveryN && this.stats.delivered % this.opts.dropEveryN === 0) return;
               c.sendM(['EVENT', sub, ev]);
@@ -158,7 +163,7 @@ class NostrRelay {
         const sub = m[1], filters = m.slice(2);
         if (this.opts.authRequired && !ws.authed.size) { send(['CLOSED', sub, 'auth-required: identifícate para leer mensajes privados']); return; }
         ws.subs.set(sub, filters);
-        const list = this.events.filter((ev) => !this._expired(ev, now) && filters.some((f) => this._match(f, ev)) && this._canRead(ws, ev));
+        const list = this.events.filter((ev) => !this._expired(ev, now) && filters.some((f) => this._match(f, ev)) && this._canRead(ws, ev) && !this._hidden(ws, ev));
         list.sort((a, b) => a.created_at - b.created_at).forEach((ev) => { const served = (this.opts.tamper && this.opts.tamper(ev)) || ev; if (served !== ev) this.stats.tampered = (this.stats.tampered || 0) + 1; send(['EVENT', sub, served]); });
         this.stats.reqs = (this.stats.reqs || 0) + 1; if (filters.some((f) => f.ids)) this.stats.reqIds = (this.stats.reqIds || 0) + 1;
         send(['EOSE', sub]);

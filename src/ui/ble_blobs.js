@@ -91,6 +91,7 @@ export const BLE_BLOB_METHODS = {
     self._blobIn.forEach(function(j) {
       if (running >= BLOB_MAX_CONCURRENT || j.running || j.timer) return;
       running++; j.running = true; j.tries++;
+      var viaGw = !!(self.net && typeof self.net.gwOnly === 'function' && self.net.gwOnly()); // 3179: este intento va por un puente
       self._blobTryLocal(j).then(function(local) {
         if (local) { j.t0 = 0; return self._blobComplete(j, local, 'ya lo tenía (mismo archivo, no se baja nada)'); }
         return fetchBlob(self.net, j.att.ptr, { log: function(s) { console.log(s); } }).then(function(res) {
@@ -102,6 +103,8 @@ export const BLE_BLOB_METHODS = {
         if (e && (e.code === 'BLOB_PTR' || e.code === 'BLOB_GCM' || e.code === 'BLOB_HASH')) { console.warn('[BLOB] ' + j.messageId + ' descartado: ' + e.message); self._blobIn.delete(j.messageId); self._blobRunQueue(); return; }
         if (Date.now() + 30000 > expMs) { console.warn('[BLOB] ' + j.messageId + ' caducó sin poder bajarse (' + (e && e.message) + ')'); self._blobIn.delete(j.messageId); self._blobRunQueue(); return; }
         var wait = _fetchRetryDelay(j.tries);
+        // 3179: el intento iba por un puente y mientras tanto volvió el internet PROPIO: se reintenta ya por él (no a su turno)
+        if (viaGw && self.net && typeof self.net._realOpenCount === 'function' && self.net._realOpenCount() > 0) wait = 1000;
         console.warn('[BLOB] ' + j.messageId + ' no se pudo bajar (' + (e && e.message) + '): reintento en ' + Math.round(wait / 1000) + ' s');
         j.timer = setTimeout(function() { j.timer = null; self._blobRunQueue(); }, wait);
         self._blobRunQueue();
