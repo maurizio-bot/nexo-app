@@ -43,6 +43,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Wi-Fi Direct: un envío real bien el 15-11 (3,3 MB/s); falta el vídeo de ~20 MB (PENDIENTES 15-11, resúmenes del 14-11). ×2
 
 **Falta**
+- Diagnósticos 16-11 17:38–18:18 (3077): S23 con AHORRO DE BATERÍA y NEXO cerrada desde recientes 11 veces hoy (más el fallo nativo de las 11:13): por eso «duerme» y no confirma. El «enlace_abre_cierra» S24↔S23 (3 cierres por repetido) es lo que arregla la APK 3079 (3167/3168). ×1
 - Diagnósticos 16-11 16:20–16:35 (S24 y Yaelito/Xiaomi en 3077): «reenvío sin fin» a nx1e50c95d (S23): su app dormida (enlace BT físico vivo, no contesta pings ni confirma; Wi-Fi «su app no contesta»). Pedir al S23: batería «Sin restricciones», fuera de «Apps en suspensión», actualizar y su diagnóstico. El Xiaomi de Yaelito cierra NEXO al deslizarla de recientes (SwipeUpClean ×6, OneKeyClean): candado en recientes + inicio automático. ×1
 - Medición engañosa: «internet listo en» cuenta también el tiempo SIN red (Yaelito 15-11: media 90,7 s, máx. 452 s; un diagnóstico con «red ninguna»). Arreglo propuesto: con red «none» no se mide (net_relays.js `_applyNetChange`/`_connect`, `_netTryAt`). Pendiente, con prueba. ×1
 - «Confirmación sin firma válida de nx1n36c283: ignorada» (Yaelito 16:31:42, al arrancar): confirmaciones sin firma descartadas a propósito (auditoría C1); provocan reenvíos de más pero los mensajes llegaron. Revisar de dónde salen sin firma (¿nativo con la app dormida? → #226 Keystore). ×1
@@ -136,6 +137,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Textos largos de portugués y francés en los botones (plan, etapa 1). ×1
 
 **Falta**
+- Estados en su propia pantalla, deslizando ← desde Contactos (dueño 17-11: solo gestos, sin botones ni pestañas; un aviso de texto la primera vez); después ahí irán el stream y los vídeos públicos, separados de lo de contactos. En curso, 3169. ×1
 - Bienvenida ≤ 40 s (introducción, foto, retrato vivo, firma viva, huella), oculta tras una bandera (dueño 16-11). ×2
 - Quitar los avisos de camino («por Bluetooth», «conectado/en línea por…») en la app terminada (dueño 16-11). ×1
 - NEXO Touch parte 2: áreas de toque en hojas, cámara y juegos; diagnóstico del motor de vibración. ×1
