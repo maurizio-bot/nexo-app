@@ -66,6 +66,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   `since` = lo último visto). **3210 en curso:** margen según el desfase de reloj medido en lo que llega en vivo (mín. 2 min, máx. 10).
   Además: «Confirmación sin firma válida de nx1n36c283 … ignorada» ×6 al abrir (✓✓ de la parte nativa del dueño con la app cerrada
   que no traen la firma esperada) → el emisor reenvía hasta que el dueño abre: pedir el diagnóstico del dueño del mismo momento.
+- HONOR 16:06 (zombi con Marcos): otra vez cerrado a las 15:29 por el gestor de batería de HONOR (PowerGenie) → falta el ajuste del
+  teléfono. «Confirmación sin firma válida de nx0x4029e6» ×7: Zhelowsky va en la 3026 (vieja). **3211 a hacer:** un texto a Marcos pasó
+  a ✗ un segundo (16:05:07) y a ✓✓ en el siguiente: la red de seguridad ya lo había dejado en el buzón (16:05:06) y el agotamiento de
+  reintentos Bluetooth (_onAckTimeout) lo marcó «failed» igual → si ya salió por internet, ✓ y no ✗.
 - NX…DBFE (3087, Galaxy A05s, Italia): versión vieja; 217 MB de Wi-Fi hoy (archivos por el buzón: 18 enviados, 22 recibidos) y 2
   cierres por falta de memoria; Bluetooth con richard atascado («Write fallo ~6 s») mientras el Wi-Fi local llevaba los mensajes.
 
