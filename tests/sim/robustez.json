@@ -514,6 +514,10 @@
     {
      "fallo": "3158 (PENDIENTES 13-11): al abrir el chat tocando el aviso tras un arranque en frío (Android mató la app después de avisar), lo que ya estaba no mandaba el «leído»: los msgId sin leer vivían solo en memoria y el que escribió se quedaba en «entregado». 3158: se guardan en el teléfono (nexo_notify_unread.json). leidoaviso.js (b) (contraprueba e146b368: 40 s en «entregado»)",
      "prueba": "leído al abrir el chat TOCANDO EL AVISO"
+    },
+    {
+     "fallo": "3173 (dueño 17-11, diagnóstico S24 19:57: pendiente al vivo/tablet que se «reenviaba» cada 18 s y se mandaba otra vez al reiniciar): con más de 20 chats, la caché de historiales (20) soltaba el chat antes del guardado agrupado (300 ms) y el borrado/✓✓ de la pregunta oculta de la foto de perfil no llegaba al disco. 3173: lo sin escribir se guarda aparte (_unsaved) hasta llegar al disco; un id borrado no se busca en todos los chats; un pendiente ya confirmado se corrige en vez de saltarse. pendcache.js (contraprueba faa6b43a)",
+     "prueba": "pendiente que ya llegó y se «reenvía» sin fin"
     }
    ],
    "debiles": [
@@ -1043,6 +1047,10 @@
     {
      "fallo": "3151 (dueño 16-11: «NEXO tendrá su PROPIO servidor de relé, de pago, para que mensajes y archivos vayan tan rápido como WhatsApp; los públicos de respaldo»; diagnósticos 15-11: archivos por relés a 9–25 KB/s, «internet listo» 13,7 s de media, de 15,5 MB bajados de los relés 12,7 MB REPETIDOS). Solo había relés públicos: cada evento llegaba repetido por cada relé suscrito (4), cada trozo del buzón de archivos se subía a todos (un archivo de 2 MB = ~11 MB subidos) con sus límites de ritmo. 3151 (app lista, servidor aún sin dirección: OWN_RELAYS vacío = como siempre): con relé propio se conecta primero, se lee de él y de UN público, lo pesado y los trozos del buzón van solo a él (una copia, 8 a la vez, primero en el puntero), 2 públicos de respaldo; si cae, en segundos se lee de todos los públicos y lo pesado va a ellos; vuelve solo (reintento ≤ 10 s). releprop.js (b3151), contraprueba sin propio: en línea 2,1 → 1,2 s, texto 408 → 207 ms, 2 MB 50,2 → 7,5 s, repetido 46 → 18 KB, subido 10,8 → 2,8 MB; caída: texto por públicos a los 0,5 s; vuelta al propio en 1 s",
      "prueba": "RELÉ PROPIO (3151"
+    },
+    {
+     "fallo": "3174 (dueño 17-11, diagnóstico S24 19:49: textos a 14 s con datos móviles trabados): un envío esperaba 12 s el OK de algún relé antes de reconectar. 3174: a los 3 s sin nada de ningún relé, una comprobación; 2 s más sin respuesta → reconectar y reintentar (~5 s); con un relé que conteste, como antes. relaytrabado.js (contraprueba faa6b43a: 13,3 s; ahora 6,3 s)",
+     "prueba": "datos móviles trabados: darse cuenta en ~5 s"
     }
    ],
    "debiles": [
