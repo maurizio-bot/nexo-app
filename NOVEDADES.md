@@ -12,23 +12,21 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- El «leído» y las dos palomitas llegan aunque se corte la conexión justo en ese momento; los archivos ya no se atoran en la fila.
 </es-419>
 <it-IT>
-- Il «letto» e le due spunte arrivano anche se la connessione cade proprio in quel momento; i file non restano più bloccati in coda.
 </it-IT>
 <en-US>
-- “Read” and the double tick now arrive even if the connection drops right then; files no longer get stuck in the queue.
 </en-US>
 <pt-BR>
-- O «lido» e os dois tiques chegam mesmo se a conexão cair bem nessa hora; os arquivos não ficam mais presos na fila.
 </pt-BR>
 <fr-FR>
-- Le « lu » et la double coche arrivent même si la connexion coupe à ce moment ; les fichiers ne restent plus bloqués dans la file.
 </fr-FR>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3084 (17-11-2026)
+- El «leído» y las dos palomitas llegan aunque se corte la conexión justo en ese momento; los archivos ya no se atoran en la fila.
 
 ### APK 3083 (17-11-2026)
 - Todos los botones responden igual al tocarlos; adiós al cuadrado en los botones de las llamadas.
