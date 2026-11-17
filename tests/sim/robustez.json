@@ -727,6 +727,10 @@
     {
      "fallo": "3162 (visto en la 3159; ya pasaba): guardar un VÍDEO en la galería fallaba siempre: se leía su URL blob: con fetch y la CSP no deja leer blob:. 3162: blob_registry.js recuerda el Blob de cada URL de la app. visorfotos.js video_llega_al_nativo (contraprueba 3160)",
      "prueba": "visor de fotos (3159"
+    },
+    {
+     "fallo": "3170/3170b (usuarios 17-11: «las fotos se ven mal»; foto nocturna del S24 Ultra): una foto de la galería o la cámara salía a 800 px y JPEG 65 % salvo con Wi-Fi Direct/Wi-Fi local, también por internet y en grupos. 3170: 1600 px y 82 % por camino rápido (Wi-Fi Direct, misma red, internet en línea o buzón de archivos), 1280 px y 75 % si el único camino es Bluetooth; 3170b: solo por el puente de otro teléfono, 800 px y 65 % (por el puente caben ~300 KB). fotocalidad.js (contraprueba cc6b733d: 800/65 por Bluetooth, internet y grupos; contraprueba 1a868cd4: 1280 por el puente)",
+     "prueba": "CALIDAD DE LAS FOTOS por camino"
     }
    ],
    "debiles": [

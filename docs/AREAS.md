@@ -73,6 +73,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Grupos: texto y adjuntos (≤ 5 MB por internet, una sola subida), desatasco también en grupos (2971, 3071). ×3
 - Estados v3, me gusta, stickers, reacciones, cobros en el chat. ×2
 - Avisos limpios: uno por chat, sin fantasmas ni repetidos, tocar abre el chat (3076–3078). ×2
+- Fotos más nítidas: 1600 px y 82 % por Wi-Fi, Wi-Fi Direct o internet; 1280 px por solo Bluetooth (antes 800 px y 65 %) (usuarios 17-11; 3170, va en la APK siguiente a la 3080). ×1
 
 **En prueba del dueño (rama, APK 3072)**
 - Nota de voz: mantener y soltar envía; deslizar a la izquierda cancela (3143, 3145). ×1
@@ -90,6 +91,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Foto del contacto como icono grande en el aviso (COLA_DE_PULIDO B2). ×1
 - ¿Abrir el chat desde el aviso manda el «leído» de lo que ya estaba? Sin confirmar (PENDIENTES 13-11, puente). ×1
 - Adjuntos de grupo por Bluetooth de más de ~1 MB (robustez.json «grupos»). ×1
+- Fotos con la cámara del propio teléfono (modo noche y su calidad; dueño 17-11, opción A): «Cámara» abre la del teléfono, vuelve a «Antes de enviar» con el ojo; la de NEXO queda para vídeo. En curso, 3171. ×1
 
 **Espera decisión del dueño**
 - Vídeos de TikTok/Instagram/Facebook (dueño 16-11): propuesta (1) enlaces tocables con tarjeta del sitio, abre en su app; (2) NEXO en el menú «Compartir» de Android (nativo); volver con el gesto de atrás (deslizar desde abajo es «inicio» del sistema). Después: vista previa generada por quien manda. Ver dentro de NEXO: no por ahora (inicio de sesión, abrir la seguridad de la app). ×1
