@@ -60,17 +60,22 @@ class NexoFcmService : FirebaseMessagingService() {
         //    WhatsApp). Defensivo: si el sistema no lo permite, el aviso de abajo igual despierta al dueño.
         var started = false
         try {
-            val svc = Intent(this, BleService::class.java)
+            val svc = Intent(this, BleService::class.java).putExtra(NetBgHome.EXTRA_FCM, true) // 3192: el motivo, para el registro
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(svc) else startService(svc)
             started = true
         } catch (e: Throwable) { nlog("No se pudo arrancar el servicio al despertar: ${e.message}", "WARN") }
+        // 3192 (#87, dueño 17-11 «Ok» a guardar cifrada la configuración): con el proceso recién nacido (NEXO cerrada del todo) el
+        // servicio solo no escuchaba internet. La escucha arranca aquí, desde lo guardado y cifrado (NetBgHome; con la app viva no hace
+        // nada: la maneja ella). Sin servicio no: sin él el proceso se congela.
+        val canListen = started && try { NetBgHome.startWithoutApp(applicationContext ?: this, "un toque FCM") } catch (e: Throwable) { false }
 
         // 2) 3076 (dueño 14-11: «notificaciones fantasmas… la de cuando recibo un diagnóstico me aparece como notificación»): ANTES
         //    cada toque ponía un aviso «NEXO · Mensaje nuevo», hubiera o no un mensaje: el toque no dice nada (solo despierta) y
         //    se manda también por cosas que no se leen (diagnósticos, estados) o al abrir un chat (3073). Ahora el toque solo
         //    despierta; el aviso lo pone el mensaje DE VERDAD cuando llega (NetBg/Bluetooth: uno por mensaje, sin repetir).
         //    Solo si el servicio no pudo arrancar (sin él no baja nada) queda un aviso que no promete un mensaje.
-        if (FcmWakePolicy.noticeAfterWake(started)) try { wakeNotice() } catch (e: Throwable) { nlog("Aviso de despertar: ${e.message}", "WARN") }
+        //    3192: y si nadie puede escuchar internet (sin configuración guardada o no arrancó): tampoco bajaría nada.
+        if (FcmWakePolicy.noticeAfterWake(started, canListen)) try { wakeNotice() } catch (e: Throwable) { nlog("Aviso de despertar: ${e.message}", "WARN") }
         else nlog("Despierto: sin aviso (lo pone el mensaje cuando llegue)")
     }
 

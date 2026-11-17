@@ -32,6 +32,10 @@ class NetBg(
     // MI buzón de solicitudes (descifrada y validada como en la app, de alguien que no es contacto): el que escucha pone el aviso
     // del teléfono (con su freno, ReqNotifyPolicy). La solicitud no se consume: queda guardada para la app (drainForApp).
     private val onRequest: (req: Req) -> Unit = { },
+    // 3192 (#87): ¿esta oferta de llamada ya es vieja? (created_at del evento en ms). Sin la app, una escucha nueva vuelve a leer lo
+    // del relé desde lo último que vio la app y no debe hacer sonar ofertas de hace horas (NetBgSaved.callTooOld, el margen de la app).
+    // Ni avisa ni suena; la confirmación de entrega sí sale y el evento queda para la app (lo apunta como perdida). Por defecto, nunca.
+    private val staleCall: (tsMs: Long) -> Boolean = { false },
 ) {
     class Contact(val nx: String, val name: String, val kraw: ByteArray)
     // 3190: solicitud de contacto de mi buzón. kind = "req" (me quieren agregar) o "acc" (aceptó una solicitud MÍA); twin = nombre del
@@ -206,13 +210,15 @@ class NetBg(
     // al plugin). Se reemplaza el conjunto entero en cada llamada.
     fun setAckKeys(m: Map<String, ByteArray>) { ackKeys = m }
 
-    fun start() {
+    // 3192: start/stop sincronizados: la escucha es una por proceso (NetBgHome) y la pueden arrancar a la vez el toque FCM (su hilo),
+    // el servicio y la app; así nunca quedan dos hilos escuchando
+    @Synchronized fun start() {
         if (running || !configured()) return
         running = true
         thread = Thread({ loop() }, "nexo-netbg").apply { isDaemon = true; start() }
         log("Internet en segundo plano: escuchando ${contacts.size} contacto(s) y el buzón de solicitudes en ${relays.size} relé(s)")
     }
-    fun stop() {
+    @Synchronized fun stop() {
         if (!running) return
         running = false
         synchronized(lock) { lock.notifyAll(); relays.values.forEach { it.ws?.close(); it.ws = null; it.authed = false; it.closedAt = 0L } }
@@ -333,7 +339,13 @@ class NetBg(
         val ce = o.optString("ce")
         if (BgInbox.CALL_ID.matches(ce)) onCallEnd(c.nx, ce)
         // #130b: cl:1 = oferta de llamada (1-a-1 o invitación de grupo) → pantalla de llamada, no aviso de mensaje
-        if (n.isNotEmpty()) { onMessage(c.nx, c.name, n, o.optInt("cl") == 1, groupOf(o.optString("p")), o.optInt("cv") == 1); publishDeliveryAck(c, n) }
+        if (n.isNotEmpty()) {
+            val isCall = o.optInt("cl") == 1
+            // 3192: una oferta vieja (p. ej. leída otra vez por la escucha sin la app tras morir el proceso) ya no suena
+            if (isCall && staleCall(ts)) log("Internet en segundo plano: oferta de llamada de ${c.nx} (msgId $n) de hace ${(System.currentTimeMillis() - ts) / 60000} min: ya no suena (la app la verá como perdida)")
+            else onMessage(c.nx, c.name, n, isCall, groupOf(o.optString("p")), o.optInt("cv") == 1)
+            publishDeliveryAck(c, n)
+        }
     }
 
     // 3190: llegó algo a MI buzón de solicitudes. Se abre como en la app (_onReq) y queda guardado para la app: la solicitud NO se

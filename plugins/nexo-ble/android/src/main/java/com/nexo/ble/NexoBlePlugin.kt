@@ -15,14 +15,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
-import java.security.KeyStore
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
 import javax.crypto.Mac
 import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import android.util.Log
 import com.getcapacitor.JSObject
@@ -75,13 +69,16 @@ class NexoBlePlugin : Plugin() {
     companion object {
         // Ronda 2758 (punto 12): la instancia que siguió recibiendo con la app cerrada; la nueva la releva al abrir
         @Volatile internal var orphan: NexoBlePlugin? = null
-        @Volatile internal var netBgShared: NetBg? = null
+        // 3192: la escucha de internet es UNA por proceso y vive en NetBgHome (también sin la app: servicio o toque FCM desde lo
+        // guardado); la app usa esa misma (netBg())
+        internal val netBgShared: NetBg? get() = NetBgHome.peek()
         // Ronda 2785 (#87): registro nativo persistente en disco (NativeLog.kt), compartido por el proceso (lo usan el
         // plugin y NetBg, también con la app cerrada). Para que el diagnóstico muestre qué hizo el nativo sin WebView.
         @Volatile internal var nativeLogShared: NativeLog? = null
         // Auditoría C1 (ronda 2777): clave por contacto (NEXO ID → clave de firma, derivada del secreto de la pareja por
         // la app) para FIRMAR la confirmación (✓✓) que se manda con la app cerrada. Es estática: la pone la app
-        // (setAckKeys) y vive en el proceso (sobrevive con la app cerrada, como la config de internet); no va a disco.
+        // (setAckKeys) y vive en el proceso (sobrevive con la app cerrada, como la config de internet). 3192: también se guarda
+        // cifrada en el teléfono (NetBgHome.saveAck) para la escucha de internet sin la app.
         internal val ackKeys = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
         // Firma corta (base64 de 12 bytes) de una confirmación, igual que e2eAckTag en la app (HMAC-SHA256 de
         // "nexo-ack|<campos>" con la clave de la pareja).
@@ -344,6 +341,7 @@ class NexoBlePlugin : Plugin() {
         CrashLog.install(appCtx) // 3120: guardar las primeras líneas de un fallo al caer (diagnóstico)
         live = this
         takeOverFromClosed()
+        NetBgHome.appTookOver(appCtx!!) // 3192: si la escucha de internet corría sin la app, ahora la maneja la app (la misma)
         watchDefaultNetwork() // 3085: avisar a la app de Wi-Fi ↔ datos al momento
         // Seguridad fase 3: cifrar en segundo plano lo que aún esté en claro (archivos de versiones anteriores)
         // (prioridad baja; de lo ya cifrado solo se lee la cabecera)
@@ -552,7 +550,6 @@ class NexoBlePlugin : Plugin() {
     // Clave de datos (AES-256) aleatoria, guardada envuelta (AES-GCM) con una clave del Android Keystore que no
     // sale del chip; en memoria solo mientras la app corre. Sin requisito de huella: los mensajes deben poder
     // guardarse con la app bloqueada o en segundo plano.
-    private val atRestAlias = "nexo_at_rest_wrap_v1"
     @Volatile private var atRestKey: SecretKey? = null
     @Volatile private var atRestFailed = false
     @Volatile internal var atRestMigration = "en curso"
@@ -572,35 +569,9 @@ class NexoBlePlugin : Plugin() {
     internal fun atRestDataKey(): SecretKey? {
         atRestKey?.let { return it }
         if (atRestFailed) return null
+        // 3192: la clave en sí la da AtRestKey (movida tal cual desde aquí; también la usa la escucha de internet sin la app)
         return try {
-            val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            val wrap = (ks.getKey(atRestAlias, null) as? SecretKey) ?: KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").run {
-                init(KeyGenParameterSpec.Builder(atRestAlias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .setKeySize(256)
-                    .build())
-                generateKey()
-            }
-            val prefs = context.getSharedPreferences("nexo_at_rest", Context.MODE_PRIVATE)
-            val stored = prefs.getString("dek", null)
-            val dek: ByteArray = if (stored == null) {
-                val k = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
-                val c = Cipher.getInstance("AES/GCM/NoPadding")
-                c.init(Cipher.ENCRYPT_MODE, wrap)
-                val blob = c.iv + c.doFinal(k)
-                if (!prefs.edit().putString("dek", Base64.encodeToString(blob, Base64.NO_WRAP)).commit()) throw Exception("no se pudo guardar la clave")
-                k
-            } else {
-                val blob = Base64.decode(stored, Base64.NO_WRAP)
-                val c = Cipher.getInstance("AES/GCM/NoPadding")
-                c.init(Cipher.DECRYPT_MODE, wrap, GCMParameterSpec(128, blob, 0, 12))
-                c.doFinal(blob, 12, blob.size - 12)
-            }
-            val key = SecretKeySpec(dek, "AES")
-            // Autoprueba antes de usarla
-            val probe = "nexo-at-rest-probe".toByteArray()
-            if (!AtRestStore.decrypt(key, AtRestStore.encrypt(key, probe)).contentEquals(probe)) throw Exception("autoprueba fallida")
+            val key = AtRestKey.get(context, create = true) ?: throw Exception("sin clave")
             atRestKey = key
             key
         } catch (e: Exception) {

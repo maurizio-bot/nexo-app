@@ -33,9 +33,12 @@ object AccountMove {
     private val BIG_NAME = Regex("^[A-Za-z0-9_-]{1,64}\\.enc$")
 
     /** Qué archivos de la carpeta de la app viajan (los propios del teléfono, no: buzón con la app cerrada, mapas de
-     *  direcciones Bluetooth, registros de diagnóstico, temporales). */
+     *  direcciones Bluetooth, registros de diagnóstico, temporales).
+     *  3192 (#87): tampoco la configuración de la escucha de internet sin la app ni las claves del ✓✓ (NetBgSaved: secretos de pareja
+     *  de ESTE teléfono): copiarlos dejaría al nuevo escuchando y confirmando con lo de otro; la app del nuevo los escribe al abrirse. */
     fun travels(name: String, skip: Set<String>): Boolean =
-        NAME.matches(name) && !name.endsWith(".nxtmp") && name !in skip && !name.startsWith("nexo_diag") && !name.startsWith("nexo_bg_inbox")
+        NAME.matches(name) && !name.endsWith(".nxtmp") && name !in skip && !name.startsWith("nexo_diag") && !name.startsWith("nexo_bg_inbox") &&
+            !NetBgSaved.isFile(name)
 
     const val RATCHET_FILE = "nexo_ratchet.json"
 
@@ -123,10 +126,11 @@ object AccountMove {
         }
     }
 
-    /** Lo que había de NEXO en este teléfono fuera (antes de importar en el nuevo, o tras pasarla en el viejo). */
+    /** Lo que había de NEXO en este teléfono fuera (antes de importar en el nuevo, o tras pasarla en el viejo).
+     *  3192: también lo guardado para la escucha de internet sin la app (no viaja, pero es de la cuenta: se borra con ella). */
     fun wipe(dir: File, skip: Set<String>, bigDir: File?): Int {
         var n = 0
-        (dir.listFiles() ?: emptyArray()).filter { it.isFile && travels(it.name, skip) }.forEach { if (it.delete()) n++ }
+        (dir.listFiles() ?: emptyArray()).filter { it.isFile && (travels(it.name, skip) || NetBgSaved.isFile(it.name)) }.forEach { if (it.delete()) n++ }
         bigDir?.listFiles()?.forEach { if (it.delete()) n++ }
         return n
     }

@@ -6,7 +6,17 @@
 //                                   3190: {"req":{"from":nx,"to":nx,"t":"req"|"acc","name":"…","ago":s?}} = una SOLICITUD de contacto
 //                                   hecha por el código REAL de la app (NetLink.sendRequest del bundle compilado) y publicada;
 //                                   {"raw":{"to":nx,"content":"…"}} = basura al buzón de solicitudes de `to`
+//                                   3192: PK = la clave pública de la identidad REAL de este proceso (el emisor A);
+//                                   {"send":{"from":nx,"to":nx,"toPk":b64,"p":"…","ago":s?}} = NetLink.send REAL de A (sella, firma
+//                                   y publica el sobre igual que en el teléfono); {"acks":{"me":nx,"peer":nx,"peerPk":b64}} = A lee
+//                                   lo del relé con su NetLink REAL (_onEvent: firma del evento, etiqueta, sobre) y comprueba cada ✓✓
+//                                   con e2eAckTag como BleAckSystem.processIncomingAck → ACKS [{msgId, from, ok}]
 //  node netbg_helper.mjs reqvectors → 3190: etiquetas del buzón de solicitudes (_reqTagPub) y solicitudes cifradas por la app real
+//  node netbg_helper.mjs peer       → 3192: otra app REAL (el receptor B, con su propia identidad): PK; luego, por la entrada estándar,
+//                                   {"cfg":{"me":nx,"relays":[url],"contacts":[{nx,name,pk}],"lastSeen":ms?}} → CFG <lo que manda a netBgConfig>
+//                                   (NetLink._bgConfig real) y ACK <lo que manda a setAckKeys> (e2eAckKey, como _pushAckKeys);
+//                                   {"drain":{"me":nx,"contacts":[…],"events":[…]}} → DRAINED: lo que la app recoge de netBgDrain
+//                                   (NetLink._drainBg real: firma, etiqueta, sobre) y entrega al chat (_onNetPayload)
 // El código real sale de tests/sim/builds/<NEXO_BUILD o wip>/src (bash tests/sim/build.sh wip; en CI se compila antes de estas pruebas).
 import fs from 'fs';
 import path from 'path';
@@ -24,6 +34,7 @@ const { bytesToHex, hexToBytes } = await import(pathToFileURL(path.join(deps, '@
 const N = BigInt('0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141');
 const utf8 = (s) => new TextEncoder().encode(s);
 const scalar = (b) => { const x = BigInt('0x' + bytesToHex(b)) % (N - 1n) + 1n; return hexToBytes(x.toString(16).padStart(64, '0')); };
+const _nidLower = (x) => String(x || '').trim().toLowerCase();
 const day = (o) => new Date(Date.now() + (o || 0) * 86400000).toISOString().substring(0, 10);
 const tag = (kraw, to, d) => { const sk = scalar(hmac(sha256, kraw, utf8('tag|' + to + '|' + d))); return { sk: bytesToHex(sk), pub: bytesToHex(schnorr.getPublicKey(sk)) }; };
 async function seal(kraw, from, to, body) {
@@ -51,7 +62,7 @@ async function realNet() {
   await e2e.initE2E(); // la identidad (clave pública que va en la solicitud)
   const net = await import(pathToFileURL(path.join(dir, 'net/net_link.js')).href);
   const shared = await import(pathToFileURL(path.join(dir, 'net/net_link_shared.js')).href);
-  _real = { NetLink: net.NetLink, shared, pk: e2e.e2eMyPublicKey() };
+  _real = { NetLink: net.NetLink, shared, pk: e2e.e2eMyPublicKey(), e2e };
   return _real;
 }
 // Solicitud ('req') o aceptación ('acc') de `from` para `to`, tal como la publica la app (el evento firmado, sin mandarlo a ningún relé)
@@ -67,7 +78,50 @@ async function realRequest(from, to, type, name, agoS) {
   return ev;
 }
 
+// 3192: una app REAL (NetLink) con un contacto: lo justo de `ble` que usa NetLink (mi ID y el contacto con su clave, por internet)
+async function realApp(me, contacts, onPayload) {
+  const { NetLink } = await realNet();
+  const ble = { localNexoId: me, getBLEContacts: () => contacts.map((c) => ({ nexoId: c.nx, name: c.name || '', publicKey: c.pk, nt: 1 })) };
+  if (onPayload) ble._onNetPayload = onPayload;
+  const nl = new NetLink(ble);
+  nl.online = () => true;
+  nl.tick = async () => {}; nl._hello = () => {}; nl._wake = () => {}; // sin conexiones propias a los relés: solo lo que se le pide
+  return nl;
+}
+
 const mode = process.argv[2];
+if (mode === 'peer') {
+  const { pk, e2e } = await realNet();
+  say('PK ' + pk);
+  const rl = readline.createInterface({ input: process.stdin });
+  let chain = Promise.resolve();
+  rl.on('line', (line) => {
+    if (!line.trim()) return;
+    chain = chain.then(async () => {
+      const o = JSON.parse(line);
+      if (o.cfg) {
+        const c = o.cfg;
+        let got = null;
+        globalThis.window.NEXO_NET_RELAYS = c.relays;
+        globalThis.window.Capacitor = { Plugins: { NexoBLE: { netBgConfig: async (x) => { got = x; return {}; }, saveToFile: async () => ({}) } } };
+        const nl = await realApp(c.me, c.contacts);
+        if (c.lastSeen) nl.state.lastSeen = c.lastSeen; // lo último que vio la app (since = eso + 1 s)
+        await nl._bgConfig();
+        const keys = [];
+        for (const x of c.contacts) keys.push({ nx: x.nx, key: await e2e.e2eAckKey(x.pk) });
+        say('CFG ' + JSON.stringify(got));
+        say('ACK ' + JSON.stringify({ keys }));
+      } else if (o.drain) {
+        const d = o.drain, out = [];
+        globalThis.window.Capacitor = { Plugins: { NexoBLE: { netBgDrain: async () => ({ events: d.events }), saveToFile: async () => ({}) } } };
+        const nl = await realApp(d.me, d.contacts, (nx, p) => out.push({ nx, p }));
+        await nl._refreshTags();
+        const n = await nl._drainBg();
+        say('DRAINED ' + JSON.stringify({ n, got: out }));
+      }
+    }).catch((e) => say('ERROR ' + (e && e.message)));
+  });
+}
 if (mode === 'reqvectors') {
   const { shared, pk, NetLink } = await realNet();
   const out = { tags: [], reqs: [], pk };
@@ -144,7 +198,42 @@ if (mode === 'relay') {
   let chain = Promise.resolve(); // cola: una publicación tras otra, en el orden de llegada de las líneas
   rl.on('line', (line) => {
     if (!line.trim()) return;
-    if (line.trim() === 'STATS') { chain = chain.then(() => { say('STATS ' + JSON.stringify({ auths: relay.stats.auths, published: relay.stats.published, rejected: relay.stats.rejected })); }); return; }
+    if (line.trim() === 'STATS') { chain = chain.then(() => { say('STATS ' + JSON.stringify({ auths: relay.stats.auths, published: relay.stats.published, rejected: relay.stats.rejected, conns: relay.stats.conns, open: relay.wss.clients.size })); }); return; }
+    // 3192: la identidad real de este proceso (el emisor A de NetBgSinAppTest)
+    if (line.trim() === 'PK') { chain = chain.then(async () => { const { pk } = await realNet(); say('PK ' + pk); }).catch((e) => say('ERROR ' + (e && e.message))); return; }
+    if (/^\{"send"/.test(line.trim())) {
+      chain = chain.then(async () => {
+        const s = JSON.parse(line).send;
+        globalThis.window = globalThis.window || { crypto: globalThis.crypto };
+        globalThis.window.NEXO_NET_RELAYS = [url];
+        const nl = await realApp(s.from, [{ nx: s.to, name: s.name || '', pk: s.toPk }]);
+        let ev = null;
+        nl._publishOwn = (e) => { ev = e; return Promise.resolve(true); };
+        const realNow = Date.now;
+        if (s.ago) Date.now = () => realNow() - s.ago * 1000; // hecho hace `ago` segundos (created_at y t de entonces)
+        try { await nl.send(s.to, s.p); } finally { Date.now = realNow; }
+        await publishEv(ev);
+      }).catch((e) => say('ERROR ' + (e && e.message)));
+      return;
+    }
+    if (/^\{"acks"/.test(line.trim())) {
+      chain = chain.then(async () => {
+        const a = JSON.parse(line).acks, got = [];
+        const { e2e } = await realNet();
+        const nl = await realApp(a.me, [{ nx: a.peer, pk: a.peerPk }], (nx, p) => got.push({ nx, p }));
+        await nl._refreshTags();
+        for (const ev of relay.events.slice()) await nl._onEvent(JSON.parse(JSON.stringify(ev)));
+        const out = [];
+        for (const g of got) {
+          let k = null; try { k = JSON.parse(g.p); } catch (e) { continue; }
+          if (!k || k.type !== 'ack') continue;
+          const exp = await e2e.e2eAckTag(a.peerPk, 'ack|' + k.msgId + '|' + _nidLower(k.from) + '|' + a.me);
+          out.push({ msgId: k.msgId, from: k.from, via: g.nx, ok: !!(k.a && exp && k.a === exp) });
+        }
+        say('ACKS ' + JSON.stringify(out));
+      }).catch((e) => say('ERROR ' + (e && e.message)));
+      return;
+    }
     // Lo que el relé tiene guardado (para comprobar lo que PUBLICA NetBg, p. ej. la confirmación de entrega del #87)
     if (line.trim() === 'DUMP') { chain = chain.then(() => { say('EVENTS ' + JSON.stringify(relay.events.map((e) => ({ tags: e.tags, content: e.content })))); }); return; }
     if (/^\{"(req|raw)"/.test(line.trim())) { chain = chain.then(() => publishReq(line).catch((e) => say('ERROR ' + (e && e.message)))); return; }

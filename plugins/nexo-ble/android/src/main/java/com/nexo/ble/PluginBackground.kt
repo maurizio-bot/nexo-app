@@ -32,9 +32,7 @@ internal fun NexoBlePlugin.groupName(gid: String): String? {
     val now = System.currentTimeMillis()
     val cached = groupNames
     val map = if (cached != null && now - cached.first < 60000) cached.second else try {
-        val g = JSONObject(atRest().read("nexo_groups.json") ?: "{}").optJSONObject("groups")
-        val m = HashMap<String, String>()
-        g?.keys()?.forEach { k -> g.optJSONObject(k)?.optString("name")?.takeIf { it.isNotEmpty() }?.let { m[k.lowercase()] = it } }
+        val m = NetBgSaved.groupNames(atRest().read("nexo_groups.json")) // 3192: el mismo análisis que el aviso sin la app (NetBgHome)
         groupNames = now to m; m
     } catch (e: Exception) { emptyMap() }
     return map[gid.lowercase()]
@@ -255,94 +253,40 @@ internal fun NexoBlePlugin.getFcmTokenImpl(call: PluginCall) {
 }
 
 // ===== Internet en segundo plano (NetBg): escucha los relés mientras la app no está a la vista =====
-// Una por proceso: sigue aunque se cierre la actividad mientras el servicio de Bluetooth mantiene el proceso
-internal fun NexoBlePlugin.netBg(): NetBg = netBgShared ?: synchronized(NexoBlePlugin::class.java) {
+// Una por proceso: sigue aunque se cierre la actividad mientras el servicio de Bluetooth mantiene el proceso.
+// 3192 (#87): vive en NetBgHome (no en el plugin) para poder arrancar también SIN la app desde lo guardado (servicio o toque FCM en un
+// proceso nuevo); la app usa esa misma instancia (nunca dos escuchando) y lo que oye llega aquí si el plugin vive (netBgOnMessage).
+internal fun NexoBlePlugin.netBg(): NetBg = NetBgHome.get(appCtx ?: context)
+
+// Lo que NetBg oyó con la app viva (abierta, en segundo plano o cerrada con el proceso vivo). El aviso, con las mismas reglas y textos
+// que sin la app: NetBgHome.notifyMessage (antes estaba aquí dentro).
+internal fun NexoBlePlugin.netBgOnMessage(nx: String, name: String, msgId: String, isCall: Boolean, group: String, video: Boolean) {
     // Ronda 2774 (el dueño: con la pantalla apagada no llegan por Wi-Fi/internet): al recibir por internet en segundo
     // plano se renueva el wakelock (rxWake), igual que por Bluetooth y Wi-Fi, para que dé tiempo a avisar antes de que
     // el teléfono vuelva a dormir.
-    netBgShared ?: NetBg({ nx, name, msgId, isCall, group, video ->
-        if (appInBackground) rxWake()
-        // 3172 (dueño 17-11): como por Bluetooth (backgroundNotify), el chat ABIERTO no avisa en un parpadeo a segundo plano (< 15 s,
-        // BgNotifyPolicy): lo está leyendo y la app lo muestra al volver. Pasado ese margen (pantalla apagada) avisa como siempre.
-        // Las llamadas suenan igual (perder una es peor que un aviso de más; la app no la duplica).
-        val silent = !closedMode && BgNotifyPolicy.silentFor(activeChatNx, nx, group, System.currentTimeMillis() - bgSinceMs)
-        // #130b (dueño 31-10): una oferta de llamada/videollamada que llega por internet con la app en segundo plano o
-        // congelada tiene que salir a PANTALLA COMPLETA (enciende el teléfono, Contestar/Rechazar), como la 1-a-1 por
-        // Bluetooth y como las llamadas de grupo. Antes salía como «mensaje nuevo» porque NetBg solo miraba el msgId.
-        if (isCall) {
-            nlog()?.add("INFO", "NET", "oferta de llamada de $nx por internet (msgId $msgId): pantalla de llamada")
-            MsgNotifier.get(context).incomingCall(nx, name, video, msgId) // 3089: «Videollamada entrante» si lo es
-        } else if (SeenMsgs.has(context, msgId)) {
-            // 3008: reenvío de un mensaje que este teléfono ya tiene → sin «Mensaje nuevo» (la ✓✓ sí se devuelve, para que el otro pare)
-            nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): ese mensaje ya estaba en el teléfono (reenvío): sin aviso")
-        } else if (silent) {
-            nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): su chat está abierto (parpadeo a segundo plano): sin aviso")
-        } else {
-            // 3076: un mensaje de GRUPO avisa en el grupo, con su nombre y quién lo manda (como por Bluetooth: notifyMessage)
-            val gname = groupName(group)
-            nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): aviso de mensaje nuevo por internet" + if (gname != null) " (grupo $group)" else "")
-            if (gname != null) MsgNotifier.get(context).message(group, gname, msgId, "$name: " + NativeLang.t(context, "msg_new"), true)
-            else MsgNotifier.get(context).message(nx, name, msgId, "", true)
-        }
-    }, { nlog()?.add("INFO", "NET", it); Log.i("NEXO_NET", it) }, { nx, offer ->
-        // 3087: el que llama colgó (sobre con ce, por internet) → deja de sonar ya
-        if (MsgNotifier.get(context).cancelCallFor(nx, offer)) nlog()?.add("INFO", "NET", "$nx colgó: la llamada deja de sonar")
-    }, { req -> requestNotify(req) }).also { netBgShared = it }
+    if (appInBackground) rxWake()
+    // 3172 (dueño 17-11): como por Bluetooth (backgroundNotify), el chat ABIERTO no avisa en un parpadeo a segundo plano (< 15 s,
+    // BgNotifyPolicy): lo está leyendo y la app lo muestra al volver. Pasado ese margen (pantalla apagada) avisa como siempre.
+    // Las llamadas suenan igual (perder una es peor que un aviso de más; la app no la duplica).
+    val silent = !closedMode && BgNotifyPolicy.silentFor(activeChatNx, nx, group, System.currentTimeMillis() - bgSinceMs)
+    NetBgHome.notifyMessage(appCtx ?: context, nx, name, msgId, isCall, group, video, silent) { groupName(it) }
 }
 
-// 3190 (dueño 17-11: «hay que poner esa notificación: hay un contacto que te quiere agregar»): NetBg oyó una solicitud de contacto en
-// mi buzón con la app en segundo plano o cerrada → aviso del teléfono («Ana (NX…) quiere agregarte en NEXO»), con freno anti-spam
-// (ReqNotifyPolicy: 1 por remitente cada 24 h, 3 por hora; el resto, en un aviso agrupado y callado). El freno se guarda en las
-// preferencias (sobrevive a un reinicio del proceso). Con la app a la vista no: ahí basta el aviso de dentro de la app. La
-// solicitud la guarda la app en «Solicitudes para ti» al abrirse (NetBg se la pasa con netBgDrain). Al registro: el NEXO ID, no el contenido.
-private const val PREF_REQ_NOTIFY = "req_notify_state"
-internal fun NexoBlePlugin.requestNotify(req: NetBg.Req) {
-    val ctx = appCtx ?: return
-    val lv = NexoBlePlugin.live
-    if (lv != null && !lv.appInBackground && !lv.closedMode) { nlog()?.add("INFO", "NET", "Solicitud de ${req.from}: la app está a la vista: sin aviso del teléfono"); return }
-    val now = System.currentTimeMillis()
-    val (verdict, grouped) = synchronized(ReqNotifyPolicy) {
-        val prefs = ctx.getSharedPreferences(MsgNotifier.PREFS, Context.MODE_PRIVATE)
-        val st = ReqNotifyPolicy.State.fromJson(prefs.getString(PREF_REQ_NOTIFY, null))
-        val v = ReqNotifyPolicy.decide(st, req.from, now)
-        prefs.edit().putString(PREF_REQ_NOTIFY, st.toJson()).apply()
-        v to st.groupN
-    }
-    val what = if (req.kind == "acc") "aceptación" else "solicitud"
-    when (verdict) {
-        ReqNotifyPolicy.Verdict.NOTIFY -> {
-            val ok = MsgNotifier.get(ctx).contactRequest(req.from, ReqNotifyPolicy.body(NativeLang.get(ctx), req.name, req.from, req.kind == "acc", req.twin))
-            nlog()?.add("INFO", "NET", "Solicitud de ${req.from} ($what${if (req.twin.isNotEmpty()) ", nombre de otro contacto" else ""}): " + if (ok) "aviso puesto" else "sin aviso (notificaciones desactivadas)")
-        }
-        ReqNotifyPolicy.Verdict.GROUP -> {
-            MsgNotifier.get(ctx).contactRequestsGrouped(ReqNotifyPolicy.groupBody(NativeLang.get(ctx), grouped))
-            nlog()?.add("INFO", "NET", "Solicitud de ${req.from} ($what): frenado (tope de ${ReqNotifyPolicy.MAX_PER_WINDOW} por hora): va en el aviso agrupado ($grouped)")
-        }
-        ReqNotifyPolicy.Verdict.SAME_SENDER -> nlog()?.add("INFO", "NET", "Solicitud de ${req.from} ($what): frenado (ya hubo aviso suyo en las últimas 24 h)")
-    }
-}
+// 3190: el aviso de una solicitud de contacto (con su freno) está en NetBgHome.requestNotify (3192: también sin la app)
 
 internal fun NexoBlePlugin.netBgConfigImpl(call: PluginCall) {
-    val me = call.getString("me") ?: run { call.reject("falta me"); return }
-    val relays = ArrayList<String>(); val list = ArrayList<NetBg.Contact>()
-    try {
-        call.getArray("relays")?.let { for (i in 0 until it.length()) relays.add(it.getString(i)) }
-        call.getArray("contacts")?.let { for (i in 0 until it.length()) { val o = it.getJSONObject(i); list.add(NetBg.Contact(o.getString("nx").lowercase(), o.optString("name"), Secp256k1.unhex(o.getString("kraw")))) } }
-    } catch (e: Exception) { call.reject("configuración ilegible"); return }
-    val since = (call.getData().optLong("since", 0L))
-    // 3190: para el aviso de una solicitud de contacto (NetBg.onReqEvent): todos mis contactos (NEXO ID → nombre: «ya es contacto» y
-    // el aviso de posible impostor), a quién mandé yo una solicitud y desde cuándo la app ya no escucha su buzón
-    val known = HashMap<String, String>(); val reqOut = HashSet<String>()
-    try {
-        call.getArray("known")?.let { for (i in 0 until it.length()) { val o = it.optJSONObject(i) ?: continue; val nx = o.optString("nx").lowercase(); if (nx.isNotEmpty()) known[nx] = o.optString("name") } }
-        call.getArray("reqOut")?.let { for (i in 0 until it.length()) { val nx = it.optString(i).lowercase(); if (nx.isNotEmpty()) reqOut.add(nx) } }
-    } catch (e: Exception) { }
-    val reqSince = call.getData().optLong("reqSince", 0L)
-    netBg().configure(me, relays, since, list, known, reqOut, reqSince)
+    // 3192: se lee con NetBgSaved.fromApp (lo mismo que se leía aquí: «falta me» / «configuración ilegible»). 3190: para el aviso de una
+    // solicitud de contacto (NetBg.onReqEvent): todos mis contactos (NEXO ID → nombre: «ya es contacto» y el aviso de posible impostor),
+    // a quién mandé yo una solicitud y desde cuándo la app ya no escucha su buzón
+    val cfg = try { NetBgSaved.fromApp(call.data) } catch (e: NetBgSaved.BadConfig) { call.reject(e.message); return }
+    netBg().configure(cfg.me, cfg.relays, cfg.since, cfg.contacts, cfg.known, cfg.reqOut, cfg.reqSince)
     netBg().setAckKeys(HashMap(ackKeys))   // #87: para confirmar la ENTREGA (✓✓) con la app cerrada
+    // 3192 (#87, dueño 17-11 «Ok»): y se guarda CIFRADA en el teléfono (solo si cambió) para que la escucha arranque aunque Android haya
+    // cerrado NEXO (NetBgHome.startWithoutApp). Pasando la cuenta a otro teléfono no se escribe nada (moveFrozen, como saveToFile).
+    if (!moveFrozen) NetBgHome.saveConfig(appCtx ?: context, atRest(), cfg)
     // 3190: también sin contactos por internet (escucha mi buzón de solicitudes): basta con mi ID y los relés
     if (appInBackground && netBg().configured()) { wifiLockHold(true); netBg().start() }
-    call.resolve(JSObject().put("contacts", list.size).put("running", netBg().running))
+    call.resolve(JSObject().put("contacts", cfg.contacts.size).put("running", netBg().running))
 }
 
 // 3033: lo que la escucha de internet en segundo plano recibió (eventos del relé, cifrados) para que la app lo procese
@@ -355,8 +299,8 @@ internal fun NexoBlePlugin.netBgDrainImpl(call: PluginCall) {
 }
 
 // Auditoría C1 (ronda 2777): la app nos da, por contacto, la clave con la que firmar la confirmación (✓✓) del modo
-// cerrado (ver closedReceive). La clave (base64) la deriva la app del secreto de la pareja; aquí solo se guarda en
-// memoria del proceso. Se reemplaza el conjunto en cada llamada.
+// cerrado (ver closedReceive). La clave (base64) la deriva la app del secreto de la pareja; aquí se guarda en memoria del
+// proceso (y, desde la 3192, cifrada en el teléfono para la escucha sin la app). Se reemplaza el conjunto en cada llamada.
 internal fun NexoBlePlugin.setAckKeysImpl(call: PluginCall) {
     try {
         val arr = call.getArray("keys")
@@ -368,6 +312,8 @@ internal fun NexoBlePlugin.setAckKeysImpl(call: PluginCall) {
             if (Regex("^nx[0-9a-z]{8}$").matches(nx) && key.isNotEmpty()) ackKeys[nx] = key
         }
         netBgShared?.setAckKeys(HashMap(ackKeys))   // #87: que el modo cerrado por internet también pueda firmar el ✓✓
+        // 3192 (#87, dueño 17-11 «Ok»): y cifradas en el teléfono (solo si cambiaron), para el ✓✓ de la escucha sin la app
+        if (!moveFrozen) NetBgHome.saveAck(appCtx ?: context, atRest(), HashMap(ackKeys))
         call.resolve(JSObject().put("keys", ackKeys.size))
     } catch (e: Exception) { call.reject("claves de confirmación ilegibles") }
 }

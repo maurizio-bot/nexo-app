@@ -146,6 +146,17 @@ class BleService : Service() {
         // La alarma de vigilancia (cada ~15 min) la programa el servicio al arrancar, en cuanto NEXO tiene cuenta (NEXO ID guardado);
         // otra vez cuando la app le da el NEXO ID (cuenta nueva o recuperada con el servicio ya en marcha)
         if (!watchdogArmed || !nexoId.isNullOrEmpty()) watchdogArmed = NexoRestartReceiver.arm(this)
+        // 3192 (#87, dueño 17-11 «Ok» a guardar cifrada la configuración): sin la app viva en este proceso (proceso nuevo: vuelta sola,
+        // toque FCM o Android reinició el servicio) el servicio no escuchaba internet: ahora la escucha arranca desde lo guardado y
+        // cifrado (NetBgHome; lee archivos y el Keystore: en otro hilo). Con la app viva no hace nada (la maneja ella). Si el servicio no
+        // quedó en primer plano, se para: sin él el proceso se congela y no tiene sentido tener la Wi-Fi despierta.
+        if (fgFail != null) NetBgHome.stopWithoutApp(this, "el servicio no pudo ponerse en primer plano")
+        else if (NetBgHome.mayStart()) {
+            val why = NetBgSaved.why(restart?.why, intent?.getBooleanExtra(NetBgHome.EXTRA_FCM, false) == true, intent == null)
+            val app = applicationContext
+            // (si el servicio ya se paró cuando le toca al hilo, nada: sin servicio no se deja escuchando)
+            Thread({ try { if (live != null) NetBgHome.startWithoutApp(app, why) } catch (e: Throwable) { } }, "nexo-netbg-sinapp").start()
+        }
 
         if (currentNexoId.isNullOrEmpty()) {
             Log.w(TAG, "Sin nexoId, advertising postergado hasta recibir setAdvertisingData")
@@ -167,6 +178,7 @@ class BleService : Service() {
         if (live === this) live = null
         handler.removeCallbacks(rotate)
         stopAdvertisingInternal()
+        NetBgHome.stopWithoutApp(this, "el servicio se detuvo") // 3192: sin la app ni el servicio, no se deja la Wi-Fi despierta
         super.onDestroy()
     }
 

@@ -184,7 +184,7 @@ class MsgNotifier(private val ctx: Context) {
     fun cancelUpdate() { try { NotificationManagerCompat.from(ctx).cancel(UPDATE_NOTIF_ID) } catch (e: Exception) { } }
 
     // 3190 (dueño 17-11: «hay que poner esa notificación: hay un contacto que te quiere agregar»): solicitud de contacto con la app en
-    // segundo plano o cerrada (la decide PluginBackground.requestNotify con su freno). Canal propio (se puede silenciar aparte de los
+    // segundo plano o cerrada (la decide NetBgHome.requestNotify con su freno). Canal propio (se puede silenciar aparte de los
     // mensajes). Un aviso por remitente; en la pantalla de bloqueo solo «Solicitud de contacto». Tocarlo abre NEXO en «Agregar» →
     // «Solicitudes para ti» (destino REQ_TARGET, el mismo extra que abre un chat). false = notificaciones desactivadas.
     private fun reqChannel() {

@@ -8,9 +8,10 @@ import kotlin.test.assertTrue
 // 3076 (dueño 14-11: «notificaciones fantasmas… mensaje que llegue, notificación que llegue, que no se repita»)
 class NotifGhostTest {
     // El toque FCM no trae contenido: no pone «Mensaje nuevo». Solo si el servicio no arrancó queda un aviso neutro.
+    // 3192: o si nadie escucha internet tras el toque (más casos en NetBgSavedTest.avisoDelToqueFcm)
     @Test fun toqueSinAvisoSalvoQueNoArranqueElServicio() {
-        assertFalse(FcmWakePolicy.noticeAfterWake(true), "con el servicio arrancado, el aviso lo pone el mensaje al llegar")
-        assertTrue(FcmWakePolicy.noticeAfterWake(false), "sin servicio no baja nada: aviso neutro para abrir NEXO")
+        assertFalse(FcmWakePolicy.noticeAfterWake(true, true), "con el servicio arrancado y la escucha de internet, el aviso lo pone el mensaje al llegar")
+        assertTrue(FcmWakePolicy.noticeAfterWake(false, true), "sin servicio no baja nada: aviso neutro para abrir NEXO")
     }
 
     // El aviso de internet en segundo plano de un mensaje de GRUPO cae en el grupo (env.g), no en el chat 1-a-1 del que lo manda
