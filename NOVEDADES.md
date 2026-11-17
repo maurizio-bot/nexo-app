@@ -13,18 +13,23 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <!-- APK -->
 <es-419>
 - Todos los botones responden igual al tocarlos; adiós al cuadrado en los botones de las llamadas.
+- Un contacto ya no se queda arriba en tu lista si no te escribió nada nuevo.
 </es-419>
 <it-IT>
 - Tutti i pulsanti rispondono allo stesso modo al tocco; addio al quadrato sui pulsanti delle chiamate.
+- Un contatto non resta più in cima alla lista se non ti ha scritto niente di nuovo.
 </it-IT>
 <en-US>
 - All buttons now respond the same way when tapped; no more square on the call buttons.
+- A contact no longer stays at the top of your list if they haven't sent anything new.
 </en-US>
 <pt-BR>
 - Todos os botões respondem igual ao toque; adeus ao quadrado nos botões das chamadas.
+- Um contato não fica mais no topo da lista se não te mandou nada novo.
 </pt-BR>
 <fr-FR>
 - Tous les boutons réagissent de la même façon au toucher ; fini le carré sur les boutons d'appel.
+- Un contact ne reste plus en haut de la liste s'il ne vous a rien écrit de nouveau.
 </fr-FR>
 <!-- /APK -->
 
