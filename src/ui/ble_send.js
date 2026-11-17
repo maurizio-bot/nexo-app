@@ -297,9 +297,13 @@ export const BLE_SEND_METHODS = {
         var isConnecting = state.state === BLE_STATES.CONNECTING || state.state === BLE_STATES.DISCOVERING_SERVICES;
 
         if (self._cameraBlePaused) {
+          // 3197 (hallazgo del ayudante de la 3193, 17-11): mientras espera a que se cierre la cámara (≤ 8 s) cuenta como en vuelo; antes
+          // el reenvío de pendientes lo mandaba en ese rato y al cerrarla salía otra vez
+          var heldCam = self._holdOut(msgId);
           self._waitIfCameraPaused().then(function() {
             self.sendChatMessage(deviceUUID, content, msgId, msgSeq).then(resolve).catch(reject);
-          }).catch(reject);
+            heldCam();
+          }).catch(function(err) { heldCam(); reject(err); });
           return;
         }
 

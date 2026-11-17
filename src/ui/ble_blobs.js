@@ -214,11 +214,17 @@ export const BLE_BLOB_METHODS = {
 
   sendFile(deviceUUID, fileId, base64Data, meta) {
     var self = this;
-    return new Promise(function(resolve, reject) {
+    // 3197 (hallazgo del ayudante de la 3193, 17-11): en vuelo desde ya hasta que lo toma el sistema de envío (flujo por trozos o buzón
+    // de archivos, que tienen su propia marca) o falla. Antes, en el margen de 0,5 s de abajo el reenvío de pendientes lo mandaba por
+    // trozos y este envío lo subía además al buzón de archivos
+    var held = self._holdOut(fileId);
+    var out = new Promise(function(resolve, reject) {
       try {
         var uuid = _normId(deviceUUID);
         if (!uuid) { reject(new Error('deviceUUID vacio')); return; }
         if (!base64Data) { reject(new Error('base64Data vacio')); return; }
+        // 3197: al buzón de archivos, si aplica; desde que lo toma lo marca su subida (_blobOutRunning)
+        var toBlob = function(online) { var v = self._fileToBlobMailbox(uuid, fileId, base64Data, meta, online); if (v) held(); return v; };
 
         var deviceId = self._resolveDeviceIdForNexoId(uuid);
         if (!deviceId) {
@@ -231,7 +237,7 @@ export const BLE_BLOB_METHODS = {
         if (!deviceId) {
           // Fase B (build 2969): contacto AUSENTE por todos los caminos pero con internet propio → BUZÓN DE ARCHIVOS (≤ 5 MB):
           // el archivo llega aunque los dos nunca coincidan en línea. Antes: PEER_ABSENT → ⏳ hasta coincidir.
-          var viaBlob0 = self._fileToBlobMailbox(uuid, fileId, base64Data, meta);
+          var viaBlob0 = toBlob();
           if (viaBlob0) { viaBlob0.then(resolve, reject); return; }
           self._fileCita(uuid, fileId, base64Data, meta); // Fase D (2972): > 5 MB a un ausente → aviso chiquito en su buzón (el archivo queda ⏳)
           // v6.1.11: contacto aún no visto: el adjunto queda pendiente y se reenvía al encontrarlo
@@ -255,6 +261,7 @@ export const BLE_BLOB_METHODS = {
           self.ackSystem.sendFile(deviceId, fileId, base64Data, m2)
             .then(function() { resolve(); })
             .catch(function(err) { reject(err); });
+          held(); // 3197: ya lo tiene el sistema de envío (cifrando, flujo o cola del Bluetooth: sus marcas)
         }
 
         // v6.1.9: el dispositivo se resuelve en cada intento (el otro puede volver con otra dirección).
@@ -267,11 +274,11 @@ export const BLE_BLOB_METHODS = {
             var dev = self._resolveDeviceIdForNexoId(uuid) || (self._macOfOther(deviceId, uuid) ? null : deviceId);
             // Fase C (2971): el adjunto ya vive en los relés (puntero vigente: reenvío de algo recibido/enviado por el buzón) y el
             // contacto está solo por internet → va POR REFERENCIA (0 subidas) aunque esté en línea; con Bluetooth/Wi-Fi, directo
-            if (_netNx(dev) && meta && meta.blobPtr) { var viaRef = self._fileToBlobMailbox(uuid, fileId, base64Data, meta); if (viaRef) { viaRef.then(resolve, reject); return; } }
+            if (_netNx(dev) && meta && meta.blobPtr) { var viaRef = toBlob(); if (viaRef) { viaRef.then(resolve, reject); return; } }
             // Puente parte 4: por internet con un puente de por medio (yo o él), al buzón de archivos (paquete por Wi-Fi Direct al puente)
-            if (_netNx(dev) && self.net && typeof self.net.viaBridge === 'function' && self.net.viaBridge(uuid)) { var viaGw = self._fileToBlobMailbox(uuid, fileId, base64Data, meta); if (viaGw) { viaGw.then(resolve, reject); return; } }
+            if (_netNx(dev) && self.net && typeof self.net.viaBridge === 'function' && self.net.viaBridge(uuid)) { var viaGw = toBlob(); if (viaGw) { viaGw.then(resolve, reject); return; } }
             // 3128: en línea solo por los relés → buzón de archivos (rápido y sin esperar a que su app conteste); > 5 MB, flujo por trozos
-            if (_netNx(dev)) { var viaOn = self._fileToBlobMailbox(uuid, fileId, base64Data, meta, true); if (viaOn) { viaOn.then(resolve, reject); return; } }
+            if (_netNx(dev)) { var viaOn = toBlob(true); if (viaOn) { viaOn.then(resolve, reject); return; } }
             // Ronda 2780 (pedido del dueño): fotos y archivos medianos SIEMPRE se pueden mandar por internet. Si el otro
             // está en línea van por Tor directo/Wi-Fi (filesOk); si no, al buzón de los relés (mailboxOk) y llegan cuando
             // abre, igual que los textos. Bajo un tope (~6 MB de archivo): los más grandes son la fase 2 (Tor). Antes solo
@@ -290,7 +297,7 @@ export const BLE_BLOB_METHODS = {
             // Fase C (2971): un puente por INTERNET (2 saltos cargando a otro teléfono, con su dato) no le gana al buzón de archivos
             // (una copia en los relés + toque FCM) si el archivo puede ir por ahí; con puntero vigente va por referencia (0 bytes).
             // Un puente por Bluetooth (local, gratis) sí va primero.
-            if (rh && _netNx(rh.deviceId)) { var viaBlobJ = self._fileToBlobMailbox(uuid, fileId, base64Data, meta); if (viaBlobJ) { viaBlobJ.then(resolve, reject); return; } }
+            if (rh && _netNx(rh.deviceId)) { var viaBlobJ = toBlob(); if (viaBlobJ) { viaBlobJ.then(resolve, reject); return; } }
             // 3053 (diagnóstico del vivo 12-11 22:00): un archivo que no cabe por Bluetooth no sale por Jump, aunque el primer tramo
             // sea Wi-Fi: algún tramo siguiente es Bluetooth (el puente no tiene Wi-Fi ni internet con él, si no iría directo)
             if (rh && typeof base64Data === 'string' && base64Data.length > BT_FILE_MAX_CHARS && !(meta && meta.big)) {
@@ -311,7 +318,7 @@ export const BLE_BLOB_METHODS = {
             // el plazo; al vencer, también va al buzón de archivos antes que quedar ⏳.
             var busy = st.state === BLE_STATES.CONNECTING || st.state === BLE_STATES.DISCOVERING_SERVICES;
             if (!busy || Date.now() >= deadline) {
-              var viaBlob = self._fileToBlobMailbox(uuid, fileId, base64Data, meta);
+              var viaBlob = toBlob();
               if (viaBlob) { viaBlob.then(resolve, reject); return; }
               self._fileCita(uuid, fileId, base64Data, meta); // Fase D (2972): > 5 MB → aviso chiquito (una vez); el archivo queda ⏳
             }
@@ -351,5 +358,7 @@ export const BLE_BLOB_METHODS = {
         }
       } catch (fatal) { reject(fatal); }
     });
+    out.then(held, held);
+    return out;
   },
 };

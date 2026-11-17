@@ -268,8 +268,11 @@ export function _sendFileFor(contactId, msgId, type, payload, meta, opts) {
   // 3004: freno de bucle de arranque — un envío grande se anota antes de empezar y se borra al terminar sin morir
   var bigTry = typeof payload === 'string' && payload.length > 2000000 && typeof window.vaultBigSendBegin === 'function';
   var endTry = function() { if (bigTry && typeof window.vaultBigSendEnd === 'function') window.vaultBigSendEnd(msgId).catch(function() {}); };
+  // 3197 (hallazgo del ayudante de la 3193, 17-11): mientras se anota el envío grande ya cuenta como en vuelo (el reenvío de pendientes
+  // no lo manda por otro camino); bleInterface.sendFile lo marca a su vez desde que empieza
+  var bi0 = window.bleInterface, preHeld = (bigTry && bi0 && typeof bi0._holdOut === 'function') ? bi0._holdOut(msgId) : null;
   (bigTry ? window.vaultBigSendBegin(msgId).catch(function() {}) : Promise.resolve())
-    .then(function() { return window.bleInterface.sendFile(contactId, msgId, payload, Object.assign({}, meta, { type: type })); })
+    .then(function() { try { return window.bleInterface.sendFile(contactId, msgId, payload, Object.assign({}, meta, { type: type })); } finally { if (preHeld) preHeld(); } })
     .then(function(v) { endTry(); return v; }, function(err) { endTry(); throw err; })
     .then(function() {
       _settle();

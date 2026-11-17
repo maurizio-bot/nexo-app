@@ -73,7 +73,29 @@ const _BLE_MESSAGE_METHODS_BASE = {
     // 3050 (medición de caminos): subiéndose al buzón de archivos (por un puente son decenas de segundos). Antes el reenvío de
     // pendientes lo volvía a mandar a la vez, trozo a trozo por el puente, y chocaba con su tope de eventos
     if (ack && ack._blobOutRunning && ack._blobOutRunning.has(msgId)) return true;
+    // 3197 (hallazgo del ayudante de la 3193, 17-11): ya está saliendo pero aún no llegó al sistema de envío (ver _holdOut)
+    if (this._outHold && this._outHold.has(String(msgId))) return true;
     return false;
+  },
+
+  // 3197 (hallazgo del ayudante de la 3193, 17-11): un archivo elegido esperaba medio segundo («margen para estabilizar radio»; más con
+  // la cámara abierta o un enlace que se está conectando) antes de entrar al sistema de envío y en ese rato no contaba como en vuelo.
+  // Si llegaba algo del contacto (su anuncio de rutas 'rt' → _kickPeer → reenvío de pendientes), el reenvío lo mandaba por trozos por
+  // los relés y el envío original lo subía además al buzón de archivos: salía DOS veces (con datos móviles, el doble de gasto). Lo
+  // mismo un texto que espera a que se cierre la cámara. Desde que empieza a salir hasta que lo toma el sistema de envío (cuyas marcas
+  // siguen: flujo, cifrando, subiendo al buzón, cola) o falla, cuenta como en vuelo; si falla, el reenvío lo retoma. Devuelve el «soltar».
+  _holdOut(msgId) {
+    var self = this, k = String(msgId || '');
+    if (!k) return function() {};
+    self._outHold = self._outHold || new Map();
+    self._outHold.set(k, (self._outHold.get(k) || 0) + 1);
+    var held = true;
+    return function() {
+      if (!held) return;
+      held = false;
+      var n = (self._outHold.get(k) || 1) - 1;
+      if (n > 0) self._outHold.set(k, n); else self._outHold.delete(k);
+    };
   },
 
   getNextSeq() {
