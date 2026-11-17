@@ -21,6 +21,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **17-11 13:10 (México) — APK 3090 PUBLICADA (12:56; 3195–3204), novedades al historial.** Integrado y sin subir: **3205** (hueco
+  de la 3204: al volver la app, la escucha nativa le pasa con netBgDrain desde cuándo soltó cada relé con datos y la app se lo pide;
+  datosmoviles.js F6 + NetBgDatosTest). Batería completa 323/323 sobre 3205, índice 71,2; Kotlin 225/225. Va en la próxima APK
+  (bloque de NOVEDADES vacío: llenarlo antes). Pruebas pedidas al dueño con la 3090: tableta reiniciada sin abrir NEXO, video de estado
+  de Roberto, ubicación con mapa, editar en grupo, lupa en Contactos.
 - **17-11 11:45 (México) — APK 3089 FALLÓ en el CI** solo por la prueba de TAMAÑO: `src/ui/estados.js` llegó a 1.090 líneas con
   3200. Partido con `tools/partir_extraer.cjs`: la ventana «Mi estado» (publicar: texto, foto, audio, video) pasa TAL CUAL a
   `src/ui/estados_compose.js` (estados.js 888 líneas; `partir_check` 132/132 piezas iguales; pruebas de estados, 3200, 5 idiomas y
