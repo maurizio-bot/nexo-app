@@ -682,6 +682,8 @@ export function _isResendable(m, cid) {
 export function _failStatus(err) {
   // Ronda 2767: 'LAN_DOWN' (el Wi-Fi se cortó y se espera a que vuelva, regla del dueño): pendiente, no "!" (al acabar
   // la espera sale por Bluetooth o por el Wi-Fi que volvió)
+  // 3211: IN_MAILBOX = sin confirmación por Bluetooth pero ya en el buzón de internet (red de seguridad): enviado (✓)
+  if (err && err.code === 'IN_MAILBOX') return 'sent';
   return (err && (err.code === 'NO_KEY' || err.code === 'PEER_ABSENT' || err.code === 'LAN_DOWN')) ? 'pending' : 'failed';
 }
 

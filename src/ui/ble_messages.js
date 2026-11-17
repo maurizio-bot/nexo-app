@@ -505,10 +505,10 @@ const _BLE_MESSAGE_METHODS_BASE = {
           })
           .catch(function(e) {
             console.warn('[BLEInterface] Pending fallo:', mid, e.message);
-            if (/ACK timeout/i.test((e && e.message) || '')) run.noAck++; else run.other++;
+            if (/ACK timeout/i.test((e && e.message) || '') || (e && e.code === 'IN_MAILBOX')) run.noAck++; else run.other++;
             if (probeDone()) return;
             // No marcar failed de forma agresiva si es transitorio
-            var isTransient = /timeout|abort|network|disconnected|not ready|busy|interrupted|temporary/i.test(e.message || '') || _failStatus(e) === 'pending';
+            var isTransient = /timeout|abort|network|disconnected|not ready|busy|interrupted|temporary/i.test(e.message || '') || _failStatus(e) !== 'failed'; // 3211: también «ya en el buzón de internet»
             if (!isTransient) {
               _vaultUpdateMessageStatus(nexoId, mid, 'failed');
               try {

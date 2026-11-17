@@ -650,8 +650,10 @@ export class BleAckSystem {
       this._doSend(entry);
     } else {
       this.pendingAcks.delete(msgId);
-      entry.reject(new Error('ACK timeout'));
-      if (!entry.quiet) this._dispatchStatus(msgId, 'failed');
+      // 3211: ya salió por el buzón de internet (red de seguridad): está en camino (✓), no fallido (✗); su confirmación llega por ahí
+      var inBox = !!(this.ble && this.ble._netSafeOut && this.ble._netSafeOut.has(msgId));
+      entry.reject(Object.assign(new Error(inBox ? 'En el buzón de internet' : 'ACK timeout'), inBox ? { code: 'IN_MAILBOX' } : {}));
+      if (!entry.quiet) this._dispatchStatus(msgId, inBox ? 'sent' : 'failed');
     }
   }
   processIncomingAck(content) {

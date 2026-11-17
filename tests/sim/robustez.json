@@ -538,6 +538,10 @@
     {
      "fallo": "3183 (dueño 17-11): el vivo siempre arriba en Contactos: un reenvío de algo ya recibido lo subía. vivoarriba.js (contraprueba b3182)",
      "prueba": "3183 (dueño 17-11: el vivo siempre arriba en Conta"
+    },
+    {
+     "fallo": "3211 (diagnóstico del HONOR 17-11 16:05): la red de seguridad de entrega (2836) no mandaba la copia por internet mientras el mismo mensaje esperaba su confirmación por Bluetooth (_sendWithRetryRaw lo encadenaba a esa espera) y al agotarse los reintentos el texto quedaba ✗. Ahora sale el mismo sobre por internet a los 10 s y el agotamiento del Bluetooth deja ✓. redseguridad.js (contraprueba b3205: no llega y ✗)",
+     "prueba": "3211 (diagnóstico del HONOR 17-11 16:04"
     }
    ],
    "debiles": [

@@ -1,4 +1,4 @@
-import { _normId, _isGenericName, _getBLEContacts, _saveBLEContacts, _lanNx, _netNx, _normMac, _hasNativeMethod, _isControlPacket, _safeNativeCall, _vaultUpdateMessageStatus, BLE_STATES, _failStatus, _isPathDev } from './ble_helpers.js';
+import { _normId, _isGenericName, _getBLEContacts, _saveBLEContacts, _lanNx, _netNx, _normMac, _hasNativeMethod, _isControlPacket, _safeNativeCall, _vaultUpdateMessageStatus, BLE_STATES, _failStatus, _isPathDev, _netId } from './ble_helpers.js';
 // Build 2836 (pedido del dueño): margen para la «red de seguridad de entrega». Si un mensaje enviado por Bluetooth no
 // se confirma «entregado» en este tiempo, se deja además en el buzón de relés (dispara el toque FCM de alta prioridad).
 var DELIVERY_SAFETY_MS = 10000;
@@ -378,6 +378,18 @@ export const BLE_SEND_METHODS = {
           if (typeof self._noteWakePending === 'function') self._noteWakePending(nx);
           if (!self.net || !self.net.mailboxOk(nx)) return;              // sin internet/token: no se puede (el reintento Bluetooth sigue)
           console.log('[NET] red de seguridad de entrega: ' + msgId + ' sin confirmar por Bluetooth → buzón + toque FCM');
+          // 3211 (diagnóstico del HONOR 17-11 16:05): si el mismo mensaje aún espera su confirmación por Bluetooth, el envío por el buzón
+          // se quedaba esperando con él (ble_ack._sendWithRetryRaw) y NO salía nada; al agotarse los reintentos, ✗. Ahora sale YA por
+          // internet el mismo sobre ya cifrado (mismo id: el otro lo cuenta una vez); su confirmación resuelve la espera de Bluetooth
+          var ack = self.ackSystem, pend = ack && ack.pendingAcks && ack.pendingAcks.get(msgId);
+          if (pend && !pend.raw && typeof pend.content === 'string' && !/^net:/i.test(String(pend.deviceId || ''))) {
+            Promise.resolve(self._sendMessageNative(_netId(nx), pend.content, msgId, seq, pend.dst)).then(function() {
+              self._netSafeOut = self._netSafeOut || new Set();
+              self._netSafeOut.add(msgId);
+              if (self._netSafeOut.size > 300) self._netSafeOut.delete(self._netSafeOut.values().next().value);
+            }, function(e) { console.warn('[NET] red de seguridad: ' + msgId + ' no salió por el buzón (' + (e && e.message) + ')'); }); // i18n-ok: registro
+            return;
+          }
           self._sendViaNetMailbox(nx, content, msgId, seq).catch(function() {});
         } catch (e) {}
       }, DELIVERY_SAFETY_MS);
