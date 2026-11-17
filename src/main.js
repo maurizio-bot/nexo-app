@@ -83,6 +83,7 @@
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
 import './styles/nexo_theme.css'; // ronda 2763: estilo NEXO en toda la app
+import './styles/estados.css'; // 3169: pantalla Estados (estados_screen.js)
 import './styles/links.css'; // 3161: enlaces y «Enviar a…» (aquí y no en links.js/share_in.js: las pruebas cargan esos módulos con Node, que no lee .css)
 import { NEXO_DIAG } from './core/nap.js';
 import { NexoApp, DEBUG } from './app/nexo_app.js';

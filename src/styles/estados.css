@@ -1,0 +1,55 @@
+/*
+ * estados.css — 3169 (dueño 17-11: «los estados en su propia pantalla, deslizando desde Contactos»), estados_screen.js.
+ * Pantalla limpia, solo gestos: sin botones, pestañas ni puntitos. Fondo y cabecera como Contactos (.nx-page-head / .nx-page-title);
+ * cada estado es una fila como las de Contactos con su círculo de color y el aro de «sin ver» (celeste) o «visto» (gris).
+ * Va por encima de #app (Contactos) y por debajo del visor de estados (#estado-overlay, 6000), la cámara y el visor de fotos.
+ */
+.nx-est-scr {
+  --nx-est-av: 58px;
+  position: fixed; inset: 0; z-index: 2500; box-sizing: border-box;
+  display: flex; flex-direction: column;
+  background: var(--nx-bg); color: var(--nx-text);
+  transform: translate3d(100%, 0, 0); visibility: hidden;
+}
+.nx-est-scr.nx-est-vis { visibility: visible; }
+/* al soltar el dedo, Contactos (#app) y Estados se acomodan juntos; mientras se arrastra, sin transición (siguen al dedo) */
+.nx-est-anim { transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1) !important; }
+body.nx-est-drag #app, body.nx-est-drag .nx-est-scr { will-change: transform; }
+/* el título, solo texto (como «Contactos»): el degradado a lo ancho de la palabra, no de toda la cabecera */
+.nx-est-title { flex: 0 1 auto; }
+.nx-est-body { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  touch-action: pan-y; scrollbar-width: none; padding: 0 10px 48px; }
+.nx-est-sec { display: flex; flex-direction: column; }
+.nx-est-sec-t { padding: 16px 10px 6px; font-size: 13px; font-weight: 600; letter-spacing: 0.2px; color: var(--nx-muted); }
+.nx-est-row { display: flex; align-items: center; gap: 14px; min-width: 0; padding: 9px 10px; margin: 2px 0; border-radius: var(--nx-radius); cursor: pointer;
+  -webkit-tap-highlight-color: transparent; transition: background 0.15s; }
+.nx-est-row.is-pressed, .nx-est-row:active { background: var(--nx-surface); }
+/* El círculo: el aro es el borde (celeste = sin ver) y el hueco del color del fondo es el padding (background-clip) */
+.nx-est-av { width: var(--nx-est-av) !important; height: var(--nx-est-av) !important; min-width: var(--nx-est-av); flex-shrink: 0; box-sizing: border-box;
+  border-radius: 50%; border: 2px solid var(--nx-cyan); padding: 2px; background-clip: content-box !important; box-shadow: none !important; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px !important; font-weight: 700; }
+.nx-est-av.nx-est-noring { border-color: transparent; }
+.nx-est-av.nx-est-add { background: var(--nx-grad); font-size: 22px !important; font-weight: 600; }
+.nx-est-av img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
+.nx-est-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.nx-est-name { font-size: 15.5px; font-weight: 600; letter-spacing: 0.1px; color: var(--nx-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nx-est-sub { font-size: 12.5px; color: var(--nx-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nx-est-empty { padding: 14px 10px; font-size: 13.5px; line-height: 1.45; color: var(--nx-muted); }
+
+/* Contactos: la lista solo hace scroll vertical con el dedo; lo de lado es el gesto hacia Estados (la tira «en línea» sigue igual) */
+#main-contacts-list { touch-action: pan-y; }
+/* El botón redondo de agregar contactos es de Contactos: en Estados (y mientras se arrastra hacia allá) no está */
+body.nx-est-on #ble-fab-btn, body.nx-est-drag #ble-fab-btn { opacity: 0 !important; pointer-events: none !important; transition: opacity 0.18s ease !important; }
+
+/* El aviso de una sola vez («Desliza a la izquierda para ver los estados»): texto, sin botón; no toma los toques */
+.nx-est-hint { position: fixed; left: 50%; bottom: calc(156px + env(safe-area-inset-bottom, 0px)); z-index: 2400; box-sizing: border-box;
+  width: max-content; max-width: calc(100% - 48px); padding: 10px 16px; border-radius: 16px; background: var(--nx-sheet); border: 1px solid var(--nx-line);
+  color: var(--nx-text); font-size: 14px; line-height: 1.35; text-align: center; pointer-events: none;
+  transform: translateX(-50%); animation: nxEstHintIn 300ms ease both; }
+.nx-est-hint.out { animation: nxEstHintOut 260ms ease both; }
+@keyframes nxEstHintIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes nxEstHintOut { from { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, 8px); } }
+@media (prefers-reduced-motion: reduce) {
+  .nx-est-anim { transition-duration: 1ms !important; }
+  .nx-est-hint, .nx-est-hint.out { animation-duration: 1ms; }
+}

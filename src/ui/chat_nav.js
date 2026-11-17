@@ -98,6 +98,7 @@ export function _setupBackButton() {
           return true;
         }
         if (typeof window.__nexoCloseSearch === 'function' && window.__nexoCloseSearch()) return true; // 3035: búsqueda del chat
+        if (typeof window.__nexoEstadosBack === 'function' && window.__nexoEstadosBack()) return true; // 3169: pantalla Estados → Contactos
         if (document.body.classList.contains('chat-view-active')) { _doChatBack(); return true; }
         return false;
       } catch (e) { return false; }

@@ -124,7 +124,8 @@ const statusOf = (p, msgId) => { const s = p.win.document.querySelector('.msg-st
   r.pedido_log = logs.some((l) => /\[B\].*pido la media/.test(l)) && logs.some((l) => /\[A\].*mando la media/.test(l));
   r.B_sin_adjunto_en_chat_2 = !(await B.win.vaultLoadMessages(idA)).some((m) => m.attachmentType);
   // en el visor de B: «Cargando…» y luego el video (ya guardado)
-  const chip = Array.from(B.win.document.querySelectorAll('#main-estados-strip .estado-chip')).find((c) => /A/.test(c.textContent) && !/Mi estado|Tu estado/.test(c.textContent));
+  // 3169: la fila del estado está en la pantalla Estados (antes, en la tira de arriba de Contactos)
+  const chip = Array.from(B.win.document.querySelectorAll('#estados-screen .estado-chip')).find((c) => /A/.test(c.textContent) && !/Mi estado|Tu estado/.test(c.textContent));
   if (chip) { chip.dispatchEvent(new B.win.MouseEvent('click', { bubbles: true })); await sleep(300); }
   for (let i = 0; i < 5 && B.win.document.getElementById('estado-pos') && !/2\//.test(B.win.document.getElementById('estado-pos').textContent); i++) { const nx = B.win.document.getElementById('estado-next'); if (nx) nx.dispatchEvent(new B.win.MouseEvent('click', { bubbles: true })); await sleep(200); }
   await sleep(800);

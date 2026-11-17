@@ -8,7 +8,8 @@
  * - El propio se guarda en nexo_my_status.json {t, ts, img?, mime?}. El de cada contacto en nexo_status_<NEXO ID>.json.
  * - Se reparte a cada contacto al publicarlo y, al que no estaba, al conectar con él (peerReady). La copia oculta se
  *   borra al entregarse. Caduca a las 24 h (no se muestra ni se guarda lo vencido).
- * - UI: una tira "Estados" arriba de la lista de contactos.
+ * - UI: desde la 3169 (dueño 17-11), su propia pantalla «Estados», a la que se llega deslizando Contactos de derecha a izquierda
+ *   (estados_screen.js). Aquí quedan el visor, publicar y «Mis estados»; la pantalla los abre con lo que se exporta abajo.
  */
 import { _getBLEContacts, _normId, _saveBLEContacts, _getGradientForUUID, _getInitials } from './ble_helpers.js';
 import { paintAvatar } from './avatar.js';
@@ -241,7 +242,7 @@ export function estadosInit() {
     _loaded = true;
     _unsent.splice(0).forEach(function(p) { _unmarkSent(p[0], p[1]); }); // 3033
     _mineP = null;
-    _renderStrip();
+    _emit('me');   // 3169: la pantalla «Estados» (estados_screen.js) se vuelve a pintar con este aviso
   }).catch(function() { _mineP = null; });
   // Los estados de los contactos que los tienen (ste en el contacto)
   _getBLEContacts().forEach(function(c) {
@@ -257,9 +258,6 @@ export function estadosInit() {
     var d = e && e.detail, nx = d && _outIds.get(d.msgId);
     if (nx && (d.status === 'delivered' || d.status === 'read')) { _outIds.delete(d.msgId); vaultDeleteMessage(nx, d.msgId).catch(function() {}); }
   });
-  window.addEventListener('nexo:estado', function() { _renderStrip(); });
-  window.addEventListener('nexo:ble:openChat', function() { _renderStrip(); });
-  window.addEventListener('nexo:ble:closeChat', function() { setTimeout(_renderStrip, 60); });
   _attachPull();
 }
 
@@ -414,7 +412,7 @@ export function requestStatuses() {
     if (_sendAct(nx, { type: 'nexo_act', act: 'sq', ts: now, av: 1 })) n++;
   });
   _contactIds().forEach(function(nx) { statusesOf(nx); }); // de paso, fuera los caducados
-  _renderStrip();
+  _emit('');
   console.log('[ESTADO] Actualizar: pedidos a ' + n + ' contacto(s)');
   return n;
 }
@@ -578,8 +576,8 @@ function _toast(msg) {
   } catch (e) {}
 }
 
-// Contactos (con nombre) que tienen estados activos ahora
-function _activeContacts() {
+// Contactos (con nombre) que tienen estados activos ahora: { nx, name, items, img, n, unseen, ts }
+export function activeStatusContacts() {
   var out = [];
   _getBLEContacts().forEach(function(c) {
     var nx = _normId(c.nexoId || c.deviceUUID);
@@ -591,61 +589,13 @@ function _activeContacts() {
   return out;
 }
 
-// ---------- Interfaz: tira de Estados arriba de la lista de contactos ----------
+// ---------- Interfaz: visor, publicar y «Mis estados» (la pantalla «Estados» los abre: estados_screen.js, 3169) ----------
 function _esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function _ago(ts) { var m = Math.floor((Date.now() - ts) / 60000); if (m < 1) return t('grp_ago_now', 'ahora'); if (m < 60) return t('grp_ago_prefix', 'hace ') + m + t('grp_ago_min', ' min'); return t('grp_ago_prefix', 'hace ') + Math.floor(m / 60) + t('grp_ago_h', ' h'); }
-function _strip() {
-  var cv = document.getElementById('contacts-view');
-  if (!cv) return null;
-  var el = document.getElementById('main-estados-strip');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'main-estados-strip';
-    el.style.cssText = 'display:flex;gap:10px;overflow-x:auto;padding:10px 12px;align-items:flex-start;';
-    cv.insertBefore(el, cv.firstChild);
-  }
-  return el;
-}
-// 3140 (dueño 16-11, «como mi pantalla de Contactos»): cada contacto con SU círculo de color (degradado + iniciales o su foto de
-// perfil, igual que en la lista) y el aro de «sin ver» por fuera con un hueco del color del fondo (como la tira «en línea»). El aro
-// sigue siendo el border (celeste = sin ver, gris = visto: lo leen las pruebas) y el hueco es el padding con background-clip.
-function _chip(label, sub, onClick, accent, img, nx) {
-  var w = document.createElement('div');
-  w.className = 'estado-chip';
-  w.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;width:64px;cursor:pointer;';
-  var circle = document.createElement('div');
-  if (nx) {
-    circle.className = 'ble-contact-avatar ' + _getGradientForUUID(nx);
-    circle.style.cssText = 'width:60px;height:60px;box-sizing:border-box;border:2px solid #00c8ff;padding:2px;background-clip:content-box;box-shadow:none;font-size:18px;overflow:hidden;';
-  } else {
-    circle.style.cssText = 'width:52px;height:52px;margin:4px 0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff;overflow:hidden;' +
-      (accent ? 'background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));' : 'background:var(--nx-surface-2);');
-  }
-  if (img) { var im = document.createElement('img'); im.src = img; im.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;'; circle.appendChild(im); }
-  else if (nx) { circle.textContent = _getInitials(label); try { paintAvatar(circle, nx); } catch (e) {} }
-  else circle.textContent = accent ? '➕' : (label || '·').substring(0, 1).toUpperCase();
-  var nm = document.createElement('div');
-  nm.style.cssText = 'font-size:11px;color:var(--nx-muted);max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;';
-  nm.textContent = sub || label || '';
-  w.appendChild(circle); w.appendChild(nm);
-  w.addEventListener('click', function(e) { e.stopPropagation(); onClick(); });
-  return w;
-}
-function _renderStrip() {
-  var el = _strip();
-  if (!el) return;
-  el.innerHTML = '';
-  var mine = myStatuses(), last = mine[mine.length - 1];
-  var myImg = (mine.filter(function(x) { return x.img; }).pop() || {}).img || '';
-  el.appendChild(_chip(t('grp_my_status', 'Mi estado'), mine.length ? t('grp_your_status', 'Tu estado') + (mine.length > 1 ? ' (' + mine.length + ')' : '') : t('grp_my_status', 'Mi estado'), function() { if (mine.length) _myView(); else _compose(); }, !mine.length, myImg));
-  if (last && !myImg) { var mc = el.lastChild.querySelector('div'); if (mc) { mc.textContent = (last.t || '·').substring(0, 1).toUpperCase(); mc.style.background = 'var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7))'; } }
-  _activeContacts().forEach(function(c) {
-    var ch = _chip(c.name, c.name + (c.n > 1 ? ' (' + c.n + ')' : ''), function() { _view(c); }, false, c.img, c.nx);
-    if (!c.unseen) { var cc = ch.querySelector('div'); if (cc) cc.style.borderColor = 'rgba(255,255,255,0.25)'; }   // ya vistos: aro gris
-    el.appendChild(ch);
-  });
-  el.style.display = 'flex'; // siempre visible (al menos «Mi estado»)
-}
+export function statusAgo(ts) { return _ago(ts); }
+export function openStatusViewer(c) { _view(c); }      // c: un elemento de activeStatusContacts()
+export function openStatusCompose() { _compose(); }
+export function openMyStatuses() { _myView(); }
 // 2999 (dueño 10-11: «en un estado no hay razón de que esté el botón de agregar contacto»): el botón flotante de la burbuja de chat
 // (#ble-fab-btn, abre el panel «Agregar contactos») va por encima de todo; mientras hay un estado abierto (verlo o componerlo) se oculta
 // y vuelve cuando se cierra, sea por donde sea que se cierre.
@@ -883,7 +833,7 @@ function _view(c) {
     });
     crow.appendChild(cin); crow.appendChild(cbtn);
     box.appendChild(crow);
-    _renderStrip();
+    _emit(c.nx);   // el aro de «visto» de la pantalla Estados
   };
   paint();
 }
@@ -960,26 +910,35 @@ function _myView() {
   paint();
 }
 
-// ---------- Deslizar hacia abajo en Contactos: pedir los estados (dueño 12-11) ----------
+// ---------- Deslizar hacia abajo para actualizar (dueño 12-11): en Contactos y, desde la 3169, en la pantalla Estados ----------
 var _pullAttached = false;
 function _attachPull() {
   if (_pullAttached) return;
   var cv = document.getElementById('contacts-view');
   if (!cv) { setTimeout(_attachPull, 1000); return; }
   _pullAttached = true;
-  var y0 = null, dy = 0, ind = null;
+  attachPullRefresh(cv, 'estados-pull');
+}
+// el: lo que se desliza (y su scroll); indId: id del aviso «Desliza / Suelta para actualizar» que sale arriba de el.
+// 3169: si el gesto es más de lado que hacia abajo (cambiar de pantalla deslizando) no cuenta como «actualizar».
+export function attachPullRefresh(el, indId) {
+  if (!el || el._nxPull) return;
+  el._nxPull = true;
+  var y0 = null, x0 = 0, dy = 0, ind = null;
   var showInd = function(txt) {
-    if (!ind) { ind = document.createElement('div'); ind.id = 'estados-pull'; ind.style.cssText = 'text-align:center;font-size:12px;color:var(--nx-muted);padding:6px 0;'; cv.insertBefore(ind, cv.firstChild); }
+    if (!ind) { ind = document.createElement('div'); ind.id = indId; ind.style.cssText = 'text-align:center;font-size:12px;color:var(--nx-muted);padding:6px 0;'; el.insertBefore(ind, el.firstChild); }
     ind.textContent = txt;
   };
   var hideInd = function(ms) { setTimeout(function() { if (ind) { try { ind.remove(); } catch (e) {} ind = null; } }, ms || 0); };
-  cv.addEventListener('touchstart', function(e) { y0 = (cv.scrollTop <= 0 && e.touches && e.touches[0]) ? e.touches[0].clientY : null; dy = 0; }, { passive: true });
-  cv.addEventListener('touchmove', function(e) {
+  var xOf = function(e) { var p = e.touches && e.touches[0]; return p && typeof p.clientX === 'number' ? p.clientX : 0; };
+  el.addEventListener('touchstart', function(e) { y0 = (el.scrollTop <= 0 && e.touches && e.touches[0]) ? e.touches[0].clientY : null; x0 = xOf(e); dy = 0; }, { passive: true });
+  el.addEventListener('touchmove', function(e) {
     if (y0 === null || !e.touches || !e.touches[0]) return;
     dy = e.touches[0].clientY - y0;
+    if (Math.abs(xOf(e) - x0) > Math.abs(dy) || document.body.classList.contains('nx-est-drag')) { y0 = null; dy = 0; hideInd(0); return; }
     if (dy > 20) showInd(dy > PULL_PX ? '↻ ' + t('est_pull_release', 'Suelta para actualizar') : '↓ ' + t('est_pull', 'Desliza para actualizar'));
   }, { passive: true });
-  cv.addEventListener('touchend', function() {
+  el.addEventListener('touchend', function() {
     if (y0 !== null && dy > PULL_PX) { showInd('↻ ' + t('est_refreshing', 'Actualizando estados, fotos y chats…')); refreshAll(); hideInd(1500); }
     else hideInd(0);
     y0 = null; dy = 0;

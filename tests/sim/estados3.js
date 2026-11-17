@@ -43,7 +43,9 @@ async function openChatWith(p, name) { let row; for (let i = 0; i < 300 && !row;
 async function closeChat(p) { p.win.dispatchEvent(new p.win.CustomEvent('nexo:ble:closeChat', { detail: {} })); await sleep(300); }
 function sendText(p, t) { const i = p.win.document.getElementById('message-input'); i.value = t; i.dispatchEvent(new p.win.Event('input', { bubbles: true })); click(p.win, p.win.document.getElementById('send-btn')); }
 const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) return true; await sleep(200); } return false; };
-const chips = (p) => Array.from(p.win.document.querySelectorAll('#main-estados-strip .estado-chip'));
+// 3169: los estados ya no están en una tira arriba de Contactos sino en su propia pantalla (estados_screen.js): «Mi estado» y, por
+// contacto, «N estados · hace…»
+const chips = (p) => Array.from(p.win.document.querySelectorAll('#estados-screen .estado-chip'));
 
 (async () => {
   const radio = new Radio();
@@ -63,7 +65,7 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#main-estados-s
   r.B_tiene_tres = await wait(() => (B.win.NEXO_statusesOf(idA) || []).map((x) => x.t).join(',') === 'uno,dos,tres', 40);
   r.B_no_mensaje_visible = !(await B.win.vaultLoadMessages(idA)).some((m) => /nexo_act|"uno"/.test(m.content || ''));
   await sleep(400);
-  const chipA = chips(B).find((c) => /\(3\)/.test(c.textContent));
+  const chipA = chips(B).find((c) => /\D3 estados/.test(c.textContent));   // 3169: en la pantalla Estados, «3 estados · ahora»
   r.tira_cuenta_3 = !!chipA;
 
   // 2. B los ve uno a uno (1/3 → 2/3) y le da me gusta al 2.º → A sabe QUIÉN (B) y en cuál
@@ -86,7 +88,7 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#main-estados-s
   ov(B);
 
   // 4. «Mis estados» en A: se ve quién dio me gusta y el comentario
-  const miChip = chips(A).find((c) => /Tu estado/.test(c.textContent));
+  const miChip = chips(A).find((c) => /Mi estado/.test(c.textContent));
   if (miChip) { click(A.win, miChip); await sleep(300); }
   const mios = A.win.document.getElementById('estado-mios');
   r.mis_estados_abre = !!mios;
@@ -123,9 +125,9 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#main-estados-s
 
   // 9. (3059, dueño 13-11: «cuando ves un estado se quita el marcador azul, pero al cerrar y volver a abrir la app vuelven a aparecer
   //    como nuevos») B ve los 10 de A (aro gris) y se reinicia: siguen vistos (aro gris) y su me gusta del 2.º sigue dado
-  const ring = (p) => { const c = chips(p).find((x) => /\(10\)/.test(x.textContent)); const d = c && c.querySelector('div'); return d ? String(d.style.borderColor || '') : null; };
+  const ring = (p) => { const c = chips(p).find((x) => /\D10 estados/.test(x.textContent)); const d = c && c.querySelector('div'); return d ? String(d.style.borderColor || '') : null; };
   const gris = (v) => /255,\s*255,\s*255,\s*0\.25/.test(v || '');
-  const chip10 = chips(B).find((c) => /\(10\)/.test(c.textContent));
+  const chip10 = chips(B).find((c) => /\D10 estados/.test(c.textContent));
   if (chip10) { click(B.win, chip10); await sleep(300); }
   for (let i = 0; i < 12 && pos() !== '10/10'; i++) { click(B.win, B.win.document.getElementById('estado-next')); await sleep(150); }
   r.B_vio_los_10 = pos() === '10/10';

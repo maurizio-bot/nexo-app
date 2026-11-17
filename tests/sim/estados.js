@@ -35,7 +35,8 @@ async function openChatWith(p, name) { let row; for (let i = 0; i < 300 && !row;
 async function closeChat(p) { p.win.dispatchEvent(new p.win.CustomEvent('nexo:ble:closeChat', { detail: {} })); await sleep(300); }
 function sendText(p, t) { const i = p.win.document.getElementById('message-input'); i.value = t; i.dispatchEvent(new p.win.Event('input', { bubbles: true })); click(p.win, p.win.document.getElementById('send-btn')); }
 const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) return true; await sleep(200); } return false; };
-const chips = (p) => Array.from(p.win.document.querySelectorAll('#main-estados-strip .estado-chip'));
+// 3169: los estados ya no están en una tira arriba de Contactos sino en su propia pantalla (estados_screen.js; una fila por estado)
+const chips = (p) => Array.from(p.win.document.querySelectorAll('#estados-screen .estado-chip'));
 
 (async () => {
   const radio = new Radio();

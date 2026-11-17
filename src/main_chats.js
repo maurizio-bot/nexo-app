@@ -31,6 +31,7 @@ import { psiInit } from './ui/psi.js';
 import { gameStatsInit } from './ui/game_stats.js';
 import { wallpaperInit } from './ui/wallpaper.js';
 import { estadosInit } from './ui/estados.js';
+import { estadosScreenInit } from './ui/estados_screen.js';
 import { NEXO_DIAG } from './core/nap.js';
 import { shareInInit } from './ui/share_in.js'; // 3161: NEXO en el menú «Compartir» de Android (texto y enlaces)
 // main.js — abrir el chat correcto (desde un aviso, el único sin leer…) y el mensaje que llega.
@@ -441,6 +442,7 @@ async function initializeNexoApp() {
     gameStatsInit(); // #dueño 05-11: ranking cabeza a cabeza de los juegos (Fase A)
     wallpaperInit(); // ronda 2889: fondo de pantalla (lista + chats)
     estadosInit(); // ronda 2799: Estados (Stream fase 1)
+    estadosScreenInit(); // 3169 (dueño 17-11): los estados en su propia pantalla, deslizando Contactos hacia la izquierda
     window.addEventListener('nexo:avatar', function() { var b = window.bleInterface; if (b) { try { b.renderContactsList(); b.renderOnlineStrip(); } catch (e) {} } });
     clearTimeout(SAFETY_TIMEOUT);
     try {
