@@ -405,6 +405,7 @@ class NexoBlePlugin : Plugin() {
         super.handleOnDestroy()
         if (live === this) live = null
         unwatchDefaultNetwork() // 3085
+        activeChatNx = "" // 3172: con la app cerrada no hay chat abierto: lo que llegue (Bluetooth o internet) avisa siempre
         // Ronda 2770: la app se cierra con una llamada en curso: se suelta todo lo de la llamada (si no, el sensor de
         // proximidad seguía apagando la pantalla hasta 4 h, la música de otras apps no volvía y el audio quedaba en modo
         // llamada)

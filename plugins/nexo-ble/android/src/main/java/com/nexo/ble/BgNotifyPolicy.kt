@@ -10,4 +10,17 @@ object BgNotifyPolicy {
     const val OPEN_CHAT_GRACE_MS = 15000L
 
     fun silentForOpenChat(chatOpen: Boolean, bgForMs: Long): Boolean = chatOpen && bgForMs >= 0 && bgForMs < OPEN_CHAT_GRACE_MS
+
+    // 3172 (dueño 17-11, S24 19:57: «teniendo el chat abierto me llegaban notificaciones de los mensajes de ese chat»): el aviso de lo
+    // que llega por INTERNET en segundo plano (NetBg) no miraba el chat abierto; solo lo hacía el de Bluetooth/Wi-Fi. En un parpadeo a
+    // segundo plano (bajar la barra de avisos: onPause y la escucha de internet arranca) un texto del chat abierto avisaba igual.
+    // ¿Este remitente (o su grupo) es el chat que está abierto?
+    fun isOpenChat(activeChat: String, from: String, group: String): Boolean {
+        val a = activeChat.trim().lowercase()
+        if (a.isEmpty()) return false
+        return from.trim().lowercase() == a || (group.isNotBlank() && group.trim().lowercase() == a)
+    }
+
+    fun silentFor(activeChat: String, from: String, group: String, bgForMs: Long): Boolean =
+        silentForOpenChat(isOpenChat(activeChat, from, group), bgForMs)
 }

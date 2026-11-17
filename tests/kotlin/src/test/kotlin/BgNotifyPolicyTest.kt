@@ -13,4 +13,15 @@ class BgNotifyPolicyTest {
         assertFalse(BgNotifyPolicy.silentForOpenChat(false, 0), "otro chat: se avisa siempre")
         assertFalse(BgNotifyPolicy.silentForOpenChat(true, -5), "reloj raro: mejor avisar")
     }
+
+    // 3172 (dueño 17-11, S24 19:57: avisos del chat abierto que llegaban por internet en un parpadeo a segundo plano)
+    @Test fun chatAbiertoPorInternetTambienCalla() {
+        assertTrue(BgNotifyPolicy.silentFor("nx1e50c95d", "NX1E50C95D", "", 800), "el S23 escribe con su chat abierto y la barra bajada: sin aviso")
+        assertTrue(BgNotifyPolicy.silentFor("grp_familia", "nx09acdb61", "grp_familia", 800), "mensaje del grupo abierto: sin aviso")
+        assertFalse(BgNotifyPolicy.silentFor("nx1e50c95d", "nx09acdb61", "", 800), "otro chat: se avisa")
+        assertFalse(BgNotifyPolicy.silentFor("grp_familia", "nx09acdb61", "grp_trabajo", 800), "otro grupo: se avisa")
+        assertFalse(BgNotifyPolicy.silentFor("", "nx1e50c95d", "", 800), "ningún chat abierto: se avisa")
+        assertFalse(BgNotifyPolicy.silentFor("nx1e50c95d", "nx1e50c95d", "", 60000), "pantalla apagada un minuto: se avisa")
+        assertFalse(BgNotifyPolicy.silentFor("nx1e50c95d", "", "", 800), "remitente vacío no coincide con nada")
+    }
 }

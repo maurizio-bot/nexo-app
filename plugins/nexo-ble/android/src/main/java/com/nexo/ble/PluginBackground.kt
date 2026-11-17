@@ -79,8 +79,7 @@ internal fun NexoBlePlugin.backgroundNotify(json: String, deviceId: String? = nu
     // respaldo de 2.º plano); con la app CERRADA (closedReceive) sí se avisa, porque ahí no hay un chat abierto a la vista.
     // 3086 (diagnósticos S24 08:09 y vivo 08:49 del 14-11): solo en un parpadeo a segundo plano (BgNotifyPolicy) y solo el AVISO:
     // la confirmación de entrega sale siempre (antes se saltaba todo, para siempre, y el otro reenviaba sin fin).
-    val chatOpen = activeChatNx.isNotEmpty() && (info.from.lowercase() == activeChatNx || info.group.lowercase() == activeChatNx)
-    val silent = BgNotifyPolicy.silentForOpenChat(chatOpen, System.currentTimeMillis() - bgSinceMs)
+    val silent = BgNotifyPolicy.silentFor(activeChatNx, info.from, info.group, System.currentTimeMillis() - bgSinceMs)
     if (info.kind != BgInbox.Kind.MESSAGE && info.kind != BgInbox.Kind.NOTIFY_ONLY) return
     // Llamada: suena ya (si la app está viva también la avisa: es el mismo aviso, no sale dos veces)
     if (info.call || info.what == "call") { if (!silent) MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.video, info.msgId); return }
@@ -263,6 +262,10 @@ internal fun NexoBlePlugin.netBg(): NetBg = netBgShared ?: synchronized(NexoBleP
     // el teléfono vuelva a dormir.
     netBgShared ?: NetBg({ nx, name, msgId, isCall, group, video ->
         if (appInBackground) rxWake()
+        // 3172 (dueño 17-11): como por Bluetooth (backgroundNotify), el chat ABIERTO no avisa en un parpadeo a segundo plano (< 15 s,
+        // BgNotifyPolicy): lo está leyendo y la app lo muestra al volver. Pasado ese margen (pantalla apagada) avisa como siempre.
+        // Las llamadas suenan igual (perder una es peor que un aviso de más; la app no la duplica).
+        val silent = !closedMode && BgNotifyPolicy.silentFor(activeChatNx, nx, group, System.currentTimeMillis() - bgSinceMs)
         // #130b (dueño 31-10): una oferta de llamada/videollamada que llega por internet con la app en segundo plano o
         // congelada tiene que salir a PANTALLA COMPLETA (enciende el teléfono, Contestar/Rechazar), como la 1-a-1 por
         // Bluetooth y como las llamadas de grupo. Antes salía como «mensaje nuevo» porque NetBg solo miraba el msgId.
@@ -272,6 +275,8 @@ internal fun NexoBlePlugin.netBg(): NetBg = netBgShared ?: synchronized(NexoBleP
         } else if (SeenMsgs.has(context, msgId)) {
             // 3008: reenvío de un mensaje que este teléfono ya tiene → sin «Mensaje nuevo» (la ✓✓ sí se devuelve, para que el otro pare)
             nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): ese mensaje ya estaba en el teléfono (reenvío): sin aviso")
+        } else if (silent) {
+            nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): su chat está abierto (parpadeo a segundo plano): sin aviso")
         } else {
             // 3076: un mensaje de GRUPO avisa en el grupo, con su nombre y quién lo manda (como por Bluetooth: notifyMessage)
             val gname = groupName(group)
