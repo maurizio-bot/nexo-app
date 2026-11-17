@@ -21,6 +21,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **16-11 19:58 (México) — APK 3080 PUBLICADA (19:55; 3169 estados por gesto).** NOVEDADES: 3080 al historial; bloque nuevo con
+  3170 (fotos más nítidas). En curso (subagentes): 3171 cámara del teléfono (worktree wtcam) y «Ciudad», simulación masiva de 12
+  teléfonos con juez de entrega (idea del dueño 17-11; worktree wtciudad, tests/sim/ciudad.js; solo encuentra y documenta).
 - **16-11 19:40 (México) — 3170/3170b en la rama (fotos más nítidas: 1600 px/82 % por camino rápido, 1280/75 solo Bluetooth,
   800/65 solo por puente; fotocalidad.js).** APK 3080 (3169) construyéndose. En curso (subagente, worktree wtcam): **3171** «Cámara»
   abre la cámara del propio teléfono (@capacitor/camera, modo noche) → «Antes de enviar» con el ojo; cancelar → cámara de NEXO en vídeo

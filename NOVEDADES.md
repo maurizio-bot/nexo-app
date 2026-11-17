@@ -12,23 +12,26 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Los estados ahora tienen su propia pantalla: desliza Contactos hacia la izquierda para verlos.
+- Fotos más nítidas: se mandan a mayor tamaño y calidad, sobre todo por Wi-Fi e internet.
 </es-419>
 <it-IT>
-- Gli stati ora hanno la loro schermata: scorri Contatti verso sinistra per vederli.
+- Foto più nitide: si inviano più grandi e con più qualità, soprattutto via Wi-Fi e internet.
 </it-IT>
 <en-US>
-- Statuses now have their own screen: swipe Contacts to the left to see them.
+- Sharper photos: they're sent larger and in higher quality, especially over Wi-Fi and the internet.
 </en-US>
 <pt-BR>
-- Os status agora têm sua própria tela: deslize Contatos para a esquerda para vê-los.
+- Fotos mais nítidas: são enviadas maiores e com mais qualidade, principalmente por Wi-Fi e internet.
 </pt-BR>
 <fr-FR>
-- Les statuts ont maintenant leur propre écran : glissez Contacts vers la gauche pour les voir.
+- Photos plus nettes : elles sont envoyées plus grandes et de meilleure qualité, surtout en Wi-Fi et sur internet.
 </fr-FR>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3080 (16-11-2026)
+- Los estados ahora tienen su propia pantalla: desliza Contactos hacia la izquierda para verlos.
 
 ### APK 3079 (16-11-2026; la 3078 se paró en las pruebas: esta la lleva)
 - Bluetooth más estable: si dos teléfonos quedan conectados dos veces, NEXO cierra la conexión sobrante y se queda con la más rápida.
