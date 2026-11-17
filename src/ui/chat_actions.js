@@ -20,6 +20,7 @@ import { vaultBlankMessage, vaultDeleteMessage, vaultEditMessage, vaultLoadConta
 import { _editableText } from '../vault/vault_shared.js'; // 3195: qué contenido es un texto que se edita
 import { t } from './i18n.js';
 import { _pickAvatar, SHEET_CLOSE_SVG } from './share_contacts.js';
+import { isSelecting, startSelect, selectFromBubble } from './msg_select.js'; // 3206: elegir varios mensajes y reenviarlos
 import { paintTextWithLinks } from './links.js'; // 3161: enlaces que se tocan (+ tarjeta de TikTok/Instagram/Facebook/YouTube)
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
@@ -223,7 +224,7 @@ export function _setupMessageActions() {
     // 3143: antes exigía |dx| > 1,5·|dy| en CADA movimiento (un pulgar siempre se desvía un poco hacia abajo y el gesto no
     // arrancaba) y, una vez arrancado, volvía a perderse si el dedo bajaba. Ahora basta |dx| > |dy| para empezar y,
     // empezado, el gesto queda fijado como horizontal hasta soltar.
-    if (!swiping && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) && (dx > 0 ? startX > 40 : true)) {
+    if (!swiping && !isSelecting() && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) && (dx > 0 ? startX > 40 : true)) { // 3206: eligiendo, no se responde deslizando
       swiping = true; window.__nexoBubbleSwiping = true;
     }
     if (swiping) {
@@ -273,7 +274,7 @@ export function _setupMessageActions() {
 // en el visor a pantalla completa, file_card.js).
 function _doubleTapBubble(div) {
   var id = div && div.dataset.msgId, cid = _getCurrentContactId();
-  if (!id || !cid) return;
+  if (!id || !cid || isSelecting()) return; // 3206: eligiendo mensajes, el doble toque no reacciona
   _findMessage(cid, id).then(function(m) {
     if (!m || m.deleted || m.attachmentType) return;
     _reactTo(cid, id, QUICK_REACTION);
@@ -284,6 +285,7 @@ function _doubleTapBubble(div) {
 var _MM_ICONS = {
   'mm-reply': '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   'mm-forward': '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+  'mm-select': '<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><path d="M8 12.5l2.8 2.8L16.5 9"/>',
   'mm-sticker-add': '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
   'mm-copy': '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   'mm-edit': '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
@@ -294,6 +296,7 @@ var _MM_ICONS = {
 export function _openMsgMenu(div) {
   var id = div && div.dataset.msgId, cid = _getCurrentContactId();
   if (!id || !cid) return;
+  if (isSelecting()) { selectFromBubble(div); return; } // 3206: eligiendo mensajes, la pulsación larga marca o desmarca
   _findMessage(cid, id).then(function(msg) {
     if (!msg) return;
     var old = document.getElementById('nexo-msg-menu');
@@ -342,6 +345,8 @@ export function _openMsgMenu(div) {
     // 3164: una foto o un vídeo de «ver una vez» (propio o recibido, visto o no) no se reenvía: el otro lo mandó para verse una vez
     var onceMsg = !!(msg.onceSeen || (msg.attachmentMeta && msg.attachmentMeta.once));
     if (!deleted && !onceMsg) add(t('chat_forward', '↪  Reenviar'), 'mm-forward', function() { _openForwardSheet(msg); });
+    // 3206 (dueño 17-11: «al reenviar hay que agregar la multiselección»): elegir varios y reenviarlos juntos (msg_select.js)
+    if (!deleted && !onceMsg) add(t('chat_select', '☑  Seleccionar'), 'mm-select', function() { startSelect(cid, id); });
     // 3032 (dueño 12-11): un sticker PROPIO que me mandaron (con su dibujo) se puede agregar a mis stickers
     var stk = (!isOwn && !deleted) ? _chatKind(msg.content || '') : null;
     if (stk && stk.type === 'nexo_sticker' && isValidStickerImg(stk.img)) {
@@ -516,7 +521,10 @@ export function _copyText(text) {
   else fallback();
 }
 
-export function _openForwardSheet(msg) {
+// 3206: msg puede ser una LISTA (los elegidos con «Seleccionar», ya en el orden del chat): se mandan de a uno, en ese orden, a cada
+// chat elegido; onSent se llama al tocar «Reenviar» (cierra la selección)
+export function _openForwardSheet(msg, onSent) {
+  var msgs = Array.isArray(msg) ? msg : [msg];
   var old = document.getElementById('nexo-forward-sheet');
   if (old) old.remove();
   var all = (vaultLoadContacts() || []).filter(function(c) { return c && (c.nexoId || c.deviceUUID); });
@@ -560,7 +568,8 @@ export function _openForwardSheet(msg) {
     var ids = Object.keys(chosen);
     if (!ids.length) return;
     box.remove();
-    _forwardToMany(ids, msg).then(function() {
+    if (typeof onSent === 'function') { try { onSent(); } catch (e) {} }
+    (async function() { for (var k = 0; k < msgs.length; k++) await _forwardToMany(ids, msgs[k]); })().then(function() {
       _showInfoToast(t('chat_forwarded_to', 'Reenviado a ') + ids.length + (ids.length === 1 ? t('chat_chat_sing', ' chat') : t('chat_chat_plur', ' chats')), 2000);
     });
   };

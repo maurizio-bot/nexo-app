@@ -59,6 +59,7 @@ export function _setupBackButton() {
         if (grev) { if (typeof grev.__nexoClose === 'function') grev.__nexoClose(); else grev.remove(); return true; }
         var smalls = ['nexo-msg-menu', 'nexo-group-menu', 'nexo-contact-picker', 'cobro-sheet', 'nexo-forward-sheet', 'nexo-share-sheet', 'nexo-group-sheet', 'nexo-wp-sheet', 'nexo-sendto-sheet']; // 3161: «Enviar a…» (share_in.js)
         for (var si = 0; si < smalls.length; si++) { var sm = document.getElementById(smalls[si]); if (sm) { sm.remove(); return true; } }
+        if (typeof window.__nexoEndSelect === 'function' && window.__nexoEndSelect()) return true; // 3206: la selección de mensajes
         var amenu = document.getElementById('attach-menu');
         if (amenu && amenu.classList.contains('visible')) { amenu.classList.add('hidden'); amenu.classList.remove('visible'); return true; }
         var ngame = document.getElementById('nexo-game-overlay');

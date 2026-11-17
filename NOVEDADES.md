@@ -12,14 +12,24 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Ahora puedes elegir varios mensajes y reenviarlos juntos: mantén pulsado uno, toca «Seleccionar» y marca los demás.
+- Con datos móviles, al abrir NEXO con Wi-Fi llegan todos los mensajes que quedaron pendientes mientras estaba en segundo plano.
 </es-419>
 <it-IT>
+- Ora puoi scegliere più messaggi e inoltrarli insieme: tienine premuto uno, tocca «Seleziona» e segna gli altri.
+- Con i dati mobili, aprendo NEXO col Wi-Fi arrivano tutti i messaggi rimasti in sospeso mentre era in secondo piano.
 </it-IT>
 <en-US>
+- You can now pick several messages and forward them together: long-press one, tap «Select» and mark the rest.
+- On mobile data, opening NEXO on Wi-Fi now brings every message left pending while it was in the background.
 </en-US>
 <pt-BR>
+- Agora você pode escolher várias mensagens e encaminhá-las juntas: mantenha uma pressionada, toque em «Selecionar» e marque as outras.
+- Com dados móveis, ao abrir o NEXO no Wi-Fi chegam todas as mensagens que ficaram pendentes enquanto ele estava em segundo plano.
 </pt-BR>
 <fr-FR>
+- Vous pouvez maintenant choisir plusieurs messages et les transférer ensemble : appui long sur l'un, « Sélectionner », puis cochez les autres.
+- Avec les données mobiles, en ouvrant NEXO en Wi-Fi, tous les messages restés en attente pendant qu'il était en arrière-plan arrivent.
 </fr-FR>
 <!-- /APK -->
 
