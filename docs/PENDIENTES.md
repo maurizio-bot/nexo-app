@@ -15,8 +15,14 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   caer el Wi-Fi con ella a las 23:56:35). Nada la revivió hasta que el dueño la abrió a las 04:46 (registro nativo vacío 23:07 → 04:46):
   ~5 h sin recibir. En la tableta también el 15-11 07:41. `START_STICKY` no basta; no hay receptor de reinicio/actualización ni
   alarma de vigilancia; solo un toque FCM la revive, y solo si alguien tiene algo pendiente para ella.
-- En curso **3189** (wtvuelta): NEXO vuelve sola tras MY_PACKAGE_REPLACED, BOOT_COMPLETED y una alarma de vigilancia cada ~15 min;
-  anota en el registro nativo «NEXO vuelve sola tras …». Prueba del dueño cuando salga: reiniciar la tableta SIN abrir NEXO y mandarle
+- **3189 hecho y EN ESPERA** (commit 9dc2113f en el worktree `/home/user/wtvuelta`, sin integrar): NEXO vuelve sola tras
+  MY_PACKAGE_REPLACED, BOOT_COMPLETED y una alarma de vigilancia cada ~15 min; anota «[VUELVE] NEXO vuelve sola tras …». Kotlin 183/183;
+  compilado contra la API 36 (sin SDK de Android aquí: el CI lo confirma). **Pero el servicio solo NO recibe nada** en un proceso nuevo
+  (sin WebView): el servidor GATT y NetBg solo los crea el plugin, y la configuración de NetBg (relés, claves de pareja) y las claves del
+  ✓✓ viven en memoria. Lo mismo con el toque FCM de hoy: arranca el servicio, no baja nada y además NO avisa
+  (`FcmWakePolicy.noticeAfterWake(true)` = sin aviso). **Pregunta al dueño (toca cifrado):** guardar esa configuración cifrada en
+  reposo (AtRestStore, como los contactos y el ratchet) para que el servicio arranque NetBg solo (~100–150 líneas). Mientras: el toque
+  FCM con el proceso muerto debería poner el aviso genérico. Prueba del dueño cuando salga: reiniciar la tableta SIN abrir NEXO y mandarle
   un mensaje desde el S24.
 - Del mismo diagnóstico: **3187** (wtzombi) el S24 tardó 104 s en dar el zombi porque cada vuelta a la app ponía la cuenta a 0 (y el
   aviso decía «2 pings» con un límite real de 4); **3188** (hecho, 0fd9bb18) el registro nativo anota si un relé vuelve a abrir.
