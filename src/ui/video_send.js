@@ -230,6 +230,7 @@ export function _applyHdUpgrade(cid, msgId, payload, meta) {
     return vaultReplaceAttachment(gid || cid, msgId, payload, { mime: mime, format: _videoFormat(mime), hd: true, preview: false });
   }).then(function(ok) {
     if (ok === 'onceSeen') { console.log('[VIDEO] HD de ' + msgId + ' descartado: era «ver una vez» y ya se abrió'); return; }
+    if (ok === 'deleted') { console.log('[VIDEO] HD de ' + msgId + ' descartado: el otro lo eliminó para todos'); return; } // 3175
     if (!ok && meta.once) { console.log('[VIDEO] HD «ver una vez» de ' + msgId + ' sin su previa: no se guarda'); return; }
     if (!ok) {
       // Sin la previa guardada: se guarda como vídeo normal

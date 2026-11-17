@@ -1,5 +1,6 @@
 import { _normId, _nativePlugin, _safeNativeCall, VAULT_CONTACTS_FILE } from './vault_shared.js';
 import { _flushPendingWrites, _pendingAttachments, vaultSaveFile } from './vault_messages.js';
+import { vaultEarlyReady } from './vault_early_acts.js';
 // vault_manager.js — CONTACTOS: la lista, su arranque (initVault), guardado y búsqueda; y volcar todo a disco (vaultFlushAll).
 // Reestructuración 15-11: movido TAL CUAL desde vault_manager.js (que lo sigue exportando).
 var _vaultContacts = [];
@@ -136,6 +137,8 @@ export async function initVault() {
     _vaultContacts = [];
     _vaultLoadFailed = true; // auditoría #7: no pisar el archivo real mientras no se haya podido leer
   }
+  // 3175: las acciones que esperan a su mensaje (lápidas de «eliminar para todos»), listas antes de que llegue nada
+  try { await vaultEarlyReady(); } catch (e) {}
   _vaultInitDone = true;
 }
 var _persistContactsTimer = null;

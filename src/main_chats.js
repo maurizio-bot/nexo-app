@@ -1,4 +1,4 @@
-import { vaultLoadContacts, vaultFindContactByNexoId, vaultSaveContact, vaultGetOrCreateContact, initVault } from './vault/vault_manager.js';
+import { vaultLoadContacts, vaultFindContactByNexoId, vaultSaveContact, vaultGetOrCreateContact, initVault, vaultEarlyTombstoned } from './vault/vault_manager.js';
 import { _normId, _PREVIEW_BY_TYPE, _cut, _plainText, _chatKind, _getCurrentContactId } from './ui/chat_format.js';
 import { isGroupId, parseGroupEnvelope, groupAttachment } from './ui/groups.js';
 import { openGroupChat } from './ui/groups_ui.js';
@@ -188,6 +188,15 @@ function _handleIncomingMessage(msg) {
     }
     if (msg.senderNexoId) {
       vaultGetOrCreateContact(msg.senderNexoId, msg.senderName || 'NEXO');
+    }
+    // 3175 (prueba de ciudad 17-11): quien lo mandó ya lo ELIMINÓ PARA TODOS (su acción llegó antes que el mensaje): queda «Se eliminó
+    // este mensaje», sin su texto ni su adjunto, sin aviso, sin «no leído» y sin vista previa en la lista (vault_early_acts.js)
+    var earlyId = msg.messageId || msg.msgId || '';
+    if (!msg.groupId && !msg._own && senderUUID && earlyId && vaultEarlyTombstoned(senderUUID, earlyId)) {
+      console.log('[CHAT] Llegó ' + earlyId + ', que ' + _normId(senderUUID) + ' ya había eliminado para todos: en blanco y sin aviso');
+      if (bi && typeof bi._noteSeen === 'function' && msg.msgId) { try { bi._noteSeen(msg.msgId); } catch (e) {} }
+      _renderMessage(Object.assign({}, msg, { deleted: true, content: '', text: '', attachmentType: null, attachmentPayload: null, attachmentRef: null, attachmentMeta: null }));
+      return;
     }
     // 3010 (dueño 11-11: «la lista no se ordena desde el último de conversación»): un texto LARGO (> 180 letras, llega troceado
     // por este camino) no subía al contacto arriba ni cambiaba su último mensaje; solo lo hacían los cortos (ble_messages).

@@ -6,6 +6,7 @@ import { blobPointerIn, citaIn } from '../net/blob_mailbox.js';
 import { parseGroupEnvelope, groupAttachment } from './groups.js';
 import { parseCallSignal } from './calls.js';
 import { parseGroupCallSignal } from './group_call.js';
+import { vaultEarlyTombstoned } from '../vault/vault_early_acts.js';
 // 3069: ¿texto cifrado del protocolo 2 en una sesión ya hecha? (cabecera de 3 campos: no es un primer mensaje X3DH)
 function _e2Established(packed) {
   if (typeof packed !== 'string' || packed.indexOf('E2:') !== 0) return false;
@@ -491,7 +492,7 @@ export const BLE_RECEIVE_METHODS = {
         // v6.14.0: el contador de no leídos lo lleva notify.js (todas las vías: texto largo, fotos, archivos…)
         var pv = _messagePreview(content, attachmentData && attachmentData.attachmentType);
         if (grp) { var gpv = _messagePreview(msgContent, attachmentData && attachmentData.attachmentType); if (gpv !== null && !isControl) self.groups.noteMessage(grp.gid, self.groups.memberName(senderUUID) + ': ' + gpv, data.timestamp || Date.now()); }
-        else if (senderUUID && !isControl && pv !== null) self.noteContactMessage(senderUUID, pv, data.timestamp || Date.now(), messageId); // 3183: con su id (un reenvío no lo sube)
+        else if (senderUUID && !isControl && pv !== null && !vaultEarlyTombstoned(senderUUID, messageId)) self.noteContactMessage(senderUUID, pv, data.timestamp || Date.now(), messageId); // 3183: con su id (un reenvío no lo sube); 3175: lo eliminado para todos antes de llegar no pone su texto en la lista
         _safeDispatchEvent('nexo:ble:messageReceived', {
           groupId: grp ? grp.gid : undefined,
           deviceId: deviceId,

@@ -685,36 +685,55 @@ export function _applyChatAction(senderId, act) {
     return;
   }
   // Ronda 2782: el contacto editó uno de SUS mensajes de texto
+  // 3175: si el mensaje aún no llegó (la edición se adelantó), se guarda y se aplica al llegar (vault_early_acts.js)
   if (act && act.act === 'edit' && act.id && typeof act.t === 'string') {
     var cide = _normId(senderId);
-    _findMessage(cide, act.id).then(function(m) {
-      if (!m || m._own || m.deleted || m.attachmentType) return; // solo texto suyo, no borrado
-      return vaultEditMessage(cide, act.id, act.t).then(function() {
-        if (_normId(_getCurrentContactId()) === cide) _rerenderEdited(cide, act.id, act.t);
-        return _refreshChatPreview(cide);
-      });
-    });
+    vaultEditMessage(cide, act.id, act.t, true).then(function(r) { // solo texto suyo, no borrado
+      if (r === 'queued') { console.log('[CHAT] ' + cide + ' editó un mensaje que aún no llegó: se aplicará al llegar'); return; }
+      if (r !== true) return;
+      if (_normId(_getCurrentContactId()) === cide) _rerenderEdited(cide, act.id, act.t);
+      return _refreshChatPreview(cide);
+    }).catch(function() {});
     return;
   }
-  // Ronda 2783: el contacto reaccionó a un mensaje con un emoji
+  // Ronda 2783: el contacto reaccionó a un mensaje con un emoji (3175: o a uno que aún no llegó: se aplica al llegar)
   if (act && act.act === 'react' && act.id && typeof act.e === 'string') {
     var cidr = _normId(senderId);
-    vaultReactMessage(cidr, act.id, cidr, act.e).then(function(ok) {
-      if (ok && _normId(_getCurrentContactId()) === cidr) _rerenderReactions(cidr, act.id);
-    });
+    vaultReactMessage(cidr, act.id, cidr, act.e, true).then(function(ok) {
+      if (ok === 'queued') { console.log('[CHAT] ' + cidr + ' reaccionó a un mensaje que aún no llegó: se aplicará al llegar'); return; }
+      if (ok === true && _normId(_getCurrentContactId()) === cidr) _rerenderReactions(cidr, act.id);
+    }).catch(function() {});
     return;
   }
   if (!act || act.act !== 'del' || !act.id) return;
   var cid = _normId(senderId);
-  _findMessage(cid, act.id).then(function(m) {
-    if (!m || m._own || m.deleted) return; // solo mensajes que escribió quien lo pide
+  // 3175: si el mensaje aún no llegó, queda la lápida: cuando llegue no se mostrará ni se guardará (ni su adjunto, ni su aviso)
+  vaultBlankMessage(cid, act.id, true).then(function(r) { // solo mensajes que escribió quien lo pide
+    if (r === 'queued') { console.log('[CHAT] ' + cid + ' eliminó para todos un mensaje que aún no llegó: no se mostrará'); return; }
+    if (r !== true) return;
     console.log('[CHAT] ' + cid + ' eliminó un mensaje para todos');
-    return vaultBlankMessage(cid, act.id).then(function() {
-      if (_normId(_getCurrentContactId()) === cid) _rerenderBlank(act.id, m);
-      return _refreshChatPreview(cid);
-    });
-  });
+    if (_normId(_getCurrentContactId()) === cid) _findMessage(cid, act.id).then(function(m) { if (m) _rerenderBlank(act.id, m); });
+    return _refreshChatPreview(cid);
+  }).catch(function() {});
 }
+
+// 3175: llegó un mensaje con acciones que se le habían adelantado (vault_messages._appendMessageNow ya las aplicó al guardarlo):
+// su burbuja se vuelve a dibujar con lo guardado (texto editado, reacción, o «Se eliminó este mensaje») y la vista previa de la
+// lista se rehace (no se queda con el texto de un mensaje eliminado)
+if (typeof window !== 'undefined') window.addEventListener('nexo:vault:earlyActs', function(e) {
+  var d = (e && e.detail) || {}, cid = _normId(d.cid), id = d.msgId;
+  if (!cid || !id) return;
+  console.log('[CHAT] Llegó ' + id + ' de ' + cid + ' con ' + (d.del ? '«eliminar para todos»' : [d.edit ? 'edición' : '', d.react ? 'reacción' : ''].filter(Boolean).join(' y ')) + ' que se adelantó: aplicada');
+  if (_normId(_getCurrentContactId()) === cid) {
+    _findMessage(cid, id).then(function(m) {
+      if (!m || !document.querySelector('.message[data-msg-id="' + id + '"]')) return;
+      if (d.del) _rerenderBlank(id, m);
+      else if (d.edit) _rerenderEdited(cid, id, m.content); // (con sus reacciones)
+      else if (d.react) _rerenderReactions(cid, id);
+    });
+  }
+  _refreshChatPreview(cid);
+});
 
 // Gancho de pruebas (tests/sim/fwdbig.js)
 try { if (typeof window !== 'undefined') window.__nexoForwardMany = _forwardToMany; } catch (e) {}

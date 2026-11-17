@@ -1,6 +1,7 @@
 import { _nativePlugin, _safeNativeCall, VAULT_MESSAGES_PREFIX, _normId, _msgCache, _msgLoading, _withMsgLock } from './vault_shared.js';
 import { _vaultContacts, _getContactIdentity } from './vault_contacts.js';
 import { vaultBigxOutDrop, vaultBigxInDrop } from './vault_big.js';
+import { vaultEarlyReady, vaultEarlyLoaded, vaultEarlyQueue, vaultEarlyApply } from './vault_early_acts.js';
 // vault_manager.js — MENSAJES y adjuntos: cargar, guardar, estados, editar, borrar, miniaturas.
 // Reestructuración 15-11: movido TAL CUAL desde vault_manager.js (que lo sigue exportando).
 // v2.3.0: los adjuntos grandes van en su propio archivo (nexo_att_<msgId>.b64) y el historial guarda
@@ -325,6 +326,13 @@ async function _appendMessageNow(cid, message) {
   if (message.hidden) normalized.hidden = true;
   var existingIdx = messages.findIndex(function(m) { return m.msgId === normalized.msgId; });
   var existing = existingIdx >= 0 ? messages[existingIdx] : null;
+  // 3175: acciones de quien lo escribió que llegaron ANTES que el mensaje (vault_early_acts.js): «eliminar para todos» lo deja en
+  // blanco ya (ni su texto ni su adjunto llegan al disco); una edición o una reacción se aplican al guardarlo
+  var early = null;
+  if (!normalized._own) {
+    if (!vaultEarlyLoaded()) await vaultEarlyReady();
+    early = vaultEarlyApply(cid, normalized, existing);
+  }
   _externalizeAttachment(normalized, existing);
   if (existing) {
     var merged = Object.assign({}, existing, normalized);
@@ -348,10 +356,23 @@ async function _appendMessageNow(cid, message) {
       merged.attachmentPayload = null; merged.attachmentRef = null; merged.hdRef = null; merged.hdStatus = null;
       merged.attachmentMeta = Object.assign({}, existing.attachmentMeta || merged.attachmentMeta || {}, { once: true, onceSeen: true });
     }
+    // 3175: un mensaje eliminado para todos no revive con otra copia que llegue después (ni su texto ni su adjunto)
+    if (existing.deleted || normalized.deleted) {
+      if (!existing.deleted) _deleteMessageFiles(existing, msgId);
+      merged.deleted = true; merged.content = ''; merged.text = '';
+      merged.attachmentType = null; merged.attachmentPayload = null; merged.attachmentRef = null; merged.attachmentMeta = null; merged.hdRef = null; merged.hdStatus = null;
+    } else if (existing.edited && !normalized.edited && !normalized._own && typeof existing.content === 'string') {
+      // 3175: ni pierde su edición (otra copia del texto original)
+      merged.content = existing.content; merged.text = existing.content; merged.edited = true;
+    }
     messages[existingIdx] = merged;
   }
   else { messages.push(normalized); _usageNote('msg', cid, normalized); }
   _persistMessages(cid, messages, !existing);
+  if (early) {
+    var ev = Object.assign({ cid: cid, msgId: msgId }, early);
+    setTimeout(function() { try { window.dispatchEvent(new CustomEvent('nexo:vault:earlyActs', { detail: ev })); } catch (e) {} }, 0);
+  }
   return normalized;
 }
 // v2.3.3: guarda un archivo suelto (p.ej. el vídeo original para el HD) y lo deja en memoria hasta escribirlo
@@ -479,14 +500,21 @@ export async function vaultDeleteMessage(contactNexoId, msgId) {
   });
 }
 // Eliminado para todos: el mensaje queda como aviso ("Se eliminó este mensaje"), sin contenido ni adjuntos
-export async function vaultBlankMessage(contactNexoId, msgId) {
+// 3175: fromPeer = lo pide el contacto (acción recibida): solo un mensaje SUYO y no borrado; si aún no llegó, queda la lápida
+// (vault_early_acts.js) y devuelve 'queued'
+export async function vaultBlankMessage(contactNexoId, msgId, fromPeer) {
   if (!contactNexoId || !msgId) return false;
   var cid = _normId(contactNexoId);
   return _withMsgLock(cid, async function() {
     var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
     var idx = messages.findIndex(function(m) { return (m.msgId || m.messageId) === msgId; });
-    if (idx < 0) return false;
+    if (idx < 0) {
+      if (!fromPeer) return false;
+      await vaultEarlyReady();
+      return vaultEarlyQueue(cid, msgId, 'del') ? 'queued' : false;
+    }
     var m = messages[idx];
+    if (fromPeer && (m._own || m.deleted)) return false;
     messages[idx] = Object.assign({}, m, { deleted: true, content: '', attachmentType: null, attachmentPayload: null,
       attachmentRef: null, attachmentMeta: null, hdRef: null, hdStatus: null });
     _persistMessages(cid, messages);
@@ -520,14 +548,20 @@ export async function vaultConsumeOnceMessage(contactNexoId, msgId) {
 }
 
 // Ronda 2782: editar un mensaje de texto ya enviado/recibido. Cambia el contenido y lo marca "editado".
-export async function vaultEditMessage(contactNexoId, msgId, newText) {
+// 3175: fromPeer = edición recibida del contacto: solo un texto SUYO; si aún no llegó, se guarda a la espera ('queued')
+export async function vaultEditMessage(contactNexoId, msgId, newText, fromPeer) {
   if (!contactNexoId || !msgId || typeof newText !== 'string') return false;
   var cid = _normId(contactNexoId);
   return _withMsgLock(cid, async function() {
     var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
     var idx = messages.findIndex(function(m) { return (m.msgId || m.messageId) === msgId; });
-    if (idx < 0) return false;
+    if (idx < 0) {
+      if (!fromPeer) return false;
+      await vaultEarlyReady();
+      return vaultEarlyQueue(cid, msgId, 'edit', newText) ? 'queued' : false;
+    }
     var m = messages[idx];
+    if (fromPeer && m._own) return false; // solo los suyos
     if (m.deleted || m.attachmentType) return false; // solo texto; ni borrados ni adjuntos
     messages[idx] = Object.assign({}, m, { content: newText, edited: true });
     _persistMessages(cid, messages);
@@ -536,7 +570,8 @@ export async function vaultEditMessage(contactNexoId, msgId, newText) {
 }
 
 // Ronda 2783: reaccionar a un mensaje con un emoji. reactions = { NEXO ID de quien reacciona: emoji }; emoji '' lo quita.
-export async function vaultReactMessage(contactNexoId, msgId, reactorNexoId, emoji) {
+// 3175: fromPeer = reacción recibida del contacto: si el mensaje aún no llegó, se guarda a la espera ('queued')
+export async function vaultReactMessage(contactNexoId, msgId, reactorNexoId, emoji, fromPeer) {
   if (!contactNexoId || !msgId || !reactorNexoId) return false;
   var cid = _normId(contactNexoId);
   var who = _normId(reactorNexoId);
@@ -544,7 +579,11 @@ export async function vaultReactMessage(contactNexoId, msgId, reactorNexoId, emo
   return _withMsgLock(cid, async function() {
     var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
     var idx = messages.findIndex(function(m) { return (m.msgId || m.messageId) === msgId; });
-    if (idx < 0) return false;
+    if (idx < 0) {
+      if (!fromPeer) return false;
+      await vaultEarlyReady();
+      return vaultEarlyQueue(cid, msgId, 'react', e, who) ? 'queued' : false;
+    }
     var m = messages[idx];
     if (m.deleted) return false;
     var reactions = Object.assign({}, m.reactions || {});
@@ -565,6 +604,8 @@ export async function vaultReplaceAttachment(contactNexoId, msgId, payload, meta
     if (idx < 0) return false;
     // 3163: un «ver una vez» ya abierto no revive: el HD que llega después se tira sin guardarlo
     if (messages[idx].onceSeen) return 'onceSeen';
+    // 3175: tampoco uno que el otro eliminó para todos (antes o después de llegar): el HD que llega tarde se tira
+    if (messages[idx].deleted && !messages[idx]._own) return 'deleted';
     var m = Object.assign({}, messages[idx]);
     var ref = m.attachmentRef || _attFileName(msgId);
     vaultSaveFile(ref, payload);
