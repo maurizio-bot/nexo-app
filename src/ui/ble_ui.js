@@ -367,6 +367,10 @@ export const BLE_UI_METHODS = {
         pend.forEach(function(mid) { if (self.ackSystem && self.ackSystem.sendReadReceipt) self.ackSystem.sendReadReceipt(dev, mid); });
       } catch (err) {}
     });
+    // 3176: contacto recién creado cuyo kx (fx: entiende reacciones, editar, eliminar para todos…) llegó antes de serlo
+    window.addEventListener('nexo:ble:contactAdded', function(e) {
+      try { var nxA = e && e.detail && e.detail.nexoId; if (nxA && typeof self._applyFxKnown === 'function') self._applyFxKnown(nxA); } catch (err) {}
+    });
     window.addEventListener('nexo:ble:closeChat', function() {
       self._activeChatDeviceId = null;
       self._activeChatDeviceIdNative = null;

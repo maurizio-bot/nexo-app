@@ -188,6 +188,7 @@ function _handleIncomingMessage(msg) {
     }
     if (msg.senderNexoId) {
       vaultGetOrCreateContact(msg.senderNexoId, msg.senderName || 'NEXO');
+      if (bi && typeof bi._applyFxKnown === 'function') bi._applyFxKnown(msg.senderNexoId); // 3176: su primer mensaje fue un texto largo
     }
     // 3175 (prueba de ciudad 17-11): quien lo mandó ya lo ELIMINÓ PARA TODOS (su acción llegó antes que el mensaje): queda «Se eliminó
     // este mensaje», sin su texto ni su adjunto, sin aviso, sin «no leído» y sin vista previa en la lista (vault_early_acts.js)

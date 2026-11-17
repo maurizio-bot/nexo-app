@@ -169,7 +169,31 @@ export const BLE_KEY_METHODS = {
     var contacts = _getBLEContacts();
     var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
     if (c && (c.fx || 0) !== lvl) { c.fx = lvl; _saveBLEContacts(contacts); }
+    // 3176 (prueba de ciudad 17-11): aún NO es contacto. Al agregar, el que agrega manda su kx antes de que el agregado lo tenga
+    // (lo tendrá con el «hola»): fx se perdía y quedaba en 0 para siempre en ese lado (11 de 12 pares en 6 teléfonos): sus
+    // reacciones no salían, ni «editar» ni «eliminar para todos». Se recuerda aquí y se pone al crear el contacto (_applyFxKnown).
+    if (!c && /^nx[0-9a-z]{8}$/.test(nx)) {
+      this._fxKnown = this._fxKnown || new Map();
+      this._fxKnown.delete(nx); this._fxKnown.set(nx, lvl);
+      if (this._fxKnown.size > 200) this._fxKnown.delete(this._fxKnown.keys().next().value);
+    }
     if (this.fenix) this.fenix.markPeer(nx, deviceId, lvl);
+  },
+
+  // 3176: el contacto se acaba de crear (agregarlo, su primer mensaje, la tarjeta de un grupo) y su kx con fx ya había llegado:
+  // se le pone ahora. Quien de verdad no lo anuncia (una build que no lo entiende) sigue sin fx.
+  _applyFxKnown(nexoId) {
+    var nx = _normId(nexoId);
+    if (!nx || !this._fxKnown || !this._fxKnown.has(nx)) return;
+    var contacts = _getBLEContacts();
+    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c) return;
+    var lvl = this._fxKnown.get(nx);
+    this._fxKnown.delete(nx);
+    if ((c.fx || 0) === lvl) return;
+    c.fx = lvl;
+    _saveBLEContacts(contacts);
+    console.log('[FENIX] ' + nx + ' entiende fx=' + lvl + ' (lo dijo en su kx antes de ser contacto)');
   },
 
   _noteRestored(nexoId, pk, rs) {
