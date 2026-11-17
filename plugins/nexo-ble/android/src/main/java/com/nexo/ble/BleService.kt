@@ -63,6 +63,10 @@ class BleService : Service() {
     private val rotate = Runnable {
         if (!currentNexoId.isNullOrEmpty()) { stopAdvertisingInternal(); startAdvertisingInternal(currentNexoId!!) }
     }
+    // 3189 (#87): la alarma de vigilancia ya está programada por este servicio (NexoRestartReceiver.arm) y por qué falló el último
+    // startForeground (null = quedó en primer plano), para anotar en el registro si NEXO pudo volver sola
+    private var watchdogArmed = false
+    private var fgFail: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -77,12 +81,15 @@ class BleService : Service() {
     // dejaba de oír. En llamada: "dispositivo conectado" + micrófono; fuera de ella, solo "dispositivo conectado" (el de
     // micrófono no se puede pedir en segundo plano: si el servicio se reinicia solo, fallaría). En Android 8–10 basta
     // con tener el servicio. Devuelve cómo quedó (para el diagnóstico de la llamada).
-    fun foreground(): String { val r = foregroundTyped(); fgsState = r; return r }
-    private fun foregroundTyped(): String {
+    // 3189 (#87): mic = false al volver sola (RestartPolicy.micAllowed): solo «dispositivo conectado». Desde Android 15 un servicio
+    // arrancado por BOOT_COMPLETED no puede ser de micrófono, y desde segundo plano tampoco se puede pedir.
+    fun foreground(mic: Boolean = true): String { val r = foregroundTyped(mic); fgsState = r; return r }
+    private fun foregroundTyped(mic: Boolean): String {
         val n = buildNotification()
         if (Build.VERSION.SDK_INT < 29) { startFg(n, 0); return if (inCall) "micrófono (Android 8–9)" else "normal" }
         val base = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
         if (inCall && Build.VERSION.SDK_INT >= 30) {
+            if (!mic) { startFg(n, base); return "sin micrófono (al volver sola)" }
             if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                 startFg(n, base); return "sin micrófono (sin permiso)"
             }
@@ -103,10 +110,13 @@ class BleService : Service() {
     private fun startFg(n: android.app.Notification, type: Int): Boolean {
         try {
             if (type != 0 && Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, n, type) else startForeground(NOTIFICATION_ID, n)
+            fgFail = null
             return true
         } catch (e: Throwable) {
             Log.w(TAG, "startForeground(tipo=$type) falló: ${e.javaClass.simpleName} ${e.message}")
-            if (type != 0) { try { startForeground(NOTIFICATION_ID, n); return true } catch (e2: Throwable) { Log.e(TAG, "startForeground sin tipo también falló: ${e2.message}") } }
+            var last = e
+            if (type != 0) { try { startForeground(NOTIFICATION_ID, n); fgFail = null; return true } catch (e2: Throwable) { Log.e(TAG, "startForeground sin tipo también falló: ${e2.message}"); last = e2 } }
+            fgFail = "${last.javaClass.simpleName}: ${last.message}"
             try { stopSelf() } catch (e3: Throwable) {}
             return false
         }
@@ -128,7 +138,14 @@ class BleService : Service() {
             ridEpochS = intent.getLongExtra("rid_epoch_s", 900L).coerceAtLeast(1L)
         }
 
-        foreground()
+        // 3189 (#87): arrancado por NexoRestartReceiver (actualización, reinicio o alarma de vigilancia) = sin la app: solo
+        // «dispositivo conectado», y el resultado al registro nativo («NEXO vuelve sola tras…» / «No se pudo volver sola tras…»)
+        val restart = RestartPolicy.reasonByName(intent?.getStringExtra(RestartPolicy.EXTRA_REASON))
+        foreground(RestartPolicy.micAllowed(restart))
+        if (restart != null) NexoRestartReceiver.noteOutcome(this, restart, fgFail)
+        // La alarma de vigilancia (cada ~15 min) la programa el servicio al arrancar, en cuanto NEXO tiene cuenta (NEXO ID guardado);
+        // otra vez cuando la app le da el NEXO ID (cuenta nueva o recuperada con el servicio ya en marcha)
+        if (!watchdogArmed || !nexoId.isNullOrEmpty()) watchdogArmed = NexoRestartReceiver.arm(this)
 
         if (currentNexoId.isNullOrEmpty()) {
             Log.w(TAG, "Sin nexoId, advertising postergado hasta recibir setAdvertisingData")

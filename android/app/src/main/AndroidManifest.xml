@@ -43,6 +43,8 @@
     <!-- Ronda 2765: encender la pantalla con un aviso y pedir que el sistema no congele NEXO (avisos con la pantalla apagada) -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 3189 (#87): NEXO vuelve sola tras reiniciar el teléfono (NexoRestartReceiver). Permiso normal: no se le pregunta al usuario -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     
     <!-- Permiso específico Nearby -->
@@ -113,6 +115,16 @@
         <!-- SERVICIO BLE FOREGROUND -->
         <!-- Ronda 2763: "Rechazar" en el aviso de llamada -->
         <receiver android:name="com.nexo.ble.CallDeclineReceiver" android:exported="false" />
+        <!-- 3189 (diagnósticos tableta SM-T220 y S24 17-11 04:46, #87): NEXO vuelve sola tras una actualización de NEXO sin abrirla
+             (MY_PACKAGE_REPLACED), un reinicio (BOOT_COMPLETED, tras desbloquear: no LOCKED_BOOT_COMPLETED, los datos siguen cifrados
+             hasta entonces) o si el sistema la mata (su alarma de vigilancia cada ~15 min, p. ej. al actualizarse el WebView).
+             Arranca BleService como el toque FCM. No exportado: estos avisos los manda el sistema y la alarma la propia NEXO. -->
+        <receiver android:name="com.nexo.ble.NexoRestartReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <service
             android:name="com.nexo.ble.BleService"
             android:enabled="true"
