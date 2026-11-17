@@ -15,7 +15,7 @@ import { tetrisVersusOnAction } from './tetris_versus.js';
 import { _PREVIEW_BY_TYPE, _chatKind, _contactName, _cut, _findMessage, _getCurrentContactId, _msgSummary, _myNexoId, _normId, _peerUnderstands, _plainText } from './chat_format.js';
 import { _showInfoToast } from './ui_bits.js';
 import { _videoFormat } from './video_tools.js';
-import { stickerAsset, isValidStickerImg, addReceivedSticker } from './stickers.js';
+import { stickerAsset, isValidStickerImg, isValidStickerVid, stickerVideoEl, addReceivedSticker } from './stickers.js';
 import { vaultBlankMessage, vaultDeleteMessage, vaultEditMessage, vaultLoadContacts, vaultLoadFile, vaultLoadMessages, vaultReactMessage, vaultSaveContacts } from '../vault/vault_manager.js';
 import { _editableText } from '../vault/vault_shared.js'; // 3195: qué contenido es un texto que se edita
 import { t } from './i18n.js';
@@ -86,6 +86,10 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
       var sim = document.createElement('img');
       sim.src = k.img; sim.alt = '';
       sp.appendChild(sim);
+    } else if (isValidStickerVid(k.vid)) {
+      // 3213: sticker de VIDEO (clip validado, silenciado y en bucle, desde un blob:)
+      var sv = stickerVideoEl(k.vid);
+      if (sv) sp.appendChild(sv); else sp.textContent = '🎟️';
     } else {
       var path = stickerAsset(k.s);           // sticker del pack: imagen 3D empaquetada (ruta FIJA de confianza, no bytes del emisor)
       if (path) { var pim = document.createElement('img'); pim.src = path; pim.alt = ''; sp.appendChild(pim); }
@@ -349,9 +353,9 @@ export function _openMsgMenu(div) {
     if (!deleted && !onceMsg) add(t('chat_select', '☑  Seleccionar'), 'mm-select', function() { startSelect(cid, id); });
     // 3032 (dueño 12-11): un sticker PROPIO que me mandaron (con su dibujo) se puede agregar a mis stickers
     var stk = (!isOwn && !deleted) ? _chatKind(msg.content || '') : null;
-    if (stk && stk.type === 'nexo_sticker' && isValidStickerImg(stk.img)) {
+    if (stk && stk.type === 'nexo_sticker' && (isValidStickerImg(stk.img) || isValidStickerVid(stk.vid))) {
       add(t('chat_sticker_add', '⭐  Agregar a mis stickers'), 'mm-sticker-add', function() {
-        addReceivedSticker(stk.img).then(function(res) {
+        addReceivedSticker(isValidStickerImg(stk.img) ? stk.img : null, stk.vid).then(function(res) {
           if (_showInfoToast) _showInfoToast(res === 'added' ? t('chat_sticker_added', 'Sticker agregado a tus stickers') : (res === 'dup' ? t('chat_sticker_dup', 'Ya tienes este sticker') : t('chat_sticker_bad', 'No se pudo agregar el sticker')), 2500);
         });
       });

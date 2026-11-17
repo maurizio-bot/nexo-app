@@ -153,8 +153,15 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
 .sticker-cell.is-pressed { background: rgba(255,255,255,0.14); }
 .sticker-cell svg { width: 100%; height: 100%; display: block; }
 /* Stickers PROPIOS (2878): la imagen (validada) se pinta como <img>, nunca innerHTML */
-.msg-sticker img { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 14px; }
-.sticker-cell img { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 10px; }
+.msg-sticker img, .msg-sticker video { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 14px; }
+.sticker-cell img, .sticker-cell video { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 10px; pointer-events: none; }
+/* 3213: recorte del sticker de video (inicio y duración, tope 5 s) */
+.stedit-trim { display: none; flex-direction: column; gap: 6px; margin: 6px 0; color: var(--nx-text, #e8f0f2); font-size: 13px; }
+.stedit-trim.on { display: flex; }
+.stedit-trim label { display: flex; align-items: center; gap: 8px; }
+.stedit-trim input[type=range] { flex: 1; }
+.stedit-trim .stedit-val { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+.stedit-busy { text-align: center; color: var(--nx-cyan, #19c3c9); font-size: 13px; margin: 4px 0; }
 .sticker-create { background: rgba(0,200,255,0.08) !important; border: 1.5px dashed var(--nx-cyan, #19c3c9) !important; }
 .sticker-plus { font-size: 34px; font-weight: 300; color: var(--nx-cyan, #19c3c9); line-height: 1; }
 /* Editor de stickers (2878): foto + texto/emoji */

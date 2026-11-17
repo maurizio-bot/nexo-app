@@ -9,7 +9,8 @@
  * cifrada como cualquier mensaje y pintada como <img> (nunca innerHTML). El simulador no tiene canvas: si existe
  * window.NEXO_makeStickerImage se usa esa (shim de tests/sim).
  */
-import { addUserSticker, isValidStickerImg, STICKER_SIZE, STICKER_MAX_LEN } from './stickers.js';
+import { addUserSticker, addUserVideoSticker, isValidStickerImg, STICKER_SIZE, STICKER_MAX_LEN } from './stickers.js';
+import { makeStickerVideo, canMakeStickerVideo, clampTrim } from './sticker_video.js';
 import { _showInfoToast } from './ui_bits.js';
 import { t } from './i18n.js';
 
@@ -33,9 +34,10 @@ function wrapLines(ctx, text, maxW) {
 function drawSticker(ctx, S, o) {
   ctx.clearRect(0, 0, S, S);
   var base = o.baseImg;
-  if (base && base.width) {
-    var s = Math.min(base.width, base.height);
-    ctx.drawImage(base, (base.width - s) / 2, (base.height - s) / 2, s, s, 0, 0, S, S);
+  var bw = base ? (base.videoWidth || base.width) : 0, bh = base ? (base.videoHeight || base.height) : 0; // 3213: también un cuadro de video
+  if (base && bw && bh) {
+    var s = Math.min(bw, bh);
+    ctx.drawImage(base, (bw - s) / 2, (bh - s) / 2, s, s, 0, 0, S, S);
   } else {
     var g = ctx.createLinearGradient(0, 0, 0, S); g.addColorStop(0, '#15303a'); g.addColorStop(1, '#0a1a20');
     ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
@@ -104,7 +106,9 @@ export function buildStickerImage(opts) {
 }
 try { if (typeof window !== 'undefined') window.__nexoBuildStickerImage = buildStickerImage; } catch (e) {}
 
+var _onClose = null;   // 3213: al cerrar, se suelta el video elegido (bucle de la vista previa y su blob:)
 export function closeStickerEditor() {
+  try { if (_onClose) { var f = _onClose; _onClose = null; f(); } } catch (e) {}
   try { var ov = document.getElementById('sticker-editor'); if (ov && ov.parentNode) ov.parentNode.removeChild(ov); } catch (e) {}
 }
 
@@ -126,14 +130,22 @@ export function openStickerEditor(cid, sendFn) {
       '<div class="stedit-hint">' + t('sticker_drag_hint', 'Arrastra el texto y el emoji para moverlos') + '</div>' +
       '<div class="stedit-row">' +
         '<button type="button" id="stedit-pick" class="nx-btn">' + t('sticker_pick', '📷 Elegir foto') + '</button>' +
+        (canMakeStickerVideo() ? '<button type="button" id="stedit-pick-vid" class="nx-btn">' + t('sticker_pick_video', '🎬 Elegir video') + '</button>' : '') +
       '</div>' +
+      '<div class="stedit-trim" id="stedit-trim">' +
+        '<label>' + t('sticker_vid_start', 'Empieza en') + ' <input id="stedit-start" type="range" min="0" max="0" step="0.1" value="0" /><span class="stedit-val" id="stedit-start-v">0 s</span></label>' +
+        '<label>' + t('sticker_vid_len', 'Dura') + ' <input id="stedit-len" type="range" min="1" max="5" step="0.5" value="3" /><span class="stedit-val" id="stedit-len-v">3 s</span></label>' +
+        '<div class="stedit-hint">' + t('sticker_vid_hint', 'Hasta 5 segundos, sin sonido') + '</div>' +
+      '</div>' +
+      '<div class="stedit-busy" id="stedit-busy" style="display:none;"></div>' +
       '<input id="stedit-text" type="text" maxlength="60" placeholder="' + t('sticker_text_ph', 'Texto (opcional)') + '" autocomplete="off" />' +
       '<input id="stedit-emoji" type="text" maxlength="4" placeholder="' + t('sticker_emoji_ph', 'Emoji (opcional)') + '" autocomplete="off" />' +
       '<div class="stedit-actions">' +
         '<button type="button" id="stedit-cancel" class="nx-btn">' + t('cancel', 'Cancelar') + '</button>' +
         '<button type="button" id="stedit-send" class="nx-btn nx-btn-primary">' + t('sticker_send', 'Enviar') + '</button>' +
       '</div>' +
-      '<input id="stedit-file" type="file" accept="image/*" style="display:none;" />';
+      '<input id="stedit-file" type="file" accept="image/*" style="display:none;" />' +
+      '<input id="stedit-vfile" type="file" accept="video/*" style="display:none;" />';
     ov.appendChild(panel);
     document.body.appendChild(ov);
 
@@ -176,15 +188,97 @@ export function openStickerEditor(cid, sendFn) {
     panel.querySelector('#stedit-pick').addEventListener('click', function() { elFile.click(); });
     elFile.addEventListener('change', function() {
       var f = elFile.files && elFile.files[0]; if (!f) return;
+      stopVideo();
       var r = new FileReader();
       r.onload = function() { var im = new Image(); im.onload = function() { st.baseImg = im; redraw(); }; im.onerror = function() {}; im.src = r.result; };
       r.readAsDataURL(f);
     });
+
+    // 3213: sticker de VIDEO. Se elige el tramo (inicio y duración de 1 a 5 s) y la vista previa lo repite con el texto y el emoji encima
+    var elTrim = panel.querySelector('#stedit-trim'), elStart = panel.querySelector('#stedit-start'), elLen = panel.querySelector('#stedit-len');
+    var elStartV = panel.querySelector('#stedit-start-v'), elLenV = panel.querySelector('#stedit-len-v'), elBusy = panel.querySelector('#stedit-busy');
+    var elVFile = panel.querySelector('#stedit-vfile'), vidUrl = '', raf = 0;
+    var fmt = function(x) { return (Math.round(x * 10) / 10).toString().replace('.', ',') + ' s'; };
+    function applyTrim() {
+      if (!st.video) return;
+      var tr = clampTrim(st.video.duration, parseFloat(elStart.value), parseFloat(elLen.value));
+      st.start = tr.start; st.len = tr.len;
+      elLen.max = String(tr.maxLen); elLen.min = String(Math.min(1, tr.maxLen)); elLen.value = String(tr.len);
+      elStart.max = String(Math.max(0, Math.round((tr.duration - tr.len) * 10) / 10)); elStart.value = String(tr.start);
+      elStartV.textContent = fmt(tr.start); elLenV.textContent = fmt(tr.len);
+      try { st.video.currentTime = tr.start; } catch (e) {}
+    }
+    function loop() {
+      raf = 0;
+      var v = st.video;
+      if (!v || st.recording) return;
+      if (v.currentTime >= st.start + st.len || v.currentTime < st.start - 0.3 || v.ended) { try { v.currentTime = st.start; var p = v.play(); if (p && p.catch) p.catch(function() {}); } catch (e) {} }
+      if (v.readyState >= 2) { st.baseImg = v; redraw(); }
+      raf = requestAnimationFrame(loop);
+    }
+    function stopVideo() {
+      if (raf) { cancelAnimationFrame(raf); raf = 0; }
+      if (st.video) { try { st.video.pause(); } catch (e) {} }
+      if (vidUrl) { try { URL.revokeObjectURL(vidUrl); } catch (e) {} vidUrl = ''; }
+      if (st.baseImg === st.video) st.baseImg = null;
+      st.video = null;
+      if (elTrim) elTrim.classList.remove('on');
+    }
+    _onClose = stopVideo;
+    var pickVid = panel.querySelector('#stedit-pick-vid');
+    if (pickVid) pickVid.addEventListener('click', function() { elVFile.click(); });
+    if (elVFile) elVFile.addEventListener('change', function() {
+      var f = elVFile.files && elVFile.files[0]; if (!f) return;
+      stopVideo();
+      var v = document.createElement('video');
+      v.muted = true; v.defaultMuted = true; v.playsInline = true; v.preload = 'auto';
+      v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
+      try { vidUrl = URL.createObjectURL(f); } catch (e) { vidUrl = ''; }
+      if (!vidUrl) return;
+      v.addEventListener('loadedmetadata', function() {
+        st.video = v;
+        var tr = clampTrim(v.duration, 0, Math.min(3, v.duration || 3));
+        st.start = tr.start; st.len = tr.len;
+        elStart.value = '0'; elLen.value = String(tr.len);
+        elTrim.classList.add('on');
+        applyTrim();
+        var p; try { p = v.play(); } catch (e) {}
+        if (p && p.catch) p.catch(function() {});
+        if (!raf) raf = requestAnimationFrame(loop);
+      });
+      v.addEventListener('error', function() { stopVideo(); try { _showInfoToast(t('sticker_vid_fail', 'No se pudo usar este video'), 3000); } catch (e) {} });
+      v.src = vidUrl;
+    });
+    if (elStart) elStart.addEventListener('input', applyTrim);
+    if (elLen) elLen.addEventListener('input', applyTrim);
     elText.addEventListener('input', function() { st.text = elText.value; redraw(); });
     elEmoji.addEventListener('input', function() { st.emoji = elEmoji.value; redraw(); });
 
     panel.querySelector('#stedit-cancel').addEventListener('click', function() { closeStickerEditor(); });
     panel.querySelector('#stedit-send').addEventListener('click', function() {
+      if (st.video) {
+        // 3213: se graba el tramo elegido (tarda lo que dura el tramo); mientras, los botones quedan quietos
+        if (st.recording) return;
+        st.recording = true;
+        var btns = panel.querySelectorAll('button'); btns.forEach(function(b) { b.disabled = true; });
+        elBusy.style.display = ''; elBusy.textContent = t('sticker_vid_making', 'Preparando el sticker…');
+        var snap = { text: st.text, emoji: st.emoji, textPos: st.textPos, emojiPos: st.emojiPos };
+        makeStickerVideo({ video: st.video, start: st.start, len: st.len, text: st.text, emoji: st.emoji }, function(ctx, S, frame) {
+          drawSticker(ctx, S, { baseImg: frame, text: snap.text, emoji: snap.emoji, textPos: snap.textPos, emojiPos: snap.emojiPos });
+        }).then(function(vid) {
+          st.recording = false;
+          if (!vid) {
+            btns.forEach(function(b) { b.disabled = false; }); elBusy.style.display = 'none';
+            try { _showInfoToast(t('sticker_vid_fail', 'No se pudo usar este video'), 3000); } catch (e) {}
+            if (!raf && st.video) raf = requestAnimationFrame(loop);
+            return;
+          }
+          try { addUserVideoSticker(vid); } catch (e) {}
+          closeStickerEditor();
+          try { if (typeof sendFn === 'function') sendFn(cid, { vid: vid }); } catch (e) {}
+        });
+        return;
+      }
       var img = buildStickerImage({ baseImg: st.baseImg, text: st.text, emoji: st.emoji, textPos: st.textPos, emojiPos: st.emojiPos });
       if (!isValidStickerImg(img)) { try { _showInfoToast(t('sticker_fail', 'No se pudo crear el sticker'), 3000); } catch (e) {} return; }
       try { addUserSticker(img); } catch (e) {}

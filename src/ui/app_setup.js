@@ -17,7 +17,7 @@ import { _noteContactMessage } from './send.js';
 import { _renderMessage, _updateMessageStatus, _updateMessageStorageStatus } from './render.js';
 import { _failStatus } from './ble_helpers.js';
 import { haptic } from './haptics.js'; // NEXO Touch (2968): confirm al enviar, reject si falla de verdad
-import { openStickerPicker, isValidStickerImg } from './stickers.js';
+import { openStickerPicker, isValidStickerImg, isValidStickerVid } from './stickers.js';
 import { openStickerEditor } from './sticker_editor.js';
 import { openTttForContact } from './ttt.js';
 import { openGamePicker } from './game_menu.js';
@@ -42,6 +42,7 @@ export async function _sendStickerTo(cid, sticker) {
   var wire;
   if (typeof sticker === 'string') wire = JSON.stringify({ type: 'nexo_sticker', s: String(sticker) });
   else if (sticker && typeof sticker === 'object' && isValidStickerImg(sticker.img)) wire = JSON.stringify({ type: 'nexo_sticker', img: sticker.img });
+  else if (sticker && typeof sticker === 'object' && isValidStickerVid(sticker.vid)) wire = JSON.stringify({ type: 'nexo_sticker', vid: sticker.vid }); // 3213: sticker de video
   else return;
   var msgId = 'msg' + Date.now() + '' + Math.random().toString(36).substr(2, 9);
   var seq = (window.bleInterface && typeof window.bleInterface.getNextSeq === 'function') ? window.bleInterface.getNextSeq() : 0;
