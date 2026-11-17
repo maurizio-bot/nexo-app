@@ -52,6 +52,12 @@ class MsgNotifier(private val ctx: Context) {
         const val UPDATE_CHANNEL_ID = "nexo_updates"
         const val EXTRA_UPDATE_INSTALL = "nexo_update_install"
         private const val UPDATE_NOTIF_ID = 3997
+        // 3190: solicitudes de contacto (contactRequest): canal propio, destino al tocar (la app abre «Solicitudes para ti») e ids
+        // (3900–3963 uno por remitente; 3899 el agrupado; los de mensajes empiezan en 4000)
+        const val REQ_CHANNEL_ID = "nexo_requests"
+        const val REQ_TARGET = "nexo_requests"
+        private const val REQ_GROUP_NOTIF_ID = 3899
+        private fun reqNotifId(from: String) = 3900 + (from.lowercase().hashCode() and 0x3f)
         // Lo que el dueño tocó en el aviso; la app lo recoge al abrirse (NexoBlePlugin.callAction). Ronda 2768: con la
         // oferta a la que se refiere (si no, valía para la siguiente llamada de ese contacto y se contestaba sola)
         @Volatile var pendingAnswer: CallTap? = null
@@ -176,6 +182,54 @@ class MsgNotifier(private val ctx: Context) {
     }
 
     fun cancelUpdate() { try { NotificationManagerCompat.from(ctx).cancel(UPDATE_NOTIF_ID) } catch (e: Exception) { } }
+
+    // 3190 (dueño 17-11: «hay que poner esa notificación: hay un contacto que te quiere agregar»): solicitud de contacto con la app en
+    // segundo plano o cerrada (la decide PluginBackground.requestNotify con su freno). Canal propio (se puede silenciar aparte de los
+    // mensajes). Un aviso por remitente; en la pantalla de bloqueo solo «Solicitud de contacto». Tocarlo abre NEXO en «Agregar» →
+    // «Solicitudes para ti» (destino REQ_TARGET, el mismo extra que abre un chat). false = notificaciones desactivadas.
+    private fun reqChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val ch = NotificationChannel(REQ_CHANNEL_ID, NativeLang.t(ctx, "ch_requests"), NotificationManager.IMPORTANCE_HIGH)
+        ch.description = NativeLang.t(ctx, "ch_requests_desc")
+        ctx.getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
+    }
+    private fun reqBuilder(id: Int, text: String): NotificationCompat.Builder? {
+        val launch = notifLaunchIntent(ctx) ?: return null
+        launch.putExtra(EXTRA_CHAT, REQ_TARGET)
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val pi = PendingIntent.getActivity(ctx, id, launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val title = NativeLang.t(ctx, "req_title")
+        val pub = NotificationCompat.Builder(ctx, REQ_CHANNEL_ID).setSmallIcon(msgIcon(ctx)).setContentTitle("NEXO").setContentText(title).build()
+        return NotificationCompat.Builder(ctx, REQ_CHANNEL_ID)
+            .setSmallIcon(msgIcon(ctx))
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(pub)
+            .setAutoCancel(true)
+            .setContentIntent(pi)
+    }
+    fun contactRequest(from: String, text: String): Boolean {
+        val nm = NotificationManagerCompat.from(ctx)
+        if (!nm.areNotificationsEnabled()) { Log.w(TAG, "Notificaciones desactivadas: sin aviso de solicitud"); return false }
+        reqChannel()
+        val id = reqNotifId(from)
+        val b = reqBuilder(id, text) ?: return false
+        try { nm.notify(id, b.build()) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones"); return false }
+        return true
+    }
+    // Pasado el tope: un solo aviso agrupado, CALLADO (sin sonido ni vibración), que se actualiza con el número de personas
+    fun contactRequestsGrouped(text: String) {
+        val nm = NotificationManagerCompat.from(ctx)
+        if (!nm.areNotificationsEnabled()) return
+        reqChannel()
+        val b = reqBuilder(REQ_GROUP_NOTIF_ID, text) ?: return
+        b.setSilent(true).setOnlyAlertOnce(true)
+        try { nm.notify(REQ_GROUP_NOTIF_ID, b.build()) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones") }
+    }
 
     // 3008: dedupe = true en los avisos que da el NATIVO con la app cerrada (internet/Bluetooth): si el mensaje ya estaba en el
     // teléfono (SeenMsgs), es un reenvío de algo que ya llegó → sin aviso. Los que pide la app (notifyMessage) ya vienen filtrados.

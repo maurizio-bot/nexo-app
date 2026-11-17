@@ -194,7 +194,8 @@ export class NetLink {
     var changed = await self._refreshTags();
     if (changed) self._bgConfig();
     if (!self.inTags.size && !self.reqTags.size) { self._closeAll(); return; }
-    if (self._drainPending && self.inTags.size) { self._drainPending = false; self._drainBg(); }
+    // 3190: también sin contactos por internet (alguien nuevo): lo recibido en segundo plano puede ser una solicitud a mi buzón
+    if (self._drainPending && (self.inTags.size || self.reqTags.size)) { self._drainPending = false; self._drainBg(); }
     self._spareCheck(); // 3114: ¿falta algún relé sano? → uno de reserva
     self._ownSync(); // 3151: suscripciones según el relé propio (sin propio no hace nada)
     var urls = self.relayUrls();
@@ -282,7 +283,7 @@ export class NetLink {
     for (var i = 0; i < p.length && !nx; i++) nx = this.inTags.get(p[i]) || null;
     if (!nx) {
       // Alta por ID (ronda 2779): ¿va dirigido a mi buzón de solicitudes? (req = me quieren agregar; acc = aceptaron la mía)
-      if (p.some(function(x) { return self.reqTags.has(x); })) await this._onReq(ev.content);
+      if (p.some(function(x) { return self._isReqTag(x); })) await this._onReq(ev.content);
       return;
     }
     var o = await this._open(nx, ev.content);
@@ -332,6 +333,16 @@ export class NetLink {
     } catch (e) { return null; }
   }
   _peer(nx) { var p = this.peers.get(nx); if (!p) { p = {}; this.peers.set(nx, p); } return p; }
+
+  // 3190 (dueño 17-11): ¿etiqueta de MI buzón de solicitudes (hoy o ayer)? También con la app oculta (reqTags vacío): lo que la parte
+  // nativa recibió en segundo plano entra por _drainBg y, si no se reconociera aquí, quedaría «visto» sin pasar a la bandeja.
+  _isReqTag(x) {
+    if (this.reqTags.has(x)) return true;
+    var me = this.me(), d = _day(0);
+    if (!me) return false;
+    if (!this._reqMine || this._reqMine.me !== me || this._reqMine.day !== d) this._reqMine = { me: me, day: d, pubs: [_reqTagPub(me, _day(0)), _reqTagPub(me, _day(-1))] };
+    return this._reqMine.pubs.indexOf(x) >= 0;
+  }
 
   // Alta por ID (ronda 2779): llegó algo a mi buzón de solicitudes. Lo descifro con la clave de MI ID (solo quien conoce
   // mi ID completo pudo cifrarlo). Aviso a la app: req = me quieren agregar; acc = aceptaron mi solicitud. La clave que
@@ -417,12 +428,21 @@ export class NetLink {
       var nx = _nid(cs[i].nexoId || cs[i].deviceUUID);
       try { var pair = await this._pair(nx, cs[i].publicKey); list.push({ nx: nx, name: cs[i].name || '', kraw: bytesToHex(pair.kraw) }); } catch (e) {}
     }
-    var sig = list.map(function(c) { return c.nx + c.kraw; }).join(',') + '|' + this.relayUrls().join(',');
+    // 3190 (dueño 17-11: «hay que poner esa notificación: hay un contacto que te quiere agregar»): la parte nativa también escucha mi
+    // buzón de solicitudes en segundo plano y avisa. Para eso: todos mis contactos (NEXO ID y nombre: «ya es contacto» y el aviso de
+    // posible impostor con el nombre de uno de ellos), a quién mandé yo una solicitud (su «acc» es «aceptó tu solicitud») y desde cuándo
+    // la app ya no escucha su buzón (lo de antes ya lo recibió ella a la vista: sin aviso doble). Nada secreto: el buzón sale de mi ID.
+    var me = this.me(), known = [], seenNx = {};
+    var all = (this.ble && typeof this.ble.getBLEContacts === 'function') ? (this.ble.getBLEContacts() || []) : [];
+    all.forEach(function(c) { var nx = _nid(c && (c.nexoId || c.deviceUUID)); if (/^nx[0-9a-z]{8}$/.test(nx) && nx !== me && !seenNx[nx]) { seenNx[nx] = 1; known.push({ nx: nx, name: String(c.name || '') }); } });
+    var reqOut = ((this.ble && typeof this.ble._reqStore === 'function') ? this.ble._reqStore('nexo_req_out') : []).map(function(x) { return _nid(x && x.id); }).filter(function(nx) { return /^nx[0-9a-z]{8}$/.test(nx); });
+    var reqSince = (this._hiddenAt && this.online()) ? this._hiddenAt - 120000 : 0;
+    var sig = list.map(function(c) { return c.nx + c.kraw; }).join(',') + '|' + this.relayUrls().join(',') + '|' + known.map(function(k) { return k.nx + ':' + k.name; }).join(',') + '|' + reqOut.join(',');
     // Desde justo después de lo último que recogió la app (lo ya visto no vuelve a avisar)
     var since = this.state.lastSeen ? this.state.lastSeen + 1000 : Date.now() - 600000;
     if (sig === this._bgSig && !this._bgSinceDirty) return;
     this._bgSig = sig; this._bgSinceDirty = false;
-    try { await pl.netBgConfig({ me: this.me(), relays: this.relayUrls(), since: since, contacts: list }); } catch (e) {}
+    try { await pl.netBgConfig({ me: me, relays: this.relayUrls(), since: since, contacts: list, known: known, reqOut: reqOut, reqSince: reqSince }); } catch (e) {}
   }
 
   _saveState() {

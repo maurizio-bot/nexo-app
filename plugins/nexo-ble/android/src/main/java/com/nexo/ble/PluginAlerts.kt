@@ -56,7 +56,8 @@ internal fun NexoBlePlugin.checkNotificationIntent(given: Intent? = null) {
             }
             val deviceId = intent.getStringExtra("nexo_chat_device_id")
             if (deviceId != null) {
-                remLog("INFO", "NOTIF", "Aviso de mensaje tocado: abre el chat " + deviceId)
+                // 3190: el aviso de una solicitud de contacto lleva el destino especial REQ_TARGET (la app abre «Solicitudes para ti»)
+                remLog("INFO", "NOTIF", if (deviceId == MsgNotifier.REQ_TARGET) "Aviso de solicitud de contacto tocado: abre «Solicitudes para ti»" else "Aviso de mensaje tocado: abre el chat " + deviceId)
                 // 2995: con la app CERRADA este aviso sale al cargar el plugin, antes de que exista el JS; sin «retener» se
                 // perdía (y el extra se borra justo después). Retenido hasta que el JS escuche.
                 notifyListeners("onNotificationOpened", JSObject()

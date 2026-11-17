@@ -80,6 +80,22 @@ function _openSoleUnreadWhenReady(n) {
   if (n < 24) setTimeout(function() { _openSoleUnreadWhenReady(n + 1); }, 500);
 }
 
+// 3190 (dueño 17-11: «hay que poner esa notificación: hay un contacto que te quiere agregar»): el aviso del teléfono de una solicitud de
+// contacto (NetBg, con la app en segundo plano o cerrada) abre «Agregar» en «Solicitudes para ti»; la solicitud llega a la bandeja en el
+// mismo arranque (la parte nativa se la pasa a la app: netBgDrain)
+function _openRequestsWhenReady(n) {
+  try {
+    var bi = window.NEXO && window.NEXO.initialized && window.NEXO.app && window.NEXO.app.bleInterface;
+    if (bi && typeof bi.openRequests === 'function') {
+      _closeSheetsForChat();
+      console.log('[NOTIF] Aviso de solicitud de contacto tocado: abro «Solicitudes para ti»');
+      bi.openRequests();
+      return;
+    }
+  } catch (e) {}
+  if (n < 60) setTimeout(function() { _openRequestsWhenReady(n + 1); }, 500);
+}
+
 // Al abrir un chat desde un aviso se cierra lo que hubiera encima (Ajustes, perfiles, un estado): si no, el chat se abre DETRÁS y se ve la pantalla de antes
 function _closeSheetsForChat() {
   ['nexo-settings-sheet', 'nexo-profile-sheet', 'nexo-contact-profile', 'estado-overlay'].forEach(function(id) {
@@ -410,7 +426,10 @@ async function initializeNexoApp() {
     try {
       if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) {
         window.Capacitor.Plugins.NexoBLE.addListener('onNotificationOpened', function(event) {
-          if (event && event.deviceId) {
+          if (event && event.deviceId === 'nexo_requests') {
+            // 3190 (dueño 17-11): aviso «… quiere agregarte» → «Agregar» en «Solicitudes para ti» (no es un chat)
+            setTimeout(function() { _openRequestsWhenReady(0); }, 500);
+          } else if (event && event.deviceId) {
             setTimeout(function() {
               _openChatWhenReady(event.deviceId, 0);
             }, 500);
@@ -493,4 +512,4 @@ async function initializeNexoApp() {
   }
 }
 
-export { _openChatWhenReady, _latestUnreadChat, _openSoleUnreadWhenReady, _closeSheetsForChat, _openChatFromNotification, _handleIncomingMessage, _registerCriticalListeners, initializeNexoApp };
+export { _openChatWhenReady, _openRequestsWhenReady, _latestUnreadChat, _openSoleUnreadWhenReady, _closeSheetsForChat, _openChatFromNotification, _handleIncomingMessage, _registerCriticalListeners, initializeNexoApp };

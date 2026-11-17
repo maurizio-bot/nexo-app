@@ -287,7 +287,39 @@ internal fun NexoBlePlugin.netBg(): NetBg = netBgShared ?: synchronized(NexoBleP
     }, { nlog()?.add("INFO", "NET", it); Log.i("NEXO_NET", it) }, { nx, offer ->
         // 3087: el que llama colgó (sobre con ce, por internet) → deja de sonar ya
         if (MsgNotifier.get(context).cancelCallFor(nx, offer)) nlog()?.add("INFO", "NET", "$nx colgó: la llamada deja de sonar")
-    }).also { netBgShared = it }
+    }, { req -> requestNotify(req) }).also { netBgShared = it }
+}
+
+// 3190 (dueño 17-11: «hay que poner esa notificación: hay un contacto que te quiere agregar»): NetBg oyó una solicitud de contacto en
+// mi buzón con la app en segundo plano o cerrada → aviso del teléfono («Ana (NX…) quiere agregarte en NEXO»), con freno anti-spam
+// (ReqNotifyPolicy: 1 por remitente cada 24 h, 3 por hora; el resto, en un aviso agrupado y callado). El freno se guarda en las
+// preferencias (sobrevive a un reinicio del proceso). Con la app a la vista no: ahí basta el aviso de dentro de la app. La
+// solicitud la guarda la app en «Solicitudes para ti» al abrirse (NetBg se la pasa con netBgDrain). Al registro: el NEXO ID, no el contenido.
+private const val PREF_REQ_NOTIFY = "req_notify_state"
+internal fun NexoBlePlugin.requestNotify(req: NetBg.Req) {
+    val ctx = appCtx ?: return
+    val lv = NexoBlePlugin.live
+    if (lv != null && !lv.appInBackground && !lv.closedMode) { nlog()?.add("INFO", "NET", "Solicitud de ${req.from}: la app está a la vista: sin aviso del teléfono"); return }
+    val now = System.currentTimeMillis()
+    val (verdict, grouped) = synchronized(ReqNotifyPolicy) {
+        val prefs = ctx.getSharedPreferences(MsgNotifier.PREFS, Context.MODE_PRIVATE)
+        val st = ReqNotifyPolicy.State.fromJson(prefs.getString(PREF_REQ_NOTIFY, null))
+        val v = ReqNotifyPolicy.decide(st, req.from, now)
+        prefs.edit().putString(PREF_REQ_NOTIFY, st.toJson()).apply()
+        v to st.groupN
+    }
+    val what = if (req.kind == "acc") "aceptación" else "solicitud"
+    when (verdict) {
+        ReqNotifyPolicy.Verdict.NOTIFY -> {
+            val ok = MsgNotifier.get(ctx).contactRequest(req.from, ReqNotifyPolicy.body(NativeLang.get(ctx), req.name, req.from, req.kind == "acc", req.twin))
+            nlog()?.add("INFO", "NET", "Solicitud de ${req.from} ($what${if (req.twin.isNotEmpty()) ", nombre de otro contacto" else ""}): " + if (ok) "aviso puesto" else "sin aviso (notificaciones desactivadas)")
+        }
+        ReqNotifyPolicy.Verdict.GROUP -> {
+            MsgNotifier.get(ctx).contactRequestsGrouped(ReqNotifyPolicy.groupBody(NativeLang.get(ctx), grouped))
+            nlog()?.add("INFO", "NET", "Solicitud de ${req.from} ($what): frenado (tope de ${ReqNotifyPolicy.MAX_PER_WINDOW} por hora): va en el aviso agrupado ($grouped)")
+        }
+        ReqNotifyPolicy.Verdict.SAME_SENDER -> nlog()?.add("INFO", "NET", "Solicitud de ${req.from} ($what): frenado (ya hubo aviso suyo en las últimas 24 h)")
+    }
 }
 
 internal fun NexoBlePlugin.netBgConfigImpl(call: PluginCall) {
@@ -298,9 +330,18 @@ internal fun NexoBlePlugin.netBgConfigImpl(call: PluginCall) {
         call.getArray("contacts")?.let { for (i in 0 until it.length()) { val o = it.getJSONObject(i); list.add(NetBg.Contact(o.getString("nx").lowercase(), o.optString("name"), Secp256k1.unhex(o.getString("kraw")))) } }
     } catch (e: Exception) { call.reject("configuración ilegible"); return }
     val since = (call.getData().optLong("since", 0L))
-    netBg().configure(me, relays, since, list)
+    // 3190: para el aviso de una solicitud de contacto (NetBg.onReqEvent): todos mis contactos (NEXO ID → nombre: «ya es contacto» y
+    // el aviso de posible impostor), a quién mandé yo una solicitud y desde cuándo la app ya no escucha su buzón
+    val known = HashMap<String, String>(); val reqOut = HashSet<String>()
+    try {
+        call.getArray("known")?.let { for (i in 0 until it.length()) { val o = it.optJSONObject(i) ?: continue; val nx = o.optString("nx").lowercase(); if (nx.isNotEmpty()) known[nx] = o.optString("name") } }
+        call.getArray("reqOut")?.let { for (i in 0 until it.length()) { val nx = it.optString(i).lowercase(); if (nx.isNotEmpty()) reqOut.add(nx) } }
+    } catch (e: Exception) { }
+    val reqSince = call.getData().optLong("reqSince", 0L)
+    netBg().configure(me, relays, since, list, known, reqOut, reqSince)
     netBg().setAckKeys(HashMap(ackKeys))   // #87: para confirmar la ENTREGA (✓✓) con la app cerrada
-    if (appInBackground && list.isNotEmpty()) { wifiLockHold(true); netBg().start() }
+    // 3190: también sin contactos por internet (escucha mi buzón de solicitudes): basta con mi ID y los relés
+    if (appInBackground && netBg().configured()) { wifiLockHold(true); netBg().start() }
     call.resolve(JSObject().put("contacts", list.size).put("running", netBg().running))
 }
 

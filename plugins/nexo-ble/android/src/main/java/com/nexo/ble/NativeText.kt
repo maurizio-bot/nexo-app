@@ -41,7 +41,17 @@ object NativeText {
         "svc_channel" to arrayOf("Servicio de NEXO", "Servizio di NEXO", "NEXO service", "Serviço do NEXO", "Service NEXO"),
         "svc_channel_desc" to arrayOf("Mantiene NEXO listo en segundo plano para recibir mensajes y llamadas", "Tiene NEXO pronto in background per ricevere messaggi e chiamate", "Keeps NEXO ready in the background to receive messages and calls", "Mantém o NEXO pronto em segundo plano para receber mensagens e chamadas", "Garde NEXO prêt en arrière-plan pour recevoir messages et appels"),
         "svc_title" to arrayOf("NEXO", "NEXO", "NEXO", "NEXO", "NEXO"),
-        "svc_text" to arrayOf("Listo para recibir mensajes y llamadas", "Pronto a ricevere messaggi e chiamate", "Ready to receive messages and calls", "Pronto para receber mensagens e chamadas", "Prêt à recevoir messages et appels")
+        "svc_text" to arrayOf("Listo para recibir mensajes y llamadas", "Pronto a ricevere messaggi e chiamate", "Ready to receive messages and calls", "Pronto para receber mensagens e chamadas", "Prêt à recevoir messages et appels"),
+        // 3190 (dueño 17-11: «hay que poner esa notificación: hay un contacto que te quiere agregar»): solicitud de contacto con la app
+        // en segundo plano o cerrada (ReqNotifyPolicy). {who} = «Nombre (NX…)» con el NEXO ID completo; {id} = el NEXO ID de quien la manda
+        "req_title" to arrayOf("Solicitud de contacto", "Richiesta di contatto", "Contact request", "Solicitação de contato", "Demande de contact"),
+        "req_in" to arrayOf("{who} quiere agregarte en NEXO", "{who} vuole aggiungerti su NEXO", "{who} wants to add you on NEXO", "{who} quer adicionar você no NEXO", "{who} veut vous ajouter sur NEXO"),
+        "req_in_twin" to arrayOf("⚠ {id} usa el nombre de tu contacto {name} y quiere agregarte: puede ser un impostor", "⚠ {id} usa il nome del tuo contatto {name} e vuole aggiungerti: può essere un impostore", "⚠ {id} is using the name of your contact {name} and wants to add you: it may be an impostor", "⚠ {id} usa o nome do seu contato {name} e quer adicionar você: pode ser um impostor", "⚠ {id} utilise le nom de votre contact {name} et veut vous ajouter : ce peut être un imposteur"),
+        "req_acc" to arrayOf("{who} aceptó tu solicitud: confírmala en NEXO", "{who} ha accettato la tua richiesta: confermala su NEXO", "{who} accepted your request: confirm it in NEXO", "{who} aceitou sua solicitação: confirme no NEXO", "{who} a accepté votre demande : confirmez-la dans NEXO"),
+        "req_more_1" to arrayOf("Otra persona quiere agregarte en NEXO", "Un'altra persona vuole aggiungerti su NEXO", "Someone else wants to add you on NEXO", "Outra pessoa quer adicionar você no NEXO", "Une autre personne veut vous ajouter sur NEXO"),
+        "req_more_n" to arrayOf("{n} personas más quieren agregarte en NEXO", "Altre {n} persone vogliono aggiungerti su NEXO", "{n} more people want to add you on NEXO", "Mais {n} pessoas querem adicionar você no NEXO", "{n} autres personnes veulent vous ajouter sur NEXO"),
+        "ch_requests" to arrayOf("Solicitudes de contacto", "Richieste di contatto", "Contact requests", "Solicitações de contato", "Demandes de contact"),
+        "ch_requests_desc" to arrayOf("Cuando alguien quiere agregarte como contacto", "Quando qualcuno vuole aggiungerti come contatto", "When someone wants to add you as a contact", "Quando alguém quer adicionar você como contato", "Quand quelqu'un veut vous ajouter comme contact")
     )
 
     fun keys(): Set<String> = T.keys

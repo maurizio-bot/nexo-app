@@ -3,11 +3,19 @@
 //  node netbg_helper.mjs relay    → arranca un relé Nostr local que exige identificación (NIP-42), escribe su URL y
 //                                   publica lo que se le pide por la entrada estándar:
 //                                   {"kraw":hex,"from":nx,"to":nx,"body":{...},"created_at":s?} (un JSON por línea)
+//                                   3190: {"req":{"from":nx,"to":nx,"t":"req"|"acc","name":"…","ago":s?}} = una SOLICITUD de contacto
+//                                   hecha por el código REAL de la app (NetLink.sendRequest del bundle compilado) y publicada;
+//                                   {"raw":{"to":nx,"content":"…"}} = basura al buzón de solicitudes de `to`
+//  node netbg_helper.mjs reqvectors → 3190: etiquetas del buzón de solicitudes (_reqTagPub) y solicitudes cifradas por la app real
+// El código real sale de tests/sim/builds/<NEXO_BUILD o wip>/src (bash tests/sim/build.sh wip; en CI se compila antes de estas pruebas).
+import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
 import readline from 'readline';
 const here = path.dirname(fileURLToPath(import.meta.url));
+// Lo que lee la prueba (stdout). 3190: los registros del código de la app (p. ej. «[E2E] Identidad nueva») van a stderr (realNet)
+const say = console.log.bind(console);
 const deps = path.join(here, '../sim/.deps/node_modules');
 const { schnorr } = await import(pathToFileURL(path.join(deps, '@noble/curves/secp256k1.js')).href);
 const { sha256 } = await import(pathToFileURL(path.join(deps, '@noble/hashes/sha2.js')).href);
@@ -31,7 +39,51 @@ function event(sk, kind, tags, content, created_at) {
   return { id: bytesToHex(id), pubkey, created_at, kind, tags, content, sig: bytesToHex(schnorr.sign(id, sk)) };
 }
 
+// 3190: el código REAL de la app (no una copia): NetLink.sendRequest cifra y firma la solicitud igual que en el teléfono
+let _real = null;
+async function realNet() {
+  if (_real) return _real;
+  const dir = path.resolve(here, '../sim/builds', process.env.NEXO_BUILD || 'wip', 'src');
+  if (!fs.existsSync(path.join(dir, 'net/net_link.js'))) throw new Error('falta ' + dir + ' (bash tests/sim/build.sh wip)');
+  if (!globalThis.window) globalThis.window = { crypto: globalThis.crypto };
+  console.log = (...a) => console.error(...a); console.warn = (...a) => console.error(...a);
+  const e2e = await import(pathToFileURL(path.join(dir, 'vault/e2e_crypto.js')).href);
+  await e2e.initE2E(); // la identidad (clave pública que va en la solicitud)
+  const net = await import(pathToFileURL(path.join(dir, 'net/net_link.js')).href);
+  const shared = await import(pathToFileURL(path.join(dir, 'net/net_link_shared.js')).href);
+  _real = { NetLink: net.NetLink, shared, pk: e2e.e2eMyPublicKey() };
+  return _real;
+}
+// Solicitud ('req') o aceptación ('acc') de `from` para `to`, tal como la publica la app (el evento firmado, sin mandarlo a ningún relé)
+async function realRequest(from, to, type, name, agoS) {
+  const { NetLink } = await realNet();
+  const nl = new NetLink({ localNexoId: from });
+  nl.online = () => true;
+  let ev = null;
+  nl._publish = (e) => { ev = e; return Promise.resolve(); };
+  const realNow = Date.now;
+  if (agoS) Date.now = () => realNow() - agoS * 1000; // hecha hace `ago` segundos (created_at y ts de entonces)
+  try { await nl.sendRequest(to, type, name, {}); } finally { Date.now = realNow; }
+  return ev;
+}
+
 const mode = process.argv[2];
+if (mode === 'reqvectors') {
+  const { shared, pk, NetLink } = await realNet();
+  const out = { tags: [], reqs: [], pk };
+  for (const id of ['nxbbbbbbbb', 'NX1A2B3C4D', ' nx0z9y8x7w ']) for (const d of [day(0), day(-1), '2026-02-28']) out.tags.push({ id, day: d, pub: shared._reqTagPub(id, d) });
+  const cases = [['nxaaaaaaaa', 'nxbbbbbbbb', 'req', 'Ana'], ['nxaaaaaaaa', 'nxbbbbbbbb', 'acc', 'Ana <b>María</b> con un nombre larguísimo que pasa de cuarenta'], ['nxcccccccc', 'NX1A2B3C4D', 'req', '']];
+  for (const [from, to, t, name] of cases) {
+    const ev = await realRequest(from, to, t, name);
+    // lo que la app de `to` saca de esa solicitud (NetLink._onReq → ble._onNetRequest), para comparar con lo que abre NetBg
+    let app = null;
+    await new NetLink({ localNexoId: to, _onNetRequest: (info) => { app = info; } })._onReq(ev.content);
+    out.reqs.push({ from, to, t, name, ev, app });
+  }
+  out.today = day(0);
+  say(JSON.stringify(out));
+  process.exit(0);
+}
 if (mode === 'vectors') {
   const out = { sigs: [], tags: [], seals: [], ids: [] };
   for (let i = 0; i < 6; i++) {
@@ -48,7 +100,7 @@ if (mode === 'vectors') {
   const ev = event(sk, 22242, [['relay', 'wss://relay.example.com/x'], ['challenge', 'abc"\\/\n']], '', 1700000000);
   out.ids.push({ sk: bytesToHex(sk), tags: ev.tags, content: '', created_at: 1700000000, id: ev.id });
   out.today = day(0);
-  console.log(JSON.stringify(out));
+  say(JSON.stringify(out));
   process.exit(0);
 }
 if (mode === 'relay') {
@@ -56,7 +108,7 @@ if (mode === 'relay') {
   const { NostrRelay } = require(path.join(here, '../sim/nostr_relay.js'));
   const relay = new NostrRelay({ authRequired: true, latencyMs: 5 });
   const url = await relay.start();
-  console.log('URL ' + url);
+  say('URL ' + url);
   const WS = createRequire(path.join(here, '../sim/nostr_relay.js'))('ws');
   const rl = readline.createInterface({ input: process.stdin });
   // Publicar EN SERIE: cada evento llega del todo (espera su OK, y para entonces el relé ya lo repartió a las
@@ -71,16 +123,31 @@ if (mode === 'relay') {
       const ev = event(schnorr.utils.randomSecretKey(), 1059, [['p', t.pub], ['expiration', String(Math.floor(Date.now() / 1000) + 3600)]], content, o.created_at || Math.floor(Date.now() / 1000));
       const ws = new WS(url);
       ws.on('open', () => ws.send(JSON.stringify(['EVENT', ev])));
-      ws.on('message', (d) => { const m = JSON.parse(String(d)); if (m[0] === 'OK') { console.log('PUBLISHED ' + m[2]); try { ws.close(); } catch (e) {} resolve(); } });
+      ws.on('message', (d) => { const m = JSON.parse(String(d)); if (m[0] === 'OK') { say('PUBLISHED ' + m[2]); try { ws.close(); } catch (e) {} resolve(); } });
       ws.on('error', () => resolve());
     }).catch(() => resolve());
   });
+  // 3190: publica un evento ya hecho (la solicitud de la app real, o basura) y espera su OK
+  const publishEv = (ev) => new Promise((resolve) => {
+    const ws = new WS(url);
+    ws.on('open', () => ws.send(JSON.stringify(['EVENT', ev])));
+    ws.on('message', (d) => { const m = JSON.parse(String(d)); if (m[0] === 'OK') { say('PUBLISHED ' + m[2]); try { ws.close(); } catch (e) {} resolve(); } });
+    ws.on('error', () => resolve());
+  });
+  const publishReq = async (line) => {
+    const o = JSON.parse(line);
+    if (o.req) { const q = o.req; return publishEv(await realRequest(q.from, q.to, q.t || 'req', q.name || '', q.ago || 0)); }
+    const { shared } = await realNet();
+    const r = o.raw; // basura dirigida al buzón de solicitudes de r.to (firma válida, contenido que no se descifra)
+    return publishEv(event(schnorr.utils.randomSecretKey(), 1059, [['p', shared._reqTagPub(r.to, day(0))]], r.content, Math.floor(Date.now() / 1000)));
+  };
   let chain = Promise.resolve(); // cola: una publicación tras otra, en el orden de llegada de las líneas
   rl.on('line', (line) => {
     if (!line.trim()) return;
-    if (line.trim() === 'STATS') { chain = chain.then(() => { console.log('STATS ' + JSON.stringify({ auths: relay.stats.auths, published: relay.stats.published, rejected: relay.stats.rejected })); }); return; }
+    if (line.trim() === 'STATS') { chain = chain.then(() => { say('STATS ' + JSON.stringify({ auths: relay.stats.auths, published: relay.stats.published, rejected: relay.stats.rejected })); }); return; }
     // Lo que el relé tiene guardado (para comprobar lo que PUBLICA NetBg, p. ej. la confirmación de entrega del #87)
-    if (line.trim() === 'DUMP') { chain = chain.then(() => { console.log('EVENTS ' + JSON.stringify(relay.events.map((e) => ({ tags: e.tags, content: e.content })))); }); return; }
+    if (line.trim() === 'DUMP') { chain = chain.then(() => { say('EVENTS ' + JSON.stringify(relay.events.map((e) => ({ tags: e.tags, content: e.content })))); }); return; }
+    if (/^\{"(req|raw)"/.test(line.trim())) { chain = chain.then(() => publishReq(line).catch((e) => say('ERROR ' + (e && e.message)))); return; }
     chain = chain.then(() => publish(line));
   });
 }

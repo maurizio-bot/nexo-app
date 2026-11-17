@@ -294,7 +294,12 @@ export const BLE_UI_METHODS = {
       window.addEventListener('nexo:ble:reqIncoming', function(e) {
         self.renderRequests();
         self.renderContactsList(); // #dueño 04-11: que el aviso de la solicitud salga en la LISTA (antes solo dentro de «Agregar» → si no entrabas ahí, no te enterabas)
-        try { var nm = (e && e.detail && e.detail.name) || 'Alguien'; _showToast('👋 ' + nm + ' quiere agregarte — mirá «Solicitudes para ti»', 'info'); } catch (x) {}
+        // 3190 (dueño 17-11): en el idioma de la app y sin voseo; solo cuando LLEGA una (aceptar o eliminar también avisan, sin id, y
+        // salía «Alguien quiere agregarte»)
+        try {
+          var d = (e && e.detail) || {};
+          if (d.id) { var nm = d.name || String(d.id).toUpperCase(), put = function() { return nm; }; _showToast(d.acc ? t('req_toast_acc', '✅ {name} aceptó tu solicitud — confírmala en «Solicitudes para ti»').replace(/\{name\}/g, put) : t('req_toast', '👋 {name} quiere agregarte — mira «Solicitudes para ti»').replace(/\{name\}/g, put), 'info'); }
+        } catch (x) {}
       });
       window.addEventListener('nexo:ble:reqAccepted', function(e) {
         self.renderRequests(); self.renderContactsList();
@@ -410,6 +415,16 @@ export const BLE_UI_METHODS = {
       setTimeout(function() { self._startUserScan(); }, 150);
     }
     this.updateScanButton();
+  },
+
+  // 3190 (dueño 17-11: «hay que poner esa notificación: hay un contacto que te quiere agregar»): tocar el aviso del teléfono de una
+  // solicitud (destino nexo_requests, main_chats.js) abre «Agregar» en «Solicitudes para ti» (como el cartel de la lista)
+  openRequests() {
+    if (!this.elements || !this.elements.panel) return false;
+    if (!this.elements.panel.classList.contains('active')) this.togglePanel();
+    else this.renderRequests();
+    try { var box = document.getElementById('ble-requests'); if (box && box.style.display !== 'none' && box.scrollIntoView) box.scrollIntoView({ block: 'start' }); } catch (e) {}
+    return true;
   },
 
   // #dueño 08-11 (scan rápido): arranca YA un escaneo con prioridad del usuario. Si ya hay uno en curso (p. ej. uno de
@@ -569,7 +584,8 @@ export const BLE_UI_METHODS = {
       var nm = document.createElement('div'); nm.className = 'ble-contact-name'; nm.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
       nm.textContent = req.name || String(req.id || '').toUpperCase();
       var sub = document.createElement('div'); sub.style.cssText = 'font-size:12px;color:var(--nx-muted);margin-top:2px;';
-      sub.textContent = String(req.id || '').toUpperCase() + (req.acc ? ' · aceptó tu solicitud — confirmá' : req.inv ? ' · ' + t('req_from_invite', 'aceptó tu invitación') : ' · quiere agregarte'); // 3129
+      // 3129; 3190: en el idioma de la app y sin voseo
+      sub.textContent = String(req.id || '').toUpperCase() + ' · ' + (req.acc ? t('req_sub_acc', 'aceptó tu solicitud — confírmala') : req.inv ? t('req_from_invite', 'aceptó tu invitación') : t('req_sub_in', 'quiere agregarte'));
       info.appendChild(nm); info.appendChild(sub);
       // 3135 (anti-suplantación, dueño 15-11): ya tengo a alguien con este nombre → es OTRO teléfono (o un impostor)
       var twin = (typeof self._twinByName === 'function' && !req.acc) ? self._twinByName(req.name, req.id) : null;

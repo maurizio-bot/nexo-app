@@ -28,8 +28,15 @@ class NetBg(
     private val log: (String) -> Unit = {},
     // 3087: el que llama colgó (el sobre lleva ce = id de su oferta): la llamada que suena se quita al momento
     private val onCallEnd: (nx: String, offerId: String) -> Unit = { _, _ -> },
+    // 3190 (dueño 17-11: «hay que poner esa notificación: hay un contacto que te quiere agregar»): llegó una solicitud de contacto a
+    // MI buzón de solicitudes (descifrada y validada como en la app, de alguien que no es contacto): el que escucha pone el aviso
+    // del teléfono (con su freno, ReqNotifyPolicy). La solicitud no se consume: queda guardada para la app (drainForApp).
+    private val onRequest: (req: Req) -> Unit = { },
 ) {
     class Contact(val nx: String, val name: String, val kraw: ByteArray)
+    // 3190: solicitud de contacto de mi buzón. kind = "req" (me quieren agregar) o "acc" (aceptó una solicitud MÍA); twin = nombre del
+    // contacto que ya tengo con ese mismo nombre y otro NEXO ID (posible impostor), o ""
+    class Req(val from: String, val name: String, val kind: String, val twin: String = "")
     private class Relay(val url: String) { var ws: WsClient? = null; var retryAt = 0L; var fails = 0; var authed = false; var openedAt = 0L; var closedAt = 0L }
 
     companion object {
@@ -79,6 +86,29 @@ class NetBg(
             val s = String(c.doFinal(raw, 12, raw.size - 12), Charsets.UTF_8)
             if (SafeJson.reject(s)) null else JSONObject(s) // ni un contacto puede tumbar la app con un sobre muy anidado
         } catch (e: Exception) { null }
+        // 3190: mi buzón de solicitudes de contacto (alta por ID, ronda 2779), igual que _reqScalar/_reqAesKey de net_link_shared.js: se
+        // deriva SOLO de mi NEXO ID y el día (no hace falta guardar ningún secreto nuevo). Clave de la etiqueta del día (p del evento)
+        fun reqKey(me: String, day: String): ByteArray {
+            val h = java.math.BigInteger(1, Secp256k1.sha256("NEXO-REQ-v1|${me.trim().lowercase()}|$day".toByteArray(Charsets.UTF_8)))
+            return Secp256k1.b32(h.mod(Secp256k1.N.subtract(java.math.BigInteger.ONE)).add(java.math.BigInteger.ONE))
+        }
+        // Clave AES del contenido de lo que llega a ese buzón
+        fun reqAesKey(me: String): ByteArray = Secp256k1.sha256("NEXO-REQ-ENC-v1|${me.trim().lowercase()}".toByteArray(Charsets.UTF_8))
+        private val NXID = Regex("^nx[0-9a-z]{8}$")
+        private val REQ_PK = Regex("^[A-Za-z0-9+/=]{80,100}$")
+        // Abre una solicitud como NetLink._onReq: base64(iv[12] + AES-GCM, sin datos asociados) con la clave de MI ID. null si no se
+        // descifra o no vale (tipo req/acc, remitente nx + 8, que no sea yo, clave pública); el nombre, saneado como en la app.
+        fun openReq(me: String, b64: String): Req? = try {
+            val raw = Base64.getDecoder().decode(b64)
+            val c = Cipher.getInstance("AES/GCM/NoPadding")
+            c.init(Cipher.DECRYPT_MODE, SecretKeySpec(reqAesKey(me), "AES"), GCMParameterSpec(128, raw, 0, 12))
+            val s = String(c.doFinal(raw, 12, raw.size - 12), Charsets.UTF_8)
+            val o = if (SafeJson.reject(s)) null else JSONObject(s)
+            val t = o?.optString("t") ?: ""
+            val from = (o?.optString("from") ?: "").lowercase().trim()
+            if (o == null || (t != "req" && t != "acc") || !NXID.matches(from) || from == me.trim().lowercase() || !REQ_PK.matches(o.optString("pk"))) null
+            else Req(from, o.optString("name").replace(Regex("[<>]"), "").take(40), t)
+        } catch (e: Exception) { null }
         // Sella como la app (NetLink.send): base64(iv[12] + AES-GCM), datos asociados "NEXO-NET|de|para"
         fun seal(kraw: ByteArray, from: String, to: String, plain: String): String {
             val iv = ByteArray(12); java.security.SecureRandom().nextBytes(iv)
@@ -127,8 +157,15 @@ class NetBg(
     @Volatile private var me = ""
     @Volatile private var contacts: List<Contact> = emptyList()
     @Volatile private var since = 0L
+    // 3190: para el aviso de una solicitud: todos mis contactos (NEXO ID → nombre; también los que no van por internet), los IDs a
+    // los que YO mandé una solicitud (su «acc» es «aceptó tu solicitud») y desde cuándo la app ya no escucha su buzón (lo de antes
+    // lo recibió ella con la app a la vista: sin aviso doble)
+    @Volatile private var known: Map<String, String> = emptyMap()
+    @Volatile private var reqOut: Set<String> = emptySet()
+    @Volatile private var reqSince = 0L
     private val relays = LinkedHashMap<String, Relay>()
     private var tags = HashMap<String, Contact>()   // pub de la etiqueta → contacto
+    private var reqTags = HashSet<String>()         // 3190: pub de las etiquetas de MI buzón de solicitudes (hoy y ayer)
     private var tagKeys = ArrayList<ByteArray>()
     private var tagDay = ""
     @Volatile var running = false; private set
@@ -150,9 +187,10 @@ class NetBg(
     // contacto antiguo la ignora, igual que hoy).
     @Volatile private var ackKeys: Map<String, ByteArray> = emptyMap()
 
-    fun configure(me: String, relayUrls: List<String>, since: Long, list: List<Contact>) {
+    fun configure(me: String, relayUrls: List<String>, since: Long, list: List<Contact>, known: Map<String, String> = emptyMap(), reqOut: Set<String> = emptySet(), reqSince: Long = 0L) {
         synchronized(lock) {
             this.me = me.lowercase(); this.contacts = list
+            this.known = known; this.reqOut = reqOut; this.reqSince = reqSince
             if (since > this.since) this.since = since
             relayUrls.forEach { if (!relays.containsKey(it)) relays[it] = Relay(it) }
             relays.keys.filter { it !in relayUrls }.forEach { relays.remove(it)?.ws?.close() }
@@ -160,7 +198,8 @@ class NetBg(
         }
         if (running) synchronized(lock) { lock.notifyAll() }
     }
-    fun configured() = me.isNotEmpty() && contacts.isNotEmpty() && relays.isNotEmpty()
+    // 3190: también sin contactos por internet (alguien nuevo que espera solicitudes): con mi ID ya se escucha mi buzón de solicitudes
+    fun configured() = me.isNotEmpty() && relays.isNotEmpty()
     // Nombre de un contacto (para la notificación de lo que llega por Bluetooth con la app cerrada)
     fun nameOf(nx: String): String? = contacts.firstOrNull { it.nx == nx.lowercase() }?.name?.takeIf { it.isNotEmpty() }
     // La app nos pasa, por contacto, la clave con la que firmar la confirmación de entrega del modo cerrado (igual que
@@ -171,7 +210,7 @@ class NetBg(
         if (running || !configured()) return
         running = true
         thread = Thread({ loop() }, "nexo-netbg").apply { isDaemon = true; start() }
-        log("Internet en segundo plano: escuchando ${contacts.size} contacto(s) en ${relays.size} relé(s)")
+        log("Internet en segundo plano: escuchando ${contacts.size} contacto(s) y el buzón de solicitudes en ${relays.size} relé(s)")
     }
     fun stop() {
         if (!running) return
@@ -189,7 +228,10 @@ class NetBg(
             val sk = tagKey(c.kraw, me, day(o))
             t[Secp256k1.hex(Secp256k1.xOnly(sk))] = c; keys.add(sk)
         }
-        tags = t; tagKeys = keys; tagDay = d0
+        // 3190: y mi buzón de solicitudes (hoy y ayer), en la misma suscripción y en las claves de identificación (NIP-42), como la app
+        val rt = HashSet<String>()
+        if (me.isNotEmpty()) for (o in intArrayOf(0, -1)) { val sk = reqKey(me, day(o)); rt.add(Secp256k1.hex(Secp256k1.xOnly(sk))); keys.add(sk) }
+        tags = t; reqTags = rt; tagKeys = keys; tagDay = d0
         return true
     }
 
@@ -237,7 +279,7 @@ class NetBg(
     }
 
     private fun subscribe(r: Relay) {
-        val pubs = synchronized(lock) { tags.keys.toList() }
+        val pubs = synchronized(lock) { tags.keys.toList() + reqTags }
         if (pubs.isEmpty()) return
         val f = JSONObject().put("kinds", JSONArray(listOf(KIND))).put("#p", JSONArray(pubs)).put("since", since / 1000)
         r.ws?.send(JSONArray(listOf("REQ", SUB, f)).toString())
@@ -273,11 +315,17 @@ class NetBg(
         if (ts > since) since = ts
         val tgs = ev.optJSONArray("tags") ?: return
         var c: Contact? = null
+        var toReq = false
         for (i in 0 until tgs.length()) {
             val t = tgs.optJSONArray(i) ?: continue
-            if (t.optString(0) == "p") { c = synchronized(lock) { tags[t.optString(1)] }; if (c != null) break }
+            if (t.optString(0) == "p") {
+                val p = t.optString(1)
+                c = synchronized(lock) { tags[p] }
+                if (c != null) break
+                if (synchronized(lock) { reqTags.contains(p) }) toReq = true
+            }
         }
-        if (c == null) return
+        if (c == null) { if (toReq) onReqEvent(ev, ts); return }
         val o = open(c.kraw, c.nx, me, ev.optString("content")) ?: return
         if (o.optInt("h") == 1) return
         keepForApp(ev.toString())   // 3033: para la app al volver (mensajes, confirmaciones, acciones: lo procesa como si llegara)
@@ -286,6 +334,20 @@ class NetBg(
         if (BgInbox.CALL_ID.matches(ce)) onCallEnd(c.nx, ce)
         // #130b: cl:1 = oferta de llamada (1-a-1 o invitación de grupo) → pantalla de llamada, no aviso de mensaje
         if (n.isNotEmpty()) { onMessage(c.nx, c.name, n, o.optInt("cl") == 1, groupOf(o.optString("p")), o.optInt("cv") == 1); publishDeliveryAck(c, n) }
+    }
+
+    // 3190: llegó algo a MI buzón de solicitudes. Se abre como en la app (_onReq) y queda guardado para la app: la solicitud NO se
+    // consume aquí, entra en su bandeja al volver (drainForApp). Lo que la app recibió ella misma (a la vista y escuchando su buzón:
+    // antes de reqSince) no vuelve a avisar; de un contacto, tampoco. El resto se avisa (el que escucha pone el aviso con su freno).
+    // Al registro: el NEXO ID, nunca el contenido.
+    private fun onReqEvent(ev: JSONObject, ts: Long) {
+        val r = openReq(me, ev.optString("content")) ?: return
+        keepForApp(ev.toString())
+        if (ts < reqSince) return
+        if (known.containsKey(r.from) || contacts.any { it.nx == r.from }) { log("Solicitud de ${r.from}: ya es contacto: sin aviso"); return }
+        val mine = r.kind == "acc" && reqOut.contains(r.from)
+        val all = HashMap<String, String>(known); contacts.forEach { if (!all.containsKey(it.nx)) all[it.nx] = it.name }
+        onRequest(Req(r.from, r.name, if (mine) "acc" else "req", if (mine) "" else ReqNotifyPolicy.twinOf(r.name, r.from, all)))
     }
 
     // #87 (entrega con la app CERRADA): al reconocer un sobre con un mensaje NUEVO de la pareja, devolvemos su
