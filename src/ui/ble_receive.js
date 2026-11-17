@@ -491,7 +491,7 @@ export const BLE_RECEIVE_METHODS = {
         // v6.14.0: el contador de no leídos lo lleva notify.js (todas las vías: texto largo, fotos, archivos…)
         var pv = _messagePreview(content, attachmentData && attachmentData.attachmentType);
         if (grp) { var gpv = _messagePreview(msgContent, attachmentData && attachmentData.attachmentType); if (gpv !== null && !isControl) self.groups.noteMessage(grp.gid, self.groups.memberName(senderUUID) + ': ' + gpv, data.timestamp || Date.now()); }
-        else if (senderUUID && !isControl && pv !== null) self.noteContactMessage(senderUUID, pv, data.timestamp || Date.now());
+        else if (senderUUID && !isControl && pv !== null) self.noteContactMessage(senderUUID, pv, data.timestamp || Date.now(), messageId); // 3183: con su id (un reenvío no lo sube)
         _safeDispatchEvent('nexo:ble:messageReceived', {
           groupId: grp ? grp.gid : undefined,
           deviceId: deviceId,

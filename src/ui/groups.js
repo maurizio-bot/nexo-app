@@ -253,7 +253,8 @@ export class Groups {
     var g = this.get(gid);
     if (!g) return;
     g.lastMessage = String(preview || '').substring(0, 80);
-    g.lastMessageAt = Math.max(g.lastMessageAt || 0, ts || Date.now());
+    var now = Date.now();
+    g.lastMessageAt = Math.max(g.lastMessageAt || 0, Math.min(ts || now, now)); // 3183: una hora del futuro (reloj adelantado) se acota a ahora
     this._save();
     _emit('nexo:groups', { id: g.id });
   }

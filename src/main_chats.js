@@ -194,7 +194,7 @@ function _handleIncomingMessage(msg) {
     // Ahora todo mensaje 1-a-1 recibido lo anota. Si ya se anotó con la misma hora (los cortos, los archivos), no hace nada.
     if (!msg.groupId && senderUUID && bi && typeof bi.noteContactMessage === 'function') {
       var npv = msg.attachmentType ? (_PREVIEW_BY_TYPE[msg.attachmentType] || '📎 Archivo') : _cut(_plainText(msg.content), 50);
-      try { bi.noteContactMessage(senderUUID, npv, msg.timestamp || Date.now()); } catch (e) {}
+      try { bi.noteContactMessage(senderUUID, npv, msg.timestamp || Date.now(), msg.messageId || msg.msgId); } catch (e) {} // 3183: con su id
     }
     // 3012 (dueño 11-11: avisos sin mensaje): el nativo sabe que ESTE mensaje ya está en el teléfono (también los largos y los
     // archivos, que no pasan por ble_messages): si el otro lo reenvía con esta app cerrada, no sale «Mensaje nuevo»
@@ -278,7 +278,7 @@ function _registerCriticalListeners() {
           return;
         }
         _removeIncomingPlaceholder(d.fileId);
-        _noteContactMessage(meta.senderNexoId || meta.fromNexoId || meta.fr || d.senderNexoId, meta.type || meta.tp || 'file', Date.now());
+        _noteContactMessage(meta.senderNexoId || meta.fromNexoId || meta.fr || d.senderNexoId, meta.type || meta.tp || 'file', Date.now(), d.fileId); // 3183: con su id
         console.log('[MAIN] Archivo recibido via fileComplete:', d.fileId, 'type=', meta.type, 'fr=', meta.fr, 'len=', (d.data || '').length);
         var senderId = meta.senderNexoId || meta.fromNexoId || meta.fromId || meta.fr || d.senderNexoId || null;
         var recvMsg = {

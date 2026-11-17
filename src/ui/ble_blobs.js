@@ -169,7 +169,7 @@ export const BLE_BLOB_METHODS = {
       var cur = (list || []).find(function(x) { return (x.messageId || x.msgId) === fileId; });
       if (cur && (cur.attachmentPayload || cur.attachmentRef)) { inMap.delete(fileId); saveCitaIn(inMap); return; } // ya lo tengo
       if (!cur) _vaultAppendMessage(nx, vaultMsg, false);
-      self.noteContactMessage(nx, '📦 ' + (meta.name || 'archivo'), ts);
+      self.noteContactMessage(nx, '📦 ' + (meta.name || 'archivo'), ts, fileId); // 3183: con su id
       _safeDispatchEvent('nexo:ble:messageReceived', { deviceId: deviceId, deviceUUID: nx, content: vaultMsg.content, messageId: fileId, senderName: '', senderNexoId: nx, seq: 0, timestamp: ts, attachmentType: 'file', attachmentPayload: null, attachmentMeta: meta });
     }).catch(function() {});
     self._noteWakePending(nx); // toque MUTUO (Fase A): si el que tiene el archivo duerme, lo despierto yo con freno creciente

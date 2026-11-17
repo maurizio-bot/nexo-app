@@ -10,7 +10,7 @@
  * Sin contenido de mensajes ni nombres: solo la parte final del NEXO ID de cada contacto (los 4 últimos caracteres).
  * Síntoma «entrega_lenta»: un texto propio que tardó más de SLOW_MS en llegar habiendo camino al mandarlo.
  */
-import { _getBLEContacts, _normId, _normMac } from './ble_helpers.js';
+import { _getBLEContacts, _isPinned, _normId, _normMac } from './ble_helpers.js';
 import { exitsInit, exitsLines } from './diag_exits.js'; // 3120: cierres de la app
 
 var TRACE_MAX = 40;              // mensajes con línea de tiempo (los más recientes)
@@ -175,6 +175,9 @@ function _contactRows(bi) {
     try { var bo = bi._resendBackoff && bi._resendBackoff.get(nx); if (bo && bo.n) p.push('reenvío en espera ×' + bo.n); } catch (e) {}
     try { if (typeof window.NEXO_avatarDiag === 'function') p.push(window.NEXO_avatarDiag(nx)); } catch (e) {} // 3060: estado de su foto de perfil
     if (c.lastSeen) p.push('visto ' + _hhmmss(c.lastSeen));
+    // 3183 (dueño 17-11, el vivo siempre arriba): qué lo pone en su lugar de la lista (fijado / hora del último mensaje)
+    try { if (_isPinned(nx)) p.push('FIJADO arriba'); } catch (e) {}
+    if (c.lastMessageAt) { var lm = Math.round((now - c.lastMessageAt) / 60000); p.push(lm < -1 ? 'últ. msj EN EL FUTURO (+' + (-lm) + ' min)' : 'últ. msj hace ' + Math.max(0, lm) + ' min'); } // i18n-ok: texto para el desarrollador
     p.push('build ' + (_peerBuild[nx] || '?'));
     return '  ' + _tail(nx) + _nameOf(nx) + ': ' + p.join(' · ');
   });

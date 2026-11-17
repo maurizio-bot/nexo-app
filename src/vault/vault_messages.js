@@ -328,6 +328,9 @@ async function _appendMessageNow(cid, message) {
   _externalizeAttachment(normalized, existing);
   if (existing) {
     var merged = Object.assign({}, existing, normalized);
+    // 3183 (dueño 17-11, el vivo arriba): la hora de un mensaje es la de su PRIMERA llegada. Un reenvío del mismo mensaje (el
+    // otro no se enteró de la confirmación, un desatasco) no lo pasa al final del chat ni cuenta como mensaje nuevo en la lista.
+    if (existing.timestamp > 0) merged.timestamp = existing.timestamp;
     // No perder datos del adjunto ni el texto si la nueva versión no los trae
     ['attachmentType', 'attachmentMeta', 'attachmentRef', 'attachmentPayload'].forEach(function(k) {
       if (normalized[k] == null && existing[k] != null) merged[k] = existing[k];

@@ -344,8 +344,8 @@ export function _sendTextTo(cid, wire, plain, hidden) {
   return msgId;
 }
 
-export function _noteContactMessage(contactId, textOrType, ts) {
+export function _noteContactMessage(contactId, textOrType, ts, msgId) {
   var bi = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface);
   if (!contactId || !bi || typeof bi.noteContactMessage !== 'function') return;
-  bi.noteContactMessage(contactId, _PREVIEW_BY_TYPE[textOrType] || _cut(textOrType, 50), ts);
+  bi.noteContactMessage(contactId, _PREVIEW_BY_TYPE[textOrType] || _cut(textOrType, 50), ts, msgId); // 3183: msgId = llegó de otro teléfono
 }

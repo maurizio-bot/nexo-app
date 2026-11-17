@@ -6,6 +6,14 @@ import { _cut, _getBLEContacts, _getContactByUUID, _messagePreview, _normId, _re
 import { t } from './i18n.js';
 
 
+// 3183: el último mensaje que el usuario VE en un chat (sin copias ocultas ni acciones/diagnósticos, que no tienen vista previa)
+function _lastVisible(msgs) {
+  return (msgs || []).reduce(function(m, x) {
+    if (!x || x.hidden || _messagePreview(x.content || x.text, x.attachmentType) === null) return m;
+    return (x.timestamp || 0) > ((m && m.timestamp) || 0) ? x : m;
+  }, null);
+}
+
 export const BLE_CONTACT_METHODS = {
   getBLEContacts() { return _getBLEContacts(); },
 
@@ -38,14 +46,29 @@ export const BLE_CONTACT_METHODS = {
     }).filter(function(x) { return x.chatId; }).concat(this.groups ? this.groups.all().map(function(g) { return { chatId: g.id, name: g.name, count: g.unreadCount || 0 }; }) : []);
   },
 
-  noteContactMessage(nexoId, preview, ts) {
+  // 3183 (dueño 17-11: «el vivo siempre está arriba, lo ocupe o no; nunca baja»): (1) una hora del FUTURO (reloj del otro
+  // adelantado) se acota a ahora: si no, el contacto quedaba arriba hasta que llegara esa hora (y con «Ahora» de etiqueta).
+  // (2) msgId = lo que llega de otro teléfono: si ese mensaje YA estaba en el chat cuenta su hora de entonces, no la de ahora.
+  // El vivo, con la app dormida, no se entera de la confirmación y REENVÍA lo ya entregado al reconectar (o un desatasco
+  // reenvía lo último); tras reiniciarse este teléfono ya no recuerda ese id y cada reenvío lo subía arriba sin mensaje nuevo.
+  // Una copia OCULTA (acción, foto, estado…) tampoco sube a nadie: solo lo que el usuario ve.
+  noteContactMessage(nexoId, preview, ts, msgId) {
     var nx = _normId(nexoId);
     if (!nx) return;
-    if (this.groups && this.groups.isGroup(nx)) { this.groups.noteMessage(nx, preview ? 'Tú: ' + preview : '', ts); this.renderContactsList(); return; } // propios en un grupo
+    var now = Date.now(), t0 = Math.min(ts || now, now), self = this;
+    if (this.groups && this.groups.isGroup(nx)) { this.groups.noteMessage(nx, preview ? 'Tú: ' + preview : '', t0); this.renderContactsList(); return; } // propios en un grupo
+    if (!msgId) { this._noteContactAt(nx, preview, t0); return; }
+    _vaultLoadMessages(nx).then(function(list) {
+      var m = (list || []).find(function(x) { return (x.msgId || x.messageId) === msgId; });
+      if (m && m.hidden) return;
+      self._noteContactAt(nx, preview, (m && m.timestamp > 0 && m.timestamp < t0) ? m.timestamp : t0);
+    }, function() { self._noteContactAt(nx, preview, t0); });
+  },
+
+  _noteContactAt(nx, preview, t) {
     var contacts = _getBLEContacts();
     var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
     if (!c) return;
-    var t = ts || Date.now();
     // #dueño 08-11 (orden de la lista): con un mensaje (entrante o saliente) el contacto YA NO es «nuevo sin ver» → deja de
     // flotar arriba y se ordena por el más reciente como todos. El «nuevo arriba» queda solo para un contacto recién agregado
     // (de una tarjeta/grupo) con el que todavía NO cruzaste ningún mensaje. Antes solo se limpiaba al ABRIR el chat, así que un
@@ -114,15 +137,17 @@ export const BLE_CONTACT_METHODS = {
     // viejo (vivo Y03 06:44 por encima de Galaxy «Ahora»). Al arrancar, cualquier contacto con lastMessageAt deja de ser
     // «nuevo sin ver» → se limpia el flag persistido (el orden y el resalte quedan bien). El «nuevo arriba» queda solo
     // para uno SIN ningún mensaje. (El sort además ya lo ignora en vivo, pero acá lo dejamos limpio en disco.)
-    var staleCleared = 0;
+    var staleCleared = 0, now = Date.now();
     all.forEach(function(c) { if (c.isNewShared && c.lastMessageAt) { c.isNewShared = false; staleCleared++; } });
+    // 3183: una hora guardada del FUTURO lo dejaba arriba (y nada nuevo la superaba) hasta que llegara: se acota a ahora
+    all.forEach(function(c) { if (c.lastMessageAt > now + 60000) { c.lastMessageAt = now; staleCleared++; } });
     if (staleCleared) { _saveBLEContacts(all); self.renderContactsList(); }
     var contacts = all.filter(function(c) { return !c.lastMessageAt && (c.nexoId || c.deviceUUID); });
     if (!contacts.length) return;
     Promise.all(contacts.map(function(c) {
       var nx = _normId(c.nexoId || c.deviceUUID);
       return _vaultLoadMessages(nx).then(function(msgs) {
-        var last = (msgs || []).reduce(function(m, x) { return (x.timestamp || 0) > ((m && m.timestamp) || 0) ? x : m; }, null);
+        var last = _lastVisible(msgs); // 3183: el último que se VE (una copia oculta pendiente no cuenta)
         if (last) self.noteContactMessage(nx, _messagePreview(last.content || last.text, last.attachmentType), last.timestamp);
       }).catch(function() {});
     }));
@@ -258,7 +283,7 @@ export const BLE_CONTACT_METHODS = {
     }
     [self._lostPeers, self._pendingWake, self._resendBackoff, self._nexoIdToMac].forEach(function(m) { try { if (m && typeof m.delete === 'function') m.delete(oldNx); } catch (e) {} });
     self.removeContact(oldNx);
-    var last = merged[merged.length - 1];
+    var last = _lastVisible(merged); // 3183: el último que se VE
     if (last && typeof self.noteContactMessage === 'function') self.noteContactMessage(nx, _messagePreview(last.content || last.text, last.attachmentType), last.timestamp);
     console.log('[ADD] Unido ' + oldNx + ' → ' + nx + ' (mismo teléfono reinstalado): ' + a.length + ' mensaje(s) pasados');
     try { _showToast(t('merge_reinstall_done', 'Listo: el chat anterior pasó a este contacto.'), 'info'); } catch (e) {}
