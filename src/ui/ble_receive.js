@@ -150,7 +150,7 @@ export const BLE_RECEIVE_METHODS = {
       }
     }
     var jump = /"to":"nx/i.test(raw) || /"type":"r[tkqp]"/.test(raw);
-    if (!jump && raw.indexOf('"type":"kx"') < 0 && raw.indexOf('E1:') < 0 && raw.indexOf('E2:') < 0) return Promise.resolve(data);
+    if (!jump && raw.indexOf('"type":"kx"') < 0 && raw.indexOf('"type":"nq"') < 0 && raw.indexOf('E1:') < 0 && raw.indexOf('E2:') < 0) return Promise.resolve(data);
     var p;
     try { p = JSON.parse(raw); } catch (e) { return Promise.resolve(data); }
     // Jump: rutas, custodia y paquetes de paso hacia otro teléfono
@@ -207,6 +207,8 @@ export const BLE_RECEIVE_METHODS = {
       if (p.rq || (p.j && !p.lt && !p.nk)) self._sendKx(data.deviceId, false, !!p.rq, !!(p.rq && p.id));
       return Promise.resolve(null);
     }
+    // 3207: solicitud de contacto de cerca (o su respuesta): solo por un enlace directo, nunca de paso por otro teléfono
+    if (p && p.type === 'nq') { if (!viaRelay && typeof self._onNearReq === 'function') self._onNearReq(data.deviceId, p); return Promise.resolve(null); }
     if (viaRelay) data = Object.assign({}, data, { viaRelay: true, relayOrigin: _normId(p.from) });
     if (p && p.v === 1 && p.type === 'chat' && p.payload && e2eAnyEncrypted(p.payload.text)) {
       var sender = p.from || p.payload.senderNexoId;

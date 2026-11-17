@@ -808,21 +808,9 @@ export const BLE_CONNECTION_METHODS = {
     }
     console.log('[ADD] Agregar ' + _normId(nexoId) + ' (' + name + ') por ' + (device.id || deviceId));
     if (!_isBLEContact(nexoId)) {
-      _addBLEContact({
-        deviceUUID: nexoId,
-        name: name,
-        deviceId: device.id || null
-      });
-      _vaultGetOrCreateContact(nexoId, name, device.name);
-      if (typeof this._applyNtNow === 'function') this._applyNtNow(nexoId); // 3020: su «tengo internet» se guarda ya
-      // 3018 (opción A del dueño): ¿es un teléfono que ya estaba, reinstalado (NEXO ID nuevo)? Se pregunta antes de unir
-      if (typeof this._offerReinstallMerge === 'function') this._offerReinstallMerge(nexoId);
-      // 3012: si este teléfono ya dijo quién es (su kx directo, _noteKxPeer), su clave se guarda al agregarlo: el cifrado queda
-      // listo ya y se le reconoce por su código rotativo aunque cambie de dirección (sin clave no se puede calcular su código)
-      var kxp = this._kxPeers && this._kxPeers.get(_normId(nexoId));
-      if (kxp && kxp.pk && typeof this._noteSenderKey === 'function') {
-        try { this._noteSenderKey(nexoId, kxp.pk); if (kxp.b2 && typeof this._notePeerBundle === 'function') this._notePeerBundle(nexoId, kxp.b2); } catch (eK) {}
-      }
+      // 3207 (dueño 17-11: «el mismo protocolo de aceptar un contacto como en dispositivos lejanos»): ya no se agrega al momento:
+      // se le manda una SOLICITUD y queda agregado cuando la acepta (ble_near_req.js)
+      this._nearRequest(nexoId, name, device);
     } else {
       var contacts = _getBLEContacts();
       var idx = contacts.findIndex(function(c) {

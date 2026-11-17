@@ -834,6 +834,8 @@ export default {
   ble_scan_hint_on: "Buscando teléfonos con NEXO cerca… Los que aparezcan salen aquí abajo para agregarlos.",
   ble_scan_hint_off: "Toca el botón de buscar (abajo) para encontrar teléfonos con NEXO cerca y agregarlos. Tus contactos están en Chats.",
   ble_req_sent: "Solicitud enviada a {id}. Aparecerás cuando la acepte.",
+  near_req_sent: "Solicitud enviada a {name}. Aparecerá en tus contactos cuando la acepte.",
+  near_req_accepted: "✅ {name} aceptó tu solicitud: ya es tu contacto",
   ble_req_fail: "No se pudo enviar la solicitud.",
   ble_visible_note: "Visible para agregar mientras esta pantalla esté abierta",
   upd_install_btn: "Instalar actualización",

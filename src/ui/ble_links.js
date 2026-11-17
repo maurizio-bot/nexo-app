@@ -243,6 +243,13 @@ export const BLE_LINK_METHODS = {
     var isMyAcc = info.kind === 'acc' && out.some(function(x) { return x.id === nx; });
     // Anti-IA: frenar una inundación de solicitudes antes de tocar nada (buzón, avisos). El exceso se descarta en silencio.
     if (!self._reqFlood(nx, isMyAcc)) return;
+    // 3207: aceptó por internet una solicitud que le mandé DE CERCA, con la misma llave que me dijo de cerca → agregado (dueño 17-11)
+    var outE = out.find(function(x) { return x.id === nx; });
+    if (isMyAcc && outE && outE.near && outE.pk && outE.pk === pk && typeof self._nearAddContact === 'function') {
+      self._nearAddContact(nx, name || outE.name || '', pk, null);
+      _safeDispatchEvent('nexo:ble:reqAccepted', { id: nx, name: name || outE.name || '' });
+      return;
+    }
     // SEC-2 (07-11): una 'acc' que acepta MI solicitud saliente ya NO agrega la clave EN SILENCIO. Un impostor que conozca
     // tu NEXO ID y el del destino (ambos semi-públicos) podía forjar una 'acc' con SU clave mientras tuvieras una solicitud
     // saliente pendiente, y se colaba como «ese contacto» sin que te enteraras (hombre en el medio). Ahora TODA 'acc'/'req'
@@ -253,7 +260,7 @@ export const BLE_LINK_METHODS = {
     // 3129: trae el código de una invitación MÍA vigente → «aceptó tu invitación» (un uso). Se sigue aceptando a mano (SEC-2).
     var inv = !!(prev && prev.inv) || (!isMyAcc && !!(info && info.ic) && takeInviteCode(info.ic, true));
     var inbox = all.filter(function(x) { return x.id !== nx; });
-    inbox.unshift({ id: nx, pk: pk, name: name, ph: (info && info.ph) || '', em: (info && info.em) || '', at: Date.now(), acc: isMyAcc, inv: inv });
+    inbox.unshift({ id: nx, pk: pk, name: name, ph: (info && info.ph) || '', em: (info && info.em) || '', at: Date.now(), acc: isMyAcc, inv: inv, near: info && info.near ? 1 : 0, dev: (info && info.near && info.dev) || '' }); // 3207: near = llegó de cerca
     self._reqSave('nexo_req_in', inbox);
     _safeDispatchEvent('nexo:ble:reqIncoming', { id: nx, name: name, count: inbox.length, acc: isMyAcc });
   },
@@ -265,6 +272,17 @@ export const BLE_LINK_METHODS = {
     var self = this, nx = _normId(id);
     var inbox = self._reqStore('nexo_req_in'), req = inbox.find(function(x) { return x.id === nx; });
     if (!req || !req.pk) return Promise.reject(new Error(t('add_err_gone', 'Esa solicitud ya no está')));
+    // 3207: llegó de CERCA: se agrega como un teléfono cercano (su dirección y su paquete del kx) y se le contesta por el enlace
+    // directo; también por internet si hay (allí, con la misma llave, también queda agregado)
+    if (req.near && typeof self._nearAddContact === 'function') {
+      self._nearAddContact(nx, req.name || '', req.pk, req.dev || null);
+      _safeDispatchEvent('nexo:ble:reqIncoming', { count: self._reqStore('nexo_req_in').length });
+      if (req.acc) { _safeDispatchEvent('nexo:ble:reqAccepted', { id: nx, name: req.name || '' }); return Promise.resolve(); }
+      self._sendNear(nx, 'acc', req.dev || null);
+      if (!self.net) return Promise.resolve();
+      var _mpn = myProfile();
+      return self.net.sendRequest(nx, 'acc', self.localDeviceName || '', { ph: maskPhone(_mpn.phone), em: maskEmail(_mpn.email) }).catch(function() {});
+    }
     self.addSharedContacts([{ nexoId: nx, name: req.name || '', publicKey: req.pk, nt: 1 }], null, { quiet: true });
     self._reqSave('nexo_req_in', inbox.filter(function(x) { return x.id !== nx; }));
     if (self.net) self.net.greet();

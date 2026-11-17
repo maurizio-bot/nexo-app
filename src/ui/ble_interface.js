@@ -17,6 +17,7 @@ import { BLE_MESSAGE_METHODS } from './ble_messages.js';
 import { BLE_JUMP_METHODS } from './ble_jump_send.js';
 import { BLE_CAMERA_METHODS } from './ble_camera_pause.js';
 import { BLE_KEY_METHODS } from './ble_keys.js';
+import { BLE_NEARREQ_METHODS } from './ble_near_req.js'; // 3207: solicitud de contacto también de cerca
 import { BLE_LINK_METHODS } from './ble_links.js';
 import { BLE_CONTACT_METHODS } from './ble_contacts.js';
 import { BLE_UI_METHODS } from './ble_ui.js';
@@ -510,6 +511,7 @@ Object.assign(BLEInterface.prototype, BLE_MESSAGE_METHODS);
 Object.assign(BLEInterface.prototype, BLE_JUMP_METHODS);
 Object.assign(BLEInterface.prototype, BLE_CAMERA_METHODS);
 Object.assign(BLEInterface.prototype, BLE_KEY_METHODS);
+Object.assign(BLEInterface.prototype, BLE_NEARREQ_METHODS);
 Object.assign(BLEInterface.prototype, BLE_LINK_METHODS);
 Object.assign(BLEInterface.prototype, BLE_CONTACT_METHODS);
 Object.assign(BLEInterface.prototype, BLE_UI_METHODS);
