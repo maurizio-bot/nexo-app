@@ -406,10 +406,24 @@ ChatStream.prototype._sendFailed = function(idx, err) {
   // 3022: un ARCHIVO a medias por Wi-Fi espera el margen del corte (regla del dueño 23-10: no cambia de camino por un pico);
   // al vencer, lan._giveUp → _lanDown lo pasa al otro camino (y se rehace a su medida si hace falta)
   if (self.type === 'file' && !wrong && _isLanDevice(self.deviceId) && bi && bi.lan && typeof bi.lan.inGrace === 'function' && bi.lan.inGrace(nx)) return true;
-  var best = ((fails >= 3 || wrong) && bi && typeof bi._resolveDeviceIdForNexoId === 'function') ? bi._resolveDeviceIdForNexoId(nx, bigFile) : null;
-  if (best && _normMac(best) !== _normMac(self.deviceId)) {
+  // 3209: lo que los relés RECHAZAN (todos dijeron que no: tope o castigo) no se vuelve a probar al momento por el mismo camino
+  var rejected = !!(err && err.code === 'NET_REJECTED');
+  var best = ((fails >= 3 || wrong || rejected) && bi && typeof bi._resolveDeviceIdForNexoId === 'function') ? bi._resolveDeviceIdForNexoId(nx, bigFile) : null;
+  var moved = !!(best && _normMac(best) !== _normMac(self.deviceId));
+  if (moved) {
     if (self.tooBigFor(best)) { self.ackSystem._restartStream(self, self.msgId, best); return false; }
     self.useLink(best);
+  }
+  // 3209 (diagnósticos 17-11: HONOR 14:27–14:28 «Rechazado por los relés: banned: too many rate-limit violations (40)» y «Sin internet
+  // con … (20)»; Marcos 15:38 «Sin Wi-Fi con … (20)»): un camino que dice que NO al momento (sin Wi-Fi o sin internet con él, o lo
+  // rechazan los relés) y sin otro mejor ya no se martilla hasta 120 veces por el mismo camino (a los relés que limitan eso los lleva a
+  // castigar al teléfono): queda pendiente (⏳) —lo rechazado, al primer «no»; sin Wi-Fi o sin internet, a los 3 intentos— y lo retoma
+  // el reenvío de pendientes cuando haya camino (con su propia espera entre vueltas).
+  var refused = rejected || (err && (err.code === 'LAN_DOWN' || (err.code === 'NET_DOWN' && /^Sin internet con /.test(String(err.message || '')))));
+  if (refused && (rejected || fails >= 3) && !moved) {
+    console.log('[ChatStream] ' + self.msgId + ': el camino dice que no (' + String(err.message || err.code).substring(0, 80) + ') y no hay otro: queda pendiente, sin insistir'); // i18n-ok: registro
+    self._giveUpPending();
+    return false;
   }
   if (fails > 120 || (wrong && !best)) {
     // ~2 min sin poder enviar: queda pendiente y se reanuda al volver a haber camino

@@ -45,7 +45,7 @@ async function boot(name, native) {
 function setVisible(p, on) { vis[p.name] = on ? 'visible' : 'hidden'; p.native.setAppActive(on); p.win.document.dispatchEvent(new p.win.Event('visibilitychange')); }
 const click = (w, el) => el && el.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
 async function openChatWith(p, name) {
-  let row; for (let i = 0; i < 300 && !row; i++) { row = Array.from(p.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).find((r) => (r.querySelector('.ble-contact-name') || {}).textContent === name); if (!row) await sleep(100); }
+  let row; for (let i = 0; i < 300 && !row; i++) { row = Array.from(p.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).find((r) => [].concat(name).indexOf((r.querySelector('.ble-contact-name') || {}).textContent) >= 0); if (!row) await sleep(100); }
   click(p.win, row); await sleep(600); return !!row;
 }
 function sendText(p, t) { const i = p.win.document.getElementById('message-input'); i.value = t; i.dispatchEvent(new p.win.Event('input', { bubbles: true })); click(p.win, p.win.document.getElementById('send-btn')); }
@@ -82,7 +82,8 @@ const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows
   for (let i = 0; i < 400 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device > div button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
   click(A.win, add); await sleep(1500);
   if (A.win.document.getElementById('ble-panel').classList.contains('active')) A.win.bleInterface.togglePanel();
-  await openChatWith(A, 'B'); sendText(A, 'hola'); await sleep(2500);
+  // 3207: el «+» de cerca manda una solicitud; al aceptarla, B queda con el nombre que él eligió (su perfil: «Tester»), como por NEXO ID
+  await openChatWith(A, ['B', 'Tester']); sendText(A, 'hola'); await sleep(2500);
   r.contactos = await wait(async () => (await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'hola'), 30);
   // 2. Perfil
   B.win.dispatchEvent(new B.win.CustomEvent('nexo:ui:profile'));

@@ -1079,6 +1079,10 @@
     {
      "fallo": "3193/3204/3205 (dueño 17-11: «Ok» a 2 conexiones y 2 copias con datos móviles; S24: 1723 de 1896 eventos repetidos, nota de voz de 97 KB en 14,3 s): con datos móviles la app y la escucha nativa (segundo plano y sin app) escuchan solo 2 relés en el orden común y suben 2 copias de cada trozo; lo que queda solo en los relés soltados se pide desde que se soltaron al volver al Wi-Fi. 3205: si los soltó la parte nativa, al volver la app se olvidaba desde cuándo (stop) y la app pedía desde lo último visto − 10 min: lo que quedó solo en ellos no llegaba. Ahora netBgDrain le pasa los relés soltados y se les pide desde ahí (datosmoviles.js F6, contraprueba b3204; NetBgDatosTest)",
      "prueba": "3193 (dueño 17-11: «Ok» a 2 conexiones y 2 copias con datos móviles"
+    },
+    {
+     "fallo": "3209 (diagnósticos 17-11: HONOR «Rechazado por los relés: banned: too many rate-limit violations (40)», «Sin internet con … (20)»; Marcos «Sin Wi-Fi con … (20)»): ChatStream reintentaba el mismo trozo cada 200 ms–1 s hasta 120 veces por un camino que decía que no al momento; los relés que limitan castigaban al teléfono. Ahora queda pendiente (lo rechazado al primer «no», sin Wi-Fi/internet a los 3) y lo retoma el reenvío de pendientes. rechazoreles.js (contraprueba b3205: 96 rechazos en 40 s; ahora 8)",
+     "prueba": "3209 (diagnósticos 17-11: HONOR 14:27"
     }
    ],
    "debiles": [

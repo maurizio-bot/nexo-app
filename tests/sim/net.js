@@ -121,10 +121,12 @@ const tokenOf = (nx, day) => crypto.createHash('sha256').update('nexo-lan|' + nx
   {
     const opened = [];
     for (const ev of r1.events) { const o = await B.win.bleInterface.net._open(idA, ev.content); if (o) opened.push(o); }
-    const kind = (o) => { if (o.h) return 'saludo'; let p = null; try { p = JSON.parse(o.p); } catch (e) {} if (p && p.type === 'chat') return 'mensaje'; if (p && (p.t === 'c' || p.t === 'f') && p.i === 0 && !p.hf) return 'mensaje'; return 'otro'; };
+    // 3207: una acción OCULTA de A (su foto de perfil, etc.: `_quietOut`) va callada a propósito (sin aviso): no cuenta como mensaje
+    const quietA = (A.win.bleInterface._quietOut instanceof A.win.Set || A.win.bleInterface._quietOut instanceof Set) ? A.win.bleInterface._quietOut : new Set();
+    const kind = (o) => { if (o.h) return 'saludo'; let p = null; try { p = JSON.parse(o.p); } catch (e) {} if (p && p.type === 'chat') return (quietA.has(p.msgId) ? 'oculto' : 'mensaje'); if (p && (p.t === 'c' || p.t === 'f') && p.i === 0 && !p.hf) return 'mensaje'; return 'otro'; };
     const msgs = opened.filter((o) => kind(o) === 'mensaje'), rest = opened.filter((o) => kind(o) !== 'mensaje');
     r.sobres_de_A_para_B = opened.length;
-    if (process.env.NET_DBG) console.log('NETDBG ' + JSON.stringify(msgs.map((o) => [o.n || '', String(o.p).substring(0, 160)])));
+    if (process.env.NET_DBG) console.log('NETDBG ' + JSON.stringify(opened.map((o) => [kind(o), o.n || '', String(o.p).substring(0, 120)])));
     r.mensajes_con_aviso = msgs.filter((o) => typeof o.n === 'string' && o.n.length > 0).length + '/' + msgs.length;
     r.avisos_en_saludos_o_confirmaciones = rest.filter((o) => o.n).length;
     const cfg = nB.netBg || {};

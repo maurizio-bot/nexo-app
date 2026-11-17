@@ -75,7 +75,9 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     maxConc = Math.max(maxConc, fileStreams());
     maxQueue = Math.max(maxQueue, ack._fileStartQueue.size);
     // A mitad de la congestión, mandar un TEXTO: no debe quedarse atrás
-    if (!r._textAt && Date.now() - t0 > 1500) { r._textAt = 1; await openChat(A); sendText(A, 'TEXTO-en-medio-de-archivos'); }
+    // 3207: con la solicitud de cerca el enlace ya está asentado al empezar y los 4 archivos pueden terminar antes de 1,5 s (el texto
+    // no llegaba a salir): sale en cuanto hay archivos esperando en la cola (congestión de verdad), o a los 1,5 s como antes
+    if (!r._textAt && ((ack._fileStartQueue.size > 0 && Date.now() - t0 > 300) || Date.now() - t0 > 1500)) { r._textAt = 1; r.cola_al_mandar_texto = ack._fileStartQueue.size; await openChat(A); sendText(A, 'TEXTO-en-medio-de-archivos'); }
     await sleep(120);
   }
   r.max_streams_archivo_a_la_vez = maxConc;
@@ -89,7 +91,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.archivos_en_B = await waitFor(async () => (await bFiles()) >= N, 30000) !== null ? await bFiles() : await bFiles();
   const capOk = maxConc <= ack._maxBleFilesPerLink;
   const allOk = results.every((x) => x.status === 'fulfilled');
-  const textOk = r.texto_en_medio_llega_s !== null;
+  const textOk = r.texto_en_medio_llega_s !== null && r._textAt === 1;
   r.resultado = (capOk && allOk && textOk && r.devId_es_bluetooth) ? 'OK'
     : 'FALLA: ' + [!r.devId_es_bluetooth ? 'no-bluetooth' : '', !capOk ? 'concurrencia>' + ack._maxBleFilesPerLink : '', !allOk ? 'archivos no entregados' : '', !textOk ? 'texto atascado' : ''].filter(Boolean).join(', ');
   console.log('FILECAP ' + JSON.stringify(r));
