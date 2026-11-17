@@ -21,6 +21,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **16-11 20:25 (México) — APK subida a NEXOCHAT (3170–3172):** fotos más nítidas (3170/3170b), «Cámara» abre la cámara del teléfono
+  (3171, @capacitor/camera; NATIVO: ruta del FileProvider en file_paths.xml) y sin avisos del chat abierto por internet (3172, NATIVO
+  NetBg). Vigilar que compile. En curso: 3173/3174 (worktree wtpend) y Ciudad (wtciudad).
 - **16-11 20:10 (México) — diagnóstico S24 19:57 (dueño: mensajes lentos y avisos con el chat abierto).** 3172 hecho (NATIVO: el aviso
   por internet en segundo plano —NetBg— ahora calla el chat abierto en un parpadeo < 15 s, como el de Bluetooth; BgNotifyPolicyTest).
   En curso (subagente, worktree wtpend): 3173 pendiente ya entregado que queda «pendiente» y se «reenvía» cada 18 s (vivo/tablet;
