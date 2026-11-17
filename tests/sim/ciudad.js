@@ -34,7 +34,8 @@ const SAB = String(flag('sabotaje', '') || '');
 const FINAL_RED = String(flag('final-red', 'wifi'));   // fase final: 'wifi' (todos en el Wi-Fi «casa», con internet) o 'datos' (todos con datos móviles)
 const LOGF = path.resolve(flag('logs', path.join(__dirname, 'last_logs_ciudad.txt')));
 const ACT_S = MIN * 60, FIN_S = FINAL_MIN * 60;
-const CMD = 'node tests/sim/ciudad.js ' + path.relative(path.join(__dirname, '..', '..'), buildDir) + ' --n=' + N + ' --seed=' + SEED + ' --min=' + MIN + ' --final=' + FINAL_MIN + (RITMO !== 20 ? ' --ritmo=' + RITMO : '') + (SAB ? ' --sabotaje=' + SAB : '') + (FINAL_RED !== 'wifi' ? ' --final-red=' + FINAL_RED : '');
+const relB = path.relative(path.join(__dirname, '..', '..'), buildDir);
+const CMD = 'node tests/sim/ciudad.js ' + (relB.startsWith('..') ? buildDir : relB) + ' --n=' + N + ' --seed=' + SEED + ' --min=' + MIN + ' --final=' + FINAL_MIN + (RITMO !== 20 ? ' --ritmo=' + RITMO : '') + (SAB ? ' --sabotaje=' + SAB : '') + (FINAL_RED !== 'wifi' ? ' --final-red=' + FINAL_RED : '');
 
 // ---------- azar con semilla (mulberry32), un flujo por uso ----------
 function mulberry32(a) { return function () { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
