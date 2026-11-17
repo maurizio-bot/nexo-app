@@ -32,6 +32,9 @@ async function bootPhone(browser, name, native, dist, opts = {}) {
     forwarded.add(event);
     native.plugin().addListener(event, (data) => { page.evaluate(([e, d]) => window.__nexoEmit(e, d), [event, data]).catch(() => {}); });
   });
+  // Sin salida a internet de verdad (estudio EDC 17-11: una prueba sin NEXO_NET_RELAYS habló con los relés públicos reales): si la
+  // prueba no fija sus relés (los del simulador), ninguno. Con opts.realRelays se deja el comportamiento de la app (no lo usa nadie).
+  if (!opts.realRelays) await page.addInitScript(() => { if (!('NEXO_NET_RELAYS' in window)) window.NEXO_NET_RELAYS = []; });
   // opts.seedName: nombre ya elegido (salta la pantalla «¿cómo te llamas?»); opts.lang: idioma de la interfaz
   if (opts.seedName || opts.lang) await page.addInitScript(([n, l]) => { try { if (n) localStorage.setItem('nexo_display_name', n); if (l) localStorage.setItem('nexo_lang', l); if (n) localStorage.setItem('nexo_welcome_done', '1'); } catch (e) {} }, [opts.seedName || '', opts.lang || '']);
   await page.addInitScript((methods) => {

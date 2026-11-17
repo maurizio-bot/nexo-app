@@ -9,6 +9,13 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 17-11 00:05 — estudio de límites para EDC hecho (`docs/EDC_LIMITES.md`): espera orden del dueño
+- Se traba la interfaz antes que la memoria: con 500 NEXO alrededor el lag sube a 2,5 s y con 1000 la app se cuelga; culpa casi toda de
+  redibujar «Agregar» con cada aviso del escaneo. Los contactos no tienen prioridad: con 10 contactos dormidos alrededor, otro contacto
+  no conecta nunca. Un chat guarda 2000 mensajes y borra lo viejo SIN avisar. Con 5000 contactos, volver a la app congela 38 s.
+- 9 cambios recomendados por importancia (1: «Agregar» con freno, horas; 2: gestor de enlaces con prioridad de contactos, 1–2 días; 3:
+  índice de pendientes; 4: escaneo en Kotlin…). Propuesta: empezar por 1, 3 y 4 (pequeños) y luego 2.
+
 ## 🆕 16-11 22:25 — idea del dueño: fondos según la luz del ambiente (para después de la identidad de Runa)
 - **Idea:** fondos de pantalla, burbujas y fondo de llamada según la luminosidad: de noche o con poca luz, negro puro #000 (no deslumbra);
   de día o al aire libre, más claro (como el fondo actual de la pantalla de llamada, que no es #000).
