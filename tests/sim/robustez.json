@@ -731,6 +731,10 @@
     {
      "fallo": "3170/3170b (usuarios 17-11: «las fotos se ven mal»; foto nocturna del S24 Ultra): una foto de la galería o la cámara salía a 800 px y JPEG 65 % salvo con Wi-Fi Direct/Wi-Fi local, también por internet y en grupos. 3170: 1600 px y 82 % por camino rápido (Wi-Fi Direct, misma red, internet en línea o buzón de archivos), 1280 px y 75 % si el único camino es Bluetooth; 3170b: solo por el puente de otro teléfono, 800 px y 65 % (por el puente caben ~300 KB). fotocalidad.js (contraprueba cc6b733d: 800/65 por Bluetooth, internet y grupos; contraprueba 1a868cd4: 1280 por el puente)",
      "prueba": "CALIDAD DE LAS FOTOS por camino"
+    },
+    {
+     "fallo": "3171 (dueño 17-11: «las fotos se ven mal», foto nocturna del S24 Ultra): la foto de «Cámara» era un cuadro del vídeo de la vista previa (getUserMedia ≤ 1080p, sin modo noche ni procesado; el S23 mandó una de 450×800 y 12 KB). 3171: «Cámara» abre la cámara del propio teléfono (@capacitor/camera, base64, el doble del lado final y el lienzo suaviza) → «Antes de enviar» con el ojo → mismo camino que la galería; salir sin foto → cámara de NEXO en vídeo; sin plugin o error → la de NEXO. Faltaba la ruta del FileProvider (file_paths.xml). fotocamara.js (contraprueba 087ac399)",
+     "prueba": "FOTO CON LA CÁMARA DEL TELÉFONO"
     }
    ],
    "debiles": [

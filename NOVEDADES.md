@@ -13,18 +13,28 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <!-- APK -->
 <es-419>
 - Fotos más nítidas: se mandan a mayor tamaño y calidad, sobre todo por Wi-Fi e internet.
+- «Cámara» abre la cámara de tu teléfono: fotos con toda su calidad y modo noche. Si sales sin tomar foto, puedes grabar video con la de NEXO.
+- Ya no te llegan avisos del chat que tienes abierto.
 </es-419>
 <it-IT>
 - Foto più nitide: si inviano più grandi e con più qualità, soprattutto via Wi-Fi e internet.
+- «Fotocamera» apre la fotocamera del tuo telefono: foto con tutta la sua qualità e modalità notte. Se esci senza scattare, puoi registrare un video con quella di NEXO.
+- Non ricevi più notifiche della chat che hai aperta.
 </it-IT>
 <en-US>
 - Sharper photos: they're sent larger and in higher quality, especially over Wi-Fi and the internet.
+- “Camera” opens your phone's own camera: photos in full quality with night mode. If you leave without taking a photo, you can record video with NEXO's camera.
+- No more notifications from the chat you have open.
 </en-US>
 <pt-BR>
 - Fotos mais nítidas: são enviadas maiores e com mais qualidade, principalmente por Wi-Fi e internet.
+- «Câmera» abre a câmera do seu celular: fotos com toda a qualidade e modo noturno. Se sair sem tirar foto, você pode gravar vídeo com a do NEXO.
+- Você não recebe mais notificações do chat que está aberto.
 </pt-BR>
 <fr-FR>
 - Photos plus nettes : elles sont envoyées plus grandes et de meilleure qualité, surtout en Wi-Fi et sur internet.
+- « Caméra » ouvre l'appareil photo de votre téléphone : photos en pleine qualité avec le mode nuit. Si vous sortez sans prendre de photo, vous pouvez filmer avec la caméra de NEXO.
+- Plus de notifications de la discussion que vous avez ouverte.
 </fr-FR>
 <!-- /APK -->
 
