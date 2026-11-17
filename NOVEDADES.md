@@ -14,22 +14,27 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <es-419>
 - Los mensajes que ya llegaron ya no se quedan como pendientes ni se vuelven a mandar al abrir la app.
 - Con datos móviles lentos, NEXO se da cuenta antes y tus mensajes salen más rápido.
+- Todos los botones responden igual al tocarlos; adiós al cuadrado en los botones de las llamadas.
 </es-419>
 <it-IT>
 - I messaggi già arrivati non restano più in sospeso e non vengono rinviati quando riapri l'app.
 - Con dati mobili lenti, NEXO se ne accorge prima e i tuoi messaggi partono più in fretta.
+- Tutti i pulsanti rispondono allo stesso modo al tocco; addio al quadrato sui pulsanti delle chiamate.
 </it-IT>
 <en-US>
 - Messages that already arrived no longer stay pending or get sent again when you reopen the app.
 - On slow mobile data, NEXO notices sooner and your messages go out faster.
+- All buttons now respond the same way when tapped; no more square on the call buttons.
 </en-US>
 <pt-BR>
 - As mensagens que já chegaram não ficam mais pendentes nem são enviadas de novo ao abrir o app.
 - Com dados móveis lentos, o NEXO percebe antes e suas mensagens saem mais rápido.
+- Todos os botões respondem igual ao toque; adeus ao quadrado nos botões das chamadas.
 </pt-BR>
 <fr-FR>
 - Les messages déjà arrivés ne restent plus en attente et ne sont plus renvoyés à la réouverture de l'app.
 - Avec des données mobiles lentes, NEXO s'en rend compte plus tôt et vos messages partent plus vite.
+- Tous les boutons réagissent de la même façon au toucher ; fini le carré sur les boutons d'appel.
 </fr-FR>
 <!-- /APK -->
 
