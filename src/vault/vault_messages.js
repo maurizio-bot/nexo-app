@@ -104,7 +104,7 @@ function _tailFileName(contactNexoId) {
 }
 function _writeTailFile(cid) {
   var plugin = _nativePlugin();
-  var msgs = _msgCache.get(cid);
+  var msgs = _msgCache.get(cid) || _unsaved.get(cid);
   if (!plugin || !msgs) return Promise.resolve();
   var tail = msgs.slice(-TAIL_N);
   return _safeNativeCall(plugin, 'saveToFile', {
@@ -119,7 +119,7 @@ export async function vaultLoadRecent(contactNexoId, limit) {
   if (!contactNexoId) return [];
   var cid = _normId(contactNexoId);
   var n = (typeof limit === 'number' && limit > 0) ? limit : TAIL_N;
-  var cached = _msgCache.get(cid);
+  var cached = _msgCache.get(cid) || _unsaved.get(cid); // 3173: lo aún sin escribir es más nuevo que la cola del disco
   if (cached !== undefined) return cached.slice(-n); // caché caliente: el completo ya está, usa su cola
   var plugin = _nativePlugin();
   if (!plugin) return null;
@@ -148,6 +148,9 @@ export async function vaultLoadMessages(contactNexoId) {
   var cid = _normId(contactNexoId);
   var cached = _msgCache.get(cid);
   if (cached !== undefined) return cached.slice();
+  // 3173: la caché soltó este chat con un cambio aún sin escribir: ese es el bueno (el disco está atrasado)
+  var un = _unsaved.get(cid);
+  if (un) { _msgCache.set(cid, un); return un.slice(); }
   if (_msgLoading.has(cid)) return (await _msgLoading.get(cid)).slice();
   var loading = _loadMessagesFromDisk(cid);
   _msgLoading.set(cid, loading);
@@ -161,6 +164,7 @@ async function _loadMessagesFromDisk(cid) {
     var result = await _safeNativeCall(plugin, 'loadFromFile', { filename: _msgFileName(cid) });
     // Si mientras se leía alguien guardó (caché ya puesta), lo guardado es más nuevo que el archivo leído
     if (_msgCache.get(cid) !== undefined) return _msgCache.get(cid).slice();
+    if (_unsaved.has(cid)) { _msgCache.set(cid, _unsaved.get(cid)); return _unsaved.get(cid).slice(); } // 3173: ídem, sin escribir aún
     if (result && result.exists && result.content) {
       var data = JSON.parse(result.content);
       var msgs = Array.isArray(data.messages) ? data.messages : (Array.isArray(data) ? data : []);
@@ -193,11 +197,20 @@ async function _loadMessagesFromDisk(cid) {
 // cambio de ese contacto). Antes cada mensaje y cada cambio de estado (enviado/entregado/leído)
 // serializaba y escribía el historial entero. Se escribe ya si la app pasa a segundo plano o se cierra.
 var _persistTimers = new Map();
+// 3173 (dueño 17-11, diagnóstico S24 19:52–19:57: «algunos mensajes se tardaban en salir»): la caché de historiales es un LRU de
+// 20 chats (vault_shared). Con más de 20, recorrerlos todos (vaultUpdateMessageStatus buscando un id que ya no está: la copia
+// oculta de la foto de perfil, borrada al entregarse) la vaciaba en menos de los 300 ms de espera del guardado; _writeMessagesFile
+// ya no encontraba la lista y NO escribía: el borrado o el ✓✓ se perdían, la siguiente lectura traía del disco la versión vieja
+// («enviando») y la vuelta de reenvío la veía pendiente para siempre (y tras reiniciar la app se mandaba otra vez). Aquí vive cada
+// lista hasta que llega al disco, aunque la caché la suelte; las lecturas la prefieren al archivo.
+var _unsaved = new Map(); // cid → lista aún sin escribir
 var _msgRetry = new Map();
  // R2 (auditoría 03-11): cid -> {timer,tries} para reintentar una escritura de mensajes que FALLÓ (sin tragarse el error)
 function _persistMessages(contactNexoId, messages, immediate) {
   var cid = _normId(contactNexoId);
-  _msgCache.set(cid, messages.slice(-2000));
+  var list = messages.slice(-2000);
+  _msgCache.set(cid, list);
+  _unsaved.set(cid, list); // 3173
   // Un mensaje nuevo se escribe ya (durabilidad); los cambios de estado y duplicados, agrupados
   if (immediate) { _writeMessagesFile(cid); return; }
   if (_persistTimers.has(cid)) return;
@@ -207,12 +220,13 @@ function _writeMessagesFile(cid) {
   var t = _persistTimers.get(cid);
   if (t) { clearTimeout(t); _persistTimers.delete(cid); }
   var plugin = _nativePlugin();
-  var msgs = _msgCache.get(cid);
+  var msgs = _msgCache.get(cid) || _unsaved.get(cid); // 3173: aunque la caché lo haya soltado
   if (!plugin || !msgs) return Promise.resolve();
   var p = _safeNativeCall(plugin, 'saveToFile', {
     filename: _msgFileName(cid),
     content: JSON.stringify({ messages: msgs, savedAt: Date.now() })
   }).then(function() {
+    if (_unsaved.get(cid) === msgs) _unsaved.delete(cid); // 3173: ya está en el disco (si cambió entretanto, queda lo nuevo)
     var rt = _msgRetry.get(cid); if (rt) { clearTimeout(rt.timer); _msgRetry.delete(cid); } // guardó bien: olvida el reintento
   }).catch(function(e) {
     // R2 (auditoría 03-11): NO tragar el fallo de escritura de mensajes (p.ej. la clave del Keystore un instante no
@@ -243,11 +257,14 @@ export async function vaultSaveMessages(contactNexoId, messages) {
 }
 async function _saveMessagesNow(cid, messages) {
   var toSave = messages.slice(-2000);
-  _msgCache.set(cid, toSave.slice());
+  var list = toSave.slice();
+  _msgCache.set(cid, list);
+  _unsaved.set(cid, list); // 3173: un guardado agrupado pendiente no escribe una lista anterior encima de esta
   var plugin = _nativePlugin();
   if (!plugin) return false;
   try {
     await _safeNativeCall(plugin, 'saveToFile', { filename: _msgFileName(cid), content: JSON.stringify({ messages: toSave, savedAt: Date.now() }) });
+    if (_unsaved.get(cid) === list) _unsaved.delete(cid);
     await _writeTailFile(cid); // #fluidez: actualizar también la cola (durable antes de volver)
     return true;
   } catch (e) { console.warn('[VaultManager] no se pudieron guardar los mensajes (vaultSaveMessages) de ' + cid + ': ' + ((e && e.message) || e)); return false; }
@@ -286,6 +303,7 @@ async function _appendMessageNow(cid, message) {
   var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
   var msgId = message.msgId || message.messageId || message.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
   message.msgId = msgId; message.messageId = msgId;
+  _gone.delete(msgId); // 3173: vuelve a estar en un chat
   var normalized = {
     msgId: msgId, messageId: msgId,
     text: message.text || message.content || '',
@@ -451,6 +469,7 @@ export async function vaultDeleteMessage(contactNexoId, msgId) {
     var m = messages[idx];
     messages.splice(idx, 1);
     _persistMessages(cid, messages);
+    _noteGone(msgId); // 3173
     _deleteMessageFiles(m, msgId);
     vaultBigxOutDrop(msgId).catch(function() {}); vaultBigxInDrop(msgId).catch(function() {}); // 3007
     return true;
@@ -555,6 +574,11 @@ export async function vaultReplaceAttachment(contactNexoId, msgId, payload, meta
   });
 }
 
+// 3173: ids borrados a propósito (copias ocultas que se borran al entregarse: foto de perfil, estados, perfil, copias de grupo). El
+// «enviado»/«entregado» que llega después ya no los busca en TODOS los chats (cada búsqueda cargaba el historial de cada contacto
+// del disco y, con más de 20, vaciaba la caché de historiales; ver _unsaved)
+var _gone = new Set();
+function _noteGone(id) { _gone.add(id); if (_gone.size > 500) _gone.delete(_gone.values().next().value); }
 var _STATUS_RANK = { failed: 0, pending: 1, queued: 2, sending: 3, sent: 4, delivered: 5, read: 6 };
 function _statusRank(s) { return _STATUS_RANK[s] || 0; }
 export async function vaultUpdateMessageStatus(contactNexoId, msgId, status) {
@@ -581,6 +605,7 @@ export async function vaultUpdateMessageStatus(contactNexoId, msgId, status) {
     });
   }
   if (await updateInContact(contactNexoId)) return true;
+  if (_gone.has(msgId)) return false; // 3173: se borró a propósito: no está en ningún chat
   var contacts = Array.isArray(_vaultContacts) ? _vaultContacts : [];
   for (var i = 0; i < contacts.length; i++) {
     var cid = _getContactIdentity(contacts[i]);

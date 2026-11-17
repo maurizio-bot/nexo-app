@@ -175,6 +175,20 @@ const _BLE_MESSAGE_METHODS_BASE = {
     getPending = Promise.all([getPending, blockedP]).then(function(pr) {
       var list = pr[0], blocked = pr[1];
       list = (list || []).filter(function(m) { return !self._isMsgInFlight(idOf(m)); });
+      // 3173 (dueño 17-11, diagnóstico S24 19:53–19:57: «Reenviando 1 pending para nx09acdb61» cada ~18 s durante 4 min sin mandar
+      // nada): lo que YA se confirmó (✓✓) en esta sesión pero el almacén aún tiene pendiente se saltaba más abajo (isDone) sin
+      // arreglarlo, vuelta tras vuelta, y tras reiniciar la app se mandaba otra vez. Ahora se le pone «entregado» y no cuenta.
+      var ackD = self.ackSystem;
+      var yaHecho = (ackD && typeof ackD.isDone === 'function') ? list.filter(function(m) { return ackD.isDone(idOf(m)); }) : [];
+      if (yaHecho.length) {
+        console.log('[BLEInterface] ' + nxKey + ': ' + yaHecho.length + ' pendiente(s) ya entregado(s) en esta sesión: se corrige su estado (no se reenvían)');
+        yaHecho.forEach(function(m) {
+          var id = idOf(m);
+          _vaultUpdateMessageStatus(nexoId, id, 'delivered');
+          try { if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(id, 'delivered'); } catch (e) {}
+        });
+        list = list.filter(function(m) { return yaHecho.indexOf(m) < 0; });
+      }
       // 3033 (dueño 12-11: «me aparecieron nueve mensajes nuevos y no vi ninguno»): una acción OCULTA (estado, foto de perfil,
       // me gusta, reacción, borrar…) va «callada» (sin aviso ni toque en el otro teléfono) solo si su id está en _quietOut,
       // que vive en memoria. Al reenviarla desde la cola tras reiniciar la app ya no estaba → salía como MENSAJE NUEVO y el
