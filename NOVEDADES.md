@@ -12,6 +12,21 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+</es-419>
+<it-IT>
+</it-IT>
+<en-US>
+</en-US>
+<pt-BR>
+</pt-BR>
+<fr-FR>
+</fr-FR>
+<!-- /APK -->
+
+## Historial
+
+### APK 3090 (17-11-2026)
+<es-419>
 - Ya puedes editar un mensaje de texto que enviaste (hasta 15 minutos), también en grupos: mantenlo pulsado y toca «Editar».
 - Nueva lupa en Contactos para buscar por nombre o NEXO ID.
 - Las fotos y notas de voz ya no se envían dos veces: gastas menos datos.
@@ -51,9 +66,6 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - La position que vous envoyez montre un aperçu de la carte.
 - Les photos de la Galerie ne bloquent plus à l'envoi sur certains téléphones.
 </fr-FR>
-<!-- /APK -->
-
-## Historial
 
 ### APK 3087 (17-11-2026)
 <es-419>
