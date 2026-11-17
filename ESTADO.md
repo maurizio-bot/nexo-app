@@ -25,6 +25,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   800/65 solo por puente; fotocalidad.js).** APK 3080 (3169) construyéndose. En curso (subagente, worktree wtcam): **3171** «Cámara»
   abre la cámara del propio teléfono (@capacitor/camera, modo noche) → «Antes de enviar» con el ojo; cancelar → cámara de NEXO en vídeo
   (dueño 17-11, opción A). Al terminar: integrar, NOVEDADES (3170+3171) y APK.
+  Diagnósticos 19:09 (S24 ya 3079; S23 y Redmi de Yaelito aún 3077): «enlace_abre_cierra» del S23 y el enlace muerto S24↔Redmi
+  (2 pings sin respuesta → cortado, siguió por internet) son el fallo de enlace repetido de la 3077 (arreglado en 3079): que actualicen.
+  Los 3 textos del S23 de las 19:03 llegaron al abrir el aviso (19:04). Foto de la cámara de NEXO en el S23: 450×800 y 12 KB (lo que
+  arreglan 3170/3171). Sin pérdida de mensajes. Un «[E2E] Mensaje sin cifrar … descartado» al volver del fondo: sin mensaje perdido.
 - **16-11 18:52 (México) — APK 3079 PUBLICADA (18:41; 3167–3168).** APK 3080 subida con 3169 (estados en su propia pantalla por
   gesto ←, sin botones; dueño 17-11). Pendiente medir «internet listo» sin contar tiempo sin red (AREAS) y revisar confirmaciones sin firma.
 - **16-11 17:35 (México) — APK 3079 subida (3167/3167b + 3168).** La 3078 se paró en radiollamada L (regresión de 3167b, arreglada en 3168).
