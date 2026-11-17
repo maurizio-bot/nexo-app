@@ -58,10 +58,10 @@ async function boot(name, native) {
   r.a3_un_ping_en_vuelo = pingCalls === 1; // antes: 3
 
   // Desconexión idempotente: llamarla 3 veces → un solo «sin respuesta a 2 pings»
-  const warnsBefore = logs.filter((l) => /sin respuesta a 2 pings/.test(l)).length;
+  const warnsBefore = logs.filter((l) => /sin respuesta a \d+ pings/.test(l)).length;
   bi._forceDisconnectAndReconnect(dev); bi._forceDisconnectAndReconnect(dev); bi._forceDisconnectAndReconnect(dev);
   await sleep(30);
-  const warnsAfter = logs.filter((l) => /sin respuesta a 2 pings/.test(l)).length;
+  const warnsAfter = logs.filter((l) => /sin respuesta a \d+ pings/.test(l)).length;
   r.a3_desconexion_idempotente = (warnsAfter - warnsBefore) === 1; // antes: 3
 
   // ---------- D1: un connect por contacto dentro de la ventana ----------

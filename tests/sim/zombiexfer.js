@@ -55,7 +55,7 @@ async function hasFile(p, from, b64) {
   const list = await p.win.vaultLoadMessages(from);
   return list.some((m) => !m._own && m.attachmentType && !m.deleted && (m.attachmentPayload || p.native.files.get(m.attachmentRef)) === b64);
 }
-const cortes = (mac) => logs.filter((l) => /\[A\].*sin respuesta a 2 pings: desconectado para reconectar/.test(l) && (!mac || l.indexOf(mac) >= 0 || /\[A\].*Enlace [^ ]+ sin respuesta/.test(l))).length;
+const cortes = (mac) => logs.filter((l) => /\[A\].*sin respuesta a \d+ pings: desconectado para reconectar/.test(l) && (!mac || l.indexOf(mac) >= 0 || /\[A\].*Enlace [^ ]+ sin respuesta/.test(l))).length;
 
 (async () => {
   const radio = new Radio();

@@ -300,7 +300,9 @@ export const BLE_CONNECTION_METHODS = {
     if (sup && sup.state === SUPERVISOR_STATES.RECONNECTING) return;
     if (self._pingInFlight) self._pingInFlight.delete(deviceId);
     // Ronda 2760: al diagnóstico (antes no quedaba rastro y en los teléfonos el enlace se rehacía cada ~30 s)
-    console.warn('[BLEInterface] Enlace ' + (self._macToNexoId.get(_normMac(deviceId)) || deviceId) + ' sin respuesta a 2 pings: desconectado para reconectar');
+    // 3187 (diagnóstico automático S24 3082 17-11 04:04, zombi con la tableta): el texto decía «2 pings» fijo; el límite es
+    // _pingMaxFails (4 desde la ronda 2814)
+    console.warn('[BLEInterface] Enlace ' + (self._macToNexoId.get(_normMac(deviceId)) || deviceId) + ' sin respuesta a ' + self._pingMaxFails + ' pings: desconectado para reconectar');
     // 2974: síntoma → diagnóstico automático. 3013 (canal de diagnósticos 11-11: 3 de 5 «zombi» traían una DIRECCIÓN, no un contacto):
     // solo si el enlace es de un CONTACTO; una conexión de paso con un NEXO sin identificar que no contesta (app dormida, versión
     // anterior) se suelta igual, pero no es un fallo que mandar al desarrollador
@@ -308,6 +310,9 @@ export const BLE_CONNECTION_METHODS = {
     if (nxZ && _isBLEContact(nxZ)) _safeDispatchEvent('nexo:diag:symptom', { kind: 'zombi', info: String(nxZ) });
     self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
     self.connectedDevices.delete(deviceId);
+    // 3187: la cuenta de pings de este enlace ya no la borra la vuelta a la app (_cleanupStaleStates): se borra aquí, al soltarlo,
+    // para que el enlace que se abra después con esta dirección empiece de 0 aunque no llegue su onDeviceDisconnected
+    self._pingFailCount.delete(deviceId);
     self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.RECONNECTING, since: Date.now() });
     var oldTimer = self._backoffTimers.get(deviceId);
     if (oldTimer) { clearTimeout(oldTimer); self._backoffTimers.delete(deviceId); }

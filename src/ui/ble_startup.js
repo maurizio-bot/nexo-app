@@ -65,10 +65,16 @@ export const bleStartup = {
     keysToDelete.forEach(function(key) {
       self._deviceStates.delete(key);
       // connectedDevices y supervisor usan el deviceId nativo (con ':'), no la clave normalizada
+      // 3187 (diagnóstico automático S24 3082 17-11 04:04, zombi con la tableta): la cuenta de pings sin respuesta y el último pong
+      // del enlace NO se borran aquí. Si el MISMO enlace sigue abierto en el nativo, _seedNativeConnections lo recupera enseguida y
+      // el vigilante sigue contando donde iba; antes volvía a 0 en cada vuelta a la app y con la tableta dormida del todo el S24
+      // entró y salió 3 veces y tardó 104 s y 9 pings en darlo por muerto (zombivuelta.js). Un enlace que de verdad se cae y se
+      // reabre empieza de 0 igual (onDeviceDisconnected los borra, _forceDisconnectAndReconnect borra la cuenta al soltarlo;
+      // onDeviceConnected, onNotificationsEnabled y cualquier cosa que llegue por él, el pong incluido, ponen 0).
       self.connectedDevices.forEach(function(d, deviceId) {
         if (_normMac(deviceId) !== key) return;
         self.connectedDevices.delete(deviceId);
-        self._supervisorStates.delete(deviceId); self._lastPongTime.delete(deviceId); self._pingFailCount.delete(deviceId);
+        self._supervisorStates.delete(deviceId);
       });
     });
     if (keysToDelete.length > 0) console.log('[BLEInterface] Cleanup stale states:', keysToDelete.length);

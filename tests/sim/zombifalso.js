@@ -88,7 +88,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   { const bi = B.win.bleInterface; B.win.clearInterval(bi._supervisorTimer); bi._supervisorTimer = null; }   // congelada: su JS no corre (tampoco su vigilante)
   await sleep(90000);
   const lg = logs.slice(mark).filter((l) => /\[A\]/.test(l)).join('\n');
-  r.Z1_zombi = /sin respuesta a 2 pings/.test(lg);
+  r.Z1_zombi = /sin respuesta a \d+ pings/.test(lg);
   r.Z1_pongs_nativos = nB.stats.nativePongs || 0;
   r.Z1_enlace_sigue = A.win.bleInterface.linkOf(idB) === 'bluetooth' || /bluetooth|ble/i.test(String(A.win.bleInterface.linkOf(idB) || ''));
   r.Z1_link = String(A.win.bleInterface.linkOf(idB));
@@ -98,7 +98,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   // Z2: B se va de verdad
   const mark2 = logs.length;
   radio.block(nA, nB);
-  r.Z2_detecta_s = await waitFor(() => { const l = A.win.bleInterface.linkOf(idB); return !l || l === 'none' || /sin respuesta a 2 pings|desconectado/.test(logs.slice(mark2).join('\n')); }, 120000);
+  r.Z2_detecta_s = await waitFor(() => { const l = A.win.bleInterface.linkOf(idB); return !l || l === 'none' || /sin respuesta a \d+ pings|desconectado/.test(logs.slice(mark2).join('\n')); }, 120000);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
   // Z3 (3013, canal de diagnósticos 11-11: 3 de 5 «zombi» eran de conexiones DE PASO con un NEXO sin identificar —el síntoma traía
   // una dirección, no un contacto—): eso no se manda al desarrollador; el de un CONTACTO sí
