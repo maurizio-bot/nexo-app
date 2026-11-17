@@ -38,7 +38,10 @@ function _kind(m) { var a = m && m.attachmentType; return !a ? 'texto' : (/^(ima
 function _hook(kind, cid, m, prevStatus) {
   try {
     if (!m || m.hidden) return;
-    var o = _load(), day = _day(o, usageDayKey(kind === 'msg' ? (m.timestamp || Date.now()) : Date.now()));
+    // 3198 (resumen del 15-11 de nx0g6ef54e: «enviados 1 · llegaron (✓✓) 2»): la ✓✓ y el leído se contaban en el día en que LLEGABAN,
+    // no en el del mensaje: lo enviado ayer y entregado hoy inflaba el «llegaron» de hoy. Ahora cuentan en el día del mensaje (si ese día
+    // ya se informó, ya no suma: el resumen sale al día siguiente y casi todo llega antes).
+    var o = _load(), day = _day(o, usageDayKey(m.timestamp || Date.now()));
     if (kind === 'msg') {
       if (m._own) day.s++; else day.r++;
       var k = _kind(m); day.t[k] = (day.t[k] || 0) + 1;
@@ -151,4 +154,4 @@ export function usageInit() {
   } catch (e) {}
 }
 
-try { if (typeof window !== 'undefined') window.__nexoUsage = { key: usageDayKey, text: usageSummaryText, send: usageMaybeSend, load: _load, build: autoDiagBuild }; } catch (e) {}
+try { if (typeof window !== 'undefined') window.__nexoUsage = { key: usageDayKey, text: usageSummaryText, send: usageMaybeSend, load: _load, build: autoDiagBuild, hook: _hook }; } catch (e) {}

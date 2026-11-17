@@ -73,6 +73,14 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
   r.cuenta_un_chat = Array.isArray(d.c) && d.c.length === 1;
   r.abierta_hoy = d.o === 1;
   r.sin_ids_guardados = JSON.stringify(usA().load()).indexOf(idB) < 0 && JSON.stringify(usA().load()).indexOf('secreto') < 0;
+  // 3198: una ✓✓ que llega HOY de un mensaje de AYER cuenta en el día del mensaje (antes inflaba el «llegaron» de hoy: 2 de 1)
+  {
+    const ayerK = usA().key(Date.now() - 86400000), antesHoy = (usA().load()[today] || {}).d || 0, antesAyer = (usA().load()[ayerK] || {}).d || 0;
+    if (typeof usA().hook === 'function') usA().hook('status', 'cX', { _own: true, status: 'delivered', timestamp: Date.now() - 86400000 }, 'sent');
+    const o2 = usA().load();
+    r.llegada_tardia_en_su_dia = ((o2[ayerK] || {}).d || 0) === antesAyer + 1 && ((o2[today] || {}).d || 0) === antesHoy;
+    if (o2[ayerK]) { delete o2[ayerK]; A.win.localStorage.setItem('nexo_usage', JSON.stringify(o2)); } // deja «ayer» limpio para (3a)
+  }
 
   // (3a) el interruptor del diagnóstico apagado: no manda (y no junta para después)
   const ayer = usA().key(Date.now() - 86400000);
@@ -103,7 +111,7 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
   r.dev_local = usB().send(true) === 'enviado' && adB().inbox().filter((x) => x.sym === 'resumen_diario' && x.from === idB).length === 1;
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|Assembly timeout|net::ERR|fetch/.test(l)).slice(0, 5);
-  const keys = ['modulo_activo', 'cuenta_enviados', 'cuenta_recibidos', 'cuenta_llegados', 'cuenta_texto', 'cuenta_un_chat', 'abierta_hoy', 'sin_ids_guardados', 'apagado_no_manda', 'manda', 'remitente_ok', 'numeros_ok', 'texto_resumen', 'sin_contenido', 'no_en_chat', 'una_vez', 'dev_local'];
+  const keys = ['modulo_activo', 'cuenta_enviados', 'cuenta_recibidos', 'cuenta_llegados', 'cuenta_texto', 'cuenta_un_chat', 'abierta_hoy', 'sin_ids_guardados', 'llegada_tardia_en_su_dia', 'apagado_no_manda', 'manda', 'remitente_ok', 'numeros_ok', 'texto_resumen', 'sin_contenido', 'no_en_chat', 'una_vez', 'dev_local'];
   const ok = typeof r.emparejados_s === 'number' && typeof r.llega_s === 'number' && keys.every((k) => r[k] === true) && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('USAGE ' + JSON.stringify(r));
