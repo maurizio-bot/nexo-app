@@ -108,8 +108,27 @@ function _refreshState() {
   }).catch(function() { return null; });
 }
 var _dlCall = false;
+// 3208 (diagnóstico de Marcos 17-11 14:14, build 3043: «descargando la 3090» y a los 24 s «no se pudo descargar: net» por un corte de
+// 3 s de su Wi-Fi; había que volver a tocar «Descargar» y nadie lo hizo): una descarga que se corta por la red se reintenta SOLA, unas
+// pocas veces y cada vez más espaciado (si entretanto ya se bajó, se está bajando o ya no hay versión nueva, no hace nada)
+var _retryT = null, _retryN = 0;
+function _retryLater(build) {
+  var waits = (typeof window !== 'undefined' && Array.isArray(window.NEXO_UPD_RETRY_MS)) ? window.NEXO_UPD_RETRY_MS : [20000, 60000, 180000];
+  if (_retryN >= waits.length) { _retryN = 0; return false; }
+  var ms = waits[_retryN++];
+  clearTimeout(_retryT);
+  console.log('[UPDATER] se cortó la descarga de la ' + build + ': la reintento sola en ' + Math.round(ms / 1000) + ' s (intento ' + _retryN + ' de ' + waits.length + ')'); // i18n-ok: registro
+  _retryT = setTimeout(function() {
+    _retryT = null;
+    var a = updaterAvailable();
+    if (!a || a.build !== build || _ready === build || _busy) return;
+    updaterDownload(true);
+  }, ms);
+  return true;
+}
 /** Baja el APK de la versión ofrecida (sin instalar). Sigue aunque se cierre la ventana; al terminar avisa. */
-export function updaterDownload() {
+export function updaterDownload(auto) {
+  if (!auto) { clearTimeout(_retryT); _retryT = null; _retryN = 0; } // tocar «Descargar» empieza la cuenta de reintentos otra vez
   var a = updaterAvailable(), pl = _plugin();
   if (!a || !pl || typeof pl.updateInstall !== 'function') return Promise.resolve({ ready: false, reason: 'unavailable' });
   if (_ready === a.build) return Promise.resolve({ ready: true });
@@ -123,9 +142,15 @@ export function updaterDownload() {
     if (r && r.downloading) return r;                          // ya se estaba bajando: avisa al terminar (evento o consulta)
     _busy = false; _pct = -1; _stopPoll(); _renderBanner();
     console.log('[UPDATER] no se pudo descargar: ' + ((r && r.reason) || 'net'));
-    _toast(t('upd_failed', 'No se pudo bajar la actualización. Revisa tu internet y prueba otra vez.'), 'warn');
+    var again = (!r || !r.reason || r.reason === 'net') && _retryLater(a.build); // 3208
+    if (!auto || !again) _toast(t('upd_failed', 'No se pudo bajar la actualización. Revisa tu internet y prueba otra vez.'), 'warn');
     return r || { ready: false, reason: 'net' };
-  }).catch(function() { _dlCall = false; _busy = false; _pct = -1; _stopPoll(); _renderBanner(); _toast(t('upd_failed', 'No se pudo bajar la actualización. Revisa tu internet y prueba otra vez.'), 'warn'); return { ready: false, reason: 'net' }; });
+  }).catch(function() {
+    _dlCall = false; _busy = false; _pct = -1; _stopPoll(); _renderBanner();
+    var again = _retryLater(a.build); // 3208
+    if (!auto || !again) _toast(t('upd_failed', 'No se pudo bajar la actualización. Revisa tu internet y prueba otra vez.'), 'warn');
+    return { ready: false, reason: 'net' };
+  });
 }
 
 /** «Instalar»: abre el instalador con lo YA bajado. Si aún no está bajado, lo baja (y avisa al terminar; luego «Instalar»). */

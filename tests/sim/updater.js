@@ -6,7 +6,8 @@
 //   (3) «Actualizar» llama a updateInstall con la URL del lanzamiento; sin permiso de instalar (install_permission) no hay instalador y
 //       el aviso sigue ahí para reintentar;
 //   (4) el mismo número (o menor) no ofrece nada y quita el aviso; sin número de build («dev») no consulta; interruptor apagado no consulta;
-//   (5) Perfil → Ajustes tiene su tarjeta «Actualizaciones» (interruptor + «Buscar ahora» que informa del resultado).
+//   (5) Perfil → Ajustes tiene su tarjeta «Actualizaciones» (interruptor + «Buscar ahora» que informa del resultado);
+//   (9) 3208: una descarga cortada por la red se reintenta sola (3 veces, cada vez más espaciado) y luego se rinde.
 // Uso: node updater.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -223,8 +224,33 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.aviso_sistema_con_novedades = win.__upd.notifs[win.__upd.notifs.length - 1] === 2009 && /Dos llamadas a la vez/.test(String(win.__upd.notifNotes || '')) && !/Two calls|<es-419>/.test(String(win.__upd.notifNotes || ''));
   vis2 = 'visible';
 
+  // (9) 3208 (Marcos 17-11, build 3043: un corte de 3 s del Wi-Fi tumbó la descarga y había que volver a tocar «Descargar»): una
+  //     descarga cortada por la red se reintenta SOLA (aquí a los 0,3 s y a los 0,6 s); el segundo corte también; luego baja y avisa
+  win.NEXO_UPD_RETRY_MS = [300, 600, 900];
+  win.__upd.ready = 0; win.__upd.dl = 0;
+  win.__upd.nextCheck = { build: 2010, tag: 'nightly-2010', url: URL_NEW.replace('2005', '2010'), size: 26000000 };
+  await U().check(true); await sleep(200);
+  const dl0 = win.__upd.downloads.length;
+  win.__upd.nextDownload = { ready: false, reason: 'net' };
+  const f9 = await U().download();
+  win.__upd.nextDownload = { ready: false, reason: 'net' };   // el primer reintento también se corta
+  r.reintento_solo_s = await waitFor(() => U().state().ready === 2010, 5000);
+  r.reintento_solo = f9.ready === false && r.reintento_solo_s !== null && win.__upd.downloads.length === dl0 + 3 && logs.some((l) => /la reintento sola en \d+ s \(intento 2 de 3\)/.test(l));
+  // sin red de verdad: tras los 3 reintentos se rinde (no se queda probando para siempre)
+  win.__upd.ready = 0; win.__upd.dl = 0;
+  win.__upd.nextCheck = { build: 2011, tag: 'nightly-2011', url: URL_NEW.replace('2005', '2011'), size: 26000000 };
+  await U().check(true); await sleep(200);
+  const dl1 = win.__upd.downloads.length;
+  const realDl = win.__upd;
+  let fails = 0; const origInstall = win.Capacitor.Plugins.NexoBLE.updateInstall;
+  win.Capacitor.Plugins.NexoBLE.updateInstall = (a) => (a && a.mode === 'download') ? (fails++, realDl.downloads.push(a.url), Promise.resolve({ ready: false, reason: 'net' })) : origInstall(a);
+  await U().download();
+  await sleep(2500);
+  r.reintento_se_rinde = fails === 4 && win.__upd.downloads.length === dl1 + 4 && U().state().ready !== 2011;
+  win.Capacitor.Plugins.NexoBLE.updateInstall = origInstall;
+
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|Assembly timeout|net::ERR|fetch/.test(l)).slice(0, 5);
-  const keys = ['gancho', 'consulta_sola', 'aviso_con_numero', 'disponible', 'ahora_no_quita', 'auto_limitada', 'manual_consulta', 'silenciado_no_vuelve', 'bajada_fallida_reintentable', 'descarga', 'sin_permiso', 'reintento_posible', 'instala', 'mismo_numero_nada', 'dev_no_consulta', 'apagado_no_consulta', 'apagado_sin_aviso', 'tarjeta_ajustes', 'buscar_ahora_informa', 'boton_pasa_a_descargar', 'boton_descarga', 'reabrir_sigue_descargando', 'no_vuelve_a_bajar', 'avisa_al_terminar', 'aviso_solo_instalar', 'abre_ya_con_instalar', 'instalar_sin_bajar', 'visible_sin_aviso_sistema', 'ya_bajada_no_avisa_nueva', 'aviso_al_salir', 'una_vez_por_numero', 'numero_nuevo_avisa', 'boton_aviso_instala', 'instalar_quita_aviso', 'al_ya_no_aplicar_quita_aviso', 'novedades_pide_actual', 'novedades_aviso', 'novedades_hoja', 'novedades_ajustes', 'novedades_idioma', 'sin_novedades_sin_enlace', 'aviso_sistema_con_novedades'];
+  const keys = ['gancho', 'consulta_sola', 'aviso_con_numero', 'disponible', 'ahora_no_quita', 'auto_limitada', 'manual_consulta', 'silenciado_no_vuelve', 'bajada_fallida_reintentable', 'descarga', 'sin_permiso', 'reintento_posible', 'instala', 'mismo_numero_nada', 'dev_no_consulta', 'apagado_no_consulta', 'apagado_sin_aviso', 'tarjeta_ajustes', 'buscar_ahora_informa', 'boton_pasa_a_descargar', 'boton_descarga', 'reabrir_sigue_descargando', 'no_vuelve_a_bajar', 'avisa_al_terminar', 'aviso_solo_instalar', 'abre_ya_con_instalar', 'instalar_sin_bajar', 'visible_sin_aviso_sistema', 'ya_bajada_no_avisa_nueva', 'aviso_al_salir', 'una_vez_por_numero', 'numero_nuevo_avisa', 'boton_aviso_instala', 'instalar_quita_aviso', 'al_ya_no_aplicar_quita_aviso', 'novedades_pide_actual', 'novedades_aviso', 'novedades_hoja', 'novedades_ajustes', 'novedades_idioma', 'sin_novedades_sin_enlace', 'aviso_sistema_con_novedades', 'reintento_solo', 'reintento_se_rinde'];
   const ok = typeof r.aviso_s === 'number' && keys.every((k) => r[k] === true) && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('UPDATER ' + JSON.stringify(r));
