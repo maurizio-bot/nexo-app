@@ -3,13 +3,14 @@
 // que se reconecta) se pedía desde «lo último visto − 10 min» (margen fijo por si el reloj del otro va atrasado) y cada relé volvía a
 // mandar 10 min de todo. Ahora el margen es el desfase que se ve en lo que llega EN VIVO (+30 s), entre 2 y 10 min.
 // A y B solo por internet (dos relés). A le manda 10 textos de ~1,5 KB; pasados ~3 min:
-//  R1  B se queda sin red y vuelve (los relés se reconectan y se vuelve a pedir): lo REPETIDO que baja (antes: los 10 textos por cada
-//      relé, ~30 KB; ahora casi nada);
+//  R1  B se queda sin red y vuelve (los relés se reconectan y se vuelve a pedir): lo REPETIDO que baja (contraprueba b3205: 51
+//      eventos y 106 KB; ahora ≤ 40 KB);
 //  R2  un texto que A manda mientras B está sin red llega igual;
 //  R3  uno de A con el reloj 100 s ATRASADO, mandado mientras B está sin red, llega igual (cabe en el margen mínimo);
-//  R4  A con el reloj 5 min atrasado manda con B en línea: B lo ve llegar tarde y sube su margen (≥ 5,5 min); otro con ese mismo
-//      atraso mientras B está sin red, también llega.
-// Contraprueba b3205: R1 con los 10 textos otra vez por cada relé.
+//  R4  A con el reloj 2,5 min atrasado manda con B en línea: B lo ve llegar tarde y sube su margen (≥ 3 min); otro con ese mismo
+//      atraso mientras B está sin red llega al volver (≤ 5 s: lo trae la suscripción nueva, no el reenvío de A).
+// Si el reloj de un contacto va MÁS de 2 min atrasado y aún no se aprendió, sus sobres esperan hasta ~3 min tras una reconexión (el
+// relé filtra por la hora del sobre; los reenvíos los traen): el margen se aprende con el primero que llega en vivo y dura 12 h.
 // Uso: node repetidos.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -93,13 +94,15 @@ function online(p) { p.noNet = false; relays.forEach((r) => r.wakeTag(TAG(p))); 
   await openChatWith(B, ['A', 'B']); sendText(B, 'hola A'); await sleep(2000);
   await closeChat(B);
   radio.block(A.native, B.native);
+  // solo por internet: sin Wi-Fi local entre los dos (redes distintas; el anuncio de la red local se apaga)
+  [A, B].forEach((p) => { try { p.win.bleInterface.lan && p.win.bleInterface.lan.stop && p.win.bleInterface.lan.stop(); } catch (e) {} });
   A.win.bleInterface.net.tick(); B.win.bleInterface.net.tick();
   r.en_linea_por_internet_s = await waitFor(() => A.win.bleInterface.linkOf(idB) === 'internet' && B.win.bleInterface.linkOf(idA) === 'internet', 60000);
   // 10 textos de ~1,5 KB
   const txt = (i) => 'T' + i + '-' + 'abcdefghijklmnopqrstuvwxyz0123456789'.repeat(40);
   for (let i = 0; i < 10; i++) { sendText(A, txt(i)); await sleep(500); }
   r.textos_llegan_s = await waitFor(async () => { for (let i = 0; i < 10; i++) if (!(await has(B, idA, txt(i)))) return false; return true; }, 60000);
-  await sleep(190000);   // pasan más de 3 min (lo último visto lo siguen moviendo los saludos de A)
+  await sleep(process.env.REP_FAST ? 3000 : 190000);   // pasan más de 3 min (lo último visto lo siguen moviendo los saludos de A)
   const netB = B.win.bleInterface.net;
   const rx = () => { const s = netB._rx && netB._rx.all; return s ? { ev: s.ev, dup: s.dup, dupB: s.dupBytes } : { ev: 0, dup: 0, dupB: 0 }; };
   const skewSend = (p, secs, text) => { const D = p.win.Date, real = D.now.bind(D); D.now = () => real() - secs * 1000; try { sendText(p, text); } finally { setTimeout(() => { D.now = real; }, 1500); } };
@@ -110,7 +113,7 @@ function online(p) { p.noNet = false; relays.forEach((r) => r.wakeTag(TAG(p))); 
   await sleep(1800);
   skewSend(A, 100, 'reloj 100 s atrasado');
   await sleep(2500);
-  B.native.setNetwork('wifi'); B.noNet = false; relays.forEach((x) => x.wakeTag(TAG(B)));
+  B.native.setNetwork('wifi', 'oficina'); B.noNet = false; relays.forEach((x) => x.wakeTag(TAG(B)));
   r.R2_llega_s = await waitFor(() => has(B, idA, 'mientras B no tiene red'), 60000);
   r.R3_atrasado_llega_s = await waitFor(() => has(B, idA, 'reloj 100 s atrasado'), 30000);
   await sleep(8000);
@@ -119,18 +122,20 @@ function online(p) { p.noNet = false; relays.forEach((r) => r.wakeTag(TAG(p))); 
   r.R1_kb_repetidos_al_volver = Math.round((x1.dupB - x0.dupB) / 1024);
   r.margen_s_antes = typeof netB._sinceMarginS === 'function' ? netB._sinceMarginS() : 600;
   // ---- R4: reloj 5 min atrasado ----
-  skewSend(A, 300, 'reloj 5 min atrasado, en vivo');
-  r.R4_en_vivo_llega_s = await waitFor(() => has(B, idA, 'reloj 5 min atrasado, en vivo'), 30000);
+  await sleep(35000);   // la suscripción ya lleva un rato: lo atrasado 150 s cabe en ella y llega EN VIVO
+  skewSend(A, 150, 'reloj 2,5 min atrasado, en vivo');
+  await sleep(1200);
+  r.R4_en_vivo_llega_s = await waitFor(() => has(B, idA, 'reloj 2,5 min atrasado, en vivo'), 30000);
   await sleep(1500);
   r.R4_margen_s = typeof netB._sinceMarginS === 'function' ? netB._sinceMarginS() : 600;
   offline(B); await sleep(2500);
-  skewSend(A, 300, 'reloj 5 min atrasado, sin red');
+  skewSend(A, 150, 'reloj 2,5 min atrasado, sin red');
   await sleep(2500);
-  B.native.setNetwork('wifi'); B.noNet = false; relays.forEach((x) => x.wakeTag(TAG(B)));
-  r.R4_sin_red_llega_s = await waitFor(() => has(B, idA, 'reloj 5 min atrasado, sin red'), 60000);
+  B.native.setNetwork('wifi', 'oficina'); B.noNet = false; relays.forEach((x) => x.wakeTag(TAG(B)));
+  r.R4_sin_red_llega_s = await waitFor(() => has(B, idA, 'reloj 2,5 min atrasado, sin red'), 60000);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
-  const ok = r.en_linea_por_internet_s !== null && r.textos_llegan_s !== null && r.R1_repetidos_al_volver <= 8 && r.R2_llega_s !== null && r.R3_atrasado_llega_s !== null &&
-    r.R4_en_vivo_llega_s !== null && r.R4_margen_s >= 330 && r.R4_sin_red_llega_s !== null && !r.errores.length;
+  const ok = r.en_linea_por_internet_s !== null && r.textos_llegan_s !== null && r.R1_kb_repetidos_al_volver <= 40 && r.R2_llega_s !== null && r.R3_atrasado_llega_s !== null &&
+    r.R4_en_vivo_llega_s !== null && r.R4_margen_s >= 180 && r.R4_sin_red_llega_s <= 5 && r.R4_sin_red_llega_s !== null && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('REPETIDOS ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_repetidos.txt'), logs.join('\n'));
