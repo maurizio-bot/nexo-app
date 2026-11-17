@@ -10,7 +10,10 @@ export const netRelays = {
     self.relays.set(url, r);
     r.url = url; // 3151: para saber qué suscripción le toca (net_own.js)
     var ws;
-    if (!self._openCount()) self._netTryAt = self._netTryAt || Date.now(); // 3081: desde cuándo se intenta tener internet
+    // 3081: desde cuándo se intenta tener internet. 3185 (AREAS «medición engañosa»: Yaelito 15-11, «internet listo» de media 90 s y
+    // hasta 452 s): sin red en el teléfono (aviso «sin red» del sistema o navigator.onLine falso) no corre el reloj: no es lentitud de NEXO.
+    var offline = self._noNet || (typeof navigator !== 'undefined' && navigator.onLine === false);
+    if (!self._openCount() && !offline) self._netTryAt = self._netTryAt || Date.now();
     try { ws = r.factory ? r.factory() : new WebSocket(url); } catch (e) { r.retryAt = Date.now() + r.backoff; return; }
     r.ws = ws; r.open = false;
     ws.onopen = function() {
@@ -21,14 +24,16 @@ export const netRelays = {
       if (!r.gw && self.gw && typeof self.gw.realBack === 'function') self.gw.realBack(); // 3052: soltar los puentes a tiempo
       // 3050: a los vecinos a los que dije «no tengo internet», se lo ofrezco ya
       if (!r.gw && self.gw && self.gw.askedBy && self.gw.askedBy.size) setTimeout(function() { try { self.gw._offerAskers(Date.now()); } catch (e) {} }, 500);
+      var noted = false; // 3185: una sola medida por vuelta (antes el cambio de red y el arranque podían anotar dos, una con el tiempo sin red)
       if (self._netChangeAt && !r.gw) {
+        noted = true;
         console.log('[NET] Relés listos tras el cambio de red en ' + ((Date.now() - self._netChangeAt) / 1000).toFixed(1).replace('.', ',') + ' s'); // i18n-ok: registro (3085)
         try { if (typeof window.NEXO_noteConnect === 'function') window.NEXO_noteConnect('internet', Date.now() - self._netChangeAt); } catch (e) {}
         self._netChangeAt = 0;
       }
       if (self._openCount() === 1) {
         console.log('[NET] Conectado a internet por ' + (self._isOwn(url) ? 'el relé propio ' + _relayHost(url) : 'relés públicos')); // i18n-ok: registro
-        try { if (self._netTryAt && typeof window.NEXO_noteConnect === 'function') window.NEXO_noteConnect('internet', Date.now() - self._netTryAt); } catch (e) {} // 3081
+        try { if (self._netTryAt && !noted && typeof window.NEXO_noteConnect === 'function') window.NEXO_noteConnect('internet', Date.now() - self._netTryAt); } catch (e) {} // 3081
         self._netTryAt = 0;
         setTimeout(function() { self._helloAll(!self._greeted); }, 300); // avisar a los contactos de que estoy
         // Ronda 2780 (pedido del dueño): volvió el internet → reenviar fotos/archivos/textos que quedaron en espera
@@ -194,7 +199,8 @@ export const netRelays = {
     var nm = function(x) { return NAMES[x] || x || '?'; };
     var burst = seq.length > 1 ? ' (' + seq.length + ' avisos seguidos: ' + [prev].concat(seq).map(nm).join(' → ') + '; una sola vez)' : ''; // i18n-ok: registro
     console.log('[NET] Cambio de red: ' + nm(prev) + ' → ' + nm(t) + burst + (t === 'none' ? ': espero a que vuelva' : ': reconecto los relés ya')); // i18n-ok: registro para el diagnóstico
-    if (t === 'none') { self._netChangeAt = 0; return; }
+    if (t === 'none') { self._netChangeAt = 0; self._netTryAt = 0; self._noNet = true; return; } // 3185: el reloj se para sin red
+    self._noNet = false;
     self._netChangeAt = Date.now();
     self.relays.forEach(function(r, u) {
       if (r.gw) return;   // los puentes Bluetooth no dependen de la red del teléfono
