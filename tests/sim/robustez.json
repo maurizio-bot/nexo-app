@@ -1087,6 +1087,10 @@
     {
      "fallo": "3209 (diagnósticos 17-11: HONOR «Rechazado por los relés: banned: too many rate-limit violations (40)», «Sin internet con … (20)»; Marcos «Sin Wi-Fi con … (20)»): ChatStream reintentaba el mismo trozo cada 200 ms–1 s hasta 120 veces por un camino que decía que no al momento; los relés que limitan castigaban al teléfono. Ahora queda pendiente (lo rechazado al primer «no», sin Wi-Fi/internet a los 3) y lo retoma el reenvío de pendientes. rechazoreles.js (contraprueba b3205: 96 rechazos en 40 s; ahora 8)",
      "prueba": "3209 (diagnósticos 17-11: HONOR 14:27"
+    },
+    {
+     "fallo": "3212 (diagnósticos 17-11: Marcos 2,6 MB en 1 min tras abrir, 97 % repetido; S24 7,8 MB en 43 min, 93 %): cada (re)suscripción a un relé pedía desde lo último visto − 10 min y bajaba otra vez todo eso por cada relé (al abrir la app, cada cambio de red). Ahora el margen es el desfase visto en vivo (+30 s, 2–10 min, se recuerda 12 h). repetidos.js (contraprueba b3205: 106 KB repetidos por reconexión; ahora 12 KB)",
+     "prueba": "3212 (diagnósticos 17-11: Marcos 2,6 MB"
     }
    ],
    "debiles": [
