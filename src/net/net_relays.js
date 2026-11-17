@@ -2,6 +2,8 @@ import { CELL_READ_RELAYS, CELL_BLOB_COPIES, CELL_SETTLE_MS, TTL_MSG, _relayHost
 import { bytesToHex } from '@noble/hashes/utils.js';
 // Métodos de NetLink: RELÉS: conectar, caídas y relés inestables, cambios de red, comprobar los callados, suscribirse y lo que llega de ellos.
 // Reestructuración 15-11: movidos TAL CUAL desde net_link.js, que los une a la clase (como métodos normales).
+// 3212: margen del `since` al (re)suscribir un relé: entre 2 y 10 min según el desfase visto en lo que llega en vivo (se recuerda 12 h)
+var SINCE_MARGIN_MIN_S = 120, SINCE_MARGIN_MAX_S = 600, LAG_KEEP_MS = 12 * 3600000;
 export const netRelays = {
 
   // ---------- relés ----------
@@ -245,7 +247,7 @@ export const netRelays = {
     // contacto dejó solo en él mientras tanto, p. ej. si a él no le abrían los 2 que yo escuchaba). Con datos, lo de siempre.
     var gap = this._unread && r.url ? this._unread.get(r.url) : undefined;
     if (gap !== undefined && !this._cellMode()) { from = Math.max(Math.min(from, gap), Date.now() - TTL_MSG * 1000); this._unread.delete(r.url); }
-    var since = Math.max(0, Math.floor(from / 1000) - 600);
+    var since = Math.max(0, Math.floor(from / 1000) - this._sinceMarginS());
     this._send(r, ['REQ', r.sub, { kinds: [KIND], '#p': Array.from(this.inTags.keys()).concat(Array.from(this.reqTags.keys())), since: since }]);
   },
 
@@ -318,6 +320,28 @@ export const netRelays = {
     return this.relayUrls().filter(function(u) { var r = self.relays.get(u); return !!(r && r.open && r.ws && !r.gw) && (!skip || skip.indexOf(u) < 0); }).slice(0, n);
   },
 
+  // 3212 (diagnóstico de Marcos 17-11 16:13: 2,6 MB en el primer minuto tras abrir, 528 de 546 eventos repetidos): al (re)suscribir un
+  // relé se pedía desde «lo último visto − 10 min» (margen fijo para relojes desfasados): cada vez que se abre la app (la escucha
+  // nativa ya entregó eso) o cambia la red, cada relé volvía a mandar 10 min de todo. Ahora el margen es el desfase que de verdad se
+  // ve en lo que llega EN VIVO (cuánto más viejo que «ahora» viene un sobre recién publicado: reloj atrasado del otro, un puente que
+  // lo publicó tarde) + 30 s, entre 2 y 10 min; se recuerda 12 h (sobrevive a reabrir la app). La escucha nativa ya usa margen 0.
+  _sinceMarginS() {
+    var st = this.state || {}, lag = (Number(st.lagS) > 0 && Date.now() - (Number(st.lagAt) || 0) < LAG_KEEP_MS) ? Number(st.lagS) : 0;
+    return Math.min(SINCE_MARGIN_MAX_S, Math.max(SINCE_MARGIN_MIN_S, Math.ceil(lag) + 30));
+  },
+  _noteLag(ev) {
+    var ca = Number(ev && ev.created_at);
+    if (!isFinite(ca) || ca <= 0) return;
+    var lag = Date.now() / 1000 - ca;
+    if (!(lag > 0) || lag > 86400) return;                    // reloj adelantado (no hace falta margen) o algo de otro día
+    var st = this.state || (this.state = {}), now = Date.now();
+    var cur = (Number(st.lagS) > 0 && now - (Number(st.lagAt) || 0) < LAG_KEEP_MS) ? Number(st.lagS) : 0;
+    if (lag <= cur) return;
+    st.lagS = Math.round(lag); st.lagAt = now;
+    if (lag > SINCE_MARGIN_MIN_S - 30) console.log('[NET] Un sobre llegó ' + Math.round(lag) + ' s después de su hora: margen al reconectar ' + this._sinceMarginS() + ' s'); // i18n-ok: registro
+    if (typeof this._saveState === 'function') this._saveState();
+  },
+
   // 3128: cuenta de lo bajado de los relés desde que arrancó la app (todo y por relé)
   _rxStat(url) {
     var st = this._rx || (this._rx = { since: Date.now(), all: { bytes: 0, ev: 0, dup: 0, dupBytes: 0 }, by: new Map() });
@@ -354,8 +378,8 @@ export const netRelays = {
       else if (m[0] === 'EOSE' || m[0] === 'CLOSED') fj.done();
       return;
     }
-    if (m[0] === 'EVENT' && m[1] === r.sub && m[2]) this._onEvent(m[2]);
-    else if (m[0] === 'EOSE' && m[1] === r.sub && !r.eoseOnce) { r.eoseOnce = true; this._ownSync(); } // 3151: suscripción confirmada
+    if (m[0] === 'EVENT' && m[1] === r.sub && m[2]) { if (r.liveSub === r.sub) this._noteLag(m[2]); this._onEvent(m[2]); }
+    else if (m[0] === 'EOSE' && m[1] === r.sub) { r.liveSub = r.sub; if (!r.eoseOnce) { r.eoseOnce = true; this._ownSync(); } } // 3151: suscripción confirmada; 3212: desde aquí, en vivo
     else if (m[0] === 'OK') { var fn = r.waits.get(m[1]); if (fn) { r.waits.delete(m[1]); fn(!!m[2], m[3]); } }
     else if (m[0] === 'AUTH' && typeof m[1] === 'string') { r.challenge = m[1]; this._auth(url, r, m[1]); }
     else if (m[0] === 'CLOSED' && m[1] === r.sub) {
