@@ -21,6 +21,13 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **17-11 16:20 (México) — APK 3091 PUBLICADA (15:47), novedades al historial; bloque nuevo con 3207 y 3208.** La batería de 3207+3208
+  dio 9 fallos, todos aclarados: 5 de cifrado (desync.js: con 3207 el contacto de cerca tiene el paquete de claves en los dos lados y
+  B ve SOLO el cifrado atrasado: vale como detectado), net.js (la foto de perfil es acción oculta sin aviso), alerts.js (B queda con
+  el nombre de su perfil), filecap.js (el texto «en medio» salía tarde) y dupserver (pasa sola: carga). Nuevo **3209** (HONOR
+  castigado por damus: ChatStream martillaba 120 veces un camino que decía que no; rechazoreles.js 96 → 8). Batería completa sobre
+  3207–3209 en curso (`bateria_3209.txt` del scratchpad); si pasa: commit de punta SIN `[skip ci]` y subir a NEXOCHAT (APK 3092).
+  Siguiente: medir y bajar lo REPETIDO de los relés (cada cambio Wi-Fi ↔ datos o abrir la app vuelve a pedir 10 min a cada relé).
 - **17-11 14:25 (México) — APK 3091 subida con 3205 y 3206** (batería completa 324/324, índice 71,2): mensajes que quedaron en relés
   soltados por la escucha nativa con datos (3205) y elegir varios mensajes para reenviarlos juntos (3206, dueño 17-11). En la rama de
   trabajo, sin subir aún: 3207 (solicitud de contacto también de cerca, dueño 17-11: «Quedan agregados») y 3208 (reintento solo de la

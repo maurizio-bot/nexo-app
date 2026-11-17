@@ -46,6 +46,14 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   (2) al abrir la app o reconectar un relé se pide desde «lo último visto − 10 min» (margen para relojes desfasados), aunque la
   escucha nativa ya entregó eso. Idea: margen según el desfase de reloj medido (no 10 min fijos) y, tras la escucha nativa sin
   huecos, pedir desde donde ella terminó. Con Wi-Fi escuchar menos relés es decisión del dueño (con datos ya aprobó 2).
+- HONOR …c1ee (3090) 14:27–14:48 (pedidos por Marcos y Roberto): sin internet propio usó a Roberto de puente y relay.damus.io lo
+  CASTIGÓ («banned: too many rate-limit violations»): ChatStream reintentaba un texto pendiente para el dueño cada ~1 s hasta 120 veces
+  (40 rechazos en el registro; antes «Sin internet con … (20)» en 19 s; Marcos 15:38 «Sin Wi-Fi con … (20)»). **3209 INTEGRADO** (sin
+  APK aún): un camino que dice que no al momento y sin otro mejor deja el envío pendiente (rechazado: al primer «no»; sin Wi-Fi o
+  internet: a los 3 intentos) y lo retoma el reenvío de pendientes (rechazoreles.js: 96 → 8 rechazos en 40 s). Datos del HONOR: 74,8 MB
+  hoy (Wi-Fi 42,5 · datos 31,1); a los 5 min de abrir, 2 MB de relés con 306 de 522 eventos repetidos (relay.primal.net 724 KB, 721
+  repetidos) y 4 cambios Wi-Fi ↔ datos en 5 min: cada cambio reconecta todos los relés y vuelve a pedir los últimos 10 min → es la
+  causa principal de lo repetido (ver arriba). Marcos tenía la 3043 a las 14:30 (ya actualizó a la 3090 a las 14:41).
 - NX…DBFE (3087, Galaxy A05s, Italia): versión vieja; 217 MB de Wi-Fi hoy (archivos por el buzón: 18 enviados, 22 recibidos) y 2
   cierres por falta de memoria; Bluetooth con richard atascado («Write fallo ~6 s») mientras el Wi-Fi local llevaba los mensajes.
 
