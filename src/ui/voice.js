@@ -71,12 +71,16 @@ function _elapsedMs() {
 }
 
 // Barra con los controles de grabación: borrar · tiempo · pausar/reanudar · enviar
+// 3186: huecos y bordes de la barra; con la pista «‹ Desliza para cancelar» se aprietan para que quepa a 320 px
+var BAR_GAP = '14px', BAR_PAD = '8px 14px', BAR_GAP_HINT = '6px', BAR_PAD_HINT = '8px 8px';
 function _voiceBar() {
   var bar = document.getElementById('voice-bar');
   if (bar) return bar;
   bar = document.createElement('div');
   bar.id = 'voice-bar';
-  bar.style.cssText = 'position:fixed;bottom:72px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:14px;background:#14152a;color:#fff;border:1px solid rgba(255,255,255,0.12);border-radius:26px;padding:8px 14px;z-index:300;box-shadow:0 4px 18px rgba(0,0,0,0.4);';
+  // 3186: nunca más ancha que la pantalla (8 px de aire a cada lado). Con left:50% el ancho «que se ajusta solo» sería el de la
+  // media pantalla; por eso width:max-content y el tope en max-width (lo que no cabe lo cede la pista, que se encoge).
+  bar.style.cssText = 'position:fixed;bottom:72px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:' + BAR_GAP + ';box-sizing:border-box;width:max-content;max-width:calc(100vw - 16px);background:#14152a;color:#fff;border:1px solid rgba(255,255,255,0.12);border-radius:26px;padding:' + BAR_PAD + ';z-index:300;box-shadow:0 4px 18px rgba(0,0,0,0.4);';
   var mk = function(id, txt, color) {
     var b = document.createElement('button');
     b.id = id; b.textContent = txt;
@@ -89,12 +93,13 @@ function _voiceBar() {
   dot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#ff3b30;flex-shrink:0;';
   var time = document.createElement('span');
   time.id = 'voice-time';
-  time.style.cssText = 'font-variant-numeric:tabular-nums;font-size:15px;min-width:44px;text-align:center;';
+  time.style.cssText = 'font-variant-numeric:tabular-nums;font-size:15px;min-width:44px;text-align:center;flex-shrink:0;white-space:nowrap;';
   time.textContent = '0:00';
   // 3143: pista mientras se mantiene el dedo en el botón de grabar (se muestra solo entonces)
+  // 3186: es lo único de la barra que se encoge: hasta dos líneas y, si aún no cabe, se acorta con «…» (🗑, el tiempo, ⏸ y ➤ no)
   var hint = document.createElement('span');
   hint.id = 'voice-slide-hint';
-  hint.style.cssText = 'display:none;font-size:13px;white-space:nowrap;color:var(--nx-text,#fff);opacity:0.75;';
+  hint.style.cssText = 'display:none;flex:0 1 auto;min-width:0;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;font-size:12px;line-height:1.2;white-space:normal;overflow-wrap:anywhere;color:var(--nx-text,#fff);opacity:0.75;';
   hint.textContent = t('voice_slide_cancel', '‹ Desliza para cancelar');
   var pause = mk('voice-pause', '⏸');
   var send = mk('voice-send', '➤', 'linear-gradient(135deg,#00c8ff,#a855f7)');
@@ -134,7 +139,10 @@ var _slideX0 = null, _slideCancelled = false, _cancelPending = false;
 function _slideHint(show, prog, armed) {
   var h = document.getElementById('voice-slide-hint');
   if (!h) return;
-  h.style.display = show ? '' : 'none';
+  h.style.display = show ? '-webkit-box' : 'none'; // 3186: -webkit-box para cortar en dos líneas con «…»
+  // 3186: con la pista, la barra se aprieta (huecos y bordes) para dejarle sitio sin pasar del ancho de la pantalla
+  var bar = h.parentNode;
+  if (bar && bar.style) { bar.style.gap = show ? BAR_GAP_HINT : BAR_GAP; bar.style.padding = show ? BAR_PAD_HINT : BAR_PAD; }
   if (show) { h.style.opacity = String(0.55 + 0.45 * (prog || 0)); h.style.color = armed ? '#ff6b6b' : ''; }
 }
 export function voiceSlideStart(x) { _slideX0 = (typeof x === 'number') ? x : null; _slideCancelled = false; _releaseSendPending = false; _slideHint(false); }
