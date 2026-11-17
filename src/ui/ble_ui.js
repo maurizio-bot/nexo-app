@@ -9,6 +9,7 @@ import { t } from './i18n.js'; // #132 idioma
 import { parseInvite, shareInvite } from './invite.js'; // 3129: enlace de invitación
 import { personAvatar } from './person_avatar.js'; // 3140: el círculo de color de Contactos
 import { isPreviewHidden, toggleHidePreview } from './chat_hide_preview.js';
+import { contactSearchQuery, _csMatch, installContactSearch } from './contacts_search.js'; // 3196: lupa de Contactos
 import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isPinned, _normId, _rssiToBars, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
 
 // #dueño 08-11 (scan rápido): barritas de señal (como el wifi) para una fila de contacto encontrado — de un vistazo se ve
@@ -390,6 +391,8 @@ export const BLE_UI_METHODS = {
       if (self.elements.fabBtn) self.elements.fabBtn.style.display = 'none';
       if (self.elements.bottomNav) self.elements.bottomNav.style.display = 'none';
     });
+    // 3196 (dueño 17-11: «falta el botón para buscar contactos en la pantalla Contactos»): la lupa de la cabecera (contacts_search.js)
+    installContactSearch(self);
   },
 
   togglePanel() {
@@ -648,9 +651,12 @@ export const BLE_UI_METHODS = {
     var list = this.elements.mainContactsList;
     if (!list) return;
     list.innerHTML = '';
+    // 3196 (dueño 17-11): con el buscador de Contactos abierto y algo escrito, solo lo que coincide (contacts_search.js). Se
+    // aplica aquí, en el dibujo, para que siga puesto cuando la lista se redibuja sola (mensaje nuevo, alguien se conecta).
+    var csq = contactSearchQuery();
     // #dueño 04-11: si hay solicitudes de contacto esperando, avisarlo EN LA LISTA (banner arriba de todo) para que no
-    // queden escondidas dentro de «Agregar». Tocarlo abre ese panel (donde se aceptan/eliminan).
-    self._prependReqBanner(list);
+    // queden escondidas dentro de «Agregar». Tocarlo abre ese panel (donde se aceptan/eliminan). (3196: buscando, no)
+    if (!csq) self._prependReqBanner(list);
     var contacts = _getBLEContacts();
     var seenNexoIds = {};
     var deduped = [];
@@ -679,12 +685,23 @@ export const BLE_UI_METHODS = {
     contacts = contacts.concat(groupRows);
     if (contacts.length === 0) {
       list.innerHTML = '';
-      self._prependReqBanner(list); // sin contactos todavía, pero la solicitud pendiente igual tiene que avisarse
+      if (!csq) self._prependReqBanner(list); // sin contactos todavía, pero la solicitud pendiente igual tiene que avisarse
       if (this.elements.mainEmptyMsg) this.elements.mainEmptyMsg.classList.add('visible');
       this.renderOnlineStrip();
       return;
     }
     if (this.elements.mainEmptyMsg) this.elements.mainEmptyMsg.classList.remove('visible');
+    // 3196: por nombre sin acentos ni mayúsculas, o por un trozo del NEXO ID (con o sin «NX»); los grupos, por su nombre. Se filtra
+    // antes de ordenar: lo que queda sale en el mismo orden que en la lista completa (fijados, nuevo, el más reciente arriba).
+    if (csq) {
+      contacts = contacts.filter(function(c) { return _csMatch(csq, c.isGroup ? String(c.name || '').replace(/^👥 /, '') : c.name, _normId(c.nexoId || c.deviceUUID), c.isGroup); });
+      if (!contacts.length) {
+        var nm = document.createElement('div');
+        nm.id = 'main-contacts-nomatch';
+        nm.textContent = t('contacts_no_match', 'Ningún contacto coincide');
+        list.appendChild(nm);
+      }
+    }
     var pinned = _getPinnedContacts();
     contacts.sort(function(a, b) {
       var aPinned = pinned.indexOf(_normId(a.nexoId || a.deviceUUID)) >= 0 ? 1 : 0;

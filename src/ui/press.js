@@ -36,7 +36,8 @@ export var HIT_TARGETS = [
   { sel: '#send-btn', size: 56 }, { sel: '#attach-btn', size: 56 }, { sel: '#chat-back-btn', size: 56 }, { sel: '.ble-btn-back', size: 56 },
   { sel: '#nexo-profile-btn', size: 48 }, { sel: '#nexo-new-group-btn', size: 48 }, { sel: '#nexo-call-btn', size: 48 }, { sel: '#nexo-video-btn', size: 48 },
   { sel: '#nexo-gcall-btn', size: 48 }, { sel: '#nexo-gvideo-btn', size: 48 }, { sel: '#nexo-search-btn', size: 48 }, { sel: '#nexo-lock-btn', size: 48 },
-  { sel: '.ble-btn-add-small', size: 48 }
+  { sel: '.ble-btn-add-small', size: 48 },
+  { sel: '#nexo-contacts-search-btn', size: 48 }, { sel: '#nexo-contacts-search-close', size: 48 } // 3196: lupa de Contactos y su ✕
 ];
 
 // ---------- decisiones PURAS (testeables sin DOM) ----------
@@ -48,7 +49,7 @@ export function _pressReleaseDelay(downAtMs, nowMs, minHold) {
   var d = ((typeof minHold === 'number') ? minHold : PRESS_MIN_HOLD_MS) - (nowMs - downAtMs);
   return d > 0 ? d : 0;
 }
-var ROUND_IDS = /^(chat-back-btn|nexo-(profile|new-group|call|video|gcall|gvideo|search|lock)-btn|camera-btn-[a-z]+)$/;
+var ROUND_IDS = /^(chat-back-btn|nexo-(profile|new-group|call|video|gcall|gvideo|search|lock|contacts-search)-btn|nexo-contacts-search-close|camera-btn-[a-z]+)$/; // 3196: + lupa de Contactos y su ✕
 export function _pressKind(el) {
   var cl = (el && el.classList) || { contains: function() { return false; } }, id = (el && el.id) || '';
   if (cl.contains('ble-contact-row') || cl.contains('ble-menu-item') || cl.contains('mm-item') || cl.contains('nexo-pick-row') || cl.contains('fw-row') || cl.contains('game-pick-item') || cl.contains('nx-est-row')) return 'row';

@@ -28,7 +28,7 @@ body::before {
 #app { background: transparent !important; }
 
 /* ---------- Pantalla principal ---------- */
-#main-header { min-height: 64px !important; padding: 0 116px 0 18px !important; }
+#main-header { min-height: 64px !important; padding: 0 166px 0 18px !important; } /* 3196: + la lupa (antes 116) */
 #main-title { font-size: 26px !important; font-weight: 800 !important; letter-spacing: -0.3px;
   background: linear-gradient(90deg, #fff 30%, #b9c4ff); -webkit-background-clip: text; background-clip: text; color: transparent !important; }
 #nexo-profile-btn, #nexo-new-group-btn {
@@ -36,6 +36,41 @@ body::before {
   border: 1px solid var(--nx-line) !important; display: flex !important; align-items: center; justify-content: center; padding: 0 !important;
 }
 #nexo-profile-btn svg, #nexo-new-group-btn svg { width: 21px; height: 21px; }
+/* 3196 (dueño 17-11: «falta el botón para buscar contactos en la pantalla Contactos»): la lupa a la izquierda de Perfil, redonda de
+   42 px como Perfil y Grupo (contacts_search.js). Los tres a 10 px uno del otro (antes 6 entre Perfil y Grupo): así el área de toque
+   de cada uno (press.js: ≥ 8 px entre áreas) llega a 46–48 px; con 6 px el del medio se quedaba en 42. El título, si no cupiera
+   (pantallas de 320 px, letra grande del sistema), se acorta con «…» en vez de meterse debajo de los botones. */
+#nexo-profile-btn { right: 66px !important; }
+#main-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#nexo-contacts-search-btn {
+  position: absolute; right: 118px; top: 50%; transform: translateY(-50%); z-index: 5; width: 42px; height: 42px; border-radius: 50%;
+  background: var(--nx-surface-2); border: 1px solid var(--nx-line); color: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+#nexo-contacts-search-btn svg { width: 21px; height: 21px; }
+#nexo-contacts-search-btn[aria-expanded="true"] { background: rgba(0, 200, 255, 0.16); border-color: rgba(0, 200, 255, 0.45); }
+/* La barra del buscador, justo debajo de la cabecera (no se desliza con la lista): el campo como el de «Agregar» y la ✕ redonda de
+   42 px debajo de Grupo. Buscando, la tira «en línea» se esconde (solo los resultados); sin nada, «Ningún contacto coincide». */
+#nexo-contacts-search-bar { display: none; align-items: center; gap: 10px; padding: 0 14px 8px 16px; flex-shrink: 0; }
+#nexo-contacts-search-bar.nx-cs-open { display: flex; }
+body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
+#nexo-contacts-search-bar .nx-cs-field {
+  flex: 1; min-width: 0; height: 42px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 14px;
+  background: var(--nx-surface); border: 1px solid var(--nx-line); border-radius: 14px; color: var(--nx-muted); cursor: text;
+}
+#nexo-contacts-search-bar .nx-cs-field svg { width: 18px; height: 18px; flex-shrink: 0; }
+#nexo-contacts-search-input {
+  flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--nx-text); font-size: 15px; padding: 0;
+  -webkit-appearance: none; appearance: none;
+}
+#nexo-contacts-search-input::placeholder { color: var(--nx-muted); }
+#nexo-contacts-search-close {
+  width: 42px; height: 42px; flex-shrink: 0; border-radius: 50%; background: var(--nx-surface-2); border: 1px solid var(--nx-line);
+  color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+}
+#nexo-contacts-search-close svg { width: 18px; height: 18px; }
+#contacts-view.nx-cs-filtering #main-contacts-online-strip { display: none !important; }
+#main-contacts-nomatch { text-align: center; color: var(--nx-muted); font-size: 15px; line-height: 1.5; padding: 40px 24px; }
 
 #main-contacts-online-strip { border-bottom: none !important; }
 /* #dueño 05-11: padding-bottom amplio para que el ÚLTIMO contacto se pueda subir por encima del botón flotante

@@ -30,6 +30,8 @@ export default {
   view_once: "Vedi una volta",
   add_contacts: "Aggiungi contatti",
   ph_search_contact: "Cerca per nome o NEXO ID",
+  contacts_search: "Cerca contatti",
+  contacts_no_match: "Nessun contatto corrisponde",
   add_by_id: "Aggiungi tramite NEXO ID (è lontano)",
   add: "Aggiungi",
   online_now: "Online adesso",
