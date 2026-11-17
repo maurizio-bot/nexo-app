@@ -21,6 +21,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **16-11 20:10 (México) — diagnóstico S24 19:57 (dueño: mensajes lentos y avisos con el chat abierto).** 3172 hecho (NATIVO: el aviso
+  por internet en segundo plano —NetBg— ahora calla el chat abierto en un parpadeo < 15 s, como el de Bluetooth; BgNotifyPolicyTest).
+  En curso (subagente, worktree wtpend): 3173 pendiente ya entregado que queda «pendiente» y se «reenvía» cada 18 s (vivo/tablet;
+  al reiniciar se manda otra vez) y 3174 relés trabados con datos móviles: 12 s hasta darse cuenta (net_publish.js).
 - **16-11 19:58 (México) — APK 3080 PUBLICADA (19:55; 3169 estados por gesto).** NOVEDADES: 3080 al historial; bloque nuevo con
   3170 (fotos más nítidas). En curso (subagentes): 3171 cámara del teléfono (worktree wtcam) y «Ciudad», simulación masiva de 12
   teléfonos con juez de entrega (idea del dueño 17-11; worktree wtciudad, tests/sim/ciudad.js; solo encuentra y documenta).
