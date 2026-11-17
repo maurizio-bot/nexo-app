@@ -12,6 +12,21 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+</es-419>
+<it-IT>
+</it-IT>
+<en-US>
+</en-US>
+<pt-BR>
+</pt-BR>
+<fr-FR>
+</fr-FR>
+<!-- /APK -->
+
+## Historial
+
+### APK 3086 (17-11-2026)
+<es-419>
 - Te llega una notificación cuando alguien quiere agregarte como contacto, aunque NEXO esté en segundo plano.
 - NEXO se da cuenta antes cuando un contacto cercano deja de responder y lo busca por otro camino.
 </es-419>
@@ -32,9 +47,6 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Vous recevez une notification quand quelqu'un veut vous ajouter comme contact, même avec NEXO en arrière-plan.
 - NEXO remarque plus vite quand un contact proche ne répond plus et le joint autrement.
 </fr-FR>
-<!-- /APK -->
-
-## Historial
 
 ### APK 3085 (17-11-2026)
 <es-419>
