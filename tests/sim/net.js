@@ -124,6 +124,7 @@ const tokenOf = (nx, day) => crypto.createHash('sha256').update('nexo-lan|' + nx
     const kind = (o) => { if (o.h) return 'saludo'; let p = null; try { p = JSON.parse(o.p); } catch (e) {} if (p && p.type === 'chat') return 'mensaje'; if (p && (p.t === 'c' || p.t === 'f') && p.i === 0 && !p.hf) return 'mensaje'; return 'otro'; };
     const msgs = opened.filter((o) => kind(o) === 'mensaje'), rest = opened.filter((o) => kind(o) !== 'mensaje');
     r.sobres_de_A_para_B = opened.length;
+    if (process.env.NET_DBG) console.log('NETDBG ' + JSON.stringify(msgs.map((o) => [o.n || '', String(o.p).substring(0, 160)])));
     r.mensajes_con_aviso = msgs.filter((o) => typeof o.n === 'string' && o.n.length > 0).length + '/' + msgs.length;
     r.avisos_en_saludos_o_confirmaciones = rest.filter((o) => o.n).length;
     const cfg = nB.netBg || {};

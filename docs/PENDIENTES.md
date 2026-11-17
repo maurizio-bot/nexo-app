@@ -28,6 +28,27 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   servidor GATT cada 36 s durante 14 min con la app en segundo plano (gasto de radio y batería; ¿Zhelowsky 3026, versión vieja?): falta
   freno en el lado servidor; (3) al volver a la app, 24 `startAdvertising` seguidos (uno por cada desconexión acumulada): agrupar.
 
+## 🆕 17-11 15:40 — diagnósticos automáticos (Marcos 3090 ×2, Roberto 3090, NX…DBFE 3087 en Italia)
+- Marcos 14:44–14:48 con el HONOR (…c1ee, pedido «enlace abre y cierra»): hasta 5 enlaces Bluetooth a la vez entre los dos (cada uno se
+  conecta a las direcciones cambiantes del otro); la app cierra los repetidos («me quedo con el mejor») y los mensajes pasan (uno de
+  23 KB llegó directo en 7 s tras salir por el puente de Roberto sin ✓✓). Su Wi-Fi es inestable: de 14:52 a 15:05 el teléfono saltó
+  Wi-Fi ↔ datos cada pocos minutos; cada salto deja ~20 s sin relés y pide puente.
+- Marcos 15:38 (pedido por Roberto, «zombi»): app cerrada desde 15:05, Wi-Fi apagado y los datos sin internet de verdad (relés:
+  SocketException) → internet por el puente del dueño en 16 s. **Menor:** un texto pendiente para el HONOR se reanudó por el Wi-Fi
+  (apagado): «Sin Wi-Fi con nx1905c1ee» 20 veces seguidas (ble_ack_resume._resumeRunOne: si lo guardado y el contacto son `lan:` y el
+  Wi-Fi no lo alcanza, debería esperar como con un Bluetooth sin enlace). No se pierde (queda pendiente).
+- Roberto 14:49 («zombi» con Marcos): Roberto apagó/encendió el Bluetooth 14:48:24–26; luego enlaces a MTU 23 y el vigilante normal.
+  Hizo de puente (Jump) para lo de Marcos al HONOR: entregado 14:45:12. **Aviso de MTU 23 prematuro:** «W [MTU] 23 (mínimo…)» y a
+  los ~3 s «517» (ruido en el diagnóstico; avisar solo si sigue en 23 unos segundos).
+- **Datos (sigue la investigación de arriba):** Roberto: 34,1 MB hoy (Wi-Fi 19,7 · datos 14,1); en 15 min 1,4 MB de relés, 925 de
+  1146 eventos ya vistos (81 %; nos.lol 1,1 MB, repetido 842 KB). NX…DBFE: a los 2 min de abrir, 314 de 354 ya vistos (89 %, 3 relés).
+  Dos causas a medir en el simulador: (1) con Wi-Fi se escucha en todos los relés y cada evento llega una vez por relé (75 % con 4);
+  (2) al abrir la app o reconectar un relé se pide desde «lo último visto − 10 min» (margen para relojes desfasados), aunque la
+  escucha nativa ya entregó eso. Idea: margen según el desfase de reloj medido (no 10 min fijos) y, tras la escucha nativa sin
+  huecos, pedir desde donde ella terminó. Con Wi-Fi escuchar menos relés es decisión del dueño (con datos ya aprobó 2).
+- NX…DBFE (3087, Galaxy A05s, Italia): versión vieja; 217 MB de Wi-Fi hoy (archivos por el buzón: 18 enviados, 22 recibidos) y 2
+  cierres por falta de memoria; Bluetooth con richard atascado («Write fallo ~6 s») mientras el Wi-Fi local llevaba los mensajes.
+
 ## 🆕 17-11 14:35 — diagnósticos automáticos de la tarde (Roberto 3090, Marcos 3043, nx126df3f4 3073)
 - Roberto (3090): el video de estado YA sale (webm 1,7 MB, vista previa bien, subido una vez al buzón de archivos en 43 trozos). El
   «zombi» con Austin (HONOR 3087) fue el vigilante normal: 4 pings sin respuesta al volver a la app → desconecta y reconecta.
