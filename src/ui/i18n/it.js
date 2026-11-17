@@ -337,6 +337,7 @@ export default {
   media_getting_location: "📍 Rilevamento della posizione…",
   media_enable_gps: "Attiva la posizione (GPS) del telefono e riprova.",
   media_location_fail: "Impossibile ottenere la tua posizione (nessun segnale GPS). Prova vicino a una finestra o all'aperto.",
+  media_location_map: "📍 Preparazione della mappa…",
   media_cobro_title: "Richiedi un pagamento",
   media_cobro_concept_ph: "Causale (facoltativa): es. pranzo",
   media_cobro_method_ph: "Come ti pagano: alias/CBU, PayPal.me/tuo, Mercado Pago, contanti…",

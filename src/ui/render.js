@@ -22,6 +22,7 @@ import { personAvatar } from './person_avatar.js';
 import { _renderOnceBubble } from './once_bubble.js';   // #94 «ver una vez» (foto y, desde la 3163, vídeo)
 import { vaultAppendMessage, vaultHydrateAttachments, vaultLoadFile, vaultLoadMessages, vaultLoadRecent, vaultUpdateMessageStatus } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
+import { _locMapOk } from '../vault/vault_shared.js'; // 3201: la miniatura del mapa de una ubicación (solo imagen en base64)
 
 
 export var _renderedMessageCount = 0;
@@ -487,18 +488,38 @@ export function _renderMessage(msg, skipSave) {
         // static-maps.openstreetmap.de filtraba la ubicación recibida Y la IP del que mira a un servidor ajeno en
         // CADA render (sin tocar nada). Se muestra una previa LOCAL (degradado + pin + coords); el mapa real se abre
         // solo si el usuario toca Maps/Waze (decisión suya, a un servicio que él elige).
-        var locHtml = '<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;">';
-        locHtml += '<div style="position:relative;width:100%;height:120px;background:linear-gradient(135deg,#1a1a2e,#0f3460);overflow:hidden;">';
-        locHtml += '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;z-index:0;">';
-        locHtml += '<svg viewBox="0 0 24 24" width="32" height="32" fill="#FF3B30"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>';
-        locHtml += '<span style="font-size:11px;color:#aaa;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span>';
-        locHtml += '</div></div>';
-        locHtml += '<div style="padding:8px 12px;"> <b>' + t('chat_location', 'Ubicación') + '</b><span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
+        // 3201 (dueño 17-11: miniatura del mapa al mandar la ubicación; eligió la opción A): si el mensaje trae la miniatura del mapa
+        // (meta.map: la bajó UNA vez quien la mandó y viaja dentro del mensaje cifrado), se muestra en lugar del degradado, con el pin
+        // y el crédito ya dibujados. Solo una imagen en base64 (_locMapOk: ni URL, ni SVG, ni HTML, ni gigante): pintar no pide nada
+        // a ningún servidor. Va en un marco 16:9 fijo (contain): una imagen con otra forma no estira la burbuja.
+        var locMap = (loc && _locMapOk(loc.map)) ? loc.map : '';
+        var locHtml = '<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;' + (locMap ? 'width:260px;max-width:100%;' : '') + '">';
+        if (locMap) {
+          locHtml += '<div class="nx-loc-map-box" style="position:relative;width:100%;height:auto;aspect-ratio:16/9;background:#e9e5dc;overflow:hidden;"></div>';
+        } else {
+          locHtml += '<div style="position:relative;width:100%;height:120px;background:linear-gradient(135deg,#1a1a2e,#0f3460);overflow:hidden;">';
+          locHtml += '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;z-index:0;">';
+          locHtml += '<svg viewBox="0 0 24 24" width="32" height="32" fill="#FF3B30"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>';
+          locHtml += '<span style="font-size:11px;color:#aaa;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span>';
+          locHtml += '</div></div>';
+        }
+        locHtml += '<div style="padding:8px 12px;"><b>' + t('chat_location', 'Ubicación') + '</b> <span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
         locHtml += '<div style="display:flex;gap:8px;padding:0 12px 10px;">';
         locHtml += '<a href="' + mapsUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(0,130,252,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Maps</a>';
         locHtml += '<a href="' + wazeUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(107,78,255,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Waze</a>';
         locHtml += '</div></div>';
         contentDiv.innerHTML = locHtml;
+        var locBox = locMap ? contentDiv.querySelector('.nx-loc-map-box') : null;
+        if (locBox) {
+          var locImg = document.createElement('img');
+          locImg.className = 'nx-loc-map';
+          locImg.alt = t('chat_location', 'Ubicación');
+          locImg.draggable = false;
+          locImg.decoding = 'async';
+          locImg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;max-width:none;max-height:none;border-radius:0;object-fit:contain;display:block;pointer-events:none;'; // (sin el tope de 220 px de las fotos)
+          locImg.src = locMap;
+          locBox.appendChild(locImg);
+        }
       } else if (attachment.type === 'contact') {
         _renderContactCard(contentDiv, attachment.meta || {}, msg);
       } else if (attachment.type === 'cobro') {

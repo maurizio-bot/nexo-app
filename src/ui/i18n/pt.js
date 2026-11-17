@@ -337,6 +337,7 @@ export default {
   media_getting_location: "📍 Obtendo sua localização…",
   media_enable_gps: "Ative a localização (GPS) do celular e tente de novo.",
   media_location_fail: "Não foi possível obter sua localização (sem sinal de GPS). Tente perto de uma janela ou ao ar livre.",
+  media_location_map: "📍 Preparando o mapa…",
   media_cobro_title: "Fazer uma cobrança",
   media_cobro_concept_ph: "Descrição (opcional): ex. almoço",
   media_cobro_method_ph: "Como te pagam: chave Pix, PayPal.me/seuusuario, Mercado Pago, dinheiro…",

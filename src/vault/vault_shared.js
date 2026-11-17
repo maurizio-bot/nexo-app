@@ -104,5 +104,30 @@ function _editedContent(content, newText) {
   return t;
 }
 
+// 3201 (dueño 17-11: miniatura del mapa al mandar la ubicación; eligió la opción A): la miniatura viaja DENTRO del mensaje cifrado
+// (meta.map) y viene de otro teléfono. Solo vale una imagen raster en base64 (JPEG, PNG o WebP) dentro del tope: nunca una URL (al
+// pintarla se pediría algo a un servidor ajeno: la fuga de la auditoría del 03-11), ni SVG (puede llevar script), ni HTML, ni una
+// imagen gigante. La usan render.js (al pintar) y vault_messages.js (al guardar: lo que no vale ni se guarda).
+var LOC_MAP_MAX_CHARS = 110000;   // tope duro (~80 KB de imagen); quien la manda apunta a ~12 000 (location_map.js)
+var LOC_MAP_RE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+function _locMapOk(s) { return typeof s === 'string' && s.length >= 64 && s.length <= LOC_MAP_MAX_CHARS && LOC_MAP_RE.test(s); }
+// Quita un meta.map que no vale de una ubicación (en attachmentMeta y dentro del contenido JSON). Devuelve el mensaje.
+function _cleanLocMap(m) {
+  if (!m || typeof m !== 'object') return m;
+  var am = m.attachmentMeta;
+  if (am && typeof am === 'object' && Object.prototype.hasOwnProperty.call(am, 'map') && !_locMapOk(am.map)) { am = Object.assign({}, am); delete am.map; m.attachmentMeta = am; }
+  ['content', 'text'].forEach(function(k) {
+    var c = m[k];
+    if (typeof c !== 'string' || c.charAt(0) !== '{' || c.indexOf('"map"') < 0 || c.indexOf('"location"') < 0) return;
+    var o = null;
+    try { o = JSON.parse(c); } catch (e) { return; }
+    if (!o || o.type !== 'attachment' || o.attachmentType !== 'location' || !o.meta || typeof o.meta !== 'object') return;
+    if (!Object.prototype.hasOwnProperty.call(o.meta, 'map') || _locMapOk(o.meta.map)) return;
+    delete o.meta.map;
+    m[k] = JSON.stringify(o);
+  });
+  return m;
+}
+
 // Para las otras piezas de vault_manager.js
-export { _normId, _nativePlugin, _safeNativeCall, VAULT_CONTACTS_FILE, VAULT_MESSAGES_PREFIX, _msgCache, _msgLoading, _withMsgLock, VAULT_TRANSFERS_PREFIX, _transferCache, VAULT_OUTGOING_PREFIX, _outgoingCache, _withOutLock, _editableText, _editedContent };
+export { _normId, _nativePlugin, _safeNativeCall, VAULT_CONTACTS_FILE, VAULT_MESSAGES_PREFIX, _msgCache, _msgLoading, _withMsgLock, VAULT_TRANSFERS_PREFIX, _transferCache, VAULT_OUTGOING_PREFIX, _outgoingCache, _withOutLock, _editableText, _editedContent, _locMapOk, _cleanLocMap };

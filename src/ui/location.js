@@ -4,6 +4,8 @@
  */
 import { _closeAttachMenu, _getAttachmentPlugins, _hideInfoToast, _showInfoToast, _showPermissionError } from './ui_bits.js';
 import { t } from './i18n.js';
+import { _getCurrentContactId } from './chat_format.js';
+import { locationMap, LOC_MAP_WAIT_MS } from './location_map.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _sendAttachment;
@@ -54,7 +56,7 @@ export async function _handleLocation() {
     if (pos && pos.coords) {
       _hideInfoToast();
       console.log('[ATTACH] Ubicación obtenida en ' + Math.round((Date.now() - t0) / 100) / 10 + ' s (precisión ' + Math.round(pos.coords.accuracy || 0) + ' m)');
-      _sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+      await _sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy); // 3201: con su mapa (≤ 4 s) o sin él
       return;
     }
     console.warn('[ATTACH] Ubicación no disponible tras ' + Math.round((Date.now() - t0) / 100) / 10 + ' s: ' + why);
@@ -66,16 +68,29 @@ export async function _handleLocation() {
   }
 }
 
+// 3201 (dueño 17-11: miniatura del mapa al mandar la ubicación; eligió la opción A): antes de mandarla se arma UNA vez la miniatura
+// del mapa (location_map.js: 2–4 teselas de OpenStreetMap, pin y crédito) y va DENTRO del mensaje cifrado (meta.map); quien la
+// recibe no pide nada a nadie. Sin internet sale al momento sin mapa; si el mapa no está en LOC_MAP_WAIT_MS, también sin él. Va al
+// chat donde se tocó «Ubicación» aunque mientras tanto se abra otro. Si tarda, un aviso «Preparando el mapa…».
 export function _sendLocation(lat, lng, accuracy) {
   var now = Date.now();
   if (now - _lastLocationSent < _LOCATION_DEBOUNCE_MS) {
     console.log('[ATTACH:LOCATION] Ignorado por debounce');
-    return;
+    return Promise.resolve();
   }
   _lastLocationSent = now;
-  var payload = JSON.stringify({ lat: lat, lng: lng, accuracy: accuracy || 0 });
-  _sendAttachment('location', payload, { lat: lat, lng: lng, accuracy: accuracy || 0 });
-  console.log('[ATTACH] Ubicacion enviada');
+  var cid = _getCurrentContactId();
+  var meta = { lat: lat, lng: lng, accuracy: accuracy || 0 };
+  var payload = JSON.stringify(meta);
+  var toast = false;
+  var slow = setTimeout(function() { toast = true; _showInfoToast(t('media_location_map', '📍 Preparando el mapa…'), LOC_MAP_WAIT_MS + 1000); }, 700);
+  return locationMap(lat, lng, accuracy, LOC_MAP_WAIT_MS).then(function(map) {
+    clearTimeout(slow);
+    if (toast) _hideInfoToast();
+    if (map) meta.map = map;
+    _sendAttachment('location', payload, meta, cid ? { contactId: cid } : undefined);
+    console.log('[ATTACH] Ubicacion enviada' + (map ? ' con mapa' : ' sin mapa'));
+  });
 }
 
 // Sin el plugin: la API del navegador

@@ -189,7 +189,7 @@ export function _setupMessageActions() {
   // 3143: un mensaje que aún no está en el vault (recién enviado, o con otro id) se puede responder igual: se arma desde la burbuja
   var domMsg = function(div) {
     var tx = div.querySelector('.msg-text'), own = div.classList.contains('own');
-    var att = div.querySelector('img,video,audio,.audio-player,[data-fullscreen-type]');
+    var att = div.querySelector('img:not(.nx-loc-map),video,audio,.audio-player,[data-fullscreen-type]'); // 3201: el mapa de una ubicación no es una foto
     var txt = tx ? tx.textContent : (div.querySelector('.msg-content') || div).textContent;
     return { msgId: div.dataset.msgId, _own: own, content: att && !tx ? '' : String(txt || ''), attachmentType: (!tx && att) ? (att.tagName === 'VIDEO' ? 'video' : (att.tagName === 'AUDIO' || (att.className || '').indexOf('audio') > -1 ? 'audio' : 'image')) : undefined };
   };
@@ -575,8 +575,19 @@ export function _openForwardSheet(msg) {
 // sola vez, se manda al primero y, cuando ese envío termina (o queda pendiente), al siguiente. Lo chico sigue yendo a la vez.
 var FWD_SEQ_CHARS = 1500000;
 var FWD_STEP_MAX_MS = 30 * 60 * 1000;   // tope por contacto, por si un envío no vuelve nunca
+// 3201: una UBICACIÓN recibida 1-a-1 se guarda tal como llegó (el adjunto dentro de content, attachmentType vacío: render.js la lee de
+// ahí). Al reenviarla iba como TEXTO con el JSON dentro (el otro veía el JSON); ahora va como ubicación, con su mapa (meta.map) tal cual,
+// sin volver a bajarlo
+function _fwdAttachment(msg) {
+  if (!msg || msg.attachmentType || typeof msg.content !== 'string' || msg.content.indexOf('"location"') < 0) return msg;
+  var p = null;
+  try { p = JSON.parse(msg.content); } catch (e) { return msg; }
+  if (!p || p.type !== 'attachment' || p.attachmentType !== 'location' || typeof p.payload !== 'string' || !p.payload) return msg;
+  return Object.assign({}, msg, { attachmentType: 'location', attachmentPayload: p.payload, attachmentMeta: (p.meta && typeof p.meta === 'object') ? p.meta : {} });
+}
 export async function _forwardToMany(ids, msg) {
   ids = ids || [];
+  msg = _fwdAttachment(msg);
   if (!msg || !msg.attachmentType || ids.length < 2) return Promise.all(ids.map(function(cid) { return _forwardTo(cid, msg); }));
   var prep = await _forwardPrepare(msg);
   if (!prep || !prep.payload || prep.payload.length <= FWD_SEQ_CHARS) return Promise.all(ids.map(function(cid) { return _forwardTo(cid, msg, prep); }));
@@ -605,6 +616,7 @@ async function _forwardPrepare(msg) {
 }
 
 export async function _forwardTo(cid, msg, prep, onSettled) {
+  msg = _fwdAttachment(msg);
   if (msg.attachmentType) {
     if (msg.onceSeen || (msg.attachmentMeta && msg.attachmentMeta.once)) return false; // 3164: «ver una vez» nunca se reenvía
     if (!prep) prep = await _forwardPrepare(msg);

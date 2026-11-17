@@ -1,4 +1,4 @@
-import { _nativePlugin, _safeNativeCall, VAULT_MESSAGES_PREFIX, _normId, _msgCache, _msgLoading, _withMsgLock, _editableText, _editedContent } from './vault_shared.js';
+import { _nativePlugin, _safeNativeCall, VAULT_MESSAGES_PREFIX, _normId, _msgCache, _msgLoading, _withMsgLock, _editableText, _editedContent, _cleanLocMap } from './vault_shared.js';
 import { _vaultContacts, _getContactIdentity } from './vault_contacts.js';
 import { vaultBigxOutDrop, vaultBigxInDrop } from './vault_big.js';
 import { vaultEarlyReady, vaultEarlyLoaded, vaultEarlyQueue, vaultEarlyApply } from './vault_early_acts.js';
@@ -297,6 +297,7 @@ export async function vaultAppendMessage(contactNexoId, message) {
     console.warn('[VaultManager] Protocol JSON rejected from vault:', txt.substring(0, 60));
     return null;
   }
+  _cleanLocMap(message); // 3201: la miniatura del mapa de una ubicación solo se guarda si es una imagen en base64 válida (vault_shared.js)
   var cid = _normId(contactNexoId);
   return _withMsgLock(cid, function() { return _appendMessageNow(cid, message); });
 }
