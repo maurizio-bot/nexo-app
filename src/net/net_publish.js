@@ -1,5 +1,5 @@
 import { schnorr } from '@noble/curves/secp256k1.js';
-import { _event, BLOB_KIND, _relaySafe, _relayHost, _rnd } from './net_link_shared.js';
+import { _event, BLOB_KIND, _relaySafe, _relayHost, _rnd, SEND_SILENT_MS } from './net_link_shared.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 // Métodos de NetLink: PUBLICAR y BAJAR: eventos en los relés, buzón de archivos, publicar en varios y bajar por id.
 // Reestructuración 15-11: movidos TAL CUAL desde net_link.js, que los une a la clase (como métodos normales).
@@ -111,17 +111,30 @@ export const netPublish = {
       // antes solo lo borraba el que contestaba OK, y con un relé que acepta pero nunca manda OK, r.waits crecía toda la
       // conexión (fuga lenta).
       var cleanup = function() { open.forEach(function(r) { r.waits.delete(ev.id); }); };
-      var tSent = Date.now();
+      var tSent = Date.now(), early = null;
       // 3011: sin respuesta de NINGÚN relé → los que no dijeron nada desde el envío están muertos: se reconectan (el reintento va por una conexión nueva)
-      var timer = setTimeout(function() { if (!done) { done = true; cleanup(); self._dropSilent(tSent, 'sin respuesta a un envío', only); reject(Object.assign(new Error('Los relés no respondieron'), { code: 'NET_DOWN' })); } }, 12000);
+      var timer = setTimeout(function() { if (!done) { done = true; clearTimeout(early); cleanup(); self._dropSilent(tSent, 'sin respuesta a un envío', only); reject(Object.assign(new Error('Los relés no respondieron'), { code: 'NET_DOWN' })); } }, 12000);
+      // 3174 (dueño 17-11, diagnóstico S24 19:49:38: datos móviles trabados, «Texto entregado en 14085 ms»): si en SEND_SILENT_MS no
+      // dijo NADA ningún relé (ni su OK ni otra cosa) se les pregunta lo mínimo; si tampoco contestan, el problema es la conexión
+      // del teléfono: se reconectan ya (≈5 s, antes 12) y el envío se reintenta por las conexiones nuevas. Con que uno conteste algo
+      // (van lentos), se espera como siempre. No por un puente Bluetooth (sus tiempos son otros).
+      if (!open.some(function(r) { return r.gw; })) early = setTimeout(function() {
+        if (done || open.some(function(r) { return (r.rxAt || 0) >= tSent; })) return;
+        self._sendProbe(open, tSent, function(alive) {
+          if (done || alive) return;
+          done = true; clearTimeout(timer); cleanup();
+          self._dropSilent(tSent, 'sin respuesta a un envío ni a una comprobación en ' + Math.round((Date.now() - tSent) / 1000) + ' s', only);
+          reject(Object.assign(new Error('Los relés no respondieron'), { code: 'NET_DOWN' }));
+        });
+      }, SEND_SILENT_MS);
       open.forEach(function(r) {
         r.waits.set(ev.id, function(ok, msg) {
           if (done) return;
-          if (ok) { done = true; clearTimeout(timer); cleanup(); resolve(true); return; }
+          if (ok) { done = true; clearTimeout(timer); clearTimeout(early); cleanup(); resolve(true); return; }
           why = msg || why;
-          if (--left === 0) { done = true; clearTimeout(timer); cleanup(); reject(Object.assign(new Error('Rechazado por los relés: ' + why), { code: 'NET_REJECTED' })); }
+          if (--left === 0) { done = true; clearTimeout(timer); clearTimeout(early); cleanup(); reject(Object.assign(new Error('Rechazado por los relés: ' + why), { code: 'NET_REJECTED' })); }
         });
-        if (!self._send(r, ['EVENT', ev])) { r.waits.delete(ev.id); if (--left === 0 && !done) { done = true; clearTimeout(timer); cleanup(); reject(Object.assign(new Error('Sin relés'), { code: 'NET_DOWN' })); } }
+        if (!self._send(r, ['EVENT', ev])) { r.waits.delete(ev.id); if (--left === 0 && !done) { done = true; clearTimeout(timer); clearTimeout(early); cleanup(); reject(Object.assign(new Error('Sin relés'), { code: 'NET_DOWN' })); } }
       });
     });
   },

@@ -101,6 +101,8 @@ async function freshB(B) { const net = B.win.bleInterface.net; net._closeAll(); 
   await sleep(500);
   sendText(A, 'al volver');
   r.M1_llega_s = await waitFor(got('al volver'), 90000);
+  // 3174: el ✓✓ es una ida y vuelta más (B confirma por los relés): se espera hasta 10 s en vez de mirarlo en el mismo instante en que llega
+  r.M1_entregado_s = await waitFor(async () => /delivered|read/.test(String(await st('al volver')())), 10000);
   r.M1_estado = await st('al volver')();
 
   // ---- M2: con la app a la vista, las conexiones de A se quedan mudas (cambio de red) y A escribe ----
@@ -109,6 +111,8 @@ async function freshB(B) { const net = B.win.bleInterface.net; net._closeAll(); 
   r.M2_B_reconecta = (await freshB(B)) !== null;
   sendText(A, 'red cambiada');
   r.M2_llega_s = await waitFor(got('red cambiada'), 90000);
+  // 3174: el ✓✓ es una ida y vuelta más (B confirma por los relés): se espera hasta 10 s en vez de mirarlo en el mismo instante en que llega
+  r.M2_entregado_s = await waitFor(async () => /delivered|read/.test(String(await st('red cambiada')())), 10000);
   r.M2_estado = await st('red cambiada')();
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);

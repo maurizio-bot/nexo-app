@@ -62,6 +62,12 @@ var RELAY_PROBE_MS = 5000;          // tiempo para contestar a la pregunta de co
 var RELAY_IDLE_PROBE_MS = 120000;   // un relé callado más que esto (con la app a la vista) se comprueba
 var RELAY_BG_PROBE_MS = 10000;      // al volver a la app tras al menos esto en segundo plano, se comprueban todos
 var RELAY_PROBE_ID = '0000000000000000000000000000000000000000000000000000000000000000';
+// 3174 (dueño 17-11, diagnóstico S24 19:49: con los datos móviles trabados un texto tardó 14 s): un envío sin NINGUNA respuesta de
+// NINGÚN relé en SEND_SILENT_MS (ni su OK ni nada) no espera los 12 s: se les hace la pregunta mínima y, si en SEND_PROBE_MS
+// tampoco contesta ninguno, la conexión del teléfono está trabada: se reconectan ya y el envío se reintenta por las nuevas.
+// Si alguno contesta algo (OK, la pregunta o cualquier otra cosa), solo van lentos: se espera como siempre.
+var SEND_SILENT_MS = 3000;
+var SEND_PROBE_MS = 2000;
 var RELAY_OFFLINE_RETRY_MS = 15000; // medición de caminos (3050): sin NINGÚN relé propio abierto, se reintenta como mucho cada 15 s
 var RELAY_MIN_OTHERS = 2;           // solo se aparta si quedan al menos tantos OTROS relés abiertos (no quedarse sin red)
 var WAKE_MIN_MS = 8000;       // M1 (auditoría 28-10): como mucho un «toque» FCM por par cada 8 s (ráfaga de textos)
@@ -125,4 +131,4 @@ function _reqScalar(id, day) { return _scalar(sha256(_utf8('NEXO-REQ-v1|' + _nid
 function _reqTagPub(id, day) { return bytesToHex(schnorr.getPublicKey(_reqScalar(id, day))); }
 function _reqAesKey(id) { return sha256(_utf8('NEXO-REQ-ENC-v1|' + _nid(id))); }
 
-export { DEFAULT_RELAYS, SPARE_RELAYS, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, OWN_RELAYS, OWN_PUBLIC_BACKUP, OWN_RETRY_MAX_MS, OWN_FLAP_PENALTY_MS, OWN_BLOB_PAR, OWN_BAD_MS, OWN_ANNOUNCE_GAP_MS, _relaySafe, KIND, BLOB_KIND, UP_MS, HELLO_MS, TICK_MS, TTL_MSG, TTL_CHUNK, TTL_HELLO, TTL_RT, MAX_CONTENT, MAX_RELAY_FRAME, NET_CHANGE_SETTLE_MS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_FLAP_PENALTY_MS, RELAY_PROBE_MS, RELAY_IDLE_PROBE_MS, RELAY_BG_PROBE_MS, RELAY_PROBE_ID, RELAY_OFFLINE_RETRY_MS, RELAY_MIN_OTHERS, WAKE_MIN_MS, CALL_WAKE_MIN_MS, XFER_WAKE_MIN_MS, DEFAULT_SENDER, STATE_FILE, N, _nid, _relayHost, _plugin, _day, _utf8, _b64, _unb64, _cat, _rnd, _scalar, _event, _reqScalar, _reqTagPub, _reqAesKey };
+export { DEFAULT_RELAYS, SPARE_RELAYS, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, OWN_RELAYS, OWN_PUBLIC_BACKUP, OWN_RETRY_MAX_MS, OWN_FLAP_PENALTY_MS, OWN_BLOB_PAR, OWN_BAD_MS, OWN_ANNOUNCE_GAP_MS, _relaySafe, KIND, BLOB_KIND, UP_MS, HELLO_MS, TICK_MS, TTL_MSG, TTL_CHUNK, TTL_HELLO, TTL_RT, MAX_CONTENT, MAX_RELAY_FRAME, NET_CHANGE_SETTLE_MS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_FLAP_PENALTY_MS, RELAY_PROBE_MS, RELAY_IDLE_PROBE_MS, RELAY_BG_PROBE_MS, RELAY_PROBE_ID, SEND_SILENT_MS, SEND_PROBE_MS, RELAY_OFFLINE_RETRY_MS, RELAY_MIN_OTHERS, WAKE_MIN_MS, CALL_WAKE_MIN_MS, XFER_WAKE_MIN_MS, DEFAULT_SENDER, STATE_FILE, N, _nid, _relayHost, _plugin, _day, _utf8, _b64, _unb64, _cat, _rnd, _scalar, _event, _reqScalar, _reqTagPub, _reqAesKey };

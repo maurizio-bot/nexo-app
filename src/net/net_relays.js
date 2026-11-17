@@ -1,4 +1,4 @@
-import { _relayHost, OWN_RETRY_MAX_MS, OWN_FLAP_PENALTY_MS, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_MIN_OTHERS, RELAY_FLAP_PENALTY_MS, RELAY_OFFLINE_RETRY_MS, _rnd, RELAY_PROBE_ID, RELAY_PROBE_MS, NET_CHANGE_SETTLE_MS, KIND, MAX_RELAY_FRAME, _event } from './net_link_shared.js';
+import { _relayHost, OWN_RETRY_MAX_MS, OWN_FLAP_PENALTY_MS, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_MIN_OTHERS, RELAY_FLAP_PENALTY_MS, RELAY_OFFLINE_RETRY_MS, _rnd, RELAY_PROBE_ID, RELAY_PROBE_MS, SEND_PROBE_MS, NET_CHANGE_SETTLE_MS, KIND, MAX_RELAY_FRAME, _event } from './net_link_shared.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 // Métodos de NetLink: RELÉS: conectar, caídas y relés inestables, cambios de red, comprobar los callados, suscribirse y lo que llega de ellos.
 // Reestructuración 15-11: movidos TAL CUAL desde net_link.js, que los une a la clase (como métodos normales).
@@ -154,6 +154,19 @@ export const netRelays = {
         else self._send(r, ['CLOSE', sub]);
       }, RELAY_PROBE_MS);
     });
+  },
+  // 3174: un envío sin respuesta de ningún relé en SEND_SILENT_MS: la pregunta mínima a esos relés (una por relé aunque haya
+  // varios envíos a la vez: la respuesta sirve a todos). cb(true) si alguno dijo algo desde `since` en SEND_PROBE_MS más.
+  _sendProbe(list, since, cb) {
+    var self = this, t0 = Date.now();
+    list.forEach(function(r) {
+      if (!r.open || !r.ws || (r.sendProbeAt && t0 - r.sendProbeAt < SEND_PROBE_MS)) return;
+      var ws = r.ws, sub = 'pb' + bytesToHex(_rnd(4));
+      r.sendProbeAt = t0;
+      self._send(r, ['REQ', sub, { ids: [RELAY_PROBE_ID], limit: 1 }]);
+      setTimeout(function() { if (r.ws === ws && r.open && (r.rxAt || 0) >= t0) self._send(r, ['CLOSE', sub]); }, SEND_PROBE_MS);
+    });
+    setTimeout(function() { cb(list.some(function(r) { return r.open && (r.rxAt || 0) >= since; })); }, SEND_PROBE_MS);
   },
   // 3085 (dueño 14-11: «el S24 cambia de Wi-Fi a datos en automático y muy rápido, ¿por qué nosotros somos lentos?»): la app solo
   // escuchaba «entré a un Wi-Fi»; al pasar de Wi-Fi a datos (o al revés) sus conexiones a los relés quedaban colgadas de la red vieja
