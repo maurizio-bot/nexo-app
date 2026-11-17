@@ -163,7 +163,7 @@ export class BleAckSystem {
       self._restartStream(st, id, next);
       moved++;
     });
-    return moved;
+    return moved + self._upgradeQueued(nx, lanOk, why); // 3180: y lo que esperaba en la cola del Bluetooth ocupado
   }
   // 3080: el repaso del vigilante (cada ~6 s) mira los archivos que van por Bluetooth (el camino rápido pudo quedar listo sin
   // aviso, o el Bluetooth se volvió lento a mitad)
@@ -174,8 +174,11 @@ export class BleAckSystem {
       var nx = _normId(st._dn || self._resolveNexoId(st.deviceId));
       if (nx && /^nx[0-9a-z]{8}$/.test(nx)) seen.add(nx);
     });
+    // 3180: también los contactos con algo en la cola del Bluetooth ocupado, y la cola se repasa por si quedó un hueco sin aviso
+    self._fileStartQueue.forEach(function(it) { var nx = _normId(self._resolveNexoId(it.deviceId)); if (/^nx[0-9a-z]{8}$/.test(nx)) seen.add(nx); });
     var n = 0;
     seen.forEach(function(nx) { n += self.upgradeLinks(nx, why); });
+    self._pumpFileQueue();
     return n;
   }
   hasActiveTransfer(deviceId) {
@@ -870,8 +873,9 @@ export class BleAckSystem {
     var stream = new ChatStream(self, deviceId, msgId, data, fm, kind === 'chat' ? 'chat' : 'file');
     self.outgoingStreams.set(msgId, stream);
     stream._promise = stream.start();
-    return stream._promise.then(function() { self.outgoingStreams.delete(msgId); },
-      function(err) { self.outgoingStreams.delete(msgId); throw err; });
+    // 3180: un reenvío de Jump ocupa el hueco de archivos de ese enlace: al terminar, la cola del Bluetooth ocupado sigue (antes no avisaba)
+    return stream._promise.then(function() { self.outgoingStreams.delete(msgId); self._pumpFileQueue(); },
+      function(err) { self.outgoingStreams.delete(msgId); self._pumpFileQueue(); throw err; });
   }
   _processBlockAck(msg) {
     var transferId = msg.transferId;

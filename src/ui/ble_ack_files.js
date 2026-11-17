@@ -245,8 +245,21 @@ export const ackFiles = {
         return;
       }
       // #129 parte 2: si ya está esperando en la cola de arranque (otro reenvío pidió lo mismo), no duplicar
+      var isBle = !_isNetDevice(deviceId) && !_isLanDevice(deviceId);
       var q = self._fileStartQueue.get(fileId);
-      if (q) { q.waiters.push({ resolve: resolve, reject: reject }); return; }
+      if (q) {
+        // 3180 (ciudad 17-11: fotos ⏳ toda la fase final con «Reenviando ADJUNTO» y ningún «sendFile START»): un reenvío por OTRO
+        // camino (Wi-Fi, internet) o con hueco en el Bluetooth sale YA; antes solo se sumaba a la espera de la cola del Bluetooth
+        if (isBle && self._bleFileSlots(deviceId, _isBulkFileData(base64Data)) >= self._maxBleFilesPerLink) {
+          q.waiters.push({ resolve: resolve, reject: reject });
+          q.deviceId = deviceId; q.data = base64Data; q.meta = meta; // espera con lo del último intento (su enlace y su sobre)
+          return;
+        }
+        self._fileStartQueue.delete(fileId);
+        console.log('[BleAckSystem] sendFile ' + fileId + ' esperaba en la cola del Bluetooth ocupado: sale ya por ' + (isBle ? 'Bluetooth (hay hueco)' : _isLanDevice(deviceId) ? 'Wi-Fi' : 'internet'));
+        self._startQueued(deviceId, fileId, base64Data, meta, q.waiters.concat([{ resolve: resolve, reject: reject }]));
+        return;
+      }
       // #129 parte 2 (dueño 01-11): no inundar un enlace BLUETOOTH (MTU 23) arrancando muchas transferencias de
       // archivo a la vez. Máximo _maxBleFilesPerLink por enlace Bluetooth; las demás esperan en cola y arrancan al
       // liberarse un hueco, así los textos/acks/control (que NO se limitan) tienen aire y no se quedan en ○ detrás de
@@ -254,7 +267,6 @@ export const ackFiles = {
       // #dueño 05-11: cupo POR CLASE. Un archivo GRANDE hace cola detrás de otro grande; uno CHICO (foto/sticker) hace
       // cola detrás de otro chico — PERO un chico arranca YA aunque haya un grande en curso (son clases distintas) → la
       // foto no espera a que termine el archivo grande, y a la vez NO se inunda el enlace con muchos (máx. 1 por clase, #129).
-      var isBle = !_isNetDevice(deviceId) && !_isLanDevice(deviceId);
       if (isBle && self._bleFileSlots(deviceId, _isBulkFileData(base64Data)) >= self._maxBleFilesPerLink) {
         self._fileStartQueue.set(fileId, { deviceId: deviceId, data: base64Data, meta: meta, at: Date.now(), waiters: [{ resolve: resolve, reject: reject }] });
         console.log('[BleAckSystem] sendFile EN COLA (enlace Bluetooth ocupado) fileId=' + fileId + ' to=' + deviceId + ' cola=' + self._fileStartQueue.size);
@@ -293,29 +305,52 @@ export const ackFiles = {
       if (bigx || finalMeta._bigxResumed) { try { window.vaultBigxOutDrop(fileId).catch(function() {}); } catch (e) {} }
       console.log('[BleAckSystem] sendFile OK fileId=' + fileId);
       resolve();
-      self._pumpFileQueue(deviceId);
+      self._pumpFileQueue();
     }).catch(function(err) {
       self.outgoingStreams.delete(fileId);
       console.warn('[BleAckSystem] sendFile FAIL fileId=' + fileId, err && err.message);
       reject(err);
-      self._pumpFileQueue(deviceId);
+      self._pumpFileQueue();
     });
   },
-  // #129 parte 2: al liberarse un hueco, arrancar la siguiente transferencia de archivo en cola para ese enlace Bluetooth
-  _pumpFileQueue(deviceId) {
+  // #129 parte 2: al liberarse un hueco, arrancar la siguiente transferencia de archivo en cola que lo tenga (de su clase, grande/chico)
+  // 3180 (ciudad 17-11): se mira TODA la cola, no solo el enlace que avisó: un hueco que se abrió sin aviso (un reenvío de Jump que
+  // terminó —forwardStream no avisaba—, un enlace con otra dirección) dejaba el archivo esperando para siempre. Lo llama también el
+  // repaso del vigilante (upgradeAll), por si acaso.
+  _pumpFileQueue() {
     var self = this;
     if (!self._fileStartQueue || self._fileStartQueue.size === 0) return;
-    var mac = _normMac(deviceId), nx = self._resolveNexoId(deviceId), pick = null, pickId = null;
-    self._fileStartQueue.forEach(function(it, id) {
-      if (pick || _isNetDevice(it.deviceId) || _isLanDevice(it.deviceId)) return;
-      if (!(_normMac(it.deviceId) === mac || self._resolveNexoId(it.deviceId) === nx)) return;
-      if (self._bleFileSlots(it.deviceId, _isBulkFileData(it.data)) < self._maxBleFilesPerLink) { pick = it; pickId = id; }  // arranca el siguiente de la clase (grande/chico) que tenga hueco
+    Array.from(self._fileStartQueue.entries()).forEach(function(kv) {
+      var id = kv[0], it = kv[1];
+      if (self._fileStartQueue.get(id) !== it || _isNetDevice(it.deviceId) || _isLanDevice(it.deviceId)) return;
+      if (self._bleFileSlots(it.deviceId, _isBulkFileData(it.data)) >= self._maxBleFilesPerLink) return;
+      self._fileStartQueue.delete(id);
+      self._startQueued(it.deviceId, id, it.data, it.meta, it.waiters);
     });
-    if (!pick) return;
-    self._fileStartQueue.delete(pickId);
-    var waiters = pick.waiters || [];
-    self._startFileStream(pick.deviceId, pickId, pick.data, pick.meta,
-      function() { waiters.forEach(function(w) { try { w.resolve(); } catch (e) {} }); },
-      function(err) { waiters.forEach(function(w) { try { w.reject(err); } catch (e) {} }); });
+  },
+  // Arranca un archivo que esperaba en la cola; avisa a todos los que lo esperaban
+  _startQueued(deviceId, fileId, data, meta, waiters) {
+    var ws = waiters || [];
+    this._startFileStream(deviceId, fileId, data, meta,
+      function() { ws.forEach(function(w) { try { w.resolve(); } catch (e) {} }); },
+      function(err) { ws.forEach(function(w) { try { w.reject(err); } catch (e) {} }); });
+  },
+  // 3180: Wi-Fi o internet listo con nx (upgradeLinks): lo que esperaba en la cola del Bluetooth ocupado para él sale ya por ahí (no
+  // lo de Jump/puente ni los respaldos Fénix; por internet, con las mismas reglas que _sendFileBest). Devuelve cuántos salieron.
+  _upgradeQueued(nx, lanOk, why) {
+    var self = this, ble = self.ble, net = ble && ble.net, moved = 0;
+    if (!self._fileStartQueue || !self._fileStartQueue.size) return 0;
+    Array.from(self._fileStartQueue.entries()).forEach(function(kv) {
+      var id = kv[0], it = kv[1], len = String(it.data || '').length;
+      if (_isNetDevice(it.deviceId) || _isLanDevice(it.deviceId)) return;
+      if (it.meta && (it.meta.dst || it.meta.fwd || it.meta.type === 'fenix')) return;
+      if (_normId(self._resolveNexoId(it.deviceId)) !== nx) return;
+      if (!lanOk && !((typeof net.filesOk === 'function' && net.filesOk(nx)) || (typeof net.mailboxFilesOk === 'function' && net.mailboxFilesOk(nx, len) && len <= NET_MAX_B64_BYTES))) return;
+      self._fileStartQueue.delete(id);
+      console.log('[BleAckSystem] sendFile ' + id + ' esperaba en la cola del Bluetooth ocupado: ' + (lanOk ? 'Wi-Fi' : 'internet') + ' listo con ' + nx + ' (' + (why || 'repaso') + '): sale ya por ahí');
+      self._startQueued((lanOk ? 'lan:' : 'net:') + nx, id, it.data, it.meta, it.waiters);
+      moved++;
+    });
+    return moved;
   },
 };
