@@ -12,33 +12,33 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Fotos más nítidas: se mandan a mayor tamaño y calidad, sobre todo por Wi-Fi e internet.
-- «Cámara» abre la cámara de tu teléfono: fotos con toda su calidad y modo noche. Si sales sin tomar foto, puedes grabar video con la de NEXO.
-- Ya no te llegan avisos del chat que tienes abierto.
+- Los mensajes que ya llegaron ya no se quedan como pendientes ni se vuelven a mandar al abrir la app.
+- Con datos móviles lentos, NEXO se da cuenta antes y tus mensajes salen más rápido.
 </es-419>
 <it-IT>
-- Foto più nitide: si inviano più grandi e con più qualità, soprattutto via Wi-Fi e internet.
-- «Fotocamera» apre la fotocamera del tuo telefono: foto con tutta la sua qualità e modalità notte. Se esci senza scattare, puoi registrare un video con quella di NEXO.
-- Non ricevi più notifiche della chat che hai aperta.
+- I messaggi già arrivati non restano più in sospeso e non vengono rinviati quando riapri l'app.
+- Con dati mobili lenti, NEXO se ne accorge prima e i tuoi messaggi partono più in fretta.
 </it-IT>
 <en-US>
-- Sharper photos: they're sent larger and in higher quality, especially over Wi-Fi and the internet.
-- “Camera” opens your phone's own camera: photos in full quality with night mode. If you leave without taking a photo, you can record video with NEXO's camera.
-- No more notifications from the chat you have open.
+- Messages that already arrived no longer stay pending or get sent again when you reopen the app.
+- On slow mobile data, NEXO notices sooner and your messages go out faster.
 </en-US>
 <pt-BR>
-- Fotos mais nítidas: são enviadas maiores e com mais qualidade, principalmente por Wi-Fi e internet.
-- «Câmera» abre a câmera do seu celular: fotos com toda a qualidade e modo noturno. Se sair sem tirar foto, você pode gravar vídeo com a do NEXO.
-- Você não recebe mais notificações do chat que está aberto.
+- As mensagens que já chegaram não ficam mais pendentes nem são enviadas de novo ao abrir o app.
+- Com dados móveis lentos, o NEXO percebe antes e suas mensagens saem mais rápido.
 </pt-BR>
 <fr-FR>
-- Photos plus nettes : elles sont envoyées plus grandes et de meilleure qualité, surtout en Wi-Fi et sur internet.
-- « Caméra » ouvre l'appareil photo de votre téléphone : photos en pleine qualité avec le mode nuit. Si vous sortez sans prendre de photo, vous pouvez filmer avec la caméra de NEXO.
-- Plus de notifications de la discussion que vous avez ouverte.
+- Les messages déjà arrivés ne restent plus en attente et ne sont plus renvoyés à la réouverture de l'app.
+- Avec des données mobiles lentes, NEXO s'en rend compte plus tôt et vos messages partent plus vite.
 </fr-FR>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3081 (16-11-2026)
+- Fotos más nítidas: se mandan a mayor tamaño y calidad, sobre todo por Wi-Fi e internet.
+- «Cámara» abre la cámara de tu teléfono: fotos con toda su calidad y modo noche. Si sales sin tomar foto, puedes grabar video con la de NEXO.
+- Ya no te llegan avisos del chat que tienes abierto.
 
 ### APK 3080 (16-11-2026)
 - Los estados ahora tienen su propia pantalla: desliza Contactos hacia la izquierda para verlos.

@@ -21,6 +21,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **16-11 21:30 (México) — APK 3081 PUBLICADA (21:17; 3170–3172). APK subida con 3173/3174** (pendiente ya entregado que se «reenviaba»
+  y se duplicaba al reiniciar —caché de historiales de 20 chats—; datos móviles trabados: ~5 s en vez de 12). Ciudad (`tests/sim/ciudad.js`,
+  12 teléfonos) integrada: 98,7–99,4 % entregado, 0 excepciones; encontró fallos: en curso 3175–3177 (acción antes que su mensaje —borrar
+  para todos que no borra—, reacciones sin fx, foto de grupo rota por el buzón; worktree wtacc) y 3178–3180 (leídos que no vuelven,
+  puente→buzón sin reintento, cola de archivos; wtrec). Después: lo aprobado por el dueño (adjuntos por contenido real, lo que llega al
+  nativo, cuota de espacio) y Fénix con guardianes tramposos. Nombre: Runa favorito (nexo-private/negocio/NOMBRE.md).
 - **16-11 20:25 (México) — APK subida a NEXOCHAT (3170–3172):** fotos más nítidas (3170/3170b), «Cámara» abre la cámara del teléfono
   (3171, @capacitor/camera; NATIVO: ruta del FileProvider en file_paths.xml) y sin avisos del chat abierto por internet (3172, NATIVO
   NetBg). Vigilar que compile. En curso: 3173/3174 (worktree wtpend) y Ciudad (wtciudad).
