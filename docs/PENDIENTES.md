@@ -75,7 +75,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   descargada sin instalar; Motorola sin segundo plano): su ✓✓ del pedido de diagnóstico (msg…r2052km1s) llegaba «sin firma válida» y el
   S24 lo reenvió 25 min. **Investigar «confirmación sin firma válida»** (Zhelowsky→HONOR/S24, dueño→Marcos): ackTag (BT) y ackMac (NetBg)
   firman igual; sospecha: clave de pareja vieja en uno de los dos (e2eAckKey(c.publicKey) con la llave antigua del otro). Mirar cuando
-  Zhelowsky actualice.
+  Zhelowsky actualice. Revisado 17-11 18:05 (México): descartado que sea la forma de escribir los NEXO ID (la parte nativa y la app
+  usan minúsculas y los mismos campos «ack|msgId|yo|contacto») y descartado que la parte nativa guarde claves viejas (setAckKeys
+  reemplaza todo el mapa y lo guarda cifrado igual). Queda solo que los dos teléfonos tengan distinta clave pública del otro (uno
+  reinstaló o cambió de llave): eso se ve en el diagnóstico de los DOS lados del mismo momento.
 - NX…DBFE (3087, Galaxy A05s, Italia): versión vieja; 217 MB de Wi-Fi hoy (archivos por el buzón: 18 enviados, 22 recibidos) y 2
   cierres por falta de memoria; Bluetooth con richard atascado («Write fallo ~6 s») mientras el Wi-Fi local llevaba los mensajes.
 
