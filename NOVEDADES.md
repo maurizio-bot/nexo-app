@@ -12,14 +12,28 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Si Android cierra NEXO (por una actualización o al reiniciar), vuelve sola y sigue recibiendo mensajes por internet sin que la abras.
+- Con datos móviles NEXO gasta menos datos y tus fotos y notas de voz salen más rápido.
 </es-419>
 <it-IT>
+- Se Android chiude NEXO (per un aggiornamento o al riavvio), si riapre da sola e continua a ricevere messaggi via internet senza aprirla.
+- Con i dati mobili NEXO consuma meno dati e foto e vocali partono più in fretta.
+- I pulsanti delle richieste di contatto ora sono in italiano.
 </it-IT>
 <en-US>
+- If Android closes NEXO (after an update or a restart), it comes back on its own and keeps receiving messages over the internet without opening it.
+- On mobile data NEXO uses less data and your photos and voice notes go out faster.
+- Contact request buttons are now in English.
 </en-US>
 <pt-BR>
+- Se o Android fechar o NEXO (por uma atualização ou ao reiniciar), ele volta sozinho e continua recebendo mensagens pela internet sem você abrir.
+- Com dados móveis o NEXO gasta menos dados e suas fotos e áudios saem mais rápido.
+- Os botões das solicitações de contato agora estão em português.
 </pt-BR>
 <fr-FR>
+- Si Android ferme NEXO (après une mise à jour ou un redémarrage), il revient tout seul et continue de recevoir les messages par internet sans l'ouvrir.
+- Avec les données mobiles, NEXO consomme moins et vos photos et vocaux partent plus vite.
+- Les boutons des demandes de contact sont maintenant en français.
 </fr-FR>
 <!-- /APK -->
 
