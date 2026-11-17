@@ -160,6 +160,15 @@ empezar?». Claude lo aplica así:
 - **Costo de limpiar:** se pierde el tono de la conversación; por eso lo que importa (decisiones, ideas, reglas, estilo de
   trabajo) se escribe en `COMO_TRABAJAMOS.md`, `ESTADO.md` y `IDEAS.md` antes de cambiar.
 
+## 10. Ideas de Claude (reclamo del dueño, 16-11 21:40: «¿por qué el de las ideas brillantes siempre soy yo?… esas ideas deberían venir de ti»)
+Tiene razón: la simulación de ciudad, el juego secreto y la cámara del teléfono salieron de él; Claude trabajaba en modo «resolver lo que
+llega» y no se paraba a preguntarse qué falta. Regla desde hoy:
+- Al cerrar cada bloque grande y al menos una vez al día, Claude propone **2–3 ideas suyas** (marcadas «Idea de Claude»): cosas que el
+  dueño no pidió — riesgos que nadie mira, maneras de encontrar fallos antes que los usuarios, mejoras que un usuario notaría. Cortas,
+  con el porqué y el costo; el dueño decide. Las aceptadas van a PENDIENTES; las demás al estacionamiento (§5).
+- Preguntas que Claude se hace cada vez: ¿qué fallo veríamos antes con una herramienta nueva? ¿qué haría que un usuario dijera «wow»? ¿qué
+  pasará en EDC (multitud) que hoy no probamos? ¿qué estamos haciendo a mano que se puede automatizar?
+
 ## 7. Registro (Claude lo actualiza)
 - 10-11-2026: documento creado.
 - 10-11-2026: el dueño acepta P2, P3, P4 y el modelo de delegación (P8): «una tarea aburrida al día» y las preguntas ¿para qué?, ¿qué
