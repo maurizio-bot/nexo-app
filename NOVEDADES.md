@@ -12,6 +12,21 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+</es-419>
+<it-IT>
+</it-IT>
+<en-US>
+</en-US>
+<pt-BR>
+</pt-BR>
+<fr-FR>
+</fr-FR>
+<!-- /APK -->
+
+## Historial
+
+### APK 3085 (17-11-2026)
+<es-419>
 - Al grabar una nota de voz, los botones de borrar y enviar ya no se cortan.
 - Con muchos NEXO cerca, la app va más ligera y tus contactos se conectan antes.
 </es-419>
@@ -31,9 +46,6 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Pendant l'enregistrement d'un vocal, les boutons supprimer et envoyer ne sont plus coupés.
 - Avec beaucoup de NEXO autour, l'app est plus légère et vos contacts se connectent plus vite.
 </fr-FR>
-<!-- /APK -->
-
-## Historial
 
 ### APK 3084 (17-11-2026)
 - El «leído» y las dos palomitas llegan aunque se corte la conexión justo en ese momento; los archivos ya no se atoran en la fila.
