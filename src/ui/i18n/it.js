@@ -944,4 +944,8 @@ export default {
   grev_title: "Prima di inviare",
   grev_hint: "Tocca l'occhio di una foto o di un video perché si veda una volta sola",
   grev_video: "Video",
+  grev_opening: "Apro quello che hai scelto…",
+  grev_open_fail: "Impossibile aprire questa foto. Se è nel cloud, aprila prima nella tua galleria e poi sceglila di nuovo.",
+  grev_open_fail_video: "Impossibile aprire questo video. Se è nel cloud, aprilo prima nella tua galleria e poi sceglilo di nuovo.",
+  grev_open_fail_n: "Impossibile aprire {n} degli elementi scelti. Se sono nel cloud, aprili prima nella tua galleria e poi sceglili di nuovo.",
 };

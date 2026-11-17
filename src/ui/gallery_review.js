@@ -7,8 +7,8 @@
  * aplicar lo de una sola vista a vídeos también»): los VÍDEOS también llevan su ojo (además de su indicador de vídeo) y la revisión
  * sale aunque solo se elijan vídeos. «Enviar (N)» devuelve cuáles van de una vez y
  * pickers.js manda todo como siempre (mismo orden, de a una, mismos topes); la ✕ «Cancelar» o el atrás de Android (chat_nav.js,
- * por __nexoClose) cierran sin mandar nada. Las miniaturas son URL de objeto del propio archivo (no se lee ni se copia la foto
- * entera en memoria) y se liberan al cerrar. El aspecto vive en nexo_theme.css (.nx-grev…).
+ * por __nexoClose) cierran sin mandar nada. Las miniaturas son URL de objeto del archivo (3199: de la copia en memoria que pickers.js
+ * hace al elegirlo; el original de Android puede dejar de leerse a los pocos segundos) y se liberan al cerrar. El aspecto vive en nexo_theme.css (.nx-grev…).
  */
 import { t } from './i18n.js';
 import { _releaseMedia } from './ui_bits.js';

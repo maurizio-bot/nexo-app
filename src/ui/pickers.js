@@ -2,7 +2,7 @@
  * NEXO — Elegir foto de la galería o un archivo (sacado de main.js en la ronda 2752, sin cambios en su código): selector
  * del sistema, lectura, compresión de fotos, miniatura de PDF y límites de tamaño. _sendAttachment lo da main.js.
  */
-import { _closeAttachMenu, _showInfoToast, _showPermissionError } from './ui_bits.js';
+import { _closeAttachMenu, _hideInfoToast, _showInfoToast, _showPermissionError } from './ui_bits.js';
 import { _capAttachments, _photoTooBig, GALLERY_MAX } from './attach_cap.js';
 import { _compressImageBase64, _extOf, _isPdf, _mimeOf, _pdfThumb, _readFileBase64 } from './file_tools.js';
 import { _getCurrentContactId } from './chat_format.js';
@@ -80,8 +80,110 @@ export async function _handleGallery() {
     // (meta.once) y la burbuja del miembro la consume igual (como la foto de la cámara). 3163 (dueño 16-11: «hay que aplicar lo de
     // una sola vista a vídeos también»): los vídeos también llevan ojo, así que la revisión sale siempre (aunque solo haya vídeos).
     if (!picked.send.length) return;
-    _reviewAndSendPhotos(picked.send);
+    // 3199 (diagnóstico automático del Motorola edge 40 neo, build 3086, 17-11 08:35 y 08:48): desde la 3160 la foto se LEÍA al tocar
+    // «Enviar», segundos después de elegirla, y Android ya no la dejaba leer (NotReadableError: el archivo cambió desde que se eligió
+    // —Google Fotos, la nube o el selector de fotos dan primero un marcador— o se perdió el permiso temporal): la foto no salía. Ahora
+    // se copia a memoria AL ELEGIRLA, antes de la revisión, y la vista previa, el ojo y el envío usan esa copia.
+    var cid = _getCurrentContactId();
+    _copyPicked(picked.send).then(function(ready) {
+      if (!ready.length) return;
+      if (_getCurrentContactId() !== cid) { console.log('[ATTACH] Galería: ya no estás en ese chat, no se abre la revisión'); return; }
+      _reviewAndSendPhotos(ready);
+    });
   }, true);
+}
+
+// 3199: la copia en memoria de lo elegido en la Galería. Se lee en partes de hasta 4 MB (nunca un búfer enorme de golpe) y con topes:
+// las fotos que se pueden mandar (≤ 5 MB, hasta GALLERY_MAX) siempre; un vídeo solo si pesa ≤ COPY_VIDEO_MAX y cabe en lo que queda de
+// COPY_TOTAL_MAX (un vídeo de hasta un minuto puede pasar de 100 MB: copiarlo entero a memoria podría tumbar el WebView). Al vídeo
+// grande no se le hace copia: se comprueba al elegirlo que se puede leer (sus primeros 64 KB) y sigue con el original, como antes.
+var COPY_CHUNK = 4 * 1024 * 1024;
+var COPY_VIDEO_MAX = 24 * 1024 * 1024;   // ~ el mayor vídeo que sale entero (Wi-Fi Direct); los más grandes se recodifican
+var COPY_TOTAL_MAX = 64 * 1024 * 1024;   // toda la tanda (10 fotos de 5 MB caben)
+var COPY_PROBE = 64 * 1024;
+var COPY_RETRY_MS = 500;
+var COPY_SLOW_MS = 400;                  // si tarda más (fotos en la nube), un aviso breve mientras se abren
+
+function _isVideoFile(f) { return String((f && f.type) || '').indexOf('video') === 0; }
+function _readBuf(b) {
+  if (typeof b.arrayBuffer === 'function') return b.arrayBuffer();
+  return new Promise(function(resolve, reject) {
+    var fr = new FileReader();
+    fr.onload = function() { resolve(fr.result); };
+    fr.onerror = function() { reject(fr.error || new Error('error de lectura')); };
+    fr.readAsArrayBuffer(b);
+  });
+}
+async function _copyFile(file) {
+  var n = file.size || 0, parts = [], off = 0;
+  if (n <= COPY_CHUNK) parts.push(new Blob([await _readBuf(file)]));
+  else {
+    while (off < n) {
+      var buf = await _readBuf(file.slice(off, Math.min(n, off + COPY_CHUNK)));
+      if (!buf.byteLength) break;
+      parts.push(new Blob([buf]));
+      off += buf.byteLength;
+    }
+  }
+  var copy = new File(parts, file.name, { type: file.type, lastModified: file.lastModified });
+  if (!copy.size || (n && copy.size !== n)) throw new Error('copia incompleta (' + copy.size + ' de ' + n + ' bytes)');
+  return copy;
+}
+function _errTxt(e) { return ((e && e.name) || 'Error') + ': ' + ((e && e.message) || e); }
+function _copyLabel(f, i, n) { return (_isVideoFile(f) ? 'vídeo ' : 'foto ') + (i + 1) + ' de ' + n + ' (' + _extOf(f.name) + ', ' + Math.round(f.size / 1024) + ' KB)'; }
+
+// Una: { file } (la copia, o el original si no se copia) o null si no se pudo abrir ni al reintentar.
+async function _copyOne(f, full, label) {
+  for (var round = 0; round < 2; round++) {
+    try {
+      if (!full) { await _readBuf(f.slice(0, Math.min(f.size || COPY_PROBE, COPY_PROBE))); return { file: f, copied: false }; }
+      var copy = await _copyFile(f);
+      try { await _readBuf(copy.slice(copy.size - 1)); } catch (e2) {
+        // la copia no se puede leer de vuelta (memoria llena): mejor el original que nada
+        console.warn('[ATTACH] Galería: la copia de ' + label + ' no se puede leer (' + _errTxt(e2) + '): sigue el original');
+        return { file: f, copied: false };
+      }
+      return { file: copy, copied: true };
+    } catch (e) {
+      if (round === 0) { console.warn('[ATTACH] Galería: no se pudo leer ' + label + ' al elegir (' + _errTxt(e) + '): reintento en ' + COPY_RETRY_MS + ' ms'); await new Promise(function(r) { setTimeout(r, COPY_RETRY_MS); }); }
+      else { console.warn('[ATTACH] Galería: ' + label + ' no se pudo abrir (' + _errTxt(e) + '): no se manda'); }
+    }
+  }
+  return null;
+}
+
+// El aviso claro cuando algo elegido no se pudo abrir
+function _openFailText(failed) {
+  if (failed.length > 1) return t('grev_open_fail_n', 'No se pudieron abrir {n} de las que elegiste. Si están en la nube, ábrelas antes en tu galería y vuelve a elegirlas.').replace('{n}', failed.length);
+  return _isVideoFile(failed[0]) ? t('grev_open_fail_video', 'No se pudo abrir ese vídeo. Si está en la nube, ábrelo antes en tu galería y vuelve a elegirlo.')
+    : t('grev_open_fail', 'No se pudo abrir esa foto. Si está en la nube, ábrela antes en tu galería y vuelve a elegirla.');
+}
+
+// Copia lo elegido EN ORDEN, de a uno (sin bloquear la pantalla: cada lectura es asíncrona). Devuelve lo que se pudo abrir, en el mismo
+// orden; lo que no, se avisa y no se manda (ni deja un mensaje en el chat).
+async function _copyPicked(files) {
+  var t0 = Date.now(), out = [], failed = [], nCopied = 0, bytes = 0, kept = 0, slowShown = false;
+  var left = COPY_TOTAL_MAX;
+  files.forEach(function(f) { if (!_isVideoFile(f) && !_photoTooBig(f)) left -= f.size || 0; });
+  var slow = setTimeout(function() { slowShown = true; try { _showInfoToast(t('grev_opening', 'Abriendo lo que elegiste…'), 15000); } catch (e) {} }, COPY_SLOW_MS);
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    // Una foto de más de 5 MB no se lee: al mandar sale su aviso de siempre
+    if (!_isVideoFile(f) && _photoTooBig(f)) { out.push(f); kept++; continue; }
+    var full = !_isVideoFile(f) || ((f.size || 0) <= COPY_VIDEO_MAX && (f.size || 0) <= left);
+    if (_isVideoFile(f) && full) left -= f.size || 0;
+    if (!full) console.log('[ATTACH] Galería: ' + _copyLabel(f, i, files.length) + ' sin copiar (grande): se lee al mandarlo');
+    var r = await _copyOne(f, full, _copyLabel(f, i, files.length));
+    if (!r) { failed.push(f); continue; }
+    out.push(r.file);
+    if (r.copied) { nCopied++; bytes += r.file.size; } else kept++;
+  }
+  clearTimeout(slow);
+  if (slowShown) try { _hideInfoToast(); } catch (e) {}
+  var extra = (kept ? ', ' + kept + ' con el original' : '') + (failed.length ? ', ' + failed.length + ' no se pudieron abrir' : ''); // i18n-ok (registro)
+  console.log('[ATTACH] Galería: copiadas ' + nCopied + ' (' + Math.round(bytes / 1024) + ' KB) en ' + (Date.now() - t0) + ' ms' + extra);
+  if (failed.length) try { _showPermissionError(_openFailText(failed), 7000); } catch (e) {}
+  return out;
 }
 
 // La revisión «Antes de enviar» (con el ojo «ver una vez») y el envío de lo elegido, de a una. 3171 (dueño 17-11: «las fotos se ven
@@ -96,6 +198,8 @@ export function _reviewAndSendPhotos(files) {
 // enormes, #2941) ni se tapa la radio de golpe; la base ya pacea el envío. Cada foto va como su propio mensaje (como
 // WhatsApp). Los vídeos de la tanda se mandan con _sendVideo (con un respiro entre ellos porque recodificar es pesado).
 // 3160: once[i] === true → esa foto (3163: o ese vídeo) va «ver una vez» (lo marcado en la revisión); sin once, como siempre.
+// 3199: lo de la galería llega aquí ya copiado a memoria (_copyPicked: Blob, hasta COPY_TOTAL_MAX); lo pesado (base64, decodificar y
+// comprimir) sigue siendo de a una.
 function _sendGalleryItems(files, i, once) {
   if (!files || i >= files.length) return;
   var file = files[i];
@@ -129,7 +233,13 @@ function _sendGalleryItems(files, i, once) {
       if (once && once[i]) meta.once = true; // #94 «ver una vez», marcado con el ojo en la revisión (3160)
       _sendAttachment('image', res.base64, meta);
     });
-  }).catch(_readFailed).then(next, next); // seguir con la siguiente pase lo que pase con esta
+  }).catch(function(err) {
+    // 3199: si aun así no se puede leer (la copia no se pudo hacer y Android ya no deja leer el original), el aviso claro
+    if (err && (err.name === 'NotReadableError' || err.name === 'NotFoundError')) {
+      console.warn('[ATTACH] Galería: foto ' + (i + 1) + ' no se pudo leer al mandarla (' + _errTxt(err) + ')');
+      _showPermissionError(_openFailText([file]), 7000);
+    } else _readFailed(err);
+  }).then(next, next); // seguir con la siguiente pase lo que pase con esta
 }
 
 // 13-11 (dueño, S24 → vivo 02:10, APK de 25 MB: «nunca se activó Wi-Fi Direct»): al volver del selector, la app da por
