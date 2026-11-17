@@ -40,7 +40,12 @@ function instrument(native, pl, who) {
 async function boot(name, native) {
   native.listeners = new Map();
   const vc = new VirtualConsole();
-  ['log', 'warn', 'error'].forEach((l) => vc.on(l, (...a) => logs.push(`${ts()} [${name}] ${l}: ` + a.map(String).join(' ').substring(0, 260))));
+  // 3202 (CI de la APK 3088): `shutdown` cierra la ventana (simula que Android cierra la app) y alguna promesa o temporizador de esa
+  // ventana YA CERRADA puede terminar después y llamar a `document.querySelector` → jsdom da «Cannot read properties of undefined
+  // (reading 'querySelector')» (comprobado con una ventana mínima). En el teléfono la app muerta no ejecuta nada: no es un fallo de
+  // la app. Lo que escribe una ventana ya cerrada se marca y no cuenta como error de la prueba (sí queda en el registro).
+  const st = { closed: false };
+  ['log', 'warn', 'error'].forEach((l) => vc.on(l, (...a) => logs.push(`${ts()} [${name}]${st.closed ? ' (ventana cerrada)' : ''} ${l}: ` + a.map(String).join(' ').substring(0, 260))));
   const dom = new JSDOM(fs.readFileSync(path.join(buildDir, 'dist', 'index.html'), 'utf8'), {
     url: 'https://' + name.toLowerCase() + '.nexo.test/index.html', runScripts: 'dangerously', resources: new DL(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(win) {
@@ -52,7 +57,7 @@ async function boot(name, native) {
   const win = dom.window;
   for (let i = 0; i < 100 && !(win.NEXO && win.NEXO.initialized); i++) await sleep(100);
   await sleep(800);
-  return { name, native, win };
+  return { name, native, win, st };
 }
 const click = (win, el) => el && el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
 async function openChatWith(p, name) {
@@ -76,6 +81,7 @@ async function addFound(p, name) {
 async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await fn()) return Math.round((Date.now() - t0) / 100) / 10; await sleep(250); } return null; }
 function shutdown(p) {
   try { p.win.bleInterface.net._closeAll(); p.win.bleInterface.net.relays.forEach((rl) => { rl.retryAt = Date.now() + 9e6; }); } catch (e) {}
+  if (p.st) p.st.closed = true;
   p.win.close(); p.native.destroyActivity();
 }
 const outName = (nx) => 'nexo_vault_outgoing_v2_' + nx + '.json';
@@ -167,7 +173,7 @@ async function ownStatus(p, cid, id) { const l = await p.win.vaultLoadMessages(c
   r.S4_reintentar_sale_s = await waitFor(() => new RegExp('sendFile START fileId=' + gid).test(logs.slice(mark2).join('\n')), 30000);
 
   r.max_guardado_no_adjunto = maxNonAttSave();
-  r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
+  r.errores = logs.filter((l) => / error: /.test(l) && !/\(ventana cerrada\)/.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
   const LIM = 2000000;
   const ok = r.pura_freno && r.pura_leido && r.en_linea_por_internet_s !== null && r.S1_llega_s !== null && r.S2_llegan_s !== null &&
     r.S1_max_guardado_salientes < LIM && r.S2_max_guardado_salientes < LIM && r.salientes_sin_contenido &&
