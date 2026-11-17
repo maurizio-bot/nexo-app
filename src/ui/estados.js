@@ -9,15 +9,17 @@
  * - Se reparte a cada contacto al publicarlo y, al que no estaba, al conectar con él (peerReady). La copia oculta se
  *   borra al entregarse. Caduca a las 24 h (no se muestra ni se guarda lo vencido).
  * - UI: desde la 3169 (dueño 17-11), su propia pantalla «Estados», a la que se llega deslizando Contactos de derecha a izquierda
- *   (estados_screen.js). Aquí quedan el visor, publicar y «Mis estados»; la pantalla los abre con lo que se exporta abajo.
+ *   (estados_screen.js). Aquí quedan el visor y «Mis estados»; publicar (la ventana «Mi estado») está en estados_compose.js
+ *   desde la reestructuración del 17-11. La pantalla los abre con lo que se exporta abajo.
  */
 import { _getBLEContacts, _normId, _saveBLEContacts, _getGradientForUUID, _getInitials } from './ble_helpers.js';
 import { paintAvatar } from './avatar.js';
 import { _sendTextTo } from './send.js';
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
-import { _makeVideoPreview, _blobToB64, _b64ToBlob } from './video_tools.js';
+import { _b64ToBlob } from './video_tools.js';
 import { t } from './i18n.js';
 import { stageBlob, fetchBlob, validatePointer } from '../net/blob_mailbox.js';
+import { _compose } from './estados_compose.js'; // reestructuración 17-11
 
 var MY_FILE = 'nexo_my_status.json', SENT_FILE = 'nexo_status_sent.json';
 // 3059 (dueño 13-11: «cuando ves un estado se quita el marcador azul, pero al cerrar y volver a abrir la app vuelven a aparecer
@@ -619,19 +621,6 @@ function _hideFabWhileOpen() {
 // cargar audio ni video desde «data:», y los estados ponían así su media en el <video>/<audio>: al elegir un video la vista previa
 // salía rota (código 4, «Media load rejected by URL safety check») y el visor de los contactos igual, con CUALQUIER video o audio.
 // Ahora se reproducen desde una URL «blob:» (la que la CSP deja, como en el chat); cada ventana revoca las suyas al cerrarse.
-// Tipo de un video elegido (si el selector no lo da, por la extensión); '' si no se sabe
-var VID_EXT = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', '3gp': 'video/3gpp', mkv: 'video/x-matroska' };
-function _vidMime(f) {
-  var ty = String((f && f.type) || '').split(';')[0].trim().toLowerCase();
-  if (/^video\/[a-z0-9.+-]{1,30}$/.test(ty)) return ty;
-  var m = /\.([a-z0-9]{2,4})$/i.exec(String((f && f.name) || ''));
-  return (m && VID_EXT[m[1].toLowerCase()]) || '';
-}
-// Los bytes de un archivo (o de un trozo); falla con el error de Chromium si ya no se deja leer (NotReadableError)
-function _readBytes(b) {
-  if (typeof b.arrayBuffer === 'function') return b.arrayBuffer();
-  return new Promise(function(resolve, reject) { var r = new FileReader(); r.onload = function() { resolve(r.result); }; r.onerror = function() { reject(r.error); }; r.readAsArrayBuffer(b); });
-}
 function _mimeOfData(d) { var m = /^data:([^;,]+)/.exec(String(d || '').substring(0, 80)); return m ? m[1] : ''; }
 function _blobUrl(holder, blob) {
   try { var u = URL.createObjectURL(blob); (holder._nxUrls = holder._nxUrls || []).push(u); return u; } catch (e) { return ''; }
@@ -665,198 +654,6 @@ function _overlay() {
   // 3200: al cerrarse (por donde sea) suelta sus URL blob:
   try { var mo = new MutationObserver(function() { if (!o.isConnected) { mo.disconnect(); _freeUrls(o); } }); mo.observe(document.body, { childList: true }); } catch (e) {}
   return o;
-}
-function _compose() {
-  var o = _overlay();
-  var box = document.createElement('div');
-  box.style.cssText = 'background:var(--nx-sheet);border:1px solid var(--nx-line);border-radius:var(--nx-radius);padding:20px;max-width:340px;width:100%;color:#fff;display:flex;flex-direction:column;gap:12px;';
-  var h = document.createElement('div'); h.style.cssText = 'font-size:18px;font-weight:800;color:#fff;letter-spacing:-0.2px;'; h.textContent = t('grp_my_status_24h', 'Mi estado (24 h)');
-  var m = null;   // 3032: «Publicar» crea un estado NUEVO (hasta 10); los anteriores se ven y se quitan en «Mis estados»
-  var picked = { img: '', mime: '', aud: '', amime: '', vid: '', vmime: '' };
-  // previa de la foto (si hay)
-  var prev = document.createElement('img');
-  prev.style.cssText = 'width:100%;max-height:200px;object-fit:contain;border-radius:14px;background:#000;' + (picked.img ? '' : 'display:none;');
-  if (picked.img) prev.src = picked.img;
-  // previa del video (si hay). 3200: desde una URL blob: (la CSP no deja «data:» en un <video>)
-  var vidPrev = document.createElement('video'); vidPrev.id = 'estado-video-previa'; vidPrev.controls = true; vidPrev.playsInline = true; vidPrev.preload = 'metadata';
-  vidPrev.style.cssText = 'width:100%;max-height:200px;border-radius:14px;background:#000;display:none;';
-  // 3200: portada genérica cuando este teléfono no puede abrir el video elegido (en vez del reproductor roto); se publica tal cual
-  var vidCover = document.createElement('div'); vidCover.id = 'estado-video-portada';
-  vidCover.style.cssText = 'display:none;flex-direction:column;align-items:center;justify-content:center;gap:6px;width:100%;min-height:150px;padding:14px;box-sizing:border-box;border-radius:14px;background:#000;border:1px solid var(--nx-line);text-align:center;';
-  // previa del audio (si hay)
-  var audPrev = document.createElement('audio'); audPrev.controls = true;
-  audPrev.style.cssText = 'width:100%;display:none;';
-  var busy = false;   // 3200: se está leyendo o preparando un video (Publicar espera)
-  // 3200: pone (o quita, sin blob) la media de una previa desde una URL blob: y suelta la anterior
-  function _prevSrc(el, blob) {
-    if (el.getAttribute('src')) { try { el.pause(); } catch (e) {} el.removeAttribute('src'); try { el.load(); } catch (e) {} }
-    if (el._nxUrl) { try { URL.revokeObjectURL(el._nxUrl); } catch (e) {} el._nxUrl = ''; }
-    if (blob) { el._nxUrl = _blobUrl(o, blob); if (el._nxUrl) el.src = el._nxUrl; }
-  }
-  function _noVid() { picked.vid = ''; vidPrev._nxInfo = null; _prevSrc(vidPrev, null); vidPrev.style.display = 'none'; vidCover.style.display = 'none'; }
-  function _noAud() { picked.aud = ''; _prevSrc(audPrev, null); audPrev.style.display = 'none'; }
-  function _noImg() { picked.img = ''; prev.removeAttribute('src'); prev.style.display = 'none'; }
-  // el video elegido (data URI que se publica) y su previa (blob); info: { desc, name, size } para la portada y el registro
-  function _useVid(d, mime, blob, info) {
-    _noImg(); _noAud(); // una sola media por estado
-    picked.vid = d; picked.vmime = mime;
-    vidCover.style.display = 'none'; vidPrev.style.display = 'block';
-    vidPrev._nxInfo = info;
-    _prevSrc(vidPrev, blob || _b64ToBlob(_b64Of(d), mime));
-  }
-  vidPrev.addEventListener('loadedmetadata', function() {
-    var inf = vidPrev._nxInfo; if (!inf || inf.ok) return; inf.ok = 1;
-    var du = vidPrev.duration;
-    console.log('[VIDEO] Estado: video elegido (' + inf.desc + ', ' + (isFinite(du) && du > 0 ? Math.round(du * 10) / 10 + ' s' : 'duración desconocida') + ', ' + vidPrev.videoWidth + 'x' + vidPrev.videoHeight + '): se ve');
-  });
-  vidPrev.addEventListener('error', function() {
-    var inf = vidPrev._nxInfo;
-    if (!inf || !picked.vid || !vidPrev._nxUrl || vidPrev.getAttribute('src') !== vidPrev._nxUrl) return;
-    var er = vidPrev.error;
-    console.warn('[VIDEO] Estado: este teléfono no puede abrir el video elegido (' + inf.desc + ', duración desconocida, código ' + (er && er.code) + (er && er.message ? ': ' + er.message : '') + '): se publica tal cual, sin vista previa');
-    vidPrev.style.display = 'none';
-    vidCover.innerHTML = '';
-    var ic = document.createElement('div'); ic.style.cssText = 'font-size:40px;line-height:1;'; ic.textContent = '🎥';
-    var nm = document.createElement('div'); nm.style.cssText = 'font-size:13px;color:#fff;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-    nm.textContent = (inf.name || '') + ' · ' + (inf.size >= 1048576 ? (Math.round(inf.size / 104857.6) / 10) + ' MB' : Math.max(1, Math.round(inf.size / 1024)) + ' KB');
-    var nt = document.createElement('div'); nt.className = 'estado-video-nota'; nt.style.cssText = 'font-size:12.5px;color:var(--nx-muted);line-height:1.4;';
-    nt.textContent = t('est_vid_no_preview', 'Tu teléfono no puede mostrar este video aquí, pero se publicará tal cual.');
-    vidCover.appendChild(ic); vidCover.appendChild(nm); vidCover.appendChild(nt);
-    vidCover.style.display = 'flex';
-  });
-  var ta = document.createElement('textarea');
-  ta.id = 'estado-input';
-  ta.maxLength = MAX_LEN;
-  ta.placeholder = t('grp_status_ph', '¿Qué estás pensando?');
-  ta.style.cssText = 'width:100%;min-height:70px;background:var(--nx-surface);border:1px solid var(--nx-line);border-radius:14px;color:#fff;font-size:15px;padding:10px;outline:none;resize:none;';
-  // elegir foto
-  var fin = document.createElement('input'); fin.type = 'file'; fin.accept = 'image/*'; fin.style.display = 'none';
-  fin.addEventListener('change', function() {
-    var f = fin.files && fin.files[0]; if (!f) return;
-    makeStatusImage(f).then(function(dataUri) {
-      if (!_validImg(dataUri) && !_bigOf(dataUri)) { _toast(t('est_img_too_big', 'La foto es muy pesada para un estado')); return; }
-      picked.img = dataUri; picked.mime = 'image/jpeg'; prev.src = dataUri; prev.style.display = 'block';
-      _noAud(); _noVid(); // una sola media por estado
-    }).catch(function() { _toast(t('misc_avatar_not_image', 'no es una imagen')); });
-  });
-  var photoBtn = document.createElement('button');
-  photoBtn.id = 'estado-foto';
-  photoBtn.textContent = '📷 ' + t('est_add_photo', 'Foto');
-  photoBtn.style.cssText = 'flex:1;padding:9px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:14px;color:#fff;cursor:pointer;';
-  photoBtn.addEventListener('click', function(e) { e.stopPropagation(); fin.click(); });
-  // grabar audio (grabador propio, autocontenido; tope AUD_SECS). Un segundo toque detiene.
-  var rec = null, recChunks = [], recTimer = null, recStart = 0;
-  function _stopRec() { if (recTimer) { clearInterval(recTimer); recTimer = null; } try { if (rec && rec.state !== 'inactive') rec.stop(); } catch (e) {} }
-  var audBtn = document.createElement('button');
-  audBtn.id = 'estado-audio-btn';
-  audBtn.textContent = '🎤 ' + t('est_add_audio', 'Audio');
-  audBtn.style.cssText = 'flex:1;padding:9px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:14px;color:#fff;cursor:pointer;';
-  audBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    if (rec && rec.state === 'recording') { _stopRec(); return; }
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') { _toast(t('est_no_mic', 'No se puede grabar audio aquí')); return; }
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
-      recChunks = []; rec = new MediaRecorder(stream);
-      rec.ondataavailable = function(ev) { if (ev.data && ev.data.size) recChunks.push(ev.data); };
-      rec.onstop = function() {
-        try { stream.getTracks().forEach(function(tk) { tk.stop(); }); } catch (e) {}
-        audBtn.textContent = '🎤 ' + t('est_add_audio', 'Audio');
-        var blob = new Blob(recChunks, { type: (rec && rec.mimeType) || 'audio/webm' });
-        // 3200: el data URI con el tipo SIN «;codecs=…» (el grabador da «audio/webm;codecs=opus»: con eso no lo aceptaban _validAud
-        // ni _bigOf y siempre salía «El audio es muy largo/pesado»)
-        var amime = (blob.type || 'audio/webm').split(';')[0];
-        _blobToB64(blob).then(function(b64) {
-          var d = 'data:' + amime + ';base64,' + b64;
-          if (!_validAud(d) && !_bigOf(d)) { _toast(t('est_aud_too_big', 'El audio es muy largo/pesado para un estado')); return; }
-          _noImg(); _noVid(); // una sola media por estado
-          picked.aud = d; picked.amime = amime;
-          _prevSrc(audPrev, blob); audPrev.style.display = 'block';   // 3200: blob:, no «data:»
-        }).catch(function() { _toast(t('est_no_mic', 'No se puede grabar audio aquí')); });
-      };
-      rec.start(); recStart = Date.now();
-      recTimer = setInterval(function() {
-        var s = Math.floor((Date.now() - recStart) / 1000);
-        audBtn.textContent = '⏹ ' + t('est_stop', 'Detener') + ' (' + s + 's)';
-        if (s >= AUD_SECS) _stopRec();
-      }, 250);
-    }).catch(function() { _toast(t('est_no_mic', 'No se puede grabar audio aquí')); });
-  });
-  // elegir video: se re-codifica a una previa 240p liviana (reusa _makeVideoPreview; stub NEXO_makeVideoPreview en pruebas)
-  var vidBtn = document.createElement('button');
-  vidBtn.id = 'estado-video-btn';
-  vidBtn.textContent = '🎥 ' + t('est_add_video', 'Video');
-  vidBtn.style.cssText = 'flex:1;padding:9px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:14px;color:#fff;cursor:pointer;';
-  var vfin = document.createElement('input'); vfin.type = 'file'; vfin.accept = 'video/*'; vfin.style.display = 'none';
-  function _busy(on) { busy = on; vidBtn.disabled = on; vidBtn.textContent = '🎥 ' + (on ? t('est_processing', 'Procesando…') : t('est_add_video', 'Video')); }
-  function _readFail(e, desc) {
-    console.warn('[VIDEO] Estado: no se pudo leer el video elegido (' + desc + '): ' + ((e && (e.name || e.message)) || e));
-    _toast(t('est_vid_read_fail', 'No se pudo leer el video: vuelve a elegirlo'));
-  }
-  vfin.addEventListener('change', function() {
-    var f = vfin.files && vfin.files[0]; if (!f) return;
-    var vt = _vidMime(f), desc = (vt || f.type || '?') + ', ' + Math.round(f.size / 1024) + ' KB';
-    _busy(true);
-    // 3032: un video de hasta 5 MB va tal cual (sin recomprimir); más grande, se recodifica.
-    // 3200: se lee entero al elegirlo (y se avisa si no se deja leer: antes no pasaba nada); la previa sale de esa copia
-    if (vt && f.size && f.size <= BIG_MAX) {
-      _readBytes(f).then(function(buf) {
-        var blob = new Blob([buf], { type: vt });
-        return _blobToB64(blob).then(function(b64) {
-          _busy(false);
-          var dv = 'data:' + vt + ';base64,' + b64;
-          if (!_validVid(dv) && !_bigOf(dv)) { _toast(t('est_vid_too_big', 'El video quedó muy pesado para un estado')); return; }
-          _useVid(dv, vt, blob, { desc: desc, name: f.name, size: f.size });
-        });
-      }).catch(function(e) { _busy(false); _readFail(e, desc); });
-      return;
-    }
-    var mk = (typeof window.NEXO_makeVideoPreview === 'function') ? window.NEXO_makeVideoPreview : _makeVideoPreview;
-    // 3035 (dueño 13-11: videos de otras apps, tipo TikTok): más de 5 MB → se recodifica en 720p con el bitrate justo para
-    // caber (VID_HD_TARGET); si ese HD no sale o no cabe, la previa liviana de siempre.
-    // 3200: antes, que se deje leer (si no, se decía «No se pudo preparar»); si este teléfono no puede abrir el video (p. ej. un
-    // códec que su WebView no trae), se dice qué hacer y queda en el registro con su tipo, tamaño, duración y código
-    _readBytes(f.slice(0, 64)).then(function() {
-      var rep = {};
-      return Promise.resolve(mk(f, undefined, { hdTargetBytes: VID_HD_TARGET, report: rep })).then(function(res) {
-        if (!res || res.tooLong || !res.size) {
-          _busy(false);
-          if (res && res.tooLong) { _toast(t('est_vid_too_long', 'El video es muy largo para un estado')); return; }
-          console.warn('[VIDEO] Estado: no se pudo preparar el video elegido (' + desc + ', duración ' + (rep.dur ? Math.round(rep.dur * 10) / 10 + ' s' : 'desconocida') + (rep.code ? ', código ' + rep.code + (rep.msg ? ': ' + rep.msg : '') : '') + '; ' + (rep.why || '?') + ')');
-          _toast(t('est_vid_cant_prepare', 'Este video no se puede preparar en tu teléfono: elige uno más corto o más ligero (máx. 5 MB) y se publicará tal cual.'));
-          return;
-        }
-        if (res.hd && res.hd.size > 0 && res.hd.size <= BIG_MAX) { console.log('[ESTADO] Video de ' + Math.round(f.size / 1024) + ' KB → 720p de ' + Math.round(res.hd.size / 1024) + ' KB'); res = res.hd; } // i18n-ok
-        return _blobToB64(res).then(function(b64) {
-          _busy(false);
-          var mime = (res.type || 'video/webm').split(';')[0], d = 'data:' + mime + ';base64,' + b64;
-          if (!_validVid(d) && !_bigOf(d)) { _toast(t('est_vid_too_big', 'El video quedó muy pesado para un estado')); return; }
-          _useVid(d, mime, res, { desc: mime + ', ' + Math.round(res.size / 1024) + ' KB (de ' + desc + ')', name: f.name, size: res.size });
-        });
-      });
-    }, function(e) { _busy(false); _readFail(e, desc); }).catch(function() { _busy(false); _toast(t('est_vid_fail', 'No se pudo preparar el video')); });
-  });
-  vidBtn.addEventListener('click', function(e) { e.stopPropagation(); try { vfin.value = ''; } catch (x) {} vfin.click(); });   // 3200: el mismo video se puede volver a elegir
-  var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:10px;';
-  var pub = document.createElement('button');
-  pub.id = 'estado-publicar';
-  pub.textContent = t('grp_publish', 'Publicar');
-  pub.style.cssText = 'flex:1;padding:11px;background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));border:none;border-radius:14px;color:#fff;font-weight:700;cursor:pointer;box-shadow:0 10px 30px rgba(0,200,255,0.35),0 4px 12px rgba(168,85,247,0.35);';
-  pub.addEventListener('click', function(e) {
-    e.stopPropagation();
-    // 3200: grabando un audio, este toque lo termina (sale su previa y se publica con el siguiente; antes salía sin el audio)
-    var grabando = !!(rec && rec.state === 'recording'); _stopRec(); if (grabando) return;
-    // 3200: con un video a medio preparar se espera (antes salía solo el texto y el video se perdía, o no pasaba nada); vacío, se dice
-    if (busy) { _toast(t('est_vid_wait', 'Espera: el video aún se está preparando')); return; }
-    if (!ta.value && !picked.img && !picked.aud && !picked.vid) { _toast(t('est_empty', 'Escribe algo o elige una foto, un audio o un video')); return; }
-    if (addMyStatus(ta.value, picked.img, picked.mime, picked.aud, picked.amime, picked.vid, picked.vmime)) o.remove();
-  });
-  row.appendChild(pub);
-  box.appendChild(h); box.appendChild(prev); box.appendChild(vidPrev); box.appendChild(vidCover); box.appendChild(audPrev); box.appendChild(ta);
-  var mrow = document.createElement('div'); mrow.style.cssText = 'display:flex;gap:10px;';
-  mrow.appendChild(photoBtn); mrow.appendChild(audBtn); mrow.appendChild(vidBtn);
-  box.appendChild(mrow); box.appendChild(fin); box.appendChild(vfin); box.appendChild(row);
-  o.appendChild(box);
-  setTimeout(function() { try { ta.focus(); } catch (e) {} }, 50);
 }
 // Ver los estados de un contacto: uno a la vez (‹ ›), empezando por el primero sin ver; me gusta y comentario por estado
 function _view(c) {
@@ -1087,3 +884,5 @@ if (typeof window !== 'undefined') {
   window.NEXO_staleStatusCopy = staleStatusCopy; // 3033: la cola de reenvío (ble_helpers._isResendable, ble_ack) lo consulta
   window.NEXO_commentStatus = commentStatus; window.NEXO_myComments = myComments; window.NEXO_whoLiked = whoLiked; window.NEXO_requestStatuses = requestStatuses; window.NEXO_refreshAll = refreshAll; window.NEXO_statusMedia = statusMedia; window.NEXO_statusMediaIn = statusMediaIn; // 3032
 }
+// Para estados_compose.js (reestructuración 17-11)
+export { _overlay, _blobUrl, _b64Of, MAX_LEN, _validImg, _bigOf, _toast, _validAud, AUD_SECS, BIG_MAX, _validVid, VID_HD_TARGET };
