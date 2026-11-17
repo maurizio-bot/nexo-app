@@ -9,9 +9,9 @@ import { _getCurrentContactId } from './chat_format.js';
 import { t } from './i18n.js';
 
 // [pegamento] Lo que la cámara usa del resto de la app: main.js lo da al arrancar (cameraUse), antes de que se abra la cámara
-var _wdReach, _photoFast, _waitForBLEReady, _sendAttachment, _closeAttachMenu, _releaseMedia, _handleGallery, _sendVideo;
+var _wdReach, _photoFast, _photoBridgeOnly, _waitForBLEReady, _sendAttachment, _closeAttachMenu, _releaseMedia, _handleGallery, _sendVideo;
 export function cameraUse(d) {
-  _wdReach = d._wdReach; _photoFast = d._photoFast; _waitForBLEReady = d._waitForBLEReady; _sendAttachment = d._sendAttachment;
+  _wdReach = d._wdReach; _photoFast = d._photoFast; _photoBridgeOnly = d._photoBridgeOnly; _waitForBLEReady = d._waitForBLEReady; _sendAttachment = d._sendAttachment;
   _closeAttachMenu = d._closeAttachMenu; _releaseMedia = d._releaseMedia; _handleGallery = d._handleGallery; _sendVideo = d._sendVideo;
 } // [/pegamento]
 
@@ -70,8 +70,12 @@ if (typeof window !== 'undefined') window.__nexoHideCamera = _hideCameraPreviewO
 // un espejo de verdad; la foto sale igual que se ve.
 // Lado mayor y calidad JPEG de una foto al mandarla (cámara y galería). 3170 (usuarios 17-11: «las fotos se ven mal»): hasta la 3169
 // salían a 800 px y 65 % salvo con Wi-Fi Direct/Wi-Fi local. Ahora 1600 px y 82 % (como WhatsApp) si puede ir por un camino rápido
-// (Wi-Fi Direct, misma red Wi-Fi o internet: send.js _photoFast); si el único camino es Bluetooth (~12-16 KB/s), 1280 px y 75 %.
-export function _photoTarget(cid) { return _photoFast(cid) ? { max: 1600, q: 0.82 } : { max: 1280, q: 0.75 }; }
+// (Wi-Fi Direct, misma red Wi-Fi o internet: send.js _photoFast); si el único camino es Bluetooth (~12-16 KB/s), 1280 px y 75 %;
+// 3170b: si solo puede salir por el puente de otro teléfono (send.js _photoBridgeOnly), 800 px y 65 % como antes, que cabe.
+export function _photoTarget(cid) {
+  if (_photoFast(cid)) return { max: 1600, q: 0.82 };
+  return _photoBridgeOnly && _photoBridgeOnly(cid) ? { max: 800, q: 0.65 } : { max: 1280, q: 0.75 };
+}
 
 export function _videoLimitSec(cid) { return _wdReach(cid) ? 110 : PREVIEW_MAX_SECONDS; }
 

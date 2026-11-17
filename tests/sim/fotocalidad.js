@@ -9,7 +9,9 @@
 //  internet (redes distintas, sin Bluetooth, relés del simulador) → 1600x1200, ~82 %;   wifi_direct (sin red ni relés) → 1600 px, ~82 %;
 //  grupo_peor_bluetooth (B por la misma red, C solo por Bluetooth, sin relés) → 1280 px en los dos;
 //  grupo_internet (con relés: el grupo manda por el buzón de archivos) → 1600 px;
-//  internet_B_ausente (B apagado, A con internet: al buzón de archivos) → 1600 px (medida en la copia de A, la que sube).
+//  internet_B_ausente (B apagado, A con internet: al buzón de archivos) → 1600 px (medida en la copia de A, la que sube);
+//  solo_puente (3170b: A sin internet propio, solo por el puente de otro teléfono, sin Bluetooth ni Wi-Fi con B) → 800 px, 65 %
+//  como antes (por el puente solo caben ~300 KB).
 // Además: la miniatura del chat (2987) se sigue haciendo con la foto nueva (lado ≤ 480 px) y la foto respeta el tope de 5 MB.
 // Uso: node fotocalidad.js <dir_build>   (imprime FOTOCALIDAD {json} con "resultado":"OK"|"FALLO"; sale 0/1)
 'use strict';
@@ -214,6 +216,18 @@ async function oneToOne(browser, key, optsA, optsB, relays, ready) {
     const oi = ob64 ? jpegInfo(ob64) : null;
     await waitFor(() => own && rutaDe(own.id, '') === 'buzón de archivos', 15000);
     r.internet_B_ausente = { ausente_s: aus, original_kb: as.kb, lado_mayor: oi ? Math.max(oi.w, oi.h) : 0, calidad: oi && oi.q, kb: oi && oi.kb, ruta: own ? rutaDe(own.id, 'pendiente') : null };
+    // 3170b: A sin internet propio, solo por el PUENTE de otro teléfono (gwOnly) y sin Bluetooth ni Wi-Fi con B: la foto solo cabe por el
+    // puente hasta GW_FILE_MAX_B64 (~300 KB) → sigue a 800 px y 65 % (lo de antes). Se simula el «solo por puente» en A (la decisión
+    // de tamaño; el puente de verdad lo prueban puente3.js/puente4) y se mide la copia que guarda A.
+    await s.A.evaluate(() => { const n = window.bleInterface.net; n.__gw = n.gwOnly; n.gwOnly = () => true; });
+    const prevId = own && own.id;
+    await sendGalleryPhoto(s.A, 4000, 3000);
+    let own2 = null;
+    await waitFor(async () => !!(own2 = await s.A.evaluate(async (c) => { const ms = (await window.vaultLoadMessages(c)) || []; const x = ms.filter((y) => y.attachmentType === 'image' && y._own && !y.deleted).pop(); return x ? { id: x.messageId || x.msgId, b64: typeof x.attachmentPayload === 'string' && x.attachmentPayload.length > 200 ? x.attachmentPayload : null, ref: x.attachmentRef || null } : null; }, s.idB)) && !!own2.id && own2.id !== prevId && !!(own2.b64 || (own2.ref && s.a.native.files.get(own2.ref))), 15000);
+    const pb64 = own2 && own2.id !== prevId && (own2.b64 || (own2.ref && s.a.native.files.get(own2.ref)));
+    const pi = pb64 ? jpegInfo(pb64) : null;
+    r.solo_puente = { lado_mayor: pi ? Math.max(pi.w, pi.h) : 0, calidad: pi && pi.q, kb: pi && pi.kb, b64_kb: pb64 ? Math.round(pb64.length / 1024) : 0 };
+    await s.A.evaluate(() => { const n = window.bleInterface.net; if (n.__gw) n.gwOnly = n.__gw; });
     await closePages(s.A);
     for (const x of rl) await x.stop();
 
@@ -251,6 +265,7 @@ async function oneToOne(browser, key, optsA, optsB, relays, ready) {
     wifi_direct_1600_82: wd.lado_mayor === 1600 && okQ(wd.calidad, 82),
     internet_1600x1200_82: net.ancho === 1600 && net.alto === 1200 && okQ(net.calidad, 82),
     grupo_internet_1600_82: gi.lado_mayor === 1600 && okQ(gi.calidad, 82),
+    solo_puente_800_65: !!r.solo_puente && r.solo_puente.lado_mayor === 800 && okQ(r.solo_puente.calidad, 65),
     ausente_buzon_1600_82: !!r.internet_B_ausente && r.internet_B_ausente.lado_mayor === 1600 && okQ(r.internet_B_ausente.calidad, 82) && r.internet_B_ausente.ruta === 'buzón de archivos',
     grupo_peor_bluetooth_1280_75: !!(gb.B && gb.C) && gb.B.lado_mayor === 1280 && gb.C.lado_mayor === 1280 && okQ(gb.B.calidad, 75) && okQ(gb.C.calidad, 75),
     miniaturas: bt.miniatura_ok === true && net.miniatura_ok === true,

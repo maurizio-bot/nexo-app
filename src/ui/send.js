@@ -7,7 +7,7 @@ import { MAX_BLE_FILE_BYTES, _maxB64For, _tooBigMessage } from './media_limits.j
 import { _PREVIEW_BY_TYPE, _canUpgradeStatus, _cut, _getCurrentContactId, _getDomMessageStatus, _normId } from './chat_format.js';
 import { _msgContactMap } from './chat_state.js';
 import { _renderMessage, _updateMessageStatus, _updateMessageStorageStatus } from './render.js';
-import { _fastReach, _showPermissionError } from './ui_bits.js';
+import { _fastReach, _showPermissionError, _wdReach } from './ui_bits.js';
 import { vaultAppendMessage, vaultSetMessageFields } from '../vault/vault_manager.js';
 import { bigToGroup } from './group_media.js';
 import { _failStatus } from './ble_helpers.js';
@@ -67,6 +67,23 @@ export function _photoFast(cid) {
   var g = gs.get(cid), me = typeof gs._me === 'function' ? gs._me() : null;
   var others = ((g && g.members) || []).filter(function(m) { return m && m !== me; });
   return others.length > 0 && others.every(function(m) { return _fastReach(m); });
+}
+// 3170b: sin internet propio (solo el de otro teléfono por Bluetooth: el puente) una foto a quien no tengo por Bluetooth ni Wi-Fi solo
+// sale por el puente, que lleva hasta GW_FILE_MAX_B64 (~300 KB): a 1280 px una foto real con mucho detalle se pasaría y quedaría ⏳.
+// Ahí sigue a 800 px y 65 % (lo de antes, que cabe). En un grupo, basta un miembro así.
+export function _photoBridgeOnly(cid) {
+  var bi = window.bleInterface, net = bi && bi.net, gs = bi && bi.groups;
+  if (!net || typeof net.gwOnly !== 'function' || !net.gwOnly()) return false;
+  var ids = [cid];
+  if (cid && gs && typeof gs.isGroup === 'function' && gs.isGroup(cid)) {
+    var g = gs.get(cid), me = typeof gs._me === 'function' ? gs._me() : null;
+    ids = ((g && g.members) || []).filter(function(m) { return m && m !== me; });
+  }
+  return ids.some(function(m) {
+    var nx = (m || '').toString().toLowerCase();
+    if (!nx || _wdReach(nx)) return false;
+    try { return !(typeof bi._bleReadyFor === 'function' && bi._bleReadyFor(nx)); } catch (e) { return true; }
+  });
 }
 
 export function _sendAttachment(type, payload, meta, opts) {
