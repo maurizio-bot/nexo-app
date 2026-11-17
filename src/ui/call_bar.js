@@ -99,8 +99,10 @@ function _paint() {
   var dur = i.live && i.since ? _fmt(Math.max(0, Math.round((Date.now() - i.since) / 1000))) : t('call_calling', 'Llamando…');
   b.querySelector('.ncb-name').textContent = (i.name || '') + ' · ' + dur;
   b.querySelector('.ncb-sub').textContent = t('call_bar_back', 'Toca para volver');
-  var m = b.querySelector('.ncb-mute');
-  m.innerHTML = _svg(i.muted ? IC_MICOFF : IC_MIC); m.classList.toggle('ncb-on', !!i.muted);
+  var m = b.querySelector('.ncb-mute'), ic = i.muted ? 'off' : 'on';
+  // 3181: el icono solo se rehace si cambia (rehacerlo cada segundo borraba la onda del dedo a mitad del toque)
+  if (m.getAttribute('data-ic') !== ic) { m.innerHTML = _svg(i.muted ? IC_MICOFF : IC_MIC); m.setAttribute('data-ic', ic); }
+  m.classList.toggle('ncb-on', !!i.muted);
   m.setAttribute('aria-label', i.muted ? t('call_muted', 'Silenciado') : t('call_mute', 'Silenciar'));
   var h = b.querySelector('.ncb-hang'); if (!h.firstChild) h.innerHTML = _svg(IC_PHONE); h.setAttribute('aria-label', t('call_hangup', 'Colgar'));
 }

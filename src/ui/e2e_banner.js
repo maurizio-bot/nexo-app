@@ -29,7 +29,7 @@ export function _renderE2EBanner() {
   // "Esperando la clave de cifrado de GR…"
   if (isGroupId(cid)) {
     b.style.cssText = 'margin:8px auto 12px;max-width:300px;padding:8px 12px;border-radius:10px;font-size:12px;text-align:center;white-space:pre-line;';
-    b.onclick = null;
+    b.onclick = null; b.removeAttribute('role');
     b.classList.remove('e2e-warn');
     b.textContent = t('chat_e2e_group', '🔒 Mensajes del grupo cifrados de extremo a extremo: cada mensaje va cifrado para cada persona del grupo.');
     return;
@@ -40,6 +40,7 @@ export function _renderE2EBanner() {
     (c.pendingKey || feRed || (c.mergeUnverified && c.verified !== c.publicKey) ? 'background:rgba(255,59,48,0.15);color:#ff8a80;' : 'background:rgba(255,200,0,0.12);color:#ffd76a;');
   // 3140: el tema iguala la tarjeta a la paleta NEXO; con e2e-warn el aviso de clave cambiada / chat unido sigue en rojo
   b.classList.toggle('e2e-warn', !!(c.pendingKey || feRed || (c.mergeUnverified && c.verified !== c.publicKey)));
+  b.setAttribute('role', 'button'); // 3181: se toca (verificar): la misma respuesta al dedo que cualquier botón (press.js)
   var bi = window.bleInterface;
   var txt;
   if (c.pendingKey) {

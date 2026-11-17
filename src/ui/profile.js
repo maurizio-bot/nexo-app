@@ -41,7 +41,7 @@ function _openProfileSheet() {
   sheet.innerHTML = '<div class="nx-profile-in">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 14px;">' +
     '<div class="nx-page-title">' + t('prof_title', 'Perfil') + '</div><button id="nexo-profile-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;">' + t('close') + '</button></div>' +
-    '<div class="nx-card nx-id-card"><div class="nx-av" id="nexo-profile-av" title="' + t('prof_change_photo', 'Cambiar foto') + '" style="cursor:pointer;"></div><div style="flex:1;min-width:0;"><div class="nx-idtxt">' + t('prof_my_id', 'Mi NEXO ID') + '</div><b id="nexo-profile-id"></b>' +
+    '<div class="nx-card nx-id-card"><div class="nx-av" id="nexo-profile-av" role="button" title="' + t('prof_change_photo', 'Cambiar foto') + '" style="cursor:pointer;"></div><div style="flex:1;min-width:0;"><div class="nx-idtxt">' + t('prof_my_id', 'Mi NEXO ID') + '</div><b id="nexo-profile-id"></b>' +
     '<div id="nexo-profile-seen" class="nx-idtxt" style="margin-top:2px;"></div>' +
     '<div><button id="nexo-av-pick" class="nx-link">' + t('prof_change_photo', 'Cambiar foto') + '</button> <button id="nexo-av-clear" class="nx-link" style="display:none;">' + t('prof_remove', 'Quitar') + '</button> <button id="nexo-id-share" class="nx-link">' + t('prof_share_my_id', 'Compartir mi ID') + '</button></div></div></div>' +
     // Ronda 2910 (pedido del dueño): mis datos OPCIONALES (teléfono, correo). Se guardan cifrados; más adelante se podrán

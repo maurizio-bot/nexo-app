@@ -434,18 +434,20 @@ body::before {
    punto exacto del toque (acotada al elemento), suelta con muelle, y en los redondos un «pulso NEXO». Las reglas
    `.is-pressed` de arriba son el VELO (tinte) de cada tipo de superficie, ahora sincronizado con el dedo. ====== */
 .nx-pressable { touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
-.nx-ripple { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; z-index: 0; }
-.nx-ripple i { position: absolute; left: var(--nx-px, 50%); top: var(--nx-py, 50%); width: calc(var(--nx-pr, 24px) * 2); height: calc(var(--nx-pr, 24px) * 2);
-  margin: calc(-1 * var(--nx-pr, 24px)) 0 0 calc(-1 * var(--nx-pr, 24px)); border-radius: 50%; background: currentColor; opacity: 0; transform: scale(0);
-  transition: transform 260ms cubic-bezier(.2, 0, 0, 1), opacity 120ms ease; }
-.nx-ripple.on i { transform: scale(1); opacity: .12; }
-.nx-ripple.out i { opacity: 0; transition: transform 260ms cubic-bezier(.2, 0, 0, 1), opacity 300ms ease; }
-.nx-pulse { position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(0, 200, 255, .45); pointer-events: none; animation: nxPulse 320ms cubic-bezier(.2, 0, 0, 1) forwards; }
+/* 3181 (dueño 17-11: «en los botones de llamada sale un cuadrado feo»): la onda y el pulso van DENTRO de la forma que se ve (el
+   botón o el círculo que dibuja su hijo, press.js) y heredan su radio. La onda es una sola capa: fondo redondeado por su propio
+   border-radius y recortado en un círculo que crece desde el dedo (clip-path); antes, un círculo hijo recortado con overflow +
+   border-radius (dependía de que el compositor del WebView recortara en redondo una capa compuesta aparte; no comprobado en el teléfono). */
+.nx-ripple { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0; background: currentColor; opacity: 0;
+  clip-path: circle(0px at var(--nx-px, 50%) var(--nx-py, 50%)); transition: clip-path 260ms cubic-bezier(.2, 0, 0, 1), opacity 120ms ease; }
+.nx-ripple.on { opacity: .12; clip-path: circle(var(--nx-pr, 24px) at var(--nx-px, 50%) var(--nx-py, 50%)); }
+.nx-ripple.out { opacity: 0; transition: clip-path 260ms cubic-bezier(.2, 0, 0, 1), opacity 300ms ease; }
+.nx-pulse { position: absolute; inset: 0; border-radius: inherit; border: 2px solid rgba(0, 200, 255, .45); pointer-events: none; animation: nxPulse 320ms cubic-bezier(.2, 0, 0, 1) forwards; }
 @keyframes nxPulse { from { transform: scale(1); opacity: .9; } to { transform: scale(1.35); opacity: 0; } }
 /* Área de toque invisible (hit slop): press.js calcula cuánto crece cada lado SIN pisar a los vecinos */
 .nx-hit::before { content: ''; position: absolute; top: calc(-1 * var(--hs-t, 0px)); right: calc(-1 * var(--hs-r, 0px)); bottom: calc(-1 * var(--hs-b, 0px)); left: calc(-1 * var(--hs-l, 0px)); }
 @media (prefers-reduced-motion: reduce) {
-  .nx-ripple i { transition: opacity 80ms ease; transform: scale(1); }
+  .nx-ripple, .nx-ripple.on { transition: opacity 80ms ease; clip-path: none; }
   .nx-pulse { display: none; }
 }
 /* Barra de escribir: 44 visibles (+ área de toque 56 que pone press.js hacia el borde). «+» de agregar 36→40. */
@@ -485,7 +487,7 @@ button, input, textarea, select { font-family: inherit; }
 .nx-set-list { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
 .nx-set-row { display: flex; align-items: center; gap: 14px; width: 100%; box-sizing: border-box; padding: 12px 14px; min-height: 66px; text-align: left; font-family: inherit; color: var(--nx-text);
   background: var(--nx-surface); border: 1px solid var(--nx-line); border-radius: var(--nx-radius); cursor: pointer; }
-.nx-set-row:active { background: var(--nx-surface-2); }
+.nx-set-row.is-pressed { background: var(--nx-surface-2); } /* 3181: el velo del motor (press.js), no un :active suelto que llega tarde */
 .nx-set-ico { width: 42px; height: 42px; min-width: 42px; border-radius: 50%; background: var(--nx-surface-2); display: inline-flex; align-items: center; justify-content: center; }
 .nx-set-ico svg { width: 21px; height: 21px; fill: none; stroke: #00c8ff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .nx-set-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }

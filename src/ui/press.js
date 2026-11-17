@@ -5,10 +5,17 @@
  * mismo instante del dedo:
  *   1. HUNDIRSE: scale 0.96 (filas 0.985, redondos 0.9) en ≤70 ms, en pointerdown (no en :active). Web Animations API
  *      sobre la propiedad `scale` → no pisa los `transform` que ya tienen los botones (translateY de las cabeceras).
- *   2. VELO + ONDA: una onda circular (12 %) que nace EXACTAMENTE donde tocaste y llena el contorno en ~260 ms, acotada al
- *      elemento (contenedor con overflow:hidden y border-radius heredado: no desborda a la fila de al lado).
+ *   2. VELO + ONDA: una onda circular (12 %) que nace EXACTAMENTE donde tocaste y llena el contorno en ~260 ms, acotada a la
+ *      forma (border-radius heredado: no desborda a la fila de al lado; 3181: ver «la forma que se ve»).
  *   3. SOLTAR CON VIDA: vuelve en ~220 ms con un muelle suave (sobrepaso ~2 %); en los redondos un «pulso NEXO» cian que se
  *      expande y desvanece en 320 ms. El estado presionado se sostiene ≥120 ms aunque el toque sea fulminante.
+ *   + LA FORMA QUE SE VE (3181, dueño 17-11: «todos los botones con la misma retroalimentación… en los de llamadas sale un cuadrado
+ *     feo»): si el botón es transparente y su forma la dibuja un hijo (los de llamada: <button class="nc-btn"><span class="nc-ic">
+ *     círculo</span><span>Colgar</span></button>), el hundido, la onda y el pulso van en ESE hijo (_pressShape), no en la caja del
+ *     botón (antes: un rectángulo claro sobre círculo y nombre, y el pulso un óvalo). El pulso sale en todo lo que se ve redondo
+ *     (por su geometría, _isRoundBox), con el radio de la forma. La onda es UNA capa con fondo redondeado por su propio
+ *     border-radius y recortada en círculo con clip-path: su contorno ya no depende de que el compositor del WebView recorte en
+ *     redondo una capa compuesta aparte (overflow + border-radius), que no se pudo comprobar en el teléfono.
  *   + háptica: un «tick» del sistema al presionar (haptics.js). Cancelación por deslizamiento (>12 px, touch slop de Android
  *     8 dp con margen) o scroll: se despresiona sin pulso. prefers-reduced-motion: sin escala ni onda (solo el velo, CSS).
  *   + ÁREAS DE TOQUE (hit slop): a los controles más usados se les amplía el área invisible (::before) hasta 48/56 px, SIN
@@ -18,7 +25,7 @@
  */
 import { haptic } from './haptics.js';
 
-export var PRESS_SELECTOR = 'button, [role="button"], .ble-contact-row, .attach-menu-item, .ble-menu-item, .mm-item, .sticker-cell, .nx-btn, .ble-nav-item, .game-pick-item, .nexo-pick-row, .fw-row, .input-btn, .nc-btn, .camera-btn';
+export var PRESS_SELECTOR = 'button, [role="button"], .ble-contact-row, .attach-menu-item, .ble-menu-item, .mm-item, .sticker-cell, .nx-btn, .ble-nav-item, .game-pick-item, .nexo-pick-row, .fw-row, .input-btn, .nc-btn, .camera-btn, .nx-est-row';
 export var PRESS_SLOP_PX = 12;        // touch slop de Android = 8 dp, con margen
 export var PRESS_MIN_HOLD_MS = 120;   // el ojo necesita verlo aunque el toque sea fulminante
 export var PRESS_IN_MS = 70, PRESS_OUT_MS = 220, PRESS_RIPPLE_MS = 320, PRESS_PULSE_MS = 320;
@@ -44,11 +51,13 @@ export function _pressReleaseDelay(downAtMs, nowMs, minHold) {
 var ROUND_IDS = /^(chat-back-btn|nexo-(profile|new-group|call|video|gcall|gvideo|search|lock)-btn|camera-btn-[a-z]+)$/;
 export function _pressKind(el) {
   var cl = (el && el.classList) || { contains: function() { return false; } }, id = (el && el.id) || '';
-  if (cl.contains('ble-contact-row') || cl.contains('ble-menu-item') || cl.contains('mm-item') || cl.contains('nexo-pick-row') || cl.contains('fw-row') || cl.contains('game-pick-item')) return 'row';
+  if (cl.contains('ble-contact-row') || cl.contains('ble-menu-item') || cl.contains('mm-item') || cl.contains('nexo-pick-row') || cl.contains('fw-row') || cl.contains('game-pick-item') || cl.contains('nx-est-row')) return 'row';
   if (cl.contains('input-btn') || cl.contains('nc-btn') || cl.contains('camera-btn') || cl.contains('ble-btn-back') || cl.contains('ble-btn-add-small') ||
       cl.contains('ble-btn-scan-round') || cl.contains('ble-btn-visibility-round') || ROUND_IDS.test(id)) return 'round';
   return 'btn';
 }
+// ¿Una caja (ancho, alto, radio de esquina en px) se ve redonda? Casi cuadrada y con el radio de la mitad del lado.
+export function _isRoundBox(w, h, r) { return w > 0 && h > 0 && Math.abs(w - h) <= 2 && r >= Math.min(w, h) / 2 - 1; }
 // Área de toque: cuánto crece cada lado (l,r,t,b) para llegar a `size`, sin pasar del contenedor ni pisar a un vecino
 // (gap mínimo). Si un lado está trabado, el resto se reparte al lado libre (el borde de la pantalla es «infinito»).
 export function _hitSlop(rect, bounds, neighbors, size, minGap) {
@@ -83,6 +92,39 @@ function _rect(el) { var r = el.getBoundingClientRect(); return { left: r.left, 
 function _reduced(w) { try { return !!(w && w.matchMedia && w.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; } }
 function _positioned(w, el) {
   try { var p = w.getComputedStyle(el).position; if (!p || p === 'static') el.style.position = 'relative'; } catch (e) { if (!el.style.position) el.style.position = 'relative'; }
+}
+function _alpha(c) { var m = /rgba?\(([^)]+)\)/.exec(c || ''); if (!m) return c === 'transparent' || !c ? 0 : 1; var p = m[1].split(/[\s,/]+/).filter(Boolean); return p.length >= 4 ? parseFloat(p[3]) : 1; }
+// ¿Pinta una superficie propia (fondo, borde o sombra)?
+function _paints(cs) {
+  if (!cs || cs.display === 'none' || cs.visibility === 'hidden') return false;
+  if (_alpha(cs.backgroundColor) > 0.02 || (cs.backgroundImage && cs.backgroundImage !== 'none')) return true;
+  if (cs.boxShadow && cs.boxShadow !== 'none') return true;
+  return ['Top', 'Right', 'Bottom', 'Left'].some(function(k) { return parseFloat(cs['border' + k + 'Width']) > 0 && cs['border' + k + 'Style'] !== 'none' && _alpha(cs['border' + k + 'Color']) > 0.02; });
+}
+// La forma que se VE al tocar `el`: el propio botón si pinta algo; si es transparente, el hijo directo que pinta la superficie
+// más grande (≥ 20 % de la caja: el círculo de un botón de llamada); si ninguno, el propio botón (texto suelto).
+export function _pressShape(w, el) {
+  try {
+    if (!el || !w || !w.getComputedStyle || _paints(w.getComputedStyle(el))) return el;
+    var er = el.getBoundingClientRect(), best = null, area = 0;
+    for (var i = 0; i < el.children.length; i++) {
+      var c = el.children[i];
+      if (!c.getBoundingClientRect || /^svg$/i.test(c.tagName) || (c.classList && (c.classList.contains('nx-ripple') || c.classList.contains('nx-pulse')))) continue;
+      var q = c.getBoundingClientRect(), a = q.width * q.height;
+      if (a > area && _paints(w.getComputedStyle(c))) { best = c; area = a; }
+    }
+    return best && area >= 0.2 * er.width * er.height ? best : el;
+  } catch (e) { return el; }
+}
+// ¿La forma se ve redonda? (por su geometría real; sin medidas —jsdom— no se sabe: null)
+function _roundShape(w, sh) {
+  try {
+    var bw = sh.offsetWidth, bh = sh.offsetHeight;
+    if (!(bw > 0 && bh > 0)) return null;
+    var v = String(w.getComputedStyle(sh).borderTopLeftRadius || '0').split(/\s+/)[0];
+    var rad = /%$/.test(v) ? parseFloat(v) / 100 * Math.min(bw, bh) : (parseFloat(v) || 0);
+    return _isRoundBox(bw, bh, rad);
+  } catch (e) { return null; }
 }
 function _findPressable(target) {
   var el = (target && target.closest) ? target.closest(PRESS_SELECTOR) : null;
@@ -139,9 +181,10 @@ export function initPress(doc) {
   var w = d.defaultView || window;
   var cur = null, hitTimer = null, markTimer = null;
 
+  // La onda: UNA capa con el fondo (currentColor al 12 %) redondeado por su propio border-radius (el de la forma) y recortada en un
+  // círculo que crece desde el dedo (clip-path). Así el contorno es el de la forma siempre, aunque la capa se componga aparte.
   function ripple(el, px, py, pr) {
     var sp = d.createElement('span'); sp.className = 'nx-ripple';
-    var i = d.createElement('i'); sp.appendChild(i);
     el.style.setProperty('--nx-px', Math.round(px) + 'px'); el.style.setProperty('--nx-py', Math.round(py) + 'px'); el.style.setProperty('--nx-pr', pr + 'px');
     el.appendChild(sp);
     void sp.offsetWidth; // que la onda arranque desde 0 (reflow) antes de encenderla
@@ -149,11 +192,11 @@ export function initPress(doc) {
     return sp;
   }
   function finish(c, cancelled) {
-    var el = c.el, current = (el._nxSeq === c.seq); // si ya hay un toque más nuevo encima, este solo apaga su onda
-    if (current) { el.classList.remove('is-pressed'); _animateScale(w, el, 1, PRESS_OUT_MS, 'cubic-bezier(.34,1.56,.64,1)'); }
+    var el = c.el, sh = c.shape || el, current = (el._nxSeq === c.seq); // si ya hay un toque más nuevo encima, este solo apaga su onda
+    if (current) { el.classList.remove('is-pressed'); _animateScale(w, sh, 1, PRESS_OUT_MS, 'cubic-bezier(.34,1.56,.64,1)'); }
     if (c.ripple) { var rp = c.ripple; rp.classList.add('out'); w.setTimeout(function() { if (rp.parentNode) rp.parentNode.removeChild(rp); }, PRESS_RIPPLE_MS); }
-    if (current && !cancelled && c.kind === 'round' && !_reduced(w)) {
-      var p = d.createElement('span'); p.className = 'nx-pulse'; el.appendChild(p);
+    if (current && !cancelled && c.kind === 'round' && !_reduced(w) && sh.isConnected !== false) {
+      var p = d.createElement('span'); p.className = 'nx-pulse'; sh.appendChild(p);
       w.setTimeout(function() { if (p.parentNode) p.parentNode.removeChild(p); }, PRESS_PULSE_MS + 40);
     }
   }
@@ -166,15 +209,18 @@ export function initPress(doc) {
     if (e.button != null && e.button > 0) return;
     var el = _findPressable(e.target); if (!el) return;
     if (cur) release(true);
-    var r = _rect(el), x = e.clientX || 0, y = e.clientY || 0, px = x - r.left, py = y - r.top;
+    // 3181: la forma que se ve (el botón o el círculo que dibuja su hijo); la onda nace del dedo, llevado dentro de esa forma
+    var kind = _pressKind(el), sh = kind === 'row' ? el : _pressShape(w, el); // una fila es su propia forma (su velo es su fondo)
+    if (kind !== 'row' && _roundShape(w, sh)) kind = 'round'; // todo lo que se ve redondo: hundido de redondo y pulso NEXO
+    var r = _rect(sh), x = e.clientX || 0, y = e.clientY || 0;
+    var px = Math.max(0, Math.min(r.width, x - r.left)), py = Math.max(0, Math.min(r.height, y - r.top));
     var pr = Math.ceil(Math.sqrt(Math.pow(Math.max(px, r.width - px), 2) + Math.pow(Math.max(py, r.height - py), 2))) || 24;
-    var kind = _pressKind(el);
-    _positioned(w, el);
+    _positioned(w, sh);
     el._nxSeq = (el._nxSeq || 0) + 1; // un toque nuevo sobre el mismo botón invalida el «soltar» pendiente del anterior
     el.classList.add('nx-pressable'); el.classList.add('is-pressed');
     el.style.setProperty('--nx-press-scale', String(PRESS_SCALE[kind]));
-    cur = { el: el, id: e.pointerId, x0: x, y0: y, t0: Date.now(), kind: kind, seq: el._nxSeq, ripple: ripple(el, px, py, pr) };
-    _animateScale(w, el, PRESS_SCALE[kind], PRESS_IN_MS, 'cubic-bezier(.2,0,0,1)');
+    cur = { el: el, shape: sh, id: e.pointerId, x0: x, y0: y, t0: Date.now(), kind: kind, seq: el._nxSeq, ripple: ripple(sh, px, py, pr) };
+    _animateScale(w, sh, PRESS_SCALE[kind], PRESS_IN_MS, 'cubic-bezier(.2,0,0,1)');
     haptic('tick');
   }
   function onMove(e) {

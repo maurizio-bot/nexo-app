@@ -118,7 +118,8 @@ function _renderVoiceTime() {
   var dot = document.getElementById('voice-dot');
   if (dot) dot.style.opacity = _isPaused ? '0.3' : '1';
   var pb = document.getElementById('voice-pause');
-  if (pb) pb.textContent = _isPaused ? '▶' : '⏸';
+  var pt = _isPaused ? '▶' : '⏸';
+  if (pb && pb.textContent !== pt) pb.textContent = pt; // 3181: solo si cambia (cada 0,5 s borraba la onda del dedo a mitad del toque)
 }
 
 export async function _handleVoiceToggle() {

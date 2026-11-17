@@ -23,7 +23,7 @@ body.nx-est-drag #app, body.nx-est-drag .nx-est-scr { will-change: transform; }
 .nx-est-sec-t { padding: 16px 10px 6px; font-size: 13px; font-weight: 600; letter-spacing: 0.2px; color: var(--nx-muted); }
 .nx-est-row { display: flex; align-items: center; gap: 14px; min-width: 0; padding: 9px 10px; margin: 2px 0; border-radius: var(--nx-radius); cursor: pointer;
   -webkit-tap-highlight-color: transparent; transition: background 0.15s; }
-.nx-est-row.is-pressed, .nx-est-row:active { background: var(--nx-surface); }
+.nx-est-row.is-pressed { background: var(--nx-surface); } /* 3181: el velo del motor (press.js; antes estas filas no lo tenían y solo :active) */
 /* El círculo: el aro es el borde (celeste = sin ver) y el hueco del color del fondo es el padding (background-clip) */
 .nx-est-av { width: var(--nx-est-av) !important; height: var(--nx-est-av) !important; min-width: var(--nx-est-av); flex-shrink: 0; box-sizing: border-box;
   border-radius: 50%; border: 2px solid var(--nx-cyan); padding: 2px; background-clip: content-box !important; box-shadow: none !important; overflow: hidden;
