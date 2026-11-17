@@ -19,6 +19,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   OpenStreetMap y las manda dentro del mensaje cifrado; quien recibe no pide nada; sin internet, la tarjeta de hoy). A escala habrá que
   usar un proveedor de mapas (costo, decide el dueño).
 - Pregunta abierta: reacciones y «eliminar para todos» en grupos (hoy solo en el propio teléfono).
+- **3199, 3200 y 3201 INTEGRADOS (17-11 10:00).** Para el dueño, sobre el mapa (3201): la política de uso de las teselas de
+  `tile.openstreetmap.org` pide permiso de su equipo de operaciones para una app que se distribuye y un User-Agent que diga NEXO (el
+  WebView manda uno genérico). Para las pruebas con pocos teléfonos el riesgo es bajo; antes de Google Play: pedir permiso a OSM o
+  pasar a un proveedor (MapTiler, Stadia…; costo) — decide el dueño. La URL está en una sola constante (`TILE_URL`).
 - Diagnóstico de Roberto (= Motorola edge 40 neo, nx0g6ef54e, 3087, 09:32): (1) a las 08:33 publicó un video de estado de 1,7 MB y lo
   quitó a los 8 s (no se veía: 3200, CSP `media-src` sin `data:`); (2) un teléfono SIN identificar (…0da5) se conectó y desconectó de su
   servidor GATT cada 36 s durante 14 min con la app en segundo plano (gasto de radio y batería; ¿Zhelowsky 3026, versión vieja?): falta
