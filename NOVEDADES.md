@@ -12,14 +12,24 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Al grabar una nota de voz, los botones de borrar y enviar ya no se cortan.
+- Con muchos NEXO cerca, la app va más ligera y tus contactos se conectan antes.
 </es-419>
 <it-IT>
+- Mentre registri un vocale, i pulsanti per eliminare e inviare non vengono più tagliati.
+- Con tanti NEXO vicini, l'app è più leggera e i tuoi contatti si collegano prima.
 </it-IT>
 <en-US>
+- While recording a voice note, the delete and send buttons are no longer cut off.
+- With many NEXO users nearby, the app runs lighter and your contacts connect sooner.
 </en-US>
 <pt-BR>
+- Ao gravar um áudio, os botões de apagar e enviar não ficam mais cortados.
+- Com muitos NEXO por perto, o app fica mais leve e seus contatos se conectam antes.
 </pt-BR>
 <fr-FR>
+- Pendant l'enregistrement d'un vocal, les boutons supprimer et envoyer ne sont plus coupés.
+- Avec beaucoup de NEXO autour, l'app est plus légère et vos contacts se connectent plus vite.
 </fr-FR>
 <!-- /APK -->
 
