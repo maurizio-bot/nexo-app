@@ -65,6 +65,23 @@ export function _netReach(contactId) {
   try { return bi.net._netContacts().some(function(c) { return (c.nexoId || c.deviceUUID || '').toLowerCase() === nx; }); } catch (e) { return false; }
 }
 
+// 3170 (usuarios 17-11: «las fotos se ven mal»): ¿una foto a este contacto sale AHORA por un camino rápido? Wi-Fi Direct o la misma
+// red Wi-Fi (_wdReach); internet con él en línea (va antes que el Bluetooth: _resolveDeviceIdForNexoId); o, sin Bluetooth listo con
+// él, el buzón de archivos de los relés (mailboxFilesOk). No: solo Bluetooth (~12-16 KB/s), Jump, sin ningún camino ahora, o un
+// puente a internet sin Wi-Fi Direct (el internet de otro teléfono por Bluetooth: ahí solo caben fotos chicas, GW_FILE_MAX_B64).
+var PHOTO_HD_B64 = 800000; // lo que puede ocupar en base64 una foto de 1600 px (~600 KB): con un puente, ¿cabe?
+export function _fastReach(contactId) {
+  if (_wdReach(contactId)) return true;
+  var bi = window.bleInterface, net = bi && bi.net, nx = (contactId || '').toString().toLowerCase();
+  if (!net || !nx || typeof net.canReach !== 'function') return false;
+  try {
+    var bridged = typeof net.viaBridge === 'function' && net.viaBridge(nx);
+    if (!bridged && net.canReach(nx)) return true;
+    if (typeof bi._bleReadyFor === 'function' && bi._bleReadyFor(nx)) return false;
+    return typeof net.mailboxFilesOk === 'function' && net.mailboxFilesOk(nx, PHOTO_HD_B64);
+  } catch (e) { return false; }
+}
+
 // Ronda 2780: ¿hay un camino LOCAL para archivos grandes con el contacto (misma red Wi-Fi, Wi-Fi Direct o Bluetooth
 // L2CAP)? Si lo hay, el archivo grande va por ahí (rápido, gratis y lo primero según la regla del dueño) con big_file.js;
 // no se sube el tope del sobre para que no salga por internet en su lugar ni se quede en trozos lentos por Bluetooth.

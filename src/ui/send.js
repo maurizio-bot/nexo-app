@@ -7,7 +7,7 @@ import { MAX_BLE_FILE_BYTES, _maxB64For, _tooBigMessage } from './media_limits.j
 import { _PREVIEW_BY_TYPE, _canUpgradeStatus, _cut, _getCurrentContactId, _getDomMessageStatus, _normId } from './chat_format.js';
 import { _msgContactMap } from './chat_state.js';
 import { _renderMessage, _updateMessageStatus, _updateMessageStorageStatus } from './render.js';
-import { _showPermissionError } from './ui_bits.js';
+import { _fastReach, _showPermissionError } from './ui_bits.js';
 import { vaultAppendMessage, vaultSetMessageFields } from '../vault/vault_manager.js';
 import { bigToGroup } from './group_media.js';
 import { _failStatus } from './ble_helpers.js';
@@ -55,6 +55,18 @@ export function _groupBlobCap() {
   var bi = window.bleInterface, ack = bi && bi.ackSystem, net = bi && bi.net;
   if (!ack || typeof ack.stageBlobFor !== 'function' || !net || typeof net.online !== 'function' || !net.online() || (typeof net.gwOnly === 'function' && net.gwOnly()) || window.NEXO_BLOB_MAILBOX === false) return 0;
   return BLOB_MAILBOX_MAX_BYTES;
+}
+
+// 3170 (usuarios 17-11: «las fotos se ven mal»): ¿la foto a este chat sale por un camino rápido? (cámara.js _photoTarget: 1600 px
+// si sí, 1280 px si no). Un contacto: _fastReach. Un GRUPO: si va al buzón de archivos (internet propio: una subida a los relés),
+// sí; si no, va dentro del sobre a cada miembro por su camino y manda el PEOR miembro (uno solo por Bluetooth → 1280).
+export function _photoFast(cid) {
+  var gs = window.bleInterface && window.bleInterface.groups;
+  if (!cid || !gs || typeof gs.isGroup !== 'function' || !gs.isGroup(cid)) return _fastReach(cid);
+  if (_groupBlobCap() > 0) return true;
+  var g = gs.get(cid), me = typeof gs._me === 'function' ? gs._me() : null;
+  var others = ((g && g.members) || []).filter(function(m) { return m && m !== me; });
+  return others.length > 0 && others.every(function(m) { return _fastReach(m); });
 }
 
 export function _sendAttachment(type, payload, meta, opts) {
