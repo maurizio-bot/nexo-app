@@ -341,30 +341,21 @@ export const BLE_UI_METHODS = {
           return;
         }
         // Ronda 2827 (informe del dueño: por Bluetooth el ✓✓ de «leído» no se ponía azul): el acuse de lectura es un
-        // paquete de control de un solo intento; si el enlace Bluetooth no está listo al leer (se cayó, aún reconectando),
-        // se perdería sin reintento y el emisor nunca vería el ✓✓ azul. Se recuerda y se reenvía al reconectar
-        // (peerReady). Un acuse duplicado es inofensivo: el emisor lo deduplica por tipo+id.
-        if (!directR) {
-          self._pendingReads = self._pendingReads || new Map();
-          var pr = self._pendingReads.get(nxR) || new Set();
-          pr.add(d.msgId); if (pr.size > 300) pr.delete(pr.values().next().value);
-          self._pendingReads.set(nxR, pr);
-        }
-        if (!devId) return;
-        if (self.ackSystem && self.ackSystem.sendReadReceipt) self.ackSystem.sendReadReceipt(devId, d.msgId);
+        // paquete de control de un solo intento; si el enlace no está listo al leer (se cayó, aún reconectando) se perdía.
+        // 3178 (ciudad 17-11): ya no se deja en la cola de un Bluetooth caído ni espera solo a que vuelva el Bluetooth: el sistema
+        // de acuses lo manda por el camino que haya (su buzón de internet, Jump…) o lo apunta y lo reintenta al volver un camino
+        // (ble_ack queueReceipt/flushReceipts). Un acuse duplicado es inofensivo: el emisor lo deduplica por tipo+id.
+        if (!self.ackSystem) return;
+        if (!directR || !devId) { if (self.ackSystem.queueReceipt) self.ackSystem.queueReceipt('read_receipt', nxR, d.msgId); return; }
+        if (self.ackSystem.sendReadReceipt) self.ackSystem.sendReadReceipt(devId, d.msgId);
       } catch (err) {}
     });
-    // Ronda 2827: al reconectar con un contacto, reenviar los acuses de lectura que quedaron pendientes (enlace caído al
-    // leer), para que el emisor acabe viendo el ✓✓ azul. Mismo patrón que estados/avatar (que también reenvían en peerReady).
+    // Ronda 2827: al reconectar con un contacto, reenviar los acuses que quedaron sin salir (3178: los de cualquier camino; también
+    // los pide cada evento de enlace por _resendPendingMessages)
     window.addEventListener('nexo:ble:peerReady', function(e) {
       try {
         var nxP = _normId((e.detail && e.detail.nexoId) || '');
-        if (!nxP || !self._pendingReads) return;
-        var pend = self._pendingReads.get(nxP);
-        if (!pend || !pend.size) return;
-        self._pendingReads.delete(nxP);
-        var dev = self._resolveDeviceIdForNexoId(nxP);
-        pend.forEach(function(mid) { if (self.ackSystem && self.ackSystem.sendReadReceipt) self.ackSystem.sendReadReceipt(dev, mid); });
+        if (nxP && self.ackSystem && typeof self.ackSystem.flushReceipts === 'function') self.ackSystem.flushReceipts(nxP, 'Bluetooth listo');
       } catch (err) {}
     });
     // 3176: contacto recién creado cuyo kx (fx: entiende reacciones, editar, eliminar para todos…) llegó antes de serlo

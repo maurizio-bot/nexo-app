@@ -85,6 +85,8 @@ const _BLE_MESSAGE_METHODS_BASE = {
   _resendPendingMessages(nexoId) {
     var self = this;
     if (!nexoId) return;
+    // 3178 (ciudad 17-11): los acuses (entregado/leído) que no salieron van ya por el camino que haya con este contacto
+    try { if (self.ackSystem && typeof self.ackSystem.flushReceipts === 'function') self.ackSystem.flushReceipts(nexoId, 'camino con el contacto'); } catch (e) {}
     // Ronda 2767 (revisión): una sola vuelta a la vez por contacto. Al reconectar se pedía 4–6 veces seguidas (enlace
     // listo, clave, chat abierto…) y cada vuelta mandaba su lista sin mirar las demás: un texto largo salía varias veces
     // a la vez. Si ya hay una en marcha (con avances en los últimos 30 s), se repite al acabar

@@ -62,6 +62,10 @@ import { ackResume } from './ble_ack_resume.js';
  * FIX: getBLEContacts vía this.ble (resumeOutgoingTransfers y _resolveNexoId)
  * Base: v3.2.11-NEXO
  */
+// 3178: acuses que no salieron (ver _rcptNote): por contacto como mucho, intentos de cada uno, vida, pausa entre vueltas por eventos
+// de enlace, y espera tras una vuelta que no salió (sin evento de enlace)
+var RCPT_MAX = 300, RCPT_TRIES = 8, RCPT_TTL_MS = 6 * 3600000, RCPT_GAP_MS = 4000;
+var RCPT_WAIT_MS = [3000, 15000, 45000, 120000, 300000, 600000];
 export class BleAckSystem {
   constructor(bleInterface) {
     this.ble = bleInterface;
@@ -738,23 +742,113 @@ export class BleAckSystem {
   }
   // routeTo: origen de un mensaje que llegó por otro teléfono (Jump): el ack vuelve dirigido a él
   // extra (3075): { got: 1 } = «ya BAJÉ el archivo del buzón» (lo manda la app al terminar; el ✓✓ del nativo en segundo plano no lo lleva)
-  sendAck(deviceId, msgId, routeTo, extra) { this._sendReceipt('ack', deviceId, msgId, routeTo, extra); }
-  sendReadReceipt(deviceId, msgId, routeTo) { this._sendReceipt('read_receipt', deviceId, msgId, routeTo); }
+  sendAck(deviceId, msgId, routeTo, extra) { return this._sendReceipt('ack', deviceId, msgId, routeTo, extra); }
+  sendReadReceipt(deviceId, msgId, routeTo) { return this._sendReceipt('read_receipt', deviceId, msgId, routeTo); }
   // Auditoría C1 (ronda 2777): la confirmación se firma con el secreto de la pareja (si el contacto es proto 2 y hay
   // clave) para que el emisor pueda comprobar que es de verdad. `a` es un campo más: los contactos antiguos lo ignoran.
+  // 3178: resuelve true si SALIÓ (ver _rcptNote); si no, queda apuntada y se reintenta por el camino que haya.
   _sendReceipt(type, deviceId, msgId, routeTo, extra) {
     var self = this, myNx = (this.ble && this.ble.localNexoId) || 'unknown';
     var obj = { v: 1, type: type, msgId: msgId, from: myNx, ts: Date.now() };
     if (extra && extra.got === 1) obj.got = 1;
     var target = _normId(routeTo) || _normId(this._resolveNexoId(deviceId));
+    // 3178: por Bluetooth solo «sale» con el enlace listo: con el otro lejos el nativo la acepta igual y la deja en una cola que solo
+    // se vacía si vuelven a conectar por Bluetooth (si después se ven por internet, nunca llegaba)
+    var btReady = !!routeTo || _isLanDevice(deviceId) || _isNetDevice(deviceId) || this._rcptLinkReady(deviceId);
     var out = function() {
-      if (routeTo) { obj.to = String(routeTo).toLowerCase(); self._sendRouted(obj, deviceId); return; }
-      if (self.ble && self.ble._sendMessageNative) self.ble._sendMessageNative(deviceId, JSON.stringify(obj), null).catch(function() {});
+      if (routeTo) { obj.to = String(routeTo).toLowerCase(); self._sendRouted(obj, deviceId); return Promise.resolve(true); } // queda en la cola de Jump
+      if (!deviceId || !self.ble || !self.ble._sendMessageNative) return Promise.resolve(false);
+      return self.ble._sendMessageNative(deviceId, JSON.stringify(obj), null).then(function(r) { return btReady && !(r && r.sent === false); }, function() { return false; });
     };
     var c = this._contactOf(deviceId, routeTo);
-    if (c && c.proto === 2 && c.publicKey && !c.pendingKey && _ackRe.test(target)) {
-      e2eAckTag(c.publicKey, type + '|' + msgId + '|' + _normId(myNx) + '|' + target).then(function(a) { if (a) obj.a = a; out(); }).catch(out);
-    } else out();
+    var p = (c && c.proto === 2 && c.publicKey && !c.pendingKey && _ackRe.test(target))
+      ? e2eAckTag(c.publicKey, type + '|' + msgId + '|' + _normId(myNx) + '|' + target).then(function(a) { if (a) obj.a = a; return out(); }, out)
+      : out();
+    return p.then(function(ok) { self._rcptNote(target, type, msgId, extra, ok); return ok; }, function() { self._rcptNote(target, type, msgId, extra, false); return false; });
+  }
+  // ===== 3178 (ciudad 17-11: 41 «leído» que no volvían y grupos en ✓ con todos los miembros servidos) =====
+  // Un acuse (entregado/leído) es un paquete de UN intento y el emisor no reintenta lo que ya dejó en un relé (✓) ni lo ya entregado
+  // (✓✓ gris): si el acuse no salía (sin internet justo al leer, relés que no contestan o lo rechazan, el puente en su tope, enlace
+  // caído) se perdía para siempre. Ahora el que no sale queda apuntado y vuelve a salir por el camino que haya (Wi-Fi, internet en
+  // línea, Bluetooth listo, su buzón de internet o Jump): a los 3 s, 15 s, 45 s, 2, 5 y 10 min, y antes si aparece un camino NUEVO
+  // con ese contacto (cada evento de enlace llama a _resendPendingMessages; por el mismo camino espera su turno, sin inundar). Con
+  // tope: RCPT_TRIES intentos, RCPT_MAX por contacto, RCPT_TTL_MS de vida. Un acuse repetido no hace daño (el emisor deduplica por
+  // tipo+id). Formato y firma (C1) iguales.
+  _rcptLinkReady(deviceId) {
+    var st = (deviceId && this.ble && typeof this.ble._getDeviceState === 'function') ? this.ble._getDeviceState(deviceId) : null;
+    return !!st && (st.state === 'ready_to_chat' || st.state === 'notifications_ready'); // BLE_STATES.READY_TO_CHAT / NOTIFICATIONS_READY
+  }
+  _rcptState(nx) {
+    if (!this._rcptSt) this._rcptSt = new Map();
+    var s = this._rcptSt.get(nx);
+    if (!s) { s = { timer: null, n: 0, at: 0, next: 0, via: null }; this._rcptSt.set(nx, s); }
+    return s;
+  }
+  _rcptNote(nx, type, msgId, extra, ok) {
+    if (!/^nx[0-9a-z]{8}$/.test(nx || '') || !msgId) return;
+    var key = type + ':' + msgId, m = this._rcpt && this._rcpt.get(nx);
+    if (ok) {
+      if (m && m.delete(key) && !m.size) { this._rcpt.delete(nx); this._rcptReset(nx); }
+      return;
+    }
+    if (!this._rcpt) this._rcpt = new Map();
+    if (!m) { m = new Map(); this._rcpt.set(nx, m); }
+    if (!m.has(key)) {
+      m.set(key, { type: type, msgId: msgId, extra: extra && extra.got === 1 ? { got: 1 } : null, tries: 0, at: Date.now() });
+      while (m.size > RCPT_MAX) m.delete(m.keys().next().value);
+    }
+    this._rcptArm(nx);
+  }
+  _rcptArm(nx) {
+    var self = this, s = this._rcptState(nx);
+    if (s.timer) return;
+    var wait = RCPT_WAIT_MS[Math.min(s.n, RCPT_WAIT_MS.length - 1)];
+    s.n++; s.next = Date.now() + wait;
+    s.timer = setTimeout(function() { s.timer = null; self.flushReceipts(nx, 'reintento', true); }, wait);
+  }
+  _rcptReset(nx) { var s = this._rcptState(nx); clearTimeout(s.timer); s.timer = null; s.n = 0; s.next = 0; s.via = null; }
+  // El camino de AHORA para un acuse: el más rápido directo; si no, su buzón de internet (queda guardado en el relé); si no, Jump
+  _rcptPath(nx) {
+    var b = this.ble;
+    if (!b) return null;
+    if (b.lan && typeof b.lan.canReach === 'function' && b.lan.canReach(nx)) return { dev: 'lan:' + nx, via: 'Wi-Fi' };
+    var net = b.net;
+    if (net && typeof net.canReach === 'function' && net.canReach(nx)) return { dev: 'net:' + nx, via: 'internet' };
+    var bt = typeof b._bleReadyFor === 'function' ? b._bleReadyFor(nx) : null;
+    if (bt) return { dev: bt, via: 'Bluetooth' };
+    if (net && typeof net.mailboxOk === 'function' && net.mailboxOk(nx)) return { dev: 'net:' + nx, via: 'su buzón de internet' }; // i18n-ok: registro
+    if (b.relay && typeof b.relay.relayHop === 'function' && b.relay.relayHop(nx)) return { dev: null, route: true, via: 'Jump' };
+    return null;
+  }
+  // Un acuse sin enlace listo al momento (p. ej. el «leído» al abrir el chat): sale ya por el camino que haya o queda apuntado
+  queueReceipt(type, nexoId, msgId, extra) {
+    var nx = _normId(nexoId);
+    if (!/^nx[0-9a-z]{8}$/.test(nx) || !msgId) return;
+    var path = this._rcptPath(nx);
+    if (!path) { this._rcptNote(nx, type, msgId, extra, false); return; }
+    return type === 'read_receipt' ? this.sendReadReceipt(path.dev, msgId, path.route ? nx : undefined) : this.sendAck(path.dev, msgId, path.route ? nx : undefined, extra);
+  }
+  // Volver a mandar los acuses de ese contacto que no salieron (lo pide cada evento de enlace; force: el temporizador)
+  flushReceipts(nexoId, why, force) {
+    var self = this, nx = _normId(nexoId), m = this._rcpt && this._rcpt.get(nx);
+    if (!m || !m.size) return 0;
+    var now = Date.now(), s = this._rcptState(nx);
+    if (!force && now - s.at < RCPT_GAP_MS) return 0;
+    var path = this._rcptPath(nx);
+    if (!path) return 0; // sin camino: espera al próximo evento de enlace
+    if (!force && path.via === s.via && now < s.next) return 0; // por el mismo camino que ya falló: espera su turno
+    s.at = now; s.via = path.via;
+    var list = [], dropped = 0;
+    m.forEach(function(e, k) { if (++e.tries > RCPT_TRIES || now - e.at > RCPT_TTL_MS) { m.delete(k); dropped++; } else list.push(e); });
+    if (dropped) console.warn('[ACUSE] ' + dropped + ' confirmación(es) para ' + nx + ' no salieron tras ' + RCPT_TRIES + ' intentos: se dejan');
+    if (!m.size) { this._rcpt.delete(nx); this._rcptReset(nx); }
+    if (!list.length) return 0;
+    console.log('[ACUSE] ' + list.length + ' confirmación(es) para ' + nx + ' que no salieron: van ahora por ' + path.via + ' (' + why + ')');
+    list.forEach(function(e) {
+      if (e.type === 'read_receipt') self.sendReadReceipt(path.dev, e.msgId, path.route ? nx : undefined);
+      else self.sendAck(path.dev, e.msgId, path.route ? nx : undefined, e.extra);
+    });
+    return list.length;
   }
   _sendRouted(obj, fallbackDeviceId) {
     var relay = this.ble && this.ble.relay;

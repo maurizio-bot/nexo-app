@@ -52,6 +52,10 @@ class NostrRelay {
   // 3096: la app de un teléfono DUERME (su JS no corre): sus conexiones quedan mudas y las que intente abrir también, hasta wakeTag
   sleepTag(tag) { (this._asleep = this._asleep || new Set()).add(tag); return this.muteTag(tag); }
   wakeTag(tag) { if (this._asleep) this._asleep.delete(tag); }
+  // 3178 (acuses.js): los EVENT que manda un teléfono se RECHAZAN (OK false, como el tope de un puente o un relé que limita)
+  // aunque sigue recibiendo lo suyo: su confirmación no sale. acceptTag lo deshace.
+  rejectTag(tag) { (this._reject = this._reject || new Set()).add(tag); }
+  acceptTag(tag) { if (this._reject) this._reject.delete(tag); }
 
   _valid(ev) {
     const { schnorr, sha256, hex, unhex } = noble;
@@ -131,6 +135,7 @@ class NostrRelay {
         if (bad) { this.stats.rejected.push(bad); send(['OK', ev && ev.id, false, bad]); return; }
         if (this._expired(ev, now)) { send(['OK', ev.id, false, 'invalid: expired']); return; }
         if (!allow()) { send(['OK', ev.id, false, 'rate-limited: slow down']); return; }
+        if (this._reject && Array.from(this._reject).some((t) => (ws.tag || '').indexOf(t) >= 0)) { this.stats.rejected.push('tag'); send(['OK', ev.id, false, 'rate-limited: tope (prueba)']); return; }
         // honorDeletes (3075): como los relés reales (NIP-09), un evento kind 5 borra los eventos que cita (del mismo autor)
         if (this.opts.honorDeletes && ev.kind === 5) {
           const ids = (ev.tags || []).filter((t) => t[0] === 'e').map((t) => t[1]);
