@@ -220,3 +220,20 @@ Kotlin: `BigFileTest` (archivos grandes: cifrado por trozos, cortado/tocado, soc
 Reestructuración (ronda 2752, `docs/ESTRUCTURA.md`): `undef.js` (nombres sin definir en lo que entra en la APK; también
 en GitHub), `group_deps.js`, `extract.js`, `extract_methods.js`, `same_text.py`, `add_glue.py`, `auto_import.py`.
 
+
+Estudio EDC de límites (dueño 17-11; no están en `ci.js`: son largas y miden, no aprueban). Chromium con la CPU frenada
+×4 y SIN internet (`NEXO_NET_RELAYS = []`; con `pw_harness` a secas la app sale a los relés públicos reales).
+`multitud.js <build> [--n=200] [--vis=0.2] [--flap=0.2] [--cerca=3] [--libreta=20] [--fase=40] [--agregar=30]
+[--max-links=7] [--serie=1] [--conn-ms=800] [--fallo-ms=15000] [--scan-s=15] [--multitud-b=1] [--vueltas=3]`: A (app real)
+en medio de N NEXO desconocidos («fantasmas» en Node: anuncian NEXO ID visible o código rotativo de clave real, RSSI −40…−100
+variable, una parte aparece y desaparece; su app duerme: el nativo contesta «quién soy» y los pings). El escaneo los entrega
+como el Kotlin (uno por dispositivo y segundo, fuera los de RSSI < −95, 15 s por escaneo). Modelo de Android ajustable: tope
+de enlaces por teléfono, conexiones salientes en serie, 15 s para fallar con quien no está. Fases: reposo en la multitud
+(A busca a B, que está lejos con un mensaje pendiente), B vuelve (visto, enlace listo, entregado; varias vueltas) y
+«Agregar» abierto. Mide lag, tareas largas, CPU, memoria, todos los Map/Set/arrays de `bleInterface` y Jump, perfil por
+función (`perfil_js`) y a quién se pide conexión. Salida `MULTITUD {json}`.
+`capacidad.js <build> [--contactos=1000] [--chats=50] [--msgs=2000] [--grande=10000] [--abrir=10] [--perdidos=50]
+[--io-ms-mb=0]`: A arranca con el vault lleno en el formato real (contactos con clave P-256, chats con fotos/vídeos/archivos
+referenciados). Mide tamaño de archivos, arranque y sus primeros 20 s, pintar la lista, guardar la libreta, buscar contacto,
+abrir/buscar/cargar/guardar en el chat grande (y cuántos mensajes quedan en el disco), cargar todos los chats, la vuelta a la
+app (`_flushAllPendingMessages`) y 65 s con contactos «perdidos». Salida `CAPACIDAD {json}`.
