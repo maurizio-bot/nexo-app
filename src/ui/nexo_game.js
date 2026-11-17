@@ -125,6 +125,23 @@ export function attachNexoUnlockGesture(el) {
 }
 
 // ---------- El juego (sencillo) ----------
+// 3182 (dueño 17-11: «dependiendo de dónde pulso en la pantalla, ahí brinca mi navecita… puedo tocar directamente el contacto y
+// salvarlo: es como hacer trampa, casi teletransportación»): hasta la 3181 tocar ponía la nave EN el dedo y arrastrar la llevaba al
+// instante a donde estuviera el dedo. Ahora: (1) se arrastra en RELATIVO (la nave se mueve lo que se mueve el dedo, toques donde
+// toques: tocar no la mueve) y (2) vuela hacia ese punto con velocidad MÁXIMA (SHIP_MAX_SPEED): un tirón rápido no la teletransporta.
+export var SHIP_MAX_SPEED = 650; // px/s: cruza una pantalla de 360 px en ~0,55 s
+// Adonde quiere ir la nave mientras se arrastra: su posición al tocar + lo que se movió el dedo, dentro de la zona de juego
+export function __dragTarget(drag, p, W, H) {
+  var x = drag.sx + (p.x - drag.fx), y = drag.sy + (p.y - drag.fy);
+  return { x: Math.max(16, Math.min(W - 16, x)), y: Math.max(40, Math.min(H - 30, y)) };
+}
+// Un paso de la nave hacia el objetivo sin pasar de la velocidad máxima
+export function __shipStep(pos, target, dt, maxSpeed) {
+  var dx = target.x - pos.x, dy = target.y - pos.y, d = Math.sqrt(dx * dx + dy * dy), max = maxSpeed * Math.max(0, dt);
+  if (d <= max || d === 0) return { x: target.x, y: target.y };
+  return { x: pos.x + dx / d * max, y: pos.y + dy / d * max };
+}
+
 export function openNexoGame() {
   if (document.getElementById('nexo-game-overlay')) return;
   var ov = document.createElement('div');
@@ -171,25 +188,27 @@ export function openNexoGame() {
   resize();
   window.addEventListener('resize', resize);
 
-  var dragging = false;
+  var drag = null; // 3182: arrastre RELATIVO ({fx, fy}: dedo al tocar; {sx, sy}: nave al tocar)
   var toLocal = function(e) { var r = canvas.getBoundingClientRect(); var tp = (e.touches && e.touches[0]) || e; return { x: tp.clientX - r.left, y: tp.clientY - r.top }; };
   var onDown = function(e) {
     if (G.over) { restart(); return; }
     if (!G.started) { G.started = true; G.running = true; }
-    dragging = true; var p = toLocal(e); G.player.x = p.x; G.player.y = Math.min(G.H - 30, p.y); e.preventDefault && e.preventDefault();
+    var p = toLocal(e); drag = { fx: p.x, fy: p.y, sx: G.player.x, sy: G.player.y }; G.target = null; // tocar NO mueve la nave
+    e.preventDefault && e.preventDefault();
   };
-  var onMove = function(e) { if (!dragging) return; var p = toLocal(e); G.player.x = Math.max(16, Math.min(G.W - 16, p.x)); G.player.y = Math.max(40, Math.min(G.H - 30, p.y)); e.preventDefault && e.preventDefault(); };
-  var onUp = function() { dragging = false; };
+  var onMove = function(e) { if (!drag) return; G.target = __dragTarget(drag, toLocal(e), G.W, G.H); e.preventDefault && e.preventDefault(); };
+  var onUp = function() { drag = null; };
   canvas.addEventListener('mousedown', onDown); canvas.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
   canvas.addEventListener('touchstart', onDown, { passive: false }); canvas.addEventListener('touchmove', onMove, { passive: false }); window.addEventListener('touchend', onUp);
 
   function boom(x, y, color) { for (var i = 0; i < 7; i++) { var a = Math.random() * 6.28, s = 40 + Math.random() * 90; G.parts.push({ x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.45, t: 0, color: color }); } }
   function hit(ax, ay, ar, bx, by, br) { var dx = ax - bx, dy = ay - by; return (dx * dx + dy * dy) <= (ar + br) * (ar + br); }
   function gameOver() { G.over = true; G.running = false; G.scores = addScore(G.score, G.saved); }
-  function restart() { G.bullets = []; G.meteors = []; G.contacts = []; G.parts = []; G.power = null; G.score = 0; G.lives = 3; G.saved = 0; G.triple = 0; G.over = false; G.started = true; G.running = true; G.tMeteor = G.tContact = G.tPower = G.t = 0; G.player.x = G.W / 2; G.player.y = G.H - 90; }
+  function restart() { G.bullets = []; G.meteors = []; G.contacts = []; G.parts = []; G.power = null; G.score = 0; G.lives = 3; G.saved = 0; G.triple = 0; G.over = false; G.started = true; G.running = true; G.tMeteor = G.tContact = G.tPower = G.t = 0; G.player.x = G.W / 2; G.player.y = G.H - 90; G.target = null; drag = null; }
 
   function update(dt, now) {
     if (!G.running) return;
+    if (G.target) { var np = __shipStep(G.player, G.target, dt, SHIP_MAX_SPEED); G.player.x = np.x; G.player.y = np.y; } // 3182: sin teletransporte
     G.t += dt; // tiempo jugando: la dificultad sube poco a poco con el tiempo (pedido del dueño: que no sea aburrido)
     if (G.triple > 0) G.triple -= dt;
     // disparo automático
@@ -254,9 +273,10 @@ export function openNexoGame() {
   }
   function close() { G.running = false; if (G.raf && window.cancelAnimationFrame) window.cancelAnimationFrame(G.raf); window.removeEventListener('resize', resize); window.removeEventListener('mouseup', onUp); window.removeEventListener('touchend', onUp); if (ov.parentNode) ov.parentNode.removeChild(ov); }
   closeBtn.onclick = close; ov.__nexoClose = close;
+  ov.__nexoState = function() { return { x: G.player.x, y: G.player.y, started: !!G.started, W: G.W, H: G.H }; }; // gancho de pruebas (3182)
   if (ctx && window.requestAnimationFrame) G.raf = window.requestAnimationFrame(frame);
   return ov;
 }
 
 // Acceso de respaldo y gancho para las pruebas (funciones puras, sin efectos; consistente con el resto de la app)
-try { if (typeof window !== 'undefined') { window.__nexoOpenGame = openNexoGame; window.__nexoGame = { recognizeN: __recognizeN, loadScores: loadScores, addScore: addScore, open: openNexoGame }; } } catch (e) {}
+try { if (typeof window !== 'undefined') { window.__nexoOpenGame = openNexoGame; window.__nexoGame = { recognizeN: __recognizeN, loadScores: loadScores, addScore: addScore, open: openNexoGame, dragTarget: __dragTarget, shipStep: __shipStep, maxSpeed: SHIP_MAX_SPEED }; } } catch (e) {}
