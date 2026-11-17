@@ -137,7 +137,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Textos largos de portugués y francés en los botones (plan, etapa 1). ×1
 
 **Falta**
-- Estados en su propia pantalla, deslizando ← desde Contactos (dueño 17-11: solo gestos, sin botones ni pestañas; un aviso de texto la primera vez); después ahí irán el stream y los vídeos públicos, separados de lo de contactos. En curso, 3169. ×1
+- Estados en su propia pantalla, deslizando ← desde Contactos (dueño 17-11: solo gestos, sin botones ni pestañas; un aviso de texto la primera vez); después ahí irán el stream y los vídeos públicos, separados de lo de contactos. Hecho 3169 (va en la APK siguiente a la 3079). ×1
 - Bienvenida ≤ 40 s (introducción, foto, retrato vivo, firma viva, huella), oculta tras una bandera (dueño 16-11). ×2
 - Quitar los avisos de camino («por Bluetooth», «conectado/en línea por…») en la app terminada (dueño 16-11). ×1
 - NEXO Touch parte 2: áreas de toque en hojas, cámara y juegos; diagnóstico del motor de vibración. ×1
