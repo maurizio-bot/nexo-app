@@ -21,7 +21,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const r = { prueba: 'gcbotones', build: path.basename(buildDir), casos: {} };
   const browser = await PW.chromium.launch();
   const errs = [];
-  for (const [lang, w] of [['es', 360], ['es', 384], ['es', 412], ['it', 360], ['it', 384]]) {
+  for (const [lang, w] of [['es', 360], ['es', 384], ['es', 412], ['it', 360], ['it', 384], ['en', 360], ['pt', 360], ['fr', 360]]) {
     const page = await browser.newPage({ viewport: { width: w, height: Math.round(w * 2.16) }, isMobile: true, hasTouch: true });
     page.on('pageerror', (e) => errs.push(e.message));
     await page.route('https://a.nexo.test/**', (route) => {
@@ -58,7 +58,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       return {
         botones: bs.map((b) => b.textContent).join(' · '), n: bs.length, filas, alto_barra: Math.round(el.querySelector('.gc-buttons').getBoundingClientRect().height),
         caben: rs.every((x) => x.left >= -0.5 && x.right <= W + 0.5 && x.bottom <= H + 0.5) && !pisan,
-        colgar_visible: /Colgar|Termina/.test(hang.textContent) && hr.left >= 0 && hr.right <= W && hr.top >= 0 && hr.bottom <= H,
+        colgar_visible: /Colgar|Termina|End|Desligar|Raccrocher/.test(hang.textContent) && hr.left >= 0 && hr.right <= W && hr.top >= 0 && hr.bottom <= H,
         circulo_min: ics.length === bs.length ? Math.round(Math.min(...ics)) : 0,
         letra_min: labs.length ? Math.min(...labs.map((l) => parseFloat(getComputedStyle(l).fontSize))) : 0,
         nombres_cortados: cortados,

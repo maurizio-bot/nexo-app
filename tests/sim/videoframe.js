@@ -151,7 +151,7 @@ const look = (page) => page.evaluate(([SQ]) => {
   r.botones = {};
   const rerender = async () => { for (let i = 0; i < 2; i++) { await click(A, '#nexo-call-screen .call-mute'); await sleep(400); } };
   let largosOn = false;
-  for (const [lang, ww, largos] of [['es', 360], ['es', 384], ['es', 412], ['it', 360], ['it', 384], ['es', 360, 1], ['it', 360, 1]]) {
+  for (const [lang, ww, largos] of [['es', 360], ['es', 384], ['es', 412], ['it', 360], ['it', 384], ['en', 360], ['pt', 360], ['fr', 360], ['es', 360, 1], ['it', 360, 1], ['pt', 360, 1], ['fr', 360, 1]]) {
     if (largos && !largosOn) { largosOn = true; await click(A, '#nexo-call-screen .call-mute'); await sleep(400); await click(A, '#nexo-call-screen .call-camera'); await sleep(800); }
     await A.evaluate((l) => { window.NEXO_FORCE_LANG = l; }, lang); await rerender();
     const w = lang + ' ' + ww + (largos ? ' silenciado y sin cámara' : '');
