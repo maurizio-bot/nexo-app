@@ -25,7 +25,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   fragmentos de respaldo Fénix y los medios de estados avisaban «📎 Archivo» con la app del otro cerrada (BgInbox) y por internet
   (marca n para NetBg). Ahora van con q:1 (avisofenix.js). Batería de 3207–3210 reiniciada (`bateria_3210.txt` del scratchpad; la de
   3209 se paró a 51/330: un fallo de pressall «Disparar» que pasa solo). Si pasa: commit de punta sin `[skip ci]` → NEXOCHAT (APK 3092).
-  Siguiente: 3211, margen del `since` de los relés según el desfase medido (2,6 MB repetidos de Marcos al abrir).
+  **OJO:** la rama de trabajo ya lleva 3211 (red de seguridad que no mandaba nada; redseguridad.js) y 3212 (margen del `since`, en
+  prueba con repetidos.js), SIN batería: la punta de la APK 3092 se hace en una rama desde `afc198cb` (código de 7a9cfa52, el
+  probado) y se sube ese commit a NEXOCHAT; luego se une a la rama de trabajo. 3211+3212 van en la 3093 con su batería.
 - **17-11 16:20 (México) — APK 3091 PUBLICADA (15:47), novedades al historial; bloque nuevo con 3207 y 3208.** La batería de 3207+3208
   dio 9 fallos, todos aclarados: 5 de cifrado (desync.js: con 3207 el contacto de cerca tiene el paquete de claves en los dos lados y
   B ve SOLO el cifrado atrasado: vale como detectado), net.js (la foto de perfil es acción oculta sin aviso), alerts.js (B queda con
