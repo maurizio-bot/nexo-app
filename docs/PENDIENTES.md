@@ -54,6 +54,12 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   hoy (Wi-Fi 42,5 · datos 31,1); a los 5 min de abrir, 2 MB de relés con 306 de 522 eventos repetidos (relay.primal.net 724 KB, 721
   repetidos) y 4 cambios Wi-Fi ↔ datos en 5 min: cada cambio reconecta todos los relés y vuelve a pedir los últimos 10 min → es la
   causa principal de lo repetido (ver arriba). Marcos tenía la 3043 a las 14:30 (ya actualizó a la 3090 a las 14:41).
+- HONOR 14:20 (pedido por Marcos, «zombi»): recién actualizado (14:14) y con la **optimización de batería ACTIVA y el segundo plano
+  NO permitido** («ENERGIA … segundo plano permitido NO, fabricante HONOR»); a las 12:28 el gestor de batería de HONOR (PowerGenie
+  «smartopt clean») cerró NEXO a la fuerza. La app mostró el aviso de batería a las 14:13 y no se aceptó → al dueño: aceptar el aviso
+  o en el HONOR Ajustes → Aplicaciones → Inicio de aplicaciones → NEXO en manual con todo permitido.
+- nx…5928 (3069/3077, versión vieja): resumen del 15-11 con 55,6 MB (Wi-Fi 36,2 · datos 19,4) para 36 mensajes, 3 fotos y 5 audios
+  en 7 min a la vista: otra muestra del gasto de datos de arriba. Debe actualizar.
 - NX…DBFE (3087, Galaxy A05s, Italia): versión vieja; 217 MB de Wi-Fi hoy (archivos por el buzón: 18 enviados, 22 recibidos) y 2
   cierres por falta de memoria; Bluetooth con richard atascado («Write fallo ~6 s») mientras el Wi-Fi local llevaba los mensajes.
 
