@@ -9,6 +9,17 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 17-11 09:20 — pedidos del dueño en curso (ayudantes)
+- **3199** (wtgaleria): diagnóstico Motorola edge 40 neo 3086 08:35/08:48: la foto elegida de la Galería no salía («No se pudo leer el
+  archivo», NotReadableError) desde la revisión de la 3160 (se leía al tocar enviar) → copiarla al elegirla. Mismo diagnóstico: zombi a
+  los 62 s (3187 OK) y 3 «Foreground kill» de Motorola en 7 días (3189/3192 la revive).
+- **3200** (wtestadovid): Roberto no puede subir un video como estado (captura: vista previa del video rota). Pedirle al dueño: su
+  diagnóstico justo después, modelo del teléfono y de dónde sale el video.
+- **3201** (wtmapa): miniatura del mapa en la ubicación — **el dueño eligió la opción A** (quien manda baja una vez las teselas de
+  OpenStreetMap y las manda dentro del mensaje cifrado; quien recibe no pide nada; sin internet, la tarjeta de hoy). A escala habrá que
+  usar un proveedor de mapas (costo, decide el dueño).
+- Pregunta abierta: reacciones y «eliminar para todos» en grupos (hoy solo en el propio teléfono).
+
 ## 🆕 17-11 06:28 — dueño «Ok» a 2 conexiones y 2 copias con datos móviles
 - Diagnóstico S24 06:01 (entrega lenta de una nota de voz al S23 3080, 128 s): del lado del S23 (versión vieja); la subida fue a 6,8 KB/s
   porque cada trozo va a 3 relés, y 1,5 MB de 2,5 MB bajados eran repetidos. Aprobado: con datos móviles escuchar 2 relés (seguir
