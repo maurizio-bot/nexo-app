@@ -9,6 +9,13 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 16-11 20:40 — visto bueno del dueño («Si»)
+- **Aprobado (seguridad):** (1) revisar cada adjunto que llega por su contenido real (tipo verdadero, tamaño), no por lo que dice el
+  mensaje; (3) comprobar todo lo que la parte web le pasa al nativo. **Aprobada la regla de espacio:** cuota por contacto; si se llena,
+  se borran primero los archivos más viejos ya vistos, nunca los textos. Por hacer (subagentes, cuando se libere la CPU).
+- **Nombre:** el que mejor le suena es «Eco», pero sigue buscando. Historia del Bluetooth y nombres que salen de ella:
+  `nexo-private/negocio/NOMBRE.md`.
+
 ## 🆕 16-11 mañana — decisiones del dueño tras la opinión de Grok
 - **Código muerto:** quitar (p. ej. src/auth sin uso).
 - **Diagnóstico visible:** SE QUEDA mientras haya probadores («es nuestra única fuente de diagnóstico»); al subir a Google Play se
