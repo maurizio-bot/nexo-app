@@ -21,6 +21,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **17-11 17:55 (México) — APK 3092 subida con 3207–3210:** batería completa sobre 3207–3210 (retomada con CI_RESUME tras un
+  reinicio del contenedor): todo pasa; los únicos ✗ fueron un pasajero de run.js y la prueba de textos fijos (26 > 25), que pasan al
+  repetir (la segunda con la marca i18n-ok de 3209, incluida en esta punta). Solicitud de contacto de cerca (3207), reintento de la
+  descarga de la actualización (3208), sin martillar a los relés que dicen que no (3209) y sin avisos fantasma de respaldo/estados (3210).
 - **17-11 16:45 (México) — 3210 INTEGRADO** (dueño: «¿por qué a Marcos le llegan notificaciones mías si yo no le mandé nada?»): los
   fragmentos de respaldo Fénix y los medios de estados avisaban «📎 Archivo» con la app del otro cerrada (BgInbox) y por internet
   (marca n para NetBg). Ahora van con q:1 (avisofenix.js). Batería de 3207–3210 reiniciada (`bateria_3210.txt` del scratchpad; la de
