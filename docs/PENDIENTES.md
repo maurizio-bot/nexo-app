@@ -60,6 +60,12 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   o en el HONOR Ajustes → Aplicaciones → Inicio de aplicaciones → NEXO en manual con todo permitido.
 - nx…5928 (3069/3077, versión vieja): resumen del 15-11 con 55,6 MB (Wi-Fi 36,2 · datos 19,4) para 36 mensajes, 3 fotos y 5 audios
   en 7 min a la vista: otra muestra del gasto de datos de arriba. Debe actualizar.
+- Marcos 16:13 (copiado a mano): **2,6 MB bajados de los relés en el primer minuto tras abrir, 528 de 546 eventos repetidos** (97 %;
+  primal 1 MB, nos.lol 806 KB, nostr.mom 800 KB, casi todo repetido). La escucha nativa ya había entregado 49 sobres; la app pide a
+  cada relé desde «lo último visto − 10 min» → vuelve a bajar todo eso por cada relé. La escucha nativa ya trabaja SIN margen (su
+  `since` = lo último visto). **3210 en curso:** margen según el desfase de reloj medido en lo que llega en vivo (mín. 2 min, máx. 10).
+  Además: «Confirmación sin firma válida de nx1n36c283 … ignorada» ×6 al abrir (✓✓ de la parte nativa del dueño con la app cerrada
+  que no traen la firma esperada) → el emisor reenvía hasta que el dueño abre: pedir el diagnóstico del dueño del mismo momento.
 - NX…DBFE (3087, Galaxy A05s, Italia): versión vieja; 217 MB de Wi-Fi hoy (archivos por el buzón: 18 enviados, 22 recibidos) y 2
   cierres por falta de memoria; Bluetooth con richard atascado («Write fallo ~6 s») mientras el Wi-Fi local llevaba los mensajes.
 
