@@ -139,6 +139,8 @@ class NexoBlePlugin : Plugin() {
     internal var serverRxCharacteristic: BluetoothGattCharacteristic? = null
     internal val serverConnectedDevices = ConcurrentHashMap<String, BluetoothDevice>()
     internal val serverNotificationEnabled = ConcurrentHashMap<String, Boolean>()
+    // 3203 (diagnóstico de Roberto, Motorola edge 40 neo 3087, 17-11): freno a quien entra y sale del servidor GATT sin identificarse
+    internal val serverFlap = ServerFlapPolicy()
     internal val gattClients = ConcurrentHashMap<String, BluetoothGatt>()
     internal val clientRxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
     internal val clientTxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()

@@ -86,6 +86,8 @@ private fun NexoBlePlugin.tryExtractCompleteJson(buffer: String): JsonExtraction
 internal fun NexoBlePlugin.processReceivedBytes(deviceId: String, value: ByteArray, source: String) {
     val out = binAssembler.feed(normalizeMac(deviceId), value, System.currentTimeMillis())
     if (out.dropped > 0) btErr("bin_drop", "Trozo binario incompleto de ${normalizeMac(deviceId)} descartado")
+    // 3203 (diagnóstico de Roberto, Motorola edge 40 neo 3087, 17-11): un trozo binario entero = un NEXO que habla: nunca se le frena
+    if (out.frames.isNotEmpty()) serverFlap.spoke(normalizeMac(deviceId), System.currentTimeMillis())
     out.frames.forEach { f ->
         if (closedMode) { closedReceive(deviceId, f.header); return@forEach }
         backgroundNotify(f.header, deviceId)
@@ -144,6 +146,9 @@ private fun NexoBlePlugin.processReceivedChunk(deviceId: String, chunk: String, 
         val extraction = tryExtractCompleteJson(remaining)
         if (extraction != null) {
             remLog("INFO", "REASSEMBLY", "JSON extraído de $macNorm len=${extraction.json.length}")
+            // 3203 (diagnóstico de Roberto, Motorola edge 40 neo 3087, 17-11): un mensaje completo (saludo, kx, ping…) = se identificó:
+            // su dirección no se frena en el servidor GATT aunque luego entre y salga (ServerFlapPolicy)
+            if (extractedCount == 0) serverFlap.spoke(macNorm, System.currentTimeMillis())
             // retainUntilConsumed=true: si el JS aún no escucha (app recién abierta, WebView
             // recargando), Capacitor guarda el mensaje y lo entrega al registrarse el listener.
             // Sin esto Capacitor lo DESCARTA (Plugin.notifyListeners) y el mensaje se perdía.

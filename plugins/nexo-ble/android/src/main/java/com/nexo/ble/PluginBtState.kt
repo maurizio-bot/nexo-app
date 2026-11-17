@@ -280,9 +280,48 @@ internal fun NexoBlePlugin.stopGattServer() {
     }
 }
 
+// 3203 (diagnóstico de Roberto, Motorola edge 40 neo 3087, 17-11 09:32): quién no se frena nunca en el servidor GATT (ServerFlapPolicy):
+// una dirección con la que somos cliente (Android avisa también al servidor de los enlaces que abrimos nosotros: cerrarla cortaría el
+// nuestro) o la de un contacto que el nativo conoce (mapa NEXO ID ↔ dirección). Quien habla se marca aparte (serverFlap.spoke, PluginRx).
+private fun NexoBlePlugin.serverPeerTrusted(mac: String): Boolean =
+    gattClients.containsKey(mac) || clientConnectionStates.containsKey(mac) || nxidToMacMap.containsValue(mac)
+
+// Reanudar el anuncio tras una desconexión (relanza BleService: si ya anuncia, solo se asegura de que sigue en marcha)
+private fun NexoBlePlugin.resumeAdvertisingAfterDisconnect() {
+    if (!isAdvertisingActive) return
+    remLog("INFO", "GATT_SERVER", "Reanudando advertising tras desconexion")
+    try {
+        val ctx = activity.applicationContext
+        val intent = Intent(ctx, BleService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ctx.startForegroundService(intent)
+        } else {
+            ctx.startService(intent)
+        }
+    } catch (e: Exception) {
+        remLog("WARN", "GATT_SERVER", "No se pudo reanudar advertising: ${e.message}")
+    }
+}
+
 internal fun NexoBlePlugin.newGattServerCallback(): BluetoothGattServerCallback = object : BluetoothGattServerCallback() {
     override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
         val mac = normalizeMac(device.address)
+        val now = System.currentTimeMillis()
+        // 3203 (diagnóstico de Roberto, Motorola edge 40 neo 3087, 17-11 09:32): un teléfono sin identificar entraba y salía cada ~36 s
+        // durante 14 min (dos líneas, un relanzamiento de BleService y dos avisos a la app por vuelta). Frenado (ServerFlapPolicy): su
+        // conexión se cierra al entrar, sin registro ni aviso a la app; su salida, igual de callada y sin reanudar el anuncio.
+        if (newState == BluetoothProfile.STATE_CONNECTED && serverFlap.onConnect(mac, now, serverPeerTrusted(mac))) {
+            mainHandler.post { try { bluetoothGattServer?.cancelConnection(device) } catch (e: Exception) { } }
+            return
+        }
+        val disc = if (newState == BluetoothProfile.STATE_DISCONNECTED) serverFlap.onDisconnect(mac, now, serverPeerTrusted(mac)) else null
+        if (disc?.quiet == true) {
+            serverConnectedDevices.remove(mac)
+            serverNotificationEnabled.remove(mac)
+            messageBuffers.remove(mac); binAssembler.reset(mac)
+            messageBufferTimers.remove(mac)?.let { mainHandler.removeCallbacks(it) }
+            return
+        }
         remLog("INFO", "GATT_SERVER", "Connection $mac status=$status newState=$newState")
         if (newState == BluetoothProfile.STATE_CONNECTED) {
             serverConnectedDevices[mac] = device
@@ -298,20 +337,12 @@ internal fun NexoBlePlugin.newGattServerCallback(): BluetoothGattServerCallback 
             messageBuffers.remove(mac); binAssembler.reset(normalizeMac(mac))
             messageBufferTimers.remove(mac)?.let { mainHandler.removeCallbacks(it) }
             notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", device.address))
-            if (isAdvertisingActive) {
-                remLog("INFO", "GATT_SERVER", "Reanudando advertising tras desconexion")
-                try {
-                    val ctx = activity.applicationContext
-                    val intent = Intent(ctx, BleService::class.java)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        ctx.startForegroundService(intent)
-                    } else {
-                        ctx.startService(intent)
-                    }
-                } catch (e: Exception) {
-                    remLog("WARN", "GATT_SERVER", "No se pudo reanudar advertising: ${e.message}")
-                }
-            }
+            // 3203: una sola línea al frenar; y el anuncio tras la salida de quien no se identificó, agrupado (uno cada 60 s como
+            // mucho; el que se pide antes sale al final del plazo si para entonces no salió otro)
+            if (disc != null && disc.brakeMs > 0) remLog("INFO", "GATT_SERVER", serverFlap.brakeLine(mac, disc))
+            val adv = disc?.adv ?: ServerFlapPolicy.ADV_NOW
+            if (adv == ServerFlapPolicy.ADV_NOW) resumeAdvertisingAfterDisconnect()
+            else if (adv > 0) mainHandler.postDelayed({ if (serverFlap.advDue(System.currentTimeMillis())) resumeAdvertisingAfterDisconnect() }, adv)
         }
     }
 

@@ -1,5 +1,7 @@
 import { _hasNativeMethod, _normMac, _normId, _getContactByDeviceId, BLE_STATES, _getBLEContacts, _saveBLEContacts, _autoScanUnregister, SUPERVISOR_STATES, _safeDispatchEvent, _autoScanRegister, _autoScanStart, _safeNativeCall } from './ble_helpers.js';
 import { CODED_ONLY_MS, CODED_HOLD_MS } from './ble_interface_shared.js';
+// 3203: una ráfaga de desconexiones pide UN solo startAdvertising (ver _kickAdvertising)
+const ADV_KICK_MS = 400, ADV_KICK_MAX_MS = 2000;
 // Métodos de BLEInterface: AVISOS DEL NATIVO: escaneo (lo que se encuentra), servidor listo, conexiones y desconexiones, estado de cada teléfono.
 // Reestructuración 15-11: movidos TAL CUAL desde ble_interface.js, que los une a la clase (como métodos normales).
 export const bleNativeEvents = {
@@ -227,11 +229,24 @@ export const bleNativeEvents = {
         // 3084: el enlace se acaba de caer: sigue «cerca» 1 min para la reconexión rápida (_btNearby)
         if (peerUUID && /^nx[0-9a-z]{8}$/.test(_normId(peerUUID))) { self._linkLostAt = self._linkLostAt || new Map(); self._linkLostAt.set(_normId(peerUUID), Date.now()); if (self._linkLostAt.size > 300) self._linkLostAt.delete(self._linkLostAt.keys().next().value); }
         _safeDispatchEvent('nexo:ble:deviceDisconnected', { deviceId: deviceId, deviceUUID: peerUUID });
-        if (self.isAdvertising && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
-          _safeNativeCall(self.nativePlugin, 'startAdvertising', {}).catch(function() {});
-        }
+        if (self.isAdvertising) self._kickAdvertising(); // 3203: agrupado (una ráfaga de desconexiones = un solo startAdvertising)
       } catch (e) {}
     });
+  },
+
+  // 3203 (diagnóstico de Roberto, Motorola edge 40 neo 3087, 17-11 09:32): al volver a la app, 24 «[ADVERTISING] startAdvertising»
+  // seguidos en el mismo milisegundo (09:32:04.155–.182): uno por cada desconexión que se acumuló con la app en segundo plano (llegan
+  // todas de golpe al volver; 21 eran del mismo teléfono sin identificar). Las peticiones de una ráfaga se juntan: sale UNA,
+  // ADV_KICK_MS después de la última (como mucho ADV_KICK_MAX_MS después de la primera), y con el estado de ese momento (el último
+  // pedido gana: si entre tanto se dejó de anunciar, no se pide). Una desconexión suelta sigue pidiéndolo (no se pierde el reinicio).
+  _kickAdvertising() {
+    var self = this, now = Date.now();
+    var k = self._advKick || (self._advKick = { first: now, t: null });
+    if (k.t) clearTimeout(k.t);
+    k.t = setTimeout(function() {
+      self._advKick = null;
+      if (self.isAdvertising && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) _safeNativeCall(self.nativePlugin, 'startAdvertising', {}).catch(function() {});
+    }, Math.max(0, Math.min(ADV_KICK_MS, k.first + ADV_KICK_MAX_MS - now)));
   },
 
   _setupNativeStateListeners() {
