@@ -12,23 +12,26 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Bluetooth más estable: si dos teléfonos quedan conectados dos veces, NEXO cierra la conexión sobrante y se queda con la más rápida.
+- Los estados ahora tienen su propia pantalla: desliza Contactos hacia la izquierda para verlos.
 </es-419>
 <it-IT>
-- Bluetooth più stabile: se due telefoni restano collegati due volte, NEXO chiude il collegamento in più e tiene il più veloce.
+- Gli stati ora hanno la loro schermata: scorri Contatti verso sinistra per vederli.
 </it-IT>
 <en-US>
-- Steadier Bluetooth: if two phones end up connected twice, NEXO closes the extra link and keeps the fastest one.
+- Statuses now have their own screen: swipe Contacts to the left to see them.
 </en-US>
 <pt-BR>
-- Bluetooth mais estável: se dois telefones ficam conectados duas vezes, o NEXO fecha a conexão extra e fica com a mais rápida.
+- Os status agora têm sua própria tela: deslize Contatos para a esquerda para vê-los.
 </pt-BR>
 <fr-FR>
-- Bluetooth plus stable : si deux téléphones restent connectés deux fois, NEXO ferme la connexion en trop et garde la plus rapide.
+- Les statuts ont maintenant leur propre écran : glissez Contacts vers la gauche pour les voir.
 </fr-FR>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3079 (16-11-2026; la 3078 se paró en las pruebas: esta la lleva)
+- Bluetooth más estable: si dos teléfonos quedan conectados dos veces, NEXO cierra la conexión sobrante y se queda con la más rápida.
 
 ### APK 3077 (16-11-2026; la 3076 se paró en las pruebas: esta la lleva)
 - Desliza entre las fotos y videos de un chat; para salir, desliza arriba o abajo.
