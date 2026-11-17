@@ -352,6 +352,10 @@
     {
      "fallo": "3168: con los dos enlaces de un contacto cayéndose a la vez, el primero marcaba su dirección «cortada por el otro» (3167b) y el escaneo no la reabría en 10 min. radiollamada.js L (contraprueba b3167)",
      "prueba": "radio de la LLAMADA y contacto DORMIDO"
+    },
+    {
+     "fallo": "3187 (diagnóstico automático S24 3082 17-11): con la tableta dormida del todo, el zombi tardó 104 s porque cada vuelta a la app ponía a 0 la cuenta de pings. zombivuelta.js: 50 s (contraprueba b3186z: 110 s)",
+     "prueba": "3187 (diagnóstico automático S24 3082 17-11 04:04,"
     }
    ],
    "debiles": [
