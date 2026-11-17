@@ -21,6 +21,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **17-11 14:25 (México) — APK 3091 subida con 3205 y 3206** (batería completa 324/324, índice 71,2): mensajes que quedaron en relés
+  soltados por la escucha nativa con datos (3205) y elegir varios mensajes para reenviarlos juntos (3206, dueño 17-11). En la rama de
+  trabajo, sin subir aún: 3207 (solicitud de contacto también de cerca, dueño 17-11: «Quedan agregados») y 3208 (reintento solo de la
+  descarga de la actualización); van en la siguiente tras su batería.
 - **17-11 13:10 (México) — APK 3090 PUBLICADA (12:56; 3195–3204), novedades al historial.** Integrado y sin subir: **3205** (hueco
   de la 3204: al volver la app, la escucha nativa le pasa con netBgDrain desde cuándo soltó cada relé con datos y la app se lo pide;
   datosmoviles.js F6 + NetBgDatosTest). Batería completa 323/323 sobre 3205, índice 71,2; Kotlin 225/225. Va en la próxima APK
