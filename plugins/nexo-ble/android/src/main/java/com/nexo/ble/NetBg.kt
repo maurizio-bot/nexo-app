@@ -225,6 +225,17 @@ class NetBg(
     private val forApp = ArrayList<String>()
     private var forAppChars = 0L
     fun drainForApp(): List<String> = synchronized(forApp) { val l = ArrayList(forApp); forApp.clear(); forAppChars = 0; l }
+    // 3205: los relés soltados con datos a los que aún no se les pidió lo suyo (url → desde cuándo, ms) pasan a la app al volver ella
+    // (netBgDrain): stop() los guarda aquí antes de olvidarlos, y los que sigan pendientes al recoger (si recoge antes de parar) también.
+    private val gapsForApp = HashMap<String, Long>()
+    fun drainGapsForApp(): Map<String, Long> {
+        val out = HashMap<String, Long>()
+        synchronized(lock) {
+            out.putAll(gapsForApp); gapsForApp.clear()
+            relays.values.forEach { if (it.gapSince >= 0) out[it.url] = minOf(out[it.url] ?: Long.MAX_VALUE, it.gapSince) }
+        }
+        return out
+    }
     private fun keepForApp(ev: String) = synchronized(forApp) {
         forApp.add(ev); forAppChars += ev.length
         while (forApp.size > FOR_APP_MAX || forAppChars > FOR_APP_MAX_CHARS) { forAppChars -= forApp.removeAt(0).length }
@@ -238,7 +249,7 @@ class NetBg(
     fun configure(me: String, relayUrls: List<String>, since: Long, list: List<Contact>, known: Map<String, String> = emptyMap(), reqOut: Set<String> = emptySet(), reqSince: Long = 0L) {
         synchronized(lock) {
             // 3204: otra cuenta: lo pendiente de pedir a los relés soltados era de la anterior
-            if (me.lowercase() != this.me) relays.values.forEach { it.gapSince = -1L; it.gapAsked = false }
+            if (me.lowercase() != this.me) { relays.values.forEach { it.gapSince = -1L; it.gapAsked = false }; gapsForApp.clear() }
             this.me = me.lowercase(); this.contacts = list
             this.known = known; this.reqOut = reqOut; this.reqSince = reqSince
             if (since > this.since) this.since = since
@@ -282,7 +293,8 @@ class NetBg(
         // 3204: la conexión se suelta ANTES de cerrarla: su aviso de cierre ya no es de este relé (no cuenta como caída; ver connect). Y
         // lo pendiente de los relés soltados se olvida: escucha la app (con su propio orden de datos móviles) y, al volver a segundo plano,
         // se empieza desde lo último que ella vio (si no, se volverían a bajar y confirmar horas de mensajes que ella ya recibió)
-        synchronized(lock) { lock.notifyAll(); relays.values.forEach { val ws = it.ws; it.ws = null; it.authed = false; it.closedAt = 0L; it.gapSince = -1L; it.gapAsked = false; ws?.close() } }
+        // 3205: …pero antes se le pasan a la app (drainGapsForApp → netBgDrain): lo que quedó solo en ellos se lo pide ella desde ahí
+        synchronized(lock) { lock.notifyAll(); relays.values.forEach { if (it.gapSince >= 0) gapsForApp[it.url] = minOf(gapsForApp[it.url] ?: Long.MAX_VALUE, it.gapSince); val ws = it.ws; it.ws = null; it.authed = false; it.closedAt = 0L; it.gapSince = -1L; it.gapAsked = false; ws?.close() } }
         log("Internet en segundo plano: parado (la app vuelve a encargarse)")
     }
     fun lastSeen() = since

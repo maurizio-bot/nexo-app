@@ -307,6 +307,7 @@ export class NetLink {
     if (!pl || typeof pl.netBgDrain !== 'function') return 0;
     var res = null;
     try { res = await pl.netBgDrain(); } catch (e) { return 0; }
+    try { this._bgGaps(res && res.gaps); } catch (e) {} // 3205: y a qué relés que soltó con datos hay que pedirles desde cuándo
     var evs = (res && Array.isArray(res.events)) ? res.events : [];
     // 3044 (diagnóstico S24 APK 3033: «500 sobre(s) … entran ya» tras una llamada en segundo plano con la app viva: eran
     // repetidos que la app ya había procesado; _onEvent los descarta, pero el registro los contaba como nuevos)

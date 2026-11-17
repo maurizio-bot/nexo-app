@@ -11,7 +11,10 @@
 //  F3  mezclas: A con Wi-Fi y B con datos (A escucha los 4, B 2) y al revés: textos en los dos sentidos llegan;
 //  F4  uno de los 2 que escucha B se CAE (los dos con datos): B pasa al siguiente (≤ 8 s) y los textos llegan; al volver, regresa a él;
 //  F5  un texto que quedó SOLO en los relés que B no escucha (a A no le abrían los otros): al pasar B al Wi-Fi llega (se les pide desde
-//      que se dejaron de escuchar). Con datos no llega hasta entonces (riesgo conocido: queda en el informe).
+//      que se dejaron de escuchar). Con datos no llega hasta entonces (riesgo conocido: queda en el informe);
+//  F6  (3205) lo mismo cuando quien soltó los relés fue la parte nativa (app en segundo plano con datos): al volver la app con Wi-Fi,
+//      netBgDrain le dice desde cuándo se soltó cada uno y se les pide desde ahí (contraprueba b3204: no llega; se pedía desde lo último
+//      visto − 10 min).
 // Criterio de ahorro (falla con el build de antes): F1 escucha 2 y 2, repetidos ≤ 3 × los nuevos; F2 cada trozo en 2 relés y ≤ 3,2
 // veces el archivo subido (2 copias en base64 ≈ 2,7). Contraprueba: build de HEAD (4 suscripciones, 4 copias, ~3 repetidos por evento nuevo).
 // Imprime DATOSMOVILES {json}. Uso: node datosmoviles.js <dir_build>
@@ -233,6 +236,42 @@ const settled = (p, n) => () => { const s = subs(p); return s.open === RELAYS.le
   const sinceOf = B.up.reqs.slice(reqB0).filter((q) => noOye.indexOf(String(q.url).replace(/\/$/, '')) >= 0).map((q) => q.since);
   r.F5_pedido_a_los_no_escuchados = sinceOf.length ? Math.round((lastSeenB / 1000 - Math.min.apply(null, sinceOf))) + ' s antes de lo último visto' : null;
 
+  // ---- F6 (3205): la parte nativa (app en segundo plano) soltó 2 relés con datos hace 30 min; mientras, un texto quedó SOLO en ellos
+  // (de hace 20 min) y luego llegó otro, nuevo, por todos. La app vuelve con Wi-Fi: lo último que vio es de ahora, y a esos 2 les pedía
+  // desde 10 min antes de eso (no alcanza). Ahora la parte nativa le pasa (netBgDrain) desde cuándo se soltó cada uno y se les pide desde
+  // ahí: uno ya reabierto se vuelve a pedir y el otro se pide así al abrir.
+  setNet(A, 'wifi');
+  await waitFor(() => settled(A, RELAYS.length)() && settled(B, RELAYS.length)(), 20000);
+  await sleep(1500);
+  const solt = [RELAYS[2], RELAYS[3]];
+  const cerrar = (u) => { const rl = net(B).relays.get(u); if (!rl) return; rl.retryAt = Date.now() + 9e6; const ws = rl.ws; rl.ws = null; rl.open = false; rl.sub = null; if (ws) { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null; try { ws.close(); } catch (e) {} } };
+  solt.forEach(cerrar);
+  r.F6_B_escucha_en_segundo_plano = subs(B).escucha;
+  const realNow = A.win.Date.now, viejo = 20 * 60000;
+  A.win.Date.now = function () { return realNow.call(A.win.Date) - viejo; };
+  net(A)._publish = function (ev, only) { return pubOrig.call(this, ev, only || (ev && ev.created_at * 1000 < realNow.call(A.win.Date) - 5 * 60000 ? solt : undefined)); };
+  const t6 = 'de hace 20 min, solo en los relés soltados';
+  sendText(A, t6);
+  const enRele = () => rel[2].events.length + rel[3].events.length;
+  const e0 = enRele();
+  await waitFor(() => enRele() > e0, 8000); await sleep(1500);
+  A.win.Date.now = realNow; net(A)._publish = pubOrig;
+  r.F6_nuevo_llega_s = await sendWait(A, B, idB, idA, 'nuevo, por todos');
+  // A se queda sin internet: no reenvía (si no, su reintento por todos los relés lo traería igual)
+  shutdown(A); net(A)._publish = function () { return Promise.reject(Object.assign(new Error('Sin relés'), { code: 'NET_DOWN' })); };
+  r.F6_en_segundo_plano_llega = !!(await got(B, idA, t6)());
+  B.native.netBgGaps = {}; solt.forEach((u) => { B.native.netBgGaps[u] = Date.now() - 30 * 60000; });
+  const reqB6 = B.up.reqs.length;
+  // el 3.º se reabre antes de que la app recoja lo de la parte nativa; el 4.º, después
+  net(B).relays.get(solt[0]).retryAt = 0; net(B).tick();
+  r.F6_reabre_s = await waitFor(() => { const rl = net(B).relays.get(solt[0]); return !!(rl && rl.open && rl.sub); }, 15000);
+  await sleep(500);
+  net(B)._drainPending = true; net(B).relays.get(solt[1]).retryAt = 0; net(B).tick();
+  r.F6_al_volver_llega_s = r.F6_en_segundo_plano_llega ? 0 : await waitFor(got(B, idA, t6), 20000);
+  await sleep(1000);
+  r.F6_pedidos = solt.map((u) => { const q = B.up.reqs.slice(reqB6).filter((x) => String(x.url).replace(/\/$/, '') === u).map((x) => x.since); return RN(u) + ': ' + (q.length ? q.map((x) => Math.round((Date.now() / 1000 - x) / 60) + ' min').join(' → ') : 'nada'); });
+  r.F6_dos_pedidos_desde_que_se_soltaron = solt.every((u) => B.up.reqs.slice(reqB6).some((x) => String(x.url).replace(/\/$/, '') === u && x.since <= Date.now() / 1000 - 29 * 60));
+
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
   const F1 = r.F1_bajado;
   r.ahorro = {
@@ -247,6 +286,7 @@ const settled = (p, n) => () => { const s = subs(p); return s.open === RELAYS.le
     F3: [r.F3a_A_wifi_a_B_datos_s, r.F3a_B_datos_a_A_wifi_s, r.F3b_A_datos_a_B_wifi_s, r.F3b_B_wifi_a_A_datos_s].every((x) => x !== null && x <= 15),
     F4: r.F4_B_pasa_al_siguiente_s !== null && r.F4_B_pasa_al_siguiente_s <= 8 && r.F4_A_a_B_s !== null && r.F4_B_a_A_s !== null && r.F4_vuelve_s !== null && r.F4_tras_volver_A_a_B_s !== null,
     F5: r.F5_al_wifi_llega_s !== null && r.F5_al_wifi_llega_s <= 15,
+    F6: !r.F6_en_segundo_plano_llega && r.F6_nuevo_llega_s !== null && r.F6_al_volver_llega_s !== null && r.F6_al_volver_llega_s <= 15 && r.F6_dos_pedidos_desde_que_se_soltaron,
   };
   const ok = r.en_linea_por_internet_s !== null && r.F1_asentado_s !== null && Object.values(r.ahorro).every(Boolean) && Object.values(r.llegan).every(Boolean) && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';

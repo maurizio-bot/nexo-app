@@ -273,6 +273,25 @@ export const netRelays = {
     if (!this._unread) this._unread = new Map();
     if (!this._unread.has(r.url)) this._unread.set(r.url, this.state.lastSeen || (Date.now() - 2 * 86400000));
   },
+  // 3205: los relés que la parte nativa (NetBg, app en segundo plano o cerrada) dejó de escuchar con datos móviles y aún no les pidió lo
+  // suyo (gaps: url → desde cuándo, ms; llega con netBgDrain al volver la app). Se suman a los de la app (lo más antiguo) y, con Wi-Fi, a
+  // uno ya suscrito se le vuelve a pedir desde ahí; los demás se piden así al abrir. Con datos queda para cuando vuelva el Wi-Fi.
+  _bgGaps(gaps) {
+    if (!gaps || typeof gaps !== 'object') return 0;
+    var self = this, now = Date.now(), urls = this.relayUrls(), n = 0;
+    Object.keys(gaps).forEach(function(u) {
+      var at = Number(gaps[u]);
+      if (urls.indexOf(u) < 0 || !isFinite(at) || at <= 0 || at > now) return;
+      if (!self._unread) self._unread = new Map();
+      var prev = self._unread.get(u);
+      self._unread.set(u, prev === undefined ? at : Math.min(prev, at));
+      n++;
+      var r = self.relays.get(u);
+      if (r && !r.gw && r.open && r.ws && r.sub && !self._cellMode()) self._subscribe(r);
+    });
+    if (n) console.log('[NET] ' + n + ' relé(s) que el teléfono dejó de escuchar con datos móviles en segundo plano: se les pide desde entonces'); // i18n-ok: registro
+    return n;
+  },
   // Una línea para el diagnóstico al cambiar de modo o de relés escuchados; y, si se espera a un preferido, volver a mirar a su hora
   _cellNote(cell) {
     var self = this;

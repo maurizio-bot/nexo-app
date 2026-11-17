@@ -295,7 +295,10 @@ internal fun NexoBlePlugin.netBgDrainImpl(call: PluginCall) {
     val list = try { netBgShared?.drainForApp() ?: emptyList() } catch (e: Exception) { emptyList<String>() }
     val arr = JSArray()
     for (s in list) arr.put(s)
-    call.resolve(JSObject().put("events", arr))
+    // 3205: y los relés que soltó con datos móviles sin pedirles aún lo suyo (url → desde cuándo, ms): se lo pide la app (net_relays._bgGaps)
+    val gaps = JSObject()
+    try { netBgShared?.drainGapsForApp()?.forEach { (u, at) -> gaps.put(u, at) } } catch (e: Exception) { }
+    call.resolve(JSObject().put("events", arr).put("gaps", gaps))
 }
 
 // Auditoría C1 (ronda 2777): la app nos da, por contacto, la clave con la que firmar la confirmación (✓✓) del modo

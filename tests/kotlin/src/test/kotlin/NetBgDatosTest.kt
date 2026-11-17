@@ -150,4 +150,51 @@ class NetBgDatosTest {
             println("Registro de la NetBg:\n  " + logs.joinToString("\n  "))
         } finally { try { bg?.stop() } catch (e: Exception) { }; relay.close(); peer.close() }
     }
+
+    // 3205 (hueco de la 3204): al volver la app, la NetBg se para y olvidaba desde cuándo soltó cada relé con datos: la app (que pide desde
+    // lo último que vio − 10 min) no recogía lo que quedó solo en ellos. Ahora stop() se los guarda y netBgDrain se los pasa (una vez).
+    // Por reflexión (drainGapsForApp): contraprueba con el NetBg de antes, que no lo tiene.
+    @Suppress("UNCHECKED_CAST")
+    private fun gaps(bg: NetBg): Map<String, Long>? = bg.javaClass.methods.firstOrNull { it.name == "drainGapsForApp" }?.invoke(bg) as Map<String, Long>?
+
+    @Test fun alVolverLaAppLePasaLosRelesSoltadosConDatos() {
+        val relay = node("multi", "4"); val peer = node("peer")
+        var bg: NetBg? = null
+        try {
+            val urls = JSONArray(relay.await("URLS ")).let { a -> (0 until a.length()).map { a.getString(it) } }
+            val pkA = relay.ask("PK", "PK ")
+            peer.await("PK ")
+            val A = "nxaaaaaaaa"; val B = "nxbbbbbbbb"
+            val n0 = peer.lines.size
+            peer.send(JSONObject().put("cfg", JSONObject().put("me", B).put("relays", JSONArray(urls)).put("lastSeen", System.currentTimeMillis() - 3_600_000)
+                .put("contacts", JSONArray().put(JSONObject().put("nx", A).put("name", "Ana").put("pk", pkA)))).toString())
+            val cfg = NetBgSaved.fromApp(JSONObject(peer.await("CFG ", n0)))
+            peer.await("ACK ", n0)
+            val b = NetBg({ _, _, _, _, _, _ -> }, { })
+            bg = b
+            NetBgSaved.apply(b, NetBgSaved.Saved(cfg, HashMap()))
+            setNet(b, "cell")
+            b.start()
+            val s = waitStats(relay, 10000) { st -> st[0].subs == 1 && st[1].subs == 1 }
+            assertEquals(listOf(1, 1, 0, 0), subs(s), "con datos móviles, solo los 2 primeros")
+            val since = b.lastSeen()
+            // la app recoge antes de que se pare la escucha: ya le toca (y no se repite en la siguiente recogida)
+            val g1 = gaps(b)
+            assertNotNull(g1, "netBgDrain pasa los relés soltados (drainGapsForApp)")
+            assertEquals(mapOf(urls[2] to since, urls[3] to since), g1, "los 2 soltados, desde lo último visto al soltarlos")
+            // vuelve la app: se para la escucha (antes: lo pendiente se olvidaba aquí) y la app lo recoge después
+            b.stop()
+            assertEquals(mapOf(urls[2] to since, urls[3] to since), gaps(b), "parada la escucha, la app aún los recibe")
+            assertEquals(emptyMap(), gaps(b), "una sola vez")
+            // otra vez con datos (soltados de nuevo) y luego el Wi-Fi con la escucha en marcha: ella misma les pide lo suyo, y al pararse
+            // ya no queda nada que pasar a la app
+            b.start()
+            assertEquals(listOf(1, 1, 0, 0), subs(waitStats(relay, 10000) { st -> st[0].subs == 1 && st[1].subs == 1 && st[2].subs == 0 }), "otra vez con datos")
+            setNet(b, "wifi")
+            assertTrue(waitFor(15000) { stats(relay).all { it.subs == 1 } }, "con Wi-Fi, los 4")
+            Thread.sleep(1500)
+            b.stop()
+            assertEquals(emptyMap(), gaps(b), "ya pedido a todos (EOSE): nada pendiente")
+        } finally { try { bg?.stop() } catch (e: Exception) { }; relay.close(); peer.close() }
+    }
 }
