@@ -419,7 +419,7 @@ ChatStream.prototype._sendFailed = function(idx, err) {
   // rechazan los relés) y sin otro mejor ya no se martilla hasta 120 veces por el mismo camino (a los relés que limitan eso los lleva a
   // castigar al teléfono): queda pendiente (⏳) —lo rechazado, al primer «no»; sin Wi-Fi o sin internet, a los 3 intentos— y lo retoma
   // el reenvío de pendientes cuando haya camino (con su propia espera entre vueltas).
-  var refused = rejected || (err && (err.code === 'LAN_DOWN' || (err.code === 'NET_DOWN' && /^Sin internet con /.test(String(err.message || '')))));
+  var refused = rejected || (err && (err.code === 'LAN_DOWN' || (err.code === 'NET_DOWN' && /^Sin internet con /.test(String(err.message || ''))))); // i18n-ok: mensaje de error interno
   if (refused && (rejected || fails >= 3) && !moved) {
     console.log('[ChatStream] ' + self.msgId + ': el camino dice que no (' + String(err.message || err.code).substring(0, 80) + ') y no hay otro: queda pendiente, sin insistir'); // i18n-ok: registro
     self._giveUpPending();
