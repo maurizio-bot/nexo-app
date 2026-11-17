@@ -190,7 +190,8 @@ export class NetLink {
     var self = this, now = Date.now(), pl = _plugin();
     if (!self.me()) return;
     try { self.gw.tick(); } catch (e) { console.warn('[GW] ' + (e && e.message)); }
-    try { var st = pl && typeof pl.lanStatus === 'function' ? await pl.lanStatus() : null; self.wifi = !!(st && st.wifi); } catch (e) {}
+    // 3193: ni Wi-Fi ni cable = datos móviles (escuchar en 2 relés y subir 2 copias); sin la consulta (sin la parte nativa) no se sabe: como siempre
+    try { var st = pl && typeof pl.lanStatus === 'function' ? await pl.lanStatus() : null; self.wifi = !!(st && st.wifi); if (st && typeof st.wifi === 'boolean') self._metered = !st.wifi; } catch (e) {}
     var changed = await self._refreshTags();
     if (changed) self._bgConfig();
     if (!self.inTags.size && !self.reqTags.size) { self._closeAll(); return; }

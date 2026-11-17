@@ -28,7 +28,7 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 // trozos que faltan van a los públicos (tope ~64 KB); el que recibe sigue con los mismos techos (MAX_CHUNK_BYTES, MAX_RELAY_FRAME)
 export var CHUNK_RAW_BYTES = 40 * 1024;          // 40 KB → base64 ≈ 54,6 KB + evento < ~60 KB del relé (lección 2964: el tope es sobre lo YA codificado)
 export var MAILBOX_MAX_BYTES = 5 * 1024 * 1024;   // lo que se stagea en relés en Fase B (~125 trozos)
-export var RELAY_REPLICATION = 3;                 // objetivo: cada trozo en ≥3 relés (los que haya abiertos)
+export var RELAY_REPLICATION = 3;                 // objetivo: cada trozo en ≥3 relés (los que haya abiertos). 3193: con datos móviles, 2 (net.blobCopies)
 export var MAX_POINTER_CHUNKS = 10000;            // techo anti-DoS: rechazo inmediato, ANTES de reservar nada
 export var MAX_POINTER_BYTES = 64 * 1024 * 1024;  // ídem, tamaño
 export var MAX_CHUNK_BYTES = 64 * 1024;           // un trozo declarado más grande que esto es basura
@@ -168,6 +168,16 @@ export async function stageBlob(net, dataB64, opts) {
     // límites de ritmo de los públicos); si no lo guarda, a los públicos como siempre
     var only = net.blobTargets ? net.blobTargets() : null, ok = [];
     if (only) { ok = await net.publishEach(ev, tms, { enough: 1, only: only }); if (!ok.length && net.ownMarkBad) net.ownMarkBad('no guardó un trozo del buzón de archivos'); }
+    // 3193 (dueño 17-11: «Ok» a 2 copias con datos móviles; una nota de voz de 97 KB tardó 14,3 s en subir: cada trozo iba a todos los
+    // relés abiertos): con datos, el trozo va a 2 relés (los primeros abiertos de la lista); si uno no lo guarda, al siguiente abierto
+    // hasta tener 2 (o no quedar más). Si ninguno, lo de siempre (a todos). Con Wi-Fi, como antes.
+    var copies = (!ok.length && net.blobCopies) ? net.blobCopies() : 0, tried = [];
+    for (var round = 0; copies && ok.length < copies && round < 4; round++) {
+      var urls = net.blobCellUrls(copies - ok.length, tried);
+      if (!urls.length) break;
+      tried = tried.concat(urls);
+      (await net.publishEach(ev, tms, { only: urls, enough: 1, graceMs: PUBLISH_GRACE_MS, graceX: 1 })).forEach(function(u) { if (ok.indexOf(u) < 0) ok.push(u); });
+    }
     // 3042: con 2 relés que lo guardaron se sigue (1,5 s de margen para los demás): un relé muerto ya no frena cada tanda 10 s
     if (!ok.length) ok = await net.publishEach(ev, tms, { enough: PUBLISH_ENOUGH, graceMs: PUBLISH_GRACE_MS });
     if (!ok.length) ok = await net.publishEach(ev, tms, { enough: PUBLISH_ENOUGH, graceMs: PUBLISH_GRACE_MS }); // un reintento (el mismo evento: mismo id)

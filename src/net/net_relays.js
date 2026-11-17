@@ -1,4 +1,4 @@
-import { _relayHost, OWN_RETRY_MAX_MS, OWN_FLAP_PENALTY_MS, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_MIN_OTHERS, RELAY_FLAP_PENALTY_MS, RELAY_OFFLINE_RETRY_MS, _rnd, RELAY_PROBE_ID, RELAY_PROBE_MS, SEND_PROBE_MS, NET_CHANGE_SETTLE_MS, KIND, MAX_RELAY_FRAME, _event } from './net_link_shared.js';
+import { CELL_READ_RELAYS, CELL_BLOB_COPIES, CELL_SETTLE_MS, TTL_MSG, _relayHost, OWN_RETRY_MAX_MS, OWN_FLAP_PENALTY_MS, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_MIN_OTHERS, RELAY_FLAP_PENALTY_MS, RELAY_OFFLINE_RETRY_MS, _rnd, RELAY_PROBE_ID, RELAY_PROBE_MS, SEND_PROBE_MS, NET_CHANGE_SETTLE_MS, KIND, MAX_RELAY_FRAME, _event } from './net_link_shared.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 // Métodos de NetLink: RELÉS: conectar, caídas y relés inestables, cambios de red, comprobar los callados, suscribirse y lo que llega de ellos.
 // Reestructuración 15-11: movidos TAL CUAL desde net_link.js, que los une a la clase (como métodos normales).
@@ -14,6 +14,7 @@ export const netRelays = {
     // hasta 452 s): sin red en el teléfono (aviso «sin red» del sistema o navigator.onLine falso) no corre el reloj: no es lentitud de NEXO.
     var offline = self._noNet || (typeof navigator !== 'undefined' && navigator.onLine === false);
     if (!self._openCount() && !offline) self._netTryAt = self._netTryAt || Date.now();
+    r.connAt = Date.now(); // 3193: desde cuándo intenta abrir (con datos móviles, un preferido que conecta se espera un poco)
     try { ws = r.factory ? r.factory() : new WebSocket(url); } catch (e) { r.retryAt = Date.now() + r.backoff; return; }
     r.ws = ws; r.open = false;
     ws.onopen = function() {
@@ -201,6 +202,8 @@ export const netRelays = {
     console.log('[NET] Cambio de red: ' + nm(prev) + ' → ' + nm(t) + burst + (t === 'none' ? ': espero a que vuelva' : ': reconecto los relés ya')); // i18n-ok: registro para el diagnóstico
     if (t === 'none') { self._netChangeAt = 0; self._netTryAt = 0; self._noNet = true; return; } // 3185: el reloj se para sin red
     self._noNet = false;
+    // 3193: el tipo de red manda ya en las suscripciones que se rehacen ahora (sin esperar a la consulta del latido)
+    if (t === 'wifi' || t === 'eth') { self.wifi = true; self._metered = false; } else if (t === 'cell') { self.wifi = false; self._metered = true; }
     self._netChangeAt = Date.now();
     self.relays.forEach(function(r, u) {
       if (r.gw) return;   // los puentes Bluetooth no dependen de la red del teléfono
@@ -223,18 +226,77 @@ export const netRelays = {
     if (ws) { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null; try { ws.close(); } catch (e) {} }
     r.open = false; r.ws = null; r.sub = null; r.openedAt = 0; r.probing = false; r.eoseOnce = false;
     r.waits.forEach(function(fn) { try { fn(false, 'conexión muerta'); } catch (e) {} }); r.waits.clear();
-    this._ownSync(); // 3151: el propio muerto → leer de todos los públicos mientras se reconecta
     if (was && !this.online()) { console.log('[NET] Sin relés: internet no disponible'); this._peersDown(); }
     r.retryAt = 0; r.backoff = 2000;
     this._connect(url);
+    // 3151: el propio muerto → leer de todos los públicos mientras se reconecta. 3193: después de volver a conectar (no antes): con datos
+    // móviles, el que se está reabriendo sigue siendo de los 2 que se escuchan (si no, al reconectar todos por un cambio de red, se
+    // pasaba un momento a escuchar en los siguientes para soltarlos enseguida)
+    this._ownSync();
   },
 
   _subscribe(r) {
     if (r.sub) this._send(r, ['CLOSE', r.sub]);
-    if (!this._subWanted(r)) { r.sub = null; return; } // 3151: con el relé propio sano, este público solo publica (net_own.js)
+    // 3151: con el relé propio sano, este público solo publica (net_own.js). 3193: con datos móviles, tampoco escucha si no es de los 2
+    if (!this._subWanted(r)) { r.sub = null; this._cellUnread(r); return; }
     r.sub = 'nx' + bytesToHex(_rnd(6));
-    var since = Math.max(0, Math.floor((this.state.lastSeen || (Date.now() - 2 * 86400000)) / 1000) - 600);
+    var from = this.state.lastSeen || (Date.now() - 2 * 86400000);
+    // 3193: un relé que no se escuchó con datos móviles, al volver a escucharlo con Wi-Fi, desde que se dejó de escuchar (lo que un
+    // contacto dejó solo en él mientras tanto, p. ej. si a él no le abrían los 2 que yo escuchaba). Con datos, lo de siempre.
+    var gap = this._unread && r.url ? this._unread.get(r.url) : undefined;
+    if (gap !== undefined && !this._cellMode()) { from = Math.max(Math.min(from, gap), Date.now() - TTL_MSG * 1000); this._unread.delete(r.url); }
+    var since = Math.max(0, Math.floor(from / 1000) - 600);
     this._send(r, ['REQ', r.sub, { kinds: [KIND], '#p': Array.from(this.inTags.keys()).concat(Array.from(this.reqTags.keys())), since: since }]);
+  },
+
+  // ---------- 3193: DATOS MÓVILES (dueño 17-11: «Ok» a 2 conexiones y 2 copias) ----------
+  // ¿Con datos móviles? Lo dice la red (aviso de cambio de red o la consulta del latido: ni Wi-Fi ni cable). Sin saberlo (sin la parte
+  // nativa), como siempre. Por un puente (sin internet propio) no aplica: lo de los puentes va aparte.
+  _cellMode() { return this._metered === true && !this.gwOnly(); },
+  // Los relés que se escuchan con datos: los CELL_READ_RELAYS primeros de la lista (orden fijo: los de siempre y luego los de reserva
+  // en uso; el mismo en los dos teléfonos) que están abiertos, saltando los caídos. Uno de ellos que está conectando (aún no abre, sin
+  // fallos) cuenta durante CELL_SETTLE_MS: así no se escucha un rato en el siguiente para soltarlo enseguida. wait: cuánto falta.
+  _cellReaders() {
+    var self = this, now = Date.now(), urls = [], open = [], wait = 0;
+    this.relayUrls().some(function(u) {
+      var r = self.relays.get(u);
+      if (!r || r.gw) return false;
+      if (r.open && r.ws) { urls.push(u); open.push(u); }
+      else if (r.ws && !r.open && !r._sidelined && (r.fails || 0) === 0 && now - (r.connAt || 0) < CELL_SETTLE_MS) { urls.push(u); wait = Math.max(wait, (r.connAt || 0) + CELL_SETTLE_MS - now); }
+      return urls.length >= CELL_READ_RELAYS;
+    });
+    return { urls: urls, open: open, wait: wait };
+  },
+  // Un relé que no se escucha por estar con datos: desde cuándo (lo último visto entonces) hay que pedirle lo suyo al volver al Wi-Fi
+  _cellUnread(r) {
+    if (!r || r.gw || !r.url || !this._cellMode() || (this._ownList().length && this._ownHealthy())) return;
+    if (!this._unread) this._unread = new Map();
+    if (!this._unread.has(r.url)) this._unread.set(r.url, this.state.lastSeen || (Date.now() - 2 * 86400000));
+  },
+  // Una línea para el diagnóstico al cambiar de modo o de relés escuchados; y, si se espera a un preferido, volver a mirar a su hora
+  _cellNote(cell) {
+    var self = this;
+    clearTimeout(this._cellT);
+    if (cell) {
+      var rd = this._cellReaders();
+      if (rd.wait > 0) this._cellT = setTimeout(function() { self._ownSync(); }, rd.wait + 50);
+      var key = rd.open.join(',');
+      if (rd.wait === 0 && rd.open.length && key !== this._cellKey) {
+        this._cellKey = key;
+        console.log('[NET] Datos móviles: escucho ' + rd.open.length + ' relé' + (rd.open.length > 1 ? 's' : '') + ' (' + rd.open.map(_relayHost).join(', ') + ') y subo ' + CELL_BLOB_COPIES + ' copias de cada trozo de archivo; publico en todos los abiertos'); // i18n-ok: registro
+      }
+    } else if (this._cellOn) {
+      this._cellKey = '';
+      if (this._metered !== true) console.log('[NET] Wi-Fi: escucho todos los relés y subo cada trozo de archivo a todos'); // i18n-ok: registro (solo por un puente: nada que decir)
+    }
+    this._cellOn = cell;
+  },
+  // Buzón de archivos: copias de cada trozo (0 = a todos los abiertos, como siempre) y a qué relés: los primeros abiertos de la lista
+  // (los que escucho, y quizá el otro también), sin los ya probados
+  blobCopies() { return this._cellMode() ? CELL_BLOB_COPIES : 0; },
+  blobCellUrls(n, skip) {
+    var self = this;
+    return this.relayUrls().filter(function(u) { var r = self.relays.get(u); return !!(r && r.open && r.ws && !r.gw) && (!skip || skip.indexOf(u) < 0); }).slice(0, n);
   },
 
   // 3128: cuenta de lo bajado de los relés desde que arrancó la app (todo y por relé)

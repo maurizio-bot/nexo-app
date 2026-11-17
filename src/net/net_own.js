@@ -42,21 +42,29 @@ export const netOwn = {
     this.relayUrls().some(function(u) { if (self._isOwn(u)) return false; var r = self.relays.get(u); if (r && r.open && r.ws && !r.gw) { out = u; return true; } return false; });
     return out;
   },
-  // ¿Esta conexión debe tener la suscripción del buzón? Sin propio: siempre (como hasta ahora)
+  // ¿Esta conexión debe tener la suscripción del buzón? Sin propio y con Wi-Fi: siempre (como hasta ahora)
+  // 3193: sin el propio sano y con datos móviles, solo los 2 primeros abiertos de la lista (net_relays.js _cellReaders)
   _subWanted(r) {
-    if (!r || r.gw || !this._ownList().length || !this._ownHealthy()) return true;
-    return this._isOwn(r.url) || r.url === this._readerUrl();
+    if (!r || r.gw) return true;
+    if (this._ownList().length && this._ownHealthy()) return this._isOwn(r.url) || r.url === this._readerUrl();
+    if (!this._cellMode()) return true;
+    return this._cellReaders().urls.indexOf(r.url) >= 0;
   },
   // Pone cada suscripción donde toca y avisa a los contactos cuando el propio pasa a sano o deja de estarlo
+  // 3193: también con datos móviles (y una vez más al dejarlos, para volver a escuchar en todos)
   _ownSync() {
-    if (!this._ownList().length) return;
+    var cell = this._cellMode();
+    if (!this._ownList().length && !cell && !this._cellOn) return;
     var self = this, healthy = this._ownHealthy();
     this.relays.forEach(function(r) {
       if (!r.open || !r.ws) return;
       var want = self._subWanted(r);
       if (want && !r.sub && !r.needSub) self._subscribe(r);
       else if (!want && r.sub) { self._send(r, ['CLOSE', r.sub]); r.sub = null; }
+      if (!want) self._cellUnread(r);
     });
+    this._cellNote(cell);
+    if (!this._ownList().length) return;
     if (healthy === !!this._ownOn) return;
     this._ownOn = healthy;
     var rd = this._readerUrl();

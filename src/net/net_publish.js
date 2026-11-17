@@ -52,8 +52,10 @@ export const netPublish = {
   // opts (3042, dueño 13-11: un GIF de 4,6 MB tardaba ~6 min en subir al buzón de archivos): { enough, graceMs } — con
   // `enough` relés que ya dijeron OK se espera como mucho graceMs más a los demás y se sigue (antes, un relé abierto pero
   // muerto hacía esperar el tope entero, 10 s, a CADA tanda de trozos). only (3151): solo a esos relés (el propio)
+  // graceX (3193, datos móviles: 2 copias): el margen para los demás es al menos lo que tardó el primero (× graceX); con la subida lenta
+  // de los datos las dos copias tardan parecido y un margen fijo de 1,5 s daba por perdida la segunda y subía una tercera
   publishEach(ev, timeoutMs, opts) {
-    var self = this, only = opts && opts.only;
+    var self = this, only = opts && opts.only, t0 = Date.now();
     return new Promise(function(resolve) {
       var open = [];
       self.relays.forEach(function(r, u) { if (r.open && !r.gw && (!only || only.indexOf(u) >= 0)) open.push({ r: r, u: u }); });
@@ -74,7 +76,7 @@ export const netPublish = {
         o.r.waits.set(ev.id, function(ok) {
           if (ok && oks.indexOf(o.u) < 0) oks.push(o.u);
           if (--left === 0) { finish(); return; }
-          if (oks.length >= enough && !grace) grace = setTimeout(finish, (opts && opts.graceMs) || 1500);
+          if (oks.length >= enough && !grace) grace = setTimeout(finish, Math.max((opts && opts.graceMs) || 1500, opts && opts.graceX ? (Date.now() - t0) * opts.graceX : 0));
         });
         if (!self._send(o.r, ['EVENT', ev])) { o.r.waits.delete(ev.id); if (--left === 0) finish(); }
       });

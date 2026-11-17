@@ -10,6 +10,17 @@ var DEFAULT_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.prim
 var SPARE_RELAYS = ['wss://offchain.pub', 'wss://relay.snort.social', 'wss://nostr.oxtr.dev', 'wss://relay.nostr.bg', 'wss://nostr-pub.wellorder.net'];
 var RELAY_TARGET_OPEN = 3;
 var RELAY_DEAD_FAILS = 2;
+// 3193 (dueño 17-11: «Ok» a 2 conexiones y 2 copias con datos móviles; diagnóstico S24 del mismo día: con datos, en 116 min bajó de los
+// relés 2,5 MB en 1896 eventos y 1723 eran «ya vistos»: cada evento llega por cada relé suscrito y, tras cada cambio de red, cada relé
+// vuelve a mandar la ventana reciente; una nota de voz de 97 KB tardó 14,3 s en subir porque cada trozo iba a todos los relés).
+// Con DATOS MÓVILES: se sigue PUBLICANDO en todos los relés abiertos (lo que sale es poco y así un contacto que escucha otros no
+// pierde nada), pero se ESCUCHA (REQ) solo en CELL_READ_RELAYS: los primeros abiertos según el orden fijo de la lista (el mismo en
+// los dos teléfonos), saltando los caídos; y cada trozo del buzón de archivos se sube a CELL_BLOB_COPIES relés. Con Wi-Fi, como antes.
+// CELL_SETTLE_MS: uno de los preferidos que está conectando (aún no abre) se espera hasta esto antes de escuchar en el siguiente
+// (si no, al reconectar todos a la vez, el primero que abre —cualquiera— pediría la ventana reciente y luego se soltaría).
+var CELL_READ_RELAYS = 2;
+var CELL_BLOB_COPIES = 2;
+var CELL_SETTLE_MS = 3000;
 // 3151 (dueño 16-11: «NEXO tendrá su PROPIO servidor de relé, de pago, para que mensajes y archivos vayan tan rápido como en WhatsApp;
 // los públicos quedan de respaldo»). Relés PROPIOS (strfry tras TLS; qué debe aceptar: docs/SERVIDOR_PROPIO.md). VACÍO = todo como
 // siempre (solo públicos). Con alguno (net_own.js): se conecta primero; se leen los mensajes de él y de UN público (no de todos: cada
@@ -131,4 +142,4 @@ function _reqScalar(id, day) { return _scalar(sha256(_utf8('NEXO-REQ-v1|' + _nid
 function _reqTagPub(id, day) { return bytesToHex(schnorr.getPublicKey(_reqScalar(id, day))); }
 function _reqAesKey(id) { return sha256(_utf8('NEXO-REQ-ENC-v1|' + _nid(id))); }
 
-export { DEFAULT_RELAYS, SPARE_RELAYS, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, OWN_RELAYS, OWN_PUBLIC_BACKUP, OWN_RETRY_MAX_MS, OWN_FLAP_PENALTY_MS, OWN_BLOB_PAR, OWN_BAD_MS, OWN_ANNOUNCE_GAP_MS, _relaySafe, KIND, BLOB_KIND, UP_MS, HELLO_MS, TICK_MS, TTL_MSG, TTL_CHUNK, TTL_HELLO, TTL_RT, MAX_CONTENT, MAX_RELAY_FRAME, NET_CHANGE_SETTLE_MS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_FLAP_PENALTY_MS, RELAY_PROBE_MS, RELAY_IDLE_PROBE_MS, RELAY_BG_PROBE_MS, RELAY_PROBE_ID, SEND_SILENT_MS, SEND_PROBE_MS, RELAY_OFFLINE_RETRY_MS, RELAY_MIN_OTHERS, WAKE_MIN_MS, CALL_WAKE_MIN_MS, XFER_WAKE_MIN_MS, DEFAULT_SENDER, STATE_FILE, N, _nid, _relayHost, _plugin, _day, _utf8, _b64, _unb64, _cat, _rnd, _scalar, _event, _reqScalar, _reqTagPub, _reqAesKey };
+export { DEFAULT_RELAYS, SPARE_RELAYS, RELAY_TARGET_OPEN, RELAY_DEAD_FAILS, CELL_READ_RELAYS, CELL_BLOB_COPIES, CELL_SETTLE_MS, OWN_RELAYS, OWN_PUBLIC_BACKUP, OWN_RETRY_MAX_MS, OWN_FLAP_PENALTY_MS, OWN_BLOB_PAR, OWN_BAD_MS, OWN_ANNOUNCE_GAP_MS, _relaySafe, KIND, BLOB_KIND, UP_MS, HELLO_MS, TICK_MS, TTL_MSG, TTL_CHUNK, TTL_HELLO, TTL_RT, MAX_CONTENT, MAX_RELAY_FRAME, NET_CHANGE_SETTLE_MS, RELAY_STABLE_MS, RELAY_FLAP_WINDOW_MS, RELAY_FLAP_MAX, RELAY_FLAP_PENALTY_MS, RELAY_PROBE_MS, RELAY_IDLE_PROBE_MS, RELAY_BG_PROBE_MS, RELAY_PROBE_ID, SEND_SILENT_MS, SEND_PROBE_MS, RELAY_OFFLINE_RETRY_MS, RELAY_MIN_OTHERS, WAKE_MIN_MS, CALL_WAKE_MIN_MS, XFER_WAKE_MIN_MS, DEFAULT_SENDER, STATE_FILE, N, _nid, _relayHost, _plugin, _day, _utf8, _b64, _unb64, _cat, _rnd, _scalar, _event, _reqScalar, _reqTagPub, _reqAesKey };
