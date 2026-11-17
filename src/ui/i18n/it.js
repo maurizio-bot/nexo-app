@@ -863,6 +863,7 @@ export default {
   add_err_gone: "Quella richiesta non c'è più",
   add_anon_one: "Ricerca… 1 telefono NEXO vicino",
   add_anon_count: "Ricerca… {n} telefoni NEXO vicini",
+  add_more_hint: "E altri {n} vicini: cercali per nome o NEXO ID",
   add_anon_row: "NEXO vicino · identificazione…",
   add_anon_slow: "NEXO vicino · non risponde ancora",
   add_anon_pending: "NEXO vicino · lo aggiungo appena risponde…",

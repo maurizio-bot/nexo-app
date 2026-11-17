@@ -187,7 +187,7 @@ export const BLE_RECEIVE_METHODS = {
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '') && !_isBLEContact(p.from) && typeof self._noteKxPeer === 'function') self._noteKxPeer(data.deviceId, p);
       // Ronda 2764: con "Agregar" abierto, un NEXO cercano que no es contacto (se identificó con su kx) sale en la lista
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '') && !_isBLEContact(p.from) && Date.now() < (self._visibleUntil || 0) && !/^(lan|net)/i.test(String(data.deviceId)))
-        self.onDeviceFound({ id: data.deviceId, name: typeof p.nm === 'string' ? p.nm.substring(0, 40) : '', rssi: -60, nexoId: String(p.from).toUpperCase() });
+        self.onDeviceFound({ id: data.deviceId, name: typeof p.nm === 'string' ? p.nm.substring(0, 40) : '', rssi: -60, nexoId: String(p.from).toUpperCase(), kx: true }); // 3184: kx = dijo quién es (se dibuja al momento)
       if (p.from && p.rs) self._noteRestored(p.from, p.pk, p.rs);
       if (p.fx && p.from) self._noteFenixPeer(p.from, data.deviceId, Number(p.fx) || 1);
       if (p.ss && p.from) self._noteSealPeer(p.from);

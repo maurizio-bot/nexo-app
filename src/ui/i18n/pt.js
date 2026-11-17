@@ -863,6 +863,7 @@ export default {
   add_err_gone: "Essa solicitação não existe mais",
   add_anon_one: "Procurando… 1 celular com NEXO por perto",
   add_anon_count: "Procurando… {n} celulares com NEXO por perto",
+  add_more_hint: "E mais {n} por perto: procure pelo nome ou NEXO ID",
   add_anon_row: "NEXO por perto · identificando…",
   add_anon_slow: "NEXO por perto · ainda não responde",
   add_anon_pending: "NEXO por perto · vou adicionar assim que responder…",

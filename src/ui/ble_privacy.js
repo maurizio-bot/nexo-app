@@ -132,7 +132,7 @@ export const BLE_PRIVACY_METHODS = {
       if (kp && Date.now() < (self._visibleUntil || 0) && !_getBLEContacts().some(function(c) { return _normId(c.nexoId || c.deviceUUID) === nx; }))
         self.onDeviceFound({ id: a.deviceId, name: kp.name || '', rssi: a.rssi, nexoId: nx.toUpperCase() });
     });
-    if (changed && typeof self.renderNewDeviceBar === 'function') self.renderNewDeviceBar();
+    if (changed && typeof self._newBarSoon === 'function') self._newBarSoon(); // 3184: agrupado
     if (addNx) { self._addPending = null; try { self._addNewDevice(addNx); } catch (e) {} }
   },
 
@@ -282,7 +282,7 @@ export const BLE_PRIVACY_METHODS = {
             self._anonSeen = self._anonSeen || new Map();
             var prevA = self._anonSeen.get(tok);
             self._anonSeen.set(tok, { deviceId: data.deviceId, rssi: typeof data.rssi === 'number' ? data.rssi : -100, ts: Date.now(), first: prevA ? prevA.first : Date.now() });
-            if (!prevA && typeof self.renderNewDeviceBar === 'function') self.renderNewDeviceBar();
+            if (!prevA && typeof self._newBarSoon === 'function') self._newBarSoon(); // 3184: agrupado (en una multitud, cientos)
           }
           if (self.relay && typeof self.relay.noteAnon === 'function') self.relay.noteAnon(data.deviceId, tok, data.rssi);
           // Ronda 2764 (informe del dueño: tras borrar contactos "no los ve"): con "Agregar" abierto, saber quién es este

@@ -11,7 +11,7 @@ export const BLE_SEND_METHODS = {
     var nx = _normId(nexoId), name = String(nm).replace(/[\u0000-\u001f<>]/g, '').trim().substring(0, 40);
     if (!name || _isGenericName(name)) return;
     var found = this.foundDevices && this.foundDevices.get(nx);
-    if (found && _isGenericName(found.name)) { found.name = name; this.renderNewDeviceBar(); }
+    if (found && _isGenericName(found.name)) { found.name = name; this._newBarSoon(true); } // 3184: su nombre (kx), al momento
     var contacts = _getBLEContacts(), c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
     if (!c || !_isGenericName(c.name)) return;
     c.name = name;

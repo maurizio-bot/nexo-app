@@ -9,7 +9,7 @@ import { t } from './i18n.js'; // #132 idioma
 import { parseInvite, shareInvite } from './invite.js'; // 3129: enlace de invitación
 import { personAvatar } from './person_avatar.js'; // 3140: el círculo de color de Contactos
 import { isPreviewHidden, toggleHidePreview } from './chat_hide_preview.js';
-import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isBLEContact, _isPinned, _normId, _rssiToBars, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
+import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isPinned, _normId, _rssiToBars, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
 
 // #dueño 08-11 (scan rápido): barritas de señal (como el wifi) para una fila de contacto encontrado — de un vistazo se ve
 // quién está más cerca, SIN mover la lista de lugar (el orden sigue siendo por aparición). Devuelve null si no hay señal.
@@ -30,6 +30,13 @@ function _signalBarsEl(rssi) {
   } catch (e) { return null; }
 }
 
+// 3184 (estudio EDC 17-11, docs/EDC_LIMITES.md, cambio n.º 1): en una multitud el escaneo avisa cientos de veces por segundo y
+// cada aviso de un NEXO con su ID visible rehacía TODA la lista de «Agregar», aunque estuviera cerrada, y por cada fila recorría
+// la libreta entera (90–98 % del tiempo de JS: con 500 NEXO cerca, lag de hasta 2,5 s; con 1000, la app colgada). Ahora los
+// avisos se agrupan: con el panel abierto, como mucho un dibujo cada 0,5 s; cerrado (no se ve), uno cada 3 s (al abrirlo,
+// togglePanel dibuja YA con todo lo acumulado); como mucho 30 filas (las vistas hace poco con mejor señal, en su orden de
+// aparición), y los contactos se miran en un conjunto.
+var NEW_BAR_OPEN_MS = 500, NEW_BAR_CLOSED_MS = 3000, NEW_BAR_MAX_ROWS = 30, NEW_BAR_RECENT_MS = 20000;
 
 export const BLE_UI_METHODS = {
   _initVisibility() {
@@ -788,15 +795,43 @@ export const BLE_UI_METHODS = {
     }, 10);
   },
 
+  // 3184: pedir que se dibuje «Agregar» desde lo que llega a ráfagas (cada aviso del escaneo): agrupa y dibuja como mucho cada
+  // NEW_BAR_OPEN_MS con el panel abierto y cada NEW_BAR_CLOSED_MS cerrado. now = lo dice el propio teléfono al identificarse (su kx,
+  // uno por conexión, no por aviso): al momento, como antes (3012: «en cuanto contesta, con su nombre»). Lo que pide el usuario
+  // (abrir, buscar, escanear, «+») sigue llamando a renderNewDeviceBar, que dibuja al momento.
+  _newBarSoon(now) {
+    if (now) { this.renderNewDeviceBar(); return; }
+    if (this._newBarTimer) return;
+    var self = this, open = !!(this.elements.panel && this.elements.panel.classList.contains('active'));
+    var wait = (this._newBarAt || 0) + (open ? NEW_BAR_OPEN_MS : NEW_BAR_CLOSED_MS) - Date.now();
+    if (wait <= 0) { this.renderNewDeviceBar(); return; }
+    this._newBarTimer = setTimeout(function() { self._newBarTimer = null; try { self.renderNewDeviceBar(); } catch (e) {} }, wait);
+  },
+
   renderNewDeviceBar() {
+    if (this._newBarTimer) { clearTimeout(this._newBarTimer); this._newBarTimer = null; } // 3184: este dibujo ya lleva lo pendiente
+    this._newBarAt = Date.now();
     var bar = this.elements.newDeviceBar;
     if (!bar) return;
     var self = this;
     var newDevices = [];
+    // 3184: los contactos, en un conjunto (antes se recorría la libreta entera por cada fila)
+    var inBook = new Set();
+    _getBLEContacts().forEach(function(c) { var id = _normId(c.nexoId || c.deviceUUID); if (id) inBook.add(id); });
+    var k = 0;
     this.foundDevices.forEach(function(device, deviceId) {
       var uuid = device.deviceUUID;
-      if (uuid && !_isBLEContact(uuid) && self._panelMatch(_niceName(device.name, uuid), uuid)) newDevices.push({ deviceId: deviceId, device: device });
+      if (uuid && !inBook.has(_normId(uuid)) && self._panelMatch(_niceName(device.name, uuid), uuid)) newDevices.push({ deviceId: deviceId, device: device, k: k++ });
     });
+    // 3184: como mucho NEW_BAR_MAX_ROWS filas: las vistas hace poco y con mejor señal, mostradas en su orden de aparición (la lista no
+    // se reordena sola, #dueño 08-11); a los demás se los encuentra con el buscador (aviso «Y N más…» al final)
+    var more = 0;
+    if (newDevices.length > NEW_BAR_MAX_ROWS) {
+      var nowB = Date.now();
+      var score = function(it) { var d = it.device; return (nowB - (d.lastSeen || 0) < NEW_BAR_RECENT_MS ? 1000 : 0) + (typeof d.rssi === 'number' ? d.rssi : -127); };
+      more = newDevices.length - NEW_BAR_MAX_ROWS;
+      newDevices = newDevices.sort(function(a, b) { return (score(b) - score(a)) || (a.k - b.k); }).slice(0, NEW_BAR_MAX_ROWS).sort(function(a, b) { return a.k - b.k; });
+    }
     // 3012 (regla del dueño 11-11: «cualquiera que tiene NEXO debe aparecer al instante en un escaneo»): los NEXO cercanos que el
     // escaneo ve pero aún no dijeron quiénes son salen YA como «identificando…» (ble_privacy._anonRows) y pasan a su nombre al contestar
     var anonRows = (typeof this._anonRows === 'function' && !this._panelQuery) ? this._anonRows() : [];
@@ -848,6 +883,14 @@ export const BLE_UI_METHODS = {
       row.appendChild(addBtn);
       bar.appendChild(row);
     });
+    if (more > 0) {
+      var moreEl = document.createElement('p');
+      moreEl.className = 'ble-more-note';
+      moreEl.dataset.n = String(more);
+      moreEl.textContent = t('add_more_hint', 'Y {n} más cerca: búscalos por nombre o NEXO ID').replace('{n}', String(more));
+      moreEl.style.cssText = 'width:100%;margin:0;text-align:center;font-size:12px;color:var(--nx-muted);padding:2px 0;';
+      bar.appendChild(moreEl);
+    }
   },
 
   updateBadge() {

@@ -863,6 +863,7 @@ export default {
   add_err_gone: "That request is no longer there",
   add_anon_one: "Searching… 1 NEXO phone nearby",
   add_anon_count: "Searching… {n} NEXO phones nearby",
+  add_more_hint: "And {n} more nearby: search by name or NEXO ID",
   add_anon_row: "Nearby NEXO · identifying…",
   add_anon_slow: "Nearby NEXO · not answering yet",
   add_anon_pending: "Nearby NEXO · adding as soon as it answers…",

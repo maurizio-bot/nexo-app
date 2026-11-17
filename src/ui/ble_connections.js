@@ -765,7 +765,7 @@ export const BLE_CONNECTION_METHODS = {
       this.foundDevices.set(nx, device);
       // Escaneo de Jump (buscar camino para otros): no avisar de "dispositivo nuevo"
       if (!this._relayScan) { this.newDevicesCount++; this.updateBadge(); }
-      this.renderNewDeviceBar();
+      this._newBarSoon(!!device.kx); // 3184 (estudio EDC 17-11): agrupado (antes, la lista entera con cada aviso del escaneo); su kx, al momento
     } else {
       existing.id = deviceId;
       existing.name = !_isGenericName(device.name) ? device.name : (existing.name || device.name || '');
@@ -773,7 +773,7 @@ export const BLE_CONNECTION_METHODS = {
       existing.lastSeen = Date.now();
       existing.deviceUUID = nexoId;
       this.foundDevices.set(nx, existing);
-      this.renderNewDeviceBar();
+      this._newBarSoon(!!device.kx); // 3184
     }
   },
 
