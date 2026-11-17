@@ -518,6 +518,18 @@
     {
      "fallo": "3173 (dueño 17-11, diagnóstico S24 19:57: pendiente al vivo/tablet que se «reenviaba» cada 18 s y se mandaba otra vez al reiniciar): con más de 20 chats, la caché de historiales (20) soltaba el chat antes del guardado agrupado (300 ms) y el borrado/✓✓ de la pregunta oculta de la foto de perfil no llegaba al disco. 3173: lo sin escribir se guarda aparte (_unsaved) hasta llegar al disco; un id borrado no se busca en todos los chats; un pendiente ya confirmado se corrige en vez de saltarse. pendcache.js (contraprueba faa6b43a)",
      "prueba": "pendiente que ya llegó y se «reenvía» sin fin"
+    },
+    {
+     "fallo": "3175 (ciudad 17-11): una reacción/edición/«eliminar para todos» que llegaba antes que su mensaje se perdía; el borrado no borraba (privacidad). Cola persistida + lápida. acciontemprana.js (contraprueba 80c39795)",
+     "prueba": "acción que llega ANTES que su mensaje — 3175 (prue"
+    },
+    {
+     "fallo": "3176 (ciudad 17-11): las reacciones del teléfono agregado nunca salían (fx=0: el kx llegaba antes de existir el contacto). fxagregado.js (contraprueba 80c39795)",
+     "prueba": "las reacciones del teléfono AGREGADO no salían — 3"
+    },
+    {
+     "fallo": "3183 (dueño 17-11): el vivo siempre arriba en Contactos: un reenvío de algo ya recibido lo subía. vivoarriba.js (contraprueba b3182)",
+     "prueba": "3183 (dueño 17-11: el vivo siempre arriba en Conta"
     }
    ],
    "debiles": [
@@ -1655,6 +1667,10 @@
     {
      "fallo": "3152 (lo destapó #224): «en espera» de una llamada de grupo (#222, señales hold/unhold) no pasaba el filtro de señales: llegaba al chat como un mensaje más y el otro nunca sabía que estaba en espera. gcupgrade.js U5 (contraprueba 3151: no se entiende)",
      "prueba": "AGREGAR a una llamada 1-a-1"
+    },
+    {
+     "fallo": "3177 (ciudad 17-11): foto de grupo por el buzón que llegaba por trozos se guardaba como 'ptr' y nunca se bajaba. grupoptr.js (contraprueba 80c39795)",
+     "prueba": "foto de GRUPO por el buzón de archivos que llega p"
     }
    ],
    "debiles": [
@@ -1794,6 +1810,10 @@
     {
      "fallo": "3182 (dueño 17-11, jugando «Defensor NEXO»: «ahí brinca mi navecita… es como hacer trampa»): tocar ponía la nave en el dedo y arrastrar la teletransportaba. 3182: arrastre relativo + velocidad máxima 650 px/s. juegotrampa.js (contraprueba b3174: 660 px de un toque)",
      "prueba": "juego secreto sin trampa"
+    },
+    {
+     "fallo": "3181 (dueño 17-11): 47 de 134 botones con respuesta distinta (cuadrado en los de llamada). pressall.js (contraprueba 2884c687)",
+     "prueba": "la MISMA respuesta al dedo en TODOS los botones (3"
     }
    ],
    "debiles": [
