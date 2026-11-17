@@ -21,7 +21,7 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   caer el Wi-Fi con ella a las 23:56:35). Nada la revivió hasta que el dueño la abrió a las 04:46 (registro nativo vacío 23:07 → 04:46):
   ~5 h sin recibir. En la tableta también el 15-11 07:41. `START_STICKY` no basta; no hay receptor de reinicio/actualización ni
   alarma de vigilancia; solo un toque FCM la revive, y solo si alguien tiene algo pendiente para ella.
-- **3189 hecho y EN ESPERA** (commit 9dc2113f en el worktree `/home/user/wtvuelta`, sin integrar): NEXO vuelve sola tras
+- **3189 + 3192 INTEGRADOS (17-11 07:00)**; prueba del dueño: reiniciar la tableta SIN abrir NEXO (no «forzar detención»: eso la deja parada hasta abrirla) y mandarle un mensaje desde el S24: debe llegar el aviso y el ✓✓, y en el diagnóstico «Internet sin la app: escuchando…» y «[VUELVE]». Antes: **3189 hecho y EN ESPERA** (commit 9dc2113f en el worktree `/home/user/wtvuelta`, sin integrar): NEXO vuelve sola tras
   MY_PACKAGE_REPLACED, BOOT_COMPLETED y una alarma de vigilancia cada ~15 min; anota «[VUELVE] NEXO vuelve sola tras …». Kotlin 183/183;
   compilado contra la API 36 (sin SDK de Android aquí: el CI lo confirma). **Pero el servicio solo NO recibe nada** en un proceso nuevo
   (sin WebView): el servidor GATT y NetBg solo los crea el plugin, y la configuración de NetBg (relés, claves de pareja) y las claves del
