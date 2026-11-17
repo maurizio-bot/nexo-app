@@ -70,6 +70,12 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   teléfono. «Confirmación sin firma válida de nx0x4029e6» ×7: Zhelowsky va en la 3026 (vieja). **3211 a hacer:** un texto a Marcos pasó
   a ✗ un segundo (16:05:07) y a ✓✓ en el siguiente: la red de seguridad ya lo había dejado en el buzón (16:05:06) y el agotamiento de
   reintentos Bluetooth (_onAckTimeout) lo marcó «failed» igual → si ya salió por internet, ✓ y no ✗.
+- Dueño S24 (3091) 16:59: 298,8 MB de NEXO hoy; en 43 min desde abrir, 7,8 MB de relés con 1883 de 2028 eventos repetidos (93 %);
+  7 vueltas a la app de 16:16 a 16:58 (cada una vuelve a pedir 10 min a cada relé, 25 contactos) → 3212. Zhelowsky (3086, la 3090 ya
+  descargada sin instalar; Motorola sin segundo plano): su ✓✓ del pedido de diagnóstico (msg…r2052km1s) llegaba «sin firma válida» y el
+  S24 lo reenvió 25 min. **Investigar «confirmación sin firma válida»** (Zhelowsky→HONOR/S24, dueño→Marcos): ackTag (BT) y ackMac (NetBg)
+  firman igual; sospecha: clave de pareja vieja en uno de los dos (e2eAckKey(c.publicKey) con la llave antigua del otro). Mirar cuando
+  Zhelowsky actualice.
 - NX…DBFE (3087, Galaxy A05s, Italia): versión vieja; 217 MB de Wi-Fi hoy (archivos por el buzón: 18 enviados, 22 recibidos) y 2
   cierres por falta de memoria; Bluetooth con richard atascado («Write fallo ~6 s») mientras el Wi-Fi local llevaba los mensajes.
 
