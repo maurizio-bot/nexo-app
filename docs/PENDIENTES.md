@@ -9,6 +9,12 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 17-11 06:28 — dueño «Ok» a 2 conexiones y 2 copias con datos móviles
+- Diagnóstico S24 06:01 (entrega lenta de una nota de voz al S23 3080, 128 s): del lado del S23 (versión vieja); la subida fue a 6,8 KB/s
+  porque cada trozo va a 3 relés, y 1,5 MB de 2,5 MB bajados eran repetidos. Aprobado: con datos móviles escuchar 2 relés (seguir
+  publicando a todos) y 2 copias por trozo → **3193 en curso** (worktree `/home/user/wtdatos`, solo JS; el nativo NetBg queda para después
+  de la 3192).
+
 ## 🆕 17-11 04:55 — #87: NEXO muere con una actualización de WebView (o de NEXO, o un reinicio) y NO vuelve sola
 - Diagnósticos de la tableta SM-T220 (3075) y del S24 (3082), dueño 17-11: la tableta con SOLO la pantalla apagada. A las 23:56 Google
   Play actualizó Android System WebView → Android mató a NEXO («stop com.google.android.webview due to installPackageLI»; el S24 vio
