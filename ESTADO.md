@@ -29,8 +29,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   sí deja el mensaje en el buzón de internet (redseguridad.js); 3212 margen del `since` de los relés aprendido del atraso real
   (120–600 s; repetidos.js: 106 → 12 KB repetidos por reconexión); **3213 stickers con VIDEO** (dueño 17-11: «🎬 Elegir video»,
   barras «Empieza en» y «Dura» de 1 a 5 s, cuadrado 256 sin sonido y en bucle; stickervideo.js + `tests/real_stickervideo.cjs` en
-  Chromium real: 5 s → ~49 mil caracteres). Falta la línea de NOVEDADES de 3211–3213 (después de publicar la 3092). Siguiente: batería
-  completa sobre 3211–3213 (build nueva) y, si pasa, punta de la 3093 con su línea de NOVEDADES.
+  Chromium real: 5 s → ~49 mil caracteres). Falta la línea de NOVEDADES de 3211–3213 (después de publicar la 3092). Batería completa
+  sobre 3211–3213 EN CURSO desde las 18:00 (`bateria_3213.txt` del scratchpad); si pasa, punta de la 3093 con su línea de NOVEDADES
+  (antes: pasar el bloque de la 3092 al historial cuando su CI termine bien, corrida 44202858201).
 - **17-11 16:45 (México) — 3210 INTEGRADO** (dueño: «¿por qué a Marcos le llegan notificaciones mías si yo no le mandé nada?»): los
   fragmentos de respaldo Fénix y los medios de estados avisaban «📎 Archivo» con la app del otro cerrada (BgInbox) y por internet
   (marca n para NetBg). Ahora van con q:1 (avisofenix.js). Batería de 3207–3210 reiniciada (`bateria_3210.txt` del scratchpad; la de
