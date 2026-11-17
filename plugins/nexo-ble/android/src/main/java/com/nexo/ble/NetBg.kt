@@ -41,7 +41,15 @@ class NetBg(
     // 3190: solicitud de contacto de mi buzón. kind = "req" (me quieren agregar) o "acc" (aceptó una solicitud MÍA); twin = nombre del
     // contacto que ya tengo con ese mismo nombre y otro NEXO ID (posible impostor), o ""
     class Req(val from: String, val name: String, val kind: String, val twin: String = "")
-    private class Relay(val url: String) { var ws: WsClient? = null; var retryAt = 0L; var fails = 0; var authed = false; var openedAt = 0L; var closedAt = 0L }
+    // 3204: gapSince = desde cuándo hay que pedirle lo suyo a este relé al volver al Wi-Fi (se dejó de escuchar con datos móviles; -1 =
+    // nada pendiente; vale mientras escucha esta NetBg: se olvida al pararse); gapAsked = ya se le pidió por esta conexión y se espera su
+    // EOSE (con él queda al día)
+    private class Relay(val url: String) { var ws: WsClient? = null; var retryAt = 0L; var fails = 0; var authed = false; var openedAt = 0L; var closedAt = 0L
+        @Volatile var gapSince = -1L; @Volatile var gapAsked = false }
+    // 3204: lo que la política de escucha necesita saber de cada relé (en el orden de la lista): abierto, o se puede intentar ya (pasó su espera)
+    class RelayView(val open: Boolean, val due: Boolean)
+    // listen = los que se escuchan (abiertos o recién abiertos), park = los que se sueltan (con datos, de los 2 escuchados en adelante)
+    class ListenPlan(val listen: List<Int>, val park: List<Int>)
 
     companion object {
         const val FOR_APP_MAX = 500                    // 3033: eventos guardados para la app como mucho
@@ -65,6 +73,36 @@ class NetBg(
             val s = (now - closedAt) / 1000
             return if (s < 120) "abierta otra vez tras $s s" else "abierta otra vez tras ${s / 60} min"
         }
+        // 3204 (dueño 17-11 «Ok» a 2 conexiones y 2 copias con datos móviles; parte nativa de la 3193): con la app en segundo plano o
+        // cerrada escucha esta NetBg, que se suscribía a TODOS los relés: con datos móviles cada evento bajaba una vez por relé (S24 17-11:
+        // en 116 min, 1723 de 1896 eventos eran «ya vistos»). Ahora, como la app (net_relays.js _cellReaders): con datos móviles se
+        // conecta y se escucha SOLO a los CELL_READ_RELAYS primeros sanos en el orden de la lista (el que manda la app, el mismo en los
+        // dos teléfonos), saltando los caídos (los que esperan su reintento); los demás se sueltan. El ✓✓ sale por los escuchados (son
+        // los únicos abiertos). Con Wi-Fi o cable, todos, como siempre; y a cada relé soltado se le pide desde que se soltó (gapSince):
+        // el `since` común ya va por delante y saltaría lo que un contacto dejó solo en él mientras tanto.
+        const val CELL_READ_RELAYS = 2
+        const val TTL_MSG_MS = 7 * 86_400_000L // caducidad de un mensaje en los relés (TTL_MSG de la app): más atrás no hay nada que pedir
+        // ¿Con datos móviles tras este aviso del tipo de red (NetChange.typeOf)? Celular sin Wi-Fi ni cable: sí. Wi-Fi, cable, VPN sola u
+        // otra: no (como siempre). Sin red o sin saberlo: lo que había (un túnel sin cobertura no vuelve a abrir todos los relés).
+        fun cellAfter(prev: Boolean, type: String): Boolean = when (type) { "cell" -> true; "", "none" -> prev; else -> false }
+        // Qué relés escuchar, en el orden de la lista. Sin datos: todos los abiertos y los que se pueden intentar ya. Con datos: los n
+        // primeros sanos: abiertos, o que se pueden intentar ya y abren (tryOpen conecta de verdad: si falla, cuenta como caído y se pasa
+        // al siguiente); el que espera su reintento se salta. Del n-ésimo escuchado en adelante, todos se sueltan (sin intentar abrirlos).
+        // Si vuelve uno de los primeros, el que lo reemplazaba se suelta en la misma vuelta.
+        fun listenPlan(cell: Boolean, rs: List<RelayView>, tryOpen: (Int) -> Boolean, n: Int = CELL_READ_RELAYS): ListenPlan {
+            val listen = ArrayList<Int>(); val park = ArrayList<Int>()
+            for ((i, r) in rs.withIndex()) {
+                if (cell && listen.size >= n) { park.add(i); continue }
+                if (r.open || (r.due && tryOpen(i))) listen.add(i)
+            }
+            return ListenPlan(listen, park)
+        }
+        // Desde cuándo pedir a un relé (ms): el `since` común, o con Wi-Fi, si quedó algo pendiente de cuando se soltó, desde entonces
+        // (no más atrás que lo que dura un mensaje en el relé). Con datos lo pendiente se guarda para el Wi-Fi.
+        fun subSince(since: Long, gapSince: Long, cell: Boolean, now: Long): Long =
+            if (gapSince < 0 || cell) since else minOf(since, maxOf(gapSince, now - TTL_MSG_MS))
+        // Nombre corto del relé para el registro (como _relayHost de la app)
+        fun host(url: String): String = url.replace(Regex("^wss?://"), "").replace(Regex("/.*$"), "")
         private val GID = Regex("^gr[0-9a-z]{8}$")
         // 3076: id del grupo del mensaje que va dentro del sobre (p = sobre type:'chat' con g), o "" (1-a-1, o no se entiende)
         fun groupOf(p: String): String {
@@ -174,6 +212,12 @@ class NetBg(
     private var tagDay = ""
     @Volatile var running = false; private set
     private var thread: Thread? = null
+    // 3204: vuelta del bucle en marcha (un bucle viejo, aún atascado conectando tras stop/start, se retira solo: nunca dos decidiendo)
+    @Volatile private var gen = 0
+    // 3204: ¿con datos móviles? Lo dice quien escucha la red del teléfono (NetBgHome, ConnectivityManager) con setNet. Sin aviso (pruebas,
+    // o sin poder escuchar la red), como siempre: todos los relés.
+    @Volatile private var cell = false
+    private var modeKey = "" // lo último anotado en el registro sobre el modo (solo el hilo del bucle)
     private val seen = LinkedHashSet<String>()
     // 3033 (dueño 12-11: «si me llega un mensaje ya debe quedarse en el chat, no cargarse cuando abro el chat»): lo que se
     // recibió y se avisó en segundo plano se GUARDA aquí (el evento del relé tal cual, cifrado) y la app lo recoge al volver
@@ -193,15 +237,28 @@ class NetBg(
 
     fun configure(me: String, relayUrls: List<String>, since: Long, list: List<Contact>, known: Map<String, String> = emptyMap(), reqOut: Set<String> = emptySet(), reqSince: Long = 0L) {
         synchronized(lock) {
+            // 3204: otra cuenta: lo pendiente de pedir a los relés soltados era de la anterior
+            if (me.lowercase() != this.me) relays.values.forEach { it.gapSince = -1L; it.gapAsked = false }
             this.me = me.lowercase(); this.contacts = list
             this.known = known; this.reqOut = reqOut; this.reqSince = reqSince
             if (since > this.since) this.since = since
-            relayUrls.forEach { if (!relays.containsKey(it)) relays[it] = Relay(it) }
-            relays.keys.filter { it !in relayUrls }.forEach { relays.remove(it)?.ws?.close() }
+            // 3204: en el ORDEN que manda la app (con datos se escuchan los primeros sanos de la lista): se rehace el mapa en ese orden,
+            // con los mismos relés (conexión, esperas y lo pendiente); los que ya no están se cierran
+            val old = LinkedHashMap(relays); relays.clear()
+            relayUrls.forEach { if (!relays.containsKey(it)) relays[it] = old.remove(it) ?: Relay(it) }
+            old.values.forEach { val ws = it.ws; it.ws = null; ws?.close() }
             tagDay = ""
         }
         if (running) synchronized(lock) { lock.notifyAll() }
     }
+    // 3204: el tipo de la red por defecto del teléfono (NetChange.typeOf, o "none"): con datos móviles se escuchan solo 2 relés
+    fun setNet(type: String) {
+        val now = cellAfter(cell, type)
+        if (now == cell) return
+        cell = now
+        if (running) synchronized(lock) { lock.notifyAll() }
+    }
+    fun cellMode() = cell
     // 3190: también sin contactos por internet (alguien nuevo que espera solicitudes): con mi ID ya se escucha mi buzón de solicitudes
     fun configured() = me.isNotEmpty() && relays.isNotEmpty()
     // Nombre de un contacto (para la notificación de lo que llega por Bluetooth con la app cerrada)
@@ -215,13 +272,17 @@ class NetBg(
     @Synchronized fun start() {
         if (running || !configured()) return
         running = true
-        thread = Thread({ loop() }, "nexo-netbg").apply { isDaemon = true; start() }
+        val g = ++gen
+        thread = Thread({ loop(g) }, "nexo-netbg").apply { isDaemon = true; start() }
         log("Internet en segundo plano: escuchando ${contacts.size} contacto(s) y el buzón de solicitudes en ${relays.size} relé(s)")
     }
     @Synchronized fun stop() {
         if (!running) return
         running = false
-        synchronized(lock) { lock.notifyAll(); relays.values.forEach { it.ws?.close(); it.ws = null; it.authed = false; it.closedAt = 0L } }
+        // 3204: la conexión se suelta ANTES de cerrarla: su aviso de cierre ya no es de este relé (no cuenta como caída; ver connect). Y
+        // lo pendiente de los relés soltados se olvida: escucha la app (con su propio orden de datos móviles) y, al volver a segundo plano,
+        // se empieza desde lo último que ella vio (si no, se volverían a bajar y confirmar horas de mensajes que ella ya recibió)
+        synchronized(lock) { lock.notifyAll(); relays.values.forEach { val ws = it.ws; it.ws = null; it.authed = false; it.closedAt = 0L; it.gapSince = -1L; it.gapAsked = false; ws?.close() } }
         log("Internet en segundo plano: parado (la app vuelve a encargarse)")
     }
     fun lastSeen() = since
@@ -241,36 +302,91 @@ class NetBg(
         return true
     }
 
-    private fun loop() {
+    private fun loop(g: Int) {
         var lastPing = System.currentTimeMillis()
-        while (running) {
+        modeKey = ""
+        while (running && g == gen) {
             val changed = synchronized(lock) { refreshTags() }
             val now = System.currentTimeMillis()
-            for (r in synchronized(lock) { relays.values.toList() }) {
-                val ws = r.ws
-                if (ws == null || !ws.open) {
-                    if (now >= r.retryAt) connect(r)
-                } else if (changed) subscribe(r)
+            val list = synchronized(lock) { relays.values.toList() }
+            // 3204: con datos móviles solo los 2 primeros sanos de la lista (listenPlan); con Wi-Fi, todos (como siempre)
+            val c = cell
+            val fresh = HashSet<Int>()
+            val plan = listenPlan(c, list.map { RelayView(it.ws?.open == true, now >= it.retryAt) }, { i ->
+                if (!running || g != gen) false else { fresh.add(i); connect(list[i]); list[i].ws?.open == true }
+            })
+            if (!running || g != gen) break // se paró (o arrancó otra vuelta) mientras conectaba: no se toca nada más
+            for (i in plan.listen) {
+                if (i in fresh) continue // recién abierto: ya se suscribió
+                val r = list[i]
+                // tras el cambio de día, o (con Wi-Fi) si se le debe lo de cuando estuvo soltado: se vuelve a pedir (mismo id: reemplaza)
+                if (changed || (!c && r.gapSince >= 0 && !r.gapAsked)) subscribe(r)
             }
-            if (now - lastPing > 60000) { relays.values.forEach { it.ws?.ping() }; lastPing = now }
-            synchronized(lock) { try { lock.wait(5000) } catch (e: InterruptedException) { } }
+            for (i in plan.park) park(list[i])
+            noteMode(c, plan.listen.map { list[it] }.filter { it.ws?.open == true })
+            if (now - lastPing > 60000) { list.forEach { it.ws?.ping() }; lastPing = now }
+            synchronized(lock) { if (running && g == gen) try { lock.wait(5000) } catch (e: InterruptedException) { } }
+        }
+    }
+
+    // 3204: con datos móviles, un relé que no es de los 2 escuchados se suelta: se cierra su conexión (sin contar como caída: ya no es la
+    // suya, ver connect) y se apunta desde cuándo no se le escucha, para pedírselo al volver al Wi-Fi
+    private fun park(r: Relay) {
+        if (r.gapSince < 0) r.gapSince = since
+        r.gapAsked = false
+        val ws = r.ws ?: return
+        r.ws = null; r.authed = false; r.openedAt = 0L; r.closedAt = 0L
+        try { ws.close() } catch (e: Exception) { }
+    }
+
+    // 3204: una línea al registro al cambiar de modo o de relés escuchados (con datos) y otra al volver al Wi-Fi
+    private fun noteMode(c: Boolean, listening: List<Relay>) {
+        if (!running) return
+        if (c) {
+            if (listening.isEmpty()) return // ninguno abierto: ya lo dicen las líneas de cada relé
+            val key = "cell:" + listening.joinToString(",") { it.url }
+            if (key == modeKey) return
+            modeKey = key
+            val rest = synchronized(lock) { relays.size } - listening.size
+            log("Internet en segundo plano: datos móviles, escucho ${listening.size} relé${if (listening.size > 1) "s" else ""} (${listening.joinToString(", ") { host(it.url) }}) y el ✓✓ sale por ${if (listening.size > 1) "ellos" else "él"}" +
+                (if (rest > 0) "; a los otros $rest, al volver al Wi-Fi" else ""))
+        } else if (modeKey.startsWith("cell:")) {
+            modeKey = "wifi"
+            val all = synchronized(lock) { relays.values.toList() }
+            val owed = all.count { it.gapSince >= 0 }
+            log("Internet en segundo plano: Wi-Fi, escucho todos los relés (${all.size})" + when {
+                owed > 1 -> " y a los $owed que solté les pido desde que los solté"
+                owed == 1 -> " y al que solté le pido desde que lo solté"
+                else -> ""
+            })
         }
     }
 
     private fun connect(r: Relay) {
         try {
             r.authed = false
+            r.gapAsked = false
             r.openedAt = 0L // si se cierra sin llegar a abrir, no cuenta el tiempo de la conexión anterior
+            var self: WsClient? = null
             val ws = WsClient(r.url, { onRelayText(r, it) }, { why ->
+                // 3204: una conexión que ya no es la de este relé (la cerramos nosotros: parar, soltarlo con datos, relé quitado) no es una
+                // caída: ni cuenta fallos ni retrasa el siguiente intento ni va al registro
+                if (self == null || r.ws !== self) return@WsClient
                 val now = System.currentTimeMillis()
                 r.ws = null
+                r.gapAsked = false // si se pedía lo de cuando estuvo soltado y no llegó al final (EOSE), se vuelve a pedir
                 if (r.openedAt > 0 && running) r.closedAt = now // al pararse NetBg (vuelve la app) no cuenta como caída
                 r.fails = failsAfterClose(r.fails, if (r.openedAt > 0) now - r.openedAt else 0L)
                 r.retryAt = now + retryDelayMs(r.fails)
                 if (running) log("Relé ${r.url}: $why" + (if (r.fails > 1) " (intento nº ${r.fails}: el siguiente en ${retryDelayMs(r.fails) / 1000} s)" else ""))
+                // 3204: con datos móviles, el siguiente de la lista entra ya (sin esperar a la vuelta del bucle)
+                if (running && cell) synchronized(lock) { lock.notifyAll() }
             })
+            self = ws
             r.ws = ws
             ws.connect()
+            // 3204: mientras conectaba se paró NetBg o se quitó/soltó este relé: no se deja una conexión abierta sin dueño
+            if (!running || r.ws !== ws) { try { ws.close() } catch (e: Exception) { }; return }
             r.openedAt = System.currentTimeMillis() // 3069: abrir no basta para dar el relé por bueno (ver RELAY_STABLE_MS)
             val note = reopenNote(r.closedAt, r.openedAt)
             r.closedAt = 0L
@@ -287,8 +403,11 @@ class NetBg(
     private fun subscribe(r: Relay) {
         val pubs = synchronized(lock) { tags.keys.toList() + reqTags }
         if (pubs.isEmpty()) return
-        val f = JSONObject().put("kinds", JSONArray(listOf(KIND))).put("#p", JSONArray(pubs)).put("since", since / 1000)
-        r.ws?.send(JSONArray(listOf("REQ", SUB, f)).toString())
+        // 3204: con Wi-Fi, a un relé que se soltó con datos móviles, desde que se soltó (lo pendiente se da por recibido con su EOSE)
+        val c = cell
+        val from = subSince(since, r.gapSince, c, System.currentTimeMillis())
+        val f = JSONObject().put("kinds", JSONArray(listOf(KIND))).put("#p", JSONArray(pubs)).put("since", from / 1000)
+        if (r.ws?.send(JSONArray(listOf("REQ", SUB, f)).toString()) == true && !c && r.gapSince >= 0) r.gapAsked = true
     }
 
     private fun onRelayText(r: Relay, text: String) {
@@ -301,6 +420,8 @@ class NetBg(
             "CLOSED" -> if (m.optString(2).startsWith("auth-required")) { /* se resuscribe tras identificarse */ }
             "OK" -> if (!r.authed && m.optBoolean(2)) { r.authed = true; subscribe(r) }
             "EVENT" -> if (m.optString(1) == SUB) onEvent(m.optJSONObject(2) ?: return)
+            // 3204: el relé ya mandó todo lo guardado desde el `since` pedido: si era lo de cuando estuvo soltado, queda al día
+            "EOSE" -> if (m.optString(1) == SUB && r.gapAsked && r.ws != null) { r.gapAsked = false; r.gapSince = -1L }
         }
     }
 
@@ -367,6 +488,8 @@ class NetBg(
     // net.send): sobre {t,w,p} con p = {v:1,type:"ack",msgId,from,ts,a}, firmado con la clave de la pareja si la
     // tenemos (un contacto antiguo la ignora). Así el emisor pasa de ✓ a ✓✓ aunque este teléfono tenga la app cerrada.
     // El «leído» sigue siendo cosa de la app (al abrir el chat), como pidió el dueño.
+    // 3204: por las conexiones abiertas: con datos móviles son solo los 2 relés escuchados (los demás están soltados, sin conexión), los
+    // mismos primeros sanos de la lista que escucha el otro teléfono si también va con datos
     private fun publishDeliveryAck(c: Contact, msgId: String) {
         try {
             val open = synchronized(lock) { relays.values.mapNotNull { it.ws }.filter { it.open } }

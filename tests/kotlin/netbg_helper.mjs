@@ -17,6 +17,12 @@
 //                                   (NetLink._bgConfig real) y ACK <lo que manda a setAckKeys> (e2eAckKey, como _pushAckKeys);
 //                                   {"drain":{"me":nx,"contacts":[…],"events":[…]}} → DRAINED: lo que la app recoge de netBgDrain
 //                                   (NetLink._drainBg real: firma, etiqueta, sobre) y entrega al chat (_onNetPayload)
+//  node netbg_helper.mjs multi [n] → 3204: n relés locales (4 por defecto) que exigen identificarse: URLS [url…] (el orden común);
+//                                   PK = la identidad REAL del emisor A; {"send":{…,"only":[i…]}} = NetLink.send REAL de A publicado
+//                                   solo en esos relés (por defecto en todos los que están en pie); {"acks":{…}} como en relay, más
+//                                   `on` = en qué relés está cada ✓✓; {"down":i} / {"up":i} = tirar / volver a levantar el relé i (mismo
+//                                   puerto y lo guardado); STATS → [{reqs, subs, open, conns, auths}] por relé (reqs = todos los REQ
+//                                   recibidos, también los rechazados por no identificarse; subs = suscripciones vivas)
 // El código real sale de tests/sim/builds/<NEXO_BUILD o wip>/src (bash tests/sim/build.sh wip; en CI se compila antes de estas pruebas).
 import fs from 'fs';
 import path from 'path';
@@ -238,5 +244,86 @@ if (mode === 'relay') {
     if (line.trim() === 'DUMP') { chain = chain.then(() => { say('EVENTS ' + JSON.stringify(relay.events.map((e) => ({ tags: e.tags, content: e.content })))); }); return; }
     if (/^\{"(req|raw)"/.test(line.trim())) { chain = chain.then(() => publishReq(line).catch((e) => say('ERROR ' + (e && e.message)))); return; }
     chain = chain.then(() => publish(line));
+  });
+}
+// 3204: varios relés (la parte nativa con datos móviles escucha solo los 2 primeros sanos de la lista)
+if (mode === 'multi') {
+  const require = createRequire(import.meta.url);
+  const { NostrRelay } = require(path.join(here, '../sim/nostr_relay.js'));
+  const WS = createRequire(path.join(here, '../sim/nostr_relay.js'))('ws');
+  const n = Number(process.argv[3] || 4);
+  const relays = [], ports = [], reqs = [], down = [];
+  // Cada REQ que llega (antes de que el relé mire si se identificó)
+  const watch = (i) => relays[i].wss.on('connection', (ws) => ws.on('message', (d) => { try { if (JSON.parse(String(d))[0] === 'REQ') reqs[i]++; } catch (e) {} }));
+  for (let i = 0; i < n; i++) {
+    const r = new NostrRelay({ authRequired: true, latencyMs: 5 });
+    const u = await r.start();
+    relays.push(r); ports.push(Number(new URL(u).port)); reqs.push(0); down.push(false); watch(i);
+  }
+  const urls = relays.map((r) => r.url);
+  say('URLS ' + JSON.stringify(urls));
+  const publishOn = (ev, i) => new Promise((resolve) => {
+    const ws = new WS(urls[i]);
+    const done = (ok) => { try { ws.close(); } catch (e) {} resolve(ok); };
+    ws.on('open', () => ws.send(JSON.stringify(['EVENT', ev])));
+    ws.on('message', (d) => { const m = JSON.parse(String(d)); if (m[0] === 'OK') done(!!m[2]); });
+    ws.on('error', () => done(false));
+  });
+  const rl = readline.createInterface({ input: process.stdin });
+  let chain = Promise.resolve();
+  const q = (fn) => { chain = chain.then(fn).catch((e) => say('ERROR ' + (e && e.message))); };
+  rl.on('line', (line) => {
+    const t = line.trim();
+    if (!t) return;
+    if (t === 'PK') { q(async () => { const { pk } = await realNet(); say('PK ' + pk); }); return; }
+    if (t === 'STATS') {
+      q(async () => say('STATS ' + JSON.stringify(relays.map((r, i) => {
+        let subs = 0; if (!down[i]) r.wss.clients.forEach((c) => { subs += c.subs ? c.subs.size : 0; });
+        return { reqs: reqs[i], subs, open: down[i] ? 0 : r.wss.clients.size, conns: r.stats.conns, auths: r.stats.auths };
+      }))));
+      return;
+    }
+    const o = JSON.parse(t);
+    if (o.down !== undefined) { q(async () => { const i = o.down; down[i] = true; await relays[i].stop(); say('DOWN ' + i); }); return; }
+    if (o.up !== undefined) { q(async () => { const i = o.up; await relays[i].start(ports[i]); watch(i); down[i] = false; say('UP ' + i); }); return; }
+    if (o.send) {
+      q(async () => {
+        const s = o.send;
+        globalThis.window = globalThis.window || { crypto: globalThis.crypto };
+        globalThis.window.NEXO_NET_RELAYS = urls;
+        const nl = await realApp(s.from, [{ nx: s.to, name: s.name || '', pk: s.toPk }]);
+        let ev = null;
+        nl._publishOwn = (e) => { ev = e; return Promise.resolve(true); };
+        const realNow = Date.now;
+        if (s.ago) Date.now = () => realNow() - s.ago * 1000;
+        try { await nl.send(s.to, s.p); } finally { Date.now = realNow; }
+        const on = [];
+        for (const i of (s.only || urls.map((u, k) => k))) if (!down[i] && await publishOn(ev, i)) on.push(i);
+        say('PUBLISHED ' + JSON.stringify(on));
+      });
+      return;
+    }
+    if (o.acks) {
+      q(async () => {
+        const a = o.acks, got = [];
+        const { e2e } = await realNet();
+        const nl = await realApp(a.me, [{ nx: a.peer, pk: a.peerPk }], (nx, p) => got.push({ nx, p }));
+        await nl._refreshTags();
+        const all = new Map(); // id → { ev, on: [relés que lo tienen] }
+        relays.forEach((r, i) => r.events.forEach((ev) => { const x = all.get(ev.id) || { ev, on: [] }; x.on.push(i); all.set(ev.id, x); }));
+        const out = [];
+        for (const x of all.values()) {
+          const before = got.length;
+          await nl._onEvent(JSON.parse(JSON.stringify(x.ev)));
+          for (const g of got.slice(before)) {
+            let k = null; try { k = JSON.parse(g.p); } catch (e) { continue; }
+            if (!k || k.type !== 'ack') continue;
+            const exp = await e2e.e2eAckTag(a.peerPk, 'ack|' + k.msgId + '|' + _nidLower(k.from) + '|' + a.me);
+            out.push({ msgId: k.msgId, from: k.from, ok: !!(k.a && exp && k.a === exp), on: x.on });
+          }
+        }
+        say('ACKS ' + JSON.stringify(out));
+      });
+    }
   });
 }

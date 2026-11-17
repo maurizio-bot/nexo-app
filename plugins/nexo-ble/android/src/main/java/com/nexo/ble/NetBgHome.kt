@@ -1,6 +1,9 @@
 package com.nexo.ble
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.PowerManager
 import android.util.Log
@@ -61,7 +64,31 @@ object NetBgHome {
     }, { log(app, it) }, { nx, offer ->
         // 3087: el que llama colgó (sobre con ce, por internet) → deja de sonar ya
         if (MsgNotifier.get(app).cancelCallFor(nx, offer)) log(app, "$nx colgó: la llamada deja de sonar")
-    }, { req -> requestNotify(app, req) }, { ts -> NetBgSaved.callTooOld(ts, System.currentTimeMillis()) })
+    }, { req -> requestNotify(app, req) }, { ts -> NetBgSaved.callTooOld(ts, System.currentTimeMillis()) }).also { watchNet(app, it) }
+
+    // 3204 (dueño 17-11 «Ok» a 2 conexiones con datos móviles; parte nativa de la 3193): la escucha ve ELLA el tipo de la red por defecto
+    // (también sin la app, cuando no hay plugin que avise): con datos móviles escucha solo 2 relés (NetBg.listenPlan). Se mira ya (para
+    // que la primera vuelta no abra todos para soltarlos enseguida) y se sigue con el aviso de Android de cambio de red por defecto (el
+    // mismo tipo que NetChange da a la app). Una por proceso, como la escucha. Si no se puede, NetBg escucha todos, como siempre.
+    private var netCb: ConnectivityManager.NetworkCallback? = null
+    private fun netType(caps: NetworkCapabilities?): String = if (caps == null) "none" else NetChange.typeOf(
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI), caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR),
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET), caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN))
+    @Synchronized private fun watchNet(ctx: Context, bg: NetBg) {
+        try {
+            val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val n = cm.activeNetwork
+            bg.setNet(if (n == null) "none" else netType(cm.getNetworkCapabilities(n)))
+            if (netCb != null) return
+            val cb = object : ConnectivityManager.NetworkCallback() {
+                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { bg.setNet(netType(caps)) }
+                // Al cambiar de red Android puede dar por perdida la vieja DESPUÉS de dar la nueva: «sin red» solo si de verdad no hay
+                override fun onLost(network: Network) { try { if (cm.activeNetwork == null) bg.setNet("none") } catch (e: Exception) { } }
+            }
+            cm.registerDefaultNetworkCallback(cb)
+            netCb = cb
+        } catch (e: Throwable) { log(ctx, "Internet en segundo plano: sin aviso del tipo de red (${e.javaClass.simpleName}): escucho todos los relés", "WARN") }
+    }
 
     // Al registro nativo (el MISMO archivo que lee el diagnóstico, compartido con el plugin) y a logcat
     internal fun log(ctx: Context, msg: String, level: String = "INFO") {
