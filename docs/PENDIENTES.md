@@ -9,6 +9,15 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 16-11 21:45 — dueño: noche de pruebas NO por ahora; estudio de límites para EDC SÍ
+- **Noche de pruebas con teléfonos reales (Idea de Claude): estacionada.** El dueño solo tiene 3 (S24, vivo, tablet; el S23 no es suyo) y un
+  cargador; en la misma habitación y el mismo Wi-Fi aporta poco, y pide no meter código de prueba en una actualización ahora («vamos bien»).
+  Con distancia real (Jump, alcance) sí le convencería.
+- **Estudio de límites para EDC (idea del dueño, en simulación, sin tocar la app):** escaneo con cientos de NEXO cerca (saturar el
+  Bluetooth), escaneo por distancia/intensidad de señal con tope, conexiones masivas, número máximo de contactos, tamaño máximo de un chat,
+  todos los chats llenos y cuánta memoria ocupa. Medir, encontrar dónde se rompe y proponer límites. Siguiente subagente libre.
+- **El vivo siempre arriba en Contactos** (dueño): subagente en curso (3183, worktree wtorden).
+
 ## 🆕 16-11 20:40 — visto bueno del dueño («Si»)
 - **Aprobado (seguridad):** (1) revisar cada adjunto que llega por su contenido real (tipo verdadero, tamaño), no por lo que dice el
   mensaje; (3) comprobar todo lo que la parte web le pasa al nativo. **Aprobada la regla de espacio:** cuota por contacto; si se llena,
