@@ -21,6 +21,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **16-11 19:40 (México) — 3170/3170b en la rama (fotos más nítidas: 1600 px/82 % por camino rápido, 1280/75 solo Bluetooth,
+  800/65 solo por puente; fotocalidad.js).** APK 3080 (3169) construyéndose. En curso (subagente, worktree wtcam): **3171** «Cámara»
+  abre la cámara del propio teléfono (@capacitor/camera, modo noche) → «Antes de enviar» con el ojo; cancelar → cámara de NEXO en vídeo
+  (dueño 17-11, opción A). Al terminar: integrar, NOVEDADES (3170+3171) y APK.
 - **16-11 18:52 (México) — APK 3079 PUBLICADA (18:41; 3167–3168).** APK 3080 subida con 3169 (estados en su propia pantalla por
   gesto ←, sin botones; dueño 17-11). Pendiente medir «internet listo» sin contar tiempo sin red (AREAS) y revisar confirmaciones sin firma.
 - **16-11 17:35 (México) — APK 3079 subida (3167/3167b + 3168).** La 3078 se paró en radiollamada L (regresión de 3167b, arreglada en 3168).
