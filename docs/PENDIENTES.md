@@ -12,8 +12,14 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🆕 17-11 06:28 — dueño «Ok» a 2 conexiones y 2 copias con datos móviles
 - Diagnóstico S24 06:01 (entrega lenta de una nota de voz al S23 3080, 128 s): del lado del S23 (versión vieja); la subida fue a 6,8 KB/s
   porque cada trozo va a 3 relés, y 1,5 MB de 2,5 MB bajados eran repetidos. Aprobado: con datos móviles escuchar 2 relés (seguir
-  publicando a todos) y 2 copias por trozo → **3193 en curso** (worktree `/home/user/wtdatos`, solo JS; el nativo NetBg queda para después
-  de la 3192).
+  publicando a todos) y 2 copias por trozo → **3193 INTEGRADO** (solo JS). Falta en el nativo (NetBg con la app en segundo plano):
+  ver él mismo si hay datos móviles, conectar y suscribir solo los 2 primeros sanos en el orden de `relays`, ✓✓ en esos 2, y al volver
+  al Wi-Fi suscribir los demás con un `since` por relé. Riesgo aceptado: un mensaje que solo quedó en relés no escuchados llega al
+  pasar al Wi-Fi (el que manda ve ✓ sin ✓✓).
+- Hallazgo del ayudante de la 3193 (antes de su cambio, sin arreglar): si llega algo del contacto (p. ej. su anuncio de rutas `rt`) en el
+  medio segundo entre elegir un archivo y empezar a subirlo, el archivo sale DOS veces (trozos por relés y buzón): `_prePayload` →
+  `_kickPeer` → `_resendPendingMessages` → `ackSystem.sendFile`. Arreglo propuesto: que el reenvío de pendientes salte un archivo que ya
+  se está subiendo al buzón.
 
 ## 🆕 17-11 04:55 — #87: NEXO muere con una actualización de WebView (o de NEXO, o un reinicio) y NO vuelve sola
 - Diagnósticos de la tableta SM-T220 (3075) y del S24 (3082), dueño 17-11: la tableta con SOLO la pantalla apagada. A las 23:56 Google
