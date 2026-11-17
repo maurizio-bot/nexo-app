@@ -15,26 +15,41 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Ya puedes editar un mensaje de texto que enviaste (hasta 15 minutos), también en grupos: mantenlo pulsado y toca «Editar».
 - Nueva lupa en Contactos para buscar por nombre o NEXO ID.
 - Las fotos y notas de voz ya no se envían dos veces: gastas menos datos.
+- Los videos y audios de los estados ya se ven y se escuchan.
+- La ubicación que mandas lleva una miniatura del mapa.
+- Las fotos de la Galería ya no fallan al enviarlas en algunos teléfonos.
 </es-419>
 <it-IT>
 - Ora puoi modificare un messaggio di testo inviato (entro 15 minuti), anche nei gruppi: tienilo premuto e tocca «Modifica».
 - Nuova lente in Contatti per cercare per nome o NEXO ID.
 - Foto e vocali non vengono più inviati due volte: consumi meno dati.
+- Video e audio degli stati ora si vedono e si sentono.
+- La posizione che invii mostra una miniatura della mappa.
+- Le foto della Galleria non falliscono più all'invio su alcuni telefoni.
 </it-IT>
 <en-US>
 - You can now edit a text message you sent (within 15 minutes), in groups too: long-press it and tap «Edit».
 - New search button in Contacts to find people by name or NEXO ID.
 - Photos and voice notes are no longer sent twice, so you use less data.
+- Status videos and audio now play (before, they didn't).
+- Locations you send now include a small map preview.
+- Gallery photos no longer fail to send on some phones.
 </en-US>
 <pt-BR>
 - Agora você pode editar uma mensagem de texto enviada (até 15 minutos), também em grupos: mantenha pressionada e toque em «Editar».
 - Nova lupa em Contatos para buscar por nome ou NEXO ID.
 - Fotos e áudios não são mais enviados duas vezes: você gasta menos dados.
+- Vídeos e áudios dos status agora são reproduzidos.
+- A localização que você envia mostra uma miniatura do mapa.
+- Fotos da Galeria não falham mais ao enviar em alguns celulares.
 </pt-BR>
 <fr-FR>
 - Vous pouvez maintenant modifier un message texte envoyé (jusqu'à 15 minutes), aussi dans les groupes : appui long puis «Modifier».
 - Nouvelle loupe dans Contacts pour chercher par nom ou NEXO ID.
 - Les photos et vocaux ne sont plus envoyés deux fois : vous consommez moins de données.
+- Les vidéos et audios des statuts se lisent enfin.
+- La position que vous envoyez montre un aperçu de la carte.
+- Les photos de la Galerie ne bloquent plus à l'envoi sur certains téléphones.
 </fr-FR>
 <!-- /APK -->
 

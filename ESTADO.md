@@ -21,6 +21,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **17-11 10:25 (México) — APK 3088 FALLÓ en el CI** (bigsend: error de una ventana ya cerrada en la prueba; arreglado en 3202). **APK
+  subida con 3195–3202:** editar mensajes, lupa, archivo doble, contador del resumen, foto de Galería que no salía (3199, Roberto),
+  videos y audios de estado que NUNCA se veían por la CSP (3200; el dueño: «sí o sí»), miniatura del mapa en la ubicación (3201,
+  opción A; política de teselas de OSM pendiente del dueño). Pendientes: hallazgos menores de Roberto (GATT que entra y sale cada
+  36 s, 24 startAdvertising), nativo NetBg en datos móviles, reacciones/«eliminar para todos» en grupos (pregunta abierta).
 - **17-11 09:00 (México) — APK 3087 PUBLICADA (08:42; 3189–3194, el nativo nuevo compiló en el CI). APK subida con 3195–3198:**
   editar mensajes (también en grupo; la barra de editar/responder estaba tapada desde la 3140), lupa en Contactos, archivo que salía dos
   veces (3197), contador del resumen diario (3198). Pendientes: nativo NetBg en datos móviles (2 relés); reacciones y «eliminar para
