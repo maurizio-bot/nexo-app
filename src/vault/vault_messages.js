@@ -1,4 +1,4 @@
-import { _nativePlugin, _safeNativeCall, VAULT_MESSAGES_PREFIX, _normId, _msgCache, _msgLoading, _withMsgLock } from './vault_shared.js';
+import { _nativePlugin, _safeNativeCall, VAULT_MESSAGES_PREFIX, _normId, _msgCache, _msgLoading, _withMsgLock, _editableText, _editedContent } from './vault_shared.js';
 import { _vaultContacts, _getContactIdentity } from './vault_contacts.js';
 import { vaultBigxOutDrop, vaultBigxInDrop } from './vault_big.js';
 import { vaultEarlyReady, vaultEarlyLoaded, vaultEarlyQueue, vaultEarlyApply } from './vault_early_acts.js';
@@ -363,9 +363,11 @@ async function _appendMessageNow(cid, message) {
       if (!existing.deleted) _deleteMessageFiles(existing, msgId);
       merged.deleted = true; merged.content = ''; merged.text = '';
       merged.attachmentType = null; merged.attachmentPayload = null; merged.attachmentRef = null; merged.attachmentMeta = null; merged.hdRef = null; merged.hdStatus = null;
-    } else if (existing.edited && !normalized.edited && !normalized._own && typeof existing.content === 'string') {
-      // 3175: ni pierde su edición (otra copia del texto original)
+    } else if (existing.edited && typeof existing.content === 'string' && (!normalized.edited || (existing.editTs || 0) > (normalized.editTs || 0))) {
+      // 3175: ni pierde su edición (otra copia del texto original). 3195: tampoco el propio (se volvía a guardar con el texto de
+      // antes) ni frente a una edición más vieja que llegó con otra copia
       merged.content = existing.content; merged.text = existing.content; merged.edited = true;
+      if (existing.editTs) merged.editTs = existing.editTs;
     }
     messages[existingIdx] = merged;
   }
@@ -551,21 +553,33 @@ export async function vaultConsumeOnceMessage(contactNexoId, msgId) {
 
 // Ronda 2782: editar un mensaje de texto ya enviado/recibido. Cambia el contenido y lo marca "editado".
 // 3175: fromPeer = edición recibida del contacto: solo un texto SUYO; si aún no llegó, se guarda a la espera ('queued')
-export async function vaultEditMessage(contactNexoId, msgId, newText, fromPeer) {
+// 3195 (dueño 17-11: «al pulsar un mensaje enviado agrega la posibilidad de editarlo»): opts = { fromPeer, author, ts } (un true
+// suelto sigue valiendo fromPeer). author = quien la manda: en un GRUPO tiene que ser quien escribió el mensaje ('author' si no: un
+// intento de suplantación, no se aplica). ts = hora de la edición en el teléfono que la manda: gana la más nueva ('stale' = esta es
+// igual o más vieja que la que ya tiene: repetida o desordenada). Una respuesta conserva su cita (_editedContent).
+var _GID_RE = /^gr[0-9a-z]{8}$/;
+export async function vaultEditMessage(contactNexoId, msgId, newText, opts) {
   if (!contactNexoId || !msgId || typeof newText !== 'string') return false;
-  var cid = _normId(contactNexoId);
+  var o = (opts && typeof opts === 'object') ? opts : { fromPeer: !!opts };
+  var ts = (typeof o.ts === 'number' && isFinite(o.ts) && o.ts > 0) ? o.ts : 0;
+  var cid = _normId(contactNexoId), author = o.author ? _normId(o.author) : '';
   return _withMsgLock(cid, async function() {
     var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
     var idx = messages.findIndex(function(m) { return (m.msgId || m.messageId) === msgId; });
     if (idx < 0) {
-      if (!fromPeer) return false;
+      if (!o.fromPeer) return false;
       await vaultEarlyReady();
-      return vaultEarlyQueue(cid, msgId, 'edit', newText) ? 'queued' : false;
+      return vaultEarlyQueue(cid, msgId, 'edit', newText, author || cid, ts) ? 'queued' : false;
     }
     var m = messages[idx];
-    if (fromPeer && m._own) return false; // solo los suyos
-    if (m.deleted || m.attachmentType) return false; // solo texto; ni borrados ni adjuntos
-    messages[idx] = Object.assign({}, m, { content: newText, edited: true });
+    if (o.fromPeer && m._own) return false; // solo los suyos
+    if (o.fromPeer && author && _GID_RE.test(cid) && _normId(m.senderNexoId) !== author) return 'author'; // (en 1-a-1 el chat ya es el suyo)
+    if (m.deleted || m.attachmentType || _editableText(m.content || m.text || '') == null) return false; // solo texto; ni borrados ni adjuntos
+    if (m.editTs && (!ts || ts <= m.editTs)) return 'stale';
+    var c = _editedContent(m.content || '', newText);
+    var upd = { content: c, text: c, edited: true };
+    if (ts) upd.editTs = ts;
+    messages[idx] = Object.assign({}, m, upd);
     _persistMessages(cid, messages);
     return true;
   });

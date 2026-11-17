@@ -258,6 +258,14 @@ export class Groups {
     this._save();
     _emit('nexo:groups', { id: g.id });
   }
+  // 3195: una edición cambia solo el texto del último mensaje en la lista: ni su hora (no sube el grupo), ni los no leídos
+  setPreview(gid, preview) {
+    var g = this.get(gid);
+    if (!g) return;
+    g.lastMessage = String(preview || '').substring(0, 80);
+    this._save();
+    _emit('nexo:groups', { id: g.id });
+  }
   bumpUnread(gid) { var g = this.get(gid); if (!g) return 0; g.unreadCount = (g.unreadCount || 0) + 1; this._save(); _emit('nexo:groups', { id: g.id }); return g.unreadCount; }
   clearUnread(gid) { var g = this.get(gid); if (!g || !g.unreadCount) return; g.unreadCount = 0; this._save(); _emit('nexo:groups', { id: g.id }); }
   unreadList() { return this.all().filter(function(g) { return g.unreadCount > 0; }).map(function(g) { return { chatId: g.id, count: g.unreadCount }; }); }

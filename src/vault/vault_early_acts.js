@@ -10,14 +10,22 @@
 //   - reacción → su emoji (vacío = la quitó).
 // Solo cuentan las acciones de quien escribió el mensaje, sobre mensajes de su chat 1-a-1 (las mismas reglas que con el mensaje
 // presente: chat_actions._applyChatAction). Caducan a los 7 días y hay tope (por chat y en total): un contacto no llena el disco.
-import { _nativePlugin, _safeNativeCall, _normId } from './vault_shared.js';
+// 3195 (dueño 17-11: «al pulsar un mensaje enviado agrega la posibilidad de editarlo»): también la edición de un mensaje de GRUPO
+// (cid = el grupo). Quién lo escribió se sabe al llegar el mensaje: cada edición se guarda por quien la manda y al llegar solo se
+// aplica la de su autor (la de otro miembro es un intento de suplantación). Entre dos ediciones gana la más nueva por la hora del que
+// la manda (ts), aunque lleguen desordenadas o repetidas.
+import { _nativePlugin, _safeNativeCall, _normId, _editableText, _editedContent } from './vault_shared.js';
 
 var EARLY_FILE = 'nexo_early_acts.json';
 var KEEP_MS = 7 * 24 * 3600000;   // más que la ventana de «eliminar para todos» (24 h) más lo que puede tardar una custodia
 var MAX_ALL = 400, MAX_CHAT = 80; // topes: lo más viejo se olvida primero
 var EDIT_MAX_CHARS = 8000;        // una edición más larga no se guarda a la espera (se aplica solo si el mensaje ya está)
+var EDIT_AUTHORS_MAX = 4;         // 3195: ediciones a la espera de un mismo mensaje de hasta 4 que las mandan (en un grupo)
+var GID_RE = /^gr[0-9a-z]{8}$/;   // 3195: el chat es un grupo (groups.js)
 
-var _w = Object.create(null);     // 'cid|msgId' → { t, d: 1 (eliminado para todos), e: texto editado, r: { quien: emoji } }
+// 'cid|msgId' → { t, d: 1 (eliminado para todos), eb: { quien: { e: texto editado, t: hora del que la manda } }, r: { quien: emoji } }
+// (e: texto editado sin quién ni hora, como lo guardaban las versiones anteriores a la 3195: se sigue leyendo en 1-a-1)
+var _w = Object.create(null);
 var _loaded = false, _loading = null, _saveT = null;
 
 function _key(cid, msgId) { return _normId(cid) + '|' + String(msgId); }
@@ -65,14 +73,24 @@ function _prune(now) {
 }
 
 // Guardar una acción de un mensaje que aún no está. kind: 'del' | 'edit' | 'react'. (La llaman vault_messages dentro del candado
-// del chat, así no se cruza con el guardado del mensaje.) Devuelve true si quedó a la espera.
-export function vaultEarlyQueue(cid, msgId, kind, value, who) {
+// del chat, así no se cruza con el guardado del mensaje.) Devuelve true si quedó a la espera. who: quien la manda (reacción y, desde
+// la 3195, edición); ts: hora de la edición en el teléfono que la manda (3195)
+export function vaultEarlyQueue(cid, msgId, kind, value, who, ts) {
   if (!cid || !msgId) return false;
   var k = _key(cid, msgId), now = Date.now();
   var w = _w[k] || { t: now };
   if (kind === 'del') { w = { t: w.t || now, d: 1 }; }
   else if (w.d) return true; // ya eliminado para todos: nada más que hacer
-  else if (kind === 'edit') { if (typeof value !== 'string' || value.length > EDIT_MAX_CHARS) return false; w.e = value; }
+  else if (kind === 'edit') {
+    if (typeof value !== 'string' || value.length > EDIT_MAX_CHARS) return false;
+    // 3195: por quien la manda; gana la más nueva (una repetida o más vieja no cambia nada; sin hora, como antes, la última)
+    var a = _normId(who || cid), et = (typeof ts === 'number' && ts > 0) ? ts : 0;
+    var eb = w.eb || {}, cur = eb[a];
+    if (cur && (et ? et <= (cur.t || 0) : cur.t)) return true;
+    if (!cur && Object.keys(eb).length >= EDIT_AUTHORS_MAX) return false;
+    eb[a] = { e: value, t: et };
+    w.eb = eb;
+  }
   else if (kind === 'react') { w.r = w.r || {}; w.r[_normId(who || cid)] = (typeof value === 'string') ? value.slice(0, 8) : ''; }
   else return false;
   _w[k] = w;
@@ -101,8 +119,14 @@ export function vaultEarlyApply(cid, n, existing) {
     return { del: 1 };
   }
   var out = {};
-  var isText = !n.attachmentType && !(existing && (existing.attachmentType || existing.deleted));
-  if (typeof w.e === 'string' && isText) { n.content = w.e; n.text = w.e; n.edited = true; out.edit = 1; }
+  var isText = !n.attachmentType && _editableText(n.content) != null && !(existing && (existing.attachmentType || existing.deleted));
+  // 3195: solo la edición del AUTOR (en un grupo, quien escribió el mensaje; en 1-a-1, el contacto). Una respuesta conserva su cita.
+  var group = GID_RE.test(_normId(cid)), author = group ? _normId(n.senderNexoId) : _normId(cid);
+  var ed = (w.eb && author) ? w.eb[author] : null;
+  if (!ed && !group && typeof w.e === 'string') ed = { e: w.e, t: 0 };
+  if (ed && typeof ed.e === 'string' && isText) {
+    n.content = _editedContent(n.content, ed.e); n.text = n.content; n.edited = true; if (ed.t) n.editTs = ed.t; out.edit = 1;
+  }
   if (w.r) {
     var rs = Object.assign({}, (existing && existing.reactions) || {});
     Object.keys(w.r).forEach(function(who) { if (w.r[who]) rs[who] = w.r[who]; else delete rs[who]; });

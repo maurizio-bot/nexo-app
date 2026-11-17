@@ -480,7 +480,8 @@ export class Fenix {
       var meta = m.attachmentMeta || {};
       o.attachmentMeta = { name: meta.name || '', mime: meta.mime || '', size: meta.size || 0 };
     }
-    ['replyTo', 'replyText', 'forwarded', 'deleted', 'edited'].forEach(function(k) { if (m[k] != null && typeof m[k] !== 'object') o[k] = m[k]; });
+    // 3195: también editTs (la hora de la última edición: gana la más nueva)
+    ['replyTo', 'replyText', 'forwarded', 'deleted', 'edited', 'editTs'].forEach(function(k) { if (m[k] != null && typeof m[k] !== 'object') o[k] = m[k]; });
     return o;
   }
 

@@ -3,7 +3,7 @@
 // Chromium real a 360 px con toques de verdad por CDP. Recorre la app (Contactos, chat con su barra de escribir y el micrófono,
 // menú «+», grabación de una nota de voz, cabecera, llamada y videollamada 1-a-1 —saliente, entrante, en curso—, la barra de la
 // llamada minimizada, la llamada de grupo —entrante y en curso con vídeo—, Perfil, Ajustes, la cámara de NEXO, el visor de fotos,
-// juegos, stickers, el menú de un mensaje y Estados) y, en cada pantalla, presiona con el dedo CADA cosa que se toca (sostenido, sin
+// juegos, stickers, el menú de un mensaje —y su «Editar», 3195— y Estados) y, en cada pantalla, presiona con el dedo CADA cosa que se toca (sostenido, sin
 // soltar: así no se dispara su acción) y mira lo que se ve:
 //  P1 recibe el motor de press.js (se hunde: `scale` < 1, y el velo/onda está puesto);
 //  P2 la onda/velo queda DENTRO del contorno que se ve (el del botón o, si lo dibuja un hijo —el círculo de los botones de llamada—,
@@ -355,7 +355,11 @@ function pageHelpers(SEL) {
   await ev(() => { const m = Array.from(document.querySelectorAll('#messages-container .message')).pop(); const c = m && (m.querySelector('.msg-content') || m); if (c) c.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 200, clientY: 300 })); });
   await sleep(500);
   await scan('menu_mensaje', '#nexo-msg-menu');
-  await ev(() => window.__nexoHandleBack && window.__nexoHandleBack()); await sleep(400);
+  // 3195 (dueño 17-11: editar un mensaje enviado): «Editar» del menú → la barra «Editando mensaje» con su ✕ (como la de responder)
+  r.menu_editar = await ev(() => { const b = document.querySelector('#nexo-msg-menu .mm-edit'); if (b) b.click(); return !!b; });
+  // (antes de la 3195 la barra quedaba DETRÁS de la barra de escribir y su ✕ no se podía tocar: aquí no salía ningún botón)
+  if (r.menu_editar) { await sleep(400); r.barra_editar = (await scan('barra_editar', '#edit-bar')).length; await ev(() => { const x = document.querySelector('#edit-bar .edit-cancel'); if (x) x.click(); }); await sleep(300); }
+  else { await ev(() => window.__nexoHandleBack && window.__nexoHandleBack()); await sleep(400); }
   // stickers y juegos (desde el menú «+»)
   await ev(() => { const it = document.querySelector('.attach-menu-item[data-type="sticker"]'); if (it) it.click(); }); await sleep(800);
   await scan('stickers', await ev(() => { const s = document.querySelector('.sticker-cell'); let e = s; while (e && e.parentElement && e.parentElement !== document.body) e = e.parentElement; return e && e.id ? '#' + e.id : ''; }));
@@ -457,6 +461,6 @@ function pageHelpers(SEL) {
   console.log('casos', casos.length, 'malos', malos.length);
   r.casos = casos.length; r.malos = malos.map((x) => x.pantalla + ' ' + x.nombre + ' [' + ['P1', 'P2', 'P3', 'P4', 'P5'].filter((k) => !x[k]).join(',') + (x.error ? ' ' + x.error : '') + ']');
   await browser.close();
-  fin(r.preparado && !malos.length && r.M_ok);
+  fin(r.preparado && !malos.length && r.M_ok && r.menu_editar && r.barra_editar >= 1);
   process.exit(r.resultado === 'OK' ? 0 : 1);
 })().catch((e) => { console.log('PRESSALL ' + JSON.stringify({ prueba: 'pressall', resultado: 'FALLO', error: String(e && e.stack || e) })); process.exit(1); });

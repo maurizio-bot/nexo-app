@@ -81,5 +81,28 @@ function _nativePlugin() {
   return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null;
 }
 
+// 3195 (dueño 17-11: «al pulsar un mensaje enviado agrega la posibilidad de editarlo»): solo se edita un TEXTO, suelto o envuelto
+// (nexo_txt: p. ej. una respuesta con su cita); no uno reenviado ni el aviso «salió del grupo», ni un sticker, un adjunto u otro JSON
+// del protocolo. Devuelve el texto que se edita, o null si ese contenido no se edita.
+function _editableText(content) {
+  if (typeof content !== 'string' || !content) return null;
+  if (content.charAt(0) !== '{') return content;
+  var o = null;
+  try { o = JSON.parse(content); } catch (e) { return content; }
+  if (!o || typeof o !== 'object') return content;
+  if (o.type === 'nexo_txt') return (typeof o.t === 'string' && o.t && !o.fw && !o.gl) ? o.t : null;
+  return (o.type || o.attachmentType) ? null : content;
+}
+// 3195: el contenido con el texto ya editado. Una respuesta conserva su cita; un texto nuevo que parezca JSON del protocolo va
+// envuelto (nexo_txt) para que se vea como texto y nunca se lea como foto, sticker o acción (la edición viene de otro teléfono).
+function _editedContent(content, newText) {
+  var t = String(newText == null ? '' : newText);
+  var o = null;
+  if (typeof content === 'string' && content.charAt(0) === '{') { try { o = JSON.parse(content); } catch (e) { o = null; } }
+  if (o && o.type === 'nexo_txt') return JSON.stringify(Object.assign({}, o, { t: t }));
+  if (t.charAt(0) === '{') { var j = null; try { j = JSON.parse(t); } catch (e) {} if (j && typeof j === 'object') return JSON.stringify({ type: 'nexo_txt', t: t }); }
+  return t;
+}
+
 // Para las otras piezas de vault_manager.js
-export { _normId, _nativePlugin, _safeNativeCall, VAULT_CONTACTS_FILE, VAULT_MESSAGES_PREFIX, _msgCache, _msgLoading, _withMsgLock, VAULT_TRANSFERS_PREFIX, _transferCache, VAULT_OUTGOING_PREFIX, _outgoingCache, _withOutLock };
+export { _normId, _nativePlugin, _safeNativeCall, VAULT_CONTACTS_FILE, VAULT_MESSAGES_PREFIX, _msgCache, _msgLoading, _withMsgLock, VAULT_TRANSFERS_PREFIX, _transferCache, VAULT_OUTGOING_PREFIX, _outgoingCache, _withOutLock, _editableText, _editedContent };

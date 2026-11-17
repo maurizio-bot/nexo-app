@@ -8,7 +8,7 @@ import { _buildFileCard, _ensureVideoThumb, _openFullscreenMedia } from './file_
 import { registerViewerSource } from './media_swipe.js';   // 3159: deslizar entre las fotos y vídeos del chat en el visor
 import { _canUpgradeStatus, _getCurrentContactId, _getDomMessageStatus, _normId } from './chat_format.js';
 import { _clearMessageContainer } from './chat_nav.js';
-import { _fillTextBubble, _renderReactions, _renderedMessageIds } from './chat_actions.js';
+import { _editedMark, _fillTextBubble, _renderReactions, _renderedMessageIds } from './chat_actions.js';
 import { _fmtTime } from './file_tools.js';
 import { _msgContactMap } from './chat_state.js';
 import { _objectURLRegistry } from './media_limits.js';
@@ -645,7 +645,7 @@ export function _renderMessage(msg, skipSave) {
     timeSpan.className = 'msg-time';
     timeSpan.textContent = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     metaDiv.appendChild(timeSpan);
-    if (msg.edited && !msg.deleted) { var edSpan = document.createElement('span'); edSpan.className = 'msg-edited'; edSpan.textContent = t('chat_edited', 'editado'); edSpan.style.cssText = 'opacity:0.6;font-size:11px;margin:0 5px;'; metaDiv.appendChild(edSpan); }
+    if (msg.edited && !msg.deleted) metaDiv.appendChild(_editedMark()); // 3195: «Editado» (la misma marca que al editar en su sitio)
     if (isOwn) {
       var statusClass = 'status-pending';
       var statusIcon = '○';

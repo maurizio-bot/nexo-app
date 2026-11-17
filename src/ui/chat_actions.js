@@ -17,6 +17,7 @@ import { _showInfoToast } from './ui_bits.js';
 import { _videoFormat } from './video_tools.js';
 import { stickerAsset, isValidStickerImg, addReceivedSticker } from './stickers.js';
 import { vaultBlankMessage, vaultDeleteMessage, vaultEditMessage, vaultLoadContacts, vaultLoadFile, vaultLoadMessages, vaultReactMessage, vaultSaveContacts } from '../vault/vault_manager.js';
+import { _editableText } from '../vault/vault_shared.js'; // 3195: qué contenido es un texto que se edita
 import { t } from './i18n.js';
 import { _pickAvatar, SHEET_CLOSE_SVG } from './share_contacts.js';
 import { paintTextWithLinks } from './links.js'; // 3161: enlaces que se tocan (+ tarjeta de TikTok/Instagram/Facebook/YouTube)
@@ -33,11 +34,13 @@ export var _renderedMessageIds = new Set();
 // Formato (solo con contactos 2715+, que lo entienden; a los demás va el texto solo):
 //   texto con respuesta o reenviado: {"type":"nexo_txt","t":texto,"rp":{id,a,s,k},"fw":1}
 //   eliminar para todos:              {"type":"nexo_act","act":"del","id":msgId}  (no se muestra)
+//   editar (2782; 3195: ts y grupos):  {"type":"nexo_act","act":"edit","id":msgId,"t":texto nuevo,"ts":hora,"g":grupo si es de grupo}
 export var _replyTo = null;               // { id, a: autor (NEXO ID), s: resumen, k: tipo }
 
 export var DELETE_ALL_MS = 24 * 3600000;  // "eliminar para todos" hasta 24 h después de enviarlo
 export var EDIT_MS = 15 * 60000;           // ronda 2782: editar un mensaje propio hasta 15 min después de enviarlo
-export var _editing = null;                // ronda 2782: { id, cid } del mensaje que se está editando (lo lee _doSend)
+export var EDIT_GRACE_MS = 2 * 60000;      // 3195: margen para escribir la edición si se abrió justo antes de los 15 min
+export var _editing = null;                // ronda 2782: { id, cid, ts, orig } del mensaje que se está editando (lo lee _doSend)
 export var QUICK_REACTION = '❤️';           // ronda 2783: doble toque en un mensaje = reaccionar con este emoji
 export var REACTION_SET = ['👍', '❤️', '😂', '😮', '😢', '🙏']; // emojis del menú "Reaccionar"
 
@@ -349,9 +352,7 @@ export function _openMsgMenu(div) {
       });
     }
     if (!deleted && !msg.attachmentType) add(t('chat_copy', '⧉  Copiar'), 'mm-copy', function() { _copyText(_plainText(msg.content)); });
-    if (isOwn && !deleted && !msg.attachmentType && Date.now() - (msg.timestamp || 0) < EDIT_MS && _peerUnderstands(cid)) {
-      add(t('chat_edit', '✏️  Editar'), 'mm-edit', function() { _startEdit(id, msg); });
-    }
+    if (_canEdit(cid, msg)) add(t('chat_edit', '✏️  Editar'), 'mm-edit', function() { _startEdit(id, msg); });
     add(t('chat_delete_me', '🗑  Eliminar para mí'), 'mm-del-me', function() { _deleteForMe(cid, id); }, true);
     if (isOwn && !deleted && Date.now() - (msg.timestamp || 0) < DELETE_ALL_MS && _peerUnderstands(cid)) {
       add(t('chat_delete_all', '🗑  Eliminar para todos'), 'mm-del-all', function() { _deleteForAll(cid, msg); }, true);
@@ -369,6 +370,7 @@ export function _startReply(id, msg) {
   if (!id || !cid) return;
   (msg ? Promise.resolve(msg) : _findMessage(cid, id)).then(function(m) {
     if (!m || m.deleted) return;
+    if (_editing) _cancelEdit(); // 3195: responder deja la edición (las dos a la vez no tienen sentido)
     var sum = _msgSummary(m);
     _replyTo = { id: id, a: m._own ? _myNexoId() : _normId(m.senderNexoId || cid), s: sum.s, k: sum.k };
     _renderReplyBar();
@@ -379,15 +381,38 @@ export function _startReply(id, msg) {
 
 export function _cancelReply() { _replyTo = null; _renderReplyBar(); }
 
+// 3195: las barras «Respondiendo a» y «Editando mensaje» van DENTRO de la barra de escribir (fija abajo), justo encima de ella.
+// Antes se metían en la página DETRÁS de esa barra (fija y opaca desde la 3140) y no se veían: medido en Chromium a 360 px, las
+// dos quedaban bajo la barra de escribir y su ✕ bajo el botón enviar (el dueño no veía «Editando mensaje»). Mientras hay una, el
+// chat deja sitio abajo para que no tape el último mensaje.
+function _mountInputBar(bar) {
+  var area = document.getElementById('input-area');
+  if (!area) return false;
+  bar.style.position = 'absolute'; bar.style.left = '10px'; bar.style.right = '10px'; bar.style.bottom = '100%';
+  bar.style.margin = '0 0 4px'; bar.style.boxSizing = 'border-box'; bar.style.zIndex = '1';
+  bar.style.background = 'linear-gradient(rgba(255,255,255,0.08), rgba(255,255,255,0.08)), var(--nx-bg, #070812)'; // el mismo tono, opaco
+  area.appendChild(bar);
+  _inputBarSpace();
+  return true;
+}
+function _inputBarSpace() {
+  var mc = document.getElementById('messages-container');
+  if (!mc) return;
+  var on = !!(document.getElementById('reply-bar') || document.getElementById('edit-bar'));
+  var atEnd = mc.scrollHeight - mc.scrollTop - mc.clientHeight < 60;
+  mc.style.paddingBottom = on ? 'calc(132px + env(keyboard-inset-height, 0px))' : '';
+  if (on && atEnd) mc.scrollTop = mc.scrollHeight;
+}
+
 export function _renderReplyBar() {
   var old = document.getElementById('reply-bar');
-  if (old) old.remove();
+  if (old) { old.remove(); _inputBarSpace(); }
   if (!_replyTo) return;
   var area = document.getElementById('input-area');
-  if (!area || !area.parentNode) return;
+  if (!area) return;
   var bar = document.createElement('div');
   bar.id = 'reply-bar';
-  bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:0 10px 4px;padding:6px 10px;border-left:2px solid var(--nx-cyan,#00c8ff);background:rgba(255,255,255,0.08);border-radius:8px;color:#fff;font-size:13px;';
+  bar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 10px;border-left:2px solid var(--nx-cyan,#00c8ff);border-radius:8px;color:#fff;font-size:13px;';
   var txt = document.createElement('div');
   txt.style.cssText = 'flex:1;min-width:0;';
   var who = document.createElement('div');
@@ -403,36 +428,73 @@ export function _renderReplyBar() {
   x.style.cssText = 'background:none;border:none;color:#fff;font-size:18px;padding:4px 8px;';
   x.onclick = _cancelReply;
   bar.appendChild(txt); bar.appendChild(x);
-  area.parentNode.insertBefore(bar, area);
+  _mountInputBar(bar);
+}
+
+// 3195 (dueño 17-11: «al pulsar un mensaje enviado agrega la posibilidad de editarlo»): ¿sale «Editar» en el menú de este mensaje?
+// Como WhatsApp: solo un mensaje PROPIO de texto (ni foto, audio, archivo, sticker ni «ver una vez»; ni reenviado ni eliminado),
+// hasta EDIT_MS después de enviarlo, en 1-a-1 (con un contacto que entiende las acciones, como «eliminar para todos») y en grupo.
+export function _canEdit(cid, msg) {
+  if (!cid || !msg || !msg._own || msg.deleted || msg.attachmentType || msg.onceSeen || (msg.attachmentMeta && msg.attachmentMeta.once)) return false;
+  if (_editableText(msg.content || msg.text || '') == null) return false;
+  if (!(Date.now() - (msg.timestamp || 0) < EDIT_MS)) return false;
+  var gs = window.bleInterface && window.bleInterface.groups;
+  if (gs && gs.isGroup(cid)) { var g = gs.get(cid); return !!(g && !g.left); }
+  return _peerUnderstands(cid);
 }
 
 // Ronda 2782: editar un mensaje propio. Pone su texto en la caja y, al enviar, _doSend manda la edición (no uno nuevo).
 export function _startEdit(id, msg) {
   var cid = _getCurrentContactId();
-  if (!id || !cid) return;
+  var orig = msg ? _editableText(msg.content || msg.text || '') : null;
+  if (!id || !cid || orig == null) return;
   _cancelReply();
-  _editing = { id: id, cid: _normId(cid) };
+  _editing = { id: id, cid: _normId(cid), ts: msg.timestamp || 0, orig: orig };
   var input = document.getElementById('message-input');
-  if (input) { input.value = _plainText(msg.content); try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {} input.focus(); }
+  if (input) { input.value = orig; try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {} input.focus(); }
   _renderEditBar();
 }
 
-export function _cancelEdit() {
+// keepInput: el texto se queda en la caja (salió de la edición sin descartar lo escrito). Sin edición en curso no toca la caja
+// (3195: se llama también al cambiar de chat y no debe borrar lo que se estaba escribiendo).
+export function _cancelEdit(keepInput) {
+  var was = !!_editing;
   _editing = null;
   _renderEditBar();
   var input = document.getElementById('message-input');
-  if (input) { input.value = ''; try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {} }
+  if (was && !keepInput && input) { input.value = ''; try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {} }
 }
+
+// 3195: el botón enviar con una edición en curso (app_setup._doSend). 'sent' = edición mandada; 'same' = el texto no cambió (no se
+// manda nada); 'late' = pasaron los 15 min (avisa; el texto se queda en la caja para mandarlo como mensaje nuevo); 'other' = la
+// edición era de otro chat (se olvida y el texto sale como mensaje nuevo de este chat)
+export function _submitEdit(text) {
+  var e = _editing;
+  if (!e || !e.id) return 'other';
+  if (e.cid !== _normId(_getCurrentContactId())) { _cancelEdit(true); return 'other'; }
+  if (Date.now() - (e.ts || 0) > EDIT_MS + EDIT_GRACE_MS) {
+    _cancelEdit(true);
+    _showInfoToast(t('chat_edit_late_a', 'Ya no se puede editar: pasaron más de ') + Math.round(EDIT_MS / 60000) + t('chat_edit_late_b', ' minutos'), 3000);
+    return 'late';
+  }
+  _editing = null;
+  _renderEditBar();
+  if (String(text) === String(e.orig).trim()) return 'same';
+  _editForAll(e.cid, e.id, text);
+  return 'sent';
+}
+// 3195: cambiar de chat o cerrarlo deja la edición (la barra «Editando mensaje» no pasa a otro chat)
+if (typeof window !== 'undefined') ['nexo:ble:openChat', 'nexo:ble:closeChat'].forEach(function(ev) { window.addEventListener(ev, function() { if (_editing) _cancelEdit(); }); });
 
 export function _renderEditBar() {
   var old = document.getElementById('edit-bar');
-  if (old) old.remove();
+  if (old) { old.remove(); _inputBarSpace(); }
   if (!_editing) return;
   var area = document.getElementById('input-area');
-  if (!area || !area.parentNode) return;
+  if (!area) return;
   var bar = document.createElement('div');
   bar.id = 'edit-bar';
-  bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:0 10px 4px;padding:6px 10px;border-left:2px solid var(--nx-purple,#a855f7);background:rgba(255,255,255,0.08);border-radius:8px;color:#fff;font-size:13px;';
+  bar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 10px;border-left:2px solid var(--nx-purple,#a855f7);border-radius:8px;color:#fff;font-size:13px;';
   var txt = document.createElement('div');
   txt.style.cssText = 'flex:1;min-width:0;color:#c9a6ff;font-weight:600;'; // 3140: violeta NEXO (antes amarillo)
   txt.textContent = t('chat_editing_msg', '✏️ Editando mensaje');
@@ -440,9 +502,9 @@ export function _renderEditBar() {
   x.className = 'edit-cancel';
   x.textContent = '✕';
   x.style.cssText = 'background:none;border:none;color:#fff;font-size:18px;padding:4px 8px;';
-  x.onclick = _cancelEdit;
+  x.onclick = function() { _cancelEdit(); }; // 3195: sin pasarle el evento (sería «conservar el texto»)
   bar.appendChild(txt); bar.appendChild(x);
-  area.parentNode.insertBefore(bar, area);
+  _mountInputBar(bar);
 }
 
 export function _copyText(text) {
@@ -562,7 +624,21 @@ export async function _forwardTo(cid, msg, prep, onSettled) {
 }
 
 // Vista previa de la lista de chats según el último mensaje que queda (lo eliminado no se ve ahí)
-export function _refreshChatPreview(cid) {
+// 3195: en un GRUPO solo se cambia si su último mensaje es el editado (msgId), con el «quién: » de la lista; ni la hora, ni el orden,
+// ni los no leídos (Groups.setPreview)
+export function _refreshChatPreview(cid, msgId) {
+  var gsp = window.bleInterface && window.bleInterface.groups;
+  if (gsp && gsp.isGroup(cid)) {
+    if (!msgId || typeof gsp.setPreview !== 'function') return Promise.resolve();
+    return vaultLoadMessages(cid).then(function(list) {
+      var last = null;
+      (list || []).forEach(function(m) { if (!m.hidden && (!last || (m.timestamp || 0) >= (last.timestamp || 0))) last = m; });
+      if (!last || (last.msgId || last.messageId) !== msgId || last.deleted || last.attachmentType) return;
+      gsp.setPreview(cid, (last._own ? 'Tú' : gsp.memberName(last.senderNexoId)) + ': ' + _cut(_plainText(last.content), 50));
+      var bg = window.bleInterface;
+      if (bg && typeof bg.renderContactsList === 'function') bg.renderContactsList();
+    }).catch(function() {});
+  }
   return vaultLoadMessages(cid).then(function(list) {
     var last = null;
     (list || []).forEach(function(m) { if (!m.hidden && (!last || (m.timestamp || 0) >= (last.timestamp || 0))) last = m; });
@@ -601,18 +677,57 @@ export function _rerenderBlank(id, msg) {
 }
 
 // Ronda 2782: editar un mensaje propio ya enviado (manda la edición al otro y la aplica aquí)
+// 3195: con la hora de la edición (ts: gana la más nueva aunque lleguen desordenadas) y también en GRUPO: la misma acción oculta
+// (cifrada de extremo a extremo, por todos los caminos, sin aviso ni «no leído») a cada miembro, con el id del grupo (g) y el id del
+// mensaje del grupo; cada uno la aplica a su copia (ese id + sus 8 letras, groups.js) solo si viene de quien lo escribió.
 export function _editForAll(cid, id, newText) {
-  _sendTextTo(cid, JSON.stringify({ type: 'nexo_act', act: 'edit', id: id, t: newText }), '', true);
-  vaultEditMessage(cid, id, newText).then(function() { _rerenderEdited(cid, id, newText); return _refreshChatPreview(cid); }).catch(function() {});
-  console.log('[CHAT] Mensaje editado');
+  cid = _normId(cid);
+  return _findMessage(cid, id).then(function(m) {
+    // la hora de cada edición, siempre mayor que la de la anterior de este mensaje (aunque el reloj del teléfono haya ido hacia atrás)
+    var ts = Math.max(Date.now(), ((m && m.editTs) || 0) + 1), act = { type: 'nexo_act', act: 'edit', id: id, t: newText, ts: ts };
+    var gs = window.bleInterface && window.bleInterface.groups, g = gs && gs.isGroup(cid) ? gs.get(cid) : null;
+    if (g) {
+      act.g = g.id;
+      var wire = JSON.stringify(act), me = _myNexoId(), n = 0;
+      (g.members || []).forEach(function(nx) { if (_normId(nx) && _normId(nx) !== me) { _sendTextTo(_normId(nx), wire, '', true); n++; } });
+      console.log('[CHAT] Mensaje del grupo ' + g.id + ' editado (a ' + n + ' persona(s))');
+    } else {
+      _sendTextTo(cid, JSON.stringify(act), '', true);
+      console.log('[CHAT] Mensaje editado');
+    }
+    return vaultEditMessage(cid, id, newText, { ts: ts }).then(function(r) { if (r !== true) return; _rerenderEdited(cid, id); return _refreshChatPreview(cid, id); });
+  }).catch(function() {});
 }
 
-export function _rerenderEdited(cid, id, newText) {
+// 3195: la marca «Editado» junto a la hora (la usa también render.js al dibujar la burbuja)
+export function _editedMark() {
+  var s = document.createElement('span');
+  s.className = 'msg-edited';
+  s.textContent = t('chat_edited', 'Editado');
+  s.style.cssText = 'opacity:0.6;font-size:11px;margin:0 5px;';
+  return s;
+}
+
+// 3195: la burbuja editada se cambia EN SU SITIO (texto nuevo y «Editado»): antes se quitaba y se volvía a dibujar, y el chat saltaba
+// al final (una edición de un mensaje de más arriba movía lo que se estaba leyendo). Las reacciones y el nombre del grupo se quedan.
+export function _rerenderEdited(cid, id) {
   _findMessage(cid, id).then(function(m) {
-    if (!m) return;
+    if (!m || m.deleted) return;
     var el = document.querySelector('.message[data-msg-id="' + id + '"]');
-    if (el) { el.remove(); _renderedMessageIds.delete(id); }
-    _renderMessage(Object.assign({}, m, { content: newText, edited: true }), true);
+    if (!el) return;
+    var old = el.querySelector('.msg-content');
+    if (!old || !old.parentNode) { el.remove(); _renderedMessageIds.delete(id); _renderMessage(m, true); return; }
+    var cd = document.createElement('div');
+    cd.className = 'msg-content';
+    cd.style.borderRadius = '12px';
+    cd.style.overflow = 'hidden';
+    _fillTextBubble(cd, m, !!m._own);
+    old.parentNode.replaceChild(cd, old);
+    var meta = el.querySelector('.msg-meta');
+    if (meta && m.edited && !meta.querySelector('.msg-edited')) {
+      var tm = meta.querySelector('.msg-time');
+      meta.insertBefore(_editedMark(), tm ? tm.nextSibling : meta.firstChild);
+    }
   });
 }
 
@@ -686,13 +801,24 @@ export function _applyChatAction(senderId, act) {
   }
   // Ronda 2782: el contacto editó uno de SUS mensajes de texto
   // 3175: si el mensaje aún no llegó (la edición se adelantó), se guarda y se aplica al llegar (vault_early_acts.js)
+  // 3195: gana la más nueva por su hora (ts); y la de un mensaje de GRUPO (g): solo de un miembro, a mi copia (id + mis 8 letras,
+  // groups.js) y solo si ese mensaje lo escribió él (la de otro es un intento de suplantación: se ignora)
   if (act && act.act === 'edit' && act.id && typeof act.t === 'string') {
-    var cide = _normId(senderId);
-    vaultEditMessage(cide, act.id, act.t, true).then(function(r) { // solo texto suyo, no borrado
-      if (r === 'queued') { console.log('[CHAT] ' + cide + ' editó un mensaje que aún no llegó: se aplicará al llegar'); return; }
+    var who = _normId(senderId), cide = who, mide = String(act.id);
+    var ets = (typeof act.ts === 'number' && isFinite(act.ts) && act.ts > 0) ? act.ts : 0;
+    if (act.g) {
+      var gse = window.bleInterface && window.bleInterface.groups, ge = gse ? gse.get(act.g) : null, me = _myNexoId();
+      if (!ge || ge.left || (ge.members || []).indexOf(who) < 0 || !/^gm[0-9a-z]+$/.test(mide) || !me) { console.warn('[CHAT] Edición de grupo descartada (de ' + who + ': no es miembro o el grupo no está)'); return; }
+      cide = ge.id; mide = mide + '_' + me.substring(2);
+    }
+    vaultEditMessage(cide, mide, act.t, { fromPeer: true, author: who, ts: ets }).then(function(r) { // solo texto suyo, no borrado
+      if (r === 'queued') { console.log('[CHAT] ' + who + ' editó un mensaje que aún no llegó (' + mide + '): se aplicará al llegar'); return; }
+      if (r === 'author') { console.warn('[CHAT] Edición de ' + mide + ' descartada: ' + who + ' no lo escribió (suplantación)'); return; }
+      if (r === 'stale') { console.log('[CHAT] Edición de ' + mide + ' más vieja o repetida: se queda la más nueva'); return; }
       if (r !== true) return;
-      if (_normId(_getCurrentContactId()) === cide) _rerenderEdited(cide, act.id, act.t);
-      return _refreshChatPreview(cide);
+      console.log('[CHAT] ' + who + ' editó ' + mide);
+      if (_normId(_getCurrentContactId()) === cide) _rerenderEdited(cide, mide);
+      return _refreshChatPreview(cide, mide);
     }).catch(function() {});
     return;
   }
@@ -728,11 +854,11 @@ if (typeof window !== 'undefined') window.addEventListener('nexo:vault:earlyActs
     _findMessage(cid, id).then(function(m) {
       if (!m || !document.querySelector('.message[data-msg-id="' + id + '"]')) return;
       if (d.del) _rerenderBlank(id, m);
-      else if (d.edit) _rerenderEdited(cid, id, m.content); // (con sus reacciones)
+      else if (d.edit) { _rerenderEdited(cid, id); if (d.react) _rerenderReactions(cid, id); } // 3195: en su sitio (y sus reacciones)
       else if (d.react) _rerenderReactions(cid, id);
     });
   }
-  _refreshChatPreview(cid);
+  _refreshChatPreview(cid, id);
 });
 
 // Gancho de pruebas (tests/sim/fwdbig.js)
