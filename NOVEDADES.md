@@ -12,6 +12,31 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Para agregar a alguien cercano ahora se le manda una solicitud: aparece en su lista para aceptar o eliminar, como con el NEXO ID. Al aceptarla, quedan agregados los dos.
+- Si la descarga de una actualización se corta por la red, se reintenta sola.
+</es-419>
+<it-IT>
+- Per aggiungere qualcuno vicino ora gli si manda una richiesta: compare nella sua lista per accettare o eliminare, come con il NEXO ID. Quando accetta, siete aggiunti tutti e due.
+- Se il download di un aggiornamento si interrompe per la rete, riprova da solo.
+</it-IT>
+<en-US>
+- Adding someone nearby now sends them a request: it shows in their list to accept or delete, like with the NEXO ID. Once they accept, you are both added.
+- If an update download is cut off by the network, it retries on its own.
+</en-US>
+<pt-BR>
+- Para adicionar alguém por perto agora é enviada uma solicitação: aparece na lista da pessoa para aceitar ou excluir, como com o NEXO ID. Ao aceitar, os dois ficam adicionados.
+- Se o download de uma atualização cair por causa da rede, ele tenta de novo sozinho.
+</pt-BR>
+<fr-FR>
+- Pour ajouter quelqu'un à proximité, une demande lui est maintenant envoyée : elle apparaît dans sa liste pour accepter ou supprimer, comme avec le NEXO ID. Une fois acceptée, vous êtes ajoutés tous les deux.
+- Si le téléchargement d'une mise à jour est coupé par le réseau, il réessaie tout seul.
+</fr-FR>
+<!-- /APK -->
+
+## Historial
+
+### APK 3091 (17-11-2026)
+<es-419>
 - Ahora puedes elegir varios mensajes y reenviarlos juntos: mantén pulsado uno, toca «Seleccionar» y marca los demás.
 - Con datos móviles, al abrir NEXO con Wi-Fi llegan todos los mensajes que quedaron pendientes mientras estaba en segundo plano.
 </es-419>
@@ -31,9 +56,6 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Vous pouvez maintenant choisir plusieurs messages et les transférer ensemble : appui long sur l'un, « Sélectionner », puis cochez les autres.
 - Avec les données mobiles, en ouvrant NEXO en Wi-Fi, tous les messages restés en attente pendant qu'il était en arrière-plan arrivent.
 </fr-FR>
-<!-- /APK -->
-
-## Historial
 
 ### APK 3090 (17-11-2026)
 <es-419>

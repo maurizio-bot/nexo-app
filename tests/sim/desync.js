@@ -133,6 +133,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     if (grp) { r.copias_ocultas_en_A = (await A.win.vaultLoadMessages(idB)).filter((m) => m.hidden && /nexo_grp/.test(m.content || '')).length; await closeChat(A); await openChatWith(A, 'B'); }
   }
   if (noHw) { if (snapHw === undefined) nB.files.delete('nexo_ratchet_hw.json'); else nB.files.set('nexo_ratchet_hw.json', snapHw); }
+  const markBoot = logs.length; // 3207: B puede darse cuenta solo ya al arrancar (antes de `mark`)
   nB.load(); B = await boot('B', nB, buildB);
   // --perdidos: qué mensajes SUMAN «no leídos» en B tras arrancar (medido en el momento: abrir el chat luego los pone a cero)
   const countedB = [];
@@ -144,8 +145,8 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const mark = logs.length;
   const t0 = Date.now();
   // --perdidos: cuánto tardan en llegar los 3 desde que B arranca (en paralelo a lo demás)
-  let tLost = null;
-  if (lost) { (async () => { const tt = await waitFor(async () => { try { const ms = await Promise.race([B.win.vaultLoadMessages(lostCidB()), sleep(1500).then(() => [])]); return [0, 1, 2].every((i) => ms.some((m) => m.content === 'perdido ' + i && !m._own)); } catch (e) { return false; } }, 120000); tLost = tt; })(); }
+  let tLost = null, lostP = null;
+  if (lost) { lostP = (async () => { const tt = await waitFor(async () => { try { const ms = await Promise.race([B.win.vaultLoadMessages(lostCidB()), sleep(1500).then(() => [])]); return [0, 1, 2].every((i) => ms.some((m) => m.content === 'perdido ' + i && !m._own)); } catch (e) { return false; } }, 120000); tLost = tt; })(); }
 
   // 1) Wi-Fi comprobado otra vez
   if (!noWifi) r.wifi_tras_reinicio_s = await waitFor(() => viaA() === 'wifi' && viaB() === 'wifi', 90000);
@@ -158,11 +159,22 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const after = logs.slice(mark);
   r.ya_recibido_en_A = after.filter((l) => /^\S+ \[A\].*(Mensaje ya recibido)/.test(l)).length;
   r.desfase_detectado = after.some((l) => /\[A\].*Desfase de cifrado/.test(l));
-  if (lost) r.visto_antes_reenviado = logs.slice(mark).some((l) => (grp ? /\[A\].*Desatasco con .*reenvío [1-9]/ : /\[A\].*Desatasco con .*reenvío [4-9] mensaje/).test(l));
+  // 3207: un contacto agregado de cerca ya tiene el paquete de claves del otro en los DOS lados; así B se da cuenta solo (al
+  //  arrancar, por el número de guardado, o al no poder leer) y lo resuelve él: también vale como desfase detectado
+  const loVe = () => logs.slice(mark).some((l) => /\[A\].*Desfase de cifrado/.test(l)) ? 'A' :
+    (logs.slice(markBoot).some((l) => /\[B\].*(ATRASADO.*Sesiones nuevas con [1-9]|Desfase de cifrado)/.test(l)) ? 'B' : null);
+  r.desfase_lo_ve = loVe();
+  r.desfase_detectado = r.desfase_lo_ve !== null;
   if (lost) {
     const all3 = async () => { const ms = await B.win.vaultLoadMessages(lostCidB()); return [0, 1, 2].every((i) => ms.some((m) => m.content === 'perdido ' + i && !m._own)); };
     r.perdidos_llegan_s = await waitFor(all3, 90000);
+    if (r.perdidos_llegan_s !== null && lostP) await Promise.race([lostP, sleep(5000)]); // su sondeo puede ir un paso atrás
     r.perdidos_desde_arranque_s = tLost;
+    r.desfase_lo_ve = loVe(); r.desfase_detectado = r.desfase_lo_ve !== null; // sin el número de guardado, B lo ve al no poder leerlos
+    // A reenvía su ventana (los 3 perdidos y el «visto antes» que B ya tenía: no debe salir dos veces). 3207: si lo vio B (desfase_lo_ve
+    //  'B'), B pide solo lo que no pudo leer y A reenvía esos 3; el «visto antes» no hace falta reenviarlo (lo de abajo sigue
+    //  comprobando que quede UNA vez y sin volver a «no leído»)
+    r.visto_antes_reenviado = logs.slice(mark).some((l) => (grp || r.desfase_lo_ve === 'B' ? /\[A\].*Desatasco con .*reenvío [1-9]/ : /\[A\].*Desatasco con .*reenvío [4-9] mensaje/).test(l));
     await sleep(3000); // por si llegara alguno repetido
     const msB = await B.win.vaultLoadMessages(idA), msA = await A.win.vaultLoadMessages(idB), msBg = grp ? await B.win.vaultLoadMessages(gid) : msB;
     r.duplicados_B = ['A tras reiniciar B'].filter((t) => msB.filter((m) => m.content === t).length > 1).length +
