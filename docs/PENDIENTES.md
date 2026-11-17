@@ -9,6 +9,15 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 16-11 22:25 — idea del dueño: fondos según la luz del ambiente (para después de la identidad de Runa)
+- **Idea:** fondos de pantalla, burbujas y fondo de llamada según la luminosidad: de noche o con poca luz, negro puro #000 (no deslumbra);
+  de día o al aire libre, más claro (como el fondo actual de la pantalla de llamada, que no es #000).
+- **Opinión de Claude:** buena (al sol un fondo oscuro se lee peor; de noche el #000 no ciega y en pantallas OLED ahorra batería). Cuidar:
+  sensor de luz del teléfono (nativo, TYPE_LIGHT; en web casi no existe) solo con la app a la vista; histéresis y cambio suave para no
+  parpadear al pasar de sombra a sol; no cambiar a media lectura; ajuste «Automático / Siempre oscuro / Siempre claro».
+- **Orden propuesto:** (1) identidad visual de Runa (logo, colores); (2) tema de día con esa identidad (líneas de luz sobre claro, cian más
+  oscuro para contraste); (3) cambio automático por la luz. Espera el sí del dueño.
+
 ## 🆕 16-11 21:45 — dueño: noche de pruebas NO por ahora; estudio de límites para EDC SÍ
 - **Noche de pruebas con teléfonos reales (Idea de Claude): estacionada.** El dueño solo tiene 3 (S24, vivo, tablet; el S23 no es suyo) y un
   cargador; en la misma habitación y el mismo Wi-Fi aporta poco, y pide no meter código de prueba en una actualización ahora («vamos bien»).
