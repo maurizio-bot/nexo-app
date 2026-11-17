@@ -19,7 +19,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - Hallazgo del ayudante de la 3193 (antes de su cambio, sin arreglar): si llega algo del contacto (p. ej. su anuncio de rutas `rt`) en el
   medio segundo entre elegir un archivo y empezar a subirlo, el archivo sale DOS veces (trozos por relés y buzón): `_prePayload` →
   `_kickPeer` → `_resendPendingMessages` → `ackSystem.sendFile`. Arreglo propuesto: que el reenvío de pendientes salte un archivo que ya
-  se está subiendo al buzón.
+  se está subiendo al buzón. → **ARREGLADO en 3197** (pendiente menor: hueco breve en Wi-Fi Direct; el reenvío usa trozos y no el buzón con el
+  contacto solo por relés).
 
 ## 🆕 17-11 04:55 — #87: NEXO muere con una actualización de WebView (o de NEXO, o un reinicio) y NO vuelve sola
 - Diagnósticos de la tableta SM-T220 (3075) y del S24 (3082), dueño 17-11: la tableta con SOLO la pantalla apagada. A las 23:56 Google
