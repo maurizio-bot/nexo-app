@@ -136,7 +136,21 @@ const VOSEO = /(^|[^a-záéíóúüñ])(mirá|confirmá|tocá|aceptá|abrí|pod�
     r.S4[l] = ok ? req[0] : { req, acc, sinNombre, sinId, want };
     s4ok = s4ok && ok;
   }
+  // S4b (3194): los botones de la bandeja (Aceptar/Eliminar; Confirmar para una aceptación) en el idioma de la app
+  r.S4b = {};
+  let s4bok = true;
+  for (const l of ['es', 'it', 'en', 'pt', 'fr']) {
+    p.win.NEXO_FORCE_LANG = l;
+    const T = (await importSrc('ui/i18n/' + l + '.js')).default;
+    try { B.bi.renderRequests(); } catch (e) {}
+    const btns = Array.from((B.win.document.getElementById('ble-requests-list') || { querySelectorAll: () => [] }).querySelectorAll('button')).map((b) => b.textContent);
+    const ok = btns.length >= 2 && btns.indexOf(T.req_btn_accept) >= 0 && btns.indexOf(T.req_btn_delete) >= 0 && !VOSEO.test(btns.join(' '));
+    r.S4b[l] = ok ? btns.slice(0, 2).join(' · ') : { btns, quiero: [T.req_btn_accept, T.req_btn_delete] };
+    s4bok = s4bok && ok;
+  }
+  r.S4b_ok = s4bok;
   p.win.NEXO_FORCE_LANG = 'es';
+  try { B.bi.renderRequests(); } catch (e) {}
   r.S4_ok = s4ok && r.S4.es !== r.S4.it && r.S4.it !== r.S4.en;
 
   // S5: con la app oculta, lo que la parte nativa guardó entra igual (su buzón no está en reqTags con la app oculta)
@@ -158,7 +172,7 @@ const VOSEO = /(^|[^a-záéíóúüñ])(mirá|confirmá|tocá|aceptá|abrí|pod�
   r.S6_ok = !!(nA.netBg && Array.isArray(nA.netBg.reqOut) && nA.netBg.reqOut.indexOf(idB) >= 0);
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch|ECONNREFUSED|WebSocket/.test(l)).slice(0, 5);
-  const ok = r.voseo_detecta && r.en_internet && r.S1_ok && r.S1_enviada && r.S1_en_el_rele && r.S1_dormida_no_la_tiene && r.S2_ok && r.S2_aviso_ok && r.S3_ok && r.S4_ok && r.S5_ok && r.S6_ok && !r.errores.length;
+  const ok = r.voseo_detecta && r.en_internet && r.S1_ok && r.S1_enviada && r.S1_en_el_rele && r.S1_dormida_no_la_tiene && r.S2_ok && r.S2_aviso_ok && r.S3_ok && r.S4_ok && r.S4b_ok && r.S5_ok && r.S6_ok && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('SOLICITUDAVISO ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_solicitudaviso.txt'), logs.join('\n'));

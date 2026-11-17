@@ -604,9 +604,9 @@ export const BLE_UI_METHODS = {
         det.textContent = bits.join('   ·   ');
         info.appendChild(det);
       }
-      var ok = document.createElement('button'); ok.textContent = req.acc ? 'Confirmar' : 'Aceptar';
+      var ok = document.createElement('button'); ok.textContent = req.acc ? t('req_btn_confirm', 'Confirmar') : t('req_btn_accept', 'Aceptar'); // 3194: en el idioma de la app
       ok.style.cssText = 'flex-shrink:0;padding:7px 12px;border-radius:14px;border:none;background:var(--nx-grad);box-shadow:0 3px 10px rgba(0,200,255,.35);color:#fff;font-weight:600;cursor:pointer;';
-      var no = document.createElement('button'); no.textContent = 'Eliminar';
+      var no = document.createElement('button'); no.textContent = t('req_btn_delete', 'Eliminar');
       no.style.cssText = 'flex-shrink:0;padding:7px 10px;border-radius:14px;border:1px solid var(--nx-line);background:var(--nx-surface-2);color:#fff;cursor:pointer;';
       ok.addEventListener('click', function() {
         ok.disabled = no.disabled = true;
