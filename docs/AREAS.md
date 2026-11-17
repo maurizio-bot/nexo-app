@@ -41,6 +41,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Entrega sin coincidir: despertador FCM por pendientes, buzón de archivos, cita para > 5 MB (fases A–D, 2967–2972; §A.19/A.22/A.24). ×3
 - Desatasco del cifrado en los dos lados y aviso si se repite (3067, 3069, 3126). ×2
 - Wi-Fi Direct: un envío real bien el 15-11 (3,3 MB/s); falta el vídeo de ~20 MB (PENDIENTES 15-11, resúmenes del 14-11). ×2
+- Ahorro con datos móviles (dueño 17-11 «Ok»): la app y la escucha sin la app oyen 2 relés y suben 2 copias; al volver al Wi-Fi o a la app se pide lo que quedó en los otros (3193, 3204, 3205; APK 3087 y 3090). ×2
 
 **Falta**
 - Diagnósticos 16-11 17:38–18:18 (3077): S23 con AHORRO DE BATERÍA y NEXO cerrada desde recientes 11 veces hoy (más el fallo nativo de las 11:13): por eso «duerme» y no confirma. El «enlace_abre_cierra» S24↔S23 (3 cierres por repetido) es lo que arregla la APK 3079 (3167/3168). ×1
