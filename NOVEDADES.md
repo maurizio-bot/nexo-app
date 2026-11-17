@@ -14,22 +14,27 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <es-419>
 - Para agregar a alguien cercano ahora se le manda una solicitud: aparece en su lista para aceptar o eliminar, como con el NEXO ID. Al aceptarla, quedan agregados los dos.
 - Si la descarga de una actualización se corta por la red, se reintenta sola.
+- Ya no llegan avisos de mensajes que nadie mandó: las copias de respaldo y los estados viajan sin avisar.
 </es-419>
 <it-IT>
 - Per aggiungere qualcuno vicino ora gli si manda una richiesta: compare nella sua lista per accettare o eliminare, come con il NEXO ID. Quando accetta, siete aggiunti tutti e due.
 - Se il download di un aggiornamento si interrompe per la rete, riprova da solo.
+- Non arrivano più avvisi di messaggi che nessuno ha mandato: le copie di sicurezza e gli stati viaggiano senza avvisare.
 </it-IT>
 <en-US>
 - Adding someone nearby now sends them a request: it shows in their list to accept or delete, like with the NEXO ID. Once they accept, you are both added.
 - If an update download is cut off by the network, it retries on its own.
+- No more alerts for messages nobody sent: backup copies and statuses now travel silently.
 </en-US>
 <pt-BR>
 - Para adicionar alguém por perto agora é enviada uma solicitação: aparece na lista da pessoa para aceitar ou excluir, como com o NEXO ID. Ao aceitar, os dois ficam adicionados.
 - Se o download de uma atualização cair por causa da rede, ele tenta de novo sozinho.
+- Não chegam mais avisos de mensagens que ninguém mandou: as cópias de segurança e os status viajam sem avisar.
 </pt-BR>
 <fr-FR>
 - Pour ajouter quelqu'un à proximité, une demande lui est maintenant envoyée : elle apparaît dans sa liste pour accepter ou supprimer, comme avec le NEXO ID. Une fois acceptée, vous êtes ajoutés tous les deux.
 - Si le téléchargement d'une mise à jour est coupé par le réseau, il réessaie tout seul.
+- Plus d'alertes pour des messages que personne n'a envoyés : les copies de sauvegarde et les statuts voyagent sans prévenir.
 </fr-FR>
 <!-- /APK -->
 

@@ -405,7 +405,8 @@ export class NetLink {
     // llamada. La invitación REAL va type:'chat' con cl:1 por fuera (sendChatMessage); se acepta también la cruda por si
     // algún camino la mandara sin sobre (p. ej. el buzón directo de group_call._signal).
     else if (o && o.type === 'nexo_gcall' && o.op === 'invite' && typeof o.gid === 'string') id = o.gid;
-    else if (o && (o.t === 'c' || o.t === 'f') && o.i === 0 && !o.hf && typeof o.m === 'string') id = o.m;
+    // 3210: el primer trozo de un envío oculto (respaldo Fénix, medio de un estado: q:1) no es un mensaje nuevo (sin aviso nativo)
+    else if (o && (o.t === 'c' || o.t === 'f') && o.i === 0 && !o.hf && o.q !== 1 && typeof o.m === 'string') id = o.m;
     if (!id) return null;
     var quiet = this.ble && this.ble._quietOut;
     return quiet && quiet.has(id) ? null : id;

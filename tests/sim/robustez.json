@@ -1504,6 +1504,10 @@
     {
      "fallo": "3153 (diagnóstico Honor 3073): notificaciones de NEXO denegadas y la app solo lo apuntaba en el registro; con la app cerrada no llegaban avisos ni llamadas. Ahora aviso en Contactos con «Activar» que lleva al ajuste; y el aviso de batería ya no se calla por tener las notificaciones denegadas y vuelve cada 7 días si sigue la restricción (contraprueba 3151)",
      "prueba": "AVISO DE NOTIFICACIONES DENEGADAS"
+    },
+    {
+     "fallo": "3210 (dueño 17-11: «¿por qué a Marcos le llegan notificaciones mías si yo no le mandé nada?»): con la app del otro cerrada, el primer trozo de un fragmento de respaldo Fénix («fxs_…») o del medio de un estado («stm…») se clasificaba como archivo nuevo (BgInbox) y avisaba «📎 Archivo»; por internet llevaba la marca de mensaje nuevo (NetBg). Ahora van con q:1. avisofenix.js (contraprueba b3205: aviso por el respaldo)",
+     "prueba": "3210 (dueño 17-11: «¿por qué a Marcos"
     }
    ],
    "debiles": [

@@ -507,6 +507,10 @@ ChatStream.prototype._buildChunk = function(idx) {
     obj.ts = this.meta.ts || Date.now();
     if (typeof this.meta.seq === 'number') obj.seq = this.meta.seq;
     if (this.meta.type) obj.tp = this.meta.type;
+    // 3210 (dueño 17-11: «¿por qué a Marcos le llegan notificaciones mías si yo no le mandé nada?»): un fragmento de respaldo (Fénix)
+    // o el medio de un estado viajan ocultos, pero con la app del otro CERRADA o dormida su parte nativa veía «un archivo nuevo» y
+    // avisaba «📎 Archivo». Marca de callado (q:1): ni aviso nativo (BgInbox) ni marca de mensaje nuevo por internet (NetBg)
+    if (this.meta.type === 'fenix' || this.meta.type === 'stmedia') obj.q = 1;
     if (this.meta.name) obj.fn = this.meta.name;
     if (this.meta.mime) obj.mt = this.meta.mime;
     if (this.meta.size) obj.fs = this.meta.size;
