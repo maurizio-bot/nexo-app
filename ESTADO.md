@@ -21,6 +21,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **16-11 23:20 (México) — APK 3082 PUBLICADA (22:30; 3173–3174). APK subida con 3175–3177 + 3181–3183:** acciones que llegan antes
+  que su mensaje (lápida de «eliminar para todos»), reacciones del agregado (fx), foto de grupo rota por el buzón, misma respuesta al
+  tocar en todos los botones (pressall), trampa del juego secreto (juegotrampa) y el vivo siempre arriba (vivoarriba; el diagnóstico dice
+  «FIJADO arriba»). En curso: 3178–3180 (wtrec: leídos que no vuelven, puente→buzón, cola de archivos) y estudio de límites EDC (wtedc).
+  Lanzamiento: `nexo-private/negocio/LANZAMIENTO.md` (12 puntos); logo: `IDENTIDAD.md` (3 caminos en palabras; NO dibujar hasta que
+  el dueño elija). Fondos según la luz: PENDIENTES 16-11 22:25. Ideas de Claude: COMO_TRABAJAMOS §10.
 - **16-11 21:30 (México) — APK 3081 PUBLICADA (21:17; 3170–3172). APK subida con 3173/3174** (pendiente ya entregado que se «reenviaba»
   y se duplicaba al reiniciar —caché de historiales de 20 chats—; datos móviles trabados: ~5 s en vez de 12). Ciudad (`tests/sim/ciudad.js`,
   12 teléfonos) integrada: 98,7–99,4 % entregado, 0 excepciones; encontró fallos: en curso 3175–3177 (acción antes que su mensaje —borrar
