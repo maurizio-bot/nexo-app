@@ -34,7 +34,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   publicando a todos) y 2 copias por trozo → **3193 INTEGRADO** (solo JS). Falta en el nativo (NetBg con la app en segundo plano):
   ver él mismo si hay datos móviles, conectar y suscribir solo los 2 primeros sanos en el orden de `relays`, ✓✓ en esos 2, y al volver
   al Wi-Fi suscribir los demás con un `since` por relé. Riesgo aceptado: un mensaje que solo quedó en relés no escuchados llega al
-  pasar al Wi-Fi (el que manda ve ✓ sin ✓✓).
+  pasar al Wi-Fi (el que manda ve ✓ sin ✓✓). **Nativo: 3204 INTEGRADO** (APK 3090). **3205 INTEGRADO** (hueco de la 3204: al volver la
+  app, la escucha nativa olvidaba desde cuándo soltó cada relé; ahora se lo pasa con netBgDrain y la app se lo pide desde ahí).
 - Hallazgo del ayudante de la 3193 (antes de su cambio, sin arreglar): si llega algo del contacto (p. ej. su anuncio de rutas `rt`) en el
   medio segundo entre elegir un archivo y empezar a subirlo, el archivo sale DOS veces (trozos por relés y buzón): `_prePayload` →
   `_kickPeer` → `_resendPendingMessages` → `ackSystem.sendFile`. Arreglo propuesto: que el reenvío de pendientes salte un archivo que ya
