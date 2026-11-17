@@ -12,14 +12,25 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Te llega una notificación cuando alguien quiere agregarte como contacto, aunque NEXO esté en segundo plano.
+- NEXO se da cuenta antes cuando un contacto cercano deja de responder y lo busca por otro camino.
 </es-419>
 <it-IT>
+- Ricevi una notifica quando qualcuno vuole aggiungerti come contatto, anche con NEXO in background.
+- NEXO si accorge prima quando un contatto vicino smette di rispondere e lo cerca per un'altra strada.
+- Nelle chiamate i pulsanti non vengono più tagliati: ora dicono «Video» e «Vivavoce».
 </it-IT>
 <en-US>
+- You get a notification when someone wants to add you as a contact, even with NEXO in the background.
+- NEXO notices sooner when a nearby contact stops responding and reaches them another way.
 </en-US>
 <pt-BR>
+- Você recebe uma notificação quando alguém quer te adicionar como contato, mesmo com o NEXO em segundo plano.
+- O NEXO percebe antes quando um contato próximo para de responder e o procura por outro caminho.
 </pt-BR>
 <fr-FR>
+- Vous recevez une notification quand quelqu'un veut vous ajouter comme contact, même avec NEXO en arrière-plan.
+- NEXO remarque plus vite quand un contact proche ne répond plus et le joint autrement.
 </fr-FR>
 <!-- /APK -->
 

@@ -21,6 +21,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **17-11 06:10 (México) — APK 3085 PUBLICADA (05:33; 3184–3186). APK subida con 3187, 3188, 3190, 3191:** zombi que no vuelve a 0
+  al volver a la app (50 s en vez de 104), registro nativo de relés que vuelven, notificación «X quiere agregarte» con NEXO en segundo
+  plano (pedido del dueño), botones de llamada en italiano. Hallazgo #87 (PENDIENTES 17-11 04:55): una actualización de WebView mató a
+  NEXO en la tableta y no volvió en 5 h; **3189 en espera** (worktree `/home/user/wtvuelta`, commit 9dc2113f): vuelve sola pero sin
+  recibir nada hasta guardar cifrada la configuración de NetBg → **pregunta al dueño (toca cifrado)**. Batería completa sobre b3187 en curso.
 - **17-11 04:30 (México) — APK 3084 PUBLICADA (01:24; 3178–3180). APK subida con 3184–3186:** «Agregar» con freno para multitudes
   (estudio EDC n.º 1: 500 NEXO, CPU 95 % → 18 %), «internet listo» sin contar el tiempo sin red (3185, solo diagnóstico) y la barra de la
   nota de voz que cortaba 🗑/➤ (3186). pressall falló 1 vez con la máquina cargada (botón «1×», 129 casos) y pasó 2 veces (134/134).
