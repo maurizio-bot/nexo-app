@@ -38,14 +38,17 @@ export function _hdBpsFor(durSec, targetBytes) {
   var bps = Math.round(targetBytes * 8 / d) - 64000; // menos el audio (64 kbps)
   return Math.max(350000, Math.min(HD_REENCODE_BPS, bps));
 }
+// 3200: opts.report (un objeto) se llena con lo que se supo del vídeo, para que quien llama lo anote y avise claro: why (por qué no
+// salió), code/msg (el error del <video>: 4 = este teléfono no lo abre), dur, w, h.
 export function _makeVideoPreview(blob, knownDuration, opts) {
   opts = opts || {};
+  var rep = (opts.report && typeof opts.report === 'object') ? opts.report : {};
   return new Promise(function(resolve) {
     var done = false, cleanup = [], t0 = Date.now();
     function log(m) { console.log('[VIDEO] ' + m + ' (' + Math.round((Date.now() - t0) / 100) / 10 + ' s)'); }
     function finish(res, why) {
       if (done) return; done = true;
-      if (!res || res.tooLong) log('Previa no generada: ' + (why || (res && res.tooLong ? 'demasiado largo' : '?')));
+      if (!res || res.tooLong) { rep.why = why || (res && res.tooLong ? 'demasiado largo' : '?'); log('Previa no generada: ' + rep.why); }
       cleanup.forEach(function(f) { try { f(); } catch (e) {} });
       resolve(res);
     }
@@ -61,10 +64,14 @@ export function _makeVideoPreview(blob, knownDuration, opts) {
       cleanup.push(function() { v.pause(); v.removeAttribute('src'); v.load(); v.remove(); });
       var watchdog = setTimeout(function() { finish(null, 'sin metadatos en 15 s'); }, 15000);
       cleanup.push(function() { clearTimeout(watchdog); });
-      v.onerror = function() { finish(null, 'el teléfono no puede leer el vídeo (código ' + (v.error && v.error.code) + ')'); };
+      v.onerror = function() {
+        rep.code = v.error && v.error.code; rep.msg = (v.error && v.error.message) || '';
+        finish(null, 'el teléfono no puede leer el vídeo (código ' + rep.code + (rep.msg ? ': ' + rep.msg : '') + ')');
+      };
       v.onloadedmetadata = function() {
         clearTimeout(watchdog);
         var dur = isFinite(v.duration) && v.duration > 0 ? v.duration : (knownDuration || 0);
+        rep.dur = dur; rep.w = v.videoWidth; rep.h = v.videoHeight;
         log('Previa: metadatos ' + v.videoWidth + 'x' + v.videoHeight + ' dur=' + (Math.round(dur * 10) / 10));
         if (dur > PREVIEW_MAX_SECONDS) return finish({ tooLong: true, duration: dur });
         // Vigilante general: nunca más de la duración + 25 s
