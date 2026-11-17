@@ -227,6 +227,14 @@ export const ackResume = {
     if (done) done(true);
     // Ronda 2768 (seguridad): sin cifrar y dice ser de un contacto: lo escribió otro (ver ble_messages._prePayload)
     if (!wasE2e && self._plainFromContact(meta.fr || senderId)) { console.warn('[E2E] Texto largo sin cifrar que dice ser de ' + _normId(meta.fr || senderId) + ': descartado'); return; }
+    // 3177 (prueba de ciudad 17-11): un PUNTERO al buzón de archivos (foto de grupo: su sobre es largo y por Bluetooth llega por trozos)
+    // se baja antes de guardarse, igual que por el camino corto (ble_receive._routeBlobPointer). Antes se guardaba la foto rota ('ptr').
+    var bi = self.ble, fromP = meta.fr || senderId, midP = msgId || meta.msgId, viaHop = Number(meta.hp) > 0;
+    if (bi && typeof bi._routeBlobPointer === 'function' && deviceId && typeof content === 'string' && content.indexOf('ptr') >= 0) {
+      var dataP = { deviceId: deviceId, source: 'ble', timestamp: meta.rxTs || meta.ts || Date.now() };
+      if (viaHop) { dataP.viaRelay = true; dataP.relayOrigin = _normId(fromP); }
+      if (bi._routeBlobPointer(deviceId, fromP, midP, content, null, dataP, viaHop ? _normId(fromP) : null)) return;
+    }
     try {
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
         detail: {

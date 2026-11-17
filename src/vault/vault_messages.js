@@ -333,15 +333,17 @@ async function _appendMessageNow(cid, message) {
     if (!vaultEarlyLoaded()) await vaultEarlyReady();
     early = vaultEarlyApply(cid, normalized, existing);
   }
-  _externalizeAttachment(normalized, existing);
+  var ext = _externalizeAttachment(normalized, existing);
   if (existing) {
     var merged = Object.assign({}, existing, normalized);
     // 3183 (dueño 17-11, el vivo arriba): la hora de un mensaje es la de su PRIMERA llegada. Un reenvío del mismo mensaje (el
     // otro no se enteró de la confirmación, un desatasco) no lo pasa al final del chat ni cuenta como mensaje nuevo en la lista.
     if (existing.timestamp > 0) merged.timestamp = existing.timestamp;
     // No perder datos del adjunto ni el texto si la nueva versión no los trae
+    // 3177: salvo el contenido de una copia rota (p. ej. el puntero 'ptr' de un adjunto que no se bajó): si esta versión trae el adjunto
+    // de verdad (se acaba de pasar a su archivo), el contenido viejo no se queda encima tapándolo (la foto buena se veía rota)
     ['attachmentType', 'attachmentMeta', 'attachmentRef', 'attachmentPayload'].forEach(function(k) {
-      if (normalized[k] == null && existing[k] != null) merged[k] = existing[k];
+      if (normalized[k] == null && existing[k] != null && !(ext && k === 'attachmentPayload')) merged[k] = existing[k];
     });
     if (!normalized.content && existing.content) { merged.content = existing.content; merged.text = existing.text; }
     // #94 «ver una vez»: si ya se abrió, nunca revive el medio (una retransmisión no debe restaurar el payload).

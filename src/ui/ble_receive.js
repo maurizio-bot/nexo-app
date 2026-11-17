@@ -250,6 +250,30 @@ export const BLE_RECEIVE_METHODS = {
     });
   },
 
+  // Fase B/C (2969/2971), 3177: ¿es un PUNTERO a un archivo del buzón de relés (adjunto con payload 'ptr', 1-a-1 o DENTRO de un sobre de
+  // GRUPO)? Entonces se baja, verifica y descifra ANTES de guardar/mostrar/confirmar (_blobPointerReceived) y devuelve true. Una sola
+  // función para los dos caminos por los que llega un mensaje: los cortos (_handlePayload) y los textos largos por trozos
+  // (ble_ack_resume._dispatchChunkedMessageComplete). 3177 (prueba de ciudad 17-11): el sobre de grupo con puntero es largo (~700 letras)
+  // y por Bluetooth llega por trozos; ese camino no miraba el puntero y guardaba la foto rota (contenido 'ptr', 2 bytes) sin bajarla.
+  // En el grupo el sobre se valida como un mensaje de grupo normal (miembro, grupo conocido); al completar se reinyecta el sobre con el
+  // adjunto entero (el adjunto va como texto DENTRO del sobre: sus comillas llegan escapadas, por eso no se busca '"ptr"' literal).
+  _routeBlobPointer(deviceId, senderUUID, messageId, content, ctrl, data, ackTo) {
+    var self = this;
+    if (!senderUUID || !messageId || typeof content !== 'string' || (data && data._blobResolved)) return false;
+    var ptrAtt = blobPointerIn(content, ctrl);
+    if (ptrAtt) { self._blobPointerReceived(deviceId, senderUUID, messageId, ptrAtt, data, ackTo); return true; }
+    if (content.indexOf('"nexo_grp"') >= 0 && content.indexOf('ptr') >= 0) {
+      var genvP = parseGroupEnvelope(content), gatt = genvP ? blobPointerIn(genvP.c) : null;
+      if (gatt) {
+        var grpP = self.groups ? self.groups.receive(genvP, senderUUID, messageId) : null;
+        if (!grpP) { console.warn('[GROUP] Sobre de grupo con puntero descartado (de ' + senderUUID + ')'); return true; }
+        self._blobPointerReceived(deviceId, senderUUID, messageId, gatt, data, ackTo, genvP);
+        return true;
+      }
+    }
+    return false;
+  },
+
   _handlePayload(data) {
     var self = this;
     (function() {
@@ -406,20 +430,7 @@ export const BLE_RECEIVE_METHODS = {
         // Fase B (build 2969): PUNTERO a un archivo del buzón de relés (adjunto con payload 'ptr'): se baja, verifica y descifra
         // ANTES de guardar/mostrar/confirmar — el ✓✓ significa «el archivo YA está en este teléfono». Solo 1-a-1 (grupo/Jump: Fase C).
         if (!isControl && senderUUID && messageId && !data._blobResolved) {
-          var ptrAtt = blobPointerIn(content, ctrl);
-          if (ptrAtt) { self._blobPointerReceived(deviceId, senderUUID, messageId, ptrAtt, data, ackTo); return; }
-          // Fase C (2971): puntero DENTRO de un sobre de GRUPO (foto/archivo al grupo subido UNA vez): el sobre se valida como
-          // un mensaje de grupo normal (miembro, grupo conocido) y se baja; al completar se reinyecta el sobre con el adjunto entero
-          // (el adjunto va como texto DENTRO del sobre: sus comillas llegan escapadas, por eso no se busca '"ptr"' literal)
-          if (content.indexOf('"nexo_grp"') >= 0 && content.indexOf('ptr') >= 0) {
-            var genvP = parseGroupEnvelope(content), gatt = genvP ? blobPointerIn(genvP.c) : null;
-            if (gatt) {
-              var grpP = (senderUUID && self.groups) ? self.groups.receive(genvP, senderUUID, messageId) : null;
-              if (!grpP) { console.warn('[GROUP] Sobre de grupo con puntero descartado (de ' + senderUUID + ')'); return; }
-              self._blobPointerReceived(deviceId, senderUUID, messageId, gatt, data, ackTo, genvP);
-              return;
-            }
-          }
+          if (self._routeBlobPointer(deviceId, senderUUID, messageId, content, ctrl, data, ackTo)) return;
           // Fase D (2972): AVISO («cita») de un archivo > 5 MB que no cabe en el buzón de archivos: marcador en el chat, «ya estoy» al
           // emisor (+ toque FCM) y toque mutuo; el archivo llega por el flujo directo cuando coinciden
           var citaAtt = citaIn(content, ctrl);
