@@ -21,6 +21,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **17-11 09:00 (México) — APK 3087 PUBLICADA (08:42; 3189–3194, el nativo nuevo compiló en el CI). APK subida con 3195–3198:**
+  editar mensajes (también en grupo; la barra de editar/responder estaba tapada desde la 3140), lupa en Contactos, archivo que salía dos
+  veces (3197), contador del resumen diario (3198). Pendientes: nativo NetBg en datos móviles (2 relés); reacciones y «eliminar para
+  todos» en grupos (propuesta); prueba del dueño de la 3087: reiniciar la tableta sin abrir NEXO y mandarle un mensaje.
 - **17-11 07:45 (México) — APK 3086 PUBLICADA (07:18; 3187–3191). APK subida con 3189, 3192, 3193, 3194:** NEXO vuelve sola (reinicio,
   actualización, alarma de vigilancia) y recibe por internet SIN la app (configuración de NetBg y claves del ✓✓ cifradas con AtRestStore,
   aprobado por el dueño 06:30); con datos móviles escucha 2 relés y sube 2 copias (aprobado 06:28; falta el nativo); botones de solicitudes
