@@ -9,6 +9,18 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 17-11 04:55 — #87: NEXO muere con una actualización de WebView (o de NEXO, o un reinicio) y NO vuelve sola
+- Diagnósticos de la tableta SM-T220 (3075) y del S24 (3082), dueño 17-11: la tableta con SOLO la pantalla apagada. A las 23:56 Google
+  Play actualizó Android System WebView → Android mató a NEXO («stop com.google.android.webview due to installPackageLI»; el S24 vio
+  caer el Wi-Fi con ella a las 23:56:35). Nada la revivió hasta que el dueño la abrió a las 04:46 (registro nativo vacío 23:07 → 04:46):
+  ~5 h sin recibir. En la tableta también el 15-11 07:41. `START_STICKY` no basta; no hay receptor de reinicio/actualización ni
+  alarma de vigilancia; solo un toque FCM la revive, y solo si alguien tiene algo pendiente para ella.
+- En curso **3189** (wtvuelta): NEXO vuelve sola tras MY_PACKAGE_REPLACED, BOOT_COMPLETED y una alarma de vigilancia cada ~15 min;
+  anota en el registro nativo «NEXO vuelve sola tras …». Prueba del dueño cuando salga: reiniciar la tableta SIN abrir NEXO y mandarle
+  un mensaje desde el S24.
+- Del mismo diagnóstico: **3187** (wtzombi) el S24 tardó 104 s en dar el zombi porque cada vuelta a la app ponía la cuenta a 0 (y el
+  aviso decía «2 pings» con un límite real de 4); **3188** (hecho, 0fd9bb18) el registro nativo anota si un relé vuelve a abrir.
+
 ## 🆕 17-11 00:05 — estudio de límites para EDC hecho (`docs/EDC_LIMITES.md`): espera orden del dueño
 - Se traba la interfaz antes que la memoria: con 500 NEXO alrededor el lag sube a 2,5 s y con 1000 la app se cuelga; culpa casi toda de
   redibujar «Agregar» con cada aviso del escaneo. Los contactos no tienen prioridad: con 10 contactos dormidos alrededor, otro contacto
