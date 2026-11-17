@@ -1790,6 +1790,10 @@
     {
      "fallo": "3164: la burbuja de texto recortaba la punta de la primera letra (overflow hidden + radio 12 para las fotos). emojigrande.js G4 (contraprueba 3161)",
      "prueba": "EMOJI GRANDE"
+    },
+    {
+     "fallo": "3182 (dueño 17-11, jugando «Defensor NEXO»: «ahí brinca mi navecita… es como hacer trampa»): tocar ponía la nave en el dedo y arrastrar la teletransportaba. 3182: arrastre relativo + velocidad máxima 650 px/s. juegotrampa.js (contraprueba b3174: 660 px de un toque)",
+     "prueba": "juego secreto sin trampa"
     }
    ],
    "debiles": [
