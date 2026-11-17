@@ -9,10 +9,11 @@ import { _getCurrentContactId } from './chat_format.js';
 import { t } from './i18n.js';
 
 // [pegamento] Lo que la cámara usa del resto de la app: main.js lo da al arrancar (cameraUse), antes de que se abra la cámara
-var _wdReach, _photoFast, _photoBridgeOnly, _waitForBLEReady, _sendAttachment, _closeAttachMenu, _releaseMedia, _handleGallery, _sendVideo;
+var _wdReach, _photoFast, _photoBridgeOnly, _waitForBLEReady, _sendAttachment, _closeAttachMenu, _releaseMedia, _handleGallery, _sendVideo, _reviewAndSendPhotos;
 export function cameraUse(d) {
   _wdReach = d._wdReach; _photoFast = d._photoFast; _photoBridgeOnly = d._photoBridgeOnly; _waitForBLEReady = d._waitForBLEReady; _sendAttachment = d._sendAttachment;
   _closeAttachMenu = d._closeAttachMenu; _releaseMedia = d._releaseMedia; _handleGallery = d._handleGallery; _sendVideo = d._sendVideo;
+  _reviewAndSendPhotos = d._reviewAndSendPhotos;
 } // [/pegamento]
 
 
@@ -35,11 +36,12 @@ export var _cameraTorchOn = false;
 export var _cameraReview = null;     // { type: 'photo'|'video', b64, w, h, blob, url, mime, duration }
 var _cameraReviewOnce = false;       // #94 «ver una vez»: la foto (o, desde la 3163, el vídeo) en revisión se marcó para verse una sola vez
 
-export function _showCameraPreviewOverlay() {
+// mode: 'video' para abrirla en VÍDEO (3171: al salir de la cámara del teléfono sin tomar foto); si no, en FOTO como siempre
+export function _showCameraPreviewOverlay(mode) {
   var overlay = document.getElementById('camera-preview-overlay');
   if (!overlay) return;
   overlay.classList.remove('hidden');
-  _cameraPreviewMode = 'photo';
+  _cameraPreviewMode = mode === 'video' ? 'video' : 'photo';
   _cameraPreviewRecording = false;
   _cameraPreviewVideoChunks = [];
   _cameraVideoStartTime = 0;
@@ -411,12 +413,95 @@ export function _bindCameraPreviewHandlers() {
   on('cam-review-send', _sendReview);
 }
 
-export async function _handleCamera() {
-  _closeAttachMenu();
+// ===================== 3171: la foto con la cámara del propio teléfono =====================
+// 3171 (dueño 17-11: «las fotos se ven mal»; aprobó la opción A). Hasta la 3170 la foto de NEXO era un cuadro del vídeo de la vista
+// previa (getUserMedia, ≤ 1080p): sin el modo noche ni el procesado del teléfono (una foto nocturna del S24 Ultra salía muy mal).
+// Ahora «Cámara» abre DIRECTO la cámara del teléfono (@capacitor/camera: su propia app, calidad completa, modo noche); al volver, la
+// foto pasa por la revisión «Antes de enviar» de la galería (con el ojo «ver una vez») y sale por el mismo camino que una foto de la
+// galería (pickers.js: _photoTarget, tope de 5 MB, miniatura). Si el usuario sale de la cámara del teléfono sin tomar foto, queda en
+// la cámara de NEXO abierta en VÍDEO (para grabar); sin el plugin (navegador, simulador) o si falla, la cámara de NEXO como antes.
+// Lo que hace el plugin nativo (CameraPlugin 5.0.10, node_modules/@capacitor/camera) y por qué se le pide así:
+//  - base64 y no 'uri': con base64 borra su archivo temporal (Android/data/<app>/files/Pictures, ver file_paths.xml); con 'uri' lo
+//    deja en el teléfono, uno por cada foto, hasta desinstalar. Y así la foto no hay que leerla con fetch.
+//  - Al reducir no suaviza (Bitmap.createScaledBitmap(…, false): vecino más cercano, dientes de sierra): se le pide el DOBLE del lado
+//    final y la última mitad la hace el lienzo con suavizado (_compressImageBase64). Medido en Chromium con una imagen de prueba
+//    (degradado, líneas, texto y ruido) frente a una reducción de calidad: 4000→1600 sin suavizar, 25,6 dB; 4000→3200 sin suavizar
+//    y el lienzo a 1600, 30,7 dB (la galería, 4000→1600 con el lienzo, 30,5 dB).
+//  - La foto que sale no lleva EXIF (ni GPS): el plugin la recomprime sin él y el lienzo también.
+//  - El Bluetooth NO se pausa mientras está la cámara del teléfono (la pausa es para la vista previa propia de NEXO).
+var PHONE_CAM_QUALITY = 90;          // la foto intermedia (≤ 3200 px); la final la recomprime _photoTarget (82/75/65 %)
+var _phoneCamAt = 0;                 // un toque doble no abre dos cámaras (se olvida al minuto por si la respuesta se pierde)
+
+function _phoneCamera() {
+  try {
+    var P = window.Capacitor && window.Capacitor.Plugins;
+    var cam = P && P.Camera;
+    return cam && typeof cam.getPhoto === 'function' ? cam : null;
+  } catch (e) { return null; }
+}
+
+function _phonePhotoFile(b64) {
+  var bin = atob(b64), n = bin.length, bytes = new Uint8Array(n);
+  for (var i = 0; i < n; i++) bytes[i] = bin.charCodeAt(i);
+  var d = new Date(), p = function(x) { return (x < 10 ? '0' : '') + x; };
+  var name = 'IMG_' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '.jpg';
+  return new File([bytes], name, { type: 'image/jpeg' });
+}
+
+// 'foto' (tomada: ya está la revisión) | 'cancelada' (salió sin tomar foto) | 'error'
+function _phonePhoto(cam) {
+  var side = _photoTarget(_getCurrentContactId()).max * 2;
+  console.log('[CAMERA] Cámara del teléfono (lado ≤ ' + side + ' px)');
+  return Promise.resolve().then(function() {
+    return cam.getPhoto({ source: 'CAMERA', resultType: 'base64', quality: PHONE_CAM_QUALITY, width: side, height: side,
+      correctOrientation: true, saveToGallery: false, allowEditing: false });
+  }).then(function(res) {
+    var b64 = res && res.base64String;
+    if (!b64) throw new Error('la cámara del teléfono no devolvió la foto');
+    var file = _phonePhotoFile(b64);
+    console.log('[CAMERA] Foto del teléfono: ' + Math.round(file.size / 1024) + ' KB');
+    _reviewAndSendPhotos([file]);
+    return 'foto';
+  }).catch(function(e) {
+    var m = String((e && e.message) || e || '');
+    if (/cancel/i.test(m)) { console.log('[CAMERA] Cámara del teléfono: salió sin tomar foto → cámara de NEXO en vídeo'); return 'cancelada'; }
+    console.warn('[CAMERA] Cámara del teléfono: ' + m + ' → cámara de NEXO');
+    return 'error';
+  });
+}
+
+// Al volver de la cámara del teléfono: esperar a estar en pantalla y un respiro para que la otra app suelte la cámara
+function _backInFront(ms) {
+  return new Promise(function(resolve) {
+    var t0 = Date.now();
+    (function poll() {
+      if (document.visibilityState !== 'hidden' || Date.now() - t0 > 3000) { setTimeout(resolve, ms); return; }
+      setTimeout(poll, 100);
+    })();
+  });
+}
+
+async function _openNexoCamera(mode) {
   _pauseBleForCamera();
   await new Promise(function(r) { setTimeout(r, 200); });
-  _showCameraPreviewOverlay();
+  _showCameraPreviewOverlay(mode);
   _startCameraPreview();
+}
+
+export async function _handleCamera() {
+  _closeAttachMenu();
+  var cam = _phoneCamera();
+  if (cam && typeof _reviewAndSendPhotos === 'function') {
+    if (Date.now() - _phoneCamAt < 60000) { console.log('[CAMERA] La cámara del teléfono ya se está abriendo'); return; }
+    _phoneCamAt = Date.now();
+    var got;
+    try { got = await _phonePhoto(cam); } finally { _phoneCamAt = 0; }
+    if (got === 'foto') return;
+    await _backInFront(400);
+    await _openNexoCamera(got === 'cancelada' ? 'video' : 'photo');
+    return;
+  }
+  await _openNexoCamera('photo');
 }
 
 export var CAMERA_HD_BPS = 1500000;         // grabación 720p a 1,5 Mbps (antes ~2,5 por defecto)

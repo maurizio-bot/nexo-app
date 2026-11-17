@@ -80,8 +80,15 @@ export async function _handleGallery() {
     // (meta.once) y la burbuja del miembro la consume igual (como la foto de la cámara). 3163 (dueño 16-11: «hay que aplicar lo de
     // una sola vista a vídeos también»): los vídeos también llevan ojo, así que la revisión sale siempre (aunque solo haya vídeos).
     if (!picked.send.length) return;
-    _openGalleryReview(picked.send, { eyes: true }, function(once) { _sendGalleryItems(picked.send, 0, once); });
+    _reviewAndSendPhotos(picked.send);
   }, true);
+}
+
+// La revisión «Antes de enviar» (con el ojo «ver una vez») y el envío de lo elegido, de a una. 3171 (dueño 17-11: «las fotos se ven
+// mal»; opción A): la foto tomada con la cámara del propio teléfono (camera.js, _handleCamera) entra por aquí igual que una de la
+// galería: misma revisión, mismo tamaño por camino (_photoTarget), mismo tope de 5 MB y misma miniatura.
+export function _reviewAndSendPhotos(files) {
+  return _openGalleryReview(files, { eyes: true }, function(once) { _sendGalleryItems(files, 0, once); });
 }
 
 // Build 2961: mandar las fotos elegidas DE A UNA por dentro — leer → comprimir → mandar la actual, y recién ENTONCES la

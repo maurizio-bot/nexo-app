@@ -159,7 +159,7 @@ import { _renderE2EBanner, _onSafetyQr } from './ui/e2e_banner.js';
 import { _msgContactMap, readReceiptsOn } from './ui/chat_state.js';
 import { _closeFullscreenMedia, _openFullscreenMedia, _thumbsInProgress, _buildFileCard, _openingFile, _openAttachmentFile, _ensurePdfThumb, _ensureVideoThumb } from './ui/file_card.js';
 import { _clearMessageContainer, _setupBackButton, _setupSwipeBack, _chatNavToken, _doChatBack } from './ui/chat_nav.js';
-import { pickersUse, _pendingPicker, _pickFile, _readFailed, _handleGallery, _handleFile } from './ui/pickers.js';
+import { pickersUse, _pendingPicker, _pickFile, _readFailed, _handleGallery, _handleFile, _reviewAndSendPhotos } from './ui/pickers.js';
 import { _renderedMessageCount, _getContactStorageKey, _saveMessageToStorage, _updateMessageStorageStatus, HISTORY_PAGE, _olderMessages, _olderContactId, _loadingOlder, _suppressAutoScroll, _olderArmed, _bindOlderMessagesScroll, _loadOlderMessages, _loadPersistedMessages, _scrollPending, _scheduleScrollToBottom, _renderMessage, _removeIncomingPlaceholder, _hdProgress, _onFileProgress, _updateMessageStatus } from './ui/render.js';
 import { _waitForBLEReady, _sendAttachment, _sendFileFor, _sendTextTo, _noteContactMessage, _sendBigFile, _photoFast, _photoBridgeOnly } from './ui/send.js';
 import { appSetupUse, _bindAttachmentHandlers, _showPermissionOverlay, _hidePermissionOverlay, _ensureDOMStructure, _fixLogoPath, _setupMessageInput, _setupVaultToggle, _setupChatHeader, _setupKeyboardShortcuts, _setupJumpButton, _setupFABButton, _toggleVaultUI, _focusInput, _forceHideSplash, _enableFallbackMode } from './ui/app_setup.js';
@@ -171,7 +171,7 @@ chatActionsUse({ /* [pegamento] */ _renderMessage: _renderMessage, _sendAttachme
 voiceUse({ /* [pegamento] */ _sendAttachment: _sendAttachment });
 profileUse({ /* [pegamento] */ _showInfoToast: _showInfoToast });
 wallpaperUse({ /* [pegamento] */ _showInfoToast: _showInfoToast }); // ronda 2890: aviso del fondo por chat
-cameraUse({ /* [pegamento] */ _wdReach: _wdReach, _photoFast: _photoFast, _photoBridgeOnly: _photoBridgeOnly, _waitForBLEReady: _waitForBLEReady, _sendAttachment: _sendAttachment, _closeAttachMenu: _closeAttachMenu, _releaseMedia: _releaseMedia, _handleGallery: _handleGallery, _sendVideo: _sendVideo });
+cameraUse({ /* [pegamento] */ _wdReach: _wdReach, _photoFast: _photoFast, _photoBridgeOnly: _photoBridgeOnly, _waitForBLEReady: _waitForBLEReady, _sendAttachment: _sendAttachment, _closeAttachMenu: _closeAttachMenu, _releaseMedia: _releaseMedia, _handleGallery: _handleGallery, _sendVideo: _sendVideo, _reviewAndSendPhotos: _reviewAndSendPhotos });
 
 try {
   NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
