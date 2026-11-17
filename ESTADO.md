@@ -21,6 +21,13 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **17-11 11:45 (México) — APK 3089 FALLÓ en el CI** solo por la prueba de TAMAÑO: `src/ui/estados.js` llegó a 1.090 líneas con
+  3200. Partido con `tools/partir_extraer.cjs`: la ventana «Mi estado» (publicar: texto, foto, audio, video) pasa TAL CUAL a
+  `src/ui/estados_compose.js` (estados.js 888 líneas; `partir_check` 132/132 piezas iguales; pruebas de estados, 3200, 5 idiomas y
+  tamaño OK). **APK 3090 subida con 3195–3204** (las novedades de la 3088/3089 siguen en el bloque; 3203 freno de GATT + una sola
+  publicidad por ráfaga, 3204 NetBg con 2 relés en datos). Archivo suelto `/n_videounavez.txt` en la raíz (lo dejó un ayudante; el
+  freno de seguridad no dejó borrarlo): avisado al dueño. Hueco conocido de 3204: al abrir la app en Wi-Fi no se piden los eventos que
+  quedaron solo en relés soltados (netBgDrain tendría que pasar los relés pendientes).
 - **17-11 10:25 (México) — APK 3088 FALLÓ en el CI** (bigsend: error de una ventana ya cerrada en la prueba; arreglado en 3202). **APK
   subida con 3195–3202:** editar mensajes, lupa, archivo doble, contador del resumen, foto de Galería que no salía (3199, Roberto),
   videos y audios de estado que NUNCA se veían por la CSP (3200; el dueño: «sí o sí»), miniatura del mapa en la ubicación (3201,
