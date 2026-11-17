@@ -52,7 +52,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Resúmenes del 15-11 (build 3070): el S24 tardó en tener internet listo 13,7 s de media (máx. 119 s, 21 veces); el S23 gastó 11,6 %/h de batería en segundo plano (todo el teléfono) y 50,9 MB de datos móviles en NEXO. Revisar en cuanto haya diagnóstico de la 3073.
 - Entrega con la app CERRADA y la pantalla APAGADA: no suena ni avisa (#87; PENDIENTES 14-11 noche, «Pruebas del dueño con la 3052»). ×3
 - Puente nativo: que preste internet un teléfono con la app dormida (opción A, 3073+; PENDIENTES 13-11 y 16-11 03:17). ×3
-- Modo multitud: cientos de NEXO cerca, primero los contactos (meta EDC; ESTADO 15-11). ×3
+- Modo multitud: cientos de NEXO cerca, primero los contactos (meta EDC; ESTADO 15-11). Estudio en `docs/EDC_LIMITES.md`; hecho el n.º 1 (3184, «Agregar» con freno: 500 NEXO CPU 95 % → 18 %); faltan el gestor de enlaces con prioridad de contactos y los demás (esperan al dueño). ×3
 - Comprobación de identidad en la Wi-Fi contestada por el nativo con la app dormida (decisión del dueño, PENDIENTES 14-11 noche). ×2
 - Batería de un día entero: latido del Wi-Fi cada 4 s, medir al final del día (PENDIENTES 15-11 tarde; robustez.json «caminos»). ×2
 - Causa raíz del estado de cifrado que vuelve atrás (Nubia; PENDIENTES 13-11, 3067). ×1

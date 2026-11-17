@@ -140,6 +140,10 @@
     {
      "fallo": "3129 (PLAN etapa 2): no había forma de invitar a alguien lejano con un enlace; el campo «Agregar por NEXO ID» cortaba lo pegado a 10 letras. 3129: enlace de invitación (código de un uso, 7 días) por WhatsApp/TikTok/Más; pegar el enlace o el texto entero agrega; la solicitud llega marcada y se acepta a mano. invitacion.js",
      "prueba": "ENLACE DE INVITACIÓN (3129"
+    },
+    {
+     "fallo": "3184 (estudio EDC 17-11): en una multitud «Agregar» se rehacía entero con cada aviso del escaneo, aunque estuviera cerrado: con 500 NEXO CPU 95 % y lag de 8 s. 3184: dibujo agrupado (≤ 2/s abierto, 1 cada 3 s cerrado), ≤ 30 filas: CPU 18 %, lag 0,14 s. agregarfreno.js (contraprueba 344586ad)",
+     "prueba": "3184 (estudio EDC 17-11: en una multitud «Agregar»"
     }
    ],
    "debiles": [
@@ -1063,6 +1067,10 @@
     {
      "fallo": "3174 (dueño 17-11, diagnóstico S24 19:49: textos a 14 s con datos móviles trabados): un envío esperaba 12 s el OK de algún relé antes de reconectar. 3174: a los 3 s sin nada de ningún relé, una comprobación; 2 s más sin respuesta → reconectar y reintentar (~5 s); con un relé que conteste, como antes. relaytrabado.js (contraprueba faa6b43a: 13,3 s; ahora 6,3 s)",
      "prueba": "datos móviles trabados: darse cuenta en ~5 s"
+    },
+    {
+     "fallo": "3185 (diagnósticos de Yaelito 15-11): «internet listo en» contaba el tiempo con el teléfono SIN red (media 90 s, hasta 452 s). 3185: sin red el reloj se para y se mide desde que vuelve, una sola medida. internetlisto.js (contraprueba b3180: 28–30 s y 3 medidas)",
+     "prueba": "medida «internet listo» sin contar el tiempo SIN RED"
     }
    ],
    "debiles": [
@@ -1814,6 +1822,10 @@
     {
      "fallo": "3181 (dueño 17-11): 47 de 134 botones con respuesta distinta (cuadrado en los de llamada). pressall.js (contraprueba 2884c687)",
      "prueba": "la MISMA respuesta al dedo en TODOS los botones (3"
+    },
+    {
+     "fallo": "3186 (revisión de botones 17-11): al grabar una nota de voz con la pista «Desliza para cancelar», la barra medía ~415 px y cortaba 🗑 y ➤. vozbarra.js en 5 idiomas a 360 y 320 px (contraprueba cce7565c)",
+     "prueba": "3186 (revisión de botones 17-11: la barra de la not"
     }
    ],
    "debiles": [
