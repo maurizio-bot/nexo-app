@@ -652,7 +652,7 @@ export class BleAckSystem {
       this.pendingAcks.delete(msgId);
       // 3211: ya salió por el buzón de internet (red de seguridad): está en camino (✓), no fallido (✗); su confirmación llega por ahí
       var inBox = !!(this.ble && this.ble._netSafeOut && this.ble._netSafeOut.has(msgId));
-      entry.reject(Object.assign(new Error(inBox ? 'En el buzón de internet' : 'ACK timeout'), inBox ? { code: 'IN_MAILBOX' } : {}));
+      entry.reject(Object.assign(new Error(inBox ? 'En el buzón de internet' : 'ACK timeout'), inBox ? { code: 'IN_MAILBOX' } : {})); // i18n-ok: motivo interno
       if (!entry.quiet) this._dispatchStatus(msgId, inBox ? 'sent' : 'failed');
     }
   }
