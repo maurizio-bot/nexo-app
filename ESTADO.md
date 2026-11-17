@@ -21,6 +21,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **17-11 04:30 (México) — APK 3084 PUBLICADA (01:24; 3178–3180). APK subida con 3184–3186:** «Agregar» con freno para multitudes
+  (estudio EDC n.º 1: 500 NEXO, CPU 95 % → 18 %), «internet listo» sin contar el tiempo sin red (3185, solo diagnóstico) y la barra de la
+  nota de voz que cortaba 🗑/➤ (3186). pressall falló 1 vez con la máquina cargada (botón «1×», 129 casos) y pasó 2 veces (134/134).
+  En curso: 3187 (wtzombi: la cuenta de pings sin respuesta volvía a 0 en cada vuelta a la app; diagnóstico S24 04:04, zombi con la
+  tableta a los 104 s). Esperan al dueño: AYNI, 2 relés en datos móviles, cambios grandes de EDC, dirección del logo.
 - **17-11 00:20 (México) — APK 3083 PUBLICADA (00:11; 3175–3183). APK subida con 3178–3180** (acuses de leído/✓✓ que se reintentan,
   bajadas del buzón al tener internet propio, cola de «Bluetooth ocupado»; ciudad semilla 1: leído que no vuelve 10 → 0, perdidos 2 → 0).
   Estudio EDC hecho: `docs/EDC_LIMITES.md` (en curso 3184 «Agregar» con freno, wtagregar; los grandes esperan al dueño). Nombre: AYNI
