@@ -30,7 +30,7 @@ class NetBg(
     private val onCallEnd: (nx: String, offerId: String) -> Unit = { _, _ -> },
 ) {
     class Contact(val nx: String, val name: String, val kraw: ByteArray)
-    private class Relay(val url: String) { var ws: WsClient? = null; var retryAt = 0L; var fails = 0; var authed = false; var openedAt = 0L }
+    private class Relay(val url: String) { var ws: WsClient? = null; var retryAt = 0L; var fails = 0; var authed = false; var openedAt = 0L; var closedAt = 0L }
 
     companion object {
         const val FOR_APP_MAX = 500                    // 3033: eventos guardados para la app como mucho
@@ -45,6 +45,15 @@ class NetBg(
         // Fallos tras cerrarse una conexión que duró `livedMs` (0 = no llegó a abrir)
         fun failsAfterClose(fails: Int, livedMs: Long): Int = (if (livedMs >= RELAY_STABLE_MS) 0 else fails) + 1
         fun retryDelayMs(fails: Int): Long = minOf(300000L, 5000L * (1L shl minOf(fails, 6)))
+        // 3188 (diagnóstico automático S24 3082 17-11 04:04): de noche se cerraron 3 de los 4 relés (00:14, 00:14, 01:43) y el registro
+        // no decía si volvían: solo se anotaba el cierre (abrir de nuevo y los intentos fallidos eran mudos). Ahora se anota la vuelta
+        // («abierta otra vez tras N min») y los intentos fallidos 1, 2, 4, 8, 16… (una noche con la red caída: ~7 líneas por relé).
+        fun logFailedTry(fails: Int): Boolean = fails > 0 && (fails <= 2 || (fails and (fails - 1)) == 0)
+        fun reopenNote(closedAt: Long, now: Long): String? {
+            if (closedAt <= 0L || now < closedAt) return null
+            val s = (now - closedAt) / 1000
+            return if (s < 120) "abierta otra vez tras $s s" else "abierta otra vez tras ${s / 60} min"
+        }
         private val GID = Regex("^gr[0-9a-z]{8}$")
         // 3076: id del grupo del mensaje que va dentro del sobre (p = sobre type:'chat' con g), o "" (1-a-1, o no se entiende)
         fun groupOf(p: String): String {
@@ -167,7 +176,7 @@ class NetBg(
     fun stop() {
         if (!running) return
         running = false
-        synchronized(lock) { lock.notifyAll(); relays.values.forEach { it.ws?.close(); it.ws = null; it.authed = false } }
+        synchronized(lock) { lock.notifyAll(); relays.values.forEach { it.ws?.close(); it.ws = null; it.authed = false; it.closedAt = 0L } }
         log("Internet en segundo plano: parado (la app vuelve a encargarse)")
     }
     fun lastSeen() = since
@@ -207,6 +216,7 @@ class NetBg(
             val ws = WsClient(r.url, { onRelayText(r, it) }, { why ->
                 val now = System.currentTimeMillis()
                 r.ws = null
+                if (r.openedAt > 0 && running) r.closedAt = now // al pararse NetBg (vuelve la app) no cuenta como caída
                 r.fails = failsAfterClose(r.fails, if (r.openedAt > 0) now - r.openedAt else 0L)
                 r.retryAt = now + retryDelayMs(r.fails)
                 if (running) log("Relé ${r.url}: $why" + (if (r.fails > 1) " (intento nº ${r.fails}: el siguiente en ${retryDelayMs(r.fails) / 1000} s)" else ""))
@@ -214,11 +224,15 @@ class NetBg(
             r.ws = ws
             ws.connect()
             r.openedAt = System.currentTimeMillis() // 3069: abrir no basta para dar el relé por bueno (ver RELAY_STABLE_MS)
+            val note = reopenNote(r.closedAt, r.openedAt)
+            r.closedAt = 0L
+            if (note != null && running) log("Relé ${r.url}: $note")
             subscribe(r)
         } catch (e: Exception) {
             r.ws = null
             r.fails = failsAfterClose(r.fails, 0L)
             r.retryAt = System.currentTimeMillis() + retryDelayMs(r.fails)
+            if (running && r.closedAt > 0 && logFailedTry(r.fails)) log("Relé ${r.url}: no se pudo abrir otra vez (intento nº ${r.fails}: el siguiente en ${retryDelayMs(r.fails) / 1000} s; ${e.javaClass.simpleName})")
         }
     }
 

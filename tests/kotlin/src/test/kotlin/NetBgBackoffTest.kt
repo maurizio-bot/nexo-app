@@ -37,3 +37,23 @@ class NetBgBackoffTest {
         assertEquals(listOf(10_000L, 20_000L, 40_000L), waits(3, 0L))
     }
 }
+
+// 3188 (diagnóstico automático S24 3082 17-11 04:04): de noche se cerraron 3 de los 4 relés y el registro nativo no decía si volvían.
+class NetBgReopenLogTest {
+    @Test fun anotaLaVueltaConElTiempoCerrado() {
+        assertEquals(null, NetBg.reopenNote(0L, 1_000L))            // primera conexión: nada que anotar
+        assertEquals("abierta otra vez tras 10 s", NetBg.reopenNote(1_000L, 11_000L))
+        assertEquals("abierta otra vez tras 89 min", NetBg.reopenNote(0L + 1L, 1L + 89L * 60_000L))
+        assertEquals(null, NetBg.reopenNote(5_000L, 4_000L))        // reloj hacia atrás: no se inventa nada
+    }
+
+    @Test fun intentosFallidosSinLlenarElRegistro() {
+        val anotados = (1..100).filter { NetBg.logFailedTry(it) }
+        assertEquals(listOf(1, 2, 4, 8, 16, 32, 64), anotados)
+        assertTrue(!NetBg.logFailedTry(0))
+        // una noche entera con la red caída (esperas de hasta 5 min, ~8 h): ~100 intentos → 7 líneas por relé
+        var t = 0L; var fails = 0; var lineas = 0
+        while (t < 8 * 3_600_000L) { fails = NetBg.failsAfterClose(fails, 0L); if (NetBg.logFailedTry(fails)) lineas++; t += NetBg.retryDelayMs(fails) }
+        assertTrue(lineas <= 8, "líneas en 8 h: $lineas")
+    }
+}
