@@ -28,6 +28,16 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   servidor GATT cada 36 s durante 14 min con la app en segundo plano (gasto de radio y batería; ¿Zhelowsky 3026, versión vieja?): falta
   freno en el lado servidor; (3) al volver a la app, 24 `startAdvertising` seguidos (uno por cada desconexión acumulada): agrupar.
 
+## 🆕 17-11 14:35 — diagnósticos automáticos de la tarde (Roberto 3090, Marcos 3043, nx126df3f4 3073)
+- Roberto (3090): el video de estado YA sale (webm 1,7 MB, vista previa bien, subido una vez al buzón de archivos en 43 trozos). El
+  «zombi» con Austin (HONOR 3087) fue el vigilante normal: 4 pings sin respuesta al volver a la app → desconecta y reconecta.
+- **Investigar (datos en Wi-Fi):** Roberto bajó 8,1 MB de los relés en 9 min al abrir (nos.lol 7,4 MB; 816 eventos, 583 repetidos
+  de 1,2 MB → ~233 nuevos de ~30 KB cada uno); nx126df3f4 (3073) gastó 28,7 MB en un día con 18 textos. Sospecha: copias de Fénix
+  (medios de contactos: «Guardo el medio … 55 KB») y medios de estados. Medir en el simulador cuánto baja un teléfono al abrir con
+  varios contactos activos y de qué tipo es cada evento; con datos móviles ya se limita (3193/3204).
+- Marcos (3043): la descarga de la 3090 se cortó por 3 s sin Wi-Fi → 3208 (reintento solo). Hay que actualizar: Zhelowsky (3026),
+  Marcos (3043), nubia NX10B6F4AC (3086; además se cerró a la fuerza desde recientes y tiene la batería optimizada).
+
 ## 🆕 17-11 06:28 — dueño «Ok» a 2 conexiones y 2 copias con datos móviles
 - Diagnóstico S24 06:01 (entrega lenta de una nota de voz al S23 3080, 128 s): del lado del S23 (versión vieja); la subida fue a 6,8 KB/s
   porque cada trozo va a 3 relés, y 1,5 MB de 2,5 MB bajados eran repetidos. Aprobado: con datos móviles escuchar 2 relés (seguir
