@@ -15,7 +15,7 @@
 // Control del juez: --sabotaje=pierde|duplica|corrompe estropea A PROPÓSITO un mensaje recibido en el disco de un teléfono (lo
 // quita, lo copia con otro id o cambia un byte) y lo reinicia: el juez TIENE que encontrarlo (si no, el juez está mal).
 // Uso: node ciudad.js <dir_build> [--n=12] [--seed=1] [--min=10] [--final=4] [--ritmo=20] [--sabotaje=pierde|duplica|corrompe]
-//      [--logs=last_logs_ciudad.txt]   Salida: línea «CIUDAD {json}» y código 0 (OK) / 1 (FALLO).
+//      [--final-red=wifi|datos] [--logs=last_logs_ciudad.txt] [--solo-guion]   Salida: línea «CIUDAD {json}» y código 0 (OK) / 1 (FALLO).
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -53,11 +53,13 @@ const T0 = Date.now();
 const tsec = () => (Date.now() - T0) / 1000;
 const ts = () => tsec().toFixed(1).padStart(7) + 's';
 const LOG = [];
-function log(name, lvl, msg) { LOG.push(ts() + ' [' + name + '] ' + lvl + ': ' + msg); }
+const LOGW = fs.createWriteStream(LOGF);   // a disco según pasa (si la máquina se reinicia, queda lo que hubo)
+function log(name, lvl, msg) { const l = ts() + ' [' + name + '] ' + lvl + ': ' + msg; LOG.push(l); LOGW.write(l + '\n'); }
 const sim = (msg) => log('SIM', 'info', msg);
 process.on('unhandledRejection', (e) => log('NODE', 'UNHANDLED', String(e && (e.stack || e.message) || e).split('\n').slice(0, 3).join(' | ')));
 process.on('uncaughtException', (e) => log('NODE', 'UNCAUGHT', String(e && (e.stack || e.message) || e).split('\n').slice(0, 3).join(' | ')));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const TAG = (p) => 'p=' + p.name + '_';   // etiqueta de las conexiones a los relés de un teléfono (ver boot)
 class DL extends ResourceLoader { constructor(d) { super(); this.d = d; } fetch(u) { const f = path.join(this.d, decodeURIComponent(new URL(u).pathname)); return fs.existsSync(f) ? Promise.resolve(fs.readFileSync(f)) : Promise.reject(new Error('x')); } }
 class NoNetWS { constructor(u) { this.url = u; this.readyState = 0; setTimeout(() => { this.readyState = 3; if (this.onerror) this.onerror({}); if (this.onclose) this.onclose({ code: 1006 }); }, 30); } send() { throw new Error('sin red'); } close() {} addEventListener() {} removeEventListener() {} }
 
@@ -160,7 +162,9 @@ async function boot(p) {
   const dom = new JSDOM(html, {
     url: 'https://' + p.name.toLowerCase() + '.nexo.test/index.html', runScripts: 'dangerously', resources: new DL(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(win) {
-      win.NEXO_NET_RELAYS = RELAYS.map((u) => u + '/?p=' + p.name + '&z');
+      // Las mismas direcciones de relé para todos (como los relés públicos); la etiqueta del teléfono que ABRE la conexión va solo en
+      // la conexión real (así el simulador corta/duerme las conexiones de ese teléfono y no las que otro abrió al mismo relé)
+      win.NEXO_NET_RELAYS = RELAYS.slice();
       win.CapacitorCustomPlatform = { name: 'android' }; installWebCrypto(win);
       win.Capacitor = { Plugins: { NexoBLE: p.native.plugin() } };
       win.HTMLElement.prototype.scrollTo = function () {};
@@ -181,7 +185,8 @@ async function boot(p) {
       };
       // Internet que se va y vuelve: sin red, ninguna conexión nueva a los relés abre
       const Real = win.WebSocket;
-      const WS = function (u, pr) { if (p.noNet) return new NoNetWS(u); return pr ? new Real(u, pr) : new Real(u); };
+      const tagged = (u) => { try { const x = new URL(String(u)); if (x.hostname === '127.0.0.1') { x.searchParams.set('p', p.name + '_'); return x.toString(); } } catch (e) {} return u; };
+      const WS = function (u, pr) { if (p.noNet) return new NoNetWS(u); return pr ? new Real(tagged(u), pr) : new Real(tagged(u)); };
       WS.CONNECTING = 0; WS.OPEN = 1; WS.CLOSING = 2; WS.CLOSED = 3; WS.prototype = Real.prototype;
       win.WebSocket = WS;
       // localStorage del teléfono: sigue tras cerrar y reabrir la app (en jsdom cada ventana empieza vacía)
@@ -216,6 +221,7 @@ function viaOf(d) {
   if (/^lan:/i.test(id)) return 'wifi';
   if (/^net:/i.test(id)) return d._blobResolved ? 'internet(buzón)' : 'internet';
   if (d.source === 'closed') return 'bluetooth(app cerrada)';
+  if (!id) return 'reenviado (Jump/puente, sin dispositivo)';
   return /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/i.test(id) ? 'bluetooth' : 'otro:' + id.substring(0, 6);
 }
 function hookPhone(p) {
@@ -266,7 +272,7 @@ function applyNet(p, t, force) {
   const want = desiredNet(p, t);
   if (!force && want.type === p.net.type && want.zone === p.net.zone) return;
   const prev = p.net; p.net = want; WORLD.cambios_red++;
-  relays.forEach((r) => r.muteTag('p=' + p.name + '&'));      // las conexiones de la red anterior quedan colgadas (mudas)
+  relays.forEach((r) => r.muteTag(TAG(p)));      // las conexiones de la red anterior quedan colgadas (mudas)
   p.noNet = want.type === 'none';
   p.native.setNetwork(want.type, want.zone);                    // Kotlin onNetChange (+ Wi-Fi local de esa red)
   sim(p.name + ' red ' + (prev.type + (prev.zone ? ':' + prev.zone : '')) + ' → ' + (want.type + (want.zone ? ':' + want.zone : '')));
@@ -283,7 +289,7 @@ function applyRange(t) {
 async function closeApp(p) {
   try { await p.win.vaultFlushAll(); } catch (e) {}
   try { const ls = p.win.localStorage; p.ls = {}; for (let i = 0; i < ls.length; i++) { const k = ls.key(i); p.ls[k] = ls.getItem(k); } } catch (e) {}
-  relays.forEach((r) => r.muteTag('p=' + p.name + '&'));
+  relays.forEach((r) => r.muteTag(TAG(p)));
   try { p.win.bleInterface.net._closeAll(); } catch (e) {}
   try { p.win.close(); } catch (e) {}
   p.native.destroyActivity();
@@ -300,12 +306,12 @@ async function lifeStep(p, t) {
   try {
     // salir del estado actual
     if (cur === 'fondo') setVis(p, true);
-    else if (cur === 'dormida') { p.native.setFrozen(false); relays.forEach((r) => r.wakeTag('p=' + p.name + '&')); setVis(p, true); }
+    else if (cur === 'dormida') { p.native.setFrozen(false); relays.forEach((r) => r.wakeTag(TAG(p))); setVis(p, true); }
     else if (cur === 'cerrada') { sim(p.name + ' reabre la app'); WORLD.app_reabre++; await openApp(p); }
     p.app = 'fg';
     // entrar en el nuevo
     if (want === 'fondo') { setVis(p, false); p.app = 'fondo'; }
-    else if (want === 'dormida') { setVis(p, false); p.native.setFrozen(true); relays.forEach((r) => r.sleepTag('p=' + p.name + '&')); p.app = 'dormida'; }
+    else if (want === 'dormida') { setVis(p, false); p.native.setFrozen(true); relays.forEach((r) => r.sleepTag(TAG(p))); p.app = 'dormida'; }
     else if (want === 'cerrada') { await closeApp(p); }
     if (want !== 'fg') { sim(p.name + ' app → ' + want); WORLD['app_' + want]++; }
     else if (cur !== 'cerrada') sim(p.name + ' app → primer plano');
@@ -373,7 +379,7 @@ const GROUPS = []; // { gid, name, creator, members:[nx] }
 
 // ---------- acciones ----------
 function contactList(p) { return Array.from(p.contacts).sort(); }
-function groupList(p) { return Array.from(p.groups).sort(); }
+function groupList(p) { return Array.from(p.groups).sort().filter((g) => { try { return !!(p.win && p.win.bleInterface.groups.isGroup(g)); } catch (e) { return false; } }); }
 async function actText(p, a, long, inGroup) {
   const cid = inGroup ? pick(() => a.r[0], groupList(p)) : pick(() => a.r[0], contactList(p));
   if (!cid) return 'sin_chat';
@@ -686,7 +692,7 @@ async function sabotage() {
     sim('SABOTAJE ' + SAB + ' en el disco de ' + vic.name + ': #' + r.id + ' ' + r.msgId + ' (de ' + r.from + ')');
     // reiniciar la app de la víctima sin volcar (si no, la app reescribiría el archivo bueno desde su memoria)
     vic.busy = true;
-    try { vic.native.files.set(f, JSON.stringify(j)); const w = vic.win; vic.win = null; try { w.close(); } catch (e) {} vic.native.destroyActivity(); relays.forEach((rl) => rl.muteTag('p=' + vic.name + '&'));
+    try { vic.native.files.set(f, JSON.stringify(j)); const w = vic.win; vic.win = null; try { w.close(); } catch (e) {} vic.native.destroyActivity(); relays.forEach((rl) => rl.muteTag(TAG(vic)));
       if (SAB === 'pierde' || SAB === 'duplica' || SAB === 'corrompe') vic.native.files.set(f, JSON.stringify(j));
       await openApp(vic); } finally { vic.busy = false; }
     return;
@@ -862,6 +868,9 @@ let FINAL_OPEN_T = 0;
   const out = { prueba: 'ciudad', build: path.basename(buildDir), n: N, semilla: SEED, min: MIN, final_min: FINAL_MIN, final_red: FINAL_RED, sabotaje: SAB || null, comando: CMD };
   makeProfiles(); makePlans(); makeSchedules(); makeActions();
   const edges = makeContactGraph();
+  // huella del guion (misma semilla y parámetros = mismo mapa, caminos, cortes, ciclo de la app, acciones y contactos)
+  out.guion_sha = sha(Buffer.from(JSON.stringify({ p: phones.map((p) => [p.name, p.sinNet, p.intermitente, p.wifis, p.plan, p.dataOff, p.life, p.acts]), edges })));
+  if (argv.includes('--solo-guion')) { console.log('CIUDAD_GUION ' + JSON.stringify({ semilla: SEED, n: N, guion_sha: out.guion_sha, acciones: phones.reduce((n, p) => n + p.acts.length, 0), cortes: phones.reduce((n, p) => n + p.dataOff.length, 0), ciclo: phones.reduce((n, p) => n + p.life.length, 0), aristas: edges.length })); process.exit(0); }
   relays = [new NostrRelay(), new NostrRelay()];
   RELAYS = [await relays[0].start(), await relays[1].start()];
   // todos juntos en el centro, con internet (los que tienen), para emparejarse
@@ -908,7 +917,7 @@ let FINAL_OPEN_T = 0;
     p.busy = true;
     try {
       if (p.app === 'cerrada') { sim(p.name + ' reabre la app (final)'); await openApp(p); }
-      else if (p.app === 'dormida') { p.native.setFrozen(false); relays.forEach((r) => r.wakeTag('p=' + p.name + '&')); setVis(p, true); }
+      else if (p.app === 'dormida') { p.native.setFrozen(false); relays.forEach((r) => r.wakeTag(TAG(p))); setVis(p, true); }
       else if (p.app === 'fondo') setVis(p, true);
       p.app = 'fg';
     } finally { p.busy = false; }
@@ -940,9 +949,9 @@ let FINAL_OPEN_T = 0;
   out.fallos = F.slice(0, 80);
   out.resultado = SAB ? (out.control.detectado ? 'OK' : 'FALLO') : (F.length ? 'FALLO' : 'OK');
   out.registros = path.relative(process.cwd(), LOGF) || LOGF;
-  fs.writeFileSync(LOGF, LOG.join('\n'));
+  await new Promise((r) => LOGW.end(r));
   console.log('CIUDAD ' + JSON.stringify(out));
   phones.forEach((p) => { try { p.win.bleInterface.net._closeAll(); p.win.bleInterface.net.relays.forEach((rl) => { rl.retryAt = Date.now() + 9e6; }); } catch (e) {} });
   await Promise.all(relays.map((r) => r.stop()));
   process.exit(out.resultado === 'OK' ? 0 : 1);
-})().catch((e) => { console.log('CIUDAD ' + JSON.stringify({ prueba: 'ciudad', resultado: 'FALLO', error: String(e && e.stack).substring(0, 400) })); try { fs.writeFileSync(LOGF, LOG.join('\n')); } catch (e2) {} process.exit(1); });
+})().catch((e) => { console.log('CIUDAD ' + JSON.stringify({ prueba: 'ciudad', resultado: 'FALLO', error: String(e && e.stack).substring(0, 400) })); try { LOGW.end(); } catch (e2) {} setTimeout(() => process.exit(1), 300); });
