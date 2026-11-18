@@ -21,6 +21,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **18-11 06:10 (México):** Bluetooth tras reiniciar el teléfono EN PAUSA hasta el domingo (dueño: no empezar lo que no se pueda
+  terminar). Mientras: solo detallitos baratos. El dueño casi sin límite de uso: gastar poco.
 - **18-11 05:45 (México):** APK subida con 3232 (velocidad real del buzón al recibir), 3232b (pistas del fallo nativo en el
   diagnóstico), 3233 (desempate que no cierra el enlace que recibe). Decisión pedida al dueño: guardar cifrada la clave del código
   rotativo para que el Bluetooth vuelva tras reiniciar el teléfono (ver PENDIENTES 18-11 05:00). Regla nueva en CLAUDE.md: nunca
