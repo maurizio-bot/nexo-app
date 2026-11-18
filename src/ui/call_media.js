@@ -173,6 +173,11 @@ export function createCallMedia(opts) {
   // si al volver a la vista sigue sin contestar, se abandona (lo que llegue tarde se cierra) y se pide otra vez
   var micGen = 0, camGen = 0, micOpenAt = 0, camOpenAt = 0, hiddenAt = 0;
   var rxVideoAt = 0, firstRxAt = 0, lastDecodedAt = 0, lastKeyReq = 0, stallResetAt = 0;
+  // 3217 («Unir» con mi teléfono de PUENTE, call_bridge.js): tap = a quién le paso la voz del otro ya decodificada; mixQ = la voz del
+  // otro participante (la de mi otra llamada) que se suma a mi micrófono antes de codificar. Colchón de MIX_PREFILL (llega en paquetes
+  // de 100 ms) y como mucho MIX_MAX (si se acumula, se tira lo más viejo: poco retraso). Sin puente, nada de esto trabaja.
+  var tap = null, mixQ = [], mixLen = 0, mixOff = 0, mixPrimed = false, mixStat = { s: 0, drop: 0 };
+  var MIX_PREFILL = Math.round(RATE * 0.15), MIX_MAX = Math.round(RATE * 0.5);
 
   function setState(cam, micS) {
     var changed = false;
@@ -213,6 +218,7 @@ export function createCallMedia(opts) {
   }
   function playPcm(f32, rate) {
     if (!ctx) return;
+    if (tap) try { tap(f32, rate); } catch (e) {} // 3217: la voz del otro también va a mi otra llamada (puente)
     // Para el diagnóstico (y las pruebas): cuánto audio llegó a reproducirse y con qué volumen medio
     var st = window.NEXO_callAudioStats = window.NEXO_callAudioStats || { samples: 0, seconds: 0, energy: 0 };
     var e2 = 0; for (var k = 0; k < f32.length; k++) e2 += f32[k] * f32[k];
@@ -275,6 +281,7 @@ export function createCallMedia(opts) {
       e1 = Math.sqrt(e1 / (inp.length || 1)); mic.blocks++; mic.energy += e1; if (e1 > mic.peak) mic.peak = e1;
       // Ronda 2772: filtros de voz (el bloque acaba de grabarse: termina "ahora" en el reloj del audio)
       if (vfx && !muted) try { var tEnd = ctx.currentTime; vfx.process(data, tEnd - data.length / RATE, tEnd); } catch (e) {}
+      if (mixLen) mixInto(data); // 3217: + la voz del otro participante (puente); también con mi micrófono silenciado
       if (codec === 1) {
         try {
           var ad = new window.AudioData({ format: 'f32', sampleRate: RATE, numberOfFrames: data.length, numberOfChannels: 1, timestamp: ts, data: data });
@@ -292,6 +299,30 @@ export function createCallMedia(opts) {
     // Ronda 2761: si el sistema dejó el audio en pausa (sin un toque reciente), se activa; si no, ni suena ni graba
     if (ctx.state !== 'running' && ctx.resume) { lastResumeAt = Date.now(); ctx.resume().catch(function() {}); }
   }
+
+  // 3217 (puente): la voz del otro (a 8 o 48 kHz) a la cola, a 48 kHz
+  function mixIn(f32, rate) {
+    if (stopped || !f32 || !f32.length) return;
+    var x;
+    if (!rate || rate === RATE) x = new Float32Array(f32);
+    else { // de 8 kHz (μ-law) u otra a 48 kHz: interpolación lineal (voz: basta)
+      var k = RATE / rate, n = Math.floor(f32.length * k); x = new Float32Array(n);
+      for (var i = 0; i < n; i++) { var p = i / k, j = Math.floor(p), fr = p - j, a = f32[j], b = j + 1 < f32.length ? f32[j + 1] : a; x[i] = a + (b - a) * fr; }
+    }
+    mixQ.push(x); mixLen += x.length;
+    while (mixLen - mixOff > MIX_MAX && mixQ.length > 1) { var d = mixQ.shift(); mixStat.drop += d.length - mixOff; mixLen -= d.length; mixOff = 0; }
+  }
+  function mixInto(data) {
+    if (!mixPrimed) { if (mixLen - mixOff < MIX_PREFILL) return; mixPrimed = true; }
+    for (var i = 0; i < data.length && mixQ.length;) {
+      var h = mixQ[0], n = Math.min(h.length - mixOff, data.length - i);
+      for (var k = 0; k < n; k++) { var v = data[i + k] + h[mixOff + k]; data[i + k] = v > 1 ? 1 : v < -1 ? -1 : v; }
+      i += n; mixOff += n; mixStat.s += n / RATE;
+      if (mixOff >= h.length) { mixQ.shift(); mixLen -= h.length; mixOff = 0; }
+    }
+    if (!mixQ.length) { mixPrimed = false; mixLen = 0; mixOff = 0; } // se vació: otra vez el colchón
+  }
+  function mixClear() { mixQ = []; mixLen = 0; mixOff = 0; mixPrimed = false; }
 
   var encMadeAt = 0;
   function makeAudioEncoder() {
@@ -807,6 +838,9 @@ export function createCallMedia(opts) {
       }
     },
     mute: function(on) { muted = !!on; },
+    // 3217 (puente, call_bridge.js): fn(pcm, rate) recibe la voz del otro ya decodificada (null: nadie); mixIn la suma a lo que mando
+    setTap: function(fn) { tap = typeof fn === 'function' ? fn : null; if (!tap) mixClear(); },
+    mixIn: function(f32, rate) { if (f32 === null) { mixClear(); return; } mixIn(f32, rate); },
     // Ronda 2772: con cascos o Bluetooth no hay eco del altavoz: no se baja el micrófono
     headset: function(on) { if (vfx && vfx.setHeadset) vfx.setHeadset(!!on); },
     // Para el diagnóstico: estado del audio, micrófono (nivel medio y pico, 0–1) y lo reproducido del otro; ronda 2769:
@@ -818,7 +852,8 @@ export function createCallMedia(opts) {
       var out = { ctx: ctx ? ctx.state : 'sin audio', codec: codec === 1 ? 'opus' : codec === 2 ? 'ulaw' : '?', micLevel: mic.blocks ? mic.energy / mic.blocks : 0, micPeak: mic.peak,
         playedS: st.seconds || 0, playedLevel: st.samples ? Math.sqrt(st.energy / st.samples) : 0, mic: !!(at && at.readyState === 'live' && at.enabled && !at.muted),
         micTrack: trk(at), micState: micState, micErr: micErr, micReopens: micReopens, fx: vfx ? vfx.stats() : null, aec: aecInfo,
-        opus: codec === 1 ? (opusCfg.opus ? 'voz' : 'normal') : '' };
+        opus: codec === 1 ? (opusCfg.opus ? 'voz' : 'normal') : '',
+        bridge: tap || mixStat.s ? { mixedS: Math.round(mixStat.s * 10) / 10, droppedS: Math.round(mixStat.drop / RATE * 10) / 10 } : null }; // 3217
       if (wantVideo || rxVideoAt) {
         out.video = { cam: wantVideo ? camState : 'none', track: trk(vt), local: localV ? localV.readyState : -1, enc: venc ? venc.state : 'no', frames: vstats.frames,
           sent: vstats.sent, keys: vstats.keys, decoded: vstats.decoded, dec: vdec ? vdec.state : 'no', keyReq: vstats.keyReq, encErr: vstats.encErr,
@@ -830,7 +865,7 @@ export function createCallMedia(opts) {
       return out;
     },
     stop: function() {
-      stopped = true;
+      stopped = true; tap = null; mixClear(); // 3217
       flush(true);
       clearInterval(vTimer); clearInterval(watchTimer);
       try { if (venc && venc.state !== 'closed') venc.close(); if (vdec && vdec.state !== 'closed') vdec.close(); } catch (e) {}

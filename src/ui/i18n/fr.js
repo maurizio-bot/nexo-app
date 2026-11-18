@@ -966,4 +966,8 @@ export default {
   call_merge_net: "Impossible de fusionner : l'appel avec {name} passe par internet et l'appel de groupe nécessite le Bluetooth ou le même Wi-Fi",
   call_merge_none: "Il n'y a plus deux appels à fusionner",
   grp_joined: "{name} a rejoint l'appel",
+  call_bridge_names: "{a} et {b}",
+  call_bridge_note: "Reliés par votre téléphone : si vous raccrochez, l'appel se termine pour les deux",
+  call_bridge_left: "{name} a quitté l'appel",
+  call_bridge_tag: "Reliés",
 };

@@ -92,6 +92,7 @@ export class BleRelay {
   constructor(ble) {
     this.ble = ble;
     this.routes = new Map();     // destino → { via, hops, ts }
+    this.direct = new Map();     // 3217: vecino → { s: Set de SUS vecinos por Bluetooth/Wi-Fi que son contactos suyos con clave, ts }
     this.neighbors = new Map();  // nexoId vecino → deviceId (enlace listo)
     this.queue = [];             // { id, kind: 'pkt'|'chat'|'file', dst, origin, data|ref, meta, prev, ts, tries }
     this.seen = new Map();       // id → ts (no reenviar dos veces lo mismo)
@@ -187,7 +188,7 @@ export class BleRelay {
   _advertise() {
     var self = this, me = self.me();
     if (!me || !self.ble || typeof self.ble._sendMessageNative !== 'function') return;
-    var relayOk = self.canRelay();
+    var relayOk = self.canRelay(), keyed = self._keyedContacts();
     self.neighbors.forEach(function(devX, x) {
       if (!self.capable.has(x)) return;
       var r = {};
@@ -197,11 +198,12 @@ export class BleRelay {
         return;
       }
       self.neighbors.forEach(function(dev, y) { if (y !== x) r[y] = 1; });
+      var dl = []; self.neighbors.forEach(function(dev, y) { if (y !== x && !_isNetDev(dev) && keyed.has(y)) dl.push(y); }); // 3217
       self.routes.forEach(function(rt, d) {
         if (d === x || rt.via === x || self.neighbors.has(d) || rt.hops >= MAX_HOPS) return;
         if (!r[d] || rt.hops < r[d]) r[d] = rt.hops;
       });
-      var pkt = JSON.stringify({ v: 1, type: 'rt', from: me, r: r, ts: Date.now() });
+      var pkt = JSON.stringify({ v: 1, type: 'rt', from: me, r: r, d: dl, ts: Date.now() });
       self.ble._sendMessageNative(devX, pkt, null).catch(function() {});
     });
   }
@@ -215,6 +217,8 @@ export class BleRelay {
     if (!self.neighbors.has(x)) self.neighbors = self._computeNeighbors();
     if (!self.neighbors.has(x)) return;
     var r = (p.r && typeof p.r === 'object') ? p.r : {};
+    // 3217: con quién tiene él enlace DIRECTO y clave (para «Unir»: si dos de mis llamadas se alcanzan entre ellas, malla; si no, puente)
+    self.direct.set(x, { s: new Set((Array.isArray(p.d) ? p.d : []).slice(0, 64).map(_nid).filter(_isNx)), ts: now });
     var changed = false, added = [];
     self.routes.forEach(function(rt, d) { if (rt.via === x && !Object.prototype.hasOwnProperty.call(r, d)) { self.routes.delete(d); changed = true; } });
     Object.keys(r).forEach(function(d0) {
@@ -231,6 +235,18 @@ export class BleRelay {
       self._scheduleAdvertise(1000);
       self._onReachChanged(added);
     }
+  }
+
+  // 3217 («Unir»): ¿A y B se alcanzan por Bluetooth o el mismo Wi-Fi y se tienen como contactos (con clave)? Lo dicen los dos en sus
+  // anuncios de rutas (frescos). Sin eso (versiones viejas, Jump apagado, lejos), no se sabe: «Unir» usa mi teléfono de puente.
+  mutualDirect(a, b) {
+    var ea = this.direct.get(_nid(a)), eb = this.direct.get(_nid(b)), now = Date.now();
+    return !!(ea && eb && now - ea.ts < ROUTE_TTL_MS && now - eb.ts < ROUTE_TTL_MS && ea.s.has(_nid(b)) && eb.s.has(_nid(a)));
+  }
+  _keyedContacts() {
+    var cs = (this.ble && typeof this.ble.getBLEContacts === 'function') ? this.ble.getBLEContacts() : [], out = new Set();
+    (cs || []).forEach(function(c) { if (c && c.publicKey) out.add(_nid(c.nexoId || c.deviceUUID)); });
+    return out;
   }
 
   describe() {
@@ -293,6 +309,7 @@ export class BleRelay {
       self.ble._lostPeersWithPending().then(function(list) { list.forEach(function(nx) { self.discover(nx); }); }).catch(function() {});
     }
     self.routes.forEach(function(r, d) { if (now - r.ts > ROUTE_TTL_MS || !self.neighbors.has(r.via)) self.routes.delete(d); });
+    self.direct.forEach(function(e, x) { if (now - e.ts > ROUTE_TTL_MS || !self.neighbors.has(x)) self.direct.delete(x); }); // 3217
     self.seen.forEach(function(ts, id) { if (now - ts > SEEN_TTL_MS) self.seen.delete(id); });
     if (self.neighbors.size) self._advertise();
     self._flushQueue();

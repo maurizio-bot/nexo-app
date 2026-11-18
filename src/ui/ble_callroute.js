@@ -20,7 +20,8 @@ export const BLE_CALLROUTE_METHODS = {
   _callCount() { return this._callList().length; },
   _holdOthers(keep) {
     var self = this;
-    self._callList().forEach(function(x) { if (x !== keep && self._callActive(x) && !self._callHeldByUser(x) && typeof x.hold === 'function') x.hold(true); });
+    var br = self._bridge && self._bridge.on ? self._bridge : null; // 3217: las dos del puente («Unir» por mi teléfono) siguen las dos en curso
+    self._callList().forEach(function(x) { if (x !== keep && !(br && br.has(x) && br.has(keep)) && self._callActive(x) && !self._callHeldByUser(x) && typeof x.hold === 'function') x.hold(true); });
   },
   _resumeLoneCall() {
     var self = this;

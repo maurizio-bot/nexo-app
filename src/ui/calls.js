@@ -277,6 +277,7 @@ export class Calls {
   hangup() {
     var c = this.call;
     if (!c) return;
+    var br = this._br(); if (br && !br.ending) { br.hangupAll(); return; } // 3217: colgar en el puente = se acaba todo (el puente soy yo)
     this._signal(c.nx, 'end');
     // También por el canal de la voz (cifrado): si el chat va por un camino que ya no sirve, el otro se entera igual
     if (c.state === 'active') this._sendPacket(new TextEncoder().encode('END'), 'e');
@@ -383,7 +384,9 @@ export class Calls {
     if (this.call === c) { this._set({ screen: false }); this._sendState(c); }
   }
 
-  mute(on) { var c = this.call; if (!c) return; c.muted = !!on; if (c.media && c.media.mute) c.media.mute(!!on || !!c.held); _emit(this._ev, this.state()); }
+  mute(on) { var c = this.call; if (!c) return; c.muted = !!on; if (c.media && c.media.mute) c.media.mute(!!on || !!c.held); var br = this._br(); if (br) br.mirrorMute(this, on); _emit(this._ev, this.state()); } // (3217: en el puente, en las dos)
+  // 3217: el puente («Unir» por mi teléfono, call_bridge.js) en el que está esta llamada, o null
+  _br() { var b = this.ble && this.ble._bridge; return b && b.on && typeof b.has === 'function' && b.has(this) ? b : null; }
   // #222 (dueño 15-11: «contestar y poder pausar la otra en automático y poderla revisar manualmente»): EN ESPERA por el usuario
   // (otra llamada a la vez). Misma retención que la de la llamada telefónica (micrófono callado, el otro avisado con 'hold' para que
   // ninguno corte por silencio) y además no se oye ni se ve al otro. Las dos esperas (usuario y teléfono) se suman.
@@ -527,7 +530,8 @@ export class Calls {
         ' pico ' + pct(m.micPeak) + ', audio ' + m.ctx + ', ' + m.codec + (c.peerCodecs ? ' (el otro: ' + c.peerCodecs + ')' : '') +
         // ronda 2772: filtros de voz: tiempo con el micrófono bajado por la voz del otro, hablando los dos, en silencio; eco medido
         (m.fx ? ', filtros: bajado ' + pct(m.fx.duck) + ', los dos ' + pct(m.fx.dt) + ', silencio ' + pct(m.fx.gate) + ', eco ' + Math.round(20 * Math.log10(m.fx.echo || 1e-3)) + ' dB' + (m.fx.delayMs >= 0 ? ' a ' + m.fx.delayMs + ' ms' : '') + (m.fx.headset ? ', con cascos' : '') : '') +
-        (m.aec ? ', cancelador de eco ' + m.aec : '') + (m.opus ? ', Opus ' + m.opus : '') : ', sin audio') +
+        (m.aec ? ', cancelador de eco ' + m.aec : '') + (m.opus ? ', Opus ' + m.opus : '') +
+        (m.bridge ? ', puente: voz del otro mezclada ' + m.bridge.mixedS + ' s' + (m.bridge.droppedS ? ' (tirada ' + m.bridge.droppedS + ' s)' : '') : '') : ', sin audio') +
       ', por ' + this._linkLabel(link, c.nx));
     // Ronda 2769: pistas y vídeo de los dos sentidos (para ver en el diagnóstico por qué no se ve o no se oye)
     if (m && (m.micTrack || m.video)) {
@@ -677,6 +681,14 @@ export class Calls {
       return;
     }
     if (o.op === 'ring') return;
+    // 3217: el otro me unió por su teléfono (puente) con alguien más: quién (máx. 4, NEXO ID y el nombre que él le tiene); [] = ya no
+    if (o.op === 'conf') {
+      var who = (Array.isArray(o.who) ? o.who : []).slice(0, 4).filter(function(w) { return w && /^nx[0-9a-z]{8}$/.test(_nid(w.nx)) && _nid(w.nx) !== nx; })
+        .map(function(w) { return { nx: _nid(w.nx), n: String(w.n || '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 32) }; });
+      console.log('[CALL] ' + nx + (who.length ? ' me unió con ' + who.map(function(w) { return w.nx; }).join(', ') : ': ya no hay nadie más'));
+      self._set({ conf: who });
+      return;
+    }
     if (o.op === 'rtc' && o.t === 'again') { // 3156: el otro cambió de red: rehacer la conexión directa ya (la abre el que llama)
       c.netTrouble = true; c.p2pQuick = 0;
       if (c.dir === 'out') { if (self.p2p) self.p2p.close(nx); c.p2pOk = false; c.p2pRetryAt = 0; console.log('[CALL] ' + nx + ' cambió de red: rehago la conexión directa'); self._p2pTick(c); }
@@ -716,11 +728,13 @@ export class Calls {
     if (c.startedAt) try { self._diag(c, 'Al colgar (' + secs + ' s)'); } catch (e) {}
     if (c.media && c.media.stop) { try { c.media.stop(); } catch (e) {} }
     self.lastEnded = { id: c.id, nx: c.nx, at: Date.now(), active: !!c.startedAt, video: !!c.video }; // #221: «Agregar» la pasa a grupo y el otro entra solo (3216: video)
+    var br = self._br(), brEnd = br ? (br.ending ? 'me' : 'peer') : ''; // 3217
     self.call = null;
+    if (br) br.laneEnded(self); // 3217: con una sola, ya no hay puente (la otra sigue conmigo)
     if (self.ble && typeof self.ble._afterCallRadio === 'function') { try { self.ble._afterCallRadio(); } catch (e) {} } // 3058: sale lo que esperó a colgar
     if (self.ble && typeof self.ble._resumeLoneCall === 'function') { try { self.ble._resumeLoneCall(); } catch (e) {} } // #222: la que quedó en espera vuelve
     console.log('[CALL] Fin (' + reason + ', ' + secs + ' s; voz enviada ' + self.stats.sent + ', recibida ' + self.stats.got + ')');
-    _emit(self._ev, { id: c.id, nx: c.nx, dir: c.dir, state: 'ended', reason: reason, seconds: secs, video: !!c.video });
+    _emit(self._ev, { id: c.id, nx: c.nx, dir: c.dir, state: 'ended', reason: reason, seconds: secs, video: !!c.video, bridged: brEnd });
     self._log(c.nx, reason, secs, c.dir === 'out', c.video);
   }
 

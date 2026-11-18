@@ -9,14 +9,21 @@
  *  - estoy en una llamada de GRUPO y suena B (o ya le contesté) → B entra a la de grupo (con su tope de personas).
  * Reúsa el paso a grupo de «Agregar» (#221/#224): cada invitación lleva el id de la llamada que ese contacto tenía conmigo (up) y
  * entra sin sonar; la videollamada en la que estoy hablando pasa a la de grupo sin cortar la imagen (handoff → adopt) y cada uno
- * sigue con la cámara como la tenía. La de grupo va por malla (Bluetooth o el mismo Wi-Fi, como group_call.js): si con alguno solo
- * hay internet, no se une y se dice por qué, sin tocar ninguna de las dos llamadas.
+ * sigue con la cámara como la tenía. La de grupo va por malla (Bluetooth o el mismo Wi-Fi, como group_call.js).
+ * 3217 (dueño 17-11 19:25: «amigos que llaman cada uno desde su casa»): dos llamadas 1-a-1 van por MALLA solo si los dos me alcanzan
+ * directo y además se alcanzan entre ellos (lo dicen sus anuncios de rutas: ble_relay.mutualDirect); si no (alguno por internet, o
+ * no se puede saber), se unen por PUENTE: mi teléfono mezcla (call_bridge.js) y cada llamada sigue por su camino. Una de GRUPO + una
+ * 1-a-1 por internet sigue sin poder (la de grupo es malla): se dice por qué y no se toca nada.
  * Sin pantallas: los botones están en calls_ui.js / calls2_ui.js.
  */
 import { t } from './i18n.js';
 import { gcallMax } from './group_call.js';
+import { bridgeOf, startBridge } from './call_bridge.js';
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
+
+// 3217: ¿A y B se alcanzan entre ellos (directo y con clave)? Sin forma de saberlo, no
+function _mutual(ble, a, b) { var r = ble.relay; try { return !!(r && typeof r.mutualDirect === 'function' && r.mutualDirect(a, b)); } catch (e) { return false; } }
 
 // ¿Hay camino DIRECTO con él (Bluetooth listo o el mismo Wi-Fi arriba)? Es lo que necesita un tramo de la llamada de grupo
 // (group_call._sendTo: la voz no va por los relés de internet)
@@ -31,7 +38,7 @@ function _directOk(ble, nx) {
 // aún suena, o una de grupo que me suena); si no, { ok, why, kind: 'pair'|'group', lanes } (ok=false: el botón se ve apagado y al
 // tocarlo dice why).
 export function mergeCheck(ble, nameOf) {
-  if (!ble) return null;
+  if (!ble || bridgeOf(ble)) return null; // (3217: ya unidas por puente)
   var g = ble.gcall, gc = g && g.gc;
   var lanes = [ble.calls, ble.calls2].filter(function(l) { return l && l.call; });
   if (!lanes.length || lanes.length + (gc ? 1 : 0) !== 2) return null;
@@ -44,11 +51,11 @@ export function mergeCheck(ble, nameOf) {
     var nx = _nid(lanes[0].call.nx);
     if (gc.roster.has(nx)) return Object.assign(res, { ok: false, why: t('grp_already_in', 'Ya está en la llamada') });
     if (gc.roster.size + 1 > gcallMax()) return Object.assign(res, { ok: false, why: t('grp_max_a', 'Máximo ') + gcallMax() + t('grp_max_call', ' en una llamada de grupo') });
+    if (!_directOk(ble, nx)) return Object.assign(res, { ok: false, why: t('call_merge_net', 'No se pueden unir: con {name} la llamada va por internet y la de grupo necesita Bluetooth o el mismo Wi-Fi').replace('{name}', name(nx)) });
+    return res;
   }
-  for (var i = 0; i < lanes.length; i++) {
-    var px = _nid(lanes[i].call.nx);
-    if (!_directOk(ble, px)) return Object.assign(res, { ok: false, why: t('call_merge_net', 'No se pueden unir: con {name} la llamada va por internet y la de grupo necesita Bluetooth o el mismo Wi-Fi').replace('{name}', name(px)) });
-  }
+  var a = _nid(lanes[0].call.nx), b = _nid(lanes[1].call.nx);
+  if (!(_directOk(ble, a) && _directOk(ble, b) && _mutual(ble, a, b))) res.kind = 'bridge'; // 3217
   return res;
 }
 
@@ -58,6 +65,7 @@ export function mergeCalls(ble, nameOf) {
   if (!m) return Promise.reject(new Error(t('call_merge_none', 'Ya no hay dos llamadas que unir')));
   if (!m.ok) return Promise.reject(new Error(m.why));
   var g = ble.gcall;
+  if (m.kind === 'bridge') return startBridge(ble, m.lanes, nameOf); // 3217: por mi teléfono (cada llamada sigue por su camino)
   if (m.kind === 'group') {
     // B entra a la llamada de grupo en curso (como «Agregar», pero sin sonarle: lleva el id de la llamada que tenía conmigo)
     var l = m.lanes[0], c = l.call, nx = _nid(c.nx);

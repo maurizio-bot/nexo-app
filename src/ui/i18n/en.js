@@ -966,4 +966,8 @@ export default {
   call_merge_net: "Can't merge: the call with {name} goes over the internet, and a group call needs Bluetooth or the same Wi-Fi",
   call_merge_none: "There are no longer two calls to merge",
   grp_joined: "{name} joined the call",
+  call_bridge_names: "{a} and {b}",
+  call_bridge_note: "Joined through your phone: if you hang up, it ends for both",
+  call_bridge_left: "{name} left the call",
+  call_bridge_tag: "Joined",
 };

@@ -966,4 +966,8 @@ export default {
   call_merge_net: "No se pueden unir: con {name} la llamada va por internet y la de grupo necesita Bluetooth o el mismo Wi-Fi",
   call_merge_none: "Ya no hay dos llamadas que unir",
   grp_joined: "{name} se unió a la llamada",
+  call_bridge_names: "{a} y {b}",
+  call_bridge_note: "Unidas por tu teléfono: si cuelgas, termina para los dos",
+  call_bridge_left: "{name} salió de la llamada",
+  call_bridge_tag: "Unidas",
 };
