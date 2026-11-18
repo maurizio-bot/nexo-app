@@ -39,7 +39,7 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   Wi-Fi no lo alcanza, debería esperar como con un Bluetooth sin enlace). No se pierde (queda pendiente).
 - Roberto 14:49 («zombi» con Marcos): Roberto apagó/encendió el Bluetooth 14:48:24–26; luego enlaces a MTU 23 y el vigilante normal.
   Hizo de puente (Jump) para lo de Marcos al HONOR: entregado 14:45:12. **Aviso de MTU 23 prematuro:** «W [MTU] 23 (mínimo…)» y a
-  los ~3 s «517» (ruido en el diagnóstico; avisar solo si sigue en 23 unos segundos).
+  los ~3 s «517» (ruido en el diagnóstico; avisar solo si sigue en 23 unos segundos). **Hecho en 3214** (mtuaviso.js; va en la 3093).
 - **Datos (sigue la investigación de arriba):** Roberto: 34,1 MB hoy (Wi-Fi 19,7 · datos 14,1); en 15 min 1,4 MB de relés, 925 de
   1146 eventos ya vistos (81 %; nos.lol 1,1 MB, repetido 842 KB). NX…DBFE: a los 2 min de abrir, 314 de 354 ya vistos (89 %, 3 relés).
   Dos causas a medir en el simulador: (1) con Wi-Fi se escucha en todos los relés y cada evento llega una vez por relé (75 % con 4);
