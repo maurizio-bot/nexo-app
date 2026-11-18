@@ -961,4 +961,9 @@ export default {
   grev_open_fail: "Couldn't open that photo. If it's in the cloud, open it in your gallery first and pick it again.",
   grev_open_fail_video: "Couldn't open that video. If it's in the cloud, open it in your gallery first and pick it again.",
   grev_open_fail_n: "Couldn't open {n} of the items you picked. If they're in the cloud, open them in your gallery first and pick them again.",
+  call_merge: "Merge",
+  call_merge_in: "Add to this call",
+  call_merge_net: "Can't merge: the call with {name} goes over the internet, and a group call needs Bluetooth or the same Wi-Fi",
+  call_merge_none: "There are no longer two calls to merge",
+  grp_joined: "{name} joined the call",
 };

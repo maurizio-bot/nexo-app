@@ -961,4 +961,9 @@ export default {
   grev_open_fail: "Impossible d'ouvrir cette photo. Si elle est dans le cloud, ouvrez-la d'abord dans votre galerie, puis choisissez-la à nouveau.",
   grev_open_fail_video: "Impossible d'ouvrir cette vidéo. Si elle est dans le cloud, ouvrez-la d'abord dans votre galerie, puis choisissez-la à nouveau.",
   grev_open_fail_n: "Impossible d'ouvrir {n} des éléments choisis. S'ils sont dans le cloud, ouvrez-les d'abord dans votre galerie, puis choisissez-les à nouveau.",
+  call_merge: "Fusionner",
+  call_merge_in: "Ajouter à cet appel",
+  call_merge_net: "Impossible de fusionner : l'appel avec {name} passe par internet et l'appel de groupe nécessite le Bluetooth ou le même Wi-Fi",
+  call_merge_none: "Il n'y a plus deux appels à fusionner",
+  grp_joined: "{name} a rejoint l'appel",
 };

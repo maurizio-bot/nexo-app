@@ -961,4 +961,9 @@ export default {
   grev_open_fail: "No se pudo abrir esa foto. Si está en la nube, ábrela antes en tu galería y vuelve a elegirla.",
   grev_open_fail_video: "No se pudo abrir ese vídeo. Si está en la nube, ábrelo antes en tu galería y vuelve a elegirlo.",
   grev_open_fail_n: "No se pudieron abrir {n} de las que elegiste. Si están en la nube, ábrelas antes en tu galería y vuelve a elegirlas.",
+  call_merge: "Unir",
+  call_merge_in: "Unir a esta llamada",
+  call_merge_net: "No se pueden unir: con {name} la llamada va por internet y la de grupo necesita Bluetooth o el mismo Wi-Fi",
+  call_merge_none: "Ya no hay dos llamadas que unir",
+  grp_joined: "{name} se unió a la llamada",
 };

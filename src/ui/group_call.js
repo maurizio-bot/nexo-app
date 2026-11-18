@@ -30,6 +30,7 @@ var GUPGRADE_MS = 20000;     // #221: la invitación de «Agregar» llega como m
 var GMISS_MS = 30000;        // #dueño 31-10: una invitación entrante sin contestar en 30 s → perdida («llamada perdida de grupo»)
 var GINVITE_MAX_AGE = 60000; // #dueño 31-10: una invitación más vieja que esto (re-entrega del buzón tras colgar/reabrir) se ignora: no re-suena
 var GDEAD_MS = 180000;
+var GPARK_MS = 5000;         // 3216 (unir llamadas): el «abrir tramo» que llega antes que mi invitación espera esto (luego, «me voy»)
 // Dueño 13-11, compartir pantalla parte 2 (llamada de GRUPO): como la 1-a-1 (lado largo 960, ≤ 5 imágenes por segundo). El
 // estado («comparto la pantalla») va a cada tramo como paquete cifrado 'c' al empezar/terminar y cada 5 s mientras dure (así
 // lo sabe también el que entra tarde); las versiones anteriores lo ignoran.
@@ -39,6 +40,7 @@ function _pipGC(on) { var p = _plugGC(); if (p && typeof p.setPipActive === 'fun
 function _plugGC() { return (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
+export function gcallMax() { return GMAX_AUDIO; } // 3216: «Unir» (call_merge.js) mira el tope antes de tocar ninguna llamada
 function _emit(name, detail) { try { window.dispatchEvent(new CustomEvent(name, { detail: detail })); } catch (e) {} }
 function _hex(n) { var a = new Uint8Array(n); crypto.getRandomValues(a); return Array.from(a).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
 
@@ -68,7 +70,8 @@ export class GroupCall {
     var g = this.gc; if (!g) return null;
     var legs = []; g.legs.forEach(function(l, nx) { legs.push({ nx: nx, state: l.state, talking: !!l.talking, reconnecting: !!l.reconnecting, peerScreen: !!l.peerScreen, peerHeld: !!l.peerHeld, peerFront: l.peerFront !== false, peerCam: l.peerCam !== false }); });
     return { gid: g.gid, dir: g.dir, state: g.state, video: !!g.video, cameraOn: !!g.cameraOn, muted: !!g.muted, screen: !!g.screen, held: !!g.held, host: g.host || '', legs: legs, members: Array.from(g.roster), chatId: g.chatId || '',
-      adopt: g.adopt ? g.adopt.nx : '', since: (g.adopt && g.adopt.since) || g.startedAt || 0, front: !(g.hub && g.hub.facing) || g.hub.facing() === 'user' }; // #224
+      adopt: g.adopt ? g.adopt.nx : '', since: (g.adopt && g.adopt.since) || g.startedAt || 0, front: !(g.hub && g.hub.facing) || g.hub.facing() === 'user', // #224
+      up: !!g.up }; // 3216: entré desde una llamada 1-a-1 EN CURSO con el que invita (los que llegan después «se unen» a ella)
   }
   _set(o) { if (!this.gc) return; if (o) Object.assign(this.gc, o); _emit('nexo:gcall', this.state()); }
 
@@ -99,8 +102,11 @@ export class GroupCall {
   // chatId (opcional): el id del chat de grupo desde el que se llama, para volver a él si la llamada se corta (#130 dueño).
   // #221 (dueño 15-11): opts.upgrade = { nx, id } cuando sale de «Agregar» en una llamada 1-a-1: a ese contacto la invitación le lleva
   // el id de la llamada que teníamos (up) y entra solo, sin volver a contestar (solo si de verdad estaba en esa llamada conmigo).
+  // 3216 (dueño 17-11, «Unir»): opts.upgrade también puede ser una LISTA (las dos llamadas que se unen: cada uno lleva el id de la suya)
+  // y cada entrada puede decir v (0/1: si SU llamada era de vídeo; su cámara sigue como estaba) y ul (solo si esa llamada sigue viva).
   start(members, video, chatId, opts) {
     var self = this, me = self._nidSelf(), up = opts && opts.upgrade;
+    var ups = !up ? [] : Array.isArray(up) ? up : [up];
     if (self.gc) return Promise.reject(new Error(t('grp_call_busy', 'Ya hay una llamada en curso')));
     // #222 (dueño 15-11): máximo dos llamadas a la vez (contando las 1-a-1)
     if (self.ble && typeof self.ble._callCount === 'function' && self.ble._callCount() >= 2) return Promise.reject(new Error(t('call_max_two', 'Ya tienes dos llamadas a la vez. Cuelga una para llamar a alguien más')));
@@ -125,11 +131,13 @@ export class GroupCall {
       // invitar a cada miembro con el roster y la clave de grupo
       list.forEach(function(nx) {
         var ex = { roster: Array.from(roster), k: key, co: self._codecs(), v: video ? 1 : 0 };
-        if (up && _nid(up.nx) === nx && typeof up.id === 'string') ex.up = up.id; // #221
+        ups.forEach(function(u) { if (u && _nid(u.nx) === nx && typeof u.id === 'string') self._upEx(ex, u); }); // #221 / 3216
         self._signal(nx, 'invite', ex);
       });
     });
   }
+
+  _upEx(ex, u) { ex.up = u.id; if (u.v === 0 || u.v === 1) ex.v = u.v; if (u.ul) ex.ul = 1; }
 
   // #224 (dueño 16-11: «cuando hago una videollamada con otro contacto y luego agrego un contacto a la videollamada, no debería quitarse
   // toda la parte de video»): la de grupo hereda lo vivo de la videollamada 1-a-1 (calls.handoff): la cámara sigue abierta, la imagen
@@ -304,7 +312,8 @@ export class GroupCall {
   // se le invita con el roster y la clave de grupo actuales y la marca late:1 (para que, al entrar, abra su tramo con TODOS
   // los que ya estaban; ellos no van a iniciar hacia él). Los que ya estaban abren su tramo con el nuevo al llegarles su
   // oferta (onSignal 'offer' ya lo hace cuando la llamada está activa).
-  addMember(nexoId) {
+  // 3216 («Unir»): opts = { up, v } cuando el que entra es el de mi OTRA llamada (sonando o en curso): entra solo, como en #221.
+  addMember(nexoId, opts) {
     var self = this, g = self.gc, nx = _nid(nexoId), me = self._nidSelf();
     if (!g || g.state !== 'active') return Promise.reject(new Error(t('grp_call_none', 'No hay una llamada de grupo en curso')));
     if (!nx || nx === me) return Promise.reject(new Error(t('grp_call_need_one', 'Hace falta al menos un contacto')));
@@ -315,7 +324,9 @@ export class GroupCall {
     self._leg(nx).state = 'inviting';
     self._inviteTimeout(nx);
     self._set(null);
-    return self._signal(nx, 'invite', { roster: Array.from(g.roster), k: g.key, co: self._codecs(), v: g.video ? 1 : 0, late: 1 });
+    var ex = { roster: Array.from(g.roster), k: g.key, co: self._codecs(), v: g.video ? 1 : 0, late: 1 };
+    if (opts && typeof opts.up === 'string') self._upEx(ex, { id: opts.up, v: opts.v, ul: 1 });
+    return self._signal(nx, 'invite', ex);
   }
 
   // Colgar / salir de la llamada de grupo
@@ -456,14 +467,17 @@ export class GroupCall {
       // la memoria de llamadas terminadas) NO debe volver a sonar. Una invitación de verdad llega al instante.
       if (o.ts && Date.now() - Number(o.ts) > GINVITE_MAX_AGE) return;
       if (g) { if (g.gid === o.gid) return; self._signal(nx, 'leave', { gid: o.gid }); return; } // ya en otra llamada → ocupado (si es la MISMA, es re-entrega: ignorar, no avisar «leave»)
-      var upg = o.up ? self._upgradeFrom(nx, o.up) : null; // #221: viene de «Agregar» en la llamada que tenía con él
+      var upg = o.up ? self._upgradeFrom(nx, o.up, o.ul === 1) : null; // #221: viene de «Agregar» en la llamada que tenía con él (3216: o de «Unir»)
       // #220 (dueño 15-11: «dos llamadas al mismo tiempo y nada más»): con dos 1-a-1 en curso, la de grupo no entra (ocupado)
       var b1 = self.ble && self.ble.calls && self.ble.calls.call, b2 = self.ble && self.ble.calls2 && self.ble.calls2.call;
       if (b1 && b2 && !(upg && upg.live)) { self._signal(nx, 'leave', { gid: o.gid }); return; }
       if (typeof o.k !== 'string' || !/^[0-9a-f]{64}$/.test(o.k)) return;
       var roster = new Set((o.roster || []).map(_nid)); roster.add(nx); roster.add(me);
       if (roster.size > GMAX_AUDIO) return;
-      self.gc = { gid: o.gid, dir: 'in', state: 'ringing', key: o.k, video: o.v === 1, host: nx, legs: new Map(), roster: roster, startedAt: 0, createdAt: Date.now(), late: o.late === 1 };
+      // 3216: el que entra solo (#221/«Unir») sigue con la cámara como la tenía en SU llamada: la invitación no puede encenderla si era de voz
+      self.gc = { gid: o.gid, dir: 'in', state: 'ringing', key: o.k, video: o.v === 1 && !(upg && upg.video === false), host: nx, legs: new Map(), roster: roster, startedAt: 0, createdAt: Date.now(), late: o.late === 1,
+        up: !!(upg && upg.wasActive) };
+      self._unpark(o.gid);
       self._invTs.set(o.gid, Number(o.ts) || 0); if (self._invTs.size > 50) self._invTs.delete(self._invTs.keys().next().value);
       // #dueño 31-10: si no se contesta en 30 s, la entrante se da por PERDIDA (deja de sonar, queda «llamada perdida de
       // grupo»); los que sí contestaron siguen entre ellos.
@@ -472,10 +486,10 @@ export class GroupCall {
       if (upg && upg.live) { // la 1-a-1 que pasa a grupo (él ya colgó la suya)
         // #224: si era videollamada y la de grupo también, la de grupo hereda su captura y la imagen del otro (sin cortar)
         var ad = null;
-        if (o.v === 1 && typeof upg.lane.handoff === 'function') { try { ad = upg.lane.handoff(); } catch (e) { ad = null; } }
+        if (self.gc.video && typeof upg.lane.handoff === 'function') { try { ad = upg.lane.handoff(); } catch (e) { ad = null; } }
         if (ad && ad.media && _nid(ad.nx) === nx) self._adopt(ad);
         else if (ad && ad.media) { try { ad.media.stop(); } catch (e) {} }
-        else { try { upg.lane._finish('ended', false); } catch (e) {} }
+        else { try { upg.lane._finish('merged', false); } catch (e) {} } // 3216: pasa a la de grupo (sin «Llamada terminada» ni «cancelada»)
       }
       self._importKey(o.k).then(function(k) {
         if (!self.gc || self.gc.gid !== o.gid) return;
@@ -490,6 +504,8 @@ export class GroupCall {
       return;
     }
     if (!g || g.gid !== o.gid) {
+      // 3216 («Unir»): los otros dos entran solos casi a la vez y el «abrir tramo» de uno puede llegarle al otro antes que su invitación
+      if (o.op === 'offer' && !g && !self._dead.has(o.gid)) { self._park(nx, o.gid); return; }
       if (o.op !== 'leave' && o.op !== 'end') self._signal(nx, 'leave', { gid: o.gid });
       return;
     }
@@ -527,16 +543,35 @@ export class GroupCall {
   // tiene los mismos 45 s que la llamada entera: si no entra, «No contestó» y sale (si no queda nadie, la llamada termina).
   // #221: ¿la invitación viene de «Agregar» en una llamada 1-a-1 que tenía de verdad con ese contacto? La que sigue en curso (su
   // «colgar» aún no llegó) o la que terminó hace menos de GUPGRADE_MS. Con cualquier otro id o contacto, suena como siempre.
-  _upgradeFrom(nx, id) {
+  // 3216 («Unir», dueño 17-11): también la llamada que YO le estoy haciendo y todavía le suena (él la une a la que tenía: entro sin que
+  // conteste). liveOnly (ul en la invitación de «Unir»): solo la que sigue en curso; si ya la colgué, la invitación suena como siempre.
+  // video: si ESA llamada era de vídeo (la de grupo no me enciende la cámara si era de voz); wasActive: veníamos hablando.
+  _upgradeFrom(nx, id, liveOnly) {
     var b = this.ble, lanes = [b && b.calls, b && b.calls2], now = Date.now();
     for (var i = 0; i < lanes.length; i++) {
       var l = lanes[i]; if (!l) continue;
       var c = l.call;
-      if (c && c.id === id && _nid(c.nx) === nx && c.state === 'active') return { live: true, lane: l };
+      if (c && c.id === id && _nid(c.nx) === nx && (c.state === 'active' || (c.state === 'calling' && c.dir === 'out'))) return { live: true, lane: l, video: !!c.video, wasActive: c.state === 'active' };
       var e = l.lastEnded;
-      if (e && e.id === id && _nid(e.nx) === nx && e.active && now - e.at < GUPGRADE_MS) return { live: false, lane: l };
+      if (!liveOnly && e && e.id === id && _nid(e.nx) === nx && e.active && now - e.at < GUPGRADE_MS) return { live: false, lane: l, video: e.video, wasActive: true };
     }
     return null;
+  }
+
+  // 3216: «abrir tramo» de una llamada de grupo cuya invitación aún no me llegó: se guarda GPARK_MS; si llega, se contesta al entrar
+  // (como los de 3106); si no, «me voy» (lo de siempre)
+  _park(nx, gid) {
+    var self = this, p = self._parked = self._parked || new Map(), k = gid + '|' + nx;
+    if (p.has(k)) return;
+    p.set(k, setTimeout(function() { p.delete(k); if (!self.gc || self.gc.gid !== gid) self._signal(nx, 'leave', { gid: gid }); }, GPARK_MS));
+  }
+  _unpark(gid) {
+    var g = this.gc, p = this._parked; if (!g || !p) return;
+    p.forEach(function(tm, k) {
+      var i = k.lastIndexOf('|'); if (k.slice(0, i) !== gid) return;
+      clearTimeout(tm); p.delete(k);
+      var px = k.slice(i + 1); if (g.roster.has(px)) (g.earlyOffers = g.earlyOffers || new Set()).add(px);
+    });
   }
 
   _inviteTimeout(nx) {
