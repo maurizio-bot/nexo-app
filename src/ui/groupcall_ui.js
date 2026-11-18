@@ -7,9 +7,10 @@
  * ocultan ahí). La pantalla escucha nexo:gcall (estado), nexo:gcallRing (entrante) y nexo:gcallEnded (fin).
  */
 import { t } from './i18n.js';
-import { _showInfoToast, _pickContact } from './ui_bits.js';
+import { _pickContact } from './ui_bits.js';
 import { _getCurrentContactId, _normId } from './chat_format.js';
-import { callButton, ensureCallStyle, fitCallLabels, syncCallSplit, callCount, holdButton, replyButton, dropHandedOffScreen, callToast } from './calls_ui.js';
+import { callButton, ensureCallStyle, fitCallLabels, syncCallSplit, callCount, holdButton, replyButton, dropHandedOffScreen } from './calls_ui.js';
+import { callToast } from './call_join_ui.js';
 import { stageWanted, renderStage, clearStage, stageCss } from './gcall_stage.js';
 import { registerCallBar, minimizeCall, canMinimize } from './call_bar.js';
 import { closeCallReply } from './call_reply.js';
@@ -94,7 +95,7 @@ function _showEnded(detail) {
     if (!gcall) return;
     var g = (gs && chatId) ? gs.get(chatId) : null;
     var members = (g && g.members) || (detail && detail.members) || [];
-    gcall.start(members, !!(detail && detail.video), chatId).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); });
+    gcall.start(members, !!(detail && detail.video), chatId).catch(function(err) { callToast((err && err.message) || 'Error', 3500); });
   }));
   el.appendChild(title); el.appendChild(sub); el.appendChild(bar);
   (document.body || document.documentElement).appendChild(el);
@@ -193,7 +194,7 @@ function _render(st) {
       var cur = gcall.state ? gcall.state() : null;
       var ex = ((cur && cur.members) || []).concat([_me()]);
       _pickContact({ title: t('call_add_pick', 'Agregar a la llamada'), exclude: ex, onPick: function(nx) {
-        gcall.addMember(nx).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); });
+        gcall.addMember(nx).catch(function(err) { callToast((err && err.message) || 'Error', 3500); });
       } });
     });
     // #138 (dueño 31-10): CÁMARA on/off (sin re-llamar: activar la cámara pasa la llamada a vídeo) y GIRAR (delante/detrás).
@@ -204,8 +205,8 @@ function _render(st) {
       var g = _gcall(); if (!g) return;
       if (st.screen) { g.shareScreen(false); return; }
       _gScreenAsk(el, function() {
-        g.shareScreen(true).then(function(ok) { if (!ok) _showInfoToast(t('call_screen_no', 'No se compartió la pantalla'), 2500); })
-          .catch(function(err) { _showInfoToast((err && err.message) || t('call_screen_no', 'No se compartió la pantalla'), 3500); });
+        g.shareScreen(true).then(function(ok) { if (!ok) callToast(t('call_screen_no', 'No se compartió la pantalla'), 2500); })
+          .catch(function(err) { callToast((err && err.message) || t('call_screen_no', 'No se compartió la pantalla'), 3500); });
       });
     }, st.screen ? 'nc-red' : '');
     // #dueño 31-10: ALTAVOZ/AURICULAR (como la 1-a-1); en grupo arranca en altavoz (manos libres).
@@ -305,11 +306,11 @@ function _startGroupCall(video) {
   if (!gcall || !gs || !cid) return;
   // #222 (dueño 15-11: «tampoco se puede habilitar llamadas del grupo si ya hay dos llamadas corriendo, al igual que si estás en una
   // llamada de grupo»)
-  if (gcall.gc) { _showInfoToast(t('grp_call_busy', 'Ya hay una llamada en curso'), 3000); return; }
-  if (callCount() >= 2) { _showInfoToast(t('call_max_two', 'Ya tienes dos llamadas a la vez. Cuelga una para llamar a alguien más'), 3500); return; }
+  if (gcall.gc) { callToast(t('grp_call_busy', 'Ya hay una llamada en curso'), 3000); return; }
+  if (callCount() >= 2) { callToast(t('call_max_two', 'Ya tienes dos llamadas a la vez. Cuelga una para llamar a alguien más'), 3500); return; }
   var g = gs.get(cid);
   if (!g || !g.members) return;
-  gcall.start(g.members, !!video, cid).catch(function(err) { _showInfoToast((err && err.message) || 'Error', 3500); });
+  gcall.start(g.members, !!video, cid).catch(function(err) { callToast((err && err.message) || 'Error', 3500); });
 }
 function _installGroupButton() {
   var header = document.getElementById('chat-header');
@@ -409,7 +410,7 @@ export function installGroupCallUi() {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
         var pl = _plugin();
         if (pl && typeof pl.notifyMessage === 'function') pl.notifyMessage({ chatId: _normId(d.host) || 'nexo_gcall', name: _memberName(d.host), msgId: 'gmiss_' + (d.gid || ''), text: t('grp_call_missed', 'Llamada de grupo perdida'), count: 1 }).catch(function() {});
-      } else _showInfoToast(t('grp_call_missed', 'Llamada de grupo perdida'), 3500);
+      } else callToast(t('grp_call_missed', 'Llamada de grupo perdida'), 3500);
     }
   });
   window.addEventListener('nexo:ble:openChat', function() { setTimeout(_refreshGroupButton, 0); });

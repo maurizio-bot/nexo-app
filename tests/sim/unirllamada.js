@@ -15,7 +15,8 @@
 //      cámara apagada aunque la invitación dijera vídeo;
 //  P1  el «abrir tramo» de A le llega a B antes que su invitación: se guarda y A–B quedan unidos (antes: «me voy» y no se oían);
 //  G1  en una llamada de GRUPO (Y, A, C) suena B: «Unir» → B entra solo a la de grupo y queda unido con todos;
-//  N1  con A solo por internet: no se une, dice por qué (con su nombre) y no toca ninguna llamada;
+//  N1  con A solo por internet (3217, aprobado por el dueño el 17-11): dos 1-a-1 se unen por PUENTE (no por malla; lo prueba
+//      puentellamada.js); una de GRUPO + una 1-a-1 por internet: no se une, dice por qué (con su nombre) y no toca ninguna llamada;
 //  L1  la de grupo ya tiene 5: no se une («Máximo 5…») y no toca nada.
 // Uso: node unirllamada.js <dir_build>
 'use strict';
@@ -132,16 +133,20 @@ async function unidad(r) {
     [Y_ID, A_ID, C_ID].every((x) => legState(o[B_ID], x) === 'active' && legState(o[x], B_ID) === 'active');
   await hangAll(o);
 
-  // N1: con A solo por internet (sin Bluetooth ni el mismo Wi-Fi): no se une y no toca nada
+  // N1: con A solo por internet (sin Bluetooth ni el mismo Wi-Fi). Dos 1-a-1: por puente (3217). Una de grupo + una 1-a-1: no se une
   const spyLane = (c) => { const l = lane(); l.call = c; return l; };
   const started = [];
   const ble1 = { calls: spyLane({ id: 'clN1', nx: A_ID, state: 'active', dir: 'out' }), calls2: spyLane({ id: 'clN2', nx: B_ID, state: 'ringing', dir: 'in' }),
     gcall: { gc: null, start() { started.push(1); return Promise.resolve(); } }, _bleReadyFor: (nx) => (nx === B_ID ? 'dev' : null), lan: { quality: () => ({ up: false }), canReach: () => false } };
   const n1 = mergeCheck(ble1, (nx) => (nx === A_ID ? 'Ana' : 'Beto'));
-  let n1err = ''; await mergeCalls(ble1, (nx) => (nx === A_ID ? 'Ana' : 'Beto')).catch((e) => { n1err = e && e.message; });
+  r.N1_dos_1a1 = n1 && (n1.ok ? n1.kind : 'no');
+  const ble1g = { calls: spyLane({ id: 'clN3', nx: A_ID, state: 'ringing', dir: 'in' }), calls2: lane(),
+    gcall: { gc: { state: 'active', roster: new Set([Y_ID, B_ID, C_ID]) }, addMember() { started.push(1); return Promise.resolve(); } }, _bleReadyFor: () => null, lan: { quality: () => ({ up: false }), canReach: () => false } };
+  const n1g = mergeCheck(ble1g, (nx) => (nx === A_ID ? 'Ana' : 'Beto'));
+  let n1err = ''; await mergeCalls(ble1g, (nx) => (nx === A_ID ? 'Ana' : 'Beto')).catch((e) => { n1err = e && e.message; });
   r.N1_por_que = n1err;
-  r.N1_internet = !!(n1 && !n1.ok && /Ana/.test(n1.why) && /internet/.test(n1.why)) && n1err === n1.why && !started.length &&
-    !ble1.calls.finished.length && !ble1.calls2.finished.length && !!ble1.calls.call && !!ble1.calls2.call;
+  r.N1_internet = r.N1_dos_1a1 === 'bridge' && !started.length && !!(n1g && !n1g.ok && /Ana/.test(n1g.why) && /internet/.test(n1g.why)) && n1err === n1g.why &&
+    !ble1g.calls.finished.length && !!ble1g.calls.call;
   // L1: la de grupo ya tiene 5
   const added = [];
   const ble2 = { calls: spyLane({ id: 'clL1', nx: B_ID, state: 'ringing', dir: 'in' }), calls2: lane(),
@@ -192,7 +197,8 @@ async function boot(name, native) {
   const p = { name, native, win, media, rings: 0, toasts: [], callLog: [] };
   win.addEventListener('nexo:gcallRing', () => { p.rings++; });
   win.addEventListener('nexo:callLog', (e) => { if (e && e.detail) p.callLog.push(e.detail.text); });
-  new win.MutationObserver(() => { const el = win.document.getElementById('perm-error-toast'); if (el && el.textContent && p.toasts[p.toasts.length - 1] !== el.textContent) p.toasts.push(el.textContent); }).observe(win.document.body, { childList: true });
+  // avisos: los de la llamada (3217: #nexo-call-aviso, por encima de su pantalla) y los de siempre
+  new win.MutationObserver(() => { ['nexo-call-aviso', 'perm-error-toast'].forEach((id) => { const el = win.document.getElementById(id); if (el && el.textContent && p.toasts[p.toasts.length - 1] !== el.textContent) p.toasts.push(el.textContent); }); }).observe(win.document.body, { childList: true });
   return p;
 }
 const click = (win, el) => el && el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));

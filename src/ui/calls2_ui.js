@@ -6,7 +6,9 @@
  * Suena dentro de la app (no pasa por la llamada del sistema): Contestar / Rechazar; en curso: Silenciar, Cámara (videollamada),
  * Colgar. Con la app en segundo plano, aviso de mensaje «Llamada de X (estás en otra llamada)».
  */
-import { callButton, ensureCallStyle, fitCallLabels, syncCallSplit, callCount, holdLabel, holdButton, replyButton, mergeButton, mergeKey } from './calls_ui.js';
+import { callButton, ensureCallStyle, fitCallLabels, syncCallSplit, callCount, holdLabel, holdButton, replyButton, mergeButton } from './calls_ui.js';
+import { mergeKey, confNotice, callShownName, callToast } from './call_join_ui.js';
+import { bridgeOf } from './call_bridge.js';
 import { closeCallReply } from './call_reply.js';
 import { vaultFindContactByNexoId } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
@@ -55,21 +57,26 @@ function _render(st) {
   clearTimeout(_rm); _rm = null;
   if (!st || st.state === 'ended') {
     clearInterval(_tick); _tick = null;
+    if (st && st.bridged === 'peer') callToast(t('call_bridge_left', '{name} salió de la llamada').replace('{name}', _name(st.nx)), 3000); // 3217
     var old = document.getElementById('nexo-call2-screen');
     if (!old) { syncCallSplit(); return; }
     if (st) closeCallReply(st.nx);
-    if (st && st.reason === 'merged') { _remove(); return; } // 3216 («Unir»): pasó a la llamada de grupo, sin «Llamada terminada»
+    if (st && (st.reason === 'merged' || st.bridged === 'peer')) { _remove(); return; } // 3216 («Unir»): pasó a la llamada de grupo, sin «Llamada terminada» (3217: o salió del puente)
     var s0 = old.querySelector('.c2-status');
     if (s0 && st) s0.textContent = st.reason === 'busy' ? t('call_end_busy', 'Ocupado') : st.reason === 'rejected' ? t('call_end_rejected', 'Rechazada') : t('call_end_finished', 'Llamada terminada');
     old.querySelector('.call-buttons').innerHTML = '';
     _rm = setTimeout(_remove, 1400);
     return;
   }
+  // 3217: unidas por PUENTE: de voz, una sola pantalla (la de arriba, calls_ui, con los dos); con vídeo, las dos mitades (cada imagen)
+  var br = st.state === 'active' ? bridgeOf(_bi()) : null;
+  if (br && !br.video()) { if (document.getElementById('nexo-call2-screen')) _remove(); return; }
   var el = _screen();
   syncCallSplit();
   if (st.state !== 'ringing') closeCallReply(st.nx);
-  el.querySelector('.c2-tag').textContent = t('call2_second', 'Segunda llamada');
-  el.querySelector('.c2-name').textContent = _name(st.nx);
+  el.querySelector('.c2-tag').textContent = br ? t('call_bridge_tag', 'Unidas') : t('call2_second', 'Segunda llamada');
+  el.querySelector('.c2-name').textContent = callShownName(st);
+  if (!br) confNotice(st);
   var status = el.querySelector('.c2-status'), bt = el.querySelector('.call-buttons');
   bt.innerHTML = '';
   clearInterval(_tick); _tick = null;
@@ -89,8 +96,8 @@ function _render(st) {
     upd(); _tick = setInterval(upd, 1000);
     bt.appendChild(callButton(st.muted ? 'micOff' : 'mic', st.muted ? t('call_muted', 'Silenciado') : t('call_mute', 'Silenciar'), 'call-mute', function() { calls.mute(!calls.state().muted); }, st.muted ? 'nc-on' : ''));
     if (st.video) bt.appendChild(callButton(st.cameraOff ? 'camOff' : 'cam', st.cameraOff ? t('call_camera_off', 'Cámara no') : t('call_camera', 'Cámara'), 'call-camera', function() { calls.camera(!!calls.state().cameraOff); }, st.cameraOff ? 'nc-on' : ''));
-    if (callCount() > 1 || st.userHold) bt.appendChild(holdButton(calls, st)); // #222: en espera / reanudar
-    var mb = mergeButton(false); if (mb) bt.appendChild(mb); // 3216: «Unir» las dos llamadas
+    if (!br && (callCount() > 1 || st.userHold)) bt.appendChild(holdButton(calls, st)); // #222: en espera / reanudar (3217: no en el puente)
+    var mb = br ? null : mergeButton(false); if (mb) bt.appendChild(mb); // 3216: «Unir» las dos llamadas
     bt.appendChild(callButton('phone', t('call_hangup', 'Colgar'), 'call-hangup', function() { calls.hangup(); }, 'nc-red'));
     if (st.video) _attachVideo(el, calls);
   }
@@ -114,4 +121,5 @@ export function installCalls2Ui() {
   window.addEventListener('nexo:call2', function(e) { _render(e && e.detail); _lastCount = callCount() + '|' + mergeKey(); });
   window.addEventListener('nexo:call', _onCountChange);
   window.addEventListener('nexo:gcall', _onCountChange);
+  window.addEventListener('nexo:callBridge', _onCountChange); // 3217
 }
