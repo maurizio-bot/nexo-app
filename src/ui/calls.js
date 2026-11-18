@@ -342,7 +342,10 @@ export class Calls {
     var self = this, c = this.call;
     if (!c || !c.media || typeof c.media.flip !== 'function') return Promise.resolve(null);
     // (ronda 2772: el otro sabe enseguida si es la de delante, para ponerla en espejo o no)
-    return c.media.flip().then(function(f) { if (self.call === c) { self._set({ facing: f }); if (c.camState) self._sendState(c); } return f; });
+    return c.media.flip().then(function(f) {
+      console.log('[CALL] Cámara girada: ' + (f === 'user' ? 'la de delante' : 'la de detrás')); // 3229: para el diagnóstico
+      if (self.call === c) { self._set({ facing: f }); if (c.camState) self._sendState(c); } return f;
+    });
   }
 
   // Dueño 13-11: COMPARTIR PANTALLA en la videollamada (parte 1: 1-a-1). El nativo pide el permiso de Android (aviso del

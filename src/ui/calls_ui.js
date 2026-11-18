@@ -344,8 +344,12 @@ function _screen() {
   // Videollamada: tocar la pantalla muestra / oculta los controles
   el.addEventListener('click', function(e) {
     if (el.classList.contains('nc-appmini')) { el.classList.remove('nc-appmini'); return; } // mini flotante → volver a pantalla completa
-    if (!el.classList.contains('nc-live') || (e.target && e.target.closest && e.target.closest('.nc-btn, .nc-pip'))) return;
+    if (!el.classList.contains('nc-live') || (e.target && e.target.closest && e.target.closest('.nc-btn, .nc-pip'))) {
+      if (!el.classList.contains('nc-live')) console.log('[CALL] Toque en la pantalla de llamada ignorado: la llamada no está en curso');
+      return;
+    }
     el.classList.toggle('nc-hide');
+    console.log('[CALL] Toque en la pantalla: botones ' + (el.classList.contains('nc-hide') ? 'ocultos' : 'visibles')); // 3229 (dueño 17-11: «al voltear la cámara no aparecen los botones»)
     _autoHide(el);
   });
   // Ronda 2772: dos toques en la imagen grande: entera (cabe en la pantalla) ↔ a toda la pantalla (se recorta). El
@@ -413,11 +417,13 @@ function _fitLabels(bt) {
     l.style.fontSize = Math.max(8, Math.floor(fs * w / sw * 0.98 * 10) / 10) + 'px';
   }); } catch (e) {}
 }
-var _fitOnResize = false;
+var _fitOnResize = false, _rszLog = null;
 function _watchFit() {
   if (_fitOnResize) return; _fitOnResize = true;
   window.addEventListener('resize', function() {
     var el = document.getElementById('nexo-call-screen'); if (el) _fitLabels(el.querySelector('.call-buttons'));
+    // 3229: el diagnóstico apunta si el teléfono se giró durante la llamada y cómo quedaron los botones
+    if (el && el.classList.contains('nc-live')) { clearTimeout(_rszLog); _rszLog = setTimeout(function() { console.log('[CALL] Pantalla de llamada: ' + window.innerWidth + '×' + window.innerHeight + (window.innerWidth > window.innerHeight ? ' (horizontal)' : ' (vertical)') + ', botones ' + (el.classList.contains('nc-hide') ? 'ocultos' : 'visibles') + (document.documentElement.classList.contains('nx-pip') ? ', en ventanita' : '')); }, 800); }
     var g = document.getElementById('nexo-gcall-screen'); if (g) _fitLabels(g.querySelector('.gc-buttons.nc-row'));
   });
 }

@@ -10,6 +10,7 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
 ## 🆕 17-11 23:15 — dueño: botones de la videollamada al voltear la cámara, novedades, botón de regreso en Ajustes
+- 18-11: su diagnóstico 23:02 no traía el giro de cámara ni los botones (no se apuntaban). 3229 los apunta; preguntado al dueño si «voltear» es el botón Girar o girar el teléfono. Con el próximo diagnóstico se ve qué pasa.
 - **Videollamada: «al voltear la cámara no aparecen los botones, y al regresar a la vista normal ya no aparecen».** En Chromium real
   (llamada A↔B, voltear, esperar, tocar; volver a voltear) NO se reproduce: tocar muestra/oculta bien. Sospecha: en el teléfono el cambio
   de cámara pausa/reanuda la app y la pantalla de llamada queda en otro modo (miniatura de la app «nc-appmini» o ventanita). Falta el
