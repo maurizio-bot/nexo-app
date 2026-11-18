@@ -12,7 +12,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- (próxima APK)
+- El contacto con la app dormida se ve en línea al abrir su chat en pocos segundos, sin esperar a que despierte.
 </es-419>
 <!-- /APK -->
 

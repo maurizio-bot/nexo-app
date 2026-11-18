@@ -381,10 +381,10 @@ export class NetLink {
     }
     // Solo lo reciente cuenta para "en línea" (lo guardado de hace rato es del buzón)
     if (now - t < UP_MS && t > (peer.lastRx || 0)) { peer.lastRx = t; peer.wifi = !!o.w; peer.gw = !!o.g; }
-    if (o.h && now - t < UP_MS && t >= (peer.roT || 0)) { peer.ro = o.ro === 1; peer.roT = t; } // 3151: ¿lee del relé propio?
+    if (o.h && !o.r && now - t < UP_MS && t >= (peer.roT || 0)) { peer.ro = o.ro === 1; peer.roT = t; } // 3151: ¿lee del relé propio?
     if (o.h) {
       // Saludo: contestar si hace rato que no le saludamos (así los dos se ven en línea enseguida)
-      if (now - t < UP_MS && now - (peer.helloAt || 0) > 20000) this._hello(nx);
+      if (!o.r && now - t < UP_MS && now - (peer.helloAt || 0) > 20000) this._hello(nx); // 3234: r = respuesta del nativo (no se contesta)
       if (!peer.up && now - t < UP_MS) this.tick();
       return;
     }

@@ -55,6 +55,12 @@ class NetBg(
         const val FOR_APP_MAX = 500                    // 3033: eventos guardados para la app como mucho
         const val FOR_APP_MAX_CHARS = 4_000_000L       // y como mucho ~4 MB (lo más viejo sale primero)
         const val KIND = 1059
+        // 3234: ¿contesta este saludo? Solo uno reciente (como UP_MS de la app: uno viejo no dice que esté en línea), que no sea ya una
+        // respuesta (r:1: si no, dos teléfonos dormidos se saludarían sin fin) y como mucho uno cada 20 s por contacto (como la app).
+        const val HELLO_FRESH_MS = 150_000L
+        const val HELLO_GAP_MS = 20_000L
+        fun helloReplyDue(now: Long, t: Long, lastReplyAt: Long, isReply: Boolean): Boolean =
+            !isReply && t > 0 && now - t < HELLO_FRESH_MS && now - lastReplyAt >= HELLO_GAP_MS
         private val SUB = "nexobg"
         // 3069 (diagnóstico automático del Motorola 13-11 14:42, app en segundo plano): relay.damus.io se cerraba cada 25–100 s
         // durante casi una hora y se volvía a abrir a los ~10 s. Abrir la conexión ponía los fallos a cero, aunque el relé la
@@ -219,6 +225,7 @@ class NetBg(
     @Volatile private var cell = false
     private var modeKey = "" // lo último anotado en el registro sobre el modo (solo el hilo del bucle)
     private val seen = LinkedHashSet<String>()
+    private val helloAt = HashMap<String, Long>()   // 3234: cuándo contesté el último saludo de cada contacto
     // 3033 (dueño 12-11: «si me llega un mensaje ya debe quedarse en el chat, no cargarse cuando abro el chat»): lo que se
     // recibió y se avisó en segundo plano se GUARDA aquí (el evento del relé tal cual, cifrado) y la app lo recoge al volver
     // (drainForApp → netBgDrain) en vez de esperar a reconectar con los relés y pedirlo otra vez (tardaba 17 s o más).
@@ -466,7 +473,15 @@ class NetBg(
         }
         if (c == null) { if (toReq) onReqEvent(ev, ts); return }
         val o = open(c.kraw, c.nx, me, ev.optString("content")) ?: return
-        if (o.optInt("h") == 1) return
+        if (o.optInt("h") == 1) {
+            // 3234: el saludo de «abrir el chat» lo contesta ya este nativo (la app dormida tardaba 5–33 s en despertar para contestar)
+            val now = System.currentTimeMillis()
+            if (helloReplyDue(now, o.optLong("t"), synchronized(helloAt) { helloAt[c.nx] ?: 0L }, o.optInt("r") == 1)) {
+                synchronized(helloAt) { helloAt[c.nx] = now }
+                publishHelloReply(c)
+            }
+            return
+        }
         keepForApp(ev.toString())   // 3033: para la app al volver (mensajes, confirmaciones, acciones: lo procesa como si llegara)
         val n = o.optString("n")
         val ce = o.optString("ce")
@@ -504,19 +519,33 @@ class NetBg(
     // mismos primeros sanos de la lista que escucha el otro teléfono si también va con datos
     private fun publishDeliveryAck(c: Contact, msgId: String) {
         try {
-            val open = synchronized(lock) { relays.values.mapNotNull { it.ws }.filter { it.open } }
-            if (open.isEmpty()) return
             val now = System.currentTimeMillis()
             val ack = JSONObject().put("v", 1).put("type", "ack").put("msgId", msgId).put("from", me).put("ts", now)
             ackKeys[c.nx]?.let { ack.put("a", ackMac(it, "ack|$msgId|$me|${c.nx}")) }
             val body = JSONObject().put("t", now).put("w", 0).put("p", ack.toString())
-            val b64 = seal(c.kraw, me, c.nx, body.toString())
-            val tagPub = Secp256k1.hex(Secp256k1.xOnly(tagKey(c.kraw, c.nx, day(0))))
-            val ttl = now / 1000 + 7 * 86400   // TTL_MSG en la app (net_link._ttlFor de un ack)
-            val ev = event(randomSk(), KIND, listOf(listOf("p", tagPub), listOf("expiration", ttl.toString())), b64)
-            val frame = JSONArray(listOf("EVENT", ev)).toString()
-            for (ws in open) try { ws.send(frame) } catch (e: Exception) {}
-            log("Internet en segundo plano: confirmación de entrega (✓✓) a $msgId de ${c.nx}")
+            if (publishSealed(c, body, 7 * 86400L))   // TTL_MSG en la app (net_link._ttlFor de un ack)
+                log("Internet en segundo plano: confirmación de entrega (✓✓) a $msgId de ${c.nx}")
         } catch (e: Exception) { log("Internet en segundo plano: no se pudo confirmar la entrega ($e)") }
+    }
+
+    // 3234: contesta el saludo con otro saludo (h:1) marcado como respuesta (r:1: nadie lo vuelve a contestar). Es lo mismo que haría la
+    // app abierta (net_link._hello), sin token ni datos de relé propio (esos los manda la app al despertar). TTL_HELLO = 600 s.
+    private fun publishHelloReply(c: Contact) {
+        try {
+            val body = JSONObject().put("t", System.currentTimeMillis()).put("w", 0).put("h", 1).put("r", 1)
+            if (publishSealed(c, body, 600L)) log("Internet en segundo plano: saludo de ${c.nx} contestado (su app no hace falta despierta)")
+        } catch (e: Exception) { log("Internet en segundo plano: no se pudo contestar el saludo ($e)") }
+    }
+
+    // Sella `body` para la pareja y lo sube a los relés abiertos (misma etiqueta y sobre que NetLink.send). false si no hay relé abierto.
+    private fun publishSealed(c: Contact, body: JSONObject, ttlSecs: Long): Boolean {
+        val open = synchronized(lock) { relays.values.mapNotNull { it.ws }.filter { it.open } }
+        if (open.isEmpty()) return false
+        val b64 = seal(c.kraw, me, c.nx, body.toString())
+        val tagPub = Secp256k1.hex(Secp256k1.xOnly(tagKey(c.kraw, c.nx, day(0))))
+        val ev = event(randomSk(), KIND, listOf(listOf("p", tagPub), listOf("expiration", (System.currentTimeMillis() / 1000 + ttlSecs).toString())), b64)
+        val frame = JSONArray(listOf("EVENT", ev)).toString()
+        for (ws in open) try { ws.send(frame) } catch (e: Exception) {}
+        return true
     }
 }
