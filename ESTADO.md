@@ -21,6 +21,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **18-11 06:15 (México) — MODO AHORRO hasta el domingo (dueño):** SOLO arreglar lo que muestren sus diagnósticos y lo que pida.
+  Sin trabajo por cuenta propia: NO programar el reloj de ausencia ni seguir la cola solo. Pruebas: solo las cercanas al cambio
+  (la batería la corre el CI). APK 3232–3233 subida (5f246d3): si salió, pasar NOVEDADES al historial.
 - **18-11 06:10 (México):** Bluetooth tras reiniciar el teléfono EN PAUSA hasta el domingo (dueño: no empezar lo que no se pueda
   terminar). Mientras: solo detallitos baratos. El dueño casi sin límite de uso: gastar poco.
 - **18-11 05:45 (México):** APK subida con 3232 (velocidad real del buzón al recibir), 3232b (pistas del fallo nativo en el
