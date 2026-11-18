@@ -13,6 +13,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <!-- APK -->
 <es-419>
 - El contacto con la app dormida se ve en línea al abrir su chat en pocos segundos, sin esperar a que despierte.
+- El Wi-Fi con un contacto de app dormida se confirma antes.
 </es-419>
 <!-- /APK -->
 

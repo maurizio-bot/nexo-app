@@ -39,7 +39,7 @@ var VERIFY_LIMIT_MS = 30000;  // una conexión sin comprobar se cierra (impostor
 // no hay quién conteste aunque su nativo tenga la conexión viva (latido con ida y vuelta). Mientras el latido diga que el otro
 // está vivo se espera más (sin usar el enlace: sigue sin ser camino) y a los 8 s se le manda un «toque» FCM para que su app
 // despierte y conteste. Sin latido (impostor o nativo caído), los 30 s de siempre.
-var VERIFY_ALIVE_LIMIT_MS = 180000, VERIFY_WAKE_MS = 8000;
+var VERIFY_ALIVE_LIMIT_MS = 180000, VERIFY_WAKE_MS = 2500; // 3235: antes 8 s (el toque tarda en llegar: cuanto antes se pide, antes está su app)
 var BAD_RTT_MS = 1500, GOOD_RTT_MS = 800, BAD_IDLE_MS = 12000; // mala señal (latido nativo cada 4 s)
 // Ronda 2760 (regla del dueño: que no brinque): mala 3 latidos seguidos (~12 s) para dejarlo; buena 8 (~30 s) para volver
 var BAD_TICKS = 3, GOOD_TICKS = 8;
@@ -302,7 +302,10 @@ export class LanLink {
           if (again) {
             console.log('[WIFI] Wi-Fi con ' + nx + ' recuperado' + (recMs ? ' en ' + (recMs / 1000).toFixed(1) + ' s' : ''));
           } else {
-            console.log('[WIFI] Conectado con ' + nx + ' por Wi-Fi (comprobado)');
+            // 3235 (dueño 18-11: Wi-Fi local «de 0,2 a 88,5 s»): si la comprobación tardó, queda dicho por qué (su app dormida, toque a los
+            // cuántos s, cuántos intentos), para que el diagnóstico diga quién se retrasó
+            var vMs = l.upAt ? Date.now() - l.upAt : 0;
+            console.log('[WIFI] Conectado con ' + nx + ' por Wi-Fi (comprobado)' + (vMs > 8000 ? ' tras ' + (vMs / 1000).toFixed(1) + ' s: ' + (l.woke ? 'su app dormida (toque a los ' + ((l.wokeAt - l.upAt) / 1000).toFixed(1) + ' s)' : 'su app tardó en contestar') : ''));
             try { if (l.upAt && typeof window.NEXO_noteConnect === 'function') window.NEXO_noteConnect('wifi', Date.now() - l.upAt); } catch (e) {} // 3081
             if (this.ble && typeof this.ble._lanUp === 'function') this.ble._lanUp(nx);
           }
@@ -333,7 +336,7 @@ export class LanLink {
         if (now - (l.verifyAt || 0) > 10000) self._verify(nx); // sin respuesta (p. ej. el otro aún no tenía nuestra clave)
         // 2978: conectado por Wi-Fi pero su app no contesta → está dormida: un toque FCM (frenado por par en net_link) la despierta
         if (!l.woke && alive && now - l.upAt > VERIFY_WAKE_MS && self.ble && self.ble.net && typeof self.ble.net.wakeFor === 'function') {
-          l.woke = true;
+          l.woke = true; l.wokeAt = now;
           try { if (self.ble.net.wakeFor(nx)) console.log('[WIFI] ' + nx + ' conectado por Wi-Fi pero su app no contesta la comprobación: toque para despertarla'); } catch (e) {}
         }
         return;
