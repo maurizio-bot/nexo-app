@@ -1894,6 +1894,10 @@
     {
      "fallo": "3237 (diagnóstico del dueño 18-11 10:27): «Wi-Fi local 382,9 s» y, al volver a la app, «su app no contestó en 180 s: se cierra». La app del dueño quedaba congelada minutos con la pantalla apagada y el tiempo de comprobación del Wi-Fi contaba ese congelado (medida falsa y enlace cerrado de más). Ahora, al volver, la comprobación pendiente cuenta desde ese momento y se repite.",
      "prueba": "WI-FI PENDIENTE AL VOLVER A LA APP"
+    },
+    {
+     "fallo": "3238 (diagnóstico del dueño 18-11 11:43): dos textos mandados por un puente (2 saltos) salían con «!» a los ~11 s y después llegaban ✓✓. Sin la confirmación del puente el mensaje queda en cola y se reintenta: es una espera, no un fallo. Ahora sale ⏳ (pendiente); lo directo sin confirmar sigue fallido.",
+     "prueba": "TEXTO POR PUENTE SIN CONFIRMAR ES ESPERA"
     }
    ],
    "debiles": [

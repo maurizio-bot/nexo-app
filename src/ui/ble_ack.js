@@ -653,7 +653,9 @@ export class BleAckSystem {
       // 3211: ya salió por el buzón de internet (red de seguridad): está en camino (✓), no fallido (✗); su confirmación llega por ahí
       var inBox = !!(this.ble && this.ble._netSafeOut && this.ble._netSafeOut.has(msgId));
       entry.reject(Object.assign(new Error(inBox ? 'En el buzón de internet' : 'ACK timeout'), inBox ? { code: 'IN_MAILBOX' } : {})); // i18n-ok: motivo interno
-      if (!entry.quiet) this._dispatchStatus(msgId, inBox ? 'sent' : 'failed');
+      // 3238 (diagnóstico del dueño 18-11 11:43: dos textos por un puente salían «!» a los ~11 s y luego llegaban ✓✓): sin la confirmación del
+      // puente (dst) el mensaje queda EN COLA para el contacto (ble_send.js) y se reintenta: es una espera (⏳), no un fallo
+      if (!entry.quiet) this._dispatchStatus(msgId, inBox ? 'sent' : (entry.dst ? 'pending' : 'failed'));
     }
   }
   processIncomingAck(content) {
