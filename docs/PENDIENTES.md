@@ -70,6 +70,11 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   teléfono. «Confirmación sin firma válida de nx0x4029e6» ×7: Zhelowsky va en la 3026 (vieja). **3211 a hacer:** un texto a Marcos pasó
   a ✗ un segundo (16:05:07) y a ✓✓ en el siguiente: la red de seguridad ya lo había dejado en el buzón (16:05:06) y el agotamiento de
   reintentos Bluetooth (_onAckTimeout) lo marcó «failed» igual → si ya salió por internet, ✓ y no ✗.
+- **3221 llamadas de grupo por internet (EN PAUSA por el uso, sin código):** plan del ayudante: `_sendTo` de group_call.js hoy
+  descarta los tramos por internet; `CallP2P` (call_p2p.js) ya admite varios contactos → canal directo por tramo con señal 'rtc' de
+  grupo; relés solo de último recurso, midiendo el retraso y con aviso «Llega con retraso» (no puente); cortes más tolerantes por
+  internet; vídeo solo de cerca o por canal directo; `mergeCheck` que permita grupo + 1-a-1 por internet; prueba `gcallnet.js` (como
+  callp2p.js/cambiored.js: tres por internet, uno cerca + otro por internet, caída de internet a mitad).
 - **GRAVE (hallazgo del ayudante de 3217, comprobado):** desde el 10-09 `src/styles/critical.css` («FIX #2: Ocultar REM / toasts /
   logs / debug») esconde con `display:none !important` todo lo que tenga «toast», «log», «debug» o «rem-» en el id o la clase. El aviso
   general `_showInfoToast` (ui_bits.js: `#perm-error-toast.info-toast`) cae ahí: TODOS los avisos cortos de la app («Copiado ✓»,
