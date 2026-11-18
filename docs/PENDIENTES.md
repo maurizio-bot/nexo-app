@@ -70,6 +70,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   teléfono. «Confirmación sin firma válida de nx0x4029e6» ×7: Zhelowsky va en la 3026 (vieja). **3211 a hacer:** un texto a Marcos pasó
   a ✗ un segundo (16:05:07) y a ✓✓ en el siguiente: la red de seguridad ya lo había dejado en el buzón (16:05:06) y el agotamiento de
   reintentos Bluetooth (_onAckTimeout) lo marcó «failed» igual → si ya salió por internet, ✓ y no ✗.
+- **Estilo único de botones (dueño 17-11, 19:40):** «revisa que todos tengan el mismo estilo; la ruedita no es igual al botón de
+  perfil ni a los de enviar». Además de la misma respuesta al dedo (3181), mismo aspecto: forma, tamaño, iconos SVG de línea del
+  mismo grosor/color. Plan: inventario (lo trae el ayudante de 3218) → estilo base (propuesto: los botones redondos de la pantalla
+  de llamada) → aplicarlo a toda la app → prueba que lo vigile (como pressall.js). Esperando qué estilo elige el dueño de modelo.
 - **Diagnósticos pegados 17-11 18:15 (México)** (Roberto 14:49, Marcos 16:13 y 17:25, dueño 17:14 y 17:25, HONOR 17:05):
   · Marcos 16:13 (ya en la 3090): «Confirmación sin firma válida de nx1n36c283» ×6 a las 16:13:41.675, ANTES de cargar su NEXO ID
     (41.710) → **arreglado en 3215** (ackarranque.js). Era la causa de las «sin firma válida» (no claves viejas).
