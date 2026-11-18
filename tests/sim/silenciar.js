@@ -171,7 +171,7 @@ const msgNotifs = (n, chat, n0) => n.notifLog.slice(n0).filter((x) => x.chatId =
   r.S5_activado = !!(B.win.__nexoMute && !B.win.__nexoMute.isMuted(idA)) && !(nB.muted && nB.muted.has(idA));
   r.S5_aviso_activado = (($(B, '#perm-error-toast') || {}).textContent) || '';
   // grupo A + B
-  click(A.win, A.win.document.getElementById('nexo-new-group-btn')); await sleep(400);
+  click(A.win, A.win.document.getElementById('ble-fab-btn')); await sleep(300); click(A.win, A.win.document.getElementById('nexo-fab-group')); await sleep(400); // 3222: «Crear grupo» desde el botón de agregar
   const sheet = A.win.document.getElementById('nexo-group-sheet');
   sheet.querySelectorAll('.nexo-pick-row input').forEach((cb) => { cb.checked = true; cb.dispatchEvent(new A.win.Event('change')); });
   const gnm = sheet.querySelector('#nexo-group-name'); gnm.value = 'Callados'; gnm.dispatchEvent(new A.win.Event('input'));
