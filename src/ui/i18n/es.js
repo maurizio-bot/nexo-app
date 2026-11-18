@@ -6,6 +6,8 @@ export default {
   // Ajustes (Fase 1)
   settings_title: "Ajustes",
   settings_back: "‹ Perfil",
+  nav_back: "Atrás",
+  hdr_my_profile: "Mi perfil",
   language: "Idioma",
   language_hint: "Por defecto, el idioma de tu teléfono. Puedes cambiarlo cuando quieras.",
   privacy: "Privacidad",

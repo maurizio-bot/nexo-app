@@ -18,6 +18,7 @@ import { BLE_JUMP_METHODS } from './ble_jump_send.js';
 import { BLE_CAMERA_METHODS } from './ble_camera_pause.js';
 import { BLE_KEY_METHODS } from './ble_keys.js';
 import { BLE_NEARREQ_METHODS } from './ble_near_req.js'; // 3207: solicitud de contacto también de cerca
+import { applyDisplayName } from './display_name.js'; // 3218: el nombre FIJO manda sobre el del teléfono
 import { BLE_LINK_METHODS } from './ble_links.js';
 import { BLE_CONTACT_METHODS } from './ble_contacts.js';
 import { BLE_UI_METHODS } from './ble_ui.js';
@@ -239,6 +240,11 @@ export class BLEInterface {
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'getLocalDeviceInfo')) return Promise.resolve();
     return _safeNativeCall(self.nativePlugin, 'getLocalDeviceInfo', {}).then(function(info) {
       self.localDeviceName = (info && info.deviceName) || '';
+      // 3218: si ya hay nombre FIJO (display_name.js, #dueño 06-11) manda él. Antes, si el nativo respondía DESPUÉS de aplicarlo (en la
+      // prueba: aplicado a los 319 ms, pisado a los 327 ms), durante ~4 s —hasta que nameGate lo volvía a poner— la app usaba el nombre
+      // del teléfono: lo enseñaba la cabecera y lo podía mandar a quien conectara en ese rato (saludo, solicitudes).
+      applyDisplayName(self);
+      try { window.dispatchEvent(new CustomEvent('nexo:me')); } catch (e) {} // 3218: mi nombre en la cabecera de Contactos
       // v6.12.0: Bluetooth de largo alcance (LE Coded PHY) en este teléfono (Jump con más alcance); para el diagnóstico
       if (info && typeof info.codedPhy === 'boolean' && self._codedPhy !== info.codedPhy) {
         self._codedPhy = info.codedPhy;

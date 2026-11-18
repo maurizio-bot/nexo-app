@@ -61,10 +61,22 @@ async function boot(name, native) {
   var vr = win.__nexoHandleBack();
   r.visor_cierra = teniaVisor && vr === true && !doc.getElementById('fullscreen-media-overlay');
 
-  // 4b. (dueño 01-11: atrás SOLO por gestos) «Ajustes» es un nivel por debajo de «Perfil»: el gesto la cierra y
-  // VUELVE a Perfil (como el viejo botón «‹ Perfil»). Se abre con el cableado real (evento nexo:ui:settings).
+  // 4a. 3218 (dueño 17-11: «separar ajustes de perfil»): Ajustes abierto con la RUEDITA de la cabecera → el gesto la cierra y
+  // vuelve a la lista de Contactos (no a Perfil)
   var _ps0 = doc.getElementById('nexo-profile-sheet'); if (_ps0) _ps0.remove();
-  win.dispatchEvent(new win.CustomEvent('nexo:ui:settings'));
+  var gear = doc.getElementById('nexo-settings-btn');
+  if (gear) gear.click();
+  await sleep(150);
+  var conRuedita = !!doc.getElementById('nexo-settings-sheet');
+  var gr = win.__nexoHandleBack();
+  await sleep(150);
+  r.ajustes_ruedita_vuelve_lista = !!gear && conRuedita && gr === true && !doc.getElementById('nexo-settings-sheet') && !doc.getElementById('nexo-profile-sheet');
+
+  // 4b. (dueño 01-11: atrás SOLO por gestos) Ajustes abierto con el atajo de «Perfil» (lo reemplaza): el gesto la cierra y
+  // VUELVE a Perfil (como el viejo botón «‹ Perfil»). Se abre por el camino real: Perfil → su atajo «Ajustes».
+  win.dispatchEvent(new win.CustomEvent('nexo:ui:profile'));
+  await sleep(150);
+  var atajo = doc.getElementById('nexo-open-settings'); if (atajo) atajo.click();
   await sleep(150);
   var teniaAjustes = !!doc.getElementById('nexo-settings-sheet');
   // A6 (2984): cada sección de Ajustes tiene su PROPIO icono (antes «Idioma» e «Internet» compartían el 🌐)
@@ -93,7 +105,7 @@ async function boot(name, native) {
   r.final_false = win.__nexoHandleBack() === false;
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|is not a function/.test(l)).slice(0, 4);
-  const ok = r.handler_existe && r.nada_false && r.chat_true && r.chat_cerrado && r.overlay_primero && r.visor_cierra && r.ajustes_vuelve_perfil && r.ajustes_iconos_unicos && r.perfil_cierra && r.agregar_cierra && r.final_false && r.errores.length === 0;
+  const ok = r.handler_existe && r.nada_false && r.chat_true && r.chat_cerrado && r.overlay_primero && r.visor_cierra && r.ajustes_ruedita_vuelve_lista && r.ajustes_vuelve_perfil && r.ajustes_iconos_unicos && r.perfil_cierra && r.agregar_cierra && r.final_false && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('BACKBTN ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_backbtn.txt'), logs.join('\n'));

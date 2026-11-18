@@ -86,12 +86,14 @@ export function _setupBackButton() {
         if (cam && !cam.classList.contains('hidden')) { if (typeof window.__nexoHideCamera === 'function') window.__nexoHideCamera(); return true; }
         // #dueño 01-11 (atrás SOLO por gestos): el gesto del sistema también cierra las pantallas a pantalla completa cuyo
         // botón de «atrás» se quitó (Ajustes, Perfil, panel Agregar). Van ANTES que el chat porque están por encima de él.
-        // Ajustes es un nivel por DEBAJO de Perfil (lo reemplaza), así que el gesto vuelve a Perfil, como el viejo botón «‹ Perfil».
+        // Ajustes abierto desde Perfil (su atajo) lo reemplaza, así que el gesto vuelve a Perfil; abierto con la ruedita, a Contactos.
         var cprof = document.getElementById('nexo-contact-profile'); // #dueño 05-11: la ficha del contacto se cierra por gesto/atrás (se le quitó el botón), como el resto
         if (cprof) { cprof.remove(); return true; }
         var settings = document.getElementById('nexo-settings-sheet');
         if (settings && typeof settings.__nexoSecBack === 'function' && settings.__nexoSecBack()) return true; // 3142: desde una sección vuelve a la lista de Ajustes
-        if (settings) { settings.remove(); try { window.dispatchEvent(new CustomEvent('nexo:ui:profile')); } catch (e) {} return true; }
+        // 3218: desde la lista de Ajustes vuelve a donde estabas: a Contactos si se abrió con la ruedita de la cabecera, a Perfil si
+        // se abrió con su atajo (profile.js __nexoBack; antes siempre a Perfil, que era el único camino)
+        if (settings) { if (typeof settings.__nexoBack === 'function') settings.__nexoBack(); else settings.remove(); return true; }
         var profile = document.getElementById('nexo-profile-sheet'); if (profile) { profile.remove(); return true; }
         var blePanel = document.getElementById('ble-panel');
         if (blePanel && blePanel.classList.contains('active')) {

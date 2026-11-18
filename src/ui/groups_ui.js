@@ -179,9 +179,11 @@ export function installGroupButton() {
   if (!header || document.getElementById('nexo-new-group-btn')) return;
   var b = document.createElement('button');
   b.id = 'nexo-new-group-btn';
+  b.type = 'button';
+  b.className = 'nx-btn-s'; // 3218: estilo único SECUNDARIO, igual que la lupa y la ruedita (nexo_theme.css); antes, estilos en línea
   b.title = t('prof_group_new', 'Nuevo grupo');
-  b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 13.5a6.5 6.5 0 0 1 3.5 6.5"/></svg>'; // ronda 2763: icono dibujado (antes un emoji)
-  b.style.cssText = 'position:absolute;right:14px;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;font-size:20px;cursor:pointer;z-index:5;';
+  b.setAttribute('aria-label', t('prof_group_new', 'Nuevo grupo'));
+  b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 13.5a6.5 6.5 0 0 1 3.5 6.5"/></svg>'; // ronda 2763: icono dibujado (antes un emoji)
   if (getComputedStyle(header).position === 'static') header.style.position = 'relative';
   b.addEventListener('click', function(e) { e.stopPropagation(); openCreateGroupSheet(); });
   header.appendChild(b);
