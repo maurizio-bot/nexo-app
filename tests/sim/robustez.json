@@ -1870,6 +1870,10 @@
     {
      "fallo": "3223 (dueño 17-11: «al deslizar un mensaje para contestarlo no aparece en la barra»): deslizar a la derecha empezando en la parte IZQUIERDA de un mensaje recibido (las burbujas empiezan a 14 px del borde) caía en la franja de 40 px del gesto «volver»: se cerraba el chat y la burbuja ignoraba el desliz (medido en Chromium real a 393 px). Ahora sobre un mensaje manda «responder» y el chat sigue abierto",
      "prueba": "gestos del chat"
+    },
+    {
+     "fallo": "3225 (dueño 17-11, «sí»): los avisos cortos de la app («Copiado», «Reenviado a…», «La foto pesa más de 5 MB…», errores de permisos y los de estados; ~70 en el código) no se veían desde el 10-09: la regla «FIX #2» de critical.css escondía todo lo que tuviera «toast» en su clase o id (pensada para los paneles de pruebas REM). Ahora se exceptúan #perm-error-toast y #nexo-est-toast; los de pruebas siguen ocultos (comprobado en Chromium real)",
+     "prueba": "AVISOS CORTOS"
     }
    ],
    "debiles": [

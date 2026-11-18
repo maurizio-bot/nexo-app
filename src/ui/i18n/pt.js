@@ -573,6 +573,8 @@ export default {
   prof_vend_huawei: "Huawei: em «Inicialização de apps», NEXO no manual e tudo ativado",
   prof_vend_honor: "Honor: em «Inicialização de apps», NEXO no manual e tudo ativado",
   prof_open: "Abrir",
+  prof_svc_notice: "Aviso fixo «Pronto para receber mensagens e chamadas»: você pode ocultá-lo; o NEXO continua recebendo",
+  prof_svc_notice_btn: "Ocultar",
   prof_fix: "Corrigir",
   prof_check_fail: "Não foi possível verificar.",
   prof_net_relays: "Retransmissores públicos: ",

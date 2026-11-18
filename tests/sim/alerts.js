@@ -9,6 +9,7 @@
 //  4. Al acabar la llamada, la app vuelve detrás de la pantalla de bloqueo (callScreenDone).
 // Lo nativo (encender la pantalla, pantalla de bloqueo, ajustes del sistema) es el modelo de native_mock.js (Kotlin
 // 2765): aquí se prueba lo que hace la app con ello.
+// 3225: en Ajustes, la fila «Aviso fijo» con «Ocultar» abre su categoría (openAlertSetting serviceNotice).
 // Uso: node alerts.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -50,7 +51,7 @@ async function openChatWith(p, name) {
 }
 function sendText(p, t) { const i = p.win.document.getElementById('message-input'); i.value = t; i.dispatchEvent(new p.win.Event('input', { bubbles: true })); click(p.win, p.win.document.getElementById('send-btn')); }
 const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) return true; await sleep(200); } return false; };
-const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows .nx-alert-row')).map((r) => r.textContent.replace(/Arreglar$|Abrir$/, '').trim());
+const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows .nx-alert-row')).map((r) => r.textContent.replace(/Arreglar$|Abrir$|Ocultar$/, '').trim());
 
 (async () => {
   const radio = new Radio();
@@ -90,13 +91,18 @@ const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows
   await sleep(200);
   // ronda 2807: los avisos viven ahora en Ajustes (se abre desde Perfil con ⚙️)
   { const s = B.win.document.getElementById('nexo-open-settings'); if (s) click(B.win, s); }
-  await wait(() => rows(B).length === 4, 10);
+  await wait(() => rows(B).length === 5, 10); // 3225: + la fila «Aviso fijo» (🔕 Ocultar)
   r.perfil_antes = rows(B);
   // (2772) los ajustes del Vivo, con su botón
   const vend = B.win.document.querySelector('#nexo-alert-rows button[data-what="vendor"]');
   r.fabricante = { fila: r.perfil_antes.filter((t) => /^📱 Vivo/.test(t)).length === 1, boton: vend ? vend.textContent : null };
   if (vend) click(B.win, vend);
   r.fabricante.abre = (nB.alertOpened || []).indexOf('vendor') >= 0;
+  // 3225 (dueño 17-11): «Ocultar» lleva a la categoría del aviso fijo del servicio
+  const svc = B.win.document.querySelector('#nexo-alert-rows button[data-what="serviceNotice"]');
+  r.aviso_fijo = { fila: r.perfil_antes.filter((t) => /^🔕 /.test(t)).length === 1, boton: svc ? svc.textContent : null };
+  if (svc) click(B.win, svc);
+  r.aviso_fijo.abre = (nB.alertOpened || []).indexOf('serviceNotice') >= 0;
   const fix = B.win.document.querySelector('#nexo-alert-rows button[data-what="fullScreen"]');
   r.boton_arreglar = !!fix;
   click(B.win, fix);
@@ -127,9 +133,9 @@ const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows
   r.vuelve_tras_el_bloqueo = await wait(() => nB.calls.filter((c) => c.name === 'callScreenDone').length > d0, 30);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.muestra_aviso_bateria && r.pide_segundo_plano && r.paso_fabricante && r.abre_fabricante_inicio && r.aviso_cerrado &&
-    r.A_no_pide && r.pide_pantalla_completa && r.contactos && r.perfil_antes.length === 4 && r.perfil_antes.filter((t) => /^⚠️/.test(t)).length === 1 && r.boton_arreglar &&
-    r.fabricante.fila && r.fabricante.boton === 'Abrir' && r.fabricante.abre &&
-    r.abre_ajuste && r.perfil_despues.filter((t) => !/^📱/.test(t)).every((t) => /^(✅|✓)/.test(t)) && r.encender_por_defecto && r.mensaje_enciende && r.sin_opcion_no_enciende && r.llamada_suena && r.llamada_enciende &&
+    r.A_no_pide && r.pide_pantalla_completa && r.contactos && r.perfil_antes.length === 5 && r.perfil_antes.filter((t) => /^⚠️/.test(t)).length === 1 && r.boton_arreglar &&
+    r.fabricante.fila && r.fabricante.boton === 'Abrir' && r.fabricante.abre && r.aviso_fijo.fila && r.aviso_fijo.boton === 'Ocultar' && r.aviso_fijo.abre &&
+    r.abre_ajuste && r.perfil_despues.filter((t) => !/^(📱|🔕)/.test(t)).every((t) => /^(✅|✓)/.test(t)) && r.encender_por_defecto && r.mensaje_enciende && r.sin_opcion_no_enciende && r.llamada_suena && r.llamada_enciende &&
     r.vuelve_tras_el_bloqueo && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('ALERTS ' + JSON.stringify(r));

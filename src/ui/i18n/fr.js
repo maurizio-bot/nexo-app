@@ -573,6 +573,8 @@ export default {
   prof_vend_huawei: "Huawei : dans «Lancement d'applications», réglez NEXO sur manuel et activez tout",
   prof_vend_honor: "Honor : dans «Lancement d'applications», réglez NEXO sur manuel et activez tout",
   prof_open: "Ouvrir",
+  prof_svc_notice: "Notification fixe «Prêt à recevoir messages et appels»: vous pouvez la masquer; NEXO continue de recevoir",
+  prof_svc_notice_btn: "Masquer",
   prof_fix: "Corriger",
   prof_check_fail: "Impossible de vérifier.",
   prof_net_relays: "Relais publics : ",

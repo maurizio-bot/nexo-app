@@ -15,13 +15,19 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - **Aviso fijo «NEXO · Listo para recibir mensajes y llamadas» (Jhonnatan, Xiaomi, 22:16):** es el aviso del servicio que mantiene a
   NEXO recibiendo con la app cerrada; Android lo exige mientras el servicio corre (WhatsApp no lo necesita porque usa el servidor de
   Google). La 3165 lo dejó al mínimo (plegado, callado, al final, oculto en bloqueo); en Xiaomi sale igual. Se puede ocultar: mantener
-  pulsado → apagar esa categoría («Servicio»); NEXO sigue funcionando. **Propuesta (decide el dueño):** botón en Ajustes «Ocultar el
-  aviso fijo» que abre directo esa categoría.
+  pulsado → apagar esa categoría («Servicio»); NEXO sigue funcionando. ✅ **3225** (dueño: «sí»): botón «Ocultar» en Ajustes que abre
+  directo esa categoría.
 - **Diagnóstico automático S23 21:39 «zombi» con Yaelito (los dos en 3091):** dos enlaces Bluetooth (5d5b… saliente, 6a15… entrante).
   A las 21:39:09 el desempate cerró el ENTRANTE (el único que seguía recibiendo: RX 21:38:49 y 21:39:09) y se quedó con el saliente,
   que no recibía nada desde las 21:38:33 → 4 pings sin respuesta y reconexión a los 26 s. Parecido a la 3139 (cada teléfono cierra
   uno distinto). Además el Wi-Fi local se cortó a los 3 s (ECONNREFUSED al puerto de Yaelito). Pendiente: que el desempate no cierre
   el enlace que está recibiendo si el otro lleva > 15 s callado.
+- **Diagnóstico automático de Marcos (SM-A556E, 3090) «par:zombi» pedido por Roberto, 21:49:** (1) el MISMO diagnóstico (03:49 UTC)
+  llegó 3 veces (03:56, 04:24 y 04:28 UTC): el canal de diagnósticos lo reenvía; revisar que se marque como entregado. (2) El teléfono
+  se reinició a las 20:47 y NEXO volvió SOLO con la escucha de internet («Internet sin la app»); el Bluetooth (servidor y anuncio) no
+  arrancó hasta que abrió la app a las 21:49: una hora sin Bluetooth (Roberto lo veía «zombi»). Revisar el arranque tras reinicio
+  (¿Android no deja arrancar el servicio de Bluetooth desde el arranque?). (3) Su Wi-Fi y sus datos se alternan cada 1–2 min
+  (21:34–21:48): relés que caen y vuelven; la escucha lo maneja.
 - **Yaelito (Xiaomi 2312DRA50G, 3081→3091) «no le llegaban los mensajes»:** su registro nativo calla del 17-11 00:39 («sin memoria:
   Android la cerró») a las 21:23 (abrió la app y se actualizó): ~21 h sin NEXO vivo, ni el servicio ni los toques. En Xiaomi suele ser
   «Inicio automático» apagado o la limpieza al deslizar en recientes (SwipeUpClean ×7 el 16-11). Pedirle que revise Inicio automático

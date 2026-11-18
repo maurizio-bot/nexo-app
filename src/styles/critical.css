@@ -485,7 +485,9 @@ Consolidado: inline + main.css + ble_styles
    ============================================ */
    .rem-status, #rem-status,
    [class*="rem-"], [id*="rem-"],
-   [class*="toast"], [id*="toast"],
+   /* 3225 (dueño 17-11, «sí»): los avisos cortos de NEXO (#perm-error-toast: «Copiado», «Reenviado a…», errores; #nexo-est-toast:
+      estados) caían aquí desde el 10-09 y NUNCA se veían. Solo se esconden los toasts de pruebas (REM y similares). */
+   [class*="toast"]:not(#perm-error-toast):not(#nexo-est-toast), [id*="toast"]:not(#perm-error-toast):not(#nexo-est-toast),
    [class*="debug"], [id*="debug"],
    [class*="log"], [id*="log"]:not(#contacts-list):not(.ble-contact-log),
    #nexo-diagnostic, #fatal-error,

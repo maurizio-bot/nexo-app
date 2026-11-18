@@ -568,6 +568,9 @@ function _renderAlertSettings() {
       honor: t('prof_vend_honor', 'Honor: en «Inicio de apps», NEXO a mano y todo activado') };
     var vk = Object.keys(VEND).filter(function(k) { return String(r.vendor || '').indexOf(k) >= 0; })[0];
     if (vk) rows.push({ k: 'vendor', info: true, t: VEND[vk] });
+    // 3225 (dueño 17-11, captura de Jhonnatan en Xiaomi): el aviso fijo del servicio no se puede quitar desde la app (Android lo exige
+    // mientras NEXO recibe con la app cerrada), pero cada uno puede ocultar su categoría: un toque lleva directo a ella
+    rows.push({ k: 'serviceNotice', info: true, icon: '🔕', t: t('prof_svc_notice', 'Aviso fijo «Listo para recibir mensajes y llamadas»: puedes ocultarlo; NEXO sigue recibiendo igual'), btn: t('prof_svc_notice_btn', 'Ocultar') });
     box.innerHTML = '';
     rows.forEach(function(x) {
       var row = document.createElement('div');
@@ -577,12 +580,12 @@ function _renderAlertSettings() {
       lbl.style.cssText = 'font-size:14px;';
       // 3140: la marca de «listo» es una ✓ celeste (no el ✅ verde); lo pendiente sigue con ⚠️ y su botón
       if (x.ok && !x.info) { var ok = document.createElement('span'); ok.className = 'nx-ok'; ok.textContent = '✓'; lbl.appendChild(ok); lbl.appendChild(document.createTextNode(' ' + x.t)); }
-      else lbl.textContent = x.info ? '📱 ' + x.t : '⚠️ ' + x.t + ' — ' + x.no;
+      else lbl.textContent = x.info ? (x.icon || '📱') + ' ' + x.t : '⚠️ ' + x.t + ' — ' + x.no;
       row.appendChild(lbl);
       if (!x.ok) {
         var b = document.createElement('button');
         b.className = 'nx-btn'; b.style.cssText = 'width:auto;margin:0;padding:8px 14px;flex-shrink:0;';
-        b.textContent = x.info ? t('prof_open', 'Abrir') : t('prof_fix', 'Arreglar'); b.dataset.what = x.k;
+        b.textContent = x.btn || (x.info ? t('prof_open', 'Abrir') : t('prof_fix', 'Arreglar')); b.dataset.what = x.k;
         b.onclick = function() { pl.openAlertSetting({ what: x.k }).catch(function() {}); setTimeout(_renderAlertSettings, 4000); };
         row.appendChild(b);
       }

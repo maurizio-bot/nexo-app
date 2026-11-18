@@ -208,6 +208,10 @@ internal fun NexoBlePlugin.openAlertSettingImpl(call: PluginCall) {
         // 3098: la ficha de la app (Permisos: cámara bloqueada en una videollamada)
         "app" -> Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg)
         "fullScreen" -> if (Build.VERSION.SDK_INT >= 34) Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkg) else null
+        // 3225: la categoría del aviso fijo del servicio, para ocultarla (NEXO sigue recibiendo); sin categorías (< 8), los avisos de la app
+        "serviceNotice" -> if (Build.VERSION.SDK_INT >= 26) Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName).putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, BleService.CHANNEL_ID)
+            else Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName)
         else -> Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName)
     }
     if (i == null) { call.resolve(JSObject().put("opened", false)); return }

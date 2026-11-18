@@ -32,7 +32,7 @@ class BleService : Service() {
         private const val TAG = "BleService"
         // 3165 (dueño 16-11: «al querer ver una notificación de mensaje, esa [la de NEXO BLE] siempre está por delante»): canal
         // nuevo de importancia MÍNIMA (va a «Silenciosas», plegado, debajo de los mensajes); el viejo (BAJA) se borra
-        private const val CHANNEL_ID = "nexo_ble_quiet"
+        internal const val CHANNEL_ID = "nexo_ble_quiet" // 3225: Ajustes abre directo esta categoría («Ocultar aviso fijo»)
         private const val OLD_CHANNEL_ID = "nexo_ble_foreground"
         private const val NOTIFICATION_ID = 1001
         private const val MANUFACTURER_ID = 0xFFFF
