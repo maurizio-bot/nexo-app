@@ -35,7 +35,7 @@ export function exitsLines() {
   list.slice(0, MAX_ROWS).forEach(function(e) { out.push('  ' + (e.problem ? '⚠ ' : '') + _row(e)); });
   if (list.length > MAX_ROWS) out.push('  … y ' + (list.length - MAX_ROWS) + ' más'); // i18n-ok
   var anr = list.filter(function(e) { return e.trace; })[0];
-  if (anr) { out.push('  Hilo principal en la congelada del ' + _when(anr.t) + ':'); String(anr.trace).split('\n').slice(0, 25).forEach(function(l) { out.push('    ' + l); }); } // i18n-ok
+  if (anr) { out.push('  ' + (anr.reason === 5 ? 'Pistas del fallo nativo' : 'Hilo principal en la congelada') + ' del ' + _when(anr.t) + ':'); String(anr.trace).split('\n').slice(0, 25).forEach(function(l) { out.push('    ' + l); }); } // i18n-ok
   if (_res.crashes) {
     out.push('Fallos guardados al caer (el más reciente primero):'); // i18n-ok
     String(_res.crashes).split('\n').filter(function(l) { return l.trim(); }).slice(0, MAX_CRASH_LINES).forEach(function(l) { out.push('  ' + l); });

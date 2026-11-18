@@ -54,6 +54,28 @@ object ExitReasons {
         return if (t.length <= max) t else t.substring(0, max) + "…"
     }
 
+    /**
+     * 3232 (S23 17-11 22:48: «FALLO nativo» al terminar una videollamada, sin más datos): de la «lápida» de un fallo NATIVO
+     * (desde Android 12 es binaria) se sacan los textos legibles que dicen qué pasó: el mensaje de aborto, la señal y las
+     * librerías .so que aparecen (las primeras de la pila). Sin repetir y como mucho [max] pistas.
+     */
+    fun nativeHints(bytes: ByteArray, max: Int = 8): String {
+        val runs = ArrayList<String>()
+        val sb = StringBuilder()
+        fun flush() { if (sb.length >= 6) runs.add(sb.toString()); sb.setLength(0) }
+        for (b in bytes) { val c = b.toInt() and 0xff; if (c in 32..126) sb.append(c.toChar()) else flush() }
+        flush()
+        val out = LinkedHashSet<String>()
+        val keys = Regex("(?i)abort|SIG[A-Z]{3,5}|fatal|\\.so\\b|assert|check failed")
+        for (r in runs) {
+            if (!keys.containsMatchIn(r)) continue
+            val t = clip(r, 160)
+            if (t.endsWith(".so") || t.contains(".so ")) out.add(t.substringAfterLast('/')) else out.add(t)
+            if (out.size >= max) break
+        }
+        return out.joinToString("\n")
+    }
+
     /** Del volcado de un ANR (todos los hilos), solo el hilo principal: la cabecera «"main"» y hasta [maxLines] líneas. */
     fun anrMain(trace: String, maxLines: Int = 25): String {
         val lines = trace.lines()

@@ -139,6 +139,9 @@ internal fun NexoBlePlugin.getExitReasonsImpl(call: PluginCall) {
                     .put("fg", e.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND)
                     .put("pssKb", e.pss).put("rssKb", e.rss)
                 if (!e.description.isNullOrBlank()) o.put("desc", ExitReasons.clip(e.description, 200))
+                if (e.reason == ExitReasons.CRASH_NATIVE && Build.VERSION.SDK_INT >= 31) {   // 3232: pistas del fallo nativo
+                    try { e.traceInputStream?.use { ins -> val h = ExitReasons.nativeHints(ins.readBytes()); if (h.isNotBlank()) o.put("trace", h) } } catch (t: Throwable) {}
+                }
                 if (e.reason == ExitReasons.ANR) {
                     try {
                         e.traceInputStream?.use { ins ->

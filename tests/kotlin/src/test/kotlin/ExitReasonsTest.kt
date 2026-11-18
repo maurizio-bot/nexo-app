@@ -56,4 +56,17 @@ class ExitReasonsTest {
         assertFalse(f.contains("fallo 1\n"))
         assertTrue(f.endsWith("\n"), "se corta entre fallos, no a la mitad de uno")
     }
+
+    // 3232: de una lápida binaria de fallo nativo salen el aborto, la señal y las librerías (sin repetir)
+    @Test fun pistasDelFalloNativo() {
+        val bin = byteArrayOf(8, 1, 0x12) + "Abort message: 'Check failed: frame != nullptr'".toByteArray() + byteArrayOf(0, 3, 26) +
+            "SIGABRT".toByteArray() + byteArrayOf(0) + "/data/app/~~x/lib/arm64/libjingle_peerconnection_so.so".toByteArray() + byteArrayOf(1) +
+            "/system/lib64/libc.so".toByteArray() + byteArrayOf(2) + "/system/lib64/libc.so".toByteArray() + byteArrayOf(0) + "basura".toByteArray()
+        val h = ExitReasons.nativeHints(bin)
+        assertTrue(h.contains("Check failed: frame != nullptr"), h)
+        assertTrue(h.contains("SIGABRT"), h)
+        assertTrue(h.contains("libjingle_peerconnection_so.so"), h)
+        assertEquals(1, h.lines().count { it == "libc.so" }, h)
+        assertFalse(h.contains("basura"))
+    }
 }
