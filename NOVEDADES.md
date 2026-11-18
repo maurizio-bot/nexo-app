@@ -12,12 +12,17 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Un mensaje que va por otro teléfono ya no sale con «!» mientras espera: queda en espera.
-- El Bluetooth ya no se satura cuando tu teléfono hace de puente, y un texto en curso pasa solo al enlace que queda.
+- (próxima APK)
 </es-419>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3101 (18-11-2026)
+<es-419>
+- Un mensaje que va por otro teléfono ya no sale con «!» mientras espera: queda en espera.
+- El Bluetooth ya no se satura cuando tu teléfono hace de puente, y un texto en curso pasa solo al enlace que queda.
+</es-419>
 
 ### APK 3100 (18-11-2026)
 <es-419>
