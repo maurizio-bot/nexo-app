@@ -185,6 +185,13 @@ export function autoDiagReceived(fromNx, k) {
   var from = _normId(fromNx);
   if (!/^nx[0-9a-z]{8}$/.test(from)) return false;
   var text = k.text.substring(0, DIAG_MAX_CHARS + 2000);
+  // 3240 (diagnósticos de Marcos 17-11: el MISMO diagnóstico llegó 3 veces): el mismo contacto con la misma hora de salida y el mismo
+  // síntoma ya está en la bandeja → no se guarda otra copia ni se avisa otra vez (llega repetido si el envío se reintentó o fue por dos caminos)
+  var sentAt0 = Number(k.at) || 0, sym0 = String(k.sym || '').substring(0, 40);
+  if (sentAt0 && autoDiagInbox().some(function(e) { return e.from === from && e.sentAt === sentAt0 && e.sym === sym0; })) {
+    console.log('[AUTODIAG] diagnóstico repetido de ' + from + ' (' + (sym0 || '?') + '): ya estaba en la bandeja'); // i18n-ok: registro
+    return true;
+  }
   _store({ from: from, at: Date.now(), sentAt: Number(k.at) || 0, sym: String(k.sym || '').substring(0, 40), info: String(k.info || '').substring(0, 120), build: String(k.build || '').substring(0, 12), text: text, seen: false });
   console.log('[AUTODIAG] llegó un diagnóstico automático de ' + from + ' (' + (k.sym || '?') + ', build ' + (k.build || '?') + ', ' + _kb(text.length) + ' KB)');
   try { _showToast(t('autodiag_received_toast', 'Llegó un diagnóstico automático de ') + from, 'info'); } catch (e) {}

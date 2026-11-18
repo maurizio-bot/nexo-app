@@ -56,7 +56,7 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   uno distinto). Además el Wi-Fi local se cortó a los 3 s (ECONNREFUSED al puerto de Yaelito). HECHO en 3233: el desempate no cierra
   el enlace que está recibiendo si el que se queda lleva > 15 s callado.
 - **Diagnóstico automático de Marcos (SM-A556E, 3090) «par:zombi» pedido por Roberto, 21:49:** (1) el MISMO diagnóstico (03:49 UTC)
-  llegó 3 veces (03:56, 04:24 y 04:28 UTC): el canal de diagnósticos lo reenvía; revisar que se marque como entregado. (2) El teléfono
+  llegó 3 veces (03:56, 04:24 y 04:28 UTC): el canal de diagnósticos lo reenvía; revisar que se marque como entregado. HECHO en 3240: la bandeja no guarda dos veces el mismo (contacto + hora de salida + síntoma). (2) El teléfono
   se reinició a las 20:47 y NEXO volvió SOLO con la escucha de internet («Internet sin la app»); el Bluetooth (servidor y anuncio) no
   arrancó hasta que abrió la app a las 21:49: una hora sin Bluetooth (Roberto lo veía «zombi»). Revisar el arranque tras reinicio
   (¿Android no deja arrancar el servicio de Bluetooth desde el arranque?). (3) Su Wi-Fi y sus datos se alternan cada 1–2 min

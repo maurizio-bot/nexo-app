@@ -1906,6 +1906,10 @@
     {
      "fallo": "3239 (diagnóstico del dueño 18-11 11:43): como puente, 50 paquetes de respaldo para otro teléfono salieron todos a la vez hacia el mismo siguiente teléfono y, al no confirmar ninguno, se reintentaron los 50 cada ~2 s (~50 avisos de ACK timeout por segundo): radio saturada y el texto del chat sin sitio. Ahora como mucho 6 a la vez por siguiente teléfono.",
      "prueba": "EL PUENTE NO SATURA LA RADIO"
+    },
+    {
+     "fallo": "3240 (diagnósticos de Marcos 17-11): el MISMO diagnóstico automático llegó 3 veces a la bandeja del desarrollador (envío reintentado o por dos caminos). Ahora mismo contacto + misma hora de salida + mismo síntoma = una sola copia.",
+     "prueba": "DIAGNÓSTICO REPETIDO NO SE GUARDA DOS VECES"
     }
    ],
    "debiles": [
