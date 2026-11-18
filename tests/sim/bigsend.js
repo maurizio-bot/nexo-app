@@ -170,7 +170,8 @@ async function ownStatus(p, cid, id) { const l = await p.win.vaultLoadMessages(c
   await A.win.vaultBigSendEnd(gid);
   A.win.bleInterface._bigBlockedNoted && A.win.bleInterface._bigBlockedNoted.delete(gid);
   A.win.bleInterface._resendPendingMessages(idB);
-  r.S4_reintentar_sale_s = await waitFor(() => new RegExp('sendFile START fileId=' + gid).test(logs.slice(mark2).join('\n')), 30000);
+  // (3224: con el otro en línea por los relés, el reenvío va por el buzón de archivos —más rápido— en vez del flujo por trozos)
+  r.S4_reintentar_sale_s = await waitFor(() => new RegExp('sendFile START fileId=' + gid + '|\\[BLOB\\] ' + gid + ' \\(file.*→ buzón de archivos').test(logs.slice(mark2).join('\n')), 30000);
 
   r.max_guardado_no_adjunto = maxNonAttSave();
   r.errores = logs.filter((l) => / error: /.test(l) && !/\(ventana cerrada\)/.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);

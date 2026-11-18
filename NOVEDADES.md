@@ -12,68 +12,21 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Estados nuevos, como TikTok: a pantalla completa y solos; desliza arriba o de lado; dos toques = me gusta.
 - Une a tu llamada una que entra: hablan los tres.
-- Crea grupos desde el botón de agregar o los ⋮ de un contacto.
+- Crea grupos desde el botón de agregar.
 - Silencia chats, destaca y fija mensajes.
 - Stickers con video.
-- Deslizar para contestar funciona desde cualquier punto.
-- La videollamada ya no se traba al usar la cámara.
+- Deslizar para contestar, desde cualquier punto.
+- La videollamada ya no se traba con la cámara.
 - Tetris a dos: llega toda la basura.
-- Vuelven los avisos cortos; en Ajustes puedes ocultar el aviso fijo.
-- Audios y mensajes salen más rápido por internet.
+- Vuelven los avisos cortos; puedes ocultar el aviso fijo.
 </es-419>
-<it-IT>
-- Unisci alla tua chiamata una in arrivo: parlate in tre.
-- Crea gruppi dal pulsante aggiungi o dai ⋮ di un contatto.
-- Silenzia chat, evidenzia e fissa messaggi.
-- Sticker con video.
-- Scorrere per rispondere funziona da qualsiasi punto.
-- La videochiamata non si blocca più usando la fotocamera.
-- Tetris in due: arriva tutta la spazzatura.
-- Tornano gli avvisi brevi; in Impostazioni puoi nascondere la notifica fissa.
-- Audio e messaggi partono più veloci via internet.
-</it-IT>
-<en-US>
-- Merge an incoming call into yours: all three talk.
-- Create groups from the add button or a contact's ⋮ menu.
-- Mute chats, star and pin messages.
-- Video stickers.
-- Swipe to reply works from anywhere on the message.
-- Video calls no longer freeze when you use the camera.
-- Two-player Tetris: all the garbage lines arrive.
-- Short notices are back; in Settings you can hide the persistent notice.
-- Voice notes and messages go out faster over the internet.
-</en-US>
-<pt-BR>
-- Junte à sua chamada uma que chega: os três conversam.
-- Crie grupos pelo botão de adicionar ou pelos ⋮ de um contato.
-- Silencie conversas, destaque e fixe mensagens.
-- Figurinhas com vídeo.
-- Deslizar para responder funciona de qualquer ponto.
-- A videochamada não trava mais ao usar a câmera.
-- Tetris a dois: chega todo o lixo.
-- Voltam os avisos curtos; em Configurações você pode ocultar o aviso fixo.
-- Áudios e mensagens saem mais rápido pela internet.
-</pt-BR>
-<fr-FR>
-- Fusionnez un appel entrant avec le vôtre : vous parlez à trois.
-- Créez des groupes via le bouton ajouter ou les ⋮ d'un contact.
-- Discussions en sourdine, messages marqués et épinglés.
-- Stickers vidéo.
-- Glisser pour répondre marche partout sur le message.
-- L'appel vidéo ne se bloque plus en utilisant la caméra.
-- Tetris à deux : tous les déchets arrivent.
-- Les avis courts reviennent ; dans Paramètres, masquez la notification fixe.
-- Vocaux et messages partent plus vite par internet.
-</fr-FR>
-<!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
-  y la app lo muestra junto al botón de actualizar (Perfil → Ajustes → Actualizaciones, y «¿Qué trae?» en el aviso de abajo).
-- Formato de Google Play (se pega tal cual en «Novedades de esta versión»): un bloque por idioma (español, italiano, inglés y, desde
-  la 3123, portugués de Brasil y francés), **máximo 500 caracteres** cada uno
-  (lo comprueba `tests/sim/novedades.js`). Frases cortas, sin palabras técnicas; lo que el usuario nota.
-- Al entregar una APK: escribir aquí lo nuevo y, después de publicarla, pasar el bloque al historial con su número.
+<!-- /APK -->
 
-<!-- APK -->
+## Historial
+
+### Bloque anterior sin número (quedó suelto fuera del historial; rescatado el 18-11-2026)
 <es-419>
 - Para agregar a alguien cercano ahora se le manda una solicitud: aparece en su lista para aceptar o eliminar, como con el NEXO ID. Al aceptarla, quedan agregados los dos.
 - Si la descarga de una actualización se corta por la red, se reintenta sola.
@@ -99,9 +52,6 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Si le téléchargement d'une mise à jour est coupé par le réseau, il réessaie tout seul.
 - Plus d'alertes pour des messages que personne n'a envoyés : les copies de sauvegarde et les statuts voyagent sans prévenir.
 </fr-FR>
-<!-- /APK -->
-
-## Historial
 
 ### APK 3091 (17-11-2026)
 <es-419>

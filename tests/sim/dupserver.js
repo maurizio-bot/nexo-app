@@ -161,8 +161,14 @@ function jsReady(p, nx) {
   // siempre está guardada con lo.initAddress (depende de qué dirección vio primero): se corta la que de verdad es del menor.
   const srvKeys = [...hi.native.serverConnected.entries()].filter(([, v]) => v === lo.native).map(([k]) => k);
   r.S6_claves_servidor = srvKeys.map((k) => (k === norm(lo.native.initAddress) ? 'init' : k === norm(lo.native.address) ? 'adv' : 'otra'));
+  // 3230 (CI de la APK 3094: S6_cortado=false otra vez, aquí pasa casi siempre): el corte se anota EN EL MOMENTO (el nativo del menor
+  // puede reabrir el enlace antes de la siguiente mirada) y se guardan los datos para entenderlo si vuelve a fallar
+  let cutAt = null; const delOrig = lo.native.clients.delete.bind(lo.native.clients);
+  lo.native.clients.delete = (k) => { if (k === K.loL1 && lo.native.clients.has(k) && cutAt === null) cutAt = Date.now(); return delOrig(k); };
   await hi.win.Capacitor.Plugins.NexoBLE.disconnectDevice({ deviceId: srvKeys[0] || lo.native.initAddress, server: true });
-  r.S6_cortado = await waitFor(() => !lo.native.clients.has(K.loL1), 3000) !== null;
+  r.S6_cortado = await waitFor(() => cutAt !== null || !lo.native.clients.has(K.loL1), 3000) !== null;
+  lo.native.clients.delete = delOrig;
+  r.S6_datos = { clave: srvKeys[0] || null, sigue_en_servidor: hi.native.serverConnected.has(srvKeys[0]), cancelaciones: hi.native.stats.serverCancels || 0, clientes_menor: [...lo.native.clients.keys()].map(lblLo) };
   await sleep(300);
   r.S6_reintento_pendiente = lo.native.reconnTimers.has(K.loL1); // el JS no lo canceló (era el único enlace)
   r.S6_vuelve_s = await waitFor(() => jsReady(lo, idHi).length > 0 && jsReady(hi, idLo).length > 0, 20000);

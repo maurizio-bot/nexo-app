@@ -21,6 +21,13 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **18-11 00:35 (México) — dueño al 79 % del límite semanal (se restablece el domingo 1:59): gastar poco.** APK subida a NEXOCHAT con
+  3207–3230 (la 3094 falló: bigsend S4 y dupserver S6, las dos pruebas corregidas). 3228 sin botón de regreso en Ajustes; 3229
+  el diagnóstico apunta giro de cámara, toques y giro del teléfono en la videollamada (preguntado al dueño si «voltear» es el botón
+  o el teléfono); 3230 ESTADOS COMO TIKTOK (estados_feed.js; prueba estadostiktok.js). NOVEDADES solo en español (dueño 17-11).
+  Si el CI cae: descargar el registro del job y mirar el ✗. estadovideo VB recodificado/h264 y hevc_sin_reproductor_roto fallan
+  IGUAL en la 3229 aquí (entorno). Al publicarse: pasar el bloque de NOVEDADES al historial con su número. Diagnóstico de Yaelito
+  23:31: sin mensajes perdidos; el aviso «MTU 23» con el S23 era el ruido ya quitado en la 3214.
 - **17-11 23:05 (México) — DUEÑO CERCA DEL LÍMITE DE USO (se restablece el domingo 2:00).** APK subida a NEXOCHAT (edd2f01a,
   3207–3227; la 3093 no se publicó: dupserver S6 en el CI, prueba arreglada). Si el CI cae otra vez en dupserver, mirar
   «S6_claves_servidor» en el registro (descarga: api.github.com/repos/…/actions/jobs/<id>/logs funciona). Hoy: 3223 deslizar desde
