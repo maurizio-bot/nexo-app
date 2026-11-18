@@ -9,7 +9,7 @@
 import { t } from './i18n.js';
 import { _showInfoToast, _pickContact } from './ui_bits.js';
 import { _getCurrentContactId, _normId } from './chat_format.js';
-import { callButton, ensureCallStyle, fitCallLabels, syncCallSplit, callCount, holdButton, replyButton, dropHandedOffScreen } from './calls_ui.js';
+import { callButton, ensureCallStyle, fitCallLabels, syncCallSplit, callCount, holdButton, replyButton, dropHandedOffScreen, callToast } from './calls_ui.js';
 import { stageWanted, renderStage, clearStage, stageCss } from './gcall_stage.js';
 import { registerCallBar, minimizeCall, canMinimize } from './call_bar.js';
 import { closeCallReply } from './call_reply.js';
@@ -111,6 +111,23 @@ function _gAudioMode(on) {
   try { var pl = _plugin(); if (pl && typeof pl.callAudio === 'function') pl.callAudio({ on: !!on, speaker: !!on && _gcSpeaker }).catch(function() {}); } catch (e) {}
 }
 
+// 3216 («Unir», dueño 17-11: «A y B ven al momento quién entró»): «B se unió a la llamada» cuando alguien entra a una llamada en la
+// que yo ya estaba. No en los primeros segundos de la mía (se conectan todos a la vez: los veo en la lista), salvo que yo viniera
+// hablando con el que me invitó (#221/«Unir»: la llamada ya era nuestra y el otro llega a ella).
+var _joins = { gid: '', at: 0, seen: null };
+function _joinNotice(st, live) {
+  if (!live) return;
+  if (_joins.gid !== st.gid) _joins = { gid: st.gid, at: Date.now(), seen: new Set() };
+  var me = _me(), host = _normId(st.host), fresh = !st.up && Date.now() - _joins.at < 2500;
+  (st.legs || []).forEach(function(l) {
+    var nx = _normId(l.nx);
+    if (l.state !== 'active' || _joins.seen.has(nx)) return;
+    _joins.seen.add(nx);
+    if (fresh || nx === me || (st.up && nx === host)) return;
+    callToast(t('grp_joined', '{name} se unió a la llamada').replace('{name}', _memberName(nx)), 3000);
+  });
+}
+
 function _render(st) {
   var gcall = _gcall();
   if (!st) { _remove(); return; }
@@ -118,6 +135,7 @@ function _render(st) {
   var live = st.state === 'active' || (st.state === 'calling' && !!st.adopt);
   // Al entrar en activa (una vez por llamada): arrancar el modo de audio de comunicación; al cambiar de llamada, reiniciar.
   if (live && _gcAudioFor !== st.gid) { _gcAudioFor = st.gid; _gcSpeaker = true; _gAudioMode(true); }
+  _joinNotice(st, live);
   var el = _screen();
   ensureCallStyle(); stageCss(); syncCallSplit(); // #220: con la 1-a-1 también abierta, pantalla dividida
   el.classList.toggle('gc-canmin', canMinimize('g')); // 3155: flecha para minimizar

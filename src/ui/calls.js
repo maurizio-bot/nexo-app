@@ -715,7 +715,7 @@ export class Calls {
     var secs = c.startedAt ? Math.round((Date.now() - c.startedAt) / 1000) : 0;
     if (c.startedAt) try { self._diag(c, 'Al colgar (' + secs + ' s)'); } catch (e) {}
     if (c.media && c.media.stop) { try { c.media.stop(); } catch (e) {} }
-    self.lastEnded = { id: c.id, nx: c.nx, at: Date.now(), active: !!c.startedAt }; // #221: «Agregar» la pasa a grupo y el otro entra solo
+    self.lastEnded = { id: c.id, nx: c.nx, at: Date.now(), active: !!c.startedAt, video: !!c.video }; // #221: «Agregar» la pasa a grupo y el otro entra solo (3216: video)
     self.call = null;
     if (self.ble && typeof self.ble._afterCallRadio === 'function') { try { self.ble._afterCallRadio(); } catch (e) {} } // 3058: sale lo que esperó a colgar
     if (self.ble && typeof self.ble._resumeLoneCall === 'function') { try { self.ble._resumeLoneCall(); } catch (e) {} } // #222: la que quedó en espera vuelve
@@ -726,6 +726,7 @@ export class Calls {
 
   // Línea en el chat (solo en este teléfono)
   _log(nx, reason, secs, own, video) {
+    if (reason === 'merged' && !secs) return; // 3216 («Unir»): la que sonaba pasó a la llamada de grupo: ni «perdida» ni «cancelada»
     var w = video ? t('call_log_video', '🎥 Videollamada') : t('call_log_voice', '📞 Llamada'), ic = video ? '🎥' : '📞';
     var txt = secs > 0 ? w + ' · ' + Math.floor(secs / 60) + ':' + ('0' + (secs % 60)).slice(-2)
       : reason === 'missed' ? w + t('call_log_missed', ' perdida')
