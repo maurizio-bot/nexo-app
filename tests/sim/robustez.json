@@ -1898,6 +1898,14 @@
     {
      "fallo": "3238 (diagnóstico del dueño 18-11 11:43): dos textos mandados por un puente (2 saltos) salían con «!» a los ~11 s y después llegaban ✓✓. Sin la confirmación del puente el mensaje queda en cola y se reintenta: es una espera, no un fallo. Ahora sale ⏳ (pendiente); lo directo sin confirmar sigue fallido.",
      "prueba": "TEXTO POR PUENTE SIN CONFIRMAR ES ESPERA"
+    },
+    {
+     "fallo": "3239 (diagnóstico del dueño 18-11 11:43): tras cerrar el enlace Bluetooth repetido que llevaba un texto largo, el envío siguió escribiéndole 9 s al enlace ya cerrado hasta «Write fallo ~6 s: 20 trozos descartados». Ahora el flujo y los textos en espera pasan al instante al enlace que se queda.",
+     "prueba": "AL CERRAR UN ENLACE REPETIDO, EL ENVÍO EN CURSO PASA AL QUE SE QUEDA"
+    },
+    {
+     "fallo": "3239 (diagnóstico del dueño 18-11 11:43): como puente, 50 paquetes de respaldo para otro teléfono salieron todos a la vez hacia el mismo siguiente teléfono y, al no confirmar ninguno, se reintentaron los 50 cada ~2 s (~50 avisos de ACK timeout por segundo): radio saturada y el texto del chat sin sitio. Ahora como mucho 6 a la vez por siguiente teléfono.",
+     "prueba": "EL PUENTE NO SATURA LA RADIO"
     }
    ],
    "debiles": [

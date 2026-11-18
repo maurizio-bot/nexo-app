@@ -44,6 +44,7 @@ var HOP_FAIL_BASE_MS = 15000, HOP_FAIL_MAX_MS = 600000; // 3058: espera tras no 
 // cuanto más falla un camino, más se espera, hasta 10 min; vuelve a 15 s en cuanto ese camino entrega algo.
 export function _hopFailWaitMs(n) { return Math.min(HOP_FAIL_MAX_MS, HOP_FAIL_BASE_MS * Math.pow(2, Math.max(0, (n || 1) - 1))); }
 var QUEUE_MAX = 200;
+export var HOP_MAX_PAR = 6; // 3239: como mucho 6 paquetes con confirmación a la vez hacia el mismo siguiente teléfono
 var QUEUE_MAX_BYTES = 30000000; // lo guardado de paso para otros (fotos, textos largos) no pasa de ~30 MB
 var SEEN_TTL_MS = 3600000;
 var NEARBY_TTL_MS = 120000;       // un NEXO visto al escanear cuenta como cercano 2 min
@@ -471,6 +472,19 @@ export class BleRelay {
       if (!fw.timer) fw.timer = setTimeout(function() { fw.timer = null; self._flushQueue(); }, fw.until - Date.now() + 50);
       return;
     }
+    // 3239 (diagnóstico del dueño 18-11 11:43: 50 paquetes «sx» de respaldo para otro teléfono salieron TODOS a la vez hacia el mismo siguiente
+    // teléfono, y al no confirmar ninguno se reintentaron los 50 cada ~2 s (~50 avisos de «ACK timeout» por segundo): la radio saturada y el
+    // texto del chat sin sitio): hacia el mismo siguiente teléfono van como mucho HOP_MAX_PAR a la vez; el resto espera su turno
+    var bk = _mac(hop.deviceId), reliablePkt = item.kind === 'pkt' && item.reliable;
+    self._hopBusy = self._hopBusy || new Map();
+    if (reliablePkt && (self._hopBusy.get(bk) || 0) >= HOP_MAX_PAR) return;
+    if (reliablePkt) self._hopBusy.set(bk, (self._hopBusy.get(bk) || 0) + 1);
+    var release = function() {
+      if (!reliablePkt) return;
+      var n = (self._hopBusy.get(bk) || 1) - 1;
+      if (n > 0) self._hopBusy.set(bk, n); else self._hopBusy.delete(bk);
+      setTimeout(function() { self._flushQueue(); }, 0); // el siguiente de la cola
+    };
     self._touch(hop.deviceId);
     self._sending.add(sk);
     item.tries++;
@@ -485,11 +499,13 @@ export class BleRelay {
       });
     }
     p.then(function() {
+      release();
       self._sending.delete(sk);
       if (self._hopFail) { var ok = self._hopFail.get(fk); if (ok) { clearTimeout(ok.timer); self._hopFail.delete(fk); } }
       console.log('[JUMP] Reenviado ' + item.kind + ' ' + item.id + ' hacia ' + item.dst + (hop.direct ? ' (directo)' : ' por ' + hop.via));
       self._remove(item);
     }).catch(function(e) {
+      release();
       self._sending.delete(sk);
       if (e && e.message === 'datos perdidos') { self._remove(item); return; }
       var f = null;

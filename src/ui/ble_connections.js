@@ -184,8 +184,28 @@ export const BLE_CONNECTION_METHODS = {
         // cliente de nuestro servidor GATT). Sin eso solo cerraba el lado cliente: el enlace de servidor que 3027 manda cerrar al
         // de NEXO ID menor seguía vivo y se seguía usando (cada mensaje salía por los dos enlaces).
         _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: key, server: true }).catch(function() {});
+        // 3239 (diagnóstico del dueño 18-11 11:43: tras cerrar el repetido 44c15d1bcd55, el texto largo siguió escribiéndole 9 s al cerrado hasta
+        // «Write fallo ~6 s: 20 trozos descartados»): lo que iba por el enlace cerrado pasa AL INSTANTE al que se queda
+        self._rebindOutgoing(key, links.filter(function(l) { return toClose.indexOf(l.key) < 0; })[0]);
       }
     });
+  },
+
+  // 3239: pasa los envíos en curso (flujos por trozos y textos esperando su confirmación) de un enlace cerrado al que se queda
+  _rebindOutgoing(fromKey, keeper) {
+    var ack = this.ackSystem;
+    if (!ack || !keeper || !keeper.key || _normMac(keeper.key) === _normMac(fromKey)) return 0;
+    var from = _normMac(fromKey), n = 0;
+    try {
+      if (ack.outgoingStreams) ack.outgoingStreams.forEach(function(st) {
+        if (st && !st.aborted && st.deviceId && _normMac(st.deviceId) === from && typeof st.useLink === 'function') { st.useLink(keeper.key); n++; }
+      });
+      if (ack.pendingAcks) ack.pendingAcks.forEach(function(en) {
+        if (en && en.deviceId && !en.raw && _normMac(en.deviceId) === from) { en.deviceId = keeper.key; n++; }
+      });
+    } catch (e) {}
+    if (n) console.log('[BLEInterface] ' + n + ' envío(s) en curso pasan del enlace cerrado ' + fromKey + ' al que se queda ' + keeper.key);
+    return n;
   },
 
   // Build 2967 (Fase A, docs/CONTRATOS_ENTREGA_OFFLINE_FASE_AB.md): un contacto con PENDIENTES a quien no alcanzamos por
