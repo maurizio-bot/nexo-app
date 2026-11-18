@@ -9,6 +9,15 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 17-11 23:15 — dueño: botones de la videollamada al voltear la cámara, novedades, botón de regreso en Ajustes
+- **Videollamada: «al voltear la cámara no aparecen los botones, y al regresar a la vista normal ya no aparecen».** En Chromium real
+  (llamada A↔B, voltear, esperar, tocar; volver a voltear) NO se reproduce: tocar muestra/oculta bien. Sospecha: en el teléfono el cambio
+  de cámara pausa/reanuda la app y la pantalla de llamada queda en otro modo (miniatura de la app «nc-appmini» o ventanita). Falta el
+  diagnóstico del S24 justo después de que pase. Prueba de reproducción: scratchpad/flipbtn.js.
+- ✅ **Novedades solo en español** mientras sigamos en desarrollo (CLAUDE.md actualizado; al escribir la próxima en solo español,
+  ajustar novedades.js e idiomas5.js I5).
+- ✅ **3228: sin botón de regreso en las secciones de Ajustes** (se vuelve con el gesto atrás, como en toda la app).
+
 ## 🆕 17-11 21:30 — dueño: Tetris, deslizar para contestar, audio de la S23, aviso fijo de Jhonnatan, Yaelito
 - ✅ **3223** deslizar para contestar desde la parte izquierda de un mensaje recibido (cerraba el chat) y basura del Tetris que se
   perdía al llegar desordenada por internet. ✅ **3224** nota de voz pendiente → buzón de archivos (llegó a los 17 min). Ver PROGRESO.
