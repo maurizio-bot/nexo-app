@@ -70,6 +70,11 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   teléfono. «Confirmación sin firma válida de nx0x4029e6» ×7: Zhelowsky va en la 3026 (vieja). **3211 a hacer:** un texto a Marcos pasó
   a ✗ un segundo (16:05:07) y a ✓✓ en el siguiente: la red de seguridad ya lo había dejado en el buzón (16:05:06) y el agotamiento de
   reintentos Bluetooth (_onAckTimeout) lo marcó «failed» igual → si ya salió por internet, ✓ y no ✗.
+- **GRAVE (hallazgo del ayudante de 3217, comprobado):** desde el 10-09 `src/styles/critical.css` («FIX #2: Ocultar REM / toasts /
+  logs / debug») esconde con `display:none !important` todo lo que tenga «toast», «log», «debug» o «rem-» en el id o la clase. El aviso
+  general `_showInfoToast` (ui_bits.js: `#perm-error-toast.info-toast`) cae ahí: TODOS los avisos cortos de la app («Copiado ✓»,
+  errores, «Invitación copiada»…) llevan semanas sin verse. Además `[class*="log"]` atrapa cualquier clase con «log» (dialog, login…).
+  Propuesta al dueño: acotar la regla a lo de depuración y dejar ver los avisos de usuario (con prueba que mire que se VEN).
 - **Diagnóstico manual del dueño (S24, 3091) 17-11 19:56:** nada grave; todo a la S23 entregado y leído. (1) Dos mensajes
   grandes a richard (nx1l87f8a0, msg…966udk35f9wl y msg…989t1hnnnyml, de las 15:38) siguen en un ChatStream que espera «con el
   enlace caído» cada 30 s sin fin (ya en el diagnóstico de las 17:07): se arranca con «Resume» aunque el mismo segundo dice «sin
