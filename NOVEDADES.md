@@ -12,6 +12,49 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Stickers con video: elige un video, el tramo (hasta 5 s) y ponle texto o emoji.
+- Para agregar a alguien cercano ahora se le manda una solicitud; al aceptarla, quedan agregados los dos.
+- Ya no llegan avisos de mensajes que nadie mandó.
+- Mensajes más seguros: si el Bluetooth no confirma, salen por internet sin marcar error.
+- Menos datos al reconectar, y la descarga de una actualización se reintenta sola.
+</es-419>
+<it-IT>
+- Sticker con video: scegli un video, il tratto (fino a 5 s) e aggiungi testo o emoji.
+- Per aggiungere qualcuno vicino ora gli si manda una richiesta; quando accetta, siete aggiunti tutti e due.
+- Non arrivano più avvisi di messaggi che nessuno ha mandato.
+- Messaggi più sicuri: se il Bluetooth non conferma, partono via internet senza segnare errore.
+- Meno dati quando ti riconnetti, e il download di un aggiornamento riprova da solo.
+</it-IT>
+<en-US>
+- Video stickers: pick a video, the part you want (up to 5 s) and add text or emoji.
+- Adding someone nearby now sends them a request; once they accept, you are both added.
+- No more alerts for messages nobody sent.
+- More reliable messages: if Bluetooth doesn't confirm, they go out over the internet without showing an error.
+- Less data when reconnecting, and an update download retries on its own.
+</en-US>
+<pt-BR>
+- Figurinhas com vídeo: escolha um vídeo, o trecho (até 5 s) e coloque texto ou emoji.
+- Para adicionar alguém por perto agora é enviada uma solicitação; ao aceitar, os dois ficam adicionados.
+- Não chegam mais avisos de mensagens que ninguém mandou.
+- Mensagens mais confiáveis: se o Bluetooth não confirmar, saem pela internet sem marcar erro.
+- Menos dados ao reconectar, e o download de uma atualização tenta de novo sozinho.
+</pt-BR>
+<fr-FR>
+- Stickers vidéo : choisissez une vidéo, le passage (jusqu'à 5 s) et ajoutez du texte ou un emoji.
+- Pour ajouter quelqu'un à proximité, une demande lui est envoyée ; une fois acceptée, vous êtes ajoutés tous les deux.
+- Plus d'alertes pour des messages que personne n'a envoyés.
+- Messages plus fiables : si le Bluetooth ne confirme pas, ils partent par internet sans afficher d'erreur.
+- Moins de données à la reconnexion, et le téléchargement d'une mise à jour réessaie tout seul.
+</fr-FR>
+<!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
+  y la app lo muestra junto al botón de actualizar (Perfil → Ajustes → Actualizaciones, y «¿Qué trae?» en el aviso de abajo).
+- Formato de Google Play (se pega tal cual en «Novedades de esta versión»): un bloque por idioma (español, italiano, inglés y, desde
+  la 3123, portugués de Brasil y francés), **máximo 500 caracteres** cada uno
+  (lo comprueba `tests/sim/novedades.js`). Frases cortas, sin palabras técnicas; lo que el usuario nota.
+- Al entregar una APK: escribir aquí lo nuevo y, después de publicarla, pasar el bloque al historial con su número.
+
+<!-- APK -->
+<es-419>
 - Para agregar a alguien cercano ahora se le manda una solicitud: aparece en su lista para aceptar o eliminar, como con el NEXO ID. Al aceptarla, quedan agregados los dos.
 - Si la descarga de una actualización se corta por la red, se reintenta sola.
 - Ya no llegan avisos de mensajes que nadie mandó: las copias de respaldo y los estados viajan sin avisar.

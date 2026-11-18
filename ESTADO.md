@@ -21,6 +21,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **17-11 19:10 (México) — APK 3092 CANCELADA por tiempo (no por fallos):** el job de pruebas llegó a los 75 min con 327 pruebas
+  y GitHub lo cortó. Tope subido a 120 min. **Sube como APK 3093 con 3207–3215** (batería local completa 332/332 sobre
+  3211–3215: stickers con video, red de seguridad que sí deja el mensaje en el buzón, margen del `since` aprendido, aviso de MTU 23
+  retrasado, ✓✓ al arrancar con el NEXO ID ya cargado). En curso aparte: un ayudante hace «unir llamadas» (3216, idea del dueño)
+  en un worktree; con el dueño se platicó la lista de WhatsApp y los «chats ocultos» (nexo-private/negocio/WHATSAPP_VS_NEXO.md).
 - **17-11 17:55 (México) — APK 3092 subida con 3207–3210:** batería completa sobre 3207–3210 (retomada con CI_RESUME tras un
   reinicio del contenedor): todo pasa; los únicos ✗ fueron un pasajero de run.js y la prueba de textos fijos (26 > 25), que pasan al
   repetir (la segunda con la marca i18n-ok de 3209, incluida en esta punta). Solicitud de contacto de cerca (3207), reintento de la

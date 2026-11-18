@@ -26,7 +26,9 @@ jobs:
     # el job rozaba los 30 min y GitHub lo cortaba como «cancelado» (builds 2935 attempt 1 y 2). 45 da margen de sobra.
     # 14-11 (APK 3049, run 43552006942): la batería creció a 238 pruebas y tardó 43 min en el servidor: GitHub cortó el job a los
     # 45 min como «cancelado» sin ningún fallo. 75 deja margen para seguir sumando pruebas.
-    timeout-minutes: 75
+    # 17-11 (APK 3092, run 44202858201): con 327 pruebas el job llegó a los 75 min y GitHub lo cortó como «cancelado», otra vez
+    # sin ningún fallo (la 3091 había pasado en ~74). 120 da margen; si sigue creciendo, partir la batería en dos trabajos.
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
