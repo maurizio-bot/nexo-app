@@ -790,6 +790,7 @@ export function _onFileProgress(d) {
 export function _updateMessageStatus(messageId, status) {
   try {
     if (!messageId || !status) return;
+    if (typeof document === 'undefined' || !document) return;   // 3231: la app ya se cerró (un aviso tardío; CI 3095, Estados v3)
     var statusEl = document.querySelector('.msg-status[data-msg-id="' + messageId + '"]');
     if (!statusEl) return;
     var current = null;
