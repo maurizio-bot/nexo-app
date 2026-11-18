@@ -190,7 +190,7 @@ async function _copyPicked(files) {
 // mal»; opción A): la foto tomada con la cámara del propio teléfono (camera.js, _handleCamera) entra por aquí igual que una de la
 // galería: misma revisión, mismo tamaño por camino (_photoTarget), mismo tope de 5 MB y misma miniatura.
 export function _reviewAndSendPhotos(files) {
-  return _openGalleryReview(files, { eyes: true }, function(once) { _sendGalleryItems(files, 0, once); });
+  return _openGalleryReview(files, { eyes: true }, function(once, cap) { _sendGalleryItems(files, 0, once, cap); });
 }
 
 // Build 2961: mandar las fotos elegidas DE A UNA por dentro — leer → comprimir → mandar la actual, y recién ENTONCES la
@@ -200,14 +200,16 @@ export function _reviewAndSendPhotos(files) {
 // 3160: once[i] === true → esa foto (3163: o ese vídeo) va «ver una vez» (lo marcado en la revisión); sin once, como siempre.
 // 3199: lo de la galería llega aquí ya copiado a memoria (_copyPicked: Blob, hasta COPY_TOTAL_MAX); lo pesado (base64, decodificar y
 // comprimir) sigue siendo de a una.
-function _sendGalleryItems(files, i, once) {
+function _sendGalleryItems(files, i, once, cap) {
   if (!files || i >= files.length) return;
   var file = files[i];
-  var next = function() { _sendGalleryItems(files, i + 1, once); };
+  var next = function() { _sendGalleryItems(files, i + 1, once, cap); };
+  var capHere = (cap && i === 0) ? cap : ''; // 3242: el comentario va con la primera de la tanda
   var isVideo = (file.type || '').indexOf('video') === 0;
   if (isVideo) {
     // v9.9.30: el vídeo no se lee entero: se recodifica una previa y el original va como HD si cabe
     var vMeta = { name: file.name, size: file.size, mime: file.type };
+    if (capHere) vMeta.caption = capHere;
     if (once && once[i]) vMeta.once = true; // 3163: vídeo «ver una vez», marcado con el ojo en la revisión
     try { _sendVideo(file, vMeta); } catch (e) { console.warn('[ATTACH] vídeo galería: ' + (e && e.message)); }
     setTimeout(next, 500);
@@ -230,6 +232,7 @@ function _sendGalleryItems(files, i, once) {
         width: res.width,
         height: res.height
       };
+      if (capHere) meta.caption = capHere;
       if (once && once[i]) meta.once = true; // #94 «ver una vez», marcado con el ojo en la revisión (3160)
       _sendAttachment('image', res.base64, meta);
     });
@@ -273,7 +276,11 @@ export function _handleFile() {
   });
 }
 
+// 3242 (dueño 18-11): antes de mandar un archivo, la revisión con un comentario opcional
 function _fileChosen(file) {
+  _openGalleryReview([file], { eyes: false, file: true }, function(once, cap) { _fileChosenSend(file, cap); });
+}
+function _fileChosenSend(file, cap) {
     // Comprobar antes de leer: leer un archivo enorme ya congela el WebView
     var cidF = _getCurrentContactId();
     var maxB64 = _maxB64For(cidF);
@@ -303,6 +310,7 @@ function _fileChosen(file) {
       }
       var mime = _mimeOf(file.type, file.name);
       var meta = { name: file.name, size: file.size, type: mime, mime: mime };
+      if (cap) meta.caption = cap;
       return (_isPdf(mime, file.name) ? _pdfThumb(base64) : Promise.resolve(null)).then(function(tr) {
         if (tr && tr.thumb) { meta.thumb = tr.thumb; meta.pages = tr.pages; }
         _sendAttachment('file', base64, meta);

@@ -980,7 +980,7 @@ export default {
   notif_banner_text: "Turn on NEXO notifications to get messages and calls while the app is closed.",
   notif_banner_btn: "Turn on",
   notif_banner_close: "Hide for 24 hours",
-  grev_title: "Before sending",
+  grev_title: "Before sending", grev_caption: 'Add a comment…',
   grev_hint: "Tap the eye on a photo or video so it can only be viewed once",
   grev_video: "Video",
   grev_opening: "Opening what you picked…",

@@ -381,6 +381,8 @@ export function _retakeReview() {
 export function _sendReview() {
   var r = _cameraReview;
   if (!r) return;
+  var capEl = document.getElementById('cam-review-cap'), cap = capEl ? String(capEl.value || '').trim().substring(0, 1000) : ''; // 3242
+  if (capEl) capEl.value = '';
   var once = !!_cameraReviewOnce; // #94 «ver una vez» (foto y, desde la 3163, vídeo)
   _cameraReview = null; // la URL del vídeo se libera al cerrar; el blob sigue vivo para enviarlo
   _cameraReviewOnce = false;
@@ -388,8 +390,10 @@ export function _sendReview() {
   _hideCameraPreviewOverlay();
   if (url) { try { URL.revokeObjectURL(url); } catch (e) {} }
   _waitForBLEReady(4500).then(function() {
-    if (r.type === 'photo') _sendAttachment('image', r.b64, { format: 'jpeg', width: r.w, height: r.h, once: once });
-    else _sendVideo(r.blob, once ? { format: _videoFormat(r.mime), duration: r.duration, once: true } : { format: _videoFormat(r.mime), duration: r.duration });
+    var pm = { format: 'jpeg', width: r.w, height: r.h, once: once }, vm = once ? { format: _videoFormat(r.mime), duration: r.duration, once: true } : { format: _videoFormat(r.mime), duration: r.duration };
+    if (cap) { pm.caption = cap; vm.caption = cap; } // 3242: comentario con la foto o el vídeo
+    if (r.type === 'photo') _sendAttachment('image', r.b64, pm);
+    else _sendVideo(r.blob, vm);
   });
 }
 

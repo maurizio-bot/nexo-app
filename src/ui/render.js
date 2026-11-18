@@ -660,6 +660,14 @@ export function _renderMessage(msg, skipSave) {
       from.appendChild(who);
       div.appendChild(from);
     }
+    // 3242 (dueño 18-11: «agregar un comentario al sacar una foto, subir una imagen y compartir un archivo»): el comentario va con el
+    // adjunto (meta.caption) y se ve debajo, como texto (nunca HTML). En «ver una vez» no se muestra fuera de la vista única.
+    if (attachment && attachment.meta && typeof attachment.meta.caption === 'string' && attachment.meta.caption.trim() && !attachment.meta.once) {
+      var capEl = document.createElement('div');
+      capEl.className = 'msg-caption';
+      capEl.textContent = attachment.meta.caption.substring(0, 1000);
+      contentDiv.appendChild(capEl);
+    }
     div.appendChild(contentDiv);
     var metaDiv = document.createElement('div');
     metaDiv.className = 'msg-meta';

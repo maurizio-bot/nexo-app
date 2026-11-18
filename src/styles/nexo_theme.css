@@ -615,3 +615,8 @@ button, input, textarea, select { font-family: inherit; }
 .nx-fab-opt { display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0; cursor: pointer; color: var(--nx-text); font: inherit; -webkit-tap-highlight-color: transparent; }
 .nx-fab-opt-l { background: rgba(20, 21, 42, 0.96); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 14px; padding: 9px 14px; font-size: 15px; font-weight: 600; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); white-space: nowrap; }
 .nx-fab-opt-ic { display: inline-flex; align-items: center; justify-content: center; background: rgba(20, 21, 42, 0.96); }
+/* 3242: comentario con la foto, el vídeo o el archivo */
+.nx-grev-bar { display: flex; flex-direction: column; gap: 10px; }
+.nx-grev-cap { width: 100%; box-sizing: border-box; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.18); border-radius: 14px; background: rgba(255,255,255,0.06); color: inherit; font-size: 16px; font-family: inherit; outline: none; }
+.nx-grev-file { padding: 18px 14px; border-radius: 12px; background: rgba(255,255,255,0.06); font-size: 15px; word-break: break-word; }
+.msg-caption { padding: 6px 10px 8px; font-size: 15px; line-height: 1.35; white-space: pre-wrap; word-break: break-word; max-width: 220px; }

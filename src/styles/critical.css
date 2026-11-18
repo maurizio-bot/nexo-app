@@ -1238,3 +1238,5 @@ FIX v10.25: Audio attachment - reproductor
   user-select: none;
   -webkit-touch-callout: none;
 }
+/* 3242: comentario en la revisión de la cámara */
+.cam-review-cap { margin: 8px 16px 0; box-sizing: border-box; padding: 12px 14px; border: none; border-radius: 22px; background: rgba(0,0,0,0.55); color: #fff; font-size: 16px; font-family: inherit; outline: none; z-index: 2; }

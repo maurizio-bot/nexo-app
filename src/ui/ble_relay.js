@@ -379,7 +379,7 @@ export class BleRelay {
     self.seen.set(key, Date.now());
     var m = {};
     // 3163: también 'once' («ver una vez», foto o vídeo): sin ella el puente lo entregaba como un medio NORMAL (fallo de privacidad)
-    ['f', 'fr', 'ts', 'type', 'name', 'mime', 'size', 'format', 'width', 'height', 'hdFor', 'preview', 'once', 'thumb', 'pages'].forEach(function(k) {
+    ['f', 'fr', 'ts', 'type', 'name', 'mime', 'size', 'format', 'width', 'height', 'hdFor', 'preview', 'once', 'thumb', 'pages', 'caption'].forEach(function(k) {
       if (meta[k] !== undefined && meta[k] !== null) m[k] = meta[k];
     });
     m.dst = to;

@@ -128,6 +128,7 @@ export const ackIncoming = {
 
           thumb: msg.th || null,
           pages: msg.pg || null,
+          caption: (typeof msg.cp === 'string' && msg.cp) ? msg.cp.substring(0, 1000) : undefined, // 3242: comentario
           dst: msg.dt || null,
           hp: msg.hp || 0
         },

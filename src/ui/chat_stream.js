@@ -526,6 +526,7 @@ ChatStream.prototype._buildChunk = function(idx) {
     if (this.meta.once) obj.o1 = 1; // #94 «ver una vez»: el medio se consume al abrirlo en el receptor
     if (this.meta.thumb) obj.th = this.meta.thumb; // miniatura JPEG del vídeo (poster) o 1.ª página del PDF
     if (this.meta.pages) obj.pg = this.meta.pages;
+    if (typeof this.meta.caption === 'string' && this.meta.caption) obj.cp = this.meta.caption.substring(0, 1000); // 3242: comentario
     if (this.meta.dst) obj.dt = this.meta.dst;
     if (this.meta.hp) obj.hp = this.meta.hp;
     if (this._restart) obj.rs = 1; // 3080: intento nuevo del mismo envío (cambio de camino): el receptor empieza de cero al momento

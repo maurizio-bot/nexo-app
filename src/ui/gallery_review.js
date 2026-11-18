@@ -38,7 +38,7 @@ export function _openGalleryReview(files, opts, onSend) {
     '<button id="nexo-grev-cancel" class="nx-round-btn" type="button" aria-label="' + cancelTxt + '" title="' + cancelTxt + '">' + SHEET_CLOSE_SVG + '</button></div>' +
     (eyes ? '<div class="nx-grev-hint">' + EYE_SVG + '<span>' + t('grev_hint', 'Toca el ojo de una foto o un vídeo para que se vea una sola vez') + '</span></div>' : '') +
     '<div class="nx-grev-grid"></div>' +
-    '<div class="nx-grev-bar"><button id="nexo-grev-send" class="nx-grev-send" type="button"></button></div>';
+    '<div class="nx-grev-bar"><input id="nexo-grev-cap" class="nx-grev-cap" type="text" maxlength="1000" enterkeyhint="send" placeholder="' + t('grev_caption', 'Añade un comentario…') + '"><button id="nexo-grev-send" class="nx-grev-send" type="button"></button></div>';
   var grid = ov.querySelector('.nx-grev-grid');
   files.forEach(function(f, i) {
     var video = _isVideo(f), url = _objUrl(f), m;
@@ -46,7 +46,12 @@ export function _openGalleryReview(files, opts, onSend) {
     var cell = document.createElement('div');
     cell.className = 'nx-grev-item' + (video ? ' is-video' : '');
     cell.dataset.i = String(i);
-    if (video) {
+    if (opts && opts.file) {
+      // 3242: un archivo (no foto ni vídeo): su nombre y tamaño, para poder ponerle un comentario
+      m = document.createElement('div');
+      m.className = 'nx-grev-file';
+      m.textContent = '📄 ' + (f.name || '') + (f.size ? ' · ' + (f.size >= 1048576 ? (f.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1024)) + ' KB') : '');
+    } else if (video) {
       // Solo los metadatos (y el primer cuadro, #t=0.1): el vídeo no se carga entero
       m = document.createElement('video');
       m.muted = true; m.playsInline = true; m.preload = 'metadata';
@@ -57,7 +62,7 @@ export function _openGalleryReview(files, opts, onSend) {
       m.alt = ''; m.decoding = 'async';
       if (url) m.src = url;
     }
-    m.className = 'nx-grev-media';
+    m.className = (opts && opts.file) ? 'nx-grev-media nx-grev-file' : 'nx-grev-media';
     cell.appendChild(m);
     if (video) {
       var vb = document.createElement('span');
@@ -101,10 +106,13 @@ export function _openGalleryReview(files, opts, onSend) {
     e.stopPropagation();
     if (closed) return;
     var res = once.slice();
+    var capIn = ov.querySelector('#nexo-grev-cap'), cap = capIn ? String(capIn.value || '').trim().substring(0, 1000) : '';
     close();
     console.log('[ATTACH] Galería: envío ' + files.length + ' (' + res.filter(Boolean).length + ' «ver una vez»)');
-    try { onSend(res); } catch (err) { console.warn('[ATTACH] Galería: ' + (err && err.message)); }
+    try { onSend(res, cap); } catch (err) { console.warn('[ATTACH] Galería: ' + (err && err.message)); }
   });
+  var capIn0 = ov.querySelector('#nexo-grev-cap');
+  if (capIn0) capIn0.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); sendBtn.click(); } });
   document.body.appendChild(ov);
   console.log('[ATTACH] Galería: revisión de ' + files.length + ' (' + nPhotos + ' fotos)' + (eyes ? '' : ' sin «ver una vez»'));
   return ov;

@@ -980,7 +980,7 @@ export default {
   notif_banner_text: "Ative as notificações do NEXO para receber mensagens e chamadas com o app fechado.",
   notif_banner_btn: "Ativar",
   notif_banner_close: "Ocultar por 24 horas",
-  grev_title: "Antes de enviar",
+  grev_title: "Antes de enviar", grev_caption: 'Adicione um comentário…',
   grev_hint: "Toque no olho de uma foto ou de um vídeo para que seja visto uma só vez",
   grev_video: "Vídeo",
   grev_opening: "Abrindo o que você escolheu…",
