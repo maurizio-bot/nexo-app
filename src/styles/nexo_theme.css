@@ -57,14 +57,16 @@ body::before {
    «nuevo grupo» y la ruedita de Ajustes en la esquina (los tres .nx-btn-s, a 10 px uno de otro: el área de toque de cada uno —press.js,
    ≥ 8 px entre áreas— llega a 48 px); debajo, «Contactos» como título centrado. En una sola fila no cabe a 360 px: el título centrado
    entre la foto con el nombre y los tres botones dejaría al nombre sin sitio y al título cortado en algún idioma. Así el nombre tiene
-   ~120 px antes del «…» y el título nunca se corta. «Nuevo grupo» se queda: es el único sitio para crear un grupo. */
+   ~120 px antes del «…» y el título nunca se corta. «Nuevo grupo» se queda: es el único sitio para crear un grupo.
+   3218b (dueño 17-11, al verlo: «invierte el perfil y la palabra Contactos… así se me hace desordenado»): «Contactos» vuelve
+   arriba a la IZQUIERDA, donde estaba, en la fila de los botones; mi foto y mi nombre van DEBAJO, a la izquierda. */
 #main-header {
   display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; grid-template-rows: 56px auto;
-  grid-template-areas: "me search group gear" "title title title title"; column-gap: 10px; align-items: center;
+  grid-template-areas: "title search group gear" "me me me me"; column-gap: 10px; align-items: center;
   min-height: 0 !important; padding: 2px 16px 6px 16px !important;
 }
 #main-logo { display: none; }
-#main-title { grid-area: title; justify-self: center; max-width: 100%; min-width: 0; font-size: 21px !important; font-weight: 800 !important; letter-spacing: -0.2px;
+#main-title { grid-area: title; justify-self: start; max-width: 100%; min-width: 0; font-size: 21px !important; font-weight: 800 !important; letter-spacing: -0.2px;
   line-height: 28px; padding-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   background: linear-gradient(90deg, #fff 30%, #b9c4ff); -webkit-background-clip: text; background-clip: text; color: transparent !important; }
 #nexo-contacts-search-btn { grid-area: search; }

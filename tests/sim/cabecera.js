@@ -80,6 +80,7 @@ function pageHelpers() {
       const W = document.documentElement.clientWidth, h = $('main-header'), tt = $('main-title');
       const me = $('nexo-profile-btn'), av = $('nexo-hdr-av'), nm = $('nexo-hdr-name');
       const ids = ['nexo-profile-btn', 'nexo-contacts-search-btn', 'nexo-new-group-btn', 'nexo-settings-btn'];
+      const fila3 = ['nexo-contacts-search-btn', 'nexo-new-group-btn', 'nexo-settings-btn']; // 3218b: «yo» va en la fila de abajo
       const malos = [];
       const out = { W, header: h ? { scroll: h.scrollWidth, client: h.clientWidth, alto: R(h.getBoundingClientRect().height) } : null, botones: {} };
       if (!h) return { malos: ['sin cabecera'] };
@@ -97,9 +98,9 @@ function pageHelpers() {
       });
       // misma fila, de izquierda a derecha, sin pisarse; la ruedita en la esquina derecha
       let prev = null;
-      ids.forEach((id) => { const b = out.botones[id]; if (!b) return; if (prev && b.l < prev.r - 0.5) malos.push(id + ' pisa al anterior'); prev = b; });
-      const fila = ids.map((id) => out.botones[id]).filter(Boolean).map((b) => (b.t + b.b) / 2);
-      if (fila.length === 4 && Math.max(...fila) - Math.min(...fila) > 2) malos.push('los botones no están en la misma fila');
+      fila3.forEach((id) => { const b = out.botones[id]; if (!b) return; if (prev && b.l < prev.r - 0.5) malos.push(id + ' pisa al anterior'); prev = b; });
+      const fila = fila3.map((id) => out.botones[id]).filter(Boolean).map((b) => (b.t + b.b) / 2);
+      if (fila.length === 3 && Math.max(...fila) - Math.min(...fila) > 2) malos.push('los botones no están en la misma fila');
       const gear = out.botones['nexo-settings-btn'];
       if (gear && W - gear.r > 24) malos.push('la ruedita no está en la esquina derecha');
       const mb = out.botones['nexo-profile-btn'];
@@ -123,8 +124,11 @@ function pageHelpers() {
         out.titulo = Object.assign(t, { texto: tt.textContent, entero: tt.scrollWidth <= tt.clientWidth + 0.5, centro: R((t.l + t.r) / 2) });
         if (!out.titulo.entero) malos.push('título cortado');
         if (!this.vis(tt)) malos.push('título no se ve');
-        if (Math.abs(out.titulo.centro - W / 2) > 1.5) malos.push('título no centrado (' + out.titulo.centro + ')');
-        if (mb && t.t < mb.b - 6) malos.push('el título no está debajo de la fila');
+        // 3218b (dueño: «invierte el perfil y la palabra Contactos»): el título arriba a la izquierda, en la fila de los botones; «yo» debajo
+        if (t.l > 24) malos.push('el título no está a la izquierda (' + t.l + ')');
+        const g0 = out.botones['nexo-settings-btn'];
+        if (g0 && Math.abs((t.t + t.b) / 2 - (g0.t + g0.b) / 2) > 6) malos.push('el título no está en la fila de los botones');
+        if (mb && mb.t < t.b - 6) malos.push('«yo» no está debajo del título');
         ids.forEach((id) => { const b = out.botones[id]; if (b && t.l < b.r && t.r > b.l && t.t < b.b && t.b > b.t) malos.push('el título pisa ' + id); });
       } else malos.push('sin título');
       out.malos = malos;
@@ -333,7 +337,8 @@ const R1 = (x) => Math.round(x);
   const mB = await B.evaluate(() => window.__cab.header());
   r.M = { antes, pantalla_nombre: gate, ms: tNombre, nombre: mB.nombre, malos: mB.malos, aria: await B.evaluate(() => document.getElementById('nexo-profile-btn').getAttribute('aria-label')) };
   check('M_nombre_nuevo_al_momento', gate && tNombre !== null && tNombre < 1000, JSON.stringify(r.M));
-  check('M_nombre_largo_con_puntos', !!mB.nombre && mB.nombre.cortado && !mB.malos.length && r.M.aria === TXT.es.hdr_my_profile + ': ' + LARGO, JSON.stringify(r.M));
+  // 3218b: con «yo» en su propia fila el nombre largo suele caber entero; si no cabe, «…» (lo mira mB.malos: «nombre cortado sin «…»»)
+  check('M_nombre_largo_con_puntos', !!mB.nombre && mB.nombre.texto === LARGO && !mB.malos.length && r.M.aria === TXT.es.hdr_my_profile + ': ' + LARGO, JSON.stringify(r.M));
   if (shots) await B.screenshot({ path: path.join(shots, 'cabecera_nombre_largo_es.png'), clip: { x: 0, y: 0, width: 360, height: 130 } });
 
   await browser.close();
