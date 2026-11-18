@@ -40,8 +40,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - **Diagnóstico automático S23 21:39 «zombi» con Yaelito (los dos en 3091):** dos enlaces Bluetooth (5d5b… saliente, 6a15… entrante).
   A las 21:39:09 el desempate cerró el ENTRANTE (el único que seguía recibiendo: RX 21:38:49 y 21:39:09) y se quedó con el saliente,
   que no recibía nada desde las 21:38:33 → 4 pings sin respuesta y reconexión a los 26 s. Parecido a la 3139 (cada teléfono cierra
-  uno distinto). Además el Wi-Fi local se cortó a los 3 s (ECONNREFUSED al puerto de Yaelito). Pendiente: que el desempate no cierre
-  el enlace que está recibiendo si el otro lleva > 15 s callado.
+  uno distinto). Además el Wi-Fi local se cortó a los 3 s (ECONNREFUSED al puerto de Yaelito). HECHO en 3233: el desempate no cierra
+  el enlace que está recibiendo si el que se queda lleva > 15 s callado.
 - **Diagnóstico automático de Marcos (SM-A556E, 3090) «par:zombi» pedido por Roberto, 21:49:** (1) el MISMO diagnóstico (03:49 UTC)
   llegó 3 veces (03:56, 04:24 y 04:28 UTC): el canal de diagnósticos lo reenvía; revisar que se marque como entregado. (2) El teléfono
   se reinició a las 20:47 y NEXO volvió SOLO con la escucha de internet («Internet sin la app»); el Bluetooth (servidor y anuncio) no

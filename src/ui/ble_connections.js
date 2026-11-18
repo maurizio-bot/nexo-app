@@ -161,6 +161,7 @@ export const BLE_CONNECTION_METHODS = {
         dead: self._bleCongested(key),
         since: (st && st.since) || 0,
         role: (st && st.role) || null, // 3027: cliente/servidor (desempate común con el otro teléfono)
+        heard: (self._lastPongTime && self._lastPongTime.get(key)) || 0, // 3233: último paquete recibido por este enlace
         // 3167b: uno que el otro ya cortó (y el nativo reabrió) no cuenta como ocupado: si no, nadie lo cerraba de este lado
         busy: (self._hasActiveFileTransfer(key) || (!!activeMac && _normMac(key) === activeMac)) && !((self._peerCutUntil && self._peerCutUntil.get(_normMac(key))) > now)
       });
@@ -172,7 +173,7 @@ export const BLE_CONNECTION_METHODS = {
       if (!seen) { self._dupSeenSince.set(nx, now); return; }           // primera vez: arrancar el freno, no cerrar aún
       if (now - seen < self._dupDebounceMs) return;                     // aún no estables (podría ser un traspaso)
       var me = _normId(self.localNexoId); // 3027: el de NEXO ID menor se queda su enlace de cliente; el otro, el de servidor
-      var toClose = _dupBleLinksToClose(links, me ? { iAmLower: me < nx } : null);
+      var toClose = _dupBleLinksToClose(links, me ? { iAmLower: me < nx, now: now } : { now: now });
       for (var i = 0; i < toClose.length; i++) {
         var key = toClose[i];
         if ((self._dupClosedUntil.get(key) || 0) > now) continue;       // enfriamiento por MAC

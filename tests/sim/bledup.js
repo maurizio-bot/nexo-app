@@ -68,6 +68,17 @@ const { importSrc } = require('./srcmod');
   // y un enlace MUERTO nunca se queda aunque sea el del papel preferido
   r.papel_muerto_no_se_queda = same(_dupBleLinksToClose([L('e1', 517, { role: 'client', dead: true }), L('e2', 517, { role: 'server' })], { iAmLower: true }), ['e1']);
 
+  // 12. 3233 (diagnóstico S23 17-11 21:39 «zombi» con Yaelito): por el desempate común el S23 cerró el ENTRANTE —el único que
+  //     seguía recibiendo— y se quedó con el saliente, callado desde hacía 36 s → 4 pings sin respuesta y reconexión. Si el que
+  //     se iba a quedar lleva > 15 s sin recibir nada y otro sí recibe, no se cierra nada ahora (el vigilante tumba al callado).
+  //     (contraprueba 3232: cierra el que recibe)
+  const now12 = 1000000;
+  const s23 = [L('5d5b', 517, { role: 'client', heard: now12 - 36000 }), L('6a15', 517, { role: 'server', heard: now12 - 2000 })];
+  r.no_cierra_el_que_recibe = same(_dupBleLinksToClose(s23, { iAmLower: true, now: now12 }), []);
+  // si los dos reciben, el desempate común sigue igual (y sin «now», como antes)
+  const ambos = [L('5d5b', 517, { role: 'client', heard: now12 - 3000 }), L('6a15', 517, { role: 'server', heard: now12 - 2000 })];
+  r.ambos_reciben_desempate_igual = same(_dupBleLinksToClose(ambos, { iAmLower: true, now: now12 }), ['6a15']) && same(_dupBleLinksToClose(s23, { iAmLower: true }), ['6a15']);
+
   // 9. Robustez ante basura.
   r.sin_dato = same(_dupBleLinksToClose([]), []) && same(_dupBleLinksToClose(null), []) &&
     same(_dupBleLinksToClose([L('A', 512)]), []) && same(_dupBleLinksToClose([null, { mtu: 1 }]), []);

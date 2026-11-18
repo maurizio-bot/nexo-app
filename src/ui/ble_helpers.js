@@ -231,6 +231,10 @@ export function _dupBleLinksToClose(links, opts) {
       : ((l.mtu || 0) > (keep.mtu || 0) || (sameMtu && (l.since || 0) > (keep.since || 0)));
     if (better) keep = l;
   }
+  // 3233 (diagnóstico S23 17-11 21:39 con Yaelito): si el que se queda lleva > 15 s sin recibir nada y otro SÍ recibe, ahora no se
+  // cierra ninguno (se cerraba el único que funcionaba); el vigilante de pings tumba al callado y en la próxima vuelta se decide.
+  var now = opts && opts.now, QUIET = 15000;
+  if (now && keep.heard && now - keep.heard > QUIET && valid.some(function (l) { return l.key !== keep.key && l.heard && now - l.heard <= QUIET; })) return [];
   var out = [];
   for (var j = 0; j < valid.length; j++) {
     var x = valid[j];
