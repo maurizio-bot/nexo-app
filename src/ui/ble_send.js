@@ -190,9 +190,17 @@ export const BLE_SEND_METHODS = {
     var nd = _normMac(targetId), prev = this._mtuByDevice.get(nd);
     this._mtuByDevice.set(nd, mtu);
     if (prev === mtu) return;
-    var nx = this._macToNexoId.get(nd) || nd;
-    if (mtu <= 23) console.warn('[MTU] ' + nx + ': ' + mtu + ' (mínimo: Bluetooth muy lento con este teléfono)');
-    else console.log('[MTU] ' + nx + ': ' + mtu);
+    var nx = this._macToNexoId.get(nd) || nd, self = this;
+    // 3214 (diagnóstico de Roberto 17-11 14:48): al abrir o rehacer un enlace, el primer envío ve 23 ANTES de negociar el MTU y a
+    // los ~3 s ya es 517: el aviso de «muy lento» era ruido. Se avisa solo si a los 4 s sigue en 23 (el valor sí se anota al momento)
+    var lw = this._mtuLowWarn || (this._mtuLowWarn = new Map());
+    if (lw.has(nd)) { clearTimeout(lw.get(nd)); lw.delete(nd); }
+    if (mtu <= 23) {
+      lw.set(nd, setTimeout(function() {
+        lw.delete(nd);
+        if (self._mtuByDevice.get(nd) <= 23) console.warn('[MTU] ' + (self._macToNexoId.get(nd) || nx) + ': ' + self._mtuByDevice.get(nd) + ' (mínimo: Bluetooth muy lento con este teléfono)');
+      }, 4000));
+    } else console.log('[MTU] ' + nx + ': ' + mtu);
   },
 
   _sendRawNative(deviceId, packet) {

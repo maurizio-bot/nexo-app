@@ -356,6 +356,10 @@
     {
      "fallo": "3187 (diagnóstico automático S24 3082 17-11): con la tableta dormida del todo, el zombi tardó 104 s porque cada vuelta a la app ponía a 0 la cuenta de pings. zombivuelta.js: 50 s (contraprueba b3186z: 110 s)",
      "prueba": "3187 (diagnóstico automático S24 3082 17-11 04:04,"
+    },
+    {
+     "fallo": "3214 (diagnóstico de Roberto 17-11 14:48): al abrir o rehacer un enlace Bluetooth, el primer envío veía MTU 23 (aún sin negociar) y el diagnóstico decía «Bluetooth muy lento» aunque a los ~3 s ya iba a 517. Ahora se avisa solo si a los 4 s sigue en 23. mtuaviso.js (contraprueba b3205: aviso en los 3 casos; ahora solo en el que se queda en 23)",
+     "prueba": "3214 (diagnóstico de Roberto, Motorola edge 40 neo 17-11 14:48"
     }
    ],
    "debiles": [
