@@ -15,6 +15,9 @@ Antes de empezar, leer `docs/PROGRESO.md` (estado, historial de builds y pendien
 camino de envío) y `docs/ROBUSTEZ.md` (registro de revisiones, índice de robustez y rutina diaria), y
 actualizarlos al terminar cada bloque de trabajo.
 
+- **NUNCA esperar permiso para seguir (dueño 18-11: «no quiero volver a decirte que le sigas, tú sigue»):** al terminar algo,
+  pasar SOLO al siguiente pendiente de la cola sin preguntar «¿sigo?» ni «cuando me digas». Preguntar solo lo que es del dueño
+  (dinero, marca, publicar, datos de usuarios, cifrado/seguridad, irreversible) o una decisión de diseño que él debe tomar.
 - **Modo adelanto (dueño, 10-11):** cuando el dueño esté ocupado o dormido, avanzar solo con la cola de pulido y los pendientes
   que Claude decide, sin esperar; preguntar antes solo si es grande. Reglas y límites: `docs/COMO_TRABAJAMOS.md` §8. Léelo con
   `ESTADO.md` al empezar. **Reloj de ausencia:** al terminar cada respuesta, programar con `send_later` un aviso a 5 min; si llega y
