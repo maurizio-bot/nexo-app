@@ -119,7 +119,21 @@ internal fun NexoBlePlugin.screenShareStopImpl(call: PluginCall) {
 // (deslizar hacia arriba), MainActivity entra en Picture-in-Picture (miniatura flotante) y el audio/vídeo no se cortan
 // (ya corre el servicio en primer plano de la llamada). Al colgar, el JS lo apaga.
 internal fun NexoBlePlugin.setPipActiveImpl(call: PluginCall) {
-    BleService.pipVideo = call.getBoolean("on", false) ?: false
+    val on = call.getBoolean("on", false) ?: false
+    BleService.pipVideo = on
+    // 3227 (dueño 17-11 22:49, captura: «colgó la S23 y quedó la miniatura así»): al terminar la videollamada con la ventanita
+    // abierta, la ventanita se quedaba enseñando la app (el chat en miniatura). Ahora se cierra (la app va atrás, como al salir
+    // de una llamada en WhatsApp: el usuario sigue en la app donde estaba).
+    if (!on && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        val act = activity
+        try {
+            if (act != null) act.runOnUiThread {
+                try {
+                    if (act.isInPictureInPictureMode) { remLog("INFO", "PIP", "La llamada terminó con la ventanita abierta: se cierra"); act.moveTaskToBack(true) }
+                } catch (e: Exception) { remLog("WARN", "PIP", "cerrar ventanita: ${e.message}") }
+            }
+        } catch (e: Exception) {}
+    }
     call.resolve()
 }
 

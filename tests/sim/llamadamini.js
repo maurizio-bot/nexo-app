@@ -94,6 +94,7 @@ const SHOTS = process.env.AV_SHOTS || '';
     r.b_colgar_s = await waitFor(async () => (await calls(P.A)).uno === null && (await calls(P.B)).uno === null, 10000);
     await sleep(600);
     r.b_tras_colgar = await barLook(P.A);
+    r.b_pip_apagado = nat.A.pipVideo === false; // 3227: al terminar se apaga la miniatura (el nativo cierra la ventanita si estaba abierta)
     await H.hangAll();
   });
 
@@ -118,7 +119,7 @@ const SHOTS = process.env.AV_SHOTS || '';
   v.bv = chk(() => r.bv_atras === true && r.bv_barra.barra && r.bv_barra.arriba && /^B · \d+:\d\d$/.test(r.bv_barra.texto) && !r.bv_barra.pantalla_llamada && r.bv_barra.app_debajo && r.bv_barra.app_baja &&
     r.bv_imagen_sigue >= 10 && !r.bv_vuelve.barra && r.bv_vuelve.pantalla_llamada);
   v.b = chk(() => num(r.b_activa_s) && r.b_atras === true && r.b_barra.barra && r.b_barra.arriba && /^B · \d+:\d\d$/.test(r.b_barra.texto) && r.b_barra.silenciar && r.b_barra.colgar && r.b_barra.app_debajo &&
-    r.b_silencio.llamada === true && r.b_silencio.barra === true && !r.b_vuelve.barra && r.b_vuelve.pantalla_llamada && num(r.b_colgar_s) && !r.b_tras_colgar.barra);
+    r.b_silencio.llamada === true && r.b_silencio.barra === true && !r.b_vuelve.barra && r.b_vuelve.pantalla_llamada && num(r.b_colgar_s) && !r.b_tras_colgar.barra && r.b_pip_apagado);
   v.r = chk(() => !r.r_B.barra && r.r_B.contestar);
   r.casos = v;
   const ok = Object.values(v).every(Boolean) && !r.errores.length;

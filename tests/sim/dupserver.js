@@ -157,7 +157,11 @@ function jsReady(p, nx) {
   r.S4_ok = r.S4_cierres_menor === 1;
   // S6: un ÚNICO enlace (L1) que corta el otro (el mayor, desde su servidor): el nativo del menor lo reabre y el JS no lo impide
   const d0 = (lo.native.discs || []).length, n0 = lo.native.stats.nativeReconnects || 0;
-  await hi.win.Capacitor.Plugins.NexoBLE.disconnectDevice({ deviceId: lo.native.initAddress, server: true });
+  // 3227 (CI de la APK 3093, dos veces S6_cortado=false; aquí pasaba siempre): la conexión de servidor del mayor con el menor no
+  // siempre está guardada con lo.initAddress (depende de qué dirección vio primero): se corta la que de verdad es del menor.
+  const srvKeys = [...hi.native.serverConnected.entries()].filter(([, v]) => v === lo.native).map(([k]) => k);
+  r.S6_claves_servidor = srvKeys.map((k) => (k === norm(lo.native.initAddress) ? 'init' : k === norm(lo.native.address) ? 'adv' : 'otra'));
+  await hi.win.Capacitor.Plugins.NexoBLE.disconnectDevice({ deviceId: srvKeys[0] || lo.native.initAddress, server: true });
   r.S6_cortado = await waitFor(() => !lo.native.clients.has(K.loL1), 3000) !== null;
   await sleep(300);
   r.S6_reintento_pendiente = lo.native.reconnTimers.has(K.loL1); // el JS no lo canceló (era el único enlace)
