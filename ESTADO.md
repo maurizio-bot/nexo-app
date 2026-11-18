@@ -21,6 +21,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **17-11 22:40 (México):** batería completa sobre 3216–3222: 335 OK; 3 fallos explicados (tetvs y gestos: pruebas nuevas de 3223
+  sobre el árbol de antes; Estados v3: suelto, 3/3 OK al repetir). Hechos y en la rama: 3223 deslizar para contestar desde el borde
+  + basura del Tetris desordenada; 3224 nota de voz pendiente al buzón de archivos (el audio de la S23 llegó a los 17 min); 3225
+  avisos cortos visibles + «Ocultar aviso fijo» en Ajustes (dueño: sí a las dos). Pruebas cercanas y de navegador real EN CURSO
+  (`targeted2.txt`). APK 3093 relanzada (empezó 21:13). Siguiente APK: NOVEDADES ya redactadas en `scratchpad/novedades_next.txt`
+  (3216–3225, ≤500 por idioma); al terminar 3093, pasar su bloque al historial, poner el nuevo y subir. Hallazgos anotados en
+  PENDIENTES: desempate que cierra el enlace que recibe (S23–Yaelito), diagnóstico de Marcos repetido 3 veces, Bluetooth que no
+  arranca tras reiniciar el teléfono, Yaelito (Xiaomi) 21 h sin NEXO.
 - **17-11 21:20 (México):** APK 3093 (3207–3215) falló en el CI por UNA prueba (el mismo árbol pasó 332/332 aquí): relanzado el
   trabajo fallido (corrida 44213352185, intento 2). En la rama ya están unidos y probados: 3216 unir llamadas, 3217 puente, 3218/3218b
   cabecera («Contactos» arriba a la izquierda, mi foto y nombre debajo, lupa + ruedita), 3222 «Crear grupo» en el botón de agregar y en
