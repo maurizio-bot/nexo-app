@@ -21,6 +21,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **17-11 20:15 (México) — CERCA DEL LÍMITE DE USO.** En la rama de trabajo, sin APK aún: 3216 «Unir llamadas» y 3217 «puente»
+  (mi teléfono mezcla la voz si A y B no se alcanzan), ambos probados y unidos. APK 3093 (3207–3215) en el CI (corrida 44213352185).
+  Ayudantes en worktrees (`.claude/worktrees/agent-*`): 3218 cabecera (foto+nombre a la izquierda, ruedita a la derecha, estilo de
+  botones aprobado: `docs/estilo_botones_muestra.html`), 3219 silenciar/destacados/fijar mensajes, 3221 grupo por internet (pausado
+  por el uso). Al volver: revisar sus ramas `worktree-agent-*`, unir lo que pase sus pruebas, batería y APK. Decisiones del dueño y
+  la lista de WhatsApp: nexo-private/negocio/WHATSAPP_VS_NEXO.md. Chats ocultos: en pausa (un filtro de seguridad detuvo al ayudante;
+  NO hacer avisos falsos, señuelo ni negación; el dueño quiere seguir platicando una versión que no sirva a abusadores). Pendiente
+  GRAVE: avisos cortos invisibles por `critical.css` desde el 10-09 (PENDIENTES), esperando el sí del dueño.
 - **17-11 19:10 (México) — APK 3092 CANCELADA por tiempo (no por fallos):** el job de pruebas llegó a los 75 min con 327 pruebas
   y GitHub lo cortó. Tope subido a 120 min. **Sube como APK 3093 con 3207–3215** (batería local completa 332/332 sobre
   3211–3215: stickers con video, red de seguridad que sí deja el mensaje en el buzón, margen del `since` aprendido, aviso de MTU 23
