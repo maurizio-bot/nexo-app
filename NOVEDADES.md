@@ -12,13 +12,17 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- El contacto con la app dormida se ve en línea al abrir su chat en pocos segundos, sin esperar a que despierte.
 - El Wi-Fi con un contacto de app dormida se confirma antes.
 - Un mensaje ya entregado no vuelve a marcarse como fallido.
 </es-419>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3098 (18-11-2026)
+<es-419>
+- El contacto con la app dormida se ve en línea al abrir su chat en pocos segundos, sin esperar a que despierte.
+</es-419>
 
 ### APK 3097 (18-11-2026)
 <es-419>
