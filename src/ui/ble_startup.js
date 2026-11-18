@@ -222,11 +222,13 @@ export const bleStartup = {
 
   _initNexoId() {
     var self = this;
-    _getOrCreateNexoId().then(function(nexoId) {
+    // 3215: la promesa queda a mano para quien necesite el NEXO ID propio antes de que esté (las confirmaciones al arrancar)
+    self._nexoIdP = _getOrCreateNexoId().then(function(nexoId) {
       self.localNexoId = nexoId;
       console.log('[BLEInterface] NEXO ID:', nexoId);
       // Ronda 2755: el anuncio (NEXO ID visible o código rotativo) lo decide ble_privacy.js
       self._startPrivacy();
+      return nexoId;
     });
   },
 

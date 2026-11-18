@@ -670,15 +670,25 @@ export class BleAckSystem {
     var acker = _normId(ack.from);
     var c = this._contactOf(null, acker);
     if (c && c.proto === 2 && c.publicKey && !c.pendingKey && _ackRe.test(acker)) {
-      var myNx = _normId(this.ble && this.ble.localNexoId);
-      var fields = ack.type + '|' + ackMsgId + '|' + acker + '|' + myNx;
-      e2eAckTag(c.publicKey, fields).then(function(exp) {
+      // 3215 (Marcos 17-11 16:13:41): al ARRANCAR, lo que llegó con la app cerrada se procesaba antes de cargar el NEXO ID propio y la
+      // firma se comprobaba contra «…|» → «sin firma válida» con confirmaciones buenas (y el mensaje se volvía a mandar). Se espera al ID.
+      this._whenMyNx().then(function(me) {
+        return e2eAckTag(c.publicKey, ack.type + '|' + ackMsgId + '|' + acker + '|' + _normId(me));
+      }).then(function(exp) {
         if (ack.a && exp && _ctEq(String(ack.a), exp)) self._applyAck(ack, ackMsgId);
         else console.warn('[BleAckSystem] Confirmación sin firma válida de ' + acker + ' (' + ackMsgId + '): ignorada');
       }).catch(function() {});
       return true;
     }
     return this._applyAck(ack, ackMsgId);
+  }
+  // 3215: el NEXO ID propio; al arrancar se espera a que se cargue del almacén (unos ms) en vez de usar «» o «unknown»
+  _whenMyNx() {
+    var ble = this.ble;
+    if (!ble || ble.localNexoId) return Promise.resolve(ble ? ble.localNexoId : null);
+    var p = ble._nexoIdP;
+    if (!p || typeof p.then !== 'function') return Promise.resolve(null);
+    return p.then(function() { return ble.localNexoId; }, function() { return ble.localNexoId; });
   }
   // Aplica una confirmación ya aceptada (firmada, o de un contacto antiguo): dedup y marcar entregado/leído
   _applyAck(ack, ackMsgId) {
@@ -752,8 +762,11 @@ export class BleAckSystem {
   // Auditoría C1 (ronda 2777): la confirmación se firma con el secreto de la pareja (si el contacto es proto 2 y hay
   // clave) para que el emisor pueda comprobar que es de verdad. `a` es un campo más: los contactos antiguos lo ignoran.
   // 3178: resuelve true si SALIÓ (ver _rcptNote); si no, queda apuntada y se reintenta por el camino que haya.
-  _sendReceipt(type, deviceId, msgId, routeTo, extra) {
-    var self = this, myNx = (this.ble && this.ble.localNexoId) || 'unknown';
+  _sendReceipt(type, deviceId, msgId, routeTo, extra, waited) {
+    var self = this;
+    // 3215: al arrancar, una confirmación antes de tener el NEXO ID propio salía como «unknown» y con la firma de «unknown»: se espera
+    if (!waited && !(this.ble && this.ble.localNexoId)) return this._whenMyNx().then(function() { return self._sendReceipt(type, deviceId, msgId, routeTo, extra, true); });
+    var myNx = (this.ble && this.ble.localNexoId) || 'unknown';
     var obj = { v: 1, type: type, msgId: msgId, from: myNx, ts: Date.now() };
     if (extra && extra.got === 1) obj.got = 1;
     var target = _normId(routeTo) || _normId(this._resolveNexoId(deviceId));
