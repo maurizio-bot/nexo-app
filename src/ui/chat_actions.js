@@ -22,10 +22,12 @@ import { t } from './i18n.js';
 import { _pickAvatar, SHEET_CLOSE_SVG } from './share_contacts.js';
 import { isSelecting, startSelect, selectFromBubble } from './msg_select.js'; // 3206: elegir varios mensajes y reenviarlos
 import { paintTextWithLinks } from './links.js'; // 3161: enlaces que se tocan (+ tarjeta de TikTok/Instagram/Facebook/YouTube)
+import { canStar, toggleStar } from './chat_star.js'; // 3219: mensajes destacados (solo aquí)
+import { canPin, chatPinUse, isPinned, pinOnAction, togglePin } from './chat_pin.js'; // 3219: fijar mensajes (para los dos)
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _renderMessage, _sendAttachment, _sendTextTo;
-export function chatActionsUse(d) { _renderMessage = d._renderMessage; _sendAttachment = d._sendAttachment; _sendTextTo = d._sendTextTo; } // [/pegamento]
+export function chatActionsUse(d) { _renderMessage = d._renderMessage; _sendAttachment = d._sendAttachment; _sendTextTo = d._sendTextTo; chatPinUse(d); } // [/pegamento]
 
 
 export var _renderedMessageIds = new Set();
@@ -293,6 +295,8 @@ var _MM_ICONS = {
   'mm-sticker-add': '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
   'mm-copy': '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   'mm-edit': '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  'mm-star': '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>', // 3219
+  'mm-pin': '<path d="M12 17v5"/><path d="M9 3h6"/><path d="M10 3v6.5L6.5 13.5V15h11v-1.5L14 9.5V3"/>', // 3219
   'mm-del-me': '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>',
   'mm-del-all': '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>',
   'mm-cancel': '<path d="M18 6L6 18"/><path d="M6 6l12 12"/>'
@@ -361,6 +365,9 @@ export function _openMsgMenu(div) {
       });
     }
     if (!deleted && !msg.attachmentType) add(t('chat_copy', '⧉  Copiar'), 'mm-copy', function() { _copyText(_plainText(msg.content)); });
+    // 3219: destacar (solo aquí) y fijar arriba del chat (para los dos)
+    if (canStar(msg)) add(msg.starred ? t('chat_unstar', '⭐  Quitar destacado') : t('chat_star', '⭐  Destacar'), 'mm-star', function() { toggleStar(cid, msg); });
+    if (canPin(cid, msg)) add(isPinned(_normId(cid), id) ? t('chat_unpin', '📌  Desfijar') : t('chat_pin', '📌  Fijar'), 'mm-pin', function() { togglePin(cid, msg); });
     if (_canEdit(cid, msg)) add(t('chat_edit', '✏️  Editar'), 'mm-edit', function() { _startEdit(id, msg); });
     add(t('chat_delete_me', '🗑  Eliminar para mí'), 'mm-del-me', function() { _deleteForMe(cid, id); }, true);
     if (isOwn && !deleted && Date.now() - (msg.timestamp || 0) < DELETE_ALL_MS && _peerUnderstands(cid)) {
@@ -818,6 +825,7 @@ export function _applyChatAction(senderId, act) {
   if (act && act.act === 'sm') { statusMediaRequested(senderId, act); return; } // 3032: me piden la media grande de un estado
   if (act && act.act === 'prof') { applyContactProfile(senderId, act); return; } // #dueño 04-11: datos de perfil completos (profile_share.js)
   if (act && act.act === 'psi') { psiOnAction(senderId, act); return; } // #dueño 04-11 paso 3: contactos en común (PSI, psi.js)
+  if (act && act.act === 'pin') { pinOnAction(senderId, act); return; } // 3219: fijar un mensaje arriba del chat (chat_pin.js)
   if (act && act.act === 'game') { // ronda 2830+: juegos por turnos; se enruta por act.g
     if (act.g === 'c4') connect4OnAction(senderId, act);   // Conecta 4 (connect4.js)
     else if (act.g === 'tetvs') tetrisVersusOnAction(senderId, act); // Tetris versus por eventos (tetris_versus.js)

@@ -322,6 +322,7 @@ class NexoBlePlugin : Plugin() {
     internal fun notifyMessage(ctx: Context, info: BgInbox.Info) {
         val who = netBgShared?.nameOf(info.from)
         val gname = groupName(info.group)
+        if (mutedNotice(info, gname != null)) return // 3219: chat o grupo silenciado: sin aviso (las llamadas no pasan por aquí)
         if (gname != null) MsgNotifier.get(ctx).message(info.group, gname, info.msgId, if (who != null) "$who: " + NativeLang.t(ctx, "msg_new") else "", true)
         else MsgNotifier.get(ctx).message(info.from, who ?: "NEXO", info.msgId, "", true)
     }
@@ -594,6 +595,7 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod fun netBgDrain(call: PluginCall) = netBgDrainImpl(call)
 
     @PluginMethod fun setAckKeys(call: PluginCall) = setAckKeysImpl(call)
+    @PluginMethod fun setMutedChats(call: PluginCall) = setMutedChatsImpl(call) // 3219: chats silenciados (MutedChats)
 
     @PluginMethod fun notifyCall(call: PluginCall) = notifyCallImpl(call)
 

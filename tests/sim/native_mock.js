@@ -582,9 +582,20 @@ class NativePhone {
   _groupName(gid) { if (!gid) return null; try { const g = (JSON.parse(this.files.get('nexo_groups.json') || '{}').groups || {})[gid]; return (g && g.name) || null; } catch (e) { return null; } }
   // Kotlin 2763 notifyMessage: en un grupo, en el chat del grupo con su nombre
   _notifyMsg(info, flags) {
+    if (this._mutedInfo(info)) return; // Kotlin 3219 (MutedChats.silences): chat o grupo silenciado → sin aviso
     const gname = this._groupName(info.group), who = this._notifName(info.from);
     if (gname) this._postNotif(info.group, gname, info.msgId, who !== 'NEXO' ? who + ': Mensaje nuevo' : '', flags);
     else this._postNotif(info.from, who, info.msgId, '', flags);
+  }
+  // Kotlin 3219 (MutedChats.silences): el chat del aviso (el grupo si se conoce su nombre, si no quien lo manda) está silenciado
+  // hasta una hora futura (o siempre, 0). Las llamadas nunca. NEXO_OLD_MUTE=1: nativo de antes (sin silenciar, contraprueba)
+  _mutedInfo(info) {
+    if (process.env.NEXO_OLD_MUTE === '1' || !this.muted || !info || info.call || info.what === 'call') return false;
+    const chat = (info.group && this._groupName(info.group)) ? info.group : String(info.from || '').toLowerCase();
+    const u = chat ? this.muted.get(chat) : undefined;
+    const on = u !== undefined && (u === 0 || u > Date.now());
+    if (on) this.mutedSkips = (this.mutedSkips || 0) + 1;
+    return on;
   }
   _notifName(nx) { const c = this.netBg && (this.netBg.contacts || []).find((x) => String(x.nx || '').toLowerCase() === nx); return (c && c.name) || 'NEXO'; }
   static whatText(w) { return ({ image: '📷 Foto', video: '🎥 Vídeo', audio: '🎤 Nota de voz', call: '📞 Llamada entrante', text: '' })[w] ?? '📎 Archivo'; }
@@ -626,6 +637,7 @@ class NativePhone {
         else if (lanNx && !process.env.NEXO_OLD_LANACK) this._sendDeliveredAckLan(lanNx, info);   // contraprueba: NEXO_OLD_LANACK=1 (nativo ≤ 3015)
       }
       else if (silent) { /* 3086: chat abierto en un parpadeo: sin aviso */ }
+      else if (this._mutedInfo(info)) { /* 3219: chat silenciado: sin aviso */ }
       else if (this._groupName(info.group)) { const who = this._notifName(info.from), w = NativePhone.whatText(info.what); this._postNotif(info.group, this._groupName(info.group), info.msgId, who !== 'NEXO' ? who + ': ' + (w || 'Mensaje nuevo') : w, { bg: true }); }
       else this._postNotif(info.from || 'nexo_jump', info.from ? this._notifName(info.from) : 'NEXO', info.msgId, NativePhone.whatText(info.what), { bg: true });
     }, 4000);
@@ -669,6 +681,7 @@ class NativePhone {
       else if (!info.quiet) this._notifyMsg(info, { closed: true });
     } else if (info.kind === 'RECEIPT') this.bgInbox.push({ d: fromAddress, c: json, t: Date.now() });
     else if (info.kind === 'NOTIFY_ONLY' && info.what === 'call') this._incomingCall(info.from, this._notifName(info.from), !!info.video, info.msgId, { closed: true });
+    else if (info.kind === 'NOTIFY_ONLY' && this._mutedInfo(info)) { /* Kotlin 3219: chat silenciado: sin aviso */ }
     else if (info.kind === 'NOTIFY_ONLY' && this._groupName(info.group)) { const who = this._notifName(info.from), w = NativePhone.whatText(info.what); this._postNotif(info.group, this._groupName(info.group), info.msgId, who !== 'NEXO' ? who + ': ' + (w || 'Mensaje nuevo') : w, { closed: true }); }
     else if (info.kind === 'NOTIFY_ONLY') notify(NativePhone.whatText(info.what));
   }
@@ -1393,6 +1406,12 @@ class NativePhone {
       simNearAutoAccept: wrap('simNearAutoAccept', (c) => { c.resolve({ on: self.opts.nearAutoAccept !== false }); }),
       netBgDrain: wrap('netBgDrain', (c) => { const ev = self.netBgInbox || [], gaps = self.netBgGaps || {}; self.netBgInbox = []; self.netBgGaps = {}; c.resolve({ events: ev, gaps: gaps }); }), // 3205: gaps = relés que la escucha nativa soltó con datos → desde cuándo
       netBgConfig: wrap('netBgConfig', (c, a) => { self.netBg = a; self.netBgCalls = (self.netBgCalls || 0) + 1; c.resolve({ contacts: (a.contacts || []).length, running: false }); }),
+      // 3219 (Kotlin setMutedChats → MutedChats): la app da los chats silenciados [{id, until}] (until ms; 0 = siempre)
+      setMutedChats: wrap('setMutedChats', (c, a) => {
+        self.muted = new Map(); self.mutedCalls = (self.mutedCalls || 0) + 1;
+        ((a && a.chats) || []).forEach((x) => { const id = String((x && x.id) || '').toLowerCase(), u = Number(x && x.until); if (/^(nx|gr)[0-9a-z]{8}$/.test(id) && isFinite(u) && u >= 0) self.muted.set(id, u); });
+        c.resolve({ chats: self.muted.size });
+      }),
       // C1 (2777): la app nos da las claves de firma del ✓✓ del modo cerrado (como el Kotlin setAckKeys)
       setAckKeys: wrap('setAckKeys', (c, a) => { self.ackKeys = new Map(); (a.keys || []).forEach((k) => { try { self.ackKeys.set(String(k.nx).toLowerCase(), Buffer.from(k.key, 'base64')); } catch (e) {} }); c.resolve({ keys: self.ackKeys.size }); }),
       ensureNotificationPermission: wrap('ensureNotificationPermission', (c) => { self.notifPermAsked = (self.notifPermAsked || 0) + 1; c.resolve({ granted: !self.opts.noNotifPerm }); }),
