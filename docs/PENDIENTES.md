@@ -70,6 +70,13 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   teléfono. «Confirmación sin firma válida de nx0x4029e6» ×7: Zhelowsky va en la 3026 (vieja). **3211 a hacer:** un texto a Marcos pasó
   a ✗ un segundo (16:05:07) y a ✓✓ en el siguiente: la red de seguridad ya lo había dejado en el buzón (16:05:06) y el agotamiento de
   reintentos Bluetooth (_onAckTimeout) lo marcó «failed» igual → si ya salió por internet, ✓ y no ✗.
+- **Diagnóstico manual del dueño (S24, 3091) 17-11 19:56:** nada grave; todo a la S23 entregado y leído. (1) Dos mensajes
+  grandes a richard (nx1l87f8a0, msg…966udk35f9wl y msg…989t1hnnnyml, de las 15:38) siguen en un ChatStream que espera «con el
+  enlace caído» cada 30 s sin fin (ya en el diagnóstico de las 17:07): se arranca con «Resume» aunque el mismo segundo dice «sin
+  enlace ni ruta». Mejor: si no hay enlace en ~2 min, devolverlos a pendientes y no tener el bucle vivo (chat_stream.js). (2) 19:51:51
+  los 4 relés cayeron a la vez y volvieron en 7,7 s (datos móviles): bien. (3) 68 % de lo bajado de relés repetido (19,6 MB en 220 min):
+  lo corrige 3212, va en la APK 3093. (4) La línea de tiempo del diagnóstico incluye un respaldo Fénix («dad_932a → ?» pendiente desde
+  18:04): no es un mensaje del usuario, sacarlo (diag_state.js, como ya se sacan kx_/ack_).
 - **Estilo único de botones (dueño 17-11, 19:40):** «revisa que todos tengan el mismo estilo; la ruedita no es igual al botón de
   perfil ni a los de enviar». Además de la misma respuesta al dedo (3181), mismo aspecto: forma, tamaño, iconos SVG de línea del
   mismo grosor/color. Plan: inventario (lo trae el ayudante de 3218) → estilo base (propuesto: los botones redondos de la pantalla
