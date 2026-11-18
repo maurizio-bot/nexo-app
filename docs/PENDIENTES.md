@@ -10,6 +10,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
 ## 🆕 18-11 05:00 — diagnósticos del S23 (Carii), del A05 de Italia y resúmenes diarios
+- richard (Redmi 14C, 3090) con Mami (A05) 17-11 22:16: su Bluetooth falla 7 veces seguidas al conectar a la dirección de Mami
+  (error 133 de Android) y abre 3 enlaces con ella (el desempate cierra uno). La foto de perfil de Mami (8 KB) le llegó 3 veces en
+  1,5 min: cada vez que richard abre la app (Xiaomi se la cierra solo: «SwipeUpClean») pregunta por la foto antes de que entre la
+  que ya estaba en camino, y Mami la reenvía. Gasto pequeño; revisar si la pregunta puede esperar a que entre lo pendiente.
 - «Internet al abrir el chat» 13 s (resumen del dueño): NO es lentitud nuestra: el saludo sale al abrir y la respuesta se detecta al
   instante (_deliver llama a tick). Lo que tarda es que el OTRO conteste: solo su app (JS) descifra y contesta el saludo, y en segundo
   plano Android la tiene adormilada. Arreglo de raíz (grande): que la escucha nativa sin la app conteste el saludo.
