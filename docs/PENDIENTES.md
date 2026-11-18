@@ -70,6 +70,20 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   teléfono. «Confirmación sin firma válida de nx0x4029e6» ×7: Zhelowsky va en la 3026 (vieja). **3211 a hacer:** un texto a Marcos pasó
   a ✗ un segundo (16:05:07) y a ✓✓ en el siguiente: la red de seguridad ya lo había dejado en el buzón (16:05:06) y el agotamiento de
   reintentos Bluetooth (_onAckTimeout) lo marcó «failed» igual → si ya salió por internet, ✓ y no ✗.
+- **Diagnósticos pegados 17-11 18:15 (México)** (Roberto 14:49, Marcos 16:13 y 17:25, dueño 17:14 y 17:25, HONOR 17:05):
+  · Marcos 16:13 (ya en la 3090): «Confirmación sin firma válida de nx1n36c283» ×6 a las 16:13:41.675, ANTES de cargar su NEXO ID
+    (41.710) → **arreglado en 3215** (ackarranque.js). Era la causa de las «sin firma válida» (no claves viejas).
+  · Marcos 17:25 / dueño 17:25 (zombi): Marcos con 11 % de batería y la app en segundo plano; el dueño lo tenía por Wi-Fi local y
+    todo entregado/leído: sin efecto para el usuario. Al arrancar Marcos, 4 avisos «MTU 23» que a 1 s eran 517 → 3214 los calla.
+  · Roberto 14:49: el mismo ya anotado arriba (apagó/encendió el Bluetooth). Sus «MTU 23» a los 12–16 s de 517 eran enlaces que
+    sí estaban muertos (el envío fallaba): 3214 (4 s) no los calla y está bien.
+  · Dueño 17:14 «enlace_abre_cierra» con el HONOR: el HONOR cambia de dirección Bluetooth (50:F3…, 70:CA…, 79:43…) y cada una abre
+    un enlace repetido que se cierra; sin efecto visible. Pendiente menor: no contar como «abre y cierra» los repetidos cerrados por
+    el desempate normal.
+  · Hallazgo menor (dueño 17:23): un respaldo Fénix de 90 KB al HONOR iba 4 de 7 trozos por internet; al volver la app pasó al
+    Bluetooth y EMPEZÓ DE CERO (165 trozos) y se rindió a las 2 ventanas. Mejor: seguir por el camino que avanzaba.
+  · **Para el dueño (seguridad, no se toca sin él):** una confirmación con «from» que no es un contacto (p. ej. «unknown») se
+    acepta sin firma (compatibilidad de la auditoría C1). Con 3215 las nuestras ya no salen así; cerrarlo del todo es decisión suya.
 - Dueño S24 (3091) 16:59: 298,8 MB de NEXO hoy; en 43 min desde abrir, 7,8 MB de relés con 1883 de 2028 eventos repetidos (93 %);
   7 vueltas a la app de 16:16 a 16:58 (cada una vuelve a pedir 10 min a cada relé, 25 contactos) → 3212. Zhelowsky (3086, la 3090 ya
   descargada sin instalar; Motorola sin segundo plano): su ✓✓ del pedido de diagnóstico (msg…r2052km1s) llegaba «sin firma válida» y el
