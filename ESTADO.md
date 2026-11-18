@@ -21,6 +21,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **17-11 23:05 (México) — DUEÑO CERCA DEL LÍMITE DE USO (se restablece el domingo 2:00).** APK subida a NEXOCHAT (edd2f01a,
+  3207–3227; la 3093 no se publicó: dupserver S6 en el CI, prueba arreglada). Si el CI cae otra vez en dupserver, mirar
+  «S6_claves_servidor» en el registro (descarga: api.github.com/repos/…/actions/jobs/<id>/logs funciona). Hoy: 3223 deslizar desde
+  el borde + Tetris desordenado; 3224 nota de voz pendiente al buzón; 3225 avisos cortos visibles + «Ocultar aviso fijo»; 3226
+  videollamada en pausa para siempre por la cámara del chat (FocusPolicy nativo + no abrir la cámara de NEXO en llamada); 3227
+  ventanita que no se cerraba al colgar. Al publicarse: pasar el bloque de NOVEDADES al historial con su número. Pendiente: el
+  mensaje del dueño «al estar en videollamada… la cámara no aparecen los botones… en la vista normal ya no aparecen» solo se vio
+  cortado en una captura: pedírselo entero.
 - **17-11 22:40 (México):** batería completa sobre 3216–3222: 335 OK; 3 fallos explicados (tetvs y gestos: pruebas nuevas de 3223
   sobre el árbol de antes; Estados v3: suelto, 3/3 OK al repetir). Hechos y en la rama: 3223 deslizar para contestar desde el borde
   + basura del Tetris desordenada; 3224 nota de voz pendiente al buzón de archivos (el audio de la S23 llegó a los 17 min); 3225
