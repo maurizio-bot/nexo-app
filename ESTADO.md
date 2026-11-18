@@ -21,6 +21,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **18-11 05:45 (México):** APK subida con 3232 (velocidad real del buzón al recibir), 3232b (pistas del fallo nativo en el
+  diagnóstico), 3233 (desempate que no cierra el enlace que recibe). Decisión pedida al dueño: guardar cifrada la clave del código
+  rotativo para que el Bluetooth vuelva tras reiniciar el teléfono (ver PENDIENTES 18-11 05:00). Regla nueva en CLAUDE.md: nunca
+  esperar permiso para seguir.
 - **18-11 03:35 (México):** APK 3096 PUBLICADA (7787b212, 3207–3231: estados como TikTok y todo lo de la 3094). NOVEDADES pasadas
   al historial; el bloque de la próxima APK es un marcador «(próxima APK)»: escribirlo antes de subir. Rama suelta NOCHAT en GitHub
   (error mío al subir; no se pudo borrar desde aquí: pedírselo al dueño). Pendientes nuevos: buzón de archivos lento AL RECIBIR

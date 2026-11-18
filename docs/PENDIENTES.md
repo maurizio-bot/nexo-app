@@ -10,6 +10,13 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
 ## 🆕 18-11 05:00 — diagnósticos del S23 (Carii), del A05 de Italia y resúmenes diarios
+- «Internet al abrir el chat» 13 s (resumen del dueño): NO es lentitud nuestra: el saludo sale al abrir y la respuesta se detecta al
+  instante (_deliver llama a tick). Lo que tarda es que el OTRO conteste: solo su app (JS) descifra y contesta el saludo, y en segundo
+  plano Android la tiene adormilada. Arreglo de raíz (grande): que la escucha nativa sin la app conteste el saludo.
+- BLUETOOTH MUERTO TRAS REINICIAR EL TELÉFONO (Marcos; también Carii tras el fallo nativo 22:48): BleService arrancado sin la app
+  (NexoRestartReceiver/FCM/START_STICKY) no tiene currentNexoId ni ridKey (solo en memoria) → no anuncia; y el servidor GATT lo
+  arranca el plugin al cargar la app. DECISIÓN DEL DUEÑO (seguridad): guardar la clave del código rotativo cifrada (como NetBgSaved,
+  que ya aprobó el 17-11) para anunciar y abrir el servidor GATT sin la app.
 - BUZÓN DE ARCHIVOS LENTÍSIMO AL RECIBIR (confirmado en 3 teléfonos el 17-11): S23 recibe a 0,3 KB/s de media (envía a 164), el del dueño 3 KB/s (envía a 42), el A05 46 KB/s. Investigar la bajada (_blobPointerReceived / fetch por trozos): prioridad alta.
 - S23 (3091): FALLO NATIVO de la app a las 22:48 (en segundo plano) justo cuando terminó la videollamada con el dueño (22:44–22:48:54): «colgó el S23» fue en realidad el cierre por fallo. Android reinició el servicio a las 22:49:01 y la llamada siguiente del dueño (22:49:03) sí sonó. Sin traza del fallo en el diagnóstico: añadir la causa del cierre nativo (ApplicationExitInfo trace) al diagnóstico.
 - S23: «internet listo» hasta 157 s (media 9,6 s).

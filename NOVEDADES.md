@@ -12,7 +12,8 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- (próxima APK)
+- Bluetooth más estable cuando hay dos conexiones con el mismo contacto: ya no se corta la que funciona.
+- El diagnóstico mide la velocidad real de los archivos por internet y explica los cierres inesperados de la app.
 </es-419>
 <!-- /APK -->
 
