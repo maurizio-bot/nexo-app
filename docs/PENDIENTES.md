@@ -73,7 +73,11 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - **Estilo único de botones (dueño 17-11, 19:40):** «revisa que todos tengan el mismo estilo; la ruedita no es igual al botón de
   perfil ni a los de enviar». Además de la misma respuesta al dedo (3181), mismo aspecto: forma, tamaño, iconos SVG de línea del
   mismo grosor/color. Plan: inventario (lo trae el ayudante de 3218) → estilo base (propuesto: los botones redondos de la pantalla
-  de llamada) → aplicarlo a toda la app → prueba que lo vigile (como pressall.js). Esperando qué estilo elige el dueño de modelo.
+  de llamada) → aplicarlo a toda la app → prueba que lo vigile (como pressall.js). **Aprobado por el dueño (17-11, 19:45)**: tres niveles con la
+  misma forma redonda e iconos SVG de línea (blanco, grosor 2): PRINCIPAL = círculo 52 px con el degradado del botón de enviar
+  (#00c8ff→#a855f7), solo la acción principal de cada pantalla; SECUNDARIO = círculo 44 px discreto (rgba blanco .08 + borde .14);
+  CUIDADO = círculo 52 px rojo #ef4444 (colgar, eliminar). Muestra: `docs/estilo_botones_muestra.html`. Las clases las deja listas
+  3218 (cabecera); la pasada por toda la app va después de 3217/3218.
 - **Diagnósticos pegados 17-11 18:15 (México)** (Roberto 14:49, Marcos 16:13 y 17:25, dueño 17:14 y 17:25, HONOR 17:05):
   · Marcos 16:13 (ya en la 3090): «Confirmación sin firma válida de nx1n36c283» ×6 a las 16:13:41.675, ANTES de cargar su NEXO ID
     (41.710) → **arreglado en 3215** (ackarranque.js). Era la causa de las «sin firma válida» (no claves viejas).
