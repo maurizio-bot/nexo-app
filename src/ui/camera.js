@@ -7,6 +7,7 @@ import { haptic } from './haptics.js'; // NEXO Touch (2968): háptica del sistem
 import { PREVIEW_MAX_SECONDS, _videoFormat } from './video_tools.js';
 import { _getCurrentContactId } from './chat_format.js';
 import { t } from './i18n.js';
+import { _showInfoToast } from './ui_bits.js';
 
 // [pegamento] Lo que la cámara usa del resto de la app: main.js lo da al arrancar (cameraUse), antes de que se abra la cámara
 var _wdReach, _photoFast, _photoBridgeOnly, _waitForBLEReady, _sendAttachment, _closeAttachMenu, _releaseMedia, _handleGallery, _sendVideo, _reviewAndSendPhotos;
@@ -482,6 +483,15 @@ function _backInFront(ms) {
 }
 
 async function _openNexoCamera(mode) {
+  // 3226 (dueño 17-11 22:41, videollamada en miniatura → cámara del chat → zoom → volver: «se trabó»): con una llamada en curso, la
+  // cámara y el micrófono son de la llamada. Al salir de la cámara del teléfono sin foto se abría la de NEXO en vídeo: le quitaba la
+  // cámara a la llamada y el foco de audio (-1 → la llamada quedó «en pausa» para siempre). Ahora no se abre y se avisa.
+  var bi = window.bleInterface;
+  if (bi && typeof bi._callBusy === 'function' && bi._callBusy()) {
+    console.log('[CAMERA] Hay una llamada en curso: la cámara de NEXO no se abre (la usa la llamada)');
+    try { _showInfoToast(t('cam_busy_call', 'La cámara la está usando la llamada'), 3000); } catch (e) {}
+    return;
+  }
   _pauseBleForCamera();
   await new Promise(function(r) { setTimeout(r, 200); });
   _showCameraPreviewOverlay(mode);

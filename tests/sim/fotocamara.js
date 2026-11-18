@@ -15,7 +15,8 @@
 //  (c) salir de la cámara del teléfono sin tomar foto («User cancelled photos app») → cámara de NEXO abierta en VÍDEO, sin revisión
 //      y sin mandar nada;
 //  (d) sin el plugin → cámara de NEXO en FOTO, como antes;
-//  (e) el plugin falla («Unable to create photo on disk») → cámara de NEXO en FOTO, sin revisión.
+//  (e) el plugin falla («Unable to create photo on disk») → cámara de NEXO en FOTO, sin revisión;
+//  (f) 3226: con una llamada en curso, salir sin foto NO abre la cámara de NEXO (es de la llamada) y avisa.
 // Por qué base64 y el doble del lado (camera.js): con 'uri' el plugin deja su archivo en el teléfono para siempre; y al reducir no
 // suaviza, así que la última mitad la hace el lienzo de la app.
 // Uso: node fotocamara.js <dir_build>   (imprime FOTOCAMARA {json} con "resultado":"OK"|"FALLO"; sale 0/1)
@@ -240,6 +241,16 @@ async function twoPhones(browser, optsA, optsB, ready) {
     r.bt.c.nada_enviado = (await ownImages(s.A, s.idB)).length === before && !(await s.A.evaluate(() => !!document.getElementById('nexo-gallery-review')));
     await closeNexoCamera(s.A);
     r.bt.c.ble_reanudado = !(await s.A.evaluate(() => !!window.bleInterface._cameraBlePaused));
+    // (f) 3226 (dueño 17-11 22:41, videollamada en miniatura): con una LLAMADA en curso, salir de la cámara del teléfono sin foto NO
+    //     abre la cámara de NEXO (le quitaba la cámara y el foco de audio a la llamada, que quedó en pausa para siempre): aviso «la
+    //     cámara la está usando la llamada», sin pausar el Bluetooth
+    await s.A.evaluate(() => { window.__busyOrig = window.bleInterface._callBusy; window.bleInterface._callBusy = () => true; window.__cam.mode = 'cancel'; });
+    await s.A.evaluate(() => document.querySelector('.attach-menu-item[data-type="camera"]').click());
+    await sleep(2500);
+    r.bt.f = await s.A.evaluate(() => { const ov = document.getElementById('camera-preview-overlay'); const tt = document.getElementById('perm-error-toast');
+      return { camara_nexo: !!ov && !ov.classList.contains('hidden'), aviso: tt ? tt.textContent : null, ble_pausado: !!(window.bleInterface && window.bleInterface._cameraBlePaused) }; });
+    await s.A.evaluate(() => { window.bleInterface._callBusy = window.__busyOrig; });
+    await closeNexoCamera(s.A);
     // (d) sin el plugin → cámara de NEXO en FOTO
     await s.A.evaluate(() => { delete window.Capacitor.Plugins.Camera; });
     r.bt.d = await tapCamera(s.A);
@@ -277,7 +288,7 @@ async function twoPhones(browser, optsA, optsB, ready) {
   }
   await browser.close().catch(() => {});
 
-  const bt = r.bt || {}, a = bt.a || {}, c = bt.c || {}, d = bt.d || {}, e = bt.e || {}, wf = r.wifi || {}, wa = wf.a || {}, wb = wf.b || {};
+  const bt = r.bt || {}, a = bt.a || {}, c = bt.c || {}, d = bt.d || {}, e = bt.e || {}, f = bt.f || {}, wf = r.wifi || {}, wa = wf.a || {}, wb = wf.b || {};
   r.ok = {
     a_abre_la_camara_del_telefono: pedidoOk(a.llamada, 2560) && !a.camara_nexo && a.ble_pausado === false,
     a_revision_antes_de_enviar: a.revision === true && a.miniaturas === 1 && a.ojos === 1,
@@ -286,6 +297,7 @@ async function twoPhones(browser, optsA, optsB, ready) {
     b_ver_una_vez: wb.revision === true && wb.ojos === 1 && typeof wb.llega_s === 'number' && wb.A_una_vez === true && wb.B_una_vez === 1,
     c_cancelar_camara_nexo_en_video: !!c.llamada && c.camara_nexo === true && c.modo === 'video' && c.vista_previa === true && c.revision === false && c.nada_enviado === true && c.ble_reanudado === true,
     d_sin_plugin_camara_nexo_en_foto: !d.llamada && d.camara_nexo === true && d.modo === 'foto' && d.revision === false,
+    f_con_llamada_no_abre_camara_nexo: f.camara_nexo === false && /llamada/.test(f.aviso || '') && f.ble_pausado === false,
     e_error_camara_nexo_en_foto: !!e.llamada && e.camara_nexo === true && e.modo === 'foto' && e.revision === false && e.nada_enviado === true,
   };
   r.errores = logs.filter((l) => /PAGEERROR|Uncaught/.test(l)).slice(0, 5);

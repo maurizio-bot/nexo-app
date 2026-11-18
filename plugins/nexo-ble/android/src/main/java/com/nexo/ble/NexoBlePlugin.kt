@@ -778,6 +778,7 @@ class NexoBlePlugin : Plugin() {
     @Volatile internal var callFocusState = ""
     internal val focusHandler = android.os.Handler(android.os.Looper.getMainLooper())
     internal var focusTries = 0
+    internal var focusRegrabAt = 0L // 3226: última vez que se volvió a pedir el foco tras perderlo sin llamada telefónica (FocusPolicy)
 
     @PluginMethod fun l2Info(call: PluginCall) = l2InfoImpl(call)
 

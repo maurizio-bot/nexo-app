@@ -1401,6 +1401,10 @@
     {
      "fallo": "3155 (dueño 16-11: «la videollamada minimizada sale con todos los botones apretados en la ventanita»): en la miniatura del sistema (PiP) la pantalla de la llamada solo quitaba los botones si llegaba el aviso del sistema (__nexoPipChanged), y la de grupo nunca (ni pasaba a la miniatura). 3155: la ventanita enseña solo la imagen de los demás también por el tamaño de la ventana (≤ 300 de ancho) y en la de grupo (mitades sin botones, cabecera, mi imagen ni nombres); la videollamada de grupo también pasa a la miniatura. llamadamini.js p y agregarvideo.js g (contraprueba 3152: 4 botones y 2 textos en la ventanita)",
      "prueba": "llamada MINIMIZADA y de VOZ a VÍDEO sin colgar"
+    },
+    {
+     "fallo": "3226 (dueño 17-11 22:41, S24 con la S23: videollamada en miniatura → cámara del chat → zoom → volver: «se trabó»): al salir de la cámara del teléfono sin foto se abría la cámara de NEXO en vídeo, que le quitaba la cámara y el foco de audio a la llamada; la pérdida PERMANENTE del foco (-1) se tomaba como llamada telefónica y la videollamada quedaba «en pausa» para siempre (el sistema no devuelve ese foco). Ahora con una llamada en curso la cámara de NEXO no se abre (aviso) y, en la parte nativa, una pérdida permanente sin llamada telefónica vuelve a pedir el foco en vez de retener (FocusPolicy, JVM 4/4)",
+     "prueba": "FOTO CON LA CÁMARA DEL TELÉFONO"
     }
    ],
    "debiles": [

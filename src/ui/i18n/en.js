@@ -573,6 +573,7 @@ export default {
   prof_vend_huawei: "Huawei: in «App launch», set NEXO to manual and turn everything on",
   prof_vend_honor: "Honor: in «App launch», set NEXO to manual and turn everything on",
   prof_open: "Open",
+  cam_busy_call: "The camera is being used by the call",
   prof_svc_notice: "Persistent notice «Ready to receive messages and calls»: you can hide it; NEXO keeps receiving",
   prof_svc_notice_btn: "Hide",
   prof_fix: "Fix",
