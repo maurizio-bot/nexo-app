@@ -1886,6 +1886,10 @@
     {
      "fallo": "3230 (dueño 17-11 23:40): los estados no eran como los quiere: «Mi estado» al lado de su círculo, los contactos en lista VERTICAL, había que tocar cada estado para abrir un visor con botones (‹ › «Me gusta» «Enviar»), el video salía al empezar con el cuadro gris y el triángulo de «play» del sistema y la foto/video no llenaban la pantalla. Ahora es como TikTok: círculos de lado arriba (el mío con «Mi estado» debajo), cada estado a toda la pantalla reproduciéndose solo al entrar (los míos o el más viejo), de abajo hacia arriba el siguiente contacto, de lado otro del mismo, aro azul→blanco al verlos, dos toques = me gusta, sin botones",
      "prueba": "LOS ESTADOS COMO TIKTOK"
+    },
+    {
+     "fallo": "3236 (diagnóstico del dueño 18-11): tres textos salieron «entregado» y 8 s después «fallido»: la pantalla dejaba pasar «fallido» sobre un mensaje que el otro ya confirmó (el vault sí lo impedía). Ahora entregado/leído no pasan a fallido; sin confirmar sí.",
+     "prueba": "ENTREGADO NO PASA A FALLIDO EN PANTALLA"
     }
    ],
    "debiles": [

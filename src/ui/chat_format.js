@@ -17,7 +17,9 @@ export function _statusRank(s) {
 
 export function _canUpgradeStatus(fromStatus, toStatus) {
   if (!toStatus) return false;
-  if (toStatus === 'failed') return true; // failed siempre se permite (es terminal)
+  // 3236 (diagnóstico del dueño 18-11: tres textos a Jhonnatan «entregado» y 8 s después «fallido»): un mensaje que el otro ya confirmó
+  // (entregado/leído) no puede pasar a fallido porque el envío se rindió tarde; el vault ya lo respetaba, la pantalla no
+  if (toStatus === 'failed') return !fromStatus || _statusRank(fromStatus) < _statusRank('delivered');
   if (!fromStatus) return true;
   // Nunca degradar delivered/read a sent/sending/pending/failed
   return _statusRank(toStatus) >= _statusRank(fromStatus);
