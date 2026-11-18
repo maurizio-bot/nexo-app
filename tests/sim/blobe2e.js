@@ -10,6 +10,7 @@
 //  (3) El mismo puntero llega otra vez (dos vías / reenvío) → dedup: una sola copia y ni una bajada más.
 //  (4) 3128: con B EN LÍNEA solo por los relés, un archivo TAMBIÉN va al buzón de archivos (antes: flujo por trozos por los relés,
 //      2,1 KB/s de media en el S24 del dueño; el buzón de archivos, 116 KB/s): llega y no abre ningún flujo por trozos.
+//  (4b) 3224: una nota de voz PENDIENTE que se reenvía a B en línea solo por los relés va al buzón de archivos (no flujo por trozos).
 // Uso: node blobe2e.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -174,6 +175,18 @@ const statusOf = (p, msgId) => { const s = p.win.document.querySelector('.msg-st
   r.en_linea_va_por_buzon_de_archivos = count1064() > blob1 && !!m2 && logs.filter((l) => /\[A\].*\[BLOB\].*buzón de archivos/.test(l)).length === 2 &&
     !logs.some((l) => m2 && new RegExp('\\[A\\].*sendFile START fileId=' + m2.messageId + ' .*to=net').test(l));
 
+  // ===== (4b) 3224 (diagnóstico de la S23 17-11 20:41): una NOTA DE VOZ que quedó pendiente (la app se cerró a los 4 s de grabarla)
+  //      se reenvía a B EN LÍNEA solo por los relés → va al buzón de archivos. Antes iba como flujo por trozos por los relés (2,2 KB/s,
+  //      parado mientras la app de B estaba en segundo plano: 2,7 MB en 17 min, «trabada en el 15 %») =====
+  const voz = Buffer.alloc(90000); for (let i = 0; i < voz.length; i++) voz[i] = (i * 13 + 5) & 255;
+  const vozB64 = voz.toString('base64'), vozId = 'msg' + Date.now() + 'voz3224';
+  await A.win.vaultAppendMessage(idB, { msgId: vozId, messageId: vozId, contactNexoId: idB, content: '', _own: true, status: 'pending', timestamp: Date.now(), attachmentType: 'audio', attachmentPayload: vozB64, attachmentMeta: { format: 'mp4', duration: 9, mimeType: 'audio/mp4' } });
+  const blob4b = count1064();
+  try { A.win.bleInterface._resendPendingMessages(idB); } catch (e) {}
+  r.voz_pendiente_llega_s = await waitFor(async () => !!(await findMsg(B, idA, vozB64, false)), 90000);
+  r.voz_pendiente_va_por_buzon_de_archivos = count1064() > blob4b && logs.some((l) => new RegExp('\\[A\\].*\\[BLOB\\] ' + vozId + ' \\(audio').test(l)) &&
+    !logs.some((l) => new RegExp('\\[A\\].*sendFile START fileId=' + vozId + ' .*to=net').test(l));
+
   // ===== (5) 2970 (diagnóstico del dueño S24 09-11, APK de 25 MB a la tablet): archivo > 5 MB a un contacto conectado por
   //     BLUETOOTH pero AUSENTE por internet → queda ⏳ UNA vez. Antes se re-reanudaba cada ~1,5 s («hasBetter» tomaba
   //     mailboxOk —tengo internet— por «camino mejor» aunque el contacto no estuviera en línea): leía 35 MB del disco y
@@ -222,7 +235,7 @@ const statusOf = (p, msgId) => { const s = p.win.document.querySelector('.msg-st
   r.errores = logs.filter((l) => !/msgsellado1/.test(l) && /ilegible|Error procesando|No se pudo descifrar|\[BLOB\].*( descartado:|rechazado \(|no se pudo bajar|caducó|no pudo subirse)/.test(l)).slice(0, 3); // msgsellado1: contenido falso de la prueba (6)
   r.contenido_en_registros = logs.filter((l) => l.indexOf(b64.substring(0, 24)) >= 0).length;
 
-  const numeric = ['en_linea_por_internet_s', 'registrado_en_A_s', 'A_tick_al_guardarse_el_puntero_s', 'B_recibe_el_archivo_s', 'A_doble_tick_s', 'de_vuelta_en_linea_s', 'en_linea_llega_s', 'bt_de_nuevo_s', 'grande_registrado_s'];
+  const numeric = ['en_linea_por_internet_s', 'registrado_en_A_s', 'A_tick_al_guardarse_el_puntero_s', 'B_recibe_el_archivo_s', 'A_doble_tick_s', 'de_vuelta_en_linea_s', 'en_linea_llega_s', 'voz_pendiente_llega_s', 'bt_de_nuevo_s', 'grande_registrado_s'];
   const info = { prueba: 1, build: 1, resultado: 1, eventos_nuevos_no_trozo_en_r1: 1, puntero_capturado: 1, grande_bt_intentos_en_9s: 1, grande_bt_reenvio_lecturas: 1 };
   const ok = numeric.every((k) => typeof r[k] === 'number') && r.trozos_por_rele === '8,8,8' && r.reles_ven_algo.length === 0 && r.errores.length === 0 && r.contenido_en_registros === 0 &&
     Object.keys(r).every((k) => info[k] || typeof r[k] !== 'boolean' || r[k] === true);

@@ -3,7 +3,7 @@
  * 2752, sin cambios): lo que llega (descifrar, comprobar remitente, guardar, avisar) y lo que sale (texto, archivos,
  * pendientes, reenvío al reconectar).
  */
-import { BLE_STATES, _failStatus, _getBLEContacts, _hasNativeMethod, _hydrateAttachments, _isResendable, _attMissDecision, _attMissCooling, _normId, _safeDispatchEvent, _safeNativeCall, _saveSeqCounter, _vaultLoadMessages, _vaultUpdateMessageStatus, _tooBigForBt } from './ble_helpers.js';
+import { BLE_STATES, _failStatus, _getBLEContacts, _hasNativeMethod, _hydrateAttachments, _isResendable, _attMissDecision, _attMissCooling, _normId, _safeDispatchEvent, _safeNativeCall, _saveSeqCounter, _vaultLoadMessages, _vaultUpdateMessageStatus, _tooBigForBt, _netNx } from './ble_helpers.js';
 import { MAILBOX_MAX_BYTES as BLOB_MAILBOX_MAX_BYTES } from '../net/blob_mailbox.js';
 import { BLE_RECEIVE_METHODS } from './ble_receive.js';
 import { BLE_SEND_METHODS } from './ble_send.js';
@@ -159,7 +159,8 @@ const _BLE_MESSAGE_METHODS_BASE = {
       if ((!t || !p) && !ref && m.content && typeof m.content === 'string' && m.content.charAt(0) === '{') {
         try { var pr = JSON.parse(m.content); if (pr && pr.type === 'attachment') { t = pr.attachmentType; p = pr.payload; mm = pr.meta; } } catch (e) {}
       }
-      if (!(t && (p || ref) && !(mm && mm.big) && (t === 'image' || t === 'video' || t === 'file'))) return false;
+      // 3224: también la nota de voz (desde la 3015 se manda como archivo y al enviarla ya va al buzón de archivos; en el reenvío no)
+      if (!(t && (p || ref) && !(mm && mm.big) && (t === 'image' || t === 'video' || t === 'file' || t === 'audio'))) return false;
       var size = (p && typeof p === 'string') ? p.length : (mm && Number(mm.size)) || 0;
       return !size || size <= BLOB_MAILBOX_MAX_BYTES * 4 / 3 + 8;
     };
@@ -412,6 +413,12 @@ const _BLE_MESSAGE_METHODS_BASE = {
                 Promise.reject(Object.assign(new Error('Contacto no disponible: queda pendiente'), { code: 'PEER_ABSENT' }));
             }
             : function() {
+              // 3224 (diagnóstico de la S23 17-11 20:41, nota de voz de 2,7 MB «trabada en el 15 %»): un adjunto pendiente que se
+              // reenvía a un contacto EN LÍNEA solo por los relés iba como flujo por trozos (cada ventana espera su confirmación a
+              // través de los relés; con su app en segundo plano no avanza): llegó a los 17 min, a 2,2 KB/s. Como al enviarlo
+              // (3128), va al buzón de archivos; > 5 MB, por Tor o sin los datos en memoria, sigue el flujo por trozos.
+              var viaBlobOn = (!relayDst && _netNx(deviceId)) ? self._fileToBlobMailbox(nxKey, mid, attachmentPayload, fileMeta, true) : null;
+              if (viaBlobOn) return viaBlobOn;
               return self.ackSystem.sendFile(
                 deviceId,
                 mid,

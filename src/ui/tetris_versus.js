@@ -12,7 +12,10 @@
  *   {e:'over'}            «perdí (se me llenó el tablero)».
  *
  * ROBUSTEZ / anti-trampa (se VALIDA SIEMPRE al recibir, nunca se confía en el otro):
- *   - seq estrictamente creciente por emisor → deduplica reenvíos de relé e ignora desordenados viejos.
+ *   - seq por emisor: cada número se acepta UNA vez (deduplica reenvíos de relé). 3223 (dueño 17-11, partida por internet: «envié
+ *     29 líneas de basura y solo llegaron 4»): antes se exigía seq ESTRICTAMENTE creciente y se tiraba todo lo que llegaba
+ *     desordenado; por el buzón de internet (varios relés, reintentos) los eventos llegan desordenados → se perdía casi toda la
+ *     basura. Ahora cuenta aunque llegue tarde; tope de eventos por partida (MAX_EVENTS_IN) como antispam.
  *   - garbage: n en 1..4, h array de n enteros 0..9; techo acumulado de basura por partida (MAX_GARBAGE_ROWS).
  *   - start: solo válido como PRIMER evento de un gid desconocido; seed entero.
  *   - tras el 'over' propio o del rival, se ignora todo lo demás.
@@ -32,6 +35,7 @@ var GARBAGE_FOR = [0, 1, 2, 3, 4];      // líneas que hago → filas de basura 
                                         // antes 1 línea mandaba 0 (regla del Tetris competitivo) y parecía roto; en NEXO
                                         // (casual) CADA línea manda basura, para que se vea reflejada en el rival.
 var MAX_GARBAGE_ROWS = 60;              // techo acumulado de basura recibida por partida (anti-spam)
+var MAX_EVENTS_IN = 400;                // techo de eventos aceptados del rival por partida (anti-spam; seq vistos)
 var games = {};                          // gid → estado
 var openGid = null;
 var loopTimer = null;
@@ -96,16 +100,16 @@ export function tetrisVersusOnAction(senderNx, act) {
     var seed = (typeof act.seed === 'number' && isFinite(act.seed)) ? (act.seed >>> 0) : null;
     if (seed === null) return;
     g = games[gid] = _mkGame(gid, S, seed, 'Y');     // yo soy el invitado; la semilla la fijó el que invita
-    g.seqIn = seq;
+    if (seq >= 1) _seen(g, seq);
     _notify(g, true);
     return;
   }
   if (!g) return;                                    // garbage/over de una partida que no tengo → ignoro
   if (_normId(g.opp) !== S) return;                  // solo el rival de ESA partida
-  if (seq <= (g.seqIn || 0)) return;                 // dedupe / desordenado viejo
+  if (!(seq >= 1) || Math.floor(seq) !== seq) return;
+  if ((g.seenIn && g.seenIn[seq]) || g.seenCount >= MAX_EVENTS_IN) return; // repetido (reenvío de relé) o antispam; desordenado SÍ entra (3223)
   if (g.over && act.e !== 'over') return;            // ya terminó para mí
-  // Importante: el seq se COMPROMETE (g.seqIn = seq) SOLO con un evento VÁLIDO; así un evento mal formado con un seq
-  // alto no «quema» el contador ni bloquea los válidos que vengan después.
+  // Importante: el seq se marca como visto SOLO con un evento VÁLIDO; así un evento mal formado no «quema» ese número.
 
   if (act.e === 'garbage') {
     var n = act.n;
@@ -113,7 +117,7 @@ export function tetrisVersusOnAction(senderNx, act) {
     var h = act.h;
     if (!Array.isArray(h) || h.length !== n) return;
     for (var k = 0; k < n; k++) { if (typeof h[k] !== 'number' || h[k] < 0 || h[k] >= COLS) return; }
-    g.seqIn = seq;
+    _seen(g, seq);
     if ((g.recv || 0) + n > MAX_GARBAGE_ROWS) return;   // techo anti-spam (seq consumido, basura ignorada)
     g.recv = (g.recv || 0) + n;
     if (!g.over && g.G) {
@@ -123,7 +127,7 @@ export function tetrisVersusOnAction(senderNx, act) {
     return;
   }
   if (act.e === 'over') {
-    g.seqIn = seq;
+    _seen(g, seq);
     g.oppOver = true;
     if (!g.over) { g.over = true; g.winner = 'me'; _finishRecord(g); }  // el rival perdió y yo seguía vivo → gano
     if (openGid === g.gid) _render(g);
@@ -132,9 +136,11 @@ export function tetrisVersusOnAction(senderNx, act) {
   }
 }
 
+function _seen(g, seq) { var m = g.seenIn || (g.seenIn = {}); if (!m[seq]) { m[seq] = 1; g.seenCount = (g.seenCount || 0) + 1; } }
+
 function _mkGame(gid, opp, seed, me) {
   return { gid: gid, opp: _normId(opp), oppName: _contactName(opp), seed: seed, G: newGame(seed), me: me,
-    over: false, winner: '', oppOver: false, recorded: false, seqOut: 0, seqIn: 0, sent: 0, recv: 0, autoOpenPending: false };
+    over: false, winner: '', oppOver: false, recorded: false, seqOut: 0, seenIn: {}, seenCount: 0, sent: 0, recv: 0, autoOpenPending: false };
 }
 
 // ---- Avisos (igual criterio que connect4) ----

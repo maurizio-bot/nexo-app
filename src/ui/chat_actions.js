@@ -226,11 +226,12 @@ export function _setupMessageActions() {
     var dx = e.clientX - startX, dy = e.clientY - startY;
     lastDx = dx; lastDy = dy;
     if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearTimeout(timer);
-    // Deslizar la burbuja = responder. A la derecha (lejos del borde izquierdo, que es "volver") o a la izquierda.
+    // Deslizar la burbuja = responder, a la derecha o a la izquierda. 3223: también desde su parte izquierda (antes, a menos de
+    // 40 px del borde se dejaba para «volver» y deslizar un mensaje recibido desde ahí cerraba el chat; ver chat_nav._setupSwipeBack).
     // 3143: antes exigía |dx| > 1,5·|dy| en CADA movimiento (un pulgar siempre se desvía un poco hacia abajo y el gesto no
     // arrancaba) y, una vez arrancado, volvía a perderse si el dedo bajaba. Ahora basta |dx| > |dy| para empezar y,
     // empezado, el gesto queda fijado como horizontal hasta soltar.
-    if (!swiping && !isSelecting() && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) && (dx > 0 ? startX > 40 : true)) { // 3206: eligiendo, no se responde deslizando
+    if (!swiping && !isSelecting() && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) { // 3206: eligiendo, no se responde deslizando
       swiping = true; window.__nexoBubbleSwiping = true;
     }
     if (swiping) {

@@ -9,6 +9,19 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 17-11 21:30 — dueño: Tetris, deslizar para contestar, audio de la S23, aviso fijo de Jhonnatan, Yaelito
+- ✅ **3223** deslizar para contestar desde la parte izquierda de un mensaje recibido (cerraba el chat) y basura del Tetris que se
+  perdía al llegar desordenada por internet. ✅ **3224** nota de voz pendiente → buzón de archivos (llegó a los 17 min). Ver PROGRESO.
+- **Aviso fijo «NEXO · Listo para recibir mensajes y llamadas» (Jhonnatan, Xiaomi, 22:16):** es el aviso del servicio que mantiene a
+  NEXO recibiendo con la app cerrada; Android lo exige mientras el servicio corre (WhatsApp no lo necesita porque usa el servidor de
+  Google). La 3165 lo dejó al mínimo (plegado, callado, al final, oculto en bloqueo); en Xiaomi sale igual. Se puede ocultar: mantener
+  pulsado → apagar esa categoría («Servicio»); NEXO sigue funcionando. **Propuesta (decide el dueño):** botón en Ajustes «Ocultar el
+  aviso fijo» que abre directo esa categoría.
+- **Yaelito (Xiaomi 2312DRA50G, 3081→3091) «no le llegaban los mensajes»:** su registro nativo calla del 17-11 00:39 («sin memoria:
+  Android la cerró») a las 21:23 (abrió la app y se actualizó): ~21 h sin NEXO vivo, ni el servicio ni los toques. En Xiaomi suele ser
+  «Inicio automático» apagado o la limpieza al deslizar en recientes (SwipeUpClean ×7 el 16-11). Pedirle que revise Inicio automático
+  y batería «Sin restricciones». Al abrir, todo entró en 1 s.
+
 ## 🆕 17-11 09:20 — pedidos del dueño en curso (ayudantes)
 - **3199** (wtgaleria): diagnóstico Motorola edge 40 neo 3086 08:35/08:48: la foto elegida de la Galería no salía («No se pudo leer el
   archivo», NotReadableError) desde la revisión de la 3160 (se leía al tocar enviar) → copiarla al elegirla. Mismo diagnóstico: zombi a

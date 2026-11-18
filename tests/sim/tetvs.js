@@ -3,6 +3,7 @@
 // (misma cola de piezas); A hace líneas → le manda BASURA a B (el tablero de B crece); una basura INVÁLIDA se ignora y
 // NO quema el contador de secuencia (un evento válido posterior sí entra); cuando A se topa, A pierde y B gana, y el
 // ranking cabeza a cabeza queda 0–1 en A y 1–0 en B. Función comprobada por los ganchos __nexoTvs* (sin DOM/canvas).
+// 3223: basura que llega desordenada (buzón de internet) también cuenta; la repetida no.
 // Uso: node tetvs.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -104,7 +105,17 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   A.win.__nexoTvsClearLines(gid, 2);
   r.valido_tras_invalido = (await waitFor(async () => { const s = stB(gidB); return s && s.recv === 6; }, 30000)) !== null;
 
-  // A se topa (pierde). Manda 'over'. A queda perdedor; B, que seguía vivo, gana.
+  // 3223 (dueño 17-11, partida por internet: «envié 29 líneas de basura y solo llegaron 4»): por el buzón de internet los eventos
+  // llegan DESORDENADOS (varios relés, reintentos). Antes solo valía un seq mayor que el último → se tiraba la basura que llegaba
+  // tarde. Llegan 1002, 1000 y 1001 (en ese orden) y 1001 repetido: entran las tres (1+1+2 = 4 filas) y el repetido no.
+  B.win.__nexoTvsOnAction(id('A'), { g: 'tetvs', gid: gidB, seq: 1002, e: 'garbage', n: 1, h: [3] });
+  B.win.__nexoTvsOnAction(id('A'), { g: 'tetvs', gid: gidB, seq: 1000, e: 'garbage', n: 1, h: [4] });
+  B.win.__nexoTvsOnAction(id('A'), { g: 'tetvs', gid: gidB, seq: 1001, e: 'garbage', n: 2, h: [5, 6] });
+  B.win.__nexoTvsOnAction(id('A'), { g: 'tetvs', gid: gidB, seq: 1001, e: 'garbage', n: 2, h: [5, 6] });
+  await sleep(200);
+  r.desordenada_entra = stB(gidB).recv === 10;
+
+  // A se topa (pierde). Manda 'over' (con su seq real, MENOR que los de arriba: también entra). A pierde; B, que seguía vivo, gana.
   A.win.__nexoTvsTopOut(gid);
   r.a_pierde = !!(stA(gid) && stA(gid).over && stA(gid).winner === 'opp');
   r.b_gana = (await waitFor(async () => { const s = stB(gidB); return s && s.over && s.winner === 'me'; }, 30000)) !== null;
@@ -117,7 +128,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
 
   r.errores = logs.filter((l) => /PAGEERROR|TypeError|is not a function/.test(l)).slice(0, 5);
   r.resultado = (r.gid && r.b_recibe && r.mismo_gid && r.semilla_compartida && r.b_recibe_basura_1linea && r.b_recibe_basura_3 && r.basura_crece_tablero &&
-    r.basura_invalida_ignorada && r.valido_tras_invalido && r.a_pierde && r.b_gana && r.ranking_A_0v1 && r.ranking_B_1v0 && r.errores.length === 0) ? 'OK' : 'FALLO';
+    r.basura_invalida_ignorada && r.valido_tras_invalido && r.desordenada_entra && r.a_pierde && r.b_gana && r.ranking_A_0v1 && r.ranking_B_1v0 && r.errores.length === 0) ? 'OK' : 'FALLO';
   console.log('TVS ' + JSON.stringify(r));
   try { fs.writeFileSync(path.join(buildDir, 'last_logs_tetvs.txt'), logs.slice(-250).join('\n')); } catch (e) {}
   process.exit(0);

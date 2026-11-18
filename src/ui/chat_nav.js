@@ -128,6 +128,11 @@ export function _setupSwipeBack() {
       if (!document.body.classList.contains('chat-view-active')) return;
       var touch = e.touches[0];
       if (touch.clientX > SWIPE_EDGE_WIDTH) return;
+      // 3223 (dueño 17-11: «al deslizar un mensaje para contestarlo no aparece en la barra»): las burbujas recibidas empiezan a
+      // 14 px del borde, dentro de esta franja de 40 px; deslizar a la derecha desde su parte izquierda CERRABA el chat (medido en
+      // Chromium real a 393 px: chat cerrado y sin «Respondiendo a»). Sobre un mensaje manda el gesto de responder.
+      var tg = e.target && e.target.closest ? e.target.closest('#messages-container .message') : null;
+      if (tg) return;
       startX = touch.clientX;
       startY = touch.clientY;
       currentX = startX;

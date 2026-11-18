@@ -2,6 +2,7 @@
 // con su cita en la barra sobre la caja; deslizar poco, en vertical o un gesto cancelado por el sistema NO responde; en diagonal
 // moderada sí) y DESLIZAR PARA CANCELAR UNA NOTA DE VOZ (con el dedo en el botón de grabar, a la izquierda más de 100 px la nota
 // se cancela y no se envía; soltar sin deslizar la deja como hoy y ➤ la envía). A y B por Bluetooth.
+// 3223: deslizar a la derecha desde la parte izquierda de un mensaje recibido (franja del gesto «volver») responde y no cierra el chat.
 // Uso: node gestos.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -110,6 +111,22 @@ const barVisible = (p) => { const b = $(p, 'voice-bar'); return !!b && b.style.d
   // 5) A la izquierda también (ya existía)
   await gesto(bubbleWith('mensaje de A'), [[250, 300], [210, 303], [150, 305]]);
   r.izquierda_responde = !!barra(); await limpiar();
+  // 5b) 3223 (dueño 17-11): deslizar a la derecha empezando en la parte IZQUIERDA de un mensaje recibido (dentro de la franja de
+  // 40 px del gesto «volver»). En el teléfono el dedo manda toques y punteros a la vez: antes ganaba «volver» (se cerraba el chat y
+  // no salía «Respondiendo a»). Ahora responde y el chat sigue abierto.
+  {
+    const el = bubbleWith('pregunta de B');
+    const pasos = [[20, 300], [120, 303], [260, 305], [400, 306]];
+    const pe = (type, x, y) => el.dispatchEvent(new A.win.MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+    const te = (type, x, y) => { const e = new A.win.Event(type, { bubbles: true, cancelable: true }); const t = [{ clientX: x, clientY: y, identifier: 1, target: el }]; Object.defineProperty(e, 'touches', { value: type === 'touchend' ? [] : t }); Object.defineProperty(e, 'changedTouches', { value: t }); el.dispatchEvent(e); };
+    pe('pointerdown', 20, 300); te('touchstart', 20, 300);
+    for (const p of pasos.slice(1)) { pe('pointermove', p[0], p[1]); te('touchmove', p[0], p[1]); }
+    pe('pointerup', 400, 306); te('touchend', 400, 306);
+    await sleep(900);
+    r.borde_chat_sigue_abierto = A.win.document.body.classList.contains('chat-view-active');
+    r.borde_responde = !!barra() && /pregunta de B/.test(barraTxt());
+    await limpiar();
+  }
 
   // 6) Nota de voz con el dedo en el botón: deslizar a la izquierda > 100 px cancela (no se envía)
   const btn = $(A, 'send-btn');
@@ -147,7 +164,7 @@ const barVisible = (p) => { const b = $(p, 'voice-bar'); return !!b && b.style.d
   r.voz_llega_s = await wait(async () => (await B.win.vaultLoadMessages(idA)).filter(isVoice).length === notas0 + 2, 40);
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
-  const keys = ['contactos', 'burbuja_recibida', 'burbuja_propia', 'recibido_abre', 'recibido_cita', 'recibido_autor', 'x_quita_la_cita', 'propio_abre', 'propio_cita', 'poco_no_responde', 'vertical_no_responde', 'cancelado_no_responde', 'diagonal_responde', 'izquierda_responde', 'boton_modo_mic', 'graba_al_mantener', 'pista_visible', 'poco_no_cancela', 'cancelada_barra_oculta', 'cancelada_no_se_envia', 'mantener_graba', 'suelta_envia', 'suelta_barra_oculta', 'desliza_suelta_no_envia', 'toque_sigue_grabando'];
+  const keys = ['contactos', 'burbuja_recibida', 'burbuja_propia', 'recibido_abre', 'recibido_cita', 'recibido_autor', 'x_quita_la_cita', 'propio_abre', 'propio_cita', 'poco_no_responde', 'vertical_no_responde', 'cancelado_no_responde', 'diagonal_responde', 'izquierda_responde', 'borde_chat_sigue_abierto', 'borde_responde', 'boton_modo_mic', 'graba_al_mantener', 'pista_visible', 'poco_no_cancela', 'cancelada_barra_oculta', 'cancelada_no_se_envia', 'mantener_graba', 'suelta_envia', 'suelta_barra_oculta', 'desliza_suelta_no_envia', 'toque_sigue_grabando'];
   const ok = keys.every((k) => r[k] === true) && r.voz_llega_s !== null && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('GESTOS ' + JSON.stringify(r));

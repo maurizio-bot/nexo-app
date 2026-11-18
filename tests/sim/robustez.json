@@ -550,6 +550,10 @@
     {
      "fallo": "3215 (Marcos 17-11 16:13): al abrir la app, las confirmaciones (✓✓) que llegaron con la app cerrada se comprobaban antes de cargar el NEXO ID propio → «sin firma válida» con confirmaciones buenas, el mensaje se quedaba en ✓ y se volvía a mandar. Ahora se espera al ID. ackarranque.js (contraprueba b3205: 2 confirmaciones tiradas)",
      "prueba": "3215 (diagnóstico automático de Marcos —3090— 17-11 16:13:41"
+    },
+    {
+     "fallo": "3223 (dueño 17-11, Tetris a dos por internet: «envié 29 líneas de basura y solo llegaron 4»): los eventos del juego exigían número ESTRICTAMENTE creciente y se tiraba lo que llegaba desordenado; por el buzón de internet (varios relés, reintentos) llegan desordenados → se perdía casi toda la basura. Ahora cada número cuenta una vez aunque llegue tarde (tope antispam por partida)",
+     "prueba": "Tetris VERSUS"
     }
    ],
    "debiles": [
@@ -771,6 +775,10 @@
     {
      "fallo": "3171 (dueño 17-11: «las fotos se ven mal», foto nocturna del S24 Ultra): la foto de «Cámara» era un cuadro del vídeo de la vista previa (getUserMedia ≤ 1080p, sin modo noche ni procesado; el S23 mandó una de 450×800 y 12 KB). 3171: «Cámara» abre la cámara del propio teléfono (@capacitor/camera, base64, el doble del lado final y el lienzo suaviza) → «Antes de enviar» con el ojo → mismo camino que la galería; salir sin foto → cámara de NEXO en vídeo; sin plugin o error → la de NEXO. Faltaba la ruta del FileProvider (file_paths.xml). fotocamara.js (contraprueba 087ac399)",
      "prueba": "FOTO CON LA CÁMARA DEL TELÉFONO"
+    },
+    {
+     "fallo": "3224 (diagnóstico de la S23 17-11 20:41, nota de voz de 2,7 MB «trabada en el 15 %»): una nota de voz pendiente (la app se cerró a los 4 s de grabarla) quedaba ⏳ con el contacto fuera (el reenvío no la contaba para el buzón de archivos) y, con él en línea solo por los relés, se reenviaba como flujo por trozos (2,2 KB/s, parado con su app en segundo plano: llegó a los 17 min). Ahora el reenvío la manda al buzón de archivos, como al enviarla",
+     "prueba": "Fase B entrega offline"
     }
    ],
    "debiles": [
@@ -1858,6 +1866,10 @@
     {
      "fallo": "3186 (revisión de botones 17-11): al grabar una nota de voz con la pista «Desliza para cancelar», la barra medía ~415 px y cortaba 🗑 y ➤. vozbarra.js en 5 idiomas a 360 y 320 px (contraprueba cce7565c)",
      "prueba": "3186 (revisión de botones 17-11: la barra de la not"
+    },
+    {
+     "fallo": "3223 (dueño 17-11: «al deslizar un mensaje para contestarlo no aparece en la barra»): deslizar a la derecha empezando en la parte IZQUIERDA de un mensaje recibido (las burbujas empiezan a 14 px del borde) caía en la franja de 40 px del gesto «volver»: se cerraba el chat y la burbuja ignoraba el desliz (medido en Chromium real a 393 px). Ahora sobre un mensaje manda «responder» y el chat sigue abierto",
+     "prueba": "gestos del chat"
     }
    ],
    "debiles": [
