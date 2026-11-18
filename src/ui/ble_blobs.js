@@ -69,8 +69,12 @@ export const BLE_BLOB_METHODS = {
   _blobComplete(j, b64, how) {
     var self = this;
     self._blobIn.delete(j.messageId);
-    // 3081: velocidad de bajada del buzón de archivos (desde que llegó el puntero; incluye esperas y reintentos)
-    try { if (j.t0 && typeof window.NEXO_noteSpeed === 'function') window.NEXO_noteSpeed('buzon', 'in', _blobB64Bytes(b64), Date.now() - j.t0); } catch (e) {}
+    // 3081: velocidad de bajada del buzón de archivos. 3232 (resúmenes del 17-11: «recibidos» a 0,3–3 KB/s de media y «enviados» a
+    // 40–160): se medía desde que llegó el aviso, con la cola, los reintentos (30 s, 2 min, 8 min…) y la app dormida dentro. Ahora la
+    // velocidad es la de la bajada que funcionó; la espera y los intentos van al registro aparte.
+    var now = Date.now(), tf = j.tf || j.t0;
+    try { if (tf && typeof window.NEXO_noteSpeed === 'function') window.NEXO_noteSpeed('buzon', 'in', _blobB64Bytes(b64), now - tf); } catch (e) {}
+    if (j.t0 && tf && (tf - j.t0 > 5000 || j.tries > 1)) console.log('[BLOB] ' + j.messageId + ': esperó ' + Math.round((tf - j.t0) / 1000) + ' s antes de bajarse (' + j.tries + ' intento(s)); la bajada tardó ' + Math.round((now - tf) / 100) / 10 + ' s');
     var meta = Object.assign({}, j.att.meta || {}); delete meta.ptr; meta.blobPtr = j.att.ptr; // Fase C: un reenvío va por referencia
     var full = { type: 'attachment', attachmentType: j.att.attachmentType, payload: b64, meta: meta };
     var chat = j.genv ? _normId(j.genv.g) : _normId(j.senderUUID);
@@ -94,6 +98,7 @@ export const BLE_BLOB_METHODS = {
       var viaGw = !!(self.net && typeof self.net.gwOnly === 'function' && self.net.gwOnly()); // 3179: este intento va por un puente
       self._blobTryLocal(j).then(function(local) {
         if (local) { j.t0 = 0; return self._blobComplete(j, local, 'ya lo tenía (mismo archivo, no se baja nada)'); }
+        j.tf = Date.now();   // 3232: empieza ESTE intento de bajada (la velocidad se mide desde aquí, no desde que llegó el aviso)
         return fetchBlob(self.net, j.att.ptr, { log: function(s) { console.log(s); } }).then(function(res) {
           self._blobComplete(j, res.b64, 'bajado y verificado (' + res.relays + ' relés, ' + res.bad + ' trozos malos descartados)');
         });
