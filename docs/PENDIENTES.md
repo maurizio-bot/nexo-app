@@ -70,6 +70,13 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   teléfono. «Confirmación sin firma válida de nx0x4029e6» ×7: Zhelowsky va en la 3026 (vieja). **3211 a hacer:** un texto a Marcos pasó
   a ✗ un segundo (16:05:07) y a ✓✓ en el siguiente: la red de seguridad ya lo había dejado en el buzón (16:05:06) y el agotamiento de
   reintentos Bluetooth (_onAckTimeout) lo marcó «failed» igual → si ya salió por internet, ✓ y no ✗.
+- **Audio de la S23 (nx1e50c95d) que «se clavó en 15 %» (dueño 17-11 20:44, diagnóstico del S24 3091):** es msg…874999fg4ok
+  (sufijo de 5 = mensaje con archivo), enviado ~20:27:55 con la app del dueño en segundo plano. NetBg lo recibió a las 20:41:51 y
+  otra vez 20:42:02 y 20:42:15 («ya estaba… reenvío»), y confirmó ✓✓ las tres. Al volver la app (20:42:30) entraron los otros 4
+  mensajes de la S23, pero de fg4ok NO hay «Puntero… bajo del buzón» ni «Mensaje recibido»: se perdió en el paso de segundo plano a
+  la app. Hipótesis: fue por trozos directos por internet (no por el buzón de archivos) porque la S23 lo veía «en línea»; NetBg solo
+  guarda/avisa del primer trozo y la S23 se rindió → burbuja al 15 % y ✓✓ en la S23 aunque no llegó. Ojo: _drainBg traga errores
+  de _onEvent sin registro. Falta el diagnóstico de la S23 para confirmarlo.
 - **3221 llamadas de grupo por internet (EN PAUSA por el uso, sin código):** plan del ayudante: `_sendTo` de group_call.js hoy
   descarta los tramos por internet; `CallP2P` (call_p2p.js) ya admite varios contactos → canal directo por tramo con señal 'rtc' de
   grupo; relés solo de último recurso, midiendo el retraso y con aviso «Llega con retraso» (no puente); cortes más tolerantes por
