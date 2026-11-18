@@ -17,6 +17,11 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   Google). La 3165 lo dejó al mínimo (plegado, callado, al final, oculto en bloqueo); en Xiaomi sale igual. Se puede ocultar: mantener
   pulsado → apagar esa categoría («Servicio»); NEXO sigue funcionando. **Propuesta (decide el dueño):** botón en Ajustes «Ocultar el
   aviso fijo» que abre directo esa categoría.
+- **Diagnóstico automático S23 21:39 «zombi» con Yaelito (los dos en 3091):** dos enlaces Bluetooth (5d5b… saliente, 6a15… entrante).
+  A las 21:39:09 el desempate cerró el ENTRANTE (el único que seguía recibiendo: RX 21:38:49 y 21:39:09) y se quedó con el saliente,
+  que no recibía nada desde las 21:38:33 → 4 pings sin respuesta y reconexión a los 26 s. Parecido a la 3139 (cada teléfono cierra
+  uno distinto). Además el Wi-Fi local se cortó a los 3 s (ECONNREFUSED al puerto de Yaelito). Pendiente: que el desempate no cierre
+  el enlace que está recibiendo si el otro lleva > 15 s callado.
 - **Yaelito (Xiaomi 2312DRA50G, 3081→3091) «no le llegaban los mensajes»:** su registro nativo calla del 17-11 00:39 («sin memoria:
   Android la cerró») a las 21:23 (abrió la app y se actualizó): ~21 h sin NEXO vivo, ni el servicio ni los toques. En Xiaomi suele ser
   «Inicio automático» apagado o la limpieza al deslizar en recientes (SwipeUpClean ×7 el 16-11). Pedirle que revise Inicio automático
