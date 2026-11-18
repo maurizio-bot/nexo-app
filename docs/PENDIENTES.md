@@ -9,6 +9,12 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 18-11 05:00 — diagnósticos del S23 (Carii), del A05 de Italia y resúmenes diarios
+- BUZÓN DE ARCHIVOS LENTÍSIMO AL RECIBIR (confirmado en 3 teléfonos el 17-11): S23 recibe a 0,3 KB/s de media (envía a 164), el del dueño 3 KB/s (envía a 42), el A05 46 KB/s. Investigar la bajada (_blobPointerReceived / fetch por trozos): prioridad alta.
+- S23 (3091): FALLO NATIVO de la app a las 22:48 (en segundo plano) justo cuando terminó la videollamada con el dueño (22:44–22:48:54): «colgó el S23» fue en realidad el cierre por fallo. Android reinició el servicio a las 22:49:01 y la llamada siguiente del dueño (22:49:03) sí sonó. Sin traza del fallo en el diagnóstico: añadir la causa del cierre nativo (ApplicationExitInfo trace) al diagnóstico.
+- S23: «internet listo» hasta 157 s (media 9,6 s).
+- A05 de Italia (3087, vieja): 3 cierres por enlace repetido con richard en 10 min (el pendiente del desempate) y un texto de 3 trozos que agotó 8 reintentos por un Bluetooth atascado; quedó pendiente y salió al reenviar (sin pérdida). 2 cierres por falta de memoria (Android) el 17-11.
+
 ## 🆕 17-11 23:40 — dueño: los estados como TikTok (3230, hecho; falta que lo pruebe en el teléfono)
 - Hecho en 3230 (ver PROGRESO). Decisiones mías para revisar con el dueño: (1) el orden pone primero a los contactos con algo sin ver (el más viejo primero) y después los ya vistos; (2) el texto «1/3» junto a la hora indica que hay más de lado (sin puntitos); (3) tocar mi círculo siempre abre «publicar»; mis me gusta y comentarios se ven tocando «❤️ n 💬 n ›» abajo en mis estados; (4) un audio suena una vez (no se repite como el video).
 - Pendiente: «Mis estados» (lista para quitar uno) y la ventana de publicar siguen con su diseño de antes.
