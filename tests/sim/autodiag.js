@@ -135,13 +135,14 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
   const txt = adB().text(true);
   r.texto_copiar_ok = txt.indexOf('DIAGNÓSTICO AUTOMÁTICO de ' + idA) >= 0 && txt.indexOf('síntoma: zombi') >= 0 && txt.indexOf('síntoma: pendiente_viejo') >= 0;
   r.nuevos_antes = adB().newCount();
-  // A3 (2982): puntito en el icono de Perfil mientras haya diagnósticos sin leer; se quita al marcarlos vistos
-  const dotB = () => B.win.document.getElementById('nexo-profile-badge');
-  r.insignia_con_nuevos = !!dotB() && B.win.document.getElementById('nexo-profile-btn').getAttribute('data-badge') === String(r.nuevos_antes);
-  r.insignia_solo_dev = !A.win.document.getElementById('nexo-profile-badge');
+  // A3 (2982): puntito mientras haya diagnósticos sin leer; se quita al marcarlos vistos. 3218: va en la ruedita de Ajustes de la
+  // cabecera (el diagnóstico vive en Ajustes, que ahora se abre directo con ella; antes iba en el botón de Perfil)
+  const dotB = () => B.win.document.getElementById('nexo-settings-badge');
+  r.insignia_con_nuevos = !!dotB() && B.win.document.getElementById('nexo-settings-btn').getAttribute('data-badge') === String(r.nuevos_antes);
+  r.insignia_solo_dev = !A.win.document.getElementById('nexo-settings-badge');
   adB().markSeen();
   r.nuevos_despues = adB().newCount();
-  r.insignia_se_quita = !dotB() && !B.win.document.getElementById('nexo-profile-btn').hasAttribute('data-badge');
+  r.insignia_se_quita = !dotB() && !B.win.document.getElementById('nexo-settings-btn').hasAttribute('data-badge');
   r.sin_contenido_de_mensajes = txt.indexOf('hola B') < 0 && txt.indexOf('hola A') < 0;
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|Assembly timeout|net::ERR|fetch/.test(l)).slice(0, 5);

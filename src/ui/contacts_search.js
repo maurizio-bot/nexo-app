@@ -145,11 +145,12 @@ export function installContactSearch(bi) {
   var b = document.createElement('button');
   b.id = BTN_ID;
   b.type = 'button';
+  b.className = 'nx-btn-s'; // 3218: estilo único SECUNDARIO, el mismo círculo que «nuevo grupo» y la ruedita (nexo_theme.css)
   b.title = t('contacts_search', 'Buscar contactos');
   b.setAttribute('aria-label', t('contacts_search', 'Buscar contactos'));
   b.setAttribute('aria-expanded', 'false');
   b.setAttribute('aria-controls', BAR_ID);
-  b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>';
+  b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>';
   if (getComputedStyle(header).position === 'static') header.style.position = 'relative';
   b.addEventListener('click', function(e) { e.stopPropagation(); if (_open) closeContactSearch(); else openContactSearch(); });
   header.appendChild(b);

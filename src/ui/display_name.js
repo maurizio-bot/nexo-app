@@ -51,8 +51,11 @@ export function displayNameLocked() { return !!(_state.locked && _state.name); }
 
 function _save() { var pl = _pl(); if (pl && typeof pl.saveToFile === 'function') pl.saveToFile({ filename: FILE, content: JSON.stringify(_state) }).catch(function () {}); _lsSet('nexo_display_name', _state.name || ''); }
 
-/** Al arrancar: si hay nombre elegido, que sea el que ven los contactos (pisa el nombre del teléfono). */
-export function applyDisplayName(bi) { try { if (bi && _state.name) bi.localDeviceName = _state.name; } catch (e) {} }
+/** Al arrancar: si hay nombre elegido, que sea el que ven los contactos (pisa el nombre del teléfono). 3218: avisa (nexo:me) para que
+ * la cabecera de Contactos (mi foto y mi nombre) lo muestre al momento, también al elegirlo la primera vez. */
+export function applyDisplayName(bi) {
+  try { if (bi && _state.name) { bi.localDeviceName = _state.name; window.dispatchEvent(new CustomEvent('nexo:me')); } } catch (e) {}
+}
 
 /** Guarda el nombre elegido UNA sola vez y lo bloquea; lo aplica a bi.localDeviceName. Devuelve true si se guardó. */
 export function setDisplayNameOnce(bi, name) {

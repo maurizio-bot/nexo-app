@@ -112,7 +112,8 @@ function pageHelpers() {
     // la cabecera a este ancho: nada se sale ni se pisa, el título entero
     header() {
       const W = document.documentElement.clientWidth, h = document.getElementById('main-header'), tt = document.getElementById('main-title');
-      const ids = ['nexo-contacts-search-btn', 'nexo-profile-btn', 'nexo-new-group-btn'];
+      // 3218: «yo» (foto + nombre, abre Perfil) a la izquierda y la lupa, grupo y la ruedita de Ajustes a la derecha; el título debajo
+      const ids = ['nexo-profile-btn', 'nexo-contacts-search-btn', 'nexo-new-group-btn', 'nexo-settings-btn'];
       const out = { W, header: { scroll: h.scrollWidth, client: h.clientWidth }, titulo: q(tt), titulo_entero: tt.scrollWidth <= tt.clientWidth + 0.5, texto: tt.textContent, botones: {} };
       const malos = [];
       if (h.scrollWidth > h.clientWidth + 0.5) malos.push('cabecera desborda');
@@ -127,8 +128,8 @@ function pageHelpers() {
         if (prev && b.l < prev.r - 0.5) malos.push(id + ' pisa al anterior');
         prev = b;
       });
-      const lupa = out.botones['nexo-contacts-search-btn'];
-      if (lupa && out.titulo.r > lupa.l - 4) malos.push('título pisa la lupa');
+      const t = out.titulo;
+      ids.forEach((id) => { const x = out.botones[id]; if (x && t.l < x.r && t.r > x.l && t.t < x.b && t.b > x.t) malos.push('título pisa ' + id); });
       out.malos = malos;
       return out;
     },
@@ -187,7 +188,8 @@ function pageHelpers() {
     const h = document.getElementById('main-header');
     return { enCabecera: h.contains(b), visible: window.__bc.vis(b), toque: window.__bc.hit(b), aria: b.getAttribute('aria-label'), title: b.title, w: b.offsetWidth, h: b.offsetHeight,
       derecha: b.getBoundingClientRect().left > document.documentElement.clientWidth / 2, area: window.__bc.area(b),
-      areaPerfil: window.__bc.area(document.getElementById('nexo-profile-btn')), areaGrupo: window.__bc.area(document.getElementById('nexo-new-group-btn')) };
+      areaPerfil: window.__bc.area(document.getElementById('nexo-profile-btn')), areaGrupo: window.__bc.area(document.getElementById('nexo-new-group-btn')),
+      areaAjustes: window.__bc.area(document.getElementById('nexo-settings-btn')) }; // 3218: + la ruedita
   });
   r.L_lupa = lupa;
   check('L_hay_lupa', !!lupa);
@@ -195,7 +197,7 @@ function pageHelpers() {
   check('L_en_la_cabecera_a_la_derecha', lupa.enCabecera && lupa.visible && lupa.derecha && lupa.toque);
   check('L_aria_label', lupa.aria === TXT.es.contacts_search && lupa.title === TXT.es.contacts_search, lupa.aria);
   const a44 = (a) => !!a && a.w >= 44 && a.h >= 44;
-  check('L_area_44', a44(lupa.area) && a44(lupa.areaPerfil) && a44(lupa.areaGrupo), JSON.stringify([lupa.area, lupa.areaPerfil, lupa.areaGrupo]));
+  check('L_area_44', a44(lupa.area) && a44(lupa.areaPerfil) && a44(lupa.areaGrupo) && a44(lupa.areaAjustes), JSON.stringify([lupa.area, lupa.areaPerfil, lupa.areaGrupo, lupa.areaAjustes]));
   r.H_es_360 = await ev(() => window.__bc.header());
   if (shots) { fs.mkdirSync(shots, { recursive: true }); await A.screenshot({ path: path.join(shots, r.build + '_cabecera.png'), clip: { x: 0, y: 0, width: 360, height: 140 }, scale: 'css' }); }
   // presionar (motor de press.js) y soltar: se abre con el teclado puesto
@@ -406,7 +408,7 @@ function pageHelpers() {
     c.ok = c.idioma === l && c.aria === TXT[l].contacts_search && c.campo.ph === TXT[l].ph_search_contact && c.campo.x === TXT[l].misc_search_close && c.nomatch === TXT[l].contacts_no_match && c.foco;
     header360[l] = !c.cabecera_360.malos.length;
     r.I[l] = { ok: c.ok, aria: c.aria, ph: c.campo.ph, nomatch: c.nomatch, titulo: c.cabecera_360.texto, titulo_360: c.cabecera_360.titulo, malos_360: c.cabecera_360.malos, malos_320: c.cabecera_320.malos, lupa_360: c.cabecera_360.botones['nexo-contacts-search-btn'] };
-    if (shots) await A.screenshot({ path: path.join(shots, r.build + '_cabecera_' + l + '.png'), clip: { x: 0, y: 0, width: 360, height: 70 }, scale: 'css' });
+    if (shots) await A.screenshot({ path: path.join(shots, r.build + '_cabecera_' + l + '.png'), clip: { x: 0, y: 0, width: 360, height: 100 }, scale: 'css' }); // 3218: cabecera de dos filas
   }
   check('I_app_en_su_idioma', LANGS.every((l) => r.I[l].ok), JSON.stringify(LANGS.filter((l) => !r.I[l].ok)));
   check('I_cabecera_360_no_desborda', LANGS.every((l) => header360[l]), JSON.stringify(LANGS.map((l) => [l, r.I[l].malos_360])));

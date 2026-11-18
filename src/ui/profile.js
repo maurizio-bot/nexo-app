@@ -24,9 +24,24 @@ import { attachNexoUnlockGesture } from './nexo_game.js';
 import { perfSectionHtml, renderPerfSection } from './perf.js';
 import { welcomeGuide } from './welcome_guide.js'; // #dueño 05-11: «ver la guía de bienvenida otra vez»
 
+// 3218: la ruedita de Ajustes, la de la muestra aprobada por el dueño (SVG de línea, sin colores propios: toma el trazo del botón
+// donde va —cabecera o atajo de Perfil—)
+var _GEAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
+
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _showInfoToast;
 export function profileUse(d) { _showInfoToast = d._showInfoToast; } // [/pegamento]
+
+// 3140: el mismo círculo de color con el que me ven mis contactos (degradado según mi NEXO ID, iniciales como en Contactos) y, si la
+// hay, mi foto. Reasignar la clase quita también el nx-has-photo que dejaba la inicial invisible tras «Quitar». 3218: lo comparten la
+// hoja de Perfil y la cabecera de Contactos (base = las clases de cada sitio).
+function _paintMyCircle(el, base, name, nexoId) {
+  if (!el) return;
+  el.className = base + ' ' + _getGradientForUUID(_normId(nexoId || 'me'));
+  el.style.backgroundImage = '';
+  el.textContent = (name && _getInitials(name)) || String(nexoId || '?').replace(/^NX/i, '').charAt(0).toUpperCase() || 'N';
+  paintAvatar(el, 'me');
+}
 
 // ===================== Perfil (identidad) =====================
 function _openProfileSheet() {
@@ -52,9 +67,12 @@ function _openProfileSheet() {
     '<div class="nx-sub" style="margin-bottom:8px;">' + t('prof_my_data_sub', 'Opcional. Lo que llenes lo podrás compartir al agregar un contacto (tú eliges qué mostrar).') + '</div>' +
     '<input id="nexo-prof-phone" type="tel" autocomplete="off" maxlength="24" placeholder="' + t('prof_field_phone', 'Teléfono') + '" style="width:100%;box-sizing:border-box;padding:12px;margin-bottom:8px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +
     '<input id="nexo-prof-email" type="email" autocomplete="off" maxlength="80" placeholder="' + t('prof_field_email', 'Correo') + '" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;"></div>' +
-    // Ronda 2807: el resto (seguridad, avisos, llamadas, internet, diagnóstico, cuenta) se abre en Ajustes
-    '<button id="nexo-open-settings" class="nx-btn nx-btn-primary" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;font-size:16px;padding:14px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' + t('settings_title', 'Ajustes') + '</button>' +
-    '<div class="nx-sub" style="text-align:center;margin-top:2px;">' + t('prof_settings_sub', 'Seguridad, avisos, llamadas, internet, diagnóstico y tu cuenta (Fénix, cambiar de teléfono).') + '</div>' +
+    // Ronda 2807: el resto (seguridad, avisos, llamadas, internet, diagnóstico, cuenta) se abre en Ajustes. 3218 (dueño 17-11: «separar
+    // ajustes de perfil»): Ajustes ya se abre DIRECTO con la ruedita de la cabecera; aquí queda solo como atajo discreto (una fila como
+    // las de la lista de Ajustes, no el botón de degradado: lo principal de Perfil es tu identidad). Abierto desde aquí, su «atrás» vuelve aquí.
+    '<button id="nexo-open-settings" class="nx-set-row" style="margin-top:4px;"><span class="nx-set-ico">' + _GEAR_SVG + '</span>' +
+    '<span class="nx-set-txt"><span class="nx-set-t">' + t('settings_title', 'Ajustes') + '</span><span class="nx-set-d">' + t('prof_settings_sub', 'Seguridad, avisos, llamadas, internet, diagnóstico y tu cuenta (Fénix, cambiar de teléfono).') + '</span></span>' +
+    '<svg class="nx-set-go" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>' +
     // Ronda 2810 (pedido del dueño): el gesto secreto de la «N» vive en el espacio negro de ABAJO de Perfil, no en
     // Ajustes (donde el scroll se comía el trazo). touch-action:none → aquí el dedo dibuja, no hace scroll.
     '<div id="nexo-gesture-zone" style="flex:1;min-height:220px;touch-action:none;"></div>' +
@@ -67,13 +85,7 @@ function _openProfileSheet() {
   sheet.querySelector('#nexo-profile-seen').textContent = myName ? t('prof_seen_pre', 'Tus contactos te ven como «') + myName + t('prof_seen_post', '» (no se puede cambiar)') : '';
   // Ronda 2765: foto de perfil (avatar.js): tocar el círculo o "Cambiar foto"
   var avEl = sheet.querySelector('#nexo-profile-av'), clr = sheet.querySelector('#nexo-av-clear');
-  var paintMine = function() {
-    // 3140: el mismo círculo de color con el que me ven mis contactos (degradado según mi NEXO ID, iniciales como en Contactos);
-    // reasignar la clase quita también el nx-has-photo que dejaba la inicial invisible tras «Quitar»
-    avEl.className = 'nx-av ' + _getGradientForUUID(_normId(bi.localNexoId || 'me'));
-    avEl.style.backgroundImage = ''; avEl.textContent = (myName && _getInitials(myName)) || String(bi.localNexoId || '?').replace(/^NX/i, '').charAt(0).toUpperCase() || 'N';
-    paintAvatar(avEl, 'me'); clr.style.display = myAvatar() ? '' : 'none';
-  };
+  var paintMine = function() { _paintMyCircle(avEl, 'nx-av', myName, bi.localNexoId); clr.style.display = myAvatar() ? '' : 'none'; };
   paintMine();
   var pick = function() {
     var inp = document.createElement('input');
@@ -116,7 +128,7 @@ function _openProfileSheet() {
   };
   clr.onclick = function() { clearMyAvatar(); paintMine(); };
   sheet.querySelector('#nexo-profile-close').onclick = function() { sheet.remove(); };
-  sheet.querySelector('#nexo-open-settings').onclick = function() { _openSettingsSheet(); };
+  sheet.querySelector('#nexo-open-settings').onclick = function() { _openSettings(true); }; // 3218: atajo; su «atrás» vuelve a Perfil
   // Juego secreto (pedido del dueño): dibujar la «N» de NEXO en el espacio negro de abajo abre el mini-arcade oculto.
   var gz = sheet.querySelector('#nexo-gesture-zone');
   if (gz) attachNexoUnlockGesture(gz);
@@ -243,14 +255,19 @@ window.addEventListener('nexo:ble:goToProfile', function (e) { var d = (e && e.d
 try { if (typeof window !== 'undefined') window.NEXO_openContactProfile = _openContactProfile; } catch (e) {}
 
 // ===================== Ajustes (todo lo configurable) =====================
-function _openSettingsSheet() {
+// 3218 (dueño 17-11: «separar ajustes de perfil»): Ajustes se abre DIRECTO con la ruedita de la cabecera de Contactos y su «atrás»
+// (gesto o botón) vuelve a donde estabas: a la lista si se abrió desde la cabecera, a Perfil solo si se abrió con el atajo de Perfil
+// (fromProfile). Antes siempre volvía a Perfil, porque solo se llegaba desde allí.
+function _openSettingsSheet() { _openSettings(false); }
+function _openSettings(fromProfile) {
   var old = document.getElementById('nexo-settings-sheet');
   if (old) old.remove();
   var perfil = document.getElementById('nexo-profile-sheet');
-  if (perfil) perfil.remove(); // una sola hoja a la vez: Ajustes reemplaza a Perfil («‹ Perfil» la vuelve a abrir)
+  if (perfil) perfil.remove(); // una sola hoja a la vez: Ajustes reemplaza a Perfil (desde el atajo, «atrás» la vuelve a abrir)
   var bi = window.bleInterface || {};
   var sheet = document.createElement('div');
   sheet.id = 'nexo-settings-sheet';
+  sheet.__nexoFrom = fromProfile ? 'profile' : 'main';
   sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;color:#fff;box-sizing:border-box;font-family:inherit;overflow-y:auto;';
   // una tarjeta por sección (estilo NEXO, nexo_theme.css)
   var card = function(ico, title, body) { return '<div class="nx-card"><div class="nx-h"><span class="nx-ico">' + ico + '</span>' + title + '</div>' + body + '</div>'; };
@@ -270,8 +287,9 @@ function _openSettingsSheet() {
       '<span class="nx-set-txt"><span class="nx-set-t">' + SECS[k][0] + '</span><span class="nx-set-d">' + SECS[k][1] + '</span></span>' +
       '<svg class="nx-set-go" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>';
   };
+  var backLbl = fromProfile ? t('settings_back') : t('nav_back', 'Atrás');
   sheet.innerHTML = '<div class="nx-profile-in">' +
-    '<div class="nx-page-head" style="margin:0 -16px;"><button id="nexo-settings-back" class="nx-round-btn" aria-label="' + t('settings_back') + '" title="' + t('settings_back') + '"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>' +
+    '<div class="nx-page-head" style="margin:0 -16px;"><button id="nexo-settings-back" class="nx-round-btn" aria-label="' + backLbl + '" title="' + backLbl + '"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>' +
     '<div id="nexo-settings-title" class="nx-page-title">' + t('settings_title') + '</div>' +
     '<button id="nexo-settings-close" class="nx-round-btn" aria-label="' + t('close') + '" title="' + t('close') + '"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' +
     '<div class="nx-set-list">' + [
@@ -358,7 +376,8 @@ function _openSettingsSheet() {
   ta.value = _diagnosticText();
   ta.scrollTop = ta.scrollHeight;
   sheet.querySelector('#nexo-settings-close').onclick = function() { sheet.remove(); };
-  // 3142: navegación lista ⇄ sección. «Atrás» (botón redondo o gesto) cierra la sección y, desde la lista, vuelve a Perfil.
+  // 3142: navegación lista ⇄ sección. «Atrás» (botón redondo o gesto) cierra la sección y, desde la lista, vuelve a donde estabas
+  // (3218: la lista de Contactos, o Perfil si se entró por su atajo). __nexoBack lo usa también el gesto atrás (chat_nav.js).
   var setList = sheet.querySelector('.nx-set-list'), setTitle = sheet.querySelector('#nexo-settings-title');
   var showSec = function(k) {
     sheet.__sec = k || null; sheet.classList.toggle('nx-in-sec', !!k);
@@ -369,7 +388,8 @@ function _openSettingsSheet() {
   };
   Array.prototype.forEach.call(sheet.querySelectorAll('.nx-set-row'), function(r) { r.onclick = function() { showSec(r.getAttribute('data-sec')); }; });
   sheet.__nexoSecBack = function() { if (!sheet.__sec) return false; showSec(null); return true; };
-  sheet.querySelector('#nexo-settings-back').onclick = function() { if (sheet.__nexoSecBack()) return; sheet.remove(); _openProfileSheet(); };
+  sheet.__nexoBack = function() { if (sheet.__nexoSecBack()) return; sheet.remove(); if (sheet.__nexoFrom === 'profile') _openProfileSheet(); };
+  sheet.querySelector('#nexo-settings-back').onclick = function() { sheet.__nexoBack(); };
   // #132: cambiar el idioma → se guarda y la app recarga para aplicarlo en todas las pantallas (como al reabrir la app)
   var langSel = sheet.querySelector('#nexo-lang-select');
   if (langSel) langSel.onchange = function() {
@@ -454,39 +474,79 @@ function _openSettingsSheet() {
   renderAutoDiagSection(sheet); // 2974
   renderUpdaterSection(sheet); // 2986
 }
-window.addEventListener('nexo:ui:settings', _openSettingsSheet);
+window.addEventListener('nexo:ui:settings', function(e) { _openSettings(!!(e && e.detail && e.detail.from === 'profile')); });
 try { if (typeof window !== 'undefined') window.__nexoOpenSettings = _openSettingsSheet; } catch (e) {}
 
-// Ronda 2759: botón 👤 en la cabecera (junto al 👥). La barra de abajo (Chats · Gente · Mapa · Perfil) queda fuera de la
-// pantalla en los teléfonos y Perfil (con el diagnóstico) no se podía abrir.
+// Ronda 2759: Perfil en la cabecera (la barra de abajo —Chats · Gente · Mapa · Perfil— queda fuera de la pantalla en los teléfonos).
+// 3218 (dueño 17-11: «separar ajustes de perfil», eligió el diseño clásico): la cabecera de Contactos lleva
+//   · a la IZQUIERDA, donde decía «Contactos», MI foto (el círculo de color con el que me ven mis contactos) y MI nombre, en una
+//     franja que abre MI Perfil (#nexo-profile-btn, el id de siempre: lo usan las pruebas). Solo abre Perfil: el gesto secreto que
+//     irá sobre la foto vivirá en la hoja de Perfil, no aquí;
+//   · arriba a la DERECHA la ruedita, que abre Ajustes DIRECTO (#nexo-settings-btn; su «atrás» vuelve a la lista), junto a la lupa y a
+//     «nuevo grupo»: los tres círculos iguales, el estilo único SECUNDARIO aprobado por el dueño (.nx-btn-s, nexo_theme.css);
+//   · «Contactos» pasa a título, centrado, en su propia fila debajo (como en la muestra aprobada: a 360 px no cabe en la misma fila
+//     sin cortar el nombre o el título en algún idioma). La rejilla está en nexo_theme.css.
+// Si cambia mi foto (nexo:avatar 'me') o mi nombre/NEXO ID (nexo:me: el nombre fijo al aplicarse o al elegirlo la primera vez, el
+// NEXO ID al cargarse), «yo» se repinta al momento.
 export function installProfileButton() {
   var header = document.getElementById('main-header');
   if (!header || document.getElementById('nexo-profile-btn')) return;
+  if (getComputedStyle(header).position === 'static') header.style.position = 'relative';
   var b = document.createElement('button');
   b.id = 'nexo-profile-btn';
-  b.title = t('prof_title', 'Perfil');
-  b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>'; // ronda 2763: icono dibujado (antes un emoji)
-  b.style.cssText = 'position:absolute;right:62px;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;font-size:20px;cursor:pointer;z-index:5;';
-  if (getComputedStyle(header).position === 'static') header.style.position = 'relative';
+  b.type = 'button';
+  b.className = 'nx-me-chip'; // press.js: se presiona como una fila (se vela entera la franja foto + nombre)
+  b.innerHTML = '<span id="nexo-hdr-av" aria-hidden="true"></span><span id="nexo-hdr-name"></span>';
   b.addEventListener('click', function(e) { e.stopPropagation(); _openProfileSheet(); });
-  header.appendChild(b);
-  // 2982 (A3): puntito en el icono de Perfil cuando hay diagnósticos recibidos sin leer (solo le pasa al desarrollador)
+  var g = document.createElement('button');
+  g.id = 'nexo-settings-btn';
+  g.type = 'button';
+  g.className = 'nx-btn-s'; // estilo único, nivel SECUNDARIO (nexo_theme.css)
+  g.title = t('settings_title', 'Ajustes');
+  g.setAttribute('aria-label', t('settings_title', 'Ajustes'));
+  g.innerHTML = _GEAR_SVG;
+  g.addEventListener('click', function(e) { e.stopPropagation(); _openSettings(false); });
+  // «yo», lo primero de la cabecera (orden de lectura: yo → título → lupa, grupo, ruedita); la ruedita, lo último
+  header.insertBefore(b, header.firstChild);
+  header.appendChild(g);
+  refreshMyHeader();
+  window.addEventListener('nexo:me', refreshMyHeader);
+  window.addEventListener('nexo:avatar', function(e) { var nx = e && e.detail && e.detail.nx; if (!nx || nx === 'me') refreshMyHeader(); });
+  // 2982 (A3): puntito cuando hay diagnósticos recibidos sin leer (solo le pasa al desarrollador). 3218: va en la ruedita, porque
+  // el diagnóstico vive en Ajustes (antes en el botón de Perfil, que era el camino a Ajustes).
   window.addEventListener('nexo:autodiag:changed', _refreshProfileBadge);
   _refreshProfileBadge();
 }
 
-export function _refreshProfileBadge() {
+// 3218: mi foto y mi nombre en la cabecera (el nombre fijo con el que me ven: bi.localDeviceName, el mismo de Perfil)
+export function refreshMyHeader() {
   var b = document.getElementById('nexo-profile-btn'); if (!b) return;
+  var bi = window.bleInterface || {};
+  var name = String(bi.localDeviceName || '').trim();
+  var nm = document.getElementById('nexo-hdr-name');
+  if (nm && nm.textContent !== name) nm.textContent = name;
+  b.classList.toggle('nx-me-noname', !name);
+  var av = document.getElementById('nexo-hdr-av');
+  _paintMyCircle(av, 'ble-contact-avatar nx-person-av', name, bi.localNexoId);
+  if (av && !name && !bi.localNexoId && !av.classList.contains('nx-has-photo')) av.textContent = ''; // al arrancar, sin «?»
+  var lbl = t('hdr_my_profile', 'Mi perfil') + (name ? ': ' + name : '');
+  b.setAttribute('aria-label', lbl);
+  b.title = lbl;
+}
+try { if (typeof window !== 'undefined') window.NEXO_refreshMyHeader = refreshMyHeader; } catch (e) {}
+
+export function _refreshProfileBadge() {
+  var b = document.getElementById('nexo-settings-btn'); if (!b) return;
   var n = 0; try { n = autoDiagNewCount(); } catch (e) {}
-  var dot = document.getElementById('nexo-profile-badge');
-  if (!n) { if (dot) dot.remove(); b.removeAttribute('data-badge'); return; }
+  var dot = document.getElementById('nexo-settings-badge');
+  if (!n) { if (dot) dot.remove(); b.removeAttribute('data-badge'); b.title = t('settings_title', 'Ajustes'); return; }
   if (!dot) {
-    dot = document.createElement('span'); dot.id = 'nexo-profile-badge';
+    dot = document.createElement('span'); dot.id = 'nexo-settings-badge';
     dot.style.cssText = 'position:absolute;top:4px;right:4px;min-width:10px;height:10px;border-radius:5px;background:#ff4d6d;box-shadow:0 0 0 2px rgba(10,12,24,0.95);pointer-events:none;';
     b.appendChild(dot);
   }
   b.setAttribute('data-badge', String(n));
-  b.title = t('prof_title', 'Perfil') + ' · ' + n + ' ' + t('autodiag_new', 'nuevos');
+  b.title = t('settings_title', 'Ajustes') + ' · ' + n + ' ' + t('autodiag_new', 'nuevos');
 }
 
 // Ronda 2765: qué falta para que los avisos lleguen con la pantalla apagada (cada cosa con su botón para arreglarla)

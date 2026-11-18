@@ -28,27 +28,60 @@ body::before {
 #app { background: transparent !important; }
 
 /* ---------- Pantalla principal ---------- */
-#main-header { min-height: 64px !important; padding: 0 166px 0 18px !important; } /* 3196: + la lupa (antes 116) */
-#main-title { font-size: 26px !important; font-weight: 800 !important; letter-spacing: -0.3px;
+/* ====== 3218 (dueño 17-11): ESTILO ÚNICO de botones, aprobado por el dueño (muestra «estilo_nexo»). Tres niveles, la MISMA forma
+   redonda y los MISMOS iconos SVG de línea (trazo blanco de 2, puntas redondeadas, 22 px):
+     .nx-btn-p  PRINCIPAL — solo la acción más importante de cada pantalla: 52 px, el degradado del botón de enviar y sombra suave;
+     .nx-btn-s  SECUNDARIO — todo lo demás: 44 px, fondo blanco al 8 % y aro de 1 px blanco al 14 %;
+     .nx-btn-d  CUIDADO — colgar y eliminar: 52 px, rojo.
+   Por ahora solo los usa la cabecera de Contactos (lupa, nuevo grupo y ruedita = SECUNDARIO); el resto de la app pasará a estas
+   clases en la revisión de botones. Responden al dedo con el motor de siempre (press.js: hundirse, onda y pulso, por ser redondos). */
+:root {
+  --nx-btn-p-size: 52px; --nx-btn-p-bg: linear-gradient(135deg, #00c8ff, #a855f7); --nx-btn-p-shadow: 0 4px 14px rgba(124, 92, 255, 0.35);
+  --nx-btn-s-size: 44px; --nx-btn-s-bg: rgba(255, 255, 255, 0.08); --nx-btn-s-line: rgba(255, 255, 255, 0.14);
+  --nx-btn-d-size: 52px; --nx-btn-d-bg: #ef4444; --nx-btn-d-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+  --nx-btn-ico: 22px; --nx-btn-ico-color: #fff; --nx-btn-stroke: 2;
+}
+.nx-btn-p, .nx-btn-s, .nx-btn-d {
+  position: relative; flex-shrink: 0; margin: 0; padding: 0; box-sizing: border-box; border-radius: 50%; color: var(--nx-btn-ico-color);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font: inherit; -webkit-tap-highlight-color: transparent;
+}
+.nx-btn-p { width: var(--nx-btn-p-size); height: var(--nx-btn-p-size); min-width: var(--nx-btn-p-size); background: var(--nx-btn-p-bg); border: none; box-shadow: var(--nx-btn-p-shadow); }
+.nx-btn-s { width: var(--nx-btn-s-size); height: var(--nx-btn-s-size); min-width: var(--nx-btn-s-size); background: var(--nx-btn-s-bg); border: 1px solid var(--nx-btn-s-line); }
+.nx-btn-d { width: var(--nx-btn-d-size); height: var(--nx-btn-d-size); min-width: var(--nx-btn-d-size); background: var(--nx-btn-d-bg); border: none; box-shadow: var(--nx-btn-d-shadow); }
+.nx-btn-p svg, .nx-btn-s svg, .nx-btn-d svg {
+  width: var(--nx-btn-ico); height: var(--nx-btn-ico); fill: none; stroke: currentColor; stroke-width: var(--nx-btn-stroke); stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* 3218 (dueño 17-11: «separar ajustes de perfil», diseño clásico; regla: «práctico, cómodo, ergonómico y estético»), la cabecera
+   aprobada: arriba, a la IZQUIERDA (donde decía «Contactos») MI foto y MI nombre —tocarlos abre mi Perfil— y a la DERECHA la lupa,
+   «nuevo grupo» y la ruedita de Ajustes en la esquina (los tres .nx-btn-s, a 10 px uno de otro: el área de toque de cada uno —press.js,
+   ≥ 8 px entre áreas— llega a 48 px); debajo, «Contactos» como título centrado. En una sola fila no cabe a 360 px: el título centrado
+   entre la foto con el nombre y los tres botones dejaría al nombre sin sitio y al título cortado en algún idioma. Así el nombre tiene
+   ~120 px antes del «…» y el título nunca se corta. «Nuevo grupo» se queda: es el único sitio para crear un grupo. */
+#main-header {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; grid-template-rows: 56px auto;
+  grid-template-areas: "me search group gear" "title title title title"; column-gap: 10px; align-items: center;
+  min-height: 0 !important; padding: 2px 16px 6px 16px !important;
+}
+#main-logo { display: none; }
+#main-title { grid-area: title; justify-self: center; max-width: 100%; min-width: 0; font-size: 21px !important; font-weight: 800 !important; letter-spacing: -0.2px;
+  line-height: 28px; padding-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   background: linear-gradient(90deg, #fff 30%, #b9c4ff); -webkit-background-clip: text; background-clip: text; color: transparent !important; }
-#nexo-profile-btn, #nexo-new-group-btn {
-  width: 42px !important; height: 42px !important; background: var(--nx-surface-2) !important;
-  border: 1px solid var(--nx-line) !important; display: flex !important; align-items: center; justify-content: center; padding: 0 !important;
-}
-#nexo-profile-btn svg, #nexo-new-group-btn svg { width: 21px; height: 21px; }
-/* 3196 (dueño 17-11: «falta el botón para buscar contactos en la pantalla Contactos»): la lupa a la izquierda de Perfil, redonda de
-   42 px como Perfil y Grupo (contacts_search.js). Los tres a 10 px uno del otro (antes 6 entre Perfil y Grupo): así el área de toque
-   de cada uno (press.js: ≥ 8 px entre áreas) llega a 46–48 px; con 6 px el del medio se quedaba en 42. El título, si no cupiera
-   (pantallas de 320 px, letra grande del sistema), se acorta con «…» en vez de meterse debajo de los botones. */
-#nexo-profile-btn { right: 66px !important; }
-#main-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#nexo-contacts-search-btn {
-  position: absolute; right: 118px; top: 50%; transform: translateY(-50%); z-index: 5; width: 42px; height: 42px; border-radius: 50%;
-  background: var(--nx-surface-2); border: 1px solid var(--nx-line); color: #fff; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; padding: 0;
-}
-#nexo-contacts-search-btn svg { width: 21px; height: 21px; }
+#nexo-contacts-search-btn { grid-area: search; }
+#nexo-new-group-btn { grid-area: group; }
+#nexo-settings-btn { grid-area: gear; }
 #nexo-contacts-search-btn[aria-expanded="true"] { background: rgba(0, 200, 255, 0.16); border-color: rgba(0, 200, 255, 0.45); }
+/* «Yo»: mi círculo de color (38 px, el de Contactos, con mi foto si la hay) y mi nombre, sin caja (como en la muestra); un nombre largo
+   se acorta con «…». Toda la franja (foto + nombre, 48 px de alto) es el botón: al presionarla se vela entera (press.js la trata como
+   una fila: .nx-me-chip), no solo el círculo. */
+#nexo-profile-btn {
+  grid-area: me; justify-self: start; position: relative; max-width: calc(100% + 4px); min-width: 0; height: 48px; box-sizing: border-box; margin: 0 0 0 -4px;
+  display: inline-flex; align-items: center; gap: 10px; padding: 0 12px 0 4px; border-radius: 24px;
+  background: transparent; border: none; color: var(--nx-text); font: inherit; cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent;
+}
+#nexo-profile-btn.is-pressed { background: var(--nx-surface); }
+#nexo-hdr-av { width: 38px; height: 38px; min-width: 38px; font-size: 14px; font-weight: 700; box-shadow: none; pointer-events: none; }
+#nexo-hdr-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15.5px; font-weight: 700; letter-spacing: -0.1px; line-height: 1.25; pointer-events: none; }
 /* La barra del buscador, justo debajo de la cabecera (no se desliza con la lista): el campo como el de «Agregar» y la ✕ redonda de
    42 px debajo de Grupo. Buscando, la tira «en línea» se esconde (solo los resultados); sin nada, «Ningún contacto coincide». */
 #nexo-contacts-search-bar { display: none; align-items: center; gap: 10px; padding: 0 14px 8px 16px; flex-shrink: 0; }

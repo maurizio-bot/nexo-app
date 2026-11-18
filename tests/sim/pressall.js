@@ -59,7 +59,11 @@ function pageHelpers(SEL) {
   };
   // El contorno que se VE al tocarlo: el propio elemento si pinta algo; si no, el hijo que pinta la superficie más grande
   // (el círculo de un botón de llamada); si ninguno, el propio elemento (texto suelto: el contorno es su caja).
+  // Una FILA es su propia forma, como en el motor (press.js _pressKind 'row': su velo es su fondo y la onda va en ella, no en su círculo).
+  // 3218: «yo» de la cabecera (.nx-me-chip: foto + nombre, sin caja, como la muestra aprobada) se presiona así: se vela entera la franja.
+  const ROWS = '.ble-contact-row, .ble-menu-item, .mm-item, .nexo-pick-row, .fw-row, .game-pick-item, .nx-est-row, .nx-me-chip';
   const shapeOf = (el) => {
+    if (el.matches(ROWS)) return el;
     if (draws(el)) return el;
     const er = el.getBoundingClientRect(); let best = null, area = 0;
     el.querySelectorAll('*').forEach((d) => {
@@ -452,11 +456,12 @@ function pageHelpers(SEL) {
   { const n = 12; await touch('touchStart', 90, 420); for (let i = 1; i <= n; i++) { await sleep(16); await touch('touchMove', 90 + 210 * i / n, 420); } await touch('touchEnd'); await sleep(700); }
   await ev(() => window.dispatchEvent(new CustomEvent('nexo:ui:profile'))); await sleep(800);
   await scan('perfil', '#nexo-profile-sheet');
-  await ev(() => { const s = document.getElementById('nexo-profile-sheet'); if (s) s.remove(); window.dispatchEvent(new CustomEvent('nexo:ui:settings')); }); await sleep(800);
-  const ajustes = await ev(() => { const s = document.querySelector('[id*="settings"]'); return s && s.id ? '#' + s.id : ''; });
+  // 3218: Ajustes se abre con la ruedita de la cabecera (#nexo-settings-btn: por eso la hoja se busca por su id y no por «settings»)
+  await ev(() => { const s = document.getElementById('nexo-profile-sheet'); if (s) s.remove(); const g = document.getElementById('nexo-settings-btn'); if (g) g.click(); else window.dispatchEvent(new CustomEvent('nexo:ui:settings')); }); await sleep(800);
+  const ajustes = await ev(() => (document.getElementById('nexo-settings-sheet') ? '#nexo-settings-sheet' : ''));
   await scan('ajustes', ajustes);
   await ev(() => { const b = document.querySelector('.nx-set-row'); if (b) b.click(); }); await sleep(700);
-  await scan('ajustes_seccion', await ev(() => { const s = document.querySelector('[id*="settings"]'); return s && s.id ? '#' + s.id : ''; }));
+  await scan('ajustes_seccion', await ev(() => (document.getElementById('nexo-settings-sheet') ? '#nexo-settings-sheet' : '')));
 
   console.log('casos', casos.length, 'malos', malos.length);
   r.casos = casos.length; r.malos = malos.map((x) => x.pantalla + ' ' + x.nombre + ' [' + ['P1', 'P2', 'P3', 'P4', 'P5'].filter((k) => !x[k]).join(',') + (x.error ? ' ' + x.error : '') + ']');

@@ -226,6 +226,7 @@ export const bleStartup = {
     self._nexoIdP = _getOrCreateNexoId().then(function(nexoId) {
       self.localNexoId = nexoId;
       console.log('[BLEInterface] NEXO ID:', nexoId);
+      try { window.dispatchEvent(new CustomEvent('nexo:me')); } catch (e) {} // 3218: la cabecera (mi círculo va con el color de mi ID)
       // Ronda 2755: el anuncio (NEXO ID visible o código rotativo) lo decide ble_privacy.js
       self._startPrivacy();
       return nexoId;
