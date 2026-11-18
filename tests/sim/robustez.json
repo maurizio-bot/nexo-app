@@ -1890,6 +1890,10 @@
     {
      "fallo": "3236 (diagnóstico del dueño 18-11): tres textos salieron «entregado» y 8 s después «fallido»: la pantalla dejaba pasar «fallido» sobre un mensaje que el otro ya confirmó (el vault sí lo impedía). Ahora entregado/leído no pasan a fallido; sin confirmar sí.",
      "prueba": "ENTREGADO NO PASA A FALLIDO EN PANTALLA"
+    },
+    {
+     "fallo": "3237 (diagnóstico del dueño 18-11 10:27): «Wi-Fi local 382,9 s» y, al volver a la app, «su app no contestó en 180 s: se cierra». La app del dueño quedaba congelada minutos con la pantalla apagada y el tiempo de comprobación del Wi-Fi contaba ese congelado (medida falsa y enlace cerrado de más). Ahora, al volver, la comprobación pendiente cuenta desde ese momento y se repite.",
+     "prueba": "WI-FI PENDIENTE AL VOLVER A LA APP"
     }
    ],
    "debiles": [

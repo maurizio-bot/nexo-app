@@ -13,6 +13,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <!-- APK -->
 <es-419>
 - El Wi-Fi con un contacto de app dormida se confirma antes.
+- El Wi-Fi ya no se corta al volver a la app tras tenerla minutos en segundo plano.
 - Un mensaje ya entregado no vuelve a marcarse como fallido.
 </es-419>
 <!-- /APK -->

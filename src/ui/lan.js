@@ -82,7 +82,15 @@ export class LanLink {
       // Al entrar en una red Wi-Fi (el nativo ya escaneó): anunciarse y buscar ya
       pl.addListener('onLanNet', function() { self.start(); });
       // Al volver a la app: buscar ya (no esperar al minuto), también dirección por dirección
-      if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') self.start(true); });
+      if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState !== 'visible') return;
+        // 3237 (diagnóstico del dueño 18-11 10:27: «Wi-Fi local 382,9 s», y a las 08:59 «su app no contestó en 180 s: se cierra» justo al volver):
+        // con la pantalla apagada esta app queda CONGELADA minutos (sin registro ni temporizadores); lo que tardó en confirmarse el Wi-Fi era
+        // el congelado de ESTA app, no del otro. Al volver, la comprobación pendiente cuenta desde ahora (ni se cierra el enlace por un tiempo
+        // que esta app no estuvo viva ni sale una medida falsa) y se repite.
+        self.links.forEach(function(l) { if (l.up && !l.verified) { l.upAt = Date.now(); l.verifyAt = 0; l.woke = false; l.hid = true; } });
+        self.start(true);
+      });
     }
     if (!self._timer) self._timer = setInterval(function() { self._tick(); }, TICK_MS);
     return pl.lanStatus().then(function(st) {
@@ -305,7 +313,7 @@ export class LanLink {
             // 3235 (dueño 18-11: Wi-Fi local «de 0,2 a 88,5 s»): si la comprobación tardó, queda dicho por qué (su app dormida, toque a los
             // cuántos s, cuántos intentos), para que el diagnóstico diga quién se retrasó
             var vMs = l.upAt ? Date.now() - l.upAt : 0;
-            console.log('[WIFI] Conectado con ' + nx + ' por Wi-Fi (comprobado)' + (vMs > 8000 ? ' tras ' + (vMs / 1000).toFixed(1) + ' s: ' + (l.woke ? 'su app dormida (toque a los ' + ((l.wokeAt - l.upAt) / 1000).toFixed(1) + ' s)' : 'su app tardó en contestar') : ''));
+            console.log('[WIFI] Conectado con ' + nx + ' por Wi-Fi (comprobado)' + (vMs > 8000 ? ' tras ' + (vMs / 1000).toFixed(1) + ' s' + (l.hid ? ' desde que esta app volvió a la vista' : '') + ': ' + (l.woke ? 'su app dormida (toque a los ' + ((l.wokeAt - l.upAt) / 1000).toFixed(1) + ' s)' : 'su app tardó en contestar') : ''));
             try { if (l.upAt && typeof window.NEXO_noteConnect === 'function') window.NEXO_noteConnect('wifi', Date.now() - l.upAt); } catch (e) {} // 3081
             if (this.ble && typeof this.ble._lanUp === 'function') this.ble._lanUp(nx);
           }
