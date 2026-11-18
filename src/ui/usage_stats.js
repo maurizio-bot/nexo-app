@@ -74,9 +74,22 @@ export function usageNoteSpeed(via, dir, bytes, ms) {
     console.log('[VELOCIDAD] ' + VIAS[via] + ' ' + (dir === 'out' ? 'enviado' : 'recibido') + ': ' + _n1(bytes / 1024) + ' KB en ' + _n1(ms / 1000) + ' s = ' + _n1(rate) + ' KB/s'); // i18n-ok
   } catch (err) {}
 }
+// 3241 (diagnósticos del dueño 18-11: «Wi-Fi local 382,9 s», «internet de 0,5 a 62 s» en otros teléfonos): con la pantalla apagada la app queda
+// CONGELADA minutos y el tiempo de «conexión lista» contaba ese congelado (medida falsa que parecía lentitud de la red). Una medida que
+// abarca un rato con la app en segundo plano (o empezó en él) no cuenta.
+var _lastHiddenAt = 0, _lastVisibleAt = 0;
+if (typeof document !== 'undefined' && document && typeof document.addEventListener === 'function') {
+  try {
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'hidden') _lastHiddenAt = Date.now(); else _lastVisibleAt = Date.now();
+    });
+  } catch (e) {}
+}
 export function usageNoteConnect(via, ms) {
   try {
     if (!VIAS[via] || !(ms >= 0) || ms > 600000) return;
+    var t0 = Date.now() - ms;
+    if ((typeof document !== 'undefined' && document && document.visibilityState === 'hidden') || _lastHiddenAt >= t0 || _lastVisibleAt >= t0) return;
     var o = _load(), day = _day(o, usageDayKey());
     day.k = day.k || {};
     var e = day.k[via] || (day.k[via] = { n: 0, ms: 0, lo: ms, hi: ms });

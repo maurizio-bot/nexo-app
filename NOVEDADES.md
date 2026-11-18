@@ -12,7 +12,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- (próxima APK)
+- Mejoras internas: el diagnóstico evita contar el tiempo con la app congelada, y no repite avisos de diagnóstico.
 </es-419>
 <!-- /APK -->
 

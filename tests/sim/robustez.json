@@ -1910,6 +1910,10 @@
     {
      "fallo": "3240 (diagnósticos de Marcos 17-11): el MISMO diagnóstico automático llegó 3 veces a la bandeja del desarrollador (envío reintentado o por dos caminos). Ahora mismo contacto + misma hora de salida + mismo síntoma = una sola copia.",
      "prueba": "DIAGNÓSTICO REPETIDO NO SE GUARDA DOS VECES"
+    },
+    {
+     "fallo": "3241 (diagnósticos del dueño 18-11): «Wi-Fi local 382,9 s» y «internet de 0,5 a 62 s» en otros teléfonos: con la pantalla apagada la app queda congelada minutos y ese tiempo contaba como tiempo de conexión (medida falsa que parecía lentitud de la red). Ahora una medida que abarca un rato en segundo plano no cuenta.",
+     "prueba": "MEDIDAS DE CONEXIÓN SIN EL CONGELADO DE LA APP"
     }
    ],
    "debiles": [
