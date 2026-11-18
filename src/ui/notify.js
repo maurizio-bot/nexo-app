@@ -37,6 +37,7 @@ export class Notifier {
     this.ble = opts.ble;                       // () => bleInterface
     this.currentChat = opts.currentChat;       // () => NEXO ID del chat abierto (o null)
     this.hidePreview = opts.hidePreview || function() { return false; };
+    this.muted = opts.muted || function() { return false; };   // 3219: chat silenciado (chat_mute.js): cuenta como no leído, sin aviso
     this.sendRead = opts.sendRead;             // (nexoId, msgId) => confirmación de leído
     this.seen = new Map();                     // msgId de lo ya contado
     this.notified = new Set();                 // chats con notificación puesta
@@ -142,6 +143,8 @@ export class Notifier {
     var bi = this.ble();
     var count = bi && typeof bi.bumpUnread === 'function' ? bi.bumpUnread(cid) : 0;
     // Notificación del teléfono solo con la app en segundo plano (a la vista ya se ve la burbuja numerada)
+    // 3219: un chat SILENCIADO no avisa (ni suena ni vibra); el número de no leídos sí sube (en gris en la lista)
+    if (!_visible() && this.muted(cid)) { console.log('[NOTIF] ' + cid + ' está silenciado: sin aviso'); return; }
     if (!_visible()) {
       this.notified.add(cid);
       _call('notifyMessage', { chatId: cid, name: m.name || 'NEXO', msgId: m.msgId || String(Date.now()), text: this.hidePreview(cid) ? '' : (m.preview || ''), count: count });

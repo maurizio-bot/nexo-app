@@ -107,7 +107,10 @@ object NetBgHome {
                       groupName: (String) -> String?) {
         val seen = !isCall && SeenMsgs.has(ctx, msgId)
         val gname = if (isCall || seen || silent) null else groupName(group)
-        when (NetBgSaved.notice(isCall, seen, silent, gname != null)) {
+        // 3219: chat o grupo silenciado (la lista la da la app; sin la app, la de lo guardado)
+        if (!isCall) MutedChats.ensureLoaded({ store(ctx).read(MutedChats.FILE) })
+        val muted = !isCall && !seen && !silent && MutedChats.silences(false, nx, group, gname != null)
+        when (NetBgSaved.notice(isCall, seen, silent, gname != null, muted)) {
             // #130b (dueño 31-10): una oferta de llamada/videollamada que llega por internet con la app en segundo plano o
             // congelada tiene que salir a PANTALLA COMPLETA (enciende el teléfono, Contestar/Rechazar), como la 1-a-1 por
             // Bluetooth y como las llamadas de grupo. Antes salía como «mensaje nuevo» porque NetBg solo miraba el msgId.
@@ -118,6 +121,7 @@ object NetBgHome {
             // 3008: reenvío de un mensaje que este teléfono ya tiene → sin «Mensaje nuevo» (la ✓✓ sí se devuelve, para que el otro pare)
             NetBgSaved.Notice.OLD -> log(ctx, "sobre de $nx (msgId $msgId): ese mensaje ya estaba en el teléfono (reenvío): sin aviso")
             NetBgSaved.Notice.OPEN_CHAT -> log(ctx, "sobre de $nx (msgId $msgId): su chat está abierto (parpadeo a segundo plano): sin aviso")
+            NetBgSaved.Notice.MUTED -> log(ctx, "sobre de $nx (msgId $msgId): chat silenciado: sin aviso")
             // 3076: un mensaje de GRUPO avisa en el grupo, con su nombre y quién lo manda (como por Bluetooth: notifyMessage)
             NetBgSaved.Notice.GROUP -> {
                 log(ctx, "sobre de $nx (msgId $msgId): aviso de mensaje nuevo por internet (grupo $group)")
@@ -165,6 +169,7 @@ object NetBgHome {
     // ===== Guardar (lo llama la app: netBgConfigImpl / setAckKeysImpl, con SU AtRestStore: el mismo cerrojo que su migración) =====
     fun saveConfig(ctx: Context, st: AtRestStore, cfg: NetBgSaved.Config) = save(ctx) { NetBgSaved.saveConfig(st, writer, cfg) }
     fun saveAck(ctx: Context, st: AtRestStore, keys: Map<String, ByteArray>) = save(ctx) { NetBgSaved.saveAck(st, writer, keys) }
+    fun saveMute(ctx: Context, st: AtRestStore, m: Map<String, Long>) = save(ctx) { MutedChats.save(st, writer, m) } // 3219
     private fun save(ctx: Context, op: () -> Boolean) {
         try { op() } catch (e: Throwable) {
             // Sin datos: solo el tipo de error, y una vez por proceso (la app la manda cada vez que se oculta)
@@ -249,6 +254,7 @@ object NetBgHome {
         writer.forget()
         shared?.let { bg -> try { bg.stop(); bg.configure("", emptyList(), 0L, emptyList()); bg.setAckKeys(emptyMap()) } catch (e: Throwable) { } }
         NexoBlePlugin.ackKeys.clear()
+        MutedChats.clear() // 3219
         if (withoutApp) { withoutApp = false; wifiHold(ctx, false) }
     }
 

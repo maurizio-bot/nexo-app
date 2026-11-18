@@ -43,6 +43,7 @@ internal fun NexoBlePlugin.groupName(gid: String): String? {
 private fun NexoBlePlugin.notifyOnly(ctx: Context, info: BgInbox.Info) {
     if (info.quiet) return
     if (info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.video, info.msgId); return }
+    if (mutedNotice(info, groupName(info.group) != null)) return // 3219: chat o grupo silenciado: sin aviso
     val chat = info.from.ifEmpty { "nexo_jump" }
     val what = when (info.what) { "image" -> NativeLang.t(ctx, "msg_photo"); "video" -> NativeLang.t(ctx, "msg_video"); "audio" -> NativeLang.t(ctx, "msg_voice"); "call" -> NativeLang.t(ctx, "call_in"); "text" -> ""; else -> NativeLang.t(ctx, "msg_file") } // 3122: en el idioma de la app
     val gname = groupName(info.group) // ronda 2763: de un grupo, en el chat del grupo con su nombre
@@ -299,6 +300,27 @@ internal fun NexoBlePlugin.netBgDrainImpl(call: PluginCall) {
     val gaps = JSObject()
     try { netBgShared?.drainGapsForApp()?.forEach { (u, at) -> gaps.put(u, at) } } catch (e: Exception) { }
     call.resolve(JSObject().put("events", arr).put("gaps", gaps))
+}
+
+// 3219 (dueño 17-11, funciones de WhatsApp): ¿se calla el aviso de este mensaje porque su chat (o su grupo, si se conoce) está
+// SILENCIADO? Las llamadas nunca. Queda en el registro nativo (sin contenido) para el diagnóstico.
+internal fun NexoBlePlugin.mutedNotice(info: BgInbox.Info, groupKnown: Boolean): Boolean {
+    MutedChats.ensureLoaded({ atRest().read(MutedChats.FILE) })
+    if (!MutedChats.silences(info.call || info.what == "call", info.from, info.group, groupKnown)) return false
+    nlog()?.add("INFO", "AVISO", "mensaje de ${info.from.ifEmpty { "?" }}${if (info.msgId.isNotEmpty()) " (msgId ${info.msgId})" else ""}: chat silenciado, sin aviso")
+    return true
+}
+
+// 3219: la app da los chats silenciados [{id, until}] (until en ms; 0 = siempre), al arrancar y cada vez que cambian: en memoria del
+// proceso (la usa el aviso con la app cerrada o congelada) y cifrada en el teléfono (para la escucha de internet sin la app). Se
+// reemplaza la lista entera en cada llamada. Pasando la cuenta a otro teléfono no se escribe nada (moveFrozen, como setAckKeys).
+internal fun NexoBlePlugin.setMutedChatsImpl(call: PluginCall) {
+    try {
+        val m = MutedChats.fromApp(call.getArray("chats"), System.currentTimeMillis())
+        MutedChats.set(m)
+        if (!moveFrozen) NetBgHome.saveMute(appCtx ?: context, atRest(), m)
+        call.resolve(JSObject().put("chats", m.size))
+    } catch (e: Exception) { call.reject("lista de silenciados ilegible") }
 }
 
 // Auditoría C1 (ronda 2777): la app nos da, por contacto, la clave con la que firmar la confirmación (✓✓) del modo

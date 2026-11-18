@@ -85,6 +85,7 @@ import './styles/critical.css';
 import './styles/nexo_theme.css'; // ronda 2763: estilo NEXO en toda la app
 import './styles/estados.css'; // 3169: pantalla Estados (estados_screen.js)
 import './styles/links.css'; // 3161: enlaces y «Enviar a…» (aquí y no en links.js/share_in.js: las pruebas cargan esos módulos con Node, que no lee .css)
+import './styles/chat_tools.css'; // 3219: silenciar, destacados y fijados (chat_mute/chat_star/chat_pin/chat_menu)
 import { NEXO_DIAG } from './core/nap.js';
 import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
@@ -112,6 +113,9 @@ import { welcomeGuide } from './ui/welcome_guide.js'; // #dueño 05-11: guía de
 import { nameGate, loadDisplayName, applyDisplayName } from './ui/display_name.js'; // #dueño 06-11: nombre fijo (pedido 1 vez, no se cambia)
 import { createNotifier } from './ui/notify.js';
 import { isPreviewHidden, loadHidePreview } from './ui/chat_hide_preview.js';
+import { isMuted, loadMuted } from './ui/chat_mute.js'; // 3219: silenciar un chat o grupo
+import { loadPins } from './ui/chat_pin.js'; // 3219: mensajes fijados arriba del chat
+import { installChatMenu } from './ui/chat_menu.js'; // 3219: opciones del chat (tocar el círculo de la cabecera)
 import { initE2E } from './vault/e2e_crypto.js';
 import { ratchetInit, ratchetSafetyNumber, ratchetPeerBundle, ratchetSessionPq } from './vault/e2e_ratchet.js';
 import { safetyQrPayload, checkSafetyQr, showSafetyQr, openQrScanner } from './ui/qr_verify.js';
@@ -199,11 +203,13 @@ initPress(); // NEXO Touch (build 2968, dueño 09-11): hundirse/onda/pulso + tic
 initPerf(); // ronda 2808: medición de rendimiento (pasiva: escucha eventos ya existentes)
 // v9.9.52: mensajes sin leer y notificaciones (todas las vías de llegada pasan por _handleIncomingMessage)
 loadHidePreview(); // opción por chat «Ocultar el texto en los avisos»
+loadMuted(); loadPins(); // 3219: chats silenciados (también para la parte nativa) y mensajes fijados
 var _notifier = createNotifier({
   ble: function() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; },
   // El chat abierto según ble_interface (lo pone openChat y lo quita cualquier cierre del chat)
   currentChat: function() { var b = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface); return b ? b._activeChatDeviceId : _getCurrentContactId(); },
   hidePreview: function(cid) { return lockEnabled() || isPreviewHidden(cid); }, // + opción por chat «Ocultar el texto en los avisos»
+  muted: function(cid) { return isMuted(cid); }, // 3219: chat silenciado: sin aviso (las llamadas van aparte y sí suenan)
   sendRead: function(nexoId, msgId) {
     // Build 2835 (pedido del dueño): si apagaste las confirmaciones de lectura en Ajustes, no se manda el acuse (el
     // otro no ve el ✓✓ azul). El "entregado" gris no se toca.
@@ -379,6 +385,8 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installCalls2Ui); else installCalls2Ui();
 // Buscar dentro del chat (lupa en la cabecera, barra debajo): rápido de A_LA_PAR, pedido del dueño
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installSearchUi); else installSearchUi();
+// 3219: opciones del chat al tocar el círculo de la cabecera (buscar, destacados, silenciar) y el altavoz tachado
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installChatMenu); else installChatMenu();
 // #132 idioma: traducir el HTML estático marcado con data-i18n (pestañas, cámara, placeholders…). Al cambiar idioma la
 // app recarga, así que basta con aplicarlo al arrancar.
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function() { applyStaticI18n(); }); else applyStaticI18n();

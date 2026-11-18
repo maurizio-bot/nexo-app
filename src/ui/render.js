@@ -9,6 +9,7 @@ import { registerViewerSource } from './media_swipe.js';   // 3159: deslizar ent
 import { _canUpgradeStatus, _getCurrentContactId, _getDomMessageStatus, _normId } from './chat_format.js';
 import { _clearMessageContainer } from './chat_nav.js';
 import { _editedMark, _fillTextBubble, _renderReactions, _renderedMessageIds } from './chat_actions.js';
+import { starMark } from './chat_star.js'; // 3219: la estrellita de un mensaje destacado
 import { _fmtTime } from './file_tools.js';
 import { _msgContactMap } from './chat_state.js';
 import { _objectURLRegistry } from './media_limits.js';
@@ -665,6 +666,7 @@ export function _renderMessage(msg, skipSave) {
     var timeSpan = document.createElement('span');
     timeSpan.className = 'msg-time';
     timeSpan.textContent = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (msg.starred && !msg.deleted) metaDiv.appendChild(starMark()); // 3219: destacado (antes de la hora, como WhatsApp)
     metaDiv.appendChild(timeSpan);
     if (msg.edited && !msg.deleted) metaDiv.appendChild(_editedMark()); // 3195: «Editado» (la misma marca que al editar en su sitio)
     if (isOwn) {

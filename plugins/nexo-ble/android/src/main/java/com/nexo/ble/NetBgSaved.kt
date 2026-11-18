@@ -160,12 +160,14 @@ object NetBgSaved {
 
     // Lo que se avisa de un sobre con un mensaje nuevo (las MISMAS reglas con la app viva y sin ella: NetBgHome.notifyMessage).
     //  CALL: oferta de llamada → pantalla de llamada (#130b); OLD: ese mensaje ya estaba en el teléfono (reenvío, 3008): sin aviso;
-    //  OPEN_CHAT: su chat está abierto en un parpadeo a segundo plano (3172, BgNotifyPolicy): sin aviso; GROUP / CHAT: aviso (3076).
-    enum class Notice { CALL, OLD, OPEN_CHAT, GROUP, CHAT }
-    fun notice(isCall: Boolean, alreadyHere: Boolean, silent: Boolean, inGroup: Boolean): Notice = when {
+    //  OPEN_CHAT: su chat está abierto en un parpadeo a segundo plano (3172, BgNotifyPolicy): sin aviso; MUTED: el chat (o el grupo) está
+    //  SILENCIADO (3219, MutedChats): sin aviso, pero una llamada suena igual; GROUP / CHAT: aviso (3076).
+    enum class Notice { CALL, OLD, OPEN_CHAT, MUTED, GROUP, CHAT }
+    fun notice(isCall: Boolean, alreadyHere: Boolean, silent: Boolean, inGroup: Boolean, muted: Boolean = false): Notice = when {
         isCall -> Notice.CALL
         alreadyHere -> Notice.OLD
         silent -> Notice.OPEN_CHAT
+        muted -> Notice.MUTED
         inGroup -> Notice.GROUP
         else -> Notice.CHAT
     }
