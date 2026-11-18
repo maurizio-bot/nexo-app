@@ -447,7 +447,9 @@ function pageHelpers(SEL) {
   await scan('menu_contacto', await ev(() => { const s = document.querySelector('.ble-menu-item'); let e = s; while (e && e.parentElement && e.parentElement !== document.body) e = e.parentElement; return e && e.id ? '#' + e.id : ''; }));
   await ev(() => document.body.click()); await sleep(400);
   // agregar contactos (botón redondo de abajo)
-  await ev(() => { const b = document.getElementById('ble-fab-btn'); if (b) b.click(); }); await sleep(800);
+  await ev(() => { const b = document.getElementById('ble-fab-btn'); if (b) b.click(); }); await sleep(600);
+  // 3222: el botón redondo pregunta «Agregar contactos» / «Crear grupo»
+  if (await ev(() => !!document.getElementById('nexo-fab-menu'))) { await scan('menu_agregar', '#nexo-fab-menu'); await ev(() => { const b = document.getElementById('nexo-fab-add'); if (b) b.click(); }); await sleep(800); }
   await scan('agregar', '#ble-panel');
   await ev(() => { if (document.getElementById('ble-panel').classList.contains('active')) window.bleInterface.togglePanel(); }); await sleep(600);
   // Estados (deslizar Contactos a la izquierda)

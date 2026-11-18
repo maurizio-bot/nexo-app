@@ -120,7 +120,7 @@ function online(p) { p.noNet = false; relays.forEach((r) => r.wakeTag(TAG(p))); 
   await closeChat(A);
 
   // ---- G: lo mismo en un grupo (A y B): la burbuja del grupo se quedaba en ✓ ----
-  click(A.win, A.win.document.getElementById('nexo-new-group-btn')); await sleep(400);
+  click(A.win, A.win.document.getElementById('ble-fab-btn')); await sleep(300); click(A.win, A.win.document.getElementById('nexo-fab-group')); await sleep(400); // 3222: «Crear grupo» desde el botón de agregar
   const sheet = A.win.document.getElementById('nexo-group-sheet');
   let gid = null;
   if (sheet) {

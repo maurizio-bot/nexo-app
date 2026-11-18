@@ -79,8 +79,8 @@ function pageHelpers() {
     header() {
       const W = document.documentElement.clientWidth, h = $('main-header'), tt = $('main-title');
       const me = $('nexo-profile-btn'), av = $('nexo-hdr-av'), nm = $('nexo-hdr-name');
-      const ids = ['nexo-profile-btn', 'nexo-contacts-search-btn', 'nexo-new-group-btn', 'nexo-settings-btn'];
-      const fila3 = ['nexo-contacts-search-btn', 'nexo-new-group-btn', 'nexo-settings-btn']; // 3218b: «yo» va en la fila de abajo
+      const ids = ['nexo-profile-btn', 'nexo-contacts-search-btn', 'nexo-settings-btn']; // 3222: sin «nuevo grupo» arriba (va en el botón de agregar)
+      const fila3 = ['nexo-contacts-search-btn', 'nexo-settings-btn']; // 3218b: «yo» va en la fila de abajo
       const malos = [];
       const out = { W, header: h ? { scroll: h.scrollWidth, client: h.clientWidth, alto: R(h.getBoundingClientRect().height) } : null, botones: {} };
       if (!h) return { malos: ['sin cabecera'] };
@@ -100,7 +100,7 @@ function pageHelpers() {
       let prev = null;
       fila3.forEach((id) => { const b = out.botones[id]; if (!b) return; if (prev && b.l < prev.r - 0.5) malos.push(id + ' pisa al anterior'); prev = b; });
       const fila = fila3.map((id) => out.botones[id]).filter(Boolean).map((b) => (b.t + b.b) / 2);
-      if (fila.length === 3 && Math.max(...fila) - Math.min(...fila) > 2) malos.push('los botones no están en la misma fila');
+      if (fila.length === 2 && Math.max(...fila) - Math.min(...fila) > 2) malos.push('los botones no están en la misma fila');
       const gear = out.botones['nexo-settings-btn'];
       if (gear && W - gear.r > 24) malos.push('la ruedita no está en la esquina derecha');
       const mb = out.botones['nexo-profile-btn'];
@@ -190,7 +190,7 @@ const R1 = (x) => Math.round(x);
 
   // ---------- E: estilo único (SECUNDARIO) en la lupa, grupo y ruedita ----------
   const est = {};
-  for (const id of ['nexo-contacts-search-btn', 'nexo-new-group-btn', 'nexo-settings-btn']) est[id] = await ev((x) => window.__cab.estilo(x), id);
+  for (const id of ['nexo-contacts-search-btn', 'nexo-settings-btn']) est[id] = await ev((x) => window.__cab.estilo(x), id);
   r.E_estilo = est;
   const e0 = est['nexo-settings-btn'];
   const iguales = Object.values(est).every((e) => e && JSON.stringify(e) === JSON.stringify(e0));

@@ -635,7 +635,7 @@ async function makeGroups() {
     const C = cands[Math.floor(RC() * cands.length)];
     const cs = contactList(C); const k = Math.min(cs.length, 3 + Math.floor(RC() * 3));
     const mem = cs.slice().sort(() => RC() - 0.5).slice(0, k);
-    click(C.win, $(C, '#nexo-new-group-btn')); await sleep(400);
+    click(C.win, $(C, '#ble-fab-btn')); await sleep(300); click(C.win, $(C, '#nexo-fab-group')); await sleep(400); // 3222
     const sheet = $(C, '#nexo-group-sheet');
     if (!sheet) { sim('sin hoja de grupo en ' + C.name); continue; }
     sheet.querySelectorAll('.nexo-pick-row input').forEach((cb) => { if (mem.includes(cb.dataset.nx)) { cb.checked = true; cb.dispatchEvent(new C.win.Event('change')); } });

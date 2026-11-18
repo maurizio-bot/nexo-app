@@ -306,7 +306,7 @@ const TILEGEN = `window.__tile = function (z, tx, ty) {
 
   // ================= E: grupo (A, B, C) y reenvío B → C =================
   await closeChat(A);
-  await A.evaluate(() => { const b = document.getElementById('nexo-new-group-btn'); if (b) b.click(); });
+  await A.evaluate(() => { const f = document.getElementById('ble-fab-btn'); if (f) f.click(); }); await A.waitForTimeout(300); await A.evaluate(() => { const b = document.getElementById('nexo-fab-group'); if (b) b.click(); }); // 3222
   await sleep(500);
   await A.evaluate(() => { const s = document.getElementById('nexo-group-sheet'); if (!s) return; s.querySelectorAll('.nexo-pick-row input').forEach((cb) => { cb.checked = true; cb.dispatchEvent(new Event('change')); }); const n = s.querySelector('#nexo-group-name'); n.value = 'Mapa'; n.dispatchEvent(new Event('input')); s.querySelector('#nexo-group-create').click(); });
   await sleep(800);

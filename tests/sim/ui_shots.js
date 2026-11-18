@@ -62,7 +62,7 @@ const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeO
   await sleep(1500);
   await shot(A, '07b_perfil_con_foto');
   await A.evaluate(() => { const c = document.getElementById('nexo-profile-close'); if (c) c.click(); });
-  await click(A, '#nexo-new-group-btn'); await sleep(500);
+  await click(A, '#ble-fab-btn'); await sleep(300); await click(A, '#nexo-fab-group'); await sleep(500); // 3222
   await shot(A, '08_crear_grupo');
   await A.evaluate(() => { const s = document.getElementById('nexo-group-sheet'); if (s) s.remove(); });
   await click(A, '#main-contacts-list .ble-contact-row'); await sleep(500);

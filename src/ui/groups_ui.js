@@ -45,12 +45,14 @@ export function openGroupChat(gid) {
   return true;
 }
 
-// Hoja para crear un grupo: nombre y contactos
-export function openCreateGroupSheet() {
+// Hoja para crear un grupo: nombre y contactos. 3222: `pre` (opcional) = el contacto con el que se abre (⋮ «Crear grupo»): ya elegido y arriba
+export function openCreateGroupSheet(pre) {
   var gs = _groups();
   if (!gs) return;
   _contactsStyles();
   var all = (vaultLoadContacts() || []).filter(function(c) { return /^nx[0-9a-z]{8}$/.test(_normId(c.nexoId || c.deviceUUID)); });
+  var preNx = '';
+  if (pre) { var pc = all.filter(function(c) { return c.deviceUUID === pre || _normId(c.nexoId || c.deviceUUID) === _normId(pre); })[0]; if (pc) { preNx = _normId(pc.nexoId || pc.deviceUUID); all = [pc].concat(all.filter(function(c) { return c !== pc; })); } }
   var old = document.getElementById('nexo-group-sheet');
   if (old) old.remove();
   var sheet = document.createElement('div');
@@ -86,8 +88,10 @@ export function openCreateGroupSheet() {
     var nm = document.createElement('div'); nm.className = 'nx-pick-name'; nm.textContent = c.name || id.toUpperCase();
     row.appendChild(cb); row.appendChild(_pickAvatar(id, c.name || id)); row.appendChild(nm);
     cb.addEventListener('change', function() { if (cb.checked) chosen[id] = true; else delete chosen[id]; refresh(); });
+    if (id === preNx) { cb.checked = true; chosen[id] = true; }
     listEl.appendChild(row);
   });
+  refresh();
   nameEl.addEventListener('input', refresh);
   sheet.querySelector('#nexo-group-cancel').onclick = function() { sheet.remove(); };
   btn.onclick = function() {
@@ -173,8 +177,40 @@ export function openGroupMenu(gid) {
   document.body.appendChild(box);
 }
 
-// Botón 👥 en la cabecera de la pantalla principal
+// 3222 (dueño 17-11: «quitamos el botón de grupos de arriba… el botón de agregar puede también servir para crear un grupo, son la
+// misma cosa con diferente número de contactos»; y en los ⋮ de cada contacto, «Crear grupo»): ya no hay botón 👥 en la cabecera.
+// El botón redondo de abajo pregunta «Agregar contacto» / «Crear grupo» (window.NEXO_fabMenu, lo llama ble_ui.js) y los ⋮ del
+// contacto abren «Nuevo grupo» con él ya elegido (window.NEXO_newGroupWith).
 export function installGroupButton() {
+  window.NEXO_newGroupWith = function(uuid) { openCreateGroupSheet(uuid); };
+  window.NEXO_fabMenu = _fabMenu;
+}
+
+function _fabMenu(fab, addFn) {
+  var old = document.getElementById('nexo-fab-menu');
+  if (old) { old.remove(); return; }
+  var m = document.createElement('div');
+  m.id = 'nexo-fab-menu';
+  m.className = 'nx-fab-menu';
+  var r = fab.getBoundingClientRect();
+  m.style.cssText = 'position:fixed;right:' + Math.max(8, window.innerWidth - r.right) + 'px;bottom:' + (window.innerHeight - r.top + 10) + 'px;z-index:2147483640;display:flex;flex-direction:column;gap:8px;align-items:flex-end;';
+  var opt = function(id, svg, label, fn) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.id = id; b.className = 'nx-fab-opt';
+    b.innerHTML = '<span class="nx-fab-opt-l">' + label + '</span><span class="nx-btn-s nx-fab-opt-ic" aria-hidden="true">' + svg + '</span>';
+    b.addEventListener('click', function(e) { e.stopPropagation(); m.remove(); fn(); });
+    m.appendChild(b);
+  };
+  opt('nexo-fab-add', '<svg viewBox="0 0 24 24"><circle cx="10" cy="8" r="3.5"/><path d="M3.5 20a6.5 6.5 0 0 1 13 0M19 8v6M16 11h6"/></svg>', t('add_contacts', 'Agregar contactos'), addFn);
+  opt('nexo-fab-group', '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 13.5a6.5 6.5 0 0 1 3.5 6.5"/></svg>', t('prof_group_create', 'Crear grupo'), function() { openCreateGroupSheet(); });
+  document.body.appendChild(m);
+  setTimeout(function() {
+    document.addEventListener('click', function close(e) { if (!m.contains(e.target) && e.target !== fab) { m.remove(); document.removeEventListener('click', close); } });
+  }, 10);
+}
+
+// (antes) Botón 👥 en la cabecera de la pantalla principal — 3222: ya no se instala; se deja por si se quisiera volver
+export function _installHeaderGroupButton() {
   var header = document.getElementById('main-header');
   if (!header || document.getElementById('nexo-new-group-btn')) return;
   var b = document.createElement('button');

@@ -113,7 +113,7 @@ function pageHelpers() {
     header() {
       const W = document.documentElement.clientWidth, h = document.getElementById('main-header'), tt = document.getElementById('main-title');
       // 3218: «yo» (foto + nombre, abre Perfil) a la izquierda y la lupa, grupo y la ruedita de Ajustes a la derecha; el título debajo
-      const ids = ['nexo-profile-btn', 'nexo-contacts-search-btn', 'nexo-new-group-btn', 'nexo-settings-btn'];
+      const ids = ['nexo-profile-btn', 'nexo-contacts-search-btn', 'nexo-settings-btn']; // 3222: sin «nuevo grupo» arriba
       const out = { W, header: { scroll: h.scrollWidth, client: h.clientWidth }, titulo: q(tt), titulo_entero: tt.scrollWidth <= tt.clientWidth + 0.5, texto: tt.textContent, botones: {} };
       const malos = [];
       if (h.scrollWidth > h.clientWidth + 0.5) malos.push('cabecera desborda');
@@ -197,7 +197,7 @@ function pageHelpers() {
   check('L_en_la_cabecera_a_la_derecha', lupa.enCabecera && lupa.visible && lupa.derecha && lupa.toque);
   check('L_aria_label', lupa.aria === TXT.es.contacts_search && lupa.title === TXT.es.contacts_search, lupa.aria);
   const a44 = (a) => !!a && a.w >= 44 && a.h >= 44;
-  check('L_area_44', a44(lupa.area) && a44(lupa.areaPerfil) && a44(lupa.areaGrupo) && a44(lupa.areaAjustes), JSON.stringify([lupa.area, lupa.areaPerfil, lupa.areaGrupo, lupa.areaAjustes]));
+  check('L_area_44', a44(lupa.area) && a44(lupa.areaPerfil) && a44(lupa.areaAjustes), JSON.stringify([lupa.area, lupa.areaPerfil, lupa.areaGrupo, lupa.areaAjustes]));
   r.H_es_360 = await ev(() => window.__bc.header());
   if (shots) { fs.mkdirSync(shots, { recursive: true }); await A.screenshot({ path: path.join(shots, r.build + '_cabecera.png'), clip: { x: 0, y: 0, width: 360, height: 140 }, scale: 'css' }); }
   // presionar (motor de press.js) y soltar: se abre con el teclado puesto

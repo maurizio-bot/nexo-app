@@ -236,7 +236,8 @@ export const BLE_UI_METHODS = {
     fabBtn.id = 'ble-fab-btn';
     fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
     fabBtn.style.cssText = 'position:fixed;bottom:80px;right:16px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2147483643;box-shadow:0 4px 15px rgba(0,200,255,0.3);transition:transform 0.15s ease;';
-    fabBtn.addEventListener('click', function() { self.togglePanel(); });
+    // 3222 (dueño 17-11: «el botón de agregar puede también servir para crear un grupo»): si hay menú (groups_ui.js), pregunta qué hacer
+    fabBtn.addEventListener('click', function() { if (typeof window.NEXO_fabMenu === 'function') window.NEXO_fabMenu(fabBtn, function() { self.togglePanel(); }); else self.togglePanel(); });
     fabBtn.addEventListener('mousedown', function() { this.style.transform = 'scale(0.92)'; });
     fabBtn.addEventListener('mouseup', function() { this.style.transform = 'scale(1)'; });
     fabBtn.addEventListener('touchstart', function() { this.style.transform = 'scale(0.92)'; });
@@ -790,6 +791,8 @@ export const BLE_UI_METHODS = {
     var isPinned = _isPinned(uuid);
     // Ronda 2771: "Cambiar nombre" (el nombre del chat ya se podía tocar y cambiar, pero nada lo decía)
     menu.innerHTML = '<div class="ble-menu-item" data-action="pin">' + (isPinned ? '&#x2606; Desfijar' : '&#x2605; Fijar') + '</div><div class="ble-menu-item" data-action="rename">&#x270F;&#xFE0F; Cambiar nombre</div><div class="ble-menu-item" data-action="hidetext">' + (isPreviewHidden(uuid) ? '&#x1F441; ' + t('chat_show_preview', 'Mostrar el texto en los avisos') : '&#x1F648; ' + t('chat_hide_preview', 'Ocultar el texto en los avisos')) + '</div><div class="ble-menu-item" data-action="profile">&#x1F464; Perfil</div><div class="ble-menu-item ble-menu-delete" data-action="delete">&#x1F5D1; Eliminar</div>';
+    // 3222 (dueño 17-11): «Crear grupo» desde los ⋮ del contacto: abre «Nuevo grupo» con este contacto ya elegido
+    if (typeof window.NEXO_newGroupWith === 'function') menu.insertAdjacentHTML('beforeend', '<div class="ble-menu-item" data-action="newgroup">&#x1F465; ' + t('prof_group_create', 'Crear grupo') + '</div>');
     var rect = btn.getBoundingClientRect();
     menu.style.right = (window.innerWidth - rect.right) + 'px';
     // #dueño 05-11: el menú se abría SIEMPRE hacia abajo (top = rect.bottom), así que en los contactos del final de
@@ -810,6 +813,7 @@ export const BLE_UI_METHODS = {
       var action = e.target.dataset.action;
       if (action === 'pin') { _togglePinnedContact(uuid); self.renderContactsList(); }
       else if (action === 'hidetext') { toggleHidePreview(uuid); }
+      else if (action === 'newgroup') { window.NEXO_newGroupWith(uuid); }
       else if (action === 'delete') { self.removeContact(uuid); }
       else if (action === 'profile') { _safeDispatchEvent('nexo:ble:goToProfile', { deviceUUID: uuid }); }
       else if (action === 'rename') {
