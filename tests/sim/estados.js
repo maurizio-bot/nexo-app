@@ -37,6 +37,10 @@ function sendText(p, t) { const i = p.win.document.getElementById('message-input
 const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) return true; await sleep(200); } return false; };
 // 3169: los estados ya no están en una tira arriba de Contactos sino en su propia pantalla (estados_screen.js; una fila por estado)
 const chips = (p) => Array.from(p.win.document.querySelectorAll('#estados-screen .estado-chip'));
+// 3230: los estados se ven a pantalla completa dentro de Estados (estados_feed.js): tocar el círculo lleva a los suyos; el de la
+// vista lleva los id de siempre (#estado-view…); me gusta = dos toques; se sale de Estados con el «atrás»
+const openEst = (p) => { if (p.win.__nexoEstadosOpen) p.win.__nexoEstadosOpen(); };
+const closeEst = (p) => { if (p.win.__nexoEstadosBack) p.win.__nexoEstadosBack(); };
 
 (async () => {
   const radio = new Radio();
@@ -59,19 +63,20 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#estados-screen
   await sleep(400);
   const chipA = chips(B).find((c) => /A/.test(c.textContent) && !/Mi estado|Tu estado/.test(c.textContent));
   r.tira_muestra_a_A = !!chipA;
+  openEst(B); await sleep(300);
   if (chipA) { click(B.win, chipA); await sleep(300); }
   r.ver_muestra_texto = /hola mundo 24h/.test((B.win.document.getElementById('estado-view') || {}).textContent || '');
   // 2999 (dueño 10-11): en el estado NO está el botón flotante de agregar contacto; tocar el NOMBRE abre el chat con el dueño del estado
   { const fab = B.win.document.getElementById('ble-fab-btn');
     r.fab_existe = !!fab;
-    r.fab_oculto_en_estado = !!fab && fab.style.display === 'none';
+    r.fab_oculto_en_estado = !!fab && B.win.document.body.classList.contains('nx-est-on');   // (estados.css lo oculta en Estados)
     const who = B.win.document.getElementById('estado-who');
     r.nombre_tocable = !!who && /›/.test(who.textContent);
     if (who) { click(B.win, who); await sleep(1500); }
-    r.nombre_cierra_el_estado = !B.win.document.getElementById('estado-overlay');
+    r.nombre_cierra_el_estado = !B.win.document.body.classList.contains('nx-est-on');
     r.nombre_abre_chat = String((B.win.NEXO.app.activeContact && B.win.NEXO.app.activeContact.nexoId) || '').toLowerCase() === idA;
-    r.fab_vuelve = !!fab && fab.style.display !== 'none';
-    await closeChat(B); }
+    await closeChat(B);
+    r.fab_vuelve = !!fab && fab.style.display !== 'none' && !B.win.document.body.classList.contains('nx-est-on'); }
   { const o = B.win.document.getElementById('estado-overlay'); if (o) o.remove(); }
 
   // 2b. Fase 2 (foto en el estado, #dueño): A publica un estado CON foto → le llega a B con la imagen; la tira y el
@@ -80,15 +85,17 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#estados-screen
   A.win.NEXO_setMyStatus('mirá esto', FOTO);
   r.foto_llega_a_B = await wait(() => { const s = B.win.NEXO_statusOf(idA); return !!(s && s.img === FOTO && s.t === 'mirá esto'); }, 30);
   await sleep(400);
-  const chipFoto = chips(B).find((c) => c.querySelector('img') && !/Mi estado|Tu estado/.test(c.textContent));
+  // 3230: el círculo es el de la persona (su foto de perfil); la foto del estado se ve a pantalla completa al ir a los suyos
+  const chipFoto = chips(B).find((c) => c.getAttribute('data-nx') === idA);
   r.tira_muestra_foto = !!chipFoto;
-  if (chipFoto) { click(B.win, chipFoto); await sleep(300); }
+  openEst(B); await sleep(300);   // 3230: al entrar se ve SOLO el que no he visto (la foto), sin tocar nada
   r.ver_muestra_foto = !!(B.win.document.querySelector('#estado-view img'));
 
-  // 2c. Fase 2 («me gusta», #dueño): B le da me gusta al estado de A → a A le llega (myLikes pasa a 1); el botón existe.
-  const likeBtn = B.win.document.getElementById('estado-like');
-  r.boton_like = !!likeBtn;
-  if (likeBtn) click(B.win, likeBtn);
+  // 2c. Fase 2 («me gusta», #dueño): B le da me gusta al estado de A → a A le llega (myLikes pasa a 1). 3230: con DOS TOQUES en el
+  //     estado (ya no hay botón).
+  const vista = B.win.document.getElementById('estado-view');
+  r.boton_like = !!vista && !B.win.document.getElementById('estado-like');
+  if (vista) vista.dispatchEvent(new B.win.MouseEvent('dblclick', { bubbles: true }));
   r.like_llega_a_A = await wait(() => A.win.NEXO_myLikes() === 1, 30);
   { const o = B.win.document.getElementById('estado-overlay'); if (o) o.remove(); }
 
@@ -103,7 +110,7 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#estados-screen
   r.audio_llega_a_B = await wait(() => { const s = B.win.NEXO_statusOf(idA); return !!(s && s.aud === AUDIO); }, 30);
   await sleep(400);
   const chipAud = chips(B).find((c) => !/Mi estado|Tu estado/.test(c.textContent));
-  if (chipAud) { click(B.win, chipAud); await sleep(300); }
+  if (chipAud) { click(B.win, chipAud); await sleep(300); }   // (Estados sigue abierta)
   r.ver_muestra_audio = !!(B.win.document.querySelector('#estado-view #estado-audio'));
   { const o = B.win.document.getElementById('estado-overlay'); if (o) o.remove(); }
   B.win.NEXO_applyStatus(idA, { t: 'y', aud: 'data:text/plain;base64,QQ==', ts: Date.now() });

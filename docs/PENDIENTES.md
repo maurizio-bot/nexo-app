@@ -9,6 +9,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🆕 17-11 23:40 — dueño: los estados como TikTok (3230, hecho; falta que lo pruebe en el teléfono)
+- Hecho en 3230 (ver PROGRESO). Decisiones mías para revisar con el dueño: (1) el orden pone primero a los contactos con algo sin ver (el más viejo primero) y después los ya vistos; (2) el texto «1/3» junto a la hora indica que hay más de lado (sin puntitos); (3) tocar mi círculo siempre abre «publicar»; mis me gusta y comentarios se ven tocando «❤️ n 💬 n ›» abajo en mis estados; (4) un audio suena una vez (no se repite como el video).
+- Pendiente: «Mis estados» (lista para quitar uno) y la ventana de publicar siguen con su diseño de antes.
+
 ## 🆕 17-11 23:15 — dueño: botones de la videollamada al voltear la cámara, novedades, botón de regreso en Ajustes
 - 18-11: su diagnóstico 23:02 no traía el giro de cámara ni los botones (no se apuntaban). 3229 los apunta; preguntado al dueño si «voltear» es el botón Girar o girar el teléfono. Con el próximo diagnóstico se ve qué pasa.
 - **Videollamada: «al voltear la cámara no aparecen los botones, y al regresar a la vista normal ya no aparecen».** En Chromium real

@@ -1878,6 +1878,10 @@
     {
      "fallo": "3225 (dueño 17-11, «sí»): los avisos cortos de la app («Copiado», «Reenviado a…», «La foto pesa más de 5 MB…», errores de permisos y los de estados; ~70 en el código) no se veían desde el 10-09: la regla «FIX #2» de critical.css escondía todo lo que tuviera «toast» en su clase o id (pensada para los paneles de pruebas REM). Ahora se exceptúan #perm-error-toast y #nexo-est-toast; los de pruebas siguen ocultos (comprobado en Chromium real)",
      "prueba": "AVISOS CORTOS"
+    },
+    {
+     "fallo": "3230 (dueño 17-11 23:40): los estados no eran como los quiere: «Mi estado» al lado de su círculo, los contactos en lista VERTICAL, había que tocar cada estado para abrir un visor con botones (‹ › «Me gusta» «Enviar»), el video salía al empezar con el cuadro gris y el triángulo de «play» del sistema y la foto/video no llenaban la pantalla. Ahora es como TikTok: círculos de lado arriba (el mío con «Mi estado» debajo), cada estado a toda la pantalla reproduciéndose solo al entrar (los míos o el más viejo), de abajo hacia arriba el siguiente contacto, de lado otro del mismo, aro azul→blanco al verlos, dos toques = me gusta, sin botones",
+     "prueba": "LOS ESTADOS COMO TIKTOK"
     }
    ],
    "debiles": [

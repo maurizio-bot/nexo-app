@@ -4,8 +4,9 @@
 // Chromium real a 360 px, toques de verdad por CDP. A (Ana) y B (Beto; en la lista de A sale como «B») emparejados; B publica un estado.
 //  E1  Contactos ya NO tiene la tira de estados (ni ningún estado) y la pantalla Estados no se ve
 //  E2  la pantalla sigue al dedo; un desliz corto y lento vuelve a Contactos
-//  E3  deslizar ← desde el centro abre Estados: título, «Mi estado» primero, el estado de B (aro sin ver), sin botones, cabe en 360
-//  E4  tocar el estado de B abre el visor de siempre; «atrás» cierra el visor y sigue en Estados; el aro pasa a «visto»
+//  E3  deslizar ← desde el centro abre Estados: «Mi estado» primero, el círculo de B, sin botones, cabe en 360 y (3230) el estado
+//      de B ya se ve a pantalla completa sin tocar nada
+//  E4  tocar el círculo de B lleva a su estado (sin ventana aparte: sigue en Estados); el aro pasa a «visto»
 //  E5  deslizar hacia abajo en Estados actualiza («[ACTUALIZAR] Deslizar») y no cambia de pantalla
 //  E6  deslizar → vuelve a Contactos (y vuelve el botón de agregar); el «atrás» de Android en Estados vuelve; sin nada abierto, false
 //  E7  deslizar vertical en Contactos hace scroll y no cambia; un gesto que empieza a 10 px del borde derecho no abre Estados; deslizar
@@ -113,24 +114,23 @@ const fin = (ok) => {
   const cont = await A.evaluate((id) => {
     const sc = document.getElementById('estados-screen'); if (!sc) return null;
     const rows = Array.from(sc.querySelectorAll('.estado-chip')), beto = rows.find((x) => x.getAttribute('data-nx') === id);
-    const av = beto && beto.querySelector('div');
-    return { titulo: (sc.querySelector('.nx-est-title') || {}).textContent || '', primero_mi: !!rows[0] && /Mi estado/.test(rows[0].textContent), beto: !!beto,
-      beto_sub: beto ? beto.textContent : '', aro_sin_ver: !!av && !av.classList.contains('visto'), seccion: (sc.querySelector('#est-sec-contacts .nx-est-sec-t') || {}).textContent || '',
-      botones: sc.querySelectorAll('button').length, cabe: sc.scrollWidth <= innerWidth && rows.every((x) => x.getBoundingClientRect().right <= innerWidth) };
+    const v = document.getElementById('estado-view'), q = v && v.getBoundingClientRect();
+    return { primero_mi: !!rows[0] && /Mi estado/.test(rows[0].textContent), beto: !!beto, beto_sub: beto ? beto.textContent : '',
+      botones: sc.querySelectorAll('button').length, cabe: sc.scrollWidth <= innerWidth && rows.every((x) => x.getBoundingClientRect().right <= innerWidth),
+      a_la_vista: v ? v.textContent.slice(0, 40) : '', completa: !!q && q.width === innerWidth && q.height === innerHeight };
   }, idB);
   r.contenido = cont;
-  r.E3_contenido = !!cont && cont.titulo === 'Estados' && cont.primero_mi && cont.beto && cont.aro_sin_ver && cont.seccion === 'De tus contactos' && cont.botones === 0 && cont.cabe;
+  r.E3_contenido = !!cont && cont.primero_mi && cont.beto && cont.botones === 0 && cont.cabe && /hola desde Beto/.test(cont.a_la_vista) && cont.completa;
   await shot('estados.png');
 
-  // E4: tocar el estado de Beto abre el visor; «atrás» cierra el visor y se queda en Estados; el aro pasa a visto
+  // E4: tocar el círculo de Beto lleva a su estado, sin ventana aparte (sigue en Estados); el aro pasa a visto
   const pos = await A.evaluate((id) => { const b = document.querySelector('#estados-screen .estado-chip[data-nx="' + id + '"]'); if (!b) return null; const q = b.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; }, idB);
   if (pos) await tap(pos.x, pos.y);
   r.E4_tocar_abre_visor = /hola desde Beto/.test(await A.evaluate(() => (document.getElementById('estado-view') || {}).textContent || ''));
   await shot('visor.png');
-  const back1 = await A.evaluate(() => window.__nexoHandleBack());
-  await sleep(400); s = await st();
-  r.E4_atras_cierra_visor = back1 === true && !(await A.evaluate(() => !!document.getElementById('estado-overlay'))) && enEstados(s);
-  r.E4_aro_visto = await A.evaluate((id) => { const b = document.querySelector('#estados-screen .estado-chip[data-nx="' + id + '"]'); const av = b && b.querySelector('div'); return !!av && av.classList.contains('visto'); }, idB);
+  s = await st();
+  r.E4_atras_cierra_visor = !(await A.evaluate(() => !!document.getElementById('estado-overlay'))) && enEstados(s);
+  r.E4_aro_visto = await A.evaluate((id) => { const b = document.querySelector('#estados-screen .estado-chip[data-nx="' + id + '"]'); const av = b && b.querySelector('.nx-est-av'); return !!av && av.classList.contains('visto'); }, idB);
   await shot('estados_visto.png');
 
   // E5: deslizar hacia abajo en Estados actualiza

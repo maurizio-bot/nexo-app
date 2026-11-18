@@ -12,8 +12,7 @@
  *   (estados_screen.js). Aquí quedan el visor y «Mis estados»; publicar (la ventana «Mi estado») está en estados_compose.js
  *   desde la reestructuración del 17-11. La pantalla los abre con lo que se exporta abajo.
  */
-import { _getBLEContacts, _normId, _saveBLEContacts, _getGradientForUUID, _getInitials } from './ble_helpers.js';
-import { paintAvatar } from './avatar.js';
+import { _getBLEContacts, _normId, _saveBLEContacts } from './ble_helpers.js';
 import { _sendTextTo } from './send.js';
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
 import { _b64ToBlob } from './video_tools.js';
@@ -592,10 +591,13 @@ export function activeStatusContacts() {
 }
 
 // ---------- Interfaz: visor, publicar y «Mis estados» (la pantalla «Estados» los abre: estados_screen.js, 3169) ----------
-function _esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function _ago(ts) { var m = Math.floor((Date.now() - ts) / 60000); if (m < 1) return t('grp_ago_now', 'ahora'); if (m < 60) return t('grp_ago_prefix', 'hace ') + m + t('grp_ago_min', ' min'); return t('grp_ago_prefix', 'hace ') + Math.floor(m / 60) + t('grp_ago_h', ' h'); }
 export function statusAgo(ts) { return _ago(ts); }
-export function openStatusViewer(c) { _view(c); }      // c: un elemento de activeStatusContacts()
+// 3230: ver los estados de un contacto = la pantalla Estados a pantalla completa en los suyos (estados_feed.js; antes, una ventana con
+// botones ‹ › «Me gusta» y «Enviar»)
+export function openStatusViewer(c) { if (typeof window.__nexoEstadosOpen === 'function') window.__nexoEstadosOpen(c && c.nx); }
+export function statusSeen(nx, sid) { var s = _seen.get(_normId(nx)); return !!(s && s.has(sid)); }
+export function markStatusSeen(nx, sid) { nx = _normId(nx); _markSeen(nx, sid); _emit(nx); }
 export function openStatusCompose() { _compose(); }
 export function openMyStatuses() { _myView(); }
 // 2999 (dueño 10-11: «en un estado no hay razón de que esté el botón de agregar contacto»): el botón flotante de la burbuja de chat
@@ -640,8 +642,11 @@ function _playMedia(el, d, holder, what) {
     el.style.display = 'none';
     el.parentNode.insertBefore(note, el.nextSibling);
   });
+  if (el.tagName === 'VIDEO' && !el.getAttribute('poster')) el.setAttribute('poster', _POSTER); // 3230: sin el cuadro gris con ▶ del sistema
   el.src = u || d;
 }
+var _POSTER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+export { _playMedia as playStatusMedia, _freeUrls as freeStatusUrls };
 function _overlay() {
   var o = document.getElementById('estado-overlay');
   if (o) o.remove();
@@ -655,110 +660,6 @@ function _overlay() {
   try { var mo = new MutationObserver(function() { if (!o.isConnected) { mo.disconnect(); _freeUrls(o); } }); mo.observe(document.body, { childList: true }); } catch (e) {}
   return o;
 }
-// Ver los estados de un contacto: uno a la vez (‹ ›), empezando por el primero sin ver; me gusta y comentario por estado
-function _view(c) {
-  var o = _overlay();
-  var items = statusesOf(c.nx);
-  if (!items.length) { o.remove(); return; }
-  var seen = _seen.get(c.nx) || new Set(); _seen.set(c.nx, seen);
-  var idx = items.findIndex(function(x) { return !seen.has(x.sid); });
-  if (idx < 0) idx = 0;
-  var box = document.createElement('div');
-  box.id = 'estado-view';
-  box.style.cssText = 'max-width:360px;width:100%;color:#fff;display:flex;flex-direction:column;gap:10px;';
-  o.appendChild(box);
-  var paint = function() {
-    var it = items[idx];
-    _markSeen(c.nx, it.sid); // 3059: queda guardado (no vuelve a salir como nuevo al reabrir la app)
-    _freeUrls(o);   // 3200: las URL blob: del estado anterior
-    box.innerHTML = '';
-    // 2999 (dueño 10-11): tocar el NOMBRE del dueño del estado abre el chat con él
-    var head = document.createElement('div'); head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
-    // 3140: el círculo de color de la persona junto a su nombre (hermano de #estado-who, que conserva su «›»)
-    var whoWrap = document.createElement('div'); whoWrap.style.cssText = 'display:flex;align-items:center;gap:10px;min-width:0;';
-    var av = document.createElement('div'); av.className = 'ble-contact-avatar ' + _getGradientForUUID(c.nx); av.style.cssText = 'width:36px;height:36px;font-size:13px;cursor:pointer;';
-    av.textContent = _getInitials(c.name); try { paintAvatar(av, c.nx); } catch (e) {}
-    var who = document.createElement('div'); who.id = 'estado-who'; who.style.cssText = 'font-size:15.5px;font-weight:600;color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:4px 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-    who.textContent = c.name + ' ›'; who.title = t('est_open_chat', 'Abrir el chat');
-    who.addEventListener('click', function(e) {
-      e.stopPropagation();
-      var bi = window.bleInterface;
-      o.remove();
-      try { if (bi && typeof bi.openChat === 'function') bi.openChat(c.nx).catch(function() {}); } catch (err) {}
-    });
-    av.addEventListener('click', function(e) { e.stopPropagation(); who.click(); });
-    whoWrap.appendChild(av); whoWrap.appendChild(who);
-    var cnt = document.createElement('div'); cnt.id = 'estado-pos'; cnt.style.cssText = 'font-size:12px;color:var(--nx-muted);'; cnt.textContent = (idx + 1) + '/' + items.length;
-    head.appendChild(whoWrap); head.appendChild(cnt);
-    var when = document.createElement('div'); when.style.cssText = 'font-size:12px;color:var(--nx-muted);'; when.textContent = _ago(it.ts);
-    box.appendChild(head); box.appendChild(when);
-    if (it.img) { var im = document.createElement('img'); im.src = it.img; im.style.cssText = 'width:100%;max-height:55vh;object-fit:contain;border-radius:12px;background:#000;'; box.appendChild(im); }
-    // 3200: video y audio desde una URL blob: (la CSP no deja «data:»); si no se pueden abrir aquí, un aviso
-    if (it.vid) { var vd = document.createElement('video'); vd.id = 'estado-video'; vd.controls = true; vd.playsInline = true; vd.preload = 'metadata'; vd.style.cssText = 'width:100%;max-height:55vh;border-radius:12px;background:#000;'; box.appendChild(vd); _playMedia(vd, it.vid, o, c.nx + ' ' + it.sid); }
-    if (it.aud) { var au = document.createElement('audio'); au.id = 'estado-audio'; au.controls = true; au.style.cssText = 'width:100%;'; box.appendChild(au); _playMedia(au, it.aud, o, c.nx + ' ' + it.sid); }
-    if (it.big) _bigEl(box, c.nx, it, o);
-    if (it.t) { var txt = document.createElement('div'); txt.style.cssText = 'font-size:20px;line-height:1.5;white-space:pre-wrap;word-break:break-word;'; txt.innerHTML = _esc(it.t); box.appendChild(txt); }
-    // ‹ anterior / siguiente ›
-    if (items.length > 1) {
-      var nav = document.createElement('div'); nav.style.cssText = 'display:flex;gap:10px;';
-      var mk = function(id, label, dis, fn) { var b = document.createElement('button'); b.id = id; b.textContent = label; b.disabled = dis; b.style.cssText = 'flex:1;padding:8px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:14px;color:#fff;cursor:pointer;' + (dis ? 'opacity:0.35;' : ''); b.addEventListener('click', function(e) { e.stopPropagation(); fn(); }); return b; };
-      nav.appendChild(mk('estado-prev', '‹', idx === 0, function() { idx--; paint(); }));
-      nav.appendChild(mk('estado-next', '›', idx >= items.length - 1, function() { idx++; paint(); }));
-      box.appendChild(nav);
-    }
-    // «Me gusta»
-    var like = document.createElement('button');
-    like.id = 'estado-like';
-    like.style.cssText = 'align-self:flex-start;padding:9px 16px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:20px;color:#fff;font-size:15px;cursor:pointer;';
-    var liked = iLiked(c.nx, it.sid);
-    like.textContent = liked ? '❤️ ' + t('est_liked', 'Te gustó') : '🤍 ' + t('est_like', 'Me gusta');
-    like.disabled = liked;
-    like.addEventListener('click', function(e) {
-      e.stopPropagation();
-      if (likeStatus(c.nx, it.sid)) { like.textContent = '❤️ ' + t('est_liked', 'Te gustó'); like.disabled = true; like.style.opacity = '0.8'; }
-    });
-    box.appendChild(like);
-    // Comentario: le llega SOLO al dueño del estado
-    var crow = document.createElement('div'); crow.style.cssText = 'display:flex;gap:8px;';
-    var cin = document.createElement('input'); cin.id = 'estado-comentar-input'; cin.type = 'text'; cin.maxLength = MAX_LEN;
-    cin.placeholder = t('est_comment_ph', 'Comentar (solo lo verá ') + c.name + ')';
-    cin.style.cssText = 'flex:1;min-width:0;background:var(--nx-surface);border:1px solid var(--nx-line);border-radius:18px;color:#fff;font-size:14px;padding:9px 12px;outline:none;';
-    cin.addEventListener('click', function(e) { e.stopPropagation(); });
-    var cbtn = document.createElement('button'); cbtn.id = 'estado-comentar-btn'; cbtn.textContent = t('est_comment_send', 'Enviar');
-    cbtn.style.cssText = 'padding:9px 14px;background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));border:none;border-radius:18px;color:#fff;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(0,200,255,0.35);';
-    cbtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      if (commentStatus(c.nx, it.sid, cin.value)) { cin.value = ''; _toast(t('est_comment_sent', 'Comentario enviado a ') + c.name); }
-    });
-    crow.appendChild(cin); crow.appendChild(cbtn);
-    box.appendChild(crow);
-    _emit(c.nx);   // el aro de «visto» de la pantalla Estados
-  };
-  paint();
-}
-
-// Media grande en el visor: «Cargando…» mientras se baja (buzón de archivos o enlace directo)
-function _bigEl(box, owner, it, holder) {
-  var el;
-  var tag = { img: 'img', vid: 'video', aud: 'audio' }[it.big.k];
-  var css = { img: 'width:100%;max-height:55vh;object-fit:contain;border-radius:12px;background:#000;', vid: 'width:100%;max-height:55vh;border-radius:12px;background:#000;', aud: 'width:100%;' }[it.big.k];
-  el = document.createElement(tag);
-  el.id = { img: 'estado-img-grande', vid: 'estado-video', aud: 'estado-audio' }[it.big.k];
-  el.style.cssText = css;
-  if (tag !== 'img') el.controls = true;
-  if (tag === 'video') el.playsInline = true;
-  if (tag === 'video') el.preload = 'metadata';
-  var ph = document.createElement('div'); ph.id = 'estado-cargando'; ph.style.cssText = 'font-size:13px;color:var(--nx-muted);'; ph.textContent = '⏳ ' + t('est_loading', 'Cargando…') + ' (' + Math.round(it.big.size / 1024) + ' KB)';
-  el.style.display = 'none';
-  box.appendChild(ph); box.appendChild(el);
-  statusMedia(owner, it).then(function(d) {
-    if (d && tag === 'img') el.src = d;
-    else if (d) _playMedia(el, d, holder, owner + ' ' + it.sid);   // 3200: blob:, no «data:»
-    if (d) { el.style.display = ''; ph.remove(); }
-    else ph.textContent = t('est_media_fail', 'No se pudo bajar todavía: se reintenta cuando el otro esté cerca o en línea');
-  });
-}
-
 // Mis estados: cada uno con quién le dio me gusta y los comentarios (solo los veo yo); quitar uno; «+ Nuevo»
 function _myView() {
   var o = _overlay();
@@ -849,12 +750,16 @@ function _attachPull() {
 }
 // el: lo que se desliza (y su scroll); indId: id del aviso «Desliza / Suelta para actualizar» que sale arriba de el.
 // 3169: si el gesto es más de lado que hacia abajo (cambiar de pantalla deslizando) no cuenta como «actualizar».
-export function attachPullRefresh(el, indId) {
+// host (3230): el aviso va encima, dentro de host, sin empujar lo que se desliza (los estados a pantalla completa).
+export function attachPullRefresh(el, indId, host) {
   if (!el || el._nxPull) return;
   el._nxPull = true;
   var y0 = null, x0 = 0, dy = 0, ind = null;
   var showInd = function(txt) {
-    if (!ind) { ind = document.createElement('div'); ind.id = indId; ind.style.cssText = 'text-align:center;font-size:12px;color:var(--nx-muted);padding:6px 0;'; el.insertBefore(ind, el.firstChild); }
+    if (!ind) {
+      ind = document.createElement('div'); ind.id = indId; ind.style.cssText = 'text-align:center;font-size:12px;color:var(--nx-muted);padding:6px 0;';
+      if (host) { ind.className = 'nx-est-pullind'; host.appendChild(ind); } else el.insertBefore(ind, el.firstChild);
+    }
     ind.textContent = txt;
   };
   var hideInd = function(ms) { setTimeout(function() { if (ind) { try { ind.remove(); } catch (e) {} ind = null; } }, ms || 0); };

@@ -46,6 +46,11 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
 // 3169: los estados ya no están en una tira arriba de Contactos sino en su propia pantalla (estados_screen.js): «Mi estado» y, por
 // contacto, «N estados · hace…»
 const chips = (p) => Array.from(p.win.document.querySelectorAll('#estados-screen .estado-chip'));
+// 3230: los estados a pantalla completa (estados_feed.js): al entrar se ve solo el primero sin ver; de lado = el siguiente del mismo
+// contacto (__nexoEstGo, como el dedo); me gusta = dos toques; comentar = la tecla de enviar; los círculos son los de cada persona
+const openEst = (p) => { if (p.win.__nexoEstadosOpen) p.win.__nexoEstadosOpen(); };
+const closeEst = (p) => { if (p.win.__nexoEstadosBack) p.win.__nexoEstadosBack(); };
+const chipOf = (p, nx) => chips(p).find((c) => c.getAttribute('data-nx') === nx);
 
 (async () => {
   const radio = new Radio();
@@ -65,31 +70,33 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#estados-screen
   r.B_tiene_tres = await wait(() => (B.win.NEXO_statusesOf(idA) || []).map((x) => x.t).join(',') === 'uno,dos,tres', 40);
   r.B_no_mensaje_visible = !(await B.win.vaultLoadMessages(idA)).some((m) => /nexo_act|"uno"/.test(m.content || ''));
   await sleep(400);
-  const chipA = chips(B).find((c) => /\D3 estados/.test(c.textContent));   // 3169: en la pantalla Estados, «3 estados · ahora»
-  r.tira_cuenta_3 = !!chipA;
-
-  // 2. B los ve uno a uno (1/3 → 2/3) y le da me gusta al 2.º → A sabe QUIÉN (B) y en cuál
-  if (chipA) { click(B.win, chipA); await sleep(300); }
+  const chipA = chipOf(B, idA);
   const pos = () => (B.win.document.getElementById('estado-pos') || {}).textContent;
+  // 2. B entra en Estados: sin tocar nada, el 1.º de A a pantalla completa (1/3); de lado, el 2.º; dos toques = me gusta → A sabe
+  //    QUIÉN (B) y en cuál
+  openEst(B); await sleep(300);
+  r.tira_cuenta_3 = !!chipA && pos() === '1/3';
   r.visor_empieza_1 = pos() === '1/3' && /uno/.test((B.win.document.getElementById('estado-view') || {}).textContent || '');
-  click(B.win, B.win.document.getElementById('estado-next')); await sleep(200);
+  B.win.__nexoEstGo(0, 1); await sleep(200);
   r.visor_siguiente_2 = pos() === '2/3' && /dos/.test(B.win.document.getElementById('estado-view').textContent);
-  click(B.win, B.win.document.getElementById('estado-like')); await sleep(200);
+  B.win.document.getElementById('estado-view').dispatchEvent(new B.win.MouseEvent('dblclick', { bubbles: true })); await sleep(200);
   r.like_llega_con_quien = await wait(() => { const w = A.win.NEXO_whoLiked(s2); return w.length === 1 && w[0].nx === idB && w[0].name === 'B'; }, 30);
   r.like_solo_en_el_2 = A.win.NEXO_myLikes(s1) === 0 && A.win.NEXO_myLikes(s2) === 1 && A.win.NEXO_myLikes(s3) === 0;
 
   // 3. B comenta el 3.º → le llega SOLO a A (dueño), con el nombre de B
-  click(B.win, B.win.document.getElementById('estado-next')); await sleep(200);
+  B.win.__nexoEstGo(0, 1); await sleep(200);
   const cin = B.win.document.getElementById('estado-comentar-input');
-  if (cin) { cin.value = 'qué bonito'; click(B.win, B.win.document.getElementById('estado-comentar-btn')); }
+  if (cin) { cin.value = 'qué bonito'; cin.dispatchEvent(new B.win.KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true, cancelable: true })); }
   r.comentario_llega_a_A = await wait(() => { const c = A.win.NEXO_myComments(s3); return c.length === 1 && c[0].t === 'qué bonito' && c[0].name === 'B'; }, 30);
   r.comentario_no_en_otro = A.win.NEXO_myComments(s1).length === 0 && A.win.NEXO_myComments(s2).length === 0;
   r.B_no_ve_comentarios = !(B.win.NEXO_statusesOf(idA) || []).some((x) => x.comments && x.comments.length);
-  ov(B);
+  ov(B); closeEst(B);
 
   // 4. «Mis estados» en A: se ve quién dio me gusta y el comentario
-  const miChip = chips(A).find((c) => /Mi estado/.test(c.textContent));
-  if (miChip) { click(A.win, miChip); await sleep(300); }
+  // 3230: los míos salen primero al entrar; abajo, «❤️ n  💬 n ›» abre «Mis estados»
+  openEst(A); await sleep(300);
+  const mst = A.win.document.querySelector('#estado-view .nx-est-mystats');
+  if (mst) { click(A.win, mst); await sleep(300); }
   const mios = A.win.document.getElementById('estado-mios');
   r.mis_estados_abre = !!mios;
   const card2 = mios && mios.querySelector('.estado-mio[data-sid="' + s2 + '"]');
@@ -100,7 +107,7 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#estados-screen
   const card1 = mios && mios.querySelector('.estado-mio[data-sid="' + s1 + '"]');
   if (card1) click(A.win, card1.querySelector('.estado-quitar'));
   r.quitar_uno_en_B = await wait(() => (B.win.NEXO_statusesOf(idA) || []).map((x) => x.t).join(',') === 'dos,tres', 30);
-  ov(A);
+  ov(A); closeEst(A);
 
   // 6. Tope de 10: con 10 activos no se publica otro
   for (let i = 0; i < 8; i++) A.win.NEXO_addMyStatus('extra ' + i);
@@ -125,13 +132,15 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#estados-screen
 
   // 9. (3059, dueño 13-11: «cuando ves un estado se quita el marcador azul, pero al cerrar y volver a abrir la app vuelven a aparecer
   //    como nuevos») B ve los 10 de A (aro gris) y se reinicia: siguen vistos (aro gris) y su me gusta del 2.º sigue dado
-  const ring = (p) => { const c = chips(p).find((x) => /\D10 estados/.test(x.textContent)); const d = c && c.querySelector('div'); return d ? String(d.style.borderColor || '') : null; };
-  const gris = (v) => /255,\s*255,\s*255,\s*0\.25/.test(v || '');
-  const chip10 = chips(B).find((c) => /\D10 estados/.test(c.textContent));
+  // 3230: el aro de A pasa de azul a BLANCO (clase «visto») cuando B los vio todos
+  const ring = (p) => { const c = chipOf(p, idA); const d = c && c.querySelector('.nx-est-av'); return d ? (d.classList.contains('visto') ? 'visto' : 'nuevo') : null; };
+  const gris = (v) => v === 'visto';
+  openEst(B); await sleep(300);
+  const chip10 = chipOf(B, idA);
   if (chip10) { click(B.win, chip10); await sleep(300); }
-  for (let i = 0; i < 12 && pos() !== '10/10'; i++) { click(B.win, B.win.document.getElementById('estado-next')); await sleep(150); }
+  for (let i = 0; i < 12 && pos() !== '10/10'; i++) { B.win.__nexoEstGo(0, 1); await sleep(150); }
   r.B_vio_los_10 = pos() === '10/10';
-  ov(B); await sleep(1200);
+  closeEst(B); await sleep(1200);
   r.aro_gris_antes = gris(ring(B));
   B.win.close(); nB.destroyActivity(); await sleep(1500); nB.load(); B = await boot('B', nB); await sleep(1500);
   await wait(() => (B.win.NEXO_statusesOf(idA) || []).length === 10, 30);

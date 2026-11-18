@@ -7,13 +7,13 @@
  *    Android: ahí no se intercepta nada). La pantalla sigue al dedo; al soltar pasa con un cuarto del ancho o con un tirón rápido.
  *    Si domina lo vertical es scroll (o «deslizar para actualizar»), no cambio de pantalla.
  *  - Estados → Contactos: deslizar de izquierda a derecha, o el «atrás» de Android (chat_nav.js llama a __nexoEstadosBack).
- *  - La pantalla: título (solo texto), «Mi estado» (publicar / mis estados, como antes) y la sección «De tus contactos» (los no vistos
- *    primero, con el aro celeste = sin ver, gris = visto); tocar uno abre el visor de siempre (estados.js). Deslizar hacia abajo
- *    actualiza (refreshAll, «[ACTUALIZAR] Deslizar»). Las secciones van en SECCIONES: «Público» se añadirá debajo sin rehacer nada.
+ *  - La pantalla (3230, dueño 17-11 23:40): los estados como TikTok —arriba los círculos de lado, debajo cada estado a pantalla
+ *    completa reproduciéndose solo—; todo eso está en estados_feed.js. Deslizar hacia abajo en el primero actualiza (refreshAll).
+ *  - Dentro de Estados, deslizar de lado mueve entre los estados de un mismo contacto; solo en el PRIMERO de ellos, deslizar de
+ *    izquierda a derecha vuelve a Contactos. La fila de círculos y el comentario no cambian de pantalla.
  */
-import { myStatuses, activeStatusContacts, openStatusViewer, openStatusCompose, openMyStatuses, attachPullRefresh, statusAgo } from './estados.js';
-import { _getGradientForUUID, _getInitials } from './ble_helpers.js';
-import { paintAvatar } from './avatar.js';
+import { attachPullRefresh } from './estados.js';
+import { feedMount, feedRender, feedShow, feedGoNx } from './estados_feed.js';
 import { t } from './i18n.js';
 
 var EDGE_PX = 32;          // franja de cada borde reservada al gesto «atrás» del sistema
@@ -31,12 +31,6 @@ var _anim = null;          // temporizador del acomodo al soltar
 var _g = null;             // gesto en curso: { from: 'list'|'scr', x0, y0, x, t, v, on, W }
 
 // ---------- La pantalla ----------
-// Cada sección pinta lo suyo en su <section>; «title» (si lo tiene) es el rótulo de arriba. «Público» irá al final de esta lista.
-var SECCIONES = [
-  { id: 'mine', paint: _paintMine },
-  { id: 'contacts', title: function() { return t('est_sec_contacts', 'De tus contactos'); }, paint: _paintContacts },
-];
-
 function _screen() {
   if (_scr && _scr.isConnected) return _scr;
   if (!document.body) return null;
@@ -44,67 +38,11 @@ function _screen() {
   _scr.id = 'estados-screen';
   _scr.className = 'nx-est-scr';
   _scr.setAttribute('aria-hidden', 'true');
-  var head = document.createElement('div'); head.className = 'nx-page-head nx-est-head';
-  var h = document.createElement('div'); h.className = 'nx-page-title nx-est-title'; h.textContent = t('est_screen_title', 'Estados');
-  head.appendChild(h);
-  var body = document.createElement('div'); body.id = 'estados-screen-body'; body.className = 'nx-est-body';
-  SECCIONES.forEach(function(s) { var el = document.createElement('section'); el.id = 'est-sec-' + s.id; el.className = 'nx-est-sec'; el.setAttribute('data-sec', s.id); body.appendChild(el); });
-  _scr.appendChild(head); _scr.appendChild(body);
   document.body.appendChild(_scr);
-  attachPullRefresh(body, 'estados-scr-pull');
+  attachPullRefresh(feedMount(_scr), 'estados-scr-pull', _scr);
   return _scr;
 }
-
-function _render() {
-  if (!_screen()) return;
-  SECCIONES.forEach(function(s) {
-    var el = document.getElementById('est-sec-' + s.id); if (!el) return;
-    el.innerHTML = '';
-    if (s.title) { var h = document.createElement('div'); h.className = 'nx-est-sec-t'; h.textContent = s.title(); el.appendChild(h); }
-    s.paint(el);
-  });
-}
-
-// Una fila: el círculo (con el aro) y dos líneas. El círculo es el PRIMER div de la fila: las pruebas leen su aro (border).
-function _row(o) {
-  var w = document.createElement('div');
-  w.className = 'estado-chip nx-est-row' + (o.mine ? ' nx-est-mine' : '');
-  if (o.nx) w.setAttribute('data-nx', o.nx);
-  var c = document.createElement('div');
-  c.className = 'nx-est-av' + (o.nx ? ' ble-contact-avatar ' + _getGradientForUUID(o.nx) : '') + (o.add ? ' nx-est-add' : '') + (o.ring ? '' : ' nx-est-noring');
-  if (o.img) { var im = document.createElement('img'); im.src = o.img; im.alt = ''; c.appendChild(im); }
-  else if (o.nx) { c.textContent = _getInitials(o.label); try { paintAvatar(c, o.nx); } catch (e) {} }
-  else c.textContent = o.letter || '';
-  if (o.seen) { c.classList.add('visto'); c.style.borderColor = 'rgba(255,255,255,0.25)'; }   // ya visto: aro gris (como la tira de antes)
-  var tx = document.createElement('div'); tx.className = 'nx-est-txt';
-  var nm = document.createElement('div'); nm.className = 'nx-est-name'; nm.textContent = o.label || '';
-  var sb = document.createElement('div'); sb.className = 'nx-est-sub'; sb.textContent = o.sub || '';
-  tx.appendChild(nm); tx.appendChild(sb);
-  w.appendChild(c); w.appendChild(tx);
-  w.addEventListener('click', function(e) { e.stopPropagation(); o.onTap(); });
-  return w;
-}
-function _countAgo(n, ts) { return (n > 1 ? n + ' ' + t('est_count', 'estados') + ' · ' : '') + statusAgo(ts); }
-
-// «Mi estado»: sin estados, el círculo con ＋ (tocar = publicar); con estados, la última foto o su inicial (tocar = «Mis estados»)
-function _paintMine(el) {
-  var mine = myStatuses(), last = mine[mine.length - 1];
-  var img = (mine.filter(function(x) { return x.img; }).pop() || {}).img || '';
-  el.appendChild(_row({
-    mine: true, label: t('grp_my_status', 'Mi estado'), img: img, add: !img, ring: !!last,
-    letter: last ? (last.t || '·').substring(0, 1).toUpperCase() : '＋',
-    sub: last ? _countAgo(mine.length, last.ts) : t('est_tap_publish', 'Toca para publicar uno (24 h)'),
-    onTap: function() { if (myStatuses().length) openMyStatuses(); else openStatusCompose(); },
-  }));
-}
-// «De tus contactos»: los que tienen algo sin ver primero; en cada grupo, el más reciente arriba
-function _paintContacts(el) {
-  var list = activeStatusContacts().sort(function(a, b) { return ((b.unseen > 0) - (a.unseen > 0)) || (b.ts - a.ts); });
-  if (!list.length) { var e = document.createElement('div'); e.className = 'nx-est-empty'; e.textContent = t('est_none_yet', 'Aún no hay estados de tus contactos. Cuando publiquen uno, saldrá aquí.'); el.appendChild(e); return; }
-  list.forEach(function(c) {
-    el.appendChild(_row({ nx: c.nx, label: c.name, img: c.img, ring: true, seen: !c.unseen, sub: _countAgo(c.n, c.ts), onTap: function() { openStatusViewer(c); } }));
-  });
-}
+function _render(force) { if (_screen()) feedRender(!!force); }
 
 // ---------- Ir y volver ----------
 function _app() { return document.getElementById('app'); }
@@ -118,8 +56,10 @@ function _settle(open) {
   var scr = _screen(), app = _app(), b = document.body;
   if (!scr) return;
   clearTimeout(_anim);
-  if (open && !_open) _render();
+  if (open && !_open) _render(true);
+  var was = _open;
   _open = open;
+  if (open !== was) feedShow(open);   // al entrar empieza por el primero y se reproduce; al salir, todo en pausa
   b.classList.remove('nx-est-drag');
   b.classList.toggle('nx-est-on', open);
   scr.classList.add('nx-est-vis'); scr.classList.add('nx-est-anim'); if (app) app.classList.add('nx-est-anim');
@@ -137,6 +77,7 @@ function _settle(open) {
 function _closeNow() {
   var scr = _screen(), app = _app();
   clearTimeout(_anim); _anim = null; _g = null; _open = false;
+  feedShow(false);
   document.body.classList.remove('nx-est-drag'); document.body.classList.remove('nx-est-on');
   if (app) { app.classList.remove('nx-est-anim'); app.style.transform = ''; }
   if (scr) { scr.classList.remove('nx-est-anim'); scr.classList.remove('nx-est-vis'); scr.style.transform = ''; scr.setAttribute('aria-hidden', 'true'); }
@@ -160,6 +101,12 @@ function _onStart(e) {
   var p = _pt(e);
   if (!p || e.touches.length !== 1 || _anim) return;
   var inScr = !!(_scr && e.target && e.target.closest && e.target.closest('#estados-screen'));
+  // 3230: la fila de círculos se desliza de lado; el comentario es para escribir; y fuera del primer estado de un contacto,
+  // deslizar de izquierda a derecha es volver al anterior de ese contacto (no a Contactos)
+  if (inScr) {
+    if (e.target.closest('#est-rings, .nx-est-cform')) return;
+    var hs = e.target.closest('.nx-est-hs'); if (hs && hs.scrollLeft > 2) return;
+  }
   var from = _open ? (inScr ? 'scr' : null) : (_fromList(e) ? 'list' : null);
   var W = window.innerWidth || document.documentElement.clientWidth || 360;
   if (!from || p.clientX < EDGE_PX || p.clientX > W - EDGE_PX) return;   // bordes: el «atrás» del sistema
@@ -177,7 +124,7 @@ function _onMove(e) {
     if (Math.abs(dy) >= Math.abs(dx) || (_g.from === 'list' ? dx > 0 : dx < 0)) { _g = null; return; }
     _g.on = true;
     document.body.classList.add('nx-est-drag');
-    if (_g.from === 'list') _render();
+    if (_g.from === 'list') _render(true);
     var scr = _screen(); scr.classList.add('nx-est-vis');
     _hintHide();
   }
@@ -238,9 +185,11 @@ export function estadosScreenInit() {
   document.addEventListener('touchmove', _onMove, { passive: false });
   document.addEventListener('touchend', _onEnd, { passive: true });
   document.addEventListener('touchcancel', _onCancel, { passive: true });
-  window.addEventListener('nexo:estado', _render);
-  window.addEventListener('nexo:ble:closeChat', function() { setTimeout(_render, 60); });
+  window.addEventListener('nexo:estado', function() { _render(false); });
+  window.addEventListener('nexo:ble:closeChat', function() { setTimeout(function() { _render(false); }, 60); });
   window.addEventListener('nexo:ble:openChat', function() { _hintHide(); if (_open || _g) _closeNow(); });
   window.__nexoEstadosBack = closeEstadosScreen;   // el «atrás» de Android (chat_nav.js)
+  // 3230: abrir Estados (y, con nx, ir a los de ese contacto): openStatusViewer (estados.js) y las pruebas
+  window.__nexoEstadosOpen = function(nx) { if (!_open) _settle(true); if (nx) feedGoNx(nx); return _open; };
   setTimeout(function() { _hintMaybe(0); }, 1200);
 }

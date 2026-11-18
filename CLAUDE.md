@@ -36,7 +36,7 @@ actualizarlos al terminar cada bloque de trabajo.
 - Para cambios que no deben generar APK (solo docs), añadir `[skip ci]` al mensaje del commit.
 - **Novedades de cada APK (dueño 15-11):** antes de entregar una APK, escribir en `NOVEDADES.md` (bloque `<!-- APK -->`) lo nuevo,
   breve y para el usuario (formato de Google Play, ≤ 500 caracteres). **Dueño 17-11: mientras sigamos en desarrollo, SOLO en español**
-  (los 5 idiomas —es, it, en, pt, fr— al acercarse la publicación; al hacerlo, ajustar `novedades.js` e `idiomas5.js` I5, que hoy piden los 5). La app lo muestra
+  (los 5 idiomas —es, it, en, pt, fr— al acercarse la publicación; `novedades.js` e `idiomas5.js` I5 ya aceptan solo español desde la 3230). La app lo muestra
   junto al botón de actualizar; tras publicar, pasar el bloque al historial con su número.
 - Método obligatorio: reproducir el fallo en `tests/sim`, corregir, confirmar con la batería y solo
   entonces subir. No afirmar nada no comprobado. Respetar la estructura existente (NEXO ID, vault).

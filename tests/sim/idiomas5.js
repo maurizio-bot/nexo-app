@@ -3,7 +3,7 @@
 //  I2  por defecto el del teléfono: pt-BR → portugués, fr-CA → francés; uno que no tenemos (alemán) → español;
 //  I3  cada idioma tiene TODOS los textos del español (ninguno cae al español por falta);
 //  I4  los avisos del teléfono: al cambiar de idioma y al arrancar, la app le dice al nativo cuál usa (setAppLang);
-//  I5  las novedades de cada versión también salen en portugués y francés (bloques pt-BR y fr-FR).
+//  I5  las novedades: el español siempre; portugués y francés, si están, con lo suyo (dueño 17-11: en desarrollo, solo español).
 // Contraprueba: la 3122 tiene 3 idiomas.
 // Uso: node idiomas5.js [dir_build]
 'use strict';
@@ -48,7 +48,8 @@ global.window = { dispatchEvent: () => true, Capacitor: { Plugins: { NexoBLE: { 
   const block = a >= 0 && b > a ? md.slice(a, b) : '';
   const { updaterNotesText } = await importSrc('ui/updater.js');
   const nPt = updaterNotesText(block, 'pt'), nFr = updaterNotesText(block, 'fr'), nEs = updaterNotesText(block, 'es');
-  r.I5_novedades = /<pt-BR>/.test(block) && /<fr-FR>/.test(block) && nPt.length > 20 && nFr.length > 20 && nPt !== nEs && nFr !== nEs;
+  // dueño 17-11: en desarrollo, las novedades solo en español; si un idioma está, con lo suyo (no el español copiado)
+  r.I5_novedades = nEs.length > 20 && (!/<pt-BR>/.test(block) || (nPt.length > 20 && nPt !== nEs)) && (!/<fr-FR>/.test(block) || (nFr.length > 20 && nFr !== nEs));
   const ok = r.I1_cinco && r.I2_ok && r.I3_completos && r.I4_ok && r.I5_novedades;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('IDIOMAS5 ' + JSON.stringify(r));

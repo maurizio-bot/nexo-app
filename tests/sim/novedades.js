@@ -22,11 +22,15 @@ const { importSrc } = require('./srcmod');
     const m = block.match(new RegExp('<' + tag + '>\\n([\\s\\S]*?)\\n</' + tag + '>'));
     r.idiomas[tag] = m ? m[1].length : null;
   }
-  r.tres_idiomas = Object.values(r.idiomas).every((n) => typeof n === 'number' && n > 20);
-  r.tope_500 = Object.values(r.idiomas).every((n) => typeof n === 'number' && n <= 500);
+  // dueño 17-11: mientras sigamos en desarrollo, las novedades van SOLO en español (los 5 idiomas, al acercarse la publicación). El
+  // español es obligatorio; los demás, si están, con lo suyo; la app muestra el español a quien no tenga el suyo.
+  const presentes = Object.keys(r.idiomas).filter((tag) => r.idiomas[tag] !== null);
+  r.tres_idiomas = typeof r.idiomas['es-419'] === 'number' && presentes.every((tag) => r.idiomas[tag] > 20);
+  r.tope_500 = presentes.every((tag) => r.idiomas[tag] <= 500);
   r.workflow_usa_bloque = /body_path: release_notes\.txt/.test(fs.readFileSync(path.join(__dirname, '..', '..', '.github', 'workflows', 'build-apk.yml'), 'utf8'));
   const { updaterNotesText } = await importSrc('ui/updater.js');
-  r.app_lee = Object.keys(langs).every((tag) => { const t = updaterNotesText(block, langs[tag]); return t.length > 20 && block.indexOf(t) >= 0 && t.indexOf('<') < 0; });
+  r.app_lee = Object.keys(langs).every((tag) => { const t = updaterNotesText(block, langs[tag]); return t.length > 20 && block.indexOf(t) >= 0 && t.indexOf('<') < 0; }) &&
+    presentes.every((tag) => updaterNotesText(block, langs[tag]) !== updaterNotesText(block, 'es') || tag === 'es-419');
   const ok = r.bloque && r.tres_idiomas && r.tope_500 && r.workflow_usa_bloque && r.app_lee;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NOVEDADES ' + JSON.stringify(r));

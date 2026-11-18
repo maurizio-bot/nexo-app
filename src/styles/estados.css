@@ -1,11 +1,11 @@
 /*
  * estados.css — 3169 (dueño 17-11: «los estados en su propia pantalla, deslizando desde Contactos»), estados_screen.js.
- * Pantalla limpia, solo gestos: sin botones, pestañas ni puntitos. Fondo y cabecera como Contactos (.nx-page-head / .nx-page-title);
- * cada estado es una fila como las de Contactos con su círculo de color y el aro de «sin ver» (celeste) o «visto» (gris).
+ * Pantalla limpia, solo gestos: sin botones, pestañas ni puntitos. 3230: como TikTok (estados_feed.js): arriba los círculos de lado
+ * (aro azul = sin ver, blanco = visto) y cada estado a toda la pantalla.
  * Va por encima de #app (Contactos) y por debajo del visor de estados (#estado-overlay, 6000), la cámara y el visor de fotos.
  */
 .nx-est-scr {
-  --nx-est-av: 58px;
+  --nx-est-av: 62px;
   position: fixed; inset: 0; z-index: 2500; box-sizing: border-box;
   display: flex; flex-direction: column;
   background: var(--nx-bg); color: var(--nx-text);
@@ -15,27 +15,81 @@
 /* al soltar el dedo, Contactos (#app) y Estados se acomodan juntos; mientras se arrastra, sin transición (siguen al dedo) */
 .nx-est-anim { transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1) !important; }
 body.nx-est-drag #app, body.nx-est-drag .nx-est-scr { will-change: transform; }
-/* el título, solo texto (como «Contactos»): el degradado a lo ancho de la palabra, no de toda la cabecera */
-.nx-est-title { flex: 0 1 auto; }
-.nx-est-body { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
-  touch-action: pan-y; scrollbar-width: none; padding: 0 10px 48px; }
-.nx-est-sec { display: flex; flex-direction: column; }
-.nx-est-sec-t { padding: 16px 10px 6px; font-size: 13px; font-weight: 600; letter-spacing: 0.2px; color: var(--nx-muted); }
-.nx-est-row { display: flex; align-items: center; gap: 14px; min-width: 0; padding: 9px 10px; margin: 2px 0; border-radius: var(--nx-radius); cursor: pointer;
-  -webkit-tap-highlight-color: transparent; transition: background 0.15s; }
-.nx-est-row.is-pressed { background: var(--nx-surface); } /* 3181: el velo del motor (press.js; antes estas filas no lo tenían y solo :active) */
-/* El círculo: el aro es el borde (celeste = sin ver) y el hueco del color del fondo es el padding (background-clip) */
+/* 3230 (dueño 17-11 23:40): los estados como TikTok (estados_feed.js). Fondo negro; cada estado ocupa TODA la pantalla. */
+.nx-est-scr { background: #000; color: #fff; }
+/* Los estados: uno por pantalla; de abajo hacia arriba = el siguiente contacto; de lado = otro del mismo. El navegador hace el
+   deslizamiento (fluido, con inercia) y se detiene siempre en uno (snap + stop: always). */
+.nx-est-feed { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; scroll-snap-type: y mandatory; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none; background: #000; }
+.nx-est-feed::-webkit-scrollbar, .nx-est-hs::-webkit-scrollbar, .nx-est-rings::-webkit-scrollbar { display: none; }
+.nx-est-page { position: relative; width: 100%; height: 100%; overflow: hidden; scroll-snap-align: start; scroll-snap-stop: always; }
+.nx-est-hs { display: flex; width: 100%; height: 100%; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain; scrollbar-width: none; }
+.nx-est-slide { position: relative; flex: 0 0 100%; width: 100%; height: 100%; overflow: hidden; scroll-snap-align: start; scroll-snap-stop: always;
+  background: #000; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+/* texto solo o audio: un fondo de color en vez de negro */
+.nx-est-slide.nx-est-plain { background: linear-gradient(160deg, #10213f 0%, #2a1650 55%, #3b0f3f 100%); }
+/* foto y video a toda la pantalla (se recorta lo que sobra, como TikTok) */
+.nx-est-media { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
+/* el video no se ve hasta que tiene imagen: así no sale el cuadro gris con el triángulo de «play» del sistema */
+video.nx-est-media { transition: opacity 0.15s ease; }
+video.nx-est-media.nx-est-wait { opacity: 0; }
+/* sombra abajo para que se lea el nombre sobre cualquier foto */
+.nx-est-slide::before { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 42%; z-index: 1; pointer-events: none;
+  background: linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,0.6)); }
+.nx-est-bigtxt { position: absolute; left: 24px; right: 24px; top: 50%; transform: translateY(-50%); z-index: 2; max-height: 58%; overflow-y: auto;
+  font-size: 26px; font-weight: 700; line-height: 1.35; text-align: center; white-space: pre-wrap; word-break: break-word; color: #fff; }
+.nx-est-audav { position: absolute !important; top: 46%; left: 50%; transform: translate(-50%, -50%); z-index: 2;
+  width: 136px !important; height: 136px !important; font-size: 44px !important; }
+.nx-est-slide.nx-est-playing .nx-est-audav { animation: nxEstPulse 1.6s ease-in-out infinite; }
+@keyframes nxEstPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(0, 200, 255, 0.45); } 50% { box-shadow: 0 0 0 18px rgba(0, 200, 255, 0); } }
+.nx-est-loading { position: absolute; left: 24px; right: 24px; top: 50%; transform: translateY(-50%); z-index: 2; text-align: center;
+  font-size: 13.5px; color: rgba(255, 255, 255, 0.75); }
+.nx-est-slide .estado-no-se-ve { position: absolute; left: 24px; right: 24px; top: 50%; transform: translateY(-50%); z-index: 2; }
+/* abajo: pie de foto, quién (tocar = su chat), hace cuánto, n/m, mi corazón; y el comentario (sin botón: la tecla de enviar) */
+.nx-est-info { position: absolute; left: 14px; right: 14px; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); z-index: 2;
+  display: flex; flex-direction: column; gap: 10px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
+.nx-est-cap { font-size: 15.5px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; max-height: 30vh; overflow-y: auto; }
+.nx-est-irow { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.nx-est-iav { width: 38px !important; height: 38px !important; font-size: 14px !important; border: 2px solid rgba(255, 255, 255, 0.85); box-sizing: border-box; cursor: pointer; }
+.nx-est-icol { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nx-est-who { font-size: 15.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.nx-est-meta { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: rgba(255, 255, 255, 0.8); }
+.nx-est-heart { display: none; font-size: 13px; }
+.nx-est-heart.on { display: inline; }
+.nx-est-mystats { align-self: flex-start; font-size: 14px; padding: 4px 0; cursor: pointer; }
+.nx-est-cform { margin: 0; }
+.nx-est-cin { width: 100%; box-sizing: border-box; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 22px;
+  color: #fff; font-size: 14px; padding: 10px 14px; outline: none; -webkit-appearance: none; appearance: none; }
+.nx-est-cin::placeholder { color: rgba(255, 255, 255, 0.65); }
+/* un toque = pausa: un triángulo tenue al centro mientras está en pausa (lo puso el usuario) */
+.nx-est-slide.nx-est-paused::after { content: '▶'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 3;
+  font-size: 64px; color: rgba(255, 255, 255, 0.7); pointer-events: none; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5); }
+/* dos toques = me gusta: un corazón que crece y se va */
+.nx-est-burst { position: absolute; top: 50%; left: 50%; z-index: 4; font-size: 104px; pointer-events: none; animation: nxEstHeart 0.85s ease-out forwards; }
+@keyframes nxEstHeart { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3); } 20% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+  60% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -70%) scale(1.15); } }
+.nx-est-empty { position: absolute; left: 24px; right: 24px; top: 50%; transform: translateY(-50%); text-align: center;
+  font-size: 15px; line-height: 1.45; color: rgba(255, 255, 255, 0.75); }
+/* ARRIBA: los círculos de lado (el mío primero, «Mi estado» debajo); aro azul = sin ver, blanco = visto */
+.nx-est-top { position: absolute; left: 0; right: 0; top: 0; z-index: 3; padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
+  background: linear-gradient(to bottom, rgba(0,0,0,0.6), rgba(0,0,0,0)); pointer-events: none; }
+.nx-est-rings { display: flex; gap: 12px; overflow-x: auto; overflow-y: hidden; padding: 0 14px 16px; scrollbar-width: none; pointer-events: auto;
+  width: max-content; max-width: 100%; box-sizing: border-box; overscroll-behavior-x: contain; }
+.nx-est-ring { position: relative; flex: 0 0 auto; width: 66px; display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; }
+/* El círculo: el aro es el borde (azul = sin ver, blanco = visto) y el hueco del color del fondo es el padding (background-clip) */
 .nx-est-av { width: var(--nx-est-av) !important; height: var(--nx-est-av) !important; min-width: var(--nx-est-av); flex-shrink: 0; box-sizing: border-box;
-  border-radius: 50%; border: 2px solid var(--nx-cyan); padding: 2px; background-clip: content-box !important; box-shadow: none !important; overflow: hidden;
-  display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px !important; font-weight: 700; }
+  border-radius: 50%; border: 2.5px solid var(--nx-cyan); padding: 2.5px; background-clip: content-box !important; box-shadow: none !important; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; color: #fff; font-size: 19px !important; font-weight: 700; }
+.nx-est-av.visto { border-color: #fff; }
 .nx-est-av.nx-est-noring { border-color: transparent; }
-.nx-est-av.nx-est-add { background: var(--nx-grad); font-size: 22px !important; font-weight: 600; }
-.nx-est-av img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
-.nx-est-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.nx-est-name { font-size: 15.5px; font-weight: 600; letter-spacing: 0.1px; color: var(--nx-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nx-est-sub { font-size: 12.5px; color: var(--nx-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nx-est-empty { padding: 14px 10px; font-size: 13.5px; line-height: 1.45; color: var(--nx-muted); }
-
+.nx-est-rname { max-width: 66px; font-size: 11.5px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); }
+.nx-est-plus { position: absolute; left: 44px; top: 42px; pointer-events: none; width: 22px; height: 22px; border-radius: 50%; background: var(--nx-grad);
+  border: 2px solid #000; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 15px; font-weight: 800; line-height: 1; }
+.nx-est-pullind { position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top, 0px) + 104px); z-index: 4; color: #fff !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); pointer-events: none; }
 /* Contactos: la lista solo hace scroll vertical con el dedo; lo de lado es el gesto hacia Estados (la tira «en línea» sigue igual) */
 #main-contacts-list { touch-action: pan-y; }
 /* El botón redondo de agregar contactos es de Contactos: en Estados (y mientras se arrastra hacia allá) no está */

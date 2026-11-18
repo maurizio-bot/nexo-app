@@ -125,9 +125,10 @@ const statusOf = (p, msgId) => { const s = p.win.document.querySelector('.msg-st
   r.B_sin_adjunto_en_chat_2 = !(await B.win.vaultLoadMessages(idA)).some((m) => m.attachmentType);
   // en el visor de B: «Cargando…» y luego el video (ya guardado)
   // 3169: la fila del estado está en la pantalla Estados (antes, en la tira de arriba de Contactos)
-  const chip = Array.from(B.win.document.querySelectorAll('#estados-screen .estado-chip')).find((c) => /A/.test(c.textContent) && !/Mi estado|Tu estado/.test(c.textContent));
-  if (chip) { chip.dispatchEvent(new B.win.MouseEvent('click', { bubbles: true })); await sleep(300); }
-  for (let i = 0; i < 5 && B.win.document.getElementById('estado-pos') && !/2\//.test(B.win.document.getElementById('estado-pos').textContent); i++) { const nx = B.win.document.getElementById('estado-next'); if (nx) nx.dispatchEvent(new B.win.MouseEvent('click', { bubbles: true })); await sleep(200); }
+  // 3230: Estados a pantalla completa; el 2.º de A, de lado (como el dedo)
+  if (B.win.__nexoEstadosOpen) B.win.__nexoEstadosOpen(idA);
+  await sleep(300);
+  for (let i = 0; i < 5 && B.win.document.getElementById('estado-pos') && !/2\//.test(B.win.document.getElementById('estado-pos').textContent); i++) { const c = B.win.__nexoEstCur(); B.win.__nexoEstGo(0, c && c.s > 1 ? -1 : 1); await sleep(200); }
   await sleep(800);
   const vel = B.win.document.getElementById('estado-video');
   r.visor_muestra_video = !!vel && vel.getAttribute('src') === VID;

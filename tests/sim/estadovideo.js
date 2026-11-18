@@ -304,17 +304,16 @@ function spoil(file) { fs.appendFileSync(file, Buffer.alloc(16, 7)); const t = n
   r.VB_le_llegan = n + '/' + sids.length;
   const touch = (type, x, y) => phB.cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
   const swipe = async (x0, y0, x1, y1, ms) => { const k = Math.max(3, Math.round(ms / 16)); await touch('touchStart', x0, y0); for (let i = 1; i <= k; i++) { await sleep(ms / k); await touch('touchMove', x0 + (x1 - x0) * i / k, y0 + (y1 - y0) * i / k); } await touch('touchEnd'); };
-  await swipe(270, 420, 60, 420, 200); await sleep(700);
-  await B.evaluate((id) => { const b = document.querySelector('#estados-screen .estado-chip[data-nx="' + id + '"]'); if (b) b.click(); }, idR);
-  await sleep(600);
+  // 3230: al entrar en Estados, el 1.º de Roberto ya está a pantalla completa (sin tocar su círculo); de lado, el siguiente
+  await swipe(270, 420, 60, 420, 200); await sleep(1300);
   const viewState = () => B.evaluate(() => {
     const v = document.getElementById('estado-view'); if (!v) return null;
     const m = v.querySelector('video, audio'), note = v.querySelector('.estado-no-se-ve');
     return { pos: (document.getElementById('estado-pos') || {}).textContent || '', cargando: !!document.getElementById('estado-cargando'), tag: m ? m.tagName.toLowerCase() : '',
-      vis: !!m && getComputedStyle(m).display !== 'none', src: m ? (m.getAttribute('src') || '').substring(0, 5) : '', error: m && m.error ? m.error.code : null, listo: m ? m.readyState : -1, aviso: note ? note.textContent : '' };
+      vis: !!m && (m.tagName === 'AUDIO' ? m.style.display !== 'none' : getComputedStyle(m).display !== 'none'), src: m ? (m.getAttribute('src') || '').substring(0, 5) : '', error: m && m.error ? m.error.code : null, listo: m ? m.readyState : -1, aviso: note ? note.textContent : '' };
   });
   const waitView = async (ms) => { let s = null; for (let i = 0; i < ms / 250; i++) { s = await viewState(); if (s && !s.cargando && (s.aviso || (s.vis && (s.listo >= 1 || s.error)))) break; await sleep(250); } await sleep(300); return viewState(); };
-  const next = () => B.evaluate(() => { const b = document.getElementById('estado-next'); if (b) b.click(); });
+  const next = () => B.evaluate(() => window.__nexoEstGo(0, 1));
   const plan = [['normal', (s) => okMedia(s, 'video')], ['diminuto', (s) => okMedia(s, 'video')], ['roto', (s) => noteOk(s, /Tu teléfono no puede reproducir este video/)],
     ['audio', (s) => okMedia(s, 'audio')], ['recodificado', (s) => okMedia(s, 'video')]].concat(phoneCases.map((k) => [k, playOrNote]));
   r.VB_ok = {};
