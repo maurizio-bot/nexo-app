@@ -12,6 +12,14 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- (próxima APK)
+</es-419>
+<!-- /APK -->
+
+## Historial
+
+### APK 3096 (18-11-2026)
+<es-419>
 - Estados nuevos, como TikTok: a pantalla completa y solos; desliza arriba o de lado; dos toques = me gusta.
 - Une a tu llamada una que entra: hablan los tres.
 - Crea grupos desde el botón de agregar.
@@ -22,9 +30,6 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Tetris a dos: llega toda la basura.
 - Vuelven los avisos cortos; puedes ocultar el aviso fijo.
 </es-419>
-<!-- /APK -->
-
-## Historial
 
 ### Bloque anterior sin número (quedó suelto fuera del historial; rescatado el 18-11-2026)
 <es-419>

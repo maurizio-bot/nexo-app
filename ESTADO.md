@@ -21,6 +21,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **18-11 03:35 (México):** APK 3096 PUBLICADA (7787b212, 3207–3231: estados como TikTok y todo lo de la 3094). NOVEDADES pasadas
+  al historial; el bloque de la próxima APK es un marcador «(próxima APK)»: escribirlo antes de subir. Rama suelta NOCHAT en GitHub
+  (error mío al subir; no se pudo borrar desde aquí: pedírselo al dueño). Pendientes nuevos: buzón de archivos lento AL RECIBIR
+  (3 KB/s de media vs 42 al enviar, resumen del dueño 17-11) y «internet al abrir el chat» 13 s de media.
 - **18-11 00:35 (México) — dueño al 79 % del límite semanal (se restablece el domingo 1:59): gastar poco.** APK subida a NEXOCHAT con
   3207–3230 (la 3094 falló: bigsend S4 y dupserver S6, las dos pruebas corregidas). 3228 sin botón de regreso en Ajustes; 3229
   el diagnóstico apunta giro de cámara, toques y giro del teléfono en la videollamada (preguntado al dueño si «voltear» es el botón
