@@ -12,7 +12,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- (próxima APK)
+- Al abrir NEXO, los contactos cercanos siguen conectados por Bluetooth sin cortes.
 </es-419>
 <!-- /APK -->
 
