@@ -277,17 +277,17 @@
    "dia": "2026-11-18",
    "hora": "21:22",
    "nx": "nx1e50c95d",
-   "sintoma": "manual: revisión general del teléfono de Carii (build 3101)",
-   "categoria": "Sin fallo nuevo (informativo)",
-   "causa": "mensajes a c283 por internet ✓✓ en 1 s; saludo nativo contestó con app dormida; llamada de 822 s bien (cámara cortada 63 s por pantalla bloqueada, volvió al desbloquear); Redmi tardó 6,5 min en confirmar y Honor sin red desde 17:07 (apps dormidas del otro lado); 4 min sin red en el teléfono (21:16-21:20)"
+   "sintoma": "manual: revisión general del S23 Ultra de Cari (build 3101)",
+   "categoria": "Videollamada: sin imagen propia al contestar desde el aviso (a investigar)",
+   "causa": "REVISADO: al contestar desde el aviso (21:02:31) la cámara se cortó a los 5 s y la app no la reabrió en 63 s (página no visible aunque el nativo decía primer plano; causa sin confirmar). Mensajes al dueño ✓✓ en 0-13 s. Mensaje a Yael 21:14:48 confirmado 21:21:14 (Cari sin red 21:16:42-21:20:54; causa del retraso sin confirmar). Honor sin verse desde 17:07, 4 pendientes. Volumen de llamada 1/15 (dato)."
   },
   {
    "dia": "2026-11-18",
    "hora": "21:27",
    "nx": "nx16386482",
    "sintoma": "manual: diagnóstico del Redmi (3102)",
-   "categoria": "App cerrada por el limpiador de Xiaomi (SwipeUpClean)",
-   "causa": "app de Yael cerrada 21:08-21:26 por el limpiador; el servicio nativo guardó y confirmó lo recibido (internet y Bluetooth); lo «ignorado» fueron saludos/presentación, no textos; enlace viejo atascado 6 s con MTU 23 y re-ruteo a internet. Sin texto perdido comprobado"
+   "categoria": "Bluetooth: enlace entrante inservible tras reabrir la app (MTU 23) + app cerrada desde recientes (Xiaomi)",
+   "causa": "REVISADO: cierres SwipeUpClean/OneKeyClean (9 visibles en 2 días; 20:18 y 21:08 del 18-11). Al reabrir (21:26:47) el servidor GATT se detuvo y reinició con el enlace de Cari aún abierto: enviar por él falló 6 s, mensaje descartado, MTU 23, re-ruteo a internet (llegada no comprobada). HIPÓTESIS a reproducir: es la causa del síntoma «MTU 23». Lo ignorado por Bluetooth con app cerrada no eran mensajes type:chat (contenido no comprobado). 1 mensaje BT guardado con app cerrada."
   }
  ]
 }

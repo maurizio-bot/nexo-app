@@ -1768,3 +1768,11 @@ El puntero de un vídeo a un contacto ausente lleva la miniatura (~24 KB) y sale
 - **MTU 23** con el teléfono de Alex (11:43:05 y 11:43:46: «Bluetooth muy lento con este teléfono») entre reconexiones a 517.
 - **Wi-Fi local:** 11:31:46 conectó en 0,9 s y mandó 2 archivos pequeños (43 KB en 1,9 s). Se cortó al volver el dueño de un congelado (11:43:00) y no volvió hasta que la app de Alex arrancó (11:43:48); se cortó otra vez a los 7 s (11:43:55, dos conexiones a la vez: «Socket closed») y se rindió a los 5 s. Falta ver por qué no reconecta después (sin más registro).
 - **Wi-Fi Direct:** en ese rato no hubo ningún intento (solo «también lo tiene», que significa que el contacto lo soporta); se usa para archivos grandes (umbral ~150 KB) y nunca ha funcionado en teléfonos reales (ver arriba, «No se pudo crear el grupo (2)»). Con los dos en el mismo Wi-Fi se usa el Wi-Fi local.
+
+## Vistos en los diagnósticos del 18-11 21:22 (Cari) y 21:27 (Yael) — a reproducir en tests/sim
+- **Hipótesis «MTU 23»:** al reabrir la app el servidor GATT se detiene y reinicia con un enlace entrante aún abierto; ese enlace
+  ya no sirve para enviar (escritura falla 6 s, mensaje descartado, MTU 23) hasta que se rehace. Encaja con el trabajo de
+  PRIORIDAD 1 (Bluetooth en el servicio nativo: el servidor no debe reiniciarse al abrir la app).
+- **Videollamada contestada desde el aviso:** cámara cortada a los 5 s y 63 s sin imagen propia (se mandó 2x2); la app no reintentó
+  porque la página figuraba no visible aunque el nativo decía primer plano. Falta saber si la pantalla estaba bloqueada.
+- **Retraso de 6,5 min en el ✓✓ de Yael por internet** con su app cerrada: sin causa (su registro empieza a las 21:23).
