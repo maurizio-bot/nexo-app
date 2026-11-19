@@ -1779,3 +1779,8 @@ El puntero de un vídeo a un contacto ausente lleva la miniatura (~24 KB) y sale
 - **DESPERTADOR (prioridad, dueño 18-11):** en ningún diagnóstico recibido aparece «Despierta recibido» (Katy: registro completo de
   4 h sin él, con toques enviados). Comprobar el enviador (`nexo-wake…workers.dev`, del dueño: panel de Cloudflare / clave de
   Google) con la 3245, que anota la respuesta del enviador; y que NEXO vuelva sola tras reiniciar el teléfono en Honor/Xiaomi.
+- **Avisos silenciados por el teléfono (dueño 19-11 00:14, Vivo Y03, build 3105):** el aviso de mensaje con la pantalla apagada
+  sí salió (la pantalla se encendió) pero el Vivo lo puso en «Silenciadas»: Ajustes → NEXO → «Notificación silenciosa» ACTIVA,
+  sin «Pantalla de bloqueo» ni «Emergente». Al apagar ese ajuste el aviso apareció al instante: causa confirmada (ajuste del Vivo,
+  no de NEXO). Idea propuesta al dueño (pendiente de su sí): detectar que el sistema baja la importancia del canal «Mensajes» y
+  mostrar «Tu teléfono silencia los avisos de NEXO» con botón al ajuste. Falta saber si Vivo lo trae activado por defecto en apps nuevas.
