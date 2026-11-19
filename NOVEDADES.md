@@ -12,11 +12,16 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Al abrir NEXO, los contactos cercanos siguen conectados por Bluetooth sin cortes.
+- (próxima APK)
 </es-419>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3109 (19-11-2026)
+<es-419>
+- Al abrir NEXO, los contactos cercanos siguen conectados por Bluetooth sin cortes.
+</es-419>
 
 ### APK 3108 (19-11-2026)
 <es-419>
