@@ -69,13 +69,20 @@ async function getAccessToken(sa) {
   return data.access_token;
 }
 
+// 3248 (dueño 19-11, diagnóstico del S24: «toque a …: no salió (Failed to fetch)» en TODOS los toques): la app llama a este servicio
+// desde el WebView, que antes de un POST con JSON manda una pregunta previa (OPTIONS). Este servicio la contestaba 405 y sin permisos
+// CORS → el WebView bloqueaba el toque (nunca llegaba a Google). Ahora contesta la pregunta previa y manda CORS en todas las respuestas.
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '86400' };
+function reply(body, init) { init = init || {}; init.headers = Object.assign({}, CORS, init.headers || {}); return Response.json(body, init); }
+
 export default {
   async fetch(request, env) {
-    if (request.method !== 'POST') return Response.json({ error: 'usa POST' }, { status: 405 });
+    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+    if (request.method !== 'POST') return reply({ error: 'usa POST' }, { status: 405 });
     let to = '';
     try { to = String(((await request.json()) || {}).to || '').trim(); } catch (e) {}
-    if (to.length < 20 || to.length > 4096) return Response.json({ error: 'falta "to" (token FCM)' }, { status: 400 });
-    if (rateLimited(to)) return Response.json({ error: 'demasiados toques para ese token; espera' }, { status: 429 });
+    if (to.length < 20 || to.length > 4096) return reply({ error: 'falta "to" (token FCM)' }, { status: 400 });
+    if (rateLimited(to)) return reply({ error: 'demasiados toques para ese token; espera' }, { status: 429 });
     try {
       const sa = loadServiceAccount(env);
       const token = await getAccessToken(sa);
@@ -84,12 +91,12 @@ export default {
       // hasta 24 h en Google y, con collapse_key, solo queda UNO guardado por teléfono (no una ráfaga al reconectar).
       const msg = { message: { token: to, data: { t: 'wake' }, android: { priority: 'high', ttl: '86400s', collapse_key: 'nexo_wake' } } };
       const r = await fetch(FCM_URL, { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(msg) });
-      if (r.ok) { const d = await r.json(); return Response.json({ ok: true, id: d.name || '' }); }
+      if (r.ok) { const d = await r.json(); return reply({ ok: true, id: d.name || '' }); }
       const errTxt = await r.text();
       const gone = r.status === 404 || /UNREGISTERED|registration-token-not-registered|NOT_FOUND|invalid-argument/i.test(errTxt);
-      return Response.json({ error: 'fcm', status: r.status, gone: gone }, { status: gone ? 404 : 502 });
+      return reply({ error: 'fcm', status: r.status, gone: gone }, { status: gone ? 404 : 502 });
     } catch (e) {
-      return Response.json({ error: String((e && e.message) || e) }, { status: 500 });
+      return reply({ error: String((e && e.message) || e) }, { status: 500 });
     }
   },
 };

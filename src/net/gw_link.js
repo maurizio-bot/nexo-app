@@ -28,6 +28,7 @@
  * y nada con la batería baja (Jump.canRelay). SIN interruptor (dueño 13-11: «si alguien escoge NEXO es para estar comunicado,
  * no para romper esa red»): todo NEXO con internet presta el suyo, con estos topes.
  */
+import { wakePost } from './wake_post.js';
 import { netEventValid } from './net_link.js';
 import { BLOB_KIND, FETCH_BATCH } from './blob_mailbox.js';
 
@@ -744,6 +745,6 @@ export class GwLink {
     var url = net.senderUrl && net.senderUrl();
     if (!url || typeof fetch !== 'function') return;
     // SOLO el token (como el despertador normal), nunca contenido
-    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: t }) }).catch(function() {});
+    wakePost(url, t).catch(function() {}); // 3248: petición simple (sin pregunta previa que el servicio no contestaba)
   }
 }
