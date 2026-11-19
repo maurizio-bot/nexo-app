@@ -248,6 +248,30 @@
    "sintoma": "par:zombi",
    "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
    "causa": "app del otro congelada o muerta (ahorro de batería / batería baja)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "21:18",
+   "nx": "nx1n36c283",
+   "sintoma": "manual: mensajes sin ✓✓",
+   "categoria": "Mensajes por internet sin confirmar",
+   "causa": "dos contactos (uno en Wi-Fi, otro en datos) no confirmaron: salieron al buzón de internet (✓) y nadie contestó; falta el diagnóstico de esos teléfonos"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "20:56",
+   "nx": "nx1a93dbfe",
+   "sintoma": "cierre_fallo",
+   "categoria": "Cierre de la app por memoria (Android)",
+   "causa": "A05 de Italia (3096): 13 cierres con problema en 7 días, 10 seguidos entre 01:35 y 01:51 hora de Roma; sin memoria en segundo plano"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "20:56",
+   "nx": "nx1a93dbfe",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo"
   }
  ]
 }
