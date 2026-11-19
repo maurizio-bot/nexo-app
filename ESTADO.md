@@ -21,6 +21,25 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **CIERRE POR CONTEXTO 19-11 08:30 (México) — leer esto primero en la sesión nueva:**
+  1. **APK con 3249 + 3250 en CI (commit d97e7e7 en NEXOCHAT, subido 07:58).** Al terminar bien: pasar el bloque de NOVEDADES al historial
+     con su número ([skip ci]) y avisar al dueño en 1 línea. Si falla: bajar el registro del job y corregir. (Había un aviso programado en la
+     sesión vieja para las 09:21; puede no llegar a la nueva: comprobarlo a mano.)
+  2. **SIGUIENTE ARREGLO (de la app, diagnóstico Roberto/S24 08:09):** al abrir la app con el servicio ya corriendo, el nativo DETIENE y
+     rehace el servidor GATT (`PluginBtState.kt` ~277 «GATT_SERVER Detenido» + «load - auto-starting GATT server») con los enlaces de otros
+     aún abiertos: sus asas quedan viejas, no entra nada más por ahí, el otro ve MTU 23 / «Write fallo 6 s» y tarda ~55 s en dar zombi.
+     Propuesta: al relevar, `cancelConnection` de los enlaces del servidor viejo (el otro reconecta en ~1 s) o no rehacer si ya corre.
+     Reproducir en `tests/sim` (native_mock: al abrir, servidor rehecho sin desconectar) antes de tocar Kotlin. Es la causa concreta del
+     «MTU 23 = enlace que sobrevive al reinicio» (PRIORIDAD 1) y de muchos «zombi» (1.ª categoría: ver `node tests/sim/diag_stats.js`).
+  3. **Hecho hoy:** despertador confirmado de punta a punta (Roberto app cerrada: ✓✓ en 0,4–2 s por internet; también por Bluetooth con
+     la app cerrada). 3249 (margen al reconectar: el S24 bajó 43 MB repetidos y gastó 9 %/h en segundo plano) y 3250 (Bluetooth
+     apagado/encendido) con pruebas `margencongelado.js` y `btoffsilencio.js`. El Vivo con 3107 NO se congeló esta vez (contestó y
+     recibió FCM en segundo plano).
+  4. **Regla nueva del dueño (CLAUDE.md):** solo contarle lo que es fallo de la app (última versión) o ajuste del teléfono que la app debe
+     explicar; versiones viejas y causas externas se apuntan en silencio. Publicar APK sin esperar (las actualizaciones ya no le importan).
+  5. **Pruebas pendientes del dueño:** con la APK nueva, apagar/encender Bluetooth y mandar al momento; Vivo y Honor/Redmi con la app en
+     segundo plano 30+ min; resumen diario para ver datos repetidos y batería (debe bajar de 9 %/h).
+  6. Pendiente aprobado sin hacer: aviso «Tu teléfono silencia / congela NEXO» con botón al ajuste. Domingo 22-11: plan grande.
 - **19-11 05:10 (México):** diagnósticos del S24 (zombi con el Vivo, 04:38) y resumen del S23 registrados. Zombi = app del Vivo congelada por su ahorro (saludo nativo contesta, la página no confirma; escrituras «ocupado» 201). Sin chats perdidos. Es la 1.ª causa de fallos (15 de 30): su remedio va con el Bluetooth en el servicio nativo (domingo). El S24 aún en 3106: actualizar a 3107. CONFIRMADO con el del Vivo (05:12): el Vivo congeló el proceso ENTERO de NEXO (app abierta en segundo plano) ~00:20–05:12; al abrirla entraron de golpe las conexiones BT y 7 sobres de las 00:20. Remedio a probar: toque FCM de la 3107 + «Alto consumo en segundo plano». Pendiente para el domingo: detector de «proceso congelado» en el diagnóstico.
 - **19-11 08:10 (México):** despertador CONFIRMADO de punta a punta con Roberto (app cerrada → «Despierta recibido» → ✓✓ en 0,4 s). APK subida a NEXOCHAT con 3249 (margen al reconectar) + 3250 (al apagar el Bluetooth se sueltan los enlaces; btoffsilencio.js; zombi de Roberto 07:14). El dueño dijo que las actualizaciones forzosas ya no importan: publicar sin esperar. Al publicarse: NOVEDADES al historial.
 - **19-11 05:40 (México):** DESPERTADOR 3107 CONFIRMADO en el S24 («toque…: salió» ×9). **3249 HECHO en la rama `ccr-d7fe536e-817emv`, SIN subir a NEXOCHAT a propósito** (no forzar otra actualización mientras los compañeros del dueño instalan la 3107 para probar): el margen al reconectar ya no sube por los sobres detenidos con la app congelada (S24: 12,2 MB repetidos en 18 min; prueba `margencongelado.js` en ci.js; datosmoviles y bgdrain OK). Subirla tras la prueba de los compañeros con su línea de NOVEDADES («Gasta menos datos al volver a la app»). Abierto: un relé castigó al S24 (banned) al pasar la copia Fénix al Vivo por internet; causa sin ver.

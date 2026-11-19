@@ -472,6 +472,30 @@
    "sintoma": "manual: Roberto con la app cerrada (3107)",
    "categoria": "Prueba del despertador (informativo)",
    "causa": "App cerrada: recibió por internet (sobre + «Despierta recibido» + ✓✓ nativo) y por Bluetooth (BT_CERRADA MESSAGE) sin abrir la app; al abrirla entraron los 5 de golpe. Al abrir, «MTU 23» de un enlace que sobrevivió al reinicio de la app (hipótesis ya apuntada, PRIORIDAD 1 del domingo)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "08:09",
+   "nx": "nx0g6ef54e",
+   "sintoma": "par:zombi (pedido por nx1n36c283)",
+   "categoria": "Bluetooth: enlace roto al abrir la app (el servidor GATT se rehace)",
+   "causa": "Roberto abrió la app 08:08:49 (estaba cerrada): el nativo DETUVO y volvió a crear el servidor GATT con el enlace del S24 aún abierto (Connection 5455… sigue en 2). Tras rehacerlo no entra ni un trozo más del S24 por ese enlace (sus asas del servicio quedan viejas) y Roberto ve MTU 23 + «Write fallo 6 s» en el enlace viejo 49f6…: el S24 tarda ~55 s (4 pings) en darlo por zombi. Nada perdido (todo siguió por Wi-Fi local/internet). MECANISMO CONCRETO de la hipótesis «MTU 23 = enlace que sobrevive al reinicio de la app». Arreglo propuesto: al relevar el servidor al abrir, cortar (cancelConnection) los enlaces que tenía, para que el otro reconecte en ~1 s; o no rehacer el servidor si ya está en marcha"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "08:09",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx0g6ef54e)",
+   "categoria": "Bluetooth: enlace roto al abrir la app (el servidor GATT se rehace)",
+   "causa": "lado del S24 del caso anterior"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "08:19",
+   "nx": "nx09acdb61",
+   "sintoma": "par:enlace_abre_cierra (pedido por nx1n36c283)",
+   "categoria": "Bluetooth: enlaces repetidos que se abren y cierran",
+   "causa": "Vivo (3107) con la app en segundo plano desde 05:14: esta vez NO se congeló (su nativo contestó saludos 07:55–08:19 y recibió los toques FCM). Al volver a la app llegaron de golpe desconexiones viejas de 05:24–05:26 (la página sí estaba congelada; el nativo no). El mensaje de Roberto por el puente del S24 (08:09:07) llegó 08:19:35: el S24 estuvo sin red entre medio. Nada perdido"
   }
  ]
 }
