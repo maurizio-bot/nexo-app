@@ -9,6 +9,16 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🔝 PRIORIDAD 1 (dueño 19-11): Bluetooth entero en el servicio nativo
+- «Las otras apps (Briar, Bitchat, Bridgefy) lo hacen bien»: todo el Bluetooth (recibir, confirmar, reenviar, anunciar con la clave cifrada) en
+  el servicio en primer plano, sin depender de que la app (WebView) esté despierta. Resuelve los «zombi», el Bluetooth tras reiniciar y la
+  confirmación con la app congelada. Empezar con el límite semanal recién reiniciado (no dejarlo a medias).
+- **Idea del dueño (19-11): romper el tope de ~7 conexiones.** Lo que se encuentra al escanear queda en la lista SIN conectarse (ya es así
+  para desconocidos); se conecta solo al usarlo. Llevarlo a los contactos: un grupo de pocas conexiones abiertas (las de uso reciente) y el
+  resto a demanda (conectar ~0,5–2 s al mandar y soltar al quedar quieto). Lo pequeño (contador, presencia) por anuncios, sin conexión.
+- **Modo vagón (dueño 19-11, para redes):** contador de NEXO cerca por anuncios (sin conectar ni identificar), saludo solo con nombre de pila
+  y solo entre quienes lo activaron, el otro acepta. Después del punto anterior.
+
 ## 🆕 18-11 05:00 — diagnósticos del S23 (Carii), del A05 de Italia y resúmenes diarios
 - richard (Redmi 14C, 3090) con Mami (A05) 17-11 22:16: su Bluetooth falla 7 veces seguidas al conectar a la dirección de Mami
   (error 133 de Android) y abre 3 enlaces con ella (el desempate cierra uno). La foto de perfil de Mami (8 KB) le llegó 3 veces en
