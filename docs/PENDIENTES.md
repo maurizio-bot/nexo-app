@@ -14,6 +14,14 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   servicios en primer plano, edge-to-edge, permisos); el workflow hace assembleDebug → falta bundleRelease firmado; REQUEST_INSTALL_PACKAGES en el
   manifest (el actualizador propio no es uso permitido en Play: quitarlo en la versión de tienda); versión dispersa (package.json 9.0.0,
   index.html v9.0, main.js v9.9.52, nexo_config 9.1.0-b1273) → una sola fuente. Prueba cerrada de 12 personas 14 días (cuenta nueva).
+- **Técnico (sin cambiar lo que funciona):** 331 asignaciones a window.* (main.js orquesta todo) → ir pasando a interfaces estables
+  (Mensajes, Transferencias, Contactos, Caminos, Vault, Llamadas); ciclo grande de ~29 piezas en la UI (render ↔ chat_actions ↔ send ↔
+  video_send ↔ file_card ↔ media_limits…), y main ↔ main_chats, net_link ↔ gw_link, vault_messages ↔ vault_contacts ↔ vault_big ↔
+  vault_transfers; partir ble_ack.js (923 líneas) en protocolo / emisor / receptor / ventana / reintento / reanudar / estado; el Vault es una
+  base de datos casera sobre JSON (leer → cambiar → escribir con cachés y candados): deuda a vigilar, no cambiar mientras esté estable.
+- **Ajustes:** Perfil (foto, nombre, NEXO ID) y Ajustes en 6 secciones (Privacidad, Avisos, Llamadas, Conexión, Cuenta, Diagnóstico) con lo
+  avanzado oculto. Bienvenida: enseñar 3 gestos clave (visible la primera vez, gesto rápido después). Estética: «menos efectos, más identidad».
+- **Plan de lanzamiento y posicionamiento:** en el privado, `negocio/REVISION_EXTERNA_2026-11-19.md`.
 - **Producto (decide el dueño):** menú + en dos filas (Cámara/Galería/Archivo arriba); enseñar Estados la primera vez; nombre cambiable con
   historial y aviso en vez de irreversible; indicador simple de camino (Directo/Wi-Fi/Internet/Puente); ajustes con avanzadas ocultas;
   no prometer «Signal Protocol» (es propio, inspirado). Código muerto sin uso desde main.js (mesh_relay_bridge, web_socket_client,
