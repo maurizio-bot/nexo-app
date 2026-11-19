@@ -568,6 +568,38 @@
    "sintoma": "par:zombi (pedido por nx1905c1ee)",
    "categoria": "App muerta por el sistema y sin volver sola (#87)",
    "causa": "Roberto (Motorola edge 40 neo, 3107, batería exenta). Su nativo recibía bien hasta las 10:00; a las 10:00 Android la mató («Foreground kill», 4.ª vez en 3 días) y NO volvió hasta que él la abrió a las 14:07: 4 h sin Bluetooth ni escucha de internet, sin «Despierta recibido» (el toque FCM no la levantó). Al abrir, todo entró en 1–2 s (textos de Austin de las 09:56 y del S24). Nada perdido, pero llegó con 4 h de retraso. Es el pendiente #87 (NEXO muere y no vuelve sola), va con el Bluetooth en el servicio nativo"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "09:57",
+   "nx": "nx1905c1ee",
+   "sintoma": "zombi (nx1n36c283)",
+   "categoria": "Bluetooth: enlace viejo tras actualizar la app del otro",
+   "causa": "Austin (3107; llegó 14:20). El S24 se actualizó a la 3108 a las 09:56: al morir el proceso por la instalación, el enlace de Austin a su servidor quedó viejo (MTU 23 09:56:57, 4 pings sin respuesta, zombi 09:57:39). 3251 no lo cubre (un proceso que muere no puede cortar nada). Nada perdido"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "14:20",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx0g6ef54e)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "S24 (3109, actualizado 14:17) con Roberto (3109) en segundo plano 14:12–14:20: su app no contestaba la comprobación del Wi-Fi ni los pings (dormida o congelada por el Motorola). Nada perdido; al abrir Roberto la app entró todo en 1 s. Va con el Bluetooth en el servicio nativo"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "14:20",
+   "nx": "nx0g6ef54e",
+   "sintoma": "par:zombi (pedido por nx1n36c283)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "lado de Roberto del caso anterior (3109): app en segundo plano 14:12–14:20, sin relés al volver (datos móviles) y reconectó en < 1 s. Un teléfono desconocido …0da5 entra y sale sin parar (ya frenado por 3203)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "14:23",
+   "nx": "nx1905c1ee",
+   "sintoma": "enlace_abre_cierra (nx1n36c283, 3 cierres en 10 min)",
+   "categoria": "Bluetooth: enlaces repetidos que se abren y cierran",
+   "causa": "Austin (3107) cierra por repetido el enlace que el S24 (3109) le abre como cliente (70f4) y el S24 lo vuelve a abrir cada ~60 s (14:21:07, 14:22:07, 14:23:25). Además MTU 23 con el S24 a las 14:20:42 justo tras la actualización del S24 a la 3109 (14:17). Nada perdido (textos ✓✓ en < 1 s). A REVISAR (app): quién reabre el enlace cerrado en el S24"
   }
  ]
 }

@@ -63,6 +63,8 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Al ABRIR la app en frío (3108, diagnóstico del S24 09:57): bajó 5,3 MB de los relés en el primer minuto y 4,4 MB eran repetidos; el margen de 3249 cubre el regreso de segundo plano, no el arranque. Ver `nx1n36c283` 19-11 09:57. ×1
 - Foto de perfil de Austin llega 3 veces como «nueva» (15 KB cada vez; mismo diagnóstico, 09:57). ×1
 - Paquete de puente `sxmwnmzmmz8is749` reintentado desde las 09:05 por un camino que nunca confirma (espera 15→240 s; se reinicia al abrir la app; diagnósticos de Austin 09:16 y del S24 09:57). Gasta radio, no se pierde. ×1
+- El S24 reabre cada ~60 s el enlace de cliente que Austin le cierra por repetido (3 cierres en 10 min; diagnóstico de Austin 19-11 14:23). ×1
+- Al ACTUALIZAR la app, los contactos cercanos quedan con un enlace viejo ~1 min (MTU 23 y zombi): el proceso muere sin cortar nada (3251 no lo cubre). Vigilar; con menos actualizaciones pasará poco. ×1
 - Diagnósticos de la 3097–3107 con «Bluetooth apagado/encendido» suelto y ~20 desconexiones viejas al volver a primer plano (Zhelowsky 11:32, 18-11). Revisar si 3251 lo cubre. ×1
 
 **Por comprobar (de la 3109)**
