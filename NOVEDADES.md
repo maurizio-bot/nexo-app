@@ -12,11 +12,16 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Si internet se corta un momento, tus mensajes quedan en espera y salen solos (ya no se marcan como fallidos).
+- (próxima APK)
 </es-419>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3111 (19-11-2026)
+<es-419>
+- Si internet se corta un momento, tus mensajes quedan en espera y salen solos (ya no se marcan como fallidos).
+</es-419>
 
 ### APK 3109 (19-11-2026)
 <es-419>
