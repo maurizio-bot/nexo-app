@@ -9,6 +9,16 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🧾 Revisión externa (IA del dueño, 19-11, sobre la nightly 3101) — comprobado aquí lo verificable
+- **P0 publicación (CONFIRMADO):** targetSdkVersion 34 → Google Play exige 36 para apps nuevas (subirlo y probar cambios de Android 15/16:
+  servicios en primer plano, edge-to-edge, permisos); el workflow hace assembleDebug → falta bundleRelease firmado; REQUEST_INSTALL_PACKAGES en el
+  manifest (el actualizador propio no es uso permitido en Play: quitarlo en la versión de tienda); versión dispersa (package.json 9.0.0,
+  index.html v9.0, main.js v9.9.52, nexo_config 9.1.0-b1273) → una sola fuente. Prueba cerrada de 12 personas 14 días (cuenta nueva).
+- **Producto (decide el dueño):** menú + en dos filas (Cámara/Galería/Archivo arriba); enseñar Estados la primera vez; nombre cambiable con
+  historial y aviso en vez de irreversible; indicador simple de camino (Directo/Wi-Fi/Internet/Puente); ajustes con avanzadas ocultas;
+  no prometer «Signal Protocol» (es propio, inspirado). Código muerto sin uso desde main.js (mesh_relay_bridge, web_socket_client,
+  pulse_algorithm, gesture_engine, crypto_vault): comprobar y quitar. Ciclos de dependencias: limpiar poco a poco, sin reescribir.
+
 ## 🔝 PASO 0 (dueño 19-11): auditoría de seguridad completa ANTES del cambio del Bluetooth («partir con una base limpia»)
 - Como la de la noticia (IA buscando fallas): todas las puertas (Bluetooth, Wi-Fi local, Wi-Fi Direct, relés, puente, nativo, cifrado,
   vault, enlaces de invitación). Lo hallado se arregla y se prueba; el informe va al repositorio PRIVADO (no al público). Otra después del cambio.
