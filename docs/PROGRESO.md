@@ -2081,3 +2081,6 @@ APK 3089 cayó en el CI SOLO por la prueba de tamaño: `src/ui/estados.js` lleg�
   Cloudflare**; (2) `PluginAlerts.kt`: en Honor nuevo (MagicOS) «Inicio de aplicaciones» abre con `com.hihonor.systemmanager`;
   (3) 3245 (diagnóstico conserva despertares; el toque anota la respuesta del enviador). Pruebas: fcmwake, wakeopen, wakesched,
   test_sign, diagnativo OK. Pendiente de publicar tras la 3104.
+- 18-11 22:33 (México): el dueño publicó en Cloudflare el worker con `ttl: '86400s', collapse_key: 'nexo_wake'` (versión
+  0d5c25dd activa). Comprobado desde aquí a las 22:35: el servicio responde igual que antes (Google atiende el pedido).
+  El servicio recibió 752 pedidos en 24 h: los toques sí salen de los teléfonos.
