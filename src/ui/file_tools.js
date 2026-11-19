@@ -117,7 +117,7 @@ export function _compressImageFile(file, maxDim, quality) {
   var legacy = function() { return _readFileBase64(file).then(function(b64) { return _compressImageBase64(b64, maxDim, quality); }); };
   var ctxOk = false; try { var cv0 = document.createElement('canvas'); ctxOk = !!(cv0.getContext && cv0.getContext('2d')); } catch (e) {}
   if (!ctxOk) return legacy();
-  var unsupported = function(why) { var e = new Error('formato de imagen no soportado (' + why + ')'); e.code = 'UNSUPPORTED'; return e; };
+  var unsupported = function(why) { var e = new Error('formato de imagen no soportado (' + why + ')'); e.code = 'UNSUPPORTED'; return e; }; // i18n-ok: motivo interno
   return new Promise(function(resolve, reject) {
     var url = null;
     try { url = URL.createObjectURL(file); } catch (e) { reject(unsupported('sin URL')); return; }
