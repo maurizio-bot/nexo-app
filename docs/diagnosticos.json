@@ -277,7 +277,7 @@
    "dia": "2026-11-18",
    "hora": "21:22",
    "nx": "nx1e50c95d",
-   "sintoma": "manual: revisión general (build 3101)",
+   "sintoma": "manual: revisión general del teléfono de Carii (build 3101)",
    "categoria": "Sin fallo nuevo (informativo)",
    "causa": "mensajes a c283 por internet ✓✓ en 1 s; saludo nativo contestó con app dormida; llamada de 822 s bien (cámara cortada 63 s por pantalla bloqueada, volvió al desbloquear); Redmi tardó 6,5 min en confirmar y Honor sin red desde 17:07 (apps dormidas del otro lado); 4 min sin red en el teléfono (21:16-21:20)"
   },
