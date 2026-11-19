@@ -21,6 +21,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **19-11 madrugada (México 18-11 tarde):** publicadas 3098 (saludo nativo), 3099 (Wi-Fi 2,5 s; entregado no pasa a fallido), 3100 (Wi-Fi tras
+  congelado), 3101 (puente sin «!», reenlace al cerrar repetido, tope 6 por puente), 3102 (medidas sin congelado; diagnósticos sin repetir).
+  En CI: b78f7b7 = 3242 (comentario en foto/imagen/archivo) + 3243 (panorámicas hasta 40 MB, HEIC como archivo); aviso programado 01:51 UTC.
+- **PRIORIDAD 1 (dueño 19-11):** Bluetooth entero en el servicio nativo + conexiones a demanda (idea del dueño para romper el tope ~7) →
+  luego «modo vagón» (contador por anuncios, saludo seguro). Detalle en docs/PENDIENTES.md arriba. Empezar con límite recién reiniciado.
+- Modo ahorro sigue: arreglar diagnósticos y lo que pida el dueño.
 - **18-11 06:15 (México) — MODO AHORRO hasta el domingo (dueño):** SOLO arreglar lo que muestren sus diagnósticos y lo que pida.
   Sin trabajo por cuenta propia: NO programar el reloj de ausencia ni seguir la cola solo. Pruebas: solo las cercanas al cambio
   (la batería la corre el CI). APK 3232–3233 subida (5f246d3): si salió, pasar NOVEDADES al historial.
