@@ -360,6 +360,30 @@
    "sintoma": "resumen_diario",
    "categoria": "Resumen diario (informativo)",
    "causa": "no es un fallo (S24 3105: 120 enviados, 113 ✓✓, 107 leídos; 106 recibidos)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "00:22",
+   "nx": "nx1e29ab2f",
+   "sintoma": "manual: prueba del despertador con la tablet A7 Lite (3105), app cerrada, pantalla apagada",
+   "categoria": "Prueba del despertador (informativo)",
+   "causa": "2 mensajes del dueño (00:17:43 y 00:17:57) llegaron por la escucha nativa (batería exenta) con ✓✓ en 0,1 s; sin «Despierta recibido»; sin encender pantalla (ajuste apagado a propósito) y con icono de aviso en la pantalla de bloqueo + globo «2» en el icono (aviso OK). Su propio toque también falla: «toque a nx1n36c283: no salió (Failed to fetch)» (00:21:52, 00:22:32): confirma el fallo del despertador en 3 teléfonos (S24, Vivo no probado, tablet)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "00:23",
+   "nx": "nx1n36c283",
+   "sintoma": "manual: S24 tras la prueba (3105)",
+   "categoria": "Despertador bloqueado por CORS (3248)",
+   "causa": "«[WAKE] toque a nx09acdb61/nx1e29ab2f: no salió (Failed to fetch)» en cada toque (00:05:40, 00:17:29, 00:22:32). Causa: pregunta previa OPTIONS sin contestar en el servicio de Cloudflare. Arreglo en la rama (wake_post.js) + línea en Cloudflare pendiente del dueño"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx1e29ab2f",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (tablet 3105)"
   }
  ]
 }
