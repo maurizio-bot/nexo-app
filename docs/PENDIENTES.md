@@ -9,6 +9,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
+## 🔝 PASO 0 (dueño 19-11): auditoría de seguridad completa ANTES del cambio del Bluetooth («partir con una base limpia»)
+- Como la de la noticia (IA buscando fallas): todas las puertas (Bluetooth, Wi-Fi local, Wi-Fi Direct, relés, puente, nativo, cifrado,
+  vault, enlaces de invitación). Lo hallado se arregla y se prueba; el informe va al repositorio PRIVADO (no al público). Otra después del cambio.
+
 ## 🔝 PRIORIDAD 1 (dueño 19-11): Bluetooth entero en el servicio nativo
 - «Las otras apps (Briar, Bitchat, Bridgefy) lo hacen bien»: todo el Bluetooth (recibir, confirmar, reenviar, anunciar con la clave cifrada) en
   el servicio en primer plano, sin depender de que la app (WebView) esté despierta. Resuelve los «zombi», el Bluetooth tras reiniciar y la

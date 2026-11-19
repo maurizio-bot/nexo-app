@@ -24,6 +24,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **19-11 madrugada (México 18-11 tarde):** publicadas 3098 (saludo nativo), 3099 (Wi-Fi 2,5 s; entregado no pasa a fallido), 3100 (Wi-Fi tras
   congelado), 3101 (puente sin «!», reenlace al cerrar repetido, tope 6 por puente), 3102 (medidas sin congelado; diagnósticos sin repetir).
   En CI: b78f7b7 = 3242 (comentario en foto/imagen/archivo) + 3243 (panorámicas hasta 40 MB, HEIC como archivo); aviso programado 01:51 UTC.
+- **PASO 0 (dueño 19-11):** auditoría de seguridad completa ANTES del cambio del Bluetooth (informe al privado). Con el límite recién reiniciado.
 - **PRIORIDAD 1 (dueño 19-11):** Bluetooth entero en el servicio nativo + conexiones a demanda (idea del dueño para romper el tope ~7) →
   luego «modo vagón» (contador por anuncios, saludo seguro). Detalle en docs/PENDIENTES.md arriba. Empezar con límite recién reiniciado.
 - Modo ahorro sigue: arreglar diagnósticos y lo que pida el dueño.
