@@ -304,6 +304,30 @@
    "sintoma": "zombi (nx1e29ab2f)",
    "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
    "causa": "la Galaxy Tab A7 Lite (…ab2f) con la build 3084 (vieja): el teléfono del dueño le mandaba la copia de seguridad (fénix, 41 trozos) y la tablet no confirmó ninguno; su enlace anterior (49b9) ya estaba atascado. Versión vieja: no se le da peso (regla 14-11). Confirma además los tiempos de Yael (✓✓ 21:21:15) y Katy (✓✓ 21:45:43, al abrir su app)"
+  },
+  {
+   "dia": "2026-11-17",
+   "hora": "23:59",
+   "nx": "nx1e29ab2f",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (tablet en 3084; llegó el 18-11 23:09)"
+  },
+  {
+   "dia": "2026-11-16",
+   "hora": "23:59",
+   "nx": "nx09acdb61",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (Vivo en 3077; llegó el 18-11 23:06)"
+  },
+  {
+   "dia": "2026-11-16",
+   "hora": "17:38",
+   "nx": "nx09acdb61",
+   "sintoma": "zombi (nx1e50c95d)",
+   "categoria": "Bluetooth: enlace inservible tras reabrir la app (MTU 23)",
+   "causa": "build 3077 (vieja, llegó con 2 días de retraso). A los 5-8 s de reabrir la app tras actualizar, los enlaces que seguían abiertos con el dueño y Cari pasan a MTU 23, fallan 6 s y se re-rutean por Wi-Fi: mismo patrón que Yael 18-11 21:26 → refuerza la hipótesis «MTU 23 = enlace que sobrevive al reinicio de la app» (PENDIENTES, PRIORIDAD 1)"
   }
  ]
 }
