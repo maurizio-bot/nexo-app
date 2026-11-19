@@ -544,6 +544,14 @@
    "sintoma": "zombi (nx0x4029e6)",
    "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
    "causa": "el otro es Zhelowsky con 3097 (vieja) y la app dormida: el S24 (servidor) le mandaba un trozo Fénix de 746 partes sin ninguna confirmación; Fénix se rindió a los 17 s (queda pendiente) y el zombi salió 8 s después. Aparte, un reenvío Jump por Roberto (3107, app en segundo plano: su nativo contesta pings pero no reenvía) quedó en espera. Nada perdido. Lo único de la app: 55,5 MB bajados de los relés en 4 h, 51 MB repetidos (3107 sin el arreglo 3249; ya en la 3108) y batería 8,8 %/h"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "09:16",
+   "nx": "nx1905c1ee",
+   "sintoma": "zombi (nx0g6ef54e)",
+   "categoria": "Bluetooth: enlace roto al abrir la app (el servidor GATT se rehace)",
+   "causa": "Austin (HONOR Xb, 3107 recién instalada 09:15; optimización de batería ACTIVA, la app ya le muestra el aviso; el 18-11 20:33 el PowerGenie de Honor la forzó a cerrar). Roberto (3107) abrió la app ~09:16:08: su enlace de cliente con Austin se cerró bien («cortado por el otro»), pero el de Austin al servidor de Roberto quedó viejo (4 pings sin respuesta, zombi 50 s después) = mecanismo de 3251 (arreglado en la 3109). Lo mismo un momento con Marcos (MTU 23 y «muerto» 09:15:27–38, reconectó a MTU 517 a las 09:15:52). Nada perdido: textos pendientes o ✓✓"
   }
  ]
 }
