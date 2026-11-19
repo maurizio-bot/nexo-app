@@ -285,6 +285,8 @@ export function _handleFile() {
 
 // 3242 (dueño 18-11): antes de mandar un archivo, la revisión con un comentario opcional
 function _fileChosen(file) {
+  // Interruptor de las pruebas automáticas (NEXO_FILE_REVIEW = false): el archivo sale directo, sin la revisión
+  if (typeof window !== 'undefined' && window.NEXO_FILE_REVIEW === false) { _fileChosenSend(file, ''); return; }
   _openGalleryReview([file], { eyes: false, file: true }, function(once, cap) { _fileChosenSend(file, cap); });
 }
 function _fileChosenSend(file, cap) {

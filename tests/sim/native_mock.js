@@ -1464,6 +1464,8 @@ function installWebCrypto(win) {
   // pruebas fijamos ESPAÑOL (el idioma base de la app) para que los textos sean deterministas; los teléfonos reales
   // siguen su propio idioma. Una prueba concreta puede ponerlo antes de arrancar para probar otro idioma.
   if (!win.NEXO_FORCE_LANG) win.NEXO_FORCE_LANG = 'es';
+  // 3242: los archivos pasan por la revisión (comentario); en las pruebas de siempre salen directo (comentario.js la prueba aparte)
+  if (!('NEXO_FILE_REVIEW' in win)) win.NEXO_FILE_REVIEW = false;
   const wc = require('crypto').webcrypto;
   Object.defineProperty(win, 'crypto', { configurable: true, value: wc });
   const util = require('util');

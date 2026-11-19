@@ -68,7 +68,7 @@ function pageHooks() {
 // ---- teléfonos ----
 async function phone(browser, name) {
   const native = new NativePhone(name, MAC[name], Object.assign({}, base));
-  const b2 = { newPage: async (o) => { const p = await browser.newPage(o); await p.addInitScript(() => { window.NEXO_NET_RELAYS = []; }); await p.addInitScript(pageHooks); return p; } };
+  const b2 = { newPage: async (o) => { const p = await browser.newPage(o); await p.addInitScript(() => { window.NEXO_NET_RELAYS = []; }); await p.addInitScript(pageHooks); await p.addInitScript(() => { window.__fileReview = true; }); return p; } };
   return { name, native, boot: async () => (await bootPhone(b2, name, native, dist, { phone: true, logs, seedName: SEED[name], lang: 'es' })).page };
 }
 const idOf = (pg) => pg.evaluate(() => window.bleInterface.localNexoId.toLowerCase());
