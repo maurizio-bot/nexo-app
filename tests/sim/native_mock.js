@@ -239,7 +239,14 @@ class NativePhone {
       const meAdv = norm(this.address), meInit = norm(this.initAddress);
       this.radio.phones.forEach((p) => {
         if (p === this) return;
-        p._dropLinkLater(meAdv, this.address, meInit, this.initAddress);
+        // 3251: endClosedMode corta (cancelConnection) los enlaces que los demás abrieron a nuestro servidor ANTES de cerrarlo: el
+        // otro ve la desconexión y reconecta al servidor nuevo. opts.kotlin3250: el Kotlin de antes cerraba el servidor sin cortarlos;
+        // el enlace del otro sigue «conectado» pero apunta al servidor viejo: sus escrituras no llegan y a los ~6 s el nativo las
+        // suelta («Write fallo», onWriteDropped). (Los enlaces en que NOSOTROS éramos clientes sí se cerraban bien.)
+        if (this.opts.kotlin3250 && p.clients.has(meAdv)) {
+          p.clients.get(meAdv).stale = true;
+          if (p.serverConnected.has(meInit)) { p.serverConnected.delete(meInit); p.serverNotif.delete(meInit); p.emit('onDeviceDisconnected', { deviceId: this.initAddress }); }
+        } else p._dropLinkLater(meAdv, this.address, meInit, this.initAddress);
         this.clients.delete(norm(p.address)); this.serverConnected.delete(norm(p.initAddress)); this.serverNotif.delete(norm(p.initAddress));
       });
       this.pendingQueue.clear(); this.buffers.clear(); this.writeQ = new Map();
@@ -392,6 +399,12 @@ class NativePhone {
     }
     // 2. Cliente (write) si estamos conectados como cliente
     const cl = this.clients.get(macNorm);
+    // opts.kotlin3250 (ver load): enlace al servidor GATT viejo del otro: la escritura no llega; a los ~6 s el nativo suelta el mensaje
+    if (cl && cl.stale) {
+      this.stats.staleWrites = (this.stats.staleWrites || 0) + 1;
+      if (!tag || tag.last) setTimeout(() => { if (this.clients.get(macNorm) === cl) this.emit('onWriteDropped', { mac: macNorm }); }, 6000);
+      return { sent: true, mode: 'gatt_client' };
+    }
     if (cl && cl.state === 'connected' && cl.rxReady) {
       this.sent.push({ to: macNorm, chunk, mode: 'gatt_client' });
       this._remLog('INFO', 'SEND', 'GATT Client chunk sent (NO_RESPONSE) to ' + macNorm + ' len=' + chunk.length);

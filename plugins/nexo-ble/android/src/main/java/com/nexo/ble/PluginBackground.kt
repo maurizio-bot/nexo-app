@@ -211,6 +211,11 @@ private fun NexoBlePlugin.endClosedMode() {
     cleanupAllConnections()
     try { unregisterServerReceivers() } catch (e: Exception) { }
     try { unregisterBluetoothStateReceiver() } catch (e: Exception) { }
+    // 3251 (diagnóstico de Roberto/S24 19-11 08:09; también Zhelowsky 17-11 16:34): cerrar el servidor GATT sin cortar antes los enlaces
+    // que los demás tenían abiertos a él los dejaba «conectados» del otro lado pero apuntando al servidor viejo: sus escrituras fallaban
+    // ~6 s («Write fallo», MTU 23) y a los ~55 s salía un «zombi». Se cortan aquí (cancelConnection): el otro ve la desconexión y
+    // reconecta en ~1 s al servidor que abre la instancia nueva (prueba gattreabre.js).
+    cancelServerLinks("la app se abre: el servidor GATT pasa a la instancia nueva")
     try { stopGattServer() } catch (e: Exception) { }
     writeQueues.clear(); writeQueueProcessing.clear()
     writeQueueTimeouts.forEach { (_, r) -> mainHandler.removeCallbacks(r) }; writeQueueTimeouts.clear()

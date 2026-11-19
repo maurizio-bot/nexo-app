@@ -269,6 +269,21 @@ internal fun NexoBlePlugin.startGattServer() {
     }
 }
 
+// 3251: corta los enlaces que los demás tienen abiertos a NUESTRO servidor GATT (antes de cerrarlo, para que reconecten al nuevo en vez de
+// quedarse escribiendo a un servidor que ya no existe). Usa también los que Android da por conectados aunque no estén en nuestro mapa.
+internal fun NexoBlePlugin.cancelServerLinks(motivo: String) {
+    val server = bluetoothGattServer ?: return
+    val devices = LinkedHashMap<String, BluetoothDevice>()
+    serverConnectedDevices.forEach { (mac, d) -> devices[mac] = d }
+    try {
+        val bm = (appCtx ?: activity.applicationContext).getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        bm.getConnectedDevices(BluetoothProfile.GATT_SERVER).forEach { d -> devices.putIfAbsent(normalizeMac(d.address), d) }
+    } catch (e: Exception) { }
+    if (devices.isEmpty()) return
+    remLog("INFO", "GATT_SERVER", "Corto ${devices.size} enlace(s) entrante(s) antes de cerrar el servidor ($motivo)")
+    devices.values.forEach { d -> try { server.cancelConnection(d) } catch (e: Exception) { } }
+}
+
 internal fun NexoBlePlugin.stopGattServer() {
     try {
         bluetoothGattServer?.close()
