@@ -22,6 +22,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
 - **19-11 05:10 (México):** diagnósticos del S24 (zombi con el Vivo, 04:38) y resumen del S23 registrados. Zombi = app del Vivo congelada por su ahorro (saludo nativo contesta, la página no confirma; escrituras «ocupado» 201). Sin chats perdidos. Es la 1.ª causa de fallos (15 de 30): su remedio va con el Bluetooth en el servicio nativo (domingo). El S24 aún en 3106: actualizar a 3107. CONFIRMADO con el del Vivo (05:12): el Vivo congeló el proceso ENTERO de NEXO (app abierta en segundo plano) ~00:20–05:12; al abrirla entraron de golpe las conexiones BT y 7 sobres de las 00:20. Remedio a probar: toque FCM de la 3107 + «Alto consumo en segundo plano». Pendiente para el domingo: detector de «proceso congelado» en el diagnóstico.
+- **19-11 ~05:30 (México):** el dueño se va a la oficina (Vivo y tablet se quedan en casa). Probará el despertador con sus compañeros cuando tengan la 3107 y mandará los diagnósticos de AMBOS lados.
 - **CIERRE POR CONTEXTO 19-11 00:35 (México) — leer esto primero en la sesión nueva:**
   1. **HALLAZGO CLAVE (3248):** el despertador (toque FCM) NUNCA salía de la app: «[WAKE] toque a …: no salió (Failed to fetch)» en todos
      los toques del S24 (3105). Causa casi segura: el WebView manda una pregunta previa (OPTIONS) por el POST con JSON y el servicio
