@@ -296,6 +296,14 @@
    "sintoma": "manual: mensajes que no llegaban a Katy (Honor, 3101→3102)",
    "categoria": "Despertador (toque FCM) que no llega",
    "causa": "NEXO sin actividad de 17:30:10 (Bluetooth apagado + relés cortados a la vez: parece apagado/reinicio del teléfono) a 21:45:36 (abrió la app). Registro completo en ese hueco: ningún «Despierta recibido» pese a los toques de Cari (21:21) y del dueño; tampoco «vuelve sola». Optimización de batería ACTIVA y segundo plano NO permitido. Los mensajes entraron al abrir. En todos los diagnósticos recibidos no hay ni un «Despierta recibido»: sospecha de que el enviador del toque no funciona (no comprobable desde el entorno: red bloqueada)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "22:08",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx1e29ab2f)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "la Galaxy Tab A7 Lite (…ab2f) con la build 3084 (vieja): el teléfono del dueño le mandaba la copia de seguridad (fénix, 41 trozos) y la tablet no confirmó ninguno; su enlace anterior (49b9) ya estaba atascado. Versión vieja: no se le da peso (regla 14-11). Confirma además los tiempos de Yael (✓✓ 21:21:15) y Katy (✓✓ 21:45:43, al abrir su app)"
   }
  ]
 }
