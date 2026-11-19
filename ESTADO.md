@@ -29,7 +29,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   sin cortes») y subir 3251 a NEXOCHAT. El Kotlin no se compiló aquí (sin SDK): lo compila el CI.
   **Dueño 08:50 (uso al 88 %):** al terminar 3251, DETENERSE (sin cola ni reloj de ausencia) y esperar sus diagnósticos.
 - **CIERRE POR CONTEXTO 19-11 08:30 (México) — leer esto primero en la sesión nueva:**
-  1. **APK con 3249 + 3250 en CI (commit d97e7e7 en NEXOCHAT, subido 07:58).** Al terminar bien: pasar el bloque de NOVEDADES al historial
+  1. **HECHO 09:22: APK 3108 (3249 + 3250) PUBLICADA, CI en verde; NOVEDADES pasadas al historial.** (antes:) APK con 3249 + 3250 en CI (commit d97e7e7). Al terminar bien: pasar el bloque de NOVEDADES al historial
      con su número ([skip ci]) y avisar al dueño en 1 línea. Si falla: bajar el registro del job y corregir. (Había un aviso programado en la
      sesión vieja para las 09:21; puede no llegar a la nueva: comprobarlo a mano.)
   2. **SIGUIENTE ARREGLO (de la app, diagnóstico Roberto/S24 08:09):** al abrir la app con el servicio ya corriendo, el nativo DETIENE y

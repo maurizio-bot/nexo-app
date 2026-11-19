@@ -12,12 +12,17 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Gasta menos datos al volver a la app: ya no vuelve a bajar lo que ya tenía.
-- Tras apagar y encender el Bluetooth, los mensajes salen al momento.
+- (próxima APK)
 </es-419>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3108 (19-11-2026)
+<es-419>
+- Gasta menos datos al volver a la app: ya no vuelve a bajar lo que ya tenía.
+- Tras apagar y encender el Bluetooth, los mensajes salen al momento.
+</es-419>
 
 ### APK 3107 (19-11-2026)
 <es-419>
