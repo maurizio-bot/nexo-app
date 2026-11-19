@@ -142,6 +142,9 @@ function _viewerVideo(src, noSave) {
   video.controls = true;
   video.autoplay = true;
   video.playsInline = true;
+  // 3244 (dueño 18-11: «al reproducir un vídeo aparece un momento el cuadro gris con el triángulo de play»): un póster transparente (como en
+  // los estados desde la 3230) tapa ese cuadro del sistema mientras llega el primer fotograma
+  video.setAttribute('poster', 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
   if (noSave) {
     // 3163: vídeo «ver una vez»: el reproductor tampoco ofrece descargarlo ni sacarlo a una ventana flotante
     video.setAttribute('controlsList', 'nodownload noremoteplayback');

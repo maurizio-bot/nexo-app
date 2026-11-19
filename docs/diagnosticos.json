@@ -1,0 +1,253 @@
+{
+ "nota": "Registro de los diagnósticos que manda el dueño (uno por diagnóstico: NEXO ID + hora de envío). Hora de México. Antes del 18-11 no hay registro detallado (solo menciones en PROGRESO). Al recibir uno nuevo: añadirlo aquí y correr node tests/sim/diag_stats.js.",
+ "diagnosticos": [
+  {
+   "dia": "2026-11-17",
+   "hora": "21:40",
+   "nx": "nx1e50c95d",
+   "sintoma": "zombi",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "app del otro congelada o muerta (ahorro de batería / batería baja)"
+  },
+  {
+   "dia": "2026-11-17",
+   "hora": "21:56",
+   "nx": "nx01992876",
+   "sintoma": "par:zombi",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "app del otro congelada o muerta (ahorro de batería / batería baja)"
+  },
+  {
+   "dia": "2026-11-17",
+   "hora": "22:24",
+   "nx": "nx01992876",
+   "sintoma": "par:zombi",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "app del otro congelada o muerta (ahorro de batería / batería baja)"
+  },
+  {
+   "dia": "2026-11-17",
+   "hora": "23:36",
+   "nx": "nx16386482",
+   "sintoma": "par:zombi",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "app del otro congelada o muerta (ahorro de batería / batería baja)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "00:13",
+   "nx": "nx1n36c283",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "04:40",
+   "nx": "nx1a93dbfe",
+   "sintoma": "enlace_abre_cierra",
+   "categoria": "Bluetooth: enlaces repetidos que se abren y cierran",
+   "causa": "desempate de enlaces; arreglado en 3233 y 3239"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "04:40",
+   "nx": "nx1a93dbfe",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "05:03",
+   "nx": "nx1e50c95d",
+   "sintoma": "cierre_fallo",
+   "categoria": "Cierre de la app por fallo",
+   "causa": "fallo nativo al terminar videollamada (S23); pistas en el diagnóstico desde 3232b"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "05:03",
+   "nx": "nx1e50c95d",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "05:52",
+   "nx": "nx1l87f8a0",
+   "sintoma": "par:enlace_abre_cierra",
+   "categoria": "Bluetooth: enlaces repetidos que se abren y cierran",
+   "causa": "desempate de enlaces; arreglado en 3233 y 3239"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "05:52",
+   "nx": "nx1l87f8a0",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "05:57",
+   "nx": "nx126df3f4",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "06:32",
+   "nx": "nx0k365928",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "06:50",
+   "nx": "nx1a93dbfe",
+   "sintoma": "enlace_abre_cierra",
+   "categoria": "Bluetooth: enlaces repetidos que se abren y cierran",
+   "causa": "desempate de enlaces; arreglado en 3233 y 3239"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "07:15",
+   "nx": "nx0g6ef54e",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "07:25",
+   "nx": "nx01992876",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "08:53",
+   "nx": "nx10b6f4ac",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "08:53",
+   "nx": "nx0x4029e6",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "08:53",
+   "nx": "nx1905c1ee",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "08:59",
+   "nx": "nx1905c1ee",
+   "sintoma": "zombi",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "app del otro congelada o muerta (ahorro de batería / batería baja)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "08:59",
+   "nx": "nx1n36c283",
+   "sintoma": "par:zombi",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "app del otro congelada o muerta (ahorro de batería / batería baja)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "09:47",
+   "nx": "nx16386482",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "09:48",
+   "nx": "nx1905c1ee",
+   "sintoma": "zombi",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "app del otro congelada o muerta (ahorro de batería / batería baja)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "10:27",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "app del otro congelada o muerta (ahorro de batería / batería baja)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "11:30",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "app del otro congelada o muerta (ahorro de batería / batería baja)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "11:31",
+   "nx": "nx10b6f4ac",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "11:43",
+   "nx": "nx10b6f4ac",
+   "sintoma": "par:zombi",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "app del otro congelada o muerta (ahorro de batería / batería baja)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "11:43",
+   "nx": "nx0x4029e6",
+   "sintoma": "par:zombi",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "app del otro congelada o muerta (ahorro de batería / batería baja)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "11:44",
+   "nx": "nx1n36c283",
+   "sintoma": "enlace_abre_cierra",
+   "categoria": "Bluetooth: enlaces repetidos que se abren y cierran",
+   "causa": "desempate de enlaces; arreglado en 3233 y 3239"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "14:06",
+   "nx": "nx01992876",
+   "sintoma": "par:zombi",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "app del otro congelada o muerta (ahorro de batería / batería baja)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "17:48",
+   "nx": "nx0x4029e6",
+   "sintoma": "par:zombi",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "app del otro congelada o muerta (ahorro de batería / batería baja)"
+  }
+ ]
+}

@@ -33,6 +33,8 @@ actualizarlos al terminar cada bloque de trabajo.
 - Rama principal: `NEXOCHAT`; cada push genera una APK (`.github/workflows/build-apk.yml`).
   El dueño autorizó subir cambios directamente a `NEXOCHAT`.
 - Base estable (actual): build **2882**, rama `base-estable-2882` (el dueño la guardó el 02-11 como base de emergencia tras probar nightly-2882 = commit `7a69bea9`: funcional —ConnectionService entrante+saliente por Telecom, llamada en el coche OK—; quedan detalles en curso de audio (volumen, foco/Spotify) y de envío de archivos por el diagnóstico del dueño). Anterior: build **2858**, rama `base-estable-2858` (31-10: llamada/videollamada de grupo «lo menos peor hasta ahora», el vídeo ya se ve). Probada a fondo para la ENTREGA con app cerrada + pantalla apagada ✓: build **2823**, rama `base-estable-2823` (dueño 28-10; no modificarla). Anteriores: `base-estable-2713`, `base-estable-2699`, `base-estable-2698`. Cómo volver a cualquiera: `docs/PROGRESO.md`.
+- **Conteo de diagnósticos (dueño 19-11):** cada diagnóstico que manda el dueño se apunta en `docs/diagnosticos.json` (día y hora de México,
+  NEXO ID, síntoma, categoría, causa) y `node tests/sim/diag_stats.js` da la estadística por día, categoría y causa (¿bajan?, ¿vuelven?).
 - Diagnóstico de fallos en teléfonos reales: pedir al dueño Perfil → Copiar diagnóstico (ambos teléfonos).
 - **Versiones viejas (dueño 14-11):** la app aún no está en la tienda; se arregla la ÚLTIMA versión. No dar peso a los teléfonos con
   versiones anteriores (sí o sí tendrán que actualizar) ni engordar la app con compatibilidad o avisos pensados para ellas.
