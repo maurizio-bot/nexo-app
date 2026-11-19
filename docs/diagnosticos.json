@@ -456,6 +456,22 @@
    "sintoma": "resumen_diario",
    "categoria": "Resumen diario (informativo)",
    "causa": "no es un fallo (Roberto 3100)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "08:09",
+   "nx": "nx1n36c283",
+   "sintoma": "manual: prueba de apagar y encender el Bluetooth (3107)",
+   "categoria": "Bluetooth: enlace viejo tras apagar y encender el Bluetooth",
+   "causa": "El dueño apagó el Bluetooth 08:06:40 y lo encendió 08:07:04 con la 3107: el enlace con Roberto siguió «listo» y un texto falló 6 s por él (MTU 23, «muerto», re-ruteo a internet): es justo lo arreglado en 3250 (APK en CI). Nada perdido: los 4 textos a Roberto (app CERRADA) ✓✓ en 0,4–2 s por internet (escucha nativa + despertador) y el de las 08:08:39 por Bluetooth con su app cerrada, al momento"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "08:08",
+   "nx": "nx0g6ef54e",
+   "sintoma": "manual: Roberto con la app cerrada (3107)",
+   "categoria": "Prueba del despertador (informativo)",
+   "causa": "App cerrada: recibió por internet (sobre + «Despierta recibido» + ✓✓ nativo) y por Bluetooth (BT_CERRADA MESSAGE) sin abrir la app; al abrirla entraron los 5 de golpe. Al abrir, «MTU 23» de un enlace que sobrevivió al reinicio de la app (hipótesis ya apuntada, PRIORIDAD 1 del domingo)"
   }
  ]
 }
