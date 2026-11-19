@@ -21,6 +21,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **19-11 05:10 (México):** diagnósticos del S24 (zombi con el Vivo, 04:38) y resumen del S23 registrados. Zombi = app del Vivo congelada por su ahorro (saludo nativo contesta, la página no confirma; escrituras «ocupado» 201). Sin chats perdidos. Es la 1.ª causa de fallos (15 de 30): su remedio va con el Bluetooth en el servicio nativo (domingo). El S24 aún en 3106: actualizar a 3107. Falta el diagnóstico del Vivo.
 - **CIERRE POR CONTEXTO 19-11 00:35 (México) — leer esto primero en la sesión nueva:**
   1. **HALLAZGO CLAVE (3248):** el despertador (toque FCM) NUNCA salía de la app: «[WAKE] toque a …: no salió (Failed to fetch)» en todos
      los toques del S24 (3105). Causa casi segura: el WebView manda una pregunta previa (OPTIONS) por el POST con JSON y el servicio

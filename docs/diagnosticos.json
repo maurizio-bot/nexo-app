@@ -384,6 +384,22 @@
    "sintoma": "resumen_diario",
    "categoria": "Resumen diario (informativo)",
    "causa": "no es un fallo (tablet 3105)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "04:38",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx09acdb61)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "S24 (3106) con el Vivo Y03: el enlace abrió (04:35, MTU 517, saludo contestado) pero el Vivo no confirmó un mensaje AUTOMÁTICO (msg…508019 de las 04:35:08; no era un chat: el último chat con el Vivo fue 262 min antes), 2 vueltas de 5 reintentos; luego las escrituras quedaron ocupadas (Android status 201 = la anterior sin contestar) 6 s por enlace y a los 4 pings sin respuesta el S24 cortó para reconectar (lo previsto). El Vivo llevaba 17 min sin oírse por internet y a las 04:21 «su app no contesta la comprobación»: app del Vivo congelada por su ahorro de batería. Sin pérdida de chats. El S24 sigue en 3106 (sin el arreglo del despertador de la 3107). El remedio de fondo (que el nativo confirme aunque la página esté congelada) va con el Bluetooth en el servicio nativo (domingo 22-11). Falta el diagnóstico del Vivo para confirmarlo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx1e50c95d",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (S23 3102: 85 enviados, 84 ✓✓, 83 leídos; buzón de archivos 128 KB/s al enviar y 266 al recibir; llegó el 19-11 05:04)"
   }
  ]
 }
