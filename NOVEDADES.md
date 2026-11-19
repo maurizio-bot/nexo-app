@@ -12,14 +12,18 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- En teléfonos Honor, el botón para permitir el inicio automático de NEXO ya abre la pantalla correcta.
-- Mejoras internas para que los mensajes despierten a un teléfono que estuvo apagado o sin red.
 - Si el ahorro de batería frena a NEXO en el teléfono de un contacto, lo verás en su chat para pedirle que lo active.
 - Si te llegan mensajes tarde por el ahorro de batería, NEXO te avisa y te ayuda a arreglarlo en un toque.
 </es-419>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3105 (18-11-2026)
+<es-419>
+- En teléfonos Honor, el botón para permitir el inicio automático de NEXO ya abre la pantalla correcta.
+- Mejoras internas para que los mensajes despierten a un teléfono que estuvo apagado o sin red.
+</es-419>
 
 ### APK 3104 (18-11-2026)
 <es-419>
