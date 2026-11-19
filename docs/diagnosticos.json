@@ -616,6 +616,14 @@
    "sintoma": "resumen_diario",
    "categoria": "Resumen diario (informativo)",
    "causa": "no es un fallo (Alex Lopez, 3097, vieja)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "14:56",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx1905c1ee)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "Austin (3107) con OPTIMIZACIÓN DE BATERÍA ACTIVA (ajuste del teléfono; la app ya le muestra el aviso): su app dormida no confirma Fénix ni pings → zombi. Además en el S24 (3109): el desempate cierra un enlace repetido con Austin cada 1–2 min y vuelve a aparecer (mismo pendiente del 14:23); y con datos móviles los 4 relés se dieron por muertos 2 veces (14:53:27 y 14:53:56, 9 s sin internet): el texto nazu7aq4 al S23 se marcó «fallido» a las 14:54:04 y se entregó 1 s después (A REVISAR: no marcar fallido mientras los relés reconectan). Nada perdido"
   }
  ]
 }

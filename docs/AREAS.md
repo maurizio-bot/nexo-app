@@ -64,6 +64,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Foto de perfil de Austin llega 3 veces como «nueva» (15 KB cada vez; mismo diagnóstico, 09:57). ×1
 - Paquete de puente `sxmwnmzmmz8is749` reintentado desde las 09:05 por un camino que nunca confirma (espera 15→240 s; se reinicia al abrir la app; diagnósticos de Austin 09:16 y del S24 09:57). Gasta radio, no se pierde. ×1
 - El S24 reabre cada ~60 s el enlace de cliente que Austin le cierra por repetido (3 cierres en 10 min; diagnóstico de Austin 19-11 14:23). ×1
+- Con datos móviles, si los relés se caen unos segundos, un texto se marca «fallido» y se entrega 1 s después (S24 3109, 19-11 14:54): no marcar fallido mientras reconectan. ×1
 - Al ACTUALIZAR la app, los contactos cercanos quedan con un enlace viejo ~1 min (MTU 23 y zombi): el proceso muere sin cortar nada (3251 no lo cubre). Vigilar; con menos actualizaciones pasará poco. ×1
 - Diagnósticos de la 3097–3107 con «Bluetooth apagado/encendido» suelto y ~20 desconexiones viejas al volver a primer plano (Zhelowsky 11:32, 18-11). Revisar si 3251 lo cubre. ×1
 
