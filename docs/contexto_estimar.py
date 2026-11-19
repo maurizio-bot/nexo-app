@@ -26,6 +26,6 @@ def texto(o):
     return n, first
 b = 0
 for i, o in enumerate(rows):
-    if o.get('type') == 'user' and texto(o)[1].lstrip().startswith('This session is being continued'): b = i
+    if o.get('type') == 'user' and 'This session is being continued' in json.dumps(o.get('message'), ensure_ascii=False)[:6000]: b = i
 total = sum(texto(o)[0] for o in rows[b:])
 print('caracteres desde el último resumen: %d  ≈ %.0f %% de la ventana (30 %% = %d)' % (total, total / POR_CIENTO, 30 * POR_CIENTO))
