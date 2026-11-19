@@ -512,6 +512,38 @@
    "sintoma": "resumen_diario",
    "categoria": "Resumen diario (informativo)",
    "causa": "no es un fallo (3097, vieja)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "11:32",
+   "nx": "nx0x4029e6",
+   "sintoma": "par:zombi (pedido por nx1n36c283)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "Zhelowsky (3097, vieja; llegó el 19-11 09:54). Al volver a primer plano la página recibió de golpe ~20 desconexiones viejas y un «Bluetooth apagado/encendido» suelto; su servidor GATT recibía bien (MTU 498). Nada perdido (3 envíos abortados y reenviados al momento)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx1905c1ee",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (3101, vieja; Wi-Fi local de media 148 s por un caso de 528 s)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx01992876",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (3104, vieja)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "09:05",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx0x4029e6)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "el otro es Zhelowsky con 3097 (vieja) y la app dormida: el S24 (servidor) le mandaba un trozo Fénix de 746 partes sin ninguna confirmación; Fénix se rindió a los 17 s (queda pendiente) y el zombi salió 8 s después. Aparte, un reenvío Jump por Roberto (3107, app en segundo plano: su nativo contesta pings pero no reenvía) quedó en espera. Nada perdido. Lo único de la app: 55,5 MB bajados de los relés en 4 h, 51 MB repetidos (3107 sin el arreglo 3249; ya en la 3108) y batería 8,8 %/h"
   }
  ]
 }
