@@ -29,6 +29,7 @@ actualizarlos al terminar cada bloque de trabajo.
   Claude lo estima por el largo de la plática), al terminar el tema en curso —nunca a la mitad— escribir el resumen en el bloque
   TRASPASO de `ESTADO.md` (lo pendiente, lo decidido, las pruebas en curso y los avisos programados; los diagnósticos largos van aparte,
   en `docs/diagnosticos.json`), avisar al dueño en una línea y pedirle abrir una sesión nueva. Sin esperar a que lo pida.
+  Medirlo: `python3 docs/contexto_estimar.py` (calibrado 18-11: ~9 270 caracteres = 1 %; 30 % ≈ 278 000 caracteres desde el último resumen).
   **Higiene de contexto (§9):** mantener el bloque TRASPASO de `ESTADO.md` y sugerir `/compact` o `/clear` al cerrar un bloque.
 
 - Rutina diaria (pedida por el dueño, `docs/ROBUSTEZ.md` §5): lo del dueño primero (sus pruebas y
