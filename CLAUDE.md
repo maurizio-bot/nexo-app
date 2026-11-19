@@ -25,6 +25,10 @@ actualizarlos al terminar cada bloque de trabajo.
   que Claude decide, sin esperar; preguntar antes solo si es grande. Reglas y límites: `docs/COMO_TRABAJAMOS.md` §8. Léelo con
   `ESTADO.md` al empezar. **Reloj de ausencia:** al terminar cada respuesta, programar con `send_later` un aviso a 5 min; si llega y
   el dueño no escribió, empezar la cola (detalle en §8).
+  **Regla de cierre por contexto (dueño 18-11, pocos tokens):** al llegar a ~30 % de la ventana de contexto (el dueño lo ve en la app;
+  Claude lo estima por el largo de la plática), al terminar el tema en curso —nunca a la mitad— escribir el resumen en el bloque
+  TRASPASO de `ESTADO.md` (lo pendiente, lo decidido, las pruebas en curso y los avisos programados; los diagnósticos largos van aparte,
+  en `docs/diagnosticos.json`), avisar al dueño en una línea y pedirle abrir una sesión nueva. Sin esperar a que lo pida.
   **Higiene de contexto (§9):** mantener el bloque TRASPASO de `ESTADO.md` y sugerir `/compact` o `/clear` al cerrar un bloque.
 
 - Rutina diaria (pedida por el dueño, `docs/ROBUSTEZ.md` §5): lo del dueño primero (sus pruebas y
