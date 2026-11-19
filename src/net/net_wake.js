@@ -32,10 +32,12 @@ export const netWake = {
       if (viaGw) { this.gw.wake(peer.fcmToken); return; }
       fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: peer.fcmToken }) })
         .then(function(res) {
+          // 3245 (dueño 18-11): que el diagnóstico diga si el toque salió de verdad (antes no quedaba rastro)
+          if (why) console.log('[WAKE] toque a ' + _nid(nx) + ': el enviador contestó ' + (res ? res.status : '?')); // i18n-ok
           // 404 = token caducado/desregistrado: lo olvidamos para pedir uno nuevo en el próximo saludo
           if (res && res.status === 404) { peer.fcmToken = ''; if (self.state.peerFcm) { delete self.state.peerFcm[_nid(nx)]; self._saveState(); } }
         })
-        .catch(function() {});
+        .catch(function(e) { if (why) console.warn('[WAKE] toque a ' + _nid(nx) + ': no salió (' + ((e && e.message) || 'red') + ')'); }); // i18n-ok
     } catch (e) {}
   },
 

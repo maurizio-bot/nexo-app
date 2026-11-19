@@ -2,6 +2,7 @@
  * NEXO — Registro de diagnóstico (sacado de main.js en la ronda 2752, sin cambios): copia la consola (también la
  * sesión anterior) para Perfil → Copiar diagnóstico, con los eventos clave aparte.
  */
+import { nativeDiagText } from './diag_native.js';
 import { diagStateText, diagCompactLines, diagStateInit } from './diag_state.js'; // 3020: ESTADO + compactación de repetidas
 // ===================== v9.9.32: registro de diagnóstico =====================
 // Últimas líneas de la consola (también de la sesión anterior) para verlas en Perfil → Diagnóstico y
@@ -118,7 +119,7 @@ export function _diagnosticText() {
   var head = 'NEXO diagnóstico ' + new Date().toISOString() + ' (' + DIAG_WINDOW_LABEL + ')\nNEXO ID: ' + (bi.localNexoId || '?') + '\nBuild: ' + _diagBuild() + '\nUA: ' + navigator.userAgent + '\n';
   // Tanto la sesión actual como la anterior se recortan a la ventana (28-10, pedido del dueño: «solo 30 minutos»)
   // Ronda 2785 (#87): el registro nativo (últimas ~150 líneas) muestra qué hizo el nativo con la app cerrada
-  var nat = _nativeLog ? ('\n===== REGISTRO NATIVO (segundo plano / app cerrada) =====\n' + _nativeLog.split('\n').slice(-150).join('\n') + '\n') : '';
+  var nat = nativeDiagText(_nativeLog); // 3245: + líneas clave anteriores (diag_native.js)
   var prev = _lastHourText(_diagPrev);
   // L1 (auditoría 28-10): la garantía dura de ≤ MAX_DIAG_LINES se aplica de verdad (antes _capDiag estaba definida pero
   // no se llamaba; hoy el texto cabe por construcción, pero así el tope descrito no queda sin efecto si sube una cte).
