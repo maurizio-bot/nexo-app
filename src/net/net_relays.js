@@ -4,6 +4,19 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 // Reestructuración 15-11: movidos TAL CUAL desde net_link.js, que los une a la clase (como métodos normales).
 // 3212: margen del `since` al (re)suscribir un relé: entre 2 y 10 min según el desfase visto en lo que llega en vivo (se recuerda 12 h)
 var SINCE_MARGIN_MIN_S = 120, SINCE_MARGIN_MAX_S = 600, LAG_KEEP_MS = 12 * 3600000;
+// 3249 (diagnósticos 19-11: Vivo 05:12 «Un sobre llegó 17565 s después de su hora: margen al reconectar 600 s», S24 05:23 «429 s»): lo que se
+// quedó parado en la conexión mientras ESTA app estaba congelada (pantalla apagada, el sistema la detuvo) se procesaba al volver como si
+// llegara «en vivo» y tarde: el margen subía al máximo (10 min) y se recordaba 12 h, así que cada vuelta a la app y cada «deslizar»
+// volvía a bajar 10 min de todo de cada relé (S24: 12,2 MB repetidos en 18 min). Como las medidas de velocidad (3241): un retraso cuyo
+// rato abarca la app en segundo plano (o su vuelta) no es el del relé ni el del reloj del otro: no cuenta.
+var _pgHiddenAt = 0, _pgVisibleAt = 0;
+if (typeof document !== 'undefined' && document && typeof document.addEventListener === 'function') {
+  try { document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') _pgHiddenAt = Date.now(); else _pgVisibleAt = Date.now(); }); } catch (e) {}
+}
+function _pageAwakeSince(t0) {
+  if (typeof document !== 'undefined' && document && document.visibilityState === 'hidden') return false;
+  return _pgHiddenAt < t0 && _pgVisibleAt < t0;
+}
 export const netRelays = {
 
   // ---------- relés ----------
@@ -334,6 +347,7 @@ export const netRelays = {
     if (!isFinite(ca) || ca <= 0) return;
     var lag = Date.now() / 1000 - ca;
     if (!(lag > 0) || lag > 86400) return;                    // reloj adelantado (no hace falta margen) o algo de otro día
+    if (!_pageAwakeSince(ca * 1000)) return;                  // 3249: esperó a que esta app despertara (no es retraso del relé)
     var st = this.state || (this.state = {}), now = Date.now();
     var cur = (Number(st.lagS) > 0 && now - (Number(st.lagAt) || 0) < LAG_KEEP_MS) ? Number(st.lagS) : 0;
     if (lag <= cur) return;

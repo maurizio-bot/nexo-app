@@ -12,7 +12,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- (próxima APK)
+- Gasta menos datos al volver a la app: ya no vuelve a bajar lo que ya tenía.
 </es-419>
 <!-- /APK -->
 
