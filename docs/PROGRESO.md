@@ -2095,3 +2095,8 @@ APK 3089 cayó en el CI SOLO por la prueba de tamaño: `src/ui/estados.js` lleg�
      mensajes tarde…» con «Arreglarlo» (abre la batería aunque se haya pospuesto). Como mucho 1 cada 6 h.
 - Registro: `[ENERGIA] NEXO limitado…`, `[ENERGIA] nx… tiene NEXO limitado`. Pruebas: `bglimit.js` (nueva; b3229 FALLA),
   `battery_prompt.js` (confirmar el no; b3229 FALLA).
+
+### 3248 (19-11, en la rama, sin subir) — el despertador ya sale
+- Diagnóstico del S24 (3105): «[WAKE] toque a …: no salió (Failed to fetch)» en todos. Causa: pregunta previa (OPTIONS) del WebView que el
+  servicio de Cloudflare contestaba 405 sin CORS. `src/net/wake_post.js` (petición simple + reintento opaco), usado en net_wake.js y gw_link.js;
+  worker.js con OPTIONS/CORS; pruebas `wakecors.js` y `test_cors.mjs`. El dueño debe añadir la línea de OPTIONS en Cloudflare (arreglo inmediato).

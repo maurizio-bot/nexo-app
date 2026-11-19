@@ -21,6 +21,26 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **CIERRE POR CONTEXTO 19-11 00:35 (México) — leer esto primero en la sesión nueva:**
+  1. **HALLAZGO CLAVE (3248):** el despertador (toque FCM) NUNCA salía de la app: «[WAKE] toque a …: no salió (Failed to fetch)» en todos
+     los toques del S24 (3105). Causa casi segura: el WebView manda una pregunta previa (OPTIONS) por el POST con JSON y el servicio
+     (`push-sender/cloudflare/worker.js`, en Cloudflare desde hace ~15 días) contestaba 405 sin CORS. Arreglos: (a) app: `src/net/wake_post.js`
+     (petición simple text/plain; reintento opaco si el servicio no manda CORS) — probada, en la rama de trabajo, SIN subir aún; (b) servicio:
+     el dueño debe añadir UNA línea en Cloudflare (la de OPTIONS 204 con CORS, en `async fetch`) — esperando su «listo» para probarlo
+     con `curl -X OPTIONS -H 'Origin: https://localhost' https://nexo-wake.maurizioamistani.workers.dev` (debe dar 204). worker.js del repo ya
+     trae el arreglo completo (+ `test_cors.mjs`). El dominio del servicio está permitido en el entorno (aprobado por el dueño 19-11).
+  2. **Subida pendiente:** 3106 (3247: batería visible en el chat, aviso de mensajes tarde, confirmar el «no») en CI de bcd92d4 desde 05:49 UTC;
+     al terminar bien: NOVEDADES de 3106 al historial; luego añadir 1 línea de 3248 («Los avisos para despertar a un contacto ya salen bien»),
+     subir la rama a NEXOCHAT como 3107 SIN [skip ci] (solo si no hay CI en curso). Aviso programado ~07:10 UTC (01:10 México).
+  3. **Pruebas del dueño (despertador):** Vivo Y03 (3105, batería exenta): el mensaje llegó en 0,4 s por la escucha nativa, sin toque; su aviso salía
+     «Silenciada» por el ajuste del Vivo «Notificación silenciosa» (arreglado a mano). Tablet A7 Lite: 2 mensajes ✓✓ en 1 s, sin pantalla
+     encendida ni aviso visible (falta su diagnóstico). Yael (Redmi) y Katy (Honor) sin permisos de inicio automático/batería: pendiente.
+  4. **Idea aprobada por el dueño (sin hacer):** detectar que el teléfono silencia los avisos de NEXO (canal «Mensajes» con importancia baja /
+     «Notificación silenciosa» del Vivo) y mostrar «Tu teléfono silencia los avisos de NEXO» con botón al ajuste. Va con lo de 3247.
+  5. **Reglas nuevas:** cierre por contexto a ~30 % (CLAUDE.md; `python3 docs/contexto_estimar.py`, 9 000 caracteres = 1 %). Nada de Haiku. Hablar en español,
+     breve, horas de México. Cada diagnóstico nuevo → `docs/diagnosticos.json`. Nombres: Cari = S23 Ultra (nx1e50c95d), Yael/Yaelito = Redmi (nx16386482),
+     Katy = Honor (nx126df3f4), Vivo Y03 = nx09acdb61, tablet A7 Lite = nx1e29ab2f, el dueño = S24 (nx1n36c283).
+  6. **Domingo 22-11 02:01 (México):** arranque automático del plan grande (auditoría → Bluetooth nativo → vagón → resto). Plática diaria 20:37.
 - **19-11 madrugada (México 18-11 tarde):** publicadas 3098 (saludo nativo), 3099 (Wi-Fi 2,5 s; entregado no pasa a fallido), 3100 (Wi-Fi tras
   congelado), 3101 (puente sin «!», reenlace al cerrar repetido, tope 6 por puente), 3102 (medidas sin congelado; diagnósticos sin repetir).
   En CI: b78f7b7 = 3242 (comentario en foto/imagen/archivo) + 3243 (panorámicas hasta 40 MB, HEIC como archivo); aviso programado 01:51 UTC.
