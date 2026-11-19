@@ -560,6 +560,14 @@
    "sintoma": "par:zombi (pedido por nx1905c1ee)",
    "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
    "causa": "S24 actualizándose a la 3108 (09:56: el proceso muere con la instalación): Austin quedó con su enlace al servidor viejo del S24 y dio zombi (esperable durante una actualización). Tras arrancar la 3108 todo bien: Austin, Roberto y Marcos listos a MTU 517 en < 1 s y el chat de 23 KB a Zhelowsky por el puente de Austin en 5 s. Nada perdido (el texto pendiente de Austin llegó 09:55:41). A REVISAR (app): (1) al arrancar la 3108 bajó 5,3 MB de los relés en 1 min, 4,4 MB repetidos (¿el margen de 3249 no cubre el arranque en frío?); (2) la foto de perfil de Austin (15 KB) llega 3 veces como «nueva»; (3) el paquete de puente sxmwnmzmmz8is749 lleva desde 09:05 reintentándose por un camino que nunca confirma (backoff 15→240 s, se reinicia al reabrir la app)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "14:07",
+   "nx": "nx0g6ef54e",
+   "sintoma": "par:zombi (pedido por nx1905c1ee)",
+   "categoria": "App muerta por el sistema y sin volver sola (#87)",
+   "causa": "Roberto (Motorola edge 40 neo, 3107, batería exenta). Su nativo recibía bien hasta las 10:00; a las 10:00 Android la mató («Foreground kill», 4.ª vez en 3 días) y NO volvió hasta que él la abrió a las 14:07: 4 h sin Bluetooth ni escucha de internet, sin «Despierta recibido» (el toque FCM no la levantó). Al abrir, todo entró en 1–2 s (textos de Austin de las 09:56 y del S24). Nada perdido, pero llegó con 4 h de retraso. Es el pendiente #87 (NEXO muere y no vuelve sola), va con el Bluetooth en el servicio nativo"
   }
  ]
 }
