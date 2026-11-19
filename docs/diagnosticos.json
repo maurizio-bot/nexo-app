@@ -328,6 +328,14 @@
    "sintoma": "zombi (nx1e50c95d)",
    "categoria": "Bluetooth: enlace inservible tras reabrir la app (MTU 23)",
    "causa": "build 3077 (vieja, llegó con 2 días de retraso). A los 5-8 s de reabrir la app tras actualizar, los enlaces que seguían abiertos con el dueño y Cari pasan a MTU 23, fallan 6 s y se re-rutean por Wi-Fi: mismo patrón que Yael 18-11 21:26 → refuerza la hipótesis «MTU 23 = enlace que sobrevive al reinicio de la app» (PENDIENTES, PRIORIDAD 1)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:35",
+   "nx": "nx1n36c283",
+   "sintoma": "manual: prueba del despertador con el Vivo (3077, no 3104) con la app cerrada y pantalla apagada",
+   "categoria": "Prueba del despertador (informativo)",
+   "causa": "4 mensajes al Vivo ✓✓ en 0-2 s (23:30:51, 23:32:00, 23:32:30, 23:33:03). El Vivo aparece «en línea por internet» 2 s después del primer mensaje (indicio de que el toque o su servicio lo despertó; el toque al abrir el chat 2 min antes no lo puso en línea). Pero en el Vivo NO salió notificación con la pantalla apagada (sí con la pantalla encendida). Sin el diagnóstico del Vivo no se sabe si llegó «Despierta recibido». Vivo con la build 3077 (vieja): prueba a repetir con 3104+. Tablet sin comprobar versión"
   }
  ]
 }
