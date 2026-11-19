@@ -1776,3 +1776,6 @@ El puntero de un vídeo a un contacto ausente lleva la miniatura (~24 KB) y sale
 - **Videollamada contestada desde el aviso:** cámara cortada a los 5 s y 63 s sin imagen propia (se mandó 2x2); la app no reintentó
   porque la página figuraba no visible aunque el nativo decía primer plano. Falta saber si la pantalla estaba bloqueada.
 - **Retraso de 6,5 min en el ✓✓ de Yael por internet** con su app cerrada: sin causa (su registro empieza a las 21:23).
+- **DESPERTADOR (prioridad, dueño 18-11):** en ningún diagnóstico recibido aparece «Despierta recibido» (Katy: registro completo de
+  4 h sin él, con toques enviados). Comprobar el enviador (`nexo-wake…workers.dev`, del dueño: panel de Cloudflare / clave de
+  Google) con la 3245, que anota la respuesta del enviador; y que NEXO vuelva sola tras reiniciar el teléfono en Honor/Xiaomi.

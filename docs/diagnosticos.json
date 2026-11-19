@@ -288,6 +288,14 @@
    "sintoma": "manual: diagnóstico del Redmi (3102)",
    "categoria": "Bluetooth: enlace entrante inservible tras reabrir la app (MTU 23) + app cerrada desde recientes (Xiaomi)",
    "causa": "REVISADO: cierres SwipeUpClean/OneKeyClean (9 visibles en 2 días; 20:18 y 21:08 del 18-11). Al reabrir (21:26:47) el servidor GATT se detuvo y reinició con el enlace de Cari aún abierto: enviar por él falló 6 s, mensaje descartado, MTU 23, re-ruteo a internet (llegada no comprobada). HIPÓTESIS a reproducir: es la causa del síntoma «MTU 23». Lo ignorado por Bluetooth con app cerrada no eran mensajes type:chat (contenido no comprobado). 1 mensaje BT guardado con app cerrada."
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "21:46",
+   "nx": "nx126df3f4",
+   "sintoma": "manual: mensajes que no llegaban a Katy (Honor, 3101→3102)",
+   "categoria": "Despertador (toque FCM) que no llega",
+   "causa": "NEXO sin actividad de 17:30:10 (Bluetooth apagado + relés cortados a la vez: parece apagado/reinicio del teléfono) a 21:45:36 (abrió la app). Registro completo en ese hueco: ningún «Despierta recibido» pese a los toques de Cari (21:21) y del dueño; tampoco «vuelve sola». Optimización de batería ACTIVA y segundo plano NO permitido. Los mensajes entraron al abrir. En todos los diagnósticos recibidos no hay ni un «Despierta recibido»: sospecha de que el enviador del toque no funciona (no comprobable desde el entorno: red bloqueada)"
   }
  ]
 }
