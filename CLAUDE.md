@@ -46,6 +46,10 @@ actualizarlos al terminar cada bloque de trabajo.
 - Diagnóstico de fallos en teléfonos reales: pedir al dueño Perfil → Copiar diagnóstico (ambos teléfonos).
 - **Versiones viejas (dueño 14-11):** la app aún no está en la tienda; se arregla la ÚLTIMA versión. No dar peso a los teléfonos con
   versiones anteriores (sí o sí tendrán que actualizar) ni engordar la app con compatibilidad o avisos pensados para ellas.
+- **Qué revisar de los diagnósticos (dueño 19-11):** lo que importa es que nada se pierda, que todo llegue y que sea robusto. Solo
+  se investiga y se le cuenta al dueño lo que es **problema de la app** (en la última versión) o un **ajuste del teléfono** que la app
+  debe detectar y explicarle al usuario para que lo arregle (ahorro de batería, avisos silenciados…). Versiones viejas y causas externas
+  (memoria del teléfono, red, relés caídos…): se apuntan en `docs/diagnosticos.json` en silencio, SIN explicárselo al dueño.
 - Para cambios que no deben generar APK (solo docs), añadir `[skip ci]` al mensaje del commit.
 - **Novedades de cada APK (dueño 15-11):** antes de entregar una APK, escribir en `NOVEDADES.md` (bloque `<!-- APK -->`) lo nuevo,
   breve y para el usuario (formato de Google Play, ≤ 500 caracteres). **Dueño 17-11: mientras sigamos en desarrollo, SOLO en español**
