@@ -60,6 +60,13 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Cuotas de espacio por contacto (Grok 4; PENDIENTES 15-11 tarde). ×1
 - Android 8–11 sin la ubicación activada no escanea y no avisa (robustez.json «escaneo»). ×1
 - Teléfonos que se quedan en MTU 23: renegociar (robustez.json «conexion»). ×1
+- Al ABRIR la app en frío (3108, diagnóstico del S24 09:57): bajó 5,3 MB de los relés en el primer minuto y 4,4 MB eran repetidos; el margen de 3249 cubre el regreso de segundo plano, no el arranque. Ver `nx1n36c283` 19-11 09:57. ×1
+- Foto de perfil de Austin llega 3 veces como «nueva» (15 KB cada vez; mismo diagnóstico, 09:57). ×1
+- Paquete de puente `sxmwnmzmmz8is749` reintentado desde las 09:05 por un camino que nunca confirma (espera 15→240 s; se reinicia al abrir la app; diagnósticos de Austin 09:16 y del S24 09:57). Gasta radio, no se pierde. ×1
+- Diagnósticos de la 3097–3107 con «Bluetooth apagado/encendido» suelto y ~20 desconexiones viejas al volver a primer plano (Zhelowsky 11:32, 18-11). Revisar si 3251 lo cubre. ×1
+
+**Por comprobar (de la 3109)**
+- Servidor GATT al abrir la app: cortar antes los enlaces entrantes (3251, `gattreabre.js` en ci.js). Subida a NEXOCHAT como APK 3109; la batería la corre el CI y compila el Kotlin (sin SDK aquí). Pendiente: que el dueño pruebe con dos teléfonos (abrir la app con el Bluetooth recibiendo y mandar al momento). ×2
 
 **Espera decisión del dueño**
 - Internet rápido para archivos por conexión directa (WebRTC, paso 4; PENDIENTES 14-11 «caminos», PREPARADO).
