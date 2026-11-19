@@ -336,6 +336,30 @@
    "sintoma": "manual: prueba del despertador con el Vivo (3077, no 3104) con la app cerrada y pantalla apagada",
    "categoria": "Prueba del despertador (informativo)",
    "causa": "4 mensajes al Vivo ✓✓ en 0-2 s (23:30:51, 23:32:00, 23:32:30, 23:33:03). El Vivo aparece «en línea por internet» 2 s después del primer mensaje (indicio de que el toque o su servicio lo despertó; el toque al abrir el chat 2 min antes no lo puso en línea). Pero en el Vivo NO salió notificación con la pantalla apagada (sí con la pantalla encendida). Sin el diagnóstico del Vivo no se sabe si llegó «Despierta recibido». Vivo con la build 3077 (vieja): prueba a repetir con 3104+. Tablet sin comprobar versión"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "00:15",
+   "nx": "nx09acdb61",
+   "sintoma": "manual: prueba del despertador con el Vivo (3105), app cerrada y pantalla apagada",
+   "categoria": "Prueba del despertador (informativo)",
+   "causa": "mensaje del dueño 00:05:51 llegó al Vivo en 0,4 s y ✓✓ en 0,26 s más, por la ESCUCHA NATIVA de relés (NetBg) que seguía viva desde que se cerró la app (23:45:46, batería exenta). En todo el registro (23:36-00:15) NO hay «Despierta recibido»: el toque FCM no llegó o no hizo falta; sin el diagnóstico del S24 (3105: lo que contestó el enviador) no se sabe. Aviso silenciado por «Notificación silenciosa» del Vivo (ya corregido)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx09acdb61",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (Vivo 3105: 1 enviado, 7 recibidos)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx1n36c283",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (S24 3105: 120 enviados, 113 ✓✓, 107 leídos; 106 recibidos)"
   }
  ]
 }
