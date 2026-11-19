@@ -25,6 +25,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   a NEXOCHAT (APK 3110 en CI). Dueño: «arma la lista de problemas grandes y resuelve los chicos»: lista en `docs/AREAS.md` (🔴 arriba).
   Cerrados sin cambio: foto de Austin ×3 (era «Deslizar»), puente atorado (por diseño: cola de 24 h, se entregó 14:20). Uso del dueño ~88 %:
   no empezar lo grande sin su «dale». Siguiente candidato: enlace repetido que el S24 reabre (problema grande n.º 3).
+  3253 (dueño 19-11): SOLO DIAGNÓSTICOS DE LA ÚLTIMA VERSIÓN: el teléfono que sabe que hay una más nueva no manda; el del dueño no guarda
+  los de builds anteriores a la suya; `tools/diag_reader.cjs` (tarea de cada hora) deja fuera las anteriores a la última de NOVEDADES.md
+  (`--todas` para verlas). Prueba `diagviejo.js`. Sube junto con 3252 (la 3110 de 39f5074 se cancela; sale una sola APK).
 - **19-11 08:45 (México) — sesión nueva:** 3251 HECHO en la rama `ccr-45654f1b-mrooyc` (SIN subir a NEXOCHAT): al abrir la app, la
   instancia vieja corta (`cancelServerLinks` → cancelConnection) los enlaces entrantes ANTES de cerrar su servidor GATT (`endClosedMode`,
   PluginBackground.kt). Prueba `gattreabre.js` (en ci.js; contraprueba `--k3250` en el mock: 15 escrituras perdidas, el texto no llega;
