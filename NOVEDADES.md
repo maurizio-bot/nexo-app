@@ -12,11 +12,16 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Los avisos para despertar a un contacto dormido ya salen bien.
+- (próxima APK)
 </es-419>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3107 (19-11-2026)
+<es-419>
+- Los avisos para despertar a un contacto dormido ya salen bien.
+</es-419>
 
 ### APK 3106 (19-11-2026)
 <es-419>
