@@ -600,6 +600,22 @@
    "sintoma": "enlace_abre_cierra (nx1n36c283, 3 cierres en 10 min)",
    "categoria": "Bluetooth: enlaces repetidos que se abren y cierran",
    "causa": "Austin (3107) cierra por repetido el enlace que el S24 (3109) le abre como cliente (70f4) y el S24 lo vuelve a abrir cada ~60 s (14:21:07, 14:22:07, 14:23:25). Además MTU 23 con el S24 a las 14:20:42 justo tras la actualización del S24 a la 3109 (14:17). Nada perdido (textos ✓✓ en < 1 s). A REVISAR (app): quién reabre el enlace cerrado en el S24"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "10:45",
+   "nx": "nx0x4029e6",
+   "sintoma": "par:zombi (pedido por nx1n36c283)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "Zhelowsky (3097, vieja; llegó 14:34): registro recortado al arrancar la app, sin datos del fallo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx10b6f4ac",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (Alex Lopez, 3097, vieja)"
   }
  ]
 }
