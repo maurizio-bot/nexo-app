@@ -286,8 +286,8 @@
    "hora": "21:27",
    "nx": "nx16386482",
    "sintoma": "manual: diagnóstico del Redmi (3102)",
-   "categoria": "App cerrada por el limpiador de Xiaomi (SwipeUpClean) + Bluetooth ignorado con app cerrada",
-   "causa": "app cerrada 21:08-21:26 por limpiador de memoria; con ella cerrada el servicio nativo atiende internet (✓✓, saludos) pero ignora el Bluetooth (BT_CERRADA IGNORE: se perdió el texto largo de 2318 bytes); enlace viejo atascado tras reiniciar: escritura falló 6 s, MTU 23, re-ruteo a internet. Entra en PRIORIDAD 1 (Bluetooth en el servicio nativo)"
+   "categoria": "App cerrada por el limpiador de Xiaomi (SwipeUpClean)",
+   "causa": "app de Yael cerrada 21:08-21:26 por el limpiador; el servicio nativo guardó y confirmó lo recibido (internet y Bluetooth); lo «ignorado» fueron saludos/presentación, no textos; enlace viejo atascado 6 s con MTU 23 y re-ruteo a internet. Sin texto perdido comprobado"
   }
  ]
 }
