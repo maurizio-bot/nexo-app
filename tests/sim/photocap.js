@@ -48,8 +48,8 @@ async function openChatWith(p, name) {
   // 1) La regla (función pura)
   const cap = await importSrc('ui/attach_cap.js').catch(() => ({}));
   if (typeof cap._photoTooBig === 'function') {
-    r.tope_5mb = cap.PHOTO_MAX_BYTES === 5 * 1024 * 1024;
-    r.regla = cap._photoTooBig({ type: 'image/jpeg', size: 6e6 }) === true && cap._photoTooBig({ type: 'image/jpeg', size: 5 * 1024 * 1024 }) === false &&
+    r.tope_5mb = cap.PHOTO_MAX_BYTES === 40 * 1024 * 1024 // 3243: antes 5 MB;
+    r.regla = cap._photoTooBig({ type: 'image/jpeg', size: 41 * 1024 * 1024 }) === true && cap._photoTooBig({ type: 'image/jpeg', size: 40 * 1024 * 1024 }) === false &&
       cap._photoTooBig({ type: 'image/png', size: 300000 }) === false && cap._photoTooBig({ type: 'video/mp4', size: 50e6 }) === false;
   } else { r.tope_5mb = false; r.regla = false; }
   // 2) De punta a punta: galería con una foto de 6 MB y una pequeña
@@ -68,7 +68,7 @@ async function openChatWith(p, name) {
   A.win.FileReader.prototype.readAsDataURL = function (f) { read.push(f && f.name); return rd.call(this, f); };
   click(A.win, A.win.document.querySelector('.attach-menu-item[data-type="gallery"]')); await sleep(400);
   const fin = Array.from(A.win.document.querySelectorAll('input[type=file]')).pop();
-  const big = Buffer.alloc(6 * 1024 * 1024, 7), small = Buffer.alloc(40 * 1024, 9);
+  const big = Buffer.alloc(41 * 1024 * 1024, 7), small = Buffer.alloc(40 * 1024, 9);
   Object.defineProperty(fin, 'files', { configurable: true, value: [new A.win.File([big], 'grande.jpg', { type: 'image/jpeg' }), new A.win.File([small], 'chica.jpg', { type: 'image/jpeg' })] });
   fin.dispatchEvent(new A.win.Event('change'));
   // 3160: con fotos sale antes la revisión (el ojo «ver una vez» en cada una): se manda tal cual con «Enviar (N)»
@@ -77,8 +77,8 @@ async function openChatWith(p, name) {
   const after = logs.slice(mark);
   const ms = await A.win.vaultLoadMessages(idB);
   r.grande_no_se_manda = !ms.some((m) => m.attachmentMeta && m.attachmentMeta.name === 'grande.jpg');
-  r.grande_avisa = A.win.document.body.textContent.indexOf('La foto pesa más de 5 MB') >= 0;
-  r.grande_no_se_lee = read.indexOf('grande.jpg') < 0 && after.some((l) => /\[A\].*Foto de 6\.0 MB: más de 5 MB/.test(l));
+  r.grande_avisa = A.win.document.body.textContent.indexOf('La foto pesa más de 40 MB') >= 0;
+  r.grande_no_se_lee = read.indexOf('grande.jpg') < 0 && after.some((l) => /\[A\].*Foto de 41\.0 MB: más de 40 MB/.test(l));
   // la pequeña de la misma tanda sigue su camino: se lee para comprimirla (en el simulador no hay lienzo; basta con que se procese)
   r.chica_sigue = read.indexOf('chica.jpg') >= 0;
   r.leidas = read;

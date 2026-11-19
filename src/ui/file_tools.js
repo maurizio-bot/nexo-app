@@ -102,3 +102,54 @@ export function _fmtSize(b) {
   b = Number(b) || 0;
   return b >= 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
 }
+
+// 3243 (dueño 18-11: «mandé una foto panorámica y no se refleja en el chat»): una foto se reduce SIN pasar el original a base64 (una
+// panorámica de 10–30 MB lo inflaba a 40 MB en memoria antes de decodificarla). Se leen sus medidas por una URL del archivo y se decodifica
+// ya reducida (createImageBitmap con tamaño de salida) cuando el WebView lo permite. Si el teléfono no sabe abrir ese formato (p. ej. HEIC),
+// falla con code 'UNSUPPORTED' para que se mande como archivo (antes salía el original con la etiqueta «jpeg» y el otro no lo veía).
+export function _imageTarget(w, h, maxDim) {
+  var scale = (w > maxDim || h > maxDim) ? Math.min(maxDim / w, maxDim / h) : 1;
+  return { w: Math.max(1, Math.round(w * scale)), h: Math.max(1, Math.round(h * scale)) };
+}
+export function _compressImageFile(file, maxDim, quality) {
+  maxDim = maxDim || 480; quality = quality || 0.5;
+  // Sin lienzo de verdad (simulador sin canvas): el camino de siempre (leer en base64 y reducir)
+  var legacy = function() { return _readFileBase64(file).then(function(b64) { return _compressImageBase64(b64, maxDim, quality); }); };
+  var ctxOk = false; try { var cv0 = document.createElement('canvas'); ctxOk = !!(cv0.getContext && cv0.getContext('2d')); } catch (e) {}
+  if (!ctxOk) return legacy();
+  var unsupported = function(why) { var e = new Error('formato de imagen no soportado (' + why + ')'); e.code = 'UNSUPPORTED'; return e; };
+  return new Promise(function(resolve, reject) {
+    var url = null;
+    try { url = URL.createObjectURL(file); } catch (e) { reject(unsupported('sin URL')); return; }
+    var img = new Image();
+    var done = function() { try { URL.revokeObjectURL(url); } catch (e) {} };
+    img.onerror = function() { done(); reject(unsupported(file.type || 'desconocido')); };
+    img.onload = function() {
+      var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+      if (!w || !h) { done(); reject(unsupported('sin medidas')); return; }
+      var tg = _imageTarget(w, h, maxDim);
+      var draw = function(src) {
+        var canvas = document.createElement('canvas');
+        canvas.width = tg.w; canvas.height = tg.h;
+        canvas.getContext('2d').drawImage(src, 0, 0, tg.w, tg.h);
+        var b64 = (canvas.toDataURL('image/jpeg', quality).split(',')[1]) || '';
+        canvas.width = canvas.height = 1;
+        if (b64.length < 100) throw new Error('lienzo vacío');
+        console.log('[ATTACH] compress image', w + 'x' + h, '->', tg.w + 'x' + tg.h, 'archivo', Math.round((file.size || 0) / 1024) + ' KB', '-> b64', b64.length);
+        return { base64: b64, width: tg.w, height: tg.h, format: 'jpeg' };
+      };
+      var viaImg = function() { try { var r = draw(img); done(); resolve(r); } catch (e) { done(); reject(unsupported(e && e.message)); } };
+      if (typeof createImageBitmap === 'function' && (tg.w < w || tg.h < h)) {
+        createImageBitmap(file, { resizeWidth: tg.w, resizeHeight: tg.h, resizeQuality: 'high' }).then(function(bmp) {
+          try { var r = draw(bmp); try { bmp.close(); } catch (e) {} done(); resolve(r); } catch (e) { try { bmp.close(); } catch (e2) {} viaImg(); }
+        }, viaImg);
+      } else viaImg();
+    };
+    // Si el teléfono no termina de abrirla en 20 s, el camino de siempre (nunca se queda colgada la tanda)
+    var tmo = setTimeout(function() { img.onload = img.onerror = null; done(); legacy().then(resolve, reject); }, 20000);
+    var ol = img.onload, oe = img.onerror;
+    img.onload = function() { clearTimeout(tmo); ol(); };
+    img.onerror = function() { clearTimeout(tmo); oe(); };
+    img.src = url;
+  });
+}

@@ -835,7 +835,7 @@ export default {
   prof_cp_offline: "Offline",
   prof_cp_chat: "Open chat",
   prof_photo_big: "The photo is over 5 MB: pick a smaller one",
-  chat_photo_big: "The photo is over 5 MB: pick a smaller one",
+  chat_photo_big: "The photo is over 40 MB: pick a smaller one", chat_photo_as_file: "That photo is in a format that can't be shown: it is sent as a file",
   prof_cp_mine: "It's my photo",
   prof_cp_mine_sure: "Is it yours? Tap again to confirm",
   prof_cp_mine_done: "Done: that photo will no longer show on ",

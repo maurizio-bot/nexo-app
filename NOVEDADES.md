@@ -13,6 +13,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <!-- APK -->
 <es-419>
 - Ponle un comentario a tus fotos, imágenes y archivos antes de enviarlos.
+- Las fotos panorámicas y muy grandes ya se envían; las de formatos que no se pueden mostrar van como archivo.
 - Mejoras internas: el diagnóstico evita contar el tiempo con la app congelada, y no repite avisos de diagnóstico.
 </es-419>
 <!-- /APK -->

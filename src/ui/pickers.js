@@ -4,7 +4,7 @@
  */
 import { _closeAttachMenu, _hideInfoToast, _showInfoToast, _showPermissionError } from './ui_bits.js';
 import { _capAttachments, _photoTooBig, GALLERY_MAX } from './attach_cap.js';
-import { _compressImageBase64, _extOf, _isPdf, _mimeOf, _pdfThumb, _readFileBase64 } from './file_tools.js';
+import { _compressImageBase64, _compressImageFile, _extOf, _isPdf, _mimeOf, _pdfThumb, _readFileBase64 } from './file_tools.js';
 import { _getCurrentContactId } from './chat_format.js';
 import { _hideCameraPreviewOverlay, _photoTarget, _stopCameraPreview } from './camera.js';
 import { _maxB64For, _tooBigMessage, MAX_BLE_FILE_BYTES } from './media_limits.js';
@@ -216,14 +216,14 @@ function _sendGalleryItems(files, i, once, cap) {
     return;
   }
   if (_photoTooBig(file)) {
-    console.log('[ATTACH] Foto de ' + (file.size / 1048576).toFixed(1) + ' MB: más de 5 MB, no se manda');
-    try { _showInfoToast(t('chat_photo_big', 'La foto pesa más de 5 MB: elige una más pequeña'), 4500); } catch (e) {}
+    console.log('[ATTACH] Foto de ' + (file.size / 1048576).toFixed(1) + ' MB: más de 40 MB, no se manda');
+    try { _showInfoToast(t('chat_photo_big', 'La foto pesa más de 40 MB: elige una más pequeña'), 4500); } catch (e) {}
     next();
     return;
   }
-  _readFileBase64(file).then(function(base64) {
-    var pt = _photoTarget(_getCurrentContactId());
-    return _compressImageBase64(base64, pt.max, pt.q).then(function(res) {
+  // 3243: la foto se reduce directo del archivo (sin pasarla entera a base64); si el teléfono no sabe abrir el formato, va como archivo
+  var pt = _photoTarget(_getCurrentContactId());
+  _compressImageFile(file, pt.max, pt.q).then(function(res) {
       var meta = {
         name: file.name,
         size: res.base64.length,
@@ -235,8 +235,15 @@ function _sendGalleryItems(files, i, once, cap) {
       if (capHere) meta.caption = capHere;
       if (once && once[i]) meta.once = true; // #94 «ver una vez», marcado con el ojo en la revisión (3160)
       _sendAttachment('image', res.base64, meta);
-    });
   }).catch(function(err) {
+    if (err && err.code === 'UNSUPPORTED') {
+      // ¿se puede leer? (si no, es el caso de siempre: «no se pudo abrir esa foto»)
+      return file.slice(0, 16).arrayBuffer().then(function() {
+      console.warn('[ATTACH] Galería: foto ' + (i + 1) + ' en un formato que este teléfono no abre (' + (file.type || '?') + '): va como archivo');
+      try { _showInfoToast(t('chat_photo_as_file', 'Esa foto está en un formato que no se puede mostrar: se envía como archivo'), 4500); } catch (e) {}
+      _fileChosenSend(file, capHere);
+      }, function(e2) { console.warn('[ATTACH] Galería: foto ' + (i + 1) + ' no se pudo leer al mandarla (' + _errTxt(e2) + ')'); _showPermissionError(_openFailText([file]), 7000); });
+    }
     // 3199: si aun así no se puede leer (la copia no se pudo hacer y Android ya no deja leer el original), el aviso claro
     if (err && (err.name === 'NotReadableError' || err.name === 'NotFoundError')) {
       console.warn('[ATTACH] Galería: foto ' + (i + 1) + ' no se pudo leer al mandarla (' + _errTxt(err) + ')');
