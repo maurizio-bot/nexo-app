@@ -552,6 +552,14 @@
    "sintoma": "zombi (nx0g6ef54e)",
    "categoria": "Bluetooth: enlace roto al abrir la app (el servidor GATT se rehace)",
    "causa": "Austin (HONOR Xb, 3107 recién instalada 09:15; optimización de batería ACTIVA, la app ya le muestra el aviso; el 18-11 20:33 el PowerGenie de Honor la forzó a cerrar). Roberto (3107) abrió la app ~09:16:08: su enlace de cliente con Austin se cerró bien («cortado por el otro»), pero el de Austin al servidor de Roberto quedó viejo (4 pings sin respuesta, zombi 50 s después) = mecanismo de 3251 (arreglado en la 3109). Lo mismo un momento con Marcos (MTU 23 y «muerto» 09:15:27–38, reconectó a MTU 517 a las 09:15:52). Nada perdido: textos pendientes o ✓✓"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "09:57",
+   "nx": "nx1n36c283",
+   "sintoma": "par:zombi (pedido por nx1905c1ee)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "S24 actualizándose a la 3108 (09:56: el proceso muere con la instalación): Austin quedó con su enlace al servidor viejo del S24 y dio zombi (esperable durante una actualización). Tras arrancar la 3108 todo bien: Austin, Roberto y Marcos listos a MTU 517 en < 1 s y el chat de 23 KB a Zhelowsky por el puente de Austin en 5 s. Nada perdido (el texto pendiente de Austin llegó 09:55:41). A REVISAR (app): (1) al arrancar la 3108 bajó 5,3 MB de los relés en 1 min, 4,4 MB repetidos (¿el margen de 3249 no cubre el arranque en frío?); (2) la foto de perfil de Austin (15 KB) llega 3 veces como «nueva»; (3) el paquete de puente sxmwnmzmmz8is749 lleva desde 09:05 reintentándose por un camino que nunca confirma (backoff 15→240 s, se reinicia al reabrir la app)"
   }
  ]
 }
