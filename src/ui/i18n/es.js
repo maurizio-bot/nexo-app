@@ -682,7 +682,7 @@ export default {
   prof_bat_step_body: "NEXO recibe tus mensajes y llamadas aunque la app esté en segundo plano o la pantalla apagada.",
   prof_bat_why: "⚠️ Si no desactivas el ahorro de batería para NEXO, el teléfono lo congela y los mensajes y las llamadas llegan tarde o no llegan.",
   prof_bat_disable: "Desactivar ahorro de batería",
-  prof_bat_later: "Ahora no",
+  prof_bat_later: "Ahora no", prof_bat_sure: "¿Seguro?", prof_bat_sure_body: "Sin este ajuste tus mensajes y llamadas llegan tarde o no llegan, y tus contactos verán que tienes NEXO limitado.", prof_bat_sure_back: "Volver y activarlo", prof_bat_sure_no: "Seguir sin activarlo", peer_lim_someone: "Este contacto", peer_lim_note: "{name} tiene NEXO limitado por el ahorro de batería: sus mensajes pueden tardar. Pídele que lo active en NEXO.", late_note_one: "Te llegó un mensaje tarde.", late_note_many: "Te llegaron {n} mensajes tarde.", late_note_why: "El ahorro de batería tiene a NEXO limitado en este teléfono y eso frena tus mensajes.", late_note_fix: "Arreglarlo",
   prof_bat_your_phone: "tu teléfono",
   prof_bat_disabled_ok: "✅ Ahorro de batería desactivado.",
   prof_bat_last_step: "Un último ajuste en tu ",

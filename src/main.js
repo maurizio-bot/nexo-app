@@ -168,6 +168,8 @@ import { _renderedMessageCount, _getContactStorageKey, _saveMessageToStorage, _u
 import { _waitForBLEReady, _sendAttachment, _sendFileFor, _sendTextTo, _noteContactMessage, _sendBigFile, _photoFast, _photoBridgeOnly } from './ui/send.js';
 import { appSetupUse, _bindAttachmentHandlers, _showPermissionOverlay, _hidePermissionOverlay, _ensureDOMStructure, _fixLogoPath, _setupMessageInput, _setupVaultToggle, _setupChatHeader, _setupKeyboardShortcuts, _setupJumpButton, _setupFABButton, _toggleVaultUI, _focusInput, _forceHideSplash, _enableFallbackMode } from './ui/app_setup.js';
 import { _handleIncomingMessage, initializeNexoApp } from './main_chats.js'; // reestructuración 15-11
+import { bgLimitInstall } from './ui/bg_limit.js'; // 3247: NEXO limitado por el ahorro de batería
+try { bgLimitInstall(); } catch (e) {}
 appSetupUse({ /* [pegamento] */ initializeNexoApp: initializeNexoApp });
 pickersUse({ /* [pegamento] */ _sendAttachment: _sendAttachment, _sendBigFile: _sendBigFile });
 videoSendUse({ /* [pegamento] */ _handleIncomingMessage: _handleIncomingMessage, _sendAttachment: _sendAttachment, _sendFileFor: _sendFileFor, _updateMessageStatus: _updateMessageStatus, _updateMessageStorageStatus: _updateMessageStorageStatus });

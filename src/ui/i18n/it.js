@@ -682,7 +682,7 @@ export default {
   prof_bat_step_body: "NEXO riceve messaggi e chiamate anche quando l'app è in background o lo schermo è spento.",
   prof_bat_why: "⚠️ Se non disattivi il risparmio energetico per NEXO, il telefono lo congela e messaggi e chiamate arrivano in ritardo o non arrivano.",
   prof_bat_disable: "Disattiva il risparmio energetico",
-  prof_bat_later: "Non ora",
+  prof_bat_later: "Non ora", prof_bat_sure: "Sei sicuro?", prof_bat_sure_body: "Senza questa impostazione messaggi e chiamate arrivano in ritardo o non arrivano, e i tuoi contatti vedranno che hai NEXO limitato.", prof_bat_sure_back: "Torna indietro e attivalo", prof_bat_sure_no: "Continua senza attivarlo", peer_lim_someone: "Questo contatto", peer_lim_note: "{name} ha NEXO limitato dal risparmio batteria: i suoi messaggi possono tardare. Chiedigli di attivarlo in NEXO.", late_note_one: "Un messaggio ti è arrivato in ritardo.", late_note_many: "{n} messaggi ti sono arrivati in ritardo.", late_note_why: "Il risparmio batteria limita NEXO su questo telefono e rallenta i tuoi messaggi.", late_note_fix: "Risolvi",
   prof_bat_your_phone: "il tuo telefono",
   prof_bat_disabled_ok: "✅ Risparmio energetico disattivato.",
   prof_bat_last_step: "Un'ultima impostazione sul tuo ",

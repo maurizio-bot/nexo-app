@@ -682,7 +682,7 @@ export default {
   prof_bat_step_body: "NEXO receives your messages and calls even when the app is in the background or the screen is off.",
   prof_bat_why: "⚠️ If you don't turn off battery saving for NEXO, the phone freezes it and messages and calls arrive late or not at all.",
   prof_bat_disable: "Turn off battery saving",
-  prof_bat_later: "Not now",
+  prof_bat_later: "Not now", prof_bat_sure: "Are you sure?", prof_bat_sure_body: "Without this setting your messages and calls arrive late or not at all, and your contacts will see that NEXO is limited on your phone.", prof_bat_sure_back: "Go back and turn it on", prof_bat_sure_no: "Continue without it", peer_lim_someone: "This contact", peer_lim_note: "{name} has NEXO limited by battery saver: their messages may be delayed. Ask them to turn it on in NEXO.", late_note_one: "A message reached you late.", late_note_many: "{n} messages reached you late.", late_note_why: "Battery saver is limiting NEXO on this phone and that slows down your messages.", late_note_fix: "Fix it",
   prof_bat_your_phone: "your phone",
   prof_bat_disabled_ok: "✅ Battery saving turned off.",
   prof_bat_last_step: "One last setting on your ",

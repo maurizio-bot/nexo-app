@@ -682,7 +682,7 @@ export default {
   prof_bat_step_body: "O NEXO recebe suas mensagens e chamadas mesmo com o app em segundo plano ou a tela apagada.",
   prof_bat_why: "⚠️ Se você não desativar a economia de bateria para o NEXO, o celular o congela e as mensagens e as chamadas chegam atrasadas ou nem chegam.",
   prof_bat_disable: "Desativar economia de bateria",
-  prof_bat_later: "Agora não",
+  prof_bat_later: "Agora não", prof_bat_sure: "Tem certeza?", prof_bat_sure_body: "Sem este ajuste suas mensagens e chamadas chegam atrasadas ou não chegam, e seus contatos verão que o NEXO está limitado.", prof_bat_sure_back: "Voltar e ativar", prof_bat_sure_no: "Continuar sem ativar", peer_lim_someone: "Este contato", peer_lim_note: "{name} tem o NEXO limitado pela economia de bateria: as mensagens podem atrasar. Peça para ativar no NEXO.", late_note_one: "Uma mensagem chegou atrasada.", late_note_many: "{n} mensagens chegaram atrasadas.", late_note_why: "A economia de bateria está limitando o NEXO neste telefone e isso atrasa suas mensagens.", late_note_fix: "Corrigir",
   prof_bat_your_phone: "celular",
   prof_bat_disabled_ok: "✅ Economia de bateria desativada.",
   prof_bat_last_step: "Um último ajuste no seu ",

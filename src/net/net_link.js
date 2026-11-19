@@ -382,6 +382,16 @@ export class NetLink {
     // Solo lo reciente cuenta para "en línea" (lo guardado de hace rato es del buzón)
     if (now - t < UP_MS && t > (peer.lastRx || 0)) { peer.lastRx = t; peer.wifi = !!o.w; peer.gw = !!o.g; }
     if (o.h && !o.r && now - t < UP_MS && t >= (peer.roT || 0)) { peer.ro = o.ro === 1; peer.roT = t; } // 3151: ¿lee del relé propio?
+    // 3247: ¿tiene NEXO limitado por el ahorro de batería? (solo lo dice el saludo de su app; el del nativo —r— no lo trae)
+    if (o.h && !o.r && (o.lm === 0 || o.lm === 1) && now - t < UP_MS) {
+      if (!this.state.peerLim) this.state.peerLim = {};
+      var lim = o.lm === 1;
+      if (!!this.state.peerLim[nx] !== lim) {
+        if (lim) this.state.peerLim[nx] = 1; else delete this.state.peerLim[nx];
+        this._saveState();
+        try { window.dispatchEvent(new CustomEvent('nexo:peerlimit', { detail: { nx: nx, lim: lim } })); } catch (e) {}
+      }
+    }
     if (o.h) {
       // Saludo: contestar si hace rato que no le saludamos (así los dos se ven en línea enseguida)
       if (!o.r && now - t < UP_MS && now - (peer.helloAt || 0) > 20000) this._hello(nx); // 3234: r = respuesta del nativo (no se contesta)
@@ -485,7 +495,7 @@ export class NetLink {
     var pair = await this._pair(nx, c.publicKey);
     var body = { t: Date.now(), w: this.wifi ? 1 : 0 };
     if (this.gwOnly()) body.g = 1; // puente parte 4: «estoy por un puente»: mándame fotos/archivos al buzón de archivos
-    if (opts && opts.hello) { body.h = 1; if (this.tor.ready && this.tor.onion) { body.o = this.tor.onion; body.op = this.tor.port; } if (this.fcmToken) body.f = this.fcmToken; if (this._ownHealthy()) body.ro = 1; } // 3151: ro = «leo del relé propio»
+    if (opts && opts.hello) { body.h = 1; if (this.tor.ready && this.tor.onion) { body.o = this.tor.onion; body.op = this.tor.port; } if (this.fcmToken) body.f = this.fcmToken; if (this._ownHealthy()) body.ro = 1; if (typeof window !== 'undefined' && typeof window.NEXO_BG_LIMITED === 'boolean') body.lm = window.NEXO_BG_LIMITED ? 1 : 0; } // 3247: lm = «NEXO limitado por el ahorro de batería» // 3151: ro = «leo del relé propio»
     // #130b (dueño 31-10): una oferta de llamada/videollamada (1-a-1 o invitación de grupo) marca el sobre con cl:1, para
     // que la escucha nativa de internet en segundo plano (NetBg) la saque como LLAMADA a pantalla completa (enciende el
     // teléfono, Contestar/Rechazar), no como un aviso de mensaje. El síntoma del dueño era justo ese: con la pantalla

@@ -83,15 +83,17 @@ export function batteryGuard(opts) {
   var pl = opts.plugin || _plugin();
   var done = typeof opts.onDone === 'function' ? opts.onDone : function () {};
   if (!pl || typeof pl.alertSettings !== 'function') { done('no-plugin'); return; }
-  if (_get(DONE_KEY) === '1') { done('already'); return; } // ya exento alguna vez: no molestar
+  var force = !!opts.force; // 3247: desde el aviso «te llegaron mensajes tarde»: sin límites de veces
+  if (_get(DONE_KEY) === '1' && !force && !opts.settings) { done('already'); return; } // ya exento alguna vez: no molestar
   if (document.getElementById('nexo-bat-overlay') || document.getElementById('nexo-perm-overlay')) return; // ya hay una pantalla
   var skips = parseInt(_get(SKIP_KEY) || '0', 10) || 0;
 
   var proceed = function (r) {
     if (!r) { done('error'); return; }
     if (r.battery === true) { _set(DONE_KEY, '1'); done('exempt'); return; } // el sistema ya deja a NEXO en segundo plano
+    if (_get(DONE_KEY) === '1') { _set(DONE_KEY, '0'); _set(SKIP_KEY, '0'); } // 3247: estuvo exento y ya no (el sistema o el usuario lo quitó): se vuelve a pedir
     var skipAt = parseInt(_get(SKIP_AT_KEY) || '0', 10) || 0;
-    if (skips >= SKIP_LIMIT && !(skipAt > 0 && Date.now() - skipAt >= RETRY_MS)) { done('skipped-enough'); return; } // ya se pospuso bastante; queda en Ajustes
+    if (!force && skips >= SKIP_LIMIT && !(skipAt > 0 && Date.now() - skipAt >= RETRY_MS)) { done('skipped-enough'); return; } // ya se pospuso bastante; queda en Ajustes
     _showOverlay(pl, r, done);
   };
 
@@ -147,6 +149,21 @@ function _showOverlay(pl, settings, done) {
       _clearTimers();
       [1500, 3500, 6500].forEach(function (ms) { recheckTimers.push(setTimeout(recheck, ms)); });
     };
+    ghost.onclick = renderConfirmStep; // 3247: «Ahora no» ya no cierra en silencio: hay que decir que no a propósito
+  }
+
+  // 3247 (dueño 18-11): confirmar el «no», explicando en una frase lo que cuesta
+  function renderConfirmStep() {
+    box.innerHTML = '';
+    var icon = document.createElement('div'); icon.className = 'bat-icon'; icon.textContent = '⚠️';
+    var h = document.createElement('h2'); h.textContent = t('prof_bat_sure', '¿Seguro?');
+    var p = document.createElement('p'); p.textContent = t('prof_bat_sure_body', 'Sin este ajuste tus mensajes y llamadas llegan tarde o no llegan, y tus contactos verán que tienes NEXO limitado.');
+    var primary = document.createElement('button'); primary.className = 'bat-primary'; primary.id = 'nexo-bat-back';
+    primary.textContent = t('prof_bat_sure_back', 'Volver y activarlo');
+    var ghost = document.createElement('button'); ghost.className = 'bat-ghost'; ghost.id = 'nexo-bat-skip-sure';
+    ghost.textContent = t('prof_bat_sure_no', 'Seguir sin activarlo');
+    box.append(icon, h, p, primary, ghost);
+    primary.onclick = renderBatteryStep;
     ghost.onclick = _skip;
   }
 

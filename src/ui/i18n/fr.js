@@ -682,7 +682,7 @@ export default {
   prof_bat_step_body: "NEXO reçoit vos messages et vos appels même quand l'app est en arrière-plan ou l'écran éteint.",
   prof_bat_why: "⚠️ Si vous ne désactivez pas l'économiseur de batterie pour NEXO, le téléphone le fige et les messages et les appels arrivent en retard ou n'arrivent pas.",
   prof_bat_disable: "Désactiver l'économiseur de batterie",
-  prof_bat_later: "Pas maintenant",
+  prof_bat_later: "Pas maintenant", prof_bat_sure: "Vous êtes sûr ?", prof_bat_sure_body: "Sans ce réglage, vos messages et appels arrivent en retard ou pas du tout, et vos contacts verront que NEXO est limité.", prof_bat_sure_back: "Revenir et l'activer", prof_bat_sure_no: "Continuer sans l'activer", peer_lim_someone: "Ce contact", peer_lim_note: "{name} a NEXO limité par l'économiseur de batterie : ses messages peuvent tarder. Demandez-lui de l'activer dans NEXO.", late_note_one: "Un message vous est arrivé en retard.", late_note_many: "{n} messages vous sont arrivés en retard.", late_note_why: "L'économiseur de batterie limite NEXO sur ce téléphone et ralentit vos messages.", late_note_fix: "Corriger",
   prof_bat_your_phone: "votre téléphone",
   prof_bat_disabled_ok: "✅ Économiseur de batterie désactivé.",
   prof_bat_last_step: "Un dernier réglage sur ",

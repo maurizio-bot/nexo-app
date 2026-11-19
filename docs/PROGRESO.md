@@ -2084,3 +2084,14 @@ APK 3089 cayó en el CI SOLO por la prueba de tamaño: `src/ui/estados.js` lleg�
 - 18-11 22:33 (México): el dueño publicó en Cloudflare el worker con `ttl: '86400s', collapse_key: 'nexo_wake'` (versión
   0d5c25dd activa). Comprobado desde aquí a las 22:35: el servicio responde igual que antes (Google atiende el pedido).
   El servicio recibió 752 pedidos en 24 h: los toques sí salen de los teléfonos.
+
+### 3247 (18-11, dueño «Hazlo») — NEXO limitado por el ahorro de batería
+- Android no deja activar la exención por la app; solo pedirla. Tres cosas (`src/ui/bg_limit.js`, `battery_prompt.js`, `net_link.js`):
+  1. **«Ahora no» ya no cierra en silencio:** pide confirmar («¿Seguro?… tus contactos verán que tienes NEXO limitado») con
+     «Volver y activarlo». Si estuvo exento y ya no, se vuelve a pedir (antes no salía nunca más).
+  2. **El saludo cifrado lleva `lm`** (1 = limitado). Quien escribe ve en el chat «X tiene NEXO limitado por el ahorro de batería:
+     sus mensajes pueden tardar. Pídele que lo active». Desaparece cuando el otro lo arregla. Solo por internet (el saludo BLE no lo lleva).
+  3. **Mensajes atrasados:** si estando limitado entran mensajes con > 2 min de retraso al volver a la app, aviso «Te llegaron N
+     mensajes tarde…» con «Arreglarlo» (abre la batería aunque se haya pospuesto). Como mucho 1 cada 6 h.
+- Registro: `[ENERGIA] NEXO limitado…`, `[ENERGIA] nx… tiene NEXO limitado`. Pruebas: `bglimit.js` (nueva; b3229 FALLA),
+  `battery_prompt.js` (confirmar el no; b3229 FALLA).

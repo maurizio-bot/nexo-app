@@ -78,6 +78,14 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   // P: posponer — «Ahora no» cierra sin abrir el ajuste y cuenta el aplazamiento
   r.P_sale_aviso = await wait(() => !!$(P, 'nexo-bat-skip'), 20);
   click(P.win, $(P, 'nexo-bat-skip'));
+  // 3247 (dueño 18-11): «Ahora no» ya no cierra: pide confirmar el no. «Volver y activarlo» regresa al paso de la batería.
+  r.P_pide_confirmar = await wait(() => !!$(P, 'nexo-bat-skip-sure'), 15);
+  r.P_no_cierra_sin_confirmar = !!$(P, 'nexo-bat-overlay');
+  click(P.win, $(P, 'nexo-bat-back'));
+  r.P_volver_regresa = await wait(() => !!$(P, 'nexo-bat-allow'), 15);
+  click(P.win, $(P, 'nexo-bat-skip'));
+  await wait(() => !!$(P, 'nexo-bat-skip-sure'), 15);
+  click(P.win, $(P, 'nexo-bat-skip-sure'));
   r.P_cierra = await wait(() => !$(P, 'nexo-bat-overlay'), 15);
   r.P_no_abre_ajuste = (nP.alertOpened || []).indexOf('battery') < 0;
   r.P_cuenta_aplazo = (() => { try { return P.win.localStorage.getItem('nexo_bat_prompt_skips') === '1'; } catch (e) { return false; } })();
@@ -92,7 +100,7 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.G_sale_aviso && r.G_abre_ajuste_bateria && r.G_cierra && r.G_sin_paso_fabricante && r.G_marca_hecho &&
     r.V_sale_aviso && r.V_abre_ajuste_bateria && r.V_paso_fabricante && r.V_abre_inicio_automatico && r.V_cierra &&
-    r.P_sale_aviso && r.P_cierra && r.P_no_abre_ajuste && r.P_cuenta_aplazo &&
+    r.P_sale_aviso && r.P_pide_confirmar && r.P_no_cierra_sin_confirmar && r.P_volver_regresa && r.P_cierra && r.P_no_abre_ajuste && r.P_cuenta_aplazo &&
     r.E_sin_aviso && r.E_no_abre_ajuste && r.K_sin_aviso && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('BATPROMPT ' + JSON.stringify(r));
