@@ -496,6 +496,22 @@
    "sintoma": "par:enlace_abre_cierra (pedido por nx1n36c283)",
    "categoria": "Bluetooth: enlaces repetidos que se abren y cierran",
    "causa": "Vivo (3107) con la app en segundo plano desde 05:14: esta vez NO se congeló (su nativo contestó saludos 07:55–08:19 y recibió los toques FCM). Al volver a la app llegaron de golpe desconexiones viejas de 05:24–05:26 (la página sí estaba congelada; el nativo no). El mensaje de Roberto por el puente del S24 (08:09:07) llegó 08:19:35: el S24 estuvo sin red entre medio. Nada perdido"
+  },
+  {
+   "dia": "2026-11-17",
+   "hora": "16:34",
+   "nx": "nx0x4029e6",
+   "sintoma": "par:zombi (pedido por nx1905c1ee)",
+   "categoria": "Bluetooth: enlace roto al abrir la app (el servidor GATT se rehace)",
+   "causa": "Zhelowsky (3086, vieja; llegó el 19-11 08:22). Sirve de 2.ª prueba del mecanismo de Roberto 08:09: al abrir la app desde cerrada, «GATT_SERVER Detenido» y rehecho con 4 enlaces aún abiertos → MTU 23 en los 3 contactos al instante"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx0x4029e6",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (3097, vieja)"
   }
  ]
 }
