@@ -21,6 +21,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **19-11 08:45 (México) — sesión nueva:** 3251 HECHO en la rama `ccr-45654f1b-mrooyc` (SIN subir a NEXOCHAT): al abrir la app, la
+  instancia vieja corta (`cancelServerLinks` → cancelConnection) los enlaces entrantes ANTES de cerrar su servidor GATT (`endClosedMode`,
+  PluginBackground.kt). Prueba `gattreabre.js` (en ci.js; contraprueba `--k3250` en el mock: 15 escrituras perdidas, el texto no llega;
+  con el arreglo llega en 0,4 s). Batería completa en curso (`bateria_3251.txt` del scratchpad). Al pasar la batería Y terminar bien la APK
+  3108 (d97e7e7, en CI desde 08:00): NOVEDADES de 3108 al historial, línea nueva («Al abrir NEXO, los contactos cercanos siguen conectados
+  sin cortes») y subir 3251 a NEXOCHAT. El Kotlin no se compiló aquí (sin SDK): lo compila el CI.
 - **CIERRE POR CONTEXTO 19-11 08:30 (México) — leer esto primero en la sesión nueva:**
   1. **APK con 3249 + 3250 en CI (commit d97e7e7 en NEXOCHAT, subido 07:58).** Al terminar bien: pasar el bloque de NOVEDADES al historial
      con su número ([skip ci]) y avisar al dueño en 1 línea. Si falla: bajar el registro del job y corregir. (Había un aviso programado en la
