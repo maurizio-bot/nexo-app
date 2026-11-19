@@ -79,8 +79,10 @@ export default {
     try {
       const sa = loadServiceAccount(env);
       const token = await getAccessToken(sa);
-      // MISMA forma que la versión Firebase: solo datos { t: 'wake' }, alta prioridad, caduca en 60 s.
-      const msg = { message: { token: to, data: { t: 'wake' }, android: { priority: 'high', ttl: '60s' } } };
+      // Solo datos { t: 'wake' }, alta prioridad. 3246 (dueño 18-11, diagnósticos de Katy y Yael: el teléfono estuvo apagado o
+      // sin red más de 60 s y el toque caducó; al volver nadie lo despertó hasta abrir la app a mano): ahora el toque espera
+      // hasta 24 h en Google y, con collapse_key, solo queda UNO guardado por teléfono (no una ráfaga al reconectar).
+      const msg = { message: { token: to, data: { t: 'wake' }, android: { priority: 'high', ttl: '86400s', collapse_key: 'nexo_wake' } } };
       const r = await fetch(FCM_URL, { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(msg) });
       if (r.ok) { const d = await r.json(); return Response.json({ ok: true, id: d.name || '' }); }
       const errTxt = await r.text();

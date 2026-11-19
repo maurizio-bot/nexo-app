@@ -190,7 +190,12 @@ internal fun NexoBlePlugin.openAlertSettingImpl(call: PluginCall) {
             m.contains("samsung") -> listOf("com.samsung.android.lool/com.samsung.android.sm.ui.battery.BatteryActivity")
             m.contains("xiaomi") || m.contains("redmi") || m.contains("poco") -> listOf("com.miui.securitycenter/com.miui.permcenter.autostart.AutoStartManagementActivity")
             m.contains("oppo") || m.contains("realme") || m.contains("oneplus") -> listOf("com.coloros.safecenter/.permission.startup.StartupAppListActivity")
-            m.contains("huawei") || m.contains("honor") -> listOf("com.huawei.systemmanager/.startupmgr.ui.StartupNormalAppListActivity")
+            // 3246 (diagnóstico de Katy 18-11, Honor con MagicOS): los Honor nuevos ya no traen el gestor de Huawei sino el suyo
+            // (com.hihonor.systemmanager); sin esto «Inicio de aplicaciones» no abría y caía a la ficha de la app.
+            m.contains("huawei") || m.contains("honor") -> listOf("com.hihonor.systemmanager/.startupmgr.ui.StartupNormalAppListActivity",
+                "com.hihonor.systemmanager/com.hihonor.systemmanager.startupmgr.ui.StartupNormalAppListActivity",
+                "com.huawei.systemmanager/.startupmgr.ui.StartupNormalAppListActivity",
+                "com.huawei.systemmanager/.optimize.process.ProtectActivity")
             else -> emptyList()
         }
         for (cn in comps) {

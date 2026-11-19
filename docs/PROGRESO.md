@@ -2074,3 +2074,10 @@ APK 3089 cayó en el CI SOLO por la prueba de tamaño: `src/ui/estados.js` lleg�
   líneas, llenas de latidos de Bluetooth) y el toque fue a las 21:16. Ahora `diag_native.js` conserva hasta 60 líneas clave
   anteriores (FCM, vuelve sola, escucha sin la app, sobres, red) y `net_wake.js` anota qué contestó el enviador del toque.
   Prueba `diagnativo.js`. Va con la próxima APK.
+
+### 3246 (18-11, sin APK aún) — despertador más resistente
+- Diagnósticos de Katy (Honor) y Yael (Redmi): el toque no revivió NEXO. Cambios: (1) `push-sender/cloudflare/worker.js`: el toque
+  espera 24 h en Google (antes 60 s) con `collapse_key` (uno por teléfono) — **el dueño debe volver a publicar el worker en
+  Cloudflare**; (2) `PluginAlerts.kt`: en Honor nuevo (MagicOS) «Inicio de aplicaciones» abre con `com.hihonor.systemmanager`;
+  (3) 3245 (diagnóstico conserva despertares; el toque anota la respuesta del enviador). Pruebas: fcmwake, wakeopen, wakesched,
+  test_sign, diagnativo OK. Pendiente de publicar tras la 3104.
