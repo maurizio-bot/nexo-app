@@ -424,6 +424,14 @@
    "sintoma": "resumen_diario",
    "categoria": "Resumen diario (informativo)",
    "causa": "no es un fallo (Katy 3102: 12 enviados, 12 ✓✓; llegó el 19-11 05:23)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "20:47",
+   "nx": "nx1a93dbfe",
+   "sintoma": "cierre_fallo (18-11 19:45 Roma = 12:45 México, sin memoria, detrás)",
+   "categoria": "Cierre de la app por memoria (Android)",
+   "causa": "A05 de Italia con la 3096 (VIEJA: regla 14-11, sin peso; llegó el 19-11 06:39). Android la cerró por falta de memoria en segundo plano (14 cierres en 7 días, 13 por memoria; ya visto el 18-11); el servicio se reinició solo al momento y siguió escuchando internet sin la app hasta que se abrió (03:41 Roma): nada perdido. La app ya avisó de la versión nueva; con la 3107 tendrá además el despertador arreglado"
   }
  ]
 }
