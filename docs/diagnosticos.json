@@ -432,6 +432,30 @@
    "sintoma": "cierre_fallo (18-11 19:45 Roma = 12:45 México, sin memoria, detrás)",
    "categoria": "Cierre de la app por memoria (Android)",
    "causa": "A05 de Italia con la 3096 (VIEJA: regla 14-11, sin peso; llegó el 19-11 06:39). Android la cerró por falta de memoria en segundo plano (14 cierres en 7 días, 13 por memoria; ya visto el 18-11); el servicio se reinició solo al momento y siguió escuchando internet sin la app hasta que se abrió (03:41 Roma): nada perdido. La app ya avisó de la versión nueva; con la 3107 tendrá además el despertador arreglado"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "07:14",
+   "nx": "nx0g6ef54e",
+   "sintoma": "zombi (nx1n36c283)",
+   "categoria": "Bluetooth: enlace viejo tras apagar y encender el Bluetooth",
+   "causa": "Roberto (3107) apagó y encendió el Bluetooth (07:13:36–39): el nativo cerró el enlace con el S24 sin avisar a la app, que lo siguió creyendo listo: 4 textos fallaron 6 s cada uno (MTU 23, «muerto», re-ruteo a internet) y a los ~50 s «zombi». ARREGLADO en 3250 (btoffsilencio.js). Además: DESPERTADOR 3107 CONFIRMADO de punta a punta: mensaje del dueño 06:02:34 con la app de Roberto cerrada → «Despierta recibido», escucha nativa y ✓✓ en 0,4 s"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "07:54",
+   "nx": "nx1n36c283",
+   "sintoma": "par:zombi (pedido por nx0g6ef54e)",
+   "categoria": "Bluetooth: enlace viejo tras apagar y encender el Bluetooth",
+   "causa": "lado del S24 del caso de Roberto (ver arriba). El S24 contestaba por su parte nativa (pings y saludo) con la app en segundo plano. Datos: 43,7 MB de relés en 168 min, 40,6 MB repetidos, y batería en segundo plano 9,1 %/h: el margen al reconectar inflado (arreglado en 3249)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx0g6ef54e",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (Roberto 3100)"
   }
  ]
 }

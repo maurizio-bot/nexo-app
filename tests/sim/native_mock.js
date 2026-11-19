@@ -688,19 +688,20 @@ class NativePhone {
 
   // 3082 (realme 13-11 18:55): Bluetooth APAGADO en este teléfono (no solo lejos): isBluetoothEnabled → enabled:false, escanear
   // falla («Bluetooth desactivado», como el Kotlin), ningún enlace, y el aviso onBluetoothStateChanged (registerBluetoothStateReceiver).
-  setBt(on) {
+  // silent (3250): como el Kotlin real, al apagarse cierra sus enlaces SIN un onDeviceDisconnected por cada uno (el otro sí lo ve)
+  setBt(on, silent) {
     this.btOff = !on;
-    this.setOffline(!on);
+    this.setOffline(!on, !!silent);
     if (!this.destroyed) this.emit('onBluetoothStateChanged', { state: on ? 'on' : 'off', enabled: !!on });
   }
 
   // ---- fuera de alcance (simula alejarse) ----
-  setOffline(off) {
+  setOffline(off, silent) {
     this.offline = off;
     if (!off) return;
     this.radio.phones.forEach((p) => {
       if (p === this) return;
-      const drop = (holder, otherAddr) => { holder.emit('onDeviceDisconnected', { deviceId: otherAddr }); holder.buffers.delete(norm(otherAddr)); holder.bin.reset(norm(otherAddr)); };
+      const drop = (holder, otherAddr) => { if (!silent) holder.emit('onDeviceDisconnected', { deviceId: otherAddr }); holder.buffers.delete(norm(otherAddr)); holder.bin.reset(norm(otherAddr)); };
       p._dropLinkLater(norm(this.address), this.address, norm(this.initAddress), this.initAddress);
       if (this.clients.has(norm(p.address))) { this.clients.delete(norm(p.address)); drop(this, p.address); }
       if (this.serverConnected.has(norm(p.initAddress))) { this.serverConnected.delete(norm(p.initAddress)); this.serverNotif.delete(norm(p.initAddress)); drop(this, p.initAddress); }

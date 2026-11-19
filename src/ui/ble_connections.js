@@ -580,7 +580,7 @@ export const BLE_CONNECTION_METHODS = {
   _onBtState(data) {
     var self = this;
     var on = !!(data && (data.enabled === true || data.state === 'on'));
-    if (!on) { self._noteBtOff(); return; }
+    if (!on) { self._noteBtOff(); self._dropBtLinks(); return; }
     var wasOff = self._btOffLogged || self._btIsOff();
     self._btOffUntil = 0; self._btOffLogged = false;
     if (!wasOff) return;
@@ -591,6 +591,26 @@ export const BLE_CONNECTION_METHODS = {
       try { self._startPresenceSearch(120000); } catch (e) {}
       try { self._flushAllPendingMessages(); } catch (e) {}
     }, 800);
+  },
+
+  // 3250 (diagnóstico automático de Roberto 19-11 07:14, 3107, «zombi» con el S24): al apagar el Bluetooth el nativo cierra sus enlaces
+  // (Kotlin: «GATT client cerrado», «GATT_SERVER Detenido») SIN avisar de cada desconexión. La app seguía creyendo listo el enlace con el
+  // dueño: al volver a encenderlo, 4 textos por él fallaron 6 s cada uno («enlace congestionado», MTU 23) y a los ~50 s el vigilante lo dio
+  // por «zombi» (con su diagnóstico automático). Ahora, al apagarse, todos los enlaces Bluetooth se dan por cerrados al momento (lo pendiente
+  // va por internet/Wi-Fi y al encenderse se busca y reconecta, 3082).
+  _dropBtLinks() {
+    var self = this, ids = {};
+    try {
+      self.connectedDevices.forEach(function(v, k) { ids[k] = 1; });
+      self._deviceStates.forEach(function(st, k) { if (st && st.state !== BLE_STATES.DISCONNECTED) ids[k] = 1; });
+    } catch (e) {}
+    var n = 0;
+    Object.keys(ids).forEach(function(id) {
+      if (!id || _isPathDev(id)) return;   // solo enlaces Bluetooth (no net:/lan:)
+      n++;
+      try { self._onNativeDisconnected({ deviceId: id, reason: 'bt_off' }); } catch (e) {}
+    });
+    if (n) console.log('[BLEInterface] Bluetooth apagado: ' + n + ' enlace(s) Bluetooth cerrados (lo pendiente sigue por internet/Wi-Fi)'); // i18n-ok: registro
   },
 
   _autoScanForKnownContacts(opts) {

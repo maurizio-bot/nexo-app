@@ -143,9 +143,14 @@ export const bleNativeEvents = {
       } catch (e) {}
     });
 
-    this._nativeDeviceDisconnectedListener = this.nativePlugin.addListener('onDeviceDisconnected', function(data) {
+    this._nativeDeviceDisconnectedListener = this.nativePlugin.addListener('onDeviceDisconnected', function(data) { self._onNativeDisconnected(data); });
+  },
+
+  // 3250: el manejo de «enlace desconectado», aparte para poder usarlo también al apagarse el Bluetooth (ble_connections._onBtState)
+  _onNativeDisconnected(data) {
+    var self = this;
       try {
-        var deviceId = data.deviceId || '';
+        var deviceId = (data && data.deviceId) || '';
         if (!deviceId) return;
         // Si la desconexión es por pausa de cámara, no limpiar mapeos ni lanzar eventos de "offline"
         if (self._cameraBlePaused) {
@@ -168,7 +173,7 @@ export const bleNativeEvents = {
         // acaba de cerrar (Dedup) contaba también como «desconexión»: con sus cierres por repetido ya contados aparte, daba un
         // aviso falso de enlace que se cae (y un diagnóstico de 20 KB por la radio). Lo cerrado por la deduplicación no cuenta.
         var dupClosed = !!(self._dupClosedUntil && (self._dupClosedUntil.get(_normMac(deviceId)) || 0) > Date.now());
-        if (typeof self._noteLinkFlap === 'function' && flapNx && !dupClosed && self._notifiedPeers.has(_normMac(deviceId) + ':' + _normId(flapNx))) self._noteLinkFlap(flapNx, 'desconexion'); // 3020
+        if (typeof self._noteLinkFlap === 'function' && flapNx && !dupClosed && data.reason !== 'bt_off' && self._notifiedPeers.has(_normMac(deviceId) + ':' + _normId(flapNx))) self._noteLinkFlap(flapNx, 'desconexion'); // 3020
         var prevSt = self._getDeviceState(deviceId) || {};
         var cutClient = !dupClosed && prevSt.role === 'client' && (prevSt.state === BLE_STATES.READY_TO_CHAT || prevSt.state === BLE_STATES.NOTIFICATIONS_READY);
         self.connectedDevices.delete(deviceId);
@@ -231,7 +236,6 @@ export const bleNativeEvents = {
         _safeDispatchEvent('nexo:ble:deviceDisconnected', { deviceId: deviceId, deviceUUID: peerUUID });
         if (self.isAdvertising) self._kickAdvertising(); // 3203: agrupado (una ráfaga de desconexiones = un solo startAdvertising)
       } catch (e) {}
-    });
   },
 
   // 3203 (diagnóstico de Roberto, Motorola edge 40 neo 3087, 17-11 09:32): al volver a la app, 24 «[ADVERTISING] startAdvertising»

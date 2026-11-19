@@ -364,6 +364,10 @@
     {
      "fallo": "3233 (S23 17-11 21:39 con Yaelito): el desempate de enlaces repetidos cerró el único enlace que seguía recibiendo y se quedó con uno callado (4 pings sin respuesta, reconexión a los 26 s). Ahora no cierra si el que se queda lleva > 15 s callado y otro recibe",
      "prueba": "dedup de enlaces Bluetooth repetidos"
+    },
+    {
+     "fallo": "3250 (Roberto 19-11 07:14, 3107): al apagar el Bluetooth el nativo cierra sus enlaces sin avisar y la app los seguía creyendo listos: textos fallando 6 s cada uno y «zombi» a los ~50 s. Ahora se sueltan al momento. btoffsilencio.js (contraprueba 3107: el texto no llega en 30 s)",
+     "prueba": "3250 (diagnóstico automático de Roberto 19-11 07:14"
     }
    ],
    "debiles": [
@@ -558,6 +562,10 @@
     {
      "fallo": "3223 (dueño 17-11, Tetris a dos por internet: «envié 29 líneas de basura y solo llegaron 4»): los eventos del juego exigían número ESTRICTAMENTE creciente y se tiraba lo que llegaba desordenado; por el buzón de internet (varios relés, reintentos) llegan desordenados → se perdía casi toda la basura. Ahora cada número cuenta una vez aunque llegue tarde (tope antispam por partida)",
      "prueba": "Tetris VERSUS"
+    },
+    {
+     "fallo": "3249 (diagnósticos 19-11 Vivo 05:12 y S24 05:23): lo detenido en la conexión mientras la app estaba congelada contaba como retraso del relé y subía el margen al reconectar a 10 min durante 12 h (S24: 12,2 MB repetidos en 18 min, 40,6 MB en 168 min). Ahora no cuenta. margencongelado.js (contraprueba 3107: 459 s)",
+     "prueba": "3249 (diagnósticos 19-11"
     }
    ],
    "debiles": [
