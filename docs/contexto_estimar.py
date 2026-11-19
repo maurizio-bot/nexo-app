@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Estima a ojo cuánto contexto lleva la plática (dueño 18-11). Cuenta los caracteres de la conversación desde el último resumen
 automático (texto, herramientas y resultados; las imágenes no cuentan) y los pasa a % con la calibración del dueño:
-18-11: 408 043 caracteres (+7 imágenes) = 44 % → ~9 270 caracteres por 1 %  → 30 % ≈ 278 000 caracteres.
+18-11: 408 043 caracteres (+7 imágenes) = 44 % → ~9 270 por 1 %; el dueño fijó la cifra redonda de 10 000 caracteres por 1 % (30 % = 300 000).
 Uso: python3 docs/contexto_estimar.py [ruta.jsonl]   (sin ruta: la transcripción más reciente)."""
 import json, sys, glob, os
-POR_CIENTO = 9270
+POR_CIENTO = 10000  # cifra redonda fijada por el dueño (18-11); se ajusta con el tiempo
 p = sys.argv[1] if len(sys.argv) > 1 else max(glob.glob('/root/.claude/projects/*/*.jsonl'), key=os.path.getmtime)
 rows = []
 for l in open(p):
