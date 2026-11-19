@@ -408,6 +408,22 @@
    "sintoma": "manual: Vivo Y03 (3105) al abrir la app",
    "categoria": "App congelada por el sistema (fabricante)",
    "causa": "Proceso de NEXO congelado por el Vivo (Android 16) unas 4 h 52 min con la app abierta en segundo plano: último registro nativo 00:18:33 («escuchando 8 contactos» por internet) y nada hasta 05:12:42 (al abrirla); en ese instante entran de golpe, con la misma hora, las conexiones Bluetooth del S24 de toda la noche (7 direcciones: conectar, MTU 517, avisos y desconectar) y 7 sobres de internet de las 00:20 (17 565 s tarde). Energía: segundo plano permitido, batería exenta; aun así el Vivo lo congeló (con la app CERRADA a las 00:05 sí recibía). El despertador del S24 (3106) no salía, así que nada lo descongeló. Sin chats perdidos (último chat 00:15). Remedio previsto: el toque FCM de la 3107 (descongela el proceso) + «Alto consumo en segundo plano» del Vivo; a probar"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "05:24",
+   "nx": "nx1n36c283",
+   "sintoma": "enlace_abre_cierra (nx09acdb61 3 cierres por enlace repetido en 10 min)",
+   "categoria": "Bluetooth: enlaces repetidos que se abren y cierran",
+   "causa": "S24 (3107) con el Vivo recién descongelado: varios enlaces a la vez por sus direcciones cambiantes; el desempate se quedó con uno (lo previsto) y uno de los repetidos dio MTU 23 (hipótesis «MTU 23 = enlace recuperado», PRIORIDAD 1). El pendiente atascado de las 04:35 (msg…508019) llegó a las 05:12:50 al descongelarse el Vivo: nada perdido. DESPERTADOR 3107 CONFIRMADO: «toque … salió» en los 9 toques. Además: (a) margen al reconectar 459 s por sobres detenidos mientras el S24 estaba en segundo plano → 12,2 MB repetidos de los relés en 18 min: ARREGLADO en 3249 (margencongelado.js), sin APK aún; (b) un relé lo castigó («banned: too many rate-limit violations») al pasar la copia Fénix al Vivo por internet: sin causa visible (registro recortado); 3209 dejó de insistir al primer «no» (bien)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx126df3f4",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (Katy 3102: 12 enviados, 12 ✓✓; llegó el 19-11 05:23)"
   }
  ]
 }
