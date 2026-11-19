@@ -21,6 +21,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **19-11 15:30 (México):** APK 3109 (3251) PUBLICADA. 3252 (texto «fallido» con los relés reconectando → pendiente; `failnet.js`) subido
+  a NEXOCHAT (APK 3110 en CI). Dueño: «arma la lista de problemas grandes y resuelve los chicos»: lista en `docs/AREAS.md` (🔴 arriba).
+  Cerrados sin cambio: foto de Austin ×3 (era «Deslizar»), puente atorado (por diseño: cola de 24 h, se entregó 14:20). Uso del dueño ~88 %:
+  no empezar lo grande sin su «dale». Siguiente candidato: enlace repetido que el S24 reabre (problema grande n.º 3).
 - **19-11 08:45 (México) — sesión nueva:** 3251 HECHO en la rama `ccr-45654f1b-mrooyc` (SIN subir a NEXOCHAT): al abrir la app, la
   instancia vieja corta (`cancelServerLinks` → cancelConnection) los enlaces entrantes ANTES de cerrar su servidor GATT (`endClosedMode`,
   PluginBackground.kt). Prueba `gattreabre.js` (en ci.js; contraprueba `--k3250` en el mock: 15 escrituras perdidas, el texto no llega;

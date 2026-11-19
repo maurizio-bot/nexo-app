@@ -688,7 +688,9 @@ export function _failStatus(err) {
   // la espera sale por Bluetooth o por el Wi-Fi que volvió)
   // 3211: IN_MAILBOX = sin confirmación por Bluetooth pero ya en el buzón de internet (red de seguridad): enviado (✓)
   if (err && err.code === 'IN_MAILBOX') return 'sent';
-  return (err && (err.code === 'NO_KEY' || err.code === 'PEER_ABSENT' || err.code === 'LAN_DOWN')) ? 'pending' : 'failed';
+  // 3252 (diagnóstico del S24 19-11 14:54): internet caído un momento (NET_DOWN: relés reconectando) tampoco es un fallo del mensaje:
+  // queda pendiente y sale solo al volver (antes «fallido» y entregado 1 s después)
+  return (err && (err.code === 'NO_KEY' || err.code === 'PEER_ABSENT' || err.code === 'LAN_DOWN' || err.code === 'NET_DOWN')) ? 'pending' : 'failed';
 }
 
 export function _vaultUpdateMessageStatus(nexoId, msgId, status) {

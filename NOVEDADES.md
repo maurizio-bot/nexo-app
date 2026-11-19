@@ -12,7 +12,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- (próxima APK)
+- Si internet se corta un momento, tus mensajes quedan en espera y salen solos (ya no se marcan como fallidos).
 </es-419>
 <!-- /APK -->
 

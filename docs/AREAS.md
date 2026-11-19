@@ -19,6 +19,22 @@ historial. Al cerrar un bloque: mover la línea de «Falta» a «En prueba» o �
 | 7 | Publicación | **25 %** | Actualizador y diagnóstico para probadores hechos; la versión para Google Play casi entera por hacer (iPhone espera ingresos). |
 | | **Global** | **50 %** | Media ponderada por el peso de cada área (sin iPhone: 51 %). |
 
+## 🔴 Problemas grandes (lista del 19-11, por lo que dicen los diagnósticos; de más a menos grave)
+1. **App dormida o muerta por el sistema y que no vuelve sola** (#87): 1.ª causa de los «zombi» (16 de ~50 diagnósticos). Roberto
+   (Motorola, batería exenta) estuvo 4 h sin NEXO el 19-11 (10:00–14:07); Austin (Honor) y el Vivo con la app congelada. Remedio: el
+   Bluetooth entero en el servicio nativo + que vuelva sola (PRIORIDAD 1, plan del domingo 22-11).
+2. **Entrega con la app CERRADA y la pantalla APAGADA**: no suena ni avisa (Conexión, ×3).
+3. **Enlaces repetidos que se abren y cierran** (había quedado arreglado en la 3027 y reaparece en la 3107/3109): el S24 reabre cada 1–2 min el
+   enlace que Austin le cierra (diagnósticos 19-11 14:23 y 14:56). Gasta radio y batería; no pierde mensajes.
+4. **Datos repetidos de los relés y batería**: al abrir la app en frío, 4,4 de 5,3 MB repetidos (3108); S24 7–9 %/h en segundo plano.
+5. **Puente nativo con la app dormida** y **modo multitud para EDC** (cientos de NEXO cerca): sin empezar.
+6. **Wi-Fi Direct** casi nunca funciona en teléfonos reales (un envío bueno el 15-11).
+7. **Llamadas**: eco en grupo y gasto de datos por relés.
+8. **Publicación en Google Play**: Android más reciente (targetSdk 34 → 35/36), versión de tienda sin actualizador propio, permisos,
+   privacidad, firma, prueba cerrada de 14 días.
+9. **Auditoría de seguridad completa** antes del cambio del Bluetooth (PASO 0, en el privado).
+Menores ya vistos: enlace viejo ~1 min tras actualizar la app del otro; «fallido» momentáneo con los relés reconectando (3252, hecho).
+
 Pesos de cada área (hecho / total): 1 → 18,4/36 · 2 → 24,6/43 · 3 → 18/27 · 4 → 18,4/31 · 5 → 11,2/17 · 6 → 5/22 · 7 → 7,6/30.
 
 ## 1. Seguridad — 51 %
@@ -61,10 +77,7 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Android 8–11 sin la ubicación activada no escanea y no avisa (robustez.json «escaneo»). ×1
 - Teléfonos que se quedan en MTU 23: renegociar (robustez.json «conexion»). ×1
 - Al ABRIR la app en frío (3108, diagnóstico del S24 09:57): bajó 5,3 MB de los relés en el primer minuto y 4,4 MB eran repetidos; el margen de 3249 cubre el regreso de segundo plano, no el arranque. Ver `nx1n36c283` 19-11 09:57. ×1
-- Foto de perfil de Austin llega 3 veces como «nueva» (15 KB cada vez; mismo diagnóstico, 09:57). ×1
-- Paquete de puente `sxmwnmzmmz8is749` reintentado desde las 09:05 por un camino que nunca confirma (espera 15→240 s; se reinicia al abrir la app; diagnósticos de Austin 09:16 y del S24 09:57). Gasta radio, no se pierde. ×1
 - El S24 reabre cada ~60 s el enlace de cliente que Austin le cierra por repetido (3 cierres en 10 min; diagnóstico de Austin 19-11 14:23). ×1
-- Con datos móviles, si los relés se caen unos segundos, un texto se marca «fallido» y se entrega 1 s después (S24 3109, 19-11 14:54): no marcar fallido mientras reconectan. ×1
 - Al ACTUALIZAR la app, los contactos cercanos quedan con un enlace viejo ~1 min (MTU 23 y zombi): el proceso muere sin cortar nada (3251 no lo cubre). Vigilar; con menos actualizaciones pasará poco. ×1
 - Diagnósticos de la 3097–3107 con «Bluetooth apagado/encendido» suelto y ~20 desconexiones viejas al volver a primer plano (Zhelowsky 11:32, 18-11). Revisar si 3251 lo cubre. ×1
 
