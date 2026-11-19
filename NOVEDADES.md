@@ -12,13 +12,19 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Al abrir un vídeo del chat ya no aparece el cuadro gris con el botón de play antes de que empiece.
-- Ponle un comentario a tus fotos, imágenes y archivos antes de enviarlos.
-- Las fotos panorámicas y muy grandes ya se envían; las de formatos que no se pueden mostrar van como archivo.
+- En teléfonos Honor, el botón para permitir el inicio automático de NEXO ya abre la pantalla correcta.
+- Mejoras internas para que los mensajes despierten a un teléfono que estuvo apagado o sin red.
 </es-419>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3104 (18-11-2026)
+<es-419>
+- Al abrir un vídeo del chat ya no aparece el cuadro gris con el botón de play antes de que empiece.
+- Ponle un comentario a tus fotos, imágenes y archivos antes de enviarlos.
+- Las fotos panorámicas y muy grandes ya se envían; las de formatos que no se pueden mostrar van como archivo.
+</es-419>
 
 ### APK 3102 (18-11-2026)
 <es-419>
