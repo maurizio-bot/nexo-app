@@ -50,7 +50,7 @@ const { importSrc } = require('./srcmod');
     // M4: _whyNot
     const mtuOf = { v: 517 };
     const links = new Map(); const macs = new Map([['aabbccddee01', 'nx1aaaaaaa']]);
-    const ble = { localNexoId: 'nx1zzzzzzz', _macToNexoId: macs, _getDeviceState: (d) => ({ state: links.get(d) || 'disconnected' }), getMtu: () => mtuOf.v, ackSystem: null };
+    const ble = { localNexoId: 'nx1zzzzzzz', _macToNexoId: macs, _resolveDeviceIdForNexoId: () => 'AA:BB:CC:DD:EE:01', _getDeviceState: (d) => ({ state: links.get(d) || 'disconnected' }), getMtu: () => mtuOf.v, ackSystem: null };
     const wd = new wdm.WifiDirect(ble);
     const dev = 'AA:BB:CC:DD:EE:01';
     r.M4a = wd._whyNot(dev, 150000).no === 'este teléfono no lo tiene';
@@ -87,6 +87,26 @@ const { importSrc } = require('./srcmod');
     r.M5_sin_resultado = (() => { us.usageNoteWd('try', { dir: 'out' }); return /enviar 4 \(salieron 2, fallaron 1: no se pudo conectar al grupo ×1, sin resultado 1\)/.test(lines()); })();
     r.M5_lineas = L2.split('\n').filter((l) => /Wi-Fi Direct hoy/.test(l)).map((l) => l.substring(0, 260));
     r.M5_sin_bigFinished_ajeno = (() => { const b = lines(); wd.bigFinished('no-existe', true); return lines() === b; })();
+
+    // M7 (3260, dueño 20-11: «por arriba de 5 MB sí o sí tiene que entrar el Wi-Fi Direct»): un fallo reciente (castigo) no cierra la puerta a un
+    //    archivo GRANDE, que no tiene otro camino; y al elegir camino se anota si fue Wi-Fi Direct o POR QUÉ no
+    wd.failUntil['nx1aaaaaaa'] = Date.now() + 120000;
+    r.M7_castigo_cierra_lo_normal = wd.canReach('nx1aaaaaaa') === false;
+    r.M7_grande_ignora_castigo = wd.canReach('nx1aaaaaaa', true) === true;
+    wd.failUntil = {};
+    const bigm = await importSrc('ui/big_file.js');
+    const bf = new bigm.BigFiles(Object.assign(ble, { wifiDirect: wd }));
+    bf._dev = () => dev;
+    const antes7 = lines();
+    bf._noteRoute('nx1aaaaaaa', 'wd', 160 * 1048576);
+    wd.failUntil['nx1aaaaaaa'] = Date.now() + 120000;
+    bf._noteRoute('nx1aaaaaaa', 'lan', 160 * 1048576);
+    wd.failUntil = {}; mtuOf.v = 517;
+    bf._noteRoute('nx1aaaaaaa', null, 160 * 1048576);
+    const L7 = lines();
+    r.M7_usa_wd = /elegido por [^·]*archivo grande ×1/.test(L7);
+    r.M7_por_que_no = /archivo grande por el mismo Wi-Fi: castigo por un fallo reciente ×1/.test(L7) && /archivo grande por ningún camino: archivo grande ×1|archivo grande por ningún camino: sí podía ×1/.test(L7);
+    r.M7_cambia = L7 !== antes7;
 
     // M6: robustez
     const keep = global.window.NEXO_noteWd; delete global.window.NEXO_noteWd;

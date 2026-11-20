@@ -117,8 +117,8 @@ export function usageNoteWd(ev, o) {
     else if (ev === 'ap') { // Wi-Fi normal (MHz; 0 = sin Wi-Fi) antes y después de unirse/montar el grupo
       if (!(o.before > 0)) w.ap.none++; else if (o.after > 0) { w.ap.keep++; if (o.after !== o.before) w.ap.up++; } else w.ap.lost++;
     }
-    else if (ev === 'use') w.use[String(o.why).slice(0, 60)] = (w.use[String(o.why).slice(0, 60)] || 0) + 1;
-    else if (ev === 'no') w.no[String(o.why).slice(0, 60)] = (w.no[String(o.why).slice(0, 60)] || 0) + 1;
+    else if (ev === 'use') w.use[String(o.why).slice(0, 90)] = (w.use[String(o.why).slice(0, 90)] || 0) + 1;
+    else if (ev === 'no') w.no[String(o.why).slice(0, 90)] = (w.no[String(o.why).slice(0, 90)] || 0) + 1;
     else return;
     _save(all);
   } catch (err) {}
@@ -152,7 +152,7 @@ function _delLines(d) {
     var e = d.dl[v], timed = e.b[0] + e.b[1] + e.b[2] + e.b[3], pend = e.n - e.ok;
     return DEL_VIAS[v] + ': salieron ' + e.n + ', con ✓✓ ' + e.ok + (pend > 0 ? ' (' + pend + ' sin ✓✓ aún)' : '') + // i18n-ok
       (timed ? ' · <1 s ' + e.b[0] + ', <5 s ' + e.b[1] + ', <30 s ' + e.b[2] + ', más ' + e.b[3] + ' · media ' + _n1(e.ms / timed / 1000) + ' s, máx. ' + _n1(e.hi / 1000) + ' s' : '') +
-      (e.dorm ? ' · con la app dormida ' + e.dorm : '');
+      (e.dorm ? ' · con la app dormida ' + e.dorm : ''); // i18n-ok: texto para el desarrollador
   });
   if (parts.length) { out.push('  entrega de mensajes por camino al salir (hasta la ✓✓; incluye archivos):'); parts.forEach(function(x) { out.push('    ' + x); }); } // i18n-ok
   var sy = d.sy && Object.keys(d.sy).map(function(k) { return k + ' ×' + d.sy[k]; }).join(', ');

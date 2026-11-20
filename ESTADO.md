@@ -48,6 +48,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   cuellos de botella ordenados y qué falta). Código: `usage_stats.js` (`usageNoteSent/Delivered/Symptom`: mensajes por camino al salir con ✓✓ y tiempo en cubetas, síntomas del día por tipo) y
   gancho en `diag_state.js`; prueba `redesmedidas.js`. Primer cuello de botella a trabajar: preparar archivo grande ≈ 5 MB/s (30 s para 153 MB). OJO: en `diag_stats.js` los fallos
   NO bajan por día (1, 5, 23, 29 del 16 al 19-11), pero cuenta lo que se pega/registra, no un ritmo; medir síntomas por hora de uso y build.
+- **3260 (hecho en local, sin subir; misma APK que 3257–3259): Wi-Fi Direct en archivos grandes** (dueño 20-11: «con el vivo, en los de 160 MB no vi Wi-Fi Direct; por arriba de 5 MB sí o sí debe entrar»). Verificado
+  en los registros: los 3 envíos (5,4/23/153 MB) SÍ fueron por WD («[BIG] Enviando … por Wi-Fi Direct», el vivo «Grupo creado»), pero la tarjeta solo decía «(Wi-Fi Direct)» durante «Enviando» (~6 s) y en «Preparando»
+  (30 s) no decía nada: el grupo se monta y se baja en cada envío (nombre y clave nuevos), por eso no «se mantiene». Cambios: la tarjeta termina con «Enviado por Wi-Fi Direct · X MB/s»; `big_file.route` ya no deja
+  que un castigo por fallo reciente cierre WD a un archivo grande (`canReach(nx, true)`); cada envío grande anota «por WD» o POR QUÉ no (`_noteRoute`/`_whyNot(dev, bytes, true)`). Si el dueño quiere el grupo
+  siempre arriba (opción A), falta el «grupo caliente» nativo (paso 2 de wifi_direct.js, hoy vacío). Pruebas: `wdmedidas.js` (M7), bigroute/bigsend/big/wdoff OK.
 - **FASES SIGUIENTES del Bluetooth (sin hacer):** 2) servidor GATT SIEMPRE en el servicio (también con la app abierta); 3) conexiones salientes y reenvío desde el servicio; 4) conexiones
   a demanda (tope ~7); luego auditoría posterior y modo vagón. Los «Foreground kill» de Motorola a la hora en punto no los arregla el código: detectarlos y explicárselo al usuario.
 - **Enlace repetido que se reabre (S24↔Austin), INVESTIGADO SIN ARREGLAR:** el enlace que el desempate cierra vuelve ~63 s después por `_seedNativeConnections` («Conexión existente

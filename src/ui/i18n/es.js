@@ -355,6 +355,7 @@ export default {
   media_waiting_file: "Esperando el archivo · Toca para pedirlo",
   media_preparing: "Preparando ",
   media_sending: "Enviando ",
+  media_sent_via: "Enviado por ",
   media_receiving: "Recibiendo ",
   media_requested_again: "Pedido otra vez…",
   media_send_fail_retry: "No se pudo enviar · Toca para reintentar",

@@ -70,18 +70,18 @@ function _wdPowerEnd(box, tag, ok) {
 function _wdCause(e) {
   var code = e && e.code, m = String((e && e.message) || e || '');
   if (code === 'WD_GROUP' || /crear el grupo/i.test(m)) return 'no se pudo crear el grupo';
-  if (code === 'WD_CONNECT' || /no se pudo conectar/i.test(m)) return 'no se pudo conectar al grupo';
-  if (code === 'WD_TIMEOUT' || /grupo no se form/i.test(m)) return 'el grupo no se formó (20 s)';
+  if (code === 'WD_CONNECT' || /no se pudo conectar/i.test(m)) return 'no se pudo conectar al grupo'; // i18n-ok: texto para el desarrollador
+  if (code === 'WD_TIMEOUT' || /grupo no se form/i.test(m)) return 'el grupo no se formó (20 s)'; // i18n-ok: texto para el desarrollador
   if (code === 'WD_SEND' || /envío fallido/i.test(m)) return 'envío cortado';
   if (code === 'WD_WIFI_OFF' || (e && e.wifiOff) || WIFI_OFF_RE.test(m)) return 'Wi-Fi apagado';
   if (code === 'WD_UNAVAILABLE' || /no disponible/i.test(m)) return 'no disponible';
   if (code === 'WD_SOCKET') return 'socket';
   if (/sin permiso/i.test(m)) return 'sin permiso';
-  if (/sin respuesta/i.test(m)) return 'el otro no respondió (25 s)';
+  if (/sin respuesta/i.test(m)) return 'el otro no respondió (25 s)'; // i18n-ok: texto para el desarrollador
   if (/el otro no puede \(ocupado/i.test(m)) return 'el otro estaba ocupado';
-  if (/el otro no puede/i.test(m)) return 'el otro no puede';
+  if (/el otro no puede/i.test(m)) return 'el otro no puede'; // i18n-ok: texto para el desarrollador
   if (/envío sin terminar/i.test(m)) return 'envío sin terminar';
-  if (/accept timed out/i.test(m)) return 'el otro no llegó a conectar (90 s)';
+  if (/accept timed out/i.test(m)) return 'el otro no llegó a conectar (90 s)'; // i18n-ok: texto para el desarrollador
   return 'otro';
 }
 function _plugin() { return (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
@@ -176,9 +176,11 @@ export class WifiDirect {
   }
 
   // ¿Se puede usar con este contacto ahora? (los dos lo tienen y hay enlace Bluetooth directo)
-  canReach(nexoId) {
+  // 3260: ignoreCool = para un archivo GRANDE que no tiene otro camino, el castigo por un fallo reciente no debe cerrarle la puerta
+  // (sin eso un solo fallo de Wi-Fi Direct dejaba el archivo de 150 MB «sin camino» durante 2–10 min en vez de volver a intentarlo)
+  canReach(nexoId, ignoreCool) {
     var nx = _nid(nexoId);
-    if (!this.supported() || !this.peers.has(nx) || this._cooling(nx) || !this.ble) return false;
+    if (!this.supported() || !this.peers.has(nx) || (!ignoreCool && this._cooling(nx)) || !this.ble) return false;
     // 3013: con el Wi-Fi apagado no hay Wi-Fi Direct (el estado se refresca solo, sin esperar)
     if (!this._statusAt || Date.now() - this._statusAt > 15000) this._refreshStatus();
     if (this.status && this.status.wifiOn === false) return false;
@@ -187,16 +189,17 @@ export class WifiDirect {
   }
 
   // 3258: ¿por qué Wi-Fi Direct sí o no para este archivo? (para los contadores del día; pura, sin efectos)
-  _whyNot(deviceId, bytes) {
-    if (!this.status || !this.status.supported) return { no: 'este teléfono no lo tiene' };
+  _whyNot(deviceId, bytes, big) {
+    if (!this.status || !this.status.supported) return { no: 'este teléfono no lo tiene' }; // i18n-ok: texto para el desarrollador
     if (this.denied) return { no: 'sin permiso' };
-    if (bytes > WD_MAX_BYTES) return { no: 'demasiado grande (va como archivo grande)' };
+    if (!big && bytes > WD_MAX_BYTES) return { no: 'demasiado grande (va como archivo grande)' };
     if (this.busy) return { no: 'ocupado con otra transferencia' };
     var nx = this._nexoOf(deviceId);
-    if (!this.peers.has(nx)) return { no: 'el otro no lo anuncia' };
-    if (this._cooling(nx)) return { no: 'castigo por un fallo reciente' };
+    if (!this.peers.has(nx)) return { no: 'el otro no lo anuncia' }; // i18n-ok: texto para el desarrollador
+    if (this._cooling(nx)) return { no: 'castigo por un fallo reciente' }; // i18n-ok: texto para el desarrollador
     if (this.status.wifiOn === false) return { no: 'Wi-Fi apagado aquí' };
     if (!this._directReady(deviceId)) return { no: 'sin enlace Bluetooth directo' };
+    if (big) return { use: 'archivo grande' }; // un archivo grande no depende del tamaño mínimo
     var mtu = (this.ble && typeof this.ble.getMtu === 'function') ? this.ble.getMtu(deviceId) : 0;
     var tiny = (typeof window !== 'undefined' && Number(window.NEXO_TINY_MTU)) || 50;
     var btLento = ((typeof window === 'undefined') || window.NEXO_WD_TINY !== false) && mtu > 0 && mtu <= tiny;

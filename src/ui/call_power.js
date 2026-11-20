@@ -37,7 +37,7 @@ export function powerNow(s) {
 export function callPowerSummary(a, b, maxTemp) {
   if (!a || !b) return 'batería y temperatura: sin dato'; // i18n-ok: texto para el desarrollador
   var mins = Math.max(0, (b.at - a.at) / 60000), p = [];
-  if (a.charging || b.charging) p.push('batería ' + a.level + ' % → ' + b.level + ' % (cargando: no se calcula el gasto)');
+  if (a.charging || b.charging) p.push('batería ' + a.level + ' % → ' + b.level + ' % (cargando: no se calcula el gasto)'); // i18n-ok: texto para el desarrollador
   else {
     var drop = a.level - b.level;
     if (drop < 0) p.push('batería ' + a.level + ' % → ' + b.level + ' % (subió: se cargó)');

@@ -69,12 +69,25 @@ export class BigFiles {
   // Conexión Bluetooth lista con ese contacto (no lan:/net:, que también resuelve _resolveDeviceIdForNexoId)
   _bleReady(nx) { var ble = this.ble; return ble && typeof ble._bleReadyFor === 'function' ? ble._bleReadyFor(nx) : null; }
 
+  // 3260 (dueño 20-11: «por arriba de 5 MB sí o sí tiene que entrar el Wi-Fi Direct»): al elegir camino para un archivo grande se anota
+  // si salió por Wi-Fi Direct y, si no, POR QUÉ no (el diagnóstico lo suma en «Wi-Fi Direct en archivos…»)
+  _noteRoute(nx, via, bytes) {
+    try {
+      var wd = this.ble && this.ble.wifiDirect, note = (typeof window !== 'undefined') && window.NEXO_noteWd;
+      if (!wd || typeof note !== 'function') return;
+      if (via === 'wd') { note('use', { why: 'archivo grande' }); return; }
+      var dev = typeof this._dev === 'function' ? this._dev(nx, 'wd') : null, w = (dev && typeof wd._whyNot === 'function') ? wd._whyNot(dev, bytes, true) : null;
+      var por = (w && (w.no || 'sí podía')) || 'sin dato';
+      note('no', { why: 'archivo grande por ' + (via === 'lan' ? 'el mismo Wi-Fi' : via === 'l2' ? 'Bluetooth L2CAP' : 'ningún camino') + ': ' + por });
+    } catch (e) {}
+  }
+
   // Camino para un archivo grande con este contacto ahora: 'lan' (prioridad, reglas del dueño), 'wd', 'l2' o null
   route(nexoId) {
     var nx = _nid(nexoId), ble = this.ble;
     if (!this.peers.has(nx) || !ble) return null;
     if (ble.lan && ble.lan.canReach(nx)) return 'lan';
-    if (ble.wifiDirect && ble.wifiDirect.canReach(nx)) return 'wd';
+    if (ble.wifiDirect && ble.wifiDirect.canReach(nx, true)) return 'wd'; // 3260: aunque haya fallado hace poco (no hay otro camino para esto)
     if (this.l2Ok && this.l2Peers.has(nx) && this._bleReady(nx)) return 'l2';
     return null;
   }
@@ -152,8 +165,11 @@ export class BigFiles {
       self._set(id, { dir: 'out', state: 'failed', error: msg });
       return Promise.reject(Object.assign(new Error(msg), { code: 'BIG_NO_NET' }));
     }
+    var tSend = 0, sendBytes = 0;
     return pl.bigStatus({ id: id }).then(function(s) {
       if (!s || !s.have) throw new Error(t('misc_big_gone', 'ya no está en este teléfono'));
+      tSend = Date.now(); sendBytes = s.bytes;
+      self._noteRoute(nx, via, s.bytes);
       self._set(id, { dir: 'out', state: 'sending', bytes: 0, total: s.bytes, nx: nx, via: via });
       console.log('[BIG] Enviando ' + id + ' a ' + nx + ' por ' + ({ lan: 'Wi-Fi', wd: 'Wi-Fi Direct', l2: 'Bluetooth (L2CAP)' })[via] + ' (' + Math.round(s.bytes / 1048576) + ' MB)');
       if (via === 'wd') return self.ble.wifiDirect.sendBig(self._dev(nx, 'wd'), id, s.bytes);
@@ -174,7 +190,8 @@ export class BigFiles {
     }).then(function() {
       // El socket confirmó que el otro tiene todos los bytes
       self.saved[id] = 'sent'; self._save();
-      self._set(id, { state: 'done' });
+      var secsT = tSend ? Math.max(0.1, (Date.now() - tSend) / 1000) : 0; // 3260: la tarjeta termina diciendo por dónde fue y a qué velocidad
+      self._set(id, { state: 'done', via: via, mbps: secsT && sendBytes ? Math.round(sendBytes / 1048576 / secsT * 10) / 10 : 0 });
       console.log('[BIG] ' + id + ' entregado');
       if (typeof self.onSent === 'function') self.onSent(nx, id); // grupos (group_media.js)
     }, function(e) {
