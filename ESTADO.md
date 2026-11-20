@@ -44,6 +44,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   batería y temperatura por transferencia (≥ 5 s); «conexión lista» de WD entra en la tabla. Nativo (`PluginWifiDirect.kt`, NO compilado aquí): `groupMs/attempts/reasons/apStart` al montar el
   grupo, `apStart/apJoined` al unirse, `apMhz` al recibir (frecuencia del Wi-Fi normal, 0 = sin Wi-Fi). Pruebas: `wdmedidas.js` (en ci.js) y `wifidirect.js` (de punta a punta, local).
   Con eso se decide Wi-Fi Direct A/B con números del dueño; falta una prueba corta de archivo Bluetooth vs Wi-Fi Direct entre dos teléfonos (él la hace; los números salen solos).
+- **3259 (hecho en local, sin subir; misma APK que 3257 y 3258): tablero por red** (dueño 20-11: «revisar red por red… ya no es resolver, es pulir»). Nuevo `docs/REDES.md` (qué se mide, datos reales con fecha,
+  cuellos de botella ordenados y qué falta). Código: `usage_stats.js` (`usageNoteSent/Delivered/Symptom`: mensajes por camino al salir con ✓✓ y tiempo en cubetas, síntomas del día por tipo) y
+  gancho en `diag_state.js`; prueba `redesmedidas.js`. Primer cuello de botella a trabajar: preparar archivo grande ≈ 5 MB/s (30 s para 153 MB). OJO: en `diag_stats.js` los fallos
+  NO bajan por día (1, 5, 23, 29 del 16 al 19-11), pero cuenta lo que se pega/registra, no un ritmo; medir síntomas por hora de uso y build.
 - **FASES SIGUIENTES del Bluetooth (sin hacer):** 2) servidor GATT SIEMPRE en el servicio (también con la app abierta); 3) conexiones salientes y reenvío desde el servicio; 4) conexiones
   a demanda (tope ~7); luego auditoría posterior y modo vagón. Los «Foreground kill» de Motorola a la hora en punto no los arregla el código: detectarlos y explicárselo al usuario.
 - **Enlace repetido que se reabre (S24↔Austin), INVESTIGADO SIN ARREGLAR:** el enlace que el desempate cierra vuelve ~63 s después por `_seedNativeConnections` («Conexión existente

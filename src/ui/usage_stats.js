@@ -123,6 +123,42 @@ export function usageNoteWd(ev, o) {
     _save(all);
   } catch (err) {}
 }
+// 3259 (dueño 20-11: «revisar red por red: velocidad de conexión, de transporte, capacidad y fallas recurrentes… ya no es resolver problemas, es pulir»):
+// (1) ENTREGA de mensajes por camino al mandar: cuántos salieron, cuántos llegaron (✓✓) y en cuánto tiempo (<1 s, <5 s, <30 s, más); lo que
+//     tardó con la app en segundo plano no cuenta como lentitud de la red (3034), solo se anota como «app dormida».
+// (2) SÍNTOMAS del día por tipo (zombi, enlace que abre y cierra, entrega lenta…): la serie para ver si bajan o vuelven, por build y por día.
+var DEL_VIAS = { bluetooth: 'Bluetooth', wifi: 'Wi-Fi (local o Wi-Fi Direct)', internet: 'internet', jump: 'puente de otro NEXO', none: 'sin camino al salir' }; // i18n-ok: texto para el desarrollador
+var DEL_ORDER = ['bluetooth', 'wifi', 'internet', 'jump', 'none'];
+function _dl(day, via) { day.dl = day.dl || {}; return day.dl[via] || (day.dl[via] = { n: 0, ok: 0, b: [0, 0, 0, 0], ms: 0, hi: 0, dorm: 0 }); }
+export function usageNoteSent(via) {
+  try { if (!DEL_VIAS[via]) return; var all = _load(), day = _day(all, usageDayKey()); _dl(day, via).n++; _save(all); } catch (e) {}
+}
+export function usageNoteDelivered(via, ms) {
+  try {
+    if (!DEL_VIAS[via]) return;
+    var all = _load(), day = _day(all, usageDayKey()), e = _dl(day, via);
+    e.ok++;
+    if (!(ms >= 0)) e.dorm++; // app dormida mientras esperaba: llegó, pero el tiempo no es de la red
+    else { e.b[ms < 1000 ? 0 : ms < 5000 ? 1 : ms < 30000 ? 2 : 3]++; e.ms += ms; e.hi = Math.max(e.hi, ms); }
+    _save(all);
+  } catch (err) {}
+}
+export function usageNoteSymptom(kind) {
+  try { kind = String(kind || '').slice(0, 40); if (!kind) return; var all = _load(), day = _day(all, usageDayKey()); day.sy = day.sy || {}; day.sy[kind] = (day.sy[kind] || 0) + 1; _save(all); } catch (e) {}
+}
+function _delLines(d) {
+  var out = [];
+  var parts = DEL_ORDER.filter(function(v) { return d.dl && d.dl[v] && d.dl[v].n; }).map(function(v) {
+    var e = d.dl[v], timed = e.b[0] + e.b[1] + e.b[2] + e.b[3], pend = e.n - e.ok;
+    return DEL_VIAS[v] + ': salieron ' + e.n + ', con ✓✓ ' + e.ok + (pend > 0 ? ' (' + pend + ' sin ✓✓ aún)' : '') + // i18n-ok
+      (timed ? ' · <1 s ' + e.b[0] + ', <5 s ' + e.b[1] + ', <30 s ' + e.b[2] + ', más ' + e.b[3] + ' · media ' + _n1(e.ms / timed / 1000) + ' s, máx. ' + _n1(e.hi / 1000) + ' s' : '') +
+      (e.dorm ? ' · con la app dormida ' + e.dorm : '');
+  });
+  if (parts.length) { out.push('  entrega de mensajes por camino al salir (hasta la ✓✓; incluye archivos):'); parts.forEach(function(x) { out.push('    ' + x); }); } // i18n-ok
+  var sy = d.sy && Object.keys(d.sy).map(function(k) { return k + ' ×' + d.sy[k]; }).join(', ');
+  if (sy) out.push('  síntomas de hoy: ' + sy); // i18n-ok
+  return out;
+}
 function _wdCounts(m) { var k = Object.keys(m || {}); return k.map(function(c) { return c + ' ×' + m[c]; }).join(', '); }
 function _wdLines(d) {
   var w = d && d.wd, out = [];
@@ -163,9 +199,10 @@ export function usageSpeedLines(key) {
   });
   if (con.length) out.push('  conexión lista en (media): ' + con.join(' · ')); // i18n-ok
   out = out.concat(_wdLines(d)); // 3258
+  out = out.concat(_delLines(d)); // 3259
   return out;
 }
-if (typeof window !== 'undefined') { window.NEXO_noteSpeed = usageNoteSpeed; window.NEXO_noteConnect = usageNoteConnect; window.NEXO_noteWd = usageNoteWd; window.NEXO_speedLines = usageSpeedLines; }
+if (typeof window !== 'undefined') { window.NEXO_noteSpeed = usageNoteSpeed; window.NEXO_noteConnect = usageNoteConnect; window.NEXO_noteWd = usageNoteWd; window.NEXO_noteSent = usageNoteSent; window.NEXO_noteDelivered = usageNoteDelivered; window.NEXO_speedLines = usageSpeedLines; }
 
 /** Texto del resumen de un día (solo números). */
 export function usageSummaryText(key) {
@@ -206,6 +243,7 @@ export function usageMaybeSend(force) {
 /** Arranque (main.js): engancha los contadores, marca el día como «abierta» y, ya con la app en marcha, manda el resumen pendiente. */
 export function usageInit() {
   powerInit(); // 3119
+  try { window.addEventListener('nexo:diag:symptom', function(e) { usageNoteSymptom(e && e.detail && e.detail.kind); }); } catch (e0) {} // 3259
   try {
     vaultSetUsageHook(_hook);
     var o = _load(); _day(o, usageDayKey()).o = 1; _save(o);

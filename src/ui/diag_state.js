@@ -73,6 +73,7 @@ function _onStatus(e) {
     var via0 = 'none'; try { if (nx && bi && typeof bi.linkOf === 'function') via0 = bi.linkOf(nx); } catch (e2) {}
     tr = { nx: nx, t0: now, via0: via0, ev: [] };
     _trace.set(id, tr);
+    try { if (typeof window.NEXO_noteSent === 'function') window.NEXO_noteSent(via0); } catch (eS) {} // 3259: salió por este camino
     if (_trace.size > TRACE_MAX) _trace.delete(_trace.keys().next().value);
   }
   if (!tr.nx && dev) tr.nx = _nxOfDev(bi, dev);
@@ -89,6 +90,7 @@ function _onStatus(e) {
   if (tr.ev.length > 12) tr.ev.splice(1, 1);
   var slowMs = (typeof window.NEXO_DIAG_SLOW_MS === 'number' && window.NEXO_DIAG_SLOW_MS >= 0) ? window.NEXO_DIAG_SLOW_MS : SLOW_MS; // perilla de prueba
   var asleep = _hidden || _backAt > tr.t0; // 3034: la app estuvo en segundo plano mientras esperaba la ✓✓
+  if (d.status === 'delivered' && !doneBefore) { try { if (typeof window.NEXO_noteDelivered === 'function') window.NEXO_noteDelivered(tr.via0, asleep ? -1 : now - tr.t0); } catch (eD) {} } // 3259: primera ✓✓: tiempo por camino
   if ((d.status === 'delivered') && !doneBefore && !tr.slow && !asleep && tr.via0 !== 'none' && now - tr.t0 > slowMs) {
     tr.slow = true;
     try { window.dispatchEvent(new CustomEvent('nexo:diag:symptom', { detail: { kind: 'entrega_lenta', info: tr.nx + ' ' + id + ' ' + Math.round((now - tr.t0) / 1000) + ' s, camino al mandar ' + tr.via0 } })); } catch (e3) {}
