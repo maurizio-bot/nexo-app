@@ -14,6 +14,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <es-419>
 - Mejoras internas para medir cuánta batería gasta y cuánto se calienta el teléfono en una llamada.
 - Menos cortes y reconexiones seguidas del Bluetooth con algunos teléfonos.
+- Más datos internos para entender y mejorar el Wi-Fi Direct.
 </es-419>
 <!-- /APK -->
 

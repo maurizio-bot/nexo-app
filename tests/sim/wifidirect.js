@@ -151,6 +151,16 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     r.con_fallo_por_bluetooth = chunksOf(await lastAttId()) > 10;
     nB.opts.wdFail = false;
   }
+  // 3258: las medidas del día de Wi-Fi Direct (dueño 20-11: «sí o sí me va a aparecer en el diagnóstico»): los dos lados
+  const mA = A.win.NEXO_speedLines ? A.win.NEXO_speedLines().join('\n') : '', mB = B.win.NEXO_speedLines ? B.win.NEXO_speedLines().join('\n') : '';
+  r.medidas_A = mA.split('\n').filter((l) => /Wi-Fi Direct/.test(l)).map((l) => l.substring(0, 230));
+  r.medidas_B = mB.split('\n').filter((l) => /Wi-Fi Direct/.test(l)).map((l) => l.substring(0, 230));
+  r.medidas_A_envia = /Wi-Fi Direct hoy: enviar \d+ \(salieron \d+/.test(mA) && /fallaron 1: no se pudo conectar al grupo/.test(mA);
+  r.medidas_A_tiempos = /unirse al grupo \(quien envía\) 2 s/.test(mA) && /velocidad pura de la transferencia/.test(mA);
+  r.medidas_B_recibe = /Wi-Fi Direct hoy: .*recibir \d+ \(salieron \d+/.test(mB) && /crear el grupo \(quien recibe\) 1,5 s/.test(mB);
+  r.medidas_wifi_normal = /seguía conectado \d+ · se cayó 0/.test(mA) && /seguía conectado \d+ · se cayó 0/.test(mB);
+  r.medidas_elegido = /elegido por tamaño ×/.test(mA);
+  r.medidas_conexion = /conexión lista en \(media\):.*Wi-Fi Direct 3,\d s/.test(mA);
   r.grupos_creados_B = nB.stats.wdGroups || 0;
   r.bytes_por_wifi_direct = nA.stats.wdBytes || 0;
   const airText = air.join('\n');

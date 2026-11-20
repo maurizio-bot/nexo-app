@@ -97,6 +97,7 @@ export class BigFiles {
     var self = this, pl = _plugin(), key = _hex(32);
     if (!pl || typeof pl.bigBegin !== 'function') return Promise.reject(new Error(t('misc_big_version_cannot', 'esta versión no puede')));
     self._set(id, { dir: 'out', state: 'preparing', bytes: 0, total: file.size });
+    var tPrep = Date.now(); // 3258: cuánto tarda cifrar a disco (diagnóstico del dueño 20-11: 153 MB tardaron ~30 s en prepararse y 6 s en viajar por Wi-Fi Direct)
     return pl.bigBegin({ id: id, key: key }).then(function() {
       var pos = 0;
       var next = function() {
@@ -111,7 +112,8 @@ export class BigFiles {
       };
       return next();
     }).then(function() {
-      console.log('[BIG] ' + id + ' preparado (' + Math.round(file.size / 1048576) + ' MB)');
+      var secsP = Math.max(0.1, (Date.now() - tPrep) / 1000);
+      console.log('[BIG] ' + id + ' preparado (' + Math.round(file.size / 1048576) + ' MB) en ' + (Math.round(secsP * 10) / 10).toString().replace('.', ',') + ' s = ' + (Math.round(file.size / 1048576 / secsP * 10) / 10).toString().replace('.', ',') + ' MB/s'); // i18n-ok: texto para el desarrollador
       return key;
     }, function(e) {
       self._set(id, { state: 'failed', error: e && e.message });
@@ -229,7 +231,7 @@ export class BigFiles {
 
   _done(ev) {
     if (!ev || !ev.id) return;
-    if (ev.dir === 'in' && this.ble && this.ble.wifiDirect && typeof this.ble.wifiDirect.bigFinished === 'function') this.ble.wifiDirect.bigFinished(ev.id);
+    if (ev.dir === 'in' && this.ble && this.ble.wifiDirect && typeof this.ble.wifiDirect.bigFinished === 'function') this.ble.wifiDirect.bigFinished(ev.id, ev.ok, ev.error);
     if (ev.dir === 'in') {
       if (ev.ok) {
         this.saved[ev.id] = 'got'; this._save();

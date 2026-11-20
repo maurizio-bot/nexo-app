@@ -44,6 +44,14 @@ private fun NexoBlePlugin.wdWifiOn(): Boolean = try {
     (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.isWifiEnabled ?: false
 } catch (e: Exception) { false }
 
+// 3258 (medidas de Wi-Fi Direct para el diagnóstico): frecuencia (MHz) del Wi-Fi NORMAL del teléfono ahora; 0 = sin Wi-Fi conectado.
+// Se mira antes y después de montar/unirse al grupo: si pasa de >0 a 0, Wi-Fi Direct se llevó por delante el Wi-Fi normal.
+@Suppress("DEPRECATION")
+private fun NexoBlePlugin.wdApMhz(): Int = try {
+    val ci = (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.connectionInfo
+    if (ci != null && ci.frequency > 0) ci.frequency else 0
+} catch (e: Exception) { 0 }
+
 // Canal nuevo con el servicio de Wi-Fi Direct (el anterior puede haberse quedado sin servicio)
 private fun NexoBlePlugin.p2pReset() {
     try { if (Build.VERSION.SDK_INT >= 27) p2pChannel?.close() } catch (e: Exception) {}
@@ -110,6 +118,9 @@ internal fun NexoBlePlugin.wifiDirectHostImpl(call: PluginCall) {
         remLog("WARN", "WIFI_DIRECT", "No se monta el grupo para $transferId: Wi-Fi APAGADO (Wi-Fi Direct lo necesita encendido, aunque no haya red)")
         call.reject("Wi-Fi apagado", "WD_WIFI_OFF"); return
     }
+    val tHost0 = System.currentTimeMillis()   // 3258: cuánto tarda en montarse el grupo (con sus reintentos)
+    val apStart = wdApMhz()
+    val failReasons = StringBuilder()
     val name = "DIRECT-" + wdRandom(2) + "-NEXO"
     val pass = wdRandom(16)
     val cfg = WifiP2pConfig.Builder().setNetworkName(name).setPassphrase(pass)
@@ -129,7 +140,8 @@ internal fun NexoBlePlugin.wifiDirectHostImpl(call: PluginCall) {
                     server.soTimeout = 90000
                     wdServer = server
                     remLog("INFO", "WIFI_DIRECT", "Grupo creado para $transferId, puerto ${server.localPort}")
-                    call.resolve(JSObject().put("ssid", name).put("passphrase", pass).put("port", server.localPort))
+                    call.resolve(JSObject().put("ssid", name).put("passphrase", pass).put("port", server.localPort)
+                        .put("groupMs", System.currentTimeMillis() - tHost0).put("attempts", attempt + 1).put("reasons", failReasons.toString()).put("apStart", apStart))
                     // Archivo grande (ronda 2756): del socket al disco, sin pasar por la app
                     if (bigToken != null) Thread {
                         try { BigNet.serve(server, BigFile.safeId(transferId), bigToken, BigFile.encFile(bigDir(), transferId), BigFile.MAX_BYTES * 11 / 10, bigProgress(BigFile.safeId(transferId), "in")); bigDone(BigFile.safeId(transferId), "in", null) }
@@ -143,6 +155,7 @@ internal fun NexoBlePlugin.wifiDirectHostImpl(call: PluginCall) {
                 }
             }
             override fun onFailure(reason: Int) {
+                failReasons.append(reason).append(',')
                 if (!wdWifiOn()) {
                     remLog("WARN", "WIFI_DIRECT", "Crear grupo para $transferId falló ($reason): Wi-Fi APAGADO")
                     call.reject("Wi-Fi apagado", "WD_WIFI_OFF")
@@ -187,7 +200,7 @@ private fun NexoBlePlugin.wdReceive(server: java.net.ServerSocket, transferId: S
             val readMs = System.currentTimeMillis() - tRead
             remLog("INFO", "WIFI_DIRECT", "Recibido $transferId ($len bytes) en $readMs ms")
             notifyListeners("onWifiDirectReceived", JSObject().put("transferId", transferId).put("data", String(buf, Charsets.UTF_8)).put("bytes", len)
-                .put("readMs", readMs).put("ts", System.currentTimeMillis()), true)
+                .put("readMs", readMs).put("ts", System.currentTimeMillis()).put("apMhz", wdApMhz()), true)
         }
     } catch (e: Exception) {
         remLog("WARN", "WIFI_DIRECT", "Recepción fallida $transferId: ${e.message}")
@@ -224,8 +237,10 @@ internal fun NexoBlePlugin.wifiDirectSendImpl(call: PluginCall) {
     val jsTs = call.getLong("jsTs") ?: t0
     val bridgeMs = (t0 - jsTs).coerceAtLeast(0)
     val cfg = WifiP2pConfig.Builder().setNetworkName(ssid).setPassphrase(pass).build()
+    val apStart = wdApMhz()   // 3258: Wi-Fi normal antes de unirse al grupo
     fun push(addr: java.net.InetAddress) {
         val tJoined = System.currentTimeMillis()
+        val apJoined = wdApMhz()   // 3258: y ya unido (si pasó a 0, Wi-Fi Direct tumbó el Wi-Fi normal)
         Thread {
             if (bigFile != null) {
                 try {
@@ -235,7 +250,8 @@ internal fun NexoBlePlugin.wifiDirectSendImpl(call: PluginCall) {
                         BigNet.send(s, BigFile.safeId(transferId), bigToken!!, bigFile, bigProgress(BigFile.safeId(transferId), "out"))
                     }
                     bigDone(BigFile.safeId(transferId), "out", null)
-                    call.resolve(JSObject().put("ok", true).put("bytes", bigFile.length()).put("joinMs", tJoined - t0).put("xferMs", System.currentTimeMillis() - tJoined))
+                    call.resolve(JSObject().put("ok", true).put("bytes", bigFile.length()).put("joinMs", tJoined - t0).put("xferMs", System.currentTimeMillis() - tJoined)
+                        .put("apStart", apStart).put("apJoined", apJoined))
                 } catch (e: Exception) {
                     bigDone(BigFile.safeId(transferId), "out", e.message ?: "error")
                     call.reject("Envío fallido: ${e.message}", "WD_SEND")
@@ -255,7 +271,8 @@ internal fun NexoBlePlugin.wifiDirectSendImpl(call: PluginCall) {
                 val ms = now - t0
                 remLog("INFO", "WIFI_DIRECT", "Enviado $transferId (${bytes.size} bytes) en $ms ms (unirse ${tJoined - t0} ms, envío ${now - tJoined} ms, de la app a Android $bridgeMs ms)")
                 call.resolve(JSObject().put("ok", true).put("ms", ms).put("bytes", bytes.size)
-                    .put("joinMs", tJoined - t0).put("xferMs", now - tJoined).put("bridgeMs", bridgeMs))
+                    .put("joinMs", tJoined - t0).put("xferMs", now - tJoined).put("bridgeMs", bridgeMs)
+                    .put("apStart", apStart).put("apJoined", apJoined))
             } catch (e: Exception) {
                 call.reject("Envío fallido: ${e.message}", "WD_SEND")
             } finally {

@@ -85,6 +85,7 @@ export const ackFiles = {
       return self._sendFileJS(deviceId, fileId, data, meta);
     }
     if (_isLanDevice(deviceId)) return self._sendFileJS(deviceId, fileId, data, meta);
+    try { if (data && wd && !(meta && meta.dst) && typeof wd.noteChoice === 'function') wd.noteChoice(deviceId, data.length); } catch (e) {} // 3258: por qué sí/no Wi-Fi Direct (contador del día)
     if (!data || !wd || (meta && meta.dst) || !wd.eligible(deviceId, data.length)) {
       // Vídeo original pensado para Wi-Fi Direct que ya no puede ir por ahí: la app lo manda como previa + HD
       if (meta && meta.wdOnly) { var e0 = new Error('Wi-Fi Direct no disponible'); e0.code = 'WD_FAILED'; return Promise.reject(e0); }

@@ -656,6 +656,22 @@
    "sintoma": "enlace_abre_cierra (nx09acdb61, 3 cierres por enlace repetido en 10 min)",
    "categoria": "Bluetooth: enlaces que se abren y cierran",
    "causa": "APP (build 3113, S24 del dueño con el vivo Y03 build 3107): bucle entre 3019 (reabre cliente mtu517 si el que hay va a MTU 23) y el desempate 3027 (soy el ID mayor → conserva el de servidor mtu23 y cierra el cliente bueno), ciclo de ~20-80 s. Arreglo 3257 hecho en local (pendiente de subir con el CI de 3114). Residual: el enlace conservado va a MTU 23 con el vivo Y03 (lento por Bluetooth; Wi-Fi local/internet lo cubren)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "23:26",
+   "nx": "nx1n36c283",
+   "sintoma": "prueba del dueño de Wi-Fi Direct con el vivo (S24 ↔ vivo Y03, build 3113), sin fallo",
+   "categoria": "Wi-Fi Direct: medidas reales",
+   "causa": "DATOS REALES (primeros): grupo montado por el vivo en 0,3–0,4 s; unirse 2,2–2,8 s; 5,4 MB en 3 s total (1849 KB/s); 23 MB en 3,1 s; 153 MB en 6,3–7,0 s (≈22–24 MB/s con unirse, ≈39 MB/s puros); Bluetooth (MTU 512, foto de 40 KB) 16,7 KB/s. Cuello de botella ahora: preparar (cifrar a disco) 153 MB tarda ~30–34 s (≈5 MB/s) > viajar por WD (6–7 s). Menores: tras bajar el grupo, el módulo de Wi-Fi local registra «Sin Wi-Fi con X (este teléfono no tiene Wi-Fi)» y el vivo reintenta conectar a la IP del grupo caído (ENETUNREACH); el S24 tardó ~3 min en recuperar su Wi-Fi normal tras apagarlo/encenderlo con varios WD seguidos (3258 lo medirá)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "23:24",
+   "nx": "nx09acdb61",
+   "sintoma": "mismo caso visto desde el vivo (sin red, solo Bluetooth/Wi-Fi Direct)",
+   "categoria": "Wi-Fi Direct: medidas reales",
+   "causa": "vivo Y03 con red ninguna: recibió 5,4 MB, 23 MB y 153 MB por Wi-Fi Direct (grupo creado en ~0,4 s tras la oferta); ‘archivos por Bluetooth recibidos 1, 18 KB/s’. Sin fallo de la app"
   }
  ]
 }

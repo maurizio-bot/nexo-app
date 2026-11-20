@@ -1076,7 +1076,7 @@ class NativePhone {
         self.radio.wdGroups = self.radio.wdGroups || new Map();
         self.radio.wdGroups.set(ssid, { host: self, pass, port, id: a.transferId, bigToken: a.bigToken || null });
         self.stats.wdGroups = (self.stats.wdGroups || 0) + 1;
-        setTimeout(() => c.resolve({ ssid, passphrase: pass, port }), 1500);
+        setTimeout(() => c.resolve({ ssid, passphrase: pass, port, groupMs: 1500, attempts: 1, reasons: '', apStart: 5180 }), 1500); // 3258: como el nativo
         setTimeout(() => { if (self.radio.wdGroups.get(ssid)) { self.radio.wdGroups.delete(ssid); if (a.bigToken) self.emit('onBigDone', { id: a.transferId, dir: 'in', ok: false, error: 'Accept timed out' }); else self.emit('onWifiDirectReceived', { transferId: a.transferId, error: 'Accept timed out' }); } }, 90000);
       }),
       wifiDirectSend: wrap('wifiDirectSend', (c, a) => {
@@ -1098,8 +1098,8 @@ class NativePhone {
         setTimeout(() => {
           self.radio.wdGroups.delete(a.ssid);
           self.stats.wdBytes = (self.stats.wdBytes || 0) + data.length;
-          g.host.emit('onWifiDirectReceived', { transferId: a.transferId, data, bytes: data.length, readMs: ms - 2000, ts: Date.now() });
-          c.resolve({ ok: true, ms, bytes: data.length, joinMs: 2000, xferMs: ms - 2000, bridgeMs: 0 });
+          g.host.emit('onWifiDirectReceived', { transferId: a.transferId, data, bytes: data.length, readMs: ms - 2000, ts: Date.now(), apMhz: 5180 });
+          c.resolve({ ok: true, ms, bytes: data.length, joinMs: 2000, xferMs: ms - 2000, bridgeMs: 0, apStart: 5180, apJoined: 5180 });
         }, ms);
       }),
       // ===== Archivos grandes (Kotlin BigFile.kt, ronda 2756): "cifrado" a disco por trozos y paso de disco a disco.

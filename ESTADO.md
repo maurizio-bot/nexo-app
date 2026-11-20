@@ -38,6 +38,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   enlace de cliente (mtu517) si el que hay va a MTU 23, y el desempate de 3027 (soy el ID mayor → conserva el de SERVIDOR) lo vuelve a cerrar; los dos viven ~20–80 s. Arreglo:
   `_newClientWouldBeClosed` (ble_helpers.js) + rama en `ble_connections.js` (no reabre si el enlace que hay es el que conserva el desempate). Prueba pura en `bledup.js`; cercanas
   (dupserver, dupscan, reconndedup, dedupreenlaza, vivoarriba) OK. Queda: el enlace conservado va a MTU 23 (lento por Bluetooth con el vivo Y03; internet/Wi-Fi local lo cubren).
+- **3258 (hecho en local, sin subir; va en la misma APK que 3257): medidas de Wi-Fi Direct en el diagnóstico** (pedido del dueño 20-11: que cuando entre WD «sí o sí» salgan datos reales).
+  `usage_stats.js` (`usageNoteWd`, líneas dentro de «Velocidad de hoy por camino»): intentos y salidos por lado (envía/recibe), fallos con causa, crear grupo (con reintentos y código del
+  sistema), unirse, velocidad PURA, tiempo trabajando, Wi-Fi normal (seguía/cambió de canal/se cayó), por qué sí/no se eligió WD (`_whyNot`); `wifi_direct.js` los anota y deja una línea de
+  batería y temperatura por transferencia (≥ 5 s); «conexión lista» de WD entra en la tabla. Nativo (`PluginWifiDirect.kt`, NO compilado aquí): `groupMs/attempts/reasons/apStart` al montar el
+  grupo, `apStart/apJoined` al unirse, `apMhz` al recibir (frecuencia del Wi-Fi normal, 0 = sin Wi-Fi). Pruebas: `wdmedidas.js` (en ci.js) y `wifidirect.js` (de punta a punta, local).
+  Con eso se decide Wi-Fi Direct A/B con números del dueño; falta una prueba corta de archivo Bluetooth vs Wi-Fi Direct entre dos teléfonos (él la hace; los números salen solos).
 - **FASES SIGUIENTES del Bluetooth (sin hacer):** 2) servidor GATT SIEMPRE en el servicio (también con la app abierta); 3) conexiones salientes y reenvío desde el servicio; 4) conexiones
   a demanda (tope ~7); luego auditoría posterior y modo vagón. Los «Foreground kill» de Motorola a la hora en punto no los arregla el código: detectarlos y explicárselo al usuario.
 - **Enlace repetido que se reabre (S24↔Austin), INVESTIGADO SIN ARREGLAR:** el enlace que el desempate cierra vuelve ~63 s después por `_seedNativeConnections` («Conexión existente

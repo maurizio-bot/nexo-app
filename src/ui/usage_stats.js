@@ -98,6 +98,54 @@ export function usageNoteConnect(via, ms) {
     console.log('[VELOCIDAD] ' + VIAS[via] + ' listo en ' + _n1(ms / 1000) + ' s'); // i18n-ok
   } catch (err) {}
 }
+// 3258 (dueño 20-11: «cuando entre el Wi-Fi Direct, sí o sí me va a aparecer en el diagnóstico y tendré datos reales»): contadores del día de
+// Wi-Fi Direct, de los DOS lados (quien envía y quien recibe): cuántos intentos, cuántos salieron, por qué fallaron, cuánto tardó cada fase (crear
+// el grupo, unirse), la velocidad PURA de la transferencia (sin montar el grupo), cuánto tiempo estuvo trabajando, si el Wi-Fi normal se cayó
+// mientras tanto y por qué se eligió (o no) Wi-Fi Direct para un archivo. Solo números. Se mide si FUNCIONA, para arreglarlo (principio del dueño).
+function _wdAcc(map, k, ms) { var e = map[k] || (map[k] = { n: 0, ms: 0, lo: ms, hi: ms }); e.n++; e.ms += ms; e.lo = Math.min(e.lo, ms); e.hi = Math.max(e.hi, ms); }
+export function usageNoteWd(ev, o) {
+  try {
+    o = o || {};
+    var all = _load(), day = _day(all, usageDayKey()), w = day.wd || (day.wd = { out: { n: 0, ok: 0, f: {} }, in: { n: 0, ok: 0, f: {} }, t: {}, x: { n: 0, b: 0, ms: 0, lo: 0, hi: 0 }, ap: { keep: 0, lost: 0, none: 0, up: 0 }, rt: 0, rc: {}, act: 0, use: {}, no: {} });
+    var dir = o.dir === 'in' ? 'in' : 'out';
+    if (ev === 'try') w[dir].n++;
+    else if (ev === 'ok') { w[dir].ok++; if (o.act > 0 && o.act < 3600000) w.act += o.act; }
+    else if (ev === 'fail') { var c = String(o.cause || 'otro').slice(0, 40); w[dir].f[c] = (w[dir].f[c] || 0) + 1; if (o.act > 0 && o.act < 3600000) w.act += o.act; }
+    else if (ev === 'group' && o.ms >= 0) { _wdAcc(w.t, 'grupo', o.ms); if (o.attempts > 1) w.rt += o.attempts - 1; String(o.reasons || '').split(',').forEach(function(r) { if (/^\d+$/.test(r)) w.rc[r] = (w.rc[r] || 0) + 1; }); }
+    else if (ev === 'join' && o.ms >= 0) _wdAcc(w.t, 'unirse', o.ms);
+    else if (ev === 'xfer' && o.bytes > 0 && o.ms > 0) { var r2 = _kbs(o.bytes, o.ms), x = w.x; x.lo = x.n ? Math.min(x.lo, r2) : r2; x.hi = Math.max(x.hi, r2); x.n++; x.b += o.bytes; x.ms += o.ms; }
+    else if (ev === 'ap') { // Wi-Fi normal (MHz; 0 = sin Wi-Fi) antes y después de unirse/montar el grupo
+      if (!(o.before > 0)) w.ap.none++; else if (o.after > 0) { w.ap.keep++; if (o.after !== o.before) w.ap.up++; } else w.ap.lost++;
+    }
+    else if (ev === 'use') w.use[String(o.why).slice(0, 60)] = (w.use[String(o.why).slice(0, 60)] || 0) + 1;
+    else if (ev === 'no') w.no[String(o.why).slice(0, 60)] = (w.no[String(o.why).slice(0, 60)] || 0) + 1;
+    else return;
+    _save(all);
+  } catch (err) {}
+}
+function _wdCounts(m) { var k = Object.keys(m || {}); return k.map(function(c) { return c + ' ×' + m[c]; }).join(', '); }
+function _wdLines(d) {
+  var w = d && d.wd, out = [];
+  if (!w) return out;
+  var side = function(dir) {
+    var e = w[dir]; if (!e.n) return '';
+    var nf = 0, f = _wdCounts(e.f); Object.keys(e.f).forEach(function(c) { nf += e.f[c]; });
+    var pend = e.n - e.ok - nf; // intentos sin resultado (en curso, o la app se cerró a mitad)
+    return (dir === 'out' ? 'enviar ' : 'recibir ') + e.n + ' (salieron ' + e.ok + (nf ? ', fallaron ' + nf + ': ' + f : '') + (pend > 0 ? ', sin resultado ' + pend : '') + ')'; // i18n-ok
+  };
+  var s1 = [side('out'), side('in')].filter(Boolean).join(' · ');
+  if (s1) out.push('  Wi-Fi Direct hoy: ' + s1 + (w.act ? ' · trabajando ' + _n1(w.act / 60000) + ' min en total' : '')); // i18n-ok
+  var t = [];
+  if (w.t.grupo) t.push('crear el grupo (quien recibe) ' + _n1(w.t.grupo.ms / w.t.grupo.n / 1000) + ' s' + (w.t.grupo.n > 1 ? ' (' + w.t.grupo.n + ' veces, de ' + _n1(w.t.grupo.lo / 1000) + ' a ' + _n1(w.t.grupo.hi / 1000) + ')' : '') + (w.rt ? ', ' + w.rt + ' reintento(s) del sistema' + (_wdCounts(w.rc) ? ' con código ' + _wdCounts(w.rc) : '') : '')); // i18n-ok
+  if (w.t.unirse) t.push('unirse al grupo (quien envía) ' + _n1(w.t.unirse.ms / w.t.unirse.n / 1000) + ' s' + (w.t.unirse.n > 1 ? ' (' + w.t.unirse.n + ' veces, de ' + _n1(w.t.unirse.lo / 1000) + ' a ' + _n1(w.t.unirse.hi / 1000) + ')' : '')); // i18n-ok
+  if (w.x.n) t.push('velocidad pura de la transferencia ' + _n1(_kbs(w.x.b, w.x.ms)) + ' KB/s' + (w.x.n > 1 ? ' (' + w.x.n + ' veces, de ' + _n1(w.x.lo) + ' a ' + _n1(w.x.hi) + ')' : '')); // i18n-ok
+  if (t.length) out.push('  Wi-Fi Direct tiempos: ' + t.join(' · ')); // i18n-ok
+  var ap = w.ap;
+  if (ap.keep || ap.lost || ap.none) out.push('  Wi-Fi Direct y el Wi-Fi normal: seguía conectado ' + ap.keep + (ap.up ? ' (cambió de canal ' + ap.up + ')' : '') + ' · se cayó ' + ap.lost + ' · no había Wi-Fi ' + ap.none); // i18n-ok
+  var u = _wdCounts(w.use), n = _wdCounts(w.no);
+  if (u || n) out.push('  Wi-Fi Direct en archivos de 20 KB o más: elegido por ' + (u || 'ninguno') + ' · no se pudo usar por ' + (n || 'ninguno')); // i18n-ok
+  return out;
+}
 /** Líneas de velocidad y conexión de un día (para el resumen diario y el diagnóstico); [] si no hay datos. */
 export function usageSpeedLines(key) {
   var d = _load()[key || usageDayKey()], out = [];
@@ -114,9 +162,10 @@ export function usageSpeedLines(key) {
     var e = d.k[v]; return VIAS[v] + ' ' + _n1(e.ms / e.n / 1000) + ' s (' + (e.n === 1 ? '1 vez' : e.n + ' veces, de ' + _n1(e.lo / 1000) + ' a ' + _n1(e.hi / 1000)) + ')'; // i18n-ok
   });
   if (con.length) out.push('  conexión lista en (media): ' + con.join(' · ')); // i18n-ok
+  out = out.concat(_wdLines(d)); // 3258
   return out;
 }
-if (typeof window !== 'undefined') { window.NEXO_noteSpeed = usageNoteSpeed; window.NEXO_noteConnect = usageNoteConnect; window.NEXO_speedLines = usageSpeedLines; }
+if (typeof window !== 'undefined') { window.NEXO_noteSpeed = usageNoteSpeed; window.NEXO_noteConnect = usageNoteConnect; window.NEXO_noteWd = usageNoteWd; window.NEXO_speedLines = usageSpeedLines; }
 
 /** Texto del resumen de un día (solo números). */
 export function usageSummaryText(key) {
