@@ -306,7 +306,7 @@ function _bigText(card) {
   if (s.state === 'preparing') return head + t('media_preparing', 'Preparando ') + pct + ' %';
   var via = ({ wd: ' (Wi-Fi Direct)', lan: ' (Wi-Fi)', l2: ' (Bluetooth)' })[s.via] || '';
   // 3260: ya enviado, la tarjeta dice por dónde fue y a qué velocidad (el envío por Wi-Fi Direct dura segundos y la etiqueta de «Enviando» casi no se veía)
-  if (s.state === 'done' && s.dir !== 'in' && s.via) return head + t('media_tap_open', 'Toca para abrir') + ' · ' + t('media_sent_via', 'Enviado por ') + ({ wd: 'Wi-Fi Direct', lan: 'Wi-Fi', l2: 'Bluetooth' })[s.via] + (s.mbps > 0 ? ' · ' + String(s.mbps).replace('.', ',') + ' MB/s' : '');
+  if (s.state === 'done' && s.dir !== 'in' && s.via) return head + t('media_tap_open', 'Toca para abrir') + ' · ' + ({ wd: 'Wi-Fi Direct', lan: 'Wi-Fi', l2: 'Bluetooth' })[s.via] + (s.mbps > 0 ? ' · ' + String(s.mbps).replace('.', ',') + ' MB/s' : '');
   if (s.state === 'sending') return head + t('media_sending', 'Enviando ') + pct + ' %' + via;
   if (s.state === 'receiving') return head + t('media_receiving', 'Recibiendo ') + pct + ' %' + via;
   if (s.state === 'waiting') return head + t('media_requested_again', 'Pedido otra vez…');

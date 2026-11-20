@@ -355,7 +355,6 @@ export default {
   media_waiting_file: "Waiting for the file · Tap to request it",
   media_preparing: "Preparing ",
   media_sending: "Sending ",
-  media_sent_via: "Sent via ",
   media_receiving: "Receiving ",
   media_requested_again: "Requested again…",
   media_send_fail_retry: "Couldn't send · Tap to retry",
