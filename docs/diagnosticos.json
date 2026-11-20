@@ -704,6 +704,22 @@
    "sintoma": "zombi ×5 en el día del S24 (3116)",
    "categoria": "Bluetooth: enlaces repetidos y MTU 23 tras el desempate",
    "causa": "APP (3116). Evidencia directa del criterio del desempate: 11:33:27 «enlaces: 3b9c:client:mtu517 9ede:server:mtu23» cierra el CLIENTE mtu517 y conserva el SERVIDOR mtu23; 11:33:57 «cb98:server:mtu23 87d6:client:mtu517» otra vez cierra el mtu517; 11:51:39 «6a77:client:mtu517 9ede:server:mtu23 746d:server:mtu517» cierra el cliente y el mtu23. Tras cada caso: «[MTU] … 23», «BT soltó un mensaje (muerto)», «4 pings sin respuesta» (11:33:53 VICK, 11:52:05 Austin). La 3257 evitó el bucle de REABRIR, pero el desempate (3027/3139: el papel manda sobre el MTU) sigue prefiriendo un servidor a MTU 23. HIPÓTESIS a comprobar con el registro nativo: el MTU de un enlace de SERVIDOR (creado por la reconexión automática del otro) puede quedar en el valor por omisión (23) porque nadie lo pide, o no se anota el onMtuChanged del servidor. Arreglo candidato (COLA 16): un enlace con MTU ≤ 23 nunca gana a uno con MTU > 23 (los dos lados lo ven igual si el intercambio fue real) + registrar en el nativo el MTU real de cada enlace de servidor. Reproducir en bledup.js. El zombi de Austin: Honor 3107 (vieja), sin peso"
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "12:33",
+   "nx": "nx0k598297 (VICK, A04) ↔ nx1n36c283 (S24), build 3116",
+   "sintoma": "zombi (VICK) + par:zombi pedido al S24",
+   "categoria": "Bluetooth: enlaces repetidos / par en segundo plano",
+   "causa": "APP (3116), dos cosas. (1) 12:32:51 «Dedup … enlaces: b1aa:client:mtu517:muerto 650a:client:mtu517:muerto»: dos enlaces CLIENTE al mismo S24 (su dirección privada rotó) y los dos ya muertos; el desempate cerró uno y 0,6 s después se reconectó a esa misma MAC (churn), el otro seguía muerto; 14 s después «4 pings sin respuesta». Si todos los repetidos están muertos no sirve elegir: hay que cerrar todos y reabrir uno limpio (COLA 16c). (2) El S24 llevaba ~10 min en segundo plano (a la vista otra vez 13:00): su JS no contesta pings → el par se declara zombi aunque el nativo aguante: es el pendiente «Bluetooth en el servicio nativo» (fases 2–4), no un error nuevo. Aparte: «[MTU] …: 23» sale ANTES del onMtuChanged nativo (VICK 12:32:42.858 → nativo 498 a 12:32:43.207; el primer mensaje salió en 25 trozos de 20 B; S24 13:00:32.108 reinicia un archivo con 'MTU 23' y 42 ms después llega 517): el 23 puede ser el valor por omisión previo al intercambio, no un MTU real (refuerza la hipótesis de COLA 16)"
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "12:27",
+   "nx": "nx10b6f4ac (Nubia NX725J, Alex Lopez) ↔ nx0x4029e6 (Zhelowsky, versión vieja)",
+   "sintoma": "zombi (Nubia)",
+   "categoria": "Bluetooth: par sin contestar",
+   "causa": "Zhelowsky es versión vieja («build ?»): sin peso, solo apuntado. Su enlace dejó de contestar pings a las 12:26:22. Aparte, en 3116: Wi-Fi local con el S24 dormido tardó 55,8 s en quedar comprobado (el toque salió a los 4,9 s); mientras, los mensajes salieron por Bluetooth con 2 reintentos (186 ms–2,1 s). Nubia tuvo Bluetooth apagado 12:18–12:22 y ahorro de batería activo (la app se lo avisa)"
   }
  ]
 }
