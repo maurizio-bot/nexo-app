@@ -25,6 +25,17 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   ver CLAUDE.md «Gasto». Leer SOLO este bloque + la lista 🔴 de `docs/AREAS.md`; lo demás, a demanda con grep.
 - **Publicado:** APK 3111 (3251 servidor GATT al abrir, 3252 «fallido» momentáneo, 3253 solo diagnósticos de la última versión).
   El dueño debe actualizar SU teléfono primero (el filtro usa su build).
+- **EN CI (20-11): 3254 = Bluetooth en el servicio, FASE 1** (#87): con NEXO vuelta sola (reinicio, actualización, cierre del sistema, toque
+  FCM) y sin la app en el proceso, el servicio anuncia (NEXO ID y clave del código rotativo guardados CIFRADOS, `nexo_ble_sinapp.json`) y
+  abre su servidor GATT: buzón + ✓✓ firmado + aviso + pong + «quién soy» (`SinAppCore.kt`, puro, 9 pruebas JVM `SinAppCoreTest`;
+  `BleSinApp.kt` = servidor y avisos; `BleService.startSinApp`; relevo al abrir la app en `takeOverFromClosed` → `BleSinApp.stopForApp`).
+  El Kotlin de Android (BleSinApp/BleService) NO se compiló aquí: si el CI falla al compilar, corregir. En el registro nativo sale
+  «[BT_SINAPP] Bluetooth sin la app: anunciando y recibiendo (tras …)». PRUEBA DEL DUEÑO: reiniciar un teléfono (sin abrir NEXO),
+  desbloquearlo, y desde otro cercano SIN internet mandarle un texto: debe sonar el aviso y quedar ✓✓; al abrir, el mensaje está.
+  FASES SIGUIENTES (sin hacer): 2) que el servidor GATT viva SIEMPRE en el servicio (también con la app abierta: sin relevos);
+  3) conexiones salientes y reenvío de pendientes desde el servicio; 4) conexiones a demanda (tope ~7). Ojo: los «Foreground kill» de
+  Motorola a la hora en punto parecen un cierre forzoso (ni alarma ni FCM la reviven: Roberto 4 h): eso no lo arregla el código, falta
+  detectarlo y explicárselo al usuario.
 - **Diagnósticos:** solo se revisan los de la última build; se apuntan en `docs/diagnosticos.json` (`node tests/sim/diag_stats.js`).
   La tarea de cada hora (canal directo) ya filtra las viejas.
 - **Problemas grandes:** lista 🔴 en `docs/AREAS.md`. N.º 1 = app dormida/muerta que no vuelve sola (#87) → Bluetooth en el servicio nativo.

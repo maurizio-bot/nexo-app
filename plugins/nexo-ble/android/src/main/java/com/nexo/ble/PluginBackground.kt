@@ -191,6 +191,9 @@ private fun NexoBlePlugin.sendDeliveredAckLan(nx: String, info: BgInbox.Info) {
 
 // La app se abre: la instancia anterior (si siguió recibiendo) se retira y lo guardado se entrega a la app
 internal fun NexoBlePlugin.takeOverFromClosed() {
+    // 3254: si el servicio recibía por Bluetooth sin la app (BleSinApp), suelta su servidor GATT (cortando antes sus enlaces) para
+    // que la app abra el suyo; lo que guardó en el buzón se entrega aquí abajo
+    try { BleSinApp.stopForApp() } catch (e: Throwable) { }
     val old = orphan
     if (old != null && old !== this) {
         orphan = null

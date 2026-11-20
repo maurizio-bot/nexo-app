@@ -103,8 +103,9 @@ object NetBgHome {
 
     // ===== Aviso de un sobre con un mensaje nuevo (antes dentro de NexoBlePlugin.netBg: las mismas reglas con y sin la app) =====
     // silent = su chat está abierto en un parpadeo a segundo plano (3172, lo decide la app viva); sin la app, false.
+    // 3254: how = por dónde llegó (para el registro): «por internet» o «por Bluetooth sin la app» (BleSinApp)
     fun notifyMessage(ctx: Context, nx: String, name: String, msgId: String, isCall: Boolean, group: String, video: Boolean, silent: Boolean,
-                      groupName: (String) -> String?) {
+                      groupName: (String) -> String?, how: String = "por internet") {
         val seen = !isCall && SeenMsgs.has(ctx, msgId)
         val gname = if (isCall || seen || silent) null else groupName(group)
         // 3219: chat o grupo silenciado (la lista la da la app; sin la app, la de lo guardado)
@@ -124,11 +125,11 @@ object NetBgHome {
             NetBgSaved.Notice.MUTED -> log(ctx, "sobre de $nx (msgId $msgId): chat silenciado: sin aviso")
             // 3076: un mensaje de GRUPO avisa en el grupo, con su nombre y quién lo manda (como por Bluetooth: notifyMessage)
             NetBgSaved.Notice.GROUP -> {
-                log(ctx, "sobre de $nx (msgId $msgId): aviso de mensaje nuevo por internet (grupo $group)")
+                log(ctx, "sobre de $nx (msgId $msgId): aviso de mensaje nuevo $how (grupo $group)")
                 MsgNotifier.get(ctx).message(group, gname!!, msgId, "$name: " + NativeLang.t(ctx, "msg_new"), true)
             }
             NetBgSaved.Notice.CHAT -> {
-                log(ctx, "sobre de $nx (msgId $msgId): aviso de mensaje nuevo por internet")
+                log(ctx, "sobre de $nx (msgId $msgId): aviso de mensaje nuevo $how")
                 MsgNotifier.get(ctx).message(nx, name, msgId, "", true)
             }
         }
@@ -259,6 +260,7 @@ object NetBgHome {
     }
 
     // Nombre de un grupo (nexo_groups.json, cifrado en reposo) para el aviso sin la app; un minuto en memoria, como en la app
+    fun groupNameOf(ctx: Context, gid: String): String? = groupName(ctx, gid) // 3254: para BleSinApp
     private fun groupName(ctx: Context, gid: String): String? {
         if (gid.isEmpty()) return null
         val now = System.currentTimeMillis()

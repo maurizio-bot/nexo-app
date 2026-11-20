@@ -81,6 +81,9 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Al ACTUALIZAR la app, los contactos cercanos quedan con un enlace viejo ~1 min (MTU 23 y zombi): el proceso muere sin cortar nada (3251 no lo cubre). Vigilar; con menos actualizaciones pasará poco. ×1
 - Diagnósticos de la 3097–3107 con «Bluetooth apagado/encendido» suelto y ~20 desconexiones viejas al volver a primer plano (Zhelowsky 11:32, 18-11). Revisar si 3251 lo cubre. ×1
 
+**En prueba (3254, Bluetooth en el servicio, fase 1)**
+- Recibir por Bluetooth SIN la app (NEXO vuelta sola tras reinicio, actualización, cierre del sistema o toque FCM): anuncio + servidor GATT del servicio, buzón, ✓✓ y aviso (`SinAppCore`/`BleSinApp`). Fases 2–4 pendientes (ver ESTADO). ×3
+
 **Por comprobar (de la 3109)**
 - Servidor GATT al abrir la app: cortar antes los enlaces entrantes (3251, `gattreabre.js` en ci.js). Subida a NEXOCHAT como APK 3109; la batería la corre el CI y compila el Kotlin (sin SDK aquí). Pendiente: que el dueño pruebe con dos teléfonos (abrir la app con el Bluetooth recibiendo y mandar al momento). ×2
 

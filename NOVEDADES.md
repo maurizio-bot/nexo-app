@@ -12,7 +12,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- (próxima APK)
+- NEXO sigue recibiendo por Bluetooth aunque el teléfono la cierre o se reinicie: los mensajes de quien está cerca te llegan y te avisan sin abrir la app.
 </es-419>
 <!-- /APK -->
 
