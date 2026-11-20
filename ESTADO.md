@@ -36,6 +36,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   3) conexiones salientes y reenvío de pendientes desde el servicio; 4) conexiones a demanda (tope ~7). Ojo: los «Foreground kill» de
   Motorola a la hora en punto parecen un cierre forzoso (ni alarma ni FCM la reviven: Roberto 4 h): eso no lo arregla el código, falta
   detectarlo y explicárselo al usuario.
+- **Enlace repetido que se reabre (S24↔Austin), INVESTIGADO SIN ARREGLAR (20-11):** el escaneo no es (ya tiene guarda). Lo visto: el enlace
+  que el desempate cierra (p. ej. 54c9 a las 14:52:04) vuelve ~63 s después por `_seedNativeConnections` («Conexión existente recuperada
+  al arrancar»): el nativo lo sigue listando tras `disconnectDevice({server:true})`, entra sin MTU conocido (23) y eso deja reconectar la
+  otra dirección → bucle. Falta saber POR QUÉ el nativo lo sigue teniendo (¿cancelConnection no corta?, ¿el otro reconecta solo?): hace
+  falta el registro NATIVO de esos segundos. 3255 (en la rama `ccr-45654f1b-mrooyc`, SIN subir a NEXOCHAT): solo registro (papel y MTU de
+  cada enlace al cerrar; «cerrada por repetida hace N s» al recuperarla). Sube con la próxima APK. No arreglar a ciegas.
 - **Diagnósticos:** solo se revisan los de la última build; se apuntan en `docs/diagnosticos.json` (`node tests/sim/diag_stats.js`).
   La tarea de cada hora (canal directo) ya filtra las viejas.
 - **Problemas grandes:** lista 🔴 en `docs/AREAS.md`. N.º 1 = app dormida/muerta que no vuelve sola (#87) → Bluetooth en el servicio nativo.

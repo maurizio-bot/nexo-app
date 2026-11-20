@@ -178,7 +178,8 @@ export const BLE_CONNECTION_METHODS = {
         var key = toClose[i];
         if ((self._dupClosedUntil.get(key) || 0) > now) continue;       // enfriamiento por MAC
         self._dupClosedUntil.set(key, now + self._dupCloseCooldownMs);
-        console.log('[BLEInterface] Dedup: cierro enlace repetido ' + key + ' de ' + nx + ' (me quedo con el mejor)');
+        self._dupClosedAt = self._dupClosedAt || new Map(); self._dupClosedAt.set(_normMac(key), now); if (self._dupClosedAt.size > 100) self._dupClosedAt.delete(self._dupClosedAt.keys().next().value);
+        console.log('[BLEInterface] Dedup: cierro enlace repetido ' + key + ' de ' + nx + ' (me quedo con el mejor); enlaces: ' + links.map(function(l) { return l.key.slice(-4) + ':' + (l.role || '?') + ':mtu' + l.mtu + (l.dead ? ':muerto' : ''); }).join(' '));
         self._noteLinkFlap(nx, 'repetido');
         // 3167 (diagnóstico S24↔realme 3075 16-11 15:17): server:true → el nativo corta también un enlace ENTRANTE (el otro es
         // cliente de nuestro servidor GATT). Sin eso solo cerraba el lado cliente: el enlace de servidor que 3027 manda cerrar al
@@ -386,7 +387,10 @@ export const BLE_CONNECTION_METHODS = {
         var nx = self._macToNexoId.get(_normMac(deviceId)) || (contact ? _normId(contact.nexoId || contact.deviceUUID) : null);
         self.connectedDevices.set(deviceId, { id: deviceId, name: d.name || '', direction: d.direction, role: d.role, servicesReady: true, deviceUUID: nx });
         self._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { role: d.role, seeded: true });
-        console.log('[BLEInterface] Conexión existente recuperada al arrancar:', deviceId, nx || '(sin id)');
+        // 3255 (diagnósticos S24↔Austin 19-11 14:23 y 14:56, «enlace_abre_cierra»): un enlace cerrado por repetido volvía «recuperado» ~60 s
+        // después y el desempate lo cerraba otra vez. Para ver la causa en el próximo diagnóstico: papel del enlace y si se cerró hace poco.
+        var dupAgo = self._dupClosedAt && self._dupClosedAt.get(_normMac(deviceId));
+        console.log('[BLEInterface] Conexión existente recuperada al arrancar:', deviceId, nx || '(sin id)', '(' + (d.role || '?') + '/' + (d.direction || '?') + (dupAgo ? '; cerrada por repetida hace ' + Math.round((Date.now() - dupAgo) / 1000) + ' s' : '') + ')');
         if (nx) {
           self._notifyPeerReady(deviceId, nx);
           if (self.ackSystem && self.ackSystem.sendSessionSync) self.ackSystem.sendSessionSync(deviceId, nx);
