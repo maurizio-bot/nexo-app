@@ -12,7 +12,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- (próxima APK)
+- Mejoras internas para medir cuánta batería gasta y cuánto se calienta el teléfono en una llamada.
 </es-419>
 <!-- /APK -->
 

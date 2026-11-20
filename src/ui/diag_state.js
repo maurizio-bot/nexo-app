@@ -12,6 +12,7 @@
  */
 import { _getBLEContacts, _isPinned, _normId, _normMac } from './ble_helpers.js';
 import { exitsInit, exitsLines } from './diag_exits.js'; // 3120: cierres de la app
+import { thermalWord } from './call_power.js'; // 3256: temperatura y estado térmico
 
 var TRACE_MAX = 40;              // mensajes con línea de tiempo (los más recientes)
 var SLOW_MS = 2 * 60 * 1000;     // «entrega lenta»: más de 2 min con camino
@@ -133,6 +134,7 @@ function _phoneLine(bi) {
   var parts = ['app ' + (fg ? 'en primer plano' : 'en segundo plano')];
   if (_power) {
     if (_power.level != null) parts.push('batería ' + _power.level + '%' + (_power.charging ? ' cargando' : ''));
+    if (typeof _power.temp === 'number') parts.push('temperatura ' + (Math.round(_power.temp * 10) / 10).toFixed(1).replace('.', ',') + ' °C' + (thermalWord(_power.thermal) ? ' (estado térmico ' + thermalWord(_power.thermal) + ')' : '')); // 3256
     if (_power.powerSave) parts.push('AHORRO DE BATERÍA');
     if (_power.idle) parts.push('DOZE');
     if (_power.interactive === false) parts.push('pantalla apagada');

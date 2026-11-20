@@ -15,6 +15,7 @@
  */
 import { t } from './i18n.js';
 import { createCallP2P } from './call_p2p.js';
+import { callPowerStart, callPowerTick, callPowerEnd } from './call_power.js'; // 3256: batería, temperatura y tiempo de la llamada en el diagnóstico
 
 var RING_MS = 45000;
 var SILENCE_MS = 12000;
@@ -466,6 +467,7 @@ export class Calls {
     var self = this, c = self.call;
     if (!c) return;
     c.startedAt = Date.now(); c.lastRx = Date.now();
+    try { callPowerStart(c); } catch (e) {} // 3256
     self.stats = { sent: 0, got: 0, bad: 0 }; // por llamada (el diagnóstico de cada una)
     self._set({ state: 'active', startedAt: c.startedAt });
     if (self.ble && typeof self.ble._holdOthers === 'function') { try { self.ble._holdOthers(self); } catch (e) {} } // #222: la otra llamada, en espera sola
@@ -526,6 +528,7 @@ export class Calls {
   // para ver dónde se pierde la voz: enviada / recibida / reproducida, nivel del micrófono, camino y estado del audio
   _diag(c, prefix) {
     var m = c.media && typeof c.media.stats === 'function' ? c.media.stats() : null, st = this.stats;
+    try { callPowerTick(c); } catch (e) {} // 3256: una muestra de batería y temperatura por minuto
     var link = this._link(c.nx), pct = function(x) { return Math.round((x || 0) * 1000) / 10 + ' %'; };
     console.log('[CALL] ' + (prefix || Math.round((Date.now() - c.startedAt) / 1000) + ' s') + ': voz enviada ' + st.sent + ', recibida ' + st.got +
       (st.bad ? ' (' + st.bad + ' ilegibles)' : '') + (st.sentKeep || st.gotKeep ? ', sin voz ("sigo aquí") enviados ' + (st.sentKeep || 0) + ' / recibidos ' + (st.gotKeep || 0) : '') + (c.video ? ', vídeo enviado ' + (st.sentV || 0) + ' / recibido ' + (st.gotV || 0) : '') + (st.sentS || st.gotS ? ', diapositivas de pantalla (partes) enviadas ' + (st.sentS || 0) + ' / recibidas ' + (st.gotS || 0) : '') +
@@ -729,6 +732,7 @@ export class Calls {
     if (self.p2p) self.p2p.close(c.nx); // la conexión directa es de esta llamada
     var secs = c.startedAt ? Math.round((Date.now() - c.startedAt) / 1000) : 0;
     if (c.startedAt) try { self._diag(c, 'Al colgar (' + secs + ' s)'); } catch (e) {}
+    if (c.startedAt) try { callPowerEnd(c, secs); } catch (e) {} // 3256
     if (c.media && c.media.stop) { try { c.media.stop(); } catch (e) {} }
     self.lastEnded = { id: c.id, nx: c.nx, at: Date.now(), active: !!c.startedAt, video: !!c.video }; // #221: «Agregar» la pasa a grupo y el otro entra solo (3216: video)
     var br = self._br(), brEnd = br ? (br.ending ? 'me' : 'peer') : ''; // 3217

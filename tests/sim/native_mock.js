@@ -1189,7 +1189,7 @@ class NativePhone {
         c.resolve({ opened: true });
       }),
       // Batería (opts.battery = { level, charging, powerSave }; por defecto 80 %, sin cargar)
-      getPowerStatus: wrap('getPowerStatus', (c) => { const b = self.battery || self.opts.battery || { level: 80, charging: false, powerSave: false }; c.resolve({ level: b.level, charging: !!b.charging, powerSave: !!b.powerSave, idle: !!b.idle, interactive: b.interactive !== false, ignoringOpt: b.ignoringOpt !== false, net: self.wifiNet ? 'Wi-Fi' : 'datos móviles' }); }), // 3020: + Doze, pantalla, optimización, red
+      getPowerStatus: wrap('getPowerStatus', (c) => { const b = self.battery || self.opts.battery || { level: 80, charging: false, powerSave: false }; c.resolve({ level: b.level, charging: !!b.charging, powerSave: !!b.powerSave, idle: !!b.idle, interactive: b.interactive !== false, ignoringOpt: b.ignoringOpt !== false, net: self.wifiNet ? 'Wi-Fi' : 'datos móviles', ...(b.temp != null ? { temp: b.temp } : {}), ...(b.thermal != null ? { thermal: b.thermal } : {}) }); }), // 3020; 3256: temperatura y estado térmico si la prueba los da: + Doze, pantalla, optimización, red
       // Archivos (Kotlin: FileProvider + ACTION_VIEW; PdfRenderer). Aquí se registran las llamadas.
       openFile: wrap('openFile', (c) => {
         const b64 = c.getString('base64'); if (!b64) return c.reject('base64 requerido');

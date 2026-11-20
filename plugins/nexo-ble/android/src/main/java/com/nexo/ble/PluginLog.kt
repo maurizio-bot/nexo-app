@@ -88,6 +88,14 @@ internal fun NexoBlePlugin.getPowerStatusImpl(call: PluginCall) {
         val out = JSObject().put("level", level).put("charging", charging).put("powerSave", pm.isPowerSaveMode)
         // 3020 (diagnóstico más claro, dueño 12-11): Doze, pantalla, optimización de batería, red activa y punto de acceso.
         // Cada dato por separado: si uno falla en algún modelo, los demás siguen.
+        // 3256 (dueño 20-11: «el diagnóstico debe medir la temperatura y los tiempos él solo»): temperatura de la batería (°C, con un decimal;
+        // Android la da en décimas) y estado térmico del teléfono (API 29+: 0 normal … 6 apagado). Cada dato por separado.
+        try {
+            val st = context.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+            val t = st?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE) ?: Int.MIN_VALUE
+            if (t != Int.MIN_VALUE && t > -500 && t < 1500) out.put("temp", t / 10.0)
+        } catch (e: Throwable) {}
+        try { if (android.os.Build.VERSION.SDK_INT >= 29) out.put("thermal", pm.currentThermalStatus) } catch (e: Throwable) {}
         try { out.put("idle", pm.isDeviceIdleMode) } catch (e: Exception) {}
         try { out.put("interactive", pm.isInteractive) } catch (e: Exception) {}
         try { out.put("ignoringOpt", pm.isIgnoringBatteryOptimizations(context.packageName)) } catch (e: Exception) {}

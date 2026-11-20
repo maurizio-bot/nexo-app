@@ -53,6 +53,7 @@ export function powerLines(key) {
   if (d.fm >= 20 * 60000) parts.push('a la vista ' + _n1(d.fd / (d.fm / 3600000)) + ' %/h (en ' + Math.round(d.fm / 60000) + ' min)'); // i18n-ok: texto para el desarrollador
   if (d.bm >= 3600000) parts.push('en segundo plano ' + _n1(d.bd / (d.bm / 3600000)) + ' %/h (en ' + _n1(d.bm / 3600000) + ' h)'); // i18n-ok: texto para el desarrollador
   if (parts.length) out.push('batería sin cargar (todo el teléfono): ' + parts.join(' · ')); // i18n-ok: texto para el desarrollador
+  if (typeof d.tmx === 'number') out.push('temperatura máx. del teléfono: ' + (Math.round(d.tmx * 10) / 10).toFixed(1).replace('.', ',') + ' °C (a las ' + new Date(d.tmxAt || 0).toTimeString().substring(0, 5) + ')'); // i18n-ok: texto para el desarrollador; 3256
   var nt = (d.nw || 0) + (d.nm || 0) + (d.no || 0);
   if (nt > 0) {
     var dp = [];
@@ -79,6 +80,7 @@ function _sample() {
   return Promise.resolve(pl.getPowerStatus()).then(function(r) {
     if (!r || typeof r.level !== 'number') return null;
     var cur = { at: _now(), level: r.level, charging: !!r.charging, rx: r.rx, tx: r.tx, net: r.net };
+    if (typeof r.temp === 'number') _note(function(d) { if (!(d.tmx >= r.temp)) { d.tmx = r.temp; d.tmxAt = _now(); } }); // 3256: temperatura máxima del día
     var a = powerAccount(_last, cur, vis);
     if (a) _note(function(d) { d.fm += a.fgMs; d.fd += a.fgDrop; d.bm += a.bgMs; d.bd += a.bgDrop; });
     var da = dataAccount(_last, cur);
