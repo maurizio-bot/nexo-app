@@ -12,13 +12,18 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Mejoras internas para medir cuánta batería gasta y cuánto se calienta el teléfono en una llamada.
-- Menos cortes y reconexiones seguidas del Bluetooth con algunos teléfonos.
-- Más datos internos para entender y mejorar el Wi-Fi Direct y cada camino de conexión.
 </es-419>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3116 (20-11-2026)
+<es-419>
+- Mejoras internas para medir cuánta batería gasta y cuánto se calienta el teléfono en una llamada.
+- Menos cortes y reconexiones seguidas del Bluetooth con algunos teléfonos.
+- Al mandar un archivo grande, la tarjeta te dice por dónde fue (por ejemplo Wi-Fi Direct) y a qué velocidad.
+- Más datos internos para entender y mejorar el Wi-Fi Direct y cada camino de conexión.
+</es-419>
 
 ### APK 3113 (20-11-2026)
 <es-419>

@@ -30,25 +30,24 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   `takeOverFromClosed`; NEXO ID y clave rotativa guardados CIFRADOS en `nexo_ble_sinapp.json`) + 3255 (registro del enlace repetido que vuelve).
   **PRUEBA DEL DUEÑO PENDIENTE:** reiniciar un teléfono, desbloquearlo SIN abrir NEXO y desde otro cercano SIN internet mandarle un texto: debe sonar el aviso y salir ✓✓;
   en su diagnóstico: «[BT_SINAPP] Bluetooth sin la app: anunciando y recibiendo». El dueño debe actualizar SU teléfono primero (el filtro de diagnósticos usa su build).
-- **EN CI: 3114 = 3256** (pedido del dueño): el diagnóstico mide solo batería, temperatura y tiempo. `src/ui/call_power.js`: en cada llamada, líneas «[CALL] Batería y temperatura …»
-  al empezar, cada minuto y al colgar (puntos perdidos, %/h, temperatura inicial/final/máx., estado térmico); la línea del teléfono lleva la temperatura actual y el resumen del día
-  la máxima. Nativo: `getPowerStatus` da `temp` y `thermal` (PluginLog.kt; no compilado aquí). Prueba `callpower.js`. FALTA: lo mismo en llamadas de GRUPO (`group_call.js`) y un
-  «cronómetro de actividades» (envío de archivo, foto…). Al salir bien: NOVEDADES a historial como APK 3114.
-- **3257 (hecho en local, SIN subir hasta ver el CI de 3114):** causa del bucle «enlace repetido» con el vivo (diagnóstico del dueño 20-11 22:22, build 3113): 3019 reabre un
+- **PUBLICADO: APK 3116 (20-11 02:54 México) = 3256–3260** (batería/temperatura en llamadas, enlace repetido, medidas de Wi-Fi Direct, tablero por red `docs/REDES.md`, Wi-Fi Direct en archivos grandes). Las 3114 y 3115
+  fallaron SOLO por reglas de estilo (textos fijos 26>25; diccionarios 1.001>1.000 líneas): antes de subir correr `tamano.js` e `i18n_audit.js`. Primer CI donde compila lo nativo nuevo (PluginLog.kt, PluginWifiDirect.kt): OK.
+  FALTA: llamadas de GRUPO con batería/temperatura, «cronómetro de actividades», prueba corta del dueño Bluetooth vs Wi-Fi Direct (batería de ambos lados) y primer cuello de botella: preparar archivo grande ≈ 5 MB/s.
+- **3257 (PUBLICADO en la 3116):** causa del bucle «enlace repetido» con el vivo (diagnóstico del dueño 20-11 22:22, build 3113): 3019 reabre un
   enlace de cliente (mtu517) si el que hay va a MTU 23, y el desempate de 3027 (soy el ID mayor → conserva el de SERVIDOR) lo vuelve a cerrar; los dos viven ~20–80 s. Arreglo:
   `_newClientWouldBeClosed` (ble_helpers.js) + rama en `ble_connections.js` (no reabre si el enlace que hay es el que conserva el desempate). Prueba pura en `bledup.js`; cercanas
   (dupserver, dupscan, reconndedup, dedupreenlaza, vivoarriba) OK. Queda: el enlace conservado va a MTU 23 (lento por Bluetooth con el vivo Y03; internet/Wi-Fi local lo cubren).
-- **3258 (hecho en local, sin subir; va en la misma APK que 3257): medidas de Wi-Fi Direct en el diagnóstico** (pedido del dueño 20-11: que cuando entre WD «sí o sí» salgan datos reales).
+- **3258 (PUBLICADO en la 3116): medidas de Wi-Fi Direct en el diagnóstico** (pedido del dueño 20-11: que cuando entre WD «sí o sí» salgan datos reales).
   `usage_stats.js` (`usageNoteWd`, líneas dentro de «Velocidad de hoy por camino»): intentos y salidos por lado (envía/recibe), fallos con causa, crear grupo (con reintentos y código del
   sistema), unirse, velocidad PURA, tiempo trabajando, Wi-Fi normal (seguía/cambió de canal/se cayó), por qué sí/no se eligió WD (`_whyNot`); `wifi_direct.js` los anota y deja una línea de
   batería y temperatura por transferencia (≥ 5 s); «conexión lista» de WD entra en la tabla. Nativo (`PluginWifiDirect.kt`, NO compilado aquí): `groupMs/attempts/reasons/apStart` al montar el
   grupo, `apStart/apJoined` al unirse, `apMhz` al recibir (frecuencia del Wi-Fi normal, 0 = sin Wi-Fi). Pruebas: `wdmedidas.js` (en ci.js) y `wifidirect.js` (de punta a punta, local).
   Con eso se decide Wi-Fi Direct A/B con números del dueño; falta una prueba corta de archivo Bluetooth vs Wi-Fi Direct entre dos teléfonos (él la hace; los números salen solos).
-- **3259 (hecho en local, sin subir; misma APK que 3257 y 3258): tablero por red** (dueño 20-11: «revisar red por red… ya no es resolver, es pulir»). Nuevo `docs/REDES.md` (qué se mide, datos reales con fecha,
+- **3259 (PUBLICADO en la 3116): tablero por red** (dueño 20-11: «revisar red por red… ya no es resolver, es pulir»). Nuevo `docs/REDES.md` (qué se mide, datos reales con fecha,
   cuellos de botella ordenados y qué falta). Código: `usage_stats.js` (`usageNoteSent/Delivered/Symptom`: mensajes por camino al salir con ✓✓ y tiempo en cubetas, síntomas del día por tipo) y
   gancho en `diag_state.js`; prueba `redesmedidas.js`. Primer cuello de botella a trabajar: preparar archivo grande ≈ 5 MB/s (30 s para 153 MB). OJO: en `diag_stats.js` los fallos
   NO bajan por día (1, 5, 23, 29 del 16 al 19-11), pero cuenta lo que se pega/registra, no un ritmo; medir síntomas por hora de uso y build.
-- **3260 (hecho en local, sin subir; misma APK que 3257–3259): Wi-Fi Direct en archivos grandes** (dueño 20-11: «con el vivo, en los de 160 MB no vi Wi-Fi Direct; por arriba de 5 MB sí o sí debe entrar»). Verificado
+- **3260 (PUBLICADO en la 3116): Wi-Fi Direct en archivos grandes** (dueño 20-11: «con el vivo, en los de 160 MB no vi Wi-Fi Direct; por arriba de 5 MB sí o sí debe entrar»). Verificado
   en los registros: los 3 envíos (5,4/23/153 MB) SÍ fueron por WD («[BIG] Enviando … por Wi-Fi Direct», el vivo «Grupo creado»), pero la tarjeta solo decía «(Wi-Fi Direct)» durante «Enviando» (~6 s) y en «Preparando»
   (30 s) no decía nada: el grupo se monta y se baja en cada envío (nombre y clave nuevos), por eso no «se mantiene». Cambios: la tarjeta termina con «Enviado por Wi-Fi Direct · X MB/s»; `big_file.route` ya no deja
   que un castigo por fallo reciente cierre WD a un archivo grande (`canReach(nx, true)`); cada envío grande anota «por WD» o POR QUÉ no (`_noteRoute`/`_whyNot(dev, bytes, true)`). Si el dueño quiere el grupo
