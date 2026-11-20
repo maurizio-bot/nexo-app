@@ -5,6 +5,13 @@ El dueño habla español: responder en español.
 **Horas siempre en hora de México** (Ciudad de México, UTC−6) al hablar con el dueño (16-11): nunca UTC ni otra zona; los
 diagnósticos ya traen la hora local, y lo de GitHub o los avisos programados (en UTC) se convierte antes de decírselo.
 
+**PRINCIPIO (dueño 20-11): NEXO = TODOS los caminos posibles para mantenerse comunicado** (Bluetooth, Wi-Fi, Wi-Fi Direct, internet, puente…).
+WhatsApp es lo general, Signal la privacidad, Quick Share los archivos; NEXO es no quedarse sin camino. Nunca proponer ni hacer nada para
+CERRAR o recortar caminos (ni «medir qué camino usan para quitar los que no se usan»): se mide si cada camino FUNCIONA para arreglarlo.
+Wi-Fi Direct casi no se nota porque casi siempre hay Wi-Fi o datos; su caso es el transporte público y la multitud (vagón, EDC): debe
+funcionar y por eso se revisa. Al plantear una decisión: decir A/B con lo que vive el usuario en cada una (frecuente / de vez en cuando /
+una sola vez), qué prefiero yo y por qué; el usuario y que el mensaje llegue mandan sobre el ahorro.
+
 **GASTO (dueño 20-11: su límite SEMANAL de uso es lo que frena; forma de trabajo «eficaz y eficiente»). Manda sobre lo de abajo:**
 - **Al empezar:** leer SOLO `ESTADO.md` (bloque TRASPASO, ≤ 60 líneas) y la lista 🔴 de `docs/AREAS.md`. `PROGRESO.md`, `PENDIENTES.md`,
   `ROBUSTEZ.md`, el privado y `docs/historial/` NO se leen enteros: se busca con grep lo que haga falta. El privado se clona solo si la
