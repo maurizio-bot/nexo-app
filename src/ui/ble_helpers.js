@@ -245,6 +245,15 @@ export function _dupBleLinksToClose(links, opts) {
   return out;
 }
 
+// 3257 (diagnóstico del dueño 20-11 22:22, build 3113, «enlace_abre_cierra» con el vivo nx09acdb61): dos reglas se contradecían y
+// el enlace se abría y cerraba cada ~20-80 s. 3019 abre un segundo enlace si el que hay va a MTU 23 («el nuevo puede ser mejor»);
+// el desempate común de 3027 (arriba) se queda con el enlace de SERVIDOR cuando mi NEXO ID es el mayor, aunque vaya a MTU 23, y
+// cierra el nuevo de cliente (mtu517). Resultado: abrir el bueno, cerrarlo, volver a abrirlo… Si el que hay ya es el que el
+// desempate conservaría, abrir otro es inútil: se cerraría. Pura: prueba bledup.js.
+export function _newClientWouldBeClosed(keptRole, iAmLower) {
+  return iAmLower === false && keptRole === 'server';
+}
+
 export function _rssiToBars(rssi) {
   if (typeof rssi !== 'number' || !isFinite(rssi)) return 0;
   if (rssi >= -60) return 4;   // muy cerca

@@ -648,6 +648,14 @@
    "sintoma": "enlace_abre_cierra (nx126df3f4, 6 desconexiones en 10 min)",
    "categoria": "Bluetooth: enlaces que se abren y cierran",
    "causa": "mismo caso: Katy acepta la conexión Bluetooth (su nativo vivo) pero su app no contesta → el S23 la corta por zombi y reconecta cada 1–2 min. Su texto a Katy queda pendiente (no perdido) · 21:47 (misma copia, build 3111): en el registro nativo, escrituras al enlace de Katy fallan con status=201 (GATT busy) ~20 veces/s durante ~6 s antes de descartar el mensaje; posible mejora (app): esperar el callback en vez de reintentar sin pausa. Ya contado: no es un caso nuevo"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "22:22",
+   "nx": "nx1n36c283",
+   "sintoma": "enlace_abre_cierra (nx09acdb61, 3 cierres por enlace repetido en 10 min)",
+   "categoria": "Bluetooth: enlaces que se abren y cierran",
+   "causa": "APP (build 3113, S24 del dueño con el vivo Y03 build 3107): bucle entre 3019 (reabre cliente mtu517 si el que hay va a MTU 23) y el desempate 3027 (soy el ID mayor → conserva el de servidor mtu23 y cierra el cliente bueno), ciclo de ~20-80 s. Arreglo 3257 hecho en local (pendiente de subir con el CI de 3114). Residual: el enlace conservado va a MTU 23 con el vivo Y03 (lento por Bluetooth; Wi-Fi local/internet lo cubren)"
   }
  ]
 }

@@ -34,6 +34,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   al empezar, cada minuto y al colgar (puntos perdidos, %/h, temperatura inicial/final/máx., estado térmico); la línea del teléfono lleva la temperatura actual y el resumen del día
   la máxima. Nativo: `getPowerStatus` da `temp` y `thermal` (PluginLog.kt; no compilado aquí). Prueba `callpower.js`. FALTA: lo mismo en llamadas de GRUPO (`group_call.js`) y un
   «cronómetro de actividades» (envío de archivo, foto…). Al salir bien: NOVEDADES a historial como APK 3114.
+- **3257 (hecho en local, SIN subir hasta ver el CI de 3114):** causa del bucle «enlace repetido» con el vivo (diagnóstico del dueño 20-11 22:22, build 3113): 3019 reabre un
+  enlace de cliente (mtu517) si el que hay va a MTU 23, y el desempate de 3027 (soy el ID mayor → conserva el de SERVIDOR) lo vuelve a cerrar; los dos viven ~20–80 s. Arreglo:
+  `_newClientWouldBeClosed` (ble_helpers.js) + rama en `ble_connections.js` (no reabre si el enlace que hay es el que conserva el desempate). Prueba pura en `bledup.js`; cercanas
+  (dupserver, dupscan, reconndedup, dedupreenlaza, vivoarriba) OK. Queda: el enlace conservado va a MTU 23 (lento por Bluetooth con el vivo Y03; internet/Wi-Fi local lo cubren).
 - **FASES SIGUIENTES del Bluetooth (sin hacer):** 2) servidor GATT SIEMPRE en el servicio (también con la app abierta); 3) conexiones salientes y reenvío desde el servicio; 4) conexiones
   a demanda (tope ~7); luego auditoría posterior y modo vagón. Los «Foreground kill» de Motorola a la hora en punto no los arregla el código: detectarlos y explicárselo al usuario.
 - **Enlace repetido que se reabre (S24↔Austin), INVESTIGADO SIN ARREGLAR:** el enlace que el desempate cierra vuelve ~63 s después por `_seedNativeConnections` («Conexión existente

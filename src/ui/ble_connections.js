@@ -4,7 +4,7 @@
  * esperar a que un enlace esté listo.
  */
 import { t } from './i18n.js';
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _netNx, _lanNx, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _dupBleLinksToClose, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages, _wakeShouldFire, _wakeAdvance, _wakeNewEntry, WAKE_GIVEUP_MS, _isQuietHidden, _isPathDev } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _netNx, _lanNx, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _dupBleLinksToClose, _newClientWouldBeClosed, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages, _wakeShouldFire, _wakeAdvance, _wakeNewEntry, WAKE_GIVEUP_MS, _isQuietHidden, _isPathDev } from './ble_helpers.js';
 
 // 3099: con una transferencia en curso la re-búsqueda de contactos perdidos se aplaza, pero como mucho esto seguido: luego una vuelta
 var SCAN_HOLD_MAX_MS = 180000;
@@ -799,6 +799,12 @@ export const BLE_CONNECTION_METHODS = {
       var readyMtu = readyOther ? ((this._mtuByDevice && this._mtuByDevice.get(readyOther)) || 185) : 0;
       var dupCooling = !!(this._dupClosedUntil && (this._dupClosedUntil.get(nd) || 0) > Date.now()) || !!(this._peerCutUntil && (this._peerCutUntil.get(nd) || 0) > Date.now());
       var haveGoodLink = !!readyOther && readyOther !== nd && readyMtu > 23;
+      // 3257: si el que hay es el que conserva el desempate de repetidos (servidor, y soy el de NEXO ID mayor), un enlace nuevo mío de
+      // cliente se cerraría enseguida aunque vaya a MTU 23: no se abre (el bucle abrir/cerrar cada ~20-80 s del vivo, 20-11)
+      if (!haveGoodLink && readyOther && readyOther !== nd) {
+        var meId = _normId(this.localNexoId), roSt = this._getDeviceState(readyOther) || {};
+        if (meId && _newClientWouldBeClosed(roSt.role, meId < _normId(nx))) haveGoodLink = true;
+      }
       // v6.1.6: también desde ERROR (p.ej. se conectó cuando el otro tenía la app cerrada)
       // 3168 (APK 3078 parada en radiollamada L): el enfriamiento solo frena si de verdad QUEDA otro enlace listo con el contacto; si
       // se cayeron los dos a la vez (el primero aún veía al otro «listo»), esta dirección tiene que poder reabrirse ya

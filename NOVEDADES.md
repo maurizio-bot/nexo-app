@@ -13,6 +13,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <!-- APK -->
 <es-419>
 - Mejoras internas para medir cuánta batería gasta y cuánto se calienta el teléfono en una llamada.
+- Menos cortes y reconexiones seguidas del Bluetooth con algunos teléfonos.
 </es-419>
 <!-- /APK -->
 

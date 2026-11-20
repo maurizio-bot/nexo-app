@@ -8,7 +8,7 @@ const { importSrc } = require('./srcmod');
 
 (async () => {
   const r = { prueba: 'bledup' };
-  const { _dupBleLinksToClose } = await importSrc('ui/ble_helpers.js');
+  const { _dupBleLinksToClose, _newClientWouldBeClosed } = await importSrc('ui/ble_helpers.js');
   const L = (key, mtu, opts) => Object.assign({ key, mtu, dead: false, since: 0, busy: false }, opts || {});
   const same = (a, b) => a.length === b.length && a.slice().sort().join(',') === b.slice().sort().join(',');
 
@@ -78,6 +78,15 @@ const { importSrc } = require('./srcmod');
   // si los dos reciben, el desempate común sigue igual (y sin «now», como antes)
   const ambos = [L('5d5b', 517, { role: 'client', heard: now12 - 3000 }), L('6a15', 517, { role: 'server', heard: now12 - 2000 })];
   r.ambos_reciben_desempate_igual = same(_dupBleLinksToClose(ambos, { iAmLower: true, now: now12 }), ['6a15']) && same(_dupBleLinksToClose(s23, { iAmLower: true }), ['6a15']);
+
+  // 13. 3257 (diagnóstico del dueño 20-11 22:22, build 3113, vivo): mi ID es el mayor → el desempate conserva el de SERVIDOR (aunque
+  //     vaya a MTU 23) y cierra el de cliente mtu517; 3019 volvía a abrir el cliente porque el que había iba a 23 → bucle cada ~20-80 s.
+  //     Con el servidor conservado no se abre otro de cliente. Contrapruebas: si el que hay es de cliente, o soy el menor, se sigue igual.
+  r.dedup_cierra_cliente_bueno = same(_dupBleLinksToClose([L('fab3', 517, { role: 'client' }), L('ce6e', 23, { role: 'server' })], { iAmLower: false }), ['fab3']);
+  r.no_reabre_si_conserva_servidor = _newClientWouldBeClosed('server', false) === true;
+  r.reabre_si_el_que_hay_es_cliente = _newClientWouldBeClosed('client', false) === false;
+  r.reabre_si_soy_el_menor = _newClientWouldBeClosed('server', true) === false;
+  r.sin_dato_no_bloquea = _newClientWouldBeClosed(undefined, false) === false && _newClientWouldBeClosed('server', undefined) === false;
 
   // 9. Robustez ante basura.
   r.sin_dato = same(_dupBleLinksToClose([]), []) && same(_dupBleLinksToClose(null), []) &&
