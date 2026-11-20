@@ -696,6 +696,14 @@
    "sintoma": "zombi (par:zombi) con un teléfono NUEVO (VICK, Samsung A04, 3116) agregado por Bluetooth a las 11:08",
    "categoria": "Bluetooth: enlaces repetidos y MTU 23 tras el desempate + ✓✓ nativos sin firma válida",
    "causa": "APP (3116), dos cosas. (1) Mismo patrón de las 11:00: el S24 lista DOS enlaces «server» de VICK (2bfc y 9d3e) y cierra uno (11:09:09 y otra vez 11:10:33); VICK ve status 8 y 133 al reconectar, «MTU 23», «Write fallo 6 s: mensaje descartado», re-ruteo a internet, y a las 11:10:47 el S24 da 4 pings sin respuesta: zombi (3 en el día). El texto 1 salió en 6,6 s con 4 reintentos y los dos siguientes tardaron 49 s en dar ✓✓. (2) NUEVO: a las 11:09:50 el S24 ignora 2 «Confirmación sin firma válida de nx0k598297» (las ✓✓ que VICK mandó con la app cerrada/relevándose, por la escucha nativa a las 11:09:49) y la ✓✓ buena solo llegó a las 11:09:52 al abrir la app: posible fallo al firmar en el nativo con un contacto recién agregado (identidad nueva 11:07:14, clave guardada 11:08:52/54). A investigar (COLA 16b). Bien: la 3251 funcionó en VICK («Corto 1 enlace entrante antes de cerrar el servidor») y agregar por cercanía tardó 10 s en aceptarse"
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "11:52",
+   "nx": "nx1n36c283 + nx1905c1ee (Austin, 3107 vieja) y los de 3116 (Roberto, VICK)",
+   "sintoma": "zombi ×5 en el día del S24 (3116)",
+   "categoria": "Bluetooth: enlaces repetidos y MTU 23 tras el desempate",
+   "causa": "APP (3116). Evidencia directa del criterio del desempate: 11:33:27 «enlaces: 3b9c:client:mtu517 9ede:server:mtu23» cierra el CLIENTE mtu517 y conserva el SERVIDOR mtu23; 11:33:57 «cb98:server:mtu23 87d6:client:mtu517» otra vez cierra el mtu517; 11:51:39 «6a77:client:mtu517 9ede:server:mtu23 746d:server:mtu517» cierra el cliente y el mtu23. Tras cada caso: «[MTU] … 23», «BT soltó un mensaje (muerto)», «4 pings sin respuesta» (11:33:53 VICK, 11:52:05 Austin). La 3257 evitó el bucle de REABRIR, pero el desempate (3027/3139: el papel manda sobre el MTU) sigue prefiriendo un servidor a MTU 23. HIPÓTESIS a comprobar con el registro nativo: el MTU de un enlace de SERVIDOR (creado por la reconexión automática del otro) puede quedar en el valor por omisión (23) porque nadie lo pide, o no se anota el onMtuChanged del servidor. Arreglo candidato (COLA 16): un enlace con MTU ≤ 23 nunca gana a uno con MTU > 23 (los dos lados lo ven igual si el intercambio fue real) + registrar en el nativo el MTU real de cada enlace de servidor. Reproducir en bledup.js. El zombi de Austin: Honor 3107 (vieja), sin peso"
   }
  ]
 }
