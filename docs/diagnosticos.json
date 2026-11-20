@@ -680,6 +680,14 @@
    "sintoma": "resumen_diario (build 3113, 19-11)",
    "categoria": "Resumen diario (informativo)",
    "causa": "Sin fallo de la app. 150 enviados, 139 con ✓✓ (92,7 %), 125 leídos; 108 recibidos; 16 de 25 chats; app a la vista 224 min con 15,9 %/h y 6,7 %/h en segundo plano; 1 634 MB de datos (1 244 por Wi-Fi). Los 11 sin ✓✓ son pendientes a contactos fuera de línea (Katy, Marcos…). Mismas cifras de Wi-Fi Direct/Bluetooth ya apuntadas. Aún en 3113: la 3116 trae la entrega por camino"
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "11:00",
+   "nx": "nx1n36c283 + nx0g6ef54e",
+   "sintoma": "zombi (par:zombi) entre el S24 y Roberto (Motorola), los dos en 3116",
+   "categoria": "Bluetooth: enlaces repetidos y MTU 23 tras el desempate",
+   "causa": "APP (3116). A las 10:57:21 cada teléfono cerró un enlace repetido DISTINTO: el S24 cerró a85d (server, mtu517; listaba dos enlaces «server» de Roberto, sin su cliente) y Roberto cerró ffd0 (server) y conservó 1354 (client). Diez segundos después los dos ven «MTU 23 (mínimo)» (10:57:31) y a las 11:00:17 el S24 da 4 pings sin respuesta: zombi. El desempate común de 3027 (cliente del ID menor) no aplica cuando uno de los dos lados lista dos enlaces del mismo papel; mismo patrón a las 10:58:27, 10:59:33 y 10:59:45 con Austin (3116). HIPÓTESIS sin confirmar: los dos cierran enlaces físicos distintos y el que queda es el viejo/MTU 23. Es la causa del punto 16 de docs/COLA.md. Aparte: Zhelowsky (3097, vieja) zombi: sin peso. 3116 ya muestra entrega por camino (internet 37 salieron, 36 con ✓✓, media 1,4 s, máx. 4 s), síntomas del día y temperatura"
   }
  ]
 }
