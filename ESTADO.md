@@ -52,6 +52,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   (30 s) no decía nada: el grupo se monta y se baja en cada envío (nombre y clave nuevos), por eso no «se mantiene». Cambios: la tarjeta termina con «Enviado por Wi-Fi Direct · X MB/s»; `big_file.route` ya no deja
   que un castigo por fallo reciente cierre WD a un archivo grande (`canReach(nx, true)`); cada envío grande anota «por WD» o POR QUÉ no (`_noteRoute`/`_whyNot(dev, bytes, true)`). Si el dueño quiere el grupo
   siempre arriba (opción A), falta el «grupo caliente» nativo (paso 2 de wifi_direct.js, hoy vacío). Pruebas: `wdmedidas.js` (M7), bigroute/bigsend/big/wdoff OK.
+- **PRUEBA DEL DUEÑO (noche del 20-11):** videollamada S24→S23 de 20–30 min con la 3116 en los DOS; en casa con Wi-Fi, más calor que la mañana (13 °C). Referencia WhatsApp (S24 Ultra, mañana): ≈ 0,31 %/min (19 %/h; él estima 25 %/h);
+  su recuerdo de NEXO: 1 % cada ~7 min (0,14 %/min) = entre 1/3 y 1/2 de WhatsApp. El diagnóstico de cada teléfono trae %/h, temperatura máxima y estado térmico: comparar con eso y anotar el ambiente en `docs/AREAS.md`.
+- **SIGUIENTE (tras el reinicio semanal del límite; el dueño iba al 96 % el 20-11):** 1) preparar archivo grande a ≈ 5 MB/s (cifrar a disco); 2) llamadas de grupo con batería/temperatura y «cronómetro de actividades»; 3) leer la prueba de la noche y
+  el diagnóstico con la 3116 (síntomas por día, entrega por camino, Wi-Fi Direct); 4) Bluetooth en el servicio fases 2–4; 5) decisión Wi-Fi Direct A/B con los números de batería; 6) mediana/p90 y capacidad en el tablero (`docs/REDES.md`).
+  Regla del dueño: lo que él reporta de pruebas reales es un HECHO (CLAUDE.md). Antes de subir: correr `tamano.js` e `i18n_audit.js`.
 - **FASES SIGUIENTES del Bluetooth (sin hacer):** 2) servidor GATT SIEMPRE en el servicio (también con la app abierta); 3) conexiones salientes y reenvío desde el servicio; 4) conexiones
   a demanda (tope ~7); luego auditoría posterior y modo vagón. Los «Foreground kill» de Motorola a la hora en punto no los arregla el código: detectarlos y explicárselo al usuario.
 - **Enlace repetido que se reabre (S24↔Austin), INVESTIGADO SIN ARREGLAR:** el enlace que el desempate cierra vuelve ~63 s después por `_seedNativeConnections` («Conexión existente
