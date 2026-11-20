@@ -105,7 +105,7 @@ object NetBgHome {
     // silent = su chat está abierto en un parpadeo a segundo plano (3172, lo decide la app viva); sin la app, false.
     // 3254: how = por dónde llegó (para el registro): «por internet» o «por Bluetooth sin la app» (BleSinApp)
     fun notifyMessage(ctx: Context, nx: String, name: String, msgId: String, isCall: Boolean, group: String, video: Boolean, silent: Boolean,
-                      groupName: (String) -> String?, how: String = "por internet") {
+                      how: String = "por internet", groupName: (String) -> String?) {
         val seen = !isCall && SeenMsgs.has(ctx, msgId)
         val gname = if (isCall || seen || silent) null else groupName(group)
         // 3219: chat o grupo silenciado (la lista la da la app; sin la app, la de lo guardado)

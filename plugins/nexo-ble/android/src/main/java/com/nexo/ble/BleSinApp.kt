@@ -126,7 +126,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
                 val name = if (info.from.isEmpty()) "NEXO" else (NetBgHome.peek()?.nameOf(info.from) ?: "NEXO")
                 if (info.call || info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, name, info.video, info.msgId); return }
                 if (info.from.isEmpty()) { MsgNotifier.get(ctx).message("nexo_jump", "NEXO", info.msgId, "", true); return }
-                NetBgHome.notifyMessage(ctx, info.from, name, info.msgId, false, info.group, info.video, false, { NetBgHome.groupNameOf(ctx, it) }, "por Bluetooth sin la app")
+                NetBgHome.notifyMessage(ctx, info.from, name, info.msgId, false, info.group, info.video, false, how = "por Bluetooth sin la app") { NetBgHome.groupNameOf(ctx, it) }
             } catch (e: Throwable) { nlog(ctx, "WARN", "aviso sin poner (${e.javaClass.simpleName})") }
         }
         override fun callEnded(from: String, offer: String) { try { MsgNotifier.get(ctx).cancelCallFor(from, offer) } catch (e: Throwable) { } }
