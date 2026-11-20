@@ -42,7 +42,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   otra dirección → bucle. Falta saber POR QUÉ el nativo lo sigue teniendo (¿cancelConnection no corta?, ¿el otro reconecta solo?): hace
   falta el registro NATIVO de esos segundos. 3255 (en la rama `ccr-45654f1b-mrooyc`, SIN subir a NEXOCHAT): solo registro (papel y MTU de
   cada enlace al cerrar; «cerrada por repetida hace N s» al recuperarla). Sube con la próxima APK. No arreglar a ciegas.
-- **Diagnósticos:** solo se revisan los de la última build; se apuntan en `docs/diagnosticos.json` (`node tests/sim/diag_stats.js`).
+- **20-11 22:05 (México): APK 3113 PUBLICADA, CI en verde** (3254 Bluetooth en el servicio fase 1, 3255 registro del enlace repetido). La 3112 solo
+  falló al compilar (`notifyMessage`). PRUEBA DEL DUEÑO pendiente: reiniciar un teléfono, desbloquearlo SIN abrir NEXO y desde otro cercano SIN
+  internet mandarle un texto: debe sonar el aviso y salir ✓✓; en su diagnóstico buscar «[BT_SINAPP] Bluetooth sin la app: anunciando y recibiendo».
+ los de la última build; se apuntan en `docs/diagnosticos.json` (`node tests/sim/diag_stats.js`).
   La tarea de cada hora (canal directo) ya filtra las viejas.
 - **Problemas grandes:** lista 🔴 en `docs/AREAS.md`. N.º 1 = app dormida/muerta que no vuelve sola (#87) → Bluetooth en el servicio nativo.
 - **Nombres:** dueño = S24 (nx1n36c283) · Cari = S23 Ultra (nx1e50c95d) · Roberto = Motorola edge 40 neo (nx0g6ef54e) · Austin = Honor
