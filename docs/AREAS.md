@@ -223,3 +223,5 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Nombre en la tienda: hay una marca «Nexo» registrada (PENDIENTES ⭐ punto 7). ×1 en el cálculo.
 - Dónde va la página del enlace de invitación (su GitHub, gratis, o dominio propio).
 - ¿Se acepta sola una invitación que trae un código válido mío? (PENDIENTES 15-11 noche).
+
+  - 20-11 (dueño, prueba real): ha hecho mucho tiempo total de videollamada con el S23 y «me sigue sobrando batería, es alucinante». Es un HECHO; 3114 lo medirá solo para tener la cifra, no para validarlo.

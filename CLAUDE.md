@@ -12,6 +12,10 @@ Wi-Fi Direct casi no se nota porque casi siempre hay Wi-Fi o datos; su caso es e
 funcionar y por eso se revisa. Al plantear una decisión: decir A/B con lo que vive el usuario en cada una (frecuente / de vez en cuando /
 una sola vez), qué prefiero yo y por qué; el usuario y que el mensaje llegue mandan sobre el ahorro.
 
+**LO QUE EL DUEÑO REPORTA DE PRUEBAS REALES ES UN HECHO (dueño 20-11: «si yo te digo algo, tómalo como verdadero; no tiene sentido que yo mienta»):**
+nunca cuestionarlo ni pedir «datos» para creerle (ej. batería/calor de una videollamada larga). Los diagnósticos sirven para EXPLICAR el porqué,
+encontrar fallos y medir cuánto, no para validarlo a él. Si algo no cuadra con el diagnóstico, se dice como pregunta o contraste, sin dudar de su prueba.
+
 **GASTO (dueño 20-11: su límite SEMANAL de uso es lo que frena; forma de trabajo «eficaz y eficiente»). Manda sobre lo de abajo:**
 - **Al empezar:** leer SOLO `ESTADO.md` (bloque TRASPASO, ≤ 60 líneas) y la lista 🔴 de `docs/AREAS.md`. `PROGRESO.md`, `PENDIENTES.md`,
   `ROBUSTEZ.md`, el privado y `docs/historial/` NO se leen enteros: se busca con grep lo que haga falta. El privado se clona solo si la
