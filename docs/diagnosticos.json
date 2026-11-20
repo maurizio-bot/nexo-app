@@ -672,6 +672,14 @@
    "sintoma": "mismo caso visto desde el vivo (sin red, solo Bluetooth/Wi-Fi Direct)",
    "categoria": "Wi-Fi Direct: medidas reales",
    "causa": "vivo Y03 con red ninguna: recibió 5,4 MB, 23 MB y 153 MB por Wi-Fi Direct (grupo creado en ~0,4 s tras la oferta); ‘archivos por Bluetooth recibidos 1, 18 KB/s’. Sin fallo de la app"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "05:04",
+   "nx": "nx1n36c283",
+   "sintoma": "resumen_diario (build 3113, 19-11)",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "Sin fallo de la app. 150 enviados, 139 con ✓✓ (92,7 %), 125 leídos; 108 recibidos; 16 de 25 chats; app a la vista 224 min con 15,9 %/h y 6,7 %/h en segundo plano; 1 634 MB de datos (1 244 por Wi-Fi). Los 11 sin ✓✓ son pendientes a contactos fuera de línea (Katy, Marcos…). Mismas cifras de Wi-Fi Direct/Bluetooth ya apuntadas. Aún en 3113: la 3116 trae la entrega por camino"
   }
  ]
 }
