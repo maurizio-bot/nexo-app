@@ -5,6 +5,20 @@ El dueño habla español: responder en español.
 **Horas siempre en hora de México** (Ciudad de México, UTC−6) al hablar con el dueño (16-11): nunca UTC ni otra zona; los
 diagnósticos ya traen la hora local, y lo de GitHub o los avisos programados (en UTC) se convierte antes de decírselo.
 
+**GASTO (dueño 20-11: su límite SEMANAL de uso es lo que frena; forma de trabajo «eficaz y eficiente»). Manda sobre lo de abajo:**
+- **Al empezar:** leer SOLO `ESTADO.md` (bloque TRASPASO, ≤ 60 líneas) y la lista 🔴 de `docs/AREAS.md`. `PROGRESO.md`, `PENDIENTES.md`,
+  `ROBUSTEZ.md`, el privado y `docs/historial/` NO se leen enteros: se busca con grep lo que haga falta. El privado se clona solo si la
+  tarea lo necesita (negocio, seguridad).
+- **Una sesión = un tema.** Al cerrarlo: TRASPASO al día, subir, y pedir sesión nueva (`/clear`). Nada de sesiones de un día entero.
+- **Una APK por tanda:** cada subida a NEXOCHAT cuesta ~85 min de CI; juntar los cambios y subir una vez. La batería completa la corre el
+  CI; aquí solo la prueba nueva y las cercanas al cambio.
+- **Diagnósticos:** solo los de la última build; versiones viejas ni se abren. Un diagnóstico sin fallo de la app = una línea al dueño.
+- **Sin reloj de ausencia** ni avisos programados salvo para revisar un CI (uno solo, a la hora en que debe terminar). Ayudantes en
+  paralelo solo para trabajo que de verdad se reparte.
+- **Modelo:** el grande (Fable/Opus) para protocolo, nativo, cifrado y depuración; lo mecánico (apuntar diagnósticos, NOVEDADES,
+  documentos) no lo necesita: si el dueño está en un modelo ligero, eso se hace ahí.
+- **Lo grande, justo después del reinicio semanal** del límite (el dueño lo ve en Ajustes → Uso); cerca del tope, solo lo barato.
+
 **LO PRIMERO: leer `nexo-private/negocio/PLAN.md`** (repositorio PRIVADO `maurizio-bot/nexo-private`, desde el 15-11: conectarlo a la
 sesión con add_repo y clonarlo en `/home/user/nexo-private`; ahí van el plan, lo de negocio y las auditorías de seguridad, que NO
 deben volver al público) (plan maestro con etapas, fechas y la meta EDC México feb 2027; el dueño delega en Claude el orden y el ritmo) **y `ESTADO.md`** (en la raíz) — es el resumen vivo del estado y el punto de encuentro entre el
