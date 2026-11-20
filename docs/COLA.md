@@ -31,7 +31,7 @@ es lo que el dueño pidió el 20-11 y cabe en una sesión corta antes o después
 ## 3. Sesión «Bluetooth: pulido» (velocidad y MTU)
 13. [m] MTU 23 (vivo Y03, Katy): usar L2CAP para lo grande o preferir el enlace donde NEXO es cliente; contar cuántas veces entra MTU 23 por contacto y modelo.
 14. [c] Bluetooth ≈ 17 KB/s para archivos medianos sin Wi-Fi: comprobar si se usa L2CAP.
-15. [c] Escrituras rechazadas «ocupado» (201): esperar el callback en vez de reintentar 20 veces por segundo (caso Katy).
+15. [c] Escrituras rechazadas «ocupado» (201): esperar el callback en vez de reintentar 20 veces por segundo (caso Katy). Segunda prueba 20-11 14:09 (Motorola→S24): ≥ 20 s de 201 seguidos en el enlace conservado, reintento con DEFAULT cada ~150 ms; si el callback no llega en pocos s, cerrar y reabrir ese enlace.
 16. [m] Enlace repetido que se reabre (S24↔Austin): falta registro NATIVO de esos segundos.
     MÁS 20-11 11:33–11:52 (3116): el desempate cierra el enlace de CLIENTE a MTU 517 y conserva el de SERVIDOR a MTU 23 (3 casos con Roberto y VICK) y de ahí salen «MTU 23», mensaje descartado y zombi (5 en el día). Arreglo candidato: MTU ≤ 23 nunca gana a MTU > 23 en `_dupBleLinksToClose` (prueba en `bledup.js`) y anotar en el nativo el MTU real del servidor; comprobar con el dueño que los dos lados ven el mismo MTU del mismo enlace.
     NUEVO 20-11 11:00 (3116, S24↔Roberto y S24↔Austin): cada lado cierra un enlace repetido DISTINTO (el S24 lista dos enlaces «server» del mismo contacto) y 10 s después sale MTU 23 y zombi: el desempate común no cubre «dos del mismo papel». Reproducir en `bledup.js` con roles iguales y arreglar el desempate (mismo enlace físico en los dos lados, p. ej. por dirección o por el que recibió algo más reciente).
@@ -67,4 +67,5 @@ la abre con permisos (los avisos de admin solo valen si los manda alguien de la 
 ## 5. Después
 24. [m] Datos repetidos de los relés (55 % de los eventos) y batería en segundo plano (S24 7–9 %/h); margen al reabrir en frío.
 25. [m] Llamadas: eco en grupo, gasto de datos por relés, «sin imagen propia al contestar desde el aviso» (a investigar).
+27. [m] Wi-Fi SIN internet (20-11 14:07–14:09, S24 y Motorola): 2 min 17 s sin camino por internet hasta que Android cambió a datos. Si ningún relé conecta por Wi-Fi, pedir la red móvil explícitamente (requestNetwork cellular) y usarla para los relés; probar en el simulador con relés caídos solo por Wi-Fi. Vive: de vez en cuando (router sin WAN, Wi-Fi de paga/cautivo).
 26. [g] Publicación en Google Play: Android más reciente (targetSdk 35/36), actualizador propio de la tienda, permisos, privacidad, firma, prueba cerrada de 14 días; novedades en los 5 idiomas al acercarse.

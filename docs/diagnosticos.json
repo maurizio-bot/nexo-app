@@ -720,6 +720,14 @@
    "sintoma": "zombi (Nubia)",
    "categoria": "Bluetooth: par sin contestar",
    "causa": "Zhelowsky es versión vieja («build ?»): sin peso, solo apuntado. Su enlace dejó de contestar pings a las 12:26:22. Aparte, en 3116: Wi-Fi local con el S24 dormido tardó 55,8 s en quedar comprobado (el toque salió a los 4,9 s); mientras, los mensajes salieron por Bluetooth con 2 reintentos (186 ms–2,1 s). Nubia tuvo Bluetooth apagado 12:18–12:22 y ahorro de batería activo (la app se lo avisa)"
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "14:10",
+   "nx": "nx0g6ef54e (Roberto, Motorola edge 40 neo) ↔ nx1n36c283 (S24), ambos 3116",
+   "sintoma": "zombi ×10 del día en el S24; par:zombi pedido al Motorola",
+   "categoria": "Bluetooth: escrituras «ocupado» 201 / Wi-Fi sin internet / receptor dormido",
+   "causa": "APP (3116), tres cosas. (1) En el Motorola, el enlace que el dedup CONSERVÓ (b3c1, cliente→S24) rechaza todas las escrituras con status=201 durante ≥ 20 s: «NO_RESPONSE fallo status=201, intentando DEFAULT» cada ~150 ms (cientos de líneas) y «Write fallo ~6 s: mensaje descartado» (14:09:53, 14:10:04); la lectura sí llega (72 y 108 B), por eso el S24 ve «4 pings sin respuesta» 14:10:18 y el Motorola «BT soltó un mensaje (muerto): re-ruteo a net». Es el caso COLA 15 con prueba: el reintento con DEFAULT mientras otra escritura sigue pendiente mantiene el BluetoothGatt «ocupado»; hay que esperar el callback y, si no llega en pocos s, cerrar y reabrir ese enlace. El dedup en sí cerró bien el repetido en ambos lados (S24 cerró 0d91 a 14:09:58; el Motorola 9976 a 14:10:01: mismo enlace); de nuevo el S24 aparece con dos direcciones (b3c1/9976). (2) Receptor dormido: el archivo FENIX de 74 KB del S24 al Motorola (MTU 517, 135 trozos) esperó 28 s (ventana a 14:08:13) porque la app del Motorola estaba en segundo plano; al volver a la vista (14:08:21) terminó en 1,5 s: el enlace estaba bien, faltaba quien conteste los ACK = pendiente «Bluetooth en el servicio nativo». (3) NUEVO: Wi-Fi SIN internet. De 14:07:11 a 14:09:28 el S24 no tuvo ningún camino por internet («Sin relés», los 4 relés + offchain.pub sin conectar) hasta que Android pasó de Wi-Fi a datos («Cambio de red: Wi-Fi → datos móviles», relés listos en 1,3 s); el Motorola igual (14:08:22). Resultado: foto al S23 en espera 2 min 17 s (14:07:36 → 14:09:34) y «internet al abrir el chat listo en 34,9 s». Candidato (COLA 27): si no conecta ningún relé por Wi-Fi, pedir la red móvil explícitamente (ConnectivityManager.requestNetwork TRANSPORT_CELLULAR) en vez de esperar a que Android cambie; es un camino más, no quita ninguno. Medidas: Motorola en segundo plano 3,5 %/h (6 contactos) frente al S24 8,5 %/h (26 contactos, 3,3 MB de relés): a mirar en el tablero. Registro de 14:07: el S24 bajó 190 sobres de golpe al volver a la vista"
   }
  ]
 }
