@@ -688,6 +688,14 @@
    "sintoma": "zombi (par:zombi) entre el S24 y Roberto (Motorola), los dos en 3116",
    "categoria": "Bluetooth: enlaces repetidos y MTU 23 tras el desempate",
    "causa": "APP (3116). A las 10:57:21 cada teléfono cerró un enlace repetido DISTINTO: el S24 cerró a85d (server, mtu517; listaba dos enlaces «server» de Roberto, sin su cliente) y Roberto cerró ffd0 (server) y conservó 1354 (client). Diez segundos después los dos ven «MTU 23 (mínimo)» (10:57:31) y a las 11:00:17 el S24 da 4 pings sin respuesta: zombi. El desempate común de 3027 (cliente del ID menor) no aplica cuando uno de los dos lados lista dos enlaces del mismo papel; mismo patrón a las 10:58:27, 10:59:33 y 10:59:45 con Austin (3116). HIPÓTESIS sin confirmar: los dos cierran enlaces físicos distintos y el que queda es el viejo/MTU 23. Es la causa del punto 16 de docs/COLA.md. Aparte: Zhelowsky (3097, vieja) zombi: sin peso. 3116 ya muestra entrega por camino (internet 37 salieron, 36 con ✓✓, media 1,4 s, máx. 4 s), síntomas del día y temperatura"
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "11:10",
+   "nx": "nx1n36c283 + nx0k598297",
+   "sintoma": "zombi (par:zombi) con un teléfono NUEVO (VICK, Samsung A04, 3116) agregado por Bluetooth a las 11:08",
+   "categoria": "Bluetooth: enlaces repetidos y MTU 23 tras el desempate + ✓✓ nativos sin firma válida",
+   "causa": "APP (3116), dos cosas. (1) Mismo patrón de las 11:00: el S24 lista DOS enlaces «server» de VICK (2bfc y 9d3e) y cierra uno (11:09:09 y otra vez 11:10:33); VICK ve status 8 y 133 al reconectar, «MTU 23», «Write fallo 6 s: mensaje descartado», re-ruteo a internet, y a las 11:10:47 el S24 da 4 pings sin respuesta: zombi (3 en el día). El texto 1 salió en 6,6 s con 4 reintentos y los dos siguientes tardaron 49 s en dar ✓✓. (2) NUEVO: a las 11:09:50 el S24 ignora 2 «Confirmación sin firma válida de nx0k598297» (las ✓✓ que VICK mandó con la app cerrada/relevándose, por la escucha nativa a las 11:09:49) y la ✓✓ buena solo llegó a las 11:09:52 al abrir la app: posible fallo al firmar en el nativo con un contacto recién agregado (identidad nueva 11:07:14, clave guardada 11:08:52/54). A investigar (COLA 16b). Bien: la 3251 funcionó en VICK («Corto 1 enlace entrante antes de cerrar el servidor») y agregar por cercanía tardó 10 s en aceptarse"
   }
  ]
 }

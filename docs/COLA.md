@@ -34,6 +34,7 @@ es lo que el dueño pidió el 20-11 y cabe en una sesión corta antes o después
 15. [c] Escrituras rechazadas «ocupado» (201): esperar el callback en vez de reintentar 20 veces por segundo (caso Katy).
 16. [m] Enlace repetido que se reabre (S24↔Austin): falta registro NATIVO de esos segundos.
     NUEVO 20-11 11:00 (3116, S24↔Roberto y S24↔Austin): cada lado cierra un enlace repetido DISTINTO (el S24 lista dos enlaces «server» del mismo contacto) y 10 s después sale MTU 23 y zombi: el desempate común no cubre «dos del mismo papel». Reproducir en `bledup.js` con roles iguales y arreglar el desempate (mismo enlace físico en los dos lados, p. ej. por dirección o por el que recibió algo más reciente).
+16b. [m] ✓✓ nativas sin firma válida con un contacto recién agregado (20-11 11:09:50, S24↔VICK): el S24 ignora las confirmaciones que manda el nativo con la app cerrada; la buena llega al abrir la app (49 s de retraso). Revisar con qué clave firma el nativo (`ackSign` / NetBgHome) y cuándo la recibe tras agregar un contacto.
 17. [m] Mensaje atorado durante una videollamada directa (S23→S24: 9 trozos, ≥ 17 min).
 18. [m] Videollamada tras cambio de red: errores de decodificación y hueco de ~25 s.
 
