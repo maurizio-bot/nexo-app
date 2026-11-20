@@ -225,3 +225,4 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - ¿Se acepta sola una invitación que trae un código válido mío? (PENDIENTES 15-11 noche).
 
   - 20-11 (dueño, prueba real): ha hecho mucho tiempo total de videollamada con el S23 y «me sigue sobrando batería, es alucinante». Es un HECHO; 3114 lo medirá solo para tener la cifra, no para validarlo.
+  - 20-11 (dueño, referencia WhatsApp): videollamada de WhatsApp de ~1 h con capturas: 6:43→82 %, 6:45→81, 6:49→80, 6:53→79, 6:56→78, 6:59→77 (el contador de la llamada marcaba 49:04 a las 6:50 y 58:04 a las 6:59) = 5 puntos en 16 min ≈ 19 %/h (15–22 por el redondeo de la batería); el dueño lo estima a ojo en ~25 %/h en la hora. Teléfono sin anotar. Base para comparar con NEXO (3116 calcula el %/h solo en cada llamada).
