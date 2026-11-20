@@ -384,6 +384,14 @@
    "sintoma": "resumen_diario",
    "categoria": "Resumen diario (informativo)",
    "causa": "no es un fallo (tablet 3105)"
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "05:06",
+   "nx": "nx1n36c283",
+   "sintoma": "pendiente_viejo (nx1a4471d8 msg1794341005789x3hws 13863 min, enlace internet) · build 3116",
+   "categoria": "Adjunto pendiente que no se reenvía (a investigar) + enlace viejo tras actualizar",
+   "causa": "(1) DESPERTADOR: «[WAKE] toque a nx126df3f4: salió (el enviador no deja leer su respuesta)» → el arreglo 3248 funciona: el toque ya sale; falta saber si Katy despertó. (2) Archivo de 25 909 KB para Giacomo (nx1a4471d8) pendiente 9,6 días: al reenviar, «se cargan 1 adjunto(s) del disco» pero «Adjunto pendiente sin sus datos (aún no se lee del teléfono): queda ⏳ y se reintenta» (carrera: reenvía antes de que termine de leer el disco). (3) Tras actualizar 3113→3116 (05:04), «Conexión existente recuperada al arrancar: 57:4A… (client/outgoing)» al Vivo: ~300 escrituras «NO_RESPONSE fallo status=201», mensaje descartado 6 s, re-ruteo a internet, el enlace cae a los 30 s (status=22): 3.ª vez que se ve el patrón «enlace que sobrevive al reinicio de la app» (Yael 18-11, Vivo 16-11)"
   }
  ]
 }
