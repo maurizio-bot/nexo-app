@@ -624,6 +624,30 @@
    "sintoma": "zombi (nx1905c1ee)",
    "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
    "causa": "Austin (3107) con OPTIMIZACIÓN DE BATERÍA ACTIVA (ajuste del teléfono; la app ya le muestra el aviso): su app dormida no confirma Fénix ni pings → zombi. Además en el S24 (3109): el desempate cierra un enlace repetido con Austin cada 1–2 min y vuelve a aparecer (mismo pendiente del 14:23); y con datos móviles los 4 relés se dieron por muertos 2 veces (14:53:27 y 14:53:56, 9 s sin internet): el texto nazu7aq4 al S23 se marcó «fallido» a las 14:54:04 y se entregó 1 s después (A REVISAR: no marcar fallido mientras los relés reconectan). Nada perdido"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "21:48",
+   "nx": "nx1n36c283",
+   "sintoma": "manual (videollamada con el S23)",
+   "categoria": "Llamadas: vídeo con cortes al cambiar de red el otro",
+   "causa": "S24 3111. Videollamada de 64 min con el S23 por internet directo; el S23 (datos móviles) cambió de red ~10 veces y tras cada cambio hubo «Decoding error: se rehace» (77 en la 1.ª llamada) y un hueco de ~25 s sin imagen (21:21:37–21:22:03). La llamada terminó «lost» a las 21:29:09 porque Cari quitó NEXO de recientes (REMOVE TASK 21:29 en su diagnóstico) y volvió a llamar a los 14 s. Aparte: Wi-Fi con el Vivo abre/cierra cada 3 min toda la hora (su app dormida, ya conocido 16-11); 2 paquetes de puente reintentándose cada 10 min; mensaje msg1795145680108wq7l8dcen del S23 llega por trozos y da «Assembly timeout» (21:36 y 21:47). Batería en segundo plano 6,5 %/h (antes 8,8–9,6)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "21:34",
+   "nx": "nx1e50c95d",
+   "sintoma": "zombi (nx126df3f4)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "Cari (S23 3111) con Katy (Honor, build ?): la app de Katy no contesta pings ni confirma (dormida por el Honor). Cari: AHORRO DE BATERÍA activo y NEXO quitada de recientes 10 veces en 2 días (ajuste/uso del teléfono). A REVISAR (app): el S23 no oía al S24 por internet («internet fuera, oído hace 312–1014 s») mientras estaban en videollamada, y el texto msg1795145680108wq7l8dcen (9 trozos) al S24 quedó atorado ≥ 17 min («Buzón no disponible: Abortado» 21:44:50)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "21:46",
+   "nx": "nx1e50c95d",
+   "sintoma": "enlace_abre_cierra (nx126df3f4, 6 desconexiones en 10 min)",
+   "categoria": "Bluetooth: enlaces que se abren y cierran",
+   "causa": "mismo caso: Katy acepta la conexión Bluetooth (su nativo vivo) pero su app no contesta → el S23 la corta por zombi y reconecta cada 1–2 min. Su texto a Katy queda pendiente (no perdido)"
   }
  ]
 }
