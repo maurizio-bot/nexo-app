@@ -21,38 +21,31 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
-- **Forma de trabajo (dueño 20-11, «eficaz y eficiente», su límite SEMANAL es lo que frena; plan Max, no sube a Ultra):**
-  ver CLAUDE.md «Gasto». Leer SOLO este bloque + la lista 🔴 de `docs/AREAS.md`; lo demás, a demanda con grep.
-- **Publicado:** APK 3111 (3251 servidor GATT al abrir, 3252 «fallido» momentáneo, 3253 solo diagnósticos de la última versión).
-  El dueño debe actualizar SU teléfono primero (el filtro usa su build).
-- **EN CI (20-11): 3254 = Bluetooth en el servicio, FASE 1** (#87): con NEXO vuelta sola (reinicio, actualización, cierre del sistema, toque
-  FCM) y sin la app en el proceso, el servicio anuncia (NEXO ID y clave del código rotativo guardados CIFRADOS, `nexo_ble_sinapp.json`) y
-  abre su servidor GATT: buzón + ✓✓ firmado + aviso + pong + «quién soy» (`SinAppCore.kt`, puro, 9 pruebas JVM `SinAppCoreTest`;
-  `BleSinApp.kt` = servidor y avisos; `BleService.startSinApp`; relevo al abrir la app en `takeOverFromClosed` → `BleSinApp.stopForApp`).
-  El Kotlin de Android (BleSinApp/BleService) NO se compiló aquí: si el CI falla al compilar, corregir. En el registro nativo sale
-  «[BT_SINAPP] Bluetooth sin la app: anunciando y recibiendo (tras …)». PRUEBA DEL DUEÑO: reiniciar un teléfono (sin abrir NEXO),
-  desbloquearlo, y desde otro cercano SIN internet mandarle un texto: debe sonar el aviso y quedar ✓✓; al abrir, el mensaje está.
-  FASES SIGUIENTES (sin hacer): 2) que el servidor GATT viva SIEMPRE en el servicio (también con la app abierta: sin relevos);
-  3) conexiones salientes y reenvío de pendientes desde el servicio; 4) conexiones a demanda (tope ~7). Ojo: los «Foreground kill» de
-  Motorola a la hora en punto parecen un cierre forzoso (ni alarma ni FCM la reviven: Roberto 4 h): eso no lo arregla el código, falta
-  detectarlo y explicárselo al usuario.
-- **Enlace repetido que se reabre (S24↔Austin), INVESTIGADO SIN ARREGLAR (20-11):** el escaneo no es (ya tiene guarda). Lo visto: el enlace
-  que el desempate cierra (p. ej. 54c9 a las 14:52:04) vuelve ~63 s después por `_seedNativeConnections` («Conexión existente recuperada
-  al arrancar»): el nativo lo sigue listando tras `disconnectDevice({server:true})`, entra sin MTU conocido (23) y eso deja reconectar la
-  otra dirección → bucle. Falta saber POR QUÉ el nativo lo sigue teniendo (¿cancelConnection no corta?, ¿el otro reconecta solo?): hace
-  falta el registro NATIVO de esos segundos. 3255 (en la rama `ccr-45654f1b-mrooyc`, SIN subir a NEXOCHAT): solo registro (papel y MTU de
-  cada enlace al cerrar; «cerrada por repetida hace N s» al recuperarla). Sube con la próxima APK. No arreglar a ciegas.
-- **20-11 22:05 (México): APK 3113 PUBLICADA, CI en verde** (3254 Bluetooth en el servicio fase 1, 3255 registro del enlace repetido). La 3112 solo
-  falló al compilar (`notifyMessage`). PRUEBA DEL DUEÑO pendiente: reiniciar un teléfono, desbloquearlo SIN abrir NEXO y desde otro cercano SIN
-  internet mandarle un texto: debe sonar el aviso y salir ✓✓; en su diagnóstico buscar «[BT_SINAPP] Bluetooth sin la app: anunciando y recibiendo».
- los de la última build; se apuntan en `docs/diagnosticos.json` (`node tests/sim/diag_stats.js`).
-  La tarea de cada hora (canal directo) ya filtra las viejas.
-- **Problemas grandes:** lista 🔴 en `docs/AREAS.md`. N.º 1 = app dormida/muerta que no vuelve sola (#87) → Bluetooth en el servicio nativo.
-- **Nombres:** dueño = S24 (nx1n36c283) · Cari = S23 Ultra (nx1e50c95d) · Roberto = Motorola edge 40 neo (nx0g6ef54e) · Austin = Honor
-  (nx1905c1ee) · Marcos (nx01992876) · Zhelowsky (nx0x4029e6) · Yael = Redmi (nx16386482) · Katy = Honor (nx126df3f4) · Vivo Y03
-  (nx09acdb61) · tablet A7 Lite (nx1e29ab2f).
-- **Reglas vivas:** español, breve, horas de México; nunca esperar permiso para seguir; reproducir en `tests/sim` antes de arreglar;
-  NOVEDADES solo en español; no compilar Kotlin aquí (lo compila el CI, ~85 min por APK: juntar cambios en UNA subida).
+- **Forma de trabajo (dueño 20-11; su límite SEMANAL es lo que frena, plan Max, no sube a Ultra):** ver CLAUDE.md «GASTO». Leer SOLO este bloque + la
+  lista 🔴 de `docs/AREAS.md`; lo demás, con grep. Una sesión = un tema; una APK por tanda; sin reloj de ausencia.
+- **PRINCIPIO (CLAUDE.md):** NEXO = TODOS los caminos; nunca recortar caminos. Wi-Fi Direct: pendiente reproducir «No se pudo crear el grupo» en `tests/sim` y decidir
+  con el dueño A (pasar siempre a Wi-Fi Direct con Bluetooth) o B (dejarlo listo y usarlo con tráfico pesado); preferencia de Claude: B.
+- **PUBLICADO:** APK 3111 (3251–3253) y **3113 (20-11 22:05 México): 3254 Bluetooth en el servicio FASE 1** (con NEXO vuelta sola —reinicio, actualización, cierre del sistema,
+  toque FCM— el servicio anuncia y recibe por Bluetooth sin la app: `SinAppCore.kt` puro con 9 pruebas JVM, `BleSinApp.kt`, `BleService.startSinApp`, relevo en
+  `takeOverFromClosed`; NEXO ID y clave rotativa guardados CIFRADOS en `nexo_ble_sinapp.json`) + 3255 (registro del enlace repetido que vuelve).
+  **PRUEBA DEL DUEÑO PENDIENTE:** reiniciar un teléfono, desbloquearlo SIN abrir NEXO y desde otro cercano SIN internet mandarle un texto: debe sonar el aviso y salir ✓✓;
+  en su diagnóstico: «[BT_SINAPP] Bluetooth sin la app: anunciando y recibiendo». El dueño debe actualizar SU teléfono primero (el filtro de diagnósticos usa su build).
+- **EN CI: 3114 = 3256** (pedido del dueño): el diagnóstico mide solo batería, temperatura y tiempo. `src/ui/call_power.js`: en cada llamada, líneas «[CALL] Batería y temperatura …»
+  al empezar, cada minuto y al colgar (puntos perdidos, %/h, temperatura inicial/final/máx., estado térmico); la línea del teléfono lleva la temperatura actual y el resumen del día
+  la máxima. Nativo: `getPowerStatus` da `temp` y `thermal` (PluginLog.kt; no compilado aquí). Prueba `callpower.js`. FALTA: lo mismo en llamadas de GRUPO (`group_call.js`) y un
+  «cronómetro de actividades» (envío de archivo, foto…). Al salir bien: NOVEDADES a historial como APK 3114.
+- **FASES SIGUIENTES del Bluetooth (sin hacer):** 2) servidor GATT SIEMPRE en el servicio (también con la app abierta); 3) conexiones salientes y reenvío desde el servicio; 4) conexiones
+  a demanda (tope ~7); luego auditoría posterior y modo vagón. Los «Foreground kill» de Motorola a la hora en punto no los arregla el código: detectarlos y explicárselo al usuario.
+- **Enlace repetido que se reabre (S24↔Austin), INVESTIGADO SIN ARREGLAR:** el enlace que el desempate cierra vuelve ~63 s después por `_seedNativeConnections` («Conexión existente
+  recuperada al arrancar»), el nativo lo sigue listando tras `disconnectDevice({server:true})`, entra sin MTU y deja reconectar la otra dirección. Falta saber por qué lo sigue teniendo:
+  hace falta el registro NATIVO de esos segundos (3255 ya añade papel/MTU al cerrar y «cerrada hace N s»). No arreglar a ciegas.
+- **Diagnósticos:** solo los de la última build (3253); se apuntan en `docs/diagnosticos.json` (`node tests/sim/diag_stats.js`). Abiertos de la app: mensaje atorado durante una
+  videollamada (S23→S24 21:28), datos repetidos al abrir en frío, enlace repetido; costumbres del teléfono: quitar NEXO de recientes corta la recepción (Cari), Honor/Vivo congelan la app.
+- **Videollamada del dueño 19-11 (83 min, caminando, «de las mejores»):** anotada en AREAS (Llamadas); batería/calor son percepción: medirlos con 3256.
+- **Nombres:** dueño = S24 (nx1n36c283) · Cari = S23 Ultra (nx1e50c95d) · Roberto = Motorola (nx0g6ef54e) · Austin = Honor (nx1905c1ee) · Marcos (nx01992876) · Zhelowsky (nx0x4029e6) ·
+  Yael = Redmi (nx16386482) · Katy = Honor (nx126df3f4) · Vivo Y03 (nx09acdb61) · tablet A7 Lite (nx1e29ab2f).
+- **Reglas vivas:** español, breve, horas de México; reproducir en `tests/sim` antes de arreglar; NOVEDADES solo en español; el Kotlin no se compila aquí (lo compila el CI, ~85 min):
+  juntar cambios en UNA subida; decisiones al dueño en forma A/B con lo que vive el usuario.
 - Historial anterior: `docs/historial/ESTADO_hasta_2026-11-19.md`.
 
 ## ✅ Trabajo del teléfono — YA INTEGRADO
