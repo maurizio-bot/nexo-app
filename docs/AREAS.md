@@ -137,6 +137,11 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 **En prueba del dueño**
 - APK 3075: agregar a una videollamada sin cortar el vídeo (3152), llamada minimizada en una barra y de voz a vídeo sin colgar (3155), aguanta el cambio de Wi-Fi a datos (3156), «Pantalla de …» en la de grupo (3157). ×1
 - Dos llamadas a la vez: espera, «Mensaje», pantalla dividida (3101–3104). ×2
+- **Videollamada larga del dueño (19-11, S24↔S23, 3111; ~83 min en dos tramos con un corte de 14 s):** el dueño: «una de las mejores videollamadas que he tenido»;
+  el S23 salió de casa, caminó con mala señal, fue a la tienda y volvió; video muy bueno (casi sin pixelado ni trabas), estable todo el rato, y los dos
+  teléfonos ni se calentaron ni gastaron batería «como WhatsApp, otro mundo» (PERCEPCIÓN, no medido). Los registros confirman: 83 min, ~10 cambios de red del S23 (Wi-Fi ↔ datos móviles, ~97 MB en 12 min por datos),
+  vídeo que se rehace tras cada cambio (hueco máx. ~25 s) y audio sin caídas. NO confirman la batería: el S23 bajó de 67 % a 61 % en ~12 min (ahorro de batería activo). Por medir:
+  batería de ambos al empezar/terminar y una de WhatsApp igual de larga; si sale a favor, es material de lanzamiento («gasta menos que WhatsApp»).
 - Compartir pantalla, partes 1–3 (3054–3056). ×2
 - Tono «tuuu» del teléfono al llamar (3134, APK 3071). ×1
 - Llamada y videollamada con el mismo estilo, también la de grupo (3141, rama). ×1
