@@ -647,7 +647,7 @@
    "nx": "nx1e50c95d",
    "sintoma": "enlace_abre_cierra (nx126df3f4, 6 desconexiones en 10 min)",
    "categoria": "Bluetooth: enlaces que se abren y cierran",
-   "causa": "mismo caso: Katy acepta la conexión Bluetooth (su nativo vivo) pero su app no contesta → el S23 la corta por zombi y reconecta cada 1–2 min. Su texto a Katy queda pendiente (no perdido)"
+   "causa": "mismo caso: Katy acepta la conexión Bluetooth (su nativo vivo) pero su app no contesta → el S23 la corta por zombi y reconecta cada 1–2 min. Su texto a Katy queda pendiente (no perdido) · 21:47 (misma copia, build 3111): en el registro nativo, escrituras al enlace de Katy fallan con status=201 (GATT busy) ~20 veces/s durante ~6 s antes de descartar el mensaje; posible mejora (app): esperar el callback en vez de reintentar sin pausa. Ya contado: no es un caso nuevo"
   }
  ]
 }
