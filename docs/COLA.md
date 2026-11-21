@@ -47,22 +47,24 @@ es lo que el dueño pidió el 20-11 y cabe en una sesión corta antes o después
 22. [m] App dormida o muerta por el sistema (#87): detectar «Foreground kill» (Motorola) y ahorro de batería y explicárselo al usuario; aviso «tu teléfono silencia NEXO»; avisar que quitar NEXO de recientes corta la recepción.
 23. [m] Entrega con la app CERRADA y la pantalla APAGADA (no suena ni avisa, ×3) — revisar tras la fase 1.
 
-## 4b. Sesión «Grupos: administración» (pedido del dueño 20-11; revisado el 20-11, solo lectura del código)
-Hoy existe: crear grupo (nombre + elegir miembros, hasta 32), abrir, ocultar el texto en los avisos, SALIR del grupo, renombrar desde la cabecera (cualquier miembro). El grupo guarda `createdBy` pero NO se usa para permisos.
-La lista de miembros es FIJA desde que se crea (auditoría ronda 2774, `groups.js` `receive`: un sobre no reescribe la lista; la única baja es salir). No existe: agregar personas después, expulsar, admins, «solo admins escriben», foto del grupo,
-fondo del grupo (el fondo por contacto existe en `wallpaper.js` —`setChatWallpaperFor(nx, imagen)`—, la foto por contacto en `avatar.js`; ninguno se ofrece para grupos).
-Cada mensaje va cifrado a cada miembro por su chat (no hay clave de grupo): expulsar = dejar de mandarle; no hace falta rotar claves. DECISIÓN DE SEGURIDAD que es del dueño: la auditoría fijó la lista a propósito; el modelo nuevo
-la abre con permisos (los avisos de admin solo valen si los manda alguien de la lista de admins que cada teléfono guarda, con versión del estado del grupo para resolver choques). Detalle a decidir con él: ver «A/B» abajo.
-- G1 [m] Pantalla «Ajustes del grupo» (hoy solo hay un menú con 3 botones): miembros con su rol, botón «Agregar personas», expulsar, hacer/quitar admin, interruptor «solo admins escriben», foto, fondo, salir.
-- G2 [m] Modelo de permisos y estado versionado del grupo: `admins` (al inicio solo `createdBy`), `onlyAdmins`, `v`; reglas de recepción; los grupos que ya existen pasan a tener como admin a quien los creó; aviso «X hizo admin a Y».
-- G3 [m] Agregar personas: invitación con el estado completo y las tarjetas de claves (el nuevo no ve el historial); los demás actualizan su lista; tope 32; llamadas de grupo en curso no cambian.
-- G4 [m] Expulsar: el expulsado recibe «te sacaron del grupo» y el grupo queda cerrado en su teléfono; los demás dejan de mandarle; también «quitar admin».
-- G5 [c] «Solo admins escriben»: el receptor descarta lo que no viene de un admin y el emisor ve la barra de escribir bloqueada con el motivo.
-- G6 [m] Foto del grupo: solo admins la cambian; viaja como la foto de perfil (chica) con su huella y la piden los miembros nuevos (reusar `avatar.js` con el id del grupo).
-- G7 [c] Fondo del grupo LOCAL de cada teléfono (reusar `wallpaper.js` con el id del grupo; falta la opción en el menú). [m] Opcional: fondo COMPARTIDO elegido por un admin (imagen grande: puntero por el buzón de archivos).
-- G8 [m] Pruebas: ampliar `tests/sim/groups.js` y una nueva (`gruposadmin.js`): permisos, forja de avisos por un no admin, orden/pérdida de avisos (versión), expulsado que sigue escribiendo, nuevo miembro, migración de grupos viejos.
-- A/B para el dueño: (1) renombrar y cambiar la foto: SOLO admins (como WhatsApp con «solo admins edita») o cualquiera (hoy renombrar es de cualquiera); recomendado: solo admins, con interruptor. (2) fondo: LOCAL de cada quien (se vive siempre,
-  barato; recomendado) o COMPARTIDO por un admin (de vez en cuando; más pesado). (3) ¿varios admins desde el principio o solo el creador hasta que él haga admin a otro? (recomendado: varios).
+## 4b. Sesión «Grupos: administración» (pedido y especificado por el dueño el 20-11)
+Hoy: crear grupo, abrir, ocultar texto en avisos, salir, renombrar (cualquier miembro). `createdBy` no se usa para permisos. La lista de miembros es fija desde la creación (auditoría 2774: abrirla con permisos es decisión de seguridad del dueño).
+Lo que pidió el dueño:
+- Panel «Ajustes del grupo», solo para el creador y los admins designados. Interruptor «Solo admins escriben»; si se prende, «Solo admins agregan» se prende solo. «Designar administradores»: lista de todos los miembros con buscador por nombre.
+- Un admin tiene las mismas funciones que el creador, excepto quitar al creador del grupo.
+- Foto del grupo: la cambian el creador y los admins.
+- Fondo del grupo: lo decide el creador (y los admins designados), con los mismos botones de un chat normal: cambiarlo y compartirlo con el grupo.
+- Sin interruptor (grupo de colegas): todos escriben y todos agregan.
+Tareas:
+- G1 [m] Panel «Ajustes del grupo»: interruptores, «Designar administradores» con buscador, foto, fondo, expulsar, salir.
+- G2 [m] Modelo: `admins` (al inicio solo el creador), `onlyAdminsWrite`, `onlyAdminsAdd`, `v` (versión del estado). Grupos viejos: el creador queda como único admin. Aviso «X hizo admin a Y».
+- G3 [m] Agregar personas (admins, o solo el creador si el interruptor lo marca): invitación con el estado completo y las claves; el nuevo no ve el historial; tope 32.
+- G4 [m] Expulsar: admins expulsan a miembros, nunca al creador. El expulsado recibe aviso y el grupo se cierra en su teléfono; los demás dejan de mandarle. Admin a admin: pendiente (pregunta abierta).
+- G5 [c] «Solo admins escriben»: el receptor descarta lo que no viene de un admin; la barra de escribir se bloquea con el motivo.
+- G6 [m] Foto del grupo: creador y admins; viaja como la foto de perfil (reusar `avatar.js`).
+- G7 [c] Fondo del grupo: creador y admins; local en cada teléfono; «Compartir» manda la imagen al grupo (si pesa, por el buzón de archivos). Reusar `wallpaper.js` con el id del grupo.
+- G8 [m] Pruebas: ampliar `tests/sim/groups.js` y `gruposadmin.js`: permisos, avisos de un no admin descartados, creador no expulsable, versión del estado, expulsado que sigue escribiendo, grupos viejos.
+Preguntas abiertas para el dueño: (a) ¿un admin puede expulsar a otro admin? (b) ¿renombrar: cualquier miembro, como hoy, o solo creador y admins?
 
 ## 5. Después
 24. [m] Datos repetidos de los relés (55 % de los eventos) y batería en segundo plano (S24 7–9 %/h); margen al reabrir en frío.
