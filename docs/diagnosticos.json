@@ -752,6 +752,22 @@
    "sintoma": "zombi ×10 en el día del S24; par:zombi pedido por el Motorola",
    "categoria": "Bluetooth: escrituras 201 y mensajes descartados / Wi-Fi sin internet / Wi-Fi Direct no elegido",
    "causa": "APP (3116). Ya registrado en 2ae32af (escrituras 201 en el Motorola y corte de internet 14:07–14:09). Datos nuevos del S24: (1) «sin camino al salir: salieron 3, sin ✓✓ 3» y «internet: salieron 42, con ✓✓ 41 (una sin ✓✓ aún), máx. 49,3 s»; (2) el S24 mandó a Roberto un archivo de 74 KB por Bluetooth (MTU 517, 135 trozos) y lo cortó con «ChatStream: Window timeout» a los 8 s, reenvío de la ventana 0–12, y terminó 1,5 s después de que el Motorola volvió a la vista (ver 2ae32af); (3) «Wi-Fi Direct en archivos de 20 KB o más: elegido por ninguno · no se pudo usar por archivo chico (<100 KB) con Bluetooth normal ×1»: el archivo de 74 KB no probó WD aunque el Motorola lo tenía a 0,6 m (esto es 3261); (4) Wi-Fi local: 6,3 s de media (8 veces, de 0,2 a 38,2 s); (5) temperatura máx. 36,5 °C a las 13:04; batería a la vista 7,8 %/h y en segundo plano 8,5 %/h en 5,5 h; datos de NEXO 74,1 MB todo Wi-Fi; relés 3,3 MB, 890 de 1498 eventos repetidos (~59 %). Dedup del S24 con Roberto cerró 0d91 a 14:09:58 (el par ya era el mismo)."
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "21:28-22:31",
+   "nx": "nx1n36c283 (S24, dueño) ↔ nx1e50c95d (S23 Ultra, Cari), AMBOS build 3116 (confirmado en el diagnóstico del S23)",
+   "sintoma": "Prueba de videollamada de ~62 min (prueba del dueño, sin fallo reportado)",
+   "categoria": "Llamadas: batería y temperatura (medición)",
+   "causa": "SIN FALLO DE APP. Llamada por Wi-Fi de 21:28 a 22:31, de principio a fin. Vídeo: ~35 errores de decodificación en ~55 000 cuadros recibidos (se rehacen solos). Voz casi sin pérdidas (sin voz: 1 vez en cada sentido). BATERÍA (S23, con ahorro de batería activo, 33 °C): 91 % a los 32 min y 81 % a los 60 min, es decir ~0,36 %/min (1 % cada ~2,8 min). Referencia WhatsApp en el S24 de la mañana: 0,31 %/min. Recuerdo del dueño: 0,14 %/min (1 % cada ~7 min). Medición de una sola llamada, con lectura de 1 % de resolución (error de ±0,04 %/min). S24: 38–39 °C todo el rato (estado térmico ligero); batería 6 % a los 33 min y 13 % a los 47 min con cargador conectado desde ~40 min, por lo que su gasto no se puede medir con esta llamada. Pendiente: repetirla con los dos teléfonos al 100 % y sin cargar, midiendo 20 min."
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "22:31",
+   "nx": "nx1n36c283 (S24, dueño), build 3116",
+   "sintoma": "Diagnóstico de la llamada anterior (sin fallo de app)",
+   "categoria": "Llamadas: batería y temperatura (medición)",
+   "causa": "SIN FALLO. Mismo diagnóstico de la llamada de 21:28 a 22:31. Vídeo recibido: ~37 errores de decodificación, se rehacen solos (pedidas imágenes completas 40, todas atendidas). Temperatura del teléfono 38–39 °C durante toda la llamada; ambiente y cargador influyen. Ver la entrada anterior para la batería del S23."
   }
  ]
 }
