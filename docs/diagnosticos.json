@@ -736,6 +736,22 @@
    "sintoma": "par:zombi pedido por el S24 (el diagnóstico llegó a las 14:43 por estar el teléfono apagado/cerrado)",
    "categoria": "Ajuste del teléfono: HONOR mata la app (PowerGenie) / Wi-Fi sin internet en segundo plano",
    "causa": "AJUSTE DEL TELÉFONO que la app ya detecta («segundo plano permitido NO», «limitado por el ahorro de batería: sí», avisa a contactos). El zombi es el par MUERTO: 14:13 terminada por el sistema, 14:16 «FORCE STOP … iAwareR[PowerGenie smartopt clean]» y nada más hasta que Austin abrió la app a las 14:26:36 (FCM no llega a una app detenida a la fuerza); antes 11:40/11:42 «LowMemQuick». Es COLA 22 (#87) con otra marca: HONOR/Huawei también la mata. Datos buenos del nativo SIN la app (prueba de 3254): contesta pings por Bluetooth (11:23–11:35, «BT_CERRADA … IGNORE» + «chunk sent len=108»), el servicio se reinició solo a las 14:13 y a las 14:15 entregó 4 mensajes de grupo con ✓✓ por internet (FCM + relés); los mensajes de 2330 B por Bluetooth se IGNORAN con la app cerrada (el emisor reintenta por internet). NUEVO en el segundo plano: 14:03:35 los 4 relés «Software caused connection abort» (el Wi-Fi sin internet de 14:03–14:09 que vieron S24 y Motorola) y «no se pudo abrir otra vez … IllegalStateException»; no volvieron hasta las 14:09:16 por datos móviles = 5–6 min sin internet en el servicio nativo. Refuerza COLA 27 (3 teléfonos, mismo corte) y pide mirar esa IllegalStateException en el nativo"
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "13:00",
+   "nx": "nx1n36c283 (S24, dueño), build 3116; pareja nx0k598297 (VICK) y nx1905c1ee (Austin)",
+   "sintoma": "par:zombi con VICK; zombi ×8 en el día del S24; archivo de 263 trozos reiniciado",
+   "categoria": "Bluetooth: enlace nuevo a MTU 23 con archivo en curso; Wi-Fi Direct no elegido en archivos ≥ 20 KB",
+   "causa": "APP (3116). (1) 13:00:32.108: un archivo en curso (fxs_…899d) se reinicia con «MTU 23, trozos de 324» porque el enlace nuevo se anunció a 23, y 42 ms después llega «MTU 517» (mismo patrón que en 12:33: el 23 aparece antes del intercambio). Quedan 263 trozos de 96–324 caracteres en vez de 135 de 552. (2) «Supervisor: transferencia activa, skip ping/zombie» protegió el enlace de VICK mientras tanto; el par zombi se declaró después. (3) Wi-Fi Direct: «elegido por ninguno» en archivos ≥ 20 KB; el S24 sí tiene WD disponible y Roberto lo ve («[WIFI-DIRECT] … también lo tiene»). Es el hallazgo que motiva 3261: WD solo se mira después de elegir Bluetooth. (4) Batería del S24 en segundo plano 8,1 %/h en 4,4 h (diagnóstico de la mañana: 8,2 %/h a la vista); temperatura máx. 34,3 °C a las 06:05; datos de NEXO 70,9 MB, todo por Wi-Fi; relés 2,3 MB y 653 de 966 eventos ya vistos (repetidos ~68 %). (5) Archivos por buzón de archivos: 5 enviados a 128 KB/s, 4 recibidos a 114 KB/s. Sin fallo nuevo de app fuera de (1)–(3)."
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "14:10",
+   "nx": "nx1n36c283 (S24, dueño), build 3116; pareja nx0g6ef54e (Roberto, Motorola)",
+   "sintoma": "zombi ×10 en el día del S24; par:zombi pedido por el Motorola",
+   "categoria": "Bluetooth: escrituras 201 y mensajes descartados / Wi-Fi sin internet / Wi-Fi Direct no elegido",
+   "causa": "APP (3116). Ya registrado en 2ae32af (escrituras 201 en el Motorola y corte de internet 14:07–14:09). Datos nuevos del S24: (1) «sin camino al salir: salieron 3, sin ✓✓ 3» y «internet: salieron 42, con ✓✓ 41 (una sin ✓✓ aún), máx. 49,3 s»; (2) el S24 mandó a Roberto un archivo de 74 KB por Bluetooth (MTU 517, 135 trozos) y lo cortó con «ChatStream: Window timeout» a los 8 s, reenvío de la ventana 0–12, y terminó 1,5 s después de que el Motorola volvió a la vista (ver 2ae32af); (3) «Wi-Fi Direct en archivos de 20 KB o más: elegido por ninguno · no se pudo usar por archivo chico (<100 KB) con Bluetooth normal ×1»: el archivo de 74 KB no probó WD aunque el Motorola lo tenía a 0,6 m (esto es 3261); (4) Wi-Fi local: 6,3 s de media (8 veces, de 0,2 a 38,2 s); (5) temperatura máx. 36,5 °C a las 13:04; batería a la vista 7,8 %/h y en segundo plano 8,5 %/h en 5,5 h; datos de NEXO 74,1 MB todo Wi-Fi; relés 3,3 MB, 890 de 1498 eventos repetidos (~59 %). Dedup del S24 con Roberto cerró 0d91 a 14:09:58 (el par ya era el mismo)."
   }
  ]
 }
