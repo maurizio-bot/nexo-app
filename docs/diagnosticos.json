@@ -808,6 +808,14 @@
    "sintoma": "resumen_diario",
    "categoria": "Medición",
    "causa": "SIN FALLO. S24: 89 enviados, 85 ✓✓; internet media 2,3 s; temp. máx. 39 °C (videollamada). S23: 75 enviados, 74 ✓✓; reenvío sin fin ×1 (ya en COLA 28). Emmanuel: 8 enviados, 6 ✓✓."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "14:39",
+   "nx": "nx1n36c283 (S24, build 3116) con nx1e50c95d (S23)",
+   "sintoma": "zombi",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "S24 sin relés ~2 min con datos móviles que se caían (6 cambios seguidos datos↔sin red; externo). Enlace BT con el S23 vivo a MTU 517 (dos enlaces, el desempate cerró el cliente 14:38:25) pero el S23 no confirmó nada (2 mensajes, ACK ×5 dos vueltas) ni contestó al préstamo de internet (GW: «dormido o sin servicio»): app del S23 congelada en segundo plano (familia COLA 22/29). La detección funcionó: 4 pings sin respuesta → cierra para reconectar. APP: 10 «Deslizar para actualizar» en 26 s (14:37:55–14:38:21) sin querer al desplazar la lista de contactos, cada uno reenvía TODOS los pendientes (COLA 34). Menor: en la línea de tiempo el archivo grande a Cesar sale «→ ?»."
   }
  ]
 }
