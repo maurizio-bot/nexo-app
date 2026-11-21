@@ -768,6 +768,14 @@
    "sintoma": "Diagnóstico de la llamada anterior (sin fallo de app)",
    "categoria": "Llamadas: batería y temperatura (medición)",
    "causa": "SIN FALLO. Mismo diagnóstico de la llamada de 21:28 a 22:31. Vídeo recibido: ~37 errores de decodificación, se rehacen solos (pedidas imágenes completas 40, todas atendidas). Temperatura del teléfono 38–39 °C durante toda la llamada; ambiente y cargador influyen. Ver la entrada anterior para la batería del S23."
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "22:33",
+   "nx": "nx1e50c95d (S23 Ultra, Cari) ↔ nx126df3f4 (HONOR Magic lite G, Katy), build 3116; llamada con nx1n36c283 (S24) desde 22:31",
+   "sintoma": "reenvio_sin_fin: 1 mensaje sin confirmar a nx126df3f4, 3 vueltas",
+   "categoria": "Bluetooth: reenvío sin tope / enlace con el HONOR",
+   "causa": "APP (3116), por revisar. El mensaje msg1795235508650qb6xx94xs a nx126df3f4 agotó 5 reintentos de ACK (22:31:56, 22:32:15, 22:32:41, 22:33:25) y en cada vuelta se reenvió (22:32:07, 22:32:33, 22:33:17) sin confirmación, mientras el HONOR cambiaba de Bluetooth a fuera de línea y de vuelta (enlace 52ab desconectado 22:32:11 y 22:32:56). La cola lo dejó en espera 15 s por vuelta: sin tope, el mensaje sigue dando vueltas. Ver si el HONOR congela la app al bajar a segundo plano (Honor, COLA 22) o si nuestro ACK se pierde. Aparte, en la llamada S23↔S24 (22:31): conexión DIRECTA por internet en 1,4 s, vídeo y voz desde el primer segundo; el sistema cortó la cámara del S23 a las 22:32:06 y la app la reabrió sola en 1,7 s (no es fallo nuestro). Batería del S23 80 % al empezar, 34,0 °C, ahorro de batería activo. Medición en curso (lectura al minuto 1)."
   }
  ]
 }
