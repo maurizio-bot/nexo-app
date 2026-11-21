@@ -4,6 +4,12 @@ Objetivo del dueño: (1) una app de uso diario, útil y robusta; (2) que sea ren
 
 Regla de «terminado»: un ítem está terminado cuando (a) tiene prueba en `tests/sim` o JVM que falla antes y pasa después, (b) la batería completa (`ci.js`) y el CI están en verde, (c) si es de Bluetooth o Wi-Fi Direct, el dueño confirma con una prueba real. Sin los tres, no se marca.
 
+> **REVISIÓN 21-11 noche (Opus, sobre lo armado en Haiku): 3 choques con decisiones ANTERIORES del dueño, a confirmar por él antes de arrancar:**
+> 1. **Orden.** CLAUDE.md y `nexo-private/negocio/PLAN_DE_BATALLA.md` (19-11): auditoría de seguridad (22–23) → Bluetooth en el servicio (23-11 a 6-12) → tienda (7–17-12). Este plan lo deja en olas 4–5 (mediados de diciembre / enero). Propuesta: A) volver al orden del 19-11, con los bloqueantes cortos de la ola 1 y la interfaz en PARALELO por ayudantes en archivos distintos.
+> 2. **Fecha de la prueba cerrada.** PLAN_DE_BATALLA: fecha límite DURA 18-12 (12 personas × 14 días; Google pide 12, no 20). El calendario de abajo la pone ~15-01, lo que deja poco margen para EDC (febrero). Propuesta: A) mantener el 18-12.
+> 3. **Builds.** Acuerdo 21-11: un solo build para las olas 1–3; pero la ola 1 dice «una sola subida» y las pruebas reales del dueño (Bluetooth/Wi-Fi Direct) piden APK antes. Propuesta: A) una APK por ola/fase.
+> Además corregido: la ola 0 NO lee PENDIENTES/ROBUSTEZ enteros (440 KB ≈ media ventana): un ayudante barato con grep arma `docs/INVENTARIO.md`; COLA 24 y 25 (🔴 4 y 7 de AREAS) no estaban en ninguna ola; 29b no estaba en la COLA; el servidor (ola 6) no está en el plan de batalla y choca con el congelado de funciones del 18-12: confirmar con el dueño si va antes o después de la prueba cerrada.
+
 ## Reglas de trabajo (para gastar pocos tokens y no perder robustez)
 - Un solo subidón a NEXOCHAT por ola: cada push con APK tarda ~85 min de CI. Se junta todo lo de la ola y se sube una vez. Antes de subir: `tamano.js` e `i18n_audit.js`.
 - Ayudantes solo en archivos que no se cruzan. Dos agentes nunca tocan el mismo archivo a la vez (en particular `ble_connections.js`, `ble_helpers.js` y el nativo `plugins/nexo-ble`).
@@ -28,6 +34,7 @@ Salida de la ola: una sola subida y las pruebas del dueño de la noche del 20-11
 - 1: elegir Wi-Fi Direct por tiempo estimado (3261), como lo decidió el dueño: con enlace Bluetooth arranca solo, y si falla vuelve a Bluetooth. [m]
 - 3, 4, 5: textos de Wi-Fi Direct y «No se pudo crear el grupo» en `tests/sim`; correr `wifidirect.js --broken=fail` sin límite de tiempo. [c]
 - 2: preparar archivo grande (≈ 5 MB/s, el primer cuello de botella). [m]
+- 24: datos repetidos de los relés (55 %) y batería en segundo plano (🔴 4 de AREAS). [m]
 - 7–12: tablero por red: llamadas de grupo, medianas y p90, capacidad, fallos por camino, tendencia por hora y build. [c/m]
 - 6 (solo si el dueño elige «grupo siempre montado»): grupo caliente nativo. [g]
 - Prueba del dueño: mismo archivo por Bluetooth y por Wi-Fi Direct con batería de los dos (pendiente).
@@ -37,6 +44,7 @@ Salida de la ola: una sola subida y las pruebas del dueño de la noche del 20-11
 - Grupos G1–G9 (interfaz y estado del grupo). Agente B, archivos `groups*.js`, `gruposadmin.js`. Empieza con G2 (modelo y estado versionado), luego G3–G5, G6–G7, G1 y G9 al final.
 - Pruebas G8 en el simulador.
 - Interfaz y apariencia (añadido 21-11, agente C, archivos de UI/CSS): 32 (todas las pantallas con letra grande y teléfonos chicos; esperar la captura del probador), 30 (cambiar TODOS los fondos con pulsación larga; grupos con G7), 33 (Ajustes → Apariencia: burbujas 1 o 2 colores, pleno/cristal, tipo de letra), 35 (destinatario «?» en el diagnóstico). [c/m]
+- 25: llamadas: eco en grupo, gasto de datos por relés, sin imagen propia al contestar desde el aviso (🔴 7 de AREAS). [m]
 - 31 (vista previa y logo real en enlaces): ESPERA decisión del dueño A (la baja quien manda, como Signal; recomendada) o B (la baja quien recibe). [m]
 
 ## Ola 4 — Auditoría de seguridad (antes del servidor, en el repo privado)
@@ -56,7 +64,7 @@ Salida de la ola: una sola subida y las pruebas del dueño de la noche del 20-11
 ## Ola 7 — Publicación (en paralelo con la ola 6, las decisiones son del dueño)
 - Decidir nombre, identificador de paquete y llave de firma ANTES de la primera subida. Revisar marca en IMPI y búsqueda en Play y Galaxy Store. Decidir logo con prueba a 48 px.
 - Política de privacidad pública, textos en español, capturas, clasificación de contenido, permisos justificados (Bluetooth, ubicación).
-- 26: targetSdk, firma, prueba cerrada de 14 días en Play (con 20 probadores si la cuenta es nueva), y prueba beta en Galaxy Store.
+- 26: targetSdk, firma, prueba cerrada de 14 días en Play (con 12 probadores si la cuenta es personal y nueva; PLAN_DE_BATALLA: empezar a más tardar el 18-12), y prueba beta en Galaxy Store.
 - Decisión del dueño: publicación pública o pista de prueba con contactos y gente que reporte fallos. Recomendación: pista de prueba primero (ver la opinión del 21-11).
 
 ## Decisiones que solo toma el dueño (lista corta)

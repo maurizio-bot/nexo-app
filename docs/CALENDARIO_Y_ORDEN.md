@@ -9,7 +9,7 @@ Lee este documento junto con `docs/PLAN_ENTREGA.md` y `docs/COLA.md`. Lo que aqu
 - Fecha fija: EDC México en febrero de 2027. La app cerrada debe funcionar igual que la abierta.
 
 ## Cadena de dependencias (ruta crítica)
-Ola 0 (orden de documentos) → Ola 1 (bloqueantes) → Ola 2 y 3 (Wi-Fi Direct, tablero, Bluetooth pulido, grupos) → build de robustez → Ola 4 (auditoría) → Ola 5 (servicio nativo: app cerrada igual que abierta) → Ola 6 (servidor mínimo) → build final → prueba cerrada en tienda (20 probadores, 14 días) → EDC → lanzamiento público.
+Ola 0 (orden de documentos) → Ola 1 (bloqueantes) → Ola 2 y 3 (Wi-Fi Direct, tablero, Bluetooth pulido, grupos) → build de robustez → Ola 4 (auditoría) → Ola 5 (servicio nativo: app cerrada igual que abierta) → Ola 6 (servidor mínimo) → build final → prueba cerrada en tienda (12 probadores, 14 días) → EDC → lanzamiento público.
 
 Paralelo, no bloquea a los builds:
 - Nombre, identificador de paquete y logo: se deciden antes de la primera subida a tienda (no antes de programar).
@@ -23,7 +23,7 @@ Paralelo, no bloquea a los builds:
 | Auditoría de seguridad (ola 4) | mediados de diciembre | Lista de hallazgos con corrección por cada uno |
 | Servicio nativo, app cerrada igual que abierta (ola 5) | antes de Navidad si sobran horas; si no, primera semana de enero | Prueba real en dos teléfonos con la app cerrada |
 | Servidor mínimo (ola 6) | mediados de enero | Documento de datos antes de programar |
-| Prueba cerrada en tienda | empieza alrededor del 15 de enero, con 20 probadores confirmados antes del 10 | 14 días de prueba |
+| Prueba cerrada en tienda | empieza alrededor del 15 de enero, con 12+ probadores confirmados antes del 10 ⚠ choca con la fecha límite dura del 18-12 de PLAN_DE_BATALLA: ver la revisión al inicio de PLAN_ENTREGA.md | 14 días de prueba |
 | EDC México | febrero de 2027 (fecha exacta por confirmar) | Prueba de campo con los probadores |
 | Lanzamiento público | después de EDC, si la prueba cerrada sale limpia | Ficha de tienda con nombre y logo definitivos |
 
@@ -33,7 +33,7 @@ Paralelo, no bloquea a los builds:
 - Wi-Fi Direct: ¿grupo caliente o solo al enviar? Antes del 1 de diciembre.
 - Política de datos del servidor (qué puede ver y para qué): antes del 15 de diciembre.
 - Nombre, identificador de paquete y logo: antes del 15 de diciembre.
-- Cuántas personas probarán 14 días (mínimo 20, según Google para cuentas nuevas): lista confirmada antes del 10 de enero.
+- Cuántas personas probarán 14 días (mínimo 12, según Google para cuentas personales nuevas): lista confirmada antes del 10 de enero.
 - Pista de prueba o publicación pública primero: antes del 1 de enero.
 - Modelo de cobro (para equipos o usuarios): después de EDC, con datos del piloto.
 
@@ -43,7 +43,8 @@ Paralelo, no bloquea a los builds:
 - Videollamada de 20 min con batería al 100 % y sin cargador en los dos teléfonos, a la misma temperatura.
 
 ## Orden de trabajo para mañana (domingo 22)
-1. Ola 0: leer `PENDIENTES.md`, el índice de `ROBUSTEZ.md`, la lista 🔴 de `AREAS.md` y la sección 8 de `COMO_TRABAJAMOS.md`, con grep donde haga falta.
+0. ANTES: leer la «REVISIÓN 21-11 noche» al inicio de `PLAN_ENTREGA.md` (orden, fecha de la prueba cerrada y builds, a confirmar por el dueño).
+1. Ola 0: un ayudante barato (Haiku/Sonnet) recorre `PENDIENTES.md` y `ROBUSTEZ.md` CON GREP (440 KB: nunca enteros en la sesión principal), la lista 🔴 de `AREAS.md` y la sección 8 de `COMO_TRABAJAMOS.md`.
 2. Crear un inventario único (`docs/INVENTARIO.md`) con la cola, los pendientes de esos documentos y los problemas abiertos de los diagnósticos, sin repetidos.
 3. Mover lo obsoleto a `docs/historial/` con fecha y motivo, y dejar en cada documento activo solo lo vigente.
 4. Ola 1 (bloqueantes), con las tareas y niveles de `PLAN_ENTREGA.md`.
