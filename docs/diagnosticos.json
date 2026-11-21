@@ -784,6 +784,30 @@
    "sintoma": "Curva de batería de la videollamada reconstruida con capturas del dueño y el diagnóstico",
    "categoria": "Llamadas: batería y temperatura (medición)",
    "causa": "SIN FALLO. Minuto 0 (9:28): 22 %, sin cargador. Minuto 20 (9:48): 13 %. Minuto 30 (9:58): 8 %. Minuto 33 (diagnóstico): 6 %. Carga desde ~minuto 33–35: 10 % al minuto 41, 13 % al 47. Ritmo antes de cargar: 0,45 %/min (0–20), 0,50 %/min (20–30), 0,67 %/min (30–33). Total: 16 puntos en 33 min (~0,48 %/min, ~29 %/h). Referencia WhatsApp del S24 (mañana): 0,31 %/min, así que esta llamada gastó unas 55 % más. Temperatura 38–39 °C casi todo el tiempo. Corrección: la carga empezó antes del minuto 40 que se había anotado; la medición correcta es la de esta entrada."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "05:57-10:28",
+   "nx": "nx1e50c95d (S23, Cari) → nx1n36c283 (S24, dueño), build 3116 en los dos",
+   "sintoma": "pendiente_viejo 270 min: msg…519hq3s6 (hecho 05:56:55) y la imagen msg…3745pcoe (05:58:28, 201 KB) se quedaron ⏳ hasta que Cari volvió a abrir NEXO a las 10:27; el S24 los recibió a las 10:27:40 y 10:28:02 (✓✓ al momento)",
+   "categoria": "Entrega: pendiente al pasar a segundo plano (app)",
+   "causa": "FALLO DE LA APP. Los dos se registran sin camino ni contacto en la línea de tiempo (sin envío por Bluetooth ni buzón de textos: van por el flujo de adjuntos). Cari pasó NEXO a segundo plano a las 05:58:29 (al elegir la imagen); la subida al buzón de archivos falló al rato (05:59:16, «rechazo transitorio → pendiente») porque la app ya estaba detrás y los relés de la app quedan en manos de la parte nativa. El servicio nativo SÍ tenía internet (contestó el saludo del S24 a las 05:58:43) pero no tiene bandeja de salida: los pendientes solo los reintenta la app, y con el ahorro de batería del Samsung la app quedó congelada 4,5 h. Arreglo propuesto (COLA 29): al ir a segundo plano, entregar al servicio nativo los pendientes ya cifrados (textos: el sobre; archivos: subir antes de congelarse o seguir la subida desde el servicio) para que salgan por internet sin la app. Detalle menor: el detector salta justo al volver (10:27:18), antes del reintento que en 44 s lo entregó."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "05:51",
+   "nx": "nx1e50c95d (S23, Cari), build 3116",
+   "sintoma": "cierre_fallo: FALLO nativo 20-11 22:43 (detrás), SIGABRT con el hilo en Unsafe_park; también 19-11 21:52",
+   "categoria": "Estabilidad: cierre nativo al quitar de recientes",
+   "causa": "Coincide con el «quitar de recientes» del usuario el mismo minuto (22:43:25 handleOnDestroy); el servicio volvió solo a las 22:43:28 (Bluetooth e internet sin la app OK). Sin efecto para el usuario. El diagnóstico no trae la línea «Abort message» del tombstone: añadirla al resumen de cierres para saber quién aborta (pendiente menor)."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "05:52",
+   "nx": "nx1n36c283, nx1e50c95d, nx13c1b0fe: resúmenes diarios del 20-11, build 3116",
+   "sintoma": "resumen_diario",
+   "categoria": "Medición",
+   "causa": "SIN FALLO. S24: 89 enviados, 85 ✓✓; internet media 2,3 s; temp. máx. 39 °C (videollamada). S23: 75 enviados, 74 ✓✓; reenvío sin fin ×1 (ya en COLA 28). Emmanuel: 8 enviados, 6 ✓✓."
   }
  ]
 }
