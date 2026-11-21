@@ -63,3 +63,24 @@ Salida de la ola: una sola subida y las pruebas del dueño de la noche del 20-11
 
 ## Estado al cierre de este documento
 Ola 1 pendiente (empieza el domingo 22-11). Nada de esto está hecho en código: es el plan y el orden.
+
+## Tiempos aproximados (horas de trabajo activo, no de espera; rango honesto)
+- Ola 1 (bloqueantes, 7 ítems [m]): ~15 h en serie; 6–8 h con 2–3 ayudantes en archivos separados. CI: 85 min. Prueba tuya: 1 sesión corta.
+- Ola 2 (Wi-Fi Direct y tablero): ~12–14 h en serie; ~1,5 días con ayudantes. Si eliges «grupo caliente» (ítem 6): +1 día.
+- Ola 3 (Bluetooth pulido y grupos G1–G9): BT ~5 h; grupos ~20 h; con dos ayudantes ~1,5 días.
+- Ola 4 (auditoría de seguridad): 1–2 días.
+- Ola 5 (Bluetooth en el servicio, fases 2–4): 1–2 semanas, con pruebas reales en cada fase.
+- Ola 6 (servidor): diseño 1–2 días; implementación 1–3 semanas, según el alcance que elijas.
+- Ola 7 (tienda): 2–4 días de trabajo; la prueba cerrada de 14 días es tiempo de calendario, no de trabajo.
+Estas cifras son mi mejor estimación y pueden variar; las corrijo con lo que tarde cada ola.
+
+## Un solo build para la robustez
+Olas 1–3 (todos los arreglos, sin servidor y sin el servicio nativo nuevo) van en un solo build, después de que `ci.js` completo y JVM estén en verde en el simulador. Las olas 4–6 (auditoría, servicio nativo, servidor) van en builds aparte, porque cambian más código.
+
+## Modelo y esfuerzo por tarea (Fable con criterio)
+Cada tarea lleva su nivel [c], [m] o [g] en `docs/COLA.md`, y eso decide el modelo y el esfuerzo del ayudante:
+- Trivial ([c]: textos, registros, constantes, documentos): Haiku o Sonnet, esfuerzo bajo. No se usa Fable.
+- Medio ([m] de JS, pruebas en el simulador, interfaz de grupos): Sonnet, esfuerzo medio. Fable solo si el ítem se atora dos veces.
+- Difícil ([m] de nativo, protocolo, desempate Bluetooth, reenvío, crash de llamada): Fable con esfuerzo alto.
+- Muy difícil ([g]: auditoría de seguridad, diseño del servidor, servicio nativo): Fable con esfuerzo máximo, solo en esas tareas.
+Regla de control: el coordinador (Claude) asigna el nivel antes de lanzar cada ayudante, y el ayudante devuelve un informe corto. Si un ayudante de nivel bajo se atora, sube un nivel en vez de dar vueltas.
