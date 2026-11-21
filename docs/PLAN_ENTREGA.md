@@ -19,7 +19,9 @@ Son los fallos que rompen confianza en el primer uso.
 - 28: reenvío sin fin → tope de vueltas y espera creciente por mensaje. [m]
 - 27: Wi-Fi sin internet → pedir red móvil (requestNetwork cellular) cuando ningún relé conecta; revisar la `IllegalStateException` al reabrir relés en NetBg. [m]
 - 17 / 18: mensaje atorado y decodificación de vídeo tras cambio de red (hueco de ~25 s). [m]
-- 29 (nuevo, a reproducir): la pantalla de llamada en ventanita (132×236) se queda sin botones y puede caer; el dueño lo reportó como micropantalla que se bloquea o cae. Reproducir con `callpower.js` y las trazas `[CALL] Pantalla de llamada`. [m]
+- 29b (nuevo, a reproducir; NO es la COLA 29): la pantalla de llamada en ventanita (132×236) se queda sin botones y puede caer; el dueño lo reportó como micropantalla que se bloquea o cae. Reproducir con `callpower.js` y las trazas `[CALL] Pantalla de llamada`. [m]
+- 34 (21-11): «deslizar para actualizar» salta al desplazar la lista de contactos y cada vez reenvía TODOS los pendientes (10 veces en 26 s en el diagnóstico del S24): martilla enlaces. [c]
+- YA HECHO, sin APK aún (21-11, commit e3d5f8c): nombre de la cabecera cortado con letra grande (Redmi Note 11 Pro 5G); NOVEDADES ya escrita. Sale con la APK de esta ola.
 Salida de la ola: una sola subida y las pruebas del dueño de la noche del 20-11 repetidas (videollamada 20 min en los dos).
 
 ## Ola 2 — Medición y Wi-Fi Direct (Sonnet para JS; modelo grande si toca nativo)
@@ -34,12 +36,15 @@ Salida de la ola: una sola subida y las pruebas del dueño de la noche del 20-11
 - Bluetooth: 13 (MTU 23), 14 (L2CAP para archivos medianos). [m]. Agente A, archivos de BT.
 - Grupos G1–G9 (interfaz y estado del grupo). Agente B, archivos `groups*.js`, `gruposadmin.js`. Empieza con G2 (modelo y estado versionado), luego G3–G5, G6–G7, G1 y G9 al final.
 - Pruebas G8 en el simulador.
+- Interfaz y apariencia (añadido 21-11, agente C, archivos de UI/CSS): 32 (todas las pantallas con letra grande y teléfonos chicos; esperar la captura del probador), 30 (cambiar TODOS los fondos con pulsación larga; grupos con G7), 33 (Ajustes → Apariencia: burbujas 1 o 2 colores, pleno/cristal, tipo de letra), 35 (destinatario «?» en el diagnóstico). [c/m]
+- 31 (vista previa y logo real en enlaces): ESPERA decisión del dueño A (la baja quien manda, como Signal; recomendada) o B (la baja quien recibe). [m]
 
 ## Ola 4 — Auditoría de seguridad (antes del servidor, en el repo privado)
 - 19: auditoría completa (`nexo-private`). Un agente del modelo grande, sin tocar el código público hasta que haya lista de hallazgos.
 - Salida: lista de hallazgos con gravedad y ítem de corrección por cada uno. Lo crítico entra antes de publicar.
 
 ## Ola 5 — Bluetooth en el servicio nativo (decisión del dueño: va después de la auditoría)
+- Incluye COLA 29 (bandeja de salida en el servicio): resolver app CERRADA y app CONGELADA viva (dueño 21-11: los dos).
 - 20–23: servidor GATT siempre en el servicio, reenvío desde el servicio, conexiones a demanda (tope ~7), entrega con la app cerrada y la pantalla apagada, modo vagón. Modelo grande, por fases, cada fase con su prueba y su prueba real del dueño.
 - 22: detección de «Foreground kill» y de ahorro de batería, con aviso al usuario.
 
