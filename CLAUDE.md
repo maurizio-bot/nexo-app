@@ -45,7 +45,9 @@ actualizarlos al terminar cada bloque de trabajo.
   (dinero, marca, publicar, datos de usuarios, cifrado/seguridad, irreversible) o una decisión de diseño que él debe tomar.
 - **Desde el reinicio del domingo 22-11 (dueño 19-11):** trabajar TODOS los pendientes sin parar hasta terminarlos de forma robusta, con
   ayudantes en paralelo (Agent/Workflow autorizados por el dueño), y seguir en cualquier rato libre suyo sin que lo pida ni lo recuerde.
-  Orden: auditoría de seguridad → Bluetooth en el servicio nativo → auditoría posterior → modo vagón → resto. Se acaba el modo ahorro.
+  **ORDEN (dueño 21-11 noche, reemplaza al del 19-11): PRIMERO LO FUNCIONAL, sólido** (ver `docs/PLAN_ENTREGA.md`, «DECISIONES DEL DUEÑO 21-11 noche»).
+  La sesión principal (Fable) hace lo pesado: Bluetooth, zombis/app dormida, servicio nativo, Wi-Fi Direct; los ayudantes, diagnósticos y lo menor/estético.
+  UNA sola APK al terminar lo funcional + estético, tras una revisión propia buena y corta; auditoría de seguridad al final (una). Se acaba el modo ahorro.
 - **Modo adelanto (dueño, 10-11):** cuando el dueño esté ocupado o dormido, avanzar solo con la cola de pulido y los pendientes
   que Claude decide, sin esperar; preguntar antes solo si es grande. Reglas y límites: `docs/COMO_TRABAJAMOS.md` §8. Léelo con
   `ESTADO.md` al empezar. **Reloj de ausencia:** al terminar cada respuesta, programar con `send_later` un aviso a 5 min; si llega y

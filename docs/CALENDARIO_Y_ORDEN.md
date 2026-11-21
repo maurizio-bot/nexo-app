@@ -1,5 +1,7 @@
 # Calendario y orden de trabajo (21-11, de la plática del dueño con Claude)
 
+> **⚠ 21-11 noche: las fechas y el orden de abajo quedaron VIEJOS.** Mandan las «DECISIONES DEL DUEÑO 21-11 noche» de `PLAN_ENTREGA.md`: lo funcional primero (Bluetooth/zombis incluidos), una sola APK al final de lo funcional + estético, prueba cerrada de Play a más tardar el 1-12, servidor de paga lo antes posible, iOS después.
+
 Lee este documento junto con `docs/PLAN_ENTREGA.md` y `docs/COLA.md`. Lo que aquí aparece como fecha es objetivo, no compromiso: se corre si cambian las horas o aparece un bloqueo.
 
 ## Supuestos
