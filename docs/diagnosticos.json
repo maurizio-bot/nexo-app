@@ -776,6 +776,14 @@
    "sintoma": "reenvio_sin_fin: 1 mensaje sin confirmar a nx126df3f4, 3 vueltas",
    "categoria": "Bluetooth: reenvío sin tope / enlace con el HONOR",
    "causa": "APP (3116), por revisar. El mensaje msg1795235508650qb6xx94xs a nx126df3f4 agotó 5 reintentos de ACK (22:31:56, 22:32:15, 22:32:41, 22:33:25) y en cada vuelta se reenvió (22:32:07, 22:32:33, 22:33:17) sin confirmación, mientras el HONOR cambiaba de Bluetooth a fuera de línea y de vuelta (enlace 52ab desconectado 22:32:11 y 22:32:56). La cola lo dejó en espera 15 s por vuelta: sin tope, el mensaje sigue dando vueltas. Ver si el HONOR congela la app al bajar a segundo plano (Honor, COLA 22) o si nuestro ACK se pierde. Aparte, en la llamada S23↔S24 (22:31): conexión DIRECTA por internet en 1,4 s, vídeo y voz desde el primer segundo; el sistema cortó la cámara del S23 a las 22:32:06 y la app la reabrió sola en 1,7 s (no es fallo nuestro). Batería del S23 80 % al empezar, 34,0 °C, ahorro de batería activo. Medición en curso (lectura al minuto 1)."
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "21:28-22:10",
+   "nx": "nx1n36c283 (S24, dueño), build 3116, llamada con nx1e50c95d (S23)",
+   "sintoma": "Curva de batería de la videollamada reconstruida con capturas del dueño y el diagnóstico",
+   "categoria": "Llamadas: batería y temperatura (medición)",
+   "causa": "SIN FALLO. Minuto 0 (9:28): 22 %, sin cargador. Minuto 20 (9:48): 13 %. Minuto 30 (9:58): 8 %. Minuto 33 (diagnóstico): 6 %. Carga desde ~minuto 33–35: 10 % al minuto 41, 13 % al 47. Ritmo antes de cargar: 0,45 %/min (0–20), 0,50 %/min (20–30), 0,67 %/min (30–33). Total: 16 puntos en 33 min (~0,48 %/min, ~29 %/h). Referencia WhatsApp del S24 (mañana): 0,31 %/min, así que esta llamada gastó unas 55 % más. Temperatura 38–39 °C casi todo el tiempo. Corrección: la carga empezó antes del minuto 40 que se había anotado; la medición correcta es la de esta entrada."
   }
  ]
 }
