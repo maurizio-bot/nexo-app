@@ -49,22 +49,20 @@ es lo que el dueño pidió el 20-11 y cabe en una sesión corta antes o después
 
 ## 4b. Sesión «Grupos: administración» (pedido y especificado por el dueño el 20-11)
 Hoy: crear grupo, abrir, ocultar texto en avisos, salir, renombrar (cualquier miembro). `createdBy` no se usa para permisos. La lista de miembros es fija desde la creación (auditoría 2774: abrirla con permisos es decisión de seguridad del dueño).
-Lo que pidió el dueño:
-- Panel «Ajustes del grupo», solo para el creador y los admins designados. Interruptor «Solo admins escriben»; si se prende, «Solo admins agregan» se prende solo. «Designar administradores»: lista de todos los miembros con buscador por nombre.
-- Un admin tiene las mismas funciones que el creador, excepto quitar al creador del grupo.
-- Foto del grupo: la cambian el creador y los admins.
-- Fondo del grupo: lo decide el creador (y los admins designados), con los mismos botones de un chat normal: cambiarlo y compartirlo con el grupo.
-- Sin interruptor (grupo de colegas): todos escriben y todos agregan.
+Lo que pidió el dueño, en dos modos que el creador elige al crear o en Ajustes del grupo:
+- MODO CONTROL (el creador manda): solo los administradores escriben, agregan, renombran, cambian la foto y el fondo. Un administrador tiene lo mismo que el creador, pero no puede expulsar a un administrador: eso solo lo hace el creador. Los administradores se designan con «Designar administradores» (lista de miembros con buscador por nombre).
+- MODO COLEGAS (todos hacen lo que quieran): todos escriben, agregan, renombran y cambian el fondo. Lo único restringido es expulsar a alguien (pregunta abierta).
+- Fondo: el creador y los administradores lo cambian y lo pueden compartir con el grupo, con los mismos botones de un chat normal.
 Tareas:
 - G1 [m] Panel «Ajustes del grupo»: interruptores, «Designar administradores» con buscador, foto, fondo, expulsar, salir.
 - G2 [m] Modelo: `admins` (al inicio solo el creador), `onlyAdminsWrite`, `onlyAdminsAdd`, `v` (versión del estado). Grupos viejos: el creador queda como único admin. Aviso «X hizo admin a Y».
 - G3 [m] Agregar personas (admins, o solo el creador si el interruptor lo marca): invitación con el estado completo y las claves; el nuevo no ve el historial; tope 32.
-- G4 [m] Expulsar: admins expulsan a miembros, nunca al creador. El expulsado recibe aviso y el grupo se cierra en su teléfono; los demás dejan de mandarle. Admin a admin: pendiente (pregunta abierta).
+- G4 [m] Expulsar: en control, un administrador expulsa miembros normales; a un administrador y al creador, nunca (solo el creador expulsa administradores). El expulsado recibe aviso y el grupo se cierra en su teléfono; los demás dejan de mandarle.
 - G5 [c] «Solo admins escriben»: el receptor descarta lo que no viene de un admin; la barra de escribir se bloquea con el motivo.
 - G6 [m] Foto del grupo: creador y admins; viaja como la foto de perfil (reusar `avatar.js`).
 - G7 [c] Fondo del grupo: creador y admins; local en cada teléfono; «Compartir» manda la imagen al grupo (si pesa, por el buzón de archivos). Reusar `wallpaper.js` con el id del grupo.
 - G8 [m] Pruebas: ampliar `tests/sim/groups.js` y `gruposadmin.js`: permisos, avisos de un no admin descartados, creador no expulsable, versión del estado, expulsado que sigue escribiendo, grupos viejos.
-Preguntas abiertas para el dueño: (a) ¿un admin puede expulsar a otro admin? (b) ¿renombrar: cualquier miembro, como hoy, o solo creador y admins?
+Pregunta abierta para el dueño: en MODO COLEGAS, ¿quién puede expulsar a un miembro: nadie, o solo el creador?
 
 ## 5. Después
 24. [m] Datos repetidos de los relés (55 % de los eventos) y batería en segundo plano (S24 7–9 %/h); margen al reabrir en frío.
