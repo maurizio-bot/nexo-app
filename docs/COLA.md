@@ -51,7 +51,7 @@ es lo que el dueño pidió el 20-11 y cabe en una sesión corta antes o después
 Hoy: crear grupo, abrir, ocultar texto en avisos, salir, renombrar (cualquier miembro). `createdBy` no se usa para permisos. La lista de miembros es fija desde la creación (auditoría 2774: abrirla con permisos es decisión de seguridad del dueño).
 Lo que pidió el dueño, en dos modos que el creador elige al crear o en Ajustes del grupo:
 - MODO CONTROL (el creador manda): solo los administradores escriben, agregan, renombran, cambian la foto y el fondo. Un administrador tiene lo mismo que el creador, pero no puede expulsar a un administrador: eso solo lo hace el creador. Los administradores se designan con «Designar administradores» (lista de miembros con buscador por nombre).
-- MODO COLEGAS (todos hacen lo que quieran): todos escriben, agregan, renombran y cambian el fondo. Lo único restringido es expulsar a alguien (pregunta abierta).
+- MODO COLEGAS (todos hacen lo que quieran): todos escriben, agregan, renombran y cambian el fondo. Lo único restringido es expulsar: lo hace siempre el creador (decisión del dueño 20-11: un supervisor saca a un colaborador que ya no está en el equipo y no quiere salir).
 - Fondo: el creador y los administradores lo cambian y lo pueden compartir con el grupo, con los mismos botones de un chat normal.
 Tareas:
 - G1 [m] Panel «Ajustes del grupo»: interruptores, «Designar administradores» con buscador, foto, fondo, expulsar, salir.
@@ -62,7 +62,7 @@ Tareas:
 - G6 [m] Foto del grupo: creador y admins; viaja como la foto de perfil (reusar `avatar.js`).
 - G7 [c] Fondo del grupo: creador y admins; local en cada teléfono; «Compartir» manda la imagen al grupo (si pesa, por el buzón de archivos). Reusar `wallpaper.js` con el id del grupo.
 - G8 [m] Pruebas: ampliar `tests/sim/groups.js` y `gruposadmin.js`: permisos, avisos de un no admin descartados, creador no expulsable, versión del estado, expulsado que sigue escribiendo, grupos viejos.
-Pregunta abierta para el dueño: en MODO COLEGAS, ¿quién puede expulsar a un miembro: nadie, o solo el creador?
+Sin preguntas abiertas de grupos. Supuesto mío, por corregir si no es así: un expulsado puede volver si alguien con permiso lo vuelve a agregar.
 
 ## 5. Después
 24. [m] Datos repetidos de los relés (55 % de los eventos) y batería en segundo plano (S24 7–9 %/h); margen al reabrir en frío.
