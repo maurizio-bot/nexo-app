@@ -816,6 +816,22 @@
    "sintoma": "zombi",
    "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
    "causa": "S24 sin relés ~2 min con datos móviles que se caían (6 cambios seguidos datos↔sin red; externo). Enlace BT con el S23 vivo a MTU 517 (dos enlaces, el desempate cerró el cliente 14:38:25) pero el S23 no confirmó nada (2 mensajes, ACK ×5 dos vueltas) ni contestó al préstamo de internet (GW: «dormido o sin servicio»): app del S23 congelada en segundo plano (familia COLA 22/29). La detección funcionó: 4 pings sin respuesta → cierra para reconectar. APP: 10 «Deslizar para actualizar» en 26 s (14:37:55–14:38:21) sin querer al desplazar la lista de contactos, cada uno reenvía TODOS los pendientes (COLA 34). Menor: en la línea de tiempo el archivo grande a Cesar sale «→ ?»."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "10:27",
+   "nx": "nx1e50c95d (S23, build 3116) → nx1n36c283",
+   "sintoma": "pendiente_viejo (llegó al dueño 14:45)",
+   "categoria": "Entrega: pendiente al pasar a segundo plano (app)",
+   "causa": "MISMO caso ya apuntado a las 10:42 (mensaje y foto de 201 KB 4,5 h ⏳; COLA 29). Además en el registro nativo de las 05:57–05:58: ráfagas de escrituras 201 al HONOR de Katy (40f6b02aa058) cada 50–150 ms durante 6 s y mensaje descartado ×3 (COLA 15). En la línea de tiempo los pendientes sin camino salen «→ ?» (COLA 35)."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "14:40",
+   "nx": "nx1e50c95d (S23, build 3116), pedido por nx1n36c283",
+   "sintoma": "par:zombi",
+   "categoria": "Bluetooth: par sin contestar",
+   "causa": "El diagnóstico del S23 empieza con la app ARRANCANDO a las 14:40:46 («NEXO iniciando…»): durante el zombi del S24 (14:37:52–14:39:11) la app del S23 no estaba corriendo (cerrada o congelada) y el enlace Bluetooth lo sostenía el sistema/servicio sin nadie que contestara los mensajes ni el préstamo de internet. Falta el registro NATIVO del S23 de esos minutos para saber si el servicio (fase 1 Bluetooth sin la app) estaba al mando o si la app estaba congelada viva (el servicio no toma el relevo): lo cubren las fases 2–3 y COLA 29."
   }
  ]
 }
