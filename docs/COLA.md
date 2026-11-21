@@ -57,13 +57,13 @@ Expulsar y bloquear (decisión del dueño 20-11 noche): al expulsar, el creador 
 Cómo se cumple (propuesta de Claude, por revisar con el dueño): la lista de bloqueados va en el estado del grupo, versionada, para que TODOS los teléfonos rechacen volver a agregar a esa persona; y los mensajes de un bloqueado se descartan, igual que en «Solo admins escriben» (G5). El bloqueo no toca el contacto fuera del grupo.
 Tareas:
 - G1 [m] Panel «Ajustes del grupo»: interruptores, «Designar administradores» con buscador, foto, fondo, expulsar, salir.
-- G2 [m] Modelo: `admins` (al inicio solo el creador), `onlyAdminsWrite`, `onlyAdminsAdd`, `v` (versión del estado). Grupos viejos: el creador queda como único admin. Aviso «X hizo admin a Y».
+- G2 [m] Modelo (sin servidor: cada teléfono guarda el estado del grupo; cambios firmados por quien los hace, con versión; gana la versión mayor y en empate el administrador más antiguo; si el creador sale, pasa todo al administrador más antiguo): `admins` (al inicio solo el creador), `onlyAdminsWrite`, `onlyAdminsAdd`, `v` (versión del estado). Grupos viejos: el creador queda como único admin. Aviso «X hizo admin a Y».
 - G3 [m] Agregar personas (admins, o solo el creador si el interruptor lo marca): invitación con el estado completo y las claves; el nuevo no ve el historial; tope 32.
 - G4 [m] Expulsar: en control, un administrador expulsa miembros normales; a un administrador y al creador, nunca (solo el creador expulsa administradores). El expulsado recibe aviso y el grupo se cierra en su teléfono; los demás dejan de mandarle.
 - G5 [c] «Solo admins escriben»: el receptor descarta lo que no viene de un admin; la barra de escribir se bloquea con el motivo.
 - G6 [m] Foto del grupo: creador y admins; viaja como la foto de perfil (reusar `avatar.js`).
 - G7 [c] Fondo del grupo: creador y admins; local en cada teléfono; «Compartir» manda la imagen al grupo (si pesa, por el buzón de archivos). Reusar `wallpaper.js` con el id del grupo.
-- G9 [m] Expulsar o expulsar y bloquear; pantalla «Personas bloqueadas» (aparece solo si hay alguno) con «Desbloquear» solo del creador; lista de bloqueados en el estado del grupo. Pregunta abierta: si el creador sale del grupo, ¿los bloqueos se quedan sin poder quitarse, o pasan a un administrador?
+- G9 [m] Expulsar o expulsar y bloquear; pantalla «Personas bloqueadas» (aparece solo si hay alguno) con «Desbloquear» solo del creador; lista de bloqueados en el estado del grupo. Decidido por el dueño: si el creador sale, todo lo suyo (bloqueos incluidos) pasa al administrador más antiguo.
 - G8 [m] Pruebas: ampliar `tests/sim/groups.js` y `gruposadmin.js`: permisos, avisos de un no admin descartados, creador no expulsable, versión del estado, expulsado que sigue escribiendo, grupos viejos.
 Sin preguntas abiertas de grupos. Supuesto mío, por corregir si no es así: un expulsado puede volver si alguien con permiso lo vuelve a agregar.
 
