@@ -182,3 +182,11 @@ llega» y no se paraba a preguntarse qué falta. Regla desde hoy:
   «Modelo y costo» (§8) y se limpia la lista de tareas.
 - 10-11-2026: el dueño propone resumir/reiniciar la conversación para gastar menos tokens y fijarlo como regla; se documenta §9.
 
+
+## Acuerdos de trabajo (21-11, para toda sesión nueva)
+- **Tiempos:** estimar en horas de trabajo activo, no de espera; decir el rango y corregirlo con lo que tarda de verdad. Sin inflar pruebas ni actualizaciones.
+- **Builds:** los arreglos de robustez van en un solo build, después de simulador completo y pruebas JVM en verde. Servicio nativo, auditoría y servidor, cada uno en su build.
+- **Modelo por tarea:** [c] Haiku o Sonnet con esfuerzo bajo; [m] Sonnet con esfuerzo medio, Fable si se atora dos veces; [m] nativo o protocolo, Fable con esfuerzo alto; [g] auditoría, servidor y servicio nativo, Fable con esfuerzo máximo.
+- **Errores:** cada arreglo lleva prueba que falla antes y pasa después; revisión cruzada de un segundo ayudante antes del build; tu prueba real para Bluetooth y Wi-Fi Direct. Medir a la primera si el arreglo pasa, y ajustar el nivel con esos datos.
+- **Decisiones del dueño:** quedan en `docs/PLAN_ENTREGA.md` (sección «Decisiones que solo toma el dueño»). Claude no las toma por su cuenta.
+- **Registro:** cada acuerdo de una plática de análisis se escribe en un documento del repositorio en ese momento, para que la sesión siguiente no lo vuelva a discutir.
