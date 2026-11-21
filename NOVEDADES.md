@@ -12,6 +12,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Con la letra del teléfono en tamaño grande, el nombre del contacto arriba del chat ya se ve completo en dos líneas, sin cortarse.
 </es-419>
 <!-- /APK -->
 

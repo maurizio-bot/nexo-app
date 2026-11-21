@@ -293,9 +293,16 @@ function _fitContactName() {
     var el = document.getElementById('chat-contact-name');
     if (!el || el.tagName !== 'TEXTAREA') return;
     el.style.height = 'auto';
-    var max = 48; // ~2 líneas (el CSS pone el tope real con max-height)
+    // 21-11 (Redmi Note 11 Pro 5G con letra grande): el tope era 48 px fijos, pensado para letra normal (2 × 23 px); con la
+    // letra del sistema más grande cada línea mide 30–37 px y la segunda salía cortada a la mitad. El tope se mide ahora con
+    // la línea REAL del teléfono: 2 líneas completas + relleno.
+    var cs = window.getComputedStyle ? getComputedStyle(el) : null;
+    var lh = cs ? parseFloat(cs.lineHeight) : 0;
+    if (!(lh > 0)) lh = (cs ? parseFloat(cs.fontSize) * 1.15 : 0) || 23;
+    var pad = cs ? (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) : 0;
+    var max = Math.ceil(2 * lh + pad);
     var h = el.scrollHeight || 0;
-    el.style.height = (h ? Math.min(h, max) : 24) + 'px';
+    el.style.height = (h ? Math.min(h, max) : Math.ceil(lh + pad)) + 'px';
   } catch (e) {}
 }
 ['nexo:ble:linkChange', 'nexo:ble:deviceDisconnected', 'nexo:ble:openChat'].forEach(function(ev) {
