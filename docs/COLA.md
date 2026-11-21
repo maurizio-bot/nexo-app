@@ -53,6 +53,8 @@ Lo que pidió el dueño, en dos modos que el creador elige al crear o en Ajustes
 - MODO CONTROL (el creador manda): solo los administradores escriben, agregan, renombran, cambian la foto y el fondo. Un administrador tiene lo mismo que el creador, pero no puede expulsar a un administrador: eso solo lo hace el creador. Los administradores se designan con «Designar administradores» (lista de miembros con buscador por nombre).
 - MODO COLEGAS (todos hacen lo que quieran): todos escriben, agregan, renombran y cambian el fondo. Lo único restringido es expulsar: lo hace siempre el creador (decisión del dueño 20-11: un supervisor saca a un colaborador que ya no está en el equipo y no quiere salir).
 - Fondo: el creador y los administradores lo cambian y lo pueden compartir con el grupo, con los mismos botones de un chat normal.
+Expulsar y bloquear (decisión del dueño 20-11 noche): al expulsar, el creador elige «Solo expulsar» o «Expulsar y bloquear». El bloqueo es SOLO para ese grupo. Los bloqueados van en Ajustes del grupo, en la pantalla «Personas bloqueadas» (solo aparece si hay alguno), con el botón «Desbloquear» al lado de cada nombre; solo el creador que bloqueó puede desbloquear. Volver a entrar siempre es por invitación del creador o de un administrador con permiso.
+Cómo se cumple (propuesta de Claude, por revisar con el dueño): la lista de bloqueados va en el estado del grupo, versionada, para que TODOS los teléfonos rechacen volver a agregar a esa persona; y los mensajes de un bloqueado se descartan, igual que en «Solo admins escriben» (G5). El bloqueo no toca el contacto fuera del grupo.
 Tareas:
 - G1 [m] Panel «Ajustes del grupo»: interruptores, «Designar administradores» con buscador, foto, fondo, expulsar, salir.
 - G2 [m] Modelo: `admins` (al inicio solo el creador), `onlyAdminsWrite`, `onlyAdminsAdd`, `v` (versión del estado). Grupos viejos: el creador queda como único admin. Aviso «X hizo admin a Y».
@@ -61,6 +63,7 @@ Tareas:
 - G5 [c] «Solo admins escriben»: el receptor descarta lo que no viene de un admin; la barra de escribir se bloquea con el motivo.
 - G6 [m] Foto del grupo: creador y admins; viaja como la foto de perfil (reusar `avatar.js`).
 - G7 [c] Fondo del grupo: creador y admins; local en cada teléfono; «Compartir» manda la imagen al grupo (si pesa, por el buzón de archivos). Reusar `wallpaper.js` con el id del grupo.
+- G9 [m] Expulsar o expulsar y bloquear; pantalla «Personas bloqueadas» (aparece solo si hay alguno) con «Desbloquear» solo del creador; lista de bloqueados en el estado del grupo. Pregunta abierta: si el creador sale del grupo, ¿los bloqueos se quedan sin poder quitarse, o pasan a un administrador?
 - G8 [m] Pruebas: ampliar `tests/sim/groups.js` y `gruposadmin.js`: permisos, avisos de un no admin descartados, creador no expulsable, versión del estado, expulsado que sigue escribiendo, grupos viejos.
 Sin preguntas abiertas de grupos. Supuesto mío, por corregir si no es así: un expulsado puede volver si alguien con permiso lo vuelve a agregar.
 
