@@ -390,8 +390,21 @@ class NexoBlePlugin : Plugin() {
     }
 
     @PluginMethod fun getFcmToken(call: PluginCall) = getFcmTokenImpl(call)
+    // 3273 (dueño 22-11: «en la miniatura de la videollamada debo poder usar otras apps sin que se pause el vídeo, y al regresar no se
+    // debe trabar»): al pasar a la miniatura del sistema (PiP) Android PAUSA la pantalla aunque se siga viendo. Antes eso contaba como
+    // «app en segundo plano»: se avisaba a la app (que deja de pintar y reparte trabajo de fondo) y, al volver, se hacía TODO lo de
+    // «volver a la app» (reconectar, vaciar colas, pedir estados, permisos) encima de la videollamada: el tirón. Ahora la miniatura NO
+    // es segundo plano: no se toca nada al entrar ni al volver. Solo si la ventanita se cierra o se tapa del todo (onStop) pasa a serlo.
+    @Volatile private var pipHeld = false
+    private fun inPipNow(): Boolean = try {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity?.isInPictureInPictureMode == true
+    } catch (e: Exception) { false }
     override fun handleOnResume() {
         super.handleOnResume()
+        if (pipHeld) {
+            pipHeld = false
+            if (!appInBackground) { remLog("INFO", "LIFECYCLE", "vuelve de la miniatura de la videollamada: la app nunca estuvo en segundo plano (sin reconectar ni vaciar colas)"); return }
+        }
         appInBackground = false
         if (BleService.inCall && !BleService.fgsState.startsWith("micrófono")) {
             callFgs = callForeground(true)
@@ -416,6 +429,19 @@ class NexoBlePlugin : Plugin() {
     }
     override fun handleOnPause() {
         super.handleOnPause()
+        if (BleService.pipVideo && inPipNow()) {
+            pipHeld = true
+            remLog("INFO", "LIFECYCLE", "handleOnPause en la miniatura de la videollamada: sigue a la vista, no cuenta como segundo plano")
+            return
+        }
+        goBackground()
+    }
+    // La miniatura se cerró o quedó tapada del todo con la llamada aún viva: ahora sí es segundo plano
+    override fun handleOnStop() {
+        super.handleOnStop()
+        if (pipHeld && !appInBackground) { remLog("INFO", "LIFECYCLE", "la miniatura ya no se ve: segundo plano"); goBackground() }
+    }
+    private fun goBackground() {
         remLog("INFO", "LIFECYCLE", "handleOnPause")
         appInBackground = true
         bgSinceMs = System.currentTimeMillis() // 3086: desde cuándo (BgNotifyPolicy)
