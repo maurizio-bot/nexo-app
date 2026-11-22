@@ -43,8 +43,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   (buscar «[CALL] Salida de sonido», «[CALL] Miniatura», «LIFECYCLE»); (e) fase 4 con mucha gente cerca.
 - **LOGO Y NOMBRE (solo en el privado `nexo-private/negocio/NOMBRE.md`):** ⭐ LOGO ELEGIDO (22-11 tarde, tras 8 rondas): la «1b» ORIGINAL de la ronda 7 (una
   burbuja cuyo contorno son 4 tramos de los colores del chat = un mensaje hecho de 4 caminos). Siguiente (cuando toque): icono final (adaptativo de Android + aviso +
-  tienda 512 px) conservando su aspecto; solo quitar el bulto de la cola y enseñarle antes/después. NOMBRE: lo decide el dueño (3 finalistas del ayudante en
-  NOMBRE.md; IMPI y dominios los consulta una persona). Antes de la prueba cerrada (≤ 1-12): fijar el identificador de paquete (hoy `com.nexo.app`).
+  tienda 512 px) conservando su aspecto; solo quitar el bulto de la cola y enseñarle antes/después. NOMBRE: ⭐ «sigue con KINWAY» (dueño 22-11 tarde; nombre de
+  trabajo: falta IMPI —KIN y KINGWAY, clases 9/38—, dominios y redes; lo consulta una persona; la app sigue diciendo NEXO hasta que él lo pida). Antes de la prueba cerrada (≤ 1-12): fijar el identificador de paquete (hoy `com.nexo.app`).
 - **Herramientas:** `CI_ONLY='a.js|b.js|texto' node ci.js builds/wip` (varios con «|», por archivo si acaba en .js). `MainActivity` se compila con stubs mínimos de
   Capacitor contra `android-all-16-robolectric` (~/.gradle). Sin avisos programados activos.
 - **Diagnósticos:** solo los de la última build (3117); se apuntan en `docs/diagnosticos.json` (`node tests/sim/diag_stats.js`). Abiertos de la app: mensaje atorado durante una
