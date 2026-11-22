@@ -24,6 +24,7 @@ import com.nexo.ble.NexoBlePlugin.Companion.NEXO_MAGIC_HIGH
 import com.nexo.ble.NexoBlePlugin.Companion.NEXO_MAGIC_LOW
 import com.nexo.ble.NexoBlePlugin.Companion.SCAN_DEBOUNCE_MS
 import com.nexo.ble.NexoBlePlugin.Companion.MIN_RSSI
+import com.nexo.ble.NexoBlePlugin.Companion.netBgShared
 
 // Bluetooth: escaneo, anuncio y servicio en primer plano.
 // 3118 (reestructuración 15-11): código movido TAL CUAL desde NexoBlePlugin.kt, sin cambiar lo que hace. Son extensiones
@@ -204,7 +205,15 @@ internal fun NexoBlePlugin.newScanCallback(): ScanCallback = object : ScanCallba
 
             if (nexoId != null) {
                 registerNexoMapping(nexoId, addr)
-                outSeen[nexoId.lowercase()] = macNorm to System.currentTimeMillis() // 3271: para la bandeja de salida (OutboxDial)
+                // 3271/3279: para la bandeja de salida (OutboxDial). Lo anunciado casi siempre es el código rotativo: se apunta solo si
+                // es de un contacto con algo pendiente (OutboxRid lo reconoce con la clave de sus códigos)
+                try {
+                    val ob = netBgShared?.outbox
+                    if (ob != null && ob.size() > 0) outRid.resolve(nexoId, ob.ridKeys(), ob.ridEpochS)?.let { who ->
+                        if (outSeen.size > 200) outSeen.clear()
+                        outSeen[who] = macNorm to System.currentTimeMillis()
+                    }
+                } catch (e: Throwable) { }
             }
 
             val scanMsg = "Device found: $name ($addr) NEXO=$nexoId rssi=$rssi - cacheado"

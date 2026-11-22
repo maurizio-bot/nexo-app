@@ -329,7 +329,12 @@ internal fun NexoBlePlugin.netOutboxSetImpl(call: PluginCall) {
         }
     } catch (e: Exception) { call.reject("bandeja ilegible"); return }
     val bg = netBg()
-    val n = bg.outboxSet(list, call.data.optString("f"), call.data.optString("url"))
+    // 3279: la clave de los códigos rotativos de cada contacto con algo pendiente (rk: {nx: hex}; ep = segundos de una época), para
+    // reconocerlo en el aire al buscarlo por Bluetooth (OutboxRid). Sin rk (una app anterior) se conservan las que hubiera.
+    val rk: Map<String, String>? = try {
+        call.data.optJSONObject("rk")?.let { o -> HashMap<String, String>().also { m -> o.keys().forEach { nx -> m[nx.lowercase()] = o.optString(nx) } } }
+    } catch (e: Exception) { null }
+    val n = bg.outboxSet(list, call.data.optString("f"), call.data.optString("url"), rk, call.data.optLong("ep", 0L))
     // 3269: los enlaces Bluetooth listos de esos contactos (los identificó la app): por ellos también sale lo pendiente
     try {
         call.data.optJSONArray("links")?.let { a ->

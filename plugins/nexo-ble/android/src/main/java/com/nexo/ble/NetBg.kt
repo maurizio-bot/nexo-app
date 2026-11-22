@@ -323,9 +323,9 @@ class NetBg(
     val outbox = NetOutbox()
     private fun outboxChanged() { try { onOutbox(outbox.toJson()) } catch (e: Throwable) { } }
     /** La lista entera de lo pendiente (reemplaza). Devuelve cuántos quedan. */
-    fun outboxSet(list: List<NetOutbox.Item>, myToken: String, wakeUrl: String): Int {
+    fun outboxSet(list: List<NetOutbox.Item>, myToken: String, wakeUrl: String, ridKeys: Map<String, String>? = null, epochS: Long = 0L): Int {
         val before = outbox.size()
-        if (outbox.set(list, myToken, wakeUrl)) {
+        if (outbox.set(list, myToken, wakeUrl, ridKeys, epochS)) {
             outboxChanged()
             val n = outbox.size()
             if (n > 0 || before > 0) log("Bandeja de salida: $n mensaje(s) pendiente(s) quedan a cargo del teléfono (salen por internet aunque NEXO se duerma)")

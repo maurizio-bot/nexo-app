@@ -41,6 +41,7 @@ class NetOutbox {
         const val MAX_AGE_MS = 7 * 86400_000L   // como el buzón de los relés (TTL_MSG): más viejo ya no se guarda allí
         private val NX = Regex("^nx[0-9a-z]{8}$")
         private val ID = Regex("^[A-Za-z0-9_.:-]{4,96}$")
+        private val RID_KEY = Regex("^[0-9a-f]{64}$")
 
         /**
          * Cuánto esperar para volver a subirlo. Sin aceptar por ningún relé: 20 s, 40 s… hasta 5 min. Aceptado (a salvo en el buzón) pero
@@ -100,6 +101,13 @@ class NetOutbox {
     /** Mi token del «toque» (va en el sobre de un mensaje nuevo, como hace la app) y la dirección del enviador de toques. */
     @Volatile var myToken = ""; private set
     @Volatile var wakeUrl = ""; private set
+    /**
+     * 3279: la clave de los códigos rotativos de cada contacto con algo pendiente (NEXO ID → hex 64) y lo que dura una época, para
+     * reconocerlo en el aire al buscarlo por Bluetooth (OutboxRid). Solo de quien tiene algo en la bandeja.
+     */
+    private val rid = HashMap<String, String>()
+    @Volatile var ridEpochS = 900L; private set
+    @Synchronized fun ridKeys(): Map<String, String> { val nxs = items.values.map { it.nx }.toSet(); return rid.filterKeys { it in nxs } }
 
     @Synchronized fun size() = items.size
     @Synchronized fun ids(): List<String> = items.keys.toList()
@@ -109,7 +117,7 @@ class NetOutbox {
      * La app da la lista ENTERA de lo pendiente (reemplaza a la anterior). Lo que ya estaba conserva su cuenta de intentos (no se vuelve
      * a subir en el acto lo recién subido). Devuelve si cambió algo que haya que guardar.
      */
-    @Synchronized fun set(list: List<Item>, myToken: String = "", wakeUrl: String = ""): Boolean {
+    @Synchronized fun set(list: List<Item>, myToken: String = "", wakeUrl: String = "", ridKeys: Map<String, String>? = null, epochS: Long = 0L): Boolean {
         val next = LinkedHashMap<String, Item>()
         for (it in list) {
             if (next.size >= MAX_ITEMS) break
@@ -119,8 +127,13 @@ class NetOutbox {
         }
         val tok = if (myToken.length in 20..4096) myToken else ""
         val url = if (wakeUrl.startsWith("https://") && wakeUrl.length <= 300) wakeUrl else ""
-        val changed = next.keys.toList() != items.keys.toList() || tok != this.myToken || url != this.wakeUrl
+        // 3279: las claves de los códigos (ridKeys null = no se dijo nada: se conservan las de quien sigue en la lista)
+        val nxs = next.values.map { it.nx }.toSet()
+        val nextRid = (ridKeys ?: rid).filter { (nx, k) -> nx in nxs && RID_KEY.matches(k) }
+        val ep = if (epochS > 0) epochS else ridEpochS
+        val changed = next.keys.toList() != items.keys.toList() || tok != this.myToken || url != this.wakeUrl || nextRid != ridKeys() || ep != ridEpochS
         items.clear(); items.putAll(next)
+        rid.clear(); rid.putAll(nextRid); ridEpochS = ep
         this.myToken = tok; this.wakeUrl = url
         return changed
     }
@@ -128,7 +141,7 @@ class NetOutbox {
     /** La app lo retira (lo mandó ella, llegó su ✓✓ o se borró). */
     @Synchronized fun drop(id: String): Boolean = items.remove(id) != null
 
-    @Synchronized fun clear(): Boolean { val had = items.isNotEmpty() || myToken.isNotEmpty(); items.clear(); myToken = ""; wakeUrl = ""; return had }
+    @Synchronized fun clear(): Boolean { val had = items.isNotEmpty() || myToken.isNotEmpty(); items.clear(); rid.clear(); myToken = ""; wakeUrl = ""; return had }
 
     /** Lo que toca subir ahora. De paso tira lo caducado (más de 7 días: el buzón ya no lo guardaría); expired recibe sus ids. */
     @Synchronized fun due(t: Long, expired: ((String) -> Unit)? = null): List<Item> {
@@ -189,12 +202,12 @@ class NetOutbox {
     }
 
     // ---------- en disco (el texto que se cifra en reposo) ----------
-    @Synchronized fun toJson(): String = JSONObject().put("v", 1).put("f", myToken).put("url", wakeUrl)
+    @Synchronized fun toJson(): String = JSONObject().put("v", 1).put("f", myToken).put("url", wakeUrl).put("rk", JSONObject(ridKeys())).put("ep", ridEpochS)
         .put("items", JSONArray(items.values.map { JSONObject().put("id", it.id).put("nx", it.nx).put("p", it.p).put("at", it.addedAt).put("wk", it.wake).put("ok", it.okAt) })).toString()
 
     /** Lo guardado (al arrancar sin la app). Lo que no cuadra se salta; lo aceptado antes por un relé no se vuelve a subir en el acto. */
     @Synchronized fun load(text: String?, t: Long): Int {
-        items.clear(); myToken = ""; wakeUrl = ""
+        items.clear(); rid.clear(); myToken = ""; wakeUrl = ""
         if (text.isNullOrEmpty()) return 0
         try {
             val o = JSONObject(text)
@@ -208,8 +221,10 @@ class NetOutbox {
                     list.add(it)
                 }
             }
-            set(list, o.optString("f"), o.optString("url"))
-        } catch (e: Exception) { items.clear() }
+            val keys = HashMap<String, String>()
+            o.optJSONObject("rk")?.let { r -> r.keys().forEach { nx -> keys[nx.lowercase()] = r.optString(nx) } }
+            set(list, o.optString("f"), o.optString("url"), keys, o.optLong("ep", 900L))
+        } catch (e: Exception) { items.clear(); rid.clear() }
         return items.size
     }
 }

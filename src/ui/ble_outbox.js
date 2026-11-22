@@ -16,6 +16,7 @@
 import { e2eAnyEncrypted, e2eSealText } from '../vault/e2e_proto.js';
 import { e2eAvailable } from '../vault/e2e_crypto.js';
 import { BLE_STATES, _hasNativeMethod, _normId, _safeNativeCall } from './ble_helpers.js';
+import { ridKey, ridEpochSeconds } from './ble_rid.js';
 
 var OUT_MAX = 100;          // como NetOutbox.MAX_ITEMS
 var OUT_TXT_MAX = 12000;    // caracteres del texto: ya cifrado y en su sobre entra de sobra en un evento de relé (NetOutbox.MAX_P)
@@ -117,10 +118,10 @@ export const BLE_OUTBOX_METHODS = {
       if (!it.skip && !seen[it.id] && items.length < OUT_MAX) { seen[it.id] = 1; items.push(it); }
     };
     var work = Promise.resolve();
-    var netNx = {}, cand = {};
+    var netNx = {}, cand = {}, pubs = {};
     // 3269: cualquier contacto con clave (no solo los de internet): por Bluetooth el nativo no necesita nada más; por internet solo
     // sube lo de quienes tienen secreto de pareja (los demás esperan en la bandeja)
-    try { (self.getBLEContacts() || []).forEach(function(c) { var nx = _normId(c && (c.nexoId || c.deviceUUID)); if (c && c.publicKey && !c.pendingKey && /^nx[0-9a-z]{8}$/.test(nx)) netNx[nx] = 1; }); } catch (e) {}
+    try { (self.getBLEContacts() || []).forEach(function(c) { var nx = _normId(c && (c.nexoId || c.deviceUUID)); if (c && c.publicKey && !c.pendingKey && /^nx[0-9a-z]{8}$/.test(nx)) { netNx[nx] = 1; pubs[nx] = c.publicKey; } }); } catch (e) {}
     // De qué chats mirar: a quién se le mandó algo en esta sesión (_msgDest) y los que tienen pendientes sin camino (_outboxNote). No
     // se lee el historial de todos los contactos cada vez que la app se oculta.
     try { if (self._msgDest) self._msgDest.forEach(function(nx) { if (netNx[nx]) cand[nx] = 1; }); } catch (e) {}
@@ -165,7 +166,19 @@ export const BLE_OUTBOX_METHODS = {
       } catch (e) {}
       var lsig = links.map(function(l) { return l.mac; }).sort().join(',');
       if (sig === (self._outboxSig || '') && (!items.length || lsig === (self._outboxLinks || ''))) return items.length;
-      return _safeNativeCall(pl, 'netOutboxSet', { items: items, links: links, f: self.net.fcmToken || '', url: (typeof self.net.senderUrl === 'function' && self.net.senderUrl()) || '' }).then(function(r) {
+      // 3279: la clave de los códigos rotativos de cada contacto con algo pendiente. El nativo busca a ese contacto escaneando y lo que
+      // ve en el aire es su código de los 15 min, no su NEXO ID: con esta clave (la misma con la que la app lo reconoce, sale de su clave
+      // PÚBLICA) lo reconoce él también (OutboxRid.kt). Sin ella el nativo no abría nunca el enlace en teléfonos reales (3271).
+      var rk = {}, rkWork = Promise.resolve(), rkc = self._outboxRk || (self._outboxRk = new Map());
+      Object.keys(want).forEach(function(nx) {
+        var pub = pubs[nx], k = nx + ':' + pub;
+        if (!pub) return;
+        if (rkc.has(k)) { rk[nx] = rkc.get(k); return; }
+        rkWork = rkWork.then(function() { return ridKey(pub); }).then(function(h) { if (h) { rkc.set(k, h); rk[nx] = h; } }).catch(function() {});
+      });
+      return rkWork.then(function() {
+        return _safeNativeCall(pl, 'netOutboxSet', { items: items, links: links, rk: rk, ep: ridEpochSeconds(), f: self.net.fcmToken || '', url: (typeof self.net.senderUrl === 'function' && self.net.senderUrl()) || '' });
+      }).then(function(r) {
         self._outboxSig = sig; self._outboxLinks = lsig;
         console.log('[NET] Bandeja de salida: ' + items.length + ' texto(s) pendiente(s) a cargo del teléfono (' + (why || 'puesta al día') + '): salen por internet aunque NEXO se duerma'); // i18n-ok: registro
         return items.length;

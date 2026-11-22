@@ -730,6 +730,15 @@ class NativePhone {
     Array.from(this.outLinkNx.entries()).reverse().forEach(([mac, nx]) => { n += this._outboxSendVia(mac, nx); });
     return n;
   }
+  // Kotlin OutboxRid.resolve: de lo anunciado (NEXO ID o código rotativo) al NEXO ID del contacto con algo pendiente; null = no se sabe
+  _outboxRidResolve(adv) {
+    const a = String(adv || '');
+    if (/^nx[0-9a-z]{8}$/i.test(a)) return a.toLowerCase();
+    if (!/^R[a-z2-7]{9}$/.test(a)) return null;
+    const rk = (this.outbox && this.outbox.rk) || {}, epS = Math.max(1, Number(this.outbox && this.outbox.ep) || 900), e = Math.floor(Date.now() / 1000 / epS);
+    for (const nx of Object.keys(rk)) { if (!/^[0-9a-f]{64}$/.test(rk[nx])) continue; for (let d = -1; d <= 1; d++) if (ridToken(rk[nx], e + d) === a) return nx; }
+    return null;
+  }
   // ---- 3271: la bandeja abre ella el enlace (Kotlin OutboxDial + outboxDialStep; JVM: OutboxDialTest) ----
   _outboxWanting() {
     const items = (this.outbox && this.outbox.items) || [];
@@ -753,8 +762,10 @@ class NativePhone {
       const w = this._outboxWanting();
       this.radio.phones.forEach((p) => {
         if (p === this || p.offline || p.btOff || !p.serviceRunning || p.serverUp === false || !this.radio.inRange(this, p)) return;
-        const nx = String(p.advertisingId || '').toLowerCase(), mac = norm(p.address);
-        if (!w.has(nx) || this.clients.has(mac) || this.clients.size >= 7) return;
+        // Como el teléfono real (PluginScan → OutboxRid.resolve): el escaneo solo ve lo que el otro ANUNCIA. Con contactos, eso es su
+        // código rotativo (R…), no su NEXO ID: se reconoce con la clave de códigos de ese contacto que la app dejó con la bandeja (rk).
+        const nx = this._outboxRidResolve(p.advertised()), mac = norm(p.address);
+        if (!nx || !w.has(nx) || this.clients.has(mac) || this.clients.size >= 7) return;
         if (Date.now() - (d.tried.get(mac) || 0) < 30000) return;
         d.tried.set(mac, Date.now());
         this.scanned.add(mac);
@@ -1556,7 +1567,9 @@ class NativePhone {
         const { validItem } = require('./netbg_mock');
         const prev = (self.outbox && self.outbox.items) || [];
         const items = (a.items || []).filter(validItem).slice(0, 100).map((x) => prev.find((y) => y.id === x.id && y.nx === x.nx) || { id: x.id, nx: x.nx, p: x.p, at: x.at || Date.now(), wk: x.wk || '' });
-        self.outbox = { items, f: a.f || '', url: a.url || '' };
+        // 3279: las claves de los códigos rotativos de esos contactos (nx → hex 64) y la duración de la época: solo de quien tiene algo pendiente
+        const rk = {}; Object.keys(a.rk || {}).forEach((nx) => { if (items.some((x) => x.nx === nx) && /^[0-9a-f]{64}$/.test(String(a.rk[nx]))) rk[nx] = String(a.rk[nx]); });
+        self.outbox = { items, f: a.f || '', url: a.url || '', rk, ep: Math.max(1, Number(a.ep) || 900) };
         self._outboxTickStart();
         (a.links || []).slice(0, 64).forEach((l) => { if (l) self._outboxLearn(norm(String(l.mac || '')), String(l.nx || '').toLowerCase()); }); // 3269
         self.outboxCalls = (self.outboxCalls || 0) + 1;

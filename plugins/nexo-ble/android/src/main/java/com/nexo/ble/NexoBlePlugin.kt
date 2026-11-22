@@ -208,6 +208,7 @@ class NexoBlePlugin : Plugin() {
     @Volatile internal var outTickOn = false
     // 3271: la bandeja abre ella el enlace: el plan (OutboxDial), lo visto en el aire (NEXO ID → dirección, cuándo) y a quién se llamó
     internal val outDial = OutboxDial()
+    internal val outRid = OutboxRid() // 3279: de lo anunciado (código rotativo) al NEXO ID del contacto con algo pendiente
     internal val outSeen = ConcurrentHashMap<String, Pair<String, Long>>()
     internal val outDialNx = ConcurrentHashMap<String, String>()
     @Volatile internal var outScanUntil = 0L
