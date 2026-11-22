@@ -16,7 +16,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Sin internet también: si tu contacto aparece cerca por Bluetooth, tu mensaje le llega sin que abras NEXO.
 - Ajustes → Apariencia: elige el color de tus burbujas, su estilo y el tipo de letra.
 - Fondo propio en la lista de chats, las llamadas, Perfil y Ajustes: mantén el dedo en un espacio libre.
-- Wi-Fi Direct te dice por qué un archivo va por Bluetooth y qué hacer.
+- Videollamada en miniatura: sigue al usar otras apps y vuelve sin trabarse.
 </es-419>
 <!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
   y la app lo muestra junto al botón de actualizar (Perfil → Ajustes → Actualizaciones, y «¿Qué trae?» en el aviso de abajo).
