@@ -832,6 +832,30 @@
    "sintoma": "par:zombi",
    "categoria": "Bluetooth: par sin contestar",
    "causa": "El diagnóstico del S23 empieza con la app ARRANCANDO a las 14:40:46 («NEXO iniciando…»): durante el zombi del S24 (14:37:52–14:39:11) la app del S23 no estaba corriendo (cerrada o congelada) y el enlace Bluetooth lo sostenía el sistema/servicio sin nadie que contestara los mensajes ni el préstamo de internet. Falta el registro NATIVO del S23 de esos minutos para saber si el servicio (fase 1 Bluetooth sin la app) estaba al mando o si la app estaba congelada viva (el servicio no toma el relevo): lo cubren las fases 2–3 y COLA 29."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "20:20",
+   "nx": "nx126df3f4, nx01992876, nx1905c1ee, nx10b6f4ac: resúmenes diarios del 20-11, build 3116",
+   "sintoma": "resumen_diario",
+   "categoria": "Medición",
+   "causa": "Katy 2 enviados 2 ✓✓. Marcos 1 enviado ✓✓ (+2 sin camino sin ✓✓). Austin (HONOR): 19 enviados, solo 11 ✓✓ y 0 leídos (8 imágenes sin confirmar; familia COLA 22, HONOR congela la app). nx10b6f4ac: 0 enviados, 23 recibidos, zombi ×1."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "19:19",
+   "nx": "nx126df3f4 (Katy, HONOR, build 3116), pedido por nx1e50c95d",
+   "sintoma": "par:reenvio_sin_fin",
+   "categoria": "Bluetooth: reenvío sin tope / enlace con el HONOR",
+   "causa": "El diagnóstico empieza con la app de Katy ARRANCANDO (19:19:06) y metiendo 3 mensajes del S23 que el servicio recibió en segundo plano: la app estaba cerrada/congelada (HONOR PowerGenie, COLA 22) y el S23 reenviaba sin tope (COLA 28). Sin dato nuevo."
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "12:27",
+   "nx": "nx10b6f4ac (NX725J, build 3116) con nx0x4029e6 (Zhelowsky)",
+   "sintoma": "zombi",
+   "categoria": "Bluetooth: par sin contestar",
+   "causa": "Zhelowsky no contestó 4 pings con enlace a MTU 498 (su app dormida; la detección funcionó). Ajuste del teléfono: optimización de batería ACTIVA para NEXO (la app ya lo detecta y avisa). Bluetooth apagado al abrir y encendido 12:22. Wi-Fi local listo en 55,8 s por la app dormida del S24 (toque a los 4,9 s). Roberto: su app no contestó en 180 s por Wi-Fi (COLA 22). VICK: «MTU 23» tras cerrar la conexión de paso (COLA 16c). APP: el nativo manda 216 B a 40eff85cf5af 7 ms DESPUÉS de cerrar esa conexión de paso → «mensaje descartado entero (11 trozos)» (COLA 36)."
   }
  ]
 }
