@@ -203,7 +203,11 @@ export const bleNativeEvents = {
         self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.OFFLINE, since: Date.now() });
         self._lastPongTime.delete(deviceId);
         self._pingFailCount.delete(deviceId);
-        if (peerUUID) { var key = _normMac(deviceId) + ':' + _normId(peerUUID); self._notifiedPeers.delete(key); }
+        // 3283 (diagnóstico automático S24 22-11 14:56, build 3117, «6 desconexiones en 10 min» con el vivo): con una dirección distinta
+        // de la guardada en su contacto («Enlace ? …») la marca «llegó a estar listo» no se borraba y cada reintento fallido o aviso
+        // repetido contaba como otra caída. Se borra también por el NEXO ID de la dirección (flapNx).
+        var notiNx = peerUUID || flapNx;
+        if (notiNx) { var key = _normMac(deviceId) + ':' + _normId(notiNx); self._notifiedPeers.delete(key); }
         if (peerUUID) {
           var contacts = _getBLEContacts();
           var idx = contacts.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(peerUUID); });

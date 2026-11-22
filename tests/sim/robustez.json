@@ -414,6 +414,10 @@
      "prueba": "MINIATURA de la videollamada"
     },
     {
+     "fallo": "3283 (diagnóstico automático S24 22-11 14:56, build 3117, «enlace_abre_cierra: nx09acdb61 6 desconexiones» con el vivo): falso aviso. Con el contacto conectado por una dirección distinta de la guardada («Enlace ?») la marca «llegó a estar listo» no se borraba y cada reintento fallido o aviso repetido contaba como otra caída (diagnóstico de 20 KB por la radio). Se borra también por el NEXO ID de la dirección",
+     "prueba": "GATT roto / no_service"
+    },
+    {
      "fallo": "3276 (PRIORIDAD 1, fase 4; estudio de multitud 17-11): sin tope ni orden de enlaces, con 10 contactos dormidos alrededor el que tenía un mensaje esperando no conectaba nunca (7 enlaces ocupados, 222 intentos rechazados) y las conexiones de paso se llevaban huecos. Gestor de enlaces: tope 6, 4 contactos por estar cerca, hueco reservado y desalojo por prioridad (pendientes > chat abierto > reciente)",
      "prueba": "3276 GESTOR DE ENLACES"
     }

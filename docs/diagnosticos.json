@@ -888,6 +888,22 @@
    "sintoma": "miniatura de la videollamada: el chat apretado en la ventanita del sistema; problemas al pasar varias veces normal ↔ miniatura; «el chat y la miniatura, y la miniatura no respondía»",
    "categoria": "Llamadas",
    "causa": "APP. (1) la marca «pasar a miniatura» (BleService.pipVideo) quedaba puesta si la app se rehacía en plena videollamada → al irse, el chat en la ventanita; (2) todo dependía de un aviso de Android por cambio (perdido = marcas pegadas); (3) la llamada que terminaba con la mini flotante dejaba la mini y la siguiente nacía dentro; (4) en la 3117 la miniatura contaba como segundo plano (3273/3275). Arreglado en 3277 (call_pip.js + nativo); sim miniaturas.js. Pendiente de confirmar en teléfono con la APK 3119."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "14:56",
+   "nx": "dueño S24 (nx1n36c283), build 3117: automático",
+   "sintoma": "enlace_abre_cierra (nx09acdb61, vivo Y03: 6 desconexiones en 10 min)",
+   "categoria": "Conexión",
+   "causa": "APP (falso aviso). El vivo conecta con una dirección distinta de la guardada en su contacto («Enlace ? (0244)»): la marca «llegó a estar listo» solo se borraba si el contacto se reconocía por la dirección; con «?» quedaba puesta y cada reintento fallido / aviso repetido (4 en 10 ms al volver la app) contaba como caída. Arreglado en 3283 (ble_native_events.js: se borra también por el NEXO ID de la dirección); sim noservice.js caso 7. Va en la APK siguiente a la 3119. De paso: diagnóstico de la tablet (nx1e29ab2f) llegó marcado build 3105 y se descartó, aunque la lista la muestra con 3117: preguntado al dueño."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "15:18",
+   "nx": "nx16386482 (Yael, Redmi): resumen diario del 20-11, build 3117",
+   "sintoma": "resumen_diario",
+   "categoria": "Medición",
+   "causa": "SIN FALLO. 6 enviados, 6 ✓✓ (media 0,7 s por internet, 1 con la app dormida); 8 recibidos; internet listo en 5,4 s de media; 1 min con la app a la vista; 354 KB."
   }
  ]
 }
