@@ -823,6 +823,8 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod fun moveSend(call: PluginCall) = moveSendImpl(call)
 
     @PluginMethod fun ringerMode(call: PluginCall) = ringerModeImpl(call)
+    @PluginMethod fun silencedState(call: PluginCall) = silencedStateImpl(call)
+    @PluginMethod fun silencedOpen(call: PluginCall) = silencedOpenImpl(call)
     @PluginMethod fun ringback(call: PluginCall) = ringbackImpl(call)
 
     @PluginMethod fun callAudio(call: PluginCall) = callAudioImpl(call)

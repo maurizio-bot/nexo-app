@@ -1550,6 +1550,12 @@ class NativePhone {
         setTimeout(() => c.resolve({ granted: true }), 300);
       }),
       screenShareStop: wrap('screenShareStop', (c) => { self.stats.screenStops = (self.stats.screenStops || 0) + 1; if (self.screenTimer) { clearInterval(self.screenTimer); self.screenTimer = null; self.emit('onScreenShareStopped', {}); } c.resolve({}); }),
+      // COLA 22 (SilencedPolicy.kt): self.silenced = { messages:'ok|off|quiet', calls:'ok|off|quiet', filter:1..4 }; silencedOpen arregla lo que abre
+      silencedState: wrap('silencedState', (c) => { const z = self.silenced || {}, f = z.filter || 1, m = z.messages || 'ok', k = z.calls || 'ok', iss = [];
+        if (m === 'off') iss.push('msg_off'); if (k === 'off') iss.push('call_off'); if (m === 'quiet') iss.push('msg_quiet'); if (k === 'quiet') iss.push('call_quiet');
+        if (f > 1) iss.push(f >= 3 ? 'dnd_total' : 'dnd_priority'); c.resolve({ messages: m, calls: k, dnd: f > 1, dndKind: f >= 3 ? 'total' : f === 2 ? 'priority' : 'none', issues: iss, appEnabled: true }); }),
+      silencedOpen: wrap('silencedOpen', (c, a) => { (self.silencedOpened = self.silencedOpened || []).push(a.what); const z = self.silenced = self.silenced || {};
+        if (a.what === 'messages') z.messages = 'ok'; else if (a.what === 'calls') z.calls = 'ok'; else if (a.what === 'dnd') z.filter = 1; c.resolve({ opened: true }); }),
       openAlertSetting: wrap('openAlertSetting', (c, a) => { (self.alertOpened = self.alertOpened || []).push(a.what); self.alertFix = Object.assign({}, self.alertFix, { [a.what]: true }); c.resolve({ opened: true }); }),
       callScreenDone: wrap('callScreenDone', (c) => { self.overLock = false; c.resolve({}); }),
       callAction: wrap('callAction', (c) => {
