@@ -18,150 +18,42 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 
 ---
 
-## Dónde estamos (actualizado: 2026-11-10)
+## Dónde estamos (actualizado: 2026-11-22 14:00 México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
-- **Forma de trabajo (dueño 20-11; su límite SEMANAL es lo que frena, plan Max, no sube a Ultra):** ver CLAUDE.md «GASTO». Leer SOLO este bloque + la
-  lista 🔴 de `docs/AREAS.md`; lo demás, con grep. Una sesión = un tema; una APK por tanda; sin reloj de ausencia.
-- **PRINCIPIO (CLAUDE.md):** NEXO = TODOS los caminos; nunca recortar caminos. Wi-Fi Direct: pendiente reproducir «No se pudo crear el grupo» en `tests/sim` y decidir
-  con el dueño A (pasar siempre a Wi-Fi Direct con Bluetooth) o B (dejarlo listo y usarlo con tráfico pesado); preferencia de Claude: B.
-- **PUBLICADO:** APK 3111 (3251–3253) y **3113 (20-11 22:05 México): 3254 Bluetooth en el servicio FASE 1** (con NEXO vuelta sola —reinicio, actualización, cierre del sistema,
-  toque FCM— el servicio anuncia y recibe por Bluetooth sin la app: `SinAppCore.kt` puro con 9 pruebas JVM, `BleSinApp.kt`, `BleService.startSinApp`, relevo en
-  `takeOverFromClosed`; NEXO ID y clave rotativa guardados CIFRADOS en `nexo_ble_sinapp.json`) + 3255 (registro del enlace repetido que vuelve).
-  **PRUEBA DEL DUEÑO PENDIENTE:** reiniciar un teléfono, desbloquearlo SIN abrir NEXO y desde otro cercano SIN internet mandarle un texto: debe sonar el aviso y salir ✓✓;
-  en su diagnóstico: «[BT_SINAPP] Bluetooth sin la app: anunciando y recibiendo». El dueño debe actualizar SU teléfono primero (el filtro de diagnósticos usa su build).
-- **PUBLICADO: APK 3116 (20-11 02:54 México) = 3256–3260** (batería/temperatura en llamadas, enlace repetido, medidas de Wi-Fi Direct, tablero por red `docs/REDES.md`, Wi-Fi Direct en archivos grandes). Las 3114 y 3115
-  fallaron SOLO por reglas de estilo (textos fijos 26>25; diccionarios 1.001>1.000 líneas): antes de subir correr `tamano.js` e `i18n_audit.js`. Primer CI donde compila lo nativo nuevo (PluginLog.kt, PluginWifiDirect.kt): OK.
-  FALTA: llamadas de GRUPO con batería/temperatura, «cronómetro de actividades», prueba corta del dueño Bluetooth vs Wi-Fi Direct (batería de ambos lados) y primer cuello de botella: preparar archivo grande ≈ 5 MB/s.
-- **PRUEBA DEL DUEÑO (noche del 20-11):** videollamada S24→S23 de 20–30 min con la 3116 en los DOS; en casa con Wi-Fi, más calor que la mañana (13 °C). Referencia WhatsApp (S24 Ultra, mañana): ≈ 0,31 %/min (19 %/h; él estima 25 %/h);
-  su recuerdo de NEXO: 1 % cada ~7 min (0,14 %/min) = entre 1/3 y 1/2 de WhatsApp. El diagnóstico de cada teléfono trae %/h, temperatura máxima y estado térmico: comparar con eso y anotar el ambiente en `docs/AREAS.md`.
-- **DISEÑO DEL DUEÑO para elegir Wi-Fi Direct (20-11, pendiente de hacer = 3261):** WD NO tiene preferencia sobre internet; entra cuando hay Bluetooth cercano y el Wi-Fi está encendido. Con internet/Wi-Fi y sin enlace Bluetooth:
-  escaneo Bluetooth rápido para ver si el contacto está en el radio; si no → seguir por internet/Wi-Fi; si sí → evaluar la velocidad de internet de ESE momento y, si no alcanza, pasar a Bluetooth y luego Wi-Fi Direct. Hallazgo que lo motiva:
-  `ble_startup._resolveDeviceIdForNexoId` ordena lan > internet > Bluetooth y WD solo se mira DESPUÉS de elegir Bluetooth (`ble_blobs.sendFile` → `ackSystem.sendFile` → `wd.eligible`): con el contacto en línea por internet (aunque sea lento) un archivo
-  de 100 KB–22 MB nunca prueba WD (foto de 3 MB a las 23:20:46 del 19-11: 25 s por internet a 6,8 KB/s; con WD ≈ 3 s). Plan: `wd.planFor(nx, bytes)` pura (tiempo estimado internet = tamaño / velocidad reciente medida; WD ≈ 4 s + tamaño/5 MB/s; Bluetooth cerca = enlace
-  listo o visto hace < 30 s en `foundDevices`), anotar la decisión y los tiempos estimados en el diagnóstico (3258) y prueba en sim. DECIDIDO por el dueño (20-11 noche): con enlace Bluetooth, Wi-Fi Direct arranca SOLO en automático y crea el enlace (grupo) con el otro teléfono; si falla, vuelve a Bluetooth; se omite solo si hay Wi-Fi/internet que sea mejor y más rápido. El gasto de batería no es razón para negarlo. Pendiente: MEDIR el retraso de ese paso (Bluetooth listo → Wi-Fi Direct listo) con la prueba de 3 MB ×3 y el diagnóstico de los dos teléfonos.
-- **SIGUIENTE (tras el reinicio semanal del límite; el dueño iba al 96 % el 20-11): la lista COMPLETA y ordenada está en `docs/COLA.md`** (26 puntos en 5 sesiones + sesión «Grupos: administración» G1–G8 pedida el 20-11: Wi-Fi Direct y elección de camino con 3261, medición y tablero,
-  Bluetooth pulido, Bluetooth en el servicio + seguridad, después). Regla del dueño: lo que él reporta de pruebas reales es un HECHO. Antes de subir: correr `tamano.js` e `i18n_audit.js`.
-- **21-11 (plan y calendario):** leer `docs/CALENDARIO_Y_ORDEN.md` (hitos, dependencias, decisiones del dueño con fecha), `docs/PLAN_ENTREGA.md` (olas, modelos y esfuerzo) y `docs/COLA.md`. Mañana (domingo 22): Ola 0 (ordenar documentos e inventario único) y luego Ola 1. Una subida con APK por ola. Lo de horas: 30 a 40 por semana como mínimo.
-- **PUBLICADA: APK 3117 (22-11 10:53 México; CI en verde a la primera, también `fotocalidad.js` y `estadovideo.js`, que aquí fallan por el entorno):** lleva 3262–3265,
-  16b, 34, 35, 29b y 32. PRUEBAS DEL DUEÑO con la 3117 en
-  el S24 y el S23: (1) con los dos cerca por Bluetooth, cerrar y abrir NEXO en uno: el otro NO debe ver «desconectado» y el texto sale al momento; (2) dejar
-  los dos juntos 10 min y mirar que no salga «enlace repetido» una y otra vez; (3) agregar un contacto nuevo y mandarle con su app en segundo plano: ✓✓.
-- **22-11 (madrugada, sesión Fable + 2 ayudantes Sonnet). LEER ESTO PRIMERO:**
-  - **HERRAMIENTA NUEVA: el Kotlin del plugin YA SE COMPILA AQUÍ** (comprobación de tipos, ~40 s): `cd tests/kotlin-android && gradle --no-daemon compileKotlin`
-    (android-all de Robolectric + Capacitor de Maven Central + sustitutos de AndroidX/Firebase en `stubs/`; Google Maven no se alcanza). Y las pruebas JVM:
-    `cd tests/kotlin && gradle --no-daemon test --tests 'X'`. Si Maven da 429, reintentar. Correr las dos ANTES de subir cualquier cambio nativo.
-  - **3262 (subido): causa de raíz del «enlace repetido que vuelve» (COLA 16):** Android NO corta un enlace entrante si la app no lo «tiene»
-    (`BluetoothGattServer.connect` sobre el enlace abierto); `cancelConnection` no hacía nada (ni el desempate, ni 3251, ni el freno 3203). Ahora
-    `holdServerLink`/`cutServerLink` (plugin y `BleSinApp`), solo para quien usa nuestro servicio. Reproducido en sim: `dupserver.js --sin-tomar` FALLA.
-    También: `HalfOpenPolicy` (escribe sin estar suscrito → se corta), COLA 15 (201: sin DEFAULT; enlace sin una escritura en ~12 s se cierra, `closeStuckLink`),
-    desempate del MISMO papel = el más reciente (`openedAt`; `since` nunca se ponía), 16c (todos muertos → se cierran todos).
-  - **3263 = FASE 2 del Bluetooth en el servicio (`GattServerHost.kt`): el servidor GATT es UNO por proceso y NO se cierra al abrir/cerrar la app**; plugin,
-    app cerrada y `BleSinApp` solo se enganchan (attach/detach) y heredan enlaces, suscripciones y MTU. Sim: `gattsigue.js` (A no pierde el enlace; contraprueba `--k3262`).
-    Un enlace heredado sin identificar recibe «quién eres» con insistencia (`_askWhoIs`, ble_keys.js) y al contestar se trata como recién listo
-    (peerReady, sesión, pendientes): sin eso `fotorenueva.js` fallaba. `vivoarriba.js` acepta que la ✓✓ que faltaba llegue sola por el enlace que sigue.
-    ESTADO: SUBIDO. **Batería completa (346) corrida aquí con el simulador en modo fase 2 (22-11 ~04:40): todo OK salvo 2 que fallan en ESTE entorno
-    también con el código de antes de hoy** (`fotocalidad.js`: el tramo de internet nunca queda listo; `estadovideo.js`: `VB_todos`; comprobado con
-    `builds/HEAD~2` + `NEXO_SIM_K3262=1`): no son de los cambios de hoy; las juzga el CI de GitHub al sacar la APK. Los 2 fallos reales que sacó la batería
-    (`fotorenueva`, `vivoarriba`) están arreglados (3265). Para comparar con el Kotlin de antes: `NEXO_SIM_K3262=1 node X.js builds/wip`.
-  - **3266 (subido DESPUÉS de lanzar la APK 3117: va en la siguiente): COLA 27** — con Wi-Fi y ningún relé abierto ≥ 12 s la app llama a `reportNoInternet`
-    (nativo: `ConnectivityManager.reportNetworkConnectivity(red, false)`, 1 vez/min) para que Android compruebe la red y pase a datos sin esperar ~2 min.
-    `noNetStep` pura (`sinred.js`). Falta la misma idea en la escucha nativa sin la app (NetBg) y verlo en un teléfono con un router sin salida.
-  - **3267 (subido tras lanzar la 3117: va en la siguiente): COLA 36** — a una dirección que la app acaba de cerrar (≤ 3 s) y sin enlace por el que
-    escribir, `sendMessage`/`sendBinary` contestan `NOT_CONNECTED` al momento (antes: 6 s de escrituras al aire, «descartado» y contacto «muerto»).
-    Solo nativo (`justClosedByUs`, compila); el simulador no lo imita: confirmar en teléfonos.
-  - **3264 (subido; de los diagnósticos del 22-11 03:13):** conectar a un teléfono fuera de la lista de vistos fallaba SIEMPRE («MAC invalida»: Android exige la
-    dirección en mayúsculas, `PluginGatt`); la lista de vistos ya no se borra al parar/empezar un escaneo y la reconexión nativa pide la dirección a Android
-    en vez de rendirse («No hay device cacheado»); el registro dice qué contestó el relé que no reabre (`failWhy`, JVM); texto de `BT_SINAPP` con Bluetooth apagado.
-  - **16b (subido):** ✓✓ nativas «sin firma válida» con contacto recién agregado → `_pushAckKeysIfChanged` en cada repaso (`background.js --scenario=frozen-new`).
-  - **34 (subido, de raíz):** la lista de DENTRO (`#main-contacts-list`) era la que se desplazaba; tope 10 s. **28: NO era un fallo** (ya lo cubren 3016/3058; el
-    síntoma `reenvio_sin_fin` salta a la 3.ª vuelta por diseño; el arreglo de Sonnet se retiró porque podía retrasar hasta 5 min tras reconectar). La causa real era 16b + app congelada.
-  - **Ayudantes (subido):** COLA 35 («→ ?» del diagnóstico), 29b (mini de videollamada sin botones al volver; el «se bloquea o cae» NO se reprodujo: pedir diagnóstico),
-    COLA 32 (letra grande/anchos: `letragrande.js`, 13 → 2 hallazgos; queda el nombre del chat a 320 px + letra 160 %, hay que tocar `_fitContactName` en `main.js`).
-  - **TODO LO NATIVO DE HOY NECESITA PRUEBA REAL DEL DUEÑO** (al final, como él pidió): 3262 (enlaces repetidos entre S24↔Austin/Roberto: que no «vuelvan»), 3263
-    (abrir NEXO con un contacto cerca: el otro no debe ver «desconectado»), 15, 16b.
-  - **22-11 MAÑANA (tras lanzar la 3117; todo subido con [skip ci]: va en la SIGUIENTE APK). FASE 3 del Bluetooth en el servicio:**
-    - **3268 bandeja de salida nativa por INTERNET** (`NetOutbox.kt`, `NetBg.pumpOutbox`, `ble_outbox.js`): al ocultarse, la app deja al nativo sus textos ⏳/«enviando»
-      ya cifrados de punta a punta, en el mismo sobre que el envío normal (`_chatEnv`, sacado de `_sendMessageNative`); la escucha de internet los sube SIN la app
-      (dormida, cerrada o proceso nuevo: `nexo_netbg_out.json` cifrado en reposo), manda el toque al otro e insiste hasta su ✓✓. Arregla «pendiente_viejo» (20/21-11).
-      Sim `bandeja.js` (dormida y cerrada, con contraprueba; modelo del nativo en `netbg_mock.js`); JVM `NetOutboxTest` (relé con identificación + la app real).
-    - **3269 la bandeja también por BLUETOOTH** (`OutboxBle.kt`; la usan el plugin y `BleSinApp`): sin internet, cuando el otro aparece con mi app dormida/cerrada el nativo
-      escribe lo pendiente por ese enlace (de quién es: lo que dijo la app al ocultarse o el ping/«quién soy» del otro) y solo la ✓✓ FIRMADA lo retira. Sim `bandejabt.js`
-      (contraprueba `--sin-bandeja` FALLA), JVM `OutboxBleTest`. Lo que la auditoría final debe mirar de todo esto está apuntado en el repositorio PRIVADO
-      (`seguridad/PARA_LA_AUDITORIA_FINAL.md`).
-    - **3271 el nativo ABRE el enlace** (`OutboxDial.kt`, `outboxDialStep`): con los DOS teléfonos dormidos nadie conectaba. Mientras haya algo pendiente para un contacto
-      sin enlace listo, el plugin (app dormida o cerrada con el proceso vivo) lo busca con un escaneo corto y FILTRADO (4 s; a los 3 s, y luego cada 20 s, 40 s… hasta
-      5 min) y conecta él (tope 7 enlaces). Sim: `bandejabt.js` caso 3 (contraprueba `--sin-llamar`); JVM `OutboxDialTest`. FALTA: lo mismo en `BleSinApp` (proceso sin la
-      app: hoy solo escribe por enlaces que abre el otro) y despertar con alarma si el teléfono duerme del todo (hoy el repaso corre cuando algo lo despierta).
-    - **3272 Wi-Fi Direct (ayudante + arreglos):** avisos VERDADEROS por causa con qué hacer (`wd_aviso_*`; permiso, grupo ocupado, no soportado, unión, corte) y código
-      de Android en las medidas (`wdgrupo.js`, 9 causas); el HD de un vídeo vuelve a ir por Bluetooth si Wi-Fi Direct falla (`chat_stream.js` usaba el tope de archivo
-      normal; `wifidirect.js --broken=fail`); la dirección del grupo de Wi-Fi Direct caído se olvida (`lan.js`: el vivo la reintentaba) y el aviso ya no dice «este
-      teléfono no tiene Wi-Fi». PENDIENTE nativo: `lanOnWifi()` mira solo la red por defecto; tras fallar el unirse, el otro queda «ocupado» ~90 s (falta un «cancelar»).
-    - **3261 Wi-Fi Direct por TIEMPO ESTIMADO (diseño del dueño):** con el contacto en línea por internet y cerca por Bluetooth, el archivo va por Wi-Fi Direct si llega
-      antes (`wifi_direct.planFor`/`wdPlan`, velocidad de internet de ese momento con `usageRecentSpeed`; sin medida supone 30 KB/s); enganchado en `ble_blobs.sendFile`
-      antes del buzón; si falla sigue por internet. Sim `wdplan.js`. FALTA medir en teléfonos el paso Bluetooth listo → Wi-Fi Direct listo (prueba de 3 MB ×3).
-    - **Ayudantes (2.ª tanda):** COLA 13 (enlaces a MTU 23 por día/contacto/papel, `mtu23.js`), COLA 22 (`phone_sleep.js`: tarjeta «tu teléfono cerró NEXO N veces hoy» con el
-      ajuste a quitar, y «quitada de recientes»; `phonesleep.js`). COLA 14 investigado: L2CAP existe pero solo para archivos > ~2,25 MB (`pickers.js:302`); lo mediano va por
-      GATT a ~17–27 KB/s (una escritura por intervalo de conexión). Mejora posible: usar L2CAP desde ~200 KB (medir antes lo que cuesta abrir el canal).
-      Falta nativo para «avisos silenciados»: canales de aviso y «no molestar» en `alertSettings`.
-    - **3276 = FASE 4, gestor de enlaces (`ble_linkmgr.js`; decisión del dueño 22-11: opción B, «a demanda solo cuando no caben»):** con pocos contactos cerca todo
-      sigue igual; tope 6 enlaces, hasta 4 contactos «por estar cerca», un hueco reservado para quien tiene pendientes o el chat abierto y otro para una conexión de paso;
-      con todo lleno, pendientes/chat abierto desalojan al más callado que no esté ocupado; el repaso del vigilante suelta a los callados de sobra (> 2 min). Enganchado en
-      `_autoConnectGATT`, Jump (`ble_relay`), abrir chat y mandar. Ajustable: `window.NEXO_LINK_CAP` / `NEXO_LINK_CONTACTS` (1 = siempre a demanda). Sim `enlacestope.js`.
-      FALTA: probarlo con `multitud.js` (estudio pesado, fuera del CI) y en campo; el nativo dormido usa su propio tope (7) solo para lo que abre la bandeja.
-    - **FALLO MÍO DESTAPADO POR LA BATERÍA (22-11):** 3266 guardaba su estado en `net._noNet`, que YA existía como booleano (`net_relays.js`): rompía `tick` y hacía
-      creer «sin red». Arreglado (`_noNetSt`). La 3118 llevaba ese fallo: su CI debe fallar en `acuses`, `internetlisto` y `repetidos` y NO publicarse; la buena es la 3119.
-    - **3278 AUDIO EN LA MINIATURA (dueño 22-11 13:00: la videollamada en miniatura es para usar OTRA cosa —la misma app, otras, YouTube—; debe seguir voz e imagen sin
-      pausa, las dos cosas sonando a la vez, cada una con su volumen de Android: llamada / multimedia).** Hallado: al tomar OTRA APP el audio, NEXO le quitaba el foco
-      de vuelta (se pausaba el vídeo de la otra) y a la segunda vez la llamada quedaba RETENIDA para siempre (ni voz ni imagen: «la miniatura se pausa»). Ahora SOLO una
-      llamada TELEFÓNICA retiene (`FocusPolicy.kt`: `onLoss` → HOLD/KEEP; `onWatch` mira el modo cada 1 s mientras NEXO está sin foco o retenida; `callHold`/`focusWatch`
-      en `PluginCalls.kt`); 7 pruebas JVM; `callhold.js` sigue pasando. VOLÚMENES, SIN COMPROBAR: la voz debería regularse con «volumen de llamada»; depende de si la
-      página abre el micrófono ANTES que el sonido (`call_media.js`: normalmente sí; si el micrófono tarda, el sonido se monta antes y podría salir por multimedia).
-      El diagnóstico lo dice ahora cada minuto: «[CALL] Salida de sonido del teléfono: N por «llamada», M por «multimedia»…» (`callOut`). PRUEBA DEL DUEÑO: videollamada
-      → miniatura → YouTube con sonido: deben sonar las dos y la imagen seguir; teclas de volumen = la voz; «multimedia» = el vídeo; «Copiar diagnóstico» al terminar.
-    - **APK 3119: LISTA, SIN LANZAR. El dueño pidió (22-11 ~13:00 México) NO lanzarla hasta terminar de platicar: esperar su visto bueno.** Llevará la 3118 +
-      `_noNetSt` + 3274 quitado + 3275 + 3276 (fase 4) + 3277 (miniatura). Ya corridas aquí: 38 pruebas cercanas (Bluetooth, Jump, puente, bandeja, miniatura) + 9 de
-      muchos teléfonos/grupos, en verde. El lote destapó un fallo de la fase 4, ya corregido: con «Agregar» abierto el gestor frenaba las conexiones de paso en 5 y la
-      rotación del relevo (que suelta al llegar a 6) se paraba: con nueve NEXO cerca el sexto no salía (`addlento.js`). Ahora, con «Agregar» abierto, las de paso las
-      reparte el relevo (`_linkAddOpen`). Para lanzar: un commit SIN `[skip ci]` (título «APK: …»). AL PUBLICARSE: pasar el bloque de NOVEDADES al historial y pedir al
-      dueño las pruebas (miniatura ↔ app varias veces y con otras apps; bandeja a/b).
-    - **3277 MINIATURA A PRUEBA DE AVISOS PERDIDOS (dueño 22-11 tarde, build 3117: capturas con el chat apretado en la ventanita; «varias veces normal ↔ miniatura»;
-      «el chat y la miniatura, y la miniatura no respondía»; sin diagnósticos).** Causas halladas y reproducidas (`miniaturas.js`; el código anterior falla s, t, z):
-      (1) si la app se REHACE en plena videollamada (motor de la página caído → `recreate()`, o cambio de tema claro/oscuro: el Manifest no declaraba `uiMode`), el nativo
-      seguía con `BleService.pipVideo` puesto → al irse, el CHAT en la ventanita; (2) todo colgaba de UN aviso por cambio (`__nexoPipChanged`): perdido = marcas pegadas;
-      (3) la llamada que terminaba con la mini flotante dejaba la mini y la llamada SIGUIENTE nacía dentro de la mini (sin Contestar a la vista).
-      Arreglo: `src/ui/call_pip.js` (estado desde la verdad: `pipState` nativo al cambiar de tamaño/volver/tras cada aviso y cada 2,5 s en miniatura; `pipApply` repetible;
-      un toque con la marca puesta = ya no está en miniatura; en miniatura sin llamada → se cierra; la mini abre por posición del toque; registro `[CALL] Miniatura…` y
-      diagnóstico automático «miniatura» ante lo raro); nativo: `pipVideo=false` en `load()`/`handleOnDestroy`, `handleOnPause` con videollamada espera 900 ms a ver si
-      quedó en miniatura antes de contar como segundo plano (ya no depende del orden de los avisos), `uiMode|keyboard|navigation` en `configChanges`.
-      **3274 era un error mío y está QUITADO:** Capacitor NO pausa el WebView al pausar (`shouldKeepRunning()` = true por defecto); el `onStop → wv.onPause()` que se
-      añadió habría dejado el vídeo en pausa. 3275 sigue (`leaveHintAt`). SIN probar en teléfono: pedir al dueño miniatura ↔ app varias veces + otras apps + Ajustes,
-      y «Copiar diagnóstico» justo después si algo falla (buscar `[CALL] Miniatura` y `LIFECYCLE`).
-    - **3273 miniatura de la videollamada (dueño 22-11):** (a) la miniatura del sistema ya NO cuenta como segundo plano (`handleOnPause` con PiP: no se avisa a la app ni,
-      al volver, se hace todo lo de «volver a la app» encima de la llamada = el tirón); solo si la ventanita se cierra o se tapa (`handleOnStop`) pasa a segundo plano;
-      (b) Android 12+: miniatura automática al irse (`setAutoEnterEnabled`; con gestos `onUserLeaveHint` no siempre llega y el vídeo quedaba atrás, pausado). Solo nativo,
-      compila; SIN prueba en simulador: confirmar en teléfonos (S24/S23) y pedir diagnóstico si se traba (líneas `LIFECYCLE` y `[CALL] Pantalla de llamada`).
-    - **3270 COLA 27 sin la app:** la escucha nativa avisa a Android del Wi-Fi sin internet (12 s sin relé abierto; 1/min), como la app (3266).
-    - NO entran en la bandeja (los sigue mandando la app): adjuntos, llamadas, acciones ocultas, fallidos y textos > 12 000 caracteres.
-    - **Ayudantes integrados:** COLA 30 (fondo de lista/llamada/Perfil/Ajustes con pulsación larga), COLA 33 (Ajustes → Apariencia) + resto de 32 (nombre largo con
-      letra grande, botones parejos), COLA 7–11 (mediana y percentiles, fallas por camino, pico de enlaces, cronómetro a la ✓✓, tendencia en `diag_stats`).
-      **Diccionarios: SEGUNDA PARTE por idioma (`src/ui/i18n/<idioma>_b.js`): los textos nuevos van ahí** (la primera llegó al tope de 1000 líneas).
-    - PRUEBAS DEL DUEÑO (siguiente APK): (a) modo avión, escribir a alguien, bloquear el teléfono, quitar el modo avión SIN abrir NEXO: debe llegarle y, al abrir, ✓✓;
-      (b) sin internet los dos: escribirle estando lejos, bloquear, acercarse: le llega sin abrir NEXO.
-  - **SIGUIENTE (en orden):** (1) FASE 4: conexiones a demanda desde el nativo (hoy escribe por enlaces que ya había o que abre el OTRO) y tope de ~7; adjuntos pequeños
-    en la bandeja; (2) modo vagón; (3) 17/18 (llamadas), 22 (avisar del teléfono que mata NEXO), 23–25, 13, 3261 (Wi-Fi Direct por tiempo estimado), 2;
-    (4) re-analizar con modelo grande los diagnósticos del 20 y 21-11 apuntados en Haiku; (5) grupos G1–G9. Auditoría de seguridad AL FINAL (una, al repositorio privado).
-- **⚠ ARRANQUE 22-11 (dueño 21-11 noche, MANDA):** leer «DECISIONES DEL DUEÑO 21-11 noche» al inicio de `docs/PLAN_ENTREGA.md`. Resumen: PRIMERO LO FUNCIONAL (Bluetooth, zombis, servicio nativo, Wi-Fi Direct, llamadas) en la sesión principal con Fable; ayudantes con diagnósticos y lo estético (nombre encimado, letra grande, botones parejos); re-revisar con modelo grande lo apuntado/arreglado en Haiku; UNA APK al final tras una revisión propia; auditoría al final; prueba cerrada de Play ≤ 1-12; servidor de paga lo antes posible; iOS después.
-- **Logo: DIRECCIÓN ELEGIDA por el dueño (21-11 noche)** y nombre favorito: detalle y bocetos SOLO en el privado (`negocio/NOMBRE.md`, `negocio/logo_bocetos/`).
-- **Pruebas reales al final; nombre y logo con ayudante en paralelo** (puntos 9 y 10 de las DECISIONES 21-11 noche; detalle de nombre SOLO en el privado).
-- **21-11 tarde (sin APK; todo con [skip ci]):** COLA 30–35 nuevas (fondos con pulsación larga en todas las pantallas; vista previa/logo real en enlaces —DECISIÓN A/B del dueño pendiente—; pantallas con letra grande; Apariencia; deslizar-para-actualizar que salta al desplazar contactos; «→ ?» en el diagnóstico). HECHO sin APK: nombre de la cabecera cortado con letra grande (`_fitContactName`, prueba local `tests/sim/nombrecabecera.js`, NOVEDADES escrita). Ya repartido en `docs/PLAN_ENTREGA.md` (34 en Ola 1; 30/32/33/35 en Ola 3 agente C; 29 en Ola 5). Para correr pruebas con navegador aquí: `tests/sim/build.sh wip`, `npm install` en `tests/sim` y quitar su `node_modules/playwright*` (usa el Chromium preinstalado).
-- **Diagnósticos:** solo los de la última build (3116); se apuntan en `docs/diagnosticos.json` (`node tests/sim/diag_stats.js`). Abiertos de la app: mensaje atorado durante una
+- **Forma de trabajo:** CLAUDE.md «GASTO» (leer SOLO este bloque + 🔴 de `docs/AREAS.md`; lo demás con grep). Detalle de lo hecho del 20 al 22-11 (fases, 3254–3278):
+  `docs/historial/ESTADO_traspaso_hasta_2026-11-22b.md` (grep por número). PRINCIPIO: NEXO = todos los caminos; nunca recortar caminos.
+- **⛔ APK 3119: NO LANZAR hasta que el dueño lo diga** (22-11 13:20 y 13:45 México: «no lances la 3119 hasta que terminemos de platicar» / «no la lances e INCLUYE
+  LO QUE FALTA»). Se le van sumando los pendientes de abajo (todo con `[skip ci]`); al lanzar: commit SIN `[skip ci]` («APK: …») y NOVEDADES al día (≤ 500).
+  Lleva ya: 3266–3273 (bandeja de salida nativa por internet y Bluetooth, el nativo abre enlaces, Wi-Fi sin internet, Wi-Fi Direct por tiempo estimado, Apariencia,
+  fondos, medición), `_noNetSt` (el fallo que tumbó el CI de la 3118, NO publicada), 3274 QUITADO (era un error), 3275, **3276 fase 4** (+3277b «Agregar» con 9 NEXO
+  cerca), **3277 miniatura** (call_pip.js: estado desde la verdad del nativo, sim `miniaturas.js`), **3278 audio** (solo una llamada TELEFÓNICA retiene la llamada
+  NEXO; otra app con sonido no la pausa ni pierde el audio: `FocusPolicy.kt`, 7 JVM; `callOut` al diagnóstico). Pasadas aquí: 41 escenarios cercanos + 9 de muchos
+  teléfonos/grupos, JVM, `kotlin-android`, `MainActivity` con stubs. Última PUBLICADA: **3117** (22-11 10:53 México).
+- **Fases del Bluetooth en el servicio:** 1 publicada (3113) · 2 publicada (3117) · 3 y 4 hechas y probadas en sim, van en la 3119. Lo más pesado de programar ya está.
+- **PENDIENTES en orden (incluirlos en la 3119, dueño 22-11):** (1) remates fase 3: fotos pequeñas en la bandeja de salida; que `BleSinApp` (servicio sin la app,
+  tras reinicio) también abra enlaces; (2) modo vagón / multitud (EDC): probar fase 4 con `multitud.js`; (3) COLA 23 entrega con app cerrada y pantalla apagada
+  (a veces no suena); (4) llamadas: 17 mensaje atorado durante una videollamada, 18 hueco ~25 s al cambiar de red, 25 eco en grupo; (5) Wi-Fi Direct: «cancelar»
+  (el otro queda ocupado ~90 s); (6) 14 archivos medianos por L2CAP; (7) 24 batería en segundo plano y datos repetidos de relés; (8) 22 nativo: avisar si el
+  teléfono silencia NEXO (canales/No molestar); (9) grupos G1–G9 (`docs/COLA.md` §4b); (10) auditoría de seguridad final (UNA, solo al privado); (11) 26 Google Play.
+  Del dueño: 31 A/B (vista previa con logo real en enlaces). Detalle de cada punto: `docs/COLA.md`.
+- **PRUEBAS DEL DUEÑO con la 3119:** (a) modo avión, escribir, bloquear, quitar modo avión SIN abrir NEXO → llega y ✓✓; (b) sin internet los dos, escribir lejos,
+  bloquear, acercarse → llega sin abrir NEXO; (c) videollamada → miniatura ↔ app varias veces, Ajustes y otras apps: sin chat en la ventanita, la mini responde;
+  (d) en miniatura YouTube con sonido: suenan las dos, la imagen sigue; teclas = voz (volumen de llamada), multimedia = el vídeo; «Copiar diagnóstico» al terminar
+  (buscar «[CALL] Salida de sonido», «[CALL] Miniatura», «LIFECYCLE»); (e) fase 4 con mucha gente cerca.
+- **LOGO Y NOMBRE (solo en el privado `nexo-private/negocio/NOMBRE.md`):** logo ronda 5 mandada al dueño (22-11 13:55): 4 variantes A–D de su dirección (4 burbujas
+  cercanas, fondo negro), probadas a tamaño real y en pantalla de inicio; ESPERA su elección → luego icono adaptativo final. Nombre: el ayudante dejó 3 finalistas
+  (riesgo y fuentes en NOMBRE.md; sin consultar IMPI ni dominios: lo hace una persona); ESPERA la decisión del dueño. Antes de la prueba cerrada (≤ 1-12): fijar el
+  identificador de paquete (hoy `com.nexo.app`).
+- **Herramientas:** `CI_ONLY='a.js|b.js|texto' node ci.js builds/wip` (varios con «|», por archivo si acaba en .js). `MainActivity` se compila con stubs mínimos de
+  Capacitor contra `android-all-16-robolectric` (~/.gradle). Sin avisos programados activos.
+- **Diagnósticos:** solo los de la última build (3117); se apuntan en `docs/diagnosticos.json` (`node tests/sim/diag_stats.js`). Abiertos de la app: mensaje atorado durante una
   videollamada (S23→S24 21:28), datos repetidos al abrir en frío, enlace repetido; costumbres del teléfono: quitar NEXO de recientes corta la recepción (Cari), Honor/Vivo congelan la app.
 - **Nombres:** dueño = S24 (nx1n36c283) · Cari = S23 Ultra (nx1e50c95d) · Roberto = Motorola (nx0g6ef54e) · Austin = Honor (nx1905c1ee) · Marcos (nx01992876) · Zhelowsky (nx0x4029e6) ·
   Yael = Redmi (nx16386482) · Katy = Honor (nx126df3f4) · Vivo Y03 (nx09acdb61) · tablet A7 Lite (nx1e29ab2f).
 - **Reglas vivas:** español, breve, horas de México; reproducir en `tests/sim` antes de arreglar; NOVEDADES solo en español; el Kotlin no se compila aquí (lo compila el CI, ~85 min):
   juntar cambios en UNA subida; decisiones al dueño en forma A/B con lo que vive el usuario.
-- Historial anterior: `docs/historial/ESTADO_hasta_2026-11-19.md`.
+- Historial anterior: `docs/historial/ESTADO_hasta_2026-11-19.md`, `ESTADO_traspaso_hasta_2026-11-22.md` y `…-22b.md`.
 
 ## ✅ Trabajo del teléfono — YA INTEGRADO
 > Acá se anota lo que se hizo en el teléfono y se trajo al repo.

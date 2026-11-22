@@ -10,6 +10,7 @@ es lo que el dueño pidió el 20-11 y cabe en una sesión corta antes o después
 - 20 fase 2 (3263, `GattServerHost`): hecho en código y en sim; ver ESTADO.md si quedó subido. Fases 3 y 4: sin empezar.
 - Abiertos de la ola 1: 27 (plan: `reportNetworkConnectivity`), 36, 17, 18, 22, 29. Pruebas reales del dueño: todo lo nativo de hoy.
 - Para lo nativo: compilar aquí con `tests/kotlin-android` (comprobación de tipos) y `tests/kotlin` (JVM) antes de subir.
+- **22-11 tarde: la APK 3119 NO se lanza hasta que el dueño lo diga; se le suman los pendientes (orden en el TRASPASO de `ESTADO.md`). Hechos además: 3277 miniatura, 3278 audio con otras apps.**
 - **22-11 mañana (subido, va en la siguiente APK):** 20 FASE 3 = 29 (bandeja de salida nativa: por internet 3268 y por Bluetooth 3269; app dormida y cerrada, con prueba de
   cada caso), 27 completo (3266 en la app + 3270 en la escucha sin la app), 36 (3267), 30, 33, resto de 32 (nombre largo, botones parejos), 7–11 (medición y tablero).
   También: el nativo ABRE el enlace cuando los dos teléfonos duermen (3271), 3 (dirección del grupo de Wi-Fi Direct caído y texto verdadero; Wi-Fi local atado a la red Wi-Fi
