@@ -44,6 +44,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   teléfono que podía quedarse puesta sin videollamada. Ahora dice la verdad (`call_pip.pipWanted()`, se corrige en los dos sentidos en cada cambio de
   llamada/foco/arranque; una llamada de VOZ nunca la deja puesta) y el nativo la quita al terminar el audio y no entra en miniatura sin llamada
   (`BleService.pipOnLeave`, `pipAutoEnter`). Reproducido con la build anterior (`miniaturas.js --nativo-viejo`: fase g FALLA) y pasa con el arreglo.
+  OJO al lanzar: `estadovideo.js` falla AQUÍ en `hevc_sin_reproductor_roto` también con builds anteriores a esta sesión (no es de estos cambios; parece el
+  Chromium de este contenedor con HEVC). En el CI de GitHub pasó con la 3117: si tumbara el CI de la 3119, mirar eso primero.
 - **Fases del Bluetooth en el servicio:** 1 publicada (3113) · 2 publicada (3117) · 3 y 4 hechas y probadas en sim, van en la 3119. Lo más pesado de programar ya está.
 - **PENDIENTES en orden (incluirlos en la 3119, dueño 22-11):** (1) HECHO (3279–3281); **SIGUIENTE →** (2) modo vagón / multitud (EDC): probar fase 4 con `multitud.js`; (3) COLA 23 entrega con app cerrada y pantalla apagada
   (a veces no suena); (4) llamadas: 17 mensaje atorado durante una videollamada, 18 hueco ~25 s al cambiar de red, 25 eco en grupo; (5) Wi-Fi Direct: «cancelar»
