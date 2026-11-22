@@ -41,10 +41,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   bloquear, acercarse → llega sin abrir NEXO; (c) videollamada → miniatura ↔ app varias veces, Ajustes y otras apps: sin chat en la ventanita, la mini responde;
   (d) en miniatura YouTube con sonido: suenan las dos, la imagen sigue; teclas = voz (volumen de llamada), multimedia = el vídeo; «Copiar diagnóstico» al terminar
   (buscar «[CALL] Salida de sonido», «[CALL] Miniatura», «LIFECYCLE»); (e) fase 4 con mucha gente cerca.
-- **LOGO Y NOMBRE (solo en el privado `nexo-private/negocio/NOMBRE.md`):** logo ronda 5 mandada al dueño (22-11 13:55): 4 variantes A–D de su dirección (4 burbujas
-  cercanas, fondo negro), probadas a tamaño real y en pantalla de inicio; ESPERA su elección → luego icono adaptativo final. Nombre: el ayudante dejó 3 finalistas
-  (riesgo y fuentes en NOMBRE.md; sin consultar IMPI ni dominios: lo hace una persona); ESPERA la decisión del dueño. Antes de la prueba cerrada (≤ 1-12): fijar el
-  identificador de paquete (hoy `com.nexo.app`).
+- **LOGO Y NOMBRE (solo en el privado `nexo-private/negocio/NOMBRE.md`):** ⭐ LOGO ELEGIDO (22-11 tarde, tras 8 rondas): la «1b» ORIGINAL de la ronda 7 (una
+  burbuja cuyo contorno son 4 tramos de los colores del chat = un mensaje hecho de 4 caminos). Siguiente (cuando toque): icono final (adaptativo de Android + aviso +
+  tienda 512 px) conservando su aspecto; solo quitar el bulto de la cola y enseñarle antes/después. NOMBRE: lo decide el dueño (3 finalistas del ayudante en
+  NOMBRE.md; IMPI y dominios los consulta una persona). Antes de la prueba cerrada (≤ 1-12): fijar el identificador de paquete (hoy `com.nexo.app`).
 - **Herramientas:** `CI_ONLY='a.js|b.js|texto' node ci.js builds/wip` (varios con «|», por archivo si acaba en .js). `MainActivity` se compila con stubs mínimos de
   Capacitor contra `android-all-16-robolectric` (~/.gradle). Sin avisos programados activos.
 - **Diagnósticos:** solo los de la última build (3117); se apuntan en `docs/diagnosticos.json` (`node tests/sim/diag_stats.js`). Abiertos de la app: mensaje atorado durante una
