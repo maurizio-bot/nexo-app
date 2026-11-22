@@ -396,7 +396,7 @@ export const BLE_CONNECTION_METHODS = {
           if (self.ackSystem && self.ackSystem.sendSessionSync) self.ackSystem.sendSessionSync(deviceId, nx);
           self._resendPendingMessages(nx);
         }
-        else if (typeof self._sendKx === 'function') self._sendKx(deviceId, true); // 3263 (fase 2, enlaces heredados al abrir la app): sin saber de quién es, se le pregunta «quién eres»
+        else if (typeof self._askWhoIs === 'function') self._askWhoIs(deviceId); // 3263 (fase 2, enlaces heredados al abrir la app): sin saber de quién es, se le pregunta «quién eres»
       });
     }).catch(function() {});
   },

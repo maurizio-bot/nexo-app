@@ -93,6 +93,8 @@ class Radio {
 class NativePhone {
   // opts.readsContentFallback: true si el Kotlin incluye `?: call.getString("content")`
   constructor(name, address, opts = {}) {
+    // NEXO_SIM_K3262=1: toda la prueba con el Kotlin de antes de la fase 2 (cortaba los enlaces entrantes al abrir la app), para comparar
+    if (process.env.NEXO_SIM_K3262 && opts && opts.kotlin3262 === undefined) opts.kotlin3262 = true;
     this.name = name;
     this.address = address; // dirección de anuncio: la que se ve al escanear y a la que se conectan
     // Dirección con la que ESTE teléfono aparece cuando se conecta como cliente a otro. En Android real

@@ -7,7 +7,7 @@ import { e2eMyPublicKey, e2eOpenAnon, e2eSealAnon, initE2E } from '../vault/e2e_
 import { e2eAllowsE1 } from '../vault/e2e_proto.js';
 import { ratchetForget, ratchetMyBundle, ratchetMyPqId, ratchetNotePeerBundle, ratchetPeerPqId, ratchetResetPeer } from '../vault/e2e_ratchet.js';
 import { feNoteOldKey } from '../fenix/fenix_entorno.js';
-import { _getBLEContacts, _normId, _normMac, _safeDispatchEvent, _saveBLEContacts, _vNx, _vaultLoadMessages } from './ble_helpers.js';
+import { BLE_STATES, _getBLEContacts, _normId, _normMac, _safeDispatchEvent, _saveBLEContacts, _vNx, _vaultLoadMessages } from './ble_helpers.js';
 
 
 export const BLE_KEY_METHODS = {
@@ -36,6 +36,24 @@ export const BLE_KEY_METHODS = {
   // lite (3012): kx «ligero» (~300 letras en vez de ~2300) para preguntar o decir quién es al escanear: sin el paquete de
   // claves del protocolo 2 ni lo poscuántico (eso va en el kx completo, al agregar o al escribirse). lt:1 lo marca; con
   // request lleva además id:1 («solo dime quién eres»: el otro contesta también ligero).
+  // 3263 (fase 2: al abrir la app se heredan los enlaces entrantes; fotorenueva.js): un enlace heredado cuya dirección no es la guardada
+  // del contacto queda sin identificar. Se le pregunta «quién eres» (kx con rq) y se insiste hasta saberlo: la primera pregunta puede
+  // salir antes de que esta app haya cargado su propia identidad (se pierde) o con el otro dormido. Pregunta cada 3 s, hasta ~25 s.
+  _askWhoIs(deviceId, n) {
+    var self = this, nd = _normMac(deviceId), st = self._getDeviceState(deviceId) || {};
+    n = n || 0;
+    if (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY) return;
+    var nx = _normId(self._macToNexoId.get(nd) || '');
+    if (nx) { // ya contestó: desde aquí es un enlace listo como cualquier otro (aviso a la app, sesión al día y lo pendiente)
+      self._notifyPeerReady(deviceId, nx);
+      if (self.ackSystem && self.ackSystem.sendSessionSync) self.ackSystem.sendSessionSync(deviceId, nx);
+      self._resendPendingMessages(nx);
+      return;
+    }
+    if (n % 2 === 0) self._sendKx(deviceId, true, true);
+    if (n < 16) setTimeout(function() { self._askWhoIs(deviceId, n + 1); }, 1500);
+  },
+
   _sendKx(deviceId, request, force, lite) {
     var self = this;
     if (!deviceId) return;

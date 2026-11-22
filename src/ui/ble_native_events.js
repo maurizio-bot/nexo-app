@@ -197,6 +197,9 @@ export const bleNativeEvents = {
           var cutNx = _normId(flapNx);
           Array.from(self._peerCutUntil.keys()).forEach(function(k) { if (_normId(self._macToNexoId.get(k) || '') === cutNx) self._peerCutUntil.delete(k); });
         }
+        // 3265 (vivoarriba.js con la fase 2): el freno de 15 s del «quién soy» (kx) es por CONEXIÓN; si el enlace se cae y vuelve antes de
+        // 15 s, el otro lado se quedaba sin saber de quién era el enlace nuevo («Enlace ? …») y no reenviaba lo pendiente
+        if (self._kxSentAt) { var kxM = _normMac(deviceId); delete self._kxSentAt[kxM]; delete self._kxSentAt[kxM + ':rq']; }
         self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.OFFLINE, since: Date.now() });
         self._lastPongTime.delete(deviceId);
         self._pingFailCount.delete(deviceId);

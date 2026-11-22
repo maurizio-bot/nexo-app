@@ -54,9 +54,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
     desempate del MISMO papel = el más reciente (`openedAt`; `since` nunca se ponía), 16c (todos muertos → se cierran todos).
   - **3263 = FASE 2 del Bluetooth en el servicio (`GattServerHost.kt`): el servidor GATT es UNO por proceso y NO se cierra al abrir/cerrar la app**; plugin,
     app cerrada y `BleSinApp` solo se enganchan (attach/detach) y heredan enlaces, suscripciones y MTU. Sim: `gattsigue.js` (A no pierde el enlace; contraprueba `--k3262`).
-    El JS pregunta «quién eres» a un enlace heredado sin identificar (`_seedNativeConnections`). ESTADO: SUBIDO (compila; `gattsigue`, `gattreabre` y las de
-    enlaces repetidos OK). La batería COMPLETA con el simulador ya en modo fase 2 se estaba corriendo al subirlo: **antes de la APK, correrla entera
-    (`CI_PARALLEL=4 node ci.js builds/wip`) y arreglar lo que salga** (54 pruebas cierran y reabren la app; el Kotlin de antes se imita con `kotlin3262`).
+    Un enlace heredado sin identificar recibe «quién eres» con insistencia (`_askWhoIs`, ble_keys.js) y al contestar se trata como recién listo
+    (peerReady, sesión, pendientes): sin eso `fotorenueva.js` fallaba. `vivoarriba.js` acepta que la ✓✓ que faltaba llegue sola por el enlace que sigue.
+    ESTADO: SUBIDO. Batería completa con el simulador en modo fase 2: 225 OK de 346 en la 1.ª pasada (se cortó por tiempo; sus 2 fallos reales ya
+    arreglados); la 2.ª pasada con el resto corría al cerrar: **antes de la APK, correrla entera (`CI_PARALLEL=4 node ci.js builds/wip`; con
+    `NEXO_SIM_K3262=1` se compara con el Kotlin de antes) y arreglar lo que salga**.
   - **3264 (subido; de los diagnósticos del 22-11 03:13):** conectar a un teléfono fuera de la lista de vistos fallaba SIEMPRE («MAC invalida»: Android exige la
     dirección en mayúsculas, `PluginGatt`); la lista de vistos ya no se borra al parar/empezar un escaneo y la reconexión nativa pide la dirección a Android
     en vez de rendirse («No hay device cacheado»); el registro dice qué contestó el relé que no reabre (`failWhy`, JVM); texto de `BT_SINAPP` con Bluetooth apagado.
