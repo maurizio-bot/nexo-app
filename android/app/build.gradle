@@ -9,8 +9,10 @@ android {
         applicationId "com.nexo.app"
         minSdkVersion 26
         targetSdkVersion 34
-        versionCode 1
-        versionName "1.0"
+        // COLA 26: Google Play exige un versionCode que SUBA en cada subida. Sin estas variables (APK de GitHub, local) valen lo de siempre:
+        // 1 y "1.0". El CI de tienda exporta NEXO_VERSION_CODE (p. ej. el número de ejecución) y NEXO_VERSION_NAME.
+        versionCode Integer.parseInt(System.getenv('NEXO_VERSION_CODE') ?: '1')
+        versionName System.getenv('NEXO_VERSION_NAME') ?: '1.0'
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // Solo los procesadores de los teléfonos Android (Tor trae ~7 MB por arquitectura; x86 es de emuladores)
         ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' }
@@ -48,6 +50,19 @@ android {
         }
     }
 
+    // COLA 26: llave de SUBIDA a Google Play (solo para el tipo «store»; la APK de GitHub sigue con la de debug). Nada de secretos en el
+    // repositorio: el CI escribe el archivo y exporta estas variables. Sin ellas el AAB sale SIN firmar (y se firma aparte con jarsigner).
+    if (System.getenv('NEXO_UPLOAD_KEYSTORE') && file(System.getenv('NEXO_UPLOAD_KEYSTORE')).exists()) {
+        signingConfigs {
+            store {
+                storeFile file(System.getenv('NEXO_UPLOAD_KEYSTORE'))
+                storePassword System.getenv('NEXO_UPLOAD_STORE_PASSWORD')
+                keyAlias System.getenv('NEXO_UPLOAD_KEY_ALIAS')
+                keyPassword System.getenv('NEXO_UPLOAD_KEY_PASSWORD')
+            }
+        }
+    }
+
     buildTypes {
         // Seguridad: aunque se compila la variante debug (misma firma fija, se instala encima), la APK NO es
         // depurable: con depuración cualquiera con un cable USB podía leer los archivos internos (run-as) e
@@ -59,6 +74,16 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        // COLA 26: versión de GOOGLE PLAY (`./gradlew bundleStore` → app-store.aab). Igual que release (sin reducción de código,
+        // no depurable) pero: su manifiesto (src/store/AndroidManifest.xml) QUITA REQUEST_INSTALL_PACKAGES, y el CI de tienda marca el
+        // index.html con NEXO_STORE=1 (la web oculta «Actualizaciones» y no consulta GitHub). Los módulos (capacitor, nexo-ble…) solo
+        // tienen debug y release: se usa su release. NO afecta a assembleDebug (la APK de GitHub).
+        store {
+            initWith release
+            matchingFallbacks = ['release']
+            debuggable false
+            if (signingConfigs.findByName('store')) signingConfig signingConfigs.store
         }
     }
 }

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- COLA 26: manifiesto EXTRA de la versión de Google Play (tipo de compilación «store»; Gradle lo fusiona sobre src/main).
+     Google Play no admite el permiso de instalar paquetes sin una declaración que NEXO no puede justificar: la tienda actualiza la app
+     y la web de la variante de tienda no ofrece actualizador ni abre APK (src/ui/store_flag.js). Solo se QUITA lo que sobra; nada se añade.
+     tools:node="remove" lo quita aunque venga de un módulo (Capacitor o plugins). La APK de GitHub (debug) no ve este archivo. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+</manifest>
