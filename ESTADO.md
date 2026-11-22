@@ -69,8 +69,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **Herramientas:** `CI_ONLY='a.js|b.js|texto' node ci.js builds/wip` (varios con «|», por archivo si acaba en .js). `MainActivity` se compila con stubs mínimos de
   Capacitor contra `android-all-16-robolectric` (~/.gradle). Sin avisos programados activos.
 - **3283 (después de lanzar la 3119; va en la SIGUIENTE APK):** falso «enlace_abre_cierra» del S24 con el vivo (diagnóstico 22-11 14:56): con «Enlace ?» la marca de
-  enlace listo no se borraba y cada reintento contaba como caída. Arreglado (`ble_native_events.js`), `noservice.js` caso 7. PREGUNTA al dueño: la tablet A7 manda
-  sus diagnósticos marcados «build 3105» (se descartan) aunque la lista la muestra con 3117: ¿qué versión dice su Perfil?
+  enlace listo no se borraba y cada reintento contaba como caída. Arreglado (`ble_native_events.js`), `noservice.js` caso 7. (La tablet A7 tenía la 3105: el dueño ya
+  la actualizó a la 3117; su diagnóstico descartado era de la versión vieja, no un fallo.)
 - **Diagnósticos:** solo los de la última build (3117); se apuntan en `docs/diagnosticos.json` (`node tests/sim/diag_stats.js`). Abiertos de la app: mensaje atorado durante una
   videollamada (S23→S24 21:28), datos repetidos al abrir en frío, enlace repetido; costumbres del teléfono: quitar NEXO de recientes corta la recepción (Cari), Honor/Vivo congelan la app.
 - **Nombres:** dueño = S24 (nx1n36c283) · Cari = S23 Ultra (nx1e50c95d) · Roberto = Motorola (nx0g6ef54e) · Austin = Honor (nx1905c1ee) · Marcos (nx01992876) · Zhelowsky (nx0x4029e6) ·

@@ -895,7 +895,7 @@
    "nx": "dueño S24 (nx1n36c283), build 3117: automático",
    "sintoma": "enlace_abre_cierra (nx09acdb61, vivo Y03: 6 desconexiones en 10 min)",
    "categoria": "Conexión",
-   "causa": "APP (falso aviso). El vivo conecta con una dirección distinta de la guardada en su contacto («Enlace ? (0244)»): la marca «llegó a estar listo» solo se borraba si el contacto se reconocía por la dirección; con «?» quedaba puesta y cada reintento fallido / aviso repetido (4 en 10 ms al volver la app) contaba como caída. Arreglado en 3283 (ble_native_events.js: se borra también por el NEXO ID de la dirección); sim noservice.js caso 7. Va en la APK siguiente a la 3119. De paso: diagnóstico de la tablet (nx1e29ab2f) llegó marcado build 3105 y se descartó, aunque la lista la muestra con 3117: preguntado al dueño."
+   "causa": "APP (falso aviso). El vivo conecta con una dirección distinta de la guardada en su contacto («Enlace ? (0244)»): la marca «llegó a estar listo» solo se borraba si el contacto se reconocía por la dirección; con «?» quedaba puesta y cada reintento fallido / aviso repetido (4 en 10 ms al volver la app) contaba como caída. Arreglado en 3283 (ble_native_events.js: se borra también por el NEXO ID de la dirección); sim noservice.js caso 7. Va en la APK siguiente a la 3119. De paso: diagnóstico de la tablet (nx1e29ab2f) llegó marcado build 3105 y se descartó, aunque la lista la muestra con 3117: tenía la 3105 (el dueño ya la actualizó); no es fallo."
   },
   {
    "dia": "2026-11-22",
