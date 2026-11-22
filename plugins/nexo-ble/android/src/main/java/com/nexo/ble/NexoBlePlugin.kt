@@ -366,6 +366,7 @@ class NexoBlePlugin : Plugin() {
         appCtx = activity.applicationContext
         CrashLog.install(appCtx) // 3120: guardar las primeras líneas de un fallo al caer (diagnóstico)
         live = this
+        BleService.pipVideo = false // 3277: la página nace sin llamada (si la app se rehízo en plena videollamada, la marca vieja metía el chat en la miniatura)
         takeOverFromClosed()
         NetBgHome.appTookOver(appCtx!!) // 3192: si la escucha de internet corría sin la app, ahora la maneja la app (la misma)
         watchDefaultNetwork() // 3085: avisar a la app de Wi-Fi ↔ datos al momento
@@ -397,12 +398,15 @@ class NexoBlePlugin : Plugin() {
     // es segundo plano: no se toca nada al entrar ni al volver. Solo si la ventanita se cierra o se tapa del todo (onStop) pasa a serlo.
     @Volatile private var pipHeld = false
     // 3275: miniatura (o a punto de entrar: el aviso de irse, onUserLeaveHint, va antes que onPause)
+    @Volatile private var pauseSeq = 0
+    private fun inPipReal(): Boolean = try { Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity?.isInPictureInPictureMode == true } catch (e: Exception) { false }
     private fun inPipNow(): Boolean = try {
         (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity?.isInPictureInPictureMode == true) ||
             System.currentTimeMillis() - BleService.leaveHintAt < 2500L
     } catch (e: Exception) { false }
     override fun handleOnResume() {
         super.handleOnResume()
+        pauseSeq++
         if (pipHeld) {
             pipHeld = false
             if (!appInBackground) { remLog("INFO", "LIFECYCLE", "vuelve de la miniatura de la videollamada: la app nunca estuvo en segundo plano (sin reconectar ni vaciar colas)"); return }
@@ -431,9 +435,20 @@ class NexoBlePlugin : Plugin() {
     }
     override fun handleOnPause() {
         super.handleOnPause()
-        if (BleService.pipVideo && inPipNow()) {
+        val seq = ++pauseSeq
+        if (BleService.pipVideo) {
+            // 3277: con videollamada, la pausa puede ser el paso a la miniatura, y Android avisa de la miniatura ANTES o DESPUÉS de la
+            // pausa según el teléfono y los gestos (y onUserLeaveHint no siempre llega). No se decide en el acto: si a los 900 ms sigue
+            // en pausa y NO quedó en miniatura, entonces sí es segundo plano. (Antes, con el aviso tardío, la miniatura contaba como
+            // segundo plano: trabajos de fondo compitiendo con la llamada y, al volver, reconexiones y colas de golpe.)
             pipHeld = true
-            remLog("INFO", "LIFECYCLE", "handleOnPause en la miniatura de la videollamada: sigue a la vista, no cuenta como segundo plano")
+            remLog("INFO", "LIFECYCLE", "handleOnPause con videollamada" + (if (inPipNow()) ": en la miniatura, sigue a la vista" else ": se espera a ver si pasa a la miniatura"))
+            mainHandler.postDelayed({
+                if (seq == pauseSeq && pipHeld && !appInBackground && !inPipReal()) {
+                    remLog("INFO", "LIFECYCLE", "pausa con videollamada y sin miniatura: segundo plano")
+                    goBackground()
+                }
+            }, 900)
             return
         }
         goBackground()
@@ -457,6 +472,7 @@ class NexoBlePlugin : Plugin() {
     override fun handleOnDestroy() {
         super.handleOnDestroy()
         if (live === this) live = null
+        BleService.pipVideo = false // 3277: sin ventana no hay videollamada que pasar a la miniatura
         unwatchDefaultNetwork() // 3085
         activeChatNx = "" // 3172: con la app cerrada no hay chat abierto: lo que llegue (Bluetooth o internet) avisa siempre
         // Ronda 2770: la app se cierra con una llamada en curso: se suelta todo lo de la llamada (si no, el sensor de
@@ -829,6 +845,8 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod fun setPipActive(call: PluginCall) = setPipActiveImpl(call)
 
     @PluginMethod fun enterPip(call: PluginCall) = enterPipImpl(call)
+
+    @PluginMethod fun pipState(call: PluginCall) = pipStateImpl(call)
 
     // Ronda 2770: foco de audio durante la llamada (la música u otro audio de otra app se para y vuelve al colgar; antes
     // seguía sonando encima de la llamada)

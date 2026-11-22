@@ -1461,6 +1461,10 @@
     {
      "fallo": "29b (dueño): al tocar la mini de la videollamada con los botones ya ocultos solos, volvía a pantalla completa SIN botones (hacía falta otro toque). llamadamini.js fase p. El «se bloquea o cae» NO se pudo reproducir aquí: hace falta su diagnóstico",
      "prueba": "llamada MINIMIZADA"
+    },
+    {
+     "fallo": "3277 (dueño 22-11, build 3117: «al pasar varias veces de pantalla normal a miniatura» había problemas; «aparecía el chat y la miniatura, pero la miniatura ya no respondía»; capturas con el chat apretado en la ventanita del sistema). Todo colgaba de UN aviso de Android por cambio: (1) si la app se rehacía en plena videollamada (motor de la página caído, cambio de tema claro/oscuro del teléfono: el Manifest no declaraba uiMode), el nativo seguía con la marca «pasar a miniatura» y al irse metía el chat en la ventanita; (2) un aviso perdido dejaba las marcas pegadas (ventanita con botones, o la app sin ellos); (3) la llamada que terminaba con la mini flotante dejaba la mini, y la llamada SIGUIENTE nacía dentro de la mini (sin Contestar a la vista). 3277: call_pip.js (estado desde la verdad del nativo, pipState; repetible; un toque corrige; mini que abre por posición), la marca se limpia al cargar/destruir, la pausa con videollamada espera 900 ms a ver si es miniatura antes de contar como segundo plano, uiMode|keyboard|navigation en el Manifest. miniaturas.js (contraprueba con el código anterior: fallan s, t, z)",
+     "prueba": "MINIATURA de la videollamada a prueba de avisos perdidos"
     }
    ],
    "debiles": [

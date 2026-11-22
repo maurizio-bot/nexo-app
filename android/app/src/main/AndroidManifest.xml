@@ -77,6 +77,9 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
         
+        <!-- 3277: uiMode|keyboard|navigation en configChanges (como la plantilla de Capacitor): sin ellos, al cambiar el teléfono de tema
+             claro/oscuro (a mano, por horario o por el ahorro de batería) o al enlazar un teclado, Android REHACÍA la ventana: la app
+             se recargaba entera y una llamada en curso se perdía. La página ya se adapta sola a esos cambios. -->
         <activity
             android:name=".MainActivity"
             android:label="@string/title_activity_main"
@@ -85,7 +88,7 @@
             android:exported="true"
             android:supportsPictureInPicture="true"
             android:resizeableActivity="true"
-            android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|screenLayout">
+            android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|screenLayout|uiMode|keyboard|navigation">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

@@ -18,7 +18,8 @@ import { _hideCameraPreviewOverlay } from './camera.js';
 import { vaultAppendMessage, vaultFindContactByNexoId } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
 import { openCallReply, closeCallReply } from './call_reply.js';
-import { registerCallBar, minimizeCall, restoreCall, canMinimize } from './call_bar.js';
+import { registerCallBar, minimizeCall, canMinimize } from './call_bar.js';
+import { initCallPip, miniOpen } from './call_pip.js';
 import { mergeCheck, mergeCalls } from './call_merge.js';
 import { bridgeOf } from './call_bridge.js';
 import { callToast, mergeKey, callShownName, confNotice, bridgeOther, secondAvatar } from './call_join_ui.js';
@@ -345,7 +346,7 @@ function _screen() {
   el.addEventListener('click', function(e) {
     // mini flotante → volver a pantalla completa. 29b: con los botones ya ocultos solos (5 s en la ventanita) volvía a pantalla completa SIN
     // botones y hacía falta un segundo toque: al volver se muestran y se vuelve a armar el ocultado automático
-    if (el.classList.contains('nc-appmini')) { el.classList.remove('nc-appmini', 'nc-hide'); _autoHide(el); return; }
+    if (miniOpen(el)) return;
     if (!el.classList.contains('nc-live') || (e.target && e.target.closest && e.target.closest('.nc-btn, .nc-pip'))) {
       if (!el.classList.contains('nc-live')) console.log('[CALL] Toque en la pantalla de llamada ignorado: la llamada no está en curso');
       return;
@@ -376,29 +377,10 @@ function _autoHide(el) {
   _hideTimer = setTimeout(function() { if (el.classList.contains('nc-live')) el.classList.add('nc-hide'); }, 5000);
 }
 
-// #dueño 04-11: la miniatura del sistema (PiP) avisa al WebView al entrar/salir (MainActivity.onPictureInPictureModeChanged
-// → window.__nexoPipChanged). Antes NO existía este manejador, así que la ventanita salía con mi imagen tapando al otro y,
-// al volver, la app abría la llamada a pantalla completa. Ahora:
-//  (a) al ENTRAR en la miniatura → `nc-pipwin`: se ve solo el vídeo del otro (sin controles ni mi imagen).
-//  (b) al SALIR (volver a la app) → la llamada queda como MINI flotante (`nc-appmini`) y debajo se usa la app normal
-//      (contactos / último chat); tocar la mini la vuelve a abrir completa.
-function _setAppMini(on) { var el = document.getElementById('nexo-call-screen'); if (el) el.classList.toggle('nc-appmini', !!on); syncCallSplit(); }
-if (typeof window !== 'undefined') {
-  window.__nexoPipChanged = function(active) {
-    try {
-      var el = document.getElementById('nexo-call-screen');
-      document.documentElement.classList.toggle('nx-pip', !!active); // 3155: también la de grupo (gcall_stage)
-      if (active) restoreCall(); // la ventanita enseña la llamada, no la app con la barra
-      if (!el) return;
-      if (active) { el.classList.add('nc-pipwin'); el.classList.remove('nc-appmini'); }
-      else {
-        el.classList.remove('nc-pipwin');
-        var c = _calls(), st = c && c.state && c.state();
-        if (st && st.video && st.state === 'active') _setAppMini(true);
-      }
-    } catch (e) {}
-  };
-}
+// #dueño 04-11: la miniatura del sistema (PiP): (a) al ENTRAR se ve solo el vídeo del otro (`nc-pipwin`); (b) al SALIR la llamada queda
+// como MINI flotante (`nc-appmini`) y debajo se usa la app; tocar la mini la vuelve a abrir completa. 3277: el estado lo lleva
+// call_pip.js (a prueba de avisos perdidos y de cambios repetidos); aquí solo se arranca.
+if (typeof window !== 'undefined') initCallPip({ calls: _calls, syncSplit: function() { syncCallSplit(); }, autoHide: function(el) { _autoHide(el); } });
 
 // 14-11 (dueño): con los botones al ancho del teléfono, un nombre largo de una sola palabra (en italiano «Altoparlante»,
 // «Interrompi»; o con la letra del sistema agrandada) puede no caber: se le baja la letra lo justo (no menos de 8 px), en
@@ -694,7 +676,7 @@ function _render(st) {
     if (st) closeCallReply(st.nx);
     var old = document.getElementById('nexo-call-screen');
     if (old) {
-      old.classList.remove('nc-live', 'nc-hide', 'nc-waiting');
+      old.classList.remove('nc-live', 'nc-hide', 'nc-waiting', 'nc-appmini'); // (3277: el final se ve entero y la llamada siguiente no nace como mini)
       var s0 = old.querySelector('.call-status');
       if (s0 && st) { s0.classList.remove('nc-warn'); s0.textContent = st.reason === 'busy' ? t('call_end_busy', 'Ocupado') : st.reason === 'rejected' ? t('call_end_rejected', 'Rechazada') : st.reason === 'unanswered' ? t('call_end_no_answer', 'No contesta') : st.reason === 'lost' ? t('call_end_lost', 'Se cortó') : st.reason === 'missed' ? t('call_end_missed', 'Llamada perdida') : t('call_end_finished', 'Llamada terminada') + (st.seconds ? ' · ' + _fmt(st.seconds) : ''); }
       Array.prototype.forEach.call(old.querySelectorAll('.call-remote-video, .call-local-video, .nc-scrbar, #nexo-scr-ask'), function(n) { n.remove(); });

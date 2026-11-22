@@ -111,13 +111,18 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
       FALTA: probarlo con `multitud.js` (estudio pesado, fuera del CI) y en campo; el nativo dormido usa su propio tope (7) solo para lo que abre la bandeja.
     - **FALLO MÍO DESTAPADO POR LA BATERÍA (22-11):** 3266 guardaba su estado en `net._noNet`, que YA existía como booleano (`net_relays.js`): rompía `tick` y hacía
       creer «sin red». Arreglado (`_noNetSt`). La 3118 llevaba ese fallo: su CI debe fallar en `acuses`, `internetlisto` y `repetidos` y NO publicarse; la buena es la 3119.
-    - **3274 la miniatura NO debe pausar el vídeo (dueño 22-11, al abrir Ajustes con la ventanita):** causa: `BridgeActivity.onPause` pausa el WebView (y los `<video>`)
-      y Android lo llama al entrar en la miniatura. `MainActivity` (`onPause`/`onStop`): con videollamada y ventanita, el WebView se vuelve a reanudar; fuera de la
-      miniatura se pausa como antes. SIN compilar el módulo Android aquí (solo `android/app`, no está en `tests/kotlin-android`): revisar que compile en el CI y probar
-      en el S24/S23 (miniatura → Ajustes → vídeo sigue). Incluido en la siguiente APK (la 3118 NO lo lleva).
-      3275 (revisión del 22-11 tarde): `MainActivity` COMPILA contra las APIs reales de Android (comprobación con stubs mínimos de Capacitor); la detección de
-      miniatura usa `BleService.leaveHintAt` (onUserLeaveHint va antes que onPause también con la miniatura automática) tanto en `MainActivity` como en el plugin
-      (`handleOnPause`): sin ello, con miniatura automática la app se trataba como segundo plano y al volver se reconectaba todo. `kotlin-android` compila.
+    - **3277 MINIATURA A PRUEBA DE AVISOS PERDIDOS (dueño 22-11 tarde, build 3117: capturas con el chat apretado en la ventanita; «varias veces normal ↔ miniatura»;
+      «el chat y la miniatura, y la miniatura no respondía»; sin diagnósticos).** Causas halladas y reproducidas (`miniaturas.js`; el código anterior falla s, t, z):
+      (1) si la app se REHACE en plena videollamada (motor de la página caído → `recreate()`, o cambio de tema claro/oscuro: el Manifest no declaraba `uiMode`), el nativo
+      seguía con `BleService.pipVideo` puesto → al irse, el CHAT en la ventanita; (2) todo colgaba de UN aviso por cambio (`__nexoPipChanged`): perdido = marcas pegadas;
+      (3) la llamada que terminaba con la mini flotante dejaba la mini y la llamada SIGUIENTE nacía dentro de la mini (sin Contestar a la vista).
+      Arreglo: `src/ui/call_pip.js` (estado desde la verdad: `pipState` nativo al cambiar de tamaño/volver/tras cada aviso y cada 2,5 s en miniatura; `pipApply` repetible;
+      un toque con la marca puesta = ya no está en miniatura; en miniatura sin llamada → se cierra; la mini abre por posición del toque; registro `[CALL] Miniatura…` y
+      diagnóstico automático «miniatura» ante lo raro); nativo: `pipVideo=false` en `load()`/`handleOnDestroy`, `handleOnPause` con videollamada espera 900 ms a ver si
+      quedó en miniatura antes de contar como segundo plano (ya no depende del orden de los avisos), `uiMode|keyboard|navigation` en `configChanges`.
+      **3274 era un error mío y está QUITADO:** Capacitor NO pausa el WebView al pausar (`shouldKeepRunning()` = true por defecto); el `onStop → wv.onPause()` que se
+      añadió habría dejado el vídeo en pausa. 3275 sigue (`leaveHintAt`). SIN probar en teléfono: pedir al dueño miniatura ↔ app varias veces + otras apps + Ajustes,
+      y «Copiar diagnóstico» justo después si algo falla (buscar `[CALL] Miniatura` y `LIFECYCLE`).
     - **3273 miniatura de la videollamada (dueño 22-11):** (a) la miniatura del sistema ya NO cuenta como segundo plano (`handleOnPause` con PiP: no se avisa a la app ni,
       al volver, se hace todo lo de «volver a la app» encima de la llamada = el tirón); solo si la ventanita se cierra o se tapa (`handleOnStop`) pasa a segundo plano;
       (b) Android 12+: miniatura automática al irse (`setAutoEnterEnabled`; con gestos `onUserLeaveHint` no siempre llega y el vídeo quedaba atrás, pausado). Solo nativo,

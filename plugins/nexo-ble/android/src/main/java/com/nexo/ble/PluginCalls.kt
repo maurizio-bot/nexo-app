@@ -150,6 +150,13 @@ internal fun NexoBlePlugin.setPipActiveImpl(call: PluginCall) {
     call.resolve()
 }
 
+// 3277: la VERDAD sobre la miniatura, para la app (call_pip.js): si la ventana está ahora en miniatura (pip) y si está puesta la marca
+// «pasar a miniatura al irse» (wanted). La app pregunta al cambiar de tamaño y al volver, por si el aviso de Android no llegó.
+internal fun NexoBlePlugin.pipStateImpl(call: PluginCall) {
+    val pip = try { Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity?.isInPictureInPictureMode == true } catch (e: Exception) { false }
+    call.resolve(JSObject().put("pip", pip).put("wanted", BleService.pipVideo))
+}
+
 // Entrar YA en miniatura (PiP), p. ej. desde un botón «minimizar» de la pantalla de llamada.
 internal fun NexoBlePlugin.enterPipImpl(call: PluginCall) {
     var ok = false

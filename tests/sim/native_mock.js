@@ -1272,7 +1272,14 @@ class NativePhone {
       ringerMode: wrap('ringerMode', (c) => c.resolve({ mode: self.ringer || 'normal', dnd: !!self.dnd })),
       // Kotlin 3134 ringback: tono de llamada saliente del sistema (ToneGenerator por el canal de llamada); se anota on/off
       // Kotlin setPipActive (#dueño 01-11): la videollamada en curso pasa a la miniatura del sistema al irse de la app; se anota
-      setPipActive: wrap('setPipActive', (c, a) => { self.pipVideo = a.on === true; c.resolve({}); }),
+      setPipActive: wrap('setPipActive', (c, a) => {
+        self.pipVideo = a.on === true; (self.pipLog = self.pipLog || []).push(a.on === true);
+        // 3227: al quitarla con la ventanita abierta, el nativo la cierra (la app va atrás)
+        if (a.on !== true && self.pipNow === true) { self.pipNow = false; self.pipClosed = (self.pipClosed || 0) + 1; }
+        c.resolve({});
+      }),
+      // Kotlin 3277 pipState: la verdad sobre la miniatura (self.pipNow: true/false; sin definir = nativo sin esa respuesta, como antes)
+      pipState: wrap('pipState', (c) => c.resolve(typeof self.pipNow === 'boolean' ? { pip: self.pipNow, wanted: self.pipVideo === true } : {})),
       ringback: wrap('ringback', (c, a) => { self.ringbackOn = a.on === true; (self.ringbackLog = self.ringbackLog || []).push(a.on === true); c.resolve({ on: a.on === true }); }),
       l2Info: wrap('l2Info', (c) => c.resolve({ ok: !self.opts.noL2, sdk: self.opts.noL2 ? 28 : 33 })),
       bigServeL2: wrap('bigServeL2', (c, a) => {
