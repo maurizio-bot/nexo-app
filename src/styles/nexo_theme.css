@@ -620,3 +620,27 @@ button, input, textarea, select { font-family: inherit; }
 .nx-grev-cap { width: 100%; box-sizing: border-box; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.18); border-radius: 14px; background: rgba(255,255,255,0.06); color: inherit; font-size: 16px; font-family: inherit; outline: none; }
 .nx-grev-file { padding: 18px 14px; border-radius: 12px; background: rgba(255,255,255,0.06); font-size: 15px; word-break: break-word; }
 .msg-caption { padding: 6px 10px 8px; font-size: 15px; line-height: 1.35; white-space: pre-wrap; word-break: break-word; max-width: 220px; }
+
+/* Cola 32: que nada se corte, se encime ni se salga con la letra grande del sistema (130/160/200 %) ni en pantallas angostas
+   (320 px = «Zoom de pantalla» alto). Reglas generales, sin tocar colores ni diseño; las mide tests/sim/letragrande.js. */
+/* Títulos de página (Contactos, Agregar contactos, secciones de Ajustes): hasta 2 líneas con «…» en vez de salirse de la pantalla */
+.nx-page-title, #ble-panel .ble-header .contacts-title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; max-width: 100%; }
+/* El título «Contactos»: línea relativa a la letra (antes 28 px fijos: con letra grande el texto se recortaba por abajo) */
+#main-title { line-height: 1.33 !important; }
+/* Filas de la lista: el nombre nunca empuja ni se encima con la hora/insignias; recorta con «…» */
+.ble-contact-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ble-contact-msg { min-width: 0; }
+/* NEXO ID en Perfil: con letra grande baja a otra línea en vez de salirse de la tarjeta */
+.nx-id-card b { overflow-wrap: anywhere; word-break: break-all; letter-spacing: 0.3px; }
+.nx-id-card .nx-idtxt { overflow-wrap: anywhere; }
+/* Invitar (WhatsApp / TikTok / Más): si el texto no cabe en una fila, los botones pasan a la siguiente, todos con la misma altura */
+#ble-invite-row { flex-wrap: wrap !important; }
+#ble-invite-row button { flex: 1 1 auto !important; min-width: fit-content !important; box-sizing: border-box; }
+/* Botón redondo «+»: el símbolo no desborda el círculo con letra grande */
+.ble-btn-add-small { padding: 0 !important; line-height: 1 !important; }
+/* Nombre en la cabecera del chat: en teléfonos angostos letra un poco menor para que quepa en 2 líneas */
+@media (max-width: 360px) { #chat-contact-name { font-size: 17px !important; } }
+@media (max-width: 340px) { #chat-contact-info { padding-left: 46px !important; padding-right: 92px !important; } }
+/* Campos de texto: el texto de ayuda (placeholder) que no cabe termina en «…» en vez de cortarse a la mitad */
+input, textarea { text-overflow: ellipsis; }
+#chat-contact-name { text-overflow: clip; }
