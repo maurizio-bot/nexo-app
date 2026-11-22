@@ -230,8 +230,14 @@ export function _dupBleLinksToClose(links, opts) {
     // mismo enlace físico en los dos teléfonos). Antes mandaba el MTU, pero cada lado no ve el mismo MTU del mismo enlace (el S24
     // veía 517 en su enlace de cliente y menos en el de servidor): cada uno cerraba uno distinto y el S24 mandaba por el muerto.
     var roleTie = prefRole && l.role && keep.role && l.role !== keep.role; // 3027: desempate común
+    // 3262 (COLA 16, S24↔Roberto y S24↔Austin 20-11 11:00: «cada lado cierra un enlace repetido DISTINTO»; el S24 listaba dos enlaces
+    // «server» del mismo contacto): con el MISMO papel mandaba el MTU, pero el lado servidor no siempre lo conoce (ve 23 o el valor por
+    // omisión donde el cliente ve 517) y cada teléfono se quedaba con uno distinto. Lo que los dos ven igual es el ORDEN en que se
+    // abrieron: se queda el más reciente (la dirección actual del otro); el MTU solo desempata si no se sabe cuál es más nuevo.
+    var sameRole = !!(l.role && keep.role && l.role === keep.role), ls = l.since || 0, ks = keep.since || 0;
     var better = roleTie ? l.role === prefRole
-      : ((l.mtu || 0) > (keep.mtu || 0) || (sameMtu && (l.since || 0) > (keep.since || 0)));
+      : (sameRole && ls !== ks) ? ls > ks
+      : ((l.mtu || 0) > (keep.mtu || 0) || (sameMtu && ls > ks));
     if (better) keep = l;
   }
   // 3233 (diagnóstico S23 17-11 21:39 con Yaelito): si el que se queda lleva > 15 s sin recibir nada y otro SÍ recibe, ahora no se

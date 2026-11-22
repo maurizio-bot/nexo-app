@@ -141,6 +141,10 @@ class NexoBlePlugin : Plugin() {
     internal val serverNotificationEnabled = ConcurrentHashMap<String, Boolean>()
     // 3203 (diagnóstico de Roberto, Motorola edge 40 neo 3087, 17-11): freno a quien entra y sale del servidor GATT sin identificarse
     internal val serverFlap = ServerFlapPolicy()
+    // 3262: enlaces ENTRANTES que esta app «tiene» (BluetoothGattServer.connect): solo así cancelConnection los corta de verdad
+    // (ver holdServerLink en PluginBtState.kt). Y los que quedaron «a medias» tras un reinicio (HalfOpenPolicy).
+    internal val serverHeld: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+    internal val halfOpen = HalfOpenPolicy()
     internal val gattClients = ConcurrentHashMap<String, BluetoothGatt>()
     internal val clientRxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
     internal val clientTxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()

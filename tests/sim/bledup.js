@@ -66,6 +66,11 @@ const { importSrc } = require('./srcmod');
   const cS24 = _dupBleLinksToClose(s24, { iAmLower: false }), cYae = _dupBleLinksToClose(yae, { iAmLower: true });
   r.mtu_distinto_cierran_el_mismo = cS24.length === 1 && same(cS24, cYae) && same(cS24, ['5817']);
   // con el mismo papel (dos enlaces de cliente, dirección rotativa) sí manda el MTU
+  // 3262 (COLA 16): con el MISMO papel se queda el más RECIENTE (lo que los dos lados ven igual), aunque este lado crea que el viejo va a
+  // más MTU; visto desde el otro teléfono (los dos «client» allí, MTU reales) se cierra el MISMO enlace físico (el viejo)
+  r.mismo_papel_queda_el_reciente = same(_dupBleLinksToClose([L('s_viejo', 185, { role: 'server', since: 100 }), L('s_nuevo', 23, { role: 'server', since: 900 })], { iAmLower: false }), ['s_viejo']);
+  r.mismo_papel_el_otro_lado_igual = same(_dupBleLinksToClose([L('c_viejo', 517, { role: 'client', since: 120 }), L('c_nuevo', 517, { role: 'client', since: 910 })], { iAmLower: true }), ['c_viejo']);
+  r.mismo_papel_reciente_muerto_no = same(_dupBleLinksToClose([L('s_viejo', 185, { role: 'server', since: 100 }), L('s_nuevo', 517, { role: 'server', since: 900, dead: true })], { iAmLower: false }), ['s_nuevo']);
   r.mismo_papel_manda_mtu = same(_dupBleLinksToClose([L('c1', 23, { role: 'client' }), L('c2', 517, { role: 'client' })], { iAmLower: true }), ['c1']);
   // y un enlace MUERTO nunca se queda aunque sea el del papel preferido
   r.papel_muerto_no_se_queda = same(_dupBleLinksToClose([L('e1', 517, { role: 'client', dead: true }), L('e2', 517, { role: 'server' })], { iAmLower: true }), ['e1']);

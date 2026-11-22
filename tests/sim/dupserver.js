@@ -28,7 +28,9 @@ const buildDir = path.resolve(process.argv[2] || path.join(__dirname, 'builds/wi
 // --mtu23: el enlace que se queda (L1) va al mínimo; el mayor querría abrir otro mejor al verlo en el escaneo (excepción de 3019)
 const MTU23 = process.argv.includes('--mtu23');
 const LOGF = 'last_logs_dupserver' + (MTU23 ? '_mtu23' : '') + '.txt';
-const base = { readsContentFallback: true, retain: ['onPayloadReceived', 'onLanMessage', 'onLanUp', 'onLanDown'], closeOnNoService: true, pace: [15, 15], ioDelay: 25, asymmetric: true, noTor: true, wifi: null };
+// --sin-tomar (3262): el Kotlin de antes (cancelConnection sin «tener» el enlace = no corta nada en Android): contraprueba, debe FALLAR
+const NOHOLD = process.argv.includes('--sin-tomar');
+const base = { serverCutNoHold: NOHOLD, readsContentFallback: true, retain: ['onPayloadReceived', 'onLanMessage', 'onLanUp', 'onLanDown'], closeOnNoService: true, pace: [15, 15], ioDelay: 25, asymmetric: true, noTor: true, wifi: null };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DL extends ResourceLoader { constructor(d) { super(); this.d = d; } fetch(u) { const f = path.join(this.d, decodeURIComponent(new URL(u).pathname)); return fs.existsSync(f) ? Promise.resolve(fs.readFileSync(f)) : Promise.reject(new Error('x')); } }
 const logs = [];

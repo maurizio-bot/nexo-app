@@ -160,7 +160,7 @@ export const BLE_CONNECTION_METHODS = {
         key: key,
         mtu: (self._mtuByDevice && self._mtuByDevice.get(key)) || 185,
         dead: self._bleCongested(key),
-        since: (st && st.since) || 0,
+        since: (st && (st.openedAt || st.since)) || 0, // 3262: cuándo se abrió el enlace
         role: (st && st.role) || null, // 3027: cliente/servidor (desempate común con el otro teléfono)
         heard: (self._lastPongTime && self._lastPongTime.get(key)) || 0, // 3233: último paquete recibido por este enlace
         // 3167b: uno que el otro ya cortó (y el nativo reabrió) no cuenta como ocupado: si no, nadie lo cerraba de este lado

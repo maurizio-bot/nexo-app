@@ -181,6 +181,8 @@ internal fun NexoBlePlugin.processWriteQueue(macNorm: String) {
                 writeDropStreak.remove(macNorm)
                 val restantes = synchronized(queue) { val n = queue.size; queue.clear(); n }
                 if (restantes > 0) btErr("flush", "Enlace $macNorm atascado ($streak mensajes seguidos sin salir): suelto $restantes trozo(s) más en cola para no martillarlo (se reintentan por otro camino)")
+                // 3262 (COLA 15): y el enlace se cierra para rehacerlo (seguir «abierto» solo daba más 201 hasta el «zombi»)
+                if (WriteRetry.shouldCloseStuckLink(streak)) { closeStuckLink(macNorm); return }
             }
         }
         // Bloquear la cola durante la espera: otras llamadas no deben gastar los reintentos de golpe
@@ -256,7 +258,7 @@ private fun NexoBlePlugin.sendSingleChunk(macNorm: String, rawDeviceId: String, 
                 if (status == BluetoothGatt.GATT_SUCCESS) {
                     writeInitiated = true
                     remLog("INFO", "SEND", "GATT Client chunk sent (NO_RESPONSE) to $macNorm len=${chunk.length}")
-                } else {
+                } else if (WriteRetry.fallbackToDefault(status)) {
                     remLog("WARN", "SEND", "NO_RESPONSE fallo status=$status, intentando DEFAULT para $macNorm")
                     val fallbackStatus = gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
                     if (fallbackStatus == BluetoothGatt.GATT_SUCCESS) {
@@ -264,6 +266,8 @@ private fun NexoBlePlugin.sendSingleChunk(macNorm: String, rawDeviceId: String, 
                         remLog("INFO", "SEND", "GATT Client chunk sent (DEFAULT fallback) to $macNorm len=${chunk.length}")
                     }
                 }
+                // 3262 (COLA 15): con «ocupado» (201) no se prueba DEFAULT: daría el mismo 201 (y dos líneas de registro por intento);
+                // se espera al aviso de Android de la escritura anterior (los reintentos espaciados de WriteRetry)
             } else {
                 @Suppress("DEPRECATION")
                 rxChar.value = data

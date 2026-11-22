@@ -992,7 +992,11 @@ class NativePhone {
         clearTimeout(self.reconnTimers.get(mac)); self.reconnTimers.delete(mac); self.reconnAttempts.delete(mac); // reconnectTimers.remove
         const cl = self.clients.get(mac);
         if (cl) { self.clients.delete(mac); cl.peer.serverConnected.delete(norm(self.initAddress)); cl.peer.serverNotif.delete(norm(self.initAddress)); cl.peer.emit('onDeviceDisconnected', { deviceId: self.initAddress }); }
-        const sp = a && a.server === true ? self.serverConnected.get(mac) : null;
+        // 3262: en Android, cancelConnection sobre un enlace ENTRANTE no hace nada si la app no lo «tiene» (BluetoothGattServer.connect).
+        // El Kotlin de antes no lo tomaba: opts.serverCutNoHold lo modela (el enlace sigue vivo aunque al JS se le diga «desconectado»),
+        // para reproducir aquí el «enlace repetido que vuelve» de los teléfonos (S24↔Austin 19-11). El Kotlin nuevo (holdServerLink) corta.
+        if (a && a.server === true && self.opts.serverCutNoHold && self.serverConnected.get(mac)) self.stats.serverCancelsNoop = (self.stats.serverCancelsNoop || 0) + 1;
+        const sp = a && a.server === true && !self.opts.serverCutNoHold ? self.serverConnected.get(mac) : null;
         if (sp) {
           self.stats.serverCancels = (self.stats.serverCancels || 0) + 1;
           setTimeout(() => {

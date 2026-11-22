@@ -103,6 +103,9 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
     private val mtu = HashMap<String, Int>()
     private val queues = HashMap<String, ArrayDeque<ByteArray>>()
     private val busy = HashSet<String>()
+    // 3262: enlaces entrantes que «tenemos» (solo así se cortan de verdad) y los que quedaron a medias (ver PluginBtState.holdServerLink)
+    private val held = HashSet<String>()
+    private val halfOpen = HalfOpenPolicy()
     private var btReceiver: BroadcastReceiver? = null
     var stopped = false
         private set
@@ -184,17 +187,11 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
     private fun closeServer(cancelLinks: Boolean) {
         val srv = server ?: return
         server = null; tx = null
-        if (cancelLinks) {
-            val all = LinkedHashMap<String, BluetoothDevice>(devices)
-            try {
-                (ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.getConnectedDevices(BluetoothProfile.GATT_SERVER)
-                    ?.forEach { d -> all.putIfAbsent(norm(d.address), d) }
-            } catch (e: Throwable) { }
-            all.values.forEach { d -> try { srv.cancelConnection(d) } catch (e: Throwable) { } }
-        }
+        // 3262: solo se cortan los que usan nuestro servicio (los que «tenemos»); cerrar el servidor suelta además lo que tuviéramos
+        if (cancelLinks) devices.filterKeys { it in held }.values.forEach { d -> try { srv.cancelConnection(d) } catch (e: Throwable) { } }
         try { srv.close() } catch (e: Throwable) { }
         devices.keys.toList().forEach { core.linkClosed(it) }
-        devices.clear(); notifOn.clear(); mtu.clear(); queues.clear(); busy.clear()
+        devices.clear(); notifOn.clear(); mtu.clear(); queues.clear(); busy.clear(); held.clear()
     }
 
     // Bluetooth apagado: el servidor muere (se suelta); encendido otra vez: se rehace y el servicio vuelve a anunciar
@@ -214,6 +211,21 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) ctx.registerReceiver(r, f, Context.RECEIVER_NOT_EXPORTED) else ctx.registerReceiver(r, f)
             btReceiver = r
         } catch (e: Throwable) { }
+    }
+
+    // 3262: Android solo corta un enlace ENTRANTE si esta app lo «tiene» (connect sobre el enlace ya abierto lo marca en uso); sin eso
+    // cancelConnection y cerrar el servidor no cortan nada. Se toma solo a quien usa nuestro servicio (hilo principal).
+    private fun hold(link: String, device: BluetoothDevice) {
+        if (link in held) return
+        val srv = server ?: return
+        held.add(link)
+        try { srv.connect(device, false) } catch (e: Throwable) { held.remove(link) }
+    }
+    private fun cut(link: String, device: BluetoothDevice) {
+        val fresh = link !in held
+        hold(link, device)
+        val run = Runnable { try { server?.cancelConnection(device) } catch (e: Throwable) { } }
+        if (fresh) handler.postDelayed(run, 200) else run.run()
     }
 
     // ---- envío (pong, tarjeta, confirmaciones): una notificación detrás de otra por enlace ----
@@ -254,6 +266,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
                 if (newState == BluetoothProfile.STATE_CONNECTED) devices[link] = device
                 else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     devices.remove(link); notifOn.remove(link); mtu.remove(link); queues.remove(link); busy.remove(link)
+                    held.remove(link); halfOpen.forget(link)
                     core.linkClosed(link)
                     try { onBluetoothOn() } catch (e: Throwable) { } // que el anuncio siga tras una desconexión
                 }
@@ -268,6 +281,13 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
             handler.post {
                 if (stopped) return@post
                 if (!devices.containsKey(link)) devices[link] = device
+                hold(link, device)
+                // 3262 (HalfOpenPolicy): escribe sin estar suscrito (enlace que sobrevivió a nuestro reinicio): no se le puede contestar
+                // ni el pong ni el ✓✓ → se corta para que reconecte limpio (lo que mandó ya se guardó; lo reenvía si no vio el ✓✓)
+                if (halfOpen.onWrite(link, notifOn[link] == true, false, System.currentTimeMillis())) {
+                    nlog(ctx, "WARN", "enlace a medias con $link (escribe sin estar suscrito): se corta para que reconecte limpio")
+                    cut(link, device)
+                }
                 try { core.onBytes(link, bytes) } catch (e: Throwable) { nlog(ctx, "WARN", "trozo sin procesar (${e.javaClass.simpleName})") }
             }
         }
@@ -279,7 +299,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
                 value?.contentEquals(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE) == true
             if (responseNeeded) try { server?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value) } catch (e: Throwable) { }
             val link = norm(device.address)
-            handler.post { if (!stopped) { devices[link] = device; notifOn[link] = on } }
+            handler.post { if (!stopped) { devices[link] = device; notifOn[link] = on; if (on) { halfOpen.forget(link); hold(link, device) } } }
         }
 
         override fun onNotificationSent(device: BluetoothDevice, status: Int) {

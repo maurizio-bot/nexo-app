@@ -175,7 +175,7 @@ export const bleNativeEvents = {
         var dupClosed = !!(self._dupClosedUntil && (self._dupClosedUntil.get(_normMac(deviceId)) || 0) > Date.now());
         if (typeof self._noteLinkFlap === 'function' && flapNx && !dupClosed && data.reason !== 'bt_off' && self._notifiedPeers.has(_normMac(deviceId) + ':' + _normId(flapNx))) self._noteLinkFlap(flapNx, 'desconexion'); // 3020
         var prevSt = self._getDeviceState(deviceId) || {};
-        var cutClient = !dupClosed && prevSt.role === 'client' && (prevSt.state === BLE_STATES.READY_TO_CHAT || prevSt.state === BLE_STATES.NOTIFICATIONS_READY);
+        var cutClient = !dupClosed && data.reason !== 'stuck' && prevSt.role === 'client' && (prevSt.state === BLE_STATES.READY_TO_CHAT || prevSt.state === BLE_STATES.NOTIFICATIONS_READY);
         self.connectedDevices.delete(deviceId);
         self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
         // 3167b (diagnóstico S24↔realme 3075 16-11 15:17): el otro cortó un enlace nuestro de CLIENTE (p. ej. su desempate de
@@ -328,6 +328,11 @@ export const bleNativeEvents = {
       if (state === BLE_STATES.CONNECTING) stateObj.connAt = (prevC && prevC.state === BLE_STATES.CONNECTING && prevC.connAt) || Date.now();
       else if (prevC && prevC.connAt && (state === BLE_STATES.READY_TO_CHAT || state === BLE_STATES.NOTIFICATIONS_READY)) { try { if (typeof window.NEXO_noteConnect === 'function') window.NEXO_noteConnect('bluetooth', Date.now() - prevC.connAt); } catch (e) {} }
       else if (prevC && prevC.connAt && state !== BLE_STATES.DISCONNECTED) stateObj.connAt = prevC.connAt;
+    }
+    // 3262: cuándo se abrió ESTE enlace (se conserva entre sus cambios de estado; al caerse se olvida). El desempate de enlaces
+    // repetidos del mismo papel se queda con el más reciente (antes miraba `since`, que nadie ponía: siempre 0)
+    if (state !== BLE_STATES.DISCONNECTED && state !== BLE_STATES.ERROR) {
+      stateObj.openedAt = (prevC && prevC.openedAt && prevC.state !== BLE_STATES.DISCONNECTED && prevC.state !== BLE_STATES.ERROR) ? prevC.openedAt : Date.now();
     }
     // 3027: el papel del enlace (cliente/servidor) se conserva entre cambios de estado del MISMO enlace (lo usa el dedup
     // para desempatar igual que el otro teléfono); al desconectarse se olvida
