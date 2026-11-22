@@ -685,17 +685,22 @@ export function _refreshChatPreview(cid, msgId) {
   }).catch(function() {});
 }
 
+// 3268: un mensaje ⏳ que se borra ya no debe salir: fuera también de la bandeja de salida nativa (ble_outbox.js)
+function _outboxForget(id) { try { var bi = window.bleInterface; if (bi && typeof bi._outboxDrop === 'function') bi._outboxDrop(id, true); } catch (e) {} }
+
 export function _deleteForMe(cid, id) {
   var el = document.querySelector('.message[data-msg-id="' + id + '"]');
   if (el) el.remove();
   _renderedMessageIds.delete(id);
   if (_replyTo && _replyTo.id === id) _cancelReply();
+  _outboxForget(id);
   vaultDeleteMessage(cid, id).then(function() { return _refreshChatPreview(cid); }).catch(function() {});
   console.log('[CHAT] Mensaje eliminado para mí');
 }
 
 export function _deleteForAll(cid, msg) {
   var id = msg.msgId || msg.messageId;
+  _outboxForget(id);
   _sendTextTo(cid, JSON.stringify({ type: 'nexo_act', act: 'del', id: id }), '', true);
   vaultBlankMessage(cid, id).then(function() { _rerenderBlank(id, msg); return _refreshChatPreview(cid); }).catch(function() {});
   console.log('[CHAT] Mensaje eliminado para todos');

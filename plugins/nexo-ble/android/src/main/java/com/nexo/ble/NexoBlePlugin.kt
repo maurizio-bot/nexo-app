@@ -206,6 +206,11 @@ class NexoBlePlugin : Plugin() {
     // 3269 (fase 3): la bandeja de salida por Bluetooth (OutboxBle) y su repaso periódico
     @Volatile internal var outBleRef: OutboxBle? = null
     @Volatile internal var outTickOn = false
+    // 3271: la bandeja abre ella el enlace: el plan (OutboxDial), lo visto en el aire (NEXO ID → dirección, cuándo) y a quién se llamó
+    internal val outDial = OutboxDial()
+    internal val outSeen = ConcurrentHashMap<String, Pair<String, Long>>()
+    internal val outDialNx = ConcurrentHashMap<String, String>()
+    @Volatile internal var outScanUntil = 0L
     internal val clientSetupWaitSince = ConcurrentHashMap<String, Long>() // 3059: desde cuándo esperan las escrituras a eso
     internal val nxidToMacMap = ConcurrentHashMap<String, String>()
     internal var quickScanLatch: java.util.concurrent.CountDownLatch? = null
@@ -616,6 +621,7 @@ class NexoBlePlugin : Plugin() {
     // 3268 (fase 3, COLA 29): bandeja de salida nativa (los textos pendientes salen por internet aunque la app se duerma)
     @PluginMethod fun netOutboxSet(call: PluginCall) = netOutboxSetImpl(call)
     @PluginMethod fun netOutboxDrop(call: PluginCall) = netOutboxDropImpl(call)
+    @PluginMethod fun netOutboxList(call: PluginCall) = netOutboxListImpl(call)
 
     @PluginMethod fun setAckKeys(call: PluginCall) = setAckKeysImpl(call)
     @PluginMethod fun setMutedChats(call: PluginCall) = setMutedChatsImpl(call) // 3219: chats silenciados (MutedChats)

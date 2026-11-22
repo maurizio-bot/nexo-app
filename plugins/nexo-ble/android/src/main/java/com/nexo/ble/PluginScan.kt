@@ -204,6 +204,7 @@ internal fun NexoBlePlugin.newScanCallback(): ScanCallback = object : ScanCallba
 
             if (nexoId != null) {
                 registerNexoMapping(nexoId, addr)
+                outSeen[nexoId.lowercase()] = macNorm to System.currentTimeMillis() // 3271: para la bandeja de salida (OutboxDial)
             }
 
             val scanMsg = "Device found: $name ($addr) NEXO=$nexoId rssi=$rssi - cacheado"

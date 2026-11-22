@@ -1,4 +1,8 @@
-import { FILE_CHUNK_SIZE, CHAT_CHUNK_SIZE, FILE_WINDOW_SIZE, CHAT_WINDOW_SIZE, FILE_WINDOW_TIMEOUT_MS, CHAT_WINDOW_TIMEOUT_MS, _isLanDevice, _isNetDevice, LAN_PSEUDO_MTU, LAN_FILE_CHUNK, LAN_CHAT_CHUNK, NET_FILE_CHUNK, NET_CHAT_CHUNK, SMALL_MTU_MIN_CHUNK, FILE_PACING_DELAY_MS, CHAT_PACING_DELAY_MS, GLOBAL_TIMEOUT_MS, INTERACTIVE_MAX_CHARS, MAX_WINDOW_RETRIES, BT_RECHUNK_WRITES, BLE_FILE_MAX_CHARS, TINY_MTU, BLE_TINY_MTU_DEFER_CHARS, MTU_DEFER_MAX_WAIT_MS, _noResumeTx, NET_TOR_PREFER_CHUNKS, FILE_GLOBAL_TIMEOUT_MS, PEER_SAFE_MAX_MS, BULK_PRIO, BULK_YIELD_MAX_MS, BULK_YIELD_STEP_MS, _b64BodyStart, _normMac, _isBusyErr, _busyBackoffMs, _fenixYieldBle, _netFileAutoRetry, NET_FILE_AUTORETRY_BUDGET_MS, _binOk, PROTOCOL_VERSION, _nxOf, _chunkCheck, LINK_DOWN_WAIT_FILE_MS, LINK_DOWN_WAIT_MAX_MS, TEXT_BUSY_GRACE_MS, PEER_SAFE_FIRST_MS, PEER_SAFE_CAP_MS, FENIX_SILENT_RETRIES, BRIDGE_STALL_RETRIES, _normId, BRIDGE_STALL_MS, NET_BIG_MIN_CHUNKS, NET_SILENT_FULL_RETRIES, NET_SILENT_PROBE_MS, SLEEP_FILE_RETRIES, SLEEP_PROBE_MS, SLEEP_PROBE_MAX_MS, NET_SMALL_PROBE_MS, _isFenixTx } from './ble_ack_shared.js';
+import { FILE_CHUNK_SIZE, CHAT_CHUNK_SIZE, FILE_WINDOW_SIZE, CHAT_WINDOW_SIZE, FILE_WINDOW_TIMEOUT_MS, CHAT_WINDOW_TIMEOUT_MS, _isLanDevice, _isNetDevice, LAN_PSEUDO_MTU, LAN_FILE_CHUNK, LAN_CHAT_CHUNK, NET_FILE_CHUNK, NET_CHAT_CHUNK, SMALL_MTU_MIN_CHUNK, FILE_PACING_DELAY_MS, CHAT_PACING_DELAY_MS, GLOBAL_TIMEOUT_MS, INTERACTIVE_MAX_CHARS, MAX_WINDOW_RETRIES, BT_RECHUNK_WRITES, BLE_FILE_MAX_CHARS, BLE_HD_MAX_CHARS, TINY_MTU, BLE_TINY_MTU_DEFER_CHARS, MTU_DEFER_MAX_WAIT_MS, _noResumeTx, NET_TOR_PREFER_CHUNKS, FILE_GLOBAL_TIMEOUT_MS, PEER_SAFE_MAX_MS, BULK_PRIO, BULK_YIELD_MAX_MS, BULK_YIELD_STEP_MS, _b64BodyStart, _normMac, _isBusyErr, _busyBackoffMs, _fenixYieldBle, _netFileAutoRetry, NET_FILE_AUTORETRY_BUDGET_MS, _binOk, PROTOCOL_VERSION, _nxOf, _chunkCheck, LINK_DOWN_WAIT_FILE_MS, LINK_DOWN_WAIT_MAX_MS, TEXT_BUSY_GRACE_MS, PEER_SAFE_FIRST_MS, PEER_SAFE_CAP_MS, FENIX_SILENT_RETRIES, BRIDGE_STALL_RETRIES, _normId, BRIDGE_STALL_MS, NET_BIG_MIN_CHUNKS, NET_SILENT_FULL_RETRIES, NET_SILENT_PROBE_MS, SLEEP_FILE_RETRIES, SLEEP_PROBE_MS, SLEEP_PROBE_MAX_MS, NET_SMALL_PROBE_MS, _isFenixTx } from './ble_ack_shared.js';
+// 3272 (COLA 5, wifidirect.js --broken=fail): el HD de un vídeo (meta.hdFor) tiene su propio tope por Bluetooth (BLE_HD_MAX_CHARS, como en
+// ble_ack.js y ble_ack_files.js). Aquí se comparaba todo contra el tope de un archivo normal: si Wi-Fi Direct fallaba, el HD (3,4 M letras)
+// quedaba «demasiado grande para Bluetooth» y no salía nunca («HD interrumpido, se reintenta al reconectar»).
+function _bleMax(meta) { return (meta && meta.hdFor) ? BLE_HD_MAX_CHARS : BLE_FILE_MAX_CHARS; }
 // ChatStream: un envío troceado en curso (ventanas, reintentos, confirmaciones). Reestructuración 15-11: antes, al final de ble_ack.js.
 function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.ackSystem = ackSystem;
@@ -135,7 +139,7 @@ ChatStream.prototype._shouldDeferTinyMtu = function() {
     // archivo DEMASIADO GRANDE para Bluetooth (> BLE_FILE_MAX_CHARS) NO se manda por Bluetooth, tenga el MTU que tenga.
     // Queda ⏳ pendiente SIEMPRE y espera Wi-Fi/internet (el resolvedor, con preferNet, lo re-rutea por ahí). La app ya
     // considera «> tope BLE» como demasiado grande para Bluetooth; antes solo frenaba el caso de MTU mínimo (≤50).
-    if ((this.content ? this.content.length : 0) > BLE_FILE_MAX_CHARS) { try { this.ackSystem._mtuDeferSince.set(this.msgId, Date.now()); } catch (e) {} return true; }
+    if ((this.content ? this.content.length : 0) > _bleMax(this.meta)) { try { this.ackSystem._mtuDeferSince.set(this.msgId, Date.now()); } catch (e) {} return true; }
     var ble = this.ble;
     var mtu = (ble && typeof ble.getMtu === 'function') ? ble.getMtu(dev) : 0;
     var tiny = (typeof window !== 'undefined' && Number(window.NEXO_TINY_MTU)) || TINY_MTU;
@@ -203,7 +207,7 @@ ChatStream.prototype.start = function() {
       } catch (e) {}
       // El motivo SIEMPRE contiene «no cabe por Bluetooth» → send.js lo deja ⏳ pendiente (no ✗). Demasiado grande para BT
       // (cualquier MTU, el bug del APK) vs MTU mínimo/desconocido (B2, #dueño 02-11).
-      var _tooBig = (self.content ? self.content.length : 0) > BLE_FILE_MAX_CHARS;
+      var _tooBig = (self.content ? self.content.length : 0) > _bleMax(self.meta);
       reject(new Error('archivo grande no cabe por Bluetooth ' + (_tooBig ? '(demasiado grande)' : 'de MTU mínimo') + ' ahora: en espera de Wi-Fi/internet'));
       return;
     }
@@ -402,7 +406,7 @@ ChatStream.prototype._sendFailed = function(idx, err) {
   var wrong = err && err.code === 'WRONG_PEER';
   // #dueño 06-11: un archivo grande que falla por un enlace NO debe re-rutearse a otro Bluetooth (se arrastra en miles de
   // trozos); prefiere internet/Wi-Fi si el contacto es alcanzable por ahí.
-  var bigFile = self.type === 'file' && self.content && self.content.length > BLE_FILE_MAX_CHARS;
+  var bigFile = self.type === 'file' && self.content && self.content.length > _bleMax(self.meta);
   // 3022: un ARCHIVO a medias por Wi-Fi espera el margen del corte (regla del dueño 23-10: no cambia de camino por un pico);
   // al vencer, lan._giveUp → _lanDown lo pasa al otro camino (y se rehace a su medida si hace falta)
   if (self.type === 'file' && !wrong && _isLanDevice(self.deviceId) && bi && bi.lan && typeof bi.lan.inGrace === 'function' && bi.lan.inGrace(nx)) return true;

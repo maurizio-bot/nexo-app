@@ -21,6 +21,8 @@
  */
 import { e2eEncryptText, e2eDecryptText, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted } from '../vault/e2e_proto.js';
+import { t } from './i18n.js';
+import { _showToast } from './ble_helpers.js';
 import { readPower, powerNow } from './call_power.js'; // 3258: batería y temperatura al empezar/terminar cada transferencia
 
 // 3023 (dueño 12-11: «quiero que entre en automático si hay Bluetooth y el Wi-Fi de los dos activo»): desde ~100 KB en base64
@@ -67,9 +69,48 @@ function _wdPowerEnd(box, tag, ok) {
     }).catch(function() {});
   } catch (e) {}
 }
+// Códigos de WifiP2pManager.ActionListener.onFailure que el nativo devuelve al montar el grupo
+var GROUP_CODES = { 0: 'interno', 1: 'no soporta', 2: 'ocupado' }; // cortos: las medidas del día guardan la causa en 40 letras // i18n-ok: texto para el desarrollador
+// 3272 (COLA 4): qué decirle al usuario según la causa (texto verdadero y qué puede hacer). Una vez por minuto por causa y lado.
+var AVISO_MS = 60000;
+var BT_MAX_CHARS = 3100000;   // tope de un archivo por Bluetooth (BLE_FILE_MAX_CHARS de ble_ack_shared.js): más grande no cabe y espera
+function _avisoText(kind, peer, grande) {
+  var head = '';
+  if (kind === 'perm') head = peer
+    ? t('wd_aviso_perm_peer', 'Al otro teléfono le falta el permiso «Dispositivos cercanos» de NEXO.')
+    : t('wd_aviso_perm_me', 'Falta el permiso «Dispositivos cercanos» de NEXO (Ajustes → Apps → NEXO → Permisos).');
+  else if (kind === 'nosoporta') head = peer
+    ? t('wd_aviso_nosoporta_peer', 'El otro teléfono no admite Wi-Fi Direct.')
+    : t('wd_aviso_nosoporta_me', 'Este teléfono no admite Wi-Fi Direct.');
+  else if (kind === 'grupo') head = peer
+    ? t('wd_aviso_grupo_peer', 'El otro teléfono no pudo montar Wi-Fi Direct (Android lo tenía ocupado).')
+    : t('wd_aviso_grupo_me', 'Android no pudo montar Wi-Fi Direct (lo tenía ocupado). Si se repite, apaga y enciende el Wi-Fi.');
+  else if (kind === 'union') head = t('wd_aviso_union', 'No se pudo unir al grupo de Wi-Fi Direct del otro teléfono. Acerquen los teléfonos.');
+  else if (kind === 'corte') head = t('wd_aviso_corte', 'Se cortó Wi-Fi Direct a mitad del envío (¿se alejaron?). Acerquen los teléfonos para ir rápido.');
+  if (!head) return '';
+  // lo que pasa con el archivo: lo chico sigue por Bluetooth; lo que no cabe en Bluetooth queda pendiente (no se pierde)
+  return head + ' ' + (grande
+    ? t('wd_aviso_cola_pend', 'Este archivo no cabe en Bluetooth: queda pendiente hasta que haya Wi-Fi Direct o el mismo Wi-Fi.')
+    : t('wd_aviso_cola_bt', 'Mientras, los archivos van por Bluetooth (más lento).'));
+}
+// ¿Qué aviso merece este error? ('' = ninguno: cosas pasajeras como «ocupado con otra transferencia» o «sin respuesta»)
+function _avisoKind(e) {
+  var code = e && e.code, m = String((e && e.message) || e || '');
+  if (code === 'WD_WIFI_OFF' || (e && e.wifiOff) || WIFI_OFF_RE.test(m)) return '';   // el del Wi-Fi apagado ya lo da _wifiOffNote
+  if (/sin permiso/i.test(m)) return 'perm';
+  var gc = /crear el grupo \((\d+)/i.exec(m);
+  if (gc) return gc[1] === '1' ? 'nosoporta' : 'grupo';
+  if (/el otro no puede \(no soportado/i.test(m)) return 'nosoporta';
+  if (code === 'WD_CONNECT' || /no se pudo conectar|grupo no se form/i.test(m) || code === 'WD_TIMEOUT') return 'union'; // i18n-ok: código interno
+  if (code === 'WD_SEND' || /envío fallido|envío sin terminar/i.test(m)) return 'corte';
+  return '';
+}
 function _wdCause(e) {
   var code = e && e.code, m = String((e && e.message) || e || '');
-  if (code === 'WD_GROUP' || /crear el grupo/i.test(m)) return 'no se pudo crear el grupo';
+  if (code === 'WD_GROUP' || /crear el grupo/i.test(m)) { // 3272: con el código de Android (0 error interno, 1 no soportado, 2 ocupado) para saber CUÁL fue
+    var gc = /crear el grupo \((\d+)/i.exec(m);
+    return 'no se pudo crear el grupo' + (gc ? ' (' + gc[1] + (GROUP_CODES[gc[1]] ? ' ' + GROUP_CODES[gc[1]] : '') + ')' : ''); // i18n-ok: texto para el desarrollador
+  }
   if (code === 'WD_CONNECT' || /no se pudo conectar/i.test(m)) return 'no se pudo conectar al grupo'; // i18n-ok: texto para el desarrollador
   if (code === 'WD_TIMEOUT' || /grupo no se form/i.test(m)) return 'el grupo no se formó (20 s)'; // i18n-ok: texto para el desarrollador
   if (code === 'WD_SEND' || /envío fallido/i.test(m)) return 'envío cortado';
@@ -148,6 +189,23 @@ export class WifiDirect {
     if (now - (this._offNoteAt[k] || 0) < WIFI_OFF_NOTE_MS) return;
     this._offNoteAt[k] = now;
     try { if (typeof window !== 'undefined' && typeof CustomEvent === 'function') window.dispatchEvent(new CustomEvent('nexo:wd:wifiOff', { detail: { peer: !!peerSide } })); } catch (e) {}
+  }
+  // 3272: aviso al usuario de por qué este archivo va por Bluetooth (peer = la causa está en el OTRO teléfono)
+  _aviso(kind, peer, grande) {
+    var txt = _avisoText(kind, peer, grande);
+    if (!txt) return;
+    console.warn('[WIFI-DIRECT] Aviso al usuario (' + kind + (peer ? ', el otro' : ', este') + '): ' + txt); // i18n-ok: registro
+    var now = Date.now(), k = kind + (peer ? ':peer' : ':me');
+    this._avisoAt = this._avisoAt || {};
+    if (now - (this._avisoAt[k] || 0) < AVISO_MS) return;
+    this._avisoAt[k] = now;
+    try { _showToast(txt, 'warn'); } catch (e) {}
+  }
+  _avisoErr(e, mine, size) {  // mine = el error lo vimos nosotros (si viene de «el otro no puede (…)», la causa es del otro teléfono)
+    var k = _avisoKind(e);
+    if (!k) return;
+    var peer = !mine || /el otro no puede/i.test(String((e && e.message) || ''));
+    this._aviso(k, peer, size > BT_MAX_CHARS);
   }
   _cooling(nx) { return (this.failUntil[nx] || 0) > Date.now(); }
   unmarkPeer(nexoId) { var nx = _nid(nexoId); this._dropWdReady(nx); if (nx && this.peers.delete(nx)) console.log('[WIFI-DIRECT] ' + nx + ' ya no lo tiene disponible'); }
@@ -254,7 +312,7 @@ export class WifiDirect {
       clearTimeout(timer);
       if (ok === null) { self._asked = false; return false; } // sin respuesta: se puede volver a pedir
       if (self.status) self.status.granted = ok;
-      if (!ok) { self.denied = true; console.warn('[WIFI-DIRECT] Permiso no concedido: todo por Bluetooth'); }
+      if (!ok) { self.denied = true; console.warn('[WIFI-DIRECT] Permiso no concedido: todo por Bluetooth'); self._aviso('perm', false); }
       return ok;
     });
   }
@@ -328,7 +386,7 @@ export class WifiDirect {
       console.warn('[WIFI-DIRECT] ' + fileId + ': ' + (e && e.message) + ' → por Bluetooth');
       // 3013: Wi-Fi apagado (aquí, o lo dijo el otro, o lo dijo Android al unirse) no es un fallo de Wi-Fi Direct: sin castigo
       if (e && (e.wifiOff || e.code === 'WD_WIFI_OFF')) self._wifiOffNote(e.wifiOff === 'peer');
-      else if (!o.gw) self.noteFail(peer, e && e.message);
+      else { self._avisoErr(e, true, String(data || '').length); if (!o.gw) self.noteFail(peer, e && e.message); }
       throw e;
     });
   }
@@ -378,7 +436,7 @@ export class WifiDirect {
       // Cortado a mitad (WD_SEND: se alejó, se apagó…): Wi-Fi Direct sí funciona con él; se puede reintentar ya
       // (3013: Wi-Fi apagado tampoco es un fallo de Wi-Fi Direct)
       if (e && (e.wifiOff || e.code === 'WD_WIFI_OFF')) self._wifiOffNote(e.wifiOff === 'peer');
-      else if (!(e && e.code === 'WD_SEND')) self.noteFail(peer, e && e.message);
+      else { self._avisoErr(e, true, Infinity); if (!(e && e.code === 'WD_SEND')) self.noteFail(peer, e && e.message); }
       throw e;
     });
   }
@@ -451,7 +509,7 @@ export class WifiDirect {
       _wdPowerEnd(pwIn, 'recepción ' + id, false);
       console.warn('[WIFI-DIRECT] No puedo recibir ' + id + ': ' + (e && e.message));
       var off = !!(e && (e.wifiOff || e.code === 'WD_WIFI_OFF' || WIFI_OFF_RE.test(String(e.message || ''))));
-      if (off) self._wifiOffNote(false);
+      if (off) self._wifiOffNote(false); else self._avisoErr(e, true, p.size);
       no(off ? 'Wi-Fi apagado' : (e && e.message));
     });
     return true;

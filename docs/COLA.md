@@ -12,7 +12,10 @@ es lo que el dueño pidió el 20-11 y cabe en una sesión corta antes o después
 - Para lo nativo: compilar aquí con `tests/kotlin-android` (comprobación de tipos) y `tests/kotlin` (JVM) antes de subir.
 - **22-11 mañana (subido, va en la siguiente APK):** 20 FASE 3 = 29 (bandeja de salida nativa: por internet 3268 y por Bluetooth 3269; app dormida y cerrada, con prueba de
   cada caso), 27 completo (3266 en la app + 3270 en la escucha sin la app), 36 (3267), 30, 33, resto de 32 (nombre largo, botones parejos), 7–11 (medición y tablero).
-  Abiertos: FASE 4 (conexiones a demanda desde el nativo, tope ~7; adjuntos pequeños en la bandeja), modo vagón, 17, 18, 22, 23–25, 13, 3261, 2, 3–5 (ayudante en curso), grupos G1–G9.
+  También: el nativo ABRE el enlace cuando los dos teléfonos duermen (3271), 3 (dirección del grupo de Wi-Fi Direct caído y texto verdadero; Wi-Fi local atado a la red Wi-Fi
+  aunque la red por defecto sean los datos), 4 (causas reproducidas en `wdgrupo.js` y avisos verdaderos) y 5 (`wifidirect.js --broken=fail` pasa: el HD de vídeo vuelve a ir por Bluetooth). 3272.
+  Abiertos: FASE 4 (conexiones a demanda y tope ~7 como política general; hoy el tope solo vale para lo que abre la bandeja), adjuntos pequeños en la bandeja, que `BleSinApp`
+  (proceso sin la app) también abra enlaces, modo vagón, 17, 18, 22, 23–25, 13, 3261, 2, «cancelar» de Wi-Fi Direct (el otro queda ocupado ~90 s tras fallar la unión), grupos G1–G9.
 
 ## 0. Lo que hace el dueño (antes de empezar)
 - Noche del 20-11: videollamada S24→S23 de 20–30 min con la 3116 en los dos, con Wi-Fi; copiar el diagnóstico de los dos y anotar el ambiente. Referencia: WhatsApp 0,31 %/min (S24 Ultra); su recuerdo de NEXO 0,14 %/min.

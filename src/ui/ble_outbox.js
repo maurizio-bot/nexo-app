@@ -43,12 +43,29 @@ export const BLE_OUTBOX_METHODS = {
       if (typeof document !== 'undefined' && document.addEventListener) document.addEventListener('visibilitychange', function() {
         if (document.visibilityState === 'hidden') self._outboxSync('la app se oculta');
       });
+      // Al arrancar: lo que el nativo guardó de la sesión anterior (la app pudo morir con mensajes en la bandeja). Se miran esos chats y
+      // la lista se rehace con lo que SIGUE pendiente (lo entregado, borrado o fallido sale de la bandeja).
+      setTimeout(function() { self._outboxAdopt(); }, 8000);
       window.addEventListener('nexo:ble:ackStatus', function(e) {
         var d = e && e.detail;
         if (d && d.msgId && (d.status === 'sent' || d.status === 'delivered' || d.status === 'read')) self._outboxDrop(d.msgId);
         else if (d && d.msgId && d.status === 'pending') self._outboxSoon('un mensaje quedó pendiente'); // también con la app ya oculta
       });
     } catch (e) {}
+  },
+
+  _outboxAdopt() {
+    var self = this, pl = self.nativePlugin;
+    if (!pl || !_hasNativeMethod(pl, 'netOutboxList')) return Promise.resolve(0);
+    return _safeNativeCall(pl, 'netOutboxList', {}).then(function(r) {
+      var list = (r && Array.isArray(r.items)) ? r.items : [];
+      if (!list.length) return 0;
+      var nxs = self._outboxNx || (self._outboxNx = new Set());
+      list.forEach(function(x) { if (x && x.nx) nxs.add(_normId(x.nx)); });
+      if (!self._outboxSig) self._outboxSig = list.map(function(x) { return x.id; }).join(',');
+      console.log('[NET] Bandeja de salida: el teléfono tenía ' + list.length + ' mensaje(s) a su cargo de antes: se revisa cuáles siguen pendientes'); // i18n-ok: registro
+      return self._outboxSync('al arrancar');
+    }).catch(function() { return 0; });
   },
 
   // Ese contacto tiene textos pendientes sin camino (ble_messages: «sin enlace ni ruta»): que la bandeja los tome
@@ -80,7 +97,7 @@ export const BLE_OUTBOX_METHODS = {
       var env = self._chatEnv(c, id, (typeof seq === 'number') ? seq : self.getNextSeq(), null);
       env.dn = nx; // a quién va (como _sendMessageNative: el que lo recibe lo ignora si no es él)
       var p = JSON.stringify(env);
-      if (p.length > OUT_P_MAX) return null;
+      if (p.length > OUT_P_MAX) return { skip: true }; // no cabe: lo manda la app
       var peer = self.net && self.net.peers && self.net.peers.get(nx);
       var it = { id: id, nx: nx, p: p, at: Number(ts) || Date.now(), wk: (peer && peer.fcmToken) || '' };
       cache.set(id, it);
@@ -94,8 +111,11 @@ export const BLE_OUTBOX_METHODS = {
     if (!pl || !_hasNativeMethod(pl, 'netOutboxSet') || !self.net) return Promise.resolve(0);
     if (self._outboxBusy) { self._outboxAgain = why || 'otra vez'; return Promise.resolve(0); }
     self._outboxBusy = true;
-    var items = [], seen = {};
-    var add = function(it) { if (it && !seen[it.id] && items.length < OUT_MAX) { seen[it.id] = 1; items.push(it); } };
+    var items = [], seen = {}, broke = false;
+    var add = function(it) {
+      if (!it) { broke = true; return; }  // no se pudo armar (clave aún no lista…): esta vuelta no se toca la lista del nativo
+      if (!it.skip && !seen[it.id] && items.length < OUT_MAX) { seen[it.id] = 1; items.push(it); }
+    };
     var work = Promise.resolve();
     var netNx = {}, cand = {};
     // 3269: cualquier contacto con clave (no solo los de internet): por Bluetooth el nativo no necesita nada más; por internet solo
@@ -125,6 +145,12 @@ export const BLE_OUTBOX_METHODS = {
       });
     });
     return work.then(function() {
+      if (broke) { // se reintenta con calma (2 s, 4 s… hasta 1 min; 8 veces): la próxima vez que la app se oculte se vuelve a intentar igual
+        self._outboxBroke = (self._outboxBroke || 0) + 1;
+        if (self._outboxBroke <= 8) setTimeout(function() { self._outboxSync('reintento'); }, Math.min(60000, 1000 * Math.pow(2, self._outboxBroke)));
+        return items.length;
+      }
+      self._outboxBroke = 0;
       var cache = self._outboxPk || (self._outboxPk = new Map());
       cache.forEach(function(v, k) { if (!seen[k]) cache.delete(k); });
       var sig = items.map(function(x) { return x.id; }).join(',');
@@ -151,11 +177,14 @@ export const BLE_OUTBOX_METHODS = {
     });
   },
 
-  // Ese mensaje ya salió (✓) o se confirmó (✓✓): el nativo deja de encargarse
-  _outboxDrop(id) {
+  // Ese mensaje ya salió (✓) o se confirmó (✓✓): el nativo deja de encargarse. force = se borró (chat_actions): se le dice al nativo
+  // aunque esta sesión de la app no se lo haya entregado (pudo quedar guardado de una sesión anterior).
+  _outboxDrop(id, force) {
     var self = this, pl = self.nativePlugin;
-    if (!id || !self._outboxSig || (',' + self._outboxSig + ',').indexOf(',' + id + ',') < 0) return;
-    self._outboxSig = self._outboxSig.split(',').filter(function(x) { return x !== id; }).join(',');
+    if (!id) return;
+    var had = !!self._outboxSig && (',' + self._outboxSig + ',').indexOf(',' + id + ',') >= 0;
+    if (!had && !force) return;
+    if (had) self._outboxSig = self._outboxSig.split(',').filter(function(x) { return x !== id; }).join(',');
     if (self._outboxPk) self._outboxPk.delete(id);
     if (pl && _hasNativeMethod(pl, 'netOutboxDrop')) _safeNativeCall(pl, 'netOutboxDrop', { id: id }).catch(function() {});
   }

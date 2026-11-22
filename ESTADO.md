@@ -43,8 +43,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **SIGUIENTE (tras el reinicio semanal del límite; el dueño iba al 96 % el 20-11): la lista COMPLETA y ordenada está en `docs/COLA.md`** (26 puntos en 5 sesiones + sesión «Grupos: administración» G1–G8 pedida el 20-11: Wi-Fi Direct y elección de camino con 3261, medición y tablero,
   Bluetooth pulido, Bluetooth en el servicio + seguridad, después). Regla del dueño: lo que él reporta de pruebas reales es un HECHO. Antes de subir: correr `tamano.js` e `i18n_audit.js`.
 - **21-11 (plan y calendario):** leer `docs/CALENDARIO_Y_ORDEN.md` (hitos, dependencias, decisiones del dueño con fecha), `docs/PLAN_ENTREGA.md` (olas, modelos y esfuerzo) y `docs/COLA.md`. Mañana (domingo 22): Ola 0 (ordenar documentos e inventario único) y luego Ola 1. Una subida con APK por ola. Lo de horas: 30 a 40 por semana como mínimo.
-- **APK 3117 EN CAMINO (dueño 22-11 ~09:40: «haz la apk de lo que ya tienes hecho y empieza con lo demás»):** lleva 3262–3265, 16b, 34, 35, 29b y 32. Si el CI
-  falla, mirar SOLO lo que falló (aquí `fotocalidad.js` y `estadovideo.js` no pasan ni con el código viejo: es del entorno). PRUEBAS DEL DUEÑO con la 3117 en
+- **PUBLICADA: APK 3117 (22-11 10:53 México; CI en verde a la primera, también `fotocalidad.js` y `estadovideo.js`, que aquí fallan por el entorno):** lleva 3262–3265,
+  16b, 34, 35, 29b y 32. PRUEBAS DEL DUEÑO con la 3117 en
   el S24 y el S23: (1) con los dos cerca por Bluetooth, cerrar y abrir NEXO en uno: el otro NO debe ver «desconectado» y el texto sale al momento; (2) dejar
   los dos juntos 10 min y mirar que no salga «enlace repetido» una y otra vez; (3) agregar un contacto nuevo y mandarle con su app en segundo plano: ✓✓.
 - **22-11 (madrugada, sesión Fable + 2 ayudantes Sonnet). LEER ESTO PRIMERO:**
@@ -87,8 +87,16 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
       Sim `bandeja.js` (dormida y cerrada, con contraprueba; modelo del nativo en `netbg_mock.js`); JVM `NetOutboxTest` (relé con identificación + la app real).
     - **3269 la bandeja también por BLUETOOTH** (`OutboxBle.kt`; la usan el plugin y `BleSinApp`): sin internet, cuando el otro aparece con mi app dormida/cerrada el nativo
       escribe lo pendiente por ese enlace (de quién es: lo que dijo la app al ocultarse o el ping/«quién soy» del otro) y solo la ✓✓ FIRMADA lo retira. Sim `bandejabt.js`
-      (contraprueba `--sin-bandeja` FALLA), JVM `OutboxBleTest`. PARA LA AUDITORÍA FINAL: el nativo cree al enlace cuando dice de quién es (igual que la app, hallazgo M5):
-      el contenido va cifrado, pero se ve a quién va.
+      (contraprueba `--sin-bandeja` FALLA), JVM `OutboxBleTest`. Lo que la auditoría final debe mirar de todo esto está apuntado en el repositorio PRIVADO
+      (`seguridad/PARA_LA_AUDITORIA_FINAL.md`).
+    - **3271 el nativo ABRE el enlace** (`OutboxDial.kt`, `outboxDialStep`): con los DOS teléfonos dormidos nadie conectaba. Mientras haya algo pendiente para un contacto
+      sin enlace listo, el plugin (app dormida o cerrada con el proceso vivo) lo busca con un escaneo corto y FILTRADO (4 s; a los 3 s, y luego cada 20 s, 40 s… hasta
+      5 min) y conecta él (tope 7 enlaces). Sim: `bandejabt.js` caso 3 (contraprueba `--sin-llamar`); JVM `OutboxDialTest`. FALTA: lo mismo en `BleSinApp` (proceso sin la
+      app: hoy solo escribe por enlaces que abre el otro) y despertar con alarma si el teléfono duerme del todo (hoy el repaso corre cuando algo lo despierta).
+    - **3272 Wi-Fi Direct (ayudante + arreglos):** avisos VERDADEROS por causa con qué hacer (`wd_aviso_*`; permiso, grupo ocupado, no soportado, unión, corte) y código
+      de Android en las medidas (`wdgrupo.js`, 9 causas); el HD de un vídeo vuelve a ir por Bluetooth si Wi-Fi Direct falla (`chat_stream.js` usaba el tope de archivo
+      normal; `wifidirect.js --broken=fail`); la dirección del grupo de Wi-Fi Direct caído se olvida (`lan.js`: el vivo la reintentaba) y el aviso ya no dice «este
+      teléfono no tiene Wi-Fi». PENDIENTE nativo: `lanOnWifi()` mira solo la red por defecto; tras fallar el unirse, el otro queda «ocupado» ~90 s (falta un «cancelar»).
     - **3270 COLA 27 sin la app:** la escucha nativa avisa a Android del Wi-Fi sin internet (12 s sin relé abierto; 1/min), como la app (3266).
     - NO entran en la bandeja (los sigue mandando la app): adjuntos, llamadas, acciones ocultas, fallidos y textos > 12 000 caracteres.
     - **Ayudantes integrados:** COLA 30 (fondo de lista/llamada/Perfil/Ajustes con pulsación larga), COLA 33 (Ajustes → Apariencia) + resto de 32 (nombre largo con

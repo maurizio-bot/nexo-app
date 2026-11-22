@@ -33,7 +33,10 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
              private val pingMs: Long = 4000L, private val deadMs: Long = 30000L,
              private val proxy: Proxy? = null, private val bindHost: InetAddress? = null,
              private val clock: () -> Long = { System.nanoTime() / 1_000_000L },
-             private val autoPing: Boolean = true) { // (autoPing = false: sin hilo del latido; las pruebas llaman a tick)
+             private val autoPing: Boolean = true, // (autoPing = false: sin hilo del latido; las pruebas llaman a tick)
+             // 3272: antes de conectar, quien lo usa puede preparar el socket (en el teléfono: atarlo a la red Wi-Fi aunque la red por
+             // defecto sean los datos móviles, que es lo que pasa con un Wi-Fi sin internet). Si falla, se conecta como siempre.
+             private val prepare: ((Socket) -> Unit)? = null) {
     interface Listener {
         fun onUp(nx: String)
         fun onDown(nx: String)
@@ -104,6 +107,7 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
             try {
                 // Por Tor: la dirección no se resuelve aquí (createUnresolved): el SOCKS de Tor la lleva al .onion
                 val sock = if (proxy != null) Socket(proxy) else Socket()
+                if (proxy == null) try { prepare?.invoke(sock) } catch (e: Exception) { }
                 val addr = if (proxy != null) InetSocketAddress.createUnresolved(host, port) else InetSocketAddress(host, port)
                 sock.connect(addr, if (proxy != null) TOR_CONNECT_TIMEOUT_MS else CONNECT_TIMEOUT_MS)
                 handle(Conn(sock, true))

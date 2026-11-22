@@ -4,6 +4,8 @@
 // Ahora lo escribe el NATIVO por ese enlace (el mismo paquete cifrado que mandaría la app) y la ✓✓ firmada del otro lo retira.
 //  1) App DORMIDA (JS congelado): B se aleja, A escribe y bloquea; B vuelve → B lo recibe SIN que A abra NEXO; al abrir, ✓✓ y una copia.
 //  2) App CERRADA: lo mismo cerrando NEXO.
+//  3) 3271, los DOS dormidos (dos teléfonos en el bolsillo): nadie abriría el enlace → el nativo de A busca a B (escaneo corto y filtrado),
+//     conecta y escribe; el nativo de B avisa y confirma; al mirar B el teléfono el mensaje ya está en el chat. (--sin-llamar: no lo abre)
 // Contraprueba: node bandejabt.js <dir> --sin-bandeja (el nativo de antes): con A dormida el mensaje NO llega.
 // Sin relés (nadie tiene internet). Uso: node bandejabt.js <dir_build> [--sin-bandeja]
 'use strict';
@@ -13,7 +15,7 @@ const { JSDOM, VirtualConsole, ResourceLoader } = require('jsdom');
 const { Radio, NativePhone, installWebCrypto } = require('./native_mock');
 
 const buildDir = path.resolve(process.argv[2]);
-const base = { readsContentFallback: true, retain: ['onPayloadReceived', 'onLanMessage', 'onLanUp', 'onLanDown'], closeOnNoService: true, pace: [15, 15], ioDelay: 25, asymmetric: true, noTor: true, noOutboxBle: process.argv.includes('--sin-bandeja') };
+const base = { readsContentFallback: true, retain: ['onPayloadReceived', 'onLanMessage', 'onLanUp', 'onLanDown'], closeOnNoService: true, pace: [15, 15], ioDelay: 25, asymmetric: true, noTor: true, noOutboxBle: process.argv.includes('--sin-bandeja'), noOutboxDial: process.argv.includes('--sin-llamar') };
 let RELAYS = [];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DistLoader extends ResourceLoader {
@@ -124,9 +126,36 @@ const save = () => fs.writeFileSync(path.join(__dirname, 'last_logs_bandejabt.tx
     await sleep(5000);
     r.c_una_copia = (await count(B, idA, t2)) === 1;
   }
+  if (!sinBandeja) {
+    // ===== 3) 3271: los DOS con la app dormida (dos teléfonos en el bolsillo): nadie más abriría el enlace → lo abre el nativo de A =====
+    await waitFor(() => linked(A, idB), 60000);
+    radio.block(nA, nB);
+    r.z_sin_enlace_s = await waitFor(() => !linked(A, idB) && !linked(B, idA), 90000);
+    const t3 = 'BT-los-dos-dormidos';
+    sendText(A, t3); await sleep(3000);
+    r.z_queda_sin_salir = sinSalir(await vaultStatus(A, idB, t3));
+    A.setActive(false);
+    r.z_bandeja_s = await waitFor(() => nA.outbox && nA.outbox.items.length === 1, 15000);
+    nA.setFrozen(true);
+    B.setActive(false); await sleep(500); nB.setFrozen(true); // B también guarda el teléfono
+    const dials0 = nA.stats.outboxDials || 0, escritas3 = nA.stats.outboxBle || 0, avisos0 = nB.notifLog.length;
+    await sleep(2000);
+    radio.unblock(nA, nB); // se acercan, los dos con la pantalla apagada
+    r.z_nativo_abre_el_enlace_s = await waitFor(() => (nA.stats.outboxDials || 0) > dials0, 240000);
+    r.z_lo_escribio_el_nativo_s = await waitFor(() => (nA.stats.outboxBle || 0) > escritas3, 60000);
+    r.z_B_avisa_dormido_s = await waitFor(() => nB.notifLog.length > avisos0, 60000);
+    r.z_confirmado_en_el_nativo_s = await waitFor(() => nA.outbox && nA.outbox.items.length === 0, 60000);
+    r.z_los_dos_seguian_dormidos = nA.jsFrozen === true && nB.jsFrozen === true;
+    nB.setFrozen(false); B.setActive(true); // B mira el teléfono
+    r.z_en_el_chat_de_B_s = await waitFor(() => has(B, idA, (m) => m.content === t3 && !m._own), 60000);
+    nA.setFrozen(false); A.setActive(true);
+    r.z_confirmado_al_abrir_s = await waitFor(async () => ['delivered', 'read'].includes(await vaultStatus(A, idB, t3)), 90000);
+    await sleep(5000);
+    r.z_una_copia = (await count(B, idA, t3)) === 1;
+  }
   r.errores = logs.filter((l) => /ilegible|Error procesando|No se pudo descifrar/.test(l)).slice(0, 3);
-  const bools = ['base_llega', 'claves_firma', 'd_queda_sin_salir', 'd_bandeja_cifrada', 'd_lo_escribio_el_nativo', 'd_A_seguia_dormida', 'd_una_copia'].concat(sinBandeja ? [] : ['c_queda_sin_salir', 'c_lo_escribio_el_nativo', 'c_una_copia']);
-  const nums = ['d_sin_enlace_s', 'd_bandeja_s', 'd_llega_con_A_dormida_s', 'd_confirmado_en_el_nativo_s', 'd_confirmado_al_abrir_s'].concat(sinBandeja ? [] : ['c_sin_enlace_s', 'c_bandeja_s', 'c_llega_con_A_cerrada_s', 'c_confirmado_en_el_nativo_s', 'c_confirmado_al_abrir_s']);
+  const bools = ['base_llega', 'claves_firma', 'd_queda_sin_salir', 'd_bandeja_cifrada', 'd_lo_escribio_el_nativo', 'd_A_seguia_dormida', 'd_una_copia'].concat(sinBandeja ? [] : ['c_queda_sin_salir', 'c_lo_escribio_el_nativo', 'c_una_copia', 'z_queda_sin_salir', 'z_los_dos_seguian_dormidos', 'z_una_copia']);
+  const nums = ['d_sin_enlace_s', 'd_bandeja_s', 'd_llega_con_A_dormida_s', 'd_confirmado_en_el_nativo_s', 'd_confirmado_al_abrir_s'].concat(sinBandeja ? [] : ['c_sin_enlace_s', 'c_bandeja_s', 'c_llega_con_A_cerrada_s', 'c_confirmado_en_el_nativo_s', 'c_confirmado_al_abrir_s', 'z_sin_enlace_s', 'z_bandeja_s', 'z_nativo_abre_el_enlace_s', 'z_lo_escribio_el_nativo_s', 'z_B_avisa_dormido_s', 'z_confirmado_en_el_nativo_s', 'z_en_el_chat_de_B_s', 'z_confirmado_al_abrir_s']);
   r.fallan = bools.filter((k) => r[k] !== true).concat(nums.filter((k) => r[k] === null || r[k] === undefined));
   if (r.errores.length) r.fallan.push('errores');
   r.resultado = r.fallan.length ? 'FALLO' : 'OK';

@@ -358,15 +358,67 @@ internal fun NexoBlePlugin.outboxBleTick() {
         override fun run() {
             if (!(appInBackground || closedMode) || !outBle().pending()) { outTickOn = false; return }
             try { outBle().pump() } catch (e: Throwable) { }
+            try { outboxDialStep() } catch (e: Throwable) { } // 3271: y si su contacto no tiene enlace, se le busca y se conecta
             mainHandler.postDelayed(this, 10_000L)
         }
     }
     mainHandler.postDelayed(run, 2_000L)
 }
+// 3271 (fase 3: conexiones salientes): para quien tiene algo pendiente y ningún enlace listo, el nativo lo busca (escaneo corto y
+// filtrado, lo único que Android entrega con la pantalla apagada) y conecta él. El plan (cuándo, a quién, tope) es OutboxDial (JVM).
+internal fun NexoBlePlugin.outboxDialStep() {
+    if (!(appInBackground || closedMode)) return
+    val want = outBle().wanting()
+    if (want.isEmpty()) { outDial.scanDue(want); return }
+    val ctx = appCtx ?: return
+    val adapter = (ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager)?.adapter ?: return
+    if (!adapter.isEnabled) return
+    val busy = { mac: String -> gattClients.containsKey(mac) || clientConnectionStates.containsKey(mac) || serverConnectedDevices.containsKey(mac) }
+    for ((nx, mac) in outDial.pick(want, HashMap(outSeen), gattClients.size, busy)) {
+        val device = scannedDevices[mac] ?: continue
+        try {
+            outDialNx[mac] = nx
+            if (outDialNx.size > 64) outDialNx.clear()
+            val gatt = connectLe(ctx, device, mac) ?: continue
+            gattClients[mac] = gatt
+            clientConnectionStates[mac] = android.bluetooth.BluetoothProfile.STATE_CONNECTING
+            nlog()?.add("INFO", "BANDEJA", "hay mensajes pendientes para $nx y está cerca: el teléfono abre el enlace Bluetooth sin la app")
+        } catch (e: Throwable) { nlog()?.add("WARN", "BANDEJA", "no se pudo abrir el enlace con $nx (${e.javaClass.simpleName})") }
+    }
+    val now = System.currentTimeMillis()
+    if (now < outScanUntil || !outDial.scanDue(want)) return
+    val granted = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) isGranted(ctx, android.Manifest.permission.BLUETOOTH_SCAN)
+        else isGranted(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION)
+    if (!granted || bluetoothScanner != null) return // sin permiso, o ya hay un escaneo en marcha (el de la app): sus resultados valen igual
+    try {
+        val scanner = adapter.bluetoothLeScanner ?: return
+        val filters = listOf(android.bluetooth.le.ScanFilter.Builder()
+            .setManufacturerData(NexoBlePlugin.MANUFACTURER_ID, byteArrayOf(NexoBlePlugin.NEXO_MAGIC_HIGH, NexoBlePlugin.NEXO_MAGIC_LOW), byteArrayOf(0xFF.toByte(), 0xFF.toByte())).build())
+        scanner.startScan(filters, scanSettings(), scanCallback)
+        outScanUntil = now + OutboxDial.SCAN_MS
+        mainHandler.postDelayed({
+            try { scanner.stopScan(scanCallback) } catch (e: Throwable) { }
+            try { outboxDialStep() } catch (e: Throwable) { } // lo que se vio en este escaneo: a conectar
+        }, OutboxDial.SCAN_MS)
+    } catch (e: Throwable) { nlog()?.add("WARN", "BANDEJA", "no se pudo buscar por Bluetooth (${e.javaClass.simpleName})") }
+}
+// El enlace de cliente quedó listo (MTU y notificaciones): si lo abrió la bandeja, es de ese contacto y lo suyo sale ya
+internal fun NexoBlePlugin.outboxDialed(macNorm: String) {
+    val nx = outDialNx.remove(macNorm) ?: return
+    try { outBle().seed(macNorm, nx); mainHandler.post { try { outBle().pump() } catch (e: Throwable) { } } } catch (e: Throwable) { }
+}
+
 // Lo que llega por un enlace Bluetooth con la app dormida o cerrada (PluginRx): de quién es el enlace, ✓✓ de lo de la bandeja y a escribir
 internal fun NexoBlePlugin.outboxHeard(macNorm: String, json: String) {
     if (json.length > 6000) return
     try { outBle().heard(macNorm, json) } catch (e: Throwable) { }
+}
+
+// Lo que el nativo tiene a su cargo (al arrancar la app: para ponerse de acuerdo con lo guardado de la sesión anterior)
+internal fun NexoBlePlugin.netOutboxListImpl(call: PluginCall) {
+    val arr = JSArray()
+    try { val o = netBg().outbox; o.ids().forEach { id -> o.get(id)?.let { arr.put(JSObject().put("id", it.id).put("nx", it.nx).put("ok", it.okAt > 0)) } } } catch (e: Exception) { }
+    call.resolve(JSObject().put("items", arr))
 }
 
 // La app retira uno (lo mandó ella, llegó su ✓✓ o se borró)

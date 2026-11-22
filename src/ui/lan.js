@@ -238,7 +238,7 @@ export class LanLink {
       setTimeout(function() { var l2 = self.links.get(nx); if (l2 && !l2.up && l2.graceUntil && Date.now() >= l2.graceUntil) self._giveUp(nx, 'no volvió en ' + (g / 1000).toFixed(1) + ' s'); }, g + 30);
       // ¿este teléfono sigue con Wi-Fi? Sin Wi-Fi propio no vuelve: se cambia ya
       var pl0 = _plugin();
-      if (pl0 && typeof pl0.lanStatus === 'function') pl0.lanStatus().then(function(st) { var l3 = self.links.get(nx); if (st && st.wifi === false && l3 && !l3.up && l3.graceUntil) self._giveUp(nx, 'este teléfono no tiene Wi-Fi'); }).catch(function() {});
+      if (pl0 && typeof pl0.lanStatus === 'function') pl0.lanStatus().then(function(st) { var l3 = self.links.get(nx); if (st && st.wifi === false && l3 && !l3.up && l3.graceUntil) self._giveUp(nx, self._wdAddr(nx) ? 'se cerró el grupo de Wi-Fi Direct' : 'este teléfono no tiene Wi-Fi'); }).catch(function() {});
       this._connect(nx);
       this.start();
       // 3022: los textos que esperaban confirmación por el Wi-Fi pasan ya al otro camino listo (los archivos esperan el margen)
@@ -247,9 +247,14 @@ export class LanLink {
   }
 
   // Sin Wi-Fi con este contacto: lo pendiente sigue por Bluetooth / Jump
+  // 3272 (COLA 3): ¿la dirección recordada de ese contacto es la del grupo de Wi-Fi Direct (192.168.49.x)?
+  _wdAddr(nx) { var a = this.addr.get(nx); return !!(a && /^192\.168\.49\./.test(String(a.host || ''))); }
   _giveUp(nx, why) {
     var l = this.links.get(nx);
     this.links.delete(nx);
+    // 3272 (COLA 3, vivo 20-11: reintentaba la dirección del grupo de Wi-Fi Direct ya caído, ENETUNREACH): esa dirección murió con el
+    // grupo; se olvida y la próxima conexión espera a que la búsqueda dé la buena. (Antes el aviso decía «este teléfono no tiene Wi-Fi».)
+    if (this._wdAddr(nx)) this.addr.delete(nx);
     var pl = _plugin();
     if (l && l.up && pl && typeof pl.lanDrop === 'function') pl.lanDrop({ nx: nx }).catch(function() {});
     if (l && l.routable) {

@@ -392,6 +392,10 @@
     {
      "fallo": "3269 (PRIORIDAD 1, fase 3; COLA 29): sin internet, lo que quedó ⏳ para alguien que no estaba cerca no salía cuando aparecía por Bluetooth con mi app dormida o cerrada (reenviar era cosa de la página). El nativo lo escribe por ese enlace (bandeja de salida por Bluetooth: OutboxBle) y la ✓✓ firmada del otro lo retira",
      "prueba": "3269 BANDEJA DE SALIDA por BLUETOOTH"
+    },
+    {
+     "fallo": "3271 (PRIORIDAD 1, fase 3: conexiones salientes desde el servicio): con los DOS teléfonos dormidos nadie abría el enlace Bluetooth (los dos anuncian y nadie conecta) y lo pendiente no salía hasta abrir NEXO. Mientras haya algo pendiente para un contacto sin enlace, el nativo lo busca (escaneo corto y filtrado, cada vez más espaciado) y conecta él (OutboxDial; tope de 7 enlaces)",
+     "prueba": "3269 BANDEJA DE SALIDA por BLUETOOTH"
     }
    ],
    "debiles": [

@@ -730,6 +730,50 @@ class NativePhone {
     Array.from(this.outLinkNx.entries()).reverse().forEach(([mac, nx]) => { n += this._outboxSendVia(mac, nx); });
     return n;
   }
+  // ---- 3271: la bandeja abre ella el enlace (Kotlin OutboxDial + outboxDialStep; JVM: OutboxDialTest) ----
+  _outboxWanting() {
+    const items = (this.outbox && this.outbox.items) || [];
+    const linked = new Set();
+    if (this.outLinkNx) this.outLinkNx.forEach((nx, mac) => { if (this._outboxLinkReady(mac)) linked.add(nx); });
+    return new Set(items.map((x) => x.nx).filter((nx) => !linked.has(nx)));
+  }
+  _outboxDialStep() {
+    if (this.opts.noOutboxDial || this.opts.noOutboxBle || this.btOff || this.offline) return;
+    if (!(this.appActive === false || this.jsFrozen || this.closedMode)) return;
+    const want = this._outboxWanting();
+    if (!want.size) { this._dial = null; return; }
+    const now = Date.now(), sig = Array.from(want).sort().join(',');
+    const d = (this._dial && this._dial.sig === sig) ? this._dial : (this._dial = { sig, scans: 0, nextAt: now + 3000, tried: (this._dial && this._dial.tried) || new Map() });
+    if (now < d.nextAt) return;
+    d.scans++; d.nextAt = now + 4000 + Math.min(300000, 20000 * Math.pow(2, Math.min(Math.max(d.scans - 1, 0), 4))); // OutboxDial.gapMs
+    this.stats.outboxScans = (this.stats.outboxScans || 0) + 1;
+    // escaneo filtrado de 4 s (solo anuncios de NEXO: lo que Android entrega con la pantalla apagada) y a conectar con quien se vio
+    setTimeout(() => {
+      if (this.btOff || this.offline || !(this.appActive === false || this.jsFrozen || this.closedMode)) return;
+      const w = this._outboxWanting();
+      this.radio.phones.forEach((p) => {
+        if (p === this || p.offline || p.btOff || !p.serviceRunning || p.serverUp === false || !this.radio.inRange(this, p)) return;
+        const nx = String(p.advertisingId || '').toLowerCase(), mac = norm(p.address);
+        if (!w.has(nx) || this.clients.has(mac) || this.clients.size >= 7) return;
+        if (Date.now() - (d.tried.get(mac) || 0) < 30000) return;
+        d.tried.set(mac, Date.now());
+        this.scanned.add(mac);
+        (this._outDialNx = this._outDialNx || new Map()).set(mac, nx);
+        this.stats.outboxDials = (this.stats.outboxDials || 0) + 1;
+        this._remLog('INFO', 'BANDEJA', 'hay mensajes pendientes para ' + nx + ' y está cerca: el teléfono abre el enlace Bluetooth sin la app');
+        this._connectClient(p, null);
+      });
+    }, 4000);
+  }
+  // Kotlin outboxBleTick: cada 10 s con la app fuera de la vista y algo en la bandeja
+  _outboxTickStart() {
+    if (this._outTick) return;
+    this._outTick = setInterval(() => {
+      if (!this.outbox || !this.outbox.items.length) return;
+      try { this.outboxBlePump(); this._outboxDialStep(); } catch (e) {}
+    }, this.opts.outboxTickMs || 10000);
+    if (this._outTick.unref) this._outTick.unref();
+  }
   _sendDeliveredAck(fromAddress, info) {
     const j = fromAddress ? this._deliveredAckJson(info) : null;
     if (j) this._sendChunkedOrSingle(norm(fromAddress), j);
@@ -821,6 +865,9 @@ class NativePhone {
           this.mtu.set(macNorm, mtu); peer.mtu.set(norm(this.initAddress), mtu);
           peer.serverNotif.set(norm(this.initAddress), true);
           this.emit('onNotificationsEnabled', { deviceId: peer.address, notificationsEnabled: true });
+          // Kotlin 3271 outboxDialed: el enlace lo abrió la bandeja de salida → es de ese contacto y lo suyo sale ya
+          const dnx = this._outDialNx && this._outDialNx.get(macNorm);
+          if (dnx) { this._outDialNx.delete(macNorm); this._outboxLearn(macNorm, dnx); this._outboxSendVia(macNorm, dnx); }
         }, 40);
       }, 40);
     }, 60);
@@ -1139,6 +1186,9 @@ class NativePhone {
         self.stats.wdHostCalls = (self.stats.wdHostCalls || 0) + 1;
         if (self.opts.wifiOff) return c.reject('No se pudo crear el grupo (2)', 'WD_GROUP');
         if (self.opts.wdBusy) return setTimeout(() => c.reject('No se pudo crear el grupo (2; Wi-Fi encendido, Wi-Fi Direct inactivo, grupo ninguno, app en primer plano)', 'WD_GROUP'), 500);
+        // 3267 (COLA 4): causas reales del código de Android al montar el grupo (WifiP2pManager.ActionListener.onFailure): 0 = ERROR (interno),
+        // 1 = P2P_UNSUPPORTED, 2 = BUSY. opts.wdGroupErr = ese código; el nativo real reintenta ~5 s y devuelve «(código; estado)» con code WD_GROUP
+        if (typeof self.opts.wdGroupErr === 'number') { self.stats.wdGroupErrs = (self.stats.wdGroupErrs || 0) + 1; return setTimeout(() => c.reject('No se pudo crear el grupo (' + self.opts.wdGroupErr + '; Wi-Fi encendido, Wi-Fi Direct ' + (self.opts.wdGroupErr === 1 ? 'sin canal' : 'inactivo') + ', grupo ninguno, app en primer plano)', 'WD_GROUP'), self.opts.wdGroupErrMs || 1500); }
         const rnd = (n) => Array.from({ length: n }, () => 'abcdefghjkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 31)]).join('');
         const ssid = 'DIRECT-' + rnd(2) + '-NEXO', pass = rnd(16), port = 40000 + Math.floor(Math.random() * 20000);
         self.radio.wdGroups = self.radio.wdGroups || new Map();
@@ -1163,6 +1213,8 @@ class NativePhone {
           return setTimeout(() => self._bigPush(g.host, b, a.transferId, 2e6, () => self.radio.inRange(self, g.host) && !self.offline && !g.host.offline, c, { joinMs: 2000 }, 'WD_SEND'), 2000);
         }
         const ms = 2000 + Math.round(data.length / 2000);
+        // 3267: opts.wdDropMs = el grupo se cae a los N ms de haberse unido (el otro se aleja, Android lo baja): el nativo real avisa con WD_SEND
+        if (self.opts.wdDropMs >= 0) { self.stats.wdDrops = (self.stats.wdDrops || 0) + 1; return setTimeout(() => { self.radio.wdGroups.delete(a.ssid); c.reject('Envío fallido: el grupo se cayó', 'WD_SEND'); }, 2000 + self.opts.wdDropMs); }
         setTimeout(() => {
           self.radio.wdGroups.delete(a.ssid);
           self.stats.wdBytes = (self.stats.wdBytes || 0) + data.length;
@@ -1496,10 +1548,12 @@ class NativePhone {
         const prev = (self.outbox && self.outbox.items) || [];
         const items = (a.items || []).filter(validItem).slice(0, 100).map((x) => prev.find((y) => y.id === x.id && y.nx === x.nx) || { id: x.id, nx: x.nx, p: x.p, at: x.at || Date.now(), wk: x.wk || '' });
         self.outbox = { items, f: a.f || '', url: a.url || '' };
+        self._outboxTickStart();
         (a.links || []).slice(0, 64).forEach((l) => { if (l) self._outboxLearn(norm(String(l.mac || '')), String(l.nx || '').toLowerCase()); }); // 3269
         self.outboxCalls = (self.outboxCalls || 0) + 1;
         c.resolve({ n: items.length, sent: items.filter((x) => x.okAt).map((x) => x.id) });
       }),
+      netOutboxList: wrap('netOutboxList', (c) => { c.resolve({ items: ((self.outbox && self.outbox.items) || []).map((x) => ({ id: x.id, nx: x.nx, ok: !!x.okAt })) }); }),
       netOutboxDrop: wrap('netOutboxDrop', (c, a) => {
         if (self.outbox) self.outbox.items = self.outbox.items.filter((x) => x.id !== a.id);
         (self.outboxDrops = self.outboxDrops || []).push(a.id);

@@ -24,4 +24,15 @@ export default {
   apar_f_mono: "Máquina de escribir",
   set_sec_look: "Apariencia",
   set_sec_look_d: "Color de tus burbujas, estilo y tipo de letra",
+  // Wi-Fi Direct: por qué un archivo va por Bluetooth (cola 4)
+  wd_aviso_perm_me: "Falta el permiso «Dispositivos cercanos» de NEXO (Ajustes → Apps → NEXO → Permisos).",
+  wd_aviso_perm_peer: "Al otro teléfono le falta el permiso «Dispositivos cercanos» de NEXO.",
+  wd_aviso_nosoporta_me: "Este teléfono no admite Wi-Fi Direct.",
+  wd_aviso_nosoporta_peer: "El otro teléfono no admite Wi-Fi Direct.",
+  wd_aviso_grupo_me: "Android no pudo montar Wi-Fi Direct (lo tenía ocupado). Si se repite, apaga y enciende el Wi-Fi.",
+  wd_aviso_grupo_peer: "El otro teléfono no pudo montar Wi-Fi Direct (Android lo tenía ocupado).",
+  wd_aviso_union: "No se pudo unir al grupo de Wi-Fi Direct del otro teléfono. Acerquen los teléfonos.",
+  wd_aviso_corte: "Se cortó Wi-Fi Direct a mitad del envío (¿se alejaron?). Acerquen los teléfonos para ir rápido.",
+  wd_aviso_cola_bt: "Mientras, los archivos van por Bluetooth (más lento).",
+  wd_aviso_cola_pend: "Este archivo no cabe en Bluetooth: queda pendiente hasta que haya Wi-Fi Direct o el mismo Wi-Fi.",
 };

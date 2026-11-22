@@ -254,6 +254,7 @@ internal fun NexoBlePlugin.createGattClientCallback(macNorm: String): BluetoothG
             if (setupDone) return
             setupDone = true
             clientSetupDone[macNorm] = true // 3059: ya se puede escribir por este enlace (lo que esperaba sale ahora)
+            outboxDialed(macNorm) // 3271: si este enlace lo abrió la bandeja de salida, lo pendiente de su contacto sale ya
             val txChar = clientTxCharacteristics[macNorm]
             txChar?.let { characteristic ->
                 try {

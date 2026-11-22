@@ -101,6 +101,14 @@ class OutboxBle(
         return n
     }
 
+    /** 3271: contactos con algo pendiente y SIN enlace listo: a esos hay que buscarlos y conectar (OutboxDial). */
+    @Synchronized fun wanting(): Set<String> {
+        val b = bg() ?: return emptySet()
+        if (b.outbox.size() == 0) return emptySet()
+        val linked = linkNx.entries.filter { link.ready(it.key) }.map { it.value }.toSet()
+        return b.outbox.nxs().filter { it !in linked }.toSet()
+    }
+
     /** ¿Queda algo que podría salir por Bluetooth? (para el repaso periódico) */
     fun pending(): Boolean = (bg()?.outbox?.size() ?: 0) > 0
 }

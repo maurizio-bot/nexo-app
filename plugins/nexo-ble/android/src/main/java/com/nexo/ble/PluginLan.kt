@@ -12,11 +12,21 @@ import com.getcapacitor.PluginCall
 // de NexoBlePlugin (el mismo objeto y los mismos campos, que siguen en la clase); los @PluginMethod siguen declarados
 // en la clase (Capacitor los busca allí) y solo llaman a su «…Impl» de aquí.
 
-private fun NexoBlePlugin.lanOnWifi(): Boolean = try {
+// 3272 (COLA 3; «Sin Wi-Fi con X (este teléfono no tiene Wi-Fi)» siendo falso): la red Wi-Fi (o de cable) de este teléfono aunque NO sea
+// la red por defecto. Con un Wi-Fi sin internet Android deja los datos móviles como red por defecto y el Wi-Fi sigue conectado (y desde
+// la 3266 se lo pedimos antes): el Wi-Fi local con quien está en el mismo router sigue siendo un camino. No cuenta el grupo de Wi-Fi Direct.
+private fun NexoBlePlugin.lanWifiNet(): android.net.Network? = try {
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-    val caps = cm.getNetworkCapabilities(cm.activeNetwork)
-    caps != null && (caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET))
-} catch (e: Exception) { false }
+    fun wifi(n: android.net.Network?): Boolean {
+        val c = (if (n != null) cm.getNetworkCapabilities(n) else null) ?: return false
+        return (c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) || c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)) &&
+            !c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_WIFI_P2P)
+    }
+    val act = cm.activeNetwork
+    @Suppress("DEPRECATION")
+    if (wifi(act)) act else cm.allNetworks.firstOrNull { wifi(it) }
+} catch (e: Exception) { null }
+private fun NexoBlePlugin.lanOnWifi(): Boolean = lanWifiNet() != null
 
 // 3266 (COLA 27; S24 y Motorola 20-11 14:07: 2 min 17 s con un Wi-Fi sin salida hasta que Android pasó solo a datos): la app ve que
 // ningún relé abre estando en Wi-Fi y se lo dice a Android, que vuelve a comprobar esa red al momento y, si de verdad no da internet,
@@ -55,7 +65,9 @@ internal fun NexoBlePlugin.lanStartImpl(call: PluginCall) {
             override fun onDown(nx: String) { remLog("INFO", "LAN", "Sin Wi-Fi con $nx"); notifyListeners("onLanDown", JSObject().put("nx", nx), true) }
             override fun onMessage(nx: String, text: String) { backgroundNotify(text, null, nx); notifyListeners("onLanMessage", JSObject().put("nx", nx).put("content", text), true) }
             override fun onLog(level: String, message: String) { remLog(level, "LAN", message) }
-        }, clock = { android.os.SystemClock.elapsedRealtime() }).also { lanHub = it }
+        }, clock = { android.os.SystemClock.elapsedRealtime() },
+            // 3272: cada conexión sale por la red Wi-Fi aunque la red por defecto sean los datos (si no se puede atar, como siempre)
+            prepare = { sock -> lanWifiNet()?.bindSocket(sock) }).also { lanHub = it }
         val port = hub.start()
         // Escaneo activo: pregunta a toda la red (difusión) y, de vez en cuando o al entrar en una red, una a una
         val beacon = lanBeacon ?: LanBeacon(object : LanBeacon.Listener {
