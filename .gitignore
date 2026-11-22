@@ -22,3 +22,5 @@ tests/kotlin-android/.gradle/
 tests/kotlin/build/
 tests/kotlin/.gradle/
 .claude/worktrees/
+tests/kotlin-android/.kotlin/
+tests/kotlin/.kotlin/
