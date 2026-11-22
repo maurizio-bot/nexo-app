@@ -90,7 +90,9 @@ internal fun NexoBlePlugin.connectToDeviceImpl(call: PluginCall) {
                 return
             }
             try {
-                adapter.getRemoteDevice(macFormatted)
+                // 3264: Android solo acepta la dirección en MAYÚSCULAS y formatMacForAndroid la da en minúsculas: con cualquier letra
+                // a–f esto lanzaba «MAC invalida» y conectar a un teléfono fuera de la lista de vistos fallaba siempre
+                adapter.getRemoteDevice(macFormatted.uppercase())
             } catch (e: IllegalArgumentException) {
                 call.reject("MAC invalida para Bluetooth API: $macFormatted", "INVALID_MAC")
                 return
@@ -398,7 +400,8 @@ internal fun NexoBlePlugin.startAutoReconnect(macNorm: String) {
         val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val adapter = bluetoothManager.adapter
         if (adapter == null || !adapter.isEnabled) return@Runnable
-        val device = scannedDevices[macNorm]
+        // 3264: sin el teléfono en la lista de vistos se pide a Android por su dirección (como hace connectToDevice) en vez de rendirse
+        val device = scannedDevices[macNorm] ?: try { formatMacForAndroid(macNorm)?.let { adapter.getRemoteDevice(it.uppercase()) } } catch (e: Exception) { null }
         if (device == null) {
             remLog("WARN", "RECONNECT", "No hay device cacheado para $macNorm, no se puede reconectar")
             return@Runnable

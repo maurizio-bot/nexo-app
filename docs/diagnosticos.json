@@ -719,7 +719,7 @@
    "nx": "nx10b6f4ac (Nubia NX725J, Alex Lopez) ↔ nx0x4029e6 (Zhelowsky, versión vieja)",
    "sintoma": "zombi (Nubia)",
    "categoria": "Bluetooth: par sin contestar",
-   "causa": "Zhelowsky es versión vieja («build ?»): sin peso, solo apuntado. Su enlace dejó de contestar pings a las 12:26:22. Aparte, en 3116: Wi-Fi local con el S24 dormido tardó 55,8 s en quedar comprobado (el toque salió a los 4,9 s); mientras, los mensajes salieron por Bluetooth con 2 reintentos (186 ms–2,1 s). Nubia tuvo Bluetooth apagado 12:18–12:22 y ahorro de batería activo (la app se lo avisa)"
+   "causa": "Zhelowsky es versión vieja («build ?»): sin peso, solo apuntado. Su enlace dejó de contestar pings a las 12:26:22. Aparte, en 3116: Wi-Fi local con el S24 dormido tardó 55,8 s en quedar comprobado (el toque salió a los 4,9 s); mientras, los mensajes salieron por Bluetooth con 2 reintentos (186 ms–2,1 s). Nubia tuvo Bluetooth apagado 12:18–12:22 y ahorro de batería activo (la app se lo avisa) RE-ANÁLISIS 22-11: 12:24:34 «Device no en cache, intentando getRemoteDevice para 40eff85cf5af» y la conexión de paso no se abre: mismo fallo de mayúsculas de 3264."
   },
   {
    "dia": "2026-11-20",
@@ -823,7 +823,7 @@
    "nx": "nx1e50c95d (S23, build 3116) → nx1n36c283",
    "sintoma": "pendiente_viejo (llegó al dueño 14:45)",
    "categoria": "Entrega: pendiente al pasar a segundo plano (app)",
-   "causa": "MISMO caso ya apuntado a las 10:42 (mensaje y foto de 201 KB 4,5 h ⏳; COLA 29). Además en el registro nativo de las 05:57–05:58: ráfagas de escrituras 201 al HONOR de Katy (40f6b02aa058) cada 50–150 ms durante 6 s y mensaje descartado ×3 (COLA 15). En la línea de tiempo los pendientes sin camino salen «→ ?» (COLA 35)."
+   "causa": "MISMO caso ya apuntado a las 10:42 (mensaje y foto de 201 KB 4,5 h ⏳; COLA 29). Además en el registro nativo de las 05:57–05:58: ráfagas de escrituras 201 al HONOR de Katy (40f6b02aa058) cada 50–150 ms durante 6 s y mensaje descartado ×3 (COLA 15). En la línea de tiempo los pendientes sin camino salen «→ ?» (COLA 35). RE-ANÁLISIS 22-11 (modelo grande): en su registro nativo, 05:57:52–05:58:16, «NO_RESPONSE fallo status=201, intentando DEFAULT» sin parar ~25 s por el enlace con el HONOR de Katy (3 mensajes descartados) hasta status=22: es COLA 15 (arreglado en 3262: sin DEFAULT con 201 y el enlace sin una escritura en ~12 s se cierra). Y «RECONNECT: No hay device cacheado para 40f6b02aa058» 5 s después de verlo en el escaneo: la lista de vistos se borraba al parar/empezar cada escaneo y la reconexión nativa se rendía; además conectar a una dirección fuera de esa lista fallaba SIEMPRE («MAC invalida»: Android la exige en mayúsculas). Arreglado en 3264."
   },
   {
    "dia": "2026-11-21",
@@ -855,7 +855,23 @@
    "nx": "nx10b6f4ac (NX725J, build 3116) con nx0x4029e6 (Zhelowsky)",
    "sintoma": "zombi",
    "categoria": "Bluetooth: par sin contestar",
-   "causa": "Zhelowsky no contestó 4 pings con enlace a MTU 498 (su app dormida; la detección funcionó). Ajuste del teléfono: optimización de batería ACTIVA para NEXO (la app ya lo detecta y avisa). Bluetooth apagado al abrir y encendido 12:22. Wi-Fi local listo en 55,8 s por la app dormida del S24 (toque a los 4,9 s). Roberto: su app no contestó en 180 s por Wi-Fi (COLA 22). VICK: «MTU 23» tras cerrar la conexión de paso (COLA 16c). APP: el nativo manda 216 B a 40eff85cf5af 7 ms DESPUÉS de cerrar esa conexión de paso → «mensaje descartado entero (11 trozos)» (COLA 36)."
+   "causa": "Zhelowsky no contestó 4 pings con enlace a MTU 498 (su app dormida; la detección funcionó). Ajuste del teléfono: optimización de batería ACTIVA para NEXO (la app ya lo detecta y avisa). Bluetooth apagado al abrir y encendido 12:22. Wi-Fi local listo en 55,8 s por la app dormida del S24 (toque a los 4,9 s). Roberto: su app no contestó en 180 s por Wi-Fi (COLA 22). VICK: «MTU 23» tras cerrar la conexión de paso (COLA 16c). APP: el nativo manda 216 B a 40eff85cf5af 7 ms DESPUÉS de cerrar esa conexión de paso → «mensaje descartado entero (11 trozos)» (COLA 36). RE-ANÁLISIS 22-11: 12:24:34 «Device no en cache, intentando getRemoteDevice para 40eff85cf5af» y la conexión de paso no se abre: mismo fallo de mayúsculas de 3264."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "01:57",
+   "nx": "nx1g5edfbf (J Manuel Terán, Redmi Note 11 Pro 5G 2201116SG, Android 13, build 3116)",
+   "sintoma": "cierre_fallo (21-11 23:55 sin memoria: Android la cerró, detrás)",
+   "categoria": "Cierres del sistema (Xiaomi) / NEXO vuelve sola",
+   "causa": "EXTERNO el cierre (sin memoria, batería 3 %; antes SwipeUpClean ×7 y GarbageClean de MIUI). BIEN: «NEXO vuelve sola» por la alarma de vigilancia (19:26 y 00:11), internet sin la app recibe y confirma ✓✓, y al abrir entran 10 sobres ya recibidos. APP (3116), tres cosas menores arregladas en 3264: (1) «Relé relay.damus.io: no se pudo abrir otra vez (… IllegalStateException)» ×3 episodios (17:56, 18:46, 21:11; 2–10 min sin ese relé, los otros 3 vuelven en ~15 s): es el relé que contesta y no acepta al reconectar; el registro no decía el código (ahora «el relé contestó NNN»); cubre la 3.ª parte de COLA 27. (2) «[BT_SINAPP] no se pudo abrir el servidor… no se recibe hasta abrir NEXO» ×3 con el Bluetooth APAGADO: texto falso (al encenderlo se abre solo: 22:35 y 22:41 «recibiendo»); corregido. (3) Wi-Fi Direct «Disponible (falta permiso)»: ajuste del teléfono."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "00:28",
+   "nx": "nx1n36c283, nx1e50c95d, nx126df3f4, nx1g5edfbf: resúmenes diarios del 21-11, build 3116",
+   "sintoma": "resumen_diario",
+   "categoria": "Medición",
+   "causa": "SIN FALLO NUEVO. S24: 74 enviados, 74 ✓✓; internet media 1,4 s; Wi-Fi 0,6 s; batería en segundo plano 6,2 %/h en 11,2 h (🔴 4 de AREAS, sigue alta); zombi ×2 (ya apuntados). S23: 37/37 ✓✓; Bluetooth media 4,9 s (5 mensajes), Wi-Fi 2,7 s, internet 1,7 s; segundo plano 2,6 %/h. Katy: 4/4. J Manuel: 27/27 ✓✓, internet media 2,5 s; buzón de archivos recibe a 185 KB/s."
   }
  ]
 }

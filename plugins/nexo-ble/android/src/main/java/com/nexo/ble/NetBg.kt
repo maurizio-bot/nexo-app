@@ -17,6 +17,19 @@ import javax.crypto.spec.SecretKeySpec
 // (kraw). Con eso calcula las etiquetas del día (igual que la app), se suscribe en los relés, se identifica (NIP-42)
 // y abre solo el sobre de la pareja: si el emisor marcó "mensaje nuevo" (n = msgId) avisa con onMessage. El mensaje
 // sigue cifrado de extremo a extremo; lo descifra la app al abrirse (lo recoge de los relés como siempre).
+// 3264 (diagnósticos de J Manuel 21-11 17:56/18:46/21:11 y del HONOR de Austin 20-11): «no se pudo abrir otra vez (… IllegalStateException)»
+// no decía nada: es el relé que CONTESTA y no acepta (WsClient «el relé no aceptó: HTTP/1.1 429 …», típico de relay.damus.io al
+// reconectar tras un corte de red). Al registro va el código que contestó; el resto de fallos, su clase como antes. Pura (JVM).
+internal fun failWhy(e: Throwable): String {
+    val m = e.message ?: ""
+    if (e is IllegalStateException) {
+        val code = Regex("^el relé no aceptó: HTTP/\\d(?:\\.\\d)? (\\d{3})").find(m)?.groupValues?.get(1)
+        if (code != null) return "el relé contestó $code y no aceptó"
+        if (m == "conexión cerrada") return "el relé cerró al saludar"
+    }
+    return e.javaClass.simpleName
+}
+
 class NetBg(
     // #130b (dueño 31-10): isCall = el sobre venía marcado como oferta de llamada (cl:1). Con la app en segundo plano o
     // congelada, el que escucha (NexoBlePlugin) saca la LLAMADA a pantalla completa en vez del aviso de mensaje normal.
@@ -415,7 +428,7 @@ class NetBg(
             r.ws = null
             r.fails = failsAfterClose(r.fails, 0L)
             r.retryAt = System.currentTimeMillis() + retryDelayMs(r.fails)
-            if (running && r.closedAt > 0 && logFailedTry(r.fails)) log("Relé ${r.url}: no se pudo abrir otra vez (intento nº ${r.fails}: el siguiente en ${retryDelayMs(r.fails) / 1000} s; ${e.javaClass.simpleName})")
+            if (running && r.closedAt > 0 && logFailedTry(r.fails)) log("Relé ${r.url}: no se pudo abrir otra vez (intento nº ${r.fails}: el siguiente en ${retryDelayMs(r.fails) / 1000} s; ${failWhy(e)})")
         }
     }
 

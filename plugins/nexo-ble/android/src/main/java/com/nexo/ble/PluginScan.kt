@@ -94,7 +94,9 @@ internal fun NexoBlePlugin.startScanImpl(call: PluginCall) {
     autoStartGattServerAndAdvertising()
     bluetoothScanner = adapter.bluetoothLeScanner
     scanResults.clear()
-    scannedDevices.clear()
+    // 3264 (S23 21-11 05:58:21: «No hay device cacheado para 40f6b02aa058, no se puede reconectar», 5 s después de verlo): los
+    // teléfonos vistos ya NO se olvidan al empezar o parar un escaneo (la reconexión nativa los necesita justo entonces); solo un tope
+    if (scannedDevices.size > 400) scannedDevices.clear()
     lastScanNotifyTime.clear()
     val settings = scanSettings()
     // filtered=true (re-búsqueda con la app oculta): solo anuncios NEXO. Sin filtro Android no
@@ -123,7 +125,6 @@ internal fun NexoBlePlugin.stopScanInternal() {
     mainHandler.removeCallbacks(scanTimeoutRunnable)
     try { bluetoothScanner?.stopScan(scanCallback) } catch (e: Exception) { }
     bluetoothScanner = null
-    scannedDevices.clear()
 }
 
 internal fun NexoBlePlugin.extractNexoIdFromScanRecord(scanRecord: android.bluetooth.le.ScanRecord?): String? {

@@ -57,6 +57,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
     El JS pregunta «quién eres» a un enlace heredado sin identificar (`_seedNativeConnections`). ESTADO: SUBIDO (compila; `gattsigue`, `gattreabre` y las de
     enlaces repetidos OK). La batería COMPLETA con el simulador ya en modo fase 2 se estaba corriendo al subirlo: **antes de la APK, correrla entera
     (`CI_PARALLEL=4 node ci.js builds/wip`) y arreglar lo que salga** (54 pruebas cierran y reabren la app; el Kotlin de antes se imita con `kotlin3262`).
+  - **3264 (subido; de los diagnósticos del 22-11 03:13):** conectar a un teléfono fuera de la lista de vistos fallaba SIEMPRE («MAC invalida»: Android exige la
+    dirección en mayúsculas, `PluginGatt`); la lista de vistos ya no se borra al parar/empezar un escaneo y la reconexión nativa pide la dirección a Android
+    en vez de rendirse («No hay device cacheado»); el registro dice qué contestó el relé que no reabre (`failWhy`, JVM); texto de `BT_SINAPP` con Bluetooth apagado.
   - **16b (subido):** ✓✓ nativas «sin firma válida» con contacto recién agregado → `_pushAckKeysIfChanged` en cada repaso (`background.js --scenario=frozen-new`).
   - **34 (subido, de raíz):** la lista de DENTRO (`#main-contacts-list`) era la que se desplazaba; tope 10 s. **28: NO era un fallo** (ya lo cubren 3016/3058; el
     síntoma `reenvio_sin_fin` salta a la 3.ª vuelta por diseño; el arreglo de Sonnet se retiró porque podía retrasar hasta 5 min tras reconectar). La causa real era 16b + app congelada.

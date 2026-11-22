@@ -147,7 +147,12 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
         current = this
         watchBluetooth()
         val ok = openServer()
-        nlog(ctx, if (ok) "INFO" else "WARN", if (ok) "Bluetooth sin la app: anunciando y recibiendo (tras $why)" else "Bluetooth sin la app: no se pudo abrir el servidor (tras $why): no se recibe hasta abrir NEXO")
+        // 3264 (J Manuel 21-11: «no se pudo abrir el servidor… no se recibe hasta abrir NEXO» ×3 con el Bluetooth APAGADO): eso era falso,
+        // al encenderlo se abre solo (watchBluetooth). Se dice lo que pasa.
+        val off = !ok && try { (ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter?.isEnabled != true } catch (e: Throwable) { false }
+        nlog(ctx, if (ok || off) "INFO" else "WARN", if (ok) "Bluetooth sin la app: anunciando y recibiendo (tras $why)"
+            else if (off) "Bluetooth sin la app: el Bluetooth está apagado (tras $why): se recibirá al encenderlo"
+            else "Bluetooth sin la app: no se pudo abrir el servidor (tras $why): no se recibe hasta abrir NEXO")
         return ok
     }
 
