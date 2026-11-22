@@ -56,9 +56,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
     app cerrada y `BleSinApp` solo se enganchan (attach/detach) y heredan enlaces, suscripciones y MTU. Sim: `gattsigue.js` (A no pierde el enlace; contraprueba `--k3262`).
     Un enlace heredado sin identificar recibe «quién eres» con insistencia (`_askWhoIs`, ble_keys.js) y al contestar se trata como recién listo
     (peerReady, sesión, pendientes): sin eso `fotorenueva.js` fallaba. `vivoarriba.js` acepta que la ✓✓ que faltaba llegue sola por el enlace que sigue.
-    ESTADO: SUBIDO. Batería completa con el simulador en modo fase 2: 225 OK de 346 en la 1.ª pasada (se cortó por tiempo; sus 2 fallos reales ya
-    arreglados); la 2.ª pasada con el resto corría al cerrar: **antes de la APK, correrla entera (`CI_PARALLEL=4 node ci.js builds/wip`; con
-    `NEXO_SIM_K3262=1` se compara con el Kotlin de antes) y arreglar lo que salga**.
+    ESTADO: SUBIDO. **Batería completa (346) corrida aquí con el simulador en modo fase 2 (22-11 ~04:40): todo OK salvo 2 que fallan en ESTE entorno
+    también con el código de antes de hoy** (`fotocalidad.js`: el tramo de internet nunca queda listo; `estadovideo.js`: `VB_todos`; comprobado con
+    `builds/HEAD~2` + `NEXO_SIM_K3262=1`): no son de los cambios de hoy; las juzga el CI de GitHub al sacar la APK. Los 2 fallos reales que sacó la batería
+    (`fotorenueva`, `vivoarriba`) están arreglados (3265). Para comparar con el Kotlin de antes: `NEXO_SIM_K3262=1 node X.js builds/wip`.
   - **3264 (subido; de los diagnósticos del 22-11 03:13):** conectar a un teléfono fuera de la lista de vistos fallaba SIEMPRE («MAC invalida»: Android exige la
     dirección en mayúsculas, `PluginGatt`); la lista de vistos ya no se borra al parar/empezar un escaneo y la reconexión nativa pide la dirección a Android
     en vez de rendirse («No hay device cacheado»); el registro dice qué contestó el relé que no reabre (`failWhy`, JVM); texto de `BT_SINAPP` con Bluetooth apagado.
