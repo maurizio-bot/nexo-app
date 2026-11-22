@@ -8,6 +8,7 @@ import { haptic, hapticMode, setHapticMode } from './haptics.js'; // NEXO Touch 
 import { securitySectionHtml, renderSecuritySection } from './app_lock.js';
 import { _diagnosticText } from './diag.js';
 import { updaterInnerHtml, renderUpdaterSection } from './updater.js'; // 2986: actualizador automático
+import { isStoreBuild } from './store_flag.js'; // COLA 26: la versión de Google Play oculta «Actualizaciones»
 import { autoDiagInnerHtml, renderAutoDiagSection, autoDiagNewCount } from './autodiag.js'; // 2974: diagnóstico automático al desarrollador
 import { startReceiveAccount, startSendAccount } from './move_account.js';
 import { AVATAR_MAX_BYTES, avatarClash, avatarOf, claimAvatarMine, clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
@@ -275,7 +276,7 @@ function _openSettings(fromProfile) {
   // 3142 (dueño 16-11: «Ajustes es un menú enorme: por partes»): Ajustes abre una lista corta de secciones y cada una tiene su pantalla.
   // Todos los controles se montan igual (ids intactos); cada sección solo muestra/oculta su panel.
   var SECS = {
-    app: [t('set_sec_app', 'Aplicación'), t('set_sec_app_d', 'Actualizaciones, idioma y fondo de pantalla')],
+    app: [t('set_sec_app', 'Aplicación'), (isStoreBuild() ? t('set_sec_app_d_store', 'Idioma y fondo de pantalla') : t('set_sec_app_d', 'Actualizaciones, idioma y fondo de pantalla'))],
     sec: [t('set_sec_sec', 'Seguridad y privacidad'), t('set_sec_sec_d', 'Bloqueo, capturas y confirmaciones de lectura')],
     look: [t('set_sec_look', 'Apariencia'), t('set_sec_look_d', 'Color de tus burbujas, estilo y tipo de letra')],
     alerts: [t('set_sec_alerts', 'Avisos y vibración'), t('set_sec_alerts_d', 'Pantalla apagada y vibración al tocar')],
@@ -307,7 +308,7 @@ function _openSettings(fromProfile) {
     '<div class="nx-set-pane" data-sec="app">' +
     // 2986: actualizaciones (interruptor + «Buscar ahora»). 3035 (dueño 13-11: «la parte de actualización debería de estar
     // encima de todo porque entrando uno actualiza»): es la PRIMERA tarjeta de Ajustes.
-    card('⬆️', t('upd_title', 'Actualizaciones'), updaterInnerHtml()) +
+    (isStoreBuild() ? '' : card('⬆️', t('upd_title', 'Actualizaciones'), updaterInnerHtml())) +
     // #132 (pedido del dueño): selección de idioma (es/it/en). Por defecto el del teléfono; al cambiarlo se guarda y la app recarga para aplicarlo en todas las pantallas.
     card('🗣️', t('language'), '<div class="nx-sub" style="margin-bottom:8px;">' + t('language_hint') + '</div>' +
       '<select id="nexo-lang-select" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +

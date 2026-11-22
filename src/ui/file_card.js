@@ -12,6 +12,7 @@ import { vaultLoadFile, vaultSetMessageFields } from '../vault/vault_manager.js'
 import { isGroupId } from './groups.js';
 import { bigToGroup } from './group_media.js';
 import { t } from './i18n.js';
+import { isStoreBuild, isApkFile } from './store_flag.js'; // COLA 26: en Google Play no se instalan APK
 import { blobForUrl } from './blob_registry.js'; // 3162: el vídeo se guarda sin fetch de su blob: (la CSP no lo deja)
 import { viewerGestures, viewerSlide } from './media_swipe.js';   // 3159: deslizar entre fotos y para cerrar
 
@@ -233,7 +234,7 @@ export function _saveMediaToGallery(src, type, btn) {
 }
 
 // Para la prueba del simulador (zoom de la foto): abrir el visor sin tener que mandar una imagen por la radio
-if (typeof window !== 'undefined') { window.__nexoOpenMedia = _openFullscreenMedia; window.__nexoCloseMedia = _closeFullscreenMedia; window.NEXO_saveMedia = _saveMediaToGallery; }
+if (typeof window !== 'undefined') { window.__nexoOpenMedia = _openFullscreenMedia; window.__nexoCloseMedia = _closeFullscreenMedia; window.__nexoOpenFile = _openAttachmentFile; window.NEXO_saveMedia = _saveMediaToGallery; }
 
 export var _thumbsInProgress = {};
 
@@ -339,6 +340,7 @@ function _bigTap(msg, big, name, mime) {
     return;
   }
   if (!big.key) { _showPermissionError(t('media_file_not_ready', 'Archivo: todavía no está listo')); return; }
+  if (isStoreBuild() && isApkFile(name, mime)) { _showPermissionError(t('media_file_apk_store', 'Archivo: esta versión de NEXO no instala apps. Guárdalo y ábrelo desde tus archivos.')); return; }
   if (_openingFile) return;
   _openingFile = true;
   console.log('[BIG] Abrir ' + id + ' (' + _extOf(name) + ')');
@@ -359,6 +361,7 @@ export function _openAttachmentFile(b64, name, mime) {
   var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
   if (!b64) { _showPermissionError(t('media_file_not_available', 'Archivo: todavía no está disponible')); return; }
   if (!pl || typeof pl.openFile !== 'function') { _showPermissionError(t('media_file_cant_open_ver', 'Archivo: esta versión no puede abrirlo')); return; }
+  if (isStoreBuild() && isApkFile(name, mime)) { _showPermissionError(t('media_file_apk_store', 'Archivo: esta versión de NEXO no instala apps. Guárdalo y ábrelo desde tus archivos.')); return; }
   if (_openingFile) return;
   _openingFile = true;
   console.log('[ATTACH] Abrir archivo ' + _extOf(name) + ' (' + mime + ')');
