@@ -772,12 +772,15 @@ export function attachPullRefresh(el, indId, host) {
     if (dy > 20) showInd(dy > PULL_PX ? '↻ ' + t('est_pull_release', 'Suelta para actualizar') : '↓ ' + t('est_pull', 'Desliza para actualizar'));
   }, { passive: true });
   el.addEventListener('touchend', function() {
-    if (y0 !== null && dy > PULL_PX) { showInd('↻ ' + t('est_refreshing', 'Actualizando estados, fotos y chats…')); refreshAll(); hideInd(1500); }
+    // 34 (diagnóstico S24 21-11: 10 refrescos en 26 s al desplazar contactos, cada uno reenviaba TODOS los pendientes): solo cuenta
+    // si la lista sigue arriba al soltar y pasaron ≥ 15 s del anterior.
+    var nowT = Date.now();
+    if (y0 !== null && dy > PULL_PX && el.scrollTop <= 0 && nowT - (el._nxPullAt || 0) >= PULL_COOLDOWN_MS) { el._nxPullAt = nowT; showInd('↻ ' + t('est_refreshing', 'Actualizando estados, fotos y chats…')); refreshAll(); hideInd(1500); }
     else hideInd(0);
     y0 = null; dy = 0;
   }, { passive: true });
 }
-var PULL_PX = 70;
+var PULL_PX = 70, PULL_COOLDOWN_MS = 15000;
 
 if (typeof window !== 'undefined') {
   window.NEXO_composeStatus = _compose; // 3035: pruebas (tests/sim/pedidos13.js)

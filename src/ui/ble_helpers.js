@@ -218,7 +218,10 @@ export function _dupBleLinksToClose(links, opts) {
   var valid = links.filter(function (l) { return l && l.key; });
   if (valid.length < 2) return [];
   var alive = valid.filter(function (l) { return !l.dead; });
-  var pool = alive.length ? alive : valid;
+  // 16c (diagnóstico 20-11 12:32, VICK↔S24): con TODOS los repetidos muertos no se elige uno (cada lado elegía otro y el «elegido»
+  // también estaba muerto): se cierran todos los que no estén ocupados y el supervisor abre uno limpio.
+  if (!alive.length) return valid.filter(function (l) { return !l.busy; }).map(function (l) { return l.key; });
+  var pool = alive;
   var keep = pool[0];
   for (var i = 1; i < pool.length; i++) {
     var l = pool[i];

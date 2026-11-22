@@ -31,7 +31,9 @@ const { importSrc } = require('./srcmod');
   r.empate_por_reciente = same(_dupBleLinksToClose([L('A', 185, { since: 100 }), L('B', 185, { since: 900 })]), ['A']);
 
   // 7. TODOS muertos → igual se conserva uno (el de más MTU) y se cierra el otro (bajar congestión).
-  r.todos_muertos_queda_uno = same(_dupBleLinksToClose([L('A', 512, { dead: true }), L('B', 23, { dead: true })]), ['B']);
+  // 16c: todos muertos → se cierran todos (los no ocupados) y se abre uno limpio
+  r.todos_muertos_cierra_todos = same(_dupBleLinksToClose([L('A', 512, { dead: true }), L('B', 23, { dead: true })]).sort(), ['A', 'B']);
+  r.todos_muertos_respeta_ocupado = same(_dupBleLinksToClose([L('A', 512, { dead: true, busy: true }), L('B', 23, { dead: true })]), ['B']);
 
   // 8. Muchos repetidos (el caso real: 4 enlaces a una persona) → se queda 1, se cierran los otros 3 libres.
   r.cuatro_quedan_uno = same(_dupBleLinksToClose([L('A', 512), L('B', 23), L('C', 23), L('D', 185)]), ['B', 'C', 'D']);
