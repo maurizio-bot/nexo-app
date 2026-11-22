@@ -87,9 +87,32 @@ public class MainActivity extends BridgeActivity {
   // #dueño 01-11: en una VIDEOLLAMADA, al irse de la app con el gesto de inicio («deslizar hacia arriba») entrar en
   // Picture-in-Picture (miniatura flotante) en vez de dejar la videollamada atrás. El audio/vídeo NO se cortan (ya corre
   // el servicio en primer plano de la llamada). enterPictureInPictureMode debe llamarse aquí, síncrono, al irse el usuario.
+  // 3274 (dueño 22-11: «en la miniatura de la videollamada se pausa el vídeo»): BridgeActivity.onPause pausa el WebView (y con él los
+  // <video>), y Android lo llama también al entrar en la miniatura. Con videollamada y la ventanita abierta (o por abrirse), se vuelve a
+  // reanudar el WebView justo después: el vídeo sigue. Al cerrarse del todo la miniatura, el WebView vuelve a pausarse.
+  private long leaveHintAt = 0L;
+  private boolean pipWanted() {
+    try {
+      return com.nexo.ble.BleService.getPipVideo()
+          && (isInPictureInPictureMode() || System.currentTimeMillis() - leaveHintAt < 2500);
+    } catch (Exception e) { return false; }
+  }
+  private WebView webViewOrNull() { try { return this.getBridge() != null ? this.getBridge().getWebView() : null; } catch (Exception e) { return null; } }
+  @Override
+  protected void onPause() {
+    super.onPause();
+    if (pipWanted()) { WebView wv = webViewOrNull(); if (wv != null) wv.onResume(); }
+  }
+  @Override
+  protected void onStop() {
+    super.onStop();
+    if (!isInPictureInPictureMode()) { WebView wv = webViewOrNull(); if (wv != null) wv.onPause(); } // ya no es miniatura: se queda pausado como antes
+  }
+
   @Override
   public void onUserLeaveHint() {
     super.onUserLeaveHint();
+    leaveHintAt = System.currentTimeMillis();
     try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
           && getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)

@@ -104,6 +104,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
       ajuste a quitar, y «quitada de recientes»; `phonesleep.js`). COLA 14 investigado: L2CAP existe pero solo para archivos > ~2,25 MB (`pickers.js:302`); lo mediano va por
       GATT a ~17–27 KB/s (una escritura por intervalo de conexión). Mejora posible: usar L2CAP desde ~200 KB (medir antes lo que cuesta abrir el canal).
       Falta nativo para «avisos silenciados»: canales de aviso y «no molestar» en `alertSettings`.
+    - **3274 la miniatura NO debe pausar el vídeo (dueño 22-11, al abrir Ajustes con la ventanita):** causa: `BridgeActivity.onPause` pausa el WebView (y los `<video>`)
+      y Android lo llama al entrar en la miniatura. `MainActivity` (`onPause`/`onStop`): con videollamada y ventanita, el WebView se vuelve a reanudar; fuera de la
+      miniatura se pausa como antes. SIN compilar el módulo Android aquí (solo `android/app`, no está en `tests/kotlin-android`): revisar que compile en el CI y probar
+      en el S24/S23 (miniatura → Ajustes → vídeo sigue). Incluido en la siguiente APK (la 3118 NO lo lleva).
     - **3273 miniatura de la videollamada (dueño 22-11):** (a) la miniatura del sistema ya NO cuenta como segundo plano (`handleOnPause` con PiP: no se avisa a la app ni,
       al volver, se hace todo lo de «volver a la app» encima de la llamada = el tirón); solo si la ventanita se cierra o se tapa (`handleOnStop`) pasa a segundo plano;
       (b) Android 12+: miniatura automática al irse (`setAutoEnterEnabled`; con gestos `onUserLeaveHint` no siempre llega y el vídeo quedaba atrás, pausado). Solo nativo,
