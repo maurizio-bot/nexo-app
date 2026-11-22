@@ -764,23 +764,33 @@ export function attachPullRefresh(el, indId, host) {
   };
   var hideInd = function(ms) { setTimeout(function() { if (ind) { try { ind.remove(); } catch (e) {} ind = null; } }, ms || 0); };
   var xOf = function(e) { var p = e.touches && e.touches[0]; return p && typeof p.clientX === 'number' ? p.clientX : 0; };
-  el.addEventListener('touchstart', function(e) { y0 = (el.scrollTop <= 0 && e.touches && e.touches[0]) ? e.touches[0].clientY : null; x0 = xOf(e); dy = 0; }, { passive: true });
+  // 34 (dueño 21-11 14:38; su diagnóstico: 10 «Deslizar para actualizar» en 26 s al desplazar contactos, cada uno reenviaba TODOS los
+  // pendientes): lo que se desplaza en Contactos es la lista de DENTRO (#main-contacts-list), no `el`, cuyo scrollTop es siempre 0 →
+  // cualquier gesto hacia abajo contaba. Ahora se mira todo lo que hay entre el dedo y `el`: si algo está desplazado, no es «actualizar»
+  // (al empezar, durante el gesto y al soltar). Y como mucho una actualización cada 10 s (dos tirones seguidos = una).
+  var tgt = null;
+  var scrolled = function() {
+    for (var n = tgt; n && n.nodeType === 1; n = n.parentNode) { if (n.scrollTop > 0) return true; if (n === el) break; }
+    return el.scrollTop > 0;
+  };
+  el.addEventListener('touchstart', function(e) { tgt = e.target || null; y0 = (!scrolled() && e.touches && e.touches[0]) ? e.touches[0].clientY : null; x0 = xOf(e); dy = 0; }, { passive: true });
   el.addEventListener('touchmove', function(e) {
     if (y0 === null || !e.touches || !e.touches[0]) return;
     dy = e.touches[0].clientY - y0;
-    if (Math.abs(xOf(e) - x0) > Math.abs(dy) || document.body.classList.contains('nx-est-drag')) { y0 = null; dy = 0; hideInd(0); return; }
+    if (Math.abs(xOf(e) - x0) > Math.abs(dy) || document.body.classList.contains('nx-est-drag') || scrolled()) { y0 = null; dy = 0; hideInd(0); return; }
     if (dy > 20) showInd(dy > PULL_PX ? '↻ ' + t('est_pull_release', 'Suelta para actualizar') : '↓ ' + t('est_pull', 'Desliza para actualizar'));
   }, { passive: true });
   el.addEventListener('touchend', function() {
-    // 34 (diagnóstico S24 21-11: 10 refrescos en 26 s al desplazar contactos, cada uno reenviaba TODOS los pendientes): solo cuenta
-    // si la lista sigue arriba al soltar y pasaron ≥ 15 s del anterior.
     var nowT = Date.now();
-    if (y0 !== null && dy > PULL_PX && el.scrollTop <= 0 && nowT - (el._nxPullAt || 0) >= PULL_COOLDOWN_MS) { el._nxPullAt = nowT; showInd('↻ ' + t('est_refreshing', 'Actualizando estados, fotos y chats…')); refreshAll(); hideInd(1500); }
+    if (y0 !== null && dy > PULL_PX && !scrolled()) {
+      if (nowT - (el._nxPullAt || 0) >= PULL_COOLDOWN_MS) { el._nxPullAt = nowT; showInd('↻ ' + t('est_refreshing', 'Actualizando estados, fotos y chats…')); refreshAll(); hideInd(1500); }
+      else hideInd(600); // recién actualizado: el aviso se va sin repetir el trabajo
+    }
     else hideInd(0);
     y0 = null; dy = 0;
   }, { passive: true });
 }
-var PULL_PX = 70, PULL_COOLDOWN_MS = 15000;
+var PULL_PX = 70, PULL_COOLDOWN_MS = 10000;
 
 if (typeof window !== 'undefined') {
   window.NEXO_composeStatus = _compose; // 3035: pruebas (tests/sim/pedidos13.js)

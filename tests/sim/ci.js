@@ -136,6 +136,10 @@ const SCENARIOS = [
   { name: 'recibir con la app cerrada (buzón, ✓✓ y aviso)', args: ['background.js', '--scenario=closed', '--io-delay=25', '--app-events'], tag: 'BACKGROUND', checks: {
     llegada_a_B_tras_volver: (v) => Array.isArray(v) && v.every((x) => !/NO LLEGÓ/.test(x)),
     con_B_cerrada: (v) => !!v && v.estado_en_A.every((x) => /delivered|read/.test(x)) && v.notificaciones_B.length >= 1 && v.oculta_en_buzon_sin_aviso === true } },
+  { name: '16b (S24↔VICK 20-11): contacto agregado DESPUÉS del aviso de claves del arranque y app congelada sin pasar por segundo plano en el JS: el nativo ya tiene su clave y el ✓✓ llega firmado', args: ['background.js', '--scenario=frozen-new', '--io-delay=25', '--app-events'], tag: 'BACKGROUND', checks: {
+    resultado: (v) => v === 'OK',
+    confirmaciones_sin_firma: (v) => v === 0,
+  } },
   { name: 'entregado (✓✓) con la app CONGELADA en segundo plano (#dueño: el Vivo congela el JS): el nativo confirma la entrega firmada al avisar, sin esperar a que vuelva', args: ['background.js', '--scenario=frozen', '--io-delay=25', '--app-events'], tag: 'BACKGROUND', logs: 'last_logs_frozen.txt', checks: {
     entregado_sin_abrir_B: isTrue,
     estado_en_A_con_B_congelada: (v) => Array.isArray(v) && v.every((x) => /: (delivered|read)$/.test(x)),

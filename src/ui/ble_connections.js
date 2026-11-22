@@ -65,6 +65,7 @@ export const BLE_CONNECTION_METHODS = {
     // Build 2967 (Fase A, entrega offline): tocar (wake FCM) a los contactos con PENDIENTES, ANTES de la compuerta de abajo
     // (que corta si no hay enlaces vivos — justo el caso offline). El propio tick tiene su freno de 30 s.
     self._tickWakePending();
+    try { self._pushAckKeysIfChanged(); } catch (e) {} // 16b: claves de firma del ✓✓ nativo al día (contacto nuevo, clave aceptada)
     if (self._cameraBlePaused) return;
     if (!self._activeChatDeviceId && self.connectedDevices.size === 0) return;
     self.connectedDevices.forEach(function(device, deviceId) {

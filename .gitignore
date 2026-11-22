@@ -17,3 +17,7 @@ android/captures/
 *.backup
 *.bak
 tools/.deps/
+tests/kotlin-android/build/
+tests/kotlin-android/.gradle/
+tests/kotlin/build/
+tests/kotlin/.gradle/

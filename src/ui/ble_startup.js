@@ -239,15 +239,38 @@ export const bleStartup = {
   _pushAckKeys() {
     var self = this, pl = self.nativePlugin;
     if (!pl || !_hasNativeMethod(pl, 'setAckKeys')) return Promise.resolve();
-    var cs = _getBLEContacts(), jobs = [], keys = [];
+    var cs = _getBLEContacts(), jobs = [], keys = [], sig = self._ackKeysSig(cs);
     cs.forEach(function(c) {
       var nx = _normId(c.nexoId || c.deviceUUID);
       if (!/^nx[0-9a-z]{8}$/.test(nx) || !c.publicKey || c.pendingKey) return;
       jobs.push(e2eAckKey(c.publicKey).then(function(k) { if (k) keys.push({ nx: nx, key: k }); }).catch(function() {}));
     });
     return Promise.all(jobs).then(function() {
-      if (keys.length) return _safeNativeCall(pl, 'setAckKeys', { keys: keys }).catch(function() {});
+      if (keys.length) return _safeNativeCall(pl, 'setAckKeys', { keys: keys }).then(function() { self._ackKeysPushed = sig; }).catch(function() {});
+      self._ackKeysPushed = sig;
     }).catch(function() {});
+  },
+
+  // 16b (diagnóstico 20-11 11:09, S24↔VICK recién agregado): las claves solo se daban al nativo 4 s tras arrancar y al pasar a segundo
+  // plano. Con un contacto agregado (o una clave aceptada) DESPUÉS, si el sistema congelaba o cerraba la app sin dar tiempo a ese
+  // último aviso, el nativo confirmaba SIN firma y el otro teléfono lo ignoraba («Confirmación sin firma válida»): el mensaje seguía
+  // dando vueltas hasta reabrir la app. Ahora, en cada repaso del supervisor (6 s), si cambió el conjunto contacto+clave se vuelven a dar.
+  // Huella barata (sin cifrado): NEXO ID + clave pública de los contactos con clave firme.
+  _ackKeysSig(cs) {
+    var out = [];
+    (cs || _getBLEContacts() || []).forEach(function(c) {
+      var nx = _normId(c.nexoId || c.deviceUUID);
+      if (/^nx[0-9a-z]{8}$/.test(nx) && c.publicKey && !c.pendingKey) out.push(nx + ':' + c.publicKey);
+    });
+    return out.sort().join('|');
+  },
+  _pushAckKeysIfChanged() {
+    var sig = this._ackKeysSig();
+    if (sig === (this._ackKeysPushed || '') || this._ackKeysBusy) return false;
+    var self = this; self._ackKeysBusy = true;
+    var done = function() { self._ackKeysBusy = false; };
+    this._pushAckKeys().then(done, done);
+    return true;
   },
 
   _setupAppStateListener() {

@@ -3,7 +3,7 @@
  * 2752, sin cambios): lo que llega (descifrar, comprobar remitente, guardar, avisar) y lo que sale (texto, archivos,
  * pendientes, reenvío al reconectar).
  */
-import { BLE_STATES, _failStatus, _getBLEContacts, _hasNativeMethod, _hydrateAttachments, _isResendable, _attMissDecision, _attMissCooling, _resendThrottle, _normId, _safeDispatchEvent, _safeNativeCall, _saveSeqCounter, _vaultLoadMessages, _vaultUpdateMessageStatus, _tooBigForBt, _netNx } from './ble_helpers.js';
+import { BLE_STATES, _failStatus, _getBLEContacts, _hasNativeMethod, _hydrateAttachments, _isResendable, _attMissDecision, _attMissCooling, _normId, _safeDispatchEvent, _safeNativeCall, _saveSeqCounter, _vaultLoadMessages, _vaultUpdateMessageStatus, _tooBigForBt, _netNx } from './ble_helpers.js';
 import { MAILBOX_MAX_BYTES as BLOB_MAILBOX_MAX_BYTES } from '../net/blob_mailbox.js';
 import { BLE_RECEIVE_METHODS } from './ble_receive.js';
 import { BLE_SEND_METHODS } from './ble_send.js';
@@ -236,9 +236,6 @@ const _BLE_MESSAGE_METHODS_BASE = {
       // 3003: un adjunto que acaba de fallar al leerse del disco se enfría (no se relee 25 MB en cada vuelta); sigue ⏳ pendiente
       var nowCool = Date.now();
       list = list.filter(function(m) { return !(m && (m.attachmentRef || m.attachmentType) && _attMissCooling(self._attMiss, idOf(m), nowCool)); });
-      // COLA 28: tope y espera creciente por mensaje (3.ª vuelta sin ACK en adelante)
-      var memoRT = self._resendMemo || (self._resendMemo = {});
-      list = list.filter(function(m) { return !_resendThrottle(memoRT, idOf(m), nowCool); });
       // 3050: con un puente de por medio (yo sin internet propio, o él por un puente) y solo internet con él, los archivos van al
       // buzón de archivos (en paquetes por Wi-Fi Direct al puente), no trozo a trozo como mensajes por el puente
       bridgedNet = !!(direct && deviceId && /^net/i.test(String(deviceId)) && self.net && typeof self.net.viaBridge === 'function' && self.net.viaBridge(nexoId));

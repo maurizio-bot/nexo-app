@@ -72,6 +72,7 @@ const statusOf = (p, t) => { const m = Array.from(p.win.document.querySelectorAl
   const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', opts), nB = new NativePhone('B', 'BB:BB:BB:BB:BB:02', opts);
   radio.add(nA); radio.add(nB); nA.load(); nB.load();
   let [A, B] = await Promise.all([bootJs('A', nA), bootJs('B', nB)]);
+  if (scenario === 'frozen-new') await sleep(6000); // que el aviso de claves del arranque (4 s) pase ANTES de agregar el contacto
   const idA = A.win.bleInterface.localNexoId;
   // Emparejar sin fallos de escaneo (el contacto ya existe en la prueba real)
   const miss = opts.scanMiss; opts.scanMiss = 0;
@@ -93,6 +94,22 @@ const statusOf = (p, t) => { const m = Array.from(p.win.document.querySelectorAl
     const saved = (await B.win.vaultLoadMessages(idA)).filter((m) => m.content === 'ok').length;
     console.log('BACKGROUND ' + JSON.stringify({ build: path.basename(buildDir), scenario, ok_visibles_en_B: vis, ok_guardados_en_B: saved, estados_A: Array.from(A.win.document.querySelectorAll('#messages-container .message.own .msg-status')).slice(-3).map((e) => e.className.replace('msg-status status-', '')) }));
     process.exit(0);
+  }
+  if (scenario === 'frozen-new') {
+    // 16b (S24↔VICK 20-11 11:09): contacto agregado DESPUÉS del aviso de claves del arranque (4 s) y la app se congela SIN pasar por
+    // «segundo plano» en el JS (el sistema no le dio tiempo). El nativo debe tener ya la clave de ese contacto y firmar el ✓✓.
+    // (la espera de 6 s antes de emparejar está arriba: --scenario=frozen-new)
+    await sleep(7000); // un repaso del supervisor (6 s) tras guardarse la clave
+    const clavesB = nB.ackKeys ? nB.ackKeys.size : 0;
+    nB.setFrozen(true); nB.setAppActive(false); await sleep(800); // el nativo sabe que no está a la vista; el JS (congelado) no llega a enterarse
+    await sendText(A, 'm1'); await sleep(6000);
+    const st = statusOf(A, 'm1');
+    const sinFirma = allLogs.filter((l) => /Confirmación sin firma válida/.test(l)).length;
+    nB.setFrozen(false); await sleep(3000);
+    const res = { build: path.basename(buildDir), scenario, claves_firma_en_B: clavesB, estado_m1_en_A: st, confirmaciones_sin_firma: sinFirma,
+      resultado: (clavesB >= 1 && /^(delivered|read)$/.test(st) && sinFirma === 0) ? 'OK' : 'FALLO' };
+    console.log('BACKGROUND ' + JSON.stringify(res));
+    process.exit(res.resultado === 'OK' ? 0 : 1);
   }
   if (scenario === 'frozen') {
     // El Vivo del dueño CONGELA la app en segundo plano: el JS no corre, así que no puede confirmar la entrega.
