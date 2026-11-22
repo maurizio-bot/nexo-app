@@ -218,7 +218,9 @@ const PROF_READ = () => JSON.parse(JSON.stringify(window.__prof || {}));
     paired = await A.page.evaluate(() => { const row = Array.from(document.querySelectorAll('#ble-new-device .ble-found-row')).find((r) => /(^|\s)B$/.test((r.querySelector('span') || {}).textContent || '')); const b = row && row.querySelector('button'); if (b) b.dispatchEvent(new MouseEvent('click', { bubbles: true })); return !!b; });
     if (!paired && !(await A.page.evaluate(() => window.bleInterface.isScanning))) await click(A.page, '#ble-scan-btn');
   }
-  await sleep(2500);
+  // (desde las solicitudes de contacto, 3190: «agregar» es pedir y que el otro acepte; se espera a que B esté de verdad en la lista)
+  for (let i = 0; i < 120; i++) { await sleep(250); if (await A.page.evaluate(() => Array.from(document.querySelectorAll('#main-contacts-list .ble-contact-row')).some((x) => (x.querySelector('.ble-contact-name') || {}).textContent === 'B'))) break; }
+  await sleep(1500);
   if (await A.page.evaluate(() => window.bleInterface.elements.panel.classList.contains('active'))) await A.page.evaluate(() => window.bleInterface.togglePanel());
   const openChat = (p, name) => p.page.evaluate((name) => { const r = Array.from(document.querySelectorAll('#main-contacts-list .ble-contact-row')).find((x) => (x.querySelector('.ble-contact-name') || {}).textContent === name); if (r) r.dispatchEvent(new MouseEvent('click', { bubbles: true })); return !!r; }, name);
   const closeChat = (p) => p.page.evaluate(() => { const b = document.getElementById('chat-back-btn'); if (b) b.dispatchEvent(new MouseEvent('click', { bubbles: true })); window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} })); });
