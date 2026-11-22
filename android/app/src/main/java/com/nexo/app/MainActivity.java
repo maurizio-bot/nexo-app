@@ -90,11 +90,10 @@ public class MainActivity extends BridgeActivity {
   // 3274 (dueño 22-11: «en la miniatura de la videollamada se pausa el vídeo»): BridgeActivity.onPause pausa el WebView (y con él los
   // <video>), y Android lo llama también al entrar en la miniatura. Con videollamada y la ventanita abierta (o por abrirse), se vuelve a
   // reanudar el WebView justo después: el vídeo sigue. Al cerrarse del todo la miniatura, el WebView vuelve a pausarse.
-  private long leaveHintAt = 0L;
   private boolean pipWanted() {
     try {
       return com.nexo.ble.BleService.getPipVideo()
-          && (isInPictureInPictureMode() || System.currentTimeMillis() - leaveHintAt < 2500);
+          && (isInPictureInPictureMode() || System.currentTimeMillis() - com.nexo.ble.BleService.getLeaveHintAt() < 2500);
     } catch (Exception e) { return false; }
   }
   private WebView webViewOrNull() { try { return this.getBridge() != null ? this.getBridge().getWebView() : null; } catch (Exception e) { return null; } }
@@ -112,7 +111,7 @@ public class MainActivity extends BridgeActivity {
   @Override
   public void onUserLeaveHint() {
     super.onUserLeaveHint();
-    leaveHintAt = System.currentTimeMillis();
+    com.nexo.ble.BleService.setLeaveHintAt(System.currentTimeMillis());
     try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
           && getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)

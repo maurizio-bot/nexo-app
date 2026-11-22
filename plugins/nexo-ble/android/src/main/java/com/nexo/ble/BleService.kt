@@ -44,6 +44,8 @@ class BleService : Service() {
         // #dueño 01-11: hay una VIDEOLLAMADA activa → al irse de la app (gesto de inicio) MainActivity entra en
         // Picture-in-Picture (miniatura flotante) sin cortar audio/vídeo. @JvmStatic para leerlo desde MainActivity (Java).
         @JvmStatic @Volatile var pipVideo = false
+        /** 3275: cuándo el usuario se fue de la app (onUserLeaveHint): la miniatura automática entra justo después; en onPause aún puede no verse */
+        @JvmStatic @Volatile var leaveHintAt = 0L
         // Cómo quedó el servicio la última vez (también si se reinició solo en plena llamada: al volver a la app se mira)
         @Volatile var fgsState = ""
     }

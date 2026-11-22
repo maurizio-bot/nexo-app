@@ -396,8 +396,10 @@ class NexoBlePlugin : Plugin() {
     // «volver a la app» (reconectar, vaciar colas, pedir estados, permisos) encima de la videollamada: el tirón. Ahora la miniatura NO
     // es segundo plano: no se toca nada al entrar ni al volver. Solo si la ventanita se cierra o se tapa del todo (onStop) pasa a serlo.
     @Volatile private var pipHeld = false
+    // 3275: miniatura (o a punto de entrar: el aviso de irse, onUserLeaveHint, va antes que onPause)
     private fun inPipNow(): Boolean = try {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity?.isInPictureInPictureMode == true
+        (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity?.isInPictureInPictureMode == true) ||
+            System.currentTimeMillis() - BleService.leaveHintAt < 2500L
     } catch (e: Exception) { false }
     override fun handleOnResume() {
         super.handleOnResume()

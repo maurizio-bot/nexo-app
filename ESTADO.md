@@ -108,6 +108,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
       y Android lo llama al entrar en la miniatura. `MainActivity` (`onPause`/`onStop`): con videollamada y ventanita, el WebView se vuelve a reanudar; fuera de la
       miniatura se pausa como antes. SIN compilar el módulo Android aquí (solo `android/app`, no está en `tests/kotlin-android`): revisar que compile en el CI y probar
       en el S24/S23 (miniatura → Ajustes → vídeo sigue). Incluido en la siguiente APK (la 3118 NO lo lleva).
+      3275 (revisión del 22-11 tarde): `MainActivity` COMPILA contra las APIs reales de Android (comprobación con stubs mínimos de Capacitor); la detección de
+      miniatura usa `BleService.leaveHintAt` (onUserLeaveHint va antes que onPause también con la miniatura automática) tanto en `MainActivity` como en el plugin
+      (`handleOnPause`): sin ello, con miniatura automática la app se trataba como segundo plano y al volver se reconectaba todo. `kotlin-android` compila.
     - **3273 miniatura de la videollamada (dueño 22-11):** (a) la miniatura del sistema ya NO cuenta como segundo plano (`handleOnPause` con PiP: no se avisa a la app ni,
       al volver, se hace todo lo de «volver a la app» encima de la llamada = el tirón); solo si la ventanita se cierra o se tapa (`handleOnStop`) pasa a segundo plano;
       (b) Android 12+: miniatura automática al irse (`setAutoEnterEnabled`; con gestos `onUserLeaveHint` no siempre llega y el vídeo quedaba atrás, pausado). Solo nativo,
