@@ -64,7 +64,38 @@ object NetBgHome {
     }, { log(app, it) }, { nx, offer ->
         // 3087: el que llama colgó (sobre con ce, por internet) → deja de sonar ya
         if (MsgNotifier.get(app).cancelCallFor(nx, offer)) log(app, "$nx colgó: la llamada deja de sonar")
-    }, { req -> requestNotify(app, req) }, { ts -> NetBgSaved.callTooOld(ts, System.currentTimeMillis()) }).also { watchNet(app, it) }
+    }, { req -> requestNotify(app, req) }, { ts -> NetBgSaved.callTooOld(ts, System.currentTimeMillis()) },
+        { json -> saveOutbox(app, json) }, { url, token -> wakePost(app, url, token) }).also { watchNet(app, it) }
+
+    // ===== 3268 (PRIORIDAD 1, fase 3; COLA 29): bandeja de salida =====
+    // Se guarda cifrada en reposo cada vez que cambia (algo salió, llegó su ✓✓, la app dio otra lista): así sigue saliendo aunque
+    // Android mate el proceso y NEXO vuelva sola. Con la app viva en el proceso, con SU almacén (el mismo cerrojo que sus archivos).
+    // Pasando la cuenta a otro teléfono no se escribe nada (moveFrozen, como la configuración).
+    private val outLock = Any()
+    internal fun saveOutbox(ctx: Context, json: String) {
+        val p = host()
+        if (p != null && p.moveFrozen) return
+        save(ctx) { synchronized(outLock) { NetBgSaved.saveOut(p?.atRest() ?: store(ctx), writer, json) } }
+    }
+
+    // El «toque» que despierta al otro teléfono tras subir un mensaje de la bandeja: lo MISMO que hace la app (wake_post.js): un POST
+    // con solo el token del otro (nunca el contenido) al enviador. En un hilo aparte (no se frena la escucha) y sin reintentos.
+    private fun wakePost(ctx: Context, url: String, token: String) {
+        if (!url.startsWith("https://") || token.length < 20) return
+        Thread({
+            var c: java.net.HttpURLConnection? = null
+            try {
+                c = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+                    requestMethod = "POST"; connectTimeout = 10000; readTimeout = 10000; doOutput = true
+                    setRequestProperty("Content-Type", "text/plain;charset=UTF-8")
+                }
+                c.outputStream.use { it.write(org.json.JSONObject().put("to", token).toString().toByteArray(Charsets.UTF_8)) }
+                log(ctx, "Bandeja de salida: toque al otro teléfono: el enviador contestó ${c.responseCode}")
+            } catch (e: Throwable) {
+                log(ctx, "Bandeja de salida: el toque no salió (${e.javaClass.simpleName})", "WARN")
+            } finally { try { c?.disconnect() } catch (e: Throwable) { } }
+        }, "nexo-toque").apply { isDaemon = true }.start()
+    }
 
     // 3204 (dueño 17-11 «Ok» a 2 conexiones con datos móviles; parte nativa de la 3193): la escucha ve ELLA el tipo de la red por defecto
     // (también sin la app, cuando no hay plugin que avise): con datos móviles escucha solo 2 relés (NetBg.listenPlan). Se mira ya (para
@@ -253,7 +284,7 @@ object NetBgHome {
     @Synchronized
     fun forget(ctx: Context) {
         writer.forget()
-        shared?.let { bg -> try { bg.stop(); bg.configure("", emptyList(), 0L, emptyList()); bg.setAckKeys(emptyMap()) } catch (e: Throwable) { } }
+        shared?.let { bg -> try { bg.stop(); bg.configure("", emptyList(), 0L, emptyList()); bg.setAckKeys(emptyMap()); bg.outbox.clear() } catch (e: Throwable) { } }
         NexoBlePlugin.ackKeys.clear()
         MutedChats.clear() // 3219
         if (withoutApp) { withoutApp = false; wifiHold(ctx, false) }

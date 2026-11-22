@@ -43,6 +43,7 @@ export const bleStartup = {
     this._startConnectionSupervisor();
     this._setupAppStateListener();
     setTimeout(function() { self._pushAckKeys(); }, 4000); // C1 (2777): dar pronto a la parte nativa las claves de firma del ✓✓
+    try { self._outboxInit(); } catch (eO) {} // 3268 (fase 3): bandeja de salida nativa (los textos pendientes salen aunque la app se duerma)
     this.elements.panel.classList.remove('active');
     this.elements.overlay.classList.remove('active');
     this.renderContactsList();

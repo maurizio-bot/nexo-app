@@ -311,6 +311,37 @@ internal fun NexoBlePlugin.netBgDrainImpl(call: PluginCall) {
     call.resolve(JSObject().put("events", arr).put("gaps", gaps))
 }
 
+// 3268 (PRIORIDAD 1, fase 3; COLA 29): la app da la lista ENTERA de sus textos pendientes ya cifrados de punta a punta
+// ({items:[{id, nx, p, wk}], f, url}; reemplaza a la anterior) para que la escucha de internet los suba aunque la app se duerma, se
+// cierre o Android mate el proceso (NetOutbox). items vacío = nada pendiente. Devuelve cuántos quedaron (n) y cuáles ya aceptó un relé.
+internal fun NexoBlePlugin.netOutboxSetImpl(call: PluginCall) {
+    val list = ArrayList<NetOutbox.Item>()
+    val now = System.currentTimeMillis()
+    try {
+        call.data.optJSONArray("items")?.let { a ->
+            for (i in 0 until a.length()) {
+                val o = a.optJSONObject(i) ?: continue
+                val id = o.optString("id"); val nx = o.optString("nx").lowercase(); val p = o.optString("p")
+                if (!NetOutbox.valid(id, nx, p)) continue
+                val at = o.optLong("at", now).let { if (it in 1..now) it else now }
+                list.add(NetOutbox.Item(id, nx, p, at, o.optString("wk")))
+            }
+        }
+    } catch (e: Exception) { call.reject("bandeja ilegible"); return }
+    val bg = netBg()
+    val n = bg.outboxSet(list, call.data.optString("f"), call.data.optString("url"))
+    val sent = JSArray()
+    bg.outbox.ids().forEach { id -> if ((bg.outbox.get(id)?.okAt ?: 0L) > 0) sent.put(id) }
+    call.resolve(JSObject().put("n", n).put("sent", sent))
+}
+
+// La app retira uno (lo mandó ella, llegó su ✓✓ o se borró)
+internal fun NexoBlePlugin.netOutboxDropImpl(call: PluginCall) {
+    val id = call.getString("id") ?: ""
+    if (id.isNotEmpty()) netBg().outboxDrop(id)
+    call.resolve()
+}
+
 // 3219 (dueño 17-11, funciones de WhatsApp): ¿se calla el aviso de este mensaje porque su chat (o su grupo, si se conoce) está
 // SILENCIADO? Las llamadas nunca. Queda en el registro nativo (sin contenido) para el diagnóstico.
 internal fun NexoBlePlugin.mutedNotice(info: BgInbox.Info, groupKnown: Boolean): Boolean {

@@ -74,6 +74,32 @@ export const BLE_SEND_METHODS = {
     else if (!/^nx[0-9a-z]{8}$/.test(real) && _normId(this._macToNexoId.get(nd) || '') === wrong) { this._macToNexoId.delete(nd); if (_normMac(this._nexoIdToMac.get(wrong) || '') === nd) this._nexoIdToMac.delete(wrong); }
   },
 
+  // El sobre v1 «chat» de un mensaje (3268: sacado tal cual de _sendMessageNative para que la bandeja de salida nativa, ble_outbox.js,
+  // arme EXACTAMENTE el mismo paquete que el envío normal). content = el texto ya cifrado de punta a punta (o el adjunto).
+  _chatEnv(content, msgId, msgSeq, dst) {
+    var self = this;
+    var senderId = self.localNexoId || self.localDeviceUUID;
+    var payloadObj = { text: content, senderNexoId: senderId, senderName: self.localDeviceName || 'Nexo Device', timestamp: Date.now() };
+    if (content && content.charAt(0) === '{') {
+      try {
+        var parsedContent = JSON.parse(content);
+        if (parsedContent && parsedContent.type === 'attachment') payloadObj.attachment = parsedContent;
+      } catch (e) {}
+    }
+    var env = { v: 1, type: 'chat', from: senderId, to: dst ? _normId(dst) : '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj, ss: 1, nt: 1 };
+    // Ronda 2758: acción oculta (borrar para todos…): si el otro tiene la app cerrada, sin notificación
+    if (self._quietOut && self._quietOut.has(msgId)) env.q = 1;
+    // Ronda 2763: mensaje de grupo directo (no por Jump): el id del grupo (al azar, sin nombre) va por fuera para que
+    // el aviso con la app cerrada lleve el nombre del grupo (BgInbox.kt)
+    if (!dst && self._groupOut && self._groupOut.has(msgId)) env.g = self._groupOut.get(msgId);
+    // Ronda 2759: oferta de llamada: con la app del otro cerrada, su aviso dice "Llamada entrante" (BgInbox.kt)
+    if (self._callOut && self._callOut.has(msgId)) env.cl = 1;
+    if (self._callVideoOut && self._callVideoOut.has(msgId)) env.cv = 1; // 3089: videollamada (el aviso nativo lo dice)
+    // 3087: «colgar» del que llama: el id de su oferta por fuera, para que el nativo del otro deje de sonar con la app cerrada
+    if (self._callEndOut && self._callEndOut.has(msgId)) env.ce = self._callEndOut.get(msgId);
+    return env;
+  },
+
   _sendMessageNative(deviceId, content, messageId, seq, dst) {
     var self = this;
     return new Promise(function(resolve, reject) {
@@ -96,27 +122,9 @@ export const BLE_SEND_METHODS = {
       if (content && content.indexOf('"type":"sx"') >= 0) { try { sxIn = JSON.parse(content); } catch (e) {} if (!sxIn || sxIn.type !== 'sx') sxIn = null; }
       var sxRaw = !!(sxIn && !dst && self.hopSeals(deviceId));
       if (!sxRaw && !_isControlPacket(content)) {
-        var senderId = self.localNexoId || self.localDeviceUUID;
         var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
         var msgSeq = (typeof seq === 'number') ? seq : self.getNextSeq();
-        var payloadObj = { text: content, senderNexoId: senderId, senderName: self.localDeviceName || 'Nexo Device', timestamp: Date.now() };
-        if (content && content.charAt(0) === '{') {
-          try {
-            var parsedContent = JSON.parse(content);
-            if (parsedContent && parsedContent.type === 'attachment') payloadObj.attachment = parsedContent;
-          } catch (e) {}
-        }
-        var env = { v: 1, type: 'chat', from: senderId, to: dst ? _normId(dst) : '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj, ss: 1, nt: 1 };
-        // Ronda 2758: acción oculta (borrar para todos…): si el otro tiene la app cerrada, sin notificación
-        if (self._quietOut && self._quietOut.has(msgId)) env.q = 1;
-        // Ronda 2763: mensaje de grupo directo (no por Jump): el id del grupo (al azar, sin nombre) va por fuera para que
-        // el aviso con la app cerrada lleve el nombre del grupo (BgInbox.kt)
-        if (!dst && self._groupOut && self._groupOut.has(msgId)) env.g = self._groupOut.get(msgId);
-        // Ronda 2759: oferta de llamada: con la app del otro cerrada, su aviso dice "Llamada entrante" (BgInbox.kt)
-        if (self._callOut && self._callOut.has(msgId)) env.cl = 1;
-        if (self._callVideoOut && self._callVideoOut.has(msgId)) env.cv = 1; // 3089: videollamada (el aviso nativo lo dice)
-        // 3087: «colgar» del que llama: el id de su oferta por fuera, para que el nativo del otro deje de sonar con la app cerrada
-        if (self._callEndOut && self._callEndOut.has(msgId)) env.ce = self._callEndOut.get(msgId);
+        var env = self._chatEnv(content, msgId, msgSeq, dst);
         // Sobre de paso hacia una build anterior (lo desenvuelve como texto del puente): sin aviso si no es para ella
         if (sxIn && _normId(sxIn.to) !== self._destNx(deviceId)) env.q = 1;
         // Ronda 2764: a quién va (el que lo recibe lo ignora si no es él; ver _prePayload). Se fija la primera vez: un

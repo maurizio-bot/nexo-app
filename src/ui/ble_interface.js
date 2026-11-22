@@ -21,6 +21,7 @@ import { BLE_NEARREQ_METHODS } from './ble_near_req.js'; // 3207: solicitud de c
 import { applyDisplayName } from './display_name.js'; // 3218: el nombre FIJO manda sobre el del teléfono
 import { BLE_LINK_METHODS } from './ble_links.js';
 import { BLE_CONTACT_METHODS } from './ble_contacts.js';
+import { BLE_OUTBOX_METHODS } from './ble_outbox.js'; // 3268: bandeja de salida nativa (fase 3)
 import { BLE_UI_METHODS } from './ble_ui.js';
 import { BLE_PRIVACY_METHODS } from './ble_privacy.js';
 import { bleStartup } from './ble_startup.js';
@@ -520,6 +521,7 @@ Object.assign(BLEInterface.prototype, BLE_KEY_METHODS);
 Object.assign(BLEInterface.prototype, BLE_NEARREQ_METHODS);
 Object.assign(BLEInterface.prototype, BLE_LINK_METHODS);
 Object.assign(BLEInterface.prototype, BLE_CONTACT_METHODS);
+Object.assign(BLEInterface.prototype, BLE_OUTBOX_METHODS);
 Object.assign(BLEInterface.prototype, BLE_UI_METHODS);
 Object.assign(BLEInterface.prototype, BLE_PRIVACY_METHODS);
 export function initBLEInterface(bleMesh) {

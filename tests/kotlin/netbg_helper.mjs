@@ -11,6 +11,7 @@
 //                                   y publica el sobre igual que en el teléfono); {"acks":{"me":nx,"peer":nx,"peerPk":b64}} = A lee
 //                                   lo del relé con su NetLink REAL (_onEvent: firma del evento, etiqueta, sobre) y comprueba cada ✓✓
 //                                   con e2eAckTag como BleAckSystem.processIncomingAck → ACKS [{msgId, from, ok}]
+//                                   3268: {"inbox":{"me":nx,"peer":nx,"peerPk":b64}} = lo que la app real `me` recibe de `peer` → INBOX {got:[{nx,p}], f}
 //  node netbg_helper.mjs reqvectors → 3190: etiquetas del buzón de solicitudes (_reqTagPub) y solicitudes cifradas por la app real
 //  node netbg_helper.mjs peer       → 3192: otra app REAL (el receptor B, con su propia identidad): PK; luego, por la entrada estándar,
 //                                   {"cfg":{"me":nx,"relays":[url],"contacts":[{nx,name,pk}],"lastSeen":ms?}} → CFG <lo que manda a netBgConfig>
@@ -237,6 +238,19 @@ if (mode === 'relay') {
           out.push({ msgId: k.msgId, from: k.from, via: g.nx, ok: !!(k.a && exp && k.a === exp) });
         }
         say('ACKS ' + JSON.stringify(out));
+      }).catch((e) => say('ERROR ' + (e && e.message)));
+      return;
+    }
+    // 3268 (bandeja de salida nativa): lo que la app REAL `me` recibe del relé de `peer` con su NetLink (_onEvent: firma, etiqueta,
+    // sobre): INBOX {got:[{nx,p}], f} — los paquetes tal cual le llegan al chat (_onNetPayload) y el token del toque que leyó del sobre
+    if (/^\{"inbox"/.test(line.trim())) {
+      chain = chain.then(async () => {
+        const a = JSON.parse(line).inbox, got = [];
+        const nl = await realApp(a.me, [{ nx: a.peer, pk: a.peerPk }], (nx, p) => got.push({ nx, p }));
+        await nl._refreshTags();
+        for (const ev of relay.events.slice()) { try { await nl._onEvent(JSON.parse(JSON.stringify(ev))); } catch (e) {} }
+        const peer = nl.peers.get(a.peer);
+        say('INBOX ' + JSON.stringify({ got, f: (peer && peer.fcmToken) || '' }));
       }).catch((e) => say('ERROR ' + (e && e.message)));
       return;
     }

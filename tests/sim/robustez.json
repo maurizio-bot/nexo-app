@@ -1143,6 +1143,10 @@
     {
      "fallo": "3266 (COLA 27; S24 y Motorola 20-11 14:07: 2 min 17 s sin internet con un Wi-Fi sin salida, hasta que Android pasó solo a datos): con Wi-Fi y ningún relé abierto ≥ 12 s la app avisa al teléfono (reportNetworkConnectivity) para que compruebe la red y pase a datos. sinred.js (función pura); lo que hace Android con el aviso solo se ve en teléfonos",
      "prueba": "3266 (COLA 27"
+    },
+    {
+     "fallo": "3268 (PRIORIDAD 1, fase 3; COLA 29; «pendiente_viejo» del 20 y 21-11): un texto que se quedó ⏳ sin camino no salía hasta volver a abrir NEXO (reenviar era cosa de la página, que Android duerme o cierra). Bandeja de salida nativa: la app deja al teléfono sus textos pendientes ya cifrados y la escucha de internet los sube al buzón sin la app (dormida, cerrada o tras morir el proceso) e insiste hasta la ✓✓",
+     "prueba": "3268 BANDEJA DE SALIDA nativa"
     }
    ],
    "debiles": [

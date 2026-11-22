@@ -49,6 +49,10 @@ class NetBg(
     // del relé desde lo último que vio la app y no debe hacer sonar ofertas de hace horas (NetBgSaved.callTooOld, el margen de la app).
     // Ni avisa ni suena; la confirmación de entrega sí sale y el evento queda para la app (lo apunta como perdida). Por defecto, nunca.
     private val staleCall: (tsMs: Long) -> Boolean = { false },
+    // 3268 (fase 3, COLA 29): la bandeja de salida cambió (algo salió, se confirmó o caducó): quien escucha la guarda cifrada en reposo
+    private val onOutbox: (json: String) -> Unit = { },
+    // 3268: el «toque» que despierta al otro teléfono tras subir un mensaje nuevo (dirección del enviador y token del otro; como la app)
+    private val wake: (url: String, token: String) -> Unit = { _, _ -> },
 ) {
     class Contact(val nx: String, val name: String, val kraw: ByteArray)
     // 3190: solicitud de contacto de mi buzón. kind = "req" (me quieren agregar) o "acc" (aceptó una solicitud MÍA); twin = nombre del
@@ -68,6 +72,8 @@ class NetBg(
         const val FOR_APP_MAX = 500                    // 3033: eventos guardados para la app como mucho
         const val FOR_APP_MAX_CHARS = 4_000_000L       // y como mucho ~4 MB (lo más viejo sale primero)
         const val KIND = 1059
+        const val MAX_CONTENT = 60000                  // 3268: tope de un evento en los relés habituales (como MAX_CONTENT de la app)
+        const val TTL_MSG_S = 7 * 86400L               // caducidad de un mensaje en el buzón de los relés (TTL_MSG de la app)
         // 3234: ¿contesta este saludo? Solo uno reciente (como UP_MS de la app: uno viejo no dice que esté en línea), que no sea ya una
         // respuesta (r:1: si no, dos teléfonos dormidos se saludarían sin fin) y como mucho uno cada 20 s por contacto (como la app).
         const val HELLO_FRESH_MS = 150_000L
@@ -298,6 +304,66 @@ class NetBg(
     // al plugin). Se reemplaza el conjunto entero en cada llamada.
     fun setAckKeys(m: Map<String, ByteArray>) { ackKeys = m }
 
+    // ===== 3268 (PRIORIDAD 1, fase 3; COLA 29): BANDEJA DE SALIDA (ver NetOutbox) =====
+    // La app deja aquí los textos pendientes ya cifrados de punta a punta; esta escucha los sube en cuanto hay un relé abierto (con la
+    // app dormida, cerrada o sin la app) e insiste hasta la ✓✓ del otro. La app la reemplaza entera cada vez que se oculta.
+    val outbox = NetOutbox()
+    private fun outboxChanged() { try { onOutbox(outbox.toJson()) } catch (e: Throwable) { } }
+    /** La lista entera de lo pendiente (reemplaza). Devuelve cuántos quedan. */
+    fun outboxSet(list: List<NetOutbox.Item>, myToken: String, wakeUrl: String): Int {
+        val before = outbox.size()
+        if (outbox.set(list, myToken, wakeUrl)) {
+            outboxChanged()
+            val n = outbox.size()
+            if (n > 0 || before > 0) log("Bandeja de salida: $n mensaje(s) pendiente(s) quedan a cargo del teléfono (salen por internet aunque NEXO se duerma)")
+        }
+        if (running) synchronized(lock) { lock.notifyAll() }
+        return outbox.size()
+    }
+    fun outboxDrop(id: String) { if (outbox.drop(id)) outboxChanged() }
+    /** Lo guardado (arranque sin la app). */
+    fun outboxLoad(text: String?): Int = outbox.load(text, System.currentTimeMillis())
+    fun outboxClear() { if (outbox.clear()) outboxChanged() }
+
+    // Sube lo que toca (solo el hilo del bucle). Sin relé abierto no cuenta como intento: se mira otra vez en la próxima vuelta (5 s).
+    private fun pumpOutbox(now: Long) {
+        if (outbox.size() == 0) return
+        var changed = false
+        val due = outbox.due(now) { id -> changed = true; log("Bandeja de salida: $id lleva más de 7 días sin poder salir: se deja (sigue ⏳ en la app)") }
+        if (due.isNotEmpty() && synchronized(lock) { relays.values.any { it.ws?.open == true } }) {
+            val byNx = contacts.associateBy { it.nx }
+            for (x in due) {
+                if (!running) break
+                val c = byNx[x.nx] ?: continue // aún no es contacto por internet (sin clave de pareja): espera
+                try {
+                    val body = JSONObject().put("t", now).put("w", 0).put("p", x.p).put("n", x.id)
+                    val tok = outbox.myToken
+                    if (tok.isNotEmpty()) body.put("f", tok) // como la app (2967): el sobre de un mensaje nuevo lleva mi token del toque
+                    var ev = sealedEvent(c, body, TTL_MSG_S)
+                    if (ev.optString("content").length > MAX_CONTENT && tok.isNotEmpty()) { body.remove("f"); ev = sealedEvent(c, body, TTL_MSG_S) }
+                    if (ev.optString("content").length > MAX_CONTENT) {
+                        outbox.drop(x.id); changed = true
+                        log("Bandeja de salida: ${x.id} para ${x.nx} es demasiado grande para internet: lo manda la app al abrirse")
+                        continue
+                    }
+                    if (!publishEvent(ev)) break // se cerraron los relés mientras tanto
+                    outbox.published(x.id, ev.optString("id"), now)
+                    log("Bandeja de salida: ${x.id} para ${x.nx} sale por internet sin la app" + if (x.tries > 1) " (intento nº ${x.tries})" else "")
+                } catch (e: Exception) { log("Bandeja de salida: ${x.id} no se pudo subir (${e.javaClass.simpleName})") }
+            }
+        }
+        if (changed) outboxChanged()
+    }
+
+    // Un relé contestó OK a un evento: si es uno de la bandeja, queda a salvo en el buzón (✓) y sale el toque al otro teléfono
+    private fun outboxAccepted(evId: String) {
+        val now = System.currentTimeMillis()
+        val x = outbox.accepted(evId, now) ?: return
+        log("Bandeja de salida: ${x.id} para ${x.nx} quedó en el buzón del relé (✓); falta su ✓✓")
+        if (outbox.wakeDue(x, now)) try { wake(outbox.wakeUrl, x.wake) } catch (e: Throwable) { }
+        outboxChanged()
+    }
+
     // 3192: start/stop sincronizados: la escucha es una por proceso (NetBgHome) y la pueden arrancar a la vez el toque FCM (su hilo),
     // el servicio y la app; así nunca quedan dos hilos escuchando
     @Synchronized fun start() {
@@ -356,6 +422,7 @@ class NetBg(
             }
             for (i in plan.park) park(list[i])
             noteMode(c, plan.listen.map { list[it] }.filter { it.ws?.open == true })
+            try { pumpOutbox(System.currentTimeMillis()) } catch (e: Throwable) { } // 3268: la bandeja de salida
             if (now - lastPing > 60000) { list.forEach { it.ws?.ping() }; lastPing = now }
             synchronized(lock) { if (running && g == gen) try { lock.wait(5000) } catch (e: InterruptedException) { } }
         }
@@ -450,7 +517,10 @@ class NetBg(
         when (m.optString(0)) {
             "AUTH" -> auth(r, m.optString(1))
             "CLOSED" -> if (m.optString(2).startsWith("auth-required")) { /* se resuscribe tras identificarse */ }
-            "OK" -> if (!r.authed && m.optBoolean(2)) { r.authed = true; subscribe(r) }
+            "OK" -> {
+                if (m.optBoolean(2)) outboxAccepted(m.optString(1)) // 3268: ¿era uno de la bandeja de salida?
+                if (!r.authed && m.optBoolean(2)) { r.authed = true; subscribe(r) }
+            }
             "EVENT" -> if (m.optString(1) == SUB) onEvent(m.optJSONObject(2) ?: return)
             // 3204: el relé ya mandó todo lo guardado desde el `since` pedido: si era lo de cuando estuvo soltado, queda al día
             "EOSE" -> if (m.optString(1) == SUB && r.gapAsked && r.ws != null) { r.gapAsked = false; r.gapSince = -1L }
@@ -496,6 +566,10 @@ class NetBg(
             return
         }
         keepForApp(ev.toString())   // 3033: para la app al volver (mensajes, confirmaciones, acciones: lo procesa como si llegara)
+        // 3268: ¿es la confirmación (✓✓ o leído) de algo de la bandeja de salida? Ya llegó: se deja de insistir (la app lo marca al volver)
+        if (outbox.size() > 0) NetOutbox.receiptOf(o.optString("p"))?.let { mid ->
+            if (outbox.confirmed(c.nx, mid)) { log("Bandeja de salida: $mid confirmado por ${c.nx} (✓✓)"); outboxChanged() }
+        }
         val n = o.optString("n")
         val ce = o.optString("ce")
         if (BgInbox.CALL_ID.matches(ce)) onCallEnd(c.nx, ce)
@@ -552,13 +626,20 @@ class NetBg(
 
     // Sella `body` para la pareja y lo sube a los relés abiertos (misma etiqueta y sobre que NetLink.send). false si no hay relé abierto.
     private fun publishSealed(c: Contact, body: JSONObject, ttlSecs: Long): Boolean {
-        val open = synchronized(lock) { relays.values.mapNotNull { it.ws }.filter { it.open } }
-        if (open.isEmpty()) return false
+        if (synchronized(lock) { relays.values.none { it.ws?.open == true } }) return false
+        return publishEvent(sealedEvent(c, body, ttlSecs))
+    }
+    private fun sealedEvent(c: Contact, body: JSONObject, ttlSecs: Long): JSONObject {
         val b64 = seal(c.kraw, me, c.nx, body.toString())
         val tagPub = Secp256k1.hex(Secp256k1.xOnly(tagKey(c.kraw, c.nx, day(0))))
-        val ev = event(randomSk(), KIND, listOf(listOf("p", tagPub), listOf("expiration", (System.currentTimeMillis() / 1000 + ttlSecs).toString())), b64)
+        return event(randomSk(), KIND, listOf(listOf("p", tagPub), listOf("expiration", (System.currentTimeMillis() / 1000 + ttlSecs).toString())), b64)
+    }
+    private fun publishEvent(ev: JSONObject): Boolean {
+        val open = synchronized(lock) { relays.values.mapNotNull { it.ws }.filter { it.open } }
+        if (open.isEmpty()) return false
         val frame = JSONArray(listOf("EVENT", ev)).toString()
-        for (ws in open) try { ws.send(frame) } catch (e: Exception) {}
-        return true
+        var sent = false
+        for (ws in open) try { if (ws.send(frame)) sent = true } catch (e: Exception) {}
+        return sent
     }
 }

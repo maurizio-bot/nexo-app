@@ -1434,6 +1434,21 @@ class NativePhone {
       // 3207: solicitudes de contacto de cerca: la batería acepta sola (como antes del cambio); opts.nearAutoAccept === false la apaga
       simNearAutoAccept: wrap('simNearAutoAccept', (c) => { c.resolve({ on: self.opts.nearAutoAccept !== false }); }),
       netBgDrain: wrap('netBgDrain', (c) => { const ev = self.netBgInbox || [], gaps = self.netBgGaps || {}; self.netBgInbox = []; self.netBgGaps = {}; c.resolve({ events: ev, gaps: gaps }); }), // 3205: gaps = relés que la escucha nativa soltó con datos → desde cuándo
+      // 3268 (fase 3, COLA 29; Kotlin NetOutbox + netOutboxSetImpl): la app deja la lista ENTERA de sus textos pendientes ya cifrados
+      // (reemplaza a la anterior; lo que no cuadra se salta, como NetOutbox.valid). Subirlos a los relés: netbg_mock.pumpOutbox
+      netOutboxSet: wrap('netOutboxSet', (c, a) => {
+        const { validItem } = require('./netbg_mock');
+        const prev = (self.outbox && self.outbox.items) || [];
+        const items = (a.items || []).filter(validItem).slice(0, 100).map((x) => prev.find((y) => y.id === x.id && y.nx === x.nx) || { id: x.id, nx: x.nx, p: x.p, at: x.at || Date.now(), wk: x.wk || '' });
+        self.outbox = { items, f: a.f || '', url: a.url || '' };
+        self.outboxCalls = (self.outboxCalls || 0) + 1;
+        c.resolve({ n: items.length, sent: items.filter((x) => x.okAt).map((x) => x.id) });
+      }),
+      netOutboxDrop: wrap('netOutboxDrop', (c, a) => {
+        if (self.outbox) self.outbox.items = self.outbox.items.filter((x) => x.id !== a.id);
+        (self.outboxDrops = self.outboxDrops || []).push(a.id);
+        c.resolve({});
+      }),
       netBgConfig: wrap('netBgConfig', (c, a) => { self.netBg = a; self.netBgCalls = (self.netBgCalls || 0) + 1; c.resolve({ contacts: (a.contacts || []).length, running: false }); }),
       // 3219 (Kotlin setMutedChats → MutedChats): la app da los chats silenciados [{id, until}] (until ms; 0 = siempre)
       setMutedChats: wrap('setMutedChats', (c, a) => {

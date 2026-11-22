@@ -246,7 +246,7 @@ const _BLE_MESSAGE_METHODS_BASE = {
         var blobFits = function(m) { return blobCandidate(m) && self.net.mailboxFilesOk(nexoId, blobLen(m)); }; // parte 3: por un puente, solo lo pequeño
         blobOnly = !!(self.net && typeof self.net.mailboxFilesOk === 'function' && self.net.mailboxOk(nexoId) && !self.net.canReach(nexoId) && list.some(blobFits));
         if (blobOnly) list = list.filter(blobFits);
-        else if (list.length) { console.log('[BLEInterface] ' + list.length + ' pending para ' + nexoId + ': sin enlace ni ruta, quedan en espera'); self._noteWakePending(nexoId); if (self.relay) self.relay.discover(nexoId); list.forEach(function(m) { try { self._fileCitaFromMsg(nexoId, m); } catch (e) {} }); return []; }
+        else if (list.length) { console.log('[BLEInterface] ' + list.length + ' pending para ' + nexoId + ': sin enlace ni ruta, quedan en espera'); self._noteWakePending(nexoId); try { self._outboxNote(nexoId); } catch (eO) {} if (self.relay) self.relay.discover(nexoId); list.forEach(function(m) { try { self._fileCitaFromMsg(nexoId, m); } catch (e) {} }); return []; }
       }
       // Parte 3 del puente (13-11): sin internet propio (solo por un puente) y sin Bluetooth/Wi-Fi con el contacto, un archivo que NO
       // pasa por el puente (más de GW_FILE_MAX_B64: vídeo, archivo grande) no se lee del disco en cada vuelta ni se intenta: queda ⏳

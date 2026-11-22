@@ -609,6 +609,9 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod fun netBgConfig(call: PluginCall) = netBgConfigImpl(call)
 
     @PluginMethod fun netBgDrain(call: PluginCall) = netBgDrainImpl(call)
+    // 3268 (fase 3, COLA 29): bandeja de salida nativa (los textos pendientes salen por internet aunque la app se duerma)
+    @PluginMethod fun netOutboxSet(call: PluginCall) = netOutboxSetImpl(call)
+    @PluginMethod fun netOutboxDrop(call: PluginCall) = netOutboxDropImpl(call)
 
     @PluginMethod fun setAckKeys(call: PluginCall) = setAckKeysImpl(call)
     @PluginMethod fun setMutedChats(call: PluginCall) = setMutedChatsImpl(call) // 3219: chats silenciados (MutedChats)
