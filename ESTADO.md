@@ -21,6 +21,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-10)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; actualizar al cerrar cada bloque)
+- **22-11 02:02 (México): el arranque del domingo lo hace la sesión nueva `session_011rdCWV93XQikKwJQvQxQKt` («Domingo: auditoría, Bluetooth nativo y pendientes»)**, creada por la sesión «Acceso a archivos del repositorio» (al 95 % de contexto). Esa sesión vieja solo conserva avisos programados (plática diaria 20:37); no hacerle trabajo nuevo.
 - **CIERRE POR CONTEXTO 19-11 00:35 (México) — leer esto primero en la sesión nueva:**
   1. **HALLAZGO CLAVE (3248):** el despertador (toque FCM) NUNCA salía de la app: «[WAKE] toque a …: no salió (Failed to fetch)» en todos
      los toques del S24 (3105). Causa casi segura: el WebView manda una pregunta previa (OPTIONS) por el POST con JSON y el servicio
