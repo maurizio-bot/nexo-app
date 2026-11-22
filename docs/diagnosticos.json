@@ -872,6 +872,14 @@
    "sintoma": "resumen_diario",
    "categoria": "Medición",
    "causa": "SIN FALLO NUEVO. S24: 74 enviados, 74 ✓✓; internet media 1,4 s; Wi-Fi 0,6 s; batería en segundo plano 6,2 %/h en 11,2 h (🔴 4 de AREAS, sigue alta); zombi ×2 (ya apuntados). S23: 37/37 ✓✓; Bluetooth media 4,9 s (5 mensajes), Wi-Fi 2,7 s, internet 1,7 s; segundo plano 2,6 %/h. Katy: 4/4. J Manuel: 27/27 ✓✓, internet media 2,5 s; buzón de archivos recibe a 185 KB/s."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "09:27",
+   "nx": "nx10b6f4ac (Alex Lopez, NX725J): resumen diario del 21-11, build 3116",
+   "sintoma": "resumen_diario",
+   "categoria": "Medición",
+   "causa": "SIN FALLO. 2 enviados, 2 ✓✓; 7 recibidos (3 fotos por el buzón de archivos a 231 KB/s de media); internet listo en 0,5 s; batería en segundo plano 3,2 %/h (en 1,9 h); 2 min con la app a la vista."
   }
  ]
 }
