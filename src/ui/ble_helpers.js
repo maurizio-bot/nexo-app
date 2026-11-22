@@ -772,6 +772,16 @@ export function _attMissDecision(memo, mid, now) {
 // 3003 (diagnóstico automático S24 build 3001, 11-11 03:42): el mismo adjunto sin datos se volvía a cargar del disco (25 MB, 450–750 ms) en
 // CADA vuelta del reenvío (decenas por minuto, para tres contactos) hasta reiniciar la app. Tras un intento fallido se enfría: no se
 // vuelve a leer hasta pasados 5 s, 10 s, 20 s, 40 s y 60 s (tope) del último intento. Mientras tanto el adjunto sigue ⏳ pendiente.
+// COLA 28 (S23→HONOR 20-11 22:31: un mensaje sin ACK dio 3 vueltas y 5 reintentos sin tope): cada vez que un pendiente se SELECCIONA
+// para reenviar se anota; a partir de la 3.ª vez sin ACK espera 15 s·2^(n-3) (tope 5 min) antes de volver a salir. Pura (memo
+// {id:{n,tl}}): devuelve true si TODAVÍA debe esperar; si no, anota el intento y devuelve false. Prueba: reenviotope.js.
+export function _resendThrottle(memo, mid, now) {
+  if (!memo || !mid) return false;
+  var m = memo[mid];
+  if (m && m.n >= 3 && now - m.tl < Math.min(300000, 15000 * Math.pow(2, m.n - 3))) return true;
+  memo[mid] = { n: (m ? m.n : 0) + 1, tl: now };
+  return false;
+}
 export function _attMissCooling(memo, mid, now) {
   var m = memo && memo[mid];
   if (!m || !m.tl) return false;
