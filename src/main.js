@@ -113,6 +113,7 @@ import { welcomeGuide } from './ui/welcome_guide.js'; // #dueño 05-11: guía de
 import { nameGate, loadDisplayName, applyDisplayName } from './ui/display_name.js'; // #dueño 06-11: nombre fijo (pedido 1 vez, no se cambia)
 import { createNotifier } from './ui/notify.js';
 import { isPreviewHidden, loadHidePreview } from './ui/chat_hide_preview.js';
+import { loadApariencia } from './ui/apariencia.js'; // cola 33: color de burbujas y letra elegidos en Ajustes → Apariencia
 import { isMuted, loadMuted } from './ui/chat_mute.js'; // 3219: silenciar un chat o grupo
 import { loadPins } from './ui/chat_pin.js'; // 3219: mensajes fijados arriba del chat
 import { installChatMenu } from './ui/chat_menu.js'; // 3219: opciones del chat (tocar el círculo de la cabecera)
@@ -205,7 +206,7 @@ initPress(); // NEXO Touch (build 2968, dueño 09-11): hundirse/onda/pulso + tic
 initPerf(); // ronda 2808: medición de rendimiento (pasiva: escucha eventos ya existentes)
 // v9.9.52: mensajes sin leer y notificaciones (todas las vías de llegada pasan por _handleIncomingMessage)
 loadHidePreview(); // opción por chat «Ocultar el texto en los avisos»
-loadMuted(); loadPins(); // 3219: chats silenciados (también para la parte nativa) y mensajes fijados
+loadApariencia(); loadMuted(); loadPins(); // 3219: chats silenciados (también para la parte nativa) y mensajes fijados
 var _notifier = createNotifier({
   ble: function() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; },
   // El chat abierto según ble_interface (lo pone openChat y lo quita cualquier cierre del chat)
@@ -292,17 +293,50 @@ function _fitContactName() {
   try {
     var el = document.getElementById('chat-contact-name');
     if (!el || el.tagName !== 'TEXTAREA') return;
+    var cs = window.getComputedStyle ? getComputedStyle(el) : null;
+    // 22-11 (cola 32): con letra al 160 % en 320 px, «Maximiliano» solo ya no cabía en 2 líneas y se cortaba. Si a 2 líneas no cabe,
+    // se baja el tamaño de letra del nombre de 1 en 1 px (mínimo 13 px, legible) hasta que quepa SIN partir ninguna palabra; solo si una
+    // palabra no cabe ni al mínimo se vuelve a partir por letras (CSS: overflow-wrap:anywhere). Antes de medir se deshace lo que puso
+    // la llamada anterior (si el tamaño en línea sigue siendo el nuestro), para que al volver la letra normal el nombre recupere su tamaño.
+    if (el.__fitSize != null) {
+      if (el.style.getPropertyValue('font-size') === el.__fitSize) {
+        if (el.__fitOrig) el.style.setProperty('font-size', el.__fitOrig[0], el.__fitOrig[1]); else el.style.removeProperty('font-size');
+      }
+      el.style.removeProperty('overflow-wrap'); el.__fitSize = null; el.__fitOrig = null;
+    }
     el.style.height = 'auto';
     // 21-11 (Redmi Note 11 Pro 5G con letra grande): el tope era 48 px fijos, pensado para letra normal (2 × 23 px); con la
     // letra del sistema más grande cada línea mide 30–37 px y la segunda salía cortada a la mitad. El tope se mide ahora con
     // la línea REAL del teléfono: 2 líneas completas + relleno.
-    var cs = window.getComputedStyle ? getComputedStyle(el) : null;
-    var lh = cs ? parseFloat(cs.lineHeight) : 0;
-    if (!(lh > 0)) lh = (cs ? parseFloat(cs.fontSize) * 1.15 : 0) || 23;
-    var pad = cs ? (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) : 0;
-    var max = Math.ceil(2 * lh + pad);
+    var medir = function() {
+      var c = window.getComputedStyle ? getComputedStyle(el) : null;
+      var lh = c ? parseFloat(c.lineHeight) : 0;
+      if (!(lh > 0)) lh = (c ? parseFloat(c.fontSize) * 1.15 : 0) || 23;
+      var pad = c ? (parseFloat(c.paddingTop) || 0) + (parseFloat(c.paddingBottom) || 0) : 0;
+      return { lh: lh, pad: pad, max: Math.ceil(2 * lh + pad) };
+    };
+    var m = medir();
     var h = el.scrollHeight || 0;
-    el.style.height = (h ? Math.min(h, max) : Math.ceil(lh + pad)) + 'px';
+    var cabe = function() { var q = medir(); return el.scrollHeight <= q.max + 1 && el.scrollWidth <= el.clientWidth + 1; };
+    var size = cs ? parseFloat(cs.fontSize) : 0;
+    if (h && size > 13 && el.value && el.clientWidth > 0) {
+      el.__fitOrig = [el.style.getPropertyValue('font-size'), el.style.getPropertyPriority('font-size')];
+      el.style.setProperty('overflow-wrap', 'normal', 'important');   // medir sin partir palabras
+      el.style.height = 'auto';
+      if (!cabe()) {
+        var s0 = size;
+        while (size > 13) {
+          size = Math.max(13, size - 1);
+          el.style.setProperty('font-size', size + 'px', 'important'); el.style.height = 'auto';
+          if (cabe()) break;
+        }
+        if (!cabe()) el.style.removeProperty('overflow-wrap');          // ni a 13 px cabe una palabra: se parte por letras
+        el.__fitSize = el.style.getPropertyValue('font-size');
+      } else { el.style.removeProperty('overflow-wrap'); el.__fitOrig = null; }
+      el.style.height = 'auto';
+      m = medir(); h = el.scrollHeight || 0;
+    }
+    el.style.height = (h ? Math.min(h, m.max) : Math.ceil(m.lh + m.pad)) + 'px';
   } catch (e) {}
 }
 ['nexo:ble:linkChange', 'nexo:ble:deviceDisconnected', 'nexo:ble:openChat'].forEach(function(ev) {

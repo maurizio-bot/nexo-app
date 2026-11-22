@@ -17,6 +17,7 @@
   --nx-purple: #a855f7;
   --nx-grad: linear-gradient(135deg, #00c8ff, #a855f7);
   --nx-radius: 18px;
+  --nx-font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif; /* cola 33: solo se usa con html.nx-font-custom (apariencia.js) */
 }
 
 /* ---------- Fondo ---------- */
@@ -417,8 +418,8 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
 .nx-h { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; margin: 0 0 8px; }
 .nx-h .nx-ico { width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--nx-surface-2); border: 1px solid var(--nx-line); box-sizing: border-box; font-size: 15px; flex-shrink: 0; } /* 3140: redondo y neutro, como los botones de Contactos */
 .nx-sub { font-size: 12px; color: var(--nx-muted); margin-bottom: 10px; white-space: pre-line; line-height: 1.45; }
-.nx-btn { width: 100%; padding: 12px; border-radius: 14px; border: 1px solid var(--nx-line); background: var(--nx-surface-2); color: #fff; font-size: 14px; font-weight: 600; margin-bottom: 8px; cursor: pointer; }
-.nx-btn-primary { background: var(--nx-grad); border: none; box-shadow: 0 10px 30px rgba(0, 200, 255, 0.35), 0 4px 12px rgba(168, 85, 247, 0.35); }
+.nx-btn { width: 100%; min-height: 43px; padding: 12px; border-radius: 14px; border: 1px solid var(--nx-line); background: var(--nx-surface-2); color: #fff; font-size: 14px; font-weight: 600; margin-bottom: 8px; cursor: pointer; }
+.nx-btn-primary { background: var(--nx-grad); border: 1px solid transparent; box-shadow: 0 10px 30px rgba(0, 200, 255, 0.35), 0 4px 12px rgba(168, 85, 247, 0.35); }
 .nx-id-card { display: flex; align-items: center; gap: 14px; }
 .nx-id-card .nx-av { width: 58px; height: 58px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; flex-shrink: 0; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08), 0 6px 18px rgba(0, 0, 0, 0.35); } /* 3140: el color lo da .ble-gradient-N (como en Contactos) */
 .nx-id-card .nx-idtxt { font-size: 12px; color: var(--nx-muted); }
@@ -644,3 +645,36 @@ button, input, textarea, select { font-family: inherit; }
 /* Campos de texto: el texto de ayuda (placeholder) que no cabe termina en «…» en vez de cortarse a la mitad */
 input, textarea { text-overflow: ellipsis; }
 #chat-contact-name { text-overflow: clip; }
+
+/* ---------- Ajustes → Apariencia (cola 33, apariencia.js) ----------
+   Todo cuelga de clases en <html> que SOLO pone apariencia.js cuando hay una elección guardada: sin ellas, nada de esto se aplica y las
+   burbujas propias y la letra quedan exactamente como antes. Las variables --burbuja-* las calcula apariencia.js (contraste incluido). */
+html.nx-bub-custom .message.own { background: linear-gradient(135deg, var(--burbuja-1), var(--burbuja-2)) !important; color: var(--burbuja-txt); }
+html.nx-bub-glass .message.own { background: linear-gradient(135deg, var(--burbuja-1a), var(--burbuja-2a)) !important; border-color: var(--burbuja-borde) !important; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+html.nx-bub-custom .message.own .msg-time { color: var(--burbuja-hora) !important; }
+html.nx-bub-custom .message.own .msg-status.status-pending { color: var(--burbuja-pend) !important; }
+html.nx-bub-custom .message.own .msg-status.status-sent, html.nx-bub-custom .message.own .msg-status.status-delivered { color: var(--burbuja-ent) !important; text-shadow: none !important; }
+html.nx-bub-custom .message.own .msg-status.status-read { color: var(--burbuja-leido) !important; text-shadow: none !important; }
+html.nx-bub-custom .message.own .nx-link { color: var(--burbuja-enlace); }
+html.nx-font-custom body, html.nx-font-custom button, html.nx-font-custom input, html.nx-font-custom textarea, html.nx-font-custom select { font-family: var(--nx-font); }
+.apar-prev { display: flex; flex-direction: column; padding: 12px 0 4px; }
+.apar-prev .message { animation: none; }
+.apar-lbl { margin: 14px 0 6px; font-size: 13px; font-weight: 700; color: var(--nx-muted); }
+.apar-seg, .apar-fonts { display: flex; gap: 8px; flex-wrap: wrap; }
+.apar-seg button, .apar-fonts button { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 0 12px; border-radius: 14px; border: 1px solid var(--nx-line); background: var(--nx-surface); color: var(--nx-text); font-size: 14px; }
+.apar-fonts button { flex: 1 1 40%; }
+.apar-seg button.on, .apar-fonts button.on { border-color: var(--nx-cyan); background: rgba(0, 200, 255, 0.14); }
+.apar-pick { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+.apar-k { flex: 0 0 64px; font-size: 13px; color: var(--nx-muted); }
+.apar-sw { display: flex; flex-wrap: wrap; gap: 8px; flex: 1; min-width: 0; }
+.apar-sw button { width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 2px solid transparent; box-shadow: 0 0 0 1px var(--nx-line); }
+.apar-sw button.on { border-color: #fff; }
+.apar-pick input[type=color] { flex: 0 0 44px; width: 44px; height: 44px; padding: 0; border: 1px solid var(--nx-line); border-radius: 12px; background: none; }
+#apar-reset { margin-top: 14px; }
+
+/* ---------- Botones parejos (cola 32, botonesparejos.js) ----------
+   Los de texto con relleno miden igual en todas las pantallas: .nx-btn y .nx-btn-primary 43 px (el primario no tenía borde y salía 2 px más
+   bajo: ahora lleva un borde transparente del mismo grosor; los compactos de una fila, como «Ocultar», subían solo a 35 px) y, en Agregar
+   contactos, los chips de invitar y «Agregar» con la misma altura, letra de 14 px y esquina de 14 px (están en línea en ble_ui.js, que
+   no se toca: por eso !important). */
+#ble-inv-whatsapp, #ble-inv-tiktok, #ble-inv-more, #ble-addid-btn { box-sizing: border-box; min-height: 43px; font-size: 14px !important; border-radius: 14px !important; }

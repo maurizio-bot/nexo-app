@@ -22,6 +22,7 @@ import { readReceiptsOn, setReadReceiptsOn } from './chat_state.js';
 import { t, getLang, setLang, LANGS, langName } from './i18n.js';
 import { attachNexoUnlockGesture } from './nexo_game.js';
 import { perfSectionHtml, renderPerfSection } from './perf.js';
+import { aparienciaCardHtml, aparienciaWire } from './apariencia.js'; // cola 33: Ajustes → Apariencia
 import { welcomeGuide } from './welcome_guide.js'; // #dueño 05-11: «ver la guía de bienvenida otra vez»
 
 // 3218: la ruedita de Ajustes, la de la muestra aprobada por el dueño (SVG de línea, sin colores propios: toma el trazo del botón
@@ -276,6 +277,7 @@ function _openSettings(fromProfile) {
   var SECS = {
     app: [t('set_sec_app', 'Aplicación'), t('set_sec_app_d', 'Actualizaciones, idioma y fondo de pantalla')],
     sec: [t('set_sec_sec', 'Seguridad y privacidad'), t('set_sec_sec_d', 'Bloqueo, capturas y confirmaciones de lectura')],
+    look: [t('set_sec_look', 'Apariencia'), t('set_sec_look_d', 'Color de tus burbujas, estilo y tipo de letra')],
     alerts: [t('set_sec_alerts', 'Avisos y vibración'), t('set_sec_alerts_d', 'Pantalla apagada y vibración al tocar')],
     calls: [t('set_sec_calls', 'Llamadas'), t('set_sec_calls_d', 'Tono de llamada y espejo en videollamadas')],
     net: [t('set_sec_net', 'Conexión e internet'), t('set_sec_net_d', 'Relés públicos, Tor y rendimiento en vivo')],
@@ -295,6 +297,7 @@ function _openSettings(fromProfile) {
     '<div class="nx-set-list">' + [
       ['app', 'M12 3v12m0 0l-4-4m4 4l4-4M5 21h14'],
       ['sec', 'M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z'],
+      ['look', 'M12 3a9 9 0 1 0 0 18c1.5 0 2-1 1.4-2.2-.6-1.2.2-2.3 1.6-2.3H17a4 4 0 0 0 4-4c0-5-4-9.5-9-9.5M7.5 11h.01M10 7.5h.01M14.5 7.5h.01'],
       ['alerts', 'M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9M10 20a2 2 0 0 0 4 0'],
       ['calls', 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2'],
       ['net', 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9s1.3-6.3 3.8-9'],
@@ -316,6 +319,7 @@ function _openSettings(fromProfile) {
       '<button id="nexo-wp-chat" class="nx-btn">' + t('prof_wallpaper_chat', 'Fondo de los chats…') + '</button>' +
       '<button id="nexo-wp-chat-clear" class="nx-link" style="display:none;">' + t('prof_wallpaper_remove', 'Quitar este fondo') + '</button>') +
     '</div>' +
+    '<div class="nx-set-pane" data-sec="look">' + aparienciaCardHtml() + '</div>' +
     '<div class="nx-set-pane" data-sec="sec">' +
     '<div class="nx-card">' + securitySectionHtml() + '</div>' +
     // Build 2835 (pedido del dueño): encender/apagar las confirmaciones de lectura (el ✓✓ azul que mandás)
@@ -423,6 +427,7 @@ function _openSettings(fromProfile) {
     if (listClr) listClr.onclick = function() { clearListWallpaper(); sync(); };
     if (chatClr) chatClr.onclick = function() { clearChatWallpaper(); sync(); };
   })();
+  aparienciaWire(sheet);
   _renderFenixStatus();
   renderSecuritySection();
   _renderNetStatus();
