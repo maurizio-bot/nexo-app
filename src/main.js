@@ -173,6 +173,8 @@ import { bgLimitInstall } from './ui/bg_limit.js'; // 3247: NEXO limitado por el
 try { bgLimitInstall(); } catch (e) {}
 import { phoneSleepInstall } from './ui/phone_sleep.js'; // COLA 22: «tu teléfono duerme a NEXO»
 try { phoneSleepInstall(); } catch (e) {}
+import { silencedInstall } from './ui/silenced.js'; // COLA 22: «tu teléfono silencia a NEXO» (canal de avisos apagado, No molestar)
+try { silencedInstall(); } catch (e) {}
 appSetupUse({ /* [pegamento] */ initializeNexoApp: initializeNexoApp });
 pickersUse({ /* [pegamento] */ _sendAttachment: _sendAttachment, _sendBigFile: _sendBigFile });
 videoSendUse({ /* [pegamento] */ _handleIncomingMessage: _handleIncomingMessage, _sendAttachment: _sendAttachment, _sendFileFor: _sendFileFor, _updateMessageStatus: _updateMessageStatus, _updateMessageStorageStatus: _updateMessageStorageStatus });
