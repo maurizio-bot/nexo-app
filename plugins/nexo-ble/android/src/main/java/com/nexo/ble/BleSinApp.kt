@@ -29,9 +29,9 @@ import org.json.JSONObject
  * BleService con lo guardado (Saved: NEXO ID tal como lo anuncia la app y la clave del código rotativo, cifrados en reposo; el dueño
  * dijo sí a guardarla cifrada el 18-11; nunca se escribe en claro).
  *
- * Relevo con la app: al cargar el plugin (takeOverFromClosed) se llama a stopForApp(): corta los enlaces entrantes ANTES de cerrar el
- * servidor (lección de 3251: si no, el otro se queda escribiendo a un servidor que ya no existe) y la app abre el suyo. Lo guardado
- * en el buzón lo recoge la app al abrir, como siempre. Solo recibe: no escanea ni abre conexiones (eso sigue siendo de la app).
+ * Relevo con la app: al cargar el plugin (takeOverFromClosed) se llama a stopForApp(): esto deja de atender y la app se engancha al
+ * MISMO servidor con los mismos enlaces (3263, GattServerHost: antes se cerraba y se abría otro). Lo guardado en el buzón lo recoge
+ * la app al abrir, como siempre. Solo recibe: no escanea ni abre conexiones (eso sigue siendo de la app).
  */
 class BleSinApp(private val ctx: Context, private val me: String, private val onBluetoothOn: () -> Unit) {
 
@@ -96,15 +96,18 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
     }
 
     private val handler = Handler(Looper.getMainLooper())
-    private var server: BluetoothGattServer? = null
-    private var tx: BluetoothGattCharacteristic? = null
-    private val devices = HashMap<String, BluetoothDevice>()
-    private val notifOn = HashMap<String, Boolean>()
-    private val mtu = HashMap<String, Int>()
+    // 3263 (fase 2): el servidor GATT y lo que se hereda de cada enlace entrante viven en GattServerHost (uno por proceso): al abrirse
+    // la app no se cierra nada, la app se engancha al mismo servidor con los mismos enlaces
+    private val server: BluetoothGattServer? get() = GattServerHost.server
+    private val tx: BluetoothGattCharacteristic? get() = GattServerHost.tx
+    private val devices get() = GattServerHost.connected
+    private val notifOn get() = GattServerHost.notifOn
+    private val mtu get() = GattServerHost.mtu
+    private var attending = false
     private val queues = HashMap<String, ArrayDeque<ByteArray>>()
     private val busy = HashSet<String>()
     // 3262: enlaces entrantes que «tenemos» (solo así se cortan de verdad) y los que quedaron a medias (ver PluginBtState.holdServerLink)
-    private val held = HashSet<String>()
+    private val held get() = GattServerHost.held
     private val halfOpen = HalfOpenPolicy()
     private var btReceiver: BroadcastReceiver? = null
     var stopped = false
@@ -149,49 +152,37 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
     }
 
     private fun openServer(): Boolean {
-        if (server != null) return true
-        // con la app viva en el proceso el servidor es suyo: nunca dos a la vez
+        // con la app viva en el proceso el servidor lo atiende ella: nunca dos a la vez
         if (NexoBlePlugin.live != null || NexoBlePlugin.orphan != null) return false
-        return try {
-            val bm = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager ?: return false
-            val adapter = bm.adapter
-            if (adapter == null || !adapter.isEnabled) return false
-            val srv = bm.openGattServer(ctx, callback) ?: return false
-            val service = BluetoothGattService(NexoBleSpec.NEXO_SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
-            val txc = BluetoothGattCharacteristic(NexoBleSpec.TX_CHARACTERISTIC_UUID,
-                BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ, BluetoothGattCharacteristic.PERMISSION_READ)
-            txc.addDescriptor(BluetoothGattDescriptor(NexoBleSpec.CCCD_UUID, BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE))
-            val rxc = BluetoothGattCharacteristic(NexoBleSpec.RX_CHARACTERISTIC_UUID,
-                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE, BluetoothGattCharacteristic.PERMISSION_WRITE)
-            service.addCharacteristic(txc)
-            service.addCharacteristic(rxc)
-            val added = srv.addService(service)
-            if (!added) { try { srv.close() } catch (e: Throwable) { }; return false }
-            server = srv; tx = txc
-            true
-        } catch (e: Throwable) { Log.w(TAG, "openServer: ${e.javaClass.simpleName} ${e.message}"); false }
+        if (!GattServerHost.open(ctx)) return false
+        GattServerHost.attach(callback, "servicio")
+        attending = true
+        return true
     }
 
-    /** Corta los enlaces entrantes y cierra el servidor (hilo principal). Tras esto no vuelve a abrir. */
+    /** La app toma el relevo (hilo principal): se deja de atender; el servidor y sus enlaces siguen (3263). Tras esto no vuelve a abrir. */
     fun stop(why: String) {
         if (stopped) return
         stopped = true
         if (current === this) current = null
         btReceiver?.let { try { ctx.unregisterReceiver(it) } catch (e: Throwable) { } }
         btReceiver = null
-        val had = server != null
-        closeServer(true)
-        if (had) nlog(ctx, "INFO", "Bluetooth sin la app: fin ($why); recibidos ${core.received} mensaje(s)")
+        val had = attending
+        attending = false
+        GattServerHost.detach(callback)
+        devices.keys.toList().forEach { core.linkClosed(it) }
+        queues.clear(); busy.clear()
+        if (had) nlog(ctx, "INFO", "Bluetooth sin la app: fin ($why); recibidos ${core.received} mensaje(s); ${devices.size} enlace(s) entrante(s) siguen abiertos")
     }
 
-    private fun closeServer(cancelLinks: Boolean) {
-        val srv = server ?: return
-        server = null; tx = null
-        // 3262: solo se cortan los que usan nuestro servicio (los que «tenemos»); cerrar el servidor suelta además lo que tuviéramos
-        if (cancelLinks) devices.filterKeys { it in held }.values.forEach { d -> try { srv.cancelConnection(d) } catch (e: Throwable) { } }
-        try { srv.close() } catch (e: Throwable) { }
-        devices.keys.toList().forEach { core.linkClosed(it) }
-        devices.clear(); notifOn.clear(); mtu.clear(); queues.clear(); busy.clear(); held.clear()
+    // Cierra de verdad (solo con el Bluetooth apagado o al rehacerlo): con la app abriéndose ya NO se cierra (stop)
+    private fun closeServer() {
+        if (GattServerHost.server == null) return
+        val links = devices.keys.toList()
+        attending = false
+        GattServerHost.close()
+        links.forEach { core.linkClosed(it) }
+        queues.clear(); busy.clear()
     }
 
     // Bluetooth apagado: el servidor muere (se suelta); encendido otra vez: se rehace y el servicio vuelve a anunciar
@@ -201,8 +192,8 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
             override fun onReceive(c: Context, intent: Intent) {
                 if (intent.action != BluetoothAdapter.ACTION_STATE_CHANGED || stopped) return
                 when (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
-                    BluetoothAdapter.STATE_OFF -> closeServer(false)
-                    BluetoothAdapter.STATE_ON -> { closeServer(false); if (openServer()) nlog(ctx, "INFO", "Bluetooth sin la app: Bluetooth encendido otra vez, recibiendo"); try { onBluetoothOn() } catch (e: Throwable) { } }
+                    BluetoothAdapter.STATE_OFF -> closeServer()
+                    BluetoothAdapter.STATE_ON -> { closeServer(); if (openServer()) nlog(ctx, "INFO", "Bluetooth sin la app: Bluetooth encendido otra vez, recibiendo"); try { onBluetoothOn() } catch (e: Throwable) { } }
                 }
             }
         }

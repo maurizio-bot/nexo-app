@@ -134,16 +134,25 @@ class NexoBlePlugin : Plugin() {
         // cifrado en reposo (skip). Solo metadatos (nunca el contenido de un mensaje).
         internal const val NATIVE_LOG_FILE = "nexo_native_log.txt"
     }
-    internal var bluetoothGattServer: BluetoothGattServer? = null
-    internal var serverTxCharacteristic: BluetoothGattCharacteristic? = null
-    internal var serverRxCharacteristic: BluetoothGattCharacteristic? = null
-    internal val serverConnectedDevices = ConcurrentHashMap<String, BluetoothDevice>()
-    internal val serverNotificationEnabled = ConcurrentHashMap<String, Boolean>()
+    // 3263 (PRIORIDAD 1, fase 2): el servidor GATT y lo que se hereda de cada enlace entrante (conectados, suscritos, los que
+    // «tenemos») viven en GattServerHost, UNO por proceso: abrir o cerrar la app ya no cierra el servidor ni corta sus enlaces. Los
+    // nombres de siempre siguen valiendo en todo el plugin; apuntan allí.
+    internal var bluetoothGattServer: BluetoothGattServer?
+        get() = GattServerHost.server
+        set(v) { GattServerHost.server = v }
+    internal var serverTxCharacteristic: BluetoothGattCharacteristic?
+        get() = GattServerHost.tx
+        set(v) { GattServerHost.tx = v }
+    internal var serverRxCharacteristic: BluetoothGattCharacteristic?
+        get() = GattServerHost.rx
+        set(v) { GattServerHost.rx = v }
+    internal val serverConnectedDevices: ConcurrentHashMap<String, BluetoothDevice> get() = GattServerHost.connected
+    internal val serverNotificationEnabled: ConcurrentHashMap<String, Boolean> get() = GattServerHost.notifOn
     // 3203 (diagnóstico de Roberto, Motorola edge 40 neo 3087, 17-11): freno a quien entra y sale del servidor GATT sin identificarse
     internal val serverFlap = ServerFlapPolicy()
     // 3262: enlaces ENTRANTES que esta app «tiene» (BluetoothGattServer.connect): solo así cancelConnection los corta de verdad
     // (ver holdServerLink en PluginBtState.kt). Y los que quedaron «a medias» tras un reinicio (HalfOpenPolicy).
-    internal val serverHeld: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+    internal val serverHeld: MutableSet<String> get() = GattServerHost.held
     internal val halfOpen = HalfOpenPolicy()
     internal val gattClients = ConcurrentHashMap<String, BluetoothGatt>()
     internal val clientRxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
@@ -435,6 +444,7 @@ class NexoBlePlugin : Plugin() {
             try { stopScanInternal() } catch (e: Exception) { }
             closedMode = true
             orphan = this
+            GattServerHost.attach(gattServerCallback, "app cerrada") // 3263: sigue atendiendo esta instancia (mismo servidor, mismos enlaces)
             remLog("INFO", "LIFECYCLE", "handleOnDestroy - el Bluetooth sigue recibiendo con la app cerrada")
             return
         }

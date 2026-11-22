@@ -64,8 +64,7 @@ export const BLE_CONNECTION_METHODS = {
     try { if (self.ackSystem && typeof self.ackSystem.upgradeAll === 'function') self.ackSystem.upgradeAll('repaso'); } catch (e) {} // 3080
     // Build 2967 (Fase A, entrega offline): tocar (wake FCM) a los contactos con PENDIENTES, ANTES de la compuerta de abajo
     // (que corta si no hay enlaces vivos — justo el caso offline). El propio tick tiene su freno de 30 s.
-    self._tickWakePending();
-    try { self._pushAckKeysIfChanged(); } catch (e) {} // 16b: claves de firma del ✓✓ nativo al día (contacto nuevo, clave aceptada)
+    self._tickWakePending(); try { self._pushAckKeysIfChanged(); } catch (e) {} // 16b: claves de firma del ✓✓ nativo al día (contacto nuevo, clave aceptada)
     if (self._cameraBlePaused) return;
     if (!self._activeChatDeviceId && self.connectedDevices.size === 0) return;
     self.connectedDevices.forEach(function(device, deviceId) {
@@ -397,6 +396,7 @@ export const BLE_CONNECTION_METHODS = {
           if (self.ackSystem && self.ackSystem.sendSessionSync) self.ackSystem.sendSessionSync(deviceId, nx);
           self._resendPendingMessages(nx);
         }
+        else if (typeof self._sendKx === 'function') self._sendKx(deviceId, true); // 3263 (fase 2, enlaces heredados al abrir la app): sin saber de quién es, se le pregunta «quién eres»
       });
     }).catch(function() {});
   },

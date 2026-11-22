@@ -243,11 +243,18 @@ class NativePhone {
         // otro ve la desconexión y reconecta al servidor nuevo. opts.kotlin3250: el Kotlin de antes cerraba el servidor sin cortarlos;
         // el enlace del otro sigue «conectado» pero apunta al servidor viejo: sus escrituras no llegan y a los ~6 s el nativo las
         // suelta («Write fallo», onWriteDropped). (Los enlaces en que NOSOTROS éramos clientes sí se cerraban bien.)
+        // 3263 (fase 2, GattServerHost): el servidor GATT es uno por proceso y NO se cierra al abrir la app: los enlaces que los demás
+        // abrieron hacia nosotros SIGUEN (con su suscripción) y la instancia nueva los hereda (getConnectedDevices → «Conexión existente
+        // recuperada»). Solo se cierran NUESTROS enlaces de cliente (sus avisos iban a la instancia vieja). opts.kotlin3262: el Kotlin de
+        // la 3251–3262 (cortaba todos y el otro reconectaba al servidor nuevo).
         if (this.opts.kotlin3250 && p.clients.has(meAdv)) {
           p.clients.get(meAdv).stale = true;
           if (p.serverConnected.has(meInit)) { p.serverConnected.delete(meInit); p.serverNotif.delete(meInit); p.emit('onDeviceDisconnected', { deviceId: this.initAddress }); }
-        } else p._dropLinkLater(meAdv, this.address, meInit, this.initAddress);
-        this.clients.delete(norm(p.address)); this.serverConnected.delete(norm(p.initAddress)); this.serverNotif.delete(norm(p.initAddress));
+        } else if (this.opts.kotlin3262) p._dropLinkLater(meAdv, this.address, meInit, this.initAddress);
+        else if (p.serverConnected.has(meInit)) { p.serverConnected.delete(meInit); p.serverNotif.delete(meInit); p.buffers.delete(meInit); p.emit('onDeviceDisconnected', { deviceId: this.initAddress }); }
+        this.clients.delete(norm(p.address));
+        if (this.opts.kotlin3250 || this.opts.kotlin3262) { this.serverConnected.delete(norm(p.initAddress)); this.serverNotif.delete(norm(p.initAddress)); }
+        else this.stats.serverKept = (this.stats.serverKept || 0) + (this.serverConnected.has(norm(p.initAddress)) ? 1 : 0);
       });
       this.pendingQueue.clear(); this.buffers.clear(); this.writeQ = new Map();
       const box = this.bgInbox || []; this.bgInbox = [];

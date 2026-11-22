@@ -191,14 +191,17 @@ private fun NexoBlePlugin.sendDeliveredAckLan(nx: String, info: BgInbox.Info) {
 
 // La app se abre: la instancia anterior (si siguió recibiendo) se retira y lo guardado se entrega a la app
 internal fun NexoBlePlugin.takeOverFromClosed() {
-    // 3254: si el servicio recibía por Bluetooth sin la app (BleSinApp), suelta su servidor GATT (cortando antes sus enlaces) para
-    // que la app abra el suyo; lo que guardó en el buzón se entrega aquí abajo
+    // 3254: si el servicio recibía por Bluetooth sin la app (BleSinApp), deja de atender; lo que guardó en el buzón se entrega aquí abajo
     try { BleSinApp.stopForApp() } catch (e: Throwable) { }
     val old = orphan
     if (old != null && old !== this) {
         orphan = null
         try { old.endClosedMode() } catch (e: Exception) { }
     }
+    // 3263 (fase 2): el servidor GATT que ya estuviera abierto (el del servicio sin la app o el de la instancia anterior) pasa a esta
+    // instancia SIN cerrarse y con sus enlaces: antes se cerraba y se abría otro, y cada vez que el usuario abría NEXO se cortaba el
+    // Bluetooth con todos sus contactos cercanos (o quedaban enlaces a medias)
+    try { if (bluetoothGattServer != null) adoptGattServer("la app se abre") } catch (e: Throwable) { }
     val list = try { inbox().drain() } catch (e: Exception) { emptyList() }
     if (list.isNotEmpty()) remLog("INFO", "FILE_IO", "Con la app cerrada llegaron ${list.size} mensaje(s)/confirmación(es) por Bluetooth")
     val now = System.currentTimeMillis()
@@ -208,18 +211,16 @@ internal fun NexoBlePlugin.takeOverFromClosed() {
     }
 }
 
-// La instancia vieja deja el Bluetooth a la nueva (cierra sus conexiones y su servidor; el anuncio sigue en el servicio)
+// La instancia vieja deja el Bluetooth a la nueva (cierra sus conexiones de cliente; el servidor y el anuncio siguen en el proceso)
 private fun NexoBlePlugin.endClosedMode() {
     closedMode = false
     cleanupAllConnections()
     try { unregisterServerReceivers() } catch (e: Exception) { }
     try { unregisterBluetoothStateReceiver() } catch (e: Exception) { }
-    // 3251 (diagnóstico de Roberto/S24 19-11 08:09; también Zhelowsky 17-11 16:34): cerrar el servidor GATT sin cortar antes los enlaces
-    // que los demás tenían abiertos a él los dejaba «conectados» del otro lado pero apuntando al servidor viejo: sus escrituras fallaban
-    // ~6 s («Write fallo», MTU 23) y a los ~55 s salía un «zombi». Se cortan aquí (cancelConnection): el otro ve la desconexión y
-    // reconecta en ~1 s al servidor que abre la instancia nueva (prueba gattreabre.js).
-    cancelServerLinks("la app se abre: el servidor GATT pasa a la instancia nueva")
-    try { stopGattServer() } catch (e: Exception) { }
+    // 3263 (fase 2): el servidor GATT NO se cierra ni se cortan sus enlaces (antes 3251 los cortaba para que reconectaran al servidor
+    // nuevo): esta instancia solo deja de atender y la nueva se engancha al mismo servidor (GattServerHost). Sus enlaces de CLIENTE sí se
+    // cerraron arriba (sus avisos llegan a esta instancia, que se va).
+    GattServerHost.detach(gattServerCallback)
     writeQueues.clear(); writeQueueProcessing.clear()
     writeQueueTimeouts.forEach { (_, r) -> mainHandler.removeCallbacks(r) }; writeQueueTimeouts.clear()
 }

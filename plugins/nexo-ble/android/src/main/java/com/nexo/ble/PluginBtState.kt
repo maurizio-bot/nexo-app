@@ -158,7 +158,6 @@ internal fun NexoBlePlugin.cleanupAllConnections() {
     writeQueueTimeouts.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
     writeQueueTimeouts.clear()
     negotiatedMtu.clear()
-    serverHeld.clear()
 }
 internal fun NexoBlePlugin.checkBLEStatusImpl(call: PluginCall) {
     remLog("INFO", "PERMISSIONS", "checkBLEStatus")
@@ -226,48 +225,36 @@ internal fun NexoBlePlugin.formatMacForAndroid(mac: String): String? {
 }
 
 internal fun NexoBlePlugin.startGattServer() {
+    // 3263 (fase 2): el servidor es uno por proceso (GattServerHost). Si ya está abierto —lo abrió el servicio sin la app o la
+    // instancia anterior de la app— esta instancia solo se engancha: los enlaces entrantes siguen como estaban.
     if (bluetoothGattServer != null) {
-        remLog("INFO", "GATT_SERVER", "Ya iniciado")
+        if (GattServerHost.attendedBy(gattServerCallback)) remLog("INFO", "GATT_SERVER", "Ya iniciado")
+        else adoptGattServer("ya estaba abierto")
         return
     }
     try {
-        val ctx = activity.applicationContext
-        val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val adapter = bluetoothManager.adapter
-        if (adapter == null || !adapter.isEnabled) {
-            remLog("ERROR", "GATT_SERVER", "Bluetooth no disponible")
+        val ctx = appCtx ?: activity.applicationContext
+        if (!GattServerHost.open(ctx)) {
+            remLog("ERROR", "GATT_SERVER", "Bluetooth no disponible o no se pudo abrir el servidor")
             return
         }
-        bluetoothGattServer = bluetoothManager.openGattServer(ctx, gattServerCallback)
-        val service = android.bluetooth.BluetoothGattService(
-            NexoBleSpec.NEXO_SERVICE_UUID,
-            android.bluetooth.BluetoothGattService.SERVICE_TYPE_PRIMARY
-        )
-        serverTxCharacteristic = BluetoothGattCharacteristic(
-            NexoBleSpec.TX_CHARACTERISTIC_UUID,
-            BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ,
-            BluetoothGattCharacteristic.PERMISSION_READ
-        ).apply {
-            addDescriptor(BluetoothGattDescriptor(
-                NexoBleSpec.CCCD_UUID,
-                BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE
-            ))
-        }
-        serverRxCharacteristic = BluetoothGattCharacteristic(
-            NexoBleSpec.RX_CHARACTERISTIC_UUID,
-            BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
-            BluetoothGattCharacteristic.PERMISSION_WRITE
-        )
-        service.addCharacteristic(serverTxCharacteristic)
-        service.addCharacteristic(serverRxCharacteristic)
-        val success = bluetoothGattServer?.addService(service) ?: false
-        remLog("INFO", "GATT_SERVER", "Iniciado: addService=$success")
-        if (success) {
-            notifyListeners("onServerReady", JSObject().put("ready", true).put("source", "gatt_server_started"))
-        }
+        GattServerHost.attach(gattServerCallback, if (closedMode) "app cerrada" else "app")
+        remLog("INFO", "GATT_SERVER", "Iniciado: addService=true")
+        notifyListeners("onServerReady", JSObject().put("ready", true).put("source", "gatt_server_started"))
     } catch (e: Exception) {
         remLog("ERROR", "GATT_SERVER", "Error: ${e.message}")
     }
+}
+
+// 3263 (fase 2): engancharse al servidor GATT que ya estaba abierto. Hereda los enlaces entrantes con su suscripción y su MTU: el otro
+// teléfono no nota que NEXO se abrió. La app los recoge con getConnectedDevices («Conexión existente recuperada al arrancar»).
+internal fun NexoBlePlugin.adoptGattServer(motivo: String) {
+    val antes = GattServerHost.owner
+    GattServerHost.attach(gattServerCallback, if (closedMode) "app cerrada" else "app")
+    serverConnectedDevices.keys.forEach { mac -> GattServerHost.mtu[mac]?.let { negotiatedMtu[mac] = it } }
+    val suscritos = serverConnectedDevices.keys.count { serverNotificationEnabled[it] == true }
+    remLog("INFO", "GATT_SERVER", "Servidor GATT conservado ($motivo" + (if (antes.isNotEmpty()) "; lo atendía: $antes" else "") + "): ${serverConnectedDevices.size} enlace(s) entrante(s) siguen abiertos, $suscritos suscrito(s)")
+    notifyListeners("onServerReady", JSObject().put("ready", true).put("source", "gatt_server_kept"))
 }
 
 // 3262 (COLA 16, «el nativo lo sigue listando tras disconnectDevice(server)» y el enlace repetido que «vuelve» a los ~63 s; S24↔Austin
@@ -307,12 +294,11 @@ internal fun NexoBlePlugin.cancelServerLinks(motivo: String) {
     devices.values.forEach { d -> try { server.cancelConnection(d) } catch (e: Exception) { } }
 }
 
+// Cierra DE VERDAD el servidor (Bluetooth apagado, cuenta pasada a otro teléfono, limpieza sin permisos). 3263: abrir o cerrar la app
+// ya NO pasa por aquí (ver GattServerHost y endClosedMode).
 internal fun NexoBlePlugin.stopGattServer() {
     try {
-        bluetoothGattServer?.close()
-        bluetoothGattServer = null
-        serverConnectedDevices.clear()
-        serverHeld.clear()
+        GattServerHost.close()
         remLog("INFO", "GATT_SERVER", "Detenido")
     } catch (e: Exception) {
         remLog("WARN", "GATT_SERVER", "Error deteniendo: ${e.message}")
