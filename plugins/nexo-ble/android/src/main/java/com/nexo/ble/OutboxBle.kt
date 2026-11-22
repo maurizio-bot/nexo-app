@@ -109,6 +109,13 @@ class OutboxBle(
         return b.outbox.nxs().filter { it !in linked }.toSet()
     }
 
+    /**
+     * 3280: ¿corre prisa buscar a alguno de esos? Sí si algo suyo aún no lo aceptó ningún relé (sin internet: metro, multitud): entonces
+     * el Bluetooth es el único camino y se le busca seguido y con despertador. Si ya está a salvo en el buzón de internet se le busca
+     * igual, pero más espaciado (OutboxDial).
+     */
+    fun urgent(want: Set<String>): Boolean = want.isNotEmpty() && bg()?.outbox?.unsentNxs()?.any { it in want } == true
+
     /** ¿Queda algo que podría salir por Bluetooth? (para el repaso periódico) */
     fun pending(): Boolean = (bg()?.outbox?.size() ?: 0) > 0
 }

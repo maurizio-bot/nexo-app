@@ -178,6 +178,8 @@ class NetOutbox {
 
     // ---------- 3269: por Bluetooth ----------
     @Synchronized fun nxs(): Set<String> = items.values.map { it.nx }.toSet()
+    /** 3280: contactos con algo que AÚN no aceptó ningún relé (no está a salvo en el buzón de internet): el Bluetooth es su único camino ahora. */
+    @Synchronized fun unsentNxs(): Set<String> = items.values.filter { it.okAt == 0L }.map { it.nx }.toSet()
     /** ¿Hay algo pendiente para ese contacto? */
     @Synchronized fun hasFor(nx: String): Boolean = items.values.any { it.nx == nx }
     /** Lo que toca escribir ahora por un enlace Bluetooth de ese contacto. */

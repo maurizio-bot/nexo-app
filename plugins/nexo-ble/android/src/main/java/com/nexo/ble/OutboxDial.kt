@@ -20,6 +20,14 @@ class OutboxDial(private val now: () -> Long = { System.currentTimeMillis() }) {
         const val MAX_CLIENT_LINKS = 7      // Android atiende ~7 enlaces: no se abre otro por encima de eso
         /** Espera entre escaneos: 20 s, 40 s, 80 s, 160 s y luego cada 5 min (n = escaneos ya hechos para lo que se busca ahora). */
         fun gapMs(n: Int): Long = minOf(300_000L, 20_000L * (1L shl minOf(maxOf(n - 1, 0), 4)))
+        /**
+         * 3280: lo mismo cuando todo lo pendiente ya está a salvo en el buzón de internet (lo aceptó un relé y solo falta que el otro lo
+         * baje): 1, 2, 4, 8 min y luego cada 15 min. Se le sigue buscando por Bluetooth (puede estar al lado y sin internet), pero la
+         * batería manda más: ya tiene otro camino.
+         */
+        fun calmGapMs(n: Int): Long = minOf(900_000L, 3 * gapMs(n))
+        const val WAKE_MIN_MS = 15_000L     // el despertador nunca antes de 15 s
+        const val WAKE_MAX_MS = 300_000L    // ni después de 5 min
     }
 
     private var sig = ""
@@ -27,16 +35,30 @@ class OutboxDial(private val now: () -> Long = { System.currentTimeMillis() }) {
     private var nextAt = 0L
     private val tried = HashMap<String, Long>()
 
-    /** want = contactos con algo pendiente y sin enlace listo. ¿Toca escanear ahora? (si devuelve true, se da por empezado) */
-    @Synchronized fun scanDue(want: Set<String>): Boolean {
+    /**
+     * want = contactos con algo pendiente y sin enlace listo. ¿Toca escanear ahora? (si devuelve true, se da por empezado)
+     * urgent = algo suyo no tiene otro camino (ningún relé lo aceptó): ritmo normal; si no, el calmado (calmGapMs).
+     */
+    @Synchronized fun scanDue(want: Set<String>, urgent: Boolean = true): Boolean {
         if (want.isEmpty()) { sig = ""; scans = 0; nextAt = 0L; return false }
         val t = now()
         val s = want.sorted().joinToString(",")
         if (s != sig) { sig = s; scans = 0; nextAt = t + FIRST_MS } // a alguien nuevo se le busca enseguida
         if (t < nextAt) return false
         scans++
-        nextAt = t + SCAN_MS + gapMs(scans)
+        nextAt = t + SCAN_MS + if (urgent) gapMs(scans) else calmGapMs(scans)
         return true
+    }
+
+    /**
+     * 3280: el DESPERTADOR. Con el teléfono dormido del todo los repasos no corren (el reloj del proceso se para): para que el próximo
+     * escaneo ocurra hace falta una alarma. Devuelve en cuánto ponerla (ms), o -1 si no hace falta: nada que buscar, o lo pendiente ya
+     * está a salvo en el buzón de internet (entonces basta la alarma de vigilancia de cada 15 min, que también repasa la bandeja).
+     */
+    @Synchronized fun wakeInMs(want: Set<String>, urgent: Boolean): Long {
+        if (want.isEmpty() || !urgent) return -1L
+        if (sig.isEmpty()) return WAKE_MIN_MS
+        return (nextAt - now()).coerceIn(WAKE_MIN_MS, WAKE_MAX_MS)
     }
 
     /**

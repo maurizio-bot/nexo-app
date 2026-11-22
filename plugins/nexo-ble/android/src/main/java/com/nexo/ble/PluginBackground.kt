@@ -369,13 +369,22 @@ internal fun NexoBlePlugin.outboxBleTick() {
     }
     mainHandler.postDelayed(run, 2_000L)
 }
+// 3280: sonó el despertador (OutboxWake; hilo principal): un repaso YA y, si el repaso periódico se había parado, vuelve a andar
+internal fun NexoBlePlugin.outboxKick() {
+    if (!(appInBackground || closedMode) || !outBle().pending()) { appCtx?.let { OutboxWake.cancel(it) }; return }
+    try { outBle().pump() } catch (e: Throwable) { }
+    try { outboxDialStep() } catch (e: Throwable) { }
+    outboxBleTick()
+}
 // 3271 (fase 3: conexiones salientes): para quien tiene algo pendiente y ningún enlace listo, el nativo lo busca (escaneo corto y
 // filtrado, lo único que Android entrega con la pantalla apagada) y conecta él. El plan (cuándo, a quién, tope) es OutboxDial (JVM).
 internal fun NexoBlePlugin.outboxDialStep() {
-    if (!(appInBackground || closedMode)) return
+    if (!(appInBackground || closedMode)) { appCtx?.let { OutboxWake.cancel(it) }; return }
     val want = outBle().wanting()
-    if (want.isEmpty()) { outDial.scanDue(want); return }
+    if (want.isEmpty()) { outDial.scanDue(want); appCtx?.let { OutboxWake.cancel(it) }; return }
     val ctx = appCtx ?: return
+    // 3280: ¿corre prisa? (algo sin otro camino: ningún relé lo aceptó). Entonces ritmo normal y despertador para el próximo escaneo
+    val urgent = outBle().urgent(want)
     val adapter = (ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager)?.adapter ?: return
     if (!adapter.isEnabled) return
     val busy = { mac: String -> gattClients.containsKey(mac) || clientConnectionStates.containsKey(mac) || serverConnectedDevices.containsKey(mac) }
@@ -391,7 +400,9 @@ internal fun NexoBlePlugin.outboxDialStep() {
         } catch (e: Throwable) { nlog()?.add("WARN", "BANDEJA", "no se pudo abrir el enlace con $nx (${e.javaClass.simpleName})") }
     }
     val now = System.currentTimeMillis()
-    if (now < outScanUntil || !outDial.scanDue(want)) return
+    val scanNow = now >= outScanUntil && outDial.scanDue(want, urgent)
+    OutboxWake.set(ctx, outDial.wakeInMs(want, urgent)) // con el teléfono dormido del todo este repaso no corre solo: que lo despierte la alarma
+    if (!scanNow) return
     val granted = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) isGranted(ctx, android.Manifest.permission.BLUETOOTH_SCAN)
         else isGranted(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION)
     if (!granted || bluetoothScanner != null) return // sin permiso, o ya hay un escaneo en marcha (el de la app): sus resultados valen igual

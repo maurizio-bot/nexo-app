@@ -10,10 +10,16 @@ import android.bluetooth.BluetoothGattServerCallback
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.le.BluetoothLeScanner
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -31,7 +37,11 @@ import org.json.JSONObject
  *
  * Relevo con la app: al cargar el plugin (takeOverFromClosed) se llama a stopForApp(): esto deja de atender y la app se engancha al
  * MISMO servidor con los mismos enlaces (3263, GattServerHost: antes se cerraba y se abría otro). Lo guardado en el buzón lo recoge
- * la app al abrir, como siempre. Solo recibe: no escanea ni abre conexiones (eso sigue siendo de la app).
+ * la app al abrir, como siempre.
+ *
+ * 3280 (remate de la fase 3): ya no solo recibe. Si la bandeja de salida tiene algo para un contacto sin enlace (NEXO volvió sola con
+ * mensajes pendientes y los dos teléfonos duermen), lo BUSCA (escaneo corto y filtrado, plan de OutboxDial; lo reconoce por su código
+ * rotativo, OutboxRid) y ABRE el enlace (SinAppLinks); al abrirse la app esos enlaces se cierran y ella abre los suyos.
  */
 class BleSinApp(private val ctx: Context, private val me: String, private val onBluetoothOn: () -> Unit) {
 
@@ -116,7 +126,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
 
     private fun norm(addr: String) = addr.replace(":", "").lowercase()
 
-    private val core = SinAppCore(me, object : SinAppCore.Sink {
+    private val core: SinAppCore = SinAppCore(me, object : SinAppCore.Sink {
         override fun send(link: String, json: String) { enqueue(link, json) }
         override fun store(link: String, json: String): Boolean {
             // el teléfono despierto unos segundos para guardar, confirmar y avisar (como rxWake de la app en segundo plano)
@@ -124,7 +134,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
                 (ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "nexo:bt-sinapp")
                     ?.apply { setReferenceCounted(false) }?.acquire(8000L)
             } catch (e: Throwable) { }
-            val dev = devices[link]?.address ?: link
+            val dev = devices[link]?.address ?: links.addressOf(link) ?: link
             return try { inbox.add(dev, json) } catch (e: Throwable) { false }
         }
         override fun notify(info: BgInbox.Info, only: Boolean) {
@@ -144,11 +154,110 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
     })
 
     // 3269: la bandeja de salida por Bluetooth SIN la app: por los enlaces entrantes de este servidor (quien se conecta y habla)
-    private val outBle = OutboxBle({ me }, { NetBgHome.peek() }, { NexoBlePlugin.ackKeys[it] }, object : OutboxBle.Link {
-        override fun ready(mac: String) = devices[mac] != null && notifOn[mac] == true
+    private val outBle: OutboxBle = OutboxBle({ me }, { NetBgHome.peek() }, { NexoBlePlugin.ackKeys[it] }, object : OutboxBle.Link {
+        override fun ready(mac: String) = if (SinAppLinks.isClient(mac)) links.ready(mac) else devices[mac] != null && notifOn[mac] == true
         override fun send(mac: String, json: String) = enqueue(mac, json)
         override fun log(msg: String) = nlog(ctx, "INFO", msg)
     })
+
+    // ---- 3280: el servicio sin la app también ABRE enlaces para lo pendiente de la bandeja ----
+    private val links: SinAppLinks = SinAppLinks(ctx, handler, object : SinAppLinks.Host {
+        override fun ready(link: String, nx: String) { outBle.seed(link, nx); try { outBle.pump() } catch (e: Throwable) { } }
+        override fun bytes(link: String, value: ByteArray) {
+            if (stopped) return
+            try { core.onBytes(link, value) } catch (e: Throwable) { nlog(ctx, "WARN", "trozo sin procesar (${e.javaClass.simpleName})") }
+        }
+        override fun closed(link: String) { outBle.closed(link); core.linkClosed(link) }
+        override fun log(level: String, msg: String) = nlog(ctx, level, msg)
+    })
+    private val outDial = OutboxDial()
+    private val outRid = OutboxRid()
+    private val seen = HashMap<String, Pair<String, Long>>()   // NEXO ID → (dirección, cuándo se le vio)
+    private val scanned = HashMap<String, BluetoothDevice>()
+    private var scanUntil = 0L
+    private var scanner: BluetoothLeScanner? = null
+
+    private val scanCb = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult?) {
+            val dev = result?.device ?: return
+            if (result.rssi < NexoBlePlugin.MIN_RSSI) return
+            val md = result.scanRecord?.manufacturerSpecificData ?: return
+            var adv: String? = null
+            for (i in 0 until md.size()) { adv = AdvertisedId.fromManufacturerData(md.valueAt(i)); if (adv != null) break }
+            val said = adv ?: return
+            val mac = norm(dev.address)
+            handler.post {
+                if (stopped) return@post
+                // solo interesa quien tiene algo pendiente: lo anunciado es casi siempre su código rotativo (OutboxRid)
+                val ob = NetBgHome.peek()?.outbox ?: return@post
+                val nx = outRid.resolve(said, ob.ridKeys(), ob.ridEpochS) ?: return@post
+                if (seen.size > 200) { seen.clear(); scanned.clear() }
+                seen[nx] = mac to System.currentTimeMillis(); scanned[mac] = dev
+            }
+        }
+    }
+
+    private fun canScan(): Boolean = try {
+        val p = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) android.Manifest.permission.BLUETOOTH_SCAN else android.Manifest.permission.ACCESS_FINE_LOCATION
+        ctx.checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
+    } catch (e: Throwable) { false }
+
+    private fun stopScan() {
+        val sc = scanner ?: return
+        scanner = null; scanUntil = 0L
+        try { sc.stopScan(scanCb) } catch (e: Throwable) { }
+    }
+
+    // Para quien tiene algo pendiente y ningún enlace listo: conectar con quien ya se vio y, cuando toca, otro escaneo corto y filtrado
+    // (solo anuncios de NEXO: lo único que Android entrega con la pantalla apagada). El plan es OutboxDial, el mismo que con la app dormida.
+    private fun dialStep() {
+        val want = outBle.wanting()
+        if (want.isEmpty()) { outDial.scanDue(want); OutboxWake.cancel(ctx); return }
+        val adapter = try { (ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter } catch (e: Throwable) { null } ?: return
+        if (!adapter.isEnabled) return
+        val urgent = outBle.urgent(want)
+        for ((nx, mac) in outDial.pick(want, HashMap(seen), links.count()) { m -> links.has(m) || devices.containsKey(m) }) {
+            val dev = scanned[mac] ?: continue
+            if (links.connect(nx, mac, dev)) nlog(ctx, "INFO", "Bandeja de salida: hay mensajes pendientes para $nx y está cerca: el teléfono abre el enlace Bluetooth sin la app")
+            else nlog(ctx, "WARN", "Bandeja de salida: no se pudo abrir el enlace con $nx")
+        }
+        val now = System.currentTimeMillis()
+        val scanNow = now >= scanUntil && outDial.scanDue(want, urgent)
+        OutboxWake.set(ctx, outDial.wakeInMs(want, urgent)) // con el teléfono dormido del todo el repaso no corre solo: que lo despierte la alarma
+        if (!scanNow || !canScan()) return
+        try {
+            val sc = adapter.bluetoothLeScanner ?: return
+            val filters = listOf(ScanFilter.Builder().setManufacturerData(NexoBlePlugin.MANUFACTURER_ID,
+                byteArrayOf(NexoBlePlugin.NEXO_MAGIC_HIGH, NexoBlePlugin.NEXO_MAGIC_LOW), byteArrayOf(0xFF.toByte(), 0xFF.toByte())).build())
+            sc.startScan(filters, ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), scanCb)
+            scanner = sc
+            scanUntil = now + OutboxDial.SCAN_MS
+            handler.postDelayed({
+                stopScan()
+                if (!stopped) try { dialStep() } catch (e: Throwable) { } // lo que se vio en este escaneo: a conectar
+            }, OutboxDial.SCAN_MS)
+        } catch (e: Throwable) { nlog(ctx, "WARN", "Bandeja de salida: no se pudo buscar por Bluetooth (${e.javaClass.simpleName})") }
+    }
+
+    // Repaso de la bandeja por Bluetooth: cada 10 s mientras quede algo (los enlaces que hablan la mueven al momento: OutboxBle.heard)
+    private val outTick = object : Runnable {
+        override fun run() {
+            if (stopped) return
+            var pending = false
+            try {
+                pending = outBle.pending()
+                if (pending) { outBle.pump(); dialStep() } else OutboxWake.cancel(ctx)
+                links.closeIdle { nx -> NetBgHome.peek()?.outbox?.hasFor(nx) == true }
+            } catch (e: Throwable) { }
+            handler.postDelayed(this, if (pending) 10_000L else 30_000L)
+        }
+    }
+    /** Sonó el despertador de la bandeja (OutboxWake) o la alarma de vigilancia: un repaso YA (hilo principal). */
+    fun outboxKick() {
+        if (stopped) return
+        handler.removeCallbacks(outTick)
+        outTick.run()
+    }
 
     /** Abre el servidor GATT (hilo principal). Devuelve si quedó abierto. */
     fun start(why: String): Boolean {
@@ -156,6 +265,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
         current = this
         watchBluetooth()
         val ok = openServer()
+        handler.removeCallbacks(outTick); handler.postDelayed(outTick, 3_000L) // 3280: la bandeja de salida (espera a que cargue lo guardado)
         // 3264 (J Manuel 21-11: «no se pudo abrir el servidor… no se recibe hasta abrir NEXO» ×3 con el Bluetooth APAGADO): eso era falso,
         // al encenderlo se abre solo (watchBluetooth). Se dice lo que pasa.
         val off = !ok && try { (ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter?.isEnabled != true } catch (e: Throwable) { false }
@@ -183,6 +293,10 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
         btReceiver = null
         val had = attending
         attending = false
+        // 3280: lo que abrió el servicio se cierra (la app abre sus propios enlaces) y se deja de buscar
+        handler.removeCallbacks(outTick); stopScan()
+        try { links.closeAll(why) } catch (e: Throwable) { }
+        try { OutboxWake.cancel(ctx) } catch (e: Throwable) { }
         GattServerHost.detach(callback)
         devices.keys.toList().forEach { core.linkClosed(it) }
         queues.clear(); busy.clear()
@@ -206,7 +320,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
             override fun onReceive(c: Context, intent: Intent) {
                 if (intent.action != BluetoothAdapter.ACTION_STATE_CHANGED || stopped) return
                 when (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
-                    BluetoothAdapter.STATE_OFF -> closeServer()
+                    BluetoothAdapter.STATE_OFF -> { closeServer(); stopScan(); try { links.closeAll("el Bluetooth se apagó") } catch (e: Throwable) { } }
                     BluetoothAdapter.STATE_ON -> { closeServer(); if (openServer()) nlog(ctx, "INFO", "Bluetooth sin la app: Bluetooth encendido otra vez, recibiendo"); try { onBluetoothOn() } catch (e: Throwable) { } }
                 }
             }
@@ -235,6 +349,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
 
     // ---- envío (pong, tarjeta, confirmaciones): una notificación detrás de otra por enlace ----
     private fun enqueue(link: String, json: String): Boolean {
+        if (SinAppLinks.isClient(link)) return links.send(link, json) // 3280: por un enlace que abrió el servicio se ESCRIBE (no se notifica)
         val size = ((mtu[link] ?: 23) - 3).coerceIn(20, 512)
         val q = queues.getOrPut(link) { ArrayDeque() }
         val parts = Utf8Split.split(json, size)

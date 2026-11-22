@@ -754,7 +754,10 @@ class NativePhone {
     const now = Date.now(), sig = Array.from(want).sort().join(',');
     const d = (this._dial && this._dial.sig === sig) ? this._dial : (this._dial = { sig, scans: 0, nextAt: now + 3000, tried: (this._dial && this._dial.tried) || new Map() });
     if (now < d.nextAt) return;
-    d.scans++; d.nextAt = now + 4000 + Math.min(300000, 20000 * Math.pow(2, Math.min(Math.max(d.scans - 1, 0), 4))); // OutboxDial.gapMs
+    // OutboxDial.gapMs; 3280: si todo lo de esos contactos ya lo aceptó un relé (a salvo en el buzón de internet), el ritmo calmado (×3, tope 15 min)
+    const urgent = ((this.outbox && this.outbox.items) || []).some((x) => want.has(x.nx) && !x.okAt);
+    const gap = Math.min(300000, 20000 * Math.pow(2, Math.min(Math.max(d.scans, 0), 4)));
+    d.scans++; d.nextAt = now + 4000 + (urgent ? gap : Math.min(900000, 3 * gap));
     this.stats.outboxScans = (this.stats.outboxScans || 0) + 1;
     // escaneo filtrado de 4 s (solo anuncios de NEXO: lo que Android entrega con la pantalla apagada) y a conectar con quien se vio
     setTimeout(() => {
