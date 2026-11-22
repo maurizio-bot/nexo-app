@@ -330,7 +330,7 @@ export class Calls {
   _peerToVideo(c) { // el otro pasó la llamada a vídeo
     if (c.video || !c.media || typeof c.media.enableVideo !== 'function') return;
     c.video = true; c.cameraOff = true;
-    if (this.lane === 1) _pipActive(true);
+    if (this.lane === 1 && this.call === c && c.state === 'active') _pipActive(true); // 3282: solo con ESA llamada viva (un aviso tardío, tras colgar, dejaba la marca puesta)
     console.log('[CALL] ' + c.nx + ' pasó la llamada a vídeo (mi cámara, apagada hasta que la encienda)');
     c.media.enableVideo(false);
   }

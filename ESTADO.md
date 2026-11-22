@@ -40,6 +40,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   291 JVM, tipos `kotlin-android`. Sim nueva `bandejafoto.js` (contraprueba `--sin-archivos`); JVM `OutboxRidTest`, `SinAppDialTest`, `NetOutboxFilesTest`.
   Lo de la auditoría final, apuntado en el privado (puntos 8–11). Límites: > 1 MB, vídeo HD y Jump los sigue mandando la app; la foto por Bluetooth desde el
   nativo NO (solo su aviso, ya subidos los trozos); `BleSinApp` abriendo enlaces no tiene modelo en la sim (JVM + prueba del dueño g).
+  **3282 MINIATURA SIN VIDEOLLAMADA (dueño 22-11, con la 3117: «en un chat deslizo hacia arriba y crea la miniatura»):** el gesto lo decide UNA marca del
+  teléfono que podía quedarse puesta sin videollamada. Ahora dice la verdad (`call_pip.pipWanted()`, se corrige en los dos sentidos en cada cambio de
+  llamada/foco/arranque; una llamada de VOZ nunca la deja puesta) y el nativo la quita al terminar el audio y no entra en miniatura sin llamada
+  (`BleService.pipOnLeave`, `pipAutoEnter`). Reproducido con la build anterior (`miniaturas.js --nativo-viejo`: fase g FALLA) y pasa con el arreglo.
 - **Fases del Bluetooth en el servicio:** 1 publicada (3113) · 2 publicada (3117) · 3 y 4 hechas y probadas en sim, van en la 3119. Lo más pesado de programar ya está.
 - **PENDIENTES en orden (incluirlos en la 3119, dueño 22-11):** (1) HECHO (3279–3281); **SIGUIENTE →** (2) modo vagón / multitud (EDC): probar fase 4 con `multitud.js`; (3) COLA 23 entrega con app cerrada y pantalla apagada
   (a veces no suena); (4) llamadas: 17 mensaje atorado durante una videollamada, 18 hueco ~25 s al cambiar de red, 25 eco en grupo; (5) Wi-Fi Direct: «cancelar»
@@ -49,7 +53,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **PRUEBAS DEL DUEÑO con la 3119:** (a) modo avión, escribir, bloquear, quitar modo avión SIN abrir NEXO → llega y ✓✓; (b) sin internet los dos, escribir lejos,
   bloquear, acercarse → llega sin abrir NEXO; (c) videollamada → miniatura ↔ app varias veces, Ajustes y otras apps: sin chat en la ventanita, la mini responde;
   (d) en miniatura YouTube con sonido: suenan las dos, la imagen sigue; teclas = voz (volumen de llamada), multimedia = el vídeo; «Copiar diagnóstico» al terminar
-  (buscar «[CALL] Salida de sonido», «[CALL] Miniatura», «LIFECYCLE»); (e) fase 4 con mucha gente cerca; (f) mandar una FOTO y bloquear el teléfono en el acto
+  (buscar «[CALL] Salida de sonido», «[CALL] Miniatura», «LIFECYCLE»); (c2) tras una videollamada y también con una llamada de VOZ en curso: en un chat,
+  deslizar hacia arriba → la app va a segundo plano, SIN miniatura («[PIP] marca … quitada»); (e) fase 4 con mucha gente cerca; (f) mandar una FOTO y bloquear el teléfono en el acto
   (y otra en modo avión → bloquear → quitar modo avión): llega sin abrir NEXO («Bandeja de salida: … trozo(s) ya están en los relés sin la app»); (g) escribir
   sin internet a alguien lejos, REINICIAR el teléfono, desbloquear SIN abrir NEXO y acercarse al otro (los dos bloqueados): llega («[BT_SINAPP] Bandeja de
   salida: hay mensajes pendientes … abre el enlace»). DECISIÓN tomada por Claude (el dueño puede cambiarla): lo que YA está en el buzón de internet se busca

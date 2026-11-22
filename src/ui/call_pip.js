@@ -15,6 +15,15 @@
  *     el chat apretado en la ventanita;
  *   - la mini flotante se abre por la POSICIÓN del toque aunque el clic no llegue a la pantalla de la llamada.
  * Cada paso queda en el registro ([CALL] Miniatura…) y lo raro manda un diagnóstico automático («miniatura»).
+ *
+ * 3282 (dueño 22-11: «si estoy en un chat y deslizo hacia arriba, en lugar de quedarse en segundo plano aplica lo que aplicaría en una
+ * videollamada y crea la miniatura… que no haya conflicto entre si hay o no videollamada con lo que hace el gesto»). Lo que decide el
+ * gesto es UNA marca del teléfono («al irse, pasar a miniatura»), que la llamada ponía y quitaba con avisos sueltos (al activarse, al
+ * pasar a vídeo, al colgar): bastaba que uno llegara tarde, o que la marca se pusiera sin llamada viva, para que quedara puesta y el
+ * gesto metiera el chat en la ventanita. Ahora la marca dice SIEMPRE la verdad: pipWanted() = «hay una videollamada viva AHORA» (la
+ * 1-a-1 activa con vídeo, o la de grupo ya empezada con vídeo); en cada cambio de cualquier llamada, al volver a verse y al arrancar
+ * se compara con lo que tiene el teléfono y se corrige en los DOS sentidos (se quita si sobra, se pone si falta). Una llamada de voz
+ * nunca la deja puesta. El teléfono, además, la quita solo al terminar el audio de la llamada y no entra en miniatura sin llamada.
  * calls_ui.js lo arranca con initCallPip({ calls, syncSplit, autoHide }).
  */
 import { restoreCall } from './call_bar.js';
@@ -31,6 +40,13 @@ function _showable() {
   return !!(document.getElementById('nexo-gcall-screen') || document.getElementById('nexo-call2-screen'));
 }
 function _liveVideo() { var st = _st(); return !!(st && st.video && st.state === 'active'); }
+function _gc() { try { var b = window.bleInterface; return (b && b.gcall && b.gcall.gc) || null; } catch (e) { return null; } }
+/** 3282: ¿hay AHORA una videollamada viva? Es lo único que decide si el gesto de irse de la app pasa a la miniatura. */
+export function pipWanted() {
+  if (_liveVideo()) return true;
+  var g = _gc();
+  return !!(g && g.startedAt && g.state !== 'ended' && (g.video || g.cameraOn)); // i18n-ok: código
+}
 function _what() { var st = _st(); return st ? (st.video ? 'videollamada ' : 'llamada de voz ') + st.state : document.getElementById('nexo-gcall-screen') ? 'llamada de grupo' : 'sin llamada'; } // i18n-ok: registro
 function _odd(info) { var now = Date.now(); if (now - _saidAt < 60000) return; _saidAt = now; try { window.dispatchEvent(new CustomEvent('nexo:diag:symptom', { detail: { kind: 'miniatura', info: info } })); } catch (e) {} }
 
@@ -80,8 +96,16 @@ export function pipSync(why, delay) {
         _odd('aviso perdido: ' + (r.pip ? 'entrar' : 'salir'));
       }
       pipApply(r.pip, why);
-      // la marca «pasar a miniatura al irse» quedó puesta sin llamada (la app se rehízo): fuera, o al irse saldría el chat en la ventanita
-      if (!r.pip && r.wanted && !_showable()) _noCall('marca vieja');
+      // 3282: la marca «pasar a miniatura al irse» tiene que decir la verdad. Puesta sin videollamada viva (quedó de antes, llegó un
+      // aviso tarde, hay solo una llamada de voz): fuera, o el gesto de irse metería el chat en la ventanita. Y si falta con la
+      // videollamada viva (el teléfono la quitó al ponerla en espera), se vuelve a poner.
+      var want = pipWanted();
+      if (!r.pip && typeof r.wanted === 'boolean' && r.wanted !== want) {
+        console.warn('[CALL] Miniatura: la marca «al irse, pasar a miniatura» estaba ' + (r.wanted ? 'PUESTA sin videollamada viva' : 'QUITADA con la videollamada viva') + ' (' + why + ', ' + _what() + '): se corrige'); // i18n-ok: registro
+        if (r.wanted) _odd('marca de miniatura sin videollamada'); // i18n-ok: diagnóstico
+        var p2 = _plug();
+        try { if (p2 && typeof p2.setPipActive === 'function') p2.setPipActive({ on: want }); } catch (e) {}
+      }
     }).catch(function() {});
   }, delay == null ? 300 : delay);
 }
@@ -128,6 +152,12 @@ export function initCallPip(deps) {
     if (!inside(e.clientX, e.clientY) || !inside(d.x, d.y) || Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 16 || Date.now() - d.at > 700) return;
     setTimeout(function() { if (el.isConnected && el.classList.contains('nc-appmini')) miniOpen(el, 'toque que no llegó a la pantalla de la llamada'); }, 350); // i18n-ok: registro
   }, true);
+  // 3282: cada cambio de una llamada (empieza, pasa a vídeo, en espera, termina; también la de grupo) → la marca al día. Una sola
+  // pregunta al teléfono por tanda de avisos (si ya hay una en camino no se aplaza: los avisos seguidos no la dejan sin hacer)
+  var markT = null;
+  var markSoon = function() { if (markT) return; markT = setTimeout(function() { markT = null; pipSync('cambio en la llamada', 0); }, 400); };
+  window.addEventListener('nexo:call', markSoon);
+  window.addEventListener('nexo:gcall', markSoon);
   // Al arrancar la app no hay llamada: si el nativo aún cree que sí (la app se rehízo por debajo), se le quita
   setTimeout(function() { pipSync('arranque', 0); }, 4000);
 }

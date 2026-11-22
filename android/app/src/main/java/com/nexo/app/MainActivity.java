@@ -94,7 +94,7 @@ public class MainActivity extends BridgeActivity {
     try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
           && getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
-          && com.nexo.ble.BleService.getPipVideo()) {
+          && com.nexo.ble.BleService.pipOnLeave()) { // 3282: marca puesta Y llamada con audio en marcha (la marca sola podía ser vieja)
         android.app.PictureInPictureParams params = new android.app.PictureInPictureParams.Builder()
             .setAspectRatio(new android.util.Rational(9, 16)).build();
         enterPictureInPictureMode(params);

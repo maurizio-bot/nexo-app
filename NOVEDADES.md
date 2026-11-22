@@ -16,7 +16,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Sin internet: si tu contacto aparece cerca por Bluetooth, le llega sin abrir NEXO, incluso tras reiniciar el teléfono.
 - Ajustes → Apariencia: color y estilo de tus burbujas y tipo de letra.
 - Fondo propio en chats, llamadas, Perfil y Ajustes: deja el dedo en un espacio libre.
-- Videollamada en miniatura: sigue con otras apps y su sonido ya no la corta.
+- Miniatura de videollamada: sigue con otras apps y ya no sale sin videollamada.
 </es-419>
 <!-- /APK -->
 

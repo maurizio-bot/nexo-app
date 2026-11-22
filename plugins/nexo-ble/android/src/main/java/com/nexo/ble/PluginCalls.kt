@@ -62,6 +62,9 @@ internal fun NexoBlePlugin.callAudioImpl(call: PluginCall) {
             callScreen(false, false)
             callFgs = callForeground(false)
             callFocus(am, false)
+            // 3282: sin audio de llamada no hay videollamada: la marca «al irse, pasar a miniatura» se quita aquí aunque la página no lo
+            // haya pedido (un aviso perdido o tardío la dejaba puesta y el gesto de irse metía el chat en la ventanita)
+            if (BleService.pipVideo) { BleService.pipVideo = false; pipAutoEnter(false); remLog("WARN", "PIP", "terminó el audio de la llamada con la marca de miniatura puesta: se quita") }
         }
         val out = JSObject().put("mode", am.mode).put("fgs", callFgs).put("focus", callFocusState)
         @Suppress("DEPRECATION")
@@ -120,20 +123,9 @@ internal fun NexoBlePlugin.screenShareStopImpl(call: PluginCall) {
 // (ya corre el servicio en primer plano de la llamada). Al colgar, el JS lo apaga.
 internal fun NexoBlePlugin.setPipActiveImpl(call: PluginCall) {
     val on = call.getBoolean("on", false) ?: false
+    if (on != BleService.pipVideo) remLog("INFO", "PIP", "marca «al irse, pasar a miniatura»: " + (if (on) "puesta" else "quitada") + (if (on && !BleService.inCall) " (aún sin audio de llamada)" else ""))
     BleService.pipVideo = on
-    // 3273: con los gestos de Android 12+ el aviso «el usuario se va» (onUserLeaveHint) no siempre llega y la videollamada se quedaba
-    // atrás, pausada, en vez de pasar a la miniatura. Se le dice a Android que entre SOLO en la miniatura al irse (y se quita al colgar).
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        val a0 = activity
-        try {
-            a0?.runOnUiThread {
-                try {
-                    a0.setPictureInPictureParams(android.app.PictureInPictureParams.Builder()
-                        .setAspectRatio(android.util.Rational(9, 16)).setAutoEnterEnabled(on).setSeamlessResizeEnabled(false).build())
-                } catch (e: Exception) { remLog("WARN", "PIP", "miniatura automática: ${e.message}") }
-            }
-        } catch (e: Exception) {}
-    }
+    pipAutoEnter(on)
     // 3227 (dueño 17-11 22:49, captura: «colgó la S23 y quedó la miniatura así»): al terminar la videollamada con la ventanita
     // abierta, la ventanita se quedaba enseñando la app (el chat en miniatura). Ahora se cierra (la app va atrás, como al salir
     // de una llamada en WhatsApp: el usuario sigue en la app donde estaba).
@@ -148,6 +140,21 @@ internal fun NexoBlePlugin.setPipActiveImpl(call: PluginCall) {
         } catch (e: Exception) {}
     }
     call.resolve()
+}
+
+// 3273: con los gestos de Android 12+ el aviso «el usuario se va» (onUserLeaveHint) no siempre llega y la videollamada se quedaba
+// atrás, pausada, en vez de pasar a la miniatura. Se le dice a Android que entre SOLO en la miniatura al irse (y se quita al colgar).
+internal fun NexoBlePlugin.pipAutoEnter(on: Boolean) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+    val a0 = activity
+    try {
+        a0?.runOnUiThread {
+            try {
+                a0.setPictureInPictureParams(android.app.PictureInPictureParams.Builder()
+                    .setAspectRatio(android.util.Rational(9, 16)).setAutoEnterEnabled(on).setSeamlessResizeEnabled(false).build())
+            } catch (e: Exception) { remLog("WARN", "PIP", "miniatura automática: ${e.message}") }
+        }
+    } catch (e: Exception) {}
 }
 
 // 3277: la VERDAD sobre la miniatura, para la app (call_pip.js): si la ventana está ahora en miniatura (pip) y si está puesta la marca

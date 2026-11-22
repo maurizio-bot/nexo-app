@@ -410,6 +410,10 @@
      "prueba": "3281 FOTOS en la BANDEJA DE SALIDA"
     },
     {
+     "fallo": "3282 (dueño 22-11, 3117: «en un chat deslizo hacia arriba y, en vez de quedarse en segundo plano, crea la miniatura y se ve todo raro»): lo que decide el gesto es una marca del teléfono («al irse, pasar a miniatura») que la llamada ponía y quitaba con avisos sueltos; si quedaba puesta sin videollamada (de una llamada anterior, o con una de voz) el gesto metía el chat en la ventanita. Ahora la marca dice siempre la verdad (call_pip.pipWanted: videollamada viva AHORA; se corrige en los dos sentidos en cada cambio de la llamada) y el teléfono la quita al terminar el audio de la llamada y no entra en miniatura sin llamada (BleService.pipOnLeave)",
+     "prueba": "MINIATURA de la videollamada"
+    },
+    {
      "fallo": "3276 (PRIORIDAD 1, fase 4; estudio de multitud 17-11): sin tope ni orden de enlaces, con 10 contactos dormidos alrededor el que tenía un mensaje esperando no conectaba nunca (7 enlaces ocupados, 222 intentos rechazados) y las conexiones de paso se llevaban huecos. Gestor de enlaces: tope 6, 4 contactos por estar cerca, hueco reservado y desalojo por prioridad (pendientes > chat abierto > reciente)",
      "prueba": "3276 GESTOR DE ENLACES"
     }

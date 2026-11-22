@@ -13,6 +13,10 @@
 //  f  la llamada termina EN la miniatura → se le pide al nativo cerrarla; después nada pegado;
 //  z  la app se rehízo y el nativo aún cree que hay videollamada: en miniatura sin llamada se cierra (no queda el chat apretado en
 //     la ventanita) y, fuera de ella, la marca vieja se quita sola.
+//  g  3282 (dueño 22-11: «en un chat deslizo hacia arriba y, en vez de quedarse en segundo plano, crea la miniatura»): el GESTO de
+//     irse solo pasa a la miniatura con una videollamada viva. Con la marca «al irse, pasar a miniatura» puesta de antes: en un chat
+//     sin llamada el gesto NO la crea y la marca se quita sola; con una llamada de VOZ tampoco; al pasar a vídeo sí; y si el teléfono
+//     la quitó con la videollamada viva, vuelve sola. (--nativo-viejo: el teléfono de antes, que solo miraba la marca)
 // Uso: node miniaturas.js <dir_build>   (AV_SHOTS=<carpeta>: capturas)
 'use strict';
 const fs = require('fs');
@@ -149,6 +153,41 @@ const FULL = { width: 384, height: 830 }, PIP = { width: 132, height: 236 };
     r.z_marca_vieja = nat.A.pipVideo;
   });
 
+  // ── g: el gesto de irse y la marca «al irse, pasar a miniatura»
+  // gesto() = lo que hace el teléfono al deslizar hacia arriba (MainActivity.onUserLeaveHint y la entrada automática de Android 12+):
+  // pasa a miniatura con la marca puesta Y el audio de llamada en marcha (BleService.pipOnLeave); si no, la app va a segundo plano
+  const viejo = process.argv.includes('--nativo-viejo');
+  nat.A.opts.pipSticky = viejo;
+  const gesto = () => nat.A.pipVideo === true && (viejo || nat.A.callAudioOn === true);
+  await fase('g', async () => {
+    await H.call('A', 'B', {}); await waitFor(async () => (await media1(P.A)).video_recibido > 10, 15000);
+    r.g_videollamada_viva_gesto = gesto();            // con la videollamada viva, SÍ miniatura
+    await H.hangAll();
+    r.g_tras_colgar_gesto = gesto();
+    // la marca quedó PUESTA de antes y el usuario está en un chat, sin llamada: el gesto no debe crear la miniatura
+    await clickRowNamed(P.A, '#main-contacts-list .ble-contact-row', 'B'); await sleep(400);
+    nat.A.pipVideo = true;
+    r.g_chat_gesto = gesto();
+    await P.A.evaluate(() => window.dispatchEvent(new Event('focus'))); await sleep(900);
+    r.g_chat_marca = nat.A.pipVideo;                   // y la marca se quita sola
+    await closeChat(P.A);
+    // llamada de VOZ viva con la marca puesta de antes: se quita con el primer cambio de la llamada; el gesto no hace miniatura
+    r.g_voz_activa_s = await H.call('A', 'B', { voice: true });
+    nat.A.pipVideo = true;
+    await P.A.evaluate(() => { const c = window.bleInterface.calls; c.mute(true); c.mute(false); }); await sleep(1300);
+    r.g_voz_marca = nat.A.pipVideo;
+    r.g_voz_gesto = gesto();
+    // la llamada de voz PASA a vídeo: ahora sí
+    await P.A.evaluate(() => window.bleInterface.calls.toVideo()); await sleep(1500);
+    r.g_pasa_a_video_gesto = gesto();
+    // el teléfono quitó la marca con la videollamada viva: vuelve sola al primer cambio
+    nat.A.pipVideo = false;
+    await P.A.evaluate(() => { const c = window.bleInterface.calls; c.mute(true); c.mute(false); }); await sleep(1300);
+    r.g_marca_vuelve = nat.A.pipVideo;
+    await H.hangAll();
+    r.g_final_gesto = gesto();
+  });
+
   r.avisos = logs.filter((l) => /\[A\] \[CALL\] (Miniatura|Mini flotante|Toque con la miniatura)/.test(l)).length;
   r.errores = logs.filter((l) => /PAGEERROR/.test(l)).slice(0, 5);
   const num = (v) => typeof v === 'number';
@@ -161,6 +200,8 @@ const FULL = { width: 384, height: 830 }, PIP = { width: 132, height: 236 };
   v.t = chk(() => r.t_mini && !r.t_final.mini && num(r.t_suena_s) && !r.t_entrante.mini && !r.t_entrante.pipwin && r.t_entrante.contestar && r.t_entrante.caja[2] >= 380);
   v.f = chk(() => r.f_cerrada >= 1 && r.f_pip_apagado && !r.f_despues.hay && !r.f_despues.nxpip);
   v.z = chk(() => r.z_cerrada >= 1 && r.z_marca === false && !r.z_despues.nxpip && r.z_marca_vieja === false);
+  v.g = chk(() => r.g_videollamada_viva_gesto === true && r.g_tras_colgar_gesto === false && r.g_chat_gesto === false && r.g_chat_marca === false && num(r.g_voz_activa_s) &&
+    r.g_voz_marca === false && r.g_voz_gesto === false && r.g_pasa_a_video_gesto === true && r.g_marca_vuelve === true && r.g_final_gesto === false);
   r.casos = v;
   const ok = Object.values(v).every(Boolean) && !r.errores.length && !Object.keys(r.fases_con_error).length;
   r.resultado = ok ? 'OK' : 'FALLO';
