@@ -49,10 +49,10 @@ export function callPowerSummary(a, b, maxTemp) {
 }
 
 /** Al empezar la llamada: anota la muestra inicial en c.pw (no bloquea nada). */
-export function callPowerStart(c) {
+export function callPowerStart(c, kind) {
   if (!c) return;
-  c.pw = { a: null, last: null, max: null, at: Date.now() };
-  readPower().then(function(s) { if (s && c.pw) { c.pw.a = s; c.pw.last = s; c.pw.max = s.temp; console.log('[CALL] Batería y temperatura al empezar: ' + powerNow(s)); } }); // i18n-ok: registro
+  c.pw = { a: null, last: null, max: null, at: Date.now(), kind: kind ? ' ' + kind : '' }; // kind: «de grupo» (COLA 7) o nada
+  readPower().then(function(s) { if (s && c.pw) { c.pw.a = s; c.pw.last = s; c.pw.max = s.temp; console.log('[CALL] Batería y temperatura al empezar' + (c.pw.kind ? ' la llamada' + c.pw.kind : '') + ': ' + powerNow(s)); } }); // i18n-ok: registro
 }
 
 /** Cada vez que el diagnóstico de la llamada corre: una muestra por minuto (temperatura máxima) con su línea. */
@@ -62,16 +62,16 @@ export function callPowerTick(c) {
   readPower().then(function(s) {
     if (!s || !c.pw) return;
     c.pw.last = s; if (s.temp != null && (c.pw.max == null || s.temp > c.pw.max)) c.pw.max = s.temp;
-    console.log('[CALL] Batería y temperatura: ' + powerNow(s) + (c.startedAt ? ' (a los ' + Math.round((Date.now() - c.startedAt) / 60000) + ' min)' : '')); // i18n-ok: registro
+    console.log('[CALL] Batería y temperatura' + (c.pw.kind ? ' (llamada' + c.pw.kind + ')' : '') + ': ' + powerNow(s) + (c.startedAt ? ' (a los ' + Math.round((Date.now() - c.startedAt) / 60000) + ' min)' : '')); // i18n-ok: registro
   });
 }
 
 /** Al colgar: la línea de resumen (con una muestra final fresca). */
-export function callPowerEnd(c, secs) {
+export function callPowerEnd(c, secs, kind) {
   if (!c || !c.pw) return;
   var pw = c.pw; c.pw = null;
   readPower().then(function(b) {
     if (b && b.temp != null && (pw.max == null || b.temp > pw.max)) pw.max = b.temp;
-    console.log('[CALL] Batería y temperatura en la llamada (' + Math.round((secs || 0) / 60) + ' min): ' + callPowerSummary(pw.a, b || pw.last, pw.max)); // i18n-ok: registro
+    console.log('[CALL] Batería y temperatura en la llamada' + (pw.kind || (kind ? ' ' + kind : '')) + ' (' + Math.round((secs || 0) / 60) + ' min): ' + callPowerSummary(pw.a, b || pw.last, pw.max)); // i18n-ok: registro
   });
 }

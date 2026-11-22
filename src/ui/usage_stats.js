@@ -13,6 +13,8 @@ import { _getBLEContacts, _showToast } from './ble_helpers.js';
 import { autoDiagSendSummary, autoDiagBuild } from './autodiag.js';
 import { t } from './i18n.js';
 import { powerInit, powerLines } from './usage_power.js'; // 3119: tiempo de uso y batería
+import { distPush } from './usage_dist.js'; // COLA 8: muestras acotadas, mediana y percentiles
+import { distExtras, pfNote, pfLines, pfClassify, pkNote, pkLines, btLinksNow, acNote, acLines, acKindOf } from './usage_extra.js'; // COLA 7, 9, 10
 
 var KEY = 'nexo_usage', KEY_SENT = 'nexo_usage_sent', KEY_TRY = 'nexo_usage_try', KEY_FIRST = 'nexo_usage_first';
 var KEEP_DAYS = 14, RETRY_MS = 60 * 60 * 1000;
@@ -45,6 +47,7 @@ function _hook(kind, cid, m, prevStatus) {
     if (kind === 'msg') {
       if (m._own) day.s++; else day.r++;
       var k = _kind(m); day.t[k] = (day.t[k] || 0) + 1;
+      _actNote(m); // COLA 7
       var h = _hash(cid); if (day.c.indexOf(h) < 0) day.c.push(h);
     } else if (kind === 'status' && m._own) {
       var st = m.status;
@@ -70,6 +73,7 @@ export function usageNoteSpeed(via, dir, bytes, ms) {
     day.v = day.v || {};
     var e = day.v[k] || (day.v[k] = { n: 0, b: 0, ms: 0, lo: rate, hi: rate });
     e.n++; e.b += bytes; e.ms += ms; e.lo = Math.min(e.lo, rate); e.hi = Math.max(e.hi, rate);
+    e.s = distPush(e.s, Math.round(rate * 10) / 10, e.n); // COLA 8
     _save(o);
     console.log('[VELOCIDAD] ' + VIAS[via] + ' ' + (dir === 'out' ? 'enviado' : 'recibido') + ': ' + _n1(bytes / 1024) + ' KB en ' + _n1(ms / 1000) + ' s = ' + _n1(rate) + ' KB/s'); // i18n-ok
   } catch (err) {}
@@ -94,6 +98,7 @@ export function usageNoteConnect(via, ms) {
     day.k = day.k || {};
     var e = day.k[via] || (day.k[via] = { n: 0, ms: 0, lo: ms, hi: ms });
     e.n++; e.ms += ms; e.lo = Math.min(e.lo, ms); e.hi = Math.max(e.hi, ms);
+    e.s = distPush(e.s, Math.round(ms), e.n); // COLA 8
     _save(o);
     console.log('[VELOCIDAD] ' + VIAS[via] + ' listo en ' + _n1(ms / 1000) + ' s'); // i18n-ok
   } catch (err) {}
@@ -102,12 +107,14 @@ export function usageNoteConnect(via, ms) {
 // Wi-Fi Direct, de los DOS lados (quien envía y quien recibe): cuántos intentos, cuántos salieron, por qué fallaron, cuánto tardó cada fase (crear
 // el grupo, unirse), la velocidad PURA de la transferencia (sin montar el grupo), cuánto tiempo estuvo trabajando, si el Wi-Fi normal se cayó
 // mientras tanto y por qué se eligió (o no) Wi-Fi Direct para un archivo. Solo números. Se mide si FUNCIONA, para arreglarlo (principio del dueño).
+var _wdActive = 0; // transferencias de Wi-Fi Direct en curso (el JS no ve cuántos clientes tiene el grupo: el nativo no lo expone)
 function _wdAcc(map, k, ms) { var e = map[k] || (map[k] = { n: 0, ms: 0, lo: ms, hi: ms }); e.n++; e.ms += ms; e.lo = Math.min(e.lo, ms); e.hi = Math.max(e.hi, ms); }
 export function usageNoteWd(ev, o) {
   try {
     o = o || {};
     var all = _load(), day = _day(all, usageDayKey()), w = day.wd || (day.wd = { out: { n: 0, ok: 0, f: {} }, in: { n: 0, ok: 0, f: {} }, t: {}, x: { n: 0, b: 0, ms: 0, lo: 0, hi: 0 }, ap: { keep: 0, lost: 0, none: 0, up: 0 }, rt: 0, rc: {}, act: 0, use: {}, no: {} });
     var dir = o.dir === 'in' ? 'in' : 'out';
+    if (ev === 'try') { _wdActive++; pkNote(day, 'wd', _wdActive); } else if (ev === 'ok' || ev === 'fail') _wdActive = Math.max(0, _wdActive - 1); // COLA 9: transferencias a la vez
     if (ev === 'try') w[dir].n++;
     else if (ev === 'ok') { w[dir].ok++; if (o.act > 0 && o.act < 3600000) w.act += o.act; }
     else if (ev === 'fail') { var c = String(o.cause || 'otro').slice(0, 40); w[dir].f[c] = (w[dir].f[c] || 0) + 1; if (o.act > 0 && o.act < 3600000) w.act += o.act; }
@@ -133,11 +140,12 @@ function _dl(day, via) { day.dl = day.dl || {}; return day.dl[via] || (day.dl[vi
 export function usageNoteSent(via) {
   try { if (!DEL_VIAS[via]) return; var all = _load(), day = _day(all, usageDayKey()); _dl(day, via).n++; _save(all); } catch (e) {}
 }
-export function usageNoteDelivered(via, ms) {
+export function usageNoteDelivered(via, ms, msgId) {
   try {
     if (!DEL_VIAS[via]) return;
     var all = _load(), day = _day(all, usageDayKey()), e = _dl(day, via);
     e.ok++;
+    var ac = msgId && _act[msgId]; if (ac) { delete _act[msgId]; if (ms >= 0) acNote(day, ac.k, via, Date.now() - ac.t0); } // COLA 7: cronómetro de actividades
     if (!(ms >= 0)) e.dorm++; // app dormida mientras esperaba: llegó, pero el tiempo no es de la red
     else { e.b[ms < 1000 ? 0 : ms < 5000 ? 1 : ms < 30000 ? 2 : 3]++; e.ms += ms; e.hi = Math.max(e.hi, ms); }
     _save(all);
@@ -145,6 +153,34 @@ export function usageNoteDelivered(via, ms) {
 }
 export function usageNoteSymptom(kind) {
   try { kind = String(kind || '').slice(0, 40); if (!kind) return; var all = _load(), day = _day(all, usageDayKey()); day.sy = day.sy || {}; day.sy[kind] = (day.sy[kind] || 0) + 1; _save(all); } catch (e) {}
+}
+// COLA 7: foto/archivo/vídeo/audio propios que el usuario soltó y aún no tienen ✓✓ (en memoria, acotado)
+var _act = {}, _actN = 0;
+function _actNote(m) {
+  var k = acKindOf(m && m.attachmentType), id = m && (m.msgId || m.messageId || m.id);
+  if (!k || !id || !m._own) return;
+  if (_actN >= 40) { _act = {}; _actN = 0; }
+  _act[id] = { k: k, t0: m.timestamp || Date.now() }; _actN++;
+}
+// COLA 10: falla de un camino con su causa. Las lanzan los avisos ya escritos en el REGISTRO: diag.js pasa cada línea [WIFI]/[NET]/[JUMP]/[GW] por
+// usageNoteLog (sin tocar lan.js, net/ ni ble_*); la función suelta queda para quien quiera anotarla directo.
+export function usageNotePathFail(via, cause) {
+  try { var all = _load(), day = _day(all, usageDayKey()); if (pfNote(day, via, cause)) _save(all); } catch (e) {}
+}
+export function usageNoteLog(text) {
+  try { var c = pfClassify(text); if (c) usageNotePathFail(c.via, c.cause); } catch (e) {}
+}
+// COLA 9: pico de enlaces Bluetooth abiertos a la vez (lee window.bleInterface._deviceStates, sin tocarlo). Cada 45 s y solo con la app despierta.
+var BT_SAMPLE_MS = 45000;
+export function usageSampleBt() {
+  try {
+    if (typeof document !== 'undefined' && document && document.visibilityState === 'hidden') return 0;
+    var bi = typeof window !== 'undefined' && window.bleInterface; if (!bi) return 0;
+    var n = btLinksNow(bi); if (!n) return 0;
+    var all = _load(), day = _day(all, usageDayKey());
+    if (pkNote(day, 'bt', n)) _save(all);
+    return n;
+  } catch (e) { return 0; }
 }
 function _delLines(d) {
   var out = [];
@@ -190,19 +226,20 @@ export function usageSpeedLines(key) {
     var parts = [];
     ['out', 'in'].forEach(function(dir) {
       var e = d.v && d.v[v + '|' + dir]; if (!e || !e.n) return;
-      parts.push((dir === 'out' ? 'enviados ' : 'recibidos ') + e.n + ', media ' + _n1(_kbs(e.b, e.ms)) + ' KB/s' + (e.n > 1 ? ' (de ' + _n1(e.lo) + ' a ' + _n1(e.hi) + ')' : '')); // i18n-ok
+      parts.push((dir === 'out' ? 'enviados ' : 'recibidos ') + e.n + ', media ' + _n1(_kbs(e.b, e.ms)) + ' KB/s' + (e.n > 1 ? distExtras(e.s, 'KB/s', 'p10') + ' (de ' + _n1(e.lo) + ' a ' + _n1(e.hi) + ')' : '')); // i18n-ok
     });
     if (parts.length) out.push('  archivos por ' + VIAS[v] + ': ' + parts.join(' · ')); // i18n-ok
   });
   var con = VIA_ORDER.filter(function(v) { return d.k && d.k[v] && d.k[v].n; }).map(function(v) {
-    var e = d.k[v]; return VIAS[v] + ' ' + _n1(e.ms / e.n / 1000) + ' s (' + (e.n === 1 ? '1 vez' : e.n + ' veces, de ' + _n1(e.lo / 1000) + ' a ' + _n1(e.hi / 1000)) + ')'; // i18n-ok
+    var e = d.k[v]; return VIAS[v] + ' ' + _n1(e.ms / e.n / 1000) + ' s' + (e.n === 1 ? ' (1 vez)' : distExtras((e.s || []).map(function(x) { return x / 1000; }), 's') + ' (' + e.n + ' veces, de ' + _n1(e.lo / 1000) + ' a ' + _n1(e.hi / 1000) + ')'); // i18n-ok
   });
   if (con.length) out.push('  conexión lista en (media): ' + con.join(' · ')); // i18n-ok
   out = out.concat(_wdLines(d)); // 3258
   out = out.concat(_delLines(d)); // 3259
+  out = out.concat(acLines(d), pfLines(d), pkLines(d)); // COLA 7 (cronómetro), 10 (fallas por camino), 9 (picos)
   return out;
 }
-if (typeof window !== 'undefined') { window.NEXO_noteSpeed = usageNoteSpeed; window.NEXO_noteConnect = usageNoteConnect; window.NEXO_noteWd = usageNoteWd; window.NEXO_noteSent = usageNoteSent; window.NEXO_noteDelivered = usageNoteDelivered; window.NEXO_speedLines = usageSpeedLines; }
+if (typeof window !== 'undefined') { window.NEXO_noteSpeed = usageNoteSpeed; window.NEXO_noteConnect = usageNoteConnect; window.NEXO_noteWd = usageNoteWd; window.NEXO_noteSent = usageNoteSent; window.NEXO_noteDelivered = usageNoteDelivered; window.NEXO_speedLines = usageSpeedLines; window.NEXO_noteLog = usageNoteLog; window.NEXO_notePathFail = usageNotePathFail; }
 
 /** Texto del resumen de un día (solo números). */
 export function usageSummaryText(key) {
@@ -243,6 +280,7 @@ export function usageMaybeSend(force) {
 /** Arranque (main.js): engancha los contadores, marca el día como «abierta» y, ya con la app en marcha, manda el resumen pendiente. */
 export function usageInit() {
   powerInit(); // 3119
+  try { setInterval(usageSampleBt, BT_SAMPLE_MS); setTimeout(usageSampleBt, 5000); } catch (eB) {} // COLA 9
   try { window.addEventListener('nexo:diag:symptom', function(e) { usageNoteSymptom(e && e.detail && e.detail.kind); }); } catch (e0) {} // 3259
   try {
     vaultSetUsageHook(_hook);

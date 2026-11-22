@@ -40,6 +40,7 @@ var DIAG_KEY_RE = /BT_ERR|\[BIN\]|\[MTU\]|\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FI
         var ts = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2) + '.' + ('00' + d.getMilliseconds()).slice(-3);
         var line = ts + (level === 'warn' ? ' W ' : level === 'error' ? ' E ' : ' ') + parts.join(' ').substring(0, 300);
         _diagLines.push(line); _diagTimes.push(d.getTime());
+        if (typeof window.NEXO_noteLog === 'function' && parts.length && parts[0].charCodeAt(0) === 91 && /^\[(WIFI|NET|JUMP|GW)\]/.test(parts[0])) window.NEXO_noteLog(parts.join(' ')); // COLA 10: fallas por camino con causa (usage_stats)
         if (_diagLines.length > DIAG_MAX) { var ex = _diagLines.length - DIAG_MAX; _diagLines.splice(0, ex); _diagTimes.splice(0, ex); }
         if (DIAG_KEY_RE.test(line)) { _diagKey.push(line); _diagKeyTimes.push(d.getTime()); if (_diagKey.length > DIAG_KEY_MAX) { var ek = _diagKey.length - DIAG_KEY_MAX; _diagKey.splice(0, ek); _diagKeyTimes.splice(0, ek); } }
         _diagDirty = true;

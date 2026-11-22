@@ -59,9 +59,14 @@ efecto de Wi-Fi Direct sobre el Wi-Fi normal (3258) y por qué se eligió o no W
 5. **Medias que engañan**: conexión lista con picos de 74 y 377 s; falta mediana y percentil 90 para ver lo típico y lo peor por separado.
 6. **App del otro congelada por el fabricante**: el nativo ya contesta pings; falta que confirme y reenvíe sin la página.
 
+## Medido desde el 22-11 (COLA 7–11)
+- Mediana y percentiles por camino en «conexión lista» (p90) y en velocidades (p10: lo malo de una velocidad es lo lento), con ≥ 10 muestras (hasta 200 por camino y día); la media sigue saliendo.
+- Fallas con causa en Wi-Fi local, internet, Jump y Tor (se cuentan desde el registro, sin tocar los caminos): «fallos con causa por camino hoy: …».
+- Capacidad: pico de enlaces Bluetooth a la vez (cada 45 s, con la app a la vista) y pico de transferencias de Wi-Fi Direct a la vez.
+- Cronómetro de actividades: de soltar una foto/archivo/vídeo/audio a su ✓✓, por tipo y camino.
+- Batería y temperatura también en la llamada de grupo.
+- Tablero: `node tests/sim/diag_stats.js` da la TENDENCIA por día, por build, por hora y síntoma por día (campos opcionales `origen` y `build` en `docs/diagnosticos.json`).
+
 ## Siguiente en medir (no hecho)
-- Capacidad: pico de enlaces Bluetooth simultáneos por día; enlaces/clientes de Wi-Fi Direct.
-- Percentiles (mediana y p90) en «conexión lista» y en velocidades.
-- Fallas por camino en Wi-Fi local, internet, Jump y Tor (causa y conteo), como ya hace Wi-Fi Direct.
+- Clientes reales del grupo de Wi-Fi Direct (el nativo aún no los da a la app).
 - Prueba corta del dueño: el mismo archivo por Bluetooth y por Wi-Fi Direct entre dos teléfonos, batería de ambos lados (los números salen solos en «Copiar diagnóstico»).
-- Tendencia: síntomas por hora de uso y por build (en vez de contar diagnósticos recibidos, que depende de cuántos se pegan).

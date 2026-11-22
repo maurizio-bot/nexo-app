@@ -21,6 +21,7 @@
  */
 
 import { t } from './i18n.js';
+import { callPowerStart, callPowerTick, callPowerEnd } from './call_power.js'; // COLA 7: batería y temperatura también en la llamada de grupo
 
 var GMAX_AUDIO = 5;          // tope de participantes en audio (malla N²; ≤5 es cómodo)
 var GRING_MS = 45000;        // invitación sin contestar
@@ -339,6 +340,7 @@ export class GroupCall {
   _begin() {
     var self = this, g = self.gc; if (!g || g.startedAt) return;
     g.startedAt = Date.now();
+    try { callPowerStart(g, 'de grupo'); } catch (eP) {} // COLA 7: batería y temperatura como en la 1 a 1
     if (self.ble && typeof self.ble._holdOthers === 'function') { try { self.ble._holdOthers(self); } catch (e) {} } // #222: la otra, en espera
     // Micrófono compartido: una captura, un codificador → el paquete codificado va a TODOS los tramos
     if (!g.adopt) g.cameraOn = !!g.video; // (#224: la heredada sigue como estaba)
@@ -365,6 +367,7 @@ export class GroupCall {
     if (!self._alive(false) && now - g.startedAt > silence) { self._finish('empty'); return; }
     // compartir pantalla: el estado se repite cada 5 s mientras comparto (y un rato después de parar), para el que entró tarde
     if ((g.screen || now < (g._scrOffUntil || 0)) && now - (g._stAt || 0) >= GSTATE_EVERY_MS) self._sendStateAll();
+    try { callPowerTick(g); } catch (eP) {} // COLA 7
     self._set(null);
   }
 
@@ -605,6 +608,7 @@ export class GroupCall {
     clearTimeout(self._ringTimer); clearInterval(self._watch);
     if (g.hub && g.hub.stop) try { g.hub.stop(); } catch (e) {}
     self._markDead(g.gid);
+    if (g.startedAt) try { callPowerEnd(g, (Date.now() - g.startedAt) / 1000, 'de grupo'); } catch (eP) {} // COLA 7
     self.gc = null;
     var c1 = self.ble && self.ble.calls && self.ble.calls.call; if (!(c1 && c1.video && c1.state === 'active')) _pipGC(false); // 3155
     if (self.ble && typeof self.ble._afterCallRadio === 'function') { try { self.ble._afterCallRadio(); } catch (e) {} } // 3058: sale lo que esperó a colgar
