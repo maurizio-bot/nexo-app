@@ -42,6 +42,18 @@ function _emit(name, detail) { try { window.dispatchEvent(new CustomEvent(name, 
 // gesto de inicio entre en Picture-in-Picture (miniatura flotante) sin cortar audio/vídeo.
 function _plug() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 var SCREEN_LONG = 960, SCREEN_FPS = 5; // compartir pantalla: lado largo de la imagen (las letras se leen) y como mucho 5 por segundo
+// 3278 (dueño 22-11: la voz de la llamada se regula con «volumen de llamada» y lo de la otra app con «multimedia»): el nativo dice el
+// USO de cada sonido activo del teléfono; queda en el diagnóstico (no se puede comprobar en el simulador).
+function _outDiag() {
+  try {
+    var p = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
+    if (!p || typeof p.callOut !== 'function') return;
+    Promise.resolve(p.callOut()).then(function(r) {
+      if (!r || r.voice == null) return;
+      console.log('[CALL] Salida de sonido del teléfono: ' + r.voice + ' por «llamada», ' + r.media + ' por «multimedia»' + (r.other ? ', ' + r.other + ' de otro tipo' : '') + ' (de todas las apps); volumen de llamada ' + r.volCall + ', multimedia ' + r.volMedia + '; modo ' + r.mode + '; foco de audio: ' + (r.focus || '—') + (r.held ? '; RETENIDA por llamada telefónica' : '')); // i18n-ok: registro
+    }).catch(function() {});
+  } catch (e) {}
+}
 function _pipActive(on) { try { var p = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE; if (p && typeof p.setPipActive === 'function') p.setPipActive({ on: !!on }); } catch (e) {} }
 // #dueño 02-11 (ConnectionService parte 2): avisar al nativo del ciclo de vida de la llamada SALIENTE para que Telecom la
 // trate como una llamada real (convivencia con una llamada del teléfono, mandos del coche/auriculares/reloj, foco de
@@ -529,6 +541,7 @@ export class Calls {
   _diag(c, prefix) {
     var m = c.media && typeof c.media.stats === 'function' ? c.media.stats() : null, st = this.stats;
     try { callPowerTick(c); } catch (e) {} // 3256: una muestra de batería y temperatura por minuto
+    _outDiag(); // 3278: por qué volumen de Android suena de verdad la llamada (llamada / multimedia)
     var link = this._link(c.nx), pct = function(x) { return Math.round((x || 0) * 1000) / 10 + ' %'; };
     console.log('[CALL] ' + (prefix || Math.round((Date.now() - c.startedAt) / 1000) + ' s') + ': voz enviada ' + st.sent + ', recibida ' + st.got +
       (st.bad ? ' (' + st.bad + ' ilegibles)' : '') + (st.sentKeep || st.gotKeep ? ', sin voz ("sigo aquí") enviados ' + (st.sentKeep || 0) + ' / recibidos ' + (st.gotKeep || 0) : '') + (c.video ? ', vídeo enviado ' + (st.sentV || 0) + ' / recibido ' + (st.gotV || 0) : '') + (st.sentS || st.gotS ? ', diapositivas de pantalla (partes) enviadas ' + (st.sentS || 0) + ' / recibidas ' + (st.gotS || 0) : '') +

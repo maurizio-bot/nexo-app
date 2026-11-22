@@ -1278,6 +1278,8 @@ class NativePhone {
         if (a.on !== true && self.pipNow === true) { self.pipNow = false; self.pipClosed = (self.pipClosed || 0) + 1; }
         c.resolve({});
       }),
+      // Kotlin 3278 callOut: por dónde suena la llamada (solo con self.callOut puesto por la prueba)
+      callOut: wrap('callOut', (c) => c.resolve(self.callOut || {})),
       // Kotlin 3277 pipState: la verdad sobre la miniatura (self.pipNow: true/false; sin definir = nativo sin esa respuesta, como antes)
       pipState: wrap('pipState', (c) => c.resolve(typeof self.pipNow === 'boolean' ? { pip: self.pipNow, wanted: self.pipVideo === true } : {})),
       ringback: wrap('ringback', (c, a) => { self.ringbackOn = a.on === true; (self.ringbackLog = self.ringbackLog || []).push(a.on === true); c.resolve({ on: a.on === true }); }),

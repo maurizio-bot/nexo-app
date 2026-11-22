@@ -111,7 +111,15 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
       FALTA: probarlo con `multitud.js` (estudio pesado, fuera del CI) y en campo; el nativo dormido usa su propio tope (7) solo para lo que abre la bandeja.
     - **FALLO MÍO DESTAPADO POR LA BATERÍA (22-11):** 3266 guardaba su estado en `net._noNet`, que YA existía como booleano (`net_relays.js`): rompía `tick` y hacía
       creer «sin red». Arreglado (`_noNetSt`). La 3118 llevaba ese fallo: su CI debe fallar en `acuses`, `internetlisto` y `repetidos` y NO publicarse; la buena es la 3119.
-    - **APK 3119: LISTA, SIN LANZAR. El dueño pidió (22-11 ~13:20 México) NO lanzarla hasta terminar de platicar: esperar su visto bueno.** Llevará la 3118 +
+    - **3278 AUDIO EN LA MINIATURA (dueño 22-11 13:00: la videollamada en miniatura es para usar OTRA cosa —la misma app, otras, YouTube—; debe seguir voz e imagen sin
+      pausa, las dos cosas sonando a la vez, cada una con su volumen de Android: llamada / multimedia).** Hallado: al tomar OTRA APP el audio, NEXO le quitaba el foco
+      de vuelta (se pausaba el vídeo de la otra) y a la segunda vez la llamada quedaba RETENIDA para siempre (ni voz ni imagen: «la miniatura se pausa»). Ahora SOLO una
+      llamada TELEFÓNICA retiene (`FocusPolicy.kt`: `onLoss` → HOLD/KEEP; `onWatch` mira el modo cada 1 s mientras NEXO está sin foco o retenida; `callHold`/`focusWatch`
+      en `PluginCalls.kt`); 7 pruebas JVM; `callhold.js` sigue pasando. VOLÚMENES, SIN COMPROBAR: la voz debería regularse con «volumen de llamada»; depende de si la
+      página abre el micrófono ANTES que el sonido (`call_media.js`: normalmente sí; si el micrófono tarda, el sonido se monta antes y podría salir por multimedia).
+      El diagnóstico lo dice ahora cada minuto: «[CALL] Salida de sonido del teléfono: N por «llamada», M por «multimedia»…» (`callOut`). PRUEBA DEL DUEÑO: videollamada
+      → miniatura → YouTube con sonido: deben sonar las dos y la imagen seguir; teclas de volumen = la voz; «multimedia» = el vídeo; «Copiar diagnóstico» al terminar.
+    - **APK 3119: LISTA, SIN LANZAR. El dueño pidió (22-11 ~13:00 México) NO lanzarla hasta terminar de platicar: esperar su visto bueno.** Llevará la 3118 +
       `_noNetSt` + 3274 quitado + 3275 + 3276 (fase 4) + 3277 (miniatura). Ya corridas aquí: 38 pruebas cercanas (Bluetooth, Jump, puente, bandeja, miniatura) + 9 de
       muchos teléfonos/grupos, en verde. El lote destapó un fallo de la fase 4, ya corregido: con «Agregar» abierto el gestor frenaba las conexiones de paso en 5 y la
       rotación del relevo (que suelta al llegar a 6) se paraba: con nueve NEXO cerca el sexto no salía (`addlento.js`). Ahora, con «Agregar» abierto, las de paso las

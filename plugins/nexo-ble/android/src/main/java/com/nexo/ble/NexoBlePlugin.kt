@@ -848,13 +848,19 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod fun pipState(call: PluginCall) = pipStateImpl(call)
 
+    @PluginMethod fun callOut(call: PluginCall) = callOutImpl(call)
+
     // Ronda 2770: foco de audio durante la llamada (la música u otro audio de otra app se para y vuelve al colgar; antes
     // seguía sonando encima de la llamada)
     @Volatile internal var focusReq: android.media.AudioFocusRequest? = null
     @Volatile internal var callFocusState = ""
     internal val focusHandler = android.os.Handler(android.os.Looper.getMainLooper())
     internal var focusTries = 0
-    internal var focusRegrabAt = 0L // 3226: última vez que se volvió a pedir el foco tras perderlo sin llamada telefónica (FocusPolicy)
+    // 3278 (FocusPolicy): sin foco (lo tiene otra app o una llamada telefónica), llamada NEXO retenida, repaso del modo en marcha
+    @Volatile internal var focusLost = false
+    @Volatile internal var callHeld = false
+    internal var focusWatchOn = false
+    internal var focusCalm = 0
 
     @PluginMethod fun l2Info(call: PluginCall) = l2InfoImpl(call)
 

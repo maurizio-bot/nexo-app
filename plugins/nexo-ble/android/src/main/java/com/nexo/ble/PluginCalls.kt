@@ -190,23 +190,17 @@ internal fun NexoBlePlugin.callFocus(am: android.media.AudioManager, on: Boolean
                 .setAcceptsDelayedFocusGain(true)
                 .setWillPauseWhenDucked(true)
                 .setOnAudioFocusChangeListener { change ->
-                    remLog("INFO", "CALL", "Foco de audio: $change")
-                    // #dueño 01-11 (GRAVE): si entra una llamada TELEFÓNICA, NEXO pierde el foco (change < 0). Avisar al JS
-                    // para PAUSAR (retener) la llamada NEXO sin cortarla; al recuperar el foco (change == GAIN, p.ej. se
-                    // rechazó o colgó la telefónica), reanudar. Antes solo se registraba y la videollamada se trababa/caía.
-                    // 3226 (dueño 17-11 22:41): una pérdida PERMANENTE (-1) que no es una llamada telefónica (la cámara del chat
-                    // en vídeo, otra app) no la devuelve el sistema: la videollamada quedaba en pausa para siempre. Se vuelve a
-                    // pedir el foco y la llamada sigue (FocusPolicy); una llamada telefónica de verdad la retiene como antes.
-                    if (change < 0 && FocusPolicy.onLoss(change, try { am.mode } catch (e: Exception) { 0 }, focusRegrabAt, System.currentTimeMillis()) == FocusPolicy.REGRAB) {
-                        focusRegrabAt = System.currentTimeMillis()
-                        remLog("INFO", "CALL", "Foco de audio perdido sin llamada telefónica (modo ${try { am.mode } catch (e: Exception) { -9 }}): lo vuelvo a pedir, la llamada sigue")
-                        focusHandler.postDelayed({
-                            val r0 = focusReq
-                            if (r0 != null && BleService.inCall) { try { am.abandonAudioFocusRequest(r0) } catch (e: Exception) {}; focusTries = 0; requestFocusWithRetry(am) }
-                        }, 600L)
-                        return@setOnAudioFocusChangeListener
+                    val mode = try { am.mode } catch (e: Exception) { 0 }
+                    remLog("INFO", "CALL", "Foco de audio: $change (modo $mode)")
+                    // 3278 (dueño 22-11): SOLO una llamada telefónica retiene la llamada NEXO (FocusPolicy). Si otra app toma el
+                    // audio (un vídeo, música, la cámara grabando), la llamada sigue y suenan las dos; no se le vuelve a quitar.
+                    if (change > 0) { focusLost = false; callHold(false, "el foco de audio volvió") }
+                    else {
+                        focusLost = true
+                        if (FocusPolicy.onLoss(change, mode) == FocusPolicy.HOLD) callHold(true, "llamada telefónica (modo $mode)")
+                        else remLog("INFO", "CALL", "Otra app tomó el audio (foco $change): la llamada NEXO sigue, suenan las dos")
+                        focusWatch(am)
                     }
-                    try { notifyListeners("onCallInterruption", JSObject().put("paused", change < 0).put("focus", change)) } catch (e: Exception) {}
                 }.build()
             focusReq = req
             focusTries = 0
@@ -216,9 +210,58 @@ internal fun NexoBlePlugin.callFocus(am: android.media.AudioManager, on: Boolean
             focusReq?.let { am.abandonAudioFocusRequest(it) }
             focusReq = null
             callFocusState = ""
+            focusLost = false; callHeld = false; focusWatchOn = false; focusCalm = 0
         }
     } catch (e: Exception) { callFocusState = "error (${e.javaClass.simpleName})"; Log.w(TAG, "Foco de audio: ${e.message}") }
 }
+// 3278: retener / reanudar la llamada NEXO por una llamada telefónica (la app: calls._onInterruption). Sin repetir avisos.
+internal fun NexoBlePlugin.callHold(on: Boolean, why: String) {
+    if (callHeld == on) return
+    callHeld = on
+    remLog("INFO", "CALL", (if (on) "Llamada NEXO retenida: " else "Llamada NEXO reanudada: ") + why)
+    try { notifyListeners("onCallInterruption", JSObject().put("paused", on).put("why", why)) } catch (e: Exception) {}
+}
+// 3278: mientras la llamada NEXO está sin foco o retenida se mira el modo del audio (FocusPolicy.onWatch): una llamada telefónica
+// que entra con otra app dueña del audio no avisa por el foco, y al terminar tampoco lo devuelve si la pérdida fue permanente.
+internal fun NexoBlePlugin.focusWatch(am: android.media.AudioManager) {
+    if (focusWatchOn) return
+    focusWatchOn = true; focusCalm = 0
+    val req = focusReq
+    val tick = object : Runnable {
+        override fun run() {
+            if (focusReq !== req || req == null || !BleService.inCall || !(focusLost || callHeld)) { focusWatchOn = false; return }
+            val mode = try { am.mode } catch (e: Exception) { 0 }
+            focusCalm = if (FocusPolicy.phoneMode(mode)) 0 else focusCalm + 1
+            when (FocusPolicy.onWatch(callHeld, mode, focusCalm)) {
+                FocusPolicy.HOLD -> callHold(true, "llamada telefónica (modo $mode)")
+                FocusPolicy.RESUME -> callHold(false, "la llamada telefónica terminó (modo $mode)")
+            }
+            focusHandler.postDelayed(this, FocusPolicy.WATCH_MS)
+        }
+    }
+    focusHandler.postDelayed(tick, 400L)
+}
+// 3278: por dónde suena de verdad la llamada (para el diagnóstico; dueño 22-11: la voz se regula con «volumen de llamada» y lo de la
+// otra app con «multimedia»). Android dice el USO de cada sonido activo del teléfono (de todas las apps, sin decir de cuál):
+// «llamada» = se regula con el volumen de llamada; «multimedia» = con el de multimedia.
+internal fun NexoBlePlugin.callOutImpl(call: PluginCall) {
+    val out = JSObject()
+    try {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        var voice = 0; var media = 0; var other = 0
+        if (Build.VERSION.SDK_INT >= 26) for (c in am.activePlaybackConfigurations) when (c.audioAttributes.usage) {
+            android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION, android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION_SIGNALLING -> voice++
+            android.media.AudioAttributes.USAGE_MEDIA, android.media.AudioAttributes.USAGE_GAME, android.media.AudioAttributes.USAGE_UNKNOWN -> media++
+            else -> other++
+        }
+        val vc = android.media.AudioManager.STREAM_VOICE_CALL; val mu = android.media.AudioManager.STREAM_MUSIC
+        out.put("voice", voice).put("media", media).put("other", other).put("mode", am.mode)
+            .put("volCall", "${am.getStreamVolume(vc)}/${am.getStreamMaxVolume(vc)}").put("volMedia", "${am.getStreamVolume(mu)}/${am.getStreamMaxVolume(mu)}")
+            .put("focus", if (focusReq == null) "" else if (focusLost) "lo tiene otra app" else callFocusState).put("held", callHeld)
+    } catch (e: Exception) { out.put("error", e.javaClass.simpleName) }
+    call.resolve(out)
+}
+
 // #dueño 02-11: pedir el foco y, si FALLA (0), reintentar un par de veces mientras siga la llamada (el fallo al
 // contestar era transitorio). GRANTED/DELAYED → NEXO retiene el audio y la música vuelve solo al colgar (abandon).
 private fun NexoBlePlugin.requestFocusWithRetry(am: android.media.AudioManager) {
