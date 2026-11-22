@@ -43,7 +43,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **SIGUIENTE (tras el reinicio semanal del límite; el dueño iba al 96 % el 20-11): la lista COMPLETA y ordenada está en `docs/COLA.md`** (26 puntos en 5 sesiones + sesión «Grupos: administración» G1–G8 pedida el 20-11: Wi-Fi Direct y elección de camino con 3261, medición y tablero,
   Bluetooth pulido, Bluetooth en el servicio + seguridad, después). Regla del dueño: lo que él reporta de pruebas reales es un HECHO. Antes de subir: correr `tamano.js` e `i18n_audit.js`.
 - **21-11 (plan y calendario):** leer `docs/CALENDARIO_Y_ORDEN.md` (hitos, dependencias, decisiones del dueño con fecha), `docs/PLAN_ENTREGA.md` (olas, modelos y esfuerzo) y `docs/COLA.md`. Mañana (domingo 22): Ola 0 (ordenar documentos e inventario único) y luego Ola 1. Una subida con APK por ola. Lo de horas: 30 a 40 por semana como mínimo.
-- **22-11 (madrugada, sesión Fable + 2 ayudantes Sonnet; SIN APK, todo [skip ci]). LEER ESTO PRIMERO:**
+- **APK 3117 EN CAMINO (dueño 22-11 ~09:40: «haz la apk de lo que ya tienes hecho y empieza con lo demás»):** lleva 3262–3265, 16b, 34, 35, 29b y 32. Si el CI
+  falla, mirar SOLO lo que falló (aquí `fotocalidad.js` y `estadovideo.js` no pasan ni con el código viejo: es del entorno). PRUEBAS DEL DUEÑO con la 3117 en
+  el S24 y el S23: (1) con los dos cerca por Bluetooth, cerrar y abrir NEXO en uno: el otro NO debe ver «desconectado» y el texto sale al momento; (2) dejar
+  los dos juntos 10 min y mirar que no salga «enlace repetido» una y otra vez; (3) agregar un contacto nuevo y mandarle con su app en segundo plano: ✓✓.
+- **22-11 (madrugada, sesión Fable + 2 ayudantes Sonnet). LEER ESTO PRIMERO:**
   - **HERRAMIENTA NUEVA: el Kotlin del plugin YA SE COMPILA AQUÍ** (comprobación de tipos, ~40 s): `cd tests/kotlin-android && gradle --no-daemon compileKotlin`
     (android-all de Robolectric + Capacitor de Maven Central + sustitutos de AndroidX/Firebase en `stubs/`; Google Maven no se alcanza). Y las pruebas JVM:
     `cd tests/kotlin && gradle --no-daemon test --tests 'X'`. Si Maven da 429, reintentar. Correr las dos ANTES de subir cualquier cambio nativo.
