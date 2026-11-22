@@ -14,7 +14,7 @@ import { autoDiagSendSummary, autoDiagBuild } from './autodiag.js';
 import { t } from './i18n.js';
 import { powerInit, powerLines } from './usage_power.js'; // 3119: tiempo de uso y batería
 import { distPush } from './usage_dist.js'; // COLA 8: muestras acotadas, mediana y percentiles
-import { distExtras, pfNote, pfLines, pfClassify, pkNote, pkLines, btLinksNow, acNote, acLines, acKindOf } from './usage_extra.js'; // COLA 7, 9, 10
+import { distExtras, pfNote, pfLines, pfClassify, pkNote, pkLines, btLinksNow, acNote, acLines, acKindOf, mtClassify, mtRoleOf, mtNote, mtLines } from './usage_extra.js'; // COLA 7, 9, 10
 
 var KEY = 'nexo_usage', KEY_SENT = 'nexo_usage_sent', KEY_TRY = 'nexo_usage_try', KEY_FIRST = 'nexo_usage_first';
 var KEEP_DAYS = 14, RETRY_MS = 60 * 60 * 1000;
@@ -181,6 +181,11 @@ export function usageNotePathFail(via, cause) {
 }
 export function usageNoteLog(text) {
   try { var c = pfClassify(text); if (c) usageNotePathFail(c.via, c.cause); } catch (e) {}
+  try { // COLA 13: enlaces a MTU mínimo (línea [MTU] de ble_send.js)
+    var mt = mtClassify(text); if (!mt) return;
+    var all = _load(), day = _day(all, usageDayKey());
+    if (mtNote(day, mt.id, mt.mtu, mtRoleOf(typeof window !== 'undefined' && window.bleInterface, mt.id))) _save(all);
+  } catch (e2) {}
 }
 // COLA 9: pico de enlaces Bluetooth abiertos a la vez (lee window.bleInterface._deviceStates, sin tocarlo). Cada 45 s y solo con la app despierta.
 var BT_SAMPLE_MS = 45000;
@@ -248,7 +253,7 @@ export function usageSpeedLines(key) {
   if (con.length) out.push('  conexión lista en (media): ' + con.join(' · ')); // i18n-ok
   out = out.concat(_wdLines(d)); // 3258
   out = out.concat(_delLines(d)); // 3259
-  out = out.concat(acLines(d), pfLines(d), pkLines(d)); // COLA 7 (cronómetro), 10 (fallas por camino), 9 (picos)
+  out = out.concat(acLines(d), pfLines(d), pkLines(d), mtLines(d)); // COLA 7 (cronómetro), 10 (fallas por camino), 9 (picos)
   return out;
 }
 if (typeof window !== 'undefined') { window.NEXO_recentSpeed = usageRecentSpeed; window.NEXO_noteSpeed = usageNoteSpeed; window.NEXO_noteConnect = usageNoteConnect; window.NEXO_noteWd = usageNoteWd; window.NEXO_noteSent = usageNoteSent; window.NEXO_noteDelivered = usageNoteDelivered; window.NEXO_speedLines = usageSpeedLines; window.NEXO_noteLog = usageNoteLog; window.NEXO_notePathFail = usageNotePathFail; }

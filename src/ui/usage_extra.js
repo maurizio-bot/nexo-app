@@ -109,3 +109,38 @@ export function acLines(d) {
   }); });
   return parts.length ? ['  cronómetro de actividades (de soltar a la ✓✓): ' + parts.join(' · ')] : []; // i18n-ok: texto para el desarrollador
 }
+
+// ---- COLA 13: enlaces Bluetooth que se quedan en MTU mínimo (23: todo ~20 veces más lento), por contacto y por papel ----
+// Se alimenta de las líneas «[MTU] <id>: <n>» que ya escribe ble_send.js (_noteMtu): el 23 solo sale tras 4 s sin subir (aviso), el resto al cambiar.
+// Cuenta enlaces con MTU ya asentado; un enlace que se rehace con el MISMO MTU no escribe línea y no se cuenta (por eso es una cota baja).
+export function mtClassify(text) {
+  var m = /^\[MTU\] (\S+): (\d+)/.exec(String(text || ''));
+  return m ? { id: m[1], mtu: parseInt(m[2], 10) } : null;
+}
+/** Papel de NEXO en el enlace de ese contacto (cliente/servidor) leído de bleInterface (solo lee): 'c', 's' o ''. */
+export function mtRoleOf(bi, nx) {
+  try {
+    var role = '';
+    bi._deviceStates.forEach(function(st, key) { if (!role && st && st.role && String(bi._macToNexoId.get(key) || '').toLowerCase() === String(nx).toLowerCase()) role = st.role; });
+    return role === 'client' ? 'c' : role === 'server' ? 's' : '';
+  } catch (e) { return ''; }
+}
+export function mtNote(day, nx, mtu, role) {
+  if (!nx || !(mtu >= 23)) return false;
+  var m = day.mt || (day.mt = { n: 0, lo: 0, by: {} });
+  m.n++;
+  if (mtu > 23) return true;
+  m.lo++;
+  if (!m.by[nx] && Object.keys(m.by).length >= 12) nx = 'otros';
+  var e = m.by[nx] || (m.by[nx] = { n: 0, c: 0, s: 0 });
+  e.n++; if (role === 'c') e.c++; else if (role === 's') e.s++;
+  return true;
+}
+export function mtLines(d) {
+  var m = d.mt; if (!m || !m.n) return [];
+  var ids = Object.keys(m.by).sort(function(a, b) { return m.by[b].n - m.by[a].n; }).map(function(k) {
+    var e = m.by[k], sp = e.n - e.c - e.s;
+    return k + ' ×' + e.n + (e.c || e.s ? ' (cliente ' + e.c + ', servidor ' + e.s + (sp ? ', sin papel ' + sp : '') + ')' : ''); // i18n-ok: texto para el desarrollador
+  });
+  return ['  enlaces Bluetooth a MTU mínimo (23) hoy: ' + m.lo + ' de ' + m.n + ' (' + Math.round(m.lo * 100 / m.n) + ' %)' + (ids.length ? ': ' + ids.join(', ') : '')]; // i18n-ok: texto para el desarrollador
+}
