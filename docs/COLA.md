@@ -19,6 +19,36 @@ es lo que el dueño pidió el 20-11 y cabe en una sesión corta antes o después
   **22-11 tarde: remates de la fase 3 HECHOS** (3279 código rotativo en el nativo: sin eso la 3271 no abría el enlace en teléfonos reales; 3280 `BleSinApp` abre enlaces +
   despertador; 3281 adjuntos ≤ 1 MB en la bandeja). Abiertos: probar la fase 4 en multitud real (`multitud.js` y campo), modo vagón, 17, 18, 22, 23–25, 13, 3261, 2, «cancelar» de Wi-Fi Direct (el otro queda ocupado ~90 s tras fallar la unión), grupos G1–G9.
 
+## PLAN 22-11 tarde: quién hace qué y con qué modelo (manda sobre el orden de abajo; detalle de cada punto más abajo en esta cola)
+Regla (PLAN_ENTREGA «DECISIONES 21-11 noche»): la sesión principal hace lo pesado (Bluetooth, nativo, Wi-Fi Direct, protocolo); los ayudantes, lo que
+no cruza esos archivos. Dos agentes nunca tocan el mismo archivo (`ble_connections.js`, `ble_helpers.js`, `plugins/nexo-ble` son de la sesión principal).
+Todo con `[skip ci]`; UNA APK al terminar lo funcional + estético, tras una revisión propia corta; auditoría de seguridad al final (una).
+
+**Sesión principal — Fable (Opus si Fable no está o se acaba el límite):**
+1. Modo vagón / multitud (EDC): fase 4 con `multitud.js` (cientos de NEXO cerca, enlaces a demanda, tope 6). [Fable]
+2. COLA 23: entrega con la app CERRADA y la pantalla APAGADA que a veces no suena (servicio nativo, avisos). [Fable]
+3. Wi-Fi Direct «cancelar» (el otro queda ocupado ~90 s tras fallar la unión). [Fable]
+4. COLA 14: archivos medianos por Bluetooth (L2CAP). [Fable]
+5. Llamadas: 17 mensaje atorado durante una videollamada, 18 hueco ~25 s al cambiar de red. [Opus vale: protocolo JS de la llamada]
+6. COLA 25 eco en llamada de grupo + COLA 24 datos repetidos de los relés y batería en segundo plano. [Opus]
+7. Revisión propia corta de todo lo nuevo → APK → auditoría de seguridad final (una, al privado). [Fable]
+
+**Ayudantes (en paralelo, cada uno en su copia `isolation: worktree`, sin tocar los archivos de la sesión principal):**
+- A · Grupos G1–G9 (`groups.js`, `groups_ui.js`, `gruposadmin.js`, `tests/sim/groups.js`): estado del grupo firmado y versionado, admins, expulsar/bloquear,
+  foto y fondo. [Opus: hay firmas y permisos; G5 y G7 son cortos]
+- B · Google Play (COLA 26), parte de código: targetSdk 35/36, permisos, versión de tienda sin actualizador propio; preparar AAB firmado (sin subir nada). [Sonnet;
+  la sesión principal revisa lo del manifiesto y el nativo antes de juntarlo]
+- C · COLA 22: detectar y explicar al usuario que el teléfono silencia NEXO (canales de aviso, No molestar, ahorro de batería, «quitar de recientes»):
+  archivo nativo NUEVO + aviso en la app. [Sonnet]
+- D · Icono final con el logo elegido (1b: adaptativo de Android, aviso, tienda 512 px; enseñar antes/después al dueño) y, cuando el dueño elija la A/B,
+  COLA 31 (vista previa con logo real en enlaces). [Sonnet]
+- E · Menores: `estadovideo.js` falla en el contenedor (HEVC; ¿solo del entorno?), apuntar diagnósticos, NOVEDADES y documentos. [Haiku/Sonnet: lo mecánico
+  lo puede hacer el dueño en un modelo ligero]
+
+**Del dueño:** A/B de COLA 31; ritmo de búsqueda por Bluetooth de lo ya entregado al buzón (hoy: espaciado hasta 1 h); nombre Kinway (IMPI, dominios, redes);
+identificador de paquete antes de la prueba cerrada; cuenta de desarrollador de Play (la verificación tarda días), política de privacidad publicada, 12 probadores;
+pruebas reales al final ((a)–(g) y (c2) del TRASPASO). Meta: prueba cerrada de Google Play a más tardar el 1-12.
+
 ## 0. Lo que hace el dueño (antes de empezar)
 - Noche del 20-11: videollamada S24→S23 de 20–30 min con la 3116 en los dos, con Wi-Fi; copiar el diagnóstico de los dos y anotar el ambiente. Referencia: WhatsApp 0,31 %/min (S24 Ultra); su recuerdo de NEXO 0,14 %/min.
 - Prueba del Bluetooth sin la app (3254): reiniciar un teléfono, desbloquearlo SIN abrir NEXO y mandarle un texto desde otro cercano sin internet; en el diagnóstico «[BT_SINAPP]».
