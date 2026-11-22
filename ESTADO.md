@@ -97,6 +97,13 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
       de Android en las medidas (`wdgrupo.js`, 9 causas); el HD de un vídeo vuelve a ir por Bluetooth si Wi-Fi Direct falla (`chat_stream.js` usaba el tope de archivo
       normal; `wifidirect.js --broken=fail`); la dirección del grupo de Wi-Fi Direct caído se olvida (`lan.js`: el vivo la reintentaba) y el aviso ya no dice «este
       teléfono no tiene Wi-Fi». PENDIENTE nativo: `lanOnWifi()` mira solo la red por defecto; tras fallar el unirse, el otro queda «ocupado» ~90 s (falta un «cancelar»).
+    - **3261 Wi-Fi Direct por TIEMPO ESTIMADO (diseño del dueño):** con el contacto en línea por internet y cerca por Bluetooth, el archivo va por Wi-Fi Direct si llega
+      antes (`wifi_direct.planFor`/`wdPlan`, velocidad de internet de ese momento con `usageRecentSpeed`; sin medida supone 30 KB/s); enganchado en `ble_blobs.sendFile`
+      antes del buzón; si falla sigue por internet. Sim `wdplan.js`. FALTA medir en teléfonos el paso Bluetooth listo → Wi-Fi Direct listo (prueba de 3 MB ×3).
+    - **Ayudantes (2.ª tanda):** COLA 13 (enlaces a MTU 23 por día/contacto/papel, `mtu23.js`), COLA 22 (`phone_sleep.js`: tarjeta «tu teléfono cerró NEXO N veces hoy» con el
+      ajuste a quitar, y «quitada de recientes»; `phonesleep.js`). COLA 14 investigado: L2CAP existe pero solo para archivos > ~2,25 MB (`pickers.js:302`); lo mediano va por
+      GATT a ~17–27 KB/s (una escritura por intervalo de conexión). Mejora posible: usar L2CAP desde ~200 KB (medir antes lo que cuesta abrir el canal).
+      Falta nativo para «avisos silenciados»: canales de aviso y «no molestar» en `alertSettings`.
     - **3270 COLA 27 sin la app:** la escucha nativa avisa a Android del Wi-Fi sin internet (12 s sin relé abierto; 1/min), como la app (3266).
     - NO entran en la bandeja (los sigue mandando la app): adjuntos, llamadas, acciones ocultas, fallidos y textos > 12 000 caracteres.
     - **Ayudantes integrados:** COLA 30 (fondo de lista/llamada/Perfil/Ajustes con pulsación larga), COLA 33 (Ajustes → Apariencia) + resto de 32 (nombre largo con
