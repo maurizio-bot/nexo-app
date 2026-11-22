@@ -880,6 +880,14 @@
    "sintoma": "resumen_diario",
    "categoria": "Medición",
    "causa": "SIN FALLO. 2 enviados, 2 ✓✓; 7 recibidos (3 fotos por el buzón de archivos a 231 KB/s de media); internet listo en 0,5 s; batería en segundo plano 3,2 %/h (en 1,9 h); 2 min con la app a la vista."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "12:10",
+   "nx": "dueño (S24/S23), build 3117: reporte SIN diagnóstico (descripción y 2 capturas)",
+   "sintoma": "miniatura de la videollamada: el chat apretado en la ventanita del sistema; problemas al pasar varias veces normal ↔ miniatura; «el chat y la miniatura, y la miniatura no respondía»",
+   "categoria": "Llamadas",
+   "causa": "APP. (1) la marca «pasar a miniatura» (BleService.pipVideo) quedaba puesta si la app se rehacía en plena videollamada → al irse, el chat en la ventanita; (2) todo dependía de un aviso de Android por cambio (perdido = marcas pegadas); (3) la llamada que terminaba con la mini flotante dejaba la mini y la siguiente nacía dentro; (4) en la 3117 la miniatura contaba como segundo plano (3273/3275). Arreglado en 3277 (call_pip.js + nativo); sim miniaturas.js. Pendiente de confirmar en teléfono con la APK 3119."
   }
  ]
 }

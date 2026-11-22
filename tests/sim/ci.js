@@ -1,6 +1,6 @@
 // Pruebas rápidas para la compilación automática (GitHub): si alguna falla, no se publica la APK.
 // Corre los escenarios clave del simulador (de 3 en 3) y comprueba lo esencial de cada resultado.
-// Uso: node ci.js <dir_build>     (antes: tests/sim/build.sh wip; CI_ONLY=internet para correr solo algunos)
+// Uso: node ci.js <dir_build>     (antes: tests/sim/build.sh wip; CI_ONLY=internet para correr solo algunos; varios con «|», y por archivo de prueba si acaba en .js: CI_ONLY='Jump|repetidos.js')
 'use strict';
 const { spawn } = require('child_process');
 const path = require('path');
@@ -449,7 +449,8 @@ function runOne(sc) {
   // CI_RESUME=<salida de una corrida anterior>: se saltan las que ya pasaron (✓) en ella (un reinicio del contenedor corta la batería)
   const passed = new Set();
   if (process.env.CI_RESUME) { try { require('fs').readFileSync(process.env.CI_RESUME, 'utf8').split('\n').forEach((l) => { const m = /^✓ (.*) \(\d+ s\)$/.exec(l); if (m) passed.add(m[1]); }); } catch (e) {} }
-  const queue = SCENARIOS.filter((sc) => (!only || sc.name.includes(only)) && !passed.has(sc.name)), results = [];
+  const onlyList = only ? only.split('|').filter(Boolean) : null; // (varios con «|»; uno acabado en .js = el archivo de la prueba, exacto)
+  const queue = SCENARIOS.filter((sc) => (!onlyList || onlyList.some((o) => /\.js$/.test(o) ? String((sc.args || [])[0] || '') === o : sc.name.includes(o))) && !passed.has(sc.name)), results = [];
   if (passed.size) console.log('(se retoma: ' + passed.size + ' ya pasaron en ' + process.env.CI_RESUME + ')');
   await Promise.all(Array.from({ length: PARALLEL }, async () => {
     while (queue.length) {
