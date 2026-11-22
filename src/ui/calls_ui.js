@@ -343,7 +343,9 @@ function _screen() {
   el.querySelector('.nc-min').addEventListener('click', function(e) { e.stopPropagation(); haptic('confirm'); minimizeCall('1'); });
   // Videollamada: tocar la pantalla muestra / oculta los controles
   el.addEventListener('click', function(e) {
-    if (el.classList.contains('nc-appmini')) { el.classList.remove('nc-appmini'); return; } // mini flotante → volver a pantalla completa
+    // mini flotante → volver a pantalla completa. 29b: con los botones ya ocultos solos (5 s en la ventanita) volvía a pantalla completa SIN
+    // botones y hacía falta un segundo toque: al volver se muestran y se vuelve a armar el ocultado automático
+    if (el.classList.contains('nc-appmini')) { el.classList.remove('nc-appmini', 'nc-hide'); _autoHide(el); return; }
     if (!el.classList.contains('nc-live') || (e.target && e.target.closest && e.target.closest('.nc-btn, .nc-pip'))) {
       if (!el.classList.contains('nc-live')) console.log('[CALL] Toque en la pantalla de llamada ignorado: la llamada no está en curso');
       return;
