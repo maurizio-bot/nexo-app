@@ -4,6 +4,13 @@ Regla: una sesión = un tema; una APK por tanda; antes de subir correr `tamano.j
 Orden fijado por el dueño (19-11, vale desde el domingo 22-11): auditoría de seguridad → Bluetooth en el servicio nativo → auditoría posterior → modo vagón → resto. Lo de Wi-Fi Direct / medición
 es lo que el dueño pidió el 20-11 y cabe en una sesión corta antes o después de la auditoría (a elegir por él).
 
+## Estado al 22-11 (madrugada; SIN APK, una sola al terminar lo funcional + estético)
+- HECHO y subido: 16 (causa de raíz: Android no corta un enlace entrante que la app no «tiene»; 3262), 16c, 15 (3262), 16b, 34 (de raíz), 35, 29b (lo reproducible), 32 (13 → 2 hallazgos).
+- 28: no era un fallo de la app (lo cubren 3016/3058); causa real = 16b + app congelada. Cerrado.
+- 20 fase 2 (3263, `GattServerHost`): hecho en código y en sim; ver ESTADO.md si quedó subido. Fases 3 y 4: sin empezar.
+- Abiertos de la ola 1: 27 (plan: `reportNetworkConnectivity`), 36, 17, 18, 22, 29. Pruebas reales del dueño: todo lo nativo de hoy.
+- Para lo nativo: compilar aquí con `tests/kotlin-android` (comprobación de tipos) y `tests/kotlin` (JVM) antes de subir.
+
 ## 0. Lo que hace el dueño (antes de empezar)
 - Noche del 20-11: videollamada S24→S23 de 20–30 min con la 3116 en los dos, con Wi-Fi; copiar el diagnóstico de los dos y anotar el ambiente. Referencia: WhatsApp 0,31 %/min (S24 Ultra); su recuerdo de NEXO 0,14 %/min.
 - Prueba del Bluetooth sin la app (3254): reiniciar un teléfono, desbloquearlo SIN abrir NEXO y mandarle un texto desde otro cercano sin internet; en el diagnóstico «[BT_SINAPP]».

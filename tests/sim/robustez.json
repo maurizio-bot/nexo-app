@@ -368,6 +368,26 @@
     {
      "fallo": "3250 (Roberto 19-11 07:14, 3107): al apagar el Bluetooth el nativo cierra sus enlaces sin avisar y la app los seguía creyendo listos: textos fallando 6 s cada uno y «zombi» a los ~50 s. Ahora se sueltan al momento. btoffsilencio.js (contraprueba 3107: el texto no llega en 30 s)",
      "prueba": "3250 (diagnóstico automático de Roberto 19-11 07:14"
+    },
+    {
+     "fallo": "3262 (COLA 16; S24↔Austin 19-11 y S24↔Roberto 20-11): el enlace entrante repetido que se «cerraba» seguía vivo y «volvía» (Android no corta un enlace entrante si la app no lo «tiene»: cancelConnection no hacía nada). Ahora se toma (connect) y se corta de verdad. dupserver.js (contraprueba --sin-tomar: quedan 2 enlaces físicos). FALTA la confirmación del dueño en teléfonos",
+     "prueba": "3167 (diagnóstico S24"
+    },
+    {
+     "fallo": "3262 (COLA 16c, VICK↔S24 20-11 12:32): con TODOS los enlaces repetidos muertos el desempate elegía uno (también muerto); ahora los cierra todos (los no ocupados) y se abre uno limpio. bledup.js",
+     "prueba": "dedup"
+    },
+    {
+     "fallo": "3262 (COLA 16, 20-11 11:00): con dos enlaces repetidos del MISMO papel cada teléfono se quedaba con uno distinto (mandaba el MTU, que el lado servidor no siempre conoce); ahora el más reciente (openedAt). bledup.js",
+     "prueba": "dedup"
+    },
+    {
+     "fallo": "3262 (COLA 15, Motorola→S24 20-11 14:09): ≥ 20 s de escrituras «ocupado» (201) por un enlace que nunca se cerraba; ahora no se prueba DEFAULT con 201 y el enlace por el que no sale nada en ~12 s se cierra para rehacerlo. JVM WriteRetryTest; sin prueba de simulador (es del sistema): confirmar en teléfonos",
+     "prueba": "JVM"
+    },
+    {
+     "fallo": "3262/3263 («enlace que sobrevive al reinicio», 17 al 20-11 ×3): un enlace entrante que sobrevivía a un reinicio de NEXO quedaba a medias (sin suscripción ni MTU: no se le podía contestar, «zombi»). 3263: el servidor GATT es uno por proceso y no se cierra al abrir la app (gattsigue.js; contraprueba --k3262); 3262: el que escribe sin estar suscrito se corta para que reconecte limpio (JVM HalfOpenPolicyTest). FALTA la confirmación del dueño en teléfonos",
+     "prueba": "3263 (PRIORIDAD 1, fase 2"
     }
    ],
    "debiles": [
@@ -1417,6 +1437,10 @@
     {
      "fallo": "3226 (dueño 17-11 22:41, S24 con la S23: videollamada en miniatura → cámara del chat → zoom → volver: «se trabó»): al salir de la cámara del teléfono sin foto se abría la cámara de NEXO en vídeo, que le quitaba la cámara y el foco de audio a la llamada; la pérdida PERMANENTE del foco (-1) se tomaba como llamada telefónica y la videollamada quedaba «en pausa» para siempre (el sistema no devuelve ese foco). Ahora con una llamada en curso la cámara de NEXO no se abre (aviso) y, en la parte nativa, una pérdida permanente sin llamada telefónica vuelve a pedir el foco en vez de retener (FocusPolicy, JVM 4/4)",
      "prueba": "FOTO CON LA CÁMARA DEL TELÉFONO"
+    },
+    {
+     "fallo": "29b (dueño): al tocar la mini de la videollamada con los botones ya ocultos solos, volvía a pantalla completa SIN botones (hacía falta otro toque). llamadamini.js fase p. El «se bloquea o cae» NO se pudo reproducir aquí: hace falta su diagnóstico",
+     "prueba": "llamada MINIMIZADA"
     }
    ],
    "debiles": [
@@ -1548,6 +1572,10 @@
     {
      "fallo": "3210 (dueño 17-11: «¿por qué a Marcos le llegan notificaciones mías si yo no le mandé nada?»): con la app del otro cerrada, el primer trozo de un fragmento de respaldo Fénix («fxs_…») o del medio de un estado («stm…») se clasificaba como archivo nuevo (BgInbox) y avisaba «📎 Archivo»; por internet llevaba la marca de mensaje nuevo (NetBg). Ahora van con q:1. avisofenix.js (contraprueba b3205: aviso por el respaldo)",
      "prueba": "3210 (dueño 17-11: «¿por qué a Marcos"
+    },
+    {
+     "fallo": "16b (S24↔VICK 20-11 11:09): ✓✓ del nativo «sin firma válida» con un contacto recién agregado (las claves de firma solo se daban al nativo al arrancar y al pasar a segundo plano); ahora en cada repaso si cambió el conjunto contacto+clave. background.js --scenario=frozen-new (contraprueba: 0 claves, el mensaje no se confirma)",
+     "prueba": "16b (S24↔VICK 20-11)"
     }
    ],
    "debiles": [
@@ -1922,6 +1950,14 @@
     {
      "fallo": "3241 (diagnósticos del dueño 18-11): «Wi-Fi local 382,9 s» y «internet de 0,5 a 62 s» en otros teléfonos: con la pantalla apagada la app queda congelada minutos y ese tiempo contaba como tiempo de conexión (medida falsa que parecía lentitud de la red). Ahora una medida que abarca un rato en segundo plano no cuenta.",
      "prueba": "MEDIDAS DE CONEXIÓN SIN EL CONGELADO DE LA APP"
+    },
+    {
+     "fallo": "34 (dueño 21-11 14:38): «deslizar para actualizar» saltaba al desplazar la lista de contactos (10 veces en 26 s, cada una reenviaba todos los pendientes): se miraba el scroll del contenedor y la que se desplaza es la lista de dentro. estados3.js 7b (contraprueba hecha)",
+     "prueba": "estados"
+    },
+    {
+     "fallo": "COLA 35 (21-11): «→ ?» en la línea de tiempo del diagnóstico para mensajes que salen sin camino. diag_sinruta.js",
+     "prueba": "COLA 35"
     }
    ],
    "debiles": [

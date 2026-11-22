@@ -12,7 +12,12 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Con la letra del teléfono en tamaño grande, el nombre del contacto arriba del chat ya se ve completo en dos líneas, sin cortarse.
+- Abrir NEXO ya no corta el Bluetooth con tus contactos cercanos.
+- Menos enlaces Bluetooth repetidos o atascados: los mensajes de cerca salen más seguido a la primera.
+- Las ✓✓ llegan a tiempo también con contactos recién agregados.
+- Deslizar para actualizar ya no salta al desplazar la lista de contactos.
+- Con la letra grande del teléfono, nombres y botones ya no se cortan ni se enciman.
+- La videollamada en miniatura vuelve con sus botones al tocarla.
 </es-419>
 <!-- /APK -->
 
