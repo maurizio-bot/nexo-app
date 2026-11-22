@@ -12,20 +12,17 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Un mensaje que quedó en espera sale solo en cuanto vuelve el internet, aunque NEXO esté cerrada o el teléfono bloqueado.
-- Sin internet también: si tu contacto aparece cerca por Bluetooth, tu mensaje le llega sin que abras NEXO.
-- Ajustes → Apariencia: elige el color de tus burbujas, su estilo y el tipo de letra.
-- Fondo propio en la lista de chats, las llamadas, Perfil y Ajustes: mantén el dedo en un espacio libre.
-- Videollamada en miniatura: sigue al usar otras apps y vuelve sin trabarse.
+- Lo que quedó en espera (mensajes, fotos, notas de voz) sale solo al volver el internet, aunque NEXO esté cerrada o el teléfono bloqueado.
+- Sin internet: si tu contacto aparece cerca por Bluetooth, le llega sin abrir NEXO, incluso tras reiniciar el teléfono.
+- Ajustes → Apariencia: color y estilo de tus burbujas y tipo de letra.
+- Fondo propio en chats, llamadas, Perfil y Ajustes: deja el dedo en un espacio libre.
+- Videollamada en miniatura: sigue con otras apps y su sonido ya no la corta.
 </es-419>
-<!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
-  y la app lo muestra junto al botón de actualizar (Perfil → Ajustes → Actualizaciones, y «¿Qué trae?» en el aviso de abajo).
-- Formato de Google Play (se pega tal cual en «Novedades de esta versión»): un bloque por idioma (español, italiano, inglés y, desde
-  la 3123, portugués de Brasil y francés), **máximo 500 caracteres** cada uno
-  (lo comprueba `tests/sim/novedades.js`). Frases cortas, sin palabras técnicas; lo que el usuario nota.
-- Al entregar una APK: escribir aquí lo nuevo y, después de publicarla, pasar el bloque al historial con su número.
+<!-- /APK -->
 
-<!-- APK -->
+## Historial
+
+### APK 3117 (22-11-2026)
 <es-419>
 - Abrir NEXO ya no corta el Bluetooth con tus contactos cercanos.
 - Menos enlaces Bluetooth repetidos o atascados: los mensajes de cerca salen más seguido a la primera.
@@ -34,11 +31,6 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Con la letra grande del teléfono, nombres y botones ya no se cortan ni se enciman.
 - La videollamada en miniatura vuelve con sus botones al tocarla.
 </es-419>
-<!-- /APK -->
-
-## Historial
-
-### APK 3117 (22-11-2026)
 
 ### APK 3116 (20-11-2026)
 <es-419>

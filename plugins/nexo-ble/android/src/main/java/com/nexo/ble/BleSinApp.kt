@@ -218,7 +218,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
         val urgent = outBle.urgent(want)
         for ((nx, mac) in outDial.pick(want, HashMap(seen), links.count()) { m -> links.has(m) || devices.containsKey(m) }) {
             val dev = scanned[mac] ?: continue
-            if (links.connect(nx, mac, dev)) nlog(ctx, "INFO", "Bandeja de salida: hay mensajes pendientes para $nx y está cerca: el teléfono abre el enlace Bluetooth sin la app")
+            if (links.connect(nx, mac, dev)) { OutboxWake.busy(ctx); nlog(ctx, "INFO", "Bandeja de salida: hay mensajes pendientes para $nx y está cerca: el teléfono abre el enlace Bluetooth sin la app") }
             else nlog(ctx, "WARN", "Bandeja de salida: no se pudo abrir el enlace con $nx")
         }
         val now = System.currentTimeMillis()
@@ -232,6 +232,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
             sc.startScan(filters, ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), scanCb)
             scanner = sc
             scanUntil = now + OutboxDial.SCAN_MS
+            OutboxWake.busy(ctx)
             handler.postDelayed({
                 stopScan()
                 if (!stopped) try { dialStep() } catch (e: Throwable) { } // lo que se vio en este escaneo: a conectar

@@ -22,10 +22,12 @@ class OutboxDial(private val now: () -> Long = { System.currentTimeMillis() }) {
         fun gapMs(n: Int): Long = minOf(300_000L, 20_000L * (1L shl minOf(maxOf(n - 1, 0), 4)))
         /**
          * 3280: lo mismo cuando todo lo pendiente ya está a salvo en el buzón de internet (lo aceptó un relé y solo falta que el otro lo
-         * baje): 1, 2, 4, 8 min y luego cada 15 min. Se le sigue buscando por Bluetooth (puede estar al lado y sin internet), pero la
+         * baje): 1, 2, 4, 8 min, luego cada 15 min y, tras ~1,5 h sin verlo, cada hora. Se le sigue buscando por Bluetooth (puede estar al lado y sin internet), pero la
          * batería manda más: ya tiene otro camino.
          */
-        fun calmGapMs(n: Int): Long = minOf(900_000L, 3 * gapMs(n))
+        fun calmGapMs(n: Int): Long = if (n >= CALM_HOURLY_AFTER) 3_600_000L else minOf(900_000L, 3 * gapMs(n))
+        /** Tras ~1,5 h de buscarlo así sin verlo, una vez por hora (su teléfono estará apagado o lejos: días, y el mensaje ya espera en su buzón). */
+        const val CALM_HOURLY_AFTER = 10
         const val WAKE_MIN_MS = 15_000L     // el despertador nunca antes de 15 s
         const val WAKE_MAX_MS = 300_000L    // ni después de 5 min
     }

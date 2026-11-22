@@ -16,8 +16,8 @@ es lo que el dueño pidió el 20-11 y cabe en una sesión corta antes o después
   También: el nativo ABRE el enlace cuando los dos teléfonos duermen (3271), 3 (dirección del grupo de Wi-Fi Direct caído y texto verdadero; Wi-Fi local atado a la red Wi-Fi
   aunque la red por defecto sean los datos), 4 (causas reproducidas en `wdgrupo.js` y avisos verdaderos) y 5 (`wifidirect.js --broken=fail` pasa: el HD de vídeo vuelve a ir por Bluetooth). 3272.
   FASE 4 hecha (3276, gestor de enlaces: tope 6 y prioridades; opción B del dueño). También 3261, 13 (medición), 22 (tarjeta de cierres), 3273–3275 (miniatura de videollamada).
-  Abiertos: probar la fase 4 en multitud real (`multitud.js` y campo), adjuntos pequeños en la bandeja, que `BleSinApp`
-  (proceso sin la app) también abra enlaces, modo vagón, 17, 18, 22, 23–25, 13, 3261, 2, «cancelar» de Wi-Fi Direct (el otro queda ocupado ~90 s tras fallar la unión), grupos G1–G9.
+  **22-11 tarde: remates de la fase 3 HECHOS** (3279 código rotativo en el nativo: sin eso la 3271 no abría el enlace en teléfonos reales; 3280 `BleSinApp` abre enlaces +
+  despertador; 3281 adjuntos ≤ 1 MB en la bandeja). Abiertos: probar la fase 4 en multitud real (`multitud.js` y campo), modo vagón, 17, 18, 22, 23–25, 13, 3261, 2, «cancelar» de Wi-Fi Direct (el otro queda ocupado ~90 s tras fallar la unión), grupos G1–G9.
 
 ## 0. Lo que hace el dueño (antes de empezar)
 - Noche del 20-11: videollamada S24→S23 de 20–30 min con la 3116 en los dos, con Wi-Fi; copiar el diagnóstico de los dos y anotar el ambiente. Referencia: WhatsApp 0,31 %/min (S24 Ultra); su recuerdo de NEXO 0,14 %/min.

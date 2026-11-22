@@ -398,6 +398,18 @@
      "prueba": "3269 BANDEJA DE SALIDA por BLUETOOTH"
     },
     {
+     "fallo": "3279 (remate de la fase 3; hallado al revisar el código, sin diagnóstico): la bandeja buscaba a su contacto por su NEXO ID, pero un teléfono con contactos anuncia un código que rota cada 15 min: en teléfonos reales el nativo NUNCA abría el enlace (3271). La simulación no lo veía (el modelo comparaba el NEXO ID). Ahora la app deja con la bandeja la clave de los códigos de cada contacto con algo pendiente y el nativo lo reconoce (OutboxRid; JVM OutboxRidTest)",
+     "prueba": "3269 BANDEJA DE SALIDA por BLUETOOTH"
+    },
+    {
+     "fallo": "3280 (remate de la fase 3): el servicio SIN la app (NEXO volvió sola tras un cierre del sistema, reinicio o actualización) solo escribía lo pendiente por enlaces que abría el otro; con los dos dormidos nadie conectaba. Ahora busca y conecta él (BleSinApp + SinAppLinks) y hay despertador para el próximo escaneo con el teléfono dormido del todo (OutboxWake). Sin modelo en la simulación del proceso sin la app: JVM SinAppDialTest + prueba del dueño",
+     "prueba": null
+    },
+    {
+     "fallo": "3281 (dueño 21-11, S23→S24: una foto de 201 KB estuvo 4,5 h ⏳ con internet en el servicio y llegó en 44 s al reabrir): los adjuntos solo los subía la página, que Android duerme. Ahora la app deja al nativo el archivo (hasta 1 MB) cifrado y partido en trozos firmados + su aviso; el nativo sube los trozos y solo con todos guardados sale el aviso (NetOutbox.Chunk; JVM NetOutboxFilesTest)",
+     "prueba": "3281 FOTOS en la BANDEJA DE SALIDA"
+    },
+    {
      "fallo": "3276 (PRIORIDAD 1, fase 4; estudio de multitud 17-11): sin tope ni orden de enlaces, con 10 contactos dormidos alrededor el que tenía un mensaje esperando no conectaba nunca (7 enlaces ocupados, 222 intentos rechazados) y las conexiones de paso se llevaban huecos. Gestor de enlaces: tope 6, 4 contactos por estar cerca, hueco reservado y desalojo por prioridad (pendientes > chat abierto > reciente)",
      "prueba": "3276 GESTOR DE ENLACES"
     }

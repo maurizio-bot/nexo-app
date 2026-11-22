@@ -18,7 +18,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 
 ---
 
-## Dónde estamos (actualizado: 2026-11-22 14:00 México)
+## Dónde estamos (actualizado: 2026-11-22 15:22 México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
 - **Forma de trabajo:** CLAUDE.md «GASTO» (leer SOLO este bloque + 🔴 de `docs/AREAS.md`; lo demás con grep). Detalle de lo hecho del 20 al 22-11 (fases, 3254–3278):
@@ -30,9 +30,18 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   cerca), **3277 miniatura** (call_pip.js: estado desde la verdad del nativo, sim `miniaturas.js`), **3278 audio** (solo una llamada TELEFÓNICA retiene la llamada
   NEXO; otra app con sonido no la pausa ni pierde el audio: `FocusPolicy.kt`, 7 JVM; `callOut` al diagnóstico). Pasadas aquí: 41 escenarios cercanos + 9 de muchos
   teléfonos/grupos, JVM, `kotlin-android`, `MainActivity` con stubs. Última PUBLICADA: **3117** (22-11 10:53 México).
+  **REMATES DE LA FASE 3 (22-11 tarde, sesión nueva; pendiente 1 CERRADO):** **3279** el nativo no reconocía al contacto al buscarlo (comparaba el NEXO ID y
+  el otro anuncia su código rotativo: en teléfonos reales la 3271 NUNCA abría el enlace; la sim no lo veía) → la app deja con la bandeja la clave de los
+  códigos de quien tiene algo pendiente (`OutboxRid.kt`). **3280** `BleSinApp` (servicio sin la app) busca y abre el enlace (`SinAppLinks.kt`, cliente GATT
+  mínimo) + DESPERTADOR (`OutboxWake.kt`: alarma inexacta para el próximo escaneo mientras algo no tenga otro camino; lo ya aceptado por un relé se busca con
+  calma: 1, 2, 4, 8, 15 min… y cada hora tras ~1,5 h). **3281** fotos/notas de voz/archivos ≤ 1 MB en la bandeja: la app deja el archivo cifrado y partido en
+  trozos firmados + su aviso; el nativo sube los trozos y solo con TODOS sale el aviso (20 s de margen por si la app sigue despierta; al volver la app pregunta
+  al nativo antes de subir nada: `_blobNatTake`). De paso: `NOVEDADES.md` tenía un bloque repetido (arreglado). Pasado: 22 escenarios cercanos + estáticas,
+  291 JVM, tipos `kotlin-android`. Sim nueva `bandejafoto.js` (contraprueba `--sin-archivos`); JVM `OutboxRidTest`, `SinAppDialTest`, `NetOutboxFilesTest`.
+  Lo de la auditoría final, apuntado en el privado (puntos 8–11). Límites: > 1 MB, vídeo HD y Jump los sigue mandando la app; la foto por Bluetooth desde el
+  nativo NO (solo su aviso, ya subidos los trozos); `BleSinApp` abriendo enlaces no tiene modelo en la sim (JVM + prueba del dueño g).
 - **Fases del Bluetooth en el servicio:** 1 publicada (3113) · 2 publicada (3117) · 3 y 4 hechas y probadas en sim, van en la 3119. Lo más pesado de programar ya está.
-- **PENDIENTES en orden (incluirlos en la 3119, dueño 22-11):** (1) remates fase 3: fotos pequeñas en la bandeja de salida; que `BleSinApp` (servicio sin la app,
-  tras reinicio) también abra enlaces; (2) modo vagón / multitud (EDC): probar fase 4 con `multitud.js`; (3) COLA 23 entrega con app cerrada y pantalla apagada
+- **PENDIENTES en orden (incluirlos en la 3119, dueño 22-11):** (1) HECHO (3279–3281); **SIGUIENTE →** (2) modo vagón / multitud (EDC): probar fase 4 con `multitud.js`; (3) COLA 23 entrega con app cerrada y pantalla apagada
   (a veces no suena); (4) llamadas: 17 mensaje atorado durante una videollamada, 18 hueco ~25 s al cambiar de red, 25 eco en grupo; (5) Wi-Fi Direct: «cancelar»
   (el otro queda ocupado ~90 s); (6) 14 archivos medianos por L2CAP; (7) 24 batería en segundo plano y datos repetidos de relés; (8) 22 nativo: avisar si el
   teléfono silencia NEXO (canales/No molestar); (9) grupos G1–G9 (`docs/COLA.md` §4b); (10) auditoría de seguridad final (UNA, solo al privado); (11) 26 Google Play.
@@ -40,7 +49,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **PRUEBAS DEL DUEÑO con la 3119:** (a) modo avión, escribir, bloquear, quitar modo avión SIN abrir NEXO → llega y ✓✓; (b) sin internet los dos, escribir lejos,
   bloquear, acercarse → llega sin abrir NEXO; (c) videollamada → miniatura ↔ app varias veces, Ajustes y otras apps: sin chat en la ventanita, la mini responde;
   (d) en miniatura YouTube con sonido: suenan las dos, la imagen sigue; teclas = voz (volumen de llamada), multimedia = el vídeo; «Copiar diagnóstico» al terminar
-  (buscar «[CALL] Salida de sonido», «[CALL] Miniatura», «LIFECYCLE»); (e) fase 4 con mucha gente cerca.
+  (buscar «[CALL] Salida de sonido», «[CALL] Miniatura», «LIFECYCLE»); (e) fase 4 con mucha gente cerca; (f) mandar una FOTO y bloquear el teléfono en el acto
+  (y otra en modo avión → bloquear → quitar modo avión): llega sin abrir NEXO («Bandeja de salida: … trozo(s) ya están en los relés sin la app»); (g) escribir
+  sin internet a alguien lejos, REINICIAR el teléfono, desbloquear SIN abrir NEXO y acercarse al otro (los dos bloqueados): llega («[BT_SINAPP] Bandeja de
+  salida: hay mensajes pendientes … abre el enlace»). DECISIÓN tomada por Claude (el dueño puede cambiarla): lo que YA está en el buzón de internet se busca
+  por Bluetooth con calma (hasta cada hora) para no gastar batería días con un contacto apagado; lo que no tiene otro camino, seguido y con despertador.
 - **LOGO Y NOMBRE (solo en el privado `nexo-private/negocio/NOMBRE.md`):** ⭐ LOGO ELEGIDO (22-11 tarde, tras 8 rondas): la «1b» ORIGINAL de la ronda 7 (una
   burbuja cuyo contorno son 4 tramos de los colores del chat = un mensaje hecho de 4 caminos). Siguiente (cuando toque): icono final (adaptativo de Android + aviso +
   tienda 512 px) conservando su aspecto; solo quitar el bulto de la cola y enseñarle antes/después. NOMBRE: ⭐ «sigue con KINWAY» (dueño 22-11 tarde; nombre de

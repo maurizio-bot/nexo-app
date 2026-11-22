@@ -113,7 +113,8 @@ class SinAppDialTest {
         assertTrue(d.scanDue(want, false))
         t += OutboxDial.SCAN_MS + 60_000L - 1; assertFalse(d.scanDue(want, false))
         t += 1; assertTrue(d.scanDue(want, false), "el segundo al minuto (con prisa serían 20 s)")
-        assertEquals(listOf(60_000L, 120_000L, 240_000L, 480_000L, 900_000L, 900_000L), (1..6).map { OutboxDial.calmGapMs(it) }, "tope: cada 15 min")
+        assertEquals(listOf(60_000L, 120_000L, 240_000L, 480_000L, 900_000L, 900_000L), (1..6).map { OutboxDial.calmGapMs(it) }, "luego cada 15 min")
+        assertEquals(listOf(900_000L, 3_600_000L, 3_600_000L), listOf(9, 10, 40).map { OutboxDial.calmGapMs(it) }, "tras ~1,5 h sin verlo, una vez por hora")
         // con prisa: el despertador apunta al próximo escaneo, entre 15 s y 5 min
         val d2 = OutboxDial { t }
         assertFalse(d2.scanDue(want, true)); t += OutboxDial.FIRST_MS; assertTrue(d2.scanDue(want, true))

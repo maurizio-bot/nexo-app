@@ -409,6 +409,7 @@ internal fun NexoBlePlugin.outboxDialStep() {
             val gatt = connectLe(ctx, device, mac) ?: continue
             gattClients[mac] = gatt
             clientConnectionStates[mac] = android.bluetooth.BluetoothProfile.STATE_CONNECTING
+            OutboxWake.busy(ctx) // 3280: despierto mientras conecta y escribe
             nlog()?.add("INFO", "BANDEJA", "hay mensajes pendientes para $nx y está cerca: el teléfono abre el enlace Bluetooth sin la app")
         } catch (e: Throwable) { nlog()?.add("WARN", "BANDEJA", "no se pudo abrir el enlace con $nx (${e.javaClass.simpleName})") }
     }
@@ -425,6 +426,7 @@ internal fun NexoBlePlugin.outboxDialStep() {
             .setManufacturerData(NexoBlePlugin.MANUFACTURER_ID, byteArrayOf(NexoBlePlugin.NEXO_MAGIC_HIGH, NexoBlePlugin.NEXO_MAGIC_LOW), byteArrayOf(0xFF.toByte(), 0xFF.toByte())).build())
         scanner.startScan(filters, scanSettings(), scanCallback)
         outScanUntil = now + OutboxDial.SCAN_MS
+        OutboxWake.busy(ctx) // 3280: despierto lo que dura el escaneo
         mainHandler.postDelayed({
             try { scanner.stopScan(scanCallback) } catch (e: Throwable) { }
             try { outboxDialStep() } catch (e: Throwable) { } // lo que se vio en este escaneo: a conectar
