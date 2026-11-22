@@ -111,6 +111,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
       FALTA: probarlo con `multitud.js` (estudio pesado, fuera del CI) y en campo; el nativo dormido usa su propio tope (7) solo para lo que abre la bandeja.
     - **FALLO MÍO DESTAPADO POR LA BATERÍA (22-11):** 3266 guardaba su estado en `net._noNet`, que YA existía como booleano (`net_relays.js`): rompía `tick` y hacía
       creer «sin red». Arreglado (`_noNetSt`). La 3118 llevaba ese fallo: su CI debe fallar en `acuses`, `internetlisto` y `repetidos` y NO publicarse; la buena es la 3119.
+    - **APK 3119: LISTA, SIN LANZAR. El dueño pidió (22-11 ~13:20 México) NO lanzarla hasta terminar de platicar: esperar su visto bueno.** Llevará la 3118 +
+      `_noNetSt` + 3274 quitado + 3275 + 3276 (fase 4) + 3277 (miniatura). Ya corridas aquí: 38 pruebas cercanas (Bluetooth, Jump, puente, bandeja, miniatura) + 9 de
+      muchos teléfonos/grupos, en verde. El lote destapó un fallo de la fase 4, ya corregido: con «Agregar» abierto el gestor frenaba las conexiones de paso en 5 y la
+      rotación del relevo (que suelta al llegar a 6) se paraba: con nueve NEXO cerca el sexto no salía (`addlento.js`). Ahora, con «Agregar» abierto, las de paso las
+      reparte el relevo (`_linkAddOpen`). Para lanzar: un commit SIN `[skip ci]` (título «APK: …»). AL PUBLICARSE: pasar el bloque de NOVEDADES al historial y pedir al
+      dueño las pruebas (miniatura ↔ app varias veces y con otras apps; bandeja a/b).
     - **3277 MINIATURA A PRUEBA DE AVISOS PERDIDOS (dueño 22-11 tarde, build 3117: capturas con el chat apretado en la ventanita; «varias veces normal ↔ miniatura»;
       «el chat y la miniatura, y la miniatura no respondía»; sin diagnósticos).** Causas halladas y reproducidas (`miniaturas.js`; el código anterior falla s, t, z):
       (1) si la app se REHACE en plena videollamada (motor de la página caído → `recreate()`, o cambio de tema claro/oscuro: el Manifest no declaraba `uiMode`), el nativo

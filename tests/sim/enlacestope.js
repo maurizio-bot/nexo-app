@@ -6,7 +6,7 @@
 //     callados de sobra sueltan su enlace a los 2 min; nunca se cierra uno ocupado ni uno recién abierto.
 //  2) La app de verdad (bleInterface real): con pocos enlaces conecta como siempre; con los enlaces llenos, un contacto más NO conecta,
 //     uno con mensajes esperando SÍ (y se cierra el más callado), una conexión de paso no entra mientras alguien espera, y el repaso
-//     suelta lo que sobra.
+//     suelta lo que sobra; con «Agregar» abierto las conexiones de paso las reparte el relevo (3277).
 // Uso: node enlacestope.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -140,6 +140,14 @@ const save = () => fs.writeFileSync(path.join(__dirname, 'last_logs_enlacestope.
   r.A_registro_del_desalojo = logs.some((l) => l.indexOf('se suelta ' + NX(4)) >= 0 && /mensajes esperando/.test(l));
   // una conexión de paso no entra con los enlaces llenos
   r.A_de_paso_no_entra = bi._linkRoom({ hop: true }) === false;
+  // 3277: con «Agregar» abierto, las conexiones de paso las reparte el relevo (su tope y su rotación): el gestor no las frena ni el
+  // repaso suelta nada (addlento.js: con nueve NEXO cerca, el sexto no salía nunca en la lista)
+  bi._visibleUntil = Date.now() + 60000;
+  const nAg = calls.length;
+  r.A_agregar_abierto_de_paso_entra = bi._linkRoom({ hop: true }) === true;
+  r.A_agregar_abierto_sin_repaso = bi._linkTrimTick() === 0 && calls.length === nAg;
+  bi._visibleUntil = 0;
+  r.A_agregar_cerrado_vuelve_el_tope = bi._linkRoom({ hop: true }) === false;
   // el repaso: sobran contactos callados (6 enlazados, tope de 4 «por estar cerca»): suelta a los que llevan > 2 min callados
   const n1 = calls.length; bi._outboxNx.clear();
   const sueltos = bi._linkTrimTick();

@@ -115,12 +115,19 @@ export const BLE_LINKMGR_METHODS = {
     self._linkClosedAt.set(_normMac(key), Date.now());
     if (self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'disconnectDevice')) _safeNativeCall(self.nativePlugin, 'disconnectDevice', st.role === 'server' ? { deviceId: key, server: true } : { deviceId: key }).catch(function() {});
   },
+  // 3277: con «Agregar» abierto (el usuario está buscando gente) las conexiones de paso para saber quién es cada NEXO cercano las
+  // reparte el relevo con su propio tope y su rotación (ble_relay._transientCap / _closeIdleTransient; regla del dueño 11-11: «todo
+  // NEXO cercano sale al instante»): el gestor no las frena ni el repaso las suelta. (Frenarlas en 5 dejaba la rotación parada:
+  // el relevo solo suelta al que ya se identificó cuando llega a SU tope, 6, y con nueve NEXO cerca el sexto no salía nunca.)
+  _linkAddOpen() { return Date.now() < (this._visibleUntil || 0); },
   /**
    * Antes de abrir un enlace: ¿hay sitio? Si quien pide tiene prioridad y no lo hay, desaloja. want: { nx, manual, why, hop }.
    * Devuelve true si se puede conectar ya.
    */
   _linkRoom(want) {
-    var self = this, nx = _normId((want && want.nx) || ''), links = self._linkList(), o = self._linkOpts();
+    var self = this;
+    if (want && want.hop && self._linkAddOpen()) return true;
+    var nx = _normId((want && want.nx) || ''), links = self._linkList(), o = self._linkOpts();
     var isContact = false;
     try { isContact = !!nx && (self.getBLEContacts() || []).some(function(c) { return _normId(c && (c.nexoId || c.deviceUUID)) === nx; }); } catch (e) {}
     var w = { contact: isContact && !(want && want.hop), manual: !!(want && want.manual),
@@ -138,7 +145,9 @@ export const BLE_LINKMGR_METHODS = {
   },
   // Repaso (vigilante): por encima del tope o con contactos callados de sobra, se sueltan
   _linkTrimTick() {
-    var self = this, links = self._linkList(), o = self._linkOpts();
+    var self = this;
+    if (self._linkAddOpen()) return 0;
+    var links = self._linkList(), o = self._linkOpts();
     if (links.length < o.cap - 1) return 0;
     var out = linkTrim(links, o);
     out.forEach(function(key) { self._linkClose(key, links.length > o.cap ? 'por encima del tope' : 'callado más de 2 min y sobran'); }); // i18n-ok: registro
