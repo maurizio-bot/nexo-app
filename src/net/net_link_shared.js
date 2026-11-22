@@ -51,6 +51,18 @@ var BLOB_KIND = 1064;         // Fase B (2969): eventos-TROZO del buzón de arch
 var UP_MS = 150000;           // visto hace menos: en línea
 var HELLO_MS = 60000;         // saludo a los contactos en línea mientras la app está abierta
 var TICK_MS = 15000;
+// 3266 (COLA 27; S24 y Motorola 20-11 14:07–14:09: 2 min 17 s sin camino por internet con un Wi-Fi SIN salida hasta que Android pasó
+// solo a datos móviles): con Wi-Fi y NINGÚN relé abierto durante NO_NET_AFTER_MS se avisa al teléfono (ConnectivityManager
+// .reportNetworkConnectivity) de que esa red no da internet: Android la vuelve a comprobar ya y, si es verdad, pasa a datos. Si la red
+// sí tiene internet, no cambia nada. Como mucho un aviso cada NO_NET_EVERY_MS. Pura: prueba sinred.js. st = { since, saidAt }.
+export var NO_NET_AFTER_MS = 12000, NO_NET_EVERY_MS = 60000;
+export function noNetStep(st, online, wifi, now) {
+  if (online || !wifi) { st.since = 0; return false; }
+  if (!st.since) { st.since = now; return false; }
+  if (now - st.since < NO_NET_AFTER_MS || (st.saidAt && now - st.saidAt < NO_NET_EVERY_MS)) return false;
+  st.saidAt = now;
+  return true;
+}
 var TTL_MSG = 7 * 86400, TTL_CHUNK = 86400, TTL_HELLO = 600; // caducidad en los relés (s)
 // 3128 (diagnóstico S24 3067 15-11: 176 MB en el día; una llamada de 12,6 min por relés y, ya colgada, 66 MB más en 17 min):
 // las partes de voz/imagen de una llamada por relés caducaban a los 7 días como un mensaje. Cada vez que un relé se caía y

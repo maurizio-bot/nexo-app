@@ -1139,6 +1139,10 @@
     {
      "fallo": "3212 (diagnósticos 17-11: Marcos 2,6 MB en 1 min tras abrir, 97 % repetido; S24 7,8 MB en 43 min, 93 %): cada (re)suscripción a un relé pedía desde lo último visto − 10 min y bajaba otra vez todo eso por cada relé (al abrir la app, cada cambio de red). Ahora el margen es el desfase visto en vivo (+30 s, 2–10 min, se recuerda 12 h). repetidos.js (contraprueba b3205: 106 KB repetidos por reconexión; ahora 12 KB)",
      "prueba": "3212 (diagnósticos 17-11: Marcos 2,6 MB"
+    },
+    {
+     "fallo": "3266 (COLA 27; S24 y Motorola 20-11 14:07: 2 min 17 s sin internet con un Wi-Fi sin salida, hasta que Android pasó solo a datos): con Wi-Fi y ningún relé abierto ≥ 12 s la app avisa al teléfono (reportNetworkConnectivity) para que compruebe la red y pase a datos. sinred.js (función pura); lo que hace Android con el aviso solo se ve en teléfonos",
+     "prueba": "3266 (COLA 27"
     }
    ],
    "debiles": [

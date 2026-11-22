@@ -154,6 +154,8 @@ class NexoBlePlugin : Plugin() {
     // (ver holdServerLink en PluginBtState.kt). Y los que quedaron «a medias» tras un reinicio (HalfOpenPolicy).
     internal val serverHeld: MutableSet<String> get() = GattServerHost.held
     internal val halfOpen = HalfOpenPolicy()
+    // 3267 (COLA 36): direcciones que ESTA app acaba de cerrar a propósito (disconnectDevice) y cuándo
+    internal val closedByUsAt = ConcurrentHashMap<String, Long>()
     internal val gattClients = ConcurrentHashMap<String, BluetoothGatt>()
     internal val clientRxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
     internal val clientTxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
@@ -687,6 +689,7 @@ class NexoBlePlugin : Plugin() {
     internal val lanSendExec = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     @PluginMethod fun lanStatus(call: PluginCall) = lanStatusImpl(call)
+    @PluginMethod fun reportNoInternet(call: PluginCall) = reportNoInternetImpl(call) // 3266 (COLA 27)
 
     @PluginMethod fun lanStart(call: PluginCall) = lanStartImpl(call)
 

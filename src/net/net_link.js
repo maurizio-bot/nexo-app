@@ -33,7 +33,7 @@
  * Relés de prueba: window.NEXO_NET_RELAYS. Relé PROPIO (3151): OWN_RELAYS / window.NEXO_OWN_RELAYS (net_own.js).
  */
 import { GwLink, GW_FILE_MAX_B64 } from './gw_link.js';
-import { DEFAULT_RELAYS, SPARE_RELAYS, OWN_PUBLIC_BACKUP, OWN_BLOB_PAR, _relaySafe, _nid, _plugin, STATE_FILE, RELAY_BG_PROBE_MS, TICK_MS, _cat, _utf8, _scalar, _day, _reqScalar, _reqTagPub, UP_MS, RELAY_IDLE_PROBE_MS, netEventValid, _unb64, _reqAesKey, TTL_CHUNK, TTL_MSG, TTL_RT, _rnd, _b64, MAX_CONTENT, TTL_HELLO, _event, KIND, HELLO_MS } from './net_link_shared.js';
+import { noNetStep, DEFAULT_RELAYS, SPARE_RELAYS, OWN_PUBLIC_BACKUP, OWN_BLOB_PAR, _relaySafe, _nid, _plugin, STATE_FILE, RELAY_BG_PROBE_MS, TICK_MS, _cat, _utf8, _scalar, _day, _reqScalar, _reqTagPub, UP_MS, RELAY_IDLE_PROBE_MS, netEventValid, _unb64, _reqAesKey, TTL_CHUNK, TTL_MSG, TTL_RT, _rnd, _b64, MAX_CONTENT, TTL_HELLO, _event, KIND, HELLO_MS } from './net_link_shared.js';
 import { e2eIdentityDH, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { hmac } from '@noble/hashes/hmac.js';
@@ -195,6 +195,10 @@ export class NetLink {
     var changed = await self._refreshTags();
     if (changed) self._bgConfig();
     if (!self.inTags.size && !self.reqTags.size) { self._closeAll(); return; }
+    // 3266 (COLA 27): Wi-Fi sin internet (ningún relé abre) → que Android lo compruebe ya y pase a datos móviles
+    if (noNetStep(self._noNet || (self._noNet = {}), self.online(), self.wifi === true, now) && pl && typeof pl.reportNoInternet === 'function') {
+      pl.reportNoInternet().then(function(r) { if (r && r.reported) console.log('[NET] Wi-Fi sin internet (ningún relé abre): aviso al teléfono para que lo compruebe y pase a datos móviles'); }).catch(function() {});
+    }
     // 3190: también sin contactos por internet (alguien nuevo): lo recibido en segundo plano puede ser una solicitud a mi buzón
     if (self._drainPending && (self.inTags.size || self.reqTags.size)) { self._drainPending = false; self._drainBg(); }
     self._spareCheck(); // 3114: ¿falta algún relé sano? → uno de reserva

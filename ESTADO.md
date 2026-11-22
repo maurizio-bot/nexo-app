@@ -64,6 +64,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
     también con el código de antes de hoy** (`fotocalidad.js`: el tramo de internet nunca queda listo; `estadovideo.js`: `VB_todos`; comprobado con
     `builds/HEAD~2` + `NEXO_SIM_K3262=1`): no son de los cambios de hoy; las juzga el CI de GitHub al sacar la APK. Los 2 fallos reales que sacó la batería
     (`fotorenueva`, `vivoarriba`) están arreglados (3265). Para comparar con el Kotlin de antes: `NEXO_SIM_K3262=1 node X.js builds/wip`.
+  - **3266 (subido DESPUÉS de lanzar la APK 3117: va en la siguiente): COLA 27** — con Wi-Fi y ningún relé abierto ≥ 12 s la app llama a `reportNoInternet`
+    (nativo: `ConnectivityManager.reportNetworkConnectivity(red, false)`, 1 vez/min) para que Android compruebe la red y pase a datos sin esperar ~2 min.
+    `noNetStep` pura (`sinred.js`). Falta la misma idea en la escucha nativa sin la app (NetBg) y verlo en un teléfono con un router sin salida.
+  - **3267 (subido tras lanzar la 3117: va en la siguiente): COLA 36** — a una dirección que la app acaba de cerrar (≤ 3 s) y sin enlace por el que
+    escribir, `sendMessage`/`sendBinary` contestan `NOT_CONNECTED` al momento (antes: 6 s de escrituras al aire, «descartado» y contacto «muerto»).
+    Solo nativo (`justClosedByUs`, compila); el simulador no lo imita: confirmar en teléfonos.
   - **3264 (subido; de los diagnósticos del 22-11 03:13):** conectar a un teléfono fuera de la lista de vistos fallaba SIEMPRE («MAC invalida»: Android exige la
     dirección en mayúsculas, `PluginGatt`); la lista de vistos ya no se borra al parar/empezar un escaneo y la reconexión nativa pide la dirección a Android
     en vez de rendirse («No hay device cacheado»); el registro dice qué contestó el relé que no reabre (`failWhy`, JVM); texto de `BT_SINAPP` con Bluetooth apagado.
@@ -74,8 +80,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
     COLA 32 (letra grande/anchos: `letragrande.js`, 13 → 2 hallazgos; queda el nombre del chat a 320 px + letra 160 %, hay que tocar `_fitContactName` en `main.js`).
   - **TODO LO NATIVO DE HOY NECESITA PRUEBA REAL DEL DUEÑO** (al final, como él pidió): 3262 (enlaces repetidos entre S24↔Austin/Roberto: que no «vuelvan»), 3263
     (abrir NEXO con un contacto cerca: el otro no debe ver «desconectado»), 15, 16b.
-  - **SIGUIENTE (en orden):** (1) confirmar/subir 3263; (2) **COLA 27 con `ConnectivityManager.reportNetworkConnectivity(red, false)`** cuando ningún relé conecta por
-    Wi-Fi (le dice a Android que revalide y pase a datos; NO usar bindProcessToNetwork: rompe el Wi-Fi local); (3) COLA 36 (JS, Jump cierra y 7 ms después escribe);
+  - **SIGUIENTE (en orden):** (1) confirmar/subir 3263; (2) COLA 27 en la escucha nativa sin la app (NetBg; en la app ya está, 3266); (3) COLA 36 (JS, Jump cierra y 7 ms después escribe);
     (4) FASE 3 (bandeja de salida y conexiones salientes en el servicio = COLA 29) y FASE 4 (a demanda); (5) 17/18 (llamadas), 22 (avisar del teléfono que mata NEXO);
     (6) re-analizar con modelo grande los diagnósticos del 20 y 21-11 apuntados en Haiku; (7) estético: botones parejos, 30/33. Auditoría de seguridad AL FINAL (una).
 - **⚠ ARRANQUE 22-11 (dueño 21-11 noche, MANDA):** leer «DECISIONES DEL DUEÑO 21-11 noche» al inicio de `docs/PLAN_ENTREGA.md`. Resumen: PRIMERO LO FUNCIONAL (Bluetooth, zombis, servicio nativo, Wi-Fi Direct, llamadas) en la sesión principal con Fable; ayudantes con diagnósticos y lo estético (nombre encimado, letra grande, botones parejos); re-revisar con modelo grande lo apuntado/arreglado en Haiku; UNA APK al final tras una revisión propia; auditoría al final; prueba cerrada de Play ≤ 1-12; servidor de paga lo antes posible; iOS después.

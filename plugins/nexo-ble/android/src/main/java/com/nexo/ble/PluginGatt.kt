@@ -457,6 +457,8 @@ internal fun NexoBlePlugin.disconnectDeviceImpl(call: PluginCall) {
     reconnectAttempts.remove(macNorm)
     reconnectDelays.remove(macNorm)
     stopKeepAlive(macNorm)
+    if (closedByUsAt.size > 200) closedByUsAt.clear()
+    closedByUsAt[macNorm] = android.os.SystemClock.elapsedRealtime() // 3267 (COLA 36): lo que llegue enseguida para esta dirección no se escribe
     gattClients[macNorm]?.let { gatt -> try { gatt.disconnect(); gatt.close() } catch (e: Exception) { } }
     gattClients.remove(macNorm)
     clientRxCharacteristics.remove(macNorm)

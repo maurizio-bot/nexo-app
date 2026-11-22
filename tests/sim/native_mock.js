@@ -1288,6 +1288,8 @@ class NativePhone {
       // si opts.lanSilent es falso (con TCP real, a veces no se entera: lo detecta la app por falta de latido).
       // peers: calidad que mide el latido nativo (opts.lanRtt = ida y vuelta simulada; un otro que se fue sin cerrar
       // deja de contestar: "idle" crece y a los 30 s el nativo cierra)
+      // 3266 (COLA 27): la app avisa de un Wi-Fi sin internet (Kotlin reportNoInternetImpl → ConnectivityManager.reportNetworkConnectivity)
+      reportNoInternet: wrap('reportNoInternet', (c) => { self.stats.noNetReports = (self.stats.noNetReports || 0) + 1; c.resolve({ reported: true }); }),
       lanStatus: wrap('lanStatus', (c) => {
         const now = Date.now(), peers = [];
         if (self.lanConns) self.lanConns.forEach((p, nx) => {

@@ -30,6 +30,7 @@ internal fun NexoBlePlugin.sendBinaryImpl(call: PluginCall) {
     mainHandler.post {
         val macNorm = if (classifyDeviceId(rawDeviceId) == "nxid") resolveMacForNexoId(rawDeviceId.trim()) else normalizeMac(rawDeviceId)
         if (macNorm == null) { call.reject("NXID no resuelto a MAC: $rawDeviceId", "NXID_UNRESOLVED"); return@post }
+        if (justClosedByUs(macNorm)) { call.reject("Sin enlace con $macNorm (recién cerrado)", "NOT_CONNECTED"); return@post }
         val frame = try { BinFrame.encode(header, data) } catch (e: Exception) { call.reject(e.message ?: "trozo binario no válido"); return@post }
         val mtu = negotiatedMtu[macNorm] ?: 23
         val writes = BinFrame.split(frame, (mtu - 3).coerceIn(20, 512))
@@ -45,6 +46,16 @@ internal fun NexoBlePlugin.sendBinaryImpl(call: PluginCall) {
         processWriteQueue(macNorm)
         call.resolve(JSObject().put("sent", true).put("mode", "queued").put("deviceId", rawDeviceId).put("mtu", mtu))
     }
+}
+
+// 3267 (COLA 36; NX725J 20-11 12:23:58: Jump cierra la «conexión de paso» y 7 ms después sale un envío de 216 B a esa misma dirección →
+// 6 s de escrituras al aire, «mensaje descartado entero (11 trozos)» y el contacto marcado «muerto»): a una dirección que ESTA app acaba
+// de cerrar (≤ 3 s) y con la que ya no hay enlace por el que escribir, no se encola nada: se contesta «sin enlace» al momento y la app
+// sigue por otro camino. Si en ese rato se reconectó (cliente nuevo o el otro suscrito a nuestro servidor), se escribe como siempre.
+internal fun NexoBlePlugin.justClosedByUs(macNorm: String): Boolean {
+    val t = closedByUsAt[macNorm] ?: return false
+    if (android.os.SystemClock.elapsedRealtime() - t > 3000L) { closedByUsAt.remove(macNorm); return false }
+    return gattClients[macNorm] == null && serverNotificationEnabled[macNorm] != true
 }
 
 // === FIX vFIX-3: sendMessage corre SIEMPRE en mainHandler (single-threaded) ===
@@ -77,6 +88,7 @@ internal fun NexoBlePlugin.sendMessageImpl(call: PluginCall) {
             remLog("INFO", "SEND", "sendMessage MAC='$macNorm' len=${message.length}")
         }
 
+        if (justClosedByUs(macNorm)) { remLog("INFO", "SEND", "sendMessage a $macNorm: enlace recién cerrado, no se escribe"); call.reject("Sin enlace con $macNorm (recién cerrado)", "NOT_CONNECTED"); return@post }
         val result = sendChunkedOrSingle(macNorm, rawDeviceId, message)
         // MTU negociado: el JS ajusta el tamaño de los trozos de archivos (ble_ack.js)
         val mtu = negotiatedMtu[macNorm] ?: 23

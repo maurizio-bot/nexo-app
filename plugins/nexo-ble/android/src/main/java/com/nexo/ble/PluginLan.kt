@@ -18,6 +18,25 @@ private fun NexoBlePlugin.lanOnWifi(): Boolean = try {
     caps != null && (caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET))
 } catch (e: Exception) { false }
 
+// 3266 (COLA 27; S24 y Motorola 20-11 14:07: 2 min 17 s con un Wi-Fi sin salida hasta que Android pasó solo a datos): la app ve que
+// ningún relé abre estando en Wi-Fi y se lo dice a Android, que vuelve a comprobar esa red al momento y, si de verdad no da internet,
+// pasa a datos móviles. No fuerza nada: si la red sí tiene internet, Android la deja como está. Como mucho una vez por minuto.
+private var lastNoNetReportAt = 0L
+internal fun NexoBlePlugin.reportNoInternetImpl(call: PluginCall) {
+    try {
+        val cm = (appCtx ?: context).getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val net = cm.activeNetwork
+        val caps = if (net != null) cm.getNetworkCapabilities(net) else null
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (net == null || caps == null || !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)) { call.resolve(JSObject().put("reported", false).put("why", "sin Wi-Fi")); return }
+        if (lastNoNetReportAt != 0L && now - lastNoNetReportAt < 60000L) { call.resolve(JSObject().put("reported", false).put("why", "ya avisado")); return }
+        lastNoNetReportAt = now
+        cm.reportNetworkConnectivity(net, false)
+        remLog("INFO", "NET", "Wi-Fi sin internet (ningún relé abre): se pide a Android que lo compruebe (pasa a datos móviles si no hay)")
+        call.resolve(JSObject().put("reported", true))
+    } catch (e: Exception) { call.resolve(JSObject().put("reported", false).put("why", e.javaClass.simpleName)) }
+}
+
 internal fun NexoBlePlugin.lanStatusImpl(call: PluginCall) {
     // Calidad de cada conexión (latido nativo): ida y vuelta media y tiempo sin recibir
     val peers = JSArray()
