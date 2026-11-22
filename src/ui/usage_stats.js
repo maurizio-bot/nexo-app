@@ -74,6 +74,7 @@ export function usageNoteSpeed(via, dir, bytes, ms) {
     var e = day.v[k] || (day.v[k] = { n: 0, b: 0, ms: 0, lo: rate, hi: rate });
     e.n++; e.b += bytes; e.ms += ms; e.lo = Math.min(e.lo, rate); e.hi = Math.max(e.hi, rate);
     e.s = distPush(e.s, Math.round(rate * 10) / 10, e.n); // COLA 8
+    e.last = Math.round(rate * 10) / 10; e.lastAt = Date.now(); // 3261: la velocidad «de este momento» (usageRecentSpeed)
     _save(o);
     console.log('[VELOCIDAD] ' + VIAS[via] + ' ' + (dir === 'out' ? 'enviado' : 'recibido') + ': ' + _n1(bytes / 1024) + ' KB en ' + _n1(ms / 1000) + ' s = ' + _n1(rate) + ' KB/s'); // i18n-ok
   } catch (err) {}
@@ -88,6 +89,17 @@ if (typeof document !== 'undefined' && document && typeof document.addEventListe
       if (document.visibilityState === 'hidden') _lastHiddenAt = Date.now(); else _lastVisibleAt = Date.now();
     });
   } catch (e) {}
+}
+// 3261 (diseño del dueño 20-11: «evaluar la velocidad de internet de ESE momento»): KB/s de lo último que se midió por ese camino si
+// es de hace poco (30 min); si no, la media de hoy; sin datos, null (quien pregunta usa su supuesto).
+var RECENT_SPEED_MS = 30 * 60000;
+export function usageRecentSpeed(via, dir) {
+  try {
+    var o = _load(), day = _day(o, usageDayKey()), e = day.v && day.v[via + '|' + (dir || 'out')];
+    if (!e || !(e.n > 0)) return null;
+    if (e.last > 0 && e.lastAt && Date.now() - e.lastAt < RECENT_SPEED_MS) return e.last;
+    return e.ms > 0 ? Math.round(_kbs(e.b, e.ms) * 10) / 10 : null;
+  } catch (err) { return null; }
 }
 export function usageNoteConnect(via, ms) {
   try {
@@ -239,7 +251,7 @@ export function usageSpeedLines(key) {
   out = out.concat(acLines(d), pfLines(d), pkLines(d)); // COLA 7 (cronómetro), 10 (fallas por camino), 9 (picos)
   return out;
 }
-if (typeof window !== 'undefined') { window.NEXO_noteSpeed = usageNoteSpeed; window.NEXO_noteConnect = usageNoteConnect; window.NEXO_noteWd = usageNoteWd; window.NEXO_noteSent = usageNoteSent; window.NEXO_noteDelivered = usageNoteDelivered; window.NEXO_speedLines = usageSpeedLines; window.NEXO_noteLog = usageNoteLog; window.NEXO_notePathFail = usageNotePathFail; }
+if (typeof window !== 'undefined') { window.NEXO_recentSpeed = usageRecentSpeed; window.NEXO_noteSpeed = usageNoteSpeed; window.NEXO_noteConnect = usageNoteConnect; window.NEXO_noteWd = usageNoteWd; window.NEXO_noteSent = usageNoteSent; window.NEXO_noteDelivered = usageNoteDelivered; window.NEXO_speedLines = usageSpeedLines; window.NEXO_noteLog = usageNoteLog; window.NEXO_notePathFail = usageNotePathFail; }
 
 /** Texto del resumen de un día (solo números). */
 export function usageSummaryText(key) {

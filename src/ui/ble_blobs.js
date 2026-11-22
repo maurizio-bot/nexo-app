@@ -275,8 +275,28 @@ export const BLE_BLOB_METHODS = {
         function ensureReadyThenSend() {
           var deadline = Date.now() + 8000;
           var nudged = false;
+          var planTried = false;
           (function check() {
             var dev = self._resolveDeviceIdForNexoId(uuid) || (self._macOfOther(deviceId, uuid) ? null : deviceId);
+            // 3261 (diseño del dueño 20-11): Wi-Fi Direct no tiene preferencia sobre internet; entra si llega ANTES. Con el contacto en
+            // línea por internet Y cerca por Bluetooth (enlace directo listo), se comparan los tiempos estimados (wifi_direct.planFor:
+            // internet a la velocidad medida de este momento contra ~4 s + 5 MB/s) y, si gana claro, el archivo va por Wi-Fi Direct.
+            // Si no sale, sigue por internet como iba (nunca se arrastra por Bluetooth). Antes un archivo a alguien en línea por
+            // internet nunca probaba Wi-Fi Direct aunque estuviera al lado (foto del 19-11: 25 s por los relés; así ≈ 3 s).
+            if (_netNx(dev) && !planTried && self.wifiDirect && typeof self.wifiDirect.planFor === 'function' && self.ackSystem && !(meta && (meta.dst || meta.blobPtr || meta.fwd))) {
+              planTried = true;
+              var plan = null;
+              try { plan = self.wifiDirect.planFor(uuid, base64Data.length); } catch (eP) { plan = null; }
+              if (plan && plan.use && plan.dev) {
+                (self.ackSystem._wdPlan || (self.ackSystem._wdPlan = new Set())).add(fileId);
+                self.ackSystem.sendFile(plan.dev, fileId, base64Data, Object.assign({}, meta || {}, { to: uuid })).then(function() { resolve(); }, function(errP) {
+                  if (errP && errP.code === 'WD_PLAN_FAILED') { console.warn('[WIFI-DIRECT] ' + fileId + ': ' + errP.message + ': sigue por internet'); check(); } // i18n-ok: registro
+                  else reject(errP);
+                });
+                held();
+                return;
+              }
+            }
             // Fase C (2971): el adjunto ya vive en los relés (puntero vigente: reenvío de algo recibido/enviado por el buzón) y el
             // contacto está solo por internet → va POR REFERENCIA (0 subidas) aunque esté en línea; con Bluetooth/Wi-Fi, directo
             if (_netNx(dev) && meta && meta.blobPtr) { var viaRef = toBlob(); if (viaRef) { viaRef.then(resolve, reject); return; } }

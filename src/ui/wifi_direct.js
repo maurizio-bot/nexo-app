@@ -34,6 +34,15 @@ export var WD_MAX_BYTES = 30000000;  // contenido cifrado en base64 (~22 MB de a
 // Paso 2/3 de la política de caminos (dueño 04-11): si el grupo WD ya está PREPARADO (caliente), el montaje ya se pagó →
 // umbral más bajo (WD vale la pena para archivos medianos). TTL del «preparado» sin uso (se suelta por ociosidad).
 export var WD_MIN_BYTES_READY = 20000;
+// 3261 (diseño del dueño 20-11): Wi-Fi Direct NO tiene preferencia sobre internet; entra si llega ANTES. Tiempos estimados:
+// internet = tamaño / velocidad medida de este momento (sin medida: 30 KB/s, lo que dan los relés); Wi-Fi Direct ≈ 4 s de montar el
+// grupo + tamaño a 5 MB/s. Se cambia solo si gana claro (1,5 veces más rápido y al menos 3 s menos): un cambio de camino por nada no.
+export var WD_SETUP_S = 4, WD_KBPS = 5000, NET_KBPS_PRIOR = 30;
+export function wdPlan(bytes, netKbps) {
+  var kb = bytes / 1024;
+  var tNet = kb / Math.max(0.1, netKbps > 0 ? netKbps : NET_KBPS_PRIOR), tWd = WD_SETUP_S + kb / WD_KBPS;
+  return { use: tWd * 1.5 < tNet && tNet - tWd >= 3, tNet: Math.round(tNet * 10) / 10, tWd: Math.round(tWd * 10) / 10 };
+}
 var WD_READY_TTL_MS = 45000;
 var OFFER_TIMEOUT_MS = 25000;
 var PERM_TIMEOUT_MS = 60000;
@@ -265,6 +274,24 @@ export class WifiDirect {
     if (this._isWdReady(nx)) return bytes >= WD_MIN_BYTES_READY ? { use: 'grupo ya preparado' } : { no: 'archivo chico' };
     if (btLento) return bytes >= WD_MIN_BYTES_READY ? { use: 'Bluetooth lento (MTU 23)' } : { no: 'archivo chico' };
     return { no: 'archivo chico (<100 KB) con Bluetooth normal' };
+  }
+  // 3261: el contacto está en línea por internet (el camino elegido) Y cerca por Bluetooth (enlace directo listo): ¿este archivo llega
+  // antes por Wi-Fi Direct? Devuelve { use, dev (el enlace Bluetooth por el que se arma), tNet, tWd } o null si Wi-Fi Direct no se puede.
+  // Hallazgo que lo motiva (19-11): con el contacto en línea por internet un archivo nunca probaba Wi-Fi Direct (foto: 25 s; aquí ≈ 3 s).
+  planFor(nexoId, bytes) {
+    var nx = _nid(nexoId);
+    if (!this.supported() || this.busy || !(bytes >= WD_MIN_BYTES) || bytes > WD_MAX_BYTES) return null;
+    if (!this.peers.has(nx) || this._cooling(nx) || (this.status && this.status.wifiOn === false)) return null;
+    var dev = (this.ble && typeof this.ble._bleReadyFor === 'function') ? this.ble._bleReadyFor(nx) : null;
+    if (!dev || !this._directReady(dev)) return null;
+    var kbps = null;
+    try { kbps = (typeof window !== 'undefined' && typeof window.NEXO_recentSpeed === 'function') ? window.NEXO_recentSpeed('internet', 'out') : null; } catch (e) {}
+    var p = wdPlan(bytes, kbps);
+    p.dev = dev; p.netKbps = kbps;
+    console.log('[WIFI-DIRECT] ' + nx + ' está en línea por internet y cerca por Bluetooth: ' + Math.round(bytes / 1024) + ' KB ≈ ' + p.tNet + ' s por internet (' +
+      (kbps ? kbps + ' KB/s medidos' : 'sin medida: se suponen ' + NET_KBPS_PRIOR + ' KB/s') + ') y ≈ ' + p.tWd + ' s por Wi-Fi Direct → ' + (p.use ? 'Wi-Fi Direct' : 'internet')); // i18n-ok: registro
+    _noteWd(p.use ? 'use' : 'no', { why: p.use ? 'más rápido que internet' : 'internet llega antes' }); // i18n-ok: texto para el desarrollador
+    return p;
   }
   noteChoice(deviceId, bytes) {
     if (!(bytes >= WD_MIN_BYTES_READY)) return;
