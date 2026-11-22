@@ -138,6 +138,9 @@ export const ackFiles = {
     var self = this, net = self.ble && self.ble.net;
     var live = self._blobRecord(fileId);
     if (live && live.ptr) return Promise.resolve(live);
+    // 3281: el teléfono (bandeja de salida nativa) lo tenía a su cargo con la app dormida: si ya subió todos los trozos, se sigue con eso
+    // (no se vuelve a subir nada); si no, se olvida y lo sube la app de cero
+    if (live && live.natPtr) return self._blobNatTake(fileId, live).then(function(rec) { return rec || self._stageBlobOnce(fileId, data, meta); });
     var ref = meta && meta.blobPtr;
     if (pointerReusable(ref)) {
       var recRef = { expires: ref.expires * 1000, rec: null, ptr: ref, to: {}, byRef: true };
@@ -162,6 +165,28 @@ export const ackFiles = {
     var clear = function() { self._blobOutRunning.delete(fileId); };
     p.then(clear, clear);
     return p;
+  },
+  // 3281: ¿qué hizo el nativo con el archivo que se le dejó (ble_outbox._outboxFileItem)? Resuelve con el registro ya «en los relés»
+  // (y, si también dejó el aviso en el buzón, anotado como mandado a ese contacto) o con null (no terminó: se olvida y lo retira).
+  _blobNatTake(fileId, live) {
+    var self = this, ble = self.ble, pl = ble && ble.nativePlugin;
+    var drop = function(why) {
+      if (self._blobOut.get(fileId) === live) { self._blobOut.delete(fileId); saveBlobOut(self._blobOut); }
+      try { if (ble && typeof ble._outboxDrop === 'function') ble._outboxDrop(fileId, true); } catch (e) {}
+      console.log('[BLOB] ' + fileId + ': el teléfono no terminó de subirlo con la app dormida (' + why + '): lo sube la app');
+      return null;
+    };
+    if (!pl || typeof pl.netOutboxList !== 'function') return Promise.resolve(drop('sin bandeja nativa'));
+    return Promise.resolve().then(function() { return pl.netOutboxList({}); }).then(function(r) {
+      var x = ((r && r.items) || []).filter(function(y) { return y && y.id === fileId; })[0];
+      if (!x || !(x.ck > 0) || x.up < x.ck) return drop(x ? (x.up + ' de ' + x.ck + ' trozos') : 'ya no lo tiene'); // i18n-ok: registro
+      live.ptr = live.natPtr; delete live.natPtr;
+      if (x.ok && live.nat) { live.to = live.to || {}; if (!live.to[live.nat]) live.to[live.nat] = 'sent'; }
+      saveBlobOut(self._blobOut);
+      console.log('[BLOB] ' + fileId + ': el teléfono ya subió sus ' + x.ck + ' trozo(s) con la app dormida' + (x.ok ? ' y dejó el aviso en el buzón' : '') + ': no se vuelve a subir');
+      try { if (ble && typeof ble._outboxDrop === 'function') ble._outboxDrop(fileId, true); } catch (e) {} // desde aquí sigue la app (el aviso, la ✓✓)
+      return live;
+    }).catch(function() { return drop('no contestó'); });
   },
   // El puntero (chiquito, E2E) a UN destinatario por su buzón normal; se anota a quién fue (la limpieza espera a TODOS)
   _sendBlobPointer(cid, fileId, rec, meta) {
@@ -195,6 +220,8 @@ export const ackFiles = {
     if (live && live.to && live.to[cid]) { console.log('[BLOB] ' + fileId + ' ya está en el buzón de ' + cid + ' (puntero vigente hasta ' + new Date(live.expires).toISOString() + '): no se vuelve a mandar'); return Promise.resolve(); }
     return self._stageBlobOnce(fileId, data, meta).then(function(rec) {
       self._rememberBlobPtr(cid, fileId, rec.ptr);
+      // 3281: el nativo ya dejó también el aviso en su buzón con la app dormida: ✓ y nada más que mandar
+      if (rec.to && rec.to[cid]) { self._dispatchStatus(fileId, 'sent'); return; }
       return self._sendBlobPointer(cid, fileId, rec, meta);
     }).catch(function(e) {
       // «⏳, nunca ✗» (contratos §7): si ningún relé guardó un trozo o se cayó internet a mitad, el archivo queda PENDIENTE y

@@ -63,12 +63,22 @@ function publish(url, ev, ms) {
 
 // Una vuelta de la bandeja (NetBg.pumpOutbox): sube lo pendiente a los relés que la app dio en netBgConfig. Devuelve
 // { publicados: [ids que algún relé aceptó], sin_rele: [ids que ninguno aceptó], sin_contacto: [ids sin secreto de pareja] }.
-async function pumpOutbox(native) {
+// 3281: de un archivo, primero sus trozos (eventos ya firmados por la app, tal cual; opts.soloTrozos = cuántos subir en esta vuelta,
+// para cortar a la mitad) y SOLO con todos guardados sale su aviso; trozos: cuántos se subieron en esta vuelta.
+async function pumpOutbox(native, opts) {
   const out = native.outbox || { items: [] }, cfg = native.netBg || {};
-  const r = { publicados: [], sin_rele: [], sin_contacto: [] };
+  const r = { publicados: [], sin_rele: [], sin_contacto: [], trozos: 0, a_medias: [] };
+  let cupo = (opts && opts.soloTrozos != null) ? opts.soloTrozos : Infinity;
   for (const item of (out.items || []).slice()) {
     const c = (cfg.contacts || []).find((x) => String(x.nx || '').toLowerCase() === item.nx);
     if (!c || !cfg.me) { r.sin_contacto.push(item.id); continue; }
+    for (const k of (item.chunks || [])) {
+      if (k.ok || cupo <= 0) continue;
+      cupo--;
+      const oks = await Promise.all((cfg.relays || []).slice(0, 3).map((u) => publish(u, JSON.parse(k.ev))));
+      if (oks.some(Boolean)) { k.ok = true; r.trozos++; }
+    }
+    if ((item.chunks || []).some((k) => !k.ok)) { r.a_medias.push(item.id); continue; } // el aviso no sale sin todos sus trozos
     const ev = await sealedEvent(String(cfg.me).toLowerCase(), c, item, out.f);
     if (ev.content.length > 60000) { r.sin_rele.push(item.id); continue; }
     const oks = await Promise.all((cfg.relays || []).map((u) => publish(u, ev)));

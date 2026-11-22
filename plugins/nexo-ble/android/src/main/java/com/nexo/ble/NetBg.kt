@@ -56,6 +56,8 @@ class NetBg(
     // 3270 (COLA 27 sin la app): con Wi-Fi y ningún relé abierto un rato, el Wi-Fi no da internet: quien escucha se lo dice a Android
     // (reportNetworkConnectivity) para que lo compruebe y pase a datos móviles sin esperar sus ~2 min
     private val onNoInternet: () -> Unit = { },
+    // 3281: los trozos de un archivo de la bandeja se guardan aparte (son grandes): json = sus eventos, o null = borrarlos (ya salió)
+    private val onBlob: (id: String, json: String?) -> Unit = { _, _ -> },
 ) {
     class Contact(val nx: String, val name: String, val kraw: ByteArray)
     // 3190: solicitud de contacto de mi buzón. kind = "req" (me quieren agregar) o "acc" (aceptó una solicitud MÍA); twin = nombre del
@@ -321,7 +323,18 @@ class NetBg(
     // La app deja aquí los textos pendientes ya cifrados de punta a punta; esta escucha los sube en cuanto hay un relé abierto (con la
     // app dormida, cerrada o sin la app) e insiste hasta la ✓✓ del otro. La app la reemplaza entera cada vez que se oculta.
     val outbox = NetOutbox()
-    private fun outboxChanged() { try { onOutbox(outbox.toJson()) } catch (e: Throwable) { } }
+    private fun outboxChanged() { try { onOutbox(outbox.toJson()) } catch (e: Throwable) { }; syncBlobs() }
+    // 3281: los trozos de cada archivo se guardan UNA vez al entrar y se borran al salir de la bandeja (confirmado, retirado, caducado)
+    private var blobSaved: Set<String> = emptySet()
+    private val blobLock = Any()
+    private fun syncBlobs() = synchronized(blobLock) {
+        try {
+            val now = outbox.chunkFiles()
+            for (id in blobSaved) if (id !in now) onBlob(id, null)
+            for ((id, evs) in now) if (id !in blobSaved) onBlob(id, JSONArray(evs).toString())
+            blobSaved = now.keys.toSet()
+        } catch (e: Throwable) { }
+    }
     /** La lista entera de lo pendiente (reemplaza). Devuelve cuántos quedan. */
     fun outboxSet(list: List<NetOutbox.Item>, myToken: String, wakeUrl: String, ridKeys: Map<String, String>? = null, epochS: Long = 0L): Int {
         val before = outbox.size()
@@ -342,13 +355,43 @@ class NetBg(
         return true
     }
     /** Lo guardado (arranque sin la app). */
-    fun outboxLoad(text: String?): Int = outbox.load(text, System.currentTimeMillis())
+    fun outboxLoad(text: String?, chunkLoader: ((String) -> List<String>?)? = null): Int {
+        val n = outbox.load(text, System.currentTimeMillis(), chunkLoader)
+        synchronized(blobLock) { blobSaved = outbox.chunkFiles().keys.toSet() } // lo cargado ya está guardado
+        return n
+    }
     fun outboxClear() { if (outbox.clear()) outboxChanged() }
 
+    // 3281: un relé guardó un trozo de un archivo de la bandeja: se sigue con los siguientes y, con todos subidos, sale su aviso
+    private fun outboxChunkAccepted(evId: String) {
+        val x = outbox.chunkAccepted(evId) ?: return
+        val (n, done) = outbox.chunkState(x.id)
+        if (done == n) log("Bandeja de salida: ${x.id} para ${x.nx}: sus $n trozo(s) ya están en los relés sin la app; sale el aviso para que lo baje")
+        outboxChanged()
+        try { pumpOutbox(System.currentTimeMillis()) } catch (e: Throwable) { }
+    }
+    // El evento ya viene firmado por la app: va tal cual, a 3 relés abiertos como mucho (la réplica de la app)
+    private fun publishRaw(ev: String): Boolean {
+        val open = synchronized(lock) { relays.values.mapNotNull { it.ws }.filter { it.open } }.take(3)
+        if (open.isEmpty()) return false
+        val frame = "[\"EVENT\",$ev]"
+        var sent = false
+        for (ws in open) try { if (ws.send(frame)) sent = true } catch (e: Exception) {}
+        return sent
+    }
+
     // Sube lo que toca (solo el hilo del bucle). Sin relé abierto no cuenta como intento: se mira otra vez en la próxima vuelta (5 s).
-    private fun pumpOutbox(now: Long) {
+    private val pumpLock = Any() // 3281: lo llaman el repaso de la escucha y el hilo que lee del relé (al guardarse un trozo): de a uno
+    private fun pumpOutbox(now: Long) = synchronized(pumpLock) { pumpOutboxLocked(now) }
+    private fun pumpOutboxLocked(now: Long) {
         if (outbox.size() == 0) return
         var changed = false
+        // 3281: primero los trozos de los archivos (de a CHUNK_WINDOW; el siguiente sale cuando un relé contesta: outboxChunkAccepted)
+        for (c in outbox.chunksDue(now)) { if (!running || !publishRaw(c.ev)) break; outbox.chunkSent(c, now) }
+        for (x in outbox.chunkStuck(now)) {
+            outbox.drop(x.id); changed = true
+            log("Bandeja de salida: ${x.id} para ${x.nx}: ningún relé guardó uno de sus trozos: lo manda la app al abrirse")
+        }
         val due = outbox.due(now) { id -> changed = true; log("Bandeja de salida: $id lleva más de 7 días sin poder salir: se deja (sigue ⏳ en la app)") }
         if (due.isNotEmpty() && synchronized(lock) { relays.values.any { it.ws?.open == true } }) {
             val byNx = contacts.associateBy { it.nx }
@@ -549,7 +592,7 @@ class NetBg(
             "AUTH" -> auth(r, m.optString(1))
             "CLOSED" -> if (m.optString(2).startsWith("auth-required")) { /* se resuscribe tras identificarse */ }
             "OK" -> {
-                if (m.optBoolean(2)) outboxAccepted(m.optString(1)) // 3268: ¿era uno de la bandeja de salida?
+                if (m.optBoolean(2)) { outboxAccepted(m.optString(1)); outboxChunkAccepted(m.optString(1)) } // 3268: ¿era uno de la bandeja de salida? 3281: ¿o un trozo de un archivo suyo?
                 if (!r.authed && m.optBoolean(2)) { r.authed = true; subscribe(r) }
             }
             "EVENT" -> if (m.optString(1) == SUB) onEvent(m.optJSONObject(2) ?: return)

@@ -65,7 +65,8 @@ object NetBgHome {
         // 3087: el que llama colgó (sobre con ce, por internet) → deja de sonar ya
         if (MsgNotifier.get(app).cancelCallFor(nx, offer)) log(app, "$nx colgó: la llamada deja de sonar")
     }, { req -> requestNotify(app, req) }, { ts -> NetBgSaved.callTooOld(ts, System.currentTimeMillis()) },
-        { json -> saveOutbox(app, json) }, { url, token -> wakePost(app, url, token) }, { reportNoInternet(app) }).also { watchNet(app, it) }
+        { json -> saveOutbox(app, json) }, { url, token -> wakePost(app, url, token) }, { reportNoInternet(app) },
+        { id, json -> saveBlob(app, id, json) }).also { watchNet(app, it) }
 
     // 3270 (COLA 27 sin la app; como PluginLan.reportNoInternetImpl con la app): el Wi-Fi no da internet → se le dice a Android para que
     // lo compruebe y pase a datos móviles. Solo con Wi-Fi como red activa; la escucha ya lo frena a una vez por minuto.
@@ -88,6 +89,29 @@ object NetBgHome {
         val p = host()
         if (p != null && p.moveFrozen) return
         save(ctx) { synchronized(outLock) { NetBgSaved.saveOut(p?.atRest() ?: store(ctx), writer, json) } }
+    }
+
+    // 3281: los trozos de un archivo de la bandeja (ya cifrados y firmados por la app), cifrados en reposo como la lista; json null = borrar
+    internal fun saveBlob(ctx: Context, id: String, json: String?) {
+        val p = host()
+        if (p != null && p.moveFrozen) return
+        save(ctx) {
+            synchronized(outLock) {
+                val st = p?.atRest() ?: store(ctx); val name = NetBgSaved.blobFile(id)
+                if (json == null) st.delete(name) else { st.write(name, json); true }
+            }
+        }
+    }
+    /** Trozos guardados que ya no son de nada de la bandeja (el proceso murió entre un paso y otro): fuera. */
+    internal fun sweepBlobs(ctx: Context, keepIds: Set<String>) {
+        val keep = keepIds.map { NetBgSaved.blobFile(it) }.toSet()
+        save(ctx) {
+            synchronized(outLock) {
+                var n = 0
+                try { (ctx.filesDir.listFiles() ?: emptyArray()).forEach { f -> if (f.isFile && f.name.startsWith(NetBgSaved.BLOB_PREFIX) && f.name.removeSuffix(".nxtmp") !in keep && f.delete()) n++ } } catch (e: Throwable) { }
+                n > 0
+            }
+        }
     }
 
     // El «toque» que despierta al otro teléfono tras subir un mensaje de la bandeja: lo MISMO que hace la app (wake_post.js): un POST
@@ -256,7 +280,7 @@ object NetBgHome {
         val s = saved ?: return false
         return try {
             val bg = get(app)
-            NetBgSaved.apply(bg, s)
+            NetBgSaved.apply(bg, s) { id -> NetBgSaved.blobFrom(store(app).read(NetBgSaved.blobFile(id))) }
             // Las claves del ✓✓ también para el plugin si carga después en este proceso (la app las vuelve a dar al arrancar)
             if (NexoBlePlugin.ackKeys.isEmpty()) NexoBlePlugin.ackKeys.putAll(s.ack)
             withoutApp = true

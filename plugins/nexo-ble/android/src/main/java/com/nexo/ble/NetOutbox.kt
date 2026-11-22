@@ -17,12 +17,24 @@ import org.json.JSONObject
  * llega la ✓✓ del otro (su confirmación entra por la misma escucha) o la app lo retira (lo mandó ella, se borró).
  * Un repetido no hace daño: el que recibe descarta por msgId y vuelve a confirmar.
  *
+ * 3281 (remate de la fase 3): también FOTOS y notas de voz pequeñas (hasta 1 MB). La app las deja como las subiría ella al buzón de
+ * archivos: el archivo cifrado UNA vez y partido en trozos, cada trozo ya firmado como evento del relé (Chunk), más el aviso para el
+ * contacto (p: el puntero, cifrado de punta a punta). El nativo sube los trozos tal cual (no puede leerlos ni cambiarlos) y SOLO cuando
+ * todos tienen al menos un relé que los guardó deja salir el aviso: quien lo reciba siempre encuentra el archivo entero.
+ *
  * Esta clase es la lista y sus decisiones, sin Android ni red (se prueba en JVM: NetOutboxTest). Al registro va el msgId y el NEXO ID,
  * nunca el contenido.
  */
 class NetOutbox {
     /** p = el paquete ya cifrado para el contacto (va tal cual en el sobre); wake = su token del «toque» (o vacío). */
     class Item(val id: String, val nx: String, val p: String, val addedAt: Long, val wake: String = "") {
+        /** 3281: los trozos del archivo que hay que subir ANTES de que salga p (vacío = un texto). */
+        var chunks: List<Chunk> = emptyList()
+        /** La app dice «ya tienes sus N trozos» sin volver a mandarlos (solo vale si de verdad se tienen). */
+        var stub = 0
+        /** Hasta cuándo NO se empieza a subir (el margen para que lo termine la app si sigue despierta: FILE_GRACE_MS). */
+        var holdUntil = 0L
+        fun chunksLeft(): Int = chunks.count { !it.ok }
         var tries = 0
         var nextAt = 0L
         /** Cuándo lo aceptó un relé (0 = aún no): desde ahí está a salvo en el buzón y solo se insiste de tarde en tarde. */
@@ -34,8 +46,52 @@ class NetOutbox {
         var bleNextAt = 0L
     }
 
+    /** 3281: un trozo de un archivo: el evento del relé ya firmado por la app (se sube tal cual) y su id. */
+    class Chunk(val id: String, val ev: String) {
+        var ok = false
+        var sentAt = 0L
+        var tries = 0
+    }
+
     companion object {
         const val MAX_ITEMS = 100
+        // 3281: archivos
+        const val MAX_CHUNKS = 26               // 1 MB en trozos de 40 KB (como OUT_FILE_MAX_BYTES de la app)
+        const val MAX_CHUNK_EV = 70_000         // un evento-trozo entero (40 KB en base64 + firma)
+        const val MAX_FILE_ITEMS = 4
+        const val CHUNK_KIND = 1064             // BLOB_KIND de la app
+        const val CHUNK_WINDOW = 3              // trozos subiéndose a la vez (PUBLISH_PARALLEL de la app)
+        const val CHUNK_MAX_TRIES = 10          // un trozo que ningún relé guarda tras 10 intentos: lo manda la app al abrirse
+        /**
+         * La app entrega el archivo al ocultarse aunque ella misma lo esté subiendo en ese momento (lo normal: mandar una foto y
+         * bloquear el teléfono). Si sigue despierta lo termina ella y lo retira de aquí; si Android la durmió, a los 20 s empieza el
+         * nativo. Así no se sube dos veces lo que la app iba a terminar sola.
+         */
+        const val FILE_GRACE_MS = 20_000L
+        /** Cuánto esperar la respuesta del relé antes de volver a subir un trozo: 15 s, 30 s, 1 min, 2 min y luego cada 5 min. */
+        fun chunkRetryMs(tries: Int): Long = when { tries <= 1 -> 15_000L; tries == 2 -> 30_000L; tries == 3 -> 60_000L; tries == 4 -> 120_000L; else -> 300_000L }
+        private val HEX64 = Regex("^[0-9a-f]{64}$")
+        private val HEX128 = Regex("^[0-9a-f]{128}$")
+        /** El trozo que manda la app (nunca se confía): un evento de relé bien formado, del tipo de los trozos y dentro de los topes. */
+        fun chunkOf(ev: String?): Chunk? {
+            if (ev == null || ev.length < 100 || ev.length > MAX_CHUNK_EV || !ev.startsWith("{")) return null
+            return try {
+                val o = JSONObject(ev)
+                val id = o.optString("id")
+                val content = o.optString("content")
+                if (!HEX64.matches(id) || !HEX64.matches(o.optString("pubkey")) || !HEX128.matches(o.optString("sig"))) null
+                else if (o.optInt("kind") != CHUNK_KIND || content.isEmpty() || content.length > 60_000 || o.optLong("created_at") <= 0L) null
+                else Chunk(id, ev)
+            } catch (e: Exception) { null }
+        }
+        /** Los trozos de un archivo: todos válidos, sin repetidos y dentro del tope; null si algo no cuadra. */
+        fun chunksOf(evs: List<String>?): List<Chunk>? {
+            if (evs == null || evs.isEmpty() || evs.size > MAX_CHUNKS) return null
+            val out = ArrayList<Chunk>()
+            for (e in evs) out.add(chunkOf(e) ?: return null)
+            return if (out.map { it.id }.toSet().size == out.size) out else null
+        }
+
         /** Tope del paquete: con el sobre, el cifrado y el base64 tiene que entrar en un evento de relé (NetBg.MAX_CONTENT). */
         const val MAX_P = 40000
         const val MAX_AGE_MS = 7 * 86400_000L   // como el buzón de los relés (TTL_MSG): más viejo ya no se guarda allí
@@ -117,13 +173,18 @@ class NetOutbox {
      * La app da la lista ENTERA de lo pendiente (reemplaza a la anterior). Lo que ya estaba conserva su cuenta de intentos (no se vuelve
      * a subir en el acto lo recién subido). Devuelve si cambió algo que haya que guardar.
      */
-    @Synchronized fun set(list: List<Item>, myToken: String = "", wakeUrl: String = "", ridKeys: Map<String, String>? = null, epochS: Long = 0L): Boolean {
+    @Synchronized fun set(list: List<Item>, myToken: String = "", wakeUrl: String = "", ridKeys: Map<String, String>? = null, epochS: Long = 0L, t: Long = System.currentTimeMillis()): Boolean {
         val next = LinkedHashMap<String, Item>()
+        var files = 0
         for (it in list) {
             if (next.size >= MAX_ITEMS) break
             if (!valid(it.id, it.nx, it.p) || next.containsKey(it.id)) continue
             val old = items[it.id]
-            next[it.id] = if (old != null && old.nx == it.nx) old else it
+            val x = if (old != null && old.nx == it.nx) old else it
+            // 3281: un archivo. «Ya lo tienes» (stub) solo vale si de verdad se tiene; como mucho MAX_FILE_ITEMS a la vez
+            if (x === it && it.stub > 0 && it.chunks.isEmpty()) continue
+            if (x.chunks.isNotEmpty()) { if (x.chunks.size > MAX_CHUNKS || files >= MAX_FILE_ITEMS) continue; files++; if (x === it) x.holdUntil = t + FILE_GRACE_MS }
+            next[it.id] = x
         }
         val tok = if (myToken.length in 20..4096) myToken else ""
         val url = if (wakeUrl.startsWith("https://") && wakeUrl.length <= 300) wakeUrl else ""
@@ -147,8 +208,36 @@ class NetOutbox {
     @Synchronized fun due(t: Long, expired: ((String) -> Unit)? = null): List<Item> {
         val it = items.values.iterator()
         while (it.hasNext()) { val x = it.next(); if (t - x.addedAt > MAX_AGE_MS) { it.remove(); expired?.invoke(x.id) } }
-        return items.values.filter { x -> x.nextAt <= t }
+        return items.values.filter { x -> x.nextAt <= t && x.chunksLeft() == 0 } // 3281: el aviso de un archivo, solo con todos sus trozos subidos
     }
+
+    // ---------- 3281: los trozos de los archivos ----------
+    /** Trozos que toca subir ahora (sin respuesta del relé y fuera de plazo), sin pasar de CHUNK_WINDOW en vuelo a la vez. */
+    @Synchronized fun chunksDue(t: Long): List<Chunk> {
+        var flying = 0
+        val out = ArrayList<Chunk>()
+        for (x in items.values) for (c in x.chunks) {
+            if (c.ok || x.holdUntil > t) continue
+            if (c.sentAt > 0L && t - c.sentAt < chunkRetryMs(c.tries)) { flying++; continue }
+            if (c.tries < CHUNK_MAX_TRIES) out.add(c)
+        }
+        return out.take(maxOf(0, CHUNK_WINDOW - flying))
+    }
+    @Synchronized fun chunkSent(c: Chunk, t: Long) { c.sentAt = t; c.tries++ }
+    /** Un relé guardó ese trozo. Devuelve su archivo si es la PRIMERA vez que se guarda ese trozo (para seguir con el siguiente). */
+    @Synchronized fun chunkAccepted(evId: String): Item? {
+        if (evId.isEmpty()) return null
+        for (x in items.values) for (c in x.chunks) if (c.id == evId) { if (c.ok) return null; c.ok = true; if (x.chunksLeft() == 0) x.nextAt = 0L; return x }
+        return null
+    }
+    /** Archivos con un trozo que ningún relé guardó tras todos los intentos: no pueden salir desde aquí (los manda la app al abrirse). */
+    @Synchronized fun chunkStuck(t: Long): List<Item> = items.values.filter { x ->
+        x.chunks.any { c -> !c.ok && c.tries >= CHUNK_MAX_TRIES && t - c.sentAt >= chunkRetryMs(c.tries) }
+    }
+    /** Lo que hay que tener guardado aparte (id del mensaje → sus eventos-trozo): son grandes y no van en el archivo de la lista. */
+    @Synchronized fun chunkFiles(): Map<String, List<String>> = items.values.filter { it.chunks.isNotEmpty() }.associate { it.id to it.chunks.map { c -> c.ev } }
+    /** Para la app: cuántos trozos tiene ese archivo y cuántos están ya en los relés. */
+    @Synchronized fun chunkState(id: String): Pair<Int, Int> { val x = items[id] ?: return 0 to 0; return x.chunks.size to (x.chunks.size - x.chunksLeft()) }
 
     /** Se subió a los relés abiertos (aún sin saber si lo aceptaron). */
     @Synchronized fun published(id: String, evId: String, t: Long) {
@@ -177,13 +266,14 @@ class NetOutbox {
     }
 
     // ---------- 3269: por Bluetooth ----------
-    @Synchronized fun nxs(): Set<String> = items.values.map { it.nx }.toSet()
+    // (3281: un archivo que aún está subiendo sus trozos no cuenta para el Bluetooth: por ahí solo iría su aviso, y aún no puede salir)
+    @Synchronized fun nxs(): Set<String> = items.values.filter { it.chunksLeft() == 0 }.map { it.nx }.toSet()
     /** 3280: contactos con algo que AÚN no aceptó ningún relé (no está a salvo en el buzón de internet): el Bluetooth es su único camino ahora. */
-    @Synchronized fun unsentNxs(): Set<String> = items.values.filter { it.okAt == 0L }.map { it.nx }.toSet()
+    @Synchronized fun unsentNxs(): Set<String> = items.values.filter { it.okAt == 0L && it.chunksLeft() == 0 }.map { it.nx }.toSet()
     /** ¿Hay algo pendiente para ese contacto? */
-    @Synchronized fun hasFor(nx: String): Boolean = items.values.any { it.nx == nx }
+    @Synchronized fun hasFor(nx: String): Boolean = items.values.any { it.nx == nx && it.chunksLeft() == 0 }
     /** Lo que toca escribir ahora por un enlace Bluetooth de ese contacto. */
-    @Synchronized fun bleDue(nx: String, t: Long): List<Item> = items.values.filter { it.nx == nx && it.bleNextAt <= t }
+    @Synchronized fun bleDue(nx: String, t: Long): List<Item> = items.values.filter { it.nx == nx && it.bleNextAt <= t && it.chunksLeft() == 0 }
     /** Se escribió por Bluetooth (aún sin su ✓✓). */
     @Synchronized fun bleSent(id: String, t: Long) {
         val x = items[id] ?: return
@@ -205,10 +295,15 @@ class NetOutbox {
 
     // ---------- en disco (el texto que se cifra en reposo) ----------
     @Synchronized fun toJson(): String = JSONObject().put("v", 1).put("f", myToken).put("url", wakeUrl).put("rk", JSONObject(ridKeys())).put("ep", ridEpochS)
-        .put("items", JSONArray(items.values.map { JSONObject().put("id", it.id).put("nx", it.nx).put("p", it.p).put("at", it.addedAt).put("wk", it.wake).put("ok", it.okAt) })).toString()
+        .put("items", JSONArray(items.values.map { x ->
+            JSONObject().put("id", x.id).put("nx", x.nx).put("p", x.p).put("at", x.addedAt).put("wk", x.wake).put("ok", x.okAt).also { o ->
+                // 3281: de un archivo, aquí solo qué trozos tiene y cuáles están ya subidos (los trozos en sí se guardan aparte: chunkFiles)
+                if (x.chunks.isNotEmpty()) o.put("ck", JSONArray(x.chunks.map { c -> JSONArray().put(c.id).put(if (c.ok) 1 else 0) }))
+            }
+        })).toString()
 
     /** Lo guardado (al arrancar sin la app). Lo que no cuadra se salta; lo aceptado antes por un relé no se vuelve a subir en el acto. */
-    @Synchronized fun load(text: String?, t: Long): Int {
+    @Synchronized fun load(text: String?, t: Long, chunkLoader: ((String) -> List<String>?)? = null): Int {
         items.clear(); rid.clear(); myToken = ""; wakeUrl = ""
         if (text.isNullOrEmpty()) return 0
         try {
@@ -220,12 +315,24 @@ class NetOutbox {
                     val it = Item(x.optString("id"), x.optString("nx").lowercase(), x.optString("p"), x.optLong("at", t), x.optString("wk"))
                     val ok = x.optLong("ok", 0L)
                     if (ok > 0) { it.okAt = ok; it.tries = 1; it.woke = true; it.nextAt = maxOf(t, ok + retryMs(1, true)) }
+                    // 3281: un archivo: sus trozos se leen de donde se guardaron; si faltan o no cuadran con lo apuntado, no se carga
+                    // (lo manda la app al abrirse: nunca sale un aviso de un archivo que no se puede terminar de subir)
+                    val ck = x.optJSONArray("ck")
+                    if (ck != null && ck.length() > 0) {
+                        val chunks = chunksOf(try { chunkLoader?.invoke(it.id) } catch (e: Exception) { null }) ?: continue
+                        if (chunks.size != ck.length()) continue
+                        var same = true
+                        for (k in chunks.indices) { val c = ck.optJSONArray(k); if (c == null || c.optString(0) != chunks[k].id) { same = false; break }; chunks[k].ok = c.optInt(1) == 1 }
+                        if (!same) continue
+                        it.chunks = chunks
+                    }
                     list.add(it)
                 }
             }
             val keys = HashMap<String, String>()
             o.optJSONObject("rk")?.let { r -> r.keys().forEach { nx -> keys[nx.lowercase()] = r.optString(nx) } }
-            set(list, o.optString("f"), o.optString("url"), keys, o.optLong("ep", 900L))
+            set(list, o.optString("f"), o.optString("url"), keys, o.optLong("ep", 900L), t)
+            items.values.forEach { it.holdUntil = 0L } // sin la app no hay a quién esperar: los trozos que falten salen ya
         } catch (e: Exception) { items.clear(); rid.clear() }
         return items.size
     }

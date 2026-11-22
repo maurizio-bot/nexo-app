@@ -324,7 +324,14 @@ internal fun NexoBlePlugin.netOutboxSetImpl(call: PluginCall) {
                 val id = o.optString("id"); val nx = o.optString("nx").lowercase(); val p = o.optString("p")
                 if (!NetOutbox.valid(id, nx, p)) continue
                 val at = o.optLong("at", now).let { if (it in 1..now) it else now }
-                list.add(NetOutbox.Item(id, nx, p, at, o.optString("wk")))
+                val item = NetOutbox.Item(id, nx, p, at, o.optString("wk"))
+                // 3281: un archivo pequeño: ev = sus trozos (eventos ya cifrados y firmados por la app; se suben antes que su aviso p);
+                // ck sin ev = «ya tienes sus trozos de antes» (si no se tienen, sale en miss y la app los vuelve a dar)
+                val ev = o.optJSONArray("ev")
+                if (ev != null && ev.length() > 0) {
+                    item.chunks = NetOutbox.chunksOf((0 until minOf(ev.length(), NetOutbox.MAX_CHUNKS + 1)).map { ev.optString(it) }) ?: continue
+                } else item.stub = o.optInt("ck", 0).coerceAtLeast(0)
+                list.add(item)
             }
         }
     } catch (e: Exception) { call.reject("bandeja ilegible"); return }
@@ -344,7 +351,13 @@ internal fun NexoBlePlugin.netOutboxSetImpl(call: PluginCall) {
     if (n > 0 && (appInBackground || closedMode)) outboxBleTick()
     val sent = JSArray()
     bg.outbox.ids().forEach { id -> if ((bg.outbox.get(id)?.okAt ?: 0L) > 0) sent.put(id) }
-    call.resolve(JSObject().put("n", n).put("sent", sent))
+    // 3281: de los archivos, cuáles tiene con sus trozos (have) y cuáles dijo la app que tenía y no (miss: que los vuelva a dar)
+    val have = JSArray(); val miss = JSArray()
+    val files = bg.outbox.chunkFiles().keys
+    files.forEach { have.put(it) }
+    list.forEach { if (it.stub > 0 && it.id !in files) miss.put(it.id) }
+    try { appCtx?.let { NetBgHome.sweepBlobs(it, files) } } catch (e: Exception) { }
+    call.resolve(JSObject().put("n", n).put("sent", sent).put("have", have).put("miss", miss))
 }
 
 // 3269: la bandeja de salida también por Bluetooth (OutboxBle), con los enlaces de la app (dormida o cerrada con el proceso vivo)
@@ -433,7 +446,7 @@ internal fun NexoBlePlugin.outboxHeard(macNorm: String, json: String) {
 // Lo que el nativo tiene a su cargo (al arrancar la app: para ponerse de acuerdo con lo guardado de la sesión anterior)
 internal fun NexoBlePlugin.netOutboxListImpl(call: PluginCall) {
     val arr = JSArray()
-    try { val o = netBg().outbox; o.ids().forEach { id -> o.get(id)?.let { arr.put(JSObject().put("id", it.id).put("nx", it.nx).put("ok", it.okAt > 0)) } } } catch (e: Exception) { }
+    try { val o = netBg().outbox; o.ids().forEach { id -> o.get(id)?.let { val (ck, up) = o.chunkState(id); arr.put(JSObject().put("id", it.id).put("nx", it.nx).put("ok", it.okAt > 0).put("ck", ck).put("up", up)) } } } catch (e: Exception) { }
     call.resolve(JSObject().put("items", arr))
 }
 

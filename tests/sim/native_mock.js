@@ -696,7 +696,7 @@ class NativePhone {
     if (!this._outboxLinkReady(mac)) return 0;
     let n = 0;
     for (const x of items) {
-      if (x.nx !== nx || (x.bleNextAt || 0) > now) continue;
+      if (x.nx !== nx || (x.bleNextAt || 0) > now || (x.chunks || []).some((k) => !k.ok)) continue; // 3281: el aviso de un archivo, solo con sus trozos subidos
       const r = this._sendChunkedOrSingle(mac, x.p);
       if (!r || !r.sent) break;
       x.bleTries = (x.bleTries || 0) + 1;
@@ -1569,16 +1569,34 @@ class NativePhone {
       netOutboxSet: wrap('netOutboxSet', (c, a) => {
         const { validItem } = require('./netbg_mock');
         const prev = (self.outbox && self.outbox.items) || [];
-        const items = (a.items || []).filter(validItem).slice(0, 100).map((x) => prev.find((y) => y.id === x.id && y.nx === x.nx) || { id: x.id, nx: x.nx, p: x.p, at: x.at || Date.now(), wk: x.wk || '' });
+        // 3281 (NetOutbox.chunksOf): un archivo pequeño trae sus trozos (ev: eventos ya firmados, kind 1064, hasta 26); «ck» sin ev = «ya
+        // los tienes» (solo vale si se tienen: si no, va en miss). opts.noOutboxFiles = el nativo de antes (no entiende archivos).
+        const chunksOf = (ev) => { if (!Array.isArray(ev) || !ev.length || ev.length > 26) return null; const out = []; for (const s of ev) { let o = null; try { o = JSON.parse(s); } catch (e) {} if (typeof s !== 'string' || s.length > 70000 || !o || o.kind !== 1064 || !/^[0-9a-f]{64}$/.test(o.id || '') || !o.content || o.content.length > 60000) return null; out.push({ id: o.id, ev: s, ok: false }); } return out; };
+        const miss = [];
+        let nFiles = 0;
+        const items = (a.items || []).filter(validItem).slice(0, 100).map((x) => {
+          const old = prev.find((y) => y.id === x.id && y.nx === x.nx);
+          if (old) { if (old.chunks) nFiles++; return old; }
+          const it = { id: x.id, nx: x.nx, p: x.p, at: x.at || Date.now(), wk: x.wk || '' };
+          if (x.ev || x.ck) {
+            if (self.opts.noOutboxFiles) return null;
+            if (!x.ev) { miss.push(x.id); return null; }
+            const ch = chunksOf(x.ev);
+            if (!ch || nFiles >= 4) return null;
+            it.chunks = ch; nFiles++;
+            self.stats.outboxEvBytes = (self.stats.outboxEvBytes || 0) + x.ev.reduce((n, s) => n + s.length, 0);
+          }
+          return it;
+        }).filter(Boolean);
         // 3279: las claves de los códigos rotativos de esos contactos (nx → hex 64) y la duración de la época: solo de quien tiene algo pendiente
         const rk = {}; Object.keys(a.rk || {}).forEach((nx) => { if (items.some((x) => x.nx === nx) && /^[0-9a-f]{64}$/.test(String(a.rk[nx]))) rk[nx] = String(a.rk[nx]); });
         self.outbox = { items, f: a.f || '', url: a.url || '', rk, ep: Math.max(1, Number(a.ep) || 900) };
         self._outboxTickStart();
         (a.links || []).slice(0, 64).forEach((l) => { if (l) self._outboxLearn(norm(String(l.mac || '')), String(l.nx || '').toLowerCase()); }); // 3269
         self.outboxCalls = (self.outboxCalls || 0) + 1;
-        c.resolve({ n: items.length, sent: items.filter((x) => x.okAt).map((x) => x.id) });
+        c.resolve({ n: items.length, sent: items.filter((x) => x.okAt).map((x) => x.id), have: items.filter((x) => x.chunks).map((x) => x.id), miss });
       }),
-      netOutboxList: wrap('netOutboxList', (c) => { c.resolve({ items: ((self.outbox && self.outbox.items) || []).map((x) => ({ id: x.id, nx: x.nx, ok: !!x.okAt })) }); }),
+      netOutboxList: wrap('netOutboxList', (c) => { c.resolve({ items: ((self.outbox && self.outbox.items) || []).map((x) => ({ id: x.id, nx: x.nx, ok: !!x.okAt, ck: (x.chunks || []).length, up: (x.chunks || []).filter((k) => k.ok).length })) }); }),
       netOutboxDrop: wrap('netOutboxDrop', (c, a) => {
         if (self.outbox) self.outbox.items = self.outbox.items.filter((x) => x.id !== a.id);
         (self.outboxDrops = self.outboxDrops || []).push(a.id);

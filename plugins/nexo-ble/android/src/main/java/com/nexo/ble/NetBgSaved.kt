@@ -20,6 +20,17 @@ object NetBgSaved {
     const val ACK_FILE = "nexo_netbg_ack.json"
     /** 3268 (fase 3): la bandeja de salida (NetOutbox.toJson): textos pendientes ya cifrados de punta a punta, para subirlos sin la app. */
     const val OUT_FILE = "nexo_netbg_out.json"
+    /**
+     * 3281: los trozos (eventos ya firmados y cifrados por la app) de un archivo de la bandeja de salida, un archivo por mensaje. El
+     * nombre sale de la huella del id del mensaje (el id no se usa tal cual: no es un nombre de archivo). Empieza por PREFIX: no viaja
+     * al pasar la cuenta a otro teléfono y se borra con ella.
+     */
+    const val BLOB_PREFIX = "nexo_netbg_blob_"
+    fun blobFile(id: String): String = BLOB_PREFIX + Secp256k1.hex(java.security.MessageDigest.getInstance("SHA-256").digest(id.toByteArray(Charsets.UTF_8))).substring(0, 24) + ".json"
+    /** Lo guardado de un archivo: sus eventos-trozo, o null si no está o no se entiende. */
+    fun blobFrom(text: String?): List<String>? = try {
+        if (text.isNullOrEmpty()) null else org.json.JSONArray(text).let { a -> (0 until a.length()).map { a.getString(it) } }
+    } catch (e: Exception) { null }
     private const val PREFIX = "nexo_netbg_"
     /** ¿Es uno de los archivos de la escucha sin la app? (también su temporal .nxtmp) */
     fun isFile(name: String): Boolean = name.startsWith(PREFIX)
@@ -129,11 +140,11 @@ object NetBgSaved {
     }
 
     /** La escucha con lo guardado, igual que netBgConfigImpl + setAckKeysImpl con la app (sin arrancarla). */
-    fun apply(bg: NetBg, s: Saved) {
+    fun apply(bg: NetBg, s: Saved, chunkLoader: ((String) -> List<String>?)? = null) {
         val c = s.cfg
         bg.configure(c.me, c.relays, c.since, c.contacts, c.known, c.reqOut, c.reqSince)
         bg.setAckKeys(s.ack)
-        bg.outboxLoad(s.out) // 3268: lo que quedó pendiente de salir (se sube en cuanto haya un relé abierto)
+        bg.outboxLoad(s.out, chunkLoader) // 3268: lo que quedó pendiente de salir (se sube en cuanto haya un relé abierto); 3281: con los trozos de sus archivos
     }
 
     // ---------- decisiones ----------
