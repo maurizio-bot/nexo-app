@@ -23,6 +23,7 @@ var LIST_FILE = 'nexo_wp_list.json', CHAT_FILE = 'nexo_wp_chat.json';
 function CHATP_FILE(nx) { return 'nexo_wp_c_' + nx + '.json'; }   // fondo por chat concreto
 var IMG_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/;
 var NX_RE = /^nx[0-9a-z]{8}$/;
+var CHAT_RE = /^(nx|gr)[0-9a-z]{8}$/;   // 22-11 (COLA 4b, G7): el fondo por chat vale también para un grupo (su id gr…)
 var MAX_LEN = 1400000;    // ~1 MB de imagen como mucho (las nuestras: 100–400 KB)
 var MAX_EDGE = 1280;      // lado mayor al que se reduce la foto elegida (fondos globales, SOLO locales: no se comparten)
 // #dueño 08-11 (fondo compartido no aparecía en la tablet): el fondo POR chat se COMPARTE (acción oculta cifrada E2E). Por
@@ -170,14 +171,14 @@ export function chatWallpaperFor(nx) { return _per.get(_normId(nx)) || ''; }
 export function hasChatWallpaperFor(nx) { return !!chatWallpaperFor(nx); }
 export function setChatWallpaperFor(nx, dataUrl) {
   nx = _normId(nx);
-  if (!NX_RE.test(nx) || !IMG_RE.test(dataUrl || '') || dataUrl.length > MAX_LEN) return false;
+  if (!CHAT_RE.test(nx) || !IMG_RE.test(dataUrl || '') || dataUrl.length > MAX_LEN) return false;
   _per.set(nx, dataUrl); _save(CHATP_FILE(nx), { img: dataUrl });
   if (_curNx === nx) _paint(dataUrl);
   return true;
 }
 export function clearChatWallpaperFor(nx) {
   nx = _normId(nx);
-  if (!NX_RE.test(nx)) return;
+  if (!CHAT_RE.test(nx)) return;
   _per.set(nx, ''); _save(CHATP_FILE(nx), { img: '' });
   if (_curNx === nx) _paint(_chat);   // vuelve al global de chats (o negro si no hay)
 }

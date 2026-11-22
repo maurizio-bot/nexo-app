@@ -740,6 +740,7 @@ export const BLE_UI_METHODS = {
       avatar.className = 'ble-contact-avatar ' + gradClass;
       avatar.textContent = initials;
       if (!contact.isGroup) paintAvatar(avatar, uuid); // ronda 2765: foto de perfil
+      else { var gph = window.NEXO_groupPhoto && window.NEXO_groupPhoto(uuid); if (gph) { avatar.style.backgroundImage = 'url("' + gph + '")'; avatar.style.backgroundSize = 'cover'; avatar.classList.add('nx-has-photo'); avatar.textContent = ''; } } // 22-11 (COLA 4b, G6): foto del grupo
       // Ronda 2797 (pedido del dueño): tocar la FOTO del contacto la abre a tamaño grande (solo si tiene foto);
       // tocar el resto de la fila (nombre) entra al chat. Sin foto, el toque en el círculo cae a la fila (abre el chat).
       avatar.addEventListener('click', function(e) {

@@ -12,7 +12,7 @@
  */
 var IDENTITY_FILE = 'nexo_e2e_identity.json';
 var PREFIX = 'E1:';
-var _identity = null;      // { priv: CryptoKey, pubB64: string }
+var _identity = null;      // { priv: CryptoKey, pubB64: string, sig: CryptoKey ECDSA (22-11, firmas del estado de los grupos) }
 var _initPromise = null;
 var _keyCache = new Map(); // pública del otro → CryptoKey AES-GCM
 
@@ -46,7 +46,7 @@ export function initE2E() {
           var data = JSON.parse(r.content);
           if (data && data.priv && data.pub) {
             var priv = await subtle.importKey('jwk', data.priv, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
-            _identity = { priv: priv, pubB64: data.pub };
+            _identity = { priv: priv, pubB64: data.pub, sig: await _sigKey(data.priv) };
             console.log('[E2E] Identidad cargada, huella ' + (await e2eFingerprint(data.pub)));
             return _identity;
           }
@@ -57,7 +57,7 @@ export function initE2E() {
     var pubRaw = new Uint8Array(await subtle.exportKey('raw', kp.publicKey));
     var privJwk = await subtle.exportKey('jwk', kp.privateKey);
     var pubB64 = _bytesToB64(pubRaw);
-    _identity = { priv: kp.privateKey, pubB64: pubB64 };
+    _identity = { priv: kp.privateKey, pubB64: pubB64, sig: await _sigKey(privJwk) };
     if (pl && typeof pl.saveToFile === 'function') {
       try { await pl.saveToFile({ filename: IDENTITY_FILE, content: JSON.stringify({ v: 1, priv: privJwk, pub: pubB64, createdAt: Date.now() }) }); }
       catch (e) { console.warn('[E2E] No se pudo guardar la identidad:', e && e.message); }
@@ -66,6 +66,21 @@ export function initE2E() {
     return _identity;
   })();
   return _initPromise;
+}
+
+// 22-11 (grupos, G2): la MISMA clave de identidad, importada para FIRMAR (ECDSA P-256 + SHA-256) los cambios del estado de un grupo:
+// sus contactos ya conocen esa pública (tarjetas), así que cualquier miembro comprueba quién hizo el cambio (group_state.gsVerify).
+async function _sigKey(jwk) {
+  try {
+    var j = Object.assign({}, jwk); delete j.key_ops; delete j.alg;
+    return await _subtle().importKey('jwk', j, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  } catch (e) { console.warn('[E2E] Sin clave de firma:', e && e.message); return null; } // i18n-ok: registro
+}
+// Firma (64 bytes r||s) de unos bytes con la identidad; null si no se puede
+export async function e2eSign(bytes) {
+  await initE2E();
+  if (!_identity || !_identity.sig) return null;
+  return new Uint8Array(await _subtle().sign({ name: 'ECDSA', hash: 'SHA-256' }, _identity.sig, bytes));
 }
 
 export function e2eMyPublicKey() { return _identity ? _identity.pubB64 : null; }

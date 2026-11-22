@@ -361,6 +361,8 @@ function _paintChatAvatar(d) {
     el.style.backgroundImage = '';
     el.textContent = _getInitials(name || id);
     if (!group && id) paintAvatar(el, id);
+    var gph = group && window.NEXO_groupPhoto ? window.NEXO_groupPhoto(id) : null; // 22-11 (COLA 4b, G6): foto del grupo
+    if (gph) { el.style.backgroundImage = 'url("' + gph + '")'; el.style.backgroundSize = 'cover'; el.textContent = ''; }
   } catch (e) {}
 }
 window.addEventListener('nexo:ble:openChat', function(e) { _paintChatAvatar(e && e.detail); });
