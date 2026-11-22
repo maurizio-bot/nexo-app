@@ -203,6 +203,9 @@ class NexoBlePlugin : Plugin() {
     internal val writeRetryCount = ConcurrentHashMap<String, Int>()
     internal val writeDropStreak = ConcurrentHashMap<String, Int>() // #129: mensajes SEGUIDOS descartados por enlace (atasco real)
     internal val clientSetupDone = ConcurrentHashMap<String, Boolean>() // 3059: enlace cliente con MTU y notificaciones ya hechos
+    // 3269 (fase 3): la bandeja de salida por Bluetooth (OutboxBle) y su repaso periódico
+    @Volatile internal var outBleRef: OutboxBle? = null
+    @Volatile internal var outTickOn = false
     internal val clientSetupWaitSince = ConcurrentHashMap<String, Long>() // 3059: desde cuándo esperan las escrituras a eso
     internal val nxidToMacMap = ConcurrentHashMap<String, String>()
     internal var quickScanLatch: java.util.concurrent.CountDownLatch? = null
@@ -415,6 +418,7 @@ class NexoBlePlugin : Plugin() {
         // La app deja de estar a la vista: la escucha nativa de internet toma el relevo (la app la reconfigura al
         // ocultarse con lo último que vio)
         mainHandler.postDelayed({ if (appInBackground) try { wifiLockHold(true); netBg().start() } catch (e: Exception) { } }, 3000)
+        outboxBleTick() // 3269: lo pendiente de la bandeja también por Bluetooth mientras la app no está a la vista
         notifyListeners("onAppStateChange", JSObject().put("isActive", false))
     }
     override fun handleOnDestroy() {

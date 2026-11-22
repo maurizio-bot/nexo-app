@@ -65,7 +65,19 @@ object NetBgHome {
         // 3087: el que llama colgó (sobre con ce, por internet) → deja de sonar ya
         if (MsgNotifier.get(app).cancelCallFor(nx, offer)) log(app, "$nx colgó: la llamada deja de sonar")
     }, { req -> requestNotify(app, req) }, { ts -> NetBgSaved.callTooOld(ts, System.currentTimeMillis()) },
-        { json -> saveOutbox(app, json) }, { url, token -> wakePost(app, url, token) }).also { watchNet(app, it) }
+        { json -> saveOutbox(app, json) }, { url, token -> wakePost(app, url, token) }, { reportNoInternet(app) }).also { watchNet(app, it) }
+
+    // 3270 (COLA 27 sin la app; como PluginLan.reportNoInternetImpl con la app): el Wi-Fi no da internet → se le dice a Android para que
+    // lo compruebe y pase a datos móviles. Solo con Wi-Fi como red activa; la escucha ya lo frena a una vez por minuto.
+    private fun reportNoInternet(ctx: Context) {
+        try {
+            val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val net = cm.activeNetwork ?: return
+            val caps = cm.getNetworkCapabilities(net) ?: return
+            if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return
+            cm.reportNetworkConnectivity(net, false)
+        } catch (e: Throwable) { log(ctx, "Internet en segundo plano: no se pudo avisar del Wi-Fi sin internet (${e.javaClass.simpleName})", "WARN") }
+    }
 
     // ===== 3268 (PRIORIDAD 1, fase 3; COLA 29): bandeja de salida =====
     // Se guarda cifrada en reposo cada vez que cambia (algo salió, llegó su ✓✓, la app dio otra lista): así sigue saliendo aunque

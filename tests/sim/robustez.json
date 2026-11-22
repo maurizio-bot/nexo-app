@@ -388,6 +388,10 @@
     {
      "fallo": "3262/3263 («enlace que sobrevive al reinicio», 17 al 20-11 ×3): un enlace entrante que sobrevivía a un reinicio de NEXO quedaba a medias (sin suscripción ni MTU: no se le podía contestar, «zombi»). 3263: el servidor GATT es uno por proceso y no se cierra al abrir la app (gattsigue.js; contraprueba --k3262); 3262: el que escribe sin estar suscrito se corta para que reconecte limpio (JVM HalfOpenPolicyTest). FALTA la confirmación del dueño en teléfonos",
      "prueba": "3263 (PRIORIDAD 1, fase 2"
+    },
+    {
+     "fallo": "3269 (PRIORIDAD 1, fase 3; COLA 29): sin internet, lo que quedó ⏳ para alguien que no estaba cerca no salía cuando aparecía por Bluetooth con mi app dormida o cerrada (reenviar era cosa de la página). El nativo lo escribe por ese enlace (bandeja de salida por Bluetooth: OutboxBle) y la ✓✓ firmada del otro lo retira",
+     "prueba": "3269 BANDEJA DE SALIDA por BLUETOOTH"
     }
    ],
    "debiles": [

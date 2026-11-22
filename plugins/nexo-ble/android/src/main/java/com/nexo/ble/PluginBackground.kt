@@ -330,9 +330,43 @@ internal fun NexoBlePlugin.netOutboxSetImpl(call: PluginCall) {
     } catch (e: Exception) { call.reject("bandeja ilegible"); return }
     val bg = netBg()
     val n = bg.outboxSet(list, call.data.optString("f"), call.data.optString("url"))
+    // 3269: los enlaces Bluetooth listos de esos contactos (los identificó la app): por ellos también sale lo pendiente
+    try {
+        call.data.optJSONArray("links")?.let { a ->
+            for (i in 0 until minOf(a.length(), OutboxBle.MAX_LINKS)) { val o = a.optJSONObject(i) ?: continue; outBle().seed(normalizeMac(o.optString("mac")), o.optString("nx")) }
+        }
+    } catch (e: Exception) { }
+    if (n > 0 && (appInBackground || closedMode)) outboxBleTick()
     val sent = JSArray()
     bg.outbox.ids().forEach { id -> if ((bg.outbox.get(id)?.okAt ?: 0L) > 0) sent.put(id) }
     call.resolve(JSObject().put("n", n).put("sent", sent))
+}
+
+// 3269: la bandeja de salida también por Bluetooth (OutboxBle), con los enlaces de la app (dormida o cerrada con el proceso vivo)
+internal fun NexoBlePlugin.outBle(): OutboxBle = outBleRef ?: synchronized(this) {
+    outBleRef ?: OutboxBle({ nexoAdvertisingId ?: "" }, { netBgShared }, { NexoBlePlugin.ackKeys[it] }, object : OutboxBle.Link {
+        override fun ready(mac: String) = (serverConnectedDevices[mac] != null && serverNotificationEnabled.getOrDefault(mac, false)) || clientRxCharacteristics[mac] != null
+        override fun send(mac: String, json: String) = sendChunkedOrSingle(mac, mac, json).sent
+        override fun log(msg: String) { nlog()?.add("INFO", "BANDEJA", msg) }
+    }).also { outBleRef = it }
+}
+// Repaso cada 10 s mientras la app no está a la vista y queda algo en la bandeja (los enlaces que hablan la mueven al momento: outboxHeard)
+internal fun NexoBlePlugin.outboxBleTick() {
+    if (outTickOn) return
+    outTickOn = true
+    val run = object : Runnable {
+        override fun run() {
+            if (!(appInBackground || closedMode) || !outBle().pending()) { outTickOn = false; return }
+            try { outBle().pump() } catch (e: Throwable) { }
+            mainHandler.postDelayed(this, 10_000L)
+        }
+    }
+    mainHandler.postDelayed(run, 2_000L)
+}
+// Lo que llega por un enlace Bluetooth con la app dormida o cerrada (PluginRx): de quién es el enlace, ✓✓ de lo de la bandeja y a escribir
+internal fun NexoBlePlugin.outboxHeard(macNorm: String, json: String) {
+    if (json.length > 6000) return
+    try { outBle().heard(macNorm, json) } catch (e: Throwable) { }
 }
 
 // La app retira uno (lo mandó ella, llegó su ✓✓ o se borró)

@@ -10,6 +10,9 @@ es lo que el dueño pidió el 20-11 y cabe en una sesión corta antes o después
 - 20 fase 2 (3263, `GattServerHost`): hecho en código y en sim; ver ESTADO.md si quedó subido. Fases 3 y 4: sin empezar.
 - Abiertos de la ola 1: 27 (plan: `reportNetworkConnectivity`), 36, 17, 18, 22, 29. Pruebas reales del dueño: todo lo nativo de hoy.
 - Para lo nativo: compilar aquí con `tests/kotlin-android` (comprobación de tipos) y `tests/kotlin` (JVM) antes de subir.
+- **22-11 mañana (subido, va en la siguiente APK):** 20 FASE 3 = 29 (bandeja de salida nativa: por internet 3268 y por Bluetooth 3269; app dormida y cerrada, con prueba de
+  cada caso), 27 completo (3266 en la app + 3270 en la escucha sin la app), 36 (3267), 30, 33, resto de 32 (nombre largo, botones parejos), 7–11 (medición y tablero).
+  Abiertos: FASE 4 (conexiones a demanda desde el nativo, tope ~7; adjuntos pequeños en la bandeja), modo vagón, 17, 18, 22, 23–25, 13, 3261, 2, 3–5 (ayudante en curso), grupos G1–G9.
 
 ## 0. Lo que hace el dueño (antes de empezar)
 - Noche del 20-11: videollamada S24→S23 de 20–30 min con la 3116 en los dos, con Wi-Fi; copiar el diagnóstico de los dos y anotar el ambiente. Referencia: WhatsApp 0,31 %/min (S24 Ultra); su recuerdo de NEXO 0,14 %/min.

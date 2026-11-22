@@ -53,6 +53,9 @@ class NetBg(
     private val onOutbox: (json: String) -> Unit = { },
     // 3268: el «toque» que despierta al otro teléfono tras subir un mensaje nuevo (dirección del enviador y token del otro; como la app)
     private val wake: (url: String, token: String) -> Unit = { _, _ -> },
+    // 3270 (COLA 27 sin la app): con Wi-Fi y ningún relé abierto un rato, el Wi-Fi no da internet: quien escucha se lo dice a Android
+    // (reportNetworkConnectivity) para que lo compruebe y pase a datos móviles sin esperar sus ~2 min
+    private val onNoInternet: () -> Unit = { },
 ) {
     class Contact(val nx: String, val name: String, val kraw: ByteArray)
     // 3190: solicitud de contacto de mi buzón. kind = "req" (me quieren agregar) o "acc" (aceptó una solicitud MÍA); twin = nombre del
@@ -74,6 +77,12 @@ class NetBg(
         const val KIND = 1059
         const val MAX_CONTENT = 60000                  // 3268: tope de un evento en los relés habituales (como MAX_CONTENT de la app)
         const val TTL_MSG_S = 7 * 86400L               // caducidad de un mensaje en el buzón de los relés (TTL_MSG de la app)
+        // 3270 (COLA 27 sin la app; como noNetStep de la app, net_link_shared.js): con Wi-Fi y sin ningún relé abierto desde `since`,
+        // ¿toca avisar al teléfono? A los 12 s y luego como mucho una vez por minuto. since = 0: hay relé abierto o no es Wi-Fi.
+        const val NO_NET_AFTER_MS = 12_000L
+        const val NO_NET_EVERY_MS = 60_000L
+        fun noNetDue(since: Long, saidAt: Long, now: Long): Boolean =
+            since > 0 && now - since >= NO_NET_AFTER_MS && (saidAt == 0L || now - saidAt >= NO_NET_EVERY_MS)
         // 3234: ¿contesta este saludo? Solo uno reciente (como UP_MS de la app: uno viejo no dice que esté en línea), que no sea ya una
         // respuesta (r:1: si no, dos teléfonos dormidos se saludarían sin fin) y como mucho uno cada 20 s por contacto (como la app).
         const val HELLO_FRESH_MS = 150_000L
@@ -242,6 +251,9 @@ class NetBg(
     // 3204: ¿con datos móviles? Lo dice quien escucha la red del teléfono (NetBgHome, ConnectivityManager) con setNet. Sin aviso (pruebas,
     // o sin poder escuchar la red), como siempre: todos los relés.
     @Volatile private var cell = false
+    @Volatile private var netType = ""               // 3270: "wifi", "cell", "none"… (lo último que dijo el teléfono)
+    private var noNetSince = 0L                      // solo el hilo del bucle
+    private var noNetSaidAt = 0L
     private var modeKey = "" // lo último anotado en el registro sobre el modo (solo el hilo del bucle)
     private val seen = LinkedHashSet<String>()
     private val helloAt = HashMap<String, Long>()   // 3234: cuándo contesté el último saludo de cada contacto
@@ -290,6 +302,7 @@ class NetBg(
     }
     // 3204: el tipo de la red por defecto del teléfono (NetChange.typeOf, o "none"): con datos móviles se escuchan solo 2 relés
     fun setNet(type: String) {
+        netType = type
         val now = cellAfter(cell, type)
         if (now == cell) return
         cell = now
@@ -321,6 +334,13 @@ class NetBg(
         return outbox.size()
     }
     fun outboxDrop(id: String) { if (outbox.drop(id)) outboxChanged() }
+    // 3269: la confirmación (✓✓ o leído) llegó por otro camino (Bluetooth, con la app dormida o cerrada): fuera de la bandeja
+    fun outboxConfirmed(nx: String, msgId: String, how: String): Boolean {
+        if (!outbox.confirmed(nx, msgId)) return false
+        log("Bandeja de salida: $msgId confirmado por $nx (✓✓) $how")
+        outboxChanged()
+        return true
+    }
     /** Lo guardado (arranque sin la app). */
     fun outboxLoad(text: String?): Int = outbox.load(text, System.currentTimeMillis())
     fun outboxClear() { if (outbox.clear()) outboxChanged() }
@@ -423,6 +443,17 @@ class NetBg(
             for (i in plan.park) park(list[i])
             noteMode(c, plan.listen.map { list[it] }.filter { it.ws?.open == true })
             try { pumpOutbox(System.currentTimeMillis()) } catch (e: Throwable) { } // 3268: la bandeja de salida
+            // 3270 (COLA 27 sin la app): Wi-Fi sin salida a internet → que Android lo compruebe ya
+            if (netType != "wifi" || list.any { it.ws?.open == true }) noNetSince = 0L
+            else {
+                val t = System.currentTimeMillis()
+                if (noNetSince == 0L) noNetSince = t
+                if (noNetDue(noNetSince, noNetSaidAt, t)) {
+                    noNetSaidAt = t
+                    log("Internet en segundo plano: Wi-Fi sin internet (ningún relé abre): aviso al teléfono para que lo compruebe y pase a datos móviles")
+                    try { onNoInternet() } catch (e: Throwable) { }
+                }
+            }
             if (now - lastPing > 60000) { list.forEach { it.ws?.ping() }; lastPing = now }
             synchronized(lock) { if (running && g == gen) try { lock.wait(5000) } catch (e: InterruptedException) { } }
         }

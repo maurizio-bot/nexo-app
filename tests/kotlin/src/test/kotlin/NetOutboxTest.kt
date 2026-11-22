@@ -121,6 +121,30 @@ class NetOutboxTest {
         assertEquals(0, NetOutbox().load(null, 1L)); assertEquals(0, NetOutbox().load("basura", 1L)); assertEquals(0, NetOutbox().load("{\"items\":[{\"id\":\"x\"}]}", 1L))
     }
 
+    // 3270 (COLA 27 sin la app): con Wi-Fi y ningún relé abierto, a los 12 s se avisa al teléfono y luego como mucho una vez por minuto
+    @Test fun wifiSinInternetAvisaAlTelefonoALosDoceSegundosYUnaVezPorMinuto() {
+        assertFalse(NetBg.noNetDue(0L, 0L, 99_000L), "hay relé abierto o no es Wi-Fi")
+        assertFalse(NetBg.noNetDue(1_000L, 0L, 1_000L + NetBg.NO_NET_AFTER_MS - 1))
+        assertTrue(NetBg.noNetDue(1_000L, 0L, 1_000L + NetBg.NO_NET_AFTER_MS))
+        assertFalse(NetBg.noNetDue(1_000L, 13_000L, 13_000L + NetBg.NO_NET_EVERY_MS - 1), "ya avisado: no se repite enseguida")
+        assertTrue(NetBg.noNetDue(1_000L, 13_000L, 13_000L + NetBg.NO_NET_EVERY_MS))
+        // la escucha de verdad: Wi-Fi, un relé que no existe → avisa (una vez) pasado el plazo; con datos móviles, nunca
+        for ((type, quiere) in listOf("wifi" to true, "cell" to false)) {
+            val avisos = CopyOnWriteArrayList<Long>(); val logs = CopyOnWriteArrayList<String>()
+            val bg = NetBg({ _, _, _, _, _, _ -> }, { logs.add(it) }, onNoInternet = { avisos.add(System.currentTimeMillis()) })
+            bg.configure("nxbbbbbbbb", listOf("ws://127.0.0.1:9"), 0L, emptyList())
+            bg.setNet(type); bg.start()
+            try {
+                val t0 = System.currentTimeMillis()
+                Thread.sleep(NetBg.NO_NET_AFTER_MS - 3_000L)
+                assertTrue(avisos.isEmpty(), "$type: antes del plazo no")
+                Thread.sleep(9_500L)
+                assertEquals(if (quiere) 1 else 0, avisos.size, "$type a los ${System.currentTimeMillis() - t0} ms: $logs")
+                assertEquals(quiere, logs.any { it.contains("Wi-Fi sin internet") })
+            } finally { bg.stop() }
+        }
+    }
+
     // ===== de punta a punta: relé que exige identificarse + la app REAL del otro lado =====
     private val helper = File("netbg_helper.mjs").absoluteFile
     private val dirs = ArrayList<File>()

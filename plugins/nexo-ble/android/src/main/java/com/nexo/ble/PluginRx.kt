@@ -154,6 +154,8 @@ private fun NexoBlePlugin.processReceivedChunk(deviceId: String, chunk: String, 
             // Sin esto Capacitor lo DESCARTA (Plugin.notifyListeners) y el mensaje se perdía.
             // 3009: con la app en segundo plano o cerrada, el nativo contesta el ping del vigilante del otro (ver nativePong)
             if ((appInBackground || closedMode) && extraction.json.length < 400 && extraction.json.contains("\"ping\"")) nativePong(deviceId, extraction.json)
+            // 3269 (fase 3): con la app dormida o cerrada, lo pendiente de la bandeja de salida sale también por este enlace si es de su contacto
+            if (appInBackground || closedMode) outboxHeard(macNorm, extraction.json)
             // 3012 (regla del dueño 11-11: «cualquiera que tiene NEXO debe aparecer al instante en un escaneo»): con la app en
             // segundo plano, dormida o cerrada, el nativo contesta «quién soy» a quien lo pregunta (ver nativeKx)
             if ((appInBackground || closedMode) && extraction.json.length < 6000 && extraction.json.contains("\"type\":\"kx\"") && extraction.json.contains("\"rq\":1")) nativeKx(deviceId)

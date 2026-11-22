@@ -502,6 +502,8 @@ class NativePhone {
       if (!this.opts.noNativePong && (this.appActive === false || this.jsFrozen || this.closedMode) && ex.json.length < 400 && ex.json.indexOf('"ping"') >= 0) {
         try { const o = JSON.parse(ex.json); if (o.type === 'ping' && o.pingId) { this.stats.nativePongs = (this.stats.nativePongs || 0) + 1; this._sendChunkedOrSingle(mac, JSON.stringify({ v: 1, type: 'pong', pingId: o.pingId, ts: Date.now(), fromNexoId: String(this.advertisingId || '').toLowerCase(), nb: 1 })); } } catch (e) {}
       }
+      // Kotlin 3269 (OutboxBle.heard): con la app dormida o cerrada, lo pendiente de la bandeja de salida sale también por este enlace
+      if (!this.opts.noOutboxBle && (this.appActive === false || this.jsFrozen || this.closedMode) && ex.json.length < 6000) this._outboxHeard(mac, ex.json);
       // Kotlin 3012 nativeKx: con la app en segundo plano/congelada o cerrada, el nativo contesta «quién soy» (la tarjeta que le dejó
       // la app, setKxCard) a quien lo pregunta (kx con rq:1); como mucho una vez cada 8 s por conexión
       if (!this.opts.noNativeKx && this.kxCard && (this.appActive === false || this.jsFrozen || this.closedMode) && ex.json.length < 6000 && ex.json.indexOf('"type":"kx"') >= 0 && ex.json.indexOf('"rq":1') >= 0) {
@@ -674,6 +676,59 @@ class NativePhone {
     const k = this.ackKeys && this.ackKeys.get(info.from);
     if (k) ack.a = nodeCrypto.createHmac('sha256', k).update('nexo-ack|ack|' + info.msgId + '|' + me + '|' + info.from).digest().subarray(0, 12).toString('base64');
     return JSON.stringify(ack);
+  }
+  // ---- 3269: la bandeja de salida por Bluetooth (Kotlin OutboxBle + NetOutbox.linkNxOf/bleDue/bleSent; JVM: OutboxBleTest) ----
+  static outboxLinkNxOf(json) {
+    if (json.length > 6000 || json.charAt(0) !== '{') return null;
+    let o; try { o = JSON.parse(json); } catch (e) { return null; }
+    const nx = String((o.type === 'ping' || o.type === 'pong') ? (o.fromNexoId || '') : (o.type === 'kx' || o.type === 'ack' || o.type === 'read_receipt') ? (o.from || '') : '').trim().toLowerCase();
+    return /^nx[0-9a-z]{8}$/.test(nx) ? nx : null;
+  }
+  _outboxLearn(mac, nx) {
+    this.outLinkNx = this.outLinkNx || new Map();
+    if (!mac || !/^nx[0-9a-z]{8}$/.test(nx) || this.outLinkNx.get(mac) === nx) return false;
+    this.outLinkNx.delete(mac); this.outLinkNx.set(mac, nx);
+    return true;
+  }
+  _outboxLinkReady(mac) { return !!(this.serverConnected.get(mac) || this.clients.get(mac)); }
+  _outboxSendVia(mac, nx) {
+    const items = (this.outbox && this.outbox.items) || [], now = Date.now();
+    if (!this._outboxLinkReady(mac)) return 0;
+    let n = 0;
+    for (const x of items) {
+      if (x.nx !== nx || (x.bleNextAt || 0) > now) continue;
+      const r = this._sendChunkedOrSingle(mac, x.p);
+      if (!r || !r.sent) break;
+      x.bleTries = (x.bleTries || 0) + 1;
+      x.bleNextAt = now + (x.bleTries <= 5 ? [8000, 16000, 32000, 60000, 120000][x.bleTries - 1] : 300000); // NetOutbox.bleRetryMs
+      n++; this.stats.outboxBle = (this.stats.outboxBle || 0) + 1;
+      this._remLog('INFO', 'BANDEJA', x.id + ' para ' + nx + ' sale por Bluetooth sin la app');
+    }
+    return n;
+  }
+  _outboxHeard(mac, json) {
+    const said = NativePhone.outboxLinkNxOf(json);
+    const fresh = !!said && this._outboxLearn(mac, said);
+    const items = (this.outbox && this.outbox.items) || [];
+    if (!items.length) return;
+    // la ✓✓ firmada con la clave de la pareja retira el mensaje (OutboxBle.signedReceipt)
+    let o = null; try { o = JSON.parse(json); } catch (e) {}
+    if (o && (o.type === 'ack' || o.type === 'read_receipt') && o.msgId && o.a) {
+      const from = String(o.from || '').toLowerCase(), me = String(this.advertisingId || '').toLowerCase(), k = this.ackKeys && this.ackKeys.get(from);
+      const exp = k && me ? nodeCrypto.createHmac('sha256', k).update('nexo-ack|' + o.type + '|' + o.msgId + '|' + from + '|' + me).digest().subarray(0, 12).toString('base64') : null;
+      if (exp && exp === o.a && items.some((x) => x.id === o.msgId && x.nx === from)) { this.outbox.items = items.filter((x) => x.id !== o.msgId); (this.outboxConfirmed = this.outboxConfirmed || []).push(o.msgId); }
+    }
+    const nx = this.outLinkNx && this.outLinkNx.get(mac);
+    if (!nx || !this.outbox.items.some((x) => x.nx === nx)) return;
+    if (fresh) this.outbox.items.forEach((x) => { if (x.nx === nx) x.bleNextAt = 0; });
+    this._outboxSendVia(mac, nx);
+  }
+  // el repaso periódico (Kotlin outboxBleTick: cada 10 s con la app fuera de la vista y algo pendiente); el más reciente primero
+  outboxBlePump() {
+    if (!(this.appActive === false || this.jsFrozen || this.closedMode) || !this.outLinkNx) return 0;
+    let n = 0;
+    Array.from(this.outLinkNx.entries()).reverse().forEach(([mac, nx]) => { n += this._outboxSendVia(mac, nx); });
+    return n;
   }
   _sendDeliveredAck(fromAddress, info) {
     const j = fromAddress ? this._deliveredAckJson(info) : null;
@@ -1441,6 +1496,7 @@ class NativePhone {
         const prev = (self.outbox && self.outbox.items) || [];
         const items = (a.items || []).filter(validItem).slice(0, 100).map((x) => prev.find((y) => y.id === x.id && y.nx === x.nx) || { id: x.id, nx: x.nx, p: x.p, at: x.at || Date.now(), wk: x.wk || '' });
         self.outbox = { items, f: a.f || '', url: a.url || '' };
+        (a.links || []).slice(0, 64).forEach((l) => { if (l) self._outboxLearn(norm(String(l.mac || '')), String(l.nx || '').toLowerCase()); }); // 3269
         self.outboxCalls = (self.outboxCalls || 0) + 1;
         c.resolve({ n: items.length, sent: items.filter((x) => x.okAt).map((x) => x.id) });
       }),

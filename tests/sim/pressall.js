@@ -120,7 +120,9 @@ function pageHelpers(SEL) {
         if (seen.has(key)) return; seen.add(key);
         if (!owner && el.parentElement && el.parentElement.closest('[data-pa-seen]')) return;
         const q = key.getBoundingClientRect();
-        out.push({ path: window.__pa.mark(key), name: name(key), inSel: !!owner, cx: q.left + q.width / 2, cy: q.top + q.height / 2 });
+        // 22-11: el dedo cae en el punto que `visible` comprobó (el centro, recortado a la pantalla): una fila que asoma por el borde de abajo
+        // (Ajustes ganó una sección y «Diagnóstico y ayuda» quedó a medias) se tocaba FUERA de la pantalla y parecía no responder
+        out.push({ path: window.__pa.mark(key), name: name(key), inSel: !!owner, cx: Math.min(innerWidth - 1, Math.max(0, q.left + q.width / 2)), cy: Math.min(innerHeight - 1, Math.max(0, q.top + q.height / 2)) });
       });
       return out;
     },

@@ -15,7 +15,7 @@
  */
 import { e2eAnyEncrypted, e2eSealText } from '../vault/e2e_proto.js';
 import { e2eAvailable } from '../vault/e2e_crypto.js';
-import { _hasNativeMethod, _normId, _safeNativeCall } from './ble_helpers.js';
+import { BLE_STATES, _hasNativeMethod, _normId, _safeNativeCall } from './ble_helpers.js';
 
 var OUT_MAX = 100;          // como NetOutbox.MAX_ITEMS
 var OUT_TXT_MAX = 12000;    // caracteres del texto: ya cifrado y en su sobre entra de sobra en un evento de relé (NetOutbox.MAX_P)
@@ -91,14 +91,16 @@ export const BLE_OUTBOX_METHODS = {
   // Deja en el nativo la lista entera de lo que aún no salió (reemplaza a la anterior). Devuelve cuántos.
   _outboxSync(why) {
     var self = this, pl = self.nativePlugin;
-    if (!pl || !_hasNativeMethod(pl, 'netOutboxSet') || !self.net || typeof self.net._netContacts !== 'function') return Promise.resolve(0);
+    if (!pl || !_hasNativeMethod(pl, 'netOutboxSet') || !self.net) return Promise.resolve(0);
     if (self._outboxBusy) { self._outboxAgain = why || 'otra vez'; return Promise.resolve(0); }
     self._outboxBusy = true;
     var items = [], seen = {};
     var add = function(it) { if (it && !seen[it.id] && items.length < OUT_MAX) { seen[it.id] = 1; items.push(it); } };
     var work = Promise.resolve();
     var netNx = {}, cand = {};
-    try { self.net._netContacts().forEach(function(c) { netNx[_normId(c.nexoId || c.deviceUUID)] = 1; }); } catch (e) {}
+    // 3269: cualquier contacto con clave (no solo los de internet): por Bluetooth el nativo no necesita nada más; por internet solo
+    // sube lo de quienes tienen secreto de pareja (los demás esperan en la bandeja)
+    try { (self.getBLEContacts() || []).forEach(function(c) { var nx = _normId(c && (c.nexoId || c.deviceUUID)); if (c && c.publicKey && !c.pendingKey && /^nx[0-9a-z]{8}$/.test(nx)) netNx[nx] = 1; }); } catch (e) {}
     // De qué chats mirar: a quién se le mandó algo en esta sesión (_msgDest) y los que tienen pendientes sin camino (_outboxNote). No
     // se lee el historial de todos los contactos cada vez que la app se oculta.
     try { if (self._msgDest) self._msgDest.forEach(function(nx) { if (netNx[nx]) cand[nx] = 1; }); } catch (e) {}
@@ -126,9 +128,19 @@ export const BLE_OUTBOX_METHODS = {
       var cache = self._outboxPk || (self._outboxPk = new Map());
       cache.forEach(function(v, k) { if (!seen[k]) cache.delete(k); });
       var sig = items.map(function(x) { return x.id; }).join(',');
-      if (sig === (self._outboxSig || '')) return items.length;
-      return _safeNativeCall(pl, 'netOutboxSet', { items: items, f: self.net.fcmToken || '', url: (typeof self.net.senderUrl === 'function' && self.net.senderUrl()) || '' }).then(function(r) {
-        self._outboxSig = sig;
+      // 3269: los enlaces Bluetooth LISTOS de esos contactos (ya identificados por la app): por ellos también sale lo pendiente
+      var links = [], want = {};
+      items.forEach(function(x) { want[x.nx] = 1; });
+      try {
+        if (items.length && self._macToNexoId) self._macToNexoId.forEach(function(nx, mac) {
+          var st = self._getDeviceState(mac) || {};
+          if (want[_normId(nx)] && (st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY) && links.length < 64) links.push({ mac: mac, nx: _normId(nx) });
+        });
+      } catch (e) {}
+      var lsig = links.map(function(l) { return l.mac; }).sort().join(',');
+      if (sig === (self._outboxSig || '') && (!items.length || lsig === (self._outboxLinks || ''))) return items.length;
+      return _safeNativeCall(pl, 'netOutboxSet', { items: items, links: links, f: self.net.fcmToken || '', url: (typeof self.net.senderUrl === 'function' && self.net.senderUrl()) || '' }).then(function(r) {
+        self._outboxSig = sig; self._outboxLinks = lsig;
         console.log('[NET] Bandeja de salida: ' + items.length + ' texto(s) pendiente(s) a cargo del teléfono (' + (why || 'puesta al día') + '): salen por internet aunque NEXO se duerma'); // i18n-ok: registro
         return items.length;
       });

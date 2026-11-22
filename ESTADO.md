@@ -80,9 +80,25 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
     COLA 32 (letra grande/anchos: `letragrande.js`, 13 → 2 hallazgos; queda el nombre del chat a 320 px + letra 160 %, hay que tocar `_fitContactName` en `main.js`).
   - **TODO LO NATIVO DE HOY NECESITA PRUEBA REAL DEL DUEÑO** (al final, como él pidió): 3262 (enlaces repetidos entre S24↔Austin/Roberto: que no «vuelvan»), 3263
     (abrir NEXO con un contacto cerca: el otro no debe ver «desconectado»), 15, 16b.
-  - **SIGUIENTE (en orden):** (1) confirmar/subir 3263; (2) COLA 27 en la escucha nativa sin la app (NetBg; en la app ya está, 3266); (3) COLA 36 (JS, Jump cierra y 7 ms después escribe);
-    (4) FASE 3 (bandeja de salida y conexiones salientes en el servicio = COLA 29) y FASE 4 (a demanda); (5) 17/18 (llamadas), 22 (avisar del teléfono que mata NEXO);
-    (6) re-analizar con modelo grande los diagnósticos del 20 y 21-11 apuntados en Haiku; (7) estético: botones parejos, 30/33. Auditoría de seguridad AL FINAL (una).
+  - **22-11 MAÑANA (tras lanzar la 3117; todo subido con [skip ci]: va en la SIGUIENTE APK). FASE 3 del Bluetooth en el servicio:**
+    - **3268 bandeja de salida nativa por INTERNET** (`NetOutbox.kt`, `NetBg.pumpOutbox`, `ble_outbox.js`): al ocultarse, la app deja al nativo sus textos ⏳/«enviando»
+      ya cifrados de punta a punta, en el mismo sobre que el envío normal (`_chatEnv`, sacado de `_sendMessageNative`); la escucha de internet los sube SIN la app
+      (dormida, cerrada o proceso nuevo: `nexo_netbg_out.json` cifrado en reposo), manda el toque al otro e insiste hasta su ✓✓. Arregla «pendiente_viejo» (20/21-11).
+      Sim `bandeja.js` (dormida y cerrada, con contraprueba; modelo del nativo en `netbg_mock.js`); JVM `NetOutboxTest` (relé con identificación + la app real).
+    - **3269 la bandeja también por BLUETOOTH** (`OutboxBle.kt`; la usan el plugin y `BleSinApp`): sin internet, cuando el otro aparece con mi app dormida/cerrada el nativo
+      escribe lo pendiente por ese enlace (de quién es: lo que dijo la app al ocultarse o el ping/«quién soy» del otro) y solo la ✓✓ FIRMADA lo retira. Sim `bandejabt.js`
+      (contraprueba `--sin-bandeja` FALLA), JVM `OutboxBleTest`. PARA LA AUDITORÍA FINAL: el nativo cree al enlace cuando dice de quién es (igual que la app, hallazgo M5):
+      el contenido va cifrado, pero se ve a quién va.
+    - **3270 COLA 27 sin la app:** la escucha nativa avisa a Android del Wi-Fi sin internet (12 s sin relé abierto; 1/min), como la app (3266).
+    - NO entran en la bandeja (los sigue mandando la app): adjuntos, llamadas, acciones ocultas, fallidos y textos > 12 000 caracteres.
+    - **Ayudantes integrados:** COLA 30 (fondo de lista/llamada/Perfil/Ajustes con pulsación larga), COLA 33 (Ajustes → Apariencia) + resto de 32 (nombre largo con
+      letra grande, botones parejos), COLA 7–11 (mediana y percentiles, fallas por camino, pico de enlaces, cronómetro a la ✓✓, tendencia en `diag_stats`).
+      **Diccionarios: SEGUNDA PARTE por idioma (`src/ui/i18n/<idioma>_b.js`): los textos nuevos van ahí** (la primera llegó al tope de 1000 líneas).
+    - PRUEBAS DEL DUEÑO (siguiente APK): (a) modo avión, escribir a alguien, bloquear el teléfono, quitar el modo avión SIN abrir NEXO: debe llegarle y, al abrir, ✓✓;
+      (b) sin internet los dos: escribirle estando lejos, bloquear, acercarse: le llega sin abrir NEXO.
+  - **SIGUIENTE (en orden):** (1) FASE 4: conexiones a demanda desde el nativo (hoy escribe por enlaces que ya había o que abre el OTRO) y tope de ~7; adjuntos pequeños
+    en la bandeja; (2) modo vagón; (3) 17/18 (llamadas), 22 (avisar del teléfono que mata NEXO), 23–25, 13, 3261 (Wi-Fi Direct por tiempo estimado), 2;
+    (4) re-analizar con modelo grande los diagnósticos del 20 y 21-11 apuntados en Haiku; (5) grupos G1–G9. Auditoría de seguridad AL FINAL (una, al repositorio privado).
 - **⚠ ARRANQUE 22-11 (dueño 21-11 noche, MANDA):** leer «DECISIONES DEL DUEÑO 21-11 noche» al inicio de `docs/PLAN_ENTREGA.md`. Resumen: PRIMERO LO FUNCIONAL (Bluetooth, zombis, servicio nativo, Wi-Fi Direct, llamadas) en la sesión principal con Fable; ayudantes con diagnósticos y lo estético (nombre encimado, letra grande, botones parejos); re-revisar con modelo grande lo apuntado/arreglado en Haiku; UNA APK al final tras una revisión propia; auditoría al final; prueba cerrada de Play ≤ 1-12; servidor de paga lo antes posible; iOS después.
 - **Logo: DIRECCIÓN ELEGIDA por el dueño (21-11 noche)** y nombre favorito: detalle y bocetos SOLO en el privado (`negocio/NOMBRE.md`, `negocio/logo_bocetos/`).
 - **Pruebas reales al final; nombre y logo con ayudante en paralelo** (puntos 9 y 10 de las DECISIONES 21-11 noche; detalle de nombre SOLO en el privado).

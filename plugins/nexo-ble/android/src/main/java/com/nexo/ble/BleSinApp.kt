@@ -117,7 +117,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
     private fun norm(addr: String) = addr.replace(":", "").lowercase()
 
     private val core = SinAppCore(me, object : SinAppCore.Sink {
-        override fun send(link: String, json: String) = enqueue(link, json)
+        override fun send(link: String, json: String) { enqueue(link, json) }
         override fun store(link: String, json: String): Boolean {
             // el teléfono despierto unos segundos para guardar, confirmar y avisar (como rxWake de la app en segundo plano)
             try {
@@ -139,6 +139,15 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
         override fun kxCard(): String? = try { ctx.getSharedPreferences("nexo_ble_prefs", Context.MODE_PRIVATE).getString("kx_card", null) } catch (e: Throwable) { null }
         override fun ackSign(from: String, fields: String): String? = try { NexoBlePlugin.ackKeys[from]?.let { NexoBlePlugin.ackTag(it, fields) } } catch (e: Throwable) { null }
         override fun log(level: String, msg: String) = nlog(ctx, level, msg)
+        // 3269 (fase 3): lo pendiente de la bandeja de salida sale también por el enlace de su contacto (OutboxBle)
+        override fun heard(link: String, json: String) { outBle.heard(link, json) }
+    })
+
+    // 3269: la bandeja de salida por Bluetooth SIN la app: por los enlaces entrantes de este servidor (quien se conecta y habla)
+    private val outBle = OutboxBle({ me }, { NetBgHome.peek() }, { NexoBlePlugin.ackKeys[it] }, object : OutboxBle.Link {
+        override fun ready(mac: String) = devices[mac] != null && notifOn[mac] == true
+        override fun send(mac: String, json: String) = enqueue(mac, json)
+        override fun log(msg: String) = nlog(ctx, "INFO", msg)
     })
 
     /** Abre el servidor GATT (hilo principal). Devuelve si quedó abierto. */
@@ -225,13 +234,15 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
     }
 
     // ---- envío (pong, tarjeta, confirmaciones): una notificación detrás de otra por enlace ----
-    private fun enqueue(link: String, json: String) {
+    private fun enqueue(link: String, json: String): Boolean {
         val size = ((mtu[link] ?: 23) - 3).coerceIn(20, 512)
         val q = queues.getOrPut(link) { ArrayDeque() }
         val parts = Utf8Split.split(json, size)
-        if (q.size + parts.size > MAX_QUEUE) return // enlace atascado: no se acumula (el otro reintenta)
+        // enlace atascado: no se acumula (el otro reintenta). Un mensaje más grande que la cola entera entra cuando está vacía.
+        if (q.isNotEmpty() && q.size + parts.size > MAX_QUEUE) return false
         parts.forEach { q.addLast(it.toByteArray(Charsets.UTF_8)) }
         pump(link)
+        return true
     }
 
     private fun pump(link: String) {
@@ -261,7 +272,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
                 if (stopped) return@post
                 if (newState == BluetoothProfile.STATE_CONNECTED) devices[link] = device
                 else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    devices.remove(link); notifOn.remove(link); mtu.remove(link); queues.remove(link); busy.remove(link)
+                    devices.remove(link); notifOn.remove(link); mtu.remove(link); queues.remove(link); busy.remove(link); outBle.closed(link)
                     held.remove(link); halfOpen.forget(link)
                     core.linkClosed(link)
                     try { onBluetoothOn() } catch (e: Throwable) { } // que el anuncio siga tras una desconexión

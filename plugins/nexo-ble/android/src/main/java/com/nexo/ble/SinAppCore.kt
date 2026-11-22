@@ -33,6 +33,8 @@ class SinAppCore(private val me: String, private val sink: Sink, private val now
         /** Firma de la confirmación de entrega para ese contacto, o null si no hay clave. */
         fun ackSign(from: String, fields: String): String?
         fun log(level: String, msg: String)
+        /** 3269: llegó un mensaje corto entero por ese enlace (para la bandeja de salida por Bluetooth: OutboxBle). */
+        fun heard(link: String, json: String) {}
     }
 
     companion object {
@@ -123,6 +125,7 @@ class SinAppCore(private val me: String, private val sink: Sink, private val now
     }
 
     private fun handle(link: String, json: String) {
+        if (json.length < 6000) try { sink.heard(link, json) } catch (e: Throwable) { }
         if (json.length < 400 && json.contains("\"ping\"")) pong(link, json)
         if (json.length < 6000 && json.contains("\"type\":\"kx\"") && json.contains("\"rq\":1")) kx(link)
         val info = BgInbox.classify(json, me)

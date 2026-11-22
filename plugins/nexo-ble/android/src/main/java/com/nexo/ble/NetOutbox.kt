@@ -29,6 +29,9 @@ class NetOutbox {
         var okAt = 0L
         var evId = ""
         var woke = false
+        /** 3269: por Bluetooth (aparte de internet): cuántas veces se escribió por un enlace y cuándo toca otra vez. */
+        var bleTries = 0
+        var bleNextAt = 0L
     }
 
     companion object {
@@ -48,6 +51,36 @@ class NetOutbox {
             tries == 2 -> 60 * 60_000L
             else -> 6 * 3600_000L
         } else minOf(300_000L, 20_000L * (1L shl minOf(maxOf(tries - 1, 0), 4)))
+
+        /**
+         * 3269: cuánto esperar para volver a escribirlo por Bluetooth si no llega su ✓✓ por ese enlace: 8 s, 16 s, 32 s, 1 min, 2 min y
+         * luego cada 5 min (el enlace puede estar a medias; no se martilla).
+         */
+        fun bleRetryMs(tries: Int): Long = when {
+            tries <= 1 -> 8_000L
+            tries == 2 -> 16_000L
+            tries == 3 -> 32_000L
+            tries == 4 -> 60_000L
+            tries == 5 -> 120_000L
+            else -> 300_000L
+        }
+
+        /**
+         * 3269: de quién es el enlace por el que llegó este mensaje corto (ping del vigilante: fromNexoId; «quién soy» o confirmación:
+         * from). Es lo mismo que cree la app al identificar un enlace; lo que se manda por él ya va cifrado para su destinatario.
+         */
+        fun linkNxOf(json: String): String? {
+            if (json.length > 6000 || !json.startsWith("{")) return null
+            return try {
+                val o = JSONObject(json)
+                val nx = when (o.optString("type")) {
+                    "ping", "pong" -> o.optString("fromNexoId")
+                    "kx", "ack", "read_receipt" -> o.optString("from")
+                    else -> ""
+                }.trim().lowercase()
+                if (NX.matches(nx)) nx else null
+            } catch (e: Exception) { null }
+        }
 
         /** ¿Vale como elemento de la bandeja? (lo que manda la app o lo leído del disco: nunca se confía) */
         fun valid(id: String, nx: String, p: String): Boolean = ID.matches(id) && NX.matches(nx) && p.isNotEmpty() && p.length <= MAX_P
@@ -129,6 +162,20 @@ class NetOutbox {
         items.remove(msgId)
         return true
     }
+
+    // ---------- 3269: por Bluetooth ----------
+    /** ¿Hay algo pendiente para ese contacto? */
+    @Synchronized fun hasFor(nx: String): Boolean = items.values.any { it.nx == nx }
+    /** Lo que toca escribir ahora por un enlace Bluetooth de ese contacto. */
+    @Synchronized fun bleDue(nx: String, t: Long): List<Item> = items.values.filter { it.nx == nx && it.bleNextAt <= t }
+    /** Se escribió por Bluetooth (aún sin su ✓✓). */
+    @Synchronized fun bleSent(id: String, t: Long) {
+        val x = items[id] ?: return
+        x.bleTries++
+        x.bleNextAt = t + bleRetryMs(x.bleTries)
+    }
+    /** El enlace con ese contacto se rehízo: lo suyo puede salir ya por el nuevo (sin esperar el plazo del anterior). */
+    @Synchronized fun bleFresh(nx: String) { items.values.forEach { if (it.nx == nx) it.bleNextAt = 0L } }
 
     /** ¿Puede mandarse ya el toque a ese contacto? (uno por mensaje y, por contacto, como mucho cada 8 s: igual que la app) */
     private val wokeAt = HashMap<String, Long>()
