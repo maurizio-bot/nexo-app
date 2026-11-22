@@ -64,7 +64,7 @@ export const BLE_CONNECTION_METHODS = {
     try { if (self.ackSystem && typeof self.ackSystem.upgradeAll === 'function') self.ackSystem.upgradeAll('repaso'); } catch (e) {} // 3080
     // Build 2967 (Fase A, entrega offline): tocar (wake FCM) a los contactos con PENDIENTES, ANTES de la compuerta de abajo
     // (que corta si no hay enlaces vivos — justo el caso offline). El propio tick tiene su freno de 30 s.
-    self._tickWakePending(); try { self._pushAckKeysIfChanged(); } catch (e) {} // 16b: claves de firma del ✓✓ nativo al día (contacto nuevo, clave aceptada)
+    self._tickWakePending(); try { self._pushAckKeysIfChanged(); self._linkTrimTick(); } catch (e) {} // 16b: claves de firma del ✓✓ nativo al día (contacto nuevo, clave aceptada)
     if (self._cameraBlePaused) return;
     if (!self._activeChatDeviceId && self.connectedDevices.size === 0) return;
     self.connectedDevices.forEach(function(device, deviceId) {
@@ -955,6 +955,7 @@ export const BLE_CONNECTION_METHODS = {
       return Promise.resolve();
     }
     if (state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.CONNECTING) return Promise.resolve();
+    if (!self._linkRoom({ nx: self._btPauseKey(deviceId, device), manual: !!(opts && opts.manual), why: opts && opts.why })) return Promise.resolve(); // 3276 (fase 4): tope de enlaces y prioridades
     self._setDeviceState(deviceId, BLE_STATES.CONNECTING, { direction: 'outgoing', role: 'client', auto: true });
     self.connectedDevices.set(deviceId, { id: deviceId, name: (device && device.name) || '', direction: 'outgoing', servicesReady: false, deviceUUID: device && device.deviceUUID });
     var connTarget = deviceId;

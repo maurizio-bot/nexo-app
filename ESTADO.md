@@ -104,6 +104,13 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
       ajuste a quitar, y «quitada de recientes»; `phonesleep.js`). COLA 14 investigado: L2CAP existe pero solo para archivos > ~2,25 MB (`pickers.js:302`); lo mediano va por
       GATT a ~17–27 KB/s (una escritura por intervalo de conexión). Mejora posible: usar L2CAP desde ~200 KB (medir antes lo que cuesta abrir el canal).
       Falta nativo para «avisos silenciados»: canales de aviso y «no molestar» en `alertSettings`.
+    - **3276 = FASE 4, gestor de enlaces (`ble_linkmgr.js`; decisión del dueño 22-11: opción B, «a demanda solo cuando no caben»):** con pocos contactos cerca todo
+      sigue igual; tope 6 enlaces, hasta 4 contactos «por estar cerca», un hueco reservado para quien tiene pendientes o el chat abierto y otro para una conexión de paso;
+      con todo lleno, pendientes/chat abierto desalojan al más callado que no esté ocupado; el repaso del vigilante suelta a los callados de sobra (> 2 min). Enganchado en
+      `_autoConnectGATT`, Jump (`ble_relay`), abrir chat y mandar. Ajustable: `window.NEXO_LINK_CAP` / `NEXO_LINK_CONTACTS` (1 = siempre a demanda). Sim `enlacestope.js`.
+      FALTA: probarlo con `multitud.js` (estudio pesado, fuera del CI) y en campo; el nativo dormido usa su propio tope (7) solo para lo que abre la bandeja.
+    - **FALLO MÍO DESTAPADO POR LA BATERÍA (22-11):** 3266 guardaba su estado en `net._noNet`, que YA existía como booleano (`net_relays.js`): rompía `tick` y hacía
+      creer «sin red». Arreglado (`_noNetSt`). La 3118 llevaba ese fallo: su CI debe fallar en `acuses`, `internetlisto` y `repetidos` y NO publicarse; la buena es la 3119.
     - **3274 la miniatura NO debe pausar el vídeo (dueño 22-11, al abrir Ajustes con la ventanita):** causa: `BridgeActivity.onPause` pausa el WebView (y los `<video>`)
       y Android lo llama al entrar en la miniatura. `MainActivity` (`onPause`/`onStop`): con videollamada y ventanita, el WebView se vuelve a reanudar; fuera de la
       miniatura se pausa como antes. SIN compilar el módulo Android aquí (solo `android/app`, no está en `tests/kotlin-android`): revisar que compile en el CI y probar

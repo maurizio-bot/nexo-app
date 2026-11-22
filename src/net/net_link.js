@@ -196,7 +196,7 @@ export class NetLink {
     if (changed) self._bgConfig();
     if (!self.inTags.size && !self.reqTags.size) { self._closeAll(); return; }
     // 3266 (COLA 27): Wi-Fi sin internet (ningún relé abre) → que Android lo compruebe ya y pase a datos móviles
-    if (noNetStep(self._noNet || (self._noNet = {}), self.online(), self.wifi === true, now) && pl && typeof pl.reportNoInternet === 'function') {
+    if (noNetStep(self._noNetSt || (self._noNetSt = {}), self.online(), self.wifi === true, now) && pl && typeof pl.reportNoInternet === 'function') {
       pl.reportNoInternet().then(function(r) { if (r && r.reported) console.log('[NET] Wi-Fi sin internet (ningún relé abre): aviso al teléfono para que lo compruebe y pase a datos móviles'); }).catch(function() {});
     }
     // 3190: también sin contactos por internet (alguien nuevo): lo recibido en segundo plano puede ser una solicitud a mi buzón

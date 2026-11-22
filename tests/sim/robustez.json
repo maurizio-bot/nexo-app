@@ -396,6 +396,10 @@
     {
      "fallo": "3271 (PRIORIDAD 1, fase 3: conexiones salientes desde el servicio): con los DOS teléfonos dormidos nadie abría el enlace Bluetooth (los dos anuncian y nadie conecta) y lo pendiente no salía hasta abrir NEXO. Mientras haya algo pendiente para un contacto sin enlace, el nativo lo busca (escaneo corto y filtrado, cada vez más espaciado) y conecta él (OutboxDial; tope de 7 enlaces)",
      "prueba": "3269 BANDEJA DE SALIDA por BLUETOOTH"
+    },
+    {
+     "fallo": "3276 (PRIORIDAD 1, fase 4; estudio de multitud 17-11): sin tope ni orden de enlaces, con 10 contactos dormidos alrededor el que tenía un mensaje esperando no conectaba nunca (7 enlaces ocupados, 222 intentos rechazados) y las conexiones de paso se llevaban huecos. Gestor de enlaces: tope 6, 4 contactos por estar cerca, hueco reservado y desalojo por prioridad (pendientes > chat abierto > reciente)",
+     "prueba": "3276 GESTOR DE ENLACES"
     }
    ],
    "debiles": [

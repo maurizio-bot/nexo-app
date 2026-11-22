@@ -608,7 +608,7 @@ export class BleRelay {
     if (t) self.transient.delete(key);
     var cap = self._transientCap();
     if (self.transient.size >= cap) self._closeIdleTransient(true);
-    if (self.transient.size >= cap) return false;
+    if (self.transient.size >= cap || (typeof ble._linkRoom === 'function' && !ble._linkRoom({ hop: true }))) return false; // 3276: tope de enlaces
     self.transient.set(key, { deviceId: deviceId, since: Date.now(), lastUse: Date.now() });
     console.log('[JUMP] Conectando con un NEXO anónimo (de paso) para saber quién es');
     var pl = ble.nativePlugin;
@@ -666,7 +666,7 @@ export class BleRelay {
       if (!self._passOk(deviceId, nRec && nRec.rssi)) return false; // 3024
       if (t) self.transient.delete(nx);
       if (self.transient.size >= MAX_TRANSIENT) self._closeIdleTransient(true);
-      if (self.transient.size >= MAX_TRANSIENT) return false;
+      if (self.transient.size >= MAX_TRANSIENT || (typeof ble._linkRoom === 'function' && !ble._linkRoom({ hop: true }))) return false; // 3276: tope de enlaces
       // 3072: el intento se apunta solo si de verdad se conecta (antes, sin hueco, contaba igual y a la siguiente vuelta ese
       // teléfono quedaba castigado 1 min: el puente en cadena no llegaba al candidato bueno)
       if (!self._passTry(deviceId)) return false;

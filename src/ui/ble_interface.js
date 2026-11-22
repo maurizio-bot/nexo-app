@@ -22,6 +22,7 @@ import { applyDisplayName } from './display_name.js'; // 3218: el nombre FIJO ma
 import { BLE_LINK_METHODS } from './ble_links.js';
 import { BLE_CONTACT_METHODS } from './ble_contacts.js';
 import { BLE_OUTBOX_METHODS } from './ble_outbox.js'; // 3268: bandeja de salida nativa (fase 3)
+import { BLE_LINKMGR_METHODS } from './ble_linkmgr.js'; // 3276: gestor de enlaces con tope y prioridades (fase 4)
 import { BLE_UI_METHODS } from './ble_ui.js';
 import { BLE_PRIVACY_METHODS } from './ble_privacy.js';
 import { bleStartup } from './ble_startup.js';
@@ -397,6 +398,7 @@ export class BLEInterface {
           else if (typeof self._btNearby === 'function' && !self._btNearby(uuid)) self._btFarSkip(uuid, 'al abrir el chat'); // 3084
           else if (!isConnecting) {
             console.log('[BLEInterface] openChat: forcing connectToDevice for', deviceId);
+            try { self._linkRoom({ nx: uuid, manual: true }); } catch (eL) {} // 3276: el chat abierto hace sitio si los enlaces están llenos
             _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId }).catch(function() {});
           }
         }
@@ -427,6 +429,7 @@ export class BLEInterface {
     if (st === BLE_STATES.READY_TO_CHAT || st === BLE_STATES.NOTIFICATIONS_READY || st === BLE_STATES.CONNECTING || st === BLE_STATES.DISCOVERING_SERVICES) return;
     if (typeof this._btPaused === 'function' && (this._btPaused(nx) || this._btPaused(dev))) return;
     if (typeof this._btNearby === 'function' && !this._btNearby(nx)) return;
+    if (typeof this._linkRoom === 'function' && !this._linkRoom({ nx: nx })) return; // 3276: tope de enlaces
     console.log('[RUTA] ' + why + ': ' + nx + ' está cerca: conecto por Bluetooth'); // i18n-ok
     _safeNativeCall(this.nativePlugin, 'connectToDevice', { deviceId: dev }).catch(function() {});
   }
@@ -522,6 +525,7 @@ Object.assign(BLEInterface.prototype, BLE_NEARREQ_METHODS);
 Object.assign(BLEInterface.prototype, BLE_LINK_METHODS);
 Object.assign(BLEInterface.prototype, BLE_CONTACT_METHODS);
 Object.assign(BLEInterface.prototype, BLE_OUTBOX_METHODS);
+Object.assign(BLEInterface.prototype, BLE_LINKMGR_METHODS);
 Object.assign(BLEInterface.prototype, BLE_UI_METHODS);
 Object.assign(BLEInterface.prototype, BLE_PRIVACY_METHODS);
 export function initBLEInterface(bleMesh) {

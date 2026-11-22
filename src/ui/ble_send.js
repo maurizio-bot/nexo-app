@@ -365,6 +365,7 @@ export const BLE_SEND_METHODS = {
         if (!isConnecting && !_isPathDev(deviceId) && typeof self._btNearby === 'function' && !self._btNearby(uuid)) self._btFarSkip(uuid, 'al mandar');
         else if (!isConnecting && !_isPathDev(deviceId) && !(typeof self._btPaused === 'function' && self._btPaused(uuid)) && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
           console.log('[BLEInterface] sendChatMessage: forcing connectToDevice for', deviceId);
+          try { self._linkRoom({ nx: uuid, why: 'pendientes' }); } catch (eL) {} // 3276: un mensaje que sale hace sitio si los enlaces están llenos
           _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId }).catch(function() {});
         }
       } catch (fatal) { reject(fatal); }

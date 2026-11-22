@@ -14,7 +14,8 @@ es lo que el dueño pidió el 20-11 y cabe en una sesión corta antes o después
   cada caso), 27 completo (3266 en la app + 3270 en la escucha sin la app), 36 (3267), 30, 33, resto de 32 (nombre largo, botones parejos), 7–11 (medición y tablero).
   También: el nativo ABRE el enlace cuando los dos teléfonos duermen (3271), 3 (dirección del grupo de Wi-Fi Direct caído y texto verdadero; Wi-Fi local atado a la red Wi-Fi
   aunque la red por defecto sean los datos), 4 (causas reproducidas en `wdgrupo.js` y avisos verdaderos) y 5 (`wifidirect.js --broken=fail` pasa: el HD de vídeo vuelve a ir por Bluetooth). 3272.
-  Abiertos: FASE 4 (conexiones a demanda y tope ~7 como política general; hoy el tope solo vale para lo que abre la bandeja), adjuntos pequeños en la bandeja, que `BleSinApp`
+  FASE 4 hecha (3276, gestor de enlaces: tope 6 y prioridades; opción B del dueño). También 3261, 13 (medición), 22 (tarjeta de cierres), 3273–3275 (miniatura de videollamada).
+  Abiertos: probar la fase 4 en multitud real (`multitud.js` y campo), adjuntos pequeños en la bandeja, que `BleSinApp`
   (proceso sin la app) también abra enlaces, modo vagón, 17, 18, 22, 23–25, 13, 3261, 2, «cancelar» de Wi-Fi Direct (el otro queda ocupado ~90 s tras fallar la unión), grupos G1–G9.
 
 ## 0. Lo que hace el dueño (antes de empezar)
