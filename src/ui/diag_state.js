@@ -11,6 +11,7 @@
  * Síntoma «entrega_lenta»: un texto propio que tardó más de SLOW_MS en llegar habiendo camino al mandarlo.
  */
 import { _getBLEContacts, _isPinned, _normId, _normMac } from './ble_helpers.js';
+import { _msgContactMap } from './chat_state.js'; // COLA 35: a quién va cada mensaje propio
 import { exitsInit, exitsLines } from './diag_exits.js'; // 3120: cierres de la app
 import { thermalWord } from './call_power.js'; // 3256: temperatura y estado térmico
 
@@ -34,6 +35,14 @@ function _nameOf(nx) {
   var n = c ? String(c.name || c.displayName || '') : '';
   n = n.replace(/[\r\n():·→]/g, ' ').replace(/\s+/g, ' ').trim();
   return n ? ' (' + n.slice(0, 24) + ')' : '';
+}
+// COLA 35 (diagnóstico: «→ ?» en los mensajes que salieron sin camino y en un archivo grande): sin enlace en curso no hay deviceId
+// en pendingAcks, pero el PROPIO mensaje sabe a quién va (el chat que lo envió, o el destino fijado al mandarlo)
+function _nxOfMsg(bi, id) {
+  var c = ''; try { c = _normId(_msgContactMap[id]); } catch (e) {}
+  if (/^nx[0-9a-z]{8}$/.test(c)) return c;
+  try { c = _normId(bi && bi._msgDest && bi._msgDest.get(id)); } catch (e2) { c = ''; }
+  return /^nx[0-9a-z]{8}$/.test(c) ? c : '';
 }
 function _hhmmss(ts) { var d = new Date(ts); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2); }
 
@@ -69,14 +78,14 @@ function _onStatus(e) {
   var tr = _trace.get(id);
   if (!tr) {
     if (d.status === 'delivered' || d.status === 'read') return; // solo los que vimos salir (no los de otra sesión)
-    var nx = dev ? _nxOfDev(bi, dev) : '';
+    var nx = (dev ? _nxOfDev(bi, dev) : '') || _nxOfMsg(bi, id);
     var via0 = 'none'; try { if (nx && bi && typeof bi.linkOf === 'function') via0 = bi.linkOf(nx); } catch (e2) {}
     tr = { nx: nx, t0: now, via0: via0, ev: [] };
     _trace.set(id, tr);
     try { if (typeof window.NEXO_noteSent === 'function') window.NEXO_noteSent(via0); } catch (eS) {} // 3259: salió por este camino
     if (_trace.size > TRACE_MAX) _trace.delete(_trace.keys().next().value);
   }
-  if (!tr.nx && dev) tr.nx = _nxOfDev(bi, dev);
+  if (!tr.nx) tr.nx = (dev ? _nxOfDev(bi, dev) : '') || _nxOfMsg(bi, id);
   var last = tr.ev[tr.ev.length - 1];
   // 3128 (diagnóstico S24 3067 15-11 08:41): una foto ✓✓ y leída en 4 s recibió otra confirmación por otro camino 3,5 min
   // después y salía «entrega_lenta 217 s». Solo la PRIMERA confirmación mide la entrega; las repetidas quedan en la línea de tiempo.
