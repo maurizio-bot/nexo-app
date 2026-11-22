@@ -18,13 +18,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 
 ---
 
-## Dónde estamos (actualizado: 2026-11-22 15:22 México)
+## Dónde estamos (actualizado: 2026-11-22 16:16 México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
 - **Forma de trabajo:** CLAUDE.md «GASTO» (leer SOLO este bloque + 🔴 de `docs/AREAS.md`; lo demás con grep). Detalle de lo hecho del 20 al 22-11 (fases, 3254–3278):
   `docs/historial/ESTADO_traspaso_hasta_2026-11-22b.md` (grep por número). PRINCIPIO: NEXO = todos los caminos; nunca recortar caminos.
-- **⛔ APK 3119: NO LANZAR hasta que el dueño lo diga** (22-11 13:20 y 13:45 México: «no lances la 3119 hasta que terminemos de platicar» / «no la lances e INCLUYE
-  LO QUE FALTA»). Se le van sumando los pendientes de abajo (todo con `[skip ci]`); al lanzar: commit SIN `[skip ci]` («APK: …») y NOVEDADES al día (≤ 500).
+- **🚀 APK 3119 LANZADA (22-11 16:16 México, orden del dueño: «sube 3119 a ver cómo sale»):** commit «APK: …» SIN `[skip ci]`; el CI tarda ~85 min (listo ~17:45).
+  Si el CI falla: mirar primero `estadovideo.js` (`hevc_sin_reproductor_roto`, falla también en este contenedor con builds viejas). Tras publicarla: pasar el bloque
+  de NOVEDADES al historial con su número y archivar este bloque. Antes de lanzar se le sumaron los pendientes de abajo (todo con `[skip ci]`).
   Lleva ya: 3266–3273 (bandeja de salida nativa por internet y Bluetooth, el nativo abre enlaces, Wi-Fi sin internet, Wi-Fi Direct por tiempo estimado, Apariencia,
   fondos, medición), `_noNetSt` (el fallo que tumbó el CI de la 3118, NO publicada), 3274 QUITADO (era un error), 3275, **3276 fase 4** (+3277b «Agregar» con 9 NEXO
   cerca), **3277 miniatura** (call_pip.js: estado desde la verdad del nativo, sim `miniaturas.js`), **3278 audio** (solo una llamada TELEFÓNICA retiene la llamada
