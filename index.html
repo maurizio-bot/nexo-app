@@ -10,8 +10,10 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<!-- Ronda 2809 (auditoría P0-4): endurecida con object-src 'none' (sin plugins), base-uri 'self' (sin secuestro de <base>) y form-action 'self' (sin exfiltración por formularios). script-src mantiene 'unsafe-inline'/'unsafe-eval' porque el WebView de Capacitor y los handlers inline (p.ej. onerror de la miniatura de ubicación) los necesitan; el XSS se corta en origen pintando todo el contenido del remitente con textContent (lo vigila tests/sim/xss.js). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' https: blob: data: gap: ws: wss:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; media-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' ws: wss: https:; object-src 'none'; base-uri 'self'; form-action 'self'">
+<!-- Ronda 2809 (auditoría P0-4): endurecida con object-src 'none' (sin plugins), base-uri 'self' (sin secuestro de <base>) y form-action 'self' (sin exfiltración por formularios). I-X3 (auditoría 23-11): script-src SIN 'unsafe-inline' ni 'unsafe-eval': ningún <script> en línea ni manejador on*= (el número de build y la marca de tienda van en las <meta> nexo-build/nexo-store y los pasa a window assets/nexo_boot.js); el bundle no usa eval. El puente de Capacitor se inyecta justo tras <head>, ANTES de esta meta, y la CSP de una meta no afecta a lo que la precede. Lo vigila tests/sim/xss.js. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https: blob: data: gap: ws: wss:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:; media-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' ws: wss: https:; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="nexo-build" content="__NEXO_BUILD__">
+<meta name="nexo-store" content="__NEXO_STORE__">
 <title>NEXO v9.0</title>
 <link rel="stylesheet" href="./styles.css">
 </head>
@@ -150,6 +152,6 @@
 </div>
 <!-- BLE Panel (injected por JS) -->
 <!-- BLE Overlay (injected por JS) -->
-<script>window.NEXO_BUILD='__NEXO_BUILD__';window.NEXO_STORE='__NEXO_STORE__';</script>
+<script src="assets/nexo_boot.js"></script>
 </body>
 </html>

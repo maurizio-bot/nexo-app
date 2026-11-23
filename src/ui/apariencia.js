@@ -141,7 +141,7 @@ export function loadApariencia() {
 export function aparienciaCardHtml() {
   return '<div class="nx-card" id="nexo-apar-card"><div class="nx-h"><span class="nx-ico">🎨</span>' + t('apar_title', 'Apariencia') + '</div>' +
     '<div class="nx-sub">' + t('apar_sub', 'Solo cambia cómo se ve en este teléfono; el otro no lo nota.') + '</div>' +
-    '<div class="apar-prev"><div class="message own" id="apar-demo"><div class="msg-content"><span class="msg-text">' + t('apar_demo', 'Así se verán tus mensajes') + ' <a class="nx-link" href="#" onclick="return false">nexo.app</a></span></div>' +
+    '<div class="apar-prev"><div class="message own" id="apar-demo"><div class="msg-content"><span class="msg-text">' + t('apar_demo', 'Así se verán tus mensajes') + ' <a class="nx-link">nexo.app</a></span></div>' +
     '<div class="msg-meta"><span class="msg-time">12:34</span><span class="msg-status status-read">✓✓</span></div></div></div>' +
     '<div class="apar-lbl">' + t('apar_colors', 'Color de tus burbujas') + '</div>' +
     '<div class="apar-seg" id="apar-n"><button type="button" data-n="2">' + t('apar_two', 'Dos colores') + '</button><button type="button" data-n="1">' + t('apar_one', 'Un color') + '</button></div>' +

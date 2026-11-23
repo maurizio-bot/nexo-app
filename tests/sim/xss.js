@@ -79,10 +79,25 @@ const PAYLOADS = [
   // 4. CSP endurecida en index.html
   const csp = (doc.querySelector('meta[http-equiv="Content-Security-Policy"]') || {}).content || '';
   r.csp_endurecida = /object-src 'none'/.test(csp) && /base-uri 'self'/.test(csp) && /form-action 'self'/.test(csp);
+  // 5. I-X3 (auditoría 23-11): script-src sin 'unsafe-inline' ni 'unsafe-eval' (si no, la CSP no frena un XSS), y nada que
+  //    los necesite: ningún <script> en línea ni atributo on*= en el HTML, ningún «on…=» en las plantillas del bundle y
+  //    sin eval/new Function fuera del respaldo de webpack (detrás de globalThis). El número de build llega por <meta>.
+  const scriptSrc = (csp.match(/script-src([^;]*)/) || [, ''])[1];
+  r.csp_sin_inline_eval = !!scriptSrc && !/unsafe-inline|unsafe-eval/.test(scriptSrc);
+  const html = fs.readFileSync(path.join(buildDir, 'dist', 'index.html'), 'utf8');
+  const tags = html.match(/<script\b[^>]*>/gi) || [];
+  r.html_sin_script_en_linea = tags.length > 0 && tags.every((t) => /\ssrc=/.test(t)) && !/<[a-z][^>]*\son[a-z]+\s*=/i.test(html);
+  const jsDir = path.join(buildDir, 'dist', 'js');
+  const bundle = fs.readdirSync(jsDir).filter((f) => f.endsWith('.js')).map((f) => fs.readFileSync(path.join(jsDir, f), 'utf8')).join('\n');
+  r.bundle_sin_on_en_plantillas = !/<[a-z][^<>'"]*\son(error|load|click|input|change|submit|mouse\w+|touch\w+|key\w+|focus|blur)\s*=/i.test(bundle);
+  r.bundle_sin_eval = !/[^\w.$]eval\s*\(\s*['"`]|\(0,\s*eval\)|window\.eval\b/.test(bundle) &&
+    (bundle.match(/new Function\(/g) || []).length <= 1;
+  r.build_por_meta = A.win.NEXO_BUILD === '__NEXO_BUILD__' && A.win.NEXO_STORE === '__NEXO_STORE__';
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|is not a function|RangeError/.test(l)).slice(0, 4);
   const ok = r.chat_abre && r.burbujas >= PAYLOADS.length && r.sin_elementos_inyectados && r.sin_ejecucion &&
-    r.texto_literal && r.csp_endurecida && r.errores.length === 0;
+    r.texto_literal && r.csp_endurecida && r.csp_sin_inline_eval && r.html_sin_script_en_linea && r.bundle_sin_on_en_plantillas &&
+    r.bundle_sin_eval && r.build_por_meta && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('XSS ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_xss.txt'), logs.join('\n'));
