@@ -9,10 +9,8 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.os.Build
 import android.util.Log
 import com.getcapacitor.JSArray
@@ -294,38 +292,12 @@ internal fun NexoBlePlugin.getConnectedDevicesImpl(call: PluginCall) {
     call.resolve(JSObject().put("devices", devices))
 }
 
+// S-C2 (auditoría 23-11): aquí se registraba un receptor de difusión (ACTION_MESSAGE_RECEIVED / DEVICE_CONNECTED /
+// DEVICE_DISCONNECTED) que NADIE envía (las conexiones entrantes avisan directo desde el servidor GATT), y en Android 8–12
+// quedaba exportado de hecho: cualquier app podía hacerle creer a la interfaz que un contacto se había conectado o caído.
+// Ya no se registra nada; se deja la función (la llaman al empezar a anunciar) y unregisterServerReceivers sigue igual.
 internal fun NexoBlePlugin.registerServerReceivers() {
-    if (messageReceiver != null) return
-    messageReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED -> {
-                    val addr = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
-                    notifyListeners("onDeviceConnected", JSObject()
-                        .put("deviceId", addr)
-                        .put("direction", "incoming")
-                        .put("role", "server")
-                    )
-                }
-                NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED -> {
-                    val addr = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
-                    notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", addr))
-                }
-            }
-        }
-    }
-    val filter = IntentFilter().apply {
-        addAction(NexoBleSpec.ACTION_BLE_MESSAGE_RECEIVED)
-        addAction(NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED)
-        addAction(NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED)
-    }
-    try {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            activity.registerReceiver(messageReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            activity.registerReceiver(messageReceiver, filter)
-        }
-    } catch (e: Exception) { }
+    messageReceiver?.let { r -> try { activity.unregisterReceiver(r) } catch (e: Exception) { }; messageReceiver = null }
 }
 
 internal fun NexoBlePlugin.unregisterServerReceivers() {

@@ -22,7 +22,12 @@ public class MainActivity extends BridgeActivity {
     // llamada ya sonando con la app viva, el plugin hace lo mismo al recibir el intent (showOverLock).
     try {
       Intent it = getIntent();
-      if (it != null && (it.hasExtra("nexo_call_from") || it.hasExtra("nexo_call_answer"))) {
+      // S-C1 (auditoría 23-11): esta pantalla está exportada; solo con el MISMO testigo que comprueba el plugin
+      // (PluginAlerts.checkNotificationIntent: MsgNotifier.callIntentToken, que va dentro de nuestros PendingIntent de llamada).
+      // Sin él, otra app podía abrir NEXO encima del bloqueo y encender la pantalla con solo poner el extra.
+      String tok = (it != null) ? it.getStringExtra(com.nexo.ble.MsgNotifier.EXTRA_CALL_TOKEN) : null;
+      boolean tokOk = tok != null && tok.equals(com.nexo.ble.MsgNotifier.getCallIntentToken());
+      if (tokOk && (it.hasExtra(com.nexo.ble.MsgNotifier.EXTRA_CALL_FROM) || it.hasExtra(com.nexo.ble.MsgNotifier.EXTRA_ANSWER))) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) { setShowWhenLocked(true); setTurnScreenOn(true); }
         else {
           getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED

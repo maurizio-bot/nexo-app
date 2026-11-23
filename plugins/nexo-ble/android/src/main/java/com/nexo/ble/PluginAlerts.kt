@@ -48,13 +48,21 @@ internal fun NexoBlePlugin.checkNotificationIntent(given: Intent? = null) {
                 notifyListeners("onUpdateAction", JSObject().put("install", true).put("build", ub), true)
                 intent.removeExtra(MsgNotifier.EXTRA_UPDATE_INSTALL)
             }
+            // N-D (auditoría 23-11): «abrir el chat X» y «despertar» solo con el testigo de nuestros avisos (TapToken); si otra app
+            // abre la pantalla con esos extras, se quitan sin hacer nada (la app solo se abre, como desde el icono)
+            val tapOk = TapToken.ok(activity.applicationContext, intent)
+            if (!tapOk && (intent.hasExtra(MsgNotifier.EXTRA_WAKE_TAP) || intent.hasExtra(MsgNotifier.EXTRA_CHAT))) {
+                remLog("WARN", "NOTIF", "Pantalla abierta con extras de aviso SIN testigo: no se hace caso")
+                intent.removeExtra(MsgNotifier.EXTRA_WAKE_TAP)
+                intent.removeExtra(MsgNotifier.EXTRA_CHAT)
+            }
             // 2995: el aviso genérico «Mensaje nuevo» (despertar por FCM) no trae chat: la app decide con sus no leídos
-            if (intent.hasExtra(MsgNotifier.EXTRA_WAKE_TAP)) {
+            if (tapOk && intent.hasExtra(MsgNotifier.EXTRA_WAKE_TAP)) {
                 remLog("INFO", "NOTIF", "Aviso genérico «Mensaje nuevo» tocado: la app abre el chat del último mensaje sin leer")
                 notifyListeners("onNotificationOpened", JSObject().put("deviceId", "").put("source", "wake"), true)
                 intent.removeExtra(MsgNotifier.EXTRA_WAKE_TAP)
             }
-            val deviceId = intent.getStringExtra("nexo_chat_device_id")
+            val deviceId = if (tapOk) intent.getStringExtra(MsgNotifier.EXTRA_CHAT) else null
             if (deviceId != null) {
                 // 3190: el aviso de una solicitud de contacto lleva el destino especial REQ_TARGET (la app abre «Solicitudes para ti»)
                 remLog("INFO", "NOTIF", if (deviceId == MsgNotifier.REQ_TARGET) "Aviso de solicitud de contacto tocado: abre «Solicitudes para ti»" else "Aviso de mensaje tocado: abre el chat " + deviceId)
@@ -64,7 +72,7 @@ internal fun NexoBlePlugin.checkNotificationIntent(given: Intent? = null) {
                     .put("deviceId", deviceId)
                     .put("source", "notification")
                 , true)
-                intent.removeExtra("nexo_chat_device_id")
+                intent.removeExtra(MsgNotifier.EXTRA_CHAT)
             }
         }
     } catch (e: Exception) { }
