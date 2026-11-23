@@ -35,6 +35,7 @@
  * códigos de ahora ('dk', válidos 15 min): un puente que no lo conoce lo reconoce al escanear.
  */
 import { MAX_HOPS, AD_INTERVAL_MS, ROUTE_TTL_MS, QUEUE_FILE, QUEUE_MAX_AGE_MS, HOP_FAIL_BASE_MS, HOP_FAIL_MAX_MS, QUEUE_MAX, HOP_MAX_PAR, QUEUE_MAX_BYTES, SEEN_TTL_MS, SEEN_MAX, RQ_PER_LINK_MIN, QUEUE_PER_SOURCE, QUEUE_BYTES_PER_SOURCE, NEARBY_TTL_MS, NEARBY_FRESH_MS, DISCOVER_THROTTLE_MS, DISCOVER_WAIT_MS, SCAN_FRESH_MS, SCAN_MS, MAX_TRANSIENT, PASS_MIN_RSSI, PASS_FAIL_BASE_MS, PASS_FAIL_MAX_MS, PASS_RETRY_WINDOW_MS, MAX_TRANSIENT_ADD, BLE_LINKS_BUDGET, ANON_NO_ANSWER_MS, ANON_KNOWN_HOLD_MS, TRANSIENT_IDLE_MS, CONNECT_DEDUP_MS, LOW_BATTERY_PCT, LOW_BATTERY_PCT_SAVER, DEFAULT_HOP_BPS, _hopFailWaitMs } from './ble_relay_conf.js';
+import { anonIdentified, anonAlreadyKnown } from './ble_relay_anon.js';
 export { _hopFailWaitMs, HOP_MAX_PAR };
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
@@ -69,6 +70,7 @@ export class BleRelay {
     this._discoverWait = new Map();// dst → espera actual (crece mientras no aparezca camino)
     this.rqFrom = new Map();     // id → { deviceId, ts } (por dónde volver con la respuesta)
     this.anon = new Map();       // dirección → { deviceId, tok, ts, rssi } (NEXO con código rotativo que no reconozco)
+    this.anonKnown = new Map();  // 3303: dirección → { nx, ts } de un anónimo que ya dijo quién es (ble_relay_anon.js)
     this.wantTok = new Map();    // código → { nx, ts } (códigos de un destino buscado, llegados en un 'rq')
     this.power = { level: 100, charging: true, powerSave: false, ts: 0 };
     this.hopBps = DEFAULT_HOP_BPS;
@@ -541,6 +543,7 @@ export class BleRelay {
   noteAnon(deviceId, tok, rssi) {
     if (!deviceId || !tok) return;
     var now = Date.now(), m = _mac(deviceId);
+    if (anonAlreadyKnown(this, m, deviceId, rssi)) return; // 3303: ya dijo quién es: sin volver a sondearlo
     this.anon.set(m, { deviceId: deviceId, tok: tok, ts: now, rssi: typeof rssi === 'number' ? rssi : -100 });
     var self = this;
     this.anon.forEach(function(a, k) { if (now - a.ts > NEARBY_TTL_MS) self.anon.delete(k); });
@@ -556,6 +559,7 @@ export class BleRelay {
     var t = this.transient.get('anon:' + m);
     if (t) { this.transient.delete('anon:' + m); t.idAt = Date.now(); if (!this._isContact(nx)) this.transient.set(nx, t); }
     if (a) { this.anon.delete(m); this.noteSeen(nx, deviceId, a.rssi); }
+    anonIdentified(this, deviceId, nx, !!t); // 3303
   }
 
   // 3012: cuántas conexiones de paso a la vez (más con «Agregar» abierto)

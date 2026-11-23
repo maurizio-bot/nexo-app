@@ -34,6 +34,7 @@ export var MAX_TRANSIENT_ADD = 6;        // 3012: con «Agregar» abierto (el us
 export var BLE_LINKS_BUDGET = 7;         // 3012: conexiones Bluetooth que se dan por seguras a la vez (contactos + de paso)
 export var ANON_NO_ANSWER_MS = 4500;     // 3012: un anónimo al que se le preguntó quién es y no contesta en este rato (app dormida) suelta su hueco
 export var ANON_KNOWN_HOLD_MS = 700;     // 3012: con «Agregar» abierto y sin hueco, uno que YA dijo quién es suelta su conexión de paso tras este rato
+export var ANON_KNOWN_MS = 15 * 60 * 1000; // 3303: una dirección que ya dijo quién es no se vuelve a sondear «de paso» en 15 min (Android cambia de dirección cada ~15 min)
 export var TRANSIENT_IDLE_MS = 60000;
 // #dueño 02-11 (D1): un connect por nx a la vez dentro de esta ventana. Antes, en cada tick de re-búsqueda se llamaba
 // connectToDevice ~12 veces en 1 ms para el MISMO contacto (tormenta «[JUMP] Conectando con»): el guard de 15 s solo

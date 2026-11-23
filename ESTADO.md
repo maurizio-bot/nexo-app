@@ -94,12 +94,13 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   PRUEBAS DEL DUEÑO de esta APK: que la app arranque y el diagnóstico diga el número de build (CSP nueva); mensaje con la app del otro
   cerrada y sin internet (sello + reto); que alguien que no es contacto te escriba → «Solicitudes»; foto «ver una vez» → no deja capturar.
   Avisos publicados antes de esta APK: tocarlos abre la app pero no el chat (una sola vez).
-- **🔴 PRIMERO (dueño 23-11 08:30, ANTES de la próxima APK):** (1) GRUPOS: una vez creado, NO aparece arriba a la derecha la rueda de
-  ajustes (lista de miembros, hacer admin / quitar admin, expulsar) ni funciona tocar a un miembro → «Agregar» si no es contacto o abrir
-  su chat si ya lo es. Revisar por qué `group_panel.js`/`group_admin.js` no se ven en la 3121 y arreglarlo con prueba en sim.
-  (2) Diagnóstico S24 08:27 (`docs/diagnosticos.json`): el sondeo «de paso» a un anónimo que resulta ser un contacto ya enlazado (Alex)
-  deja un 2.º enlace que el desempate cierra cada 1–2 min y se vuelve a sondear: cerrarlo al identificarlo y recordar la dirección.
-  Después sigue la tanda 2 desde (d).
+- **✅ HECHO lo 🔴 del dueño 23-11 08:30 (`[skip ci]`, va en la APK única):** **3302** GRUPOS: la ruedita de ajustes no existía en el chat
+  del grupo (solo en los ⋮ de la lista): ahora arriba a la derecha (`refreshGroupGear`, `group_panel.js`), para todos los miembros; tocar a
+  un miembro en Ajustes abre su chat si es contacto o, si no, hoja «Agregar» (solicitud). `gruposadmin.js` 1b (6 casos nuevos, todo OK).
+  **3303** sondeo «de paso» (diag. S24 08:27): al identificarse, la dirección → NEXO ID se recuerda 15 min y no se vuelve a sondear; si era
+  un contacto ya enlazado por otra dirección, esa conexión se cierra al momento (`ble_relay_anon.js`). `anondup.js` (antes FALLO, ahora OK).
+  PRUEBAS DEL DUEÑO: crear grupo → ruedita arriba a la derecha → tocar un miembro; S24 cerca de Alex: sin «enlace repetido» cada 1–2 min.
+  Sigue la tanda 2 desde (d).
 - **TANDA 2 (siguiente sesión; la última, después solo pulido):** forma de trabajo del dueño 23-11: terminar la tanda, subir (CI ~85 min), y
   mientras compila avanzar la siguiente; CI en verde → subir lo siguiente; si falla, corregir SOLO ese fallo y subir. Agrupar lo más posible.
   Aviso programado: «Revisar CI de la APK 3298» a las 09:09 México (llega a esta sesión). Contenido de la tanda 2, en orden:
