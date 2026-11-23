@@ -170,7 +170,6 @@ async function _decryptBytes(packed) {
 // remitente: quien lo ve pasar (un puente) no sabe quién lo manda. Formato "S1:<efímera>:<iv>:<cifrado>"; datos
 // adicionales: el destinatario (no se puede reenviar a otro).
 var SEAL_PREFIX = 'S1:';
-export function e2eIsSealed(s) { return typeof s === 'string' && s.indexOf(SEAL_PREFIX) === 0; }
 export async function e2eSealAnon(peerPubB64, text) {
   var subtle = _subtle();
   await initE2E();

@@ -6,11 +6,6 @@
 export default {
   // Grupos: administración (22-11, COLA 4b)
   grp_settings: "Paramètres du groupe",
-  grp_mode: "Mode du groupe",
-  grp_mode_c: "Contrôle",
-  grp_mode_c_sub: "Seuls les administrateurs écrivent, ajoutent et modifient le groupe",
-  grp_mode_o: "Collègues",
-  grp_mode_o_sub: "Tout le monde écrit, ajoute et modifie le groupe ; seul le créateur exclut",
   grp_admins: "Désigner des administrateurs",
   grp_search: "Rechercher par nom",
   grp_save: "Enregistrer",
@@ -73,8 +68,6 @@ export default {
   grp_n_name: "Nom du groupe : ",
   grp_n_photo: "Nouvelle photo du groupe",
   grp_n_photo0: "Photo du groupe retirée",
-  grp_n_mode_c: "Mode Contrôle",
-  grp_n_mode_o: "Mode Collègues",
   grp_n_ow1: "Seuls les administrateurs écrivent",
   grp_n_ow0: "Tout le monde peut écrire",
   grp_n_oa1: "Seuls les administrateurs ajoutent",

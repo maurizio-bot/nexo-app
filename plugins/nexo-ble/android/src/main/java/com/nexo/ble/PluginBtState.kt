@@ -26,21 +26,6 @@ import com.getcapacitor.PluginCall
 private fun NexoBlePlugin.isScanning(): Boolean {
     return bluetoothScanner != null
 }
-private fun NexoBlePlugin.reconnectKnownDevices() {
-    val ctx = activity.applicationContext
-    val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-    val adapter = bluetoothManager.adapter
-    if (adapter == null || !adapter.isEnabled) return
-    gattClients.forEach { (macNorm, gatt) ->
-        val state = clientConnectionStates[macNorm] ?: BluetoothProfile.STATE_DISCONNECTED
-        if (state != BluetoothProfile.STATE_CONNECTED && state != BluetoothProfile.STATE_CONNECTING) {
-            remLog("INFO", "FOREGROUND", "Auto-reconnect a $macNorm al volver de background")
-            reconnectAttempts[macNorm] = 0
-            reconnectDelays.remove(macNorm)
-            startAutoReconnect(macNorm)
-        }
-    }
-}
 internal fun NexoBlePlugin.registerBluetoothStateReceiver() {
     if (bluetoothStateReceiver != null) return
     bluetoothStateReceiver = object : BroadcastReceiver() {
@@ -281,17 +266,6 @@ internal fun NexoBlePlugin.cutServerLink(device: BluetoothDevice, motivo: String
         val cut = Runnable { try { bluetoothGattServer?.cancelConnection(device) } catch (e: Exception) { } }
         if (fresh) mainHandler.postDelayed(cut, 200) else cut.run()
     } catch (e: Exception) { remLog("WARN", "GATT_SERVER", "No se pudo cortar $mac ($motivo): ${e.message}") }
-}
-
-// 3251: corta los enlaces que los demás tienen abiertos a NUESTRO servidor GATT (antes de cerrarlo, para que reconecten al nuevo en vez de
-// quedarse escribiendo a un servidor que ya no existe). 3262: solo los que usan nuestro servicio (los que «tenemos»); cerrar el servidor
-// suelta además lo que tuviéramos.
-internal fun NexoBlePlugin.cancelServerLinks(motivo: String) {
-    val server = bluetoothGattServer ?: return
-    val devices = serverConnectedDevices.filterKeys { serverHeld.contains(it) }
-    if (devices.isEmpty()) return
-    remLog("INFO", "GATT_SERVER", "Corto ${devices.size} enlace(s) entrante(s) antes de cerrar el servidor ($motivo)")
-    devices.values.forEach { d -> try { server.cancelConnection(d) } catch (e: Exception) { } }
 }
 
 // Cierra DE VERDAD el servidor (Bluetooth apagado, cuenta pasada a otro teléfono, limpieza sin permisos). 3263: abrir o cerrar la app

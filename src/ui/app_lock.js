@@ -65,7 +65,6 @@ export function secureHold(key, on) {
   if (on) _secHolds[key] = 1; else delete _secHolds[key];
   return _applySecure();
 }
-export function secureScreenOn() { return _secApplied; }
 
 // ---------- Pantalla de bloqueo ----------
 function _overlay() { return document.getElementById('nexo-lock'); }
@@ -195,7 +194,6 @@ export function initAppLock(opts) {
   if (_pl()) load(); else setTimeout(load, 300);
 }
 
-export function isAppLocked() { return _locked; }
 
 // 3148/3150 (Fénix Entorno, oculto): vetar una recuperación exige un desbloqueo de verdad. Dueño 16-11 (opción 1): el de NEXO si
 // está activado y, si no, el bloqueo de pantalla del teléfono (huella, cara, patrón o PIN del sistema: biometricAuth ya admite el

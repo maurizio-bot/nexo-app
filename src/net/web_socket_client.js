@@ -326,6 +326,4 @@ export class WebSocketClient {
   }
 }
 
-// Export singleton factory para nexo_app.js
-export const createWebSocket = (config) => new WebSocketClient(config);
 export default WebSocketClient;

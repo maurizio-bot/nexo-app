@@ -102,11 +102,7 @@ function _openLeaderboard() {
   ov.addEventListener('click', function(e) { if (e.target === ov) _closeRank(); });
   document.body.appendChild(ov);
 }
-export function openLeaderboard() { _openLeaderboard(); }
 
-// Para el botón atrás de Android (chat_nav.js).
-export function gamePickerOpen() { return !!document.getElementById('game-picker-overlay') || !!document.getElementById('game-rank-overlay'); }
-export function gamePickerClose() { _close(); _closeRank(); }
 
 try { if (typeof window !== 'undefined') {
   window.__nexoCloseGamePicker = function() { _close(); _closeRank(); };

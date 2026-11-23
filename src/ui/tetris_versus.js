@@ -280,8 +280,6 @@ export function openTetrisVersusForContact(cid) {
   Object.keys(games).forEach(function (k) { var gg = games[k]; if (_normId(gg.opp) === cid && !gg.over) live = gg; });
   if (live) _openOverlay(live.gid); else _startFresh(cid);
 }
-export function tetrisVersusOverlayOpen() { return !!document.getElementById('tvs-overlay'); }
-export function tetrisVersusCloseOverlay() { _closeOverlay(); }
 
 function _autoOpenForContact(cid) {
   cid = _normId(cid);

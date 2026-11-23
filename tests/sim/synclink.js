@@ -44,9 +44,45 @@ const logs = [];
   r.sr_dueno_real_reenvia = (await tryr(macOk, 'nx0amigo01')) === 1;
   r.sr_suplantado_ignorado = (await tryr(macOk, 'nx0otro002')) === 0;
   r.sr_desconocido_ignorado = (await tryr(macOther, 'nx0amigo01')) === 0;
+  // C-N10 (auditoría 23-11): con un contacto de protocolo 2 el «sr» solo vale firmado con el secreto de la pareja y atado al número del
+  // «ss» que mandé por ESE enlace (< 2 min, una vez). La firma «buena» se fabrica aquí con el mismo teléfono haciéndose pasar por el otro
+  // (el secreto de pareja es el mismo en los dos lados): A contesta a un «ss» de sí mismo con los NEXO ID cambiados.
+  const kp = await win.crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const pub = Buffer.from(await win.crypto.subtle.exportKey('raw', kp.publicKey)).toString('base64');
+  if (!bi.localNexoId) bi.localNexoId = 'nx0yomismo';
+  const me = bi.localNexoId, peer = 'nx0amigo01';
+  r.mi_id = me;
+  const oContact = AS._contactOf;
+  AS._contactOf = function (d, nx) { return { nexoId: nx, proto: 2, publicKey: pub }; };
+  let lastOut = null;
+  bi._sendMessageNative = function (dev, payload) { sent++; lastOut = JSON.parse(payload); return Promise.resolve(); };
+  const askSs = async () => { lastOut = null; AS.sendSessionSync(macOk, peer); await sleep(200); return lastOut; };
+  // el «sr» que mandaría el contacto de verdad: se fabrica con A haciendo de él
+  const forge = async (n, l) => {
+    const oMe = bi.localNexoId; bi.localNexoId = peer;
+    const ml = me.toLowerCase(); bi._macToNexoId.set(macOther.toLowerCase(), ml); bi._macToNexoId.set(macOther.toUpperCase(), ml); bi._macToNexoId.set(macOther.toLowerCase().replace(/:/g, ''), ml);
+    lastOut = null; AS._handleSessionSync(macOther, { t: 'ss', fr: me, l: 0, n }); await sleep(250);
+    bi.localNexoId = oMe; [macOther.toLowerCase(), macOther.toUpperCase(), macOther.toLowerCase().replace(/:/g, '')].forEach((k) => bi._macToNexoId.delete(k));
+    return lastOut;
+  };
+  const trySr = async (m) => { resent = 0; AS._handleSessionSyncResponse(macOk, m || { t: 'sr', fr: peer }); await sleep(250); return resent; };
+  const ss1 = await askSs();
+  r.ss_lleva_numero = !!(ss1 && /^[0-9a-f]{16}$/.test(ss1.n));
+  const good = await forge(ss1.n, 0);
+  r.sr_respuesta_firmada = !!(good && good.t === 'sr' && good.n === ss1.n && typeof good.a === 'string' && good.a.length > 8);
+  r.sr_n10_sin_firma_ignorado = (await trySr({ t: 'sr', fr: peer, l: 0, n: ss1.n })) === 0;
+  r.sr_n10_firma_buena_reenvia = (await trySr(good)) === 1;
+  r.sr_n10_repetido_ignorado = (await trySr(good)) === 0;           // el número ya se gastó
+  const ss2 = await askSs();
+  r.sr_n10_numero_viejo_ignorado = (await trySr(good)) === 0;       // firma vieja con número que no es el pedido ahora
+  const good2 = await forge(ss2.n, 0);
+  r.sr_n10_otro_l_ignorado = (await trySr(Object.assign({}, good2, { l: 7 }))) === 0; // l cambiado: la firma no cuadra
+  AS._ssNonces && AS._ssNonces.clear();
+  r.sr_n10_sin_ss_ignorado = (await trySr(good2)) === 0;            // nadie se lo pidió
+  AS._contactOf = oContact;
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|Assembly timeout|net::ERR|fetch/.test(l)).slice(0, 5);
   const ok = Object.keys(r).filter((k) => /^s[sr]_/.test(k)).every((k) => r[k] === true) && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('SYNCLINK ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);
-})().catch((e) => { console.log('SYNCLINK ' + JSON.stringify({ prueba: 'synclink', resultado: 'FALLO', error: String(e && e.message) })); process.exit(1); });
+})().catch((e) => { console.log('SYNCLINK ' + JSON.stringify({ prueba: 'synclink', resultado: 'FALLO', error: String(e && e.stack).slice(0, 600) })); process.exit(1); });

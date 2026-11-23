@@ -56,8 +56,6 @@ function _noCall(why) {
   try { if (p && typeof p.setPipActive === 'function') p.setPipActive({ on: false }); } catch (e) {}
 }
 
-/** ¿Está la app en la miniatura del sistema? (lo último aplicado) */
-export function pipOn() { return _on; }
 
 /** Deja todas las marcas como tocan para «en miniatura» / «a pantalla normal». Se puede repetir sin efectos. */
 export function pipApply(on, why) {

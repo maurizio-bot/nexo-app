@@ -274,8 +274,6 @@ function _resumeTetris() {
   var pb = document.getElementById('tetris-paused'); if (pb && pb.parentNode) pb.parentNode.removeChild(pb);
 }
 
-export function tetrisOverlayOpen() { return !!document.getElementById('tetris-overlay'); }
-export function tetrisCloseOverlay() { _close(); }
 
 // ---------- Núcleo PURO reutilizado por el modo VERSUS (tetris_versus.js), sin tocar el modo solo ----------
 export { COLS, ROWS, COLORS, newGame, tryMove, tryRotate, step, hardDrop, softDrop };

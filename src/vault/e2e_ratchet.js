@@ -94,7 +94,6 @@ var _lock = Promise.resolve();
 var _recent = new Map(); // texto cifrado → resultado (reintentos idénticos)
 
 function _subtle() { return (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) || null; }
-function _rand(n) { return window.crypto.getRandomValues(new Uint8Array(n)); }
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _b64(bytes) {
@@ -225,7 +224,6 @@ async function _signSpk(id, spkPub) {
   return _b64(new Uint8Array(await _subtle().sign({ name: 'ECDSA', hash: 'SHA-256' }, priv, data)));
 }
 
-export function ratchetAvailable() { return !!_subtle(); }
 
 export function ratchetInit() {
   if (_initP) return _initP;

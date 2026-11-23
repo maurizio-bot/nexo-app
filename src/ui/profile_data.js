@@ -37,7 +37,6 @@ export function profileInit() {
 // al agregar por ID, al compartir por E2E) y NO se edita. Acá solo se guardan los EXTRAS opcionales (teléfono, correo).
 function _installName() { try { return String((typeof window !== 'undefined' && window.bleInterface && window.bleInterface.localDeviceName) || '').trim(); } catch (e) { return ''; } }
 export function myProfile() { return { name: _installName(), phone: _mine.phone || '', email: _mine.email || '' }; }
-export function hasAnyProfile() { return !!(_mine.phone || _mine.email); }   // extras opcionales (el nombre siempre está)
 
 // Guarda los EXTRAS (teléfono, correo). El nombre NO se edita acá (es el fijo del install). Devuelve { ok, email_bad }.
 export function setMyProfile(fields) {

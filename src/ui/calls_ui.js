@@ -915,7 +915,6 @@ function _refreshButton() {
     b.title = full ? t('call_max_two_short', 'Ya tienes dos llamadas') : (id === 'nexo-call-btn' ? t('call_btn_call_title', 'Llamar') : t('call_btn_video_title', 'Videollamada'));
   });
 }
-export function refreshCallButtons() { _refreshButton(); }
 
 // Ronda 2769: la cámara del chat (fotos y vídeos) abierta debajo de la llamada tenía ocupada la cámara y, grabando
 // vídeo, el micrófono: la llamada no podía abrirlos. Al empezar la llamada se cierra.

@@ -16,14 +16,11 @@
  *  4. Al tocarlo, la parte nativa lo descifra a un archivo temporal y lo abre (un APK se instala).
  * Solo con quien lo anuncia ('bg' en el kx); el estado de cada archivo se ve en su tarjeta del chat.
  */
-import { WD_MAX_BYTES } from './wifi_direct.js';
 import { t } from './i18n.js';
 import { isStoreBuild } from './store_flag.js';
 
 export var BIG_SLICE = 512 * 1024;
 export var BIG_MAX_BYTES = 1024 * 1024 * 1024;
-// Por encima de esto un archivo va como "grande" (por debajo, como siempre: Wi-Fi Direct / Wi-Fi / Bluetooth)
-export var BIG_MIN_BYTES = Math.floor(WD_MAX_BYTES * 3 / 4);
 var STATE_FILE = 'nexo_big_state.json';
 var OFFER_TIMEOUT_MS = 30000;
 var BIG_IN_MAX = 2; // auditoría 23-11 (T-D1): archivos grandes recibiéndose a la vez

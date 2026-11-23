@@ -28,7 +28,6 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 // trozos que faltan van a los públicos (tope ~64 KB); el que recibe sigue con los mismos techos (MAX_CHUNK_BYTES, MAX_RELAY_FRAME)
 export var CHUNK_RAW_BYTES = 40 * 1024;          // 40 KB → base64 ≈ 54,6 KB + evento < ~60 KB del relé (lección 2964: el tope es sobre lo YA codificado)
 export var MAILBOX_MAX_BYTES = 5 * 1024 * 1024;   // lo que se stagea en relés en Fase B (~125 trozos)
-export var RELAY_REPLICATION = 3;                 // objetivo: cada trozo en ≥3 relés (los que haya abiertos). 3193: con datos móviles, 2 (net.blobCopies)
 export var MAX_POINTER_CHUNKS = 10000;            // techo anti-DoS: rechazo inmediato, ANTES de reservar nada
 export var MAX_POINTER_BYTES = 64 * 1024 * 1024;  // ídem, tamaño
 export var MAX_CHUNK_BYTES = 64 * 1024;           // un trozo declarado más grande que esto es basura

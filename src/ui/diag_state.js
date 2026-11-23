@@ -52,7 +52,6 @@ export function diagNotePeerBuild(nx, bd) {
   if (!/^nx[0-9a-z]{8}$/.test(nx) || !/^(\d{1,6}|dev)$/.test(bd)) return;
   _peerBuild[nx] = bd;
 }
-export function diagPeerBuild(nx) { return _peerBuild[_normId(nx)] || null; }
 
 // Por dónde sale un mensaje ahora: el enlace de su envío en curso (Bluetooth/Wi-Fi/internet) o «?»
 function _viaKind(dev) {

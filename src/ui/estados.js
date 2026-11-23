@@ -272,7 +272,6 @@ export function statusesOf(nx) {
 // El más reciente (compatibilidad: «el estado» de un contacto)
 export function statusOf(nx) { var l = statusesOf(nx); return l.length ? l[l.length - 1] : null; }
 export function myStatuses() { return _activeList(_mine.items); }
-export function myStatus() { var l = myStatuses(); return l.length ? l[l.length - 1] : null; }
 
 // ---- Publicar / quitar ----
 // Publica un estado NUEVO (texto y/o una media). Devuelve su sid, o null (vacío, o ya hay MAX_ITEMS activos).
@@ -593,9 +592,6 @@ export function activeStatusContacts() {
 // ---------- Interfaz: visor, publicar y «Mis estados» (la pantalla «Estados» los abre: estados_screen.js, 3169) ----------
 function _ago(ts) { var m = Math.floor((Date.now() - ts) / 60000); if (m < 1) return t('grp_ago_now', 'ahora'); if (m < 60) return t('grp_ago_prefix', 'hace ') + m + t('grp_ago_min', ' min'); return t('grp_ago_prefix', 'hace ') + Math.floor(m / 60) + t('grp_ago_h', ' h'); }
 export function statusAgo(ts) { return _ago(ts); }
-// 3230: ver los estados de un contacto = la pantalla Estados a pantalla completa en los suyos (estados_feed.js; antes, una ventana con
-// botones ‹ › «Me gusta» y «Enviar»)
-export function openStatusViewer(c) { if (typeof window.__nexoEstadosOpen === 'function') window.__nexoEstadosOpen(c && c.nx); }
 export function statusSeen(nx, sid) { var s = _seen.get(_normId(nx)); return !!(s && s.has(sid)); }
 export function markStatusSeen(nx, sid) { nx = _normId(nx); _markSeen(nx, sid); _emit(nx); }
 export function openStatusCompose() { _compose(); }

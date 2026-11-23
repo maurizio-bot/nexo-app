@@ -209,9 +209,6 @@ export function openConnect4ForContact(cid) {
   if (live) _openOverlay(live.gid); else _startFresh(cid);
 }
 
-// Cierre por el botón atrás de Android (chat_nav.js lo consulta).
-export function connect4OverlayOpen() { return !!document.getElementById('c4-overlay'); }
-export function connect4CloseOverlay() { _closeOverlay(); }
 
 // #dueño 05-11: al ENTRAR al chat de un contacto que te invitó (o donde te toca), el juego se abre solo (una vez).
 // Podés jugar o cerrarlo. La marca `autoOpenPending` se puso en _notify al llegar la jugada estando fuera de esa partida.

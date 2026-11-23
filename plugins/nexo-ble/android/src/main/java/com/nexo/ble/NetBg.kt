@@ -378,7 +378,6 @@ class NetBg(
         synchronized(blobLock) { blobSaved = outbox.chunkFiles().keys.toSet() } // lo cargado ya está guardado
         return n
     }
-    fun outboxClear() { if (outbox.clear()) outboxChanged() }
 
     // 3281: un relé guardó un trozo de un archivo de la bandeja: se sigue con los siguientes y, con todos subidos, sale su aviso
     private fun outboxChunkAccepted(evId: String) {

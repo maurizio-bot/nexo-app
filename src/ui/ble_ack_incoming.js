@@ -1,4 +1,5 @@
-import { MAX_CHUNKS, MAX_CHUNK_CHARS, MAX_BUF_CHARS, MAX_BUFS_PER_DEVICE, _chunkCheck, _isNetDevice, _assemblyTimeoutFor, NACK_INTERVAL_MS, BIGX_BLOCK, BIGX_MIN_CHUNKS, _bigxUserId, _bigxFullBlock, ACK_EVERY, ACK_DEBOUNCE_MS, NET_TOR_PREFER_CHUNKS, COMPLETED_TTL_MS, _isFenixTx, _isLanDevice, _compressRanges, PROTOCOL_VERSION, _decompressRanges, _normId, _maxSeqFromPeer } from './ble_ack_shared.js';
+import { MAX_CHUNKS, MAX_CHUNK_CHARS, MAX_BUF_CHARS, MAX_BUFS_PER_DEVICE, _chunkCheck, _isNetDevice, _assemblyTimeoutFor, NACK_INTERVAL_MS, BIGX_BLOCK, BIGX_MIN_CHUNKS, _bigxUserId, _bigxFullBlock, ACK_EVERY, ACK_DEBOUNCE_MS, NET_TOR_PREFER_CHUNKS, COMPLETED_TTL_MS, _isFenixTx, _isLanDevice, _compressRanges, PROTOCOL_VERSION, _decompressRanges, _normId, _maxSeqFromPeer, _ctEq } from './ble_ack_shared.js';
+import { e2eAckTag } from '../vault/e2e_crypto.js';
 // Métodos de BleAckSystem: RECEPCIÓN: trozos que llegan, armado, NACK y ack de bloque, sincronía de sesión.
 // Reestructuración 15-11: movidos TAL CUAL desde ble_ack.js; ble_ack.js los une a la clase (como métodos normales).
 export const ackIncoming = {
@@ -562,10 +563,15 @@ export const ackIncoming = {
         if (msgs && msgs.length > 0) {
           myLastSeq = _maxSeqFromPeer(msgs);
         }
-        var resp = JSON.stringify({ v: PROTOCOL_VERSION, t: 'sr', fr: (self.ble && self.ble.localNexoId) || 'unknown', l: myLastSeq });
-        if (self.ble && self.ble._sendMessageNative) {
-          self.ble._sendMessageNative(deviceId, resp, null).catch(function(){});
-        }
+        var me = (self.ble && self.ble.localNexoId) || 'unknown';
+        var resp = { v: PROTOCOL_VERSION, t: 'sr', fr: me, l: myLastSeq };
+        var send = function() { if (self.ble && self.ble._sendMessageNative) self.ble._sendMessageNative(deviceId, JSON.stringify(resp), null).catch(function(){}); };
+        // Auditoría 23-11 (C-N10): la respuesta va FIRMADA con el secreto de la pareja y atada al número al azar del «ss» (ver
+        // _srSigned): un impostor que se hace pasar por el contacto en un enlace no puede fabricarla ni repetir una vieja
+        var c = self._contactOf(null, peerNexoId), n = String(msg.n || '');
+        if (!/^[0-9a-f]{16,32}$/.test(n) || !c || !c.publicKey) return send();
+        resp.n = n;
+        e2eAckTag(c.publicKey, 'sr|' + n + '|' + myLastSeq + '|' + _normId(me) + '|' + _normId(peerNexoId)).then(function(a) { if (a) resp.a = a; send(); }, send);
       }).catch(function(){});
     }
   },
@@ -575,7 +581,10 @@ export const ackIncoming = {
     var peerNexoId = msg.fr || msg.from;
     if (!peerNexoId || !window.vaultLoadMessages) return;
     if (!self._syncFromLinkOwner(deviceId, peerNexoId)) return;
-    window.vaultLoadMessages(peerNexoId).then(function(msgs) {
+    self._srSigned(deviceId, peerNexoId, msg).then(function(ok) {
+      if (!ok) { console.warn('[BleAckSystem] Respuesta de sincronía de ' + _normId(peerNexoId) + ' sin firma válida o sin pedirla: no se reenvía nada'); return null; } // i18n-ok: registro
+      return window.vaultLoadMessages(peerNexoId);
+    }).then(function(msgs) {
       if (!msgs) return;
       // v3.3.1: peerLastSeq es el mayor seq NUESTRO que el otro tiene (antes mezclaba los contadores de
       // ambos teléfonos y dejaba sin reenviar). Se reenvía lo propio sin confirmar: pendiente/fallido
@@ -609,13 +618,32 @@ export const ackIncoming = {
       sendNext();
     }).catch(function(){});
   },
+  // Auditoría 23-11 (C-N10, bajo): un «kx» falso podía reapuntar un enlace al NEXO ID de un contacto y su «sr» con l:0 hacía reenviar
+  // hasta 50 mensajes propios (cifrados: no leía nada, pero se gastaba la radio y se le contaba cuántos y cuándo). Con un contacto de
+  // protocolo 2, el «sr» solo vale si responde a un «ss» que este teléfono mandó por ESE enlace hace < 2 min y lleva la firma de la
+  // pareja sobre «sr|número|l|él|yo» (como las ✓✓, C1). Sin clave de pareja (protocolo 1), como antes.
+  _srSigned(deviceId, peerNexoId, msg) {
+    var nx = _normId(peerNexoId), c = this._contactOf(null, nx);
+    if (!c || c.proto !== 2 || !c.publicKey || c.pendingKey) return Promise.resolve(true);
+    var want = this._ssNonces && this._ssNonces.get(deviceId);
+    if (!want || want.nx !== nx || Date.now() - want.at > 120000 || String(msg.n || '') !== want.n || !msg.a) return Promise.resolve(false);
+    this._ssNonces.delete(deviceId); // una sola vez
+    var l = msg.l || 0;
+    return this._whenMyNx().then(function(me) {
+      return e2eAckTag(c.publicKey, 'sr|' + want.n + '|' + l + '|' + nx + '|' + _normId(me));
+    }).then(function(exp) { return !!exp && _ctEq(String(msg.a), exp); }, function() { return false; });
+  },
   sendSessionSync(deviceId, peerNexoId) {
     var self = this;
     var myLastSeq = 0;
     if (window.vaultLoadMessages) {
       window.vaultLoadMessages(peerNexoId).then(function(msgs) {
         myLastSeq = _maxSeqFromPeer(msgs);
-        var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ss', fr: (self.ble && self.ble.localNexoId) || 'unknown', l: myLastSeq });
+        // C-N10: número al azar que la respuesta («sr») tiene que firmar (uno por enlace; vale 2 min)
+        var n = Array.prototype.map.call(window.crypto.getRandomValues(new Uint8Array(8)), function(b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+        if (!self._ssNonces) self._ssNonces = new Map();
+        self._ssNonces.set(deviceId, { n: n, nx: _normId(peerNexoId), at: Date.now() });
+        var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ss', fr: (self.ble && self.ble.localNexoId) || 'unknown', l: myLastSeq, n: n });
         if (self.ble && self.ble._sendMessageNative) {
           self.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
         }
