@@ -584,6 +584,10 @@
      "prueba": "llamada con la conexión directa MUDA"
     },
     {
+     "fallo": "3301 (tanda 2, punto 25: eco en llamada de GRUPO, reportado por el dueño): en la llamada de dos, cada trozo de voz que suena se le avisa al filtro del micrófono (baja el eco ~18 dB); en grupo la voz de cada uno la reproduce un decodificador aparte que no avisaba, y el filtro además descartaba los tramos que se cruzan (varias voces a la vez): el eco de los demás pasaba. 3301: cada decodificador avisa a la captura (con su reloj de audio convertido) y el filtro acepta tramos solapados (toma el más fuerte). voicefx.js eco_grupo: contraprueba 3,7 dB; 3301 = 18,1 dB. gcallmedia.js eco_avisa_captura",
+     "prueba": "filtros del micrófono"
+    },
+    {
      "fallo": "3126 (atascos, PLAN etapa 1; dueño 15-11: «sigue con los atascos»): si el desatasco automático del cifrado (3069) se repetía con el mismo contacto sin arreglarse, nadie se enteraba. 3126: 3 desatascos en 30 min con el mismo contacto → diagnóstico automático «desatasco_bucle» y firma grave en el analizador, para verlo con datos (sin tocar el cifrado). desatascobucle.js (contraprueba 3125: nada)",
      "prueba": "DESATASCO que se REPITE"
     },

@@ -104,7 +104,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   presencia del S24 por relés («oído hace 312–1014 s»), un texto de 9 trozos por internet dio «Assembly timeout» en el S24 y «Buzón no
   disponible: Abortado» en el S23. Reproducir en tests/sim con relés que pierden eventos en un sentido y un texto largo por internet; mirar
   si un texto así debería ir en UN evento (NET_TEXT_ONE) o reanudarse en vez de abortar. (b) ✅ **18 HECHO 3300:** la conexión directa «disconnected» > 4 s = cortada (antes se esperaba el «failed» de
-  ~30 s; `call_p2p.js` DISC_MS); `cambiored.js --mudo`: 29 s → 8 s. (c) **25** eco en llamada de grupo. (d) **24** datos repetidos de los relés al abrir en frío (4,4 de 5,3 MB): son las copias
+  ~30 s; `call_p2p.js` DISC_MS); `cambiored.js --mudo`: 29 s → 8 s. (c) ✅ **25 HECHO 3301:** en grupo los decodificadores no avisaban al filtro del micrófono lo que sonaba (y el filtro
+  tiraba los tramos cruzados): ahora sí (`onFar`/`farExt`, `call_voice_fx` con solapes). `voicefx.js` eco_grupo 3,7 → 18,1 dB. Falta oírlo en teléfonos. (d) **24** datos repetidos de los relés al abrir en frío (4,4 de 5,3 MB): son las copias
   de cada relé (`_subscribe` pide a TODOS desde `lastSeen`); NO recortar relés (principio del dueño): estudiar pedir lo atrasado completo
   a 2 relés y a los demás solo lo nuevo + rellenar huecos, solo si se demuestra que no se pierde nada. (e) **31** vista previa de enlaces
   (decidida: la baja quien recibe, por Tor). (f) 14A toque firmado (cambia `push-sender/cloudflare/worker.js`: el DUEÑO lo publica con

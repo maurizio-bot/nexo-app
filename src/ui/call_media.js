@@ -233,6 +233,8 @@ export function createCallMedia(opts) {
     s.start(playAt);
     // Ronda 2772: el filtro del micrófono sabe cuándo y cuán fuerte suena el otro (para bajar su eco)
     if (vfx) try { vfx.far(Math.sqrt(e2 / (f32.length || 1)), playAt, playAt + buf.duration); } catch (e) {}
+    // 3301: en grupo este decodificador solo reproduce: lo que suena se le avisa a la captura (su filtro baja el eco de TODOS)
+    if (typeof opts.onFar === 'function') try { opts.onFar(Math.sqrt(e2 / (f32.length || 1)), playAt - now, buf.duration); } catch (e) {}
     playAt += buf.duration;
   }
 
@@ -839,6 +841,8 @@ export function createCallMedia(opts) {
     },
     mute: function(on) { muted = !!on; },
     // 3217 (puente, call_bridge.js): fn(pcm, rate) recibe la voz del otro ya decodificada (null: nadie); mixIn la suma a lo que mando
+    // 3301: lo que suena en OTRO decodificador (grupo): nivel, dentro de cuántos s y cuánto dura; se pasa al reloj de este audio
+    farExt: function(level, inSec, durSec) { if (!vfx || !ctx) return; var t0 = ctx.currentTime + Math.max(0, inSec || 0); try { vfx.far(level, t0, t0 + (durSec || 0)); } catch (e) {} },
     setTap: function(fn) { tap = typeof fn === 'function' ? fn : null; if (!tap) mixClear(); },
     mixIn: function(f32, rate) { if (f32 === null) { mixClear(); return; } mixIn(f32, rate); },
     // Ronda 2772: con cascos o Bluetooth no hay eco del altavoz: no se baja el micrófono

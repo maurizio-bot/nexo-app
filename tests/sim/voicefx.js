@@ -1,6 +1,7 @@
 // Filtros del micrófono en las llamadas (ronda 2772, src/ui/call_voice_fx.js). Pedido del dueño (25-10): "aplicar
 // filtros" y "si un usuario habla, el micrófono del otro se baja un porcentaje para evitar interferencias".
 // Señales sintéticas a 48 kHz por bloques de 2048 muestras (como el micrófono de la llamada) y lo que sale:
+//  eco_grupo (3301): dos voces de una llamada de grupo, cada una avisada por su decodificador (tramos cruzados): baja ≥ 10 dB;
 //  eco_fuerte / eco_debil: suena la voz del otro y vuelve al micrófono (altavoz sin / con cancelación de eco del
 //    teléfono): lo que sale debe bajar al menos 10 dB;
 //  hablan_los_dos: con el eco de antes, uno habla a la vez (más fuerte que el eco): su voz debe pasar (como mucho −6 dB);
@@ -43,7 +44,7 @@ const db = (a, b) => (a > 0 && b > 0 ? Math.round(20 * Math.log10(a / b) * 10) /
 
 // Simula una llamada: farSig = lo que suena del otro (en el altavoz), mic(t) = lo que entra al micrófono
 // Devuelve la energía de entrada y salida en [from, to] (segundos) y lo que sale en conjunto
-function run({ seconds, farSig, mic, from, to, onlyNear, headset }) {
+function run({ seconds, farSig, farSigs, mic, from, to, onlyNear, headset }) {
   const fx = createVoiceFx({ rate: RATE });
   if (headset) fx.setHeadset(true);
   const n = Math.round(seconds * RATE / BLOCK);
@@ -53,6 +54,8 @@ function run({ seconds, farSig, mic, from, to, onlyNear, headset }) {
     const t0 = b * BLOCK / RATE, t1 = (b + 1) * BLOCK / RATE;
     // Lo que suena del otro, por trozos de 20 ms y con su hora (como call_media.js al reproducir)
     if (farSig) for (let s0 = t0; s0 < t1 - 1e-9; s0 += 0.02) { let e = 0; for (let i = 0; i < 960; i++) { const v = farSig(s0 + i / RATE); e += v * v; } fx.far(Math.sqrt(e / 960), s0, s0 + 0.02); }
+    // 3301: GRUPO: cada voz la reproduce su decodificador y avisa por su cuenta (tramos de 20 ms, una voz detrás de la otra: se cruzan)
+    if (farSigs) for (const fs1 of farSigs) for (let s0 = t0; s0 < t1 - 1e-9; s0 += 0.02) { let e = 0; for (let i = 0; i < 960; i++) { const v = fs1(s0 + i / RATE); e += v * v; } fx.far(Math.sqrt(e / 960), s0, s0 + 0.02); }
     const buf = new Float32Array(BLOCK), near = new Float32Array(BLOCK);
     for (let i = 0; i < BLOCK; i++) { const t = t0 + i / RATE; buf[i] = mic(t); if (onlyNear) near[i] = onlyNear(t); }
     const inp = Float32Array.from(buf);
@@ -71,6 +74,12 @@ const farV = voice(140, 0.5, 0.3);
 for (const [k, g] of [['eco_fuerte', 0.7], ['eco_debil', 0.1]]) {
   const x = run({ seconds: 6, farSig: farV, mic: (t) => g * farV(t - ECHO_MS) + noise(0.001)(), from: 1, to: 6 });
   r[k] = { baja_dB: db(x.in, x.out) };
+}
+// 1b. 3301 (tanda 2, punto 25): eco en llamada de GRUPO: dos voces suenan (cada una con su decodificador) y vuelven al micrófono
+{
+  const farW = voice(190, 0.5, 0.9);
+  const x = run({ seconds: 6, farSigs: [farV, farW], mic: (t) => 0.5 * (farV(t - ECHO_MS) + farW(t - ECHO_MS)) + noise(0.001)(), from: 1, to: 6 });
+  r.eco_grupo = { baja_dB: db(x.in, x.out) };
 }
 // 2. Los dos hablan: 3 s solo suena el otro (se mide el eco), luego uno habla a la vez (más fuerte que el eco)
 {
@@ -123,7 +132,7 @@ for (const [k, g] of [['eco_fuerte', 0.7], ['eco_debil', 0.1]]) {
   }
   r.cpu_ms_por_s = Math.round(Number(process.hrtime.bigint() - t0) / 1e6 / 60 * 100) / 100;
 }
-const ok = r.eco_fuerte.baja_dB >= 10 && r.eco_debil.baja_dB >= 10 && r.hablan_los_dos.voz_propia_dB >= -6 && r.con_cascos.baja_dB <= 1 && r.solo_yo.baja_dB <= 1.5 &&
+const ok = r.eco_fuerte.baja_dB >= 10 && r.eco_debil.baja_dB >= 10 && r.eco_grupo.baja_dB >= 10 && r.hablan_los_dos.voz_propia_dB >= -6 && r.con_cascos.baja_dB <= 1 && r.solo_yo.baja_dB <= 1.5 &&
   r.ruido_en_silencio.baja_dB >= 20 && r.principio_de_palabra.primeros_20ms >= 0.7 && r.retumbo_30Hz.baja_dB >= 10 && r.voz_grave_120Hz.baja_dB <= 1 && r.tono_1kHz.baja_dB <= 0.5 &&
   r.saturacion.pico <= 1;
 r.resultado = ok ? 'OK' : 'FALLO';

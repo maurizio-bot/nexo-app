@@ -21,6 +21,7 @@ function makeMk(log) {
       screen: function (on) { inst.screenArg = on; }, screenFrame: function (d, w, h) { inst.scrFrame = [d, w, h]; }, // 13-11: pantalla
       flip: function () { inst.flipped = true; return Promise.resolve('user'); }, // #138
       remoteLive: function () { return true; },
+      farExt: function (l, a, d) { (inst.far = inst.far || []).push([l, a, d]); }, // 3301
     };
     log.push(inst);
     return inst;
@@ -54,6 +55,9 @@ function makeMk(log) {
   r.un_decoder_por_tramo = log.length === 3 && nxb.noCapture === true && nxc.noCapture === true;
   r.decoder_reutilizado = nxb.played.length === 2 && nxc.played.length === 1;
   r.decoder_arranca = nxb.started === true && nxc.started === true;
+  // 3301 (eco en grupo): lo que suena en cada decodificador se le avisa a la captura (su filtro del micrófono)
+  if (nxb.opts.onFar) nxb.opts.onFar(0.2, 0.15, 0.02); if (nxc.opts.onFar) nxc.opts.onFar(0.3, 0.1, 0.02);
+  r.eco_avisa_captura = !!(log[0].far && log[0].far.length === 2 && log[0].far[1][0] === 0.3);
 
   // Silenciar afecta SOLO al micrófono propio, no a lo que se oye de los demás.
   hub.mute(true);
@@ -108,7 +112,7 @@ function makeMk(log) {
   hubV.stop();
 
   const ok = r.cap_es_captura && r.start_abre_micro && r.difunde && r.un_decoder_por_tramo &&
-    r.decoder_reutilizado && r.decoder_arranca && r.mute_solo_captura && r.drop_cierra &&
+    r.decoder_reutilizado && r.decoder_arranca && r.eco_avisa_captura && r.mute_solo_captura && r.drop_cierra &&
     r.drop_recrea && r.stop_todo && r.stop_no_crea &&
     r.cap_video_capaz && r.camara_enciende && r.difunde_video && r.video_por_tramo && r.flip_ok && r.camara_apaga &&
     r.local_video_el && r.remote_canvas_el && r.pantalla_a_la_captura && r.pantalla_apaga;
