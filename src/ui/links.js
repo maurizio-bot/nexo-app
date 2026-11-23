@@ -4,6 +4,8 @@
  *  - los http/https de un texto se pintan como enlace (nodos DOM, nunca innerHTML: el texto viene de otro teléfono);
  *  - si hay uno de TikTok, Instagram, Facebook (fb.watch) o YouTube (youtu.be), debajo una tarjeta con el nombre del sitio, su color e
  *    inicial y el dominio. NO se descarga nada de internet para la tarjeta (ni vista previa ni logo): privacidad;
+ *    COLA 31 (dueño 23-11): la tarjeta lleva el logo del sitio (SVG dentro de la app, link_logos.js) y, encima, la vista previa REAL
+ *    que baja este teléfono por Tor (link_preview.js); abrir un dominio punycode o que redirige a otro sitio pide confirmación;
  *  - tocar el enlace o la tarjeta lo abre FUERA de NEXO (openUrl nativo: Intent.ACTION_VIEW → la app de TikTok/Instagram/… si está
  *    instalada; si no, el navegador). Para volver, el «atrás» de Android.
  * Seguridad: solo http/https (nunca javascript:, intent:, file:, content:…), sin «usuario@» en la dirección (engaño típico:
@@ -13,6 +15,8 @@
  */
 import { t } from './i18n.js';
 import { _showInfoToast } from './ui_bits.js';
+import { attachPreview, openWarning, lookalike } from './link_preview.js'; // COLA 31: vista previa real por Tor + avisos al abrir
+import { siteLogo } from './link_logos.js';
 
 var MAX_URL = 2048;      // más largo: se deja como texto
 var MAX_LINKS = 30;      // enlaces tocables por mensaje (el resto, texto)
@@ -88,6 +92,9 @@ function _anchor(cls, url) {
   a.addEventListener('click', function(e) {
     e.preventDefault();      // el WebView no navega: se abre fuera
     e.stopPropagation();
+    // COLA 31: dominio con letras de otro alfabeto o que redirige a otro sitio → se pregunta antes de abrir
+    var w = openWarning(url);
+    if (w) { var ok = false; try { ok = window.confirm(w); } catch (x) { ok = false; } if (!ok) return; }
     openExternal(url);
   });
   return a;
@@ -102,7 +109,8 @@ function _card(link) {
   a.title = label;
   var ini = document.createElement('span');
   ini.className = 'nx-lc-ini';
-  ini.setAttribute('data-t', s.ini);
+  var logo = siteLogo(s.k);  // COLA 31: logo del sitio dentro de la app (nada bajado de internet); sin él, la inicial
+  if (logo) { ini.classList.add('nx-lc-logo'); ini.appendChild(logo); } else ini.setAttribute('data-t', s.ini);
   var txt = document.createElement('span');
   txt.className = 'nx-lc-txt';
   var nm = document.createElement('span');
@@ -115,6 +123,7 @@ function _card(link) {
   var go = document.createElement('span');
   go.className = 'nx-lc-go';
   a.appendChild(ini); a.appendChild(txt); a.appendChild(go);
+  attachPreview(a, link);    // COLA 31: la vista previa real (si llega) se pinta sobre esta tarjeta segura
   return a;
 }
 
@@ -130,6 +139,7 @@ export function paintTextWithLinks(el, text) {
   links.forEach(function(l) {
     if (l.start > pos) el.appendChild(document.createTextNode(s.slice(pos, l.start)));
     var a = _anchor('nx-link', l.url);
+    if (lookalike(l.host)) a.classList.add('nx-link-warn'); // COLA 31: dominio punycode → marca ⚠ (y confirmación al abrir)
     a.textContent = s.slice(l.start, l.end);
     el.appendChild(a);
     pos = l.end;

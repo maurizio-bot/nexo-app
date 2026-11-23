@@ -132,4 +132,8 @@ export default {
   silenced_dnd_priority: "«Do not disturb» is on: NEXO alerts may not make a sound.",
   silenced_dnd_tip: "If you want to hear them, turn it off or allow NEXO in its exceptions.",
   silenced_btn_dnd: "See «Do not disturb»",
+  // COLA 31: vista previa real de enlaces (avisos al abrir)
+  link_warn_lookalike: "Careful: “{host}” uses letters from another alphabet (it reads “{shown}”) and may imitate another site. Open it anyway?",
+  link_warn_redirect: "Careful: this {host} link takes you to another site: {to}. Open it anyway?",
+  link_redirects: "⚠ Leads to another site: {to}",
 };

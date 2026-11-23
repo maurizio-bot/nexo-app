@@ -132,4 +132,8 @@ export default {
   silenced_dnd_priority: "«Ne pas déranger» est activé : les alertes de NEXO peuvent ne pas sonner.",
   silenced_dnd_tip: "Si tu veux les entendre, désactive-le ou autorise NEXO dans ses exceptions.",
   silenced_btn_dnd: "Voir «Ne pas déranger»",
+  // COLA 31: vista previa real de enlaces (avisos al abrir)
+  link_warn_lookalike: "Attention : « {host} » utilise des lettres d'un autre alphabet (il se lit « {shown} ») et peut imiter un autre site. L'ouvrir quand même ?",
+  link_warn_redirect: "Attention : ce lien de {host} vous emmène vers un autre site : {to}. L'ouvrir quand même ?",
+  link_redirects: "⚠ Mène vers un autre site : {to}",
 };

@@ -1476,6 +1476,11 @@ class NativePhone {
         (self.openedUrls = self.openedUrls || []).push(u);
         c.resolve({ opened: true });
       }),
+      // COLA 31: vista previa real de un enlace (Kotlin PluginLinkPreview.kt + LinkPreview.kt, probado en tests/kotlin/LinkPreviewTest). Solo
+      // existe si la prueba da opts.linkPreview(args, teléfono) → { status, title, image, host, to } (lo que el «sitio» y Tor dirían).
+      ...(self.opts.linkPreview ? { linkPreview: wrap('linkPreview', (c, a) => {
+        Promise.resolve().then(() => self.opts.linkPreview(a, self)).then((r) => c.resolve(r), (e) => c.reject(String((e && e.message) || e)));
+      }) } : {}),
       pdfThumbnail: wrap('pdfThumbnail', (c) => {
         const b64 = c.getString('base64'); if (!b64) return c.reject('base64 requerido');
         const head = Buffer.from(b64.substring(0, 16), 'base64').toString('latin1');
