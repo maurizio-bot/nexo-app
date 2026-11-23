@@ -259,7 +259,7 @@ private fun NexoBlePlugin.l2Adapter(): android.bluetooth.BluetoothAdapter? {
 }
 
 internal fun NexoBlePlugin.l2InfoImpl(call: PluginCall) {
-    call.resolve(JSObject().put("ok", l2Adapter() != null).put("sdk", Build.VERSION.SDK_INT))
+    call.resolve(JSObject().put("ok", l2Adapter() != null).put("sdk", Build.VERSION.SDK_INT).put("payload", true)) // payload (3288): también lo mediano
 }
 
 // Receptor: abre un canal L2CAP para esta transferencia (solo acepta id + token) y devuelve su número (PSM)
@@ -295,6 +295,108 @@ internal fun NexoBlePlugin.bigServeL2Impl(call: PluginCall) {
 
 // Emisor: al teléfono de esa conexión Bluetooth, al canal que abrió
 @android.annotation.SuppressLint("MissingPermission", "NewApi") // comprobados en l2Adapter()
+// ===== 3288 (23-11, COLA 14): archivos MEDIANOS por el canal L2CAP =====
+// Los grandes ya iban por aquí de disco a disco (bigServeL2 / bigSendL2). Lo mediano (una foto, una nota de voz, un PDF: lo que la
+// app tiene en memoria, ya cifrado de punta a punta) iba en trozos por el enlace normal a ~17 KB/s. Mismo canal, mismo formato que
+// la recepción por Wi-Fi Direct (cabecera { id, len } + contenido + un byte de «recibido»). Si algo falla, la app sigue en trozos.
+internal const val L2_PAYLOAD_MAX = 4L * 1024 * 1024
+
+internal fun NexoBlePlugin.l2PayloadHostImpl(call: PluginCall) {
+    val id = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
+    val expect = (call.getInt("size") ?: 0).toLong()
+    val adapter = l2Adapter() ?: run { call.reject("L2CAP no disponible (Android 10+ y Bluetooth activo)", "L2_NONE"); return }
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) { call.reject("L2CAP no disponible", "L2_NONE"); return }
+    try {
+        try { l2PayloadServer?.close() } catch (e: Exception) {}
+        val server = adapter.listenUsingInsecureL2capChannel()
+        l2PayloadServer = server
+        l2PayloadFor = id
+        call.resolve(JSObject().put("psm", server.psm))
+        remLog("INFO", "FILE_IO", "[L2CAP] Esperando el archivo mediano $id en el canal ${server.psm}")
+        Thread {
+            var sock: android.bluetooth.BluetoothSocket? = null
+            // Un canal Bluetooth no tiene tope de lectura propio: si el otro se queda a medias, a los 60 s se cierra
+            val guard = Runnable { try { sock?.close() } catch (e: Exception) {}; try { server.close() } catch (e: Exception) {} }
+            try {
+                sock = server.accept(15000)
+                mainHandler.postDelayed(guard, 60000)
+                val tRead = System.currentTimeMillis()
+                val input = java.io.DataInputStream(java.io.BufferedInputStream(sock.inputStream))
+                val h = org.json.JSONObject(input.readUTF())
+                if (h.optString("id") != id) throw Exception("transferencia distinta")
+                val len = h.optLong("len")
+                if (len <= 0 || len > L2_PAYLOAD_MAX || (expect > 0 && len != expect)) throw Exception("tamaño no válido")
+                val buf = ByteArray(len.toInt())
+                input.readFully(buf)
+                sock.outputStream.apply { write(1); flush() }
+                val readMs = System.currentTimeMillis() - tRead
+                remLog("INFO", "FILE_IO", "[L2CAP] Recibido $id ($len bytes) en $readMs ms")
+                notifyListeners("onL2PayloadReceived", JSObject().put("transferId", id).put("data", String(buf, Charsets.UTF_8)).put("bytes", len).put("readMs", readMs), true)
+            } catch (e: Exception) {
+                remLog("WARN", "FILE_IO", "[L2CAP] Recepción fallida de $id: ${e.message}")
+                notifyListeners("onL2PayloadReceived", JSObject().put("transferId", id).put("error", e.message ?: "error"), true)
+            } finally {
+                mainHandler.removeCallbacks(guard)
+                try { sock?.close() } catch (e: Exception) {}
+                try { server.close() } catch (e: Exception) {}
+                if (l2PayloadServer === server) { l2PayloadServer = null; l2PayloadFor = null }
+            }
+        }.start()
+    } catch (e: Exception) { call.reject("Canal L2CAP no disponible: ${e.message}", "L2_SOCKET") }
+}
+
+internal fun NexoBlePlugin.l2PayloadSendImpl(call: PluginCall) {
+    val id = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
+    val raw = call.getString("deviceId") ?: ""
+    val psm = call.getInt("psm") ?: 0
+    val data = call.getString("data") ?: ""
+    val adapter = l2Adapter() ?: run { call.reject("L2CAP no disponible", "L2_NONE"); return }
+    if (psm <= 0 || data.isEmpty()) { call.reject("Nada que enviar", "L2_NONE"); return }
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) { call.reject("L2CAP no disponible", "L2_NONE"); return }
+    val mac = normalizeMac(raw)
+    val device = gattClients[mac]?.device ?: serverConnectedDevices[mac] ?: scannedDevices[mac]
+        ?: formatMacForAndroid(raw)?.let { try { adapter.getRemoteDevice(it.uppercase()) } catch (e: Exception) { null } }
+        ?: run { call.reject("Dirección no válida: $raw", "INVALID_MAC"); return }
+    Thread {
+        var s: android.bluetooth.BluetoothSocket? = null
+        // Abrir el canal puede colgarse si el otro ya no está: a los 10 s se corta (cerrar el canal desde otro hilo lo desbloquea)
+        val guard = Runnable { try { s?.close() } catch (e: Exception) {} }
+        try {
+            val t0 = System.currentTimeMillis()
+            val bytes = data.toByteArray(Charsets.UTF_8)
+            s = device.createInsecureL2capChannel(psm)
+            mainHandler.postDelayed(guard, 10000)
+            s.connect()
+            mainHandler.removeCallbacks(guard)
+            val connectMs = System.currentTimeMillis() - t0
+            mainHandler.postDelayed(guard, 15000L + bytes.size / 20)   // contenido a 20 KB/s como mínimo
+            val out = java.io.DataOutputStream(java.io.BufferedOutputStream(s.outputStream))
+            out.writeUTF(org.json.JSONObject().put("id", id).put("len", bytes.size).toString())
+            out.write(bytes)
+            out.flush()
+            if (s.inputStream.read() != 1) throw Exception("sin confirmación")
+            val ms = System.currentTimeMillis() - t0
+            remLog("INFO", "FILE_IO", "[L2CAP] $id: ${bytes.size / 1024} KB en $ms ms (abrir el canal $connectMs ms)")
+            call.resolve(JSObject().put("ok", true).put("bytes", bytes.size).put("ms", ms).put("connectMs", connectMs))
+        } catch (e: Exception) {
+            remLog("WARN", "FILE_IO", "[L2CAP] Envío fallido de $id: ${e.message}")
+            call.reject("Envío fallido: ${e.message}", "L2_SEND")
+        } finally {
+            mainHandler.removeCallbacks(guard)
+            try { s?.close() } catch (e: Exception) {}
+        }
+    }.start()
+}
+
+// Quien iba a mandar se rindió: se cierra el canal que lo esperaba (la espera termina con error y avisa a la app)
+internal fun NexoBlePlugin.l2PayloadCancelImpl(call: PluginCall) {
+    val id = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
+    val server = l2PayloadServer
+    if (server == null || l2PayloadFor != id) { call.resolve(JSObject().put("cancelled", false)); return }
+    try { server.close() } catch (e: Exception) {}
+    call.resolve(JSObject().put("cancelled", true))
+}
+
 internal fun NexoBlePlugin.bigSendL2Impl(call: PluginCall) {
     val id = BigFile.safeId(call.getString("id") ?: "")
     val raw = call.getString("deviceId") ?: ""

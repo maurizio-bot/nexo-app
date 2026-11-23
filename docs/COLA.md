@@ -75,7 +75,7 @@ pruebas reales al final ((a)–(g) y (c2) del TRASPASO). Meta: prueba cerrada de
 
 ## 3. Sesión «Bluetooth: pulido» (velocidad y MTU)
 13. [m] MTU 23 (vivo Y03, Katy): usar L2CAP para lo grande o preferir el enlace donde NEXO es cliente; contar cuántas veces entra MTU 23 por contacto y modelo.
-14. [c] Bluetooth ≈ 17 KB/s para archivos medianos sin Wi-Fi: comprobar si se usa L2CAP.
+14. [c] Bluetooth ≈ 17 KB/s para archivos medianos sin Wi-Fi: comprobar si se usa L2CAP. **HECHO 23-11 (3288):** no se usaba (solo para más de ~2 MB); ahora lo mediano va por L2CAP con vuelta atrás a trozos (`l2_fast.js`, `l2mediano.js`).
 15. [c] Escrituras rechazadas «ocupado» (201): esperar el callback en vez de reintentar 20 veces por segundo (caso Katy). Segunda prueba 20-11 14:09 (Motorola→S24): ≥ 20 s de 201 seguidos en el enlace conservado, reintento con DEFAULT cada ~150 ms; si el callback no llega en pocos s, cerrar y reabrir ese enlace.
 16. [m] Enlace repetido que se reabre (S24↔Austin): falta registro NATIVO de esos segundos.
     MÁS 20-11 11:33–11:52 (3116): el desempate cierra el enlace de CLIENTE a MTU 517 y conserva el de SERVIDOR a MTU 23 (3 casos con Roberto y VICK) y de ahí salen «MTU 23», mensaje descartado y zombi (5 en el día). Arreglo candidato: MTU ≤ 23 nunca gana a MTU > 23 en `_dupBleLinksToClose` (prueba en `bledup.js`) y anotar en el nativo el MTU real del servidor; comprobar con el dueño que los dos lados ven el mismo MTU del mismo enlace.

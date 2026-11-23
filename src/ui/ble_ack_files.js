@@ -85,6 +85,25 @@ export const ackFiles = {
       return self._sendFileJS(deviceId, fileId, data, meta);
     }
     if (_isLanDevice(deviceId)) return self._sendFileJS(deviceId, fileId, data, meta);
+    // 3288 (COLA 14): por Bluetooth, lo MEDIANO va primero por el canal rápido (L2CAP, ~1 MB/s contra ~17 KB/s en trozos) si los dos
+    // lo tienen (l2_fast.js). Si no sale —por lo que sea— sigue por aquí mismo como siempre (Wi-Fi Direct o trozos): nunca lo frena.
+    var l2 = self.ble && self.ble.l2Fast;
+    // (un reintento del mismo archivo mientras el canal rápido lo está mandando espera a ese mismo envío: no sale dos veces)
+    if (self._l2Pending && self._l2Pending.has(fileId)) return self._l2Pending.get(fileId);
+    if (data && l2 && !(meta && (meta.dst || meta.wdOnly)) && !(self._wdPlan && self._wdPlan.has(fileId)) && !(self._l2Tried && self._l2Tried.has(fileId)) && l2.eligible(deviceId, data.length)) {
+      var runL2 = self.outgoingStreams.get(fileId);
+      if (runL2 && !runL2.aborted && runL2._promise) return runL2._promise;
+      (self._l2Tried || (self._l2Tried = new Set())).add(fileId);
+      if (self._l2Tried.size > 200) self._l2Tried.delete(self._l2Tried.values().next().value);
+      self._dispatchFileProgress(fileId, 0, 1, 'sending', 1);
+      var pL2 = l2.send(deviceId, fileId, data, self._fileMeta(meta, data.length)).then(function() {
+        self._l2Pending.delete(fileId);
+        self._dispatchStatus(fileId, 'delivered');
+        self._dispatchFileProgress(fileId, 1, 1, 'delivered', 100);
+      }, function() { self._l2Pending.delete(fileId); return self._sendFileBest(deviceId, fileId, data, meta); });
+      (self._l2Pending || (self._l2Pending = new Map())).set(fileId, pL2);
+      return pL2;
+    }
     try { if (data && wd && !(meta && meta.dst) && typeof wd.noteChoice === 'function') wd.noteChoice(deviceId, data.length); } catch (e) {} // 3258: por qué sí/no Wi-Fi Direct (contador del día)
     // 3261 (diseño del dueño 20-11): este intento por Wi-Fi Direct viene del PLAN POR TIEMPO (el contacto está en línea por internet y
     // cerca por Bluetooth: ble_blobs.sendFile). Si Wi-Fi Direct no sale, el archivo NO se arrastra por Bluetooth: vuelve a internet.

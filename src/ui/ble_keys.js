@@ -29,6 +29,7 @@ export const BLE_KEY_METHODS = {
     if (self.localDeviceName) pkt.nm = String(self.localDeviceName).substring(0, 40); // ronda 2764: nombre del teléfono (el anuncio no lo trae)
     pkt.bg = 1; // ronda 2756: archivos grandes por Wi-Fi / Wi-Fi Direct (big_file.js)
     if (self.bigFiles && self.bigFiles.l2Ok) pkt.l2 = 1; // ronda 2758: y por Bluetooth L2CAP (Android 10+)
+    if (self.l2Fast && self.l2Fast.supported()) pkt.l2p = 1; // 3288: también los archivos medianos por ese canal (l2_fast.js)
     if (self.wifiDirect && self.wifiDirect.supported()) pkt.wd = 1;
     return pkt;
   },

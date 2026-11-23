@@ -1316,7 +1316,7 @@ class NativePhone {
       // Kotlin 3277 pipState: la verdad sobre la miniatura (self.pipNow: true/false; sin definir = nativo sin esa respuesta, como antes)
       pipState: wrap('pipState', (c) => c.resolve(typeof self.pipNow === 'boolean' ? { pip: self.pipNow, wanted: self.pipVideo === true } : {})),
       ringback: wrap('ringback', (c, a) => { self.ringbackOn = a.on === true; (self.ringbackLog = self.ringbackLog || []).push(a.on === true); c.resolve({ on: a.on === true }); }),
-      l2Info: wrap('l2Info', (c) => c.resolve({ ok: !self.opts.noL2, sdk: self.opts.noL2 ? 28 : 33 })),
+      l2Info: wrap('l2Info', (c) => c.resolve({ ok: !self.opts.noL2, sdk: self.opts.noL2 ? 28 : 33, payload: !self.opts.noL2 && !self.opts.noL2Payload })),
       bigServeL2: wrap('bigServeL2', (c, a) => {
         if (self.opts.noL2) return c.reject('L2CAP no disponible (Android 10+ y Bluetooth activo)', 'L2_NONE');
         if (!a.id || String(a.token || '').length < 16) return c.reject('id y token requeridos');
@@ -1325,6 +1325,46 @@ class NativePhone {
         self.radio.l2Servers.set(psm, { host: self, id: a.id, token: a.token });
         c.resolve({ psm });
         setTimeout(() => { if (self.radio.l2Servers.get(psm) && self.radio.l2Servers.get(psm).id === a.id) { self.radio.l2Servers.delete(psm); self.emit('onBigDone', { id: a.id, dir: 'in', ok: false, error: 'L2CAP: Accept timed out' }); } }, 60000);
+      }),
+      // ===== 3288: archivos MEDIANOS por el canal L2CAP (Kotlin l2PayloadHost / l2PayloadSend / l2PayloadCancel) =====
+      // opts.noL2Payload = teléfono que no lo tiene (l2Info lo dice: la app ni lo anuncia ni lo usa); opts.l2pFail = el canal no se abre
+      // (como un teléfono donde L2CAP falla); velocidad opts.l2Bps (por defecto ~1 MB/s, lo medido en el S23/S24)
+      l2PayloadHost: wrap('l2PayloadHost', (c, a) => {
+        if (self.opts.noL2) return c.reject('L2CAP no disponible (Android 10+ y Bluetooth activo)', 'L2_NONE');
+        self.radio.l2pServers = self.radio.l2pServers || new Map();
+        const psm = 0x80 + Math.floor(Math.random() * 100) * 2 + 1;
+        self.radio.l2pServers.set(psm, { host: self, id: a.transferId, size: a.size });
+        self.stats.l2pHosts = (self.stats.l2pHosts || 0) + 1;
+        c.resolve({ psm });
+        setTimeout(() => { const s = self.radio.l2pServers.get(psm); if (s && s.id === a.transferId) { self.radio.l2pServers.delete(psm); self.emit('onL2PayloadReceived', { transferId: a.transferId, error: 'Accept timed out' }); } }, 15000);
+      }),
+      l2PayloadSend: wrap('l2PayloadSend', (c, a) => {
+        if (self.opts.noL2) return c.reject('L2CAP no disponible', 'L2_NONE');
+        const mac = norm(a.deviceId || '');
+        const peer = self.radio.phones.find((p) => p !== self && (norm(p.address) === mac || norm(p.initAddress) === mac));
+        const srv = self.radio.l2pServers && self.radio.l2pServers.get(a.psm);
+        const data = String(a.data || '');
+        if (!peer || !srv || srv.host !== peer || srv.id !== a.transferId || !self.radio.inRange(self, peer) || peer.offline || self.offline || self.opts.l2pFail || peer.opts.l2pFail) {
+          self.stats.l2pFails = (self.stats.l2pFails || 0) + 1;
+          return setTimeout(() => c.reject('Envío fallido: read failed, socket might closed or timeout', 'L2_SEND'), 1500);
+        }
+        const ms = 300 + Math.round(data.length / ((self.opts.l2Bps || 1e6) / 1000));
+        setTimeout(() => {
+          self.radio.l2pServers.delete(a.psm);
+          if (!self.radio.inRange(self, peer) || peer.offline || self.offline) return c.reject('Envío fallido: se cortó', 'L2_SEND');
+          self.stats.l2pSends = (self.stats.l2pSends || 0) + 1; self.stats.l2pBytes = (self.stats.l2pBytes || 0) + data.length;
+          peer.emit('onL2PayloadReceived', { transferId: a.transferId, data, bytes: data.length, readMs: ms - 300 });
+          c.resolve({ ok: true, bytes: data.length, ms, connectMs: 300 });
+        }, ms);
+      }),
+      l2PayloadCancel: wrap('l2PayloadCancel', (c, a) => {
+        let hit = null;
+        (self.radio.l2pServers || new Map()).forEach((s, psm) => { if (s.host === self && s.id === a.transferId) hit = psm; });
+        if (hit === null) return c.resolve({ cancelled: false });
+        self.radio.l2pServers.delete(hit);
+        self.stats.l2pCancels = (self.stats.l2pCancels || 0) + 1;
+        self.emit('onL2PayloadReceived', { transferId: a.transferId, error: 'cancelado por quien envía' });
+        c.resolve({ cancelled: true });
       }),
       bigSendL2: wrap('bigSendL2', (c, a) => {
         if (self.opts.noL2) return c.reject('L2CAP no disponible', 'L2_NONE');
@@ -1696,6 +1736,6 @@ function installWebCrypto(win) {
 }
 
 // Ronda 2772: eventos que traen un mensaje (el nativo mantiene el teléfono despierto al recibirlos en segundo plano)
-NativePhone.RX_EVENTS = new Set(['onPayloadReceived', 'onLanMessage', 'onTorMessage', 'onWifiDirectReceived', 'onBigProgress', 'onBigDone']);
+NativePhone.RX_EVENTS = new Set(['onPayloadReceived', 'onLanMessage', 'onTorMessage', 'onWifiDirectReceived', 'onL2PayloadReceived', 'onBigProgress', 'onBigDone']);
 
 module.exports = { codedAddr, Radio, NativePhone, norm, installWebCrypto };

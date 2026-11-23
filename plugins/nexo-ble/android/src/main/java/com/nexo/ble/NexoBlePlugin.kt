@@ -881,6 +881,12 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod fun bigServeL2(call: PluginCall) = bigServeL2Impl(call)
 
     @PluginMethod fun bigSendL2(call: PluginCall) = bigSendL2Impl(call)
+    // 3288 (COLA 14): archivos MEDIANOS (en memoria) por el mismo canal L2CAP
+    @PluginMethod fun l2PayloadHost(call: PluginCall) = l2PayloadHostImpl(call)
+    @PluginMethod fun l2PayloadSend(call: PluginCall) = l2PayloadSendImpl(call)
+    @PluginMethod fun l2PayloadCancel(call: PluginCall) = l2PayloadCancelImpl(call)
+    @Volatile internal var l2PayloadServer: android.bluetooth.BluetoothServerSocket? = null
+    @Volatile internal var l2PayloadFor: String? = null
 
     @PluginMethod fun bigOpen(call: PluginCall) = bigOpenImpl(call)
 

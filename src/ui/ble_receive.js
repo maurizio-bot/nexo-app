@@ -70,6 +70,12 @@ export const BLE_RECEIVE_METHODS = {
       var dnm = /"dn":"(nx[0-9a-z]{8})"/i.exec(raw), me0 = _normId(self.localNexoId);
       if (dnm && me0 && _normId(dnm[1]) !== me0) { self._notMine(data.deviceId, _normId(dnm[1])); return Promise.resolve(null); }
     }
+    // 3288: canal rápido del Bluetooth para archivos medianos (l2_fast.js): control de una transferencia
+    if (/"type":"l[qanx]"/.test(raw) && self.l2Fast) {
+      var pl2 = null;
+      try { pl2 = JSON.parse(raw); } catch (e) {}
+      if (pl2 && self.l2Fast.handle(pl2, data.deviceId)) return Promise.resolve(null);
+    }
     // Wi-Fi Direct: control de una transferencia (por Bluetooth)
     if (/"type":"w[qanfx]"/.test(raw) && self.wifiDirect) {
       var pw = null;
@@ -200,7 +206,7 @@ export const BLE_RECEIVE_METHODS = {
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) { if (p.ss) self._sxHops.add(_normId(p.from)); else self._sxHops.delete(_normId(p.from)); }
       if (p.wd && self.wifiDirect) self.wifiDirect.markPeer(p.from);
       else if (self.wifiDirect) self.wifiDirect.unmarkPeer(p.from); // ya no lo anuncia (p.ej. sin permiso)
-      if (self.bigFiles) { if (p.bg) self.bigFiles.markPeer(p.from); else self.bigFiles.unmarkPeer(p.from); self.bigFiles.markL2(p.from, !!p.l2); } // archivos grandes (2756; L2CAP 2758)
+      if (self.bigFiles) { if (p.bg) self.bigFiles.markPeer(p.from); else self.bigFiles.unmarkPeer(p.from); self.bigFiles.markL2(p.from, !!p.l2); } if (self.l2Fast) self.l2Fast.markPeer(p.from, !!p.l2p); // archivos grandes (2756; L2CAP 2758)
       // Responder con el nuestro (cada lado sabe así que el otro entiende Jump; máx. 1 cada 15 s)
       // (3012: a «solo dime quién eres» —id— se contesta ligero; el completo va al agregar o al escribirse)
       // y a una RESPUESTA ligera (lt) o del nativo con la app dormida (nk) no se le contesta nada: ya se sabe lo que hacía falta

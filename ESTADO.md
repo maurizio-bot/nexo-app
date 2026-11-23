@@ -43,6 +43,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
     en el PRIVADO (`seguridad/PARA_LA_AUDITORIA_FINAL.md`, 12–26; **el 20 es un fallo PREVIO y abierto, no de grupos, para la auditoría final**).
     Al CREAR (dueño 23-11): lo primero son DOS opciones, «Todos participan» o «Personalizado» (escribir / agregar / nombre y foto: todos o solo
     administradores, y «Admin» junto a cada elegido); lo mismo en Ajustes del grupo. Falta probarlo en teléfonos.
+  - **3288 COLA 14, archivos MEDIANOS por el canal rápido del Bluetooth (L2CAP), 23-11:** antes solo los de más de ~2 MB iban por L2CAP; lo demás, en
+    trozos a ~17 KB/s (2 MB = 2 min). Ahora desde ~45 KB, si los dos lo anuncian (`l2p` en el kx), va por el canal (`l2_fast.js`; nativo
+    `l2PayloadHost/Send/Cancel` en `PluginFiles.kt`; enganchado en `ble_ack_files._sendFileBest` ANTES de Wi-Fi Direct). Si falla, sigue como siempre
+    (Wi-Fi Direct o trozos) y con ese contacto no se prueba en 10 min. `l2mediano.js`: 400 KB en 1,6 s (26 s en trozos). Falta medirlo en teléfonos.
+    **OJO: al guardar esto seguían corriendo las demás pruebas de archivos/fotos/voz/vídeo de la batería (cambia el camino por defecto por Bluetooth):
+    hay que terminarlas (`CI_ONLY='archivo|foto|voz|vídeo|video|adjunt' node ci.js builds/wip`) y ajustar las que cuenten trozos por Bluetooth.**
   - **3287 Wi-Fi Direct «CANCELAR», 23-11:** quien ofrece un archivo y no logra mandarlo (no se une al grupo, se corta, se cansa de esperar) manda «wx»
     y el otro baja el grupo YA (antes lo esperaba 90 s, ocupado para todo lo demás): `wifi_direct.js` (`_cancelPeer`, `_onCancel`), nativo
     `wifiDirectCancel` (cierra el socket que esperaba). En `wdgrupo.js` el otro queda libre a los 4,5 s. Falta verlo en teléfonos.
@@ -68,7 +74,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   (3) 31 vista previa de enlaces: DECIDIDA 23-11 (la baja quien recibe, por Tor; nunca una falsa; detalle en COLA 31); (4) ritmo de búsqueda por Bluetooth de lo ya entregado al buzón (hoy hasta 1 h); (5) Google Play: cuenta de
   desarrollador (tarda días), identificador de paquete (¡la APK de GitHub y la de Play no se pueden actualizar una sobre otra!), privacidad, 12 probadores;
   (6) Kinway: IMPI, dominios, redes.
-- **SIGUIENTE, sesión principal (Fable), en orden:** (5) L2CAP → (6) llamadas 17/18 → (7) eco 25 + relés/batería 24 → revisión, UNA APK y
+- **SIGUIENTE, sesión principal (Fable), en orden:** (6) llamadas 17/18 → (7) eco 25 + relés/batería 24 → revisión, UNA APK y
   auditoría final. Plan con modelo por actividad: `docs/COLA.md` al principio. Para targetSdk 36 hace falta teléfono con Android 15/16 (borde a borde, «atrás»).
 - **PRUEBAS DEL DUEÑO con la 3119 (ya publicada):** (a) modo avión, escribir, bloquear, quitar modo avión SIN abrir NEXO → llega y ✓✓; (b) sin internet los dos,
   escribir lejos, bloquear, acercarse → llega sin abrir NEXO; (c) videollamada → miniatura ↔ app varias veces: sin chat en la ventanita, la mini responde;

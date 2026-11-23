@@ -2,6 +2,7 @@ import { createRelay } from './ble_relay.js';
 import { createWifiDirect } from './wifi_direct.js';
 import { createLan } from './lan.js';
 import { createBigFiles } from './big_file.js';
+import { createL2Fast } from './l2_fast.js';
 import { createGroups } from './groups.js';
 import { createCallMedia, callCodecs } from './call_media.js';
 import { createVoiceFx } from './call_voice_fx.js';
@@ -117,6 +118,7 @@ export class BLEInterface {
     this.wifiDirect = createWifiDirect(this);
     this.lan = createLan(this);
     this.bigFiles = createBigFiles(this);
+    this.l2Fast = createL2Fast(this);   // 3288: archivos medianos por el canal rápido del Bluetooth (L2CAP)
     this.groups = createGroups(this); // ronda 2758: chats de grupo
     // Ronda 2758: llamadas de voz (window.NEXO_callMediaFactory: audio de prueba en el simulador)
     // (ronda 2772: con los filtros de voz)
