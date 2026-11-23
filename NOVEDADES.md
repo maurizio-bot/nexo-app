@@ -12,6 +12,13 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+</es-419>
+<!-- /APK -->
+
+## Historial
+
+### APK 3121 (23-11-2026)
+<es-419>
 - Grupos: al crear eliges «Todos participan» o «Personalizado» (quién escribe, agrega y edita). Los cambios ya no se pierden si dos los hacen a la vez.
 - NEXO te avisa si tu teléfono tiene sus avisos apagados, sin sonido o en «No molestar».
 - Con mucha gente cerca (metro, conciertos) busca mejor y conecta primero con quien tiene un mensaje tuyo esperando.
@@ -19,9 +26,6 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - El enlace de invitación ya abre su página.
 - Ajustes: nueva sección «Notificaciones».
 </es-419>
-<!-- /APK -->
-
-## Historial
 
 ### APK 3119 (22-11-2026)
 <es-419>
