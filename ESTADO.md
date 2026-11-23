@@ -43,6 +43,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
     en el PRIVADO (`seguridad/PARA_LA_AUDITORIA_FINAL.md`, 12–26; **el 20 es un fallo PREVIO y abierto, no de grupos, para la auditoría final**).
     Al CREAR (dueño 23-11): lo primero son DOS opciones, «Todos participan» o «Personalizado» (escribir / agregar / nombre y foto: todos o solo
     administradores, y «Admin» junto a cada elegido); lo mismo en Ajustes del grupo. Falta probarlo en teléfonos.
+  - **REVISIÓN DE TAMAÑOS Y CÓDIGO SIN USO (23-11, pedida por el dueño):** 134.868 líneas en total (app 74.071: JS 51.734 + traducciones 5.695 +
+    CSS/HTML 2.452 + Kotlin 14.190; pruebas 59.944; herramientas 853). Ninguno pasa de 1.000 líneas, pero 13 pasan de 900 y `ble_connections.js`
+    está en 999: HAY QUE PARTIRLO antes del próximo cambio ahí (siguen `fenix.js` 986, `ble_relay.js` 979, `ble_ui.js` 973, `calls_ui.js` 972,
+    `NexoBlePlugin.kt` 938). Sin uso: 26 funciones exportadas (~350 líneas; juegos, `_installHeaderGroupButton`…), 3 funciones Kotlin
+    (`reconnectKnownDevices`, `cancelServerLinks`, `NetBg.outboxClear`) y 48 textos de 1.111. Se quitan en la revisión previa a la APK.
   - **3288 COLA 14, archivos MEDIANOS por el canal rápido del Bluetooth (L2CAP), 23-11:** antes solo los de más de ~2 MB iban por L2CAP; lo demás, en
     trozos a ~17 KB/s (2 MB = 2 min). Ahora desde ~45 KB, si los dos lo anuncian (`l2p` en el kx), va por el canal (`l2_fast.js`; nativo
     `l2PayloadHost/Send/Cancel` en `PluginFiles.kt`; enganchado en `ble_ack_files._sendFileL2OrJS`). Si falla, sigue en trozos como siempre y con ese contacto no se prueba en 10 min. `l2mediano.js`: 400 KB en 1,6 s (26 s en trozos). Falta medirlo en teléfonos.
@@ -73,7 +78,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   (2) grupos: contestado y hecho (también las dos opciones al crear, 23-11);
   (3) 31 vista previa de enlaces: DECIDIDA 23-11 (la baja quien recibe, por Tor; nunca una falsa; detalle en COLA 31); (4) ritmo de búsqueda por Bluetooth de lo ya entregado al buzón (hoy hasta 1 h); (5) Google Play: cuenta de
   desarrollador (tarda días), identificador de paquete (¡la APK de GitHub y la de Play no se pueden actualizar una sobre otra!), privacidad, 12 probadores;
-  (6) Kinway: IMPI, dominios, redes.
+  (6) Kinway: IMPI, dominios, redes; (7) EMPRESAS: plan dentro de la misma app (A, recomendada) o app aparte (B): propuesta con pasos y fechas en
+  el PRIVADO `negocio/EMPRESAS_PROPUESTA_2026-11-23.md`; (8) Ajustes: unir «Avisos y vibración» + «Llamadas» en «Notificaciones» o «Notificaciones y
+  llamadas» (falta que elija el nombre); (9) ¿el canal rápido de Bluetooth antes que Wi-Fi Direct para archivos de hasta ~2 MB? (hoy: Wi-Fi Direct primero).
 - **SIGUIENTE, sesión principal (Fable), en orden:** (6) llamadas 17/18 → (7) eco 25 + relés/batería 24 → revisión, UNA APK y
   auditoría final. Plan con modelo por actividad: `docs/COLA.md` al principio. Para targetSdk 36 hace falta teléfono con Android 15/16 (borde a borde, «atrás»).
 - **PRUEBAS DEL DUEÑO con la 3119 (ya publicada):** (a) modo avión, escribir, bloquear, quitar modo avión SIN abrir NEXO → llega y ✓✓; (b) sin internet los dos,
