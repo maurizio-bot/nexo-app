@@ -927,7 +927,23 @@
    "nx": "nx1n36c283 (S24, Android 17), build 3119: PRUEBA DEL DUEÑO app cerrada, Vivo → S24",
    "sintoma": "manual: prueba de entrega con la app cerrada (COLA 23)",
    "categoria": "Prueba",
-   "causa": "SIN FALLO en la entrega. App cerrada por el usuario 23:33; texto del Vivo de las 23:35:04 llegó 23:35:05,85 por la escucha nativa de internet, «aviso de mensaje nuevo por internet» publicado y ✓✓ devuelta en 0,04 s. Falta saber del dueño si SONÓ (la 3119 aún no apunta [AVISO]). El Bluetooth del S24 estuvo APAGADO (≈21:09–23:35:24): la prueba fue solo por internet. A vigilar: Wi-Fi Direct 2 envíos a 2,9 KB/s de principio a fin (transferencia pura 189 KB/s; sin registro de esos envíos en la ventana); batería en segundo plano 6,6 %/h (pendiente 24)."
+   "causa": "SIN FALLO en la entrega. App cerrada por el usuario 23:33; texto del Vivo de las 23:35:04 llegó 23:35:05,85 por la escucha nativa de internet, «aviso de mensaje nuevo por internet» publicado y ✓✓ devuelta en 0,04 s. SONÓ (dueño 23-11: «Sí»). COLA 23 confirmada en esta prueba. El Bluetooth del S24 estuvo APAGADO (≈21:09–23:35:24): la prueba fue solo por internet. A vigilar: Wi-Fi Direct 2 envíos a 2,9 KB/s de principio a fin (transferencia pura 189 KB/s; sin registro de esos envíos en la ventana); batería en segundo plano 6,6 %/h (pendiente 24)."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "23:59",
+   "nx": "nx1n36c283 (S24, Android 17), build 3119",
+   "sintoma": "enlace_abre_cierra (nx1e29ab2f 6 desconexiones en 10 min)",
+   "categoria": "Conexión",
+   "causa": "YA ARREGLADO (3283, va en la 3120): al volver al primer plano tras 23 min detrás salen 6 «Enlace ? (17c2) desconectado» de un enlace ya muerto; es el falso «enlace_abre_cierra». Sin mensajes perdidos."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "00:26 (23-11)",
+   "nx": "nx1n36c283 (S24, Android 17), build 3119",
+   "sintoma": "resumen_diario 22-11",
+   "categoria": "Resumen",
+   "causa": "Sin fallo nuevo. 139 enviados / 179 recibidos; internet 123 de 123 con ✓✓ (media 1,1 s). 13 sin ✓✓ son de contactos sin conexión (internet fuera, no vistos): esperan. Wi-Fi Direct 2,9 KB/s de punta a punta (pura 189 KB/s) ya apuntado; batería detrás 6,6 %/h (pendiente 24)."
   }
  ]
 }

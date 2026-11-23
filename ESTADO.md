@@ -80,9 +80,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   (2) grupos: contestado y hecho (también las dos opciones al crear, 23-11);
   (3) 31 vista previa de enlaces: DECIDIDA 23-11 (la baja quien recibe, por Tor; nunca una falsa; detalle en COLA 31); (4) ritmo de búsqueda por Bluetooth de lo ya entregado al buzón (hoy hasta 1 h); (5) Google Play: cuenta de
   desarrollador (tarda días), identificador de paquete (¡la APK de GitHub y la de Play no se pueden actualizar una sobre otra!), privacidad, 12 probadores;
-  (6) Kinway: IMPI, dominios, redes; (7) EMPRESAS: plan dentro de la misma app (A, recomendada) o app aparte (B): propuesta con pasos y fechas en
-  el PRIVADO `negocio/EMPRESAS_PROPUESTA_2026-11-23.md`; (8) Ajustes: unir «Avisos y vibración» + «Llamadas» en «Notificaciones» o «Notificaciones y
-  llamadas» (falta que elija el nombre); (9) canal rápido antes que Wi-Fi Direct: DECIDIDO 23-11 («solo si es más rápido») y HECHO (3289: por medidas del día).
+  (6) Kinway: IMPI, dominios, redes; (7) EMPRESAS: DECIDIDO 23-11, plan DENTRO de la misma app (pasos y fechas en el PRIVADO `negocio/EMPRESAS_PROPUESTA_2026-11-23.md`);
+  (8) Ajustes: HECHO 3290, «Avisos y vibración» + «Llamadas» = «Notificaciones» (sección `notif`); (8b) COLA 23: el aviso SONÓ en su prueba Vivo → S24 (app cerrada);
+  (8c) INVITACIÓN: el enlace daba 404 (la página nunca se publicó) → 3290: `web/i.html` + rama `gh-pages` (copia), GitHub Pages ya la publica; falta que él la pruebe
+  (logo y nombre: «al rato», se deja como está); (9) canal rápido antes que Wi-Fi Direct: DECIDIDO 23-11 («solo si es más rápido») y HECHO (3289: por medidas del día).
 - **SIGUIENTE, sesión principal (Fable), en orden:** (6) llamadas 17/18 → (7) eco 25 + relés/batería 24 → revisión, UNA APK y
   auditoría final. Plan con modelo por actividad: `docs/COLA.md` al principio. Para targetSdk 36 hace falta teléfono con Android 15/16 (borde a borde, «atrás»).
 - **PRUEBAS DEL DUEÑO con la 3119 (ya publicada):** (a) modo avión, escribir, bloquear, quitar modo avión SIN abrir NEXO → llega y ✓✓; (b) sin internet los dos,

@@ -279,8 +279,8 @@ function _openSettings(fromProfile) {
     app: [t('set_sec_app', 'Aplicación'), (isStoreBuild() ? t('set_sec_app_d_store', 'Idioma y fondo de pantalla') : t('set_sec_app_d', 'Actualizaciones, idioma y fondo de pantalla'))],
     sec: [t('set_sec_sec', 'Seguridad y privacidad'), t('set_sec_sec_d', 'Bloqueo, capturas y confirmaciones de lectura')],
     look: [t('set_sec_look', 'Apariencia'), t('set_sec_look_d', 'Color de tus burbujas, estilo y tipo de letra')],
-    alerts: [t('set_sec_alerts', 'Avisos y vibración'), t('set_sec_alerts_d', 'Pantalla apagada y vibración al tocar')],
-    calls: [t('set_sec_calls', 'Llamadas'), t('set_sec_calls_d', 'Tono de llamada y espejo en videollamadas')],
+    // 3290 (dueño 23-11): «Avisos y vibración» + «Llamadas» en una sola sección, «Notificaciones»
+    notif: [t('set_sec_notif', 'Notificaciones'), t('set_sec_notif_d', 'Avisos con la pantalla apagada, vibración y llamadas')],
     net: [t('set_sec_net', 'Conexión e internet'), t('set_sec_net_d', 'Relés públicos, Tor y rendimiento en vivo')],
     backup: [t('set_sec_backup', 'Respaldo y cambio de teléfono'), t('set_sec_backup_d', 'Fénix y pasar tu cuenta a otro teléfono')],
     diag: [t('set_sec_diag', 'Diagnóstico y ayuda'), t('set_sec_diag_d', 'Copiar diagnóstico, envío automático y guía de bienvenida')]
@@ -299,8 +299,7 @@ function _openSettings(fromProfile) {
       ['app', 'M12 3v12m0 0l-4-4m4 4l4-4M5 21h14'],
       ['sec', 'M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z'],
       ['look', 'M12 3a9 9 0 1 0 0 18c1.5 0 2-1 1.4-2.2-.6-1.2.2-2.3 1.6-2.3H17a4 4 0 0 0 4-4c0-5-4-9.5-9-9.5M7.5 11h.01M10 7.5h.01M14.5 7.5h.01'],
-      ['alerts', 'M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9M10 20a2 2 0 0 0 4 0'],
-      ['calls', 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2'],
+      ['notif', 'M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9M10 20a2 2 0 0 0 4 0'],
       ['net', 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9s1.3-6.3 3.8-9'],
       ['backup', 'M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5'],
       ['diag', 'M4 12h4l2-6 4 12 2-6h4']
@@ -327,7 +326,7 @@ function _openSettings(fromProfile) {
     card('🔏', t('privacy'), '<label style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-read-receipts"> ' + t('read_receipts') + '</label>' +
       '<div class="nx-sub" style="margin-top:6px;">' + t('prof_read_receipts_sub', 'Si lo apagas, tus contactos no ven el ✓✓ azul cuando lees sus mensajes. El «entregado» (dos palomitas grises) sigue igual.') + '</div>') +
     '</div>' +
-    '<div class="nx-set-pane" data-sec="alerts">' +
+    '<div class="nx-set-pane" data-sec="notif">' +
     // Ronda 2765 (pedido del dueño): que los avisos y las llamadas lleguen con la pantalla apagada y la enciendan
     card('🔔', t('prof_alerts_title', 'Avisos con la pantalla apagada'), '<div class="nx-sub">' + t('prof_alerts_sub', 'Para que los mensajes y las llamadas lleguen con la app cerrada o la pantalla apagada.') + '</div>' +
       '<div id="nexo-alert-rows"></div>' +
@@ -336,8 +335,6 @@ function _openSettings(fromProfile) {
     card('📳', t('prof_haptics_title', 'Vibración al tocar'), '<div class="nx-sub" style="margin-bottom:8px;">' + t('prof_haptics_sub', 'Un toque corto y nítido al presionar un botón y al enviar. Por defecto sigue el ajuste «Vibración al tocar» de tu teléfono.') + '</div>' +
       '<select id="nexo-haptics-mode" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +
       [['system', t('prof_haptics_system', 'Como el sistema (recomendado)')], ['on', t('prof_haptics_on', 'Siempre')], ['off', t('prof_haptics_off', 'Nunca')]].map(function(o) { return '<option value="' + o[0] + '"' + (o[0] === hapticMode() ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>') +
-    '</div>' +
-    '<div class="nx-set-pane" data-sec="calls">' +
     // Ronda 2772 (pedido del dueño): ver al otro como en un espejo (con su cámara de delante)
     card('🎥', t('prof_video_calls', 'Videollamadas'), '<label style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-call-mirror"> ' + t('prof_mirror_label', 'Ver al otro como en un espejo (su cámara de delante)') + '</label>' +
       '<div class="nx-sub" style="margin-top:6px;">' + t('prof_mirror_sub', 'Sin espejo lo ves como te vería en persona: un papel con letras se lee bien.') + '</div>') +

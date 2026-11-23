@@ -90,7 +90,7 @@ pruebas reales al final ((a)–(g) y (c2) del TRASPASO). Meta: prueba cerrada de
 20. [g] Fase 2: servidor GATT SIEMPRE en el servicio (también con la app abierta); fase 3: conexiones salientes y reenvío desde el servicio; fase 4: conexiones a demanda (tope ~7).
 21. [g] Auditoría posterior; modo vagón / multitud para EDC; puente nativo con la app dormida.
 22. [m] App dormida o muerta por el sistema (#87): detectar «Foreground kill» (Motorola) y ahorro de batería y explicárselo al usuario; aviso «tu teléfono silencia NEXO»; avisar que quitar NEXO de recientes corta la recepción.
-23. [m] Entrega con la app CERRADA y la pantalla APAGADA (no suena ni avisa, ×3) — revisar tras la fase 1.
+23. [m] Entrega con la app CERRADA y la pantalla APAGADA (no suena ni avisa, ×3) — revisar tras la fase 1. **23-11: prueba del dueño Vivo → S24 con la app cerrada: llegó en 1 s y SONÓ; sigue en vigilancia con la línea [AVISO] de la 3120.**
 
 ## 4b. Sesión «Grupos: administración» (pedido y especificado por el dueño el 20-11)
 Hoy: crear grupo, abrir, ocultar texto en avisos, salir, renombrar (cualquier miembro). `createdBy` no se usa para permisos. La lista de miembros es fija desde la creación (auditoría 2774: abrirla con permisos es decisión de seguridad del dueño).
