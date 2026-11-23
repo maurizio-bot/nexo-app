@@ -683,7 +683,8 @@ export class BleAckSystem {
       // 3215 (Marcos 17-11 16:13:41): al ARRANCAR, lo que llegó con la app cerrada se procesaba antes de cargar el NEXO ID propio y la
       // firma se comprobaba contra «…|» → «sin firma válida» con confirmaciones buenas (y el mensaje se volvía a mandar). Se espera al ID.
       this._whenMyNx().then(function(me) {
-        return e2eAckTag(c.publicKey, ack.type + '|' + ackMsgId + '|' + acker + '|' + _normId(me));
+        // auditoría 23-11 (C-N8): «ya lo bajé» (got) va dentro de lo firmado: un tercero no se lo puede añadir a una ✓✓ ajena
+        return e2eAckTag(c.publicKey, ack.type + (ack.got === 1 ? '+got' : '') + '|' + ackMsgId + '|' + acker + '|' + _normId(me));
       }).then(function(exp) {
         if (ack.a && exp && _ctEq(String(ack.a), exp)) self._applyAck(ack, ackMsgId);
         else console.warn('[BleAckSystem] Confirmación sin firma válida de ' + acker + ' (' + ackMsgId + '): ignorada');
@@ -797,7 +798,7 @@ export class BleAckSystem {
     };
     var c = this._contactOf(deviceId, routeTo);
     var p = (c && c.proto === 2 && c.publicKey && !c.pendingKey && _ackRe.test(target))
-      ? e2eAckTag(c.publicKey, type + '|' + msgId + '|' + _normId(myNx) + '|' + target).then(function(a) { if (a) obj.a = a; return out(); }, out)
+      ? e2eAckTag(c.publicKey, type + (obj.got === 1 ? '+got' : '') + '|' + msgId + '|' + _normId(myNx) + '|' + target).then(function(a) { if (a) obj.a = a; return out(); }, out)
       : out();
     return p.then(function(ok) { self._rcptNote(target, type, msgId, extra, ok); return ok; }, function() { self._rcptNote(target, type, msgId, extra, false); return false; });
   }

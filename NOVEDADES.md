@@ -12,7 +12,11 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Correcciones y mejoras de estabilidad.
+- Seguridad reforzada: nadie puede hacerse pasar por un contacto ni falsificar tus ✓✓, ni de cerca ni en la misma Wi-Fi.
+- Si alguien que no es tu contacto te escribe, aparece en «Solicitudes» para que decidas.
+- Si cambia la clave de un contacto, tus mensajes siguen saliendo mientras decides.
+- El comentario de las fotos y «ver una vez» viajan cifrados; las capturas se bloquean al ver una foto de «ver una vez».
+- Grupos más difíciles de manipular.
 </es-419>
 <!-- /APK -->
 
