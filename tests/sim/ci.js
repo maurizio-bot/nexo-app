@@ -341,7 +341,7 @@ const SCENARIOS = [
   { name: 'auditoría 23-11 (I-X1, I-X2): id de mensaje con HTML (nota de voz) y nombre de contacto con HTML en la hoja del fondo no inyectan nada', args: ['xss_ids.js'], tag: 'XSSIDS', checks: { resultado: (v) => v === 'OK' } },
   { name: 'XSS (auditoría P0-4): el contenido del remitente (texto, y por el mismo camino nombres/archivos) se pinta como TEXTO, nunca como HTML; sin elementos inyectados ni handlers ejecutados; CSP endurecida', args: ['xss.js'], tag: 'XSS', logs: 'last_logs_xss.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'menú de la burbuja: responder (deslizar izq/der), REACCIONAR (doble toque ❤️ y menú), copiar, reenviar, EDITAR, eliminar para mí/para todos (3 teléfonos)', args: ['chatactions.js'], tag: 'CHATACT', logs: 'last_logs_chatactions.txt', checks: {
-    B_ve_cita: isTrue, deslizar_responde: isTrue, deslizar_izq_responde: isTrue, C_recibe_archivo_identico_s: (v) => typeof v === 'number',
+    B_ve_cita: isTrue, menu_sin_responder: isTrue, deslizar_responde: isTrue, deslizar_izq_responde: isTrue, C_recibe_archivo_identico_s: (v) => typeof v === 'number',
     doble_toque_reacciona: isTrue, B_recibe_reaccion_s: (v) => typeof v === 'number', menu_reacciona: isTrue, deslizar_abajo_cierra: isTrue,
     foto_pellizco_zoom: isTrue, foto_pellizco_aleja: isTrue, foto_doble_toque_amplia: isTrue,
     barra_editar: isTrue, A_ve_editado: isTrue, B_recibe_edicion_s: (v) => typeof v === 'number', B_ve_editado: isTrue,

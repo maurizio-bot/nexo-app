@@ -58,7 +58,6 @@ export default {
   chat_forwarded: "↪ Reenviado",
   chat_you: "Tú",
   chat_quote_gone: "El mensaje citado ya no está en el chat",
-  chat_reply: "↩  Responder",
   chat_forward: "↪  Reenviar",
   chat_select: "☑  Seleccionar",
   chat_sel_one: "1 seleccionado",

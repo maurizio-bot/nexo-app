@@ -58,7 +58,6 @@ export default {
   chat_forwarded: "↪ Inoltrato",
   chat_you: "Tu",
   chat_quote_gone: "Il messaggio citato non è più nella chat",
-  chat_reply: "↩  Rispondi",
   chat_forward: "↪  Inoltra",
   chat_select: "☑  Seleziona",
   chat_sel_one: "1 selezionato",

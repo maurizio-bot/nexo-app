@@ -130,7 +130,7 @@ async function msgWith(p, cid, re, own) { let m = null; await waitFor(async () =
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
   const ok = r.F1_fx_B_de_A >= 1 && r.F1_fx_D_de_A >= 1 && r.F1_fx_C_de_A >= 1 && r.fx_A_de_B >= 1 && r.F2_B_reacciona && r.F2_A_recibe_reaccion_s !== null &&
     Array.isArray(r.F3_menu_B) && r.F3_menu_B.includes('mm-edit') && r.F3_menu_B.includes('mm-del-all') && r.F3_A_recibe_edicion_s !== null &&
-    !r.F4_fx_A_de_C && r.F4_A_reacciona_local && !r.F4_C_recibe_reaccion && Array.isArray(r.F4_menu_A_a_C) && !r.F4_menu_A_a_C.includes('mm-edit') && !r.F4_menu_A_a_C.includes('mm-del-all') && r.F4_menu_A_a_C.includes('mm-reply') &&
+    !r.F4_fx_A_de_C && r.F4_A_reacciona_local && !r.F4_C_recibe_reaccion && Array.isArray(r.F4_menu_A_a_C) && !r.F4_menu_A_a_C.includes('mm-edit') && !r.F4_menu_A_a_C.includes('mm-del-all') && r.F4_menu_A_a_C.includes('mm-forward') &&
     !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('FXAGREGADO ' + JSON.stringify(r));

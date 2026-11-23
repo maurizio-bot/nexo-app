@@ -58,7 +58,6 @@ export default {
   chat_forwarded: "↪ Transféré",
   chat_you: "Vous",
   chat_quote_gone: "Le message cité n'est plus dans la discussion",
-  chat_reply: "↩  Répondre",
   chat_forward: "↪  Transférer",
   chat_select: "☑  Sélectionner",
   chat_sel_one: "1 sélectionné",

@@ -58,7 +58,6 @@ export default {
   chat_forwarded: "↪ Forwarded",
   chat_you: "You",
   chat_quote_gone: "The quoted message is no longer in the chat",
-  chat_reply: "↩  Reply",
   chat_forward: "↪  Forward",
   chat_select: "☑  Select",
   chat_sel_one: "1 selected",

@@ -58,7 +58,6 @@ export default {
   chat_forwarded: "↪ Encaminhada",
   chat_you: "Você",
   chat_quote_gone: "A mensagem citada não está mais na conversa",
-  chat_reply: "↩  Responder",
   chat_forward: "↪  Encaminhar",
   chat_select: "☑  Selecionar",
   chat_sel_one: "1 selecionada",

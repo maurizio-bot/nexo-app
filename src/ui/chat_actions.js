@@ -353,7 +353,9 @@ export function _openMsgMenu(div) {
       });
       sheet.appendChild(rbar);
     }
-    if (!deleted) add(t('chat_reply', '↩  Responder'), 'mm-reply', function() { _startReply(id, msg); });
+    // Dueño 23-11: «Responder» ya se hace deslizando la burbuja (3143): sale del menú y en su lugar, arriba, va «Editar» (mensajes propios
+    // de texto, hasta 15 min; los demás no se pueden editar)
+    if (_canEdit(cid, msg)) add(t('chat_edit', '✏️  Editar'), 'mm-edit', function() { _startEdit(id, msg); });
     // 3164: una foto o un vídeo de «ver una vez» (propio o recibido, visto o no) no se reenvía: el otro lo mandó para verse una vez
     var onceMsg = !!(msg.onceSeen || (msg.attachmentMeta && msg.attachmentMeta.once));
     if (!deleted && !onceMsg) add(t('chat_forward', '↪  Reenviar'), 'mm-forward', function() { _openForwardSheet(msg); });
@@ -372,7 +374,6 @@ export function _openMsgMenu(div) {
     // 3219: destacar (solo aquí) y fijar arriba del chat (para los dos)
     if (canStar(msg)) add(msg.starred ? t('chat_unstar', '⭐  Quitar destacado') : t('chat_star', '⭐  Destacar'), 'mm-star', function() { toggleStar(cid, msg); });
     if (canPin(cid, msg)) add(isPinned(_normId(cid), id) ? t('chat_unpin', '📌  Desfijar') : t('chat_pin', '📌  Fijar'), 'mm-pin', function() { togglePin(cid, msg); });
-    if (_canEdit(cid, msg)) add(t('chat_edit', '✏️  Editar'), 'mm-edit', function() { _startEdit(id, msg); });
     add(t('chat_delete_me', '🗑  Eliminar para mí'), 'mm-del-me', function() { _deleteForMe(cid, id); }, true);
     if (isOwn && !deleted && Date.now() - (msg.timestamp || 0) < DELETE_ALL_MS && _peerUnderstands(cid)) {
       add(t('chat_delete_all', '🗑  Eliminar para todos'), 'mm-del-all', function() { _deleteForAll(cid, msg); }, true);
