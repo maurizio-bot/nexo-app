@@ -582,7 +582,10 @@ export function createCallMedia(opts) {
   // Ronda 2769: vigilante
   function watch() {
     if (stopped) return;
-    var now = Date.now(), visible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+    // COLA 25 (diag. 18-11: videollamada contestada desde el aviso, 63 s sin imagen propia): el WebView puede seguir «hidden»
+    // aunque la parte nativa ya avisó del primer plano (onAppStateChange → bleInterface._foreground); entonces vale lo nativo
+    var bi = typeof window !== 'undefined' && window.bleInterface;
+    var now = Date.now(), visible = typeof document === 'undefined' || document.visibilityState !== 'hidden' || !!(bi && bi._foreground === true);
     unstick(now, visible);
     // Audio en pausa (el sistema lo paró, otra app tomó el audio): se reanuda
     if (ctx && ctx.state === 'suspended' && now - lastResumeAt > 1500) { lastResumeAt = now; console.log('[CALL] Audio en pausa: se reanuda'); ctx.resume().catch(function() {}); }
