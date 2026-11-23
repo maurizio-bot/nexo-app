@@ -976,6 +976,78 @@
    "sintoma": "zombi (nx01992876 Marcos)",
    "categoria": "Zombi",
    "causa": "Del otro: el enlace con Marcos (build ?, no la última) quedó de antes de que la app del S24 volviera al frente; sus pings nunca contestan (los de Roberto, Zhelowsky y nx10b6f4ac sí) y el vigilante lo cortó para reconectar tras 4 pings, como debe. Nada pendiente con Marcos: nada perdido. Aparte: Fénix de fondo a Zhelowsky se rinde (su app dormida) y queda para luego; relés 4,7 de 5,9 MB repetidos en 326 min (la copia por relé, ver 24 cerrado)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "11:20",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "zombi (nx10b6f4ac)",
+   "categoria": "Zombi",
+   "causa": "Versión vieja (3121): enlace de antes de volver la app al frente; vigilante cortó y reconectó. Nada perdido."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "12:55",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "zombi (nx01992876 Marcos)",
+   "categoria": "Zombi",
+   "causa": "Versión vieja (3121): app de Marcos dormida; corte y reconexión a los 3 s. Fénix a Zhelowsky se rinde (su app duerme) y queda para luego."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "13:23",
+   "nx": "nx1905c1ee, build 3121",
+   "sintoma": "enlace_abre_cierra (nx1n36c283)",
+   "categoria": "Enlaces repetidos",
+   "causa": "Versión vieja (3121), HONOR con optimización de batería activa: el S24 abre enlaces entrantes repetidos y el desempate los cierra (3 en 10 min). Gasta radio, no pierde mensajes."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "13:23",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "par:enlace_abre_cierra (pedido por Austin)",
+   "categoria": "Enlaces repetidos",
+   "causa": "El mismo episodio visto desde el S24 (3121)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "13:37",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "enlace_abre_cierra (nx01992876)",
+   "categoria": "Enlaces repetidos",
+   "causa": "Versión vieja (3121): enlaces repetidos con Marcos, los dos muertos tras volver al frente; MTU 23 momentáneo; el texto salió por internet."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "09:53",
+   "nx": "nx1a93dbfe, build 3121",
+   "sintoma": "cierre_fallo (sin memoria, detrás)",
+   "categoria": "Cierres del sistema",
+   "causa": "Causa externa: Galaxy A05 (Italia) con AHORRO DE BATERÍA; Android la cierra por memoria (9 en 7 días). NEXO vuelve sola y avisa por internet: llegó y sonó a las 16:01 hora de Italia."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "14:20",
+   "nx": "nx01992876, build 3123",
+   "sintoma": "par:enlace_abre_cierra (pedido por el S24)",
+   "categoria": "Enlaces repetidos",
+   "causa": "Del S24 (3121). Con la app de Marcos cerrada el nativo descartó 1 mensaje del S24 «sin su sello de pareja» (el S24 en 3121, sin el sello nuevo): versión vieja; llegó por internet al abrir."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "14:42",
+   "nx": "nx0g6ef54e, build 3123",
+   "sintoma": "zombi (nx01992876 Marcos)",
+   "categoria": "Zombi",
+   "causa": "App de Marcos en segundo plano: no contesta 4 pings; el vigilante corta para reconectar, como debe. Por mirar en la próxima: 3 mensajes viejos de Roberto reenviados a las 14:19 siguen en «enviado» aunque el nativo de Marcos dice tenerlos (devuelve ✓✓)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "14:45",
+   "nx": "nx01992876, build 3123",
+   "sintoma": "resumen_diario (21-11)",
+   "categoria": "Resumen",
+   "causa": "Sin fallo."
   }
  ]
 }
