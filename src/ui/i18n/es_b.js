@@ -139,4 +139,8 @@ export default {
   silenced_dnd_priority: "Tienes «No molestar» activado: los avisos de NEXO pueden no sonar.",
   silenced_dnd_tip: "Si quieres enterarte, apágalo o permite a NEXO en sus excepciones.",
   silenced_btn_dnd: "Ver «No molestar»",
+  // COLA 31: vista previa real de enlaces (avisos al abrir)
+  link_warn_lookalike: "Cuidado: «{host}» usa letras de otro alfabeto (se lee «{shown}») y puede imitar a otro sitio. ¿Abrirlo de todos modos?",
+  link_warn_redirect: "Cuidado: este enlace de {host} te lleva a otro sitio: {to}. ¿Abrirlo de todos modos?",
+  link_redirects: "⚠ Lleva a otro sitio: {to}",
 };

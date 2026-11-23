@@ -139,4 +139,8 @@ export default {
   silenced_dnd_priority: "«Não perturbe» está ativado: os avisos do NEXO podem não tocar.",
   silenced_dnd_tip: "Se quiser ouvir, desative-o ou permita o NEXO nas exceções.",
   silenced_btn_dnd: "Ver «Não perturbe»",
+  // COLA 31: vista previa real de enlaces (avisos al abrir)
+  link_warn_lookalike: "Cuidado: «{host}» usa letras de outro alfabeto (lê-se «{shown}») e pode imitar outro site. Abrir mesmo assim?",
+  link_warn_redirect: "Cuidado: este link de {host} leva você a outro site: {to}. Abrir mesmo assim?",
+  link_redirects: "⚠ Leva a outro site: {to}",
 };
