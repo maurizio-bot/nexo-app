@@ -18,6 +18,7 @@
  */
 import { WD_MAX_BYTES } from './wifi_direct.js';
 import { t } from './i18n.js';
+import { isStoreBuild } from './store_flag.js';
 
 export var BIG_SLICE = 512 * 1024;
 export var BIG_MAX_BYTES = 1024 * 1024 * 1024;
@@ -277,7 +278,7 @@ export class BigFiles {
   open(id, key, name, mime) {
     var pl = _plugin();
     if (!pl || typeof pl.bigOpen !== 'function') return Promise.reject(new Error(t('misc_big_version_cannot_open', 'esta versión no puede abrirlo')));
-    return pl.bigOpen({ id: id, key: key, name: name, mime: mime });
+    return pl.bigOpen({ id: id, key: key, name: name, mime: mime, store: isStoreBuild() }); // I-S1 (23-11): el nativo también sabe si es la versión de tienda
   }
 }
 
