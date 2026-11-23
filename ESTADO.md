@@ -101,6 +101,16 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   un contacto ya enlazado por otra dirección, esa conexión se cierra al momento (`ble_relay_anon.js`). `anondup.js` (antes FALLO, ahora OK).
   PRUEBAS DEL DUEÑO: crear grupo → ruedita arriba a la derecha → tocar un miembro; S24 cerca de Alex: sin «enlace repetido» cada 1–2 min.
   Sigue la tanda 2 desde (d).
+- **REVISIÓN EXTERNA (análisis que pasó el dueño 24-11), comprobada en el código (`[skip ci]`, va en la APK única):**
+  HECHO **3304**: (1) trozos recibidos sin tope de tamaño → enteros, solo texto, ≤ 64 K por trozo, ≤ 64 M en memoria por mensaje
+  (lo grande por internet ya se guarda en el teléfono), ≤ 64 mensajes a medias por enlace (`ble_ack_incoming.js`, `chunktopes.js`).
+  (2) bloqueo de la app: un ERROR del nativo o el sensor ocupado lo ABRÍAN (y el 2.º lo quitaba): ahora sigue bloqueada; solo
+  «sin huella ni PIN» (códigos 11/12) lo quita (`app_lock.js`, `lock.js` 8b). (3) guía de bienvenida decía «botón +» y «aparece
+  sola»: corregida (botón redondo → «Agregar contactos», y la solicitud) en 5 idiomas. FALTA: el mismo tope de trozos en el NATIVO.
+  CIERTO pero DECISIÓN DEL DUEÑO (no hecho): instalar APK recibidas en la versión GitHub (la de tienda ya no lo hace); bloquear
+  contacto + «Bloquear» en solicitudes; mensajes que desaparecen; búsqueda global; @nombre; encuestas; multidispositivo; FAB con
+  «persona +», «Gente» → «Contactos», menú de adjuntos en 2 filas. Ya conocido/en curso: Bluetooth en el nativo, Wi-Fi Direct y
+  L2CAP por medir, auditoría externa del protocolo, código sin uso y archivos grandes.
 - **TANDA 2 (siguiente sesión; la última, después solo pulido):** forma de trabajo del dueño 23-11: terminar la tanda, subir (CI ~85 min), y
   mientras compila avanzar la siguiente; CI en verde → subir lo siguiente; si falla, corregir SOLO ese fallo y subir. Agrupar lo más posible.
   Aviso programado: «Revisar CI de la APK 3298» a las 09:09 México (llega a esta sesión). Contenido de la tanda 2, en orden:

@@ -3,7 +3,7 @@
 // no lo activa; sin huella en el teléfono no se puede); con "tras 1 minuto" una salida corta no bloquea; con
 // "inmediatamente" se tapa al salir y se pide al volver; pedir el PIN (la app "se va" y "vuelve") no provoca
 // un bucle; bloqueado, los mensajes siguen llegando; al reabrir la app pide la huella; quitar la huella del
-// teléfono no deja al usuario fuera; capturas bloqueadas (FLAG_SECURE) se aplican también al reabrir.
+// teléfono no deja al usuario fuera (pero un error del nativo o el sensor ocupado NO desbloquean, 24-11); capturas bloqueadas (FLAG_SECURE) se aplican también al reabrir.
 // Uso: node lock.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -172,6 +172,17 @@ const bio = (nat) => nat.stats.bioAsked || 0;
   r.reabrir_pide_huella = bio(nA) > b1;
   r.reabrir_capturas_bloqueadas = nA.secureScreen === true;
   r.reabrir_mismo_id = A.win.bleInterface.localNexoId.toLowerCase() === idA;
+
+  // 8b) Revisión 24-11: el bloqueo nunca se abre por un fallo: un error del nativo al preguntar el estado, o el sensor no disponible
+  //     por un rato (código 1), dejan la app BLOQUEADA y con el bloqueo puesto
+  { const pl = A.win.Capacitor.Plugins.NexoBLE, bs = pl.biometricStatus;
+    pl.biometricStatus = () => Promise.reject(new Error('fallo del nativo'));
+    click(A.win, A.win.document.getElementById('nexo-lock-btn')); await sleep(1500);
+    r.error_nativo_sigue_bloqueada = locked(A) && prefs(nA).lock === true;
+    pl.biometricStatus = () => Promise.resolve({ available: false, code: 1 });
+    click(A.win, A.win.document.getElementById('nexo-lock-btn')); await sleep(1500);
+    r.sensor_ocupado_sigue_bloqueada = locked(A) && prefs(nA).lock === true;
+    pl.biometricStatus = bs; }
 
   // 9) Si el teléfono ya no tiene huella ni PIN, no se queda fuera para siempre
   nA.opts.noBiometric = true;

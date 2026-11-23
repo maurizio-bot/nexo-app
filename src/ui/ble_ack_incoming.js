@@ -1,4 +1,4 @@
-import { MAX_CHUNKS, _chunkCheck, _isNetDevice, _assemblyTimeoutFor, NACK_INTERVAL_MS, BIGX_BLOCK, BIGX_MIN_CHUNKS, _bigxUserId, _bigxFullBlock, ACK_EVERY, ACK_DEBOUNCE_MS, NET_TOR_PREFER_CHUNKS, COMPLETED_TTL_MS, _isFenixTx, _isLanDevice, _compressRanges, PROTOCOL_VERSION, _decompressRanges, _normId, _maxSeqFromPeer } from './ble_ack_shared.js';
+import { MAX_CHUNKS, MAX_CHUNK_CHARS, MAX_BUF_CHARS, MAX_BUFS_PER_DEVICE, _chunkCheck, _isNetDevice, _assemblyTimeoutFor, NACK_INTERVAL_MS, BIGX_BLOCK, BIGX_MIN_CHUNKS, _bigxUserId, _bigxFullBlock, ACK_EVERY, ACK_DEBOUNCE_MS, NET_TOR_PREFER_CHUNKS, COMPLETED_TTL_MS, _isFenixTx, _isLanDevice, _compressRanges, PROTOCOL_VERSION, _decompressRanges, _normId, _maxSeqFromPeer } from './ble_ack_shared.js';
 // Métodos de BleAckSystem: RECEPCIÓN: trozos que llegan, armado, NACK y ack de bloque, sincronía de sesión.
 // Reestructuración 15-11: movidos TAL CUAL desde ble_ack.js; ble_ack.js los une a la clase (como métodos normales).
 export const ackIncoming = {
@@ -37,7 +37,9 @@ export const ackIncoming = {
     var data = msg.d || msg.data;
     var from = msg.fr || msg.from;
     var seq = (typeof msg.seq === 'number') ? msg.seq : 0;
-    if (!msgId || typeof idx !== 'number' || typeof total !== 'number') return;
+    if (!msgId || !Number.isInteger(idx) || !Number.isInteger(total)) return; // revisión 24-11: enteros (no 1.5, NaN ni Infinity)
+    if (data != null && typeof data !== 'string') return;                    // revisión 24-11: el trozo es texto
+    if (data && data.length > MAX_CHUNK_CHARS) return;                        // revisión 24-11: ningún trozo legítimo es tan grande
     if (!/^[A-Za-z0-9_.:-]{1,80}$/.test(String(msgId))) return; // auditoría 23-11 (I-X1): id elegido por quien manda
     if (total <= 0 || idx < 0 || idx >= total) return;
     // Robustez (auditoría 2804): un 'n' (total) desproporcionado haría que el block-ack / NACK recorrieran miles de
@@ -99,6 +101,12 @@ export const ackIncoming = {
       return;
     }
     if (!buf) {
+      // Revisión 24-11: de un mismo enlace, como mucho MAX_BUFS_PER_DEVICE mensajes a medias a la vez (el resto se vuelve a pedir después)
+      var open = 0; self.incomingBuffers.forEach(function(b) { if (b && b.deviceId === deviceId) open++; });
+      if (open >= MAX_BUFS_PER_DEVICE) {
+        if (!self._tooManySaid || Date.now() - self._tooManySaid > 60000) { self._tooManySaid = Date.now(); console.warn('[BleAckSystem] Demasiados mensajes a medias desde un mismo enlace: se ignoran los nuevos por ahora'); }
+        return;
+      }
       var resolvedType = msg.tp || msg.type || (type === 'f' ? 'file' : null);
       var resolvedFrom = from || msg.fr || 'unknown';
       buf = {
@@ -149,6 +157,16 @@ export const ackIncoming = {
       }, _assemblyTimeoutFor(_isNetDevice(deviceId), buf.isChat, buf.total));
     }
     if (!buf.chunks.has(idx)) {
+      // Revisión 24-11: tope de lo que un mismo mensaje guarda en memoria; pasarlo = ataque: se tira el mensaje entero
+      buf.mem = (buf.mem || 0) + (data ? data.length : 0);
+      if (buf.mem > MAX_BUF_CHARS) {
+        console.warn('[BleAckSystem] ' + msgId + ': pasa del tope de memoria por mensaje: se descarta');
+        if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
+        if (buf.ackTimer) clearTimeout(buf.ackTimer);
+        self.incomingBuffers.delete(msgId);
+        self._bigxForget(msgId);
+        return;
+      }
       buf.chunks.set(idx, data || '');
       buf.received++;
       if (typeof buf.maxIdx !== 'number' || idx > buf.maxIdx) buf.maxIdx = idx;
@@ -240,7 +258,7 @@ export const ackIncoming = {
       buf._bigxSaving.delete(k);
       if (!ok || buf._assembled || buf._loading || self.incomingBuffers.get(msgId) !== buf) return;   // juntándose: se queda en memoria
       buf.diskBlocks.add(k);
-      for (var j = s0; j < e0; j++) { if (typeof buf.chunks.get(j) === 'string') buf.chunks.set(j, null); }
+      for (var j = s0; j < e0; j++) { var cj = buf.chunks.get(j); if (typeof cj === 'string') { buf.mem = Math.max(0, (buf.mem || 0) - cj.length); buf.chunks.set(j, null); } }
       var rec = self._bigxIn.get(msgId);
       if (!rec || rec.a !== (buf.a || '') || rec.total !== buf.total) { rec = { a: buf.a || '', total: buf.total, meta: buf.meta, blocks: [] }; self._bigxIn.set(msgId, rec); }
       if (rec.blocks.indexOf(k) < 0) rec.blocks.push(k);

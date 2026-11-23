@@ -115,8 +115,15 @@ async function _auth(title, subtitle) {
 
 async function _unlock() {
   if (_authing) return;
+  var pl = _pl();
+  // Revisión 24-11: el bloqueo NUNCA se abre por un fallo. Solo sin plugin nativo de ningún tipo (navegador) no hay con qué
+  // comprobar; en el teléfono, un error al preguntar el estado (antes devolvía null → se desbloqueaba) deja la app bloqueada.
+  if (!pl || typeof pl.biometricStatus !== 'function') { _hideLock(); return; }
   var st = await _call('biometricStatus', { allowWeak: _prefs.faceFast });
-  if (!st) { _hideLock(); return; } // sin plugin nativo (navegador): no hay con qué comprobar
+  if (!st) { _lockMsg(t('prof_lock_check_fail', 'No se pudo comprobar. Toca Desbloquear para intentarlo otra vez.')); return; }
+  // Solo «el teléfono no tiene huella ni PIN» (11 NONE_ENROLLED, 12 NO_HARDWARE) quita el bloqueo; lo pasajero (sensor ocupado,
+  // actualización de seguridad pendiente, estado desconocido…) deja la app bloqueada y se puede reintentar.
+  if (!st.available && st.code !== 11 && st.code !== 12) { _lockMsg(t('prof_lock_check_fail', 'No se pudo comprobar. Toca Desbloquear para intentarlo otra vez.')); return; }
   if (!st.available) {
     // El teléfono ya no tiene huella ni PIN: no dejar al usuario fuera de su cuenta para siempre
     _prefs.lock = false;

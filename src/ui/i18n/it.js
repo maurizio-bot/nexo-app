@@ -459,7 +459,7 @@ export default {
   welcome_s1_title: "Benvenuto su NEXO",
   welcome_s1_body: "Messaggistica privata che funziona <b>senza internet</b>: diretta tra telefoni via Bluetooth e Wi-Fi. I tuoi messaggi sono cifrati end-to-end, solo tu e chi riceve potete leggerli.",
   welcome_s2_title: "Aggiungi il tuo primo contatto",
-  welcome_s2_body: "Tocca il pulsante <b>+</b> (in basso a destra). Se l'altra persona è vicina con NEXO aperto, appare da sola. Se è lontana, condividi il tuo <b>NEXO ID</b> (👤 Profilo → «Condividi il mio ID») o aggiungila col suo.",
+  welcome_s2_body: "Tocca il pulsante rotondo in basso a destra e scegli <b>«Aggiungi contatti»</b>. Se l'altra persona è vicina con NEXO aperto, appare nell'elenco: toccala e, quando accetta la tua richiesta, potete parlare. Se è lontana, condividi il tuo <b>NEXO ID</b> (👤 Profilo → «Condividi il mio ID») o aggiungila col suo.",
   welcome_s3_title: "Invia il tuo primo messaggio",
   welcome_s3_body: "Apri il contatto e scrivi. Puoi inviare <b>foto, video, audio e file</b>, e fare <b>chiamate e videochiamate</b>. Tutto diretto tra i telefoni, anche senza segnale.",
   welcome_s4_title: "Un passo perché funzioni sempre",
