@@ -12,7 +12,7 @@
  */
 import { t } from './i18n.js';
 
-// Qué enlaces tienen vista previa: por ahora solo los 4 sitios con tarjeta (TikTok, Instagram, Facebook, YouTube). Ver informe al dueño.
+// Qué enlaces tienen vista previa: todos los https (dueño 23-11); solo de mensajes propios o de contactos (links.js, chat_actions.js).
 export var PREVIEW_ANY_SITE = true;   // dueño 23-11: vista previa para TODOS los sitios (solo de mensajes propios o de contactos: links.js)
 var MAX_CACHE = 80, MAX_RUN = 2, MAX_QUEUE = 40;
 export var IMG_MAX = 120000;              // caracteres del data: (el nativo entrega ≤ 64 KB → ~86 000)

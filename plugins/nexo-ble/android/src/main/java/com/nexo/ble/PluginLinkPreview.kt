@@ -70,8 +70,18 @@ private fun prevReady(s: org.torproject.jni.TorService?): Int? {
 private fun prevTorPort(p: NexoBlePlugin): Int? {
     prevLastUse = System.currentTimeMillis()
     prevReady(p.torSvc)?.let { return it }
-    var s = prevSvc
-    if (s == null) {
+    // Revisión 23-11: dos vistas previas a la vez enlazaban el servicio DOS veces y una conexión quedaba sin soltar (Tor encendido para
+    // siempre). Una sola a la vez enlaza; si no llega a conectar, se suelta igual.
+    val s: org.torproject.jni.TorService = synchronized(prevLock) { prevSvc ?: prevBind(p) } ?: return null
+    val t0 = System.currentTimeMillis()
+    while (System.currentTimeMillis() - t0 < 120_000L) { prevReady(s)?.let { return it }; Thread.sleep(1000) }
+    return null
+}
+private val prevLock = Any()
+private fun prevBind(p: NexoBlePlugin): org.torproject.jni.TorService? {
+    run {
+        // una conexión anterior que nunca llegó a conectar se suelta antes de pedir otra (nunca dos a la vez)
+        prevConn?.let { c -> prevConn = null; try { (p.context.applicationContext ?: p.context).unbindService(c) } catch (e: Exception) { } }
         val latch = java.util.concurrent.CountDownLatch(1)
         val conn = object : android.content.ServiceConnection {
             override fun onServiceConnected(name: android.content.ComponentName?, binder: android.os.IBinder?) {
@@ -83,12 +93,9 @@ private fun prevTorPort(p: NexoBlePlugin): Int? {
         prevConn = conn
         p.mainHandler.post { app.bindService(Intent(app, org.torproject.jni.TorService::class.java), conn, Context.BIND_AUTO_CREATE) }
         latch.await(60, java.util.concurrent.TimeUnit.SECONDS)
-        s = prevSvc ?: return null
-        prevScheduleIdle(p)
+        prevScheduleIdle(p)   // también si no conectó: así la conexión se suelta a los 5 min sin uso
+        return prevSvc
     }
-    val t0 = System.currentTimeMillis()
-    while (System.currentTimeMillis() - t0 < 120_000L) { prevReady(s)?.let { return it }; Thread.sleep(1000) }
-    return null
 }
 
 // Suelta el Tor propio tras PREV_IDLE_MS sin vistas previas (si la app usa Tor, el suyo sigue: es otra conexión al servicio)

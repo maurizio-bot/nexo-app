@@ -12,6 +12,21 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Vista previa real de los enlaces: tu teléfono la baja por Tor (el sitio no sabe quién eres) y solo de tus contactos.
+- Aviso antes de abrir un enlace que imita a otro sitio o que te lleva a otro distinto.
+- Despertar a un contacto dormido es más seguro: solo tus contactos pueden hacerlo.
+- Nadie puede hacerse pasar por un contacto para que se le reenvíen tus mensajes.
+- La app es más ligera: quitamos código que ya no se usaba.
+</es-419>
+<!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
+  y la app lo muestra junto al botón de actualizar (Perfil → Ajustes → Actualizaciones, y «¿Qué trae?» en el aviso de abajo).
+- Formato de Google Play (se pega tal cual en «Novedades de esta versión»): un bloque por idioma (español, italiano, inglés y, desde
+  la 3123, portugués de Brasil y francés), **máximo 500 caracteres** cada uno
+  (lo comprueba `tests/sim/novedades.js`). Frases cortas, sin palabras técnicas; lo que el usuario nota.
+- Al entregar una APK: escribir aquí lo nuevo y, después de publicarla, pasar el bloque al historial con su número.
+
+<!-- APK -->
+<es-419>
 - Seguridad reforzada: nadie puede hacerse pasar por un contacto ni falsificar tus ✓✓, ni de cerca ni en la misma Wi-Fi.
 - Si alguien que no es tu contacto te escribe, aparece en «Solicitudes» para que decidas.
 - Si cambia la clave de un contacto, tus mensajes siguen saliendo mientras decides.
@@ -21,6 +36,8 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <!-- /APK -->
 
 ## Historial
+
+### APK 3123 (23-11-2026)
 
 ### APK 3121 (23-11-2026)
 <es-419>
