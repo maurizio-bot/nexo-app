@@ -12,15 +12,21 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Si tu teléfono tiene apagados o sin sonido los avisos de NEXO, o está en «No molestar», NEXO te lo dice y te lleva al ajuste.
+- En lugares con mucha gente (metro, conciertos), el contacto que tiene un mensaje tuyo esperando conecta primero por Bluetooth.
+</es-419>
+<!-- /APK -->
+
+## Historial
+
+### APK 3119 (22-11-2026)
+<es-419>
 - Lo que quedó en espera (mensajes, fotos, notas de voz) sale solo al volver el internet, aunque NEXO esté cerrada o el teléfono bloqueado.
 - Sin internet: si tu contacto aparece cerca por Bluetooth, le llega sin abrir NEXO, incluso tras reiniciar el teléfono.
 - Ajustes → Apariencia: color y estilo de tus burbujas y tipo de letra.
 - Fondo propio en chats, llamadas, Perfil y Ajustes: deja el dedo en un espacio libre.
 - Miniatura de videollamada: sigue con otras apps y ya no sale sin videollamada.
 </es-419>
-<!-- /APK -->
-
-## Historial
 
 ### APK 3117 (22-11-2026)
 <es-419>

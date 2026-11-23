@@ -418,6 +418,10 @@
      "prueba": "GATT roto / no_service"
     },
     {
+     "fallo": "3284 (modo vagón / multitud, EDC; hallado con multitud.js --b-dormido, sin diagnóstico): mi contacto llega con el teléfono dormido entre 500 NEXO y su mensaje pendiente tardaba 33–50 s. Dos causas: (1) el gestor de enlaces (fase 4) no sabía que tenía un mensaje esperando (la marca solo se ponía por algunos caminos) y, con 4 contactos ya enlazados, le negaba el enlace; (2) su conexión hacía cola detrás de intentos sin prisa con teléfonos lejanos (~15 s cada uno). Ahora cuenta lo mandado en la sesión sin confirmar y los intentos sin prisa ceden el paso: enlace a los ~9 s y entrega a los ~13 s. multitud.js no va en la batería (Chromium, minutos)",
+     "prueba": "fuera"
+    },
+    {
      "fallo": "3276 (PRIORIDAD 1, fase 4; estudio de multitud 17-11): sin tope ni orden de enlaces, con 10 contactos dormidos alrededor el que tenía un mensaje esperando no conectaba nunca (7 enlaces ocupados, 222 intentos rechazados) y las conexiones de paso se llevaban huecos. Gestor de enlaces: tope 6, 4 contactos por estar cerca, hueco reservado y desalojo por prioridad (pendientes > chat abierto > reciente)",
      "prueba": "3276 GESTOR DE ENLACES"
     }

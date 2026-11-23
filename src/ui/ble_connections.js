@@ -955,7 +955,7 @@ export const BLE_CONNECTION_METHODS = {
       return Promise.resolve();
     }
     if (state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.CONNECTING) return Promise.resolve();
-    if (!self._linkRoom({ nx: self._btPauseKey(deviceId, device), manual: !!(opts && opts.manual), why: opts && opts.why })) return Promise.resolve(); // 3276 (fase 4): tope de enlaces y prioridades
+    if (!self._linkGo(deviceId, device, opts)) return Promise.resolve(); // 3276 (fase 4): tope de enlaces y prioridades; 3284: paso libre en la cola (ble_linkmgr)
     self._setDeviceState(deviceId, BLE_STATES.CONNECTING, { direction: 'outgoing', role: 'client', auto: true });
     self.connectedDevices.set(deviceId, { id: deviceId, name: (device && device.name) || '', direction: 'outgoing', servicesReady: false, deviceUUID: device && device.deviceUUID });
     var connTarget = deviceId;

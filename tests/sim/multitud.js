@@ -35,6 +35,9 @@ const N = arg('n', 200), VIS = arg('vis', 0.2), FLAP = arg('flap', 0.2), CERCA =
 const CPU = arg('cpu', 4), FASE = arg('fase', 40), AGREGAR = arg('agregar', 30), MAXL = arg('max-links', 7), SERIE = !!arg('serie', 1);
 const CONN_MS = arg('conn-ms', 800), FALLO_MS = arg('fallo-ms', 15000), SCAN_S = arg('scan-s', 15), KX = !!arg('kx', 1), MIN_RSSI = arg('min-rssi', -95);
 const SEED = arg('seed', 17), MULT_B = !!arg('multitud-b', 1), VUELTAS = arg('vueltas', 3);
+// --b-dormido=1: B vuelve con el teléfono en el bolsillo (su app congelada: solo contesta su nativo y NO abre él el enlace): es A,
+// con su cola de conexiones ocupada por la multitud, quien tiene que conectar. «Entregado» = la ✓✓ del nativo de B llega a A.
+const B_DORMIDO = !!arg('b-dormido', 0);
 const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: 25, asymmetric: true, supervisionMs: 3000 };
 const logs = [];
 const norm = (m) => String(m || '').replace(/[:\-.]/g, '').toLowerCase();
@@ -109,10 +112,17 @@ function linkCount(n) { let c = 0; n.clients.forEach(() => c++); n.serverConnect
 function installRadioModel(n, radio, st, classify) {
   const orig = NativePhone.prototype.plugin;
   let tail = Promise.resolve();
+  // 3284: intentos en cola o en el aire; disconnectDevice los cancela (Kotlin: gatt.disconnect() + close() suelta el intento)
+  const pend = new Map();
   n.calls = { push(c) { if (c && (c.name === 'startScan' || c.name === 'stopScan' || c.name === 'disconnectDevice')) st[c.name] = (st[c.name] || 0) + 1; }, length: 0, filter() { return []; }, slice() { return []; }, forEach() {}, map() { return []; }, some() { return false; }, find() { return undefined; } };
   n.plugin = function () {
     const api = orig.call(this);
-    const oc = api.connectToDevice, os = api.startScan;
+    const oc = api.connectToDevice, os = api.startScan, od = api.disconnectDevice;
+    api.disconnectDevice = (args = {}) => {
+      const p = pend.get(norm(String(args.deviceId || args.address || '')));
+      if (p && !p.cancelled) { p.cancelled = true; st.cancel = (st.cancel || 0) + 1; if (p.finish) p.finish(); }
+      return od(args);
+    };
     api.connectToDevice = (args = {}) => {
       const raw = String(args.deviceId || args.address || ''), m = norm(raw), peer = radio.byNorm(m);
       const kind = classify(peer, raw);
@@ -120,13 +130,20 @@ function installRadioModel(n, radio, st, classify) {
       st.connLog.push({ t: Date.now(), kind, rssi: peer && peer.rssiNow });
       const cl = n.clients.get(m);
       if (cl && (cl.state === 'connected' || cl.state === 'connecting')) return oc(args);
-      const run = () => new Promise((resolve) => {
+      const rec = { cancelled: false, finish: null };
+      pend.set(m, rec);
+      const run = () => new Promise((res0) => {
         const t0 = Date.now();
+        let timer = null, done = false;
+        const resolve = (v) => { if (done) return; done = true; if (pend.get(m) === rec) pend.delete(m); res0(v); };
+        const gone = { connected: false, deviceId: raw, error: 'Connection cancelada (cede el paso)' };
+        if (rec.cancelled) { resolve(gone); return; }
+        rec.finish = () => { clearTimeout(timer); st.queueBusyMs += Date.now() - t0; resolve(gone); };
         const full = linkCount(n) >= MAXL || (peer && linkCount(peer) >= MAXL);
         if (MAXL && full) { st.rejTope++; setTimeout(() => resolve({ connected: false, deviceId: raw, error: 'Connection error 257 (tope de enlaces)' }), 300); return; }
         const absent = !peer || peer.offline || !radio.inRange(n, peer) || (peer.isGhost && (!peer.present || (peer.rssiNow || peer.rssiBase) < -90));
-        if (absent) { st.fail++; setTimeout(() => { st.queueBusyMs += Date.now() - t0; resolve({ connected: false, deviceId: raw, error: 'Connection error 133' }); }, FALLO_MS); return; }
-        setTimeout(() => { oc(args).then((r) => { st.queueBusyMs += Date.now() - t0; if (r && r.connected) st.ok++; resolve(r); }, (e) => resolve({ connected: false, deviceId: raw, error: String(e && e.message) })); }, CONN_MS);
+        if (absent) { timer = setTimeout(() => { st.fail++; st.queueBusyMs += Date.now() - t0; resolve({ connected: false, deviceId: raw, error: 'Connection error 133' }); }, FALLO_MS); return; }
+        timer = setTimeout(() => { oc(args).then((r) => { st.queueBusyMs += Date.now() - t0; if (r && r.connected) st.ok++; resolve(r); }, (e) => resolve({ connected: false, deviceId: raw, error: String(e && e.message) })); }, CONN_MS);
       });
       if (!SERIE) return run();
       const qAt = Date.now();
@@ -256,7 +273,7 @@ const PROF_READ = () => JSON.parse(JSON.stringify(window.__prof || {}));
   const ev = {}; const oEmit = nA.emit.bind(nA); let bSeenAt = 0; nA.emit = (e, d) => { ev[e] = (ev[e] || 0) + 1; if (e === 'onDeviceFound' && !bSeenAt && d && norm(d.deviceId) === norm(nB.address) && radio.inRange(nA, nB)) bSeenAt = Date.now(); return oEmit(e, d); };
   const linksOf = (n) => { const o = {}; n.clients.forEach((cl) => { const k = classify(cl.peer, ''); o[k] = (o[k] || 0) + 1; }); n.serverConnected.forEach((p) => { const k = classify(p, ''); o[k] = (o[k] || 0) + 1; }); return o; };
   const phase = async (name, ms, during) => {
-    const ev0 = Object.assign({}, ev), c0 = JSON.parse(JSON.stringify(stA.conn)), s0 = { scans: stA.startScan || 0, fail: stA.fail, rej: stA.rejTope, ok: stA.ok, qw: stA.queueWait.length };
+    const ev0 = Object.assign({}, ev), c0 = JSON.parse(JSON.stringify(stA.conn)), s0 = { scans: stA.startScan || 0, fail: stA.fail, rej: stA.rejTope, ok: stA.ok, qw: stA.queueWait.length, cancel: stA.cancel || 0 };
     const snap0 = await A.page.evaluate(SNAP); const prof0 = await A.page.evaluate(PROF_READ);
     const st = await phaseStart([A]);
     const samples = []; const t0 = Date.now(); let extra = null;
@@ -270,7 +287,7 @@ const PROF_READ = () => JSON.parse(JSON.stringify(window.__prof || {}));
     r.onDeviceFound_por_s = Math.round((r.eventos_al_js.onDeviceFound || 0) / out.segundos);
     if (r.eventos_al_js.onDeviceFound) r.js_us_por_evento = Math.round(r.js_s * 1e6 / r.eventos_al_js.onDeviceFound);
     r.conexiones_pedidas = {}; Object.keys(stA.conn).forEach((k) => { const d = stA.conn[k] - (c0[k] || 0); if (d) r.conexiones_pedidas[k] = d; });
-    r.conexiones = { ok: stA.ok - s0.ok, fallidas_ausente_o_lejos: stA.fail - s0.fail, rechazadas_por_tope: stA.rejTope - s0.rej };
+    r.conexiones = { ok: stA.ok - s0.ok, fallidas_ausente_o_lejos: stA.fail - s0.fail, rechazadas_por_tope: stA.rejTope - s0.rej, ceden_el_paso: (stA.cancel || 0) - (s0.cancel || 0) };
     const qw = stA.queueWait.slice(s0.qw); r.espera_en_cola_conexion_ms = { n: qw.length, p50: q(qw, 0.5), p95: q(qw, 0.95), max: qw.length ? Math.max(...qw) : 0 };
     r.escaneos_iniciados = (stA.startScan || 0) - s0.scans;
     r.enlaces_de_A = samples.map((s) => s.links);
@@ -288,13 +305,16 @@ const PROF_READ = () => JSON.parse(JSON.stringify(window.__prof || {}));
   await phase('f1_reposo', FASE * 1000);
   // F2: B vuelve en medio de la multitud: ¿cuánto tarda A en tener enlace con B y entregarle lo pendiente?
   await phase('f2_contacto_vuelve', 0, async (t0) => {
+    if (B_DORMIDO) { nB.setAppActive(false); nB.setFrozen(true); }
     nB.opts.rssi = -62; radio.unblock(nA, nB); bSeenAt = 0;
     let listo = null, entregado = null;
+    const okEnA = () => A.page.evaluate(async (nx) => (await window.vaultLoadMessages(nx)).some((m) => m._own && String(m.content || m.text || '').indexOf('pendiente para B') === 0 && (m.status === 'delivered' || m.status === 'read')), idB);
     while (Date.now() - t0 < 120000 && entregado === null) {
       await sleep(250);
       if (listo === null && await A.page.evaluate((nx) => !!window.bleInterface._bleReadyFor(nx), idB)) listo = Date.now() - t0;
-      if (entregado === null && await inB('pendiente para B')) entregado = Date.now() - t0;
+      if (entregado === null && (B_DORMIDO ? await okEnA() : await inB('pendiente para B'))) entregado = Date.now() - t0;
     }
+    if (B_DORMIDO) { nB.setFrozen(false); nB.setAppActive(true); await sleep(1500); }
     const out = { B_visto_en_escaneo_s: bSeenAt ? Math.round((bSeenAt - t0) / 100) / 10 : 'NO', B_enlace_listo_s: listo === null ? 'NO (120 s)' : Math.round(listo / 100) / 10, B_pendiente_entregado_s: entregado === null ? 'NO (120 s)' : Math.round(entregado / 100) / 10 };
     // más vueltas: B se aleja 20 s y vuelve; ¿cuánto tarda el enlace? (varía según qué huecos y qué cola de conexión encuentra)
     out.vueltas_enlace_listo_s = [out.B_enlace_listo_s];

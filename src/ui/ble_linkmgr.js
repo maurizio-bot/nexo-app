@@ -25,6 +25,9 @@ export var LINK_CAP = 6;
 export var LINK_CONTACT_MAX = 4;
 export var LINK_IDLE_MS = 120000;
 export var LINK_FRESH_MS = 15000;   // un enlace recién abierto aún se está identificando: no se toca
+export var LINK_PEND_MAX_MS = 30 * 60000; // 3284: lo mandado en esta sesión cuenta como «esperando» hasta 30 min sin confirmar (después, las otras señales)
+export var CONN_YIELD_MIN_MS = 1500;   // 3284: un intento de conexión más joven que esto aún puede salir bien: no cede
+export var CONN_YIELD_HOLD_MS = 20000; // 3284: quien cedió el paso no vuelve a intentarlo (sin prisa) en este rato
 
 function _prio(l) { return l.busy ? 4 : l.pending ? 3 : l.chat ? 2 : l.contact ? 1 : 0; }
 // El menos importante que se puede cerrar entre los de prioridad < maxPrio (a igual prioridad, el que lleva más tiempo callado)
@@ -81,11 +84,95 @@ export const BLE_LINKMGR_METHODS = {
     return { cap: Number(w.NEXO_LINK_CAP) || LINK_CAP, contacts: Number(w.NEXO_LINK_CONTACTS) || LINK_CONTACT_MAX, idleMs: Number(w.NEXO_LINK_IDLE_MS) || LINK_IDLE_MS, now: Date.now() };
   },
   // ¿Ese contacto tiene algo esperando salir? (lo que ya se sabe sin leer historiales)
+  // 3284 (multitud.js --b-dormido): el gestor solo sabía de pendientes por dos marcas que no siempre se ponen (la bandeja y el
+  // calendario de toques: un mensaje recién escrito a quien justo se alejó no estaba en ninguna). Con 4 contactos ya enlazados, al
+  // contacto con el mensaje esperando se le negaba el enlace («a demanda») como a uno más. Ahora cuenta también lo que se mandó en
+  // esta sesión y sigue sin confirmar (_msgDest + ackSystem.isDone: en memoria, sin leer historiales; se rehace como mucho cada 2 s).
+  _linkPendNow() {
+    var self = this, now = Date.now();
+    if (self._lpSet && now - (self._lpAt || 0) < 2000) return self._lpSet;
+    var set = new Set(), ack = self.ackSystem, first = self._lpFirst || (self._lpFirst = new Map());
+    try {
+      if (self._msgDest && ack && typeof ack.isDone === 'function') {
+        self._msgDest.forEach(function(nx, id) {
+          if (ack.isDone(id)) { first.delete(id); return; }
+          var t = first.get(id);
+          if (!t) { t = now; first.set(id, t); }
+          if (now - t < LINK_PEND_MAX_MS) set.add(_normId(nx));
+        });
+        if (first.size > 2500) Array.from(first.keys()).forEach(function(k) { if (!self._msgDest.has(k)) first.delete(k); });
+      }
+    } catch (e) {}
+    self._lpSet = set; self._lpAt = now;
+    return set;
+  },
   _linkPending(nx) {
     if (!nx) return false;
     if (this._outboxNx && this._outboxNx.has(nx)) return true;
     if (this._pendingWake && this._pendingWake.has(nx)) return true;
-    return false;
+    return this._linkPendNow().has(nx);
+  },
+  /**
+   * 3284 (modo vagón / multitud, EDC; multitud.js --b-dormido: mi contacto llega con el teléfono en el bolsillo entre 500 NEXO, lo veo a
+   * los 9 s y su mensaje pendiente tardaba 50 s): PASO LIBRE en la cola de conexiones. Android abre los enlaces Bluetooth de uno en
+   * uno, y un intento con un teléfono que ya se alejó tarda ~15 s en fallar: la conexión del contacto que SÍ tiene un mensaje
+   * esperando hacía cola detrás de los intentos «por estar cerca» y de las conexiones de paso. Ahora, cuando se va a conectar con
+   * alguien con prisa (mensajes esperando, chat abierto o «Agregar»), los intentos SIN prisa que siguen en el aire se cancelan (el
+   * nativo suelta el intento: disconnectDevice) y no se repiten en 20 s; después vuelven solos por su camino de siempre. No se toca
+   * un enlace ya abierto, ni un intento con otro contacto que también tiene prisa, ni uno que acaba de empezar.
+   */
+  _connUrgent(nx, opts) {
+    nx = _normId(nx || '');
+    if (opts && (opts.manual || opts.why === 'pendientes')) return true;
+    return !!nx && (this._linkPending(nx) || nx === _normId(this._activeChatDeviceId || ''));
+  },
+  _connYielded(deviceId) { return !!(this._connYieldUntil && (this._connYieldUntil.get(_normMac(deviceId)) || 0) > Date.now()); },
+  _connYield(forNx) {
+    var self = this, now = Date.now(), n = 0, pl = self.nativePlugin;
+    if (!pl || !_hasNativeMethod(pl, 'disconnectDevice')) return 0;
+    forNx = _normId(forNx || '');
+    self._connUrgentUntil = now + 8000; // mientras se abre este enlace no empieza ninguna conexión de paso (_linkRoom)
+    var hold = self._connYieldUntil || (self._connYieldUntil = new Map());
+    var cancel = function(key) {
+      hold.set(_normMac(key), now + CONN_YIELD_HOLD_MS);
+      if (hold.size > 200) hold.delete(hold.keys().next().value);
+      _safeNativeCall(pl, 'disconnectDevice', { deviceId: key }).catch(function() {});
+      n++;
+    };
+    // (1) intentos con contactos «por estar cerca» (sin mensajes esperando ni el chat abierto)
+    Array.from(self._deviceStates.entries()).forEach(function(e) {
+      var key = e[0], st = e[1];
+      if (/^(lan|net|wd)/i.test(key) || st.state !== BLE_STATES.CONNECTING || st.role !== 'client') return;
+      if (now - (st.timestamp || now) < CONN_YIELD_MIN_MS) return;
+      var nx = _normId(self._macToNexoId.get(_normMac(key)) || self._macToNexoId.get(key) || (self.connectedDevices.get(key) || {}).deviceUUID || '');
+      if (nx && (nx === forNx || self._connUrgent(nx))) return;
+      cancel(key);
+      self._setDeviceState(key, BLE_STATES.DISCONNECTED);
+      self.connectedDevices.delete(key);
+    });
+    // (2) conexiones de paso (Jump, «quién es») que aún no llegaron a abrirse
+    var relay = self.relay;
+    if (relay && relay.transient && typeof relay._isReady === 'function') Array.from(relay.transient.entries()).forEach(function(e) {
+      var t = e[1];
+      if (!t || !t.deviceId || relay._isReady(t.deviceId) || now - (t.since || now) < CONN_YIELD_MIN_MS) return;
+      relay.transient.delete(e[0]);
+      if (relay._connecting && typeof relay._connecting.delete === 'function') relay._connecting.delete(e[0]);
+      cancel(t.deviceId);
+    });
+    if (n && now - (self._connYieldSaid || 0) > 30000) {
+      self._connYieldSaid = now;
+      console.log('[BT] Paso libre: ' + n + ' intento(s) de conexión sin prisa ceden el turno a ' + (forNx || 'quien el usuario está agregando') + ' (mensajes esperando o chat abierto)'); // i18n-ok: registro
+    }
+    return n;
+  },
+  // Antes de pedir una conexión (ble_connections._autoConnectGATT): tope de enlaces y prioridades (3276) y paso libre en la cola (3284):
+  // quien tiene prisa pasa primero; quien no la tiene y acaba de ceder el paso espera su rato. Devuelve si se puede conectar ya.
+  _linkGo(deviceId, device, opts) {
+    var self = this, nx = self._btPauseKey(deviceId, device), urgent = self._connUrgent(nx, opts);
+    if (!urgent && self._connYielded(deviceId)) return false;
+    if (!self._linkRoom({ nx: nx, manual: !!(opts && opts.manual), why: opts && opts.why })) return false;
+    if (urgent) self._connYield(nx);
+    return true;
   },
   // Los enlaces Bluetooth que hay (abiertos o conectando), con lo que hace falta para decidir
   _linkList() {
@@ -127,6 +214,7 @@ export const BLE_LINKMGR_METHODS = {
   _linkRoom(want) {
     var self = this;
     if (want && want.hop && self._linkAddOpen()) return true;
+    if (want && want.hop && (self._connUrgentUntil || 0) > Date.now()) return false; // 3284: se está abriendo el enlace de alguien con prisa
     var nx = _normId((want && want.nx) || ''), links = self._linkList(), o = self._linkOpts();
     var isContact = false;
     try { isContact = !!nx && (self.getBLEContacts() || []).some(function(c) { return _normId(c && (c.nexoId || c.deviceUUID)) === nx; }); } catch (e) {}

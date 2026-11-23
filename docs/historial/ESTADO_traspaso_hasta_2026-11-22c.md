@@ -1,0 +1,61 @@
+# TRASPASO de ESTADO.md tal como estaba el 22-11-2026 a las 18:00 México (antes de publicar la 3119 y de los ayudantes de la tarde)
+
+### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **Forma de trabajo:** CLAUDE.md «GASTO» (leer SOLO este bloque + 🔴 de `docs/AREAS.md`; lo demás con grep). Detalle de lo hecho del 20 al 22-11 (fases, 3254–3278):
+  `docs/historial/ESTADO_traspaso_hasta_2026-11-22b.md` (grep por número). PRINCIPIO: NEXO = todos los caminos; nunca recortar caminos.
+- **🚀 APK 3119 LANZADA (22-11 16:16 México, orden del dueño: «sube 3119 a ver cómo sale»):** commit «APK: …» SIN `[skip ci]`; el CI tarda ~85 min (listo ~17:45).
+  Si el CI falla: mirar primero `estadovideo.js` (`hevc_sin_reproductor_roto`, falla también en este contenedor con builds viejas). Tras publicarla: pasar el bloque
+  de NOVEDADES al historial con su número y archivar este bloque. Antes de lanzar se le sumaron los pendientes de abajo (todo con `[skip ci]`).
+  Lleva ya: 3266–3273 (bandeja de salida nativa por internet y Bluetooth, el nativo abre enlaces, Wi-Fi sin internet, Wi-Fi Direct por tiempo estimado, Apariencia,
+  fondos, medición), `_noNetSt` (el fallo que tumbó el CI de la 3118, NO publicada), 3274 QUITADO (era un error), 3275, **3276 fase 4** (+3277b «Agregar» con 9 NEXO
+  cerca), **3277 miniatura** (call_pip.js: estado desde la verdad del nativo, sim `miniaturas.js`), **3278 audio** (solo una llamada TELEFÓNICA retiene la llamada
+  NEXO; otra app con sonido no la pausa ni pierde el audio: `FocusPolicy.kt`, 7 JVM; `callOut` al diagnóstico). Pasadas aquí: 41 escenarios cercanos + 9 de muchos
+  teléfonos/grupos, JVM, `kotlin-android`, `MainActivity` con stubs. Última PUBLICADA: **3117** (22-11 10:53 México).
+  **REMATES DE LA FASE 3 (22-11 tarde, sesión nueva; pendiente 1 CERRADO):** **3279** el nativo no reconocía al contacto al buscarlo (comparaba el NEXO ID y
+  el otro anuncia su código rotativo: en teléfonos reales la 3271 NUNCA abría el enlace; la sim no lo veía) → la app deja con la bandeja la clave de los
+  códigos de quien tiene algo pendiente (`OutboxRid.kt`). **3280** `BleSinApp` (servicio sin la app) busca y abre el enlace (`SinAppLinks.kt`, cliente GATT
+  mínimo) + DESPERTADOR (`OutboxWake.kt`: alarma inexacta para el próximo escaneo mientras algo no tenga otro camino; lo ya aceptado por un relé se busca con
+  calma: 1, 2, 4, 8, 15 min… y cada hora tras ~1,5 h). **3281** fotos/notas de voz/archivos ≤ 1 MB en la bandeja: la app deja el archivo cifrado y partido en
+  trozos firmados + su aviso; el nativo sube los trozos y solo con TODOS sale el aviso (20 s de margen por si la app sigue despierta; al volver la app pregunta
+  al nativo antes de subir nada: `_blobNatTake`). De paso: `NOVEDADES.md` tenía un bloque repetido (arreglado). Pasado: 22 escenarios cercanos + estáticas,
+  291 JVM, tipos `kotlin-android`. Sim nueva `bandejafoto.js` (contraprueba `--sin-archivos`); JVM `OutboxRidTest`, `SinAppDialTest`, `NetOutboxFilesTest`.
+  Lo de la auditoría final, apuntado en el privado (puntos 8–11). Límites: > 1 MB, vídeo HD y Jump los sigue mandando la app; la foto por Bluetooth desde el
+  nativo NO (solo su aviso, ya subidos los trozos); `BleSinApp` abriendo enlaces no tiene modelo en la sim (JVM + prueba del dueño g).
+  **3282 MINIATURA SIN VIDEOLLAMADA (dueño 22-11, con la 3117: «en un chat deslizo hacia arriba y crea la miniatura»):** el gesto lo decide UNA marca del
+  teléfono que podía quedarse puesta sin videollamada. Ahora dice la verdad (`call_pip.pipWanted()`, se corrige en los dos sentidos en cada cambio de
+  llamada/foco/arranque; una llamada de VOZ nunca la deja puesta) y el nativo la quita al terminar el audio y no entra en miniatura sin llamada
+  (`BleService.pipOnLeave`, `pipAutoEnter`). Reproducido con la build anterior (`miniaturas.js --nativo-viejo`: fase g FALLA) y pasa con el arreglo.
+  OJO al lanzar: `estadovideo.js` falla AQUÍ en `hevc_sin_reproductor_roto` también con builds anteriores a esta sesión (no es de estos cambios; parece el
+  Chromium de este contenedor con HEVC). En el CI de GitHub pasó con la 3117: si tumbara el CI de la 3119, mirar eso primero.
+- **Fases del Bluetooth en el servicio:** 1 publicada (3113) · 2 publicada (3117) · 3 y 4 hechas y probadas en sim, van en la 3119. Lo más pesado de programar ya está.
+- **PENDIENTES (PLAN 22-11 tarde, con modelo y responsable por actividad: `docs/COLA.md` al principio).** Sesión principal (Fable): (1) modo vagón /
+  multitud → (2) COLA 23 app cerrada + pantalla apagada → (3) Wi-Fi Direct «cancelar» → (4) L2CAP → (5) llamadas 17/18 → (6) eco 25 + relés/batería 24 →
+  (7) revisión, APK y auditoría final. Ayudantes en paralelo (worktree, sin cruzar archivos): A grupos G1–G9 (Opus), B Google Play código (Sonnet),
+  C aviso «tu teléfono silencia NEXO» (Sonnet), D icono final + COLA 31 (Sonnet), E menores (Haiku/Sonnet). AÚN NO LANZADOS: se lanzan al empezar la sesión
+  siguiente (tras revisar el CI de la 3119). Del dueño: A/B 31, ritmo de búsqueda, Kinway, paquete, cuenta de Play, privacidad, 12 probadores.
+- **PRUEBAS DEL DUEÑO con la 3119:** (a) modo avión, escribir, bloquear, quitar modo avión SIN abrir NEXO → llega y ✓✓; (b) sin internet los dos, escribir lejos,
+  bloquear, acercarse → llega sin abrir NEXO; (c) videollamada → miniatura ↔ app varias veces, Ajustes y otras apps: sin chat en la ventanita, la mini responde;
+  (d) en miniatura YouTube con sonido: suenan las dos, la imagen sigue; teclas = voz (volumen de llamada), multimedia = el vídeo; «Copiar diagnóstico» al terminar
+  (buscar «[CALL] Salida de sonido», «[CALL] Miniatura», «LIFECYCLE»); (c2) tras una videollamada y también con una llamada de VOZ en curso: en un chat,
+  deslizar hacia arriba → la app va a segundo plano, SIN miniatura («[PIP] marca … quitada»); (e) fase 4 con mucha gente cerca; (f) mandar una FOTO y bloquear el teléfono en el acto
+  (y otra en modo avión → bloquear → quitar modo avión): llega sin abrir NEXO («Bandeja de salida: … trozo(s) ya están en los relés sin la app»); (g) escribir
+  sin internet a alguien lejos, REINICIAR el teléfono, desbloquear SIN abrir NEXO y acercarse al otro (los dos bloqueados): llega («[BT_SINAPP] Bandeja de
+  salida: hay mensajes pendientes … abre el enlace»). DECISIÓN tomada por Claude (el dueño puede cambiarla): lo que YA está en el buzón de internet se busca
+  por Bluetooth con calma (hasta cada hora) para no gastar batería días con un contacto apagado; lo que no tiene otro camino, seguido y con despertador.
+- **LOGO Y NOMBRE (solo en el privado `nexo-private/negocio/NOMBRE.md`):** ⭐ LOGO ELEGIDO (22-11 tarde, tras 8 rondas): la «1b» ORIGINAL de la ronda 7 (una
+  burbuja cuyo contorno son 4 tramos de los colores del chat = un mensaje hecho de 4 caminos). Siguiente (cuando toque): icono final (adaptativo de Android + aviso +
+  tienda 512 px) conservando su aspecto; solo quitar el bulto de la cola y enseñarle antes/después. NOMBRE: ⭐ «sigue con KINWAY» (dueño 22-11 tarde; nombre de
+  trabajo: falta IMPI —KIN y KINGWAY, clases 9/38—, dominios y redes; lo consulta una persona; la app sigue diciendo NEXO hasta que él lo pida). Antes de la prueba cerrada (≤ 1-12): fijar el identificador de paquete (hoy `com.nexo.app`).
+- **Herramientas:** `CI_ONLY='a.js|b.js|texto' node ci.js builds/wip` (varios con «|», por archivo si acaba en .js). `MainActivity` se compila con stubs mínimos de
+  Capacitor contra `android-all-16-robolectric` (~/.gradle). Sin avisos programados activos.
+- **3283 (después de lanzar la 3119; va en la SIGUIENTE APK):** falso «enlace_abre_cierra» del S24 con el vivo (diagnóstico 22-11 14:56): con «Enlace ?» la marca de
+  enlace listo no se borraba y cada reintento contaba como caída. Arreglado (`ble_native_events.js`), `noservice.js` caso 7. (La tablet A7 tenía la 3105: el dueño ya
+  la actualizó a la 3117; su diagnóstico descartado era de la versión vieja, no un fallo.)
+- **Diagnósticos:** solo los de la última build (3117); se apuntan en `docs/diagnosticos.json` (`node tests/sim/diag_stats.js`). Abiertos de la app: mensaje atorado durante una
+  videollamada (S23→S24 21:28), datos repetidos al abrir en frío, enlace repetido; costumbres del teléfono: quitar NEXO de recientes corta la recepción (Cari), Honor/Vivo congelan la app.
+- **Nombres:** dueño = S24 (nx1n36c283) · Cari = S23 Ultra (nx1e50c95d) · Roberto = Motorola (nx0g6ef54e) · Austin = Honor (nx1905c1ee) · Marcos (nx01992876) · Zhelowsky (nx0x4029e6) ·
+  Yael = Redmi (nx16386482) · Katy = Honor (nx126df3f4) · Vivo Y03 (nx09acdb61) · tablet A7 Lite (nx1e29ab2f).
+- **Reglas vivas:** español, breve, horas de México; reproducir en `tests/sim` antes de arreglar; NOVEDADES solo en español; el Kotlin no se compila aquí (lo compila el CI, ~85 min):
+  juntar cambios en UNA subida; decisiones al dueño en forma A/B con lo que vive el usuario.
+- Historial anterior: `docs/historial/ESTADO_hasta_2026-11-19.md`, `ESTADO_traspaso_hasta_2026-11-22.md` y `…-22b.md`.
+
