@@ -19,6 +19,7 @@
 var STUN = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
 var GATHER_MS = 4000;     // como mucho esto juntando direcciones antes de mandar la oferta/respuesta
 var OPEN_MS = 20000;      // si el canal no abre en esto, la red no deja la conexión directa: sigue por los relés
+var DISC_MS = 4000;       // 3300: «disconnected» que no vuelve en esto = cortada (sin esperar el «failed» de ~30 s)
 var MAX_BUFFER = 1000000; // el canal va lleno: se descarta (tiempo real: mejor perder un paquete que acumular retraso)
 
 function _RTC() { return (typeof window !== 'undefined' && window.RTCPeerConnection) || null; }
@@ -77,7 +78,16 @@ export class CallP2P {
     var self = this, p = { pc: pc, dc: null, open: false, role: role, t0: Date.now() };
     this.peers.set(nx, p);
     p.timer = setTimeout(function() { if (!p.open) self._fail(nx, p, 'no conectó en ' + Math.round(OPEN_MS / 1000) + ' s (la red no deja la conexión directa)'); }, OPEN_MS); // i18n-ok: diagnóstico
-    pc.onconnectionstatechange = function() { var s = pc.connectionState; if ((s === 'failed' || s === 'closed') && self.peers.get(nx) === p) self._fail(nx, p, 'conexión ' + s); };
+    pc.onconnectionstatechange = function() {
+      var s = pc.connectionState;
+      if (self.peers.get(nx) !== p) return;
+      if (s === 'failed' || s === 'closed') { self._fail(nx, p, 'conexión ' + s); return; }
+      // 3300 (tanda 2, punto 18; diagnóstico S24 19-11 21:48: ~25 s sin imagen tras un cambio de red del otro): «disconnected» llega en
+      // segundos, pero Chromium solo da «failed» a los ~25–30 s, y mientras tanto la voz y el vídeo se iban por un camino muerto. Si no
+      // vuelve en DISC_MS se da por cortada: la voz sigue por los relés y la directa se rehace por la red nueva.
+      if (s === 'disconnected' && p.open && !p.discT) p.discT = setTimeout(function() { p.discT = null; if (self.peers.get(nx) === p && pc.connectionState === 'disconnected') self._fail(nx, p, 'desconectada ' + Math.round(DISC_MS / 1000) + ' s (la red cambió)'); }, DISC_MS); // i18n-ok: diagnóstico
+      if (s === 'connected' && p.discT) { clearTimeout(p.discT); p.discT = null; }
+    };
     return p;
   }
 
@@ -123,7 +133,7 @@ export class CallP2P {
   close(nx) {
     var p = this.peers.get(nx);
     if (!p) return;
-    this.peers.delete(nx); clearTimeout(p.timer);
+    this.peers.delete(nx); clearTimeout(p.timer); clearTimeout(p.discT);
     try { if (p.dc) p.dc.close(); } catch (e) {}
     try { p.pc.close(); } catch (e) {}
   }

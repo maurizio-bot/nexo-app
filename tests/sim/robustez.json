@@ -580,6 +580,10 @@
      "prueba": "texto LARGO por internet con los relés perdiendo"
     },
     {
+     "fallo": "3300 (tanda 2, punto 18; diagnóstico S24 19-11 21:48, videollamada de 64 min con el S23 que cambió de red ~10 veces): un hueco de ~25 s sin imagen. Si el aviso de cambio de red no llega al otro lado, la conexión directa (WebRTC) queda «disconnected» y Chromium solo la da por «failed» a los ~25–30 s: mientras, voz y vídeo se iban por un camino muerto. 3300: «disconnected» que no vuelve en 4 s = cortada (la voz sigue por los relés y la directa se rehace por la red nueva). cambiored.js --mudo: contraprueba 3299 = 29 s; 3300 = 8 s",
+     "prueba": "llamada con la conexión directa MUDA"
+    },
+    {
      "fallo": "3126 (atascos, PLAN etapa 1; dueño 15-11: «sigue con los atascos»): si el desatasco automático del cifrado (3069) se repetía con el mismo contacto sin arreglarse, nadie se enteraba. 3126: 3 desatascos en 30 min con el mismo contacto → diagnóstico automático «desatasco_bucle» y firma grave en el analizador, para verlo con datos (sin tocar el cifrado). desatascobucle.js (contraprueba 3125: nada)",
      "prueba": "DESATASCO que se REPITE"
     },
