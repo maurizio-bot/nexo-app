@@ -75,6 +75,12 @@ export const netTor = {
     var self = this;
     this.relays.forEach(function(r, u) { if (!r.gw && !r.ws) { r.retryAt = 0; r.backoff = 2000; r.torWait = false; } });
     setTimeout(function() { try { self.tick(); } catch (e) {} }, 0);
+    // el saludo con mi .onion (el de _onTorReady salió sin relés abiertos: esperaban a Tor): en cuanto abra el primero por Tor, otra vez,
+    // para que los contactos se conecten por Tor directo ya (si no, hasta el saludo periódico)
+    var t0 = Date.now(), iv = setInterval(function() {
+      if (self._realOpenCount() > 0) { clearInterval(iv); try { self._helloAll(true); } catch (e) {} }
+      else if (Date.now() - t0 > 30000) clearInterval(iv);
+    }, 250);
   },
   // Tor es MÁS LENTO que los relés: por defecto NO corre (pedido del dueño 01-11: «no quiero Tor por defecto siendo más
   // lento»). Se enciende de dos formas: (1) el usuario lo activa a mano en Ajustes para ocultar su IP siempre

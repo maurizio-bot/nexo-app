@@ -1561,6 +1561,19 @@ class NativePhone {
       }),
       torConnect: wrap('torConnect', (c, a) => {
         if (!self.tor) return c.reject('Tor no listo', 'TOR_DOWN');
+        // Decisión 13A («Usar Tor siempre»): {url, ws} = WebSocket a un relé por Tor (Kotlin: WsClient por el SOCKS); {post} = el toque
+        if (a.post) { self.stats.torPosts = (self.stats.torPosts || 0) + 1; return setTimeout(() => c.resolve({ status: 200 }), self.opts.torLatency || 300); }
+        if (a.url) {
+          const NodeWS = require('ws'); self.torWs = self.torWs || new Map();
+          self.stats.torWsOpen = (self.stats.torWsOpen || 0) + 1;
+          const w = new NodeWS(a.url); self.torWs.set(a.ws, w);
+          const lat = self.opts.torLatency || 300;
+          w.on('open', () => setTimeout(() => self.emit('onTorWs', { ws: a.ws, ev: 'open' }), lat));
+          w.on('message', (d) => setTimeout(() => self.emit('onTorWs', { ws: a.ws, ev: 'msg', data: String(d) }), lat));
+          w.on('close', () => { if (self.torWs.get(a.ws) === w) { self.torWs.delete(a.ws); setTimeout(() => self.emit('onTorWs', { ws: a.ws, ev: 'close' }), lat); } });
+          w.on('error', () => {});
+          return c.resolve({ connecting: true });
+        }
         c.resolve({ connecting: true });
         setTimeout(() => {
           const t = self.radio.phones.find((p) => p.tor && p.tor.onion === a.host && !p.offline);
@@ -1570,6 +1583,7 @@ class NativePhone {
         }, self.opts.torLatency || 300);
       }),
       torSend: wrap('torSend', (c, a) => {
+        if (a.ws) { const w = self.torWs && self.torWs.get(a.ws); if (!w || w.readyState !== 1) return c.reject('sin conexión', 'TOR_DOWN'); w.send(String(a.content || '')); return c.resolve({ sent: true }); }
         const peer = self.tor && self.tor.conns.get(String(a.nx || '').toLowerCase());
         if (!peer || peer.offline || !peer.tor) return c.reject('Sin conexión Tor con ' + a.nx, 'TOR_DOWN');
         const content = String(a.content || ''), from = self.tor.nx;
@@ -1583,11 +1597,12 @@ class NativePhone {
         c.resolve({ sent: true });
       }),
       torDrop: wrap('torDrop', (c, a) => {
+        if (a.ws) { const w = self.torWs && self.torWs.get(a.ws); if (w) { self.torWs.delete(a.ws); try { w.close(); } catch (e) {} } return c.resolve({ dropped: true }); }
         const nx = String(a.nx || '').toLowerCase(), peer = self.tor && self.tor.conns.get(nx);
         if (peer) { self.tor.conns.delete(nx); self.emit('onTorDown', { nx }); if (peer.tor) { peer.tor.conns.delete(self.tor.nx); peer.emit('onTorDown', { nx: self.tor.nx }); } }
         c.resolve({ dropped: true });
       }),
-      torStop: wrap('torStop', (c) => { if (self.tor) self.tor.conns.forEach((p, nx) => { if (p.tor) { p.tor.conns.delete(self.tor.nx); p.emit('onTorDown', { nx: self.tor.nx }); } }); self.tor = null; c.resolve({ stopped: true }); }),
+      torStop: wrap('torStop', (c) => { if (self.torWs) { self.torWs.forEach((w) => { try { w.close(); } catch (e) {} }); self.torWs.clear(); } if (self.tor) self.tor.conns.forEach((p, nx) => { if (p.tor) { p.tor.conns.delete(self.tor.nx); p.emit('onTorDown', { nx: self.tor.nx }); } }); self.tor = null; c.resolve({ stopped: true }); }),
       // Notificaciones de mensajes (MsgNotifier.kt): una por chat con su número; el icono de la app suma los números
       // Kotlin 3012 setKxCard: la app deja su «tarjeta» (kx sin paquete de claves) para que el nativo conteste con la app dormida
       setKxCard: wrap('setKxCard', (c, a) => {
