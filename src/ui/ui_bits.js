@@ -140,7 +140,12 @@ export function _showPermissionError(permName, ms) {
   if (permName && /[\s:]/.test(String(permName).trim())) {
     toast.textContent = permName;
   } else {
-    toast.innerHTML = t('misc_perm_of', 'Permiso de ') + permName + t('misc_perm_denied', ' denegado.') + '<span style="display:block;margin-top:4px;font-size:11px;opacity:0.8;font-weight:400;">' + t('misc_perm_goto', 'Ve a Ajustes > Aplicaciones > NEXO > Permisos') + '</span>';
+    // X4 (auditoría 23-11): con nodos y textContent, sin HTML (permName puede traer texto de fuera)
+    toast.textContent = t('misc_perm_of', 'Permiso de ') + String(permName == null ? '' : permName) + t('misc_perm_denied', ' denegado.');
+    var sub = document.createElement('span');
+    sub.style.cssText = 'display:block;margin-top:4px;font-size:11px;opacity:0.8;font-weight:400;';
+    sub.textContent = t('misc_perm_goto', 'Ve a Ajustes > Aplicaciones > NEXO > Permisos');
+    toast.appendChild(sub);
   }
   document.body.appendChild(toast);
   // Ronda 2792 (diagnóstico del dueño): un aviso largo (p. ej. «archivo demasiado grande para internet…») en 4 s, justo

@@ -189,6 +189,12 @@ internal fun NexoBlePlugin.apkNotOurs(apk: File): String? {
         val info = pm.getPackageArchiveInfo(apk.path, flags) ?: return "no se puede leer"
         if (info.packageName != context.packageName) return "otro paquete: ${info.packageName}"
         val mine = pm.getPackageInfo(context.packageName, flags)
+        // Decisión 15A (I-U2, auditoría 23-11): versionCode = número de build del CI (android/app/build.gradle). Una build MENOR O
+        // IGUAL a la instalada no se instala encima (una vieja con fallos ya arreglados, o la misma otra vez). Las anteriores a la
+        // 15A tienen versionCode 1, así que la primera con número entra sin problema.
+        val vcOf = { pi: android.content.pm.PackageInfo -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) pi.longVersionCode else pi.versionCode.toLong() }
+        val vNew = vcOf(info); val vMine = vcOf(mine)
+        if (vNew <= vMine) return "build $vNew no es más nueva que la instalada ($vMine)"
         val sigOf = { pi: android.content.pm.PackageInfo ->
             (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) pi.signingInfo?.apkContentsSigners else pi.signatures)
                 ?.map { java.security.MessageDigest.getInstance("SHA-256").digest(it.toByteArray()).joinToString("") { b -> "%02x".format(b) } }?.toSet() ?: emptySet()

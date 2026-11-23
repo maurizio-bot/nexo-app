@@ -14,6 +14,7 @@ import { _getCurrentContactId } from './chat_format.js';
 import { _objectURLRegistry } from './media_limits.js';
 import { vaultConsumeOnceMessage, vaultLoadFile, vaultLoadMessages } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
+import { secureHold } from './app_lock.js';
 
 var ROW = 'display:flex;align-items:center;gap:8px;padding:10px 12px;';
 function _onceEye() {
@@ -73,7 +74,9 @@ export function _renderOnceBubble(contentDiv, msg, attachment, isOwn) {
       if (!payload) return;
       var src = 'data:image/' + ((attachment.meta && attachment.meta.format) || 'jpeg') + ';base64,' + payload;
       consume(cid);
-      _openFullscreenMedia(src, 'image', true);   // noSave: una foto «de una vez» se consume, no se guarda en galería
+      // 16A (I-L2): sin capturas ni grabación mientras se ve (FLAG_SECURE); al cerrar el visor vuelve lo que el usuario tenga puesto
+      secureHold('once', true);
+      _openFullscreenMedia(src, 'image', true, null, function() { secureHold('once', false); });   // noSave: una foto «de una vez» se consume, no se guarda en galería
       return;
     }
     busy = true; wrap.style.opacity = '0.6';
@@ -85,7 +88,8 @@ export function _renderOnceBubble(contentDiv, msg, attachment, isOwn) {
       consume(cid);
       console.log('[VIDEO] «ver una vez» ' + mid + ': se abre y queda consumido (' + Math.round(b64.length * 3 / 4 / 1024) + ' KB)');
       // noSave: sin botón de guardar; al cerrar el visor se libera la URL (el vídeo ya no existe en el teléfono)
-      _openFullscreenMedia(url, 'video', true, null, function() { try { URL.revokeObjectURL(url); } catch (rErr) {} });
+      secureHold('once', true);   // 16A (I-L2): igual que la foto
+      _openFullscreenMedia(url, 'video', true, null, function() { secureHold('once', false); try { URL.revokeObjectURL(url); } catch (rErr) {} });
     });
   });
   contentDiv.appendChild(wrap);

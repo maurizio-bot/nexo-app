@@ -90,6 +90,10 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.consumido = await waitFor(async () => { const m = (await B.win.vaultLoadMessages(idA)).find((x) => (x.msgId || x.messageId) === mid); return m && m.onceSeen === true && !m.attachmentPayload && !m.attachmentRef && !m.content; }, 10000);
   // La burbuja ahora dice «Abierta»
   r.B_burbuja_abierta = !!bBubble() && /Abierta/.test(bBubble().textContent) && !bBubble().querySelector('img');
+  // 16A (I-L2, auditoría 23-11): FLAG_SECURE mientras se ve; al cerrar el visor vuelve a lo del usuario (aquí: capturas permitidas)
+  r.flag_secure_al_ver = nB.secureScreen === true;
+  B.win.__nexoCloseMedia(); await sleep(300);
+  r.flag_secure_al_cerrar = nB.secureScreen === false;
 
   // Cerrar y reabrir el chat: sigue «Abierta», sin medio (no se puede reabrir ni resucitar desde content)
   B.win.dispatchEvent(new B.win.CustomEvent('nexo:ble:closeChat', { detail: {} })); await sleep(300);
@@ -113,7 +117,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|No se pudo descifrar/.test(l)).slice(0, 4);
   const ok = r.llega_a_B && r.meta_once_en_B === true && r.B_burbuja_una_vez && r.A_burbuja_enviada && r.no_se_reenvia && r.visor_abierto &&
-    r.consumido && r.B_burbuja_abierta && r.sigue_consumida && r.reabre_sin_medio &&
+    r.consumido && r.B_burbuja_abierta && r.flag_secure_al_ver && r.flag_secure_al_cerrar && r.sigue_consumida && r.reabre_sin_medio &&
     r.retransmision_no_revive_vault && r.retransmision_no_revive_ui && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('ONCE ' + JSON.stringify(r));

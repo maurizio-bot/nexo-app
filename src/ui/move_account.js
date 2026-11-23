@@ -12,6 +12,7 @@
 import { qrSvg, openQrScanner } from './qr_verify.js';
 import { vaultFlushAll } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
+import { appLockConfirm, lockEnabled } from './app_lock.js';
 
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 function _kb(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
@@ -109,9 +110,19 @@ export function sendAccountTo(qrText) {
 }
 
 export function startSendAccount() {
-  if (!window.confirm(t('prof_move_send_confirm', 'Pasar tu cuenta a un teléfono nuevo: todo (NEXO ID, contactos, chats, fotos, grupos) pasa al otro teléfono y ESTE se queda vacío. Los dos deben estar en el mismo Wi-Fi. ¿Seguir?'))) return;
-  openQrScanner(function(text) { sendAccountTo(text); }, t('prof_move_scan_caption', 'Apunta al código de "Traer mi cuenta" del teléfono nuevo'));
+  if (!window.confirm(t('prof_move_send_confirm', 'Pasar tu cuenta a un teléfono nuevo: todo (NEXO ID, contactos, chats, fotos, grupos) pasa al otro teléfono y ESTE se queda vacío. Los dos deben estar en el mismo Wi-Fi. ¿Seguir?'))) return Promise.resolve(false);
+  // C-N6 (auditoría 23-11): con el bloqueo de NEXO puesto, pasar la cuenta pide la huella o el PIN (un «Aceptar» no basta: quien
+  // tome el teléfono desbloqueado un momento se llevaría la cuenta entera). Sin huella ni PIN en el teléfono el bloqueo ya se quita
+  // solo al abrir (app_lock.js), así que ahí basta la confirmación.
+  var check = lockEnabled() ? appLockConfirm(t('prof_move_auth', 'Pasar tu cuenta a otro teléfono')) : Promise.resolve({ ok: true });
+  return Promise.resolve(check).then(function(r) {
+    if (!r || !(r.ok || r.none)) { console.log('[MOVE] Pasar la cuenta: sin la huella/PIN, no se sigue'); return false; }
+    openQrScanner(function(text) { sendAccountTo(text); }, t('prof_move_scan_caption', 'Apunta al código de "Traer mi cuenta" del teléfono nuevo'));
+    return true;
+  });
 }
 
-// Para las pruebas del simulador
-if (typeof window !== 'undefined') { window.NEXO_moveReceive = startReceiveAccount; window.NEXO_moveSendTo = sendAccountTo; }
+// Para las pruebas del simulador. C-N6: SOLO en compilaciones de desarrollo (sin número de build: el simulador y las locales); en
+// una APK del CI (NEXO_BUILD numérico) no quedan ganchos que pasen o traigan la cuenta sin pasar por la pantalla.
+function _devBuild() { var b = typeof window !== 'undefined' ? window.NEXO_BUILD : ''; return !/^\d+$/.test(String(b || '')); }
+if (typeof window !== 'undefined' && _devBuild()) { window.NEXO_moveReceive = startReceiveAccount; window.NEXO_moveSendTo = sendAccountTo; }

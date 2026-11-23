@@ -110,6 +110,30 @@ class AccountMoveTest {
         assertTrue(sA.read("nexo_e2e_identity.json") != null, "el viejo conserva la cuenta")
     }
 
+    // S-D2 (auditoría 23-11): al pasar la cuenta, el teléfono viejo no se queda con nada de ella: tampoco lo que no viaja (buzón
+    // sin la app, mapa NEXO ID→dirección, diagnóstico, último fallo) ni las copias descifradas de cache/nexo_open. Lo que no es
+    // de NEXO se queda. Las SharedPreferences las vacía PluginMove con el Context (lista WIPE_PREFS).
+    @Test fun borraLoDeLaCuentaQueNoViaja() {
+        val (d, st, big) = phone(); fill(d, st, big)
+        File(d, "nexo_diag_log1.txt").writeText("diag")
+        File(d, "nexo_last_crash.txt").writeText("fallo")
+        File(d, "nexo_algo.json.nxtmp").writeText("tmp")
+        val cache = Files.createTempDirectory("nexo_cache").toFile().also { it.deleteOnExit() }
+        val open = File(cache, AccountMove.OPEN_CACHE).also { it.mkdirs() }
+        File(open, "factura.pdf").writeText("pdf descifrado")
+        File(File(open, "upd").also { it.mkdirs() }, "nexo-update-5.apk").writeText("apk")
+        File(cache, "de_otra_cosa.tmp").writeText("x")
+        val n = AccountMove.wipe(d, skip, big, cache)
+        val quedan = (d.listFiles() ?: emptyArray()).filter { it.isFile }.map { it.name }.sorted()
+        assertEquals(listOf("otra_libreria.xml"), quedan, "solo queda lo que no es de NEXO")
+        assertEquals(0, big.listFiles()?.size ?: 0, "archivos grandes fuera")
+        assertTrue(open.walk().none { it.isFile }, "cache/nexo_open sin copias descifradas")
+        assertTrue(File(cache, "de_otra_cosa.tmp").exists(), "el resto de la caché no se toca")
+        assertTrue(n >= 12, "cuenta lo borrado ($n)")
+        assertEquals(listOf("nexo_seen_msgs", "nexo_prefs", "nexo_ble_prefs", "nexo_fcm"), AccountMove.WIPE_PREFS)
+        assertFalse(AccountMove.WIPE_PREFS.contains("nexo_at_rest"), "la clave del cifrado en reposo del teléfono se queda")
+    }
+
     @Test fun nombresRaros() {
         assertFalse(AccountMove.travels("../nexo_x", skip))
         assertFalse(AccountMove.travels("nexo_a/b", skip))

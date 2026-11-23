@@ -45,7 +45,8 @@ class MsgNotifier(private val ctx: Context) {
         @JvmStatic fun notifLaunchIntent(ctx: Context): Intent? {
             val l = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: return null
             // (removeCategory devuelve Unit: por eso apply, no cadena)
-            return Intent(l).apply { action = ACTION_OPEN_FROM_NOTIF; removeCategory(Intent.CATEGORY_LAUNCHER) }
+            // N-D (auditoría 23-11): con el testigo de avisos; sin él, el plugin no abre el chat ni hace caso a «despertar»
+            return Intent(l).apply { action = ACTION_OPEN_FROM_NOTIF; removeCategory(Intent.CATEGORY_LAUNCHER); putExtra(TapToken.EXTRA, TapToken.get(ctx)) }
         }
         // 2994 (pedido del dueño 10-11): aviso de «versión nueva de NEXO» con botón «Actualizar». Mismo testigo que las llamadas
         // (la pantalla principal está exportada; solo se hace caso al botón si el intent trae el testigo de nuestro PendingIntent).

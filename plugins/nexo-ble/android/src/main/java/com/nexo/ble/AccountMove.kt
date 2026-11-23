@@ -126,12 +126,27 @@ object AccountMove {
         }
     }
 
+    /** S-D2 (auditoría 23-11): SharedPreferences de NEXO que se borran con la cuenta (PluginMove las vacía con el Context: aquí no
+     *  hay Android). Se quedan las del teléfono que no son de la cuenta: la clave del cifrado en reposo (nexo_at_rest), el idioma
+     *  de los avisos (nexo_native_lang) y el plan de reinicio (nexo_restart). */
+    val WIPE_PREFS = listOf("nexo_seen_msgs", "nexo_prefs", "nexo_ble_prefs", "nexo_fcm")
+    /** Carpeta de la caché con las copias DESCIFRADAS de lo abierto (archivos del chat y la actualización). */
+    const val OPEN_CACHE = "nexo_open"
+
     /** Lo que había de NEXO en este teléfono fuera (antes de importar en el nuevo, o tras pasarla en el viejo).
-     *  3192: también lo guardado para la escucha de internet sin la app (no viaja, pero es de la cuenta: se borra con ella). */
-    fun wipe(dir: File, skip: Set<String>, bigDir: File?): Int {
+     *  3192: también lo guardado para la escucha de internet sin la app (no viaja, pero es de la cuenta: se borra con ella).
+     *  S-D2 (auditoría 23-11): TODO archivo «nexo_*» de la carpeta, también los que no viajan (buzón sin la app nexo_bg_inbox,
+     *  mapa NEXO ID→dirección Bluetooth —el de `skip`—, registros nexo_diag*, nexo_last_crash, temporales), y con [cacheDir] la
+     *  carpeta cache/nexo_open (copias descifradas). `skip` ya no deja nada sin borrar: solo dice lo que no viaja. */
+    @Suppress("UNUSED_PARAMETER")
+    fun wipe(dir: File, skip: Set<String>, bigDir: File?, cacheDir: File? = null): Int {
         var n = 0
-        (dir.listFiles() ?: emptyArray()).filter { it.isFile && (travels(it.name, skip) || NetBgSaved.isFile(it.name)) }.forEach { if (it.delete()) n++ }
+        (dir.listFiles() ?: emptyArray()).filter { it.isFile && (NAME.matches(it.name) || NetBgSaved.isFile(it.name)) }.forEach { if (it.delete()) n++ }
         bigDir?.listFiles()?.forEach { if (it.delete()) n++ }
+        if (cacheDir != null) {
+            val open = File(cacheDir, OPEN_CACHE)
+            if (open.isDirectory) open.walkBottomUp().forEach { f -> if (f != open) { val wasFile = f.isFile; if (f.delete() && wasFile) n++ } }
+        }
         return n
     }
 }
