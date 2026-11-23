@@ -394,7 +394,7 @@ internal fun NexoBlePlugin.outBle(): OutboxBle = outBleRef ?: synchronized(this)
         override fun ready(mac: String) = (serverConnectedDevices[mac] != null && serverNotificationEnabled.getOrDefault(mac, false)) || clientRxCharacteristics[mac] != null
         override fun send(mac: String, json: String) = sendChunkedOrSingle(mac, mac, json).sent
         override fun log(msg: String) { nlog()?.add("INFO", "BANDEJA", msg) }
-    }).also { outBleRef = it }
+    }, relayOk = { appCtx?.let { relayPowerOk(it) } ?: true }).also { outBleRef = it }
 }
 // Repaso cada 10 s mientras la app no está a la vista y queda algo en la bandeja (los enlaces que hablan la mueven al momento: outboxHeard)
 internal fun NexoBlePlugin.outboxBleTick() {

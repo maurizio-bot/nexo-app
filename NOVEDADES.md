@@ -12,7 +12,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Correcciones y mejoras de estabilidad.
+- Sin internet, un teléfono NEXO cercano pasa tus mensajes aunque tenga la app dormida o cerrada.
 </es-419>
 <!-- /APK -->
 

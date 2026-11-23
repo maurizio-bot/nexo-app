@@ -26,6 +26,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **APK 3125 PUBLICADA (23-11 15:55 México; build 3314)** = 3309 (vista previa real por Tor, toque sellado 14A, «sr» firmado N10,
   limpieza) + 3310–3313. NOVEDADES: 3125 y 3123 ya en el historial (el bloque de la 3123 había quedado pegado y salió también en la
   descripción de la 3125); el de la próxima APK lleva texto provisional. Sin avisos programados activos.
+- **EN CURSO (sesión 23-11 noche, tema: PUENTE NATIVO, COLA 1) — sin APK aún, se junta con el paso 2:** 3315 el nativo con la app
+  dormida/cerrada REENVÍA los paquetes Jump para otros por el enlace del destino (sin custodia) y el destino devuelve su ✓✓ también por
+  donde llegó (detalle en `docs/COLA.md` punto 1). Kotlin: `JumpNativeTest` 9/9, tipos Android OK; sim: 33 cercanas OK.
 - **VAN EN LA 3125 (build 3314):** 3310 menú de la burbuja sin «Responder» (se responde
   deslizando) y «Editar» arriba; 3311 «Copiar» en la barra de la multiselección; 3312 (COLA 13) con enlace a MTU 23 los archivos desde ~6 KB
   van por el canal rápido L2CAP (`l2_fast.js`, `l2mediano.js` caso mtu23); 3313 (COLA 25) videollamada contestada desde el aviso: la cámara

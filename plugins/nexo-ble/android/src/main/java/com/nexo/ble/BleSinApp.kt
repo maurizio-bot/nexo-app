@@ -165,7 +165,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
         override fun ready(mac: String) = if (SinAppLinks.isClient(mac)) links.ready(mac) else devices[mac] != null && notifOn[mac] == true
         override fun send(mac: String, json: String) = enqueue(mac, json)
         override fun log(msg: String) = nlog(ctx, "INFO", msg)
-    })
+    }, relayOk = { relayPowerOk(ctx) }) // 3315: el puente nativo, con la misma regla de batería que la app
 
     // ---- 3280: el servicio sin la app también ABRE enlaces para lo pendiente de la bandeja ----
     private val links: SinAppLinks = SinAppLinks(ctx, handler, object : SinAppLinks.Host {

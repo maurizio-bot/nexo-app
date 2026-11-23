@@ -77,6 +77,15 @@ internal fun NexoBlePlugin.readNativeLogImpl(call: PluginCall) {
     } catch (e: Exception) { call.resolve(JSObject().put("content", "")) }
 }
 
+// 3315: ¿hay batería para que el NATIVO haga de puente con la app dormida? La misma regla que canRelay de la app (ble_relay.js):
+// cargando siempre; si no, ≥ 15 % (≥ 30 % en ahorro de energía). Sin dato de batería no se bloquea.
+internal fun relayPowerOk(ctx: Context): Boolean = try {
+    val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
+    val level = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+    val save = (ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isPowerSaveMode
+    bm.isCharging || level < 0 || level > 100 || level >= (if (save) 30 else 15)
+} catch (e: Throwable) { true }
+
 // Jump: nivel de batería, si está cargando y si está en ahorro de energía (con poca batería el
 // teléfono deja de hacer de puente para otros)
 internal fun NexoBlePlugin.getPowerStatusImpl(call: PluginCall) {

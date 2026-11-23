@@ -14,12 +14,21 @@ import org.json.JSONObject
  * solo retira el mensaje si viene firmada con la clave de la pareja (si no, se sigue insistiendo y decide la app al volver).
  *
  * Sin Android (JVM: OutboxBleTest). La usan el plugin (app dormida o cerrada con el proceso vivo) y BleSinApp (sin la app).
+ *
+ * 3315 (COLA 1, puente nativo con la app dormida; dueño 13-11 «cualquier NEXO, esté dormido o no, tiene que servir de puente»): un paquete
+ * Jump para OTRO teléfono ('to' ≠ yo) que llega con la app dormida o cerrada se quedaba aquí: nadie lo reenviaba, el que lo mandó reintentaba
+ * ×8 y quedaba ⏳ (vivo nx09acdb61, 14-11). Ahora el nativo lo REENVÍA tal cual (ya va cifrado para el destino; solo sube 'hp') por el enlace
+ * de ese destino si lo tiene, y si aún no, lo guarda unos minutos y sale en cuanto ese enlace hable. La ✓✓ del destino de vuelta al que lo
+ * mandó viaja igual. SIN custodia ('rk'): el que lo mandó conserva su copia y sus otros caminos (internet, otro puente) hasta la ✓✓ de punta a
+ * punta; en el peor caso queda como antes, nunca peor. Con poca batería no reenvía mensajes (la misma regla que el puente de la app).
  */
 class OutboxBle(
     private val me: () -> String,
     private val bg: () -> NetBg?,
     private val keyOf: (String) -> ByteArray?,
     private val link: Link,
+    /** 3315: ¿hay batería para hacer de puente? (como canRelay de la app: cargando, ≥ 15 % o ≥ 30 % en ahorro) */
+    private val relayOk: () -> Boolean = { true },
     private val now: () -> Long = { System.currentTimeMillis() },
 ) {
     interface Link {
@@ -32,6 +41,36 @@ class OutboxBle(
 
     companion object {
         const val MAX_LINKS = 64
+        // 3315: el puente nativo (Jump con la app dormida)
+        const val RELAY_MAX_HOPS = 8            // MAX_HOPS de la app
+        const val RELAY_HOLD_MS = 10 * 60_000L  // sin enlace con el destino: se guarda 10 min (luego decide el que lo mandó, que lo sigue teniendo)
+        const val RELAY_HOLD_MAX = 32
+        const val RELAY_AGAIN_MS = 30_000L      // el que lo mandó lo repite (no tiene custodia): reenviarlo otra vez solo pasados 30 s
+        private val RELAY_TYPES = setOf("chat", "sx", "ack", "read_receipt")
+        private val RELAY_ID = Regex("^[A-Za-z0-9_.:-]{4,96}$")
+        /** Tope de lo que el puente sostiene de un mismo enlace a la vez (que uno solo no llene lo guardado). */
+        const val RELAY_HOLD_PER_LINK = 8
+        /**
+         * 3315: ¿es un paquete Jump para otro teléfono que el nativo puede reenviar? (destino, clave para no repetir, el paquete con 'hp'+1, ¿es
+         * un mensaje? —para la regla de batería—) o null. Nunca se confía en lo que llega: tipos, ids, destino y saltos se comprueban.
+         */
+        fun relayOf(json: String, me: String): Relay? {
+            if (json.length > 6000 || !json.startsWith("{") || !json.contains("\"to\"")) return null
+            return try {
+                val o = JSONObject(json)
+                val type = o.optString("type")
+                val to = o.optString("to").trim().lowercase()
+                val id = o.optString("msgId")
+                val my = me.trim().lowercase()
+                if (type !in RELAY_TYPES || my.isEmpty() || to == my || !Regex("^nx[0-9a-z]{8}$").matches(to) || !RELAY_ID.matches(id)) return null
+                val hp = maxOf(0, o.optInt("hp", 0)) + 1
+                if (hp > RELAY_MAX_HOPS) return null
+                o.put("hp", hp)
+                // primer salto de un mensaje no sellado: el enlace es de quien lo escribió (para devolverle su ✓✓ por aquí)
+                val origin = if (hp == 1 && type != "sx") (o.optString("from").ifEmpty { o.optString("fromNexoId") }).trim().lowercase() else ""
+                Relay(to, "$type:$id:$to", o.toString(), type == "chat" || type == "sx", hp, if (origin != my && Regex("^nx[0-9a-z]{8}$").matches(origin)) origin else "")
+            } catch (e: Exception) { null }
+        }
         const val CHALLENGE_RETRY_MS = 4000L
         private val rnd = java.security.SecureRandom()
         fun randomHex(bytes: Int): String { val b = ByteArray(bytes); rnd.nextBytes(b); return b.joinToString("") { "%02x".format(it) } }
@@ -63,6 +102,17 @@ class OutboxBle(
         }
     }
 
+    /** 3315: un paquete Jump que el nativo reenvía (o guarda hasta que el enlace del destino hable). */
+    class Relay(val to: String, val key: String, val json: String, val msg: Boolean, val hp: Int, val origin: String = "") {
+        var from = ""      // enlace por el que llegó (no se le devuelve)
+        var at = 0L        // cuándo llegó
+    }
+    private val held = LinkedHashMap<String, Relay>()   // clave → paquete esperando el enlace de su destino
+    private val relayed = LinkedHashMap<String, Long>() // clave → cuándo se reenvió (para no repetirlo en cada reintento del que lo mandó)
+    /** Cuántos paquetes de otros reenvió el nativo (para el registro y las pruebas). */
+    @Volatile var relayedCount = 0
+        private set
+
     private val linkNx = LinkedHashMap<String, String>() // enlace (dirección normalizada) → NEXO ID
     // Decisión del dueño 23-11 (3A, auditoría puntos 3/4/8 y S-B4): antes de escribir lo pendiente por un enlace que no identificó la app,
     // un RETO: el enlace tiene que contestar con la firma de la pareja (solo el contacto de verdad la tiene). Antes bastaba con que el
@@ -86,11 +136,15 @@ class OutboxBle(
 
     /** Lo que llega por un enlace con la app dormida, cerrada o sin la app (un mensaje corto entero). */
     @Synchronized fun heard(mac: String, json: String) {
-        val b = bg() ?: return
         val said = NetOutbox.linkNxOf(json)
         val fresh = said != null && learn(mac, said)
-        if (b.outbox.size() == 0) return
         if (json.length < 600 && json.contains("\"type\":\"or\"")) { onAnswer(mac, json); return } // 3A: respuesta al reto
+        // 3315: un paquete Jump para otro: a su destino (o a esperar su enlace)
+        relayOf(json, me())?.let { r -> if (r.origin.isNotEmpty() && said == null) learn(mac, r.origin); onRelay(mac, r); return }
+        // 3315: este enlace habló: lo que se guardó para su NEXO sale ya por él
+        if (held.isNotEmpty()) linkNx[mac]?.let { flushHeld(mac, it) }
+        val b = bg() ?: return
+        if (b.outbox.size() == 0) return
         signedReceipt(json, me(), keyOf)?.let { (from, mid) -> b.outboxConfirmed(from, mid, "por Bluetooth") }
         val nx = linkNx[mac] ?: return
         if (!b.outbox.hasFor(nx)) return
@@ -120,6 +174,64 @@ class OutboxBle(
         for ((mac, nx) in linkNx.entries.toList().asReversed()) n += sendVia(b, mac, nx, t)
         return n
     }
+
+    // ---------- 3315: el puente nativo ----------
+    private fun onRelay(mac: String, r: Relay) {
+        val t = now()
+        expireRelay(t)
+        if (r.msg && !relayOk()) { link.log("Puente sin la app: batería baja: no hago de puente para ${r.key.substringBeforeLast(':')}"); return }
+        val last = relayed[r.key]
+        if (last != null && t - last < RELAY_AGAIN_MS) return // ya salió hace poco: el reintento del que lo mandó no se reenvía otra vez
+        r.from = mac; r.at = t
+        val to = relayLink(r.to, mac, t)
+        if (to != null) { relaySend(to, r, t); return }
+        if (held.containsKey(r.key)) return
+        // tope por enlace y total: sale lo más viejo (quien llena lo guardado se estorba a sí mismo)
+        val mine = held.values.filter { it.from == mac }
+        if (mine.size >= RELAY_HOLD_PER_LINK) held.remove(mine.first().key)
+        while (held.size >= RELAY_HOLD_MAX) held.remove(held.keys.first())
+        held[r.key] = r
+        link.log("Puente sin la app: ${r.key.substringBeforeLast(':')} para ${r.to}: sin enlace con él ahora, espera a que aparezca (salto ${r.hp})")
+    }
+
+    /** El enlace por el que se puede reenviar a ese NEXO (el más reciente, listo, que no es por donde llegó). A un contacto mío, solo comprobado. */
+    private fun relayLink(nx: String, from: String, t: Long): String? {
+        val contact = b2Key(nx) != null
+        for ((mac, n) in linkNx.entries.toList().asReversed()) {
+            if (n != nx || mac == from || !link.ready(mac)) continue
+            if (contact && proven[mac] != nx) { challenge(mac, nx, t); continue } // 3A: que demuestre que es él (al contestar sale: flushHeld)
+            return mac
+        }
+        return null
+    }
+
+    private fun relaySend(mac: String, r: Relay, t: Long): Boolean {
+        if (!link.send(mac, r.json)) return false
+        held.remove(r.key)
+        relayed.remove(r.key); relayed[r.key] = t
+        while (relayed.size > 256) relayed.remove(relayed.keys.first())
+        relayedCount++
+        link.log("Puente sin la app: ${r.key.substringBeforeLast(':')} para ${r.to} sale por $mac (salto ${r.hp})")
+        return true
+    }
+
+    private fun flushHeld(mac: String, nx: String) {
+        val t = now()
+        expireRelay(t)
+        if (!link.ready(mac) || (b2Key(nx) != null && proven[mac] != nx)) {
+            if (held.values.any { it.to == nx } && link.ready(mac)) challenge(mac, nx, t)
+            return
+        }
+        for (r in held.values.filter { it.to == nx && it.from != mac }) if (!relaySend(mac, r, t)) break
+    }
+
+    private fun expireRelay(t: Long) {
+        val it = held.values.iterator()
+        while (it.hasNext()) if (t - it.next().at > RELAY_HOLD_MS) it.remove()
+    }
+
+    /** 3315: lo que espera el enlace de su destino (para el registro y las pruebas). */
+    @Synchronized fun heldCount(): Int { expireRelay(now()); return held.size }
 
     /** 3271: contactos con algo pendiente y SIN enlace listo: a esos hay que buscarlos y conectar (OutboxDial). */
     @Synchronized fun wanting(): Set<String> {
@@ -160,6 +272,7 @@ class OutboxBle(
         if (!ok) { link.log("Bandeja de salida: $mac no supo contestar el reto de $nx: no se le manda nada"); return }
         asked.remove(mac); proven[mac] = nx
         link.log("Bandeja de salida: $mac es $nx (reto contestado)")
+        flushHeld(mac, nx) // 3315
         val b = bg() ?: return
         sendVia(b, mac, nx, now())
     }

@@ -889,13 +889,24 @@ export class BleAckSystem {
     return list.length;
   }
   _sendRouted(obj, fallbackDeviceId) {
-    var relay = this.ble && this.ble.relay;
+    var self = this, relay = this.ble && this.ble.relay;
+    // 3315 (puente nativo con la app dormida): un puente dormido no anuncia rutas, así que sin internet el destino no tenía camino de vuelta
+    // y el que lo mandó seguía viendo ⏳ aunque el mensaje hubiera llegado. Si ahora no hay ruta hacia él, la confirmación sale TAMBIÉN por
+    // el enlace por el que llegó el mensaje (el puente, despierto o su nativo, la reenvía); la cola de Jump sigue como siempre.
+    var back = function(o) {
+      try {
+        var dev = fallbackDeviceId;
+        if (!dev || _isNetDevice(dev) || _isLanDevice(dev) || !self.ble || !self.ble._sendMessageNative || !self._rcptLinkReady(dev)) return;
+        if (relay && typeof relay.nextHop === 'function' && relay.nextHop(o.to)) return;
+        self.ble._sendMessageNative(dev, JSON.stringify(o), null).catch(function() {});
+      } catch (e) {}
+    };
     // v3.11.0: en sobre sellado para el destino si lo entiende (el puente no ve de quién es la confirmación)
     if (relay && this.ble && typeof this.ble._sealObj === 'function') {
-      this.ble._sealObj(obj.to, obj).then(function(o) { relay.sendRouted(o); }).catch(function() { relay.sendRouted(obj); });
+      this.ble._sealObj(obj.to, obj).then(function(o) { relay.sendRouted(o); back(o); }).catch(function() { relay.sendRouted(obj); back(obj); });
       return;
     }
-    if (relay) { relay.sendRouted(obj); return; }
+    if (relay) { relay.sendRouted(obj); back(obj); return; }
     if (fallbackDeviceId && this.ble && this.ble._sendMessageNative) this.ble._sendMessageNative(fallbackDeviceId, JSON.stringify(obj), null).catch(function(){});
   }
   // Jump: un puente reenvía un flujo completo (texto largo o archivo) tal cual hacia el siguiente salto

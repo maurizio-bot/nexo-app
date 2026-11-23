@@ -9,8 +9,13 @@ Regla: una sesión = un tema; una APK por tanda; antes de subir `tamano.js`, `i1
    app dormida/cerrada hoy no recibe custodia ('rk') → el que lo manda reintenta ×8 y queda ⏳ (vivo nx09acdb61, PENDIENTES 14-11).
    Diseño a cerrar al empezar (leer solo esto): `ble_relay.js` cabecera (custodia 'rk', cola, ack de punta a punta) · `SinAppCore.kt`
    (qué hace hoy con lo que llega) · `NetOutbox.kt` (¿puede subir un paquete ya cifrado para un NEXO que NO es contacto?) · `OutboxBle.kt`.
-   Paso 1 propuesto: el nativo da custodia y lo reenvía POR INTERNET al destino (NetOutbox, el contenido ya va cifrado para él); paso 2:
-   por Bluetooth si el destino tiene enlace con el nativo. Pruebas JVM (`tests/kotlin`) + sim de un puente dormido.
+   **HECHO 3315 (23-11, sin APK aún):** el nativo (plugin con la app dormida/cerrada y BleSinApp sin la app) REENVÍA por Bluetooth el paquete
+   Jump (chat, sx, ack, read_receipt; 'to' ≠ yo, ≤ 8 saltos) tal cual por el enlace de su destino; sin enlace lo guarda 10 min y sale en
+   cuanto ese enlace hable; a un contacto mío solo por enlace comprobado (reto 3A); batería como canRelay. SIN custodia 'rk' (decidido:
+   la custodia hace que el emisor suelte la bandeja de internet; sin ella nada queda peor que antes). El destino, sin ruta de vuelta, manda
+   su ✓✓ también por el enlace por donde llegó (`ble_ack.js` _sendRouted). Pruebas: `JumpNativeTest` (9) y `jumpdormido.js`.
+   Descartado el «por internet» del paso 1: el nativo solo puede sellar para SUS contactos (clave de pareja). FALTA (paso 2): que el nativo
+   conteste 'rq' (¿quién llega a X?) si X tiene enlace con él, para que se elija un puente dormido sin ruta previa; y los flujos (trozos 'dt').
 2. [m] **13 MTU 23** (Vivo Y03, Katy): 3312 — con el enlace a MTU 23 el canal rápido L2CAP entra desde ~6 KB (antes ~45 KB); `l2mediano.js` caso `mtu23`.
 3. [m] **Wi-Fi Direct en teléfonos reales** (🔴 6): pruebas del dueño + «grupo siempre montado» si elige B (A/B pendiente de él).
 4. [m] **Llamadas**: gasto de datos por relés. «Sin imagen propia al contestar desde el aviso»: 3313 (la cámara se reabre aunque el WebView siga «oculto» si Android ya dice primer plano; `callmedia.js` 9b), por probar. Eco de grupo hecho (3301), por oír.
