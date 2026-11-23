@@ -684,7 +684,9 @@ export class GwLink {
     this.sess.forEach(function(s, k) { if (self._sameLink(s.dev, dev)) self._srvClose(k, 'sesión nueva', false); });
     if (this.sess.size >= SRV_MAX_SESSIONS) return no('ocupado');
     var ws;
-    try { ws = new WebSocket(url); } catch (e) { return no('no conecta'); }
+    // 13A: con «Usar Tor siempre», lo que presto también sale por Tor (y si aún no está, «no»: nunca directo)
+    try { ws = typeof this.net._newSocket === 'function' ? this.net._newSocket(url) : new WebSocket(url); } catch (e) { return no('no conecta'); }
+    if (!ws) return no('esperando a Tor');
     var s = { ws: ws, dev: dev, from: from, sid: sid, url: url, open: false, rxAt: Date.now(), evMin: [], wd: p.wd === 1, bulk: new Map() };
     this.sess.set(key, s);
     this.stats.sessions++;
@@ -801,6 +803,6 @@ export class GwLink {
     var url = net.senderUrl && net.senderUrl();
     if (!url || typeof fetch !== 'function') return;
     // SOLO el token (como el despertador normal), nunca contenido
-    wakePost(url, t).catch(function() {}); // 3248: petición simple (sin pregunta previa que el servicio no contestaba)
+    wakePost(url, t, typeof net.wakeFetch === 'function' ? net.wakeFetch() : undefined).catch(function() {}); // 3248; 13A: por Tor si toca: petición simple (sin pregunta previa que el servicio no contestaba)
   }
 }

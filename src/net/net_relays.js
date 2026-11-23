@@ -30,7 +30,9 @@ export const netRelays = {
     var offline = self._noNet || (typeof navigator !== 'undefined' && navigator.onLine === false);
     if (!self._openCount() && !offline) self._netTryAt = self._netTryAt || Date.now();
     r.connAt = Date.now(); // 3193: desde cuándo intenta abrir (con datos móviles, un preferido que conecta se espera un poco)
-    try { ws = r.factory ? r.factory() : new WebSocket(url); } catch (e) { r.retryAt = Date.now() + r.backoff; return; }
+    // 13A: con «Usar Tor siempre» el relé se abre por Tor (_newSocket); si Tor aún no está, null: se espera (nunca directo)
+    try { ws = r.factory ? r.factory() : (typeof self._newSocket === 'function' ? self._newSocket(url) : new WebSocket(url)); } catch (e) { r.retryAt = Date.now() + r.backoff; return; }
+    if (!ws) { r.ws = null; r.open = false; r.torWait = true; r.retryAt = Date.now() + 3000; return; }
     r.ws = ws; r.open = false;
     ws.onopen = function() {
       r.open = true; r.backoff = 2000; r.openedAt = Date.now(); r.rxAt = r.openedAt; r.fails = 0; r.eoseOnce = false;
