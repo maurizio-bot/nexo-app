@@ -9,7 +9,11 @@ android {
         applicationId "com.nexo.app"
         minSdkVersion 26
         targetSdkVersion 34
-        versionCode 1
+        // Decisión 15A (I-U2, auditoría 23-11): versionCode = número de build del CI (github.run_number, el mismo de
+        // __NEXO_BUILD__ y de la etiqueta nightly-N). Crece en cada APK, así Android no deja instalar una vieja encima
+        // y el actualizador nativo (PluginUpdate.apkNotOurs) rechaza una build menor o igual. En local, sin la variable: 1.
+        def nexoRun = System.getenv('GITHUB_RUN_NUMBER')
+        versionCode((nexoRun != null && nexoRun.isInteger()) ? nexoRun.toInteger() : 1)
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // Solo los procesadores de los teléfonos Android (Tor trae ~7 MB por arquitectura; x86 es de emuladores)
