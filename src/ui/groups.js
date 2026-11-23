@@ -18,6 +18,7 @@
 import { vaultDeleteMessage, vaultPatchMessage } from '../vault/vault_manager.js';
 import { _failStatus } from './ble_helpers.js';
 import { t } from './i18n.js';
+import { groupAdminMethods } from './group_admin.js'; // 22-11 (COLA 4b): estado firmado del grupo, permisos y administración
 
 var STORE_FILE = 'nexo_groups.json';
 var GID_RE = /^gr[0-9a-z]{8}$/;
@@ -58,8 +59,8 @@ export class Groups {
     this.list = {};          // id → { id, name, members, createdBy, createdAt, lastMessage, lastMessageAt, unreadCount, left }
     this.st = {};            // id del mensaje del grupo → { g: grupo, m: { miembro: estado } } (propios recientes)
     this.senders = new Map(); // id recibido → NEXO ID del remitente (para mandarle el "leído")
-    this.ready = this._load();
     var self = this;
+    this.ready = this._load().then(function() { if (typeof self._photosLoad === 'function') self._photosLoad(); });
     window.addEventListener('nexo:ble:ackStatus', function(e) { var d = e && e.detail; if (d && d.msgId) self._onMemberStatus(d.msgId, d.status); });
   }
 
@@ -127,6 +128,12 @@ export class Groups {
     var g = this.get(id);
     if (!g) return;
     var me = this._me();
+    // 22-11 (COLA 4b): expulsado → solo se quita de la lista (ya no es miembro); con estado firmado, la salida va firmada
+    if (g.kicked) { g.left = true; this._save(); _emit('nexo:groups', { id: id }); return; }
+    if (g.s && typeof this.leaveSigned === 'function') {
+      var self = this;
+      return this.leaveSigned(id).catch(function(e) { console.warn('[GROUP] Salida firmada de ' + id + ' falló: ' + (e && e.message)); }).then(function() { g.left = true; self._save(); _emit('nexo:groups', { id: id }); });
+    }
     var others = g.members.filter(function(x) { return x !== me; });
     this.sendText(id, JSON.stringify({ type: 'nexo_txt', t: t('grp_left_msg', '👋 Salió del grupo'), gl: 1 }), null, null, others);
     g.left = true;
@@ -136,13 +143,18 @@ export class Groups {
   }
 
   // Mandar un texto (wire: texto o nexo_txt) a todos los miembros. Devuelve el id del mensaje del grupo.
-  sendText(gid, wire, msgId, seq, onlyTo, cards) {
+  // extra (22-11, COLA 4b): campos del estado del grupo (s, sp, pi, q) para un cambio o para ponerse al día; sin extra, un mensaje
+  // normal, que no sale si no tengo permiso de escribir (el que recibe también lo descarta)
+  sendText(gid, wire, msgId, seq, onlyTo, cards, extra) {
     var self = this, g = self.get(gid), bi = self.ble, me = self._me();
     if (!g || !bi || typeof bi.sendChatMessage !== 'function') return null;
+    if (!extra && typeof self.canWrite === 'function' && g.s && !self.canWrite(gid)) { console.warn('[GROUP] No sale el mensaje a ' + gid + ': sin permiso para escribir'); return null; }
     msgId = msgId || ('gm' + Date.now() + _rnd(6));
     var to = (onlyTo || g.members).filter(function(x) { return x !== me; });
     var envO = { type: 'nexo_grp', g: g.id, n: g.name, m: g.members, i: msgId, c: wire };
     if (cards && cards.length) envO.k = cards;
+    if (g.s) { envO.sv = g.s.v; envO.n = g.s.n; if (typeof self._headId === 'function') envO.sh = self._headId(g); }
+    if (extra) Object.keys(extra).forEach(function(k) { if (extra[k] !== undefined) envO[k] = extra[k]; });
     var env = JSON.stringify(envO);
     self.st[msgId] = { g: g.id, m: {}, t: Date.now(), k: env.length <= KEEP_MAX_CHARS ? 1 : 0 };
     to.forEach(function(nx) { self.st[msgId].m[nx] = 'sending'; });
@@ -206,7 +218,11 @@ export class Groups {
     var me = this._me(), nx = _nid(from);
     var members = env.m.map(_nid).filter(function(x, i, a) { return NX_RE.test(x) && a.indexOf(x) === i; }).slice(0, MAX_MEMBERS);
     var gid = _nid(env.g);
-    if (!me || members.indexOf(nx) < 0) return null;
+    if (!me || !NX_RE.test(nx)) return null;
+    // 22-11 (COLA 4b): estado firmado, permisos y ponerse al día (group_admin.js); undefined = sigue lo de siempre
+    var adm = typeof this._adminReceive === 'function' ? this._adminReceive(env, nx, wireId) : undefined;
+    if (adm) return adm.ret;
+    if (members.indexOf(nx) < 0) return null;
     var g = this.list[gid];
     var leaving = false;
     try { var inner = JSON.parse(env.c); leaving = !!(inner && inner.gl); } catch (e) {}
@@ -214,14 +230,17 @@ export class Groups {
       if (members.indexOf(me) < 0) return null;
       g = this.list[gid] = { id: gid, name: String(env.n || t('grp_default_name', 'Grupo')).substring(0, 60), members: members, createdBy: nx, createdAt: Date.now(), lastMessageAt: 0, unreadCount: 0 };
       console.log('[GROUP] Nuevo grupo ' + gid + ' (de ' + nx + ', ' + members.length + ' personas)');
+      if (typeof this._adminCreated === 'function') this._adminCreated(g, env, nx);
     } else {
-      if (g.left) return null;
+      if (g.left || g.kicked) return null;
       if (g.members.indexOf(nx) < 0) return null; // quien no es miembro no cambia el grupo
       // Auditoría (ronda 2774): un sobre NO reescribe la lista de un grupo ya conocido. Antes `g.members = members`
       // dejaba que cualquier miembro cambiara la lista entera (echar a otros, meter desconocidos) y, con ella, colar
       // claves de terceros por env.k. La lista se fija al crear el grupo (no hay forma en la app de añadir después);
       // la única baja es que uno se vaya (gl). Renombrar sigue siendo de cualquier miembro (función del chat).
-      if (leaving) g.members = g.members.filter(function(x) { return x !== nx; });
+      // 22-11: con estado firmado, la lista y el nombre solo cambian por el estado (group_admin.js)
+      if (g.s) {}
+      else if (leaving) g.members = g.members.filter(function(x) { return x !== nx; });
       else if (env.n) g.name = String(env.n).substring(0, 60);
     }
     // Tarjetas de los miembros (solo de miembros de la lista y no la propia): ayudan a tener su clave para escribirles.
@@ -243,6 +262,8 @@ export class Groups {
   rename(id, name) {
     var g = this.get(id), n = String(name || '').trim().substring(0, 60);
     if (!g || !n) return;
+    // 22-11 (COLA 4b): con estado firmado, el nombre es un cambio firmado (y solo si tengo permiso)
+    if (g.s && typeof this.renameSigned === 'function') return this.renameSigned(id, n);
     g.name = n;
     this._save();
     _emit('nexo:groups', { id: g.id });
@@ -276,5 +297,8 @@ export class Groups {
     return (c && (c.name || c.displayName)) || String(nx || '').toUpperCase();
   }
 }
+
+// 22-11 (COLA 4b): la administración (estado firmado) se mezcla aquí; sin ella (pruebas de groups.js suelto) todo sigue como antes
+if (typeof groupAdminMethods !== 'undefined') Object.assign(Groups.prototype, groupAdminMethods);
 
 export function createGroups(ble) { return new Groups(ble); }

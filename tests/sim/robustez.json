@@ -2137,6 +2137,10 @@
     {
      "fallo": "SEC-4: frame de relé sin tope antes de JSON.parse en primer plano (pico de memoria del WebView) (auditoría 28-10, arreglado 2820)",
      "prueba": "se pide el toque"
+    },
+    {
+     "fallo": "Grupos con administración (revisión 22-11 de la rama antes de juntarla): dos cambios del grupo hechos a la vez (el creador sale mientras un admin sin cobertura hace dos cambios) dejaban los teléfonos con estados distintos para siempre; en un grupo viejo el primer cambio firmado lo partía; quien salía quedaba como expulsado y un estado atrasado lo volvía a meter; una firma retocada contaba como otro cambio. Arreglo: cada estado firmado lleva la huella del anterior y en una bifurcación gana en todos la misma rama (group_state.js gsBranchWins); un expulsado o un creador que salió no vuelven abriendo una rama desde antes.",
+     "prueba": "carreras y bifurcaciones del estado firmado"
     }
    ],
    "debiles": [

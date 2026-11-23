@@ -18,7 +18,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 
 ---
 
-## Dónde estamos (actualizado: 2026-11-22 19:01 México)
+## Dónde estamos (actualizado: 2026-11-22 19:40 México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
 - **Forma de trabajo:** CLAUDE.md «GASTO» (leer SOLO este bloque + 🔴 de `docs/AREAS.md`; lo demás con grep). Lo anterior, con todo el detalle de 3266–3283:
@@ -35,33 +35,28 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
     `store_flag.js`, `updater_tienda.js`. El Gradle (tipo `store`, firma de subida, versionCode) y el manifiesto de tienda siguen SOLO en la rama
     `ayudante-play` (aquí no se puede compilar: probarlos en un workflow aparte de tienda, nunca en el de la APK). Informe completo (targetSdk 36 con 13
     cambios, tabla de permisos, CI del AAB, lo que hace el dueño) en el PRIVADO: `negocio/PLAY_CODIGO_2026-11-22.md`.
+  - **GRUPOS CON ADMINISTRACIÓN (G1–G9), JUNTADOS el 22-11 noche** tras la revisión de la sesión principal (5 fallos arreglados; prueba nueva
+    `gruposfork.js`, 11 casos) y las decisiones del dueño: bloquear solo el creador · «solo admins agregan» en Colegas · cambiar modo/quitar admins solo
+    el creador · al EXPULSADO el grupo le DESAPARECE (si lo vuelven a agregar, vuelve) · si sale el creador sin admins manda el MIEMBRO más antiguo ·
+    se firma con la clave de identidad. Cada estado firmado lleva la huella del anterior (`p`); dos cambios cruzados acaban igual en todos
+    (`gsBranchWins`); el creador «reafirma» el estado para quien no engancha. Archivos: `group_state.js`, `group_admin.js`, `group_panel.js`. Seguridad,
+    en el PRIVADO (`seguridad/PARA_LA_AUDITORIA_FINAL.md`, 12–26; **el 20 es un fallo PREVIO y abierto, no de grupos, para la auditoría final**).
+    PENDIENTE del dueño: el modo al crear (hoy se elige al crear, con Colegas ya marcado; ¿sin nada marcado?). Falta probarlo en teléfonos.
   - **3284 MODO VAGÓN / MULTITUD (pendiente 2, parte de la app HECHA):** `multitud.js` puesta al día (+ `--b-dormido`). Con la fase 4, entre 200/500/1000 NEXO el
     contacto DESPIERTO con pendientes enlaza en 1,1–1,6 s; lag p95 22/27/50 ms. Hueco hallado: contacto DORMIDO entre 500 NEXO → 33–50 s. Causas: el gestor no
     sabía que tenía un mensaje esperando (ahora `_linkPendNow`: lo mandado en la sesión sin confirmar) y su conexión hacía cola tras intentos sin prisa (ahora
     «paso libre»: `_connYield`/`_linkGo` en `ble_linkmgr.js`). Queda en ~9 s enlace / ~13 s entrega. FALTA de multitud (nativo, sin modelo en la sim): avisos de
     escaneo agrupados y mapas acotados en Kotlin (EDC_LIMITES cambios 4–5) y «modo multitud» de radio (cambio 6, necesita prueba de campo).
 - **RAMAS DE AYUDANTES SIN JUNTAR:**
-  - **`ayudante-grupos` (G1–G9): REVISADA por la sesión principal el 22-11 noche (commit 44a80ea, subido). SOLO falta que el dueño conteste (abajo) para
-    juntarla.** La revisión halló 5 fallos (reproducidos en la prueba nueva `gruposfork.js`, 10 casos) y los arregló: cada estado firmado lleva ahora la
-    huella del anterior (`p`), dos cambios cruzados acaban igual en todos (`gsBranchWins`: gana la rama donde firmó quien más manda), un expulsado o un
-    creador que salió no vuelven abriendo una rama, el creador «reafirma» el estado para quien no engancha, la salida que pierde un cruce se repite sola,
-    aviso «tu cambio no se aplicó», grupos viejos sin partirse, foto con SHA-256. Pasan `gruposfork`, `gruposadmin` (62), `_unit`, `gruposbuzon`,
-    `groupforge`, chats y medios de grupo, traducciones, `tamano`. Al juntar: `git merge` limpio al 22-11 (probar de nuevo), correr esas pruebas.
-    Seguridad, en el PRIVADO (`seguridad/PARA_LA_AUDITORIA_FINAL.md`, puntos 12–26). **Ojo, punto 20: un fallo PREVIO y abierto (no de grupos) que la
-    auditoría final debe arreglar; por él los grupos se firman con la clave de identidad y no con la de firma.**
   - `ayudante-play`: lo del Gradle (ver arriba). `ayudante-silencia`: ya juntada.
   - **Icono final (logo 1b sin el bulto de la cola): SOLO en el privado `negocio/icono_final/`** (SVG, adaptativo, monocromo, aviso, tienda 512/1024,
     `antes_despues.png`). Enseñado al dueño el 22-11 18:00; NO se pone en la app hasta que lo apruebe (falta también rehacer la pantalla de arranque).
 - **DECISIONES DEL DUEÑO PENDIENTES:** (1) icono final: ¿aprobado? (ojo: sobre fondo negro el icono pierde el borde; la capa monocroma pierde los 4 tramos);
-  (2) grupos (recomendación de Claude entre paréntesis): bloquear solo el creador (A, recomendada) o también admins (B) · en Colegas, interruptor «solo
-  admins agregan» (A, recomendada) o «solo el creador» (B) · modo por defecto Colegas (sí) · cambiar modo/quitar admins solo el creador (sí) · expulsado:
-  el grupo queda de solo lectura (A, recomendada) o desaparece (B) · firmar los cambios con la clave de identidad (SÍ, ver privado punto 20) · NUEVA: si
-  sale el creador y no hay admins, hoy el grupo queda «abierto» (todos pueden todo, también expulsar): A = pasa el mando al miembro más antiguo
-  (recomendada), B = se queda abierto;
+  (2) grupos: contestado y hecho, salvo el modo al crear (dijo «no, debe ser opcional desde el principio»: confirmar si quiere que no haya ninguno marcado);
   (3) 31 A/B vista previa de enlaces; (4) ritmo de búsqueda por Bluetooth de lo ya entregado al buzón (hoy hasta 1 h); (5) Google Play: cuenta de
   desarrollador (tarda días), identificador de paquete (¡la APK de GitHub y la de Play no se pueden actualizar una sobre otra!), privacidad, 12 probadores;
   (6) Kinway: IMPI, dominios, redes.
-- **SIGUIENTE, sesión principal (Fable), en orden:** (juntar `ayudante-grupos` en cuanto el dueño conteste las decisiones) → (2b) multitud en el nativo (cambios 4–5) → (3) COLA 23 app cerrada +
+- **SIGUIENTE, sesión principal (Fable), en orden:** (2b) multitud en el nativo (cambios 4–5) → (3) COLA 23 app cerrada +
   pantalla apagada que a veces no suena → (4) Wi-Fi Direct «cancelar» → (5) L2CAP → (6) llamadas 17/18 → (7) eco 25 + relés/batería 24 → revisión, UNA APK y
   auditoría final. Plan con modelo por actividad: `docs/COLA.md` al principio. Para targetSdk 36 hace falta teléfono con Android 15/16 (borde a borde, «atrás»).
 - **PRUEBAS DEL DUEÑO con la 3119 (ya publicada):** (a) modo avión, escribir, bloquear, quitar modo avión SIN abrir NEXO → llega y ✓✓; (b) sin internet los dos,

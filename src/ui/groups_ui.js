@@ -12,6 +12,7 @@ import { _showInfoToast } from './ui_bits.js';
 import { t } from './i18n.js';
 import { isPreviewHidden, toggleHidePreview } from './chat_hide_preview.js';
 import { isMuted, muteMenuLabel, openMuteSheet } from './chat_mute.js'; // 3219: silenciar el grupo
+import { openGroupSettings, groupModePicker, installGroupPanel } from './group_panel.js'; // 22-11 (COLA 4b): Ajustes del grupo
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
 function _groups() { var b = _bi(); return b && b.groups; }
@@ -63,6 +64,7 @@ export function openCreateGroupSheet(pre) {
     '<div class="nx-page-title">' + t('prof_group_new', 'Nuevo grupo') + '</div>' +
     '<button id="nexo-group-cancel" class="nx-round-btn" aria-label="' + t('cancel') + '" title="' + t('cancel') + '">' + SHEET_CLOSE_SVG + '</button></div>' +
     '<input id="nexo-group-name" maxlength="60" placeholder="' + t('prof_group_name_ph', 'Nombre del grupo') + '" style="background:rgba(255,255,255,0.08);border:none;border-radius:10px;padding:12px;color:#fff;font-size:16px;margin-bottom:8px;">' +
+    '<div id="nexo-group-mode"></div>' +
     '<div style="font-size:13px;color:var(--nx-muted);margin:4px 2px 6px;">' + t('prof_group_choose', 'Elige quién está en el grupo') + '</div>' +
     '<div id="nexo-group-list" style="flex:1;overflow-y:auto;"></div>' +
     '<button id="nexo-group-create" disabled style="background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:600;margin-top:8px;opacity:0.5;">' + t('prof_group_create', 'Crear grupo') + '</button>';
@@ -71,6 +73,7 @@ export function openCreateGroupSheet(pre) {
   // #dueño 31-10: nombre por defecto «Grupo N» (editable). Así siempre hay un nombre (no bloquea crear) y el dueño lo cambia si quiere.
   try { var _gn = Object.keys((gs && gs.list) || {}).length + 1; nameEl.value = t('prof_group_default_pre', 'Grupo ') + _gn; } catch (e) {}
   var chosen = {};
+  var mode = groupModePicker(sheet.querySelector('#nexo-group-mode'), 'o');
   function refresh() {
     var n = Object.keys(chosen).length;
     var ok = n > 0;
@@ -104,23 +107,40 @@ export function openCreateGroupSheet(pre) {
     if (bi && typeof bi.renderContactsList === 'function') bi.renderContactsList();
     openGroupChat(g.id);
     // Primer mensaje: así el grupo aparece en los teléfonos de todos, con las tarjetas de los miembros
-    sendGroupText(g.id, JSON.stringify({ type: 'nexo_txt', t: '👥 Creó el grupo «' + g.name + '»' }), '👥 Creó el grupo', null, memberCards(g));
+    // 22-11 (COLA 4b): con el estado firmado (v1: modo elegido, el creador único admin); si no se pudo firmar, como antes
+    var md = mode.value();
+    var txt = '👥 ' + t('grp_n_created', 'Creó el grupo ') + '«' + g.name + '»';
+    var p = typeof gs.signGenesis === 'function' ? gs.signGenesis(g.id, md, md === 'c') : Promise.resolve(null);
+    p.then(function(chain) {
+      sendGroupText(g.id, JSON.stringify(chain ? { type: 'nexo_txt', t: txt, gs: 1 } : { type: 'nexo_txt', t: txt }), '👥 ' + t('grp_n_created', 'Creó el grupo '), null, memberCards(g), chain ? { extra: { s: chain } } : null);
+    });
   };
   setTimeout(function() { try { nameEl.focus(); } catch (e) {} }, 50);
 }
 
 // Mandar un texto al grupo desde la app (burbuja propia, último mensaje y envío a cada miembro)
-export function sendGroupText(gid, wire, plain, msgId, cards) {
+// opt (22-11, COLA 4b): { to: a quién (por defecto, los miembros), extra: campos del estado del grupo } — un cambio del estado
+export function sendGroupText(gid, wire, plain, msgId, cards, opt) {
   var gs = _groups(), bi = _bi();
   if (!gs || !gs.isGroup(gid)) return null;
+  opt = opt || {};
+  if (!opt.extra && typeof gs.canWrite === 'function' && gs.get(gid).s && !gs.canWrite(gid)) { _toast(groupWriteBlockReason(gid)); return null; }
   msgId = msgId || ('gm' + Date.now() + Math.random().toString(36).substr(2, 6));
   var seq = bi && typeof bi.getNextSeq === 'function' ? bi.getNextSeq() : 0;
   var vm = { msgId: msgId, messageId: msgId, contactNexoId: gid, content: wire, _own: true, status: 'sending', timestamp: Date.now(), seq: seq };
   // Se dibuja si el chat del grupo está abierto y se guarda en su historial
   _renderMessage(vm);
   if (bi && typeof bi.noteContactMessage === 'function') bi.noteContactMessage(gid, String(plain || '').substring(0, 50), vm.timestamp);
-  gs.sendText(gid, wire, msgId, seq, null, cards);
+  gs.sendText(gid, wire, msgId, seq, opt.to || null, cards, opt.extra || null);
   return msgId;
+}
+
+// 22-11 (COLA 4b): por qué no puedo escribir en este grupo ('' si sí puedo)
+export function groupWriteBlockReason(gid) {
+  var gs = _groups(), g = gs && gs.get(gid);
+  if (!g || typeof gs.canWrite !== 'function' || gs.canWrite(gid)) return '';
+  if (g.kicked || g.left) return t('grp_err_not_member', 'Ya no estás en este grupo');
+  return t('grp_only_admins_write', 'Solo los administradores pueden escribir en este grupo');
 }
 
 // Tarjetas de los miembros (como compartir contactos: NEXO ID, nombre y claves aceptadas)
@@ -166,9 +186,10 @@ export function openGroupMenu(gid) {
     sheet.appendChild(b);
   };
   add('💬  ' + t('prof_open', 'Abrir'), 'gm-open', function() { openGroupChat(g.id); });
+  if (!g.kicked) add('⚙️  ' + t('grp_settings', 'Ajustes del grupo'), 'gm-settings', function() { openGroupSettings(g.id); }); // 22-11 (COLA 4b)
   add(isPreviewHidden(g.id) ? '👁  ' + t('chat_show_preview', 'Mostrar el texto en los avisos') : '🙈  ' + t('chat_hide_preview', 'Ocultar el texto en los avisos'), 'gm-hidetext', function() { toggleHidePreview(g.id); });
   add((isMuted(g.id) ? '🔔  ' : '🔕  ') + muteMenuLabel(g.id), 'gm-mute', function() { openMuteSheet(g.id); }); // 3219
-  add('🚪  ' + t('prof_group_leave', 'Salir del grupo'), 'gm-leave', function() {
+  add('🚪  ' + (g.kicked ? t('grp_remove_list', 'Quitar de la lista') : t('prof_group_leave', 'Salir del grupo')), 'gm-leave', function() {
     gs.leave(g.id);
     var bi = _bi();
     if (bi && typeof bi.renderContactsList === 'function') bi.renderContactsList();
@@ -184,6 +205,11 @@ export function openGroupMenu(gid) {
 // El botón redondo de abajo pregunta «Agregar contacto» / «Crear grupo» (window.NEXO_fabMenu, lo llama ble_ui.js) y los ⋮ del
 // contacto abren «Nuevo grupo» con él ya elegido (window.NEXO_newGroupWith).
 export function installGroupButton() {
+  window.NEXO_groupCards = memberCards; // 22-11: para mandar las tarjetas al ponerse al día (group_admin.js)
+  window.NEXO_toast = _toast;
+  window.NEXO_openGroupSettings = openGroupSettings;
+  window.NEXO_groupPhoto = function(gid) { var gs = _groups(); return gs && typeof gs.photoOf === 'function' ? gs.photoOf(gid) : null; }; // G6: lista y cabecera
+  installGroupPanel();
   window.NEXO_newGroupWith = function(uuid) { openCreateGroupSheet(uuid); };
   window.NEXO_fabMenu = _fabMenu;
 }

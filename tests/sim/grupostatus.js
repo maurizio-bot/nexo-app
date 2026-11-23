@@ -6,7 +6,7 @@
 //       dejaba en ○ aunque otro ya hubiera entregado (✓✓).
 // Debe ser como WhatsApp: ✓ (enviado) en cuanto el mensaje salió para alguien, ✓✓ (entregado) cuando confirman todos los
 // alcanzables, y no quedarse en ○ por un miembro inalcanzable.
-// Prueba de UNIDAD de groups.js `_onMemberStatus` (no necesita build; importa src/ui/groups.js).
+// Prueba de UNIDAD de groups.js `_onMemberStatus` (importa ui/groups.js de la copia compilada, srcmod.js).
 // Uso: node grupostatus.js
 'use strict';
 const { webcrypto } = require('crypto');
@@ -28,7 +28,7 @@ global.window = {
 
 (async () => {
   const r = { prueba: 'grupostatus' };
-  const { Groups } = await import('../../src/ui/groups.js');
+  const { Groups } = await require('./srcmod').importSrc('ui/groups.js'); // 22-11: de la copia compilada (groups.js ya usa @noble por group_state.js)
 
   const ME = 'nxaaaaaaa1', B = 'nxbbbbbbb2', C = 'nxccccccc3';
   const g = new Groups({ localNexoId: ME });
