@@ -10,10 +10,11 @@ const { NostrRelay } = require('./nostr_relay');
 (async () => {
   const r = { prueba: 'blobajeno' };
   const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
-  const mine = new NostrRelay(), foreign = new NostrRelay({ authRequired: true });
+  const mine = new NostrRelay(), foreign = new NostrRelay();
   const U1 = await mine.start(), UX = await foreign.start();
   const seenX = [];
-  foreign.wss.on('connection', (ws, req) => { ws.on('message', (m) => seenX.push(String(m))); });
+  // el relé ajeno pide identificarse (NIP-42) a todo el que entra: B no debe contestar
+  foreign.wss.on('connection', (ws, req) => { ws.on('message', (m) => seenX.push(String(m))); setTimeout(() => { try { ws.send(JSON.stringify(['AUTH', 'reto-ajeno'])); } catch (e) {} }, 20); });
   global.window = { NEXO_NET_RELAYS: [U1] };
   const { NetLink } = await importSrc('net/net_link.js');
   const B = await importSrc('net/blob_mailbox.js');
