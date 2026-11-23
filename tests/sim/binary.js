@@ -20,7 +20,7 @@ class DistLoader extends ResourceLoader {
 }
 const logs = [];
 async function boot(name, address, radio, buildDir, opts) {
-  const native = new NativePhone(name, address, Object.assign({ readsContentFallback: true, mtu, loss: 0, pace: [15, 15], retain: ['onPayloadReceived'] }, opts));
+  const native = new NativePhone(name, address, Object.assign({ readsContentFallback: true, noL2Payload: true /* 3288: esta prueba mide los TROZOS por GATT; el canal rápido tiene la suya (l2mediano.js) */, mtu, loss: 0, pace: [15, 15], retain: ['onPayloadReceived'] }, opts));
   radio.add(native); native.load();
   const vc = new VirtualConsole();
   ['log', 'info', 'warn', 'error'].forEach((l) => vc.on(l, (...a) => logs.push(`[${name}] ${l}: ` + a.map(String).join(' ').substring(0, 300))));
