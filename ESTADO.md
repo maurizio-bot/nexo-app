@@ -106,6 +106,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   `wrongKey`, con la llave de su kx si la solicitud se guardó sin ella); (2) `videounavez` (f): el puente Jump no copiaba `xs` (4A,
   «ver una vez» sellado) y el vídeo llegaba normal (`ble_relay.js`). Si el CI sale verde: avisar al dueño con sus pruebas (las de la
   3298 + grupos/ruedita + S24 con Alex) y seguir la tanda 2 (d).
+  AVISO PROGRAMADO: «Revisar CI de la APK 3305» a las 11:06 México (llega a esta sesión). SIGUIENTE: tanda 2 (d) relés repetidos;
+  dato nuevo: nx1e50c95d gastó 1.188 MB por Wi-Fi el 22-11 (pregunté al dueño si hubo llamadas; si no, es esto). Luego (e)–(i) y
+  el tope de trozos en el NATIVO.
 - **REVISIÓN EXTERNA (análisis que pasó el dueño 24-11), comprobada en el código (`[skip ci]`, va en la APK única):**
   HECHO **3304**: (1) trozos recibidos sin tope de tamaño → enteros, solo texto, ≤ 64 K por trozo, ≤ 64 M en memoria por mensaje
   (lo grande por internet ya se guarda en el teléfono), ≤ 64 mensajes a medias por enlace (`ble_ack_incoming.js`, `chunktopes.js`).
