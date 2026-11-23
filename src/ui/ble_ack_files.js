@@ -99,6 +99,10 @@ export const ackFiles = {
     }
     var running = self.outgoingStreams.get(fileId);
     if (running && !running.aborted && running._promise) return running._promise;
+    // 3289 (dueño 23-11): el canal rápido del Bluetooth va ANTES que Wi-Fi Direct solo si las medidas de hoy en este teléfono dicen
+    // que es más rápido (l2_fast.fasterThanWd). Si no sale, sigue por aquí mismo: Wi-Fi Direct y, si tampoco, trozos.
+    var l2f = self.ble && self.ble.l2Fast;
+    if (!planned && l2f && !(self._l2Tried && self._l2Tried.has(fileId)) && l2f.eligible(deviceId, data.length) && l2f.fasterThanWd()) return self._sendFileL2OrJS(deviceId, fileId, data, meta, true);
     self._dispatchFileProgress(fileId, 0, 1, 'sending', 1);
     return wd.send(deviceId, fileId, data, self._fileMeta(meta, data.length)).then(function() {
       self._dispatchStatus(fileId, 'delivered');
@@ -122,7 +126,8 @@ export const ackFiles = {
   // vagón o un festival) o acaba de fallar, lo MEDIANO va por el canal rápido del Bluetooth (L2CAP, ~1 MB/s contra ~17 KB/s en trozos)
   // si los dos lo tienen (l2_fast.js). Si no sale —por lo que sea— va en trozos como siempre: este atajo nunca frena un envío.
   // Wi-Fi Direct sigue yendo primero cuando puede (decisión del dueño 12-11).
-  _sendFileL2OrJS(deviceId, fileId, data, meta) {
+  // thenBest: si el canal rápido no sale, volver al embudo entero (Wi-Fi Direct y luego trozos) en vez de ir directo a trozos
+  _sendFileL2OrJS(deviceId, fileId, data, meta, thenBest) {
     var self = this, l2 = self.ble && self.ble.l2Fast;
     // (un reintento del mismo archivo mientras el canal rápido lo está mandando espera a ese mismo envío: no sale dos veces)
     if (self._l2Pending && self._l2Pending.has(fileId)) return self._l2Pending.get(fileId);
@@ -136,7 +141,7 @@ export const ackFiles = {
       self._l2Pending.delete(fileId);
       self._dispatchStatus(fileId, 'delivered');
       self._dispatchFileProgress(fileId, 1, 1, 'delivered', 100);
-    }, function() { self._l2Pending.delete(fileId); return self._sendFileJS(deviceId, fileId, data, meta); });
+    }, function() { self._l2Pending.delete(fileId); return thenBest ? self._sendFileBest(deviceId, fileId, data, meta) : self._sendFileJS(deviceId, fileId, data, meta); });
     (self._l2Pending || (self._l2Pending = new Map())).set(fileId, p);
     return p;
   },

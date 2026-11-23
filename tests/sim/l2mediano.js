@@ -5,6 +5,11 @@
 //  canal_falla el canal no se abre en ese par de teléfonos: el archivo llega IGUAL, en trozos como siempre; quien recibe no
 //              se queda esperando (cancelar) y con ese contacto no se vuelve a probar en un rato (el segundo va directo en trozos).
 //  otro_no     el otro no lo tiene (no lo anuncia): ni se ofrece; en trozos como siempre.
+// 3289 (dueño 23-11: «ok solo si me aseguras que es más rápido»), los dos con Wi-Fi Direct Y canal rápido:
+//  sin_medidas   sin medidas de hoy → Wi-Fi Direct primero (decisión del 12-11).
+//  mide_mas      hoy el canal rápido mide 800 KB/s y Wi-Fi Direct 100 KB/s → va por el canal rápido (ni se monta el grupo).
+//  mide_menos    hoy el canal rápido mide 100 KB/s y Wi-Fi Direct 800 KB/s → Wi-Fi Direct.
+//  mide_mas_falla  mide más pero el canal no se abre → Wi-Fi Direct (el embudo entero sigue detrás).
 // Uso: node l2mediano.js [dir_build] [--solo=caso]
 'use strict';
 const fs = require('fs');
@@ -55,6 +60,9 @@ async function caso(nombre, pA, pB) {
   const idA = A.win.bleInterface.localNexoId, idB = B.win.bleInterface.localNexoId, nxB = idB.toLowerCase();
   const l2A = A.win.bleInterface.l2Fast, l2B = B.win.bleInterface.l2Fast;
   await sleep(3000);   // el intercambio de claves (kx) lleva quién tiene el canal rápido
+  const conWd = pA.wifiDirect === true;
+  if (conWd) { await waitFor(() => A.win.bleInterface.wifiDirect.peers.has(nxB), 20000); await sleep(3500); }   // el permiso se pide solo ~2,5 s después
+  if (pA.medidas) { A.win.NEXO_noteSpeed('l2', 'out', 400000, Math.round(400000 / 1024 / pA.medidas[0] * 1000)); A.win.NEXO_noteSpeed('wifi-direct', 'out', 400000, Math.round(400000 / 1024 / pA.medidas[1] * 1000)); }
   const has = async (b64) => (await B.win.vaultLoadMessages(idA)).some((m) => m.attachmentPayload === b64 || (m.attachmentRef && nB.files.get(m.attachmentRef) === b64));
   const chunksOf = (id) => air.filter((x) => x.indexOf('"m":"' + id) >= 0).length;
   const offers = () => air.filter((x) => x.indexOf('"type":"lq"') >= 0).length;
@@ -70,7 +78,13 @@ async function caso(nombre, pA, pB) {
   await waitFor(() => /delivered|read/.test(statusA(x1.id) || ''), 20000);
   r.mediano_estado_A = statusA(x1.id);
   chk('mediano_entregado_en_A', /delivered|read/.test(r.mediano_estado_A || ''));
-  if (nombre === 'rapido') {
+  if (conWd) {
+    r.grupos_wd_B = nB.stats.wdGroups || 0; r.bytes_wd = nA.stats.wdBytes || 0;
+    const porL2 = r.por_canal_A === 1 && r.grupos_wd_B === 0, porWd = r.por_canal_A === 0 && r.grupos_wd_B === 1 && r.bytes_wd > 0;
+    if (nombre === 'mide_mas') chk('va_por_el_canal_rapido', porL2 && r.mediano_trozos === 0);
+    else if (nombre === 'mide_mas_falla') chk('falla_el_canal_y_va_por_wifi_direct', r.ofertas === 1 && porWd && r.mediano_trozos === 0);
+    else chk('va_por_wifi_direct', porWd && r.ofertas === 0);
+  } else if (nombre === 'rapido') {
     chk('los_dos_lo_tienen', r.A_lo_tiene && r.B_lo_anuncia);
     chk('fue_por_el_canal', r.por_canal_A === 1 && r.mediano_trozos === 0);
     chk('rapido', x1.s !== null && x1.s < 10);
@@ -98,7 +112,10 @@ async function caso(nombre, pA, pB) {
 }
 
 (async () => {
-  const casos = [['rapido', {}, {}], ['canal_falla', { l2pFail: true }, {}], ['otro_no', {}, { noL2Payload: true }]].filter((c) => !solo || c[0] === solo);
+  const WD = { wifiDirect: true };
+  const casos = [['rapido', {}, {}], ['canal_falla', { l2pFail: true }, {}], ['otro_no', {}, { noL2Payload: true }],
+    ['sin_medidas', WD, WD], ['mide_mas', Object.assign({ medidas: [800, 100] }, WD), WD], ['mide_menos', Object.assign({ medidas: [100, 800] }, WD), WD],
+    ['mide_mas_falla', Object.assign({ medidas: [800, 100], l2pFail: true }, WD), WD]].filter((c) => !solo || c[0] === solo);
   const res = [];
   for (const c of casos) {
     let r;

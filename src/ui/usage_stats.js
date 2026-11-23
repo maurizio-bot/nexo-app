@@ -62,8 +62,8 @@ function _hook(kind, cid, m, prevStatus) {
 // enviado/recibido por un camino (bytes, tiempo hasta la ✓✓ o hasta tenerlo entero) y cuánto tardó cada camino en quedar listo.
 // Solo números (ni nombres ni contenido). Lo anotan ble_ack (Bluetooth/Wi-Fi/internet), wifi_direct, el buzón de archivos, lan,
 // net_link y ble_interface (conexión Bluetooth) por window.NEXO_noteSpeed / NEXO_noteConnect (sin importar este módulo: sin ciclos).
-var VIAS = { wifi: 'Wi-Fi local', 'wifi-direct': 'Wi-Fi Direct', internet: 'internet', buzon: 'buzón de archivos', bluetooth: 'Bluetooth', ruta: 'internet al abrir el chat' }; // i18n-ok: texto para el desarrollador
-var VIA_ORDER = ['wifi', 'wifi-direct', 'internet', 'buzon', 'bluetooth', 'ruta']; // ruta: 3147
+var VIAS = { wifi: 'Wi-Fi local', 'wifi-direct': 'Wi-Fi Direct', internet: 'internet', buzon: 'buzón de archivos', bluetooth: 'Bluetooth', l2: 'Bluetooth (canal rápido)', ruta: 'internet al abrir el chat' }; // i18n-ok: texto para el desarrollador
+var VIA_ORDER = ['wifi', 'wifi-direct', 'internet', 'buzon', 'bluetooth', 'l2', 'ruta']; // ruta: 3147
 function _kbs(bytes, ms) { return (bytes / 1024) / Math.max(0.001, ms / 1000); }
 function _n1(x) { return (Math.round(x * 10) / 10).toString().replace('.', ','); }
 export function usageNoteSpeed(via, dir, bytes, ms) {

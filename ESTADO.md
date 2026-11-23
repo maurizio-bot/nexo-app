@@ -52,7 +52,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
     trozos a ~17 KB/s (2 MB = 2 min). Ahora desde ~45 KB, si los dos lo anuncian (`l2p` en el kx), va por el canal (`l2_fast.js`; nativo
     `l2PayloadHost/Send/Cancel` en `PluginFiles.kt`; enganchado en `ble_ack_files._sendFileL2OrJS`). Si falla, sigue en trozos como siempre y con ese contacto no se prueba en 10 min. `l2mediano.js`: 400 KB en 1,6 s (26 s en trozos). Falta medirlo en teléfonos.
     Wi-Fi Direct sigue yendo PRIMERO cuando puede (decisión del dueño 12-11): el canal rápido entra cuando Wi-Fi Direct no puede o falla
-    (`_sendFileL2OrJS`). Batería de archivos/fotos/voz/vídeo: 149 de 150; la que falla aquí, `fotocalidad.js` (parte de internet), falla IGUAL con el
+    (`_sendFileL2OrJS`). **3289 (dueño 23-11: «ok solo si me aseguras que es más rápido»):** el canal rápido pasa DELANTE de Wi-Fi Direct solo si
+    las medidas de HOY en ese teléfono lo dan por más rápido con margen 1,2 (`l2BeatsWd`, `fasterThanWd`; camino nuevo «Bluetooth (canal rápido)»
+    en las velocidades del diagnóstico). Sin medidas, Wi-Fi Direct primero. `l2mediano.js` tiene 7 casos. Batería de archivos/fotos/voz/vídeo: 149 de 150; la que falla aquí, `fotocalidad.js` (parte de internet), falla IGUAL con el
     código del inicio de la sesión: es del contenedor (Chromium no abre los relés del simulador), como `estadovideo.js`; la corre el CI.
   - **3287 Wi-Fi Direct «CANCELAR», 23-11:** quien ofrece un archivo y no logra mandarlo (no se une al grupo, se corta, se cansa de esperar) manda «wx»
     y el otro baja el grupo YA (antes lo esperaba 90 s, ocupado para todo lo demás): `wifi_direct.js` (`_cancelPeer`, `_onCancel`), nativo
@@ -80,7 +82,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   desarrollador (tarda días), identificador de paquete (¡la APK de GitHub y la de Play no se pueden actualizar una sobre otra!), privacidad, 12 probadores;
   (6) Kinway: IMPI, dominios, redes; (7) EMPRESAS: plan dentro de la misma app (A, recomendada) o app aparte (B): propuesta con pasos y fechas en
   el PRIVADO `negocio/EMPRESAS_PROPUESTA_2026-11-23.md`; (8) Ajustes: unir «Avisos y vibración» + «Llamadas» en «Notificaciones» o «Notificaciones y
-  llamadas» (falta que elija el nombre); (9) ¿el canal rápido de Bluetooth antes que Wi-Fi Direct para archivos de hasta ~2 MB? (hoy: Wi-Fi Direct primero).
+  llamadas» (falta que elija el nombre); (9) canal rápido antes que Wi-Fi Direct: DECIDIDO 23-11 («solo si es más rápido») y HECHO (3289: por medidas del día).
 - **SIGUIENTE, sesión principal (Fable), en orden:** (6) llamadas 17/18 → (7) eco 25 + relés/batería 24 → revisión, UNA APK y
   auditoría final. Plan con modelo por actividad: `docs/COLA.md` al principio. Para targetSdk 36 hace falta teléfono con Android 15/16 (borde a borde, «atrás»).
 - **PRUEBAS DEL DUEÑO con la 3119 (ya publicada):** (a) modo avión, escribir, bloquear, quitar modo avión SIN abrir NEXO → llega y ✓✓; (b) sin internet los dos,

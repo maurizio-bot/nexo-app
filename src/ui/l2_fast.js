@@ -31,6 +31,14 @@ function _mac(m) { return (m || '').toString().toLowerCase().replace(/[:-]/g, ''
 function _plugin() { return (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 function _note(kind, d) { try { if (typeof window.NEXO_noteL2 === 'function') window.NEXO_noteL2(kind, d || {}); } catch (e) {} }
 
+// 3289 (dueño 23-11: «ok solo si me aseguras que es más rápido»): ¿el canal rápido va ANTES que Wi-Fi Direct? Solo con MEDIDAS
+// reales de hoy en este teléfono de los dos caminos (KB/s de principio a fin: ya llevan dentro abrir el canal o montar el grupo y
+// unirse), y solo si el canal rápido gana con margen. Sin medida de alguno de los dos: no (Wi-Fi Direct primero, decisión 12-11).
+export var L2_WD_MARGIN = 1.2;
+export function l2BeatsWd(l2Kbps, wdKbps) {
+  return l2Kbps > 0 && wdKbps > 0 && l2Kbps >= wdKbps * L2_WD_MARGIN;
+}
+
 export class L2Fast {
   constructor(ble) {
     this.ble = ble;
@@ -60,6 +68,18 @@ export class L2Fast {
     var nx = this._nexoOf(deviceId);
     if (!nx || !this.peers.has(nx)) return false;
     return !(this.failUntil[nx] > Date.now());
+  }
+
+  // ¿Hoy, en este teléfono, el canal rápido mide más rápido que Wi-Fi Direct? (l2BeatsWd con las velocidades del día)
+  fasterThanWd() {
+    try {
+      var f = typeof window !== 'undefined' && window.NEXO_recentSpeed;
+      if (typeof f !== 'function') return false;
+      var l2 = f('l2', 'out'), wd = f('wifi-direct', 'out');
+      var yes = l2BeatsWd(l2, wd);
+      if (yes) console.log('[L2] Canal rápido antes que Wi-Fi Direct: hoy mide ' + l2 + ' KB/s contra ' + wd + ' KB/s');
+      return yes;
+    } catch (e) { return false; }
   }
 
   _ctl(deviceId, obj) {
@@ -96,7 +116,7 @@ export class L2Fast {
       console.log('[L2] ' + fileId + ' entregado por el canal rápido de Bluetooth: ' + Math.round(data.length / 1024) + ' KB en ' + Math.round(ms / 100) / 10 + ' s' +
         (r && r.connectMs >= 0 ? ' (abrir el canal ' + Math.round(r.connectMs / 100) / 10 + ' s)' : ''));
       _note('ok', { chars: data.length, ms: ms });
-      try { if (typeof window.NEXO_noteSpeed === 'function') window.NEXO_noteSpeed('ble', 'out', Math.round(data.length * 3 / 4), ms); } catch (e) {}
+      try { if (typeof window.NEXO_noteSpeed === 'function') window.NEXO_noteSpeed('l2', 'out', Math.round(data.length * 3 / 4), ms); } catch (e) {}
     }, function(e) {
       self.busy = false;
       self.stats.failed++;
@@ -165,7 +185,7 @@ export class L2Fast {
     }
     self.stats.received++;
     console.log('[L2] Recibido ' + id + ' por el canal rápido de Bluetooth (' + Math.round(ev.data.length / 1024) + ' KB' + (ev.readMs ? ', lectura ' + Math.round(ev.readMs / 100) / 10 + ' s' : '') + ')');
-    try { if (typeof window.NEXO_noteSpeed === 'function' && ev.readMs > 0) window.NEXO_noteSpeed('ble', 'in', Math.round(ev.data.length * 3 / 4), ev.readMs); } catch (e) {}
+    try { if (typeof window.NEXO_noteSpeed === 'function' && ev.readMs > 0) window.NEXO_noteSpeed('l2', 'in', Math.round(ev.data.length * 3 / 4), ev.readMs); } catch (e) {}
     var ack = self.ble.ackSystem;
     if (ack) {
       // Como un flujo terminado: si luego llega también en trozos, se descarta
