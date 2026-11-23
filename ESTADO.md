@@ -94,8 +94,19 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   PRUEBAS DEL DUEÑO de esta APK: que la app arranque y el diagnóstico diga el número de build (CSP nueva); mensaje con la app del otro
   cerrada y sin internet (sello + reto); que alguien que no es contacto te escriba → «Solicitudes»; foto «ver una vez» → no deja capturar.
   Avisos publicados antes de esta APK: tocarlos abre la app pero no el chat (una sola vez).
-- **TANDA 2 (en curso mientras compila la 1):** llamadas 17/18, eco 25, relés/batería 24, vista previa de enlaces 31, 14A, N10, quitar código
-  sin uso y partir archivos > 900 líneas, revisión final y novedades.
+- **TANDA 2 (siguiente sesión; la última, después solo pulido):** forma de trabajo del dueño 23-11: terminar la tanda, subir (CI ~85 min), y
+  mientras compila avanzar la siguiente; CI en verde → subir lo siguiente; si falla, corregir SOLO ese fallo y subir. Agrupar lo más posible.
+  Aviso programado: «Revisar CI de la APK 3298» a las 09:09 México (llega a esta sesión). Contenido de la tanda 2, en orden:
+  (a) **17 mensaje atorado en videollamada** (diag. 19-11 21:34/21:48, `docs/diagnosticos.json`): S23 con datos + ahorro de batería no oía la
+  presencia del S24 por relés («oído hace 312–1014 s»), un texto de 9 trozos por internet dio «Assembly timeout» en el S24 y «Buzón no
+  disponible: Abortado» en el S23. Reproducir en tests/sim con relés que pierden eventos en un sentido y un texto largo por internet; mirar
+  si un texto así debería ir en UN evento (NET_TEXT_ONE) o reanudarse en vez de abortar. (b) **18** decodificación de vídeo tras cambio de red
+  (hueco ~25 s). (c) **25** eco en llamada de grupo. (d) **24** datos repetidos de los relés al abrir en frío (4,4 de 5,3 MB): son las copias
+  de cada relé (`_subscribe` pide a TODOS desde `lastSeen`); NO recortar relés (principio del dueño): estudiar pedir lo atrasado completo
+  a 2 relés y a los demás solo lo nuevo + rellenar huecos, solo si se demuestra que no se pierde nada. (e) **31** vista previa de enlaces
+  (decidida: la baja quien recibe, por Tor). (f) 14A toque firmado (cambia `push-sender/cloudflare/worker.js`: el DUEÑO lo publica con
+  wrangler; preguntarle antes). (g) N10 (bajo). (h) quitar código sin uso (26 funciones, 3 Kotlin, 48 textos) y partir lo > 900 líneas
+  (`ble_connections.js` 999). (i) revisión final, NOVEDADES, una APK.
 - **SIGUIENTE, sesión principal (Fable), en orden:** (6) llamadas 17/18 → (7) eco 25 + relés/batería 24 → revisión, UNA APK y
   auditoría final. Plan con modelo por actividad: `docs/COLA.md` al principio. Para targetSdk 36 hace falta teléfono con Android 15/16 (borde a borde, «atrás»).
 - **PRUEBAS DEL DUEÑO con la 3119 (ya publicada):** (a) modo avión, escribir, bloquear, quitar modo avión SIN abrir NEXO → llega y ✓✓; (b) sin internet los dos,
