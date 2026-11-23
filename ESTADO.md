@@ -97,6 +97,13 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   S-A1 (sello de pareja en el sobre: cierra el oráculo de ✓✓ del nativo), T-T1 (comentario de foto y «ver una vez» van en claro), C-N2 (Fénix
   `fd`/`fp`), C-N4 (clave cambiada provocada bloquea el envío), C-N5 (desconocido se agrega con su primer mensaje), G-B1, T-W1, T-X1 (Tor).
   NO encender Fénix Entorno antes del punto 20.
+  **DECISIONES DEL DUEÑO 23-11 (sigue las 17 recomendaciones; lista completa en el privado, §7 del informe):** certificado ik→sk (1A), sello de
+  pareja en el sobre (2A), reto antes de entregar sin la app (3A, CONDICIÓN: medir en `multitud.js`; si añade > 1 s, no se sube y se replantea),
+  cifrar comentario/«ver una vez» (4A), seguir enviando con clave pendiente y reenviar al aceptar (5A), Fénix solo cifrado (6A), primer mensaje
+  de desconocido a Solicitudes (7A), «sin verificar» solo al comparar número o agregar de cerca (8A), dos que dicen ser el mismo → aviso (9A),
+  grupos: rama de no-admin solo gana en carrera real (10A), huella de clave por miembro: después, con Empresas (11B), identidad solo a contactos en
+  Wi-Fi/Bluetooth (12A), «Tor siempre» = todo por Tor (13A), toque firmado (14A), versionCode creciente (15A), capturas bloqueadas en «ver una
+  vez» y con bloqueo (16A), llave de firma nueva solo al pasar a Play (17B). El dueño pidió: nada de esperas largas; medir lo que añada tiempo.
 - **SIGUIENTE, sesión principal (Fable), en orden:** (6) llamadas 17/18 → (7) eco 25 + relés/batería 24 → revisión, UNA APK y
   auditoría final. Plan con modelo por actividad: `docs/COLA.md` al principio. Para targetSdk 36 hace falta teléfono con Android 15/16 (borde a borde, «atrás»).
 - **PRUEBAS DEL DUEÑO con la 3119 (ya publicada):** (a) modo avión, escribir, bloquear, quitar modo avión SIN abrir NEXO → llega y ✓✓; (b) sin internet los dos,
