@@ -139,14 +139,15 @@ internal fun NexoBlePlugin.wifiDirectHostImpl(call: PluginCall) {
                     val server = java.net.ServerSocket(0)
                     server.soTimeout = 90000
                     wdServer = server
+                    wdServerFor = transferId
                     remLog("INFO", "WIFI_DIRECT", "Grupo creado para $transferId, puerto ${server.localPort}")
                     call.resolve(JSObject().put("ssid", name).put("passphrase", pass).put("port", server.localPort)
                         .put("groupMs", System.currentTimeMillis() - tHost0).put("attempts", attempt + 1).put("reasons", failReasons.toString()).put("apStart", apStart))
                     // Archivo grande (ronda 2756): del socket al disco, sin pasar por la app
                     if (bigToken != null) Thread {
                         try { BigNet.serve(server, BigFile.safeId(transferId), bigToken, BigFile.encFile(bigDir(), transferId), BigFile.MAX_BYTES * 11 / 10, bigProgress(BigFile.safeId(transferId), "in")); bigDone(BigFile.safeId(transferId), "in", null) }
-                        catch (e: Exception) { bigDone(BigFile.safeId(transferId), "in", e.message ?: "error") }
-                        finally { try { server.close() } catch (e: Exception) {}; if (wdServer === server) wdServer = null; wdTearDown() }
+                        catch (e: Exception) { bigDone(BigFile.safeId(transferId), "in", if (wdCancelledId == transferId) "cancelado por quien envía" else e.message ?: "error") }
+                        finally { try { server.close() } catch (e: Exception) {}; if (wdServer === server) { wdServer = null; wdServerFor = null }; wdTearDown() }
                     }.start()
                     else Thread { wdReceive(server, transferId) }.start()
                 } catch (e: Exception) {
@@ -203,13 +204,27 @@ private fun NexoBlePlugin.wdReceive(server: java.net.ServerSocket, transferId: S
                 .put("readMs", readMs).put("ts", System.currentTimeMillis()).put("apMhz", wdApMhz()), true)
         }
     } catch (e: Exception) {
-        remLog("WARN", "WIFI_DIRECT", "Recepción fallida $transferId: ${e.message}")
-        notifyListeners("onWifiDirectReceived", JSObject().put("transferId", transferId).put("error", e.message ?: "error"), true)
+        val why = if (wdCancelledId == transferId) "cancelado por quien envía" else e.message ?: "error"
+        remLog("WARN", "WIFI_DIRECT", "Recepción fallida $transferId: $why")
+        notifyListeners("onWifiDirectReceived", JSObject().put("transferId", transferId).put("error", why), true)
     } finally {
         try { server.close() } catch (e: Exception) {}
-        if (wdServer === server) wdServer = null
+        if (wdServer === server) { wdServer = null; wdServerFor = null }
         wdTearDown()
     }
+}
+
+// 3287 («cancelar»): quien nos ofreció `transferId` no pudo mandarlo (no logró unirse al grupo, se cortó). El grupo y el socket lo
+// esperaban hasta 90 s: se cierran ya. Cerrar el socket hace que la espera (accept) termine con error: de ahí sale el aviso a la app
+// (onWifiDirectReceived / onBigDone) y se baja el grupo, por el mismo camino de siempre. Solo si es ESA transferencia la que espera.
+internal fun NexoBlePlugin.wifiDirectCancelImpl(call: PluginCall) {
+    val transferId = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
+    val server = wdServer
+    if (server == null || wdServerFor != transferId) { call.resolve(JSObject().put("cancelled", false)); return }
+    wdCancelledId = transferId
+    remLog("INFO", "WIFI_DIRECT", "Cancelado $transferId por quien envía: se baja el grupo")
+    try { server.close() } catch (e: Exception) {}
+    call.resolve(JSObject().put("cancelled", true))
 }
 
 @android.annotation.SuppressLint("MissingPermission")

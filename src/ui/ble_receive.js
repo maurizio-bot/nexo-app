@@ -71,7 +71,7 @@ export const BLE_RECEIVE_METHODS = {
       if (dnm && me0 && _normId(dnm[1]) !== me0) { self._notMine(data.deviceId, _normId(dnm[1])); return Promise.resolve(null); }
     }
     // Wi-Fi Direct: control de una transferencia (por Bluetooth)
-    if (/"type":"w[qanf]"/.test(raw) && self.wifiDirect) {
+    if (/"type":"w[qanfx]"/.test(raw) && self.wifiDirect) {
       var pw = null;
       try { pw = JSON.parse(raw); } catch (e) {}
       if (pw && self.wifiDirect.handle(pw, data.deviceId)) return Promise.resolve(null);

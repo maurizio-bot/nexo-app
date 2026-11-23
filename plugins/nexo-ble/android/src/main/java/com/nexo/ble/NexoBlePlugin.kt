@@ -901,6 +901,8 @@ class NexoBlePlugin : Plugin() {
     internal var p2pManager: WifiP2pManager? = null
     internal var p2pChannel: WifiP2pManager.Channel? = null
     internal var wdServer: java.net.ServerSocket? = null
+    @Volatile internal var wdServerFor: String? = null   // 3287: para qué transferencia espera (wifiDirectCancel)
+    @Volatile internal var wdCancelledId: String? = null
     internal val WD_MAX_BYTES = 40_000_000L
 
     @PluginMethod fun wifiDirectStatus(call: PluginCall) = wifiDirectStatusImpl(call)
@@ -916,6 +918,8 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod fun wifiDirectHost(call: PluginCall) = wifiDirectHostImpl(call)
 
     @PluginMethod fun wifiDirectSend(call: PluginCall) = wifiDirectSendImpl(call)
+    // 3287: quien iba a mandar se rindió: se baja ya el grupo que lo esperaba (hasta 90 s)
+    @PluginMethod fun wifiDirectCancel(call: PluginCall) = wifiDirectCancelImpl(call)
 
     @PluginMethod fun haptic(call: PluginCall) = hapticImpl(call)
 

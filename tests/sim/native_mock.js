@@ -1219,6 +1219,17 @@ class NativePhone {
         setTimeout(() => c.resolve({ ssid, passphrase: pass, port, groupMs: 1500, attempts: 1, reasons: '', apStart: 5180 }), 1500); // 3258: como el nativo
         setTimeout(() => { if (self.radio.wdGroups.get(ssid)) { self.radio.wdGroups.delete(ssid); if (a.bigToken) self.emit('onBigDone', { id: a.transferId, dir: 'in', ok: false, error: 'Accept timed out' }); else self.emit('onWifiDirectReceived', { transferId: a.transferId, error: 'Accept timed out' }); } }, 90000);
       }),
+      // 3287: como el nativo: cerrar el socket que esperaba hace que la espera termine con error (y se baja el grupo)
+      wifiDirectCancel: wrap('wifiDirectCancel', (c, a) => {
+        let hit = null;
+        (self.radio.wdGroups || new Map()).forEach((g, ssid) => { if (g.host === self && g.id === a.transferId) hit = [ssid, g]; });
+        if (!hit) return c.resolve({ cancelled: false });
+        self.radio.wdGroups.delete(hit[0]);
+        self.stats.wdCancels = (self.stats.wdCancels || 0) + 1;
+        if (hit[1].bigToken) self.emit('onBigDone', { id: a.transferId, dir: 'in', ok: false, error: 'cancelado por quien envía' });
+        else self.emit('onWifiDirectReceived', { transferId: a.transferId, error: 'cancelado por quien envía' });
+        c.resolve({ cancelled: true });
+      }),
       wifiDirectSend: wrap('wifiDirectSend', (c, a) => {
         if (!self.opts.wifiDirect || self.opts.wdNoPerm) return c.reject('Wi-Fi Direct no disponible', 'WD_UNAVAILABLE');
         if (self.opts.wifiOff) return c.reject('No se pudo conectar (2)', 'WD_CONNECT');

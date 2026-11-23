@@ -70,6 +70,10 @@ async function caso(nombre, pA, pB, esperado) {
   const offers = () => air.filter((x) => x.indexOf('"type":"wq"') >= 0).length;
   const send = async (n, k, name) => { const f = bytes(n, k); await pickFile(A, new A.win.File([f], name, { type: 'application/octet-stream' })); const s = await waitFor(() => has(f.toString('base64')), 300000); return { s, id: await lastAttId() }; };
   const r = { caso: nombre };
+  // 3287 («cancelar»): cuánto queda B «ocupado» con el grupo montado desde que lo monta (sin cancelar: los 90 s de la espera)
+  const wdB = B.win.bleInterface.wifiDirect;
+  let tHost = 0, tFree = 0;
+  const poll = setInterval(() => { try { if (!tHost && (nB.stats.wdGroups || 0) > 0) tHost = Date.now(); if (tHost && !tFree && !wdB.busy && !wdB.incoming.size) tFree = Date.now(); } catch (e) {} }, 100);
   const x1 = await send(SIZE, 13, 'uno.bin');
   r.llega_s = x1.s;
   r.por_bluetooth = chunksOf(x1.id) > 10;
@@ -96,6 +100,13 @@ async function caso(nombre, pA, pB, esperado) {
   if (esperado.medidasA) chk('medidas_A', esperado.medidasA.test(mA));
   if (esperado.medidasB) chk('medidas_B', esperado.medidasB.test(mB));
   chk('ni_un_byte_por_wd', (nA.stats.wdBytes || 0) === 0);
+  clearInterval(poll);
+  if (esperado.cancela) {
+    r.B_ocupado_s = tHost && tFree ? Math.round((tFree - tHost) / 100) / 10 : null;
+    r.cancelaciones_B = nB.stats.wdCancels || 0;
+    chk('B_libre_enseguida', r.B_ocupado_s !== null && r.B_ocupado_s < 15);
+    chk('B_bajo_el_grupo', r.cancelaciones_B >= 1);
+  }
   const errs = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 3);
   chk('sin_errores', !errs.length); if (errs.length) r.errores = errs;
   r.diag_A = logs.filter((l) => l.startsWith('[A]') && /WIFI-DIRECT/.test(l)).map((l) => l.replace(/^\[A\] \w+: /, '').substring(0, 140)).slice(0, 6);
@@ -113,7 +124,7 @@ async function caso(nombre, pA, pB, esperado) {
     ['grupo_ocupado_2', {}, { wdGroupErr: 2 }, { toastA: { otro: /El otro teléfono no pudo montar Wi-Fi Direct/ }, toastB: { yo: /Android no pudo montar Wi-Fi Direct.*apaga y enciende el Wi-Fi/ }, medidasA: /no se pudo crear el grupo \(2 ocupado\)/, medidasB: /no se pudo crear el grupo \(2 ocupado\)/ }],
     ['grupo_error_interno_0', {}, { wdGroupErr: 0 }, { toastA: { otro: /El otro teléfono no pudo montar Wi-Fi Direct/ }, toastB: { yo: /Android no pudo montar Wi-Fi Direct/ }, medidasA: /no se pudo crear el grupo \(0 interno\)/, medidasB: /no se pudo crear el grupo \(0 interno\)/ }],
     ['grupo_no_soportado_1', {}, { wdGroupErr: 1 }, { toastA: { otro: /El otro teléfono no admite Wi-Fi Direct/ }, toastB: { yo: /Este teléfono no admite Wi-Fi Direct/ }, medidasA: /no se pudo crear el grupo \(1 no soporta\)/, medidasB: /no se pudo crear el grupo \(1 no soporta\)/ }],
-    ['no_se_pudo_unir', { wdFail: true }, {}, { toastA: { union: /No se pudo unir al grupo de Wi-Fi Direct/, acerca: /Acerquen/ }, medidasA: /no se pudo conectar al grupo/ }],
+    ['no_se_pudo_unir', { wdFail: true }, {}, { toastA: { union: /No se pudo unir al grupo de Wi-Fi Direct/, acerca: /Acerquen/ }, medidasA: /no se pudo conectar al grupo/, cancela: true }],
     ['grupo_se_cae', { wdDropMs: 500 }, {}, { toastA: { corte: /Se cortó Wi-Fi Direct a mitad del envío/ }, medidasA: /envío cortado/ }],
     ['otro_sin_wifi_direct', {}, { wifiDirect: false }, { sinToast: true }],
   ].filter((c) => !solo || c[0] === solo);

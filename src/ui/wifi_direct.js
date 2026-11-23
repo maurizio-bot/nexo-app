@@ -357,6 +357,7 @@ export class WifiDirect {
     var self = this, o = opts || {};
     var peer = o.nx || self._nexoOf(deviceId);
     self.busy = true;
+    var hosted = false;
     var t0 = Date.now();
     var pw = _wdPowerStart();
     _noteWd('try', { dir: 'out' });
@@ -368,7 +369,7 @@ export class WifiDirect {
       return new Promise(function(resolve, reject) {
         var st = { reject: reject };
         var offerTimer = setTimeout(function() { self.out.delete(fileId); reject(new Error('sin respuesta')); }, o.offerMs || OFFER_TIMEOUT_MS);
-        st.onNo = function(why) { clearTimeout(offerTimer); self.out.delete(fileId); var eNo = new Error('el otro no puede (' + (why || '?') + ')'); if (WIFI_OFF_RE.test(String(why || ''))) eNo.wifiOff = 'peer'; reject(eNo); };
+        st.onNo = function(why) { hosted = false; clearTimeout(offerTimer); self.out.delete(fileId); var eNo = new Error('el otro no puede (' + (why || '?') + ')'); if (WIFI_OFF_RE.test(String(why || ''))) eNo.wifiOff = 'peer'; reject(eNo); };
         st.onCreds = function(c) {
           clearTimeout(offerTimer);
           var tCreds = Date.now();
@@ -398,7 +399,8 @@ export class WifiDirect {
         };
         self.out.set(fileId, st);
         var wire = Object.assign({}, meta);
-        self._ctl(deviceId, { type: 'wq', id: fileId, size: data.length, meta: wire, pk: e2eMyPublicKey() }).catch(function(e) { clearTimeout(offerTimer); self.out.delete(fileId); reject(e); });
+        hosted = true;   // desde aquí el otro puede estar montando (o tener montado) el grupo para esto
+        self._ctl(deviceId, { type: 'wq', id: fileId, size: data.length, meta: wire, pk: e2eMyPublicKey() }).catch(function(e) { hosted = false; clearTimeout(offerTimer); self.out.delete(fileId); reject(e); });
       });
     }).then(function() {
       self.busy = false;
@@ -408,6 +410,7 @@ export class WifiDirect {
       try { if (typeof window.NEXO_noteSpeed === 'function') window.NEXO_noteSpeed('wifi-direct', 'out', Math.round(String(data || '').length * 3 / 4), Date.now() - t0); } catch (e) {} // 3081
     }, function(e) {
       self.busy = false;
+      if (hosted) self._cancelPeer(deviceId, fileId);
       _noteWd('fail', { dir: 'out', cause: _wdCause(e), act: Date.now() - t0 });
       _wdPowerEnd(pw, 'envío ' + fileId, false);
       console.warn('[WIFI-DIRECT] ' + fileId + ': ' + (e && e.message) + ' → por Bluetooth');
@@ -423,6 +426,7 @@ export class WifiDirect {
     var self = this, peer = self._nexoOf(deviceId);
     if (self.busy) return Promise.reject(new Error('Wi-Fi Direct ocupado'));
     self.busy = true;
+    var hosted = false;
     var t0 = Date.now();
     var pw = _wdPowerStart();
     _noteWd('try', { dir: 'out' });
@@ -434,7 +438,7 @@ export class WifiDirect {
       return new Promise(function(resolve, reject) {
         var st = {};
         var offerTimer = setTimeout(function() { self.out.delete(fileId); reject(new Error('sin respuesta')); }, OFFER_TIMEOUT_MS);
-        st.onNo = function(why) { clearTimeout(offerTimer); self.out.delete(fileId); var eNo = new Error('el otro no puede (' + (why || '?') + ')'); if (WIFI_OFF_RE.test(String(why || ''))) eNo.wifiOff = 'peer'; reject(eNo); };
+        st.onNo = function(why) { hosted = false; clearTimeout(offerTimer); self.out.delete(fileId); var eNo = new Error('el otro no puede (' + (why || '?') + ')'); if (WIFI_OFF_RE.test(String(why || ''))) eNo.wifiOff = 'peer'; reject(eNo); };
         st.onCreds = function(c) {
           clearTimeout(offerTimer);
           var tCreds = Date.now();
@@ -453,10 +457,12 @@ export class WifiDirect {
           }, function(e) { self.out.delete(fileId); reject(e); });
         };
         self.out.set(fileId, st);
-        self._ctl(deviceId, { type: 'wq', id: fileId, size: size, big: 1, meta: {}, pk: e2eMyPublicKey() }).catch(function(e) { clearTimeout(offerTimer); self.out.delete(fileId); reject(e); });
+        hosted = true;
+        self._ctl(deviceId, { type: 'wq', id: fileId, size: size, big: 1, meta: {}, pk: e2eMyPublicKey() }).catch(function(e) { hosted = false; clearTimeout(offerTimer); self.out.delete(fileId); reject(e); });
       });
     }).then(function(r) { self.busy = false; _noteWd('ok', { dir: 'out', act: Date.now() - t0 }); _wdPowerEnd(pw, 'envío grande ' + fileId, true); return r; }, function(e) {
       self.busy = false;
+      if (hosted) self._cancelPeer(deviceId, fileId);
       _noteWd('fail', { dir: 'out', cause: _wdCause(e), act: Date.now() - t0 });
       _wdPowerEnd(pw, 'envío grande ' + fileId, false);
       console.warn('[WIFI-DIRECT] Archivo grande ' + fileId + ': ' + (e && e.message));
@@ -482,13 +488,14 @@ export class WifiDirect {
   // Paquetes de control (llegan por Bluetooth). true si era de Wi-Fi Direct.
   handle(p, deviceId) {
     var self = this;
-    if (!p || !/^w[qanf]$/.test(p.type || '')) return false;
+    if (!p || !/^w[qanfx]$/.test(p.type || '')) return false;
     var id = String(p.id || '');
     if (!id) return true;
     var st = self.out.get(id);
     if (p.type === 'wa') { if (st && st.onCreds) st.onCreds(p.c); return true; }
     if (p.type === 'wn') { if (st && st.onNo) st.onNo(p.why); return true; }
     if (p.type === 'wf') { if (st && st.onDone) st.onDone(); return true; }
+    if (p.type === 'wx') { self._onCancel(id, deviceId); return true; }
     // 'wq': nos ofrecen un archivo
     var from = _nid(p.from);
     var no = function(why) { self._ctl(deviceId, { type: 'wn', id: id, why: why }).catch(function() {}); };
@@ -504,6 +511,7 @@ export class WifiDirect {
       ((typeof p.pk === 'string' && /^[A-Za-z0-9+/=]{80,100}$/.test(p.pk)) ? p.pk : null);
     if (!key) { refuse('sin clave'); return true; }
     self.busy = true;
+    self._hosting = { id: id, deviceId: deviceId };   // por si llega su «cancelar» mientras se monta el grupo
     var tH = Date.now();
     var pwIn = _wdPowerStart();
     _noteWd('try', { dir: 'in' });
@@ -520,6 +528,9 @@ export class WifiDirect {
     }).then(function(cr) {
       // 3258 (quien recibe monta el grupo): tiempo, reintentos del sistema y su código, y el Wi-Fi normal al empezar
       if (cr && cr.groupMs >= 0) _noteWd('group', { ms: cr.groupMs, attempts: cr.attempts, reasons: cr.reasons });
+      self._hosting = null;
+      // el otro ya se rindió mientras se montaba el grupo: se baja ya (no se le mandan las credenciales)
+      if (self._cancelled && self._cancelled.delete(id)) { self._nativeCancel(id); var eC = new Error('cancelado por quien envía'); eC.cancelled = true; throw eC; }
       self.incoming.set(id, { meta: p.meta || {}, deviceId: deviceId, from: from, ts: Date.now(), big: !!big, pw: pwIn, apStart: cr && typeof cr.apStart === 'number' ? cr.apStart : null });
       // Un archivo grande puede tardar: el tope lo pone el propio socket (sin datos 60 s → error → bigFinished)
       if (big) self.ble.bigFiles._set(id, { dir: 'in', state: 'receiving', bytes: 0, total: p.size, nx: from });
@@ -531,15 +542,40 @@ export class WifiDirect {
       return self._ctl(deviceId, { type: 'wa', id: id, c: c });
     }).catch(function(e) {
       self.busy = false;
+      self._hosting = null;
+      if (self._cancelled) self._cancelled.delete(id);
       self.incoming.delete(id);
       _noteWd('fail', { dir: 'in', cause: _wdCause(e), act: Date.now() - tH });
       _wdPowerEnd(pwIn, 'recepción ' + id, false);
       console.warn('[WIFI-DIRECT] No puedo recibir ' + id + ': ' + (e && e.message));
+      if (e && e.cancelled) return;   // lo canceló el otro: ni aviso ni respuesta
       var off = !!(e && (e.wifiOff || e.code === 'WD_WIFI_OFF' || WIFI_OFF_RE.test(String(e.message || ''))));
       if (off) self._wifiOffNote(false); else self._avisoErr(e, true, p.size);
       no(off ? 'Wi-Fi apagado' : (e && e.message));
     });
     return true;
+  }
+
+  // 3287 (23-11, «cancelar»): quien ofreció un archivo y no pudo mandarlo (no logró unirse al grupo, se cortó, se cansó de esperar)
+  // se lo dice al otro, que tenía el grupo montado esperándolo hasta 90 s (ocupado para cualquier otra transferencia, con el Wi-Fi
+  // normal a medias y gastando batería). Con «wx» lo baja al momento.
+  _cancelPeer(deviceId, id) {
+    this._ctl(deviceId, { type: 'wx', id: id }).catch(function() {});
+  }
+  _nativeCancel(id) {
+    var pl = _plugin();
+    if (pl && typeof pl.wifiDirectCancel === 'function') { try { pl.wifiDirectCancel({ transferId: id }).catch(function() {}); } catch (e) {} }
+  }
+  // Llega «wx» de quien nos ofreció `id`: solo vale del mismo enlace por el que vino la oferta
+  _onCancel(id, deviceId) {
+    var inc = this.incoming.get(id);
+    if (inc && inc.deviceId === deviceId) {
+      console.log('[WIFI-DIRECT] ' + id + ': quien envía canceló (no pudo unirse o se cortó): bajo el grupo ya');
+      this._nativeCancel(id);   // el nativo cierra y avisa (onWifiDirectReceived / onBigDone con error): ahí se libera todo
+      return;
+    }
+    var h = this._hosting;
+    if (h && h.id === id && h.deviceId === deviceId) { (this._cancelled = this._cancelled || new Set()).add(id); console.log('[WIFI-DIRECT] ' + id + ': quien envía canceló mientras se montaba el grupo'); }
   }
 
   _onReceived(ev) {
