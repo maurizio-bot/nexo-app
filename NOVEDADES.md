@@ -12,8 +12,12 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Si tu teléfono tiene apagados o sin sonido los avisos de NEXO, o está en «No molestar», NEXO te lo dice y te lleva al ajuste.
-- En lugares con mucha gente (metro, conciertos), el contacto que tiene un mensaje tuyo esperando conecta primero por Bluetooth.
+- Grupos: al crear eliges «Todos participan» o «Personalizado» (quién escribe, agrega y edita). Los cambios ya no se pierden si dos los hacen a la vez.
+- NEXO te avisa si tu teléfono tiene sus avisos apagados, sin sonido o en «No molestar».
+- Con mucha gente cerca (metro, conciertos) busca mejor y conecta primero con quien tiene un mensaje tuyo esperando.
+- Archivos medianos más rápidos por Bluetooth.
+- El enlace de invitación ya abre su página.
+- Ajustes: nueva sección «Notificaciones».
 </es-419>
 <!-- /APK -->
 
