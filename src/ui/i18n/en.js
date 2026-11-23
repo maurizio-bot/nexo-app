@@ -502,6 +502,7 @@ export default {
   prof_change_phone: "Change phone",
   prof_change_phone_sub: "With both phones on the same Wi-Fi: on the new one, \"Bring my account here\"; on this one, \"Transfer my account\" and scan its code. Everything moves (contacts, chats, photos, groups) and this one is left empty.",
   prof_move_send: "Transfer my account to a new phone",
+  prof_move_auth: "Move your account to another phone",
   prof_move_receive: "Bring my account from another phone",
   prof_alerts_title: "Alerts with the screen off",
   prof_alerts_sub: "So messages and calls arrive with the app closed or the screen off.",

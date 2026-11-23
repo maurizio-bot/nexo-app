@@ -502,6 +502,7 @@ export default {
   prof_change_phone: "Cambiare telefono",
   prof_change_phone_sub: "Con entrambi i telefoni sulla stessa rete Wi-Fi: sul nuovo, \"Porta qui il mio account\"; su questo, \"Trasferisci il mio account\" e leggi il suo codice. Passa tutto (contatti, chat, foto, gruppi) e questo resta vuoto.",
   prof_move_send: "Trasferisci il mio account su un nuovo telefono",
+  prof_move_auth: "Spostare il tuo account su un altro telefono",
   prof_move_receive: "Porta qui il mio account da un altro telefono",
   prof_alerts_title: "Notifiche con lo schermo spento",
   prof_alerts_sub: "Perché messaggi e chiamate arrivino con l'app chiusa o lo schermo spento.",

@@ -18,7 +18,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 
 ---
 
-## Dónde estamos (actualizado: 2026-11-23 México)
+## Dónde estamos (actualizado: 2026-11-23 tarde, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
 - **Forma de trabajo:** CLAUDE.md «GASTO» (leer SOLO este bloque + 🔴 de `docs/AREAS.md`; lo demás con grep). Lo anterior, con todo el detalle de 3266–3283:
@@ -86,24 +86,16 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   (logo y nombre: «al rato», se deja como está); (9) canal rápido antes que Wi-Fi Direct: DECIDIDO 23-11 («solo si es más rápido») y HECHO (3289: por medidas del día).
 - **APK PUBLICADA 23-11 04:27: lleva el número 3121** (la 3120 no salió: falló la prueba vieja `binary.js`, que contaba trozos GATT y ahora esos archivos van por L2CAP; arreglada la prueba). CI en verde, el Kotlin nuevo compiló. Falta la prueba del dueño.
 - **NEGOCIO (23-11, privado):** `negocio/EMPRESAS_DISENO_2026-11-23.md` (organización dentro de la app sobre el estado firmado de los grupos; pasos dic → mar-2027) y `PLAN.md` al día. Decide el dueño cuando toque: cobro fuera/dentro de Play (a confirmar política), capturas en grupos de trabajo, empresa constituida.
-- **AUDITORÍA DE SEGURIDAD FINAL, HECHA 23-11** (5 revisiones en paralelo; informe en el PRIVADO `seguridad/AUDITORIA_FINAL_2026-11-23.md`, con
-  orden de arreglo en su §6 y pruebas de concepto en `seguridad/poc_2026-11-23/`). **YA ARREGLADO en NEXOCHAT (`[skip ci]`, va en la siguiente APK):**
-  G-F1 un contacto escribía como OTRO (`ble_receive.js`: el remitente es quien cifró; `spoofsender.js`) · I-X1 inyección por el id de una nota
-  de voz (`_msgIdOk`, `render.js`; `xss_ids.js`) · I-X2 nombre con HTML en la hoja del fondo (`wallpaper.js`) · C-N1 ✓✓ falsa sin remitente o de
-  un no-contacto (`ble_ack.js`; `ackforge.js`). **FALTA, sin riesgo (siguiente sesión, mucho es Kotlin):** T-D1 (un extraño llena el disco con
-  `gq`), T-D2 (48 MB por marco en Wi-Fi local), T-D3 (aviso falso + ✓✓ firmada a pedido en Wi-Fi local), G-K1 (no aceptar saltos de grupo con
-  clave «de oídas»), S-A2 (`since` al futuro deja sorda la escucha nativa), I-U1 (carpeta propia y comprobar paquete/firma de la actualización);
-  luego la segunda tanda del §6. **ESPERAN AL DUEÑO (cifrado/identidad/producto):** punto 20 (certificar la clave de firma con la de identidad),
-  S-A1 (sello de pareja en el sobre: cierra el oráculo de ✓✓ del nativo), T-T1 (comentario de foto y «ver una vez» van en claro), C-N2 (Fénix
-  `fd`/`fp`), C-N4 (clave cambiada provocada bloquea el envío), C-N5 (desconocido se agrega con su primer mensaje), G-B1, T-W1, T-X1 (Tor).
-  NO encender Fénix Entorno antes del punto 20.
-  **DECISIONES DEL DUEÑO 23-11 (sigue las 17 recomendaciones; lista completa en el privado, §7 del informe):** certificado ik→sk (1A), sello de
-  pareja en el sobre (2A), reto antes de entregar sin la app (3A, CONDICIÓN: medir en `multitud.js`; si añade > 1 s, no se sube y se replantea),
-  cifrar comentario/«ver una vez» (4A), seguir enviando con clave pendiente y reenviar al aceptar (5A), Fénix solo cifrado (6A), primer mensaje
-  de desconocido a Solicitudes (7A), «sin verificar» solo al comparar número o agregar de cerca (8A), dos que dicen ser el mismo → aviso (9A),
-  grupos: rama de no-admin solo gana en carrera real (10A), huella de clave por miembro: después, con Empresas (11B), identidad solo a contactos en
-  Wi-Fi/Bluetooth (12A), «Tor siempre» = todo por Tor (13A), toque firmado (14A), versionCode creciente (15A), capturas bloqueadas en «ver una
-  vez» y con bloqueo (16A), llave de firma nueva solo al pasar a Play (17B). El dueño pidió: nada de esperas largas; medir lo que añada tiempo.
+- **TANDA 1 = TODA LA SEGURIDAD (23-11, subida con CI: APK 3298).** Informe y lista de lo hecho en el PRIVADO `seguridad/AUDITORIA_FINAL_2026-11-23.md`
+  §6–§8. Hecho: tanda corta (S-A2, T-D1, T-D2, G-K1, I-U1), las 17 decisiones del dueño salvo 14A (toque firmado: hay que publicar el worker
+  de Cloudflare a mano → tanda 2) y 11B (con Empresas), y ~25 endurecimientos (grupos G-B1…G-O4; interfaz CSP sin unsafe-*, OpenType,
+  versionCode = número de build, FLAG_SECURE con «ver una vez»/bloqueo, testigos de avisos; transportes PayloadNet, topes de la malla, relé
+  ajeno solo para bajar, Tor siempre = todo por Tor, VPN fuera del Wi-Fi local). 3A medido: reto 25–50 ms, entrega 16,3 → 16,5 s.
+  PRUEBAS DEL DUEÑO de esta APK: que la app arranque y el diagnóstico diga el número de build (CSP nueva); mensaje con la app del otro
+  cerrada y sin internet (sello + reto); que alguien que no es contacto te escriba → «Solicitudes»; foto «ver una vez» → no deja capturar.
+  Avisos publicados antes de esta APK: tocarlos abre la app pero no el chat (una sola vez).
+- **TANDA 2 (en curso mientras compila la 1):** llamadas 17/18, eco 25, relés/batería 24, vista previa de enlaces 31, 14A, N10, quitar código
+  sin uso y partir archivos > 900 líneas, revisión final y novedades.
 - **SIGUIENTE, sesión principal (Fable), en orden:** (6) llamadas 17/18 → (7) eco 25 + relés/batería 24 → revisión, UNA APK y
   auditoría final. Plan con modelo por actividad: `docs/COLA.md` al principio. Para targetSdk 36 hace falta teléfono con Android 15/16 (borde a borde, «atrás»).
 - **PRUEBAS DEL DUEÑO con la 3119 (ya publicada):** (a) modo avión, escribir, bloquear, quitar modo avión SIN abrir NEXO → llega y ✓✓; (b) sin internet los dos,

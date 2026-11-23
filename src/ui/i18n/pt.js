@@ -502,6 +502,7 @@ export default {
   prof_change_phone: "Trocar de celular",
   prof_change_phone_sub: "Com os dois celulares no mesmo Wi-Fi: no novo, \"Trazer minha conta\"; neste, \"Transferir minha conta\" e leia o código dele. Tudo é transferido (contatos, conversas, fotos, grupos) e este fica vazio.",
   prof_move_send: "Transferir minha conta para um celular novo",
+  prof_move_auth: "Passar sua conta para outro telefone",
   prof_move_receive: "Trazer minha conta de outro celular",
   prof_alerts_title: "Notificações com a tela apagada",
   prof_alerts_sub: "Para que as mensagens e as chamadas cheguem com o app fechado ou a tela apagada.",

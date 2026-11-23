@@ -502,6 +502,7 @@ export default {
   prof_change_phone: "Cambiar de teléfono",
   prof_change_phone_sub: "Con los dos teléfonos en el mismo Wi-Fi: en el nuevo, \"Traer mi cuenta\"; en este, \"Pasar mi cuenta\" y lee su código. Pasa todo (contactos, chats, fotos, grupos) y este queda vacío.",
   prof_move_send: "Pasar mi cuenta a un teléfono nuevo",
+  prof_move_auth: "Pasar tu cuenta a otro teléfono",
   prof_move_receive: "Traer mi cuenta de otro teléfono",
   prof_alerts_title: "Avisos con la pantalla apagada",
   prof_alerts_sub: "Para que los mensajes y las llamadas lleguen con la app cerrada o la pantalla apagada.",

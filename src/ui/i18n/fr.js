@@ -502,6 +502,7 @@ export default {
   prof_change_phone: "Changer de téléphone",
   prof_change_phone_sub: "Avec les deux téléphones sur le même Wi-Fi : sur le nouveau, \"Récupérer mon compte ici\" ; sur celui-ci, \"Transférer mon compte\" et scannez son code. Tout est transféré (contacts, discussions, photos, groupes) et celui-ci reste vide.",
   prof_move_send: "Transférer mon compte vers un nouveau téléphone",
+  prof_move_auth: "Transférer ton compte vers un autre téléphone",
   prof_move_receive: "Récupérer mon compte depuis un autre téléphone",
   prof_alerts_title: "Alertes avec l'écran éteint",
   prof_alerts_sub: "Pour que les messages et les appels arrivent avec l'app fermée ou l'écran éteint.",
