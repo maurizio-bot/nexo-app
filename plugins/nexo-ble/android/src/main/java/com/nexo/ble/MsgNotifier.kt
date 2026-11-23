@@ -391,7 +391,7 @@ class MsgNotifier(private val ctx: Context) {
     private fun post(chatId: String, alert: Boolean) {
         val c = book.get(chatId) ?: return
         val nm = NotificationManagerCompat.from(ctx)
-        if (!nm.areNotificationsEnabled()) { Log.w(TAG, "Notificaciones desactivadas por el usuario"); return }
+        if (!nm.areNotificationsEnabled()) { Log.w(TAG, "Notificaciones desactivadas por el usuario"); if (alert) logNative("WARN", "Aviso NO publicado: las notificaciones de NEXO están apagadas en el teléfono"); return }
         val n = c.count
         val text = if (n > 1) NativeLang.t(ctx, "msg_new_n", "n" to n) else c.last.ifBlank { NativeLang.t(ctx, "msg_new") }
         val launch = notifLaunchIntent(ctx) ?: return
@@ -418,8 +418,40 @@ class MsgNotifier(private val ctx: Context) {
             .setContentIntent(pi)
         // 3094: la foto del contacto (la que la app le pasó, solo en memoria), redonda; sin foto, como antes
         avatarBitmap(chatId)?.let { b.setLargeIcon(it) }
-        try { nm.notify(notifId(chatId), b.build()) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones"); return }
+        try { nm.notify(notifId(chatId), b.build()) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones"); logNative("WARN", "Aviso NO publicado: sin permiso de notificaciones"); return }
+        if (alert) logAlert(chatId)
         if (alert && wakeOnMsg()) wakeScreen(5000)
+    }
+
+    // 23-11 (COLA 23): al publicar un aviso que debe sonar se apunta en el registro nativo (el del diagnóstico) cómo lo va a tratar
+    // el teléfono: pantalla encendida o apagada, «No molestar», el canal (apagado / sin sonido), teléfono en silencio o vibración, y
+    // si el sistema de verdad lo dejó publicado. Un «llegó pero no sonó» se explica solo (SilencedPolicy.alertVerdict).
+    private fun logAlert(chatId: String) {
+        try {
+            val sys = ctx.getSystemService(NotificationManager::class.java)
+            val pm = ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            val am = ctx.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            var chState = SilencedPolicy.OK
+            var bypass = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) sys?.getNotificationChannel(CHANNEL_ID)?.let { ch ->
+                chState = SilencedPolicy.channelState(ch.importance, ch.sound != null, false, false)
+                bypass = ch.canBypassDnd()
+            }
+            val filter = try { sys?.currentInterruptionFilter ?: SilencedPolicy.FILTER_ALL } catch (e: Exception) { SilencedPolicy.FILTER_ALL }
+            val id = notifId(chatId)
+            val active: Boolean? = try { sys?.activeNotifications?.any { it.id == id } } catch (e: Exception) { null }
+            val verdict = SilencedPolicy.alertVerdict(chState, filter, bypass, am.ringerMode, active)
+            logNative(if (verdict == "suena") "INFO" else "WARN", "Aviso de mensaje publicado (pantalla ${if (pm.isInteractive) "encendida" else "apagada"}): $verdict")
+        } catch (e: Throwable) { }
+    }
+    private fun logNative(level: String, msg: String) {
+        Log.i(TAG, msg)
+        try {
+            val l = NexoBlePlugin.nativeLogShared ?: synchronized(NexoBlePlugin::class.java) {
+                NexoBlePlugin.nativeLogShared ?: NativeLog(java.io.File(ctx.filesDir, NexoBlePlugin.NATIVE_LOG_FILE)).also { NexoBlePlugin.nativeLogShared = it }
+            }
+            l.add(level, "AVISO", msg)
+        } catch (e: Throwable) { }
     }
 }
 

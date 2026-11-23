@@ -3,7 +3,7 @@
 // (FCM), si NEXO volvió sola, cuándo empezó a escuchar internet sin la app. Ahora, de lo anterior a esas 150 líneas, se
 // conservan las líneas clave (despertares, arranques, red y sobres), hasta 60.
 var NAT_TAIL = 150, NAT_KEY_MAX = 60;
-var NAT_KEY = /\[(FCM|VUELVE|AUTO_START|FILE_IO)\]|\[LIFECYCLE\] load|Internet sin la app|escuchando \d+ contacto|sobre de |Red por defecto|No se pudo|\[WARN\]\[NET\]/;
+var NAT_KEY = /\[(FCM|VUELVE|AUTO_START|FILE_IO|AVISO)\]|\[LIFECYCLE\] load|Internet sin la app|escuchando \d+ contacto|sobre de |Red por defecto|No se pudo|\[WARN\]\[NET\]/;
 export function nativeDiagText(log) {
   if (!log) return '';
   var lines = String(log).split('\n');

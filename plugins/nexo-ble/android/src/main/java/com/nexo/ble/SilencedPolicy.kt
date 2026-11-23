@@ -59,4 +59,23 @@ object SilencedPolicy {
         if (dndSilences(filter, msgBypass && callBypass)) out.add(if (dndKind(filter) == "total") "dnd_total" else "dnd_priority")
         return out
     }
+
+    const val RINGER_SILENT = 0   // AudioManager.RINGER_MODE_SILENT
+    const val RINGER_VIBRATE = 1  // AudioManager.RINGER_MODE_VIBRATE
+
+    /**
+     * 23-11 (COLA 23: «con la app cerrada y la pantalla apagada a veces no suena»): para el registro, cómo va a tratar el teléfono un
+     * aviso de mensaje que NEXO acaba de publicar. «suena» o «NO suena: motivos» (todos los que apliquen). [active]: si el sistema lo
+     * tiene de verdad publicado (null = no se pudo saber). Así un «no sonó» se explica solo en el diagnóstico.
+     */
+    fun alertVerdict(channel: String, filter: Int, bypassDnd: Boolean, ringerMode: Int, active: Boolean?): String {
+        val why = ArrayList<String>()
+        if (active == false) why.add("el sistema no lo dejó publicado")
+        if (channel == OFF) why.add("el canal de mensajes está apagado en el teléfono")
+        if (channel == QUIET) why.add("el canal de mensajes está sin sonido en el teléfono")
+        if (dndSilences(filter, bypassDnd)) why.add(if (dndKind(filter) == "total") "«No molestar» total" else "«No molestar» (solo prioritarias)")
+        if (ringerMode == RINGER_SILENT) why.add("el teléfono está en silencio")
+        if (ringerMode == RINGER_VIBRATE) why.add("el teléfono está en vibración")
+        return if (why.isEmpty()) "suena" else "NO suena: " + why.joinToString("; ")
+    }
 }

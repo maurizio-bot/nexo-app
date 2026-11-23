@@ -43,6 +43,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
     en el PRIVADO (`seguridad/PARA_LA_AUDITORIA_FINAL.md`, 12–26; **el 20 es un fallo PREVIO y abierto, no de grupos, para la auditoría final**).
     Al CREAR (dueño 23-11): lo primero son DOS opciones, «Todos participan» o «Personalizado» (escribir / agregar / nombre y foto: todos o solo
     administradores, y «Admin» junto a cada elegido); lo mismo en Ajustes del grupo. Falta probarlo en teléfonos.
+  - **3286 COLA 23 («app cerrada + pantalla apagada a veces no suena»), 23-11:** sin fallo de la app en el código de avisos; de los casos
+    apuntados, el del Vivo fue su ajuste «Notificación silenciosa» y la tablet avisó bien. Hecho: al publicar un aviso, el registro nativo dice
+    «suena» o «NO suena: motivo» (canal apagado / sin sonido, «No molestar», teléfono en silencio o vibración, el sistema no lo publicó) con la
+    pantalla encendida o apagada (`MsgNotifier.logAlert`, `SilencedPolicy.alertVerdict`, línea `[AVISO]` que el diagnóstico conserva). Si vuelve
+    a pasar, el diagnóstico lo explica. PRUEBA DEL DUEÑO: app cerrada + pantalla apagada, que otro le escriba; si no suena, «Copiar diagnóstico».
   - **3284 MODO VAGÓN / MULTITUD (pendiente 2, parte de la app HECHA):** `multitud.js` puesta al día (+ `--b-dormido`). Con la fase 4, entre 200/500/1000 NEXO el
     contacto DESPIERTO con pendientes enlaza en 1,1–1,6 s; lag p95 22/27/50 ms. Hueco hallado: contacto DORMIDO entre 500 NEXO → 33–50 s. Causas: el gestor no
     sabía que tenía un mensaje esperando (ahora `_linkPendNow`: lo mandado en la sesión sin confirmar) y su conexión hacía cola tras intentos sin prisa (ahora
@@ -60,8 +65,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   (3) 31 vista previa de enlaces: DECIDIDA 23-11 (la baja quien recibe, por Tor; nunca una falsa; detalle en COLA 31); (4) ritmo de búsqueda por Bluetooth de lo ya entregado al buzón (hoy hasta 1 h); (5) Google Play: cuenta de
   desarrollador (tarda días), identificador de paquete (¡la APK de GitHub y la de Play no se pueden actualizar una sobre otra!), privacidad, 12 probadores;
   (6) Kinway: IMPI, dominios, redes.
-- **SIGUIENTE, sesión principal (Fable), en orden:** (3) COLA 23 app cerrada +
-  pantalla apagada que a veces no suena → (4) Wi-Fi Direct «cancelar» → (5) L2CAP → (6) llamadas 17/18 → (7) eco 25 + relés/batería 24 → revisión, UNA APK y
+- **SIGUIENTE, sesión principal (Fable), en orden:** (4) Wi-Fi Direct «cancelar» → (5) L2CAP → (6) llamadas 17/18 → (7) eco 25 + relés/batería 24 → revisión, UNA APK y
   auditoría final. Plan con modelo por actividad: `docs/COLA.md` al principio. Para targetSdk 36 hace falta teléfono con Android 15/16 (borde a borde, «atrás»).
 - **PRUEBAS DEL DUEÑO con la 3119 (ya publicada):** (a) modo avión, escribir, bloquear, quitar modo avión SIN abrir NEXO → llega y ✓✓; (b) sin internet los dos,
   escribir lejos, bloquear, acercarse → llega sin abrir NEXO; (c) videollamada → miniatura ↔ app varias veces: sin chat en la ventanita, la mini responde;
