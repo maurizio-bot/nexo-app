@@ -23,10 +23,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
 - **Forma de trabajo:** CLAUDE.md «GASTO» (leer SOLO este bloque + 🔴 de `docs/AREAS.md`; lo demás con grep). Todo el detalle de 3266–3311:
   `docs/historial/ESTADO_traspaso_hasta_2026-11-23.md` (y los anteriores). PRINCIPIO: NEXO = todos los caminos; nunca recortar caminos.
-- **APK 3123 publicada (23-11 11:06)**. La 3309 falló en el CI solo por una prueba vieja (`enlaces.js` L4 esperaba un enlace normal sin
-  tarjeta; desde la vista previa real todos la llevan). **APK 3314 EN CI (subida 14:23 México)** = 3309 (vista previa real por Tor, toque
-  sellado 14A, «sr» firmado N10, limpieza) + 3310–3313. **AVISO PROGRAMADO «Revisar CI de la APK 3314» a las 15:52 México.**
-- **VAN EN LA 3314:** 3310 menú de la burbuja sin «Responder» (se responde
+- **APK 3125 PUBLICADA (23-11 15:55 México; build 3314)** = 3309 (vista previa real por Tor, toque sellado 14A, «sr» firmado N10,
+  limpieza) + 3310–3313. Pendiente: pasar el bloque de NOVEDADES al historial con el nº 3125. Sin avisos programados activos.
+- **VAN EN LA 3125 (build 3314):** 3310 menú de la burbuja sin «Responder» (se responde
   deslizando) y «Editar» arriba; 3311 «Copiar» en la barra de la multiselección; 3312 (COLA 13) con enlace a MTU 23 los archivos desde ~6 KB
   van por el canal rápido L2CAP (`l2_fast.js`, `l2mediano.js` caso mtu23); 3313 (COLA 25) videollamada contestada desde el aviso: la cámara
   cortada se reabre aunque el WebView siga «oculto» si Android ya dice primer plano (`call_media.js`, `callmedia.js` 9b).
