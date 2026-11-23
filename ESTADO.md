@@ -45,10 +45,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
     administradores, y «Admin» junto a cada elegido); lo mismo en Ajustes del grupo. Falta probarlo en teléfonos.
   - **3288 COLA 14, archivos MEDIANOS por el canal rápido del Bluetooth (L2CAP), 23-11:** antes solo los de más de ~2 MB iban por L2CAP; lo demás, en
     trozos a ~17 KB/s (2 MB = 2 min). Ahora desde ~45 KB, si los dos lo anuncian (`l2p` en el kx), va por el canal (`l2_fast.js`; nativo
-    `l2PayloadHost/Send/Cancel` en `PluginFiles.kt`; enganchado en `ble_ack_files._sendFileBest` ANTES de Wi-Fi Direct). Si falla, sigue como siempre
-    (Wi-Fi Direct o trozos) y con ese contacto no se prueba en 10 min. `l2mediano.js`: 400 KB en 1,6 s (26 s en trozos). Falta medirlo en teléfonos.
-    **OJO: al guardar esto seguían corriendo las demás pruebas de archivos/fotos/voz/vídeo de la batería (cambia el camino por defecto por Bluetooth):
-    hay que terminarlas (`CI_ONLY='archivo|foto|voz|vídeo|video|adjunt' node ci.js builds/wip`) y ajustar las que cuenten trozos por Bluetooth.**
+    `l2PayloadHost/Send/Cancel` en `PluginFiles.kt`; enganchado en `ble_ack_files._sendFileL2OrJS`). Si falla, sigue en trozos como siempre y con ese contacto no se prueba en 10 min. `l2mediano.js`: 400 KB en 1,6 s (26 s en trozos). Falta medirlo en teléfonos.
+    Wi-Fi Direct sigue yendo PRIMERO cuando puede (decisión del dueño 12-11): el canal rápido entra cuando Wi-Fi Direct no puede o falla
+    (`_sendFileL2OrJS`). Batería de archivos/fotos/voz/vídeo: 149 de 150; la que falla aquí, `fotocalidad.js` (parte de internet), falla IGUAL con el
+    código del inicio de la sesión: es del contenedor (Chromium no abre los relés del simulador), como `estadovideo.js`; la corre el CI.
   - **3287 Wi-Fi Direct «CANCELAR», 23-11:** quien ofrece un archivo y no logra mandarlo (no se une al grupo, se corta, se cansa de esperar) manda «wx»
     y el otro baja el grupo YA (antes lo esperaba 90 s, ocupado para todo lo demás): `wifi_direct.js` (`_cancelPeer`, `_onCancel`), nativo
     `wifiDirectCancel` (cierra el socket que esperaba). En `wdgrupo.js` el otro queda libre a los 4,5 s. Falta verlo en teléfonos.

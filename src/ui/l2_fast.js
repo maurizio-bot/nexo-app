@@ -12,8 +12,10 @@
  *   B → A   'la' { id, psm }  |  'ln' { id, why }   (B abre el canal y dice en qué número escucha)
  *   A abre el canal y manda; B lo recibe y lo entrega como un archivo terminado (igual que al llegar por Wi-Fi Direct).
  *   A → B   'lx' { id }                  (A no pudo: B cierra el canal ya)
- * Si CUALQUIER paso falla o tarda, el archivo sigue por el camino de siempre (lo decide ble_ack_files.js: Wi-Fi Direct o
- * trozos por Bluetooth) y con ese contacto no se vuelve a probar en 10 min: nunca se queda sin mandar por culpa de este atajo.
+ * Cuándo: cuando Wi-Fi Direct no puede con ese archivo (Wi-Fi apagado, el otro no lo tiene, falló hace poco) o acaba de fallar.
+ * Wi-Fi Direct sigue yendo primero cuando puede (decisión del dueño 12-11); lo decide ble_ack_files._sendFileL2OrJS.
+ * Si CUALQUIER paso falla o tarda, el archivo va en trozos como siempre y con ese contacto no se vuelve a probar en 10 min:
+ * nunca se queda sin mandar por culpa de este atajo.
  * El contenido ya va cifrado de punta a punta; el canal no añade ni quita seguridad (como el de los archivos grandes).
  */
 import { e2eAnyEncrypted } from '../vault/e2e_proto.js';
@@ -73,7 +75,7 @@ export class L2Fast {
     return new Promise(function(resolve, reject) {
       var timer = setTimeout(function() { self.out.delete(fileId); reject(new Error('sin respuesta')); }, OFFER_TIMEOUT_MS);
       self.out.set(fileId, {
-        onNo: function(why) { offered = false; clearTimeout(timer); self.out.delete(fileId); reject(new Error('el otro no puede (' + (why || '?') + ')')); },
+        onNo: function(why) { offered = false; clearTimeout(timer); self.out.delete(fileId); reject(new Error('el otro no puede (' + (why || '?') + ')')); }, // i18n-ok: registro
         onAccept: function(psm) {
           clearTimeout(timer); self.out.delete(fileId);
           if (!(psm > 0)) { reject(new Error('canal no válido')); return; }

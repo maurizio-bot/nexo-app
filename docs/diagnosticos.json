@@ -912,6 +912,22 @@
    "sintoma": "enlace_abre_cierra (nx16386482 6 desconexiones en 10 min)",
    "categoria": "Conexión",
    "causa": "VERSIÓN VIEJA (3117). Al volver al primer plano salen varios «Enlace ? (2504/066f) desconectado» de enlaces sin dueño: el falso «enlace_abre_cierra» ya arreglado en la 3283 (va en la siguiente APK). Sin mensajes perdidos: 97 por internet, 94 con ✓✓ y 3 aún sin."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "23:35",
+   "nx": "nx09acdb61 (Vivo Y03, Android 16): automático pedido por el S24, build 3119 (sesión anterior con la 3117)",
+   "sintoma": "par:enlace_abre_cierra (pedido por nx1n36c283)",
+   "categoria": "Conexión",
+   "causa": "VERSIÓN VIEJA en lo que falla: los enlaces que se abren y cierran (32 «Enlace … desconectado» seguidos al volver al primer plano, MTU 23, «BT soltó un mensaje (muerto)») son de la sesión con la 3117, justo antes de actualizar (23:34). Ya con la 3119: Bluetooth listo en 0,4–0,7 s, texto al S24 con ✓✓ en 1,7 s por internet. El falso «Enlace ?» está arreglado en la 3283 (siguiente APK)."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "23:35",
+   "nx": "nx1n36c283 (S24, Android 17), build 3119: PRUEBA DEL DUEÑO app cerrada, Vivo → S24",
+   "sintoma": "manual: prueba de entrega con la app cerrada (COLA 23)",
+   "categoria": "Prueba",
+   "causa": "SIN FALLO en la entrega. App cerrada por el usuario 23:33; texto del Vivo de las 23:35:04 llegó 23:35:05,85 por la escucha nativa de internet, «aviso de mensaje nuevo por internet» publicado y ✓✓ devuelta en 0,04 s. Falta saber del dueño si SONÓ (la 3119 aún no apunta [AVISO]). El Bluetooth del S24 estuvo APAGADO (≈21:09–23:35:24): la prueba fue solo por internet. A vigilar: Wi-Fi Direct 2 envíos a 2,9 KB/s de principio a fin (transferencia pura 189 KB/s; sin registro de esos envíos en la ventana); batería en segundo plano 6,6 %/h (pendiente 24)."
   }
  ]
 }
