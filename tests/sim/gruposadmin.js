@@ -114,7 +114,7 @@ const check = (p, sel) => { const cb = q(p, sel); if (cb) { cb.checked = true; c
   // 3. C trucado: escribe y se firma admin
   gsOf(C).canWrite = () => true;
   C.win.NEXO_sendGroupText(gid, JSON.stringify({ type: 'nexo_txt', t: 'trampa de C' }), 'trampa de C');
-  { const g = gsOf(C).get(gid), S = gsOf(C).state(gid); const fake = { g: gid, v: S.v + 1, cr: S.cr, ad: S.ad.concat([id(C)]), md: S.md, ow: S.ow, oa: S.oa, m: S.m, bl: S.bl, n: S.n, ph: S.ph, by: id(C), t: Date.now(), sg: '' };
+  { const g = gsOf(C).get(gid), S = gsOf(C).state(gid); const fake = { g: gid, v: S.v + 1, p: gsOf(C).stateId(gid), cr: S.cr, ad: S.ad.concat([id(C)]), md: S.md, ow: S.ow, oa: S.oa, m: S.m, bl: S.bl, n: S.n, ph: S.ph, by: id(C), t: Date.now(), sg: '' };
     await gsOf(C)._sign(fake); gsOf(C).sendText(gid, JSON.stringify({ type: 'nexo_txt', t: '👥 Ahora es admin: C', gs: 1 }), null, null, null, null, { s: [fake] }); void g; }
   await sleep(7000);
   r.trampa_no_llega = !(await vaultHas(A, gid, /trampa de C/)) && !(await vaultHas(B, gid, /trampa de C/));
@@ -139,9 +139,9 @@ const check = (p, sel) => { const cb = q(p, sel); if (cb) { cb.checked = true; c
   r.D_recibe_lo_nuevo = await wait(() => vaultHas(D, gid, /segundo de B/), 60);
 
   // 5. B (admin) intenta expulsar al creador y manda un estado tocado
-  { const S = gsOf(B).state(gid); const fake = { g: gid, v: S.v + 1, cr: id(B), ad: [id(B)], md: S.md, ow: S.ow, oa: S.oa, m: S.m.filter((x) => x !== id(A)), bl: S.bl, n: S.n, ph: S.ph, by: id(B), t: Date.now(), sg: '' };
+  { const S = gsOf(B).state(gid); const fake = { g: gid, v: S.v + 1, p: gsOf(B).stateId(gid), cr: id(B), ad: [id(B)], md: S.md, ow: S.ow, oa: S.oa, m: S.m.filter((x) => x !== id(A)), bl: S.bl, n: S.n, ph: S.ph, by: id(B), t: Date.now(), sg: '' };
     await gsOf(B)._sign(fake);
-    const fake2 = { g: gid, v: S.v + 1, cr: S.cr, ad: S.ad, md: S.md, ow: S.ow, oa: S.oa, m: S.m, bl: S.bl, n: 'Renombrado', ph: S.ph, by: id(B), t: Date.now(), sg: '' };
+    const fake2 = { g: gid, v: S.v + 1, p: gsOf(B).stateId(gid), cr: S.cr, ad: S.ad, md: S.md, ow: S.ow, oa: S.oa, m: S.m, bl: S.bl, n: 'Renombrado', ph: S.ph, by: id(B), t: Date.now(), sg: '' };
     await gsOf(B)._sign(fake2); fake2.ow = 0; // tocado DESPUÉS de firmar: la firma ya no vale
     r.B_no_puede_localmente = await gsOf(B).kick(gid, id(A)).then(() => false, () => true);
     gsOf(B).sendText(gid, JSON.stringify({ type: 'nexo_txt', t: '👥', gs: 1 }), null, null, null, null, { s: [fake] });

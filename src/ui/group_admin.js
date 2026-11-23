@@ -6,20 +6,26 @@
  * permiso se descarta (registro «[GROUP] … descartado»).
  * Cómo viaja: en el sobre de grupo (nexo_grp) de siempre, con campos nuevos:
  *   s  los últimos estados firmados (hasta GS_CHAIN_SEND), en un cambio y al ponerse al día
- *   sv versión del estado que tiene quien manda (en todos los sobres de un grupo con estado)
+ *   sv versión del estado que tiene quien manda (en todos los sobres de un grupo con estado) y sh, el principio de su huella:
+ *      misma versión con otra huella = dos ramas (se cruzan los estados y gana la misma en los dos, gsBranchWins)
  *   sp puntero a la copia cifrada del estado en el buzón de archivos (hasta GS_LOG_KEEP estados, 7 días)
  *   q  1 = «mándame tu estado» (quien manda vio que va atrasado)
  *   pi la foto del grupo (data URL), solo cuando el cambio la trae (su huella va firmada en el estado: ph)
  * El texto (c) de un cambio lleva gs:1: el que recibe NO lo muestra; escribe él mismo el aviso con lo que de verdad cambió.
  */
-import { gsClean, gsVerify, gsImplicit, gsCan, gsStepError, gsGenesisError, gsWins, gsNext, gsDiff, gsSigned, gsSigToB64, gsIsBoss, GS_LOG_KEEP, GS_CHAIN_SEND, GS_MAX_MEMBERS } from './group_state.js';
+import { gsClean, gsVerify, gsImplicit, gsCan, gsStepError, gsJumpError, gsBranchWins, gsNext, gsDiff, gsSigned, gsSigToB64, gsIsBoss, gsOpen, gsId, GS_LOG_KEEP, GS_CHAIN_SEND, GS_MAX_MEMBERS } from './group_state.js';
 import { e2eSign, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 import { _getBLEContacts } from './ble_helpers.js';
 import { stageBlob, fetchBlob, validatePointer, _bytesToB64, _b64ToBytes } from '../net/blob_mailbox.js';
 import { setChatWallpaperFor } from './wallpaper.js';
 import { t } from './i18n.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 
 var SYNC_EVERY_MS = 60000;      // pedir o mandar el estado a un mismo miembro, como mucho una vez por minuto
+var HEAL_EVERY_MS = 10 * 60000; // quien hace de creador reafirma el estado (para quien no puede engancharse), como mucho cada 10 min por grupo
+var HEAL_MAX_STEPS = 4;
+var SH_LEN = 12;                // letras de la huella que viajan en cada sobre (sh)
 var PH_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/;
 var PH_MAX = 60000;
 
@@ -29,10 +35,10 @@ function _toast(s) { try { if (window.NEXO_toast) window.NEXO_toast(s); } catch 
 function _inner(c) { try { var o = JSON.parse(c); return o && typeof o === 'object' ? o : null; } catch (e) { return null; } }
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 // Huella corta de la foto del grupo (la que va firmada en el estado)
+// (revisión 22-11: SHA-256; con una suma corta, quien reenvía el estado podía colar OTRA foto con la misma huella)
 export function groupPhotoHash(img) {
-  var h1 = 0x811c9dc5, h2 = 0x01000193, s = String(img || '');
-  for (var i = 0; i < s.length; i++) { var c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619) >>> 0; h2 = Math.imul(h2 + c, 2246822519) >>> 0; }
-  return s ? ('p' + s.length.toString(36) + h1.toString(36) + h2.toString(36)) : '';
+  var s = String(img || '');
+  return s ? ('p' + bytesToHex(sha256(new TextEncoder().encode(s)).subarray(0, 16))) : '';
 }
 
 export var groupAdminMethods = {
@@ -54,7 +60,9 @@ export var groupAdminMethods = {
     return (cards && this._cardKeys && this._cardKeys[nx]) || null;
   },
   _verify(s, cards) { var k = this._keyOf(s.by, cards); var ok = !!k && gsVerify(s, k); if (!ok) console.warn('[GROUP] Estado v' + s.v + ' de ' + s.g + ' firmado por ' + s.by + ': firma ' + (k ? 'no válida' : 'sin clave para comprobarla')); return ok; },
-  _logAt(g, v) { return (g.sl || []).find(function(x) { return x.v === v; }) || (v === 0 && !g.sl ? gsImplicit(g) : null); },
+  // Huella entera de mi estado (la que lleva en p el cambio siguiente) y su principio (viaja en cada sobre: sh)
+  stateId(gid) { var g = this.get(gid); return g && g.s ? gsId(g.s) : ''; },
+  _headId(g) { return g && g.s ? gsId(g.s).substring(0, SH_LEN) : undefined; },
   _logPut(g, s) {
     g.sl = (g.sl || []).filter(function(x) { return x.v < s.v; });
     g.sl.push(s);
@@ -69,13 +77,15 @@ export var groupAdminMethods = {
   change(gid, ch, opts) {
     var self = this, g = this.get(gid), me = this._me();
     opts = opts || {};
-    if (!g || g.left || g.kicked) return Promise.reject(new Error(t('grp_err_not_member', 'Ya no estás en este grupo')));
+    if (!g || ((g.left || g.kicked) && !opts.force)) return Promise.reject(new Error(t('grp_err_not_member', 'Ya no estás en este grupo')));
     var prev = this.state(gid), next = gsNext(prev, me, ch);
     var err = gsStepError(prev, next);
     if (err) { console.warn('[GROUP] Cambio no permitido en ' + gid + ': ' + err); return Promise.reject(new Error(t('grp_err_not_allowed', 'No tienes permiso para hacer eso en este grupo'))); }
     if (next.m.length > GS_MAX_MEMBERS) return Promise.reject(new Error(t('grp_max_a', 'Máximo ') + GS_MAX_MEMBERS + t('grp_max_people', ' personas')));
     return this._sign(next).then(function(sn) {
-      if (!g.sl && prev.v === 0 && g.s === undefined) g.sl = [];
+      // llegó otro cambio mientras se firmaba: este ya no sale del estado de ahora
+      if (prev.v > 0 ? g.s !== prev : !!g.s) throw new Error(t('grp_change_lost', 'Tu último cambio en este grupo no se aplicó: otro cambio llegó antes. Si hace falta, hazlo de nuevo.'));
+      if (!g.sl) g.sl = [];
       self._logPut(g, sn);
       self._applied(g, [{ prev: prev, next: sn }], true);
       var to = prev.m.concat(sn.m).filter(function(x, i, a) { return x !== me && a.indexOf(x) === i; });
@@ -153,11 +163,11 @@ export var groupAdminMethods = {
     return this.change(gid, { ph: ph }, { notice: '👥 ' + (img ? t('grp_n_photo', 'Foto del grupo nueva') : t('grp_n_photo0', 'Se quitó la foto del grupo')), pi: img || undefined }).then(function(s) { self._photoPut(gid, ph, img); return s; });
   },
   // Salir con estado firmado (si soy el creador, pasa al admin más antiguo; si no queda nadie, el grupo queda abierto)
-  leaveSigned(gid) {
+  leaveSigned(gid, quiet) {
     var s = this.state(gid), me = this._me();
     var ad = s.ad.filter(function(x) { return x !== me; });
     var ch = { m: s.m.filter(function(x) { return x !== me; }), ad: ad, cr: s.cr === me ? (ad[0] || null) : s.cr };
-    return this.change(gid, ch, { notice: t('grp_left_msg', '👋 Salió del grupo'), gl: 1 });
+    return this.change(gid, ch, { notice: t('grp_left_msg', '👋 Salió del grupo'), gl: 1, force: true, quiet: !!quiet });
   },
 
   // ---- foto del grupo (G6): se guarda aparte, por su huella ----
@@ -196,12 +206,31 @@ export var groupAdminMethods = {
         var res = this._applyChain(gid, env.s, from, env);
         g = this.list[gid];
         if (g && !g.left && res.applied.length) this._takeCards(g, env, from);
-        if (res.gap) { this._askState(gid, from); if (env.sp) this._fetchCopy(gid, env.sp, env.s); }
+        this._gapN = this._gapN || {};
+        if (res.applied.length) delete this._gapN[gid];
+        if (res.gap && g) {
+          this._askState(gid, from);
+          if (env.sp) this._fetchCopy(gid, env.sp, env.s);
+          // Si ni con todo lo que guarda `from` me engancho (segunda vez seguida), se lo digo a quien hace de creador («atascado»):
+          // él reafirma el estado y de él sí acepto el salto
+          this._gapN[gid] = (this._gapN[gid] || 0) + 1;
+          var boss = g.s && !gsOpen(g.s) ? (g.s.cr || g.s.ad[0]) : null;
+          if (this._gapN[gid] >= 2 && boss && boss !== me) this._askState(gid, boss, true);
+        }
         // Grupo viejo (sin estado): una salida que no se pudo validar sigue como antes (quita al que se va)
         if (!res.applied.length && inner && inner.gl && g && !g.s) return undefined;
         if (inner && inner.gs) return { ret: null };
       }
-      if (env.q) { if (g && g.s && g.s.m.indexOf(from) >= 0) this._pushState(gid, from, true); return { ret: null }; }
+      if (env.q) {
+        if (g && g.s && !g.left && !g.kicked && g.s.m.indexOf(from) >= 0) {
+          // ¿Su estado está en mi cadena? Si no (otra rama, o demasiado atrás) y yo hago de creador, reafirmo el estado: de mí
+          // acepta el salto. Después (o si no hace falta) le mando lo que tengo.
+          var known = typeof env.sh !== 'string' || (g.sl || []).some(function(x) { return gsId(x).substring(0, SH_LEN) === env.sh; });
+          if (env.qg && !known && !gsOpen(g.s) && gsIsBoss(g.s, me)) this._heal(gid, Number(env.sv) || 0).then(function() { self._pushState(gid, from, true); });
+          else this._pushState(gid, from, true);
+        }
+        return { ret: null };
+      }
       if (inner && inner.gs) return { ret: null };   // un aviso de cambio sin estado válido: no se muestra
       // G7: fondo del grupo compartido: solo de quien puede cambiar el grupo; se aplica aquí (local) y no se muestra como mensaje
       if (inner && inner.type === 'nexo_act' && inner.act === 'gwp') {
@@ -212,9 +241,13 @@ export var groupAdminMethods = {
         return { ret: null };
       }
       if (g && g.s && !g.left && !g.kicked) {
-        if (g.s.m.indexOf(from) < 0) return undefined;   // lo de siempre lo descarta (no es miembro)
+        if (g.s.m.indexOf(from) < 0) { this._pushRemoval(g, from); return undefined; }   // lo de siempre lo descarta (no es miembro)
         this._syncCheck(g, env, from);
         if (!gsCan(g.s, from, 'write')) { console.warn('[GROUP] Mensaje de ' + from + ' en ' + gid + ' descartado: solo los administradores escriben'); return { ret: null }; }
+      } else if (g && g.s && (g.left || g.kicked) && g.s.m.indexOf(me) < 0 && env.sv !== undefined && this._keyOf(from)) {
+        // Salí (o me sacaron) y alguien me sigue escribiendo al grupo: en su teléfono sigo dentro (mi salida perdió un cruce,
+        // o me volvieron a meter). Le pido su estado: si de verdad sigo dentro, repito la salida (o vuelvo a entrar si me sacaron).
+        this._syncCheck(g, env, from);
       }
       return undefined;
     } finally { this._cardKeys = null; }
@@ -226,61 +259,138 @@ export var groupAdminMethods = {
   _applyChain(gid, raw, from, env) {
     var self = this, me = this._me(), g = this.list[gid];
     var chain = raw.slice(0, GS_LOG_KEEP + GS_CHAIN_SEND).map(gsClean).filter(function(s) { return s && s.g === gid; }).sort(function(a, b) { return a.v - b.v; });
-    var applied = [], gap = false;
+    var applied = [], gap = false, lost = [];
     if (!chain.length) return { applied: applied, gap: false };
-    // Entrar (invitación), volver a entrar o un grupo aún sin estado: vale el último, firmado por un miembro, con quien manda y conmigo dentro
-    if (!g || g.pend || g.kicked || g.left) {
+    if (g && g.left && !g.kicked && !g.s) return { applied: applied, gap: false };   // salí de un grupo viejo: nada
+    if (g && !g.pend) {
+      var r = this._applyKnown(g, chain);
+      applied = r.applied; gap = r.gap; lost = r.lost;
+    }
+    // Entrar (invitación) o volver a entrar tras una expulsión: vale el último, firmado por un miembro, con quien manda y conmigo
+    // dentro. (Si el grupo ya lo llevo y la cadena engancha, se resolvió arriba con las reglas de siempre.) También un grupo VIEJO
+    // que se perdió su primer estado firmado (ya no viaja): entra como quien llega de nuevo.
+    var oldLate = g && !g.pend && !g.kicked && !g.s && chain[0].v > 1;
+    if (!applied.length && (!g || g.pend || g.kicked || oldLate)) {
       var top = chain[chain.length - 1];
-      var ok = top.m.indexOf(me) >= 0 && top.m.indexOf(from) >= 0 && top.m.indexOf(top.by) >= 0 && (top.v > 1 || !gsGenesisError(top)) && (!g || !g.s || top.v > g.s.v) && this._verify(top, true);
-      if (!ok) { console.warn('[GROUP] Estado de ' + gid + ' (de ' + from + ') no sirve para entrar al grupo'); return { applied: applied, gap: false }; }
-      if (g && g.left && !g.kicked) return { applied: applied, gap: false };   // salí yo: no vuelvo solo por un estado
+      var ok = top.m.indexOf(me) >= 0 && top.m.indexOf(from) >= 0 && top.m.indexOf(top.by) >= 0 && (!g || !g.s || top.v > g.s.v) && this._verify(top, true);
+      if (!ok) { if (!g || g.pend) console.warn('[GROUP] Estado de ' + gid + ' (de ' + from + ') no sirve para entrar al grupo'); return { applied: applied, gap: false }; }
       var prev = g && g.s ? g.s : null;
       if (!g) g = this.list[gid] = { id: gid, name: top.n, members: top.m.slice(), createdBy: top.cr || top.by, createdAt: Date.now(), lastMessageAt: 0, unreadCount: 0 };
-      g.sl = []; this._logPut(g, top);
+      var impl = oldLate ? gsImplicit(g) : null;
+      g.sl = [top]; g.s = top;
       g.pend = 0; g.kicked = false; g.left = false;
-      applied.push({ prev: prev, next: top, join: true });
+      applied.push(oldLate ? { prev: impl, next: top } : { prev: prev, next: top, join: true });
+      gap = false;
       console.log('[GROUP] Entro al grupo ' + gid + ' con el estado v' + top.v + ' (de ' + from + ')');
-    } else {
-      var cur = g.s || gsImplicit(g);
-      chain.forEach(function(s) {
-        if (s.v < cur.v) return;
-        if (s.v === cur.v) {
-          if (!g.s || s.sg === cur.sg) return;
-          var base = self._logAt(g, s.v - 1);
-          if (base && self._verify(s) && !gsStepError(base, s) && gsWins(s, cur, base)) {
-            console.log('[GROUP] Empate en v' + s.v + ' de ' + gid + ': gana el de ' + s.by);
-            self._logPut(g, s); applied.push({ prev: base, next: s, tie: true }); cur = s;
-          }
-          return;
-        }
-        if (s.v > cur.v + 1 && !gsIsBoss(cur, s.by)) { gap = true; return; }
-        if (!self._verify(s)) return;
-        var err = gsStepError(cur, s);
-        if (err) { console.warn('[GROUP] Cambio v' + s.v + ' de ' + s.by + ' en ' + gid + ' descartado: ' + err); return; }
-        if (!g.sl) g.sl = [];
-        self._logPut(g, s); applied.push({ prev: cur, next: s }); cur = s;
-      });
     }
     if (applied.length) {
-      var last = applied[applied.length - 1].next;
+      var last = g.s;
       if (env && typeof env.pi === 'string' && last.ph && groupPhotoHash(env.pi) === last.ph && PH_RE.test(env.pi) && env.pi.length <= PH_MAX) this._photoPut(gid, last.ph, env.pi);
       if (env && env.sp && !validatePointer(env.sp)) g.sp = env.sp;
       this._applied(g, applied, false);
+      // Cambios MÍOS que perdieron un cruce: no se reaplican solos (podrían ya no tener sentido); se avisa para repetirlos
+      if (lost.some(function(x) { return x.by === me && x.m.indexOf(me) >= 0; })) {
+        console.warn('[GROUP] Un cambio mío en ' + gid + ' perdió el cruce con otro cambio: no se aplicó');
+        var lostTxt = '⚠️ ' + t('grp_change_lost', 'Tu último cambio en este grupo no se aplicó: otro cambio llegó antes. Si hace falta, hazlo de nuevo.');
+        if (!g.left && !g.kicked) { this._notice(gid, g.s.by, lostTxt); _toast(lostTxt); }
+      }
     }
     return { applied: applied, gap: gap };
   },
-  // Después de aplicar: lista, nombre, si me sacaron, y los avisos en el chat
+  // El grupo ya lo llevo (con estado firmado o viejo): cada estado que llega o sigue a mi estado, o abre una bifurcación desde
+  // uno que guardo (gana la misma rama en todos: gsBranchWins), o es un salto de quien hace de creador, o no lo puedo enganchar.
+  _applyKnown(g, chain) {
+    var self = this, applied = [], lost = [], gap = false, used = {};
+    var first = g.s || null;
+    chain.forEach(function(s, i) {
+      if (used[i]) return;
+      var log = g.sl || [], head = g.s || null, id = gsId(s);
+      if (!head) {
+        // Grupo VIEJO (sin estado): su primer estado firmado. Cada teléfono apuntó como creador a quien le mandó el primer
+        // mensaje (puede no coincidir), así que aquí vale el creador que dice el estado si es miembro: la app aún no está en la
+        // tienda y los grupos viejos son los de las pruebas (no engordar con más reglas para ellos).
+        if (s.v !== 1) return;
+        var imp = gsImplicit(g);
+        var cr = s.cr && imp.m.indexOf(s.cr) >= 0 ? s.cr : null;
+        imp.cr = cr; imp.ad = cr ? [cr] : [];
+        if (!self._verify(s)) return;
+        var e0 = gsStepError(imp, s);
+        if (e0) { console.warn('[GROUP] Primer estado de ' + s.by + ' en ' + g.id + ' descartado: ' + e0); return; }
+        g.sl = [s]; g.s = s; applied.push({ prev: imp, next: s });
+        return;
+      }
+      if (log.some(function(x) { return gsId(x) === id; })) return;   // ya lo tengo
+      var pi = -1;
+      if (s.p) log.forEach(function(x, k) { if (x.v === s.v - 1 && gsId(x) === s.p) pi = k; });
+      if (pi >= 0 && pi === log.length - 1) {   // sigue a mi estado
+        if (!self._verify(s)) return;
+        var err = gsStepError(head, s);
+        if (err) { console.warn('[GROUP] Cambio v' + s.v + ' de ' + s.by + ' en ' + g.id + ' descartado: ' + err); return; }
+        self._logPut(g, s); applied.push({ prev: head, next: s });
+        return;
+      }
+      if (pi >= 0) {   // bifurcación desde un estado que guardo
+        var base = log[pi], alt = [], prev = base;
+        for (var j = i; j < chain.length; j++) {
+          var c = chain[j];
+          if (used[j] || c.v !== prev.v + 1 || c.p !== gsId(prev)) continue;
+          if (!self._verify(c)) break;
+          var e2 = gsStepError(prev, c);
+          if (e2) { console.warn('[GROUP] Cambio v' + c.v + ' de ' + c.by + ' en ' + g.id + ' (otra rama) descartado: ' + e2); break; }
+          alt.push(c); used[j] = 1; prev = c;
+        }
+        var mine = log.slice(pi + 1);
+        if (alt.length && gsBranchWins(alt, mine, base)) {
+          console.log('[GROUP] Bifurcación en ' + g.id + ' desde v' + base.v + ': gana la rama de ' + alt[0].by + ' (v' + prev.v + '); se deshacen ' + mine.length + ' cambio(s) de aquí');
+          lost = lost.concat(mine);
+          g.sl = log.slice(0, pi + 1).concat(alt);
+          if (g.sl.length > GS_LOG_KEEP) g.sl = g.sl.slice(g.sl.length - GS_LOG_KEEP);
+          g.s = prev;
+          applied.push({ prev: head, next: prev, fork: true });
+        }
+        return;
+      }
+      // No engancha con nada de lo que guardo. De quien hace de creador se acepta el SALTO (a su versión o a una mayor; en un
+      // grupo abierto, donde todos mandan, solo a una mayor, y nunca dos veces a la misma altura del mismo firmante: sin vaivén)
+      var open = gsOpen(head);
+      if (gsIsBoss(head, s.by) && (s.v > head.v || (s.v === head.v && !open && head.by !== s.by)) && self._verify(s)) {
+        var e3 = gsJumpError(head, s);
+        if (!e3) {
+          console.log('[GROUP] Salto en ' + g.id + ' de v' + head.v + ' a v' + s.v + ' (firmado por ' + s.by + ', que hace de creador)');
+          g.sl = [s]; g.s = s;
+          applied.push({ prev: head, next: s, fork: true });
+          return;
+        }
+        console.warn('[GROUP] Salto a v' + s.v + ' de ' + s.by + ' en ' + g.id + ' descartado: ' + e3);
+      }
+      if (s.v > log[0].v) gap = true;   // lo anterior a lo que guardo es historia vieja: no se pide nada
+    });
+    // Varias entradas de la misma tanda acaban en un solo aviso si hubo bifurcación (lo que cuenta es de dónde a dónde)
+    if (applied.some(function(a) { return a.fork; }) && first) applied = [{ prev: first, next: g.s, fork: true }];
+    return { applied: applied, lost: lost, gap: gap && !applied.length };
+  },
+  // Después de aplicar: lista, nombre, si me sacaron (o volví), y los avisos en el chat
   _applied(g, applied, mine) {
-    var self = this, me = this._me(), s = g.s;
+    var self = this, me = this._me(), s = g.s, inNow = s.m.indexOf(me) >= 0;
     g.members = s.m.slice();
     g.name = s.n;
-    if (s.m.indexOf(me) < 0 && !g.left) {
+    var by = applied[applied.length - 1].next.by, wasOut = !!(g.kicked || g.left);
+    if (!inNow && mine) g.left = true;                 // mi propia salida: fuera, pero no «expulsado»
+    else if (!inNow && !g.left && !g.kicked) {
       g.kicked = true;
-      var by = applied[applied.length - 1].next.by;
-      if (!mine) { self._notice(g.id, by, '🚫 ' + t('grp_n_you_out', 'Te expulsaron del grupo')); _toast('🚫 ' + t('grp_n_you_out', 'Te expulsaron del grupo') + ' «' + g.name + '»'); }
+      self._notice(g.id, by, '🚫 ' + t('grp_n_you_out', 'Te expulsaron del grupo')); _toast('🚫 ' + t('grp_n_you_out', 'Te expulsaron del grupo') + ' «' + g.name + '»');
+    } else if (inNow && g.kicked && !applied.some(function(a) { return a.join; })) {
+      // La expulsión perdió un cruce (o se deshizo): vuelvo a estar dentro
+      g.kicked = false; g.left = false;
+      self._notice(g.id, by, '👥 ' + t('grp_n_you_in', 'Te agregaron al grupo'));
+    } else if (inNow && g.left && !g.kicked && !mine) {
+      // Salí yo y mi salida perdió un cruce con otro cambio: la repito sobre el estado de ahora (sin avisos aquí: ya no lo veo)
+      this._save();
+      if (this._throttle('L|' + g.id)) this.leaveSigned(g.id, true).catch(function(e) { console.warn('[GROUP] No se pudo repetir la salida de ' + g.id + ': ' + (e && e.message)); });
+      return;
     }
-    if (!mine) applied.forEach(function(a) {
-      if (a.tie) return;
+    // (quien ya estaba fuera y sigue fuera no ve avisos de lo que pase después en el grupo)
+    if (!mine && !g.left && !(wasOut && !inNow)) applied.forEach(function(a) {
       if (a.join) { self._notice(g.id, a.next.by, '👥 ' + (a.next.v === 1 ? t('grp_n_created', 'Creó el grupo ') + '«' + a.next.n + '»' : t('grp_n_you_in', 'Te agregaron al grupo'))); return; }
       var txt = self._diffText(a.prev, a.next);
       if (txt && a.next.by !== me) self._notice(g.id, a.next.by, txt);
@@ -300,6 +410,7 @@ export var groupAdminMethods = {
     if (d.unblocked.length) n.push(t('grp_n_unblocked', 'Desbloqueado en este grupo: ') + who(d.unblocked));
     if (d.promoted.length) n.push(t('grp_n_admin', 'Ahora es admin: ') + who(d.promoted));
     if (d.demoted.length) n.push(t('grp_n_unadmin', 'Ya no es admin: ') + who(d.demoted));
+    if (d.creator !== undefined && d.creator) n.push(t('grp_n_boss', 'Ahora administra el grupo: ') + who([d.creator]));
     if (d.name !== undefined) n.push(t('grp_n_name', 'Nombre del grupo: ') + '«' + d.name + '»');
     if (d.photo !== undefined) n.push(d.photo ? t('grp_n_photo', 'Foto del grupo nueva') : t('grp_n_photo0', 'Se quitó la foto del grupo'));
     if (d.mode !== undefined) n.push(d.mode === 'c' ? t('grp_n_mode_c', 'Modo Control') : t('grp_n_mode_o', 'Modo Colegas'));
@@ -326,30 +437,56 @@ export var groupAdminMethods = {
   _syncCheck(g, env, from) {
     if (env.sv === undefined) return;
     var sv = Number(env.sv) || 0, v = g.s ? g.s.v : 0;
+    // fuera aquí y dentro allí: le pido su estado y le mando el mío (con mi salida); en los dos gana la misma rama
+    if (g.left || g.kicked) { if (this._throttle('o|' + g.id + '|' + from, 10 * SYNC_EVERY_MS)) { this._askState(g.id, from); this._pushState(g.id, from); } return; }
     if (sv > v) { this._askState(g.id, from); if (env.sp) this._fetchCopy(g.id, env.sp); }
     else if (sv < v) this._pushState(g.id, from);
+    // misma versión y otra huella: dos ramas. Le mando la mía (él hará lo mismo con la suya) y en los dos gana la misma
+    else if (typeof env.sh === 'string' && env.sh !== this._headId(g)) this._pushState(g.id, from);
   },
-  _throttle(key) {
+  _throttle(key, ms) {
     this._syncAt = this._syncAt || new Map();
     var now = Date.now();
-    if (now - (this._syncAt.get(key) || 0) < SYNC_EVERY_MS) return false;
+    if (now - (this._syncAt.get(key) || 0) < (ms || SYNC_EVERY_MS)) return false;
     this._syncAt.set(key, now);
     return true;
   },
-  _askState(gid, nx) {
-    if (!this._throttle('q|' + gid + '|' + nx)) return;
-    console.log('[GROUP] Voy atrasado en ' + gid + ': le pido el estado a ' + nx);
-    this.sendText(gid, JSON.stringify({ type: 'nexo_txt', t: '', gs: 1 }), null, null, [nx], null, { q: 1 });
+  // stuck: ni con todo lo que guardan los demás me engancho (solo a quien hace de creador: qg)
+  _askState(gid, nx, stuck) {
+    if (!this._throttle((stuck ? 'Q|' : 'q|') + gid + '|' + nx)) return;
+    console.log('[GROUP] Voy atrasado (o en otra rama) en ' + gid + ': le pido el estado a ' + nx + (stuck ? ' (atascado)' : ''));
+    this.sendText(gid, JSON.stringify({ type: 'nexo_txt', t: '', gs: 1 }), null, null, [nx], null, stuck ? { q: 1, qg: 1 } : { q: 1 });
   },
+  // force: me lo pidió (q): le mando TODO lo que guardo (hasta GS_LOG_KEEP), no solo lo último
   _pushState(gid, nx, force) {
     var g = this.get(gid);
     if (!g || !g.s || (!force && !this._throttle('p|' + gid + '|' + nx)) || (force && !this._throttle('P|' + gid + '|' + nx))) return;
-    console.log('[GROUP] ' + nx + ' va atrasado en ' + gid + ': le mando el estado v' + g.s.v);
-    var extra = { s: this._chain(g) }, ph = this.photoOf(gid);
+    console.log('[GROUP] ' + nx + ' va atrasado (o en otra rama) en ' + gid + ': le mando el estado v' + g.s.v);
+    var extra = { s: force ? (g.sl || [g.s]).slice() : this._chain(g) }, ph = this.photoOf(gid);
     if (ph) extra.pi = ph;
     if (g.sp) extra.sp = g.sp;
     var cards = typeof window.NEXO_groupCards === 'function' ? window.NEXO_groupCards(g) : null;
     this.sendText(gid, JSON.stringify({ type: 'nexo_txt', t: '', gs: 1 }), null, null, [nx], cards, extra);
+  },
+  // Alguien que ya NO es miembro me escribe al grupo: se perdió el cambio que lo sacó (o que registró su salida). Le mando los
+  // estados hasta ESE cambio (no los de después: lo que pasa en el grupo ya no es cosa suya) para que su teléfono se entere.
+  _pushRemoval(g, nx) {
+    var l = g.sl || [], k = -1;
+    for (var i = 1; i < l.length; i++) if (l[i - 1].m.indexOf(nx) >= 0 && l[i].m.indexOf(nx) < 0) k = i;
+    if (k < 0 || !this._keyOf(nx) || !this._throttle('x|' + g.id + '|' + nx)) return;
+    console.log('[GROUP] ' + nx + ' escribe a ' + g.id + ' y ya no está: le mando el cambio que lo sacó (v' + l[k].v + ')');
+    this.sendText(g.id, JSON.stringify({ type: 'nexo_txt', t: '', gs: 1 }), null, null, [nx], null, { s: l.slice(Math.max(0, k - GS_CHAIN_SEND + 1), k + 1) });
+  },
+  // REAFIRMAR (solo quien hace de creador): un estado nuevo SIN cambios, para que quien no puede engancharse con la cadena
+  // (viene de una rama que perdió, o se perdió más cambios de los que se guardan) salte a él. `sv`: la versión que dice tener
+  // el atascado; el salto necesita una versión igual o mayor, así que se dan los pasos que hagan falta (pocos).
+  _heal(gid, sv) {
+    var self = this, g = this.get(gid);
+    if (!g || !g.s || gsOpen(g.s) || !gsIsBoss(g.s, this._me()) || !this._throttle('H|' + gid, HEAL_EVERY_MS)) return Promise.resolve();
+    var steps = Math.max(1, Math.min(HEAL_MAX_STEPS, sv - g.s.v + 1)), p = Promise.resolve();
+    console.log('[GROUP] Reafirmo el estado de ' + gid + ' (v' + g.s.v + ' + ' + steps + '): alguien no puede engancharse');
+    for (var i = 0; i < steps; i++) p = p.then(function() { return self.change(gid, {}, { quiet: true }); });
+    return p.catch(function(e) { console.warn('[GROUP] No se pudo reafirmar el estado de ' + gid + ': ' + (e && e.message)); });
   },
 
   // ---- copia cifrada del estado en el buzón de archivos (relés; 7 días; cada cambio sube una nueva) ----

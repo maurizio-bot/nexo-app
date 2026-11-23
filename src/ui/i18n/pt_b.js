@@ -41,6 +41,7 @@ export default {
   grp_err_not_member: "Você não está mais neste grupo",
   grp_err_not_allowed: "Você não tem permissão para fazer isso neste grupo",
   grp_err_sign: "Não foi possível assinar a mudança",
+  grp_change_lost: "A tua última alteração neste grupo não foi aplicada: outra alteração chegou antes. Se for preciso, faz de novo.",
   grp_err_photo: "Essa foto não serve",
   grp_n_created: "Criou o grupo ",
   grp_n_you_in: "Você foi adicionado ao grupo",

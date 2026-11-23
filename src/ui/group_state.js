@@ -5,9 +5,14 @@
  * (ECDSA P-256 con su clave de identidad, la misma que conocen sus contactos y que viaja en las tarjetas del grupo). El que lo
  * recibe comprueba (1) la firma, (2) que quien firma era miembro y (3) que el cambio, comparado con el estado que él ya tenía,
  * está PERMITIDO a quien firma según ese estado anterior. Si no, se descarta: nunca se fía de que el que manda se porte bien.
- * Gana la versión mayor; en empate, el administrador más antiguo (luego el menor NEXO ID; luego la menor firma: determinista).
+ * CADENA (revisión 22-11): cada estado lleva la HUELLA del anterior (p). Así un cambio solo vale sobre el estado del que de verdad
+ * salió (no sobre «el que yo tenga con esa versión») y dos cambios hechos a la vez desde el mismo estado se VEN como una
+ * bifurcación. En una bifurcación gana, igual en todos los teléfonos, la rama donde firmó quien más manda según el estado común
+ * (creador, luego admins por antigüedad; en empate, el menor NEXO ID y la menor huella): gsBranchWins. Quien firmó su propia
+ * salida en una rama no la deshace abriendo otra desde antes. El que pierde vuelve a hacer su cambio (group_admin.js avisa).
  * Campos (cortos: viajan con cada cambio):
  *   g  id del grupo          v  versión (1 = creación; 0 = grupo viejo sin estado, implícito y sin firma)
+ *   p  huella del estado anterior ('' en v1)
  *   cr creador (o null)      ad administradores por antigüedad (el creador, el primero)
  *   md 'c' control | 'o' colegas      ow 1 = solo admins escriben      oa 1 = solo admins agregan (en control, siempre)
  *   m  miembros (≤ 32)       bl bloqueados en ESTE grupo (≤ 64)       n nombre       ph huella de la foto del grupo ('' sin)
@@ -20,6 +25,8 @@
  * Puro (sin la app): la verificación usa @noble/curves (síncrona); firmar lo hace e2e_crypto.js (la privada no sale de allí).
  */
 import { p256 } from '@noble/curves/nist.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 
 export var GS_MAX_MEMBERS = 32;
 export var GS_MAX_BLOCKED = 64;
@@ -28,6 +35,7 @@ export var GS_CHAIN_SEND = 6;    // estados que viajan con cada cambio (cubren a
 var NX_RE = /^nx[0-9a-z]{8}$/;
 var GID_RE = /^gr[0-9a-z]{8}$/;
 var SIG_RE = /^[A-Za-z0-9+/]{86}==$/;
+var ID_RE = /^[0-9a-f]{32}$/;
 
 function _nid(x) { return (x || '').toString().toLowerCase().trim(); }
 function _ids(a, max) {
@@ -51,16 +59,28 @@ export function gsClean(s) {
   if (s.md !== 'c' && s.md !== 'o') return null;
   if (typeof s.n !== 'string' || s.n.length > 60 || typeof (s.ph || '') !== 'string' || (s.ph || '').length > 64) return null;
   if (typeof s.sg !== 'string' || !SIG_RE.test(s.sg)) return null;
+  var p = typeof s.p === 'string' ? s.p : '';
+  if (v === 1 ? p !== '' : !ID_RE.test(p)) return null;
   // coherencia interna: admins y creador son miembros (salvo el que firma su propia salida), el creador es el primer admin,
   // nadie bloqueado es miembro
   if (ad.some(function(x) { return !_has(m, x); }) || (cr && (!_has(m, cr) || ad[0] !== cr))) return null;
   if (bl.some(function(x) { return _has(m, x); })) return null;
-  return { g: g, v: v, cr: cr, ad: ad, md: s.md, ow: s.ow ? 1 : 0, oa: s.oa ? 1 : 0, m: m, bl: bl, n: s.n, ph: s.ph || '', by: by, t: Number(s.t) || 0, sg: s.sg };
+  return { g: g, v: v, p: p, cr: cr, ad: ad, md: s.md, ow: s.ow ? 1 : 0, oa: s.oa ? 1 : 0, m: m, bl: bl, n: s.n, ph: s.ph || '', by: by, t: Number(s.t) || 0, sg: s.sg };
 }
 
 // Lo que se firma (orden fijo, con una etiqueta propia: no se confunde con ninguna otra firma)
 export function gsSigned(s) {
-  return new TextEncoder().encode(JSON.stringify(['nexo-gs-1', s.g, s.v, s.cr || null, s.ad, s.md, s.ow ? 1 : 0, s.oa ? 1 : 0, s.m, s.bl, s.n, s.ph || '', s.by, s.t || 0]));
+  return new TextEncoder().encode(JSON.stringify(['nexo-gs-1', s.g, s.v, s.p || '', s.cr || null, s.ad, s.md, s.ow ? 1 : 0, s.oa ? 1 : 0, s.m, s.bl, s.n, s.ph || '', s.by, s.t || 0]));
+}
+
+// HUELLA de un estado: de lo FIRMADO, no de la firma (dos firmas válidas del mismo contenido son el mismo estado: una firma
+// retocada —S alto por S bajo— no cuenta como otro cambio). 16 bytes de SHA-256 en hex.
+var _idCache = typeof WeakMap === 'function' ? new WeakMap() : null;
+export function gsId(s) {
+  if (!s || !(s.v >= 1)) return '';
+  var id = _idCache && _idCache.get(s);
+  if (!id) { id = bytesToHex(sha256(gsSigned(s)).subarray(0, 16)); if (_idCache) _idCache.set(s, id); }
+  return id;
 }
 
 // ¿La firma es de la clave pública (base64, 65 bytes sin comprimir) de quien firma?
@@ -77,7 +97,7 @@ export function gsSigToB64(bytes) { return _b64(bytes); }
 export function gsImplicit(g) {
   var m = (g.members || []).slice(), cr = _nid(g.createdBy);
   if (!_has(m, cr)) cr = null;
-  return { g: g.id, v: 0, cr: cr, ad: cr ? [cr] : [], md: 'o', ow: 0, oa: 0, m: m, bl: [], n: g.name || '', ph: '', by: null, t: 0, sg: '' };
+  return { g: g.id, v: 0, p: '', cr: cr, ad: cr ? [cr] : [], md: 'o', ow: 0, oa: 0, m: m, bl: [], n: g.name || '', ph: '', by: null, t: 0, sg: '' };
 }
 
 // ---- roles y permisos ----
@@ -108,6 +128,7 @@ export function gsCan(s, x, what, target) {
 // ¿Es `next` un paso PERMITIDO desde `prev` para quien lo firma? null si sí; si no, el motivo (para el registro)
 export function gsStepError(prev, next) {
   if (!prev || !next || prev.g !== next.g) return 'otro grupo';
+  if (next.v !== (prev.v || 0) + 1 || (next.p || '') !== gsId(prev)) return 'no sigue a este estado'; // i18n-ok: registro
   var a = next.by;
   if (!_has(prev.m, a)) return 'quien firma no era miembro';
   if (_has(prev.bl, a)) return 'quien firma está bloqueado';
@@ -153,19 +174,46 @@ export function gsGenesisError(s) {
   return null;
 }
 
+// SALTO: un estado cuyo anterior no tengo (me perdí más cambios de los que se guardan, o vengo de una rama que ya nadie tiene).
+// Solo vale de quien HACE DE CREADOR según mi estado, que sigue dentro y sigue mandando: él puede cambiarlo todo menos quién es
+// el creador (eso solo cambia al salir él). null si vale; si no, el motivo.
+export function gsJumpError(prev, next) {
+  if (!prev || !next || prev.g !== next.g) return 'otro grupo';
+  var a = next.by;
+  if (!gsIsBoss(prev, a) || _has(prev.bl, a)) return 'salto de quien no manda'; // i18n-ok: registro
+  if (!_has(next.m, a)) return 'salto con salida'; // i18n-ok: registro
+  if ((prev.cr || null) !== (next.cr || null)) return 'cambio de creador';
+  if (prev.cr && next.ad[0] !== prev.cr) return 'el creador no deja de ser admin'; // i18n-ok: registro
+  return null;
+}
+
 // Antigüedad de quien firma en el estado base (menor = más antiguo): admins por su orden, después los demás por NEXO ID
 function _rank(base, x) { var i = base.ad.indexOf(x); return i >= 0 ? i : 1000; }
-// En EMPATE de versión (dos cambios a la vez desde el mismo estado), ¿gana `a` sobre `b`?
+// Dos cambios a la vez desde el mismo estado `base`: ¿gana `a` sobre `b`?
 export function gsWins(a, b, base) {
   var ra = _rank(base, a.by), rb = _rank(base, b.by);
   if (ra !== rb) return ra < rb;
   if (a.by !== b.by) return a.by < b.by;
-  return a.sg < b.sg;
+  return gsId(a) < gsId(b);
+}
+function _best(branch, base) { var b = branch[0]; branch.forEach(function(s) { if (_rank(base, s.by) < _rank(base, b.by)) b = s; }); return b; }
+function _leftIn(branch, who) { return branch.some(function(s) { return s.by === who && !_has(s.m, who); }); }
+// BIFURCACIÓN: dos ramas (listas de estados, la primera de cada una sale de `base`). ¿Gana `alt` sobre `mine`?
+// 1) Quien más manda en una rama y firmó su SALIDA en la otra no deshace esa salida (un creador que se fue no vuelve por la fuerza).
+// 2) Gana la rama donde firmó quien más manda según `base` (así, quien fue expulsado o degradado no borra ese cambio abriendo
+//    una rama desde antes: quien lo hizo manda más que él). 3) En empate, como gsWins con el primer estado de cada rama.
+export function gsBranchWins(alt, mine, base) {
+  var ba = _best(alt, base), bm = _best(mine, base);
+  var aGone = _leftIn(mine, ba.by), mGone = _leftIn(alt, bm.by);
+  if (aGone !== mGone) return mGone;
+  var ra = _rank(base, ba.by), rm = _rank(base, bm.by);
+  if (ra !== rm) return ra < rm;
+  return gsWins(alt[0], mine[0], base);
 }
 
 // Estado nuevo a partir de `prev` con cambios `ch` (sin firmar: falta sg). Lo usa quien hace el cambio.
 export function gsNext(prev, by, ch) {
-  var s = { g: prev.g, v: (prev.v || 0) + 1, cr: prev.cr, ad: prev.ad.slice(), md: prev.md, ow: prev.ow, oa: prev.oa, m: prev.m.slice(), bl: prev.bl.slice(), n: prev.n, ph: prev.ph || '', by: _nid(by), t: Date.now(), sg: '' };
+  var s = { g: prev.g, v: (prev.v || 0) + 1, p: gsId(prev), cr: prev.cr, ad: prev.ad.slice(), md: prev.md, ow: prev.ow, oa: prev.oa, m: prev.m.slice(), bl: prev.bl.slice(), n: prev.n, ph: prev.ph || '', by: _nid(by), t: Date.now(), sg: '' };
   Object.keys(ch || {}).forEach(function(k) { s[k] = ch[k]; });
   return s;
 }
