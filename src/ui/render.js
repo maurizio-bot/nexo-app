@@ -528,7 +528,7 @@ export function _renderMessage(msg, skipSave) {
       } else if (attachment.type === 'audio') {
         var dur = (attachment.meta && attachment.meta.duration) ? attachment.meta.duration : 0;
         var durStr = _fmtTime(dur);
-        var audioId = 'audio' + msgId;
+        var audioId = 'audio' + String(msgId).replace(/[^A-Za-z0-9_.:-]/g, '_'); // auditoría 23-11 (I-X1): va en atributos id
         var fmt = (attachment.meta && attachment.meta.format) ? attachment.meta.format : 'webm';
         var mime = (attachment.meta && attachment.meta.mimeType) ? attachment.meta.mimeType : ('audio/' + fmt);
         // #dueño 06-11 (micrófono "dejó de funcionar"): en Android el <audio> suele rechazar un Blob tipado con el codec

@@ -682,6 +682,13 @@ export class BleAckSystem {
       }).catch(function() {});
       return true;
     }
+    // Auditoría 23-11 (C-N1): una confirmación SIN remitente o de quien no es contacto se aplicaba sin firma: quien viera el id del
+    // mensaje en el aire paraba los reintentos y el mensaje se perdía marcado ✓✓. Solo vale para un paquete de control en espera
+    // (los que se mandan a quien aún no es contacto); para un mensaje, la confirmación tiene que ser de un contacto.
+    if (!c || !c.publicKey) {
+      var pendRaw = this.pendingAcks.get(ackMsgId);
+      if (!pendRaw || !pendRaw.raw) { console.warn('[BleAckSystem] Confirmación de ' + (acker || 'nadie') + ' (no es contacto) para ' + ackMsgId + ': ignorada'); return true; }
+    }
     return this._applyAck(ack, ackMsgId);
   }
   // 3215: el NEXO ID propio; al arrancar se espera a que se cargue del almacén (unos ms) en vez de usar «» o «unknown»

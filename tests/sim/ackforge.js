@@ -68,6 +68,10 @@ async function sendText(p, t) { const i = p.win.document.getElementById('message
   sys.processIncomingAck(JSON.stringify({ v: 1, type: 'ack', msgId: fakeId, from: idB, ts: Date.now() }));          // sin firma
   sys.processIncomingAck(JSON.stringify({ v: 1, type: 'ack', msgId: fakeId, from: idB, ts: Date.now(), a: 'AAAAAAAAAAAAAAAA' })); // firma mala
   sys.processIncomingAck(JSON.stringify({ v: 1, type: 'read_receipt', msgId: fakeId, from: idB, ts: Date.now() }));  // "leído" falso
+  // Auditoría 23-11 (C-N1): sin remitente, o de quien no es contacto, se aplicaba SIN firma
+  sys.processIncomingAck(JSON.stringify({ v: 1, type: 'ack', msgId: fakeId, ts: Date.now() }));
+  sys.processIncomingAck(JSON.stringify({ v: 1, type: 'ack', msgId: fakeId, from: 'nx0zzzzzzz', ts: Date.now() }));
+  sys.processIncomingAck(JSON.stringify({ v: 1, type: 'read_receipt', msgId: fakeId, from: '', ts: Date.now() }));
   await sleep(600);
   r.falsa_no_marca_entregado = !statuses.some((s) => s === 'delivered' || s === 'read');
   r.sigue_pendiente = sys.pendingAcks.has(fakeId);

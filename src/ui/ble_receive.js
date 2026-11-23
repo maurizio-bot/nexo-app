@@ -1,4 +1,4 @@
-import { _hasNativeMethod, _normId, _isBLEContact, _isProtocolShaped, SUPERVISOR_STATES, _normMac, _getContactByDeviceId, _getContactByUUID, _addBLEContact, _getBLEContacts, _saveBLEContacts, _vaultGetOrCreateContact, _chatKind, _vaultAppendMessage, _messagePreview, _safeDispatchEvent } from './ble_helpers.js';
+import { _hasNativeMethod, _normId, _msgIdOk, _isBLEContact, _isProtocolShaped, SUPERVISOR_STATES, _normMac, _getContactByDeviceId, _getContactByUUID, _addBLEContact, _getBLEContacts, _saveBLEContacts, _vaultGetOrCreateContact, _chatKind, _vaultAppendMessage, _messagePreview, _safeDispatchEvent } from './ble_helpers.js';
 import { e2eOpenAnon } from '../vault/e2e_crypto.js';
 import { diagNotePeerBuild } from './diag_state.js';
 import { e2eAnyEncrypted, e2eOpenText, e2eOuterAd } from '../vault/e2e_proto.js';
@@ -229,6 +229,14 @@ export const BLE_RECEIVE_METHODS = {
         if (p.nt && v === 'ok') self._noteNetPeer(sender);  // v6.13.0: idem, internet por relés
         p.payload.text = r.text;
         p.payload.e2e = true;
+        // Auditoría 23-11 (G-F1): el mensaje es de quien lo cifró (la clave comprobada arriba es la de `sender`), no de quien diga
+        // `payload.senderNexoId`: un contacto con su propia sesión ponía ahí el NEXO ID de OTRO y el mensaje se guardaba en el chat
+        // de ese otro, a su nombre (y en grupos saltaba «solo admins escriben» y editaba/eliminaba lo ajeno). Se descarta.
+        if (p.from && p.payload.senderNexoId && _normId(p.payload.senderNexoId) !== _normId(p.from)) {
+          console.warn('[E2E] Mensaje de ' + p.from + ' que dice ser de ' + String(p.payload.senderNexoId).substring(0, 12) + ': descartado');
+          return null;
+        }
+        if (p.from) p.payload.senderNexoId = p.from;
         var out = Object.assign({}, data);
         out.e2eSenderKey = r.senderKey; // si el remitente aún no es contacto, se guarda al crearlo
         out.e2eProto = r.proto;
@@ -378,6 +386,8 @@ export const BLE_RECEIVE_METHODS = {
             var json = JSON.parse(data.data || content || '{}');
             if (json.msgId) messageId = json.msgId;
             if (json.messageId) messageId = json.messageId;
+            // Auditoría 23-11 (I-X1): el id lo elige quien manda y acaba en atributos de la burbuja: solo letras, números y _ . : -
+            if (messageId && !_msgIdOk(messageId)) { console.warn('[BLE_RECV] Mensaje con id no válido: descartado'); return; }
             if (typeof json.seq === 'number') msgSeq = json.seq;
 
             if (json.v === 1 && json.type === 'chat' && json.payload) {

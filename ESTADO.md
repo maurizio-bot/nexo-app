@@ -18,7 +18,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 
 ---
 
-## Dónde estamos (actualizado: 2026-11-22 22:07 México)
+## Dónde estamos (actualizado: 2026-11-23 México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
 - **Forma de trabajo:** CLAUDE.md «GASTO» (leer SOLO este bloque + 🔴 de `docs/AREAS.md`; lo demás con grep). Lo anterior, con todo el detalle de 3266–3283:
@@ -85,8 +85,18 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   (8c) INVITACIÓN: el enlace daba 404 (la página nunca se publicó) → 3290: `web/i.html` + rama `gh-pages` (copia), GitHub Pages ya la publica; falta que él la pruebe
   (logo y nombre: «al rato», se deja como está); (9) canal rápido antes que Wi-Fi Direct: DECIDIDO 23-11 («solo si es más rápido») y HECHO (3289: por medidas del día).
 - **APK PUBLICADA 23-11 04:27: lleva el número 3121** (la 3120 no salió: falló la prueba vieja `binary.js`, que contaba trozos GATT y ahora esos archivos van por L2CAP; arreglada la prueba). CI en verde, el Kotlin nuevo compiló. Falta la prueba del dueño.
-- **(historia) APK 3120 SUBIDA 23-11 ~01:45 (orden del dueño: «sube la 3120», se fue a dormir):** lleva 3283–3290 (grupos firmados + dos opciones, multitud/escaneo, [AVISO], Wi-Fi Direct «cancelar», canal rápido L2CAP por medidas, página de invitación, Ajustes «Notificaciones»). Es la PRIMERA compilación real del Kotlin de estos días: mirar el CI (~03:10). NO lleva: llamadas 17/18, eco 25, relés/batería 24, vista previa de enlaces 31, limpieza de código sin uso ni partir `ble_connections.js`. Después (dueño): actualizar pendientes → NEGOCIO → auditoría (Fable medio).
 - **NEGOCIO (23-11, privado):** `negocio/EMPRESAS_DISENO_2026-11-23.md` (organización dentro de la app sobre el estado firmado de los grupos; pasos dic → mar-2027) y `PLAN.md` al día. Decide el dueño cuando toque: cobro fuera/dentro de Play (a confirmar política), capturas en grupos de trabajo, empresa constituida.
+- **AUDITORÍA DE SEGURIDAD FINAL, HECHA 23-11** (5 revisiones en paralelo; informe en el PRIVADO `seguridad/AUDITORIA_FINAL_2026-11-23.md`, con
+  orden de arreglo en su §6 y pruebas de concepto en `seguridad/poc_2026-11-23/`). **YA ARREGLADO en NEXOCHAT (`[skip ci]`, va en la siguiente APK):**
+  G-F1 un contacto escribía como OTRO (`ble_receive.js`: el remitente es quien cifró; `spoofsender.js`) · I-X1 inyección por el id de una nota
+  de voz (`_msgIdOk`, `render.js`; `xss_ids.js`) · I-X2 nombre con HTML en la hoja del fondo (`wallpaper.js`) · C-N1 ✓✓ falsa sin remitente o de
+  un no-contacto (`ble_ack.js`; `ackforge.js`). **FALTA, sin riesgo (siguiente sesión, mucho es Kotlin):** T-D1 (un extraño llena el disco con
+  `gq`), T-D2 (48 MB por marco en Wi-Fi local), T-D3 (aviso falso + ✓✓ firmada a pedido en Wi-Fi local), G-K1 (no aceptar saltos de grupo con
+  clave «de oídas»), S-A2 (`since` al futuro deja sorda la escucha nativa), I-U1 (carpeta propia y comprobar paquete/firma de la actualización);
+  luego la segunda tanda del §6. **ESPERAN AL DUEÑO (cifrado/identidad/producto):** punto 20 (certificar la clave de firma con la de identidad),
+  S-A1 (sello de pareja en el sobre: cierra el oráculo de ✓✓ del nativo), T-T1 (comentario de foto y «ver una vez» van en claro), C-N2 (Fénix
+  `fd`/`fp`), C-N4 (clave cambiada provocada bloquea el envío), C-N5 (desconocido se agrega con su primer mensaje), G-B1, T-W1, T-X1 (Tor).
+  NO encender Fénix Entorno antes del punto 20.
 - **SIGUIENTE, sesión principal (Fable), en orden:** (6) llamadas 17/18 → (7) eco 25 + relés/batería 24 → revisión, UNA APK y
   auditoría final. Plan con modelo por actividad: `docs/COLA.md` al principio. Para targetSdk 36 hace falta teléfono con Android 15/16 (borde a borde, «atrás»).
 - **PRUEBAS DEL DUEÑO con la 3119 (ya publicada):** (a) modo avión, escribir, bloquear, quitar modo avión SIN abrir NEXO → llega y ✓✓; (b) sin internet los dos,
@@ -115,5 +125,5 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - `docs/PROGRESO.md` — historial completo de builds.
 - `docs/PENDIENTES.md` — todo lo que falta + reglas del dueño.
 - `docs/ROBUSTEZ.md` — índice de robustez, mediciones y rutina diaria.
-- `nexo-private/seguridad/AUDITORIA_COMPLETA_03-11.md` — última auditoría completa.
+- `nexo-private/seguridad/AUDITORIA_FINAL_2026-11-23.md` — última auditoría completa (anterior: `AUDITORIA_COMPLETA_03-11.md`).
 - `CLAUDE.md` — instrucciones del proyecto.

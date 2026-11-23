@@ -38,6 +38,7 @@ export const ackIncoming = {
     var from = msg.fr || msg.from;
     var seq = (typeof msg.seq === 'number') ? msg.seq : 0;
     if (!msgId || typeof idx !== 'number' || typeof total !== 'number') return;
+    if (!/^[A-Za-z0-9_.:-]{1,80}$/.test(String(msgId))) return; // auditoría 23-11 (I-X1): id elegido por quien manda
     if (total <= 0 || idx < 0 || idx >= total) return;
     // Robustez (auditoría 2804): un 'n' (total) desproporcionado haría que el block-ack / NACK recorrieran miles de
     // millones de índices en el hilo principal (congelación de la interfaz → ANR). Por encima de MAX_CHUNKS es un

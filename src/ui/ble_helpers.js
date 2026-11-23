@@ -444,6 +444,10 @@ export function _loadDeviceUUID() {
   });
 }
 
+// Auditoría 23-11 (I-X1): un id de mensaje recibido solo vale con letras, números y _ . : - (hasta 80): lo elige quien manda y
+// acaba en atributos y selectores de la burbuja.
+export function _msgIdOk(id) { return typeof id === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(id); }
+
 export function _normId(id) {
   return (id || '').toString().toLowerCase().trim();
 }

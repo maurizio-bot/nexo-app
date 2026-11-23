@@ -248,6 +248,8 @@ export function makeWallpaper(file, maxEdge, maxLen) {
 }
 
 // ===== Botón 🖼️ en la cabecera del chat (opción A del dueño) + hoja de acciones =====
+// Auditoría 23-11 (I-X2): el nombre del contacto lo elige él; en la hoja va dentro de HTML
+function _escH(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return '&#' + c.charCodeAt(0) + ';'; }); }
 function _curName() { try { return (document.getElementById('chat-contact-name') || {}).value || t('the_contact', 'el contacto'); } catch (e) { return t('the_contact', 'el contacto'); } }
 
 function _refreshButton() {
@@ -315,7 +317,7 @@ function _openSheet() {
       '<div class="nx-h"><span class="nx-ico">🖼️</span>' + t('wp_sheet_title', 'Fondo de este chat') + '</div>' +
       '<div class="nx-sub">' + t('wp_sheet_sub', 'Una foto de fondo solo para este chat (manda sobre el fondo general de chats).') + '</div>' +
       '<button id="nexo-wp-pick" class="nx-btn nx-btn-primary">' + (has ? t('wp_change', 'Cambiar la foto…') : t('wp_set', 'Elegir una foto…')) + '</button>' +
-      (has ? '<button id="nexo-wp-share" class="nx-btn">' + t('wp_share', 'Compartir este fondo con ') + name + '</button>' +
+      (has ? '<button id="nexo-wp-share" class="nx-btn">' + t('wp_share', 'Compartir este fondo con ') + _escH(name) + '</button>' +
              '<button id="nexo-wp-remove" class="nx-btn">' + t('wp_remove', 'Quitar el fondo de este chat') + '</button>' : '') +
       '<button id="nexo-wp-close" class="nx-btn" style="background:none;border:none;">' + t('close', 'Cerrar') + '</button>' +
       '</div>';
