@@ -899,6 +899,7 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod fun shareText(call: PluginCall) = shareTextImpl(call) // 3129: invitación por WhatsApp/TikTok/menú (PluginShare.kt)
 
     @PluginMethod fun openUrl(call: PluginCall) = openUrlImpl(call) // 3161: enlace del chat abierto fuera de NEXO (PluginShare.kt)
+    @PluginMethod fun linkPreview(call: PluginCall) = linkPreviewImpl(call) // COLA 31: vista previa real por Tor (PluginLinkPreview.kt)
 
     // ===== Wi-Fi Direct: fotos, vídeos y archivos con el contacto a alcance (mucho más rápido que BLE) =====
     // El que recibe crea un grupo con nombre y contraseña aleatorios (Android 10+: el otro se une sin aviso
