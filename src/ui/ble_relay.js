@@ -47,6 +47,13 @@ var QUEUE_MAX = 200;
 export var HOP_MAX_PAR = 6; // 3239: como mucho 6 paquetes con confirmación a la vez hacia el mismo siguiente teléfono
 var QUEUE_MAX_BYTES = 30000000; // lo guardado de paso para otros (fotos, textos largos) no pasa de ~30 MB
 var SEEN_TTL_MS = 3600000;
+// Auditoría 23-11 (T-J1): topes de la malla. Alguien cerca podía mandar 'rq' sin fin (cada uno se reparte a todos los vecinos y
+// escanea), con un ttl enorme o un hp negativo (saltos sin fin), llenar la cola del puente él solo (200 paquetes / 30 MB para todos)
+// y hacer crecer `seen` sin límite. Con estos topes un vecino o un origen solo se estorba a sí mismo.
+var SEEN_MAX = 5000;                       // ids recordados (el más viejo sale)
+var RQ_PER_LINK_MIN = 30;                  // búsquedas ('rq') por minuto que se atienden de un mismo enlace (una normal: 1–3)
+var QUEUE_PER_SOURCE = 50;                 // paquetes de paso en la cola por vecino que los trajo y por origen (de 200)
+var QUEUE_BYTES_PER_SOURCE = 10000000;     // … y bytes (de 30 MB)
 var NEARBY_TTL_MS = 120000;       // un NEXO visto al escanear cuenta como cercano 2 min
 var NEARBY_FRESH_MS = 30000;      // para decir "llego a X" o ir directo hay que haberlo visto hace <30 s
 var DISCOVER_THROTTLE_MS = 45000; // como mucho una búsqueda de camino por destino cada 45 s
@@ -326,13 +333,41 @@ export class BleRelay {
     });
   }
 
+  // T-J1: `seen` con tope (Map en orden de llegada: sale el más viejo)
+  _seenAdd(key) {
+    this.seen.set(key, Date.now());
+    while (this.seen.size > SEEN_MAX) this.seen.delete(this.seen.keys().next().value);
+  }
+  // T-J1: el mismo enlace (la misma dirección o, si el Bluetooth lo ve por el otro lado de la conexión, el mismo NEXO)
+  _sameLink(a, b) {
+    if (_mac(a) && _mac(a) === _mac(b)) return true;
+    var m = this.ble && this.ble._macToNexoId, na = m && _nid(m.get(_mac(a)));
+    return !!na && na === _nid(m.get(_mac(b)));
+  }
+  // T-J1: ¿cuántos 'rq' de este enlace en el último minuto? false si ya pasó del tope
+  _rqRateOk(deviceId) {
+    var now = Date.now(), k = _mac(deviceId) || String(deviceId || ''), m = this._rqRate || (this._rqRate = new Map());
+    var l = (m.get(k) || []).filter(function(t) { return now - t < 60000; });
+    if (l.length >= RQ_PER_LINK_MIN) { m.set(k, l); return false; }
+    l.push(now); m.set(k, l);
+    if (m.size > 200) m.delete(m.keys().next().value);
+    return true;
+  }
+
   // ---------- recepción ----------
   // Devuelve true si el paquete era de jump y ya se atendió aquí (no sigue al resto de la app)
   intercept(p, raw, deviceId) {
     var self = this, me = self.me();
     if (!p || typeof p !== 'object') return false;
     if (p.type === 'rt') { self._handleRouteAd(p, deviceId); return true; }
-    if (p.type === 'rk') { if (self.ble.ackSystem) self.ble.ackSystem.handleCustody(p.msgId); return true; }
+    if (p.type === 'rk') {
+      // T-J1: la custodia ('rk', «lo guardo yo») solo vale del teléfono al que se le dio ese salto; antes cualquiera cerca podía
+      // decir «lo tengo» por un msgId visto en el aire y el emisor dejaba de reintentarlo por el puente bueno
+      var ackS = self.ble.ackSystem, pe = ackS && ackS.pendingAcks && ackS.pendingAcks.get(p.msgId);
+      if (pe && self._sameLink(pe.deviceId, deviceId)) ackS.handleCustody(p.msgId);
+      else if (pe) console.warn('[JUMP] Custodia de ' + p.msgId + ' por otro enlace: ignorada');
+      return true;
+    }
     if (p.type === 'rq') { self._handleRq(p, deviceId); return true; }
     if (p.type === 'rp') { self._handleRp(p, deviceId); return true; }
     var to = _nid(p.to);
@@ -341,8 +376,8 @@ export class BleRelay {
     // Batería baja: no hace de puente para mensajes nuevos (sin custodia: el emisor buscará otro camino)
     var isMsg = p.type === 'chat' || p.type === 'sx'; // 'sx': sobre sellado (remitente oculto)
     if (isMsg && !self.canRelay()) { console.warn('[JUMP] ' + self._relayStopReason() + ': no hago de puente para ' + p.msgId); return true; }
-    // Paquete para otro teléfono: hacer de puente
-    var hp = (Number(p.hp) || 0) + 1;
+    // Paquete para otro teléfono: hacer de puente (T-J1: hp ≥ 0; uno negativo daba saltos sin fin)
+    var hp = Math.max(0, Number(p.hp) || 0) + 1;
     var id = p.msgId || (p.type + ':' + (p.from || '') + ':' + (p.ts || ''));
     if (p.type === 'ack' || p.type === 'read_receipt') {
       // Un ack que pasa por aquí también confirma el salto que este teléfono hizo (custodia entregada)
@@ -353,7 +388,7 @@ export class BleRelay {
     if (isChat) self._sendCustody(deviceId, p.msgId);
     var key = p.type + ':' + id;
     if (self.seen.has(key)) return true;
-    self.seen.set(key, Date.now());
+    self._seenAdd(key);
     p.hp = hp;
     var item = { id: id, kind: 'pkt', reliable: isChat, dst: to, origin: _nid(p.from), data: JSON.stringify(p), prev: _mac(deviceId), ts: Date.now(), tries: 0 };
     console.log('[JUMP] Puente: ' + p.type + ' ' + id + (item.origin ? ' de ' + item.origin : '') + ' para ' + to + ' (salto ' + hp + ')');
@@ -372,11 +407,11 @@ export class BleRelay {
     var self = this, me = self.me();
     var to = _nid(meta && meta.dst);
     if (!to || to === me) return false;
-    var hp = (Number(meta.hp) || 0) + 1;
+    var hp = Math.max(0, Number(meta.hp) || 0) + 1; // T-J1: hp ≥ 0
     if (hp > MAX_HOPS) { console.warn('[JUMP] Descartado (demasiados saltos): ' + msgId); return true; }
     var key = kind + ':' + msgId;
     if (self.seen.has(key)) return true;
-    self.seen.set(key, Date.now());
+    self._seenAdd(key);
     var m = {};
     // 3163: también 'once' («ver una vez», foto o vídeo): sin ella el puente lo entregaba como un medio NORMAL (fallo de privacidad)
     ['f', 'fr', 'ts', 'type', 'name', 'mime', 'size', 'format', 'width', 'height', 'hdFor', 'preview', 'once', 'thumb', 'pages', 'caption'].forEach(function(k) {
@@ -408,6 +443,22 @@ export class BleRelay {
   _enqueue(item) {
     var self = this;
     self.queue = self.queue.filter(function(q) { return !(q.id === item.id && q.kind === item.kind && q.dst === item.dst); });
+    // T-J1: cuota por vecino que lo trajo y por origen (solo lo de paso: lo propio no cuenta). Si se pasa, sale lo MÁS VIEJO de
+    // ese mismo vecino/origen: quien llena la cola se estorba a sí mismo, no a los demás
+    if (item.prev) {
+      ['prev', 'origin'].forEach(function(f) {
+        if (!item[f]) return;
+        var mine = self.queue.filter(function(q) { return q.prev && q[f] === item[f]; });
+        var bytes = mine.reduce(function(n, q) { return n + (q.size || 0); }, 0) + (item.size || 0);
+        while (mine.length && (mine.length + 1 > QUEUE_PER_SOURCE || bytes > QUEUE_BYTES_PER_SOURCE)) {
+          var old = mine.shift();
+          bytes -= old.size || 0;
+          console.warn('[JUMP] Cuota de puente de ' + (f === 'prev' ? 'un vecino' : 'un origen') + ' llena: se descarta ' + old.id);
+          self.queue.splice(self.queue.indexOf(old), 1);
+          self._drop(old);
+        }
+      });
+    }
     self.queue.push(item);
     if (self.queue.length > QUEUE_MAX) self._drop(self.queue.shift());
     var bytes = 0;
@@ -799,7 +850,7 @@ export class BleRelay {
     var id = 'q' + now.toString(36) + Math.random().toString(36).substr(2, 5);
     var disc = { dst: d, ts: now, sent: new Set(), ttl: MAX_HOPS - 1, path: [_pathTag(id, self.me())] };
     self.discoveries.set(id, disc);
-    self.seen.set('rq:' + id, now);
+    self._seenAdd('rq:' + id);
     console.log('[JUMP] Buscando camino hacia ' + d);
     // Ronda 2755: con sus códigos de ahora ('dk') un puente que no lo conoce lo reconoce al escanear
     self._dstTokens(d).then(function(dk) {
@@ -848,7 +899,8 @@ export class BleRelay {
     var self = this, me = self.me(), now = Date.now();
     var id = String(p.id || ''), d = _nid(p.dst), from = _nid(p.from);
     if (!id || !_isNx(d) || self.seen.has('rq:' + id)) return;
-    self.seen.set('rq:' + id, now);
+    if (!self._rqRateOk(deviceId)) { if (!self._rqRateSaid || now - self._rqRateSaid > 60000) { self._rqRateSaid = now; console.warn('[JUMP] Demasiadas búsquedas desde un mismo enlace: se ignoran este minuto'); } return; } // T-J1
+    self._seenAdd('rq:' + id);
     self._touch(deviceId);
     if (from) self.capable.add(from);
     if (d !== me && !self.canRelay()) return; // batería baja: no hago de puente
@@ -862,7 +914,7 @@ export class BleRelay {
     self.wantTok.forEach(function(w, t) { if (now - w.ts > DISCOVER_WAIT_MS * 2) self.wantTok.delete(t); });
     var hops = self._distanceTo(d);
     if (hops !== null) { self._sendRp(id, d, hops, deviceId); return; }
-    var ttl = Number(p.ttl) || 0;
+    var ttl = Math.min(Number(p.ttl) || 0, MAX_HOPS - 1); // T-J1: un ttl enorme no hace búsquedas sin fin
     if (ttl <= 1) return;
     var path = (Array.isArray(p.path) ? p.path : []).map(_nid).concat([_pathTag(id, me)]).slice(0, MAX_HOPS + 1);
     var disc = { dst: d, ts: now, sent: new Set(), ttl: ttl - 1, path: path };

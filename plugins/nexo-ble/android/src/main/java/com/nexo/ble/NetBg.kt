@@ -222,6 +222,18 @@ class NetBg(
             }
             return b.append('"').toString()
         }
+        // Auditoría 23-11 (S-D5): un trozo de la bandeja (lo firmó la app y se guardó en disco) se comprueba antes de subirlo: tipo
+        // 1064 (BLOB_KIND), id = SHA-256 del evento serializado y el mismo id que la bandeja espera. Uno tocado no sale.
+        fun blobChunkOk(ev: String, expectId: String): Boolean = try {
+            val o = JSONObject(ev)
+            val id = o.getString("id"); val pub = o.getString("pubkey")
+            val tags = o.getJSONArray("tags")
+            val tl = (0 until tags.length()).map { i -> val t = tags.getJSONArray(i); (0 until t.length()).map { t.getString(it) } }
+            val tagsJson = tl.joinToString(",", "[", "]") { t -> t.joinToString(",", "[", "]") { q(it) } }
+            val ser = "[0," + q(pub) + "," + o.getLong("created_at") + "," + o.getInt("kind") + "," + tagsJson + "," + q(o.getString("content")) + "]"
+            o.getInt("kind") == NetOutbox.CHUNK_KIND && Regex("^[0-9a-f]{64}$").matches(id) && Regex("^[0-9a-f]{64}$").matches(pub) &&
+                id == expectId && Secp256k1.hex(Secp256k1.sha256(ser.toByteArray(Charsets.UTF_8))) == id
+        } catch (e: Exception) { false }
         // Evento Nostr firmado (NIP-01); el id es el sha256 de [0,pubkey,created_at,kind,tags,content] como lo escribe JSON.stringify
         fun event(sk: ByteArray, kind: Int, tags: List<List<String>>, content: String, createdAt: Long = System.currentTimeMillis() / 1000): JSONObject {
             val pub = Secp256k1.hex(Secp256k1.xOnly(sk))
@@ -237,6 +249,7 @@ class NetBg(
     }
 
     @Volatile private var me = ""
+    @Volatile private var torWaitLogAt = 0L // 13A: «espero a Tor» al registro como mucho una vez por minuto
     @Volatile private var contacts: List<Contact> = emptyList()
     @Volatile private var since = 0L
     // 3190: para el aviso de una solicitud: todos mis contactos (NEXO ID → nombre; también los que no van por internet), los IDs a
@@ -300,7 +313,8 @@ class NetBg(
             // 3204: en el ORDEN que manda la app (con datos se escuchan los primeros sanos de la lista): se rehace el mapa en ese orden,
             // con los mismos relés (conexión, esperas y lo pendiente); los que ya no están se cierran
             val old = LinkedHashMap(relays); relays.clear()
-            relayUrls.forEach { if (!relays.containsKey(it)) relays[it] = old.remove(it) ?: Relay(it) }
+            // S-D5: el nativo solo habla con relés wss:// (uno en claro se ignora; como _relaySafe en la app)
+            relayUrls.forEach { if (WsClient.urlOk(it) && !relays.containsKey(it)) relays[it] = old.remove(it) ?: Relay(it) }
             old.values.forEach { val ws = it.ws; it.ws = null; ws?.close() }
             tagDay = ""
         }
@@ -375,7 +389,8 @@ class NetBg(
         try { pumpOutbox(System.currentTimeMillis()) } catch (e: Throwable) { }
     }
     // El evento ya viene firmado por la app: va tal cual, a 3 relés abiertos como mucho (la réplica de la app)
-    private fun publishRaw(ev: String): Boolean {
+    private fun publishRaw(ev: String, expectId: String): Boolean {
+        if (!blobChunkOk(ev, expectId)) { log("Bandeja de salida: un trozo guardado no cuadra con su huella ($expectId): no se sube"); return false }
         val open = synchronized(lock) { relays.values.mapNotNull { it.ws }.filter { it.open } }.take(3)
         if (open.isEmpty()) return false
         val frame = "[\"EVENT\",$ev]"
@@ -391,7 +406,7 @@ class NetBg(
         if (outbox.size() == 0) return
         var changed = false
         // 3281: primero los trozos de los archivos (de a CHUNK_WINDOW; el siguiente sale cuando un relé contesta: outboxChunkAccepted)
-        for (c in outbox.chunksDue(now)) { if (!running || !publishRaw(c.ev)) break; outbox.chunkSent(c, now) }
+        for (c in outbox.chunksDue(now)) { if (!running || !publishRaw(c.ev, c.id)) break; outbox.chunkSent(c, now) }
         for (x in outbox.chunkStuck(now)) {
             outbox.drop(x.id); changed = true
             log("Bandeja de salida: ${x.id} para ${x.nx}: ningún relé guardó uno de sus trozos: lo manda la app al abrirse")
@@ -544,6 +559,12 @@ class NetBg(
             r.authed = false
             r.gapAsked = false
             r.openedAt = 0L // si se cierra sin llegar a abrir, no cuenta el tiempo de la conexión anterior
+            // Decisión 13A: con «Usar Tor siempre», por el SOCKS de Tor; si aún no está listo se ESPERA (nunca directo)
+            val via = try { TorRoute.route() } catch (e: TorRoute.WaitTor) {
+                r.retryAt = System.currentTimeMillis() + 5000
+                if (running && System.currentTimeMillis() - torWaitLogAt > 60000) { torWaitLogAt = System.currentTimeMillis(); log("Internet en segundo plano: Usar Tor siempre y Tor aún no está listo: espero (no salgo directo)") }
+                return
+            }
             var self: WsClient? = null
             val ws = WsClient(r.url, { onRelayText(r, it) }, { why ->
                 // 3204: una conexión que ya no es la de este relé (la cerramos nosotros: parar, soltarlo con datos, relé quitado) no es una
@@ -558,7 +579,7 @@ class NetBg(
                 if (running) log("Relé ${r.url}: $why" + (if (r.fails > 1) " (intento nº ${r.fails}: el siguiente en ${retryDelayMs(r.fails) / 1000} s)" else ""))
                 // 3204: con datos móviles, el siguiente de la lista entra ya (sin esperar a la vuelta del bucle)
                 if (running && cell) synchronized(lock) { lock.notifyAll() }
-            })
+            }, proxy = via)
             self = ws
             r.ws = ws
             ws.connect()

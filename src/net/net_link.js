@@ -133,6 +133,7 @@ export class NetLink {
         pl.addListener('onTorUp', function(ev) { var p = self._peer(_nid(ev && ev.nx)); p.torUp = true; p.torOk = false; self._hello(_nid(ev.nx)); });
         pl.addListener('onTorDown', function(ev) { var p = self._peer(_nid(ev && ev.nx)); if (p.torOk) console.log('[NET] ' + _nid(ev.nx) + ': conexión Tor cerrada'); p.torUp = false; p.torOk = false; });
         pl.addListener('onTorMessage', function(ev) { self._onTorMessage(ev); });
+        pl.addListener('onTorWs', function(ev) { self._onTorWs(ev); }); // 13A: relés por Tor
       }
     }
     self._timer = setInterval(function() { self.tick(); }, TICK_MS);

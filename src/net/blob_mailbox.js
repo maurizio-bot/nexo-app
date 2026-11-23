@@ -214,11 +214,21 @@ export async function fetchBlob(net, ptr, opts) {
   var why = validatePointer(ptr);
   if (why) throw Object.assign(new Error('Puntero rechazado: ' + why), { code: 'BLOB_PTR' });
   // relés: primero los del puntero (se abren a demanda si hace falta), después cualquier otro abierto
-  var urls = [];
+  // Auditoría 23-11 (T-R1): un relé del puntero que NO es de los míos se abre «solo para bajar por id» (sin mi suscripción, sin AUTH,
+  // sin publicar) y se cierra al terminar; uno de los míos, como siempre (3073: aunque esté apartado)
+  var urls = [], temp = [];
   for (var k = 0; k < ptr.relays.length; k++) {
     var u = ptr.relays[k];
-    try { if (await net.ensureRelay(u, o.connectMs || 6000, true)) urls.push(u); } catch (e) {} // 3073: aunque esté apartado
+    try {
+      if (typeof net.isMyRelay === 'function' && typeof net.fetchOnlyOpen === 'function' && !net.isMyRelay(u)) { if (await net.fetchOnlyOpen(u, o.connectMs || 6000)) { urls.push(u); temp.push(u); } }
+      else if (await net.ensureRelay(u, o.connectMs || 6000, true)) urls.push(u);
+    } catch (e) {}
   }
+  try { return await _fetchFrom(net, ptr, o, log, urls); }
+  finally { temp.forEach(function(x) { try { net.fetchOnlyClose(x); } catch (e) {} }); }
+}
+
+async function _fetchFrom(net, ptr, o, log, urls) {
   (net.openRelayUrls ? net.openRelayUrls() : []).forEach(function(u) { if (urls.indexOf(u) < 0) urls.push(u); });
   if (!urls.length) throw Object.assign(new Error('Sin relés para bajar el archivo'), { code: 'NET_DOWN' });
   var parts = new Array(ptr.chunks.length), byId = new Map(), bad = 0, fetched = 0;

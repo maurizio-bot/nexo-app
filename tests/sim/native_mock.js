@@ -1265,13 +1265,16 @@ class NativePhone {
         const rnd = (n) => Array.from({ length: n }, () => 'abcdefghjkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 31)]).join('');
         const ssid = 'DIRECT-' + rnd(2) + '-NEXO', pass = rnd(16), port = 40000 + Math.floor(Math.random() * 20000);
         self.radio.wdGroups = self.radio.wdGroups || new Map();
-        self.radio.wdGroups.set(ssid, { host: self, pass, port, id: a.transferId, bigToken: a.bigToken || null });
+        self.radio.wdGroups.set(ssid, { host: self, pass, port, id: a.transferId, bigToken: a.bigToken || null, token: a.token || null, size: a.size || 0 });
         self.stats.wdGroups = (self.stats.wdGroups || 0) + 1;
         setTimeout(() => c.resolve({ ssid, passphrase: pass, port, groupMs: 1500, attempts: 1, reasons: '', apStart: 5180 }), 1500); // 3258: como el nativo
         setTimeout(() => { if (self.radio.wdGroups.get(ssid)) { self.radio.wdGroups.delete(ssid); if (a.bigToken) self.emit('onBigDone', { id: a.transferId, dir: 'in', ok: false, error: 'Accept timed out' }); else self.emit('onWifiDirectReceived', { transferId: a.transferId, error: 'Accept timed out' }); } }, 90000);
       }),
       // 3287: como el nativo: cerrar el socket que esperaba hace que la espera termine con error (y se baja el grupo)
       wifiDirectCancel: wrap('wifiDirectCancel', (c, a) => {
+        // Auditoría 23-11 (T-E1): con `ack` es la confirmación de la app tras descifrar (1) o el «no se pudo leer» (0): el nativo
+        // manda (o no) el byte de «recibido» por el socket que tenía abierto esperando. Sin respuesta en WD_ACK_WAIT_MS, se cierra.
+        if (a.ack === 0 || a.ack === 1) { const w = self.wdAckWait && self.wdAckWait.get(a.transferId); if (!w) return c.resolve({ acked: false }); self.wdAckWait.delete(a.transferId); w(a.ack === 1); return c.resolve({ acked: true }); }
         let hit = null;
         (self.radio.wdGroups || new Map()).forEach((g, ssid) => { if (g.host === self && g.id === a.transferId) hit = [ssid, g]; });
         if (!hit) return c.resolve({ cancelled: false });
@@ -1299,11 +1302,16 @@ class NativePhone {
         const ms = 2000 + Math.round(data.length / 2000);
         // 3267: opts.wdDropMs = el grupo se cae a los N ms de haberse unido (el otro se aleja, Android lo baja): el nativo real avisa con WD_SEND
         if (self.opts.wdDropMs >= 0) { self.stats.wdDrops = (self.stats.wdDrops || 0) + 1; return setTimeout(() => { self.radio.wdGroups.delete(a.ssid); c.reject('Envío fallido: el grupo se cayó', 'WD_SEND'); }, 2000 + self.opts.wdDropMs); }
+        // T-L1: el receptor solo acepta la conexión con su token y el tamaño anunciado (si no, sigue esperando la buena: aquí, falla el envío)
+        if (!g.token || a.token !== g.token || (g.size > 0 && g.size !== data.length)) { self.stats.wdBadTok = (self.stats.wdBadTok || 0) + 1; return setTimeout(() => c.reject('Envío fallido: sin confirmación', 'WD_SEND'), 2000); }
         setTimeout(() => {
           self.radio.wdGroups.delete(a.ssid);
           self.stats.wdBytes = (self.stats.wdBytes || 0) + data.length;
-          g.host.emit('onWifiDirectReceived', { transferId: a.transferId, data, bytes: data.length, readMs: ms - 2000, ts: Date.now(), apMhz: 5180 });
-          c.resolve({ ok: true, ms, bytes: data.length, joinMs: 2000, xferMs: ms - 2000, bridgeMs: 0, apStart: 5180, apJoined: 5180 });
+          // T-E1: el byte de «recibido» sale cuando la app del otro lo descifró (wifiDirectCancel con ack); sin eso, sin confirmación
+          g.host.wdAckWait = g.host.wdAckWait || new Map();
+          const tw = setTimeout(() => { if (g.host.wdAckWait.get(a.transferId)) { g.host.wdAckWait.delete(a.transferId); c.reject('Envío fallido: sin confirmación', 'WD_SEND'); } }, 20000);
+          g.host.wdAckWait.set(a.transferId, (ok) => { clearTimeout(tw); if (ok) c.resolve({ ok: true, ms, bytes: data.length, joinMs: 2000, xferMs: ms - 2000, bridgeMs: 0, apStart: 5180, apJoined: 5180 }); else { self.stats.wdNoAck = (self.stats.wdNoAck || 0) + 1; c.reject('Envío fallido: sin confirmación', 'WD_SEND'); } });
+          g.host.emit('onWifiDirectReceived', { transferId: a.transferId, data: g.host.opts.rxCorrupt ? NativePhone._corrupt(data) : data, bytes: data.length, readMs: ms - 2000, ts: Date.now(), apMhz: 5180 });
         }, ms);
       }),
       // ===== Archivos grandes (Kotlin BigFile.kt, ronda 2756): "cifrado" a disco por trozos y paso de disco a disco.
@@ -1384,7 +1392,7 @@ class NativePhone {
         if (self.opts.noL2) return c.reject('L2CAP no disponible (Android 10+ y Bluetooth activo)', 'L2_NONE');
         self.radio.l2pServers = self.radio.l2pServers || new Map();
         const psm = 0x80 + Math.floor(Math.random() * 100) * 2 + 1;
-        self.radio.l2pServers.set(psm, { host: self, id: a.transferId, size: a.size });
+        self.radio.l2pServers.set(psm, { host: self, id: a.transferId, size: a.size, token: a.token || null });
         self.stats.l2pHosts = (self.stats.l2pHosts || 0) + 1;
         c.resolve({ psm });
         setTimeout(() => { const s = self.radio.l2pServers.get(psm); if (s && s.id === a.transferId) { self.radio.l2pServers.delete(psm); self.emit('onL2PayloadReceived', { transferId: a.transferId, error: 'Accept timed out' }); } }, 15000);
@@ -1399,16 +1407,26 @@ class NativePhone {
           self.stats.l2pFails = (self.stats.l2pFails || 0) + 1;
           return setTimeout(() => c.reject('Envío fallido: read failed, socket might closed or timeout', 'L2_SEND'), 1500);
         }
+        // T-L1: solo con el token del canal y el tamaño anunciado
+        if (!srv.token || a.token !== srv.token || (srv.size > 0 && srv.size !== data.length)) { self.stats.l2pBadTok = (self.stats.l2pBadTok || 0) + 1; return setTimeout(() => c.reject('Envío fallido: sin confirmación', 'L2_SEND'), 1500); }
         const ms = 300 + Math.round(data.length / ((self.opts.l2Bps || 1e6) / 1000));
         setTimeout(() => {
           self.radio.l2pServers.delete(a.psm);
           if (!self.radio.inRange(self, peer) || peer.offline || self.offline) return c.reject('Envío fallido: se cortó', 'L2_SEND');
-          self.stats.l2pSends = (self.stats.l2pSends || 0) + 1; self.stats.l2pBytes = (self.stats.l2pBytes || 0) + data.length;
-          peer.emit('onL2PayloadReceived', { transferId: a.transferId, data, bytes: data.length, readMs: ms - 300 });
-          c.resolve({ ok: true, bytes: data.length, ms, connectMs: 300 });
+          // T-E1: el byte de «recibido» sale cuando la app del otro lo descifró (l2PayloadCancel con ack)
+          peer.l2AckWait = peer.l2AckWait || new Map();
+          const tw = setTimeout(() => { if (peer.l2AckWait.get(a.transferId)) { peer.l2AckWait.delete(a.transferId); c.reject('Envío fallido: sin confirmación', 'L2_SEND'); } }, 20000);
+          peer.l2AckWait.set(a.transferId, (ok) => {
+            clearTimeout(tw);
+            if (!ok) { self.stats.l2pNoAck = (self.stats.l2pNoAck || 0) + 1; return c.reject('Envío fallido: sin confirmación', 'L2_SEND'); }
+            self.stats.l2pSends = (self.stats.l2pSends || 0) + 1; self.stats.l2pBytes = (self.stats.l2pBytes || 0) + data.length;
+            c.resolve({ ok: true, bytes: data.length, ms, connectMs: 300 });
+          });
+          peer.emit('onL2PayloadReceived', { transferId: a.transferId, data: peer.opts.rxCorrupt ? NativePhone._corrupt(data) : data, bytes: data.length, readMs: ms - 300 }); // T-E1: opts.rxCorrupt = llega pero no se puede descifrar
         }, ms);
       }),
       l2PayloadCancel: wrap('l2PayloadCancel', (c, a) => {
+        if (a.ack === 0 || a.ack === 1) { const w = self.l2AckWait && self.l2AckWait.get(a.transferId); if (!w) return c.resolve({ acked: false }); self.l2AckWait.delete(a.transferId); w(a.ack === 1); return c.resolve({ acked: true }); }
         let hit = null;
         (self.radio.l2pServers || new Map()).forEach((s, psm) => { if (s.host === self && s.id === a.transferId) hit = psm; });
         if (hit === null) return c.resolve({ cancelled: false });
@@ -1594,6 +1612,19 @@ class NativePhone {
       }),
       torConnect: wrap('torConnect', (c, a) => {
         if (!self.tor) return c.reject('Tor no listo', 'TOR_DOWN');
+        // Decisión 13A («Usar Tor siempre»): {url, ws} = WebSocket a un relé por Tor (Kotlin: WsClient por el SOCKS); {post} = el toque
+        if (a.post) { self.stats.torPosts = (self.stats.torPosts || 0) + 1; return setTimeout(() => c.resolve({ status: 200 }), self.opts.torLatency || 300); }
+        if (a.url) {
+          const NodeWS = require('ws'); self.torWs = self.torWs || new Map();
+          self.stats.torWsOpen = (self.stats.torWsOpen || 0) + 1;
+          const w = new NodeWS(a.url); self.torWs.set(a.ws, w);
+          const lat = self.opts.torLatency || 300;
+          w.on('open', () => setTimeout(() => self.emit('onTorWs', { ws: a.ws, ev: 'open' }), lat));
+          w.on('message', (d) => setTimeout(() => self.emit('onTorWs', { ws: a.ws, ev: 'msg', data: String(d) }), lat));
+          w.on('close', () => { if (self.torWs.get(a.ws) === w) { self.torWs.delete(a.ws); setTimeout(() => self.emit('onTorWs', { ws: a.ws, ev: 'close' }), lat); } });
+          w.on('error', () => {});
+          return c.resolve({ connecting: true });
+        }
         c.resolve({ connecting: true });
         setTimeout(() => {
           const t = self.radio.phones.find((p) => p.tor && p.tor.onion === a.host && !p.offline);
@@ -1603,6 +1634,7 @@ class NativePhone {
         }, self.opts.torLatency || 300);
       }),
       torSend: wrap('torSend', (c, a) => {
+        if (a.ws) { const w = self.torWs && self.torWs.get(a.ws); if (!w || w.readyState !== 1) return c.reject('sin conexión', 'TOR_DOWN'); w.send(String(a.content || '')); return c.resolve({ sent: true }); }
         const peer = self.tor && self.tor.conns.get(String(a.nx || '').toLowerCase());
         if (!peer || peer.offline || !peer.tor) return c.reject('Sin conexión Tor con ' + a.nx, 'TOR_DOWN');
         const content = String(a.content || ''), from = self.tor.nx;
@@ -1616,11 +1648,12 @@ class NativePhone {
         c.resolve({ sent: true });
       }),
       torDrop: wrap('torDrop', (c, a) => {
+        if (a.ws) { const w = self.torWs && self.torWs.get(a.ws); if (w) { self.torWs.delete(a.ws); try { w.close(); } catch (e) {} } return c.resolve({ dropped: true }); }
         const nx = String(a.nx || '').toLowerCase(), peer = self.tor && self.tor.conns.get(nx);
         if (peer) { self.tor.conns.delete(nx); self.emit('onTorDown', { nx }); if (peer.tor) { peer.tor.conns.delete(self.tor.nx); peer.emit('onTorDown', { nx: self.tor.nx }); } }
         c.resolve({ dropped: true });
       }),
-      torStop: wrap('torStop', (c) => { if (self.tor) self.tor.conns.forEach((p, nx) => { if (p.tor) { p.tor.conns.delete(self.tor.nx); p.emit('onTorDown', { nx: self.tor.nx }); } }); self.tor = null; c.resolve({ stopped: true }); }),
+      torStop: wrap('torStop', (c) => { if (self.torWs) { self.torWs.forEach((w) => { try { w.close(); } catch (e) {} }); self.torWs.clear(); } if (self.tor) self.tor.conns.forEach((p, nx) => { if (p.tor) { p.tor.conns.delete(self.tor.nx); p.emit('onTorDown', { nx: self.tor.nx }); } }); self.tor = null; c.resolve({ stopped: true }); }),
       // Notificaciones de mensajes (MsgNotifier.kt): una por chat con su número; el icono de la app suma los números
       // Kotlin 3012 setKxCard: la app deja su «tarjeta» (kx sin paquete de claves) para que el nativo conteste con la app dormida
       setKxCard: wrap('setKxCard', (c, a) => {
@@ -1787,6 +1820,8 @@ function installWebCrypto(win) {
 }
 
 // Ronda 2772: eventos que traen un mensaje (el nativo mantiene el teléfono despierto al recibirlos en segundo plano)
+// T-E1: el mismo texto con un carácter cambiado a mitad (el cifrado no lo acepta)
+NativePhone._corrupt = (d) => { const i = Math.floor(d.length / 2); return d.slice(0, i) + (d[i] === 'A' ? 'B' : 'A') + d.slice(i + 1); };
 NativePhone.RX_EVENTS = new Set(['onPayloadReceived', 'onLanMessage', 'onTorMessage', 'onWifiDirectReceived', 'onL2PayloadReceived', 'onBigProgress', 'onBigDone']);
 
 module.exports = { codedAddr, Radio, NativePhone, norm, installWebCrypto };
