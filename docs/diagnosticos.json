@@ -960,6 +960,14 @@
    "sintoma": "resumen_diario 22-11",
    "categoria": "Resumen",
    "causa": "Sin fallo. 14 enviados / 6 recibidos, todos con ✓✓ por internet (media 0,7 s, máx. 1,2 s); 9 min a la vista, 27 °C."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "10:10",
+   "nx": "nx1e50c95d, build 3121",
+   "sintoma": "resumen_diario 22-11",
+   "categoria": "Resumen",
+   "causa": "Sin fallo nuevo. 150 enviados (150 ✓✓) / 94 recibidos; internet media 1,3 s; Wi-Fi Direct 2 de 2 (231,8 KB/s pura); Bluetooth listo 0,4 s. enlace_abre_cierra ×1 (3121, antes del arreglo 3303). Wi-Fi local «su app no contesta» ×2 (la del otro). A MIRAR: 1187,7 MB de datos de NEXO por Wi-Fi en el día (¿llamadas/videollamadas? si no, va con el pendiente 24 de datos repetidos de los relés). Batería detrás 2,2 %/h."
   }
  ]
 }
