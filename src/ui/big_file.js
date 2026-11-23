@@ -209,8 +209,8 @@ export class BigFiles {
     var id = String(p.id || ''), from = _nid(p.from);
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return true;
     var o = self.out.get(id);
-    if (p.type === 'ga') { if (o && o.onAccept && (p.port > 0 || p.psm > 0) && typeof p.token === 'string') o.onAccept(p); return true; }
-    if (p.type === 'gn') { if (o && o.onNo) o.onNo(p.why); return true; }
+    if (p.type === 'ga') { if (o && o.onAccept && (p.port > 0 || p.psm > 0) && typeof p.token === 'string' && self.st[id] && (deviceId === self._dev(self.st[id].nx, self.st[id].via) || _nid(self.ble && self.ble._macToNexoId && self.ble._macToNexoId.get(String(deviceId || '').toLowerCase().replace(/[:-]/g, ''))) === _nid(self.st[id].nx))) o.onAccept(p); return true; } // T-E1: solo del enlace ofrecido
+    if (p.type === 'gn') { if (o && o.onNo && self.st[id] && (deviceId === self._dev(self.st[id].nx, self.st[id].via) || _nid(self.ble && self.ble._macToNexoId && self.ble._macToNexoId.get(String(deviceId || '').toLowerCase().replace(/[:-]/g, ''))) === _nid(self.st[id].nx))) o.onNo(p.why); return true; }
     if (p.type === 'gf') return true;
     if (p.type === 'gr') {
       // El otro lo pide otra vez (se cortó) o, en un grupo, lo pide quien no tenía camino: solo si es nuestro y aún lo

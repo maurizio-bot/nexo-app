@@ -25,6 +25,8 @@ export var L2P_MAX_CHARS = 3100000;      // el tope de un archivo por Bluetooth 
 var OFFER_TIMEOUT_MS = 6000;             // lo que se espera a que el otro abra el canal
 var FAIL_PAUSE_MS = 10 * 60000;          // tras un fallo, con ese contacto se va por lo de siempre este rato
 var HOST_BACKSTOP_MS = 30000;            // quien recibe: si el nativo no avisa, se libera solo
+export var ACK_WAIT_MS = 20000;          // T-E1: lo que quien recibe tiene el canal abierto esperando a descifrarlo (nativo: L2_ACK_WAIT_MS)
+function _token() { var a = new Uint8Array(16); crypto.getRandomValues(a); return Array.from(a).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _mac(m) { return (m || '').toString().toLowerCase().replace(/[:-]/g, '').trim(); }
@@ -61,6 +63,13 @@ export class L2Fast {
   supported() { return this.ok; }
   markPeer(nx, on) { if (!nx) return; if (on) this.peers.add(_nid(nx)); else this.peers.delete(_nid(nx)); }
   _nexoOf(deviceId) { return _nid(this.ble && this.ble._macToNexoId && this.ble._macToNexoId.get(_mac(deviceId))); }
+  // Auditoría 23-11 (T-E1): una respuesta ('la'/'ln') solo vale si llega por el MISMO enlace al que se ofreció (la misma dirección o,
+  // si el Bluetooth la ve por el otro lado de la conexión, la del mismo contacto). Antes cualquier enlace podía contestar por otro.
+  _sameLink(a, b) {
+    if (_mac(a) && _mac(a) === _mac(b)) return true;
+    var na = this._nexoOf(a);
+    return !!na && na === this._nexoOf(b);
+  }
 
   // ¿Este archivo, a este enlace Bluetooth, puede ir por el canal rápido ahora?
   eligible(deviceId, chars) {
@@ -95,15 +104,17 @@ export class L2Fast {
     return new Promise(function(resolve, reject) {
       var timer = setTimeout(function() { self.out.delete(fileId); reject(new Error('sin respuesta')); }, OFFER_TIMEOUT_MS);
       self.out.set(fileId, {
+        deviceId: deviceId,
         onNo: function(why) { offered = false; clearTimeout(timer); self.out.delete(fileId); reject(new Error('el otro no puede (' + (why || '?') + ')')); }, // i18n-ok: registro
-        onAccept: function(psm) {
+        onAccept: function(psm, tk) {
           clearTimeout(timer); self.out.delete(fileId);
           if (!(psm > 0)) { reject(new Error('canal no válido')); return; }
           var sendTimer = null;
           // Tope: abrir el canal (~10 s como mucho) + el contenido a 20 KB/s como mínimo (más lento que eso, mejor lo de siempre)
+          // + ACK_WAIT_MS: T-E1, el otro confirma cuando ya lo pudo descifrar (no al tener los bytes)
           Promise.race([
-            _plugin().l2PayloadSend({ deviceId: deviceId, psm: psm, transferId: fileId, data: data }),
-            new Promise(function(res, rej) { sendTimer = setTimeout(function() { rej(new Error('envío sin terminar')); }, 12000 + Math.round(data.length / 20)); })
+            _plugin().l2PayloadSend({ deviceId: deviceId, psm: psm, transferId: fileId, data: data, token: tk }),
+            new Promise(function(res, rej) { sendTimer = setTimeout(function() { rej(new Error('envío sin terminar')); }, 12000 + ACK_WAIT_MS + Math.round(data.length / 20)); })
           ]).then(function(r) { clearTimeout(sendTimer); resolve(r); }, function(e) { clearTimeout(sendTimer); reject(e); });
         }
       });
@@ -135,7 +146,8 @@ export class L2Fast {
     var id = String(p.id || '');
     if (!id) return true;
     var st = self.out.get(id);
-    if (p.type === 'la') { if (st && st.onAccept) st.onAccept(Number(p.psm) || 0); return true; }
+    if ((p.type === 'la' || p.type === 'ln') && st && !self._sameLink(st.deviceId, deviceId)) { console.warn('[L2] ' + id + ': respuesta por otro enlace: ignorada'); return true; }
+    if (p.type === 'la') { if (st && st.onAccept) st.onAccept(Number(p.psm) || 0, typeof p.tk === 'string' ? p.tk : ''); return true; }
     if (p.type === 'ln') { if (st && st.onNo) st.onNo(p.why); return true; }
     if (p.type === 'lx') {
       var inc0 = self.incoming.get(id);
@@ -151,11 +163,13 @@ export class L2Fast {
     // solo de quien es ese enlace (el NEXO ID que dice el paquete tiene que ser el del enlace por el que llega)
     if (!from || self._nexoOf(deviceId) !== from) { no('enlace'); return true; }
     self.busy = true;
-    _plugin().l2PayloadHost({ transferId: id, size: p.size }).then(function(r) {
+    // T-L1: el canal solo acepta a quien traiga este token en la cabecera (va en 'la' por el enlace del contacto)
+    var tk = _token();
+    _plugin().l2PayloadHost({ transferId: id, size: p.size, token: tk }).then(function(r) {
       if (!r || !(r.psm > 0)) throw new Error('sin canal');
       var timer = setTimeout(function() { if (self.incoming.has(id)) { self._nativeCancel(id); self._free(id); } }, HOST_BACKSTOP_MS + Math.round(p.size / 20));
       self.incoming.set(id, { meta: p.meta || {}, deviceId: deviceId, from: from, ts: Date.now(), timer: timer });
-      return self._ctl(deviceId, { type: 'la', id: id, psm: r.psm });
+      return self._ctl(deviceId, { type: 'la', id: id, psm: r.psm, tk: tk });
     }).catch(function(e) {
       self._nativeCancel(id); self._free(id);
       console.warn('[L2] No puedo recibir ' + id + ' por el canal rápido: ' + (e && e.message));
@@ -175,11 +189,19 @@ export class L2Fast {
     this.busy = false;
   }
 
+  // T-E1: el nativo tiene el canal abierto esperando esto: ok = ya se descifró (manda el byte de «recibido» = ✓✓ de quien envía);
+  // no = no se pudo leer (cierra sin confirmar: quien envía sigue por trozos, no lo da por entregado)
+  _nativeAck(id, ok) {
+    var pl = _plugin();
+    if (pl && typeof pl.l2PayloadCancel === 'function') { try { pl.l2PayloadCancel({ transferId: id, ack: ok ? 1 : 0 }).catch(function() {}); } catch (e) {} }
+  }
+
   _onReceived(ev) {
     var self = this, id = ev && ev.transferId, inc = id && self.incoming.get(id);
     if (!inc) return;
     self._free(id);
     if (ev.error || !ev.data || !e2eAnyEncrypted(ev.data)) {
+      if (!ev.error) self._nativeAck(id, false);
       console.warn('[L2] Recepción de ' + id + ' fallida: ' + (ev.error || 'contenido no válido') + ' (quien envía sigue por el camino de siempre)');
       return;
     }
@@ -187,12 +209,18 @@ export class L2Fast {
     console.log('[L2] Recibido ' + id + ' por el canal rápido de Bluetooth (' + Math.round(ev.data.length / 1024) + ' KB' + (ev.readMs ? ', lectura ' + Math.round(ev.readMs / 100) / 10 + ' s' : '') + ')');
     try { if (typeof window.NEXO_noteSpeed === 'function' && ev.readMs > 0) window.NEXO_noteSpeed('l2', 'in', Math.round(ev.data.length * 3 / 4), ev.readMs); } catch (e) {}
     var ack = self.ble.ackSystem;
-    if (ack) {
-      // Como un flujo terminado: si luego llega también en trozos, se descarta
-      if (ack.completedMessages) ack.completedMessages.set(id, { total: 1, expireAt: Date.now() + 600000 });
-      var m = Object.assign({}, inc.meta, { fr: inc.meta.fr || inc.from, senderNexoId: inc.meta.fr || inc.from, fromNexoId: inc.meta.fr || inc.from });
-      ack._dispatchFileComplete(id, ev.data, m);
-    }
+    if (!ack) { self._nativeAck(id, false); return; }
+    // T-E1 (como los trozos desde la 2767): completo y confirmado SOLO tras descifrarlo bien. Antes se marcaba completo y el byte de
+    // «recibido» salía al tener los bytes: si no se podía leer (desfase de claves) se perdía en silencio con ✓✓ en quien envía.
+    var m = Object.assign({}, inc.meta, { fr: inc.meta.fr || inc.from, senderNexoId: inc.meta.fr || inc.from, fromNexoId: inc.meta.fr || inc.from });
+    var called = false;
+    ack._dispatchFileComplete(id, ev.data, m, function(ok) {
+      if (called) return; called = true;
+      // Como un flujo terminado: si luego llega también en trozos, se descarta (solo si se pudo leer: si no, los trozos sí valen)
+      if (ok && ack.completedMessages) ack.completedMessages.set(id, { total: 1, expireAt: Date.now() + 600000 });
+      if (!ok) console.warn('[L2] ' + id + ': llegó pero no se pudo descifrar: sin confirmar (quien envía sigue por trozos)');
+      self._nativeAck(id, ok);
+    });
   }
 }
 

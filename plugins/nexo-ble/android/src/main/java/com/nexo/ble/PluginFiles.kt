@@ -282,8 +282,25 @@ internal fun NexoBlePlugin.bigServeL2Impl(call: PluginCall) {
                     val left = until - System.currentTimeMillis()
                     if (left <= 0) throw Exception("Accept timed out")
                     val sock = server.accept(left.toInt())
-                    val ok = try { BigNet.receive(sock.inputStream, sock.outputStream, id, token, BigFile.encFile(bigDir(), id), BigFile.MAX_BYTES * 11 / 10, bigProgress(id, "in")) }
-                             finally { try { sock.close() } catch (e: Exception) {} }
+                    // Auditoría 23-11 (T-L1): como BigNet.serve, una conexión ajena (basura, otra cabecera, callada) se descarta y se sigue
+                    // esperando la buena. Antes su error salía del bucle y la espera moría; y una callada lo bloqueaba para siempre (un
+                    // canal Bluetooth no tiene plazo propio): ahora tiene PayloadNet.HEADER_MS para empezar y 60 s sin avanzar después.
+                    val pr = bigProgress(id, "in")
+                    val lastAt = java.util.concurrent.atomic.AtomicLong(0L)   // 0 = aún sin la cabecera buena
+                    val guard = object : Runnable { override fun run() {
+                        if (System.currentTimeMillis() - lastAt.get() > 60000) { try { sock.close() } catch (e: Exception) {} } else mainHandler.postDelayed(this, 5000)
+                    } }
+                    val headGuard = Runnable { if (lastAt.get() == 0L) try { sock.close() } catch (e: Exception) {} }
+                    mainHandler.postDelayed(headGuard, PayloadNet.HEADER_MS.toLong())
+                    val ok = try {
+                        BigNet.receive(sock.inputStream, sock.outputStream, id, token, BigFile.encFile(bigDir(), id), BigFile.MAX_BYTES * 11 / 10, BigNet.Progress { done, total ->
+                            if (lastAt.getAndSet(System.currentTimeMillis()) == 0L) { mainHandler.removeCallbacks(headGuard); mainHandler.postDelayed(guard, 5000) }
+                            pr.on(done, total)
+                        })
+                    } catch (e: Exception) {
+                        if (lastAt.get() != 0L) throw e   // ya era la buena (tenía el token) y se cortó: eso sí termina la espera
+                        false
+                    } finally { mainHandler.removeCallbacks(headGuard); mainHandler.removeCallbacks(guard); try { sock.close() } catch (e: Exception) {} }
                     if (ok) break
                 }
                 bigDone(id, "in", null)
@@ -304,6 +321,9 @@ internal const val L2_PAYLOAD_MAX = 4L * 1024 * 1024
 internal fun NexoBlePlugin.l2PayloadHostImpl(call: PluginCall) {
     val id = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
     val expect = (call.getInt("size") ?: 0).toLong()
+    // Auditoría 23-11 (T-L1): token de esta transferencia (lo pone la app y viaja en «la» por el enlace del contacto)
+    val token = call.getString("token") ?: ""
+    if (token.length < 16 || expect <= 0) { call.reject("token y tamaño requeridos", "L2_NONE"); return }
     val adapter = l2Adapter() ?: run { call.reject("L2CAP no disponible (Android 10+ y Bluetooth activo)", "L2_NONE"); return }
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) { call.reject("L2CAP no disponible", "L2_NONE"); return }
     try {
@@ -314,30 +334,20 @@ internal fun NexoBlePlugin.l2PayloadHostImpl(call: PluginCall) {
         call.resolve(JSObject().put("psm", server.psm))
         remLog("INFO", "FILE_IO", "[L2CAP] Esperando el archivo mediano $id en el canal ${server.psm}")
         Thread {
-            var sock: android.bluetooth.BluetoothSocket? = null
-            // Un canal Bluetooth no tiene tope de lectura propio: si el otro se queda a medias, a los 60 s se cierra
-            val guard = Runnable { try { sock?.close() } catch (e: Exception) {}; try { server.close() } catch (e: Exception) {} }
+            // T-L1: se aceptan conexiones hasta la buena (id + token + el tamaño anunciado); una ajena se cierra y se sigue esperando.
+            // T-E1: el byte de «recibido» sale cuando la app confirma que lo descifró (l2PayloadCancel con ack), no al tener los bytes.
             try {
-                sock = server.accept(15000)
-                mainHandler.postDelayed(guard, 60000)
-                val tRead = System.currentTimeMillis()
-                val input = java.io.DataInputStream(java.io.BufferedInputStream(sock.inputStream))
-                val h = org.json.JSONObject(input.readUTF())
-                if (h.optString("id") != id) throw Exception("transferencia distinta")
-                val len = h.optLong("len")
-                if (len <= 0 || len > L2_PAYLOAD_MAX || (expect > 0 && len != expect)) throw Exception("tamaño no válido")
-                val buf = ByteArray(len.toInt())
-                input.readFully(buf)
-                sock.outputStream.apply { write(1); flush() }
-                val readMs = System.currentTimeMillis() - tRead
-                remLog("INFO", "FILE_IO", "[L2CAP] Recibido $id ($len bytes) en $readMs ms")
-                notifyListeners("onL2PayloadReceived", JSObject().put("transferId", id).put("data", String(buf, Charsets.UTF_8)).put("bytes", len).put("readMs", readMs), true)
+                val res = PayloadNet.serve({ left -> l2Conn(server.accept(left.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())) }, 15000, id, token, expect, L2_PAYLOAD_MAX,
+                    60000 + (expect / 20).toInt(), { buf, readMs ->
+                        remLog("INFO", "FILE_IO", "[L2CAP] Recibido $id (${buf.size} bytes) en $readMs ms: la app lo descifra antes de confirmar")
+                        notifyListeners("onL2PayloadReceived", JSObject().put("transferId", id).put("data", String(buf, Charsets.UTF_8)).put("bytes", buf.size).put("readMs", readMs), true)
+                    })
+                remLog(if (res.delivered) "INFO" else "WARN", "FILE_IO", "[L2CAP] $id " + (if (res.delivered) "confirmado" else "SIN confirmar (la app no lo pudo leer): quien envía sigue en trozos") +
+                    (if (res.rejected > 0) " (${res.rejected} conexiones ajenas descartadas)" else ""))
             } catch (e: Exception) {
                 remLog("WARN", "FILE_IO", "[L2CAP] Recepción fallida de $id: ${e.message}")
                 notifyListeners("onL2PayloadReceived", JSObject().put("transferId", id).put("error", e.message ?: "error"), true)
             } finally {
-                mainHandler.removeCallbacks(guard)
-                try { sock?.close() } catch (e: Exception) {}
                 try { server.close() } catch (e: Exception) {}
                 if (l2PayloadServer === server) { l2PayloadServer = null; l2PayloadFor = null }
             }
@@ -345,13 +355,29 @@ internal fun NexoBlePlugin.l2PayloadHostImpl(call: PluginCall) {
     } catch (e: Exception) { call.reject("Canal L2CAP no disponible: ${e.message}", "L2_SOCKET") }
 }
 
+// Un canal L2CAP aceptado como PayloadNet.Conn: un BluetoothSocket no tiene plazo de lectura propio, así que el plazo es un
+// vigilante que cierra el canal (eso desbloquea la lectura con error)
+private fun NexoBlePlugin.l2Conn(sock: android.bluetooth.BluetoothSocket): PayloadNet.Conn = object : PayloadNet.Conn {
+    private var guard: Runnable? = null
+    override val input: java.io.InputStream = java.io.BufferedInputStream(sock.inputStream)
+    override val output: java.io.OutputStream = sock.outputStream
+    override fun limit(ms: Int) {
+        guard?.let { mainHandler.removeCallbacks(it) }
+        val g = Runnable { try { sock.close() } catch (e: Exception) {} }
+        guard = g
+        mainHandler.postDelayed(g, ms.toLong())
+    }
+    override fun close() { guard?.let { mainHandler.removeCallbacks(it) }; try { sock.close() } catch (e: Exception) {} }
+}
+
 internal fun NexoBlePlugin.l2PayloadSendImpl(call: PluginCall) {
     val id = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
     val raw = call.getString("deviceId") ?: ""
     val psm = call.getInt("psm") ?: 0
     val data = call.getString("data") ?: ""
+    val token = call.getString("token") ?: ""   // T-L1: el que puso quien recibe (en «la»)
     val adapter = l2Adapter() ?: run { call.reject("L2CAP no disponible", "L2_NONE"); return }
-    if (psm <= 0 || data.isEmpty()) { call.reject("Nada que enviar", "L2_NONE"); return }
+    if (psm <= 0 || data.isEmpty() || token.length < 16) { call.reject("Nada que enviar", "L2_NONE"); return }
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) { call.reject("L2CAP no disponible", "L2_NONE"); return }
     val mac = normalizeMac(raw)
     val device = gattClients[mac]?.device ?: serverConnectedDevices[mac] ?: scannedDevices[mac]
@@ -369,9 +395,10 @@ internal fun NexoBlePlugin.l2PayloadSendImpl(call: PluginCall) {
             s.connect()
             mainHandler.removeCallbacks(guard)
             val connectMs = System.currentTimeMillis() - t0
-            mainHandler.postDelayed(guard, 15000L + bytes.size / 20)   // contenido a 20 KB/s como mínimo
+            // contenido a 20 KB/s como mínimo + lo que el otro tarda en descifrarlo antes de confirmar (T-E1)
+            mainHandler.postDelayed(guard, 15000L + PayloadNet.ACK_WAIT_MS + bytes.size / 20)
             val out = java.io.DataOutputStream(java.io.BufferedOutputStream(s.outputStream))
-            out.writeUTF(org.json.JSONObject().put("id", id).put("len", bytes.size).toString())
+            out.writeUTF(PayloadNet.headerJson(id, token, bytes.size))
             out.write(bytes)
             out.flush()
             if (s.inputStream.read() != 1) throw Exception("sin confirmación")
@@ -389,8 +416,11 @@ internal fun NexoBlePlugin.l2PayloadSendImpl(call: PluginCall) {
 }
 
 // Quien iba a mandar se rindió: se cierra el canal que lo esperaba (la espera termina con error y avisa a la app)
+// T-E1: con `ack` (1 / 0) no cancela: es la app diciendo si pudo descifrar lo recibido (manda o no el byte de «recibido»)
 internal fun NexoBlePlugin.l2PayloadCancelImpl(call: PluginCall) {
     val id = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
+    val ack = call.getInt("ack")
+    if (ack == 0 || ack == 1) { call.resolve(JSObject().put("acked", PayloadNet.ack(id, ack == 1))); return }
     val server = l2PayloadServer
     if (server == null || l2PayloadFor != id) { call.resolve(JSObject().put("cancelled", false)); return }
     try { server.close() } catch (e: Exception) {}

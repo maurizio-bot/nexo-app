@@ -45,6 +45,7 @@ export function wdPlan(bytes, netKbps) {
 }
 var WD_READY_TTL_MS = 45000;
 var OFFER_TIMEOUT_MS = 25000;
+export var WD_ACK_WAIT_MS = 20000;   // T-E1: quien recibe tiene el socket abierto hasta esto esperando a descifrarlo (nativo: WD_ACK_WAIT_MS)
 var PERM_TIMEOUT_MS = 60000;
 var FAIL_COOLDOWN_MS = 10 * 60000;
 // 3013 (dueño 11-11: «primero es Wi-Fi Direct… no veo que funcione»; diagnósticos 08 y 10-11: «No se pudo crear el grupo (2)»):
@@ -236,6 +237,19 @@ export class WifiDirect {
   }
 
   _nexoOf(deviceId) { return _nid(this.ble && this.ble._macToNexoId && this.ble._macToNexoId.get(_mac(deviceId))); }
+  // Auditoría 23-11 (T-E1): una respuesta ('wa'/'wn'/'wf') solo vale si llega por el MISMO enlace al que se ofreció (la misma
+  // dirección o, si el Bluetooth la ve por el otro lado de la conexión, la del mismo NEXO). Antes valía desde cualquier enlace.
+  _sameLink(a, b) {
+    if (_mac(a) && _mac(a) === _mac(b)) return true;
+    var na = this._nexoOf(a);
+    return !!na && na === this._nexoOf(b);
+  }
+  // T-E1: el nativo tiene el socket abierto esperando esto: ok = ya se pudo leer (manda el byte de «recibido», la entrega de quien
+  // envía); no = no se pudo (cierra sin confirmar: quien envía sigue por Bluetooth, no lo da por entregado)
+  _nativeAck(id, ok) {
+    var pl = _plugin();
+    if (pl && typeof pl.wifiDirectCancel === 'function') { try { pl.wifiDirectCancel({ transferId: id, ack: ok ? 1 : 0 }).catch(function() {}); } catch (e) {} }
+  }
 
   _directReady(deviceId) {
     var st = this.ble && typeof this.ble._getDeviceState === 'function' ? this.ble._getDeviceState(deviceId) : null;
@@ -367,7 +381,7 @@ export class WifiDirect {
     }).then(function(ws) {
       if (ws && ws.wifiOn === false) { var eOff = new Error('Wi-Fi apagado en este teléfono'); eOff.wifiOff = 'me'; throw eOff; }
       return new Promise(function(resolve, reject) {
-        var st = { reject: reject };
+        var st = { reject: reject, deviceId: deviceId };
         var offerTimer = setTimeout(function() { self.out.delete(fileId); reject(new Error('sin respuesta')); }, o.offerMs || OFFER_TIMEOUT_MS);
         st.onNo = function(why) { hosted = false; clearTimeout(offerTimer); self.out.delete(fileId); var eNo = new Error('el otro no puede (' + (why || '?') + ')'); if (WIFI_OFF_RE.test(String(why || ''))) eNo.wifiOff = 'peer'; reject(eNo); };
         st.onCreds = function(c) {
@@ -377,11 +391,12 @@ export class WifiDirect {
           e2eDecryptText(c).then(function(r) {
             var cr = JSON.parse(r.text);
             console.log('[WIFI-DIRECT] Enviando ' + fileId + ' (' + Math.round(data.length / 1024) + ' KB) a ' + peer);
-            // Tope: unirse al grupo (~20 s) + el contenido a 100 KB/s como mínimo
+            // Tope: unirse al grupo (~20 s) + el contenido a 100 KB/s como mínimo + lo que el otro tarda en descifrarlo antes de
+            // confirmar (T-E1, WD_ACK_WAIT_MS)
             var sendTimer = null;
             return Promise.race([
-              _plugin().wifiDirectSend({ ssid: cr.s, passphrase: cr.p, port: cr.o, transferId: fileId, data: data, jsTs: Date.now() }),
-              new Promise(function(res, rej) { sendTimer = setTimeout(function() { rej(new Error('envío sin terminar')); }, 30000 + Math.round(data.length / 100)); })
+              _plugin().wifiDirectSend({ ssid: cr.s, passphrase: cr.p, port: cr.o, transferId: fileId, data: data, token: typeof cr.t === 'string' ? cr.t : '', jsTs: Date.now() }),
+              new Promise(function(res, rej) { sendTimer = setTimeout(function() { rej(new Error('envío sin terminar')); }, 30000 + WD_ACK_WAIT_MS + Math.round(data.length / 100)); })
             ]).then(function(v) { clearTimeout(sendTimer); return v; }, function(e) { clearTimeout(sendTimer); throw e; });
           }).then(function(res) {
             var sec = function(ms) { return Math.round((ms || 0) / 100) / 10 + ' s'; };
@@ -436,7 +451,7 @@ export class WifiDirect {
     }).then(function(ws) {
       if (ws && ws.wifiOn === false) { var eOff = new Error('Wi-Fi apagado en este teléfono'); eOff.wifiOff = 'me'; throw eOff; }
       return new Promise(function(resolve, reject) {
-        var st = {};
+        var st = { deviceId: deviceId };
         var offerTimer = setTimeout(function() { self.out.delete(fileId); reject(new Error('sin respuesta')); }, OFFER_TIMEOUT_MS);
         st.onNo = function(why) { hosted = false; clearTimeout(offerTimer); self.out.delete(fileId); var eNo = new Error('el otro no puede (' + (why || '?') + ')'); if (WIFI_OFF_RE.test(String(why || ''))) eNo.wifiOff = 'peer'; reject(eNo); };
         st.onCreds = function(c) {
@@ -492,6 +507,7 @@ export class WifiDirect {
     var id = String(p.id || '');
     if (!id) return true;
     var st = self.out.get(id);
+    if (/^w[anf]$/.test(p.type) && st && !self._sameLink(st.deviceId, deviceId)) { console.warn('[WIFI-DIRECT] ' + id + ': respuesta por otro enlace: ignorada'); return true; }
     if (p.type === 'wa') { if (st && st.onCreds) st.onCreds(p.c); return true; }
     if (p.type === 'wn') { if (st && st.onNo) st.onNo(p.why); return true; }
     if (p.type === 'wf') { if (st && st.onDone) st.onDone(); return true; }
@@ -507,9 +523,15 @@ export class WifiDirect {
     if (!(p.size > 0) || p.size > (big ? 1.1 * 1024 * 1024 * 1024 : WD_MAX_BYTES)) { refuse('tamaño'); return true; }
     // Clave para cifrar las credenciales: la guardada del contacto o, si aún no es contacto, la que trae la
     // oferta (las credenciales solo sirven para mandarnos datos, que igualmente deben venir cifrados)
-    var key = (self.ble.ackSystem && self.ble.ackSystem._peerKey(deviceId, from)) ||
-      ((typeof p.pk === 'string' && /^[A-Za-z0-9+/=]{80,100}$/.test(p.pk)) ? p.pk : null);
+    var ckey = self.ble.ackSystem && self.ble.ackSystem._peerKey(deviceId, from);
+    var key = ckey || ((typeof p.pk === 'string' && /^[A-Za-z0-9+/=]{80,100}$/.test(p.pk)) ? p.pk : null);
     if (!key) { refuse('sin clave'); return true; }
+    // Auditoría 23-11 (T-L1): montar el grupo (Wi-Fi normal a medias, batería, ocupado para otros) solo para un contacto con clave
+    // guardada… o para el paquete del PUENTE a internet que esperamos de ese vecino (gw_link: sesión abierta con él por este enlace;
+    // el puente no es contacto por naturaleza). Cualquier otro desconocido: «no» y su archivo llega igual en trozos por Bluetooth
+    // (nada se pierde: solo no se le monta Wi-Fi Direct a quien no conocemos).
+    var gwDir = p.meta && p.meta.gw, gwL = self.ble.net && self.ble.net.gw;
+    if (!ckey && !((gwDir === 'u' || gwDir === 'd') && gwL && typeof gwL.wdExpect === 'function' && gwL.wdExpect(from, deviceId, gwDir))) { refuse('no es contacto'); return true; }
     // Auditoría 23-11 (T-D1): un archivo GRANDE (a disco, hasta 1,1 GB) solo de un contacto con clave guardada, nunca con la que trae la oferta
     if (big && !(from && typeof self.ble._contactKey === 'function' && self.ble._contactKey(from))) { refuse('no es contacto'); return true; }
     if (big && self.ble.bigFiles.saved && self.ble.bigFiles.saved[id] === 'got') { refuse('ya lo tengo'); return true; }
@@ -518,7 +540,8 @@ export class WifiDirect {
     var tH = Date.now();
     var pwIn = _wdPowerStart();
     _noteWd('try', { dir: 'in' });
-    var bigToken = big ? Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join('') : null;
+    // Token de la conexión (T-L1: también para lo no grande): va en las credenciales cifradas; el nativo solo acepta a quien lo traiga
+    var bigToken = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join('');
     self._ensurePermission().then(function(ok) {
       if (!ok) throw new Error('sin permiso');  // (denied ya marcado: el próximo kx no lo anuncia)
       return self._refreshStatus();
@@ -526,7 +549,7 @@ export class WifiDirect {
       // 3013: con el Wi-Fi apagado no se puede montar el grupo (Android contesta «ocupado»): se dice claro al otro
       if (ws && ws.wifiOn === false) { var eOff = new Error('Wi-Fi apagado'); eOff.wifiOff = true; throw eOff; }
       var args = { transferId: id, size: p.size };
-      if (big) args.bigToken = bigToken;
+      if (big) args.bigToken = bigToken; else args.token = bigToken;
       return _plugin().wifiDirectHost(args);
     }).then(function(cr) {
       // 3258 (quien recibe monta el grupo): tiempo, reintentos del sistema y su código, y el Wi-Fi normal al empezar
@@ -538,8 +561,7 @@ export class WifiDirect {
       // Un archivo grande puede tardar: el tope lo pone el propio socket (sin datos 60 s → error → bigFinished)
       if (big) self.ble.bigFiles._set(id, { dir: 'in', state: 'receiving', bytes: 0, total: p.size, nx: from });
       else setTimeout(function() { if (self.incoming.delete(id)) self.busy = false; }, 120000);
-      var creds = { s: cr.ssid, p: cr.passphrase, o: cr.port };
-      if (big) creds.t = bigToken;
+      var creds = { s: cr.ssid, p: cr.passphrase, o: cr.port, t: bigToken };
       return e2eEncryptText(key, JSON.stringify(creds));
     }).then(function(c) {
       return self._ctl(deviceId, { type: 'wa', id: id, c: c });
@@ -603,24 +625,32 @@ export class WifiDirect {
       var gw = self.ble && self.ble.net && self.ble.net.gw;
       if (ev.error || !ev.data || !gw) { console.warn('[WIFI-DIRECT] Paquete del puente ' + id + ' fallido: ' + (ev.error || 'vacío')); return; }
       console.log('[WIFI-DIRECT] Paquete del puente ' + id + ' (' + Math.round(ev.data.length / 1024) + ' KB)' + (ev.readMs ? ', lectura ' + Math.round(ev.readMs / 100) / 10 + ' s' : ''));
-      gw.wdIn(inc.from, inc.deviceId, ev.data, gwDir);
-      self._ctl(inc.deviceId, { type: 'wf', id: id }).catch(function() {});
+      var gwOk = gw.wdIn(inc.from, inc.deviceId, ev.data, gwDir) !== false;
+      self._nativeAck(id, gwOk);
+      if (gwOk) self._ctl(inc.deviceId, { type: 'wf', id: id }).catch(function() {});
       return;
     }
     if (ev.error || !ev.data || !e2eAnyEncrypted(ev.data)) {
+      if (!ev.error) self._nativeAck(id, false);
       console.warn('[WIFI-DIRECT] Recepción de ' + id + ' fallida: ' + (ev.error || 'contenido no válido'));
       return;
     }
     console.log('[WIFI-DIRECT] Recibido ' + id + ' (' + Math.round(ev.data.length / 1024) + ' KB)' +
       (ev.ts ? ', de Android a la app ' + Math.round((Date.now() - ev.ts) / 100) / 10 + ' s' : '') + (ev.readMs ? ', lectura ' + Math.round(ev.readMs / 100) / 10 + ' s' : ''));
     var ack = self.ble.ackSystem;
-    if (ack) {
-      // Como un flujo terminado: si luego llega también por Bluetooth, se descarta
-      if (ack.completedMessages) ack.completedMessages.set(id, { total: 1, expireAt: Date.now() + 600000 });
-      var m = Object.assign({}, inc.meta, { fr: inc.meta.fr || inc.from, senderNexoId: inc.meta.fr || inc.from, fromNexoId: inc.meta.fr || inc.from });
-      ack._dispatchFileComplete(id, ev.data, m);
-    }
-    self._ctl(inc.deviceId, { type: 'wf', id: id }).catch(function() {});
+    if (!ack) { self._nativeAck(id, false); return; }
+    // T-E1 (como los trozos desde la 2767): completo y confirmado SOLO tras descifrarlo bien. Antes se marcaba completo y el byte de
+    // «recibido» salía al tener los bytes: si no se podía leer (desfase de claves) se perdía en silencio con ✓✓ en quien envía.
+    var m = Object.assign({}, inc.meta, { fr: inc.meta.fr || inc.from, senderNexoId: inc.meta.fr || inc.from, fromNexoId: inc.meta.fr || inc.from });
+    var called = false;
+    ack._dispatchFileComplete(id, ev.data, m, function(ok) {
+      if (called) return; called = true;
+      // Como un flujo terminado: si luego llega también por Bluetooth, se descarta (solo si se pudo leer: si no, los trozos sí valen)
+      if (ok && ack.completedMessages) ack.completedMessages.set(id, { total: 1, expireAt: Date.now() + 600000 });
+      self._nativeAck(id, ok);
+      if (ok) self._ctl(inc.deviceId, { type: 'wf', id: id }).catch(function() {});
+      else console.warn('[WIFI-DIRECT] ' + id + ': llegó pero no se pudo descifrar: sin confirmar (quien envía sigue por Bluetooth)');
+    });
   }
 }
 
