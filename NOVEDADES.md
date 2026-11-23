@@ -12,6 +12,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Correcciones y mejoras de estabilidad.
 </es-419>
 <!-- /APK -->
 
