@@ -944,6 +944,14 @@
    "sintoma": "resumen_diario 22-11",
    "categoria": "Resumen",
    "causa": "Sin fallo nuevo. 139 enviados / 179 recibidos; internet 123 de 123 con ✓✓ (media 1,1 s). 13 sin ✓✓ son de contactos sin conexión (internet fuera, no vistos): esperan. Wi-Fi Direct 2,9 KB/s de punta a punta (pura 189 KB/s) ya apuntado; batería detrás 6,6 %/h (pendiente 24)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "08:27",
+   "nx": "nx1n36c283",
+   "sintoma": "enlace_abre_cierra (nx10b6f4ac, 3 cierres por enlace repetido en 10 min)",
+   "categoria": "Bluetooth: enlaces que se abren y cierran",
+   "causa": "S24 3121 con Alex (3116, vieja). A REVISAR (app): el S24 abre una conexión «de paso» a un NEXO anónimo (40aadaac967e) que resulta ser Alex, al que ya tiene enlazado por f477; queda como 2.º enlace y el desempate cierra uno cada 1–2 min (08:23:34, 08:25:22, 08:27:52), y vuelve a sondear la misma dirección (08:22:49, 08:25:07, 08:27:31). Arreglo propuesto: si el sondeo de paso identifica a un contacto ya enlazado, cerrar ese enlace al momento y recordar dirección → NEXO ID para no volver a sondearla. Nada perdido"
   }
  ]
 }
