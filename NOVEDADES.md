@@ -12,6 +12,14 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Correcciones y mejoras de estabilidad.
+</es-419>
+<!-- /APK -->
+
+## Historial
+
+### APK 3125 (23-11-2026)
+<es-419>
 - Vista previa real de enlaces, por Tor y solo de tus contactos.
 - Aviso antes de abrir un enlace que imita a otro sitio.
 - Despertar a un contacto dormido es más seguro.
@@ -21,14 +29,8 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Videollamada contestada desde el aviso: tu imagen vuelve sola.
 - App más ligera.
 </es-419>
-<!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
-  y la app lo muestra junto al botón de actualizar (Perfil → Ajustes → Actualizaciones, y «¿Qué trae?» en el aviso de abajo).
-- Formato de Google Play (se pega tal cual en «Novedades de esta versión»): un bloque por idioma (español, italiano, inglés y, desde
-  la 3123, portugués de Brasil y francés), **máximo 500 caracteres** cada uno
-  (lo comprueba `tests/sim/novedades.js`). Frases cortas, sin palabras técnicas; lo que el usuario nota.
-- Al entregar una APK: escribir aquí lo nuevo y, después de publicarla, pasar el bloque al historial con su número.
 
-<!-- APK -->
+### APK 3123 (23-11-2026)
 <es-419>
 - Seguridad reforzada: nadie puede hacerse pasar por un contacto ni falsificar tus ✓✓, ni de cerca ni en la misma Wi-Fi.
 - Si alguien que no es tu contacto te escribe, aparece en «Solicitudes» para que decidas.
@@ -36,11 +38,6 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - El comentario de las fotos y «ver una vez» viajan cifrados; las capturas se bloquean al ver una foto de «ver una vez».
 - Grupos más difíciles de manipular; ajustes en la ruedita de arriba.
 </es-419>
-<!-- /APK -->
-
-## Historial
-
-### APK 3123 (23-11-2026)
 
 ### APK 3121 (23-11-2026)
 <es-419>

@@ -24,7 +24,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **Forma de trabajo:** CLAUDE.md «GASTO» (leer SOLO este bloque + 🔴 de `docs/AREAS.md`; lo demás con grep). Todo el detalle de 3266–3311:
   `docs/historial/ESTADO_traspaso_hasta_2026-11-23.md` (y los anteriores). PRINCIPIO: NEXO = todos los caminos; nunca recortar caminos.
 - **APK 3125 PUBLICADA (23-11 15:55 México; build 3314)** = 3309 (vista previa real por Tor, toque sellado 14A, «sr» firmado N10,
-  limpieza) + 3310–3313. Pendiente: pasar el bloque de NOVEDADES al historial con el nº 3125. Sin avisos programados activos.
+  limpieza) + 3310–3313. NOVEDADES: 3125 y 3123 ya en el historial (el bloque de la 3123 había quedado pegado y salió también en la
+  descripción de la 3125); el de la próxima APK lleva texto provisional. Sin avisos programados activos.
 - **VAN EN LA 3125 (build 3314):** 3310 menú de la burbuja sin «Responder» (se responde
   deslizando) y «Editar» arriba; 3311 «Copiar» en la barra de la multiselección; 3312 (COLA 13) con enlace a MTU 23 los archivos desde ~6 KB
   van por el canal rápido L2CAP (`l2_fast.js`, `l2mediano.js` caso mtu23); 3313 (COLA 25) videollamada contestada desde el aviso: la cámara
