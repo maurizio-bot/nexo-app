@@ -1195,6 +1195,10 @@
     {
      "fallo": "3268 (PRIORIDAD 1, fase 3; COLA 29; «pendiente_viejo» del 20 y 21-11): un texto que se quedó ⏳ sin camino no salía hasta volver a abrir NEXO (reenviar era cosa de la página, que Android duerme o cierra). Bandeja de salida nativa: la app deja al teléfono sus textos pendientes ya cifrados y la escucha de internet los sube al buzón sin la app (dormida, cerrada o tras morir el proceso) e insiste hasta la ✓✓",
      "prueba": "3268 BANDEJA DE SALIDA nativa"
+    },
+    {
+     "fallo": "3315 (COLA 1, puente nativo; vivo nx09acdb61 14-11): un paquete Jump para OTRO que llegaba al nativo con la app dormida o cerrada no lo reenviaba nadie (el que lo mandó ×8 y ⏳), y un puente dormido no contestaba «¿quién llega a X?». Ahora el nativo lo reenvía tal cual por el enlace del destino (sin custodia; lo guarda 10 min si aún no lo hay), contesta 'rq' a sus contactos si tiene enlace con X, y el destino sin ruta devuelve su ✓✓ por donde llegó. JumpNativeTest (Kotlin, 11) + jumpdormido.js (contraprueba: sin el cambio de ble_ack.js falla)",
+     "prueba": "PUENTE DORMIDO: LA ✓✓ VUELVE"
     }
    ],
    "debiles": [

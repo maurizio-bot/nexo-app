@@ -15,7 +15,9 @@ Regla: una sesión = un tema; una APK por tanda; antes de subir `tamano.js`, `i1
    la custodia hace que el emisor suelte la bandeja de internet; sin ella nada queda peor que antes). El destino, sin ruta de vuelta, manda
    su ✓✓ también por el enlace por donde llegó (`ble_ack.js` _sendRouted). Pruebas: `JumpNativeTest` (9) y `jumpdormido.js`.
    Descartado el «por internet» del paso 1: el nativo solo puede sellar para SUS contactos (clave de pareja). FALTA (paso 2): que el nativo
-   conteste 'rq' (¿quién llega a X?) si X tiene enlace con él, para que se elija un puente dormido sin ruta previa; y los flujos (trozos 'dt').
+   conteste 'rq' (¿quién llega a X?) si X tiene enlace con él → **HECHO 3315b** (solo a contactos: el 'rp' lleva mi NEXO ID, regla 12A;
+   solo último salto, no sigue preguntando). FALTA: los flujos (textos largos/archivos en trozos 'dt') por un puente dormido; y
+   ANTES DE LA APK, la revisión del nativo con Fable (`OutboxBle.kt` parte 3315). Pruebas del dueño al salir: ver ESTADO.
 2. [m] **13 MTU 23** (Vivo Y03, Katy): 3312 — con el enlace a MTU 23 el canal rápido L2CAP entra desde ~6 KB (antes ~45 KB); `l2mediano.js` caso `mtu23`.
 3. [m] **Wi-Fi Direct en teléfonos reales** (🔴 6): pruebas del dueño + «grupo siempre montado» si elige B (A/B pendiente de él).
 4. [m] **Llamadas**: gasto de datos por relés. «Sin imagen propia al contestar desde el aviso»: 3313 (la cámara se reabre aunque el WebView siga «oculto» si Android ya dice primer plano; `callmedia.js` 9b), por probar. Eco de grupo hecho (3301), por oír.

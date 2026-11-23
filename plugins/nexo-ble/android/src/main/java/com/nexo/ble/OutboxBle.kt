@@ -50,6 +50,14 @@ class OutboxBle(
         private val RELAY_ID = Regex("^[A-Za-z0-9_.:-]{4,96}$")
         /** Tope de lo que el puente sostiene de un mismo enlace a la vez (que uno solo no llene lo guardado). */
         const val RELAY_HOLD_PER_LINK = 8
+        const val RQ_PER_LINK_MIN = 30          // como la app: búsquedas por minuto que se atienden de un mismo enlace
+        /** 3315 (paso 2): una búsqueda 'rq' bien formada: (id, quién busca, a quién) o null. */
+        fun rqOf(json: String): Triple<String, String, String>? = try {
+            val o = JSONObject(json)
+            val id = o.optString("id"); val from = o.optString("from").trim().lowercase(); val dst = o.optString("dst").trim().lowercase()
+            val nx = Regex("^nx[0-9a-z]{8}$")
+            if (o.optString("type") != "rq" || id.isEmpty() || id.length > 96 || !nx.matches(from) || !nx.matches(dst)) null else Triple(id, from, dst)
+        } catch (e: Exception) { null }
         /**
          * 3315: ¿es un paquete Jump para otro teléfono que el nativo puede reenviar? (destino, clave para no repetir, el paquete con 'hp'+1, ¿es
          * un mensaje? —para la regla de batería—) o null. Nunca se confía en lo que llega: tipos, ids, destino y saltos se comprueban.
@@ -139,6 +147,8 @@ class OutboxBle(
         val said = NetOutbox.linkNxOf(json)
         val fresh = said != null && learn(mac, said)
         if (json.length < 600 && json.contains("\"type\":\"or\"")) { onAnswer(mac, json); return } // 3A: respuesta al reto
+        // 3315 (paso 2): «¿quién llega a X?» de un contacto: si X tiene enlace conmigo, «yo» (así se elige un puente dormido sin ruta previa)
+        if (json.length < 2000 && json.contains("\"rq\"")) rqOf(json)?.let { onRq(mac, it); return }
         // 3315: un paquete Jump para otro: a su destino (o a esperar su enlace)
         relayOf(json, me())?.let { r -> if (r.origin.isNotEmpty() && said == null) learn(mac, r.origin); onRelay(mac, r); return }
         // 3315: este enlace habló: lo que se guardó para su NEXO sale ya por él
@@ -192,6 +202,30 @@ class OutboxBle(
         while (held.size >= RELAY_HOLD_MAX) held.remove(held.keys.first())
         held[r.key] = r
         link.log("Puente sin la app: ${r.key.substringBeforeLast(':')} para ${r.to}: sin enlace con él ahora, espera a que aparezca (salto ${r.hp})")
+    }
+
+    private val rqSeen = LinkedHashMap<String, Long>()          // id de búsqueda → cuándo (se contesta una vez)
+    private val rqRate = HashMap<String, ArrayList<Long>>()     // enlace → búsquedas del último minuto
+    /**
+     * 3315 (paso 2): la app del que busca camino pregunta a sus vecinos «¿quién llega a X?» ('rq'); un puente con la app dormida no
+     * contestaba y nunca se le elegía. Ahora el nativo contesta «yo, a 1 salto» ('rp', lo mismo que la app) si X tiene un enlace listo con
+     * él. Solo a quien es mi contacto (el 'rp' lleva mi NEXO ID: la misma regla que el pong y el «quién soy», decisión 12A) y con batería.
+     * No sigue preguntando más allá (eso necesita la app): solo el último salto.
+     */
+    private fun onRq(mac: String, rq: Triple<String, String, String>) {
+        val (id, from, dst) = rq
+        val my = me().trim().lowercase()
+        if (my.isEmpty() || from == my || dst == my || b2Key(from) == null || !relayOk()) return
+        val t = now()
+        if (rqSeen.containsKey(id)) return
+        rqSeen[id] = t; while (rqSeen.size > 256) rqSeen.remove(rqSeen.keys.first())
+        val l = rqRate.getOrPut(mac) { ArrayList() }; l.removeAll { t - it >= 60_000L }
+        if (l.size >= RQ_PER_LINK_MIN) return
+        l.add(t); if (rqRate.size > MAX_LINKS) rqRate.remove(rqRate.keys.first())
+        val reach = linkNx.entries.any { it.value == dst && it.key != mac && link.ready(it.key) }
+        if (!reach) return
+        if (link.send(mac, JSONObject().put("v", 1).put("type", "rp").put("id", id).put("from", my).put("dst", dst).put("hops", 1).toString()))
+            link.log("Puente sin la app: $from busca camino a $dst y tengo enlace con él: le contesto que por mí")
     }
 
     /** El enlace por el que se puede reenviar a ese NEXO (el más reciente, listo, que no es por donde llegó). A un contacto mío, solo comprobado. */

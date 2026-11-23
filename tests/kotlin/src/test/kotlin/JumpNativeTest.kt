@@ -138,6 +138,46 @@ class JumpNativeTest {
         assertEquals(listOf("c01"), f.of("chat").map { it.first }, "comprobado: sale lo que esperaba")
     }
 
+    private fun rq(id: String, from: String = S, dst: String = C) = JSONObject().put("v", 1).put("type", "rq").put("id", id).put("from", from).put("dst", dst).put("ttl", 3).put("path", org.json.JSONArray()).toString()
+    private fun rigS(power: () -> Boolean = { true }): Pair<Fake, OutboxBle> { // S es contacto mío (el que busca)
+        val f = Fake()
+        val bg = NetBg({ _, _, _, _, _, _ -> }, { })
+        return f to OutboxBle({ V }, { bg }, { if (it == S) keyC else null }, f, power) { f.clock }
+    }
+
+    @Test fun aLaBusquedaDeUnContactoContestaQueLlegaSiTieneEnlaceConElDestino() {
+        val (f, o) = rigS()
+        f.ready.addAll(listOf("s24", "c01"))
+        o.heard("s24", rq("rq_1"))
+        assertTrue(f.of("rp").isEmpty(), "sin enlace con C: callado (no sigue preguntando: eso es de la app)")
+        o.heard("c01", ping(C))
+        o.heard("s24", rq("rq_2"))
+        val rp = f.of("rp")
+        assertEquals(1, rp.size); assertEquals("s24", rp[0].first)
+        assertEquals("rq_2", rp[0].second.getString("id")); assertEquals(V, rp[0].second.getString("from"))
+        assertEquals(C, rp[0].second.getString("dst")); assertEquals(1, rp[0].second.getInt("hops"))
+        o.heard("s24", rq("rq_2")); assertEquals(1, f.of("rp").size, "la misma búsqueda, una vez")
+        // y lo que manda después sale por el enlace de C
+        o.heard("s24", chat("msg_1"))
+        assertEquals(listOf("c01"), f.of("chat").map { it.first })
+    }
+
+    @Test fun aQuienNoEsContactoOConPocaBateriaNoSeContesta() {
+        val (f, o) = rig() // S no es contacto: el 'rp' lleva mi NEXO ID (regla 12A)
+        f.ready.addAll(listOf("s24", "c01")); o.heard("c01", ping(C))
+        o.heard("s24", rq("rq_1"))
+        assertTrue(f.of("rp").isEmpty())
+        var ok = false
+        val (f2, o2) = rigS({ ok })
+        f2.ready.addAll(listOf("s24", "c01")); o2.heard("c01", ping(C))
+        o2.heard("s24", rq("rq_1")); assertTrue(f2.of("rp").isEmpty(), "batería baja")
+        o2.heard("c01", rq("rq_2", dst = C)); assertTrue(f2.of("rp").isEmpty(), "por el mismo enlace del destino no")
+        ok = true; o2.heard("s24", rq("rq_3")); assertEquals(1, f2.of("rp").size)
+        for (i in 4..40) o2.heard("s24", rq("rq_$i"))
+        assertEquals(OutboxBle.RQ_PER_LINK_MIN, f2.of("rp").size, "tope de búsquedas por minuto de un enlace")
+        assertNull(OutboxBle.rqOf("""{"type":"kx","rq":1,"from":"$S"}"""), "el «quién soy» con rq:1 no es una búsqueda")
+    }
+
     @Test fun unEnlaceNoLlenaLoGuardado() {
         val (f, o) = rig()
         f.ready.add("s24")
