@@ -67,7 +67,9 @@ internal fun NexoBlePlugin.lanStartImpl(call: PluginCall) {
             override fun onLog(level: String, message: String) { remLog(level, "LAN", message) }
         }, clock = { android.os.SystemClock.elapsedRealtime() },
             // 3272: cada conexión sale por la red Wi-Fi aunque la red por defecto sean los datos (si no se puede atar, como siempre)
-            prepare = { sock -> lanWifiNet()?.bindSocket(sock) }).also { lanHub = it }
+            prepare = { sock -> lanWifiNet()?.bindSocket(sock) },
+            // 12A (23-11): contactos = los que tienen clave de pareja en el nativo; sin ninguna aún (recién abierta), no se sabe
+            knows = { n -> if (NexoBlePlugin.ackKeys.isEmpty()) null else NexoBlePlugin.ackKeys.containsKey(n.lowercase()) }).also { lanHub = it }
         val port = hub.start()
         // Escaneo activo: pregunta a toda la red (difusión) y, de vez en cuando o al entrar en una red, una a una
         val beacon = lanBeacon ?: LanBeacon(object : LanBeacon.Listener {

@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 
 // 3254 (Bluetooth en el servicio, fase 1): lo que hace el servicio con lo que llega por Bluetooth SIN la app (SinAppCore.kt)
 class SinAppCoreTest {
-    private val chat = """{"v":1,"type":"chat","from":"NX12345678","to":"","ts":1,"seq":3,"msgId":"msg_1","payload":{"text":"E2:abc"},"ss":1,"nt":1}"""
+    private val chat = """{"v":1,"type":"chat","from":"NX12345678","to":"","ts":1,"seq":3,"msgId":"msg_1","payload":{"text":"E2:abc"},"ss":1,"nt":1,"sl":"firma(msg|msg_1|nx12345678|nx00000001)"}"""
 
     private class Sink : SinAppCore.Sink {
         val sent = mutableListOf<Pair<String, String>>(); val stored = mutableListOf<String>(); val notes = mutableListOf<Pair<String, Boolean>>()
@@ -107,7 +107,7 @@ class SinAppCoreTest {
         val s = Sink(); val c = core(s)
         c.onBytes("aa", bytes("""{"v":1,"type":"ack","msgId":"m9","from":"nx12345678","ts":1}"""))
         assertEquals(1, s.stored.size); assertTrue(s.sent.isEmpty()); assertTrue(s.notes.isEmpty())
-        c.onBytes("aa", bytes("""{"v":2,"t":"f","m":"f1","i":0,"n":9,"d":"x","fr":"NX12345678","tp":"image","k":"a"}"""))
+        c.onBytes("aa", bytes("""{"v":2,"t":"f","m":"f1","i":0,"n":9,"d":"x","fr":"NX12345678","tp":"image","k":"a","sl":"firma(msg|f1|nx12345678|nx00000001)"}"""))
         assertEquals(listOf("f1" to true), s.notes); assertEquals(1, s.stored.size)
         // para otro NEXO (Jump de paso): nada
         c.onBytes("aa", bytes(chat.replace("\"to\":\"\"", "\"to\":\"nx99999999\"")))
@@ -127,5 +127,33 @@ class SinAppCoreTest {
         assertEquals(1, s.stored.size)
         assertNull(SinAppCore.extract("   "))
         assertEquals("""{"a":"}{"}""" to "resto", SinAppCore.extract("""xx{"a":"}{"}resto"""))
+    }
+
+    // 2A (23-11, auditoría S-A1): de un contacto cuya clave tenemos, un mensaje SIN sello de pareja (o con otro) no entra al buzón, no
+    // avisa y no recibe ✓✓ firmada (antes cualquiera cerca pedía la ✓✓ de un msgId visto en el aire y el mensaje se perdía con ✓✓)
+    @Test fun sinSello_niBuzonNiAvisoNiConfirmacion() {
+        val s = Sink(); val c = core(s)
+        val noSeal = chat.replace(""","sl":"firma(msg|msg_1|nx12345678|nx00000001)"""", "")
+        c.onBytes("aa", bytes(noSeal))
+        val badSeal = chat.replace("firma(msg|msg_1|", "firma(msg|msg_9|")
+        c.onBytes("bb", bytes(badSeal))
+        assertTrue(s.stored.isEmpty()); assertTrue(s.sent.isEmpty()); assertTrue(s.notes.isEmpty())
+    }
+
+    // Sin la clave de ese contacto no se puede comprobar: como antes (buzón y aviso; la ✓✓ va sin firma y el emisor moderno la ignora)
+    @Test fun sinClave_comoAntes() {
+        val s = Sink(); s.key = false; val c = core(s)
+        c.onBytes("aa", bytes(chat.replace(""","sl":"firma(msg|msg_1|nx12345678|nx00000001)"""", "")))
+        assertEquals(1, s.stored.size); assertEquals(1, s.notes.size)
+    }
+
+    @Test fun sealCheck_casos() {
+        val sign = { f: String -> "firma($f)" }
+        assertEquals(true, BgInbox.sealCheck(chat, "NX00000001", sign))
+        assertEquals(false, BgInbox.sealCheck(chat, "NX00000002", sign))   // para otro
+        assertEquals(null, BgInbox.sealCheck(chat, "NX00000001") { null })   // sin clave
+        // primer trozo de un texto largo (m / fr)
+        val chunk = """{"t":"c","m":"msg_5","i":0,"n":3,"fr":"NX12345678","d":"x","sl":"firma(msg|msg_5|nx12345678|nx00000001)"}"""
+        assertEquals(true, BgInbox.sealCheck(chunk, "NX00000001", sign))
     }
 }

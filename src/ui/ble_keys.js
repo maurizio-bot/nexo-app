@@ -3,7 +3,7 @@
  * intercambio de claves (kx), clave de cada contacto y cambio de clave (retener/aceptar/rechazar), remitente sellado
  * para Jump, poscuántico, Fénix y verificación.
  */
-import { e2eMyPublicKey, e2eOpenAnon, e2eSealAnon, initE2E } from '../vault/e2e_crypto.js';
+import { e2eMyPublicKey, e2eOpenAnon, e2eSealAnon, initE2E, e2eSign } from '../vault/e2e_crypto.js';
 import { e2eAllowsE1 } from '../vault/e2e_proto.js';
 import { ratchetForget, ratchetMyBundle, ratchetMyPqId, ratchetNotePeerBundle, ratchetPeerPqId, ratchetResetPeer } from '../vault/e2e_ratchet.js';
 import { feNoteOldKey } from '../fenix/fenix_entorno.js';
@@ -76,6 +76,12 @@ export const BLE_KEY_METHODS = {
         if (rs) pkt.rs = rs;
       }
       if (request) pkt.rq = 1;
+      // Auditoría 23-11 (N-A): «recuperé mi cuenta: sesiones nuevas» (rs) va FIRMADO con mi identidad; sin firma, cualquiera cerca que
+      // supiera mi clave pública hacía que mis contactos tiraran sus sesiones conmigo
+      if (pkt.rs) return e2eSign(new TextEncoder().encode('NEXO-RS-v1|' + _normId(pkt.from) + '|' + pkt.rs)).then(function(sg) {
+        if (sg) { var bs = ''; for (var i = 0; i < sg.length; i++) bs += String.fromCharCode(sg[i]); pkt.rsg = btoa(bs); } else delete pkt.rs;
+        return self._sendMessageNative(deviceId, JSON.stringify(pkt), null);
+      });
       return self._sendMessageNative(deviceId, JSON.stringify(pkt), null);
     }).catch(function() {});
   },
@@ -103,7 +109,9 @@ export const BLE_KEY_METHODS = {
       // H3 (07-11): la MISMA clave llega AHORA directa del propio contacto (kx directo o un mensaje suyo que descifra) → la
       // clave «de oídas» (que llegó en una tarjeta/grupo) queda CONFIRMADA: se quita el aviso «sin verificar». Un puente no
       // llega aquí (por relé solo se fija la PRIMERA clave si no hay ninguna), así que no puede falsear la confirmación.
-      if (c.pkHearsay) { delete c.pkHearsay; delete c.pkConflict; _saveBLEContacts(contacts); _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false, confirmed: true }); }
+      // Decisión del dueño 23-11 (8A, auditoría C-N3): eso ya NO quita «sin verificar»: un kx «directo» no prueba nada (cualquiera cerca
+      // lo manda con ese NEXO ID) y quien plantó la clave en la tarjeta tiene su privada. Solo se quita al comparar el número de
+      // seguridad (setContactVerified) o al agregarse de cerca (alta con la solicitud cercana).
       return true;
     }
     if (!c.publicKey) {
@@ -118,7 +126,7 @@ export const BLE_KEY_METHODS = {
     if (c.pendingKey !== pk) {
       c.pendingKey = pk;
       c.keyChangedAt = Date.now();
-      console.warn('[E2E] La clave de ' + nx + ' cambió: pendiente de aceptar (no se muestra ni se le envía nada)');
+      console.warn('[E2E] La clave de ' + nx + ' cambió: pendiente de aceptar (lo que llega con la nueva se retiene; se le sigue enviando con la aceptada)');
       _saveBLEContacts(contacts);
       _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: true });
     }
@@ -154,7 +162,7 @@ export const BLE_KEY_METHODS = {
   _sealKeyFor(nexoId) {
     var nx = _normId(nexoId);
     var c = _getBLEContacts().find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
-    return (c && c.ss && c.publicKey && !c.pendingKey) ? c.publicKey : null;
+    return (c && c.ss && c.publicKey) ? c.publicKey : null; // 5A
   },
 
   _sealString(nexoId, json, msgId) {
@@ -215,15 +223,25 @@ export const BLE_KEY_METHODS = {
     console.log('[FENIX] ' + nx + ' entiende fx=' + lvl + ' (lo dijo en su kx antes de ser contacto)');
   },
 
-  _noteRestored(nexoId, pk, rs) {
+  _noteRestored(nexoId, pk, rs, rsg) {
     var nx = _normId(nexoId);
-    var contacts = _getBLEContacts();
-    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
-    if (!c || !pk || c.publicKey !== pk || !(rs > (c.rsSeen || 0)) || rs > Date.now() + 60000) return;
-    c.rsSeen = rs;
-    _saveBLEContacts(contacts);
-    console.log('[FENIX] ' + nx + ' recuperó su cuenta: sesiones de cifrado nuevas');
-    ratchetResetPeer(nx, pk).catch(function() {});
+    var c0 = _getBLEContacts().find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c0 || !pk || c0.publicKey !== pk || !(rs > (c0.rsSeen || 0)) || rs > Date.now() + 60000) return;
+    // N-A (23-11): solo con la firma de su identidad
+    if (typeof rsg !== 'string' || rsg.length > 200 || typeof crypto === 'undefined' || !crypto.subtle) { console.warn('[E2E] «Recuperé mi cuenta» de ' + nx + ' sin firma: ignorado'); return; }
+    var u8 = function(b) { var s = atob(b), u = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
+    crypto.subtle.importKey('raw', u8(pk), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']).then(function(k) {
+      return crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, k, u8(rsg), new TextEncoder().encode('NEXO-RS-v1|' + nx + '|' + rs));
+    }).then(function(ok) {
+      if (!ok) { console.warn('[E2E] «Recuperé mi cuenta» de ' + nx + ' con firma no válida: ignorado'); return; }
+      var contacts = _getBLEContacts();
+      var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+      if (!c || c.publicKey !== pk || !(rs > (c.rsSeen || 0))) return;
+      c.rsSeen = rs;
+      _saveBLEContacts(contacts);
+      console.log('[FENIX] ' + nx + ' recuperó su cuenta: sesiones de cifrado nuevas');
+      ratchetResetPeer(nx, pk).catch(function() {});
+    }).catch(function() {});
   },
 
   _markProto2(nexoId, key) {

@@ -300,12 +300,17 @@ export const ackResume = {
       Promise.all([
         e2eOpenToB64(from, data, self._inAd(from, fileId)),
         e2eAnyEncrypted(dm.thumb) ? e2eOpenToB64(from, dm.thumb, self._inAd(from, fileId + '#t')).then(function(t) { return t.b64; }, function() { return null; }) : dm.thumb,
-        e2eAnyEncrypted(dm.name) ? e2eOpenText(from, dm.name, self._inAd(from, fileId + '#n')).then(function(t) { return t.text; }, function() { return null; }) : dm.name
+        e2eAnyEncrypted(dm.name) ? e2eOpenText(from, dm.name, self._inAd(from, fileId + '#n')).then(function(t) { return t.text; }, function() { return null; }) : dm.name,
+        e2eAnyEncrypted(dm.xs) ? e2eOpenText(from, dm.xs, self._inAd(from, fileId + '#x')).then(function(t) { return t.text; }, function() { return null; }) : null
       ]).then(function(r) {
         if (done) done(true);
         if (r[0].dup) return;
         dm.thumb = r[1] || null;
         dm.name = r[2] || undefined;
+        // 4A (23-11): comentario y «ver una vez» sellados (lo de la cabecera en claro, si lo hubiera, se ignora)
+        if (r[3]) { try { var xo = JSON.parse(r[3]); dm.caption = (typeof xo.cp === 'string' && xo.cp) ? xo.cp.substring(0, 1000) : undefined; dm.once = xo.o1 === 1; } catch (e) {} }
+        else if (dm.xs) dm.once = true; // no se pudo abrir: por si era «ver una vez», se trata como tal (nunca al revés)
+        delete dm.xs;
         var go = function() { self._dispatchFileComplete(fileId, r[0].b64, dm, null, true); };
         var v = self._checkSender(from, r[0]);
         if (v === 'drop') return;

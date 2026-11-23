@@ -122,6 +122,9 @@ export const BLE_OUTBOX_METHODS = {
     return sealed.then(function(c) {
       var env = self._chatEnv(c, id, (typeof seq === 'number') ? seq : self.getNextSeq(), null);
       env.dn = nx; // a quién va (como _sendMessageNative: el que lo recibe lo ignora si no es él)
+      return self._pairSeal(id, nx).then(function(sl) { if (sl) env.sl = sl; return env; }); // 2A: sello de pareja
+    }).then(function(env) {
+      if (!env) return null;
       var p = JSON.stringify(env);
       if (p.length > OUT_P_MAX) return { skip: true }; // no cabe: lo manda la app
       var peer = self.net && self.net.peers && self.net.peers.get(nx);

@@ -26,7 +26,7 @@
  * NEXO ID, identidad, claves y contactos y la app se reinicia como el usuario de siempre.
  */
 import { ShardCrypto } from './shard_crypto.js';
-import { e2eEncryptB64, e2eMyPublicKey } from '../vault/e2e_crypto.js';
+import { e2eEncryptB64, e2eMyPublicKey, e2eSign } from '../vault/e2e_crypto.js';
 import { vaultLoadFile, vaultReplaceAttachment } from '../vault/vault_manager.js';
 import { createFenixEntorno } from './fenix_entorno.js'; // 3148: Fénix Entorno (oculto, interruptor de desarrollo)
 
@@ -86,6 +86,12 @@ function _save(name, content) {
 }
 
 
+// 6A (23-11): firma de los avisos de control de Fénix
+var FCTL_SKEW_MS = 15 * 60 * 1000;
+function _fctlBody(type, from, to, ts, n) { return 'NEXO-FCTL-v1|' + type + '|' + from + '|' + to + '|' + ts + '|' + (n || ''); }
+function _b64u8(u8) { var s = ''; for (var i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]); return btoa(s); }
+function _unb64u8(b) { var s = atob(b), u = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+
 export class Fenix {
   constructor(ble) {
     this.ble = ble;
@@ -140,6 +146,29 @@ export class Fenix {
     obj.v = 1;
     obj.from = this.me();
     return this.ble._sendMessageNative(dev, JSON.stringify(obj), null).catch(function() {});
+  }
+  // Decisión del dueño 23-11 (6A, auditoría C-N2): «borra mi fragmento» (fd) y «¿lo sigues teniendo?» (fp) van FIRMADOS con mi identidad y
+  // dirigidos a ese guardián, con la hora. Antes viajaban en claro: cualquiera cerca mandaba {type:'fd', from:X} y el guardián borraba el
+  // fragmento de X (con el teléfono de X perdido, su cuenta quedaba irrecuperable); con fp se sabía quién guarda a quién.
+  _ctlSigned(dev, nx, obj) {
+    var self = this;
+    obj.ts = Date.now();
+    return e2eSign(new TextEncoder().encode(_fctlBody(obj.type, self.me(), _nid(nx), obj.ts, obj.n))).then(function(sig) {
+      if (!sig) return;
+      obj.sg = _b64u8(sig);
+      return self._ctl(dev, obj);
+    }).catch(function() {});
+  }
+  // ¿Viene de verdad de ese contacto? (su clave de identidad guardada, no «de oídas» ni pendiente; hora cercana)
+  async _ctlOk(p, from) {
+    try {
+      if (typeof p.sg !== 'string' || p.sg.length > 200 || typeof p.ts !== 'number' || Math.abs(Date.now() - p.ts) > FCTL_SKEW_MS) return false;
+      var c = (window.vaultLoadContacts ? window.vaultLoadContacts() : []).find(function(x) { return _nid(x.nexoId || x.deviceUUID) === from; });
+      if (!c || !c.publicKey || c.pendingKey || c.pkHearsay) return false;
+      var s = crypto.subtle;
+      var pub = await s.importKey('raw', _unb64u8(c.publicKey), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+      return await s.verify({ name: 'ECDSA', hash: 'SHA-256' }, pub, _unb64u8(p.sg), new TextEncoder().encode(_fctlBody(p.type, from, this.me(), p.ts, p.n)));
+    } catch (e) { return false; }
   }
   _saveState() { return _save(STATE_FILE, JSON.stringify(this.state)); }
   _saveStore() { return _save(STORE_FILE, JSON.stringify(this.store)); }
@@ -271,7 +300,7 @@ export class Fenix {
       var nx = list[i], node = s.nodes[nx], dev = this._readyDevice(nx);
       if (!dev || !this.peers.has(nx)) continue;
       if (node.lost) {
-        this._ctl(dev, { type: 'fd', o: this.me() });
+        this._ctlSigned(dev, nx, { type: 'fd', o: this.me() });
         delete s.nodes[nx];
         console.log('[FENIX] ' + nx + ' volvió tras darse por perdido: le pido que borre su fragmento');
         await this._saveState();
@@ -371,8 +400,8 @@ export class Fenix {
     node.lastPing = Date.now();
     var pkt = { type: 'fp', n: nonce };
     var sg = this._segsOf(nx).map(function(g) { return g.id; });
-    if (sg.length) pkt.sg = sg; // fase 2: prueba también de estos segmentos
-    this._ctl(dev, pkt);
+    if (sg.length) pkt.sgs = sg; // fase 2: prueba también de estos segmentos (sgs: «sg» es ahora la firma)
+    this._ctlSigned(dev, nx, pkt);
   }
 
   // ---------- paquetes de control ('fp', 'fo', 'fq', 'fd'). true si era de Fénix ----------
@@ -383,9 +412,11 @@ export class Fenix {
     var from = _nid(p.from);
     if (!_isNx(from)) return true;
     self.init().then(function() {
-      if (p.type === 'fp') return self._onPing(p, from, deviceId);
+      if (p.type === 'fp' || p.type === 'fd') return self._ctlOk(p, from).then(function(ok) {
+        if (!ok) { console.warn('[FENIX] «' + p.type + '» de ' + from + ' sin su firma: ignorado'); return; }
+        return p.type === 'fp' ? self._onPing(p, from, deviceId) : self._onDelete(from);
+      });
       if (p.type === 'fo') return self._onPong(p, from);
-      if (p.type === 'fd') return self._onDelete(from);
       if (p.type === 'fq' && p.m) return self._onSegsRequest(from, deviceId);
       if (p.type === 'fq') return self._onRecoveryRequest(p, from, deviceId);
     }).catch(function(e) { console.warn('[FENIX] ' + (e && e.message)); });
@@ -402,9 +433,9 @@ export class Fenix {
       out.ep = rec.ep;
     }
     // Fase 2: prueba de los segmentos que el dueño cree que guardo (y cuáles me faltan)
-    if (Array.isArray(p.sg) && p.sg.length) {
+    if (Array.isArray(p.sgs) && p.sgs.length) {
       var mine = this.store.segs[from] || {}, have = [], miss = [];
-      p.sg.slice(0, 500).forEach(function(id) { if (mine[id]) have.push(mine[id].bh); else miss.push(String(id)); });
+      p.sgs.slice(0, 500).forEach(function(id) { if (mine[id]) have.push(mine[id].bh); else miss.push(String(id)); });
       out.sp = await _sha(String(p.n || '') + '|' + have.join('|'));
       if (miss.length) out.sm = miss;
     }
@@ -560,7 +591,7 @@ export class Fenix {
         hs.forEach(function(g) { g.holders[nx].pingAt = now; });
         var nonce = _hex(_rand(12));
         this.pings.set(nonce, { nx: nx, idx: 0, at: now, segOnly: true });
-        this._ctl(dev, { type: 'fp', n: nonce, sg: hs.map(function(g) { return g.id; }) });
+        this._ctlSigned(dev, nx, { type: 'fp', n: nonce, sgs: hs.map(function(g) { return g.id; }) });
       }
     }
   }

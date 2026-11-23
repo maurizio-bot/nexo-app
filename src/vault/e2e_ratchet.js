@@ -21,7 +21,7 @@
  *   sin romper también ML-KEM. Solo si el otro publicó su clave ML-KEM (builds anteriores: X3DH como siempre); una
  *   vez publicada no se vuelve al acuerdo clásico con esa identidad (un puente no puede quitarla para rebajarlo).
  */
-import { initE2E, e2eMyPublicKey, e2eIdentityDH } from './e2e_crypto.js';
+import { initE2E, e2eMyPublicKey, e2eIdentityDH, e2eSign } from './e2e_crypto.js';
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
 
 var STORE_FILE = 'nexo_ratchet.json';
@@ -269,9 +269,31 @@ export function ratchetInit() {
       _store.spks = _store.spks.slice(0, 3);
       await _save();
     }
+    // Decisión del dueño 23-11 (1A, auditoría punto 20): mi identidad CERTIFICA mi clave de firma. Sin esto, cualquiera que conociera
+    // mi clave pública (es pública) podía fabricar un paquete «mío» con otra clave de firma y otra clave previa: dejaba mis chats sin
+    // poder descifrarse y, con Fénix Entorno, servía para falsificar atestaciones. Se hace una vez (y al cambiar de identidad).
+    if (_store && (!_store.sign.cert || _store.sign.certIk !== _store.ik)) {
+      try {
+        var cb = await e2eSign(_utf8(IKSK_TAG + _store.ik + '|' + _store.sign.pub));
+        if (cb) { _store.sign.cert = _b64(cb); _store.sign.certIk = _store.ik; await _save(); }
+      } catch (ec) { console.warn('[E2E] No se pudo certificar la clave de firma:', ec && ec.message); }
+    }
+    // Paquetes de contactos guardados SIN certificado (de antes de este cambio): no se usan para empezar sesiones nuevas (las vivas
+    // siguen). Su paquete bueno, ya certificado, llega en el próximo intercambio de claves.
+    if (_store && _store.peers) Object.keys(_store.peers).forEach(function(nx) { if (!_store.peers[nx].c) delete _store.peers[nx]; });
     return _store;
   })();
   return _initP;
+}
+
+var IKSK_TAG = 'NEXO-IKSK-v1|';
+// ¿La identidad ik certifica la clave de firma sk? (firma ECDSA P-256 de la identidad sobre «NEXO-IKSK-v1|ik|sk»)
+async function _certOk(ik, sk, c) {
+  try {
+    if (typeof c !== 'string' || c.length > 200) return false;
+    var pub = await _subtle().importKey('raw', _unb64(ik), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+    return await _subtle().verify({ name: 'ECDSA', hash: 'SHA-256' }, pub, _unb64(c), _utf8(IKSK_TAG + ik + '|' + sk));
+  } catch (e) { return false; }
 }
 
 // withPq: incluir la clave ML-KEM (1,6 KB): no hace falta repetirla a quien ya la tiene (ratchetPeerPqId)
@@ -280,6 +302,7 @@ export async function ratchetMyBundle(withPq) {
   if (!_store) return null;
   var s = _store.spks[0];
   var b = { v: 2, ik: _store.ik, sk: _store.sign.pub, spk: s.pub, spkId: s.id, sig: s.sig };
+  if (_store.sign.cert) b.c = _store.sign.cert; // 1A: certificado de la identidad sobre la clave de firma
   if (s.pq && withPq !== false) { b.pq = s.pq; b.pqSig = s.pqSig; }
   return b;
 }
@@ -290,7 +313,8 @@ export function ratchetPeerPqId(nexoId) { var p = _store && _store.peers[_nid(ne
 
 function _validBundle(b) {
   var k = /^[A-Za-z0-9+/=]{80,100}$/;
-  return b && k.test(b.ik || '') && k.test(b.sk || '') && k.test(b.spk || '') && typeof b.sig === 'string' && b.sig.length < 200 && b.spkId > 0;
+  return b && k.test(b.ik || '') && k.test(b.sk || '') && k.test(b.spk || '') && typeof b.sig === 'string' && b.sig.length < 200 && b.spkId > 0 &&
+    typeof b.c === 'string' && b.c.length < 200; // 1A (23-11): sin certificado de la identidad, el paquete no vale
 }
 
 // Guarda el paquete público de un contacto si la firma es válida. La confianza en b.ik la decide quien llama.
@@ -301,7 +325,10 @@ export function ratchetNotePeerBundle(nexoId, b) {
     if (!_store || !nx || !_validBundle(b)) return false;
     var cur = _store.peers[nx];
     var hasPq = typeof b.pq === 'string' && b.pq.length === 1580 && typeof b.pqSig === 'string' && b.pqSig.length < 200;
-    var same = cur && cur.ik === b.ik && cur.spk === b.spk && cur.spkId === b.spkId;
+    // 1A (23-11): antes que nada, la identidad tiene que certificar la clave de firma que trae el paquete (si no, cualquiera que conozca
+    // la clave pública de este contacto fabricaba un paquete «suyo»). Y «el mismo paquete» exige también la misma clave de firma.
+    if (!(await _certOk(b.ik, b.sk, b.c))) { console.warn('[E2E] Paquete de claves de ' + nx + ' sin certificado válido de su identidad: descartado'); return false; }
+    var same = cur && cur.ik === b.ik && cur.sk === b.sk && cur.spk === b.spk && cur.spkId === b.spkId;
     if (same && (cur.pq || !hasPq)) return true;
     var pub = await _subtle().importKey('raw', _unb64(b.sk), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
     var ok = same || await _subtle().verify({ name: 'ECDSA', hash: 'SHA-256' }, pub, _unb64(b.sig), _utf8('NEXO-SPK|' + b.spkId + '|' + b.spk + '|' + b.ik));
@@ -317,7 +344,7 @@ export function ratchetNotePeerBundle(nexoId, b) {
       return false;
     }
     if (same && !pq) return true;
-    _store.peers[nx] = { ik: b.ik, sk: b.sk, spk: b.spk, spkId: b.spkId, sig: b.sig, ts: Date.now() };
+    _store.peers[nx] = { ik: b.ik, sk: b.sk, spk: b.spk, spkId: b.spkId, sig: b.sig, c: b.c, ts: Date.now() };
     if (pq) { _store.peers[nx].pq = pq; _store.peers[nx].pqSig = b.pqSig; _store.peers[nx].pqSeen = 1; _pqDirty = true; }
     else if (cur && cur.pq) _pqDirty = true; // la que había se va
     else if (cur && cur.ik === b.ik && cur.pqSeen) _store.peers[nx].pqSeen = 1;
@@ -332,7 +359,7 @@ export function ratchetNotePeerBundle(nexoId, b) {
 export function ratchetPeerBundle(nexoId) {
   var p = _store && _store.peers[_nid(nexoId)];
   if (!p) return null;
-  var b = { v: 2, ik: p.ik, sk: p.sk, spk: p.spk, spkId: p.spkId, sig: p.sig };
+  var b = { v: 2, ik: p.ik, sk: p.sk, spk: p.spk, spkId: p.spkId, sig: p.sig, c: p.c };
   if (p.pq) { b.pq = p.pq; b.pqSig = p.pqSig; }
   return b;
 }

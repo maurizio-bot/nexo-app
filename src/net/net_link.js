@@ -144,7 +144,7 @@ export class NetLink {
     if (this.ble && typeof this.ble._applyNtKnown === 'function') this.ble._applyNtKnown();
     var cs = (this.ble && typeof this.ble.getBLEContacts === 'function') ? this.ble.getBLEContacts() : [];
     var me = this.me();
-    return cs.filter(function(c) { var nx = _nid(c.nexoId || c.deviceUUID); return c && c.nt && c.publicKey && !c.pendingKey && /^nx[0-9a-z]{8}$/.test(nx) && nx !== me; });
+    return cs.filter(function(c) { var nx = _nid(c.nexoId || c.deviceUUID); return c && c.nt && c.publicKey && /^nx[0-9a-z]{8}$/.test(nx) && nx !== me; /* 5A: una clave pendiente no corta internet */ });
   }
 
   async _pair(nx, pub) {

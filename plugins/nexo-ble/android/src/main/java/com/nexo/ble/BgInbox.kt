@@ -37,6 +37,25 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
             ringFrom.isNotEmpty() && ringFrom == from.lowercase() && CALL_ID.matches(offer) && (ringOffer.isEmpty() || ringOffer == offer)
         private val GID = Regex("^gr[0-9a-z]{8}$")
         // me: mi NEXO ID (para reconocer lo que llega por Jump); vacío = no se mira
+        /**
+         * Decisión del dueño 23-11 (2A, auditoría S-A1/T-D3): SELLO DE PAREJA. El mensaje trae `sl` = la firma corta de la pareja de
+         * «msg|msgId|de|para» (como e2eAckTag en la app). sign(campos) = esa firma con la clave de quien dice mandarlo, o null si no la
+         * tenemos. Devuelve true = el sello cuadra; false = tenemos su clave y el sello falta o no cuadra (un tercero que dice ser él:
+         * ni buzón, ni aviso, ni ✓✓); null = sin clave para comprobarlo (como antes).
+         */
+        fun sealCheck(json: String, me: String, sign: (String) -> String?): Boolean? {
+            if (me.isEmpty()) return null
+            return try {
+                val o = JSONObject(json)
+                val mid = o.optString("msgId").ifEmpty { o.optString("m") }
+                val from = (o.optString("from").ifEmpty { o.optString("fr") }).lowercase()
+                if (mid.isEmpty() || !NX.matches(from)) return null
+                val exp = sign("msg|$mid|$from|${me.lowercase()}") ?: return null
+                val sl = o.optString("sl")
+                sl.isNotEmpty() && java.security.MessageDigest.isEqual(exp.toByteArray(Charsets.UTF_8), sl.toByteArray(Charsets.UTF_8))
+            } catch (e: Exception) { null }
+        }
+
         fun classify(json: String, me: String = ""): Info {
             // Auditoría (ronda 2774): un JSON descomunal o muy anidado se descarta antes de analizarlo (el analizador del
             // sistema es recursivo y un paquete así podría tumbar la app).

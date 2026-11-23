@@ -265,6 +265,27 @@ export const BLE_LINK_METHODS = {
     _safeDispatchEvent('nexo:ble:reqIncoming', { id: nx, name: name, count: inbox.length, acc: isMyAcc });
   },
 
+  // 7A (23-11): alguien que no es contacto me escribe: a Solicitudes («te escribió»), con el mismo freno anti-inundación, y su mensaje
+  // queda retenido (en memoria: si la app se cierra antes de aceptar, el otro lo vuelve a mandar porque no recibió ✓✓)
+  _msgRequest(nx, name, pk, release, msgId) {
+    var self = this;
+    if (typeof pk !== 'string' || !/^[A-Za-z0-9+/=]{80,100}$/.test(pk)) return;
+    var all = self._reqStore('nexo_req_in'), prev = all.find(function(x) { return x.id === nx; });
+    if (!prev && !self._reqFlood(nx, false)) return;
+    if (prev && prev.pk && prev.pk !== pk) { console.warn('[REQ] ' + nx + ' escribe con otra clave que su solicitud: retenido sin cambiarla'); return; }
+    self._held = self._held || [];
+    if (!(msgId && self._held.some(function(h) { return h.id === msgId; }))) {
+      self._held.push({ nx: nx, release: release, id: msgId || null, ts: Date.now(), req: 1 });
+      if (self._held.length > 50) self._held.shift();
+    }
+    if (!prev) {
+      all.unshift({ id: nx, pk: pk, name: String(name || '').replace(/[<>]/g, '').substring(0, 40), ph: '', em: '', at: Date.now(), acc: false, inv: false, near: 0, dev: '', msg: 1 });
+      self._reqSave('nexo_req_in', all);
+      console.log('[REQ] ' + nx + ' (no es contacto) me escribió: a Solicitudes');
+      _safeDispatchEvent('nexo:ble:reqIncoming', { id: nx, name: name || '', count: all.length, msg: true });
+    }
+  },
+
   pendingRequests() { return this._reqStore('nexo_req_in'); },
 
   // Aceptar una solicitud entrante: agrego su clave (sin verificar), le aviso (acc) y el canal se enciende
@@ -272,6 +293,16 @@ export const BLE_LINK_METHODS = {
     var self = this, nx = _normId(id);
     var inbox = self._reqStore('nexo_req_in'), req = inbox.find(function(x) { return x.id === nx; });
     if (!req || !req.pk) return Promise.reject(new Error(t('add_err_gone', 'Esa solicitud ya no está')));
+    // 7A (23-11): «te escribió»: se agrega (la clave vino de él mismo, cifrando su mensaje) y aparece lo que mandó
+    if (req.msg) {
+      self.addSharedContacts([{ nexoId: nx, name: req.name || '', publicKey: req.pk }], null, { quiet: true });
+      self._reqSave('nexo_req_in', inbox.filter(function(x) { return x.id !== nx; }));
+      var heldM = (self._held || []).filter(function(h) { return h.nx === nx; });
+      self._held = (self._held || []).filter(function(h) { return h.nx !== nx; });
+      heldM.forEach(function(h) { try { h.release(); } catch (e) {} });
+      _safeDispatchEvent('nexo:ble:reqIncoming', { count: self._reqStore('nexo_req_in').length });
+      return Promise.resolve();
+    }
     // 3207: llegó de CERCA: se agrega como un teléfono cercano (su dirección y su paquete del kx) y se le contesta por el enlace
     // directo; también por internet si hay (allí, con la misma llave, también queda agregado)
     if (req.near && typeof self._nearAddContact === 'function') {
@@ -297,6 +328,7 @@ export const BLE_LINK_METHODS = {
   // Eliminar una solicitud entrante (no se agrega nada)
   rejectRequest(id) {
     var self = this, nx = _normId(id);
+    self._held = (self._held || []).filter(function(h) { return !(h.nx === nx && h.req); }); // 7A: lo que escribió se tira
     self._reqSave('nexo_req_in', self._reqStore('nexo_req_in').filter(function(x) { return x.id !== nx; }));
     _safeDispatchEvent('nexo:ble:reqIncoming', { count: self._reqStore('nexo_req_in').length });
   },

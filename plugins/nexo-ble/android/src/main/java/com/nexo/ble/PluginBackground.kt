@@ -60,6 +60,7 @@ internal fun NexoBlePlugin.backgroundNotify(json: String, deviceId: String? = nu
     val ctx = appCtx ?: return
     val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
     if (info.msgId.isEmpty()) return
+    if (!sealOk(json, info)) { remLog("WARN", "BG", "Mensaje que dice ser de ${info.from} sin su sello de pareja: sin aviso ni ✓✓"); return } // 2A (23-11)
     // 3034 (diagnóstico S24 12-11 17:54, «reenvio_sin_fin» con …db61): una acción OCULTA (estado, foto de perfil, me gusta;
     // marca q:1) que llega con la app en segundo plano/congelada no se avisa, pero tampoco se CONFIRMABA (solo los textos,
     // al avisar, desde 2833) → el otro la reenviaba sin fin hasta que esta app volviera. Ahora se confirma igual, sin aviso
@@ -97,10 +98,18 @@ internal fun NexoBlePlugin.backgroundNotify(json: String, deviceId: String? = nu
     }, BG_NOTIFY_DELAY_MS)
 }
 
+// 2A (23-11): ¿pasa el sello de pareja? Sin clave de ese contacto no se puede comprobar (vale, como antes); con clave, tiene que cuadrar.
+private fun NexoBlePlugin.sealOk(json: String, info: BgInbox.Info): Boolean {
+    if (info.from.isEmpty() || (info.kind != BgInbox.Kind.MESSAGE && info.kind != BgInbox.Kind.NOTIFY_ONLY)) return true
+    val me = nexoAdvertisingId ?: return true
+    return BgInbox.sealCheck(json, me) { f -> ackKeys[info.from]?.let { k -> ackTag(k, f) } } != false
+}
+
 // Lo que llega con la app cerrada: al buzón, confirmación de entrega y notificación (ver BgInbox)
 internal fun NexoBlePlugin.closedReceive(deviceId: String, json: String) {
     val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
     val ctx = appCtx ?: return
+    if (!sealOk(json, info)) { nlog()?.add("WARN", "BT_CERRADA", "mensaje que dice ser de ${info.from} sin su sello de pareja: descartado"); return } // 2A (23-11)
     // Ronda 2785 (#87): dejar constancia en el registro nativo (persiste con la app cerrada; sin contenido)
     nlog()?.add("INFO", "BT_CERRADA", "llega por Bluetooth: ${info.kind} de ${info.from.ifEmpty { "?" }}${if (info.msgId.isNotEmpty()) " (msgId ${info.msgId})" else ""}${if (info.call) " [llamada]" else ""}")
     when (info.kind) {
@@ -135,6 +144,9 @@ internal fun NexoBlePlugin.nativePong(deviceId: String, json: String) {
         if (o.optString("type") != "ping") return
         val pingId = o.optString("pingId")
         if (pingId.isEmpty() || pingId.length > 80) return
+        // 12A (23-11): mi NEXO ID solo a un contacto (con las claves cargadas; sin ellas, como antes)
+        val pf = o.optString("fromNexoId").trim().lowercase()
+        if (ackKeys.isNotEmpty() && (pf.isEmpty() || !ackKeys.containsKey(pf))) return
         val me = (nexoAdvertisingId ?: "").lowercase()
         val pong = JSONObject().put("v", 1).put("type", "pong").put("pingId", pingId).put("ts", System.currentTimeMillis()).put("fromNexoId", me).put("nb", 1)
         sendChunkedOrSingle(normalizeMac(deviceId), deviceId, pong.toString())
@@ -142,6 +154,20 @@ internal fun NexoBlePlugin.nativePong(deviceId: String, json: String) {
 }
 
 private fun NexoBlePlugin.kxCardPrefs() = (appCtx ?: context).getSharedPreferences("nexo_ble_prefs", Context.MODE_PRIVATE)
+// 3A (23-11): contesta el reto de la bandeja de salida de un contacto (solo si es mi contacto: sin su clave de pareja no hay respuesta)
+internal fun NexoBlePlugin.nativeChallenge(deviceId: String, json: String) {
+    val me = nexoAdvertisingId ?: return
+    OutboxChallenge.answer(json, me) { from, fields -> ackKeys[from]?.let { ackTag(it, fields) } }?.let {
+        try { sendChunkedOrSingle(normalizeMac(deviceId), deviceId, it) } catch (e: Exception) { }
+    }
+}
+
+// 12A (23-11): la tarjeta «quién soy» (NEXO ID y clave) solo a quien dice ser un contacto (con las claves cargadas; sin ellas, como antes)
+internal fun NexoBlePlugin.kxFromContact(json: String): Boolean {
+    if (ackKeys.isEmpty()) return true
+    return try { val f = JSONObject(json).optString("from").trim().lowercase(); f.isNotEmpty() && ackKeys.containsKey(f) } catch (e: Exception) { false }
+}
+
 internal fun NexoBlePlugin.nativeKx(deviceId: String) {
     try {
         val mac = normalizeMac(deviceId)

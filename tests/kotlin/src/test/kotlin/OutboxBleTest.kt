@@ -16,7 +16,13 @@ class OutboxBleTest {
     private class Fake(var clock: Long = 100_000L) : OutboxBle.Link {
         val ready = HashSet<String>(); val sent = ArrayList<String>(); val logs = ArrayList<String>(); var full = false
         override fun ready(mac: String) = mac in ready
-        override fun send(mac: String, json: String): Boolean { if (full) return false; sent.add("$mac|" + JSONObject(json).getString("msgId")); return true }
+        val challenges = ArrayList<Pair<String, String>>() // 3A: retos mandados (enlace, reto)
+        override fun send(mac: String, json: String): Boolean {
+            if (full) return false
+            val o = JSONObject(json)
+            if (o.optString("type") == "oc") { challenges.add(mac to o.getString("n")); return true }
+            sent.add("$mac|" + o.getString("msgId")); return true
+        }
         override fun log(msg: String) { logs.add(msg) }
     }
     private fun rig(vararg ids: String): Triple<NetBg, Fake, OutboxBle> {
@@ -28,6 +34,11 @@ class OutboxBleTest {
     }
     private fun ack(id: String, from: String, key: ByteArray?, type: String = "ack") = JSONObject().put("v", 1).put("type", type).put("msgId", id).put("from", from).put("ts", 1)
         .also { if (key != null) it.put("a", NetBg.ackMac(key, "$type|$id|$from|$B")) }.toString()
+    // 3A: la respuesta al último reto mandado por ese enlace, firmada con la clave de pareja de `from` (la de verdad o no)
+    private fun answer(f: Fake, mac: String, from: String, key: ByteArray): String {
+        val n = f.challenges.last { it.first == mac }.second
+        return JSONObject().put("v", 1).put("type", "or").put("n", n).put("from", from).put("a", NetBg.ackMac(key, "or|$n|$from|$B")).toString()
+    }
     private fun ping(from: String) = """{"v":1,"type":"ping","pingId":"p1","ts":1,"fromNexoId":"$from","bf":1}"""
 
     @Test fun saleLoPendientePorElEnlaceQueLaAppIdentificoYNoSeMartilla() {
@@ -66,10 +77,16 @@ class OutboxBleTest {
         assertTrue(f.sent.isEmpty())
         f.ready.add("bb03")
         o.heard("bb03", ping(A))
-        assertEquals(listOf("bb03|msg_1"), f.sent, "por el enlace de A, que acaba de hablar")
-        // se rehace el enlace (otra dirección): lo suyo sale ya por el nuevo, sin esperar el plazo del anterior
+        // 3A (23-11): un enlace que solo DICE ser A recibe primero un reto; nada sale hasta que conteste con la firma de la pareja
+        assertTrue(f.sent.isEmpty(), "sin contestar el reto no sale nada"); assertEquals(1, f.challenges.size)
+        o.heard("bb03", answer(f, "bb03", A, keyC))   // firma de otra pareja: no vale
+        assertTrue(f.sent.isEmpty(), "una respuesta con otra clave no vale")
+        o.heard("bb03", answer(f, "bb03", A, keyA))
+        assertEquals(listOf("bb03|msg_1"), f.sent, "por el enlace de A, que contestó el reto")
+        // se rehace el enlace (otra dirección): lo suyo sale ya por el nuevo (tras su reto), sin esperar el plazo del anterior
         f.ready.add("bb04")
         o.heard("bb04", """{"v":1,"type":"kx","from":"$A","pk":"x","j":1}""")
+        o.heard("bb04", answer(f, "bb04", A, keyA))
         assertEquals(listOf("bb03|msg_1", "bb04|msg_1"), f.sent)
         o.heard("bb04", ping(A))
         assertEquals(2, f.sent.size, "el mismo enlace hablando otra vez no adelanta el reintento")
@@ -101,5 +118,14 @@ class OutboxBleTest {
         assertEquals(A, NetOutbox.linkNxOf("""{"v":1,"type":"kx","from":"$A","pk":"x"}""")); assertEquals(A, NetOutbox.linkNxOf(ack("m", A, null)))
         assertNull(NetOutbox.linkNxOf("""{"type":"chat","from":"$A","msgId":"m"}"""), "un mensaje puede venir de paso por un puente: no identifica el enlace")
         assertNull(NetOutbox.linkNxOf("""{"type":"ping","fromNexoId":"alguien"}""")); assertNull(NetOutbox.linkNxOf("basura")); assertNull(NetOutbox.linkNxOf("{" + "x".repeat(7000)))
+    }
+
+    // 3A: quien contesta el reto (nativo del otro) solo lo hace si el que pregunta es su contacto
+    @Test fun contestarElReto() {
+        val oc = """{"v":1,"type":"oc","n":"00112233445566778899aabbccddeeff","from":"$B"}"""
+        val r = com.nexo.ble.OutboxChallenge.answer(oc, A) { from, fields -> if (from == B) NetBg.ackMac(keyA, fields) else null }
+        assertNotNull(r)
+        assertTrue(OutboxBle.answerValid(r, "00112233445566778899aabbccddeeff", A, B, keyA))
+        assertNull(com.nexo.ble.OutboxChallenge.answer(oc, A) { _, _ -> null }, "sin clave de ese contacto: no se contesta")
     }
 }

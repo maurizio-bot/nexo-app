@@ -32,6 +32,19 @@ class OutboxBle(
 
     companion object {
         const val MAX_LINKS = 64
+        const val CHALLENGE_RETRY_MS = 4000L
+        private val rnd = java.security.SecureRandom()
+        fun randomHex(bytes: Int): String { val b = ByteArray(bytes); rnd.nextBytes(b); return b.joinToString("") { "%02x".format(it) } }
+        /** 3A: ¿la respuesta al reto es del contacto? (firma de la pareja de «or|reto|él|yo») */
+        fun answerValid(json: String, n: String, nx: String, me: String, key: ByteArray?): Boolean {
+            if (key == null) return false
+            return try {
+                val o = JSONObject(json)
+                if (o.optString("type") != "or" || o.optString("n") != n || o.optString("from").trim().lowercase() != nx) return false
+                val exp = NetBg.ackMac(key, "or|$n|$nx|${me.lowercase()}")
+                java.security.MessageDigest.isEqual(exp.toByteArray(Charsets.UTF_8), o.optString("a").toByteArray(Charsets.UTF_8))
+            } catch (e: Exception) { false }
+        }
         /**
          * La confirmación (✓✓ o leído) que llegó por Bluetooth, si vale para retirar el mensaje: (quién confirma, msgId). Solo con la
          * firma de la pareja (la misma regla que la app con un contacto moderno: «type|msgId|quien confirma|yo»).
@@ -51,11 +64,16 @@ class OutboxBle(
     }
 
     private val linkNx = LinkedHashMap<String, String>() // enlace (dirección normalizada) → NEXO ID
+    // Decisión del dueño 23-11 (3A, auditoría puntos 3/4/8 y S-B4): antes de escribir lo pendiente por un enlace que no identificó la app,
+    // un RETO: el enlace tiene que contestar con la firma de la pareja (solo el contacto de verdad la tiene). Antes bastaba con que el
+    // enlace DIJERA ser el contacto (o copiara su código del aire) para recibir el paquete cifrado y ver el sobre (de quién, para quién).
+    private val proven = HashMap<String, String>()                 // enlace → NEXO ID ya comprobado (la app o el reto)
+    private val asked = HashMap<String, Pair<String, Long>>()      // enlace → (reto, cuándo se mandó)
 
-    /** La app dice de quién es un enlace listo (al ocultarse). */
-    @Synchronized fun seed(mac: String, nx: String) { learn(mac, nx.trim().lowercase()) }
+    /** La app dice de quién es un enlace listo (al ocultarse): la app ya lo comprobó con el cifrado. */
+    @Synchronized fun seed(mac: String, nx: String) { val n = nx.trim().lowercase(); learn(mac, n); if (linkNx[mac] == n) proven[mac] = n }
     /** El enlace se cerró. */
-    @Synchronized fun closed(mac: String) { linkNx.remove(mac) }
+    @Synchronized fun closed(mac: String) { linkNx.remove(mac); proven.remove(mac); asked.remove(mac) }
     @Synchronized fun nxOf(mac: String): String? = linkNx[mac]
 
     private fun learn(mac: String, nx: String): Boolean {
@@ -72,6 +90,7 @@ class OutboxBle(
         val said = NetOutbox.linkNxOf(json)
         val fresh = said != null && learn(mac, said)
         if (b.outbox.size() == 0) return
+        if (json.length < 600 && json.contains("\"type\":\"or\"")) { onAnswer(mac, json); return } // 3A: respuesta al reto
         signedReceipt(json, me(), keyOf)?.let { (from, mid) -> b.outboxConfirmed(from, mid, "por Bluetooth") }
         val nx = linkNx[mac] ?: return
         if (!b.outbox.hasFor(nx)) return
@@ -81,6 +100,7 @@ class OutboxBle(
 
     private fun sendVia(b: NetBg, mac: String, nx: String, t: Long): Int {
         if (!link.ready(mac)) return 0
+        if (proven[mac] != nx && !challenge(mac, nx, t)) return 0
         var n = 0
         for (x in b.outbox.bleDue(nx, t)) {
             if (!link.send(mac, x.p)) break // cola llena: en el próximo repaso
@@ -118,4 +138,39 @@ class OutboxBle(
 
     /** ¿Queda algo que podría salir por Bluetooth? (para el repaso periódico) */
     fun pending(): Boolean = (bg()?.outbox?.size() ?: 0) > 0
+
+    // 3A: ¿se puede escribir ya? true = sin clave de ese contacto no hay con qué comprobar (como antes); false = se mandó (o espera) el reto
+    private fun challenge(mac: String, nx: String, t: Long): Boolean {
+        if (b2Key(nx) == null) { proven[mac] = nx; return true }
+        val a = asked[mac]
+        if (a != null && t - a.second < CHALLENGE_RETRY_MS) return false
+        val n = randomHex(16)
+        asked[mac] = n to t
+        while (asked.size > MAX_LINKS) asked.remove(asked.keys.first())
+        if (link.send(mac, JSONObject().put("v", 1).put("type", "oc").put("n", n).put("from", me().lowercase()).toString()))
+            link.log("Bandeja de salida: reto a $mac (dice ser $nx) antes de mandarle lo suyo")
+        return false
+    }
+    private fun b2Key(nx: String): ByteArray? = try { keyOf(nx) } catch (e: Exception) { null }
+    private fun onAnswer(mac: String, json: String) {
+        val nx = linkNx[mac] ?: return
+        val a = asked[mac] ?: return
+        val ok = answerValid(json, a.first, nx, me(), b2Key(nx))
+        if (!ok) { link.log("Bandeja de salida: $mac no supo contestar el reto de $nx: no se le manda nada"); return }
+        asked.remove(mac); proven[mac] = nx
+        link.log("Bandeja de salida: $mac es $nx (reto contestado)")
+        val b = bg() ?: return
+        sendVia(b, mac, nx, now())
+    }
+}
+
+/** 3A: el reto antes de entregar sin la app (lo que se firma y quién contesta). */
+object OutboxChallenge {
+    /** La respuesta a un reto {type:'oc', n, from}: la manda quien lo recibe si el que pregunta es su contacto (sign = firma de pareja). */
+    fun answer(json: String, me: String, sign: (String, String) -> String?): String? = try {
+        val o = JSONObject(json)
+        val n = o.optString("n"); val from = o.optString("from").trim().lowercase()
+        if (o.optString("type") != "oc" || !Regex("^[0-9a-f]{16,64}$").matches(n) || !Regex("^nx[0-9a-z]{8}$").matches(from)) null
+        else sign(from, "or|$n|${me.lowercase()}|$from")?.let { JSONObject().put("v", 1).put("type", "or").put("n", n).put("from", me.lowercase()).put("a", it).toString() }
+    } catch (e: Exception) { null }
 }

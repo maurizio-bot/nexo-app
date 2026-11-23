@@ -36,7 +36,11 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
              private val autoPing: Boolean = true, // (autoPing = false: sin hilo del latido; las pruebas llaman a tick)
              // 3272: antes de conectar, quien lo usa puede preparar el socket (en el teléfono: atarlo a la red Wi-Fi aunque la red por
              // defecto sean los datos móviles, que es lo que pasa con un Wi-Fi sin internet). Si falla, se conecta como siempre.
-             private val prepare: ((Socket) -> Unit)? = null) {
+             private val prepare: ((Socket) -> Unit)? = null,
+             // Decisión del dueño 23-11 (12A, auditoría T-W1): ¿es mi contacto? (true / false / null = no se sabe aún). Una conexión
+             // ENTRANTE ya no recibe mi saludo (con mi NEXO ID fijo) hasta que diga quién es y sea mi contacto: antes cualquiera de la
+             // misma Wi-Fi abría el puerto y se llevaba el NEXO ID de todos (y los seguía de red en red).
+             private val knows: ((String) -> Boolean?)? = null) {
     interface Listener {
         fun onUp(nx: String)
         fun onDown(nx: String)
@@ -188,13 +192,18 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
             try {
                 c.socket.tcpNoDelay = true
                 c.socket.soTimeout = if (proxy != null || bindHost != null) HELLO_TIMEOUT_MS * 6 else HELLO_TIMEOUT_MS
-                c.write(JSONObject().put("h", 1).put("nx", myId()).toString())
+                val myHello = JSONObject().put("h", 1).put("nx", myId()).toString()
+                if (c.outbound) c.write(myHello) // quien conecta (ya reconoció la marca de su contacto) saluda primero
                 val input = DataInputStream(BufferedInputStream(c.socket.getInputStream(), 65536))
                 val helloStr = readFrame(input, HELLO_MAX)
                 if (SafeJson.reject(helloStr)) throw Exception("saludo descomunal") // no dejar que un saludo muy anidado tumbe el analizador
                 val hello = JSONObject(helloStr)
                 val nx = hello.optString("nx").lowercase()
                 if (hello.optInt("h") != 1 || !Regex("^nx[0-9a-z]{8}$").matches(nx) || nx == myId().lowercase()) throw Exception("saludo no válido")
+                if (!c.outbound) {
+                    if (knows?.invoke(nx) == false) throw Exception("saludo de quien no es contacto")
+                    c.write(myHello)
+                }
                 c.nx = nx
                 c.socket.soTimeout = 0
                 preAuth.remove(c)

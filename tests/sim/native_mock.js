@@ -502,6 +502,13 @@ class NativePhone {
       if (!this.opts.noNativePong && (this.appActive === false || this.jsFrozen || this.closedMode) && ex.json.length < 400 && ex.json.indexOf('"ping"') >= 0) {
         try { const o = JSON.parse(ex.json); if (o.type === 'ping' && o.pingId) { this.stats.nativePongs = (this.stats.nativePongs || 0) + 1; this._sendChunkedOrSingle(mac, JSON.stringify({ v: 1, type: 'pong', pingId: o.pingId, ts: Date.now(), fromNexoId: String(this.advertisingId || '').toLowerCase(), nb: 1 })); } } catch (e) {}
       }
+      // Kotlin 3A (nativeChallenge / SinAppCore): el reto de la bandeja del otro lo contesta siempre el nativo, con la firma de la pareja
+      if (ex.json.length < 400 && ex.json.indexOf('"type":"oc"') >= 0) {
+        try {
+          const o = JSON.parse(ex.json), from = String(o.from || '').toLowerCase(), me = String(this.advertisingId || '').toLowerCase(), k = this.ackKeys && this.ackKeys.get(from);
+          if (o.type === 'oc' && /^[0-9a-f]{16,64}$/.test(o.n || '') && k && me) this._sendChunkedOrSingle(mac, JSON.stringify({ v: 1, type: 'or', n: o.n, from: me, a: nodeCrypto.createHmac('sha256', k).update('nexo-ack|or|' + o.n + '|' + me + '|' + from).digest().subarray(0, 12).toString('base64') }));
+        } catch (e) {}
+      }
       // Kotlin 3269 (OutboxBle.heard): con la app dormida o cerrada, lo pendiente de la bandeja de salida sale también por este enlace
       if (!this.opts.noOutboxBle && (this.appActive === false || this.jsFrozen || this.closedMode) && ex.json.length < 6000) this._outboxHeard(mac, ex.json);
       // Kotlin 3012 nativeKx: con la app en segundo plano/congelada o cerrada, el nativo contesta «quién soy» (la tarjeta que le dejó
@@ -624,10 +631,24 @@ class NativePhone {
   _notifName(nx) { const c = this.netBg && (this.netBg.contacts || []).find((x) => String(x.nx || '').toLowerCase() === nx); return (c && c.name) || 'NEXO'; }
   static whatText(w) { return ({ image: '📷 Foto', video: '🎥 Vídeo', audio: '🎤 Nota de voz', call: '📞 Llamada entrante', text: '' })[w] ?? '📎 Archivo'; }
   // Kotlin 2760 backgroundNotify: app en segundo plano (puede estar congelada): si a los 4 s la app no avisó, avisa el nativo
+  // Kotlin 2A (BgInbox.sealCheck): true / false (tenemos su clave y el sello falta o no cuadra) / null (sin clave)
+  _sealCheck(json, info) {
+    if (!info || !info.from || (info.kind !== 'MESSAGE' && info.kind !== 'NOTIFY_ONLY')) return null;
+    const me = String(this.advertisingId || '').toLowerCase(), k = this.ackKeys && this.ackKeys.get(String(info.from).toLowerCase());
+    if (!me || !k) return null;
+    let o = null; try { o = JSON.parse(json); } catch (e) { return null; }
+    const mid = o.msgId || o.m, from = String(o.from || o.fr || '').toLowerCase();
+    if (!mid || !/^nx[0-9a-z]{8}$/.test(from)) return null;
+    const exp = nodeCrypto.createHmac('sha256', k).update('nexo-ack|msg|' + mid + '|' + from + '|' + me).digest().subarray(0, 12).toString('base64');
+    const ok = typeof o.sl === 'string' && o.sl === exp;
+    if (!ok) { this.stats.sealRejected = (this.stats.sealRejected || 0) + 1; this._remLog('WARN', 'BG', 'Mensaje que dice ser de ' + from + ' sin su sello de pareja: descartado'); }
+    return ok;
+  }
   _bgNotify(json, fromAddress, lanNx) {
     if (this.appActive !== false || this.closedMode || this.opts.noBgNotify) return;
     const info = NativePhone.classifyClosed(json, this.advertisingId);
     if (!info.msgId) return;
+    if (this._sealCheck(json, info) === false) return; // Kotlin 2A
     // Kotlin 3034: una acción oculta (q:1) no se avisa pero SÍ se confirma (contraprueba: NEXO_OLD_QUIETACK=1, nativo ≤ 3033)
     if (info.quiet) {
       if (info.kind === 'MESSAGE' && info.callEnd) this._callEnded(info.from, info.callEnd); // Kotlin 3087
@@ -694,6 +715,7 @@ class NativePhone {
   _outboxSendVia(mac, nx) {
     const items = (this.outbox && this.outbox.items) || [], now = Date.now();
     if (!this._outboxLinkReady(mac)) return 0;
+    if (!this.opts.noOutboxChallenge && !process.env.NEXO_NO_RETO && !this._outboxChallenge(mac, nx)) return 0; // Kotlin 3A (23-11): reto antes de escribir
     let n = 0;
     for (const x of items) {
       if (x.nx !== nx || (x.bleNextAt || 0) > now || (x.chunks || []).some((k) => !k.ok)) continue; // 3281: el aviso de un archivo, solo con sus trozos subidos
@@ -706,11 +728,39 @@ class NativePhone {
     }
     return n;
   }
+  // Kotlin 3A (OutboxBle.challenge/onAnswer): ¿se puede escribir por este enlace? Sin clave de pareja de ese contacto, sí (como antes)
+  _outboxChallenge(mac, nx) {
+    this.outProven = this.outProven || new Map(); this.outAsked = this.outAsked || new Map();
+    if (this.outProven.get(mac) === nx) return true;
+    const key = this.ackKeys && this.ackKeys.get(nx);
+    if (!key) { this.outProven.set(mac, nx); return true; }
+    const a = this.outAsked.get(mac), now = Date.now();
+    if (a && now - a.t < 4000) return false;
+    const n = nodeCrypto.randomBytes(16).toString('hex');
+    this.outAsked.set(mac, { n, t: now, nx });
+    this.stats.outboxChallenges = (this.stats.outboxChallenges || 0) + 1;
+    this._sendChunkedOrSingle(mac, JSON.stringify({ v: 1, type: 'oc', n, from: String(this.advertisingId || '').toLowerCase() }));
+    return false;
+  }
   _outboxHeard(mac, json) {
     const said = NativePhone.outboxLinkNxOf(json);
     const fresh = !!said && this._outboxLearn(mac, said);
     const items = (this.outbox && this.outbox.items) || [];
     if (!items.length) return;
+    if (json.length < 600 && json.indexOf('"type":"or"') >= 0) {
+      let r = null; try { r = JSON.parse(json); } catch (e) {}
+      const lnx = this.outLinkNx && this.outLinkNx.get(mac), a = this.outAsked && this.outAsked.get(mac), me = String(this.advertisingId || '').toLowerCase();
+      const k = lnx && this.ackKeys && this.ackKeys.get(lnx);
+      const exp = k && a ? nodeCrypto.createHmac('sha256', k).update('nexo-ack|or|' + a.n + '|' + lnx + '|' + me).digest().subarray(0, 12).toString('base64') : null;
+      if (r && a && exp && r.n === a.n && String(r.from || '').toLowerCase() === lnx && r.a === exp) {
+        this.outAsked.delete(mac); this.outProven.set(mac, lnx);
+        const ms = Date.now() - a.t;
+        (this.stats.outboxChallengeMs = this.stats.outboxChallengeMs || []).push(ms);
+        this._remLog('INFO', 'BANDEJA', mac + ' es ' + lnx + ' (reto contestado en ' + ms + ' ms)');
+        this._outboxSendVia(mac, lnx);
+      } else this._remLog('WARN', 'BANDEJA', mac + ' no supo contestar el reto: no se le manda nada');
+      return;
+    }
     // la ✓✓ firmada con la clave de la pareja retira el mensaje (OutboxBle.signedReceipt)
     let o = null; try { o = JSON.parse(json); } catch (e) {}
     if (o && (o.type === 'ack' || o.type === 'read_receipt') && o.msgId && o.a) {
@@ -802,6 +852,7 @@ class NativePhone {
   }
   _closedReceive(fromAddress, json) {
     const info = NativePhone.classifyClosed(json, this.advertisingId);
+    if (this._sealCheck(json, info) === false) return; // Kotlin 2A (23-11)
     this.stats.closedRx = (this.stats.closedRx || 0) + 1;
     if (!this.bgInbox) this.bgInbox = [];
     const notify = (text) => {

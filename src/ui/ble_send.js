@@ -1,4 +1,5 @@
 import { _normId, _isGenericName, _getBLEContacts, _saveBLEContacts, _lanNx, _netNx, _normMac, _hasNativeMethod, _isControlPacket, _safeNativeCall, _vaultUpdateMessageStatus, BLE_STATES, _failStatus, _isPathDev, _netId } from './ble_helpers.js';
+import { e2eAckTag } from '../vault/e2e_crypto.js';
 // Build 2836 (pedido del dueño): margen para la «red de seguridad de entrega». Si un mensaje enviado por Bluetooth no
 // se confirma «entregado» en este tiempo, se deja además en el buzón de relés (dispara el toque FCM de alta prioridad).
 var DELIVERY_SAFETY_MS = 10000;
@@ -100,6 +101,24 @@ export const BLE_SEND_METHODS = {
     return env;
   },
 
+  // Decisión del dueño 23-11 (2A, auditoría S-A1/T-D3): SELLO DE PAREJA. Cada mensaje lleva `sl` = HMAC con la clave de la pareja
+  // (la de las confirmaciones, e2eAckTag) de «msg|msgId|de|para». Con la app del otro cerrada o dormida, su parte nativa solo guarda,
+  // avisa y confirma (✓✓) un mensaje cuyo sello cuadra: alguien cerca ya no puede hacer sonar avisos con el nombre de un contacto ni
+  // pedir una ✓✓ firmada de un mensaje que no llegó. Milisegundos (un HMAC); el mismo sello en cada reintento.
+  _pairSeal(msgId, to) {
+    var self = this, nx = _normId(to), me = _normId(self.localNexoId);
+    if (!msgId || !/^nx[0-9a-z]{8}$/.test(nx) || !/^nx[0-9a-z]{8}$/.test(me)) return Promise.resolve('');
+    var cache = self._sealCache || (self._sealCache = new Map());
+    var ck = msgId + '|' + nx;
+    if (cache.has(ck)) return Promise.resolve(cache.get(ck));
+    var c = (_getBLEContacts() || []).find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c || !c.publicKey) return Promise.resolve(''); // 5A: con la clave aceptada
+    return e2eAckTag(c.publicKey, 'msg|' + msgId + '|' + me + '|' + nx).then(function(sl) {
+      if (sl) { cache.set(ck, sl); if (cache.size > 2000) cache.delete(cache.keys().next().value); }
+      return sl || '';
+    }).catch(function() { return ''; });
+  },
+
   _sendMessageNative(deviceId, content, messageId, seq, dst) {
     var self = this;
     return new Promise(function(resolve, reject) {
@@ -115,6 +134,7 @@ export const BLE_SEND_METHODS = {
       var knownMac = self._nexoIdToMac.get(_normId(deviceId));
       if (knownMac && !self._macOfOther(knownMac, deviceId)) targetId = knownMac;
       var outgoing = content;
+      var ready = Promise.resolve(); // 2A: el sello de pareja (asíncrono) se pone antes de mandar
       // Ronda 2764: un sobre sellado de Jump va tal cual a quien lo entiende (kx ss:1). Antes el puente lo metía en un
       // mensaje suyo y el teléfono siguiente (su parte nativa, con la app en segundo plano o cerrada) avisaba de
       // "Mensaje nuevo" por un paquete que solo estaba de paso
@@ -149,6 +169,8 @@ export const BLE_SEND_METHODS = {
         }
         if (dn0) env.dn = dn0;
         outgoing = JSON.stringify(env);
+        var sealTo = dst ? _normId(dst) : dn0;
+        if (sealTo) ready = self._pairSeal(msgId, sealTo).then(function(sl) { if (sl) { env.sl = sl; outgoing = JSON.stringify(env); } });
       }
       var send = function(out) {
         if (viaLan) { self.lan.send(viaLan, out).then(resolve).catch(reject); return; }
@@ -168,14 +190,16 @@ export const BLE_SEND_METHODS = {
           })
           .catch(reject);
       };
-      // v6.11.0: por Jump (dst), en sobre sellado para el destino: los puentes no ven quién lo manda
-      if (dst && !_isControlPacket(content) && self.hopSeals(deviceId)) {
-        var mid = null;
-        try { mid = JSON.parse(outgoing).msgId; } catch (e) {}
-        self._sealString(dst, outgoing, mid).then(send).catch(function() { send(outgoing); });
-        return;
-      }
-      send(outgoing);
+      ready.then(function() {
+        // v6.11.0: por Jump (dst), en sobre sellado para el destino: los puentes no ven quién lo manda
+        if (dst && !_isControlPacket(content) && self.hopSeals(deviceId)) {
+          var mid = null;
+          try { mid = JSON.parse(outgoing).msgId; } catch (e) {}
+          self._sealString(dst, outgoing, mid).then(send).catch(function() { send(outgoing); });
+          return;
+        }
+        send(outgoing);
+      });
     });
   },
 

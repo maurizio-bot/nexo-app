@@ -17,9 +17,9 @@ class LanHubUnverifiedTest {
     private fun waitFor(ms: Long = 5000, f: () -> Boolean): Boolean { val t0 = System.currentTimeMillis(); while (System.currentTimeMillis() - t0 < ms) { if (f()) return true; Thread.sleep(10) }; return f() }
     private fun hello(port: Int, nx: String): Pair<Socket, DataOutputStream> {
         val s = Socket("127.0.0.1", port); s.soTimeout = 15000
-        val inp = DataInputStream(s.getInputStream()); val n = inp.readInt(); inp.readFully(ByteArray(n))
         val out = DataOutputStream(s.getOutputStream())
         val h = "{\"h\":1,\"nx\":\"$nx\"}".toByteArray(); out.writeInt(h.size); out.write(h); out.flush()
+        val inp = DataInputStream(s.getInputStream()); val n = inp.readInt(); inp.readFully(ByteArray(n)) // su saludo, tras el mío
         return s to out
     }
     private fun closed(s: Socket, ms: Int): Boolean {
@@ -80,5 +80,20 @@ class LanHubUnverifiedTest {
         // la más nueva sigue
         assertTrue(hub.isUp("nxf" + (LanHub.MAX_UNVERIFIED + 5).toString().padStart(7, '0')))
         socks.forEach { it.close() }; hub.stop()
+    }
+
+    // 12A (23-11): a una conexión entrante el hub no le da su NEXO ID hasta que diga quién es; y si no es contacto, ni eso
+    @Test fun entranteNoRecibeMiIdSinSaludar_niSiNoEsContacto() {
+        val r = Rec(); val hub = LanHub({ "nxbbbbbbbb" }, r, autoPing = false, knows = { n -> n == "nxaaaaaaaa" }); val p = hub.start()
+        val s1 = Socket("127.0.0.1", p); s1.soTimeout = 800
+        val got = try { DataInputStream(s1.getInputStream()).readInt(); true } catch (e: java.net.SocketTimeoutException) { false }
+        assertFalse(got, "el hub saludó (con su NEXO ID) a una conexión entrante que no dijo quién es")
+        s1.close()
+        val s2 = Socket("127.0.0.1", p); s2.soTimeout = 3000
+        val o2 = DataOutputStream(s2.getOutputStream()); val h = "{\"h\":1,\"nx\":\"nxcccccccc\"}".toByteArray(); o2.writeInt(h.size); o2.write(h); o2.flush()
+        assertTrue(closed(s2, 3000), "un desconocido no debe recibir el saludo")
+        val (s3, _) = hello(p, "nxaaaaaaaa")   // el contacto sí
+        assertTrue(waitFor { r.up.contains("nxaaaaaaaa") }); assertFalse(r.up.contains("nxcccccccc"))
+        s3.close(); hub.stop()
     }
 }

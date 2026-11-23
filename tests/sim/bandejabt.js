@@ -153,6 +153,7 @@ const save = () => fs.writeFileSync(path.join(__dirname, 'last_logs_bandejabt.tx
     await sleep(5000);
     r.z_una_copia = (await count(B, idA, t3)) === 1;
   }
+  r.retos = nA.stats.outboxChallenges || 0; r.reto_ms = nA.stats.outboxChallengeMs || []; // 3A (23-11): reto antes de entregar (medida)
   r.errores = logs.filter((l) => /ilegible|Error procesando|No se pudo descifrar/.test(l)).slice(0, 3);
   const bools = ['base_llega', 'claves_firma', 'd_queda_sin_salir', 'd_bandeja_cifrada', 'd_lo_escribio_el_nativo', 'd_A_seguia_dormida', 'd_una_copia'].concat(sinBandeja ? [] : ['c_queda_sin_salir', 'c_lo_escribio_el_nativo', 'c_una_copia', 'z_queda_sin_salir', 'z_los_dos_seguian_dormidos', 'z_una_copia']);
   const nums = ['d_sin_enlace_s', 'd_bandeja_s', 'd_llega_con_A_dormida_s', 'd_confirmado_en_el_nativo_s', 'd_confirmado_al_abrir_s'].concat(sinBandeja ? [] : ['c_sin_enlace_s', 'c_bandeja_s', 'c_llega_con_A_cerrada_s', 'c_confirmado_en_el_nativo_s', 'c_confirmado_al_abrir_s', 'z_sin_enlace_s', 'z_bandeja_s', 'z_nativo_abre_el_enlace_s', 'z_lo_escribio_el_nativo_s', 'z_B_avisa_dormido_s', 'z_confirmado_en_el_nativo_s', 'z_en_el_chat_de_B_s', 'z_confirmado_al_abrir_s']);

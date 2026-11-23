@@ -161,7 +161,15 @@ ChatStream.prototype._shouldDeferTinyMtu = function() {
     return false;
   } catch (e) { return false; }
 };
+// 2A (23-11): antes de mandar el primer trozo se calcula el sello de pareja (milisegundos); un reenvío de puente (fwd) o un envío
+// por Jump con remitente oculto no lo lleva (no es suyo).
 ChatStream.prototype.start = function() {
+  var self = this, ble = self.ble, m = self.meta || {};
+  if (self._sl !== undefined || m.fwd || m.dst || m.sealedFrom || !ble || typeof ble._pairSeal !== 'function') return self._start0();
+  var to = _nxOf(m.to) || (typeof ble._destNx === 'function' ? ble._destNx(self.deviceId) : '');
+  return ble._pairSeal(self.msgId, to).then(function(sl) { self._sl = sl || ''; }, function() { self._sl = ''; }).then(function() { return self._start0(); });
+};
+ChatStream.prototype._start0 = function() {
   var self = this;
   return new Promise(function(resolve, reject) {
     // #dueño 06-11 (paso 2b, PAREJO con el receptor): el que ENVÍA un archivo GRANDE por internet también se mantiene
@@ -527,12 +535,14 @@ ChatStream.prototype._buildChunk = function(idx) {
     if (this.meta.height) obj.h = this.meta.height;
     if (this.meta.hdFor) obj.hf = this.meta.hdFor;
     if (this.meta.preview) obj.pv = 1;
-    if (this.meta.once) obj.o1 = 1; // #94 «ver una vez»: el medio se consume al abrirlo en el receptor
+    if (this.meta.xs) obj.xs = this.meta.xs; // 4A (23-11): comentario y «ver una vez», sellados
+    else if (this.meta.once) obj.o1 = 1; // #94 «ver una vez»: el medio se consume al abrirlo en el receptor
     if (this.meta.thumb) obj.th = this.meta.thumb; // miniatura JPEG del vídeo (poster) o 1.ª página del PDF
     if (this.meta.pages) obj.pg = this.meta.pages;
-    if (typeof this.meta.caption === 'string' && this.meta.caption) obj.cp = this.meta.caption.substring(0, 1000); // 3242: comentario
+    if (!this.meta.xs && typeof this.meta.caption === 'string' && this.meta.caption) obj.cp = this.meta.caption.substring(0, 1000); // 3242: comentario
     if (this.meta.dst) obj.dt = this.meta.dst;
     if (this.meta.hp) obj.hp = this.meta.hp;
+    if (this._sl) obj.sl = this._sl; // 2A (23-11): sello de pareja (lo comprueba la parte nativa del otro antes de avisar)
     if (this._restart) obj.rs = 1; // 3080: intento nuevo del mismo envío (cambio de camino): el receptor empieza de cero al momento
     // Ronda 2764: a quién va (directo; se fija la primera vez: aunque la conexión resulte ser de otro, sigue siendo
     // para el mismo); el que lo recibe lo ignora si no es él

@@ -194,7 +194,7 @@ export const BLE_RECEIVE_METHODS = {
       // Ronda 2764: con "Agregar" abierto, un NEXO cercano que no es contacto (se identificó con su kx) sale en la lista
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '') && !_isBLEContact(p.from) && Date.now() < (self._visibleUntil || 0) && !/^(lan|net)/i.test(String(data.deviceId)))
         self.onDeviceFound({ id: data.deviceId, name: typeof p.nm === 'string' ? p.nm.substring(0, 40) : '', rssi: -60, nexoId: String(p.from).toUpperCase(), kx: true }); // 3184: kx = dijo quién es (se dibuja al momento)
-      if (p.from && p.rs) self._noteRestored(p.from, p.pk, p.rs);
+      if (p.from && p.rs) self._noteRestored(p.from, p.pk, p.rs, p.rsg);
       if (p.fx && p.from) self._noteFenixPeer(p.from, data.deviceId, Number(p.fx) || 1);
       if (p.ss && p.from) self._noteSealPeer(p.from);
       if (p.nt && p.from) self._noteNetPeer(p.from);
@@ -428,6 +428,14 @@ export const BLE_RECEIVE_METHODS = {
           var contact = _getContactByUUID(senderUUID);
           var cname = contact ? contact.name : null;
           senderName = cname || (self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name) || (self.foundDevices.get(deviceId) && self.foundDevices.get(deviceId).name) || '';
+        }
+        // Decisión del dueño 23-11 (7A, auditoría C-N5): el PRIMER mensaje de alguien que no es contacto ya no lo agrega solo (con el
+        // nombre que él quisiera, saltándose la bandeja y el freno de solicitudes): va a Solicitudes («te escribió») y se retiene; al
+        // aceptarlo se agrega y el mensaje aparece. Sin cifrar no hay clave que guardar: se descarta. Los paquetes de control no cuentan.
+        if (!isControl && senderUUID && !_isBLEContact(senderUUID) && _normId(senderUUID) !== _normId(self.localNexoId) && messageId) {
+          var snx = _normId(senderUUID);
+          if (!data.e2eSenderKey) { console.warn('[BLE_RECV] Mensaje sin cifrar de ' + snx + ' (no es contacto): descartado'); return; }
+          if (typeof self._msgRequest === 'function') { self._msgRequest(snx, senderName || '', data.e2eSenderKey, function() { self._handlePayload(data); }, messageId); return; }
         }
         if (senderUUID && senderName && senderName !== '') {
           if (!_isBLEContact(senderUUID)) {

@@ -30,6 +30,8 @@ class SinAppCore(private val me: String, private val sink: Sink, private val now
         fun callEnded(from: String, offer: String)
         /** La tarjeta «quién soy» que dejó la app (datos públicos) o null. */
         fun kxCard(): String?
+        /** 12A (23-11): ¿el nativo tiene ya las claves de pareja de los contactos? (sin ellas no se sabe quién es contacto) */
+        fun hasKeys(): Boolean = false
         /** Firma de la confirmación de entrega para ese contacto, o null si no hay clave. */
         fun ackSign(from: String, fields: String): String?
         fun log(level: String, msg: String)
@@ -127,8 +129,14 @@ class SinAppCore(private val me: String, private val sink: Sink, private val now
     private fun handle(link: String, json: String) {
         if (json.length < 6000) try { sink.heard(link, json) } catch (e: Throwable) { }
         if (json.length < 400 && json.contains("\"ping\"")) pong(link, json)
-        if (json.length < 6000 && json.contains("\"type\":\"kx\"") && json.contains("\"rq\":1")) kx(link)
+        if (json.length < 400 && json.contains("\"type\":\"oc\"")) { OutboxChallenge.answer(json, me) { f, fields -> sink.ackSign(f, fields) }?.let { sink.send(link, it) }; return } // 3A
+        if (json.length < 6000 && json.contains("\"type\":\"kx\"") && json.contains("\"rq\":1") && forContact(json)) kx(link)
         val info = BgInbox.classify(json, me)
+        // 2A (23-11): de un contacto cuya clave tenemos, solo con el sello de pareja bueno (si no: ni buzón, ni aviso, ni ✓✓)
+        if ((info.kind == BgInbox.Kind.MESSAGE || info.kind == BgInbox.Kind.NOTIFY_ONLY) && info.from.isNotEmpty() &&
+            BgInbox.sealCheck(json, me) { sink.ackSign(info.from, it) } == false) {
+            sink.log("WARN", "mensaje que dice ser de ${info.from} sin su sello de pareja: descartado"); return
+        }
         when (info.kind) {
             BgInbox.Kind.MESSAGE -> {
                 if (!sink.store(link, json)) { sink.log("WARN", "buzón lleno: mensaje de ${info.from} sin guardar"); return }
@@ -144,7 +152,19 @@ class SinAppCore(private val me: String, private val sink: Sink, private val now
         }
     }
 
+    // Decisión del dueño 23-11 (12A, auditoría S-B8): el pong y la tarjeta «quién soy» llevan mi NEXO ID: solo a quien dice ser un contacto
+    // (con las claves ya cargadas; sin ellas, como antes, para no romper el vigilante de enlaces de un contacto de verdad)
+    private fun forContact(json: String): Boolean {
+        if (!sink.hasKeys()) return true
+        return try {
+            val o = JSONObject(json)
+            val from = (o.optString("fromNexoId").ifEmpty { o.optString("from") }).trim().lowercase()
+            from.isNotEmpty() && sink.ackSign(from, "who") != null
+        } catch (e: Exception) { false }
+    }
+
     private fun pong(link: String, json: String) {
+        if (!forContact(json)) return
         try {
             val o = JSONObject(json)
             if (o.optString("type") != "ping") return

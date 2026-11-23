@@ -148,6 +148,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
         override fun callEnded(from: String, offer: String) { try { MsgNotifier.get(ctx).cancelCallFor(from, offer) } catch (e: Throwable) { } }
         override fun kxCard(): String? = try { ctx.getSharedPreferences("nexo_ble_prefs", Context.MODE_PRIVATE).getString("kx_card", null) } catch (e: Throwable) { null }
         override fun ackSign(from: String, fields: String): String? = try { NexoBlePlugin.ackKeys[from]?.let { NexoBlePlugin.ackTag(it, fields) } } catch (e: Throwable) { null }
+        override fun hasKeys(): Boolean = NexoBlePlugin.ackKeys.isNotEmpty()
         override fun log(level: String, msg: String) = nlog(ctx, level, msg)
         // 3269 (fase 3): lo pendiente de la bandeja de salida sale también por el enlace de su contacto (OutboxBle)
         override fun heard(link: String, json: String) { outBle.heard(link, json) }
