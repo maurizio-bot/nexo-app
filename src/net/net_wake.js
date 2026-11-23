@@ -31,7 +31,7 @@ export const netWake = {
       var self = this;
       if (why) console.log('[WAKE] toque a ' + _nid(nx) + ' (' + why + '): que su app esté despierta antes de que salga algo pesado'); // i18n-ok
       if (viaGw) { this.gw.wake(peer.fcmToken); return; }
-      wakePost(url, peer.fcmToken)
+      wakePost(url, peer.fcmToken, typeof this.wakeFetch === 'function' ? this.wakeFetch() : undefined)
         .then(function(res) {
           // 3245 (dueño 18-11): que el diagnóstico diga si el toque salió de verdad (antes no quedaba rastro)
           if (why) console.log('[WAKE] toque a ' + _nid(nx) + (res.opaque ? ': salió (el enviador no deja leer su respuesta)' : ': el enviador contestó ' + res.status)); // i18n-ok
@@ -59,7 +59,7 @@ export const netWake = {
       if (peer._xferWakeAt && (now - peer._xferWakeAt) < minMs) return false;
       peer._xferWakeAt = now;
       var self = this;
-      wakePost(url, peer.fcmToken)
+      wakePost(url, peer.fcmToken, typeof this.wakeFetch === 'function' ? this.wakeFetch() : undefined)
         .then(function(res) {
           if (res && res.status === 404) { peer.fcmToken = ''; if (self.state.peerFcm) { delete self.state.peerFcm[nx]; self._saveState(); } }
         })
