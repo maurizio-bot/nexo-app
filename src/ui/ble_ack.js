@@ -655,6 +655,8 @@ export class BleAckSystem {
     if (entry.retries < this.maxRetries) {
       entry.retries++;
       console.log('[BleAckSystem] ACK timeout msgId=' + msgId + ' reintento ' + entry.retries + '/' + this.maxRetries);
+      // 17: por internet, la confirmación pudo perderse en el reparto en vivo de los relés: se les vuelve a pedir lo reciente
+      if (_isNetDevice(entry.deviceId) && this.ble && this.ble.net && typeof this.ble.net.resync === 'function') { try { this.ble.net.resync(msgId, (entry.sentAt || Date.now()) - 5000); } catch (e) {} }
       this._doSend(entry);
     } else {
       this.pendingAcks.delete(msgId);

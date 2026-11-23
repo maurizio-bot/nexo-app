@@ -1,4 +1,7 @@
 import { FILE_CHUNK_SIZE, CHAT_CHUNK_SIZE, FILE_WINDOW_SIZE, CHAT_WINDOW_SIZE, FILE_WINDOW_TIMEOUT_MS, CHAT_WINDOW_TIMEOUT_MS, _isLanDevice, _isNetDevice, LAN_PSEUDO_MTU, LAN_FILE_CHUNK, LAN_CHAT_CHUNK, NET_FILE_CHUNK, NET_CHAT_CHUNK, SMALL_MTU_MIN_CHUNK, FILE_PACING_DELAY_MS, CHAT_PACING_DELAY_MS, GLOBAL_TIMEOUT_MS, INTERACTIVE_MAX_CHARS, MAX_WINDOW_RETRIES, BT_RECHUNK_WRITES, BLE_FILE_MAX_CHARS, BLE_HD_MAX_CHARS, TINY_MTU, BLE_TINY_MTU_DEFER_CHARS, MTU_DEFER_MAX_WAIT_MS, _noResumeTx, NET_TOR_PREFER_CHUNKS, FILE_GLOBAL_TIMEOUT_MS, PEER_SAFE_MAX_MS, BULK_PRIO, BULK_YIELD_MAX_MS, BULK_YIELD_STEP_MS, _b64BodyStart, _normMac, _isBusyErr, _busyBackoffMs, _fenixYieldBle, _netFileAutoRetry, NET_FILE_AUTORETRY_BUDGET_MS, _binOk, PROTOCOL_VERSION, _nxOf, _chunkCheck, LINK_DOWN_WAIT_FILE_MS, LINK_DOWN_WAIT_MAX_MS, TEXT_BUSY_GRACE_MS, PEER_SAFE_FIRST_MS, PEER_SAFE_CAP_MS, FENIX_SILENT_RETRIES, BRIDGE_STALL_RETRIES, _normId, BRIDGE_STALL_MS, NET_BIG_MIN_CHUNKS, NET_SILENT_FULL_RETRIES, NET_SILENT_PROBE_MS, SLEEP_FILE_RETRIES, SLEEP_PROBE_MS, SLEEP_PROBE_MAX_MS, NET_SMALL_PROBE_MS, _isFenixTx } from './ble_ack_shared.js';
+
+// 17: hasta cuántos trozos de internet (8000 letras c/u) sale un texto en una sola ventana (~200 KB; más largo, por ventanas como siempre)
+var NET_TEXT_WINDOW_MAX = 25;
 // 3272 (COLA 5, wifidirect.js --broken=fail): el HD de un vídeo (meta.hdFor) tiene su propio tope por Bluetooth (BLE_HD_MAX_CHARS, como en
 // ble_ack.js y ble_ack_files.js). Aquí se comparaba todo contra el tope de un archivo normal: si Wi-Fi Direct fallaba, el HD (3,4 M letras)
 // quedaba «demasiado grande para Bluetooth» y no salía nunca («HD interrumpido, se reintenta al reconectar»).
@@ -221,6 +224,11 @@ ChatStream.prototype._start0 = function() {
     }
     self._splitChunks();
     if (self.total === 0) { reject(new Error('Vacio')); return; }
+    // 17 (diagnósticos 19-11 21:34/21:48): un TEXTO por internet sale entero en UNA ventana. Con dos (8 + 2 trozos) el segundo
+    // tramo esperaba la confirmación del primero; con los relés perdiendo lo que le llega a quien envía (S23 con datos y ahorro de
+    // batería: no oía al S24 en ~17 min), se reenviaba el primero 8 veces, se abortaba y el otro tiraba lo incompleto («Assembly
+    // timeout»), una y otra vez. Los relés guardan cada trozo: con todos fuera el otro lo junta aunque sus confirmaciones no lleguen.
+    if (self.type === 'chat' && _isNetDevice(self.deviceId) && self.total > self.windowSize && self.total <= NET_TEXT_WINDOW_MAX) self.windowSize = self.total;
     if (self.type === 'file' && _isNetDevice(self.deviceId) && self.total > NET_TOR_PREFER_CHUNKS) {
       try { if (self.ble && self.ble.net && typeof self.ble.net.xferKeepAwake === 'function') { self.ble.net.xferKeepAwake(true); self._xferHeld = true; } } catch (e) {}
     }
@@ -577,6 +585,8 @@ ChatStream.prototype._onWindowTimeout = function() {
   for (var i = self._windowStartAtSend; i < self._windowEndAtSend; i++) {
     if (!self.ackedMask[i]) { allAcked = false; break; }
   }
+  // 17: por internet, una ventana sin confirmar puede ser que los relés perdieran lo que nos repartían en vivo: se les vuelve a pedir lo reciente
+  if (!allAcked && self.type === 'chat' && _isNetDevice(self.deviceId) && self.ble && self.ble.net && typeof self.ble.net.resync === 'function') { try { self.ble.net.resync(self.msgId, self.startTime - 5000); } catch (e) {} }
   console.log('[ChatStream] _onWindowTimeout. ventanaOriginal=[' + self._windowStartAtSend + ',' + self._windowEndAtSend + ') allAcked=' + allAcked + ' windowStartActual=' + self.windowStart + ' msgId=' + self.msgId);
   if (allAcked) {
     console.log('[ChatStream] Ventana original completa por ACKs tardios. Resolviendo. msgId=' + self.msgId);

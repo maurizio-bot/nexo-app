@@ -97,7 +97,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **TANDA 2 (siguiente sesión; la última, después solo pulido):** forma de trabajo del dueño 23-11: terminar la tanda, subir (CI ~85 min), y
   mientras compila avanzar la siguiente; CI en verde → subir lo siguiente; si falla, corregir SOLO ese fallo y subir. Agrupar lo más posible.
   Aviso programado: «Revisar CI de la APK 3298» a las 09:09 México (llega a esta sesión). Contenido de la tanda 2, en orden:
-  (a) **17 mensaje atorado en videollamada** (diag. 19-11 21:34/21:48, `docs/diagnosticos.json`): S23 con datos + ahorro de batería no oía la
+  (a) ✅ **HECHO 3299 (23-11, `[skip ci]`):** por internet un texto sale en UNA ventana (antes 8 + 2 trozos: el 2.º tramo esperaba una
+  confirmación que no llegaba) y, sin confirmación, se vuelve a pedir a los relés lo reciente (`net.resync`, freno 15 s, solo textos).
+  `textoatorado.js` (relés que pierden todo lo que le llega en vivo a quien envía): antes no llegaba; ahora 0,6 s y ✓✓ en 4,9 s. Original:
+  **17 mensaje atorado en videollamada** (diag. 19-11 21:34/21:48, `docs/diagnosticos.json`): S23 con datos + ahorro de batería no oía la
   presencia del S24 por relés («oído hace 312–1014 s»), un texto de 9 trozos por internet dio «Assembly timeout» en el S24 y «Buzón no
   disponible: Abortado» en el S23. Reproducir en tests/sim con relés que pierden eventos en un sentido y un texto largo por internet; mirar
   si un texto así debería ir en UN evento (NET_TEXT_ONE) o reanudarse en vez de abortar. (b) **18** decodificación de vídeo tras cambio de red

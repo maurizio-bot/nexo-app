@@ -4,6 +4,8 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 // Reestructuración 15-11: movidos TAL CUAL desde net_link.js, que los une a la clase (como métodos normales).
 // 3212: margen del `since` al (re)suscribir un relé: entre 2 y 10 min según el desfase visto en lo que llega en vivo (se recuerda 12 h)
 var SINCE_MARGIN_MIN_S = 120, SINCE_MARGIN_MAX_S = 600, LAG_KEEP_MS = 12 * 3600000;
+// 17: freno de resync (volver a pedir a los relés lo reciente cuando un envío no recibe confirmación)
+var RESYNC_MIN_GAP_MS = 15000;
 // 3249 (diagnósticos 19-11: Vivo 05:12 «Un sobre llegó 17565 s después de su hora: margen al reconectar 600 s», S24 05:23 «429 s»): lo que se
 // quedó parado en la conexión mientras ESTA app estaba congelada (pantalla apagada, el sistema la detuvo) se procesaba al volver como si
 // llegara «en vivo» y tarde: el margen subía al máximo (10 min) y se recordaba 12 h, así que cada vuelta a la app y cada «deslizar»
@@ -252,7 +254,19 @@ export const netRelays = {
     this._ownSync();
   },
 
-  _subscribe(r) {
+  // 17 (diagnósticos 19-11 21:34/21:48): un envío por internet sin confirmación aunque los relés contestan. Lo que un relé reparte
+  // EN VIVO se puede perder (S23 con datos y ahorro de batería: no oía al S24 en ~17 min con los relés «vivos»); lo guardado no. Se
+  // le vuelve a pedir a cada relé que se escucha lo de los últimos minutos (desde fromMs): la confirmación perdida entra así. Con freno.
+  resync(why, fromMs) {
+    var self = this, now = Date.now();
+    if (now - (self._resyncAt || 0) < RESYNC_MIN_GAP_MS) return 0;
+    self._resyncAt = now;
+    var n = 0;
+    self.relays.forEach(function(r) { if (r.open && r.ws && r.sub) { self._subscribe(r, fromMs); n++; } });
+    if (n) console.log('[NET] Sin confirmación de ' + (why || '?') + ': vuelvo a pedir a ' + n + ' relé(s) lo de los últimos ' + Math.round((now - fromMs) / 1000) + ' s'); // i18n-ok: registro
+    return n;
+  },
+  _subscribe(r, fromMs) {
     if (r.sub) this._send(r, ['CLOSE', r.sub]);
     // 3151: con el relé propio sano, este público solo publica (net_own.js). 3193: con datos móviles, tampoco escucha si no es de los 2
     if (!this._subWanted(r)) { r.sub = null; this._cellUnread(r); return; }
@@ -260,9 +274,11 @@ export const netRelays = {
     var from = this.state.lastSeen || (Date.now() - 2 * 86400000);
     // 3193: un relé que no se escuchó con datos móviles, al volver a escucharlo con Wi-Fi, desde que se dejó de escuchar (lo que un
     // contacto dejó solo en él mientras tanto, p. ej. si a él no le abrían los 2 que yo escuchaba). Con datos, lo de siempre.
-    var gap = this._unread && r.url ? this._unread.get(r.url) : undefined;
+    var gap = (this._unread && r.url && !(fromMs > 0)) ? this._unread.get(r.url) : undefined;   // 17: un resync no gasta el hueco pendiente
     if (gap !== undefined && !this._cellMode()) { from = Math.max(Math.min(from, gap), Date.now() - TTL_MSG * 1000); this._unread.delete(r.url); }
     var since = Math.max(0, Math.floor(from / 1000) - this._sinceMarginS());
+    // 17: resync: solo lo de desde que salió el envío (30 s de margen), no el margen largo de siempre (serían datos repetidos)
+    if (typeof fromMs === 'number' && fromMs > 0) since = Math.max(Math.floor((Date.now() - TTL_MSG * 1000) / 1000), Math.floor(fromMs / 1000) - 30);
     this._send(r, ['REQ', r.sub, { kinds: [KIND], '#p': Array.from(this.inTags.keys()).concat(Array.from(this.reqTags.keys())), since: since }]);
   },
 

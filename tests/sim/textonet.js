@@ -6,7 +6,8 @@
 // (se imita el ✓✓ firmado del NetBg); A le manda un texto largo:
 //  N1  A ve ✓✓ (el del nativo de B);
 //  N2  durante 40 s con B dormido, A reenvía la ventana como mucho 3 veces (antes, cada ~4 s) y el texto sigue ✓✓ (no vuelve a ⏳ ni ✗);
-//  N3  B despierta: el texto (varias ventanas de trozos: el resto sale cuando su app confirma la primera) le llega entero, una vez,
+//  N3  B despierta: el texto (17, 23-11: por internet va en UNA ventana con todos sus trozos; antes el resto salía cuando su app
+//      confirmaba la primera) le llega entero, una vez,
 //      en ≤ 20 s, y el envío de A termina.
 // Uso: node textonet.js <dir_build>
 'use strict';
@@ -129,7 +130,7 @@ function pickFile(p, name, b) {
   r.N3_una_vez = (await vaultMsgs(B, idA)).filter((m) => !m._own && m.content === largo).length;
   r.N3_terminado = await waitFor(() => !A.win.bleInterface.ackSystem.outgoingStreams.has(mid), 60000) !== null;
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|net::ERR|fetch/.test(l)).slice(0, 5);
-  const ok = r.en_internet && r.troceado && r.ventanas >= 2 && r.ack_firmado && r.N1_doble_palomita && r.N2_reenvios <= 3 && /delivered|read/.test(r.N2_estado || '') &&
+  const ok = r.en_internet && r.troceado && r.ventanas === 1 && r.ack_firmado && r.N1_doble_palomita && r.N2_reenvios <= 3 && /delivered|read/.test(r.N2_estado || '') &&
     r.N3_llega_s !== null && r.N3_llega_s <= 20 && r.N3_una_vez === 1 && r.N3_terminado && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('TEXTONET ' + JSON.stringify(r));

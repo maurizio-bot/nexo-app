@@ -576,6 +576,10 @@
      "prueba": "texto LARGO por internet con la app del otro dormida"
     },
     {
+     "fallo": "3299 (tanda 2, punto 17; diagnósticos S23 y S24 19-11 21:34/21:48, en videollamada): el S23 (datos + ahorro de batería) no oía al S24 por los relés (lo que le repartían en vivo se perdía) y un texto de 9 trozos al S24 quedó atorado ≥ 17 min: iba en 2 ventanas (8 + 2) y la 2.ª esperaba la confirmación de la 1.ª, que nunca le llegaba; a los 8 reintentos abortaba («Abortado», también la red de seguridad del buzón, que reutilizaba ese envío) y el S24 tiraba lo incompleto («Assembly timeout»). 3299: por internet un texto sale en UNA ventana (hasta 25 trozos, ~200 KB; los relés guardan cada trozo) y, sin confirmación, se vuelve a pedir a los relés lo de desde que salió (resync, con freno de 15 s). textoatorado.js: contraprueba 3298 = no llega en 90 s, Assembly timeout y Abortado; 3299 = llega en 0,6 s, una vez, ✓✓ en 4,9 s",
+     "prueba": "texto LARGO por internet con los relés perdiendo"
+    },
+    {
      "fallo": "3126 (atascos, PLAN etapa 1; dueño 15-11: «sigue con los atascos»): si el desatasco automático del cifrado (3069) se repetía con el mismo contacto sin arreglarse, nadie se enteraba. 3126: 3 desatascos en 30 min con el mismo contacto → diagnóstico automático «desatasco_bucle» y firma grave en el analizador, para verlo con datos (sin tocar el cifrado). desatascobucle.js (contraprueba 3125: nada)",
      "prueba": "DESATASCO que se REPITE"
     },
