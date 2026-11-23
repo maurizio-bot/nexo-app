@@ -3,9 +3,14 @@
 Regla: una sesión = un tema; una APK por tanda; antes de subir `tamano.js`, `i18n_audit.js` y las pruebas nuevas. Tallas: [c] chico, [m] medio, [g] grande.
 
 ## Abierto (en orden)
-1. [g] **Bluetooth entero en el servicio nativo** (🔴 1 de `docs/AREAS.md`): que vuelva solo tras morir/dormir (#87, Roberto 4 h sin NEXO) y
-   **puente nativo con la app dormida** (reenviar para otros sin la app). Fases 2–4 hechas (3263, 3268–3271, 3276, 3279–3281); falta el puente
-   y la vuelta sola. Con Fable, tras el reinicio semanal.
+1. [g] **Puente nativo con la app dormida** (🔴 1 y 5; DUEÑO 23-11 14:14: se hace YA con Opus, no se espera al reinicio del domingo;
+   ritmo ~6–7 % semanal por día; el 10 % de Fable se guarda para revisar el nativo antes de la APK). «Vuelve sola» ya existe (3189/3192:
+   arranque, actualización, alarma ~15 min); fases 2–4 hechas. FALTA: un paquete Jump para OTRO ('to' ≠ yo) que llega al nativo con la
+   app dormida/cerrada hoy no recibe custodia ('rk') → el que lo manda reintenta ×8 y queda ⏳ (vivo nx09acdb61, PENDIENTES 14-11).
+   Diseño a cerrar al empezar (leer solo esto): `ble_relay.js` cabecera (custodia 'rk', cola, ack de punta a punta) · `SinAppCore.kt`
+   (qué hace hoy con lo que llega) · `NetOutbox.kt` (¿puede subir un paquete ya cifrado para un NEXO que NO es contacto?) · `OutboxBle.kt`.
+   Paso 1 propuesto: el nativo da custodia y lo reenvía POR INTERNET al destino (NetOutbox, el contenido ya va cifrado para él); paso 2:
+   por Bluetooth si el destino tiene enlace con el nativo. Pruebas JVM (`tests/kotlin`) + sim de un puente dormido.
 2. [m] **13 MTU 23** (Vivo Y03, Katy): 3312 — con el enlace a MTU 23 el canal rápido L2CAP entra desde ~6 KB (antes ~45 KB); `l2mediano.js` caso `mtu23`.
 3. [m] **Wi-Fi Direct en teléfonos reales** (🔴 6): pruebas del dueño + «grupo siempre montado» si elige B (A/B pendiente de él).
 4. [m] **Llamadas**: gasto de datos por relés. «Sin imagen propia al contestar desde el aviso»: 3313 (la cámara se reabre aunque el WebView siga «oculto» si Android ya dice primer plano; `callmedia.js` 9b), por probar. Eco de grupo hecho (3301), por oír.
