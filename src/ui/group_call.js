@@ -215,7 +215,7 @@ export class GroupCall {
       else if (g.earlyOffers && g.earlyOffers.has(nx)) { self._signal(nx, 'accept', {}); l.state = 'active'; self._legUp(); } // 3106: me lo abrió mientras sonaba
       // #130 (dueño 31-10): si entro TARDE (me agregaron a una llamada ya en curso, late:1), abro el tramo con TODOS (los que
       // ya estaban no van a iniciar hacia mí); si no, la regla normal: el NEXO ID menor manda 'offer' y el otro espera.
-      else if (g.late || me < nx) { self._signal(nx, 'offer', {}); l.state = 'offering'; self._inviteTimeout(nx); }
+      else if (g.late || me < nx) { self._signal(nx, 'offer', { k: g.key }); l.state = 'offering'; self._inviteTimeout(nx); }
       else { l.state = 'waiting'; self._inviteTimeout(nx); } // el otro iniciará (#224: si no entra en 45 s, «No contestó», como en el que invita)
     });
   }
@@ -527,6 +527,12 @@ export class GroupCall {
     if (o.op === 'hold' || o.op === 'unhold') { // #222: el otro puso la llamada de grupo en espera (está en otra)
       var hl = g.legs.get(nx); if (hl) { hl.peerHeld = o.op === 'hold'; hl.lastRx = Date.now(); console.log('[GCALL] ' + nx + (hl.peerHeld ? ' te puso en espera' : ' volvió')); }
       self._set(null); return;
+    }
+    // Auditoría 23-11 (G-O4): abrir un tramo (offer/accept) solo quien está en la llamada, o quien entra TARDE (lo agregó otro: los
+    // demás aún no lo tienen en su lista) y lo prueba con la clave de la llamada, que solo da con la invitación alguien de dentro (la
+    // señal va cifrada E2E y solo a quien ya la tiene). Antes cualquier contacto con el id de la llamada se metía sin invitación.
+    if ((o.op === 'offer' || o.op === 'accept') && !g.roster.has(nx) && !(o.op === 'offer' && typeof o.k === 'string' && !!g.key && o.k === g.key)) {
+      console.warn('[GCALL] ' + o.op + ' de ' + nx + ' descartado: no está en la llamada'); return;
     }
     g.roster.add(nx);
     var l = self._leg(nx);

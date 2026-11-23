@@ -134,6 +134,7 @@ export function gsStepError(prev, next) {
   var a = next.by;
   if (!_has(prev.m, a)) return 'quien firma no era miembro';
   if (_has(prev.bl, a)) return 'quien firma está bloqueado';
+  if (_noop(prev, next) && !gsIsBoss(prev, a)) return 'cambio sin cambios de quien no manda'; // i18n-ok: registro
   var removed = _minus(prev.m, next.m), added = _minus(next.m, prev.m);
   var same = function(k) { return JSON.stringify(prev[k]) === JSON.stringify(next[k]); };
   // miembros: los que siguen, en el mismo orden; los nuevos, al final (la antigüedad decide quién hereda el mando)
@@ -204,17 +205,50 @@ export function gsWins(a, b, base) {
 }
 function _best(branch, base) { var b = branch[0]; branch.forEach(function(s) { if (_rank(base, s.by) < _rank(base, b.by)) b = s; }); return b; }
 function _leftIn(branch, who) { return branch.some(function(s) { return s.by === who && !_has(s.m, who); }); }
+// Posición (estados antes) de la SALIDA que firmó `who` en la rama (-1 si no salió en ella)
+function _exitAt(branch, who) { for (var i = 0; i < branch.length; i++) if (branch[i].by === who && !_has(branch[i].m, who)) return i; return -1; }
+// ¿La rama saca, bloquea o quita el cargo a alguno de `who` (sin ser él mismo quien firma)?
+function _hits(branch, base, who) {
+  var prev = base;
+  for (var i = 0; i < branch.length; i++) {
+    var s = branch[i], out = _minus(prev.m, s.m).concat(_minus(s.bl, prev.bl), _minus(prev.ad, s.ad));
+    if (out.some(function(x) { return x !== s.by && _has(who, x); })) return true;
+    prev = s;
+  }
+  return false;
+}
+var GS_RACE = 2;   // auditoría 23-11 (G-B1, dueño 10A): una CARRERA REAL deja atrás como mucho 2 estados
 // BIFURCACIÓN: dos ramas (listas de estados, la primera de cada una sale de `base`). ¿Gana `alt` sobre `mine`?
 // 1) Quien más manda en una rama y firmó su SALIDA en la otra no deshace esa salida (un creador que se fue no vuelve por la fuerza).
+//    Auditoría 23-11 (G-B2): si en las DOS ramas firma la salida el mismo (el creador que ya salió reescribe su salida para elegir
+//    heredero o expulsar antes de irse), gana la que tiene MENOS estados antes de esa salida; solo después, la huella.
 // 2) Gana la rama donde firmó quien más manda según `base` (así, quien fue expulsado o degradado no borra ese cambio abriendo
 //    una rama desde antes: quien lo hizo manda más que él). 3) En empate, como gsWins con el primer estado de cada rama.
+// 4) Auditoría 23-11 (G-B1, dueño 10A): si la que ganaría es de alguien que NO hace de creador, solo gana en una CARRERA REAL: la
+//    rama que se descarta mide 1–2 estados desde el punto común. Si mide más (ya estaba establecida) y no es más corta que la que
+//    ganaría, se queda ella (rellenar la propia no basta: hay que superarla, y un «sin cambios» solo lo firma quien manda). Sin esto un miembro con el NEXO ID menor «deshacía» hasta 15 cambios de otros (p. ej. un agregado)
+//    abriendo una rama desde antes. No vale para quien fue expulsado, bloqueado o degradado en la otra rama (no vuelve así).
+//    Igual en los dos teléfonos (depende solo de las dos ramas): los dos acaban en la misma.
 export function gsBranchWins(alt, mine, base) {
   var ba = _best(alt, base), bm = _best(mine, base);
   var aGone = _leftIn(mine, ba.by), mGone = _leftIn(alt, bm.by);
   if (aGone !== mGone) return mGone;
+  if (aGone && mGone && ba.by === bm.by) {
+    var ea = _exitAt(alt, ba.by), em = _exitAt(mine, bm.by);
+    if (ea !== em) return ea < em;
+    return gsWins(alt[0], mine[0], base);
+  }
   var ra = _rank(base, ba.by), rm = _rank(base, bm.by);
-  if (ra !== rm) return ra < rm;
-  return gsWins(alt[0], mine[0], base);
+  var w = ra !== rm ? ra < rm : gsWins(alt[0], mine[0], base);
+  var W = w ? alt : mine, L = w ? mine : alt, bw = w ? ba : bm;
+  if (!gsIsBoss(base, bw.by) && L.length > GS_RACE && L.length >= W.length && !_hits(W, base, L.map(function(s) { return s.by; }))) return !w;
+  return w;
+}
+
+// Un estado «sin cambios» (reafirmar) solo lo firma quien hace de creador (auditoría 23-11, G-B1: un miembro no rellena una rama
+// con estados vacíos para que parezca establecida)
+function _noop(prev, next) {
+  return ['cr', 'ad', 'md', 'ow', 'oa', 'm', 'bl', 'n', 'ph'].every(function(k) { return JSON.stringify(prev[k]) === JSON.stringify(next[k]); });
 }
 
 // Estado nuevo a partir de `prev` con cambios `ch` (sin firmar: falta sg). Lo usa quien hace el cambio.

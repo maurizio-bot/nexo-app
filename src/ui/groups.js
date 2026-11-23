@@ -155,6 +155,9 @@ export class Groups {
     if (cards && cards.length) envO.k = cards;
     if (g.s) { envO.sv = g.s.v; envO.n = g.s.n; if (typeof self._headId === 'function') envO.sh = self._headId(g); }
     if (extra) Object.keys(extra).forEach(function(k) { if (extra[k] !== undefined) envO[k] = extra[k]; });
+    // Auditoría 23-11 (G-L1): la pregunta «mándame tu estado» (q) no lleva el nombre ni la lista de miembros (no le hacen falta a
+    // quien contesta y no se filtran si la pregunta va a quien no debía)
+    if (envO.q) { delete envO.n; envO.m = []; delete envO.k; }
     var env = JSON.stringify(envO);
     self.st[msgId] = { g: g.id, m: {}, t: Date.now(), k: env.length <= KEEP_MAX_CHARS ? 1 : 0 };
     to.forEach(function(nx) { self.st[msgId].m[nx] = 'sending'; });

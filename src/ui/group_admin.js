@@ -13,7 +13,7 @@
  *   pi la foto del grupo (data URL), solo cuando el cambio la trae (su huella va firmada en el estado: ph)
  * El texto (c) de un cambio lleva gs:1: el que recibe NO lo muestra; escribe él mismo el aviso con lo que de verdad cambió.
  */
-import { gsClean, gsVerify, gsImplicit, gsCan, gsStepError, gsJumpError, gsBranchWins, gsNext, gsDiff, gsSigned, gsSigToB64, gsIsBoss, gsOpen, gsId, GS_LOG_KEEP, GS_CHAIN_SEND, GS_MAX_MEMBERS } from './group_state.js';
+import { gsClean, gsVerify, gsImplicit, gsCan, gsStepError, gsJumpError, gsGenesisError, gsBranchWins, gsNext, gsDiff, gsSigned, gsSigToB64, gsIsBoss, gsOpen, gsId, GS_LOG_KEEP, GS_CHAIN_SEND, GS_MAX_MEMBERS } from './group_state.js';
 import { e2eSign, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 import { _getBLEContacts } from './ble_helpers.js';
 import { stageBlob, fetchBlob, validatePointer, _bytesToB64, _b64ToBytes } from '../net/blob_mailbox.js';
@@ -66,6 +66,24 @@ export var groupAdminMethods = {
   // Huella entera de mi estado (la que lleva en p el cambio siguiente) y su principio (viaja en cada sobre: sh)
   stateId(gid) { var g = this.get(gid); return g && g.s ? gsId(g.s) : ''; },
   _headId(g) { return g && g.s ? gsId(g.s).substring(0, SH_LEN) : undefined; },
+  // ¿`nx` es miembro según MI estado (o, en un grupo viejo sin estado, según mi lista)?
+  _isMember(g, nx) { nx = _nid(nx); return !!g && (g.s ? g.s.m : (g.members || []).map(_nid)).indexOf(nx) >= 0; },
+  // ¿Lo que manda `nx` dice que es miembro (el último estado bien formado)? Así entra lo de un recién agregado cuyo agregado aún
+  // no me llegó; las firmas y los pasos se comprueban igual al aplicarlo
+  _claims(raw, nx, gid) {
+    var top = null;
+    raw.slice(0, GS_LOG_KEEP + GS_CHAIN_SEND).forEach(function(x) { var c = gsClean(x); if (c && c.g === gid && (!top || c.v > top.v)) top = c; });
+    return !!top && top.m.indexOf(_nid(nx)) >= 0;
+  },
+  // Auditoría 23-11 (G-O2): ¿sirve este estado para ENTRAR al grupo? Nunca un grupo «abierto» (sin creador ni admins: ya no se
+  // crean, punto 27); una creación (v1) la firma el creador (gsGenesisError), salvo el primer cambio de un grupo VIEJO (punto 24):
+  // lo firma un miembro sobre el estado implícito, así que el creador es el único admin y nada de los ajustes cambió
+  _joinError(top) {
+    if (gsOpen(top)) return 'grupo abierto';
+    if (top.v !== 1 || !gsGenesisError(top)) return null;
+    if (top.cr && top.cr !== top.by && top.ad.length === 1 && top.ad[0] === top.cr && top.md === 'o' && !top.ow && !top.oa && !top.bl.length) return null;
+    return gsGenesisError(top);
+  },
   _logPut(g, s) {
     g.sl = (g.sl || []).filter(function(x) { return x.v < s.v; });
     g.sl.push(s);
@@ -167,6 +185,7 @@ export var groupAdminMethods = {
     img = img || '';
     if (img && (!PH_RE.test(img) || img.length > PH_MAX)) return Promise.reject(new Error(t('grp_err_photo', 'Esa foto no sirve')));
     var self = this, ph = groupPhotoHash(img);
+    if (ph === (this.state(gid).ph || '')) return Promise.resolve(this.state(gid));   // la misma foto: nada que cambiar
     return this.change(gid, { ph: ph }, { notice: '👥 ' + (img ? t('grp_n_photo', 'Foto del grupo nueva') : t('grp_n_photo0', 'Se quitó la foto del grupo')), pi: img || undefined }).then(function(s) { self._photoPut(gid, ph, img); return s; });
   },
   // Salir con estado firmado (si soy el creador, el mando pasa al admin más antiguo y, si no hay, al miembro más antiguo)
@@ -210,13 +229,19 @@ export var groupAdminMethods = {
     var self = this, gid = _nid(env.g), g = this.list[gid], me = this._me(), inner = _inner(env.c);
     if (Array.isArray(env.k)) { this._cardKeys = {}; env.k.forEach(function(c) { var id = _nid(c && c.nexoId); if (/^nx[0-9a-z]{8}$/.test(id) && typeof c.publicKey === 'string') self._cardKeys[id] = c.publicKey; }); }
     try {
-      if (Array.isArray(env.s) && env.s.length) {
+      // Auditoría 23-11 (G-L1): los estados de quien NO es miembro de mi estado ni dice serlo en lo que manda no se miran (antes
+      // se aplicaban y, con el hueco, se le pedía el estado: sacaba nombre y lista de miembros y hacía bajar copias de relés suyos)
+      if (Array.isArray(env.s) && env.s.length && g && g.s && !g.pend && !this._isMember(g, from) && !this._claims(env.s, from, gid)) {
+        console.warn('[GROUP] Estados de ' + gid + ' de ' + from + ' (no es miembro) descartados');
+        if (inner && inner.gs) return { ret: null };
+      } else if (Array.isArray(env.s) && env.s.length) {
         var res = this._applyChain(gid, env.s, from, env);
         g = this.list[gid];
         if (g && !g.left && res.applied.length) this._takeCards(g, env, from);
         this._gapN = this._gapN || {};
         if (res.applied.length) delete this._gapN[gid];
-        if (res.gap && g) {
+        // G-L1: pedir el estado y bajar la copia del buzón, solo a un miembro de MI estado (o quien hace de creador, que lo es)
+        if (res.gap && g && this._isMember(g, from)) {
           this._askState(gid, from);
           if (env.sp) this._fetchCopy(gid, env.sp, env.s);
           // Si ni con todo lo que guarda `from` me engancho (segunda vez seguida), se lo digo a quien hace de creador («atascado»):
@@ -282,7 +307,9 @@ export var groupAdminMethods = {
       var top = chain[chain.length - 1];
       // Auditoría 23-11 (G-O1): un grupo VIEJO (sin estado firmado) solo lo puede «tomar» quien ya estaba en su lista
       var oldOk = !oldLate || ((g.members || []).map(_nid).indexOf(_nid(from)) >= 0 && (g.members || []).map(_nid).indexOf(_nid(top.by)) >= 0);
-      var ok = oldOk && top.m.indexOf(me) >= 0 && top.m.indexOf(from) >= 0 && top.m.indexOf(top.by) >= 0 && (!g || !g.s || top.v > g.s.v) && this._verify(top, true);
+      var jerr = oldLate ? null : this._joinError(top);
+      if (jerr) console.warn('[GROUP] Estado de ' + gid + ' (de ' + from + ') para entrar descartado: ' + jerr);
+      var ok = oldOk && !jerr && top.m.indexOf(me) >= 0 && top.m.indexOf(from) >= 0 && top.m.indexOf(top.by) >= 0 && (!g || !g.s || top.v > g.s.v) && this._verify(top, true);
       if (!ok) { if (!g || g.pend) console.warn('[GROUP] Estado de ' + gid + ' (de ' + from + ') no sirve para entrar al grupo'); return { applied: applied, gap: false }; }
       var prev = g && g.s ? g.s : null;
       if (!g) g = this.list[gid] = { id: gid, name: top.n, members: top.m.slice(), createdBy: top.cr || top.by, createdAt: Date.now(), lastMessageAt: 0, unreadCount: 0 };
@@ -319,7 +346,7 @@ export var groupAdminMethods = {
         // Grupo VIEJO (sin estado): su primer estado firmado. Cada teléfono apuntó como creador a quien le mandó el primer
         // mensaje (puede no coincidir), así que aquí vale el creador que dice el estado si es miembro: la app aún no está en la
         // tienda y los grupos viejos son los de las pruebas (no engordar con más reglas para ellos).
-        if (s.v !== 1) return;
+        if (s.v !== 1 || gsOpen(s)) return;   // G-O2: nunca un grupo «abierto»
         var imp = gsImplicit(g);
         var cr = s.cr && imp.m.indexOf(s.cr) >= 0 ? s.cr : null;
         imp.cr = cr; imp.ad = cr ? [cr] : [];
@@ -385,7 +412,7 @@ export var groupAdminMethods = {
     g.members = s.m.slice();
     g.name = s.n;
     var by = applied[applied.length - 1].next.by, wasOut = !!(g.kicked || g.left), gone = false;
-    if (!inNow && mine) g.left = true;                 // mi propia salida: fuera, pero no «expulsado»
+    if (!inNow && mine) { g.left = true; g.lv = gsId(s); }   // mi propia salida: fuera, pero no «expulsado» (lv: cuál fue)
     else if (!inNow && !g.left && !g.kicked) {
       // Expulsado (dueño 22-11, opción B): el grupo DESAPARECE de su lista (como al salir); solo un aviso de por qué.
       // Lo guardado no se borra: si lo vuelven a agregar, el grupo vuelve como estaba.
@@ -393,7 +420,12 @@ export var groupAdminMethods = {
       _toast('🚫 ' + t('grp_n_you_out', 'Te expulsaron del grupo') + ' «' + g.name + '»');
     } else if (inNow && g.kicked && !applied.some(function(a) { return a.join; })) {
       // La expulsión perdió un cruce (o se deshizo): vuelvo a estar dentro
-      g.kicked = false; g.left = false;
+      g.kicked = false; g.left = false; delete g.lv;
+      self._notice(g.id, by, '👥 ' + t('grp_n_you_in', 'Te agregaron al grupo'));
+    } else if (inNow && g.left && !g.kicked && !mine && g.lv && (g.sl || []).some(function(x) { return gsId(x) === g.lv; })) {
+      // Auditoría 23-11 (G-O3): mi salida SIGUE en la cadena y un estado posterior me vuelve a meter: me agregaron otra vez (antes
+      // se tomaba por una salida que perdió un cruce y se repetía en silencio: quien salió por su cuenta no podía volver)
+      g.left = false; delete g.lv;
       self._notice(g.id, by, '👥 ' + t('grp_n_you_in', 'Te agregaron al grupo'));
     } else if (inNow && g.left && !g.kicked && !mine) {
       // Salí yo y mi salida perdió un cruce con otro cambio: la repito sobre el estado de ahora (sin avisos aquí: ya no lo veo)
@@ -448,6 +480,8 @@ export var groupAdminMethods = {
   // ---- ponerse al día ----
   _syncCheck(g, env, from) {
     if (env.sv === undefined) return;
+    // Auditoría 23-11 (G-L2): solo con miembros de mi estado (el teléfono de quien salió no entrega estados ni tarjetas a cualquiera)
+    if (!g.s || g.s.m.indexOf(_nid(from)) < 0) return;
     var sv = Number(env.sv) || 0, v = g.s ? g.s.v : 0;
     // fuera aquí y dentro allí: le pido su estado y le mando el mío (con mi salida); en los dos gana la misma rama
     if (g.left || g.kicked) { if (this._throttle('o|' + g.id + '|' + from, 10 * SYNC_EVERY_MS)) { this._askState(g.id, from); this._pushState(g.id, from); } return; }
