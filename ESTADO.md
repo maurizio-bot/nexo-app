@@ -105,7 +105,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   disponible: Abortado» en el S23. Reproducir en tests/sim con relés que pierden eventos en un sentido y un texto largo por internet; mirar
   si un texto así debería ir en UN evento (NET_TEXT_ONE) o reanudarse en vez de abortar. (b) ✅ **18 HECHO 3300:** la conexión directa «disconnected» > 4 s = cortada (antes se esperaba el «failed» de
   ~30 s; `call_p2p.js` DISC_MS); `cambiored.js --mudo`: 29 s → 8 s. (c) ✅ **25 HECHO 3301:** en grupo los decodificadores no avisaban al filtro del micrófono lo que sonaba (y el filtro
-  tiraba los tramos cruzados): ahora sí (`onFar`/`farExt`, `call_voice_fx` con solapes). `voicefx.js` eco_grupo 3,7 → 18,1 dB. Falta oírlo en teléfonos. (d) **24** datos repetidos de los relés al abrir en frío (4,4 de 5,3 MB): son las copias
+  tiraba los tramos cruzados): ahora sí (`onFar`/`farExt`, `call_voice_fx` con solapes). `voicefx.js` eco_grupo 3,7 → 18,1 dB. Falta oírlo en teléfonos. (d) **24 (SIGUE AQUÍ, sesión nueva)** — nota 23-11: la repetición es la de N relés leyendo el atraso (con 6, 5/6 = 83 %, cuadra con
+  4,4 de 5,3 MB). Idea a medir en sim: con Wi-Fi hacer lo que ya hace 3193 con datos (los 2 primeros de la lista fija leen el atraso; el
+  resto solo en vivo, `since` = ahora) y que el que ENVÍA se asegure el OK de esos 2 (si no, a los siguientes). Riesgo: un sobre que solo
+  aceptaron relés 3–6. Si no se demuestra «nada perdido», plantearlo al dueño como A/B. Original: **24** datos repetidos de los relés al abrir en frío (4,4 de 5,3 MB): son las copias
   de cada relé (`_subscribe` pide a TODOS desde `lastSeen`); NO recortar relés (principio del dueño): estudiar pedir lo atrasado completo
   a 2 relés y a los demás solo lo nuevo + rellenar huecos, solo si se demuestra que no se pierde nada. (e) **31** vista previa de enlaces
   (decidida: la baja quien recibe, por Tor). (f) 14A toque firmado (cambia `push-sender/cloudflare/worker.js`: el DUEÑO lo publica con
