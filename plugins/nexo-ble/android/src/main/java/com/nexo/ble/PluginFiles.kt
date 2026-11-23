@@ -31,11 +31,19 @@ import java.io.FileOutputStream
 
 // ===== Archivos recibidos: abrir con otra app y miniatura de PDF =====
 
-// Nombre seguro para un archivo en la caché (llega del otro teléfono)
-private fun NexoBlePlugin.safeFileName(name: String?): String {
-    val clean = (name ?: "").substringAfterLast('/').substringAfterLast('\\')
-        .replace(Regex("[^A-Za-z0-9._ ()\\-]"), "_").trim().trimStart('.')
-    return (if (clean.isEmpty()) "archivo" else clean).take(80)
+// Nombre seguro para un archivo en la caché (llega del otro teléfono). I-S1/T-A1: la regla vive en OpenType (sin control ni
+// RTL, tope 80 conservando la extensión), la misma que aplica la interfaz (store_flag.js).
+private fun NexoBlePlugin.safeFileName(name: String?): String = OpenType.safeName(name)
+
+// Tipo con el que se abre (OpenType.mimeFor con el MimeTypeMap de Android)
+private fun openMime(name: String, claimed: String?): String =
+    OpenType.mimeFor(name, claimed) { e -> android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(e) }
+
+// Con la bandera de tienda (store:true, la manda file_card.js) una APK no se abre con el instalador: Google Play no lo admite.
+private fun storeRefusesApk(call: PluginCall, mime: String): Boolean {
+    if (mime != OpenType.APK || call.getBoolean("store", false) != true) return false
+    call.resolve(JSObject().put("opened", false).put("reason", "store_apk"))
+    return true
 }
 
 private fun NexoBlePlugin.writeCacheFile(dirName: String, name: String, b64: String): File {
@@ -54,14 +62,12 @@ private fun NexoBlePlugin.writeCacheFile(dirName: String, name: String, b64: Str
 internal fun NexoBlePlugin.openFileImpl(call: PluginCall) {
     val b64 = call.getString("base64") ?: run { call.reject("base64 requerido"); return }
     val name = safeFileName(call.getString("name"))
-    var mime = call.getString("mime") ?: ""
-    if (!mime.contains('/')) {
-        mime = android.webkit.MimeTypeMap.getSingleton()
-            .getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream"
-    }
+    // I-S1/T-A1: «es APK» se decide aquí, sobre el nombre ya saneado; un tipo que no cuadra con la extensión (o html/svg) se
+    // abre como octet-stream, y un tipo de APK sin «.apk» no llega al instalador.
+    val mime = openMime(name, call.getString("mime"))
+    if (storeRefusesApk(call, mime)) return
     try {
-        val isApk = mime == "application/vnd.android.package-archive" || name.lowercase().endsWith(".apk")
-        if (isApk) mime = "application/vnd.android.package-archive"
+        val isApk = mime == OpenType.APK
         if (isApk && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !context.packageManager.canRequestPackageInstalls()) {
             // Android pide permitir a NEXO instalar apps (una sola vez)
@@ -433,13 +439,12 @@ internal fun NexoBlePlugin.bigSendL2Impl(call: PluginCall) {
 internal fun NexoBlePlugin.bigOpenImpl(call: PluginCall) {
     val id = BigFile.safeId(call.getString("id") ?: "")
     val name = safeFileName(call.getString("name"))
-    var mime = call.getString("mime") ?: ""
-    if (!mime.contains('/')) mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream"
+    val mime = openMime(name, call.getString("mime"))   // I-S1/T-A1: igual que openFileImpl
+    if (storeRefusesApk(call, mime)) return
     val enc = BigFile.encFile(bigDir(), id)
     if (!enc.exists()) { call.resolve(JSObject().put("opened", false).put("reason", "missing")); return }
     val key = try { BigFile.key(call.getString("key") ?: "") } catch (e: Exception) { call.reject("clave no válida"); return }
-    val isApk = mime == "application/vnd.android.package-archive" || name.lowercase().endsWith(".apk")
-    if (isApk) mime = "application/vnd.android.package-archive"
+    val isApk = mime == OpenType.APK
     if (isApk && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
         activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + context.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         call.resolve(JSObject().put("opened", false).put("reason", "install_permission")); return

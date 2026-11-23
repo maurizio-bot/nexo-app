@@ -1,0 +1,200 @@
+{
+ "_nota": "I-S1/T-A1 (auditor\u00eda 23-11): casos compartidos por OpenType.kt (tests/kotlin OpenTypeTest) y store_flag.js (tests/sim/abrirtipo.js). byExt imita el MimeTypeMap de Android.",
+ "byExt": {
+  "pdf": "application/pdf",
+  "apk": "application/vnd.android.package-archive",
+  "jpg": "image/jpeg",
+  "png": "image/png",
+  "txt": "text/plain",
+  "html": "text/html",
+  "svg": "image/svg+xml",
+  "zip": "application/zip",
+  "mp4": "video/mp4",
+  "m4a": "audio/mp4",
+  "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+ },
+ "casos": [
+  {
+   "name": "x.apk",
+   "mime": "application/vnd.android.package-archive",
+   "safe": "x.apk",
+   "apk": true,
+   "open": "application/vnd.android.package-archive"
+  },
+  {
+   "name": "x.apk ",
+   "mime": "application/pdf",
+   "safe": "x.apk",
+   "apk": true,
+   "open": "application/vnd.android.package-archive"
+  },
+  {
+   "name": "  X.APK\t",
+   "mime": "",
+   "safe": "X.APK",
+   "apk": true,
+   "open": "application/vnd.android.package-archive"
+  },
+  {
+   "name": "factura\u202efdp.apk",
+   "mime": "application/pdf",
+   "safe": "facturafdp.apk",
+   "apk": true,
+   "open": "application/vnd.android.package-archive"
+  },
+  {
+   "name": "x.apk\u202e",
+   "mime": "application/pdf",
+   "safe": "x.apk",
+   "apk": true,
+   "open": "application/vnd.android.package-archive"
+  },
+  {
+   "name": "x.apk\u0000",
+   "mime": "application/pdf",
+   "safe": "x.apk",
+   "apk": true,
+   "open": "application/vnd.android.package-archive"
+  },
+  {
+   "name": "x.apk\u2066\u200f",
+   "mime": "application/pdf",
+   "safe": "x.apk",
+   "apk": true,
+   "open": "application/vnd.android.package-archive"
+  },
+  {
+   "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.apk",
+   "mime": "application/pdf",
+   "safe": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.apk",
+   "apk": true,
+   "open": "application/vnd.android.package-archive"
+  },
+  {
+   "name": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "mime": "",
+   "safe": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "apk": false,
+   "open": "application/octet-stream"
+  },
+  {
+   "name": "documento.pdf",
+   "mime": "application/vnd.android.package-archive",
+   "safe": "documento.pdf",
+   "apk": false,
+   "open": "application/octet-stream"
+  },
+  {
+   "name": "sin_extension",
+   "mime": "application/vnd.android.package-archive",
+   "safe": "sin_extension",
+   "apk": false,
+   "open": "application/octet-stream"
+  },
+  {
+   "name": "documento.pdf",
+   "mime": "application/pdf",
+   "safe": "documento.pdf",
+   "apk": false,
+   "open": "application/pdf"
+  },
+  {
+   "name": "documento.pdf",
+   "mime": "text/html",
+   "safe": "documento.pdf",
+   "apk": false,
+   "open": "application/octet-stream"
+  },
+  {
+   "name": "foto.jpg",
+   "mime": "image/svg+xml",
+   "safe": "foto.jpg",
+   "apk": false,
+   "open": "application/octet-stream"
+  },
+  {
+   "name": "pagina.html",
+   "mime": "text/plain",
+   "safe": "pagina.html",
+   "apk": false,
+   "open": "application/octet-stream"
+  },
+  {
+   "name": "dibujo.svg",
+   "mime": "",
+   "safe": "dibujo.svg",
+   "apk": false,
+   "open": "application/octet-stream"
+  },
+  {
+   "name": "foto.jpg",
+   "mime": "image/png",
+   "safe": "foto.jpg",
+   "apk": false,
+   "open": "image/jpeg"
+  },
+  {
+   "name": "foto.jpg",
+   "mime": "application/pdf",
+   "safe": "foto.jpg",
+   "apk": false,
+   "open": "application/octet-stream"
+  },
+  {
+   "name": "nota.m4a",
+   "mime": "audio/x-m4a",
+   "safe": "nota.m4a",
+   "apk": false,
+   "open": "audio/mp4"
+  },
+  {
+   "name": "x.zip",
+   "mime": "",
+   "safe": "x.zip",
+   "apk": false,
+   "open": "application/zip"
+  },
+  {
+   "name": "raro.xyz",
+   "mime": "application/x-raro",
+   "safe": "raro.xyz",
+   "apk": false,
+   "open": "application/x-raro"
+  },
+  {
+   "name": "../../x/.bashrc",
+   "mime": "text/plain",
+   "safe": "bashrc",
+   "apk": false,
+   "open": "text/plain"
+  },
+  {
+   "name": "",
+   "mime": "",
+   "safe": "archivo",
+   "apk": false,
+   "open": "application/octet-stream"
+  },
+  {
+   "name": "carta (1).docx",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document; charset=x",
+   "safe": "carta (1).docx",
+   "apk": false,
+   "open": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  },
+  {
+   "name": "x.apk.",
+   "mime": "application/vnd.android.package-archive",
+   "safe": "x.apk.",
+   "apk": false,
+   "open": "application/octet-stream"
+  },
+  {
+   "name": "Mam\u00e1 \u00f1.pdf",
+   "mime": "application/pdf",
+   "safe": "Mam_ _.pdf",
+   "apk": false,
+   "open": "application/pdf"
+  }
+ ]
+}

@@ -92,12 +92,16 @@ const PAYLOADS = [
   r.bundle_sin_on_en_plantillas = !/<[a-z][^<>'"]*\son(error|load|click|input|change|submit|mouse\w+|touch\w+|key\w+|focus|blur)\s*=/i.test(bundle);
   r.bundle_sin_eval = !/[^\w.$]eval\s*\(\s*['"`]|\(0,\s*eval\)|window\.eval\b/.test(bundle) &&
     (bundle.match(/new Function\(/g) || []).length <= 1;
-  r.build_por_meta = A.win.NEXO_BUILD === '__NEXO_BUILD__' && A.win.NEXO_STORE === '__NEXO_STORE__';
+  // 6. X4 (auditoría 23-11): el aviso de permiso arma su texto con nodos, sin innerHTML
+  const bits = fs.readFileSync(path.join(buildDir, 'src', 'ui', 'ui_bits.js'), 'utf8');
+  const fnPerm = (bits.match(/export function _showPermissionError[\s\S]*?\n}\n/) || [''])[0];
+  r.aviso_permiso_sin_innerHTML = fnPerm.length > 0 && !/\.innerHTML\s*=/.test(fnPerm);
+  r.build_por_meta =A.win.NEXO_BUILD === '__NEXO_BUILD__' && A.win.NEXO_STORE === '__NEXO_STORE__';
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|is not a function|RangeError/.test(l)).slice(0, 4);
   const ok = r.chat_abre && r.burbujas >= PAYLOADS.length && r.sin_elementos_inyectados && r.sin_ejecucion &&
     r.texto_literal && r.csp_endurecida && r.csp_sin_inline_eval && r.html_sin_script_en_linea && r.bundle_sin_on_en_plantillas &&
-    r.bundle_sin_eval && r.build_por_meta && r.errores.length === 0;
+    r.bundle_sin_eval && r.build_por_meta && r.aviso_permiso_sin_innerHTML && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('XSS ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_xss.txt'), logs.join('\n'));
