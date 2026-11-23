@@ -14,11 +14,12 @@
  *   g  id del grupo          v  versión (1 = creación; 0 = grupo viejo sin estado, implícito y sin firma)
  *   p  huella del estado anterior ('' en v1)
  *   cr creador (o null)      ad administradores por antigüedad (el creador, el primero)
- *   md 'c' control | 'o' colegas      ow 1 = solo admins escriben      oa 1 = solo admins agregan (en control, siempre)
+ *   md 'c' nombre y foto, solo admins (y expulsan ellos) | 'o' todos (expulsar, solo el creador)
+ *   ow 1 = solo admins escriben      oa 1 = solo admins agregan
  *   m  miembros (≤ 32)       bl bloqueados en ESTE grupo (≤ 64)       n nombre       ph huella de la foto del grupo ('' sin)
  *   by quien firma           t  cuándo (su reloj; solo informativo)  sg firma (base64, 64 bytes r||s)
  * Permisos (los hace cumplir el que recibe): escribir: todos, o solo admins con ow. Nombre y foto: en control, admins; en colegas,
- * todos. Agregar: admins en control o con oa; si no, todos. Expulsar a un miembro normal: en control, un admin; en colegas, el
+ * todos. Agregar: admins con oa; si no, todos (dueño 23-11: cada cosa se elige aparte en «Personalizado»). Expulsar a un miembro normal: en control, un admin; en colegas, el
  * creador. Expulsar a un admin, bloquear, desbloquear, quitar admins y cambiar modo o interruptores: solo el creador. Designar
  * admins: un admin. El creador no es expulsable. Salir: siempre. Si sale el creador, el mando pasa al admin más antiguo y, si no
  * hay admins, al MIEMBRO más antiguo (dueño 22-11: un grupo nunca se queda sin quien mande; antes quedaba «abierto» y cualquiera
@@ -113,7 +114,7 @@ export function gsCan(s, x, what, target) {
   switch (what) {
     case 'write': return !s.ow || gsIsAdmin(s, x);
     case 'edit': return s.md === 'o' || gsIsAdmin(s, x);                    // nombre y foto (y compartir el fondo)
-    case 'add': return (s.md === 'c' || s.oa) ? gsIsAdmin(s, x) : true;
+    case 'add': return s.oa ? gsIsAdmin(s, x) : true;
     case 'kick': {
       var tg = _nid(target);
       if (!_has(s.m, tg) || tg === x || tg === s.cr) return false;        // al creador, nunca
@@ -173,9 +174,9 @@ export function gsStepError(prev, next) {
   return null;
 }
 
-// Creación (v1): quien firma es el creador, único admin, sin bloqueados
+// Creación (v1): quien firma es el creador y el primer admin (puede nombrar más al crear, dueño 23-11), sin bloqueados
 export function gsGenesisError(s) {
-  if (s.v !== 1 || s.cr !== s.by || JSON.stringify(s.ad) !== JSON.stringify([s.by]) || s.bl.length) return 'creación no válida';
+  if (s.v !== 1 || s.cr !== s.by || s.ad[0] !== s.by || s.bl.length) return 'creación no válida';
   return null;
 }
 

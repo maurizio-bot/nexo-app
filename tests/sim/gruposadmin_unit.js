@@ -24,7 +24,7 @@ global.atob = global.atob || ((s) => Buffer.from(s, 'base64').toString('binary')
   const ok = (prev, next) => G.gsStepError(prev, next) === null;
   const { a, b, c, d, e } = ids;
   // v1: A crea en modo CONTROL con B, C, D; solo admins escriben
-  const s1 = await sign({ g: 'grtest0001', v: 1, cr: a, ad: [a], md: 'c', ow: 1, oa: 0, m: [a, b, c, d], bl: [], n: 'Equipo', ph: '', by: a, t: 1, sg: '' });
+  const s1 = await sign({ g: 'grtest0001', v: 1, cr: a, ad: [a], md: 'c', ow: 1, oa: 1, m: [a, b, c, d], bl: [], n: 'Equipo', ph: '', by: a, t: 1, sg: '' });
   r.firma_valida = G.gsVerify(s1, keys[a].pub) && G.gsGenesisError(s1) === null;
   r.firma_de_otro_no = !G.gsVerify(s1, keys[b].pub);
   { const x = Object.assign({}, s1, { n: 'Cambiado' }); r.estado_tocado_no_vale = !G.gsVerify(x, keys[a].pub); }
@@ -86,6 +86,13 @@ global.atob = global.atob || ((s) => Buffer.from(s, 'base64').toString('binary')
   // grupo viejo (sin estado): el creador queda como único admin en modo colegas (todo sigue igual que antes)
   { const im = G.gsImplicit({ id: 'grtest0004', name: 'Viejo', members: [a, b, c], createdBy: a }); r.grupo_viejo = im.v === 0 && im.cr === a && im.ad.join() === a && im.md === 'o' && G.gsCan(im, b, 'write') && G.gsCan(im, b, 'add') && !G.gsCan(im, b, 'kick', c) && G.gsCan(im, a, 'kick', c);
     const v1 = await sign(G.gsNext(im, a, { ad: [a, b] })); r.grupo_viejo_primer_estado = ok(im, v1) && v1.v === 1 && !ok(im, await sign(G.gsNext(im, b, { ad: [a, b] }))); }
+  // dueño 23-11 («Personalizado»): agregar se elige aparte del resto; al crear se pueden nombrar más administradores
+  { const p1 = await sign({ g: 'grtest0005', v: 1, cr: a, ad: [a], md: 'c', ow: 0, oa: 0, m: [a, b, c], bl: [], n: 'P', ph: '', by: a, t: 1, sg: '' });
+    r.agregar_aparte_del_modo = G.gsCan(p1, c, 'add') && !G.gsCan(p1, c, 'edit') && G.gsCan(p1, c, 'write');
+    const p2 = await sign({ g: 'grtest0006', v: 1, cr: a, ad: [a, b], md: 'c', ow: 1, oa: 1, m: [a, b, c], bl: [], n: 'P', ph: '', by: a, t: 1, sg: '' });
+    r.crear_con_admins = G.gsGenesisError(p2) === null && G.gsCan(p2, b, 'write') && !G.gsCan(p2, c, 'write');
+    const p3 = await sign({ g: 'grtest0007', v: 1, cr: a, ad: [a], md: 'o', ow: 0, oa: 0, m: [a, b, c], bl: [b], n: 'P', ph: '', by: a, t: 1, sg: '' });
+    r.crear_con_bloqueados_no = p3 === null || G.gsGenesisError(p3) !== null; }
   const fails = Object.keys(r).filter((k) => r[k] === false);
   r.resultado = fails.length ? 'FALLO' : 'OK';
   if (fails.length) r.fallan = fails;

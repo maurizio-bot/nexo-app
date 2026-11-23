@@ -107,11 +107,15 @@ export var groupAdminMethods = {
       return s;
     });
   },
-  // Estado de creación (v1) de un grupo nuevo: lo firma el creador; devuelve los estados para el primer sobre
+  // Estado de creación (v1) de un grupo nuevo: lo firma el creador; devuelve los estados para el primer sobre.
+  // o: { md, ow, oa, ad: administradores elegidos al crear (además del creador) } (o, como antes, md y ow sueltos)
   signGenesis(gid, md, ow) {
+    var o = md && typeof md === 'object' ? md : { md: md, ow: ow, oa: 0 };
     var self = this, g = this.get(gid), me = this._me();
     if (!g || g.s) return Promise.resolve(g && g.s ? this._chain(g) : null);
-    var s = { g: g.id, v: 1, cr: me, ad: [me], md: md === 'c' ? 'c' : 'o', ow: ow ? 1 : 0, oa: 0, m: g.members.slice(), bl: [], n: g.name, ph: '', by: me, t: Date.now(), sg: '' };
+    var want = (o.ad || []).map(_nid);
+    var ad = [me].concat(g.members.filter(function(x) { return x !== me && want.indexOf(x) >= 0; }));   // por antigüedad de miembro
+    var s = { g: g.id, v: 1, p: '', cr: me, ad: ad, md: o.md === 'c' ? 'c' : 'o', ow: o.ow ? 1 : 0, oa: o.oa ? 1 : 0, m: g.members.slice(), bl: [], n: g.name, ph: '', by: me, t: Date.now(), sg: '' };
     return this._sign(s).then(function(sn) { g.sl = []; self._logPut(g, sn); self._save(); self._stageCopy(g); return self._chain(g); }).catch(function(e) { console.warn('[GROUP] Sin estado firmado para ' + gid + ': ' + (e && e.message)); return null; });
   },
 
@@ -145,7 +149,7 @@ export var groupAdminMethods = {
   },
   setSettings(gid, ch) {
     var s = this.state(gid), o = {}, n = [];
-    if (ch.md && ch.md !== s.md) { o.md = ch.md; n.push(ch.md === 'c' ? t('grp_n_mode_c', 'Modo Control') : t('grp_n_mode_o', 'Modo Colegas')); }
+    if (ch.md && ch.md !== s.md) { o.md = ch.md; n.push(ch.md === 'c' ? t('grp_n_edit_adm', 'Solo los administradores cambian nombre y foto') : t('grp_n_edit_all', 'Todos pueden cambiar nombre y foto')); }
     if ('ow' in ch && (ch.ow ? 1 : 0) !== s.ow) { o.ow = ch.ow ? 1 : 0; n.push(o.ow ? t('grp_n_ow1', 'Solo los administradores escriben') : t('grp_n_ow0', 'Todos pueden escribir')); }
     if ('oa' in ch && (ch.oa ? 1 : 0) !== s.oa) { o.oa = ch.oa ? 1 : 0; n.push(o.oa ? t('grp_n_oa1', 'Solo los administradores agregan') : t('grp_n_oa0', 'Todos pueden agregar')); }
     if (!n.length) return Promise.resolve(s);
@@ -416,7 +420,7 @@ export var groupAdminMethods = {
     if (d.creator !== undefined && d.creator) n.push(t('grp_n_boss', 'Ahora administra el grupo: ') + who([d.creator]));
     if (d.name !== undefined) n.push(t('grp_n_name', 'Nombre del grupo: ') + '«' + d.name + '»');
     if (d.photo !== undefined) n.push(d.photo ? t('grp_n_photo', 'Foto del grupo nueva') : t('grp_n_photo0', 'Se quitó la foto del grupo'));
-    if (d.mode !== undefined) n.push(d.mode === 'c' ? t('grp_n_mode_c', 'Modo Control') : t('grp_n_mode_o', 'Modo Colegas'));
+    if (d.mode !== undefined) n.push(d.mode === 'c' ? t('grp_n_edit_adm', 'Solo los administradores cambian nombre y foto') : t('grp_n_edit_all', 'Todos pueden cambiar nombre y foto'));
     if (d.ow !== undefined) n.push(d.ow ? t('grp_n_ow1', 'Solo los administradores escriben') : t('grp_n_ow0', 'Todos pueden escribir'));
     if (d.oa !== undefined) n.push(d.oa ? t('grp_n_oa1', 'Solo los administradores agregan') : t('grp_n_oa0', 'Todos pueden agregar'));
     return n.length ? '👥 ' + n.join(' · ') : '';

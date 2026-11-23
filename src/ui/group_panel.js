@@ -72,23 +72,73 @@ function _pickList(id, title, items, saveLabel, onSave, max) {
 function _run(promise) { return Promise.resolve(promise).catch(function(e) { _toast((e && e.message) || String(e)); }); }
 
 // Elegir el modo (al crear el grupo y en Ajustes): Control (el creador y los admins mandan) / Colegas (todos hacen todo)
-export function groupModePicker(host, initial, onPick) {
-  var val = initial === 'c' ? 'c' : 'o';
-  if (!host) return { value: function() { return val; } };
+// OPCIONES del grupo (dueño 23-11: «lo primero al crear un grupo son las opciones; algo muy rápido, dos nada más»). También en
+// «Ajustes del grupo». «Todos participan»: todos escriben, suben y comparten. «Personalizado»: para escribir, para agregar personas
+// y para cambiar nombre y foto, «Todos» o «Solo administradores» (por dentro ow, oa y md: 'c' = nombre y foto solo administradores,
+// que además expulsan; 'o' = todos, expulsar solo el creador). cur: el estado actual, o null al crear (entonces «Personalizado»
+// empieza con todo en «Solo administradores»). onChange(cambios) en cada toque que cambia algo; onPick() al elegir una de las dos.
+export function groupOptionsPicker(host, cur, onChange, onPick) {
+  var v = cur ? { md: cur.md === 'c' ? 'c' : 'o', ow: cur.ow ? 1 : 0, oa: cur.oa ? 1 : 0 } : { md: 'o', ow: 0, oa: 0 };
+  var custom = !!cur && (v.md === 'c' || !!v.ow || !!v.oa), picked = !!cur;
+  var api = { value: function() { return { md: v.md, ow: v.ow, oa: v.oa }; }, custom: function() { return custom; }, picked: function() { return picked; } };
+  if (!host) return api;
   host.innerHTML = '';
-  host.style.cssText = 'display:flex;gap:8px;margin:4px 0 8px;';
-  var mk = function(md, label, sub) {
-    var b = _el('button', 'gset-mode gset-mode-' + md); b.type = 'button';
-    b.style.cssText = 'flex:1;text-align:left;padding:10px;border-radius:12px;border:1px solid rgba(255,255,255,0.18);background:none;color:#fff;font-size:15px;';
-    b.appendChild(_el('div', '', label)); var s = _el('div', '', sub); s.style.cssText = 'font-size:12px;opacity:0.7;margin-top:2px;'; b.appendChild(s);
-    b.addEventListener('click', function(e) { e.preventDefault(); val = md; paint(); if (onPick) onPick(md); });
+  var mk = function(cls, label, sub, fn) {
+    var b = _el('button', 'gset-mode ' + cls); b.type = 'button';
+    b.style.cssText = 'display:block;width:100%;text-align:left;padding:12px;margin:0 0 8px;border-radius:12px;border:1px solid rgba(255,255,255,0.18);background:none;color:#fff;font-size:16px;';
+    b.appendChild(_el('div', '', label)); var s = _el('div', '', sub); s.style.cssText = 'font-size:13px;opacity:0.7;margin-top:2px;'; b.appendChild(s);
+    b.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); fn(); });
     host.appendChild(b); return b;
   };
-  var bc = mk('c', t('grp_mode_c', 'Control'), t('grp_mode_c_sub', 'Solo los administradores escriben, agregan y cambian el grupo'));
-  var bo = mk('o', t('grp_mode_o', 'Colegas'), t('grp_mode_o_sub', 'Todos escriben, agregan y cambian el grupo; expulsar, solo el creador'));
-  function paint() { [[bc, 'c'], [bo, 'o']].forEach(function(x) { x[0].style.borderColor = val === x[1] ? '#00c8ff' : 'rgba(255,255,255,0.18)'; x[0].setAttribute('aria-pressed', val === x[1] ? 'true' : 'false'); }); }
+  var bAll = mk('gset-mode-o', t('grp_opt_all', 'Todos participan'), t('grp_opt_all_sub', 'Todos pueden escribir, subir y compartir'), function() {
+    var ch = {};
+    if (v.md !== 'o') ch.md = 'o'; if (v.ow) ch.ow = 0; if (v.oa) ch.oa = 0;
+    v = { md: 'o', ow: 0, oa: 0 }; custom = false; picked = true; paint();
+    if (onChange && Object.keys(ch).length) onChange(ch);
+    if (onPick) onPick();
+  });
+  var bCus = mk('gset-mode-p', t('grp_opt_custom', 'Personalizado'), t('grp_opt_custom_sub', 'Tú eliges quién escribe, quién agrega y quién cambia el grupo'), function() {
+    if (!custom && !cur) v = { md: 'c', ow: 1, oa: 1 };
+    custom = true; picked = true; paint();
+    if (onPick) onPick();
+  });
+  var rows = _el('div', 'gset-rows'); host.appendChild(rows);
+  var ROWS = [['ow', t('grp_row_write', 'Escribir y compartir')], ['oa', t('grp_row_add', 'Agregar personas')], ['md', t('grp_row_edit', 'Cambiar nombre y foto')]];
+  var isAdm = function(k) { return k === 'md' ? v.md === 'c' : !!v[k]; };
+  function mark(b, on) { b.style.borderColor = on ? '#00c8ff' : 'rgba(255,255,255,0.18)'; b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  function paint() {
+    mark(bAll, picked && !custom); mark(bCus, custom);
+    rows.innerHTML = ''; rows.style.display = custom ? 'block' : 'none';
+    if (!custom) return;
+    ROWS.forEach(function(r) {
+      var line = _el('div', 'gset-row gset-row-' + r[0]); line.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 8px;';
+      var lb = _el('div', '', r[1]); lb.style.cssText = 'flex:1 1 140px;font-size:15px;'; line.appendChild(lb);
+      [[0, 'gset-who-all', t('grp_who_all', 'Todos')], [1, 'gset-who-adm', t('grp_who_admins', 'Solo administradores')]].forEach(function(o) {
+        var sel = isAdm(r[0]) === !!o[0];
+        var b = _el('button', o[1], o[2]); b.type = 'button';
+        b.style.cssText = 'padding:7px 10px;border-radius:10px;font-size:13px;color:#fff;border:1px solid;background:' + (sel ? 'rgba(0,200,255,0.15)' : 'none') + ';';
+        mark(b, sel);
+        b.addEventListener('click', function(e) {
+          e.preventDefault(); e.stopPropagation();
+          if (isAdm(r[0]) === !!o[0]) return;
+          var ch = {};
+          if (r[0] === 'md') { v.md = o[0] ? 'c' : 'o'; ch.md = v.md; } else { v[r[0]] = o[0]; ch[r[0]] = o[0]; }
+          paint();
+          if (onChange) onChange(ch);
+        });
+        line.appendChild(b);
+      });
+      rows.appendChild(line);
+    });
+  }
   paint();
-  return { value: function() { return val; } };
+  return api;
+}
+// Las opciones en una línea (para quien no las puede cambiar)
+export function groupOptionsText(s) {
+  if (s.md !== 'c' && !s.ow && !s.oa) return t('grp_opt_all', 'Todos participan') + ' · ' + t('grp_opt_all_sub', 'Todos pueden escribir, subir y compartir');
+  var w = function(on) { return on ? t('grp_who_admins', 'Solo administradores') : t('grp_who_all', 'Todos'); };
+  return t('grp_opt_custom', 'Personalizado') + ' · ' + t('grp_row_write', 'Escribir y compartir') + ': ' + w(s.ow) + ' · ' + t('grp_row_add', 'Agregar personas') + ': ' + w(s.oa) + ' · ' + t('grp_row_edit', 'Cambiar nombre y foto') + ': ' + w(s.md === 'c');
 }
 
 function _roleTag(s, nx) {
@@ -129,19 +179,12 @@ export function openGroupSettings(gid) {
     }
     // Modo e interruptores (solo quien hace de creador los cambia; los demás los ven)
     var boss = can('settings');
-    var mh = _el('div', 'gset-sec', t('grp_mode', 'Modo del grupo')); mh.style.cssText = 'font-size:13px;opacity:0.7;margin:12px 2px 2px;'; b.appendChild(mh);
+    var mh = _el('div', 'gset-sec', t('grp_opts', 'Opciones del grupo')); mh.style.cssText = 'font-size:13px;opacity:0.7;margin:12px 2px 2px;'; b.appendChild(mh);
     if (boss) {
-      var mp = _el('div'); b.appendChild(mp);
-      groupModePicker(mp, s.md, function(md) { if (md !== s.md) _run(gs.setSettings(gid, { md: md, ow: md === 'c' ? 1 : 0 })); });
-      var sw = function(cls, key, label) {
-        var row = _el('label', 'nexo-pick-row ' + cls); var cb = _el('input'); cb.type = 'checkbox'; cb.checked = !!s[key];
-        cb.addEventListener('change', function() { var o = {}; o[key] = cb.checked ? 1 : 0; _run(gs.setSettings(gid, o)); });
-        row.appendChild(cb); row.appendChild(_el('div', 'nx-pick-name', label)); b.appendChild(row);
-      };
-      sw('gset-ow', 'ow', t('grp_n_ow1', 'Solo los administradores escriben'));
-      if (s.md === 'o') sw('gset-oa', 'oa', t('grp_n_oa1', 'Solo los administradores agregan'));
+      var mp = _el('div', 'gset-opts'); b.appendChild(mp);
+      groupOptionsPicker(mp, s, function(ch) { _run(gs.setSettings(gid, ch)); });
     } else {
-      var info = _el('div', 'gset-mode-info', (s.md === 'c' ? t('grp_mode_c', 'Control') : t('grp_mode_o', 'Colegas')) + (s.ow ? ' · ' + t('grp_n_ow1', 'Solo los administradores escriben') : '') + (s.oa && s.md === 'o' ? ' · ' + t('grp_n_oa1', 'Solo los administradores agregan') : ''));
+      var info = _el('div', 'gset-mode-info', groupOptionsText(s));
       info.style.cssText = 'padding:8px 2px;font-size:15px;'; b.appendChild(info);
     }
     // Designar administradores

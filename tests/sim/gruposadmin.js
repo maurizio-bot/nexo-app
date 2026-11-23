@@ -76,9 +76,12 @@ const check = (p, sel) => { const cb = q(p, sel); if (cb) { cb.checked = true; c
   // 1. A crea el grupo en modo Control con B y C
   click(A.win, q(A, '#ble-fab-btn')); await sleep(300); click(A.win, q(A, '#nexo-fab-group')); await sleep(400);
   const sheet = q(A, '#nexo-group-sheet');
-  r.modo_al_crear = !!q(A, '#nexo-group-mode .gset-mode-c');
-  click(A.win, q(A, '#nexo-group-mode .gset-mode-c'));
+  // dueño 23-11: lo PRIMERO son las dos opciones; el nombre y los contactos aparecen al elegir una
+  r.opciones_primero = !!q(A, '#nexo-group-mode .gset-mode-o') && !!q(A, '#nexo-group-mode .gset-mode-p') && q(A, '#nexo-group-step2').style.display === 'none';
+  click(A.win, q(A, '#nexo-group-mode .gset-mode-p'));
+  r.personalizado_abre_paso_2 = q(A, '#nexo-group-step2').style.display === 'flex' && sheet.querySelectorAll('.gset-row .gset-who-adm[aria-pressed="true"]').length === 3;
   sheet.querySelectorAll('.nexo-pick-row input').forEach((cb) => { const nm = cb.parentNode.querySelector('.nx-pick-name').textContent; if (nm === 'B' || nm === 'C') { cb.checked = true; cb.dispatchEvent(new A.win.Event('change')); } });
+  r.boton_admin_junto_a_elegidos = Array.from(sheet.querySelectorAll('.nexo-pick-admin')).filter((b) => b.style.display !== 'none').length === 2;
   const nmIn = sheet.querySelector('#nexo-group-name'); nmIn.value = 'Equipo'; nmIn.dispatchEvent(new A.win.Event('input'));
   click(A.win, sheet.querySelector('#nexo-group-create')); await sleep(800);
   const gid = Object.keys(gsOf(A).list)[0];

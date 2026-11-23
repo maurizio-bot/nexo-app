@@ -41,7 +41,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
     se firma con la clave de identidad. Cada estado firmado lleva la huella del anterior (`p`); dos cambios cruzados acaban igual en todos
     (`gsBranchWins`); el creador «reafirma» el estado para quien no engancha. Archivos: `group_state.js`, `group_admin.js`, `group_panel.js`. Seguridad,
     en el PRIVADO (`seguridad/PARA_LA_AUDITORIA_FINAL.md`, 12–26; **el 20 es un fallo PREVIO y abierto, no de grupos, para la auditoría final**).
-    PENDIENTE del dueño: el modo al crear (hoy se elige al crear, con Colegas ya marcado; ¿sin nada marcado?). Falta probarlo en teléfonos.
+    Al CREAR (dueño 23-11): lo primero son DOS opciones, «Todos participan» o «Personalizado» (escribir / agregar / nombre y foto: todos o solo
+    administradores, y «Admin» junto a cada elegido); lo mismo en Ajustes del grupo. Falta probarlo en teléfonos.
   - **3284 MODO VAGÓN / MULTITUD (pendiente 2, parte de la app HECHA):** `multitud.js` puesta al día (+ `--b-dormido`). Con la fase 4, entre 200/500/1000 NEXO el
     contacto DESPIERTO con pendientes enlaza en 1,1–1,6 s; lag p95 22/27/50 ms. Hueco hallado: contacto DORMIDO entre 500 NEXO → 33–50 s. Causas: el gestor no
     sabía que tenía un mensaje esperando (ahora `_linkPendNow`: lo mandado en la sesión sin confirmar) y su conexión hacía cola tras intentos sin prisa (ahora
@@ -52,7 +53,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   - **Icono final (logo 1b sin el bulto de la cola): SOLO en el privado `negocio/icono_final/`** (SVG, adaptativo, monocromo, aviso, tienda 512/1024,
     `antes_despues.png`). Enseñado al dueño el 22-11 18:00; NO se pone en la app hasta que lo apruebe (falta también rehacer la pantalla de arranque).
 - **DECISIONES DEL DUEÑO PENDIENTES:** (1) icono final: ¿aprobado? (ojo: sobre fondo negro el icono pierde el borde; la capa monocroma pierde los 4 tramos);
-  (2) grupos: contestado y hecho, salvo el modo al crear (dijo «no, debe ser opcional desde el principio»: confirmar si quiere que no haya ninguno marcado);
+  (2) grupos: contestado y hecho (también las dos opciones al crear, 23-11);
   (3) 31 vista previa de enlaces: DECIDIDA 23-11 (la baja quien recibe, por Tor; nunca una falsa; detalle en COLA 31); (4) ritmo de búsqueda por Bluetooth de lo ya entregado al buzón (hoy hasta 1 h); (5) Google Play: cuenta de
   desarrollador (tarda días), identificador de paquete (¡la APK de GitHub y la de Play no se pueden actualizar una sobre otra!), privacidad, 12 probadores;
   (6) Kinway: IMPI, dominios, redes.
