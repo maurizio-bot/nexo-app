@@ -1,5 +1,5 @@
 import { schnorr } from '@noble/curves/secp256k1.js';
-import { _event, BLOB_KIND, _relaySafe, _relayHost, _rnd, SEND_SILENT_MS } from './net_link_shared.js';
+import { _event, BLOB_KIND, _relaySafe, _relayHost, _rnd, SEND_SILENT_MS, MAX_RELAY_FRAME } from './net_link_shared.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 // Métodos de NetLink: PUBLICAR y BAJAR: eventos en los relés, buzón de archivos, publicar en varios y bajar por id.
 // Reestructuración 15-11: movidos TAL CUAL desde net_link.js, que los une a la clase (como métodos normales).
@@ -22,7 +22,57 @@ export const netPublish = {
     if (r && r.open) return r;
     var g = null;
     this.relays.forEach(function(x) { if (!g && x.gw && x.open && x.realUrl === url) g = x; });
-    return g || r || null;
+    var f = this.fetchRelays && this.fetchRelays.get(url); // T-R1: relé de un puntero, «solo bajar por id»
+    return g || (f && f.open ? f : null) || r || null;
+  },
+  // ---------- Auditoría 23-11 (T-R1): relés de un PUNTERO de archivo, «solo bajar por id» ----------
+  // Un contacto pone en su puntero los relés que quiera. Antes se abrían como uno más de los míos (ensureRelay → _connect): se
+  // quedaban en mi lista y recibían mi suscripción con TODAS mis etiquetas de buzón, mi AUTH (NIP-42) y lo que publico, además de
+  // mi IP de forma duradera. Ahora un relé que NO es de los míos se abre aparte, solo para pedir esos trozos por id (sin
+  // suscripción, sin AUTH, sin publicar nada; lo demás que diga se ignora) y se cierra al terminar la bajada.
+  isMyRelay(url) { return this.relays.has(url) || (this.gwOnly() && this.openRelayUrls().indexOf(url) >= 0); },
+  fetchOnlyOpen(url, waitMs) {
+    var self = this;
+    if (!_relaySafe(url) || self.gwOnly()) return Promise.resolve(false);
+    if (!self.fetchRelays) self.fetchRelays = new Map();
+    var f = self.fetchRelays.get(url);
+    if (f && f.open) return Promise.resolve(true);
+    if (!f) {
+      f = { url: url, fetchOnly: true, open: false, fetches: new Map(), waits: new Map(), ws: null };
+      var ws;
+      try { ws = typeof self._newSocket === 'function' ? self._newSocket(url) : new WebSocket(url); } catch (e) { return Promise.resolve(false); }
+      if (!ws) return Promise.resolve(false);
+      f.ws = ws;
+      self.fetchRelays.set(url, f);
+      ws.onopen = function() { f.open = true; f.rxAt = Date.now(); };
+      ws.onmessage = function(ev) { f.rxAt = Date.now(); self._onFetchOnlyMsg(f, ev.data); };
+      ws.onclose = function() { f.open = false; f.ws = null; if (self.fetchRelays.get(url) === f) self.fetchRelays.delete(url); f.fetches.forEach(function(x) { try { x.done(); } catch (e) {} }); };
+      ws.onerror = function() {};
+      console.log('[NET] Relé ' + _relayHost(url) + ' (de un puntero de archivo, no es de los míos): lo abro solo para bajar por id'); // i18n-ok: registro
+    }
+    return new Promise(function(resolve) {
+      var t0 = Date.now(), iv = setInterval(function() {
+        if (f.open) { clearInterval(iv); resolve(true); }
+        else if (!f.ws || Date.now() - t0 > (waitMs || 6000)) { clearInterval(iv); self.fetchOnlyClose(url); resolve(false); }
+      }, 100);
+    });
+  },
+  fetchOnlyClose(url) {
+    var f = this.fetchRelays && this.fetchRelays.get(url);
+    if (!f) return;
+    this.fetchRelays.delete(url);
+    var ws = f.ws; f.open = false; f.ws = null;
+    if (ws) { ws.onopen = null; ws.onmessage = null; ws.onclose = null; try { ws.close(); } catch (e) {} }
+    f.fetches.forEach(function(x) { try { x.done(); } catch (e) {} });
+  },
+  // Lo que dice un relé «solo bajar por id»: solo las respuestas a una bajada; nada de AUTH, sobres ni nada más
+  _onFetchOnlyMsg(f, data) {
+    if (typeof data !== 'string' || data.length > MAX_RELAY_FRAME) return;
+    var m; try { m = JSON.parse(data); } catch (e) { return; }
+    if (!Array.isArray(m) || typeof m[1] !== 'string' || !f.fetches.has(m[1])) return;
+    var fj = f.fetches.get(m[1]);
+    if (m[0] === 'EVENT' && m[2]) fj.onEvent(m[2]);
+    else if (m[0] === 'EOSE' || m[0] === 'CLOSED') fj.done();
   },
   blobEvent(sk, contentB64, expiresSec) { return _event(sk, BLOB_KIND, [['expiration', String(expiresSec)]], contentB64); },
   // NIP-09: pedir el borrado de los trozos (firmado con la clave del blob) al confirmar; best-effort (la caducidad es la garantía)
