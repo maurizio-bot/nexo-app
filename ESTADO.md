@@ -53,7 +53,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
     `antes_despues.png`). Enseñado al dueño el 22-11 18:00; NO se pone en la app hasta que lo apruebe (falta también rehacer la pantalla de arranque).
 - **DECISIONES DEL DUEÑO PENDIENTES:** (1) icono final: ¿aprobado? (ojo: sobre fondo negro el icono pierde el borde; la capa monocroma pierde los 4 tramos);
   (2) grupos: contestado y hecho, salvo el modo al crear (dijo «no, debe ser opcional desde el principio»: confirmar si quiere que no haya ninguno marcado);
-  (3) 31 A/B vista previa de enlaces; (4) ritmo de búsqueda por Bluetooth de lo ya entregado al buzón (hoy hasta 1 h); (5) Google Play: cuenta de
+  (3) 31 vista previa de enlaces: DECIDIDA 23-11 (la baja quien recibe, por Tor; nunca una falsa; detalle en COLA 31); (4) ritmo de búsqueda por Bluetooth de lo ya entregado al buzón (hoy hasta 1 h); (5) Google Play: cuenta de
   desarrollador (tarda días), identificador de paquete (¡la APK de GitHub y la de Play no se pueden actualizar una sobre otra!), privacidad, 12 probadores;
   (6) Kinway: IMPI, dominios, redes.
 - **SIGUIENTE, sesión principal (Fable), en orden:** (2b) multitud en el nativo (cambios 4–5) → (3) COLA 23 app cerrada +
