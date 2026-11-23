@@ -36,6 +36,8 @@ export default {
   grp_wp_clear: "Remove wallpaper",
   grp_wp_set: "Wallpaper set on this phone",
   grp_wp_shared: "Wallpaper shared with the group",
+  grp_not_contact: "Not in your contacts.",
+  grp_req_sent: "Request sent",
   grp_wp_got: "shared the group wallpaper",
   grp_only_admins_write: "Only admins can write in this group",
   grp_err_not_member: "You’re no longer in this group",

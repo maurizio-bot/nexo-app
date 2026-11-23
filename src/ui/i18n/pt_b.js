@@ -36,6 +36,8 @@ export default {
   grp_wp_clear: "Tirar o fundo",
   grp_wp_set: "Fundo definido neste telefone",
   grp_wp_shared: "Fundo compartilhado com o grupo",
+  grp_not_contact: "Não está nos seus contatos.",
+  grp_req_sent: "Pedido enviado",
   grp_wp_got: "compartilhou o fundo do grupo",
   grp_only_admins_write: "Só os administradores podem escrever neste grupo",
   grp_err_not_member: "Você não está mais neste grupo",

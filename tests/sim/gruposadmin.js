@@ -1,6 +1,8 @@
 // COLA 4b «Grupos: administración» (dueño 20-11), G1–G9 en cuatro teléfonos de verdad (jsdom + radio simulada).
 // A conoce a B, C y D; B, C y D no se conocen. Los permisos se comprueban en el teléfono que RECIBE.
 //  1. A crea el grupo en modo CONTROL con B y C (estado v1 firmado): a C (no admin) se le bloquea la barra de escribir con el motivo.
+//     1b (dueño 23-11): C ve la ruedita de ajustes en la cabecera del chat del grupo (no en un chat normal); tocar a un miembro abre su
+//     chat si es contacto o, si no, ofrece «Agregar» (solicitud).
 //  2. Ajustes del grupo → «Designar administradores» → B: todos lo ven («Ahora es admin»). B escribe y llega.
 //  3. C, con la app trucada, escribe igual y firma un cambio haciéndose admin: los demás lo descartan (sin aviso).
 //  4. A agrega a D: entra con el estado y las tarjetas, NO ve lo de antes, y recibe lo nuevo de B.
@@ -92,6 +94,25 @@ const check = (p, sel) => { const cb = q(p, sel); if (cb) { cb.checked = true; c
   await closeChat(A);
   await openChatWith(C, '👥 Equipo');
   { const i = q(C, '#message-input'); r.C_barra_bloqueada = !!i && i.disabled && /Solo los administradores/.test(i.getAttribute('placeholder') || ''); }
+  // 1b (dueño 23-11): ruedita de ajustes arriba a la derecha del chat del grupo, también para quien no es admin; tocar a un miembro
+  { const gb = q(C, '#nexo-gset-btn'); r.C_ruedita_en_chat_grupo = !!gb && gb.style.display !== 'none' && gb.parentNode.id === 'chat-head-actions'; }
+  click(C.win, q(C, '#nexo-gset-btn')); await sleep(300);
+  r.C_ruedita_abre_ajustes = !!q(C, '#nexo-gset .gset-member[data-nx="' + id(A) + '"]');
+  click(C.win, q(C, '#nexo-gset .gset-member[data-nx="' + id(B) + '"] .gset-member-name')); await sleep(600);
+  r.C_toca_miembro_contacto_abre_chat = !q(C, '#nexo-gset') && C.win.bleInterface._activeChatDeviceId === id(B);
+  { const gb = q(C, '#nexo-gset-btn'); r.C_sin_ruedita_en_chat_normal = !gb || gb.style.display === 'none'; }
+  await closeChat(C);
+  await openChatWith(C, '👥 Equipo');
+  { const vl = C.win.vaultLoadContacts, bi = C.win.bleInterface, ab = bi.addByNexoId, sent = [];
+    C.win.vaultLoadContacts = function() { return vl.apply(this, arguments).filter((c) => String(c.nexoId || '').toLowerCase() !== id(B)); };
+    bi.addByNexoId = function(nx) { sent.push(nx); return Promise.resolve(true); };
+    click(C.win, q(C, '#nexo-gset-btn')); await sleep(300);
+    click(C.win, q(C, '#nexo-gset .gset-member[data-nx="' + id(B) + '"] .gset-member-name')); await sleep(300);
+    r.C_toca_no_contacto_ofrece_agregar = !!q(C, '#nexo-gset-mem .gset-mem-add');
+    click(C.win, q(C, '#nexo-gset-mem .gset-mem-add')); await sleep(300);
+    r.C_agregar_manda_solicitud = sent.length === 1 && sent[0] === id(B);
+    C.win.vaultLoadContacts = vl; bi.addByNexoId = ab;
+    ['#nexo-gset-mem', '#nexo-gset'].forEach((s) => { if (q(C, s)) q(C, s).remove(); }); }
   await closeChat(C);
 
   // 2. A designa admin a B desde Ajustes del grupo

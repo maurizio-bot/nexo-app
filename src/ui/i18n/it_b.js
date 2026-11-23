@@ -36,6 +36,8 @@ export default {
   grp_wp_clear: "Togli lo sfondo",
   grp_wp_set: "Sfondo impostato su questo telefono",
   grp_wp_shared: "Sfondo condiviso con il gruppo",
+  grp_not_contact: "Non è tra i tuoi contatti.",
+  grp_req_sent: "Richiesta inviata",
   grp_wp_got: "ha condiviso lo sfondo del gruppo",
   grp_only_admins_write: "Solo gli amministratori possono scrivere in questo gruppo",
   grp_err_not_member: "Non sei più in questo gruppo",
