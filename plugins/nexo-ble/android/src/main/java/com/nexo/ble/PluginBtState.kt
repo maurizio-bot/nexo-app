@@ -152,7 +152,7 @@ internal fun NexoBlePlugin.cleanupAllConnections() {
     binAssembler.clearAll()
     messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
     messageBufferTimers.clear()
-    lastScanNotifyTime.clear()
+    scanBook.resetNotify()
     writeQueues.clear()
     writeQueueProcessing.clear()
     writeQueueTimeouts.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }

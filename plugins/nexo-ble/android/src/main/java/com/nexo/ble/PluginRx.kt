@@ -213,7 +213,7 @@ internal fun NexoBlePlugin.loadNexoMappings() {
         remLog("WARN", "NXID_MAP", "Error cargando mapeos: ${e.message}")
     }
 }
-private fun NexoBlePlugin.saveNexoMappings() {
+internal fun NexoBlePlugin.saveNexoMappings() {
     try {
         val json = JSONObject()
         val mapObj = JSONObject()
@@ -243,9 +243,19 @@ internal fun NexoBlePlugin.registerNexoMapping(nexoId: String, mac: String) {
     val existing = nxidToMacMap[nid]
     if (existing == nmac) return
     nxidToMacMap[nid] = nmac
-    saveNexoMappings()
-    remLog("INFO", "NXID_MAP", "Registrado $nid ↔ $mac")
+    // 23-11 (multitud): con muchos NEXO con el ID a la vista el mapa no crece sin tope (se sueltan los que no están cerca ni
+    // enlazados; se vuelven a apuntar solos al oírlos) ni se reescribe el archivo con cada uno (una vez cada 5 s)
+    if (nxidToMacMap.size > NXID_MAP_MAX) {
+        val it = nxidToMacMap.entries.iterator()
+        while (it.hasNext()) {
+            val en = it.next()
+            if (en.key != nid && !scanBook.has(en.value) && !gattClients.containsKey(en.value) && !serverConnectedDevices.containsKey(en.value)) it.remove()
+        }
+    }
+    if (!nxMapSaveScheduled) { nxMapSaveScheduled = true; mainHandler.postDelayed(nxMapSaveRunnable, 5000L) }
+    if (nxidToMacMap.size <= 200) remLog("INFO", "NXID_MAP", "Registrado $nid ↔ $mac")
 }
+internal const val NXID_MAP_MAX = 1500
 internal fun NexoBlePlugin.classifyDeviceId(id: String): String {
     val trimmed = id.trim()
     if (trimmed.isEmpty()) return "empty"

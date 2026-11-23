@@ -18,7 +18,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 
 ---
 
-## Dónde estamos (actualizado: 2026-11-22 19:40 México)
+## Dónde estamos (actualizado: 2026-11-22 22:07 México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
 - **Forma de trabajo:** CLAUDE.md «GASTO» (leer SOLO este bloque + 🔴 de `docs/AREAS.md`; lo demás con grep). Lo anterior, con todo el detalle de 3266–3283:
@@ -46,8 +46,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   - **3284 MODO VAGÓN / MULTITUD (pendiente 2, parte de la app HECHA):** `multitud.js` puesta al día (+ `--b-dormido`). Con la fase 4, entre 200/500/1000 NEXO el
     contacto DESPIERTO con pendientes enlaza en 1,1–1,6 s; lag p95 22/27/50 ms. Hueco hallado: contacto DORMIDO entre 500 NEXO → 33–50 s. Causas: el gestor no
     sabía que tenía un mensaje esperando (ahora `_linkPendNow`: lo mandado en la sesión sin confirmar) y su conexión hacía cola tras intentos sin prisa (ahora
-    «paso libre»: `_connYield`/`_linkGo` en `ble_linkmgr.js`). Queda en ~9 s enlace / ~13 s entrega. FALTA de multitud (nativo, sin modelo en la sim): avisos de
-    escaneo agrupados y mapas acotados en Kotlin (EDC_LIMITES cambios 4–5) y «modo multitud» de radio (cambio 6, necesita prueba de campo).
+    «paso libre»: `_connYield`/`_linkGo` en `ble_linkmgr.js`). Queda en ~9 s enlace / ~13 s entrega. **23-11: multitud en el NATIVO, HECHO** (EDC_LIMITES cambios 4–5):
+    `ScanBook.kt` (lo que el escaneo recuerda, con tope; avisos a la app EN TANDA cuando hay muchos —`onDevicesFound`, `_onScanBatch`—, un contacto
+    con algo esperando sale al momento), sin logcat por anuncio, mapa NEXO ID ↔ dirección con tope y guardado cada 5 s, también en `BleSinApp`.
+    Pruebas: `ScanBookTest` (9), `escaneotanda.js`. Tipos del plugin comprobados (`tests/kotlin-android`). FALTA: medirlo en teléfono entre mucha gente
+    y el «modo multitud» de radio (cambio 6, necesita prueba de campo).
 - **RAMAS DE AYUDANTES SIN JUNTAR:**
   - `ayudante-play`: lo del Gradle (ver arriba). `ayudante-silencia`: ya juntada.
   - **Icono final (logo 1b sin el bulto de la cola): SOLO en el privado `negocio/icono_final/`** (SVG, adaptativo, monocromo, aviso, tienda 512/1024,
@@ -57,7 +60,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   (3) 31 vista previa de enlaces: DECIDIDA 23-11 (la baja quien recibe, por Tor; nunca una falsa; detalle en COLA 31); (4) ritmo de búsqueda por Bluetooth de lo ya entregado al buzón (hoy hasta 1 h); (5) Google Play: cuenta de
   desarrollador (tarda días), identificador de paquete (¡la APK de GitHub y la de Play no se pueden actualizar una sobre otra!), privacidad, 12 probadores;
   (6) Kinway: IMPI, dominios, redes.
-- **SIGUIENTE, sesión principal (Fable), en orden:** (2b) multitud en el nativo (cambios 4–5) → (3) COLA 23 app cerrada +
+- **SIGUIENTE, sesión principal (Fable), en orden:** (3) COLA 23 app cerrada +
   pantalla apagada que a veces no suena → (4) Wi-Fi Direct «cancelar» → (5) L2CAP → (6) llamadas 17/18 → (7) eco 25 + relés/batería 24 → revisión, UNA APK y
   auditoría final. Plan con modelo por actividad: `docs/COLA.md` al principio. Para targetSdk 36 hace falta teléfono con Android 15/16 (borde a borde, «atrás»).
 - **PRUEBAS DEL DUEÑO con la 3119 (ya publicada):** (a) modo avión, escribir, bloquear, quitar modo avión SIN abrir NEXO → llega y ✓✓; (b) sin internet los dos,

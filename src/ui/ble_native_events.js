@@ -11,6 +11,9 @@ export const bleNativeEvents = {
     if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
     var self = this;
     this._nativeDeviceFoundListener = this.nativePlugin.addListener('onDeviceFound', function(data) { self._onScanFound(data); });
+    // 23-11 (multitud / EDC): con muchos teléfonos cerca el nativo junta los avisos del escaneo en una tanda (ScanBook.kt), los más
+    // cercanos primero. Un contacto con algo esperando sigue llegando suelto y al momento (onDeviceFound).
+    this._nativeDevicesFoundListener = this.nativePlugin.addListener('onDevicesFound', function(data) { self._onScanBatch(data && data.list); });
     this._nativeScanFailedListener = this.nativePlugin.addListener('onScanFailed', function(data) {
       self._onScanFailed(data);
     });
@@ -23,6 +26,17 @@ export const bleNativeEvents = {
     this._nativeScanStoppedListener = this.nativePlugin.addListener('onScanStopped', function() {
       try { if (self.isScanning) { self.isScanning = false; self._autoScanActive = false; self.updateScanButton(); } } catch (e) {}
     });
+  },
+
+  // Una tanda de avisos del escaneo: se atiende por partes (40 y se cede el paso) para no trabar la pantalla con cientos de golpe
+  _onScanBatch(list) {
+    if (!Array.isArray(list) || !list.length) return;
+    var self = this, i = 0;
+    (function step() {
+      var end = Math.min(list.length, i + 40);
+      for (; i < end; i++) { try { self._onScanFound(list[i]); } catch (e) {} }
+      if (i < list.length) setTimeout(step, 0);
+    })();
   },
 
   _onScanFound(data, retried) {

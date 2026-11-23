@@ -177,10 +177,16 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
     private var scanUntil = 0L
     private var scanner: BluetoothLeScanner? = null
 
+    private val scanBook = ScanBook<Unit>()
     private val scanCb = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
             val dev = result?.device ?: return
             if (result.rssi < NexoBlePlugin.MIN_RSSI) return
+            // 23-11 (multitud): el filtro del escaneo deja pasar a TODOS los NEXO; cada dirección se mira una vez por segundo
+            val t = System.currentTimeMillis()
+            val m0 = norm(dev.address)
+            scanBook.seen(m0, false, t)
+            if (!scanBook.due(m0, t)) return
             val md = result.scanRecord?.manufacturerSpecificData ?: return
             var adv: String? = null
             for (i in 0 until md.size()) { adv = AdvertisedId.fromManufacturerData(md.valueAt(i)); if (adv != null) break }

@@ -1047,6 +1047,14 @@ class NativePhone {
         }
         // Como Android (NexoBlePlugin.onScanResult, SCAN_DEBOUNCE_MS = 1 s): mientras dura el escaneo, el mismo
         // teléfono se vuelve a avisar cada segundo con lo que anuncie entonces (p.ej. pasa de código rotativo a NEXO ID)
+        // 23-11 (multitud, ScanBook.kt): con opts.scanBatch los avisos del escaneo llegan como en una multitud real, juntos en una
+        // tanda (onDevicesFound { list }), los de mejor señal primero; sin ella, sueltos como siempre (onDeviceFound)
+        const scanEmit = (ev) => {
+          if (!self.opts.scanBatch) return self.emit('onDeviceFound', ev);
+          (self._scanQ = self._scanQ || []).push(ev);
+          if (self._scanQT) return;
+          self._scanQT = setTimeout(() => { self._scanQT = null; const l = self._scanQ.sort((x, y) => (y.rssi || 0) - (x.rssi || 0)); self._scanQ = []; self.stats.scanBatches = (self.stats.scanBatches || 0) + 1; self.stats.scanBatchMax = Math.max(self.stats.scanBatchMax || 0, l.length); self.emit('onDevicesFound', { list: l }); }, 60);
+        };
         const tick = () => {
           self.radio.phones.forEach((p) => {
             if (p === self || p.offline || !p.serviceRunning || !p.advertisingId || !self.radio.inRange(self, p)) return;
@@ -1060,9 +1068,9 @@ class NativePhone {
             const ev = { deviceId: p.address, name: p.opts.noAdvName ? 'Unknown' : (p.advertisedVisible() ? p.name : ''), rssi: typeof p.opts.rssi === 'number' ? p.opts.rssi : -50, nexoId: adv };
             self.scanned.add(norm(p.address)); // Kotlin onScanResult: scannedDevices[macNorm] = device
             if (p.opts.codedCopy && !self.opts.noCodedScan) {
-              self.emit('onDeviceFound', { deviceId: codedAddr(p.address), name: 'Unknown', rssi: ev.rssi, nexoId: adv, coded: true });
-              setTimeout(() => self.emit('onDeviceFound', ev), 350);
-            } else self.emit('onDeviceFound', ev);
+              scanEmit({ deviceId: codedAddr(p.address), name: 'Unknown', rssi: ev.rssi, nexoId: adv, coded: true });
+              setTimeout(() => scanEmit(ev), 350);
+            } else scanEmit(ev);
           });
           // Build 2838: RUIDO de multitud (anunciantes NO-NEXO: pulseras, beacons, otros teléfonos). El filtro del
           // controlador (ScanFilter manufacturer-data NEXO) los descarta → solo se entregan si el escaneo va SIN filtro.
@@ -1070,7 +1078,7 @@ class NativePhone {
           if (!(a && a.filtered) && self.radio && self.radio.noiseAds && self.radio.noiseAds.length) {
             self.radio.noiseAds.forEach((n) => {
               self.stats.noiseDelivered = (self.stats.noiseDelivered || 0) + 1;
-              self.emit('onDeviceFound', { deviceId: n.address, name: n.name || 'Unknown', rssi: n.rssi || -70 });
+              scanEmit({ deviceId: n.address, name: n.name || 'Unknown', rssi: n.rssi || -70 });
             });
           }
         };

@@ -19,6 +19,7 @@ import javax.crypto.Mac
 import javax.crypto.SecretKey
 import javax.crypto.spec.SecretKeySpec
 import android.util.Log
+import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -162,11 +163,24 @@ class NexoBlePlugin : Plugin() {
     internal val clientConnectionStates = ConcurrentHashMap<String, Int>()
     internal var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
     internal var bluetoothScanner: BluetoothLeScanner? = null
-    internal val scanResults = Collections.synchronizedList(mutableListOf<JSObject>())
     internal val scannedDevices = ConcurrentHashMap<String, BluetoothDevice>()
-    // Largo alcance (LE Coded PHY): cuándo se vio por última vez cada dispositivo en 1M y en Coded
-    internal val seen1M = ConcurrentHashMap<String, Long>()
-    internal val seenCoded = ConcurrentHashMap<String, Long>()
+    // 23-11 (multitud / EDC): lo que el escaneo recuerda de cada dirección (cuándo se oyó en 1M y en largo alcance, cuándo se avisó a
+    // la app y al registro), con tope, y los avisos a la app en tandas cuando hay muchos teléfonos cerca (ScanBook.kt). Sustituye a
+    // seen1M, seenCoded, scanLogLast, lastScanNotifyTime y a la lista scanResults (se recorría entera con cada anuncio y nadie la leía)
+    internal val scanBook = ScanBook<JSObject>(debounceMs = SCAN_DEBOUNCE_MS)
+    internal var scanFlushScheduled = false
+    internal val scanFlushRunnable = Runnable {
+        scanFlushScheduled = false
+        val l = scanBook.flush()
+        if (l.isNotEmpty()) {
+            val arr = JSArray()
+            l.forEach { arr.put(it) }
+            notifyListeners("onDevicesFound", JSObject().put("list", arr))
+        }
+    }
+    // El mapa NEXO ID ↔ dirección se guarda como mucho una vez cada 5 s (antes, el archivo entero con cada dirección nueva)
+    internal var nxMapSaveScheduled = false
+    internal val nxMapSaveRunnable = Runnable { nxMapSaveScheduled = false; saveNexoMappings() }
     internal val codedLinks = ConcurrentHashMap.newKeySet<String>()
     internal val mainHandler = Handler(Looper.getMainLooper())
     // Ronda 2766 (revisión): al pararse sola a los 15 s, se avisa a la app (antes seguía creyendo que buscaba y ya no
@@ -189,13 +203,10 @@ class NexoBlePlugin : Plugin() {
     internal val messageBuffers = ConcurrentHashMap<String, StringBuilder>()
     internal val messageBufferTimers = ConcurrentHashMap<String, Runnable>()
     internal val messageBufferSince = ConcurrentHashMap<String, Long>() // desde cuándo hay algo pendiente
-    internal val lastScanNotifyTime = ConcurrentHashMap<String, Long>()
     // #87/diagnóstico: el scan encuentra anuncios muchas veces por segundo; escribir cada uno en el registro nativo
     // (NativeLog, anillo de 48 KB) lo inundaba y echaba fuera lo útil (p. ej. el Token FCM) en un minuto, y hacía el
-    // diagnóstico enorme (queja del dueño, 2812). Al registro nativo va como mucho una línea por dispositivo cada 20 s;
-    // el resto solo a logcat. No cambia nada de lo que hace el escaneo, solo cuánto se persiste.
-    internal val scanLogLast = ConcurrentHashMap<String, Long>()
-    internal val SCAN_LOG_MIN_MS = 20000L
+    // diagnóstico enorme (queja del dueño, 2812). Al registro nativo va como mucho una línea por dispositivo cada 20 s
+    // (scanBook.shouldLog); 23-11: el resto ya ni a logcat (dos líneas por anuncio con cientos de NEXO cerca).
     internal val negotiatedMtu = ConcurrentHashMap<String, Int>()
     internal val writeQueues = ConcurrentHashMap<String, MutableList<WriteQueueItem>>()
     internal val writeQueueProcessing = ConcurrentHashMap<String, Boolean>()
@@ -516,7 +527,7 @@ class NexoBlePlugin : Plugin() {
         binAssembler.clearAll()
         messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
         messageBufferTimers.clear()
-        lastScanNotifyTime.clear()
+        scanBook.resetNotify()
         writeQueues.clear()
         writeQueueProcessing.clear()
         writeQueueTimeouts.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
