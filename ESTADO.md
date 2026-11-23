@@ -29,20 +29,19 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   «sr» firmado (N10, `_srSigned`), `ble_connections.js` partido, ~430 líneas sin uso fuera. **AVISO PROGRAMADO «Revisar CI de la APK 3309»
   a las 14:22 México** (llega a esta sesión): verde → pasarle al dueño sus pruebas; rojo → corregir solo ese fallo y subir.
 - **EN NEXOCHAT DESPUÉS DE LA 3309 (`[skip ci]`, van en la SIGUIENTE APK):** 3310 menú de la burbuja sin «Responder» (se responde
-  deslizando) y «Editar» arriba; 3311 «Copiar» en la barra de la multiselección (`msg_select.js`, `multireenvio.js` M7).
+  deslizando) y «Editar» arriba; 3311 «Copiar» en la barra de la multiselección; 3312 (COLA 13) con enlace a MTU 23 los archivos desde ~6 KB
+  van por el canal rápido L2CAP (`l2_fast.js`, `l2mediano.js` caso mtu23); 3313 (COLA 25) videollamada contestada desde el aviso: la cámara
+  cortada se reabre aunque el WebView siga «oculto» si Android ya dice primer plano (`call_media.js`, `callmedia.js` 9b).
 - **DUEÑO, PENDIENTE DE ÉL:** (1) publicar `worker.js` + secreto `WAKE_KEY` en Cloudflare (pasos: `push-sender/cloudflare/README.md` §14A;
   más adelante `ONLY_SEALED=1`); (2) icono final (solo en el privado `negocio/icono_final/`); (3) Google Play: cuenta, id de paquete,
   privacidad, 12 probadores, teléfono Android 15/16; (4) Kinway: IMPI, dominios, redes; (5) Wi-Fi Direct «grupo siempre montado» (A/B).
 - **PRUEBAS DEL DUEÑO pendientes:** 3123 (arranque y nº de build, mensaje con la app del otro cerrada y sin internet, «Solicitudes», «ver una vez»
   sin captura, grupos/ruedita, S24 cerca de Alex sin «enlace repetido»); 3309 (vista previa de un contacto y de quien no lo es, aviso al abrir
   un dominio raro, que NEXO siga despertando con la app cerrada); tarjeta «silencia» en Honor/Vivo/Motorola; canal rápido L2CAP; WD «cancelar».
-- **SIGUIENTE (en orden):** (A) fallos menores, comprobar si siguen y arreglar: COLA 13 MTU 23 (Vivo/Katy), 15 escrituras «ocupado» sin espera,
-  28 reenvío sin tope, 27 Wi-Fi sin internet 2 min, 34 «deslizar para actualizar» salta, 35 «→ ?» en el diagnóstico, 36 envío a enlace que
-  se cierra. (B) LO GRANDE, tras el reinicio semanal y con Fable: Bluetooth entero en el servicio nativo (COLA 20: servidor GATT siempre en el
-  servicio, conexiones/reenvío desde ahí, puente con la app dormida) = 🔴 1 de AREAS. (C) Wi-Fi Direct en teléfonos reales (COLA WD 3–6).
-  (D) llamadas: eco de grupo por oír, datos por relés, sin imagen propia al contestar desde el aviso. (E) auditoría de seguridad final (una).
-  Cerrado 23-11 sin cambio: 24 datos repetidos de relés (es la copia por relé = redundancia; con datos ya 2) y tope de trozos en el nativo.
-- **`docs/COLA.md` está desordenada** (varios hechos sin tachar): ordenarla al empezar el punto (A).
+- **SIGUIENTE:** `docs/COLA.md` (ORDENADA 23-11 13:45; lo viejo en `docs/historial/COLA_hasta_2026-11-23.md`). Los fallos menores (A) ya
+  estaban hechos (15, 27, 28, 34, 35, 36) o se hicieron hoy (13, 25 imagen propia). Queda: (1) LO GRANDE con Fable tras el reinicio semanal:
+  Bluetooth entero en el servicio nativo = puente con la app dormida + que vuelva sola (🔴 1); (2) Wi-Fi Direct real; (3) llamadas: datos por
+  relés; (4) Play: targetSdk 35/36; (5) auditoría final (una).
 - **Herramientas:** `CI_ONLY='a.js|b.js|texto' node ci.js builds/wip`; `tests/kotlin-android` (tipos) y `tests/kotlin` (JVM); `multitud.js` (Chromium, no va en el
   CI). Ayudantes: copia aparte con `git worktree add /home/user/wt/<n> -b ayudante-<n> NEXOCHAT` + enlaces a `tests/sim/node_modules` y `.deps`. `estadovideo.js`
   falla en este contenedor (HEVC) pero pasa en el CI. Sin avisos programados activos (el del CI de la 3119 ya no hace falta).- **Nombres:** dueño = S24 (nx1n36c283) · Cari = S23 Ultra (nx1e50c95d) · Roberto = Motorola (nx0g6ef54e) · Austin = Honor (nx1905c1ee) · Marcos (nx01992876) ·
