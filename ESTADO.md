@@ -101,6 +101,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   un contacto ya enlazado por otra dirección, esa conexión se cierra al momento (`ble_relay_anon.js`). `anondup.js` (antes FALLO, ahora OK).
   PRUEBAS DEL DUEÑO: crear grupo → ruedita arriba a la derecha → tocar un miembro; S24 cerca de Alex: sin «enlace repetido» cada 1–2 min.
   Sigue la tanda 2 desde (d).
+- **CI DE LA 3298 FALLÓ (2 pruebas, 23-11 09:03 México) → ARREGLADO Y SUBIDO CON CI (3305, lleva también 3302–3304):** (1) `solicitudcerca`
+  N5: una aceptación por internet con OTRA llave borraba mi solicitud de cerca pendiente y la buena ya no agregaba (`ble_links.js`
+  `wrongKey`, con la llave de su kx si la solicitud se guardó sin ella); (2) `videounavez` (f): el puente Jump no copiaba `xs` (4A,
+  «ver una vez» sellado) y el vídeo llegaba normal (`ble_relay.js`). Si el CI sale verde: avisar al dueño con sus pruebas (las de la
+  3298 + grupos/ruedita + S24 con Alex) y seguir la tanda 2 (d).
 - **REVISIÓN EXTERNA (análisis que pasó el dueño 24-11), comprobada en el código (`[skip ci]`, va en la APK única):**
   HECHO **3304**: (1) trozos recibidos sin tope de tamaño → enteros, solo texto, ≤ 64 K por trozo, ≤ 64 M en memoria por mensaje
   (lo grande por internet ya se guarda en el teléfono), ≤ 64 mensajes a medias por enlace (`ble_ack_incoming.js`, `chunktopes.js`).

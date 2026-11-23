@@ -16,7 +16,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Si alguien que no es tu contacto te escribe, aparece en «Solicitudes» para que decidas.
 - Si cambia la clave de un contacto, tus mensajes siguen saliendo mientras decides.
 - El comentario de las fotos y «ver una vez» viajan cifrados; las capturas se bloquean al ver una foto de «ver una vez».
-- Grupos más difíciles de manipular.
+- Grupos más difíciles de manipular; ajustes en la ruedita de arriba.
 </es-419>
 <!-- /APK -->
 

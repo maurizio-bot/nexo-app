@@ -372,7 +372,8 @@ export class BleRelay {
     self._seenAdd(key);
     var m = {};
     // 3163: también 'once' («ver una vez», foto o vídeo): sin ella el puente lo entregaba como un medio NORMAL (fallo de privacidad)
-    ['f', 'fr', 'ts', 'type', 'name', 'mime', 'size', 'format', 'width', 'height', 'hdFor', 'preview', 'once', 'thumb', 'pages', 'caption'].forEach(function(k) {
+    // CI 3298: y 'xs' (4A, 23-11: comentario y «ver una vez» SELLADOS); sin él, por el puente el vídeo llegaba sin la marca «una vez»
+    ['f', 'fr', 'ts', 'type', 'name', 'mime', 'size', 'format', 'width', 'height', 'hdFor', 'preview', 'once', 'thumb', 'pages', 'caption', 'xs'].forEach(function(k) {
       if (meta[k] !== undefined && meta[k] !== null) m[k] = meta[k];
     });
     m.dst = to;

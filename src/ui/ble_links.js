@@ -255,7 +255,11 @@ export const BLE_LINK_METHODS = {
     // saliente pendiente, y se colaba como «ese contacto» sin que te enteraras (hombre en el medio). Ahora TODA 'acc'/'req'
     // va a la BANDEJA para confirmarla a conciencia; al confirmar se agrega «sin verificar» y conviene comparar el número de
     // seguridad. La 'acc' a una solicitud mía se marca (acc:true) para mostrarla como «aceptó tu solicitud».
-    if (isMyAcc) self._reqSave('nexo_req_out', out.filter(function(x) { return x.id !== nx; })); // ya respondió: fuera de salientes
+    // CI 3298 (solicitudcerca N5): una 'acc' con OTRA llave que la que ese teléfono me dijo de cerca NO consume mi solicitud
+    // saliente (antes la borraba y, cuando llegaba la aceptación buena, ya no se reconocía: se quedaba sin agregar)
+    var kxE = self._kxPeers && self._kxPeers.get(nx), wantPk = (outE && outE.pk) || (kxE && kxE.pk) || '';
+    var wrongKey = !!(outE && outE.near && wantPk && wantPk !== pk);
+    if (isMyAcc && !wrongKey) self._reqSave('nexo_req_out', out.filter(function(x) { return x.id !== nx; })); // ya respondió: fuera de salientes
     var all = self._reqStore('nexo_req_in'), prev = all.find(function(x) { return x.id === nx; });
     // 3129: trae el código de una invitación MÍA vigente → «aceptó tu invitación» (un uso). Se sigue aceptando a mano (SEC-2).
     var inv = !!(prev && prev.inv) || (!isMyAcc && !!(info && info.ic) && takeInviteCode(info.ic, true));
