@@ -157,17 +157,27 @@ async function pickInSheet(p, names) {
 
   // ---- M6: textos en 5 idiomas ----
   const T = A.win.NEXO_i18nTables || null;
-  const keys = ['chat_select', 'chat_sel_one', 'chat_sel_many', 'chat_sel_max', 'chat_sel_cant'];
+  const keys = ['chat_select', 'chat_sel_one', 'chat_sel_many', 'chat_sel_max', 'chat_sel_cant', 'chat_sel_nocopy'];
   const srcDir = path.join(__dirname, '..', '..', 'src', 'ui', 'i18n');
   r.M6_idiomas = ['es', 'it', 'en', 'pt', 'fr'].every((l) => { const s = fs.readFileSync(path.join(srcDir, l + '.js'), 'utf8'); return keys.every((k) => new RegExp('\\n  ' + k + ': "').test(s)); });
   void T;
 
+  // ---- M7 (dueño 23-11): «Copiar» en la barra: el texto de los marcados en el orden del chat, uno por línea; se cierra la selección
+  let copied = null;
+  try { Object.defineProperty(A.win.navigator, 'clipboard', { configurable: true, value: { writeText: (x) => { copied = x; return Promise.resolve(); } } }); } catch (e) {}
+  if (!$(A, '#nexo-select-bar')) { await longPress(A, m3.msgId); click(A.win, $(A, '#nexo-msg-menu .mm-select')); await sleep(400); }
+  await tap(A, m1.msgId); await tap(A, mR.msgId); await sleep(200);
+  r.M7_boton = !!$(A, '#nexo-select-copy');
+  click(A.win, $(A, '#nexo-select-copy')); await sleep(600);
+  r.M7_copiado = copied;
+  r.M7_orden = copied === ['[R] de B para A', '[1] primero', '[3] tercero'].join('\n');
+  r.M7_cierra = !$(A, '#nexo-select-bar');
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
   const ok = r.lapida && r.M1_menu_seleccionar && r.M1_barra && r.M1_cuenta === '1 seleccionado' && r.M1_marcado &&
     r.M2_tres_y_recibido && r.M2_desmarca && r.M2_eliminado_no && r.M2_pulsacion_larga_marca && r.M2_pulsacion_larga_desmarca && r.M2_doble_toque_sin_reaccion &&
     r.M3_hoja && r.M3_elige && r.M3_cierra_seleccion && r.M3_C_llega_s !== null && r.M3_B_llega_s !== null &&
     r.M3_C_orden === want.join(' | ') && r.M3_B_orden === want.join(' | ') && r.M3_C_reenviados &&
     r.M4_atras_hoja && r.M4_x && r.M4_atras && r.M4_quitar_ultimo && r.M4_cambiar_chat && r.M4_tras_cerrar_toque_normal &&
-    r.M5_uno_llega_s !== null && r.M5_solo_uno === '[3] tercero' && r.M6_idiomas && !r.errores.length;
+    r.M5_uno_llega_s !== null && r.M5_solo_uno === '[3] tercero' && r.M6_idiomas && r.M7_boton && r.M7_orden && r.M7_cierra && !r.errores.length;
   fin(ok);
 })().catch((e) => { console.log('MULTIREENVIO ' + JSON.stringify({ prueba: 'multireenvio', resultado: 'FALLO', error: String(e && e.message).replace(/"/g, "'") })); console.error(e && e.stack); fs.writeFileSync(path.join(__dirname, 'last_logs_multireenvio.txt'), logs.join('\n')); process.exit(1); });

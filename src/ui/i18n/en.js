@@ -64,6 +64,7 @@ export default {
   chat_sel_many: " selected",
   chat_sel_max: "You can choose up to 50 messages",
   chat_sel_cant: "This message can't be forwarded",
+  chat_sel_nocopy: "There's no text to copy",
   chat_copy: "⧉  Copy",
   chat_edit: "✏️  Edit",
   chat_delete_me: "🗑  Delete for me",

@@ -64,6 +64,7 @@ export default {
   chat_sel_many: " seleccionados",
   chat_sel_max: "Puedes elegir hasta 50 mensajes",
   chat_sel_cant: "Este mensaje no se puede reenviar",
+  chat_sel_nocopy: "No hay texto que copiar",
   chat_copy: "⧉  Copiar",
   chat_edit: "✏️  Editar",
   chat_delete_me: "🗑  Eliminar para mí",

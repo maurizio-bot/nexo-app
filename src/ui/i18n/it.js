@@ -64,6 +64,7 @@ export default {
   chat_sel_many: " selezionati",
   chat_sel_max: "Puoi scegliere fino a 50 messaggi",
   chat_sel_cant: "Questo messaggio non si può inoltrare",
+  chat_sel_nocopy: "Non c'è testo da copiare",
   chat_copy: "⧉  Copia",
   chat_edit: "✏️  Modifica",
   chat_delete_me: "🗑  Elimina per me",
