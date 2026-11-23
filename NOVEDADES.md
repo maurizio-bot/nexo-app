@@ -12,11 +12,14 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Vista previa real de los enlaces: tu teléfono la baja por Tor (el sitio no sabe quién eres) y solo de tus contactos.
-- Aviso antes de abrir un enlace que imita a otro sitio o que te lleva a otro distinto.
-- Despertar a un contacto dormido es más seguro: solo tus contactos pueden hacerlo.
-- Nadie puede hacerse pasar por un contacto para que se le reenvíen tus mensajes.
-- La app es más ligera: quitamos código que ya no se usaba.
+- Vista previa real de enlaces, por Tor y solo de tus contactos.
+- Aviso antes de abrir un enlace que imita a otro sitio.
+- Despertar a un contacto dormido es más seguro.
+- Nadie puede hacerse pasar por un contacto para desviar tus mensajes.
+- Menú del mensaje más corto (para responder, desliza) y «Copiar» al marcar varios.
+- Archivos chicos más rápidos con Bluetooth lento.
+- Videollamada contestada desde el aviso: tu imagen vuelve sola.
+- App más ligera.
 </es-419>
 <!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
   y la app lo muestra junto al botón de actualizar (Perfil → Ajustes → Actualizaciones, y «¿Qué trae?» en el aviso de abajo).
