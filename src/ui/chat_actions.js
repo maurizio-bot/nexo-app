@@ -22,6 +22,7 @@ import { t } from './i18n.js';
 import { _pickAvatar, SHEET_CLOSE_SVG } from './share_contacts.js';
 import { isSelecting, startSelect, selectFromBubble } from './msg_select.js'; // 3206: elegir varios mensajes y reenviarlos
 import { paintTextWithLinks } from './links.js'; // 3161: enlaces que se tocan (+ tarjeta de TikTok/Instagram/Facebook/YouTube)
+import { _isBLEContact } from './ble_helpers.js'; // dueño 23-11: vista previa solo de contactos
 import { canStar, toggleStar } from './chat_star.js'; // 3219: mensajes destacados (solo aquí)
 import { canPin, chatPinUse, isPinned, pinOnAction, togglePin } from './chat_pin.js'; // 3219: fijar mensajes (para los dos)
 
@@ -105,7 +106,9 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
     // se aplicaba a los textos envueltos (respuesta/reenvío); los mensajes normales llegan en claro y salían con burbuja y a 16 px
     var pj = _emojiOnly(raw);
     // 3161: con enlaces http/https, se tocan (links.js; nodos DOM, nunca HTML); sin enlaces, como siempre
-    if (!pj) { if (!paintTextWithLinks(contentDiv, raw)) contentDiv.textContent = raw; return; }
+    // Dueño 23-11: vista previa de enlaces solo en lo propio o de un contacto (en grupo, de un miembro que no es contacto: tarjeta sin bajar nada)
+    var lkFrom = isOwn ? '' : (msg.senderNexoId || (msg.groupId ? '' : _getCurrentContactId()) || '');
+    if (!pj) { if (!paintTextWithLinks(contentDiv, raw, { preview: !!isOwn || (!!lkFrom && _isBLEContact(lkFrom)) })) contentDiv.textContent = raw; return; }
     var pe = document.createElement('span');
     pe.className = 'msg-text emoji-jumbo emoji-' + pj;
     pe.textContent = String(raw).trim();

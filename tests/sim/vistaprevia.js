@@ -13,6 +13,7 @@
 //  P7  dominio imitador (аpple.com con «а» cirílica → xn--): el enlace lleva ⚠ y abrir pide confirmación enseñando cómo se lee;
 //  P8  un mensaje que trae campos de «vista previa» del emisor (prev/og/title/img): se ignoran; solo cuenta la URL del texto;
 //  P9  http:// no se pide (por http la vista previa se podría falsificar en el camino).
+//  P10 (dueño 23-11) cualquier sitio https de un contacto: tarjeta con su dominio real y la vista previa real.
 // Contraprueba: en NEXOCHAT 2a14cb7e no hay linkPreview, logos ni avisos (fallan P1–P7; P8 y P9 pasan: allí no se pedía nada).
 // Uso: node vistaprevia.js <dir_build>
 'use strict';
@@ -32,6 +33,7 @@ const M = {
   redir: 'https://vm.tiktok.com/REDIR1/',
   imita: 'entra a https://аpple.com/login ya',
   http: 'http://www.tiktok.com/@x/video/2',
+  web: 'nota https://www.periodico-ejemplo.mx/nota/77',
 };
 const FAKE = JSON.stringify({ type: 'nexo_txt', t: 'https://youtu.be/FAKE1', prev: { title: 'FALSO', image: JPG }, og: { title: 'FALSO2', image: JPG }, title: 'FALSO3', img: JPG, image: JPG });
 const RARO_T = '<img src=x onerror="window.__xss=1"><script>window.__xss=2</script> ‮gnp.exe\u0000 Título\n\traro';
@@ -49,6 +51,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     'https://www.tiktok.com/@x/video/RARO': { status: 'ok', title: RARO_T, image: 'javascript:window.__xss=3', host: 'www.tiktok.com', extra: '<b>x</b>' },
     'https://vm.tiktok.com/REDIR1/': { status: 'redirige', to: 'malo.example.net', host: 'vm.tiktok.com' },
     'https://youtu.be/FAKE1': { status: 'sin_datos', host: 'youtu.be' },
+    'https://www.periodico-ejemplo.mx/nota/77': { status: 'ok', title: 'Nota de cualquier sitio', image: JPG, host: 'www.periodico-ejemplo.mx' },
   };
   const linkPreview = async (a) => {
     web.asked.push(JSON.parse(JSON.stringify(a)));
@@ -154,9 +157,12 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   web.online = true; nB.setNetwork('wifi');
   r.P2_aparece_sola = await waitFor(async () => { const v = await view('OFF1'); return v && v.titulo === 'Reel sin red' && v.imgs === 1; }, 8000);
 
+  // P10 (dueño 23-11): cualquier sitio https de un CONTACTO → tarjeta con el dominio real y su vista previa
+  await send(M.web);
+  r.P10_cualquier_sitio = await waitFor(async () => { const v = await view('nota/77'); return v && v.tarjeta && v.sitio === 'periodico-ejemplo.mx' && v.dominio === 'periodico-ejemplo.mx' && v.titulo === 'Nota de cualquier sitio' && v.imgs === 1; }, 8000);
   r.errores = logs.filter((l) => /PAGEERROR|TypeError|is not a function|ReferenceError/.test(l)).slice(0, 4);
   const keys = ['P1_real', 'P1_solo_url', 'P1_abre_sin_preguntar', 'P2_tarjeta_segura', 'P2_aparece_sola', 'P3_rechaza_tarjeta_segura', 'P4_imagen_enorme', 'P5_html_raro',
-    'P6_aviso', 'P6_cancelar', 'P6_aceptar', 'P7_marca', 'P7_no_se_pide', 'P7_confirmar', 'P8_ignora_emisor', 'P9_http_no_se_pide'];
+    'P6_aviso', 'P6_cancelar', 'P6_aceptar', 'P7_marca', 'P7_no_se_pide', 'P7_confirmar', 'P8_ignora_emisor', 'P9_http_no_se_pide', 'P10_cualquier_sitio'];
   const ok = keys.every((k) => r[k] === true) && r.errores.length === 0;
   r.fallan = keys.filter((k) => r[k] !== true);
   r.resultado = ok ? 'OK' : 'FALLO';

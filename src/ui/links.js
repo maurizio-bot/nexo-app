@@ -15,7 +15,7 @@
  */
 import { t } from './i18n.js';
 import { _showInfoToast } from './ui_bits.js';
-import { attachPreview, openWarning, lookalike } from './link_preview.js'; // COLA 31: vista previa real por Tor + avisos al abrir
+import { attachPreview, openWarning, lookalike, PREVIEW_ANY_SITE } from './link_preview.js'; // COLA 31: vista previa real por Tor + avisos al abrir
 import { siteLogo } from './link_logos.js';
 
 var MAX_URL = 2048;      // más largo: se deja como texto
@@ -100,8 +100,13 @@ function _anchor(cls, url) {
   return a;
 }
 
-function _card(link) {
-  var s = link.site;
+// Dueño 23-11: cualquier sitio https lleva tarjeta (sin logo: la inicial del dominio) y su vista previa real
+function _webSite(host) {
+  var h = String(host || '').toLowerCase().replace(/^www\./, '');
+  return { k: 'web', name: h, ini: (h.charAt(0) || '?').toUpperCase() };
+}
+function _card(link, fetch) {
+  var s = link.site || _webSite(link.host);
   var a = _anchor('nx-link-card nx-site-' + s.k, link.url);
   a.setAttribute('data-site', s.name);
   var label = t('link_open_in', 'Abrir en {site}').replace(/\{site\}/g, s.name) + ' · ' + link.host;
@@ -123,7 +128,9 @@ function _card(link) {
   var go = document.createElement('span');
   go.className = 'nx-lc-go';
   a.appendChild(ini); a.appendChild(txt); a.appendChild(go);
-  attachPreview(a, link);    // COLA 31: la vista previa real (si llega) se pinta sobre esta tarjeta segura
+  // COLA 31: la vista previa real (si llega) se pinta sobre esta tarjeta segura. Dueño 23-11: solo de mensajes propios o de contactos
+  // (un desconocido no puede hacer que este teléfono baje lo que él elija, ni enseñar sola una imagen)
+  if (fetch) attachPreview(a, link);
   return a;
 }
 
@@ -131,11 +138,12 @@ function _card(link) {
  * Pinta `text` en `el` con sus enlaces tocables y, si alguno es de un sitio con tarjeta, la tarjeta del primero debajo.
  * Devuelve false (y no toca `el`) si el texto no tiene ningún enlace: el que llama lo pinta como siempre (textContent).
  */
-export function paintTextWithLinks(el, text) {
+export function paintTextWithLinks(el, text, opts) {
+  var fetch = !(opts && opts.preview === false);
   var s = String(text == null ? '' : text);
   var links = findLinks(s);
   if (!links.length) return false;
-  var pos = 0, card = null;
+  var pos = 0, card = null, web = null;
   links.forEach(function(l) {
     if (l.start > pos) el.appendChild(document.createTextNode(s.slice(pos, l.start)));
     var a = _anchor('nx-link', l.url);
@@ -144,9 +152,11 @@ export function paintTextWithLinks(el, text) {
     el.appendChild(a);
     pos = l.end;
     if (!card && l.site) card = l;
+    if (!web && fetch && PREVIEW_ANY_SITE && /^https:/i.test(l.url) && !lookalike(l.host)) web = l;
   });
+  if (!card) card = web;
   if (pos < s.length) el.appendChild(document.createTextNode(s.slice(pos)));
-  if (card) el.appendChild(_card(card));
+  if (card) el.appendChild(_card(card, fetch));
   return true;
 }
 
