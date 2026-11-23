@@ -161,6 +161,13 @@ internal fun NexoBlePlugin.lanConnectImpl(call: PluginCall) {
 }
 
 // Fuera del hilo de los plugins (un archivo grande tarda en escribirse) y en orden
+// Auditoría 23-11 (T-D2): la app comprobó con el cifrado que la conexión es del contacto (lan.js, 'lw'): marcos grandes permitidos
+internal fun NexoBlePlugin.lanVerifiedImpl(call: PluginCall) {
+    val nx = call.getString("nx") ?: run { call.reject("nx requerido"); return }
+    lanHub?.markVerified(nx)
+    call.resolve()
+}
+
 internal fun NexoBlePlugin.lanSendImpl(call: PluginCall) {
     val nx = call.getString("nx") ?: run { call.reject("nx requerido"); return }
     val content = call.getString("content") ?: run { call.reject("content requerido"); return }

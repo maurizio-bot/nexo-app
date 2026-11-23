@@ -52,14 +52,17 @@ export var groupAdminMethods = {
 
   // Clave pública de un miembro: la mía, la de su contacto o (solo al ENTRAR a un grupo: cards) la de una tarjeta de ESTE sobre.
   // En un grupo que ya conozco no vale una tarjeta del mismo sobre: si no, un miembro colaría una clave falsa de otro y firmaría por él.
-  _keyOf(nx, cards) {
+  // Auditoría 23-11 (G-K1): strict = para un SALTO (cambia todo el grupo de golpe) no vale una clave «de oídas»; y una clave en
+  // conflicto (llegaron dos «de oídas» distintas) no vale para nada hasta verificar.
+  _keyOf(nx, cards, strict) {
     nx = _nid(nx);
     if (nx === this._me()) return e2eMyPublicKey();
     var c = (_getBLEContacts() || []).find(function(x) { return _nid(x.nexoId || x.deviceUUID) === nx; });
+    if (c && c.publicKey && (c.pkConflict || (strict && c.pkHearsay))) return null;
     if (c && c.publicKey && !c.pendingKey) return c.publicKey;
     return (cards && this._cardKeys && this._cardKeys[nx]) || null;
   },
-  _verify(s, cards) { var k = this._keyOf(s.by, cards); var ok = !!k && gsVerify(s, k); if (!ok) console.warn('[GROUP] Estado v' + s.v + ' de ' + s.g + ' firmado por ' + s.by + ': firma ' + (k ? 'no válida' : 'sin clave para comprobarla')); return ok; },
+  _verify(s, cards, strict) { var k = this._keyOf(s.by, cards, strict); var ok = !!k && gsVerify(s, k); if (!ok) console.warn('[GROUP] Estado v' + s.v + ' de ' + s.g + ' firmado por ' + s.by + ': firma ' + (k ? 'no válida' : 'sin clave para comprobarla')); return ok; },
   // Huella entera de mi estado (la que lleva en p el cambio siguiente) y su principio (viaja en cada sobre: sh)
   stateId(gid) { var g = this.get(gid); return g && g.s ? gsId(g.s) : ''; },
   _headId(g) { return g && g.s ? gsId(g.s).substring(0, SH_LEN) : undefined; },
@@ -277,7 +280,9 @@ export var groupAdminMethods = {
     var oldLate = g && !g.pend && !g.kicked && !g.s && chain[0].v > 1;
     if (!applied.length && (!g || g.pend || g.kicked || oldLate)) {
       var top = chain[chain.length - 1];
-      var ok = top.m.indexOf(me) >= 0 && top.m.indexOf(from) >= 0 && top.m.indexOf(top.by) >= 0 && (!g || !g.s || top.v > g.s.v) && this._verify(top, true);
+      // Auditoría 23-11 (G-O1): un grupo VIEJO (sin estado firmado) solo lo puede «tomar» quien ya estaba en su lista
+      var oldOk = !oldLate || ((g.members || []).map(_nid).indexOf(_nid(from)) >= 0 && (g.members || []).map(_nid).indexOf(_nid(top.by)) >= 0);
+      var ok = oldOk && top.m.indexOf(me) >= 0 && top.m.indexOf(from) >= 0 && top.m.indexOf(top.by) >= 0 && (!g || !g.s || top.v > g.s.v) && this._verify(top, true);
       if (!ok) { if (!g || g.pend) console.warn('[GROUP] Estado de ' + gid + ' (de ' + from + ') no sirve para entrar al grupo'); return { applied: applied, gap: false }; }
       var prev = g && g.s ? g.s : null;
       if (!g) g = this.list[gid] = { id: gid, name: top.n, members: top.m.slice(), createdBy: top.cr || top.by, createdAt: Date.now(), lastMessageAt: 0, unreadCount: 0 };
@@ -358,7 +363,7 @@ export var groupAdminMethods = {
       // No engancha con nada de lo que guardo. De quien hace de creador se acepta el SALTO (a su versión o a una mayor; en un
       // grupo abierto, donde todos mandan, solo a una mayor, y nunca dos veces a la misma altura del mismo firmante: sin vaivén)
       var open = gsOpen(head);
-      if (gsIsBoss(head, s.by) && (s.v > head.v || (s.v === head.v && !open && head.by !== s.by)) && self._verify(s)) {
+      if (gsIsBoss(head, s.by) && (s.v > head.v || (s.v === head.v && !open && head.by !== s.by)) && self._verify(s, false, true)) {
         var e3 = gsJumpError(head, s);
         if (!e3) {
           console.log('[GROUP] Salto en ' + g.id + ' de v' + head.v + ' a v' + s.v + ' (firmado por ' + s.by + ', que hace de creador)');

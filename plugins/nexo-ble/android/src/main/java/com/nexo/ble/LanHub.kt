@@ -53,6 +53,12 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
         // Tope de conexiones a medio saludar (aún sin comprobar quién es). Más de esto = avalancha: se cierra la más
         // vieja sin saludar para dejar sitio (un contacto de verdad saluda en el acto y no se queda en esta cola).
         const val MAX_PREAUTH = 64
+        // Auditoría 23-11 (T-D2): tras un saludo (que cualquiera de la red puede inventar), cada marco reservaba hasta 48 MB de golpe
+        // con solo mandar 4 bytes. Hasta que la app compruebe con el cifrado que es el contacto (markVerified), los marcos son de
+        // como mucho 512 KB (un mensaje normal y la comprobación caben de sobra) y hay como mucho MAX_UNVERIFIED conexiones así: si
+        // llega otra, se cierra la más vieja sin comprobar (un contacto de verdad se comprueba en cuanto su app despierta).
+        const val UNVERIFIED_FRAME = 512 * 1024
+        const val MAX_UNVERIFIED = 16
         const val CONNECT_TIMEOUT_MS = 5000
         const val TOR_CONNECT_TIMEOUT_MS = 90000 // un circuito hasta un .onion puede tardar
         const val HELLO_TIMEOUT_MS = 8000
@@ -65,6 +71,8 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
         @Volatile var lastRx = 0L
         @Volatile var graceUntil = 0L
         @Volatile var rtt = -1L
+        @Volatile var verified = false
+        @Volatile var adoptedAt = 0L
         fun write(text: String) {
             val b = text.toByteArray(Charsets.UTF_8)
             synchronized(out) { out.writeInt(b.size); out.write(b); out.flush() }
@@ -193,7 +201,10 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
                 if (!adopt(nx, c)) { c.close(); return@Thread }
                 listener.onUp(nx)
                 while (true) {
-                    val f = readFrame(input)
+                    // El tope se mira al llegar el marco. Uno grande de una conexión aún sin comprobar se lee y se tira por partes, sin
+                    // reservarlo ni cortar la conexión: la app tampoco lo usaría (lan.js no acepta nada hasta comprobarla).
+                    val f = readFrame(input, true) { if (c.verified) MAX_FRAME else UNVERIFIED_FRAME }
+                    if (f == null) { listener.onLog("INFO", "Wi-Fi: marco grande de ${c.nx} antes de comprobar la conexión: descartado"); continue }
                     c.lastRx = clock()
                     if (f.startsWith("{\"h\":0,")) { c.write("{\"h\":2," + f.substring(7)); continue }
                     if (f.startsWith("{\"h\":2,")) {
@@ -224,12 +235,27 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
             val keepNew = (c.outbound == (myId().lowercase() < nx))
             if (!keepNew) return false
             conns[nx] = c
+            c.adoptedAt = clock()
             old.close()
             return true
         }
         conns[nx] = c
+        c.adoptedAt = clock()
+        evictUnverified(c)
         return true
     }
+
+    // T-D2: como mucho MAX_UNVERIFIED conexiones sin comprobar (se cierran las más viejas; la recién llegada se queda)
+    private fun evictUnverified(keep: Conn) {
+        val un = conns.values.filter { !it.verified && it !== keep }.sortedBy { it.adoptedAt }
+        val extra = un.size + 1 - MAX_UNVERIFIED
+        if (extra <= 0) return
+        un.take(extra).forEach { listener.onLog("WARN", "Wi-Fi: conexión sin comprobar con ${it.nx} cerrada (tope $MAX_UNVERIFIED)"); it.close() }
+    }
+
+    /** La app comprobó con el cifrado que la conexión es del contacto: ya puede mandar marcos grandes. */
+    fun markVerified(nx: String) { conns[nx.lowercase()]?.verified = true }
+    fun isVerified(nx: String): Boolean = conns[nx.lowercase()]?.verified == true
 
     private fun drop(c: Conn) {
         c.close()
@@ -238,9 +264,14 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
         if (removed) listener.onDown(nx)
     }
 
-    private fun readFrame(input: DataInputStream, max: Int = MAX_FRAME): String {
+    private fun readFrame(input: DataInputStream, max: Int = MAX_FRAME): String =
+        readFrame(input, false) { max }!!
+    // skip = true: un marco que pasa del tope (pero no del máximo absoluto) se lee y se tira sin reservarlo (null); si no, se cierra
+    private fun readFrame(input: DataInputStream, skip: Boolean, maxOf: () -> Int): String? {
         val len = input.readInt()
-        if (len < 0 || len > max) throw Exception("marco de $len bytes")
+        val max = maxOf()
+        if (len < 0 || len > MAX_FRAME || (len > max && !skip)) throw Exception("marco de $len bytes")
+        if (len > max) { var left = len; while (left > 0) { val k = input.skipBytes(left); if (k <= 0) { input.readByte(); left-- } else left -= k }; return null }
         val b = ByteArray(len)
         input.readFully(b)
         return String(b, Charsets.UTF_8)

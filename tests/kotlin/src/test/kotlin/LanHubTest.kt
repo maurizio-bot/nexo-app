@@ -34,7 +34,8 @@ class LanHubTest {
         val ra = Rec(); val rb = Rec()
         val a = LanHub({ "nxaaaaaaaa" }, ra); val b = LanHub({ "nxbbbbbbbb" }, rb)
         a.start(); a.connect("127.0.0.1", b.start())
-        assertTrue(waitFor { a.isUp("nxbbbbbbbb") })
+        assertTrue(waitFor { a.isUp("nxbbbbbbbb") && b.isUp("nxaaaaaaaa") })
+        b.markVerified("nxaaaaaaaa") // auditoría 23-11 (T-D2): los marcos grandes, solo de una conexión ya comprobada por la app
         val big = "B".repeat(8_000_000)
         val t0 = System.currentTimeMillis()
         assertTrue(a.send("nxbbbbbbbb", big))

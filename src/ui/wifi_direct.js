@@ -510,6 +510,9 @@ export class WifiDirect {
     var key = (self.ble.ackSystem && self.ble.ackSystem._peerKey(deviceId, from)) ||
       ((typeof p.pk === 'string' && /^[A-Za-z0-9+/=]{80,100}$/.test(p.pk)) ? p.pk : null);
     if (!key) { refuse('sin clave'); return true; }
+    // Auditoría 23-11 (T-D1): un archivo GRANDE (a disco, hasta 1,1 GB) solo de un contacto con clave guardada, nunca con la que trae la oferta
+    if (big && !(from && typeof self.ble._contactKey === 'function' && self.ble._contactKey(from))) { refuse('no es contacto'); return true; }
+    if (big && self.ble.bigFiles.saved && self.ble.bigFiles.saved[id] === 'got') { refuse('ya lo tengo'); return true; }
     self.busy = true;
     self._hosting = { id: id, deviceId: deviceId };   // por si llega su «cancelar» mientras se monta el grupo
     var tH = Date.now();

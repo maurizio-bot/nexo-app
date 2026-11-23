@@ -310,6 +310,7 @@ export class LanLink {
         else if (l.nonce && r2.text === l.nonce && !l.verified) {
           l.rechecking = 0;
           l.verified = true;
+          try { var plv = _plugin(); if (plv && typeof plv.lanVerified === 'function') plv.lanVerified({ nx: nx }).catch(function() {}); } catch (e) {} // auditoría 23-11 (T-D2)
           var again = l.routable;
           l.routable = true; l.graceUntil = 0;
           var recMs = this._noteRecovery(nx);

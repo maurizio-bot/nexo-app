@@ -137,6 +137,10 @@ class NetBg(
         // (no más atrás que lo que dura un mensaje en el relé). Con datos lo pendiente se guarda para el Wi-Fi.
         fun subSince(since: Long, gapSince: Long, cell: Boolean, now: Long): Long =
             if (gapSince < 0 || cell) since else minOf(since, maxOf(gapSince, now - TTL_MSG_MS))
+        // Auditoría 23-11 (S-A2): el `since` (desde cuándo pedir a los relés) avanzaba con el `created_at` de CUALQUIER evento antes de
+        // abrirlo: uno fechado en el futuro (lo publica cualquiera con mi etiqueta del día) dejaba sorda la escucha sin la app hasta
+        // reiniciar el proceso. Ahora solo avanza con un sobre que abrió bien y nunca más allá de ahora.
+        fun advanceSince(cur: Long, ts: Long, now: Long): Long = if (ts > cur) minOf(ts, now) else cur
         // Nombre corto del relé para el registro (como _relayHost de la app)
         fun host(url: String): String = url.replace(Regex("^wss?://"), "").replace(Regex("/.*$"), "")
         private val GID = Regex("^gr[0-9a-z]{8}$")
@@ -615,7 +619,6 @@ class NetBg(
         val id = ev.optString("id")
         synchronized(seen) { if (!seen.add(id)) return; if (seen.size > 3000) seen.remove(seen.first()) }
         val ts = ev.optLong("created_at") * 1000
-        if (ts > since) since = ts
         val tgs = ev.optJSONArray("tags") ?: return
         var c: Contact? = null
         var toReq = false
@@ -630,6 +633,7 @@ class NetBg(
         }
         if (c == null) { if (toReq) onReqEvent(ev, ts); return }
         val o = open(c.kraw, c.nx, me, ev.optString("content")) ?: return
+        since = advanceSince(since, ts, System.currentTimeMillis())   // auditoría 23-11 (S-A2): solo lo que abrió bien, nunca al futuro
         if (o.optInt("h") == 1) {
             // 3234: el saludo de «abrir el chat» lo contesta ya este nativo (la app dormida tardaba 5–33 s en despertar para contestar)
             val now = System.currentTimeMillis()

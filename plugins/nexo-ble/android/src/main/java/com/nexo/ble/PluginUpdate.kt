@@ -74,7 +74,11 @@ internal fun NexoBlePlugin.updateInstallImpl(call: PluginCall) {
     val url0 = call.getString("url")
     val mode = call.getString("mode") ?: ""
     val build = call.getInt("build") ?: 0
-    val updDir = File(activity.cacheDir, "nexo_open").also { it.mkdirs() }
+    // Auditoría 23-11 (I-U1): la actualización baja a una subcarpeta propia (nexo_open/upd). Antes iba a nexo_open, donde también caen
+    // los archivos del chat con su nombre: un contacto podía mandar «nexo-update-<N>.apk» y el botón «Instalar» abría el suyo. Un
+    // archivo del chat no puede llegar aquí (su nombre saneado no lleva «/»); el FileProvider ya cubre nexo_open y lo que cuelga de ella.
+    val updDir = File(File(activity.cacheDir, "nexo_open"), "upd").also { it.mkdirs() }
+    try { File(activity.cacheDir, "nexo_open").listFiles()?.forEach { if (it.isFile && it.name.startsWith("nexo-update")) it.delete() } } catch (e: Exception) {}
     val readyFile: File? = if (build > 0) File(updDir, "nexo-update-$build.apk") else null
     val isReady = readyFile != null && readyFile.isFile && readyFile.length() > 0L
     if (mode == "status") {
@@ -86,6 +90,8 @@ internal fun NexoBlePlugin.updateInstallImpl(call: PluginCall) {
             activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + context.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             call.resolve(JSObject().put("opened", false).put("reason", "install_permission")); return
         }
+        val bad = apkNotOurs(readyFile)
+        if (bad != null) { readyFile.delete(); remLog("WARN", "UPDATE", "La actualización $build no es de NEXO ($bad): borrada"); call.resolve(JSObject().put("opened", false).put("reason", "not_ours")); return }
         try { launchView(readyFile, "application/vnd.android.package-archive"); MsgNotifier.get(context).cancelUpdate(); call.resolve(JSObject().put("opened", true)) }
         catch (e: ActivityNotFoundException) { call.resolve(JSObject().put("opened", false).put("reason", "no_app")) }
         catch (e: Exception) { call.resolve(JSObject().put("opened", false).put("reason", "launch")) }
@@ -147,6 +153,7 @@ internal fun NexoBlePlugin.updateInstallImpl(call: PluginCall) {
             }
             if (total > 0 && done != total) { out.delete(); call.resolve(JSObject().put("opened", false).put("reason", "incomplete")); return@Thread }
             if (dlOnly && readyFile != null) {
+                apkNotOurs(out)?.let { bad -> out.delete(); UpdDownload.build = 0; remLog("WARN", "UPDATE", "La actualización $build no es de NEXO ($bad): borrada"); call.resolve(JSObject().put("opened", false).put("reason", "not_ours")); return@Thread }
                 if (!out.renameTo(readyFile)) { out.delete(); call.resolve(JSObject().put("opened", false).put("reason", "rename")); return@Thread }
                 UpdDownload.build = 0
                 remLog("INFO", "UPDATE", "Actualización $build descargada (${readyFile.length()} bytes): lista para instalar")
@@ -155,6 +162,7 @@ internal fun NexoBlePlugin.updateInstallImpl(call: PluginCall) {
                 call.resolve(JSObject().put("ready", true))
                 return@Thread
             }
+            apkNotOurs(out)?.let { bad -> out.delete(); remLog("WARN", "UPDATE", "La actualización bajada no es de NEXO ($bad): borrada"); call.resolve(JSObject().put("opened", false).put("reason", "not_ours")); return@Thread }
             mainHandler.post {
                 try { launchView(out, "application/vnd.android.package-archive"); call.resolve(JSObject().put("opened", true)) }
                 catch (e: ActivityNotFoundException) { call.resolve(JSObject().put("opened", false).put("reason", "no_app")) }
@@ -168,4 +176,26 @@ internal fun NexoBlePlugin.updateInstallImpl(call: PluginCall) {
             if (dlOnly && UpdDownload.build == build) UpdDownload.build = 0
         }
     }.start()
+}
+
+// Auditoría 23-11 (I-U1): antes de abrir el instalador se comprueba que el APK es de NEXO: mismo paquete y misma firma que la app
+// instalada. null = es nuestro; si no, el motivo. (Android también exige la misma firma para actualizar, pero un APK con OTRO paquete
+// y el nombre «NEXO» se instalaría como app nueva.)
+@Suppress("DEPRECATION")
+internal fun NexoBlePlugin.apkNotOurs(apk: File): String? {
+    return try {
+        val pm = context.packageManager
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES else android.content.pm.PackageManager.GET_SIGNATURES
+        val info = pm.getPackageArchiveInfo(apk.path, flags) ?: return "no se puede leer"
+        if (info.packageName != context.packageName) return "otro paquete: ${info.packageName}"
+        val mine = pm.getPackageInfo(context.packageName, flags)
+        val sigOf = { pi: android.content.pm.PackageInfo ->
+            (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) pi.signingInfo?.apkContentsSigners else pi.signatures)
+                ?.map { java.security.MessageDigest.getInstance("SHA-256").digest(it.toByteArray()).joinToString("") { b -> "%02x".format(b) } }?.toSet() ?: emptySet()
+        }
+        val a = sigOf(info); val b = sigOf(mine)
+        // Con el MISMO paquete, Android ya exige la misma firma para instalar encima; si alguna versión de Android no deja leer la
+        // firma del archivo, no se bloquea por eso (lo importante es que no sea otro paquete). Firmas leídas y distintas = fuera.
+        if (a.isNotEmpty() && b.isNotEmpty() && a != b) "otra firma" else null
+    } catch (e: Exception) { "error al comprobar: ${e.message}" }
 }

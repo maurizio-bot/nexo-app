@@ -25,6 +25,7 @@ export var BIG_MAX_BYTES = 1024 * 1024 * 1024;
 export var BIG_MIN_BYTES = Math.floor(WD_MAX_BYTES * 3 / 4);
 var STATE_FILE = 'nexo_big_state.json';
 var OFFER_TIMEOUT_MS = 30000;
+var BIG_IN_MAX = 2; // auditoría 23-11 (T-D1): archivos grandes recibiéndose a la vez
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
@@ -222,6 +223,15 @@ export class BigFiles {
     var l2 = p.via === 'l2';
     if (!pl || typeof (l2 ? pl.bigServeL2 : pl.bigServe) !== 'function' || (l2 && !self.l2Ok)) { no('no soportado'); return true; }
     if (!(p.size > 0) || p.size > BIG_MAX_BYTES * 1.1) { no('tamaño'); return true; }
+    // Auditoría 23-11 (T-D1): cualquiera cerca podía ofrecer un «archivo grande» (hasta 1,1 GB por id, un canal y un hilo por oferta)
+    // y llenar el disco. Ahora: solo de un contacto con clave; uno a la vez de cada contacto y como mucho BIG_IN_MAX a la vez; y un
+    // archivo ya recibido no se vuelve a escribir encima.
+    var bigKeyOk = from && self.ble && typeof self.ble._contactKey === 'function' && self.ble._contactKey(from);
+    if (!bigKeyOk) { console.warn('[BIG] Oferta de ' + (from || '?') + ' (no es contacto): rechazada'); no('no es contacto'); return true; }
+    if (self.saved[id] === 'got') { no('ya lo tengo'); return true; }
+    var nIn = 0, fromBusy = false;
+    Object.keys(self.st).forEach(function(k) { var x = self.st[k]; if (x && x.dir === 'in' && x.state === 'receiving' && k !== id) { nIn++; if (x.nx === from) fromBusy = true; } });
+    if (fromBusy || nIn >= BIG_IN_MAX) { no('ocupado'); return true; }
     if (!l2 && (!self.ble.lan || !self.ble.lan.canReach(from))) { no('sin Wi-Fi'); return true; }
     var token = _hex(16);
     self._set(id, { dir: 'in', state: 'receiving', bytes: 0, total: p.size, nx: from, via: l2 ? 'l2' : 'lan' });

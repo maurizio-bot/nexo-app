@@ -49,4 +49,16 @@ class BigFileAttackTest {
         assertTrue(dest.exists() && dest.readBytes().contentEquals(src.readBytes()))
         dir.deleteRecursively()
     }
+
+    // Auditoría 23-11 (T-D1): una recepción que se corta no deja el .part ocupando disco
+    @Test fun recepcionCortadaNoDejaPart() {
+        val dir = Files.createTempDirectory("bigf3").toFile()
+        val dest = java.io.File(dir, "dest")
+        val bytes = java.io.ByteArrayOutputStream()
+        DataOutputStream(bytes).apply { writeUTF(org.json.JSONObject().put("big", 1).put("id", "f").put("token", "t").put("len", 100_000L).toString()); write(ByteArray(30_000)); flush() }
+        assertFailsWith<Exception> { BigNet.receive(java.io.ByteArrayInputStream(bytes.toByteArray()), java.io.ByteArrayOutputStream(), "f", "t", dest, 1_000_000L) }
+        assertFalse(java.io.File(dest.path + ".part").exists(), "quedó el .part de una recepción cortada")
+        assertFalse(dest.exists())
+        dir.deleteRecursively()
+    }
 }

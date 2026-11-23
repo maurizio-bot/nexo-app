@@ -103,7 +103,7 @@ export const BLE_KEY_METHODS = {
       // H3 (07-11): la MISMA clave llega AHORA directa del propio contacto (kx directo o un mensaje suyo que descifra) → la
       // clave «de oídas» (que llegó en una tarjeta/grupo) queda CONFIRMADA: se quita el aviso «sin verificar». Un puente no
       // llega aquí (por relé solo se fija la PRIMERA clave si no hay ninguna), así que no puede falsear la confirmación.
-      if (c.pkHearsay) { delete c.pkHearsay; _saveBLEContacts(contacts); _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false, confirmed: true }); }
+      if (c.pkHearsay) { delete c.pkHearsay; delete c.pkConflict; _saveBLEContacts(contacts); _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false, confirmed: true }); }
       return true;
     }
     if (!c.publicKey) {
@@ -278,7 +278,7 @@ export const BLE_KEY_METHODS = {
     var contacts = _getBLEContacts();
     var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
     if (!c || !c.publicKey || c.pendingKey) return false;
-    if (on) { c.verified = c.publicKey; delete c.pkHearsay; delete c.mergeUnverified; delete c.feConflict; delete c.feWarn; } else delete c.verified; // 3148: y los avisos de Fénix Entorno // 3135: y la de «unido por el nombre» // H3: verificar el número de seguridad confirma la clave «de oídas»
+    if (on) { c.verified = c.publicKey; delete c.pkHearsay; delete c.pkConflict; delete c.mergeUnverified; delete c.feConflict; delete c.feWarn; } else delete c.verified; // 3148: y los avisos de Fénix Entorno // 3135: y la de «unido por el nombre» // H3: verificar el número de seguridad confirma la clave «de oídas»
     _saveBLEContacts(contacts);
     _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false, verified: !!on });
     return true;
@@ -299,7 +299,7 @@ export const BLE_KEY_METHODS = {
     c.keyAcceptedAt = Date.now();
     // Identidad nueva: protocolo, verificación y paquete de claves empiezan de cero
     var pb = c.pendingBundle;
-    delete c.pendingBundle; delete c.proto; delete c.proto2At; delete c.verified; delete c.pkHearsay; // H3: la clave nueva aceptada llegó directa del contacto (ya no es «de oídas»)
+    delete c.pendingBundle; delete c.proto; delete c.proto2At; delete c.verified; delete c.pkHearsay; delete c.pkConflict; // H3: la clave nueva aceptada llegó directa del contacto (ya no es «de oídas»)
     // Ya anunció el protocolo 2 con esta clave: desde ya (lo pendiente no debe salir con el 1)
     if (pb && pb.ik === c.publicKey) { c.proto = 2; c.proto2At = Date.now(); }
     _saveBLEContacts(contacts);

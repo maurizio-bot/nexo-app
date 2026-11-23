@@ -765,6 +765,7 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod fun lanConnect(call: PluginCall) = lanConnectImpl(call)
 
     @PluginMethod fun lanSend(call: PluginCall) = lanSendImpl(call)
+    @PluginMethod fun lanVerified(call: PluginCall) = lanVerifiedImpl(call) // auditoría 23-11 (T-D2)
 
     @PluginMethod fun lanDrop(call: PluginCall) = lanDropImpl(call)
 
