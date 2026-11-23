@@ -54,7 +54,7 @@ object NetBgHome {
     // El plugin que vive en este proceso (la app abierta o en segundo plano; o cerrada con el proceso vivo, ronda 2758)
     private fun host(): NexoBlePlugin? = NexoBlePlugin.live ?: NexoBlePlugin.orphan
 
-    private fun create(app: Context): NetBg = NetBg({ nx, name, msgId, isCall, group, video ->
+    private fun create(app: Context): NetBg = loadTor(app).let { NetBg({ nx, name, msgId, isCall, group, video ->
         val p = host()
         if (p != null) p.netBgOnMessage(nx, name, msgId, isCall, group, video)
         else {
@@ -66,7 +66,8 @@ object NetBgHome {
         if (MsgNotifier.get(app).cancelCallFor(nx, offer)) log(app, "$nx colgó: la llamada deja de sonar")
     }, { req -> requestNotify(app, req) }, { ts -> NetBgSaved.callTooOld(ts, System.currentTimeMillis()) },
         { json -> saveOutbox(app, json) }, { url, token -> wakePost(app, url, token) }, { reportNoInternet(app) },
-        { id, json -> saveBlob(app, id, json) }).also { watchNet(app, it) }
+        { id, json -> saveBlob(app, id, json) }).also { watchNet(app, it) } }
+    private fun loadTor(app: Context) = TorRoute.load(app.filesDir) // 13A: «Usar Tor siempre» guardado (la escucha sale por Tor o espera)
 
     // 3270 (COLA 27 sin la app; como PluginLan.reportNoInternetImpl con la app): el Wi-Fi no da internet → se le dice a Android para que
     // lo compruebe y pase a datos móviles. Solo con Wi-Fi como red activa; la escucha ya lo frena a una vez por minuto.
@@ -116,20 +117,20 @@ object NetBgHome {
 
     // El «toque» que despierta al otro teléfono tras subir un mensaje de la bandeja: lo MISMO que hace la app (wake_post.js): un POST
     // con solo el token del otro (nunca el contenido) al enviador. En un hilo aparte (no se frena la escucha) y sin reintentos.
+    // Auditoría 23-11 (S-D5): solo a NUESTRO enviador (host fijo, TorRoute.WAKE_HOST) y sin seguir redirecciones (antes cualquier
+    // https y HttpURLConnection seguía las redirecciones). Decisión 13A: con «Usar Tor siempre», por Tor; si Tor aún no está, espera
+    // (como mucho 2 min) y si no llega, el toque no sale: nunca directo.
     private fun wakePost(ctx: Context, url: String, token: String) {
-        if (!url.startsWith("https://") || token.length < 20) return
+        if (!TorRoute.wakeUrlOk(url) || !url.startsWith("https://") || token.length < 20) { if (url.isNotEmpty()) log(ctx, "Bandeja de salida: toque a una dirección que no es la del enviador: no sale", "WARN"); return }
         Thread({
-            var c: java.net.HttpURLConnection? = null
             try {
-                c = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
-                    requestMethod = "POST"; connectTimeout = 10000; readTimeout = 10000; doOutput = true
-                    setRequestProperty("Content-Type", "text/plain;charset=UTF-8")
-                }
-                c.outputStream.use { it.write(org.json.JSONObject().put("to", token).toString().toByteArray(Charsets.UTF_8)) }
-                log(ctx, "Bandeja de salida: toque al otro teléfono: el enviador contestó ${c.responseCode}")
+                if (TorRoute.always) torEnsureForBg(ctx) { log(ctx, it) }
+                val via = TorRoute.awaitRoute(120000).getOrElse { log(ctx, "Bandeja de salida: el toque espera a Tor (Usar Tor siempre) y Tor no llegó: no sale", "WARN"); return@Thread }
+                val code = TorRoute.post(url, org.json.JSONObject().put("to", token).toString(), 10000 + (if (via != null) 20000 else 0), via)
+                log(ctx, "Bandeja de salida: toque al otro teléfono" + (if (via != null) " (por Tor)" else "") + ": el enviador contestó $code")
             } catch (e: Throwable) {
                 log(ctx, "Bandeja de salida: el toque no salió (${e.javaClass.simpleName})", "WARN")
-            } finally { try { c?.disconnect() } catch (e: Throwable) { } }
+            }
         }, "nexo-toque").apply { isDaemon = true }.start()
     }
 
@@ -279,6 +280,9 @@ object NetBgHome {
         }
         val s = saved ?: return false
         return try {
+            // Decisión 13A: con «Usar Tor siempre» la escucha sale por Tor; sin la app se arranca aquí (hasta tenerlo, espera)
+            TorRoute.load(app.filesDir)
+            if (TorRoute.always) torEnsureForBg(app) { log(app, it) }
             val bg = get(app)
             NetBgSaved.apply(bg, s) { id -> NetBgSaved.blobFrom(store(app).read(NetBgSaved.blobFile(id))) }
             // Las claves del ✓✓ también para el plugin si carga después en este proceso (la app las vuelve a dar al arrancar)

@@ -19,8 +19,11 @@ private fun NexoBlePlugin.lanWifiNet(): android.net.Network? = try {
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
     fun wifi(n: android.net.Network?): Boolean {
         val c = (if (n != null) cm.getNetworkCapabilities(n) else null) ?: return false
+        // Auditoría 23-11 (punto 6): una VPN no es «la misma Wi-Fi» (su red puede llevar TRANSPORT_WIFI debajo): fuera; con la VPN como
+        // red activa se busca la Wi-Fi de verdad entre todas (abajo)
         return (c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) || c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)) &&
-            !c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_WIFI_P2P)
+            !c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_WIFI_P2P) &&
+            !c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) && c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
     }
     val act = cm.activeNetwork
     @Suppress("DEPRECATION")

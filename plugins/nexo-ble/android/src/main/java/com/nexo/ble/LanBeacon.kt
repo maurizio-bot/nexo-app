@@ -28,6 +28,13 @@ class LanBeacon(private val listener: Listener, private val udpPort: Int = PORT)
     }
 
     companion object {
+        // Interfaces que no son «la misma Wi-Fi»: datos móviles, túneles/VPN y (auditoría 23-11, punto 6) el grupo de Wi-Fi Direct (p2p-*):
+        // barrerlo preguntaba por NEXO a quien estuviera en ese grupo (y decía nuestro token a gente que no está en nuestra red)
+        internal fun skipInterface(name: String): Boolean {
+            val n = name.lowercase()
+            return n.startsWith("rmnet") || n.startsWith("ccmni") || n.startsWith("tun") || n.startsWith("dummy") || n.startsWith("p2p") || n.startsWith("ppp") || n.startsWith("ipsec")
+        }
+
         const val PORT = 47824
         const val MAX_SWEEP_PREFIX = 22
         private val TOKEN_RE = Regex("^[0-9a-f]{16}$")
@@ -145,8 +152,7 @@ class LanBeacon(private val listener: Listener, private val udpPort: Int = PORT)
         try {
             NetworkInterface.getNetworkInterfaces()?.toList()?.forEach { ni ->
                 if (!ni.isUp || ni.isLoopback || ni.isVirtual) return@forEach
-                val name = ni.name.lowercase()
-                if (name.startsWith("rmnet") || name.startsWith("ccmni") || name.startsWith("tun") || name.startsWith("dummy")) return@forEach
+                if (skipInterface(ni.name)) return@forEach
                 ni.interfaceAddresses.forEach { ia ->
                     val a = ia.address
                     if (a is Inet4Address && a.isSiteLocalAddress) out.add(Triple(a, ia.networkPrefixLength.toInt(), ia.broadcast))
