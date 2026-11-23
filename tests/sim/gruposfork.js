@@ -14,6 +14,7 @@
 //     este REAFIRMA el estado y D queda al día.
 //  8. Una SALIDA que pierde el cruce con el cambio de un admin sin cobertura: el teléfono del que salió la repite sola.
 //  9. A uno lo expulsan y el aviso no le llega: cuando escribe al grupo, quien lo recibe le manda el cambio que lo sacó.
+// 11. Sale el creador sin admins: manda el miembro más antiguo. Al expulsado el grupo le desaparece; si lo agregan, vuelve.
 // Uso: node gruposfork.js [dir_build]
 'use strict';
 const path = require('path');
@@ -244,6 +245,21 @@ console.warn = (...a) => { logs.push('WARN ' + a.map(String).join(' ')); };
     r.noenterado_C_cree_estar = !W.phones.C.gs.get(gid).kicked;
     W.phones.C.gs.sendText(gid, 'sigo aquí', null, null); await W.flush();
     r.noenterado_C_se_entera = !!W.phones.C.gs.get(gid).kicked && W.st('C', gid).v === 2;
+  }
+
+  // ---- 11. sale el creador y no hay admins: manda el miembro más antiguo (dueño 22-11); al expulsado el grupo le desaparece ----
+  {
+    const W = await world(['A', 'B', 'C']);
+    W.know('A', 'B'); W.know('A', 'C'); W.know('B', 'C');
+    const gid = await newGroup(W, 'A', ['B', 'C'], 'o');
+    await W.phones.A.gs.leave(gid); await W.flush();
+    r.heredero_miembro_mas_antiguo = ['B', 'C'].every((n) => W.st(n, gid).cr === W.phones.B.id && W.st(n, gid).ad.join() === W.phones.B.id && !G.gsOpen(W.st(n, gid)));
+    r.heredero_C_no_expulsa = await W.phones.C.gs.kick(gid, W.phones.B.id, false).then(() => false, () => true);
+    await W.phones.B.gs.kick(gid, W.phones.C.id, false); await W.flush();
+    const gC = W.phones.C.gs.get(gid);
+    r.expulsado_grupo_desaparece = !!gC.kicked && !!gC.left && !W.phones.C.gs.all().some((g) => g.id === gid);
+    await W.phones.B.gs.addMembers(gid, [W.phones.C.id], W.cards(['B', 'C'])); await W.flush();
+    r.expulsado_vuelve_si_lo_agregan = !gC.kicked && !gC.left && W.phones.C.gs.all().some((g) => g.id === gid) && W.sig('C', gid) === W.sig('B', gid);
   }
 
   // ---- 10. la huella de la foto del grupo es SHA-256 ----

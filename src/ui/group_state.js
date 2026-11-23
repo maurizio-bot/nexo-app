@@ -20,8 +20,9 @@
  * Permisos (los hace cumplir el que recibe): escribir: todos, o solo admins con ow. Nombre y foto: en control, admins; en colegas,
  * todos. Agregar: admins en control o con oa; si no, todos. Expulsar a un miembro normal: en control, un admin; en colegas, el
  * creador. Expulsar a un admin, bloquear, desbloquear, quitar admins y cambiar modo o interruptores: solo el creador. Designar
- * admins: un admin. El creador no es expulsable. Salir: siempre (si sale el creador, pasa todo al admin más antiguo; si no queda
- * creador ni admins el grupo queda ABIERTO: todos pueden todo, también desbloquear y volver a agregar).
+ * admins: un admin. El creador no es expulsable. Salir: siempre. Si sale el creador, el mando pasa al admin más antiguo y, si no
+ * hay admins, al MIEMBRO más antiguo (dueño 22-11: un grupo nunca se queda sin quien mande; antes quedaba «abierto» y cualquiera
+ * expulsaba a cualquiera). Por eso el orden de los miembros es fijo: los que siguen, en su orden; los nuevos, al final.
  * Puro (sin la app): la verificación usa @noble/curves (síncrona); firmar lo hace e2e_crypto.js (la privada no sale de allí).
  */
 import { p256 } from '@noble/curves/nist.js';
@@ -96,7 +97,7 @@ export function gsSigToB64(bytes) { return _b64(bytes); }
 // (así sigue igual que antes: todos escriben, agregan y renombran; expulsar, solo el creador)
 export function gsImplicit(g) {
   var m = (g.members || []).slice(), cr = _nid(g.createdBy);
-  if (!_has(m, cr)) cr = null;
+  if (!_has(m, cr)) cr = m[0] || null;   // el creador ya no está: manda el miembro más antiguo
   return { g: g.id, v: 0, p: '', cr: cr, ad: cr ? [cr] : [], md: 'o', ow: 0, oa: 0, m: m, bl: [], n: g.name || '', ph: '', by: null, t: 0, sg: '' };
 }
 
@@ -134,12 +135,16 @@ export function gsStepError(prev, next) {
   if (_has(prev.bl, a)) return 'quien firma está bloqueado';
   var removed = _minus(prev.m, next.m), added = _minus(next.m, prev.m);
   var same = function(k) { return JSON.stringify(prev[k]) === JSON.stringify(next[k]); };
+  // miembros: los que siguen, en el mismo orden; los nuevos, al final (la antigüedad decide quién hereda el mando)
+  var keepM = prev.m.filter(function(x) { return _has(next.m, x); });
+  if (JSON.stringify(next.m.slice(0, keepM.length)) !== JSON.stringify(keepM)) return 'orden de miembros cambiado'; // i18n-ok: registro
   // Salir: solo se quita a sí mismo y nada más cambia (si era el creador, pasa al admin más antiguo)
   if (!_has(next.m, a)) {
     if (removed.length !== 1 || added.length || !same('bl') || !same('n') || !same('ph') || !same('md') || !same('ow') || !same('oa')) return 'una salida que cambia otras cosas'; // i18n-ok: registro
     var ad2 = prev.ad.filter(function(x) { return x !== a; });
+    var cr2 = prev.cr;
+    if (prev.cr === a) { cr2 = ad2[0] || keepM[0] || null; if (!ad2.length && cr2) ad2 = [cr2]; }   // hereda el admin o el miembro más antiguo
     if (JSON.stringify(ad2) !== JSON.stringify(next.ad)) return 'salida con admins cambiados';
-    var cr2 = prev.cr === a ? (ad2[0] || null) : prev.cr;
     if ((cr2 || null) !== (next.cr || null)) return 'salida con otro creador';
     return null;
   }

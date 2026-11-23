@@ -162,11 +162,12 @@ export var groupAdminMethods = {
     var self = this, ph = groupPhotoHash(img);
     return this.change(gid, { ph: ph }, { notice: '👥 ' + (img ? t('grp_n_photo', 'Foto del grupo nueva') : t('grp_n_photo0', 'Se quitó la foto del grupo')), pi: img || undefined }).then(function(s) { self._photoPut(gid, ph, img); return s; });
   },
-  // Salir con estado firmado (si soy el creador, pasa al admin más antiguo; si no queda nadie, el grupo queda abierto)
+  // Salir con estado firmado (si soy el creador, el mando pasa al admin más antiguo y, si no hay, al miembro más antiguo)
   leaveSigned(gid, quiet) {
     var s = this.state(gid), me = this._me();
-    var ad = s.ad.filter(function(x) { return x !== me; });
-    var ch = { m: s.m.filter(function(x) { return x !== me; }), ad: ad, cr: s.cr === me ? (ad[0] || null) : s.cr };
+    var ad = s.ad.filter(function(x) { return x !== me; }), m = s.m.filter(function(x) { return x !== me; }), cr = s.cr;
+    if (s.cr === me) { cr = ad[0] || m[0] || null; if (!ad.length && cr) ad = [cr]; }
+    var ch = { m: m, ad: ad, cr: cr };
     return this.change(gid, ch, { notice: t('grp_left_msg', '👋 Salió del grupo'), gl: 1, force: true, quiet: !!quiet });
   },
 
@@ -374,11 +375,13 @@ export var groupAdminMethods = {
     var self = this, me = this._me(), s = g.s, inNow = s.m.indexOf(me) >= 0;
     g.members = s.m.slice();
     g.name = s.n;
-    var by = applied[applied.length - 1].next.by, wasOut = !!(g.kicked || g.left);
+    var by = applied[applied.length - 1].next.by, wasOut = !!(g.kicked || g.left), gone = false;
     if (!inNow && mine) g.left = true;                 // mi propia salida: fuera, pero no «expulsado»
     else if (!inNow && !g.left && !g.kicked) {
-      g.kicked = true;
-      self._notice(g.id, by, '🚫 ' + t('grp_n_you_out', 'Te expulsaron del grupo')); _toast('🚫 ' + t('grp_n_you_out', 'Te expulsaron del grupo') + ' «' + g.name + '»');
+      // Expulsado (dueño 22-11, opción B): el grupo DESAPARECE de su lista (como al salir); solo un aviso de por qué.
+      // Lo guardado no se borra: si lo vuelven a agregar, el grupo vuelve como estaba.
+      g.kicked = true; g.left = true; gone = true;
+      _toast('🚫 ' + t('grp_n_you_out', 'Te expulsaron del grupo') + ' «' + g.name + '»');
     } else if (inNow && g.kicked && !applied.some(function(a) { return a.join; })) {
       // La expulsión perdió un cruce (o se deshizo): vuelvo a estar dentro
       g.kicked = false; g.left = false;
@@ -397,7 +400,7 @@ export var groupAdminMethods = {
     });
     if (s.ph && !this.photoOf(g.id)) this._photosLoad();
     this._save();
-    _emit('nexo:groups', { id: g.id });
+    _emit('nexo:groups', gone ? { id: g.id, gone: 1 } : { id: g.id });
   },
   _diffText(prev, next) {
     var d = gsDiff(prev, next), n = [], nm = this.memberName.bind(this), me = this._me();

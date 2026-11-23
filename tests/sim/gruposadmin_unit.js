@@ -68,10 +68,14 @@ global.atob = global.atob || ((s) => Buffer.from(s, 'base64').toString('binary')
   r.creador_sale_pasa_a_B = ok(s5, s6) && s6.cr === b;
   r.salida_con_trampa_no = !ok(s5, await step(s5, a, { m: [b, c], ad: [c, b], cr: c })) && !ok(s5, await step(s5, c, { m: [a, b], ad: [a, b], n: 'x' }));
   r.B_no_saca_a_admin_C = !ok(s5, await step(s5, b, { m: [a, b], ad: [a, b] }));
-  // grupo abierto: sin creador ni admins, todos hacen todo (también desbloquear y volver a agregar)
+  // sale el creador y no hay admins (dueño 22-11): el mando pasa al MIEMBRO más antiguo (B); el grupo ya no queda «abierto», y el
+  // que sale no elige heredero (ni cambiando el orden de los miembros)
   const o1 = await sign({ g: 'grtest0002', v: 1, cr: a, ad: [a], md: 'c', ow: 1, oa: 0, m: [a, b, c], bl: [], n: 'X', ph: '', by: a, t: 1, sg: '' });
-  const o2 = await step(o1, a, { m: [b, c], ad: [], cr: null });
-  r.queda_abierto = ok(o1, o2) && G.gsOpen(o2) && G.gsCan(o2, c, 'write') && G.gsCan(o2, c, 'kick', b) && G.gsCan(o2, b, 'settings');
+  const o2 = await step(o1, a, { m: [b, c], ad: [b], cr: b });
+  r.sin_admins_pasa_al_miembro_mas_antiguo = ok(o1, o2) && !G.gsOpen(o2) && G.gsIsBoss(o2, b) && !G.gsCan(o2, c, 'kick', b) && G.gsCan(o2, b, 'kick', c);
+  r.ya_no_queda_abierto = !ok(o1, await step(o1, a, { m: [b, c], ad: [], cr: null }));
+  r.el_que_sale_no_elige_heredero = !ok(o1, await step(o1, a, { m: [b, c], ad: [c], cr: c })) && !ok(o1, await step(o1, a, { m: [c, b], ad: [c], cr: c }));
+  r.orden_de_miembros_fijo = !ok(s3, await step(s3, a, { m: [a, c, b, d] })) && ok(s3, await step(s3, a, { m: [a, b, c, d, e] })) && !ok(s3, await step(s3, a, { m: [e, a, b, c, d] }));
   // modo COLEGAS: todos escriben, agregan, renombran; expulsar solo el creador
   const c1 = await sign({ g: 'grtest0003', v: 1, cr: a, ad: [a], md: 'o', ow: 0, oa: 0, m: [a, b, c], bl: [], n: 'Colegas', ph: '', by: a, t: 1, sg: '' });
   r.colegas_todos = ok(c1, await step(c1, c, { n: 'Nuevo' })) && ok(c1, await step(c1, c, { m: [a, b, c, d] })) && G.gsCan(c1, c, 'write');

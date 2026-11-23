@@ -13,6 +13,7 @@ import { makeWallpaper, setChatWallpaperFor, chatWallpaperFor, clearChatWallpape
 import { _showInfoToast } from './ui_bits.js';
 import { GS_MAX_MEMBERS } from './group_state.js';
 import { t } from './i18n.js';
+import { _doChatBack } from './chat_nav.js';
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
 function _gs() { var b = _bi(); return b && b.groups; }
@@ -268,5 +269,14 @@ export function refreshGroupComposer() {
 export function installGroupPanel() {
   window.addEventListener('nexo:ble:openChat', function() { setTimeout(refreshGroupComposer, 0); });
   window.addEventListener('nexo:ble:closeChat', function() { setTimeout(refreshGroupComposer, 0); });
-  window.addEventListener('nexo:groups', function() { refreshGroupComposer(); });
+  window.addEventListener('nexo:groups', function(e) {
+    // Me expulsaron (dueño 22-11): el grupo desaparece de la lista; si lo tenía abierto, se vuelve a la lista
+    var d = e && e.detail, bi = _bi();
+    if (d && d.gone && bi) {
+      var old = document.getElementById('nexo-gset'); if (old) old.remove();
+      if (bi._activeChatDeviceId === d.id) { try { _doChatBack(); } catch (x) {} }
+      if (typeof bi.renderContactsList === 'function') bi.renderContactsList();
+    }
+    refreshGroupComposer();
+  });
 }

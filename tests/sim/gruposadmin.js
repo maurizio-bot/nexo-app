@@ -5,8 +5,8 @@
 //  3. C, con la app trucada, escribe igual y firma un cambio haciéndose admin: los demás lo descartan (sin aviso).
 //  4. A agrega a D: entra con el estado y las tarjetas, NO ve lo de antes, y recibe lo nuevo de B.
 //  5. B (admin) firma un estado que expulsa al creador, y otro tocado después de firmar: nadie los acepta.
-//  6. B expulsa a C («Solo expulsar»; B no ve «Expulsar y bloquear» ni el botón de expulsar al creador): C queda fuera, con la barra
-//     bloqueada; C sigue escribiendo con la app trucada y nadie lo guarda.
+//  6. B expulsa a C («Solo expulsar»; B no ve «Expulsar y bloquear» ni el botón de expulsar al creador): a C el grupo le DESAPARECE de la
+//     lista (dueño 22-11); C sigue escribiendo con la app trucada y nadie lo guarda.
 //  7. A expulsa y bloquea a D: «Personas bloqueadas» aparece; B la ve sin «Desbloquear»; A desbloquea y lo vuelve a agregar (vuelve).
 //  8. B se atrasa (versión vieja): con el siguiente mensaje de A pide el estado y se pone al día.
 //  9. Foto del grupo (A) y fondo compartido (A): llegan a B.
@@ -160,10 +160,9 @@ const check = (p, sel) => { const cb = q(p, sel); if (cb) { cb.checked = true; c
   r.C_fuera_en_A = await wait(() => st(A, gid).m.indexOf(id(C)) < 0, 60);
   r.C_fuera_en_D = await wait(() => st(D, gid).m.indexOf(id(C)) < 0, 60);
   r.C_expulsado = await wait(() => gsOf(C).get(gid).kicked === true, 60);
-  r.C_aviso = await wait(() => vaultHas(C, gid, /Te expulsaron/), 20);
-  await openChatWith(C, '👥 Equipo');
-  { const i = q(C, '#message-input'); r.C_barra_fuera = !!i && i.disabled && /Ya no estás/.test(i.getAttribute('placeholder') || ''); }
-  await closeChat(C);
+  // dueño 22-11 (opción B): al expulsado el grupo le DESAPARECE de la lista (no queda de solo lectura)
+  r.C_grupo_desaparece = await wait(() => !gsOf(C).all().some((g) => g.id === gid), 20);
+  r.C_sin_fila_en_la_lista = !(await openChatWith(C, '👥 Equipo'));
   { const g = gsOf(C).get(gid); g.kicked = false; gsOf(C).canWrite = () => true; g.members = [id(A), id(B), id(D), id(C)];
     gsOf(C).sendText(gid, JSON.stringify({ type: 'nexo_txt', t: 'sigo escribiendo' }), null, null, null, null, { x: 1 }); g.kicked = true; delete gsOf(C).canWrite; }
   await sleep(7000);
@@ -197,7 +196,7 @@ const check = (p, sel) => { const cb = q(p, sel); if (cb) { cb.checked = true; c
   check(A, '#nexo-gset-addl .gset-pick[data-nx="' + id(D) + '"] input');
   click(A.win, q(A, '#nexo-gset-addl .gset-save')); await sleep(800);
   if (q(A, '#nexo-gset')) q(A, '#nexo-gset').remove();
-  r.D_vuelve = await wait(() => gsOf(D).get(gid).kicked === false && st(D, gid).m.indexOf(id(D)) >= 0, 60);
+  r.D_vuelve = await wait(() => gsOf(D).get(gid).kicked === false && st(D, gid).m.indexOf(id(D)) >= 0 && gsOf(D).all().some((g) => g.id === gid), 60);
 
   // 8. B se atrasa y se pone al día con el siguiente mensaje de A
   await wait(() => st(B, gid).v === st(A, gid).v, 30);
