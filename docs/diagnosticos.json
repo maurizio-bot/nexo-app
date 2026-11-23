@@ -904,6 +904,14 @@
    "sintoma": "resumen_diario",
    "categoria": "Medición",
    "causa": "SIN FALLO. 6 enviados, 6 ✓✓ (media 0,7 s por internet, 1 con la app dormida); 8 recibidos; internet listo en 5,4 s de media; 1 min con la app a la vista; 354 KB."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "18:58",
+   "nx": "nx1e50c95d (Cari, S23 Ultra, Android 17): automático, build 3117",
+   "sintoma": "enlace_abre_cierra (nx16386482 6 desconexiones en 10 min)",
+   "categoria": "Conexión",
+   "causa": "VERSIÓN VIEJA (3117). Al volver al primer plano salen varios «Enlace ? (2504/066f) desconectado» de enlaces sin dueño: el falso «enlace_abre_cierra» ya arreglado en la 3283 (va en la siguiente APK). Sin mensajes perdidos: 97 por internet, 94 con ✓✓ y 3 aún sin."
   }
  ]
 }
