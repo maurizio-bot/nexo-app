@@ -23,10 +23,14 @@ class NativeLog(private val file: File, private val maxBytes: Long = 48_000) {
     private val lock = Any()
     private val fmt = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US)
 
+    private val MAX_LINE = 600
+
     fun add(level: String, tag: String, message: String, now: Long = System.currentTimeMillis()) {
         synchronized(lock) {
             try {
-                val line = fmt.format(Date(now)) + " [" + level + "][" + tag + "] " + message.replace('\n', ' ').replace('\r', ' ')
+                // Auditoría 23-11 (S-B6): una línea enorme (p. ej. un id elegido por otro) ya no puede vaciar el diagnóstico entero
+                val msg1 = message.replace('\n', ' ').replace('\r', ' ').let { if (it.length > MAX_LINE) it.substring(0, MAX_LINE) + "…" else it }
+                val line = fmt.format(Date(now)) + " [" + level + "][" + tag + "] " + msg1
                 file.appendText(line + "\n")
                 if (file.length() > maxBytes) trim()
             } catch (e: Exception) { }

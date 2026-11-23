@@ -125,7 +125,8 @@ class OutboxBle(
     @Synchronized fun wanting(): Set<String> {
         val b = bg() ?: return emptySet()
         if (b.outbox.size() == 0) return emptySet()
-        val linked = linkNx.entries.filter { link.ready(it.key) }.map { it.value }.toSet()
+        // 3A (auditoría S-B3/S-B4): solo cuenta un enlace COMPROBADO (la app o el reto); uno que solo dice ser él no frena la búsqueda del de verdad
+        val linked = linkNx.entries.filter { link.ready(it.key) && proven[it.key] == it.value }.map { it.value }.toSet()
         return b.outbox.nxs().filter { it !in linked }.toSet()
     }
 

@@ -29,6 +29,7 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
 
     companion object {
         private val NX = Regex("^nx[0-9a-z]{8}$")
+        private val MSG_ID = Regex("^[A-Za-z0-9_.:-]{1,80}$") // S-B6 (23-11)
         // 3087 (punto débil de llamadas: «con la app cerrada, si el que llama cuelga, sigue sonando hasta 45 s»): la señal de colgar va
         // cifrada; el que llama pone por fuera el id de su oferta (ce, el mismo «cs…» que llevaba la oferta con cl:1)
         val CALL_ID = Regex("^cs[0-9a-f]{12}$")
@@ -62,6 +63,9 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
             if (SafeJson.reject(json)) return Info(Kind.IGNORE, "", "", false, "")
             val o = try { JSONObject(json) } catch (e: Exception) { return Info(Kind.IGNORE, "", "", false, "") }
             val type = o.optString("type"); val t = o.optString("t")
+            // Auditoría 23-11 (S-B6): el id del mensaje lo elige quien manda y va al registro y al buzón: solo letras, números y _ . : -
+            val mid0 = o.optString("msgId").ifEmpty { o.optString("m") }
+            if (mid0.isNotEmpty() && !MSG_ID.matches(mid0)) return Info(Kind.IGNORE, "", "", false, "")
             val from = (o.optString("from").ifEmpty { o.optString("fr") }).lowercase()
             val mine = me.isNotEmpty() && NX.matches(me.lowercase())
             // Ronda 2764 (informe del dueño: lo de la tablet para el S24 sonaba en el Vivo): un paquete directo dice a

@@ -42,7 +42,7 @@ class SinAppCore(private val me: String, private val sink: Sink, private val now
     companion object {
         const val REASSEMBLY_TIMEOUT_MS = 5000L   // como PluginRx: sin trozos nuevos, lo pendiente se tira
         const val MAX_PENDING_MS = 10000L         // lo pendiente que no forma mensaje en 10 s era un mensaje cortado
-        const val BUFFER_MAX_CHARS = 8 * 1024 * 1024
+        const val BUFFER_MAX_CHARS = 2 * 1024 * 1024 // S-B5 (23-11): antes 8 M; lo que viaja entero por Bluetooth es mucho menor (lo largo va en trozos)
         const val KX_GAP_MS = 8000L
 
         /** Primer JSON completo del búfer (respeta cadenas y escapes) y lo que sobra; null si aún no hay ninguno. */
@@ -67,7 +67,10 @@ class SinAppCore(private val me: String, private val sink: Sink, private val now
                             depth--
                             if (depth == 0) {
                                 val cand = buffer.substring(start, j + 1)
-                                val ok = !SafeJson.reject(cand) && try { JSONObject(cand); true } catch (e: Throwable) { false }
+                                // Auditoría 23-11 (S-B5): un bloque que SafeJson rechaza (muy anidado o enorme) se salta ENTERO; antes se
+                                // reintentaba desde la llave siguiente y con {{{…}}} el coste era cuadrático (decenas de segundos de CPU)
+                                if (SafeJson.reject(cand)) { i = j + 1; retry = true; break }
+                                val ok = try { JSONObject(cand); true } catch (e: Throwable) { false }
                                 if (ok) return cand to buffer.substring(j + 1)
                                 i = start + 1; retry = true
                                 break

@@ -123,6 +123,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
     var stopped = false
         private set
     private val inbox = BgInbox(File(ctx.filesDir, "nexo_bg_inbox.jsonl"))
+    private val wakeWin = HashMap<String, LongArray>() // S-B1: enlace → (inicio del minuto, despertares)
 
     private fun norm(addr: String) = addr.replace(":", "").lowercase()
 
@@ -130,7 +131,12 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
         override fun send(link: String, json: String) { enqueue(link, json) }
         override fun store(link: String, json: String): Boolean {
             // el teléfono despierto unos segundos para guardar, confirmar y avisar (como rxWake de la app en segundo plano)
-            try {
+            // Auditoría 23-11 (S-B1): como mucho 6 despertares por enlace y minuto (alguien cerca mandando «mensajes» sin parar no deja
+            // el teléfono despierto para siempre; lo que llega se guarda igual)
+            val tNow = System.currentTimeMillis(); val w = wakeWin.getOrPut(link) { longArrayOf(tNow, 0L) }
+            if (tNow - w[0] > 60_000L) { w[0] = tNow; w[1] = 0L }
+            if (wakeWin.size > 200) wakeWin.clear()
+            if (++w[1] <= 6) try {
                 (ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "nexo:bt-sinapp")
                     ?.apply { setReferenceCounted(false) }?.acquire(8000L)
             } catch (e: Throwable) { }
