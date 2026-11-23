@@ -5,7 +5,7 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 // 3212: margen del `since` al (re)suscribir un relé: entre 2 y 10 min según el desfase visto en lo que llega en vivo (se recuerda 12 h)
 var SINCE_MARGIN_MIN_S = 120, SINCE_MARGIN_MAX_S = 600, LAG_KEEP_MS = 12 * 3600000;
 // 17: freno de resync (volver a pedir a los relés lo reciente cuando un envío no recibe confirmación)
-var RESYNC_MIN_GAP_MS = 15000;
+var RESYNC_MIN_GAP_MS = 15000, RESYNC_MAX_BACK_MS = 120000;
 // 3249 (diagnósticos 19-11: Vivo 05:12 «Un sobre llegó 17565 s después de su hora: margen al reconectar 600 s», S24 05:23 «429 s»): lo que se
 // quedó parado en la conexión mientras ESTA app estaba congelada (pantalla apagada, el sistema la detuvo) se procesaba al volver como si
 // llegara «en vivo» y tarde: el margen subía al máximo (10 min) y se recordaba 12 h, así que cada vuelta a la app y cada «deslizar»
@@ -278,7 +278,7 @@ export const netRelays = {
     if (gap !== undefined && !this._cellMode()) { from = Math.max(Math.min(from, gap), Date.now() - TTL_MSG * 1000); this._unread.delete(r.url); }
     var since = Math.max(0, Math.floor(from / 1000) - this._sinceMarginS());
     // 17: resync: solo lo de desde que salió el envío (30 s de margen), no el margen largo de siempre (serían datos repetidos)
-    if (typeof fromMs === 'number' && fromMs > 0) since = Math.max(Math.floor((Date.now() - TTL_MSG * 1000) / 1000), Math.floor(fromMs / 1000) - 30);
+    if (typeof fromMs === 'number' && fromMs > 0) since = Math.max(Math.floor((Date.now() - RESYNC_MAX_BACK_MS) / 1000), Math.floor(fromMs / 1000) - 30);   // como mucho 2 min (lección 3130)
     this._send(r, ['REQ', r.sub, { kinds: [KIND], '#p': Array.from(this.inTags.keys()).concat(Array.from(this.reqTags.keys())), since: since }]);
   },
 
