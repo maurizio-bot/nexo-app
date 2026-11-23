@@ -6,8 +6,7 @@ Regla: una sesión = un tema; una APK por tanda; antes de subir `tamano.js`, `i1
 1. [g] **Bluetooth entero en el servicio nativo** (🔴 1 de `docs/AREAS.md`): que vuelva solo tras morir/dormir (#87, Roberto 4 h sin NEXO) y
    **puente nativo con la app dormida** (reenviar para otros sin la app). Fases 2–4 hechas (3263, 3268–3271, 3276, 3279–3281); falta el puente
    y la vuelta sola. Con Fable, tras el reinicio semanal.
-2. [m] **13 MTU 23** (Vivo Y03, Katy): hoy solo se MIDE (16d082be). Falta el arreglo: lo grande por L2CAP (ya existe `l2_fast.js`, 3288) o
-   preferir el enlace donde NEXO es cliente. Mirar primero lo que dice la medición en el próximo diagnóstico de esos teléfonos.
+2. [m] **13 MTU 23** (Vivo Y03, Katy): 3312 — con el enlace a MTU 23 el canal rápido L2CAP entra desde ~6 KB (antes ~45 KB); `l2mediano.js` caso `mtu23`.
 3. [m] **Wi-Fi Direct en teléfonos reales** (🔴 6): pruebas del dueño + «grupo siempre montado» si elige B (A/B pendiente de él).
 4. [m] **Llamadas**: gasto de datos por relés; «sin imagen propia al contestar desde el aviso» (por investigar). Eco de grupo hecho (3301), por oír.
 5. [m] **23 entrega con app CERRADA y pantalla APAGADA**: en vigilancia (23-11 Vivo→S24 llegó en 1 s y sonó).

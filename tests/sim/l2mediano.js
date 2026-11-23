@@ -4,6 +4,7 @@
 //              (15 KB) sigue en trozos (abrir el canal tardaría más).
 //  canal_falla el canal no se abre en ese par de teléfonos: el archivo llega IGUAL, en trozos como siempre; quien recibe no
 //              se queda esperando (cancelar) y con ese contacto no se vuelve a probar en un rato (el segundo va directo en trozos).
+//  mtu23       COLA 13: enlace a MTU 23 (Vivo Y03, Katy): también el chico (15 KB) va por el canal (en trozos de 20 B tardaría mucho).
 //  otro_no     el otro no lo tiene (no lo anuncia): ni se ofrece; en trozos como siempre.
 // 3289 (dueño 23-11: «ok solo si me aseguras que es más rápido»), los dos con Wi-Fi Direct Y canal rápido:
 //  sin_medidas   sin medidas de hoy → Wi-Fi Direct primero (decisión del 12-11).
@@ -60,6 +61,10 @@ async function caso(nombre, pA, pB) {
   const idA = A.win.bleInterface.localNexoId, idB = B.win.bleInterface.localNexoId, nxB = idB.toLowerCase();
   const l2A = A.win.bleInterface.l2Fast, l2B = B.win.bleInterface.l2Fast;
   await sleep(3000);   // el intercambio de claves (kx) lleva quién tiene el canal rápido
+  if (pA.mtu23After) {   // el enlace queda a MTU 23 (en el sim, emparejar a 23 desde el principio tarda demasiado)
+    for (const n of [nA, nB]) for (const k of Array.from(n.mtu.keys())) n.mtu.set(k, 23);
+    const mb = A.win.bleInterface._mtuByDevice; for (const k of Array.from(mb.keys())) mb.set(k, 23);
+  }
   const conWd = pA.wifiDirect === true;
   if (conWd) { await waitFor(() => A.win.bleInterface.wifiDirect.peers.has(nxB), 20000); await sleep(3500); }   // el permiso se pide solo ~2,5 s después
   if (pA.medidas) { A.win.NEXO_noteSpeed('l2', 'out', 400000, Math.round(400000 / 1024 / pA.medidas[0] * 1000)); A.win.NEXO_noteSpeed('wifi-direct', 'out', 400000, Math.round(400000 / 1024 / pA.medidas[1] * 1000)); }
@@ -71,7 +76,7 @@ async function caso(nombre, pA, pB) {
   const statusA = (mid) => { const s = A.win.document.querySelector('.message[data-msg-id="' + mid + '"] .msg-status'); return s ? s.className.replace('msg-status status-', '') : null; };
   const r = { caso: nombre, A_lo_tiene: l2A.supported(), B_lo_anuncia: l2A.peers.has(nxB) };
   const mal = [], chk = (k, v) => { if (!v) mal.push(k); };
-  const x1 = await send(400000, 13, 'mediano.bin');
+  const x1 = await send(nombre === 'mtu23' ? 15000 : 400000, 13, 'mediano.bin');
   r.mediano_llega_s = x1.s; r.mediano_trozos = chunksOf(x1.id); r.ofertas = offers();
   r.por_canal_A = nA.stats.l2pSends || 0; r.canales_abiertos_B = nB.stats.l2pHosts || 0;
   chk('mediano_llega', x1.s !== null);
@@ -91,6 +96,9 @@ async function caso(nombre, pA, pB) {
     const x2 = await send(15000, 17, 'chico.bin');
     r.chico_llega_s = x2.s; r.chico_trozos = chunksOf(x2.id);
     chk('chico_en_trozos', x2.s !== null && (nA.stats.l2pSends || 0) === 1 && r.chico_trozos > 0);
+  } else if (nombre === 'mtu23') {
+    r.mtu_A = A.win.bleInterface._mtuByDevice && Array.from(A.win.bleInterface._mtuByDevice.values()).join(',');
+    chk('chico_por_el_canal', r.por_canal_A === 1 && r.mediano_trozos === 0);
   } else if (nombre === 'canal_falla') {
     chk('se_intento', r.ofertas === 1 && r.canales_abiertos_B === 1);
     chk('llego_en_trozos', r.por_canal_A === 0 && r.mediano_trozos > 10);
@@ -113,7 +121,7 @@ async function caso(nombre, pA, pB) {
 
 (async () => {
   const WD = { wifiDirect: true };
-  const casos = [['rapido', {}, {}], ['canal_falla', { l2pFail: true }, {}], ['otro_no', {}, { noL2Payload: true }],
+  const casos = [['rapido', {}, {}], ['mtu23', { mtu23After: true }, {}], ['canal_falla', { l2pFail: true }, {}], ['otro_no', {}, { noL2Payload: true }],
     ['sin_medidas', WD, WD], ['mide_mas', Object.assign({ medidas: [800, 100] }, WD), WD], ['mide_menos', Object.assign({ medidas: [100, 800] }, WD), WD],
     ['mide_mas_falla', Object.assign({ medidas: [800, 100], l2pFail: true }, WD), WD]].filter((c) => !solo || c[0] === solo);
   const res = [];

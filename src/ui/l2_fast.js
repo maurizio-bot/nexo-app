@@ -21,6 +21,9 @@
 import { e2eAnyEncrypted } from '../vault/e2e_proto.js';
 
 export var L2P_MIN_CHARS = 60000;        // ~45 KB de archivo: por debajo, los trozos de siempre tardan menos que abrir el canal
+// COLA 13 (Vivo Y03, Katy: enlaces a MTU 23): a MTU mínimo cada escritura lleva ~20 bytes (≈ 25 veces menos que a 517) y una nota
+// de voz o una foto chica tardan decenas de segundos en trozos; abrir el canal (1–2 s) ya compensa desde ~6 KB de archivo.
+export var L2P_MIN_CHARS_MTU23 = 8000;
 export var L2P_MAX_CHARS = 3100000;      // el tope de un archivo por Bluetooth (más grande: «archivo grande», de disco a disco)
 var OFFER_TIMEOUT_MS = 6000;             // lo que se espera a que el otro abra el canal
 var FAIL_PAUSE_MS = 10 * 60000;          // tras un fallo, con ese contacto se va por lo de siempre este rato
@@ -71,9 +74,14 @@ export class L2Fast {
     return !!na && na === this._nexoOf(b);
   }
 
+  _minChars(deviceId) {
+    var m = this.ble && this.ble._mtuByDevice && this.ble._mtuByDevice.get(_mac(deviceId));
+    return (typeof m === 'number' && m <= 23) ? L2P_MIN_CHARS_MTU23 : L2P_MIN_CHARS;
+  }
+
   // ¿Este archivo, a este enlace Bluetooth, puede ir por el canal rápido ahora?
   eligible(deviceId, chars) {
-    if (!this.ok || this.busy || !(chars >= L2P_MIN_CHARS) || chars > L2P_MAX_CHARS) return false;
+    if (!this.ok || this.busy || !(chars >= this._minChars(deviceId)) || chars > L2P_MAX_CHARS) return false;
     var nx = this._nexoOf(deviceId);
     if (!nx || !this.peers.has(nx)) return false;
     return !(this.failUntil[nx] > Date.now());
