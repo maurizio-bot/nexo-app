@@ -276,7 +276,9 @@ internal fun NexoBlePlugin.getFcmTokenImpl(call: PluginCall) {
             val tok = if (task.isSuccessful) (task.result ?: "") else ""
             if (tok.isNotEmpty()) {
                 try { prefs?.edit()?.putString(NexoFcmService.PREF_TOKEN, tok)?.apply() } catch (e: Exception) {}
-                call.resolve(JSObject().put("token", tok))
+                // 14A: el sello, solo si es de ESTE token (si el token cambió, la app pide otro)
+                val sealed = try { if (prefs?.getString(NexoFcmService.PREF_SEALED_FOR, "") == tok) prefs?.getString(NexoFcmService.PREF_SEALED, "") ?: "" else "" } catch (e: Exception) { "" }
+                call.resolve(JSObject().put("token", tok).put("sealed", if (NexoFcmService.sealOk(sealed)) sealed else ""))
             } else {
                 val saved = try { prefs?.getString(NexoFcmService.PREF_TOKEN, "") ?: "" } catch (e: Exception) { "" }
                 call.resolve(JSObject().put("token", saved).put("error", task.exception?.message ?: "sin token"))

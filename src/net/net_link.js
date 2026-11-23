@@ -105,7 +105,7 @@ export class NetLink {
     self._migrateState();
     // FCM «despertador» (#87, Fase 2): el token de este teléfono (para que los contactos puedan despertarlo) y los
     // tokens que ya conocíamos de ellos (sobreviven al reinicio, así se puede despertar aunque no haya saludo reciente).
-    try { if (pl && typeof pl.getFcmToken === 'function') { var ft = await pl.getFcmToken(); if (ft && ft.token) self.fcmToken = ft.token; } } catch (e) {}
+    try { if (pl && typeof pl.getFcmToken === 'function') { var ft = await pl.getFcmToken(); if (ft && ft.token) self._wakeSeal(ft); } } catch (e) {} // 14A: el sello si lo hay
     try { if (self.state.peerFcm) Object.keys(self.state.peerFcm).forEach(function(nx) { self._peer(nx).fcmToken = self.state.peerFcm[nx]; }); } catch (e) {}
     self._drainPending = true; // 3033: al arrancar, lo que la parte nativa recibió con la app cerrada entra ya (ver _drainBg)
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() {

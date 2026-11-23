@@ -1600,7 +1600,7 @@ class NativePhone {
       torStatus: wrap('torStatus', (c) => c.resolve({ supported: true, running: !!self.tor, onion: self.tor ? self.tor.onion : '', port: 9878, peers: [] })),
       // FCM «despertador» (#87, Fase 2): token FCM de ESTE teléfono (fijo por teléfono en el modelo). En teléfono real
       // lo da FirebaseMessaging; aquí basta uno estable y único para probar el intercambio y el disparo del toque.
-      getFcmToken: wrap('getFcmToken', (c) => c.resolve({ token: 'FCMTOK-' + self.name + '-0000000000000000000000000000' })),
+      getFcmToken: wrap('getFcmToken', (c) => c.resolve({ token: 'FCMTOK-' + self.name + '-0000000000000000000000000000', sealed: self.fcmSealed || '' })), // 14A: el sello (lo pone la prueba)
       // NEXO Touch (2968): háptica del sistema — en el simulador solo se registra (kind, mode); así los tests no la confunden con navigator.vibrate (llamadas)
       haptic: wrap('haptic', (c, a) => { self.haptics = (self.haptics || []).concat([{ kind: a.kind, mode: a.mode }]); c.resolve({}); }),
       hapticCaps: wrap('hapticCaps', (c) => c.resolve({ sdk: 34, hasVibrator: true, amplitude: true, primitives: true })),

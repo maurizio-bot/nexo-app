@@ -15,6 +15,39 @@ const FCM_URL = 'https://fcm.googleapis.com/v1/projects/' + PROJECT_ID + '/messa
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 
+// 14A (decisión del dueño 23-11, auditoría T-P1: «firmar el toque»). Antes cualquiera con el token FCM de un teléfono podía mandarle toques
+// (no lee nada, pero le gasta batería). Ahora el teléfono pide su SELLO: POST { "seal": "<su token>" }. El servicio NO lo devuelve a quien
+// pregunta: se lo manda por FCM al propio teléfono dueño de ese token ({ t: 'seal', s }); solo el teléfono de verdad lo recibe. El sello
+// (s1.…) es el token cifrado con WAKE_KEY (AES-GCM, secreto de este servicio) y es lo que el teléfono comparte con sus contactos. Un toque
+// { "to": "s1.…" } se abre aquí; uno con el token crudo se acepta mientras ONLY_SEALED no sea "1" (transición: teléfonos aún sin sello).
+// Secretos: WAKE_KEY = 32 bytes en base64 (wrangler secret put WAKE_KEY); ONLY_SEALED = "1" cuando todos tengan la versión con sello.
+const SEAL_PREFIX = 's1.', SEAL_AAD = new TextEncoder().encode('nexo-wake-v1');
+function bytesFromB64(s) { const raw = atob(String(s).replace(/-/g, '+').replace(/_/g, '/').replace(/\s+/g, '')); const b = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) b[i] = raw.charCodeAt(i); return b; }
+async function sealKey(env) {
+  const k = env && env.WAKE_KEY;
+  if (!k) return null;
+  const raw = bytesFromB64(k);
+  if (raw.length !== 32) throw new Error('WAKE_KEY debe ser de 32 bytes');
+  return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+export async function sealToken(env, token) {
+  const key = await sealKey(env); if (!key) return null;
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: SEAL_AAD }, key, new TextEncoder().encode(token)));
+  const out = new Uint8Array(12 + ct.length); out.set(iv, 0); out.set(ct, 12);
+  return SEAL_PREFIX + b64urlFromBytes(out);
+}
+export async function unsealToken(env, sealed) {
+  if (typeof sealed !== 'string' || !sealed.startsWith(SEAL_PREFIX) || sealed.length > 6000) return null;
+  const key = await sealKey(env); if (!key) return null;
+  try {
+    const b = bytesFromB64(sealed.slice(SEAL_PREFIX.length));
+    if (b.length < 12 + 16 + 20) return null;
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b.subarray(0, 12), additionalData: SEAL_AAD }, key, b.subarray(12));
+    return new TextDecoder().decode(pt);
+  } catch (e) { return null; }
+}
+
 // Antiabuso v1 (igual que la versión Firebase): tope por token, best-effort en memoria del isolate.
 const WINDOW_MS = 5 * 60 * 1000, MAX_PER_WINDOW = 8, MAX_TRACKED = 5000;
 const hits = new Map();
@@ -75,28 +108,50 @@ async function getAccessToken(sa) {
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '86400' };
 function reply(body, init) { init = init || {}; init.headers = Object.assign({}, CORS, init.headers || {}); return Response.json(body, init); }
 
+async function fcmSend(env, message) {
+  const sa = loadServiceAccount(env);
+  const token = await getAccessToken(sa);
+  const r = await fetch(FCM_URL, { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ message }) });
+  if (r.ok) { const d = await r.json(); return reply({ ok: true, id: d.name || '' }); }
+  const errTxt = await r.text();
+  const gone = r.status === 404 || /UNREGISTERED|registration-token-not-registered|NOT_FOUND|invalid-argument/i.test(errTxt);
+  return reply({ error: 'fcm', status: r.status, gone: gone }, { status: gone ? 404 : 502 });
+}
+const validToken = (t) => typeof t === 'string' && t.length >= 20 && t.length <= 4096 && !t.startsWith(SEAL_PREFIX);
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     if (request.method !== 'POST') return reply({ error: 'usa POST' }, { status: 405 });
-    let to = '';
-    try { to = String(((await request.json()) || {}).to || '').trim(); } catch (e) {}
-    if (to.length < 20 || to.length > 4096) return reply({ error: 'falta "to" (token FCM)' }, { status: 400 });
-    if (rateLimited(to)) return reply({ error: 'demasiados toques para ese token; espera' }, { status: 429 });
+    let body = {};
+    try { body = (await request.json()) || {}; } catch (e) {}
     try {
-      const sa = loadServiceAccount(env);
-      const token = await getAccessToken(sa);
+      // 14A: pedir el sello → va SOLO al teléfono dueño del token (nunca en la respuesta)
+      if (body.seal !== undefined) {
+        const tok = String(body.seal || '').trim();
+        if (!validToken(tok)) return reply({ error: 'falta "seal" (token FCM)' }, { status: 400 });
+        if (rateLimited('seal:' + tok)) return reply({ error: 'demasiadas peticiones de sello; espera' }, { status: 429 });
+        const s = await sealToken(env, tok);
+        if (!s) return reply({ error: 'sello no disponible' }, { status: 503 });
+        return await fcmSend(env, { token: tok, data: { t: 'seal', s }, android: { priority: 'normal', ttl: '86400s', collapse_key: 'nexo_seal' } });
+      }
+      let to = String(body.to || '').trim();
+      if (to.startsWith(SEAL_PREFIX)) {
+        const opened = await unsealToken(env, to);
+        if (!opened || !validToken(opened)) return reply({ error: 'sello no válido' }, { status: 403 });
+        to = opened;
+      } else if (env && env.ONLY_SEALED === '1') {
+        return reply({ error: 'toque sin sello' }, { status: 403 });
+      }
+      if (!validToken(to)) return reply({ error: 'falta "to" (token FCM)' }, { status: 400 });
+      if (rateLimited(to)) return reply({ error: 'demasiados toques para ese token; espera' }, { status: 429 });
       // Solo datos { t: 'wake' }, alta prioridad. 3246 (dueño 18-11, diagnósticos de Katy y Yael: el teléfono estuvo apagado o
       // sin red más de 60 s y el toque caducó; al volver nadie lo despertó hasta abrir la app a mano): ahora el toque espera
       // hasta 24 h en Google y, con collapse_key, solo queda UNO guardado por teléfono (no una ráfaga al reconectar).
-      const msg = { message: { token: to, data: { t: 'wake' }, android: { priority: 'high', ttl: '86400s', collapse_key: 'nexo_wake' } } };
-      const r = await fetch(FCM_URL, { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(msg) });
-      if (r.ok) { const d = await r.json(); return reply({ ok: true, id: d.name || '' }); }
-      const errTxt = await r.text();
-      const gone = r.status === 404 || /UNREGISTERED|registration-token-not-registered|NOT_FOUND|invalid-argument/i.test(errTxt);
-      return reply({ error: 'fcm', status: r.status, gone: gone }, { status: gone ? 404 : 502 });
+      return await fcmSend(env, { token: to, data: { t: 'wake' }, android: { priority: 'high', ttl: '86400s', collapse_key: 'nexo_wake' } });
     } catch (e) {
-      return reply({ error: String((e && e.message) || e) }, { status: 500 });
+      // T-P1: sin detalles internos hacia fuera
+      return reply({ error: 'interno' }, { status: 500 });
     }
   },
 };
