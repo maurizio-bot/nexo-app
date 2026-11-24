@@ -360,7 +360,7 @@ const SCENARIOS = [
     resumen_archivo_nombre: (v) => v === '📎 informe.pdf', resumen_archivo_contenido: (v) => v === '📎 foto.jpg',
     resumen_archivo_descriptor: (v) => v === '📎 video.mp4', resumen_sin_codigo: isTrue,
     subt_wifi_icono: isTrue, subt_internet_icono: isTrue, subt_bluetooth_icono: isTrue, subt_solo_icono: isTrue,
-    subt_senal_debil: isTrue, nombre_es_textarea: isTrue,
+    subt_senal_debil: isTrue, nombre_es_textarea: isTrue, resp_mismo_chat: isTrue, resp_se_quita_al_salir: isTrue, resp_no_vuelve: isTrue, resp_se_quita_otro_chat: isTrue,
     emoji_1: (v) => v === 1, emoji_2: (v) => v === 2, emoji_piel: (v) => v === 1, emoji_bandera: (v) => v === 1,
     emoji_muchos: (v) => v === 0, emoji_texto: (v) => v === 0, emoji_mixto: (v) => v === 0, errores: isEmpty } },
   { name: 'gestos del chat (3143, pedido del dueño 16-11: «deslizar para responder no siempre funciona» y «deslizar para cancelar una nota de voz»): deslizar un mensaje recibido y uno propio abre la respuesta con su cita (quién y el texto) y la ✕ en la barra; poco recorrido, vertical o un gesto cancelado por el sistema NO responden; un desliz algo diagonal sí; con el dedo en el botón de grabar, deslizar a la izquierda más de 100 px cancela la nota (pista «Desliza para cancelar», no se envía) un toque deja grabando y ➤ la envía; mantener y soltar la envía sola (3145) (contraprueba 3140: el cancelado por el sistema respondía y deslizar no cancelaba)', args: ['gestos.js'], tag: 'GESTOS', logs: 'last_logs_gestos.txt', checks: { resultado: (v) => v === 'OK', recibido_cita: isTrue, propio_cita: isTrue, cancelado_no_responde: isTrue, cancelada_no_se_envia: isTrue, toque_sigue_grabando: isTrue, suelta_envia: isTrue, desliza_suelta_no_envia: isTrue, errores: isEmpty } },

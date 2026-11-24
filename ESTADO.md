@@ -31,6 +31,16 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   internet en ninguno, con el Vivo en medio con la app cerrada (y Cari lejos del S24): un texto, un texto largo y una foto deben llegar
   con ✓✓; lo mismo con el Vivo con la pantalla apagada un rato largo. Queda: JS vivo y nativo pueden reenviar los dos un paquete corto
   guardado (duplicado inofensivo).
+- **24-11 tarde (dueño), HECHO SIN APK (commit [skip ci]):** (a) cabecera del chat: el símbolo del camino va ENTRE la foto y el nombre
+  (`main.js` _viaSlot, `#chat-via-ico`) y sin «En línea»; debajo solo «señal débil»/«Conectando…». Jump y Bluetooth-internet (gw) con
+  símbolo PROVISIONAL (tres puntos con saltos / ᛒ+globo; captura dada al dueño): FALTA que elija símbolo y NOMBRE de la conexión
+  Bluetooth-internet (propuse «Internet prestado»). (b) La respuesta (y la edición) empezada se quedaba al cambiar de chat: ahora es solo
+  de ese chat (`chat_actions._chatChanged`; `chatactions.js` resp_*, contraprueba HEAD falla).
+- **SIGUIENTE (pedido del dueño 24-11): INVITACIÓN A GRUPO con Aceptar/Rechazar.** Hoy `groups.receive` mete al contacto en el grupo solo
+  con el primer sobre. Plan: grupo nuevo (o me agregan) → `pending:true`, no sale en la lista, aviso «X te agregó a «Y»» en Solicitudes con
+  Aceptar/Rechazar; lo que llegue mientras se guarda oculto y aparece al aceptar; Aceptar → mensaje de grupo «se unió»; Rechazar → salida
+  firmada «rechazó la invitación». El nativo (NetBgSaved.groupNames) no debe avisar como grupo uno pendiente. Prueba nueva en tests/sim.
+  Luego UNA APK con todo (bloqueo ya va en el CI de f73063ca; se sube otra vez con esto).
 - **BLOQUEAR CONTACTO HECHO (24-11, SIN APK aún; va con el menú de la burbuja sin «Copiar»).** `src/ui/bloqueo.js` (núcleo: localStorage +
   copia cifrada `nexo_blocked.json`; `msgWhileBlocked`: lo que mandó mientras, no entra al desbloquear) y `bloqueo_ui.js` (hoja, barra del chat,
   lista en Ajustes → Seguridad → Privacidad). Filtros: entrada `ble_receive._handlePayload` y trozos `ble_ack_resume` (sin ✓✓); salida

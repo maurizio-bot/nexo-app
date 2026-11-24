@@ -39,6 +39,7 @@ export var _renderedMessageIds = new Set();
 //   texto con respuesta o reenviado: {"type":"nexo_txt","t":texto,"rp":{id,a,s,k},"fw":1}
 //   eliminar para todos:              {"type":"nexo_act","act":"del","id":msgId}  (no se muestra)
 //   editar (2782; 3195: ts y grupos):  {"type":"nexo_act","act":"edit","id":msgId,"t":texto nuevo,"ts":hora,"g":grupo si es de grupo}
+var _replyCid = '';                     // 24-11 (dueño): de qué chat es la respuesta (no viaja en el mensaje)
 export var _replyTo = null;               // { id, a: autor (NEXO ID), s: resumen, k: tipo }
 
 export var DELETE_ALL_MS = 24 * 3600000;  // "eliminar para todos" hasta 24 h después de enviarlo
@@ -393,14 +394,28 @@ export function _startReply(id, msg) {
     if (!m || m.deleted) return;
     if (_editing) _cancelEdit(); // 3195: responder deja la edición (las dos a la vez no tienen sentido)
     var sum = _msgSummary(m);
+    if (_normId(_getCurrentContactId()) !== _normId(cid)) return; // se cambió de chat mientras se buscaba el mensaje
     _replyTo = { id: id, a: m._own ? _myNexoId() : _normId(m.senderNexoId || cid), s: sum.s, k: sum.k };
+    _replyCid = _normId(cid);
     _renderReplyBar();
     var input = document.getElementById('message-input');
     if (input) input.focus();
   });
 }
 
-export function _cancelReply() { _replyTo = null; _renderReplyBar(); }
+export function _cancelReply() { _replyTo = null; _replyCid = ''; _renderReplyBar(); }
+
+// 24-11 (dueño: «si salgo de ese chat y abro otro se mantiene»): la respuesta (y la edición) son SOLO del chat donde se empezaron.
+// Al abrir otro chat o cerrar este se quitan, por cualquier camino (atrás, gesto, aviso, compartir, abrir desde otro chat).
+function _chatChanged() {
+  var cur = _normId(_getCurrentContactId());
+  if (_replyTo && _replyCid !== cur) _cancelReply();
+  if (_editing && _editing.cid !== cur) _cancelEdit();
+}
+try {
+  window.addEventListener('nexo:ble:openChat', function() { setTimeout(_chatChanged, 0); });
+  window.addEventListener('nexo:ble:closeChat', function() { if (_replyTo) _cancelReply(); if (_editing) _cancelEdit(); });
+} catch (e) {}
 
 // 3195: las barras «Respondiendo a» y «Editando mensaje» van DENTRO de la barra de escribir (fija abajo), justo encima de ella.
 // Antes se metían en la página DETRÁS de esa barra (fija y opaca desde la 3140) y no se veían: medido en Chromium a 360 px, las

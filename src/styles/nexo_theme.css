@@ -676,3 +676,9 @@ html.nx-font-custom body, html.nx-font-custom button, html.nx-font-custom input,
    contactos, los chips de invitar y «Agregar» con la misma altura, letra de 14 px y esquina de 14 px (están en línea en ble_ui.js, que
    no se toca: por eso !important). */
 #ble-inv-whatsapp, #ble-inv-tiktok, #ble-inv-more, #ble-addid-btn { box-sizing: border-box; min-height: 43px; font-size: 14px !important; border-radius: 14px !important; }
+/* 24-11 (dueño): el símbolo del camino (Wi-Fi, Bluetooth, internet, Jump, internet prestado) entre la foto y el nombre; sin «En línea» */
+#chat-via-ico { position: absolute; left: 60px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; color: var(--nx-cyan); }
+#chat-via-ico .via-ico svg { width: 17px; height: 17px; display: block; }
+#chat-via-ico .via-ico svg[viewBox="0 0 30 24"] { width: 21px; }
+#chat-header.has-via #chat-contact-info { padding-left: 86px !important; }
+@media (max-width: 340px) { #chat-via-ico { left: 54px; } #chat-header.has-via #chat-contact-info { padding-left: 80px !important; } }

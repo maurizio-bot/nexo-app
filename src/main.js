@@ -266,39 +266,48 @@ var _VIA_ICON = {
   internet: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3 2.5 3 14.5 0 17M12 3.5c-3 2.5-3 14.5 0 17"/></svg>',
   bluetooth: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M8 8l8 8-4 3V5l4 3-8 8"/></svg>'
 };
-var _VIA_WORD = { wifi: 'Wi-Fi', internet: 'Internet', bluetooth: 'Bluetooth' };
-// Subtítulo del chat 1:1: devuelve {html, text}. El html lleva el icono del transporte (estático); text es la versión
-// en palabras (para el tooltip accesible). mtu<60 por Bluetooth marca «señal débil» (ronda 2798).
+// 24-11 (dueño): Jump (de teléfono en teléfono) y el internet que presta un NEXO cercano por Bluetooth también con su símbolo (provisionales:
+// el dueño elige). Jump = tres puntos unidos por saltos; prestado = Bluetooth con un globo pequeño.
+_VIA_ICON.jump = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="17" r="2"/><circle cx="12" cy="17" r="2"/><circle cx="20" cy="17" r="2"/><path d="M5 13.5a4 4 0 0 1 6 0M13 13.5a4 4 0 0 1 6 0"/><path d="M17.5 11.5l1.5 2-2.4.4"/></svg>';
+_VIA_ICON.gw = '<svg viewBox="0 0 30 24" width="16" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M4 8l8 8-4 3V5l4 3-8 8"/><circle cx="22" cy="12" r="6.5" stroke-width="1.7"/><path d="M15.5 12h13M22 5.5c2 2 2 11 0 13M22 5.5c-2 2-2 11 0 13" stroke-width="1.4"/></svg>';
+var _VIA_WORD = { wifi: 'Wi-Fi', internet: 'Internet', bluetooth: 'Bluetooth', jump: 'Jump', gw: 'Internet · por puente' };
+// Subtítulo del chat 1:1: {ico, note, html, text}. ico = el símbolo del camino (va entre la foto y el nombre, 24-11); note = lo que queda
+// escrito debajo del nombre (señal débil, «Conectando…»); sin «En línea» (dueño 24-11: el símbolo ya lo dice). text = en palabras
+// (tooltip accesible). html = ico + note (gancho de pruebas). mtu<60 por Bluetooth marca «señal débil» (ronda 2798).
 function _subtitleFor(via, mtu) {
-  if (via === 'jump') return { html: _t('st_jump', 'Por Jump'), text: _t('st_jump', 'Por Jump') };
-  // P2 (dueño 01-11): contacto dormido al que acabamos de mandar el «toque» FCM al abrir el chat; mientras llega su
-  // presencia mostramos «Conectando…» (antes el subtítulo quedaba VACÍO y el dueño no veía el tipo de conexión).
-  if (via === 'waking') return { html: _t('st_connecting', 'Conectando…'), text: _t('st_connecting', 'Conectando…') };
-  // Parte 3 del puente (dueño 13-11): en línea por internet pero SIN internet propio → «por puente» (otro NEXO presta el suyo)
-  var gw = via === 'gw'; if (gw) via = 'internet';
-  if (!_VIA_ICON[via]) return { html: '', text: '' };
-  var weak = via === 'bluetooth' && mtu > 0 && mtu < 60;
-  var online = _t('st_online', 'En línea'), weakTxt = _t('st_weak_signal', 'señal débil'), gwTxt = _t('st_via_gw', 'por puente');
-  var word = online + ' · ' + _VIA_WORD[via] + (weak ? ' · ' + weakTxt : '') + (gw ? ' · ' + gwTxt : '');
-  var html = online + ' · <span class="via-ico" role="img" aria-label="' + _VIA_WORD[via] + '">' + _VIA_ICON[via] + '</span>' + (weak ? ' · <span class="via-weak">⚠ ' + weakTxt + '</span>' : '') +
-    (gw ? ' · <span class="via-gw">' + gwTxt + '</span>' : '');
-  return { html: html, text: word };
+  // P2 (dueño 01-11): contacto dormido al que acabamos de mandar el «toque» FCM al abrir el chat; mientras llega su presencia, «Conectando…»
+  if (via === 'waking') { var cn = _t('st_connecting', 'Conectando…'); return { ico: '', note: cn, html: cn, text: cn }; }
+  if (!_VIA_ICON[via]) return { ico: '', note: '', html: '', text: '' };
+  var weak = via === 'bluetooth' && mtu > 0 && mtu < 60, weakTxt = _t('st_weak_signal', 'señal débil');
+  var ico = '<span class="via-ico" role="img" aria-label="' + _VIA_WORD[via] + '">' + _VIA_ICON[via] + '</span>';
+  var note = weak ? '<span class="via-weak">⚠ ' + weakTxt + '</span>' : '';
+  return { ico: ico, note: note, html: ico + note, text: _VIA_WORD[via] + (weak ? ' · ' + weakTxt : '') };
 }
 try { if (typeof window !== 'undefined') window.__nexoViaSubtitle = _subtitleFor; } catch (e) {} // gancho de pruebas (puro)
 
-// v9.9.48: por dónde va el contacto del chat abierto (Wi-Fi de la misma red, Bluetooth, Jump)
+// v9.9.48: por dónde va el contacto del chat abierto (Wi-Fi de la misma red, Bluetooth, Jump, internet o internet prestado)
+function _viaSlot(html, text) {
+  var hd = document.getElementById('chat-header');
+  var el = document.getElementById('chat-via-ico');
+  if (!html) { if (el) el.remove(); if (hd) hd.classList.remove('has-via'); return; }
+  if (!el && hd) { el = document.createElement('div'); el.id = 'chat-via-ico'; hd.appendChild(el); }
+  if (!el) return;
+  el.innerHTML = html; el.title = text || ''; // SVG estático (sin datos del remitente)
+  hd.classList.add('has-via');
+}
 function _refreshLinkSubtitle() {
   var sub = document.getElementById('chat-contact-subtitle');
   var bi = window.bleInterface, cid = _getCurrentContactId();
-  if (sub && bi && bi.groups && bi.groups.isGroup(cid)) { sub.textContent = groupSubtitle(bi.groups.get(cid)); return; } // ronda 2758
-  if (!sub || !bi || typeof bi.linkOf !== 'function' || !cid) return;
+  if (sub && bi && bi.groups && bi.groups.isGroup(cid)) { _viaSlot(''); sub.textContent = groupSubtitle(bi.groups.get(cid)); return; } // ronda 2758
+  if (!sub || !bi || typeof bi.linkOf !== 'function' || !cid) { _viaSlot(''); return; }
   var via = bi.linkOf(cid);
   // P2: sin enlace todavía pero despertando al contacto → «Conectando…» (al formarse el enlace, el via real manda)
   if (via === 'none' && typeof bi.isWaking === 'function' && bi.isWaking(cid)) via = 'waking';
   if (via === 'internet' && bi.net && typeof bi.net.gwOnly === 'function' && bi.net.gwOnly()) via = 'gw'; // parte 3 del puente
   var mtu = (via === 'bluetooth' && typeof bi.getMtu === 'function' && bi._activeChatDeviceId) ? bi.getMtu(bi._activeChatDeviceId) : 0;
   var r = _subtitleFor(via, mtu);
-  sub.innerHTML = r.html;       // solo SVG estático + texto fijo (sin datos del remitente)
+  _viaSlot(r.ico, r.text);
+  sub.innerHTML = r.note;       // solo texto fijo (sin datos del remitente)
   sub.title = r.text;           // tooltip accesible con la palabra completa (Wi-Fi/Internet/Bluetooth)
 }
 // Ronda 2826 (pedido del dueño): un nombre de contacto largo se parte en DOS líneas en vez de cortarse. El nombre es un
@@ -354,6 +363,7 @@ function _fitContactName() {
     el.style.height = (h ? Math.min(h, m.max) : Math.ceil(m.lh + m.pad)) + 'px';
   } catch (e) {}
 }
+window.addEventListener('nexo:ble:closeChat', function() { _viaSlot(''); }); // 24-11: el símbolo del camino se va con el chat
 ['nexo:ble:linkChange', 'nexo:ble:deviceDisconnected', 'nexo:ble:openChat'].forEach(function(ev) {
   window.addEventListener(ev, function() { setTimeout(function() { _refreshLinkSubtitle(); _fitContactName(); }, 50); });
 });

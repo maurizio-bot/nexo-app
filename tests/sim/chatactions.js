@@ -115,6 +115,20 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   pef('pointerup', 185); await sleep(60);
   r.desliz_quita_flecha = !A.win.document.getElementById('nexo-reply-hint');
   const rbc = A.win.document.querySelector('#reply-bar .reply-cancel'); if (rbc) click(A.win, rbc); await sleep(200);
+  // 2c-bis) Dueño 24-11: la respuesta empezada es SOLO de ese chat. Reabrir el mismo chat la deja; cerrarlo o abrir OTRO chat la quita.
+  { const swr = bubbleWith(A, 'pregunta de B'); const per = (type, x) => swr.dispatchEvent(new A.win.MouseEvent(type, { bubbles: true, clientX: x, clientY: 300 }));
+    per('pointerdown', 100); per('pointermove', 150); per('pointermove', 190); per('pointerup', 190); await sleep(400); }
+  r.resp_mismo_chat = !!A.win.document.getElementById('reply-bar');
+  A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:closeChat', { detail: {} })); await sleep(300);
+  r.resp_se_quita_al_salir = !A.win.document.getElementById('reply-bar');
+  await openChatWith(A, 'B'); await sleep(600);
+  r.resp_no_vuelve = !A.win.document.getElementById('reply-bar');
+  { const swr = bubbleWith(A, 'pregunta de B'); const per = (type, x) => swr.dispatchEvent(new A.win.MouseEvent(type, { bubbles: true, clientX: x, clientY: 300 }));
+    per('pointerdown', 100); per('pointermove', 150); per('pointermove', 190); per('pointerup', 190); await sleep(400); }
+  A.win.NEXO.app.activeContact = { nexoId: 'nx0000000000' };
+  A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:openChat', { detail: { contactId: 'nx0000000000', name: 'Otro', transport: 'ble' } })); await sleep(300);
+  r.resp_se_quita_otro_chat = !A.win.document.getElementById('reply-bar');
+  await openChatWith(A, 'B'); await sleep(600);
   // 2d) E (informe del dueño 28-10): responder a una UBICACIÓN muestra «Ubicación», no el código crudo. _msgSummary
   //     maneja el adjunto codificado DENTRO de content (forma b) y como campo suelto (forma a).
   const ms = A.win.__nexoMsgSummary;
