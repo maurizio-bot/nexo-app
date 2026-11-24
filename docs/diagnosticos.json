@@ -1232,6 +1232,14 @@
    "sintoma": "zombi automático con nx01992876 (Marcos)",
    "categoria": "Zombi (🔴 1, en curso)",
    "causa": "Al volver la app (11:03:16) recupera su enlace de cliente con Marcos (único, MTU 517) y a los 7 s 4 pings sin respuesta: se reconecta solo; Marcos en build desconocida. Mismo frente de enlaces viejos al volver la app; el desempate nuevo (3327: decide el NEXO ID menor y se queda el más reciente) va en la próxima APK. Aparte (10:42–10:44): un texto pendiente a Zhelowsky reintentaba por internet cada ~12 s con los relés diciendo «rate-limited»: 3328 espera 15 s → 2 min. El texto llegó por Bluetooth a las 10:44:10."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "14:20",
+   "nx": "nx1n36c283 (S24, dueño), build 3148",
+   "sintoma": "zombi automático pedido por nx1905c1ee (Austin)",
+   "categoria": "Zombi (🔴 1, en curso)",
+   "causa": "Austin va en la 3142 (sin el acuerdo 3327: decide el NEXO ID menor, que es Austin): el S24 (mayor) espera y, pasados 3 min, cierra él el repetido (14:03:23, como manda la 3327). Se arregla cuando Austin tenga la 3148. Aparte: «mensaje sin cifrar atribuido a» Austin/Marcos/Zhelowsky (3142/3125) al volver la app: builds viejas. Cierre de Tor SIGABRT de las 08:13 = build 3142 (antes del 3324). Red cambiando Wi-Fi↔datos ×3: externo. Sin fallo de la 3148."
   }
  ]
 }
