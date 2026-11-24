@@ -1176,6 +1176,14 @@
    "sintoma": "par:enlace_abre_cierra pedido por el S24 (prueba del puente a internet)",
    "categoria": "Mismo fallo ya arreglado",
    "causa": "Con la app de Roberto CERRADA su nativo atendió el puente del S24 (frames de 1777/857 y respuestas, saludo contestado) y recibió un mensaje por Bluetooth: el puente nativo 3321 funciona. La desconexión 07:38:44 (status 19) es el cierre del desempate del S24 (3325)."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "08:40",
+   "nx": "nx0g6ef54e (Roberto), build 3142",
+   "sintoma": "resumen diario 23-11 (automático)",
+   "categoria": "Sin fallo nuevo",
+   "causa": "Poco uso (3 enviados, 13 recibidos); Wi-Fi local «su app no contesta» ×3 (el otro dormido), zombi ×1. Nada nuevo."
   }
  ]
 }
