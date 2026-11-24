@@ -51,6 +51,12 @@ class OutboxBle(
         /** Tope de lo que el puente sostiene de un mismo enlace a la vez (que uno solo no llene lo guardado). */
         const val RELAY_HOLD_PER_LINK = 8
         const val RQ_PER_LINK_MIN = 30          // como la app: búsquedas por minuto que se atienden de un mismo enlace
+        // 3316: la tubería de flujos (textos largos y archivos por Jump)
+        const val PIPE_MAX = 16
+        const val PIPE_PER_LINK = 4
+        const val PIPE_IDLE_MS = 120_000L       // sin trozos ni confirmaciones 2 min: se cierra
+        const val PIPE_DONE_MS = 30_000L        // ya confirmado entero: 30 s por si se repite la confirmación final
+        const val PIPE_MAX_CHUNKS = 200_000
         /** 3315 (paso 2): una búsqueda 'rq' bien formada: (id, quién busca, a quién) o null. */
         fun rqOf(json: String): Triple<String, String, String>? = try {
             val o = JSONObject(json)
@@ -142,25 +148,122 @@ class OutboxBle(
         return true
     }
 
-    /** Lo que llega por un enlace con la app dormida, cerrada o sin la app (un mensaje corto entero). */
-    @Synchronized fun heard(mac: String, json: String) {
+    /**
+     * Lo que llega por un enlace con la app dormida, cerrada o sin la app (un mensaje corto entero). Devuelve true si el nativo ya lo
+     * REENVIÓ para otro (puente 3315/3316): entonces no es para este teléfono y no se le pasa a la app ni al aviso (la app dormida lo
+     * habría vuelto a reenviar al despertar: doble envío y cola atrasada).
+     */
+    @Synchronized fun heard(mac: String, json: String): Boolean {
         val said = NetOutbox.linkNxOf(json)
-        val fresh = said != null && learn(mac, said)
-        if (json.length < 600 && json.contains("\"type\":\"or\"")) { onAnswer(mac, json); return } // 3A: respuesta al reto
+        // 3316: un trozo de un flujo (texto largo o archivo) para otro, o la confirmación de su destino: por la tubería
+        if (json.length > 20 && (json.contains("\"t\":\"c\"") || json.contains("\"t\":\"f\"") || json.contains("\"t\":\"ba\"") || json.contains("\"t\":\"n\""))) {
+            pipeOf(mac, json)?.let { return it }
+        }
+        val r = relayOf(json, me())
+        // 3316: lo que ya dio un salto (una ✓✓ que pasó por otro puente) no es de quien tiene este enlace: no enseña de quién es
+        val hopped = said != null && json.contains("\"hp\"") && try { JSONObject(json).optInt("hp", 0) > 0 } catch (e: Exception) { true }
+        val fresh = said != null && !hopped && learn(mac, said)
+        if (json.length < 600 && json.contains("\"type\":\"or\"")) { onAnswer(mac, json); return false } // 3A: respuesta al reto
         // 3315 (paso 2): «¿quién llega a X?» de un contacto: si X tiene enlace conmigo, «yo» (así se elige un puente dormido sin ruta previa)
-        if (json.length < 2000 && json.contains("\"rq\"")) rqOf(json)?.let { onRq(mac, it); return }
-        // 3315: un paquete Jump para otro: a su destino (o a esperar su enlace)
-        relayOf(json, me())?.let { r -> if (r.origin.isNotEmpty() && said == null) learn(mac, r.origin); onRelay(mac, r); return }
+        if (json.length < 2000 && json.contains("\"rq\"")) rqOf(json)?.let { onRq(mac, it); return false }
+        // 3315: un paquete Jump para otro: a su destino (o a esperar su enlace; entonces también lo ve la app, que si está viva da custodia)
+        if (r != null) { if (r.origin.isNotEmpty() && said == null) learn(mac, r.origin); return onRelay(mac, r) }
         // 3315: este enlace habló: lo que se guardó para su NEXO sale ya por él
         if (held.isNotEmpty()) linkNx[mac]?.let { flushHeld(mac, it) }
-        val b = bg() ?: return
-        if (b.outbox.size() == 0) return
+        val b = bg() ?: return false
+        if (b.outbox.size() == 0) return false
         signedReceipt(json, me(), keyOf)?.let { (from, mid) -> b.outboxConfirmed(from, mid, "por Bluetooth") }
-        val nx = linkNx[mac] ?: return
-        if (!b.outbox.hasFor(nx)) return
+        val nx = linkNx[mac] ?: return false
+        if (!b.outbox.hasFor(nx)) return false
         if (fresh) b.outbox.bleFresh(nx) // enlace nuevo con él: lo suyo sale ya (sin esperar el plazo del enlace anterior)
         sendVia(b, mac, nx, now())       // por ESTE enlace, que acaba de hablar (está vivo)
+        return false
     }
+
+    // ---------- 3316: la tubería de flujos (textos largos y archivos de Jump) con la app dormida ----------
+    /** Un flujo para otro que pasa por aquí: de qué enlace viene, a cuál va, hasta cuándo. */
+    class Pipe(val m: String, val dst: String, val fromMac: String, val toMac: String, val n: Int) {
+        var last = 0L
+        var done = false
+    }
+    private val pipes = LinkedHashMap<String, Pipe>()
+    @Volatile var pipedCount = 0
+        private set
+
+    /**
+     * 3316 (COLA 1, lo que faltaba del puente nativo): un texto largo o un archivo por Jump va en trozos ('c'/'f'; el 0 lleva el destino
+     * 'dt' y los saltos 'hp') y el que lo recibe confirma con 'ba' (bloque, o final con 'f':1) y pide lo que falta con 'n'. Por Jump siempre
+     * va en trozos de texto por GATT (sin binario, sin L2CAP ni Wi-Fi Direct: chat_stream.js, l2_fast.js, ble_ack_files.js), así que el
+     * nativo hace de TUBERÍA: el trozo 0 abre el paso hacia el enlace listo del destino (a un contacto mío, solo comprobado: reto 3A), los
+     * demás trozos de ese id siguen por él y las confirmaciones del destino vuelven al que lo manda. La ventana del que manda la marcan
+     * las confirmaciones de punta a punta (aquí no se guarda nada). Sin enlace con el destino no se abre: el que lo manda no recibe
+     * confirmación y busca otro camino, como antes. Devuelve true si salió por la tubería; null si no (entonces lo de siempre: lo ve la
+     * app, que si está viva hace de puente ella).
+     */
+    private fun pipeOf(mac: String, json: String): Boolean? {
+        val o = try { JSONObject(json) } catch (e: Exception) { return null }
+        val t = o.optString("t")
+        val m = o.optString("m")
+        if (!RELAY_ID.matches(m)) return null
+        val now = now()
+        expirePipes(now)
+        if (t == "ba" || t == "n") {
+            val p = pipes[m] ?: return null
+            if (mac != p.toMac) return null // solo las del destino, por su enlace
+            p.last = now
+            if (t == "ba" && o.optInt("f", 0) == 1) p.done = true
+            return if (link.ready(p.fromMac) && link.send(p.fromMac, json)) true else null
+        }
+        if (t != "c" && t != "f") return null
+        val i = o.optInt("i", -1); val n = o.optInt("n", -1)
+        if (i < 0 || n < 1 || n > PIPE_MAX_CHUNKS || i >= n) return null
+        val open = pipes[m]
+        if (i > 0) {
+            if (open == null || open.fromMac != mac || open.n != n) return null
+            open.last = now
+            return if (sendPipe(open, json)) true else null
+        }
+        val my = me().trim().lowercase()
+        val dst = o.optString("dt").trim().lowercase()
+        if (dst.isEmpty() || dst == my || my.isEmpty() || !Regex("^nx[0-9a-z]{8}$").matches(dst)) return null // para mí o directo: lo de siempre
+        val hp = maxOf(0, o.optInt("hp", 0)) + 1
+        if (hp > RELAY_MAX_HOPS) return null
+        // primer salto: el enlace es de quien lo escribió (su ✓✓ vuelve por aquí: relayOf)
+        if (hp == 1) o.optString("fr").trim().lowercase().let { if (it != my && Regex("^nx[0-9a-z]{8}$").matches(it) && linkNx[mac] == null) learn(mac, it) }
+        o.put("hp", hp) // 'hp' no entra en la comprobación 'k' del trozo (ble_ack_shared _chunkCheck)
+        val out = o.toString()
+        if (open != null && open.fromMac == mac && open.dst == dst && open.n == n) { open.last = now; return if (sendPipe(open, out)) true else null } // el trozo 0 otra vez
+        if (!relayOk()) { link.log("Puente sin la app: batería baja: no paso el flujo $m para $dst"); return null }
+        val to = relayLink(dst, mac, now) ?: run {
+            link.log("Puente sin la app: flujo $m para $dst: sin enlace comprobado con él ahora")
+            return null
+        }
+        val mine = pipes.values.filter { it.fromMac == mac }
+        if (mine.size >= PIPE_PER_LINK) pipes.remove(mine.first().m)
+        while (pipes.size >= PIPE_MAX) pipes.remove(pipes.keys.first())
+        val p = Pipe(m, dst, mac, to, n).also { it.last = now }
+        pipes.remove(m); pipes[m] = p
+        link.log("Puente sin la app: flujo $m ($n trozos) para $dst pasa de $mac a $to (salto $hp)")
+        return if (sendPipe(p, out)) true else null
+    }
+
+    private fun sendPipe(p: Pipe, json: String): Boolean {
+        if (!link.ready(p.toMac)) {
+            link.log("Puente sin la app: se cayó el enlace de ${p.dst}: se cierra la tubería del flujo ${p.m} (el que lo manda busca otro camino)")
+            pipes.remove(p.m); return false
+        }
+        // cola llena: el trozo se pierde como en el aire y el que lo manda lo repite (lo que falta lo pide el destino o vence su ventana)
+        if (link.send(p.toMac, json)) pipedCount++
+        return true
+    }
+
+    private fun expirePipes(t: Long) {
+        val it = pipes.values.iterator()
+        while (it.hasNext()) { val p = it.next(); if (t - p.last > (if (p.done) PIPE_DONE_MS else PIPE_IDLE_MS)) it.remove() }
+    }
+
+    /** 3316: flujos que pasan ahora por el nativo (para el registro y las pruebas). */
+    @Synchronized fun pipeCount(): Int { expirePipes(now()); return pipes.size }
 
     private fun sendVia(b: NetBg, mac: String, nx: String, t: Long): Int {
         if (!link.ready(mac)) return 0
@@ -186,22 +289,23 @@ class OutboxBle(
     }
 
     // ---------- 3315: el puente nativo ----------
-    private fun onRelay(mac: String, r: Relay) {
+    private fun onRelay(mac: String, r: Relay): Boolean {
         val t = now()
         expireRelay(t)
-        if (r.msg && !relayOk()) { link.log("Puente sin la app: batería baja: no hago de puente para ${r.key.substringBeforeLast(':')}"); return }
+        if (r.msg && !relayOk()) { link.log("Puente sin la app: batería baja: no hago de puente para ${r.key.substringBeforeLast(':')}"); return false }
         val last = relayed[r.key]
-        if (last != null && t - last < RELAY_AGAIN_MS) return // ya salió hace poco: el reintento del que lo mandó no se reenvía otra vez
+        if (last != null && t - last < RELAY_AGAIN_MS) return true // ya salió hace poco: el reintento del que lo mandó no se reenvía otra vez
         r.from = mac; r.at = t
         val to = relayLink(r.to, mac, t)
-        if (to != null && relaySend(to, r, t)) return // si el envío falla (enlace ocupado), se guarda y sale cuando ese enlace hable
-        if (held.containsKey(r.key)) return
+        if (to != null && relaySend(to, r, t)) return true // si el envío falla (enlace ocupado), se guarda y sale cuando ese enlace hable
+        if (held.containsKey(r.key)) return false
         // tope por enlace y total: sale lo más viejo (quien llena lo guardado se estorba a sí mismo)
         val mine = held.values.filter { it.from == mac }
         if (mine.size >= RELAY_HOLD_PER_LINK) held.remove(mine.first().key)
         while (held.size >= RELAY_HOLD_MAX) held.remove(held.keys.first())
         held[r.key] = r
         link.log("Puente sin la app: ${r.key.substringBeforeLast(':')} para ${r.to}: sin enlace con él ahora, espera a que aparezca (salto ${r.hp})")
+        return false
     }
 
     private val rqSeen = LinkedHashMap<String, Long>()          // id de búsqueda → cuándo (se contesta una vez)

@@ -157,7 +157,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
         override fun hasKeys(): Boolean = NexoBlePlugin.ackKeys.isNotEmpty()
         override fun log(level: String, msg: String) = nlog(ctx, level, msg)
         // 3269 (fase 3): lo pendiente de la bandeja de salida sale también por el enlace de su contacto (OutboxBle)
-        override fun heard(link: String, json: String) { outBle.heard(link, json) }
+        override fun heard(link: String, json: String): Boolean = outBle.heard(link, json)
     })
 
     // 3269: la bandeja de salida por Bluetooth SIN la app: por los enlaces entrantes de este servidor (quien se conecta y habla)

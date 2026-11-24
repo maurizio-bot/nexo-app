@@ -468,9 +468,10 @@ internal fun NexoBlePlugin.outboxDialed(macNorm: String) {
 }
 
 // Lo que llega por un enlace Bluetooth con la app dormida o cerrada (PluginRx): de quién es el enlace, ✓✓ de lo de la bandeja y a escribir
-internal fun NexoBlePlugin.outboxHeard(macNorm: String, json: String) {
-    if (json.length > 6000) return
-    try { outBle().heard(macNorm, json) } catch (e: Throwable) { }
+// 3316: true = el nativo ya lo reenvió para otro (puente con la app dormida): no se le pasa a la app ni al aviso
+internal fun NexoBlePlugin.outboxHeard(macNorm: String, json: String): Boolean {
+    if (json.length > 6000) return false
+    return try { outBle().heard(macNorm, json) } catch (e: Throwable) { false }
 }
 
 // Lo que el nativo tiene a su cargo (al arrancar la app: para ponerse de acuerdo con lo guardado de la sesión anterior)

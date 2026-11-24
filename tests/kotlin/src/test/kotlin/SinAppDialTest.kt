@@ -44,7 +44,7 @@ class SinAppDialTest {
             override fun kxCard(): String? = null
             override fun ackSign(from: String, fields: String): String? = null
             override fun log(level: String, msg: String) {}
-            override fun heard(link: String, json: String) { out.heard(link, json) }
+            override fun heard(link: String, json: String): Boolean = out.heard(link, json)
         }) { t }
 
         // 1) a quién buscar: A tiene algo y ningún enlace; corre prisa (ningún relé lo aceptó: el Bluetooth es su único camino)

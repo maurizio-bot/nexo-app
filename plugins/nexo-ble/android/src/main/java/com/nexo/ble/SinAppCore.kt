@@ -35,8 +35,9 @@ class SinAppCore(private val me: String, private val sink: Sink, private val now
         /** Firma de la confirmación de entrega para ese contacto, o null si no hay clave. */
         fun ackSign(from: String, fields: String): String?
         fun log(level: String, msg: String)
-        /** 3269: llegó un mensaje corto entero por ese enlace (para la bandeja de salida por Bluetooth: OutboxBle). */
-        fun heard(link: String, json: String) {}
+        /** 3269: llegó un mensaje corto entero por ese enlace (para la bandeja de salida por Bluetooth: OutboxBle). true = el nativo ya
+         *  lo reenvió para otro (puente 3315/3316): no es para este teléfono. */
+        fun heard(link: String, json: String): Boolean = false
     }
 
     companion object {
@@ -130,7 +131,7 @@ class SinAppCore(private val me: String, private val sink: Sink, private val now
     }
 
     private fun handle(link: String, json: String) {
-        if (json.length < 6000) try { sink.heard(link, json) } catch (e: Throwable) { }
+        if (json.length < 6000) try { if (sink.heard(link, json)) return } catch (e: Throwable) { } // 3316: reenviado para otro: nada más
         if (json.length < 400 && json.contains("\"ping\"")) pong(link, json)
         if (json.length < 400 && json.contains("\"type\":\"oc\"")) { OutboxChallenge.answer(json, me) { f, fields -> sink.ackSign(f, fields) }?.let { sink.send(link, it) }; return } // 3A
         if (json.length < 6000 && json.contains("\"type\":\"kx\"") && json.contains("\"rq\":1") && forContact(json)) kx(link)

@@ -12,7 +12,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Sin internet, un teléfono NEXO cercano pasa tus mensajes aunque tenga la app dormida o cerrada, y la confirmación de entrega vuelve por el mismo camino.
+- Sin internet, un teléfono NEXO cercano pasa tus mensajes, textos largos y archivos aunque tenga la app dormida o cerrada, y la confirmación de entrega vuelve por el mismo camino.
 </es-419>
 <!-- /APK -->
 
