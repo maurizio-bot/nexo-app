@@ -110,7 +110,7 @@ export var groupAdminMethods = {
       self._logPut(g, sn);
       self._applied(g, [{ prev: prev, next: sn }], true);
       var to = prev.m.concat(sn.m).filter(function(x, i, a) { return x !== me && a.indexOf(x) === i; });
-      var wire = JSON.stringify(Object.assign({ type: 'nexo_txt', t: opts.notice || '👥', gs: 1 }, opts.gl ? { gl: 1 } : {}));
+      var wire = JSON.stringify(Object.assign({ type: 'nexo_txt', t: opts.notice || '👥', gs: 1 }, opts.gl ? { gl: 1 } : {}, opts.rj ? { rj: 1 } : {})); // rj: no aceptó la invitación (24-11)
       var extra = { s: self._chain(g) };
       if (opts.pi) extra.pi = opts.pi;
       if (g.sp) extra.sp = g.sp;
@@ -189,12 +189,12 @@ export var groupAdminMethods = {
     return this.change(gid, { ph: ph }, { notice: '👥 ' + (img ? t('grp_n_photo', 'Foto del grupo nueva') : t('grp_n_photo0', 'Se quitó la foto del grupo')), pi: img || undefined }).then(function(s) { self._photoPut(gid, ph, img); return s; });
   },
   // Salir con estado firmado (si soy el creador, el mando pasa al admin más antiguo y, si no hay, al miembro más antiguo)
-  leaveSigned(gid, quiet) {
+  leaveSigned(gid, quiet, notice, rj) {
     var s = this.state(gid), me = this._me();
     var ad = s.ad.filter(function(x) { return x !== me; }), m = s.m.filter(function(x) { return x !== me; }), cr = s.cr;
     if (s.cr === me) { cr = ad[0] || m[0] || null; if (!ad.length && cr) ad = [cr]; }
     var ch = { m: m, ad: ad, cr: cr };
-    return this.change(gid, ch, { notice: t('grp_left_msg', '👋 Salió del grupo'), gl: 1, force: true, quiet: !!quiet });
+    return this.change(gid, ch, { notice: notice || t('grp_left_msg', '👋 Salió del grupo'), gl: 1, rj: !!rj, force: true, quiet: !!quiet });
   },
 
   // ---- foto del grupo (G6): se guarda aparte, por su huella ----
@@ -235,7 +235,9 @@ export var groupAdminMethods = {
         console.warn('[GROUP] Estados de ' + gid + ' de ' + from + ' (no es miembro) descartados');
         if (inner && inner.gs) return { ret: null };
       } else if (Array.isArray(env.s) && env.s.length) {
+        this._rjFrom = inner && inner.gl && inner.rj ? from : null; // invitación rechazada (24-11): el aviso lo dice así
         var res = this._applyChain(gid, env.s, from, env);
+        this._rjFrom = null;
         g = this.list[gid];
         if (g && !g.left && res.applied.length) this._takeCards(g, env, from);
         this._gapN = this._gapN || {};
@@ -311,11 +313,12 @@ export var groupAdminMethods = {
       if (jerr) console.warn('[GROUP] Estado de ' + gid + ' (de ' + from + ') para entrar descartado: ' + jerr);
       var ok = oldOk && !jerr && top.m.indexOf(me) >= 0 && top.m.indexOf(from) >= 0 && top.m.indexOf(top.by) >= 0 && (!g || !g.s || top.v > g.s.v) && this._verify(top, true);
       if (!ok) { if (!g || g.pend) console.warn('[GROUP] Estado de ' + gid + ' (de ' + from + ') no sirve para entrar al grupo'); return { applied: applied, gap: false }; }
-      var prev = g && g.s ? g.s : null;
+      var prev = g && g.s ? g.s : null, joinOut = !g || !!g.kicked || !!g.left; // invitación (dueño 24-11): entro desde fuera
       if (!g) g = this.list[gid] = { id: gid, name: top.n, members: top.m.slice(), createdBy: top.cr || top.by, createdAt: Date.now(), lastMessageAt: 0, unreadCount: 0 };
       var impl = oldLate ? gsImplicit(g) : null;
       g.sl = [top]; g.s = top;
       g.pend = 0; g.kicked = false; g.left = false;
+      if (joinOut && top.by !== me && typeof this._invited === 'function') this._invited(g, top.by);
       applied.push(oldLate ? { prev: impl, next: top } : { prev: prev, next: top, join: true });
       gap = false;
       console.log('[GROUP] Entro al grupo ' + gid + ' con el estado v' + top.v + ' (de ' + from + ')');
@@ -421,11 +424,13 @@ export var groupAdminMethods = {
     } else if (inNow && g.kicked && !applied.some(function(a) { return a.join; })) {
       // La expulsión perdió un cruce (o se deshizo): vuelvo a estar dentro
       g.kicked = false; g.left = false; delete g.lv;
+      if (typeof self._invited === 'function') self._invited(g, by); // dueño 24-11: volver a entrar también es una invitación
       self._notice(g.id, by, '👥 ' + t('grp_n_you_in', 'Te agregaron al grupo'));
     } else if (inNow && g.left && !g.kicked && !mine && g.lv && (g.sl || []).some(function(x) { return gsId(x) === g.lv; })) {
       // Auditoría 23-11 (G-O3): mi salida SIGUE en la cadena y un estado posterior me vuelve a meter: me agregaron otra vez (antes
       // se tomaba por una salida que perdió un cruce y se repetía en silencio: quien salió por su cuenta no podía volver)
       g.left = false; delete g.lv;
+      if (typeof self._invited === 'function') self._invited(g, by); // dueño 24-11
       self._notice(g.id, by, '👥 ' + t('grp_n_you_in', 'Te agregaron al grupo'));
     } else if (inNow && g.left && !g.kicked && !mine) {
       // Salí yo y mi salida perdió un cruce con otro cambio: la repito sobre el estado de ahora (sin avisos aquí: ya no lo veo)
@@ -446,6 +451,7 @@ export var groupAdminMethods = {
   _diffText(prev, next) {
     var d = gsDiff(prev, next), n = [], nm = this.memberName.bind(this), me = this._me();
     var who = function(l) { return l.map(function(x) { return x === me ? t('prof_group_you', 'tú') : nm(x); }).join(', '); };
+    if (d.left && this._rjFrom && next.by === this._rjFrom) return t('grp_reject_msg', '🚫 No aceptó la invitación') + (d.creator ? ' · ' + t('grp_n_boss', 'Ahora administra el grupo: ') + who([d.creator]) : '');
     if (d.left) return t('grp_left_msg', '👋 Salió del grupo') + (d.creator ? ' · ' + t('grp_n_boss', 'Ahora administra el grupo: ') + who([d.creator]) : '');
     if (d.added.length) n.push(t('grp_n_added', 'Nuevo en el grupo: ') + who(d.added));
     var blk = d.removed.filter(function(x) { return d.blocked.indexOf(x) >= 0; }), out = d.removed.filter(function(x) { return d.blocked.indexOf(x) < 0; });

@@ -106,7 +106,43 @@ export class Groups {
 
   isGroup(id) { return isGroupId(id) && !!this.list[_nid(id)]; }
   get(id) { return this.list[_nid(id)] || null; }
-  all() { var l = this.list; return Object.keys(l).map(function(k) { return l[k]; }).filter(function(g) { return !g.left; }); }
+  all() { var l = this.list; return Object.keys(l).map(function(k) { return l[k]; }).filter(function(g) { return !g.left && !g.inv; }); }
+
+  // ---- Invitación (dueño 24-11: «al agregar a alguien a un grupo se le manda solicitud y debe poder aceptar o rechazar») ----
+  // Cuando otro me mete en un grupo (al crearlo, al agregarme o al volver a agregarme) el grupo queda «invitado» (inv): no sale en
+  // la lista ni avisa (con la app viva, notify.js vía main.js; sin ella, la parte nativa lo tiene como silenciado, chat_mute.js) y lo
+  // que llega se guarda. En «Solicitudes para ti»: Aceptar (sale en la lista con lo que llegó y el grupo ve «Se unió al grupo») o
+  // Rechazar (salgo del grupo y el grupo ve «No aceptó la invitación»).
+  _invited(g, by) {
+    if (!g || g.inv) return;
+    g.inv = 1; g.invBy = _nid(by); g.invAt = Date.now();
+    console.log('[GROUP] Invitación al grupo ' + g.id + ' de ' + g.invBy + ': espera Aceptar o Rechazar');
+    _emit('nexo:groups:invite', { id: g.id, name: g.name, by: g.invBy });
+    _emit('nexo:mute:refresh', {});
+  }
+  isInvited(id) { var g = this.get(id); return !!(g && g.inv && !g.left); }
+  invitations() { var l = this.list; return Object.keys(l).map(function(k) { return l[k]; }).filter(function(g) { return g.inv && !g.left; }); }
+  acceptInvite(id) {
+    var g = this.get(id);
+    if (!g || !g.inv) return false;
+    g.inv = 0; delete g.invBy; delete g.invAt;
+    this._save();
+    _emit('nexo:groups', { id: g.id });
+    _emit('nexo:mute:refresh', {});
+    var me = this._me(), others = (g.members || []).filter(function(x) { return x !== me; });
+    try { this.sendText(g.id, JSON.stringify({ type: 'nexo_txt', t: t('grp_joined_msg', '✅ Se unió al grupo'), gj: 1 }), null, null, others); } catch (e) {}
+    console.log('[GROUP] Invitación a ' + g.id + ' aceptada');
+    return true;
+  }
+  rejectInvite(id) {
+    var g = this.get(id);
+    if (!g || !g.inv) return false;
+    g.inv = 0; delete g.invBy; delete g.invAt;
+    console.log('[GROUP] Invitación a ' + g.id + ' rechazada: salgo del grupo');
+    var r = this.leave(id, t('grp_reject_msg', '🚫 No aceptó la invitación'), true);
+    _emit('nexo:mute:refresh', {});
+    return r || true;
+  }
 
   // Crear un grupo con estos contactos (el propio NEXO ID se añade solo)
   create(name, members) {
@@ -124,7 +160,7 @@ export class Groups {
   }
 
   // Salir: se avisa al resto (mensaje "salió del grupo") y deja de recibirse
-  leave(id) {
+  leave(id, notice, rj) {
     var g = this.get(id);
     if (!g) return;
     var me = this._me();
@@ -132,10 +168,10 @@ export class Groups {
     if (g.kicked) { g.left = true; this._save(); _emit('nexo:groups', { id: id }); return; }
     if (g.s && typeof this.leaveSigned === 'function') {
       var self = this;
-      return this.leaveSigned(id).catch(function(e) { console.warn('[GROUP] Salida firmada de ' + id + ' falló: ' + (e && e.message)); }).then(function() { g.left = true; self._save(); _emit('nexo:groups', { id: id }); });
+      return this.leaveSigned(id, false, notice, rj).catch(function(e) { console.warn('[GROUP] Salida firmada de ' + id + ' falló: ' + (e && e.message)); }).then(function() { g.left = true; self._save(); _emit('nexo:groups', { id: id }); });
     }
     var others = g.members.filter(function(x) { return x !== me; });
-    this.sendText(id, JSON.stringify({ type: 'nexo_txt', t: t('grp_left_msg', '👋 Salió del grupo'), gl: 1 }), null, null, others);
+    this.sendText(id, JSON.stringify({ type: 'nexo_txt', t: notice || t('grp_left_msg', '👋 Salió del grupo'), gl: 1 }), null, null, others);
     g.left = true;
     g.members = others;
     this._save();
@@ -234,6 +270,7 @@ export class Groups {
       g = this.list[gid] = { id: gid, name: String(env.n || t('grp_default_name', 'Grupo')).substring(0, 60), members: members, createdBy: nx, createdAt: Date.now(), lastMessageAt: 0, unreadCount: 0 };
       console.log('[GROUP] Nuevo grupo ' + gid + ' (de ' + nx + ', ' + members.length + ' personas)');
       if (typeof this._adminCreated === 'function') this._adminCreated(g, env, nx);
+      this._invited(g, nx); // dueño 24-11: entrar es aceptar una invitación
     } else {
       if (g.left || g.kicked) return null;
       if (g.members.indexOf(nx) < 0) return null; // quien no es miembro no cambia el grupo

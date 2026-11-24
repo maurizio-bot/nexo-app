@@ -17,6 +17,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Una respuesta a medias ya no pasa a otro chat.
 - Al volver a NEXO, un enlace Bluetooth muerto se rehace antes.
 - Menú de un mensaje más compacto.
+- Grupos: al agregarte te llega una invitación para aceptar o rechazar.
 </es-419>
 <!-- /APK -->
 

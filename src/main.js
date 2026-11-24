@@ -227,7 +227,7 @@ var _notifier = createNotifier({
   // El chat abierto según ble_interface (lo pone openChat y lo quita cualquier cierre del chat)
   currentChat: function() { var b = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface); return b ? b._activeChatDeviceId : _getCurrentContactId(); },
   hidePreview: function(cid) { return lockEnabled() || isPreviewHidden(cid); }, // + opción por chat «Ocultar el texto en los avisos»
-  muted: function(cid) { return isMuted(cid); }, // 3219: chat silenciado: sin aviso (las llamadas van aparte y sí suenan)
+  muted: function(cid) { var gs = window.bleInterface && window.bleInterface.groups; return isMuted(cid) || !!(gs && typeof gs.isInvited === 'function' && gs.isInvited(cid)); }, // + invitación a grupo sin aceptar (24-11) // 3219: chat silenciado: sin aviso (las llamadas van aparte y sí suenan)
   sendRead: function(nexoId, msgId) {
     // Build 2835 (pedido del dueño): si apagaste las confirmaciones de lectura en Ajustes, no se manda el acuse (el
     // otro no ve el ✓✓ azul). El "entregado" gris no se toca.

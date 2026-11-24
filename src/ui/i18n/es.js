@@ -984,4 +984,10 @@ export default {
   block_call: "Desbloquea a este contacto para llamarle",
   block_list: "Contactos bloqueados",
   block_none: "Ninguno. Puedes bloquear a alguien desde su chat o su perfil.",
+  // Invitación a grupo (dueño 24-11)
+  grp_joined_msg: "✅ Se unió al grupo",
+  grp_reject_msg: "🚫 No aceptó la invitación",
+  grp_inv_sub: "{name} te agregó al grupo ({n} personas)",
+  grp_inv_reject: "Rechazar",
+  grp_inv_toast: "👥 {name} te agregó a «{group}» — acepta o rechaza en «Solicitudes para ti»",
 };

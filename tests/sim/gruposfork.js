@@ -259,7 +259,10 @@ console.warn = (...a) => { logs.push('WARN ' + a.map(String).join(' ')); };
     const gC = W.phones.C.gs.get(gid);
     r.expulsado_grupo_desaparece = !!gC.kicked && !!gC.left && !W.phones.C.gs.all().some((g) => g.id === gid);
     await W.phones.B.gs.addMembers(gid, [W.phones.C.id], W.cards(['B', 'C'])); await W.flush();
-    r.expulsado_vuelve_si_lo_agregan = !gC.kicked && !gC.left && W.phones.C.gs.all().some((g) => g.id === gid) && W.sig('C', gid) === W.sig('B', gid);
+    // dueño 24-11: volver a entrar es una INVITACIÓN (no sale en su lista hasta que acepta)
+    r.expulsado_vuelve_invitado = !!(W.phones.C.gs.isInvited && W.phones.C.gs.isInvited(gid)) && !W.phones.C.gs.all().some((g) => g.id === gid);
+    if (W.phones.C.gs.acceptInvite) W.phones.C.gs.acceptInvite(gid); await W.flush();
+    r.expulsado_vuelve_si_lo_agregan = r.expulsado_vuelve_invitado && !gC.kicked && !gC.left && W.phones.C.gs.all().some((g) => g.id === gid) && W.sig('C', gid) === W.sig('B', gid);
   }
 
   // ---- 10. la huella de la foto del grupo es SHA-256 ----
