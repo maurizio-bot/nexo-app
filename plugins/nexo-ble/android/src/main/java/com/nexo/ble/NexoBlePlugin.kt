@@ -477,7 +477,10 @@ class NexoBlePlugin : Plugin() {
         energyLog("En segundo plano")
         // La app deja de estar a la vista: la escucha nativa de internet toma el relevo (la app la reconfigura al
         // ocultarse con lo último que vio)
-        mainHandler.postDelayed({ if (appInBackground) try { wifiLockHold(true); netBg().start() } catch (e: Exception) { } }, 3000)
+        // 3318: con una llamada en curso, no: la app sigue viva y recibe ella (antes cada parte de la llamada se bajaba dos veces); al colgar
+        // en segundo plano arranca (callAudioImpl → netBgAfterCall)
+        mainHandler.postDelayed({ if (appInBackground && !BleService.inCall) try { wifiLockHold(true); netBg().start() } catch (e: Exception) { } }, 3000)
+        if (BleService.inCall) remLog("INFO", "NETBG", "en llamada: la escucha nativa de internet espera a que se cuelgue (la app recibe)")
         outboxBleTick() // 3269: lo pendiente de la bandeja también por Bluetooth mientras la app no está a la vista
         notifyListeners("onAppStateChange", JSObject().put("isActive", false))
     }

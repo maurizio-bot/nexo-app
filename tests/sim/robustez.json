@@ -1207,6 +1207,10 @@
     {
      "fallo": "3317 (COLA 3, Wi-Fi Direct; diagnóstico del dueño 20-11): preparar (cifrar a disco) un archivo grande era el cuello de botella: 153 MB en ~30 s (≈5 MB/s) frente a 6 s de viaje por Wi-Fi Direct, porque se leía un pedazo, se esperaba al nativo y luego se leía el siguiente. Ahora el siguiente se lee mientras el nativo cifra el anterior (en la prueba: 395 ms frente a 712). bigprep.js (contraprueba: sin el cambio no solapa)",
      "prueba": "PREPARAR ARCHIVO GRANDE SIN ESPERAS"
+    },
+    {
+     "fallo": "3318 (COLA 4, llamadas por relés; diagnóstico S24 15-11 22:53 «500 sobres» repetidos): con la app en segundo plano DURANTE una llamada, la escucha nativa de internet (NetBg) también bajaba cada parte de la llamada que la app viva ya recibía: el doble de datos. Ahora no arranca en llamada (y se pausa si la llamada se contesta con la app oculta); al colgar en segundo plano la app le pasa lo último que vio y arranca. callbg.js",
+     "prueba": "LLAMADA EN SEGUNDO PLANO SIN BAJAR DOS VECES"
     }
    ],
    "debiles": [

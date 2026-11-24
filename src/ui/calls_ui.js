@@ -8,6 +8,7 @@
  * esquina; tocarla cambia cuál se ve en grande), girar la cámara, y tocar la pantalla oculta o muestra los controles (se
  * ocultan solos a los 5 s). "Conexión inestable" si la voz del otro deja de llegar unos segundos.
  */
+import { callEndedBg } from './call_bg.js';
 import { haptic } from './haptics.js'; // NEXO Touch (2968): háptica del sistema
 import { paintAvatar } from './avatar.js';
 import { _normId, _getCurrentContactId } from './chat_format.js';
@@ -101,6 +102,7 @@ function _audioMode(on) {
   try {
     var pl = _plugin();
     if (pl && typeof pl.callAudio === 'function') pl.callAudio({ on: !!on, speaker: !!on && _speaker }).then(function(r) {
+      if (!on) callEndedBg(_bi()); // 3318
       // Ronda 2761: al diagnóstico por dónde sale el sonido y con qué volumen (el audio de la llamada sale como multimedia);
       // ronda 2770: si el micrófono sigue con la pantalla bloqueada u otra app (servicio de micrófono del nativo) y si
       // tiene el foco de audio (la música de otra app se para)

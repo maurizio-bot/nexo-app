@@ -54,6 +54,9 @@ internal fun NexoBlePlugin.callAudioImpl(call: PluginCall) {
             callScreen(true, !speaker)
             callFgs = callForeground(true)
             callFocus(am, true)
+            // 3318: una llamada que empieza con la app en segundo plano (contestada desde el aviso): la escucha nativa de internet se
+            // para mientras dure (la app viva recibe cada parte; si no, se bajaban dos veces). Al colgar vuelve (netBgAfterCall).
+            if (appInBackground && !closedMode) try { NexoBlePlugin.netBgShared?.stop(); remLog("INFO", "NETBG", "llamada en segundo plano: la escucha nativa de internet se pausa (la app recibe)") } catch (e: Exception) { }
         } else {
             if (Build.VERSION.SDK_INT >= 31) try { am.clearCommunicationDevice() } catch (e: Exception) { }
             am.mode = android.media.AudioManager.MODE_NORMAL
@@ -62,6 +65,7 @@ internal fun NexoBlePlugin.callAudioImpl(call: PluginCall) {
             callScreen(false, false)
             callFgs = callForeground(false)
             callFocus(am, false)
+            netBgAfterCall() // 3318
             // 3282: sin audio de llamada no hay videollamada: la marca «al irse, pasar a miniatura» se quita aquí aunque la página no lo
             // haya pedido (un aviso perdido o tardío la dejaba puesta y el gesto de irse metía el chat en la ventanita)
             if (BleService.pipVideo) { BleService.pipVideo = false; pipAutoEnter(false); remLog("WARN", "PIP", "terminó el audio de la llamada con la marca de miniatura puesta: se quita") }
@@ -78,6 +82,15 @@ internal fun NexoBlePlugin.callAudioImpl(call: PluginCall) {
         out.put("volCall", "${am.getStreamVolume(vc)}/${am.getStreamMaxVolume(vc)}").put("volMedia", "${am.getStreamVolume(mu)}/${am.getStreamMaxVolume(mu)}")
         call.resolve(out)
     } catch (e: Exception) { call.reject("Audio de llamada: ${e.message}") }
+}
+
+// 3318: se colgó con la app en segundo plano: ahora sí arranca la escucha nativa de internet (la app ya le pasó lo último que vio:
+// call_bg.js). Los 3 s son los mismos que al irse a segundo plano.
+internal fun NexoBlePlugin.netBgAfterCall() {
+    if (!appInBackground || closedMode) return
+    mainHandler.postDelayed({
+        if (appInBackground && !BleService.inCall) try { wifiLockHold(true); netBg().start(); remLog("INFO", "NETBG", "llamada colgada en segundo plano: arranca la escucha nativa de internet") } catch (e: Exception) { }
+    }, 3000)
 }
 
 internal fun NexoBlePlugin.callForeground(on: Boolean): String {

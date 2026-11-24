@@ -23,7 +23,8 @@ Regla: una sesión = un tema; una APK por tanda; antes de subir `tamano.js`, `i1
 3. [m] **Wi-Fi Direct en teléfonos reales** (🔴 6): pruebas del dueño + «grupo siempre montado» si elige B (A/B pendiente de él).
    **HECHO 3317:** preparar un archivo grande lee el pedazo siguiente mientras el nativo cifra el anterior (`bigprep.js`); falta medirlo
    en el teléfono (línea «[BIG] … preparado … MB/s» del diagnóstico; antes ≈5 MB/s).
-4. [m] **Llamadas**: gasto de datos por relés. «Sin imagen propia al contestar desde el aviso»: 3313 (la cámara se reabre aunque el WebView siga «oculto» si Android ya dice primer plano; `callmedia.js` 9b), por probar. Eco de grupo hecho (3301), por oír.
+4. [m] **Llamadas**: gasto de datos por relés. **HECHO 3318:** en llamada con la app en segundo plano la escucha nativa ya no baja otra
+   vez cada parte (`callbg.js`). Queda (b) partes de llamada a los 3 relés = 3× datos: decisión A/B del dueño (redundancia frente a datos). «Sin imagen propia al contestar desde el aviso»: 3313 (la cámara se reabre aunque el WebView siga «oculto» si Android ya dice primer plano; `callmedia.js` 9b), por probar. Eco de grupo hecho (3301), por oír.
 5. [m] **23 entrega con app CERRADA y pantalla APAGADA**: en vigilancia (23-11 Vivo→S24 llegó en 1 s y sonó).
 6. [g] **26 Google Play**: parte web hecha (`NEXO_STORE`); falta targetSdk 35/36 y lo del dueño (cuenta, paquete, privacidad, 12 probadores).
 7. [g] **Auditoría de seguridad final** (una, al privado) antes de la tienda.
