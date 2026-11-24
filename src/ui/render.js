@@ -763,7 +763,7 @@ export function _onFileProgress(d) {
     return;
   }
   if (d.direction === 'in') {
-    if (d.status === 'failed') { _removeIncomingPlaceholder(d.fileId); return; }
+    if (d.status === 'failed' || d.status === 'done') { _removeIncomingPlaceholder(d.fileId); return; }
     var activeId = _getCurrentContactId();
     if (!activeId || !d.senderNexoId || _normId(activeId) !== _normId(d.senderNexoId)) return;
     if (_renderedMessageIds.has(d.fileId)) return;

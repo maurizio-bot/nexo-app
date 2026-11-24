@@ -257,6 +257,7 @@ async function _fetchFrom(net, ptr, o, log, urls) {
         // el id del evento ES la huella del trozo: si el relé tocó un byte, el id recalculado no coincide
         if (!bytes || bytes.length !== c.n || ev.kind !== BLOB_KIND || _eventId(ev) !== c.id) { bad++; log('[BLOB] trozo ' + c.i + ' de ' + url + ' NO coincide con su huella: se pide a otro relé'); continue; }
         parts[c.i] = bytes;
+        if (typeof o.progress === 'function') { try { o.progress(fetched - bad, ptr.chunks.length); } catch (e5) {} }
       }
     }
   }
