@@ -550,7 +550,7 @@ export function _renderMessage(msg, skipSave) {
         // botón y la bolita en cian y un punto junto al tiempo; al darle a reproducir pasan a escuchadas (voice_heard.js, solo aquí).
         var NBARS = 28, seed = 0;
         for (var si = 0; si < String(msgId).length; si++) seed = (seed * 31 + String(msgId).charCodeAt(si)) >>> 0;
-        var audioHtml = '<div class="vn-wrap" style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:220px;" id="' + audioId + '_wrap">';
+        var audioHtml = '<div class="vn-wrap' + (isOwn ? ' vn-own' : '') + '" style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:220px;" id="' + audioId + '_wrap">';
         audioHtml += '<button id="' + audioId + '_play" class="vn-play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">▶</button>';
         audioHtml += '<div style="flex:1;min-width:0;">';
         audioHtml += '<div id="' + audioId + '_seek" class="vn-seek" role="slider" style="position:relative;height:26px;display:flex;align-items:center;gap:2px;touch-action:none;cursor:ew-resize;">';
@@ -559,7 +559,7 @@ export function _renderMessage(msg, skipSave) {
           var h = 4 + (seed % 17);
           audioHtml += '<div class="wave-bar" data-idx="' + w + '" style="width:3px;height:' + h + 'px;background:rgba(255,255,255,0.45);border-radius:1px;flex-shrink:0;"></div>';
         }
-        audioHtml += '<div class="vn-thumb" style="position:absolute;top:50%;left:0;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px rgba(0,0,0,0.25);pointer-events:none;"></div>';
+        audioHtml += '<div class="vn-thumb" style="position:absolute;top:50%;left:0;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;pointer-events:none;"></div>';
         audioHtml += '</div>';
         audioHtml += '<div style="display:flex;align-items:center;gap:6px;margin-top:3px;"><span id="' + audioId + '_time" style="font-size:11px;color:#aaa;">00:00 / ' + durStr + '</span><span class="vn-dot" style="display:none;width:7px;height:7px;border-radius:50%;background:#00c8ff;"></span></div>';
         audioHtml += '</div>';
@@ -583,7 +583,7 @@ export function _renderMessage(msg, skipSave) {
             if (!wrapEl) return;
             wrapEl.classList.toggle('vn-unheard', !!unheard);
             btn.style.background = unheard ? '#00c8ff' : 'rgba(255,255,255,0.15)';
-            if (thumbEl) thumbEl.style.background = unheard ? '#00c8ff' : '#fff';
+            if (thumbEl) thumbEl.style.background = unheard ? '#00c8ff' : ''; // vacío = el de la burbuja (CSS .vn-thumb)
             var dot = wrapEl.querySelector('.vn-dot'); if (dot) dot.style.display = unheard ? 'inline-block' : 'none';
           };
           if (!isOwn) loadHeard().then(function() { paintHeard(isUnheard(msgId, rxTs)); });
@@ -592,7 +592,7 @@ export function _renderMessage(msg, skipSave) {
             p = Math.max(0, Math.min(1, p || 0));
             if (thumbEl) thumbEl.style.left = (p * 100) + '%';
             var lim = p * bars.length;
-            for (var b = 0; b < bars.length; b++) bars[b].style.background = b < lim ? '#00c8ff' : 'rgba(255,255,255,0.45)';
+            for (var b = 0; b < bars.length; b++) bars[b].style.background = b < lim ? 'var(--vn-played)' : 'rgba(255,255,255,0.45)';
           };
           function _updateTime() {
             if (!timeEl || !audioEl) return;

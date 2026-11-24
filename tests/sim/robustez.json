@@ -1225,6 +1225,10 @@
      "prueba": "RECIPROCIDAD DEL PUENTE A INTERNET"
     },
     {
+     "fallo": "Pulido del dueño 24-11: (1) la esfera de la nota de voz enviada era blanca (no es de la paleta; y con otro color de burbuja desentonaba): ahora usa un tono oscuro DEL COLOR DE LA BURBUJA (color-mix de --burbuja-1) y las recibidas, cian; (2) el menú del fijado salía debajo, translúcido y se perdía: ahora arriba a la derecha de la franja, opaco y con borde cian; (3) el menú «+» era enorme (cuadrícula con etiquetas, azul marino) y la flechita otro botón grande: pastilla compacta de 4 iconos de 40 px y una pestañita arriba que sube la segunda fila. voicechain.js (S2), attachmas.js (compacto, pestaña)",
+     "prueba": "PULIDO: ESFERA DEL AUDIO, MENÚ DEL FIJADO Y MENÚ «+»"
+    },
+    {
      "fallo": "Dueño 23-11: un mensaje fijado que se borraba ya no se podía desfijar (el menú del mensaje desaparece con él). Ahora tocar la franja abre «Ir al mensaje» / «Quitar» (un borrado se ve como «Mensaje eliminado» y solo se puede quitar), y borrar un mensaje fijado lo desfija (para mí: solo aquí; para todos: para todos). fijarmsg.js F2/F11",
      "prueba": "QUITAR UN FIJADO AUNQUE SE HAYA BORRADO"
     },

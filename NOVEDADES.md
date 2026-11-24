@@ -12,7 +12,9 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- (provisional: lo nuevo de la próxima APK)
+- Notas de voz: la esfera toma el color de tu burbuja.
+- Menú «+» más compacto, con una pestañita para ver el resto.
+- Quitar un mensaje fijado se ve más claro.
 </es-419>
 <!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
   y la app lo muestra junto al botón de actualizar (Perfil → Ajustes → Actualizaciones, y «¿Qué trae?» en el aviso de abajo).

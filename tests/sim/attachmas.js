@@ -28,7 +28,12 @@ const { buildDir } = require('./srcmod');
   const setup = fs.readFileSync(path.join(buildDir, 'src/ui/app_setup.js'), 'utf8'), bits = fs.readFileSync(path.join(buildDir, 'src/ui/ui_bits.js'), 'utf8');
   r.js_flechita = /type === 'more'\) \{ var am = document\.getElementById\('attach-menu'\); if \(am\) am\.classList\.toggle\('expanded'\)/.test(setup);
   r.js_cerrar_vuelve_a_4 = /menu\.classList\.remove\('expanded'\)/.test(bits);
-  const ok = JSON.stringify(r.primeros) === '["camera","gallery","file","location"]' && JSON.stringify(r.secundarios) === '["contact","cobro","sticker","games","search"]' && r.flechita &&
+  // 24-11: compacto (la pastilla no ocupa el ancho de la pantalla), pestañita chica arriba (no un botón más) y los tonos salen de NEXO
+  const theme = fs.readFileSync(path.join(buildDir, 'src/styles/nexo_theme.css'), 'utf8');
+  r.compacto = /\.attach-menu \{[^}]*grid-template-columns: repeat\(4, 40px\)/.test(theme) && !/var\(--nx-sheet\)[^;]*!important;[^}]*border-radius: 22px/.test(theme.slice(theme.indexOf('.attach-menu {'), theme.indexOf('.attach-menu {') + 300));
+  r.pestana = /\.attach-menu-item\.attach-more \{ position: absolute; top: -15px/.test(theme);
+  const ok0 = r.compacto && r.pestana;
+  const ok = ok0 && JSON.stringify(r.primeros) === '["camera","gallery","file","location"]' && JSON.stringify(r.secundarios) === '["contact","cobro","sticker","games","search"]' && r.flechita &&
     JSON.stringify(r.al_abrir) === '["camera","gallery","file","location","more"]' && r.con_flechita.length === 10 && r.dos_filas === 2 && r.js_flechita && r.js_cerrar_vuelve_a_4;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('ATTACHMAS ' + JSON.stringify(r));

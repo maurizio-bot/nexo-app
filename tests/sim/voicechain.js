@@ -123,7 +123,7 @@ async function sendVoice(p) { micTap(p); await sleep(500); click(p.win, $(p, 'vo
     await sleep(100);
     const th = seek.querySelector('.vn-thumb');
     r.S1_bolita_a_tres_cuartos = th.style.left === '75%';
-    const painted = Array.from(seek.querySelectorAll('.wave-bar')).filter((b) => /0, 200, 255|#00c8ff/i.test(b.style.background)).length;
+    const painted = Array.from(seek.querySelectorAll('.wave-bar')).filter((b) => /0, 200, 255|#00c8ff|var\(--vn-played\)/i.test(b.style.background)).length;
     r.S2_onda_pintada_hasta_ahi = painted === 21;
     const t0 = audios.map((a) => a.currentTime);
     r.S3_audio_salta = audios.some((a) => a.currentTime > 0);

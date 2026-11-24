@@ -314,32 +314,28 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
 .attach-btn { background: var(--nx-surface-2) !important; color: #fff !important; border: 1px solid var(--nx-line) !important; }
 .send-btn { background: var(--nx-grad) !important; box-shadow: 0 6px 18px rgba(0, 200, 255, 0.35); border: none !important; }
 
-/* Adjuntar: como WhatsApp (iconos redondos de color con su nombre) */
+/* Adjuntar — dueño 24-11: COMPACTO (antes una cuadrícula enorme con etiquetas y un azul marino que no era de NEXO): una pastilla con los
+   4 más usados en fila y una PESTAÑITA arriba al centro que sube la segunda fila (contacto, stickers, juegos, buscar). Sin etiquetas. */
 .attach-menu {
-  background: var(--nx-sheet) !important; border: 1px solid var(--nx-line) !important; border-radius: 22px !important;
-  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: 0 16px 50px rgba(0, 0, 0, 0.5) !important;
-  padding: 14px 10px 10px !important; gap: 4px !important;
-  /* Ronda 2791 (informe del dueño): con 6 iconos (se añadió «Cobro» 💵) la barra se salía de la pantalla y el último
-     quedaba cortado. Ahora el menú NO puede pasar del ancho de la pantalla y, si no caben, saltan de línea. */
-  /* NEXO Touch 2968 (dueño 09-11, captura): CUADRÍCULA de 4 columnas en vez de una fila que se desborda (6+2 asimétrico):
-     con «Cobro» oculto quedan 8 items → 2×4 simétrico; cada item con su círculo de color y su etiqueta (attr(data-label),
-     traducible desde i18n.js, antes quemada en CSS y faltaban Stickers y Juegos). */
-  display: grid !important; grid-template-columns: repeat(4, 1fr); justify-items: center; align-items: start;
-  gap: 12px 4px !important; width: min(344px, calc(100vw - 24px)); box-sizing: border-box;
-  /* 3140: de lado a lado con 12 px a cada lado (antes quedaba corrido a la izquierda) y radio 18 como las filas de Contactos */
-  right: 12px; width: auto !important; border-radius: var(--nx-radius) !important;
+  background: rgba(24, 25, 34, 0.94) !important; border: 1px solid var(--nx-line) !important;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+  display: grid !important; grid-template-columns: repeat(4, 40px); justify-items: center; align-items: center;
+  gap: 6px !important; padding: 8px !important; width: auto !important; right: auto !important; left: 12px; box-sizing: border-box;
+  border-radius: 20px !important; overflow: visible;
 }
-.attach-menu-item { flex-direction: column; gap: 5px; background: none !important; width: 100% !important; max-width: 74px; height: auto !important; padding: 6px 2px !important; }
-/* 3140 (dueño 16-11): todos los iconos en el mismo círculo neutro de 46 (como los botones redondos de Contactos), sin un color
-   distinto por icono */
-.attach-menu-item svg { width: 46px !important; height: 46px !important; padding: 12px; box-sizing: border-box; border-radius: 50%; fill: #fff !important;
+.attach-menu-item { background: none !important; width: 40px !important; height: 40px !important; padding: 0 !important; display: flex; align-items: center; justify-content: center; }
+.attach-menu-item svg { width: 40px !important; height: 40px !important; padding: 10px; box-sizing: border-box; border-radius: 50%; fill: #fff !important;
   background: var(--nx-surface-2); border: 1px solid var(--nx-line); }
 .attach-menu-item[data-type="games"] svg { fill: none !important; stroke: #fff; }
+/* la pestañita: asoma por arriba, al centro; chica (no un botón más) */
+.attach-menu-item.attach-more { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 46px !important; height: 16px !important;
+  background: rgba(24, 25, 34, 0.94) !important; border: 1px solid var(--nx-line); border-bottom: none; border-radius: 10px 10px 0 0; }
+.attach-menu-item.attach-more svg { width: 14px !important; height: 14px !important; padding: 0 !important; border: none !important; background: none !important; fill: none !important; stroke: #cbd5e1 !important; }
+.attach-menu.expanded .attach-menu-item.attach-more { transform: translateX(-50%); }
 /* Build 2967 (decisión del dueño 09-11): el botón «Cobro» (pagos) se OCULTA hasta tener algo sólido («no tiene caso
    mostrarlo»). El código de cobros (cobro.js, tarjeta, prueba cobro.js) sigue intacto; para volver a mostrarlo basta
    con borrar esta regla. */
 .attach-menu-item[data-type="cobro"] { display: none !important; }
-.attach-menu-item::after { content: attr(data-label); font-size: 11px; color: var(--nx-muted); white-space: nowrap; }
 
 /* ---------- Hojas (menú de un mensaje, reenviar, compartir, grupo) ---------- */
 /* Menús que suben desde abajo (fondo oscuro translúcido + hoja de cristal) */
