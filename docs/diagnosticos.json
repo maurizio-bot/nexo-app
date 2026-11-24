@@ -1248,6 +1248,14 @@
    "sintoma": "zombi S24↔Austin (y par:zombi pedido por el S24)",
    "categoria": "Zombi (🔴 1, en curso)",
    "causa": "Austin con la app cerrada: su servicio se reinició (14:16) y el enlace de cliente del S24 hacia él quedó MEDIO MUERTO (las escrituras salen, nada vuelve). Al volver el S24 a la app (14:54:15) lo recuperó como listo, el texto largo para Austin lo mantuvo «en transferencia» y el vigilante tardó 4 pings (56 s) en rehacerlo; luego llegó por otro enlace (14:55:30). Arreglo 3330: el enlace recuperado queda «sin comprobar» hasta oír algo por él; ping ya y con 1 sin respuesta se rehace (zombivuelta.js: 50 s → 14 s)."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "15:29",
+   "nx": "nx1n36c283 (S24), build 3148",
+   "sintoma": "enlace_abre_cierra con nx0x4029e6 (Zhelowsky, 3 cierres por repetido en 10 min)",
+   "categoria": "Enlaces repetidos (🔴 3)",
+   "causa": "Zhelowsky va en la 3125 (sin el acuerdo 3327; él es el NEXO ID menor y debería decidir): el S24 cierra él a los 3 min. Build vieja. Aparte: textos largos (37 trozos) del S24 a Austin pendientes desde 14:22: Austin con la app cerrada y sin internet; su nativo sin la app solo avisa del primer trozo de algo largo (SinAppCore) y no lo recibe → es el frente grande 🔴 1 (Bluetooth entero en el servicio nativo)."
   }
  ]
 }
