@@ -1128,6 +1128,14 @@
    "sintoma": "cierre_fallo (21:26 FALLO nativo, detrás) + enlace_abre_cierra (nx09acdb61, 21:17)",
    "categoria": "Cierre de la app: fallo nativo",
    "causa": "APP: SEGUNDO cierre nativo igual al de las 18:24 (SIGABRT, pista Unsafe_park). Las pistas no dicen qué hilo cayó: desde esta APK se lee el volcado (tombstone) y sale el hilo, el mensaje del abort y sus funciones (ExitReasons.tombstoneSummary, TombstoneTest). Otros: el Vivo abre 3–4 enlaces repetidos a la vez (dedup los cierra; 3121–3127 ya en vigilancia); un paquete de puente (msg…wpevbz66f) reintenta horas con ACK timeout; 2 ✓✓ de Cari (3125) «sin firma válida» ignoradas a las 21:16 tras llegar por la escucha nativa: a vigilar con Cari ya en la última versión."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "22:17",
+   "nx": "nx1n36c283, build 3127",
+   "sintoma": "diagnóstico a mano",
+   "categoria": "Sin fallo nuevo",
+   "causa": "Sin fallo nuevo de la app. El paquete de puente msg…wpevbz66f (desde ~14:46) es para el Vivo (3119): sin la ✓✓ de vuelta por el enlace (3315 back(), que el Vivo aún no tiene) el S24 reintenta horas: versión vieja del destino. «Respuesta de sincronía sin firma válida» de la tablet (3117) y el Vivo (3119): versiones sin la firma C-N10. «Sin enlace con NaNdNdN» = dirección MAC normalizada en el resumen (cosmético). Cierres nativos: ya apuntados (el volcado detallado llega con la APK en curso)."
   }
  ]
 }
