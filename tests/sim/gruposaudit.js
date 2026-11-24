@@ -214,7 +214,9 @@ const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
     r.O3_salio = !!P.C.gs.get(gid).left && !W.st('B', gid).m.includes(P.C.id);
     await P.B.gs.addMembers(gid, [P.C.id], W.cards(['A', 'B', 'C'])); await W.flush();
     const gC = P.C.gs.get(gid);
-    r.O3_vuelve = !gC.left && !gC.kicked && P.C.gs.all().some((g) => g.id === gid);
+    r.O3_invitado = !!(P.C.gs.isInvited && P.C.gs.isInvited(gid)); // dueño 24-11: volver a entrar es una invitación
+    if (P.C.gs.acceptInvite) P.C.gs.acceptInvite(gid); await W.flush();
+    r.O3_vuelve = r.O3_invitado && !gC.left && !gC.kicked && P.C.gs.all().some((g) => g.id === gid);
     r.O3_no_repite_la_salida = ['A', 'B'].every((n) => W.st(n, gid).m.includes(P.C.id)) && W.sig('C', gid) === W.sig('B', gid);
     // y si después sale otra vez, sale
     await P.C.gs.leave(gid); await W.flush();

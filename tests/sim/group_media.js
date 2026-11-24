@@ -31,7 +31,10 @@ async function boot(name, address, radio, wifi) {
       let n = 0; win.URL.createObjectURL = () => 'blob:sim/' + (++n); win.URL.revokeObjectURL = () => {};
       win.NEXO_makeVideoPreview = () => { const b = new win.Blob([new Uint8Array(45 * 1024).fill(7)], { type: 'video/webm' }); b.thumb = 'T'.repeat(6000); return Promise.resolve(b); };
     } });
-  const win = dom.window; for (let i = 0; i < 100 && !(win.NEXO && win.NEXO.initialized); i++) await sleep(100); await sleep(800);
+  const win = dom.window;
+  // dueño 24-11: entrar a un grupo es una invitación; en esta prueba el usuario la acepta al momento
+  win.addEventListener('nexo:groups:invite', (e) => setTimeout(() => { try { win.bleInterface.groups.acceptInvite(e.detail.id); } catch (x) {} }, 50));
+  for (let i = 0; i < 100 && !(win.NEXO && win.NEXO.initialized); i++) await sleep(100); await sleep(800);
   return { name, native, win };
 }
 const click = (w, el) => el && el.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));

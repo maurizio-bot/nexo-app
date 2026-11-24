@@ -32,6 +32,8 @@ async function boot(name, native) {
     beforeParse(win) { win.CapacitorCustomPlatform = { name: 'android' }; require('./native_mock').installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {}; },
   });
   const win = dom.window;
+  // dueño 24-11: entrar a un grupo es una invitación; en esta prueba el usuario la acepta al momento
+  win.addEventListener('nexo:groups:invite', (e) => setTimeout(() => { try { win.bleInterface.groups.acceptInvite(e.detail.id); } catch (x) {} }, 50));
   for (let i = 0; i < 100 && !(win.NEXO && win.NEXO.initialized); i++) await sleep(100);
   await sleep(800);
   return { name, native, win };
