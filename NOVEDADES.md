@@ -12,13 +12,18 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Sin internet, un teléfono NEXO cercano pasa tus mensajes, textos largos y archivos aunque tenga la app dormida o cerrada, y la confirmación de entrega vuelve por el mismo camino.
 - Los archivos grandes se preparan más rápido antes de enviarse.
 - Las llamadas con NEXO en segundo plano gastan menos datos.
+- Lista para Android 15 y 16: la pantalla y el teclado ya no tapan nada y «atrás» funciona igual.
 </es-419>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3127 (23-11-2026)
+<es-419>
+- Sin internet, un teléfono NEXO cercano pasa tus mensajes, textos largos y archivos aunque tenga la app dormida o cerrada, y la confirmación de entrega vuelve por el mismo camino.
+</es-419>
 
 ### APK 3125 (23-11-2026)
 <es-419>

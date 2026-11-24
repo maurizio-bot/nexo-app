@@ -26,23 +26,16 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **APK 3125 PUBLICADA (23-11 15:55 México; build 3314)** = 3309 (vista previa real por Tor, toque sellado 14A, «sr» firmado N10,
   limpieza) + 3310–3313. NOVEDADES: 3125 y 3123 ya en el historial (el bloque de la 3123 había quedado pegado y salió también en la
   descripción de la 3125); el de la próxima APK lleva texto provisional. Sin avisos programados activos.
-- **EN CURSO (sesión 23-11 noche, tema: PUENTE NATIVO, COLA 1) — APK SUBIDA 23-11 18:30 México (CI ~85 min, aviso programado ~19:41
-  para revisarlo; al push de 3316 se canceló el CI de 3315c y empezó uno con todo):** 3315 el nativo con la app dormida/cerrada REENVÍA los
-  paquetes Jump para otros por el enlace del destino (sin custodia) y la ✓✓ del destino vuelve por donde llegó; 3315b contesta «¿quién
-  llega a X?» a sus contactos; 3315c si el reenvío falla con el enlace ocupado, se guarda; 3316 textos largos y archivos por Jump: el
-  nativo hace de TUBERÍA (trozo 0 con 'dt' abre el paso al enlace del destino; 'ba'/'n' vuelven) y lo que reenvía no se le pasa a la app
-  dormida (no lo repite al despertar); una ✓✓ que ya dio un salto no enseña de quién es un enlace. Kotlin: 71 suites OK (JumpPipeTest 10,
-  JumpNativeTest 11), tipos Android OK. Queda: el JS vivo en segundo plano y el nativo pueden reenviar los dos un paquete CORTO guardado
-  (duplicado inofensivo). Pruebas del dueño: S24 → Cari sin internet en ninguno, con el Vivo en medio con la app cerrada (y Cari lejos del
-  S24): un texto, un texto largo y una foto deben llegar y verse ✓✓; lo mismo con el Vivo con la pantalla apagada un rato largo.
-- **HECHO SIN APK (van en la próxima tanda; subidos con [skip ci] para no cortar el CI de la 3316):** 3317 preparar archivo grande
-  sin esperas (`bigprep.js`); 3318 llamada con la app en segundo plano sin bajar dos veces cada parte (`callbg.js`); 3319 Google Play:
-  targetSdk 36, borde a borde con margen de barras/teclado, «atrás» por el despachador y aviso de 16 KB en el CI. Pruebas del dueño
-  para esa APK: en el S24 (Android 15/16) la barra de arriba y la de abajo no tapan nada, el teclado no tapa la barra de escribir,
-  «atrás» cierra el visor/chat y luego saca la app; una llamada con NEXO en segundo plano; mandar un vídeo grande por Wi-Fi Direct.
-  3320 tope de 120 reenvíos por minuto por enlace en el puente nativo (JumpRelayRateTest). DECISIONES 23-11: Wi-Fi Direct = B (grupo
-  al enviar, como está); partes de llamada por relés = A (3 relés; dueño: «primero la calidad, después el ahorro»). SIGUIENTE: al pasar el CI de la 3316,
-  subir SIN [skip ci] para la APK de 3317–3320 (dueño: «aplícalos a la APK que todavía no sube»). Auditoría final: tras sus pruebas.
+- **APK 3127 PUBLICADA (23-11 19:57 México; nightly-3127) = puente nativo completo** (3315 paquetes Jump, 3315b «¿quién llega a X?»,
+  3315c, 3316 textos largos y archivos por tubería; lo reenviado no se le pasa a la app dormida). Pruebas del dueño: S24 → Cari sin
+  internet en ninguno, con el Vivo en medio con la app cerrada (y Cari lejos del S24): un texto, un texto largo y una foto deben llegar
+  con ✓✓; lo mismo con el Vivo con la pantalla apagada un rato largo. Queda: JS vivo y nativo pueden reenviar los dos un paquete corto
+  guardado (duplicado inofensivo).
+- **APK EN CURSO (subida 23-11 20:10 México, CI ~85 min, aviso programado):** 3317 preparar archivo grande sin esperas, 3318 llamada en
+  segundo plano sin bajar dos veces, 3319 targetSdk 36 + borde a borde + «atrás» por el despachador + aviso de 16 KB, 3320 tope de
+  reenvíos del puente. MIRAR en el CI el paso «Librerías nativas con páginas de 16 KB» (¿Tor?).
+- **FALTA PARA PLAY (código):** bundleRelease firmado (la llave la decide el dueño), variante de tienda sin REQUEST_INSTALL_PACKAGES,
+  una sola fuente de versión, 16 KB si el CI avisa, 5 idiomas al final, auditoría final tras sus pruebas.
 - **VAN EN LA 3125 (build 3314):** 3310 menú de la burbuja sin «Responder» (se responde
   deslizando) y «Editar» arriba; 3311 «Copiar» en la barra de la multiselección; 3312 (COLA 13) con enlace a MTU 23 los archivos desde ~6 KB
   van por el canal rápido L2CAP (`l2_fast.js`, `l2mediano.js` caso mtu23); 3313 (COLA 25) videollamada contestada desde el aviso: la cámara
