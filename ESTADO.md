@@ -36,6 +36,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   reenvíos del puente. MIRAR en el CI el paso «Librerías nativas con páginas de 16 KB» (¿Tor?).
 - **Cierres nativos del S24 (18:24 y 21:26, SIGABRT):** causa aún desconocida; esta APK guarda en el diagnóstico el hilo que cayó y el mensaje
   del abort (tombstone). Con el siguiente cierre se ve la causa. A vigilar también: ✓✓ de Cari «sin firma válida» y un paquete de puente que reintenta horas.
+- **También en esta APK (23-11 noche, pedidos del dueño):** quitar un fijado tocando la franja (también si se borró), «hover» pegado en la
+  lista de contactos, «Recibiendo audio… N %» al llegar el aviso del buzón de archivos, notas de voz con barra/bolita para adelantar y
+  marca de «sin escuchar» en las recibidas. Pruebas del dueño: recibir 3 audios y ver cuál falta; arrastrar la bolita; quitar un fijado borrado.
 - **PLAY (hecho 23-11 noche, en esta APK):** versión 1.0.0, variante de tienda sin REQUEST_INSTALL_PACKAGES, paquete AAB firmado con la
   llave de subida (artefacto del CI «nexo-tienda-1.0.0-N.aab»). DUEÑO: poner en GitHub los secrets NEXO_UPLOAD_KEYSTORE_BASE64 y
   NEXO_UPLOAD_KEY_PASS (se los di en archivos; guardar copia fuera). Huella SHA-256 de la llave de subida: F2:C2:25:1A:…:47:C8:69:D7.
