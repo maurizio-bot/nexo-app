@@ -12,13 +12,13 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Los archivos grandes se preparan más rápido antes de enviarse.
-- Las llamadas con NEXO en segundo plano gastan menos datos.
-- Lista para Android 15 y 16: la pantalla y el teclado ya no tapan nada y «atrás» funciona igual.
+- Notas de voz: arrastra la bolita para adelantar o regresar; las no escuchadas se ven en color.
+- Un audio o foto por internet se ve en el chat en cuanto llega el aviso.
 - Toca el mensaje fijado para ir a él o quitarlo, aunque se haya borrado.
-- Ya no se queda resaltado el último contacto que tocaste.
-- Un audio o una foto por internet se ve en el chat («Recibiendo…») en cuanto llega el aviso.
-- Notas de voz: arrastra la bolita para adelantar o regresar, y las que no has escuchado se ven en color.
+- Archivos grandes: se preparan más rápido.
+- Llamadas en segundo plano: menos datos.
+- Lista para Android 15 y 16.
+- Ya no queda resaltado el último contacto tocado.
 </es-419>
 <!-- /APK -->
 
