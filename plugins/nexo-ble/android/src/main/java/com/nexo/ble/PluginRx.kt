@@ -158,7 +158,9 @@ private fun NexoBlePlugin.processReceivedChunk(deviceId: String, chunk: String, 
             if (extraction.json.length < 400 && extraction.json.contains("\"type\":\"oc\"")) nativeChallenge(deviceId, extraction.json)
             // 3269 (fase 3): con la app dormida o cerrada, lo pendiente de la bandeja de salida sale también por este enlace si es de su contacto
             // 3316: si el nativo lo reenvió para otro (puente dormido: paquete Jump o trozo de un flujo), no es para este teléfono
-            val piped = (appInBackground || closedMode) && outboxHeard(macNorm, extraction.json)
+            val piped = if (appInBackground || closedMode) outboxHeard(macNorm, extraction.json)
+                // 3321: con la app a la vista, los frames de una sesión del puente a internet que abrió el nativo siguen por él
+                else extraction.json.contains("\"type\":\"ig\"") && try { outBle().gw?.handle(macNorm, extraction.json, ownedOnly = true) == true } catch (e: Throwable) { false }
             // 3012 (regla del dueño 11-11: «cualquiera que tiene NEXO debe aparecer al instante en un escaneo»): con la app en
             // segundo plano, dormida o cerrada, el nativo contesta «quién soy» a quien lo pregunta (ver nativeKx)
             if ((appInBackground || closedMode) && extraction.json.length < 6000 && extraction.json.contains("\"type\":\"kx\"") && extraction.json.contains("\"rq\":1") && kxFromContact(extraction.json)) nativeKx(deviceId)

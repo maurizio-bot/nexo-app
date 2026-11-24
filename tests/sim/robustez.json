@@ -1213,6 +1213,14 @@
      "prueba": "LLAMADA EN SEGUNDO PLANO SIN BAJAR DOS VECES"
     },
     {
+     "fallo": "3321 (prueba del dueño 24-11 22:51: S24 solo con Bluetooth, la tablet con Wi-Fi y la app cerrada al lado: «nx1e29ab2f no contesta en 5 s»; el mensaje al S23 no salió): el PUENTE A INTERNET (un NEXO cercano presta el suyo) solo lo atendía la app. Ahora el nativo contesta «¿tienes internet?» con los relés de su escucha, abre su conexión al relé y pasa los frames en orden y sin perder por la cola llena, con los mismos límites de la app. GwServeTest (Kotlin, 11)",
+     "prueba": "PUENTE A INTERNET CON LA APP CERRADA"
+    },
+    {
+     "fallo": "3322 (diagnóstico S24 24-11 22:49 y 22:52): el Vivo dormido se identificó por el nativo y su conexión «de paso» seguía apuntada como anónima: a los 60 s se cerraba «sin uso» y lo que el S24 le mandaba esperaba («no visto en 2 min»). Al quedar listo ya se sabe quién es, y un anónimo cuya dirección es de un contacto no se cierra por inactividad. anondup.js (vivo_no_anon, vivo_no_cierra; contraprueba: sin el cambio fallan)",
+     "prueba": "CONEXIÓN DE PASO QUE ERA UN CONTACTO"
+    },
+    {
      "fallo": "Dueño 23-11: un mensaje fijado que se borraba ya no se podía desfijar (el menú del mensaje desaparece con él). Ahora tocar la franja abre «Ir al mensaje» / «Quitar» (un borrado se ve como «Mensaje eliminado» y solo se puede quitar), y borrar un mensaje fijado lo desfija (para mí: solo aquí; para todos: para todos). fijarmsg.js F2/F11",
      "prueba": "QUITAR UN FIJADO AUNQUE SE HAYA BORRADO"
     },

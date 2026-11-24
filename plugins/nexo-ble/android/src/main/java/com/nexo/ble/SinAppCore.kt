@@ -131,7 +131,8 @@ class SinAppCore(private val me: String, private val sink: Sink, private val now
     }
 
     private fun handle(link: String, json: String) {
-        if (json.length < 6000) try { if (sink.heard(link, json)) return } catch (e: Throwable) { } // 3316: reenviado para otro: nada más
+        // 3321: los frames del puente a internet ('ig') pueden ser trozos de archivo (hasta ~70 KB)
+        if (json.length < 6000 || (json.length < 80_000 && json.contains("\"type\":\"ig\""))) try { if (sink.heard(link, json)) return } catch (e: Throwable) { } // 3316: reenviado para otro: nada más
         if (json.length < 400 && json.contains("\"ping\"")) pong(link, json)
         if (json.length < 400 && json.contains("\"type\":\"oc\"")) { OutboxChallenge.answer(json, me) { f, fields -> sink.ackSign(f, fields) }?.let { sink.send(link, it) }; return } // 3A
         if (json.length < 6000 && json.contains("\"type\":\"kx\"") && json.contains("\"rq\":1") && forContact(json)) kx(link)

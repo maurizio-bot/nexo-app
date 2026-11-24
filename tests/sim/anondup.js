@@ -56,6 +56,17 @@ class DL extends ResourceLoader { constructor(d) { super(); this.d = d; } fetch(
   const k = rel.anonKnown && rel.anonKnown.get(ANON.toLowerCase().replace(/:/g, '')); if (k) k.ts -= 16 * 60 * 1000;
   rel.noteAnon(ANON, 'Rbcdefghij', -60);
   chk('caduca', rel.anon.has(ANON.toLowerCase().replace(/:/g, '')));
+  // 5. (24-11, S24 22:52) Vivo dormido: la conexión de paso se identifica por el nativo (peerReady sin kx) y no se cierra «sin uso»
+  const VIVO = 'nx09acdb61', ANON3 = '64:30:1D:F8:98:A8';
+  ble.addSharedContacts([{ nexoId: VIVO, name: 'Vivo' }], null, { quiet: true });
+  rel.noteAnon(ANON3, 'Rqf4zxrj5n', -50);
+  rel._connectAnon(ANON3, true); setReady(ANON3, VIVO);
+  ble._notifyPeerReady(nm(ANON3), VIVO);
+  chk('vivo_no_anon', !rel.transient.has('anon:' + nm(ANON3)));
+  // y si quedara apuntada como anónima con su dirección ya de un contacto, tampoco se cierra por inactividad
+  rel.transient.set('anon:' + nm(ANON3), { deviceId: ANON3, since: Date.now() - 300000, lastUse: Date.now() - 300000 });
+  const d0 = disc.length; rel._closeIdleTransient(false);
+  chk('vivo_no_cierra', disc.slice(d0).indexOf(ANON3) < 0 && !rel.transient.has('anon:' + nm(ANON3)));
   r.fallos = mal; r.resultado = mal.length ? 'FALLO' : 'OK';
   console.log('ANONDUP ' + JSON.stringify(r));
   try { win.close(); } catch (e) {}

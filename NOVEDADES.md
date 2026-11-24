@@ -12,14 +12,14 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Notas de voz: arrastra la bolita para adelantar o regresar; las no escuchadas se ven en color.
-- Un audio o foto por internet se ve en el chat en cuanto llega el aviso.
-- Toca el mensaje fijado para ir a él o quitarlo, aunque se haya borrado.
-- Archivos grandes: se preparan más rápido.
-- Llamadas en segundo plano: menos datos.
+- Notas de voz: arrastra la bolita para moverte; las no escuchadas, en color.
+- Un audio o foto se ve en el chat en cuanto llega el aviso.
+- Toca el fijado para ir a él o quitarlo, aunque se haya borrado.
+- Archivos grandes más rápidos y llamadas en segundo plano con menos datos.
 - Lista para Android 15 y 16.
-- Ya no queda resaltado el último contacto tocado.
-- El «+» del chat abre con lo más usado; la flechita muestra el resto.
+- Ya no queda resaltado el último contacto.
+- El «+» abre con lo más usado; la flechita, el resto.
+- Sin internet, un NEXO cercano te presta el suyo aunque tenga la app cerrada.
 </es-419>
 <!-- /APK -->
 

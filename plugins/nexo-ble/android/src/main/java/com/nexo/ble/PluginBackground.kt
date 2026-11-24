@@ -390,11 +390,17 @@ internal fun NexoBlePlugin.netOutboxSetImpl(call: PluginCall) {
 
 // 3269: la bandeja de salida también por Bluetooth (OutboxBle), con los enlaces de la app (dormida o cerrada con el proceso vivo)
 internal fun NexoBlePlugin.outBle(): OutboxBle = outBleRef ?: synchronized(this) {
-    outBleRef ?: OutboxBle({ nexoAdvertisingId ?: "" }, { netBgShared }, { NexoBlePlugin.ackKeys[it] }, object : OutboxBle.Link {
-        override fun ready(mac: String) = (serverConnectedDevices[mac] != null && serverNotificationEnabled.getOrDefault(mac, false)) || clientRxCharacteristics[mac] != null
-        override fun send(mac: String, json: String) = sendChunkedOrSingle(mac, mac, json).sent
-        override fun log(msg: String) { nlog()?.add("INFO", "BANDEJA", msg) }
-    }, relayOk = { appCtx?.let { relayPowerOk(it) } ?: true }).also { outBleRef = it }
+    outBleRef ?: run {
+        val lk = object : OutboxBle.Link {
+            override fun ready(mac: String) = (serverConnectedDevices[mac] != null && serverNotificationEnabled.getOrDefault(mac, false)) || clientRxCharacteristics[mac] != null
+            override fun send(mac: String, json: String) = sendChunkedOrSingle(mac, mac, json).sent
+            override fun log(msg: String) { nlog()?.add("INFO", "BANDEJA", msg) }
+        }
+        val rok = { appCtx?.let { relayPowerOk(it) } ?: true }
+        OutboxBle({ nexoAdvertisingId ?: "" }, { netBgShared }, { NexoBlePlugin.ackKeys[it] }, lk, relayOk = rok)
+            .also { it.gw = gwServeFor({ nexoAdvertisingId ?: "" }, lk, rok) } // 3321: el puente a internet sin la app
+            .also { outBleRef = it }
+    }
 }
 // Repaso cada 10 s mientras la app no está a la vista y queda algo en la bandeja (los enlaces que hablan la mueven al momento: outboxHeard)
 internal fun NexoBlePlugin.outboxBleTick() {
@@ -470,7 +476,7 @@ internal fun NexoBlePlugin.outboxDialed(macNorm: String) {
 // Lo que llega por un enlace Bluetooth con la app dormida o cerrada (PluginRx): de quién es el enlace, ✓✓ de lo de la bandeja y a escribir
 // 3316: true = el nativo ya lo reenvió para otro (puente con la app dormida): no se le pasa a la app ni al aviso
 internal fun NexoBlePlugin.outboxHeard(macNorm: String, json: String): Boolean {
-    if (json.length > 6000) return false
+    if (json.length > 6000 && !(json.length < 80_000 && json.contains("\"type\":\"ig\""))) return false // 3321: trozos por el puente a internet
     return try { outBle().heard(macNorm, json) } catch (e: Throwable) { false }
 }
 

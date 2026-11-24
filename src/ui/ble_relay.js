@@ -707,6 +707,11 @@ export class BleRelay {
       var mute = force && self.transient.size >= cap && nx.indexOf('anon:') === 0 && t.asked && now - t.asked > ANON_NO_ANSWER_MS;
       // 3012: uno que se agregó como contacto después de identificarse ya no es «de paso»: su conexión no se cierra por aquí
       if (nx.indexOf('anon:') !== 0 && self._isContact(nx)) { self.transient.delete(nx); return; }
+      // 24-11: un «anónimo» cuya dirección ya es de un contacto (se identificó sin pasar por identify) tampoco es de paso
+      if (nx.indexOf('anon:') === 0) {
+        var mapped = _nid(self.ble && self.ble._macToNexoId && self.ble._macToNexoId.get(_mac(t.deviceId)));
+        if (_isNx(mapped) && self._isContact(mapped)) { self.transient.delete(nx); return; }
+      }
       // Si algo de la cola va por él, se mantiene
       var busy = self.queue.some(function(q) { var r = self.routes.get(q.dst); return q.dst === nx || (r && r.via === nx); });
       // 13-11 (puente a internet, parte 2): un NEXO de paso que nos presta su internet tampoco se cierra

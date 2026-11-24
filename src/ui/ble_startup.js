@@ -210,6 +210,9 @@ export const bleStartup = {
     var ndPeer = _normMac(deviceId);
     if (!this._macToNexoId.get(ndPeer)) this._macToNexoId.set(ndPeer, _normId(nexoId));
     this._sendKx(deviceId, false);
+    // 24-11 (diagnóstico S24 22:52): el Vivo dormido se identificó por el nativo (sin kx por la app): su conexión «de paso» seguía
+    // apuntada como anónima y a los 60 s se cerraba «sin uso» con mensajes para él. Al estar listo, ya se sabe quién es.
+    if (this.relay && typeof this.relay.identify === 'function') { try { this.relay.identify(deviceId, nexoId); } catch (e) {} }
     if (this.relay) this.relay.onLinkChange();
     this._resendRelayedDirect(nexoId, deviceId);
     this._processPendingMessages(deviceId);

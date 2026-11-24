@@ -1136,6 +1136,14 @@
    "sintoma": "diagnóstico a mano",
    "categoria": "Sin fallo nuevo",
    "causa": "Sin fallo nuevo de la app. El paquete de puente msg…wpevbz66f (desde ~14:46) es para el Vivo (3119): sin la ✓✓ de vuelta por el enlace (3315 back(), que el Vivo aún no tiene) el S24 reintenta horas: versión vieja del destino. «Respuesta de sincronía sin firma válida» de la tablet (3117) y el Vivo (3119): versiones sin la firma C-N10. «Sin enlace con NaNdNdN» = dirección MAC normalizada en el resumen (cosmético). Cierres nativos: ya apuntados (el volcado detallado llega con la APK en curso)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "22:54",
+   "nx": "nx1n36c283, build 3127",
+   "sintoma": "solo Bluetooth: el mensaje al S23 no salió por la tablet (Wi-Fi, app cerrada) ni por el Vivo; el Vivo tardó en recibir",
+   "categoria": "Puente",
+   "causa": "(1) El puente a internet (gw) solo lo atendía la app: la tablet dormida no contestaba «¿me prestas internet?» → 3321 lo atiende el nativo. (2) El Vivo dormido se identificó por el nativo y su conexión de paso seguía como anónima: se cerró «sin uso» a los 60 s → 3322. (3) El Vivo tiene la 3119 (sin el puente nativo de la 3127): hay que actualizarlo."
   }
  ]
 }

@@ -138,7 +138,9 @@ class OutboxBle(
     /** La app dice de quién es un enlace listo (al ocultarse): la app ya lo comprobó con el cifrado. */
     @Synchronized fun seed(mac: String, nx: String) { val n = nx.trim().lowercase(); learn(mac, n); if (linkNx[mac] == n) proven[mac] = n }
     /** El enlace se cerró. */
-    @Synchronized fun closed(mac: String) { linkNx.remove(mac); proven.remove(mac); asked.remove(mac) }
+    @Synchronized fun closed(mac: String) { linkNx.remove(mac); proven.remove(mac); asked.remove(mac); gw?.linkClosed(mac) }
+    /** 3321: el puente a internet sin la app (lo pone quien crea esta bandeja). */
+    @Volatile var gw: GwServe? = null
     @Synchronized fun nxOf(mac: String): String? = linkNx[mac]
 
     private fun learn(mac: String, nx: String): Boolean {
@@ -155,6 +157,8 @@ class OutboxBle(
      * habría vuelto a reenviar al despertar: doble envío y cola atrasada).
      */
     @Synchronized fun heard(mac: String, json: String): Boolean {
+        // 3321: el puente a internet sin la app (alguien sin internet me pide prestado el mío)
+        if (json.length > 20 && json.contains("\"ig\"")) gw?.let { if (it.handle(mac, json)) return true }
         val said = NetOutbox.linkNxOf(json)
         // 3316: un trozo de un flujo (texto largo o archivo) para otro, o la confirmación de su destino: por la tubería
         if (json.length > 20 && (json.contains("\"t\":\"c\"") || json.contains("\"t\":\"f\"") || json.contains("\"t\":\"ba\"") || json.contains("\"t\":\"n\""))) {
