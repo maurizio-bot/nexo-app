@@ -26,7 +26,9 @@
          androidx core-splashscreen (ya usado por postSplashScreenTheme). MainActivity no llama installSplashScreen(): en
          <12 el tema solo pinta el fondo oscuro liso (sin ícono); en 12+ el sistema aplica estos atributos. -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/nexo_bg</item>
+        <!-- Dueño 24-11: el arranque con su imagen (la burbuja hecha de trozos, sobre negro): fondo negro para que se funda con
+             la imagen y con la pantalla de arranque de la app (#splash-native, la misma imagen entera) -->
+        <item name="windowSplashScreenBackground">@android:color/black</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
         <item name="android:background">@color/nexo_bg</item>
         <item name="android:windowBackground">@color/nexo_bg</item>

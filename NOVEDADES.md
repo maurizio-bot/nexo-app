@@ -16,7 +16,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Un audio o foto se ve en el chat en cuanto llega el aviso.
 - Toca el fijado para ir a él o quitarlo, aunque se haya borrado.
 - Archivos grandes más rápidos; llamadas ocultas con menos datos.
-- Lista para Android 15 y 16.
+- Nueva pantalla de arranque.
 - Ya no queda resaltado el último contacto.
 - El «+» abre con lo más usado; la flechita, el resto.
 - Sin internet, un NEXO cercano te presta el suyo aun cerrado (fotos y audios si tú también ayudas).

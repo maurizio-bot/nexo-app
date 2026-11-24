@@ -16,6 +16,14 @@ Consolidado: inline + main.css + ble_styles
    justify-content: center;
    transition: opacity 0.5s ease, transform 0.5s ease;
    }
+   /* Dueño 24-11: en el instante de arranque se ve su imagen (la burbuja hecha de trozos), a lo ancho y centrada sobre negro */
+   #splash-img {
+   width: min(100vw, 100vh);
+   height: auto;
+   object-fit: contain;
+   pointer-events: none;
+   user-select: none;
+   }
    #splash-text {
    margin-top: 20px;
    color: #00c8ff;
