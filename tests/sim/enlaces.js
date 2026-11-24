@@ -122,7 +122,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
   });
   await sleep(800);
-  r.L6_pulsacion_larga_menu = await B.evaluate(() => !!document.getElementById('nexo-msg-menu') && !!document.querySelector('#nexo-msg-menu .mm-copy'));
+  r.L6_pulsacion_larga_menu = await B.evaluate(() => !!document.getElementById('nexo-msg-menu') && !!document.querySelector('#nexo-msg-menu .mm-select'));
   r.L6_pulsacion_larga_no_abre = opened().length === nOpen && nav.length === 0;
   await B.evaluate(() => { const m = document.getElementById('nexo-msg-menu'); if (m) m.remove(); });
   const dbl = (k, onLink) => B.evaluate(async ([k, onLink]) => {

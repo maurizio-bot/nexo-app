@@ -146,7 +146,10 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   r.emoji_texto = eo ? eo('hola') : null;       // 0
   r.emoji_mixto = eo ? eo('😀 hola') : null;    // 0 (emoji + texto)
   // 3) Copiar
-  ctx(A, bubbleWith(A, 'pregunta de B')); click(A.win, await menuItem(A, 'mm-copy')); await sleep(300);
+  // dueño 24-11: «Copiar» ya no está en el menú de la burbuja; se copia desde «Seleccionar» (barra de arriba)
+  r.menu_sin_copiar = r.menu_opciones.length > 0 && r.menu_opciones.indexOf('mm-copy') < 0;
+  ctx(A, bubbleWith(A, 'pregunta de B')); click(A.win, await menuItem(A, 'mm-select')); await sleep(300);
+  click(A.win, A.win.document.getElementById('nexo-select-copy')); await sleep(300);
   r.copiar_aviso = ((A.win.document.getElementById('perm-error-toast') || {}).textContent || '');
   r.copiado = A.win.__copied || null;
   // 4) Reenviar texto y un archivo a C

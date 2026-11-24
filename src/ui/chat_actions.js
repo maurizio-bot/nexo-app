@@ -318,19 +318,19 @@ export function _openMsgMenu(div) {
     box.id = 'nexo-msg-menu';
     box.style.cssText = 'position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.45);display:flex;align-items:flex-end;justify-content:center;';
     var sheet = document.createElement('div');
-    sheet.style.cssText = 'background:#14152a;color:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:8px 0 14px;';
+    sheet.style.cssText = 'background:#14152a;color:#fff;width:100%;max-width:420px;border-radius:16px 16px 0 0;padding:4px 0 8px;'; // dueño 24-11: más compacto
     var close = function() { box.remove(); div.style.background = ''; };
     var add = function(label, cls, fn, danger) {
       var b = document.createElement('button');
       b.className = 'mm-item ' + cls;
-      b.style.cssText = 'display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:14px 20px;background:none;border:none;font-size:16px;color:' + (danger ? '#ff6b6b' : '#fff') + ';';
+      b.style.cssText = 'display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:10px 18px;background:none;border:none;font-size:15px;color:' + (danger ? '#ff6b6b' : '#fff') + ';';
       // 3140 (dueño 16-11: «como mi pantalla de Contactos»): un icono de trazo igual para todas las opciones en lugar del
       // glifo/emoji que traía el texto traducido (↩ ↪ ⧉ ✏️ 🗑 ⭐); se quita del texto al mostrarlo
       var path = _MM_ICONS[cls];
       if (path) {
         var ic = document.createElement('span');
         ic.className = 'mm-ico';
-        ic.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + path + '</svg>'; // SVG fijo (sin datos)
+        ic.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + path + '</svg>'; // SVG fijo (sin datos)
         b.appendChild(ic);
       }
       var lb = document.createElement('span');
@@ -342,12 +342,12 @@ export function _openMsgMenu(div) {
     if (!deleted) {
       // Ronda 2783: barra de reacciones arriba del menú (como WhatsApp)
       var rbar = document.createElement('div');
-      rbar.style.cssText = 'display:flex;justify-content:space-around;align-items:center;padding:10px 12px 12px;border-bottom:1px solid rgba(255,255,255,0.08);';
+      rbar.style.cssText = 'display:flex;justify-content:space-around;align-items:center;padding:6px 10px 8px;border-bottom:1px solid rgba(255,255,255,0.08);';
       REACTION_SET.forEach(function(e) {
         var rb = document.createElement('button');
         rb.className = 'mm-react';
         rb.textContent = e;
-        rb.style.cssText = 'background:none;border:none;font-size:27px;line-height:1;padding:4px 6px;cursor:pointer;';
+        rb.style.cssText = 'background:none;border:none;font-size:24px;line-height:1;padding:3px 5px;cursor:pointer;';
         rb.onclick = function(ev) { ev.stopPropagation(); close(); _reactTo(cid, id, e); };
         rbar.appendChild(rb);
       });
@@ -370,7 +370,7 @@ export function _openMsgMenu(div) {
         });
       });
     }
-    if (!deleted && !msg.attachmentType) add(t('chat_copy', '⧉  Copiar'), 'mm-copy', function() { _copyText(_plainText(msg.content)); });
+    // Dueño 24-11: «Copiar» sale de este menú: ya está en la barra de «Seleccionar» (3311), junto a «Reenviar»
     // 3219: destacar (solo aquí) y fijar arriba del chat (para los dos)
     if (canStar(msg)) add(msg.starred ? t('chat_unstar', '⭐  Quitar destacado') : t('chat_star', '⭐  Destacar'), 'mm-star', function() { toggleStar(cid, msg); });
     if (canPin(cid, msg)) add(isPinned(_normId(cid), id) ? t('chat_unpin', '📌  Desfijar') : t('chat_pin', '📌  Fijar'), 'mm-pin', function() { togglePin(cid, msg); });
