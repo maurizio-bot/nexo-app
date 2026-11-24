@@ -1144,6 +1144,14 @@
    "sintoma": "solo Bluetooth: el mensaje al S23 no salió por la tablet (Wi-Fi, app cerrada) ni por el Vivo; el Vivo tardó en recibir",
    "categoria": "Puente",
    "causa": "(1) El puente a internet (gw) solo lo atendía la app: la tablet dormida no contestaba «¿me prestas internet?» → 3321 lo atiende el nativo. (2) El Vivo dormido se identificó por el nativo y su conexión de paso seguía como anónima: se cerró «sin uso» a los 60 s → 3322. (3) El Vivo tiene la 3119 (sin el puente nativo de la 3127): hay que actualizarlo."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "05:05",
+   "nx": "nx1n36c283, build 3127",
+   "sintoma": "resumen diario 23-11 (automático)",
+   "categoria": "Sin fallo nuevo",
+   "causa": "Resumen del 23-11 en la 3127: 78 de 79 con ✓✓. «Puente a internet: no contesta ×8» = la tablet dormida que no prestaba internet (arreglado en la 3142, 3321). Lo demás ya apuntado."
   }
  ]
 }
