@@ -35,6 +35,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   JumpNativeTest 11), tipos Android OK. Queda: el JS vivo en segundo plano y el nativo pueden reenviar los dos un paquete CORTO guardado
   (duplicado inofensivo). Pruebas del dueño: S24 → Cari sin internet en ninguno, con el Vivo en medio con la app cerrada (y Cari lejos del
   S24): un texto, un texto largo y una foto deben llegar y verse ✓✓; lo mismo con el Vivo con la pantalla apagada un rato largo.
+- **HECHO SIN APK (van en la próxima tanda; subidos con [skip ci] para no cortar el CI de la 3316):** 3317 preparar archivo grande
+  sin esperas (`bigprep.js`); 3318 llamada con la app en segundo plano sin bajar dos veces cada parte (`callbg.js`); 3319 Google Play:
+  targetSdk 36, borde a borde con margen de barras/teclado, «atrás» por el despachador y aviso de 16 KB en el CI. Pruebas del dueño
+  para esa APK: en el S24 (Android 15/16) la barra de arriba y la de abajo no tapan nada, el teclado no tapa la barra de escribir,
+  «atrás» cierra el visor/chat y luego saca la app; una llamada con NEXO en segundo plano; mandar un vídeo grande por Wi-Fi Direct.
+  DECISIÓN PENDIENTE del dueño: partes de llamada por relés a los 3 relés (hoy, 3× datos, aguanta que se caiga uno) o a 2.
 - **VAN EN LA 3125 (build 3314):** 3310 menú de la burbuja sin «Responder» (se responde
   deslizando) y «Editar» arriba; 3311 «Copiar» en la barra de la multiselección; 3312 (COLA 13) con enlace a MTU 23 los archivos desde ~6 KB
   van por el canal rápido L2CAP (`l2_fast.js`, `l2mediano.js` caso mtu23); 3313 (COLA 25) videollamada contestada desde el aviso: la cámara

@@ -194,6 +194,11 @@ jobs:
           fi
           echo "Firma correcta: se podrá instalar encima de la versión anterior"
 
+      # 3319 (Google Play, targetSdk 36): las librerías nativas tienen que valer con páginas de 16 KB; solo avisa
+      - name: Librerías nativas con páginas de 16 KB
+        continue-on-error: true
+        run: python3 tools/pagina16k.py android/app/build/outputs/apk/debug/app-debug.apk
+
       - name: Rename APK
         run: |
           APK=android/app/build/outputs/apk/debug/app-debug.apk

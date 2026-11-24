@@ -26,7 +26,10 @@ Regla: una sesión = un tema; una APK por tanda; antes de subir `tamano.js`, `i1
 4. [m] **Llamadas**: gasto de datos por relés. **HECHO 3318:** en llamada con la app en segundo plano la escucha nativa ya no baja otra
    vez cada parte (`callbg.js`). Queda (b) partes de llamada a los 3 relés = 3× datos: decisión A/B del dueño (redundancia frente a datos). «Sin imagen propia al contestar desde el aviso»: 3313 (la cámara se reabre aunque el WebView siga «oculto» si Android ya dice primer plano; `callmedia.js` 9b), por probar. Eco de grupo hecho (3301), por oír.
 5. [m] **23 entrega con app CERRADA y pantalla APAGADA**: en vigilancia (23-11 Vivo→S24 llegó en 1 s y sonó).
-6. [g] **26 Google Play**: parte web hecha (`NEXO_STORE`); falta targetSdk 35/36 y lo del dueño (cuenta, paquete, privacidad, 12 probadores).
+6. [g] **26 Google Play**: parte web hecha (`NEXO_STORE`). **HECHO 3319 (sin APK aún):** targetSdk 34 → 36; de borde a borde (Android 15+:
+   margen de barras, recorte y teclado en `MainActivity.nexoSystemBars`), «atrás» por OnBackPressedDispatcher (Android 16 ya no llama
+   onBackPressed) y aviso de librerías con páginas de 16 KB en el CI (`tools/pagina16k.py`). Falta: probarlo en Android 15/16 (barras,
+   teclado en el chat, atrás), mirar el aviso de 16 KB en el CI (Tor), bundleRelease firmado y lo del dueño (cuenta, paquete, privacidad, 12 probadores).
 7. [g] **Auditoría de seguridad final** (una, al privado) antes de la tienda.
 
 ## En vigilancia (hecho; solo mirar en los diagnósticos que lleguen)

@@ -8,7 +8,7 @@ android {
     defaultConfig {
         applicationId "com.nexo.app"
         minSdkVersion 26
-        targetSdkVersion 34
+        targetSdkVersion 36
         // Decisión 15A (I-U2, auditoría 23-11): versionCode = número de build del CI (github.run_number, el mismo de
         // __NEXO_BUILD__ y de la etiqueta nightly-N). Crece en cada APK, así Android no deja instalar una vieja encima
         // y el actualizador nativo (PluginUpdate.apkNotOurs) rechaza una build menor o igual. En local, sin la variable: 1.
