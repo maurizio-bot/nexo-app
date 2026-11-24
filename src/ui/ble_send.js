@@ -1,5 +1,6 @@
 import { _normId, _isGenericName, _getBLEContacts, _saveBLEContacts, _lanNx, _netNx, _normMac, _hasNativeMethod, _isControlPacket, _safeNativeCall, _vaultUpdateMessageStatus, BLE_STATES, _failStatus, _isPathDev, _netId } from './ble_helpers.js';
 import { e2eAckTag } from '../vault/e2e_crypto.js';
+import { isBlocked, isGroupWire } from './bloqueo.js';
 // Build 2836 (pedido del dueño): margen para la «red de seguridad de entrega». Si un mensaje enviado por Bluetooth no
 // se confirma «entregado» en este tiempo, se deja además en el buzón de relés (dispara el toque FCM de alta prioridad).
 var DELIVERY_SAFETY_MS = 10000;
@@ -288,6 +289,8 @@ export const BLE_SEND_METHODS = {
       try {
         var uuid = _normId(deviceUUID);
         if (!uuid) { reject(new Error('deviceUUID vacio')); return; }
+        // Bloqueo (dueño 24-11): a un contacto bloqueado no le sale nada mío (mensajes, llamadas, estados, foto, datos); lo de grupo sí
+        if (isBlocked(uuid) && !isGroupWire(content)) { var be = new Error('Contacto bloqueado'); be.code = 'BLOCKED'; reject(be); return; }
         var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
         var msgSeq = (typeof seq === 'number') ? seq : self.getNextSeq();
         // Ronda 2766: a quién va, desde el principio (dn del paquete y para quién se cifra)

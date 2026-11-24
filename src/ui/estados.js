@@ -14,6 +14,7 @@
  */
 import { _getBLEContacts, _normId, _saveBLEContacts } from './ble_helpers.js';
 import { _sendTextTo } from './send.js';
+import { isBlocked } from './bloqueo.js';
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
 import { _b64ToBlob } from './video_tools.js';
 import { t } from './i18n.js';
@@ -83,7 +84,7 @@ function _load(name) {
 }
 function _save(name, obj) { var pl = _pl(); if (pl && typeof pl.saveToFile === 'function') pl.saveToFile({ filename: name, content: JSON.stringify(obj) }).catch(function() {}); }
 function _emit(nx) { try { window.dispatchEvent(new CustomEvent('nexo:estado', { detail: { nx: nx } })); } catch (e) {} }
-function _contactIds() { return _getBLEContacts().map(function(c) { return _normId(c.nexoId || c.deviceUUID); }).filter(function(nx) { return NX_RE.test(nx); }); }
+function _contactIds() { return _getBLEContacts().map(function(c) { return _normId(c.nexoId || c.deviceUUID); }).filter(function(nx) { return NX_RE.test(nx) && !isBlocked(nx); }); } // bloqueo (24-11): a un bloqueado no le sale lo mío
 function _contactName(nx) { var c = _getBLEContacts().find(function(x) { return _normId(x.nexoId || x.deviceUUID) === _normId(nx); }); return (c && c.name) || String(nx || '').toUpperCase(); }
 // Un estado está activo si tiene texto, foto, audio O video, con ts dentro de las 24 h
 function _active(s) { return !!(s && typeof s.ts === 'number' && ((typeof s.t === 'string' && s.t) || (typeof s.img === 'string' && s.img) || (typeof s.aud === 'string' && s.aud) || (typeof s.vid === 'string' && s.vid) || (s.big && s.big.k)) && (Date.now() - s.ts) < TTL_MS); }
@@ -265,6 +266,7 @@ export function estadosInit() {
 // ---- Lectura ----
 export function statusesOf(nx) {
   nx = _normId(nx);
+  if (isBlocked(nx)) return []; // bloqueo (24-11): sus estados no se ven
   var l = _activeList(_cache.get(nx));
   if (_cache.has(nx) && l.length !== (_cache.get(nx) || []).length) { if (l.length) _cache.set(nx, l); else _cache.delete(nx); } // caducados fuera
   return l;

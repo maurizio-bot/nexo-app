@@ -283,6 +283,7 @@ class BleSinApp(private val ctx: Context, private val me: String, private val on
     fun start(why: String): Boolean {
         if (stopped) return false
         current = this
+        NetBgHome.loadMuted(ctx) // bloqueo (24-11): lo de un contacto bloqueado no entra ni avisa (BgInbox.classify)
         watchBluetooth()
         val ok = openServer()
         handler.removeCallbacks(outTick); handler.postDelayed(outTick, 3_000L) // 3280: la bandeja de salida (espera a que cargue lo guardado)

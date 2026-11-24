@@ -7,6 +7,7 @@ import { t } from './i18n.js';
 import { BLE_STATES, _getBLEContacts, _lanId, _netId, _netNx, _normId, _normMac, _safeDispatchEvent, _saveBLEContacts, _vNx } from './ble_helpers.js';
 import { myProfile, maskPhone, maskEmail } from './profile_data.js'; // #dueño 04-11 (perfil 2b): datos enmascarados en la solicitud
 import { takeInviteCode, inviteCodeOk } from './invite.js'; // 3129: enlace de invitación
+import { isBlocked } from './bloqueo.js'; // bloquear contacto (24-11)
 
 // #dueño 04-11 (regla de caminos): cuando el Bluetooth SUELTA un mensaje (enlace muerto/atascado, p. ej. MTU 23), ese
 // enlace se considera muerto este rato y NO se elige para enviar → el resolvedor cae a internet/Wi-Fi («internet antes
@@ -243,6 +244,7 @@ export const BLE_LINK_METHODS = {
     var self = this, nx = _normId(info && info.id), pk = info && info.pk, name = (info && info.name) || '';
     if (!/^nx[0-9a-z]{8}$/.test(nx) || typeof pk !== 'string') return;
     if (_getBLEContacts().some(function(c) { return _normId(c.nexoId || c.deviceUUID) === nx; })) return; // ya es contacto
+    if (isBlocked(nx)) { console.log('[BLOQUEO] Solicitud de ' + nx + ' (bloqueado): descartada'); return; } // bloqueo (24-11)
     var out = self._reqStore('nexo_req_out');
     var isMyAcc = info.kind === 'acc' && out.some(function(x) { return x.id === nx; });
     // Anti-IA: frenar una inundación de solicitudes antes de tocar nada (buzón, avisos). El exceso se descarta en silencio.

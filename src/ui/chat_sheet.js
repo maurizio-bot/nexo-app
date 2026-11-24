@@ -14,6 +14,7 @@ export var SHEET_ICONS = {
   'chat-unmute': '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
   'chat-starred': '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
   'chat-search': '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  'chat-block': '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>', // bloquear contacto (24-11)
   'mm-cancel': '<path d="M18 6L6 18"/><path d="M6 6l12 12"/>'
 };
 export function sheetSvg(path, size) {

@@ -124,18 +124,19 @@ import { PREVIEW_MAX_SIDE, PREVIEW_MAX_SECONDS, HD_DIRECT_MAX_BYTES, HD_MAX_SIDE
 import { _extOf, _compressImageBase64, _fmtTime, _readFileBase64, _isPdf, _MIME_BY_EXT, _mimeOf, _pdfThumb, _FILE_ICONS, _fileIcon, _fmtSize } from './ui/file_tools.js';
 import { groupAttachment, isGroupId, parseGroupEnvelope } from './ui/groups.js';
 import { isGroupWire, startGroupMedia } from './ui/group_media.js';
-import { avatarInit, paintAvatar } from './ui/avatar.js';
+import { avatarInit, paintAvatar, sendAvatarTo } from './ui/avatar.js';
 import { _getGradientForUUID, _getInitials } from './ui/ble_helpers.js';
 import { usageInit } from './ui/usage_stats.js'; // 2989: resumen diario de uso (solo números)
 import { updaterInit } from './ui/updater.js'; // 2986: actualizador automático del APK de probadores
 import { autoDiagInit, autoDiagReceived } from './ui/autodiag.js'; // 2974: diagnóstico automático al desarrollador
 import { resyncInit } from './ui/resync.js'; // 3069: desatasco automático del cifrado
 import { profileInit } from './ui/profile_data.js';
-import { profileShareInit } from './ui/profile_share.js';
+import { profileShareInit, sendProfileTo } from './ui/profile_share.js';
 import { psiInit } from './ui/psi.js';
 import { gameStatsInit } from './ui/game_stats.js';
 import { wallpaperInit, wallpaperUse, installWallpaperGesture, setListWallpaper, clearListWallpaper, setChatWallpaper, clearChatWallpaper, wallpaperRefresh, wallpaperApplied, setChatWallpaperFor, clearChatWallpaperFor, chatWallpaperFor, hasChatWallpaper, hasChatWallpaperFor, shareChatWallpaper, applyChatWallpaper } from './ui/wallpaper.js';
-import { estadosInit } from './ui/estados.js';
+import { estadosInit, sendStatusTo } from './ui/estados.js';
+import { loadBlocked } from './ui/bloqueo.js'; // bloquear contacto (24-11)
 import { parseCallSignal } from './ui/calls.js';
 import { parseGroupCallSignal } from './ui/group_call.js';
 import { installCallsUi } from './ui/calls_ui.js';
@@ -211,6 +212,16 @@ initPerf(); // ronda 2808: medición de rendimiento (pasiva: escucha eventos ya 
 // v9.9.52: mensajes sin leer y notificaciones (todas las vías de llegada pasan por _handleIncomingMessage)
 loadHidePreview(); // opción por chat «Ocultar el texto en los avisos»
 loadApariencia(); loadMuted(); loadPins(); // 3219: chats silenciados (también para la parte nativa) y mensajes fijados
+loadBlocked(); // bloqueo (24-11): la lista también para la parte nativa (app cerrada o congelada)
+// Al DESBLOQUEAR, se le manda otra vez lo mío (foto, estados, datos) y el saludo de internet (vuelve a verme en línea)
+window.addEventListener('nexo:block', function(e) {
+  var d = (e && e.detail) || {};
+  if (!d.id || d.blocked) return;
+  try { sendAvatarTo(d.id, true); } catch (er) {}
+  try { sendStatusTo(d.id, true); } catch (er) {}
+  try { sendProfileTo(d.id); } catch (er) {}
+  try { var bi = window.bleInterface; if (bi && bi.net && typeof bi.net.probe === 'function') bi.net.probe(d.id, 'Desbloqueado'); } catch (er) {}
+});
 var _notifier = createNotifier({
   ble: function() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; },
   // El chat abierto según ble_interface (lo pone openChat y lo quita cualquier cierre del chat)

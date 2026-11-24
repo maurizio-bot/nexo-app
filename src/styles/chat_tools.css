@@ -78,3 +78,8 @@ body:not(.chat-view-active) #nexo-pin-bar, body.vault-visible #nexo-pin-bar { di
   .vn-wrap.vn-own { --vn-played: color-mix(in srgb, var(--burbuja-1, #00c8ff) 38%, #050816); --vn-thumb: color-mix(in srgb, var(--burbuja-1, #00c8ff) 38%, #050816); }
 }
 .vn-wrap .vn-thumb { background: var(--vn-thumb); box-shadow: 0 0 0 2px var(--vn-ring); }
+/* Bloquear contacto (dueño 24-11): en el chat de un bloqueado, la barra en lugar de la caja de escribir */
+#input-area.nx-blocked > :not(#nx-blocked-bar) { display: none !important; }
+#nx-blocked-bar { flex: 1; min-height: 44px; border: 0; border-radius: 22px; background: rgba(255, 255, 255, 0.08); color: var(--nx-text, #fff); font: inherit; font-size: 14px; padding: 10px 14px; text-align: center; cursor: pointer; }
+.nx-blocked-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; font-size: 14px; }
+.nx-blocked-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

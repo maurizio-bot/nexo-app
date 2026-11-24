@@ -973,4 +973,15 @@ export default {
   call_bridge_note: "Unite dal tuo telefono: se riattacchi, finisce per entrambi",
   call_bridge_left: "{name} ha lasciato la chiamata",
   call_bridge_tag: "Unite",
+  // Bloquear contacto (dueño 24-11)
+  block_on: "Blocca",
+  block_off: "Sblocca",
+  block_ask: "Bloccare ",
+  block_note: "Non riceverai i suoi messaggi, chiamate né stati, e non vedrà la tua foto né i tuoi stati. Non viene avvisato. Nei gruppi continuerai a vederlo.",
+  block_on_done: "Hai bloccato ",
+  block_off_done: "Hai sbloccato ",
+  block_bar: "Hai bloccato questo contatto. Tocca per sbloccarlo.",
+  block_call: "Sblocca questo contatto per chiamarlo",
+  block_list: "Contatti bloccati",
+  block_none: "Nessuno. Puoi bloccare qualcuno dalla sua chat o dal suo profilo.",
 };

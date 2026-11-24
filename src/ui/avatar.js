@@ -21,6 +21,7 @@
  */
 import { _getBLEContacts, _normId, _saveBLEContacts } from './ble_helpers.js';
 import { _sendTextTo } from './send.js';
+import { isBlocked } from './bloqueo.js';
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
 import { printOfImage, printSame, printScore, printValid } from './img_print.js';
@@ -180,7 +181,7 @@ export function avatarClash(url) {
     return hit ? _nameOf(hit) : null;
   });
 }
-function _contactIds() { return _getBLEContacts().map(function(c) { return _normId(c.nexoId || c.deviceUUID); }).filter(function(nx) { return NX_RE.test(nx); }); }
+function _contactIds() { return _getBLEContacts().map(function(c) { return _normId(c.nexoId || c.deviceUUID); }).filter(function(nx) { return NX_RE.test(nx) && !isBlocked(nx); }); } // bloqueo (24-11): a un bloqueado no le sale lo mío
 
 export function avatarInit() {
   if (_started) return;

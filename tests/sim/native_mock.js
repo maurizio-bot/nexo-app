@@ -531,7 +531,15 @@ class NativePhone {
 
   // ---- app cerrada (Kotlin closedReceive + BgInbox.classify; probado en tests/kotlin/BgInboxTest) ----
   // me: mi NEXO ID (Kotlin 2760: lo que llega por Jump para mí → solo aviso)
-  static classifyClosed(json, me) {
+  // Kotlin bloqueo (24-11, BgInbox.classify + MutedChats.isBlocked): lo de un bloqueado fuera de un grupo → IGNORE (ni buzón, ni aviso,
+  // ni llamada, ni ✓✓). blocked: el conjunto de este teléfono (lo da la app con setMutedChats blocked). NEXO_OLD_BLOCK=1: nativo de antes
+  static classifyClosed(json, me, blocked) {
+    const info = NativePhone._classifyRaw(json, me);
+    if (process.env.NEXO_OLD_BLOCK !== '1' && blocked && blocked.size && (info.kind === 'MESSAGE' || info.kind === 'NOTIFY_ONLY') && !info.group &&
+      info.from && blocked.has(info.from) && String(json).indexOf('"nexo_gcall"') < 0) return { kind: 'IGNORE', from: info.from, msgId: '' };
+    return info;
+  }
+  static _classifyRaw(json, me) {
     let o; try { o = JSON.parse(json); } catch (e) { return { kind: 'IGNORE' }; }
     const NX = /^nx[0-9a-z]{8}$/;
     const from = String(o.from || o.fr || '').toLowerCase();
@@ -646,7 +654,7 @@ class NativePhone {
   }
   _bgNotify(json, fromAddress, lanNx) {
     if (this.appActive !== false || this.closedMode || this.opts.noBgNotify) return;
-    const info = NativePhone.classifyClosed(json, this.advertisingId);
+    const info = NativePhone.classifyClosed(json, this.advertisingId, this.blocked);
     if (!info.msgId) return;
     if (this._sealCheck(json, info) === false) return; // Kotlin 2A
     // Kotlin 3034: una acción oculta (q:1) no se avisa pero SÍ se confirma (contraprueba: NEXO_OLD_QUIETACK=1, nativo ≤ 3033)
@@ -851,7 +859,7 @@ class NativePhone {
     setTimeout(() => { if (peer.wifiNet === this.wifiNet && peer.lanConns && peer.lanConns.get(from) === this) { peer._bgNotify(j, null, from); peer.emit('onLanMessage', { nx: from, content: j }); } }, 2);
   }
   _closedReceive(fromAddress, json) {
-    const info = NativePhone.classifyClosed(json, this.advertisingId);
+    const info = NativePhone.classifyClosed(json, this.advertisingId, this.blocked);
     if (this._sealCheck(json, info) === false) return; // Kotlin 2A (23-11)
     this.stats.closedRx = (this.stats.closedRx || 0) + 1;
     if (!this.bgInbox) this.bgInbox = [];
@@ -1759,9 +1767,13 @@ class NativePhone {
       netBgConfig: wrap('netBgConfig', (c, a) => { self.netBg = a; self.netBgCalls = (self.netBgCalls || 0) + 1; c.resolve({ contacts: (a.contacts || []).length, running: false }); }),
       // 3219 (Kotlin setMutedChats → MutedChats): la app da los chats silenciados [{id, until}] (until ms; 0 = siempre)
       setMutedChats: wrap('setMutedChats', (c, a) => {
-        self.muted = new Map(); self.mutedCalls = (self.mutedCalls || 0) + 1;
-        ((a && a.chats) || []).forEach((x) => { const id = String((x && x.id) || '').toLowerCase(), u = Number(x && x.until); if (/^(nx|gr)[0-9a-z]{8}$/.test(id) && isFinite(u) && u >= 0) self.muted.set(id, u); });
-        c.resolve({ chats: self.muted.size });
+        // Bloqueo (24-11): lo que no viene (chats o blocked) se queda como estaba
+        if (a && Array.isArray(a.blocked)) { self.blocked = new Set(); a.blocked.forEach((x) => { const id = String(x || '').toLowerCase(); if (/^nx[0-9a-z]{8}$/.test(id)) self.blocked.add(id); }); self.blockedCalls = (self.blockedCalls || 0) + 1; }
+        if (a && Array.isArray(a.chats)) {
+          self.muted = new Map(); self.mutedCalls = (self.mutedCalls || 0) + 1;
+          a.chats.forEach((x) => { const id = String((x && x.id) || '').toLowerCase(), u = Number(x && x.until); if (/^(nx|gr)[0-9a-z]{8}$/.test(id) && isFinite(u) && u >= 0) self.muted.set(id, u); });
+        }
+        c.resolve({ chats: self.muted ? self.muted.size : 0, blocked: self.blocked ? self.blocked.size : 0 });
       }),
       // C1 (2777): la app nos da las claves de firma del ✓✓ del modo cerrado (como el Kotlin setAckKeys)
       setAckKeys: wrap('setAckKeys', (c, a) => { self.ackKeys = new Map(); (a.keys || []).forEach((k) => { try { self.ackKeys.set(String(k.nx).toLowerCase(), Buffer.from(k.key, 'base64')); } catch (e) {} }); c.resolve({ keys: self.ackKeys.size }); }),

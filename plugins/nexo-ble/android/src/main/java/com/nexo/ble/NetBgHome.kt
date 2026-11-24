@@ -174,6 +174,9 @@ object NetBgHome {
     // 3254: how = por dónde llegó (para el registro): «por internet» o «por Bluetooth sin la app» (BleSinApp)
     fun notifyMessage(ctx: Context, nx: String, name: String, msgId: String, isCall: Boolean, group: String, video: Boolean, silent: Boolean,
                       how: String = "por internet", groupName: (String) -> String?) {
+        // Bloqueo (dueño 24-11): de un contacto bloqueado, fuera de un grupo, ni aviso ni llamada (la app tampoco lo guarda)
+        MutedChats.ensureLoaded({ store(ctx).read(MutedChats.FILE) })
+        if (group.isEmpty() && MutedChats.isBlocked(nx)) { log(ctx, "sobre de $nx (msgId $msgId): contacto bloqueado: sin aviso"); return }
         val seen = !isCall && SeenMsgs.has(ctx, msgId)
         val gname = if (isCall || seen || silent) null else groupName(group)
         // 3219: chat o grupo silenciado (la lista la da la app; sin la app, la de lo guardado)
@@ -239,6 +242,8 @@ object NetBgHome {
     fun saveConfig(ctx: Context, st: AtRestStore, cfg: NetBgSaved.Config) = save(ctx) { NetBgSaved.saveConfig(st, writer, cfg) }
     fun saveAck(ctx: Context, st: AtRestStore, keys: Map<String, ByteArray>) = save(ctx) { NetBgSaved.saveAck(st, writer, keys) }
     fun saveMute(ctx: Context, st: AtRestStore, m: Map<String, Long>) = save(ctx) { MutedChats.save(st, writer, m) } // 3219
+    /** Bloqueo (dueño 24-11): el servicio sin la app (BleSinApp) lee los silenciados y bloqueados guardados antes de clasificar lo que llega. */
+    fun loadMuted(ctx: Context) { try { MutedChats.ensureLoaded({ store(ctx).read(MutedChats.FILE) }) } catch (e: Throwable) { } }
     private fun save(ctx: Context, op: () -> Boolean) {
         try { op() } catch (e: Throwable) {
             // Sin datos: solo el tipo de error, y una vez por proceso (la app la manda cada vez que se oculta)

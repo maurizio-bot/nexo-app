@@ -24,6 +24,8 @@ import { t, getLang, setLang, LANGS, langName } from './i18n.js';
 import { attachNexoUnlockGesture } from './nexo_game.js';
 import { perfSectionHtml, renderPerfSection } from './perf.js';
 import { aparienciaCardHtml, aparienciaWire } from './apariencia.js'; // cola 33: Ajustes → Apariencia
+import { blockMenuLabel, openBlockSheet, blockedListHtml, paintBlockedList } from './bloqueo_ui.js'; // bloquear contacto (24-11)
+import { blockedIds } from './bloqueo.js';
 import { welcomeGuide } from './welcome_guide.js'; // #dueño 05-11: «ver la guía de bienvenida otra vez»
 
 // 3218: la ruedita de Ajustes, la de la muestra aprobada por el dueño (SVG de línea, sin colores propios: toma el trazo del botón
@@ -194,6 +196,7 @@ function _openContactProfile(uuid) {
     commonHtml +
     '<div style="display:flex;gap:8px;margin-top:10px;">' +
     '<button id="nexo-cp-chat" class="nx-btn nx-btn-primary" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z"/></svg>' + t('prof_cp_chat', 'Abrir chat') + '</button></div>' +
+    '<button id="nexo-cp-block" class="nx-link" style="display:block;margin:14px auto 0;color:#ff6b6b;">' + _esc(blockMenuLabel(nx)) + '</button>' + // bloqueo (24-11)
     '</div>';
   document.body.appendChild(sheet);
   (function () {   // 3140: el círculo de color de Contactos (con su foto si la hay), 92 px; en línea = aro celeste
@@ -230,6 +233,8 @@ function _openContactProfile(uuid) {
     };
     window.addEventListener('nexo:psi', onPsi);
   })();
+  var blkBtn = sheet.querySelector('#nexo-cp-block');
+  if (blkBtn) blkBtn.onclick = function () { openBlockSheet(nx, name, function () { blkBtn.textContent = blockMenuLabel(nx); }); };
   var chatBtn = sheet.querySelector('#nexo-cp-chat');
   if (chatBtn) chatBtn.onclick = function () {
     sheet.remove();
@@ -324,7 +329,8 @@ function _openSettings(fromProfile) {
     '<div class="nx-card">' + securitySectionHtml() + '</div>' +
     // Build 2835 (pedido del dueño): encender/apagar las confirmaciones de lectura (el ✓✓ azul que mandás)
     card('🔏', t('privacy'), '<label style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-read-receipts"> ' + t('read_receipts') + '</label>' +
-      '<div class="nx-sub" style="margin-top:6px;">' + t('prof_read_receipts_sub', 'Si lo apagas, tus contactos no ven el ✓✓ azul cuando lees sus mensajes. El «entregado» (dos palomitas grises) sigue igual.') + '</div>') +
+      '<div class="nx-sub" style="margin-top:6px;">' + t('prof_read_receipts_sub', 'Si lo apagas, tus contactos no ven el ✓✓ azul cuando lees sus mensajes. El «entregado» (dos palomitas grises) sigue igual.') + '</div>' +
+      blockedListHtml()) +
     '</div>' +
     '<div class="nx-set-pane" data-sec="notif">' +
     // Ronda 2765 (pedido del dueño): que los avisos y las llamadas lleguen con la pantalla apagada y la enciendan
@@ -434,6 +440,11 @@ function _openSettings(fromProfile) {
   { var pr = sheet.querySelector('#nexo-perf-refresh'); if (pr) pr.onclick = function () { renderPerfSection(); }; }
   var rrBox = sheet.querySelector('#nexo-read-receipts');
   if (rrBox) { rrBox.checked = readReceiptsOn(); rrBox.onchange = function() { setReadReceiptsOn(rrBox.checked); }; }
+  // Bloqueo (24-11): la lista de contactos bloqueados, con «Desbloquear» en cada uno
+  paintBlockedList(sheet.querySelector('#nexo-blocked-list'), blockedIds(), function (nx) {
+    var c = _getBLEContacts().find(function (x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    return (c && String(c.name || '').trim()) || '';
+  });
   var mirBox = sheet.querySelector('#nexo-call-mirror');
   if (mirBox) { mirBox.checked = mirrorPeerPref(); mirBox.onchange = function() { setMirrorPeerPref(mirBox.checked); }; }
   // Tono de llamada/videollamada (ronda 2774): enseña el actual y abre el selector del teléfono al tocarlo

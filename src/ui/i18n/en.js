@@ -973,4 +973,15 @@ export default {
   call_bridge_note: "Joined through your phone: if you hang up, it ends for both",
   call_bridge_left: "{name} left the call",
   call_bridge_tag: "Joined",
+  // Bloquear contacto (dueño 24-11)
+  block_on: "Block",
+  block_off: "Unblock",
+  block_ask: "Block ",
+  block_note: "You won't get their messages, calls or statuses, and they won't see your photo or your statuses. They aren't told. In groups you'll still see them.",
+  block_on_done: "You blocked ",
+  block_off_done: "You unblocked ",
+  block_bar: "You blocked this contact. Tap to unblock.",
+  block_call: "Unblock this contact to call them",
+  block_list: "Blocked contacts",
+  block_none: "None. You can block someone from their chat or profile.",
 };

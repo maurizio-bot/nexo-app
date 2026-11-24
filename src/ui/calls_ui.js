@@ -18,6 +18,7 @@ import { _getGradientForUUID, _getInitials } from './ble_helpers.js';
 import { _hideCameraPreviewOverlay } from './camera.js';
 import { vaultAppendMessage, vaultFindContactByNexoId } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
+import { isBlocked } from './bloqueo.js';
 import { openCallReply, closeCallReply } from './call_reply.js';
 import { registerCallBar, minimizeCall, canMinimize } from './call_bar.js';
 import { initCallPip, miniOpen } from './call_pip.js';
@@ -902,6 +903,7 @@ function _installButton() {
 function _startCall(cid, video) {
   var b = _bi(), c1 = b && b.calls, c2 = b && b.calls2, nx = _normId(cid);
   if (!c1 || !nx) return;
+  if (isBlocked(nx)) { haptic('confirm'); callToast(t('block_call', 'Desbloquea a este contacto para llamarle'), 3000); return; } // bloqueo (24-11)
   if (callCount() >= 2) { haptic('confirm'); callToast(t('call_max_two', 'Ya tienes dos llamadas a la vez. Cuelga una para llamar a alguien más'), 3500); return; }
   var busyWith = [c1.call, c2 && c2.call].filter(Boolean).some(function(c) { return _normId(c.nx) === nx; });
   if (busyWith) { callToast(t('call_already_with', 'Ya estás en una llamada con este contacto'), 3000); return; }

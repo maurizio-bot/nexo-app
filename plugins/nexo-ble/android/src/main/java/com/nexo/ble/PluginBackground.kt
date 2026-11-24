@@ -58,6 +58,7 @@ private fun NexoBlePlugin.notifyOnly(ctx: Context, info: BgInbox.Info) {
 internal fun NexoBlePlugin.backgroundNotify(json: String, deviceId: String? = null, lanNx: String? = null) {
     if (!appInBackground || closedMode) return
     val ctx = appCtx ?: return
+    MutedChats.ensureLoaded({ atRest().read(MutedChats.FILE) }) // bloqueo (24-11): classify ignora lo de un bloqueado
     val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
     if (info.msgId.isEmpty()) return
     if (!sealOk(json, info)) { remLog("WARN", "BG", "Mensaje que dice ser de ${info.from} sin su sello de pareja: sin aviso ni ✓✓"); return } // 2A (23-11)
@@ -107,6 +108,7 @@ private fun NexoBlePlugin.sealOk(json: String, info: BgInbox.Info): Boolean {
 
 // Lo que llega con la app cerrada: al buzón, confirmación de entrega y notificación (ver BgInbox)
 internal fun NexoBlePlugin.closedReceive(deviceId: String, json: String) {
+    MutedChats.ensureLoaded({ atRest().read(MutedChats.FILE) }) // bloqueo (24-11): classify ignora lo de un bloqueado
     val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
     val ctx = appCtx ?: return
     if (!sealOk(json, info)) { nlog()?.add("WARN", "BT_CERRADA", "mensaje que dice ser de ${info.from} sin su sello de pareja: descartado"); return } // 2A (23-11)
@@ -507,12 +509,15 @@ internal fun NexoBlePlugin.mutedNotice(info: BgInbox.Info, groupKnown: Boolean):
 // 3219: la app da los chats silenciados [{id, until}] (until en ms; 0 = siempre), al arrancar y cada vez que cambian: en memoria del
 // proceso (la usa el aviso con la app cerrada o congelada) y cifrada en el teléfono (para la escucha de internet sin la app). Se
 // reemplaza la lista entera en cada llamada. Pasando la cuenta a otro teléfono no se escribe nada (moveFrozen, como setAckKeys).
+// Bloqueo (dueño 24-11): con «blocked» [NEXO ID] da también los contactos bloqueados; lo que no viene (chats o blocked) se queda como estaba.
 internal fun NexoBlePlugin.setMutedChatsImpl(call: PluginCall) {
     try {
-        val m = MutedChats.fromApp(call.getArray("chats"), System.currentTimeMillis())
-        MutedChats.set(m)
+        MutedChats.ensureLoaded({ atRest().read(MutedChats.FILE) })
+        val m = if (call.data.has("chats")) MutedChats.fromApp(call.getArray("chats"), System.currentTimeMillis()) else MutedChats.all()
+        val b = if (call.data.has("blocked")) MutedChats.blockedFromApp(call.getArray("blocked")) else MutedChats.blocked()
+        MutedChats.set(m, b)
         if (!moveFrozen) NetBgHome.saveMute(appCtx ?: context, atRest(), m)
-        call.resolve(JSObject().put("chats", m.size))
+        call.resolve(JSObject().put("chats", m.size).put("blocked", b.size))
     } catch (e: Exception) { call.reject("lista de silenciados ilegible") }
 }
 

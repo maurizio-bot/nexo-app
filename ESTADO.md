@@ -31,13 +31,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   internet en ninguno, con el Vivo en medio con la app cerrada (y Cari lejos del S24): un texto, un texto largo y una foto deben llegar
   con ✓✓; lo mismo con el Vivo con la pantalla apagada un rato largo. Queda: JS vivo y nativo pueden reenviar los dos un paquete corto
   guardado (duplicado inofensivo).
-- **SIGUIENTE (sesión nueva):** (1) BLOQUEAR CONTACTO (pedido del dueño 24-11; no existe nada hoy). Propuesta dada al dueño, como
-  WhatsApp: en el menú del contacto y en su perfil «Bloquear»; lo suyo no entra (mensajes, llamadas, estados, foto, solicitudes), sin aviso;
-  lo mío no le sale (ni «en línea», ni foto, ni estados); él no se entera (sus mensajes se quedan en ✓, sin ✓✓); en grupos se le sigue viendo
-  (como WhatsApp). PRINCIPIO NEXO: se le sigue haciendo de PUENTE (Jump/puente a internet) para los demás: el paquete va cifrado y no se sabe
-  de quién es. Desbloquear desde el mismo sitio y una lista en Ajustes → Privacidad. Ir con eso salvo que el dueño diga otra cosa.
-  (2) Ya hecho y SIN APK aún (va con el bloqueo, una APK por tanda): menú de la burbuja más compacto y sin «Copiar» (está en «Seleccionar»;
-  `chatactions.js` ahora copia por ahí, `menu_sin_copiar`). NOVEDADES: añadir las dos cosas.
+- **BLOQUEAR CONTACTO HECHO (24-11, SIN APK aún; va con el menú de la burbuja sin «Copiar»).** `src/ui/bloqueo.js` (núcleo: localStorage +
+  copia cifrada `nexo_blocked.json`; `msgWhileBlocked`: lo que mandó mientras, no entra al desbloquear) y `bloqueo_ui.js` (hoja, barra del chat,
+  lista en Ajustes → Seguridad → Privacidad). Filtros: entrada `ble_receive._handlePayload` y trozos `ble_ack_resume` (sin ✓✓); salida
+  `ble_send.sendChatMessage` (BLOCKED) y `_contactIds` de estados/foto/datos; `net_link._hello` y `_bgConfig` (sin su clave nativa); llamadas
+  `calls_ui._startCall`. Grupos siguen. Nativo: `MutedChats` (lista `blocked` en setMutedChats, cifrada) + `BgInbox.classify` → IGNORE;
+  `NetBgHome.notifyMessage`; `BleSinApp.start` la carga. Pruebas: `tests/sim/bloqueo.js` (K1–K7, contraprueba NEXO_OLD_BLOCK=1 falla K5),
+  JVM `BlockedContactsTest`, tipos Android OK. Límite honesto: de cerca por Bluetooth el enlace sigue (hace de puente) y él puede verme «cerca».
+  NOVEDADES: bloque limpio (estaba pegado con los anteriores y la descripción de la APK salía con todo). Siguiente: subir la APK con esto.
 - **APK 3148 PUBLICADA (24-11 12:50 México; nightly-3148) = 3327 + 3328 + 3329.** 3327 = ACUERDO EXPLÍCITO de enlaces repetidos (🔴 1, zombis S24↔Roberto/Alex/
   Zhelowsky): decide SOLO el de NEXO ID menor y se queda el enlace MÁS RECIENTE (el de después de volver la app); el mayor no cierra
   (salvo todos muertos o el menor > 3 min sin hacerlo); lo que el menor cerró hace < 10 min no gana por «nuevo» (sin vaivén); el chat

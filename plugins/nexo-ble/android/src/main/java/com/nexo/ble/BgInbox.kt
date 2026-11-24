@@ -57,7 +57,19 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
             } catch (e: Exception) { null }
         }
 
+        /**
+         * Bloqueo (dueño 24-11, como WhatsApp): lo que manda un contacto BLOQUEADO (MutedChats.isBlocked) fuera de un grupo se ignora con
+         * la app cerrada o congelada: ni buzón, ni aviso, ni llamada, ni ✓✓ (sus mensajes se le quedan en ✓). Lo de un grupo (mensaje con
+         * su id de grupo o invitación a una llamada de grupo) sigue como siempre. Las confirmaciones (RECEIPT) son de lo mío: se guardan.
+         */
         fun classify(json: String, me: String = ""): Info {
+            val info = classifyRaw(json, me)
+            if ((info.kind == Kind.MESSAGE || info.kind == Kind.NOTIFY_ONLY) && info.group.isEmpty() && MutedChats.isBlocked(info.from) &&
+                !json.contains("\"nexo_gcall\"")) return Info(Kind.IGNORE, info.from, "", false, "")
+            return info
+        }
+
+        private fun classifyRaw(json: String, me: String): Info {
             // Auditoría (ronda 2774): un JSON descomunal o muy anidado se descarta antes de analizarlo (el analizador del
             // sistema es recursivo y un paquete así podría tumbar la app).
             if (SafeJson.reject(json)) return Info(Kind.IGNORE, "", "", false, "")

@@ -34,6 +34,7 @@
  */
 import { GwLink, GW_FILE_MAX_B64 } from './gw_link.js';
 import { helperList } from './gw_helpers.js';
+import { isBlocked, blockedIds } from '../ui/bloqueo.js';
 import { noNetStep, DEFAULT_RELAYS, SPARE_RELAYS, OWN_PUBLIC_BACKUP, OWN_BLOB_PAR, _relaySafe, _nid, _plugin, STATE_FILE, RELAY_BG_PROBE_MS, TICK_MS, _cat, _utf8, _scalar, _day, _reqScalar, _reqTagPub, UP_MS, RELAY_IDLE_PROBE_MS, netEventValid, _unb64, _reqAesKey, TTL_CHUNK, TTL_MSG, TTL_RT, _rnd, _b64, MAX_CONTENT, TTL_HELLO, _event, KIND, HELLO_MS } from './net_link_shared.js';
 import { e2eIdentityDH, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -445,6 +446,7 @@ export class NetLink {
     var cs = this._netContacts(), list = [];
     for (var i = 0; i < cs.length; i++) {
       var nx = _nid(cs[i].nexoId || cs[i].deviceUUID);
+      if (isBlocked(nx)) continue; // bloqueo (24-11): sin su clave la escucha nativa no abre sus sobres (ni aviso, ni llamada, ni ✓✓)
       try { var pair = await this._pair(nx, cs[i].publicKey); list.push({ nx: nx, name: cs[i].name || '', kraw: bytesToHex(pair.kraw) }); } catch (e) {}
     }
     // 3190 (dueño 17-11: «hay que poner esa notificación: hay un contacto que te quiere agregar»): la parte nativa también escucha mi
@@ -454,6 +456,7 @@ export class NetLink {
     var me = this.me(), known = [], seenNx = {};
     var all = (this.ble && typeof this.ble.getBLEContacts === 'function') ? (this.ble.getBLEContacts() || []) : [];
     all.forEach(function(c) { var nx = _nid(c && (c.nexoId || c.deviceUUID)); if (/^nx[0-9a-z]{8}$/.test(nx) && nx !== me && !seenNx[nx]) { seenNx[nx] = 1; known.push({ nx: nx, name: String(c.name || '') }); } });
+    blockedIds().forEach(function(nx) { if (!seenNx[nx] && nx !== me) { seenNx[nx] = 1; known.push({ nx: nx, name: '' }); } }); // bloqueo (24-11): sus solicitudes tampoco avisan
     var reqOut = ((this.ble && typeof this.ble._reqStore === 'function') ? this.ble._reqStore('nexo_req_out') : []).map(function(x) { return _nid(x && x.id); }).filter(function(nx) { return /^nx[0-9a-z]{8}$/.test(nx); });
     var reqSince = (this._hiddenAt && this.online()) ? this._hiddenAt - 120000 : 0;
     var sig = list.map(function(c) { return c.nx + c.kraw; }).join(',') + '|' + this.relayUrls().join(',') + '|' + known.map(function(k) { return k.nx + ':' + k.name; }).join(',') + '|' + reqOut.join(',') + '|' + helperList().join(','); // 3323
@@ -572,6 +575,7 @@ export class NetLink {
   }
 
   _hello(nx) {
+    if (isBlocked(nx)) return; // bloqueo (dueño 24-11): no le digo que estoy en línea
     var p = this.peers.get(nx) || {};
     this.peers.set(nx, p);
     p.helloAt = Date.now();

@@ -7,6 +7,7 @@ import { parseGroupEnvelope, groupAttachment } from './groups.js';
 import { parseCallSignal } from './calls.js';
 import { parseGroupCallSignal } from './group_call.js';
 import { vaultEarlyTombstoned } from '../vault/vault_early_acts.js';
+import { isBlocked, isGroupWire, msgWhileBlocked } from './bloqueo.js';
 // 3069: ¿texto cifrado del protocolo 2 en una sesión ya hecha? (cabecera de 3 campos: no es un primer mensaje X3DH)
 function _e2Established(packed) {
   if (typeof packed !== 'string' || packed.indexOf('E2:') !== 0) return false;
@@ -431,6 +432,23 @@ export const BLE_RECEIVE_METHODS = {
           var contact = _getContactByUUID(senderUUID);
           var cname = contact ? contact.name : null;
           senderName = cname || (self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name) || (self.foundDevices.get(deviceId) && self.foundDevices.get(deviceId).name) || '';
+        }
+        // Bloqueo (dueño 24-11): lo de un contacto BLOQUEADO no entra (mensajes, llamadas, estados, foto, datos, acciones, solicitudes):
+        // ni se guarda, ni avisa, ni se confirma (sin ✓✓: a él se le queda en ✓). Lo de un GRUPO sigue (en los grupos se le sigue viendo).
+        // Lo que pasa por aquí ya es para mí: el puente para otros (Jump, puente a internet) va antes y no se toca.
+        if (!isControl && senderUUID && isBlocked(_normId(senderUUID))) {
+          var bAtt = ctrl && ctrl.payload && ctrl.payload.attachment;
+          if (!(!bAtt && isGroupWire(content))) {
+            if (!self._blockLogAt || Date.now() - self._blockLogAt > 60000) { self._blockLogAt = Date.now(); console.log('[BLOQUEO] Llega algo de ' + _normId(senderUUID) + ' (bloqueado): descartado sin ✓✓'); }
+            return;
+          }
+        }
+        // Lo que mandó MIENTRAS lo tenía bloqueado y su teléfono reintenta tras desbloquearlo: tampoco entra (como WhatsApp). La hora es la
+        // de cuando lo escribió (va en el id, «msg» + hora; si no, la del sobre, que es la del reenvío). Se confirma (✓✓) para que pare.
+        if (!isControl && senderUUID && messageId && json && msgWhileBlocked(_normId(senderUUID), messageId, json.ts) && !(!(ctrl && ctrl.payload && ctrl.payload.attachment) && isGroupWire(content))) {
+          console.log('[BLOQUEO] ' + messageId + ' de ' + _normId(senderUUID) + ' es de cuando estaba bloqueado: descartado');
+          if (self.ackSystem) self.ackSystem.sendAck(deviceId, messageId, data.viaRelay ? data.relayOrigin : null);
+          return;
         }
         // Decisión del dueño 23-11 (7A, auditoría C-N5): el PRIMER mensaje de alguien que no es contacto ya no lo agrega solo (con el
         // nombre que él quisiera, saltándose la bandeja y el freno de solicitudes): va a Solicitudes («te escribió») y se retiene; al

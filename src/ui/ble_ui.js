@@ -10,6 +10,7 @@ import { parseInvite, shareInvite } from './invite.js'; // 3129: enlace de invit
 import { personAvatar } from './person_avatar.js'; // 3140: el círculo de color de Contactos
 import { isPreviewHidden, toggleHidePreview } from './chat_hide_preview.js';
 import { markMutedRow, muteMenuLabel, isMuted, openMuteSheet } from './chat_mute.js'; // 3219: silenciar un chat
+import { blockMenuLabel, openBlockSheet } from './bloqueo_ui.js'; // bloquear contacto (24-11)
 import { contactSearchQuery, _csMatch, installContactSearch } from './contacts_search.js'; // 3196: lupa de Contactos
 import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isPinned, _normId, _rssiToBars, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
 
@@ -793,7 +794,7 @@ export const BLE_UI_METHODS = {
     menu.className = 'ble-contact-menu';
     var isPinned = _isPinned(uuid);
     // Ronda 2771: "Cambiar nombre" (el nombre del chat ya se podía tocar y cambiar, pero nada lo decía)
-    menu.innerHTML = '<div class="ble-menu-item" data-action="pin">' + (isPinned ? '&#x2606; Desfijar' : '&#x2605; Fijar') + '</div><div class="ble-menu-item" data-action="rename">&#x270F;&#xFE0F; Cambiar nombre</div><div class="ble-menu-item" data-action="hidetext">' + (isPreviewHidden(uuid) ? '&#x1F441; ' + t('chat_show_preview', 'Mostrar el texto en los avisos') : '&#x1F648; ' + t('chat_hide_preview', 'Ocultar el texto en los avisos')) + '</div><div class="ble-menu-item" data-action="mute">' + (isMuted(uuid) ? '&#x1F514; ' : '&#x1F515; ') + muteMenuLabel(uuid) + '</div><div class="ble-menu-item" data-action="profile">&#x1F464; Perfil</div><div class="ble-menu-item ble-menu-delete" data-action="delete">&#x1F5D1; Eliminar</div>';
+    menu.innerHTML = '<div class="ble-menu-item" data-action="pin">' + (isPinned ? '&#x2606; Desfijar' : '&#x2605; Fijar') + '</div><div class="ble-menu-item" data-action="rename">&#x270F;&#xFE0F; Cambiar nombre</div><div class="ble-menu-item" data-action="hidetext">' + (isPreviewHidden(uuid) ? '&#x1F441; ' + t('chat_show_preview', 'Mostrar el texto en los avisos') : '&#x1F648; ' + t('chat_hide_preview', 'Ocultar el texto en los avisos')) + '</div><div class="ble-menu-item" data-action="mute">' + (isMuted(uuid) ? '&#x1F514; ' : '&#x1F515; ') + muteMenuLabel(uuid) + '</div><div class="ble-menu-item" data-action="profile">&#x1F464; Perfil</div>' + '<div class="ble-menu-item" data-action="block">&#x1F6AB; ' + blockMenuLabel(uuid) + '</div><div class="ble-menu-item ble-menu-delete" data-action="delete">&#x1F5D1; Eliminar</div>';
     // 3222 (dueño 17-11): «Crear grupo» desde los ⋮ del contacto: abre «Nuevo grupo» con este contacto ya elegido
     if (typeof window.NEXO_newGroupWith === 'function') menu.insertAdjacentHTML('beforeend', '<div class="ble-menu-item" data-action="newgroup">&#x1F465; ' + t('prof_group_create', 'Crear grupo') + '</div>');
     var rect = btn.getBoundingClientRect();
@@ -818,6 +819,7 @@ export const BLE_UI_METHODS = {
       else if (action === 'hidetext') { toggleHidePreview(uuid); }
       else if (action === 'newgroup') { window.NEXO_newGroupWith(uuid); }
       else if (action === 'mute') { openMuteSheet(uuid); } // 3219
+      else if (action === 'block') { var bc = _getBLEContacts().find(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(uuid); }); openBlockSheet(uuid, bc && bc.name); } // bloqueo (24-11)
       else if (action === 'delete') { self.removeContact(uuid); }
       else if (action === 'profile') { _safeDispatchEvent('nexo:ble:goToProfile', { deviceUUID: uuid }); }
       else if (action === 'rename') {

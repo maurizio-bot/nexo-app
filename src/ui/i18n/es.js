@@ -973,4 +973,15 @@ export default {
   call_bridge_note: "Unidas por tu teléfono: si cuelgas, termina para los dos",
   call_bridge_left: "{name} salió de la llamada",
   call_bridge_tag: "Unidas",
+  // Bloquear contacto (dueño 24-11)
+  block_on: "Bloquear",
+  block_off: "Desbloquear",
+  block_ask: "¿Bloquear a ",
+  block_note: "No recibirás sus mensajes, llamadas ni estados, y no verá tu foto ni tus estados. No se le avisa. En los grupos se le sigue viendo.",
+  block_on_done: "Bloqueaste a ",
+  block_off_done: "Desbloqueaste a ",
+  block_bar: "Bloqueaste a este contacto. Toca para desbloquear.",
+  block_call: "Desbloquea a este contacto para llamarle",
+  block_list: "Contactos bloqueados",
+  block_none: "Ninguno. Puedes bloquear a alguien desde su chat o su perfil.",
 };

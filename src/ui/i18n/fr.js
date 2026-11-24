@@ -973,4 +973,15 @@ export default {
   call_bridge_note: "Reliés par votre téléphone : si vous raccrochez, l'appel se termine pour les deux",
   call_bridge_left: "{name} a quitté l'appel",
   call_bridge_tag: "Reliés",
+  // Bloquear contacto (dueño 24-11)
+  block_on: "Bloquer",
+  block_off: "Débloquer",
+  block_ask: "Bloquer ",
+  block_note: "Tu ne recevras plus ses messages, appels ni statuts, et il ne verra ni ta photo ni tes statuts. Il n'est pas prévenu. Dans les groupes, tu continues à le voir.",
+  block_on_done: "Tu as bloqué ",
+  block_off_done: "Tu as débloqué ",
+  block_bar: "Tu as bloqué ce contact. Touche pour le débloquer.",
+  block_call: "Débloque ce contact pour l'appeler",
+  block_list: "Contacts bloqués",
+  block_none: "Aucun. Tu peux bloquer quelqu'un depuis sa discussion ou son profil.",
 };

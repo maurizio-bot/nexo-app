@@ -11,6 +11,7 @@
  */
 import { _normId, _getBLEContacts } from './ble_helpers.js';
 import { _sendTextTo } from './send.js';
+import { isBlocked } from './bloqueo.js';
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
 import { myProfile } from './profile_data.js';
 
@@ -32,7 +33,7 @@ function _load(name) {
 function _save(name, obj) { var pl = _pl(); if (pl && typeof pl.saveToFile === 'function') pl.saveToFile({ filename: name, content: JSON.stringify(obj) }).catch(function () {}); }
 function _hash(s) { var h = 2166136261; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); }
 function _clean(s, max) { return String(s == null ? '' : s).replace(/[<>]/g, '').trim().slice(0, max); }
-function _contactIds() { return _getBLEContacts().map(function (c) { return _normId(c.nexoId || c.deviceUUID); }).filter(function (nx) { return NX_RE.test(nx); }); }
+function _contactIds() { return _getBLEContacts().map(function (c) { return _normId(c.nexoId || c.deviceUUID); }).filter(function (nx) { return NX_RE.test(nx) && !isBlocked(nx); }); } // bloqueo (24-11): a un bloqueado no le sale lo mío
 
 // Mi perfil en formato de envío (campos no vacíos) + su hash para dedupe.
 function _myMsg() {
@@ -50,7 +51,7 @@ export function profileShareInit() {
   _started = true;
   _load(SENT_FILE).then(function (r) { if (r && typeof r === 'object') _sent = r; });
   // Cargar los perfiles ya recibidos de los contactos
-  _contactIds().forEach(function (nx) {
+  _getBLEContacts().map(function (c) { return _normId(c.nexoId || c.deviceUUID); }).filter(function (nx) { return NX_RE.test(nx); }).forEach(function (nx) {
     _load('nexo_prof_' + nx + '.json').then(function (o) { if (o && typeof o === 'object') _cache[nx] = { n: o.n || '', p: o.p || '', e: o.e || '' }; });
   });
   window.addEventListener('nexo:ble:peerReady', function (e) {

@@ -1,5 +1,15 @@
 import { _normId, RESUME_SCAN_GAP_MS, _isFenixTx, RESUME_FAIL_MAX_MS, RESUME_FAIL_BASE_MS, MAX_RESUME_CONCURRENT, BLE_FILE_MAX_CHARS, _isLanDevice, _isNetDevice, _isStatusTx, _assemblyTimeoutFor, NET_BIG_MIN_CHUNKS, NET_BIG_IDLE_MS } from './ble_ack_shared.js';
 import { e2eAnyEncrypted, e2eOpenText, e2eOpenToB64 } from '../vault/e2e_proto.js';
+import { isBlocked, isGroupWire, msgWhileBlocked } from './bloqueo.js'; // bloquear contacto (24-11)
+// Bloqueo (24-11): lo largo o un archivo (por trozos) de un contacto bloqueado. 'drop' = bloqueado: no entra y sin ✓✓ (a él se le queda
+// en ✓); 'past' = lo mandó mientras estaba bloqueado y lo reintenta ya desbloqueado: se confirma (que pare) pero no entra; '' = normal.
+// Lo de un grupo sigue siempre (en los grupos se le sigue viendo).
+function _blockedIn(from, msgId, text, group) {
+  var nx = _normId(from);
+  if (!/^nx[0-9a-z]{8}$/.test(nx) || group || (text != null && isGroupWire(text))) return '';
+  if (isBlocked(nx)) return 'drop';
+  return msgWhileBlocked(nx, msgId) ? 'past' : '';
+}
 // Métodos de BleAckSystem: REANUDAR y limpiar: transferencias pendientes y entregadas, avisos de progreso, limpieza periódica.
 // Reestructuración 15-11: movidos TAL CUAL desde ble_ack.js; ble_ack.js los une a la clase (como métodos normales).
 export const ackResume = {
@@ -208,6 +218,8 @@ export const ackResume = {
     if (e2eAnyEncrypted(content)) {
       var from = meta.fr || senderId;
       e2eOpenText(from, content, self._inAd(from, msgId)).then(function(r) {
+        var bk = _blockedIn(from, msgId || meta.msgId, r.dup ? null : r.text, false);
+        if (bk) { if (bk === 'drop') console.log('[BLOQUEO] Texto largo de ' + _normId(from) + ' (bloqueado): descartado sin ✓✓'); if (done) done(bk === 'past'); return; }
         if (done) done(true);
         if (r.dup) return;
         var go = function() { self._dispatchChunkedMessageComplete(senderId, r.text, meta, deviceId, msgId, null, true); };
@@ -216,7 +228,7 @@ export const ackResume = {
         if (v === 'hold') { self._hold(from, go, msgId); return; }
         go();
       }).catch(function(e) {
-        if (e && e.code === 'DUP') { if (done) done(true); return; }
+        if (e && e.code === 'DUP') { if (done) done(_blockedIn(from, msgId || meta.msgId, null, false) !== 'drop'); return; }
         console.warn('[E2E] No se pudo descifrar el mensaje ' + msgId + ':', e && e.message);
         // 3069: desatasco (resync.js): apuntarlo para pedirlo otra vez (y, si era de una sesión ya hecha, puede ser un atasco)
         if (typeof window.NEXO_resyncNote === 'function' && e && (e.code === 'DESYNC' || (e.code === 'BAD' && /^E2:[^:.]+\.[^:.]+\.[^:.]+:/.test(content)))) window.NEXO_resyncNote(from, msgId, e.code);
@@ -303,6 +315,8 @@ export const ackResume = {
         e2eAnyEncrypted(dm.name) ? e2eOpenText(from, dm.name, self._inAd(from, fileId + '#n')).then(function(t) { return t.text; }, function() { return null; }) : dm.name,
         e2eAnyEncrypted(dm.xs) ? e2eOpenText(from, dm.xs, self._inAd(from, fileId + '#x')).then(function(t) { return t.text; }, function() { return null; }) : null
       ]).then(function(r) {
+        var bk = _blockedIn(from, fileId, null, /^gr[0-9a-z]{8}$/i.test(String(dm.g || '')));
+        if (bk) { if (bk === 'drop') console.log('[BLOQUEO] Archivo de ' + _normId(from) + ' (bloqueado): descartado sin ✓✓'); if (done) done(bk === 'past'); return; }
         if (done) done(true);
         if (r[0].dup) return;
         dm.thumb = r[1] || null;
@@ -317,7 +331,7 @@ export const ackResume = {
         if (v === 'hold') { self._hold(from, go, fileId); return; }
         go();
       }).catch(function(e) {
-        if (e && e.code === 'DUP') { if (done) done(true); return; }
+        if (e && e.code === 'DUP') { if (done) done(_blockedIn(from, fileId, null, /^gr[0-9a-z]{8}$/i.test(String(dm.g || ''))) !== 'drop'); return; }
         console.warn('[E2E] No se pudo descifrar el archivo ' + fileId + ':', e && e.message);
         if (done) done(false);
       });

@@ -8,6 +8,7 @@ import { e2eAllowsE1 } from '../vault/e2e_proto.js';
 import { ratchetForget, ratchetMyBundle, ratchetMyPqId, ratchetNotePeerBundle, ratchetPeerPqId, ratchetResetPeer } from '../vault/e2e_ratchet.js';
 import { feNoteOldKey } from '../fenix/fenix_entorno.js';
 import { BLE_STATES, _getBLEContacts, _normId, _normMac, _safeDispatchEvent, _saveBLEContacts, _vNx, _vaultLoadMessages } from './ble_helpers.js';
+import { isBlocked, msgWhileBlocked } from './bloqueo.js'; // bloquear contacto (24-11)
 
 
 export const BLE_KEY_METHODS = {
@@ -276,7 +277,8 @@ export const BLE_KEY_METHODS = {
     if (!msgId || !self.ackSystem) return;
     _vaultLoadMessages(_normId(nexoId)).then(function(msgs) {
       var known = (msgs || []).some(function(m) { return (m.msgId || m.messageId || m.id) === msgId; });
-      if (known) self.ackSystem.sendAck(deviceId, msgId, routeTo);
+      // bloqueo (24-11): lo que mandó mientras lo tenía bloqueado tampoco se guardó; ya desbloqueado se confirma para que deje de reintentarlo
+      if (known || (!isBlocked(_normId(nexoId)) && msgWhileBlocked(_normId(nexoId), msgId))) self.ackSystem.sendAck(deviceId, msgId, routeTo);
     }).catch(function() {});
   },
 

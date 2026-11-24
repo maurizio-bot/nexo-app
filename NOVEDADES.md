@@ -12,39 +12,8 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- (provisional: lo nuevo de la próxima APK)
-</es-419>
-<!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
-  y la app lo muestra junto al botón de actualizar (Perfil → Ajustes → Actualizaciones, y «¿Qué trae?» en el aviso de abajo).
-- Formato de Google Play (se pega tal cual en «Novedades de esta versión»): un bloque por idioma (español, italiano, inglés y, desde
-  la 3123, portugués de Brasil y francés), **máximo 500 caracteres** cada uno
-  (lo comprueba `tests/sim/novedades.js`). Frases cortas, sin palabras técnicas; lo que el usuario nota.
-- Al entregar una APK: escribir aquí lo nuevo y, después de publicarla, pasar el bloque al historial con su número.
-
-<!-- APK -->
-<es-419>
-- Notas de voz: la esfera toma el color de tu burbuja.
-- Menú «+» más compacto, con una pestañita para ver el resto.
-- Quitar un mensaje fijado se ve más claro.
-- Arreglado un cierre inesperado en segundo plano.
-</es-419>
-<!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
-  y la app lo muestra junto al botón de actualizar (Perfil → Ajustes → Actualizaciones, y «¿Qué trae?» en el aviso de abajo).
-- Formato de Google Play (se pega tal cual en «Novedades de esta versión»): un bloque por idioma (español, italiano, inglés y, desde
-  la 3123, portugués de Brasil y francés), **máximo 500 caracteres** cada uno
-  (lo comprueba `tests/sim/novedades.js`). Frases cortas, sin palabras técnicas; lo que el usuario nota.
-- Al entregar una APK: escribir aquí lo nuevo y, después de publicarla, pasar el bloque al historial con su número.
-
-<!-- APK -->
-<es-419>
-- Notas de voz: arrastra la bolita para moverte; las no escuchadas, en color.
-- Un audio o foto se ve en el chat en cuanto llega el aviso.
-- Toca el fijado para ir a él o quitarlo, aunque se haya borrado.
-- Archivos grandes más rápidos; llamadas ocultas con menos datos.
-- Nueva pantalla de arranque.
-- Ya no queda resaltado el último contacto.
-- El «+» abre con lo más usado; la flechita, el resto.
-- Sin internet, un NEXO cercano te presta el suyo aun cerrado (fotos y audios si tú también ayudas).
+- Bloquear contacto: desde su chat, la lista o su perfil. No te llegan sus mensajes, llamadas ni estados, y no ve tu foto ni tus estados. No se le avisa; en los grupos se le sigue viendo. La lista está en Ajustes → Seguridad.
+- Menú de un mensaje más compacto (copiar está en «Seleccionar»).
 </es-419>
 <!-- /APK -->
 
