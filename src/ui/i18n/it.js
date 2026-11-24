@@ -107,6 +107,8 @@ export default {
   msg_gone: "Quel messaggio non è più nella chat",
   pin_label: "Messaggio fissato",
   pin_max: "Massimo 3 messaggi fissati: è stato tolto il più vecchio",
+  pin_go: "Vai al messaggio",
+  pin_remove: "Togli",
   mute_title: "Silenzia notifiche",
   mute_note: "I suoi messaggi non suoneranno né avviseranno. Le chiamate squillano comunque.",
   mute_8h: "8 ore",

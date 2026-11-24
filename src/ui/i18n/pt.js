@@ -107,6 +107,8 @@ export default {
   msg_gone: "Essa mensagem não está mais na conversa",
   pin_label: "Mensagem fixada",
   pin_max: "Máximo de 3 mensagens fixadas: a mais antiga foi desafixada",
+  pin_go: "Ir para a mensagem",
+  pin_remove: "Remover",
   mute_title: "Silenciar notificações",
   mute_note: "As mensagens desta conversa não vão tocar nem avisar. As chamadas tocam normalmente.",
   mute_8h: "8 horas",

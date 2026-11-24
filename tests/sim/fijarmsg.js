@@ -148,12 +148,14 @@ function installHold(P) {
   const seq = [];
   for (let i = 0; i < 4; i++) {
     const cur = bar(A); if (!cur) break;
-    click(A.win, $(A, '#nexo-pin-bar')); await sleep(400);
+    click(A.win, $(A, '#nexo-pin-bar')); await sleep(150); // dueño 23-11: tocar abre el menú; «Ir al mensaje» salta
+    if (i === 0) r.F2_menu = Array.from(A.win.document.querySelectorAll('#nexo-pin-menu .pm-item')).map((x) => x.textContent);
+    click(A.win, A.win.document.querySelector('#nexo-pin-menu .pm-item')); await sleep(400);
     seq.push({ salta: highlighted(A, cur.id), era: cur.msg, ahora: (bar(A) || {}).msg });
   }
   r.F2_rota = seq.map((x) => x.era + (x.salta ? ' ✓' : ' ✗')).join(' → ');
   r.F2_B_s = await waitFor(() => JSON.stringify(pinsOf(B, idA)) === JSON.stringify([m[2].msgId, m[1].msgId, m[0].msgId]), 20000);
-  r.F2_ok = !!b2 && b2.lbl === 'Mensaje fijado · 1/3' && b2.msg === '[F] mensaje 3' && b2.ticks === 3 && b2.on === 0 &&
+  r.F2_ok = JSON.stringify(r.F2_menu) === JSON.stringify(['Ir al mensaje', 'Quitar']) && !!b2 && b2.lbl === 'Mensaje fijado · 1/3' && b2.msg === '[F] mensaje 3' && b2.ticks === 3 && b2.on === 0 &&
     r.F2_rota === '[F] mensaje 3 ✓ → [F] mensaje 2 ✓ → [F] mensaje 1 ✓ → [F] mensaje 3 ✓' && r.F2_B_s !== null;
 
   // ---------- F3: un cuarto quita el más antiguo ----------
@@ -183,6 +185,23 @@ function installHold(P) {
   await sleep(1500);
   r.F5_B = pinsOf(B, idA);
   r.F5_ok = JSON.stringify(r.F5_B) === JSON.stringify([m[3].msgId, m[1].msgId]);
+  // ---------- F11 (dueño 23-11): un fijado cuyo mensaje se borró se puede quitar tocando la franja ----------
+  // B recibe el «borrar para todos» de m[3] sin el desfijado (como de una versión vieja): la franja lo enseña como eliminado
+  inject(B, idA, { type: 'nexo_act', act: 'del', id: m[3].msgId });
+  await sleep(1200);
+  await closeChat(B); await openChat(B, idA); await sleep(500);
+  const b11 = bar(B);
+  r.F11_franja = b11 ? b11.msg : null;
+  click(B.win, $(B, '#nexo-pin-bar')); await sleep(200);
+  r.F11_menu = Array.from(B.win.document.querySelectorAll('#nexo-pin-menu .pm-item')).map((x) => x.textContent);
+  const quitar = Array.from(B.win.document.querySelectorAll('#nexo-pin-menu .pm-item')).find((x) => x.textContent === 'Quitar');
+  if (quitar) click(B.win, quitar);
+  await sleep(400);
+  r.F11_B = pinsOf(B, idA);
+  r.F11_A_s = await waitFor(() => JSON.stringify(pinsOf(A, idB)) === JSON.stringify([m[1].msgId]), 20000);
+  r.F11_franja_despues = (bar(B) || {}).msg || null;
+  r.F11_ok = /eliminado/.test(r.F11_franja || '') && JSON.stringify(r.F11_menu) === JSON.stringify(['Quitar']) && JSON.stringify(r.F11_B) === JSON.stringify([m[1].msgId]) &&
+    r.F11_A_s !== null && r.F11_franja_despues === '[F] mensaje 2';
   await closeChat(A); await closeChat(B);
 
   // ---------- F6: grupo de 3 ----------
@@ -268,7 +287,7 @@ function installHold(P) {
   await openChat(B, idA); await sleep(600);
   const b9 = bar(B);
   r.F9_franja = b9 ? b9.msg : null;
-  r.F9_ok = JSON.stringify(r.F9_B) === JSON.stringify([m7.msgId, m[3].msgId, m[1].msgId]) && r.F9_franja === '[F7] llega tarde';
+  r.F9_ok = JSON.stringify(r.F9_B) === JSON.stringify([m7.msgId, m[1].msgId]) && r.F9_franja === '[F7] llega tarde';
 
   // ---------- F10: 5 idiomas sin voseo ----------
   const { importSrc } = require('./srcmod');
@@ -288,7 +307,7 @@ function installHold(P) {
   r.F10_ok = f10 && VOSEO.test('fijá') && !VOSEO.test('fija');
 
   r.errores = logs.filter((l) => / error: /.test(l) && l.indexOf('[D]') < 0 && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
-  const ok = r.F1_ok && r.F2_ok && r.F3_ok && r.F4_ok && r.F5_ok && r.F6_ok && r.F7_ok && r.F8_ok && r.F9_ok && r.F10_ok && !r.errores.length;
+  const ok = r.F1_ok && r.F2_ok && r.F3_ok && r.F4_ok && r.F5_ok && r.F11_ok && r.F6_ok && r.F7_ok && r.F8_ok && r.F9_ok && r.F10_ok && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('FIJARMSG ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_fijarmsg.txt'), logs.join('\n'));

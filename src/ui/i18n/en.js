@@ -107,6 +107,8 @@ export default {
   msg_gone: "That message is no longer in the chat",
   pin_label: "Pinned message",
   pin_max: "Up to 3 pinned messages: the oldest one was unpinned",
+  pin_go: "Go to message",
+  pin_remove: "Remove",
   mute_title: "Mute notifications",
   mute_note: "Its messages won't ring or notify you. Calls still ring.",
   mute_8h: "8 hours",

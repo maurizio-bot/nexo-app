@@ -107,6 +107,8 @@ export default {
   msg_gone: "Ce message n’est plus dans la discussion",
   pin_label: "Message épinglé",
   pin_max: "3 messages épinglés au maximum : le plus ancien a été désépinglé",
+  pin_go: "Aller au message",
+  pin_remove: "Retirer",
   mute_title: "Mettre les notifications en sourdine",
   mute_note: "Ses messages ne sonneront pas et ne vous avertiront pas. Les appels sonnent quand même.",
   mute_8h: "8 heures",

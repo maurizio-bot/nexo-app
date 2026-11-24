@@ -124,6 +124,20 @@ export function togglePin(cid, msg) {
   return on;
 }
 
+// Dueño 23-11: quitar un fijado por su id, AUNQUE el mensaje ya no exista (borrado): antes solo se podía desde el menú del mensaje, y un
+// mensaje borrado ya no tiene menú. local=true: solo en este teléfono (borrado «para mí»); si no, se avisa al otro (o al grupo).
+export function unpinId(cid, id, local) {
+  cid = _normId(cid);
+  if (!cid || !id || !isPinned(cid, id)) return false;
+  var prev = (_all()[cid] || {})[id], ts = Math.max(Date.now(), ((prev && prev.ts) || 0) + 1);
+  _set(cid, id, false, ts, _myNexoId());
+  _save();
+  var n = local ? 0 : _send(cid, id, false, ts);
+  console.log('[PIN] ' + id + ' desfijado en ' + cid + (local ? ' (solo aquí)' : ' (a ' + n + ' persona(s))'));
+  renderPinBar();
+  return true;
+}
+
 // Recibido: un contacto (o un miembro del grupo) fijó o desfijó un mensaje
 export function pinOnAction(senderId, act) {
   var who = _normId(senderId);
@@ -149,7 +163,30 @@ function _apply(cid, id, on, ts, by) {
 }
 
 // ---------- la franja de arriba del chat ----------
-function _removeBar() { var b = document.getElementById('nexo-pin-bar'); if (b) b.remove(); }
+function _closePinMenu() { var m = document.getElementById('nexo-pin-menu'); if (m) m.remove(); document.removeEventListener('click', _outside, true); }
+function _outside(ev) { var m = document.getElementById('nexo-pin-menu'); if (m && !m.contains(ev.target)) _closePinMenu(); }
+function _pinMenu(bar, cid, id, gone, idx, count) {
+  if (document.getElementById('nexo-pin-menu')) { _closePinMenu(); return; }
+  var menu = document.createElement('div');
+  menu.id = 'nexo-pin-menu';
+  menu.setAttribute('role', 'menu');
+  var add = function(label, cls, fn) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'pm-item' + (cls ? ' ' + cls : ''); b.setAttribute('role', 'menuitem'); b.textContent = label;
+    b.onclick = function(e) { if (e) e.stopPropagation(); _closePinMenu(); fn(); };
+    menu.appendChild(b);
+  };
+  if (!gone) add(t('pin_go', 'Ir al mensaje'), '', function() {
+    _shown[cid] = (idx + 1) % (count || 1);   // la próxima vez, el siguiente fijado
+    jumpToMessage(id);
+    renderPinBar();
+  });
+  add(t('pin_remove', 'Quitar'), 'pm-danger', function() { unpinId(cid, id, false); });
+  bar.appendChild(menu);
+  setTimeout(function() { document.addEventListener('click', _outside, true); }, 0);
+}
+
+function _removeBar() { _closePinMenu(); var b = document.getElementById('nexo-pin-bar'); if (b) b.remove(); }
 
 var _renderSeq = 0;
 export function renderPinBar() {
@@ -161,7 +198,9 @@ export function renderPinBar() {
     if (seq !== _renderSeq || _normId(_getCurrentContactId()) !== cid) return null;
     var byId = {};
     (list || []).forEach(function(m) { byId[m.msgId || m.messageId] = m; });
-    var live = ids.filter(function(id) { return byId[id] && !byId[id].deleted; });
+    // Dueño 23-11: un fijado cuyo mensaje se borró sigue en la franja («Mensaje eliminado») para que se pueda quitar; solo se esconde
+    // uno cuyo mensaje aún no llegó (llegará)
+    var live = ids.filter(function(id) { return !!byId[id]; });
     _missing[cid] = live.length < ids.length;
     if (!live.length) { _removeBar(); return null; }
     var idx = (_shown[cid] || 0) % live.length, id = live[idx];
@@ -172,16 +211,18 @@ export function renderPinBar() {
       bar = document.createElement('div');
       bar.id = 'nexo-pin-bar';
       bar.setAttribute('role', 'button');
-      bar.onclick = function() {
-        var c = _normId(_getCurrentContactId()), cur = bar.dataset.msgId, n = Number(bar.dataset.count) || 1;
+      // Dueño 23-11: tocar la franja abre un menú pequeño: «Ir al mensaje» (si aún existe) y «Quitar» (siempre, aunque esté borrado)
+      bar.onclick = function(ev) {
+        if (ev && ev.target && ev.target.closest && ev.target.closest('#nexo-pin-menu')) return;
+        var c = _normId(_getCurrentContactId()), cur = bar.dataset.msgId;
         if (!c || !cur) return;
-        _shown[c] = ((Number(bar.dataset.idx) || 0) + 1) % n;   // la próxima vez, el siguiente fijado
-        jumpToMessage(cur);
-        renderPinBar();
+        _pinMenu(bar, c, cur, bar.dataset.gone === '1', Number(bar.dataset.idx) || 0, Number(bar.dataset.count) || 1);
       };
     }
     if (bar.parentNode !== header.parentNode || bar.previousSibling !== header) header.parentNode.insertBefore(bar, header.nextSibling);
-    bar.dataset.msgId = id; bar.dataset.idx = String(idx); bar.dataset.count = String(live.length);
+    var gone = !!byId[id].deleted;
+    bar.dataset.msgId = id; bar.dataset.idx = String(idx); bar.dataset.count = String(live.length); bar.dataset.gone = gone ? '1' : '0';
+    _closePinMenu();
     bar.innerHTML = '';
     var ticks = document.createElement('div');
     ticks.className = 'pb-ticks';
@@ -196,7 +237,7 @@ export function renderPinBar() {
     lb.textContent = t('pin_label', 'Mensaje fijado') + (live.length > 1 ? ' · ' + (idx + 1) + '/' + live.length : '');
     var msg = document.createElement('div');
     msg.className = 'pb-msg';
-    msg.textContent = _msgSummary(byId[id]).s;
+    msg.textContent = gone ? t('chat_msg_deleted', '🚫 Mensaje eliminado') : _msgSummary(byId[id]).s;
     txt.appendChild(lb); txt.appendChild(msg);
     bar.appendChild(ticks); bar.appendChild(ic); bar.appendChild(txt);
     return bar;
@@ -211,5 +252,5 @@ if (typeof window !== 'undefined') {
   var _soon = function() { var c = _normId(_getCurrentContactId()); if (!c || !_missing[c] || _again) return; _again = setTimeout(function() { _again = null; renderPinBar(); }, 600); };
   window.addEventListener('nexo:ble:messageReceived', _soon);
   window.addEventListener('nexo:vault:earlyActs', _soon);
-  window.__nexoPins = { pinsOf: pinsOf, isPinned: isPinned }; // gancho de pruebas (fijarmsg.js)
+  window.__nexoPins = { pinsOf: pinsOf, isPinned: isPinned, unpinId: unpinId, render: renderPinBar }; // gancho de pruebas (fijarmsg.js)
 }

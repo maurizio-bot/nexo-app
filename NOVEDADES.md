@@ -15,6 +15,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Los archivos grandes se preparan más rápido antes de enviarse.
 - Las llamadas con NEXO en segundo plano gastan menos datos.
 - Lista para Android 15 y 16: la pantalla y el teclado ya no tapan nada y «atrás» funciona igual.
+- Toca el mensaje fijado para ir a él o quitarlo, aunque se haya borrado.
 </es-419>
 <!-- /APK -->
 

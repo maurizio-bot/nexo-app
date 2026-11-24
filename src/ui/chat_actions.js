@@ -24,7 +24,7 @@ import { isSelecting, startSelect, selectFromBubble } from './msg_select.js'; //
 import { paintTextWithLinks } from './links.js'; // 3161: enlaces que se tocan (+ tarjeta de TikTok/Instagram/Facebook/YouTube)
 import { _isBLEContact } from './ble_helpers.js'; // dueño 23-11: vista previa solo de contactos
 import { canStar, toggleStar } from './chat_star.js'; // 3219: mensajes destacados (solo aquí)
-import { canPin, chatPinUse, isPinned, pinOnAction, togglePin } from './chat_pin.js'; // 3219: fijar mensajes (para los dos)
+import { canPin, chatPinUse, isPinned, pinOnAction, togglePin, unpinId } from './chat_pin.js'; // 3219: fijar mensajes (para los dos)
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _renderMessage, _sendAttachment, _sendTextTo;
@@ -699,6 +699,7 @@ export function _deleteForMe(cid, id) {
   if (_replyTo && _replyTo.id === id) _cancelReply();
   _outboxForget(id);
   vaultDeleteMessage(cid, id).then(function() { return _refreshChatPreview(cid); }).catch(function() {});
+  unpinId(cid, id, true); // dueño 23-11: un mensaje fijado que se borra deja de estar fijado (aquí; el otro sigue con el suyo)
   console.log('[CHAT] Mensaje eliminado para mí');
 }
 
@@ -707,6 +708,7 @@ export function _deleteForAll(cid, msg) {
   _outboxForget(id);
   _sendTextTo(cid, JSON.stringify({ type: 'nexo_act', act: 'del', id: id }), '', true);
   vaultBlankMessage(cid, id).then(function() { _rerenderBlank(id, msg); return _refreshChatPreview(cid); }).catch(function() {});
+  unpinId(cid, id, false); // dueño 23-11: borrado para todos: deja de estar fijado también para todos
   console.log('[CHAT] Mensaje eliminado para todos');
 }
 
