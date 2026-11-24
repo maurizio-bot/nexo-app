@@ -67,6 +67,18 @@ class DL extends ResourceLoader { constructor(d) { super(); this.d = d; } fetch(
   rel.transient.set('anon:' + nm(ANON3), { deviceId: ANON3, since: Date.now() - 300000, lastUse: Date.now() - 300000 });
   const d0 = disc.length; rel._closeIdleTransient(false);
   chk('vivo_no_cierra', disc.slice(d0).indexOf(ANON3) < 0 && !rel.transient.has('anon:' + nm(ANON3)));
+  // 6. (24-11, S24 07:38) el enlace de mi PUENTE a internet no se da por muerto por una escritura soltada; uno normal, sí
+  const ROB = 'nx0g6ef54e', RMAC = '5F:09:E7:5E:00:91';
+  ble.addSharedContacts([{ nexoId: ROB, name: 'Roberto' }], null, { quiet: true });
+  setReady(RMAC, ROB);
+  if (ble.net && ble.net.gw) {
+    ble.net.gw.bridges.set(ROB, { nx: ROB, dev: nm(RMAC) });
+    ble._markBleDead(nm(RMAC));
+    chk('puente_no_muerto', !((ble._bleDeadUntil.get(nm(RMAC)) || 0) > Date.now()));
+    ble.net.gw.bridges.delete(ROB);
+    ble._markBleDead(nm(RMAC));
+    chk('normal_si_muerto', (ble._bleDeadUntil.get(nm(RMAC)) || 0) > Date.now());
+  } else chk('puente_no_muerto', false);
   r.fallos = mal; r.resultado = mal.length ? 'FALLO' : 'OK';
   console.log('ANONDUP ' + JSON.stringify(r));
   try { win.close(); } catch (e) {}

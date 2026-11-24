@@ -86,6 +86,7 @@ export var GW_BULK_PAR = 24;        // trozos por paquete por Wi-Fi Direct (~1,3
 export var GW_BULK_FETCH = 48;      // trozos que se piden por id de una vez por Wi-Fi Direct (por Bluetooth, 16)
 var SRV_BULK_GAP_MS = 40;           // el puente mete los trozos del paquete en el relé espaciados (sin saturarlo)
 var SRV_BULK_EOSE_MS = 6000;        // bajada en paquete: como mucho se junta esto y se manda lo que haya
+var TX_GAP_MS = 35;
 var TX_BUSY_MS = 400, TX_BUSY_MAX_MS = 60000; // Bluetooth con la cola llena: se espera y se reintenta EN ORDEN (no se pierde)
 var SRV_WIFI_PER_HOUR = 20 * 1024 * 1024, SRV_WIFI_PER_DAY = 100 * 1024 * 1024; // el que presta está en Wi-Fi (no gasta datos)
 // Auditoría 23-11 (T-G1): los topes de arriba van por el `from` que DICE el paquete; alguien cerca podía decir ser 50 teléfonos
@@ -258,7 +259,10 @@ export class GwLink {
     if (!it || !ble) { q.busy = false; q.said = false; if (this.txq.get(dev) === q && !q.items.length) this.txq.delete(dev); return; }
     q.busy = true;
     if (!it.t1) it.t1 = Date.now(); // la espera por cola llena cuenta desde que le toca (no desde que entró a la fila)
-    ble._sendMessageNative(dev, it.str, null).then(function() { q.items.shift(); self._txPump(dev, q); }, function(e) {
+    // 24-11: con fila larga (la ráfaga del arranque del puente: saludos y suscripciones de todos los contactos), un respiro entre frames para
+    // no llenar la radio (el nativo soltaba un mensaje y el enlace se daba por muerto)
+    var gap = q.items.length > 4 ? TX_GAP_MS : 0;
+    ble._sendMessageNative(dev, it.str, null).then(function() { q.items.shift(); if (gap) setTimeout(function() { self._txPump(dev, q); }, gap); else self._txPump(dev, q); }, function(e) {
       var busy = /BLE_BUSY|llena|busy/i.test(String((e && e.code) || '') + ' ' + String((e && e.message) || ''));
       it.tries++;
       if (busy ? Date.now() - it.t1 < TX_BUSY_MAX_MS : it.tries < TX_TRIES) { setTimeout(function() { self._txPump(dev, q); }, busy ? TX_BUSY_MS : 300 * it.tries); return; }

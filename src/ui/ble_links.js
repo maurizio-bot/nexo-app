@@ -77,6 +77,10 @@ export const BLE_LINK_METHODS = {
     this._bleDeadUntil.set(nd, until);
     var nx = _normId(this._macToNexoId.get(nd));
     if (!nx) return;
+    // 24-11 (diagnóstico S24 07:38, puente con Roberto): el enlace por el que un vecino me PRESTA su internet no se da por muerto por una
+    // escritura soltada en la ráfaga del arranque (saludos y suscripciones): era mi único camino a internet; al marcarlo muerto el desempate
+    // cerraba sus dos enlaces y se reconectaba 3 veces en 10 min. El puente reintenta lo suyo en orden (gw_link _txPump).
+    try { if (this.net && this.net.gw && this.net.gw.isBridge(nx)) { this._bleDeadUntil.delete(nd); console.log('[BLEInterface] BT de ' + nx + ' soltó un mensaje, pero es mi puente a internet: no lo doy por muerto'); return; } } catch (e) {}
     // Android usa VARIAS direcciones BT para el mismo NEXO (anunciar vs conectar); con MTU 23 suelen estar todas igual de
     // mal. Marco muertas TODAS las de este contacto → el resolvedor cae a internet de una, sin ir dirección por dirección.
     this._deviceStates.forEach(function (st, key) {

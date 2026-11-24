@@ -1160,6 +1160,14 @@
    "sintoma": "cierre_fallo automático (06:01 FALLO nativo, detrás)",
    "categoria": "Fallo de la app",
    "causa": "Tor: al soltar la vista previa su conexión con TorService (5 min sin uso) Android destruye el servicio y tor cae con SIGABRT (pthread_mutex_lock on destroyed mutex, tor_cond_wait). Mismo origen que 23-11 18:24 y 21:26 (desde la 3125). Arreglo 3324 TorKeep. Los 2 textos a S23 a las 06:15 quedaron ✓ en el buzón (S23 sin app abierta)."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "07:39",
+   "nx": "nx1n36c283, build 3142",
+   "sintoma": "enlace_abre_cierra con Roberto (nx0g6ef54e) durante la prueba de puente a internet (S24 solo Bluetooth)",
+   "categoria": "Fallo de la app",
+   "causa": "La ráfaga del arranque del puente llenó la radio, el nativo soltó una escritura y el enlace del puente se dio por muerto (dedup cerró los dos enlaces). Arreglo 3325. Los 2 textos a S23 (07:39:06 y 07:39:22) llegaron al buzón por el puente (✓); el S23 no estaba conectado."
   }
  ]
 }

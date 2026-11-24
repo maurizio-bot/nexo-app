@@ -1233,6 +1233,10 @@
      "prueba": "TOR NUNCA SE APAGA DENTRO DEL PROCESO"
     },
     {
+     "fallo": "3325 (prueba del dueño 24-11 07:38: S24 solo con Bluetooth, Roberto con Wi-Fi y datos de puente; diagnóstico automático «enlace_abre_cierra» con Roberto): al abrir el puente, la ráfaga de saludos y suscripciones por Bluetooth hizo que el nativo soltara una escritura; el enlace se dio por muerto, el desempate cerró sus dos enlaces y se reconectó 3 veces en 10 min. Ahora el enlace del puente a internet no se da por muerto por eso, y con fila larga el puente deja 35 ms entre frames. anondup.js (puente_no_muerto, normal_si_muerto)",
+     "prueba": "EL ENLACE DEL PUENTE A INTERNET NO SE DA POR MUERTO"
+    },
+    {
      "fallo": "Dueño 23-11: un mensaje fijado que se borraba ya no se podía desfijar (el menú del mensaje desaparece con él). Ahora tocar la franja abre «Ir al mensaje» / «Quitar» (un borrado se ve como «Mensaje eliminado» y solo se puede quitar), y borrar un mensaje fijado lo desfija (para mí: solo aquí; para todos: para todos). fijarmsg.js F2/F11",
      "prueba": "QUITAR UN FIJADO AUNQUE SE HAYA BORRADO"
     },
