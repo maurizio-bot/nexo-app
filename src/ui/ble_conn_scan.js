@@ -1,4 +1,4 @@
-import { _hasNativeMethod, _safeNativeCall, _scanWindowFullAt, _normMac, _normId, _isBLEContact, _getBLEContacts, _isGenericName, _saveBLEContacts, _newClientWouldBeClosed, BLE_STATES, _showToast, _niceName, _isPathDev } from './ble_helpers.js';
+import { _hasNativeMethod, _safeNativeCall, _scanWindowFullAt, _normMac, _normId, _isBLEContact, _getBLEContacts, _isGenericName, _saveBLEContacts, BLE_STATES, _showToast, _niceName, _isPathDev } from './ble_helpers.js';
 import { t } from './i18n.js';
 // Métodos de BLE_CONNECTION_METHODS: búsqueda de contactos conocidos, ventanas de escaneo, teléfonos encontrados y conexión GATT automática.
 // Reestructuración 23-11: movidos TAL CUAL desde ble_connections.js, que los une en BLE_CONNECTION_METHODS.
@@ -186,12 +186,8 @@ export const BLE_CONN_SCAN = {
       var readyMtu = readyOther ? ((this._mtuByDevice && this._mtuByDevice.get(readyOther)) || 185) : 0;
       var dupCooling = !!(this._dupClosedUntil && (this._dupClosedUntil.get(nd) || 0) > Date.now()) || !!(this._peerCutUntil && (this._peerCutUntil.get(nd) || 0) > Date.now());
       var haveGoodLink = !!readyOther && readyOther !== nd && readyMtu > 23;
-      // 3257: si el que hay es el que conserva el desempate de repetidos (servidor, y soy el de NEXO ID mayor), un enlace nuevo mío de
-      // cliente se cerraría enseguida aunque vaya a MTU 23: no se abre (el bucle abrir/cerrar cada ~20-80 s del vivo, 20-11)
-      if (!haveGoodLink && readyOther && readyOther !== nd) {
-        var meId = _normId(this.localNexoId), roSt = this._getDeviceState(readyOther) || {};
-        if (meId && _newClientWouldBeClosed(roSt.role, meId < _normId(nx))) haveGoodLink = true;
-      }
+      // 3327: ya no se frena el enlace nuevo de cliente del NEXO ID mayor (3257): el menor, que decide los repetidos, se queda con el
+      // más reciente, así que el nuevo no se cierra; y es lo que saca al mayor de un enlace de servidor viejo tras volver la app.
       // v6.1.6: también desde ERROR (p.ej. se conectó cuando el otro tenía la app cerrada)
       // 3168 (APK 3078 parada en radiollamada L): el enfriamiento solo frena si de verdad QUEDA otro enlace listo con el contacto; si
       // se cayeron los dos a la vez (el primero aún veía al otro «listo»), esta dirección tiene que poder reabrirse ya

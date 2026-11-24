@@ -1224,6 +1224,14 @@
    "sintoma": "par:enlace_abre_cierra pedido por Austin (nx1905c1ee, 3142)",
    "categoria": "Zombi/enlaces (🔴 1)",
    "causa": "Primer diagnóstico de la 3146: sin cierres nativos desde la actualización (10:32). Con Austin el Wi-Fi local se corta y vuelve y el Bluetooth se reabre 3 veces en 1 min; mismo frente que los zombis. La sincronía ya funciona («Sync: reenviando 1 a NX1905C1EE»); los «sin firma» que quedan son respuestas repetidas a un número ya usado (ruido)."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "11:03",
+   "nx": "nx0g6ef54e (Roberto), build 3146",
+   "sintoma": "zombi automático con nx01992876 (Marcos)",
+   "categoria": "Zombi (🔴 1, en curso)",
+   "causa": "Al volver la app (11:03:16) recupera su enlace de cliente con Marcos (único, MTU 517) y a los 7 s 4 pings sin respuesta: se reconecta solo; Marcos en build desconocida. Mismo frente de enlaces viejos al volver la app; el desempate nuevo (3327: decide el NEXO ID menor y se queda el más reciente) va en la próxima APK. Aparte (10:42–10:44): un texto pendiente a Zhelowsky reintentaba por internet cada ~12 s con los relés diciendo «rate-limited»: 3328 espera 15 s → 2 min. El texto llegó por Bluetooth a las 10:44:10."
   }
  ]
 }

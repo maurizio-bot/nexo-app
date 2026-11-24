@@ -212,32 +212,28 @@ export function _scanWindowFullAt(count, max) {
 // desempate «el más reciente» podía elegir enlaces DISTINTOS a cada lado → cada uno cerraba el del otro, caían los dos y
 // vuelta a empezar. Desempate común a los dos: se queda el enlace cuyo CLIENTE es el teléfono de NEXO ID menor (opts.iAmLower:
 // soy el menor → me quedo con mi enlace de cliente; si no, con el de servidor). Los dos calculan lo mismo → cierran el mismo.
+// 3327 (🔴 1, diez «zombi» del S24 el 24-11 con Roberto, Alex y Zhelowsky): el desempate común por PAPEL dejaba al de NEXO ID mayor con
+// su enlace de SERVIDOR, que al volver la app era el viejo (el S24 lo veía a MTU 23 y dejaba de contestar pings), y el menor, de
+// acuerdo, cerraba el bueno. Ni el papel ni el MTU sirven para ponerse de acuerdo (cada lado ve el MTU del mismo enlace distinto:
+// 3137/3139). ACUERDO EXPLÍCITO: decide UNO SOLO, el de NEXO ID menor (opts.iAmLower), con lo mejor que él ve (vivo, el más
+// reciente, luego el MTU); cerrar un enlace lo cierra para los dos, así que el otro solo ve que se cae y usa el que queda. El mayor
+// no cierra repetidos (salvo todos muertos, 16c) a menos que el menor lleve > 3 min sin hacerlo (opts.waitedMs: su app dormida).
+export var DUP_DECIDER_GRACE_MS = 180000;
 export function _dupBleLinksToClose(links, opts) {
   if (!Array.isArray(links) || links.length < 2) return [];
-  var prefRole = (opts && typeof opts.iAmLower === 'boolean') ? (opts.iAmLower ? 'client' : 'server') : null;
   var valid = links.filter(function (l) { return l && l.key; });
   if (valid.length < 2) return [];
   var alive = valid.filter(function (l) { return !l.dead; });
   // 16c (diagnóstico 20-11 12:32, VICK↔S24): con TODOS los repetidos muertos no se elige uno (cada lado elegía otro y el «elegido»
   // también estaba muerto): se cierran todos los que no estén ocupados y el supervisor abre uno limpio.
   if (!alive.length) return valid.filter(function (l) { return !l.busy; }).map(function (l) { return l.key; });
-  var pool = alive;
-  var keep = pool[0];
-  for (var i = 1; i < pool.length; i++) {
-    var l = pool[i];
-    var sameMtu = (l.mtu || 0) === (keep.mtu || 0);
-    // 3139 (diagnóstico S24 3069 16-11 00:52, «zombi» con Yaelito): con papeles distintos manda SIEMPRE el desempate común (el
-    // mismo enlace físico en los dos teléfonos). Antes mandaba el MTU, pero cada lado no ve el mismo MTU del mismo enlace (el S24
-    // veía 517 en su enlace de cliente y menos en el de servidor): cada uno cerraba uno distinto y el S24 mandaba por el muerto.
-    var roleTie = prefRole && l.role && keep.role && l.role !== keep.role; // 3027: desempate común
-    // 3262 (COLA 16, S24↔Roberto y S24↔Austin 20-11 11:00: «cada lado cierra un enlace repetido DISTINTO»; el S24 listaba dos enlaces
-    // «server» del mismo contacto): con el MISMO papel mandaba el MTU, pero el lado servidor no siempre lo conoce (ve 23 o el valor por
-    // omisión donde el cliente ve 517) y cada teléfono se quedaba con uno distinto. Lo que los dos ven igual es el ORDEN en que se
-    // abrieron: se queda el más reciente (la dirección actual del otro); el MTU solo desempata si no se sabe cuál es más nuevo.
-    var sameRole = !!(l.role && keep.role && l.role === keep.role), ls = l.since || 0, ks = keep.since || 0;
-    var better = roleTie ? l.role === prefRole
-      : (sameRole && ls !== ks) ? ls > ks
-      : ((l.mtu || 0) > (keep.mtu || 0) || (sameMtu && ls > ks));
+  if (opts && opts.iAmLower === false && !((opts.waitedMs || 0) >= DUP_DECIDER_GRACE_MS)) return []; // 3327: decide el otro
+  var keep = alive[0];
+  for (var i = 1; i < alive.length; i++) {
+    var l = alive[i], ls = l.since || 0, ks = keep.since || 0;
+    // 3262: lo que mejor distingue el bueno es el ORDEN en que se abrieron (la dirección actual del otro, el enlace de después de
+    // volver la app); el MTU solo desempata si no se sabe cuál es más nuevo
+    var better = ls !== ks ? ls > ks : (l.mtu || 0) > (keep.mtu || 0);
     if (better) keep = l;
   }
   // 3233 (diagnóstico S23 17-11 21:39 con Yaelito): si el que se queda lleva > 15 s sin recibir nada y otro SÍ recibe, ahora no se
@@ -254,13 +250,13 @@ export function _dupBleLinksToClose(links, opts) {
   return out;
 }
 
-// 3257 (diagnóstico del dueño 20-11 22:22, build 3113, «enlace_abre_cierra» con el vivo nx09acdb61): dos reglas se contradecían y
-// el enlace se abría y cerraba cada ~20-80 s. 3019 abre un segundo enlace si el que hay va a MTU 23 («el nuevo puede ser mejor»);
-// el desempate común de 3027 (arriba) se queda con el enlace de SERVIDOR cuando mi NEXO ID es el mayor, aunque vaya a MTU 23, y
-// cierra el nuevo de cliente (mtu517). Resultado: abrir el bueno, cerrarlo, volver a abrirlo… Si el que hay ya es el que el
-// desempate conservaría, abrir otro es inútil: se cerraría. Pura: prueba bledup.js.
-export function _newClientWouldBeClosed(keptRole, iAmLower) {
-  return iAmLower === false && keptRole === 'server';
+// 3016/3328: ¿este fallo de una vuelta de reenvío de pendientes pide ESPERAR antes de la siguiente (15 s → 2 min)? Lo que no confirma
+// (ACK timeout, ya en el buzón) y, desde 3328, que los relés limiten («rate-limited», «slow down», «too many…»): otra vuelta enseguida
+// es otro sobre y más castigo. Pura: prueba reenviolimite.js.
+export function _resendWaitErr(e) {
+  var m = String((e && e.message) || '');
+  if (/ACK timeout/i.test(m) || (e && e.code === 'IN_MAILBOX')) return true;
+  return !!(e && e.code === 'NET_REJECTED' && /rate.?limit|slow down|too many/i.test(m));
 }
 
 export function _rssiToBars(rssi) {

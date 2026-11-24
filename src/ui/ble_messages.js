@@ -3,7 +3,7 @@
  * 2752, sin cambios): lo que llega (descifrar, comprobar remitente, guardar, avisar) y lo que sale (texto, archivos,
  * pendientes, reenvío al reconectar).
  */
-import { BLE_STATES, _failStatus, _getBLEContacts, _hasNativeMethod, _hydrateAttachments, _isResendable, _attMissDecision, _attMissCooling, _normId, _safeDispatchEvent, _safeNativeCall, _saveSeqCounter, _vaultLoadMessages, _vaultUpdateMessageStatus, _tooBigForBt, _netNx } from './ble_helpers.js';
+import { BLE_STATES, _resendWaitErr, _failStatus, _getBLEContacts, _hasNativeMethod, _hydrateAttachments, _isResendable, _attMissDecision, _attMissCooling, _normId, _safeDispatchEvent, _safeNativeCall, _saveSeqCounter, _vaultLoadMessages, _vaultUpdateMessageStatus, _tooBigForBt, _netNx } from './ble_helpers.js';
 import { MAILBOX_MAX_BYTES as BLOB_MAILBOX_MAX_BYTES } from '../net/blob_mailbox.js';
 import { BLE_RECEIVE_METHODS } from './ble_receive.js';
 import { BLE_SEND_METHODS } from './ble_send.js';
@@ -512,7 +512,9 @@ const _BLE_MESSAGE_METHODS_BASE = {
           })
           .catch(function(e) {
             console.warn('[BLEInterface] Pending fallo:', mid, e.message);
-            if (/ACK timeout/i.test((e && e.message) || '') || (e && e.code === 'IN_MAILBOX')) run.noAck++; else run.other++;
+            // 3328 (diagnóstico automático de Roberto 3146, 24-11 10:42–10:44: «Rechazado por los relés: rate-limited» cada ~12 s, un sobre
+            // nuevo por vuelta): que los relés limiten también pide esperar entre vueltas (15 s → 2 min), como lo que no confirma
+            if (_resendWaitErr(e)) run.noAck++; else run.other++;
             if (probeDone()) return;
             // No marcar failed de forma agresiva si es transitorio
             var isTransient = /timeout|abort|network|disconnected|not ready|busy|interrupted|temporary/i.test(e.message || '') || _failStatus(e) !== 'failed'; // 3211: también «ya en el buzón de internet»

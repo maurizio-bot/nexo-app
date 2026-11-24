@@ -16,6 +16,10 @@
 //  S5  carrera: si el nativo del mayor llega a reabrir L2 (con su chat aún apuntando ahí), lo cierra el propio mayor (≤ 30 s);
 //  S4  el menor no vuelve a «cerrar el repetido» (1 cierre en ~75 s; antes, uno cada 60 s);
 //  S6  con un ÚNICO enlace que el otro corta, el nativo sigue reconectando (el JS no cancela) y el texto llega.
+// 3327 (🔴 1, zombis del S24 24-11): los repetidos los decide SOLO el de NEXO ID menor y se queda el enlace MÁS RECIENTE (aquí L2, el
+// que el mayor abrió después); el chat abierto no le frena. El mayor no cierra nada: solo ve caer L1. S5 pasa a ser la carrera del
+// lado que decide: si su nativo reabre L1 (el que cerró), no se lo queda por «nuevo» ni cierra L2 (vaivén). S6: el único enlace (L2)
+// lo corta el menor desde su servidor; el nativo del mayor lo reabre y su JS no lo impide.
 // Uso: node dupserver.js <dir_build> [--mtu23]   (imprime DUPSERVER {json} con "resultado":"OK"|"FALLO"; sale 0/1)
 // --mtu23: el enlace que se queda va a MTU 23; el escaneo del mayor querría reabrir el cortado (excepción de 3019) y no debe.
 'use strict';
@@ -128,11 +132,11 @@ function jsReady(p, nx) {
   const L1 = { cliente: lo.native.clients.has(K.loL1), servidor: hi.native.serverConnected.has(K.hiL1) };
   const L2 = { cliente: hi.native.clients.has(K.hiL2), servidor: lo.native.serverConnected.has(K.loL2) };
   r.S1_fisicos = { L1, L2 };
-  r.S1_ok = L1.cliente && L1.servidor && !L2.cliente && !L2.servidor;
+  r.S1_ok = !L1.cliente && !L1.servidor && L2.cliente && L2.servidor; // 3327: se queda L2 (el más reciente)
   // S2: lo que ve cada JS
   r.S2_menor = jsReady(lo, idHi).map(lblLo);
   r.S2_mayor = jsReady(hi, idLo).map(lblHi);
-  r.S2_ok = r.S2_menor.join() === 'L1' && r.S2_mayor.join() === 'L1';
+  r.S2_ok = r.S2_menor.join() === 'L2' && r.S2_mayor.join() === 'L2';
   r.disconnect_menor = (lo.native.discs || []).map((a) => ({ id: lblLo(norm(a.deviceId)), server: !!a.server }));
   // S3: textos en los dos sentidos; por qué enlaces sale cada uno
   const sLo = lo.native.sent.length, sHi = hi.native.sent.length;
@@ -144,41 +148,43 @@ function jsReady(p, nx) {
   const por = (sent, from, lbl) => [...new Set(sent.slice(from).map((x) => lbl(x.to)).filter((x) => x === 'L1' || x === 'L2'))].sort();
   r.S3_menor_por = por(lo.native.sent, sLo, lblLo);
   r.S3_mayor_por = por(hi.native.sent, sHi, lblHi);
-  r.S3_ok = r.S3_entregados_s !== null && r.S3_menor_por.join() === 'L1' && r.S3_mayor_por.join() === 'L1';
-  r.reabre_nativo = { mayor: hi.native.stats.nativeReconnects || 0, sin_cache: hi.native.stats.reconnNoCache || 0 };
-  // S5: el nativo del mayor reabre L2 antes de que llegue la cancelación (carrera); su chat sigue en L2
+  r.S3_ok = r.S3_entregados_s !== null && r.S3_menor_por.join() === 'L2' && r.S3_mayor_por.join() === 'L2';
+  r.reabre_nativo = { menor: lo.native.stats.nativeReconnects || 0, sin_cache: lo.native.stats.reconnNoCache || 0 };
+  // S5 (3327): el nativo del menor reabre L1 (el que cerró por repetido); no debe quedárselo por «más nuevo» ni cerrar L2: vuelve a
+  // cerrar L1 (o lo deja) y L2 sigue en pie todo el rato
   r.S5_chat_mayor_por = lblHi(norm(hi.win.bleInterface._activeChatDeviceIdNative));
-  if (!hi.native.clients.has(K.hiL2)) hi.native._connectClient(lo.native, null);
-  r.S5_cerrado_s = await waitFor(() => !hi.native.clients.has(K.hiL2) && !lo.native.serverConnected.has(K.loL2) && logs.slice(mark).some((l) => l.includes('[' + hi.name + '] log: [BLEInterface] Dedup: cierro enlace repetido ' + K.hiL2)), 30000);
-  r.S5_ok = r.S5_cerrado_s !== null;
+  if (!lo.native.clients.has(K.loL1)) lo.native._connectClient(hi.native, null);
+  let l2Cayo = false; const t5 = Date.now();
+  while (Date.now() - t5 < 30000) { if (!hi.native.clients.has(K.hiL2) || !lo.native.serverConnected.has(K.loL2)) l2Cayo = true; await sleep(250); }
+  r.S5_L2_cayo = l2Cayo;
+  r.S5_cerrado_s = null;
+  r.S5_ok = !l2Cayo && !logs.slice(mark).some((l) => l.includes('Dedup: cierro enlace repetido ' + K.loL2) || l.includes('Dedup: cierro enlace repetido ' + K.hiL2));
   // S4: cierres por «enlace repetido» del menor (hasta ~75 s después del primero)
   if (firstClose !== null) { const tEnd = tClose + 75000; while (Date.now() < tEnd) await sleep(1000); }
   const L = logs.slice(mark);
   r.S4_cierres_menor = L.filter((l) => l.includes('[' + lo.name + '] log: [BLEInterface] Dedup: cierro enlace repetido')).length;
   r.S4_cierres_mayor = L.filter((l) => l.includes('[' + hi.name + '] log: [BLEInterface] Dedup: cierro enlace repetido')).length;
-  r.S4_ok = r.S4_cierres_menor === 1;
-  // S6: un ÚNICO enlace (L1) que corta el otro (el mayor, desde su servidor): el nativo del menor lo reabre y el JS no lo impide
-  const d0 = (lo.native.discs || []).length, n0 = lo.native.stats.nativeReconnects || 0;
-  // 3227 (CI de la APK 3093, dos veces S6_cortado=false; aquí pasaba siempre): la conexión de servidor del mayor con el menor no
-  // siempre está guardada con lo.initAddress (depende de qué dirección vio primero): se corta la que de verdad es del menor.
-  const srvKeys = [...hi.native.serverConnected.entries()].filter(([, v]) => v === lo.native).map(([k]) => k);
-  r.S6_claves_servidor = srvKeys.map((k) => (k === norm(lo.native.initAddress) ? 'init' : k === norm(lo.native.address) ? 'adv' : 'otra'));
-  // 3230 (CI de la APK 3094: S6_cortado=false otra vez, aquí pasa casi siempre): el corte se anota EN EL MOMENTO (el nativo del menor
-  // puede reabrir el enlace antes de la siguiente mirada) y se guardan los datos para entenderlo si vuelve a fallar
-  let cutAt = null; const delOrig = lo.native.clients.delete.bind(lo.native.clients);
-  lo.native.clients.delete = (k) => { if (k === K.loL1 && lo.native.clients.has(k) && cutAt === null) cutAt = Date.now(); return delOrig(k); };
-  await hi.win.Capacitor.Plugins.NexoBLE.disconnectDevice({ deviceId: srvKeys[0] || lo.native.initAddress, server: true });
-  r.S6_cortado = await waitFor(() => cutAt !== null || !lo.native.clients.has(K.loL1), 3000) !== null;
-  lo.native.clients.delete = delOrig;
-  r.S6_datos = { clave: srvKeys[0] || null, sigue_en_servidor: hi.native.serverConnected.has(srvKeys[0]), cancelaciones: hi.native.stats.serverCancels || 0, clientes_menor: [...lo.native.clients.keys()].map(lblLo) };
+  // 3327: y pasado el enfriamiento (60 s) L2 sigue en pie (antes de mirar «since» de lo ya cerrado, a los 84 s cerraba L2: vaivén)
+  r.S4_L2_sigue = hi.native.clients.has(K.hiL2) && lo.native.serverConnected.has(K.loL2);
+  r.S4_ok = r.S4_L2_sigue && r.S4_cierres_menor >= 1 && r.S4_cierres_menor <= 2 && r.S4_cierres_mayor === 0; // 3327: el mayor no cierra nunca; el menor, L1 (y otra vez si su nativo lo reabre, S5)
+  // S6: un ÚNICO enlace (L2) que corta el otro (el menor, desde su servidor): el nativo del mayor lo reabre y su JS no lo impide
+  const d0 = (hi.native.discs || []).length, n0 = hi.native.stats.nativeReconnects || 0;
+  const srvKeys = [...lo.native.serverConnected.entries()].filter(([, v]) => v === hi.native).map(([k]) => k);
+  r.S6_claves_servidor = srvKeys.map((k) => (k === norm(hi.native.initAddress) ? 'init' : k === norm(hi.native.address) ? 'adv' : 'otra'));
+  let cutAt = null; const delOrig = hi.native.clients.delete.bind(hi.native.clients);
+  hi.native.clients.delete = (k) => { if (k === K.hiL2 && hi.native.clients.has(k) && cutAt === null) cutAt = Date.now(); return delOrig(k); };
+  await lo.win.Capacitor.Plugins.NexoBLE.disconnectDevice({ deviceId: srvKeys[0] || hi.native.initAddress, server: true });
+  r.S6_cortado = await waitFor(() => cutAt !== null || !hi.native.clients.has(K.hiL2), 3000) !== null;
+  hi.native.clients.delete = delOrig;
+  r.S6_datos = { clave: srvKeys[0] || null, sigue_en_servidor: lo.native.serverConnected.has(srvKeys[0]), cancelaciones: lo.native.stats.serverCancels || 0, clientes_mayor: [...hi.native.clients.keys()].map(lblHi) };
   await sleep(300);
-  r.S6_reintento_pendiente = lo.native.reconnTimers.has(K.loL1); // el JS no lo canceló (era el único enlace)
+  r.S6_reintento_pendiente = hi.native.reconnTimers.has(K.hiL2); // el JS no lo canceló (era el único enlace)
   r.S6_vuelve_s = await waitFor(() => jsReady(lo, idHi).length > 0 && jsReady(hi, idLo).length > 0, 20000);
-  r.S6_reabre_nativo = (lo.native.stats.nativeReconnects || 0) - n0;
-  r.S6_cancela_js = (lo.native.discs || []).slice(d0).filter((a) => norm(a.deviceId) === K.loL1).length;
+  r.S6_reabre_nativo = (hi.native.stats.nativeReconnects || 0) - n0;
+  r.S6_cancela_js = (hi.native.discs || []).slice(d0).filter((a) => norm(a.deviceId) === K.hiL2).length;
   const t6 = 'tras volver a conectar';
-  sendText(lo, t6);
-  r.S6_entregado_s = await waitFor(async () => delivered(lo, idHi, [t6]), 20000);
+  sendText(hi, t6);
+  r.S6_entregado_s = await waitFor(async () => delivered(hi, idLo, [t6]), 20000);
   r.S6_ok = r.S6_cortado && r.S6_reintento_pendiente && r.S6_vuelve_s !== null && r.S6_cancela_js === 0 && r.S6_entregado_s !== null;
   clearInterval(scanT);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);

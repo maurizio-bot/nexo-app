@@ -8,7 +8,7 @@ const { importSrc } = require('./srcmod');
 
 (async () => {
   const r = { prueba: 'bledup' };
-  const { _dupBleLinksToClose, _newClientWouldBeClosed } = await importSrc('ui/ble_helpers.js');
+  const { _dupBleLinksToClose, DUP_DECIDER_GRACE_MS } = await importSrc('ui/ble_helpers.js');
   const L = (key, mtu, opts) => Object.assign({ key, mtu, dead: false, since: 0, busy: false }, opts || {});
   const same = (a, b) => a.length === b.length && a.slice().sort().join(',') === b.slice().sort().join(',');
 
@@ -46,54 +46,41 @@ const { importSrc } = require('./srcmod');
   r.keeper_no_se_cierra = !cerr.includes('C'); // C es el keeper (mejor MTU no muerto) → nunca se cierra
   r.cierra_solo_el_libre = same(cerr, ['D']);  // solo el repetido LIBRE se cierra
 
-  // 10. 3027 (S24↔Motorola 12-11, «enlace_abre_cierra» en los DOS): cada teléfono es cliente del otro → dos enlaces físicos
-  //     (enl1 = A cliente→B servidor; enl2 = B cliente→A servidor), mismo MTU. Cada lado ve los dos con papeles invertidos y
-  //     «since» distintos. Los dos deben cerrar el MISMO enlace físico (si no, se caen ambos y vuelta a empezar).
-  //     (contraprueba 3026: el desempate «más reciente» elige enlaces distintos a cada lado)
+  // 10. 3327 (🔴 1, diez «zombi» del S24 el 24-11): ACUERDO EXPLÍCITO = decide solo el de NEXO ID MENOR; el mayor no cierra nada.
+  //     Así nunca cierran enlaces distintos (3027/3137/3139), vea cada uno el MTU que vea.
+  //     Caso real: Roberto (menor) tiene su enlace de cliente VIEJO (517, de antes de que volviera la app del S24) y el de servidor
+  //     NUEVO (el cliente que el S24 abrió al volver; MTU que Roberto no conoce → 185). El S24 (mayor) ve el viejo como su servidor
+  //     a MTU 23. Antes: el desempate por papel conservaba el VIEJO en los dos → dejaba de contestar pings (zombi).
+  //     (contraprueba 3326: Roberto cierra el nuevo, ['nuevo'])
+  const rob = [L('viejo', 517, { role: 'client', since: 100 }), L('nuevo', 185, { role: 'server', since: 900 })];
+  const s24b = [L('viejo', 23, { role: 'server', since: 950 }), L('nuevo', 517, { role: 'client', since: 900 })];
+  r.zombi_menor_cierra_el_viejo = same(_dupBleLinksToClose(rob, { iAmLower: true, now: 1000, waitedMs: 13000 }), ['viejo']);
+  r.zombi_mayor_no_cierra = same(_dupBleLinksToClose(s24b, { iAmLower: false, now: 1000, waitedMs: 13000 }), []);
+  // el mayor solo decide si el menor lleva > 3 min sin hacerlo (su app dormida), con su propia vista
+  r.mayor_decide_si_el_menor_no = same(_dupBleLinksToClose(s24b, { iAmLower: false, waitedMs: DUP_DECIDER_GRACE_MS }), ['nuevo']) && DUP_DECIDER_GRACE_MS >= 120000;
+  // todos muertos: los dos cierran todo (16c), también el mayor sin esperar
+  r.mayor_todos_muertos = same(_dupBleLinksToClose([L('a', 517, { dead: true }), L('b', 23, { dead: true })], { iAmLower: false }), ['a', 'b']);
+  // cruzados (cada uno cliente del otro, mismo MTU): solo el menor cierra; se queda el más reciente
   const ladoA = [L('enl1', 517, { role: 'client', since: 100 }), L('enl2', 517, { role: 'server', since: 900 })];
   const ladoB = [L('enl1', 517, { role: 'server', since: 900 }), L('enl2', 517, { role: 'client', since: 100 })];
-  const cA = _dupBleLinksToClose(ladoA, { iAmLower: true }), cB = _dupBleLinksToClose(ladoB, { iAmLower: false });
-  r.cruzado_cierran_el_mismo = cA.length === 1 && same(cA, cB);
-  r.cruzado_queda_cliente_del_menor = same(cA, ['enl2']);
-  // 11. 3139 (diagnóstico automático S24 3069 16-11 00:52, «zombi» con Yaelito 3070): NO es verdad que los dos vean el mismo MTU
-  //     del mismo enlace: el S24 veía su enlace de cliente a 517 y el de servidor más bajo; por el MTU cerró el de servidor, y
-  //     Yaelito (NEXO ID menor), por el papel, cerró el otro → el S24 mandaba por un enlace que el otro ya había cerrado (texto
-  //     largo sin confirmar 8 veces, puente que no abre, «sin respuesta a 2 pings»), mientras lo de Yaelito entraba por el bueno.
-  //     Con papeles distintos manda el desempate común (el mismo enlace físico en los dos), no el MTU que cada uno cree ver.
-  //     (contraprueba 3137: cada lado cierra un enlace distinto)
+  r.cruzado_un_solo_lado_cierra = same(_dupBleLinksToClose(ladoA, { iAmLower: true }), ['enl1']) && same(_dupBleLinksToClose(ladoB, { iAmLower: false }), []);
+  // 3139: el S24 (mayor) veía MTU distintos; ya no cierra él: cierra Yaelito (menor) y el S24 solo ve caer uno
   const s24 = [L('5817', 517, { role: 'client', since: 100 }), L('7bf3', 23, { role: 'server', since: 50 })];
   const yae = [L('7bf3', 517, { role: 'client', since: 50 }), L('5817', 185, { role: 'server', since: 100 })];
-  const cS24 = _dupBleLinksToClose(s24, { iAmLower: false }), cYae = _dupBleLinksToClose(yae, { iAmLower: true });
-  r.mtu_distinto_cierran_el_mismo = cS24.length === 1 && same(cS24, cYae) && same(cS24, ['5817']);
-  // con el mismo papel (dos enlaces de cliente, dirección rotativa) sí manda el MTU
-  // 3262 (COLA 16): con el MISMO papel se queda el más RECIENTE (lo que los dos lados ven igual), aunque este lado crea que el viejo va a
-  // más MTU; visto desde el otro teléfono (los dos «client» allí, MTU reales) se cierra el MISMO enlace físico (el viejo)
-  r.mismo_papel_queda_el_reciente = same(_dupBleLinksToClose([L('s_viejo', 185, { role: 'server', since: 100 }), L('s_nuevo', 23, { role: 'server', since: 900 })], { iAmLower: false }), ['s_viejo']);
-  r.mismo_papel_el_otro_lado_igual = same(_dupBleLinksToClose([L('c_viejo', 517, { role: 'client', since: 120 }), L('c_nuevo', 517, { role: 'client', since: 910 })], { iAmLower: true }), ['c_viejo']);
-  r.mismo_papel_reciente_muerto_no = same(_dupBleLinksToClose([L('s_viejo', 185, { role: 'server', since: 100 }), L('s_nuevo', 517, { role: 'server', since: 900, dead: true })], { iAmLower: false }), ['s_nuevo']);
+  r.mtu_distinto_un_solo_lado = same(_dupBleLinksToClose(s24, { iAmLower: false }), []) && _dupBleLinksToClose(yae, { iAmLower: true }).length === 1;
+  // 3262: con el MISMO papel se queda el más RECIENTE aunque el viejo parezca de más MTU; un muerto nunca se queda
+  r.mismo_papel_queda_el_reciente = same(_dupBleLinksToClose([L('s_viejo', 185, { role: 'server', since: 100 }), L('s_nuevo', 23, { role: 'server', since: 900 })], { iAmLower: true }), ['s_viejo']);
+  r.mismo_papel_reciente_muerto_no = same(_dupBleLinksToClose([L('s_viejo', 185, { role: 'server', since: 100 }), L('s_nuevo', 517, { role: 'server', since: 900, dead: true })], { iAmLower: true }), ['s_nuevo']);
   r.mismo_papel_manda_mtu = same(_dupBleLinksToClose([L('c1', 23, { role: 'client' }), L('c2', 517, { role: 'client' })], { iAmLower: true }), ['c1']);
-  // y un enlace MUERTO nunca se queda aunque sea el del papel preferido
   r.papel_muerto_no_se_queda = same(_dupBleLinksToClose([L('e1', 517, { role: 'client', dead: true }), L('e2', 517, { role: 'server' })], { iAmLower: true }), ['e1']);
 
-  // 12. 3233 (diagnóstico S23 17-11 21:39 «zombi» con Yaelito): por el desempate común el S23 cerró el ENTRANTE —el único que
-  //     seguía recibiendo— y se quedó con el saliente, callado desde hacía 36 s → 4 pings sin respuesta y reconexión. Si el que
-  //     se iba a quedar lleva > 15 s sin recibir nada y otro sí recibe, no se cierra nada ahora (el vigilante tumba al callado).
-  //     (contraprueba 3232: cierra el que recibe)
+  // 12. 3233 (diagnóstico S23 17-11 21:39 «zombi» con Yaelito): si el que se iba a quedar lleva > 15 s sin recibir nada y otro sí
+  //     recibe, no se cierra nada ahora (el vigilante tumba al callado). (contraprueba 3232: cierra el que recibe)
   const now12 = 1000000;
-  const s23 = [L('5d5b', 517, { role: 'client', heard: now12 - 36000 }), L('6a15', 517, { role: 'server', heard: now12 - 2000 })];
+  const s23 = [L('5d5b', 517, { role: 'client', since: 900, heard: now12 - 36000 }), L('6a15', 517, { role: 'server', since: 100, heard: now12 - 2000 })];
   r.no_cierra_el_que_recibe = same(_dupBleLinksToClose(s23, { iAmLower: true, now: now12 }), []);
-  // si los dos reciben, el desempate común sigue igual (y sin «now», como antes)
-  const ambos = [L('5d5b', 517, { role: 'client', heard: now12 - 3000 }), L('6a15', 517, { role: 'server', heard: now12 - 2000 })];
+  const ambos = [L('5d5b', 517, { role: 'client', since: 900, heard: now12 - 3000 }), L('6a15', 517, { role: 'server', since: 100, heard: now12 - 2000 })];
   r.ambos_reciben_desempate_igual = same(_dupBleLinksToClose(ambos, { iAmLower: true, now: now12 }), ['6a15']) && same(_dupBleLinksToClose(s23, { iAmLower: true }), ['6a15']);
-
-  // 13. 3257 (diagnóstico del dueño 20-11 22:22, build 3113, vivo): mi ID es el mayor → el desempate conserva el de SERVIDOR (aunque
-  //     vaya a MTU 23) y cierra el de cliente mtu517; 3019 volvía a abrir el cliente porque el que había iba a 23 → bucle cada ~20-80 s.
-  //     Con el servidor conservado no se abre otro de cliente. Contrapruebas: si el que hay es de cliente, o soy el menor, se sigue igual.
-  r.dedup_cierra_cliente_bueno = same(_dupBleLinksToClose([L('fab3', 517, { role: 'client' }), L('ce6e', 23, { role: 'server' })], { iAmLower: false }), ['fab3']);
-  r.no_reabre_si_conserva_servidor = _newClientWouldBeClosed('server', false) === true;
-  r.reabre_si_el_que_hay_es_cliente = _newClientWouldBeClosed('client', false) === false;
-  r.reabre_si_soy_el_menor = _newClientWouldBeClosed('server', true) === false;
-  r.sin_dato_no_bloquea = _newClientWouldBeClosed(undefined, false) === false && _newClientWouldBeClosed('server', undefined) === false;
 
   // 9. Robustez ante basura.
   r.sin_dato = same(_dupBleLinksToClose([]), []) && same(_dupBleLinksToClose(null), []) &&

@@ -150,22 +150,27 @@ const _BLE_CONNECTION_METHODS_BASE = {
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'disconnectDevice')) return;
     var now = Date.now();
     var activeMac = self._activeChatDeviceIdNative ? _normMac(self._activeChatDeviceIdNative) : null;
-    var byNexo = new Map();
+    var byNexo = new Map(), me = _normId(self.localNexoId);
     self._deviceStates.forEach(function(st, key) {
       if (/^(lan|net)nx/.test(key)) return; // solo Bluetooth (no internet/Wi-Fi)
       if (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY) return;
       var nx = _normId(self._macToNexoId.get(key));
       if (!nx) return;
       var arr = byNexo.get(nx) || [];
+      var decider = !!me && me < nx; // 3327: los repetidos con este contacto los decido yo
       arr.push({
         key: key,
         mtu: (self._mtuByDevice && self._mtuByDevice.get(key)) || 185,
         dead: self._bleCongested(key),
-        since: (st && (st.openedAt || st.since)) || 0, // 3262: cuándo se abrió el enlace
+        // 3262: cuándo se abrió el enlace. 3327: uno que yo cerré por repetido hace < 10 min y volvió a abrirse no cuenta como «el más
+        // nuevo» (si no, el que decide se quedaría con él al acabar el enfriamiento y cerraría el bueno: vaivén, dupserver.js S5)
+        since: ((self._dupClosedAt && now - (self._dupClosedAt.get(_normMac(key)) || -1e13) < 600000) ? 0 : ((st && (st.openedAt || st.since)) || 0)),
         role: (st && st.role) || null, // 3027: cliente/servidor (desempate común con el otro teléfono)
         heard: (self._lastPongTime && self._lastPongTime.get(key)) || 0, // 3233: último paquete recibido por este enlace
         // 3167b: uno que el otro ya cortó (y el nativo reabrió) no cuenta como ocupado: si no, nadie lo cerraba de este lado
-        busy: (self._hasActiveFileTransfer(key) || (!!activeMac && _normMac(key) === activeMac)) && !((self._peerCutUntil && self._peerCutUntil.get(_normMac(key))) > now)
+        // 3327: para el que decide (NEXO ID menor) el chat abierto no frena el cierre: lo que iba por ahí pasa al que se queda (3239) y
+        // el chat sigue por él; si frenara, con el chat abierto por el enlace viejo nadie cerraría nunca el repetido
+        busy: (self._hasActiveFileTransfer(key) || (!decider && !!activeMac && _normMac(key) === activeMac)) && !((self._peerCutUntil && self._peerCutUntil.get(_normMac(key))) > now)
       });
       byNexo.set(nx, arr);
     });
@@ -174,8 +179,7 @@ const _BLE_CONNECTION_METHODS_BASE = {
       var seen = self._dupSeenSince.get(nx);
       if (!seen) { self._dupSeenSince.set(nx, now); return; }           // primera vez: arrancar el freno, no cerrar aún
       if (now - seen < self._dupDebounceMs) return;                     // aún no estables (podría ser un traspaso)
-      var me = _normId(self.localNexoId); // 3027: el de NEXO ID menor se queda su enlace de cliente; el otro, el de servidor
-      var toClose = _dupBleLinksToClose(links, me ? { iAmLower: me < nx, now: now } : { now: now });
+      var toClose = _dupBleLinksToClose(links, me ? { iAmLower: me < nx, now: now, waitedMs: now - seen } : { now: now }); // 3327: decide el de NEXO ID menor (el otro solo ve caer uno)
       for (var i = 0; i < toClose.length; i++) {
         var key = toClose[i];
         if ((self._dupClosedUntil.get(key) || 0) > now) continue;       // enfriamiento por MAC
