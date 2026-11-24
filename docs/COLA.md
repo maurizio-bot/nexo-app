@@ -28,7 +28,9 @@ Regla: una sesión = un tema; una APK por tanda; antes de subir `tamano.js`, `i1
 5. [m] **23 entrega con app CERRADA y pantalla APAGADA**: en vigilancia (23-11 Vivo→S24 llegó en 1 s y sonó).
 6. [g] **26 Google Play**: parte web hecha (`NEXO_STORE`). **HECHO 3319 (sin APK aún):** targetSdk 34 → 36; de borde a borde (Android 15+:
    margen de barras, recorte y teclado en `MainActivity.nexoSystemBars`), «atrás» por OnBackPressedDispatcher (Android 16 ya no llama
-   onBackPressed) y aviso de librerías con páginas de 16 KB en el CI (`tools/pagina16k.py`). Falta: probarlo en Android 15/16 (barras,
+   onBackPressed) y aviso de librerías con páginas de 16 KB en el CI (`tools/pagina16k.py`). **HECHO también (23-11 noche):** versión 1.0.0 (única fuente: `versionName`;
+   package.json igual), variante de tienda sin REQUEST_INSTALL_PACKAGES (`src/release/AndroidManifest.xml`) y paquete AAB firmado con la
+   llave de subida en cada CI de NEXOCHAT (secrets NEXO_UPLOAD_KEYSTORE_BASE64 / NEXO_UPLOAD_KEY_PASS: los pone el dueño). Falta: probarlo en Android 15/16 (barras,
    teclado en el chat, atrás), mirar el aviso de 16 KB en el CI (Tor), bundleRelease firmado y lo del dueño (cuenta, paquete, privacidad, 12 probadores).
 7. [g] **Auditoría de seguridad final** (una, al privado) antes de la tienda.
 

@@ -31,11 +31,13 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   internet en ninguno, con el Vivo en medio con la app cerrada (y Cari lejos del S24): un texto, un texto largo y una foto deben llegar
   con ✓✓; lo mismo con el Vivo con la pantalla apagada un rato largo. Queda: JS vivo y nativo pueden reenviar los dos un paquete corto
   guardado (duplicado inofensivo).
-- **APK EN CURSO (subida 23-11 20:10 México, CI ~85 min, aviso programado):** 3317 preparar archivo grande sin esperas, 3318 llamada en
+- **APK EN CURSO (subida otra vez 23-11 ~20:20 México con lo de Play; la de 20:09 se canceló, CI ~85 min, aviso programado):** 3317 preparar archivo grande sin esperas, 3318 llamada en
   segundo plano sin bajar dos veces, 3319 targetSdk 36 + borde a borde + «atrás» por el despachador + aviso de 16 KB, 3320 tope de
   reenvíos del puente. MIRAR en el CI el paso «Librerías nativas con páginas de 16 KB» (¿Tor?).
-- **FALTA PARA PLAY (código):** bundleRelease firmado (la llave la decide el dueño), variante de tienda sin REQUEST_INSTALL_PACKAGES,
-  una sola fuente de versión, 16 KB si el CI avisa, 5 idiomas al final, auditoría final tras sus pruebas.
+- **PLAY (hecho 23-11 noche, en esta APK):** versión 1.0.0, variante de tienda sin REQUEST_INSTALL_PACKAGES, paquete AAB firmado con la
+  llave de subida (artefacto del CI «nexo-tienda-1.0.0-N.aab»). DUEÑO: poner en GitHub los secrets NEXO_UPLOAD_KEYSTORE_BASE64 y
+  NEXO_UPLOAD_KEY_PASS (se los di en archivos; guardar copia fuera). Huella SHA-256 de la llave de subida: F2:C2:25:1A:…:47:C8:69:D7.
+  Falta: 16 KB si el CI avisa, 5 idiomas al final, auditoría final tras la APK.
 - **VAN EN LA 3125 (build 3314):** 3310 menú de la burbuja sin «Responder» (se responde
   deslizando) y «Editar» arriba; 3311 «Copiar» en la barra de la multiselección; 3312 (COLA 13) con enlace a MTU 23 los archivos desde ~6 KB
   van por el canal rápido L2CAP (`l2_fast.js`, `l2mediano.js` caso mtu23); 3313 (COLA 25) videollamada contestada desde el aviso: la cámara

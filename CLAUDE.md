@@ -55,8 +55,8 @@ actualizarlos al terminar cada bloque de trabajo.
   UNA sola APK al terminar lo funcional + estético, tras una revisión propia buena y corta; auditoría de seguridad al final (una). Se acaba el modo ahorro.
 - **Modo adelanto (dueño, 10-11):** cuando el dueño esté ocupado o dormido, avanzar solo con la cola de pulido y los pendientes
   que Claude decide, sin esperar; preguntar antes solo si es grande. Reglas y límites: `docs/COMO_TRABAJAMOS.md` §8. Léelo con
-  `ESTADO.md` al empezar. **Reloj de ausencia:** al terminar cada respuesta, programar con `send_later` un aviso a 5 min; si llega y
-  el dueño no escribió, empezar la cola (detalle en §8).
+  `ESTADO.md` al empezar. (El «reloj de ausencia» de 5 min quedó sustituido por la regla de GASTO: no se programa, se sigue
+  trabajando sin esperar.)
   **Regla de cierre por contexto (dueño 18-11, pocos tokens):** al llegar a ~30 % de la ventana de contexto (el dueño lo ve en la app;
   Claude lo estima por el largo de la plática), al terminar el tema en curso —nunca a la mitad— escribir el resumen en el bloque
   TRASPASO de `ESTADO.md` (lo pendiente, lo decidido, las pruebas en curso y los avisos programados; los diagnósticos largos van aparte,
