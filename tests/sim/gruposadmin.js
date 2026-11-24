@@ -261,6 +261,7 @@ const check = (p, sel) => { const cb = q(p, sel); if (cb) { cb.checked = true; c
   const g2 = gsOf(A).create('Viejo', [id(B), id(C)]).id;
   A.win.NEXO_sendGroupText(g2, JSON.stringify({ type: 'nexo_txt', t: '👥 Creó el grupo «Viejo»' }), 'creó');
   r.viejo_en_B = await wait(() => !!gsOf(B).get(g2) && !gsOf(B).get(g2).s, 60);
+  await sleep(2000); // 24-11: que lleguen antes los «Se unió al grupo» de B y C (en un grupo viejo el nombre del último sobre manda)
   gsOf(B).rename(g2, 'Viejo renombrado'); await sleep(1000);
   r.viejo_B_abre = await openChatWith(B, '👥 Viejo renombrado');
   await sendText(B, 'hola viejo'); await sleep(300); await closeChat(B);
