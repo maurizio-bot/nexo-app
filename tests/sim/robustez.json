@@ -1203,6 +1203,10 @@
     {
      "fallo": "3316 (COLA 1, lo que faltaba del puente nativo): un texto largo o un archivo por Jump (trozos 'c'/'f' con 'dt') que llegaba a un puente con la app dormida se quedaba ahí y el que lo mandaba seguía «enviando». Ahora el nativo hace de tubería hacia el enlace del destino (a un contacto, solo comprobado) y devuelve sus confirmaciones 'ba'/'n'; lo que reenvía ya no se le pasa a la app dormida (no lo repite al despertar), y una ✓✓ que ya dio un salto no enseña de quién es un enlace. JumpPipeTest (Kotlin, 10)",
      "prueba": "PUENTE DORMIDO: TEXTOS LARGOS Y ARCHIVOS"
+    },
+    {
+     "fallo": "3317 (COLA 3, Wi-Fi Direct; diagnóstico del dueño 20-11): preparar (cifrar a disco) un archivo grande era el cuello de botella: 153 MB en ~30 s (≈5 MB/s) frente a 6 s de viaje por Wi-Fi Direct, porque se leía un pedazo, se esperaba al nativo y luego se leía el siguiente. Ahora el siguiente se lee mientras el nativo cifra el anterior (en la prueba: 395 ms frente a 712). bigprep.js (contraprueba: sin el cambio no solapa)",
+     "prueba": "PREPARAR ARCHIVO GRANDE SIN ESPERAS"
     }
    ],
    "debiles": [

@@ -111,18 +111,23 @@ export class BigFiles {
     self._set(id, { dir: 'out', state: 'preparing', bytes: 0, total: file.size });
     var tPrep = Date.now(); // 3258: cuánto tarda cifrar a disco (diagnóstico del dueño 20-11: 153 MB tardaron ~30 s en prepararse y 6 s en viajar por Wi-Fi Direct)
     return pl.bigBegin({ id: id, key: key }).then(function() {
-      var pos = 0;
-      var next = function() {
-        var end = Math.min(pos + BIG_SLICE, file.size);
-        return _sliceB64(file, pos, end).then(function(b64) {
-          return pl.bigAppend({ id: id, data: b64, last: end >= file.size });
-        }).then(function() {
-          pos = end;
-          self._set(id, { bytes: pos });
-          if (pos < file.size) return next();
+      // 3317 (COLA 3, Wi-Fi Direct: preparar era el cuello de botella, ~5 MB/s): se lee el pedazo SIGUIENTE mientras el nativo cifra
+      // el anterior (antes: leer, esperar al nativo, leer…). Un solo pedazo en el nativo a la vez y en orden: antes de mandar uno se
+      // espera al anterior, así que el archivo cifrado queda igual y un fallo para todo.
+      var pos = 0, pending = null;
+      var step = function() {
+        if (pos >= file.size) return pending || Promise.resolve();
+        var start = pos, end = Math.min(pos + BIG_SLICE, file.size);
+        pos = end;
+        return _sliceB64(file, start, end).then(function(b64) {
+          return (pending || Promise.resolve()).then(function() {
+            pending = pl.bigAppend({ id: id, data: b64, last: end >= file.size }).then(function() { self._set(id, { bytes: end }); });
+            pending.catch(function() {}); // se atiende al esperar el siguiente (o al final)
+            return step();
+          });
         });
       };
-      return next();
+      return step();
     }).then(function() {
       var secsP = Math.max(0.1, (Date.now() - tPrep) / 1000);
       console.log('[BIG] ' + id + ' preparado (' + Math.round(file.size / 1048576) + ' MB) en ' + (Math.round(secsP * 10) / 10).toString().replace('.', ',') + ' s = ' + (Math.round(file.size / 1048576 / secsP * 10) / 10).toString().replace('.', ',') + ' MB/s'); // i18n-ok: texto para el desarrollador
