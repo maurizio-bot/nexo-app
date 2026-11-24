@@ -12,6 +12,17 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- (provisional: lo nuevo de la próxima APK)
+</es-419>
+<!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
+  y la app lo muestra junto al botón de actualizar (Perfil → Ajustes → Actualizaciones, y «¿Qué trae?» en el aviso de abajo).
+- Formato de Google Play (se pega tal cual en «Novedades de esta versión»): un bloque por idioma (español, italiano, inglés y, desde
+  la 3123, portugués de Brasil y francés), **máximo 500 caracteres** cada uno
+  (lo comprueba `tests/sim/novedades.js`). Frases cortas, sin palabras técnicas; lo que el usuario nota.
+- Al entregar una APK: escribir aquí lo nuevo y, después de publicarla, pasar el bloque al historial con su número.
+
+<!-- APK -->
+<es-419>
 - Notas de voz: la esfera toma el color de tu burbuja.
 - Menú «+» más compacto, con una pestañita para ver el resto.
 - Quitar un mensaje fijado se ve más claro.
@@ -38,6 +49,8 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <!-- /APK -->
 
 ## Historial
+
+### APK 3146 (24-11-2026)
 
 ### APK 3142 (24-11-2026)
 

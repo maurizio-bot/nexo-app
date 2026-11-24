@@ -31,6 +31,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   internet en ninguno, con el Vivo en medio con la app cerrada (y Cari lejos del S24): un texto, un texto largo y una foto deben llegar
   con ✓✓; lo mismo con el Vivo con la pantalla apagada un rato largo. Queda: JS vivo y nativo pueden reenviar los dos un paquete corto
   guardado (duplicado inofensivo).
+- **APK 3146 PUBLICADA (24-11 10:25 México; nightly-3146; AAB nexo-tienda-1.0.0-3146 ✓, 16 KB OK)** = 3142 + 3324 Tor nunca se apaga
+  (cierres SIGABRT del S24), 3325 enlace del puente no «muerto», 3326 sincronía firmada con varios números, pulido (esfera del audio con
+  el color de la burbuja, menú del fijado arriba, menú «+» compacto con pestañita). NOMBRE: el dueño se queda con NEXO (compañeros);
+  «NEXO Chat» se ve libre (falta IMPI). Zombi S24↔Roberto (desempate a MTU 23) → con el Bluetooth en el servicio nativo (🔴 1).
 - **APK 3142 PUBLICADA (24-11 05:15 México; nightly-3142)** = 3317–3323 + Play (1.0.0, AAB «nexo-tienda-1.0.0-3142.aab» ✓, 16 KB OK)
   + fijados, hover, «Recibiendo…», notas de voz, menú «+», arranque con la imagen del dueño. Variantes de logo (A/B/C) dadas al dueño:
   falta que elija el ícono. Siguiente: auditoría final (una) tras sus pruebas.
