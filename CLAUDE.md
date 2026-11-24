@@ -25,8 +25,12 @@ encontrar fallos y medir cuánto, no para validarlo a él. Si algo no cuadra con
 - **Una APK por tanda:** cada subida a NEXOCHAT cuesta ~85 min de CI; juntar los cambios y subir una vez. La batería completa la corre el
   CI; aquí solo la prueba nueva y las cercanas al cambio.
 - **Diagnósticos:** solo los de la última build; versiones viejas ni se abren. Un diagnóstico sin fallo de la app = una línea al dueño.
-- **Sin reloj de ausencia** ni avisos programados salvo para revisar un CI (uno solo, a la hora en que debe terminar). Ayudantes en
-  paralelo solo para trabajo que de verdad se reparte.
+- **Sin reloj de ausencia** ni avisos programados salvo para revisar un CI (uno solo, a la hora en que debe terminar). Esto NO es
+  parar: al terminar algo se sigue SOLO con el siguiente pendiente que no necesita al dueño, sin esperar respuesta (dueño 23-11).
+  Ayudantes en paralelo solo para trabajo que de verdad se reparte.
+- **Antes de subir una APK (dueño 23-11):** meter en ESA subida todo lo pendiente que se pueda hacer ya (aunque sean detalles). Nunca
+  subir y dejar para la siguiente lo que cabía: cada APK son ~1,5 h. Si ya hay un CI corriendo y queda algo chico por meter, hacerlo y
+  volver a subir (se cancela el anterior) en vez de esperar otra vuelta.
 - **Modelo:** el grande (Fable/Opus) para protocolo, nativo, cifrado y depuración; lo mecánico (apuntar diagnósticos, NOVEDADES,
   documentos) no lo necesita: si el dueño está en un modelo ligero, eso se hace ahí.
 - **Lo grande, justo después del reinicio semanal** del límite (el dueño lo ve en Ajustes → Uso); cerca del tope, solo lo barato.

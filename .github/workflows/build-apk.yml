@@ -234,3 +234,34 @@ jobs:
           files: ${{ env.APK_FILE }}
           body_path: release_notes.txt
           generate_release_notes: false
+
+      # Dueño 23-11: el paquete para Google Play (AAB, versión 1.0.0, firmado con la llave de subida) en cada build de NEXOCHAT. Lleva la
+      # marca de tienda (sin botón de actualizar) y no trae el permiso de instalar paquetes (src/release/AndroidManifest.xml). Sin los
+      # secrets de la llave, solo un aviso: la APK de GitHub sale igual.
+      - name: Paquete de tienda (Google Play)
+        if: github.ref == 'refs/heads/NEXOCHAT'
+        env:
+          NEXO_UPLOAD_KEYSTORE_BASE64: ${{ secrets.NEXO_UPLOAD_KEYSTORE_BASE64 }}
+          NEXO_UPLOAD_KEY_PASS: ${{ secrets.NEXO_UPLOAD_KEY_PASS }}
+        run: |
+          if [ -z "$NEXO_UPLOAD_KEYSTORE_BASE64" ] || [ -z "$NEXO_UPLOAD_KEY_PASS" ]; then
+            echo "::warning::Faltan los secrets NEXO_UPLOAD_KEYSTORE_BASE64 / NEXO_UPLOAD_KEY_PASS: no se genera el paquete de tienda"
+            exit 0
+          fi
+          KS="$RUNNER_TEMP/nexo-upload.p12"
+          echo "$NEXO_UPLOAD_KEYSTORE_BASE64" | base64 -d > "$KS"
+          sed -i 's/__NEXO_STORE__/1/g' android/app/src/main/assets/public/index.html
+          grep -q 'name="nexo-store" content="1"' android/app/src/main/assets/public/index.html || { echo "::error::sin marca de tienda"; exit 1; }
+          cd android && NEXO_UPLOAD_KEYSTORE="$KS" ./gradlew bundleRelease --stacktrace
+          AAB=app/build/outputs/bundle/release/app-release.aab
+          ls -l "$AAB"
+          cp "$AAB" "$GITHUB_WORKSPACE/nexo-tienda-1.0.0-${{ github.run_number }}.aab"
+          echo "AAB_FILE=nexo-tienda-1.0.0-${{ github.run_number }}.aab" >> $GITHUB_ENV
+
+      - name: Subir el paquete de tienda
+        if: github.ref == 'refs/heads/NEXOCHAT' && env.AAB_FILE != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ env.AAB_FILE }}
+          path: ${{ env.AAB_FILE }}
+          retention-days: 30
