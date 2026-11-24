@@ -36,6 +36,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   símbolo PROVISIONAL (tres puntos con saltos / ᛒ+globo; captura dada al dueño): FALTA que elija símbolo y NOMBRE de la conexión
   Bluetooth-internet (propuse «Internet prestado»). (b) La respuesta (y la edición) empezada se quedaba al cambiar de chat: ahora es solo
   de ese chat (`chat_actions._chatChanged`; `chatactions.js` resp_*, contraprueba HEAD falla).
+- **3330 (diag. S24↔Austin 14:55, los dos 3148):** enlace recuperado al volver la app = «sin comprobar»: ping ya y 1 sin respuesta lo rehace
+  (`ble_connections` _unverified; zombivuelta.js 50 s → 14 s, umbral 25). Va en la APK de la tarde con cabecera + respuesta. Símbolos: el dueño
+  acepta los provisionales («no me convence el último pero es lo más lógico»); NOMBRE de Bluetooth-internet aún abierto.
 - **SIGUIENTE (pedido del dueño 24-11): INVITACIÓN A GRUPO con Aceptar/Rechazar.** Hoy `groups.receive` mete al contacto en el grupo solo
   con el primer sobre. Plan: grupo nuevo (o me agregan) → `pending:true`, no sale en la lista, aviso «X te agregó a «Y»» en Solicitudes con
   Aceptar/Rechazar; lo que llegue mientras se guarda oculto y aparece al aceptar; Aceptar → mensaje de grupo «se unió»; Rechazar → salida

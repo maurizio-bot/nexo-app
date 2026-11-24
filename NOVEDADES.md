@@ -12,8 +12,11 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Bloquear contacto: desde su chat, la lista o su perfil. No te llegan sus mensajes, llamadas ni estados, y no ve tu foto ni tus estados. No se le avisa; en los grupos se le sigue viendo. La lista está en Ajustes → Seguridad.
-- Menú de un mensaje más compacto (copiar está en «Seleccionar»).
+- Bloquear contacto (en su chat, la lista o su perfil): no te llegan sus mensajes, llamadas ni estados y no ve tu foto. No se le avisa; en grupos se le sigue viendo.
+- Arriba del chat, el símbolo de la conexión junto al nombre.
+- Una respuesta a medias ya no pasa a otro chat.
+- Al volver a NEXO, un enlace Bluetooth muerto se rehace antes.
+- Menú de un mensaje más compacto.
 </es-419>
 <!-- /APK -->
 

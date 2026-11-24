@@ -1240,6 +1240,14 @@
    "sintoma": "zombi automático pedido por nx1905c1ee (Austin)",
    "categoria": "Zombi (🔴 1, en curso)",
    "causa": "Austin va en la 3142 (sin el acuerdo 3327: decide el NEXO ID menor, que es Austin): el S24 (mayor) espera y, pasados 3 min, cierra él el repetido (14:03:23, como manda la 3327). Se arregla cuando Austin tenga la 3148. Aparte: «mensaje sin cifrar atribuido a» Austin/Marcos/Zhelowsky (3142/3125) al volver la app: builds viejas. Cierre de Tor SIGABRT de las 08:13 = build 3142 (antes del 3324). Red cambiando Wi-Fi↔datos ×3: externo. Sin fallo de la 3148."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "14:55",
+   "nx": "nx1n36c283 (S24) y nx1905c1ee (Austin), los dos build 3148",
+   "sintoma": "zombi S24↔Austin (y par:zombi pedido por el S24)",
+   "categoria": "Zombi (🔴 1, en curso)",
+   "causa": "Austin con la app cerrada: su servicio se reinició (14:16) y el enlace de cliente del S24 hacia él quedó MEDIO MUERTO (las escrituras salen, nada vuelve). Al volver el S24 a la app (14:54:15) lo recuperó como listo, el texto largo para Austin lo mantuvo «en transferencia» y el vigilante tardó 4 pings (56 s) en rehacerlo; luego llegó por otro enlace (14:55:30). Arreglo 3330: el enlace recuperado queda «sin comprobar» hasta oír algo por él; ping ya y con 1 sin respuesta se rehace (zombivuelta.js: 50 s → 14 s)."
   }
  ]
 }

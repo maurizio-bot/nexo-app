@@ -75,15 +75,19 @@ const _BLE_CONNECTION_METHODS_BASE = {
       // 2995: con el Bluetooth apagado un enlace Bluetooth «listo» es solo un recuerdo: no se le manda ping ni se da por «zombi»
       if (self._btIsOff() && !_netNx(deviceId) && !_lanNx(deviceId)) return;
 
+      // 3330: enlace recuperado y aún sin oír nada por él → se comprueba ya (sin la protección de «transferencia activa»)
+      var unv = self._unverified && self._unverified.get(deviceId);
+      if (unv && (self._lastPongTime.get(deviceId) || 0) > unv) { self._unverified.delete(deviceId); unv = 0; }
+      if (unv && Date.now() - unv > 120000) { self._unverified.delete(deviceId); unv = 0; }
       // Protección: no matar la conexión mientras se envía un archivo
-      if (self._hasActiveFileTransfer(deviceId)) {
+      if (!unv && self._hasActiveFileTransfer(deviceId)) {
         console.log('[BLEInterface] Supervisor: transferencia activa, skip ping/zombie para', deviceId);
         return;
       }
 
       var lastPong = self._lastPongTime.get(deviceId) || 0;
       var timeSincePong = Date.now() - lastPong;
-      if (lastPong === 0 || timeSincePong > 16000) {
+      if (unv || lastPong === 0 || timeSincePong > 16000) {
         // #dueño 02-11 (A3): si ya hay un ping en vuelo para este enlace, NO disparar otro (el ciclo es cada 6 s pero
         // el ping caduca a los 8 s; apilarlos hacía que la desconexión saliera 2-3 veces seguidas). Uno a la vez.
         if (self._pingInFlight && self._pingInFlight.has(deviceId)) return;
@@ -104,9 +108,12 @@ const _BLE_CONNECTION_METHODS_BASE = {
           self._pingInFlight.delete(deviceId);
           var fails = (self._pingFailCount.get(deviceId) || 0) + 1;
           self._pingFailCount.set(deviceId, fails);
-          if (fails >= self._pingMaxFails) {
-            // Solo forzar si NO hay transferencia activa
-            if (!self._hasActiveFileTransfer(deviceId)) {
+          var unvF = !!(self._unverified && self._unverified.has(deviceId) && !((self._lastPongTime.get(deviceId) || 0) > self._unverified.get(deviceId)));
+          if (unvF) console.warn('[BLEInterface] Enlace recuperado ' + deviceId + ' sin respuesta al primer ping: medio muerto, lo rehago');
+          if (unvF || fails >= self._pingMaxFails) {
+            if (unvF) self._unverified.delete(deviceId);
+            // Solo forzar si NO hay transferencia activa (3330: un enlace recuperado sin comprobar no se protege)
+            if (unvF || !self._hasActiveFileTransfer(deviceId)) {
               self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.ZOMBIE, since: Date.now() });
               self._forceDisconnectAndReconnect(deviceId);
             } else {
@@ -397,6 +404,10 @@ const _BLE_CONNECTION_METHODS_BASE = {
         // después y el desempate lo cerraba otra vez. Para ver la causa en el próximo diagnóstico: papel del enlace y si se cerró hace poco.
         var dupAgo = self._dupClosedAt && self._dupClosedAt.get(_normMac(deviceId));
         console.log('[BLEInterface] Conexión existente recuperada al arrancar:', deviceId, nx || '(sin id)', '(' + (d.role || '?') + '/' + (d.direction || '?') + (dupAgo ? '; cerrada por repetida hace ' + Math.round((Date.now() - dupAgo) / 1000) + ' s' : '') + ')');
+        // 3330 (diagnóstico S24↔Austin 24-11 14:54, los dos en 3148): el enlace «recuperado» al volver la app puede ser medio muerto
+        // (el servicio del otro se reinició y ya no oye por él: las escrituras «salen» y nada vuelve). Se queda «sin comprobar» hasta oír
+        // algo por él: el vigilante le hace ping YA y con UN ping sin respuesta lo rehace (antes, 4 pings ~55 s con el texto atascado).
+        self._unverified = self._unverified || new Map(); self._unverified.set(deviceId, Date.now());
         if (nx) {
           self._notifyPeerReady(deviceId, nx);
           if (self.ackSystem && self.ackSystem.sendSessionSync) self.ackSystem.sendSessionSync(deviceId, nx);
