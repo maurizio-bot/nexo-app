@@ -1048,6 +1048,78 @@
    "sintoma": "resumen_diario (21-11)",
    "categoria": "Resumen",
    "causa": "Sin fallo."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "19:03",
+   "nx": "nx1n36c283, build 3125",
+   "sintoma": "cierre_fallo (18:24 FALLO nativo, detrás)",
+   "categoria": "Cierre de la app: fallo nativo",
+   "causa": "APP (3125), causa sin confirmar: SIGABRT con un hilo en Unsafe_park (la pista no dice qué código lo tiró). Justo antes, 10 reintentos de GATT a Marcos (status 147) hasta 18:23:51. El servicio volvió solo a las 18:24:58 (internet y Bluetooth sin la app) y los mensajes de Cari llegaron y sonaron con ✓✓. Menor: a las 17:32:56 un aviso «NO suena: el sistema no lo dejó publicado» (el siguiente, 4 s después, sí sonó). A vigilar en 3127+: si se repite, ampliar la pista del cierre (hilo y mensaje del abort)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "14:42",
+   "nx": "nx0g6ef54e, build 3123",
+   "sintoma": "zombi (nx01992876)",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "14:20",
+   "nx": "nx01992876, build 3123",
+   "sintoma": "par:enlace_abre_cierra",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "13:37",
+   "nx": "nx1a93dbfe, build 3121",
+   "sintoma": "cierre_fallo (sin memoria)",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "13:37",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "enlace_abre_cierra",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "13:23",
+   "nx": "nx1905c1ee, build 3121",
+   "sintoma": "enlace_abre_cierra",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "13:23",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "par:enlace_abre_cierra",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "12:55",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "zombi (nx01992876)",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "11:20",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "zombi (nx10b6f4ac)",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
   }
  ]
 }
