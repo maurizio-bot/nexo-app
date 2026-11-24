@@ -1216,6 +1216,14 @@
    "sintoma": "zombi automático con nx0x4029e6 (Zhelowsky)",
    "categoria": "Zombi (🔴 1, en curso)",
    "causa": "Mismo patrón que 09:00: dos enlaces por contacto al volver la app; el desempate común deja el de servidor (MTU 23 visto por el S24) y ese deja de contestar pings; se reconecta solo. 10 zombis hoy. Pendiente con el Bluetooth en el servicio nativo. Build vieja (ya está la 3146)."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "10:34",
+   "nx": "nx1n36c283, build 3146",
+   "sintoma": "par:enlace_abre_cierra pedido por Austin (nx1905c1ee, 3142)",
+   "categoria": "Zombi/enlaces (🔴 1)",
+   "causa": "Primer diagnóstico de la 3146: sin cierres nativos desde la actualización (10:32). Con Austin el Wi-Fi local se corta y vuelve y el Bluetooth se reabre 3 veces en 1 min; mismo frente que los zombis. La sincronía ya funciona («Sync: reenviando 1 a NX1905C1EE»); los «sin firma» que quedan son respuestas repetidas a un número ya usado (ruido)."
   }
  ]
 }
