@@ -1229,6 +1229,10 @@
      "prueba": "PULIDO: ESFERA DEL AUDIO, MENÚ DEL FIJADO Y MENÚ «+»"
     },
     {
+     "fallo": "3324 (cierres nativos del S24 23-11 18:24, 21:26 y 24-11 06:01, con la app detrás; el volcado de la 3142: hilo «tor», «FORTIFY: pthread_mutex_lock called on a destroyed mutex» en tor_cond_wait): soltar la última conexión con TorService lo destruye y tor tumba el proceso. Empezó con la vista previa por Tor (3125), que soltaba su Tor a los 5 min sin uso. Ahora TorKeep: una sola conexión para todo el proceso, nunca se suelta; sin uso, Tor se duerme (DORMANT) y se despierta (ACTIVE). torkeep.js (guardia estática; contraprueba: con el código anterior falla)",
+     "prueba": "TOR NUNCA SE APAGA DENTRO DEL PROCESO"
+    },
+    {
      "fallo": "Dueño 23-11: un mensaje fijado que se borraba ya no se podía desfijar (el menú del mensaje desaparece con él). Ahora tocar la franja abre «Ir al mensaje» / «Quitar» (un borrado se ve como «Mensaje eliminado» y solo se puede quitar), y borrar un mensaje fijado lo desfija (para mí: solo aquí; para todos: para todos). fijarmsg.js F2/F11",
      "prueba": "QUITAR UN FIJADO AUNQUE SE HAYA BORRADO"
     },

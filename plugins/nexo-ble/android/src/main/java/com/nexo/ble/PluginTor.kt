@@ -68,19 +68,11 @@ internal fun NexoBlePlugin.torStartImpl(call: PluginCall) {
 
 // Enlazar con TorService (en este proceso) y esperar a tenerlo
 private fun NexoBlePlugin.torBindService(): org.torproject.jni.TorService? {
-    torSvc?.let { return it }
-    val latch = java.util.concurrent.CountDownLatch(1)
-    val conn = object : android.content.ServiceConnection {
-        override fun onServiceConnected(name: android.content.ComponentName?, binder: android.os.IBinder?) {
-            torSvc = (binder as? org.torproject.jni.TorService.LocalBinder)?.service
-            latch.countDown()
-        }
-        override fun onServiceDisconnected(name: android.content.ComponentName?) { torSvc = null; torOnion = "" }
-    }
-    torBind = conn
-    mainHandler.post { context.bindService(Intent(context, org.torproject.jni.TorService::class.java), conn, Context.BIND_AUTO_CREATE) }
-    latch.await(60, java.util.concurrent.TimeUnit.SECONDS)
-    return torSvc
+    // 3324: una sola conexión con TorService para todo el proceso (TorKeep): nunca se suelta (soltarla tumba el proceso)
+    val s = TorKeep.bind(context) ?: return null
+    TorKeep.active()
+    torSvc = s
+    return s
 }
 
 internal fun NexoBlePlugin.torConnectImpl(call: PluginCall) {
@@ -125,9 +117,11 @@ internal fun NexoBlePlugin.torStopAll() {
     TorRoute.proxy = null
     torWs.values.forEach { try { it.close() } catch (e: Exception) {} }; torWs.clear()
     torHub?.stop(); torHub = null
+    // 3324: el servicio oculto se quita, pero Tor NO se apaga (apagarlo dentro del proceso lo tumba: SIGABRT en tor_cond_wait); se duerme
+    try { if (torOnion.isNotEmpty()) torSvc?.torControlConnection?.delOnion(torOnion.removeSuffix(".onion")) } catch (e: Exception) {}
     torOnion = ""
-    torBind?.let { try { context.unbindService(it) } catch (e: Exception) {} }
     torBind = null; torSvc = null
+    if (!TorRoute.always) TorKeep.dormant()
 }
 
 // ===== Decisión 13A (23-11): los WebSocket de la app a los relés por Tor =====
@@ -173,15 +167,9 @@ internal fun torEnsureForBg(ctx: Context, log: (String) -> Unit) {
     Thread({
         try {
             val t0 = System.currentTimeMillis()
-            val latch = java.util.concurrent.CountDownLatch(1)
-            var svc: org.torproject.jni.TorService? = null
-            val conn = object : android.content.ServiceConnection {
-                override fun onServiceConnected(name: android.content.ComponentName?, binder: android.os.IBinder?) { svc = (binder as? org.torproject.jni.TorService.LocalBinder)?.service; latch.countDown() }
-                override fun onServiceDisconnected(name: android.content.ComponentName?) { TorRoute.proxy = null }
-            }
             val app = ctx.applicationContext ?: ctx
-            android.os.Handler(android.os.Looper.getMainLooper()).post { app.bindService(Intent(app, org.torproject.jni.TorService::class.java), conn, Context.BIND_AUTO_CREATE) }
-            latch.await(60, java.util.concurrent.TimeUnit.SECONDS)
+            val svc = TorKeep.bind(app) // 3324: la misma conexión de siempre (nunca se suelta)
+            TorKeep.active()
             val s = svc ?: throw Exception("no arranca el servicio de Tor")
             while (System.currentTimeMillis() - t0 < 180000L) {
                 val boot = try { s.torControlConnection?.getInfo("status/bootstrap-phase") ?: "" } catch (e: Exception) { "" }

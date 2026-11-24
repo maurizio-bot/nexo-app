@@ -21,7 +21,6 @@ import com.getcapacitor.PluginCall
 private val prevExec = java.util.concurrent.ThreadPoolExecutor(2, 2, 30L, java.util.concurrent.TimeUnit.SECONDS,
     java.util.concurrent.LinkedBlockingQueue(24)).apply { allowCoreThreadTimeOut(true) }
 @Volatile private var prevSvc: org.torproject.jni.TorService? = null
-@Volatile private var prevConn: android.content.ServiceConnection? = null
 @Volatile private var prevLastUse = 0L
 private const val PREV_IDLE_MS = 5 * 60_000L
 
@@ -73,37 +72,26 @@ private fun prevTorPort(p: NexoBlePlugin): Int? {
     // Revisión 23-11: dos vistas previas a la vez enlazaban el servicio DOS veces y una conexión quedaba sin soltar (Tor encendido para
     // siempre). Una sola a la vez enlaza; si no llega a conectar, se suelta igual.
     val s: org.torproject.jni.TorService = synchronized(prevLock) { prevSvc ?: prevBind(p) } ?: return null
+    TorKeep.active()
     val t0 = System.currentTimeMillis()
     while (System.currentTimeMillis() - t0 < 120_000L) { prevReady(s)?.let { return it }; Thread.sleep(1000) }
     return null
 }
 private val prevLock = Any()
 private fun prevBind(p: NexoBlePlugin): org.torproject.jni.TorService? {
-    run {
-        // una conexión anterior que nunca llegó a conectar se suelta antes de pedir otra (nunca dos a la vez)
-        prevConn?.let { c -> prevConn = null; try { (p.context.applicationContext ?: p.context).unbindService(c) } catch (e: Exception) { } }
-        val latch = java.util.concurrent.CountDownLatch(1)
-        val conn = object : android.content.ServiceConnection {
-            override fun onServiceConnected(name: android.content.ComponentName?, binder: android.os.IBinder?) {
-                prevSvc = (binder as? org.torproject.jni.TorService.LocalBinder)?.service; latch.countDown()
-            }
-            override fun onServiceDisconnected(name: android.content.ComponentName?) { prevSvc = null }
-        }
-        val app = p.context.applicationContext ?: p.context
-        prevConn = conn
-        p.mainHandler.post { app.bindService(Intent(app, org.torproject.jni.TorService::class.java), conn, Context.BIND_AUTO_CREATE) }
-        latch.await(60, java.util.concurrent.TimeUnit.SECONDS)
-        prevScheduleIdle(p)   // también si no conectó: así la conexión se suelta a los 5 min sin uso
-        return prevSvc
-    }
+    // 3324: la conexión con Tor es la de todo el proceso (TorKeep, nunca se suelta: soltarla tumbaba la app con SIGABRT a los 5 min)
+    val s = TorKeep.bind(p.context) ?: return null
+    prevSvc = s
+    prevScheduleIdle(p)
+    return s
 }
 
-// Suelta el Tor propio tras PREV_IDLE_MS sin vistas previas (si la app usa Tor, el suyo sigue: es otra conexión al servicio)
+// Tras PREV_IDLE_MS sin vistas previas, Tor se DUERME (no se apaga) si nadie más lo usa (la app con Tor o «Usar Tor siempre»)
 private fun prevScheduleIdle(p: NexoBlePlugin) {
     p.mainHandler.postDelayed({
         if (System.currentTimeMillis() - prevLastUse < PREV_IDLE_MS || prevExec.activeCount > 0) { prevScheduleIdle(p); return@postDelayed }
-        val c = prevConn; prevConn = null; prevSvc = null
-        if (c != null) try { (p.context.applicationContext ?: p.context).unbindService(c) } catch (e: Exception) { }
+        prevSvc = null
+        if (p.torSvc == null && !TorRoute.always) TorKeep.dormant()
     }, PREV_IDLE_MS)
 }
 

@@ -1152,6 +1152,14 @@
    "sintoma": "resumen diario 23-11 (automático)",
    "categoria": "Sin fallo nuevo",
    "causa": "Resumen del 23-11 en la 3127: 78 de 79 con ✓✓. «Puente a internet: no contesta ×8» = la tablet dormida que no prestaba internet (arreglado en la 3142, 3321). Lo demás ya apuntado."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "06:16",
+   "nx": "nx1n36c283, build 3142",
+   "sintoma": "cierre_fallo automático (06:01 FALLO nativo, detrás)",
+   "categoria": "Fallo de la app",
+   "causa": "Tor: al soltar la vista previa su conexión con TorService (5 min sin uso) Android destruye el servicio y tor cae con SIGABRT (pthread_mutex_lock on destroyed mutex, tor_cond_wait). Mismo origen que 23-11 18:24 y 21:26 (desde la 3125). Arreglo 3324 TorKeep. Los 2 textos a S23 a las 06:15 quedaron ✓ en el buzón (S23 sin app abierta)."
   }
  ]
 }
