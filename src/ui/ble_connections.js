@@ -407,7 +407,7 @@ const _BLE_CONNECTION_METHODS_BASE = {
   _creditBridge(deviceId, origin) {
     var nx = _normId(this._macToNexoId && this._macToNexoId.get(_normMac(deviceId)));
     if (!/^nx[0-9a-z]{8}$/.test(nx) || nx === _normId(origin) || nx === _normId(this.localNexoId)) return;
-    try { _gwNoteHelp(nx, 'me hizo de puente por Bluetooth'); } catch (e) {}
+    try { _gwNoteHelp(nx, 'me hizo de puente por Bluetooth'); } catch (e) {} // i18n-ok: registro para el diagnóstico
   },
 
   _kickPeer(deviceId, nexoId) {

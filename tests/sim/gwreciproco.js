@@ -38,6 +38,7 @@ const { importSrc } = require('./srcmod');
   chk('oferta_f0', last('a') && last('a').p.f === 0 && last('a').p.u.length === 1);
   gw.handle({ v: 1, type: 'ig', op: 'o', from: A, s: '0123456789ab', u: R }, 'devA'); await sleep(10);
   const ws = sockets[0];
+  chk('abre_f0', last('k') && last('k').p.ok === 1 && last('k').p.f === 0); // al abrir también dice si pasa archivos
   gw.handle({ v: 1, type: 'ig', op: 'f', from: A, s: '0123456789ab', d: frame(1059, 'hola') }, 'devA'); await sleep(5);
   chk('texto_pasa', ws.up.length === 1);
   gw.handle({ v: 1, type: 'ig', op: 'f', from: A, s: '0123456789ab', d: frame(1064, 'x'.repeat(30000)) }, 'devA'); await sleep(5);

@@ -213,7 +213,7 @@ class GwServe(
                 if (s.closed || sess[key] !== s) { try { sock.close() } catch (e: Throwable) { }; return@synchronized }
                 s.sock = sock; s.open = true; s.rxAt = now()
                 link.log("Puente a internet sin la app: presto internet a $from (relé ${NetBg.host(url)})")
-                tx(mac, JSONObject().put("op", "k").put("s", sid).put("ok", 1))
+                tx(mac, JSONObject().put("op", "k").put("s", sid).put("ok", 1).put("f", if (helped(from)) 1 else 0)) // 3323
             }
         }
     }

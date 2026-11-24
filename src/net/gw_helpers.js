@@ -49,6 +49,7 @@ export function noteHelp(nx, how) {
   _m.delete(nx); _m.set(nx, Date.now());
   while (_m.size > MAX) _m.delete(_m.keys().next().value);
   if (!had) console.log('[GW] ' + nx + ' me ayudó (' + (how || 'puente') + '): le presto también fotos y audios 30 días');
+  if (!had) { try { window.dispatchEvent(new CustomEvent('nexo:gwhelp', { detail: nx })); } catch (e) {} }
   _save();
   return !had;
 }

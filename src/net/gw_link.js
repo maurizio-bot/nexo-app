@@ -190,6 +190,12 @@ export class GwLink {
     this.wdUntil = new Map();  // nx → hasta cuándo no se usa Wi-Fi Direct con él (falló)
     this._wdChain = null;      // una transferencia de Wi-Fi Direct del puente a la vez
     this.askedBy = new Map();  // 3050 (servidor): nx → { dev, at } a quien dije «no» (sin internet): se le avisa al tenerlo
+    // 3323: alguien con sesión abierta acaba de ayudarme → se le dice ya que también le paso fotos y audios (oferta nueva con f:1)
+    var self = this;
+    if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('nexo:gwhelp', function(e) {
+      var nx = _nid(e && e.detail);
+      self.sess.forEach(function(s) { if (s.from === nx && s.open) self._srvAsk(nx, s.dev); });
+    });
   }
 
   ble() { return this.net && this.net.ble; }
@@ -441,6 +447,7 @@ export class GwLink {
     }
     // parte 4: ¿puede recibir/mandar lo pesado por Wi-Fi Direct? ¿está en Wi-Fi (no gasta sus datos)?
     this.offers.set(from, { dev: dev, urls: urls, at: Date.now(), wd: p.wd === 1, wifi: p.w === 1, files: p.f !== 0 }); // 3323: sin f (versión anterior) como antes
+    var br0 = this.bridges.get(from); if (br0) br0.files = p.f !== 0; // 3323: una oferta nueva de un puente en uso (p. ej. ya me pasa archivos)
     if (!this.bridges.has(from) && this.bridges.size < GW_MAX && !this._realOpen()) this.tick();
   }
 
@@ -472,6 +479,7 @@ export class GwLink {
     if (!vs || vs._closed) return;
     if (!p.ok) { console.warn('[GW] El puente ' + vs.br.nx + ' no pudo abrir la sesión' + (p.why ? ' (' + String(p.why).slice(0, 60) + ')' : '')); this.offers.delete(vs.br.nx); this.bridges.delete(vs.br.nx); this.net.relays.delete(vs.br.key); vs._end(); return; }
     vs._opened = true; clearTimeout(vs._openTimer);
+    if (p.f === 0 || p.f === 1) vs.br.files = p.f === 1; // 3323: lo que dice el puente al abrir manda sobre la oferta
     noteHelp(vs.br.nx, 'me prestó su internet'); // 3323
     console.log('[GW] Conectado a internet por el puente ' + vs.br.nx + ' (relé ' + _host(vs.url) + ')');
     var fn = vs.onopen; if (typeof fn === 'function') { try { fn(); } catch (e) {} }
@@ -695,7 +703,7 @@ export class GwLink {
     var s = { ws: ws, dev: dev, from: from, sid: sid, url: url, open: false, rxAt: Date.now(), evMin: [], wd: p.wd === 1, bulk: new Map() };
     this.sess.set(key, s);
     this.stats.sessions++;
-    ws.onopen = function() { s.open = true; s.rxAt = Date.now(); console.log('[GW] Presto internet a ' + from + ' (relé ' + _host(url) + ')'); self._tx(dev, { op: 'k', s: sid, ok: 1 }); };
+    ws.onopen = function() { s.open = true; s.rxAt = Date.now(); console.log('[GW] Presto internet a ' + from + ' (relé ' + _host(url) + ')'); self._tx(dev, { op: 'k', s: sid, ok: 1, f: helped(from) ? 1 : 0 }); }; // 3323: f al abrir (la oferta pudo ser de antes)
     ws.onmessage = function(ev) {
       var d = ev && ev.data;
       if (typeof d !== 'string' || d.length > SRV_DOWN_MAX) return;
