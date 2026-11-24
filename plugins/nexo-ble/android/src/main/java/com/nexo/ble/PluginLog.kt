@@ -157,7 +157,12 @@ internal fun NexoBlePlugin.getExitReasonsImpl(call: PluginCall) {
                     .put("pssKb", e.pss).put("rssKb", e.rss)
                 if (!e.description.isNullOrBlank()) o.put("desc", ExitReasons.clip(e.description, 200))
                 if (e.reason == ExitReasons.CRASH_NATIVE && Build.VERSION.SDK_INT >= 31) {   // 3232: pistas del fallo nativo
-                    try { e.traceInputStream?.use { ins -> val h = ExitReasons.nativeHints(ins.readBytes()); if (h.isNotBlank()) o.put("trace", h) } } catch (t: Throwable) {}
+                    try { e.traceInputStream?.use { ins ->
+                        val bytes = ins.readBytes()
+                        // dueño 23-11: primero qué hilo cayó y el mensaje del abort (tombstone), luego las pistas de siempre
+                        val h = listOf(ExitReasons.tombstoneSummary(bytes), ExitReasons.nativeHints(bytes)).filter { it.isNotBlank() }.joinToString("\n")
+                        if (h.isNotBlank()) o.put("trace", h)
+                    } } catch (t: Throwable) {}
                 }
                 if (e.reason == ExitReasons.ANR) {
                     try {

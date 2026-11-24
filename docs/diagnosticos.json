@@ -1120,6 +1120,14 @@
    "sintoma": "zombi (nx10b6f4ac)",
    "categoria": "Versión vieja",
    "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "21:40",
+   "nx": "nx1n36c283, build 3127",
+   "sintoma": "cierre_fallo (21:26 FALLO nativo, detrás) + enlace_abre_cierra (nx09acdb61, 21:17)",
+   "categoria": "Cierre de la app: fallo nativo",
+   "causa": "APP: SEGUNDO cierre nativo igual al de las 18:24 (SIGABRT, pista Unsafe_park). Las pistas no dicen qué hilo cayó: desde esta APK se lee el volcado (tombstone) y sale el hilo, el mensaje del abort y sus funciones (ExitReasons.tombstoneSummary, TombstoneTest). Otros: el Vivo abre 3–4 enlaces repetidos a la vez (dedup los cierra; 3121–3127 ya en vigilancia); un paquete de puente (msg…wpevbz66f) reintenta horas con ACK timeout; 2 ✓✓ de Cari (3125) «sin firma válida» ignoradas a las 21:16 tras llegar por la escucha nativa: a vigilar con Cari ya en la última versión."
   }
  ]
 }
