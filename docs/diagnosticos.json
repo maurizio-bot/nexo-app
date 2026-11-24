@@ -1200,6 +1200,22 @@
    "sintoma": "zombi automático con Roberto (nx0g6ef54e)",
    "categoria": "Zombi (🔴 1, en curso)",
    "causa": "Al volver la app (08:59) había dos enlaces por contacto; el desempate común se quedó con el de servidor (el S24 lo ve a MTU 23: el lado servidor no siempre conoce el MTU real) y ese dejó de contestar 4 pings → se cortó y reconectó solo. No se tocó el desempate: cambiarlo reabre 3137/3139 (cada lado cerraría un enlace distinto; bledup.js). Sin mensajes perdidos (Marcos ✓✓, Roberto por Wi-Fi). Se mira con el Bluetooth entero en el servicio nativo."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "09:17",
+   "nx": "nx1n36c283, build 3142",
+   "sintoma": "zombi automático con nx10b6f4ac (Alex)",
+   "categoria": "Zombi (🔴 1, en curso)",
+   "causa": "Mismo patrón que 09:00: dos enlaces por contacto al volver la app; el desempate común deja el de servidor (MTU 23 visto por el S24) y ese deja de contestar pings; se reconecta solo. 10 zombis hoy. Pendiente con el Bluetooth en el servicio nativo. Build vieja (ya está la 3146)."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "09:54",
+   "nx": "nx1n36c283, build 3142",
+   "sintoma": "zombi automático con nx0x4029e6 (Zhelowsky)",
+   "categoria": "Zombi (🔴 1, en curso)",
+   "causa": "Mismo patrón que 09:00: dos enlaces por contacto al volver la app; el desempate común deja el de servidor (MTU 23 visto por el S24) y ese deja de contestar pings; se reconecta solo. 10 zombis hoy. Pendiente con el Bluetooth en el servicio nativo. Build vieja (ya está la 3146)."
   }
  ]
 }
