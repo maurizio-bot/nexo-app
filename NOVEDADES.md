@@ -12,16 +12,18 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Bloquear contacto (en su chat, la lista o su perfil): no te llegan sus mensajes, llamadas ni estados y no ve tu foto. No se le avisa; en grupos se le sigue viendo.
-- Arriba del chat, el símbolo de la conexión junto al nombre.
-- Una respuesta a medias ya no pasa a otro chat.
-- Al volver a NEXO, un enlace Bluetooth muerto se rehace antes.
-- Menú de un mensaje más compacto.
 - Grupos: al agregarte te llega una invitación para aceptar o rechazar.
 </es-419>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3150 (24-11-2026)
+- Bloquear contacto (en su chat, la lista o su perfil): no te llegan sus mensajes, llamadas ni estados y no ve tu foto. No se le avisa; en grupos se le sigue viendo.
+- Arriba del chat, el símbolo de la conexión junto al nombre.
+- Una respuesta a medias ya no pasa a otro chat.
+- Al volver a NEXO, un enlace Bluetooth muerto se rehace antes.
+- Menú de un mensaje más compacto.
 
 ### APK 3148 (24-11-2026)
 - Bluetooth más firme con quien tienes cerca: al volver a abrir NEXO ya no se queda colgado un enlace viejo; los dos teléfonos se ponen de acuerdo en cuál conservar.
