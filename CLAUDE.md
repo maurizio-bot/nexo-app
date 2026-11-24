@@ -1,7 +1,8 @@
 # NEXO
 
 App de mensajería P2P por Bluetooth LE (Capacitor 5 + plugin nativo Kotlin `plugins/nexo-ble`).
-El dueño habla español: responder en español.
+El dueño habla español: responder en español. **Dueño 23-11: TODO en español (también lo que se escribe entre herramientas) y sin
+comentarios intermedios: trabajar en silencio y escribirle solo al terminar o para una decisión suya.** Gasta tokens y no le sirve.
 **Horas siempre en hora de México** (Ciudad de México, UTC−6) al hablar con el dueño (16-11): nunca UTC ni otra zona; los
 diagnósticos ya traen la hora local, y lo de GitHub o los avisos programados (en UTC) se convierte antes de decírselo.
 
