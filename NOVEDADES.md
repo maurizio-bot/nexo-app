@@ -12,9 +12,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Bluetooth más firme con quien tienes cerca: al volver a abrir NEXO ya no se queda colgado un enlace viejo; los dos teléfonos se ponen de acuerdo en cuál conservar.
-- Si los servidores de internet piden ir más despacio, NEXO espera un poco antes de reintentar en vez de insistir.
-- Mensajes fijados: un toque en la franja te lleva al mensaje y pasa al siguiente fijado; mantén pulsado para quitarlo.
+- (provisional: lo nuevo de la próxima APK)
 </es-419>
 <!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
   y la app lo muestra junto al botón de actualizar (Perfil → Ajustes → Actualizaciones, y «¿Qué trae?» en el aviso de abajo).
@@ -51,6 +49,11 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <!-- /APK -->
 
 ## Historial
+
+### APK 3148 (24-11-2026)
+- Bluetooth más firme con quien tienes cerca: al volver a abrir NEXO ya no se queda colgado un enlace viejo; los dos teléfonos se ponen de acuerdo en cuál conservar.
+- Si los servidores de internet piden ir más despacio, NEXO espera un poco antes de reintentar en vez de insistir.
+- Mensajes fijados: un toque en la franja te lleva al mensaje y pasa al siguiente fijado; mantén pulsado para quitarlo.
 
 ### APK 3146 (24-11-2026)
 

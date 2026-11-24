@@ -31,7 +31,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   internet en ninguno, con el Vivo en medio con la app cerrada (y Cari lejos del S24): un texto, un texto largo y una foto deben llegar
   con ✓✓; lo mismo con el Vivo con la pantalla apagada un rato largo. Queda: JS vivo y nativo pueden reenviar los dos un paquete corto
   guardado (duplicado inofensivo).
-- **EN EL CI (24-11 ~11:20 México): 3327 + 3328.** 3327 = ACUERDO EXPLÍCITO de enlaces repetidos (🔴 1, zombis S24↔Roberto/Alex/
+- **APK 3148 PUBLICADA (24-11 12:50 México; nightly-3148) = 3327 + 3328 + 3329.** 3327 = ACUERDO EXPLÍCITO de enlaces repetidos (🔴 1, zombis S24↔Roberto/Alex/
   Zhelowsky): decide SOLO el de NEXO ID menor y se queda el enlace MÁS RECIENTE (el de después de volver la app); el mayor no cierra
   (salvo todos muertos o el menor > 3 min sin hacerlo); lo que el menor cerró hace < 10 min no gana por «nuevo» (sin vaivén); el chat
   abierto no frena al que decide; quitado el freno 3257 (el mayor ya puede abrir un cliente nuevo para salir de un servidor viejo).
