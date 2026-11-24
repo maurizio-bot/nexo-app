@@ -15,11 +15,11 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Notas de voz: arrastra la bolita para moverte; las no escuchadas, en color.
 - Un audio o foto se ve en el chat en cuanto llega el aviso.
 - Toca el fijado para ir a él o quitarlo, aunque se haya borrado.
-- Archivos grandes más rápidos y llamadas en segundo plano con menos datos.
+- Archivos grandes más rápidos; llamadas ocultas con menos datos.
 - Lista para Android 15 y 16.
 - Ya no queda resaltado el último contacto.
 - El «+» abre con lo más usado; la flechita, el resto.
-- Sin internet, un NEXO cercano te presta el suyo aunque tenga la app cerrada.
+- Sin internet, un NEXO cercano te presta el suyo aun cerrado (fotos y audios si tú también ayudas).
 </es-419>
 <!-- /APK -->
 

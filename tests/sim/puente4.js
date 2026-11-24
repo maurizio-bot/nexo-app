@@ -82,6 +82,8 @@ async function findMsg(p, from, b64, own) {
   const A = await boot('A', nA, true), B = await boot('B', nB), C = await boot('C', nC);
   const id = (p) => p.win.bleInterface.localNexoId.toLowerCase();
   const idA = id(A), idB = id(B), idC = id(C);
+  // 3323 (reciprocidad del puente): A ya le ayudó antes al puente (si no, por él solo pasan textos: gwreciproco.js)
+  B.win.__nexoGwHelp.noteHelp(idA, 'prueba');
   A.win.bleInterface.togglePanel();
   const paired = (await addFound(A, 'B')) && (await addFound(A, 'C'));
   A.win.bleInterface.togglePanel();

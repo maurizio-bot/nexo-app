@@ -9,6 +9,7 @@ internal fun gwServeFor(me: () -> String, link: OutboxBle.Link, relayOk: () -> B
     link = link,
     relayOk = relayOk,
     wake = { tok -> NetBgHome.peek()?.wakeToken(tok) == true },
+    helped = { nx -> NetBgHome.peek()?.gwHelp?.contains(nx) == true },
     sockOf = { url, onText, onClose ->
         val via = try { TorRoute.route() } catch (e: TorRoute.WaitTor) { null }
         if (via == null && TorRoute.always) null else {

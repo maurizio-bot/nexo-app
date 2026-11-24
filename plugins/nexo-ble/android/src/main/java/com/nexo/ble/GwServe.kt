@@ -21,6 +21,8 @@ class GwServe(
     private val link: OutboxBle.Link,
     private val relayOk: () -> Boolean = { true },
     private val wake: (String) -> Boolean = { false }, // «toque» FCM al token (el despertador del contacto)
+    /** 3323 (reciprocidad, decisión B del dueño 24-11): ¿me ayudó en los últimos 30 días? Si no, solo textos. */
+    private val helped: (String) -> Boolean = { true },
     /** Abre la conexión al relé (bloquea hasta abrirla; null o excepción = no se pudo). */
     private val sockOf: (url: String, onText: (String) -> Unit, onClose: () -> Unit) -> Sock? = { _, _, _ -> null },
     private val now: () -> Long = { System.currentTimeMillis() },
@@ -46,6 +48,7 @@ class GwServe(
         const val SRV_WAKE_MIN_MS = 8000L
         const val SRV_WAKE_PER_HOUR = 60
         const val IDS_MAX = 48
+        const val TEXT_MAX = 16384 // 3323: lo que pasa para quien no me ha ayudado (un evento de texto, no un trozo de archivo)
         private val NX = Regex("^nx[0-9a-z]{8}$")
         private val HEX64 = Regex("^[0-9a-f]{64}$")
         private val HEX128 = Regex("^[0-9a-f]{128}$")
@@ -179,6 +182,7 @@ class GwServe(
     private fun ask(mac: String, from: String) {
         val ok = canShare() == "ok"
         val o = JSONObject().put("op", "a").put("u", JSONArray(if (ok) urls() else emptyList<String>())).put("wd", 0).put("w", if (ok && wifi()) 1 else 0)
+            .put("f", if (ok && helped(from)) 1 else 0) // 3323: f:0 = solo textos
         link.log("Puente a internet sin la app: $from pregunta; " + (if (ok) "le ofrezco ${urls().size} relé(s)" else "no puedo (${canShare()})"))
         tx(mac, o)
     }
@@ -217,6 +221,7 @@ class GwServe(
     private fun down(key: String, s: Sess, d: String) {
         synchronized(this) {
             if (sess[key] !== s || d.length > SRV_DOWN_MAX) return
+            if (d.length > TEXT_MAX && !helped(s.from)) return // 3323: lo grande que baja, solo a quien me ayudó
             if (d.length > SRV_BYTES_MIN && !spend(s.from, s.mac, d.length.toLong())) return
             s.rxAt = now()
             tx(s.mac, JSONObject().put("op", "e").put("s", s.sid).put("d", d))
@@ -230,6 +235,7 @@ class GwServe(
         if (kind.isEmpty()) return
         val id = { try { JSONArray(d).optJSONObject(1)?.optString("id") ?: "" } catch (e: Exception) { "" } }
         val refuse = { why: String -> tx(s.mac, JSONObject().put("op", "e").put("s", s.sid).put("d", JSONArray().put("OK").put(id()).put(false).put(why).toString())) }
+        if (!helped(s.from) && (kind == "BLOB" || (kind == "EVENT" && d.length > TEXT_MAX))) return refuse("restricted: solo textos (reciprocidad del puente)")
         if ((kind == "BLOB" || (kind == "EVENT" && d.length > SRV_BYTES_MIN)) && !spend(s.from, mac, d.length.toLong())) return refuse("rate-limited: tope de archivos del puente")
         if (kind == "EVENT") {
             s.evMin.removeAll { t - it >= 60_000L }

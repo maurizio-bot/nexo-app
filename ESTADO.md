@@ -36,7 +36,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   reenvíos del puente. MIRAR en el CI el paso «Librerías nativas con páginas de 16 KB» (¿Tor?).
 - **24-11 (prueba del dueño, solo Bluetooth): 3321 PUENTE A INTERNET NATIVO** (`GwServe.kt`, la tablet dormida/cerrada presta su
   internet: antes solo la app) y **3322** (conexión de paso del Vivo cerrada «sin uso» aunque ya era el contacto). Van en la APK resubida
-  24-11 ~23:40 México. El Vivo sigue en 3119: actualizarlo. Prueba: S24 sin Wi-Fi ni datos, tablet con Wi-Fi y app cerrada, S23 lejos.
+  24-11 ~23:40 México. **3323 RECIPROCIDAD** (decisión B del dueño): por el puente, textos a cualquiera; fotos/audios solo a quien
+  me ayudó en 30 días (`gw_helpers.js`, libreta local; nativo vía netBgConfig gwHelp). El Vivo sigue en 3119: actualizarlo. Prueba: S24 sin Wi-Fi ni datos, tablet con Wi-Fi y app cerrada, S23 lejos.
 - **Cierres nativos del S24 (18:24 y 21:26, SIGABRT):** causa aún desconocida; esta APK guarda en el diagnóstico el hilo que cayó y el mensaje
   del abort (tombstone). Con el siguiente cierre se ve la causa. A vigilar también: ✓✓ de Cari «sin firma válida» y un paquete de puente que reintenta horas.
 - **También en esta APK (23-11 noche, pedidos del dueño):** quitar un fijado tocando la franja (también si se borró), «hover» pegado en la

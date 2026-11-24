@@ -5,6 +5,7 @@
  */
 import { t } from './i18n.js';
 import { BLE_STATES, SUPERVISOR_STATES, _getBLEContacts, _jitteredBackoff, _showToast, _netNx, _lanNx, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _dupBleLinksToClose, _vNx, _vaultLoadMessages, _wakeShouldFire, _wakeAdvance, _wakeNewEntry, WAKE_GIVEUP_MS, _isQuietHidden, _isPathDev } from './ble_helpers.js';
+import { noteHelp as _gwNoteHelp } from '../net/gw_helpers.js';
 import { BLE_CONN_SCAN } from './ble_conn_scan.js';
 
 // 3099: con una transferencia en curso la re-búsqueda de contactos perdidos se aplaza, pero como mucho esto seguido: luego una vuelta
@@ -400,6 +401,13 @@ const _BLE_CONNECTION_METHODS_BASE = {
         else if (typeof self._askWhoIs === 'function') self._askWhoIs(deviceId); // 3263 (fase 2, enlaces heredados al abrir la app): sin saber de quién es, se le pregunta «quién eres»
       });
     }).catch(function() {});
+  },
+
+  // 3323 (reciprocidad del puente): el NEXO de este enlace me trajo un paquete de otro (me hizo de puente): queda en la libreta
+  _creditBridge(deviceId, origin) {
+    var nx = _normId(this._macToNexoId && this._macToNexoId.get(_normMac(deviceId)));
+    if (!/^nx[0-9a-z]{8}$/.test(nx) || nx === _normId(origin) || nx === _normId(this.localNexoId)) return;
+    try { _gwNoteHelp(nx, 'me hizo de puente por Bluetooth'); } catch (e) {}
   },
 
   _kickPeer(deviceId, nexoId) {

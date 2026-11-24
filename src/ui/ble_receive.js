@@ -132,6 +132,7 @@ export const BLE_RECEIVE_METHODS = {
         // v6.12.0: el puente que lo trajo espera confirmación de este salto (no ve qué hay dentro: puede ser una
         // confirmación o un kx, que no se confirman por su id); sin ella lo guardaba y reintentaba sin fin
         if (Number(ps.hp) > 0 && ps.msgId && self.relay) self.relay._sendCustody(data.deviceId, ps.msgId);
+        if (Number(ps.hp) > 0) self._creditBridge(data.deviceId, ''); // 3323
         return e2eOpenAnon(ps.c).then(function(inner) {
           var ip = null;
           try { ip = JSON.parse(inner); } catch (e) {}
@@ -163,6 +164,8 @@ export const BLE_RECEIVE_METHODS = {
     if (jump && p && /^r[tqp]$/.test(p.type || '') && /^nx[0-9a-z]{8}$/i.test(p.from || '')) self._kickPeer(data.deviceId, p.from);
     if (jump && self.relay && self.relay.intercept(p, raw, data.deviceId)) return Promise.resolve(null);
     var viaRelay = !!(p && p.to && Number(p.hp) > 0);
+    // 3323 (reciprocidad del puente): un paquete para mí que llegó con saltos por el enlace de otro NEXO = ese NEXO me hizo de puente
+    if (viaRelay && _normId(p.to) === _normId(self.localNexoId)) self._creditBridge(data.deviceId, p.from || p.fromNexoId);
     if (p && p.type === 'kx') {
       if (viaRelay) {
         // Clave pedida por otro teléfono: solo se acepta si aún no hay ninguna (un puente no puede

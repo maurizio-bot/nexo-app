@@ -332,6 +332,8 @@ class NetBg(
     /** 3321: relés abiertos ahora (para prestar internet sin la app: GwServe). Vacío si la escucha está parada. */
     fun openUrls(): List<String> = if (!running) emptyList() else try { relays.values.toList().filter { it.ws?.open == true }.map { it.url } } catch (e: Exception) { emptyList() }
     fun onWifi() = netType == "wifi"
+    /** 3323: los que me ayudaron en los últimos 30 días (la app los manda con la configuración): a ellos, también fotos y audios. */
+    @Volatile var gwHelp: Set<String> = emptySet()
     /** 3321: «toque» que despierta a un contacto de quien no tiene internet (lo pidió por el puente). false = sin enviador. */
     fun wakeToken(token: String): Boolean { val u = outbox.wakeUrl; if (u.isEmpty()) return false; try { wake(u, token) } catch (e: Throwable) { return false }; return true }
     // 3190: también sin contactos por internet (alguien nuevo que espera solicitudes): con mi ID ya se escucha mi buzón de solicitudes

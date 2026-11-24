@@ -101,8 +101,10 @@ class NetBgSavedTest {
     @Test fun loQueMandaLaAppComoAntes() {
         val o = JSONObject("""{"me":"nxbbbbbbbb","relays":["wss://r.example"],"since":123,"reqSince":45,
             "contacts":[{"nx":"NXAAAAAAAA","name":"Ana","kraw":"${Secp256k1.hex(krawA)}"}],
-            "known":[{"nx":"nxaaaaaaaa","name":"Ana"},5,{"nx":""}],"reqOut":["NXEEEEEEEE",""]}""")
+            "known":[{"nx":"nxaaaaaaaa","name":"Ana"},5,{"nx":""}],"reqOut":["NXEEEEEEEE",""],"gwHelp":["NXFFFFFFFF","malo",3]}""")
         val c = NetBgSaved.fromApp(o)
+        assertEquals(setOf("nxffffffff"), c.gwHelp, "3323: los que me ayudaron (lo mal formado se ignora)")
+        assertEquals(setOf("nxffffffff"), NetBgSaved.configFrom(NetBgSaved.configJson(c))?.gwHelp, "y se guardan para sin la app")
         assertEquals("nxbbbbbbbb", c.me); assertEquals(listOf("wss://r.example"), c.relays); assertEquals(123L, c.since); assertEquals(45L, c.reqSince)
         assertEquals("nxaaaaaaaa", c.contacts.single().nx); assertContentEquals(krawA, c.contacts.single().kraw)
         assertEquals(mapOf("nxaaaaaaaa" to "Ana"), c.known); assertEquals(setOf("nxeeeeeeee"), c.reqOut)

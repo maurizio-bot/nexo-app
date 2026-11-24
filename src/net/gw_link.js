@@ -31,6 +31,7 @@
 import { wakePost } from './wake_post.js';
 import { netEventValid } from './net_link.js';
 import { BLOB_KIND, FETCH_BATCH } from './blob_mailbox.js';
+import { helped, noteHelp, GW_TEXT_MAX } from './gw_helpers.js';
 
 var GW_KIND = 1059;                 // mensajes privados (el KIND de net_link)
 var GW_AFTER_MS = 8000;             // sin relés propios al menos esto → buscar puente
@@ -439,14 +440,14 @@ export class GwLink {
       return;
     }
     // parte 4: ¿puede recibir/mandar lo pesado por Wi-Fi Direct? ¿está en Wi-Fi (no gasta sus datos)?
-    this.offers.set(from, { dev: dev, urls: urls, at: Date.now(), wd: p.wd === 1, wifi: p.w === 1 });
+    this.offers.set(from, { dev: dev, urls: urls, at: Date.now(), wd: p.wd === 1, wifi: p.w === 1, files: p.f !== 0 }); // 3323: sin f (versión anterior) como antes
     if (!this.bridges.has(from) && this.bridges.size < GW_MAX && !this._realOpen()) this.tick();
   }
 
   _use(nx, dev, url) {
     var self = this, net = this.net, key = 'gw:' + nx;
     var of = this.offers.get(nx) || {};
-    var b = { nx: nx, dev: dev, url: url, key: key, wd: !!of.wd, wifi: !!of.wifi };
+    var b = { nx: nx, dev: dev, url: url, key: key, wd: !!of.wd, wifi: !!of.wifi, files: of.files !== false };
     this.bridges.set(nx, b);
     this._chainSince = 0; this.askAt.clear();
     var r = net.relays.get(key) || { backoff: 2000, waits: new Map() };
@@ -471,6 +472,7 @@ export class GwLink {
     if (!vs || vs._closed) return;
     if (!p.ok) { console.warn('[GW] El puente ' + vs.br.nx + ' no pudo abrir la sesión' + (p.why ? ' (' + String(p.why).slice(0, 60) + ')' : '')); this.offers.delete(vs.br.nx); this.bridges.delete(vs.br.nx); this.net.relays.delete(vs.br.key); vs._end(); return; }
     vs._opened = true; clearTimeout(vs._openTimer);
+    noteHelp(vs.br.nx, 'me prestó su internet'); // 3323
     console.log('[GW] Conectado a internet por el puente ' + vs.br.nx + ' (relé ' + _host(vs.url) + ')');
     var fn = vs.onopen; if (typeof fn === 'function') { try { fn(); } catch (e) {} }
   }
@@ -514,7 +516,9 @@ export class GwLink {
   // si no, fotos pequeñas (sus datos móviles no se gastan en vídeos)
   fileMaxB64() {
     var self = this, big = false;
-    this.bridges.forEach(function(b) { if (b.wifi && self.wdUp(b)) big = true; });
+    var any = false;
+    this.bridges.forEach(function(b) { if (b.files === false) return; any = true; if (b.wifi && self.wdUp(b)) big = true; });
+    if (!any && this.bridges.size) return 0; // 3323: ningún puente me pasa archivos (no le he ayudado): quedan ⏳ hasta otro camino
     return big ? GW_WD_FILE_MAX_B64 : GW_FILE_MAX_B64;
   }
   // Para blob_mailbox (vía net_link): trozos a la vez y esperas cuando todo va por puentes
@@ -657,7 +661,8 @@ export class GwLink {
     if (why !== 'ok') { this.askedBy.set(from, { dev: dev, at: Date.now() }); if (this.askedBy.size > 50) this.askedBy.delete(this.askedBy.keys().next().value); }
     else this.askedBy.delete(from);
     var ok = why === 'ok';
-    this._tx(dev, { op: 'a', u: ok ? this._realUrls() : [], wd: ok && this._wdCan() ? 1 : 0, w: ok && this.net.wifi ? 1 : 0 });
+    // 3323 (reciprocidad, decisión B del dueño 24-11): f:1 = también fotos y audios (me ayudó); f:0 = solo textos
+    this._tx(dev, { op: 'a', u: ok ? this._realUrls() : [], wd: ok && this._wdCan() ? 1 : 0, w: ok && this.net.wifi ? 1 : 0, f: ok && helped(from) ? 1 : 0 });
   }
 
   // 3050: tengo internet otra vez → «sí» a los vecinos que me preguntaron hace poco (≤ 10 min) y siguen cerca
@@ -694,6 +699,7 @@ export class GwLink {
     ws.onmessage = function(ev) {
       var d = ev && ev.data;
       if (typeof d !== 'string' || d.length > SRV_DOWN_MAX) return;
+      if (d.length > GW_TEXT_MAX && !helped(from)) { self.stats.rejected++; return; } // 3323: lo grande que baja, solo a quien me ayudó
       // parte 3: lo grande que baja (una foto, un trozo de archivo) también gasta del tope de bytes de quien lo pidió
       if (d.length > SRV_BYTES_MIN && !self._blobSpend(from, d.length, s.dev)) { self.stats.rejected++; return; }
       self.stats.down++;
@@ -713,6 +719,13 @@ export class GwLink {
     if (!kind) { this.stats.rejected++; return; }
     if (kind === 'REQ' && p.b === 1) { s.wd = true; this._bulkMark(s, p.d); } // lo pide «por Wi-Fi Direct»: ahora sí puede
     else if (kind === 'CLOSE' && s.bulk.size) { try { this._bulkEnd(s, JSON.parse(p.d)[1], true); } catch (e) {} }
+    // 3323: quien no me ha ayudado solo pasa textos (ni trozos de archivo ni eventos grandes)
+    if (!helped(from) && (kind === 'BLOB' || (kind === 'EVENT' && p.d.length > GW_TEXT_MAX))) {
+      var rid = ''; try { rid = JSON.parse(p.d)[1].id; } catch (e) {}
+      this.stats.rejected++;
+      this._tx(s.dev, { op: 'e', s: s.sid, d: JSON.stringify(['OK', rid, false, 'restricted: solo textos (reciprocidad del puente)']) });
+      return;
+    }
     if ((kind === 'BLOB' || (kind === 'EVENT' && p.d.length > SRV_BYTES_MIN)) && !this._blobSpend(from, p.d.length, dev)) {
       var bid = ''; try { bid = JSON.parse(p.d)[1].id; } catch (e) {}
       this.stats.rejected++;

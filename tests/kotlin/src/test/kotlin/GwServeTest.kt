@@ -26,12 +26,12 @@ class GwServeTest {
         override fun send(text: String): Boolean { up.add(text); return true }
         override fun close() { closed = true }
     }
-    private class Rig(urls: List<String> = listOf("wss://relay.example"), power: Boolean = true) {
+    private class Rig(urls: List<String> = listOf("wss://relay.example"), power: Boolean = true, val helpers: MutableSet<String> = mutableSetOf("nxaaaaaaaa")) {
         val f = Fake(); val socks = ArrayList<Sock>(); val down = ArrayList<(String) -> Unit>(); val later = ArrayList<() -> Unit>()
         var clock = 1_000_000_000L
         var wifi = true
         val urls = ArrayList(urls)
-        val gw = GwServe({ "nxtttttttt" }, { this.urls }, { wifi }, f, { power }, { true },
+        val gw = GwServe({ "nxtttttttt" }, { this.urls }, { wifi }, f, { power }, { true }, { it in helpers },
             { _, onText, _ -> Sock().also { socks.add(it); down.add(onText) } }, { clock }, { later.add(it) })
         fun runLater() { while (later.isNotEmpty()) later.removeAt(0)() }
     }
@@ -147,6 +147,26 @@ class GwServeTest {
         val sid = opened(r)
         assertTrue(r.gw.handle("s24", ig("f") { it.put("s", sid).put("d", evFrame(1059)) }, ownedOnly = true))
         assertEquals(1, r.socks.single().up.size)
+    }
+
+    @Test fun reciprocidadSoloTextosAQuienNoMeAyudo() {
+        val r = Rig(helpers = mutableSetOf())
+        r.gw.handle("s24", ig("q"))
+        assertEquals(0, r.f.sent.last().second.optInt("f", 9), "oferta: solo textos")
+        val sid = opened(r)
+        r.gw.handle("s24", ig("f") { it.put("s", sid).put("d", evFrame(1059)) })
+        assertEquals(1, r.socks.single().up.size, "el texto pasa")
+        r.gw.handle("s24", ig("f") { it.put("s", sid).put("d", evFrame(1064)) })
+        assertEquals(1, r.socks.single().up.size, "el trozo de archivo no")
+        assertTrue(JSONArray(r.f.sent.last().second.optString("d")).getString(3).startsWith("restricted"))
+        val n = r.f.sent.size
+        r.down.single()("[\"EVENT\",\"s\",{\"content\":\"" + "y".repeat(20000) + "\"}]")
+        assertEquals(n, r.f.sent.size, "lo grande que baja no pasa")
+        r.helpers.add(A)
+        r.gw.handle("s24", ig("q"))
+        assertEquals(1, r.f.sent.last().second.optInt("f"))
+        r.gw.handle("s24", ig("f") { it.put("s", sid).put("d", evFrame(1064)) })
+        assertEquals(2, r.socks.single().up.size, "a quien me ayudó, sí")
     }
 
     @Test fun sinInternetSeCierranLasSesiones() {

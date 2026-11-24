@@ -318,6 +318,7 @@ internal fun NexoBlePlugin.netBgConfigImpl(call: PluginCall) {
     // a quién mandé yo una solicitud y desde cuándo la app ya no escucha su buzón
     val cfg = try { NetBgSaved.fromApp(call.data) } catch (e: NetBgSaved.BadConfig) { call.reject(e.message); return }
     netBg().configure(cfg.me, cfg.relays, cfg.since, cfg.contacts, cfg.known, cfg.reqOut, cfg.reqSince)
+    netBg().gwHelp = cfg.gwHelp // 3323
     netBg().setAckKeys(HashMap(ackKeys))   // #87: para confirmar la ENTREGA (✓✓) con la app cerrada
     // 3192 (#87, dueño 17-11 «Ok»): y se guarda CIFRADA en el teléfono (solo si cambió) para que la escucha arranque aunque Android haya
     // cerrado NEXO (NetBgHome.startWithoutApp). Pasando la cuenta a otro teléfono no se escribe nada (moveFrozen, como saveToFile).

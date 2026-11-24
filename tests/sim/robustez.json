@@ -1221,6 +1221,10 @@
      "prueba": "CONEXIÓN DE PASO QUE ERA UN CONTACTO"
     },
     {
+     "fallo": "3323 (dueño 24-11, decisión B «lo que yo ayudo, me ayudan»): el puente a internet podía usarse a diario para no pagar datos. Ahora el que presta da textos a cualquiera (la emergencia), pero fotos, audios y archivos solo a quien le ayudó en 30 días (le prestó internet o le hizo de puente por Bluetooth); la libreta es de cada teléfono (sin servidor: un ID nuevo o dos teléfonos propios no fabrican crédito ante otros) y la parte nativa aplica lo mismo con la app cerrada. gwreciproco.js + GwServeTest/NetBgSavedTest (Kotlin)",
+     "prueba": "RECIPROCIDAD DEL PUENTE A INTERNET"
+    },
+    {
      "fallo": "Dueño 23-11: un mensaje fijado que se borraba ya no se podía desfijar (el menú del mensaje desaparece con él). Ahora tocar la franja abre «Ir al mensaje» / «Quitar» (un borrado se ve como «Mensaje eliminado» y solo se puede quitar), y borrar un mensaje fijado lo desfija (para mí: solo aquí; para todos: para todos). fijarmsg.js F2/F11",
      "prueba": "QUITAR UN FIJADO AUNQUE SE HAYA BORRADO"
     },
