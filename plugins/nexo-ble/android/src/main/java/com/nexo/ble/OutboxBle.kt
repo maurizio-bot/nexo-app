@@ -51,6 +51,7 @@ class OutboxBle(
         /** Tope de lo que el puente sostiene de un mismo enlace a la vez (que uno solo no llene lo guardado). */
         const val RELAY_HOLD_PER_LINK = 8
         const val RQ_PER_LINK_MIN = 30          // como la app: búsquedas por minuto que se atienden de un mismo enlace
+        const val RELAY_PER_LINK_MIN = 120      // 3320: paquetes para otros por minuto que se reenvían de un mismo enlace (que nadie gaste la batería del puente)
         // 3316: la tubería de flujos (textos largos y archivos por Jump)
         const val PIPE_MAX = 16
         const val PIPE_PER_LINK = 4
@@ -234,6 +235,7 @@ class OutboxBle(
         val out = o.toString()
         if (open != null && open.fromMac == mac && open.dst == dst && open.n == n) { open.last = now; return if (sendPipe(open, out)) true else null } // el trozo 0 otra vez
         if (!relayOk()) { link.log("Puente sin la app: batería baja: no paso el flujo $m para $dst"); return null }
+        if (!relayBudget(mac, now)) return null // 3320: tope por enlace (abrir tuberías también cuenta)
         val to = relayLink(dst, mac, now) ?: run {
             link.log("Puente sin la app: flujo $m para $dst: sin enlace comprobado con él ahora")
             return null
@@ -289,9 +291,18 @@ class OutboxBle(
     }
 
     // ---------- 3315: el puente nativo ----------
+    private val relayRate = HashMap<String, ArrayList<Long>>() // 3320: enlace → reenvíos del último minuto
+    private fun relayBudget(mac: String, t: Long): Boolean {
+        val l = relayRate.getOrPut(mac) { ArrayList() }; l.removeAll { t - it >= 60_000L }
+        if (l.size >= RELAY_PER_LINK_MIN) return false
+        l.add(t); if (relayRate.size > MAX_LINKS) relayRate.remove(relayRate.keys.first())
+        return true
+    }
+
     private fun onRelay(mac: String, r: Relay): Boolean {
         val t = now()
         expireRelay(t)
+        if (!relayBudget(mac, t)) return false // demasiados de un mismo enlace: lo ve la app (si está viva decide ella)
         if (r.msg && !relayOk()) { link.log("Puente sin la app: batería baja: no hago de puente para ${r.key.substringBeforeLast(':')}"); return false }
         val last = relayed[r.key]
         if (last != null && t - last < RELAY_AGAIN_MS) return true // ya salió hace poco: el reintento del que lo mandó no se reenvía otra vez

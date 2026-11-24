@@ -149,3 +149,22 @@ class JumpPipeTest {
         assertFalse(o.heard("s24", chat("msg_2", "nxdddddddd")), "guardado (sin enlace con el destino): la app también lo ve")
     }
 }
+
+class JumpRelayRateTest {
+    @Test fun unMismoEnlaceNoPuedeHacerReenviarSinFin() {
+        val sent = ArrayList<String>()
+        val link = object : OutboxBle.Link {
+            override fun ready(mac: String) = true
+            override fun send(mac: String, json: String): Boolean { sent.add(mac); return true }
+            override fun log(msg: String) {}
+        }
+        var clock = 1_000_000L
+        val o = OutboxBle({ "nxvvvvvvvv" }, { null }, { null }, link, { true }) { clock }
+        o.heard("c01", """{"v":1,"type":"ping","pingId":"p1","ts":1,"fromNexoId":"nxcccccccc"}""")
+        for (i in 0 until 200) o.heard("s24", org.json.JSONObject().put("v", 1).put("type", "chat").put("from", "nxssssssss").put("to", "nxcccccccc").put("msgId", "msg_$i").toString())
+        assertEquals(OutboxBle.RELAY_PER_LINK_MIN, sent.count { it == "c01" }, "como mucho 120 por minuto de un mismo enlace")
+        clock += 61_000L
+        o.heard("s24", org.json.JSONObject().put("v", 1).put("type", "chat").put("from", "nxssssssss").put("to", "nxcccccccc").put("msgId", "msg_x").toString())
+        assertEquals(OutboxBle.RELAY_PER_LINK_MIN + 1, sent.count { it == "c01" }, "pasado el minuto, otra vez")
+    }
+}
