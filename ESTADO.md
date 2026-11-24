@@ -31,9 +31,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   internet en ninguno, con el Vivo en medio con la app cerrada (y Cari lejos del S24): un texto, un texto largo y una foto deben llegar
   con ✓✓; lo mismo con el Vivo con la pantalla apagada un rato largo. Queda: JS vivo y nativo pueden reenviar los dos un paquete corto
   guardado (duplicado inofensivo).
-- **APK EN CURSO (subida otra vez 23-11 ~20:20 México con lo de Play; la de 20:09 se canceló, CI ~85 min, aviso programado):** 3317 preparar archivo grande sin esperas, 3318 llamada en
-  segundo plano sin bajar dos veces, 3319 targetSdk 36 + borde a borde + «atrás» por el despachador + aviso de 16 KB, 3320 tope de
-  reenvíos del puente. MIRAR en el CI el paso «Librerías nativas con páginas de 16 KB» (¿Tor?).
+- **APK 3142 PUBLICADA (24-11 05:15 México; nightly-3142)** = 3317–3323 + Play (1.0.0, AAB «nexo-tienda-1.0.0-3142.aab» ✓, 16 KB OK)
+  + fijados, hover, «Recibiendo…», notas de voz, menú «+», arranque con la imagen del dueño. Variantes de logo (A/B/C) dadas al dueño:
+  falta que elija el ícono. Siguiente: auditoría final (una) tras sus pruebas.
 - **24-11 (prueba del dueño, solo Bluetooth): 3321 PUENTE A INTERNET NATIVO** (`GwServe.kt`, la tablet dormida/cerrada presta su
   internet: antes solo la app) y **3322** (conexión de paso del Vivo cerrada «sin uso» aunque ya era el contacto). Van en la APK resubida
   24-11 ~23:40 México. **3323 RECIPROCIDAD** (decisión B del dueño): por el puente, textos a cualquiera; fotos/audios solo a quien
