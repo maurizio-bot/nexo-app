@@ -990,4 +990,15 @@ export default {
   grp_inv_sub: "{name} te agregó al grupo ({n} personas)",
   grp_inv_reject: "Rechazar",
   grp_inv_toast: "👥 {name} te agregó a «{group}» — acepta o rechaza en «Solicitudes para ti»",
+  // Historial para los nuevos del grupo (dueño 24-11)
+  grp_hist_btn: "Ver mensajes anteriores",
+  grp_hist_asking: "📜 Pidiendo los mensajes anteriores…",
+  grp_hist_done: "📜 Ya tienes los mensajes anteriores del grupo",
+  grp_hist_none: "Nadie del grupo pudo mandar los mensajes anteriores ahora. Prueba más tarde.",
+  grp_hist_closed: "Este grupo no comparte los mensajes anteriores con quien entra",
+  grp_hist_big: "Archivo grande no incluido en el historial",
+  grp_hist_opt: "Los nuevos pueden ver los mensajes anteriores (últimos 30 días)",
+  grp_n_hx1: "Los nuevos ya no ven los mensajes anteriores",
+  grp_n_hx0: "Los nuevos pueden ver los mensajes anteriores",
+  grp_add_note_hist: "Le llega una invitación; al entrar puede pedir los mensajes de los últimos 30 días.",
 };

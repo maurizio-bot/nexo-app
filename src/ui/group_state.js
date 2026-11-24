@@ -67,12 +67,16 @@ export function gsClean(s) {
   // nadie bloqueado es miembro
   if (ad.some(function(x) { return !_has(m, x); }) || (cr && (!_has(m, cr) || ad[0] !== cr))) return null;
   if (bl.some(function(x) { return _has(m, x); })) return null;
-  return { g: g, v: v, p: p, cr: cr, ad: ad, md: s.md, ow: s.ow ? 1 : 0, oa: s.oa ? 1 : 0, m: m, bl: bl, n: s.n, ph: s.ph || '', by: by, t: Number(s.t) || 0, sg: s.sg };
+  var o = { g: g, v: v, p: p, cr: cr, ad: ad, md: s.md, ow: s.ow ? 1 : 0, oa: s.oa ? 1 : 0, m: m, bl: bl, n: s.n, ph: s.ph || '', by: by, t: Number(s.t) || 0, sg: s.sg };
+  if (s.hx) o.hx = 1; // 24-11: los nuevos NO ven los mensajes anteriores (sin la marca, sí)
+  return o;
 }
 
 // Lo que se firma (orden fijo, con una etiqueta propia: no se confunde con ninguna otra firma)
 export function gsSigned(s) {
-  return new TextEncoder().encode(JSON.stringify(['nexo-gs-1', s.g, s.v, s.p || '', s.cr || null, s.ad, s.md, s.ow ? 1 : 0, s.oa ? 1 : 0, s.m, s.bl, s.n, s.ph || '', s.by, s.t || 0]));
+  var a = ['nexo-gs-1', s.g, s.v, s.p || '', s.cr || null, s.ad, s.md, s.ow ? 1 : 0, s.oa ? 1 : 0, s.m, s.bl, s.n, s.ph || '', s.by, s.t || 0];
+  if (s.hx) a.push({ hx: 1 }); // 24-11: solo si está puesta (los estados de antes se firman igual que siempre)
+  return new TextEncoder().encode(JSON.stringify(a));
 }
 
 // HUELLA de un estado: de lo FIRMADO, no de la firma (dos firmas válidas del mismo contenido son el mismo estado: una firma
@@ -142,7 +146,7 @@ export function gsStepError(prev, next) {
   if (JSON.stringify(next.m.slice(0, keepM.length)) !== JSON.stringify(keepM)) return 'orden de miembros cambiado'; // i18n-ok: registro
   // Salir: solo se quita a sí mismo y nada más cambia (si era el creador, pasa al admin más antiguo)
   if (!_has(next.m, a)) {
-    if (removed.length !== 1 || added.length || !same('bl') || !same('n') || !same('ph') || !same('md') || !same('ow') || !same('oa')) return 'una salida que cambia otras cosas'; // i18n-ok: registro
+    if (removed.length !== 1 || added.length || !same('bl') || !same('n') || !same('ph') || !same('md') || !same('ow') || !same('oa') || !same('hx')) return 'una salida que cambia otras cosas'; // i18n-ok: registro
     var ad2 = prev.ad.filter(function(x) { return x !== a; });
     var cr2 = prev.cr;
     if (prev.cr === a) { cr2 = ad2[0] || keepM[0] || null; if (!ad2.length && cr2) ad2 = [cr2]; }   // hereda el admin o el miembro más antiguo
@@ -171,7 +175,7 @@ export function gsStepError(prev, next) {
     if (adDel[i] !== a && !gsCan(prev, a, 'demote')) return 'no puede quitar admins'; // i18n-ok: registro
   }
   if ((!same('n') || !same('ph')) && !gsCan(prev, a, 'edit')) return 'no puede cambiar el nombre ni la foto'; // i18n-ok: registro
-  if ((!same('md') || !same('ow') || !same('oa')) && !gsCan(prev, a, 'settings')) return 'no puede cambiar los ajustes'; // i18n-ok: registro
+  if ((!same('md') || !same('ow') || !same('oa') || !same('hx')) && !gsCan(prev, a, 'settings')) return 'no puede cambiar los ajustes'; // i18n-ok: registro
   return null;
 }
 
@@ -248,13 +252,15 @@ export function gsBranchWins(alt, mine, base) {
 // Un estado «sin cambios» (reafirmar) solo lo firma quien hace de creador (auditoría 23-11, G-B1: un miembro no rellena una rama
 // con estados vacíos para que parezca establecida)
 function _noop(prev, next) {
-  return ['cr', 'ad', 'md', 'ow', 'oa', 'm', 'bl', 'n', 'ph'].every(function(k) { return JSON.stringify(prev[k]) === JSON.stringify(next[k]); });
+  return ['cr', 'ad', 'md', 'ow', 'oa', 'hx', 'm', 'bl', 'n', 'ph'].every(function(k) { return JSON.stringify(prev[k]) === JSON.stringify(next[k]); });
 }
 
 // Estado nuevo a partir de `prev` con cambios `ch` (sin firmar: falta sg). Lo usa quien hace el cambio.
 export function gsNext(prev, by, ch) {
   var s = { g: prev.g, v: (prev.v || 0) + 1, p: gsId(prev), cr: prev.cr, ad: prev.ad.slice(), md: prev.md, ow: prev.ow, oa: prev.oa, m: prev.m.slice(), bl: prev.bl.slice(), n: prev.n, ph: prev.ph || '', by: _nid(by), t: Date.now(), sg: '' };
+  if (prev.hx) s.hx = 1;
   Object.keys(ch || {}).forEach(function(k) { s[k] = ch[k]; });
+  if (!s.hx) delete s.hx; // sin la marca = abierto (como gsClean)
   return s;
 }
 
@@ -267,6 +273,7 @@ export function gsDiff(prev, next) {
     promoted: _minus(next.ad, prev.ad), demoted: _minus(prev.ad, next.ad).filter(function(x) { return _has(next.m, x); }),
     creator: (prev.cr || null) !== (next.cr || null) ? (next.cr || null) : undefined,
     name: prev.n !== next.n ? next.n : undefined, photo: (prev.ph || '') !== (next.ph || '') ? (next.ph || '') : undefined,
-    mode: prev.md !== next.md ? next.md : undefined, ow: prev.ow !== next.ow ? next.ow : undefined, oa: prev.oa !== next.oa ? next.oa : undefined
+    mode: prev.md !== next.md ? next.md : undefined, ow: prev.ow !== next.ow ? next.ow : undefined, oa: prev.oa !== next.oa ? next.oa : undefined,
+    hx: !prev.hx !== !next.hx ? (next.hx ? 1 : 0) : undefined
   };
 }

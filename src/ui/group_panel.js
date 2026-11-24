@@ -188,6 +188,13 @@ export function openGroupSettings(gid) {
       var info = _el('div', 'gset-mode-info', groupOptionsText(s));
       info.style.cssText = 'padding:8px 2px;font-size:15px;'; b.appendChild(info);
     }
+    // Historial para los nuevos (dueño 24-11, opción B): lo cambia quien hace de creador; los demás lo ven
+    var hxOn = !s.hx;
+    var hxRow = _el('label', 'gset-hist'); hxRow.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 2px;font-size:15px;';
+    var hxBox = _el('input', 'gset-hist-box'); hxBox.type = 'checkbox'; hxBox.checked = hxOn; hxBox.disabled = !boss;
+    hxRow.appendChild(hxBox); hxRow.appendChild(_el('span', '', t('grp_hist_opt', 'Los nuevos pueden ver los mensajes anteriores (últimos 30 días)')));
+    if (boss) hxBox.addEventListener('change', function() { _run(gs.setSettings(gid, { hx: hxBox.checked ? 0 : 1 })); });
+    b.appendChild(hxRow);
     // Designar administradores
     if (can('promote')) b.appendChild(_btn('gset-admins', '⭐  ' + t('grp_admins', 'Designar administradores'), function() {
       var items = s.m.map(function(nx) { return { nx: nx, name: nx === me ? t('prof_group_you', 'tú') : gs.memberName(nx), on: s.ad.indexOf(nx) >= 0, locked: nx === s.cr || (s.ad.indexOf(nx) >= 0 && !can('demote') && nx !== me) }; });
@@ -203,7 +210,7 @@ export function openGroupSettings(gid) {
         var cards = typeof window.NEXO_groupCards === 'function' ? window.NEXO_groupCards({ members: s.m.concat(list) }) : null;
         _run(gs.addMembers(gid, list, cards));
       }, GS_MAX_MEMBERS - s.m.length);
-      var note = _el('div', 'gset-note', t('grp_add_note', 'Quien entra no ve los mensajes de antes.')); note.style.cssText = 'font-size:13px;opacity:0.7;margin:6px 2px;'; pk.sheet.insertBefore(note, pk.sheet.lastChild);
+      var note = _el('div', 'gset-note', s.hx ? t('grp_add_note', 'Quien entra no ve los mensajes de antes.') : t('grp_add_note_hist', 'Le llega una invitación; al entrar puede pedir los mensajes de los últimos 30 días.')); note.style.cssText = 'font-size:13px;opacity:0.7;margin:6px 2px;'; pk.sheet.insertBefore(note, pk.sheet.lastChild);
     }));
     // Miembros, con expulsar (G4/G9)
     var mt = _el('div', 'gset-sec', s.m.length + t('prof_group_people', ' personas: ').replace(/:\s*$/, '')); mt.style.cssText = 'font-size:13px;opacity:0.7;margin:14px 2px 2px;'; b.appendChild(mt);

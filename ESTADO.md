@@ -38,7 +38,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   de ese chat (`chat_actions._chatChanged`; `chatactions.js` resp_*, contraprueba HEAD falla).
 - **APK 3150 PUBLICADA (24-11 17:06 México; nightly-3150)** = bloqueo + cabecera (símbolo junto al nombre, sin «En línea») + respuesta solo de su
   chat + 3330 + menú de la burbuja. SIN APK aún: INVITACIÓN A GRUPO (Aceptar/Rechazar, `grupoinvita.js`; pruebas de grupos ajustadas: aceptan
-  al momento). EN CURSO: HISTORIAL PARA NUEVOS (dueño 24-11, opción B: interruptor del creador en Opciones del grupo, activado de entrada; 30 días /
+  al momento). HECHO SIN APK: HISTORIAL PARA NUEVOS (`group_history.js`, `grupohistorial.js`; dueño 24-11, opción B: interruptor del creador en Opciones del grupo, activado de entrada; 30 días /
   500 mensajes; textos, fotos, audios y archivos chicos). `fotocalidad.js` falla también en la 3148 aquí (no es de esto).
 - **3330 (diag. S24↔Austin 14:55, los dos 3148):** enlace recuperado al volver la app = «sin comprobar»: ping ya y 1 sin respuesta lo rehace
   (`ble_connections` _unverified; zombivuelta.js 50 s → 14 s, umbral 25). Va en la APK de la tarde con cabecera + respuesta. Símbolos: el dueño

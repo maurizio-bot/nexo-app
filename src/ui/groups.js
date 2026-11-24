@@ -125,6 +125,7 @@ export class Groups {
   acceptInvite(id) {
     var g = this.get(id);
     if (!g || !g.inv) return false;
+    g.joinedAt = Date.now(); g.joinBy = g.invBy || ''; // historial para los nuevos (24-11): el botón y a quién pedírselo primero
     g.inv = 0; delete g.invBy; delete g.invAt;
     this._save();
     _emit('nexo:groups', { id: g.id });

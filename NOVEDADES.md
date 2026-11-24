@@ -13,6 +13,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <!-- APK -->
 <es-419>
 - Grupos: al agregarte te llega una invitación para aceptar o rechazar.
+- Quien entra a un grupo puede ver los mensajes de los últimos 30 días con «Ver mensajes anteriores» (el creador puede desactivarlo).
 </es-419>
 <!-- /APK -->
 

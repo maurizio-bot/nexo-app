@@ -25,6 +25,7 @@ import { paintTextWithLinks } from './links.js'; // 3161: enlaces que se tocan (
 import { _isBLEContact } from './ble_helpers.js'; // dueño 23-11: vista previa solo de contactos
 import { canStar, toggleStar } from './chat_star.js'; // 3219: mensajes destacados (solo aquí)
 import { canPin, chatPinUse, isPinned, pinOnAction, togglePin, unpinId } from './chat_pin.js'; // 3219: fijar mensajes (para los dos)
+import { onHistoryQuery, onHistoryReply } from './group_history.js'; // historial para los nuevos del grupo (24-11)
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _renderMessage, _sendAttachment, _sendTextTo;
@@ -853,6 +854,8 @@ export function _applyChatAction(senderId, act) {
   if (act && act.act === 'prof') { applyContactProfile(senderId, act); return; } // #dueño 04-11: datos de perfil completos (profile_share.js)
   if (act && act.act === 'psi') { psiOnAction(senderId, act); return; } // #dueño 04-11 paso 3: contactos en común (PSI, psi.js)
   if (act && act.act === 'pin') { pinOnAction(senderId, act); return; } // 3219: fijar un mensaje arriba del chat (chat_pin.js)
+  if (act && act.act === 'ghq') { onHistoryQuery(senderId, act); return; } // 24-11: un nuevo del grupo me pide los mensajes anteriores
+  if (act && act.act === 'ghr') { onHistoryReply(senderId, act); return; } // 24-11: llegan los mensajes anteriores del grupo
   if (act && act.act === 'game') { // ronda 2830+: juegos por turnos; se enruta por act.g
     if (act.g === 'c4') connect4OnAction(senderId, act);   // Conecta 4 (connect4.js)
     else if (act.g === 'tetvs') tetrisVersusOnAction(senderId, act); // Tetris versus por eventos (tetris_versus.js)

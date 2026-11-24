@@ -990,4 +990,15 @@ export default {
   grp_inv_sub: "{name} added you to the group ({n} people)",
   grp_inv_reject: "Decline",
   grp_inv_toast: "👥 {name} added you to «{group}» — accept or decline in «Requests for you»",
+  // Historial para los nuevos del grupo (dueño 24-11)
+  grp_hist_btn: "See earlier messages",
+  grp_hist_asking: "📜 Asking for earlier messages…",
+  grp_hist_done: "📜 You now have the group's earlier messages",
+  grp_hist_none: "No one in the group could send the earlier messages right now. Try later.",
+  grp_hist_closed: "This group doesn't share earlier messages with newcomers",
+  grp_hist_big: "Large file not included in the history",
+  grp_hist_opt: "Newcomers can see earlier messages (last 30 days)",
+  grp_n_hx1: "Newcomers no longer see earlier messages",
+  grp_n_hx0: "Newcomers can see earlier messages",
+  grp_add_note_hist: "They get an invitation; once in, they can ask for the last 30 days of messages.",
 };

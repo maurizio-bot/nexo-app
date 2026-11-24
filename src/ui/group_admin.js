@@ -173,6 +173,7 @@ export var groupAdminMethods = {
     if (ch.md && ch.md !== s.md) { o.md = ch.md; n.push(ch.md === 'c' ? t('grp_n_edit_adm', 'Solo los administradores cambian nombre y foto') : t('grp_n_edit_all', 'Todos pueden cambiar nombre y foto')); }
     if ('ow' in ch && (ch.ow ? 1 : 0) !== s.ow) { o.ow = ch.ow ? 1 : 0; n.push(o.ow ? t('grp_n_ow1', 'Solo los administradores escriben') : t('grp_n_ow0', 'Todos pueden escribir')); }
     if ('oa' in ch && (ch.oa ? 1 : 0) !== s.oa) { o.oa = ch.oa ? 1 : 0; n.push(o.oa ? t('grp_n_oa1', 'Solo los administradores agregan') : t('grp_n_oa0', 'Todos pueden agregar')); }
+    if ('hx' in ch && (ch.hx ? 1 : 0) !== (s.hx ? 1 : 0)) { o.hx = ch.hx ? 1 : 0; n.push(o.hx ? t('grp_n_hx1', 'Los nuevos ya no ven los mensajes anteriores') : t('grp_n_hx0', 'Los nuevos pueden ver los mensajes anteriores')); }
     if (!n.length) return Promise.resolve(s);
     return this.change(gid, o, { notice: '👥 ' + n.join(' · ') });
   },
@@ -466,6 +467,7 @@ export var groupAdminMethods = {
     if (d.mode !== undefined) n.push(d.mode === 'c' ? t('grp_n_edit_adm', 'Solo los administradores cambian nombre y foto') : t('grp_n_edit_all', 'Todos pueden cambiar nombre y foto'));
     if (d.ow !== undefined) n.push(d.ow ? t('grp_n_ow1', 'Solo los administradores escriben') : t('grp_n_ow0', 'Todos pueden escribir'));
     if (d.oa !== undefined) n.push(d.oa ? t('grp_n_oa1', 'Solo los administradores agregan') : t('grp_n_oa0', 'Todos pueden agregar'));
+    if (d.hx !== undefined) n.push(d.hx ? t('grp_n_hx1', 'Los nuevos ya no ven los mensajes anteriores') : t('grp_n_hx0', 'Los nuevos pueden ver los mensajes anteriores'));
     return n.length ? '👥 ' + n.join(' · ') : '';
   },
   // Aviso en el chat del grupo, escrito AQUÍ (no el texto que mandó el otro), como un mensaje de quien hizo el cambio
