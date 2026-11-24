@@ -41,7 +41,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   para esa APK: en el S24 (Android 15/16) la barra de arriba y la de abajo no tapan nada, el teclado no tapa la barra de escribir,
   «atrás» cierra el visor/chat y luego saca la app; una llamada con NEXO en segundo plano; mandar un vídeo grande por Wi-Fi Direct.
   3320 tope de 120 reenvíos por minuto por enlace en el puente nativo (JumpRelayRateTest). DECISIONES 23-11: Wi-Fi Direct = B (grupo
-  al enviar, como está); partes de llamada por relés: sin respuesta, se quedan en A (3 relés). SIGUIENTE: al pasar el CI de la 3316,
+  al enviar, como está); partes de llamada por relés = A (3 relés; dueño: «primero la calidad, después el ahorro»). SIGUIENTE: al pasar el CI de la 3316,
   subir SIN [skip ci] para la APK de 3317–3320 (dueño: «aplícalos a la APK que todavía no sube»). Auditoría final: tras sus pruebas.
 - **VAN EN LA 3125 (build 3314):** 3310 menú de la burbuja sin «Responder» (se responde
   deslizando) y «Editar» arriba; 3311 «Copiar» en la barra de la multiselección; 3312 (COLA 13) con enlace a MTU 23 los archivos desde ~6 KB
