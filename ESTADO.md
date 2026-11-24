@@ -29,8 +29,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **EN CURSO (sesión 23-11 noche, tema: PUENTE NATIVO, COLA 1) — sin APK aún, se junta con el paso 2:** 3315 el nativo con la app
   dormida/cerrada REENVÍA los paquetes Jump para otros por el enlace del destino (sin custodia) y el destino devuelve su ✓✓ también por
   donde llegó; 3315b el nativo contesta «¿quién llega a X?» a sus contactos si tiene enlace con X (detalle en `docs/COLA.md` punto 1).
-  Kotlin: `JumpNativeTest` 11/11, tipos Android OK; sim: 33 cercanas OK. SIGUE: revisión del nativo con Fable y entonces la APK
-  (push sin [skip ci]). Pruebas del dueño para esa APK: S24 → Cari sin internet en ninguno de los dos, con el Vivo en medio con la app
+  Kotlin: `JumpNativeTest` 11/11, tipos Android OK; sim: 33 cercanas OK. Revisión del nativo HECHA (24-11 18:10 México): un
+  arreglo (3315c: si el reenvío falla con el enlace ocupado, se guarda y sale cuando hable); el JS y el nativo pueden reenviar los dos mientras la
+  app está en segundo plano pero viva (duplicado inofensivo: el destino descarta repetidos). APK SUBIDA (push sin [skip ci]); CI ~85 min. Pruebas del dueño para esa APK: S24 → Cari sin internet en ninguno de los dos, con el Vivo en medio con la app
   cerrada (y Cari lejos del S24): debe llegar y verse ✓✓; lo mismo con el Vivo con la pantalla apagada un rato largo.
 - **VAN EN LA 3125 (build 3314):** 3310 menú de la burbuja sin «Responder» (se responde
   deslizando) y «Editar» arriba; 3311 «Copiar» en la barra de la multiselección; 3312 (COLA 13) con enlace a MTU 23 los archivos desde ~6 KB

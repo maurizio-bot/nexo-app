@@ -194,7 +194,7 @@ class OutboxBle(
         if (last != null && t - last < RELAY_AGAIN_MS) return // ya salió hace poco: el reintento del que lo mandó no se reenvía otra vez
         r.from = mac; r.at = t
         val to = relayLink(r.to, mac, t)
-        if (to != null) { relaySend(to, r, t); return }
+        if (to != null && relaySend(to, r, t)) return // si el envío falla (enlace ocupado), se guarda y sale cuando ese enlace hable
         if (held.containsKey(r.key)) return
         // tope por enlace y total: sale lo más viejo (quien llena lo guardado se estorba a sí mismo)
         val mine = held.values.filter { it.from == mac }
