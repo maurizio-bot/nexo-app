@@ -113,7 +113,9 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
    (bottom:80 + 56 de alto) y su ⋮ no quede tapado/difícil de tocar. */
 #main-contacts-list { padding: 6px 10px 150px !important; }
 .ble-contact-row { border-radius: var(--nx-radius); padding: 10px 10px !important; margin: 2px 0; transition: background 0.15s, transform 0.12s; }
-.ble-contact-row:hover, .ble-contact-row.is-pressed { background: var(--nx-surface) !important; }
+.ble-contact-row.is-pressed { background: var(--nx-surface) !important; }
+/* dueño 23-11: el «hover» solo con ratón (en el teléfono se quedaba pegado en la última fila tocada) */
+@media (hover: hover) and (pointer: fine) { .ble-contact-row:hover { background: var(--nx-surface) !important; } }
 .ble-contact-avatar { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08), 0 6px 18px rgba(0, 0, 0, 0.35); }
 .ble-contact-name { font-size: 15.5px !important; letter-spacing: 0.1px; }
 .ble-contact-msg { color: var(--nx-muted) !important; }
