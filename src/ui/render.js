@@ -23,6 +23,7 @@ import { personAvatar } from './person_avatar.js';
 import { _renderOnceBubble } from './once_bubble.js';   // #94 «ver una vez» (foto y, desde la 3163, vídeo)
 import { vaultAppendMessage, vaultHydrateAttachments, vaultLoadFile, vaultLoadMessages, vaultLoadRecent, vaultUpdateMessageStatus } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
+import { isUnheard, loadHeard, markHeard } from './voice_heard.js'; // dueño 23-11: notas de voz recibidas sin escuchar
 import { _locMapOk } from '../vault/vault_shared.js'; // 3201: la miniatura del mapa de una ubicación (solo imagen en base64)
 
 
@@ -544,65 +545,100 @@ export function _renderMessage(msg, skipSave) {
         var audioBlob = new Blob([byteArray], { type: playMime });
         var audioSrc = URL.createObjectURL(audioBlob);
         _objectURLRegistry.push(audioSrc);
-        var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:200px;" id="' + audioId + '_wrap">';
-        audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">▶</button>';
+        // Dueño 23-11: (1) una BARRA con bolita para adelantar o regresar el audio arrastrando o tocando donde se quiera; la onda se pinta
+        // hasta donde va (las barras ya no saltan al azar: su alto sale del id, igual siempre). (2) Las RECIBIDAS sin escuchar llevan el
+        // botón y la bolita en cian y un punto junto al tiempo; al darle a reproducir pasan a escuchadas (voice_heard.js, solo aquí).
+        var NBARS = 28, seed = 0;
+        for (var si = 0; si < String(msgId).length; si++) seed = (seed * 31 + String(msgId).charCodeAt(si)) >>> 0;
+        var audioHtml = '<div class="vn-wrap" style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:220px;" id="' + audioId + '_wrap">';
+        audioHtml += '<button id="' + audioId + '_play" class="vn-play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">▶</button>';
         audioHtml += '<div style="flex:1;min-width:0;">';
-        audioHtml += '<div id="' + audioId + '_wave" style="height:24px;display:flex;align-items:flex-end;gap:2px;opacity:0.6;">';
-        for (var w = 0; w < 24; w++) {
-          var h = 4 + Math.random() * 16;
-          audioHtml += '<div class="wave-bar" data-idx="' + w + '" style="width:3px;height:' + h + 'px;background:#fff;border-radius:1px;flex-shrink:0;transition:height 0.15s ease;"></div>';
+        audioHtml += '<div id="' + audioId + '_seek" class="vn-seek" style="position:relative;height:26px;display:flex;align-items:center;gap:2px;touch-action:none;cursor:pointer;">';
+        for (var w = 0; w < NBARS; w++) {
+          seed = (seed * 1103515245 + 12345) >>> 0;
+          var h = 4 + (seed % 17);
+          audioHtml += '<div class="wave-bar" data-idx="' + w + '" style="width:3px;height:' + h + 'px;background:rgba(255,255,255,0.45);border-radius:1px;flex-shrink:0;"></div>';
         }
+        audioHtml += '<div class="vn-thumb" style="position:absolute;top:50%;left:0;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px rgba(0,0,0,0.25);pointer-events:none;"></div>';
         audioHtml += '</div>';
-        audioHtml += '<div id="' + audioId + '_time" style="font-size:11px;color:#aaa;margin-top:3px;">00:00 / ' + durStr + '</div>';
+        audioHtml += '<div style="display:flex;align-items:center;gap:6px;margin-top:3px;"><span id="' + audioId + '_time" style="font-size:11px;color:#aaa;">00:00 / ' + durStr + '</span><span class="vn-dot" style="display:none;width:7px;height:7px;border-radius:50%;background:#00c8ff;"></span></div>';
         audioHtml += '</div>';
         // 3131 (dueño 15-11: «el botón de ×1.5 y ×2 para acelerar al escuchar un audio»): velocidad de las notas de voz
         audioHtml += '<button id="' + audioId + '_rate" class="vn-rate" style="flex-shrink:0;min-width:42px;height:26px;padding:0 8px;border-radius:13px;background:rgba(255,255,255,0.18);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">' + _rateLabel(_voiceRate()) + '</button>';
         audioHtml += '</div>';
         contentDiv.innerHTML = audioHtml;
+        var rxTs = msg.rxTs || msg.timestamp || msg.ts || Date.now();
         setTimeout(function() {
           var btn = document.getElementById(audioId + '_play');
           var timeEl = document.getElementById(audioId + '_time');
-          var waveEl = document.getElementById(audioId + '_wave');
+          var seekEl = document.getElementById(audioId + '_seek');
+          var wrapEl = document.getElementById(audioId + '_wrap');
           if (!btn) return;
+          var thumbEl = seekEl ? seekEl.querySelector('.vn-thumb') : null;
+          var bars = seekEl ? seekEl.querySelectorAll('.wave-bar') : [];
           var audioEl = new Audio(audioSrc);
-          var playing = false;
-          var progressInterval = null;
-          var animInterval = null;
+          var playing = false, dragging = false, dragPct = 0;
+          // sin escuchar (solo lo recibido)
+          var paintHeard = function(unheard) {
+            if (!wrapEl) return;
+            wrapEl.classList.toggle('vn-unheard', !!unheard);
+            btn.style.background = unheard ? '#00c8ff' : 'rgba(255,255,255,0.15)';
+            if (thumbEl) thumbEl.style.background = unheard ? '#00c8ff' : '#fff';
+            var dot = wrapEl.querySelector('.vn-dot'); if (dot) dot.style.display = unheard ? 'inline-block' : 'none';
+          };
+          if (!isOwn) loadHeard().then(function() { paintHeard(isUnheard(msgId, rxTs)); });
+          var totalSecs = function() { var d = audioEl.duration; return (isFinite(d) && d > 0) ? d : (Number(dur) || 0); };
+          var setPct = function(p) {
+            p = Math.max(0, Math.min(1, p || 0));
+            if (thumbEl) thumbEl.style.left = (p * 100) + '%';
+            var lim = p * bars.length;
+            for (var b = 0; b < bars.length; b++) bars[b].style.background = b < lim ? '#00c8ff' : 'rgba(255,255,255,0.45)';
+          };
           function _updateTime() {
             if (!timeEl || !audioEl) return;
-            var cur = Math.floor(audioEl.currentTime || 0);
-            timeEl.textContent = _fmtTime(cur) + ' / ' + durStr;
+            var tot = totalSecs(), cur = dragging ? dragPct * tot : (audioEl.currentTime || 0);
+            timeEl.textContent = _fmtTime(Math.floor(cur)) + ' / ' + durStr;
+            if (!dragging) setPct(tot > 0 ? cur / tot : 0);
           }
-          function _animateWave() {
-            if (!waveEl) return;
-            var bars = waveEl.querySelectorAll('.wave-bar');
-            for (var b = 0; b < bars.length; b++) {
-              var nh = 4 + Math.random() * 16;
-              bars[b].style.height = nh + 'px';
-            }
-          }
+          audioEl.addEventListener('timeupdate', _updateTime);
           function _pausePlayback() {
             playing = false;
             btn.innerHTML = '▶';
-            if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
-            if (animInterval) { clearInterval(animInterval); animInterval = null; }
-            if (audioEl) {
-              audioEl.pause();
-            }
-            if (waveEl) {
-              var bars = waveEl.querySelectorAll('.wave-bar');
-              for (var b = 0; b < bars.length; b++) {
-                bars[b].style.height = (4 + Math.random() * 8) + 'px';
-              }
-            }
+            if (audioEl) audioEl.pause();
             if (_curVoiceStop === _pausePlayback) _curVoiceStop = null;
           }
           function _stopPlayback() {
             _pausePlayback();
-            if (audioEl) {
-              audioEl.currentTime = 0;
-            }
+            if (audioEl) { try { audioEl.currentTime = 0; } catch (e0) {} }
+            setPct(0);
             _updateTime();
+          }
+          // arrastrar o tocar la barra: la bolita va adonde está el dedo y, al soltar, el audio sigue desde ahí
+          if (seekEl) {
+            var pctAt = function(x) { var r = seekEl.getBoundingClientRect(); return r.width > 0 ? (x - r.left) / r.width : 0; };
+            seekEl.addEventListener('pointerdown', function(e) {
+              e.stopPropagation(); // no es deslizar para responder ni mantener pulsado
+              dragging = true; dragPct = Math.max(0, Math.min(1, pctAt(e.clientX)));
+              try { seekEl.setPointerCapture(e.pointerId); } catch (ec) {}
+              setPct(dragPct); _updateTime();
+            });
+            seekEl.addEventListener('pointermove', function(e) {
+              if (!dragging) return;
+              e.stopPropagation();
+              dragPct = Math.max(0, Math.min(1, pctAt(e.clientX)));
+              setPct(dragPct); _updateTime();
+            });
+            var endDrag = function(e) {
+              if (!dragging) return;
+              if (e) e.stopPropagation();
+              dragging = false;
+              var tot = totalSecs();
+              if (tot > 0) { try { audioEl.currentTime = Math.min(tot - 0.05, dragPct * tot); } catch (es) {} }
+              setPct(dragPct); _updateTime();
+            };
+            seekEl.addEventListener('pointerup', endDrag);
+            seekEl.addEventListener('pointercancel', endDrag);
+            seekEl.addEventListener('click', function(e) { e.stopPropagation(); });
           }
           audioEl.onended = function() { _stopPlayback(); _playNextVoice(btn); }; // 2977: la siguiente nota de voz arranca sola
           audioEl.onerror = function(e) {
@@ -624,12 +660,11 @@ export function _renderMessage(msg, skipSave) {
             if (!playing) {
               _stopVoicePlayback(); // para cualquier otra nota de voz que esté sonando
               onRate(); // 3131: a la velocidad elegida
+              if (!isOwn) { markHeard(msgId); paintHeard(false); } // dueño 23-11: ya escuchada
               audioEl.play().then(function() {
                 btn.innerHTML = '⏸';
                 playing = true;
                 _curVoiceStop = _pausePlayback;
-                progressInterval = setInterval(_updateTime, 500);
-                animInterval = setInterval(_animateWave, 200);
               }).catch(function(err) {
                 console.log('[AUDIO] Play error:', err.message);
                 _stopPlayback();

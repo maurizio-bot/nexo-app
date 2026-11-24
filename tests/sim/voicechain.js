@@ -90,6 +90,9 @@ async function sendVoice(p) { micTap(p); await sleep(500); click(p.win, $(p, 'vo
   const audios = B.win.__audios;
   r.audios_creados = audios.length;
 
+  // dueño 23-11: las tres recibidas, SIN escuchar (botón cian y punto)
+  const unheard = () => btns().map((b) => !!(b.closest('.vn-wrap') && b.closest('.vn-wrap').classList.contains('vn-unheard')));
+  r.H1_tres_sin_escuchar = JSON.stringify(unheard()) === '[true,true,true]';
   // ▶ en la primera → suena la primera
   click(B.win, btns()[0]); await sleep(400);
   r.primera_suena = btns()[0].innerHTML === '⏸' && audios.some((a) => a.__playing);
@@ -101,12 +104,32 @@ async function sendVoice(p) { micTap(p); await sleep(500); click(p.win, $(p, 'vo
   // Termina la segunda → la tercera NO (hay un texto en medio); nada suena
   audios.filter((a) => a.__playing).forEach((a) => a.dispatchEvent(new B.win.Event('ended'))); await sleep(900);
   r.tercera_no_arranca = btns()[2].innerHTML === '▶' && !audios.some((a) => a.__playing);
+  r.H2_solo_falta_la_tercera = JSON.stringify(unheard()) === '[false,false,true]';
   // ▶ en la tercera a mano → suena (y termina sin más)
   click(B.win, btns()[2]); await sleep(400);
   r.tercera_a_mano = btns()[2].innerHTML === '⏸';
+  r.H3_todas_escuchadas = JSON.stringify(unheard()) === '[false,false,false]';
   audios.filter((a) => a.__playing).forEach((a) => a.dispatchEvent(new B.win.Event('ended'))); await sleep(900);
   r.fin_limpio = !audios.some((a) => a.__playing) && btns().every((b) => b.innerHTML === '▶');
 
+  // dueño 23-11: la bolita de la barra: tocar a la mitad → la bolita va a la mitad y el audio sigue desde ahí
+  const seek = B.win.document.querySelectorAll('#messages-container .message .vn-seek')[0];
+  r.S0_barra_y_bolita = !!(seek && seek.querySelector('.vn-thumb'));
+  if (seek) {
+    seek.getBoundingClientRect = () => ({ left: 100, width: 200, top: 0, height: 26, right: 300, bottom: 26 });
+    const pev = (type, x) => { const e = new B.win.Event(type, { bubbles: true }); Object.defineProperty(e, 'clientX', { value: x }); Object.defineProperty(e, 'pointerId', { value: 1 }); seek.dispatchEvent(e); };
+    const aud = audios.find((a) => a.__playing === false) || audios[0];
+    pev('pointerdown', 200); pev('pointermove', 250); pev('pointerup', 250);
+    await sleep(100);
+    const th = seek.querySelector('.vn-thumb');
+    r.S1_bolita_a_tres_cuartos = th.style.left === '75%';
+    const painted = Array.from(seek.querySelectorAll('.wave-bar')).filter((b) => /0, 200, 255|#00c8ff/i.test(b.style.background)).length;
+    r.S2_onda_pintada_hasta_ahi = painted === 21;
+    const t0 = audios.map((a) => a.currentTime);
+    r.S3_audio_salta = audios.some((a) => a.currentTime > 0);
+    r.S3_detalle = t0.map((x) => Math.round(x * 10) / 10);
+    void aud;
+  }
   // 3131: velocidad
   const rates = () => Array.from(B.win.document.querySelectorAll('#messages-container .message .vn-rate'));
   r.V1_boton_en_cada_nota = rates().length === 3 && rates().every((b) => b.textContent === '1×');
@@ -124,7 +147,7 @@ async function sendVoice(p) { micTap(p); await sleep(500); click(p.win, $(p, 'vo
   playingNow().forEach((a) => a.dispatchEvent(new B.win.Event('ended'))); await sleep(900);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
   const ok = r.contactos && r.dos_notas_llegan_s !== null && r.tres_notas_llegan_s !== null && r.reproductores === 3 && r.texto_entre_2_y_3 && r.primera_suena && r.primera_vuelve_a_play &&
-    r.segunda_arranca_sola && r.tercera_no_arranca && r.tercera_a_mano && r.fin_limpio && r.V1_boton_en_cada_nota && r.V2_a_1_5 && r.V3_cadena_a_1_5 && r.V4_a_2 && r.V5_vuelve_a_1 && !r.errores.length;
+    r.segunda_arranca_sola && r.tercera_no_arranca && r.tercera_a_mano && r.fin_limpio && r.H1_tres_sin_escuchar && r.H2_solo_falta_la_tercera && r.H3_todas_escuchadas && r.S0_barra_y_bolita && r.S1_bolita_a_tres_cuartos && r.S2_onda_pintada_hasta_ahi && r.S3_audio_salta && r.V1_boton_en_cada_nota && r.V2_a_1_5 && r.V3_cadena_a_1_5 && r.V4_a_2 && r.V5_vuelve_a_1 && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('VOICECHAIN ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_voicechain.txt'), logs.join('\n'));

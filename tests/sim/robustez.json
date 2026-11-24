@@ -1215,6 +1215,10 @@
     {
      "fallo": "Dueño 23-11: un mensaje fijado que se borraba ya no se podía desfijar (el menú del mensaje desaparece con él). Ahora tocar la franja abre «Ir al mensaje» / «Quitar» (un borrado se ve como «Mensaje eliminado» y solo se puede quitar), y borrar un mensaje fijado lo desfija (para mí: solo aquí; para todos: para todos). fijarmsg.js F2/F11",
      "prueba": "QUITAR UN FIJADO AUNQUE SE HAYA BORRADO"
+    },
+    {
+     "fallo": "Dueño 23-11: en una nota de voz no se podía adelantar ni regresar, y entre varias recibidas no se sabía cuál faltaba escuchar. Ahora la onda es una barra con bolita (tocar o arrastrar; la onda se pinta hasta donde va) y las recibidas sin escuchar llevan el botón y la bolita en cian y un punto; al darle a reproducir pasan a escuchadas (solo en este teléfono, voice_heard.js; lo de antes de la actualización cuenta como escuchado). voicechain.js H1–H3, S0–S3",
+     "prueba": "NOTA DE VOZ: BARRA PARA ADELANTAR Y SIN ESCUCHAR"
     }
    ],
    "debiles": [
