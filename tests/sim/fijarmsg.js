@@ -148,14 +148,13 @@ function installHold(P) {
   const seq = [];
   for (let i = 0; i < 4; i++) {
     const cur = bar(A); if (!cur) break;
-    click(A.win, $(A, '#nexo-pin-bar')); await sleep(150); // dueño 23-11: tocar abre el menú; «Ir al mensaje» salta
+    click(A.win, $(A, '#nexo-pin-bar')); await sleep(400); // dueño 24-11: un toque salta al mensaje y la franja pasa al siguiente
     if (i === 0) r.F2_menu = Array.from(A.win.document.querySelectorAll('#nexo-pin-menu .pm-item')).map((x) => x.textContent);
-    click(A.win, A.win.document.querySelector('#nexo-pin-menu .pm-item')); await sleep(400);
     seq.push({ salta: highlighted(A, cur.id), era: cur.msg, ahora: (bar(A) || {}).msg });
   }
   r.F2_rota = seq.map((x) => x.era + (x.salta ? ' ✓' : ' ✗')).join(' → ');
   r.F2_B_s = await waitFor(() => JSON.stringify(pinsOf(B, idA)) === JSON.stringify([m[2].msgId, m[1].msgId, m[0].msgId]), 20000);
-  r.F2_ok = JSON.stringify(r.F2_menu) === JSON.stringify(['Ir al mensaje', 'Quitar']) && !!b2 && b2.lbl === 'Mensaje fijado · 1/3' && b2.msg === '[F] mensaje 3' && b2.ticks === 3 && b2.on === 0 &&
+  r.F2_ok = JSON.stringify(r.F2_menu) === '[]' && !!b2 && b2.lbl === 'Mensaje fijado · 1/3' && b2.msg === '[F] mensaje 3' && b2.ticks === 3 && b2.on === 0 &&
     r.F2_rota === '[F] mensaje 3 ✓ → [F] mensaje 2 ✓ → [F] mensaje 1 ✓ → [F] mensaje 3 ✓' && r.F2_B_s !== null;
 
   // ---------- F3: un cuarto quita el más antiguo ----------
@@ -192,7 +191,8 @@ function installHold(P) {
   await closeChat(B); await openChat(B, idA); await sleep(500);
   const b11 = bar(B);
   r.F11_franja = b11 ? b11.msg : null;
-  click(B.win, $(B, '#nexo-pin-bar')); await sleep(200);
+  // dueño 24-11: pulsación larga (en el WebView de Android llega como «contextmenu») = menú para quitar
+  $(B, '#nexo-pin-bar').dispatchEvent(new B.win.MouseEvent('contextmenu', { bubbles: true, cancelable: true })); await sleep(200);
   r.F11_menu = Array.from(B.win.document.querySelectorAll('#nexo-pin-menu .pm-item')).map((x) => x.textContent);
   const quitar = Array.from(B.win.document.querySelectorAll('#nexo-pin-menu .pm-item')).find((x) => x.textContent === 'Quitar');
   if (quitar) click(B.win, quitar);

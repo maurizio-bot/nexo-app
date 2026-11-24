@@ -165,7 +165,7 @@ function _apply(cid, id, on, ts, by) {
 // ---------- la franja de arriba del chat ----------
 function _closePinMenu() { var m = document.getElementById('nexo-pin-menu'); if (m) m.remove(); document.removeEventListener('click', _outside, true); }
 function _outside(ev) { var m = document.getElementById('nexo-pin-menu'); if (m && !m.contains(ev.target)) _closePinMenu(); }
-function _pinMenu(bar, cid, id, gone, idx, count) {
+function _pinMenu(bar, cid, id) {
   if (document.getElementById('nexo-pin-menu')) { _closePinMenu(); return; }
   var menu = document.createElement('div');
   menu.id = 'nexo-pin-menu';
@@ -176,11 +176,7 @@ function _pinMenu(bar, cid, id, gone, idx, count) {
     b.onclick = function(e) { if (e) e.stopPropagation(); _closePinMenu(); fn(); };
     menu.appendChild(b);
   };
-  if (!gone) add(t('pin_go', 'Ir al mensaje'), '', function() {
-    _shown[cid] = (idx + 1) % (count || 1);   // la próxima vez, el siguiente fijado
-    jumpToMessage(id);
-    renderPinBar();
-  });
+  // Dueño 24-11: el menú (pulsación larga) es solo para quitar; tocar ya salta al mensaje y pasa al siguiente fijado
   add(t('pin_remove', 'Quitar'), 'pm-danger', function() { unpinId(cid, id, false); });
   bar.appendChild(menu);
   setTimeout(function() { document.addEventListener('click', _outside, true); }, 0);
@@ -211,12 +207,35 @@ export function renderPinBar() {
       bar = document.createElement('div');
       bar.id = 'nexo-pin-bar';
       bar.setAttribute('role', 'button');
-      // Dueño 23-11: tocar la franja abre un menú pequeño: «Ir al mensaje» (si aún existe) y «Quitar» (siempre, aunque esté borrado)
+      // Dueño 24-11 (sustituye al menú al tocar del 23-11): un TOQUE salta al fijado que se ve y la franja pasa al siguiente; una
+      // PULSACIÓN LARGA abre «Quitar» (también para un fijado cuyo mensaje se borró)
+      var lpT = null, lpFired = false, lpX = 0, lpY = 0;
+      var openMenu = function() {
+        var c = _normId(_getCurrentContactId()), cur = bar.dataset.msgId;
+        if (!c || !cur || document.getElementById('nexo-pin-menu')) return;
+        lpFired = true;
+        _pinMenu(bar, c, cur);
+      };
+      var lpClear = function() { if (lpT) { clearTimeout(lpT); lpT = null; } };
+      bar.addEventListener('pointerdown', function(ev) {
+        if (ev.target && ev.target.closest && ev.target.closest('#nexo-pin-menu')) return;
+        lpFired = false; lpX = ev.clientX || 0; lpY = ev.clientY || 0; lpClear();
+        lpT = setTimeout(function() { lpT = null; openMenu(); }, 500);
+      });
+      bar.addEventListener('pointermove', function(ev) { if (lpT && (Math.abs((ev.clientX || 0) - lpX) > 10 || Math.abs((ev.clientY || 0) - lpY) > 10)) lpClear(); });
+      bar.addEventListener('pointerup', lpClear);
+      bar.addEventListener('pointercancel', lpClear);
+      // en Android la pulsación larga del WebView llega también como «contextmenu»
+      bar.addEventListener('contextmenu', function(ev) { if (ev && ev.preventDefault) ev.preventDefault(); lpClear(); openMenu(); });
       bar.onclick = function(ev) {
         if (ev && ev.target && ev.target.closest && ev.target.closest('#nexo-pin-menu')) return;
+        if (lpFired) { lpFired = false; return; }          // el toque que cierra la pulsación larga no salta
+        if (document.getElementById('nexo-pin-menu')) { _closePinMenu(); return; }
         var c = _normId(_getCurrentContactId()), cur = bar.dataset.msgId;
         if (!c || !cur) return;
-        _pinMenu(bar, c, cur, bar.dataset.gone === '1', Number(bar.dataset.idx) || 0, Number(bar.dataset.count) || 1);
+        _shown[c] = ((Number(bar.dataset.idx) || 0) + 1) % (Number(bar.dataset.count) || 1); // la franja pasa al siguiente fijado
+        if (bar.dataset.gone !== '1') jumpToMessage(cur);
+        renderPinBar();
       };
     }
     if (bar.parentNode !== header.parentNode || bar.previousSibling !== header) header.parentNode.insertBefore(bar, header.nextSibling);

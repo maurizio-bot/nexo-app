@@ -36,7 +36,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   (salvo todos muertos o el menor > 3 min sin hacerlo); lo que el menor cerró hace < 10 min no gana por «nuevo» (sin vaivén); el chat
   abierto no frena al que decide; quitado el freno 3257 (el mayor ya puede abrir un cliente nuevo para salir de un servidor viejo).
   Pruebas: `bledup.js`, `dupserver.js` (rehecha) y vecinas OK. 3328 = con los relés limitando («rate-limited») el reenvío de pendientes
-  espera 15 s → 2 min (`reenviolimite.js`). PRUEBA DEL DUEÑO: S24 con Roberto/Alex cerca, salir y volver a NEXO varias veces → sin
+  espera 15 s → 2 min (`reenviolimite.js`). 3329 (dueño 24-11): franja del fijado: un toque salta y pasa al siguiente; pulsación larga = «Quitar» (`fijarmsg.js`). PRUEBA DEL DUEÑO: S24 con Roberto/Alex cerca, salir y volver a NEXO varias veces → sin
   «zombi» automático. Siguiente: (2) pruebas del dueño de la 3146; (3) logo A/B/C; (4) auditoría final (una).
 - **APK 3146 PUBLICADA (24-11 10:25 México; nightly-3146; AAB nexo-tienda-1.0.0-3146 ✓, 16 KB OK)** = 3142 + 3324 Tor nunca se apaga
   (cierres SIGABRT del S24), 3325 enlace del puente no «muerto», 3326 sincronía firmada con varios números, pulido (esfera del audio con
