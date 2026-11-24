@@ -1184,6 +1184,14 @@
    "sintoma": "resumen diario 23-11 (automático)",
    "categoria": "Sin fallo nuevo",
    "causa": "Poco uso (3 enviados, 13 recibidos); Wi-Fi local «su app no contesta» ×3 (el otro dormido), zombi ×1. Nada nuevo."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "08:42",
+   "nx": "nx1n36c283, build 3142",
+   "sintoma": "cierre_fallo automático (08:13 FALLO nativo, detrás)",
+   "categoria": "Fallo de la app (ya arreglado)",
+   "causa": "Otra vez Tor (SIGABRT, destroyed mutex en tor_cond_wait): mismo origen que 06:01; el arreglo 3324 va en la APK en curso. Además: «sincronía sin firma válida» con Roberto (3142) → 3326."
   }
  ]
 }

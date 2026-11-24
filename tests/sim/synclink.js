@@ -77,6 +77,12 @@ const logs = [];
   r.sr_n10_numero_viejo_ignorado = (await trySr(good)) === 0;       // firma vieja con número que no es el pedido ahora
   const good2 = await forge(ss2.n, 0);
   r.sr_n10_otro_l_ignorado = (await trySr(Object.assign({}, good2, { l: 7 }))) === 0; // l cambiado: la firma no cuadra
+  // 24-11 (diagnóstico S24 08:41: las respuestas de Roberto, 3142, todas «sin firma válida»): dos «ss» seguidas al mismo contacto (al conectar
+  // y al volver la app); la respuesta firmada de la PRIMERA también vale (antes la segunda pisaba el número y se rechazaba)
+  const ss3 = await askSs(); const ss4 = await askSs();
+  const good3 = await forge(ss3.n, 0), good4 = await forge(ss4.n, 0);
+  r.sr_n10_dos_seguidas_primera = (await trySr(good3)) === 1;
+  r.sr_n10_dos_seguidas_segunda = (await trySr(good4)) === 1;
   AS._ssNonces && AS._ssNonces.clear();
   r.sr_n10_sin_ss_ignorado = (await trySr(good2)) === 0;            // nadie se lo pidió
   AS._contactOf = oContact;

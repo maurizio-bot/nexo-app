@@ -1237,6 +1237,10 @@
      "prueba": "EL ENLACE DEL PUENTE A INTERNET NO SE DA POR MUERTO"
     },
     {
+     "fallo": "3326 (diagnóstico S24 24-11 08:41, Roberto en 3142): «Respuesta de sincronía sin firma válida» con un contacto al día: el número que la respuesta debe firmar se guardaba uno solo por enlace y cada nuevo pedido (al conectar, al volver la app) pisaba al anterior, así que la respuesta al primero se rechazaba y no se reenviaba lo que el otro no tenía. Ahora se guardan varios por contacto (2 min, uno solo uso cada uno). synclink.js (dos_seguidas; contraprueba: sin el cambio falla)",
+     "prueba": "SINCRONÍA FIRMADA: DOS PEDIDOS SEGUIDOS"
+    },
+    {
      "fallo": "Dueño 23-11: un mensaje fijado que se borraba ya no se podía desfijar (el menú del mensaje desaparece con él). Ahora tocar la franja abre «Ir al mensaje» / «Quitar» (un borrado se ve como «Mensaje eliminado» y solo se puede quitar), y borrar un mensaje fijado lo desfija (para mí: solo aquí; para todos: para todos). fijarmsg.js F2/F11",
      "prueba": "QUITAR UN FIJADO AUNQUE SE HAYA BORRADO"
     },

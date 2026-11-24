@@ -625,9 +625,14 @@ export const ackIncoming = {
   _srSigned(deviceId, peerNexoId, msg) {
     var nx = _normId(peerNexoId), c = this._contactOf(null, nx);
     if (!c || c.proto !== 2 || !c.publicKey || c.pendingKey) return Promise.resolve(true);
-    var want = this._ssNonces && this._ssNonces.get(deviceId);
-    if (!want || want.nx !== nx || Date.now() - want.at > 120000 || String(msg.n || '') !== want.n || !msg.a) return Promise.resolve(false);
-    this._ssNonces.delete(deviceId); // una sola vez
+    // 24-11 (diagnóstico S24 08:41: TODAS las respuestas de Roberto, 3142, «sin firma válida»): el número se guardaba por ENLACE (deviceId)
+    // y uno solo: al pedir la sincronía dos o tres veces seguidas (al conectar, al volver la app, por cada enlace) cada pedido pisaba al
+    // anterior, y la dirección del enlace no siempre se escribe igual al pedir y al contestar. Ahora se guardan los números pendientes por
+    // CONTACTO (varios, 2 min cada uno) y la respuesta vale si firma cualquiera de ellos; cada número sirve una sola vez.
+    var list = (this._ssNonces && this._ssNonces.get(nx)) || [], now = Date.now(), n = String(msg.n || '');
+    var want = list.filter(function(w) { return w.n === n && now - w.at <= 120000; })[0];
+    if (!want || !msg.a) return Promise.resolve(false);
+    this._ssNonces.set(nx, list.filter(function(w) { return w !== want && now - w.at <= 120000; })); // una sola vez
     var l = msg.l || 0;
     return this._whenMyNx().then(function(me) {
       return e2eAckTag(c.publicKey, 'sr|' + want.n + '|' + l + '|' + nx + '|' + _normId(me));
@@ -642,7 +647,11 @@ export const ackIncoming = {
         // C-N10: número al azar que la respuesta («sr») tiene que firmar (uno por enlace; vale 2 min)
         var n = Array.prototype.map.call(window.crypto.getRandomValues(new Uint8Array(8)), function(b) { return ('0' + b.toString(16)).slice(-2); }).join('');
         if (!self._ssNonces) self._ssNonces = new Map();
-        self._ssNonces.set(deviceId, { n: n, nx: _normId(peerNexoId), at: Date.now() });
+        var snx = _normId(peerNexoId), now0 = Date.now();
+        var pend = (self._ssNonces.get(snx) || []).filter(function(w) { return now0 - w.at <= 120000; }).slice(-7);
+        pend.push({ n: n, at: now0 });
+        self._ssNonces.set(snx, pend);
+        if (self._ssNonces.size > 200) self._ssNonces.delete(self._ssNonces.keys().next().value);
         var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ss', fr: (self.ble && self.ble.localNexoId) || 'unknown', l: myLastSeq, n: n });
         if (self.ble && self.ble._sendMessageNative) {
           self.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
