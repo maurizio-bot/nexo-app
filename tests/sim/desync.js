@@ -50,7 +50,8 @@ async function boot(name, native, dir) {
 }
 const click = (win, el) => el && el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
 async function openChatWith(p, name) {
-  const row = Array.from(p.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).find((r) => (r.querySelector('.ble-contact-name') || {}).textContent === name);
+  // 24-11: la fila de un grupo sale al aceptar la invitación (un momento después): se espera hasta 5 s
+  let row = null; for (let i = 0; i < 25 && !row; i++) { row = Array.from(p.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).find((r) => (r.querySelector('.ble-contact-name') || {}).textContent === name); if (!row) await sleep(200); }
   click(p.win, row); await sleep(500); return !!row;
 }
 function sendText(p, t) { const i = p.win.document.getElementById('message-input'); i.value = t; i.dispatchEvent(new p.win.Event('input', { bubbles: true })); click(p.win, p.win.document.getElementById('send-btn')); }
