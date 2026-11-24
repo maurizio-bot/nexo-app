@@ -31,6 +31,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   internet en ninguno, con el Vivo en medio con la app cerrada (y Cari lejos del S24): un texto, un texto largo y una foto deben llegar
   con ✓✓; lo mismo con el Vivo con la pantalla apagada un rato largo. Queda: JS vivo y nativo pueden reenviar los dos un paquete corto
   guardado (duplicado inofensivo).
+- **SIGUIENTE (sesión nueva, 24-11 ~10:30 México):** (1) 🔴 ZOMBIS: 10 hoy en la 3142 (S24 con Roberto, Alex, Zhelowsky): al volver la app hay
+  dos enlaces por contacto, el desempate común (_dupBleLinksToClose, papel) deja el de servidor que el S24 ve a MTU 23 y ese deja de contestar
+  pings. NO basta con preferir el MTU (rompe bledup.js mtu_distinto/mismo_papel: cada lado cerraría uno distinto). Mirarlo con el Bluetooth en
+  el servicio nativo o con un acuerdo explícito entre los dos lados. (2) Pruebas del dueño de la 3146 (cierres Tor, puente con Roberto, audio,
+  menú «+», fijado). (3) Logo: el dueño elige A/B/C (scratchpad, no versionado; el arranque ya usa su imagen). (4) Auditoría final (una).
+  Sin avisos programados activos (el de CI ya se disparó).
 - **APK 3146 PUBLICADA (24-11 10:25 México; nightly-3146; AAB nexo-tienda-1.0.0-3146 ✓, 16 KB OK)** = 3142 + 3324 Tor nunca se apaga
   (cierres SIGABRT del S24), 3325 enlace del puente no «muerto», 3326 sincronía firmada con varios números, pulido (esfera del audio con
   el color de la burbuja, menú del fijado arriba, menú «+» compacto con pestañita). NOMBRE: el dueño se queda con NEXO (compañeros);
