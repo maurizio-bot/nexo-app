@@ -955,6 +955,13 @@ flex-shrink: 0;
 .attach-menu-item svg {
   flex-shrink: 0;
 }
+/* Dueño 23-11: al abrir, solo los 4 más usados (cámara, galería, archivo, ubicación) y la flechita; al tocarla sube una fila con el
+   resto (contacto, cobro, stickers, juegos, buscar) y la flechita se voltea */
+.attach-menu:not(.expanded) .attach-menu-item[data-sec] { display: none; }
+.attach-menu.expanded { flex-wrap: wrap; width: 214px; }
+.attach-menu.expanded .attach-menu-item[data-sec] { order: -1; }
+.attach-more svg { transition: transform 0.2s; }
+.attach-menu.expanded .attach-more svg { transform: rotate(180deg); }
 /* Ocultar menu */
 .attach-menu.hidden {
   display: none !important;

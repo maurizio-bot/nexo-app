@@ -521,6 +521,7 @@ export default {
   attach_sticker: "Figurinhas",
   attach_games: "Jogos",
   attach_search: "Buscar",
+  attach_more: "Mais",
   prof_tor_label: "Usar Tor sempre (oculta seu IP; fica mais lento). Sem isso, as chamadas pela internet vão direto entre os dois celulares: o outro pode ver seu IP.",
   prof_diag_sub: "Registro do que o app faz (inclui a sessão anterior). Copie e cole para analisar uma falha.",
   prof_diag_copy: "Copiar diagnóstico",

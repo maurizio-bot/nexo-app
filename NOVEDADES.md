@@ -19,6 +19,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Llamadas en segundo plano: menos datos.
 - Lista para Android 15 y 16.
 - Ya no queda resaltado el último contacto tocado.
+- El «+» del chat abre con lo más usado; la flechita muestra el resto.
 </es-419>
 <!-- /APK -->
 

@@ -105,6 +105,7 @@ export function _toggleAttachMenu() {
   if (menu) {
     menu.classList.toggle('hidden');
     menu.classList.toggle('visible');
+    if (!menu.classList.contains('visible')) menu.classList.remove('expanded');
     // 3073: al abrir «adjuntar», despertar al otro mientras se elige la foto/archivo
     if (menu.classList.contains('visible')) { try { if (typeof window.NEXO_prewake === 'function') window.NEXO_prewake('al abrir adjuntar'); } catch (e) {} }
   }
@@ -115,6 +116,7 @@ export function _closeAttachMenu() {
   if (menu) {
     menu.classList.add('hidden');
     menu.classList.remove('visible');
+    menu.classList.remove('expanded'); // dueño 23-11: la próxima vez abre otra vez con los 4 más usados
   }
 }
 

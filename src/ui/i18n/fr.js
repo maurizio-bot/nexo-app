@@ -521,6 +521,7 @@ export default {
   attach_sticker: "Stickers",
   attach_games: "Jeux",
   attach_search: "Rechercher",
+  attach_more: "Plus",
   prof_tor_label: "Toujours utiliser Tor (masque votre IP ; plus lent). Sans cette option, les appels par internet passent directement entre les deux téléphones : l'autre personne peut voir votre IP.",
   prof_diag_sub: "Journal de ce que fait l'app (inclut la session précédente). Copiez-le et collez-le pour analyser un problème.",
   prof_diag_copy: "Copier le diagnostic",
