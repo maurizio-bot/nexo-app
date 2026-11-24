@@ -564,7 +564,7 @@ export function _renderMessage(msg, skipSave) {
         audioHtml += '<div style="display:flex;align-items:center;gap:6px;margin-top:3px;"><span id="' + audioId + '_time" style="font-size:11px;color:#aaa;">00:00 / ' + durStr + '</span><span class="vn-dot" style="display:none;width:7px;height:7px;border-radius:50%;background:#00c8ff;"></span></div>';
         audioHtml += '</div>';
         // 3131 (dueño 15-11: «el botón de ×1.5 y ×2 para acelerar al escuchar un audio»): velocidad de las notas de voz
-        audioHtml += '<button id="' + audioId + '_rate" class="vn-rate" style="flex-shrink:0;min-width:42px;height:26px;padding:0 8px;border-radius:13px;background:rgba(255,255,255,0.18);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">' + _rateLabel(_voiceRate()) + '</button>';
+        audioHtml += '<button id="' + audioId + '_rate" class="vn-rate" style="position:relative;overflow:hidden;flex-shrink:0;min-width:42px;height:26px;padding:0 8px;border-radius:13px;background:rgba(255,255,255,0.18);border:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">' + _rateLabel(_voiceRate()) + '</button>';
         audioHtml += '</div>';
         contentDiv.innerHTML = audioHtml;
         var rxTs = msg.rxTs || msg.timestamp || msg.ts || Date.now();
