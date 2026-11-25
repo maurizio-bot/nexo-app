@@ -30,7 +30,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   `xferstuck.js` caso 6; diag. S24 3154 10:32, Zhelowsky 25 min). **3339** «sr» vencida (entró del segundo plano): se ignora y se vuelve a
   pedir la sincronía una vez (`srvencida.js`). GOOGLE PLAY (25-11): cuenta de desarrollador creada (personal, «MauBot»), identidad enviada,
   «no comerciante»; falta que Google apruebe y el teléfono. Ficha/privacidad/permisos: `nexo-private/negocio/PLAY_FICHA/`.
-- **APK SUBIDA 25-11 tarde (tras 3154)** = 3336 (trozos de archivo a disco con la app congelada) · 3337 (grupos esperan Wi-Fi) · 3338 · 3339 ·
+- **DESPUÉS DE LA 3155 ([skip ci]):** foto del grupo en la lista se abre en grande (`grupofoto.js`).
+- **APK 3155 PUBLICADA (25-11 16:00 México; CI en verde a la primera)** = 3336 (trozos de archivo a disco con la app congelada) · 3337 (grupos esperan Wi-Fi) · 3338 · 3339 ·
   **3340** ping de antes de congelarse no rehace un enlace sano (`pingcongelado.js`) · **3341** archivo grande por Wi-Fi local sobre la red de un
   grupo de Wi-Fi Direct: no se monta otro grupo encima (`wdsobregrupo.js`) ni se desmonta mientras va (nativo `BigLanBusy`) · **3342** internet
   prestado: sin red, puente a los 1,5 s; relé que no abre → otro por el mismo puente al momento (`puenterele.js` 33 s → 3 s); NET_REJECTED =
