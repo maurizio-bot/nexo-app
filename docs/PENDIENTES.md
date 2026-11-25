@@ -1813,3 +1813,24 @@ El puntero de un vídeo a un contacto ausente lleva la miniatura (~24 KB) y sale
   - Dos dedos: zoom 1-4× solo de la imagen del otro, sin salirse de los bordes; nunca cuenta como toque. Con zoom, un dedo mueve la imagen; un toque sin mover sigue mostrando la barra.
   - Tocar mi imagen pequeña: intercambia; arrastrarla: cambia de esquina. Flecha arriba a la izquierda o «atrás»: minimiza a la barra de arriba.
   - Deslizar hacia arriba: ventanita del sistema. Al volver: queda como mini flotante y un toque la abre completa (como el 04-11; el dueño no pidió cambiarlo).
+
+## Sincronización de chats (idea del dueño 25-11) — ANÁLISIS, sin implementar
+**Idea:** dos NEXO que se ven (cerca, en reposo o por cualquier camino) comparan sus chats; si coinciden, «al día ✓»; si no, averiguan qué
+falta y dónde, y lo rellenan. Motivo: los ✓/✓✓ pueden engañar; no hay prueba al 100 % de que algo llegó.
+**Factible: sí, y encaja con la regla «robustez primero».** Ya existe casi todo: ids únicos por mensaje y el receptor ya no duplica (mismo id),
+`resync.js` (pedir ids y reenviar con el mismo id), `group_history.js` (ghq/ghr: pedir/contestar por lotes), `ble_ack_resume` (trozos).
+**Diseño propuesto (1-a-1 primero):** cada lado es autoridad de lo que ÉL escribió. (1) Resumen mínimo por chat y por día (cuenta + hash de ids);
+(2) si todo coincide → «al día» con hora de la última verificación; (3) si no, bajar por día → lista de ids → pedir los que faltan; (4) el dueño
+del mensaje lo reenvía con el mismo id (cifrado en sesión actual, desde el vault); (5) al confirmarse, los ✓ pasan a verdad comprobada. Mensajes ocultos nuevos
+(`csq`/`csr`/`css`), módulo nuevo `chat_sync.js`; prueba en tests/sim con pérdida, borrados, duplicados y bucles (+ contraprueba).
+**Problemas a resolver ANTES (por qué no es trivial):**
+1. Borrados: si borré algo «solo para mí» y el otro lo conserva, la sync lo RESUCITARÍA → lápidas (ids borrados) y no pedirlos. Igual con mensajes temporales y «ver una vez».
+2. Ediciones, reacciones, fijados, leído: son versiones, no mensajes; hace falta contador de versión (o sincronizar solo el mensaje y su última edición).
+3. Contacto bloqueado: no se sincroniza.
+4. Grupos: no hay firma por mensaje, un miembro podría inventar lo que dijo otro (ya anotado en group_history). Grupos = fase 2, con firma por mensaje. En 1-a-1 es seguro: solo se acepta de cada quien lo suyo.
+5. Gasto: nunca continua. Solo al conectarse + máximo 1 vez cada N horas por contacto, con resumen diminuto; lo grande (fotos/archivos) NO automático por Bluetooth (se marca «pendiente», baja por Wi-Fi o al tocar). Prioridad mínima: cede ante mensajes en vivo y llamadas; apagada con batería baja y en modo multitud (EDC).
+6. Bucles/ruido: tope por sesión (como NEED_MAX de resync), sin sonidos, sin «no leídos», sin avisos; orden por la hora de quien lo escribió. Riesgo de añadir fallos nuevos: debe poder apagarse y no empeorar lo actual.
+7. Seguridad (auditoría final): topes de tamaño en resúmenes/listas, mensajes mal formados, quien me pide mucho (freno como `_served`).
+8. Límite honesto: no resuelve que el emisor no sepa SI llegó hasta que los dos teléfonos se vean; lo que cambia es que al verse queda comprobado y relleno.
+**Recomendación de Claude:** hacerla (1-a-1, sin grupos), como TANDA PROPIA tras la APK actual, no mezclada (es grande y toca el centro de la entrega).
+**Preguntas al dueño:** (a) ¿en reposo y cerca siempre, o también por internet? (yo: ambos, con freno); (b) fotos/archivos faltantes: ¿automático solo con Wi-Fi? (yo: sí); (c) ¿mostrar «al día ✓» por chat? (yo: sí, discreto).

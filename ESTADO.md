@@ -32,6 +32,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   saturación aunque haya muchas señales Bluetooth en el mismo lugar. Meta: experiencia memorable («NEXO no me falló; con él platiqué,
   nos encontramos y nos volvimos a ubicar cuando estábamos perdidos»). Nombre del camino Bluetooth-internet: «Internet prestado» NO le
   gusta (largo): buscar uno CORTO. Logo y nombre de la app: siguen abiertos (se le volvieron a mostrar los bocetos).
+- **DUEÑO 25-11 (logo):** el logo debe PARECERSE LO MÁS POSIBLE a la imagen del splash (`ic_splash_logo.png`: burbuja-globo hecha de una
+  cuadrícula de cuadritos redondeados, cuadritos que se desprenden hacia la derecha, órbitas, violeta/azul con brillo, cola abajo-izquierda).
+  Ya NO vale la «1b» como está: rehacer el icono desde esa imagen (versión plana y legible a 48 px) y enseñárselo antes de ponerlo.
+- **IDEA DEL DUEÑO 25-11: «SINCRONIZACIÓN» DE CHATS** (los ✓/✓✓ pueden engañar; que dos NEXO cerca verifiquen que tienen lo mismo y rellenen
+  lo que falte). Análisis de factibilidad hecho, SIN implementar: `docs/PENDIENTES.md`, bloque «Sincronización de chats (idea 25-11)».
 - **Forma de trabajo:** CLAUDE.md «GASTO» (leer SOLO este bloque + 🔴 de `docs/AREAS.md`; lo demás con grep). Todo el detalle de 3266–3311:
   `docs/historial/ESTADO_traspaso_hasta_2026-11-23.md` (y los anteriores). PRINCIPIO: NEXO = todos los caminos; nunca recortar caminos.
 - **APK 3125 PUBLICADA (23-11 15:55 México; build 3314)** = 3309 (vista previa real por Tor, toque sellado 14A, «sr» firmado N10,
