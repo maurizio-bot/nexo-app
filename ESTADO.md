@@ -27,6 +27,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   adjunto atorado: el toque FCM no despierta la parte que recibe archivos. **PLÁTICA DEL PRODUCTO (EDC) A RETOMAR:** pregunta abierta al
   dueño: «¿qué es lo primero que quieres que una persona logre con NEXO cuando no hay señal?» (encontrar a su grupo / aviso rápido a todos /
   pedir ayuda). Después: lista de pruebas físicas cortas, una por una. Plazo 7-dic de la cuenta de Google Play detenido: falta el nombre.
+- **DUEÑO 25-11 (respuesta a la pregunta del producto):** PRIMERO, que NEXO sea robusto, sólido y sin fallas (todo lo demás depende de eso).
+  Con eso firme, las tres cosas (encontrar a su grupo, aviso a todos, pedir ayuda) y que se encuentren los contactos sin conflicto ni
+  saturación aunque haya muchas señales Bluetooth en el mismo lugar. Meta: experiencia memorable («NEXO no me falló; con él platiqué,
+  nos encontramos y nos volvimos a ubicar cuando estábamos perdidos»). Nombre del camino Bluetooth-internet: «Internet prestado» NO le
+  gusta (largo): buscar uno CORTO. Logo y nombre de la app: siguen abiertos (se le volvieron a mostrar los bocetos).
 - **Forma de trabajo:** CLAUDE.md «GASTO» (leer SOLO este bloque + 🔴 de `docs/AREAS.md`; lo demás con grep). Todo el detalle de 3266–3311:
   `docs/historial/ESTADO_traspaso_hasta_2026-11-23.md` (y los anteriores). PRINCIPIO: NEXO = todos los caminos; nunca recortar caminos.
 - **APK 3125 PUBLICADA (23-11 15:55 México; build 3314)** = 3309 (vista previa real por Tor, toque sellado 14A, «sr» firmado N10,
