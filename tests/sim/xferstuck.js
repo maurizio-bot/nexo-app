@@ -53,8 +53,14 @@ const logs = [];
   r.sin_registro = busy([stream('a', 2000, null)], null);
   // 5. flujo atascado de siempre (> 20 s sin ACK) → no protege (2973)
   r.atascado = busy([stream('a', 25000, null)], 25000);
+  // 6. 3338 (Zhelowsky 25-11): el Bluetooth lleva 60 s mudo, pero se le OYE por internet hace 3 s; el texto atascado se acaba de reanudar → NO protege
+  bi._macToNexoId.set('4573f757c23c', 'nx0x4029e6');
+  ack.outgoingStreams.clear(); ack.incomingBuffers.clear(); ack.outgoingStreams.set('m0', stream('a', 2000, null));
+  bi._lastPongTime.clear(); bi._lastPongTime.set(MAC, now - 60000); bi._lastPongTime.set('net:nx0x4029e6', now - 3000);
+  r.oido_solo_por_internet = ack.hasActiveTransfer(MAC);
+  ack.outgoingStreams.clear(); bi._lastPongTime.clear();
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
-  const ok = r.reanudado_callado === false && r.nuevo_oido === true && r.con_ack === true && r.sin_registro === true && r.atascado === false && !r.errores.length;
+  const ok = r.reanudado_callado === false && r.nuevo_oido === true && r.con_ack === true && r.sin_registro === true && r.atascado === false && r.oido_solo_por_internet === false && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('XFERSTUCK ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_xferstuck.txt'), logs.join('\n'));

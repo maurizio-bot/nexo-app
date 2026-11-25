@@ -192,8 +192,10 @@ export class BleAckSystem {
     // nuevo trae su propia hora de inicio: contado solo desde ella, nunca pasaba de 20 s y el vigilante se saltó el ping/zombie
     // 40 min con un enlace que no confirmaba nada. Ahora también cuenta cuándo se oyó por última vez CUALQUIER cosa de ese teléfono
     // (_lastPongTime, cada paquete recibido): si lleva > XFER_STUCK_MS callado, un flujo sin ACK propio no protege el enlace.
-    var heard = 0, ble = this.ble;
-    try { if (ble && ble._lastPongTime) ble._lastPongTime.forEach(function(t, k) { if (t > heard && same(k)) heard = t; }); } catch (e) {}
+    // 3338 (diag. S24 3154 25-11 10:31–10:57, Zhelowsky): oírlo por INTERNET (net:nx…) no dice nada del enlace Bluetooth: contaba igual y un
+    // texto atascado sobre un Bluetooth mudo «protegió» el enlace 25 min. Solo cuenta lo oído por el mismo tipo de camino.
+    var heard = 0, ble = this.ble, kind = function(d) { return /^(net|lan):?nx/i.test(String(d || '')) ? String(d).substring(0, 3).toLowerCase() : 'bt'; }, myKind = kind(deviceId);
+    try { if (ble && ble._lastPongTime) ble._lastPongTime.forEach(function(t, k) { if (t > heard && kind(k) === myKind && same(k)) heard = t; }); } catch (e) {}
     this.outgoingStreams.forEach(function(s) {
       if (busy || !s || s.aborted || !same(s.deviceId)) return;
       if (s.lastAckAt) { if (now - s.lastAckAt < XFER_STUCK_MS) busy = true; return; }

@@ -1368,6 +1368,22 @@
    "sintoma": "resumen_diario (24-11), build 3150 (vieja)",
    "categoria": "Resumen diario",
    "causa": "versión vieja: zombi ×17, cierre_fallo ×2; Wi-Fi Direct 9/17 (Wi-Fi apagado ×5: ya tratado en 3b/3337); Jump ACK timeout ×53"
+  },
+  {
+   "dia": "2026-11-25",
+   "hora": "10:32",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx0x4029e6, Zhelowsky), build 3154",
+   "categoria": "Enlace Bluetooth mudo protegido por «transferencia activa»",
+   "causa": "Un texto de grupo por Jump a Zhelowsky se atascó en su enlace Bluetooth (ni un trozo confirmado, nada recibido de 69:71 en el nativo) y se reanudaba cada 15–60 s; el vigilante saltaba el ping/zombie porque se le OÍA por internet (net:nx…) y eso contaba como «oído» para el Bluetooth. Arreglado 3338 (solo cuenta lo oído por el mismo camino; xferstuck.js caso 6, contraprueba falla). El zombi lo detectó la comprobación 3330 al volver la app"
+  },
+  {
+   "dia": "2026-11-25",
+   "hora": "10:57",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx01992876, Marcos), build 3154",
+   "categoria": "Enlace recuperado al volver la app sin respuesta",
+   "causa": "Comprobación 3330 al volver a la app (25 min en segundo plano): el enlace heredado no contestó al primer ping y se rehizo (remedio funcionando; el síntoma «zombi» es su aviso). Mismo atasco del texto a Zhelowsky (reanudado al volver). Cierres nativos de Tor del 23/24-11 son de builds anteriores"
   }
  ]
 }
