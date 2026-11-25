@@ -21,6 +21,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-25, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **DESPUÉS DE ESA APK (25-11, [skip ci], va en la SIGUIENTE):** **3336** adjunto atorado de raíz: con la app congelada la escucha nativa de
+  internet guarda en DISCO los trozos de archivo ('f') de un contacto (`NetChunkSpool.kt`, `nexo_netbg_chunks/`, tope 48 MB) y confirma
+  SOLO lo guardado con el mismo 'ba' que la app; la app los recoge primero en netBgDrain (JVM `NetChunkSpoolTest` 6, con relé local).
+  El archivo lo arma la app al volver. **3337** 3b en GRUPOS: el grupo reintenta cada 15 s a los miembros que esperan su Wi-Fi
+  (`group_media.bigToGroup`), la tarjeta dice «Esperando…» (`grupoesperawifi.js`, contraprueba falla; en ci.js).
 - **APK SUBIDA 25-11 (tanda «Bluetooth nativo + logo + pendientes», Opus alto)** = logo B2 + Wi-Fi Direct híbrido (f7fbfbb7) + **3333** con la
   app CONGELADA el nativo guarda en el buzón en disco (`frozenKeep`) ANTES de su ✓✓ y lo entrega al volver (`frozenDeliver` en handleOnResume)
   o al reabrir: antes, si Android mataba el proceso, se perdía con ✓✓ · **3334** toque FCM con la app viva → `onWakeTouch` → la app
