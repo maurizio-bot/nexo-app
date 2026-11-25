@@ -29,8 +29,10 @@ encontrar fallos y medir cuánto, no para validarlo a él. Si algo no cuadra con
   parar: al terminar algo se sigue SOLO con el siguiente pendiente que no necesita al dueño, sin esperar respuesta (dueño 23-11).
   Ayudantes en paralelo solo para trabajo que de verdad se reparte.
 - **Antes de subir una APK (dueño 23-11):** meter en ESA subida todo lo pendiente que se pueda hacer ya (aunque sean detalles). Nunca
-  subir y dejar para la siguiente lo que cabía: cada APK son ~1,5 h. Si ya hay un CI corriendo y queda algo chico por meter, hacerlo y
-  volver a subir (se cancela el anterior) en vez de esperar otra vuelta.
+  subir y dejar para la siguiente lo que cabía: cada APK son ~1,5 h. **Dueño 24-11 (manda sobre lo anterior): NUNCA subir en cuanto
+  se termina un cambio ni cancelar un CI en curso para meter otro** (se pierde el doble de tiempo). Cada cambio se guarda con `[skip ci]`
+  y la APK se sube solo al cerrar la tanda completa (lo pedido + lo que se pueda hacer ya). Con un CI corriendo, lo nuevo espera a la
+  siguiente tanda.
 - **Modelo:** el grande (Fable/Opus) para protocolo, nativo, cifrado y depuración; lo mecánico (apuntar diagnósticos, NOVEDADES,
   documentos) no lo necesita: si el dueño está en un modelo ligero, eso se hace ahí.
 - **Lo grande, justo después del reinicio semanal** del límite (el dueño lo ve en Ajustes → Uso); cerca del tope, solo lo barato.
