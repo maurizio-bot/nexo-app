@@ -279,6 +279,9 @@ export class WifiDirect {
     if (!big && bytes > WD_MAX_BYTES) return { no: 'demasiado grande (va como archivo grande)' };
     if (this.busy) return { no: 'ocupado con otra transferencia' };
     var nx = this._nexoOf(deviceId);
+    // 3341: ya hay Wi-Fi local con él por la red de un grupo de Wi-Fi Direct (192.168.49.x): montar otro grupo lo tiraría (y con él un archivo
+    // grande que vaya por ahí); el archivo va por ese Wi-Fi, igual de rápido
+    try { if (this.ble && this.ble.lan && this.ble.lan.canReach(nx) && this.ble.lan._wdAddr(nx)) return { no: 'ya hay Wi-Fi local por un grupo de Wi-Fi Direct' }; } catch (e) {} // i18n-ok: texto para el desarrollador
     if (!this.peers.has(nx)) return { no: 'el otro no lo anuncia' }; // i18n-ok: texto para el desarrollador
     if (this._cooling(nx)) return { no: 'castigo por un fallo reciente' }; // i18n-ok: texto para el desarrollador
     if (this.status.wifiOn === false) return { no: 'Wi-Fi apagado aquí' };

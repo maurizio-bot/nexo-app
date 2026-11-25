@@ -86,7 +86,12 @@ private fun NexoBlePlugin.wdState(cb: (String) -> Unit) {
     } catch (e: Exception) { parts["p2p"] = "error ${e.message}"; finish() }
 }
 
-private fun NexoBlePlugin.wdTearDown() {
+private fun NexoBlePlugin.wdTearDown(waitedMs: Long = 0L) {
+    // 3341: con un archivo grande yendo por Wi-Fi local (quizá por la red de este grupo) no se desmonta: se mira otra vez en 5 s (tope 30 min)
+    if (BigLanBusy.n.get() > 0 && waitedMs < 30 * 60000L) {
+        if (waitedMs == 0L) remLog("INFO", "WIFI_DIRECT", "Grupo sin desmontar: hay un archivo grande por Wi-Fi local (se desmonta al acabar)")
+        mainHandler.postDelayed({ wdTearDown(waitedMs + 5000L) }, 5000L); return
+    }
     mainHandler.post {
         val m = p2pManager
         val ch = p2pChannel

@@ -212,6 +212,11 @@ internal fun NexoBlePlugin.bigDeleteImpl(call: PluginCall) {
 }
 
 // Receptor por el mismo Wi-Fi: abre un puerto para esta transferencia (solo acepta id + token) y devuelve el puerto
+// 3341 (diag. 24-11 21:52, 23,5 MB que volvía a empezar 8 veces): un archivo grande por el «mismo Wi-Fi» puede ir por la red del grupo de
+// Wi-Fi Direct (192.168.49.x) que se montó para otro envío; al acabar ese envío se desmontaba el grupo y se cortaba el grande. Mientras haya
+// uno grande por Wi-Fi local, el grupo no se desmonta (PluginWifiDirect.wdTearDown espera).
+internal object BigLanBusy { val n = java.util.concurrent.atomic.AtomicInteger(0) }
+
 internal fun NexoBlePlugin.bigServeImpl(call: PluginCall) {
     val id = BigFile.safeId(call.getString("id") ?: "")
     val token = call.getString("token") ?: ""
@@ -221,9 +226,10 @@ internal fun NexoBlePlugin.bigServeImpl(call: PluginCall) {
         server.soTimeout = 60000
         call.resolve(JSObject().put("port", server.localPort))
         Thread {
+            BigLanBusy.n.incrementAndGet()
             try { BigNet.serve(server, id, token, BigFile.encFile(bigDir(), id), BigFile.MAX_BYTES * 11 / 10, bigProgress(id, "in")); bigDone(id, "in", null) }
             catch (e: Exception) { bigDone(id, "in", e.message ?: "error") }
-            finally { try { server.close() } catch (e: Exception) {} }
+            finally { try { server.close() } catch (e: Exception) {}; BigLanBusy.n.decrementAndGet() }
         }.start()
     } catch (e: Exception) { call.reject("Puerto no disponible: ${e.message}", "BIG_SOCKET") }
 }
@@ -238,6 +244,7 @@ internal fun NexoBlePlugin.bigSendLanImpl(call: PluginCall) {
     val addr = lanHub?.address(nx) ?: run { call.reject("Sin Wi-Fi con $nx", "LAN_DOWN"); return }
     if (!file.exists() || port <= 0) { call.reject("Nada que enviar", "BIG_NONE"); return }
     Thread {
+        BigLanBusy.n.incrementAndGet()
         try {
             java.net.Socket().use { s ->
                 s.connect(java.net.InetSocketAddress(addr, port), 10000)
@@ -249,7 +256,7 @@ internal fun NexoBlePlugin.bigSendLanImpl(call: PluginCall) {
         } catch (e: Exception) {
             bigDone(id, "out", e.message ?: "error")
             call.reject("Envío fallido: ${e.message}", "BIG_SEND")
-        }
+        } finally { BigLanBusy.n.decrementAndGet() }
     }.start()
 }
 
