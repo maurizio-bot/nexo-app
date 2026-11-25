@@ -1408,6 +1408,22 @@
    "sintoma": "prueba del dueño: sin Wi-Fi ni datos con 3 NEXO contactos cerca, los mensajes no salían por internet prestado",
    "categoria": "Internet prestado lento",
    "causa": "Al volver (14:16:56) se soltó el puente (los enlaces se limpian), se pidió otra vez y Marcos aceptó, pero su relé no le abrió la sesión («no conecta»; damus lo tenía castigado por límite: «banned: too many rate-limit violations») y el siguiente intento fue a los 34 s (espera por vecino). Además, sin red se esperaban 8 s antes de buscar puente, y un texto a Roberto quedó ✗ en 9 s porque los relés lo rechazaron por límite. Arreglado 3342: sin red, puente a los 1,5 s; si la sesión no abre, otro relé por el mismo puente al momento (puenterele.js: 33 s → 3 s); rechazo por límite = pendiente (⏳), no ✗. Los cierres nativos 23/24-11 (Tor) son de builds anteriores a la 3146"
+  },
+  {
+   "dia": "2026-11-25",
+   "hora": "16:51",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx01992876), build 3154 (ya salió la 3155)",
+   "categoria": "Enlace recuperado al volver sin respuesta",
+   "causa": "Al volver a la app (16:51:10) el enlace heredado con Marcos (70:89…, él en 3148) no contestó al primer ping en 8 s y se rehízo (remedio 3330). Lo suyo llegó por internet (26 sobres del segundo plano). «sr» sin firma ya tratado en 3339 (3155). Sin fallo nuevo"
+  },
+  {
+   "dia": "2026-11-25",
+   "hora": "16:51",
+   "nx": "nx126df3f4",
+   "sintoma": "resumen_diario (24-11), build 3154",
+   "categoria": "Resumen diario",
+   "causa": "2/2 con ✓✓, sin síntomas. Sin fallo"
   }
  ]
 }
