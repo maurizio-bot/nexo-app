@@ -378,6 +378,10 @@ class NexoBlePlugin : Plugin() {
         appCtx = activity.applicationContext
         CrashLog.install(appCtx) // 3120: guardar las primeras líneas de un fallo al caer (diagnóstico)
         live = this
+        // 3335 (diag. S23 24-11 22:10 y 23:04, 3 veces: llamada sin sonido 5–10 s al arrancar, «audio suspended»): el WebView pide un toque
+        // del usuario DENTRO de la página para dejar sonar el audio; contestando desde el aviso (o con la app recién reiniciada) no lo hay
+        // y el audio de la llamada quedaba en pausa hasta tocar la pantalla. NEXO no reproduce nada solo salvo llamadas y lo que el usuario abre.
+        try { bridge?.webView?.settings?.mediaPlaybackRequiresUserGesture = false } catch (e: Throwable) { }
         BleService.pipVideo = false // 3277: la página nace sin llamada (si la app se rehízo en plena videollamada, la marca vieja metía el chat en la miniatura)
         takeOverFromClosed()
         NetBgHome.appTookOver(appCtx!!) // 3192: si la escucha de internet corría sin la app, ahora la maneja la app (la misma)
@@ -429,6 +433,7 @@ class NexoBlePlugin : Plugin() {
             remLog("INFO", "CALL", "Servicio en llamada al volver a la app: $callFgs")
         }
         try { netBgShared?.stop() } catch (e: Exception) { }
+        try { frozenDeliver() } catch (e: Throwable) { }
         wifiLockHold(false) // la app vuelve al primer plano: suelta la Wi-Fi (la app vuelve a encargarse)
         checkNotificationIntent()
         remLog("INFO", "LIFECYCLE", "handleOnResume")
@@ -787,6 +792,7 @@ class NexoBlePlugin : Plugin() {
     // de un contacto por el SOCKS de Tor. Lo que viaja ya va cifrado por la app (sobre de pareja + E2E).
     internal var torSvc: org.torproject.jni.TorService? = null
     @Volatile internal var appInBackground = false
+    @Volatile internal var frozenKept = false // 3333: hay mensajes con ✓✓ nativa guardados en el buzón mientras la app estaba congelada
     @Volatile internal var bgSinceMs = 0L // 3086: cuándo pasó la app a segundo plano
     internal var torBind: android.content.ServiceConnection? = null
     internal var torHub: LanHub? = null

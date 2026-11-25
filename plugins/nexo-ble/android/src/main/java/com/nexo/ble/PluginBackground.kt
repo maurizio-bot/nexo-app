@@ -71,7 +71,7 @@ internal fun NexoBlePlugin.backgroundNotify(json: String, deviceId: String? = nu
         if (info.kind == BgInbox.Kind.MESSAGE && info.callEnd.isNotEmpty()) MsgNotifier.get(ctx).cancelCallFor(info.from, info.callEnd)
         if (info.kind == BgInbox.Kind.MESSAGE && !info.call) mainHandler.postDelayed({
             if (!appInBackground) return@postDelayed
-            if (deviceId != null) sendDeliveredAck(deviceId, info)
+            if (deviceId != null) { if (frozenKeep(deviceId, json, info)) sendDeliveredAck(deviceId, info) }
             else if (lanNx != null) sendDeliveredAckLan(lanNx, info)
         }, BG_NOTIFY_DELAY_MS)
         return
@@ -93,10 +93,42 @@ internal fun NexoBlePlugin.backgroundNotify(json: String, deviceId: String? = nu
             // ENTREGA firmada por Bluetooth, para que el emisor vea el ✓✓ sin esperar a que la app vuelva.
             // 3016 (diagnóstico S23 del dueño 12-11): por Wi-Fi local NO se confirmaba («esa vía confirma por su cuenta»
             // era falso con el JS congelado) y el emisor reenviaba sin fin; ahora vuelve por la misma conexión Wi-Fi.
-            if (deviceId != null) sendDeliveredAck(deviceId, info)
+            if (deviceId != null) { if (frozenKeep(deviceId, json, info)) sendDeliveredAck(deviceId, info) }
             else if (lanNx != null) sendDeliveredAckLan(lanNx, info)
         } else if (!silent) notifyOnly(ctx, info)
     }, BG_NOTIFY_DELAY_MS)
+}
+
+// 3333 (🔴 1, Bluetooth en el servicio): con la app congelada el nativo da la ✓✓ por ella, pero el mensaje solo estaba en la cola
+// del WebView (memoria): si Android mataba el proceso antes de descongelarla, el mensaje se perdía con el emisor viendo ✓✓. Ahora
+// se guarda ANTES en el buzón en disco (el mismo de la app cerrada); se entrega a la app al volver (handleOnResume) o al abrirse
+// de nuevo (takeOverFromClosed), y lo que ya tenía lo descarta el cifrado como repetido. Con el buzón lleno no hay ✓✓ (el otro reintenta).
+internal fun NexoBlePlugin.frozenKeep(deviceId: String, json: String, info: BgInbox.Info): Boolean {
+    val ok = try { inbox().add(deviceId, json) } catch (e: Exception) { false }
+    if (!ok) remLog("WARN", "BG", "Buzón lleno: mensaje de ${info.from} con la app congelada sin guardar (sin ✓✓: el otro reintenta)")
+    else frozenKept = true
+    return ok
+}
+
+// 3333: la app vuelve al primer plano: lo guardado mientras estaba congelada se le entrega (lo repetido lo descarta el cifrado)
+internal fun NexoBlePlugin.frozenDeliver() {
+    if (!frozenKept || closedMode) return
+    frozenKept = false
+    val list = try { inbox().drain() } catch (e: Exception) { emptyList() }
+    if (list.isEmpty()) return
+    remLog("INFO", "BG", "Con la app congelada se guardaron ${list.size} mensaje(s) con ✓✓ nativa: se entregan a la app")
+    val now = System.currentTimeMillis()
+    list.forEach { item ->
+        notifyListeners("onPayloadReceived", JSObject().put("deviceId", item.deviceId).put("content", item.json).put("data", item.json)
+            .put("source", "frozen").put("timestamp", if (item.ts in 1..now) item.ts else now).put("reassembled", true), true)
+    }
+}
+
+// 3334: un toque FCM con la app viva (oculta o a la vista): que la app compruebe sus relés y vuelva a pedir lo pendiente
+internal fun NexoBlePlugin.wakeTouchToApp() {
+    if (closedMode) return
+    remLog("INFO", "FCM", "Toque FCM con la app viva: se le avisa para que compruebe sus relés")
+    notifyListeners("onWakeTouch", JSObject().put("ts", System.currentTimeMillis()))
 }
 
 // 2A (23-11): ¿pasa el sello de pareja? Sin clave de ese contacto no se puede comprobar (vale, como antes); con clave, tiene que cuadrar.

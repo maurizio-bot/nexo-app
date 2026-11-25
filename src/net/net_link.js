@@ -130,6 +130,8 @@ export class NetLink {
       pl.addListener('onLanNet', function() { if (!self._realOpenCount()) self.relays.forEach(function(r) { if (!r.gw && !r.ws) { r.retryAt = 0; r.backoff = 2000; } }); self.tick(); });
       // 3085: cambió la red por defecto del teléfono (Wi-Fi ↔ datos móviles; Kotlin watchDefaultNetwork)
       pl.addListener('onNetChange', function(ev) { try { self._onNetChange(ev); } catch (e) {} });
+      // 3334: un toque FCM con la app viva (oculta: sus relés no se comprueban en segundo plano y un archivo se quedaba a medias)
+      pl.addListener('onWakeTouch', function() { try { self.refresh('toque FCM'); self.tick(); } catch (e) {} });
       if (typeof pl.torStart === 'function') {
         pl.addListener('onTorReady', function(ev) { self._onTorReady(ev); });
         pl.addListener('onTorUp', function(ev) { var p = self._peer(_nid(ev && ev.nx)); p.torUp = true; p.torOk = false; self._hello(_nid(ev.nx)); });

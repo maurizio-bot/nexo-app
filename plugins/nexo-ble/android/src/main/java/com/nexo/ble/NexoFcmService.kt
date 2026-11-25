@@ -86,6 +86,10 @@ class NexoFcmService : FirebaseMessagingService() {
         // servicio solo no escuchaba internet. La escucha arranca aquí, desde lo guardado y cifrado (NetBgHome; con la app viva no hace
         // nada: la maneja ella). Sin servicio no: sin él el proceso se congela.
         val canListen = started && try { NetBgHome.startWithoutApp(applicationContext ?: this, "un toque FCM") } catch (e: Throwable) { false }
+        // 3334 (diag. vivo 24-11 22:27, adjunto atorado en 589/601 ~43 min): con la app viva pero oculta, el toque solo arrancaba el
+        // servicio y la escucha nativa (que no recibe trozos de archivo) y la app no se enteraba: sus relés llevaban rato callados (sin
+        // comprobarlos en segundo plano) y el archivo no avanzaba. Ahora la app recibe el toque y comprueba/repide a sus relés.
+        try { NexoBlePlugin.live?.wakeTouchToApp() } catch (e: Throwable) { }
 
         // 2) 3076 (dueño 14-11: «notificaciones fantasmas… la de cuando recibo un diagnóstico me aparece como notificación»): ANTES
         //    cada toque ponía un aviso «NEXO · Mensaje nuevo», hubiera o no un mensaje: el toque no dice nada (solo despierta) y
