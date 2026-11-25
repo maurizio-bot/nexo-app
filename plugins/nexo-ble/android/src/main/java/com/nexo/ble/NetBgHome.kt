@@ -66,7 +66,7 @@ object NetBgHome {
         if (MsgNotifier.get(app).cancelCallFor(nx, offer)) log(app, "$nx colgó: la llamada deja de sonar")
     }, { req -> requestNotify(app, req) }, { ts -> NetBgSaved.callTooOld(ts, System.currentTimeMillis()) },
         { json -> saveOutbox(app, json) }, { url, token -> wakePost(app, url, token) }, { reportNoInternet(app) },
-        { id, json -> saveBlob(app, id, json) }).also { watchNet(app, it) } }
+        { id, json -> saveBlob(app, id, json) }).also { watchNet(app, it); it.spool = NetChunkSpool(java.io.File(app.filesDir, "nexo_netbg_chunks")) } } // 3336
     private fun loadTor(app: Context) = TorRoute.load(app.filesDir) // 13A: «Usar Tor siempre» guardado (la escucha sale por Tor o espera)
 
     // 3270 (COLA 27 sin la app; como PluginLan.reportNoInternetImpl con la app): el Wi-Fi no da internet → se le dice a Android para que

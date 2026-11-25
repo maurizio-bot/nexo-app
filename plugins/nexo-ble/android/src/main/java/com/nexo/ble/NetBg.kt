@@ -281,7 +281,13 @@ class NetBg(
     // (drainForApp → netBgDrain) en vez de esperar a reconectar con los relés y pedirlo otra vez (tardaba 17 s o más).
     private val forApp = ArrayList<String>()
     private var forAppChars = 0L
-    fun drainForApp(): List<String> = synchronized(forApp) { val l = ArrayList(forApp); forApp.clear(); forAppChars = 0; l }
+    // 3336: los trozos de archivo van a disco (NetChunkSpool) y se confirman; la app los recoge aquí con lo demás (primero los trozos)
+    @Volatile var spool: NetChunkSpool? = null
+    fun drainForApp(): List<String> {
+        val chunks = try { spool?.drain() ?: emptyList() } catch (e: Throwable) { emptyList<String>() }
+        if (chunks.isNotEmpty()) log("Internet en segundo plano: ${chunks.size} trozo(s) de archivo guardados sin la app pasan a ella")
+        return chunks + synchronized(forApp) { val l = ArrayList(forApp); forApp.clear(); forAppChars = 0; l }
+    }
     // 3205: los relés soltados con datos a los que aún no se les pidió lo suyo (url → desde cuándo, ms) pasan a la app al volver ella
     // (netBgDrain): stop() los guarda aquí antes de olvidarlos, y los que sigan pendientes al recoger (si recoge antes de parar) también.
     private val gapsForApp = HashMap<String, Long>()
@@ -511,6 +517,8 @@ class NetBg(
             for (i in plan.park) park(list[i])
             noteMode(c, plan.listen.map { list[it] }.filter { it.ws?.open == true })
             try { pumpOutbox(System.currentTimeMillis()) } catch (e: Throwable) { } // 3268: la bandeja de salida
+            // 3336: trozos guardados aún sin acuse (llegaron menos de 4 desde el último): se confirman en el repaso (≤ 5 s)
+            try { spool?.pendingAcks()?.forEach { (nx, a) -> synchronized(lock) { contacts.firstOrNull { it.nx == nx } }?.let { publishBlockAck(it, a, null) } } } catch (e: Throwable) { }
             // 3270 (COLA 27 sin la app): Wi-Fi sin salida a internet → que Android lo compruebe ya
             if (netType != "wifi" || list.any { it.ws?.open == true }) noNetSince = 0L
             else {
@@ -670,7 +678,12 @@ class NetBg(
             }
             return
         }
-        keepForApp(ev.toString())   // 3033: para la app al volver (mensajes, confirmaciones, acciones: lo procesa como si llegara)
+        // 3336: un trozo de archivo se guarda en disco y se confirma lo guardado (el que envía no se para con esta app congelada)
+        val sp = spool
+        val fr = if (sp != null) NetChunkSpool.frameOf(o.optString("p")) else null
+        val ack = if (sp != null && fr != null) try { sp.add(c.nx, fr, ev.toString()) } catch (e: Throwable) { null } else null
+        if (ack == null) keepForApp(ev.toString())   // 3033: para la app al volver (mensajes, confirmaciones, acciones: lo procesa como si llegara)
+        else if (ack.isNotEmpty()) publishBlockAck(c, ack, fr!!)
         // 3268: ¿es la confirmación (✓✓ o leído) de algo de la bandeja de salida? Ya llegó: se deja de insistir (la app lo marca al volver)
         if (outbox.size() > 0) NetOutbox.receiptOf(o.optString("p"))?.let { mid ->
             if (outbox.confirmed(c.nx, mid)) { log("Bandeja de salida: $mid confirmado por ${c.nx} (✓✓)"); outboxChanged() }
@@ -718,6 +731,15 @@ class NetBg(
             if (publishSealed(c, body, 7 * 86400L))   // TTL_MSG en la app (net_link._ttlFor de un ack)
                 log("Internet en segundo plano: confirmación de entrega (✓✓) a $msgId de ${c.nx}")
         } catch (e: Exception) { log("Internet en segundo plano: no se pudo confirmar la entrega ($e)") }
+    }
+
+    // 3336: acuse de bloque ('ba') de los trozos guardados en disco, en el mismo sobre que la app (ble_ack_incoming._sendBlockAck)
+    private fun publishBlockAck(c: Contact, ack: String, f: NetChunkSpool.Frame?) {
+        try {
+            val body = JSONObject().put("t", System.currentTimeMillis()).put("w", 0).put("p", ack)
+            if (publishSealed(c, body, 3600L) && f != null && (f.idx == f.total - 1 || f.idx % 50 == 0))
+                log("Internet en segundo plano: archivo ${f.msgId} de ${c.nx}: trozo ${f.idx + 1}/${f.total} guardado sin la app y confirmado")
+        } catch (e: Exception) { }
     }
 
     // 3234: contesta el saludo con otro saludo (h:1) marcado como respuesta (r:1: nadie lo vuelve a contestar). Es lo mismo que haría la
