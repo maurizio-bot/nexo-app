@@ -175,6 +175,7 @@ function makeFile(name, bytes) { let h = 0; for (const ch of name) h = (h * 33 +
   radio.unblock(nat.A, nat.B);
   re.bluetooth_vuelve_s = await waitFor(() => { const st = P.A.win.bleInterface._getDeviceState(P.A.win.bleInterface._resolveDeviceIdForNexoId(id('B')) || '') || {}; return st.state === 'ready_to_chat' || st.state === 'notifications_ready'; }, 90000);
   mark('7 puente Bluetooth');
+  P.B.win.__nexoGwHelp.noteHelp(id('A'), 'prueba'); // 3323 (reciprocidad): A ya le ayudó a B (si no, por B solo pasan textos)
   // 7. Puente Bluetooth → internet: A pierde su internet; C lejos de los dos (solo por internet); B (en Wi-Fi) presta
   radio.block(nat.B, nat.C);
   P.A.win.bleInterface.wifiDirect.denied = true; // primero sin Wi-Fi Direct: todo por Bluetooth

@@ -9,6 +9,10 @@
  * Todo se guarda cifrado en reposo (plugin loadFromFile/saveToFile) y se pinta en el fondo del contenedor #app (no
  * hace scroll; la cabecera y la barra de escribir, opacas, lo tapan donde toca), con un oscurecido para que el texto
  * y las burbujas se lean sobre cualquier foto. Sin fondo elegido, negro liso (como antes).
+ * COLA 30 (dueño 21-11): TODAS las pantallas con fondo se cambian igual que un chat — pulsación larga (~0,8 s) sobre un espacio
+ * LIBRE abre el mismo menú: lista de chats (nexo_wp_list.json), llamada/videollamada, Perfil y Ajustes (un archivo por pantalla:
+ * nexo_wp_s_<pantalla>.json). Un solo detector en `document` (installScreenGestures) + un observador que pinta las pantallas
+ * que se crean al abrirse. Los grupos no entran aquí.
  */
 import { t } from './i18n.js';
 import { _normId, _getBLEContacts } from './ble_helpers.js';
@@ -19,6 +23,7 @@ var LIST_FILE = 'nexo_wp_list.json', CHAT_FILE = 'nexo_wp_chat.json';
 function CHATP_FILE(nx) { return 'nexo_wp_c_' + nx + '.json'; }   // fondo por chat concreto
 var IMG_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/;
 var NX_RE = /^nx[0-9a-z]{8}$/;
+var CHAT_RE = /^(nx|gr)[0-9a-z]{8}$/;   // 22-11 (COLA 4b, G7): el fondo por chat vale también para un grupo (su id gr…)
 var MAX_LEN = 1400000;    // ~1 MB de imagen como mucho (las nuestras: 100–400 KB)
 var MAX_EDGE = 1280;      // lado mayor al que se reduce la foto elegida (fondos globales, SOLO locales: no se comparten)
 // #dueño 08-11 (fondo compartido no aparecía en la tablet): el fondo POR chat se COMPARTE (acción oculta cifrada E2E). Por
@@ -43,6 +48,9 @@ var _per = new Map();      // NEXO ID -> data URL (fondo por chat concreto; '' =
 var _curNx = '';           // contacto del chat abierto ahora (para pintar y para el botón)
 var _applied = '';         // lo que está pintado ahora mismo (para el simulador; el navegador real pinta #app)
 var _outIds = new Map();    // id de la copia oculta compartida -> NEXO ID (se borra al entregarse)
+var _scr = { call: '', profile: '', settings: '' };   // fondo por pantalla (COLA 30): llamada, Perfil, Ajustes
+var SCR_SEL = { call: '#nexo-call-screen .nc-bg', profile: '#nexo-profile-sheet', settings: '#nexo-settings-sheet' };
+function SCR_FILE(k) { return 'nexo_wp_s_' + k + '.json'; }
 var _started = false;
 var _showInfoToast = function () {};
 
@@ -69,27 +77,30 @@ function _nameOf(nx) {
   } catch (e) { return String(nx || '').toUpperCase(); }
 }
 
+// Pinta el fondo en un elemento (con el oscurecido). #dueño 04-11: el tema pone `background:transparent!important` en #app y
+// en las hojas de Perfil/Ajustes; el inline-important le gana al stylesheet-important. Al quitar, removeProperty devuelve el tema.
+function _paintEl(el, img) {
+  if (!el) return;
+  var ok = !!(img && IMG_RE.test(img));
+  el.setAttribute('data-nexo-wp', ok ? _hash(img) : '');   // para el simulador (jsdom no aplica bien la cascada)
+  if (ok) {
+    el.style.setProperty('background-image', 'linear-gradient(rgba(0,0,0,' + DIM + '),rgba(0,0,0,' + DIM + ')),url("' + img + '")', 'important');
+    el.style.setProperty('background-size', 'cover', 'important');
+    el.style.setProperty('background-position', 'center', 'important');
+    el.style.setProperty('background-repeat', 'no-repeat', 'important');
+  } else {
+    el.style.removeProperty('background-image');   // vuelve al gradiente del tema (body::before) / negro liso
+    el.style.removeProperty('background-size');
+    el.style.removeProperty('background-position');
+    el.style.removeProperty('background-repeat');
+  }
+}
 // Pinta el fondo en #app (no hace scroll; la cabecera y la barra de escribir, opacas, lo tapan donde toca).
 function _paint(img) {
   _applied = (img && IMG_RE.test(img)) ? img : '';
   var app;
   try { app = document.getElementById('app'); } catch (e) { app = null; }
-  if (!app) return;
-  if (img && IMG_RE.test(img)) {
-    // #dueño 04-11: el tema pone `#app{background:transparent!important}` (para dejar ver el gradiente de body::before).
-    // Ese !important le ganaba al estilo inline normal → el fondo del chat NUNCA se pintaba (lo probé en Chromium; el
-    // jsdom no aplica cascada, por eso la batería no lo cazaba). Hay que pintar con !important inline: el inline-important
-    // le gana al stylesheet-important. Al quitar, removeProperty devuelve el gradiente del tema.
-    app.style.setProperty('background-image', 'linear-gradient(rgba(0,0,0,' + DIM + '),rgba(0,0,0,' + DIM + ')),url("' + img + '")', 'important');
-    app.style.setProperty('background-size', 'cover', 'important');
-    app.style.setProperty('background-position', 'center', 'important');
-    app.style.setProperty('background-repeat', 'no-repeat', 'important');
-  } else {
-    app.style.removeProperty('background-image');   // vuelve al gradiente del tema (body::before) / negro liso
-    app.style.removeProperty('background-size');
-    app.style.removeProperty('background-position');
-    app.style.removeProperty('background-repeat');
-  }
+  _paintEl(app, img);
 }
 
 // Carga perezosa del fondo por chat de un contacto (una sola lectura; cachea '' si no tiene).
@@ -114,6 +125,12 @@ export function wallpaperInit() {
     if (r[1] && typeof r[1].img === 'string' && IMG_RE.test(r[1].img)) _chat = r[1].img;
     wallpaperRefresh();
   });
+  Object.keys(_scr).forEach(function(k) {
+    _load(SCR_FILE(k)).then(function(o) {
+      if (o && typeof o.img === 'string' && IMG_RE.test(o.img) && !_scr[k]) { _scr[k] = o.img; _paintScreens(); }
+    });
+  });
+  installScreenGestures();
   // Al entrar a un chat: pinta el global de chats al instante y, si ese contacto tiene fondo propio, lo cambia.
   window.addEventListener('nexo:ble:openChat', function(e) {
     // #dueño 04-11: aceptar las dos formas del evento — {contactId} (el camino normal, ble_interface) y {contact}
@@ -154,14 +171,14 @@ export function chatWallpaperFor(nx) { return _per.get(_normId(nx)) || ''; }
 export function hasChatWallpaperFor(nx) { return !!chatWallpaperFor(nx); }
 export function setChatWallpaperFor(nx, dataUrl) {
   nx = _normId(nx);
-  if (!NX_RE.test(nx) || !IMG_RE.test(dataUrl || '') || dataUrl.length > MAX_LEN) return false;
+  if (!CHAT_RE.test(nx) || !IMG_RE.test(dataUrl || '') || dataUrl.length > MAX_LEN) return false;
   _per.set(nx, dataUrl); _save(CHATP_FILE(nx), { img: dataUrl });
   if (_curNx === nx) _paint(dataUrl);
   return true;
 }
 export function clearChatWallpaperFor(nx) {
   nx = _normId(nx);
-  if (!NX_RE.test(nx)) return;
+  if (!CHAT_RE.test(nx)) return;
   _per.set(nx, ''); _save(CHATP_FILE(nx), { img: '' });
   if (_curNx === nx) _paint(_chat);   // vuelve al global de chats (o negro si no hay)
 }
@@ -231,6 +248,8 @@ export function makeWallpaper(file, maxEdge, maxLen) {
 }
 
 // ===== Botón 🖼️ en la cabecera del chat (opción A del dueño) + hoja de acciones =====
+// Auditoría 23-11 (I-X2): el nombre del contacto lo elige él; en la hoja va dentro de HTML
+function _escH(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return '&#' + c.charCodeAt(0) + ';'; }); }
 function _curName() { try { return (document.getElementById('chat-contact-name') || {}).value || t('the_contact', 'el contacto'); } catch (e) { return t('the_contact', 'el contacto'); } }
 
 function _refreshButton() {
@@ -271,13 +290,13 @@ export function installWallpaperGesture() {
   c.addEventListener('mouseleave', clearT);
 }
 
-function _pick(onUrl) {
+function _pick(onUrl, edge, len) {
   var inp = document.createElement('input');
   inp.type = 'file'; inp.accept = 'image/*'; inp.style.display = 'none';
   inp.onchange = function() {
     var f = inp.files && inp.files[0]; inp.remove();
     if (!f) return;
-    makeWallpaper(f, SHARE_EDGE, SHARE_LEN).then(onUrl).catch(function(e) {
+    makeWallpaper(f, edge || SHARE_EDGE, len || SHARE_LEN).then(onUrl).catch(function(e) {
       _showInfoToast(t('prof_photo_fail', 'No se pudo usar esa foto: ') + ((e && e.message) || t('prof_error', 'error')), 3500);
     });
   };
@@ -298,7 +317,7 @@ function _openSheet() {
       '<div class="nx-h"><span class="nx-ico">🖼️</span>' + t('wp_sheet_title', 'Fondo de este chat') + '</div>' +
       '<div class="nx-sub">' + t('wp_sheet_sub', 'Una foto de fondo solo para este chat (manda sobre el fondo general de chats).') + '</div>' +
       '<button id="nexo-wp-pick" class="nx-btn nx-btn-primary">' + (has ? t('wp_change', 'Cambiar la foto…') : t('wp_set', 'Elegir una foto…')) + '</button>' +
-      (has ? '<button id="nexo-wp-share" class="nx-btn">' + t('wp_share', 'Compartir este fondo con ') + name + '</button>' +
+      (has ? '<button id="nexo-wp-share" class="nx-btn">' + t('wp_share', 'Compartir este fondo con ') + _escH(name) + '</button>' +
              '<button id="nexo-wp-remove" class="nx-btn">' + t('wp_remove', 'Quitar el fondo de este chat') + '</button>' : '') +
       '<button id="nexo-wp-close" class="nx-btn" style="background:none;border:none;">' + t('close', 'Cerrar') + '</button>' +
       '</div>';
@@ -322,4 +341,105 @@ function _openSheet() {
     var rmBtn = sheet.querySelector('#nexo-wp-remove');
     if (rmBtn) rmBtn.onclick = function() { close(); clearChatWallpaperFor(nx); _showInfoToast(t('wp_removed', 'Fondo de este chat quitado'), 2500); };
   });
+}
+
+// ===== COLA 30: fondo de las demás pantallas (llamada/videollamada, Perfil, Ajustes y lista de chats) =====
+function _paintScreens() {
+  Object.keys(SCR_SEL).forEach(function(k) {
+    var el; try { el = document.querySelector(SCR_SEL[k]); } catch (e) { el = null; }
+    if (el) _paintEl(el, _scr[k]);
+  });
+}
+export function screenWallpaperFor(key) { return key === 'list' ? _list : (_scr[key] || ''); }
+export function setScreenWallpaper(key, dataUrl) {
+  if (key === 'list') return setListWallpaper(dataUrl);
+  if (!(key in _scr) || !IMG_RE.test(dataUrl || '') || dataUrl.length > MAX_LEN) return false;
+  _scr[key] = dataUrl; _save(SCR_FILE(key), { img: dataUrl }); _paintScreens(); return true;
+}
+export function clearScreenWallpaper(key) {
+  if (key === 'list') return clearListWallpaper();
+  if (!(key in _scr)) return;
+  _scr[key] = ''; _save(SCR_FILE(key), { img: '' }); _paintScreens();
+}
+
+// Lo que NO es «espacio libre»: mensajes, filas, botones, campos, avatares, la tira de estados, tarjetas, cabecera y barras.
+var NOT_FREE = '.message, button, a, input, textarea, select, label, img, video, canvas, svg, [role="button"], .msg-media, ' +
+  '.nx-card, .nx-set-row, .nx-btn, .nx-link, .nx-av, .nx-page-title, ' +
+  '.ble-contact-row, .ble-contact-menu, .contacts-online-strip, .ble-online-item, .ble-found-row, #main-header, .ble-bottom-nav, ' +
+  '.nc-btn, .nc-pip, .call-buttons, .nc-av-wrap, .nc-pill, .nc-min, .nc-warnbar, .call-name, .call-status, .call-note';
+// ¿A qué pantalla pertenece el toque? ('' = a ninguna con fondo propio; el chat va por su propio gesto)
+function _screenOf(target) {
+  if (!target || !target.closest) return '';
+  if (target.closest(NOT_FREE)) return '';
+  if (target.closest('#nexo-wp-sheet')) return '';
+  if (target.closest('#nexo-settings-sheet')) return 'settings';
+  if (target.closest('#nexo-profile-sheet')) return 'profile';
+  var cs = target.closest('#nexo-call-screen');
+  if (cs) return cs.classList.contains('nc-appmini') ? '' : 'call';
+  if (target.closest('#contacts-view') && !_inChat() && !document.querySelector('#nexo-contact-profile, #nexo-scr-ask')) return 'list';
+  return '';
+}
+
+export function installScreenGestures() {
+  if (document._nexoWpScr) return;
+  document._nexoWpScr = true;
+  var timer = null, sx = 0, sy = 0, MOVE = 12;
+  function clearT() { if (timer) { clearTimeout(timer); timer = null; } }
+  function start(x, y, target) {
+    clearT();
+    var k = _screenOf(target);
+    if (!k) return;
+    sx = x; sy = y;
+    var ms = window.NEXO_WP_LONGPRESS_MS || 800;
+    timer = setTimeout(function() { timer = null; _openScreenSheet(k); }, ms);
+  }
+  function move(x, y) { if (timer && (Math.abs(x - sx) > MOVE || Math.abs(y - sy) > MOVE)) clearT(); }
+  var o = { passive: true, capture: true };
+  document.addEventListener('touchstart', function(e) { var t0 = e.touches && e.touches[0]; if (!t0 || e.touches.length > 1) { clearT(); return; } start(t0.clientX, t0.clientY, e.target); }, o);
+  document.addEventListener('touchmove', function(e) { var t0 = e.touches && e.touches[0]; if (t0) move(t0.clientX, t0.clientY); }, o);
+  document.addEventListener('touchend', clearT, o);
+  document.addEventListener('touchcancel', clearT, o);
+  document.addEventListener('scroll', clearT, o);   // si la lista se desplaza (o se arrastra para actualizar), se cancela
+  document.addEventListener('mousedown', function(e) { if (e.button === 0) start(e.clientX, e.clientY, e.target); }, true);
+  document.addEventListener('mousemove', function(e) { move(e.clientX, e.clientY); }, true);
+  document.addEventListener('mouseup', clearT, true);
+  // Las hojas de Perfil/Ajustes y la pantalla de llamada se crean al abrirse: se pintan en cuanto aparecen en <body>.
+  try {
+    new MutationObserver(function(ms) {
+      for (var i = 0; i < ms.length; i++) for (var j = 0; j < ms[i].addedNodes.length; j++) {
+        var n = ms[i].addedNodes[j];
+        if (n && (n.id === 'nexo-profile-sheet' || n.id === 'nexo-settings-sheet' || n.id === 'nexo-call-screen')) { _paintScreens(); return; }
+      }
+    }).observe(document.body, { childList: true });
+  } catch (e) {}
+}
+
+// Textos: SOLO claves que ya existen en los diccionarios (no pasan de 999 líneas; la auditoría exige todas las claves en la tabla).
+// El MISMO menú que el del chat (elegir foto de la galería / quitar / cerrar), sin «compartir».
+function _openScreenSheet(k) {
+  var old = document.getElementById('nexo-wp-sheet'); if (old) old.remove();
+  var has = !!screenWallpaperFor(k);
+  var sheet = document.createElement('div');
+  sheet.id = 'nexo-wp-sheet';
+  sheet.setAttribute('data-screen', k);
+  sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center;';
+  sheet.innerHTML = '<div class="nx-card" style="width:100%;max-width:460px;margin:0 0 env(safe-area-inset-bottom,0px);border-radius:20px 20px 0 0;">' +
+    '<div class="nx-h"><span class="nx-ico">🖼️</span>' + t('prof_wallpaper_title', 'Fondo de pantalla') + '</div>' +
+    '<button id="nexo-wp-pick" class="nx-btn nx-btn-primary">' + (has ? t('wp_change', 'Cambiar la foto…') : t('wp_set', 'Elegir una foto…')) + '</button>' +
+    (has ? '<button id="nexo-wp-remove" class="nx-btn">' + t('prof_wallpaper_remove', 'Quitar este fondo') + '</button>' : '') +
+    '<button id="nexo-wp-close" class="nx-btn" style="background:none;border:none;">' + t('close', 'Cerrar') + '</button>' +
+    '</div>';
+  document.body.appendChild(sheet);
+  var close = function() { var s = document.getElementById('nexo-wp-sheet'); if (s) s.remove(); };
+  sheet.addEventListener('click', function(e) { if (e.target === sheet) close(); });
+  sheet.querySelector('#nexo-wp-close').onclick = close;
+  sheet.querySelector('#nexo-wp-pick').onclick = function() {
+    close();
+    _pick(function(url) {
+      if (setScreenWallpaper(k, url)) _showInfoToast(t('prof_wallpaper_title', 'Fondo de pantalla') + ' ✓', 2500);
+      else _showInfoToast(t('prof_photo_invalid', 'foto no válida'), 3000);
+    }, MAX_EDGE, MAX_LEN);
+  };
+  var rm = sheet.querySelector('#nexo-wp-remove');
+  if (rm) rm.onclick = function() { close(); clearScreenWallpaper(k); };
 }

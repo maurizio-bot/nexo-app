@@ -44,6 +44,14 @@ class BleService : Service() {
         // #dueño 01-11: hay una VIDEOLLAMADA activa → al irse de la app (gesto de inicio) MainActivity entra en
         // Picture-in-Picture (miniatura flotante) sin cortar audio/vídeo. @JvmStatic para leerlo desde MainActivity (Java).
         @JvmStatic @Volatile var pipVideo = false
+        /**
+         * 3282 (dueño 22-11: en un chat, sin videollamada, el gesto de irse metía la app en la miniatura): al irse el usuario se pasa a
+         * la miniatura SOLO con la marca puesta Y una llamada con el audio en marcha. La marca sola no basta: es de la página y podía
+         * quedarse puesta de una llamada anterior.
+         */
+        @JvmStatic fun pipOnLeave(): Boolean = pipVideo && inCall
+        /** 3275: cuándo el usuario se fue de la app (onUserLeaveHint): la miniatura automática entra justo después; en onPause aún puede no verse */
+        @JvmStatic @Volatile var leaveHintAt = 0L
         // Cómo quedó el servicio la última vez (también si se reinició solo en plena llamada: al volver a la app se mira)
         @Volatile var fgsState = ""
     }
@@ -137,6 +145,9 @@ class BleService : Service() {
             visibleUntil = intent.getLongExtra("visible_until", 0L)
             ridEpochS = intent.getLongExtra("rid_epoch_s", 900L).coerceAtLeast(1L)
         }
+        // 3254 (#87, Bluetooth en el servicio, fase 1): lo que la app anuncia queda guardado y cifrado para poder anunciar y recibir
+        // por Bluetooth sin ella (BleSinApp) cuando NEXO vuelve sola
+        if (intent?.hasExtra("rid_key") == true && !currentNexoId.isNullOrEmpty()) BleSinApp.save(this, currentNexoId!!, ridKey, ridEpochS)
 
         // 3189 (#87): arrancado por NexoRestartReceiver (actualización, reinicio o alarma de vigilancia) = sin la app: solo
         // «dispositivo conectado», y el resultado al registro nativo («NEXO vuelve sola tras…» / «No se pudo volver sola tras…»)
@@ -158,6 +169,9 @@ class BleService : Service() {
             Thread({ try { if (live != null) NetBgHome.startWithoutApp(app, why) } catch (e: Throwable) { } }, "nexo-netbg-sinapp").start()
         }
 
+        // 3254: sin la app en el proceso (vuelta sola, toque FCM, reinicio del servicio): anunciar y recibir desde lo guardado
+        if (sinApp?.stopped == true) sinApp = null // la app tomó el relevo y luego murió con el servicio vivo: se puede volver a abrir
+        if (fgFail == null && sinApp == null && !sinAppLoading && NexoBlePlugin.live == null && NexoBlePlugin.orphan == null) startSinApp(restart?.why ?: if (intent == null) "un reinicio del servicio" else "un despertar sin la app")
         if (currentNexoId.isNullOrEmpty()) {
             Log.w(TAG, "Sin nexoId, advertising postergado hasta recibir setAdvertisingData")
             return START_STICKY
@@ -171,12 +185,36 @@ class BleService : Service() {
         return START_STICKY
     }
 
+    // 3254: Bluetooth sin la app. Lo guardado se lee en otro hilo (archivos y Keystore); el servidor y el anuncio, en el principal.
+    private var sinApp: BleSinApp? = null
+    @Volatile private var sinAppLoading = false
+    private fun startSinApp(why: String) {
+        sinAppLoading = true
+        val app = applicationContext
+        Thread({
+            val saved = try { BleSinApp.load(app) } catch (e: Throwable) { null }
+            handler.post {
+                sinAppLoading = false
+                if (live !== this || sinApp != null || NexoBlePlugin.live != null || NexoBlePlugin.orphan != null) return@post
+                if (saved == null) { BleSinApp.nlog(app, "WARN", "Bluetooth sin la app: no hay nada guardado (tras $why): no se anuncia ni se recibe hasta abrir NEXO"); return@post }
+                if (currentNexoId.isNullOrEmpty()) { currentNexoId = saved.id; ridKey = saved.ridKey.ifEmpty { null }; ridEpochS = saved.epochS; visibleUntil = 0L }
+                val id = currentNexoId ?: return@post
+                val s = BleSinApp(app, id) { handler.post { if (live === this && !isAdvertising && !currentNexoId.isNullOrEmpty()) startAdvertisingInternal(currentNexoId!!) } }
+                sinApp = s
+                s.start(why)
+                if (!isAdvertising) startAdvertisingInternal(id)
+            }
+        }, "nexo-bt-sinapp").start()
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
         Log.i(TAG, "onDestroy")
         if (live === this) live = null
         handler.removeCallbacks(rotate)
+        try { sinApp?.stop("el servicio se detuvo") } catch (e: Throwable) { }
+        sinApp = null
         stopAdvertisingInternal()
         NetBgHome.stopWithoutApp(this, "el servicio se detuvo") // 3192: sin la app ni el servicio, no se deja la Wi-Fi despierta
         super.onDestroy()

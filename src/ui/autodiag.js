@@ -20,6 +20,7 @@ import { _getBLEContacts, _isResendable, _normId, _showToast, _tooBigForBt } fro
 import { _sendTextTo } from './send.js';
 import { t } from './i18n.js';
 import { diagChannelAvailable, diagChannelInit, diagChannelSend } from './diag_channel.js'; // 2992: canal directo a Claude
+import { updaterAvailable } from './updater.js';
 
 export var DIAG_DEV_NX = 'nx1n36c283'; // el S24 del dueño (Fénix conserva el NEXO ID al cambiar de teléfono)
 // 3020 (dueño 12-11, «más diagnósticos = más arreglos»): antes 2 h / 3 por día / el mismo síntoma 24 h; se perdían casi
@@ -47,6 +48,11 @@ function _kb(n) { return Math.max(1, Math.round(n / 1024)); }
 
 // Número de build (lo inyecta el workflow en dist/index.html: window.NEXO_BUILD); en el simulador y en local, «dev».
 export function autoDiagBuild() { var b = (typeof window !== 'undefined' && window.NEXO_BUILD) || ''; return /^\d+$/.test(String(b)) ? String(b) : 'dev'; }
+// 3253 (dueño 19-11: «que lleguen solo diagnósticos de la última versión»): un teléfono que ya sabe (por el actualizador) que hay una
+// versión más nueva no manda diagnósticos: se arreglan los fallos de la última y los de antes ya no se revisan.
+function _outdated() { try { return !!updaterAvailable(); } catch (e) { return false; } }
+// …y el desarrollador no guarda los que llegan de una build anterior a la suya (también los de teléfonos que aún no tienen este cambio)
+function _olderThanMine(build) { var me = autoDiagBuild(); return /^\d+$/.test(String(build || '')) && me !== 'dev' && parseInt(build, 10) < parseInt(me, 10); }
 // 2991 (B, dueño 10-11: «el sentido por defecto»): en estas builds de prueba va ENCENDIDO por defecto. Para probadores externos / Google Play
 // la compilación fija window.NEXO_DIAG_DEFAULT = 'ask': apagado hasta que la persona conteste una pregunta única («Aceptar» / «Ahora no»).
 // Lo que la persona eligió (nexo_autodiag 1/0) manda siempre. El resumen diario de uso (usage_stats.js) usa este mismo interruptor.
@@ -94,6 +100,7 @@ function _compose(kind, info) {
 export function autoDiagReport(kind, info) {
   kind = String(kind || 'sintoma').substring(0, 40); info = String(info == null ? '' : info).substring(0, 120);
   if (!autoDiagEnabled()) return 'apagado';
+  if (_outdated()) return 'version_vieja';
   var now = Date.now(), s = _state(), dev = autoDiagDevNx(), me = _me(), id = null;
   var key = kind + '|' + info;
   if (s.same && s.same[key] && now - s.same[key] < SAME_MS) return 'repetido';
@@ -132,6 +139,7 @@ export function autoDiagReport(kind, info) {
 // Devuelve 'enviado' | 'local' (soy el desarrollador) | 'apagado' | 'sin_contacto' | 'no_envio'.
 export function autoDiagSendSummary(day, text) {
   if (!autoDiagEnabled()) return 'apagado';
+  if (_outdated()) return 'version_vieja';
   var now = Date.now(), dev = autoDiagDevNx(), me = _me(), isDev = !!me && me === dev;
   var viaCh = diagChannelAvailable(), devOk = isDev || (!!dev && _isContact(dev));
   if (!devOk && !viaCh) return 'sin_contacto';
@@ -184,6 +192,7 @@ export function autoDiagReceived(fromNx, k) {
   if (!k || k.v !== 1 || typeof k.text !== 'string') return false;
   var from = _normId(fromNx);
   if (!/^nx[0-9a-z]{8}$/.test(from)) return false;
+  if (_olderThanMine(k.build)) { console.log('[AUTODIAG] diagnóstico de ' + from + ' con la build ' + k.build + ' (anterior a la mía): no se guarda'); return true; } // i18n-ok: registro
   var text = k.text.substring(0, DIAG_MAX_CHARS + 2000);
   // 3240 (diagnósticos de Marcos 17-11: el MISMO diagnóstico llegó 3 veces): el mismo contacto con la misma hora de salida y el mismo
   // síntoma ya está en la bandeja → no se guarda otra copia ni se avisa otra vez (llega repetido si el envío se reintentó o fue por dos caminos)

@@ -22,8 +22,10 @@ import { t } from './i18n.js';
 import { _pickAvatar, SHEET_CLOSE_SVG } from './share_contacts.js';
 import { isSelecting, startSelect, selectFromBubble } from './msg_select.js'; // 3206: elegir varios mensajes y reenviarlos
 import { paintTextWithLinks } from './links.js'; // 3161: enlaces que se tocan (+ tarjeta de TikTok/Instagram/Facebook/YouTube)
+import { _isBLEContact } from './ble_helpers.js'; // dueño 23-11: vista previa solo de contactos
 import { canStar, toggleStar } from './chat_star.js'; // 3219: mensajes destacados (solo aquí)
-import { canPin, chatPinUse, isPinned, pinOnAction, togglePin } from './chat_pin.js'; // 3219: fijar mensajes (para los dos)
+import { canPin, chatPinUse, isPinned, pinOnAction, togglePin, unpinId } from './chat_pin.js'; // 3219: fijar mensajes (para los dos)
+import { onHistoryQuery, onHistoryReply } from './group_history.js'; // historial para los nuevos del grupo (24-11)
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _renderMessage, _sendAttachment, _sendTextTo;
@@ -38,6 +40,7 @@ export var _renderedMessageIds = new Set();
 //   texto con respuesta o reenviado: {"type":"nexo_txt","t":texto,"rp":{id,a,s,k},"fw":1}
 //   eliminar para todos:              {"type":"nexo_act","act":"del","id":msgId}  (no se muestra)
 //   editar (2782; 3195: ts y grupos):  {"type":"nexo_act","act":"edit","id":msgId,"t":texto nuevo,"ts":hora,"g":grupo si es de grupo}
+var _replyCid = '';                     // 24-11 (dueño): de qué chat es la respuesta (no viaja en el mensaje)
 export var _replyTo = null;               // { id, a: autor (NEXO ID), s: resumen, k: tipo }
 
 export var DELETE_ALL_MS = 24 * 3600000;  // "eliminar para todos" hasta 24 h después de enviarlo
@@ -105,7 +108,9 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
     // se aplicaba a los textos envueltos (respuesta/reenvío); los mensajes normales llegan en claro y salían con burbuja y a 16 px
     var pj = _emojiOnly(raw);
     // 3161: con enlaces http/https, se tocan (links.js; nodos DOM, nunca HTML); sin enlaces, como siempre
-    if (!pj) { if (!paintTextWithLinks(contentDiv, raw)) contentDiv.textContent = raw; return; }
+    // Dueño 23-11: vista previa de enlaces solo en lo propio o de un contacto (en grupo, de un miembro que no es contacto: tarjeta sin bajar nada)
+    var lkFrom = isOwn ? '' : (msg.senderNexoId || (msg.groupId ? '' : _getCurrentContactId()) || '');
+    if (!pj) { if (!paintTextWithLinks(contentDiv, raw, { preview: !!isOwn || (!!lkFrom && _isBLEContact(lkFrom)) })) contentDiv.textContent = raw; return; }
     var pe = document.createElement('span');
     pe.className = 'msg-text emoji-jumbo emoji-' + pj;
     pe.textContent = String(raw).trim();
@@ -315,19 +320,19 @@ export function _openMsgMenu(div) {
     box.id = 'nexo-msg-menu';
     box.style.cssText = 'position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.45);display:flex;align-items:flex-end;justify-content:center;';
     var sheet = document.createElement('div');
-    sheet.style.cssText = 'background:#14152a;color:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:8px 0 14px;';
+    sheet.style.cssText = 'background:#14152a;color:#fff;width:100%;max-width:420px;border-radius:16px 16px 0 0;padding:4px 0 8px;'; // dueño 24-11: más compacto
     var close = function() { box.remove(); div.style.background = ''; };
     var add = function(label, cls, fn, danger) {
       var b = document.createElement('button');
       b.className = 'mm-item ' + cls;
-      b.style.cssText = 'display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:14px 20px;background:none;border:none;font-size:16px;color:' + (danger ? '#ff6b6b' : '#fff') + ';';
+      b.style.cssText = 'display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:10px 18px;background:none;border:none;font-size:15px;color:' + (danger ? '#ff6b6b' : '#fff') + ';';
       // 3140 (dueño 16-11: «como mi pantalla de Contactos»): un icono de trazo igual para todas las opciones en lugar del
       // glifo/emoji que traía el texto traducido (↩ ↪ ⧉ ✏️ 🗑 ⭐); se quita del texto al mostrarlo
       var path = _MM_ICONS[cls];
       if (path) {
         var ic = document.createElement('span');
         ic.className = 'mm-ico';
-        ic.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + path + '</svg>'; // SVG fijo (sin datos)
+        ic.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + path + '</svg>'; // SVG fijo (sin datos)
         b.appendChild(ic);
       }
       var lb = document.createElement('span');
@@ -339,18 +344,20 @@ export function _openMsgMenu(div) {
     if (!deleted) {
       // Ronda 2783: barra de reacciones arriba del menú (como WhatsApp)
       var rbar = document.createElement('div');
-      rbar.style.cssText = 'display:flex;justify-content:space-around;align-items:center;padding:10px 12px 12px;border-bottom:1px solid rgba(255,255,255,0.08);';
+      rbar.style.cssText = 'display:flex;justify-content:space-around;align-items:center;padding:6px 10px 8px;border-bottom:1px solid rgba(255,255,255,0.08);';
       REACTION_SET.forEach(function(e) {
         var rb = document.createElement('button');
         rb.className = 'mm-react';
         rb.textContent = e;
-        rb.style.cssText = 'background:none;border:none;font-size:27px;line-height:1;padding:4px 6px;cursor:pointer;';
+        rb.style.cssText = 'background:none;border:none;font-size:24px;line-height:1;padding:3px 5px;cursor:pointer;';
         rb.onclick = function(ev) { ev.stopPropagation(); close(); _reactTo(cid, id, e); };
         rbar.appendChild(rb);
       });
       sheet.appendChild(rbar);
     }
-    if (!deleted) add(t('chat_reply', '↩  Responder'), 'mm-reply', function() { _startReply(id, msg); });
+    // Dueño 23-11: «Responder» ya se hace deslizando la burbuja (3143): sale del menú y en su lugar, arriba, va «Editar» (mensajes propios
+    // de texto, hasta 15 min; los demás no se pueden editar)
+    if (_canEdit(cid, msg)) add(t('chat_edit', '✏️  Editar'), 'mm-edit', function() { _startEdit(id, msg); });
     // 3164: una foto o un vídeo de «ver una vez» (propio o recibido, visto o no) no se reenvía: el otro lo mandó para verse una vez
     var onceMsg = !!(msg.onceSeen || (msg.attachmentMeta && msg.attachmentMeta.once));
     if (!deleted && !onceMsg) add(t('chat_forward', '↪  Reenviar'), 'mm-forward', function() { _openForwardSheet(msg); });
@@ -365,11 +372,10 @@ export function _openMsgMenu(div) {
         });
       });
     }
-    if (!deleted && !msg.attachmentType) add(t('chat_copy', '⧉  Copiar'), 'mm-copy', function() { _copyText(_plainText(msg.content)); });
+    // Dueño 24-11: «Copiar» sale de este menú: ya está en la barra de «Seleccionar» (3311), junto a «Reenviar»
     // 3219: destacar (solo aquí) y fijar arriba del chat (para los dos)
     if (canStar(msg)) add(msg.starred ? t('chat_unstar', '⭐  Quitar destacado') : t('chat_star', '⭐  Destacar'), 'mm-star', function() { toggleStar(cid, msg); });
     if (canPin(cid, msg)) add(isPinned(_normId(cid), id) ? t('chat_unpin', '📌  Desfijar') : t('chat_pin', '📌  Fijar'), 'mm-pin', function() { togglePin(cid, msg); });
-    if (_canEdit(cid, msg)) add(t('chat_edit', '✏️  Editar'), 'mm-edit', function() { _startEdit(id, msg); });
     add(t('chat_delete_me', '🗑  Eliminar para mí'), 'mm-del-me', function() { _deleteForMe(cid, id); }, true);
     if (isOwn && !deleted && Date.now() - (msg.timestamp || 0) < DELETE_ALL_MS && _peerUnderstands(cid)) {
       add(t('chat_delete_all', '🗑  Eliminar para todos'), 'mm-del-all', function() { _deleteForAll(cid, msg); }, true);
@@ -389,14 +395,28 @@ export function _startReply(id, msg) {
     if (!m || m.deleted) return;
     if (_editing) _cancelEdit(); // 3195: responder deja la edición (las dos a la vez no tienen sentido)
     var sum = _msgSummary(m);
+    if (_normId(_getCurrentContactId()) !== _normId(cid)) return; // se cambió de chat mientras se buscaba el mensaje
     _replyTo = { id: id, a: m._own ? _myNexoId() : _normId(m.senderNexoId || cid), s: sum.s, k: sum.k };
+    _replyCid = _normId(cid);
     _renderReplyBar();
     var input = document.getElementById('message-input');
     if (input) input.focus();
   });
 }
 
-export function _cancelReply() { _replyTo = null; _renderReplyBar(); }
+export function _cancelReply() { _replyTo = null; _replyCid = ''; _renderReplyBar(); }
+
+// 24-11 (dueño: «si salgo de ese chat y abro otro se mantiene»): la respuesta (y la edición) son SOLO del chat donde se empezaron.
+// Al abrir otro chat o cerrar este se quitan, por cualquier camino (atrás, gesto, aviso, compartir, abrir desde otro chat).
+function _chatChanged() {
+  var cur = _normId(_getCurrentContactId());
+  if (_replyTo && _replyCid !== cur) _cancelReply();
+  if (_editing && _editing.cid !== cur) _cancelEdit();
+}
+try {
+  window.addEventListener('nexo:ble:openChat', function() { setTimeout(_chatChanged, 0); });
+  window.addEventListener('nexo:ble:closeChat', function() { if (_replyTo) _cancelReply(); if (_editing) _cancelEdit(); });
+} catch (e) {}
 
 // 3195: las barras «Respondiendo a» y «Editando mensaje» van DENTRO de la barra de escribir (fija abajo), justo encima de ella.
 // Antes se metían en la página DETRÁS de esa barra (fija y opaca desde la 3140) y no se veían: medido en Chromium a 360 px, las
@@ -685,19 +705,26 @@ export function _refreshChatPreview(cid, msgId) {
   }).catch(function() {});
 }
 
+// 3268: un mensaje ⏳ que se borra ya no debe salir: fuera también de la bandeja de salida nativa (ble_outbox.js)
+function _outboxForget(id) { try { var bi = window.bleInterface; if (bi && typeof bi._outboxDrop === 'function') bi._outboxDrop(id, true); } catch (e) {} }
+
 export function _deleteForMe(cid, id) {
   var el = document.querySelector('.message[data-msg-id="' + id + '"]');
   if (el) el.remove();
   _renderedMessageIds.delete(id);
   if (_replyTo && _replyTo.id === id) _cancelReply();
+  _outboxForget(id);
   vaultDeleteMessage(cid, id).then(function() { return _refreshChatPreview(cid); }).catch(function() {});
+  unpinId(cid, id, true); // dueño 23-11: un mensaje fijado que se borra deja de estar fijado (aquí; el otro sigue con el suyo)
   console.log('[CHAT] Mensaje eliminado para mí');
 }
 
 export function _deleteForAll(cid, msg) {
   var id = msg.msgId || msg.messageId;
+  _outboxForget(id);
   _sendTextTo(cid, JSON.stringify({ type: 'nexo_act', act: 'del', id: id }), '', true);
   vaultBlankMessage(cid, id).then(function() { _rerenderBlank(id, msg); return _refreshChatPreview(cid); }).catch(function() {});
+  unpinId(cid, id, false); // dueño 23-11: borrado para todos: deja de estar fijado también para todos
   console.log('[CHAT] Mensaje eliminado para todos');
 }
 
@@ -827,6 +854,8 @@ export function _applyChatAction(senderId, act) {
   if (act && act.act === 'prof') { applyContactProfile(senderId, act); return; } // #dueño 04-11: datos de perfil completos (profile_share.js)
   if (act && act.act === 'psi') { psiOnAction(senderId, act); return; } // #dueño 04-11 paso 3: contactos en común (PSI, psi.js)
   if (act && act.act === 'pin') { pinOnAction(senderId, act); return; } // 3219: fijar un mensaje arriba del chat (chat_pin.js)
+  if (act && act.act === 'ghq') { onHistoryQuery(senderId, act); return; } // 24-11: un nuevo del grupo me pide los mensajes anteriores
+  if (act && act.act === 'ghr') { onHistoryReply(senderId, act); return; } // 24-11: llegan los mensajes anteriores del grupo
   if (act && act.act === 'game') { // ronda 2830+: juegos por turnos; se enruta por act.g
     if (act.g === 'c4') connect4OnAction(senderId, act);   // Conecta 4 (connect4.js)
     else if (act.g === 'tetvs') tetrisVersusOnAction(senderId, act); // Tetris versus por eventos (tetris_versus.js)

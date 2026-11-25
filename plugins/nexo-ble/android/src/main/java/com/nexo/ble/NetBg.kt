@@ -17,6 +17,19 @@ import javax.crypto.spec.SecretKeySpec
 // (kraw). Con eso calcula las etiquetas del día (igual que la app), se suscribe en los relés, se identifica (NIP-42)
 // y abre solo el sobre de la pareja: si el emisor marcó "mensaje nuevo" (n = msgId) avisa con onMessage. El mensaje
 // sigue cifrado de extremo a extremo; lo descifra la app al abrirse (lo recoge de los relés como siempre).
+// 3264 (diagnósticos de J Manuel 21-11 17:56/18:46/21:11 y del HONOR de Austin 20-11): «no se pudo abrir otra vez (… IllegalStateException)»
+// no decía nada: es el relé que CONTESTA y no acepta (WsClient «el relé no aceptó: HTTP/1.1 429 …», típico de relay.damus.io al
+// reconectar tras un corte de red). Al registro va el código que contestó; el resto de fallos, su clase como antes. Pura (JVM).
+internal fun failWhy(e: Throwable): String {
+    val m = e.message ?: ""
+    if (e is IllegalStateException) {
+        val code = Regex("^el relé no aceptó: HTTP/\\d(?:\\.\\d)? (\\d{3})").find(m)?.groupValues?.get(1)
+        if (code != null) return "el relé contestó $code y no aceptó"
+        if (m == "conexión cerrada") return "el relé cerró al saludar"
+    }
+    return e.javaClass.simpleName
+}
+
 class NetBg(
     // #130b (dueño 31-10): isCall = el sobre venía marcado como oferta de llamada (cl:1). Con la app en segundo plano o
     // congelada, el que escucha (NexoBlePlugin) saca la LLAMADA a pantalla completa en vez del aviso de mensaje normal.
@@ -36,6 +49,15 @@ class NetBg(
     // del relé desde lo último que vio la app y no debe hacer sonar ofertas de hace horas (NetBgSaved.callTooOld, el margen de la app).
     // Ni avisa ni suena; la confirmación de entrega sí sale y el evento queda para la app (lo apunta como perdida). Por defecto, nunca.
     private val staleCall: (tsMs: Long) -> Boolean = { false },
+    // 3268 (fase 3, COLA 29): la bandeja de salida cambió (algo salió, se confirmó o caducó): quien escucha la guarda cifrada en reposo
+    private val onOutbox: (json: String) -> Unit = { },
+    // 3268: el «toque» que despierta al otro teléfono tras subir un mensaje nuevo (dirección del enviador y token del otro; como la app)
+    private val wake: (url: String, token: String) -> Unit = { _, _ -> },
+    // 3270 (COLA 27 sin la app): con Wi-Fi y ningún relé abierto un rato, el Wi-Fi no da internet: quien escucha se lo dice a Android
+    // (reportNetworkConnectivity) para que lo compruebe y pase a datos móviles sin esperar sus ~2 min
+    private val onNoInternet: () -> Unit = { },
+    // 3281: los trozos de un archivo de la bandeja se guardan aparte (son grandes): json = sus eventos, o null = borrarlos (ya salió)
+    private val onBlob: (id: String, json: String?) -> Unit = { _, _ -> },
 ) {
     class Contact(val nx: String, val name: String, val kraw: ByteArray)
     // 3190: solicitud de contacto de mi buzón. kind = "req" (me quieren agregar) o "acc" (aceptó una solicitud MÍA); twin = nombre del
@@ -55,6 +77,14 @@ class NetBg(
         const val FOR_APP_MAX = 500                    // 3033: eventos guardados para la app como mucho
         const val FOR_APP_MAX_CHARS = 4_000_000L       // y como mucho ~4 MB (lo más viejo sale primero)
         const val KIND = 1059
+        const val MAX_CONTENT = 60000                  // 3268: tope de un evento en los relés habituales (como MAX_CONTENT de la app)
+        const val TTL_MSG_S = 7 * 86400L               // caducidad de un mensaje en el buzón de los relés (TTL_MSG de la app)
+        // 3270 (COLA 27 sin la app; como noNetStep de la app, net_link_shared.js): con Wi-Fi y sin ningún relé abierto desde `since`,
+        // ¿toca avisar al teléfono? A los 12 s y luego como mucho una vez por minuto. since = 0: hay relé abierto o no es Wi-Fi.
+        const val NO_NET_AFTER_MS = 12_000L
+        const val NO_NET_EVERY_MS = 60_000L
+        fun noNetDue(since: Long, saidAt: Long, now: Long): Boolean =
+            since > 0 && now - since >= NO_NET_AFTER_MS && (saidAt == 0L || now - saidAt >= NO_NET_EVERY_MS)
         // 3234: ¿contesta este saludo? Solo uno reciente (como UP_MS de la app: uno viejo no dice que esté en línea), que no sea ya una
         // respuesta (r:1: si no, dos teléfonos dormidos se saludarían sin fin) y como mucho uno cada 20 s por contacto (como la app).
         const val HELLO_FRESH_MS = 150_000L
@@ -107,6 +137,10 @@ class NetBg(
         // (no más atrás que lo que dura un mensaje en el relé). Con datos lo pendiente se guarda para el Wi-Fi.
         fun subSince(since: Long, gapSince: Long, cell: Boolean, now: Long): Long =
             if (gapSince < 0 || cell) since else minOf(since, maxOf(gapSince, now - TTL_MSG_MS))
+        // Auditoría 23-11 (S-A2): el `since` (desde cuándo pedir a los relés) avanzaba con el `created_at` de CUALQUIER evento antes de
+        // abrirlo: uno fechado en el futuro (lo publica cualquiera con mi etiqueta del día) dejaba sorda la escucha sin la app hasta
+        // reiniciar el proceso. Ahora solo avanza con un sobre que abrió bien y nunca más allá de ahora.
+        fun advanceSince(cur: Long, ts: Long, now: Long): Long = if (ts > cur) minOf(ts, now) else cur
         // Nombre corto del relé para el registro (como _relayHost de la app)
         fun host(url: String): String = url.replace(Regex("^wss?://"), "").replace(Regex("/.*$"), "")
         private val GID = Regex("^gr[0-9a-z]{8}$")
@@ -188,6 +222,18 @@ class NetBg(
             }
             return b.append('"').toString()
         }
+        // Auditoría 23-11 (S-D5): un trozo de la bandeja (lo firmó la app y se guardó en disco) se comprueba antes de subirlo: tipo
+        // 1064 (BLOB_KIND), id = SHA-256 del evento serializado y el mismo id que la bandeja espera. Uno tocado no sale.
+        fun blobChunkOk(ev: String, expectId: String): Boolean = try {
+            val o = JSONObject(ev)
+            val id = o.getString("id"); val pub = o.getString("pubkey")
+            val tags = o.getJSONArray("tags")
+            val tl = (0 until tags.length()).map { i -> val t = tags.getJSONArray(i); (0 until t.length()).map { t.getString(it) } }
+            val tagsJson = tl.joinToString(",", "[", "]") { t -> t.joinToString(",", "[", "]") { q(it) } }
+            val ser = "[0," + q(pub) + "," + o.getLong("created_at") + "," + o.getInt("kind") + "," + tagsJson + "," + q(o.getString("content")) + "]"
+            o.getInt("kind") == NetOutbox.CHUNK_KIND && Regex("^[0-9a-f]{64}$").matches(id) && Regex("^[0-9a-f]{64}$").matches(pub) &&
+                id == expectId && Secp256k1.hex(Secp256k1.sha256(ser.toByteArray(Charsets.UTF_8))) == id
+        } catch (e: Exception) { false }
         // Evento Nostr firmado (NIP-01); el id es el sha256 de [0,pubkey,created_at,kind,tags,content] como lo escribe JSON.stringify
         fun event(sk: ByteArray, kind: Int, tags: List<List<String>>, content: String, createdAt: Long = System.currentTimeMillis() / 1000): JSONObject {
             val pub = Secp256k1.hex(Secp256k1.xOnly(sk))
@@ -203,6 +249,7 @@ class NetBg(
     }
 
     @Volatile private var me = ""
+    @Volatile private var torWaitLogAt = 0L // 13A: «espero a Tor» al registro como mucho una vez por minuto
     @Volatile private var contacts: List<Contact> = emptyList()
     @Volatile private var since = 0L
     // 3190: para el aviso de una solicitud: todos mis contactos (NEXO ID → nombre; también los que no van por internet), los IDs a
@@ -223,6 +270,9 @@ class NetBg(
     // 3204: ¿con datos móviles? Lo dice quien escucha la red del teléfono (NetBgHome, ConnectivityManager) con setNet. Sin aviso (pruebas,
     // o sin poder escuchar la red), como siempre: todos los relés.
     @Volatile private var cell = false
+    @Volatile private var netType = ""               // 3270: "wifi", "cell", "none"… (lo último que dijo el teléfono)
+    private var noNetSince = 0L                      // solo el hilo del bucle
+    private var noNetSaidAt = 0L
     private var modeKey = "" // lo último anotado en el registro sobre el modo (solo el hilo del bucle)
     private val seen = LinkedHashSet<String>()
     private val helloAt = HashMap<String, Long>()   // 3234: cuándo contesté el último saludo de cada contacto
@@ -263,7 +313,8 @@ class NetBg(
             // 3204: en el ORDEN que manda la app (con datos se escuchan los primeros sanos de la lista): se rehace el mapa en ese orden,
             // con los mismos relés (conexión, esperas y lo pendiente); los que ya no están se cierran
             val old = LinkedHashMap(relays); relays.clear()
-            relayUrls.forEach { if (!relays.containsKey(it)) relays[it] = old.remove(it) ?: Relay(it) }
+            // S-D5: el nativo solo habla con relés wss:// (uno en claro se ignora; como _relaySafe en la app)
+            relayUrls.forEach { if (WsClient.urlOk(it) && !relays.containsKey(it)) relays[it] = old.remove(it) ?: Relay(it) }
             old.values.forEach { val ws = it.ws; it.ws = null; ws?.close() }
             tagDay = ""
         }
@@ -271,12 +322,20 @@ class NetBg(
     }
     // 3204: el tipo de la red por defecto del teléfono (NetChange.typeOf, o "none"): con datos móviles se escuchan solo 2 relés
     fun setNet(type: String) {
+        netType = type
         val now = cellAfter(cell, type)
         if (now == cell) return
         cell = now
         if (running) synchronized(lock) { lock.notifyAll() }
     }
     fun cellMode() = cell
+    /** 3321: relés abiertos ahora (para prestar internet sin la app: GwServe). Vacío si la escucha está parada. */
+    fun openUrls(): List<String> = if (!running) emptyList() else try { relays.values.toList().filter { it.ws?.open == true }.map { it.url } } catch (e: Exception) { emptyList() }
+    fun onWifi() = netType == "wifi"
+    /** 3323: los que me ayudaron en los últimos 30 días (la app los manda con la configuración): a ellos, también fotos y audios. */
+    @Volatile var gwHelp: Set<String> = emptySet()
+    /** 3321: «toque» que despierta a un contacto de quien no tiene internet (lo pidió por el puente). false = sin enviador. */
+    fun wakeToken(token: String): Boolean { val u = outbox.wakeUrl; if (u.isEmpty()) return false; try { wake(u, token) } catch (e: Throwable) { return false }; return true }
     // 3190: también sin contactos por internet (alguien nuevo que espera solicitudes): con mi ID ya se escucha mi buzón de solicitudes
     fun configured() = me.isNotEmpty() && relays.isNotEmpty()
     // Nombre de un contacto (para la notificación de lo que llega por Bluetooth con la app cerrada)
@@ -284,6 +343,114 @@ class NetBg(
     // La app nos pasa, por contacto, la clave con la que firmar la confirmación de entrega del modo cerrado (igual que
     // al plugin). Se reemplaza el conjunto entero en cada llamada.
     fun setAckKeys(m: Map<String, ByteArray>) { ackKeys = m }
+
+    // ===== 3268 (PRIORIDAD 1, fase 3; COLA 29): BANDEJA DE SALIDA (ver NetOutbox) =====
+    // La app deja aquí los textos pendientes ya cifrados de punta a punta; esta escucha los sube en cuanto hay un relé abierto (con la
+    // app dormida, cerrada o sin la app) e insiste hasta la ✓✓ del otro. La app la reemplaza entera cada vez que se oculta.
+    val outbox = NetOutbox()
+    private fun outboxChanged() { try { onOutbox(outbox.toJson()) } catch (e: Throwable) { }; syncBlobs() }
+    // 3281: los trozos de cada archivo se guardan UNA vez al entrar y se borran al salir de la bandeja (confirmado, retirado, caducado)
+    private var blobSaved: Set<String> = emptySet()
+    private val blobLock = Any()
+    private fun syncBlobs() = synchronized(blobLock) {
+        try {
+            val now = outbox.chunkFiles()
+            for (id in blobSaved) if (id !in now) onBlob(id, null)
+            for ((id, evs) in now) if (id !in blobSaved) onBlob(id, JSONArray(evs).toString())
+            blobSaved = now.keys.toSet()
+        } catch (e: Throwable) { }
+    }
+    /** La lista entera de lo pendiente (reemplaza). Devuelve cuántos quedan. */
+    fun outboxSet(list: List<NetOutbox.Item>, myToken: String, wakeUrl: String, ridKeys: Map<String, String>? = null, epochS: Long = 0L): Int {
+        val before = outbox.size()
+        if (outbox.set(list, myToken, wakeUrl, ridKeys, epochS)) {
+            outboxChanged()
+            val n = outbox.size()
+            if (n > 0 || before > 0) log("Bandeja de salida: $n mensaje(s) pendiente(s) quedan a cargo del teléfono (salen por internet aunque NEXO se duerma)")
+        }
+        if (running) synchronized(lock) { lock.notifyAll() }
+        return outbox.size()
+    }
+    fun outboxDrop(id: String) { if (outbox.drop(id)) outboxChanged() }
+    // 3269: la confirmación (✓✓ o leído) llegó por otro camino (Bluetooth, con la app dormida o cerrada): fuera de la bandeja
+    fun outboxConfirmed(nx: String, msgId: String, how: String): Boolean {
+        if (!outbox.confirmed(nx, msgId)) return false
+        log("Bandeja de salida: $msgId confirmado por $nx (✓✓) $how")
+        outboxChanged()
+        return true
+    }
+    /** Lo guardado (arranque sin la app). */
+    fun outboxLoad(text: String?, chunkLoader: ((String) -> List<String>?)? = null): Int {
+        val n = outbox.load(text, System.currentTimeMillis(), chunkLoader)
+        synchronized(blobLock) { blobSaved = outbox.chunkFiles().keys.toSet() } // lo cargado ya está guardado
+        return n
+    }
+
+    // 3281: un relé guardó un trozo de un archivo de la bandeja: se sigue con los siguientes y, con todos subidos, sale su aviso
+    private fun outboxChunkAccepted(evId: String) {
+        val x = outbox.chunkAccepted(evId) ?: return
+        val (n, done) = outbox.chunkState(x.id)
+        if (done == n) log("Bandeja de salida: ${x.id} para ${x.nx}: sus $n trozo(s) ya están en los relés sin la app; sale el aviso para que lo baje")
+        outboxChanged()
+        try { pumpOutbox(System.currentTimeMillis()) } catch (e: Throwable) { }
+    }
+    // El evento ya viene firmado por la app: va tal cual, a 3 relés abiertos como mucho (la réplica de la app)
+    private fun publishRaw(ev: String, expectId: String): Boolean {
+        if (!blobChunkOk(ev, expectId)) { log("Bandeja de salida: un trozo guardado no cuadra con su huella ($expectId): no se sube"); return false }
+        val open = synchronized(lock) { relays.values.mapNotNull { it.ws }.filter { it.open } }.take(3)
+        if (open.isEmpty()) return false
+        val frame = "[\"EVENT\",$ev]"
+        var sent = false
+        for (ws in open) try { if (ws.send(frame)) sent = true } catch (e: Exception) {}
+        return sent
+    }
+
+    // Sube lo que toca (solo el hilo del bucle). Sin relé abierto no cuenta como intento: se mira otra vez en la próxima vuelta (5 s).
+    private val pumpLock = Any() // 3281: lo llaman el repaso de la escucha y el hilo que lee del relé (al guardarse un trozo): de a uno
+    private fun pumpOutbox(now: Long) = synchronized(pumpLock) { pumpOutboxLocked(now) }
+    private fun pumpOutboxLocked(now: Long) {
+        if (outbox.size() == 0) return
+        var changed = false
+        // 3281: primero los trozos de los archivos (de a CHUNK_WINDOW; el siguiente sale cuando un relé contesta: outboxChunkAccepted)
+        for (c in outbox.chunksDue(now)) { if (!running || !publishRaw(c.ev, c.id)) break; outbox.chunkSent(c, now) }
+        for (x in outbox.chunkStuck(now)) {
+            outbox.drop(x.id); changed = true
+            log("Bandeja de salida: ${x.id} para ${x.nx}: ningún relé guardó uno de sus trozos: lo manda la app al abrirse")
+        }
+        val due = outbox.due(now) { id -> changed = true; log("Bandeja de salida: $id lleva más de 7 días sin poder salir: se deja (sigue ⏳ en la app)") }
+        if (due.isNotEmpty() && synchronized(lock) { relays.values.any { it.ws?.open == true } }) {
+            val byNx = contacts.associateBy { it.nx }
+            for (x in due) {
+                if (!running) break
+                val c = byNx[x.nx] ?: continue // aún no es contacto por internet (sin clave de pareja): espera
+                try {
+                    val body = JSONObject().put("t", now).put("w", 0).put("p", x.p).put("n", x.id)
+                    val tok = outbox.myToken
+                    if (tok.isNotEmpty()) body.put("f", tok) // como la app (2967): el sobre de un mensaje nuevo lleva mi token del toque
+                    var ev = sealedEvent(c, body, TTL_MSG_S)
+                    if (ev.optString("content").length > MAX_CONTENT && tok.isNotEmpty()) { body.remove("f"); ev = sealedEvent(c, body, TTL_MSG_S) }
+                    if (ev.optString("content").length > MAX_CONTENT) {
+                        outbox.drop(x.id); changed = true
+                        log("Bandeja de salida: ${x.id} para ${x.nx} es demasiado grande para internet: lo manda la app al abrirse")
+                        continue
+                    }
+                    if (!publishEvent(ev)) break // se cerraron los relés mientras tanto
+                    outbox.published(x.id, ev.optString("id"), now)
+                    log("Bandeja de salida: ${x.id} para ${x.nx} sale por internet sin la app" + if (x.tries > 1) " (intento nº ${x.tries})" else "")
+                } catch (e: Exception) { log("Bandeja de salida: ${x.id} no se pudo subir (${e.javaClass.simpleName})") }
+            }
+        }
+        if (changed) outboxChanged()
+    }
+
+    // Un relé contestó OK a un evento: si es uno de la bandeja, queda a salvo en el buzón (✓) y sale el toque al otro teléfono
+    private fun outboxAccepted(evId: String) {
+        val now = System.currentTimeMillis()
+        val x = outbox.accepted(evId, now) ?: return
+        log("Bandeja de salida: ${x.id} para ${x.nx} quedó en el buzón del relé (✓); falta su ✓✓")
+        if (outbox.wakeDue(x, now)) try { wake(outbox.wakeUrl, x.wake) } catch (e: Throwable) { }
+        outboxChanged()
+    }
 
     // 3192: start/stop sincronizados: la escucha es una por proceso (NetBgHome) y la pueden arrancar a la vez el toque FCM (su hilo),
     // el servicio y la app; así nunca quedan dos hilos escuchando
@@ -343,6 +510,18 @@ class NetBg(
             }
             for (i in plan.park) park(list[i])
             noteMode(c, plan.listen.map { list[it] }.filter { it.ws?.open == true })
+            try { pumpOutbox(System.currentTimeMillis()) } catch (e: Throwable) { } // 3268: la bandeja de salida
+            // 3270 (COLA 27 sin la app): Wi-Fi sin salida a internet → que Android lo compruebe ya
+            if (netType != "wifi" || list.any { it.ws?.open == true }) noNetSince = 0L
+            else {
+                val t = System.currentTimeMillis()
+                if (noNetSince == 0L) noNetSince = t
+                if (noNetDue(noNetSince, noNetSaidAt, t)) {
+                    noNetSaidAt = t
+                    log("Internet en segundo plano: Wi-Fi sin internet (ningún relé abre): aviso al teléfono para que lo compruebe y pase a datos móviles")
+                    try { onNoInternet() } catch (e: Throwable) { }
+                }
+            }
             if (now - lastPing > 60000) { list.forEach { it.ws?.ping() }; lastPing = now }
             synchronized(lock) { if (running && g == gen) try { lock.wait(5000) } catch (e: InterruptedException) { } }
         }
@@ -386,6 +565,12 @@ class NetBg(
             r.authed = false
             r.gapAsked = false
             r.openedAt = 0L // si se cierra sin llegar a abrir, no cuenta el tiempo de la conexión anterior
+            // Decisión 13A: con «Usar Tor siempre», por el SOCKS de Tor; si aún no está listo se ESPERA (nunca directo)
+            val via = try { TorRoute.route() } catch (e: TorRoute.WaitTor) {
+                r.retryAt = System.currentTimeMillis() + 5000
+                if (running && System.currentTimeMillis() - torWaitLogAt > 60000) { torWaitLogAt = System.currentTimeMillis(); log("Internet en segundo plano: Usar Tor siempre y Tor aún no está listo: espero (no salgo directo)") }
+                return
+            }
             var self: WsClient? = null
             val ws = WsClient(r.url, { onRelayText(r, it) }, { why ->
                 // 3204: una conexión que ya no es la de este relé (la cerramos nosotros: parar, soltarlo con datos, relé quitado) no es una
@@ -400,7 +585,7 @@ class NetBg(
                 if (running) log("Relé ${r.url}: $why" + (if (r.fails > 1) " (intento nº ${r.fails}: el siguiente en ${retryDelayMs(r.fails) / 1000} s)" else ""))
                 // 3204: con datos móviles, el siguiente de la lista entra ya (sin esperar a la vuelta del bucle)
                 if (running && cell) synchronized(lock) { lock.notifyAll() }
-            })
+            }, proxy = via)
             self = ws
             r.ws = ws
             ws.connect()
@@ -415,7 +600,7 @@ class NetBg(
             r.ws = null
             r.fails = failsAfterClose(r.fails, 0L)
             r.retryAt = System.currentTimeMillis() + retryDelayMs(r.fails)
-            if (running && r.closedAt > 0 && logFailedTry(r.fails)) log("Relé ${r.url}: no se pudo abrir otra vez (intento nº ${r.fails}: el siguiente en ${retryDelayMs(r.fails) / 1000} s; ${e.javaClass.simpleName})")
+            if (running && r.closedAt > 0 && logFailedTry(r.fails)) log("Relé ${r.url}: no se pudo abrir otra vez (intento nº ${r.fails}: el siguiente en ${retryDelayMs(r.fails) / 1000} s; ${failWhy(e)})")
         }
     }
 
@@ -437,7 +622,10 @@ class NetBg(
         when (m.optString(0)) {
             "AUTH" -> auth(r, m.optString(1))
             "CLOSED" -> if (m.optString(2).startsWith("auth-required")) { /* se resuscribe tras identificarse */ }
-            "OK" -> if (!r.authed && m.optBoolean(2)) { r.authed = true; subscribe(r) }
+            "OK" -> {
+                if (m.optBoolean(2)) { outboxAccepted(m.optString(1)); outboxChunkAccepted(m.optString(1)) } // 3268: ¿era uno de la bandeja de salida? 3281: ¿o un trozo de un archivo suyo?
+                if (!r.authed && m.optBoolean(2)) { r.authed = true; subscribe(r) }
+            }
             "EVENT" -> if (m.optString(1) == SUB) onEvent(m.optJSONObject(2) ?: return)
             // 3204: el relé ya mandó todo lo guardado desde el `since` pedido: si era lo de cuando estuvo soltado, queda al día
             "EOSE" -> if (m.optString(1) == SUB && r.gapAsked && r.ws != null) { r.gapAsked = false; r.gapSince = -1L }
@@ -458,7 +646,6 @@ class NetBg(
         val id = ev.optString("id")
         synchronized(seen) { if (!seen.add(id)) return; if (seen.size > 3000) seen.remove(seen.first()) }
         val ts = ev.optLong("created_at") * 1000
-        if (ts > since) since = ts
         val tgs = ev.optJSONArray("tags") ?: return
         var c: Contact? = null
         var toReq = false
@@ -473,6 +660,7 @@ class NetBg(
         }
         if (c == null) { if (toReq) onReqEvent(ev, ts); return }
         val o = open(c.kraw, c.nx, me, ev.optString("content")) ?: return
+        since = advanceSince(since, ts, System.currentTimeMillis())   // auditoría 23-11 (S-A2): solo lo que abrió bien, nunca al futuro
         if (o.optInt("h") == 1) {
             // 3234: el saludo de «abrir el chat» lo contesta ya este nativo (la app dormida tardaba 5–33 s en despertar para contestar)
             val now = System.currentTimeMillis()
@@ -483,6 +671,10 @@ class NetBg(
             return
         }
         keepForApp(ev.toString())   // 3033: para la app al volver (mensajes, confirmaciones, acciones: lo procesa como si llegara)
+        // 3268: ¿es la confirmación (✓✓ o leído) de algo de la bandeja de salida? Ya llegó: se deja de insistir (la app lo marca al volver)
+        if (outbox.size() > 0) NetOutbox.receiptOf(o.optString("p"))?.let { mid ->
+            if (outbox.confirmed(c.nx, mid)) { log("Bandeja de salida: $mid confirmado por ${c.nx} (✓✓)"); outboxChanged() }
+        }
         val n = o.optString("n")
         val ce = o.optString("ce")
         if (BgInbox.CALL_ID.matches(ce)) onCallEnd(c.nx, ce)
@@ -539,13 +731,20 @@ class NetBg(
 
     // Sella `body` para la pareja y lo sube a los relés abiertos (misma etiqueta y sobre que NetLink.send). false si no hay relé abierto.
     private fun publishSealed(c: Contact, body: JSONObject, ttlSecs: Long): Boolean {
-        val open = synchronized(lock) { relays.values.mapNotNull { it.ws }.filter { it.open } }
-        if (open.isEmpty()) return false
+        if (synchronized(lock) { relays.values.none { it.ws?.open == true } }) return false
+        return publishEvent(sealedEvent(c, body, ttlSecs))
+    }
+    private fun sealedEvent(c: Contact, body: JSONObject, ttlSecs: Long): JSONObject {
         val b64 = seal(c.kraw, me, c.nx, body.toString())
         val tagPub = Secp256k1.hex(Secp256k1.xOnly(tagKey(c.kraw, c.nx, day(0))))
-        val ev = event(randomSk(), KIND, listOf(listOf("p", tagPub), listOf("expiration", (System.currentTimeMillis() / 1000 + ttlSecs).toString())), b64)
+        return event(randomSk(), KIND, listOf(listOf("p", tagPub), listOf("expiration", (System.currentTimeMillis() / 1000 + ttlSecs).toString())), b64)
+    }
+    private fun publishEvent(ev: JSONObject): Boolean {
+        val open = synchronized(lock) { relays.values.mapNotNull { it.ws }.filter { it.open } }
+        if (open.isEmpty()) return false
         val frame = JSONArray(listOf("EVENT", ev)).toString()
-        for (ws in open) try { ws.send(frame) } catch (e: Exception) {}
-        return true
+        var sent = false
+        for (ws in open) try { if (ws.send(frame)) sent = true } catch (e: Exception) {}
+        return sent
     }
 }

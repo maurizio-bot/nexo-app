@@ -30,6 +30,7 @@ internal fun NexoBlePlugin.sendBinaryImpl(call: PluginCall) {
     mainHandler.post {
         val macNorm = if (classifyDeviceId(rawDeviceId) == "nxid") resolveMacForNexoId(rawDeviceId.trim()) else normalizeMac(rawDeviceId)
         if (macNorm == null) { call.reject("NXID no resuelto a MAC: $rawDeviceId", "NXID_UNRESOLVED"); return@post }
+        if (justClosedByUs(macNorm)) { call.reject("Sin enlace con $macNorm (recién cerrado)", "NOT_CONNECTED"); return@post }
         val frame = try { BinFrame.encode(header, data) } catch (e: Exception) { call.reject(e.message ?: "trozo binario no válido"); return@post }
         val mtu = negotiatedMtu[macNorm] ?: 23
         val writes = BinFrame.split(frame, (mtu - 3).coerceIn(20, 512))
@@ -45,6 +46,16 @@ internal fun NexoBlePlugin.sendBinaryImpl(call: PluginCall) {
         processWriteQueue(macNorm)
         call.resolve(JSObject().put("sent", true).put("mode", "queued").put("deviceId", rawDeviceId).put("mtu", mtu))
     }
+}
+
+// 3267 (COLA 36; NX725J 20-11 12:23:58: Jump cierra la «conexión de paso» y 7 ms después sale un envío de 216 B a esa misma dirección →
+// 6 s de escrituras al aire, «mensaje descartado entero (11 trozos)» y el contacto marcado «muerto»): a una dirección que ESTA app acaba
+// de cerrar (≤ 3 s) y con la que ya no hay enlace por el que escribir, no se encola nada: se contesta «sin enlace» al momento y la app
+// sigue por otro camino. Si en ese rato se reconectó (cliente nuevo o el otro suscrito a nuestro servidor), se escribe como siempre.
+internal fun NexoBlePlugin.justClosedByUs(macNorm: String): Boolean {
+    val t = closedByUsAt[macNorm] ?: return false
+    if (android.os.SystemClock.elapsedRealtime() - t > 3000L) { closedByUsAt.remove(macNorm); return false }
+    return gattClients[macNorm] == null && serverNotificationEnabled[macNorm] != true
 }
 
 // === FIX vFIX-3: sendMessage corre SIEMPRE en mainHandler (single-threaded) ===
@@ -77,6 +88,11 @@ internal fun NexoBlePlugin.sendMessageImpl(call: PluginCall) {
             remLog("INFO", "SEND", "sendMessage MAC='$macNorm' len=${message.length}")
         }
 
+        if (justClosedByUs(macNorm)) { remLog("INFO", "SEND", "sendMessage a $macNorm: enlace recién cerrado, no se escribe"); call.reject("Sin enlace con $macNorm (recién cerrado)", "NOT_CONNECTED"); return@post }
+        // 3331: un paquete Jump que la app reenvía y el nativo ya sacó: no se repite (y si no, el nativo deja de guardarlo)
+        if (message.length < 6000 && message.contains("\"hp\"") && outBleRef?.appSent(message) == true) {
+            call.resolve(JSObject().put("sent", true).put("mode", "native-relay").put("deviceId", rawDeviceId).put("mtu", negotiatedMtu[macNorm] ?: 23)); return@post
+        }
         val result = sendChunkedOrSingle(macNorm, rawDeviceId, message)
         // MTU negociado: el JS ajusta el tamaño de los trozos de archivos (ble_ack.js)
         val mtu = negotiatedMtu[macNorm] ?: 23
@@ -181,6 +197,8 @@ internal fun NexoBlePlugin.processWriteQueue(macNorm: String) {
                 writeDropStreak.remove(macNorm)
                 val restantes = synchronized(queue) { val n = queue.size; queue.clear(); n }
                 if (restantes > 0) btErr("flush", "Enlace $macNorm atascado ($streak mensajes seguidos sin salir): suelto $restantes trozo(s) más en cola para no martillarlo (se reintentan por otro camino)")
+                // 3262 (COLA 15): y el enlace se cierra para rehacerlo (seguir «abierto» solo daba más 201 hasta el «zombi»)
+                if (WriteRetry.shouldCloseStuckLink(streak)) { closeStuckLink(macNorm); return }
             }
         }
         // Bloquear la cola durante la espera: otras llamadas no deben gastar los reintentos de golpe
@@ -256,7 +274,7 @@ private fun NexoBlePlugin.sendSingleChunk(macNorm: String, rawDeviceId: String, 
                 if (status == BluetoothGatt.GATT_SUCCESS) {
                     writeInitiated = true
                     remLog("INFO", "SEND", "GATT Client chunk sent (NO_RESPONSE) to $macNorm len=${chunk.length}")
-                } else {
+                } else if (WriteRetry.fallbackToDefault(status)) {
                     remLog("WARN", "SEND", "NO_RESPONSE fallo status=$status, intentando DEFAULT para $macNorm")
                     val fallbackStatus = gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
                     if (fallbackStatus == BluetoothGatt.GATT_SUCCESS) {
@@ -264,6 +282,8 @@ private fun NexoBlePlugin.sendSingleChunk(macNorm: String, rawDeviceId: String, 
                         remLog("INFO", "SEND", "GATT Client chunk sent (DEFAULT fallback) to $macNorm len=${chunk.length}")
                     }
                 }
+                // 3262 (COLA 15): con «ocupado» (201) no se prueba DEFAULT: daría el mismo 201 (y dos líneas de registro por intento);
+                // se espera al aviso de Android de la escritura anterior (los reintentos espaciados de WriteRetry)
             } else {
                 @Suppress("DEPRECATION")
                 rxChar.value = data

@@ -48,7 +48,11 @@ abierto > reciente; soltar a un contacto inactivo a los ~2 min en multitud.
 2. Gestor de enlaces con prioridad de contactos y hueco reservado; nada de conexiones de paso con un contacto esperando (1–2 días).
 3. Índice de pendientes por contacto en vez de leer historiales completos (medio, vault).
 4. Escaneo en Kotlin: mapa en vez de búsqueda lineal, sin logcat por anuncio, podar `seen*`, escritura agrupada de `nxidToMacMap`.
+   **HECHO 23-11** (`ScanBook.kt`: un mapa con tope 1200 que olvida lo menos reciente; `scanResults` fuera; mapa NEXO ID ↔ dirección
+   con tope 1500 y guardado cada 5 s; también el escaneo del servicio sin la app). Falta medirlo en teléfono entre mucha gente.
 5. Avisos de escaneo agrupados en el nativo (uno por segundo).
+   **HECHO 23-11**: hasta 12 avisos/s van sueltos (en casa nada cambia); con más, una tanda cada 0,5 s (`onDevicesFound`), los más
+   cercanos primero; un contacto con algo esperando sale siempre al momento. Pruebas: `ScanBookTest` (JVM) y `escaneotanda.js`.
 6. «Modo multitud» de radio: menos frecuencia, sin largo alcance y menos potencia con > ~100 NEXO (probar en campo).
 7. Lista de contactos por partes; guardar solo lo que cambia.
 8. Más de 2000 mensajes: archivar y buscar en todo el historial.

@@ -73,7 +73,6 @@ export function restoreCall() {
   var b = document.getElementById('nexo-call-bar'); if (b) b.remove();
   document.documentElement.classList.remove('nx-callbar');
 }
-export function callMinimized() { return _kind; }
 
 function _bar() {
   var b = document.getElementById('nexo-call-bar');

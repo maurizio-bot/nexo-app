@@ -32,6 +32,8 @@ async function boot(name, native) {
     beforeParse(win) { win.CapacitorCustomPlatform = { name: 'android' }; require('./native_mock').installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {}; },
   });
   const win = dom.window;
+  // dueño 24-11: entrar a un grupo es una invitación; en esta prueba el usuario la acepta al momento
+  win.addEventListener('nexo:groups:invite', (e) => setTimeout(() => { try { win.bleInterface.groups.acceptInvite(e.detail.id); } catch (x) {} }, 50));
   for (let i = 0; i < 100 && !(win.NEXO && win.NEXO.initialized); i++) await sleep(100);
   await sleep(800);
   return { name, native, win };
@@ -39,7 +41,8 @@ async function boot(name, native) {
 const click = (win, el) => el && el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
 const rows = (p) => Array.from(p.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).map((r) => ({ name: (r.querySelector('.ble-contact-name') || {}).textContent, msg: (r.querySelector('.ble-contact-msg') || {}).textContent, unread: Number((r.querySelector('.ble-unread-badge') || {}).textContent || 0) }));
 async function openChatWith(p, name) {
-  const row = Array.from(p.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).find((r) => (r.querySelector('.ble-contact-name') || {}).textContent === name);
+  // 24-11: la fila de un grupo sale al aceptar la invitación (un momento después): se espera hasta 5 s
+  let row = null; for (let i = 0; i < 25 && !row; i++) { row = Array.from(p.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).find((r) => (r.querySelector('.ble-contact-name') || {}).textContent === name); if (!row) await sleep(200); }
   click(p.win, row); await sleep(600); return !!row;
 }
 async function closeChat(p) { p.win.dispatchEvent(new p.win.CustomEvent('nexo:ble:closeChat', { detail: {} })); await sleep(300); }

@@ -364,6 +364,66 @@
     {
      "fallo": "3233 (S23 17-11 21:39 con Yaelito): el desempate de enlaces repetidos cerró el único enlace que seguía recibiendo y se quedó con uno callado (4 pings sin respuesta, reconexión a los 26 s). Ahora no cierra si el que se queda lleva > 15 s callado y otro recibe",
      "prueba": "dedup de enlaces Bluetooth repetidos"
+    },
+    {
+     "fallo": "3250 (Roberto 19-11 07:14, 3107): al apagar el Bluetooth el nativo cierra sus enlaces sin avisar y la app los seguía creyendo listos: textos fallando 6 s cada uno y «zombi» a los ~50 s. Ahora se sueltan al momento. btoffsilencio.js (contraprueba 3107: el texto no llega en 30 s)",
+     "prueba": "3250 (diagnóstico automático de Roberto 19-11 07:14"
+    },
+    {
+     "fallo": "3262 (COLA 16; S24↔Austin 19-11 y S24↔Roberto 20-11): el enlace entrante repetido que se «cerraba» seguía vivo y «volvía» (Android no corta un enlace entrante si la app no lo «tiene»: cancelConnection no hacía nada). Ahora se toma (connect) y se corta de verdad. dupserver.js (contraprueba --sin-tomar: quedan 2 enlaces físicos). FALTA la confirmación del dueño en teléfonos",
+     "prueba": "3167 (diagnóstico S24"
+    },
+    {
+     "fallo": "3262 (COLA 16c, VICK↔S24 20-11 12:32): con TODOS los enlaces repetidos muertos el desempate elegía uno (también muerto); ahora los cierra todos (los no ocupados) y se abre uno limpio. bledup.js",
+     "prueba": "dedup"
+    },
+    {
+     "fallo": "3262 (COLA 16, 20-11 11:00): con dos enlaces repetidos del MISMO papel cada teléfono se quedaba con uno distinto (mandaba el MTU, que el lado servidor no siempre conoce); ahora el más reciente (openedAt). bledup.js",
+     "prueba": "dedup"
+    },
+    {
+     "fallo": "3262 (COLA 15, Motorola→S24 20-11 14:09): ≥ 20 s de escrituras «ocupado» (201) por un enlace que nunca se cerraba; ahora no se prueba DEFAULT con 201 y el enlace por el que no sale nada en ~12 s se cierra para rehacerlo. JVM WriteRetryTest; sin prueba de simulador (es del sistema): confirmar en teléfonos",
+     "prueba": "JVM"
+    },
+    {
+     "fallo": "3262/3263 («enlace que sobrevive al reinicio», 17 al 20-11 ×3): un enlace entrante que sobrevivía a un reinicio de NEXO quedaba a medias (sin suscripción ni MTU: no se le podía contestar, «zombi»). 3263: el servidor GATT es uno por proceso y no se cierra al abrir la app (gattsigue.js; contraprueba --k3262); 3262: el que escribe sin estar suscrito se corta para que reconecte limpio (JVM HalfOpenPolicyTest). FALTA la confirmación del dueño en teléfonos",
+     "prueba": "3263 (PRIORIDAD 1, fase 2"
+    },
+    {
+     "fallo": "3269 (PRIORIDAD 1, fase 3; COLA 29): sin internet, lo que quedó ⏳ para alguien que no estaba cerca no salía cuando aparecía por Bluetooth con mi app dormida o cerrada (reenviar era cosa de la página). El nativo lo escribe por ese enlace (bandeja de salida por Bluetooth: OutboxBle) y la ✓✓ firmada del otro lo retira",
+     "prueba": "3269 BANDEJA DE SALIDA por BLUETOOTH"
+    },
+    {
+     "fallo": "3271 (PRIORIDAD 1, fase 3: conexiones salientes desde el servicio): con los DOS teléfonos dormidos nadie abría el enlace Bluetooth (los dos anuncian y nadie conecta) y lo pendiente no salía hasta abrir NEXO. Mientras haya algo pendiente para un contacto sin enlace, el nativo lo busca (escaneo corto y filtrado, cada vez más espaciado) y conecta él (OutboxDial; tope de 7 enlaces)",
+     "prueba": "3269 BANDEJA DE SALIDA por BLUETOOTH"
+    },
+    {
+     "fallo": "3279 (remate de la fase 3; hallado al revisar el código, sin diagnóstico): la bandeja buscaba a su contacto por su NEXO ID, pero un teléfono con contactos anuncia un código que rota cada 15 min: en teléfonos reales el nativo NUNCA abría el enlace (3271). La simulación no lo veía (el modelo comparaba el NEXO ID). Ahora la app deja con la bandeja la clave de los códigos de cada contacto con algo pendiente y el nativo lo reconoce (OutboxRid; JVM OutboxRidTest)",
+     "prueba": "3269 BANDEJA DE SALIDA por BLUETOOTH"
+    },
+    {
+     "fallo": "3280 (remate de la fase 3): el servicio SIN la app (NEXO volvió sola tras un cierre del sistema, reinicio o actualización) solo escribía lo pendiente por enlaces que abría el otro; con los dos dormidos nadie conectaba. Ahora busca y conecta él (BleSinApp + SinAppLinks) y hay despertador para el próximo escaneo con el teléfono dormido del todo (OutboxWake). Sin modelo en la simulación del proceso sin la app: JVM SinAppDialTest + prueba del dueño",
+     "prueba": null
+    },
+    {
+     "fallo": "3281 (dueño 21-11, S23→S24: una foto de 201 KB estuvo 4,5 h ⏳ con internet en el servicio y llegó en 44 s al reabrir): los adjuntos solo los subía la página, que Android duerme. Ahora la app deja al nativo el archivo (hasta 1 MB) cifrado y partido en trozos firmados + su aviso; el nativo sube los trozos y solo con todos guardados sale el aviso (NetOutbox.Chunk; JVM NetOutboxFilesTest)",
+     "prueba": "3281 FOTOS en la BANDEJA DE SALIDA"
+    },
+    {
+     "fallo": "3282 (dueño 22-11, 3117: «en un chat deslizo hacia arriba y, en vez de quedarse en segundo plano, crea la miniatura y se ve todo raro»): lo que decide el gesto es una marca del teléfono («al irse, pasar a miniatura») que la llamada ponía y quitaba con avisos sueltos; si quedaba puesta sin videollamada (de una llamada anterior, o con una de voz) el gesto metía el chat en la ventanita. Ahora la marca dice siempre la verdad (call_pip.pipWanted: videollamada viva AHORA; se corrige en los dos sentidos en cada cambio de la llamada) y el teléfono la quita al terminar el audio de la llamada y no entra en miniatura sin llamada (BleService.pipOnLeave)",
+     "prueba": "MINIATURA de la videollamada"
+    },
+    {
+     "fallo": "3283 (diagnóstico automático S24 22-11 14:56, build 3117, «enlace_abre_cierra: nx09acdb61 6 desconexiones» con el vivo): falso aviso. Con el contacto conectado por una dirección distinta de la guardada («Enlace ?») la marca «llegó a estar listo» no se borraba y cada reintento fallido o aviso repetido contaba como otra caída (diagnóstico de 20 KB por la radio). Se borra también por el NEXO ID de la dirección",
+     "prueba": "GATT roto / no_service"
+    },
+    {
+     "fallo": "3284 (modo vagón / multitud, EDC; hallado con multitud.js --b-dormido, sin diagnóstico): mi contacto llega con el teléfono dormido entre 500 NEXO y su mensaje pendiente tardaba 33–50 s. Dos causas: (1) el gestor de enlaces (fase 4) no sabía que tenía un mensaje esperando (la marca solo se ponía por algunos caminos) y, con 4 contactos ya enlazados, le negaba el enlace; (2) su conexión hacía cola detrás de intentos sin prisa con teléfonos lejanos (~15 s cada uno). Ahora cuenta lo mandado en la sesión sin confirmar y los intentos sin prisa ceden el paso: enlace a los ~9 s y entrega a los ~13 s. multitud.js no va en la batería (Chromium, minutos)",
+     "prueba": "fuera"
+    },
+    {
+     "fallo": "3276 (PRIORIDAD 1, fase 4; estudio de multitud 17-11): sin tope ni orden de enlaces, con 10 contactos dormidos alrededor el que tenía un mensaje esperando no conectaba nunca (7 enlaces ocupados, 222 intentos rechazados) y las conexiones de paso se llevaban huecos. Gestor de enlaces: tope 6, 4 contactos por estar cerca, hueco reservado y desalojo por prioridad (pendientes > chat abierto > reciente)",
+     "prueba": "3276 GESTOR DE ENLACES"
     }
    ],
    "debiles": [
@@ -516,6 +576,18 @@
      "prueba": "texto LARGO por internet con la app del otro dormida"
     },
     {
+     "fallo": "3299 (tanda 2, punto 17; diagnósticos S23 y S24 19-11 21:34/21:48, en videollamada): el S23 (datos + ahorro de batería) no oía al S24 por los relés (lo que le repartían en vivo se perdía) y un texto de 9 trozos al S24 quedó atorado ≥ 17 min: iba en 2 ventanas (8 + 2) y la 2.ª esperaba la confirmación de la 1.ª, que nunca le llegaba; a los 8 reintentos abortaba («Abortado», también la red de seguridad del buzón, que reutilizaba ese envío) y el S24 tiraba lo incompleto («Assembly timeout»). 3299: por internet un texto sale en UNA ventana (hasta 25 trozos, ~200 KB; los relés guardan cada trozo) y, sin confirmación, se vuelve a pedir a los relés lo de desde que salió (resync, con freno de 15 s). textoatorado.js: contraprueba 3298 = no llega en 90 s, Assembly timeout y Abortado; 3299 = llega en 0,6 s, una vez, ✓✓ en 4,9 s",
+     "prueba": "texto LARGO por internet con los relés perdiendo"
+    },
+    {
+     "fallo": "3300 (tanda 2, punto 18; diagnóstico S24 19-11 21:48, videollamada de 64 min con el S23 que cambió de red ~10 veces): un hueco de ~25 s sin imagen. Si el aviso de cambio de red no llega al otro lado, la conexión directa (WebRTC) queda «disconnected» y Chromium solo la da por «failed» a los ~25–30 s: mientras, voz y vídeo se iban por un camino muerto. 3300: «disconnected» que no vuelve en 4 s = cortada (la voz sigue por los relés y la directa se rehace por la red nueva). cambiored.js --mudo: contraprueba 3299 = 29 s; 3300 = 8 s",
+     "prueba": "llamada con la conexión directa MUDA"
+    },
+    {
+     "fallo": "3301 (tanda 2, punto 25: eco en llamada de GRUPO, reportado por el dueño): en la llamada de dos, cada trozo de voz que suena se le avisa al filtro del micrófono (baja el eco ~18 dB); en grupo la voz de cada uno la reproduce un decodificador aparte que no avisaba, y el filtro además descartaba los tramos que se cruzan (varias voces a la vez): el eco de los demás pasaba. 3301: cada decodificador avisa a la captura (con su reloj de audio convertido) y el filtro acepta tramos solapados (toma el más fuerte). voicefx.js eco_grupo: contraprueba 3,7 dB; 3301 = 18,1 dB. gcallmedia.js eco_avisa_captura",
+     "prueba": "filtros del micrófono"
+    },
+    {
      "fallo": "3126 (atascos, PLAN etapa 1; dueño 15-11: «sigue con los atascos»): si el desatasco automático del cifrado (3069) se repetía con el mismo contacto sin arreglarse, nadie se enteraba. 3126: 3 desatascos en 30 min con el mismo contacto → diagnóstico automático «desatasco_bucle» y firma grave en el analizador, para verlo con datos (sin tocar el cifrado). desatascobucle.js (contraprueba 3125: nada)",
      "prueba": "DESATASCO que se REPITE"
     },
@@ -558,6 +630,10 @@
     {
      "fallo": "3223 (dueño 17-11, Tetris a dos por internet: «envié 29 líneas de basura y solo llegaron 4»): los eventos del juego exigían número ESTRICTAMENTE creciente y se tiraba lo que llegaba desordenado; por el buzón de internet (varios relés, reintentos) llegan desordenados → se perdía casi toda la basura. Ahora cada número cuenta una vez aunque llegue tarde (tope antispam por partida)",
      "prueba": "Tetris VERSUS"
+    },
+    {
+     "fallo": "3249 (diagnósticos 19-11 Vivo 05:12 y S24 05:23): lo detenido en la conexión mientras la app estaba congelada contaba como retraso del relé y subía el margen al reconectar a 10 min durante 12 h (S24: 12,2 MB repetidos en 18 min, 40,6 MB en 168 min). Ahora no cuenta. margencongelado.js (contraprueba 3107: 459 s)",
+     "prueba": "3249 (diagnósticos 19-11"
     }
    ],
    "debiles": [
@@ -1111,6 +1187,66 @@
     {
      "fallo": "3212 (diagnósticos 17-11: Marcos 2,6 MB en 1 min tras abrir, 97 % repetido; S24 7,8 MB en 43 min, 93 %): cada (re)suscripción a un relé pedía desde lo último visto − 10 min y bajaba otra vez todo eso por cada relé (al abrir la app, cada cambio de red). Ahora el margen es el desfase visto en vivo (+30 s, 2–10 min, se recuerda 12 h). repetidos.js (contraprueba b3205: 106 KB repetidos por reconexión; ahora 12 KB)",
      "prueba": "3212 (diagnósticos 17-11: Marcos 2,6 MB"
+    },
+    {
+     "fallo": "3266 (COLA 27; S24 y Motorola 20-11 14:07: 2 min 17 s sin internet con un Wi-Fi sin salida, hasta que Android pasó solo a datos): con Wi-Fi y ningún relé abierto ≥ 12 s la app avisa al teléfono (reportNetworkConnectivity) para que compruebe la red y pase a datos. sinred.js (función pura); lo que hace Android con el aviso solo se ve en teléfonos",
+     "prueba": "3266 (COLA 27"
+    },
+    {
+     "fallo": "3268 (PRIORIDAD 1, fase 3; COLA 29; «pendiente_viejo» del 20 y 21-11): un texto que se quedó ⏳ sin camino no salía hasta volver a abrir NEXO (reenviar era cosa de la página, que Android duerme o cierra). Bandeja de salida nativa: la app deja al teléfono sus textos pendientes ya cifrados y la escucha de internet los sube al buzón sin la app (dormida, cerrada o tras morir el proceso) e insiste hasta la ✓✓",
+     "prueba": "3268 BANDEJA DE SALIDA nativa"
+    },
+    {
+     "fallo": "3315 (COLA 1, puente nativo; vivo nx09acdb61 14-11): un paquete Jump para OTRO que llegaba al nativo con la app dormida o cerrada no lo reenviaba nadie (el que lo mandó ×8 y ⏳), y un puente dormido no contestaba «¿quién llega a X?». Ahora el nativo lo reenvía tal cual por el enlace del destino (sin custodia; lo guarda 10 min si aún no lo hay), contesta 'rq' a sus contactos si tiene enlace con X, y el destino sin ruta devuelve su ✓✓ por donde llegó. JumpNativeTest (Kotlin, 11) + jumpdormido.js (contraprueba: sin el cambio de ble_ack.js falla)",
+     "prueba": "PUENTE DORMIDO: LA ✓✓ VUELVE"
+    },
+    {
+     "fallo": "3316 (COLA 1, lo que faltaba del puente nativo): un texto largo o un archivo por Jump (trozos 'c'/'f' con 'dt') que llegaba a un puente con la app dormida se quedaba ahí y el que lo mandaba seguía «enviando». Ahora el nativo hace de tubería hacia el enlace del destino (a un contacto, solo comprobado) y devuelve sus confirmaciones 'ba'/'n'; lo que reenvía ya no se le pasa a la app dormida (no lo repite al despertar), y una ✓✓ que ya dio un salto no enseña de quién es un enlace. JumpPipeTest (Kotlin, 10)",
+     "prueba": "PUENTE DORMIDO: TEXTOS LARGOS Y ARCHIVOS"
+    },
+    {
+     "fallo": "3317 (COLA 3, Wi-Fi Direct; diagnóstico del dueño 20-11): preparar (cifrar a disco) un archivo grande era el cuello de botella: 153 MB en ~30 s (≈5 MB/s) frente a 6 s de viaje por Wi-Fi Direct, porque se leía un pedazo, se esperaba al nativo y luego se leía el siguiente. Ahora el siguiente se lee mientras el nativo cifra el anterior (en la prueba: 395 ms frente a 712). bigprep.js (contraprueba: sin el cambio no solapa)",
+     "prueba": "PREPARAR ARCHIVO GRANDE SIN ESPERAS"
+    },
+    {
+     "fallo": "3318 (COLA 4, llamadas por relés; diagnóstico S24 15-11 22:53 «500 sobres» repetidos): con la app en segundo plano DURANTE una llamada, la escucha nativa de internet (NetBg) también bajaba cada parte de la llamada que la app viva ya recibía: el doble de datos. Ahora no arranca en llamada (y se pausa si la llamada se contesta con la app oculta); al colgar en segundo plano la app le pasa lo último que vio y arranca. callbg.js",
+     "prueba": "LLAMADA EN SEGUNDO PLANO SIN BAJAR DOS VECES"
+    },
+    {
+     "fallo": "3321 (prueba del dueño 24-11 22:51: S24 solo con Bluetooth, la tablet con Wi-Fi y la app cerrada al lado: «nx1e29ab2f no contesta en 5 s»; el mensaje al S23 no salió): el PUENTE A INTERNET (un NEXO cercano presta el suyo) solo lo atendía la app. Ahora el nativo contesta «¿tienes internet?» con los relés de su escucha, abre su conexión al relé y pasa los frames en orden y sin perder por la cola llena, con los mismos límites de la app. GwServeTest (Kotlin, 11)",
+     "prueba": "PUENTE A INTERNET CON LA APP CERRADA"
+    },
+    {
+     "fallo": "3322 (diagnóstico S24 24-11 22:49 y 22:52): el Vivo dormido se identificó por el nativo y su conexión «de paso» seguía apuntada como anónima: a los 60 s se cerraba «sin uso» y lo que el S24 le mandaba esperaba («no visto en 2 min»). Al quedar listo ya se sabe quién es, y un anónimo cuya dirección es de un contacto no se cierra por inactividad. anondup.js (vivo_no_anon, vivo_no_cierra; contraprueba: sin el cambio fallan)",
+     "prueba": "CONEXIÓN DE PASO QUE ERA UN CONTACTO"
+    },
+    {
+     "fallo": "3323 (dueño 24-11, decisión B «lo que yo ayudo, me ayudan»): el puente a internet podía usarse a diario para no pagar datos. Ahora el que presta da textos a cualquiera (la emergencia), pero fotos, audios y archivos solo a quien le ayudó en 30 días (le prestó internet o le hizo de puente por Bluetooth); la libreta es de cada teléfono (sin servidor: un ID nuevo o dos teléfonos propios no fabrican crédito ante otros) y la parte nativa aplica lo mismo con la app cerrada. gwreciproco.js + GwServeTest/NetBgSavedTest (Kotlin)",
+     "prueba": "RECIPROCIDAD DEL PUENTE A INTERNET"
+    },
+    {
+     "fallo": "Pulido del dueño 24-11: (1) la esfera de la nota de voz enviada era blanca (no es de la paleta; y con otro color de burbuja desentonaba): ahora usa un tono oscuro DEL COLOR DE LA BURBUJA (color-mix de --burbuja-1) y las recibidas, cian; (2) el menú del fijado salía debajo, translúcido y se perdía: ahora arriba a la derecha de la franja, opaco y con borde cian; (3) el menú «+» era enorme (cuadrícula con etiquetas, azul marino) y la flechita otro botón grande: pastilla compacta de 4 iconos de 40 px y una pestañita arriba que sube la segunda fila. voicechain.js (S2), attachmas.js (compacto, pestaña)",
+     "prueba": "PULIDO: ESFERA DEL AUDIO, MENÚ DEL FIJADO Y MENÚ «+»"
+    },
+    {
+     "fallo": "3324 (cierres nativos del S24 23-11 18:24, 21:26 y 24-11 06:01, con la app detrás; el volcado de la 3142: hilo «tor», «FORTIFY: pthread_mutex_lock called on a destroyed mutex» en tor_cond_wait): soltar la última conexión con TorService lo destruye y tor tumba el proceso. Empezó con la vista previa por Tor (3125), que soltaba su Tor a los 5 min sin uso. Ahora TorKeep: una sola conexión para todo el proceso, nunca se suelta; sin uso, Tor se duerme (DORMANT) y se despierta (ACTIVE). torkeep.js (guardia estática; contraprueba: con el código anterior falla)",
+     "prueba": "TOR NUNCA SE APAGA DENTRO DEL PROCESO"
+    },
+    {
+     "fallo": "3325 (prueba del dueño 24-11 07:38: S24 solo con Bluetooth, Roberto con Wi-Fi y datos de puente; diagnóstico automático «enlace_abre_cierra» con Roberto): al abrir el puente, la ráfaga de saludos y suscripciones por Bluetooth hizo que el nativo soltara una escritura; el enlace se dio por muerto, el desempate cerró sus dos enlaces y se reconectó 3 veces en 10 min. Ahora el enlace del puente a internet no se da por muerto por eso, y con fila larga el puente deja 35 ms entre frames. anondup.js (puente_no_muerto, normal_si_muerto)",
+     "prueba": "EL ENLACE DEL PUENTE A INTERNET NO SE DA POR MUERTO"
+    },
+    {
+     "fallo": "3326 (diagnóstico S24 24-11 08:41, Roberto en 3142): «Respuesta de sincronía sin firma válida» con un contacto al día: el número que la respuesta debe firmar se guardaba uno solo por enlace y cada nuevo pedido (al conectar, al volver la app) pisaba al anterior, así que la respuesta al primero se rechazaba y no se reenviaba lo que el otro no tenía. Ahora se guardan varios por contacto (2 min, uno solo uso cada uno). synclink.js (dos_seguidas; contraprueba: sin el cambio falla)",
+     "prueba": "SINCRONÍA FIRMADA: DOS PEDIDOS SEGUIDOS"
+    },
+    {
+     "fallo": "Dueño 23-11: un mensaje fijado que se borraba ya no se podía desfijar (el menú del mensaje desaparece con él). Ahora tocar la franja abre «Ir al mensaje» / «Quitar» (un borrado se ve como «Mensaje eliminado» y solo se puede quitar), y borrar un mensaje fijado lo desfija (para mí: solo aquí; para todos: para todos). fijarmsg.js F2/F11",
+     "prueba": "QUITAR UN FIJADO AUNQUE SE HAYA BORRADO"
+    },
+    {
+     "fallo": "Dueño 23-11: en una nota de voz no se podía adelantar ni regresar, y entre varias recibidas no se sabía cuál faltaba escuchar. Ahora la onda es una barra con bolita (tocar o arrastrar; la onda se pinta hasta donde va) y las recibidas sin escuchar llevan el botón y la bolita en cian y un punto; al darle a reproducir pasan a escuchadas (solo en este teléfono, voice_heard.js; lo de antes de la actualización cuenta como escuchado). voicechain.js H1–H3, S0–S3",
+     "prueba": "NOTA DE VOZ: BARRA PARA ADELANTAR Y SIN ESCUCHAR"
     }
    ],
    "debiles": [
@@ -1409,6 +1545,18 @@
     {
      "fallo": "3226 (dueño 17-11 22:41, S24 con la S23: videollamada en miniatura → cámara del chat → zoom → volver: «se trabó»): al salir de la cámara del teléfono sin foto se abría la cámara de NEXO en vídeo, que le quitaba la cámara y el foco de audio a la llamada; la pérdida PERMANENTE del foco (-1) se tomaba como llamada telefónica y la videollamada quedaba «en pausa» para siempre (el sistema no devuelve ese foco). Ahora con una llamada en curso la cámara de NEXO no se abre (aviso) y, en la parte nativa, una pérdida permanente sin llamada telefónica vuelve a pedir el foco en vez de retener (FocusPolicy, JVM 4/4)",
      "prueba": "FOTO CON LA CÁMARA DEL TELÉFONO"
+    },
+    {
+     "fallo": "29b (dueño): al tocar la mini de la videollamada con los botones ya ocultos solos, volvía a pantalla completa SIN botones (hacía falta otro toque). llamadamini.js fase p. El «se bloquea o cae» NO se pudo reproducir aquí: hace falta su diagnóstico",
+     "prueba": "llamada MINIMIZADA"
+    },
+    {
+     "fallo": "3277 (dueño 22-11, build 3117: «al pasar varias veces de pantalla normal a miniatura» había problemas; «aparecía el chat y la miniatura, pero la miniatura ya no respondía»; capturas con el chat apretado en la ventanita del sistema). Todo colgaba de UN aviso de Android por cambio: (1) si la app se rehacía en plena videollamada (motor de la página caído, cambio de tema claro/oscuro del teléfono: el Manifest no declaraba uiMode), el nativo seguía con la marca «pasar a miniatura» y al irse metía el chat en la ventanita; (2) un aviso perdido dejaba las marcas pegadas (ventanita con botones, o la app sin ellos); (3) la llamada que terminaba con la mini flotante dejaba la mini, y la llamada SIGUIENTE nacía dentro de la mini (sin Contestar a la vista). 3277: call_pip.js (estado desde la verdad del nativo, pipState; repetible; un toque corrige; mini que abre por posición), la marca se limpia al cargar/destruir, la pausa con videollamada espera 900 ms a ver si es miniatura antes de contar como segundo plano, uiMode|keyboard|navigation en el Manifest. miniaturas.js (contraprueba con el código anterior: fallan s, t, z)",
+     "prueba": "MINIATURA de la videollamada a prueba de avisos perdidos"
+    },
+    {
+     "fallo": "3278 (dueño 22-11: «cuando pongo la videollamada en miniatura es porque quiero ocupar algo más… YouTube… el vídeo no se debe interrumpir ni ir a pausa; las dos cosas deben poder correr al mismo tiempo, cada una con su volumen»). Hallado al revisar: cuando OTRA APP tomaba el audio (un vídeo, música, la cámara grabando), NEXO le volvía a quitar el foco (el vídeo de la otra app se pausaba) y, si la otra insistía antes de 10 s, la llamada NEXO quedaba RETENIDA para siempre (ni voz ni imagen del otro = «la miniatura se pausa al usar otras apps»); una pérdida pasajera (un aviso) también la retenía. Venía de la regla para la llamada TELEFÓNICA (01-11) y de 3226. 3278: SOLO una llamada telefónica (modo del audio «sonando»/«en llamada») retiene; otra app → la llamada sigue y suenan las dos, sin volver a pedir el foco; un repaso del modo cada 1 s mientras NEXO está sin foco o retenida (la telefónica que entra sin aviso de foco; reanudar al terminar, sin parpadeo). `FocusPolicy.kt` + `callHold`/`focusWatch` (PluginCalls.kt). El diagnóstico apunta por qué volumen suena la voz (`callOut`: «Salida de sonido del teléfono»). SIN probar en teléfono (el audio de Android no se simula): prueba del dueño con YouTube en la miniatura",
+     "prueba": "JVM"
     }
    ],
    "debiles": [
@@ -1540,6 +1688,10 @@
     {
      "fallo": "3210 (dueño 17-11: «¿por qué a Marcos le llegan notificaciones mías si yo no le mandé nada?»): con la app del otro cerrada, el primer trozo de un fragmento de respaldo Fénix («fxs_…») o del medio de un estado («stm…») se clasificaba como archivo nuevo (BgInbox) y avisaba «📎 Archivo»; por internet llevaba la marca de mensaje nuevo (NetBg). Ahora van con q:1. avisofenix.js (contraprueba b3205: aviso por el respaldo)",
      "prueba": "3210 (dueño 17-11: «¿por qué a Marcos"
+    },
+    {
+     "fallo": "16b (S24↔VICK 20-11 11:09): ✓✓ del nativo «sin firma válida» con un contacto recién agregado (las claves de firma solo se daban al nativo al arrancar y al pasar a segundo plano); ahora en cada repaso si cambió el conjunto contacto+clave. background.js --scenario=frozen-new (contraprueba: 0 claves, el mensaje no se confirma)",
+     "prueba": "16b (S24↔VICK 20-11)"
     }
    ],
    "debiles": [
@@ -1914,6 +2066,14 @@
     {
      "fallo": "3241 (diagnósticos del dueño 18-11): «Wi-Fi local 382,9 s» y «internet de 0,5 a 62 s» en otros teléfonos: con la pantalla apagada la app queda congelada minutos y ese tiempo contaba como tiempo de conexión (medida falsa que parecía lentitud de la red). Ahora una medida que abarca un rato en segundo plano no cuenta.",
      "prueba": "MEDIDAS DE CONEXIÓN SIN EL CONGELADO DE LA APP"
+    },
+    {
+     "fallo": "34 (dueño 21-11 14:38): «deslizar para actualizar» saltaba al desplazar la lista de contactos (10 veces en 26 s, cada una reenviaba todos los pendientes): se miraba el scroll del contenedor y la que se desplaza es la lista de dentro. estados3.js 7b (contraprueba hecha)",
+     "prueba": "estados"
+    },
+    {
+     "fallo": "COLA 35 (21-11): «→ ?» en la línea de tiempo del diagnóstico para mensajes que salen sin camino. diag_sinruta.js",
+     "prueba": "COLA 35"
     }
    ],
    "debiles": [
@@ -2041,6 +2201,10 @@
     {
      "fallo": "SEC-4: frame de relé sin tope antes de JSON.parse en primer plano (pico de memoria del WebView) (auditoría 28-10, arreglado 2820)",
      "prueba": "se pide el toque"
+    },
+    {
+     "fallo": "Grupos con administración (revisión 22-11 de la rama antes de juntarla): dos cambios del grupo hechos a la vez (el creador sale mientras un admin sin cobertura hace dos cambios) dejaban los teléfonos con estados distintos para siempre; en un grupo viejo el primer cambio firmado lo partía; quien salía quedaba como expulsado y un estado atrasado lo volvía a meter; una firma retocada contaba como otro cambio. Arreglo: cada estado firmado lleva la huella del anterior y en una bifurcación gana en todos la misma rama (group_state.js gsBranchWins); un expulsado o un creador que salió no vuelven abriendo una rama desde antes.",
+     "prueba": "carreras y bifurcaciones del estado firmado"
     }
    ],
    "debiles": [

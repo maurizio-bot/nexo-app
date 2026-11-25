@@ -90,7 +90,9 @@ internal fun NexoBlePlugin.connectToDeviceImpl(call: PluginCall) {
                 return
             }
             try {
-                adapter.getRemoteDevice(macFormatted)
+                // 3264: Android solo acepta la dirección en MAYÚSCULAS y formatMacForAndroid la da en minúsculas: con cualquier letra
+                // a–f esto lanzaba «MAC invalida» y conectar a un teléfono fuera de la lista de vistos fallaba siempre
+                adapter.getRemoteDevice(macFormatted.uppercase())
             } catch (e: IllegalArgumentException) {
                 call.reject("MAC invalida para Bluetooth API: $macFormatted", "INVALID_MAC")
                 return
@@ -252,6 +254,7 @@ internal fun NexoBlePlugin.createGattClientCallback(macNorm: String): BluetoothG
             if (setupDone) return
             setupDone = true
             clientSetupDone[macNorm] = true // 3059: ya se puede escribir por este enlace (lo que esperaba sale ahora)
+            outboxDialed(macNorm) // 3271: si este enlace lo abrió la bandeja de salida, lo pendiente de su contacto sale ya
             val txChar = clientTxCharacteristics[macNorm]
             txChar?.let { characteristic ->
                 try {
@@ -398,7 +401,8 @@ internal fun NexoBlePlugin.startAutoReconnect(macNorm: String) {
         val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val adapter = bluetoothManager.adapter
         if (adapter == null || !adapter.isEnabled) return@Runnable
-        val device = scannedDevices[macNorm]
+        // 3264: sin el teléfono en la lista de vistos se pide a Android por su dirección (como hace connectToDevice) en vez de rendirse
+        val device = scannedDevices[macNorm] ?: try { formatMacForAndroid(macNorm)?.let { adapter.getRemoteDevice(it.uppercase()) } } catch (e: Exception) { null }
         if (device == null) {
             remLog("WARN", "RECONNECT", "No hay device cacheado para $macNorm, no se puede reconectar")
             return@Runnable
@@ -445,18 +449,17 @@ internal fun NexoBlePlugin.disconnectDeviceImpl(call: PluginCall) {
         val srvDevice = serverConnectedDevices[macNorm]
         val srv = bluetoothGattServer
         if (srvDevice != null && srv != null) {
-            try {
-                srv.cancelConnection(srvDevice) // el corte lo confirma gattServerCallback (STATE_DISCONNECTED) y limpia allí
-                remLog("INFO", "GATT_SERVER", "disconnectDevice server: cancelConnection $macNorm (enlace entrante repetido)")
-            } catch (e: Exception) {
-                remLog("WARN", "GATT_SERVER", "disconnectDevice server: cancelConnection $macNorm falló: ${e.message}")
-            }
+            // 3262: cutServerLink «toma» el enlace si hacía falta (sin eso cancelConnection no cortaba nada: el enlace cerrado «volvía»)
+            cutServerLink(srvDevice, "enlace entrante repetido") // el corte lo confirma gattServerCallback (STATE_DISCONNECTED) y limpia allí
+            remLog("INFO", "GATT_SERVER", "disconnectDevice server: corto $macNorm (enlace entrante repetido)")
         }
     }
     reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
     reconnectAttempts.remove(macNorm)
     reconnectDelays.remove(macNorm)
     stopKeepAlive(macNorm)
+    if (closedByUsAt.size > 200) closedByUsAt.clear()
+    closedByUsAt[macNorm] = android.os.SystemClock.elapsedRealtime() // 3267 (COLA 36): lo que llegue enseguida para esta dirección no se escribe
     gattClients[macNorm]?.let { gatt -> try { gatt.disconnect(); gatt.close() } catch (e: Exception) { } }
     gattClients.remove(macNorm)
     clientRxCharacteristics.remove(macNorm)
@@ -473,6 +476,34 @@ internal fun NexoBlePlugin.disconnectDeviceImpl(call: PluginCall) {
     clientSetupDone.remove(macNorm); clientSetupWaitSince.remove(macNorm)
     notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", rawDeviceId))
     call.resolve(JSObject().put("disconnected", true))
+}
+
+// 3262 (COLA 15; Motorola→S24 20-11 14:09: ≥ 20 s de «ocupado» seguidos por el enlace conservado): un enlace por el que no sale ni una
+// escritura en ~12 s (WriteRetry.shouldCloseStuckLink) no se arregla esperando: se cierra (los dos papeles que tenga esa dirección) y se
+// avisa a la app como una caída más, para que se rehaga limpio (reconexión normal). Antes seguía «abierto» dando 201 hasta el «zombi».
+internal fun NexoBlePlugin.closeStuckLink(macNorm: String) {
+    val address = gattClients[macNorm]?.device?.address ?: serverConnectedDevices[macNorm]?.address ?: (formatMacForAndroid(macNorm) ?: macNorm)
+    remLog("WARN", "SEND", "Enlace $macNorm atascado (ni una escritura en ~${2 * WriteRetry.maxWaitMs() / 1000} s): se cierra para rehacerlo")
+    serverConnectedDevices[macNorm]?.let { cutServerLink(it, "atascado") } // su cierre lo confirma y limpia gattServerCallback
+    val gatt = gattClients.remove(macNorm)
+    writeQueues.remove(macNorm)
+    writeQueueProcessing.remove(macNorm)
+    writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
+    writeRetryCount.remove(macNorm)
+    if (gatt == null) return
+    stopKeepAlive(macNorm)
+    try { gatt.disconnect(); gatt.close() } catch (e: Exception) { }
+    clientRxCharacteristics.remove(macNorm)
+    clientTxCharacteristics.remove(macNorm)
+    clientConnectionStates.remove(macNorm)
+    messageBuffers.remove(macNorm); binAssembler.reset(macNorm)
+    messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
+    pendingMessageQueue.remove(macNorm)
+    negotiatedMtu.remove(macNorm)
+    clientSetupDone.remove(macNorm); clientSetupWaitSince.remove(macNorm)
+    // close() ya no deja llegar el aviso de Android: se da aquí, como en una caída (la app decide por dónde sigue y reconecta)
+    notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", address).put("reason", "stuck"))
+    startAutoReconnect(macNorm)
 }
 
 internal fun NexoBlePlugin.forceReconnectImpl(call: PluginCall) {

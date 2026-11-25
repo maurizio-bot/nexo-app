@@ -10,6 +10,7 @@ import { openSheet } from './chat_sheet.js';
 import { isMuted, mutedLabel, muteMenuLabel, openMuteSheet, paintHeaderMute } from './chat_mute.js';
 import { openStarredSheet } from './chat_star.js';
 import { openChatSearch } from './search_ui.js';
+import { blockMenuLabel, openBlockSheet, paintBlockedBar } from './bloqueo_ui.js';
 
 function _name() { var n = document.getElementById('chat-contact-name'); return (n && n.value) || ''; }
 
@@ -20,12 +21,14 @@ export function openChatMenu() {
   return openSheet('nexo-chat-menu', _name(), '', [
     { label: t('misc_search_in_chat', 'Buscar en el chat'), cls: 'chat-search', fn: function() { openChatSearch(); } },
     { label: t('star_title', 'Mensajes destacados'), cls: 'chat-starred', fn: function() { openStarredSheet(cid); } },
-    { label: muteMenuLabel(cid), sub: muted ? mutedLabel(cid) : '', cls: muted ? 'chat-unmute' : 'chat-mute', fn: function() { openMuteSheet(cid); } },
+    { label: muteMenuLabel(cid), sub: muted ? mutedLabel(cid) : '', cls: muted ? 'chat-unmute' : 'chat-mute', fn: function() { openMuteSheet(cid); } }
+  ].concat(/^nx[0-9a-z]{8}$/.test(cid) ? [{ label: blockMenuLabel(cid), cls: 'chat-block', danger: true, fn: function() { openBlockSheet(cid, _name()); } }] : []).concat([ // bloqueo (24-11): solo de un contacto
     { label: t('chat_cancel', 'Cancelar'), cls: 'mm-cancel', fn: function() {} }
-  ]);
+  ]));
 }
 
 function _paintMute() { paintHeaderMute(_normId(_getCurrentContactId())); }
+function _paintBlock() { paintBlockedBar(_normId(_getCurrentContactId()), _name()); }
 
 export function installChatMenu() {
   var av = document.getElementById('chat-contact-avatar');
@@ -36,7 +39,8 @@ export function installChatMenu() {
     av.removeAttribute('aria-hidden');
     av.addEventListener('click', function(e) { e.stopPropagation(); openChatMenu(); });
   }
-  window.addEventListener('nexo:ble:openChat', function() { setTimeout(_paintMute, 0); });
-  window.addEventListener('nexo:ble:closeChat', function() { paintHeaderMute(''); });
+  window.addEventListener('nexo:ble:openChat', function() { setTimeout(_paintMute, 0); setTimeout(_paintBlock, 0); });
+  window.addEventListener('nexo:ble:closeChat', function() { paintHeaderMute(''); paintBlockedBar(''); });
   window.addEventListener('nexo:mute', _paintMute);
+  window.addEventListener('nexo:block', _paintBlock); // bloqueo (24-11)
 }

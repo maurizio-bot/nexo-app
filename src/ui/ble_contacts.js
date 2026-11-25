@@ -100,6 +100,13 @@ export const BLE_CONTACT_METHODS = {
         // VERIFICAR: se usa igual (no rompe «compartir contacto»), pero queda marcada pkHearsay para avisar en el banner y
         // empujar a comparar el número de seguridad. Se confirma sola cuando el propio contacto conecta directo (_noteSenderKey).
         if (!cur.publicKey && c && typeof c.publicKey === 'string' && /^[A-Za-z0-9+/=]{80,100}$/.test(c.publicKey)) { cur.publicKey = c.publicKey; if (_normId(sharedBy)) cur.pkHearsay = 1; keyFilled = true; }
+        // Auditoría 23-11 (G-K1): llega OTRA clave «de oídas» distinta de la «de oídas» que ya tenía: una de las dos es falsa (alguien la
+        // plantó en una tarjeta o un grupo). No se cambia ninguna; se marca el conflicto y los estados de grupo firmados por él no se
+        // aceptan con esa clave hasta comparar el número de seguridad o conectar directo.
+        else if (cur.pkHearsay && c && typeof c.publicKey === 'string' && /^[A-Za-z0-9+/=]{80,100}$/.test(c.publicKey) && c.publicKey !== cur.publicKey && !cur.pkConflict) {
+          cur.pkConflict = 1; keyFilled = true;
+          console.warn('[BLEInterface] ' + nx + ': otra clave «de oídas» distinta de la guardada (conflicto: hay que verificar)');
+        }
         if (c && c.b2) bundles.push([nx, c.b2]);
         res.existing.push(cur.name || name);
         return;

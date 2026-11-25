@@ -277,6 +277,23 @@ const mk = (e, extra) => e.mod.createCallMedia(Object.assign({ onPacket() {}, co
     r.camara_cortada = { imagenes_antes: n0, vuelve_ms: t, camaras_vivas: e.live('video') };
     m.stop();
   }
+  // 9b. COLA 25 (diag. 18-11): videollamada contestada desde el aviso: el WebView sigue «hidden» pero Android ya está en primer
+  //     plano (bleInterface._foreground). La cámara cortada se vuelve a abrir igual (antes: 63 s sin imagen propia).
+  {
+    const e = env({ vp8: true });
+    const sent = [];
+    const m = mk(e, { video: true, onVideoPacket: (b) => sent.push(b) });
+    await m.start();
+    await sleep(600);
+    e.document.visibilityState = 'hidden'; e.window.bleInterface = { _foreground: true };
+    const cam = e.tracks.find((t) => t.kind === 'video' && t.readyState === 'live');
+    if (cam) e.endTrack(cam);
+    await sleep(200);
+    const n1 = sent.length;
+    const t = await until(() => sent.length > n1 + 3, 6000);
+    r.camara_cortada_aviso = { vuelve_ms: t, camaras_vivas: e.live('video') };
+    m.stop();
+  }
   // 10. Cámara abierta pero sin imágenes (el <video> no arranca): se reanuda y, si no, se vuelve a abrir
   {
     const e = env({ vp8: true, stuckCam: (n) => n === 1 });
@@ -511,6 +528,7 @@ const mk = (e, extra) => e.mod.createCallMedia(Object.assign({ onPacket() {}, co
     camara_permiso_denegado: r.camara_permiso_denegado.micros >= 1 && r.camara_permiso_denegado.imagenes === 0 && r.camara_permiso_denegado.estado_final === 'none' && r.camara_permiso_denegado.hubo_retry,
     micro_ocupado_un_momento: r.micro_ocupado_un_momento.empieza === 'ok' && r.micro_ocupado_un_momento.micros >= 1 && r.micro_ocupado_un_momento.voz_enviada > 0,
     camara_cortada: r.camara_cortada.vuelve_ms !== null && r.camara_cortada.camaras_vivas === 1,
+    camara_cortada_aviso: r.camara_cortada_aviso.vuelve_ms !== null && r.camara_cortada_aviso.camaras_vivas === 1,
     camara_sin_imagenes: r.camara_sin_imagenes.imagenes_ms !== null && r.camara_sin_imagenes.camaras_vivas === 1,
     audio_en_pausa: r.audio_en_pausa.reanudado_ms !== null,
     codificador_falla: r.codificador_falla.sigue_ms !== null,

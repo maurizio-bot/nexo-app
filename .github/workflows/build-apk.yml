@@ -5,9 +5,11 @@ on:
     branches: [NEXOCHAT]
   workflow_dispatch:
 
-# Necesario para que GITHUB_TOKEN pueda crear la release
+# I-U3 (auditoría 23-11): permisos mínimos. Por defecto el GITHUB_TOKEN solo LEE el repositorio; el único que escribe es el
+# job `build` (crea la release con la APK) y lo pide él mismo. Las acciones de terceros van fijadas por SHA (el comentario dice
+# qué etiqueta era: sacado con `git ls-remote <repo> refs/tags/<tag>` el 23-11); para subirlas, cambiar SHA y comentario juntos.
 permissions:
-  contents: write
+  contents: read
 
 # Si haces varios push seguidos, cancela el build anterior y deja solo el último
 concurrency:
@@ -31,21 +33,23 @@ jobs:
     timeout-minutes: 120
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false   # I-U3: nada empuja con git; el token no se queda en .git/config
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
 
       - name: Setup Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: 'temurin'
           java-version: '21'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
         with:
           gradle-version: '8.14.3'
 
@@ -84,7 +88,7 @@ jobs:
 
       - name: Registros de las pruebas (si alguna falla)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: registros-pruebas-${{ github.run_number }}
           path: tests/sim/last_logs_*.txt
@@ -95,28 +99,34 @@ jobs:
     # 2945: fijado a 24.04 igual que `tests` (ver nota arriba) — restaura el entorno con el que se armó la 2943.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # I-U3: solo este job escribe (crear la release nightly-N con la APK)
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false   # I-U3: nada empuja con git; el token no se queda en .git/config
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
           cache: 'npm'
 
       - name: Setup Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Setup Gradle (cache)
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
+      # I-U3: `npm ci` instala EXACTAMENTE lo de package-lock.json (y falla si no cuadra con package.json) en vez de resolver de nuevo
       - name: Install Dependencies
-        run: npm install
+        run: npm ci --no-audit --no-fund
 
       - name: Build Web Only
         run: npm run build:web
@@ -184,6 +194,11 @@ jobs:
           fi
           echo "Firma correcta: se podrá instalar encima de la versión anterior"
 
+      # 3319 (Google Play, targetSdk 36): las librerías nativas tienen que valer con páginas de 16 KB; solo avisa
+      - name: Librerías nativas con páginas de 16 KB
+        continue-on-error: true
+        run: python3 tools/pagina16k.py android/app/build/outputs/apk/debug/app-debug.apk
+
       - name: Rename APK
         run: |
           APK=android/app/build/outputs/apk/debug/app-debug.apk
@@ -195,7 +210,7 @@ jobs:
       # Solo NEXOCHAT publica release; en otras ramas (workflow_dispatch) solo compila y verifica.
       - name: Upload APK (otras ramas)
         if: github.ref != 'refs/heads/NEXOCHAT'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ env.APK_FILE }}
           path: ${{ env.APK_FILE }}
@@ -211,7 +226,7 @@ jobs:
 
       - name: Create Release with APK
         if: github.ref == 'refs/heads/NEXOCHAT'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: nightly-${{ github.run_number }}
           name: "NEXO Nightly Build #${{ github.run_number }}"
@@ -219,3 +234,34 @@ jobs:
           files: ${{ env.APK_FILE }}
           body_path: release_notes.txt
           generate_release_notes: false
+
+      # Dueño 23-11: el paquete para Google Play (AAB, versión 1.0.0, firmado con la llave de subida) en cada build de NEXOCHAT. Lleva la
+      # marca de tienda (sin botón de actualizar) y no trae el permiso de instalar paquetes (src/release/AndroidManifest.xml). Sin los
+      # secrets de la llave, solo un aviso: la APK de GitHub sale igual.
+      - name: Paquete de tienda (Google Play)
+        if: github.ref == 'refs/heads/NEXOCHAT'
+        env:
+          NEXO_UPLOAD_KEYSTORE_BASE64: ${{ secrets.NEXO_UPLOAD_KEYSTORE_BASE64 }}
+          NEXO_UPLOAD_KEY_PASS: ${{ secrets.NEXO_UPLOAD_KEY_PASS }}
+        run: |
+          if [ -z "$NEXO_UPLOAD_KEYSTORE_BASE64" ] || [ -z "$NEXO_UPLOAD_KEY_PASS" ]; then
+            echo "::warning::Faltan los secrets NEXO_UPLOAD_KEYSTORE_BASE64 / NEXO_UPLOAD_KEY_PASS: no se genera el paquete de tienda"
+            exit 0
+          fi
+          KS="$RUNNER_TEMP/nexo-upload.p12"
+          echo "$NEXO_UPLOAD_KEYSTORE_BASE64" | base64 -d > "$KS"
+          sed -i 's/__NEXO_STORE__/1/g' android/app/src/main/assets/public/index.html
+          grep -q 'name="nexo-store" content="1"' android/app/src/main/assets/public/index.html || { echo "::error::sin marca de tienda"; exit 1; }
+          cd android && NEXO_UPLOAD_KEYSTORE="$KS" ./gradlew bundleRelease --stacktrace
+          AAB=app/build/outputs/bundle/release/app-release.aab
+          ls -l "$AAB"
+          cp "$AAB" "$GITHUB_WORKSPACE/nexo-tienda-1.0.0-${{ github.run_number }}.aab"
+          echo "AAB_FILE=nexo-tienda-1.0.0-${{ github.run_number }}.aab" >> $GITHUB_ENV
+
+      - name: Subir el paquete de tienda
+        if: github.ref == 'refs/heads/NEXOCHAT' && env.AAB_FILE != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ env.AAB_FILE }}
+          path: ${{ env.AAB_FILE }}
+          retention-days: 30

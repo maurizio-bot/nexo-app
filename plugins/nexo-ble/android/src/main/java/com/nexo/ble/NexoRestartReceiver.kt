@@ -95,13 +95,16 @@ class NexoRestartReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent?) {
+        // 3280: el despertador de la bandeja de salida por Bluetooth (OutboxWake): un repaso ya, con el teléfono despierto unos segundos
+        if (intent?.action == OutboxWake.ACTION) { try { OutboxWake.fired(context.applicationContext ?: context) } catch (e: Throwable) { }; return }
         val reason = RestartPolicy.reasonOf(intent?.action) ?: return
         val ctx = context.applicationContext ?: context
         CrashLog.install(ctx) // como el toque FCM: el proceso puede nacer aquí, sin pantalla ni servicio
         val alive = BleService.live != null || NexoBlePlugin.live != null || NexoBlePlugin.orphan != null
         when (RestartPolicy.step(configured(ctx), alive)) {
             RestartPolicy.Step.STOP -> cancel(ctx)
-            RestartPolicy.Step.REARM -> schedule(ctx)
+            // 3280: NEXO viva: de paso, un repaso de la bandeja de salida (lo que ya está en el buzón de internet se busca por Bluetooth a este ritmo)
+            RestartPolicy.Step.REARM -> { schedule(ctx); if (reason == RestartPolicy.Reason.WATCHDOG) try { OutboxWake.fired(ctx) } catch (e: Throwable) { } }
             RestartPolicy.Step.START -> { schedule(ctx); start(ctx, reason) }
         }
     }

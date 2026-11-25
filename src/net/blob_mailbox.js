@@ -28,7 +28,6 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 // trozos que faltan van a los públicos (tope ~64 KB); el que recibe sigue con los mismos techos (MAX_CHUNK_BYTES, MAX_RELAY_FRAME)
 export var CHUNK_RAW_BYTES = 40 * 1024;          // 40 KB → base64 ≈ 54,6 KB + evento < ~60 KB del relé (lección 2964: el tope es sobre lo YA codificado)
 export var MAILBOX_MAX_BYTES = 5 * 1024 * 1024;   // lo que se stagea en relés en Fase B (~125 trozos)
-export var RELAY_REPLICATION = 3;                 // objetivo: cada trozo en ≥3 relés (los que haya abiertos). 3193: con datos móviles, 2 (net.blobCopies)
 export var MAX_POINTER_CHUNKS = 10000;            // techo anti-DoS: rechazo inmediato, ANTES de reservar nada
 export var MAX_POINTER_BYTES = 64 * 1024 * 1024;  // ídem, tamaño
 export var MAX_CHUNK_BYTES = 64 * 1024;           // un trozo declarado más grande que esto es basura
@@ -214,11 +213,21 @@ export async function fetchBlob(net, ptr, opts) {
   var why = validatePointer(ptr);
   if (why) throw Object.assign(new Error('Puntero rechazado: ' + why), { code: 'BLOB_PTR' });
   // relés: primero los del puntero (se abren a demanda si hace falta), después cualquier otro abierto
-  var urls = [];
+  // Auditoría 23-11 (T-R1): un relé del puntero que NO es de los míos se abre «solo para bajar por id» (sin mi suscripción, sin AUTH,
+  // sin publicar) y se cierra al terminar; uno de los míos, como siempre (3073: aunque esté apartado)
+  var urls = [], temp = [];
   for (var k = 0; k < ptr.relays.length; k++) {
     var u = ptr.relays[k];
-    try { if (await net.ensureRelay(u, o.connectMs || 6000, true)) urls.push(u); } catch (e) {} // 3073: aunque esté apartado
+    try {
+      if (typeof net.isMyRelay === 'function' && typeof net.fetchOnlyOpen === 'function' && !net.isMyRelay(u)) { if (await net.fetchOnlyOpen(u, o.connectMs || 6000)) { urls.push(u); temp.push(u); } }
+      else if (await net.ensureRelay(u, o.connectMs || 6000, true)) urls.push(u);
+    } catch (e) {}
   }
+  try { return await _fetchFrom(net, ptr, o, log, urls); }
+  finally { temp.forEach(function(x) { try { net.fetchOnlyClose(x); } catch (e) {} }); }
+}
+
+async function _fetchFrom(net, ptr, o, log, urls) {
   (net.openRelayUrls ? net.openRelayUrls() : []).forEach(function(u) { if (urls.indexOf(u) < 0) urls.push(u); });
   if (!urls.length) throw Object.assign(new Error('Sin relés para bajar el archivo'), { code: 'NET_DOWN' });
   var parts = new Array(ptr.chunks.length), byId = new Map(), bad = 0, fetched = 0;
@@ -248,6 +257,7 @@ export async function fetchBlob(net, ptr, opts) {
         // el id del evento ES la huella del trozo: si el relé tocó un byte, el id recalculado no coincide
         if (!bytes || bytes.length !== c.n || ev.kind !== BLOB_KIND || _eventId(ev) !== c.id) { bad++; log('[BLOB] trozo ' + c.i + ' de ' + url + ' NO coincide con su huella: se pide a otro relé'); continue; }
         parts[c.i] = bytes;
+        if (typeof o.progress === 'function') { try { o.progress(fetched - bad, ptr.chunks.length); } catch (e5) {} }
       }
     }
   }

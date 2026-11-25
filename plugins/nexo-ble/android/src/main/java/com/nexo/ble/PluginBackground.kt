@@ -58,8 +58,10 @@ private fun NexoBlePlugin.notifyOnly(ctx: Context, info: BgInbox.Info) {
 internal fun NexoBlePlugin.backgroundNotify(json: String, deviceId: String? = null, lanNx: String? = null) {
     if (!appInBackground || closedMode) return
     val ctx = appCtx ?: return
+    MutedChats.ensureLoaded({ atRest().read(MutedChats.FILE) }) // bloqueo (24-11): classify ignora lo de un bloqueado
     val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
     if (info.msgId.isEmpty()) return
+    if (!sealOk(json, info)) { remLog("WARN", "BG", "Mensaje que dice ser de ${info.from} sin su sello de pareja: sin aviso ni ✓✓"); return } // 2A (23-11)
     // 3034 (diagnóstico S24 12-11 17:54, «reenvio_sin_fin» con …db61): una acción OCULTA (estado, foto de perfil, me gusta;
     // marca q:1) que llega con la app en segundo plano/congelada no se avisa, pero tampoco se CONFIRMABA (solo los textos,
     // al avisar, desde 2833) → el otro la reenviaba sin fin hasta que esta app volviera. Ahora se confirma igual, sin aviso
@@ -97,10 +99,19 @@ internal fun NexoBlePlugin.backgroundNotify(json: String, deviceId: String? = nu
     }, BG_NOTIFY_DELAY_MS)
 }
 
+// 2A (23-11): ¿pasa el sello de pareja? Sin clave de ese contacto no se puede comprobar (vale, como antes); con clave, tiene que cuadrar.
+private fun NexoBlePlugin.sealOk(json: String, info: BgInbox.Info): Boolean {
+    if (info.from.isEmpty() || (info.kind != BgInbox.Kind.MESSAGE && info.kind != BgInbox.Kind.NOTIFY_ONLY)) return true
+    val me = nexoAdvertisingId ?: return true
+    return BgInbox.sealCheck(json, me) { f -> ackKeys[info.from]?.let { k -> ackTag(k, f) } } != false
+}
+
 // Lo que llega con la app cerrada: al buzón, confirmación de entrega y notificación (ver BgInbox)
 internal fun NexoBlePlugin.closedReceive(deviceId: String, json: String) {
+    MutedChats.ensureLoaded({ atRest().read(MutedChats.FILE) }) // bloqueo (24-11): classify ignora lo de un bloqueado
     val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
     val ctx = appCtx ?: return
+    if (!sealOk(json, info)) { nlog()?.add("WARN", "BT_CERRADA", "mensaje que dice ser de ${info.from} sin su sello de pareja: descartado"); return } // 2A (23-11)
     // Ronda 2785 (#87): dejar constancia en el registro nativo (persiste con la app cerrada; sin contenido)
     nlog()?.add("INFO", "BT_CERRADA", "llega por Bluetooth: ${info.kind} de ${info.from.ifEmpty { "?" }}${if (info.msgId.isNotEmpty()) " (msgId ${info.msgId})" else ""}${if (info.call) " [llamada]" else ""}")
     when (info.kind) {
@@ -135,6 +146,9 @@ internal fun NexoBlePlugin.nativePong(deviceId: String, json: String) {
         if (o.optString("type") != "ping") return
         val pingId = o.optString("pingId")
         if (pingId.isEmpty() || pingId.length > 80) return
+        // 12A (23-11): mi NEXO ID solo a un contacto (con las claves cargadas; sin ellas, como antes)
+        val pf = o.optString("fromNexoId").trim().lowercase()
+        if (ackKeys.isNotEmpty() && (pf.isEmpty() || !ackKeys.containsKey(pf))) return
         val me = (nexoAdvertisingId ?: "").lowercase()
         val pong = JSONObject().put("v", 1).put("type", "pong").put("pingId", pingId).put("ts", System.currentTimeMillis()).put("fromNexoId", me).put("nb", 1)
         sendChunkedOrSingle(normalizeMac(deviceId), deviceId, pong.toString())
@@ -142,6 +156,20 @@ internal fun NexoBlePlugin.nativePong(deviceId: String, json: String) {
 }
 
 private fun NexoBlePlugin.kxCardPrefs() = (appCtx ?: context).getSharedPreferences("nexo_ble_prefs", Context.MODE_PRIVATE)
+// 3A (23-11): contesta el reto de la bandeja de salida de un contacto (solo si es mi contacto: sin su clave de pareja no hay respuesta)
+internal fun NexoBlePlugin.nativeChallenge(deviceId: String, json: String) {
+    val me = nexoAdvertisingId ?: return
+    OutboxChallenge.answer(json, me) { from, fields -> ackKeys[from]?.let { ackTag(it, fields) } }?.let {
+        try { sendChunkedOrSingle(normalizeMac(deviceId), deviceId, it) } catch (e: Exception) { }
+    }
+}
+
+// 12A (23-11): la tarjeta «quién soy» (NEXO ID y clave) solo a quien dice ser un contacto (con las claves cargadas; sin ellas, como antes)
+internal fun NexoBlePlugin.kxFromContact(json: String): Boolean {
+    if (ackKeys.isEmpty()) return true
+    return try { val f = JSONObject(json).optString("from").trim().lowercase(); f.isNotEmpty() && ackKeys.containsKey(f) } catch (e: Exception) { false }
+}
+
 internal fun NexoBlePlugin.nativeKx(deviceId: String) {
     try {
         val mac = normalizeMac(deviceId)
@@ -191,11 +219,17 @@ private fun NexoBlePlugin.sendDeliveredAckLan(nx: String, info: BgInbox.Info) {
 
 // La app se abre: la instancia anterior (si siguió recibiendo) se retira y lo guardado se entrega a la app
 internal fun NexoBlePlugin.takeOverFromClosed() {
+    // 3254: si el servicio recibía por Bluetooth sin la app (BleSinApp), deja de atender; lo que guardó en el buzón se entrega aquí abajo
+    try { BleSinApp.stopForApp() } catch (e: Throwable) { }
     val old = orphan
     if (old != null && old !== this) {
         orphan = null
         try { old.endClosedMode() } catch (e: Exception) { }
     }
+    // 3263 (fase 2): el servidor GATT que ya estuviera abierto (el del servicio sin la app o el de la instancia anterior) pasa a esta
+    // instancia SIN cerrarse y con sus enlaces: antes se cerraba y se abría otro, y cada vez que el usuario abría NEXO se cortaba el
+    // Bluetooth con todos sus contactos cercanos (o quedaban enlaces a medias)
+    try { if (bluetoothGattServer != null) adoptGattServer("la app se abre") } catch (e: Throwable) { }
     val list = try { inbox().drain() } catch (e: Exception) { emptyList() }
     if (list.isNotEmpty()) remLog("INFO", "FILE_IO", "Con la app cerrada llegaron ${list.size} mensaje(s)/confirmación(es) por Bluetooth")
     val now = System.currentTimeMillis()
@@ -205,13 +239,16 @@ internal fun NexoBlePlugin.takeOverFromClosed() {
     }
 }
 
-// La instancia vieja deja el Bluetooth a la nueva (cierra sus conexiones y su servidor; el anuncio sigue en el servicio)
+// La instancia vieja deja el Bluetooth a la nueva (cierra sus conexiones de cliente; el servidor y el anuncio siguen en el proceso)
 private fun NexoBlePlugin.endClosedMode() {
     closedMode = false
     cleanupAllConnections()
     try { unregisterServerReceivers() } catch (e: Exception) { }
     try { unregisterBluetoothStateReceiver() } catch (e: Exception) { }
-    try { stopGattServer() } catch (e: Exception) { }
+    // 3263 (fase 2): el servidor GATT NO se cierra ni se cortan sus enlaces (antes 3251 los cortaba para que reconectaran al servidor
+    // nuevo): esta instancia solo deja de atender y la nueva se engancha al mismo servidor (GattServerHost). Sus enlaces de CLIENTE sí se
+    // cerraron arriba (sus avisos llegan a esta instancia, que se va).
+    GattServerHost.detach(gattServerCallback)
     writeQueues.clear(); writeQueueProcessing.clear()
     writeQueueTimeouts.forEach { (_, r) -> mainHandler.removeCallbacks(r) }; writeQueueTimeouts.clear()
 }
@@ -241,7 +278,9 @@ internal fun NexoBlePlugin.getFcmTokenImpl(call: PluginCall) {
             val tok = if (task.isSuccessful) (task.result ?: "") else ""
             if (tok.isNotEmpty()) {
                 try { prefs?.edit()?.putString(NexoFcmService.PREF_TOKEN, tok)?.apply() } catch (e: Exception) {}
-                call.resolve(JSObject().put("token", tok))
+                // 14A: el sello, solo si es de ESTE token (si el token cambió, la app pide otro)
+                val sealed = try { if (prefs?.getString(NexoFcmService.PREF_SEALED_FOR, "") == tok) prefs?.getString(NexoFcmService.PREF_SEALED, "") ?: "" else "" } catch (e: Exception) { "" }
+                call.resolve(JSObject().put("token", tok).put("sealed", if (NexoFcmService.sealOk(sealed)) sealed else ""))
             } else {
                 val saved = try { prefs?.getString(NexoFcmService.PREF_TOKEN, "") ?: "" } catch (e: Exception) { "" }
                 call.resolve(JSObject().put("token", saved).put("error", task.exception?.message ?: "sin token"))
@@ -281,6 +320,7 @@ internal fun NexoBlePlugin.netBgConfigImpl(call: PluginCall) {
     // a quién mandé yo una solicitud y desde cuándo la app ya no escucha su buzón
     val cfg = try { NetBgSaved.fromApp(call.data) } catch (e: NetBgSaved.BadConfig) { call.reject(e.message); return }
     netBg().configure(cfg.me, cfg.relays, cfg.since, cfg.contacts, cfg.known, cfg.reqOut, cfg.reqSince)
+    netBg().gwHelp = cfg.gwHelp // 3323
     netBg().setAckKeys(HashMap(ackKeys))   // #87: para confirmar la ENTREGA (✓✓) con la app cerrada
     // 3192 (#87, dueño 17-11 «Ok»): y se guarda CIFRADA en el teléfono (solo si cambió) para que la escucha arranque aunque Android haya
     // cerrado NEXO (NetBgHome.startWithoutApp). Pasando la cuenta a otro teléfono no se escribe nada (moveFrozen, como saveToFile).
@@ -302,6 +342,161 @@ internal fun NexoBlePlugin.netBgDrainImpl(call: PluginCall) {
     call.resolve(JSObject().put("events", arr).put("gaps", gaps))
 }
 
+// 3268 (PRIORIDAD 1, fase 3; COLA 29): la app da la lista ENTERA de sus textos pendientes ya cifrados de punta a punta
+// ({items:[{id, nx, p, wk}], f, url}; reemplaza a la anterior) para que la escucha de internet los suba aunque la app se duerma, se
+// cierre o Android mate el proceso (NetOutbox). items vacío = nada pendiente. Devuelve cuántos quedaron (n) y cuáles ya aceptó un relé.
+internal fun NexoBlePlugin.netOutboxSetImpl(call: PluginCall) {
+    val list = ArrayList<NetOutbox.Item>()
+    val now = System.currentTimeMillis()
+    try {
+        call.data.optJSONArray("items")?.let { a ->
+            for (i in 0 until a.length()) {
+                val o = a.optJSONObject(i) ?: continue
+                val id = o.optString("id"); val nx = o.optString("nx").lowercase(); val p = o.optString("p")
+                if (!NetOutbox.valid(id, nx, p)) continue
+                val at = o.optLong("at", now).let { if (it in 1..now) it else now }
+                val item = NetOutbox.Item(id, nx, p, at, o.optString("wk"))
+                // 3281: un archivo pequeño: ev = sus trozos (eventos ya cifrados y firmados por la app; se suben antes que su aviso p);
+                // ck sin ev = «ya tienes sus trozos de antes» (si no se tienen, sale en miss y la app los vuelve a dar)
+                val ev = o.optJSONArray("ev")
+                if (ev != null && ev.length() > 0) {
+                    item.chunks = NetOutbox.chunksOf((0 until minOf(ev.length(), NetOutbox.MAX_CHUNKS + 1)).map { ev.optString(it) }) ?: continue
+                } else item.stub = o.optInt("ck", 0).coerceAtLeast(0)
+                list.add(item)
+            }
+        }
+    } catch (e: Exception) { call.reject("bandeja ilegible"); return }
+    val bg = netBg()
+    // 3279: la clave de los códigos rotativos de cada contacto con algo pendiente (rk: {nx: hex}; ep = segundos de una época), para
+    // reconocerlo en el aire al buscarlo por Bluetooth (OutboxRid). Sin rk (una app anterior) se conservan las que hubiera.
+    val rk: Map<String, String>? = try {
+        call.data.optJSONObject("rk")?.let { o -> HashMap<String, String>().also { m -> o.keys().forEach { nx -> m[nx.lowercase()] = o.optString(nx) } } }
+    } catch (e: Exception) { null }
+    val n = bg.outboxSet(list, call.data.optString("f"), call.data.optString("url"), rk, call.data.optLong("ep", 0L))
+    // 3269: los enlaces Bluetooth listos de esos contactos (los identificó la app): por ellos también sale lo pendiente
+    try {
+        call.data.optJSONArray("links")?.let { a ->
+            for (i in 0 until minOf(a.length(), OutboxBle.MAX_LINKS)) { val o = a.optJSONObject(i) ?: continue; outBle().seed(normalizeMac(o.optString("mac")), o.optString("nx")) }
+        }
+    } catch (e: Exception) { }
+    if (n > 0 && (appInBackground || closedMode)) outboxBleTick()
+    val sent = JSArray()
+    bg.outbox.ids().forEach { id -> if ((bg.outbox.get(id)?.okAt ?: 0L) > 0) sent.put(id) }
+    // 3281: de los archivos, cuáles tiene con sus trozos (have) y cuáles dijo la app que tenía y no (miss: que los vuelva a dar)
+    val have = JSArray(); val miss = JSArray()
+    val files = bg.outbox.chunkFiles().keys
+    files.forEach { have.put(it) }
+    list.forEach { if (it.stub > 0 && it.id !in files) miss.put(it.id) }
+    try { appCtx?.let { NetBgHome.sweepBlobs(it, files) } } catch (e: Exception) { }
+    call.resolve(JSObject().put("n", n).put("sent", sent).put("have", have).put("miss", miss))
+}
+
+// 3269: la bandeja de salida también por Bluetooth (OutboxBle), con los enlaces de la app (dormida o cerrada con el proceso vivo)
+internal fun NexoBlePlugin.outBle(): OutboxBle = outBleRef ?: synchronized(this) {
+    outBleRef ?: run {
+        val lk = object : OutboxBle.Link {
+            override fun ready(mac: String) = (serverConnectedDevices[mac] != null && serverNotificationEnabled.getOrDefault(mac, false)) || clientRxCharacteristics[mac] != null
+            override fun send(mac: String, json: String) = sendChunkedOrSingle(mac, mac, json).sent
+            override fun log(msg: String) { nlog()?.add("INFO", "BANDEJA", msg) }
+        }
+        val rok = { appCtx?.let { relayPowerOk(it) } ?: true }
+        OutboxBle({ nexoAdvertisingId ?: "" }, { netBgShared }, { NexoBlePlugin.ackKeys[it] }, lk, relayOk = rok)
+            .also { it.gw = gwServeFor({ nexoAdvertisingId ?: "" }, lk, rok) } // 3321: el puente a internet sin la app
+            .also { outBleRef = it }
+    }
+}
+// Repaso cada 10 s mientras la app no está a la vista y queda algo en la bandeja (los enlaces que hablan la mueven al momento: outboxHeard)
+internal fun NexoBlePlugin.outboxBleTick() {
+    if (outTickOn) return
+    outTickOn = true
+    val run = object : Runnable {
+        override fun run() {
+            if (!(appInBackground || closedMode) || !outBle().pending()) { outTickOn = false; return }
+            try { outBle().pump() } catch (e: Throwable) { }
+            try { outboxDialStep() } catch (e: Throwable) { } // 3271: y si su contacto no tiene enlace, se le busca y se conecta
+            mainHandler.postDelayed(this, 10_000L)
+        }
+    }
+    mainHandler.postDelayed(run, 2_000L)
+}
+// 3280: sonó el despertador (OutboxWake; hilo principal): un repaso YA y, si el repaso periódico se había parado, vuelve a andar
+internal fun NexoBlePlugin.outboxKick() {
+    if (!(appInBackground || closedMode) || !outBle().pending()) { appCtx?.let { OutboxWake.cancel(it) }; return }
+    try { outBle().pump() } catch (e: Throwable) { }
+    try { outboxDialStep() } catch (e: Throwable) { }
+    outboxBleTick()
+}
+// 3271 (fase 3: conexiones salientes): para quien tiene algo pendiente y ningún enlace listo, el nativo lo busca (escaneo corto y
+// filtrado, lo único que Android entrega con la pantalla apagada) y conecta él. El plan (cuándo, a quién, tope) es OutboxDial (JVM).
+internal fun NexoBlePlugin.outboxDialStep() {
+    if (!(appInBackground || closedMode)) { appCtx?.let { OutboxWake.cancel(it) }; return }
+    val want = outBle().wanting()
+    if (want.isEmpty()) { outDial.scanDue(want); appCtx?.let { OutboxWake.cancel(it) }; return }
+    val ctx = appCtx ?: return
+    // 3280: ¿corre prisa? (algo sin otro camino: ningún relé lo aceptó). Entonces ritmo normal y despertador para el próximo escaneo
+    val urgent = outBle().urgent(want)
+    val adapter = (ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager)?.adapter ?: return
+    if (!adapter.isEnabled) return
+    val busy = { mac: String -> gattClients.containsKey(mac) || clientConnectionStates.containsKey(mac) || serverConnectedDevices.containsKey(mac) }
+    for ((nx, mac) in outDial.pick(want, HashMap(outSeen), gattClients.size, busy)) {
+        val device = scannedDevices[mac] ?: continue
+        try {
+            outDialNx[mac] = nx
+            if (outDialNx.size > 64) outDialNx.clear()
+            val gatt = connectLe(ctx, device, mac) ?: continue
+            gattClients[mac] = gatt
+            clientConnectionStates[mac] = android.bluetooth.BluetoothProfile.STATE_CONNECTING
+            OutboxWake.busy(ctx) // 3280: despierto mientras conecta y escribe
+            nlog()?.add("INFO", "BANDEJA", "hay mensajes pendientes para $nx y está cerca: el teléfono abre el enlace Bluetooth sin la app")
+        } catch (e: Throwable) { nlog()?.add("WARN", "BANDEJA", "no se pudo abrir el enlace con $nx (${e.javaClass.simpleName})") }
+    }
+    val now = System.currentTimeMillis()
+    val scanNow = now >= outScanUntil && outDial.scanDue(want, urgent)
+    OutboxWake.set(ctx, outDial.wakeInMs(want, urgent)) // con el teléfono dormido del todo este repaso no corre solo: que lo despierte la alarma
+    if (!scanNow) return
+    val granted = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) isGranted(ctx, android.Manifest.permission.BLUETOOTH_SCAN)
+        else isGranted(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION)
+    if (!granted || bluetoothScanner != null) return // sin permiso, o ya hay un escaneo en marcha (el de la app): sus resultados valen igual
+    try {
+        val scanner = adapter.bluetoothLeScanner ?: return
+        val filters = listOf(android.bluetooth.le.ScanFilter.Builder()
+            .setManufacturerData(NexoBlePlugin.MANUFACTURER_ID, byteArrayOf(NexoBlePlugin.NEXO_MAGIC_HIGH, NexoBlePlugin.NEXO_MAGIC_LOW), byteArrayOf(0xFF.toByte(), 0xFF.toByte())).build())
+        scanner.startScan(filters, scanSettings(), scanCallback)
+        outScanUntil = now + OutboxDial.SCAN_MS
+        OutboxWake.busy(ctx) // 3280: despierto lo que dura el escaneo
+        mainHandler.postDelayed({
+            try { scanner.stopScan(scanCallback) } catch (e: Throwable) { }
+            try { outboxDialStep() } catch (e: Throwable) { } // lo que se vio en este escaneo: a conectar
+        }, OutboxDial.SCAN_MS)
+    } catch (e: Throwable) { nlog()?.add("WARN", "BANDEJA", "no se pudo buscar por Bluetooth (${e.javaClass.simpleName})") }
+}
+// El enlace de cliente quedó listo (MTU y notificaciones): si lo abrió la bandeja, es de ese contacto y lo suyo sale ya
+internal fun NexoBlePlugin.outboxDialed(macNorm: String) {
+    val nx = outDialNx.remove(macNorm) ?: return
+    try { outBle().seed(macNorm, nx); mainHandler.post { try { outBle().pump() } catch (e: Throwable) { } } } catch (e: Throwable) { }
+}
+
+// Lo que llega por un enlace Bluetooth con la app dormida o cerrada (PluginRx): de quién es el enlace, ✓✓ de lo de la bandeja y a escribir
+// 3316: true = el nativo ya lo reenvió para otro (puente con la app dormida): no se le pasa a la app ni al aviso
+internal fun NexoBlePlugin.outboxHeard(macNorm: String, json: String): Boolean {
+    if (json.length > 6000 && !(json.length < 80_000 && json.contains("\"type\":\"ig\""))) return false // 3321: trozos por el puente a internet
+    return try { outBle().heard(macNorm, json) } catch (e: Throwable) { false }
+}
+
+// Lo que el nativo tiene a su cargo (al arrancar la app: para ponerse de acuerdo con lo guardado de la sesión anterior)
+internal fun NexoBlePlugin.netOutboxListImpl(call: PluginCall) {
+    val arr = JSArray()
+    try { val o = netBg().outbox; o.ids().forEach { id -> o.get(id)?.let { val (ck, up) = o.chunkState(id); arr.put(JSObject().put("id", it.id).put("nx", it.nx).put("ok", it.okAt > 0).put("ck", ck).put("up", up)) } } } catch (e: Exception) { }
+    call.resolve(JSObject().put("items", arr))
+}
+
+// La app retira uno (lo mandó ella, llegó su ✓✓ o se borró)
+internal fun NexoBlePlugin.netOutboxDropImpl(call: PluginCall) {
+    val id = call.getString("id") ?: ""
+    if (id.isNotEmpty()) netBg().outboxDrop(id)
+    call.resolve()
+}
+
 // 3219 (dueño 17-11, funciones de WhatsApp): ¿se calla el aviso de este mensaje porque su chat (o su grupo, si se conoce) está
 // SILENCIADO? Las llamadas nunca. Queda en el registro nativo (sin contenido) para el diagnóstico.
 internal fun NexoBlePlugin.mutedNotice(info: BgInbox.Info, groupKnown: Boolean): Boolean {
@@ -314,12 +509,15 @@ internal fun NexoBlePlugin.mutedNotice(info: BgInbox.Info, groupKnown: Boolean):
 // 3219: la app da los chats silenciados [{id, until}] (until en ms; 0 = siempre), al arrancar y cada vez que cambian: en memoria del
 // proceso (la usa el aviso con la app cerrada o congelada) y cifrada en el teléfono (para la escucha de internet sin la app). Se
 // reemplaza la lista entera en cada llamada. Pasando la cuenta a otro teléfono no se escribe nada (moveFrozen, como setAckKeys).
+// Bloqueo (dueño 24-11): con «blocked» [NEXO ID] da también los contactos bloqueados; lo que no viene (chats o blocked) se queda como estaba.
 internal fun NexoBlePlugin.setMutedChatsImpl(call: PluginCall) {
     try {
-        val m = MutedChats.fromApp(call.getArray("chats"), System.currentTimeMillis())
-        MutedChats.set(m)
+        MutedChats.ensureLoaded({ atRest().read(MutedChats.FILE) })
+        val m = if (call.data.has("chats")) MutedChats.fromApp(call.getArray("chats"), System.currentTimeMillis()) else MutedChats.all()
+        val b = if (call.data.has("blocked")) MutedChats.blockedFromApp(call.getArray("blocked")) else MutedChats.blocked()
+        MutedChats.set(m, b)
         if (!moveFrozen) NetBgHome.saveMute(appCtx ?: context, atRest(), m)
-        call.resolve(JSObject().put("chats", m.size))
+        call.resolve(JSObject().put("chats", m.size).put("blocked", b.size))
     } catch (e: Exception) { call.reject("lista de silenciados ilegible") }
 }
 

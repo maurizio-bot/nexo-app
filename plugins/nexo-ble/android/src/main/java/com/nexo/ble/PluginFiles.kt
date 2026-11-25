@@ -31,11 +31,19 @@ import java.io.FileOutputStream
 
 // ===== Archivos recibidos: abrir con otra app y miniatura de PDF =====
 
-// Nombre seguro para un archivo en la caché (llega del otro teléfono)
-private fun NexoBlePlugin.safeFileName(name: String?): String {
-    val clean = (name ?: "").substringAfterLast('/').substringAfterLast('\\')
-        .replace(Regex("[^A-Za-z0-9._ ()\\-]"), "_").trim().trimStart('.')
-    return (if (clean.isEmpty()) "archivo" else clean).take(80)
+// Nombre seguro para un archivo en la caché (llega del otro teléfono). I-S1/T-A1: la regla vive en OpenType (sin control ni
+// RTL, tope 80 conservando la extensión), la misma que aplica la interfaz (store_flag.js).
+private fun NexoBlePlugin.safeFileName(name: String?): String = OpenType.safeName(name)
+
+// Tipo con el que se abre (OpenType.mimeFor con el MimeTypeMap de Android)
+private fun openMime(name: String, claimed: String?): String =
+    OpenType.mimeFor(name, claimed) { e -> android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(e) }
+
+// Con la bandera de tienda (store:true, la manda file_card.js) una APK no se abre con el instalador: Google Play no lo admite.
+private fun storeRefusesApk(call: PluginCall, mime: String): Boolean {
+    if (mime != OpenType.APK || call.getBoolean("store", false) != true) return false
+    call.resolve(JSObject().put("opened", false).put("reason", "store_apk"))
+    return true
 }
 
 private fun NexoBlePlugin.writeCacheFile(dirName: String, name: String, b64: String): File {
@@ -54,14 +62,12 @@ private fun NexoBlePlugin.writeCacheFile(dirName: String, name: String, b64: Str
 internal fun NexoBlePlugin.openFileImpl(call: PluginCall) {
     val b64 = call.getString("base64") ?: run { call.reject("base64 requerido"); return }
     val name = safeFileName(call.getString("name"))
-    var mime = call.getString("mime") ?: ""
-    if (!mime.contains('/')) {
-        mime = android.webkit.MimeTypeMap.getSingleton()
-            .getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream"
-    }
+    // I-S1/T-A1: «es APK» se decide aquí, sobre el nombre ya saneado; un tipo que no cuadra con la extensión (o html/svg) se
+    // abre como octet-stream, y un tipo de APK sin «.apk» no llega al instalador.
+    val mime = openMime(name, call.getString("mime"))
+    if (storeRefusesApk(call, mime)) return
     try {
-        val isApk = mime == "application/vnd.android.package-archive" || name.lowercase().endsWith(".apk")
-        if (isApk) mime = "application/vnd.android.package-archive"
+        val isApk = mime == OpenType.APK
         if (isApk && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !context.packageManager.canRequestPackageInstalls()) {
             // Android pide permitir a NEXO instalar apps (una sola vez)
@@ -259,7 +265,7 @@ private fun NexoBlePlugin.l2Adapter(): android.bluetooth.BluetoothAdapter? {
 }
 
 internal fun NexoBlePlugin.l2InfoImpl(call: PluginCall) {
-    call.resolve(JSObject().put("ok", l2Adapter() != null).put("sdk", Build.VERSION.SDK_INT))
+    call.resolve(JSObject().put("ok", l2Adapter() != null).put("sdk", Build.VERSION.SDK_INT).put("payload", true)) // payload (3288): también lo mediano
 }
 
 // Receptor: abre un canal L2CAP para esta transferencia (solo acepta id + token) y devuelve su número (PSM)
@@ -282,8 +288,25 @@ internal fun NexoBlePlugin.bigServeL2Impl(call: PluginCall) {
                     val left = until - System.currentTimeMillis()
                     if (left <= 0) throw Exception("Accept timed out")
                     val sock = server.accept(left.toInt())
-                    val ok = try { BigNet.receive(sock.inputStream, sock.outputStream, id, token, BigFile.encFile(bigDir(), id), BigFile.MAX_BYTES * 11 / 10, bigProgress(id, "in")) }
-                             finally { try { sock.close() } catch (e: Exception) {} }
+                    // Auditoría 23-11 (T-L1): como BigNet.serve, una conexión ajena (basura, otra cabecera, callada) se descarta y se sigue
+                    // esperando la buena. Antes su error salía del bucle y la espera moría; y una callada lo bloqueaba para siempre (un
+                    // canal Bluetooth no tiene plazo propio): ahora tiene PayloadNet.HEADER_MS para empezar y 60 s sin avanzar después.
+                    val pr = bigProgress(id, "in")
+                    val lastAt = java.util.concurrent.atomic.AtomicLong(0L)   // 0 = aún sin la cabecera buena
+                    val guard = object : Runnable { override fun run() {
+                        if (System.currentTimeMillis() - lastAt.get() > 60000) { try { sock.close() } catch (e: Exception) {} } else mainHandler.postDelayed(this, 5000)
+                    } }
+                    val headGuard = Runnable { if (lastAt.get() == 0L) try { sock.close() } catch (e: Exception) {} }
+                    mainHandler.postDelayed(headGuard, PayloadNet.HEADER_MS.toLong())
+                    val ok = try {
+                        BigNet.receive(sock.inputStream, sock.outputStream, id, token, BigFile.encFile(bigDir(), id), BigFile.MAX_BYTES * 11 / 10, BigNet.Progress { done, total ->
+                            if (lastAt.getAndSet(System.currentTimeMillis()) == 0L) { mainHandler.removeCallbacks(headGuard); mainHandler.postDelayed(guard, 5000) }
+                            pr.on(done, total)
+                        })
+                    } catch (e: Exception) {
+                        if (lastAt.get() != 0L) throw e   // ya era la buena (tenía el token) y se cortó: eso sí termina la espera
+                        false
+                    } finally { mainHandler.removeCallbacks(headGuard); mainHandler.removeCallbacks(guard); try { sock.close() } catch (e: Exception) {} }
                     if (ok) break
                 }
                 bigDone(id, "in", null)
@@ -295,6 +318,121 @@ internal fun NexoBlePlugin.bigServeL2Impl(call: PluginCall) {
 
 // Emisor: al teléfono de esa conexión Bluetooth, al canal que abrió
 @android.annotation.SuppressLint("MissingPermission", "NewApi") // comprobados en l2Adapter()
+// ===== 3288 (23-11, COLA 14): archivos MEDIANOS por el canal L2CAP =====
+// Los grandes ya iban por aquí de disco a disco (bigServeL2 / bigSendL2). Lo mediano (una foto, una nota de voz, un PDF: lo que la
+// app tiene en memoria, ya cifrado de punta a punta) iba en trozos por el enlace normal a ~17 KB/s. Mismo canal, mismo formato que
+// la recepción por Wi-Fi Direct (cabecera { id, len } + contenido + un byte de «recibido»). Si algo falla, la app sigue en trozos.
+internal const val L2_PAYLOAD_MAX = 4L * 1024 * 1024
+
+internal fun NexoBlePlugin.l2PayloadHostImpl(call: PluginCall) {
+    val id = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
+    val expect = (call.getInt("size") ?: 0).toLong()
+    // Auditoría 23-11 (T-L1): token de esta transferencia (lo pone la app y viaja en «la» por el enlace del contacto)
+    val token = call.getString("token") ?: ""
+    if (token.length < 16 || expect <= 0) { call.reject("token y tamaño requeridos", "L2_NONE"); return }
+    val adapter = l2Adapter() ?: run { call.reject("L2CAP no disponible (Android 10+ y Bluetooth activo)", "L2_NONE"); return }
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) { call.reject("L2CAP no disponible", "L2_NONE"); return }
+    try {
+        try { l2PayloadServer?.close() } catch (e: Exception) {}
+        val server = adapter.listenUsingInsecureL2capChannel()
+        l2PayloadServer = server
+        l2PayloadFor = id
+        call.resolve(JSObject().put("psm", server.psm))
+        remLog("INFO", "FILE_IO", "[L2CAP] Esperando el archivo mediano $id en el canal ${server.psm}")
+        Thread {
+            // T-L1: se aceptan conexiones hasta la buena (id + token + el tamaño anunciado); una ajena se cierra y se sigue esperando.
+            // T-E1: el byte de «recibido» sale cuando la app confirma que lo descifró (l2PayloadCancel con ack), no al tener los bytes.
+            try {
+                val res = PayloadNet.serve({ left -> l2Conn(server.accept(left.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())) }, 15000, id, token, expect, L2_PAYLOAD_MAX,
+                    60000 + (expect / 20).toInt(), { buf, readMs ->
+                        remLog("INFO", "FILE_IO", "[L2CAP] Recibido $id (${buf.size} bytes) en $readMs ms: la app lo descifra antes de confirmar")
+                        notifyListeners("onL2PayloadReceived", JSObject().put("transferId", id).put("data", String(buf, Charsets.UTF_8)).put("bytes", buf.size).put("readMs", readMs), true)
+                    })
+                remLog(if (res.delivered) "INFO" else "WARN", "FILE_IO", "[L2CAP] $id " + (if (res.delivered) "confirmado" else "SIN confirmar (la app no lo pudo leer): quien envía sigue en trozos") +
+                    (if (res.rejected > 0) " (${res.rejected} conexiones ajenas descartadas)" else ""))
+            } catch (e: Exception) {
+                remLog("WARN", "FILE_IO", "[L2CAP] Recepción fallida de $id: ${e.message}")
+                notifyListeners("onL2PayloadReceived", JSObject().put("transferId", id).put("error", e.message ?: "error"), true)
+            } finally {
+                try { server.close() } catch (e: Exception) {}
+                if (l2PayloadServer === server) { l2PayloadServer = null; l2PayloadFor = null }
+            }
+        }.start()
+    } catch (e: Exception) { call.reject("Canal L2CAP no disponible: ${e.message}", "L2_SOCKET") }
+}
+
+// Un canal L2CAP aceptado como PayloadNet.Conn: un BluetoothSocket no tiene plazo de lectura propio, así que el plazo es un
+// vigilante que cierra el canal (eso desbloquea la lectura con error)
+private fun NexoBlePlugin.l2Conn(sock: android.bluetooth.BluetoothSocket): PayloadNet.Conn = object : PayloadNet.Conn {
+    private var guard: Runnable? = null
+    override val input: java.io.InputStream = java.io.BufferedInputStream(sock.inputStream)
+    override val output: java.io.OutputStream = sock.outputStream
+    override fun limit(ms: Int) {
+        guard?.let { mainHandler.removeCallbacks(it) }
+        val g = Runnable { try { sock.close() } catch (e: Exception) {} }
+        guard = g
+        mainHandler.postDelayed(g, ms.toLong())
+    }
+    override fun close() { guard?.let { mainHandler.removeCallbacks(it) }; try { sock.close() } catch (e: Exception) {} }
+}
+
+internal fun NexoBlePlugin.l2PayloadSendImpl(call: PluginCall) {
+    val id = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
+    val raw = call.getString("deviceId") ?: ""
+    val psm = call.getInt("psm") ?: 0
+    val data = call.getString("data") ?: ""
+    val token = call.getString("token") ?: ""   // T-L1: el que puso quien recibe (en «la»)
+    val adapter = l2Adapter() ?: run { call.reject("L2CAP no disponible", "L2_NONE"); return }
+    if (psm <= 0 || data.isEmpty() || token.length < 16) { call.reject("Nada que enviar", "L2_NONE"); return }
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) { call.reject("L2CAP no disponible", "L2_NONE"); return }
+    val mac = normalizeMac(raw)
+    val device = gattClients[mac]?.device ?: serverConnectedDevices[mac] ?: scannedDevices[mac]
+        ?: formatMacForAndroid(raw)?.let { try { adapter.getRemoteDevice(it.uppercase()) } catch (e: Exception) { null } }
+        ?: run { call.reject("Dirección no válida: $raw", "INVALID_MAC"); return }
+    Thread {
+        var s: android.bluetooth.BluetoothSocket? = null
+        // Abrir el canal puede colgarse si el otro ya no está: a los 10 s se corta (cerrar el canal desde otro hilo lo desbloquea)
+        val guard = Runnable { try { s?.close() } catch (e: Exception) {} }
+        try {
+            val t0 = System.currentTimeMillis()
+            val bytes = data.toByteArray(Charsets.UTF_8)
+            s = device.createInsecureL2capChannel(psm)
+            mainHandler.postDelayed(guard, 10000)
+            s.connect()
+            mainHandler.removeCallbacks(guard)
+            val connectMs = System.currentTimeMillis() - t0
+            // contenido a 20 KB/s como mínimo + lo que el otro tarda en descifrarlo antes de confirmar (T-E1)
+            mainHandler.postDelayed(guard, 15000L + PayloadNet.ACK_WAIT_MS + bytes.size / 20)
+            val out = java.io.DataOutputStream(java.io.BufferedOutputStream(s.outputStream))
+            out.writeUTF(PayloadNet.headerJson(id, token, bytes.size))
+            out.write(bytes)
+            out.flush()
+            if (s.inputStream.read() != 1) throw Exception("sin confirmación")
+            val ms = System.currentTimeMillis() - t0
+            remLog("INFO", "FILE_IO", "[L2CAP] $id: ${bytes.size / 1024} KB en $ms ms (abrir el canal $connectMs ms)")
+            call.resolve(JSObject().put("ok", true).put("bytes", bytes.size).put("ms", ms).put("connectMs", connectMs))
+        } catch (e: Exception) {
+            remLog("WARN", "FILE_IO", "[L2CAP] Envío fallido de $id: ${e.message}")
+            call.reject("Envío fallido: ${e.message}", "L2_SEND")
+        } finally {
+            mainHandler.removeCallbacks(guard)
+            try { s?.close() } catch (e: Exception) {}
+        }
+    }.start()
+}
+
+// Quien iba a mandar se rindió: se cierra el canal que lo esperaba (la espera termina con error y avisa a la app)
+// T-E1: con `ack` (1 / 0) no cancela: es la app diciendo si pudo descifrar lo recibido (manda o no el byte de «recibido»)
+internal fun NexoBlePlugin.l2PayloadCancelImpl(call: PluginCall) {
+    val id = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
+    val ack = call.getInt("ack")
+    if (ack == 0 || ack == 1) { call.resolve(JSObject().put("acked", PayloadNet.ack(id, ack == 1))); return }
+    val server = l2PayloadServer
+    if (server == null || l2PayloadFor != id) { call.resolve(JSObject().put("cancelled", false)); return }
+    try { server.close() } catch (e: Exception) {}
+    call.resolve(JSObject().put("cancelled", true))
+}
+
 internal fun NexoBlePlugin.bigSendL2Impl(call: PluginCall) {
     val id = BigFile.safeId(call.getString("id") ?: "")
     val raw = call.getString("deviceId") ?: ""
@@ -331,13 +469,12 @@ internal fun NexoBlePlugin.bigSendL2Impl(call: PluginCall) {
 internal fun NexoBlePlugin.bigOpenImpl(call: PluginCall) {
     val id = BigFile.safeId(call.getString("id") ?: "")
     val name = safeFileName(call.getString("name"))
-    var mime = call.getString("mime") ?: ""
-    if (!mime.contains('/')) mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream"
+    val mime = openMime(name, call.getString("mime"))   // I-S1/T-A1: igual que openFileImpl
+    if (storeRefusesApk(call, mime)) return
     val enc = BigFile.encFile(bigDir(), id)
     if (!enc.exists()) { call.resolve(JSObject().put("opened", false).put("reason", "missing")); return }
     val key = try { BigFile.key(call.getString("key") ?: "") } catch (e: Exception) { call.reject("clave no válida"); return }
-    val isApk = mime == "application/vnd.android.package-archive" || name.lowercase().endsWith(".apk")
-    if (isApk) mime = "application/vnd.android.package-archive"
+    val isApk = mime == OpenType.APK
     if (isApk && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
         activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + context.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         call.resolve(JSObject().put("opened", false).put("reason", "install_permission")); return

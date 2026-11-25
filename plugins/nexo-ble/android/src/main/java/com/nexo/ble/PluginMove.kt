@@ -12,6 +12,20 @@ import java.io.File
 private fun NexoBlePlugin.moveRestart() = mainHandler.postDelayed({ try { activity.recreate() } catch (e: Exception) {} }, 1500)
 private fun NexoBlePlugin.moveEvent(name: String, o: JSObject) = notifyListeners(name, o, name == "onMoveDone")
 
+// S-D2 (auditoría 23-11): la cuenta fuera de ESTE teléfono: archivos nexo_* (también buzón sin la app, mapa NEXO ID→dirección,
+// diagnóstico y último fallo), archivos grandes, cache/nexo_open (copias descifradas) y las SharedPreferences de NEXO
+// (AccountMove.WIPE_PREFS). Las preferencias se vacían por la API (clear+commit) y luego se borra el archivo: el proceso sigue
+// vivo tras pasar la cuenta (solo se rehace la pantalla) y una copia en memoria volvería a escribir lo de antes.
+private fun NexoBlePlugin.wipeAccountHere(): Int {
+    val n = AccountMove.wipe(context.filesDir, moveSkip, bigDir(), context.cacheDir)
+    for (p in AccountMove.WIPE_PREFS) {
+        try { context.getSharedPreferences(p, android.content.Context.MODE_PRIVATE).edit().clear().commit() } catch (e: Exception) {}
+        try { context.deleteSharedPreferences(p) } catch (e: Exception) {}
+    }
+    TapToken.forget()
+    return n
+}
+
 // IP de este teléfono en el Wi-Fi (o en su punto de acceso)
 private fun NexoBlePlugin.wifiIp(): String? = try {
     java.net.NetworkInterface.getNetworkInterfaces().toList()
@@ -43,7 +57,7 @@ internal fun NexoBlePlugin.moveReceiveImpl(call: PluginCall) {
                     // Primero comprobar que se descifra entero; luego fuera lo de antes y dentro lo nuevo
                     BigReader.decrypt(recv, key, id, object : java.io.OutputStream() { override fun write(b: Int) {}; override fun write(b: ByteArray, off: Int, len: Int) {} })
                     moveFrozen = true
-                    AccountMove.wipe(context.filesDir, moveSkip, bigDir())
+                    wipeAccountHere()
                     NetBgHome.forget(context) // 3192: la escucha de internet de la cuenta de antes, fuera (la nueva la configura la app)
                     val pin = java.io.PipedInputStream(1 shl 16); val pout = java.io.PipedOutputStream(pin)
                     var decErr: Throwable? = null
@@ -88,7 +102,7 @@ internal fun NexoBlePlugin.moveSendImpl(call: PluginCall) {
                 try { stopAdvertisingInternal() } catch (e: Exception) {}
                 try { stopGattServer() } catch (e: Exception) {}
             }
-            val n = AccountMove.wipe(context.filesDir, moveSkip, bigDir())
+            val n = wipeAccountHere()
             NetBgHome.forget(context) // 3192: la cuenta ya no está aquí: fuera su escucha de internet (también la de sin la app)
             remLog("INFO", "FILE_IO", "[MOVE] Cuenta pasada al otro teléfono; $n archivos borrados aquí")
             moveEvent("onMoveDone", JSObject().put("dir", "out").put("ok", true).put("files", st.files).put("bytes", st.bytes))

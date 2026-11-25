@@ -125,6 +125,33 @@ const chipOf = (p, nx) => chips(p).find((c) => c.getAttribute('data-nx') === nx)
   touch('touchend', null);
   r.indicador_actualizando = /Actualizando/.test((B.win.document.getElementById('estados-pull') || {}).textContent || '');
   r.deslizar_recupera = await wait(() => (B.win.NEXO_statusesOf(idA) || []).length === 10, 60);
+  // 7b. (34, dueño 21-11: «salta al desplazar la lista de contactos») lo que se desplaza es la lista de DENTRO: con ella a la mitad, el
+  //     mismo gesto NO actualiza; estando arriba SÍ, y dos tirones seguidos = UNA actualización (tope de 10 s)
+  {
+    const list = B.win.document.getElementById('main-contacts-list');
+    const touchOn = (node, type, y) => { const ev = new B.win.Event(type, { bubbles: true }); Object.defineProperty(ev, 'touches', { value: y === null ? [] : [{ clientY: y }] }); node.dispatchEvent(ev); };
+    let n = 0; const bi = B.win.bleInterface, origFlush = bi._flushAllPendingMessages;
+    bi._flushAllPendingMessages = function() { n++; return origFlush.apply(this, arguments); };   // cada actualización reenvía los pendientes
+    // el dedo cae en una fila de la lista (se busca en cada gesto: la lista se vuelve a pintar)
+    const pull = () => { const node = list.firstElementChild || list; touchOn(node, 'touchstart', 100); touchOn(node, 'touchmove', 140); touchOn(node, 'touchmove', 220); const txt = (B.win.document.getElementById('estados-pull') || {}).textContent || ''; touchOn(node, 'touchend', null); return txt; };
+    await sleep(1700);                                                                   // se va el aviso «Actualizando…» del paso 7
+    cv._nxPullAt = 0;                                                                    // como si la última actualización fuera de hace rato
+    Object.defineProperty(list, 'scrollTop', { value: 300, configurable: true });       // lista desplazada (jsdom no desplaza de verdad)
+    const t1 = pull(); await sleep(300);
+    r.a_media_lista_no_indicador = t1 === '';
+    r.a_media_lista_no_actualiza = n === 0;
+    Object.defineProperty(list, 'scrollTop', { value: 0, configurable: true });         // arriba del todo
+    const t2 = pull(); await sleep(300);
+    r.arriba_si_actualiza = /Suelta/.test(t2) && n === 1;
+    await sleep(1700);
+    pull(); await sleep(300);
+    r.dos_tirones_una_actualizacion = n === 1;
+    cv._nxPullAt = Date.now() - 11000;                                                   // pasados los 10 s: vuelve a actualizar
+    pull(); await sleep(300);
+    r.pasado_el_tope_otra_vez = n === 2;
+    Object.defineProperty(list, 'scrollTop', { value: 0, configurable: true, writable: true });
+    bi._flushAllPendingMessages = origFlush;
+  }
 
   // 8. A se reinicia: sus estados, quién dio me gusta y los comentarios siguen
   A.win.close(); nA.destroyActivity(); await sleep(1500); nA.load(); A = await boot('A', nA); await sleep(1500);
@@ -173,7 +200,7 @@ const chipOf = (p, nx) => chips(p).find((c) => c.getAttribute('data-nx') === nx)
   const ok = r.emparejados && r.tres_sids && r.B_tiene_tres && r.B_no_mensaje_visible && r.tira_cuenta_3 && r.visor_empieza_1 && r.visor_siguiente_2 &&
     r.like_llega_con_quien && r.like_solo_en_el_2 && r.comentario_llega_a_A && r.comentario_no_en_otro && r.B_no_ve_comentarios &&
     r.mis_estados_abre && r.mis_estados_quien_like && r.mis_estados_comentario && r.quitar_uno_en_B && r.diez_activos && r.once_rechazado && r.B_tiene_diez &&
-    r.B_sin_estados && r.indicador_soltar && r.indicador_actualizando && r.deslizar_recupera && r.tras_reiniciar &&
+    r.B_sin_estados && r.indicador_soltar && r.indicador_actualizando && r.deslizar_recupera && r.a_media_lista_no_indicador && r.a_media_lista_no_actualiza && r.arriba_si_actualiza && r.dos_tirones_una_actualizacion && r.pasado_el_tope_otra_vez && r.tras_reiniciar &&
     r.B_vio_los_10 && r.aro_gris_antes && r.vistos_tras_reiniciar && r.like_tras_reiniciar && r.al_abrir_conserva_todo && r.al_abrir_archivo === 10 && r.al_abrir_like && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('ESTADOS3 ' + JSON.stringify(r));

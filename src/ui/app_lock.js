@@ -46,11 +46,42 @@ function _save() {
   return _call('saveToFile', { filename: PREFS_FILE, content: JSON.stringify({ v: 1, lock: _prefs.lock, lockAfterMs: _prefs.lockAfterMs, secure: _prefs.secure, faceFast: _prefs.faceFast }) });
 }
 
+// ---------- Capturas automáticas (decisión 16A, I-L2, auditoría 23-11) ----------
+// FLAG_SECURE va puesto si el usuario lo pidió (Perfil → Seguridad), mientras la app está BLOQUEADA y mientras se ve un «ver una
+// vez» (once_bubble.js). Al acabar lo automático vuelve a lo que el usuario tenga: si él lo tenía puesto, se queda.
+var _secHolds = {};
+var _secApplied = false;   // el nativo arranca sin FLAG_SECURE
+function _secWanted() { return !!_prefs.secure || _locked || Object.keys(_secHolds).length > 0; }
+function _applySecure() {
+  var w = _secWanted();
+  if (w === _secApplied) return Promise.resolve(null);
+  var pl = _pl();
+  if (!pl || typeof pl.setSecureScreen !== 'function') return Promise.resolve(null);   // sin nativo aún: se aplica al cargar
+  _secApplied = w;
+  return _call('setSecureScreen', { on: w });
+}
+/** Pide (on) o suelta (off) FLAG_SECURE por un motivo (p. ej. 'once'); con varios motivos, se quita al soltar el último. */
+export function secureHold(key, on) {
+  if (on) _secHolds[key] = 1; else delete _secHolds[key];
+  return _applySecure();
+}
+
 // ---------- Pantalla de bloqueo ----------
 function _overlay() { return document.getElementById('nexo-lock'); }
+// I-L2: los avisos y hojas usan también el z-index máximo y, añadidos DESPUÉS, se pintaban encima del bloqueo. Mientras está
+// bloqueada, la tapa se mantiene la ÚLTIMA del <body> (a igual z-index gana la última).
+var _lockObs = null;
+function _keepLockOnTop() {
+  var o = _overlay();
+  if (_locked && o && o.parentNode && o.parentNode.lastElementChild !== o) o.parentNode.appendChild(o);
+}
 function _showLock() {
   _locked = true;
-  if (_overlay()) return;
+  _applySecure();
+  if (!_lockObs && typeof MutationObserver === 'function') {
+    try { _lockObs = new MutationObserver(_keepLockOnTop); _lockObs.observe(document.body || document.documentElement, { childList: true }); } catch (e) { _lockObs = null; }
+  }
+  if (_overlay()) { _keepLockOnTop(); return; }
   var o = document.createElement('div');
   o.id = 'nexo-lock';
   o.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:var(--nx-bg,#070812);color:var(--nx-text,#f4f5fb);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:inherit;padding:24px;box-sizing:border-box;text-align:center;';
@@ -63,8 +94,10 @@ function _showLock() {
 }
 function _hideLock() {
   _locked = false;
+  if (_lockObs) { try { _lockObs.disconnect(); } catch (e) {} _lockObs = null; }
   var o = _overlay();
   if (o) o.remove();
+  _applySecure();
 }
 function _lockMsg(t) { var m = document.getElementById('nexo-lock-msg'); if (m) m.textContent = t; }
 
@@ -81,8 +114,15 @@ async function _auth(title, subtitle) {
 
 async function _unlock() {
   if (_authing) return;
+  var pl = _pl();
+  // Revisión 24-11: el bloqueo NUNCA se abre por un fallo. Solo sin plugin nativo de ningún tipo (navegador) no hay con qué
+  // comprobar; en el teléfono, un error al preguntar el estado (antes devolvía null → se desbloqueaba) deja la app bloqueada.
+  if (!pl || typeof pl.biometricStatus !== 'function') { _hideLock(); return; }
   var st = await _call('biometricStatus', { allowWeak: _prefs.faceFast });
-  if (!st) { _hideLock(); return; } // sin plugin nativo (navegador): no hay con qué comprobar
+  if (!st) { _lockMsg(t('prof_lock_check_fail', 'No se pudo comprobar. Toca Desbloquear para intentarlo otra vez.')); return; }
+  // Solo «el teléfono no tiene huella ni PIN» (11 NONE_ENROLLED, 12 NO_HARDWARE) quita el bloqueo; lo pasajero (sensor ocupado,
+  // actualización de seguridad pendiente, estado desconocido…) deja la app bloqueada y se puede reintentar.
+  if (!st.available && st.code !== 11 && st.code !== 12) { _lockMsg(t('prof_lock_check_fail', 'No se pudo comprobar. Toca Desbloquear para intentarlo otra vez.')); return; }
   if (!st.available) {
     // El teléfono ya no tiene huella ni PIN: no dejar al usuario fuera de su cuenta para siempre
     _prefs.lock = false;
@@ -137,7 +177,7 @@ export function initAppLock(opts) {
       if (_hinted()) _prefs.lock = true;
     }).then(function() {
       _hint(_prefs.lock);
-      if (_prefs.secure) _call('setSecureScreen', { on: true });
+      _applySecure();
       if (_prefs.lock) { _showLock(); if (document.visibilityState !== 'hidden') _unlock(); }
       else _hideLock();
       console.log('[LOCK] Seguridad: bloqueo ' + (_prefs.lock ? 'sí (' + _prefs.lockAfterMs / 1000 + ' s)' : 'no') + ', capturas ' + (_prefs.secure ? 'bloqueadas' : 'permitidas'));
@@ -154,7 +194,6 @@ export function initAppLock(opts) {
   if (_pl()) load(); else setTimeout(load, 300);
 }
 
-export function isAppLocked() { return _locked; }
 
 // 3148/3150 (Fénix Entorno, oculto): vetar una recuperación exige un desbloqueo de verdad. Dueño 16-11 (opción 1): el de NEXO si
 // está activado y, si no, el bloqueo de pantalla del teléfono (huella, cara, patrón o PIN del sistema: biometricAuth ya admite el
@@ -236,7 +275,7 @@ export function renderSecuritySection() {
   };
   secure.onchange = async function() {
     _prefs.secure = secure.checked;
-    await _call('setSecureScreen', { on: _prefs.secure });
+    await _applySecure();   // 16A: si ahora hay un bloqueo o un «ver una vez», sigue puesto hasta que acaben
     await _save();
     _say(_prefs.secure ? t('prof_lock_shots_on', '🛡️ Capturas de pantalla bloqueadas') : t('prof_lock_shots_off', 'Capturas de pantalla permitidas'), 2500);
     console.log('[LOCK] Capturas ' + (_prefs.secure ? 'bloqueadas' : 'permitidas'));

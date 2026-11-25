@@ -12,6 +12,7 @@
  */
 import { t, getLang } from './i18n.js';
 import { _showToast } from './ble_helpers.js';
+import { isStoreBuild } from './store_flag.js'; // COLA 26: la versión de Google Play no lleva actualizador
 
 var KEY_ON = 'nexo_updater', KEY_LAST = 'nexo_upd_last', KEY_AVAIL = 'nexo_upd_avail', KEY_SNOOZE = 'nexo_upd_snooze', KEY_NOTIFIED = 'nexo_upd_notified', KEY_CUR = 'nexo_upd_curnotes';
 var GAP_MS = 6 * 60 * 60 * 1000;      // una consulta cada 6 h como mucho
@@ -37,9 +38,9 @@ function _json(k) { try { var o = JSON.parse(_lsGet(k) || 'null'); return (o && 
 
 /** Número de build propio (entero) o null si es una compilación sin número («dev»). */
 export function updaterBuildNum() { var b = (typeof window !== 'undefined') ? window.NEXO_BUILD : ''; return /^\d+$/.test(String(b || '')) ? parseInt(b, 10) : null; }
-export function updaterEnabled() { return !(typeof window !== 'undefined' && window.NEXO_UPDATER === false) && _lsGet(KEY_ON) !== '0'; }
+export function updaterEnabled() { return !isStoreBuild() && !(typeof window !== 'undefined' && window.NEXO_UPDATER === false) && _lsGet(KEY_ON) !== '0'; }
 export function setUpdaterEnabled(on) { _lsSet(KEY_ON, on ? '1' : '0'); console.log('[UPDATER] ' + (on ? 'encendido' : 'apagado') + ' por el usuario'); if (!on) _removeBanner(); else _renderBanner(); _emit(); }
-export function updaterAvailable() { var a = _json(KEY_AVAIL), me = updaterBuildNum(); return (a && me != null && typeof a.build === 'number' && a.build > me && /^https:\/\//.test(String(a.url || ''))) ? a : null; }
+export function updaterAvailable() { if (isStoreBuild()) return null; var a = _json(KEY_AVAIL), me = updaterBuildNum(); return (a && me != null && typeof a.build === 'number' && a.build > me && /^https:\/\//.test(String(a.url || ''))) ? a : null; }
 function _gap() { var v = (typeof window !== 'undefined') ? window.NEXO_UPDATER_GAP_MS : undefined; return (typeof v === 'number' && v >= 0) ? v : GAP_MS; }
 function _snoozed(a) { var s = _json(KEY_SNOOZE); return !!(s && a && s.build === a.build && typeof s.until === 'number' && Date.now() < s.until); }
 
@@ -65,7 +66,7 @@ export function updaterNotes() {
  *  'newer' | 'current' | 'error' | 'unsupported' | 'skipped'. */
 export function updaterCheck(manual) {
   var me = updaterBuildNum(), pl = _plugin();
-  if (me == null || !pl || typeof pl.updateCheck !== 'function') return Promise.resolve({ state: 'unsupported' });
+  if (isStoreBuild() || me == null || !pl || typeof pl.updateCheck !== 'function') return Promise.resolve({ state: 'unsupported' });
   if (!manual && !updaterEnabled()) return Promise.resolve({ state: 'skipped' });
   if (!manual && Date.now() - (parseInt(_lsGet(KEY_LAST), 10) || 0) < _gap()) { _renderBanner(); return Promise.resolve({ state: 'skipped' }); }
   _lsSet(KEY_LAST, String(Date.now()));
@@ -288,6 +289,7 @@ function _openNotesSheet(a, text) {
 
 /** Arranque (main.js): escucha el avance de la descarga y consulta si toca. */
 export function updaterInit() {
+  if (isStoreBuild()) return;   // COLA 26: en Google Play no se consulta GitHub, no hay avisos ni banner
   try {
     var pl = _plugin();
     if (pl && typeof pl.addListener === 'function' && !_listening) {
@@ -316,6 +318,7 @@ export function updaterInit() {
 
 // ---- Perfil → Ajustes: interruptor + «Buscar ahora» ----
 export function updaterInnerHtml() {
+  if (isStoreBuild()) return '';
   var me = updaterBuildNum();
   return '<div class="nx-sub" style="margin-bottom:8px;">' + t('upd_sub', 'NEXO avisa cuando hay una versión nueva y la baja con un toque. Solo se consulta GitHub (público): no se manda nada tuyo.') + '</div>' +
     '<label class="nx-row" style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-updater-on"' + (updaterEnabled() ? ' checked' : '') + '><span>' + t('upd_auto', 'Buscar versiones nuevas solo') + '</span></label>' +
@@ -324,7 +327,7 @@ export function updaterInnerHtml() {
     '<button id="nexo-updater-now" class="nx-btn nx-btn-primary"></button>';
 }
 export function renderUpdaterSection(sheet) {
-  if (!sheet) return;
+  if (!sheet || isStoreBuild()) return;
   var box = sheet.querySelector('#nexo-updater-on'), btn = sheet.querySelector('#nexo-updater-now'), st = sheet.querySelector('#nexo-updater-status');
   if (box) box.onchange = function() { setUpdaterEnabled(box.checked); };
   // 3008: se dibuja con el estado de AHORA (bajando / bajada / por bajar) y se le pregunta al nativo por si cambió con la ventana cerrada

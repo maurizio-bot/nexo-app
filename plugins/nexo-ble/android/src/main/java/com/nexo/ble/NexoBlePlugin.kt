@@ -19,6 +19,7 @@ import javax.crypto.Mac
 import javax.crypto.SecretKey
 import javax.crypto.spec.SecretKeySpec
 import android.util.Log
+import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -134,24 +135,52 @@ class NexoBlePlugin : Plugin() {
         // cifrado en reposo (skip). Solo metadatos (nunca el contenido de un mensaje).
         internal const val NATIVE_LOG_FILE = "nexo_native_log.txt"
     }
-    internal var bluetoothGattServer: BluetoothGattServer? = null
-    internal var serverTxCharacteristic: BluetoothGattCharacteristic? = null
-    internal var serverRxCharacteristic: BluetoothGattCharacteristic? = null
-    internal val serverConnectedDevices = ConcurrentHashMap<String, BluetoothDevice>()
-    internal val serverNotificationEnabled = ConcurrentHashMap<String, Boolean>()
+    // 3263 (PRIORIDAD 1, fase 2): el servidor GATT y lo que se hereda de cada enlace entrante (conectados, suscritos, los que
+    // «tenemos») viven en GattServerHost, UNO por proceso: abrir o cerrar la app ya no cierra el servidor ni corta sus enlaces. Los
+    // nombres de siempre siguen valiendo en todo el plugin; apuntan allí.
+    internal var bluetoothGattServer: BluetoothGattServer?
+        get() = GattServerHost.server
+        set(v) { GattServerHost.server = v }
+    internal var serverTxCharacteristic: BluetoothGattCharacteristic?
+        get() = GattServerHost.tx
+        set(v) { GattServerHost.tx = v }
+    internal var serverRxCharacteristic: BluetoothGattCharacteristic?
+        get() = GattServerHost.rx
+        set(v) { GattServerHost.rx = v }
+    internal val serverConnectedDevices: ConcurrentHashMap<String, BluetoothDevice> get() = GattServerHost.connected
+    internal val serverNotificationEnabled: ConcurrentHashMap<String, Boolean> get() = GattServerHost.notifOn
     // 3203 (diagnóstico de Roberto, Motorola edge 40 neo 3087, 17-11): freno a quien entra y sale del servidor GATT sin identificarse
     internal val serverFlap = ServerFlapPolicy()
+    // 3262: enlaces ENTRANTES que esta app «tiene» (BluetoothGattServer.connect): solo así cancelConnection los corta de verdad
+    // (ver holdServerLink en PluginBtState.kt). Y los que quedaron «a medias» tras un reinicio (HalfOpenPolicy).
+    internal val serverHeld: MutableSet<String> get() = GattServerHost.held
+    internal val halfOpen = HalfOpenPolicy()
+    // 3267 (COLA 36): direcciones que ESTA app acaba de cerrar a propósito (disconnectDevice) y cuándo
+    internal val closedByUsAt = ConcurrentHashMap<String, Long>()
     internal val gattClients = ConcurrentHashMap<String, BluetoothGatt>()
     internal val clientRxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
     internal val clientTxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
     internal val clientConnectionStates = ConcurrentHashMap<String, Int>()
     internal var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
     internal var bluetoothScanner: BluetoothLeScanner? = null
-    internal val scanResults = Collections.synchronizedList(mutableListOf<JSObject>())
     internal val scannedDevices = ConcurrentHashMap<String, BluetoothDevice>()
-    // Largo alcance (LE Coded PHY): cuándo se vio por última vez cada dispositivo en 1M y en Coded
-    internal val seen1M = ConcurrentHashMap<String, Long>()
-    internal val seenCoded = ConcurrentHashMap<String, Long>()
+    // 23-11 (multitud / EDC): lo que el escaneo recuerda de cada dirección (cuándo se oyó en 1M y en largo alcance, cuándo se avisó a
+    // la app y al registro), con tope, y los avisos a la app en tandas cuando hay muchos teléfonos cerca (ScanBook.kt). Sustituye a
+    // seen1M, seenCoded, scanLogLast, lastScanNotifyTime y a la lista scanResults (se recorría entera con cada anuncio y nadie la leía)
+    internal val scanBook = ScanBook<JSObject>(debounceMs = SCAN_DEBOUNCE_MS)
+    internal var scanFlushScheduled = false
+    internal val scanFlushRunnable = Runnable {
+        scanFlushScheduled = false
+        val l = scanBook.flush()
+        if (l.isNotEmpty()) {
+            val arr = JSArray()
+            l.forEach { arr.put(it) }
+            notifyListeners("onDevicesFound", JSObject().put("list", arr))
+        }
+    }
+    // El mapa NEXO ID ↔ dirección se guarda como mucho una vez cada 5 s (antes, el archivo entero con cada dirección nueva)
+    internal var nxMapSaveScheduled = false
+    internal val nxMapSaveRunnable = Runnable { nxMapSaveScheduled = false; saveNexoMappings() }
     internal val codedLinks = ConcurrentHashMap.newKeySet<String>()
     internal val mainHandler = Handler(Looper.getMainLooper())
     // Ronda 2766 (revisión): al pararse sola a los 15 s, se avisa a la app (antes seguía creyendo que buscaba y ya no
@@ -174,13 +203,10 @@ class NexoBlePlugin : Plugin() {
     internal val messageBuffers = ConcurrentHashMap<String, StringBuilder>()
     internal val messageBufferTimers = ConcurrentHashMap<String, Runnable>()
     internal val messageBufferSince = ConcurrentHashMap<String, Long>() // desde cuándo hay algo pendiente
-    internal val lastScanNotifyTime = ConcurrentHashMap<String, Long>()
     // #87/diagnóstico: el scan encuentra anuncios muchas veces por segundo; escribir cada uno en el registro nativo
     // (NativeLog, anillo de 48 KB) lo inundaba y echaba fuera lo útil (p. ej. el Token FCM) en un minuto, y hacía el
-    // diagnóstico enorme (queja del dueño, 2812). Al registro nativo va como mucho una línea por dispositivo cada 20 s;
-    // el resto solo a logcat. No cambia nada de lo que hace el escaneo, solo cuánto se persiste.
-    internal val scanLogLast = ConcurrentHashMap<String, Long>()
-    internal val SCAN_LOG_MIN_MS = 20000L
+    // diagnóstico enorme (queja del dueño, 2812). Al registro nativo va como mucho una línea por dispositivo cada 20 s
+    // (scanBook.shouldLog); 23-11: el resto ya ni a logcat (dos líneas por anuncio con cientos de NEXO cerca).
     internal val negotiatedMtu = ConcurrentHashMap<String, Int>()
     internal val writeQueues = ConcurrentHashMap<String, MutableList<WriteQueueItem>>()
     internal val writeQueueProcessing = ConcurrentHashMap<String, Boolean>()
@@ -188,6 +214,15 @@ class NexoBlePlugin : Plugin() {
     internal val writeRetryCount = ConcurrentHashMap<String, Int>()
     internal val writeDropStreak = ConcurrentHashMap<String, Int>() // #129: mensajes SEGUIDOS descartados por enlace (atasco real)
     internal val clientSetupDone = ConcurrentHashMap<String, Boolean>() // 3059: enlace cliente con MTU y notificaciones ya hechos
+    // 3269 (fase 3): la bandeja de salida por Bluetooth (OutboxBle) y su repaso periódico
+    @Volatile internal var outBleRef: OutboxBle? = null
+    @Volatile internal var outTickOn = false
+    // 3271: la bandeja abre ella el enlace: el plan (OutboxDial), lo visto en el aire (NEXO ID → dirección, cuándo) y a quién se llamó
+    internal val outDial = OutboxDial()
+    internal val outRid = OutboxRid() // 3279: de lo anunciado (código rotativo) al NEXO ID del contacto con algo pendiente
+    internal val outSeen = ConcurrentHashMap<String, Pair<String, Long>>()
+    internal val outDialNx = ConcurrentHashMap<String, String>()
+    @Volatile internal var outScanUntil = 0L
     internal val clientSetupWaitSince = ConcurrentHashMap<String, Long>() // 3059: desde cuándo esperan las escrituras a eso
     internal val nxidToMacMap = ConcurrentHashMap<String, String>()
     internal var quickScanLatch: java.util.concurrent.CountDownLatch? = null
@@ -343,6 +378,7 @@ class NexoBlePlugin : Plugin() {
         appCtx = activity.applicationContext
         CrashLog.install(appCtx) // 3120: guardar las primeras líneas de un fallo al caer (diagnóstico)
         live = this
+        BleService.pipVideo = false // 3277: la página nace sin llamada (si la app se rehízo en plena videollamada, la marca vieja metía el chat en la miniatura)
         takeOverFromClosed()
         NetBgHome.appTookOver(appCtx!!) // 3192: si la escucha de internet corría sin la app, ahora la maneja la app (la misma)
         watchDefaultNetwork() // 3085: avisar a la app de Wi-Fi ↔ datos al momento
@@ -367,8 +403,26 @@ class NexoBlePlugin : Plugin() {
     }
 
     @PluginMethod fun getFcmToken(call: PluginCall) = getFcmTokenImpl(call)
+    // 3273 (dueño 22-11: «en la miniatura de la videollamada debo poder usar otras apps sin que se pause el vídeo, y al regresar no se
+    // debe trabar»): al pasar a la miniatura del sistema (PiP) Android PAUSA la pantalla aunque se siga viendo. Antes eso contaba como
+    // «app en segundo plano»: se avisaba a la app (que deja de pintar y reparte trabajo de fondo) y, al volver, se hacía TODO lo de
+    // «volver a la app» (reconectar, vaciar colas, pedir estados, permisos) encima de la videollamada: el tirón. Ahora la miniatura NO
+    // es segundo plano: no se toca nada al entrar ni al volver. Solo si la ventanita se cierra o se tapa del todo (onStop) pasa a serlo.
+    @Volatile private var pipHeld = false
+    // 3275: miniatura (o a punto de entrar: el aviso de irse, onUserLeaveHint, va antes que onPause)
+    @Volatile private var pauseSeq = 0
+    private fun inPipReal(): Boolean = try { Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity?.isInPictureInPictureMode == true } catch (e: Exception) { false }
+    private fun inPipNow(): Boolean = try {
+        (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity?.isInPictureInPictureMode == true) ||
+            System.currentTimeMillis() - BleService.leaveHintAt < 2500L
+    } catch (e: Exception) { false }
     override fun handleOnResume() {
         super.handleOnResume()
+        pauseSeq++
+        if (pipHeld) {
+            pipHeld = false
+            if (!appInBackground) { remLog("INFO", "LIFECYCLE", "vuelve de la miniatura de la videollamada: la app nunca estuvo en segundo plano (sin reconectar ni vaciar colas)"); return }
+        }
         appInBackground = false
         if (BleService.inCall && !BleService.fgsState.startsWith("micrófono")) {
             callFgs = callForeground(true)
@@ -393,18 +447,47 @@ class NexoBlePlugin : Plugin() {
     }
     override fun handleOnPause() {
         super.handleOnPause()
+        val seq = ++pauseSeq
+        if (BleService.pipVideo) {
+            // 3277: con videollamada, la pausa puede ser el paso a la miniatura, y Android avisa de la miniatura ANTES o DESPUÉS de la
+            // pausa según el teléfono y los gestos (y onUserLeaveHint no siempre llega). No se decide en el acto: si a los 900 ms sigue
+            // en pausa y NO quedó en miniatura, entonces sí es segundo plano. (Antes, con el aviso tardío, la miniatura contaba como
+            // segundo plano: trabajos de fondo compitiendo con la llamada y, al volver, reconexiones y colas de golpe.)
+            pipHeld = true
+            remLog("INFO", "LIFECYCLE", "handleOnPause con videollamada" + (if (inPipNow()) ": en la miniatura, sigue a la vista" else ": se espera a ver si pasa a la miniatura"))
+            mainHandler.postDelayed({
+                if (seq == pauseSeq && pipHeld && !appInBackground && !inPipReal()) {
+                    remLog("INFO", "LIFECYCLE", "pausa con videollamada y sin miniatura: segundo plano")
+                    goBackground()
+                }
+            }, 900)
+            return
+        }
+        goBackground()
+    }
+    // La miniatura se cerró o quedó tapada del todo con la llamada aún viva: ahora sí es segundo plano
+    override fun handleOnStop() {
+        super.handleOnStop()
+        if (pipHeld && !appInBackground) { remLog("INFO", "LIFECYCLE", "la miniatura ya no se ve: segundo plano"); goBackground() }
+    }
+    private fun goBackground() {
         remLog("INFO", "LIFECYCLE", "handleOnPause")
         appInBackground = true
         bgSinceMs = System.currentTimeMillis() // 3086: desde cuándo (BgNotifyPolicy)
         energyLog("En segundo plano")
         // La app deja de estar a la vista: la escucha nativa de internet toma el relevo (la app la reconfigura al
         // ocultarse con lo último que vio)
-        mainHandler.postDelayed({ if (appInBackground) try { wifiLockHold(true); netBg().start() } catch (e: Exception) { } }, 3000)
+        // 3318: con una llamada en curso, no: la app sigue viva y recibe ella (antes cada parte de la llamada se bajaba dos veces); al colgar
+        // en segundo plano arranca (callAudioImpl → netBgAfterCall)
+        mainHandler.postDelayed({ if (appInBackground && !BleService.inCall) try { wifiLockHold(true); netBg().start() } catch (e: Exception) { } }, 3000)
+        if (BleService.inCall) remLog("INFO", "NETBG", "en llamada: la escucha nativa de internet espera a que se cuelgue (la app recibe)")
+        outboxBleTick() // 3269: lo pendiente de la bandeja también por Bluetooth mientras la app no está a la vista
         notifyListeners("onAppStateChange", JSObject().put("isActive", false))
     }
     override fun handleOnDestroy() {
         super.handleOnDestroy()
         if (live === this) live = null
+        BleService.pipVideo = false // 3277: sin ventana no hay videollamada que pasar a la miniatura
         unwatchDefaultNetwork() // 3085
         activeChatNx = "" // 3172: con la app cerrada no hay chat abierto: lo que llegue (Bluetooth o internet) avisa siempre
         // Ronda 2770: la app se cierra con una llamada en curso: se suelta todo lo de la llamada (si no, el sensor de
@@ -431,6 +514,7 @@ class NexoBlePlugin : Plugin() {
             try { stopScanInternal() } catch (e: Exception) { }
             closedMode = true
             orphan = this
+            GattServerHost.attach(gattServerCallback, "app cerrada") // 3263: sigue atendiendo esta instancia (mismo servidor, mismos enlaces)
             remLog("INFO", "LIFECYCLE", "handleOnDestroy - el Bluetooth sigue recibiendo con la app cerrada")
             return
         }
@@ -446,7 +530,7 @@ class NexoBlePlugin : Plugin() {
         binAssembler.clearAll()
         messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
         messageBufferTimers.clear()
-        lastScanNotifyTime.clear()
+        scanBook.resetNotify()
         writeQueues.clear()
         writeQueueProcessing.clear()
         writeQueueTimeouts.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
@@ -593,6 +677,10 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod fun netBgConfig(call: PluginCall) = netBgConfigImpl(call)
 
     @PluginMethod fun netBgDrain(call: PluginCall) = netBgDrainImpl(call)
+    // 3268 (fase 3, COLA 29): bandeja de salida nativa (los textos pendientes salen por internet aunque la app se duerma)
+    @PluginMethod fun netOutboxSet(call: PluginCall) = netOutboxSetImpl(call)
+    @PluginMethod fun netOutboxDrop(call: PluginCall) = netOutboxDropImpl(call)
+    @PluginMethod fun netOutboxList(call: PluginCall) = netOutboxListImpl(call)
 
     @PluginMethod fun setAckKeys(call: PluginCall) = setAckKeysImpl(call)
     @PluginMethod fun setMutedChats(call: PluginCall) = setMutedChatsImpl(call) // 3219: chats silenciados (MutedChats)
@@ -673,12 +761,14 @@ class NexoBlePlugin : Plugin() {
     internal val lanSendExec = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     @PluginMethod fun lanStatus(call: PluginCall) = lanStatusImpl(call)
+    @PluginMethod fun reportNoInternet(call: PluginCall) = reportNoInternetImpl(call) // 3266 (COLA 27)
 
     @PluginMethod fun lanStart(call: PluginCall) = lanStartImpl(call)
 
     @PluginMethod fun lanConnect(call: PluginCall) = lanConnectImpl(call)
 
     @PluginMethod fun lanSend(call: PluginCall) = lanSendImpl(call)
+    @PluginMethod fun lanVerified(call: PluginCall) = lanVerifiedImpl(call) // auditoría 23-11 (T-D2)
 
     @PluginMethod fun lanDrop(call: PluginCall) = lanDropImpl(call)
 
@@ -748,6 +838,8 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod fun moveSend(call: PluginCall) = moveSendImpl(call)
 
     @PluginMethod fun ringerMode(call: PluginCall) = ringerModeImpl(call)
+    @PluginMethod fun silencedState(call: PluginCall) = silencedStateImpl(call)
+    @PluginMethod fun silencedOpen(call: PluginCall) = silencedOpenImpl(call)
     @PluginMethod fun ringback(call: PluginCall) = ringbackImpl(call)
 
     @PluginMethod fun callAudio(call: PluginCall) = callAudioImpl(call)
@@ -772,19 +864,33 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod fun enterPip(call: PluginCall) = enterPipImpl(call)
 
+    @PluginMethod fun pipState(call: PluginCall) = pipStateImpl(call)
+
+    @PluginMethod fun callOut(call: PluginCall) = callOutImpl(call)
+
     // Ronda 2770: foco de audio durante la llamada (la música u otro audio de otra app se para y vuelve al colgar; antes
     // seguía sonando encima de la llamada)
     @Volatile internal var focusReq: android.media.AudioFocusRequest? = null
     @Volatile internal var callFocusState = ""
     internal val focusHandler = android.os.Handler(android.os.Looper.getMainLooper())
     internal var focusTries = 0
-    internal var focusRegrabAt = 0L // 3226: última vez que se volvió a pedir el foco tras perderlo sin llamada telefónica (FocusPolicy)
+    // 3278 (FocusPolicy): sin foco (lo tiene otra app o una llamada telefónica), llamada NEXO retenida, repaso del modo en marcha
+    @Volatile internal var focusLost = false
+    @Volatile internal var callHeld = false
+    internal var focusWatchOn = false
+    internal var focusCalm = 0
 
     @PluginMethod fun l2Info(call: PluginCall) = l2InfoImpl(call)
 
     @PluginMethod fun bigServeL2(call: PluginCall) = bigServeL2Impl(call)
 
     @PluginMethod fun bigSendL2(call: PluginCall) = bigSendL2Impl(call)
+    // 3288 (COLA 14): archivos MEDIANOS (en memoria) por el mismo canal L2CAP
+    @PluginMethod fun l2PayloadHost(call: PluginCall) = l2PayloadHostImpl(call)
+    @PluginMethod fun l2PayloadSend(call: PluginCall) = l2PayloadSendImpl(call)
+    @PluginMethod fun l2PayloadCancel(call: PluginCall) = l2PayloadCancelImpl(call)
+    @Volatile internal var l2PayloadServer: android.bluetooth.BluetoothServerSocket? = null
+    @Volatile internal var l2PayloadFor: String? = null
 
     @PluginMethod fun bigOpen(call: PluginCall) = bigOpenImpl(call)
 
@@ -796,6 +902,7 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod fun shareText(call: PluginCall) = shareTextImpl(call) // 3129: invitación por WhatsApp/TikTok/menú (PluginShare.kt)
 
     @PluginMethod fun openUrl(call: PluginCall) = openUrlImpl(call) // 3161: enlace del chat abierto fuera de NEXO (PluginShare.kt)
+    @PluginMethod fun linkPreview(call: PluginCall) = linkPreviewImpl(call) // COLA 31: vista previa real por Tor (PluginLinkPreview.kt)
 
     // ===== Wi-Fi Direct: fotos, vídeos y archivos con el contacto a alcance (mucho más rápido que BLE) =====
     // El que recibe crea un grupo con nombre y contraseña aleatorios (Android 10+: el otro se une sin aviso
@@ -805,6 +912,8 @@ class NexoBlePlugin : Plugin() {
     internal var p2pManager: WifiP2pManager? = null
     internal var p2pChannel: WifiP2pManager.Channel? = null
     internal var wdServer: java.net.ServerSocket? = null
+    @Volatile internal var wdServerFor: String? = null   // 3287: para qué transferencia espera (wifiDirectCancel)
+    @Volatile internal var wdCancelledId: String? = null
     internal val WD_MAX_BYTES = 40_000_000L
 
     @PluginMethod fun wifiDirectStatus(call: PluginCall) = wifiDirectStatusImpl(call)
@@ -820,6 +929,8 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod fun wifiDirectHost(call: PluginCall) = wifiDirectHostImpl(call)
 
     @PluginMethod fun wifiDirectSend(call: PluginCall) = wifiDirectSendImpl(call)
+    // 3287: quien iba a mandar se rindió: se baja ya el grupo que lo esperaba (hasta 90 s)
+    @PluginMethod fun wifiDirectCancel(call: PluginCall) = wifiDirectCancelImpl(call)
 
     @PluginMethod fun haptic(call: PluginCall) = hapticImpl(call)
 

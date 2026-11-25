@@ -337,15 +337,20 @@ export class BleAckSystem {
       // También el nombre y la miniatura del vídeo, que van en la cabecera
       var m = meta || {};
       return self._preparingFor(fileId, self._ensurePeerKey(deviceId, m.dst, m.to).then(function(t) {
+        // Decisión del dueño 23-11 (4A, auditoría T-T1): el COMENTARIO y «ver una vez» también van sellados (antes viajaban en claro en
+        // la cabecera: un puente los leía, o quitaba «ver una vez» para que la foto se quedara)
+        var xtra = (m.caption || m.once) ? JSON.stringify({ cp: (typeof m.caption === 'string' ? m.caption.substring(0, 1000) : ''), o1: m.once ? 1 : 0 }) : null;
         return Promise.all([
           e2eSealB64(t, base64Data, self._outAd(t, fileId)),
           (m.thumb && !e2eAnyEncrypted(m.thumb)) ? e2eSealB64(t, m.thumb, self._outAd(t, fileId + '#t')) : m.thumb,
-          (m.name && !e2eAnyEncrypted(m.name)) ? e2eSealText(t, m.name, self._outAd(t, fileId + '#n')) : m.name
+          (m.name && !e2eAnyEncrypted(m.name)) ? e2eSealText(t, m.name, self._outAd(t, fileId + '#n')) : m.name,
+          xtra ? e2eSealText(t, xtra, self._outAd(t, fileId + '#x')) : null
         ]);
       })).then(function(r) {
         var em = Object.assign({}, m);
         if (r[1]) em.thumb = r[1];
         if (r[2]) em.name = r[2];
+        if (r[3]) em.xs = r[3]; // 4A: la cabecera lleva xs y no el comentario ni «ver una vez» en claro
         return self._withSealedFrom(em).then(function(em2) { return self._sendFileBest(deviceId, fileId, r[0], em2); });
       });
     }
@@ -443,16 +448,19 @@ export class BleAckSystem {
     for (var i = 0; i < cs.length; i++) if (_normId(cs[i].nexoId || cs[i].deviceUUID) === nx) return cs[i];
     return null;
   }
-  // Clave para cifrar a este contacto (null si no hay, o si cambió y el usuario aún no la aceptó)
+  // Clave para cifrar a este contacto (null si no hay). Decisión del dueño 23-11 (5A, auditoría C-N4): con una clave NUEVA pendiente de
+  // aceptar se sigue cifrando con la ya aceptada (antes se frenaba todo el envío: cualquiera cerca lo provocaba con un kx falso y el
+  // contacto se quedaba sin mensajes hasta tocar un botón). Si el cambio era real (reinstaló), lo de ese rato no se confirma y al
+  // aceptar la clave nueva se le vuelve a mandar con ella (acceptContactKey → _resendPendingMessages).
   _peerKey(deviceId, dst) {
     var c = this._contactOf(deviceId, dst);
-    return (c && c.publicKey && !c.pendingKey) ? c.publicKey : null;
+    return (c && c.publicKey) ? c.publicKey : null;
   }
   // Con qué cifrar para este contacto: { nx, key, proto } o null. Con protocolo 2 hace falta su paquete de
   // claves (o una sesión); nunca se vuelve al 1 con quien ya tiene el 2.
   _target(deviceId, dst) {
     var c = this._contactOf(deviceId, dst);
-    if (!c || !c.publicKey || c.pendingKey) return null;
+    if (!c || !c.publicKey) return null; // 5A: con una clave pendiente, se cifra con la aceptada
     var nx = _normId(c.nexoId || c.deviceUUID);
     if (c.proto === 2) return ratchetCanEncrypt(nx, c.publicKey) ? { nx: nx, key: c.publicKey, proto: 2 } : null;
     return { nx: nx, key: c.publicKey, proto: 1 };
@@ -647,6 +655,8 @@ export class BleAckSystem {
     if (entry.retries < this.maxRetries) {
       entry.retries++;
       console.log('[BleAckSystem] ACK timeout msgId=' + msgId + ' reintento ' + entry.retries + '/' + this.maxRetries);
+      // 17: por internet, la confirmación pudo perderse en el reparto en vivo de los relés: se les vuelve a pedir lo reciente
+      if (_isNetDevice(entry.deviceId) && this.ble && this.ble.net && typeof this.ble.net.resync === 'function') { try { this.ble.net.resync(msgId, (entry.sentAt || Date.now()) - 5000); } catch (e) {} }
       this._doSend(entry);
     } else {
       this.pendingAcks.delete(msgId);
@@ -675,12 +685,20 @@ export class BleAckSystem {
       // 3215 (Marcos 17-11 16:13:41): al ARRANCAR, lo que llegó con la app cerrada se procesaba antes de cargar el NEXO ID propio y la
       // firma se comprobaba contra «…|» → «sin firma válida» con confirmaciones buenas (y el mensaje se volvía a mandar). Se espera al ID.
       this._whenMyNx().then(function(me) {
-        return e2eAckTag(c.publicKey, ack.type + '|' + ackMsgId + '|' + acker + '|' + _normId(me));
+        // auditoría 23-11 (C-N8): «ya lo bajé» (got) va dentro de lo firmado: un tercero no se lo puede añadir a una ✓✓ ajena
+        return e2eAckTag(c.publicKey, ack.type + (ack.got === 1 ? '+got' : '') + '|' + ackMsgId + '|' + acker + '|' + _normId(me));
       }).then(function(exp) {
         if (ack.a && exp && _ctEq(String(ack.a), exp)) self._applyAck(ack, ackMsgId);
         else console.warn('[BleAckSystem] Confirmación sin firma válida de ' + acker + ' (' + ackMsgId + '): ignorada');
       }).catch(function() {});
       return true;
+    }
+    // Auditoría 23-11 (C-N1): una confirmación SIN remitente o de quien no es contacto se aplicaba sin firma: quien viera el id del
+    // mensaje en el aire paraba los reintentos y el mensaje se perdía marcado ✓✓. Solo vale para un paquete de control en espera
+    // (los que se mandan a quien aún no es contacto); para un mensaje, la confirmación tiene que ser de un contacto.
+    if (!c || !c.publicKey) {
+      var pendRaw = this.pendingAcks.get(ackMsgId);
+      if (!pendRaw || !pendRaw.raw) { console.warn('[BleAckSystem] Confirmación de ' + (acker || 'nadie') + ' (no es contacto) para ' + ackMsgId + ': ignorada'); return true; }
     }
     return this._applyAck(ack, ackMsgId);
   }
@@ -782,7 +800,7 @@ export class BleAckSystem {
     };
     var c = this._contactOf(deviceId, routeTo);
     var p = (c && c.proto === 2 && c.publicKey && !c.pendingKey && _ackRe.test(target))
-      ? e2eAckTag(c.publicKey, type + '|' + msgId + '|' + _normId(myNx) + '|' + target).then(function(a) { if (a) obj.a = a; return out(); }, out)
+      ? e2eAckTag(c.publicKey, type + (obj.got === 1 ? '+got' : '') + '|' + msgId + '|' + _normId(myNx) + '|' + target).then(function(a) { if (a) obj.a = a; return out(); }, out)
       : out();
     return p.then(function(ok) { self._rcptNote(target, type, msgId, extra, ok); return ok; }, function() { self._rcptNote(target, type, msgId, extra, false); return false; });
   }
@@ -871,13 +889,24 @@ export class BleAckSystem {
     return list.length;
   }
   _sendRouted(obj, fallbackDeviceId) {
-    var relay = this.ble && this.ble.relay;
+    var self = this, relay = this.ble && this.ble.relay;
+    // 3315 (puente nativo con la app dormida): un puente dormido no anuncia rutas, así que sin internet el destino no tenía camino de vuelta
+    // y el que lo mandó seguía viendo ⏳ aunque el mensaje hubiera llegado. Si ahora no hay ruta hacia él, la confirmación sale TAMBIÉN por
+    // el enlace por el que llegó el mensaje (el puente, despierto o su nativo, la reenvía); la cola de Jump sigue como siempre.
+    var back = function(o) {
+      try {
+        var dev = fallbackDeviceId;
+        if (!dev || _isNetDevice(dev) || _isLanDevice(dev) || !self.ble || !self.ble._sendMessageNative || !self._rcptLinkReady(dev)) return;
+        if (relay && typeof relay.nextHop === 'function' && relay.nextHop(o.to)) return;
+        self.ble._sendMessageNative(dev, JSON.stringify(o), null).catch(function() {});
+      } catch (e) {}
+    };
     // v3.11.0: en sobre sellado para el destino si lo entiende (el puente no ve de quién es la confirmación)
     if (relay && this.ble && typeof this.ble._sealObj === 'function') {
-      this.ble._sealObj(obj.to, obj).then(function(o) { relay.sendRouted(o); }).catch(function() { relay.sendRouted(obj); });
+      this.ble._sealObj(obj.to, obj).then(function(o) { relay.sendRouted(o); back(o); }).catch(function() { relay.sendRouted(obj); back(obj); });
       return;
     }
-    if (relay) { relay.sendRouted(obj); return; }
+    if (relay) { relay.sendRouted(obj); back(obj); return; }
     if (fallbackDeviceId && this.ble && this.ble._sendMessageNative) this.ble._sendMessageNative(fallbackDeviceId, JSON.stringify(obj), null).catch(function(){});
   }
   // Jump: un puente reenvía un flujo completo (texto largo o archivo) tal cual hacia el siguiente salto

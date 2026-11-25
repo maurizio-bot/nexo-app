@@ -51,8 +51,19 @@ export const BLE_BLOB_METHODS = {
     if (self._blobIn.has(messageId)) return; // ya bajando / en cola
     var job = { deviceId: deviceId, senderUUID: senderUUID, messageId: messageId, att: att, data: data, ackTo: ackTo, genv: genv || null, tries: 0, running: false, timer: null, t0: Date.now() };
     self._blobIn.set(messageId, job);
+    self._blobProgress(job, 0, 'receiving'); // dueño 23-11: el aviso llegaba antes que el audio; en el chat ya se ve «Recibiendo audio… 0 %»
     console.log('[BLOB] Puntero de ' + senderUUID + (genv ? ' (grupo ' + genv.g + ')' : '') + ' (' + att.attachmentType + ', ' + att.ptr.chunks.length + ' trozos, ' + Math.round(att.ptr.raw / 1024) + ' KB): bajo del buzón de archivos');
     self._blobRunQueue();
+  },
+  // Dueño 23-11 («primero llega la notificación y luego tarda y llega el audio»): el aviso sale al llegar el puntero, pero el chat no
+  // enseñaba nada hasta tener el archivo bajado de los relés. Ahora, como un archivo por Bluetooth, una burbuja «Recibiendo audio… N %»
+  // aparece al momento en el chat abierto y se cambia por el mensaje al terminar (o se quita si no se pudo).
+  _blobProgress(j, pct, status) {
+    try {
+      var chat = j.genv ? _normId(j.genv.g) : _normId(j.senderUUID), meta = (j.att && j.att.meta) || {};
+      window.dispatchEvent(new CustomEvent('nexo:ble:fileProgress', { detail: { fileId: j.messageId, sent: 0, total: 0, status: status, percent: pct, direction: 'in',
+        senderNexoId: chat, fileType: j.att && j.att.attachmentType, mime: meta.mime || meta.mimeType } }));
+    } catch (e) {}
   },
   _blobSeenMap() { if (!this._blobSeen) this._blobSeen = loadBlobSeen(); return this._blobSeen; },
   // Fase C (dedup local por huella): ¿ya tengo este mismo blob (misma huella y misma llave) en algún chat? → su contenido, sin bajar
@@ -83,6 +94,7 @@ export const BLE_BLOB_METHODS = {
     var env = { v: 1, type: 'chat', from: j.senderUUID, msgId: j.messageId, ts: j.data.timestamp || Date.now(), payload: { text: text, e2e: true, senderNexoId: j.senderUUID } };
     if (!j.genv) env.payload.attachment = full;
     var wire = JSON.stringify(env);
+    self._blobProgress(j, 100, 'done');
     console.log('[BLOB] ' + j.messageId + ' ' + how + ' (' + Math.round(_blobB64Bytes(b64) / 1024) + ' KB): se guarda y se confirma');
     self._handlePayload(Object.assign({}, j.data, { content: wire, data: wire, reassembled: true, _blobResolved: true }));
     self._blobRunQueue();
@@ -99,14 +111,14 @@ export const BLE_BLOB_METHODS = {
       self._blobTryLocal(j).then(function(local) {
         if (local) { j.t0 = 0; return self._blobComplete(j, local, 'ya lo tenía (mismo archivo, no se baja nada)'); }
         j.tf = Date.now();   // 3232: empieza ESTE intento de bajada (la velocidad se mide desde aquí, no desde que llegó el aviso)
-        return fetchBlob(self.net, j.att.ptr, { log: function(s) { console.log(s); } }).then(function(res) {
+        return fetchBlob(self.net, j.att.ptr, { log: function(s) { console.log(s); }, progress: function(got, n) { if (n > 1) self._blobProgress(j, Math.floor(got * 100 / n), 'receiving'); } }).then(function(res) {
           self._blobComplete(j, res.b64, 'bajado y verificado (' + res.relays + ' relés, ' + res.bad + ' trozos malos descartados)');
         });
       }).catch(function(e) {
         j.running = false;
         var expMs = (j.att.ptr.expires || 0) * 1000;
-        if (e && (e.code === 'BLOB_PTR' || e.code === 'BLOB_GCM' || e.code === 'BLOB_HASH')) { console.warn('[BLOB] ' + j.messageId + ' descartado: ' + e.message); self._blobIn.delete(j.messageId); self._blobRunQueue(); return; }
-        if (Date.now() + 30000 > expMs) { console.warn('[BLOB] ' + j.messageId + ' caducó sin poder bajarse (' + (e && e.message) + ')'); self._blobIn.delete(j.messageId); self._blobRunQueue(); return; }
+        if (e && (e.code === 'BLOB_PTR' || e.code === 'BLOB_GCM' || e.code === 'BLOB_HASH')) { console.warn('[BLOB] ' + j.messageId + ' descartado: ' + e.message); self._blobProgress(j, 0, 'failed'); self._blobIn.delete(j.messageId); self._blobRunQueue(); return; }
+        if (Date.now() + 30000 > expMs) { console.warn('[BLOB] ' + j.messageId + ' caducó sin poder bajarse (' + (e && e.message) + ')'); self._blobProgress(j, 0, 'failed'); self._blobIn.delete(j.messageId); self._blobRunQueue(); return; }
         var wait = _fetchRetryDelay(j.tries);
         // 3179: el intento iba por un puente y mientras tanto volvió el internet PROPIO: se reintenta ya por él (no a su turno)
         if (viaGw && self.net && typeof self.net._realOpenCount === 'function' && self.net._realOpenCount() > 0) wait = 1000;
@@ -275,8 +287,28 @@ export const BLE_BLOB_METHODS = {
         function ensureReadyThenSend() {
           var deadline = Date.now() + 8000;
           var nudged = false;
+          var planTried = false;
           (function check() {
             var dev = self._resolveDeviceIdForNexoId(uuid) || (self._macOfOther(deviceId, uuid) ? null : deviceId);
+            // 3261 (diseño del dueño 20-11): Wi-Fi Direct no tiene preferencia sobre internet; entra si llega ANTES. Con el contacto en
+            // línea por internet Y cerca por Bluetooth (enlace directo listo), se comparan los tiempos estimados (wifi_direct.planFor:
+            // internet a la velocidad medida de este momento contra ~4 s + 5 MB/s) y, si gana claro, el archivo va por Wi-Fi Direct.
+            // Si no sale, sigue por internet como iba (nunca se arrastra por Bluetooth). Antes un archivo a alguien en línea por
+            // internet nunca probaba Wi-Fi Direct aunque estuviera al lado (foto del 19-11: 25 s por los relés; así ≈ 3 s).
+            if (_netNx(dev) && !planTried && self.wifiDirect && typeof self.wifiDirect.planFor === 'function' && self.ackSystem && !(meta && (meta.dst || meta.blobPtr || meta.fwd))) {
+              planTried = true;
+              var plan = null;
+              try { plan = self.wifiDirect.planFor(uuid, base64Data.length); } catch (eP) { plan = null; }
+              if (plan && plan.use && plan.dev) {
+                (self.ackSystem._wdPlan || (self.ackSystem._wdPlan = new Set())).add(fileId);
+                self.ackSystem.sendFile(plan.dev, fileId, base64Data, Object.assign({}, meta || {}, { to: uuid })).then(function() { resolve(); }, function(errP) {
+                  if (errP && errP.code === 'WD_PLAN_FAILED') { console.warn('[WIFI-DIRECT] ' + fileId + ': ' + errP.message + ': sigue por internet'); check(); } // i18n-ok: registro
+                  else reject(errP);
+                });
+                held();
+                return;
+              }
+            }
             // Fase C (2971): el adjunto ya vive en los relés (puntero vigente: reenvío de algo recibido/enviado por el buzón) y el
             // contacto está solo por internet → va POR REFERENCIA (0 subidas) aunque esté en línea; con Bluetooth/Wi-Fi, directo
             if (_netNx(dev) && meta && meta.blobPtr) { var viaRef = toBlob(); if (viaRef) { viaRef.then(resolve, reject); return; } }

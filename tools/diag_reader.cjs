@@ -96,6 +96,11 @@ async function ensureDeps() {
   return d;
 }
 
+// 3253 (dueño 19-11: «que lleguen solo diagnósticos de la última versión»): la última build publicada sale de NOVEDADES.md (el primer
+// «### APK NNNN» del historial) y se dejan fuera los diagnósticos de builds anteriores (los sin número se quedan). --todas: sin filtro.
+function latestBuild(novedadesText) { const m = /^###\s*APK\s+(\d+)/m.exec(String(novedadesText || '')); return m ? parseInt(m[1], 10) : null; }
+function onlyLatest(list, latest) { return latest ? list.filter((e) => !/^\d+$/.test(String(e.build || '')) || parseInt(e.build, 10) >= latest) : list; }
+
 async function main() {
   const args = process.argv.slice(2), get = (k, def) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : def; };
   const priv = (process.env.NEXO_DIAG_PRIV || '').trim();
@@ -108,6 +113,11 @@ async function main() {
   const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
   const r = await readDiagnostics({ privHex: priv, relays: relays.length ? relays : DEFAULT_RELAYS, sinceSec: horaAnt ? hourEnd - 3600 : nowSec - Math.round(horas * 3600), WebSocket: d.WebSocket, agent: proxy ? new d.HPA(proxy) : undefined });
   if (horaAnt) r.list = r.list.filter((e) => e.created_at >= hourEnd - 3600 && e.created_at < hourEnd);
+  if (!args.includes('--todas')) {
+    let latest = null; try { latest = latestBuild(fs.readFileSync(path.join(__dirname, '..', 'NOVEDADES.md'), 'utf8')); } catch (e) {}
+    const before = r.list.length; r.list = onlyLatest(r.list, latest);
+    if (before > r.list.length) console.error('(' + (before - r.list.length) + ' diagnóstico(s) de builds anteriores a la ' + latest + ' fuera; --todas para verlos)');
+  }
   if (args.includes('--json')) { console.log(JSON.stringify(r)); return; }
   console.log('DIAGNÓSTICOS recibidos ' + (horaAnt ? 'entre ' + new Date((hourEnd - 3600) * 1000).toISOString().substring(11, 16) + ' y ' + new Date(hourEnd * 1000).toISOString().substring(11, 16) + ' UTC' : 'en las últimas ' + horas + ' h') + ': ' + r.list.length + ' (etiqueta ' + r.tag + '; firmas malas ' + r.bad.firma + ', no descifrados ' + r.bad.descifrado + (r.errs.length ? '; relés con problema: ' + r.errs.join(' | ') : '') + ')');
   for (const e of r.list) {
@@ -116,5 +126,5 @@ async function main() {
   }
 }
 
-module.exports = { openDiag, readDiagnostics, eventOk, tagOf, pubOf, DIAG_KIND, DEFAULT_RELAYS };
+module.exports = { latestBuild, onlyLatest, openDiag, readDiagnostics, eventOk, tagOf, pubOf, DIAG_KIND, DEFAULT_RELAYS };
 if (require.main === module) main().catch((e) => { console.error(e && e.stack || e); process.exit(1); });

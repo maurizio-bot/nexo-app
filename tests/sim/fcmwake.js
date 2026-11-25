@@ -6,6 +6,7 @@
 //     llamada POST al enviador con { to: <token de B> } — SOLO el token, NUNCA el contenido del mensaje.
 //  3. El token se guarda (sobrevive) y si el enviador responde 404 (token caducado) se olvida.
 // El disparo real por Google y el despertar del teléfono cerrado se prueban en el móvil (no se pueden simular).
+//  4. (14A, dueño 23-11) toque SELLADO: B pide su sello una vez (POST {seal}), lo adopta al llegar por FCM, lo comparte y A despierta con {to: sello}.
 // Uso: node fcmwake.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -208,6 +209,27 @@ function installFetchSpy(win) {
   await sleep(1500);
   r.saludo_no_dispara_toque = calls.filter((c) => /sender\.test\/wake/.test(c.url)).length === wakes.length || calls.length === antes;
 
+  // 14A (dueño 23-11): toque SELLADO. B pide su sello al enviador (POST {seal: su token}, una vez cada 6 h); el sello le llega por FCM a
+  // su nativo; desde ahí B comparte el SELLO (no el token) y A despierta a B con {to: sello}
+  const callsB = installFetchSpy(B.win);
+  netB.setSender('https://sender.test/wake');
+  netB.state.sealAskAt = 0;
+  netB._wakeSeal({ token: TOKB });
+  await sleep(300);
+  netB._wakeSeal({ token: TOKB });
+  await sleep(300);
+  const seals = callsB.filter((c) => c.body && c.body.seal !== undefined);
+  r.sello_pedido_una_vez = seals.length === 1 && seals[0].body.seal === TOKB && Object.keys(seals[0].body).length === 1;
+  const SEALED = 's1.' + 'Q'.repeat(60);
+  nB.fcmSealed = SEALED;                          // llega por FCM al nativo de B
+  r.sello_adoptado_s = await waitFor(() => netB.fcmToken === SEALED, 30000);
+  netB._hello(idA);
+  r.A_recibe_sello_s = await waitFor(() => (netA.peers.get(idB) || {}).fcmToken === SEALED, 20000);
+  const nW = calls.length;
+  netA._wakeAt && netA._wakeAt.clear && netA._wakeAt.clear();
+  sendText(A, 'otro mensaje: despierta a B con el sello');
+  await waitFor(() => calls.slice(nW).some((c) => c.body && c.body.to === SEALED), 15000);
+  r.toque_con_sello = calls.slice(nW).some((c) => c.body && c.body.to === SEALED) && !calls.slice(nW).some((c) => c.body && c.body.to === TOKB);
   r.errores = logs.filter((l) => /ilegible|Error procesando|No se pudo descifrar|TypeError|undefined is not/.test(l)).slice(0, 4);
   const ok = r.A_tiene_su_token && r.B_tiene_su_token && r.intercambio_token_s !== null &&
     r.A_conoce_token_de_B && r.B_conoce_token_de_A && r.token_de_B_guardado &&
@@ -217,6 +239,7 @@ function installFetchSpy(win) {
     r.sobre_oferta_marca_llamada && r.sobre_mensaje_sin_marca &&
     r.detecta_invite_grupo_cruda && r.detecta_oferta_cruda && r.gcall_offer_no_es_llamada &&
     r.lastSeen_acotado_a_ahora && r.frame_enorme_no_procesado &&
+    r.sello_pedido_una_vez && r.sello_adoptado_s !== null && r.A_recibe_sello_s !== null && r.toque_con_sello &&
     !r.errores.length;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('FCMWAKE ' + JSON.stringify(r));

@@ -65,4 +65,22 @@ class WriteRetryTest {
         assertFalse(WriteRetry.waitForClientSetup(true, false, WriteRetry.SETUP_WAIT_MAX_MS), "pasado el plazo escribe igual (no se atasca)")
         assertTrue(WriteRetry.SETUP_WAIT_MAX_MS > 2000, "el plazo cubre los 2 s que el plugin espera al MTU antes de seguir")
     }
+
+    // 3262 (COLA 15; Motorola→S24 20-11 14:09): con «ocupado» (201) no se prueba la escritura con respuesta (daría el mismo 201 y, si
+    // entra, deja el enlace hasta 30 s esperando a una app que puede estar congelada); con otros fallos se mantiene como estaba
+    @Test fun conOcupadoNoSePruebaDefault() {
+        assertFalse(WriteRetry.fallbackToDefault(WriteRetry.GATT_BUSY), "201 = ocupado: se espera, no se prueba DEFAULT")
+        assertEquals(201, WriteRetry.GATT_BUSY, "ERROR_GATT_WRITE_REQUEST_BUSY de Android")
+        assertTrue(WriteRetry.fallbackToDefault(200), "otro fallo (200, no permitido): se prueba DEFAULT como antes")
+        assertTrue(WriteRetry.fallbackToDefault(133), "error genérico: como antes")
+    }
+
+    // 3262 (COLA 15): el enlace por el que no sale nada en ~12 s (dos mensajes seguidos descartados) se cierra para rehacerlo;
+    // una congestión de un solo mensaje NO lo cierra
+    @Test fun enlaceAtascadoSeCierra_unaCongestionNo() {
+        assertFalse(WriteRetry.shouldCloseStuckLink(0))
+        assertFalse(WriteRetry.shouldCloseStuckLink(1), "un solo mensaje descartado puede ser congestión normal de MTU 23")
+        assertTrue(WriteRetry.shouldCloseStuckLink(WriteRetry.FLUSH_AFTER_DROPS), "al soltar la cola por atasco se cierra el enlace")
+        assertTrue(2 * WriteRetry.maxWaitMs() >= 10000, "son al menos ~10 s sin una sola escritura buena")
+    }
 }

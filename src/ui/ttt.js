@@ -168,9 +168,6 @@ export function openTttForContact(cid) {
   if (live) _openOverlay(live.gid); else _startFresh(cid);
 }
 
-// Cierre por el botón atrás de Android (window.__nexoHandleBack lo consulta vía este flag).
-export function tttOverlayOpen() { return !!document.getElementById('ttt-overlay'); }
-export function tttCloseOverlay() { _closeOverlay(); }
 
 // Ganchos de prueba (tests/sim/ttt.js): mover y leer estado sin depender del DOM del overlay.
 try {

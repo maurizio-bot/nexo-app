@@ -45,8 +45,14 @@ export const BLE_PRIVACY_METHODS = {
     this._kxPeers = this._kxPeers || new Map();
     var old = this._kxPeers.get(nx) || {};
     var nm = typeof p.nm === 'string' ? p.nm.replace(/[\u0000-\u001f<>]/g, '').trim().substring(0, 40) : '';
+    // Decisión del dueño 23-11 (9A, auditoría C-N7): si en la última media hora otro teléfono dijo ser este NEXO ID con OTRA llave, no se
+    // pisa la primera (antes ganaba la última: un impostor cerca que dijera ser X antes del «+» quedaba agregado con su llave): se marca
+    // el conflicto y no se agrega a ninguno hasta comparar el número de seguridad.
+    var npk = (typeof p.pk === 'string' && p.pk) || '';
+    var clash = !!(old.pk && npk && old.pk !== npk && Date.now() - (old.ts || 0) < 30 * 60 * 1000);
+    if (clash && !old.cf) console.warn('[ADD] Dos teléfonos dicen ser ' + nx + ' con llaves distintas: no se agrega a ninguno'); // i18n-ok: registro
     this._kxPeers.delete(nx);
-    this._kxPeers.set(nx, { deviceId: deviceId, name: nm || old.name || '', pk: (typeof p.pk === 'string' && p.pk) || old.pk || '', b2: p.b2 || old.b2 || null, ts: Date.now() });
+    this._kxPeers.set(nx, { deviceId: clash ? old.deviceId : deviceId, name: nm || old.name || '', pk: clash ? old.pk : (npk || old.pk || ''), b2: clash ? old.b2 : (p.b2 || old.b2 || null), ts: Date.now(), cf: (clash || old.cf) ? 1 : 0 });
     if (this._kxPeers.size > 60) this._kxPeers.delete(this._kxPeers.keys().next().value);
     // 3012: sus códigos rotativos (de su clave): la próxima vez que el escaneo lo vea se reconoce sin conectar
     var self = this;

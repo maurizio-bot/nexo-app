@@ -12,6 +12,7 @@ import { vaultLoadFile, vaultSetMessageFields } from '../vault/vault_manager.js'
 import { isGroupId } from './groups.js';
 import { bigToGroup } from './group_media.js';
 import { t } from './i18n.js';
+import { isStoreBuild, isApkFile, displayFileName } from './store_flag.js'; // COLA 26: en Google Play no se instalan APK
 import { blobForUrl } from './blob_registry.js'; // 3162: el vídeo se guarda sin fetch de su blob: (la CSP no lo deja)
 import { viewerGestures, viewerSlide } from './media_swipe.js';   // 3159: deslizar entre fotos y para cerrar
 
@@ -233,7 +234,7 @@ export function _saveMediaToGallery(src, type, btn) {
 }
 
 // Para la prueba del simulador (zoom de la foto): abrir el visor sin tener que mandar una imagen por la radio
-if (typeof window !== 'undefined') { window.__nexoOpenMedia = _openFullscreenMedia; window.__nexoCloseMedia = _closeFullscreenMedia; window.NEXO_saveMedia = _saveMediaToGallery; }
+if (typeof window !== 'undefined') { window.__nexoOpenMedia = _openFullscreenMedia; window.__nexoCloseMedia = _closeFullscreenMedia; window.__nexoOpenFile = _openAttachmentFile; window.NEXO_saveMedia = _saveMediaToGallery; }
 
 export var _thumbsInProgress = {};
 
@@ -241,6 +242,8 @@ export function _buildFileCard(msg, attachment, mime) {
   var m = attachment.meta || {};
   var name = String(m.name || 'archivo');
   mime = _mimeOf(mime, name);
+  // I-S1/T-A1: si el nombre (saneado como en el nativo) es de APK, se muestra y se trata como APK diga lo que diga el tipo
+  if (isApkFile(name, mime)) mime = 'application/vnd.android.package-archive';
   var card = document.createElement('div');
   card.className = 'file-attachment';
   card.style.cssText = 'width:220px;max-width:100%;background:rgba(255,255,255,0.12);border-radius:12px;overflow:hidden;cursor:pointer;'; // 3140: superficie clara, sin la caja oscura
@@ -263,7 +266,7 @@ export function _buildFileCard(msg, attachment, mime) {
   var nm = document.createElement('div');
   nm.className = 'file-name';
   nm.style.cssText = 'font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-  nm.textContent = name;
+  nm.textContent = displayFileName(name);   // T-A1: sin control ni RTL («fdp.apk» no se ve como «kpa.pdf»)
   var sub = document.createElement('div');
   sub.className = 'file-sub';
   sub.style.cssText = 'font-size:11px;opacity:0.7;';
@@ -305,6 +308,8 @@ function _bigText(card) {
   if (!s) return head + (own ? t('media_tap_open', 'Toca para abrir') : t('media_waiting_file', 'Esperando el archivo · Toca para pedirlo'));
   if (s.state === 'preparing') return head + t('media_preparing', 'Preparando ') + pct + ' %';
   var via = ({ wd: ' (Wi-Fi Direct)', lan: ' (Wi-Fi)', l2: ' (Bluetooth)' })[s.via] || '';
+  // 3260: ya enviado, la tarjeta dice por dónde fue y a qué velocidad (el envío por Wi-Fi Direct dura segundos y la etiqueta de «Enviando» casi no se veía)
+  if (s.state === 'done' && s.dir !== 'in' && s.via) return head + t('media_tap_open', 'Toca para abrir') + ' · ' + ({ wd: 'Wi-Fi Direct', lan: 'Wi-Fi', l2: 'Bluetooth' })[s.via] + (s.mbps > 0 ? ' · ' + String(s.mbps).replace('.', ',') + ' MB/s' : '');
   if (s.state === 'sending') return head + t('media_sending', 'Enviando ') + pct + ' %' + via;
   if (s.state === 'receiving') return head + t('media_receiving', 'Recibiendo ') + pct + ' %' + via;
   if (s.state === 'waiting') return head + t('media_requested_again', 'Pedido otra vez…');
@@ -337,12 +342,14 @@ function _bigTap(msg, big, name, mime) {
     return;
   }
   if (!big.key) { _showPermissionError(t('media_file_not_ready', 'Archivo: todavía no está listo')); return; }
+  if (isStoreBuild() && isApkFile(name, mime)) { _showPermissionError(t('media_file_apk_store', 'Archivo: esta versión de NEXO no instala apps. Guárdalo y ábrelo desde tus archivos.')); return; }
   if (_openingFile) return;
   _openingFile = true;
   console.log('[BIG] Abrir ' + id + ' (' + _extOf(name) + ')');
   b.open(id, big.key, name, mime).then(function(r) {
     if (r && r.opened === false) {
       if (r.reason === 'install_permission') _showPermissionError(t('media_file_install_perm', 'Archivo: permite a NEXO instalar apps y vuelve a tocar la APK'));
+      else if (r.reason === 'store_apk') _showPermissionError(t('media_file_apk_store', 'Archivo: esta versión de NEXO no instala apps. Guárdalo y ábrelo desde tus archivos.'));
       else if (r.reason === 'missing') _showPermissionError(t('media_file_gone', 'Archivo: ya no está en este teléfono') + (own ? '' : t('media_tap_request_again', ' · Toca otra vez para pedirlo')));
       else _showPermissionError(t('media_file_no_app', 'Archivo: no hay ninguna app en el teléfono para abrir este tipo de archivo'));
       if (r.reason === 'missing' && !own) { b.saved[id] = undefined; b._set(id, { dir: 'in', state: 'failed' }); }
@@ -357,13 +364,16 @@ export function _openAttachmentFile(b64, name, mime) {
   var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
   if (!b64) { _showPermissionError(t('media_file_not_available', 'Archivo: todavía no está disponible')); return; }
   if (!pl || typeof pl.openFile !== 'function') { _showPermissionError(t('media_file_cant_open_ver', 'Archivo: esta versión no puede abrirlo')); return; }
+  if (isStoreBuild() && isApkFile(name, mime)) { _showPermissionError(t('media_file_apk_store', 'Archivo: esta versión de NEXO no instala apps. Guárdalo y ábrelo desde tus archivos.')); return; }
   if (_openingFile) return;
   _openingFile = true;
   console.log('[ATTACH] Abrir archivo ' + _extOf(name) + ' (' + mime + ')');
-  pl.openFile({ base64: b64, name: name, mime: mime }).then(function(r) {
+  // store: el nativo tampoco instala una APK en la versión de tienda (I-S1), aunque esta comprobación de arriba fallara
+  pl.openFile({ base64: b64, name: name, mime: mime, store: isStoreBuild() }).then(function(r) {
     if (r && r.opened === false) {
       console.warn('[ATTACH] No abierto: ' + r.reason);
       if (r.reason === 'install_permission') _showPermissionError(t('media_file_install_perm', 'Archivo: permite a NEXO instalar apps y vuelve a tocar la APK'));
+      else if (r.reason === 'store_apk') _showPermissionError(t('media_file_apk_store', 'Archivo: esta versión de NEXO no instala apps. Guárdalo y ábrelo desde tus archivos.'));
       else _showPermissionError(t('media_file_no_app', 'Archivo: no hay ninguna app en el teléfono para abrir este tipo de archivo'));
     }
   }).catch(function(e) {

@@ -29,6 +29,7 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
 
     companion object {
         private val NX = Regex("^nx[0-9a-z]{8}$")
+        private val MSG_ID = Regex("^[A-Za-z0-9_.:-]{1,80}$") // S-B6 (23-11)
         // 3087 (punto débil de llamadas: «con la app cerrada, si el que llama cuelga, sigue sonando hasta 45 s»): la señal de colgar va
         // cifrada; el que llama pone por fuera el id de su oferta (ce, el mismo «cs…» que llevaba la oferta con cl:1)
         val CALL_ID = Regex("^cs[0-9a-f]{12}$")
@@ -37,12 +38,46 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
             ringFrom.isNotEmpty() && ringFrom == from.lowercase() && CALL_ID.matches(offer) && (ringOffer.isEmpty() || ringOffer == offer)
         private val GID = Regex("^gr[0-9a-z]{8}$")
         // me: mi NEXO ID (para reconocer lo que llega por Jump); vacío = no se mira
+        /**
+         * Decisión del dueño 23-11 (2A, auditoría S-A1/T-D3): SELLO DE PAREJA. El mensaje trae `sl` = la firma corta de la pareja de
+         * «msg|msgId|de|para» (como e2eAckTag en la app). sign(campos) = esa firma con la clave de quien dice mandarlo, o null si no la
+         * tenemos. Devuelve true = el sello cuadra; false = tenemos su clave y el sello falta o no cuadra (un tercero que dice ser él:
+         * ni buzón, ni aviso, ni ✓✓); null = sin clave para comprobarlo (como antes).
+         */
+        fun sealCheck(json: String, me: String, sign: (String) -> String?): Boolean? {
+            if (me.isEmpty()) return null
+            return try {
+                val o = JSONObject(json)
+                val mid = o.optString("msgId").ifEmpty { o.optString("m") }
+                val from = (o.optString("from").ifEmpty { o.optString("fr") }).lowercase()
+                if (mid.isEmpty() || !NX.matches(from)) return null
+                val exp = sign("msg|$mid|$from|${me.lowercase()}") ?: return null
+                val sl = o.optString("sl")
+                sl.isNotEmpty() && java.security.MessageDigest.isEqual(exp.toByteArray(Charsets.UTF_8), sl.toByteArray(Charsets.UTF_8))
+            } catch (e: Exception) { null }
+        }
+
+        /**
+         * Bloqueo (dueño 24-11, como WhatsApp): lo que manda un contacto BLOQUEADO (MutedChats.isBlocked) fuera de un grupo se ignora con
+         * la app cerrada o congelada: ni buzón, ni aviso, ni llamada, ni ✓✓ (sus mensajes se le quedan en ✓). Lo de un grupo (mensaje con
+         * su id de grupo o invitación a una llamada de grupo) sigue como siempre. Las confirmaciones (RECEIPT) son de lo mío: se guardan.
+         */
         fun classify(json: String, me: String = ""): Info {
+            val info = classifyRaw(json, me)
+            if ((info.kind == Kind.MESSAGE || info.kind == Kind.NOTIFY_ONLY) && info.group.isEmpty() && MutedChats.isBlocked(info.from) &&
+                !json.contains("\"nexo_gcall\"")) return Info(Kind.IGNORE, info.from, "", false, "")
+            return info
+        }
+
+        private fun classifyRaw(json: String, me: String): Info {
             // Auditoría (ronda 2774): un JSON descomunal o muy anidado se descarta antes de analizarlo (el analizador del
             // sistema es recursivo y un paquete así podría tumbar la app).
             if (SafeJson.reject(json)) return Info(Kind.IGNORE, "", "", false, "")
             val o = try { JSONObject(json) } catch (e: Exception) { return Info(Kind.IGNORE, "", "", false, "") }
             val type = o.optString("type"); val t = o.optString("t")
+            // Auditoría 23-11 (S-B6): el id del mensaje lo elige quien manda y va al registro y al buzón: solo letras, números y _ . : -
+            val mid0 = o.optString("msgId").ifEmpty { o.optString("m") }
+            if (mid0.isNotEmpty() && !MSG_ID.matches(mid0)) return Info(Kind.IGNORE, "", "", false, "")
             val from = (o.optString("from").ifEmpty { o.optString("fr") }).lowercase()
             val mine = me.isNotEmpty() && NX.matches(me.lowercase())
             // Ronda 2764 (informe del dueño: lo de la tablet para el S24 sonaba en el Vivo): un paquete directo dice a

@@ -160,7 +160,7 @@ function _handleIncomingMessage(msg) {
               protoCheck.type === 'file_resume' || protoCheck.type === 'ack' ||
               protoCheck.type === 'read_receipt' || protoCheck.type === 'ping' || protoCheck.type === 'kx' ||
               protoCheck.type === 'rt' || protoCheck.type === 'rk' || protoCheck.type === 'rq' || protoCheck.type === 'rp' ||
-              /^w[qanf]$/.test(protoCheck.type || '') || /^f[poqd]$/.test(protoCheck.type || '') ||
+              /^(w[qanfx]|l[qanx])$/.test(protoCheck.type || '') || /^f[poqd]$/.test(protoCheck.type || '') ||
               protoCheck.type === 'pong' ||
               protoCheck.t === 'c' || protoCheck.t === 'f' || protoCheck.t === 'n' ||
               protoCheck.t === 'a' || protoCheck.t === 'ba' || protoCheck.t === 'ss' || protoCheck.t === 'sr') {

@@ -8,6 +8,9 @@
 //  N2  al volver, la voz vuelve a llegar en los dos sentidos y la conexión directa se rehace por la red nueva;
 //  N3  ninguna «Fin».
 // Contraprueba 3155: «Fin (lost)» a los 15 s del corte. Uso: node cambiored.js <dir_build>
+// --mudo (3300, tanda 2 punto 18; diagnóstico S24 19-11 21:48: hueco de ~25 s sin imagen tras un cambio de red del S23): la red
+// cambia SIN aviso que llegue; la conexión directa queda «disconnected» (lo que va por ella se pierde) y Chromium solo la da por
+// «failed» a los ~25–30 s. M1: la directa se rehace y la voz vuelve en ≤ 12 s (contraprueba 3299: hasta el «failed», 25 s).
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -54,7 +57,7 @@ function makeRTC() {
 class FakeDC {
   constructor(pc) { this.pc = pc; this.readyState = 'connecting'; this.bufferedAmount = 0; this.peer = null; }
   open() { if (this.readyState !== 'connecting') return; this.readyState = 'open'; if (this.onopen) this.onopen(); }
-  send(s) { if (this.readyState !== 'open') throw new Error('cerrado'); FAKE.msgs++; const p = this.peer; setTimeout(() => { if (p && p.readyState === 'open' && p.onmessage) p.onmessage({ data: s }); }, 5); }
+  send(s) { if (this.readyState !== 'open') throw new Error('cerrado'); if (this.dead) return; FAKE.msgs++; const p = this.peer; setTimeout(() => { if (p && p.readyState === 'open' && p.onmessage) p.onmessage({ data: s }); }, 5); }
   close() { if (this.readyState === 'closed') return; this.readyState = 'closed'; if (this.onclose) this.onclose(); if (this.peer) this.peer.close(); }
 }
 async function boot(name, native) {
@@ -129,6 +132,26 @@ const st = (p) => { const c = p.win.bleInterface.calls.call; return c ? c.state 
   r.activa_s = await waitFor(() => st(A) === 'active' && st(B) === 'active', 20000);
   r.directa_s = await waitFor(() => /^p2p:/.test(A.win.bleInterface.calls._link(idB) || '') && /^p2p:/.test(B.win.bleInterface.calls._link(idA) || ''), 30000);
   await sleep(2000);
+  if (process.argv.indexOf('--mudo') >= 0) {
+    r.modo = 'mudo';
+    const t0m = Date.now(), madeM = FAKE.made, olds = Array.from(FAKE.reg.values());
+    olds.forEach((pc) => { if (pc.dc) { pc.dc.dead = true; if (pc.dc.peer) pc.dc.peer.dead = true; } pc.connectionState = 'disconnected'; if (pc.onconnectionstatechange) pc.onconnectionstatechange(); });
+    olds.forEach((pc) => setTimeout(() => { if (FAKE.reg.get(pc.id) === pc && pc.connectionState === 'disconnected') { pc.connectionState = 'failed'; if (pc.onconnectionstatechange) pc.onconnectionstatechange(); } }, 25000));
+    const pA0 = A.win.__media.played, pB0 = B.win.__media.played;
+    r.M1_directa_nueva_s = await waitFor(() => FAKE.made > madeM && /^p2p:/.test(A.win.bleInterface.calls._link(idB) || '') && /^p2p:/.test(B.win.bleInterface.calls._link(idA) || '') && olds.every((pc) => !FAKE.reg.has(pc.id) || pc.connectionState !== 'disconnected'), 40000);
+    const qA = A.win.__media.played, qB = B.win.__media.played; await sleep(3000);
+    r.M1_voz_3s = { A: A.win.__media.played - qA, B: B.win.__media.played - qB };
+    r.M1_fin = { A: fins.A.map((f) => f.why), B: fins.B.map((f) => f.why) };
+    r.diag = logs.filter((l) => /Se cortó la conexión directa|Conexión DIRECTA|desconectada/.test(l)).map((l) => l.slice(0, 160)).slice(0, 8);
+    A.win.bleInterface.calls.hangup(); await waitFor(() => !A.win.bleInterface.calls.call && !B.win.bleInterface.calls.call, 15000);
+    r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch|ECONNREFUSED|WebSocket/.test(l)).slice(0, 5);
+    const okM = r.activa_s !== null && r.directa_s !== null && typeof r.M1_directa_nueva_s === 'number' && r.M1_directa_nueva_s <= 12 && r.M1_voz_3s.A >= 10 && r.M1_voz_3s.B >= 10 && !r.M1_fin.A.length && !r.M1_fin.B.length && !r.errores.length;
+    r.resultado = okM ? 'OK' : 'FALLO';
+    console.log('CAMBIORED ' + JSON.stringify(r));
+    fs.writeFileSync(path.join(__dirname, 'last_logs_cambiored_mudo.txt'), logs.join('\n'));
+    [A, B].forEach(shutdown); await r1.stop(); await r2.stop();
+    process.exit(okM ? 0 : 1);
+  }
   // B cambia de red: aviso del sistema, la conexión directa muere y B se queda sin internet 20 s (relés caídos)
   const t0 = Date.now(), made0 = FAKE.made;
   FAKE.block = true;

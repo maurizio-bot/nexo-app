@@ -14,6 +14,7 @@
  */
 import { _getBLEContacts, _normId, _saveBLEContacts } from './ble_helpers.js';
 import { _sendTextTo } from './send.js';
+import { isBlocked } from './bloqueo.js';
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
 import { _b64ToBlob } from './video_tools.js';
 import { t } from './i18n.js';
@@ -83,7 +84,7 @@ function _load(name) {
 }
 function _save(name, obj) { var pl = _pl(); if (pl && typeof pl.saveToFile === 'function') pl.saveToFile({ filename: name, content: JSON.stringify(obj) }).catch(function() {}); }
 function _emit(nx) { try { window.dispatchEvent(new CustomEvent('nexo:estado', { detail: { nx: nx } })); } catch (e) {} }
-function _contactIds() { return _getBLEContacts().map(function(c) { return _normId(c.nexoId || c.deviceUUID); }).filter(function(nx) { return NX_RE.test(nx); }); }
+function _contactIds() { return _getBLEContacts().map(function(c) { return _normId(c.nexoId || c.deviceUUID); }).filter(function(nx) { return NX_RE.test(nx) && !isBlocked(nx); }); } // bloqueo (24-11): a un bloqueado no le sale lo mío
 function _contactName(nx) { var c = _getBLEContacts().find(function(x) { return _normId(x.nexoId || x.deviceUUID) === _normId(nx); }); return (c && c.name) || String(nx || '').toUpperCase(); }
 // Un estado está activo si tiene texto, foto, audio O video, con ts dentro de las 24 h
 function _active(s) { return !!(s && typeof s.ts === 'number' && ((typeof s.t === 'string' && s.t) || (typeof s.img === 'string' && s.img) || (typeof s.aud === 'string' && s.aud) || (typeof s.vid === 'string' && s.vid) || (s.big && s.big.k)) && (Date.now() - s.ts) < TTL_MS); }
@@ -265,6 +266,7 @@ export function estadosInit() {
 // ---- Lectura ----
 export function statusesOf(nx) {
   nx = _normId(nx);
+  if (isBlocked(nx)) return []; // bloqueo (24-11): sus estados no se ven
   var l = _activeList(_cache.get(nx));
   if (_cache.has(nx) && l.length !== (_cache.get(nx) || []).length) { if (l.length) _cache.set(nx, l); else _cache.delete(nx); } // caducados fuera
   return l;
@@ -272,7 +274,6 @@ export function statusesOf(nx) {
 // El más reciente (compatibilidad: «el estado» de un contacto)
 export function statusOf(nx) { var l = statusesOf(nx); return l.length ? l[l.length - 1] : null; }
 export function myStatuses() { return _activeList(_mine.items); }
-export function myStatus() { var l = myStatuses(); return l.length ? l[l.length - 1] : null; }
 
 // ---- Publicar / quitar ----
 // Publica un estado NUEVO (texto y/o una media). Devuelve su sid, o null (vacío, o ya hay MAX_ITEMS activos).
@@ -593,9 +594,6 @@ export function activeStatusContacts() {
 // ---------- Interfaz: visor, publicar y «Mis estados» (la pantalla «Estados» los abre: estados_screen.js, 3169) ----------
 function _ago(ts) { var m = Math.floor((Date.now() - ts) / 60000); if (m < 1) return t('grp_ago_now', 'ahora'); if (m < 60) return t('grp_ago_prefix', 'hace ') + m + t('grp_ago_min', ' min'); return t('grp_ago_prefix', 'hace ') + Math.floor(m / 60) + t('grp_ago_h', ' h'); }
 export function statusAgo(ts) { return _ago(ts); }
-// 3230: ver los estados de un contacto = la pantalla Estados a pantalla completa en los suyos (estados_feed.js; antes, una ventana con
-// botones ‹ › «Me gusta» y «Enviar»)
-export function openStatusViewer(c) { if (typeof window.__nexoEstadosOpen === 'function') window.__nexoEstadosOpen(c && c.nx); }
 export function statusSeen(nx, sid) { var s = _seen.get(_normId(nx)); return !!(s && s.has(sid)); }
 export function markStatusSeen(nx, sid) { nx = _normId(nx); _markSeen(nx, sid); _emit(nx); }
 export function openStatusCompose() { _compose(); }
@@ -764,20 +762,33 @@ export function attachPullRefresh(el, indId, host) {
   };
   var hideInd = function(ms) { setTimeout(function() { if (ind) { try { ind.remove(); } catch (e) {} ind = null; } }, ms || 0); };
   var xOf = function(e) { var p = e.touches && e.touches[0]; return p && typeof p.clientX === 'number' ? p.clientX : 0; };
-  el.addEventListener('touchstart', function(e) { y0 = (el.scrollTop <= 0 && e.touches && e.touches[0]) ? e.touches[0].clientY : null; x0 = xOf(e); dy = 0; }, { passive: true });
+  // 34 (dueño 21-11 14:38; su diagnóstico: 10 «Deslizar para actualizar» en 26 s al desplazar contactos, cada uno reenviaba TODOS los
+  // pendientes): lo que se desplaza en Contactos es la lista de DENTRO (#main-contacts-list), no `el`, cuyo scrollTop es siempre 0 →
+  // cualquier gesto hacia abajo contaba. Ahora se mira todo lo que hay entre el dedo y `el`: si algo está desplazado, no es «actualizar»
+  // (al empezar, durante el gesto y al soltar). Y como mucho una actualización cada 10 s (dos tirones seguidos = una).
+  var tgt = null;
+  var scrolled = function() {
+    for (var n = tgt; n && n.nodeType === 1; n = n.parentNode) { if (n.scrollTop > 0) return true; if (n === el) break; }
+    return el.scrollTop > 0;
+  };
+  el.addEventListener('touchstart', function(e) { tgt = e.target || null; y0 = (!scrolled() && e.touches && e.touches[0]) ? e.touches[0].clientY : null; x0 = xOf(e); dy = 0; }, { passive: true });
   el.addEventListener('touchmove', function(e) {
     if (y0 === null || !e.touches || !e.touches[0]) return;
     dy = e.touches[0].clientY - y0;
-    if (Math.abs(xOf(e) - x0) > Math.abs(dy) || document.body.classList.contains('nx-est-drag')) { y0 = null; dy = 0; hideInd(0); return; }
+    if (Math.abs(xOf(e) - x0) > Math.abs(dy) || document.body.classList.contains('nx-est-drag') || scrolled()) { y0 = null; dy = 0; hideInd(0); return; }
     if (dy > 20) showInd(dy > PULL_PX ? '↻ ' + t('est_pull_release', 'Suelta para actualizar') : '↓ ' + t('est_pull', 'Desliza para actualizar'));
   }, { passive: true });
   el.addEventListener('touchend', function() {
-    if (y0 !== null && dy > PULL_PX) { showInd('↻ ' + t('est_refreshing', 'Actualizando estados, fotos y chats…')); refreshAll(); hideInd(1500); }
+    var nowT = Date.now();
+    if (y0 !== null && dy > PULL_PX && !scrolled()) {
+      if (nowT - (el._nxPullAt || 0) >= PULL_COOLDOWN_MS) { el._nxPullAt = nowT; showInd('↻ ' + t('est_refreshing', 'Actualizando estados, fotos y chats…')); refreshAll(); hideInd(1500); }
+      else hideInd(600); // recién actualizado: el aviso se va sin repetir el trabajo
+    }
     else hideInd(0);
     y0 = null; dy = 0;
   }, { passive: true });
 }
-var PULL_PX = 70;
+var PULL_PX = 70, PULL_COOLDOWN_MS = 10000;
 
 if (typeof window !== 'undefined') {
   window.NEXO_composeStatus = _compose; // 3035: pruebas (tests/sim/pedidos13.js)

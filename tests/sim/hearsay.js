@@ -52,7 +52,8 @@ const findC = (A, id) => (A.win.vaultLoadContacts() || []).find((c) => (c.nexoId
   A.bi._noteSenderKey('NXAAAAAA01', KEY1);
   await sleep(150);
   const c1b = findC(A, 'NXAAAAAA01');
-  r.contacto_directo_confirma = !!(c1b && !c1b.pkHearsay && c1b.publicKey === KEY1);
+  // 8A (dueño 23-11): un contacto «directo» ya NO quita «sin verificar» (un kx no prueba nada): solo verificar o agregarse de cerca
+  r.contacto_directo_confirma = !!(c1b && c1b.pkHearsay === 1 && c1b.publicKey === KEY1);
 
   // (3) Otra tarjeta «de oídas»; si luego llega OTRA clave directa, salta el aviso de siempre (clave cambiada / pendingKey).
   A.bi.addSharedContacts([{ nexoId: 'NXBBBBBB02', name: 'DeTarjeta2', publicKey: KEY1, ss: 1 }], 'NXSHARER01', {});

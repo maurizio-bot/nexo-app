@@ -15,6 +15,11 @@
 //   5) (3068, diagnóstico automático S24 13-11 15:04, recién actualizado a la 3045, «enlace_abre_cierra» con el Motorola de app
 //      cerrada): todos esos intentos «sin servicio» NO dan el aviso «abre y cierra» (nunca abrieron nada); un enlace que sí llega
 //      a estar listo y se cae 6 veces en 10 min SÍ lo da.
+//   7) (3283, diagnóstico automático S24 22-11 14:56, build 3117, «enlace_abre_cierra: nx09acdb61 6 desconexiones en 10 min» con el
+//      vivo): el vivo se conecta con otra dirección (rotativa) que la guardada en su contacto → «Enlace ? (0244) desconectado». La
+//      marca «este enlace llegó a estar listo» solo se borraba si el contacto se reconocía por la dirección; con «?» quedaba puesta y
+//      cada intento fallido de reconexión (y los avisos que se juntan con la app oculta: 4 en 10 ms al volver) contaba como otra caída.
+//      Ahora: UNA caída de un enlace listo + 5 avisos sin volver a estar listo = sin aviso; 6 caídas de verdad (listo cada vez) = aviso.
 //   4) con el contacto en pausa y siendo el único «perdido», el bucle de re-búsqueda NO escanea (deja de martillar);
 //      sin pausa, sí escanea.
 // Uso: node noservice.js <dir_build>
@@ -175,11 +180,30 @@ async function openChatWith(p, name) {
   for (let k = 0; k < 6 && readyKey; k++) { biA._dupClosedUntil.set(macN, Date.now() + 60000); biA._notifiedPeers.add(readyKey); nA.emit('onDeviceDisconnected', { deviceId: bMac }); await sleep(40); }
   r.repetido_cerrado_no_es_corte = syms.filter((k) => k === 'enlace_abre_cierra').length - sym6;
   biA._dupClosedUntil.clear();
+  // ---- 7) 3283: dirección distinta de la guardada en el contacto («Enlace ?»): solo cuenta una caída por vez que estuvo listo ----
+  if (biA._flapLog) biA._flapLog.clear(); if (biA._flapSaid) biA._flapSaid.clear();
+  const cts0 = A.win.vaultLoadContacts();
+  A.win.vaultSaveContacts(cts0.map((c) => (String(c.nexoId || c.deviceUUID || '').toLowerCase() === idB ? Object.assign({}, c, { deviceId: '11:22:33:44:55:66' }) : c)));
+  if (macN) biA._macToNexoId.set(macN, idB);
+  const sym7 = syms.filter((k) => k === 'enlace_abre_cierra').length;
+  if (readyKey) biA._notifiedPeers.add(readyKey);
+  for (let k = 0; k < 6 && readyKey; k++) { nA.emit('onDeviceDisconnected', { deviceId: bMac }); await sleep(10); } // 1 caída + 5 avisos sin volver a estar listo
+  await sleep(200);
+  r.otra_direccion_se_reconoce = logs.some((l) => /Enlace \? \(/.test(l));
+  r.otra_direccion_una_caida_no_avisa = syms.filter((k) => k === 'enlace_abre_cierra').length - sym7;
+  r.otra_direccion_olvida_listo = readyKey ? !biA._notifiedPeers.has(readyKey) : false;
+  // contraprueba: 6 caídas de verdad (listo cada vez) con la otra dirección SÍ avisan
+  if (biA._flapLog) biA._flapLog.clear(); if (biA._flapSaid) biA._flapSaid.clear();
+  const sym7b = syms.filter((k) => k === 'enlace_abre_cierra').length;
+  for (let k = 0; k < 6 && readyKey; k++) { biA._notifiedPeers.add(readyKey); nA.emit('onDeviceDisconnected', { deviceId: bMac }); await sleep(40); }
+  r.otra_direccion_seis_caidas_avisa = syms.filter((k) => k === 'enlace_abre_cierra').length - sym7b;
+  A.win.vaultSaveContacts(cts0);
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.conecta && r.hay_enlace && r.papel_enlace_conservado && r.racha_4 && r.pausa_fijada && r.aviso_pausa &&
     r.patron_real_pausa && r.racha_caduca && r.tras_pausa_larga_racha === 10 && r.tras_pausa_larga_vuelve_a_pausar && r.peerready_limpia && r.pausa_no_escanea && r.bucle_sigue_vivo && r.activo_si_escanea &&
-    r.auto_en_pausa_no_conecta && r.manual_en_pausa_si_conecta && r.auto_sin_pausa_si_conecta && r.cortes_sin_servicio_aviso === 0 && r.clave_listo && r.enlace_listo_que_cae_aviso === 1 && r.repetido_cerrado_no_es_corte === 0 && !r.errores.length;
+    r.auto_en_pausa_no_conecta && r.manual_en_pausa_si_conecta && r.auto_sin_pausa_si_conecta && r.cortes_sin_servicio_aviso === 0 && r.clave_listo && r.enlace_listo_que_cae_aviso === 1 && r.repetido_cerrado_no_es_corte === 0 &&
+    r.otra_direccion_se_reconoce && r.otra_direccion_una_caida_no_avisa === 0 && r.otra_direccion_olvida_listo && r.otra_direccion_seis_caidas_avisa === 1 && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NOSERVICE ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_noservice.txt'), logs.join('\n'));

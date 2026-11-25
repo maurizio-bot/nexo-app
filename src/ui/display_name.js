@@ -44,7 +44,6 @@ export function loadDisplayName() {
     return _state.name;
   }).catch(function () { _loaded = true; return _state.name; });
 }
-export function displayNameLoaded() { return _loaded; }
 export function myDisplayName() { return _state.name || ''; }
 /** ¿Ya está fijado (y por tanto no se puede cambiar)? */
 export function displayNameLocked() { return !!(_state.locked && _state.name); }

@@ -85,18 +85,30 @@ export const ackFiles = {
       return self._sendFileJS(deviceId, fileId, data, meta);
     }
     if (_isLanDevice(deviceId)) return self._sendFileJS(deviceId, fileId, data, meta);
+    try { if (data && wd && !(meta && meta.dst) && typeof wd.noteChoice === 'function') wd.noteChoice(deviceId, data.length); } catch (e) {} // 3258: por qué sí/no Wi-Fi Direct (contador del día)
+    // 3261 (diseño del dueño 20-11): este intento por Wi-Fi Direct viene del PLAN POR TIEMPO (el contacto está en línea por internet y
+    // cerca por Bluetooth: ble_blobs.sendFile). Si Wi-Fi Direct no sale, el archivo NO se arrastra por Bluetooth: vuelve a internet.
+    var planned = !!(self._wdPlan && self._wdPlan.has(fileId));
+    if (planned) self._wdPlan.delete(fileId);
+    var planFail = function(why) { var ep = new Error('Wi-Fi Direct no salió (' + why + ')'); ep.code = 'WD_PLAN_FAILED'; return ep; };
+    if (planned && (!data || !wd || !wd.eligible(deviceId, data.length))) return Promise.reject(planFail('no disponible'));
     if (!data || !wd || (meta && meta.dst) || !wd.eligible(deviceId, data.length)) {
       // Vídeo original pensado para Wi-Fi Direct que ya no puede ir por ahí: la app lo manda como previa + HD
       if (meta && meta.wdOnly) { var e0 = new Error('Wi-Fi Direct no disponible'); e0.code = 'WD_FAILED'; return Promise.reject(e0); }
-      return self._sendFileJS(deviceId, fileId, data, meta);
+      return self._sendFileL2OrJS(deviceId, fileId, data, meta);
     }
     var running = self.outgoingStreams.get(fileId);
     if (running && !running.aborted && running._promise) return running._promise;
+    // 3289 (dueño 23-11): el canal rápido del Bluetooth va ANTES que Wi-Fi Direct solo si las medidas de hoy en este teléfono dicen
+    // que es más rápido (l2_fast.fasterThanWd). Si no sale, sigue por aquí mismo: Wi-Fi Direct y, si tampoco, trozos.
+    var l2f = self.ble && self.ble.l2Fast;
+    if (!planned && l2f && !(self._l2Tried && self._l2Tried.has(fileId)) && l2f.eligible(deviceId, data.length) && l2f.fasterThanWd()) return self._sendFileL2OrJS(deviceId, fileId, data, meta, true);
     self._dispatchFileProgress(fileId, 0, 1, 'sending', 1);
     return wd.send(deviceId, fileId, data, self._fileMeta(meta, data.length)).then(function() {
       self._dispatchStatus(fileId, 'delivered');
       self._dispatchFileProgress(fileId, 1, 1, 'delivered', 100);
     }, function(err) {
+      if (planned) throw planFail((err && err.message) || 'error'); // 3261: de vuelta a internet (lo decide ble_blobs.sendFile)
       // v3.7.1: falló Wi-Fi Direct. Si no cabe por Bluetooth (o es el vídeo original, que la app manda por
       // otro camino) → WD_FAILED: quien llama decide (vídeo: previa + HD por Bluetooth; archivo: fallido con
       // aviso). Hasta la 2712 quedaba "pendiente" para siempre (1 % en el emisor). El HD sí va por Bluetooth.
@@ -107,8 +119,31 @@ export const ackFiles = {
         self._dispatchFileProgress(fileId, 0, 1, 'failed', 0);
         throw e;
       }
-      return self._sendFileJS(deviceId, fileId, data, meta);
+      return self._sendFileL2OrJS(deviceId, fileId, data, meta);
     });
+  },
+  // 3288 (COLA 14): por Bluetooth, cuando Wi-Fi Direct no puede (Wi-Fi apagado, el otro no lo tiene, falló hace poco: lo normal en un
+  // vagón o un festival) o acaba de fallar, lo MEDIANO va por el canal rápido del Bluetooth (L2CAP, ~1 MB/s contra ~17 KB/s en trozos)
+  // si los dos lo tienen (l2_fast.js). Si no sale —por lo que sea— va en trozos como siempre: este atajo nunca frena un envío.
+  // Wi-Fi Direct sigue yendo primero cuando puede (decisión del dueño 12-11).
+  // thenBest: si el canal rápido no sale, volver al embudo entero (Wi-Fi Direct y luego trozos) en vez de ir directo a trozos
+  _sendFileL2OrJS(deviceId, fileId, data, meta, thenBest) {
+    var self = this, l2 = self.ble && self.ble.l2Fast;
+    // (un reintento del mismo archivo mientras el canal rápido lo está mandando espera a ese mismo envío: no sale dos veces)
+    if (self._l2Pending && self._l2Pending.has(fileId)) return self._l2Pending.get(fileId);
+    if (!data || !l2 || (meta && (meta.dst || meta.wdOnly)) || (self._l2Tried && self._l2Tried.has(fileId)) || !l2.eligible(deviceId, data.length)) return self._sendFileJS(deviceId, fileId, data, meta);
+    var running = self.outgoingStreams.get(fileId);
+    if (running && !running.aborted && running._promise) return running._promise;
+    (self._l2Tried || (self._l2Tried = new Set())).add(fileId);
+    if (self._l2Tried.size > 200) self._l2Tried.delete(self._l2Tried.values().next().value);
+    self._dispatchFileProgress(fileId, 0, 1, 'sending', 1);
+    var p = l2.send(deviceId, fileId, data, self._fileMeta(meta, data.length)).then(function() {
+      self._l2Pending.delete(fileId);
+      self._dispatchStatus(fileId, 'delivered');
+      self._dispatchFileProgress(fileId, 1, 1, 'delivered', 100);
+    }, function() { self._l2Pending.delete(fileId); return thenBest ? self._sendFileBest(deviceId, fileId, data, meta) : self._sendFileJS(deviceId, fileId, data, meta); });
+    (self._l2Pending || (self._l2Pending = new Map())).set(fileId, p);
+    return p;
   },
   // ===== Fase B/C (2969/2971): BUZÓN DE ARCHIVOS en relés — ver src/net/blob_mailbox.js =====
   // Registro de blobs salientes: fileId → { expires, rec (sk, ids, relays), ptr, to: { cid: 'sent'|'delivered' }, byRef, group }.
@@ -130,6 +165,9 @@ export const ackFiles = {
     var self = this, net = self.ble && self.ble.net;
     var live = self._blobRecord(fileId);
     if (live && live.ptr) return Promise.resolve(live);
+    // 3281: el teléfono (bandeja de salida nativa) lo tenía a su cargo con la app dormida: si ya subió todos los trozos, se sigue con eso
+    // (no se vuelve a subir nada); si no, se olvida y lo sube la app de cero
+    if (live && live.natPtr) return self._blobNatTake(fileId, live).then(function(rec) { return rec || self._stageBlobOnce(fileId, data, meta); });
     var ref = meta && meta.blobPtr;
     if (pointerReusable(ref)) {
       var recRef = { expires: ref.expires * 1000, rec: null, ptr: ref, to: {}, byRef: true };
@@ -154,6 +192,28 @@ export const ackFiles = {
     var clear = function() { self._blobOutRunning.delete(fileId); };
     p.then(clear, clear);
     return p;
+  },
+  // 3281: ¿qué hizo el nativo con el archivo que se le dejó (ble_outbox._outboxFileItem)? Resuelve con el registro ya «en los relés»
+  // (y, si también dejó el aviso en el buzón, anotado como mandado a ese contacto) o con null (no terminó: se olvida y lo retira).
+  _blobNatTake(fileId, live) {
+    var self = this, ble = self.ble, pl = ble && ble.nativePlugin;
+    var drop = function(why) {
+      if (self._blobOut.get(fileId) === live) { self._blobOut.delete(fileId); saveBlobOut(self._blobOut); }
+      try { if (ble && typeof ble._outboxDrop === 'function') ble._outboxDrop(fileId, true); } catch (e) {}
+      console.log('[BLOB] ' + fileId + ': el teléfono no terminó de subirlo con la app dormida (' + why + '): lo sube la app');
+      return null;
+    };
+    if (!pl || typeof pl.netOutboxList !== 'function') return Promise.resolve(drop('sin bandeja nativa'));
+    return Promise.resolve().then(function() { return pl.netOutboxList({}); }).then(function(r) {
+      var x = ((r && r.items) || []).filter(function(y) { return y && y.id === fileId; })[0];
+      if (!x || !(x.ck > 0) || x.up < x.ck) return drop(x ? (x.up + ' de ' + x.ck + ' trozos') : 'ya no lo tiene'); // i18n-ok: registro
+      live.ptr = live.natPtr; delete live.natPtr;
+      if (x.ok && live.nat) { live.to = live.to || {}; if (!live.to[live.nat]) live.to[live.nat] = 'sent'; }
+      saveBlobOut(self._blobOut);
+      console.log('[BLOB] ' + fileId + ': el teléfono ya subió sus ' + x.ck + ' trozo(s) con la app dormida' + (x.ok ? ' y dejó el aviso en el buzón' : '') + ': no se vuelve a subir');
+      try { if (ble && typeof ble._outboxDrop === 'function') ble._outboxDrop(fileId, true); } catch (e) {} // desde aquí sigue la app (el aviso, la ✓✓)
+      return live;
+    }).catch(function() { return drop('no contestó'); });
   },
   // El puntero (chiquito, E2E) a UN destinatario por su buzón normal; se anota a quién fue (la limpieza espera a TODOS)
   _sendBlobPointer(cid, fileId, rec, meta) {
@@ -187,6 +247,8 @@ export const ackFiles = {
     if (live && live.to && live.to[cid]) { console.log('[BLOB] ' + fileId + ' ya está en el buzón de ' + cid + ' (puntero vigente hasta ' + new Date(live.expires).toISOString() + '): no se vuelve a mandar'); return Promise.resolve(); }
     return self._stageBlobOnce(fileId, data, meta).then(function(rec) {
       self._rememberBlobPtr(cid, fileId, rec.ptr);
+      // 3281: el nativo ya dejó también el aviso en su buzón con la app dormida: ✓ y nada más que mandar
+      if (rec.to && rec.to[cid]) { self._dispatchStatus(fileId, 'sent'); return; }
       return self._sendBlobPointer(cid, fileId, rec, meta);
     }).catch(function(e) {
       // «⏳, nunca ✗» (contratos §7): si ningún relé guardó un trozo o se cayó internet a mitad, el archivo queda PENDIENTE y

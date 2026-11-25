@@ -11,6 +11,9 @@ export const bleNativeEvents = {
     if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
     var self = this;
     this._nativeDeviceFoundListener = this.nativePlugin.addListener('onDeviceFound', function(data) { self._onScanFound(data); });
+    // 23-11 (multitud / EDC): con muchos teléfonos cerca el nativo junta los avisos del escaneo en una tanda (ScanBook.kt), los más
+    // cercanos primero. Un contacto con algo esperando sigue llegando suelto y al momento (onDeviceFound).
+    this._nativeDevicesFoundListener = this.nativePlugin.addListener('onDevicesFound', function(data) { self._onScanBatch(data && data.list); });
     this._nativeScanFailedListener = this.nativePlugin.addListener('onScanFailed', function(data) {
       self._onScanFailed(data);
     });
@@ -23,6 +26,17 @@ export const bleNativeEvents = {
     this._nativeScanStoppedListener = this.nativePlugin.addListener('onScanStopped', function() {
       try { if (self.isScanning) { self.isScanning = false; self._autoScanActive = false; self.updateScanButton(); } } catch (e) {}
     });
+  },
+
+  // Una tanda de avisos del escaneo: se atiende por partes (40 y se cede el paso) para no trabar la pantalla con cientos de golpe
+  _onScanBatch(list) {
+    if (!Array.isArray(list) || !list.length) return;
+    var self = this, i = 0;
+    (function step() {
+      var end = Math.min(list.length, i + 40);
+      for (; i < end; i++) { try { self._onScanFound(list[i]); } catch (e) {} }
+      if (i < list.length) setTimeout(step, 0);
+    })();
   },
 
   _onScanFound(data, retried) {
@@ -143,9 +157,14 @@ export const bleNativeEvents = {
       } catch (e) {}
     });
 
-    this._nativeDeviceDisconnectedListener = this.nativePlugin.addListener('onDeviceDisconnected', function(data) {
+    this._nativeDeviceDisconnectedListener = this.nativePlugin.addListener('onDeviceDisconnected', function(data) { self._onNativeDisconnected(data); });
+  },
+
+  // 3250: el manejo de «enlace desconectado», aparte para poder usarlo también al apagarse el Bluetooth (ble_connections._onBtState)
+  _onNativeDisconnected(data) {
+    var self = this;
       try {
-        var deviceId = data.deviceId || '';
+        var deviceId = (data && data.deviceId) || '';
         if (!deviceId) return;
         // Si la desconexión es por pausa de cámara, no limpiar mapeos ni lanzar eventos de "offline"
         if (self._cameraBlePaused) {
@@ -168,9 +187,9 @@ export const bleNativeEvents = {
         // acaba de cerrar (Dedup) contaba también como «desconexión»: con sus cierres por repetido ya contados aparte, daba un
         // aviso falso de enlace que se cae (y un diagnóstico de 20 KB por la radio). Lo cerrado por la deduplicación no cuenta.
         var dupClosed = !!(self._dupClosedUntil && (self._dupClosedUntil.get(_normMac(deviceId)) || 0) > Date.now());
-        if (typeof self._noteLinkFlap === 'function' && flapNx && !dupClosed && self._notifiedPeers.has(_normMac(deviceId) + ':' + _normId(flapNx))) self._noteLinkFlap(flapNx, 'desconexion'); // 3020
+        if (typeof self._noteLinkFlap === 'function' && flapNx && !dupClosed && data.reason !== 'bt_off' && self._notifiedPeers.has(_normMac(deviceId) + ':' + _normId(flapNx))) self._noteLinkFlap(flapNx, 'desconexion'); // 3020
         var prevSt = self._getDeviceState(deviceId) || {};
-        var cutClient = !dupClosed && prevSt.role === 'client' && (prevSt.state === BLE_STATES.READY_TO_CHAT || prevSt.state === BLE_STATES.NOTIFICATIONS_READY);
+        var cutClient = !dupClosed && data.reason !== 'stuck' && prevSt.role === 'client' && (prevSt.state === BLE_STATES.READY_TO_CHAT || prevSt.state === BLE_STATES.NOTIFICATIONS_READY);
         self.connectedDevices.delete(deviceId);
         self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
         // 3167b (diagnóstico S24↔realme 3075 16-11 15:17): el otro cortó un enlace nuestro de CLIENTE (p. ej. su desempate de
@@ -192,10 +211,17 @@ export const bleNativeEvents = {
           var cutNx = _normId(flapNx);
           Array.from(self._peerCutUntil.keys()).forEach(function(k) { if (_normId(self._macToNexoId.get(k) || '') === cutNx) self._peerCutUntil.delete(k); });
         }
+        // 3265 (vivoarriba.js con la fase 2): el freno de 15 s del «quién soy» (kx) es por CONEXIÓN; si el enlace se cae y vuelve antes de
+        // 15 s, el otro lado se quedaba sin saber de quién era el enlace nuevo («Enlace ? …») y no reenviaba lo pendiente
+        if (self._kxSentAt) { var kxM = _normMac(deviceId); delete self._kxSentAt[kxM]; delete self._kxSentAt[kxM + ':rq']; }
         self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.OFFLINE, since: Date.now() });
         self._lastPongTime.delete(deviceId);
         self._pingFailCount.delete(deviceId);
-        if (peerUUID) { var key = _normMac(deviceId) + ':' + _normId(peerUUID); self._notifiedPeers.delete(key); }
+        // 3283 (diagnóstico automático S24 22-11 14:56, build 3117, «6 desconexiones en 10 min» con el vivo): con una dirección distinta
+        // de la guardada en su contacto («Enlace ? …») la marca «llegó a estar listo» no se borraba y cada reintento fallido o aviso
+        // repetido contaba como otra caída. Se borra también por el NEXO ID de la dirección (flapNx).
+        var notiNx = peerUUID || flapNx;
+        if (notiNx) { var key = _normMac(deviceId) + ':' + _normId(notiNx); self._notifiedPeers.delete(key); }
         if (peerUUID) {
           var contacts = _getBLEContacts();
           var idx = contacts.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(peerUUID); });
@@ -231,7 +257,6 @@ export const bleNativeEvents = {
         _safeDispatchEvent('nexo:ble:deviceDisconnected', { deviceId: deviceId, deviceUUID: peerUUID });
         if (self.isAdvertising) self._kickAdvertising(); // 3203: agrupado (una ráfaga de desconexiones = un solo startAdvertising)
       } catch (e) {}
-    });
   },
 
   // 3203 (diagnóstico de Roberto, Motorola edge 40 neo 3087, 17-11 09:32): al volver a la app, 24 «[ADVERTISING] startAdvertising»
@@ -324,6 +349,11 @@ export const bleNativeEvents = {
       if (state === BLE_STATES.CONNECTING) stateObj.connAt = (prevC && prevC.state === BLE_STATES.CONNECTING && prevC.connAt) || Date.now();
       else if (prevC && prevC.connAt && (state === BLE_STATES.READY_TO_CHAT || state === BLE_STATES.NOTIFICATIONS_READY)) { try { if (typeof window.NEXO_noteConnect === 'function') window.NEXO_noteConnect('bluetooth', Date.now() - prevC.connAt); } catch (e) {} }
       else if (prevC && prevC.connAt && state !== BLE_STATES.DISCONNECTED) stateObj.connAt = prevC.connAt;
+    }
+    // 3262: cuándo se abrió ESTE enlace (se conserva entre sus cambios de estado; al caerse se olvida). El desempate de enlaces
+    // repetidos del mismo papel se queda con el más reciente (antes miraba `since`, que nadie ponía: siempre 0)
+    if (state !== BLE_STATES.DISCONNECTED && state !== BLE_STATES.ERROR) {
+      stateObj.openedAt = (prevC && prevC.openedAt && prevC.state !== BLE_STATES.DISCONNECTED && prevC.state !== BLE_STATES.ERROR) ? prevC.openedAt : Date.now();
     }
     // 3027: el papel del enlace (cliente/servidor) se conserva entre cambios de estado del MISMO enlace (lo usa el dedup
     // para desempatar igual que el otro teléfono); al desconectarse se olvida

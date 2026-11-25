@@ -7,6 +7,7 @@ import { t } from './i18n.js';
 import { BLE_STATES, _getBLEContacts, _lanId, _netId, _netNx, _normId, _normMac, _safeDispatchEvent, _saveBLEContacts, _vNx } from './ble_helpers.js';
 import { myProfile, maskPhone, maskEmail } from './profile_data.js'; // #dueño 04-11 (perfil 2b): datos enmascarados en la solicitud
 import { takeInviteCode, inviteCodeOk } from './invite.js'; // 3129: enlace de invitación
+import { isBlocked } from './bloqueo.js'; // bloquear contacto (24-11)
 
 // #dueño 04-11 (regla de caminos): cuando el Bluetooth SUELTA un mensaje (enlace muerto/atascado, p. ej. MTU 23), ese
 // enlace se considera muerto este rato y NO se elige para enviar → el resolvedor cae a internet/Wi-Fi («internet antes
@@ -77,6 +78,10 @@ export const BLE_LINK_METHODS = {
     this._bleDeadUntil.set(nd, until);
     var nx = _normId(this._macToNexoId.get(nd));
     if (!nx) return;
+    // 24-11 (diagnóstico S24 07:38, puente con Roberto): el enlace por el que un vecino me PRESTA su internet no se da por muerto por una
+    // escritura soltada en la ráfaga del arranque (saludos y suscripciones): era mi único camino a internet; al marcarlo muerto el desempate
+    // cerraba sus dos enlaces y se reconectaba 3 veces en 10 min. El puente reintenta lo suyo en orden (gw_link _txPump).
+    try { if (this.net && this.net.gw && this.net.gw.isBridge(nx)) { this._bleDeadUntil.delete(nd); console.log('[BLEInterface] BT de ' + nx + ' soltó un mensaje, pero es mi puente a internet: no lo doy por muerto'); return; } } catch (e) {}
     // Android usa VARIAS direcciones BT para el mismo NEXO (anunciar vs conectar); con MTU 23 suelen estar todas igual de
     // mal. Marco muertas TODAS las de este contacto → el resolvedor cae a internet de una, sin ir dirección por dirección.
     this._deviceStates.forEach(function (st, key) {
@@ -239,6 +244,7 @@ export const BLE_LINK_METHODS = {
     var self = this, nx = _normId(info && info.id), pk = info && info.pk, name = (info && info.name) || '';
     if (!/^nx[0-9a-z]{8}$/.test(nx) || typeof pk !== 'string') return;
     if (_getBLEContacts().some(function(c) { return _normId(c.nexoId || c.deviceUUID) === nx; })) return; // ya es contacto
+    if (isBlocked(nx)) { console.log('[BLOQUEO] Solicitud de ' + nx + ' (bloqueado): descartada'); return; } // bloqueo (24-11)
     var out = self._reqStore('nexo_req_out');
     var isMyAcc = info.kind === 'acc' && out.some(function(x) { return x.id === nx; });
     // Anti-IA: frenar una inundación de solicitudes antes de tocar nada (buzón, avisos). El exceso se descarta en silencio.
@@ -255,7 +261,11 @@ export const BLE_LINK_METHODS = {
     // saliente pendiente, y se colaba como «ese contacto» sin que te enteraras (hombre en el medio). Ahora TODA 'acc'/'req'
     // va a la BANDEJA para confirmarla a conciencia; al confirmar se agrega «sin verificar» y conviene comparar el número de
     // seguridad. La 'acc' a una solicitud mía se marca (acc:true) para mostrarla como «aceptó tu solicitud».
-    if (isMyAcc) self._reqSave('nexo_req_out', out.filter(function(x) { return x.id !== nx; })); // ya respondió: fuera de salientes
+    // CI 3298 (solicitudcerca N5): una 'acc' con OTRA llave que la que ese teléfono me dijo de cerca NO consume mi solicitud
+    // saliente (antes la borraba y, cuando llegaba la aceptación buena, ya no se reconocía: se quedaba sin agregar)
+    var kxE = self._kxPeers && self._kxPeers.get(nx), wantPk = (outE && outE.pk) || (kxE && kxE.pk) || '';
+    var wrongKey = !!(outE && outE.near && wantPk && wantPk !== pk);
+    if (isMyAcc && !wrongKey) self._reqSave('nexo_req_out', out.filter(function(x) { return x.id !== nx; })); // ya respondió: fuera de salientes
     var all = self._reqStore('nexo_req_in'), prev = all.find(function(x) { return x.id === nx; });
     // 3129: trae el código de una invitación MÍA vigente → «aceptó tu invitación» (un uso). Se sigue aceptando a mano (SEC-2).
     var inv = !!(prev && prev.inv) || (!isMyAcc && !!(info && info.ic) && takeInviteCode(info.ic, true));
@@ -265,6 +275,27 @@ export const BLE_LINK_METHODS = {
     _safeDispatchEvent('nexo:ble:reqIncoming', { id: nx, name: name, count: inbox.length, acc: isMyAcc });
   },
 
+  // 7A (23-11): alguien que no es contacto me escribe: a Solicitudes («te escribió»), con el mismo freno anti-inundación, y su mensaje
+  // queda retenido (en memoria: si la app se cierra antes de aceptar, el otro lo vuelve a mandar porque no recibió ✓✓)
+  _msgRequest(nx, name, pk, release, msgId) {
+    var self = this;
+    if (typeof pk !== 'string' || !/^[A-Za-z0-9+/=]{80,100}$/.test(pk)) return;
+    var all = self._reqStore('nexo_req_in'), prev = all.find(function(x) { return x.id === nx; });
+    if (!prev && !self._reqFlood(nx, false)) return;
+    if (prev && prev.pk && prev.pk !== pk) { console.warn('[REQ] ' + nx + ' escribe con otra clave que su solicitud: retenido sin cambiarla'); return; }
+    self._held = self._held || [];
+    if (!(msgId && self._held.some(function(h) { return h.id === msgId; }))) {
+      self._held.push({ nx: nx, release: release, id: msgId || null, ts: Date.now(), req: 1 });
+      if (self._held.length > 50) self._held.shift();
+    }
+    if (!prev) {
+      all.unshift({ id: nx, pk: pk, name: String(name || '').replace(/[<>]/g, '').substring(0, 40), ph: '', em: '', at: Date.now(), acc: false, inv: false, near: 0, dev: '', msg: 1 });
+      self._reqSave('nexo_req_in', all);
+      console.log('[REQ] ' + nx + ' (no es contacto) me escribió: a Solicitudes');
+      _safeDispatchEvent('nexo:ble:reqIncoming', { id: nx, name: name || '', count: all.length, msg: true });
+    }
+  },
+
   pendingRequests() { return this._reqStore('nexo_req_in'); },
 
   // Aceptar una solicitud entrante: agrego su clave (sin verificar), le aviso (acc) y el canal se enciende
@@ -272,6 +303,16 @@ export const BLE_LINK_METHODS = {
     var self = this, nx = _normId(id);
     var inbox = self._reqStore('nexo_req_in'), req = inbox.find(function(x) { return x.id === nx; });
     if (!req || !req.pk) return Promise.reject(new Error(t('add_err_gone', 'Esa solicitud ya no está')));
+    // 7A (23-11): «te escribió»: se agrega (la clave vino de él mismo, cifrando su mensaje) y aparece lo que mandó
+    if (req.msg) {
+      self.addSharedContacts([{ nexoId: nx, name: req.name || '', publicKey: req.pk }], null, { quiet: true });
+      self._reqSave('nexo_req_in', inbox.filter(function(x) { return x.id !== nx; }));
+      var heldM = (self._held || []).filter(function(h) { return h.nx === nx; });
+      self._held = (self._held || []).filter(function(h) { return h.nx !== nx; });
+      heldM.forEach(function(h) { try { h.release(); } catch (e) {} });
+      _safeDispatchEvent('nexo:ble:reqIncoming', { count: self._reqStore('nexo_req_in').length });
+      return Promise.resolve();
+    }
     // 3207: llegó de CERCA: se agrega como un teléfono cercano (su dirección y su paquete del kx) y se le contesta por el enlace
     // directo; también por internet si hay (allí, con la misma llave, también queda agregado)
     if (req.near && typeof self._nearAddContact === 'function') {
@@ -297,6 +338,7 @@ export const BLE_LINK_METHODS = {
   // Eliminar una solicitud entrante (no se agrega nada)
   rejectRequest(id) {
     var self = this, nx = _normId(id);
+    self._held = (self._held || []).filter(function(h) { return !(h.nx === nx && h.req); }); // 7A: lo que escribió se tira
     self._reqSave('nexo_req_in', self._reqStore('nexo_req_in').filter(function(x) { return x.id !== nx; }));
     _safeDispatchEvent('nexo:ble:reqIncoming', { count: self._reqStore('nexo_req_in').length });
   },

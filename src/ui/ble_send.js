@@ -1,4 +1,6 @@
 import { _normId, _isGenericName, _getBLEContacts, _saveBLEContacts, _lanNx, _netNx, _normMac, _hasNativeMethod, _isControlPacket, _safeNativeCall, _vaultUpdateMessageStatus, BLE_STATES, _failStatus, _isPathDev, _netId } from './ble_helpers.js';
+import { e2eAckTag } from '../vault/e2e_crypto.js';
+import { isBlocked, isGroupWire } from './bloqueo.js';
 // Build 2836 (pedido del dueño): margen para la «red de seguridad de entrega». Si un mensaje enviado por Bluetooth no
 // se confirma «entregado» en este tiempo, se deja además en el buzón de relés (dispara el toque FCM de alta prioridad).
 var DELIVERY_SAFETY_MS = 10000;
@@ -74,6 +76,50 @@ export const BLE_SEND_METHODS = {
     else if (!/^nx[0-9a-z]{8}$/.test(real) && _normId(this._macToNexoId.get(nd) || '') === wrong) { this._macToNexoId.delete(nd); if (_normMac(this._nexoIdToMac.get(wrong) || '') === nd) this._nexoIdToMac.delete(wrong); }
   },
 
+  // El sobre v1 «chat» de un mensaje (3268: sacado tal cual de _sendMessageNative para que la bandeja de salida nativa, ble_outbox.js,
+  // arme EXACTAMENTE el mismo paquete que el envío normal). content = el texto ya cifrado de punta a punta (o el adjunto).
+  _chatEnv(content, msgId, msgSeq, dst) {
+    var self = this;
+    var senderId = self.localNexoId || self.localDeviceUUID;
+    var payloadObj = { text: content, senderNexoId: senderId, senderName: self.localDeviceName || 'Nexo Device', timestamp: Date.now() };
+    if (content && content.charAt(0) === '{') {
+      try {
+        var parsedContent = JSON.parse(content);
+        if (parsedContent && parsedContent.type === 'attachment') payloadObj.attachment = parsedContent;
+      } catch (e) {}
+    }
+    var env = { v: 1, type: 'chat', from: senderId, to: dst ? _normId(dst) : '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj, ss: 1, nt: 1 };
+    // Ronda 2758: acción oculta (borrar para todos…): si el otro tiene la app cerrada, sin notificación
+    if (self._quietOut && self._quietOut.has(msgId)) env.q = 1;
+    // Ronda 2763: mensaje de grupo directo (no por Jump): el id del grupo (al azar, sin nombre) va por fuera para que
+    // el aviso con la app cerrada lleve el nombre del grupo (BgInbox.kt)
+    if (!dst && self._groupOut && self._groupOut.has(msgId)) env.g = self._groupOut.get(msgId);
+    // Ronda 2759: oferta de llamada: con la app del otro cerrada, su aviso dice "Llamada entrante" (BgInbox.kt)
+    if (self._callOut && self._callOut.has(msgId)) env.cl = 1;
+    if (self._callVideoOut && self._callVideoOut.has(msgId)) env.cv = 1; // 3089: videollamada (el aviso nativo lo dice)
+    // 3087: «colgar» del que llama: el id de su oferta por fuera, para que el nativo del otro deje de sonar con la app cerrada
+    if (self._callEndOut && self._callEndOut.has(msgId)) env.ce = self._callEndOut.get(msgId);
+    return env;
+  },
+
+  // Decisión del dueño 23-11 (2A, auditoría S-A1/T-D3): SELLO DE PAREJA. Cada mensaje lleva `sl` = HMAC con la clave de la pareja
+  // (la de las confirmaciones, e2eAckTag) de «msg|msgId|de|para». Con la app del otro cerrada o dormida, su parte nativa solo guarda,
+  // avisa y confirma (✓✓) un mensaje cuyo sello cuadra: alguien cerca ya no puede hacer sonar avisos con el nombre de un contacto ni
+  // pedir una ✓✓ firmada de un mensaje que no llegó. Milisegundos (un HMAC); el mismo sello en cada reintento.
+  _pairSeal(msgId, to) {
+    var self = this, nx = _normId(to), me = _normId(self.localNexoId);
+    if (!msgId || !/^nx[0-9a-z]{8}$/.test(nx) || !/^nx[0-9a-z]{8}$/.test(me)) return Promise.resolve('');
+    var cache = self._sealCache || (self._sealCache = new Map());
+    var ck = msgId + '|' + nx;
+    if (cache.has(ck)) return Promise.resolve(cache.get(ck));
+    var c = (_getBLEContacts() || []).find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c || !c.publicKey) return Promise.resolve(''); // 5A: con la clave aceptada
+    return e2eAckTag(c.publicKey, 'msg|' + msgId + '|' + me + '|' + nx).then(function(sl) {
+      if (sl) { cache.set(ck, sl); if (cache.size > 2000) cache.delete(cache.keys().next().value); }
+      return sl || '';
+    }).catch(function() { return ''; });
+  },
+
   _sendMessageNative(deviceId, content, messageId, seq, dst) {
     var self = this;
     return new Promise(function(resolve, reject) {
@@ -89,6 +135,7 @@ export const BLE_SEND_METHODS = {
       var knownMac = self._nexoIdToMac.get(_normId(deviceId));
       if (knownMac && !self._macOfOther(knownMac, deviceId)) targetId = knownMac;
       var outgoing = content;
+      var ready = Promise.resolve(); // 2A: el sello de pareja (asíncrono) se pone antes de mandar
       // Ronda 2764: un sobre sellado de Jump va tal cual a quien lo entiende (kx ss:1). Antes el puente lo metía en un
       // mensaje suyo y el teléfono siguiente (su parte nativa, con la app en segundo plano o cerrada) avisaba de
       // "Mensaje nuevo" por un paquete que solo estaba de paso
@@ -96,27 +143,9 @@ export const BLE_SEND_METHODS = {
       if (content && content.indexOf('"type":"sx"') >= 0) { try { sxIn = JSON.parse(content); } catch (e) {} if (!sxIn || sxIn.type !== 'sx') sxIn = null; }
       var sxRaw = !!(sxIn && !dst && self.hopSeals(deviceId));
       if (!sxRaw && !_isControlPacket(content)) {
-        var senderId = self.localNexoId || self.localDeviceUUID;
         var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
         var msgSeq = (typeof seq === 'number') ? seq : self.getNextSeq();
-        var payloadObj = { text: content, senderNexoId: senderId, senderName: self.localDeviceName || 'Nexo Device', timestamp: Date.now() };
-        if (content && content.charAt(0) === '{') {
-          try {
-            var parsedContent = JSON.parse(content);
-            if (parsedContent && parsedContent.type === 'attachment') payloadObj.attachment = parsedContent;
-          } catch (e) {}
-        }
-        var env = { v: 1, type: 'chat', from: senderId, to: dst ? _normId(dst) : '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj, ss: 1, nt: 1 };
-        // Ronda 2758: acción oculta (borrar para todos…): si el otro tiene la app cerrada, sin notificación
-        if (self._quietOut && self._quietOut.has(msgId)) env.q = 1;
-        // Ronda 2763: mensaje de grupo directo (no por Jump): el id del grupo (al azar, sin nombre) va por fuera para que
-        // el aviso con la app cerrada lleve el nombre del grupo (BgInbox.kt)
-        if (!dst && self._groupOut && self._groupOut.has(msgId)) env.g = self._groupOut.get(msgId);
-        // Ronda 2759: oferta de llamada: con la app del otro cerrada, su aviso dice "Llamada entrante" (BgInbox.kt)
-        if (self._callOut && self._callOut.has(msgId)) env.cl = 1;
-        if (self._callVideoOut && self._callVideoOut.has(msgId)) env.cv = 1; // 3089: videollamada (el aviso nativo lo dice)
-        // 3087: «colgar» del que llama: el id de su oferta por fuera, para que el nativo del otro deje de sonar con la app cerrada
-        if (self._callEndOut && self._callEndOut.has(msgId)) env.ce = self._callEndOut.get(msgId);
+        var env = self._chatEnv(content, msgId, msgSeq, dst);
         // Sobre de paso hacia una build anterior (lo desenvuelve como texto del puente): sin aviso si no es para ella
         if (sxIn && _normId(sxIn.to) !== self._destNx(deviceId)) env.q = 1;
         // Ronda 2764: a quién va (el que lo recibe lo ignora si no es él; ver _prePayload). Se fija la primera vez: un
@@ -141,6 +170,8 @@ export const BLE_SEND_METHODS = {
         }
         if (dn0) env.dn = dn0;
         outgoing = JSON.stringify(env);
+        var sealTo = dst ? _normId(dst) : dn0;
+        if (sealTo) ready = self._pairSeal(msgId, sealTo).then(function(sl) { if (sl) { env.sl = sl; outgoing = JSON.stringify(env); } });
       }
       var send = function(out) {
         if (viaLan) { self.lan.send(viaLan, out).then(resolve).catch(reject); return; }
@@ -160,14 +191,16 @@ export const BLE_SEND_METHODS = {
           })
           .catch(reject);
       };
-      // v6.11.0: por Jump (dst), en sobre sellado para el destino: los puentes no ven quién lo manda
-      if (dst && !_isControlPacket(content) && self.hopSeals(deviceId)) {
-        var mid = null;
-        try { mid = JSON.parse(outgoing).msgId; } catch (e) {}
-        self._sealString(dst, outgoing, mid).then(send).catch(function() { send(outgoing); });
-        return;
-      }
-      send(outgoing);
+      ready.then(function() {
+        // v6.11.0: por Jump (dst), en sobre sellado para el destino: los puentes no ven quién lo manda
+        if (dst && !_isControlPacket(content) && self.hopSeals(deviceId)) {
+          var mid = null;
+          try { mid = JSON.parse(outgoing).msgId; } catch (e) {}
+          self._sealString(dst, outgoing, mid).then(send).catch(function() { send(outgoing); });
+          return;
+        }
+        send(outgoing);
+      });
     });
   },
 
@@ -256,6 +289,8 @@ export const BLE_SEND_METHODS = {
       try {
         var uuid = _normId(deviceUUID);
         if (!uuid) { reject(new Error('deviceUUID vacio')); return; }
+        // Bloqueo (dueño 24-11): a un contacto bloqueado no le sale nada mío (mensajes, llamadas, estados, foto, datos); lo de grupo sí
+        if (isBlocked(uuid) && !isGroupWire(content)) { var be = new Error('Contacto bloqueado'); be.code = 'BLOCKED'; reject(be); return; }
         var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
         var msgSeq = (typeof seq === 'number') ? seq : self.getNextSeq();
         // Ronda 2766: a quién va, desde el principio (dn del paquete y para quién se cifra)
@@ -357,6 +392,7 @@ export const BLE_SEND_METHODS = {
         if (!isConnecting && !_isPathDev(deviceId) && typeof self._btNearby === 'function' && !self._btNearby(uuid)) self._btFarSkip(uuid, 'al mandar');
         else if (!isConnecting && !_isPathDev(deviceId) && !(typeof self._btPaused === 'function' && self._btPaused(uuid)) && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
           console.log('[BLEInterface] sendChatMessage: forcing connectToDevice for', deviceId);
+          try { self._linkRoom({ nx: uuid, why: 'pendientes' }); } catch (eL) {} // 3276: un mensaje que sale hace sitio si los enlaces están llenos
           _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId }).catch(function() {});
         }
       } catch (fatal) { reject(fatal); }

@@ -19,13 +19,20 @@ import IT from './i18n/it.js';
 import EN from './i18n/en.js';
 import PT from './i18n/pt.js'; // 3123 (dueño 15-11): portugués de Brasil
 import FR from './i18n/fr.js'; // 3123: francés
+// 22-11: segunda parte de cada idioma (la primera llegó al tope de 1000 líneas por archivo); los textos nuevos van en <idioma>_b.js
+import ES_B from './i18n/es_b.js';
+import IT_B from './i18n/it_b.js';
+import EN_B from './i18n/en_b.js';
+import PT_B from './i18n/pt_b.js';
+import FR_B from './i18n/fr_b.js';
 
 export var LANGS = ['es', 'it', 'en', 'pt', 'fr'];
 export var LANG_NAMES = { es: 'Español', it: 'Italiano', en: 'English', pt: 'Português (Brasil)', fr: 'Français' };
 
 // Textos: un archivo por idioma en src/ui/i18n/ (reestructuración 15-11, tools/partir_i18n.cjs). El español es el texto original
 // (el simulador se fija a español, así que las pruebas que comprueban textos en español siguen pasando) y el respaldo de todos.
-var TABLES = { es: ES, it: IT, en: EN, pt: PT, fr: FR };
+function _join(a, b) { var o = {}, k; for (k in a) o[k] = a[k]; for (k in b) o[k] = b[k]; return o; }
+var TABLES = { es: _join(ES, ES_B), it: _join(IT, IT_B), en: _join(EN, EN_B), pt: _join(PT, PT_B), fr: _join(FR, FR_B) };
 
 // El idioma del teléfono (navigator.language), reducido a dos letras; si no es uno de los nuestros → español.
 function detectLang() {

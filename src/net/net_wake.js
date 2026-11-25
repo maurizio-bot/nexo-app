@@ -2,7 +2,33 @@ import { wakePost } from './wake_post.js';
 import { DEFAULT_SENDER, _nid, CALL_WAKE_MIN_MS, WAKE_MIN_MS, XFER_WAKE_MIN_MS, _plugin } from './net_link_shared.js';
 // Métodos de NetLink: DESPERTAR: el toque (FCM) a un teléfono dormido y mantenerlo despierto en una transferencia.
 // Reestructuración 15-11: movidos TAL CUAL desde net_link.js, que los une a la clase (como métodos normales).
+var SEAL_ASK_MS = 6 * 3600000, SEAL_LOOK_MS = [20000, 120000];
 export const netWake = {
+
+  // 14A (decisión del dueño 23-11, auditoría T-P1): el «toque» sellado. Lo que se comparte con los contactos para despertar este
+  // teléfono es su SELLO (s1.…, el token cifrado por el enviador), no el token: el enviador manda el sello SOLO al propio teléfono (por
+  // FCM, lo guarda el nativo) y, cuando exija toques sellados, nadie que no sea contacto podrá gastarle batería. Sin sello aún (enviador
+  // viejo, sin red), se sigue con el token como siempre y se pide el sello como mucho cada 6 h: nunca se deja de poder despertar.
+  _wakeSeal(ft) {
+    var self = this;
+    if (!ft || !ft.token) return;
+    if (ft.sealed) { if (self.fcmToken !== ft.sealed) { self.fcmToken = ft.sealed; console.log('[NET] Toque sellado: a los contactos va el sello, no el token'); } return; } // i18n-ok: registro
+    self.fcmToken = ft.token;
+    var url = self.senderUrl(), now = Date.now(), st = self.state || {};
+    if (!url || now - (Number(st.sealAskAt) || 0) < SEAL_ASK_MS) return;
+    st.sealAskAt = now; if (typeof self._saveState === 'function') self._saveState();
+    var f = (typeof self.wakeFetch === 'function' && self.wakeFetch()) || (typeof fetch === 'function' ? fetch : null);
+    if (!f) return;
+    Promise.resolve().then(function() { return f(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify({ seal: ft.token }) }); })
+      .then(function(res) { console.log('[NET] Sello del toque pedido al enviador (' + ((res && res.status) || '?') + '): llega por FCM al nativo'); }, function() {}); // i18n-ok: registro
+    SEAL_LOOK_MS.forEach(function(ms) {
+      setTimeout(function() {
+        var pl = _plugin();
+        if (!pl || typeof pl.getFcmToken !== 'function' || self.fcmToken !== ft.token) return;
+        Promise.resolve(pl.getFcmToken()).then(function(x) { if (x && x.token === ft.token && x.sealed) self._wakeSeal(x); }, function() {});
+      }, ms);
+    });
+  },
 
   // FCM «despertador» (#87, Fase 2): URL del enviador (Cloud Function del dueño). Por defecto la estándar del proyecto;
   // se puede cambiar (setSender) si el despliegue da otra. Vacía = despertador apagado (no se piden toques).
@@ -31,7 +57,7 @@ export const netWake = {
       var self = this;
       if (why) console.log('[WAKE] toque a ' + _nid(nx) + ' (' + why + '): que su app esté despierta antes de que salga algo pesado'); // i18n-ok
       if (viaGw) { this.gw.wake(peer.fcmToken); return; }
-      wakePost(url, peer.fcmToken)
+      wakePost(url, peer.fcmToken, typeof this.wakeFetch === 'function' ? this.wakeFetch() : undefined)
         .then(function(res) {
           // 3245 (dueño 18-11): que el diagnóstico diga si el toque salió de verdad (antes no quedaba rastro)
           if (why) console.log('[WAKE] toque a ' + _nid(nx) + (res.opaque ? ': salió (el enviador no deja leer su respuesta)' : ': el enviador contestó ' + res.status)); // i18n-ok
@@ -59,7 +85,7 @@ export const netWake = {
       if (peer._xferWakeAt && (now - peer._xferWakeAt) < minMs) return false;
       peer._xferWakeAt = now;
       var self = this;
-      wakePost(url, peer.fcmToken)
+      wakePost(url, peer.fcmToken, typeof this.wakeFetch === 'function' ? this.wakeFetch() : undefined)
         .then(function(res) {
           if (res && res.status === 404) { peer.fcmToken = ''; if (self.state.peerFcm) { delete self.state.peerFcm[nx]; self._saveState(); } }
         })

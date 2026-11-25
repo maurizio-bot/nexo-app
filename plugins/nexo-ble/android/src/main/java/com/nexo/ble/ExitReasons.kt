@@ -76,6 +76,68 @@ object ExitReasons {
         return out.joinToString("\n")
     }
 
+    /**
+     * Diagnóstico del dueño 23-11 (dos cierres nativos iguales en el S24, 18:24 y 21:26: SIGABRT, pista «Unsafe_park»): las pistas sueltas
+     * no decían QUÉ hilo cayó ni por qué. El volcado de Android 12+ (tombstone) es un protobuf: aquí se leen el mensaje del abort
+     * (campo 14), el tid que cayó (6), la señal (10) y, del hilo que cayó (mapa 16 → Thread: nombre 2, pila 4 → función 4 y archivo 6),
+     * su nombre y sus primeras funciones. Si algo no cuadra devuelve «» y quedan las pistas de siempre (nativeHints).
+     */
+    fun tombstoneSummary(bytes: ByteArray, maxFrames: Int = 10): String {
+        return try {
+            val top = Pb(bytes)
+            var tid = -1L; var abort = ""; var sig = ""
+            val threads = ArrayList<ByteArray>()
+            top.each { f, w, v, b ->
+                when {
+                    f == 6 && w == 0 -> tid = v
+                    f == 14 && w == 2 -> abort = String(b!!, Charsets.UTF_8)
+                    f == 10 && w == 2 -> Pb(b!!).each { f2, w2, _, b2 -> if (f2 == 2 && w2 == 2) sig = String(b2!!, Charsets.UTF_8) }
+                    f == 16 && w == 2 -> Pb(b!!).each { f2, w2, _, b2 -> if (f2 == 2 && w2 == 2) threads.add(b2!!) }
+                }
+            }
+            val out = ArrayList<String>()
+            if (sig.isNotBlank()) out.add("señal " + clip(sig, 20))
+            if (abort.isNotBlank()) out.add("abort: " + clip(abort, 300))
+            for (t in threads) {
+                var id = -1L; var name = ""; val frames = ArrayList<String>()
+                Pb(t).each { f, w, v, b ->
+                    when {
+                        f == 1 && w == 0 -> id = v
+                        f == 2 && w == 2 -> name = String(b!!, Charsets.UTF_8)
+                        f == 4 && w == 2 && frames.size < maxFrames -> {
+                            var fn = ""; var file = ""
+                            Pb(b!!).each { f3, w3, _, b3 -> if (w3 == 2) { if (f3 == 4) fn = String(b3!!, Charsets.UTF_8) else if (f3 == 6) file = String(b3!!, Charsets.UTF_8) } }
+                            if (fn.isNotBlank() || file.isNotBlank()) frames.add("  " + clip(fn.ifBlank { "?" }, 120) + (if (file.isNotBlank()) " (" + file.substringAfterLast('/') + ")" else ""))
+                        }
+                    }
+                }
+                if (id != tid) continue
+                out.add("hilo que cayó: " + clip(name.ifBlank { "?" }, 40) + " (tid " + id + ")")
+                out.addAll(frames)
+                break
+            }
+            if (out.isEmpty() || (abort.isBlank() && out.none { it.startsWith("hilo") })) "" else out.joinToString("\n")
+        } catch (e: Throwable) { "" }
+    }
+
+    /** Lector mínimo de protobuf (solo lo que hace falta para el tombstone): campo, tipo, valor numérico o bytes. */
+    private class Pb(val b: ByteArray) {
+        var i = 0
+        private fun varint(): Long { var r = 0L; var s = 0; while (true) { val c = b[i++].toInt() and 0xff; r = r or ((c and 0x7f).toLong() shl s); if (c < 0x80) return r; s += 7; if (s > 63) throw IllegalStateException() } }
+        fun each(fn: (Int, Int, Long, ByteArray?) -> Unit) {
+            while (i < b.size) {
+                val key = varint(); val f = (key ushr 3).toInt(); val w = (key and 7).toInt()
+                when (w) {
+                    0 -> fn(f, w, varint(), null)
+                    1 -> { i += 8; fn(f, w, 0, null) }
+                    2 -> { val n = varint().toInt(); if (n < 0 || i + n > b.size) throw IllegalStateException(); val x = b.copyOfRange(i, i + n); i += n; fn(f, w, 0, x) }
+                    5 -> { i += 4; fn(f, w, 0, null) }
+                    else -> throw IllegalStateException()
+                }
+            }
+        }
+    }
+
     /** Del volcado de un ANR (todos los hilos), solo el hilo principal: la cabecera «"main"» y hasta [maxLines] líneas. */
     fun anrMain(trace: String, maxLines: Int = 25): String {
         val lines = trace.lines()

@@ -21,6 +21,7 @@
  */
 
 import { t } from './i18n.js';
+import { callPowerStart, callPowerTick, callPowerEnd } from './call_power.js'; // COLA 7: batería y temperatura también en la llamada de grupo
 
 var GMAX_AUDIO = 5;          // tope de participantes en audio (malla N²; ≤5 es cómodo)
 var GRING_MS = 45000;        // invitación sin contestar
@@ -214,7 +215,7 @@ export class GroupCall {
       else if (g.earlyOffers && g.earlyOffers.has(nx)) { self._signal(nx, 'accept', {}); l.state = 'active'; self._legUp(); } // 3106: me lo abrió mientras sonaba
       // #130 (dueño 31-10): si entro TARDE (me agregaron a una llamada ya en curso, late:1), abro el tramo con TODOS (los que
       // ya estaban no van a iniciar hacia mí); si no, la regla normal: el NEXO ID menor manda 'offer' y el otro espera.
-      else if (g.late || me < nx) { self._signal(nx, 'offer', {}); l.state = 'offering'; self._inviteTimeout(nx); }
+      else if (g.late || me < nx) { self._signal(nx, 'offer', { k: g.key }); l.state = 'offering'; self._inviteTimeout(nx); }
       else { l.state = 'waiting'; self._inviteTimeout(nx); } // el otro iniciará (#224: si no entra en 45 s, «No contestó», como en el que invita)
     });
   }
@@ -339,6 +340,7 @@ export class GroupCall {
   _begin() {
     var self = this, g = self.gc; if (!g || g.startedAt) return;
     g.startedAt = Date.now();
+    try { callPowerStart(g, 'de grupo'); } catch (eP) {} // COLA 7: batería y temperatura como en la 1 a 1
     if (self.ble && typeof self.ble._holdOthers === 'function') { try { self.ble._holdOthers(self); } catch (e) {} } // #222: la otra, en espera
     // Micrófono compartido: una captura, un codificador → el paquete codificado va a TODOS los tramos
     if (!g.adopt) g.cameraOn = !!g.video; // (#224: la heredada sigue como estaba)
@@ -365,6 +367,7 @@ export class GroupCall {
     if (!self._alive(false) && now - g.startedAt > silence) { self._finish('empty'); return; }
     // compartir pantalla: el estado se repite cada 5 s mientras comparto (y un rato después de parar), para el que entró tarde
     if ((g.screen || now < (g._scrOffUntil || 0)) && now - (g._stAt || 0) >= GSTATE_EVERY_MS) self._sendStateAll();
+    try { callPowerTick(g); } catch (eP) {} // COLA 7
     self._set(null);
   }
 
@@ -525,6 +528,12 @@ export class GroupCall {
       var hl = g.legs.get(nx); if (hl) { hl.peerHeld = o.op === 'hold'; hl.lastRx = Date.now(); console.log('[GCALL] ' + nx + (hl.peerHeld ? ' te puso en espera' : ' volvió')); }
       self._set(null); return;
     }
+    // Auditoría 23-11 (G-O4): abrir un tramo (offer/accept) solo quien está en la llamada, o quien entra TARDE (lo agregó otro: los
+    // demás aún no lo tienen en su lista) y lo prueba con la clave de la llamada, que solo da con la invitación alguien de dentro (la
+    // señal va cifrada E2E y solo a quien ya la tiene). Antes cualquier contacto con el id de la llamada se metía sin invitación.
+    if ((o.op === 'offer' || o.op === 'accept') && !g.roster.has(nx) && !(o.op === 'offer' && typeof o.k === 'string' && !!g.key && o.k === g.key)) {
+      console.warn('[GCALL] ' + o.op + ' de ' + nx + ' descartado: no está en la llamada'); return;
+    }
     g.roster.add(nx);
     var l = self._leg(nx);
     var was = l.state;
@@ -605,6 +614,7 @@ export class GroupCall {
     clearTimeout(self._ringTimer); clearInterval(self._watch);
     if (g.hub && g.hub.stop) try { g.hub.stop(); } catch (e) {}
     self._markDead(g.gid);
+    if (g.startedAt) try { callPowerEnd(g, (Date.now() - g.startedAt) / 1000, 'de grupo'); } catch (eP) {} // COLA 7
     self.gc = null;
     var c1 = self.ble && self.ble.calls && self.ble.calls.call; if (!(c1 && c1.video && c1.state === 'active')) _pipGC(false); // 3155
     if (self.ble && typeof self.ble._afterCallRadio === 'function') { try { self.ble._afterCallRadio(); } catch (e) {} } // 3058: sale lo que esperó a colgar

@@ -154,11 +154,19 @@ private fun NexoBlePlugin.processReceivedChunk(deviceId: String, chunk: String, 
             // Sin esto Capacitor lo DESCARTA (Plugin.notifyListeners) y el mensaje se perdía.
             // 3009: con la app en segundo plano o cerrada, el nativo contesta el ping del vigilante del otro (ver nativePong)
             if ((appInBackground || closedMode) && extraction.json.length < 400 && extraction.json.contains("\"ping\"")) nativePong(deviceId, extraction.json)
+            // 3A (23-11): el reto de la bandeja del otro lo contesta siempre el nativo (app abierta, dormida o cerrada), con la firma de pareja
+            if (extraction.json.length < 400 && extraction.json.contains("\"type\":\"oc\"")) nativeChallenge(deviceId, extraction.json)
+            // 3269 (fase 3): con la app dormida o cerrada, lo pendiente de la bandeja de salida sale también por este enlace si es de su contacto
+            // 3316: si el nativo lo reenvió para otro (puente dormido: paquete Jump o trozo de un flujo), no es para este teléfono
+            val piped = if (appInBackground || closedMode) outboxHeard(macNorm, extraction.json)
+                // 3321: con la app a la vista, los frames de una sesión del puente a internet que abrió el nativo siguen por él
+                else extraction.json.contains("\"type\":\"ig\"") && try { outBle().gw?.handle(macNorm, extraction.json, ownedOnly = true) == true } catch (e: Throwable) { false }
             // 3012 (regla del dueño 11-11: «cualquiera que tiene NEXO debe aparecer al instante en un escaneo»): con la app en
             // segundo plano, dormida o cerrada, el nativo contesta «quién soy» a quien lo pregunta (ver nativeKx)
-            if ((appInBackground || closedMode) && extraction.json.length < 6000 && extraction.json.contains("\"type\":\"kx\"") && extraction.json.contains("\"rq\":1")) nativeKx(deviceId)
-            if (!closedMode) backgroundNotify(extraction.json, deviceId)
-            if (closedMode) closedReceive(deviceId, extraction.json)
+            if ((appInBackground || closedMode) && extraction.json.length < 6000 && extraction.json.contains("\"type\":\"kx\"") && extraction.json.contains("\"rq\":1") && kxFromContact(extraction.json)) nativeKx(deviceId)
+            if (!piped && !closedMode) backgroundNotify(extraction.json, deviceId)
+            if (piped) Unit
+            else if (closedMode) closedReceive(deviceId, extraction.json)
             else notifyListeners("onPayloadReceived", JSObject()
                 .put("deviceId", deviceId)
                 .put("content", extraction.json)
@@ -211,7 +219,7 @@ internal fun NexoBlePlugin.loadNexoMappings() {
         remLog("WARN", "NXID_MAP", "Error cargando mapeos: ${e.message}")
     }
 }
-private fun NexoBlePlugin.saveNexoMappings() {
+internal fun NexoBlePlugin.saveNexoMappings() {
     try {
         val json = JSONObject()
         val mapObj = JSONObject()
@@ -241,9 +249,19 @@ internal fun NexoBlePlugin.registerNexoMapping(nexoId: String, mac: String) {
     val existing = nxidToMacMap[nid]
     if (existing == nmac) return
     nxidToMacMap[nid] = nmac
-    saveNexoMappings()
-    remLog("INFO", "NXID_MAP", "Registrado $nid ↔ $mac")
+    // 23-11 (multitud): con muchos NEXO con el ID a la vista el mapa no crece sin tope (se sueltan los que no están cerca ni
+    // enlazados; se vuelven a apuntar solos al oírlos) ni se reescribe el archivo con cada uno (una vez cada 5 s)
+    if (nxidToMacMap.size > NXID_MAP_MAX) {
+        val it = nxidToMacMap.entries.iterator()
+        while (it.hasNext()) {
+            val en = it.next()
+            if (en.key != nid && !scanBook.has(en.value) && !gattClients.containsKey(en.value) && !serverConnectedDevices.containsKey(en.value)) it.remove()
+        }
+    }
+    if (!nxMapSaveScheduled) { nxMapSaveScheduled = true; mainHandler.postDelayed(nxMapSaveRunnable, 5000L) }
+    if (nxidToMacMap.size <= 200) remLog("INFO", "NXID_MAP", "Registrado $nid ↔ $mac")
 }
+internal const val NXID_MAP_MAX = 1500
 internal fun NexoBlePlugin.classifyDeviceId(id: String): String {
     val trimmed = id.trim()
     if (trimmed.isEmpty()) return "empty"

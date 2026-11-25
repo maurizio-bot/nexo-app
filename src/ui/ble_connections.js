@@ -4,12 +4,14 @@
  * esperar a que un enlace esté listo.
  */
 import { t } from './i18n.js';
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _jitteredBackoff, _niceName, _showToast, _netNx, _lanNx, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _scanWindowFullAt, _dupBleLinksToClose, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages, _wakeShouldFire, _wakeAdvance, _wakeNewEntry, WAKE_GIVEUP_MS, _isQuietHidden, _isPathDev } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _getBLEContacts, _jitteredBackoff, _showToast, _netNx, _lanNx, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _dupBleLinksToClose, _vNx, _vaultLoadMessages, _wakeShouldFire, _wakeAdvance, _wakeNewEntry, WAKE_GIVEUP_MS, _isQuietHidden, _isPathDev } from './ble_helpers.js';
+import { noteHelp as _gwNoteHelp } from '../net/gw_helpers.js';
+import { BLE_CONN_SCAN } from './ble_conn_scan.js';
 
 // 3099: con una transferencia en curso la re-búsqueda de contactos perdidos se aplaza, pero como mucho esto seguido: luego una vuelta
 var SCAN_HOLD_MAX_MS = 180000;
 
-export const BLE_CONNECTION_METHODS = {
+const _BLE_CONNECTION_METHODS_BASE = {
   _startConnectionSupervisor() {
     var self = this;
     if (self._supervisorTimer) { clearInterval(self._supervisorTimer); self._supervisorTimer = null; }
@@ -64,7 +66,7 @@ export const BLE_CONNECTION_METHODS = {
     try { if (self.ackSystem && typeof self.ackSystem.upgradeAll === 'function') self.ackSystem.upgradeAll('repaso'); } catch (e) {} // 3080
     // Build 2967 (Fase A, entrega offline): tocar (wake FCM) a los contactos con PENDIENTES, ANTES de la compuerta de abajo
     // (que corta si no hay enlaces vivos — justo el caso offline). El propio tick tiene su freno de 30 s.
-    self._tickWakePending();
+    self._tickWakePending(); try { self._pushAckKeysIfChanged(); self._linkTrimTick(); } catch (e) {} // 16b: claves de firma del ✓✓ nativo al día (contacto nuevo, clave aceptada)
     if (self._cameraBlePaused) return;
     if (!self._activeChatDeviceId && self.connectedDevices.size === 0) return;
     self.connectedDevices.forEach(function(device, deviceId) {
@@ -73,15 +75,19 @@ export const BLE_CONNECTION_METHODS = {
       // 2995: con el Bluetooth apagado un enlace Bluetooth «listo» es solo un recuerdo: no se le manda ping ni se da por «zombi»
       if (self._btIsOff() && !_netNx(deviceId) && !_lanNx(deviceId)) return;
 
+      // 3330: enlace recuperado y aún sin oír nada por él → se comprueba ya (sin la protección de «transferencia activa»)
+      var unv = self._unverified && self._unverified.get(deviceId);
+      if (unv && (self._lastPongTime.get(deviceId) || 0) > unv) { self._unverified.delete(deviceId); unv = 0; }
+      if (unv && Date.now() - unv > 120000) { self._unverified.delete(deviceId); unv = 0; }
       // Protección: no matar la conexión mientras se envía un archivo
-      if (self._hasActiveFileTransfer(deviceId)) {
+      if (!unv && self._hasActiveFileTransfer(deviceId)) {
         console.log('[BLEInterface] Supervisor: transferencia activa, skip ping/zombie para', deviceId);
         return;
       }
 
       var lastPong = self._lastPongTime.get(deviceId) || 0;
       var timeSincePong = Date.now() - lastPong;
-      if (lastPong === 0 || timeSincePong > 16000) {
+      if (unv || lastPong === 0 || timeSincePong > 16000) {
         // #dueño 02-11 (A3): si ya hay un ping en vuelo para este enlace, NO disparar otro (el ciclo es cada 6 s pero
         // el ping caduca a los 8 s; apilarlos hacía que la desconexión saliera 2-3 veces seguidas). Uno a la vez.
         if (self._pingInFlight && self._pingInFlight.has(deviceId)) return;
@@ -102,9 +108,12 @@ export const BLE_CONNECTION_METHODS = {
           self._pingInFlight.delete(deviceId);
           var fails = (self._pingFailCount.get(deviceId) || 0) + 1;
           self._pingFailCount.set(deviceId, fails);
-          if (fails >= self._pingMaxFails) {
-            // Solo forzar si NO hay transferencia activa
-            if (!self._hasActiveFileTransfer(deviceId)) {
+          var unvF = !!(self._unverified && self._unverified.has(deviceId) && !((self._lastPongTime.get(deviceId) || 0) > self._unverified.get(deviceId)));
+          if (unvF) console.warn('[BLEInterface] Enlace recuperado ' + deviceId + ' sin respuesta al primer ping: medio muerto, lo rehago');
+          if (unvF || fails >= self._pingMaxFails) {
+            if (unvF) self._unverified.delete(deviceId);
+            // Solo forzar si NO hay transferencia activa (3330: un enlace recuperado sin comprobar no se protege)
+            if (unvF || !self._hasActiveFileTransfer(deviceId)) {
               self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.ZOMBIE, since: Date.now() });
               self._forceDisconnectAndReconnect(deviceId);
             } else {
@@ -148,22 +157,27 @@ export const BLE_CONNECTION_METHODS = {
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'disconnectDevice')) return;
     var now = Date.now();
     var activeMac = self._activeChatDeviceIdNative ? _normMac(self._activeChatDeviceIdNative) : null;
-    var byNexo = new Map();
+    var byNexo = new Map(), me = _normId(self.localNexoId);
     self._deviceStates.forEach(function(st, key) {
       if (/^(lan|net)nx/.test(key)) return; // solo Bluetooth (no internet/Wi-Fi)
       if (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY) return;
       var nx = _normId(self._macToNexoId.get(key));
       if (!nx) return;
       var arr = byNexo.get(nx) || [];
+      var decider = !!me && me < nx; // 3327: los repetidos con este contacto los decido yo
       arr.push({
         key: key,
         mtu: (self._mtuByDevice && self._mtuByDevice.get(key)) || 185,
         dead: self._bleCongested(key),
-        since: (st && st.since) || 0,
+        // 3262: cuándo se abrió el enlace. 3327: uno que yo cerré por repetido hace < 10 min y volvió a abrirse no cuenta como «el más
+        // nuevo» (si no, el que decide se quedaría con él al acabar el enfriamiento y cerraría el bueno: vaivén, dupserver.js S5)
+        since: ((self._dupClosedAt && now - (self._dupClosedAt.get(_normMac(key)) || -1e13) < 600000) ? 0 : ((st && (st.openedAt || st.since)) || 0)),
         role: (st && st.role) || null, // 3027: cliente/servidor (desempate común con el otro teléfono)
         heard: (self._lastPongTime && self._lastPongTime.get(key)) || 0, // 3233: último paquete recibido por este enlace
         // 3167b: uno que el otro ya cortó (y el nativo reabrió) no cuenta como ocupado: si no, nadie lo cerraba de este lado
-        busy: (self._hasActiveFileTransfer(key) || (!!activeMac && _normMac(key) === activeMac)) && !((self._peerCutUntil && self._peerCutUntil.get(_normMac(key))) > now)
+        // 3327: para el que decide (NEXO ID menor) el chat abierto no frena el cierre: lo que iba por ahí pasa al que se queda (3239) y
+        // el chat sigue por él; si frenara, con el chat abierto por el enlace viejo nadie cerraría nunca el repetido
+        busy: (self._hasActiveFileTransfer(key) || (!decider && !!activeMac && _normMac(key) === activeMac)) && !((self._peerCutUntil && self._peerCutUntil.get(_normMac(key))) > now)
       });
       byNexo.set(nx, arr);
     });
@@ -172,13 +186,13 @@ export const BLE_CONNECTION_METHODS = {
       var seen = self._dupSeenSince.get(nx);
       if (!seen) { self._dupSeenSince.set(nx, now); return; }           // primera vez: arrancar el freno, no cerrar aún
       if (now - seen < self._dupDebounceMs) return;                     // aún no estables (podría ser un traspaso)
-      var me = _normId(self.localNexoId); // 3027: el de NEXO ID menor se queda su enlace de cliente; el otro, el de servidor
-      var toClose = _dupBleLinksToClose(links, me ? { iAmLower: me < nx, now: now } : { now: now });
+      var toClose = _dupBleLinksToClose(links, me ? { iAmLower: me < nx, now: now, waitedMs: now - seen } : { now: now }); // 3327: decide el de NEXO ID menor (el otro solo ve caer uno)
       for (var i = 0; i < toClose.length; i++) {
         var key = toClose[i];
         if ((self._dupClosedUntil.get(key) || 0) > now) continue;       // enfriamiento por MAC
         self._dupClosedUntil.set(key, now + self._dupCloseCooldownMs);
-        console.log('[BLEInterface] Dedup: cierro enlace repetido ' + key + ' de ' + nx + ' (me quedo con el mejor)');
+        self._dupClosedAt = self._dupClosedAt || new Map(); self._dupClosedAt.set(_normMac(key), now); if (self._dupClosedAt.size > 100) self._dupClosedAt.delete(self._dupClosedAt.keys().next().value);
+        console.log('[BLEInterface] Dedup: cierro enlace repetido ' + key + ' de ' + nx + ' (me quedo con el mejor); enlaces: ' + links.map(function(l) { return l.key.slice(-4) + ':' + (l.role || '?') + ':mtu' + l.mtu + (l.dead ? ':muerto' : ''); }).join(' '));
         self._noteLinkFlap(nx, 'repetido');
         // 3167 (diagnóstico S24↔realme 3075 16-11 15:17): server:true → el nativo corta también un enlace ENTRANTE (el otro es
         // cliente de nuestro servidor GATT). Sin eso solo cerraba el lado cliente: el enlace de servidor que 3027 manda cerrar al
@@ -386,14 +400,35 @@ export const BLE_CONNECTION_METHODS = {
         var nx = self._macToNexoId.get(_normMac(deviceId)) || (contact ? _normId(contact.nexoId || contact.deviceUUID) : null);
         self.connectedDevices.set(deviceId, { id: deviceId, name: d.name || '', direction: d.direction, role: d.role, servicesReady: true, deviceUUID: nx });
         self._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { role: d.role, seeded: true });
-        console.log('[BLEInterface] Conexión existente recuperada al arrancar:', deviceId, nx || '(sin id)');
+        // 3255 (diagnósticos S24↔Austin 19-11 14:23 y 14:56, «enlace_abre_cierra»): un enlace cerrado por repetido volvía «recuperado» ~60 s
+        // después y el desempate lo cerraba otra vez. Para ver la causa en el próximo diagnóstico: papel del enlace y si se cerró hace poco.
+        var dupAgo = self._dupClosedAt && self._dupClosedAt.get(_normMac(deviceId));
+        console.log('[BLEInterface] Conexión existente recuperada al arrancar:', deviceId, nx || '(sin id)', '(' + (d.role || '?') + '/' + (d.direction || '?') + (dupAgo ? '; cerrada por repetida hace ' + Math.round((Date.now() - dupAgo) / 1000) + ' s' : '') + ')');
+        // 3330 (diagnóstico S24↔Austin 24-11 14:54, los dos en 3148): el enlace «recuperado» al volver la app puede ser medio muerto
+        // (el servicio del otro se reinició y ya no oye por él: las escrituras «salen» y nada vuelve). Se queda «sin comprobar» hasta oír
+        // algo por él: el vigilante le hace ping YA y con UN ping sin respuesta lo rehace (antes, 4 pings ~55 s con el texto atascado).
+        self._unverified = self._unverified || new Map(); self._unverified.set(deviceId, Date.now());
         if (nx) {
           self._notifyPeerReady(deviceId, nx);
           if (self.ackSystem && self.ackSystem.sendSessionSync) self.ackSystem.sendSessionSync(deviceId, nx);
           self._resendPendingMessages(nx);
         }
+        else if (typeof self._askWhoIs === 'function') self._askWhoIs(deviceId); // 3263 (fase 2, enlaces heredados al abrir la app): sin saber de quién es, se le pregunta «quién eres»
+      });
+      // 3332 (diagnóstico S24 24-11 17:23): con varias conexiones de paso al mismo contacto recuperadas a la vez, la primera no veía aún a
+      // las otras «listas» y se quedaba: una 2.ª vuelta, ya con todas sembradas, cierra las de paso que sobran (nunca la última)
+      if (self.relay && typeof self.relay.identify === 'function') list.forEach(function(d) {
+        var id = d.id || d.address, nx2 = id && self._macToNexoId.get(_normMac(id));
+        if (id && d.ready && nx2) { try { self.relay.identify(id, nx2); } catch (e) {} }
       });
     }).catch(function() {});
+  },
+
+  // 3323 (reciprocidad del puente): el NEXO de este enlace me trajo un paquete de otro (me hizo de puente): queda en la libreta
+  _creditBridge(deviceId, origin) {
+    var nx = _normId(this._macToNexoId && this._macToNexoId.get(_normMac(deviceId)));
+    if (!/^nx[0-9a-z]{8}$/.test(nx) || nx === _normId(origin) || nx === _normId(this.localNexoId)) return;
+    try { _gwNoteHelp(nx, 'me hizo de puente por Bluetooth'); } catch (e) {} // i18n-ok: registro para el diagnóstico
   },
 
   _kickPeer(deviceId, nexoId) {
@@ -580,7 +615,7 @@ export const BLE_CONNECTION_METHODS = {
   _onBtState(data) {
     var self = this;
     var on = !!(data && (data.enabled === true || data.state === 'on'));
-    if (!on) { self._noteBtOff(); return; }
+    if (!on) { self._noteBtOff(); self._dropBtLinks(); return; }
     var wasOff = self._btOffLogged || self._btIsOff();
     self._btOffUntil = 0; self._btOffLogged = false;
     if (!wasOff) return;
@@ -593,375 +628,26 @@ export const BLE_CONNECTION_METHODS = {
     }, 800);
   },
 
-  _autoScanForKnownContacts(opts) {
-    var self = this;
-    if (self._cameraBlePaused) return;
-    if (self._btIsOff()) return;
-    if (self.isScanning) return;
-    if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'startScan')) return;
-    // Build 2838: compuerta GLOBAL antes del throttle propio — equipo que no puede escanear (error 4), enfriamiento
-    // tras un throttle de Android, o ventana de 5/30 s ya llena (contando también los escaneos del usuario y de la
-    // reconexión). Si está bloqueado, se salta; el bucle de reconexión/presencia vuelve a intentar.
-    if (self._scanUnsupported) return;
-    if (Date.now() < (self._scanBlockedUntil || 0)) return;
-    // Build 2959: cupo reservado — el FONDO se detiene en _bgScanWindowMax (uno por debajo del tope del usuario), para
-    // dejar siempre un hueco de la ventana de Android libre al escaneo del usuario. El usuario sigue usando _scanWindowFull.
-    if (self._scanWindowFullBg && self._scanWindowFullBg()) return;
-    // Ronda 2814 (#87): throttle. Al menos _autoScanMinMs entre auto-escaneos, para NO pasar el límite de Android
-    // (~5/30 s, deja de dar resultados) cuando un enlace flojo se corta y reconecta en bucle. El escaneo del usuario
-    // (toggleScan en ble_ui.js) no pasa por aquí, así que buscar a mano sigue inmediato. La reconexión directa por
-    // GATT (con la MAC conocida) tampoco depende de esto; solo se aplaza el escaneo redundante, que de todos modos
-    // reintenta el bucle de reconexión.
-    var nowScan = Date.now();
-    if (nowScan - (self._lastAutoScanAt || 0) < (self._autoScanMinMs || 8000)) return;
-    self._lastAutoScanAt = nowScan;
-    console.log('[BLEInterface] Auto-scan iniciado');
-    // v6.12.0: lo que se ve en "dispositivos nuevos" sigue sirviendo hasta que el escaneo lo vuelva a encontrar
-    // (antes el "+" de esas filas no hacía nada: el dispositivo ya no estaba en foundDevices)
-    self._recentFound = new Map(self.foundDevices);
-    self.foundDevices.clear();
-    if (self._noteScanStart) self._noteScanStart();
-    // Build 2838: SIEMPRE con el filtro NEXO (manufacturer-data). En un concierto el controlador descarta el ruido del
-    // estadio (miles de pulseras/beacons/otros teléfonos) ANTES de llegar a la app — palanca nº1 de robustez a escala;
-    // antes el auto-escaneo en primer plano iba sin filtro. Solo nos interesan anuncios NEXO de todos modos.
-    _safeNativeCall(self.nativePlugin, 'startScan', { filtered: true })
-      .then(function() {
-        self._scanFailBackoff = 0;
-        if (self._btOffLogged) { console.log('[BLEInterface] Bluetooth encendido otra vez'); }
-        self._btOffUntil = 0; self._btOffLogged = false;
-        self.isScanning = true;
-        self._autoScanActive = true;
-        var token = self._autoScanToken = (self._autoScanToken || 0) + 1;
-        self.updateScanButton();
-        setTimeout(function() {
-          // Solo si sigue siendo este escaneo automático (no cortar uno posterior del usuario)
-          if (self._autoScanToken !== token || !self._autoScanActive) return;
-          self._autoScanActive = false;
-          if (self.isScanning && _hasNativeMethod(self.nativePlugin, 'stopScan')) {
-            _safeNativeCall(self.nativePlugin, 'stopScan', {}).then(function() {
-              self.isScanning = false;
-              self.updateScanButton();
-            }).catch(function() {
-              self.isScanning = false;
-              self.updateScanButton();
-            });
-          }
-        }, 6000);
-      }).catch(function(e) {
-        if (/desactivad|disabled|turned off|not enabled|bluetooth.*off/i.test(String((e && e.message) || ''))) { self._noteBtOff(); return; }
-        console.warn('[BLEInterface] Auto-scan fallo:', e.message);
-      });
-  },
-
-  // Build 2838: compuerta global de arranques de escaneo. ¿Está llena la ventana de Android (5/30 s)? Poda y mira.
-  // Este es el tope del USUARIO (_scanWindowMax); el fondo usa _scanWindowFullBg (uno por debajo, cupo reservado).
-  _scanWindowFull() {
-    var now = Date.now();
-    var win = this._scanWindowMs || 30000;
-    this._scanStartTimes = (this._scanStartTimes || []).filter(function(t) { return now - t < win; });
-    return _scanWindowFullAt(this._scanStartTimes.length, this._scanWindowMax || 4);
-  },
-
-  // Build 2959: compuerta del FONDO. Usa _bgScanWindowMax (< _scanWindowMax), así el bucle de reconexión deja siempre
-  // al menos un arranque libre en la ventana para el escaneo del usuario. Cuenta la MISMA ventana deslizante.
-  _scanWindowFullBg() {
-    var now = Date.now();
-    var win = this._scanWindowMs || 30000;
-    this._scanStartTimes = (this._scanStartTimes || []).filter(function(t) { return now - t < win; });
-    return _scanWindowFullAt(this._scanStartTimes.length, this._bgScanWindowMax || 3);
-  },
-
-  _noteScanStart() {
-    this._scanStartTimes = this._scanStartTimes || [];
-    this._scanStartTimes.push(Date.now());
-  },
-
-  // Cuánto falta (ms) para que se libere un hueco en la ventana de 30 s.
-  _scanWindowWaitMs() {
-    var now = Date.now();
-    var win = this._scanWindowMs || 30000;
-    var max = this._scanWindowMax || 4;
-    var arr = (this._scanStartTimes || []).filter(function(t) { return now - t < win; }).sort(function(a, b) { return a - b; });
-    if (arr.length < max) return 0;
-    return Math.max(0, win - (now - arr[arr.length - max]) + 60);
-  },
-
-  // Build 2838: máquina de recuperación ante onScanFailed. Android a veces NO avisa del throttle (Nordic Scanner-Compat
-  // #18), así que la compuerta es la defensa primaria; esto cubre el camino del error explícito (stack ocupado, sin
-  // recursos de hardware en multitud, etc.). Receta por código (guía Punchthrough + AOSP ScanCallback).
-  _onScanFailed(data) {
-    var self = this;
-    var code = (data && typeof data.errorCode === 'number') ? data.errorCode : 0;
-    try { self.isScanning = false; self._autoScanActive = false; self.updateScanButton(); } catch (e) {}
-    // 1 = ALREADY_STARTED: ya hay un escaneo; no es un fallo. Se trata como «sigue buscando».
-    if (code === 1) { self.isScanning = true; try { self.updateScanButton(); } catch (e) {} return; }
-    // 4 = FEATURE_UNSUPPORTED: este equipo no puede escanear como se pidió → no reintentar en bucle.
-    if (code === 4) { self._scanUnsupported = true; return; }
-    var now = Date.now();
-    var wantScan = (self._presenceUntil || 0) > now || (self._userScanWanted || 0) > now;
-    // 6 = SCANNING_TOO_FREQUENTLY (a veces aflora como 2 = APPLICATION_REGISTRATION_FAILED): esperar a vaciar la
-    // ventana de 30 s y un solo reintento.
-    if (code === 6 || code === 2) {
-      self._scanBlockedUntil = now + 31000;
-      self._scanStartTimes = []; // para Android la ventana está «llena»; dejar que se enfríe
-      if (wantScan) self._scheduleScanRetry((self._scanBlockedUntil - now) + 100);
-      return;
-    }
-    // 3 = INTERNAL_ERROR, 5 = OUT_OF_HARDWARE_RESOURCES: backoff exponencial corto y acotado.
-    if (code === 3 || code === 5) {
-      self._scanFailBackoff = Math.min(self._scanFailBackoff ? self._scanFailBackoff * 2 : 1500, 12000);
-      if (wantScan) self._scheduleScanRetry(self._scanFailBackoff);
-      return;
-    }
-    // Otros códigos: un reintento suave.
-    if (wantScan) self._scheduleScanRetry(2000);
-  },
-
-  _scheduleScanRetry(ms) {
-    var self = this;
-    if (self._scanDeferTimer) clearTimeout(self._scanDeferTimer);
-    self._scanDeferTimer = setTimeout(function() {
-      self._scanDeferTimer = null;
-      if (self.isScanning) return;
-      if (Date.now() < (self._scanBlockedUntil || 0)) { self._scheduleScanRetry((self._scanBlockedUntil - Date.now()) + 100); return; }
-      self._lastAutoScanAt = 0; // reintento deliberado de recuperación: no lo frena el throttle de 8 s (la ventana 5/30 s sí lo protege)
-      self._autoScanForKnownContacts();
-    }, Math.max(200, ms || 2000));
-  },
-
-  _stopPingInterval() {
-    if (this._pingInterval) { clearInterval(this._pingInterval); this._pingInterval = null; }
-    this._pendingPings.forEach(function(p) { clearTimeout(p.timer); });
-    this._pendingPings.clear();
-  },
-
-  onDeviceFound(device) {
-    var deviceId = device.id || '';
-    if (!deviceId) return;
-    var nexoId = device.nexoId || '';
-    if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
-      return;
-    }
-    var nd = _normMac(deviceId);
-    var nx = _normId(nexoId);
-    if (nd && nx) {
-      this._nexoIdToMac.set(nx, nd);
-      this._macToNexoId.set(nd, nx);
-    }
-    var isContact = _isBLEContact(nexoId);
-    if (isContact) {
-      var contacts = _getBLEContacts();
-      var idx = contacts.findIndex(function(c) {
-        return _normId(c.nexoId || c.deviceUUID) === nx;
-      });
-      if (idx >= 0) {
-        contacts[idx].online = true;
-        contacts[idx].lastSeen = Date.now();
-        contacts[idx].deviceId = deviceId;
-        if (device.name && !_isGenericName(device.name) && _isGenericName(contacts[idx].name)) {
-          contacts[idx].name = device.name;
-        }
-        _saveBLEContacts(contacts);
-      }
-      this.renderContactsList();
-      this.renderOnlineStrip();
-      var state = this._getDeviceState(deviceId);
-      // 3019 (diagnóstico S24 del dueño 12-11, vivo nx09acdb61): si ya hay un enlace LISTO y sano con este contacto por OTRA
-      // dirección (Android usa una para anunciarse y otra para conectarse), no se abre un segundo: el limpiador de enlaces
-      // repetidos lo cerraba al minuto y el escaneo lo volvía a abrir (conectar/cerrar cada ~60 s). Sí se abre si el que hay
-      // va al mínimo (MTU 23: el nuevo puede ser mejor) o si esta dirección se acaba de cerrar por repetida.
-      // 3167b: ni si el OTRO acaba de cortar este enlace (su desempate, 3027): reabrirlo solo daba otro corte (abrir/cerrar cada ~60 s)
-      var readyOther = (typeof this._bleReadyFor === 'function') ? this._bleReadyFor(nx) : null;
-      var readyMtu = readyOther ? ((this._mtuByDevice && this._mtuByDevice.get(readyOther)) || 185) : 0;
-      var dupCooling = !!(this._dupClosedUntil && (this._dupClosedUntil.get(nd) || 0) > Date.now()) || !!(this._peerCutUntil && (this._peerCutUntil.get(nd) || 0) > Date.now());
-      var haveGoodLink = !!readyOther && readyOther !== nd && readyMtu > 23;
-      // v6.1.6: también desde ERROR (p.ej. se conectó cuando el otro tenía la app cerrada)
-      // 3168 (APK 3078 parada en radiollamada L): el enfriamiento solo frena si de verdad QUEDA otro enlace listo con el contacto; si
-      // se cayeron los dos a la vez (el primero aún veía al otro «listo»), esta dirección tiene que poder reabrirse ya
-      var cooling = dupCooling && !!readyOther && readyOther !== nd;
-      if ((state.state === BLE_STATES.DISCONNECTED || state.state === BLE_STATES.ERROR) && !haveGoodLink && !cooling) {
-        this._autoConnectGATT(deviceId, device);
-      }
-      return;
-    }
-    var existing = this.foundDevices.get(nx);
-    if (!existing) {
-      device.lastSeen = Date.now();
-      device.deviceUUID = nexoId;
-      this.foundDevices.set(nx, device);
-      // Escaneo de Jump (buscar camino para otros): no avisar de "dispositivo nuevo"
-      if (!this._relayScan) { this.newDevicesCount++; this.updateBadge(); }
-      this._newBarSoon(!!device.kx); // 3184 (estudio EDC 17-11): agrupado (antes, la lista entera con cada aviso del escaneo); su kx, al momento
-    } else {
-      existing.id = deviceId;
-      existing.name = !_isGenericName(device.name) ? device.name : (existing.name || device.name || '');
-      existing.rssi = device.rssi;
-      existing.lastSeen = Date.now();
-      existing.deviceUUID = nexoId;
-      this.foundDevices.set(nx, existing);
-      this._newBarSoon(!!device.kx); // 3184
-    }
-  },
-
-  _addNewDevice(deviceId) {
-    var self = this;
-    if (!deviceId) {
-      var bar = this.elements.newDeviceBar;
-      if (bar && bar.dataset) {
-        deviceId = bar.dataset.deviceId || '';
-      }
-    }
-    var device = this.foundDevices.get(deviceId) || (this._recentFound && this._recentFound.get(deviceId));
-    // Ronda 2764 (informe del dueño: "al pulsar agregar no pasaba nada"): nunca en silencio
-    if (!device) {
-      console.warn('[ADD] Agregar ' + deviceId + ': ya no está en la lista (se dejó de ver); se vuelve a buscar');
-      _showToast(t('add_toast_gone', 'Ya no se ve ese teléfono. Buscando otra vez…'), 'warn');
-      this.foundDevices.delete(deviceId); this.renderNewDeviceBar();
-      if (!this.isScanning && typeof this.toggleScan === 'function') this.toggleScan();
-      return;
-    }
-    var name = _niceName(device.name, device.deviceUUID);
-    var nexoId = device.deviceUUID || '';
-    if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
-      console.warn('[ADD] Agregar: sin NEXO ID (' + nexoId + ')');
-      _showToast(t('add_toast_noid', 'No se pudo agregar: ese teléfono no dijo su NEXO ID. Que abra "Agregar" y vuelve a buscar.'), 'warn');
-      return;
-    }
-    console.log('[ADD] Agregar ' + _normId(nexoId) + ' (' + name + ') por ' + (device.id || deviceId));
-    if (!_isBLEContact(nexoId)) {
-      // 3207 (dueño 17-11: «el mismo protocolo de aceptar un contacto como en dispositivos lejanos»): ya no se agrega al momento:
-      // se le manda una SOLICITUD y queda agregado cuando la acepta (ble_near_req.js)
-      this._nearRequest(nexoId, name, device);
-    } else {
-      var contacts = _getBLEContacts();
-      var idx = contacts.findIndex(function(c) {
-        return _normId(c.nexoId || c.deviceUUID) === _normId(nexoId);
-      });
-      if (idx >= 0) {
-        contacts[idx].deviceId = device.id || contacts[idx].deviceId;
-        contacts[idx].lastSeen = Date.now();
-        contacts[idx].online = true;
-        _saveBLEContacts(contacts);
-      }
-    }
-    this._autoConnectGATT(device.id || deviceId, device, { manual: true }); // «Agregar» es intención del usuario → ignora la pausa Bluetooth
-    // Ronda 2764: si ya estaba conectado, su kx (clave y nombre del teléfono) no se repetía: se le pide
-    if (typeof this._sendKx === 'function' && device.id && !/^(lan|net)/i.test(String(device.id))) { var selfK = this; setTimeout(function() { selfK._sendKx(device.id, true, true); }, 800); }
-    this.foundDevices.delete(deviceId);
-    this.renderNewDeviceBar();
-    this.renderContactsList();
-    this.renderOnlineStrip();
-    this.togglePanel();
-  },
-
-  // 3033: NEXO ID con el que se guarda la pausa de Bluetooth de una dirección/contacto
-  _btPauseKey(deviceId, device) {
-    var nx = (device && (device.deviceUUID || device.nexoId)) || '';
-    if (!nx && deviceId && this._macToNexoId) nx = this._macToNexoId.get(_normMac(deviceId)) || '';
-    return _normId(nx || deviceId);
-  },
-  // 3033: ¿Bluetooth en pausa con este contacto (no_service repetido)? Lo consultan también Jump y los envíos
-  _btPaused(nxOrDevice) {
-    if (!this._bleCooldownUntil || !nxOrDevice) return 0;
-    var k = /^nx/i.test(String(nxOrDevice)) ? _normId(nxOrDevice) : this._btPauseKey(nxOrDevice, null);
-    var cd = this._bleCooldownUntil.get(k) || 0;
-    return cd > Date.now() ? cd - Date.now() : 0;
-  },
-
-  // 3084 (dueño 14-11: «si un contacto no está al alcance del Bluetooth ni siquiera debería intentarlo; siempre primero las vías
-  // más rápidas»; diagnóstico S24 08:06: al volver la app se pedía conectar por Bluetooth a los 15 contactos con algo pendiente, por
-  // su dirección guardada, sin haberlos visto: cada intento ocupa la cola de conexiones de Android unos segundos y retrasa las de
-  // verdad). Cerca = enlace listo, visto al escanear hace < 2 min, o enlace caído hace < 1 min (sigue al lado: reconexión rápida).
-  // Si no, no se intenta: lo suyo va por internet/Wi-Fi o espera, y en cuanto el escaneo lo vea se conecta solo (onDeviceFound).
-  _btNearby(nx) {
-    nx = _normId(nx);
-    if (!/^nx[0-9a-z]{8}$/.test(nx)) return true;   // un NEXO sin identificar (de paso): lo decide Jump
-    if (typeof this._bleReadyFor === 'function' && this._bleReadyFor(nx)) return true;
-    if (this.relay && typeof this.relay._seenRecently === 'function' && this.relay._seenRecently(nx, 120000)) return true;
-    var lost = this._linkLostAt && this._linkLostAt.get(nx);
-    return !!(lost && Date.now() - lost < 60000);
-  },
-  _btFarSkip(nx, why) {
-    nx = _normId(nx);
-    this._btFarLogAt = this._btFarLogAt || new Map();
-    var now = Date.now();
-    if (now - (this._btFarLogAt.get(nx) || 0) < 300000) return;
-    this._btFarLogAt.set(nx, now);
-    if (this._btFarLogAt.size > 300) this._btFarLogAt.delete(this._btFarLogAt.keys().next().value);
-    console.log('[BLEInterface] ' + nx + ': no está cerca por Bluetooth (no visto en 2 min): no intento conectar (' + why + '); va por internet/Wi-Fi o espera a verlo'); // i18n-ok: registro para el diagnóstico
-  },
-
-  _autoConnectGATT(deviceId, device, opts) {
-    var self = this;
-    if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'connectToDevice')) return Promise.resolve();
-    if (!deviceId) return Promise.resolve();
-    // 3084: no a quien no está cerca (salvo el «Agregar» del usuario, que es intención explícita)
-    if (!(opts && opts.manual) && !_isPathDev(deviceId)) {
-      var nxNear = self._btPauseKey(deviceId, device);
-      if (nxNear && !self._btNearby(nxNear)) { self._btFarSkip(nxNear, (opts && opts.why) || 'reconexión'); return Promise.resolve(); }
-    }
-    // 3075 (diagnóstico S24 14-11 19:14): un camino guardado de internet / Wi-Fi local / Wi-Fi Direct («net:nx…», «lan:nx…»,
-    // «wd:nx…») NO es una dirección Bluetooth: pedir al nativo conectar ahí dejaba un enlace fantasma «conectando» y, con el
-    // realme, un «zombi» falso (pings a un Bluetooth que no existe). Esos caminos los lleva su propia capa; aquí no se toca nada.
-    if (_isPathDev(deviceId)) return Promise.resolve();
-    // #87 / A2 (análisis 02-11, batería): si este contacto está en PAUSA de Bluetooth (no_service repetido → backoff),
-    // NO auto-reconectar aunque el escaneo lo vea o un mensaje lo quiera enviar. Era la OTRA puerta por la que se saltaba
-    // el backoff y se volvía a martillar la radio (los «627 despertares» del diagnóstico del Vivo). El tick de re-búsqueda
-    // ya respetaba la pausa; ahora también la auto-conexión por resultado de escaneo/reconexión/cámara. Mientras tanto el
-    // contacto sigue llegando por internet/Wi-Fi/Jump (la pausa es SOLO del Bluetooth). Una conexión MANUAL del usuario
-    // (opts.manual, p.ej. tocar «Agregar») SÍ pasa, porque es intención explícita.
-    if (!(opts && opts.manual) && self._bleCooldownUntil) {
-      // 3033 (diagnóstico S24 12-11 22:25, Motorola con el GATT roto: «pauso Bluetooth 600 s» y aun así conectar/cortar cada
-      // 1–3 s, 21 veces): el resultado de escaneo trae el contacto en nexoId (no en deviceUUID) y se buscaba la pausa por la
-      // DIRECCIÓN → nunca la encontraba y volvía a conectar. Ahora se busca por su NEXO ID venga como venga.
-      var nxCd = self._btPauseKey(deviceId, device);
-      var cd = self._bleCooldownUntil.get(nxCd) || 0;
-      if (cd > Date.now()) { console.log('[BLEInterface] Auto-conexion omitida: ' + nxCd + ' en pausa Bluetooth (no_service), ' + Math.round((cd - Date.now()) / 1000) + ' s'); return Promise.resolve(); }
-    }
-    var state = self._getDeviceState(deviceId);
-    if (state.state === BLE_STATES.CONNECTING && state.timestamp && (Date.now() - state.timestamp > 8000)) {
-      self._forceDisconnectAndReconnect(deviceId);
-      return Promise.resolve();
-    }
-    if (state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.CONNECTING) return Promise.resolve();
-    self._setDeviceState(deviceId, BLE_STATES.CONNECTING, { direction: 'outgoing', role: 'client', auto: true });
-    self.connectedDevices.set(deviceId, { id: deviceId, name: (device && device.name) || '', direction: 'outgoing', servicesReady: false, deviceUUID: device && device.deviceUUID });
-    var connTarget = deviceId;
-    var normTarget = _normMac(deviceId);
-    if (!/^[0-9a-f]{12}$/.test(normTarget)) {
-      var mapped = self._nexoIdToMac.get(_normId(deviceId));
-      if (mapped) connTarget = mapped;
-    }
-    return _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: connTarget })
-      .then(function(result) {
-        if (result && (result.connected || result.alreadyConnected)) {
-          return self._waitForReadyToChat(deviceId, 8000).then(function() {});
-        } else {
-          self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
-        }
-      })
-      .catch(function(e) {
-        self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
-      });
-  },
-
-  disconnect(deviceId) {
-    var self = this;
-    if (self.isDummyMode) return Promise.resolve();
-    if (!deviceId) return Promise.resolve();
-    var bt = self._backoffTimers.get(deviceId);
-    if (bt) { clearTimeout(bt); self._backoffTimers.delete(deviceId); }
-    self._reconnectAttempts.delete(deviceId);
-    if (_hasNativeMethod(self.nativePlugin, 'disconnectDevice')) {
-      return _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: deviceId })
-        .then(function() {
-          if (self._activeChatDeviceId) {
-            self._activeChatDeviceId = null;
-            self._activeChatDeviceIdNative = null;
-            self.updateBadge();
-          }
-        }).catch(function() {});
-    }
-    return Promise.resolve();
+  // 3250 (diagnóstico automático de Roberto 19-11 07:14, 3107, «zombi» con el S24): al apagar el Bluetooth el nativo cierra sus enlaces
+  // (Kotlin: «GATT client cerrado», «GATT_SERVER Detenido») SIN avisar de cada desconexión. La app seguía creyendo listo el enlace con el
+  // dueño: al volver a encenderlo, 4 textos por él fallaron 6 s cada uno («enlace congestionado», MTU 23) y a los ~50 s el vigilante lo dio
+  // por «zombi» (con su diagnóstico automático). Ahora, al apagarse, todos los enlaces Bluetooth se dan por cerrados al momento (lo pendiente
+  // va por internet/Wi-Fi y al encenderse se busca y reconecta, 3082).
+  _dropBtLinks() {
+    var self = this, ids = {};
+    try {
+      self.connectedDevices.forEach(function(v, k) { ids[k] = 1; });
+      self._deviceStates.forEach(function(st, k) { if (st && st.state !== BLE_STATES.DISCONNECTED) ids[k] = 1; });
+    } catch (e) {}
+    var n = 0;
+    Object.keys(ids).forEach(function(id) {
+      if (!id || _isPathDev(id)) return;   // solo enlaces Bluetooth (no net:/lan:)
+      n++;
+      try { self._onNativeDisconnected({ deviceId: id, reason: 'bt_off' }); } catch (e) {}
+    });
+    if (n) console.log('[BLEInterface] Bluetooth apagado: ' + n + ' enlace(s) Bluetooth cerrados (lo pendiente sigue por internet/Wi-Fi)'); // i18n-ok: registro
   }
 };
+// Reestructuración 23-11: BLE_CONNECTION_METHODS = estos métodos + los de ble_conn_scan.js (mismos nombres, mismo objeto).
+export const BLE_CONNECTION_METHODS = Object.assign({}, _BLE_CONNECTION_METHODS_BASE, BLE_CONN_SCAN);
+

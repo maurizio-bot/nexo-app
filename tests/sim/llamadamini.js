@@ -52,8 +52,8 @@ const SHOTS = process.env.AV_SHOTS || '';
 
   // ── p: la videollamada en la ventanita (sigue la de v)
   await fase('p', async () => {
-    await P.A.evaluate(() => document.getElementById('nexo-call-screen').classList.remove('nc-hide'));
-    await P.A.setViewportSize({ width: 200, height: 356 }); await sleep(900); // sin el aviso del sistema: solo la ventana pequeña
+    await P.A.evaluate(() => document.getElementById('nexo-call-screen').classList.add('nc-hide')); // 29b: los botones ya se habían ocultado solos (5 s) antes de ir a la ventanita
+    await P.A.setViewportSize({ width: 132, height: 236 }); await sleep(900); // 29b: la ventanita real (~132×236); sin el aviso del sistema: solo la ventana pequeña
     r.p_sin_aviso = await pipLook(P.A);
     await P.A.evaluate(() => window.__nexoPipChanged && window.__nexoPipChanged(true)); await sleep(600);
     r.p_con_aviso = await pipLook(P.A);
@@ -61,7 +61,7 @@ const SHOTS = process.env.AV_SHOTS || '';
     await P.A.setViewportSize({ width: 384, height: 830 }); await P.A.evaluate(() => window.__nexoPipChanged && window.__nexoPipChanged(false)); await sleep(900);
     r.p_al_volver_mini = await pipLook(P.A); // la llamada queda como mini flotante encima de la app (lo de siempre)
     await click(P.A, '#nexo-call-screen'); await sleep(600);
-    r.p_al_tocar = await pipLook(P.A);
+    r.p_al_tocar = await pipLook(P.A); // 29b: aunque los botones se hubieran ocultado solos en la ventanita, al tocar la mini vuelven (botones > 0)
   });
 
   // ── b (vídeo): «atrás» con la videollamada a la vista

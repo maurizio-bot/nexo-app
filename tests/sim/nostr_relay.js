@@ -51,6 +51,7 @@ class NostrRelay {
   muteTag(tag) { let n = 0; this.wss.clients.forEach((c) => { if ((c.tag || '').indexOf(tag) >= 0) { c.mute = true; n++; } }); return n; }
   // 3096: la app de un teléfono DUERME (su JS no corre): sus conexiones quedan mudas y las que intente abrir también, hasta wakeTag
   sleepTag(tag) { (this._asleep = this._asleep || new Set()).add(tag); return this.muteTag(tag); }
+  lossyTag(tag, keepEvery) { this._lossy = tag ? { tag: tag, keepEvery: keepEvery || 4, n: 0, lost: 0 } : null; }
   wakeTag(tag) { if (this._asleep) this._asleep.delete(tag); }
   // 3178 (acuses.js): los EVENT que manda un teléfono se RECHAZAN (OK false, como el tope de un puente o un relé que limita)
   // aunque sigue recibiendo lo suyo: su confirmación no sale. acceptTag lo deshace.
@@ -154,6 +155,8 @@ class NostrRelay {
             if (filters.some((f) => this._match(f, ev)) && this._canRead(c, ev) && !this._hidden(c, ev)) {
               this.stats.delivered++;
               if (this.opts.dropEveryN && this.stats.delivered % this.opts.dropEveryN === 0) return;
+              // 17 (diag. 19-11): pérdida en UN sentido: lo que el relé reparte EN VIVO a las conexiones con esta etiqueta se pierde salvo 1 de cada keepEvery
+              if (this._lossy && (c.tag || '').indexOf(this._lossy.tag) >= 0 && (++this._lossy.n % this._lossy.keepEvery) !== 0) { this._lossy.lost++; return; }
               c.sendM(['EVENT', sub, ev]);
             }
           }));

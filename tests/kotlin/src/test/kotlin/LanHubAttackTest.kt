@@ -23,8 +23,9 @@ class LanHubAttackTest {
     private fun readerThreads() = Thread.getAllStackTraces().keys.count { it.isAlive && it.name == "nexo-lan-read" }
     // Abre una conexión cruda y lee el saludo que manda el hub (lo manda él primero)
     private fun raw(port: Int): Pair<Socket, DataInputStream> {
+        // 12A (23-11): el hub ya NO saluda primero a una conexión entrante (no da su NEXO ID a quien no dijo quién es)
         val s = Socket("127.0.0.1", port); s.soTimeout = 15000
-        val inp = DataInputStream(s.getInputStream()); val n = inp.readInt(); inp.readFully(ByteArray(n))
+        val inp = DataInputStream(s.getInputStream())
         return s to inp
     }
     // ¿El hub cerró la conexión dentro de `ms`? (una lectura que termina en fin de flujo o error = cerrada)

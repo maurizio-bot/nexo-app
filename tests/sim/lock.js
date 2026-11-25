@@ -3,7 +3,7 @@
 // no lo activa; sin huella en el teléfono no se puede); con "tras 1 minuto" una salida corta no bloquea; con
 // "inmediatamente" se tapa al salir y se pide al volver; pedir el PIN (la app "se va" y "vuelve") no provoca
 // un bucle; bloqueado, los mensajes siguen llegando; al reabrir la app pide la huella; quitar la huella del
-// teléfono no deja al usuario fuera; capturas bloqueadas (FLAG_SECURE) se aplican también al reabrir.
+// teléfono no deja al usuario fuera (pero un error del nativo o el sensor ocupado NO desbloquean, 24-11); capturas bloqueadas (FLAG_SECURE) se aplican también al reabrir.
 // Uso: node lock.js <dir_build>
 'use strict';
 const fs = require('fs');
@@ -142,9 +142,17 @@ const bio = (nat) => nat.stats.bioAsked || 0;
   r.B_abre_chat = await openChatWith(B, 'A'); await sendText(B, 'llega con NEXO bloqueado');
   r.mensaje_llega_bloqueada_s = await waitFor(async () => (await A.win.vaultLoadMessages(B.win.bleInterface.localNexoId)).some((m) => m.content === 'llega con NEXO bloqueado'), 30000);
   r.sigue_bloqueada = locked(A);
+  // 16A (I-L2, auditoría 23-11): bloqueada = FLAG_SECURE puesto, y un aviso/hoja añadido después (mismo z-index) no se pinta encima
+  r.bloqueada_flag_secure = nA.secureScreen === true;
+  const intruso = A.win.document.createElement('div'); intruso.id = 'aviso-encima'; intruso.style.cssText = 'position:fixed;inset:0;z-index:2147483647;';
+  A.win.document.body.appendChild(intruso); await sleep(100);
+  r.tapa_sigue_encima = A.win.document.body.lastElementChild && A.win.document.body.lastElementChild.id === 'nexo-lock';
+  intruso.remove();
   nA.bioAnswer = true;
   click(A.win, A.win.document.getElementById('nexo-lock-btn'));
   r.boton_desbloquea_s = await waitFor(() => !locked(A), 5000);
+  await sleep(200);
+  r.desbloqueo_quita_flag = nA.secureScreen === false;   // el usuario no tiene las capturas bloqueadas: vuelven a estar permitidas
 
   // 7) Capturas: bloquearlas → FLAG_SECURE
   await sleep(3000);
@@ -165,11 +173,24 @@ const bio = (nat) => nat.stats.bioAsked || 0;
   r.reabrir_capturas_bloqueadas = nA.secureScreen === true;
   r.reabrir_mismo_id = A.win.bleInterface.localNexoId.toLowerCase() === idA;
 
+  // 8b) Revisión 24-11: el bloqueo nunca se abre por un fallo: un error del nativo al preguntar el estado, o el sensor no disponible
+  //     por un rato (código 1), dejan la app BLOQUEADA y con el bloqueo puesto
+  { const pl = A.win.Capacitor.Plugins.NexoBLE, bs = pl.biometricStatus;
+    pl.biometricStatus = () => Promise.reject(new Error('fallo del nativo'));
+    click(A.win, A.win.document.getElementById('nexo-lock-btn')); await sleep(1500);
+    r.error_nativo_sigue_bloqueada = locked(A) && prefs(nA).lock === true;
+    pl.biometricStatus = () => Promise.resolve({ available: false, code: 1 });
+    click(A.win, A.win.document.getElementById('nexo-lock-btn')); await sleep(1500);
+    r.sensor_ocupado_sigue_bloqueada = locked(A) && prefs(nA).lock === true;
+    pl.biometricStatus = bs; }
+
   // 9) Si el teléfono ya no tiene huella ni PIN, no se queda fuera para siempre
   nA.opts.noBiometric = true;
   click(A.win, A.win.document.getElementById('nexo-lock-btn'));
   r.sin_huella_desbloquea_s = await waitFor(() => !locked(A), 5000);
   r.sin_huella_quita_bloqueo = prefs(nA).lock === false;
+  await sleep(200);
+  r.desbloqueo_respeta_preferencia = nA.secureScreen === true;   // 16A: él SÍ las tiene bloqueadas: siguen bloqueadas al desbloquear
   nA.opts.noBiometric = false;
 
   // 10) Quitar las capturas bloqueadas
@@ -206,7 +227,10 @@ const bio = (nat) => nat.stats.bioAsked || 0;
   // Que los avisos no saquen nada privado al registro
   r.registro_sin_mensaje = !logs.some((l) => /llega con NEXO bloqueado/.test(l));
 
-  console.log('LOCK ' + JSON.stringify(r, null, 1));
+  // Todo lo que es sí/no tiene que ser sí, y los tiempos de desbloqueo tienen que existir
+  r.resultado = Object.keys(r).every((k) => typeof r[k] !== 'boolean' || r[k] === true) &&
+    ['desbloqueo_al_volver_s', 'boton_desbloquea_s', 'sin_huella_desbloquea_s', 'mensaje_llega_bloqueada_s'].every((k) => r[k] != null) ? 'OK' : 'FAIL';
+  console.log('LOCK ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_lock.txt'), logs.join('\n'));
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -42,6 +42,16 @@ object WriteRetry {
     const val SETUP_WAIT_STEP_MS = 100L
     const val SETUP_WAIT_MAX_MS = 4000L
 
+    // 15 (Motorola→S24 20-11 14:09, ≥ 20 s de «ocupado» seguidos; y el caso Katy): 201 = Android aún no terminó la operación anterior
+    // de ESE enlace. Repetir la escritura «con respuesta» (DEFAULT) no arregla nada (da el mismo 201) y, cuando sí entra, deja el
+    // enlace esperando hasta 30 s la respuesta de una app que puede estar congelada. Con 201 no se prueba DEFAULT: se espera.
+    const val GATT_BUSY = 201
+    fun fallbackToDefault(noResponseStatus: Int): Boolean = noResponseStatus != GATT_BUSY
+
+    // 15: con el enlace atascado de verdad (se soltó su cola: FLUSH_AFTER_DROPS mensajes seguidos sin una sola escritura buena, ~12 s)
+    // seguir con él abierto solo da más «ocupado» hasta que el otro lo dé por «zombi»: se cierra para rehacerlo limpio.
+    fun shouldCloseStuckLink(consecutiveDrops: Int): Boolean = shouldFlushStuckQueue(consecutiveDrops)
+
     /** ¿Esperar antes de escribir? viaClient: sale por el enlace cliente; setupDone: MTU y notificaciones ya hechos. */
     fun waitForClientSetup(viaClient: Boolean, setupDone: Boolean, waitedMs: Long): Boolean =
         viaClient && !setupDone && waitedMs < SETUP_WAIT_MAX_MS

@@ -6,6 +6,7 @@
  * Botón «Llamar al grupo» en la cabecera del chat (solo cuando el chat es un grupo; los botones 1-a-1 de calls_ui se
  * ocultan ahí). La pantalla escucha nexo:gcall (estado), nexo:gcallRing (entrante) y nexo:gcallEnded (fin).
  */
+import { callEndedBg } from './call_bg.js';
 import { t } from './i18n.js';
 import { _pickContact } from './ui_bits.js';
 import { _getCurrentContactId, _normId } from './chat_format.js';
@@ -109,7 +110,7 @@ var _gcSpeaker = true, _gcAudioFor = null;
 function _gAudioMode(on) {
   // #220: al colgar la de grupo, si sigue una 1-a-1, el teléfono sigue en modo llamada
   if (!on) { var bo = window.bleInterface; if (bo && ((bo.calls && bo.calls.call) || (bo.calls2 && bo.calls2.call))) return; }
-  try { var pl = _plugin(); if (pl && typeof pl.callAudio === 'function') pl.callAudio({ on: !!on, speaker: !!on && _gcSpeaker }).catch(function() {}); } catch (e) {}
+  try { var pl = _plugin(); if (pl && typeof pl.callAudio === 'function') pl.callAudio({ on: !!on, speaker: !!on && _gcSpeaker }).then(function() { if (!on) callEndedBg(window.bleInterface); }).catch(function() {}); } catch (e) {} // 3318
 }
 
 // 3216 («Unir», dueño 17-11: «A y B ven al momento quién entró»): «B se unió a la llamada» cuando alguien entra a una llamada en la

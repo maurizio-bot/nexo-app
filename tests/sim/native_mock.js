@@ -93,6 +93,8 @@ class Radio {
 class NativePhone {
   // opts.readsContentFallback: true si el Kotlin incluye `?: call.getString("content")`
   constructor(name, address, opts = {}) {
+    // NEXO_SIM_K3262=1: toda la prueba con el Kotlin de antes de la fase 2 (cortaba los enlaces entrantes al abrir la app), para comparar
+    if (process.env.NEXO_SIM_K3262 && opts && opts.kotlin3262 === undefined) opts.kotlin3262 = true;
     this.name = name;
     this.address = address; // dirección de anuncio: la que se ve al escanear y a la que se conectan
     // Dirección con la que ESTE teléfono aparece cuando se conecta como cliente a otro. En Android real
@@ -239,8 +241,22 @@ class NativePhone {
       const meAdv = norm(this.address), meInit = norm(this.initAddress);
       this.radio.phones.forEach((p) => {
         if (p === this) return;
-        p._dropLinkLater(meAdv, this.address, meInit, this.initAddress);
-        this.clients.delete(norm(p.address)); this.serverConnected.delete(norm(p.initAddress)); this.serverNotif.delete(norm(p.initAddress));
+        // 3251: endClosedMode corta (cancelConnection) los enlaces que los demás abrieron a nuestro servidor ANTES de cerrarlo: el
+        // otro ve la desconexión y reconecta al servidor nuevo. opts.kotlin3250: el Kotlin de antes cerraba el servidor sin cortarlos;
+        // el enlace del otro sigue «conectado» pero apunta al servidor viejo: sus escrituras no llegan y a los ~6 s el nativo las
+        // suelta («Write fallo», onWriteDropped). (Los enlaces en que NOSOTROS éramos clientes sí se cerraban bien.)
+        // 3263 (fase 2, GattServerHost): el servidor GATT es uno por proceso y NO se cierra al abrir la app: los enlaces que los demás
+        // abrieron hacia nosotros SIGUEN (con su suscripción) y la instancia nueva los hereda (getConnectedDevices → «Conexión existente
+        // recuperada»). Solo se cierran NUESTROS enlaces de cliente (sus avisos iban a la instancia vieja). opts.kotlin3262: el Kotlin de
+        // la 3251–3262 (cortaba todos y el otro reconectaba al servidor nuevo).
+        if (this.opts.kotlin3250 && p.clients.has(meAdv)) {
+          p.clients.get(meAdv).stale = true;
+          if (p.serverConnected.has(meInit)) { p.serverConnected.delete(meInit); p.serverNotif.delete(meInit); p.emit('onDeviceDisconnected', { deviceId: this.initAddress }); }
+        } else if (this.opts.kotlin3262) p._dropLinkLater(meAdv, this.address, meInit, this.initAddress);
+        else if (p.serverConnected.has(meInit)) { p.serverConnected.delete(meInit); p.serverNotif.delete(meInit); p.buffers.delete(meInit); p.emit('onDeviceDisconnected', { deviceId: this.initAddress }); }
+        this.clients.delete(norm(p.address));
+        if (this.opts.kotlin3250 || this.opts.kotlin3262) { this.serverConnected.delete(norm(p.initAddress)); this.serverNotif.delete(norm(p.initAddress)); }
+        else this.stats.serverKept = (this.stats.serverKept || 0) + (this.serverConnected.has(norm(p.initAddress)) ? 1 : 0);
       });
       this.pendingQueue.clear(); this.buffers.clear(); this.writeQ = new Map();
       const box = this.bgInbox || []; this.bgInbox = [];
@@ -392,6 +408,12 @@ class NativePhone {
     }
     // 2. Cliente (write) si estamos conectados como cliente
     const cl = this.clients.get(macNorm);
+    // opts.kotlin3250 (ver load): enlace al servidor GATT viejo del otro: la escritura no llega; a los ~6 s el nativo suelta el mensaje
+    if (cl && cl.stale) {
+      this.stats.staleWrites = (this.stats.staleWrites || 0) + 1;
+      if (!tag || tag.last) setTimeout(() => { if (this.clients.get(macNorm) === cl) this.emit('onWriteDropped', { mac: macNorm }); }, 6000);
+      return { sent: true, mode: 'gatt_client' };
+    }
     if (cl && cl.state === 'connected' && cl.rxReady) {
       this.sent.push({ to: macNorm, chunk, mode: 'gatt_client' });
       this._remLog('INFO', 'SEND', 'GATT Client chunk sent (NO_RESPONSE) to ' + macNorm + ' len=' + chunk.length);
@@ -480,6 +502,15 @@ class NativePhone {
       if (!this.opts.noNativePong && (this.appActive === false || this.jsFrozen || this.closedMode) && ex.json.length < 400 && ex.json.indexOf('"ping"') >= 0) {
         try { const o = JSON.parse(ex.json); if (o.type === 'ping' && o.pingId) { this.stats.nativePongs = (this.stats.nativePongs || 0) + 1; this._sendChunkedOrSingle(mac, JSON.stringify({ v: 1, type: 'pong', pingId: o.pingId, ts: Date.now(), fromNexoId: String(this.advertisingId || '').toLowerCase(), nb: 1 })); } } catch (e) {}
       }
+      // Kotlin 3A (nativeChallenge / SinAppCore): el reto de la bandeja del otro lo contesta siempre el nativo, con la firma de la pareja
+      if (ex.json.length < 400 && ex.json.indexOf('"type":"oc"') >= 0) {
+        try {
+          const o = JSON.parse(ex.json), from = String(o.from || '').toLowerCase(), me = String(this.advertisingId || '').toLowerCase(), k = this.ackKeys && this.ackKeys.get(from);
+          if (o.type === 'oc' && /^[0-9a-f]{16,64}$/.test(o.n || '') && k && me) this._sendChunkedOrSingle(mac, JSON.stringify({ v: 1, type: 'or', n: o.n, from: me, a: nodeCrypto.createHmac('sha256', k).update('nexo-ack|or|' + o.n + '|' + me + '|' + from).digest().subarray(0, 12).toString('base64') }));
+        } catch (e) {}
+      }
+      // Kotlin 3269 (OutboxBle.heard): con la app dormida o cerrada, lo pendiente de la bandeja de salida sale también por este enlace
+      if (!this.opts.noOutboxBle && (this.appActive === false || this.jsFrozen || this.closedMode) && ex.json.length < 6000) this._outboxHeard(mac, ex.json);
       // Kotlin 3012 nativeKx: con la app en segundo plano/congelada o cerrada, el nativo contesta «quién soy» (la tarjeta que le dejó
       // la app, setKxCard) a quien lo pregunta (kx con rq:1); como mucho una vez cada 8 s por conexión
       if (!this.opts.noNativeKx && this.kxCard && (this.appActive === false || this.jsFrozen || this.closedMode) && ex.json.length < 6000 && ex.json.indexOf('"type":"kx"') >= 0 && ex.json.indexOf('"rq":1') >= 0) {
@@ -500,7 +531,15 @@ class NativePhone {
 
   // ---- app cerrada (Kotlin closedReceive + BgInbox.classify; probado en tests/kotlin/BgInboxTest) ----
   // me: mi NEXO ID (Kotlin 2760: lo que llega por Jump para mí → solo aviso)
-  static classifyClosed(json, me) {
+  // Kotlin bloqueo (24-11, BgInbox.classify + MutedChats.isBlocked): lo de un bloqueado fuera de un grupo → IGNORE (ni buzón, ni aviso,
+  // ni llamada, ni ✓✓). blocked: el conjunto de este teléfono (lo da la app con setMutedChats blocked). NEXO_OLD_BLOCK=1: nativo de antes
+  static classifyClosed(json, me, blocked) {
+    const info = NativePhone._classifyRaw(json, me);
+    if (process.env.NEXO_OLD_BLOCK !== '1' && blocked && blocked.size && (info.kind === 'MESSAGE' || info.kind === 'NOTIFY_ONLY') && !info.group &&
+      info.from && blocked.has(info.from) && String(json).indexOf('"nexo_gcall"') < 0) return { kind: 'IGNORE', from: info.from, msgId: '' };
+    return info;
+  }
+  static _classifyRaw(json, me) {
     let o; try { o = JSON.parse(json); } catch (e) { return { kind: 'IGNORE' }; }
     const NX = /^nx[0-9a-z]{8}$/;
     const from = String(o.from || o.fr || '').toLowerCase();
@@ -600,10 +639,24 @@ class NativePhone {
   _notifName(nx) { const c = this.netBg && (this.netBg.contacts || []).find((x) => String(x.nx || '').toLowerCase() === nx); return (c && c.name) || 'NEXO'; }
   static whatText(w) { return ({ image: '📷 Foto', video: '🎥 Vídeo', audio: '🎤 Nota de voz', call: '📞 Llamada entrante', text: '' })[w] ?? '📎 Archivo'; }
   // Kotlin 2760 backgroundNotify: app en segundo plano (puede estar congelada): si a los 4 s la app no avisó, avisa el nativo
+  // Kotlin 2A (BgInbox.sealCheck): true / false (tenemos su clave y el sello falta o no cuadra) / null (sin clave)
+  _sealCheck(json, info) {
+    if (!info || !info.from || (info.kind !== 'MESSAGE' && info.kind !== 'NOTIFY_ONLY')) return null;
+    const me = String(this.advertisingId || '').toLowerCase(), k = this.ackKeys && this.ackKeys.get(String(info.from).toLowerCase());
+    if (!me || !k) return null;
+    let o = null; try { o = JSON.parse(json); } catch (e) { return null; }
+    const mid = o.msgId || o.m, from = String(o.from || o.fr || '').toLowerCase();
+    if (!mid || !/^nx[0-9a-z]{8}$/.test(from)) return null;
+    const exp = nodeCrypto.createHmac('sha256', k).update('nexo-ack|msg|' + mid + '|' + from + '|' + me).digest().subarray(0, 12).toString('base64');
+    const ok = typeof o.sl === 'string' && o.sl === exp;
+    if (!ok) { this.stats.sealRejected = (this.stats.sealRejected || 0) + 1; this._remLog('WARN', 'BG', 'Mensaje que dice ser de ' + from + ' sin su sello de pareja: descartado'); }
+    return ok;
+  }
   _bgNotify(json, fromAddress, lanNx) {
     if (this.appActive !== false || this.closedMode || this.opts.noBgNotify) return;
-    const info = NativePhone.classifyClosed(json, this.advertisingId);
+    const info = NativePhone.classifyClosed(json, this.advertisingId, this.blocked);
     if (!info.msgId) return;
+    if (this._sealCheck(json, info) === false) return; // Kotlin 2A
     // Kotlin 3034: una acción oculta (q:1) no se avisa pero SÍ se confirma (contraprueba: NEXO_OLD_QUIETACK=1, nativo ≤ 3033)
     if (info.quiet) {
       if (info.kind === 'MESSAGE' && info.callEnd) this._callEnded(info.from, info.callEnd); // Kotlin 3087
@@ -653,6 +706,146 @@ class NativePhone {
     if (k) ack.a = nodeCrypto.createHmac('sha256', k).update('nexo-ack|ack|' + info.msgId + '|' + me + '|' + info.from).digest().subarray(0, 12).toString('base64');
     return JSON.stringify(ack);
   }
+  // ---- 3269: la bandeja de salida por Bluetooth (Kotlin OutboxBle + NetOutbox.linkNxOf/bleDue/bleSent; JVM: OutboxBleTest) ----
+  static outboxLinkNxOf(json) {
+    if (json.length > 6000 || json.charAt(0) !== '{') return null;
+    let o; try { o = JSON.parse(json); } catch (e) { return null; }
+    const nx = String((o.type === 'ping' || o.type === 'pong') ? (o.fromNexoId || '') : (o.type === 'kx' || o.type === 'ack' || o.type === 'read_receipt') ? (o.from || '') : '').trim().toLowerCase();
+    return /^nx[0-9a-z]{8}$/.test(nx) ? nx : null;
+  }
+  _outboxLearn(mac, nx) {
+    this.outLinkNx = this.outLinkNx || new Map();
+    if (!mac || !/^nx[0-9a-z]{8}$/.test(nx) || this.outLinkNx.get(mac) === nx) return false;
+    this.outLinkNx.delete(mac); this.outLinkNx.set(mac, nx);
+    return true;
+  }
+  _outboxLinkReady(mac) { return !!(this.serverConnected.get(mac) || this.clients.get(mac)); }
+  _outboxSendVia(mac, nx) {
+    const items = (this.outbox && this.outbox.items) || [], now = Date.now();
+    if (!this._outboxLinkReady(mac)) return 0;
+    if (!this.opts.noOutboxChallenge && !process.env.NEXO_NO_RETO && !this._outboxChallenge(mac, nx)) return 0; // Kotlin 3A (23-11): reto antes de escribir
+    let n = 0;
+    for (const x of items) {
+      if (x.nx !== nx || (x.bleNextAt || 0) > now || (x.chunks || []).some((k) => !k.ok)) continue; // 3281: el aviso de un archivo, solo con sus trozos subidos
+      const r = this._sendChunkedOrSingle(mac, x.p);
+      if (!r || !r.sent) break;
+      x.bleTries = (x.bleTries || 0) + 1;
+      x.bleNextAt = now + (x.bleTries <= 5 ? [8000, 16000, 32000, 60000, 120000][x.bleTries - 1] : 300000); // NetOutbox.bleRetryMs
+      n++; this.stats.outboxBle = (this.stats.outboxBle || 0) + 1;
+      this._remLog('INFO', 'BANDEJA', x.id + ' para ' + nx + ' sale por Bluetooth sin la app');
+    }
+    return n;
+  }
+  // Kotlin 3A (OutboxBle.challenge/onAnswer): ¿se puede escribir por este enlace? Sin clave de pareja de ese contacto, sí (como antes)
+  _outboxChallenge(mac, nx) {
+    this.outProven = this.outProven || new Map(); this.outAsked = this.outAsked || new Map();
+    if (this.outProven.get(mac) === nx) return true;
+    const key = this.ackKeys && this.ackKeys.get(nx);
+    if (!key) { this.outProven.set(mac, nx); return true; }
+    const a = this.outAsked.get(mac), now = Date.now();
+    if (a && now - a.t < 4000) return false;
+    const n = nodeCrypto.randomBytes(16).toString('hex');
+    this.outAsked.set(mac, { n, t: now, nx });
+    this.stats.outboxChallenges = (this.stats.outboxChallenges || 0) + 1;
+    this._sendChunkedOrSingle(mac, JSON.stringify({ v: 1, type: 'oc', n, from: String(this.advertisingId || '').toLowerCase() }));
+    return false;
+  }
+  _outboxHeard(mac, json) {
+    const said = NativePhone.outboxLinkNxOf(json);
+    const fresh = !!said && this._outboxLearn(mac, said);
+    const items = (this.outbox && this.outbox.items) || [];
+    if (!items.length) return;
+    if (json.length < 600 && json.indexOf('"type":"or"') >= 0) {
+      let r = null; try { r = JSON.parse(json); } catch (e) {}
+      const lnx = this.outLinkNx && this.outLinkNx.get(mac), a = this.outAsked && this.outAsked.get(mac), me = String(this.advertisingId || '').toLowerCase();
+      const k = lnx && this.ackKeys && this.ackKeys.get(lnx);
+      const exp = k && a ? nodeCrypto.createHmac('sha256', k).update('nexo-ack|or|' + a.n + '|' + lnx + '|' + me).digest().subarray(0, 12).toString('base64') : null;
+      if (r && a && exp && r.n === a.n && String(r.from || '').toLowerCase() === lnx && r.a === exp) {
+        this.outAsked.delete(mac); this.outProven.set(mac, lnx);
+        const ms = Date.now() - a.t;
+        (this.stats.outboxChallengeMs = this.stats.outboxChallengeMs || []).push(ms);
+        this._remLog('INFO', 'BANDEJA', mac + ' es ' + lnx + ' (reto contestado en ' + ms + ' ms)');
+        this._outboxSendVia(mac, lnx);
+      } else this._remLog('WARN', 'BANDEJA', mac + ' no supo contestar el reto: no se le manda nada');
+      return;
+    }
+    // la ✓✓ firmada con la clave de la pareja retira el mensaje (OutboxBle.signedReceipt)
+    let o = null; try { o = JSON.parse(json); } catch (e) {}
+    if (o && (o.type === 'ack' || o.type === 'read_receipt') && o.msgId && o.a) {
+      const from = String(o.from || '').toLowerCase(), me = String(this.advertisingId || '').toLowerCase(), k = this.ackKeys && this.ackKeys.get(from);
+      const exp = k && me ? nodeCrypto.createHmac('sha256', k).update('nexo-ack|' + o.type + '|' + o.msgId + '|' + from + '|' + me).digest().subarray(0, 12).toString('base64') : null;
+      if (exp && exp === o.a && items.some((x) => x.id === o.msgId && x.nx === from)) { this.outbox.items = items.filter((x) => x.id !== o.msgId); (this.outboxConfirmed = this.outboxConfirmed || []).push(o.msgId); }
+    }
+    const nx = this.outLinkNx && this.outLinkNx.get(mac);
+    if (!nx || !this.outbox.items.some((x) => x.nx === nx)) return;
+    if (fresh) this.outbox.items.forEach((x) => { if (x.nx === nx) x.bleNextAt = 0; });
+    this._outboxSendVia(mac, nx);
+  }
+  // el repaso periódico (Kotlin outboxBleTick: cada 10 s con la app fuera de la vista y algo pendiente); el más reciente primero
+  outboxBlePump() {
+    if (!(this.appActive === false || this.jsFrozen || this.closedMode) || !this.outLinkNx) return 0;
+    let n = 0;
+    Array.from(this.outLinkNx.entries()).reverse().forEach(([mac, nx]) => { n += this._outboxSendVia(mac, nx); });
+    return n;
+  }
+  // Kotlin OutboxRid.resolve: de lo anunciado (NEXO ID o código rotativo) al NEXO ID del contacto con algo pendiente; null = no se sabe
+  _outboxRidResolve(adv) {
+    const a = String(adv || '');
+    if (/^nx[0-9a-z]{8}$/i.test(a)) return a.toLowerCase();
+    if (!/^R[a-z2-7]{9}$/.test(a)) return null;
+    const rk = (this.outbox && this.outbox.rk) || {}, epS = Math.max(1, Number(this.outbox && this.outbox.ep) || 900), e = Math.floor(Date.now() / 1000 / epS);
+    for (const nx of Object.keys(rk)) { if (!/^[0-9a-f]{64}$/.test(rk[nx])) continue; for (let d = -1; d <= 1; d++) if (ridToken(rk[nx], e + d) === a) return nx; }
+    return null;
+  }
+  // ---- 3271: la bandeja abre ella el enlace (Kotlin OutboxDial + outboxDialStep; JVM: OutboxDialTest) ----
+  _outboxWanting() {
+    const items = (this.outbox && this.outbox.items) || [];
+    const linked = new Set();
+    if (this.outLinkNx) this.outLinkNx.forEach((nx, mac) => { if (this._outboxLinkReady(mac)) linked.add(nx); });
+    return new Set(items.map((x) => x.nx).filter((nx) => !linked.has(nx)));
+  }
+  _outboxDialStep() {
+    if (this.opts.noOutboxDial || this.opts.noOutboxBle || this.btOff || this.offline) return;
+    if (!(this.appActive === false || this.jsFrozen || this.closedMode)) return;
+    const want = this._outboxWanting();
+    if (!want.size) { this._dial = null; return; }
+    const now = Date.now(), sig = Array.from(want).sort().join(',');
+    const d = (this._dial && this._dial.sig === sig) ? this._dial : (this._dial = { sig, scans: 0, nextAt: now + 3000, tried: (this._dial && this._dial.tried) || new Map() });
+    if (now < d.nextAt) return;
+    // OutboxDial.gapMs; 3280: si todo lo de esos contactos ya lo aceptó un relé (a salvo en el buzón de internet), el ritmo calmado (×3, tope 15 min)
+    const urgent = ((this.outbox && this.outbox.items) || []).some((x) => want.has(x.nx) && !x.okAt);
+    const gap = Math.min(300000, 20000 * Math.pow(2, Math.min(Math.max(d.scans, 0), 4)));
+    d.scans++; d.nextAt = now + 4000 + (urgent ? gap : Math.min(900000, 3 * gap));
+    this.stats.outboxScans = (this.stats.outboxScans || 0) + 1;
+    // escaneo filtrado de 4 s (solo anuncios de NEXO: lo que Android entrega con la pantalla apagada) y a conectar con quien se vio
+    setTimeout(() => {
+      if (this.btOff || this.offline || !(this.appActive === false || this.jsFrozen || this.closedMode)) return;
+      const w = this._outboxWanting();
+      this.radio.phones.forEach((p) => {
+        if (p === this || p.offline || p.btOff || !p.serviceRunning || p.serverUp === false || !this.radio.inRange(this, p)) return;
+        // Como el teléfono real (PluginScan → OutboxRid.resolve): el escaneo solo ve lo que el otro ANUNCIA. Con contactos, eso es su
+        // código rotativo (R…), no su NEXO ID: se reconoce con la clave de códigos de ese contacto que la app dejó con la bandeja (rk).
+        const nx = this._outboxRidResolve(p.advertised()), mac = norm(p.address);
+        if (!nx || !w.has(nx) || this.clients.has(mac) || this.clients.size >= 7) return;
+        if (Date.now() - (d.tried.get(mac) || 0) < 30000) return;
+        d.tried.set(mac, Date.now());
+        this.scanned.add(mac);
+        (this._outDialNx = this._outDialNx || new Map()).set(mac, nx);
+        this.stats.outboxDials = (this.stats.outboxDials || 0) + 1;
+        this._remLog('INFO', 'BANDEJA', 'hay mensajes pendientes para ' + nx + ' y está cerca: el teléfono abre el enlace Bluetooth sin la app');
+        this._connectClient(p, null);
+      });
+    }, 4000);
+  }
+  // Kotlin outboxBleTick: cada 10 s con la app fuera de la vista y algo en la bandeja
+  _outboxTickStart() {
+    if (this._outTick) return;
+    this._outTick = setInterval(() => {
+      if (!this.outbox || !this.outbox.items.length) return;
+      try { this.outboxBlePump(); this._outboxDialStep(); } catch (e) {}
+    }, this.opts.outboxTickMs || 10000);
+    if (this._outTick.unref) this._outTick.unref();
+  }
   _sendDeliveredAck(fromAddress, info) {
     const j = fromAddress ? this._deliveredAckJson(info) : null;
     if (j) this._sendChunkedOrSingle(norm(fromAddress), j);
@@ -666,7 +859,8 @@ class NativePhone {
     setTimeout(() => { if (peer.wifiNet === this.wifiNet && peer.lanConns && peer.lanConns.get(from) === this) { peer._bgNotify(j, null, from); peer.emit('onLanMessage', { nx: from, content: j }); } }, 2);
   }
   _closedReceive(fromAddress, json) {
-    const info = NativePhone.classifyClosed(json, this.advertisingId);
+    const info = NativePhone.classifyClosed(json, this.advertisingId, this.blocked);
+    if (this._sealCheck(json, info) === false) return; // Kotlin 2A (23-11)
     this.stats.closedRx = (this.stats.closedRx || 0) + 1;
     if (!this.bgInbox) this.bgInbox = [];
     const notify = (text) => {
@@ -688,19 +882,20 @@ class NativePhone {
 
   // 3082 (realme 13-11 18:55): Bluetooth APAGADO en este teléfono (no solo lejos): isBluetoothEnabled → enabled:false, escanear
   // falla («Bluetooth desactivado», como el Kotlin), ningún enlace, y el aviso onBluetoothStateChanged (registerBluetoothStateReceiver).
-  setBt(on) {
+  // silent (3250): como el Kotlin real, al apagarse cierra sus enlaces SIN un onDeviceDisconnected por cada uno (el otro sí lo ve)
+  setBt(on, silent) {
     this.btOff = !on;
-    this.setOffline(!on);
+    this.setOffline(!on, !!silent);
     if (!this.destroyed) this.emit('onBluetoothStateChanged', { state: on ? 'on' : 'off', enabled: !!on });
   }
 
   // ---- fuera de alcance (simula alejarse) ----
-  setOffline(off) {
+  setOffline(off, silent) {
     this.offline = off;
     if (!off) return;
     this.radio.phones.forEach((p) => {
       if (p === this) return;
-      const drop = (holder, otherAddr) => { holder.emit('onDeviceDisconnected', { deviceId: otherAddr }); holder.buffers.delete(norm(otherAddr)); holder.bin.reset(norm(otherAddr)); };
+      const drop = (holder, otherAddr) => { if (!silent) holder.emit('onDeviceDisconnected', { deviceId: otherAddr }); holder.buffers.delete(norm(otherAddr)); holder.bin.reset(norm(otherAddr)); };
       p._dropLinkLater(norm(this.address), this.address, norm(this.initAddress), this.initAddress);
       if (this.clients.has(norm(p.address))) { this.clients.delete(norm(p.address)); drop(this, p.address); }
       if (this.serverConnected.has(norm(p.initAddress))) { this.serverConnected.delete(norm(p.initAddress)); this.serverNotif.delete(norm(p.initAddress)); drop(this, p.initAddress); }
@@ -743,6 +938,9 @@ class NativePhone {
           this.mtu.set(macNorm, mtu); peer.mtu.set(norm(this.initAddress), mtu);
           peer.serverNotif.set(norm(this.initAddress), true);
           this.emit('onNotificationsEnabled', { deviceId: peer.address, notificationsEnabled: true });
+          // Kotlin 3271 outboxDialed: el enlace lo abrió la bandeja de salida → es de ese contacto y lo suyo sale ya
+          const dnx = this._outDialNx && this._outDialNx.get(macNorm);
+          if (dnx) { this._outDialNx.delete(macNorm); this._outboxLearn(macNorm, dnx); this._outboxSendVia(macNorm, dnx); }
         }, 40);
       }, 40);
     }, 60);
@@ -908,6 +1106,14 @@ class NativePhone {
         }
         // Como Android (NexoBlePlugin.onScanResult, SCAN_DEBOUNCE_MS = 1 s): mientras dura el escaneo, el mismo
         // teléfono se vuelve a avisar cada segundo con lo que anuncie entonces (p.ej. pasa de código rotativo a NEXO ID)
+        // 23-11 (multitud, ScanBook.kt): con opts.scanBatch los avisos del escaneo llegan como en una multitud real, juntos en una
+        // tanda (onDevicesFound { list }), los de mejor señal primero; sin ella, sueltos como siempre (onDeviceFound)
+        const scanEmit = (ev) => {
+          if (!self.opts.scanBatch) return self.emit('onDeviceFound', ev);
+          (self._scanQ = self._scanQ || []).push(ev);
+          if (self._scanQT) return;
+          self._scanQT = setTimeout(() => { self._scanQT = null; const l = self._scanQ.sort((x, y) => (y.rssi || 0) - (x.rssi || 0)); self._scanQ = []; self.stats.scanBatches = (self.stats.scanBatches || 0) + 1; self.stats.scanBatchMax = Math.max(self.stats.scanBatchMax || 0, l.length); self.emit('onDevicesFound', { list: l }); }, 60);
+        };
         const tick = () => {
           self.radio.phones.forEach((p) => {
             if (p === self || p.offline || !p.serviceRunning || !p.advertisingId || !self.radio.inRange(self, p)) return;
@@ -921,9 +1127,9 @@ class NativePhone {
             const ev = { deviceId: p.address, name: p.opts.noAdvName ? 'Unknown' : (p.advertisedVisible() ? p.name : ''), rssi: typeof p.opts.rssi === 'number' ? p.opts.rssi : -50, nexoId: adv };
             self.scanned.add(norm(p.address)); // Kotlin onScanResult: scannedDevices[macNorm] = device
             if (p.opts.codedCopy && !self.opts.noCodedScan) {
-              self.emit('onDeviceFound', { deviceId: codedAddr(p.address), name: 'Unknown', rssi: ev.rssi, nexoId: adv, coded: true });
-              setTimeout(() => self.emit('onDeviceFound', ev), 350);
-            } else self.emit('onDeviceFound', ev);
+              scanEmit({ deviceId: codedAddr(p.address), name: 'Unknown', rssi: ev.rssi, nexoId: adv, coded: true });
+              setTimeout(() => scanEmit(ev), 350);
+            } else scanEmit(ev);
           });
           // Build 2838: RUIDO de multitud (anunciantes NO-NEXO: pulseras, beacons, otros teléfonos). El filtro del
           // controlador (ScanFilter manufacturer-data NEXO) los descarta → solo se entregan si el escaneo va SIN filtro.
@@ -931,7 +1137,7 @@ class NativePhone {
           if (!(a && a.filtered) && self.radio && self.radio.noiseAds && self.radio.noiseAds.length) {
             self.radio.noiseAds.forEach((n) => {
               self.stats.noiseDelivered = (self.stats.noiseDelivered || 0) + 1;
-              self.emit('onDeviceFound', { deviceId: n.address, name: n.name || 'Unknown', rssi: n.rssi || -70 });
+              scanEmit({ deviceId: n.address, name: n.name || 'Unknown', rssi: n.rssi || -70 });
             });
           }
         };
@@ -978,7 +1184,11 @@ class NativePhone {
         clearTimeout(self.reconnTimers.get(mac)); self.reconnTimers.delete(mac); self.reconnAttempts.delete(mac); // reconnectTimers.remove
         const cl = self.clients.get(mac);
         if (cl) { self.clients.delete(mac); cl.peer.serverConnected.delete(norm(self.initAddress)); cl.peer.serverNotif.delete(norm(self.initAddress)); cl.peer.emit('onDeviceDisconnected', { deviceId: self.initAddress }); }
-        const sp = a && a.server === true ? self.serverConnected.get(mac) : null;
+        // 3262: en Android, cancelConnection sobre un enlace ENTRANTE no hace nada si la app no lo «tiene» (BluetoothGattServer.connect).
+        // El Kotlin de antes no lo tomaba: opts.serverCutNoHold lo modela (el enlace sigue vivo aunque al JS se le diga «desconectado»),
+        // para reproducir aquí el «enlace repetido que vuelve» de los teléfonos (S24↔Austin 19-11). El Kotlin nuevo (holdServerLink) corta.
+        if (a && a.server === true && self.opts.serverCutNoHold && self.serverConnected.get(mac)) self.stats.serverCancelsNoop = (self.stats.serverCancelsNoop || 0) + 1;
+        const sp = a && a.server === true && !self.opts.serverCutNoHold ? self.serverConnected.get(mac) : null;
         if (sp) {
           self.stats.serverCancels = (self.stats.serverCancels || 0) + 1;
           setTimeout(() => {
@@ -1057,13 +1267,30 @@ class NativePhone {
         self.stats.wdHostCalls = (self.stats.wdHostCalls || 0) + 1;
         if (self.opts.wifiOff) return c.reject('No se pudo crear el grupo (2)', 'WD_GROUP');
         if (self.opts.wdBusy) return setTimeout(() => c.reject('No se pudo crear el grupo (2; Wi-Fi encendido, Wi-Fi Direct inactivo, grupo ninguno, app en primer plano)', 'WD_GROUP'), 500);
+        // 3267 (COLA 4): causas reales del código de Android al montar el grupo (WifiP2pManager.ActionListener.onFailure): 0 = ERROR (interno),
+        // 1 = P2P_UNSUPPORTED, 2 = BUSY. opts.wdGroupErr = ese código; el nativo real reintenta ~5 s y devuelve «(código; estado)» con code WD_GROUP
+        if (typeof self.opts.wdGroupErr === 'number') { self.stats.wdGroupErrs = (self.stats.wdGroupErrs || 0) + 1; return setTimeout(() => c.reject('No se pudo crear el grupo (' + self.opts.wdGroupErr + '; Wi-Fi encendido, Wi-Fi Direct ' + (self.opts.wdGroupErr === 1 ? 'sin canal' : 'inactivo') + ', grupo ninguno, app en primer plano)', 'WD_GROUP'), self.opts.wdGroupErrMs || 1500); }
         const rnd = (n) => Array.from({ length: n }, () => 'abcdefghjkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 31)]).join('');
         const ssid = 'DIRECT-' + rnd(2) + '-NEXO', pass = rnd(16), port = 40000 + Math.floor(Math.random() * 20000);
         self.radio.wdGroups = self.radio.wdGroups || new Map();
-        self.radio.wdGroups.set(ssid, { host: self, pass, port, id: a.transferId, bigToken: a.bigToken || null });
+        self.radio.wdGroups.set(ssid, { host: self, pass, port, id: a.transferId, bigToken: a.bigToken || null, token: a.token || null, size: a.size || 0 });
         self.stats.wdGroups = (self.stats.wdGroups || 0) + 1;
-        setTimeout(() => c.resolve({ ssid, passphrase: pass, port }), 1500);
+        setTimeout(() => c.resolve({ ssid, passphrase: pass, port, groupMs: 1500, attempts: 1, reasons: '', apStart: 5180 }), 1500); // 3258: como el nativo
         setTimeout(() => { if (self.radio.wdGroups.get(ssid)) { self.radio.wdGroups.delete(ssid); if (a.bigToken) self.emit('onBigDone', { id: a.transferId, dir: 'in', ok: false, error: 'Accept timed out' }); else self.emit('onWifiDirectReceived', { transferId: a.transferId, error: 'Accept timed out' }); } }, 90000);
+      }),
+      // 3287: como el nativo: cerrar el socket que esperaba hace que la espera termine con error (y se baja el grupo)
+      wifiDirectCancel: wrap('wifiDirectCancel', (c, a) => {
+        // Auditoría 23-11 (T-E1): con `ack` es la confirmación de la app tras descifrar (1) o el «no se pudo leer» (0): el nativo
+        // manda (o no) el byte de «recibido» por el socket que tenía abierto esperando. Sin respuesta en WD_ACK_WAIT_MS, se cierra.
+        if (a.ack === 0 || a.ack === 1) { const w = self.wdAckWait && self.wdAckWait.get(a.transferId); if (!w) return c.resolve({ acked: false }); self.wdAckWait.delete(a.transferId); w(a.ack === 1); return c.resolve({ acked: true }); }
+        let hit = null;
+        (self.radio.wdGroups || new Map()).forEach((g, ssid) => { if (g.host === self && g.id === a.transferId) hit = [ssid, g]; });
+        if (!hit) return c.resolve({ cancelled: false });
+        self.radio.wdGroups.delete(hit[0]);
+        self.stats.wdCancels = (self.stats.wdCancels || 0) + 1;
+        if (hit[1].bigToken) self.emit('onBigDone', { id: a.transferId, dir: 'in', ok: false, error: 'cancelado por quien envía' });
+        else self.emit('onWifiDirectReceived', { transferId: a.transferId, error: 'cancelado por quien envía' });
+        c.resolve({ cancelled: true });
       }),
       wifiDirectSend: wrap('wifiDirectSend', (c, a) => {
         if (!self.opts.wifiDirect || self.opts.wdNoPerm) return c.reject('Wi-Fi Direct no disponible', 'WD_UNAVAILABLE');
@@ -1081,11 +1308,18 @@ class NativePhone {
           return setTimeout(() => self._bigPush(g.host, b, a.transferId, 2e6, () => self.radio.inRange(self, g.host) && !self.offline && !g.host.offline, c, { joinMs: 2000 }, 'WD_SEND'), 2000);
         }
         const ms = 2000 + Math.round(data.length / 2000);
+        // 3267: opts.wdDropMs = el grupo se cae a los N ms de haberse unido (el otro se aleja, Android lo baja): el nativo real avisa con WD_SEND
+        if (self.opts.wdDropMs >= 0) { self.stats.wdDrops = (self.stats.wdDrops || 0) + 1; return setTimeout(() => { self.radio.wdGroups.delete(a.ssid); c.reject('Envío fallido: el grupo se cayó', 'WD_SEND'); }, 2000 + self.opts.wdDropMs); }
+        // T-L1: el receptor solo acepta la conexión con su token y el tamaño anunciado (si no, sigue esperando la buena: aquí, falla el envío)
+        if (!g.token || a.token !== g.token || (g.size > 0 && g.size !== data.length)) { self.stats.wdBadTok = (self.stats.wdBadTok || 0) + 1; return setTimeout(() => c.reject('Envío fallido: sin confirmación', 'WD_SEND'), 2000); }
         setTimeout(() => {
           self.radio.wdGroups.delete(a.ssid);
           self.stats.wdBytes = (self.stats.wdBytes || 0) + data.length;
-          g.host.emit('onWifiDirectReceived', { transferId: a.transferId, data, bytes: data.length, readMs: ms - 2000, ts: Date.now() });
-          c.resolve({ ok: true, ms, bytes: data.length, joinMs: 2000, xferMs: ms - 2000, bridgeMs: 0 });
+          // T-E1: el byte de «recibido» sale cuando la app del otro lo descifró (wifiDirectCancel con ack); sin eso, sin confirmación
+          g.host.wdAckWait = g.host.wdAckWait || new Map();
+          const tw = setTimeout(() => { if (g.host.wdAckWait.get(a.transferId)) { g.host.wdAckWait.delete(a.transferId); c.reject('Envío fallido: sin confirmación', 'WD_SEND'); } }, 20000);
+          g.host.wdAckWait.set(a.transferId, (ok) => { clearTimeout(tw); if (ok) c.resolve({ ok: true, ms, bytes: data.length, joinMs: 2000, xferMs: ms - 2000, bridgeMs: 0, apStart: 5180, apJoined: 5180 }); else { self.stats.wdNoAck = (self.stats.wdNoAck || 0) + 1; c.reject('Envío fallido: sin confirmación', 'WD_SEND'); } });
+          g.host.emit('onWifiDirectReceived', { transferId: a.transferId, data: g.host.opts.rxCorrupt ? NativePhone._corrupt(data) : data, bytes: data.length, readMs: ms - 2000, ts: Date.now(), apMhz: 5180 });
         }, ms);
       }),
       // ===== Archivos grandes (Kotlin BigFile.kt, ronda 2756): "cifrado" a disco por trozos y paso de disco a disco.
@@ -1133,14 +1367,23 @@ class NativePhone {
       // ===== Archivos grandes por Bluetooth L2CAP (Kotlin bigServeL2 / bigSendL2, ronda 2758): canal de flujo sobre la
       // conexión Bluetooth (Android 10+; opts.noL2 = teléfono anterior). ~100 KB/s (opts.l2Bps); se corta si se alejan.
       // Llamadas de voz (Kotlin callAudio, ronda 2758): solo se anota el modo
-      callAudio: wrap('callAudio', (c, a) => { self.callAudioOn = a.on === true; self.callSpeaker = a.on === true && a.speaker === true; self.keepScreenOn = a.on === true; self.proximity = a.on === true && a.speaker !== true; /* Kotlin 2769 callScreen */ self.callFgs = a.on === true ? 'micrófono' : 'normal'; /* Kotlin 2770 BleService.foreground */ self.audioFocus = a.on === true; /* Kotlin 2770 callFocus */ c.resolve({ fgs: self.callFgs, focus: a.on === true ? 'sí' : '', mode: a.on ? 3 : 0, speakerOn: self.callSpeaker, device: a.on ? (self.callSpeaker ? 'altavoz' : 'auricular') : 'ninguno', volCall: '5/7', volMedia: '9/15' }); }),
+      callAudio: wrap('callAudio', (c, a) => { self.callAudioOn = a.on === true; if (a.on !== true && self.pipVideo === true && !self.opts.pipSticky) { self.pipVideo = false; (self.pipLog = self.pipLog || []).push(false); } /* 3282: sin audio de llamada, fuera la marca de miniatura */ self.callSpeaker = a.on === true && a.speaker === true; self.keepScreenOn = a.on === true; self.proximity = a.on === true && a.speaker !== true; /* Kotlin 2769 callScreen */ self.callFgs = a.on === true ? 'micrófono' : 'normal'; /* Kotlin 2770 BleService.foreground */ self.audioFocus = a.on === true; /* Kotlin 2770 callFocus */ c.resolve({ fgs: self.callFgs, focus: a.on === true ? 'sí' : '', mode: a.on ? 3 : 0, speakerOn: self.callSpeaker, device: a.on ? (self.callSpeaker ? 'altavoz' : 'auricular') : 'ninguno', volCall: '5/7', volMedia: '9/15' }); }),
       // Kotlin 2770 ringerMode: modo del timbre (self.ringer: 'normal' | 'vibrate' | 'silent') y "No molestar" (self.dnd)
       ringerMode: wrap('ringerMode', (c) => c.resolve({ mode: self.ringer || 'normal', dnd: !!self.dnd })),
       // Kotlin 3134 ringback: tono de llamada saliente del sistema (ToneGenerator por el canal de llamada); se anota on/off
       // Kotlin setPipActive (#dueño 01-11): la videollamada en curso pasa a la miniatura del sistema al irse de la app; se anota
-      setPipActive: wrap('setPipActive', (c, a) => { self.pipVideo = a.on === true; c.resolve({}); }),
+      setPipActive: wrap('setPipActive', (c, a) => {
+        self.pipVideo = a.on === true; (self.pipLog = self.pipLog || []).push(a.on === true);
+        // 3227: al quitarla con la ventanita abierta, el nativo la cierra (la app va atrás)
+        if (a.on !== true && self.pipNow === true) { self.pipNow = false; self.pipClosed = (self.pipClosed || 0) + 1; }
+        c.resolve({});
+      }),
+      // Kotlin 3278 callOut: por dónde suena la llamada (solo con self.callOut puesto por la prueba)
+      callOut: wrap('callOut', (c) => c.resolve(self.callOut || {})),
+      // Kotlin 3277 pipState: la verdad sobre la miniatura (self.pipNow: true/false; sin definir = nativo sin esa respuesta, como antes)
+      pipState: wrap('pipState', (c) => c.resolve(typeof self.pipNow === 'boolean' ? { pip: self.pipNow, wanted: self.pipVideo === true } : {})),
       ringback: wrap('ringback', (c, a) => { self.ringbackOn = a.on === true; (self.ringbackLog = self.ringbackLog || []).push(a.on === true); c.resolve({ on: a.on === true }); }),
-      l2Info: wrap('l2Info', (c) => c.resolve({ ok: !self.opts.noL2, sdk: self.opts.noL2 ? 28 : 33 })),
+      l2Info: wrap('l2Info', (c) => c.resolve({ ok: !self.opts.noL2, sdk: self.opts.noL2 ? 28 : 33, payload: !self.opts.noL2 && !self.opts.noL2Payload })),
       bigServeL2: wrap('bigServeL2', (c, a) => {
         if (self.opts.noL2) return c.reject('L2CAP no disponible (Android 10+ y Bluetooth activo)', 'L2_NONE');
         if (!a.id || String(a.token || '').length < 16) return c.reject('id y token requeridos');
@@ -1149,6 +1392,56 @@ class NativePhone {
         self.radio.l2Servers.set(psm, { host: self, id: a.id, token: a.token });
         c.resolve({ psm });
         setTimeout(() => { if (self.radio.l2Servers.get(psm) && self.radio.l2Servers.get(psm).id === a.id) { self.radio.l2Servers.delete(psm); self.emit('onBigDone', { id: a.id, dir: 'in', ok: false, error: 'L2CAP: Accept timed out' }); } }, 60000);
+      }),
+      // ===== 3288: archivos MEDIANOS por el canal L2CAP (Kotlin l2PayloadHost / l2PayloadSend / l2PayloadCancel) =====
+      // opts.noL2Payload = teléfono que no lo tiene (l2Info lo dice: la app ni lo anuncia ni lo usa); opts.l2pFail = el canal no se abre
+      // (como un teléfono donde L2CAP falla); velocidad opts.l2Bps (por defecto ~1 MB/s, lo medido en el S23/S24)
+      l2PayloadHost: wrap('l2PayloadHost', (c, a) => {
+        if (self.opts.noL2) return c.reject('L2CAP no disponible (Android 10+ y Bluetooth activo)', 'L2_NONE');
+        self.radio.l2pServers = self.radio.l2pServers || new Map();
+        const psm = 0x80 + Math.floor(Math.random() * 100) * 2 + 1;
+        self.radio.l2pServers.set(psm, { host: self, id: a.transferId, size: a.size, token: a.token || null });
+        self.stats.l2pHosts = (self.stats.l2pHosts || 0) + 1;
+        c.resolve({ psm });
+        setTimeout(() => { const s = self.radio.l2pServers.get(psm); if (s && s.id === a.transferId) { self.radio.l2pServers.delete(psm); self.emit('onL2PayloadReceived', { transferId: a.transferId, error: 'Accept timed out' }); } }, 15000);
+      }),
+      l2PayloadSend: wrap('l2PayloadSend', (c, a) => {
+        if (self.opts.noL2) return c.reject('L2CAP no disponible', 'L2_NONE');
+        const mac = norm(a.deviceId || '');
+        const peer = self.radio.phones.find((p) => p !== self && (norm(p.address) === mac || norm(p.initAddress) === mac));
+        const srv = self.radio.l2pServers && self.radio.l2pServers.get(a.psm);
+        const data = String(a.data || '');
+        if (!peer || !srv || srv.host !== peer || srv.id !== a.transferId || !self.radio.inRange(self, peer) || peer.offline || self.offline || self.opts.l2pFail || peer.opts.l2pFail) {
+          self.stats.l2pFails = (self.stats.l2pFails || 0) + 1;
+          return setTimeout(() => c.reject('Envío fallido: read failed, socket might closed or timeout', 'L2_SEND'), 1500);
+        }
+        // T-L1: solo con el token del canal y el tamaño anunciado
+        if (!srv.token || a.token !== srv.token || (srv.size > 0 && srv.size !== data.length)) { self.stats.l2pBadTok = (self.stats.l2pBadTok || 0) + 1; return setTimeout(() => c.reject('Envío fallido: sin confirmación', 'L2_SEND'), 1500); }
+        const ms = 300 + Math.round(data.length / ((self.opts.l2Bps || 1e6) / 1000));
+        setTimeout(() => {
+          self.radio.l2pServers.delete(a.psm);
+          if (!self.radio.inRange(self, peer) || peer.offline || self.offline) return c.reject('Envío fallido: se cortó', 'L2_SEND');
+          // T-E1: el byte de «recibido» sale cuando la app del otro lo descifró (l2PayloadCancel con ack)
+          peer.l2AckWait = peer.l2AckWait || new Map();
+          const tw = setTimeout(() => { if (peer.l2AckWait.get(a.transferId)) { peer.l2AckWait.delete(a.transferId); c.reject('Envío fallido: sin confirmación', 'L2_SEND'); } }, 20000);
+          peer.l2AckWait.set(a.transferId, (ok) => {
+            clearTimeout(tw);
+            if (!ok) { self.stats.l2pNoAck = (self.stats.l2pNoAck || 0) + 1; return c.reject('Envío fallido: sin confirmación', 'L2_SEND'); }
+            self.stats.l2pSends = (self.stats.l2pSends || 0) + 1; self.stats.l2pBytes = (self.stats.l2pBytes || 0) + data.length;
+            c.resolve({ ok: true, bytes: data.length, ms, connectMs: 300 });
+          });
+          peer.emit('onL2PayloadReceived', { transferId: a.transferId, data: peer.opts.rxCorrupt ? NativePhone._corrupt(data) : data, bytes: data.length, readMs: ms - 300 }); // T-E1: opts.rxCorrupt = llega pero no se puede descifrar
+        }, ms);
+      }),
+      l2PayloadCancel: wrap('l2PayloadCancel', (c, a) => {
+        if (a.ack === 0 || a.ack === 1) { const w = self.l2AckWait && self.l2AckWait.get(a.transferId); if (!w) return c.resolve({ acked: false }); self.l2AckWait.delete(a.transferId); w(a.ack === 1); return c.resolve({ acked: true }); }
+        let hit = null;
+        (self.radio.l2pServers || new Map()).forEach((s, psm) => { if (s.host === self && s.id === a.transferId) hit = psm; });
+        if (hit === null) return c.resolve({ cancelled: false });
+        self.radio.l2pServers.delete(hit);
+        self.stats.l2pCancels = (self.stats.l2pCancels || 0) + 1;
+        self.emit('onL2PayloadReceived', { transferId: a.transferId, error: 'cancelado por quien envía' });
+        c.resolve({ cancelled: true });
       }),
       bigSendL2: wrap('bigSendL2', (c, a) => {
         if (self.opts.noL2) return c.reject('L2CAP no disponible', 'L2_NONE');
@@ -1175,7 +1468,7 @@ class NativePhone {
         c.resolve({ opened: true });
       }),
       // Batería (opts.battery = { level, charging, powerSave }; por defecto 80 %, sin cargar)
-      getPowerStatus: wrap('getPowerStatus', (c) => { const b = self.battery || self.opts.battery || { level: 80, charging: false, powerSave: false }; c.resolve({ level: b.level, charging: !!b.charging, powerSave: !!b.powerSave, idle: !!b.idle, interactive: b.interactive !== false, ignoringOpt: b.ignoringOpt !== false, net: self.wifiNet ? 'Wi-Fi' : 'datos móviles' }); }), // 3020: + Doze, pantalla, optimización, red
+      getPowerStatus: wrap('getPowerStatus', (c) => { const b = self.battery || self.opts.battery || { level: 80, charging: false, powerSave: false }; c.resolve({ level: b.level, charging: !!b.charging, powerSave: !!b.powerSave, idle: !!b.idle, interactive: b.interactive !== false, ignoringOpt: b.ignoringOpt !== false, net: self.wifiNet ? 'Wi-Fi' : 'datos móviles', ...(b.temp != null ? { temp: b.temp } : {}), ...(b.thermal != null ? { thermal: b.thermal } : {}) }); }), // 3020; 3256: temperatura y estado térmico si la prueba los da: + Doze, pantalla, optimización, red
       // Archivos (Kotlin: FileProvider + ACTION_VIEW; PdfRenderer). Aquí se registran las llamadas.
       openFile: wrap('openFile', (c) => {
         const b64 = c.getString('base64'); if (!b64) return c.reject('base64 requerido');
@@ -1191,6 +1484,11 @@ class NativePhone {
         (self.openedUrls = self.openedUrls || []).push(u);
         c.resolve({ opened: true });
       }),
+      // COLA 31: vista previa real de un enlace (Kotlin PluginLinkPreview.kt + LinkPreview.kt, probado en tests/kotlin/LinkPreviewTest). Solo
+      // existe si la prueba da opts.linkPreview(args, teléfono) → { status, title, image, host, to } (lo que el «sitio» y Tor dirían).
+      ...(self.opts.linkPreview ? { linkPreview: wrap('linkPreview', (c, a) => {
+        Promise.resolve().then(() => self.opts.linkPreview(a, self)).then((r) => c.resolve(r), (e) => c.reject(String((e && e.message) || e)));
+      }) } : {}),
       pdfThumbnail: wrap('pdfThumbnail', (c) => {
         const b64 = c.getString('base64'); if (!b64) return c.reject('base64 requerido');
         const head = Buffer.from(b64.substring(0, 16), 'base64').toString('latin1');
@@ -1261,6 +1559,8 @@ class NativePhone {
       // si opts.lanSilent es falso (con TCP real, a veces no se entera: lo detecta la app por falta de latido).
       // peers: calidad que mide el latido nativo (opts.lanRtt = ida y vuelta simulada; un otro que se fue sin cerrar
       // deja de contestar: "idle" crece y a los 30 s el nativo cierra)
+      // 3266 (COLA 27): la app avisa de un Wi-Fi sin internet (Kotlin reportNoInternetImpl → ConnectivityManager.reportNetworkConnectivity)
+      reportNoInternet: wrap('reportNoInternet', (c) => { self.stats.noNetReports = (self.stats.noNetReports || 0) + 1; c.resolve({ reported: true }); }),
       lanStatus: wrap('lanStatus', (c) => {
         const now = Date.now(), peers = [];
         if (self.lanConns) self.lanConns.forEach((p, nx) => {
@@ -1308,7 +1608,7 @@ class NativePhone {
       torStatus: wrap('torStatus', (c) => c.resolve({ supported: true, running: !!self.tor, onion: self.tor ? self.tor.onion : '', port: 9878, peers: [] })),
       // FCM «despertador» (#87, Fase 2): token FCM de ESTE teléfono (fijo por teléfono en el modelo). En teléfono real
       // lo da FirebaseMessaging; aquí basta uno estable y único para probar el intercambio y el disparo del toque.
-      getFcmToken: wrap('getFcmToken', (c) => c.resolve({ token: 'FCMTOK-' + self.name + '-0000000000000000000000000000' })),
+      getFcmToken: wrap('getFcmToken', (c) => c.resolve({ token: 'FCMTOK-' + self.name + '-0000000000000000000000000000', sealed: self.fcmSealed || '' })), // 14A: el sello (lo pone la prueba)
       // NEXO Touch (2968): háptica del sistema — en el simulador solo se registra (kind, mode); así los tests no la confunden con navigator.vibrate (llamadas)
       haptic: wrap('haptic', (c, a) => { self.haptics = (self.haptics || []).concat([{ kind: a.kind, mode: a.mode }]); c.resolve({}); }),
       hapticCaps: wrap('hapticCaps', (c) => c.resolve({ sdk: 34, hasVibrator: true, amplitude: true, primitives: true })),
@@ -1325,6 +1625,19 @@ class NativePhone {
       }),
       torConnect: wrap('torConnect', (c, a) => {
         if (!self.tor) return c.reject('Tor no listo', 'TOR_DOWN');
+        // Decisión 13A («Usar Tor siempre»): {url, ws} = WebSocket a un relé por Tor (Kotlin: WsClient por el SOCKS); {post} = el toque
+        if (a.post) { self.stats.torPosts = (self.stats.torPosts || 0) + 1; return setTimeout(() => c.resolve({ status: 200 }), self.opts.torLatency || 300); }
+        if (a.url) {
+          const NodeWS = require('ws'); self.torWs = self.torWs || new Map();
+          self.stats.torWsOpen = (self.stats.torWsOpen || 0) + 1;
+          const w = new NodeWS(a.url); self.torWs.set(a.ws, w);
+          const lat = self.opts.torLatency || 300;
+          w.on('open', () => setTimeout(() => self.emit('onTorWs', { ws: a.ws, ev: 'open' }), lat));
+          w.on('message', (d) => setTimeout(() => self.emit('onTorWs', { ws: a.ws, ev: 'msg', data: String(d) }), lat));
+          w.on('close', () => { if (self.torWs.get(a.ws) === w) { self.torWs.delete(a.ws); setTimeout(() => self.emit('onTorWs', { ws: a.ws, ev: 'close' }), lat); } });
+          w.on('error', () => {});
+          return c.resolve({ connecting: true });
+        }
         c.resolve({ connecting: true });
         setTimeout(() => {
           const t = self.radio.phones.find((p) => p.tor && p.tor.onion === a.host && !p.offline);
@@ -1334,6 +1647,7 @@ class NativePhone {
         }, self.opts.torLatency || 300);
       }),
       torSend: wrap('torSend', (c, a) => {
+        if (a.ws) { const w = self.torWs && self.torWs.get(a.ws); if (!w || w.readyState !== 1) return c.reject('sin conexión', 'TOR_DOWN'); w.send(String(a.content || '')); return c.resolve({ sent: true }); }
         const peer = self.tor && self.tor.conns.get(String(a.nx || '').toLowerCase());
         if (!peer || peer.offline || !peer.tor) return c.reject('Sin conexión Tor con ' + a.nx, 'TOR_DOWN');
         const content = String(a.content || ''), from = self.tor.nx;
@@ -1347,11 +1661,12 @@ class NativePhone {
         c.resolve({ sent: true });
       }),
       torDrop: wrap('torDrop', (c, a) => {
+        if (a.ws) { const w = self.torWs && self.torWs.get(a.ws); if (w) { self.torWs.delete(a.ws); try { w.close(); } catch (e) {} } return c.resolve({ dropped: true }); }
         const nx = String(a.nx || '').toLowerCase(), peer = self.tor && self.tor.conns.get(nx);
         if (peer) { self.tor.conns.delete(nx); self.emit('onTorDown', { nx }); if (peer.tor) { peer.tor.conns.delete(self.tor.nx); peer.emit('onTorDown', { nx: self.tor.nx }); } }
         c.resolve({ dropped: true });
       }),
-      torStop: wrap('torStop', (c) => { if (self.tor) self.tor.conns.forEach((p, nx) => { if (p.tor) { p.tor.conns.delete(self.tor.nx); p.emit('onTorDown', { nx: self.tor.nx }); } }); self.tor = null; c.resolve({ stopped: true }); }),
+      torStop: wrap('torStop', (c) => { if (self.torWs) { self.torWs.forEach((w) => { try { w.close(); } catch (e) {} }); self.torWs.clear(); } if (self.tor) self.tor.conns.forEach((p, nx) => { if (p.tor) { p.tor.conns.delete(self.tor.nx); p.emit('onTorDown', { nx: self.tor.nx }); } }); self.tor = null; c.resolve({ stopped: true }); }),
       // Notificaciones de mensajes (MsgNotifier.kt): una por chat con su número; el icono de la app suma los números
       // Kotlin 3012 setKxCard: la app deja su «tarjeta» (kx sin paquete de claves) para que el nativo conteste con la app dormida
       setKxCard: wrap('setKxCard', (c, a) => {
@@ -1391,6 +1706,12 @@ class NativePhone {
         setTimeout(() => c.resolve({ granted: true }), 300);
       }),
       screenShareStop: wrap('screenShareStop', (c) => { self.stats.screenStops = (self.stats.screenStops || 0) + 1; if (self.screenTimer) { clearInterval(self.screenTimer); self.screenTimer = null; self.emit('onScreenShareStopped', {}); } c.resolve({}); }),
+      // COLA 22 (SilencedPolicy.kt): self.silenced = { messages:'ok|off|quiet', calls:'ok|off|quiet', filter:1..4 }; silencedOpen arregla lo que abre
+      silencedState: wrap('silencedState', (c) => { const z = self.silenced || {}, f = z.filter || 1, m = z.messages || 'ok', k = z.calls || 'ok', iss = [];
+        if (m === 'off') iss.push('msg_off'); if (k === 'off') iss.push('call_off'); if (m === 'quiet') iss.push('msg_quiet'); if (k === 'quiet') iss.push('call_quiet');
+        if (f > 1) iss.push(f >= 3 ? 'dnd_total' : 'dnd_priority'); c.resolve({ messages: m, calls: k, dnd: f > 1, dndKind: f >= 3 ? 'total' : f === 2 ? 'priority' : 'none', issues: iss, appEnabled: true }); }),
+      silencedOpen: wrap('silencedOpen', (c, a) => { (self.silencedOpened = self.silencedOpened || []).push(a.what); const z = self.silenced = self.silenced || {};
+        if (a.what === 'messages') z.messages = 'ok'; else if (a.what === 'calls') z.calls = 'ok'; else if (a.what === 'dnd') z.filter = 1; c.resolve({ opened: true }); }),
       openAlertSetting: wrap('openAlertSetting', (c, a) => { (self.alertOpened = self.alertOpened || []).push(a.what); self.alertFix = Object.assign({}, self.alertFix, { [a.what]: true }); c.resolve({ opened: true }); }),
       callScreenDone: wrap('callScreenDone', (c) => { self.overLock = false; c.resolve({}); }),
       callAction: wrap('callAction', (c) => {
@@ -1405,12 +1726,54 @@ class NativePhone {
       // 3207: solicitudes de contacto de cerca: la batería acepta sola (como antes del cambio); opts.nearAutoAccept === false la apaga
       simNearAutoAccept: wrap('simNearAutoAccept', (c) => { c.resolve({ on: self.opts.nearAutoAccept !== false }); }),
       netBgDrain: wrap('netBgDrain', (c) => { const ev = self.netBgInbox || [], gaps = self.netBgGaps || {}; self.netBgInbox = []; self.netBgGaps = {}; c.resolve({ events: ev, gaps: gaps }); }), // 3205: gaps = relés que la escucha nativa soltó con datos → desde cuándo
+      // 3268 (fase 3, COLA 29; Kotlin NetOutbox + netOutboxSetImpl): la app deja la lista ENTERA de sus textos pendientes ya cifrados
+      // (reemplaza a la anterior; lo que no cuadra se salta, como NetOutbox.valid). Subirlos a los relés: netbg_mock.pumpOutbox
+      netOutboxSet: wrap('netOutboxSet', (c, a) => {
+        const { validItem } = require('./netbg_mock');
+        const prev = (self.outbox && self.outbox.items) || [];
+        // 3281 (NetOutbox.chunksOf): un archivo pequeño trae sus trozos (ev: eventos ya firmados, kind 1064, hasta 26); «ck» sin ev = «ya
+        // los tienes» (solo vale si se tienen: si no, va en miss). opts.noOutboxFiles = el nativo de antes (no entiende archivos).
+        const chunksOf = (ev) => { if (!Array.isArray(ev) || !ev.length || ev.length > 26) return null; const out = []; for (const s of ev) { let o = null; try { o = JSON.parse(s); } catch (e) {} if (typeof s !== 'string' || s.length > 70000 || !o || o.kind !== 1064 || !/^[0-9a-f]{64}$/.test(o.id || '') || !o.content || o.content.length > 60000) return null; out.push({ id: o.id, ev: s, ok: false }); } return out; };
+        const miss = [];
+        let nFiles = 0;
+        const items = (a.items || []).filter(validItem).slice(0, 100).map((x) => {
+          const old = prev.find((y) => y.id === x.id && y.nx === x.nx);
+          if (old) { if (old.chunks) nFiles++; return old; }
+          const it = { id: x.id, nx: x.nx, p: x.p, at: x.at || Date.now(), wk: x.wk || '' };
+          if (x.ev || x.ck) {
+            if (self.opts.noOutboxFiles) return null;
+            if (!x.ev) { miss.push(x.id); return null; }
+            const ch = chunksOf(x.ev);
+            if (!ch || nFiles >= 4) return null;
+            it.chunks = ch; nFiles++;
+            self.stats.outboxEvBytes = (self.stats.outboxEvBytes || 0) + x.ev.reduce((n, s) => n + s.length, 0);
+          }
+          return it;
+        }).filter(Boolean);
+        // 3279: las claves de los códigos rotativos de esos contactos (nx → hex 64) y la duración de la época: solo de quien tiene algo pendiente
+        const rk = {}; Object.keys(a.rk || {}).forEach((nx) => { if (items.some((x) => x.nx === nx) && /^[0-9a-f]{64}$/.test(String(a.rk[nx]))) rk[nx] = String(a.rk[nx]); });
+        self.outbox = { items, f: a.f || '', url: a.url || '', rk, ep: Math.max(1, Number(a.ep) || 900) };
+        self._outboxTickStart();
+        (a.links || []).slice(0, 64).forEach((l) => { if (l) self._outboxLearn(norm(String(l.mac || '')), String(l.nx || '').toLowerCase()); }); // 3269
+        self.outboxCalls = (self.outboxCalls || 0) + 1;
+        c.resolve({ n: items.length, sent: items.filter((x) => x.okAt).map((x) => x.id), have: items.filter((x) => x.chunks).map((x) => x.id), miss });
+      }),
+      netOutboxList: wrap('netOutboxList', (c) => { c.resolve({ items: ((self.outbox && self.outbox.items) || []).map((x) => ({ id: x.id, nx: x.nx, ok: !!x.okAt, ck: (x.chunks || []).length, up: (x.chunks || []).filter((k) => k.ok).length })) }); }),
+      netOutboxDrop: wrap('netOutboxDrop', (c, a) => {
+        if (self.outbox) self.outbox.items = self.outbox.items.filter((x) => x.id !== a.id);
+        (self.outboxDrops = self.outboxDrops || []).push(a.id);
+        c.resolve({});
+      }),
       netBgConfig: wrap('netBgConfig', (c, a) => { self.netBg = a; self.netBgCalls = (self.netBgCalls || 0) + 1; c.resolve({ contacts: (a.contacts || []).length, running: false }); }),
       // 3219 (Kotlin setMutedChats → MutedChats): la app da los chats silenciados [{id, until}] (until ms; 0 = siempre)
       setMutedChats: wrap('setMutedChats', (c, a) => {
-        self.muted = new Map(); self.mutedCalls = (self.mutedCalls || 0) + 1;
-        ((a && a.chats) || []).forEach((x) => { const id = String((x && x.id) || '').toLowerCase(), u = Number(x && x.until); if (/^(nx|gr)[0-9a-z]{8}$/.test(id) && isFinite(u) && u >= 0) self.muted.set(id, u); });
-        c.resolve({ chats: self.muted.size });
+        // Bloqueo (24-11): lo que no viene (chats o blocked) se queda como estaba
+        if (a && Array.isArray(a.blocked)) { self.blocked = new Set(); a.blocked.forEach((x) => { const id = String(x || '').toLowerCase(); if (/^nx[0-9a-z]{8}$/.test(id)) self.blocked.add(id); }); self.blockedCalls = (self.blockedCalls || 0) + 1; }
+        if (a && Array.isArray(a.chats)) {
+          self.muted = new Map(); self.mutedCalls = (self.mutedCalls || 0) + 1;
+          a.chats.forEach((x) => { const id = String((x && x.id) || '').toLowerCase(), u = Number(x && x.until); if (/^(nx|gr)[0-9a-z]{8}$/.test(id) && isFinite(u) && u >= 0) self.muted.set(id, u); });
+        }
+        c.resolve({ chats: self.muted ? self.muted.size : 0, blocked: self.blocked ? self.blocked.size : 0 });
       }),
       // C1 (2777): la app nos da las claves de firma del ✓✓ del modo cerrado (como el Kotlin setAckKeys)
       setAckKeys: wrap('setAckKeys', (c, a) => { self.ackKeys = new Map(); (a.keys || []).forEach((k) => { try { self.ackKeys.set(String(k.nx).toLowerCase(), Buffer.from(k.key, 'base64')); } catch (e) {} }); c.resolve({ keys: self.ackKeys.size }); }),
@@ -1474,6 +1837,8 @@ function installWebCrypto(win) {
 }
 
 // Ronda 2772: eventos que traen un mensaje (el nativo mantiene el teléfono despierto al recibirlos en segundo plano)
-NativePhone.RX_EVENTS = new Set(['onPayloadReceived', 'onLanMessage', 'onTorMessage', 'onWifiDirectReceived', 'onBigProgress', 'onBigDone']);
+// T-E1: el mismo texto con un carácter cambiado a mitad (el cifrado no lo acepta)
+NativePhone._corrupt = (d) => { const i = Math.floor(d.length / 2); return d.slice(0, i) + (d[i] === 'A' ? 'B' : 'A') + d.slice(i + 1); };
+NativePhone.RX_EVENTS = new Set(['onPayloadReceived', 'onLanMessage', 'onTorMessage', 'onWifiDirectReceived', 'onL2PayloadReceived', 'onBigProgress', 'onBigDone']);
 
 module.exports = { codedAddr, Radio, NativePhone, norm, installWebCrypto };

@@ -21,6 +21,7 @@
  * cada bloque del micrófono con process(muestras, desde, hasta) en el mismo reloj. Sin dependencias del navegador: se
  * prueba en Node (tests/sim/voicefx.js).
  */
+var FAR_SEG_MAX = 1;   // 3301: un tramo de lo que suena dura como mucho esto (s)
 var DEF = {
   rate: 48000,
   hpHz: 60,
@@ -71,9 +72,12 @@ export function createVoiceFx(o) {
   var st = { frames: 0, duck: 0, dt: 0, gate: 0, limited: 0 };
 
   // Nivel de lo que sonaba del otro en el instante t
+  // 3301 (tanda 2, punto 25: eco en llamada de GRUPO): con varias voces sonando a la vez los tramos se solapan: el más fuerte de los
+  // que suenan en t (los tramos duran ≤ FAR_SEG_MAX s: se busca hacia atrás solo hasta ahí)
   function farAt(t) {
-    for (var i = far.length - 1; i >= 0; i--) { var s = far[i]; if (s[0] <= t) return s[1] > t ? s[2] : 0; }
-    return 0;
+    var lv = 0;
+    for (var i = far.length - 1; i >= 0; i--) { var s = far[i]; if (s[0] < t - FAR_SEG_MAX) break; if (s[0] <= t && s[1] > t && s[2] > lv) lv = s[2]; }
+    return lv;
   }
   // Retraso y fuerza del eco: el retraso con el que el nivel del micrófono más se parece al del otro (correlación sin
   // la media: una voz propia que no tiene que ver no cuenta); la fuerza, la pendiente con ese retraso
@@ -141,10 +145,12 @@ export function createVoiceFx(o) {
     // Lo que suena del otro: nivel RMS (0–1) entre desde y hasta (segundos, reloj del audio)
     far: function(level, t0, t1) {
       if (!(t1 > t0) || !(level >= 0)) return;
-      var last = far[far.length - 1];
-      if (last && t0 < last[0]) return; // (fuera de orden: no pasa al reproducir en orden)
-      far.push([t0, t1, level]);
-      if (far.length > 600) far.splice(0, far.length - 600);
+      // 3301: en grupo llegan de varios decodificadores: se coloca en su sitio (casi siempre al final). Tope por voz: 600 × participantes
+      if (t1 - t0 > FAR_SEG_MAX) t1 = t0 + FAR_SEG_MAX;
+      var i = far.length;
+      while (i > 0 && far[i - 1][0] > t0) i--;
+      if (i === far.length) far.push([t0, t1, level]); else far.splice(i, 0, [t0, t1, level]);
+      if (far.length > 2400) far.splice(0, far.length - 2400);
     },
     // Un bloque del micrófono (se cambia en el sitio): sus muestras van de desde a hasta (reloj del audio)
     process: function(buf, t0, t1) {

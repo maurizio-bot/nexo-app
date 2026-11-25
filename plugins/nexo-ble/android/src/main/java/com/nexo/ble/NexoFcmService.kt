@@ -30,6 +30,12 @@ class NexoFcmService : FirebaseMessagingService() {
     companion object {
         const val PREFS = "nexo_fcm"
         const val PREF_TOKEN = "token"
+        // 14A (dueño 23-11): el SELLO del toque (s1.…: el token cifrado por el enviador) y para qué token es. Lo que se comparte con
+        // los contactos es el sello: sin él nadie puede mandar toques a este teléfono cuando el enviador los exija sellados.
+        const val PREF_SEALED = "sealed"
+        const val PREF_SEALED_FOR = "sealed_for"
+        /** Un sello válido para guardar: prefijo y tamaño razonables (lo genera el enviador; aquí no se abre). */
+        fun sealOk(s: String?): Boolean = s != null && s.startsWith("s1.") && s.length in 40..6000 && s.all { it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' }
         const val WAKE_NOTIF_ID = 4600
         private const val TAG = "NEXO_FCM"
     }
@@ -43,7 +49,8 @@ class NexoFcmService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        try { getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(PREF_TOKEN, token).apply() } catch (e: Exception) { }
+        // 14A: el sello del token viejo ya no sirve (la app pide uno nuevo al ver que falta)
+        try { getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(PREF_TOKEN, token).remove(PREF_SEALED).remove(PREF_SEALED_FOR).apply() } catch (e: Exception) { }
         // SEC-3 (03-11): el token es la "dirección" para despertar ESTE teléfono. La Fase 1 ya se probó, así que al
         // diagnóstico va SOLO un prefijo + largo (no el token entero), para que un diagnóstico compartido no deje a nadie
         // despertar este teléfono. El token completo sí se comparte con los contactos, cifrado, por el camino normal.
@@ -53,6 +60,17 @@ class NexoFcmService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         CrashLog.install(this) // 3120: el proceso puede arrancar por un aviso de FCM sin pantalla ni servicio
         super.onMessageReceived(message)
+        // 14A: el sello del toque (lo manda el enviador SOLO a este teléfono): se guarda y no se despierta nada
+        if (message.data["t"] == "seal") {
+            val sealed = message.data["s"]
+            if (sealOk(sealed)) try {
+                val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                prefs.edit().putString(PREF_SEALED, sealed).putString(PREF_SEALED_FOR, prefs.getString(PREF_TOKEN, "") ?: "").apply()
+                nlog("Sello del toque recibido (${sealed!!.length} car.): los contactos lo usarán para despertarme")
+            } catch (e: Exception) { }
+            else nlog("Sello del toque no válido: ignorado", "WARN")
+            return
+        }
         nlog("Despierta recibido (data=${message.data.size}, prio=${message.priority}/${message.originalPriority})")
 
         // 1) Arrancar el servicio de NEXO para que empiece a bajar el buzón (NetBg) y el Bluetooth. Un "toque" de ALTA

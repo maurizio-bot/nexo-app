@@ -386,12 +386,893 @@
    "causa": "no es un fallo (tablet 3105)"
   },
   {
+<<<<<<< HEAD
    "dia": "2026-11-20",
    "hora": "05:06",
    "nx": "nx1n36c283",
    "sintoma": "pendiente_viejo (nx1a4471d8 msg1794341005789x3hws 13863 min, enlace internet) · build 3116",
    "categoria": "Adjunto pendiente que no se reenvía (a investigar) + enlace viejo tras actualizar",
    "causa": "(1) DESPERTADOR: «[WAKE] toque a nx126df3f4: salió (el enviador no deja leer su respuesta)» → el arreglo 3248 funciona: el toque ya sale; falta saber si Katy despertó. (2) Archivo de 25 909 KB para Giacomo (nx1a4471d8) pendiente 9,6 días: al reenviar, «se cargan 1 adjunto(s) del disco» pero «Adjunto pendiente sin sus datos (aún no se lee del teléfono): queda ⏳ y se reintenta» (carrera: reenvía antes de que termine de leer el disco). (3) Tras actualizar 3113→3116 (05:04), «Conexión existente recuperada al arrancar: 57:4A… (client/outgoing)» al Vivo: ~300 escrituras «NO_RESPONSE fallo status=201», mensaje descartado 6 s, re-ruteo a internet, el enlace cae a los 30 s (status=22): 3.ª vez que se ve el patrón «enlace que sobrevive al reinicio de la app» (Yael 18-11, Vivo 16-11)"
+=======
+   "dia": "2026-11-19",
+   "hora": "04:38",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx09acdb61)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "CONFIRMADO con el diagnóstico del Vivo (05:12): el sistema del Vivo CONGELÓ el proceso entero de NEXO (app abierta en segundo plano) de ~00:20 a 05:12. El Bluetooth del sistema aceptaba conexiones, MTU y avisos en su nombre (por eso «Peer ready»), pero nada llegaba a la app: escrituras «ocupado» (201) y sin confirmar. El Vivo llevaba 17 min sin oírse por internet y a las 04:21 «su app no contesta la comprobación»: app del Vivo congelada por su ahorro de batería. Sin pérdida de chats. El S24 sigue en 3106 (sin el arreglo del despertador de la 3107). El remedio de fondo (que el nativo confirme aunque la página esté congelada) va con el Bluetooth en el servicio nativo (domingo 22-11). Falta el diagnóstico del Vivo para confirmarlo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx1e50c95d",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (S23 3102: 85 enviados, 84 ✓✓, 83 leídos; buzón de archivos 128 KB/s al enviar y 266 al recibir; llegó el 19-11 05:04)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "05:12",
+   "nx": "nx09acdb61",
+   "sintoma": "manual: Vivo Y03 (3105) al abrir la app",
+   "categoria": "App congelada por el sistema (fabricante)",
+   "causa": "Proceso de NEXO congelado por el Vivo (Android 16) unas 4 h 52 min con la app abierta en segundo plano: último registro nativo 00:18:33 («escuchando 8 contactos» por internet) y nada hasta 05:12:42 (al abrirla); en ese instante entran de golpe, con la misma hora, las conexiones Bluetooth del S24 de toda la noche (7 direcciones: conectar, MTU 517, avisos y desconectar) y 7 sobres de internet de las 00:20 (17 565 s tarde). Energía: segundo plano permitido, batería exenta; aun así el Vivo lo congeló (con la app CERRADA a las 00:05 sí recibía). El despertador del S24 (3106) no salía, así que nada lo descongeló. Sin chats perdidos (último chat 00:15). Remedio previsto: el toque FCM de la 3107 (descongela el proceso) + «Alto consumo en segundo plano» del Vivo; a probar"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "05:24",
+   "nx": "nx1n36c283",
+   "sintoma": "enlace_abre_cierra (nx09acdb61 3 cierres por enlace repetido en 10 min)",
+   "categoria": "Bluetooth: enlaces repetidos que se abren y cierran",
+   "causa": "S24 (3107) con el Vivo recién descongelado: varios enlaces a la vez por sus direcciones cambiantes; el desempate se quedó con uno (lo previsto) y uno de los repetidos dio MTU 23 (hipótesis «MTU 23 = enlace recuperado», PRIORIDAD 1). El pendiente atascado de las 04:35 (msg…508019) llegó a las 05:12:50 al descongelarse el Vivo: nada perdido. DESPERTADOR 3107 CONFIRMADO: «toque … salió» en los 9 toques. Además: (a) margen al reconectar 459 s por sobres detenidos mientras el S24 estaba en segundo plano → 12,2 MB repetidos de los relés en 18 min: ARREGLADO en 3249 (margencongelado.js), sin APK aún; (b) un relé lo castigó («banned: too many rate-limit violations») al pasar la copia Fénix al Vivo por internet: sin causa visible (registro recortado); 3209 dejó de insistir al primer «no» (bien)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx126df3f4",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (Katy 3102: 12 enviados, 12 ✓✓; llegó el 19-11 05:23)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "20:47",
+   "nx": "nx1a93dbfe",
+   "sintoma": "cierre_fallo (18-11 19:45 Roma = 12:45 México, sin memoria, detrás)",
+   "categoria": "Cierre de la app por memoria (Android)",
+   "causa": "A05 de Italia con la 3096 (VIEJA: regla 14-11, sin peso; llegó el 19-11 06:39). Android la cerró por falta de memoria en segundo plano (14 cierres en 7 días, 13 por memoria; ya visto el 18-11); el servicio se reinició solo al momento y siguió escuchando internet sin la app hasta que se abrió (03:41 Roma): nada perdido. La app ya avisó de la versión nueva; con la 3107 tendrá además el despertador arreglado"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "07:14",
+   "nx": "nx0g6ef54e",
+   "sintoma": "zombi (nx1n36c283)",
+   "categoria": "Bluetooth: enlace viejo tras apagar y encender el Bluetooth",
+   "causa": "Roberto (3107) apagó y encendió el Bluetooth (07:13:36–39): el nativo cerró el enlace con el S24 sin avisar a la app, que lo siguió creyendo listo: 4 textos fallaron 6 s cada uno (MTU 23, «muerto», re-ruteo a internet) y a los ~50 s «zombi». ARREGLADO en 3250 (btoffsilencio.js). Además: DESPERTADOR 3107 CONFIRMADO de punta a punta: mensaje del dueño 06:02:34 con la app de Roberto cerrada → «Despierta recibido», escucha nativa y ✓✓ en 0,4 s"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "07:54",
+   "nx": "nx1n36c283",
+   "sintoma": "par:zombi (pedido por nx0g6ef54e)",
+   "categoria": "Bluetooth: enlace viejo tras apagar y encender el Bluetooth",
+   "causa": "lado del S24 del caso de Roberto (ver arriba). El S24 contestaba por su parte nativa (pings y saludo) con la app en segundo plano. Datos: 43,7 MB de relés en 168 min, 40,6 MB repetidos, y batería en segundo plano 9,1 %/h: el margen al reconectar inflado (arreglado en 3249)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx0g6ef54e",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (Roberto 3100)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "08:09",
+   "nx": "nx1n36c283",
+   "sintoma": "manual: prueba de apagar y encender el Bluetooth (3107)",
+   "categoria": "Bluetooth: enlace viejo tras apagar y encender el Bluetooth",
+   "causa": "El dueño apagó el Bluetooth 08:06:40 y lo encendió 08:07:04 con la 3107: el enlace con Roberto siguió «listo» y un texto falló 6 s por él (MTU 23, «muerto», re-ruteo a internet): es justo lo arreglado en 3250 (APK en CI). Nada perdido: los 4 textos a Roberto (app CERRADA) ✓✓ en 0,4–2 s por internet (escucha nativa + despertador) y el de las 08:08:39 por Bluetooth con su app cerrada, al momento"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "08:08",
+   "nx": "nx0g6ef54e",
+   "sintoma": "manual: Roberto con la app cerrada (3107)",
+   "categoria": "Prueba del despertador (informativo)",
+   "causa": "App cerrada: recibió por internet (sobre + «Despierta recibido» + ✓✓ nativo) y por Bluetooth (BT_CERRADA MESSAGE) sin abrir la app; al abrirla entraron los 5 de golpe. Al abrir, «MTU 23» de un enlace que sobrevivió al reinicio de la app (hipótesis ya apuntada, PRIORIDAD 1 del domingo)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "08:09",
+   "nx": "nx0g6ef54e",
+   "sintoma": "par:zombi (pedido por nx1n36c283)",
+   "categoria": "Bluetooth: enlace roto al abrir la app (el servidor GATT se rehace)",
+   "causa": "Roberto abrió la app 08:08:49 (estaba cerrada): el nativo DETUVO y volvió a crear el servidor GATT con el enlace del S24 aún abierto (Connection 5455… sigue en 2). Tras rehacerlo no entra ni un trozo más del S24 por ese enlace (sus asas del servicio quedan viejas) y Roberto ve MTU 23 + «Write fallo 6 s» en el enlace viejo 49f6…: el S24 tarda ~55 s (4 pings) en darlo por zombi. Nada perdido (todo siguió por Wi-Fi local/internet). MECANISMO CONCRETO de la hipótesis «MTU 23 = enlace que sobrevive al reinicio de la app». Arreglo propuesto: al relevar el servidor al abrir, cortar (cancelConnection) los enlaces que tenía, para que el otro reconecte en ~1 s; o no rehacer el servidor si ya está en marcha"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "08:09",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx0g6ef54e)",
+   "categoria": "Bluetooth: enlace roto al abrir la app (el servidor GATT se rehace)",
+   "causa": "lado del S24 del caso anterior"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "08:19",
+   "nx": "nx09acdb61",
+   "sintoma": "par:enlace_abre_cierra (pedido por nx1n36c283)",
+   "categoria": "Bluetooth: enlaces repetidos que se abren y cierran",
+   "causa": "Vivo (3107) con la app en segundo plano desde 05:14: esta vez NO se congeló (su nativo contestó saludos 07:55–08:19 y recibió los toques FCM). Al volver a la app llegaron de golpe desconexiones viejas de 05:24–05:26 (la página sí estaba congelada; el nativo no). El mensaje de Roberto por el puente del S24 (08:09:07) llegó 08:19:35: el S24 estuvo sin red entre medio. Nada perdido"
+  },
+  {
+   "dia": "2026-11-17",
+   "hora": "16:34",
+   "nx": "nx0x4029e6",
+   "sintoma": "par:zombi (pedido por nx1905c1ee)",
+   "categoria": "Bluetooth: enlace roto al abrir la app (el servidor GATT se rehace)",
+   "causa": "Zhelowsky (3086, vieja; llegó el 19-11 08:22). Sirve de 2.ª prueba del mecanismo de Roberto 08:09: al abrir la app desde cerrada, «GATT_SERVER Detenido» y rehecho con 4 enlaces aún abiertos → MTU 23 en los 3 contactos al instante"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx0x4029e6",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (3097, vieja)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "11:32",
+   "nx": "nx0x4029e6",
+   "sintoma": "par:zombi (pedido por nx1n36c283)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "Zhelowsky (3097, vieja; llegó el 19-11 09:54). Al volver a primer plano la página recibió de golpe ~20 desconexiones viejas y un «Bluetooth apagado/encendido» suelto; su servidor GATT recibía bien (MTU 498). Nada perdido (3 envíos abortados y reenviados al momento)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx1905c1ee",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (3101, vieja; Wi-Fi local de media 148 s por un caso de 528 s)"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx01992876",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (3104, vieja)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "09:05",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx0x4029e6)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "el otro es Zhelowsky con 3097 (vieja) y la app dormida: el S24 (servidor) le mandaba un trozo Fénix de 746 partes sin ninguna confirmación; Fénix se rindió a los 17 s (queda pendiente) y el zombi salió 8 s después. Aparte, un reenvío Jump por Roberto (3107, app en segundo plano: su nativo contesta pings pero no reenvía) quedó en espera. Nada perdido. Lo único de la app: 55,5 MB bajados de los relés en 4 h, 51 MB repetidos (3107 sin el arreglo 3249; ya en la 3108) y batería 8,8 %/h"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "09:16",
+   "nx": "nx1905c1ee",
+   "sintoma": "zombi (nx0g6ef54e)",
+   "categoria": "Bluetooth: enlace roto al abrir la app (el servidor GATT se rehace)",
+   "causa": "Austin (HONOR Xb, 3107 recién instalada 09:15; optimización de batería ACTIVA, la app ya le muestra el aviso; el 18-11 20:33 el PowerGenie de Honor la forzó a cerrar). Roberto (3107) abrió la app ~09:16:08: su enlace de cliente con Austin se cerró bien («cortado por el otro»), pero el de Austin al servidor de Roberto quedó viejo (4 pings sin respuesta, zombi 50 s después) = mecanismo de 3251 (arreglado en la 3109). Lo mismo un momento con Marcos (MTU 23 y «muerto» 09:15:27–38, reconectó a MTU 517 a las 09:15:52). Nada perdido: textos pendientes o ✓✓"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "09:57",
+   "nx": "nx1n36c283",
+   "sintoma": "par:zombi (pedido por nx1905c1ee)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "S24 actualizándose a la 3108 (09:56: el proceso muere con la instalación): Austin quedó con su enlace al servidor viejo del S24 y dio zombi (esperable durante una actualización). Tras arrancar la 3108 todo bien: Austin, Roberto y Marcos listos a MTU 517 en < 1 s y el chat de 23 KB a Zhelowsky por el puente de Austin en 5 s. Nada perdido (el texto pendiente de Austin llegó 09:55:41). A REVISAR (app): (1) al arrancar la 3108 bajó 5,3 MB de los relés en 1 min, 4,4 MB repetidos (¿el margen de 3249 no cubre el arranque en frío?); (2) la foto de perfil de Austin (15 KB) llega 3 veces como «nueva»; (3) el paquete de puente sxmwnmzmmz8is749 lleva desde 09:05 reintentándose por un camino que nunca confirma (backoff 15→240 s, se reinicia al reabrir la app)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "14:07",
+   "nx": "nx0g6ef54e",
+   "sintoma": "par:zombi (pedido por nx1905c1ee)",
+   "categoria": "App muerta por el sistema y sin volver sola (#87)",
+   "causa": "Roberto (Motorola edge 40 neo, 3107, batería exenta). Su nativo recibía bien hasta las 10:00; a las 10:00 Android la mató («Foreground kill», 4.ª vez en 3 días) y NO volvió hasta que él la abrió a las 14:07: 4 h sin Bluetooth ni escucha de internet, sin «Despierta recibido» (el toque FCM no la levantó). Al abrir, todo entró en 1–2 s (textos de Austin de las 09:56 y del S24). Nada perdido, pero llegó con 4 h de retraso. Es el pendiente #87 (NEXO muere y no vuelve sola), va con el Bluetooth en el servicio nativo"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "09:57",
+   "nx": "nx1905c1ee",
+   "sintoma": "zombi (nx1n36c283)",
+   "categoria": "Bluetooth: enlace viejo tras actualizar la app del otro",
+   "causa": "Austin (3107; llegó 14:20). El S24 se actualizó a la 3108 a las 09:56: al morir el proceso por la instalación, el enlace de Austin a su servidor quedó viejo (MTU 23 09:56:57, 4 pings sin respuesta, zombi 09:57:39). 3251 no lo cubre (un proceso que muere no puede cortar nada). Nada perdido"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "14:20",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx0g6ef54e)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "S24 (3109, actualizado 14:17) con Roberto (3109) en segundo plano 14:12–14:20: su app no contestaba la comprobación del Wi-Fi ni los pings (dormida o congelada por el Motorola). Nada perdido; al abrir Roberto la app entró todo en 1 s. Va con el Bluetooth en el servicio nativo"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "14:20",
+   "nx": "nx0g6ef54e",
+   "sintoma": "par:zombi (pedido por nx1n36c283)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "lado de Roberto del caso anterior (3109): app en segundo plano 14:12–14:20, sin relés al volver (datos móviles) y reconectó en < 1 s. Un teléfono desconocido …0da5 entra y sale sin parar (ya frenado por 3203)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "14:23",
+   "nx": "nx1905c1ee",
+   "sintoma": "enlace_abre_cierra (nx1n36c283, 3 cierres en 10 min)",
+   "categoria": "Bluetooth: enlaces repetidos que se abren y cierran",
+   "causa": "Austin (3107) cierra por repetido el enlace que el S24 (3109) le abre como cliente (70f4) y el S24 lo vuelve a abrir cada ~60 s (14:21:07, 14:22:07, 14:23:25). Además MTU 23 con el S24 a las 14:20:42 justo tras la actualización del S24 a la 3109 (14:17). Nada perdido (textos ✓✓ en < 1 s). A REVISAR (app): quién reabre el enlace cerrado en el S24"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "10:45",
+   "nx": "nx0x4029e6",
+   "sintoma": "par:zombi (pedido por nx1n36c283)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "Zhelowsky (3097, vieja; llegó 14:34): registro recortado al arrancar la app, sin datos del fallo"
+  },
+  {
+   "dia": "2026-11-18",
+   "hora": "23:59",
+   "nx": "nx10b6f4ac",
+   "sintoma": "resumen_diario",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (Alex Lopez, 3097, vieja)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "14:56",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx1905c1ee)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "Austin (3107) con OPTIMIZACIÓN DE BATERÍA ACTIVA (ajuste del teléfono; la app ya le muestra el aviso): su app dormida no confirma Fénix ni pings → zombi. Además en el S24 (3109): el desempate cierra un enlace repetido con Austin cada 1–2 min y vuelve a aparecer (mismo pendiente del 14:23); y con datos móviles los 4 relés se dieron por muertos 2 veces (14:53:27 y 14:53:56, 9 s sin internet): el texto nazu7aq4 al S23 se marcó «fallido» a las 14:54:04 y se entregó 1 s después (A REVISAR: no marcar fallido mientras los relés reconectan). Nada perdido"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "21:48",
+   "nx": "nx1n36c283",
+   "sintoma": "manual (videollamada con el S23)",
+   "categoria": "Llamadas: vídeo con cortes al cambiar de red el otro",
+   "causa": "S24 3111. Videollamada de 64 min con el S23 por internet directo; el S23 (datos móviles) cambió de red ~10 veces y tras cada cambio hubo «Decoding error: se rehace» (77 en la 1.ª llamada) y un hueco de ~25 s sin imagen (21:21:37–21:22:03). La llamada terminó «lost» a las 21:29:09 porque Cari quitó NEXO de recientes (REMOVE TASK 21:29 en su diagnóstico) y volvió a llamar a los 14 s. Aparte: Wi-Fi con el Vivo abre/cierra cada 3 min toda la hora (su app dormida, ya conocido 16-11); 2 paquetes de puente reintentándose cada 10 min; mensaje msg1795145680108wq7l8dcen del S23 llega por trozos y da «Assembly timeout» (21:36 y 21:47). Batería en segundo plano 6,5 %/h (antes 8,8–9,6)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "21:34",
+   "nx": "nx1e50c95d",
+   "sintoma": "zombi (nx126df3f4)",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "Cari (S23 3111) con Katy (Honor, build ?): la app de Katy no contesta pings ni confirma (dormida por el Honor). Cari: AHORRO DE BATERÍA activo y NEXO quitada de recientes 10 veces en 2 días (ajuste/uso del teléfono). A REVISAR (app): el S23 no oía al S24 por internet («internet fuera, oído hace 312–1014 s») mientras estaban en videollamada, y el texto msg1795145680108wq7l8dcen (9 trozos) al S24 quedó atorado ≥ 17 min («Buzón no disponible: Abortado» 21:44:50)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "21:46",
+   "nx": "nx1e50c95d",
+   "sintoma": "enlace_abre_cierra (nx126df3f4, 6 desconexiones en 10 min)",
+   "categoria": "Bluetooth: enlaces que se abren y cierran",
+   "causa": "mismo caso: Katy acepta la conexión Bluetooth (su nativo vivo) pero su app no contesta → el S23 la corta por zombi y reconecta cada 1–2 min. Su texto a Katy queda pendiente (no perdido) · 21:47 (misma copia, build 3111): en el registro nativo, escrituras al enlace de Katy fallan con status=201 (GATT busy) ~20 veces/s durante ~6 s antes de descartar el mensaje; posible mejora (app): esperar el callback en vez de reintentar sin pausa. Ya contado: no es un caso nuevo"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "22:22",
+   "nx": "nx1n36c283",
+   "sintoma": "enlace_abre_cierra (nx09acdb61, 3 cierres por enlace repetido en 10 min)",
+   "categoria": "Bluetooth: enlaces que se abren y cierran",
+   "causa": "APP (build 3113, S24 del dueño con el vivo Y03 build 3107): bucle entre 3019 (reabre cliente mtu517 si el que hay va a MTU 23) y el desempate 3027 (soy el ID mayor → conserva el de servidor mtu23 y cierra el cliente bueno), ciclo de ~20-80 s. Arreglo 3257 hecho en local (pendiente de subir con el CI de 3114). Residual: el enlace conservado va a MTU 23 con el vivo Y03 (lento por Bluetooth; Wi-Fi local/internet lo cubren)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "23:26",
+   "nx": "nx1n36c283",
+   "sintoma": "prueba del dueño de Wi-Fi Direct con el vivo (S24 ↔ vivo Y03, build 3113), sin fallo",
+   "categoria": "Wi-Fi Direct: medidas reales",
+   "causa": "DATOS REALES (primeros): grupo montado por el vivo en 0,3–0,4 s; unirse 2,2–2,8 s; 5,4 MB en 3 s total (1849 KB/s); 23 MB en 3,1 s; 153 MB en 6,3–7,0 s (≈22–24 MB/s con unirse, ≈39 MB/s puros); Bluetooth (MTU 512, foto de 40 KB) 16,7 KB/s. Cuello de botella ahora: preparar (cifrar a disco) 153 MB tarda ~30–34 s (≈5 MB/s) > viajar por WD (6–7 s). Menores: tras bajar el grupo, el módulo de Wi-Fi local registra «Sin Wi-Fi con X (este teléfono no tiene Wi-Fi)» y el vivo reintenta conectar a la IP del grupo caído (ENETUNREACH); el S24 tardó ~3 min en recuperar su Wi-Fi normal tras apagarlo/encenderlo con varios WD seguidos (3258 lo medirá)"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "23:24",
+   "nx": "nx09acdb61",
+   "sintoma": "mismo caso visto desde el vivo (sin red, solo Bluetooth/Wi-Fi Direct)",
+   "categoria": "Wi-Fi Direct: medidas reales",
+   "causa": "vivo Y03 con red ninguna: recibió 5,4 MB, 23 MB y 153 MB por Wi-Fi Direct (grupo creado en ~0,4 s tras la oferta); ‘archivos por Bluetooth recibidos 1, 18 KB/s’. Sin fallo de la app"
+  },
+  {
+   "dia": "2026-11-19",
+   "hora": "05:04",
+   "nx": "nx1n36c283",
+   "sintoma": "resumen_diario (build 3113, 19-11)",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "Sin fallo de la app. 150 enviados, 139 con ✓✓ (92,7 %), 125 leídos; 108 recibidos; 16 de 25 chats; app a la vista 224 min con 15,9 %/h y 6,7 %/h en segundo plano; 1 634 MB de datos (1 244 por Wi-Fi). Los 11 sin ✓✓ son pendientes a contactos fuera de línea (Katy, Marcos…). Mismas cifras de Wi-Fi Direct/Bluetooth ya apuntadas. Aún en 3113: la 3116 trae la entrega por camino"
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "11:00",
+   "nx": "nx1n36c283 + nx0g6ef54e",
+   "sintoma": "zombi (par:zombi) entre el S24 y Roberto (Motorola), los dos en 3116",
+   "categoria": "Bluetooth: enlaces repetidos y MTU 23 tras el desempate",
+   "causa": "APP (3116). A las 10:57:21 cada teléfono cerró un enlace repetido DISTINTO: el S24 cerró a85d (server, mtu517; listaba dos enlaces «server» de Roberto, sin su cliente) y Roberto cerró ffd0 (server) y conservó 1354 (client). Diez segundos después los dos ven «MTU 23 (mínimo)» (10:57:31) y a las 11:00:17 el S24 da 4 pings sin respuesta: zombi. El desempate común de 3027 (cliente del ID menor) no aplica cuando uno de los dos lados lista dos enlaces del mismo papel; mismo patrón a las 10:58:27, 10:59:33 y 10:59:45 con Austin (3116). HIPÓTESIS sin confirmar: los dos cierran enlaces físicos distintos y el que queda es el viejo/MTU 23. Es la causa del punto 16 de docs/COLA.md. Aparte: Zhelowsky (3097, vieja) zombi: sin peso. 3116 ya muestra entrega por camino (internet 37 salieron, 36 con ✓✓, media 1,4 s, máx. 4 s), síntomas del día y temperatura"
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "11:10",
+   "nx": "nx1n36c283 + nx0k598297",
+   "sintoma": "zombi (par:zombi) con un teléfono NUEVO (VICK, Samsung A04, 3116) agregado por Bluetooth a las 11:08",
+   "categoria": "Bluetooth: enlaces repetidos y MTU 23 tras el desempate + ✓✓ nativos sin firma válida",
+   "causa": "APP (3116), dos cosas. (1) Mismo patrón de las 11:00: el S24 lista DOS enlaces «server» de VICK (2bfc y 9d3e) y cierra uno (11:09:09 y otra vez 11:10:33); VICK ve status 8 y 133 al reconectar, «MTU 23», «Write fallo 6 s: mensaje descartado», re-ruteo a internet, y a las 11:10:47 el S24 da 4 pings sin respuesta: zombi (3 en el día). El texto 1 salió en 6,6 s con 4 reintentos y los dos siguientes tardaron 49 s en dar ✓✓. (2) NUEVO: a las 11:09:50 el S24 ignora 2 «Confirmación sin firma válida de nx0k598297» (las ✓✓ que VICK mandó con la app cerrada/relevándose, por la escucha nativa a las 11:09:49) y la ✓✓ buena solo llegó a las 11:09:52 al abrir la app: posible fallo al firmar en el nativo con un contacto recién agregado (identidad nueva 11:07:14, clave guardada 11:08:52/54). A investigar (COLA 16b). Bien: la 3251 funcionó en VICK («Corto 1 enlace entrante antes de cerrar el servidor») y agregar por cercanía tardó 10 s en aceptarse"
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "11:52",
+   "nx": "nx1n36c283 + nx1905c1ee (Austin, 3107 vieja) y los de 3116 (Roberto, VICK)",
+   "sintoma": "zombi ×5 en el día del S24 (3116)",
+   "categoria": "Bluetooth: enlaces repetidos y MTU 23 tras el desempate",
+   "causa": "APP (3116). Evidencia directa del criterio del desempate: 11:33:27 «enlaces: 3b9c:client:mtu517 9ede:server:mtu23» cierra el CLIENTE mtu517 y conserva el SERVIDOR mtu23; 11:33:57 «cb98:server:mtu23 87d6:client:mtu517» otra vez cierra el mtu517; 11:51:39 «6a77:client:mtu517 9ede:server:mtu23 746d:server:mtu517» cierra el cliente y el mtu23. Tras cada caso: «[MTU] … 23», «BT soltó un mensaje (muerto)», «4 pings sin respuesta» (11:33:53 VICK, 11:52:05 Austin). La 3257 evitó el bucle de REABRIR, pero el desempate (3027/3139: el papel manda sobre el MTU) sigue prefiriendo un servidor a MTU 23. HIPÓTESIS a comprobar con el registro nativo: el MTU de un enlace de SERVIDOR (creado por la reconexión automática del otro) puede quedar en el valor por omisión (23) porque nadie lo pide, o no se anota el onMtuChanged del servidor. Arreglo candidato (COLA 16): un enlace con MTU ≤ 23 nunca gana a uno con MTU > 23 (los dos lados lo ven igual si el intercambio fue real) + registrar en el nativo el MTU real de cada enlace de servidor. Reproducir en bledup.js. El zombi de Austin: Honor 3107 (vieja), sin peso"
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "12:33",
+   "nx": "nx0k598297 (VICK, A04) ↔ nx1n36c283 (S24), build 3116",
+   "sintoma": "zombi (VICK) + par:zombi pedido al S24",
+   "categoria": "Bluetooth: enlaces repetidos / par en segundo plano",
+   "causa": "APP (3116), dos cosas. (1) 12:32:51 «Dedup … enlaces: b1aa:client:mtu517:muerto 650a:client:mtu517:muerto»: dos enlaces CLIENTE al mismo S24 (su dirección privada rotó) y los dos ya muertos; el desempate cerró uno y 0,6 s después se reconectó a esa misma MAC (churn), el otro seguía muerto; 14 s después «4 pings sin respuesta». Si todos los repetidos están muertos no sirve elegir: hay que cerrar todos y reabrir uno limpio (COLA 16c). (2) El S24 llevaba ~10 min en segundo plano (a la vista otra vez 13:00): su JS no contesta pings → el par se declara zombi aunque el nativo aguante: es el pendiente «Bluetooth en el servicio nativo» (fases 2–4), no un error nuevo. Aparte: «[MTU] …: 23» sale ANTES del onMtuChanged nativo (VICK 12:32:42.858 → nativo 498 a 12:32:43.207; el primer mensaje salió en 25 trozos de 20 B; S24 13:00:32.108 reinicia un archivo con 'MTU 23' y 42 ms después llega 517): el 23 puede ser el valor por omisión previo al intercambio, no un MTU real (refuerza la hipótesis de COLA 16)"
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "12:27",
+   "nx": "nx10b6f4ac (Nubia NX725J, Alex Lopez) ↔ nx0x4029e6 (Zhelowsky, versión vieja)",
+   "sintoma": "zombi (Nubia)",
+   "categoria": "Bluetooth: par sin contestar",
+   "causa": "Zhelowsky es versión vieja («build ?»): sin peso, solo apuntado. Su enlace dejó de contestar pings a las 12:26:22. Aparte, en 3116: Wi-Fi local con el S24 dormido tardó 55,8 s en quedar comprobado (el toque salió a los 4,9 s); mientras, los mensajes salieron por Bluetooth con 2 reintentos (186 ms–2,1 s). Nubia tuvo Bluetooth apagado 12:18–12:22 y ahorro de batería activo (la app se lo avisa) RE-ANÁLISIS 22-11: 12:24:34 «Device no en cache, intentando getRemoteDevice para 40eff85cf5af» y la conexión de paso no se abre: mismo fallo de mayúsculas de 3264."
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "14:10",
+   "nx": "nx0g6ef54e (Roberto, Motorola edge 40 neo) ↔ nx1n36c283 (S24), ambos 3116",
+   "sintoma": "zombi ×10 del día en el S24; par:zombi pedido al Motorola",
+   "categoria": "Bluetooth: escrituras «ocupado» 201 / Wi-Fi sin internet / receptor dormido",
+   "causa": "APP (3116), tres cosas. (1) En el Motorola, el enlace que el dedup CONSERVÓ (b3c1, cliente→S24) rechaza todas las escrituras con status=201 durante ≥ 20 s: «NO_RESPONSE fallo status=201, intentando DEFAULT» cada ~150 ms (cientos de líneas) y «Write fallo ~6 s: mensaje descartado» (14:09:53, 14:10:04); la lectura sí llega (72 y 108 B), por eso el S24 ve «4 pings sin respuesta» 14:10:18 y el Motorola «BT soltó un mensaje (muerto): re-ruteo a net». Es el caso COLA 15 con prueba: el reintento con DEFAULT mientras otra escritura sigue pendiente mantiene el BluetoothGatt «ocupado»; hay que esperar el callback y, si no llega en pocos s, cerrar y reabrir ese enlace. El dedup en sí cerró bien el repetido en ambos lados (S24 cerró 0d91 a 14:09:58; el Motorola 9976 a 14:10:01: mismo enlace); de nuevo el S24 aparece con dos direcciones (b3c1/9976). (2) Receptor dormido: el archivo FENIX de 74 KB del S24 al Motorola (MTU 517, 135 trozos) esperó 28 s (ventana a 14:08:13) porque la app del Motorola estaba en segundo plano; al volver a la vista (14:08:21) terminó en 1,5 s: el enlace estaba bien, faltaba quien conteste los ACK = pendiente «Bluetooth en el servicio nativo». (3) NUEVO: Wi-Fi SIN internet. De 14:07:11 a 14:09:28 el S24 no tuvo ningún camino por internet («Sin relés», los 4 relés + offchain.pub sin conectar) hasta que Android pasó de Wi-Fi a datos («Cambio de red: Wi-Fi → datos móviles», relés listos en 1,3 s); el Motorola igual (14:08:22). Resultado: foto al S23 en espera 2 min 17 s (14:07:36 → 14:09:34) y «internet al abrir el chat listo en 34,9 s». Candidato (COLA 27): si no conecta ningún relé por Wi-Fi, pedir la red móvil explícitamente (ConnectivityManager.requestNetwork TRANSPORT_CELLULAR) en vez de esperar a que Android cambie; es un camino más, no quita ninguno. Medidas: Motorola en segundo plano 3,5 %/h (6 contactos) frente al S24 8,5 %/h (26 contactos, 3,3 MB de relés): a mirar en el tablero. Registro de 14:07: el S24 bajó 190 sobres de golpe al volver a la vista"
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "14:26",
+   "nx": "nx1905c1ee (Austin, HONOR JDY-LX3P, Android 16, ya en 3116) ↔ nx1n36c283 (S24)",
+   "sintoma": "par:zombi pedido por el S24 (el diagnóstico llegó a las 14:43 por estar el teléfono apagado/cerrado)",
+   "categoria": "Ajuste del teléfono: HONOR mata la app (PowerGenie) / Wi-Fi sin internet en segundo plano",
+   "causa": "AJUSTE DEL TELÉFONO que la app ya detecta («segundo plano permitido NO», «limitado por el ahorro de batería: sí», avisa a contactos). El zombi es el par MUERTO: 14:13 terminada por el sistema, 14:16 «FORCE STOP … iAwareR[PowerGenie smartopt clean]» y nada más hasta que Austin abrió la app a las 14:26:36 (FCM no llega a una app detenida a la fuerza); antes 11:40/11:42 «LowMemQuick». Es COLA 22 (#87) con otra marca: HONOR/Huawei también la mata. Datos buenos del nativo SIN la app (prueba de 3254): contesta pings por Bluetooth (11:23–11:35, «BT_CERRADA … IGNORE» + «chunk sent len=108»), el servicio se reinició solo a las 14:13 y a las 14:15 entregó 4 mensajes de grupo con ✓✓ por internet (FCM + relés); los mensajes de 2330 B por Bluetooth se IGNORAN con la app cerrada (el emisor reintenta por internet). NUEVO en el segundo plano: 14:03:35 los 4 relés «Software caused connection abort» (el Wi-Fi sin internet de 14:03–14:09 que vieron S24 y Motorola) y «no se pudo abrir otra vez … IllegalStateException»; no volvieron hasta las 14:09:16 por datos móviles = 5–6 min sin internet en el servicio nativo. Refuerza COLA 27 (3 teléfonos, mismo corte) y pide mirar esa IllegalStateException en el nativo"
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "13:00",
+   "nx": "nx1n36c283 (S24, dueño), build 3116; pareja nx0k598297 (VICK) y nx1905c1ee (Austin)",
+   "sintoma": "par:zombi con VICK; zombi ×8 en el día del S24; archivo de 263 trozos reiniciado",
+   "categoria": "Bluetooth: enlace nuevo a MTU 23 con archivo en curso; Wi-Fi Direct no elegido en archivos ≥ 20 KB",
+   "causa": "APP (3116). (1) 13:00:32.108: un archivo en curso (fxs_…899d) se reinicia con «MTU 23, trozos de 324» porque el enlace nuevo se anunció a 23, y 42 ms después llega «MTU 517» (mismo patrón que en 12:33: el 23 aparece antes del intercambio). Quedan 263 trozos de 96–324 caracteres en vez de 135 de 552. (2) «Supervisor: transferencia activa, skip ping/zombie» protegió el enlace de VICK mientras tanto; el par zombi se declaró después. (3) Wi-Fi Direct: «elegido por ninguno» en archivos ≥ 20 KB; el S24 sí tiene WD disponible y Roberto lo ve («[WIFI-DIRECT] … también lo tiene»). Es el hallazgo que motiva 3261: WD solo se mira después de elegir Bluetooth. (4) Batería del S24 en segundo plano 8,1 %/h en 4,4 h (diagnóstico de la mañana: 8,2 %/h a la vista); temperatura máx. 34,3 °C a las 06:05; datos de NEXO 70,9 MB, todo por Wi-Fi; relés 2,3 MB y 653 de 966 eventos ya vistos (repetidos ~68 %). (5) Archivos por buzón de archivos: 5 enviados a 128 KB/s, 4 recibidos a 114 KB/s. Sin fallo nuevo de app fuera de (1)–(3)."
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "14:10",
+   "nx": "nx1n36c283 (S24, dueño), build 3116; pareja nx0g6ef54e (Roberto, Motorola)",
+   "sintoma": "zombi ×10 en el día del S24; par:zombi pedido por el Motorola",
+   "categoria": "Bluetooth: escrituras 201 y mensajes descartados / Wi-Fi sin internet / Wi-Fi Direct no elegido",
+   "causa": "APP (3116). Ya registrado en 2ae32af (escrituras 201 en el Motorola y corte de internet 14:07–14:09). Datos nuevos del S24: (1) «sin camino al salir: salieron 3, sin ✓✓ 3» y «internet: salieron 42, con ✓✓ 41 (una sin ✓✓ aún), máx. 49,3 s»; (2) el S24 mandó a Roberto un archivo de 74 KB por Bluetooth (MTU 517, 135 trozos) y lo cortó con «ChatStream: Window timeout» a los 8 s, reenvío de la ventana 0–12, y terminó 1,5 s después de que el Motorola volvió a la vista (ver 2ae32af); (3) «Wi-Fi Direct en archivos de 20 KB o más: elegido por ninguno · no se pudo usar por archivo chico (<100 KB) con Bluetooth normal ×1»: el archivo de 74 KB no probó WD aunque el Motorola lo tenía a 0,6 m (esto es 3261); (4) Wi-Fi local: 6,3 s de media (8 veces, de 0,2 a 38,2 s); (5) temperatura máx. 36,5 °C a las 13:04; batería a la vista 7,8 %/h y en segundo plano 8,5 %/h en 5,5 h; datos de NEXO 74,1 MB todo Wi-Fi; relés 3,3 MB, 890 de 1498 eventos repetidos (~59 %). Dedup del S24 con Roberto cerró 0d91 a 14:09:58 (el par ya era el mismo)."
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "21:28-22:31",
+   "nx": "nx1n36c283 (S24, dueño) ↔ nx1e50c95d (S23 Ultra, Cari), AMBOS build 3116 (confirmado en el diagnóstico del S23)",
+   "sintoma": "Prueba de videollamada de ~62 min (prueba del dueño, sin fallo reportado)",
+   "categoria": "Llamadas: batería y temperatura (medición)",
+   "causa": "SIN FALLO DE APP. Llamada por Wi-Fi de 21:28 a 22:31, de principio a fin. Vídeo: ~35 errores de decodificación en ~55 000 cuadros recibidos (se rehacen solos). Voz casi sin pérdidas (sin voz: 1 vez en cada sentido). BATERÍA (S23, con ahorro de batería activo, 33 °C): 91 % a los 32 min y 81 % a los 60 min, es decir ~0,36 %/min (1 % cada ~2,8 min). Referencia WhatsApp en el S24 de la mañana: 0,31 %/min. Recuerdo del dueño: 0,14 %/min (1 % cada ~7 min). Medición de una sola llamada, con lectura de 1 % de resolución (error de ±0,04 %/min). S24: 38–39 °C todo el rato (estado térmico ligero); batería 6 % a los 33 min y 13 % a los 47 min con cargador conectado desde ~40 min, por lo que su gasto no se puede medir con esta llamada. Pendiente: repetirla con los dos teléfonos al 100 % y sin cargar, midiendo 20 min."
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "22:31",
+   "nx": "nx1n36c283 (S24, dueño), build 3116",
+   "sintoma": "Diagnóstico de la llamada anterior (sin fallo de app)",
+   "categoria": "Llamadas: batería y temperatura (medición)",
+   "causa": "SIN FALLO. Mismo diagnóstico de la llamada de 21:28 a 22:31. Vídeo recibido: ~37 errores de decodificación, se rehacen solos (pedidas imágenes completas 40, todas atendidas). Temperatura del teléfono 38–39 °C durante toda la llamada; ambiente y cargador influyen. Ver la entrada anterior para la batería del S23."
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "22:33",
+   "nx": "nx1e50c95d (S23 Ultra, Cari) ↔ nx126df3f4 (HONOR Magic lite G, Katy), build 3116; llamada con nx1n36c283 (S24) desde 22:31",
+   "sintoma": "reenvio_sin_fin: 1 mensaje sin confirmar a nx126df3f4, 3 vueltas",
+   "categoria": "Bluetooth: reenvío sin tope / enlace con el HONOR",
+   "causa": "APP (3116), por revisar. El mensaje msg1795235508650qb6xx94xs a nx126df3f4 agotó 5 reintentos de ACK (22:31:56, 22:32:15, 22:32:41, 22:33:25) y en cada vuelta se reenvió (22:32:07, 22:32:33, 22:33:17) sin confirmación, mientras el HONOR cambiaba de Bluetooth a fuera de línea y de vuelta (enlace 52ab desconectado 22:32:11 y 22:32:56). La cola lo dejó en espera 15 s por vuelta: sin tope, el mensaje sigue dando vueltas. Ver si el HONOR congela la app al bajar a segundo plano (Honor, COLA 22) o si nuestro ACK se pierde. Aparte, en la llamada S23↔S24 (22:31): conexión DIRECTA por internet en 1,4 s, vídeo y voz desde el primer segundo; el sistema cortó la cámara del S23 a las 22:32:06 y la app la reabrió sola en 1,7 s (no es fallo nuestro). Batería del S23 80 % al empezar, 34,0 °C, ahorro de batería activo. Medición en curso (lectura al minuto 1)."
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "21:28-22:10",
+   "nx": "nx1n36c283 (S24, dueño), build 3116, llamada con nx1e50c95d (S23)",
+   "sintoma": "Curva de batería de la videollamada reconstruida con capturas del dueño y el diagnóstico",
+   "categoria": "Llamadas: batería y temperatura (medición)",
+   "causa": "SIN FALLO. Minuto 0 (9:28): 22 %, sin cargador. Minuto 20 (9:48): 13 %. Minuto 30 (9:58): 8 %. Minuto 33 (diagnóstico): 6 %. Carga desde ~minuto 33–35: 10 % al minuto 41, 13 % al 47. Ritmo antes de cargar: 0,45 %/min (0–20), 0,50 %/min (20–30), 0,67 %/min (30–33). Total: 16 puntos en 33 min (~0,48 %/min, ~29 %/h). Referencia WhatsApp del S24 (mañana): 0,31 %/min, así que esta llamada gastó unas 55 % más. Temperatura 38–39 °C casi todo el tiempo. Corrección: la carga empezó antes del minuto 40 que se había anotado; la medición correcta es la de esta entrada."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "05:57-10:28",
+   "nx": "nx1e50c95d (S23, Cari) → nx1n36c283 (S24, dueño), build 3116 en los dos",
+   "sintoma": "pendiente_viejo 270 min: msg…519hq3s6 (hecho 05:56:55) y la imagen msg…3745pcoe (05:58:28, 201 KB) se quedaron ⏳ hasta que Cari volvió a abrir NEXO a las 10:27; el S24 los recibió a las 10:27:40 y 10:28:02 (✓✓ al momento)",
+   "categoria": "Entrega: pendiente al pasar a segundo plano (app)",
+   "causa": "FALLO DE LA APP. Los dos se registran sin camino ni contacto en la línea de tiempo (sin envío por Bluetooth ni buzón de textos: van por el flujo de adjuntos). Cari pasó NEXO a segundo plano a las 05:58:29 (al elegir la imagen); la subida al buzón de archivos falló al rato (05:59:16, «rechazo transitorio → pendiente») porque la app ya estaba detrás y los relés de la app quedan en manos de la parte nativa. El servicio nativo SÍ tenía internet (contestó el saludo del S24 a las 05:58:43) pero no tiene bandeja de salida: los pendientes solo los reintenta la app, y con el ahorro de batería del Samsung la app quedó congelada 4,5 h. Arreglo propuesto (COLA 29): al ir a segundo plano, entregar al servicio nativo los pendientes ya cifrados (textos: el sobre; archivos: subir antes de congelarse o seguir la subida desde el servicio) para que salgan por internet sin la app. Detalle menor: el detector salta justo al volver (10:27:18), antes del reintento que en 44 s lo entregó."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "05:51",
+   "nx": "nx1e50c95d (S23, Cari), build 3116",
+   "sintoma": "cierre_fallo: FALLO nativo 20-11 22:43 (detrás), SIGABRT con el hilo en Unsafe_park; también 19-11 21:52",
+   "categoria": "Estabilidad: cierre nativo al quitar de recientes",
+   "causa": "Coincide con el «quitar de recientes» del usuario el mismo minuto (22:43:25 handleOnDestroy); el servicio volvió solo a las 22:43:28 (Bluetooth e internet sin la app OK). Sin efecto para el usuario. El diagnóstico no trae la línea «Abort message» del tombstone: añadirla al resumen de cierres para saber quién aborta (pendiente menor)."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "05:52",
+   "nx": "nx1n36c283, nx1e50c95d, nx13c1b0fe: resúmenes diarios del 20-11, build 3116",
+   "sintoma": "resumen_diario",
+   "categoria": "Medición",
+   "causa": "SIN FALLO. S24: 89 enviados, 85 ✓✓; internet media 2,3 s; temp. máx. 39 °C (videollamada). S23: 75 enviados, 74 ✓✓; reenvío sin fin ×1 (ya en COLA 28). Emmanuel: 8 enviados, 6 ✓✓."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "14:39",
+   "nx": "nx1n36c283 (S24, build 3116) con nx1e50c95d (S23)",
+   "sintoma": "zombi",
+   "categoria": "Bluetooth: enlace «zombi» (el otro no contesta)",
+   "causa": "S24 sin relés ~2 min con datos móviles que se caían (6 cambios seguidos datos↔sin red; externo). Enlace BT con el S23 vivo a MTU 517 (dos enlaces, el desempate cerró el cliente 14:38:25) pero el S23 no confirmó nada (2 mensajes, ACK ×5 dos vueltas) ni contestó al préstamo de internet (GW: «dormido o sin servicio»): app del S23 congelada en segundo plano (familia COLA 22/29). La detección funcionó: 4 pings sin respuesta → cierra para reconectar. APP: 10 «Deslizar para actualizar» en 26 s (14:37:55–14:38:21) sin querer al desplazar la lista de contactos, cada uno reenvía TODOS los pendientes (COLA 34). Menor: en la línea de tiempo el archivo grande a Cesar sale «→ ?»."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "10:27",
+   "nx": "nx1e50c95d (S23, build 3116) → nx1n36c283",
+   "sintoma": "pendiente_viejo (llegó al dueño 14:45)",
+   "categoria": "Entrega: pendiente al pasar a segundo plano (app)",
+   "causa": "MISMO caso ya apuntado a las 10:42 (mensaje y foto de 201 KB 4,5 h ⏳; COLA 29). Además en el registro nativo de las 05:57–05:58: ráfagas de escrituras 201 al HONOR de Katy (40f6b02aa058) cada 50–150 ms durante 6 s y mensaje descartado ×3 (COLA 15). En la línea de tiempo los pendientes sin camino salen «→ ?» (COLA 35). RE-ANÁLISIS 22-11 (modelo grande): en su registro nativo, 05:57:52–05:58:16, «NO_RESPONSE fallo status=201, intentando DEFAULT» sin parar ~25 s por el enlace con el HONOR de Katy (3 mensajes descartados) hasta status=22: es COLA 15 (arreglado en 3262: sin DEFAULT con 201 y el enlace sin una escritura en ~12 s se cierra). Y «RECONNECT: No hay device cacheado para 40f6b02aa058» 5 s después de verlo en el escaneo: la lista de vistos se borraba al parar/empezar cada escaneo y la reconexión nativa se rendía; además conectar a una dirección fuera de esa lista fallaba SIEMPRE («MAC invalida»: Android la exige en mayúsculas). Arreglado en 3264."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "14:40",
+   "nx": "nx1e50c95d (S23, build 3116), pedido por nx1n36c283",
+   "sintoma": "par:zombi",
+   "categoria": "Bluetooth: par sin contestar",
+   "causa": "El diagnóstico del S23 empieza con la app ARRANCANDO a las 14:40:46 («NEXO iniciando…»): durante el zombi del S24 (14:37:52–14:39:11) la app del S23 no estaba corriendo (cerrada o congelada) y el enlace Bluetooth lo sostenía el sistema/servicio sin nadie que contestara los mensajes ni el préstamo de internet. Falta el registro NATIVO del S23 de esos minutos para saber si el servicio (fase 1 Bluetooth sin la app) estaba al mando o si la app estaba congelada viva (el servicio no toma el relevo): lo cubren las fases 2–3 y COLA 29."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "20:20",
+   "nx": "nx126df3f4, nx01992876, nx1905c1ee, nx10b6f4ac: resúmenes diarios del 20-11, build 3116",
+   "sintoma": "resumen_diario",
+   "categoria": "Medición",
+   "causa": "Katy 2 enviados 2 ✓✓. Marcos 1 enviado ✓✓ (+2 sin camino sin ✓✓). Austin (HONOR): 19 enviados, solo 11 ✓✓ y 0 leídos (8 imágenes sin confirmar; familia COLA 22, HONOR congela la app). nx10b6f4ac: 0 enviados, 23 recibidos, zombi ×1."
+  },
+  {
+   "dia": "2026-11-21",
+   "hora": "19:19",
+   "nx": "nx126df3f4 (Katy, HONOR, build 3116), pedido por nx1e50c95d",
+   "sintoma": "par:reenvio_sin_fin",
+   "categoria": "Bluetooth: reenvío sin tope / enlace con el HONOR",
+   "causa": "El diagnóstico empieza con la app de Katy ARRANCANDO (19:19:06) y metiendo 3 mensajes del S23 que el servicio recibió en segundo plano: la app estaba cerrada/congelada (HONOR PowerGenie, COLA 22) y el S23 reenviaba sin tope (COLA 28). Sin dato nuevo."
+  },
+  {
+   "dia": "2026-11-20",
+   "hora": "12:27",
+   "nx": "nx10b6f4ac (NX725J, build 3116) con nx0x4029e6 (Zhelowsky)",
+   "sintoma": "zombi",
+   "categoria": "Bluetooth: par sin contestar",
+   "causa": "Zhelowsky no contestó 4 pings con enlace a MTU 498 (su app dormida; la detección funcionó). Ajuste del teléfono: optimización de batería ACTIVA para NEXO (la app ya lo detecta y avisa). Bluetooth apagado al abrir y encendido 12:22. Wi-Fi local listo en 55,8 s por la app dormida del S24 (toque a los 4,9 s). Roberto: su app no contestó en 180 s por Wi-Fi (COLA 22). VICK: «MTU 23» tras cerrar la conexión de paso (COLA 16c). APP: el nativo manda 216 B a 40eff85cf5af 7 ms DESPUÉS de cerrar esa conexión de paso → «mensaje descartado entero (11 trozos)» (COLA 36). RE-ANÁLISIS 22-11: 12:24:34 «Device no en cache, intentando getRemoteDevice para 40eff85cf5af» y la conexión de paso no se abre: mismo fallo de mayúsculas de 3264."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "01:57",
+   "nx": "nx1g5edfbf (J Manuel Terán, Redmi Note 11 Pro 5G 2201116SG, Android 13, build 3116)",
+   "sintoma": "cierre_fallo (21-11 23:55 sin memoria: Android la cerró, detrás)",
+   "categoria": "Cierres del sistema (Xiaomi) / NEXO vuelve sola",
+   "causa": "EXTERNO el cierre (sin memoria, batería 3 %; antes SwipeUpClean ×7 y GarbageClean de MIUI). BIEN: «NEXO vuelve sola» por la alarma de vigilancia (19:26 y 00:11), internet sin la app recibe y confirma ✓✓, y al abrir entran 10 sobres ya recibidos. APP (3116), tres cosas menores arregladas en 3264: (1) «Relé relay.damus.io: no se pudo abrir otra vez (… IllegalStateException)» ×3 episodios (17:56, 18:46, 21:11; 2–10 min sin ese relé, los otros 3 vuelven en ~15 s): es el relé que contesta y no acepta al reconectar; el registro no decía el código (ahora «el relé contestó NNN»); cubre la 3.ª parte de COLA 27. (2) «[BT_SINAPP] no se pudo abrir el servidor… no se recibe hasta abrir NEXO» ×3 con el Bluetooth APAGADO: texto falso (al encenderlo se abre solo: 22:35 y 22:41 «recibiendo»); corregido. (3) Wi-Fi Direct «Disponible (falta permiso)»: ajuste del teléfono."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "00:28",
+   "nx": "nx1n36c283, nx1e50c95d, nx126df3f4, nx1g5edfbf: resúmenes diarios del 21-11, build 3116",
+   "sintoma": "resumen_diario",
+   "categoria": "Medición",
+   "causa": "SIN FALLO NUEVO. S24: 74 enviados, 74 ✓✓; internet media 1,4 s; Wi-Fi 0,6 s; batería en segundo plano 6,2 %/h en 11,2 h (🔴 4 de AREAS, sigue alta); zombi ×2 (ya apuntados). S23: 37/37 ✓✓; Bluetooth media 4,9 s (5 mensajes), Wi-Fi 2,7 s, internet 1,7 s; segundo plano 2,6 %/h. Katy: 4/4. J Manuel: 27/27 ✓✓, internet media 2,5 s; buzón de archivos recibe a 185 KB/s."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "09:27",
+   "nx": "nx10b6f4ac (Alex Lopez, NX725J): resumen diario del 21-11, build 3116",
+   "sintoma": "resumen_diario",
+   "categoria": "Medición",
+   "causa": "SIN FALLO. 2 enviados, 2 ✓✓; 7 recibidos (3 fotos por el buzón de archivos a 231 KB/s de media); internet listo en 0,5 s; batería en segundo plano 3,2 %/h (en 1,9 h); 2 min con la app a la vista."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "12:10",
+   "nx": "dueño (S24/S23), build 3117: reporte SIN diagnóstico (descripción y 2 capturas)",
+   "sintoma": "miniatura de la videollamada: el chat apretado en la ventanita del sistema; problemas al pasar varias veces normal ↔ miniatura; «el chat y la miniatura, y la miniatura no respondía»",
+   "categoria": "Llamadas",
+   "causa": "APP. (1) la marca «pasar a miniatura» (BleService.pipVideo) quedaba puesta si la app se rehacía en plena videollamada → al irse, el chat en la ventanita; (2) todo dependía de un aviso de Android por cambio (perdido = marcas pegadas); (3) la llamada que terminaba con la mini flotante dejaba la mini y la siguiente nacía dentro; (4) en la 3117 la miniatura contaba como segundo plano (3273/3275). Arreglado en 3277 (call_pip.js + nativo); sim miniaturas.js. Pendiente de confirmar en teléfono con la APK 3119."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "14:56",
+   "nx": "dueño S24 (nx1n36c283), build 3117: automático",
+   "sintoma": "enlace_abre_cierra (nx09acdb61, vivo Y03: 6 desconexiones en 10 min)",
+   "categoria": "Conexión",
+   "causa": "APP (falso aviso). El vivo conecta con una dirección distinta de la guardada en su contacto («Enlace ? (0244)»): la marca «llegó a estar listo» solo se borraba si el contacto se reconocía por la dirección; con «?» quedaba puesta y cada reintento fallido / aviso repetido (4 en 10 ms al volver la app) contaba como caída. Arreglado en 3283 (ble_native_events.js: se borra también por el NEXO ID de la dirección); sim noservice.js caso 7. Va en la APK siguiente a la 3119. De paso: diagnóstico de la tablet (nx1e29ab2f) llegó marcado build 3105 y se descartó, aunque la lista la muestra con 3117: tenía la 3105 (el dueño ya la actualizó); no es fallo."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "15:18",
+   "nx": "nx16386482 (Yael, Redmi): resumen diario del 20-11, build 3117",
+   "sintoma": "resumen_diario",
+   "categoria": "Medición",
+   "causa": "SIN FALLO. 6 enviados, 6 ✓✓ (media 0,7 s por internet, 1 con la app dormida); 8 recibidos; internet listo en 5,4 s de media; 1 min con la app a la vista; 354 KB."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "18:58",
+   "nx": "nx1e50c95d (Cari, S23 Ultra, Android 17): automático, build 3117",
+   "sintoma": "enlace_abre_cierra (nx16386482 6 desconexiones en 10 min)",
+   "categoria": "Conexión",
+   "causa": "VERSIÓN VIEJA (3117). Al volver al primer plano salen varios «Enlace ? (2504/066f) desconectado» de enlaces sin dueño: el falso «enlace_abre_cierra» ya arreglado en la 3283 (va en la siguiente APK). Sin mensajes perdidos: 97 por internet, 94 con ✓✓ y 3 aún sin."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "23:35",
+   "nx": "nx09acdb61 (Vivo Y03, Android 16): automático pedido por el S24, build 3119 (sesión anterior con la 3117)",
+   "sintoma": "par:enlace_abre_cierra (pedido por nx1n36c283)",
+   "categoria": "Conexión",
+   "causa": "VERSIÓN VIEJA en lo que falla: los enlaces que se abren y cierran (32 «Enlace … desconectado» seguidos al volver al primer plano, MTU 23, «BT soltó un mensaje (muerto)») son de la sesión con la 3117, justo antes de actualizar (23:34). Ya con la 3119: Bluetooth listo en 0,4–0,7 s, texto al S24 con ✓✓ en 1,7 s por internet. El falso «Enlace ?» está arreglado en la 3283 (siguiente APK)."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "23:35",
+   "nx": "nx1n36c283 (S24, Android 17), build 3119: PRUEBA DEL DUEÑO app cerrada, Vivo → S24",
+   "sintoma": "manual: prueba de entrega con la app cerrada (COLA 23)",
+   "categoria": "Prueba",
+   "causa": "SIN FALLO en la entrega. App cerrada por el usuario 23:33; texto del Vivo de las 23:35:04 llegó 23:35:05,85 por la escucha nativa de internet, «aviso de mensaje nuevo por internet» publicado y ✓✓ devuelta en 0,04 s. SONÓ (dueño 23-11: «Sí»). COLA 23 confirmada en esta prueba. El Bluetooth del S24 estuvo APAGADO (≈21:09–23:35:24): la prueba fue solo por internet. A vigilar: Wi-Fi Direct 2 envíos a 2,9 KB/s de principio a fin (transferencia pura 189 KB/s; sin registro de esos envíos en la ventana); batería en segundo plano 6,6 %/h (pendiente 24)."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "23:59",
+   "nx": "nx1n36c283 (S24, Android 17), build 3119",
+   "sintoma": "enlace_abre_cierra (nx1e29ab2f 6 desconexiones en 10 min)",
+   "categoria": "Conexión",
+   "causa": "YA ARREGLADO (3283, va en la 3120): al volver al primer plano tras 23 min detrás salen 6 «Enlace ? (17c2) desconectado» de un enlace ya muerto; es el falso «enlace_abre_cierra». Sin mensajes perdidos."
+  },
+  {
+   "dia": "2026-11-22",
+   "hora": "00:26 (23-11)",
+   "nx": "nx1n36c283 (S24, Android 17), build 3119",
+   "sintoma": "resumen_diario 22-11",
+   "categoria": "Resumen",
+   "causa": "Sin fallo nuevo. 139 enviados / 179 recibidos; internet 123 de 123 con ✓✓ (media 1,1 s). 13 sin ✓✓ son de contactos sin conexión (internet fuera, no vistos): esperan. Wi-Fi Direct 2,9 KB/s de punta a punta (pura 189 KB/s) ya apuntado; batería detrás 6,6 %/h (pendiente 24)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "08:27",
+   "nx": "nx1n36c283",
+   "sintoma": "enlace_abre_cierra (nx10b6f4ac, 3 cierres por enlace repetido en 10 min)",
+   "categoria": "Bluetooth: enlaces que se abren y cierran",
+   "causa": "S24 3121 con Alex (3116, vieja). A REVISAR (app): el S24 abre una conexión «de paso» a un NEXO anónimo (40aadaac967e) que resulta ser Alex, al que ya tiene enlazado por f477; queda como 2.º enlace y el desempate cierra uno cada 1–2 min (08:23:34, 08:25:22, 08:27:52), y vuelve a sondear la misma dirección (08:22:49, 08:25:07, 08:27:31). ARREGLADO 3303: el sondeo de paso que identifica a un contacto ya enlazado se cierra al momento y la dirección → NEXO ID se recuerda 15 min (anondup.js). Nada perdido"
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "09:22",
+   "nx": "nx1a93dbfe, build 3121",
+   "sintoma": "resumen_diario 22-11",
+   "categoria": "Resumen",
+   "causa": "Sin fallo. 14 enviados / 6 recibidos, todos con ✓✓ por internet (media 0,7 s, máx. 1,2 s); 9 min a la vista, 27 °C."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "10:10",
+   "nx": "nx1e50c95d, build 3121",
+   "sintoma": "resumen_diario 22-11",
+   "categoria": "Resumen",
+   "causa": "Sin fallo nuevo. 150 enviados (150 ✓✓) / 94 recibidos; internet media 1,3 s; Wi-Fi Direct 2 de 2 (231,8 KB/s pura); Bluetooth listo 0,4 s. enlace_abre_cierra ×1 (3121, antes del arreglo 3303). Wi-Fi local «su app no contesta» ×2 (la del otro). A MIRAR: 1187,7 MB de datos de NEXO por Wi-Fi en el día (¿llamadas/videollamadas? si no, va con el pendiente 24 de datos repetidos de los relés). Batería detrás 2,2 %/h."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "10:11",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "zombi (nx01992876 Marcos)",
+   "categoria": "Zombi",
+   "causa": "Del otro: el enlace con Marcos (build ?, no la última) quedó de antes de que la app del S24 volviera al frente; sus pings nunca contestan (los de Roberto, Zhelowsky y nx10b6f4ac sí) y el vigilante lo cortó para reconectar tras 4 pings, como debe. Nada pendiente con Marcos: nada perdido. Aparte: Fénix de fondo a Zhelowsky se rinde (su app dormida) y queda para luego; relés 4,7 de 5,9 MB repetidos en 326 min (la copia por relé, ver 24 cerrado)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "11:20",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "zombi (nx10b6f4ac)",
+   "categoria": "Zombi",
+   "causa": "Versión vieja (3121): enlace de antes de volver la app al frente; vigilante cortó y reconectó. Nada perdido."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "12:55",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "zombi (nx01992876 Marcos)",
+   "categoria": "Zombi",
+   "causa": "Versión vieja (3121): app de Marcos dormida; corte y reconexión a los 3 s. Fénix a Zhelowsky se rinde (su app duerme) y queda para luego."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "13:23",
+   "nx": "nx1905c1ee, build 3121",
+   "sintoma": "enlace_abre_cierra (nx1n36c283)",
+   "categoria": "Enlaces repetidos",
+   "causa": "Versión vieja (3121), HONOR con optimización de batería activa: el S24 abre enlaces entrantes repetidos y el desempate los cierra (3 en 10 min). Gasta radio, no pierde mensajes."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "13:23",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "par:enlace_abre_cierra (pedido por Austin)",
+   "categoria": "Enlaces repetidos",
+   "causa": "El mismo episodio visto desde el S24 (3121)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "13:37",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "enlace_abre_cierra (nx01992876)",
+   "categoria": "Enlaces repetidos",
+   "causa": "Versión vieja (3121): enlaces repetidos con Marcos, los dos muertos tras volver al frente; MTU 23 momentáneo; el texto salió por internet."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "09:53",
+   "nx": "nx1a93dbfe, build 3121",
+   "sintoma": "cierre_fallo (sin memoria, detrás)",
+   "categoria": "Cierres del sistema",
+   "causa": "Causa externa: Galaxy A05 (Italia) con AHORRO DE BATERÍA; Android la cierra por memoria (9 en 7 días). NEXO vuelve sola y avisa por internet: llegó y sonó a las 16:01 hora de Italia."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "14:20",
+   "nx": "nx01992876, build 3123",
+   "sintoma": "par:enlace_abre_cierra (pedido por el S24)",
+   "categoria": "Enlaces repetidos",
+   "causa": "Del S24 (3121). Con la app de Marcos cerrada el nativo descartó 1 mensaje del S24 «sin su sello de pareja» (el S24 en 3121, sin el sello nuevo): versión vieja; llegó por internet al abrir."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "14:42",
+   "nx": "nx0g6ef54e, build 3123",
+   "sintoma": "zombi (nx01992876 Marcos)",
+   "categoria": "Zombi",
+   "causa": "App de Marcos en segundo plano: no contesta 4 pings; el vigilante corta para reconectar, como debe. Por mirar en la próxima: 3 mensajes viejos de Roberto reenviados a las 14:19 siguen en «enviado» aunque el nativo de Marcos dice tenerlos (devuelve ✓✓)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "14:45",
+   "nx": "nx01992876, build 3123",
+   "sintoma": "resumen_diario (21-11)",
+   "categoria": "Resumen",
+   "causa": "Sin fallo."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "19:03",
+   "nx": "nx1n36c283, build 3125",
+   "sintoma": "cierre_fallo (18:24 FALLO nativo, detrás)",
+   "categoria": "Cierre de la app: fallo nativo",
+   "causa": "APP (3125), causa sin confirmar: SIGABRT con un hilo en Unsafe_park (la pista no dice qué código lo tiró). Justo antes, 10 reintentos de GATT a Marcos (status 147) hasta 18:23:51. El servicio volvió solo a las 18:24:58 (internet y Bluetooth sin la app) y los mensajes de Cari llegaron y sonaron con ✓✓. Menor: a las 17:32:56 un aviso «NO suena: el sistema no lo dejó publicado» (el siguiente, 4 s después, sí sonó). A vigilar en 3127+: si se repite, ampliar la pista del cierre (hilo y mensaje del abort)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "14:42",
+   "nx": "nx0g6ef54e, build 3123",
+   "sintoma": "zombi (nx01992876)",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "14:20",
+   "nx": "nx01992876, build 3123",
+   "sintoma": "par:enlace_abre_cierra",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "13:37",
+   "nx": "nx1a93dbfe, build 3121",
+   "sintoma": "cierre_fallo (sin memoria)",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "13:37",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "enlace_abre_cierra",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "13:23",
+   "nx": "nx1905c1ee, build 3121",
+   "sintoma": "enlace_abre_cierra",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "13:23",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "par:enlace_abre_cierra",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "12:55",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "zombi (nx01992876)",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "11:20",
+   "nx": "nx1n36c283, build 3121",
+   "sintoma": "zombi (nx10b6f4ac)",
+   "categoria": "Versión vieja",
+   "causa": "Build anterior a la última: no se revisa (regla del dueño)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "21:40",
+   "nx": "nx1n36c283, build 3127",
+   "sintoma": "cierre_fallo (21:26 FALLO nativo, detrás) + enlace_abre_cierra (nx09acdb61, 21:17)",
+   "categoria": "Cierre de la app: fallo nativo",
+   "causa": "APP: SEGUNDO cierre nativo igual al de las 18:24 (SIGABRT, pista Unsafe_park). Las pistas no dicen qué hilo cayó: desde esta APK se lee el volcado (tombstone) y sale el hilo, el mensaje del abort y sus funciones (ExitReasons.tombstoneSummary, TombstoneTest). Otros: el Vivo abre 3–4 enlaces repetidos a la vez (dedup los cierra; 3121–3127 ya en vigilancia); un paquete de puente (msg…wpevbz66f) reintenta horas con ACK timeout; 2 ✓✓ de Cari (3125) «sin firma válida» ignoradas a las 21:16 tras llegar por la escucha nativa: a vigilar con Cari ya en la última versión."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "22:17",
+   "nx": "nx1n36c283, build 3127",
+   "sintoma": "diagnóstico a mano",
+   "categoria": "Sin fallo nuevo",
+   "causa": "Sin fallo nuevo de la app. El paquete de puente msg…wpevbz66f (desde ~14:46) es para el Vivo (3119): sin la ✓✓ de vuelta por el enlace (3315 back(), que el Vivo aún no tiene) el S24 reintenta horas: versión vieja del destino. «Respuesta de sincronía sin firma válida» de la tablet (3117) y el Vivo (3119): versiones sin la firma C-N10. «Sin enlace con NaNdNdN» = dirección MAC normalizada en el resumen (cosmético). Cierres nativos: ya apuntados (el volcado detallado llega con la APK en curso)."
+  },
+  {
+   "dia": "2026-11-23",
+   "hora": "22:54",
+   "nx": "nx1n36c283, build 3127",
+   "sintoma": "solo Bluetooth: el mensaje al S23 no salió por la tablet (Wi-Fi, app cerrada) ni por el Vivo; el Vivo tardó en recibir",
+   "categoria": "Puente",
+   "causa": "(1) El puente a internet (gw) solo lo atendía la app: la tablet dormida no contestaba «¿me prestas internet?» → 3321 lo atiende el nativo. (2) El Vivo dormido se identificó por el nativo y su conexión de paso seguía como anónima: se cerró «sin uso» a los 60 s → 3322. (3) El Vivo tiene la 3119 (sin el puente nativo de la 3127): hay que actualizarlo."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "05:05",
+   "nx": "nx1n36c283, build 3127",
+   "sintoma": "resumen diario 23-11 (automático)",
+   "categoria": "Sin fallo nuevo",
+   "causa": "Resumen del 23-11 en la 3127: 78 de 79 con ✓✓. «Puente a internet: no contesta ×8» = la tablet dormida que no prestaba internet (arreglado en la 3142, 3321). Lo demás ya apuntado."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "06:16",
+   "nx": "nx1n36c283, build 3142",
+   "sintoma": "cierre_fallo automático (06:01 FALLO nativo, detrás)",
+   "categoria": "Fallo de la app",
+   "causa": "Tor: al soltar la vista previa su conexión con TorService (5 min sin uso) Android destruye el servicio y tor cae con SIGABRT (pthread_mutex_lock on destroyed mutex, tor_cond_wait). Mismo origen que 23-11 18:24 y 21:26 (desde la 3125). Arreglo 3324 TorKeep. Los 2 textos a S23 a las 06:15 quedaron ✓ en el buzón (S23 sin app abierta)."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "07:39",
+   "nx": "nx1n36c283, build 3142",
+   "sintoma": "enlace_abre_cierra con Roberto (nx0g6ef54e) durante la prueba de puente a internet (S24 solo Bluetooth)",
+   "categoria": "Fallo de la app",
+   "causa": "La ráfaga del arranque del puente llenó la radio, el nativo soltó una escritura y el enlace del puente se dio por muerto (dedup cerró los dos enlaces). Arreglo 3325. Los 2 textos a S23 (07:39:06 y 07:39:22) llegaron al buzón por el puente (✓); el S23 no estaba conectado."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "07:40",
+   "nx": "nx0g6ef54e (Roberto), build 3142",
+   "sintoma": "par:enlace_abre_cierra pedido por el S24 (prueba del puente a internet)",
+   "categoria": "Mismo fallo ya arreglado",
+   "causa": "Con la app de Roberto CERRADA su nativo atendió el puente del S24 (frames de 1777/857 y respuestas, saludo contestado) y recibió un mensaje por Bluetooth: el puente nativo 3321 funciona. La desconexión 07:38:44 (status 19) es el cierre del desempate del S24 (3325)."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "08:40",
+   "nx": "nx0g6ef54e (Roberto), build 3142",
+   "sintoma": "resumen diario 23-11 (automático)",
+   "categoria": "Sin fallo nuevo",
+   "causa": "Poco uso (3 enviados, 13 recibidos); Wi-Fi local «su app no contesta» ×3 (el otro dormido), zombi ×1. Nada nuevo."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "08:42",
+   "nx": "nx1n36c283, build 3142",
+   "sintoma": "cierre_fallo automático (08:13 FALLO nativo, detrás)",
+   "categoria": "Fallo de la app (ya arreglado)",
+   "causa": "Otra vez Tor (SIGABRT, destroyed mutex en tor_cond_wait): mismo origen que 06:01; el arreglo 3324 va en la APK en curso. Además: «sincronía sin firma válida» con Roberto (3142) → 3326."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "09:00",
+   "nx": "nx1n36c283, build 3142",
+   "sintoma": "zombi automático con Roberto (nx0g6ef54e)",
+   "categoria": "Zombi (🔴 1, en curso)",
+   "causa": "Al volver la app (08:59) había dos enlaces por contacto; el desempate común se quedó con el de servidor (el S24 lo ve a MTU 23: el lado servidor no siempre conoce el MTU real) y ese dejó de contestar 4 pings → se cortó y reconectó solo. No se tocó el desempate: cambiarlo reabre 3137/3139 (cada lado cerraría un enlace distinto; bledup.js). Sin mensajes perdidos (Marcos ✓✓, Roberto por Wi-Fi). Se mira con el Bluetooth entero en el servicio nativo."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "09:17",
+   "nx": "nx1n36c283, build 3142",
+   "sintoma": "zombi automático con nx10b6f4ac (Alex)",
+   "categoria": "Zombi (🔴 1, en curso)",
+   "causa": "Mismo patrón que 09:00: dos enlaces por contacto al volver la app; el desempate común deja el de servidor (MTU 23 visto por el S24) y ese deja de contestar pings; se reconecta solo. 10 zombis hoy. Pendiente con el Bluetooth en el servicio nativo. Build vieja (ya está la 3146)."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "09:54",
+   "nx": "nx1n36c283, build 3142",
+   "sintoma": "zombi automático con nx0x4029e6 (Zhelowsky)",
+   "categoria": "Zombi (🔴 1, en curso)",
+   "causa": "Mismo patrón que 09:00: dos enlaces por contacto al volver la app; el desempate común deja el de servidor (MTU 23 visto por el S24) y ese deja de contestar pings; se reconecta solo. 10 zombis hoy. Pendiente con el Bluetooth en el servicio nativo. Build vieja (ya está la 3146)."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "10:34",
+   "nx": "nx1n36c283, build 3146",
+   "sintoma": "par:enlace_abre_cierra pedido por Austin (nx1905c1ee, 3142)",
+   "categoria": "Zombi/enlaces (🔴 1)",
+   "causa": "Primer diagnóstico de la 3146: sin cierres nativos desde la actualización (10:32). Con Austin el Wi-Fi local se corta y vuelve y el Bluetooth se reabre 3 veces en 1 min; mismo frente que los zombis. La sincronía ya funciona («Sync: reenviando 1 a NX1905C1EE»); los «sin firma» que quedan son respuestas repetidas a un número ya usado (ruido)."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "11:03",
+   "nx": "nx0g6ef54e (Roberto), build 3146",
+   "sintoma": "zombi automático con nx01992876 (Marcos)",
+   "categoria": "Zombi (🔴 1, en curso)",
+   "causa": "Al volver la app (11:03:16) recupera su enlace de cliente con Marcos (único, MTU 517) y a los 7 s 4 pings sin respuesta: se reconecta solo; Marcos en build desconocida. Mismo frente de enlaces viejos al volver la app; el desempate nuevo (3327: decide el NEXO ID menor y se queda el más reciente) va en la próxima APK. Aparte (10:42–10:44): un texto pendiente a Zhelowsky reintentaba por internet cada ~12 s con los relés diciendo «rate-limited»: 3328 espera 15 s → 2 min. El texto llegó por Bluetooth a las 10:44:10."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "14:20",
+   "nx": "nx1n36c283 (S24, dueño), build 3148",
+   "sintoma": "zombi automático pedido por nx1905c1ee (Austin)",
+   "categoria": "Zombi (🔴 1, en curso)",
+   "causa": "Austin va en la 3142 (sin el acuerdo 3327: decide el NEXO ID menor, que es Austin): el S24 (mayor) espera y, pasados 3 min, cierra él el repetido (14:03:23, como manda la 3327). Se arregla cuando Austin tenga la 3148. Aparte: «mensaje sin cifrar atribuido a» Austin/Marcos/Zhelowsky (3142/3125) al volver la app: builds viejas. Cierre de Tor SIGABRT de las 08:13 = build 3142 (antes del 3324). Red cambiando Wi-Fi↔datos ×3: externo. Sin fallo de la 3148."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "14:55",
+   "nx": "nx1n36c283 (S24) y nx1905c1ee (Austin), los dos build 3148",
+   "sintoma": "zombi S24↔Austin (y par:zombi pedido por el S24)",
+   "categoria": "Zombi (🔴 1, en curso)",
+   "causa": "Austin con la app cerrada: su servicio se reinició (14:16) y el enlace de cliente del S24 hacia él quedó MEDIO MUERTO (las escrituras salen, nada vuelve). Al volver el S24 a la app (14:54:15) lo recuperó como listo, el texto largo para Austin lo mantuvo «en transferencia» y el vigilante tardó 4 pings (56 s) en rehacerlo; luego llegó por otro enlace (14:55:30). Arreglo 3330: el enlace recuperado queda «sin comprobar» hasta oír algo por él; ping ya y con 1 sin respuesta se rehace (zombivuelta.js: 50 s → 14 s)."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "15:29",
+   "nx": "nx1n36c283 (S24), build 3148",
+   "sintoma": "enlace_abre_cierra con nx0x4029e6 (Zhelowsky, 3 cierres por repetido en 10 min)",
+   "categoria": "Enlaces repetidos (🔴 3)",
+   "causa": "Zhelowsky va en la 3125 (sin el acuerdo 3327; él es el NEXO ID menor y debería decidir): el S24 cierra él a los 3 min. Build vieja. Aparte: textos largos (37 trozos) del S24 a Austin pendientes desde 14:22: Austin con la app cerrada y sin internet; su nativo sin la app solo avisa del primer trozo de algo largo (SinAppCore) y no lo recibe → es el frente grande 🔴 1 (Bluetooth entero en el servicio nativo)."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "17:23",
+   "nx": "nx1n36c283 (S24), build 3150",
+   "sintoma": "enlace_abre_cierra con nx10b6f4ac (Alex, 3 cierres por repetido en 10 min)",
+   "categoria": "Enlaces repetidos (🔴 3)",
+   "causa": "Fallo de la app: tras actualizar (17:19) el S24 sondeó «de paso» 3 direcciones anónimas que eran Alex; se identificaron por el nativo con la app detrás y el repaso les quitaba la marca «de paso» sin cerrarlas (regla 24-11 del Vivo) → al volver la app, 4 enlaces con Alex y el desempate cerró 3. Arreglo 3332: marca de sondeo aparte 5 min, el repaso cierra la que sobra y 2.ª vuelta al sembrar los enlaces recuperados (anondup.js caso 7; anondup entra al CI). Aparte: cierre nativo de Tor de las 08:13 = build anterior a la 3146."
+>>>>>>> origin/NEXOCHAT
   }
  ]
 }

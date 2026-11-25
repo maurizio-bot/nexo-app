@@ -43,9 +43,28 @@ function _clean() {
 function _pushNative() {
   var p = _plugin();
   if (!p || typeof p.setMutedChats !== 'function') return;
-  var m = _all();
-  try { Promise.resolve(p.setMutedChats({ chats: Object.keys(m).map(function(k) { return { id: k, until: m[k] }; }) })).catch(function() {}); } catch (e) {}
+  var m = _all(), list = Object.keys(m).map(function(k) { return { id: k, until: m[k] }; });
+  // Invitación a grupo (dueño 24-11): un grupo que aún no acepté no avisa con la app cerrada o congelada (para la parte nativa, «silenciado»)
+  try {
+    var gs = window.bleInterface && window.bleInterface.groups;
+    if (gs && typeof gs.invitations === 'function') gs.invitations().forEach(function(g) { var id = _n(g.id); if (ID_RE.test(id) && !(id in m)) list.push({ id: id, until: 0 }); });
+  } catch (e) {}
+  try { Promise.resolve(p.setMutedChats({ chats: list })).catch(function() {}); } catch (e) {}
 }
+var _invSig = null;
+try {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('nexo:mute:refresh', function() { _pushNative(); });
+    // al cargar los grupos (y si cambia quién está invitado) la parte nativa lo sabe
+    window.addEventListener('nexo:groups', function() {
+      try {
+        var gs = window.bleInterface && window.bleInterface.groups;
+        var sig = gs && typeof gs.invitations === 'function' ? gs.invitations().map(function(g) { return g.id; }).sort().join(',') : '';
+        if (sig !== _invSig) { _invSig = sig; _pushNative(); }
+      } catch (e) {}
+    });
+  }
+} catch (e) {}
 
 function _save() {
   _clean();

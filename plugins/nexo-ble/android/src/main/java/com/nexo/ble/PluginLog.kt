@@ -77,6 +77,15 @@ internal fun NexoBlePlugin.readNativeLogImpl(call: PluginCall) {
     } catch (e: Exception) { call.resolve(JSObject().put("content", "")) }
 }
 
+// 3315: ¿hay batería para que el NATIVO haga de puente con la app dormida? La misma regla que canRelay de la app (ble_relay.js):
+// cargando siempre; si no, ≥ 15 % (≥ 30 % en ahorro de energía). Sin dato de batería no se bloquea.
+internal fun relayPowerOk(ctx: Context): Boolean = try {
+    val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
+    val level = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+    val save = (ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isPowerSaveMode
+    bm.isCharging || level < 0 || level > 100 || level >= (if (save) 30 else 15)
+} catch (e: Throwable) { true }
+
 // Jump: nivel de batería, si está cargando y si está en ahorro de energía (con poca batería el
 // teléfono deja de hacer de puente para otros)
 internal fun NexoBlePlugin.getPowerStatusImpl(call: PluginCall) {
@@ -88,6 +97,14 @@ internal fun NexoBlePlugin.getPowerStatusImpl(call: PluginCall) {
         val out = JSObject().put("level", level).put("charging", charging).put("powerSave", pm.isPowerSaveMode)
         // 3020 (diagnóstico más claro, dueño 12-11): Doze, pantalla, optimización de batería, red activa y punto de acceso.
         // Cada dato por separado: si uno falla en algún modelo, los demás siguen.
+        // 3256 (dueño 20-11: «el diagnóstico debe medir la temperatura y los tiempos él solo»): temperatura de la batería (°C, con un decimal;
+        // Android la da en décimas) y estado térmico del teléfono (API 29+: 0 normal … 6 apagado). Cada dato por separado.
+        try {
+            val st = context.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+            val t = st?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE) ?: Int.MIN_VALUE
+            if (t != Int.MIN_VALUE && t > -500 && t < 1500) out.put("temp", t / 10.0)
+        } catch (e: Throwable) {}
+        try { if (android.os.Build.VERSION.SDK_INT >= 29) out.put("thermal", pm.currentThermalStatus) } catch (e: Throwable) {}
         try { out.put("idle", pm.isDeviceIdleMode) } catch (e: Exception) {}
         try { out.put("interactive", pm.isInteractive) } catch (e: Exception) {}
         try { out.put("ignoringOpt", pm.isIgnoringBatteryOptimizations(context.packageName)) } catch (e: Exception) {}
@@ -140,7 +157,12 @@ internal fun NexoBlePlugin.getExitReasonsImpl(call: PluginCall) {
                     .put("pssKb", e.pss).put("rssKb", e.rss)
                 if (!e.description.isNullOrBlank()) o.put("desc", ExitReasons.clip(e.description, 200))
                 if (e.reason == ExitReasons.CRASH_NATIVE && Build.VERSION.SDK_INT >= 31) {   // 3232: pistas del fallo nativo
-                    try { e.traceInputStream?.use { ins -> val h = ExitReasons.nativeHints(ins.readBytes()); if (h.isNotBlank()) o.put("trace", h) } } catch (t: Throwable) {}
+                    try { e.traceInputStream?.use { ins ->
+                        val bytes = ins.readBytes()
+                        // dueño 23-11: primero qué hilo cayó y el mensaje del abort (tombstone), luego las pistas de siempre
+                        val h = listOf(ExitReasons.tombstoneSummary(bytes), ExitReasons.nativeHints(bytes)).filter { it.isNotBlank() }.joinToString("\n")
+                        if (h.isNotBlank()) o.put("trace", h)
+                    } } catch (t: Throwable) {}
                 }
                 if (e.reason == ExitReasons.ANR) {
                     try {

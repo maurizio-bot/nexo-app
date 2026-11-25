@@ -1,4 +1,5 @@
-import { MAX_CHUNKS, _chunkCheck, _isNetDevice, _assemblyTimeoutFor, NACK_INTERVAL_MS, BIGX_BLOCK, BIGX_MIN_CHUNKS, _bigxUserId, _bigxFullBlock, ACK_EVERY, ACK_DEBOUNCE_MS, NET_TOR_PREFER_CHUNKS, COMPLETED_TTL_MS, _isFenixTx, _isLanDevice, _compressRanges, PROTOCOL_VERSION, _decompressRanges, _normId, _maxSeqFromPeer } from './ble_ack_shared.js';
+import { MAX_CHUNKS, MAX_CHUNK_CHARS, MAX_BUF_CHARS, MAX_BUFS_PER_DEVICE, _chunkCheck, _isNetDevice, _assemblyTimeoutFor, NACK_INTERVAL_MS, BIGX_BLOCK, BIGX_MIN_CHUNKS, _bigxUserId, _bigxFullBlock, ACK_EVERY, ACK_DEBOUNCE_MS, NET_TOR_PREFER_CHUNKS, COMPLETED_TTL_MS, _isFenixTx, _isLanDevice, _compressRanges, PROTOCOL_VERSION, _decompressRanges, _normId, _maxSeqFromPeer, _ctEq } from './ble_ack_shared.js';
+import { e2eAckTag } from '../vault/e2e_crypto.js';
 // Métodos de BleAckSystem: RECEPCIÓN: trozos que llegan, armado, NACK y ack de bloque, sincronía de sesión.
 // Reestructuración 15-11: movidos TAL CUAL desde ble_ack.js; ble_ack.js los une a la clase (como métodos normales).
 export const ackIncoming = {
@@ -37,7 +38,10 @@ export const ackIncoming = {
     var data = msg.d || msg.data;
     var from = msg.fr || msg.from;
     var seq = (typeof msg.seq === 'number') ? msg.seq : 0;
-    if (!msgId || typeof idx !== 'number' || typeof total !== 'number') return;
+    if (!msgId || !Number.isInteger(idx) || !Number.isInteger(total)) return; // revisión 24-11: enteros (no 1.5, NaN ni Infinity)
+    if (data != null && typeof data !== 'string') return;                    // revisión 24-11: el trozo es texto
+    if (data && data.length > MAX_CHUNK_CHARS) return;                        // revisión 24-11: ningún trozo legítimo es tan grande
+    if (!/^[A-Za-z0-9_.:-]{1,80}$/.test(String(msgId))) return; // auditoría 23-11 (I-X1): id elegido por quien manda
     if (total <= 0 || idx < 0 || idx >= total) return;
     // Robustez (auditoría 2804): un 'n' (total) desproporcionado haría que el block-ack / NACK recorrieran miles de
     // millones de índices en el hilo principal (congelación de la interfaz → ANR). Por encima de MAX_CHUNKS es un
@@ -98,6 +102,12 @@ export const ackIncoming = {
       return;
     }
     if (!buf) {
+      // Revisión 24-11: de un mismo enlace, como mucho MAX_BUFS_PER_DEVICE mensajes a medias a la vez (el resto se vuelve a pedir después)
+      var open = 0; self.incomingBuffers.forEach(function(b) { if (b && b.deviceId === deviceId) open++; });
+      if (open >= MAX_BUFS_PER_DEVICE) {
+        if (!self._tooManySaid || Date.now() - self._tooManySaid > 60000) { self._tooManySaid = Date.now(); console.warn('[BleAckSystem] Demasiados mensajes a medias desde un mismo enlace: se ignoran los nuevos por ahora'); }
+        return;
+      }
       var resolvedType = msg.tp || msg.type || (type === 'f' ? 'file' : null);
       var resolvedFrom = from || msg.fr || 'unknown';
       buf = {
@@ -129,6 +139,7 @@ export const ackIncoming = {
           thumb: msg.th || null,
           pages: msg.pg || null,
           caption: (typeof msg.cp === 'string' && msg.cp) ? msg.cp.substring(0, 1000) : undefined, // 3242: comentario
+          xs: (typeof msg.xs === 'string' && msg.xs.length < 4000) ? msg.xs : undefined, // 4A (23-11): comentario y «ver una vez», sellados
           dst: msg.dt || null,
           hp: msg.hp || 0
         },
@@ -147,6 +158,16 @@ export const ackIncoming = {
       }, _assemblyTimeoutFor(_isNetDevice(deviceId), buf.isChat, buf.total));
     }
     if (!buf.chunks.has(idx)) {
+      // Revisión 24-11: tope de lo que un mismo mensaje guarda en memoria; pasarlo = ataque: se tira el mensaje entero
+      buf.mem = (buf.mem || 0) + (data ? data.length : 0);
+      if (buf.mem > MAX_BUF_CHARS) {
+        console.warn('[BleAckSystem] ' + msgId + ': pasa del tope de memoria por mensaje: se descarta');
+        if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
+        if (buf.ackTimer) clearTimeout(buf.ackTimer);
+        self.incomingBuffers.delete(msgId);
+        self._bigxForget(msgId);
+        return;
+      }
       buf.chunks.set(idx, data || '');
       buf.received++;
       if (typeof buf.maxIdx !== 'number' || idx > buf.maxIdx) buf.maxIdx = idx;
@@ -238,7 +259,7 @@ export const ackIncoming = {
       buf._bigxSaving.delete(k);
       if (!ok || buf._assembled || buf._loading || self.incomingBuffers.get(msgId) !== buf) return;   // juntándose: se queda en memoria
       buf.diskBlocks.add(k);
-      for (var j = s0; j < e0; j++) { if (typeof buf.chunks.get(j) === 'string') buf.chunks.set(j, null); }
+      for (var j = s0; j < e0; j++) { var cj = buf.chunks.get(j); if (typeof cj === 'string') { buf.mem = Math.max(0, (buf.mem || 0) - cj.length); buf.chunks.set(j, null); } }
       var rec = self._bigxIn.get(msgId);
       if (!rec || rec.a !== (buf.a || '') || rec.total !== buf.total) { rec = { a: buf.a || '', total: buf.total, meta: buf.meta, blocks: [] }; self._bigxIn.set(msgId, rec); }
       if (rec.blocks.indexOf(k) < 0) rec.blocks.push(k);
@@ -542,10 +563,15 @@ export const ackIncoming = {
         if (msgs && msgs.length > 0) {
           myLastSeq = _maxSeqFromPeer(msgs);
         }
-        var resp = JSON.stringify({ v: PROTOCOL_VERSION, t: 'sr', fr: (self.ble && self.ble.localNexoId) || 'unknown', l: myLastSeq });
-        if (self.ble && self.ble._sendMessageNative) {
-          self.ble._sendMessageNative(deviceId, resp, null).catch(function(){});
-        }
+        var me = (self.ble && self.ble.localNexoId) || 'unknown';
+        var resp = { v: PROTOCOL_VERSION, t: 'sr', fr: me, l: myLastSeq };
+        var send = function() { if (self.ble && self.ble._sendMessageNative) self.ble._sendMessageNative(deviceId, JSON.stringify(resp), null).catch(function(){}); };
+        // Auditoría 23-11 (C-N10): la respuesta va FIRMADA con el secreto de la pareja y atada al número al azar del «ss» (ver
+        // _srSigned): un impostor que se hace pasar por el contacto en un enlace no puede fabricarla ni repetir una vieja
+        var c = self._contactOf(null, peerNexoId), n = String(msg.n || '');
+        if (!/^[0-9a-f]{16,32}$/.test(n) || !c || !c.publicKey) return send();
+        resp.n = n;
+        e2eAckTag(c.publicKey, 'sr|' + n + '|' + myLastSeq + '|' + _normId(me) + '|' + _normId(peerNexoId)).then(function(a) { if (a) resp.a = a; send(); }, send);
       }).catch(function(){});
     }
   },
@@ -555,7 +581,10 @@ export const ackIncoming = {
     var peerNexoId = msg.fr || msg.from;
     if (!peerNexoId || !window.vaultLoadMessages) return;
     if (!self._syncFromLinkOwner(deviceId, peerNexoId)) return;
-    window.vaultLoadMessages(peerNexoId).then(function(msgs) {
+    self._srSigned(deviceId, peerNexoId, msg).then(function(ok) {
+      if (!ok) { console.warn('[BleAckSystem] Respuesta de sincronía de ' + _normId(peerNexoId) + ' sin firma válida o sin pedirla: no se reenvía nada'); return null; } // i18n-ok: registro
+      return window.vaultLoadMessages(peerNexoId);
+    }).then(function(msgs) {
       if (!msgs) return;
       // v3.3.1: peerLastSeq es el mayor seq NUESTRO que el otro tiene (antes mezclaba los contadores de
       // ambos teléfonos y dejaba sin reenviar). Se reenvía lo propio sin confirmar: pendiente/fallido
@@ -589,13 +618,41 @@ export const ackIncoming = {
       sendNext();
     }).catch(function(){});
   },
+  // Auditoría 23-11 (C-N10, bajo): un «kx» falso podía reapuntar un enlace al NEXO ID de un contacto y su «sr» con l:0 hacía reenviar
+  // hasta 50 mensajes propios (cifrados: no leía nada, pero se gastaba la radio y se le contaba cuántos y cuándo). Con un contacto de
+  // protocolo 2, el «sr» solo vale si responde a un «ss» que este teléfono mandó por ESE enlace hace < 2 min y lleva la firma de la
+  // pareja sobre «sr|número|l|él|yo» (como las ✓✓, C1). Sin clave de pareja (protocolo 1), como antes.
+  _srSigned(deviceId, peerNexoId, msg) {
+    var nx = _normId(peerNexoId), c = this._contactOf(null, nx);
+    if (!c || c.proto !== 2 || !c.publicKey || c.pendingKey) return Promise.resolve(true);
+    // 24-11 (diagnóstico S24 08:41: TODAS las respuestas de Roberto, 3142, «sin firma válida»): el número se guardaba por ENLACE (deviceId)
+    // y uno solo: al pedir la sincronía dos o tres veces seguidas (al conectar, al volver la app, por cada enlace) cada pedido pisaba al
+    // anterior, y la dirección del enlace no siempre se escribe igual al pedir y al contestar. Ahora se guardan los números pendientes por
+    // CONTACTO (varios, 2 min cada uno) y la respuesta vale si firma cualquiera de ellos; cada número sirve una sola vez.
+    var list = (this._ssNonces && this._ssNonces.get(nx)) || [], now = Date.now(), n = String(msg.n || '');
+    var want = list.filter(function(w) { return w.n === n && now - w.at <= 120000; })[0];
+    if (!want || !msg.a) return Promise.resolve(false);
+    this._ssNonces.set(nx, list.filter(function(w) { return w !== want && now - w.at <= 120000; })); // una sola vez
+    var l = msg.l || 0;
+    return this._whenMyNx().then(function(me) {
+      return e2eAckTag(c.publicKey, 'sr|' + want.n + '|' + l + '|' + nx + '|' + _normId(me));
+    }).then(function(exp) { return !!exp && _ctEq(String(msg.a), exp); }, function() { return false; });
+  },
   sendSessionSync(deviceId, peerNexoId) {
     var self = this;
     var myLastSeq = 0;
     if (window.vaultLoadMessages) {
       window.vaultLoadMessages(peerNexoId).then(function(msgs) {
         myLastSeq = _maxSeqFromPeer(msgs);
-        var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ss', fr: (self.ble && self.ble.localNexoId) || 'unknown', l: myLastSeq });
+        // C-N10: número al azar que la respuesta («sr») tiene que firmar (uno por enlace; vale 2 min)
+        var n = Array.prototype.map.call(window.crypto.getRandomValues(new Uint8Array(8)), function(b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+        if (!self._ssNonces) self._ssNonces = new Map();
+        var snx = _normId(peerNexoId), now0 = Date.now();
+        var pend = (self._ssNonces.get(snx) || []).filter(function(w) { return now0 - w.at <= 120000; }).slice(-7);
+        pend.push({ n: n, at: now0 });
+        self._ssNonces.set(snx, pend);
+        if (self._ssNonces.size > 200) self._ssNonces.delete(self._ssNonces.keys().next().value);
+        var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ss', fr: (self.ble && self.ble.localNexoId) || 'unknown', l: myLastSeq, n: n });
         if (self.ble && self.ble._sendMessageNative) {
           self.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
         }

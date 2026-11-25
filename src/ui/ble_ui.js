@@ -10,6 +10,7 @@ import { parseInvite, shareInvite } from './invite.js'; // 3129: enlace de invit
 import { personAvatar } from './person_avatar.js'; // 3140: el círculo de color de Contactos
 import { isPreviewHidden, toggleHidePreview } from './chat_hide_preview.js';
 import { markMutedRow, muteMenuLabel, isMuted, openMuteSheet } from './chat_mute.js'; // 3219: silenciar un chat
+import { blockMenuLabel, openBlockSheet } from './bloqueo_ui.js'; // bloquear contacto (24-11)
 import { contactSearchQuery, _csMatch, installContactSearch } from './contacts_search.js'; // 3196: lupa de Contactos
 import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isPinned, _normId, _rssiToBars, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
 
@@ -304,6 +305,11 @@ export const BLE_UI_METHODS = {
           if (d.id) { var nm = d.name || String(d.id).toUpperCase(), put = function() { return nm; }; _showToast(d.acc ? t('req_toast_acc', '✅ {name} aceptó tu solicitud — confírmala en «Solicitudes para ti»').replace(/\{name\}/g, put) : t('req_toast', '👋 {name} quiere agregarte — mira «Solicitudes para ti»').replace(/\{name\}/g, put), 'info'); }
         } catch (x) {}
       });
+      // Invitación a grupo (24-11): aviso y a «Solicitudes para ti»
+      window.addEventListener('nexo:groups:invite', function(e) {
+        self.renderRequests(); self.renderContactsList();
+        try { var d = (e && e.detail) || {}; var who = (self.groups && d.by) ? self.groups.memberName(d.by) : ''; _showToast(t('grp_inv_toast', '👥 {name} te agregó a «{group}» — acepta o rechaza en «Solicitudes para ti»').replace('{name}', function() { return who || '?'; }).replace('{group}', function() { return d.name || ''; }), 'info'); } catch (x) {}
+      });
       window.addEventListener('nexo:ble:reqAccepted', function(e) {
         self.renderRequests(); self.renderContactsList();
         if (addNote) { addNote.style.color = 'var(--nx-cyan)'; addNote.textContent = t('add_accepted', '{name} te aceptó. Ya están conectados.').replace(/\{name\}/g, (e.detail && (e.detail.name || e.detail.id)) || t('add_your_contact', 'Tu contacto')); }
@@ -579,9 +585,11 @@ export const BLE_UI_METHODS = {
     var box = document.getElementById('ble-requests'), list = document.getElementById('ble-requests-list');
     if (!box || !list || typeof self.pendingRequests !== 'function') return;
     var reqs = self.pendingRequests() || [];
-    if (!reqs.length) { box.style.display = 'none'; list.innerHTML = ''; return; }
+    var invs = (self.groups && typeof self.groups.invitations === 'function') ? self.groups.invitations() : []; // invitación a grupo (24-11)
+    if (!reqs.length && !invs.length) { box.style.display = 'none'; list.innerHTML = ''; return; }
     box.style.display = '';
     list.innerHTML = '';
+    invs.forEach(function(g) { list.appendChild(self._groupInviteRow(g)); });
     reqs.forEach(function(req) {
       var row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--nx-radius);margin:2px 0;';
@@ -624,10 +632,34 @@ export const BLE_UI_METHODS = {
     });
   },
 
+  // Invitación a grupo (dueño 24-11): «👥 Nombre del grupo · X te agregó» con Aceptar / Rechazar (textos con textContent: vienen de otros)
+  _groupInviteRow(g) {
+    var self = this;
+    var row = document.createElement('div');
+    row.className = 'ble-group-invite';
+    row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--nx-radius);margin:2px 0;';
+    var info = document.createElement('div'); info.style.cssText = 'flex:1;min-width:0;';
+    var nm = document.createElement('div'); nm.className = 'ble-contact-name'; nm.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    nm.textContent = '👥 ' + (g.name || t('grp_default_name', 'Grupo'));
+    var sub = document.createElement('div'); sub.style.cssText = 'font-size:12px;color:var(--nx-muted);margin-top:2px;white-space:normal;';
+    var who = (self.groups && typeof self.groups.memberName === 'function' && g.invBy) ? self.groups.memberName(g.invBy) : String(g.invBy || '').toUpperCase();
+    sub.textContent = t('grp_inv_sub', '{name} te agregó al grupo ({n} personas)').replace('{name}', who || '?').replace('{n}', String((g.members || []).length));
+    info.appendChild(nm); info.appendChild(sub);
+    var ok = document.createElement('button'); ok.className = 'grp-inv-accept'; ok.textContent = t('req_btn_accept', 'Aceptar');
+    ok.style.cssText = 'flex-shrink:0;padding:7px 12px;border-radius:14px;border:none;background:var(--nx-grad);box-shadow:0 3px 10px rgba(0,200,255,.35);color:#fff;font-weight:600;cursor:pointer;';
+    var no = document.createElement('button'); no.className = 'grp-inv-reject'; no.textContent = t('grp_inv_reject', 'Rechazar');
+    no.style.cssText = 'flex-shrink:0;padding:7px 10px;border-radius:14px;border:1px solid var(--nx-line);background:var(--nx-surface-2);color:#fff;cursor:pointer;';
+    ok.addEventListener('click', function() { ok.disabled = no.disabled = true; self.groups.acceptInvite(g.id); try { haptic('confirm'); } catch (e) {} self.renderRequests(); self.renderContactsList(); });
+    no.addEventListener('click', function() { ok.disabled = no.disabled = true; self.groups.rejectInvite(g.id); self.renderRequests(); self.renderContactsList(); });
+    var av = document.createElement('div'); av.className = 'ble-contact-avatar'; av.style.cssText = 'width:40px;height:40px;min-width:40px;display:flex;align-items:center;justify-content:center;font-size:18px;'; av.textContent = '👥';
+    row.appendChild(av); row.appendChild(info); row.appendChild(ok); row.appendChild(no);
+    return row;
+  },
+
   _prependReqBanner(list) {
     var self = this;
     if (!list) return;
-    var reqs = (typeof self.pendingRequests === 'function' && self.pendingRequests()) || [];
+    var reqs = ((typeof self.pendingRequests === 'function' && self.pendingRequests()) || []).concat((self.groups && typeof self.groups.invitations === 'function') ? self.groups.invitations() : []);
     if (!reqs.length) return;
     var banner = document.createElement('div');
     banner.id = 'ble-req-banner';
@@ -740,6 +772,7 @@ export const BLE_UI_METHODS = {
       avatar.className = 'ble-contact-avatar ' + gradClass;
       avatar.textContent = initials;
       if (!contact.isGroup) paintAvatar(avatar, uuid); // ronda 2765: foto de perfil
+      else { var gph = window.NEXO_groupPhoto && window.NEXO_groupPhoto(uuid); if (gph) { avatar.style.backgroundImage = 'url("' + gph + '")'; avatar.style.backgroundSize = 'cover'; avatar.classList.add('nx-has-photo'); avatar.textContent = ''; } } // 22-11 (COLA 4b, G6): foto del grupo
       // Ronda 2797 (pedido del dueño): tocar la FOTO del contacto la abre a tamaño grande (solo si tiene foto);
       // tocar el resto de la fila (nombre) entra al chat. Sin foto, el toque en el círculo cae a la fila (abre el chat).
       avatar.addEventListener('click', function(e) {
@@ -792,7 +825,7 @@ export const BLE_UI_METHODS = {
     menu.className = 'ble-contact-menu';
     var isPinned = _isPinned(uuid);
     // Ronda 2771: "Cambiar nombre" (el nombre del chat ya se podía tocar y cambiar, pero nada lo decía)
-    menu.innerHTML = '<div class="ble-menu-item" data-action="pin">' + (isPinned ? '&#x2606; Desfijar' : '&#x2605; Fijar') + '</div><div class="ble-menu-item" data-action="rename">&#x270F;&#xFE0F; Cambiar nombre</div><div class="ble-menu-item" data-action="hidetext">' + (isPreviewHidden(uuid) ? '&#x1F441; ' + t('chat_show_preview', 'Mostrar el texto en los avisos') : '&#x1F648; ' + t('chat_hide_preview', 'Ocultar el texto en los avisos')) + '</div><div class="ble-menu-item" data-action="mute">' + (isMuted(uuid) ? '&#x1F514; ' : '&#x1F515; ') + muteMenuLabel(uuid) + '</div><div class="ble-menu-item" data-action="profile">&#x1F464; Perfil</div><div class="ble-menu-item ble-menu-delete" data-action="delete">&#x1F5D1; Eliminar</div>';
+    menu.innerHTML = '<div class="ble-menu-item" data-action="pin">' + (isPinned ? '&#x2606; Desfijar' : '&#x2605; Fijar') + '</div><div class="ble-menu-item" data-action="rename">&#x270F;&#xFE0F; Cambiar nombre</div><div class="ble-menu-item" data-action="hidetext">' + (isPreviewHidden(uuid) ? '&#x1F441; ' + t('chat_show_preview', 'Mostrar el texto en los avisos') : '&#x1F648; ' + t('chat_hide_preview', 'Ocultar el texto en los avisos')) + '</div><div class="ble-menu-item" data-action="mute">' + (isMuted(uuid) ? '&#x1F514; ' : '&#x1F515; ') + muteMenuLabel(uuid) + '</div><div class="ble-menu-item" data-action="profile">&#x1F464; Perfil</div>' + '<div class="ble-menu-item" data-action="block">&#x1F6AB; ' + blockMenuLabel(uuid) + '</div><div class="ble-menu-item ble-menu-delete" data-action="delete">&#x1F5D1; Eliminar</div>';
     // 3222 (dueño 17-11): «Crear grupo» desde los ⋮ del contacto: abre «Nuevo grupo» con este contacto ya elegido
     if (typeof window.NEXO_newGroupWith === 'function') menu.insertAdjacentHTML('beforeend', '<div class="ble-menu-item" data-action="newgroup">&#x1F465; ' + t('prof_group_create', 'Crear grupo') + '</div>');
     var rect = btn.getBoundingClientRect();
@@ -817,6 +850,7 @@ export const BLE_UI_METHODS = {
       else if (action === 'hidetext') { toggleHidePreview(uuid); }
       else if (action === 'newgroup') { window.NEXO_newGroupWith(uuid); }
       else if (action === 'mute') { openMuteSheet(uuid); } // 3219
+      else if (action === 'block') { var bc = _getBLEContacts().find(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(uuid); }); openBlockSheet(uuid, bc && bc.name); } // bloqueo (24-11)
       else if (action === 'delete') { self.removeContact(uuid); }
       else if (action === 'profile') { _safeDispatchEvent('nexo:ble:goToProfile', { deviceUUID: uuid }); }
       else if (action === 'rename') {

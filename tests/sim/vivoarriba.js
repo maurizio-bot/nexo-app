@@ -185,7 +185,11 @@ async function lastVisible(p, nx) {
   r.reenvio_V_subio_s = Math.round((lmV3 - lmV2) / 1000);
   r.reenvio_V_abajo = r.orden_tras_reenvio[0] === 'B' && r.orden_tras_reenvio.indexOf('V') === 2;
   { const vs = await viejos(); r.reenvio_copias_en_chat = vs.length; r.reenvio_hora_original = vs.length === 1 && vs[0].timestamp === tsViejo0;
-    const mid = (vs[0] || {}).msgId || '?'; r.reenvio_A_lo_recibe_veces = logs.filter((l) => l.indexOf('[A] log: [BLE_RECV] Mensaje ' + mid + ' ') >= 0).length; }
+    const mid = (vs[0] || {}).msgId || '?'; r.reenvio_A_lo_recibe_veces = logs.filter((l) => l.indexOf('[A] log: [BLE_RECV] Mensaje ' + mid + ' ') >= 0).length;
+    // 3263 (fase 2): al reabrir A sus enlaces entrantes ya no se cortan y la confirmación que faltaba le llega al vivo por el enlace que
+    // sigue: entonces NO hay nada que reenviar (mejor todavía). Vale cualquiera de las dos: reenvió y A lo recibió otra vez, o quedó ✓✓ solo.
+    const enV = ((await V.win.vaultLoadMessages(idA)) || []).find((m) => m.content === 'viejo del vivo');
+    r.V_confirmado_sin_reenviar = !r.V_reenvio && !!enV && /^(delivered|read)$/.test(enV.status || ''); }
   V.setActive(false); nV.setFrozen(true);
 
   // 6. Hora del otro teléfono adelantada (2 h): un mensaje de verdad de V no puede quedar «en el futuro» (arriba para siempre)
@@ -210,7 +214,7 @@ async function lastVisible(p, nx) {
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
   const ok = r.agrega_V && r.agrega_B && r.agrega_C && r.chat_V && r.chat_B && r.chat_C && r.V_abajo && r.V_hora_no_cambia &&
-    r.reenvio_llega && r.V_reenvio && r.reenvio_A_lo_recibe_veces >= 2 && r.reenvio_V_abajo && r.reenvio_copias_en_chat === 1 && r.reenvio_hora_original && r.futuro_llega && r.futuro_V_no_en_futuro && r.futuro_acotado && r.futuro_B_arriba && !r.errores.length;
+    r.reenvio_llega && ((r.V_reenvio && r.reenvio_A_lo_recibe_veces >= 2) || r.V_confirmado_sin_reenviar) && r.reenvio_V_abajo && r.reenvio_copias_en_chat === 1 && r.reenvio_hora_original && r.futuro_llega && r.futuro_V_no_en_futuro && r.futuro_acotado && r.futuro_B_arriba && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('VIVOARRIBA ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_vivoarriba.txt'), logs.join('\n'));

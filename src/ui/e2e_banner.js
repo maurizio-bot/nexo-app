@@ -48,7 +48,7 @@ export function _renderE2EBanner() {
     var held = (bi && typeof bi.heldCount === 'function') ? bi.heldCount(cid) : 0;
     txt = t('chat_e2e_key_changed_1', '⚠️ La clave de seguridad de ') + name + t('chat_e2e_key_changed_2', ' cambió (') + new Date(c.keyChangedAt || Date.now()).toLocaleString() + ').' +
       (held ? ' ' + held + (held === 1 ? t('chat_e2e_held_sing', ' mensaje retenido.') : t('chat_e2e_held_plur', ' mensajes retenidos.')) : '') +
-      t('chat_e2e_until_accept', ' Hasta que la aceptes no se muestran sus mensajes nuevos ni se le envía nada.') +
+      t('chat_e2e_until_accept', ' Hasta que la aceptes no se muestran sus mensajes nuevos; lo que escribas se le sigue enviando con la clave de siempre (si de verdad reinstaló, al aceptarla se le reenvía).') +
       t('chat_e2e_impostor', ' Si no reinstaló NEXO, puede ser un impostor: comparad las huellas en persona.');
   } else if (c.feConflict) txt = t('chat_fe_conflict', '⚠️ El teléfono anterior de {name} sigue hablando después de recuperar su cuenta en otro: uno de los dos puede ser un impostor. Comparen el número de seguridad en persona antes de mandar nada importante.').replace('{name}', name);
   else if (c.feWarn && !(c.fe && c.fe.st === 'vetoed')) txt = t('chat_fe_disputed', '⚠️ El teléfono de siempre de {name} dijo «no soy yo», pero la recuperación traía una prueba más fuerte. Comparen el número de seguridad en persona.').replace('{name}', name);

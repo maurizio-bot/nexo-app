@@ -1,4 +1,4 @@
-import { _hasNativeMethod, _normId, _isBLEContact, _isProtocolShaped, SUPERVISOR_STATES, _normMac, _getContactByDeviceId, _getContactByUUID, _addBLEContact, _getBLEContacts, _saveBLEContacts, _vaultGetOrCreateContact, _chatKind, _vaultAppendMessage, _messagePreview, _safeDispatchEvent } from './ble_helpers.js';
+import { _hasNativeMethod, _normId, _msgIdOk, _isBLEContact, _isProtocolShaped, SUPERVISOR_STATES, _normMac, _getContactByDeviceId, _getContactByUUID, _addBLEContact, _getBLEContacts, _saveBLEContacts, _vaultGetOrCreateContact, _chatKind, _vaultAppendMessage, _messagePreview, _safeDispatchEvent } from './ble_helpers.js';
 import { e2eOpenAnon } from '../vault/e2e_crypto.js';
 import { diagNotePeerBuild } from './diag_state.js';
 import { e2eAnyEncrypted, e2eOpenText, e2eOuterAd } from '../vault/e2e_proto.js';
@@ -7,6 +7,7 @@ import { parseGroupEnvelope, groupAttachment } from './groups.js';
 import { parseCallSignal } from './calls.js';
 import { parseGroupCallSignal } from './group_call.js';
 import { vaultEarlyTombstoned } from '../vault/vault_early_acts.js';
+import { isBlocked, isGroupWire, msgWhileBlocked } from './bloqueo.js';
 // 3069: ¿texto cifrado del protocolo 2 en una sesión ya hecha? (cabecera de 3 campos: no es un primer mensaje X3DH)
 function _e2Established(packed) {
   if (typeof packed !== 'string' || packed.indexOf('E2:') !== 0) return false;
@@ -70,8 +71,14 @@ export const BLE_RECEIVE_METHODS = {
       var dnm = /"dn":"(nx[0-9a-z]{8})"/i.exec(raw), me0 = _normId(self.localNexoId);
       if (dnm && me0 && _normId(dnm[1]) !== me0) { self._notMine(data.deviceId, _normId(dnm[1])); return Promise.resolve(null); }
     }
+    // 3288: canal rápido del Bluetooth para archivos medianos (l2_fast.js): control de una transferencia
+    if (/"type":"l[qanx]"/.test(raw) && self.l2Fast) {
+      var pl2 = null;
+      try { pl2 = JSON.parse(raw); } catch (e) {}
+      if (pl2 && self.l2Fast.handle(pl2, data.deviceId)) return Promise.resolve(null);
+    }
     // Wi-Fi Direct: control de una transferencia (por Bluetooth)
-    if (/"type":"w[qanf]"/.test(raw) && self.wifiDirect) {
+    if (/"type":"w[qanfx]"/.test(raw) && self.wifiDirect) {
       var pw = null;
       try { pw = JSON.parse(raw); } catch (e) {}
       if (pw && self.wifiDirect.handle(pw, data.deviceId)) return Promise.resolve(null);
@@ -126,6 +133,7 @@ export const BLE_RECEIVE_METHODS = {
         // v6.12.0: el puente que lo trajo espera confirmación de este salto (no ve qué hay dentro: puede ser una
         // confirmación o un kx, que no se confirman por su id); sin ella lo guardaba y reintentaba sin fin
         if (Number(ps.hp) > 0 && ps.msgId && self.relay) self.relay._sendCustody(data.deviceId, ps.msgId);
+        if (Number(ps.hp) > 0) self._creditBridge(data.deviceId, ''); // 3323
         return e2eOpenAnon(ps.c).then(function(inner) {
           var ip = null;
           try { ip = JSON.parse(inner); } catch (e) {}
@@ -157,6 +165,8 @@ export const BLE_RECEIVE_METHODS = {
     if (jump && p && /^r[tqp]$/.test(p.type || '') && /^nx[0-9a-z]{8}$/i.test(p.from || '')) self._kickPeer(data.deviceId, p.from);
     if (jump && self.relay && self.relay.intercept(p, raw, data.deviceId)) return Promise.resolve(null);
     var viaRelay = !!(p && p.to && Number(p.hp) > 0);
+    // 3323 (reciprocidad del puente): un paquete para mí que llegó con saltos por el enlace de otro NEXO = ese NEXO me hizo de puente
+    if (viaRelay && _normId(p.to) === _normId(self.localNexoId)) self._creditBridge(data.deviceId, p.from || p.fromNexoId);
     if (p && p.type === 'kx') {
       if (viaRelay) {
         // Clave pedida por otro teléfono: solo se acepta si aún no hay ninguna (un puente no puede
@@ -188,7 +198,7 @@ export const BLE_RECEIVE_METHODS = {
       // Ronda 2764: con "Agregar" abierto, un NEXO cercano que no es contacto (se identificó con su kx) sale en la lista
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '') && !_isBLEContact(p.from) && Date.now() < (self._visibleUntil || 0) && !/^(lan|net)/i.test(String(data.deviceId)))
         self.onDeviceFound({ id: data.deviceId, name: typeof p.nm === 'string' ? p.nm.substring(0, 40) : '', rssi: -60, nexoId: String(p.from).toUpperCase(), kx: true }); // 3184: kx = dijo quién es (se dibuja al momento)
-      if (p.from && p.rs) self._noteRestored(p.from, p.pk, p.rs);
+      if (p.from && p.rs) self._noteRestored(p.from, p.pk, p.rs, p.rsg);
       if (p.fx && p.from) self._noteFenixPeer(p.from, data.deviceId, Number(p.fx) || 1);
       if (p.ss && p.from) self._noteSealPeer(p.from);
       if (p.nt && p.from) self._noteNetPeer(p.from);
@@ -200,7 +210,7 @@ export const BLE_RECEIVE_METHODS = {
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) { if (p.ss) self._sxHops.add(_normId(p.from)); else self._sxHops.delete(_normId(p.from)); }
       if (p.wd && self.wifiDirect) self.wifiDirect.markPeer(p.from);
       else if (self.wifiDirect) self.wifiDirect.unmarkPeer(p.from); // ya no lo anuncia (p.ej. sin permiso)
-      if (self.bigFiles) { if (p.bg) self.bigFiles.markPeer(p.from); else self.bigFiles.unmarkPeer(p.from); self.bigFiles.markL2(p.from, !!p.l2); } // archivos grandes (2756; L2CAP 2758)
+      if (self.bigFiles) { if (p.bg) self.bigFiles.markPeer(p.from); else self.bigFiles.unmarkPeer(p.from); self.bigFiles.markL2(p.from, !!p.l2); } if (self.l2Fast) self.l2Fast.markPeer(p.from, !!p.l2p); // archivos grandes (2756; L2CAP 2758)
       // Responder con el nuestro (cada lado sabe así que el otro entiende Jump; máx. 1 cada 15 s)
       // (3012: a «solo dime quién eres» —id— se contesta ligero; el completo va al agregar o al escribirse)
       // y a una RESPUESTA ligera (lt) o del nativo con la app dormida (nk) no se le contesta nada: ya se sabe lo que hacía falta
@@ -223,6 +233,14 @@ export const BLE_RECEIVE_METHODS = {
         if (p.nt && v === 'ok') self._noteNetPeer(sender);  // v6.13.0: idem, internet por relés
         p.payload.text = r.text;
         p.payload.e2e = true;
+        // Auditoría 23-11 (G-F1): el mensaje es de quien lo cifró (la clave comprobada arriba es la de `sender`), no de quien diga
+        // `payload.senderNexoId`: un contacto con su propia sesión ponía ahí el NEXO ID de OTRO y el mensaje se guardaba en el chat
+        // de ese otro, a su nombre (y en grupos saltaba «solo admins escriben» y editaba/eliminaba lo ajeno). Se descarta.
+        if (p.from && p.payload.senderNexoId && _normId(p.payload.senderNexoId) !== _normId(p.from)) {
+          console.warn('[E2E] Mensaje de ' + p.from + ' que dice ser de ' + String(p.payload.senderNexoId).substring(0, 12) + ': descartado');
+          return null;
+        }
+        if (p.from) p.payload.senderNexoId = p.from;
         var out = Object.assign({}, data);
         out.e2eSenderKey = r.senderKey; // si el remitente aún no es contacto, se guarda al crearlo
         out.e2eProto = r.proto;
@@ -372,6 +390,8 @@ export const BLE_RECEIVE_METHODS = {
             var json = JSON.parse(data.data || content || '{}');
             if (json.msgId) messageId = json.msgId;
             if (json.messageId) messageId = json.messageId;
+            // Auditoría 23-11 (I-X1): el id lo elige quien manda y acaba en atributos de la burbuja: solo letras, números y _ . : -
+            if (messageId && !_msgIdOk(messageId)) { console.warn('[BLE_RECV] Mensaje con id no válido: descartado'); return; }
             if (typeof json.seq === 'number') msgSeq = json.seq;
 
             if (json.v === 1 && json.type === 'chat' && json.payload) {
@@ -412,6 +432,31 @@ export const BLE_RECEIVE_METHODS = {
           var contact = _getContactByUUID(senderUUID);
           var cname = contact ? contact.name : null;
           senderName = cname || (self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name) || (self.foundDevices.get(deviceId) && self.foundDevices.get(deviceId).name) || '';
+        }
+        // Bloqueo (dueño 24-11): lo de un contacto BLOQUEADO no entra (mensajes, llamadas, estados, foto, datos, acciones, solicitudes):
+        // ni se guarda, ni avisa, ni se confirma (sin ✓✓: a él se le queda en ✓). Lo de un GRUPO sigue (en los grupos se le sigue viendo).
+        // Lo que pasa por aquí ya es para mí: el puente para otros (Jump, puente a internet) va antes y no se toca.
+        if (!isControl && senderUUID && isBlocked(_normId(senderUUID))) {
+          var bAtt = ctrl && ctrl.payload && ctrl.payload.attachment;
+          if (!(!bAtt && isGroupWire(content))) {
+            if (!self._blockLogAt || Date.now() - self._blockLogAt > 60000) { self._blockLogAt = Date.now(); console.log('[BLOQUEO] Llega algo de ' + _normId(senderUUID) + ' (bloqueado): descartado sin ✓✓'); }
+            return;
+          }
+        }
+        // Lo que mandó MIENTRAS lo tenía bloqueado y su teléfono reintenta tras desbloquearlo: tampoco entra (como WhatsApp). La hora es la
+        // de cuando lo escribió (va en el id, «msg» + hora; si no, la del sobre, que es la del reenvío). Se confirma (✓✓) para que pare.
+        if (!isControl && senderUUID && messageId && json && msgWhileBlocked(_normId(senderUUID), messageId, json.ts) && !(!(ctrl && ctrl.payload && ctrl.payload.attachment) && isGroupWire(content))) {
+          console.log('[BLOQUEO] ' + messageId + ' de ' + _normId(senderUUID) + ' es de cuando estaba bloqueado: descartado');
+          if (self.ackSystem) self.ackSystem.sendAck(deviceId, messageId, data.viaRelay ? data.relayOrigin : null);
+          return;
+        }
+        // Decisión del dueño 23-11 (7A, auditoría C-N5): el PRIMER mensaje de alguien que no es contacto ya no lo agrega solo (con el
+        // nombre que él quisiera, saltándose la bandeja y el freno de solicitudes): va a Solicitudes («te escribió») y se retiene; al
+        // aceptarlo se agrega y el mensaje aparece. Sin cifrar no hay clave que guardar: se descarta. Los paquetes de control no cuentan.
+        if (!isControl && senderUUID && !_isBLEContact(senderUUID) && _normId(senderUUID) !== _normId(self.localNexoId) && messageId) {
+          var snx = _normId(senderUUID);
+          if (!data.e2eSenderKey) { console.warn('[BLE_RECV] Mensaje sin cifrar de ' + snx + ' (no es contacto): descartado'); return; }
+          if (typeof self._msgRequest === 'function') { self._msgRequest(snx, senderName || '', data.e2eSenderKey, function() { self._handlePayload(data); }, messageId); return; }
         }
         if (senderUUID && senderName && senderName !== '') {
           if (!_isBLEContact(senderUUID)) {

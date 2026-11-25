@@ -12,11 +12,113 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- (próxima APK)
+- Grupos: al agregarte te llega una invitación para aceptar o rechazar.
+- Quien entra a un grupo puede ver los mensajes de los últimos 30 días con «Ver mensajes anteriores» (el creador puede desactivarlo).
+- Bluetooth más ordenado: menos conexiones repetidas con la misma persona y el teléfono que hace de puente ya no manda dos veces lo mismo.
 </es-419>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3150 (24-11-2026)
+- Bloquear contacto (en su chat, la lista o su perfil): no te llegan sus mensajes, llamadas ni estados y no ve tu foto. No se le avisa; en grupos se le sigue viendo.
+- Arriba del chat, el símbolo de la conexión junto al nombre.
+- Una respuesta a medias ya no pasa a otro chat.
+- Al volver a NEXO, un enlace Bluetooth muerto se rehace antes.
+- Menú de un mensaje más compacto.
+
+### APK 3148 (24-11-2026)
+- Bluetooth más firme con quien tienes cerca: al volver a abrir NEXO ya no se queda colgado un enlace viejo; los dos teléfonos se ponen de acuerdo en cuál conservar.
+- Si los servidores de internet piden ir más despacio, NEXO espera un poco antes de reintentar en vez de insistir.
+- Mensajes fijados: un toque en la franja te lleva al mensaje y pasa al siguiente fijado; mantén pulsado para quitarlo.
+
+### APK 3146 (24-11-2026)
+
+### APK 3142 (24-11-2026)
+
+### APK 3127 (23-11-2026)
+<es-419>
+- Sin internet, un teléfono NEXO cercano pasa tus mensajes, textos largos y archivos aunque tenga la app dormida o cerrada, y la confirmación de entrega vuelve por el mismo camino.
+</es-419>
+
+### APK 3125 (23-11-2026)
+<es-419>
+- Vista previa real de enlaces, por Tor y solo de tus contactos.
+- Aviso antes de abrir un enlace que imita a otro sitio.
+- Despertar a un contacto dormido es más seguro.
+- Nadie puede hacerse pasar por un contacto para desviar tus mensajes.
+- Menú del mensaje más corto (para responder, desliza) y «Copiar» al marcar varios.
+- Archivos chicos más rápidos con Bluetooth lento.
+- Videollamada contestada desde el aviso: tu imagen vuelve sola.
+- App más ligera.
+</es-419>
+
+### APK 3123 (23-11-2026)
+<es-419>
+- Seguridad reforzada: nadie puede hacerse pasar por un contacto ni falsificar tus ✓✓, ni de cerca ni en la misma Wi-Fi.
+- Si alguien que no es tu contacto te escribe, aparece en «Solicitudes» para que decidas.
+- Si cambia la clave de un contacto, tus mensajes siguen saliendo mientras decides.
+- El comentario de las fotos y «ver una vez» viajan cifrados; las capturas se bloquean al ver una foto de «ver una vez».
+- Grupos más difíciles de manipular; ajustes en la ruedita de arriba.
+</es-419>
+
+### APK 3121 (23-11-2026)
+<es-419>
+- Grupos: al crear eliges «Todos participan» o «Personalizado» (quién escribe, agrega y edita). Los cambios ya no se pierden si dos los hacen a la vez.
+- NEXO te avisa si tu teléfono tiene sus avisos apagados, sin sonido o en «No molestar».
+- Con mucha gente cerca (metro, conciertos) busca mejor y conecta primero con quien tiene un mensaje tuyo esperando.
+- Archivos medianos más rápidos por Bluetooth.
+- El enlace de invitación ya abre su página.
+- Ajustes: nueva sección «Notificaciones».
+</es-419>
+
+### APK 3119 (22-11-2026)
+<es-419>
+- Lo que quedó en espera (mensajes, fotos, notas de voz) sale solo al volver el internet, aunque NEXO esté cerrada o el teléfono bloqueado.
+- Sin internet: si tu contacto aparece cerca por Bluetooth, le llega sin abrir NEXO, incluso tras reiniciar el teléfono.
+- Ajustes → Apariencia: color y estilo de tus burbujas y tipo de letra.
+- Fondo propio en chats, llamadas, Perfil y Ajustes: deja el dedo en un espacio libre.
+- Miniatura de videollamada: sigue con otras apps y ya no sale sin videollamada.
+</es-419>
+
+### APK 3117 (22-11-2026)
+<es-419>
+- Abrir NEXO ya no corta el Bluetooth con tus contactos cercanos.
+- Menos enlaces Bluetooth repetidos o atascados: los mensajes de cerca salen más seguido a la primera.
+- Las ✓✓ llegan a tiempo también con contactos recién agregados.
+- Deslizar para actualizar ya no salta al desplazar la lista de contactos.
+- Con la letra grande del teléfono, nombres y botones ya no se cortan ni se enciman.
+- La videollamada en miniatura vuelve con sus botones al tocarla.
+</es-419>
+
+### APK 3116 (20-11-2026)
+<es-419>
+- Mejoras internas para medir cuánta batería gasta y cuánto se calienta el teléfono en una llamada.
+- Menos cortes y reconexiones seguidas del Bluetooth con algunos teléfonos.
+- Al mandar un archivo grande, la tarjeta te dice por dónde fue (por ejemplo Wi-Fi Direct) y a qué velocidad.
+- Más datos internos para entender y mejorar el Wi-Fi Direct y cada camino de conexión.
+</es-419>
+
+### APK 3113 (20-11-2026)
+<es-419>
+- NEXO sigue recibiendo por Bluetooth aunque el teléfono la cierre o se reinicie: los mensajes de quien está cerca te llegan y te avisan sin abrir la app.
+</es-419>
+
+### APK 3111 (19-11-2026)
+<es-419>
+- Si internet se corta un momento, tus mensajes quedan en espera y salen solos (ya no se marcan como fallidos).
+</es-419>
+
+### APK 3109 (19-11-2026)
+<es-419>
+- Al abrir NEXO, los contactos cercanos siguen conectados por Bluetooth sin cortes.
+</es-419>
+
+### APK 3108 (19-11-2026)
+<es-419>
+- Gasta menos datos al volver a la app: ya no vuelve a bajar lo que ya tenía.
+- Tras apagar y encender el Bluetooth, los mensajes salen al momento.
+</es-419>
 
 ### APK 3107 (19-11-2026)
 <es-419>

@@ -16,6 +16,14 @@ Consolidado: inline + main.css + ble_styles
    justify-content: center;
    transition: opacity 0.5s ease, transform 0.5s ease;
    }
+   /* Dueño 24-11: en el instante de arranque se ve su imagen (la burbuja hecha de trozos), a lo ancho y centrada sobre negro */
+   #splash-img {
+   width: min(100vw, 100vh);
+   height: auto;
+   object-fit: contain;
+   pointer-events: none;
+   user-select: none;
+   }
    #splash-text {
    margin-top: 20px;
    color: #00c8ff;
@@ -632,7 +640,8 @@ Consolidado: inline + main.css + ble_styles
    border-radius: 12px;
    margin-bottom: 2px;
    }
-   .ble-contact-row:hover { background: #0d0d0d; }
+   /* dueño 23-11: en el teléfono el «hover» se queda pegado en la última fila tocada (se veía seleccionada y parpadeando): solo con ratón */
+   @media (hover: hover) and (pointer: fine) { .ble-contact-row:hover { background: #0d0d0d; } }
    .ble-contact-row.is-pressed { background: #111; }
    /* Contact Avatar */
    .ble-contact-avatar {
@@ -727,9 +736,9 @@ Consolidado: inline + main.css + ble_styles
    align-items: center;
    gap: 8px;
    }
-   .ble-menu-item:hover { background: rgba(0,200,255,0.15); }
+   @media (hover: hover) and (pointer: fine) { .ble-menu-item:hover { background: rgba(0,200,255,0.15); } }
    .ble-menu-delete { color: #ff4444; }
-   .ble-menu-delete:hover { background: rgba(255,68,68,0.15); }
+   @media (hover: hover) and (pointer: fine) { .ble-menu-delete:hover { background: rgba(255,68,68,0.15); } }
    /* BLE Buttons */
    .ble-btn-back {
    background: none; border: none; color: #00c8ff;
@@ -954,6 +963,13 @@ flex-shrink: 0;
 .attach-menu-item svg {
   flex-shrink: 0;
 }
+/* Dueño 23-11: al abrir, solo los 4 más usados (cámara, galería, archivo, ubicación) y la flechita; al tocarla sube una fila con el
+   resto (contacto, cobro, stickers, juegos, buscar) y la flechita se voltea */
+.attach-menu:not(.expanded) .attach-menu-item[data-sec] { display: none; }
+.attach-menu.expanded { flex-wrap: wrap; width: 214px; }
+.attach-menu.expanded .attach-menu-item[data-sec] { order: -1; }
+.attach-more svg { transition: transform 0.2s; }
+.attach-menu.expanded .attach-more svg { transform: rotate(180deg); }
 /* Ocultar menu */
 .attach-menu.hidden {
   display: none !important;

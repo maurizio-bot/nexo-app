@@ -54,7 +54,7 @@ object NetBgHome {
     // El plugin que vive en este proceso (la app abierta o en segundo plano; o cerrada con el proceso vivo, ronda 2758)
     private fun host(): NexoBlePlugin? = NexoBlePlugin.live ?: NexoBlePlugin.orphan
 
-    private fun create(app: Context): NetBg = NetBg({ nx, name, msgId, isCall, group, video ->
+    private fun create(app: Context): NetBg = loadTor(app).let { NetBg({ nx, name, msgId, isCall, group, video ->
         val p = host()
         if (p != null) p.netBgOnMessage(nx, name, msgId, isCall, group, video)
         else {
@@ -64,7 +64,75 @@ object NetBgHome {
     }, { log(app, it) }, { nx, offer ->
         // 3087: el que llama colgó (sobre con ce, por internet) → deja de sonar ya
         if (MsgNotifier.get(app).cancelCallFor(nx, offer)) log(app, "$nx colgó: la llamada deja de sonar")
-    }, { req -> requestNotify(app, req) }, { ts -> NetBgSaved.callTooOld(ts, System.currentTimeMillis()) }).also { watchNet(app, it) }
+    }, { req -> requestNotify(app, req) }, { ts -> NetBgSaved.callTooOld(ts, System.currentTimeMillis()) },
+        { json -> saveOutbox(app, json) }, { url, token -> wakePost(app, url, token) }, { reportNoInternet(app) },
+        { id, json -> saveBlob(app, id, json) }).also { watchNet(app, it) } }
+    private fun loadTor(app: Context) = TorRoute.load(app.filesDir) // 13A: «Usar Tor siempre» guardado (la escucha sale por Tor o espera)
+
+    // 3270 (COLA 27 sin la app; como PluginLan.reportNoInternetImpl con la app): el Wi-Fi no da internet → se le dice a Android para que
+    // lo compruebe y pase a datos móviles. Solo con Wi-Fi como red activa; la escucha ya lo frena a una vez por minuto.
+    private fun reportNoInternet(ctx: Context) {
+        try {
+            val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val net = cm.activeNetwork ?: return
+            val caps = cm.getNetworkCapabilities(net) ?: return
+            if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return
+            cm.reportNetworkConnectivity(net, false)
+        } catch (e: Throwable) { log(ctx, "Internet en segundo plano: no se pudo avisar del Wi-Fi sin internet (${e.javaClass.simpleName})", "WARN") }
+    }
+
+    // ===== 3268 (PRIORIDAD 1, fase 3; COLA 29): bandeja de salida =====
+    // Se guarda cifrada en reposo cada vez que cambia (algo salió, llegó su ✓✓, la app dio otra lista): así sigue saliendo aunque
+    // Android mate el proceso y NEXO vuelva sola. Con la app viva en el proceso, con SU almacén (el mismo cerrojo que sus archivos).
+    // Pasando la cuenta a otro teléfono no se escribe nada (moveFrozen, como la configuración).
+    private val outLock = Any()
+    internal fun saveOutbox(ctx: Context, json: String) {
+        val p = host()
+        if (p != null && p.moveFrozen) return
+        save(ctx) { synchronized(outLock) { NetBgSaved.saveOut(p?.atRest() ?: store(ctx), writer, json) } }
+    }
+
+    // 3281: los trozos de un archivo de la bandeja (ya cifrados y firmados por la app), cifrados en reposo como la lista; json null = borrar
+    internal fun saveBlob(ctx: Context, id: String, json: String?) {
+        val p = host()
+        if (p != null && p.moveFrozen) return
+        save(ctx) {
+            synchronized(outLock) {
+                val st = p?.atRest() ?: store(ctx); val name = NetBgSaved.blobFile(id)
+                if (json == null) st.delete(name) else { st.write(name, json); true }
+            }
+        }
+    }
+    /** Trozos guardados que ya no son de nada de la bandeja (el proceso murió entre un paso y otro): fuera. */
+    internal fun sweepBlobs(ctx: Context, keepIds: Set<String>) {
+        val keep = keepIds.map { NetBgSaved.blobFile(it) }.toSet()
+        save(ctx) {
+            synchronized(outLock) {
+                var n = 0
+                try { (ctx.filesDir.listFiles() ?: emptyArray()).forEach { f -> if (f.isFile && f.name.startsWith(NetBgSaved.BLOB_PREFIX) && f.name.removeSuffix(".nxtmp") !in keep && f.delete()) n++ } } catch (e: Throwable) { }
+                n > 0
+            }
+        }
+    }
+
+    // El «toque» que despierta al otro teléfono tras subir un mensaje de la bandeja: lo MISMO que hace la app (wake_post.js): un POST
+    // con solo el token del otro (nunca el contenido) al enviador. En un hilo aparte (no se frena la escucha) y sin reintentos.
+    // Auditoría 23-11 (S-D5): solo a NUESTRO enviador (host fijo, TorRoute.WAKE_HOST) y sin seguir redirecciones (antes cualquier
+    // https y HttpURLConnection seguía las redirecciones). Decisión 13A: con «Usar Tor siempre», por Tor; si Tor aún no está, espera
+    // (como mucho 2 min) y si no llega, el toque no sale: nunca directo.
+    private fun wakePost(ctx: Context, url: String, token: String) {
+        if (!TorRoute.wakeUrlOk(url) || !url.startsWith("https://") || token.length < 20) { if (url.isNotEmpty()) log(ctx, "Bandeja de salida: toque a una dirección que no es la del enviador: no sale", "WARN"); return }
+        Thread({
+            try {
+                if (TorRoute.always) torEnsureForBg(ctx) { log(ctx, it) }
+                val via = TorRoute.awaitRoute(120000).getOrElse { log(ctx, "Bandeja de salida: el toque espera a Tor (Usar Tor siempre) y Tor no llegó: no sale", "WARN"); return@Thread }
+                val code = TorRoute.post(url, org.json.JSONObject().put("to", token).toString(), 10000 + (if (via != null) 20000 else 0), via)
+                log(ctx, "Bandeja de salida: toque al otro teléfono" + (if (via != null) " (por Tor)" else "") + ": el enviador contestó $code")
+            } catch (e: Throwable) {
+                log(ctx, "Bandeja de salida: el toque no salió (${e.javaClass.simpleName})", "WARN")
+            }
+        }, "nexo-toque").apply { isDaemon = true }.start()
+    }
 
     // 3204 (dueño 17-11 «Ok» a 2 conexiones con datos móviles; parte nativa de la 3193): la escucha ve ELLA el tipo de la red por defecto
     // (también sin la app, cuando no hay plugin que avise): con datos móviles escucha solo 2 relés (NetBg.listenPlan). Se mira ya (para
@@ -103,8 +171,12 @@ object NetBgHome {
 
     // ===== Aviso de un sobre con un mensaje nuevo (antes dentro de NexoBlePlugin.netBg: las mismas reglas con y sin la app) =====
     // silent = su chat está abierto en un parpadeo a segundo plano (3172, lo decide la app viva); sin la app, false.
+    // 3254: how = por dónde llegó (para el registro): «por internet» o «por Bluetooth sin la app» (BleSinApp)
     fun notifyMessage(ctx: Context, nx: String, name: String, msgId: String, isCall: Boolean, group: String, video: Boolean, silent: Boolean,
-                      groupName: (String) -> String?) {
+                      how: String = "por internet", groupName: (String) -> String?) {
+        // Bloqueo (dueño 24-11): de un contacto bloqueado, fuera de un grupo, ni aviso ni llamada (la app tampoco lo guarda)
+        MutedChats.ensureLoaded({ store(ctx).read(MutedChats.FILE) })
+        if (group.isEmpty() && MutedChats.isBlocked(nx)) { log(ctx, "sobre de $nx (msgId $msgId): contacto bloqueado: sin aviso"); return }
         val seen = !isCall && SeenMsgs.has(ctx, msgId)
         val gname = if (isCall || seen || silent) null else groupName(group)
         // 3219: chat o grupo silenciado (la lista la da la app; sin la app, la de lo guardado)
@@ -124,11 +196,11 @@ object NetBgHome {
             NetBgSaved.Notice.MUTED -> log(ctx, "sobre de $nx (msgId $msgId): chat silenciado: sin aviso")
             // 3076: un mensaje de GRUPO avisa en el grupo, con su nombre y quién lo manda (como por Bluetooth: notifyMessage)
             NetBgSaved.Notice.GROUP -> {
-                log(ctx, "sobre de $nx (msgId $msgId): aviso de mensaje nuevo por internet (grupo $group)")
+                log(ctx, "sobre de $nx (msgId $msgId): aviso de mensaje nuevo $how (grupo $group)")
                 MsgNotifier.get(ctx).message(group, gname!!, msgId, "$name: " + NativeLang.t(ctx, "msg_new"), true)
             }
             NetBgSaved.Notice.CHAT -> {
-                log(ctx, "sobre de $nx (msgId $msgId): aviso de mensaje nuevo por internet")
+                log(ctx, "sobre de $nx (msgId $msgId): aviso de mensaje nuevo $how")
                 MsgNotifier.get(ctx).message(nx, name, msgId, "", true)
             }
         }
@@ -170,6 +242,8 @@ object NetBgHome {
     fun saveConfig(ctx: Context, st: AtRestStore, cfg: NetBgSaved.Config) = save(ctx) { NetBgSaved.saveConfig(st, writer, cfg) }
     fun saveAck(ctx: Context, st: AtRestStore, keys: Map<String, ByteArray>) = save(ctx) { NetBgSaved.saveAck(st, writer, keys) }
     fun saveMute(ctx: Context, st: AtRestStore, m: Map<String, Long>) = save(ctx) { MutedChats.save(st, writer, m) } // 3219
+    /** Bloqueo (dueño 24-11): el servicio sin la app (BleSinApp) lee los silenciados y bloqueados guardados antes de clasificar lo que llega. */
+    fun loadMuted(ctx: Context) { try { MutedChats.ensureLoaded({ store(ctx).read(MutedChats.FILE) }) } catch (e: Throwable) { } }
     private fun save(ctx: Context, op: () -> Boolean) {
         try { op() } catch (e: Throwable) {
             // Sin datos: solo el tipo de error, y una vez por proceso (la app la manda cada vez que se oculta)
@@ -211,8 +285,11 @@ object NetBgHome {
         }
         val s = saved ?: return false
         return try {
+            // Decisión 13A: con «Usar Tor siempre» la escucha sale por Tor; sin la app se arranca aquí (hasta tenerlo, espera)
+            TorRoute.load(app.filesDir)
+            if (TorRoute.always) torEnsureForBg(app) { log(app, it) }
             val bg = get(app)
-            NetBgSaved.apply(bg, s)
+            NetBgSaved.apply(bg, s) { id -> NetBgSaved.blobFrom(store(app).read(NetBgSaved.blobFile(id))) }
             // Las claves del ✓✓ también para el plugin si carga después en este proceso (la app las vuelve a dar al arrancar)
             if (NexoBlePlugin.ackKeys.isEmpty()) NexoBlePlugin.ackKeys.putAll(s.ack)
             withoutApp = true
@@ -252,13 +329,14 @@ object NetBgHome {
     @Synchronized
     fun forget(ctx: Context) {
         writer.forget()
-        shared?.let { bg -> try { bg.stop(); bg.configure("", emptyList(), 0L, emptyList()); bg.setAckKeys(emptyMap()) } catch (e: Throwable) { } }
+        shared?.let { bg -> try { bg.stop(); bg.configure("", emptyList(), 0L, emptyList()); bg.setAckKeys(emptyMap()); bg.outbox.clear() } catch (e: Throwable) { } }
         NexoBlePlugin.ackKeys.clear()
         MutedChats.clear() // 3219
         if (withoutApp) { withoutApp = false; wifiHold(ctx, false) }
     }
 
     // Nombre de un grupo (nexo_groups.json, cifrado en reposo) para el aviso sin la app; un minuto en memoria, como en la app
+    fun groupNameOf(ctx: Context, gid: String): String? = groupName(ctx, gid) // 3254: para BleSinApp
     private fun groupName(ctx: Context, gid: String): String? {
         if (gid.isEmpty()) return null
         val now = System.currentTimeMillis()

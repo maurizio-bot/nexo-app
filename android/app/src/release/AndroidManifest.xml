@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Versión de TIENDA (Google Play, bundleRelease): sin el actualizador propio. Play no permite que una app se instale versiones
+     desde fuera de la tienda (REQUEST_INSTALL_PACKAGES); las actualizaciones llegan por Play. La página lo sabe por la marca
+     nexo-store (store_flag.js) y no muestra el botón de actualizar. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+</manifest>

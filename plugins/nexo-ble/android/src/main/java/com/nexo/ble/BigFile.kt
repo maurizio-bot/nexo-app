@@ -121,14 +121,17 @@ object BigNet {
         val tmp = File(dest.path + ".part")
         val buf = ByteArray(1 shl 16)
         var got = 0L
-        FileOutputStream(tmp).use { out ->
-            while (got < len) {
-                val r = input.read(buf, 0, minOf(buf.size.toLong(), len - got).toInt())
-                if (r < 0) throw Exception("conexión cortada (${got} de ${len} bytes)")
-                out.write(buf, 0, r); got += r
-                progress?.on(got, len)
+        // Auditoría 23-11 (T-D1): si se corta, el trozo a medias no se queda ocupando disco (antes el .part quedaba para siempre)
+        try {
+            FileOutputStream(tmp).use { out ->
+                while (got < len) {
+                    val r = input.read(buf, 0, minOf(buf.size.toLong(), len - got).toInt())
+                    if (r < 0) throw Exception("conexión cortada (${got} de ${len} bytes)")
+                    out.write(buf, 0, r); got += r
+                    progress?.on(got, len)
+                }
             }
-        }
+        } catch (e: Exception) { tmp.delete(); throw e }
         if (!tmp.renameTo(dest)) { tmp.copyTo(dest, true); tmp.delete() }
         beforeAck?.invoke()
         rawOut.apply { write(1); flush() }

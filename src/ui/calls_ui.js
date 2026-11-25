@@ -8,6 +8,7 @@
  * esquina; tocarla cambia cuál se ve en grande), girar la cámara, y tocar la pantalla oculta o muestra los controles (se
  * ocultan solos a los 5 s). "Conexión inestable" si la voz del otro deja de llegar unos segundos.
  */
+import { callEndedBg } from './call_bg.js';
 import { haptic } from './haptics.js'; // NEXO Touch (2968): háptica del sistema
 import { paintAvatar } from './avatar.js';
 import { _normId, _getCurrentContactId } from './chat_format.js';
@@ -17,8 +18,10 @@ import { _getGradientForUUID, _getInitials } from './ble_helpers.js';
 import { _hideCameraPreviewOverlay } from './camera.js';
 import { vaultAppendMessage, vaultFindContactByNexoId } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
+import { isBlocked } from './bloqueo.js';
 import { openCallReply, closeCallReply } from './call_reply.js';
-import { registerCallBar, minimizeCall, restoreCall, canMinimize } from './call_bar.js';
+import { registerCallBar, minimizeCall, canMinimize } from './call_bar.js';
+import { initCallPip, miniOpen } from './call_pip.js';
 import { mergeCheck, mergeCalls } from './call_merge.js';
 import { bridgeOf } from './call_bridge.js';
 import { callToast, mergeKey, callShownName, confNotice, bridgeOther, secondAvatar } from './call_join_ui.js';
@@ -100,6 +103,7 @@ function _audioMode(on) {
   try {
     var pl = _plugin();
     if (pl && typeof pl.callAudio === 'function') pl.callAudio({ on: !!on, speaker: !!on && _speaker }).then(function(r) {
+      if (!on) callEndedBg(_bi()); // 3318
       // Ronda 2761: al diagnóstico por dónde sale el sonido y con qué volumen (el audio de la llamada sale como multimedia);
       // ronda 2770: si el micrófono sigue con la pantalla bloqueada u otra app (servicio de micrófono del nativo) y si
       // tiene el foco de audio (la música de otra app se para)
@@ -343,7 +347,9 @@ function _screen() {
   el.querySelector('.nc-min').addEventListener('click', function(e) { e.stopPropagation(); haptic('confirm'); minimizeCall('1'); });
   // Videollamada: tocar la pantalla muestra / oculta los controles
   el.addEventListener('click', function(e) {
-    if (el.classList.contains('nc-appmini')) { el.classList.remove('nc-appmini'); return; } // mini flotante → volver a pantalla completa
+    // mini flotante → volver a pantalla completa. 29b: con los botones ya ocultos solos (5 s en la ventanita) volvía a pantalla completa SIN
+    // botones y hacía falta un segundo toque: al volver se muestran y se vuelve a armar el ocultado automático
+    if (miniOpen(el)) return;
     if (!el.classList.contains('nc-live') || (e.target && e.target.closest && e.target.closest('.nc-btn, .nc-pip'))) {
       if (!el.classList.contains('nc-live')) console.log('[CALL] Toque en la pantalla de llamada ignorado: la llamada no está en curso');
       return;
@@ -374,29 +380,10 @@ function _autoHide(el) {
   _hideTimer = setTimeout(function() { if (el.classList.contains('nc-live')) el.classList.add('nc-hide'); }, 5000);
 }
 
-// #dueño 04-11: la miniatura del sistema (PiP) avisa al WebView al entrar/salir (MainActivity.onPictureInPictureModeChanged
-// → window.__nexoPipChanged). Antes NO existía este manejador, así que la ventanita salía con mi imagen tapando al otro y,
-// al volver, la app abría la llamada a pantalla completa. Ahora:
-//  (a) al ENTRAR en la miniatura → `nc-pipwin`: se ve solo el vídeo del otro (sin controles ni mi imagen).
-//  (b) al SALIR (volver a la app) → la llamada queda como MINI flotante (`nc-appmini`) y debajo se usa la app normal
-//      (contactos / último chat); tocar la mini la vuelve a abrir completa.
-function _setAppMini(on) { var el = document.getElementById('nexo-call-screen'); if (el) el.classList.toggle('nc-appmini', !!on); syncCallSplit(); }
-if (typeof window !== 'undefined') {
-  window.__nexoPipChanged = function(active) {
-    try {
-      var el = document.getElementById('nexo-call-screen');
-      document.documentElement.classList.toggle('nx-pip', !!active); // 3155: también la de grupo (gcall_stage)
-      if (active) restoreCall(); // la ventanita enseña la llamada, no la app con la barra
-      if (!el) return;
-      if (active) { el.classList.add('nc-pipwin'); el.classList.remove('nc-appmini'); }
-      else {
-        el.classList.remove('nc-pipwin');
-        var c = _calls(), st = c && c.state && c.state();
-        if (st && st.video && st.state === 'active') _setAppMini(true);
-      }
-    } catch (e) {}
-  };
-}
+// #dueño 04-11: la miniatura del sistema (PiP): (a) al ENTRAR se ve solo el vídeo del otro (`nc-pipwin`); (b) al SALIR la llamada queda
+// como MINI flotante (`nc-appmini`) y debajo se usa la app; tocar la mini la vuelve a abrir completa. 3277: el estado lo lleva
+// call_pip.js (a prueba de avisos perdidos y de cambios repetidos); aquí solo se arranca.
+if (typeof window !== 'undefined') initCallPip({ calls: _calls, syncSplit: function() { syncCallSplit(); }, autoHide: function(el) { _autoHide(el); } });
 
 // 14-11 (dueño): con los botones al ancho del teléfono, un nombre largo de una sola palabra (en italiano «Altoparlante»,
 // «Interrompi»; o con la letra del sistema agrandada) puede no caber: se le baja la letra lo justo (no menos de 8 px), en
@@ -692,7 +679,7 @@ function _render(st) {
     if (st) closeCallReply(st.nx);
     var old = document.getElementById('nexo-call-screen');
     if (old) {
-      old.classList.remove('nc-live', 'nc-hide', 'nc-waiting');
+      old.classList.remove('nc-live', 'nc-hide', 'nc-waiting', 'nc-appmini'); // (3277: el final se ve entero y la llamada siguiente no nace como mini)
       var s0 = old.querySelector('.call-status');
       if (s0 && st) { s0.classList.remove('nc-warn'); s0.textContent = st.reason === 'busy' ? t('call_end_busy', 'Ocupado') : st.reason === 'rejected' ? t('call_end_rejected', 'Rechazada') : st.reason === 'unanswered' ? t('call_end_no_answer', 'No contesta') : st.reason === 'lost' ? t('call_end_lost', 'Se cortó') : st.reason === 'missed' ? t('call_end_missed', 'Llamada perdida') : t('call_end_finished', 'Llamada terminada') + (st.seconds ? ' · ' + _fmt(st.seconds) : ''); }
       Array.prototype.forEach.call(old.querySelectorAll('.call-remote-video, .call-local-video, .nc-scrbar, #nexo-scr-ask'), function(n) { n.remove(); });
@@ -916,6 +903,7 @@ function _installButton() {
 function _startCall(cid, video) {
   var b = _bi(), c1 = b && b.calls, c2 = b && b.calls2, nx = _normId(cid);
   if (!c1 || !nx) return;
+  if (isBlocked(nx)) { haptic('confirm'); callToast(t('block_call', 'Desbloquea a este contacto para llamarle'), 3000); return; } // bloqueo (24-11)
   if (callCount() >= 2) { haptic('confirm'); callToast(t('call_max_two', 'Ya tienes dos llamadas a la vez. Cuelga una para llamar a alguien más'), 3500); return; }
   var busyWith = [c1.call, c2 && c2.call].filter(Boolean).some(function(c) { return _normId(c.nx) === nx; });
   if (busyWith) { callToast(t('call_already_with', 'Ya estás en una llamada con este contacto'), 3000); return; }
@@ -931,7 +919,6 @@ function _refreshButton() {
     b.title = full ? t('call_max_two_short', 'Ya tienes dos llamadas') : (id === 'nexo-call-btn' ? t('call_btn_call_title', 'Llamar') : t('call_btn_video_title', 'Videollamada'));
   });
 }
-export function refreshCallButtons() { _refreshButton(); }
 
 // Ronda 2769: la cámara del chat (fotos y vídeos) abierta debajo de la llamada tenía ocupada la cámara y, grabando
 // vídeo, el micrófono: la llamada no podía abrirlos. Al empezar la llamada se cierra.

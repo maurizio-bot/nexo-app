@@ -16,6 +16,9 @@ for (const l of LANGS) {
   if (!fs.existsSync(f)) { console.log('I18NAUDIT ' + JSON.stringify({ resultado: 'FALLO', error: 'falta el archivo del idioma ' + l })); process.exit(1); }
   const txt = fs.readFileSync(f, 'utf8'), a = txt.indexOf('export default {'), b = txt.lastIndexOf('\n};');
   TAB[l] = new Function('return ' + txt.slice(a + 'export default '.length, b + 2))();
+  // 22-11: segunda parte del idioma (<idioma>_b.js; la primera llegó al tope de líneas): mismas reglas, se junta con la primera
+  const f2 = path.join(root, 'src/ui/i18n', l + '_b.js');
+  if (fs.existsSync(f2)) { const t2 = fs.readFileSync(f2, 'utf8'), a2 = t2.indexOf('export default {'), b2 = t2.lastIndexOf('\n};'); Object.assign(TAB[l], new Function('return ' + t2.slice(a2 + 'export default '.length, b2 + 2))()); }
 }
 const STR = {};
 for (const k of Object.keys(TAB.es)) { STR[k] = {}; for (const l of LANGS) if (k in TAB[l]) STR[k][l] = TAB[l][k]; }

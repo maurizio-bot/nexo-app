@@ -16,7 +16,7 @@
  *   reconexión con ese contacto + 2 s, entre 2 y 5 s (sin Wi-Fi propio: se cambia al momento).
  *
  * - Cada teléfono se anuncia en la red (NSD/mDNS, lo mismo que Bonjour en iPhone) con una marca del día:
- *   SHA-256("nexo-lan|<NEXO ID>|<fecha UTC>") recortado. Solo quien ya conoce el NEXO ID (un contacto) la
+ *   SHA-256("nexo-lan2|<CLAVE PÚBLICA>|<fecha UTC>") recortado (23-11, 12A; antes con el NEXO ID). Solo quien tiene su clave (un contacto) la
  *   reconoce; un desconocido en la misma red no ve quién eres. Cambia cada día.
  * - Al ver la marca de un contacto se conecta (TCP, Kotlin LanHub). Antes de usar la conexión se comprueba con el
  *   cifrado de extremo a extremo: 'lv' lleva un número al azar cifrado para el contacto y solo el de verdad puede
@@ -25,6 +25,7 @@
  *   archivos van por ella con el mismo protocolo (cifrado, confirmaciones, reenvíos) que por Bluetooth.
  */
 import { e2eSealText, e2eOpenText, e2eOuterAd } from '../vault/e2e_proto.js';
+import { e2eMyPublicKey } from '../vault/e2e_crypto.js';
 
 var TICK_MS = 4000;
 var REDISCOVER_MS = 60000;
@@ -49,8 +50,10 @@ function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && win
 function _day(offset) { var d = new Date(Date.now() + (offset || 0) * 86400000); return d.toISOString().substring(0, 10); }
 function _rand() { var a = new Uint8Array(12); crypto.getRandomValues(a); return Array.from(a).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
 
-export async function lanToken(nexoId, day) {
-  var data = new TextEncoder().encode('nexo-lan|' + _nid(nexoId) + '|' + day);
+// Decisión del dueño 23-11 (12A, auditoría T-W1): la marca que se anuncia en la red sale de la CLAVE PÚBLICA (la tienen mis contactos), no
+// del NEXO ID: antes quien supiera (o adivinara: ~41 bits) un NEXO ID reconocía a esa persona en cualquier Wi-Fi.
+export async function lanToken(pubKey, day) {
+  var data = new TextEncoder().encode('nexo-lan2|' + String(pubKey || '') + '|' + day);
   var h = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
   return Array.from(h.slice(0, 8)).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join('');
 }
@@ -107,7 +110,9 @@ export class LanLink {
     this._lastStart = Date.now();
     try {
       var day = _day(0);
-      if (this._myDay !== day || !this._myToken) { this._myToken = await lanToken(me, day); this._myDay = day; }
+      var myPk = e2eMyPublicKey();
+      if (!myPk) return;
+      if (this._myDay !== day || !this._myToken) { this._myToken = await lanToken(myPk, day); this._myDay = day; }
       await this.refreshTokens();
       var r = await pl.lanStart({ nexoId: me, token: this._myToken, sweep: !!sweep });
       if (r && r.wifi && !this._announced) { this._announced = true; console.log('[WIFI] Buscando contactos en la misma red Wi-Fi'); }
@@ -121,9 +126,9 @@ export class LanLink {
     var me = _nid(this.ble && this.ble.localNexoId), map = new Map();
     for (var i = 0; i < cs.length; i++) {
       var nx = _nid(cs[i].nexoId || cs[i].deviceUUID);
-      if (!/^nx[0-9a-z]{8}$/.test(nx) || nx === me) continue;
-      map.set(await lanToken(nx, _day(0)), nx);
-      map.set(await lanToken(nx, _day(-1)), nx);
+      if (!/^nx[0-9a-z]{8}$/.test(nx) || nx === me || !cs[i].publicKey) continue;
+      map.set(await lanToken(cs[i].publicKey, _day(0)), nx);
+      map.set(await lanToken(cs[i].publicKey, _day(-1)), nx);
     }
     this.tokens = map;
   }
@@ -238,7 +243,7 @@ export class LanLink {
       setTimeout(function() { var l2 = self.links.get(nx); if (l2 && !l2.up && l2.graceUntil && Date.now() >= l2.graceUntil) self._giveUp(nx, 'no volvió en ' + (g / 1000).toFixed(1) + ' s'); }, g + 30);
       // ¿este teléfono sigue con Wi-Fi? Sin Wi-Fi propio no vuelve: se cambia ya
       var pl0 = _plugin();
-      if (pl0 && typeof pl0.lanStatus === 'function') pl0.lanStatus().then(function(st) { var l3 = self.links.get(nx); if (st && st.wifi === false && l3 && !l3.up && l3.graceUntil) self._giveUp(nx, 'este teléfono no tiene Wi-Fi'); }).catch(function() {});
+      if (pl0 && typeof pl0.lanStatus === 'function') pl0.lanStatus().then(function(st) { var l3 = self.links.get(nx); if (st && st.wifi === false && l3 && !l3.up && l3.graceUntil) self._giveUp(nx, self._wdWhy(nx)); }).catch(function() {});
       this._connect(nx);
       this.start();
       // 3022: los textos que esperaban confirmación por el Wi-Fi pasan ya al otro camino listo (los archivos esperan el margen)
@@ -247,9 +252,15 @@ export class LanLink {
   }
 
   // Sin Wi-Fi con este contacto: lo pendiente sigue por Bluetooth / Jump
+  // 3272 (COLA 3): ¿la dirección recordada de ese contacto es la del grupo de Wi-Fi Direct (192.168.49.x)?
+  _wdAddr(nx) { var a = this.addr.get(nx); return !!(a && /^192\.168\.49\./.test(String(a.host || ''))); }
+  _wdWhy(nx) { return this._wdAddr(nx) ? 'se cerró el grupo de Wi-Fi Direct' : 'este teléfono no tiene Wi-Fi'; } // i18n-ok: registro
   _giveUp(nx, why) {
     var l = this.links.get(nx);
     this.links.delete(nx);
+    // 3272 (COLA 3, vivo 20-11: reintentaba la dirección del grupo de Wi-Fi Direct ya caído, ENETUNREACH): esa dirección murió con el
+    // grupo; se olvida y la próxima conexión espera a que la búsqueda dé la buena. (Antes el aviso decía «este teléfono no tiene Wi-Fi».)
+    if (this._wdAddr(nx)) this.addr.delete(nx);
     var pl = _plugin();
     if (l && l.up && pl && typeof pl.lanDrop === 'function') pl.lanDrop({ nx: nx }).catch(function() {});
     if (l && l.routable) {
@@ -304,6 +315,7 @@ export class LanLink {
         else if (l.nonce && r2.text === l.nonce && !l.verified) {
           l.rechecking = 0;
           l.verified = true;
+          try { var plv = _plugin(); if (plv && typeof plv.lanVerified === 'function') plv.lanVerified({ nx: nx }).catch(function() {}); } catch (e) {} // auditoría 23-11 (T-D2)
           var again = l.routable;
           l.routable = true; l.graceUntil = 0;
           var recMs = this._noteRecovery(nx);

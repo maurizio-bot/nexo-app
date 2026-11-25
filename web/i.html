@@ -1,0 +1,117 @@
+<!doctype html>
+<!--
+  NEXO — página del enlace de invitación (3290; dueño 15-11: «la página va en su GitHub»; 23-11: el enlace daba 404 porque nunca
+  se publicó). Se sirve en https://maurizio-bot.github.io/nexo-app/i desde la rama gh-pages (copia de este archivo; fuente aquí).
+  El ID y el código van después de «#»: el navegador no los manda a ningún servidor. Sin scripts de fuera, sin rastreadores, nada
+  se guarda. Valida igual que la app (InviteLink.kt / invite.js) y solo pinta texto (textContent), nunca HTML de la dirección.
+  «Abrir en NEXO»: intent:// en Android (Chrome, Samsung Internet; si no está instalada vuelve a esta página), nexo:// en lo demás.
+  Prueba: tests/sim/pagina_invitacion.js.
+-->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Invitación a NEXO</title>
+<style>
+  :root { --bg: #f4f6f8; --card: #ffffff; --text: #14181d; --muted: #5b6672; --accent: #2f6fed; --accent-text: #ffffff; --line: #dde3ea; --bad: #b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e1216; --card: #171c22; --text: #e8edf2; --muted: #9aa6b2; --accent: #5b8ff9; --accent-text: #0b0f14; --line: #2a323b; --bad: #f2b8b5; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 440px; margin: 0 auto; padding: 32px 16px 48px; }
+  .brand { font-weight: 800; letter-spacing: .18em; font-size: 15px; color: var(--muted); margin-bottom: 20px; }
+  h1 { font-size: 26px; line-height: 1.25; margin: 0 0 8px; }
+  p { margin: 0 0 16px; }
+  .sub { color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin: 24px 0; }
+  .who { font-size: 14px; color: var(--muted); margin-bottom: 4px; }
+  .id { font: 600 20px/1.3 ui-monospace, "Roboto Mono", monospace; letter-spacing: .04em; word-break: break-all; }
+  .btn { display: block; width: 100%; text-align: center; text-decoration: none; border: 0; border-radius: 12px; padding: 14px 16px; font-family: inherit; font-size: 17px; font-weight: 600; line-height: 1.2; cursor: pointer; }
+  .primary { background: var(--accent); color: var(--accent-text); margin-top: 20px; }
+  .secondary { background: transparent; color: var(--accent); border: 1px solid var(--line); margin-top: 12px; }
+  .steps { font-size: 15px; color: var(--muted); }
+  .code { display: block; font: 600 17px/1.4 ui-monospace, "Roboto Mono", monospace; background: var(--bg); border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; margin: 8px 0 0; word-break: break-all; user-select: all; }
+  .note { font-size: 13px; color: var(--muted); }
+  .bad { color: var(--bad); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">NEXO</div>
+
+  <section id="ok" hidden>
+    <h1>Te invitaron a NEXO</h1>
+    <p class="sub">Mensajes y llamadas aunque no haya señal, sin número de teléfono y cifrado de punta a punta.</p>
+    <div class="card">
+      <div class="who">Te invita el NEXO ID</div>
+      <div class="id" id="inviter"></div>
+      <a class="btn primary" id="open" href="#">Abrir en NEXO</a>
+      <button class="btn secondary" id="copy" type="button">Copiar el código</button>
+    </div>
+    <p class="steps">Si NEXO no se abre: abre NEXO, ve a <b>Agregar contactos</b> → <b>Agregar por NEXO ID</b> y pega este código:
+      <span class="code" id="code"></span></p>
+    <p class="steps">¿Aún no tienes NEXO? Todavía no está en la tienda de apps. Cuando la tengas, vuelve a tocar el enlace.</p>
+  </section>
+
+  <section id="bad" hidden>
+    <h1>Enlace no válido</h1>
+    <p class="bad">Este enlace de invitación está incompleto o mal copiado.</p>
+    <p class="sub">Pide a quien te invitó que te lo mande de nuevo.</p>
+  </section>
+
+  <p class="note">El código va después de «#» en la dirección: no se manda a ningún servidor. Esta página no guarda nada ni usa rastreadores.</p>
+</main>
+<script>
+(function () {
+  'use strict';
+  var RE = /^(NX[0-9A-Z]{8})(?:-([2-9A-HJ-NP-Z]{8}))?$/;
+  var PKG = 'com.nexo.app';
+  function parse(hash) {
+    var t = String(hash || '').replace(/^#/, '');
+    try { t = decodeURIComponent(t); } catch (e) { return null; }
+    t = t.trim().toUpperCase();
+    if (t.length > 40) return null;
+    var m = RE.exec(t);
+    return m ? { id: m[1], code: m[2] || '', tail: m[0] } : null;
+  }
+  function openHref(tail, ua, here) {
+    if (/Android/i.test(ua || '')) {
+      return 'intent://i/' + tail + '#Intent;scheme=nexo;package=' + PKG +
+        ';S.browser_fallback_url=' + encodeURIComponent(here) + ';end';
+    }
+    return 'nexo://i/' + tail;
+  }
+  function show() {
+    var p = parse(location.hash);
+    document.getElementById('ok').hidden = !p;
+    document.getElementById('bad').hidden = !!p;
+    if (!p) return;
+    var here = location.href.split('#')[0] + '#' + p.tail;
+    document.getElementById('inviter').textContent = p.id;
+    document.getElementById('code').textContent = p.tail;
+    document.getElementById('open').setAttribute('href', openHref(p.tail, navigator.userAgent, here));
+    var btn = document.getElementById('copy');
+    btn.onclick = function () {
+      var done = function () { btn.textContent = 'Copiado ✓'; };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(p.tail).then(done, function () { selectCode(); });
+      } else { selectCode(); }
+    };
+  }
+  function selectCode() {
+    var el = document.getElementById('code'), r = document.createRange();
+    r.selectNodeContents(el);
+    var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+  }
+  window.NEXO_INVITE_PAGE = { parse: parse, openHref: openHref };
+  window.addEventListener('hashchange', show);
+  show();
+})();
+</script>
+</body>
+</html>

@@ -16,15 +16,14 @@
  *  4. Al tocarlo, la parte nativa lo descifra a un archivo temporal y lo abre (un APK se instala).
  * Solo con quien lo anuncia ('bg' en el kx); el estado de cada archivo se ve en su tarjeta del chat.
  */
-import { WD_MAX_BYTES } from './wifi_direct.js';
 import { t } from './i18n.js';
+import { isStoreBuild } from './store_flag.js';
 
 export var BIG_SLICE = 512 * 1024;
 export var BIG_MAX_BYTES = 1024 * 1024 * 1024;
-// Por encima de esto un archivo va como "grande" (por debajo, como siempre: Wi-Fi Direct / Wi-Fi / Bluetooth)
-export var BIG_MIN_BYTES = Math.floor(WD_MAX_BYTES * 3 / 4);
 var STATE_FILE = 'nexo_big_state.json';
 var OFFER_TIMEOUT_MS = 30000;
+var BIG_IN_MAX = 2; // auditoría 23-11 (T-D1): archivos grandes recibiéndose a la vez
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
@@ -69,12 +68,25 @@ export class BigFiles {
   // Conexión Bluetooth lista con ese contacto (no lan:/net:, que también resuelve _resolveDeviceIdForNexoId)
   _bleReady(nx) { var ble = this.ble; return ble && typeof ble._bleReadyFor === 'function' ? ble._bleReadyFor(nx) : null; }
 
+  // 3260 (dueño 20-11: «por arriba de 5 MB sí o sí tiene que entrar el Wi-Fi Direct»): al elegir camino para un archivo grande se anota
+  // si salió por Wi-Fi Direct y, si no, POR QUÉ no (el diagnóstico lo suma en «Wi-Fi Direct en archivos…»)
+  _noteRoute(nx, via, bytes) {
+    try {
+      var wd = this.ble && this.ble.wifiDirect, note = (typeof window !== 'undefined') && window.NEXO_noteWd;
+      if (!wd || typeof note !== 'function') return;
+      if (via === 'wd') { note('use', { why: 'archivo grande' }); return; }
+      var dev = typeof this._dev === 'function' ? this._dev(nx, 'wd') : null, w = (dev && typeof wd._whyNot === 'function') ? wd._whyNot(dev, bytes, true) : null;
+      var por = (w && (w.no || 'sí podía')) || 'sin dato';
+      note('no', { why: 'archivo grande por ' + (via === 'lan' ? 'el mismo Wi-Fi' : via === 'l2' ? 'Bluetooth L2CAP' : 'ningún camino') + ': ' + por });
+    } catch (e) {}
+  }
+
   // Camino para un archivo grande con este contacto ahora: 'lan' (prioridad, reglas del dueño), 'wd', 'l2' o null
   route(nexoId) {
     var nx = _nid(nexoId), ble = this.ble;
     if (!this.peers.has(nx) || !ble) return null;
     if (ble.lan && ble.lan.canReach(nx)) return 'lan';
-    if (ble.wifiDirect && ble.wifiDirect.canReach(nx)) return 'wd';
+    if (ble.wifiDirect && ble.wifiDirect.canReach(nx, true)) return 'wd'; // 3260: aunque haya fallado hace poco (no hay otro camino para esto)
     if (this.l2Ok && this.l2Peers.has(nx) && this._bleReady(nx)) return 'l2';
     return null;
   }
@@ -97,21 +109,28 @@ export class BigFiles {
     var self = this, pl = _plugin(), key = _hex(32);
     if (!pl || typeof pl.bigBegin !== 'function') return Promise.reject(new Error(t('misc_big_version_cannot', 'esta versión no puede')));
     self._set(id, { dir: 'out', state: 'preparing', bytes: 0, total: file.size });
+    var tPrep = Date.now(); // 3258: cuánto tarda cifrar a disco (diagnóstico del dueño 20-11: 153 MB tardaron ~30 s en prepararse y 6 s en viajar por Wi-Fi Direct)
     return pl.bigBegin({ id: id, key: key }).then(function() {
-      var pos = 0;
-      var next = function() {
-        var end = Math.min(pos + BIG_SLICE, file.size);
-        return _sliceB64(file, pos, end).then(function(b64) {
-          return pl.bigAppend({ id: id, data: b64, last: end >= file.size });
-        }).then(function() {
-          pos = end;
-          self._set(id, { bytes: pos });
-          if (pos < file.size) return next();
+      // 3317 (COLA 3, Wi-Fi Direct: preparar era el cuello de botella, ~5 MB/s): se lee el pedazo SIGUIENTE mientras el nativo cifra
+      // el anterior (antes: leer, esperar al nativo, leer…). Un solo pedazo en el nativo a la vez y en orden: antes de mandar uno se
+      // espera al anterior, así que el archivo cifrado queda igual y un fallo para todo.
+      var pos = 0, pending = null;
+      var step = function() {
+        if (pos >= file.size) return pending || Promise.resolve();
+        var start = pos, end = Math.min(pos + BIG_SLICE, file.size);
+        pos = end;
+        return _sliceB64(file, start, end).then(function(b64) {
+          return (pending || Promise.resolve()).then(function() {
+            pending = pl.bigAppend({ id: id, data: b64, last: end >= file.size }).then(function() { self._set(id, { bytes: end }); });
+            pending.catch(function() {}); // se atiende al esperar el siguiente (o al final)
+            return step();
+          });
         });
       };
-      return next();
+      return step();
     }).then(function() {
-      console.log('[BIG] ' + id + ' preparado (' + Math.round(file.size / 1048576) + ' MB)');
+      var secsP = Math.max(0.1, (Date.now() - tPrep) / 1000);
+      console.log('[BIG] ' + id + ' preparado (' + Math.round(file.size / 1048576) + ' MB) en ' + (Math.round(secsP * 10) / 10).toString().replace('.', ',') + ' s = ' + (Math.round(file.size / 1048576 / secsP * 10) / 10).toString().replace('.', ',') + ' MB/s'); // i18n-ok: texto para el desarrollador
       return key;
     }, function(e) {
       self._set(id, { state: 'failed', error: e && e.message });
@@ -150,8 +169,11 @@ export class BigFiles {
       self._set(id, { dir: 'out', state: 'failed', error: msg });
       return Promise.reject(Object.assign(new Error(msg), { code: 'BIG_NO_NET' }));
     }
+    var tSend = 0, sendBytes = 0;
     return pl.bigStatus({ id: id }).then(function(s) {
       if (!s || !s.have) throw new Error(t('misc_big_gone', 'ya no está en este teléfono'));
+      tSend = Date.now(); sendBytes = s.bytes;
+      self._noteRoute(nx, via, s.bytes);
       self._set(id, { dir: 'out', state: 'sending', bytes: 0, total: s.bytes, nx: nx, via: via });
       console.log('[BIG] Enviando ' + id + ' a ' + nx + ' por ' + ({ lan: 'Wi-Fi', wd: 'Wi-Fi Direct', l2: 'Bluetooth (L2CAP)' })[via] + ' (' + Math.round(s.bytes / 1048576) + ' MB)');
       if (via === 'wd') return self.ble.wifiDirect.sendBig(self._dev(nx, 'wd'), id, s.bytes);
@@ -172,7 +194,8 @@ export class BigFiles {
     }).then(function() {
       // El socket confirmó que el otro tiene todos los bytes
       self.saved[id] = 'sent'; self._save();
-      self._set(id, { state: 'done' });
+      var secsT = tSend ? Math.max(0.1, (Date.now() - tSend) / 1000) : 0; // 3260: la tarjeta termina diciendo por dónde fue y a qué velocidad
+      self._set(id, { state: 'done', via: via, mbps: secsT && sendBytes ? Math.round(sendBytes / 1048576 / secsT * 10) / 10 : 0 });
       console.log('[BIG] ' + id + ' entregado');
       if (typeof self.onSent === 'function') self.onSent(nx, id); // grupos (group_media.js)
     }, function(e) {
@@ -189,8 +212,8 @@ export class BigFiles {
     var id = String(p.id || ''), from = _nid(p.from);
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return true;
     var o = self.out.get(id);
-    if (p.type === 'ga') { if (o && o.onAccept && (p.port > 0 || p.psm > 0) && typeof p.token === 'string') o.onAccept(p); return true; }
-    if (p.type === 'gn') { if (o && o.onNo) o.onNo(p.why); return true; }
+    if (p.type === 'ga') { if (o && o.onAccept && (p.port > 0 || p.psm > 0) && typeof p.token === 'string' && self.st[id] && (deviceId === self._dev(self.st[id].nx, self.st[id].via) || _nid(self.ble && self.ble._macToNexoId && self.ble._macToNexoId.get(String(deviceId || '').toLowerCase().replace(/[:-]/g, ''))) === _nid(self.st[id].nx))) o.onAccept(p); return true; } // T-E1: solo del enlace ofrecido
+    if (p.type === 'gn') { if (o && o.onNo && self.st[id] && (deviceId === self._dev(self.st[id].nx, self.st[id].via) || _nid(self.ble && self.ble._macToNexoId && self.ble._macToNexoId.get(String(deviceId || '').toLowerCase().replace(/[:-]/g, ''))) === _nid(self.st[id].nx))) o.onNo(p.why); return true; }
     if (p.type === 'gf') return true;
     if (p.type === 'gr') {
       // El otro lo pide otra vez (se cortó) o, en un grupo, lo pide quien no tenía camino: solo si es nuestro y aún lo
@@ -203,6 +226,15 @@ export class BigFiles {
     var l2 = p.via === 'l2';
     if (!pl || typeof (l2 ? pl.bigServeL2 : pl.bigServe) !== 'function' || (l2 && !self.l2Ok)) { no('no soportado'); return true; }
     if (!(p.size > 0) || p.size > BIG_MAX_BYTES * 1.1) { no('tamaño'); return true; }
+    // Auditoría 23-11 (T-D1): cualquiera cerca podía ofrecer un «archivo grande» (hasta 1,1 GB por id, un canal y un hilo por oferta)
+    // y llenar el disco. Ahora: solo de un contacto con clave; uno a la vez de cada contacto y como mucho BIG_IN_MAX a la vez; y un
+    // archivo ya recibido no se vuelve a escribir encima.
+    var bigKeyOk = from && self.ble && typeof self.ble._contactKey === 'function' && self.ble._contactKey(from);
+    if (!bigKeyOk) { console.warn('[BIG] Oferta de ' + (from || '?') + ' (no es contacto): rechazada'); no('no es contacto'); return true; }
+    if (self.saved[id] === 'got') { no('ya lo tengo'); return true; }
+    var nIn = 0, fromBusy = false;
+    Object.keys(self.st).forEach(function(k) { var x = self.st[k]; if (x && x.dir === 'in' && x.state === 'receiving' && k !== id) { nIn++; if (x.nx === from) fromBusy = true; } });
+    if (fromBusy || nIn >= BIG_IN_MAX) { no('ocupado'); return true; }
     if (!l2 && (!self.ble.lan || !self.ble.lan.canReach(from))) { no('sin Wi-Fi'); return true; }
     var token = _hex(16);
     self._set(id, { dir: 'in', state: 'receiving', bytes: 0, total: p.size, nx: from, via: l2 ? 'l2' : 'lan' });
@@ -229,7 +261,7 @@ export class BigFiles {
 
   _done(ev) {
     if (!ev || !ev.id) return;
-    if (ev.dir === 'in' && this.ble && this.ble.wifiDirect && typeof this.ble.wifiDirect.bigFinished === 'function') this.ble.wifiDirect.bigFinished(ev.id);
+    if (ev.dir === 'in' && this.ble && this.ble.wifiDirect && typeof this.ble.wifiDirect.bigFinished === 'function') this.ble.wifiDirect.bigFinished(ev.id, ev.ok, ev.error);
     if (ev.dir === 'in') {
       if (ev.ok) {
         this.saved[ev.id] = 'got'; this._save();
@@ -248,7 +280,7 @@ export class BigFiles {
   open(id, key, name, mime) {
     var pl = _plugin();
     if (!pl || typeof pl.bigOpen !== 'function') return Promise.reject(new Error(t('misc_big_version_cannot_open', 'esta versión no puede abrirlo')));
-    return pl.bigOpen({ id: id, key: key, name: name, mime: mime });
+    return pl.bigOpen({ id: id, key: key, name: name, mime: mime, store: isStoreBuild() }); // I-S1 (23-11): el nativo también sabe si es la versión de tienda
   }
 }
 

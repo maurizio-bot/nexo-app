@@ -23,7 +23,7 @@ const buildDir = path.resolve(process.argv[2] || path.join(__dirname, 'builds/wi
 const base = { readsContentFallback: true, retain: ['onPayloadReceived', 'onLanMessage', 'onLanUp', 'onLanDown'], closeOnNoService: true, pace: [15, 15], ioDelay: 25, asymmetric: true, noTor: true, wifi: null, appStateEvents: true };
 // La tableta dormida: con la app congelada su nativo NO contesta nada (ni el pong de la 3009, ni «quién soy», ni el ✓✓ de respaldo)
 const tableta = { noNativePong: true, noNativeKx: true, noBgNotify: true };
-const ZOMBI_MAX_S = 60;
+const ZOMBI_MAX_S = 25; // 3330 (S24↔Austin 24-11): el enlace recuperado sin oír nada se comprueba ya y con un ping sin respuesta se rehace (antes 60: 4 pings)
 const LARGO_MS = 25000;   // «las 5 h» en segundo plano con el JS parado (basta con que el enlace y el último pong sean viejos)
 // Idas y vueltas del dueño (diagnóstico S24 3082): segundos desde la primera vuelta (04:02:57)
 const RITMO = [[0, true], [14, false], [34, true], [49, false], [66, true], [95, false]];

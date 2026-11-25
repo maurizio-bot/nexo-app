@@ -11,7 +11,9 @@
  * Síntoma «entrega_lenta»: un texto propio que tardó más de SLOW_MS en llegar habiendo camino al mandarlo.
  */
 import { _getBLEContacts, _isPinned, _normId, _normMac } from './ble_helpers.js';
+import { _msgContactMap } from './chat_state.js'; // COLA 35: a quién va cada mensaje propio
 import { exitsInit, exitsLines } from './diag_exits.js'; // 3120: cierres de la app
+import { thermalWord } from './call_power.js'; // 3256: temperatura y estado térmico
 
 var TRACE_MAX = 40;              // mensajes con línea de tiempo (los más recientes)
 var SLOW_MS = 2 * 60 * 1000;     // «entrega lenta»: más de 2 min con camino
@@ -34,6 +36,14 @@ function _nameOf(nx) {
   n = n.replace(/[\r\n():·→]/g, ' ').replace(/\s+/g, ' ').trim();
   return n ? ' (' + n.slice(0, 24) + ')' : '';
 }
+// COLA 35 (diagnóstico: «→ ?» en los mensajes que salieron sin camino y en un archivo grande): sin enlace en curso no hay deviceId
+// en pendingAcks, pero el PROPIO mensaje sabe a quién va (el chat que lo envió, o el destino fijado al mandarlo)
+function _nxOfMsg(bi, id) {
+  var c = ''; try { c = _normId(_msgContactMap[id]); } catch (e) {}
+  if (/^nx[0-9a-z]{8}$/.test(c)) return c;
+  try { c = _normId(bi && bi._msgDest && bi._msgDest.get(id)); } catch (e2) { c = ''; }
+  return /^nx[0-9a-z]{8}$/.test(c) ? c : '';
+}
 function _hhmmss(ts) { var d = new Date(ts); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2); }
 
 // La build del otro (kx «bd»): solo dígitos, corta
@@ -42,7 +52,6 @@ export function diagNotePeerBuild(nx, bd) {
   if (!/^nx[0-9a-z]{8}$/.test(nx) || !/^(\d{1,6}|dev)$/.test(bd)) return;
   _peerBuild[nx] = bd;
 }
-export function diagPeerBuild(nx) { return _peerBuild[_normId(nx)] || null; }
 
 // Por dónde sale un mensaje ahora: el enlace de su envío en curso (Bluetooth/Wi-Fi/internet) o «?»
 function _viaKind(dev) {
@@ -68,13 +77,14 @@ function _onStatus(e) {
   var tr = _trace.get(id);
   if (!tr) {
     if (d.status === 'delivered' || d.status === 'read') return; // solo los que vimos salir (no los de otra sesión)
-    var nx = dev ? _nxOfDev(bi, dev) : '';
+    var nx = (dev ? _nxOfDev(bi, dev) : '') || _nxOfMsg(bi, id);
     var via0 = 'none'; try { if (nx && bi && typeof bi.linkOf === 'function') via0 = bi.linkOf(nx); } catch (e2) {}
     tr = { nx: nx, t0: now, via0: via0, ev: [] };
     _trace.set(id, tr);
+    try { if (typeof window.NEXO_noteSent === 'function') window.NEXO_noteSent(via0); } catch (eS) {} // 3259: salió por este camino
     if (_trace.size > TRACE_MAX) _trace.delete(_trace.keys().next().value);
   }
-  if (!tr.nx && dev) tr.nx = _nxOfDev(bi, dev);
+  if (!tr.nx) tr.nx = (dev ? _nxOfDev(bi, dev) : '') || _nxOfMsg(bi, id);
   var last = tr.ev[tr.ev.length - 1];
   // 3128 (diagnóstico S24 3067 15-11 08:41): una foto ✓✓ y leída en 4 s recibió otra confirmación por otro camino 3,5 min
   // después y salía «entrega_lenta 217 s». Solo la PRIMERA confirmación mide la entrega; las repetidas quedan en la línea de tiempo.
@@ -88,6 +98,7 @@ function _onStatus(e) {
   if (tr.ev.length > 12) tr.ev.splice(1, 1);
   var slowMs = (typeof window.NEXO_DIAG_SLOW_MS === 'number' && window.NEXO_DIAG_SLOW_MS >= 0) ? window.NEXO_DIAG_SLOW_MS : SLOW_MS; // perilla de prueba
   var asleep = _hidden || _backAt > tr.t0; // 3034: la app estuvo en segundo plano mientras esperaba la ✓✓
+  if (d.status === 'delivered' && !doneBefore) { try { if (typeof window.NEXO_noteDelivered === 'function') window.NEXO_noteDelivered(tr.via0, asleep ? -1 : now - tr.t0, id); } catch (eD) {} } // 3259: primera ✓✓: tiempo por camino
   if ((d.status === 'delivered') && !doneBefore && !tr.slow && !asleep && tr.via0 !== 'none' && now - tr.t0 > slowMs) {
     tr.slow = true;
     try { window.dispatchEvent(new CustomEvent('nexo:diag:symptom', { detail: { kind: 'entrega_lenta', info: tr.nx + ' ' + id + ' ' + Math.round((now - tr.t0) / 1000) + ' s, camino al mandar ' + tr.via0 } })); } catch (e3) {}
@@ -133,6 +144,7 @@ function _phoneLine(bi) {
   var parts = ['app ' + (fg ? 'en primer plano' : 'en segundo plano')];
   if (_power) {
     if (_power.level != null) parts.push('batería ' + _power.level + '%' + (_power.charging ? ' cargando' : ''));
+    if (typeof _power.temp === 'number') parts.push('temperatura ' + (Math.round(_power.temp * 10) / 10).toFixed(1).replace('.', ',') + ' °C' + (thermalWord(_power.thermal) ? ' (estado térmico ' + thermalWord(_power.thermal) + ')' : '')); // 3256
     if (_power.powerSave) parts.push('AHORRO DE BATERÍA');
     if (_power.idle) parts.push('DOZE');
     if (_power.interactive === false) parts.push('pantalla apagada');

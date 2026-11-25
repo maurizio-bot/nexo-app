@@ -8,6 +8,7 @@ import { haptic, hapticMode, setHapticMode } from './haptics.js'; // NEXO Touch 
 import { securitySectionHtml, renderSecuritySection } from './app_lock.js';
 import { _diagnosticText } from './diag.js';
 import { updaterInnerHtml, renderUpdaterSection } from './updater.js'; // 2986: actualizador automático
+import { isStoreBuild } from './store_flag.js'; // COLA 26: la versión de Google Play oculta «Actualizaciones»
 import { autoDiagInnerHtml, renderAutoDiagSection, autoDiagNewCount } from './autodiag.js'; // 2974: diagnóstico automático al desarrollador
 import { startReceiveAccount, startSendAccount } from './move_account.js';
 import { AVATAR_MAX_BYTES, avatarClash, avatarOf, claimAvatarMine, clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
@@ -22,6 +23,9 @@ import { readReceiptsOn, setReadReceiptsOn } from './chat_state.js';
 import { t, getLang, setLang, LANGS, langName } from './i18n.js';
 import { attachNexoUnlockGesture } from './nexo_game.js';
 import { perfSectionHtml, renderPerfSection } from './perf.js';
+import { aparienciaCardHtml, aparienciaWire } from './apariencia.js'; // cola 33: Ajustes → Apariencia
+import { blockMenuLabel, openBlockSheet, blockedListHtml, paintBlockedList } from './bloqueo_ui.js'; // bloquear contacto (24-11)
+import { blockedIds } from './bloqueo.js';
 import { welcomeGuide } from './welcome_guide.js'; // #dueño 05-11: «ver la guía de bienvenida otra vez»
 
 // 3218: la ruedita de Ajustes, la de la muestra aprobada por el dueño (SVG de línea, sin colores propios: toma el trazo del botón
@@ -192,6 +196,7 @@ function _openContactProfile(uuid) {
     commonHtml +
     '<div style="display:flex;gap:8px;margin-top:10px;">' +
     '<button id="nexo-cp-chat" class="nx-btn nx-btn-primary" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z"/></svg>' + t('prof_cp_chat', 'Abrir chat') + '</button></div>' +
+    '<button id="nexo-cp-block" class="nx-link" style="display:block;margin:14px auto 0;color:#ff6b6b;">' + _esc(blockMenuLabel(nx)) + '</button>' + // bloqueo (24-11)
     '</div>';
   document.body.appendChild(sheet);
   (function () {   // 3140: el círculo de color de Contactos (con su foto si la hay), 92 px; en línea = aro celeste
@@ -228,6 +233,8 @@ function _openContactProfile(uuid) {
     };
     window.addEventListener('nexo:psi', onPsi);
   })();
+  var blkBtn = sheet.querySelector('#nexo-cp-block');
+  if (blkBtn) blkBtn.onclick = function () { openBlockSheet(nx, name, function () { blkBtn.textContent = blockMenuLabel(nx); }); };
   var chatBtn = sheet.querySelector('#nexo-cp-chat');
   if (chatBtn) chatBtn.onclick = function () {
     sheet.remove();
@@ -274,10 +281,11 @@ function _openSettings(fromProfile) {
   // 3142 (dueño 16-11: «Ajustes es un menú enorme: por partes»): Ajustes abre una lista corta de secciones y cada una tiene su pantalla.
   // Todos los controles se montan igual (ids intactos); cada sección solo muestra/oculta su panel.
   var SECS = {
-    app: [t('set_sec_app', 'Aplicación'), t('set_sec_app_d', 'Actualizaciones, idioma y fondo de pantalla')],
+    app: [t('set_sec_app', 'Aplicación'), (isStoreBuild() ? t('set_sec_app_d_store', 'Idioma y fondo de pantalla') : t('set_sec_app_d', 'Actualizaciones, idioma y fondo de pantalla'))],
     sec: [t('set_sec_sec', 'Seguridad y privacidad'), t('set_sec_sec_d', 'Bloqueo, capturas y confirmaciones de lectura')],
-    alerts: [t('set_sec_alerts', 'Avisos y vibración'), t('set_sec_alerts_d', 'Pantalla apagada y vibración al tocar')],
-    calls: [t('set_sec_calls', 'Llamadas'), t('set_sec_calls_d', 'Tono de llamada y espejo en videollamadas')],
+    look: [t('set_sec_look', 'Apariencia'), t('set_sec_look_d', 'Color de tus burbujas, estilo y tipo de letra')],
+    // 3290 (dueño 23-11): «Avisos y vibración» + «Llamadas» en una sola sección, «Notificaciones»
+    notif: [t('set_sec_notif', 'Notificaciones'), t('set_sec_notif_d', 'Avisos con la pantalla apagada, vibración y llamadas')],
     net: [t('set_sec_net', 'Conexión e internet'), t('set_sec_net_d', 'Relés públicos, Tor y rendimiento en vivo')],
     backup: [t('set_sec_backup', 'Respaldo y cambio de teléfono'), t('set_sec_backup_d', 'Fénix y pasar tu cuenta a otro teléfono')],
     diag: [t('set_sec_diag', 'Diagnóstico y ayuda'), t('set_sec_diag_d', 'Copiar diagnóstico, envío automático y guía de bienvenida')]
@@ -295,8 +303,8 @@ function _openSettings(fromProfile) {
     '<div class="nx-set-list">' + [
       ['app', 'M12 3v12m0 0l-4-4m4 4l4-4M5 21h14'],
       ['sec', 'M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z'],
-      ['alerts', 'M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9M10 20a2 2 0 0 0 4 0'],
-      ['calls', 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2'],
+      ['look', 'M12 3a9 9 0 1 0 0 18c1.5 0 2-1 1.4-2.2-.6-1.2.2-2.3 1.6-2.3H17a4 4 0 0 0 4-4c0-5-4-9.5-9-9.5M7.5 11h.01M10 7.5h.01M14.5 7.5h.01'],
+      ['notif', 'M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9M10 20a2 2 0 0 0 4 0'],
       ['net', 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9s1.3-6.3 3.8-9'],
       ['backup', 'M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5'],
       ['diag', 'M4 12h4l2-6 4 12 2-6h4']
@@ -304,7 +312,7 @@ function _openSettings(fromProfile) {
     '<div class="nx-set-pane" data-sec="app">' +
     // 2986: actualizaciones (interruptor + «Buscar ahora»). 3035 (dueño 13-11: «la parte de actualización debería de estar
     // encima de todo porque entrando uno actualiza»): es la PRIMERA tarjeta de Ajustes.
-    card('⬆️', t('upd_title', 'Actualizaciones'), updaterInnerHtml()) +
+    (isStoreBuild() ? '' : card('⬆️', t('upd_title', 'Actualizaciones'), updaterInnerHtml())) +
     // #132 (pedido del dueño): selección de idioma (es/it/en). Por defecto el del teléfono; al cambiarlo se guarda y la app recarga para aplicarlo en todas las pantallas.
     card('🗣️', t('language'), '<div class="nx-sub" style="margin-bottom:8px;">' + t('language_hint') + '</div>' +
       '<select id="nexo-lang-select" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +
@@ -316,13 +324,15 @@ function _openSettings(fromProfile) {
       '<button id="nexo-wp-chat" class="nx-btn">' + t('prof_wallpaper_chat', 'Fondo de los chats…') + '</button>' +
       '<button id="nexo-wp-chat-clear" class="nx-link" style="display:none;">' + t('prof_wallpaper_remove', 'Quitar este fondo') + '</button>') +
     '</div>' +
+    '<div class="nx-set-pane" data-sec="look">' + aparienciaCardHtml() + '</div>' +
     '<div class="nx-set-pane" data-sec="sec">' +
     '<div class="nx-card">' + securitySectionHtml() + '</div>' +
     // Build 2835 (pedido del dueño): encender/apagar las confirmaciones de lectura (el ✓✓ azul que mandás)
     card('🔏', t('privacy'), '<label style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-read-receipts"> ' + t('read_receipts') + '</label>' +
-      '<div class="nx-sub" style="margin-top:6px;">' + t('prof_read_receipts_sub', 'Si lo apagas, tus contactos no ven el ✓✓ azul cuando lees sus mensajes. El «entregado» (dos palomitas grises) sigue igual.') + '</div>') +
+      '<div class="nx-sub" style="margin-top:6px;">' + t('prof_read_receipts_sub', 'Si lo apagas, tus contactos no ven el ✓✓ azul cuando lees sus mensajes. El «entregado» (dos palomitas grises) sigue igual.') + '</div>' +
+      blockedListHtml()) +
     '</div>' +
-    '<div class="nx-set-pane" data-sec="alerts">' +
+    '<div class="nx-set-pane" data-sec="notif">' +
     // Ronda 2765 (pedido del dueño): que los avisos y las llamadas lleguen con la pantalla apagada y la enciendan
     card('🔔', t('prof_alerts_title', 'Avisos con la pantalla apagada'), '<div class="nx-sub">' + t('prof_alerts_sub', 'Para que los mensajes y las llamadas lleguen con la app cerrada o la pantalla apagada.') + '</div>' +
       '<div id="nexo-alert-rows"></div>' +
@@ -331,8 +341,6 @@ function _openSettings(fromProfile) {
     card('📳', t('prof_haptics_title', 'Vibración al tocar'), '<div class="nx-sub" style="margin-bottom:8px;">' + t('prof_haptics_sub', 'Un toque corto y nítido al presionar un botón y al enviar. Por defecto sigue el ajuste «Vibración al tocar» de tu teléfono.') + '</div>' +
       '<select id="nexo-haptics-mode" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;font-size:16px;background:#111;color:#fff;border:1px solid #2a2a2a;">' +
       [['system', t('prof_haptics_system', 'Como el sistema (recomendado)')], ['on', t('prof_haptics_on', 'Siempre')], ['off', t('prof_haptics_off', 'Nunca')]].map(function(o) { return '<option value="' + o[0] + '"' + (o[0] === hapticMode() ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>') +
-    '</div>' +
-    '<div class="nx-set-pane" data-sec="calls">' +
     // Ronda 2772 (pedido del dueño): ver al otro como en un espejo (con su cámara de delante)
     card('🎥', t('prof_video_calls', 'Videollamadas'), '<label style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-call-mirror"> ' + t('prof_mirror_label', 'Ver al otro como en un espejo (su cámara de delante)') + '</label>' +
       '<div class="nx-sub" style="margin-top:6px;">' + t('prof_mirror_sub', 'Sin espejo lo ves como te vería en persona: un papel con letras se lee bien.') + '</div>') +
@@ -423,6 +431,7 @@ function _openSettings(fromProfile) {
     if (listClr) listClr.onclick = function() { clearListWallpaper(); sync(); };
     if (chatClr) chatClr.onclick = function() { clearChatWallpaper(); sync(); };
   })();
+  aparienciaWire(sheet);
   _renderFenixStatus();
   renderSecuritySection();
   _renderNetStatus();
@@ -431,6 +440,11 @@ function _openSettings(fromProfile) {
   { var pr = sheet.querySelector('#nexo-perf-refresh'); if (pr) pr.onclick = function () { renderPerfSection(); }; }
   var rrBox = sheet.querySelector('#nexo-read-receipts');
   if (rrBox) { rrBox.checked = readReceiptsOn(); rrBox.onchange = function() { setReadReceiptsOn(rrBox.checked); }; }
+  // Bloqueo (24-11): la lista de contactos bloqueados, con «Desbloquear» en cada uno
+  paintBlockedList(sheet.querySelector('#nexo-blocked-list'), blockedIds(), function (nx) {
+    var c = _getBLEContacts().find(function (x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    return (c && String(c.name || '').trim()) || '';
+  });
   var mirBox = sheet.querySelector('#nexo-call-mirror');
   if (mirBox) { mirBox.checked = mirrorPeerPref(); mirBox.onchange = function() { setMirrorPeerPref(mirBox.checked); }; }
   // Tono de llamada/videollamada (ronda 2774): enseña el actual y abre el selector del teléfono al tocarlo

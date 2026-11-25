@@ -9,10 +9,8 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.os.Build
 import android.util.Log
 import com.getcapacitor.JSArray
@@ -24,6 +22,7 @@ import com.nexo.ble.NexoBlePlugin.Companion.NEXO_MAGIC_HIGH
 import com.nexo.ble.NexoBlePlugin.Companion.NEXO_MAGIC_LOW
 import com.nexo.ble.NexoBlePlugin.Companion.SCAN_DEBOUNCE_MS
 import com.nexo.ble.NexoBlePlugin.Companion.MIN_RSSI
+import com.nexo.ble.NexoBlePlugin.Companion.netBgShared
 
 // Bluetooth: escaneo, anuncio y servicio en primer plano.
 // 3118 (reestructuración 15-11): código movido TAL CUAL desde NexoBlePlugin.kt, sin cambiar lo que hace. Son extensiones
@@ -93,9 +92,11 @@ internal fun NexoBlePlugin.startScanImpl(call: PluginCall) {
     }
     autoStartGattServerAndAdvertising()
     bluetoothScanner = adapter.bluetoothLeScanner
-    scanResults.clear()
-    scannedDevices.clear()
-    lastScanNotifyTime.clear()
+    // 3264 (S23 21-11 05:58:21: «No hay device cacheado para 40f6b02aa058, no se puede reconectar», 5 s después de verlo): los
+    // teléfonos vistos ya NO se olvidan al empezar o parar un escaneo (la reconexión nativa los necesita justo entonces). 23-11: el
+    // tope lo lleva scanBook (olvida los que hace más que no se oyen, nunca todos de golpe: en una multitud el tope de 400 se pasaba
+    // enseguida y se olvidaba también al contacto que se iba a reconectar)
+    scanBook.resetNotify()
     val settings = scanSettings()
     // filtered=true (re-búsqueda con la app oculta): solo anuncios NEXO. Sin filtro Android no
     // entrega resultados con la pantalla apagada.
@@ -123,7 +124,6 @@ internal fun NexoBlePlugin.stopScanInternal() {
     mainHandler.removeCallbacks(scanTimeoutRunnable)
     try { bluetoothScanner?.stopScan(scanCallback) } catch (e: Exception) { }
     bluetoothScanner = null
-    scannedDevices.clear()
 }
 
 internal fun NexoBlePlugin.extractNexoIdFromScanRecord(scanRecord: android.bluetooth.le.ScanRecord?): String? {
@@ -145,9 +145,7 @@ internal fun NexoBlePlugin.extractNexoIdFromScanRecord(scanRecord: android.bluet
                     remLog("WARN", "SCAN", "Anuncio NEXO con ID mal formado en 0x${key.toString(16)}: se ignora")
                     return null
                 }
-                // Solo a logcat (no al registro nativo): la línea "Device found" de abajo ya anota el NEXO ID por
-                // dispositivo y con límite de frecuencia; esta por anuncio inundaba el diagnóstico.
-                Log.i("NEXO_REM", "[INFO][SCAN] NEXO ID found in manufacturer ID 0x${key.toString(16)}: $nexoId")
+                // (la línea "Device found" del escaneo ya anota el NEXO ID por dispositivo y con límite de frecuencia)
                 return nexoId
             }
         }
@@ -173,7 +171,7 @@ internal fun NexoBlePlugin.scanSettings(): ScanSettings {
 // Conectar: en LE Coded solo si ese teléfono solo se ve por largo alcance (en 1M es más rápido)
 internal fun NexoBlePlugin.connectLe(ctx: Context, device: BluetoothDevice, macNorm: String): BluetoothGatt? {
     val now = System.currentTimeMillis()
-    val coded = codedSupported() && now - (seenCoded[macNorm] ?: 0L) < 60000L && now - (seen1M[macNorm] ?: 0L) > 10000L
+    val coded = codedSupported() && now - scanBook.seenCoded(macNorm) < 60000L && now - scanBook.seen1M(macNorm) > 10000L
     if (coded) codedLinks.add(macNorm) else codedLinks.remove(macNorm)
     if (coded && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         remLog("INFO", "GATT_CLIENT", "Conectando a $macNorm por largo alcance (LE Coded)")
@@ -184,61 +182,57 @@ internal fun NexoBlePlugin.connectLe(ctx: Context, device: BluetoothDevice, macN
 }
 
 internal fun NexoBlePlugin.newScanCallback(): ScanCallback = object : ScanCallback() {
+    // 23-11 (multitud / EDC, docs/EDC_LIMITES.md cambios 4–5): con cientos de NEXO alrededor llegan miles de anuncios por segundo.
+    // Con CADA anuncio solo se hace lo mínimo (apuntar que se oyó); el resto —leer quién es, el mapa, el registro y armar el aviso—
+    // una vez por segundo y dirección, y los avisos a la app salen en tandas cuando hay muchos (ScanBook.kt).
     override fun onScanResult(callbackType: Int, result: ScanResult?) {
-        result?.device?.let { device ->
-            val name = result.scanRecord?.deviceName ?: try { device.name } catch (e: SecurityException) { null } ?: "Unknown"
-            val addr = device.address
-            val macNorm = normalizeMac(addr)
-            val rssi = result.rssi
+        val device = result?.device ?: return
+        val rssi = result.rssi
+        if (rssi < MIN_RSSI) return
+        val addr = device.address
+        val macNorm = normalizeMac(addr)
+        val now = System.currentTimeMillis()
+        val coded = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && result.primaryPhy == BluetoothDevice.PHY_LE_CODED
 
-            if (rssi < MIN_RSSI) {
-                return@let
-            }
+        scannedDevices[macNorm] = device
+        // lo que el libro olvida por el tope se suelta aquí también (salvo con quien hay enlace)
+        scanBook.seen(macNorm, coded, now).forEach { if (!gattClients.containsKey(it) && !serverConnectedDevices.containsKey(it)) scannedDevices.remove(it) }
+        if (!scanBook.due(macNorm, now)) return
 
-            scannedDevices[macNorm] = device
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && result.primaryPhy == BluetoothDevice.PHY_LE_CODED) seenCoded[macNorm] = System.currentTimeMillis()
-            else seen1M[macNorm] = System.currentTimeMillis()
-
-            val nexoId = extractNexoIdFromScanRecord(result.scanRecord)
-
-            if (nexoId != null) {
-                registerNexoMapping(nexoId, addr)
-            }
-
-            val scanMsg = "Device found: $name ($addr) NEXO=$nexoId rssi=$rssi - cacheado"
-            val nowScanLog = System.currentTimeMillis()
-            if (nowScanLog - (scanLogLast[macNorm] ?: 0L) > SCAN_LOG_MIN_MS) {
-                scanLogLast[macNorm] = nowScanLog
-                remLog("INFO", "SCAN", scanMsg) // al registro nativo: como mucho 1 vez cada 20 s por dispositivo
-            } else {
-                Log.i("NEXO_REM", "[INFO][SCAN] $scanMsg") // el resto, solo a logcat (no inunda el diagnóstico)
-            }
-
-            val item = JSObject().apply {
-                put("deviceId", addr)
-                put("name", name)
-                put("rssi", rssi)
-                if (nexoId != null) {
-                    put("nexoId", nexoId)
+        val nexoId = extractNexoIdFromScanRecord(result.scanRecord)
+        var prio = false
+        if (nexoId != null) {
+            registerNexoMapping(nexoId, addr)
+            // 3271/3279: para la bandeja de salida (OutboxDial). Lo anunciado casi siempre es el código rotativo: se apunta solo si
+            // es de un contacto con algo pendiente (OutboxRid lo reconoce con la clave de sus códigos). Ese contacto es PRIORITARIO:
+            // su aviso sale al momento aunque haya multitud
+            try {
+                val ob = netBgShared?.outbox
+                if (ob != null && ob.size() > 0) outRid.resolve(nexoId, ob.ridKeys(), ob.ridEpochS)?.let { who ->
+                    if (outSeen.size > 200) outSeen.clear()
+                    outSeen[who] = macNorm to now
+                    prio = true
                 }
-                // 3009: visto por el conjunto de anuncio de LARGO ALCANCE (LE Coded, otra dirección del mismo teléfono): la app no
-                // se conecta a esa copia si al mismo teléfono lo ve cerca por la dirección normal (ble_interface._onScanFound)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && result.primaryPhy == BluetoothDevice.PHY_LE_CODED) put("coded", true)
-            }
-
-            synchronized(scanResults) {
-                if (scanResults.none { normalizeMac(it.getString("deviceId") ?: "") == macNorm }) {
-                    scanResults.add(item)
-                }
-            }
-
-            val now = System.currentTimeMillis()
-            val lastNotify = lastScanNotifyTime[macNorm]
-            if (lastNotify == null || (now - lastNotify) >= SCAN_DEBOUNCE_MS) {
-                lastScanNotifyTime[macNorm] = now
-                notifyListeners("onDeviceFound", item)
-            }
+            } catch (e: Throwable) { }
         }
+
+        val name = result.scanRecord?.deviceName ?: try { device.name } catch (e: SecurityException) { null } ?: "Unknown"
+        // al registro nativo: como mucho 1 vez cada 20 s por dispositivo
+        if (scanBook.shouldLog(macNorm, now)) remLog("INFO", "SCAN", "Device found: $name ($addr) NEXO=$nexoId rssi=$rssi - cacheado")
+
+        val item = JSObject().apply {
+            put("deviceId", addr)
+            put("name", name)
+            put("rssi", rssi)
+            if (nexoId != null) {
+                put("nexoId", nexoId)
+            }
+            // 3009: visto por el conjunto de anuncio de LARGO ALCANCE (LE Coded, otra dirección del mismo teléfono): la app no
+            // se conecta a esa copia si al mismo teléfono lo ve cerca por la dirección normal (ble_interface._onScanFound)
+            if (coded) put("coded", true)
+        }
+        if (scanBook.offer(macNorm, item, rssi, prio, now)) notifyListeners("onDeviceFound", item)
+        else if (!scanFlushScheduled) { scanFlushScheduled = true; mainHandler.postDelayed(scanFlushRunnable, scanBook.batchMs) }
     }
 
     override fun onScanFailed(errorCode: Int) {
@@ -298,38 +292,12 @@ internal fun NexoBlePlugin.getConnectedDevicesImpl(call: PluginCall) {
     call.resolve(JSObject().put("devices", devices))
 }
 
+// S-C2 (auditoría 23-11): aquí se registraba un receptor de difusión (ACTION_MESSAGE_RECEIVED / DEVICE_CONNECTED /
+// DEVICE_DISCONNECTED) que NADIE envía (las conexiones entrantes avisan directo desde el servidor GATT), y en Android 8–12
+// quedaba exportado de hecho: cualquier app podía hacerle creer a la interfaz que un contacto se había conectado o caído.
+// Ya no se registra nada; se deja la función (la llaman al empezar a anunciar) y unregisterServerReceivers sigue igual.
 internal fun NexoBlePlugin.registerServerReceivers() {
-    if (messageReceiver != null) return
-    messageReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED -> {
-                    val addr = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
-                    notifyListeners("onDeviceConnected", JSObject()
-                        .put("deviceId", addr)
-                        .put("direction", "incoming")
-                        .put("role", "server")
-                    )
-                }
-                NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED -> {
-                    val addr = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
-                    notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", addr))
-                }
-            }
-        }
-    }
-    val filter = IntentFilter().apply {
-        addAction(NexoBleSpec.ACTION_BLE_MESSAGE_RECEIVED)
-        addAction(NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED)
-        addAction(NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED)
-    }
-    try {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            activity.registerReceiver(messageReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            activity.registerReceiver(messageReceiver, filter)
-        }
-    } catch (e: Exception) { }
+    messageReceiver?.let { r -> try { activity.unregisterReceiver(r) } catch (e: Exception) { }; messageReceiver = null }
 }
 
 internal fun NexoBlePlugin.unregisterServerReceivers() {

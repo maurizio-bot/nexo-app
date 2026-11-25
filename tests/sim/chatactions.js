@@ -80,11 +80,14 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
 
   await openChatWith(B, 'A'); await sendText(B, 'pregunta de B'); await sleep(2500);
   await openChatWith(A, 'B'); await sleep(800);
-  // 1) Responder desde el menú
+  // 1) Dueño 23-11: «Responder» ya NO está en el menú (se responde deslizando); se responde deslizando la burbuja
   ctx(A, bubbleWith(A, 'pregunta de B'));
-  const mr = await menuItem(A, 'mm-reply');
+  await menuItem(A, 'mm-forward');
   r.menu_opciones = Array.from(A.win.document.querySelectorAll('#nexo-msg-menu .mm-item')).map((b) => b.className.replace('mm-item ', ''));
-  click(A.win, mr); await sleep(300);
+  r.menu_sin_responder = r.menu_opciones.length > 0 && r.menu_opciones.indexOf('mm-reply') < 0;
+  click(A.win, A.win.document.querySelector('#nexo-msg-menu .mm-cancel')); await sleep(300);
+  { const s0 = bubbleWith(A, 'pregunta de B'); const pe0 = (type, x) => s0.dispatchEvent(new A.win.MouseEvent(type, { bubbles: true, clientX: x, clientY: 300 }));
+    pe0('pointerdown', 100); pe0('pointermove', 150); pe0('pointermove', 190); pe0('pointerup', 190); await sleep(400); }
   r.barra_respuesta = ((A.win.document.getElementById('reply-bar') || {}).textContent || '').substring(0, 60);
   await sendText(A, 'esta es mi respuesta'); await sleep(3000);
   const qB = bubbleWith(B, 'esta es mi respuesta');
@@ -112,6 +115,20 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   pef('pointerup', 185); await sleep(60);
   r.desliz_quita_flecha = !A.win.document.getElementById('nexo-reply-hint');
   const rbc = A.win.document.querySelector('#reply-bar .reply-cancel'); if (rbc) click(A.win, rbc); await sleep(200);
+  // 2c-bis) Dueño 24-11: la respuesta empezada es SOLO de ese chat. Reabrir el mismo chat la deja; cerrarlo o abrir OTRO chat la quita.
+  { const swr = bubbleWith(A, 'pregunta de B'); const per = (type, x) => swr.dispatchEvent(new A.win.MouseEvent(type, { bubbles: true, clientX: x, clientY: 300 }));
+    per('pointerdown', 100); per('pointermove', 150); per('pointermove', 190); per('pointerup', 190); await sleep(400); }
+  r.resp_mismo_chat = !!A.win.document.getElementById('reply-bar');
+  A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:closeChat', { detail: {} })); await sleep(300);
+  r.resp_se_quita_al_salir = !A.win.document.getElementById('reply-bar');
+  await openChatWith(A, 'B'); await sleep(600);
+  r.resp_no_vuelve = !A.win.document.getElementById('reply-bar');
+  { const swr = bubbleWith(A, 'pregunta de B'); const per = (type, x) => swr.dispatchEvent(new A.win.MouseEvent(type, { bubbles: true, clientX: x, clientY: 300 }));
+    per('pointerdown', 100); per('pointermove', 150); per('pointermove', 190); per('pointerup', 190); await sleep(400); }
+  A.win.NEXO.app.activeContact = { nexoId: 'nx0000000000' };
+  A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:openChat', { detail: { contactId: 'nx0000000000', name: 'Otro', transport: 'ble' } })); await sleep(300);
+  r.resp_se_quita_otro_chat = !A.win.document.getElementById('reply-bar');
+  await openChatWith(A, 'B'); await sleep(600);
   // 2d) E (informe del dueño 28-10): responder a una UBICACIÓN muestra «Ubicación», no el código crudo. _msgSummary
   //     maneja el adjunto codificado DENTRO de content (forma b) y como campo suelto (forma a).
   const ms = A.win.__nexoMsgSummary;
@@ -143,7 +160,10 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   r.emoji_texto = eo ? eo('hola') : null;       // 0
   r.emoji_mixto = eo ? eo('😀 hola') : null;    // 0 (emoji + texto)
   // 3) Copiar
-  ctx(A, bubbleWith(A, 'pregunta de B')); click(A.win, await menuItem(A, 'mm-copy')); await sleep(300);
+  // dueño 24-11: «Copiar» ya no está en el menú de la burbuja; se copia desde «Seleccionar» (barra de arriba)
+  r.menu_sin_copiar = r.menu_opciones.length > 0 && r.menu_opciones.indexOf('mm-copy') < 0;
+  ctx(A, bubbleWith(A, 'pregunta de B')); click(A.win, await menuItem(A, 'mm-select')); await sleep(300);
+  click(A.win, A.win.document.getElementById('nexo-select-copy')); await sleep(300);
   r.copiar_aviso = ((A.win.document.getElementById('perm-error-toast') || {}).textContent || '');
   r.copiado = A.win.__copied || null;
   // 4) Reenviar texto y un archivo a C

@@ -33,7 +33,9 @@
  * Relés de prueba: window.NEXO_NET_RELAYS. Relé PROPIO (3151): OWN_RELAYS / window.NEXO_OWN_RELAYS (net_own.js).
  */
 import { GwLink, GW_FILE_MAX_B64 } from './gw_link.js';
-import { DEFAULT_RELAYS, SPARE_RELAYS, OWN_PUBLIC_BACKUP, OWN_BLOB_PAR, _relaySafe, _nid, _plugin, STATE_FILE, RELAY_BG_PROBE_MS, TICK_MS, _cat, _utf8, _scalar, _day, _reqScalar, _reqTagPub, UP_MS, RELAY_IDLE_PROBE_MS, netEventValid, _unb64, _reqAesKey, TTL_CHUNK, TTL_MSG, TTL_RT, _rnd, _b64, MAX_CONTENT, TTL_HELLO, _event, KIND, HELLO_MS } from './net_link_shared.js';
+import { helperList } from './gw_helpers.js';
+import { isBlocked, blockedIds } from '../ui/bloqueo.js';
+import { noNetStep, DEFAULT_RELAYS, SPARE_RELAYS, OWN_PUBLIC_BACKUP, OWN_BLOB_PAR, _relaySafe, _nid, _plugin, STATE_FILE, RELAY_BG_PROBE_MS, TICK_MS, _cat, _utf8, _scalar, _day, _reqScalar, _reqTagPub, UP_MS, RELAY_IDLE_PROBE_MS, netEventValid, _unb64, _reqAesKey, TTL_CHUNK, TTL_MSG, TTL_RT, _rnd, _b64, MAX_CONTENT, TTL_HELLO, _event, KIND, HELLO_MS } from './net_link_shared.js';
 import { e2eIdentityDH, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { hmac } from '@noble/hashes/hmac.js';
@@ -105,7 +107,7 @@ export class NetLink {
     self._migrateState();
     // FCM «despertador» (#87, Fase 2): el token de este teléfono (para que los contactos puedan despertarlo) y los
     // tokens que ya conocíamos de ellos (sobreviven al reinicio, así se puede despertar aunque no haya saludo reciente).
-    try { if (pl && typeof pl.getFcmToken === 'function') { var ft = await pl.getFcmToken(); if (ft && ft.token) self.fcmToken = ft.token; } } catch (e) {}
+    try { if (pl && typeof pl.getFcmToken === 'function') { var ft = await pl.getFcmToken(); if (ft && ft.token) self._wakeSeal(ft); } } catch (e) {} // 14A: el sello si lo hay
     try { if (self.state.peerFcm) Object.keys(self.state.peerFcm).forEach(function(nx) { self._peer(nx).fcmToken = self.state.peerFcm[nx]; }); } catch (e) {}
     self._drainPending = true; // 3033: al arrancar, lo que la parte nativa recibió con la app cerrada entra ya (ver _drainBg)
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() {
@@ -133,6 +135,7 @@ export class NetLink {
         pl.addListener('onTorUp', function(ev) { var p = self._peer(_nid(ev && ev.nx)); p.torUp = true; p.torOk = false; self._hello(_nid(ev.nx)); });
         pl.addListener('onTorDown', function(ev) { var p = self._peer(_nid(ev && ev.nx)); if (p.torOk) console.log('[NET] ' + _nid(ev.nx) + ': conexión Tor cerrada'); p.torUp = false; p.torOk = false; });
         pl.addListener('onTorMessage', function(ev) { self._onTorMessage(ev); });
+        pl.addListener('onTorWs', function(ev) { self._onTorWs(ev); }); // 13A: relés por Tor
       }
     }
     self._timer = setInterval(function() { self.tick(); }, TICK_MS);
@@ -144,7 +147,7 @@ export class NetLink {
     if (this.ble && typeof this.ble._applyNtKnown === 'function') this.ble._applyNtKnown();
     var cs = (this.ble && typeof this.ble.getBLEContacts === 'function') ? this.ble.getBLEContacts() : [];
     var me = this.me();
-    return cs.filter(function(c) { var nx = _nid(c.nexoId || c.deviceUUID); return c && c.nt && c.publicKey && !c.pendingKey && /^nx[0-9a-z]{8}$/.test(nx) && nx !== me; });
+    return cs.filter(function(c) { var nx = _nid(c.nexoId || c.deviceUUID); return c && c.nt && c.publicKey && /^nx[0-9a-z]{8}$/.test(nx) && nx !== me; /* 5A: una clave pendiente no corta internet */ });
   }
 
   async _pair(nx, pub) {
@@ -195,6 +198,10 @@ export class NetLink {
     var changed = await self._refreshTags();
     if (changed) self._bgConfig();
     if (!self.inTags.size && !self.reqTags.size) { self._closeAll(); return; }
+    // 3266 (COLA 27): Wi-Fi sin internet (ningún relé abre) → que Android lo compruebe ya y pase a datos móviles
+    if (noNetStep(self._noNetSt || (self._noNetSt = {}), self.online(), self.wifi === true, now) && pl && typeof pl.reportNoInternet === 'function') {
+      pl.reportNoInternet().then(function(r) { if (r && r.reported) console.log('[NET] Wi-Fi sin internet (ningún relé abre): aviso al teléfono para que lo compruebe y pase a datos móviles'); }).catch(function() {});
+    }
     // 3190: también sin contactos por internet (alguien nuevo): lo recibido en segundo plano puede ser una solicitud a mi buzón
     if (self._drainPending && (self.inTags.size || self.reqTags.size)) { self._drainPending = false; self._drainBg(); }
     self._spareCheck(); // 3114: ¿falta algún relé sano? → uno de reserva
@@ -439,6 +446,7 @@ export class NetLink {
     var cs = this._netContacts(), list = [];
     for (var i = 0; i < cs.length; i++) {
       var nx = _nid(cs[i].nexoId || cs[i].deviceUUID);
+      if (isBlocked(nx)) continue; // bloqueo (24-11): sin su clave la escucha nativa no abre sus sobres (ni aviso, ni llamada, ni ✓✓)
       try { var pair = await this._pair(nx, cs[i].publicKey); list.push({ nx: nx, name: cs[i].name || '', kraw: bytesToHex(pair.kraw) }); } catch (e) {}
     }
     // 3190 (dueño 17-11: «hay que poner esa notificación: hay un contacto que te quiere agregar»): la parte nativa también escucha mi
@@ -448,14 +456,15 @@ export class NetLink {
     var me = this.me(), known = [], seenNx = {};
     var all = (this.ble && typeof this.ble.getBLEContacts === 'function') ? (this.ble.getBLEContacts() || []) : [];
     all.forEach(function(c) { var nx = _nid(c && (c.nexoId || c.deviceUUID)); if (/^nx[0-9a-z]{8}$/.test(nx) && nx !== me && !seenNx[nx]) { seenNx[nx] = 1; known.push({ nx: nx, name: String(c.name || '') }); } });
+    blockedIds().forEach(function(nx) { if (!seenNx[nx] && nx !== me) { seenNx[nx] = 1; known.push({ nx: nx, name: '' }); } }); // bloqueo (24-11): sus solicitudes tampoco avisan
     var reqOut = ((this.ble && typeof this.ble._reqStore === 'function') ? this.ble._reqStore('nexo_req_out') : []).map(function(x) { return _nid(x && x.id); }).filter(function(nx) { return /^nx[0-9a-z]{8}$/.test(nx); });
     var reqSince = (this._hiddenAt && this.online()) ? this._hiddenAt - 120000 : 0;
-    var sig = list.map(function(c) { return c.nx + c.kraw; }).join(',') + '|' + this.relayUrls().join(',') + '|' + known.map(function(k) { return k.nx + ':' + k.name; }).join(',') + '|' + reqOut.join(',');
+    var sig = list.map(function(c) { return c.nx + c.kraw; }).join(',') + '|' + this.relayUrls().join(',') + '|' + known.map(function(k) { return k.nx + ':' + k.name; }).join(',') + '|' + reqOut.join(',') + '|' + helperList().join(','); // 3323
     // Desde justo después de lo último que recogió la app (lo ya visto no vuelve a avisar)
     var since = this.state.lastSeen ? this.state.lastSeen + 1000 : Date.now() - 600000;
     if (sig === this._bgSig && !this._bgSinceDirty) return;
     this._bgSig = sig; this._bgSinceDirty = false;
-    try { await pl.netBgConfig({ me: me, relays: this.relayUrls(), since: since, contacts: list, known: known, reqOut: reqOut, reqSince: reqSince }); } catch (e) {}
+    try { await pl.netBgConfig({ me: me, relays: this.relayUrls(), since: since, contacts: list, known: known, reqOut: reqOut, reqSince: reqSince, gwHelp: helperList() }); } catch (e) {}
   }
 
   _saveState() {
@@ -566,6 +575,7 @@ export class NetLink {
   }
 
   _hello(nx) {
+    if (isBlocked(nx)) return; // bloqueo (dueño 24-11): no le digo que estoy en línea
     var p = this.peers.get(nx) || {};
     this.peers.set(nx, p);
     p.helloAt = Date.now();

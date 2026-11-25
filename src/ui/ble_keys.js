@@ -3,11 +3,12 @@
  * intercambio de claves (kx), clave de cada contacto y cambio de clave (retener/aceptar/rechazar), remitente sellado
  * para Jump, poscuántico, Fénix y verificación.
  */
-import { e2eMyPublicKey, e2eOpenAnon, e2eSealAnon, initE2E } from '../vault/e2e_crypto.js';
+import { e2eMyPublicKey, e2eOpenAnon, e2eSealAnon, initE2E, e2eSign } from '../vault/e2e_crypto.js';
 import { e2eAllowsE1 } from '../vault/e2e_proto.js';
 import { ratchetForget, ratchetMyBundle, ratchetMyPqId, ratchetNotePeerBundle, ratchetPeerPqId, ratchetResetPeer } from '../vault/e2e_ratchet.js';
 import { feNoteOldKey } from '../fenix/fenix_entorno.js';
-import { _getBLEContacts, _normId, _normMac, _safeDispatchEvent, _saveBLEContacts, _vNx, _vaultLoadMessages } from './ble_helpers.js';
+import { BLE_STATES, _getBLEContacts, _normId, _normMac, _safeDispatchEvent, _saveBLEContacts, _vNx, _vaultLoadMessages } from './ble_helpers.js';
+import { isBlocked, msgWhileBlocked } from './bloqueo.js'; // bloquear contacto (24-11)
 
 
 export const BLE_KEY_METHODS = {
@@ -29,6 +30,7 @@ export const BLE_KEY_METHODS = {
     if (self.localDeviceName) pkt.nm = String(self.localDeviceName).substring(0, 40); // ronda 2764: nombre del teléfono (el anuncio no lo trae)
     pkt.bg = 1; // ronda 2756: archivos grandes por Wi-Fi / Wi-Fi Direct (big_file.js)
     if (self.bigFiles && self.bigFiles.l2Ok) pkt.l2 = 1; // ronda 2758: y por Bluetooth L2CAP (Android 10+)
+    if (self.l2Fast && self.l2Fast.supported()) pkt.l2p = 1; // 3288: también los archivos medianos por ese canal (l2_fast.js)
     if (self.wifiDirect && self.wifiDirect.supported()) pkt.wd = 1;
     return pkt;
   },
@@ -36,6 +38,24 @@ export const BLE_KEY_METHODS = {
   // lite (3012): kx «ligero» (~300 letras en vez de ~2300) para preguntar o decir quién es al escanear: sin el paquete de
   // claves del protocolo 2 ni lo poscuántico (eso va en el kx completo, al agregar o al escribirse). lt:1 lo marca; con
   // request lleva además id:1 («solo dime quién eres»: el otro contesta también ligero).
+  // 3263 (fase 2: al abrir la app se heredan los enlaces entrantes; fotorenueva.js): un enlace heredado cuya dirección no es la guardada
+  // del contacto queda sin identificar. Se le pregunta «quién eres» (kx con rq) y se insiste hasta saberlo: la primera pregunta puede
+  // salir antes de que esta app haya cargado su propia identidad (se pierde) o con el otro dormido. Pregunta cada 3 s, hasta ~25 s.
+  _askWhoIs(deviceId, n) {
+    var self = this, nd = _normMac(deviceId), st = self._getDeviceState(deviceId) || {};
+    n = n || 0;
+    if (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY) return;
+    var nx = _normId(self._macToNexoId.get(nd) || '');
+    if (nx) { // ya contestó: desde aquí es un enlace listo como cualquier otro (aviso a la app, sesión al día y lo pendiente)
+      self._notifyPeerReady(deviceId, nx);
+      if (self.ackSystem && self.ackSystem.sendSessionSync) self.ackSystem.sendSessionSync(deviceId, nx);
+      self._resendPendingMessages(nx);
+      return;
+    }
+    if (n % 2 === 0) self._sendKx(deviceId, true, true);
+    if (n < 16) setTimeout(function() { self._askWhoIs(deviceId, n + 1); }, 1500);
+  },
+
   _sendKx(deviceId, request, force, lite) {
     var self = this;
     if (!deviceId) return;
@@ -57,6 +77,12 @@ export const BLE_KEY_METHODS = {
         if (rs) pkt.rs = rs;
       }
       if (request) pkt.rq = 1;
+      // Auditoría 23-11 (N-A): «recuperé mi cuenta: sesiones nuevas» (rs) va FIRMADO con mi identidad; sin firma, cualquiera cerca que
+      // supiera mi clave pública hacía que mis contactos tiraran sus sesiones conmigo
+      if (pkt.rs) return e2eSign(new TextEncoder().encode('NEXO-RS-v1|' + _normId(pkt.from) + '|' + pkt.rs)).then(function(sg) {
+        if (sg) { var bs = ''; for (var i = 0; i < sg.length; i++) bs += String.fromCharCode(sg[i]); pkt.rsg = btoa(bs); } else delete pkt.rs;
+        return self._sendMessageNative(deviceId, JSON.stringify(pkt), null);
+      });
       return self._sendMessageNative(deviceId, JSON.stringify(pkt), null);
     }).catch(function() {});
   },
@@ -84,7 +110,9 @@ export const BLE_KEY_METHODS = {
       // H3 (07-11): la MISMA clave llega AHORA directa del propio contacto (kx directo o un mensaje suyo que descifra) → la
       // clave «de oídas» (que llegó en una tarjeta/grupo) queda CONFIRMADA: se quita el aviso «sin verificar». Un puente no
       // llega aquí (por relé solo se fija la PRIMERA clave si no hay ninguna), así que no puede falsear la confirmación.
-      if (c.pkHearsay) { delete c.pkHearsay; _saveBLEContacts(contacts); _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false, confirmed: true }); }
+      // Decisión del dueño 23-11 (8A, auditoría C-N3): eso ya NO quita «sin verificar»: un kx «directo» no prueba nada (cualquiera cerca
+      // lo manda con ese NEXO ID) y quien plantó la clave en la tarjeta tiene su privada. Solo se quita al comparar el número de
+      // seguridad (setContactVerified) o al agregarse de cerca (alta con la solicitud cercana).
       return true;
     }
     if (!c.publicKey) {
@@ -99,7 +127,7 @@ export const BLE_KEY_METHODS = {
     if (c.pendingKey !== pk) {
       c.pendingKey = pk;
       c.keyChangedAt = Date.now();
-      console.warn('[E2E] La clave de ' + nx + ' cambió: pendiente de aceptar (no se muestra ni se le envía nada)');
+      console.warn('[E2E] La clave de ' + nx + ' cambió: pendiente de aceptar (lo que llega con la nueva se retiene; se le sigue enviando con la aceptada)');
       _saveBLEContacts(contacts);
       _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: true });
     }
@@ -135,7 +163,7 @@ export const BLE_KEY_METHODS = {
   _sealKeyFor(nexoId) {
     var nx = _normId(nexoId);
     var c = _getBLEContacts().find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
-    return (c && c.ss && c.publicKey && !c.pendingKey) ? c.publicKey : null;
+    return (c && c.ss && c.publicKey) ? c.publicKey : null; // 5A
   },
 
   _sealString(nexoId, json, msgId) {
@@ -196,15 +224,25 @@ export const BLE_KEY_METHODS = {
     console.log('[FENIX] ' + nx + ' entiende fx=' + lvl + ' (lo dijo en su kx antes de ser contacto)');
   },
 
-  _noteRestored(nexoId, pk, rs) {
+  _noteRestored(nexoId, pk, rs, rsg) {
     var nx = _normId(nexoId);
-    var contacts = _getBLEContacts();
-    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
-    if (!c || !pk || c.publicKey !== pk || !(rs > (c.rsSeen || 0)) || rs > Date.now() + 60000) return;
-    c.rsSeen = rs;
-    _saveBLEContacts(contacts);
-    console.log('[FENIX] ' + nx + ' recuperó su cuenta: sesiones de cifrado nuevas');
-    ratchetResetPeer(nx, pk).catch(function() {});
+    var c0 = _getBLEContacts().find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c0 || !pk || c0.publicKey !== pk || !(rs > (c0.rsSeen || 0)) || rs > Date.now() + 60000) return;
+    // N-A (23-11): solo con la firma de su identidad
+    if (typeof rsg !== 'string' || rsg.length > 200 || typeof crypto === 'undefined' || !crypto.subtle) { console.warn('[E2E] «Recuperé mi cuenta» de ' + nx + ' sin firma: ignorado'); return; }
+    var u8 = function(b) { var s = atob(b), u = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
+    crypto.subtle.importKey('raw', u8(pk), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']).then(function(k) {
+      return crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, k, u8(rsg), new TextEncoder().encode('NEXO-RS-v1|' + nx + '|' + rs));
+    }).then(function(ok) {
+      if (!ok) { console.warn('[E2E] «Recuperé mi cuenta» de ' + nx + ' con firma no válida: ignorado'); return; }
+      var contacts = _getBLEContacts();
+      var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+      if (!c || c.publicKey !== pk || !(rs > (c.rsSeen || 0))) return;
+      c.rsSeen = rs;
+      _saveBLEContacts(contacts);
+      console.log('[FENIX] ' + nx + ' recuperó su cuenta: sesiones de cifrado nuevas');
+      ratchetResetPeer(nx, pk).catch(function() {});
+    }).catch(function() {});
   },
 
   _markProto2(nexoId, key) {
@@ -239,7 +277,8 @@ export const BLE_KEY_METHODS = {
     if (!msgId || !self.ackSystem) return;
     _vaultLoadMessages(_normId(nexoId)).then(function(msgs) {
       var known = (msgs || []).some(function(m) { return (m.msgId || m.messageId || m.id) === msgId; });
-      if (known) self.ackSystem.sendAck(deviceId, msgId, routeTo);
+      // bloqueo (24-11): lo que mandó mientras lo tenía bloqueado tampoco se guardó; ya desbloqueado se confirma para que deje de reintentarlo
+      if (known || (!isBlocked(_normId(nexoId)) && msgWhileBlocked(_normId(nexoId), msgId))) self.ackSystem.sendAck(deviceId, msgId, routeTo);
     }).catch(function() {});
   },
 
@@ -259,7 +298,7 @@ export const BLE_KEY_METHODS = {
     var contacts = _getBLEContacts();
     var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
     if (!c || !c.publicKey || c.pendingKey) return false;
-    if (on) { c.verified = c.publicKey; delete c.pkHearsay; delete c.mergeUnverified; delete c.feConflict; delete c.feWarn; } else delete c.verified; // 3148: y los avisos de Fénix Entorno // 3135: y la de «unido por el nombre» // H3: verificar el número de seguridad confirma la clave «de oídas»
+    if (on) { c.verified = c.publicKey; delete c.pkHearsay; delete c.pkConflict; delete c.mergeUnverified; delete c.feConflict; delete c.feWarn; } else delete c.verified; // 3148: y los avisos de Fénix Entorno // 3135: y la de «unido por el nombre» // H3: verificar el número de seguridad confirma la clave «de oídas»
     _saveBLEContacts(contacts);
     _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false, verified: !!on });
     return true;
@@ -280,7 +319,7 @@ export const BLE_KEY_METHODS = {
     c.keyAcceptedAt = Date.now();
     // Identidad nueva: protocolo, verificación y paquete de claves empiezan de cero
     var pb = c.pendingBundle;
-    delete c.pendingBundle; delete c.proto; delete c.proto2At; delete c.verified; delete c.pkHearsay; // H3: la clave nueva aceptada llegó directa del contacto (ya no es «de oídas»)
+    delete c.pendingBundle; delete c.proto; delete c.proto2At; delete c.verified; delete c.pkHearsay; delete c.pkConflict; // H3: la clave nueva aceptada llegó directa del contacto (ya no es «de oídas»)
     // Ya anunció el protocolo 2 con esta clave: desde ya (lo pendiente no debe salir con el 1)
     if (pb && pb.ik === c.publicKey) { c.proto = 2; c.proto2At = Date.now(); }
     _saveBLEContacts(contacts);

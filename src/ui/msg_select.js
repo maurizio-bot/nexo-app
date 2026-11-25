@@ -1,15 +1,15 @@
 // msg_select.js — 3206 (dueño 17-11: «al reenviar hay que agregar la multiselección»): elegir VARIOS mensajes de un chat y
 // reenviarlos juntos. «Seleccionar» en el menú de un mensaje (pulsación larga) abre la selección con ese mensaje marcado; tocar
 // otros los marca o los desmarca (sin abrir fotos, enlaces ni el menú, y sin reaccionar con el doble toque); arriba, una barra con
-// ✕, cuántos van y «Reenviar», que abre la hoja de siempre («Reenviar a…», uno o más chats) y los manda en el ORDEN DEL CHAT.
+// ✕, cuántos van, «Copiar» (dueño 23-11) y «Reenviar», que abre la hoja de siempre («Reenviar a…», uno o más chats) y los manda en el ORDEN DEL CHAT.
 // No se marcan los eliminados ni los de «ver una vez» (no se reenvían). La cierran: ✕, el gesto atrás, quitar el último, reenviar
 // y abrir o cerrar un chat. No toca el almacenamiento ni el envío: reenvía con lo mismo que el reenvío de un solo mensaje.
 'use strict';
 
 import { t } from './i18n.js';
-import { _findMessage } from './chat_format.js';
+import { _findMessage, _plainText } from './chat_format.js';
 import { _showInfoToast } from './ui_bits.js';
-import { _openForwardSheet } from './chat_actions.js';
+import { _openForwardSheet, _copyText } from './chat_actions.js';
 
 var MAX_SEL = 50;                 // como mucho, mensajes en una selección
 var LONG_TAP_MS = 800;            // tras marcar con una pulsación larga, el «click» que la sigue no vuelve a desmarcar
@@ -123,7 +123,16 @@ function _buildBar() {
   fwd.appendChild(fl);
   fwd.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:none;border-radius:18px;background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));color:#fff;font-size:14px;font-weight:600;cursor:pointer;flex-shrink:0;';
   fwd.addEventListener('click', function(e) { e.stopPropagation(); _forward(); });
-  _bar.appendChild(close); _bar.appendChild(count); _bar.appendChild(fwd);
+  // Dueño 23-11: «Copiar» junto a «Reenviar»: el texto de los marcados, en el orden del chat, uno por línea
+  var cp = document.createElement('button');
+  cp.id = 'nexo-select-copy';
+  cp.type = 'button';
+  cp.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>'; // SVG fijo
+  var cl = document.createElement('span'); cl.textContent = _label('chat_copy', 'Copiar');
+  cp.appendChild(cl);
+  cp.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border:none;border-radius:18px;background:rgba(255,255,255,0.12);color:#fff;font-size:14px;font-weight:600;cursor:pointer;flex-shrink:0;';
+  cp.addEventListener('click', function(e) { e.stopPropagation(); _copy(); });
+  _bar.appendChild(close); _bar.appendChild(count); _bar.appendChild(cp); _bar.appendChild(fwd);
   var header = document.getElementById('chat-header');
   if (header && header.parentNode) header.parentNode.insertBefore(_bar, header.nextSibling);
   else document.body.appendChild(_bar);
@@ -138,6 +147,23 @@ function _forward() {
     list = list.filter(_canPick).sort(function(a, b) { return (a.timestamp || 0) - (b.timestamp || 0); });
     if (!list.length) { _showInfoToast(t('chat_sel_cant', 'Este mensaje no se puede reenviar'), 2000); return; }
     _openForwardSheet(list, function() { if (_sel === s) endSelect(); });
+  });
+}
+
+// Dueño 23-11: copia el texto de los marcados (en el orden del chat, uno por línea); las fotos, audios y archivos no tienen texto que
+// copiar y se saltan (como «Copiar» de un solo mensaje). La selección se cierra al copiar.
+function _copy() {
+  var s = _sel;
+  if (!s || !s.ids.length) return;
+  Promise.all(s.ids.map(function(id) { return _findMessage(s.cid, id).catch(function() { return null; }); })).then(function(list) {
+    if (_sel !== s) return;
+    var txt = list.filter(function(m) { return m && !m.deleted && !m.attachmentType; })
+      .sort(function(a, b) { return (a.timestamp || 0) - (b.timestamp || 0); })
+      .map(function(m) { return String(_plainText(m.content || m.text || '') || ''); })
+      .filter(function(x) { return x.trim() !== ''; });
+    if (!txt.length) { _showInfoToast(t('chat_sel_nocopy', 'No hay texto que copiar'), 2000); return; }
+    _copyText(txt.join('\n'));
+    endSelect();
   });
 }
 

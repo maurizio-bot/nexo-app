@@ -19,6 +19,22 @@ historial. Al cerrar un bloque: mover la línea de «Falta» a «En prueba» o �
 | 7 | Publicación | **25 %** | Actualizador y diagnóstico para probadores hechos; la versión para Google Play casi entera por hacer (iPhone espera ingresos). |
 | | **Global** | **50 %** | Media ponderada por el peso de cada área (sin iPhone: 51 %). |
 
+## 🔴 Problemas grandes (lista del 19-11, por lo que dicen los diagnósticos; de más a menos grave)
+1. **App dormida o muerta por el sistema y que no vuelve sola** (#87): 1.ª causa de los «zombi» (16 de ~50 diagnósticos). Roberto
+   (Motorola, batería exenta) estuvo 4 h sin NEXO el 19-11 (10:00–14:07); Austin (Honor) y el Vivo con la app congelada. Remedio: el
+   Bluetooth entero en el servicio nativo + que vuelva sola (PRIORIDAD 1, plan del domingo 22-11).
+2. **Entrega con la app CERRADA y la pantalla APAGADA**: no suena ni avisa (Conexión, ×3).
+3. **Enlaces repetidos que se abren y cierran** (había quedado arreglado en la 3027 y reaparece en la 3107/3109): el S24 reabre cada 1–2 min el
+   enlace que Austin le cierra (diagnósticos 19-11 14:23 y 14:56). Gasta radio y batería; no pierde mensajes.
+4. **Datos repetidos de los relés y batería**: al abrir la app en frío, 4,4 de 5,3 MB repetidos (3108); S24 7–9 %/h en segundo plano.
+5. **Puente nativo con la app dormida** y **modo multitud para EDC** (cientos de NEXO cerca): sin empezar.
+6. **Wi-Fi Direct** casi nunca funciona en teléfonos reales (un envío bueno el 15-11).
+7. **Llamadas**: eco en grupo y gasto de datos por relés.
+8. **Publicación en Google Play**: Android más reciente (targetSdk 34 → 35/36), versión de tienda sin actualizador propio, permisos,
+   privacidad, firma, prueba cerrada de 14 días.
+9. **Auditoría de seguridad completa** antes del cambio del Bluetooth (PASO 0, en el privado).
+Menores ya vistos: enlace viejo ~1 min tras actualizar la app del otro; «fallido» momentáneo con los relés reconectando (3252, hecho).
+
 Pesos de cada área (hecho / total): 1 → 18,4/36 · 2 → 24,6/43 · 3 → 18/27 · 4 → 18,4/31 · 5 → 11,2/17 · 6 → 5/22 · 7 → 7,6/30.
 
 ## 1. Seguridad — 51 %
@@ -60,6 +76,19 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Cuotas de espacio por contacto (Grok 4; PENDIENTES 15-11 tarde). ×1
 - Android 8–11 sin la ubicación activada no escanea y no avisa (robustez.json «escaneo»). ×1
 - Teléfonos que se quedan en MTU 23: renegociar (robustez.json «conexion»). ×1
+- Al ABRIR la app en frío (3108, diagnóstico del S24 09:57): bajó 5,3 MB de los relés en el primer minuto y 4,4 MB eran repetidos; el margen de 3249 cubre el regreso de segundo plano, no el arranque. Ver `nx1n36c283` 19-11 09:57. ×1
+- El S24 reabre cada ~60 s el enlace de cliente que Austin le cierra por repetido (3 cierres en 10 min; diagnóstico de Austin 19-11 14:23). ×1
+- **Mensaje atorado durante una videollamada** (S23→S24, 19-11 21:28–21:46): el S23 no oía la presencia del S24 por internet aunque estaban en videollamada; un texto de 9 trozos quedó ≥ 17 min sin llegar («Buzón no disponible: Abortado»). Revisar por qué la presencia por relés se pierde de un solo lado con datos móviles + ahorro de batería. ×2
+- Videollamada: tras cada cambio de red del otro, errores de decodificación y huecos sin imagen de hasta ~25 s (19-11 21:21). ×1
+- Avisar al usuario que quitar NEXO de recientes corta la recepción (Cari lo hizo 10 veces en 2 días y cortó una videollamada de 64 min). ×1
+- Al ACTUALIZAR la app, los contactos cercanos quedan con un enlace viejo ~1 min (MTU 23 y zombi): el proceso muere sin cortar nada (3251 no lo cubre). Vigilar; con menos actualizaciones pasará poco. ×1
+- Diagnósticos de la 3097–3107 con «Bluetooth apagado/encendido» suelto y ~20 desconexiones viejas al volver a primer plano (Zhelowsky 11:32, 18-11). Revisar si 3251 lo cubre. ×1
+
+**En prueba (3254, Bluetooth en el servicio, fase 1)**
+- Recibir por Bluetooth SIN la app (NEXO vuelta sola tras reinicio, actualización, cierre del sistema o toque FCM): anuncio + servidor GATT del servicio, buzón, ✓✓ y aviso (`SinAppCore`/`BleSinApp`). Fases 2–4 pendientes (ver ESTADO). ×3
+
+**Por comprobar (de la 3109)**
+- Servidor GATT al abrir la app: cortar antes los enlaces entrantes (3251, `gattreabre.js` en ci.js). Subida a NEXOCHAT como APK 3109; la batería la corre el CI y compila el Kotlin (sin SDK aquí). Pendiente: que el dueño pruebe con dos teléfonos (abrir la app con el Bluetooth recibiendo y mandar al momento). ×2
 
 **Espera decisión del dueño**
 - Internet rápido para archivos por conexión directa (WebRTC, paso 4; PENDIENTES 14-11 «caminos», PREPARADO).
@@ -108,6 +137,11 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 **En prueba del dueño**
 - APK 3075: agregar a una videollamada sin cortar el vídeo (3152), llamada minimizada en una barra y de voz a vídeo sin colgar (3155), aguanta el cambio de Wi-Fi a datos (3156), «Pantalla de …» en la de grupo (3157). ×1
 - Dos llamadas a la vez: espera, «Mensaje», pantalla dividida (3101–3104). ×2
+- **Videollamada larga del dueño (19-11, S24↔S23, 3111; ~83 min en dos tramos con un corte de 14 s):** el dueño: «una de las mejores videollamadas que he tenido»;
+  el S23 salió de casa, caminó con mala señal, fue a la tienda y volvió; video muy bueno (casi sin pixelado ni trabas), estable todo el rato, y los dos
+  teléfonos ni se calentaron ni gastaron batería «como WhatsApp, otro mundo» (PERCEPCIÓN, no medido). Los registros confirman: 83 min, ~10 cambios de red del S23 (Wi-Fi ↔ datos móviles, ~97 MB en 12 min por datos),
+  vídeo que se rehace tras cada cambio (hueco máx. ~25 s) y audio sin caídas. NO confirman la batería: el S23 bajó de 67 % a 61 % en ~12 min (ahorro de batería activo). Por medir:
+  batería de ambos al empezar/terminar y una de WhatsApp igual de larga; si sale a favor, es material de lanzamiento («gasta menos que WhatsApp»).
 - Compartir pantalla, partes 1–3 (3054–3056). ×2
 - Tono «tuuu» del teléfono al llamar (3134, APK 3071). ×1
 - Llamada y videollamada con el mismo estilo, también la de grupo (3141, rama). ×1
@@ -189,3 +223,6 @@ Detalle en el repositorio privado (`nexo-private/AREAS_PRIVADAS.md`).
 - Nombre en la tienda: hay una marca «Nexo» registrada (PENDIENTES ⭐ punto 7). ×1 en el cálculo.
 - Dónde va la página del enlace de invitación (su GitHub, gratis, o dominio propio).
 - ¿Se acepta sola una invitación que trae un código válido mío? (PENDIENTES 15-11 noche).
+
+  - 20-11 (dueño, prueba real): ha hecho mucho tiempo total de videollamada con el S23 y «me sigue sobrando batería, es alucinante». Es un HECHO; 3114 lo medirá solo para tener la cifra, no para validarlo.
+  - 20-11 (dueño, referencia WhatsApp): videollamada de WhatsApp de ~1 h con capturas: 6:43→82 %, 6:45→81, 6:49→80, 6:53→79, 6:56→78, 6:59→77 (el contador de la llamada marcaba 49:04 a las 6:50 y 58:04 a las 6:59) = 5 puntos en 16 min ≈ 19 %/h (15–22 por el redondeo de la batería); el dueño lo estima a ojo en ~25 %/h en la hora. Teléfono: S24 Ultra (el del dueño). Base para comparar con NEXO (3116 calcula el %/h solo en cada llamada).

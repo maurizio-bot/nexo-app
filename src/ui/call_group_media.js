@@ -47,7 +47,10 @@ export function createGroupMedia(opts) {
   function decoderFor(nx) {
     var d = decoders.get(nx);
     if (!d) {
-      d = mk({ codecs: codecs, video: false, noCapture: true, onPacket: function() {}, onNeedKey: function() { needKey(nx); } });
+      // 3301 (tanda 2, punto 25: eco en grupo): lo que suena de cada uno se le avisa al filtro del micrófono (antes solo en la de dos:
+      // en grupo el filtro no sabía cuándo sonaban los demás y no bajaba su eco)
+      d = mk({ codecs: codecs, video: false, noCapture: true, onPacket: function() {}, onNeedKey: function() { needKey(nx); },
+        onFar: function(level, inSec, durSec) { try { if (cap && cap !== d && typeof cap.farExt === 'function') cap.farExt(level, inSec, durSec); } catch (e) {} } });
       decoders.set(nx, d);
       if (!stopped && d.start) { try { Promise.resolve(d.start()).catch(function() {}); } catch (e) {} }
     }

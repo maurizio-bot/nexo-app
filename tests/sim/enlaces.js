@@ -5,7 +5,7 @@
 //      sin imágenes descargadas; el texto de la burbuja (.msg-content) sigue siendo el mensaje tal cual (búsqueda, responder, pruebas);
 //  L2  tocar el enlace (y la tarjeta) llama al abridor externo nativo (openUrl) con ESA URL exacta y el WebView no navega ni abre ventanas;
 //  L3  «javascript:alert(1)», «intent://…», «file:///…» y «https://www.tiktok.com@malo.com/» (usuario@ engañoso) no se vuelven enlace;
-//  L4  «https://ejemplo.com» se toca pero sin tarjeta;
+//  L4  «https://ejemplo.com» se toca y, desde la 3309 (COLA 31: vista previa real de TODOS los sitios), lleva su tarjeta con su dominio;
 //  L5  Instagram, Facebook (fb.watch) y YouTube (youtu.be, m.youtube.com entre paréntesis y con punto final) dan su tarjeta;
 //  L6  pulsación larga sobre el enlace abre el menú de la burbuja (y no el enlace); doble toque en la burbuja reacciona ❤️; tocar dos
 //      veces el enlace lo abre pero no cuenta como «doble toque»;
@@ -87,7 +87,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.L1_enlace_tocable = !!tt && tt.enlaces.length === 1 && tt.enlaces[0] === 'https://vm.tiktok.com/ZMabc123/';
   r.L1_tarjeta_tiktok = !!tt && !!tt.tarjeta && tt.tarjeta.sitio === 'TikTok' && tt.tarjeta.dominio === 'vm.tiktok.com' && tt.tarjeta.visible && tt.tarjeta.imgs === 0 && tt.tarjeta.ancho <= 300;
   r.L3_sin_enlaces_peligrosos = !!vB.malos && vB.malos.anclas === 0;
-  r.L4_normal_sin_tarjeta = !!vB.normal && vB.normal.enlaces.length === 1 && vB.normal.enlaces[0] === 'https://ejemplo.com/' && !vB.normal.tarjeta;
+  r.L4_normal_sin_tarjeta = !!vB.normal && vB.normal.enlaces.length === 1 && vB.normal.enlaces[0] === 'https://ejemplo.com/' && !!vB.normal.tarjeta && vB.normal.tarjeta.dominio === 'ejemplo.com';
   const site = (x) => x && x.tarjeta && x.tarjeta.sitio;
   r.L5_tarjetas = { ig: site(vB.ig), fb: site(vB.fb), yt: site(vB.yt), yt2: site(vB.yt2) };
   r.L5_otros_sitios = site(vB.ig) === 'Instagram' && site(vB.fb) === 'Facebook' && site(vB.yt) === 'YouTube' && site(vB.yt2) === 'YouTube' &&
@@ -122,7 +122,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
   });
   await sleep(800);
-  r.L6_pulsacion_larga_menu = await B.evaluate(() => !!document.getElementById('nexo-msg-menu') && !!document.querySelector('#nexo-msg-menu .mm-copy'));
+  r.L6_pulsacion_larga_menu = await B.evaluate(() => !!document.getElementById('nexo-msg-menu') && !!document.querySelector('#nexo-msg-menu .mm-select'));
   r.L6_pulsacion_larga_no_abre = opened().length === nOpen && nav.length === 0;
   await B.evaluate(() => { const m = document.getElementById('nexo-msg-menu'); if (m) m.remove(); });
   const dbl = (k, onLink) => B.evaluate(async ([k, onLink]) => {

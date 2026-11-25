@@ -113,6 +113,7 @@ import { welcomeGuide } from './ui/welcome_guide.js'; // #dueño 05-11: guía de
 import { nameGate, loadDisplayName, applyDisplayName } from './ui/display_name.js'; // #dueño 06-11: nombre fijo (pedido 1 vez, no se cambia)
 import { createNotifier } from './ui/notify.js';
 import { isPreviewHidden, loadHidePreview } from './ui/chat_hide_preview.js';
+import { loadApariencia } from './ui/apariencia.js'; // cola 33: color de burbujas y letra elegidos en Ajustes → Apariencia
 import { isMuted, loadMuted } from './ui/chat_mute.js'; // 3219: silenciar un chat o grupo
 import { loadPins } from './ui/chat_pin.js'; // 3219: mensajes fijados arriba del chat
 import { installChatMenu } from './ui/chat_menu.js'; // 3219: opciones del chat (tocar el círculo de la cabecera)
@@ -123,18 +124,19 @@ import { PREVIEW_MAX_SIDE, PREVIEW_MAX_SECONDS, HD_DIRECT_MAX_BYTES, HD_MAX_SIDE
 import { _extOf, _compressImageBase64, _fmtTime, _readFileBase64, _isPdf, _MIME_BY_EXT, _mimeOf, _pdfThumb, _FILE_ICONS, _fileIcon, _fmtSize } from './ui/file_tools.js';
 import { groupAttachment, isGroupId, parseGroupEnvelope } from './ui/groups.js';
 import { isGroupWire, startGroupMedia } from './ui/group_media.js';
-import { avatarInit, paintAvatar } from './ui/avatar.js';
+import { avatarInit, paintAvatar, sendAvatarTo } from './ui/avatar.js';
 import { _getGradientForUUID, _getInitials } from './ui/ble_helpers.js';
 import { usageInit } from './ui/usage_stats.js'; // 2989: resumen diario de uso (solo números)
 import { updaterInit } from './ui/updater.js'; // 2986: actualizador automático del APK de probadores
 import { autoDiagInit, autoDiagReceived } from './ui/autodiag.js'; // 2974: diagnóstico automático al desarrollador
 import { resyncInit } from './ui/resync.js'; // 3069: desatasco automático del cifrado
 import { profileInit } from './ui/profile_data.js';
-import { profileShareInit } from './ui/profile_share.js';
+import { profileShareInit, sendProfileTo } from './ui/profile_share.js';
 import { psiInit } from './ui/psi.js';
 import { gameStatsInit } from './ui/game_stats.js';
 import { wallpaperInit, wallpaperUse, installWallpaperGesture, setListWallpaper, clearListWallpaper, setChatWallpaper, clearChatWallpaper, wallpaperRefresh, wallpaperApplied, setChatWallpaperFor, clearChatWallpaperFor, chatWallpaperFor, hasChatWallpaper, hasChatWallpaperFor, shareChatWallpaper, applyChatWallpaper } from './ui/wallpaper.js';
-import { estadosInit } from './ui/estados.js';
+import { estadosInit, sendStatusTo } from './ui/estados.js';
+import { loadBlocked } from './ui/bloqueo.js'; // bloquear contacto (24-11)
 import { parseCallSignal } from './ui/calls.js';
 import { parseGroupCallSignal } from './ui/group_call.js';
 import { installCallsUi } from './ui/calls_ui.js';
@@ -170,6 +172,10 @@ import { appSetupUse, _bindAttachmentHandlers, _showPermissionOverlay, _hidePerm
 import { _handleIncomingMessage, initializeNexoApp } from './main_chats.js'; // reestructuración 15-11
 import { bgLimitInstall } from './ui/bg_limit.js'; // 3247: NEXO limitado por el ahorro de batería
 try { bgLimitInstall(); } catch (e) {}
+import { phoneSleepInstall } from './ui/phone_sleep.js'; // COLA 22: «tu teléfono duerme a NEXO»
+try { phoneSleepInstall(); } catch (e) {}
+import { silencedInstall } from './ui/silenced.js'; // COLA 22: «tu teléfono silencia a NEXO» (canal de avisos apagado, No molestar)
+try { silencedInstall(); } catch (e) {}
 appSetupUse({ /* [pegamento] */ initializeNexoApp: initializeNexoApp });
 pickersUse({ /* [pegamento] */ _sendAttachment: _sendAttachment, _sendBigFile: _sendBigFile });
 videoSendUse({ /* [pegamento] */ _handleIncomingMessage: _handleIncomingMessage, _sendAttachment: _sendAttachment, _sendFileFor: _sendFileFor, _updateMessageStatus: _updateMessageStatus, _updateMessageStorageStatus: _updateMessageStorageStatus });
@@ -205,13 +211,23 @@ initPress(); // NEXO Touch (build 2968, dueño 09-11): hundirse/onda/pulso + tic
 initPerf(); // ronda 2808: medición de rendimiento (pasiva: escucha eventos ya existentes)
 // v9.9.52: mensajes sin leer y notificaciones (todas las vías de llegada pasan por _handleIncomingMessage)
 loadHidePreview(); // opción por chat «Ocultar el texto en los avisos»
-loadMuted(); loadPins(); // 3219: chats silenciados (también para la parte nativa) y mensajes fijados
+loadApariencia(); loadMuted(); loadPins(); // 3219: chats silenciados (también para la parte nativa) y mensajes fijados
+loadBlocked(); // bloqueo (24-11): la lista también para la parte nativa (app cerrada o congelada)
+// Al DESBLOQUEAR, se le manda otra vez lo mío (foto, estados, datos) y el saludo de internet (vuelve a verme en línea)
+window.addEventListener('nexo:block', function(e) {
+  var d = (e && e.detail) || {};
+  if (!d.id || d.blocked) return;
+  try { sendAvatarTo(d.id, true); } catch (er) {}
+  try { sendStatusTo(d.id, true); } catch (er) {}
+  try { sendProfileTo(d.id); } catch (er) {}
+  try { var bi = window.bleInterface; if (bi && bi.net && typeof bi.net.probe === 'function') bi.net.probe(d.id, 'Desbloqueado'); } catch (er) {}
+});
 var _notifier = createNotifier({
   ble: function() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; },
   // El chat abierto según ble_interface (lo pone openChat y lo quita cualquier cierre del chat)
   currentChat: function() { var b = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface); return b ? b._activeChatDeviceId : _getCurrentContactId(); },
   hidePreview: function(cid) { return lockEnabled() || isPreviewHidden(cid); }, // + opción por chat «Ocultar el texto en los avisos»
-  muted: function(cid) { return isMuted(cid); }, // 3219: chat silenciado: sin aviso (las llamadas van aparte y sí suenan)
+  muted: function(cid) { var gs = window.bleInterface && window.bleInterface.groups; return isMuted(cid) || !!(gs && typeof gs.isInvited === 'function' && gs.isInvited(cid)); }, // + invitación a grupo sin aceptar (24-11) // 3219: chat silenciado: sin aviso (las llamadas van aparte y sí suenan)
   sendRead: function(nexoId, msgId) {
     // Build 2835 (pedido del dueño): si apagaste las confirmaciones de lectura en Ajustes, no se manda el acuse (el
     // otro no ve el ✓✓ azul). El "entregado" gris no se toca.
@@ -250,39 +266,48 @@ var _VIA_ICON = {
   internet: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3 2.5 3 14.5 0 17M12 3.5c-3 2.5-3 14.5 0 17"/></svg>',
   bluetooth: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M8 8l8 8-4 3V5l4 3-8 8"/></svg>'
 };
-var _VIA_WORD = { wifi: 'Wi-Fi', internet: 'Internet', bluetooth: 'Bluetooth' };
-// Subtítulo del chat 1:1: devuelve {html, text}. El html lleva el icono del transporte (estático); text es la versión
-// en palabras (para el tooltip accesible). mtu<60 por Bluetooth marca «señal débil» (ronda 2798).
+// 24-11 (dueño): Jump (de teléfono en teléfono) y el internet que presta un NEXO cercano por Bluetooth también con su símbolo (provisionales:
+// el dueño elige). Jump = tres puntos unidos por saltos; prestado = Bluetooth con un globo pequeño.
+_VIA_ICON.jump = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="17" r="2"/><circle cx="12" cy="17" r="2"/><circle cx="20" cy="17" r="2"/><path d="M5 13.5a4 4 0 0 1 6 0M13 13.5a4 4 0 0 1 6 0"/><path d="M17.5 11.5l1.5 2-2.4.4"/></svg>';
+_VIA_ICON.gw = '<svg viewBox="0 0 30 24" width="16" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M4 8l8 8-4 3V5l4 3-8 8"/><circle cx="22" cy="12" r="6.5" stroke-width="1.7"/><path d="M15.5 12h13M22 5.5c2 2 2 11 0 13M22 5.5c-2 2-2 11 0 13" stroke-width="1.4"/></svg>';
+var _VIA_WORD = { wifi: 'Wi-Fi', internet: 'Internet', bluetooth: 'Bluetooth', jump: 'Jump', gw: 'Internet · por puente' };
+// Subtítulo del chat 1:1: {ico, note, html, text}. ico = el símbolo del camino (va entre la foto y el nombre, 24-11); note = lo que queda
+// escrito debajo del nombre (señal débil, «Conectando…»); sin «En línea» (dueño 24-11: el símbolo ya lo dice). text = en palabras
+// (tooltip accesible). html = ico + note (gancho de pruebas). mtu<60 por Bluetooth marca «señal débil» (ronda 2798).
 function _subtitleFor(via, mtu) {
-  if (via === 'jump') return { html: _t('st_jump', 'Por Jump'), text: _t('st_jump', 'Por Jump') };
-  // P2 (dueño 01-11): contacto dormido al que acabamos de mandar el «toque» FCM al abrir el chat; mientras llega su
-  // presencia mostramos «Conectando…» (antes el subtítulo quedaba VACÍO y el dueño no veía el tipo de conexión).
-  if (via === 'waking') return { html: _t('st_connecting', 'Conectando…'), text: _t('st_connecting', 'Conectando…') };
-  // Parte 3 del puente (dueño 13-11): en línea por internet pero SIN internet propio → «por puente» (otro NEXO presta el suyo)
-  var gw = via === 'gw'; if (gw) via = 'internet';
-  if (!_VIA_ICON[via]) return { html: '', text: '' };
-  var weak = via === 'bluetooth' && mtu > 0 && mtu < 60;
-  var online = _t('st_online', 'En línea'), weakTxt = _t('st_weak_signal', 'señal débil'), gwTxt = _t('st_via_gw', 'por puente');
-  var word = online + ' · ' + _VIA_WORD[via] + (weak ? ' · ' + weakTxt : '') + (gw ? ' · ' + gwTxt : '');
-  var html = online + ' · <span class="via-ico" role="img" aria-label="' + _VIA_WORD[via] + '">' + _VIA_ICON[via] + '</span>' + (weak ? ' · <span class="via-weak">⚠ ' + weakTxt + '</span>' : '') +
-    (gw ? ' · <span class="via-gw">' + gwTxt + '</span>' : '');
-  return { html: html, text: word };
+  // P2 (dueño 01-11): contacto dormido al que acabamos de mandar el «toque» FCM al abrir el chat; mientras llega su presencia, «Conectando…»
+  if (via === 'waking') { var cn = _t('st_connecting', 'Conectando…'); return { ico: '', note: cn, html: cn, text: cn }; }
+  if (!_VIA_ICON[via]) return { ico: '', note: '', html: '', text: '' };
+  var weak = via === 'bluetooth' && mtu > 0 && mtu < 60, weakTxt = _t('st_weak_signal', 'señal débil');
+  var ico = '<span class="via-ico" role="img" aria-label="' + _VIA_WORD[via] + '">' + _VIA_ICON[via] + '</span>';
+  var note = weak ? '<span class="via-weak">⚠ ' + weakTxt + '</span>' : '';
+  return { ico: ico, note: note, html: ico + note, text: _VIA_WORD[via] + (weak ? ' · ' + weakTxt : '') };
 }
 try { if (typeof window !== 'undefined') window.__nexoViaSubtitle = _subtitleFor; } catch (e) {} // gancho de pruebas (puro)
 
-// v9.9.48: por dónde va el contacto del chat abierto (Wi-Fi de la misma red, Bluetooth, Jump)
+// v9.9.48: por dónde va el contacto del chat abierto (Wi-Fi de la misma red, Bluetooth, Jump, internet o internet prestado)
+function _viaSlot(html, text) {
+  var hd = document.getElementById('chat-header');
+  var el = document.getElementById('chat-via-ico');
+  if (!html) { if (el) el.remove(); if (hd) hd.classList.remove('has-via'); return; }
+  if (!el && hd) { el = document.createElement('div'); el.id = 'chat-via-ico'; hd.appendChild(el); }
+  if (!el) return;
+  el.innerHTML = html; el.title = text || ''; // SVG estático (sin datos del remitente)
+  hd.classList.add('has-via');
+}
 function _refreshLinkSubtitle() {
   var sub = document.getElementById('chat-contact-subtitle');
   var bi = window.bleInterface, cid = _getCurrentContactId();
-  if (sub && bi && bi.groups && bi.groups.isGroup(cid)) { sub.textContent = groupSubtitle(bi.groups.get(cid)); return; } // ronda 2758
-  if (!sub || !bi || typeof bi.linkOf !== 'function' || !cid) return;
+  if (sub && bi && bi.groups && bi.groups.isGroup(cid)) { _viaSlot(''); sub.textContent = groupSubtitle(bi.groups.get(cid)); return; } // ronda 2758
+  if (!sub || !bi || typeof bi.linkOf !== 'function' || !cid) { _viaSlot(''); return; }
   var via = bi.linkOf(cid);
   // P2: sin enlace todavía pero despertando al contacto → «Conectando…» (al formarse el enlace, el via real manda)
   if (via === 'none' && typeof bi.isWaking === 'function' && bi.isWaking(cid)) via = 'waking';
   if (via === 'internet' && bi.net && typeof bi.net.gwOnly === 'function' && bi.net.gwOnly()) via = 'gw'; // parte 3 del puente
   var mtu = (via === 'bluetooth' && typeof bi.getMtu === 'function' && bi._activeChatDeviceId) ? bi.getMtu(bi._activeChatDeviceId) : 0;
   var r = _subtitleFor(via, mtu);
-  sub.innerHTML = r.html;       // solo SVG estático + texto fijo (sin datos del remitente)
+  _viaSlot(r.ico, r.text);
+  sub.innerHTML = r.note;       // solo texto fijo (sin datos del remitente)
   sub.title = r.text;           // tooltip accesible con la palabra completa (Wi-Fi/Internet/Bluetooth)
 }
 // Ronda 2826 (pedido del dueño): un nombre de contacto largo se parte en DOS líneas en vez de cortarse. El nombre es un
@@ -292,12 +317,53 @@ function _fitContactName() {
   try {
     var el = document.getElementById('chat-contact-name');
     if (!el || el.tagName !== 'TEXTAREA') return;
+    var cs = window.getComputedStyle ? getComputedStyle(el) : null;
+    // 22-11 (cola 32): con letra al 160 % en 320 px, «Maximiliano» solo ya no cabía en 2 líneas y se cortaba. Si a 2 líneas no cabe,
+    // se baja el tamaño de letra del nombre de 1 en 1 px (mínimo 13 px, legible) hasta que quepa SIN partir ninguna palabra; solo si una
+    // palabra no cabe ni al mínimo se vuelve a partir por letras (CSS: overflow-wrap:anywhere). Antes de medir se deshace lo que puso
+    // la llamada anterior (si el tamaño en línea sigue siendo el nuestro), para que al volver la letra normal el nombre recupere su tamaño.
+    if (el.__fitSize != null) {
+      if (el.style.getPropertyValue('font-size') === el.__fitSize) {
+        if (el.__fitOrig) el.style.setProperty('font-size', el.__fitOrig[0], el.__fitOrig[1]); else el.style.removeProperty('font-size');
+      }
+      el.style.removeProperty('overflow-wrap'); el.__fitSize = null; el.__fitOrig = null;
+    }
     el.style.height = 'auto';
-    var max = 48; // ~2 líneas (el CSS pone el tope real con max-height)
+    // 21-11 (Redmi Note 11 Pro 5G con letra grande): el tope era 48 px fijos, pensado para letra normal (2 × 23 px); con la
+    // letra del sistema más grande cada línea mide 30–37 px y la segunda salía cortada a la mitad. El tope se mide ahora con
+    // la línea REAL del teléfono: 2 líneas completas + relleno.
+    var medir = function() {
+      var c = window.getComputedStyle ? getComputedStyle(el) : null;
+      var lh = c ? parseFloat(c.lineHeight) : 0;
+      if (!(lh > 0)) lh = (c ? parseFloat(c.fontSize) * 1.15 : 0) || 23;
+      var pad = c ? (parseFloat(c.paddingTop) || 0) + (parseFloat(c.paddingBottom) || 0) : 0;
+      return { lh: lh, pad: pad, max: Math.ceil(2 * lh + pad) };
+    };
+    var m = medir();
     var h = el.scrollHeight || 0;
-    el.style.height = (h ? Math.min(h, max) : 24) + 'px';
+    var cabe = function() { var q = medir(); return el.scrollHeight <= q.max + 1 && el.scrollWidth <= el.clientWidth + 1; };
+    var size = cs ? parseFloat(cs.fontSize) : 0;
+    if (h && size > 13 && el.value && el.clientWidth > 0) {
+      el.__fitOrig = [el.style.getPropertyValue('font-size'), el.style.getPropertyPriority('font-size')];
+      el.style.setProperty('overflow-wrap', 'normal', 'important');   // medir sin partir palabras
+      el.style.height = 'auto';
+      if (!cabe()) {
+        var s0 = size;
+        while (size > 13) {
+          size = Math.max(13, size - 1);
+          el.style.setProperty('font-size', size + 'px', 'important'); el.style.height = 'auto';
+          if (cabe()) break;
+        }
+        if (!cabe()) el.style.removeProperty('overflow-wrap');          // ni a 13 px cabe una palabra: se parte por letras
+        el.__fitSize = el.style.getPropertyValue('font-size');
+      } else { el.style.removeProperty('overflow-wrap'); el.__fitOrig = null; }
+      el.style.height = 'auto';
+      m = medir(); h = el.scrollHeight || 0;
+    }
+    el.style.height = (h ? Math.min(h, m.max) : Math.ceil(m.lh + m.pad)) + 'px';
   } catch (e) {}
 }
+window.addEventListener('nexo:ble:closeChat', function() { _viaSlot(''); }); // 24-11: el símbolo del camino se va con el chat
 ['nexo:ble:linkChange', 'nexo:ble:deviceDisconnected', 'nexo:ble:openChat'].forEach(function(ev) {
   window.addEventListener(ev, function() { setTimeout(function() { _refreshLinkSubtitle(); _fitContactName(); }, 50); });
 });
@@ -318,6 +384,8 @@ function _paintChatAvatar(d) {
     el.style.backgroundImage = '';
     el.textContent = _getInitials(name || id);
     if (!group && id) paintAvatar(el, id);
+    var gph = group && window.NEXO_groupPhoto ? window.NEXO_groupPhoto(id) : null; // 22-11 (COLA 4b, G6): foto del grupo
+    if (gph) { el.style.backgroundImage = 'url("' + gph + '")'; el.style.backgroundSize = 'cover'; el.textContent = ''; }
   } catch (e) {}
 }
 window.addEventListener('nexo:ble:openChat', function(e) { _paintChatAvatar(e && e.detail); });

@@ -97,6 +97,7 @@ export function _bindAttachmentHandlers() {
       e.preventDefault();
       e.stopPropagation();
       var type = item.getAttribute('data-type');
+      if (type === 'more') { var am = document.getElementById('attach-menu'); if (am) am.classList.toggle('expanded'); return; } // dueño 23-11
       if (type === 'camera') _handleCamera();
       else if (type === 'gallery') _handleGallery();
       else if (type === 'file') _handleFile();

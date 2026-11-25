@@ -50,7 +50,18 @@ wrangler deploy
 base64 -w0 /ruta/al/archivo.json | wrangler secret put SA_B64
 ```
 
+## 14A — Toque SELLADO (dueño 23-11): publicar la versión nueva (~5 min)
+Qué cambia: cada teléfono pide su «sello» y el servicio se lo manda **solo a él** por FCM; los contactos despiertan con el sello y
+no con el token. Un desconocido con un token no podrá gastarle batería a nadie (cuando se active el paso 3). Prueba: `node test_seal.mjs`.
+1. **Código nuevo:** Worker `nexo-wake` → **Edit code** → pegar TODO `push-sender/cloudflare/worker.js` (botón «Raw» en GitHub) → **Deploy**.
+   *(Por terminal: `cd push-sender/cloudflare && npx wrangler deploy`.)*
+2. **Secreto `WAKE_KEY`** (32 bytes al azar en base64): sacarlo con `openssl rand -base64 32` (Cloud Shell o cualquier terminal) y
+   ponerlo en **Settings → Variables and Secrets → Add → Secret**, nombre exactamente **`WAKE_KEY`**. *(Terminal: `openssl rand -base64 32 | npx wrangler secret put WAKE_KEY`.)*
+   No cambiarlo después: los sellos ya repartidos dejarían de servir (cada teléfono pediría otro, como mucho en 6 h).
+3. **Más adelante** (cuando todos tengan la APK con sello): secreto **`ONLY_SEALED`** = `1`. Desde ahí los toques sin sello se rechazan.
+   Hasta entonces se aceptan los dos (así nadie se queda sin despertar durante la transición).
+Orden: da igual publicar el servicio antes o después de la APK: la app solo usa el sello si el servicio ya se lo mandó.
+
 ## Seguridad / antiabuso
 - Igual que la versión Firebase: tope de 8 toques / 5 min por token (best-effort en memoria).
-- El token es la credencial; solo los contactos lo conocen (se comparte cifrado). Endurecer con una firma de
-  pareja queda pendiente (igual que en la versión Firebase), para cuando la Fase 2b esté probada.
+- 14A: con el sello, lo que conocen los contactos es el sello (no el token); con `ONLY_SEALED=1` solo vale el sello.

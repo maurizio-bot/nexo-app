@@ -24,6 +24,7 @@ global.window = { dispatchEvent: () => true, Capacitor: { Plugins: { NexoBLE: { 
   r.I1_cinco = ['es', 'it', 'en', 'pt', 'fr'].every((l) => m.LANGS.indexOf(l) >= 0) && m.langName('pt') === 'Português (Brasil)' && m.langName('fr') === 'Français';
   const T = {};
   for (const l of m.LANGS) { try { T[l] = (await importSrc('ui/i18n/' + l + '.js')).default; } catch (e) { T[l] = null; } }
+  for (const l of m.LANGS) { try { if (T[l]) T[l] = Object.assign({}, T[l], (await importSrc('ui/i18n/' + l + '_b.js')).default); } catch (e) {} } // 22-11: segunda parte
   store = {}; navLang = 'pt-BR'; m._resetForTest();
   const pt = m.getLang(), ptTxt = m.t('settings_title');
   store = {}; navLang = 'fr-CA'; m._resetForTest();

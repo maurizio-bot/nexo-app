@@ -12,11 +12,43 @@ import com.getcapacitor.PluginCall
 // de NexoBlePlugin (el mismo objeto y los mismos campos, que siguen en la clase); los @PluginMethod siguen declarados
 // en la clase (Capacitor los busca allí) y solo llaman a su «…Impl» de aquí.
 
-private fun NexoBlePlugin.lanOnWifi(): Boolean = try {
+// 3272 (COLA 3; «Sin Wi-Fi con X (este teléfono no tiene Wi-Fi)» siendo falso): la red Wi-Fi (o de cable) de este teléfono aunque NO sea
+// la red por defecto. Con un Wi-Fi sin internet Android deja los datos móviles como red por defecto y el Wi-Fi sigue conectado (y desde
+// la 3266 se lo pedimos antes): el Wi-Fi local con quien está en el mismo router sigue siendo un camino. No cuenta el grupo de Wi-Fi Direct.
+private fun NexoBlePlugin.lanWifiNet(): android.net.Network? = try {
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-    val caps = cm.getNetworkCapabilities(cm.activeNetwork)
-    caps != null && (caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET))
-} catch (e: Exception) { false }
+    fun wifi(n: android.net.Network?): Boolean {
+        val c = (if (n != null) cm.getNetworkCapabilities(n) else null) ?: return false
+        // Auditoría 23-11 (punto 6): una VPN no es «la misma Wi-Fi» (su red puede llevar TRANSPORT_WIFI debajo): fuera; con la VPN como
+        // red activa se busca la Wi-Fi de verdad entre todas (abajo)
+        return (c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) || c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)) &&
+            !c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_WIFI_P2P) &&
+            !c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) && c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+    }
+    val act = cm.activeNetwork
+    @Suppress("DEPRECATION")
+    if (wifi(act)) act else cm.allNetworks.firstOrNull { wifi(it) }
+} catch (e: Exception) { null }
+private fun NexoBlePlugin.lanOnWifi(): Boolean = lanWifiNet() != null
+
+// 3266 (COLA 27; S24 y Motorola 20-11 14:07: 2 min 17 s con un Wi-Fi sin salida hasta que Android pasó solo a datos): la app ve que
+// ningún relé abre estando en Wi-Fi y se lo dice a Android, que vuelve a comprobar esa red al momento y, si de verdad no da internet,
+// pasa a datos móviles. No fuerza nada: si la red sí tiene internet, Android la deja como está. Como mucho una vez por minuto.
+private var lastNoNetReportAt = 0L
+internal fun NexoBlePlugin.reportNoInternetImpl(call: PluginCall) {
+    try {
+        val cm = (appCtx ?: context).getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val net = cm.activeNetwork
+        val caps = if (net != null) cm.getNetworkCapabilities(net) else null
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (net == null || caps == null || !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)) { call.resolve(JSObject().put("reported", false).put("why", "sin Wi-Fi")); return }
+        if (lastNoNetReportAt != 0L && now - lastNoNetReportAt < 60000L) { call.resolve(JSObject().put("reported", false).put("why", "ya avisado")); return }
+        lastNoNetReportAt = now
+        cm.reportNetworkConnectivity(net, false)
+        remLog("INFO", "NET", "Wi-Fi sin internet (ningún relé abre): se pide a Android que lo compruebe (pasa a datos móviles si no hay)")
+        call.resolve(JSObject().put("reported", true))
+    } catch (e: Exception) { call.resolve(JSObject().put("reported", false).put("why", e.javaClass.simpleName)) }
+}
 
 internal fun NexoBlePlugin.lanStatusImpl(call: PluginCall) {
     // Calidad de cada conexión (latido nativo): ida y vuelta media y tiempo sin recibir
@@ -36,7 +68,11 @@ internal fun NexoBlePlugin.lanStartImpl(call: PluginCall) {
             override fun onDown(nx: String) { remLog("INFO", "LAN", "Sin Wi-Fi con $nx"); notifyListeners("onLanDown", JSObject().put("nx", nx), true) }
             override fun onMessage(nx: String, text: String) { backgroundNotify(text, null, nx); notifyListeners("onLanMessage", JSObject().put("nx", nx).put("content", text), true) }
             override fun onLog(level: String, message: String) { remLog(level, "LAN", message) }
-        }, clock = { android.os.SystemClock.elapsedRealtime() }).also { lanHub = it }
+        }, clock = { android.os.SystemClock.elapsedRealtime() },
+            // 3272: cada conexión sale por la red Wi-Fi aunque la red por defecto sean los datos (si no se puede atar, como siempre)
+            prepare = { sock -> lanWifiNet()?.bindSocket(sock) },
+            // 12A (23-11): contactos = los que tienen clave de pareja en el nativo; sin ninguna aún (recién abierta), no se sabe
+            knows = { n -> if (NexoBlePlugin.ackKeys.isEmpty()) null else NexoBlePlugin.ackKeys.containsKey(n.lowercase()) }).also { lanHub = it }
         val port = hub.start()
         // Escaneo activo: pregunta a toda la red (difusión) y, de vez en cuando o al entrar en una red, una a una
         val beacon = lanBeacon ?: LanBeacon(object : LanBeacon.Listener {
@@ -130,6 +166,13 @@ internal fun NexoBlePlugin.lanConnectImpl(call: PluginCall) {
 }
 
 // Fuera del hilo de los plugins (un archivo grande tarda en escribirse) y en orden
+// Auditoría 23-11 (T-D2): la app comprobó con el cifrado que la conexión es del contacto (lan.js, 'lw'): marcos grandes permitidos
+internal fun NexoBlePlugin.lanVerifiedImpl(call: PluginCall) {
+    val nx = call.getString("nx") ?: run { call.reject("nx requerido"); return }
+    lanHub?.markVerified(nx)
+    call.resolve()
+}
+
 internal fun NexoBlePlugin.lanSendImpl(call: PluginCall) {
     val nx = call.getString("nx") ?: run { call.reject("nx requerido"); return }
     val content = call.getString("content") ?: run { call.reject("content requerido"); return }

@@ -4,7 +4,7 @@
 // Uso: node wifidirect.js <dir_build> [--io-delay=25] [--b-no-wd]  (B sin Wi-Fi Direct: todo como antes)
 //      --broken=noperm (los dos sin permiso, como la 2711 en Android 13+) | --broken=fail (unirse al grupo
 //      falla): un vídeo mayor que el límite de Bluetooth debe llegar igualmente (previa + HD por Bluetooth)
-//      y un archivo de 6 MB debe quedar como fallido con aviso, no "enviando" para siempre.
+//      y un archivo de 6 MB debe quedar pendiente (o fallido) CON aviso («No se pudo unir…»), no "enviando" para siempre.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -46,11 +46,17 @@ async function openChat(p) { click(p.win, p.win.document.querySelector('#main-co
 async function sendText(p, t) { const i = p.win.document.getElementById('message-input'); i.value = t; i.dispatchEvent(new p.win.Event('input', { bubbles: true })); click(p.win, p.win.document.getElementById('send-btn')); }
 
 const toastText = (p) => ((p.win.document.getElementById('perm-error-toast') || {}).textContent || '');
+// 3267: avisos de Wi-Fi Direct (toast fijo en el body, wifi_direct.js _aviso): se recogen aparte
+const toastsFijos = [];
+function vigilaToasts(win) { new win.MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach((n) => { if (n.nodeType === 1 && /position:\s*fixed/.test((n.style && n.style.cssText) || '') && n.textContent) toastsFijos.push(n.textContent); }))).observe(win.document.body, { childList: true }); }
 async function pickFile(p, file, kind) {
   click(p.win, p.win.document.querySelector('.attach-menu-item[data-type="' + (kind || 'file') + '"]')); await sleep(300);
   const fin = Array.from(p.win.document.querySelectorAll('input[type=file]')).pop();
   Object.defineProperty(fin, 'files', { value: [file], configurable: true });
   fin.dispatchEvent(new p.win.Event('change'));
+  // 3267: la galería abre una pantalla de revisión (gallery_review.js) y no manda nada hasta pulsar «Enviar»; sin esto el vídeo
+  // de esta prueba no salía nunca y la prueba (modo roto) esperaba 3 + 10 min a un vídeo que nadie había mandado
+  if (kind === 'gallery') { const t0 = Date.now(); let b = null; while (!b && Date.now() - t0 < 5000) { await sleep(100); b = p.win.document.getElementById('nexo-grev-send'); } click(p.win, b); }
 }
 const bytes = (n, k) => { const b = Buffer.alloc(n); for (let i = 0; i < n; i++) b[i] = (i * k + 7) & 255; return b; };
 async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await fn()) return Math.round((Date.now() - t0) / 100) / 10; await sleep(250); } return null; }
@@ -61,6 +67,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', opts), nB = new NativePhone('B', 'BB:BB:BB:BB:BB:02', Object.assign({}, opts, { wifiDirect: !bNoWd }));
   radio.add(nA); radio.add(nB); nA.load(); nB.load();
   const [A, B] = await Promise.all([boot('A', nA), boot('B', nB)]);
+  vigilaToasts(A.win);
   const broken = (process.argv.find((x) => x.startsWith('--broken=')) || '').split('=')[1] || '';
   if (broken === 'noperm') { nA.opts.wdNoPerm = true; nB.opts.wdNoPerm = true; }
   if (broken === 'fail') { nA.opts.wdFail = true; }
@@ -83,11 +90,15 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     // Archivo de 6 MB (solo cabe por Wi-Fi Direct): debe quedar fallido con aviso, no "enviando" para siempre
     const f6 = bytes(6 * 1024 * 1024, 7);
     const tPrev = toastText(A);
+    toastsFijos.length = 0;
     await pickFile(A, new A.win.File([f6], 'enorme.bin', { type: 'application/octet-stream' }));
     let aviso = null;
-    await waitFor(() => { if (toastText(A) !== tPrev) aviso = toastText(A); return !!aviso; }, 60000);
+    // aviso = el de «no se pudo usar Wi-Fi Direct» (toast de wifi_direct.js) o el de siempre (perm-error-toast)
+    await waitFor(() => { if (toastText(A) !== tPrev) aviso = toastText(A); else if (toastsFijos.length) aviso = toastsFijos.join(' | '); return !!aviso; }, 60000);
     const id6 = await lastAttId();
-    await waitFor(() => statusById(id6) === 'failed', 30000);
+    // desde que el que no cabe por Bluetooth queda «pendiente» (⏳, se reenvía solo al volver Wi-Fi Direct / Wi-Fi) ya no pasa a «failed»:
+    // vale pendiente o fallido, nunca «enviando» para siempre
+    await waitFor(() => statusById(id6) === 'failed' || statusById(id6) === 'pending', 30000);
     r.enorme_estado_A = id6 ? statusById(id6) : 'no se envió';
     r.enorme_aviso = aviso ? aviso.substring(0, 110) : null;
     // Vídeo de 2,6 MB (más que el límite de Bluetooth sin Wi-Fi Direct). Se olvida el fallo anterior para
@@ -105,6 +116,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     r.ofertas_wd = air.filter((x) => x.indexOf('"type":"wq"') >= 0).length;
     r.permiso_pedido_A = nA.stats.wdPermAsked || 0;
     r.diag_A = logs.filter((l) => l.startsWith('[A]') && /WIFI-DIRECT|\[VIDEO\]/.test(l)).map((l) => l.replace(/^\[A\] \w+: /, '').substring(0, 90)).slice(0, 14);
+    r.resultado = (r.enorme_estado_A === 'pending' || r.enorme_estado_A === 'failed') && /Wi-Fi Direct/.test(r.enorme_aviso || '') && r.video_llega_s !== null && r.video_HD_llega_s !== null ? 'OK' : 'FALLO';
     console.log('WIFIDIRECT ' + JSON.stringify(r));
     fs.writeFileSync(path.join(__dirname, 'last_logs_wifidirect.txt'), logs.join('\n'));
     process.exit(0);
@@ -151,6 +163,16 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     r.con_fallo_por_bluetooth = chunksOf(await lastAttId()) > 10;
     nB.opts.wdFail = false;
   }
+  // 3258: las medidas del día de Wi-Fi Direct (dueño 20-11: «sí o sí me va a aparecer en el diagnóstico»): los dos lados
+  const mA = A.win.NEXO_speedLines ? A.win.NEXO_speedLines().join('\n') : '', mB = B.win.NEXO_speedLines ? B.win.NEXO_speedLines().join('\n') : '';
+  r.medidas_A = mA.split('\n').filter((l) => /Wi-Fi Direct/.test(l)).map((l) => l.substring(0, 230));
+  r.medidas_B = mB.split('\n').filter((l) => /Wi-Fi Direct/.test(l)).map((l) => l.substring(0, 230));
+  r.medidas_A_envia = /Wi-Fi Direct hoy: enviar \d+ \(salieron \d+/.test(mA) && /fallaron 1: no se pudo conectar al grupo/.test(mA);
+  r.medidas_A_tiempos = /unirse al grupo \(quien envía\) 2 s/.test(mA) && /velocidad pura de la transferencia/.test(mA);
+  r.medidas_B_recibe = /Wi-Fi Direct hoy: .*recibir \d+ \(salieron \d+/.test(mB) && /crear el grupo \(quien recibe\) 1,5 s/.test(mB);
+  r.medidas_wifi_normal = /seguía conectado \d+ · se cayó 0/.test(mA) && /seguía conectado \d+ · se cayó 0/.test(mB);
+  r.medidas_elegido = /elegido por tamaño ×/.test(mA);
+  r.medidas_conexion = /conexión lista en \(media\):.*Wi-Fi Direct 3,\d s/.test(mA);
   r.grupos_creados_B = nB.stats.wdGroups || 0;
   r.bytes_por_wifi_direct = nA.stats.wdBytes || 0;
   const airText = air.join('\n');

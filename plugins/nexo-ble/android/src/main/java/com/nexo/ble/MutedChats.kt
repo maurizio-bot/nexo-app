@@ -13,6 +13,10 @@ import org.json.JSONObject
  * empieza por «nexo_netbg_», así que no viaja al pasar la cuenta y se borra con ella, como la configuración de NetBg) para la escucha
  * de internet sin la app (NetBgHome), que la lee la primera vez que la necesita.
  * Sin Android: se prueba en JVM (MutedChatsTest).
+ *
+ * Bloqueo (dueño 24-11, como WhatsApp): los contactos BLOQUEADOS viajan en la misma llamada (setMutedChats: blocked = [NEXO ID]) y se
+ * guardan en el mismo archivo. Con la app cerrada o congelada, lo que llega de uno de ellos fuera de un grupo se ignora (BgInbox.classify):
+ * ni buzón, ni aviso, ni llamada, ni ✓✓. Lo de un grupo sigue (en los grupos se le sigue viendo) y el puente para otros no se toca.
  */
 object MutedChats {
     const val FILE = "nexo_netbg_mute.json"
@@ -20,14 +24,32 @@ object MutedChats {
     private val ID = Regex("^(nx|gr)[0-9a-z]{8}$")
 
     @Volatile private var map: Map<String, Long> = emptyMap()
+    @Volatile private var blockedSet: Set<String> = emptySet()
     /** ¿Ya se sabe la lista en este proceso? (la dio la app o se leyó de lo guardado) */
     @Volatile var loaded = false
         private set
 
     fun set(m: Map<String, Long>) { map = HashMap(m); loaded = true }
+    fun set(m: Map<String, Long>, b: Set<String>) { map = HashMap(m); blockedSet = HashSet(b); loaded = true }
     fun all(): Map<String, Long> = map
+    fun blocked(): Set<String> = blockedSet
     /** La cuenta se borró del teléfono (NetBgHome.forget): se olvida. */
-    fun clear() { map = emptyMap(); loaded = false }
+    fun clear() { map = emptyMap(); blockedSet = emptySet(); loaded = false }
+
+    /** ¿Contacto bloqueado? (NEXO ID) */
+    fun isBlocked(nx: String): Boolean = nx.isNotEmpty() && blockedSet.contains(nx.lowercase())
+    private val NX = Regex("^nx[0-9a-z]{8}$")
+    // [NEXO ID]: lo que no es un NEXO ID se salta; como mucho MAX
+    fun blockedFromApp(arr: JSONArray?): Set<String> {
+        val b = HashSet<String>()
+        if (arr == null) return b
+        for (i in 0 until arr.length()) {
+            if (b.size >= MAX) break
+            val id = arr.optString(i).lowercase()
+            if (NX.matches(id)) b.add(id)
+        }
+        return b
+    }
 
     /** ¿Ese silencio sigue en pie a esta hora? (0 = siempre) */
     fun alive(until: Long, now: Long): Boolean = until == 0L || until > now
@@ -65,15 +87,21 @@ object MutedChats {
         return m
     }
 
-    fun json(m: Map<String, Long>): String = JSONObject().put("v", 1)
-        .put("chats", JSONArray(m.entries.sortedBy { it.key }.map { JSONObject().put("id", it.key).put("until", it.value) })).toString()
+    fun json(m: Map<String, Long>, b: Set<String> = emptySet()): String = JSONObject().put("v", 1)
+        .put("chats", JSONArray(m.entries.sortedBy { it.key }.map { JSONObject().put("id", it.key).put("until", it.value) }))
+        .put("blocked", JSONArray(b.sorted())).toString()
 
     // null si no se entiende
     fun from(text: String?, now: Long): Map<String, Long>? = try {
         if (text == null || SafeJson.reject(text)) null else fromApp(JSONObject(text).optJSONArray("chats"), now)
     } catch (e: Exception) { null }
 
-    fun save(st: AtRestStore, w: NetBgSaved.Writer, m: Map<String, Long>): Boolean = w.write(st, FILE, json(m))
+    // Bloqueados de lo guardado (vacío si no hay o no se entiende)
+    fun blockedFrom(text: String?): Set<String> = try {
+        if (text == null || SafeJson.reject(text)) emptySet() else blockedFromApp(JSONObject(text).optJSONArray("blocked"))
+    } catch (e: Exception) { emptySet() }
+
+    fun save(st: AtRestStore, w: NetBgSaved.Writer, m: Map<String, Long>, b: Set<String> = blockedSet): Boolean = w.write(st, FILE, json(m, b))
 
     /**
      * Si este proceso aún no la sabe (la escucha de internet sin la app), la lee de lo guardado: sin archivo (o ilegible), ninguno
@@ -83,6 +111,6 @@ object MutedChats {
         if (loaded) return
         val text = try { read() } catch (e: Exception) { return }
         val m = if (text == null) emptyMap() else from(text, now) ?: emptyMap()
-        if (!loaded) set(m)
+        if (!loaded) set(m, blockedFrom(text))
     }
 }
