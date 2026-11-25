@@ -136,4 +136,21 @@ export default {
   link_warn_lookalike: "Cuidado: «{host}» usa letras de outro alfabeto (lê-se «{shown}») e pode imitar outro site. Abrir mesmo assim?",
   link_warn_redirect: "Cuidado: este link de {host} leva você a outro site: {to}. Abrir mesmo assim?",
   link_redirects: "⚠ Leva a outro site: {to}",
+  // Invitación a grupo (dueño 24-11)
+  grp_joined_msg: "✅ Entrou no grupo",
+  grp_reject_msg: "🚫 Recusou o convite",
+  grp_inv_sub: "{name} adicionou você ao grupo ({n} pessoas)",
+  grp_inv_reject: "Recusar",
+  grp_inv_toast: "👥 {name} adicionou você a «{group}» — aceite ou recuse em «Solicitações para você»",
+  // Historial para los nuevos del grupo (dueño 24-11)
+  grp_hist_btn: "Ver mensagens anteriores",
+  grp_hist_asking: "📜 Pedindo as mensagens anteriores…",
+  grp_hist_done: "📜 Agora você tem as mensagens anteriores do grupo",
+  grp_hist_none: "Ninguém do grupo pôde enviar as mensagens anteriores agora. Tente mais tarde.",
+  grp_hist_closed: "Este grupo não compartilha as mensagens anteriores com quem entra",
+  grp_hist_big: "Arquivo grande não incluído no histórico",
+  grp_hist_opt: "Os novos podem ver as mensagens anteriores (últimos 30 dias)",
+  grp_n_hx1: "Os novos não veem mais as mensagens anteriores",
+  grp_n_hx0: "Os novos podem ver as mensagens anteriores",
+  grp_add_note_hist: "Recebe um convite; ao entrar pode pedir as mensagens dos últimos 30 dias.",
 };

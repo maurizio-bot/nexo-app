@@ -11,6 +11,7 @@ import { personAvatar } from './person_avatar.js'; // 3140: el círculo de color
 import { isPreviewHidden, toggleHidePreview } from './chat_hide_preview.js';
 import { markMutedRow, muteMenuLabel, isMuted, openMuteSheet } from './chat_mute.js'; // 3219: silenciar un chat
 import { blockMenuLabel, openBlockSheet } from './bloqueo_ui.js'; // bloquear contacto (24-11)
+import { groupInviteRow } from './group_invite_row.js'; // invitación a grupo (24-11)
 import { contactSearchQuery, _csMatch, installContactSearch } from './contacts_search.js'; // 3196: lupa de Contactos
 import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isPinned, _normId, _rssiToBars, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
 
@@ -632,29 +633,8 @@ export const BLE_UI_METHODS = {
     });
   },
 
-  // Invitación a grupo (dueño 24-11): «👥 Nombre del grupo · X te agregó» con Aceptar / Rechazar (textos con textContent: vienen de otros)
-  _groupInviteRow(g) {
-    var self = this;
-    var row = document.createElement('div');
-    row.className = 'ble-group-invite';
-    row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--nx-radius);margin:2px 0;';
-    var info = document.createElement('div'); info.style.cssText = 'flex:1;min-width:0;';
-    var nm = document.createElement('div'); nm.className = 'ble-contact-name'; nm.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-    nm.textContent = '👥 ' + (g.name || t('grp_default_name', 'Grupo'));
-    var sub = document.createElement('div'); sub.style.cssText = 'font-size:12px;color:var(--nx-muted);margin-top:2px;white-space:normal;';
-    var who = (self.groups && typeof self.groups.memberName === 'function' && g.invBy) ? self.groups.memberName(g.invBy) : String(g.invBy || '').toUpperCase();
-    sub.textContent = t('grp_inv_sub', '{name} te agregó al grupo ({n} personas)').replace('{name}', who || '?').replace('{n}', String((g.members || []).length));
-    info.appendChild(nm); info.appendChild(sub);
-    var ok = document.createElement('button'); ok.className = 'grp-inv-accept'; ok.textContent = t('req_btn_accept', 'Aceptar');
-    ok.style.cssText = 'flex-shrink:0;padding:7px 12px;border-radius:14px;border:none;background:var(--nx-grad);box-shadow:0 3px 10px rgba(0,200,255,.35);color:#fff;font-weight:600;cursor:pointer;';
-    var no = document.createElement('button'); no.className = 'grp-inv-reject'; no.textContent = t('grp_inv_reject', 'Rechazar');
-    no.style.cssText = 'flex-shrink:0;padding:7px 10px;border-radius:14px;border:1px solid var(--nx-line);background:var(--nx-surface-2);color:#fff;cursor:pointer;';
-    ok.addEventListener('click', function() { ok.disabled = no.disabled = true; self.groups.acceptInvite(g.id); try { haptic('confirm'); } catch (e) {} self.renderRequests(); self.renderContactsList(); });
-    no.addEventListener('click', function() { ok.disabled = no.disabled = true; self.groups.rejectInvite(g.id); self.renderRequests(); self.renderContactsList(); });
-    var av = document.createElement('div'); av.className = 'ble-contact-avatar'; av.style.cssText = 'width:40px;height:40px;min-width:40px;display:flex;align-items:center;justify-content:center;font-size:18px;'; av.textContent = '👥';
-    row.appendChild(av); row.appendChild(info); row.appendChild(ok); row.appendChild(no);
-    return row;
-  },
+  // Invitación a grupo (dueño 24-11): la fila con Aceptar / Rechazar (group_invite_row.js)
+  _groupInviteRow(g) { return groupInviteRow(this, g); },
 
   _prependReqBanner(list) {
     var self = this;

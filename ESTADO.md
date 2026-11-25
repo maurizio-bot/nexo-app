@@ -34,6 +34,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **3332 (diag. S24 17:23, build 3150, Alex con 4 enlaces):** las conexiones de paso identificadas por el nativo con la app detrás perdían
   la marca «de paso» y no se cerraban; ahora marca aparte 5 min + cierre en el repaso + 2.ª vuelta al sembrar (`ble_relay_anon.js`;
   `anondup.js` caso 7, y anondup entra al CI). Resubida con 3331 (se canceló la 3151; la invitación y el historial van en la nueva).
+- **CI 3152 (b897e019):** 1.ª vuelta falló `binary.js` (en el CI los archivos salieron por el canal rápido L2CAP aunque la prueba pone
+  noL2Payload; aquí pasa 4/4: SIN EXPLICAR, mirar si se repite); 2.ª vuelta pasó esa y falló `tamano.js` (ble_relay 1003, ble_ui 1007,
+  i18n 1005). Arreglado: textos de invitación/historial a `*_b.js`, `group_invite_row.js`, `ble_relay_pass.js`. Se resube la tanda.
 - **3331 (24-11 18:30 México, SIN APK; va en la próxima):** fin del duplicado del puente (COLA 1): la app viva y el nativo ya no reenvían los
   dos el mismo paquete Jump guardado (`OutboxBle.appSent`, llamado desde `sendMessageImpl`; `JumpNativeTest` 3 casos nuevos). CI 3151
   (invitación + historial) en curso, termina ~19:00 México.

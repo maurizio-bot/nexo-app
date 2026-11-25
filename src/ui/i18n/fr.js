@@ -984,21 +984,4 @@ export default {
   block_call: "Débloque ce contact pour l'appeler",
   block_list: "Contacts bloqués",
   block_none: "Aucun. Tu peux bloquer quelqu'un depuis sa discussion ou son profil.",
-  // Invitación a grupo (dueño 24-11)
-  grp_joined_msg: "✅ A rejoint le groupe",
-  grp_reject_msg: "🚫 A refusé l'invitation",
-  grp_inv_sub: "{name} t'a ajouté au groupe ({n} personnes)",
-  grp_inv_reject: "Refuser",
-  grp_inv_toast: "👥 {name} t'a ajouté à «{group}» — accepte ou refuse dans «Demandes pour toi»",
-  // Historial para los nuevos del grupo (dueño 24-11)
-  grp_hist_btn: "Voir les messages précédents",
-  grp_hist_asking: "📜 Demande des messages précédents…",
-  grp_hist_done: "📜 Tu as maintenant les messages précédents du groupe",
-  grp_hist_none: "Personne du groupe n'a pu envoyer les messages précédents pour l'instant. Réessaie plus tard.",
-  grp_hist_closed: "Ce groupe ne partage pas les messages précédents avec les nouveaux",
-  grp_hist_big: "Gros fichier non inclus dans l'historique",
-  grp_hist_opt: "Les nouveaux peuvent voir les messages précédents (30 derniers jours)",
-  grp_n_hx1: "Les nouveaux ne voient plus les messages précédents",
-  grp_n_hx0: "Les nouveaux peuvent voir les messages précédents",
-  grp_add_note_hist: "Il reçoit une invitation ; une fois entré, il peut demander les messages des 30 derniers jours.",
 };

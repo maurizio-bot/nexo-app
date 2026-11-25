@@ -34,8 +34,9 @@
  * él de paso y al conectar (kx) se sabe quién es (identify). Quien busca camino hacia un contacto manda en el 'rq' sus
  * códigos de ahora ('dk', válidos 15 min): un puente que no lo conoce lo reconoce al escanear.
  */
-import { MAX_HOPS, AD_INTERVAL_MS, ROUTE_TTL_MS, QUEUE_FILE, QUEUE_MAX_AGE_MS, QUEUE_MAX, HOP_MAX_PAR, QUEUE_MAX_BYTES, SEEN_TTL_MS, SEEN_MAX, RQ_PER_LINK_MIN, QUEUE_PER_SOURCE, QUEUE_BYTES_PER_SOURCE, NEARBY_TTL_MS, NEARBY_FRESH_MS, DISCOVER_THROTTLE_MS, DISCOVER_WAIT_MS, SCAN_FRESH_MS, SCAN_MS, MAX_TRANSIENT, PASS_MIN_RSSI, PASS_FAIL_BASE_MS, PASS_FAIL_MAX_MS, PASS_RETRY_WINDOW_MS, MAX_TRANSIENT_ADD, BLE_LINKS_BUDGET, ANON_NO_ANSWER_MS, ANON_KNOWN_HOLD_MS, TRANSIENT_IDLE_MS, CONNECT_DEDUP_MS, LOW_BATTERY_PCT, LOW_BATTERY_PCT_SAVER, DEFAULT_HOP_BPS, _hopFailWaitMs } from './ble_relay_conf.js';
+import { MAX_HOPS, AD_INTERVAL_MS, ROUTE_TTL_MS, QUEUE_FILE, QUEUE_MAX_AGE_MS, QUEUE_MAX, HOP_MAX_PAR, QUEUE_MAX_BYTES, SEEN_TTL_MS, SEEN_MAX, RQ_PER_LINK_MIN, QUEUE_PER_SOURCE, QUEUE_BYTES_PER_SOURCE, NEARBY_TTL_MS, NEARBY_FRESH_MS, DISCOVER_THROTTLE_MS, DISCOVER_WAIT_MS, SCAN_FRESH_MS, SCAN_MS, MAX_TRANSIENT, MAX_TRANSIENT_ADD, BLE_LINKS_BUDGET, ANON_NO_ANSWER_MS, ANON_KNOWN_HOLD_MS, TRANSIENT_IDLE_MS, CONNECT_DEDUP_MS, LOW_BATTERY_PCT, LOW_BATTERY_PCT_SAVER, DEFAULT_HOP_BPS, _hopFailWaitMs } from './ble_relay_conf.js';
 import { anonIdentified, anonAlreadyKnown, noteProbe, otherReadyLink } from './ble_relay_anon.js';
+import { passOk, passTry } from './ble_relay_pass.js';
 export { _hopFailWaitMs, HOP_MAX_PAR };
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
@@ -584,29 +585,9 @@ export class BleRelay {
     if (t && !t.asked) t.asked = Date.now();
   }
 
-  // 3024: ¿se puede intentar una conexión «de paso» con este teléfono ahora? (señal suficiente y sin espera por fallos)
-  _passOk(deviceId, rssi) {
-    if (typeof rssi === 'number' && rssi > -100 && rssi <= PASS_MIN_RSSI) return false; // (−100 = sin medida)
-    var m = _mac(deviceId), f = this._passFail && this._passFail.get(m);
-    if (!f) return true;
-    if (this._isReady(deviceId)) { this._passFail.delete(m); return true; }
-    return !(f.until > Date.now());
-  }
-  // 3024: se va a intentar; si el intento anterior (hace < 2 min) no llegó a conectar, cuenta como fallo y crece la espera.
-  // Devuelve false si con eso queda en espera (no se intenta ahora).
-  _passTry(deviceId) {
-    this._passFail = this._passFail || new Map();
-    var m = _mac(deviceId), now = Date.now(), f = this._passFail.get(m) || { n: 0, until: 0, last: 0 };
-    if (f.last && now - f.last < PASS_RETRY_WINDOW_MS && !this._isReady(deviceId)) {
-      f.n++; f.until = now + Math.min(PASS_FAIL_MAX_MS, PASS_FAIL_BASE_MS * Math.pow(2, f.n - 1));
-      if (f.n === 1 || f.n % 5 === 0) console.log('[JUMP] Conexión de paso con ' + m.slice(-4) + ' sin éxito: vuelvo a probar en ' + Math.round((f.until - now) / 60000) + ' min');
-      this._passFail.set(m, f);
-      if (this._passFail.size > 200) this._passFail.delete(this._passFail.keys().next().value);
-      return false;
-    }
-    f.last = now; this._passFail.set(m, f);
-    return true;
-  }
+  // 3024: ¿se puede intentar una conexión «de paso» ahora? / se va a intentar (espera por fallos): ble_relay_pass.js
+  _passOk(deviceId, rssi) { return passOk(this, deviceId, rssi); }
+  _passTry(deviceId) { return passTry(this, deviceId); }
 
   // forJump (3024): la conexión es para buscar un puente Jump → se aplican el umbral de señal y la espera por fallos. «Agregar»
   // (ble_privacy) NO los usa: regla del dueño 11-11, todo NEXO cercano sale al instante.
