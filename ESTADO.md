@@ -21,6 +21,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-23 tarde, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **LOGO DEFINIDO (dueño 25-11), METIDO EN LA APP SIN APK ([skip ci]; va en la próxima tanda):** burbuja con cola + órbita + UN cubo (opción «B2»), dibujo
+  sencillo sobre la imagen de arranque (que es la definitiva). Res de `android/app/src/main/res/`: icono adaptativo (primer plano 432 + capa de una tinta
+  `ic_nexo_monochrome` para Android 13+), iconos de antes de Android 8, aviso `ic_stat_message` (silueta de burbuja + cubo; antes «burbuja + N»). Maestros SVG,
+  generador y ficha de Play en el PRIVADO `negocio/icono_final_v2/`. El dueño duda si dejar la órbita (por ahora sí). PRUEBA al salir la APK: ver el icono en
+  la pantalla de inicio (redondo y cuadrado), con tema de iconos (Android 13+), el aviso de un mensaje y que compile (no hay aapt aquí: lo valida el CI).
+  Siguiente: Bluetooth entero en el servicio nativo (con el 10 % de Fable que queda; el dueño lo pidió así 25-11).
 - **APK 3153 PUBLICADA (25-11 00:12 México; nightly-3153; lanzada a mano)** = invitación a grupo + historial para los nuevos + 3331 (puente sin
   duplicado) + 3332 (conexiones de paso repetidas, Alex) + arreglo de tamaño. `binary.js` falló una vez en el CI usando L2CAP con noL2Payload (sin explicar).
 - **SESIÓN DE PLÁTICA 24/25-11 (cerrada por contexto, 25-11 noche):** diagnósticos de la prueba sin internet y de las videollamadas
