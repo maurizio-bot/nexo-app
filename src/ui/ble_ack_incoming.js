@@ -582,7 +582,18 @@ export const ackIncoming = {
     if (!peerNexoId || !window.vaultLoadMessages) return;
     if (!self._syncFromLinkOwner(deviceId, peerNexoId)) return;
     self._srSigned(deviceId, peerNexoId, msg).then(function(ok) {
-      if (!ok) { console.warn('[BleAckSystem] Respuesta de sincronía de ' + _normId(peerNexoId) + ' sin firma válida o sin pedirla: no se reenvía nada'); return null; } // i18n-ok: registro
+      if (!ok) {
+        // 3339 (diag. S24 3154 25-11 10:57: tres «sr» de la S23 que llegaron con la app en segundo plano y entraron al volver, ya vencidos):
+        // se ignora (seguridad C-N10), pero la sincronía no se pierde: se vuelve a pedir una vez (como mucho una por minuto y contacto)
+        var rx = _normId(peerNexoId), t0 = Date.now();
+        self._ssRetryAt = self._ssRetryAt || new Map();
+        if (t0 - (self._ssRetryAt.get(rx) || 0) > 60000) {
+          self._ssRetryAt.set(rx, t0);
+          console.warn('[BleAckSystem] Respuesta de sincronía de ' + rx + ' sin firma válida o vencida: se ignora y se vuelve a pedir'); // i18n-ok: registro
+          self.sendSessionSync(deviceId, peerNexoId);
+        }
+        return null;
+      }
       return window.vaultLoadMessages(peerNexoId);
     }).then(function(msgs) {
       if (!msgs) return;
