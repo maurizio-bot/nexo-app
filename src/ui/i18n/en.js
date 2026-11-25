@@ -531,7 +531,7 @@ export default {
   // 2974: diagnóstico automático al desarrollador
   autodiag_title: "Automatic diagnostics",
   autodiag_toggle: "Send a technical diagnostic to the developer when the app detects a problem",
-  autodiag_sub: "Sent on its own (dead Bluetooth link, a send that never leaves, an error). End-to-end encrypted to the developer, never with your message content; at most one every 2 hours and 3 per day. Also, once a day a usage summary is sent: numbers only (how many messages and of what kind), no content or names.",
+  autodiag_sub: "Sent on its own (dead Bluetooth link, a send that never leaves, an error). End-to-end encrypted to the developer, never with your message content; at most one every 10 minutes and 30 per day. Also, once a day a usage summary is sent: numbers only (how many messages and of what kind), no content or names.",
   autodiag_sent_last: "Last sent:",
   autodiag_sent_none: "None sent yet",
   autodiag_inbox_title: "Diagnostics received",

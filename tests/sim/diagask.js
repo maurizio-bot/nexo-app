@@ -22,9 +22,9 @@ async function boot(flag) {
   radio.add(nA); nA.load();
   const vc = new VirtualConsole();
   ['log', 'warn', 'error'].forEach((l) => vc.on(l, (...a) => logs.push(`[A] ${l}: ` + a.map(String).join(' ').substring(0, 250))));
-  const dom = new JSDOM(fs.readFileSync(path.join(buildDir, 'dist', 'index.html'), 'utf8'), {
+  const dom = new JSDOM(fs.readFileSync(path.join(buildDir, 'dist', 'index.html'), 'utf8').replace(flag === 'store' ? '__NEXO_STORE__"' : '\u0000', '1"'), {
     url: 'https://a.nexo.test/index.html', runScripts: 'dangerously', resources: new DL(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
-    beforeParse(win) { win.CapacitorCustomPlatform = { name: 'android' }; installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: nA.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {}; if (flag) win.NEXO_DIAG_DEFAULT = flag; },
+    beforeParse(win) { win.CapacitorCustomPlatform = { name: 'android' }; installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: nA.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {}; if (flag && flag !== 'store') win.NEXO_DIAG_DEFAULT = flag; },
   });
   const win = dom.window;
   for (let i = 0; i < 100 && !(win.NEXO && win.NEXO.initialized); i++) await sleep(100);
@@ -50,8 +50,11 @@ async function boot(flag) {
   w.document.getElementById('nexo-diag-ask-no').click(); await sleep(300);
   r.no_deja_apagado = w.__nexoAutoDiag.enabled() === false && w.localStorage.getItem('nexo_autodiag') === '0' && !w.document.getElementById('nexo-diag-ask');
   r.no_no_repite = w.__nexoAutoDiag.ask() === false && w.__nexoAutoDiag.report('zombi', 'prueba3') === 'apagado';
+  // (4) 25-11: la versión de tienda (NEXO_STORE = '1') pregunta siempre, sin depender de NEXO_DIAG_DEFAULT
+  w = await boot('store');
+  r.tienda_pregunta = !!w.document.getElementById('nexo-diag-ask') && w.__nexoAutoDiag.enabled() === false;
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|Assembly timeout|net::ERR|fetch/.test(l)).slice(0, 5);
-  const keys = ['gancho', 'defecto_encendido', 'defecto_sin_pregunta', 'ask_pregunta', 'ask_apagado_mientras', 'aceptar_enciende', 'aceptar_no_repite', 'no_deja_apagado', 'no_no_repite'];
+  const keys = ['gancho', 'defecto_encendido', 'defecto_sin_pregunta', 'ask_pregunta', 'ask_apagado_mientras', 'aceptar_enciende', 'aceptar_no_repite', 'no_deja_apagado', 'no_no_repite', 'tienda_pregunta'];
   const ok = keys.every((k) => r[k] === true) && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('DIAGASK ' + JSON.stringify(r));

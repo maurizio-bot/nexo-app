@@ -531,7 +531,7 @@ export default {
   // 2974: diagnóstico automático al desarrollador
   autodiag_title: "Diagnóstico automático",
   autodiag_toggle: "Mandar un diagnóstico técnico al desarrollador cuando la app detecta un fallo",
-  autodiag_sub: "Se manda solo (enlace Bluetooth muerto, un envío que no sale, un error). Va cifrado de extremo a extremo al desarrollador, sin el contenido de tus mensajes; como mucho uno cada 2 horas y 3 por día. Además, una vez al día se manda un resumen de uso: solo números (cuántos mensajes y de qué tipo), sin contenido ni nombres.",
+  autodiag_sub: "Se manda solo (enlace Bluetooth muerto, un envío que no sale, un error). Va cifrado de extremo a extremo al desarrollador, sin el contenido de tus mensajes; como mucho uno cada 10 minutos y 30 por día. Además, una vez al día se manda un resumen de uso: solo números (cuántos mensajes y de qué tipo), sin contenido ni nombres.",
   autodiag_sent_last: "Últimos envíos:",
   autodiag_sent_none: "Todavía no se mandó ninguno",
   autodiag_inbox_title: "Diagnósticos recibidos",

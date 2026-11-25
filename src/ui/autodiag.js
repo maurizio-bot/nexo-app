@@ -21,6 +21,7 @@ import { _sendTextTo } from './send.js';
 import { t } from './i18n.js';
 import { diagChannelAvailable, diagChannelInit, diagChannelSend } from './diag_channel.js'; // 2992: canal directo a Claude
 import { updaterAvailable } from './updater.js';
+import { isStoreBuild } from './store_flag.js';
 
 export var DIAG_DEV_NX = 'nx1n36c283'; // el S24 del dueño (Fénix conserva el NEXO ID al cambiar de teléfono)
 // 3020 (dueño 12-11, «más diagnósticos = más arreglos»): antes 2 h / 3 por día / el mismo síntoma 24 h; se perdían casi
@@ -56,7 +57,7 @@ function _olderThanMine(build) { var me = autoDiagBuild(); return /^\d+$/.test(S
 // 2991 (B, dueño 10-11: «el sentido por defecto»): en estas builds de prueba va ENCENDIDO por defecto. Para probadores externos / Google Play
 // la compilación fija window.NEXO_DIAG_DEFAULT = 'ask': apagado hasta que la persona conteste una pregunta única («Aceptar» / «Ahora no»).
 // Lo que la persona eligió (nexo_autodiag 1/0) manda siempre. El resumen diario de uso (usage_stats.js) usa este mismo interruptor.
-function _defaultAsk() { return (typeof window !== 'undefined') && window.NEXO_DIAG_DEFAULT === 'ask'; }
+function _defaultAsk() { return (typeof window !== 'undefined') && (window.NEXO_DIAG_DEFAULT === 'ask' || isStoreBuild()); } // 25-11: la versión de tienda siempre pregunta
 export function autoDiagEnabled() { var v = _lsGet(KEY_ON); if (v === '1') return true; if (v === '0') return false; return !_defaultAsk(); }
 /** ¿Falta contestar la pregunta única? (solo con NEXO_DIAG_DEFAULT = 'ask' y sin elección previa) */
 export function autoDiagNeedsAsk() { return _defaultAsk() && _lsGet(KEY_ON) == null; }
