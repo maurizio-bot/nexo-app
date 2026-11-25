@@ -186,4 +186,34 @@ class JumpNativeTest {
         f.ready.add("c01"); o.heard("c01", ping(C))
         assertEquals((13..20).map { "msg_$it" }, f.sent.map { it.second.getString("msgId") }, "se quedan los más nuevos")
     }
+
+    // 3331: la app viva y el nativo ya no reenvían los dos el mismo paquete guardado
+    @Test fun loQueLaAppReenviaElNativoYaNoLoGuarda() {
+        val (f, o) = rig()
+        f.ready.add("s24")
+        o.heard("s24", chat("msg_1"))
+        assertEquals(1, o.heldCount())
+        assertFalse(o.appSent(chat("msg_1", hp = 1)), "la app lo escribe (el nativo no lo había sacado)")
+        assertEquals(0, o.heldCount(), "el nativo deja de guardarlo")
+        f.ready.add("c01"); o.heard("c01", ping(C))
+        assertTrue(f.sent.isEmpty(), "al aparecer el destino el nativo no lo repite")
+    }
+
+    @Test fun laAppNoRepiteLoQueElNativoYaSacoPeroSusReintentosSiguenDespues() {
+        val (f, o) = rig()
+        f.ready.addAll(listOf("s24", "c01"))
+        o.heard("c01", ping(C))
+        o.heard("s24", chat("msg_1"))
+        assertEquals(1, f.sent.size)
+        assertTrue(o.appSent(chat("msg_1", hp = 1)), "ya salió por el nativo: la app no lo escribe otra vez")
+        f.clock += 61_000L
+        assertFalse(o.appSent(chat("msg_1", hp = 1)), "pasado 1 min el reintento de la app sí sale")
+    }
+
+    @Test fun loPropioDeLaAppNoSeToca() {
+        val (f, o) = rig()
+        f.ready.addAll(listOf("s24", "c01"))
+        o.heard("c01", ping(C)); o.heard("s24", chat("msg_1"))
+        assertFalse(o.appSent(chat("msg_1")), "sin 'hp' es un mensaje propio: sale siempre")
+    }
 }

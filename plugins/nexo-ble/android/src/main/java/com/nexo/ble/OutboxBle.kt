@@ -45,6 +45,7 @@ class OutboxBle(
         const val RELAY_MAX_HOPS = 8            // MAX_HOPS de la app
         const val RELAY_HOLD_MS = 10 * 60_000L  // sin enlace con el destino: se guarda 10 min (luego decide el que lo mandó, que lo sigue teniendo)
         const val RELAY_HOLD_MAX = 32
+        const val APP_SKIP_MS = 60_000L         // 3331: la app no repite lo que el nativo reenvió hace < 1 min (sus reintentos siguen después)
         const val RELAY_AGAIN_MS = 30_000L      // el que lo mandó lo repite (no tiene custodia): reenviarlo otra vez solo pasados 30 s
         private val RELAY_TYPES = setOf("chat", "sx", "ack", "read_receipt")
         private val RELAY_ID = Regex("^[A-Za-z0-9_.:-]{4,96}$")
@@ -124,6 +125,7 @@ class OutboxBle(
     }
     private val held = LinkedHashMap<String, Relay>()   // clave → paquete esperando el enlace de su destino
     private val relayed = LinkedHashMap<String, Long>() // clave → cuándo se reenvió (para no repetirlo en cada reintento del que lo mandó)
+    private val nativeSent = LinkedHashMap<String, Long>() // 3331: clave → cuándo lo reenvió el NATIVO (no la app)
     /** Cuántos paquetes de otros reenvió el nativo (para el registro y las pruebas). */
     @Volatile var relayedCount = 0
         private set
@@ -363,9 +365,29 @@ class OutboxBle(
         held.remove(r.key)
         relayed.remove(r.key); relayed[r.key] = t
         while (relayed.size > 256) relayed.remove(relayed.keys.first())
+        nativeSent.remove(r.key); nativeSent[r.key] = t
+        while (nativeSent.size > 256) nativeSent.remove(nativeSent.keys.first())
         relayedCount++
         link.log("Puente sin la app: ${r.key.substringBeforeLast(':')} para ${r.to} sale por $mac (salto ${r.hp})")
         return true
+    }
+
+    /**
+     * 3331 (lo que quedaba de COLA 1): la app viva y el nativo veían los dos el paquete Jump guardado y lo reenviaban los dos (duplicado:
+     * radio gastada, y en una multitud se multiplica). La app pasa por aquí cada paquete que escribe por Bluetooth. Si es uno que ELLA
+     * reenvía para otro ('hp' ≥ 1) y el nativo ya lo sacó hace < 1 min, no se escribe (true = ya va); si no, el nativo lo da por salido y
+     * deja de guardarlo (no lo repite al aparecer el destino). Lo propio de la app (sin 'hp') no se toca.
+     */
+    @Synchronized fun appSent(json: String): Boolean {
+        val r = relayOf(json, me()) ?: return false
+        if (r.hp < 2) return false
+        val t = now()
+        val n = nativeSent[r.key]
+        if (n != null && t - n < APP_SKIP_MS) { link.log("Puente: ${r.key.substringBeforeLast(':')} para ${r.to} ya lo reenvió el nativo: la app no lo repite"); return true }
+        if (held.remove(r.key) != null) link.log("Puente: ${r.key.substringBeforeLast(':')} para ${r.to} lo reenvió la app: el nativo ya no lo guarda")
+        relayed.remove(r.key); relayed[r.key] = t
+        while (relayed.size > 256) relayed.remove(relayed.keys.first())
+        return false
     }
 
     private fun flushHeld(mac: String, nx: String) {

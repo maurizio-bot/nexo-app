@@ -89,6 +89,10 @@ internal fun NexoBlePlugin.sendMessageImpl(call: PluginCall) {
         }
 
         if (justClosedByUs(macNorm)) { remLog("INFO", "SEND", "sendMessage a $macNorm: enlace recién cerrado, no se escribe"); call.reject("Sin enlace con $macNorm (recién cerrado)", "NOT_CONNECTED"); return@post }
+        // 3331: un paquete Jump que la app reenvía y el nativo ya sacó: no se repite (y si no, el nativo deja de guardarlo)
+        if (message.length < 6000 && message.contains("\"hp\"") && outBleRef?.appSent(message) == true) {
+            call.resolve(JSObject().put("sent", true).put("mode", "native-relay").put("deviceId", rawDeviceId).put("mtu", negotiatedMtu[macNorm] ?: 23)); return@post
+        }
         val result = sendChunkedOrSingle(macNorm, rawDeviceId, message)
         // MTU negociado: el JS ajusta el tamaño de los trozos de archivos (ble_ack.js)
         val mtu = negotiatedMtu[macNorm] ?: 23

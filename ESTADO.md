@@ -31,6 +31,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   internet en ninguno, con el Vivo en medio con la app cerrada (y Cari lejos del S24): un texto, un texto largo y una foto deben llegar
   con ✓✓; lo mismo con el Vivo con la pantalla apagada un rato largo. Queda: JS vivo y nativo pueden reenviar los dos un paquete corto
   guardado (duplicado inofensivo).
+- **3331 (24-11 18:30 México, SIN APK; va en la próxima):** fin del duplicado del puente (COLA 1): la app viva y el nativo ya no reenvían los
+  dos el mismo paquete Jump guardado (`OutboxBle.appSent`, llamado desde `sendMessageImpl`; `JumpNativeTest` 3 casos nuevos). CI 3151
+  (invitación + historial) en curso, termina ~19:00 México.
 - **24-11 tarde (dueño), HECHO SIN APK (commit [skip ci]):** (a) cabecera del chat: el símbolo del camino va ENTRE la foto y el nombre
   (`main.js` _viaSlot, `#chat-via-ico`) y sin «En línea»; debajo solo «señal débil»/«Conectando…». Jump y Bluetooth-internet (gw) con
   símbolo PROVISIONAL (tres puntos con saltos / ᛒ+globo; captura dada al dueño): FALTA que elija símbolo y NOMBRE de la conexión

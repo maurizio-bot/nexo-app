@@ -18,7 +18,7 @@ Regla: una sesión = un tema; una APK por tanda; antes de subir `tamano.js`, `i1
    conteste 'rq' (¿quién llega a X?) si X tiene enlace con él → **HECHO 3315b** (solo a contactos: el 'rp' lleva mi NEXO ID, regla 12A;
    solo último salto, no sigue preguntando). **HECHO 3316 (23-11 noche):** los flujos (textos largos/archivos en trozos con 'dt')
    pasan por el nativo del puente dormido como TUBERÍA hacia el enlace del destino y sus 'ba'/'n' vuelven (por Jump siempre van en trozos
-   de texto por GATT: sin binario/L2CAP/WD); lo reenviado no se le pasa a la app; `JumpPipeTest` (10). Revisión del nativo hecha (3315c). Pruebas del dueño al salir: ver ESTADO.
+   de texto por GATT: sin binario/L2CAP/WD); lo reenviado no se le pasa a la app; `JumpPipeTest` (10). Revisión del nativo hecha (3315c). Pruebas del dueño al salir: ver ESTADO. **HECHO 3331:** sin el duplicado app viva + nativo (`OutboxBle.appSent`).
 2. [m] **13 MTU 23** (Vivo Y03, Katy): 3312 — con el enlace a MTU 23 el canal rápido L2CAP entra desde ~6 KB (antes ~45 KB); `l2mediano.js` caso `mtu23`.
 3. [m] **Wi-Fi Direct en teléfonos reales** (🔴 6): pruebas del dueño + «grupo siempre montado» si elige B (A/B pendiente de él).
    **HECHO 3317:** preparar un archivo grande lee el pedazo siguiente mientras el nativo cifra el anterior (`bigprep.js`); falta medirlo
