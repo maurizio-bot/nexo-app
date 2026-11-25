@@ -1296,6 +1296,22 @@
    "sintoma": "manual: lado receptor de la prueba sin internet (Vivo, 3150)",
    "categoria": "Prueba sin red (informativo) + patrón MTU 23 al arrancar + sincronía sin firma",
    "causa": "Recibió completos los 6 archivos de 153 MB por Wi-Fi Direct (21:49:57 a 21:51:46, a la par que el emisor); el APK de 23,5 MB nunca llegó a completarse (confirma el reinicio por cierre del grupo). «Wi-Fi apagado ×5» eran del propio Vivo (Wi-Fi apagado por el dueño en esos momentos). Al arrancar (21:41:58) 2 enlaces con el S24 a MTU 23 (4.º caso del patrón «enlace tras reabrir»). «Respuesta de sincronía de nx1e29ab2f sin firma válida o sin pedirla» también aquí (21:41:55): ya son 2 teléfonos y siempre justo tras arrancar → probable carrera al arrancar (respuesta llega antes de registrar la petición)"
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "22:09",
+   "nx": "nx1e50c95d",
+   "sintoma": "zombi con nx126df3f4 (Katy, Honor) + videollamada con el S24 (3150)",
+   "categoria": "Bluetooth: enlace «zombi» + llamada",
+   "causa": "3 mensajes a Katy esperaron 36 min (21:31 a 22:07): enlace Bluetooth vivo pero sin ACK, MTU 23 intermitente (8 de 23 enlaces), escrituras atascadas ~6 s y cierre; Katy sin internet. El toque despertador dio «alcanzable… fin del toque» solo por tener enlace Bluetooth aunque no confirmaba. Salió a las 22:07:44 (191 ms) al abrir Katy la app; a las 22:09 otra vez status=147 ×3. Llamada 2 (824 s) sana: voz 6405/6420, P2P directo en 0,7 s, batería -5 puntos/13,7 min. Primeros 5-10 s sin micrófono (audio suspended) en las dos llamadas de este teléfono. Llamada 1 cortada a los 187 s porque este teléfono se actualizó a la 3150 en plena llamada (21:55:42 descarga, 21:56:21 reinicio)"
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "22:10",
+   "nx": "nx1n36c283",
+   "sintoma": "pendiente_viejo: adjunto de 23,5 MB para nx09acdb61 (32 min) + llamada (3150)",
+   "categoria": "Archivo grande sin terminar + llamada",
+   "causa": "Por Wi-Fi local se reinició 6 veces (cierre del grupo de Wi-Fi Direct de otros envíos, ya anotado). Luego por internet llegó al trozo 589 de 601 y el vivo no confirmó en 15+ min (sondeo de 1 trozo cada 60 s sin respuesta: app del vivo dormida). Wi-Fi apagado ×5 era del vivo. «Mensaje sin cifrar atribuido a nx1e29ab2f: descartado» (21:44:53) a revisar. Sincronía sin firma otra vez a las 21:52:42, 8 s tras «sin red → Wi-Fi». Videollamadas: errores de decodificación de vídeo ~1 por 1-2 min, se rehacen solos. Salir de la miniatura de Android dispara un reinicio completo de revisiones en JS (limpieza, vaciar colas, re-búsqueda BT, toque despertador) aunque el nativo dice que la app nunca estuvo en segundo plano. Tor: choques nativos 24-11 06:01 y 08:13 (S24) y 06:06 (S23), mismo mutex destruido ya anotado"
   }
  ]
 }

@@ -1790,3 +1790,14 @@ El puntero de un vídeo a un contacto ausente lleva la miniatura (~24 KB) y sale
 - **Cierre nativo por Tor (4 en 2 días, S24):** SIGABRT «mutex destruido» en el hilo `tor` (tor_cond_wait). Revisar el orden de parar/arrancar Tor.
 - **Wi-Fi Direct necesita el Wi-Fi encendido en el otro teléfono** (5 de 8 fallos): avisar al usuario o decidir antes por Bluetooth; hoy cae a Bluetooth solo (bien).
 - **«Respuesta de sincronía … sin firma válida o sin pedirla» justo tras arrancar (2 teléfonos, 24-11):** sospecha de carrera al arrancar (la respuesta llega antes de registrar la petición); si es así, la resincronía tras reiniciar se pierde. Reproducir.
+
+- **Videollamada 24-11 22:10 (diag S23 y S24, build 3150) — para la próxima tanda:**
+  1. **Actualizar en plena llamada la corta** (el S23 bajó e instaló la 3150 a los 3 min). No bajar ni abrir el instalador mientras haya llamada, o avisar antes.
+  2. **Primeros 5-10 s sin micrófono** en el teléfono de Cari en las dos llamadas («audio suspended», «Audio en pausa: se reanuda»). Reanudar el audio al contestar/llamar.
+  3. **Error de decodificación de vídeo** ~1 por 1-2 min (se rehace solo con imagen completa). Medir si baja con otra configuración.
+  4. **Salir de la miniatura (PiP) de Android** dispara en JS el reinicio completo de «volví a primer plano» (limpieza, vaciar colas, re-búsqueda BT, toque despertador) durante la llamada, aunque el nativo dice que nunca estuvo en segundo plano: tratarlo como no-op.
+  5. **Toque despertador termina por «alcanzable»** solo porque hay enlace Bluetooth, aunque el otro no confirme (Katy: 3 mensajes 36 min). Terminar el toque solo con ACK real; si hay enlace pero sin ACK, tratarlo como zombi y probar internet/FCM.
+  6. **Adjunto grande por internet atorado en 589/601** con el otro dormido: sondeo de 1 trozo cada 60 s por más de 15 min sin fin. Espaciar el sondeo y avisar al usuario («su teléfono no contesta»).
+  7. **Mensaje sin cifrar atribuido a la tablet (nx1e29ab2f) descartado** 21:44:53: revisar qué mensaje era.
+  8. Patrón «enlace con MTU 23 / sin ACK» ya con Katy (5.º caso) → PRIORIDAD 1 (Bluetooth nativo). Tor (mutex destruido): 3 choques más.
+  Sana: llamada de 824 s, voz 99,8 %, P2P directo en 0,7 s, batería -22 %/h en el S23 (ahorro de batería puesto).
