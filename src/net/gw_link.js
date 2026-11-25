@@ -317,7 +317,13 @@ export class GwLink {
     if (now - this._realOffSince < (net._noNet ? 1500 : GW_AFTER_MS)) return;
     var nb = this._neighbors();
     // Puentes que ya no están cerca: se sueltan (lo mío sigue en el buzón; otro lo recoge)
-    this.bridges.forEach(function(b) { if (nb.get(b.nx) !== b.dev && !nb.has(b.nx)) self._drop(b, 'ya no está cerca'); else if (nb.has(b.nx)) b.dev = nb.get(b.nx); });
+    // 3343 (diag. S24 3155 25-11 17:20 y 17:31): al volver a la app la limpieza de enlaces deja al puente un momento «sin enlace» (se recupera
+    // 20 ms después) y se soltaba el internet prestado cada vez (otra vez preguntar y abrir sesión). Se suelta solo si sigue sin estar cerca 8 s
+    this.bridges.forEach(function(b) {
+      if (nb.has(b.nx)) { b.dev = nb.get(b.nx); b.goneAt = 0; return; }
+      if (!b.goneAt) { b.goneAt = now; return; }
+      if (now - b.goneAt >= 8000) self._drop(b, 'ya no está cerca');
+    });
     // Puentes caídos: se reabre la sesión (o se suelta si ya no ofrece)
     this.bridges.forEach(function(b) {
       if ((b.fails || 0) >= 2) { self.asked.set(b.nx, now + GW_NO_MS); self.offers.delete(b.nx); self._drop(b, 'no abre la sesión'); return; }

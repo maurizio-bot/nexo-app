@@ -1424,6 +1424,14 @@
    "sintoma": "resumen_diario (24-11), build 3154",
    "categoria": "Resumen diario",
    "causa": "2/2 con ✓✓, sin síntomas. Sin fallo"
+  },
+  {
+   "dia": "2026-11-25",
+   "hora": "17:32",
+   "nx": "nx1n36c283",
+   "sintoma": "prueba del dueño 3155: internet prestado sin Wi-Fi ni datos (captura: los mensajes van y vienen con ✓✓)",
+   "categoria": "Internet prestado",
+   "causa": "3342 funciona: puente listo en 1,4 s (17:20:33, con «pruebo otro relé por el mismo puente») y 3 s (17:31:41). Hallado: (1) en cada vuelta a la app se soltaba el puente («ya no está cerca») porque la limpieza de enlaces lo deja un momento sin enlace → 3343 gracia de 8 s; (2) dos textos ✗ 11 s por «Rechazado por los relés: banned» porque el código del error se pierde en los reintentos → 3343 se reconoce por el texto. Zhelowsky (3154) con el Bluetooth que entra y sale cada 30-40 s y Marcos (3148) sin confirmar Fénix: del otro lado"
   }
  ]
 }

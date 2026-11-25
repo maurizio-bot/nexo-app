@@ -711,7 +711,7 @@ export function _failStatus(err) {
   // queda pendiente y sale solo al volver (antes «fallido» y entregado 1 s después)
   // 3342 (diag. S24 25-11 14:14, un texto a Roberto ✗ en 9 s): los relés que lo rechazan por límite («banned: rate-limit») tampoco: no salió, queda
   // pendiente y lo retoma el reenvío (con su espera, 3328) por otro relé, otro puente u otro camino
-  return (err && (err.code === 'NO_KEY' || err.code === 'PEER_ABSENT' || err.code === 'LAN_DOWN' || err.code === 'NET_DOWN' || err.code === 'NET_REJECTED')) ? 'pending' : 'failed';
+  return (err && (err.code === 'NO_KEY' || err.code === 'PEER_ABSENT' || err.code === 'LAN_DOWN' || err.code === 'NET_DOWN' || err.code === 'NET_REJECTED' || /^Rechazado por los relés/.test(String(err.message || '')))) ? 'pending' : 'failed'; // 3343: el código se pierde al pasar por los reintentos (diag. 17:19, «failed» 11 s)
 }
 
 export function _vaultUpdateMessageStatus(nexoId, msgId, status) {
