@@ -1336,6 +1336,38 @@
    "sintoma": "enlace_abre_cierra con nx126df3f4 (Katy, Honor) 6 desconexiones en 10 min, durante videollamada con el S24",
    "categoria": "Bluetooth: patrón Honor (MTU 23 / atascos) + llamada",
    "causa": "El enlace con Katy se abre y se atasca cada 10-20 s (MTU 23 otra vez a las 23:03:57); cada mensaje que suelta se re-rutea por internet (no se pierde nada). Llamada: 3.ª vez que arranca sin sonido ~5-10 s en el S23 (audio suspended, 0 salidas). Entre 23:03:11 y 23:03:20 se perdieron ~97 imágenes (~6 s de vídeo congelado) y unos 3 s de voz al recibir, justo cuando empezó el vaivén del Bluetooth con Katy (coincidencia, no probado). 23:04:26: otra app tomó el foco de audio. «Sincronía sin firma» ×3 justo al arrancar (23:01:42): 3.er caso al arrancar"
+  },
+  {
+   "dia": "2026-11-25",
+   "hora": "09:05",
+   "nx": "nx1a93dbfe",
+   "sintoma": "resumen_diario (24-11), build 3153",
+   "categoria": "Resumen diario",
+   "causa": "1 texto por internet con ✓✓ en 0,6 s; cierre_fallo ×1 sin detalle en el resumen (mirar si llega su diagnóstico de cierre)"
+  },
+  {
+   "dia": "2026-11-25",
+   "hora": "09:05",
+   "nx": "nx0g6ef54e",
+   "sintoma": "resumen_diario (24-11), build 3153",
+   "categoria": "Resumen diario",
+   "causa": "11/12 con ✓✓; zombi ×1; Jump: ACK timeout ×15; MTU 23 en 5 de 40 enlaces; batería 2.º plano 6,2 %/h. Sin fallo nuevo de la app"
+  },
+  {
+   "dia": "2026-11-25",
+   "hora": "05:37",
+   "nx": "nx1e50c95d",
+   "sintoma": "resumen_diario (24-11), build 3150 (vieja)",
+   "categoria": "Resumen diario",
+   "causa": "versión vieja: zombi ×6, 3 sin ✓✓ al salir sin camino; MTU 23 con nx126df3f4 ×10"
+  },
+  {
+   "dia": "2026-11-25",
+   "hora": "05:37",
+   "nx": "nx1n36c283",
+   "sintoma": "resumen_diario (24-11), build 3150 (vieja)",
+   "categoria": "Resumen diario",
+   "causa": "versión vieja: zombi ×17, cierre_fallo ×2; Wi-Fi Direct 9/17 (Wi-Fi apagado ×5: ya tratado en 3b/3337); Jump ACK timeout ×53"
   }
  ]
 }
