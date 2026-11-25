@@ -1384,6 +1384,22 @@
    "sintoma": "zombi (nx01992876, Marcos), build 3154",
    "categoria": "Enlace recuperado al volver la app sin respuesta",
    "causa": "Comprobación 3330 al volver a la app (25 min en segundo plano): el enlace heredado no contestó al primer ping y se rehizo (remedio funcionando; el síntoma «zombi» es su aviso). Mismo atasco del texto a Zhelowsky (reanudado al volver). Cierres nativos de Tor del 23/24-11 son de builds anteriores"
+  },
+  {
+   "dia": "2026-11-25",
+   "hora": "13:53",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx01992876, Marcos), build 3154",
+   "categoria": "Falso zombi al volver: ping vencido de antes de congelarse",
+   "causa": "El enlace con Marcos estaba sano (pongs a 50–70 ms a las 12:52-12:53). Tras 1 h en segundo plano, al volver (13:53:38) el ping mandado antes de congelarse la app venció y se tomó por «sin respuesta al primer ping» del enlace recuperado (3330): a los 0,6 s se rehizo y un archivo de 358 trozos volvió a empezar. Arreglado 3340 (ping que tardó > 30 s no cuenta; pingcongelado.js, contraprueba falla). Probablemente también el de las 10:57"
+  },
+  {
+   "dia": "2026-11-25",
+   "hora": "13:58",
+   "nx": "nx0x4029e6",
+   "sintoma": "resumen_diario (24-11), build 3154",
+   "categoria": "Resumen diario",
+   "causa": "0 enviados / 12 recibidos; zombi ×1; MTU 23 en 17 de 71 enlaces (24 %, ya en vigilancia); 2.º plano 3,3 %/h. Sin fallo nuevo"
   }
  ]
 }

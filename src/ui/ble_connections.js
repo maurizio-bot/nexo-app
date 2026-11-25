@@ -96,6 +96,7 @@ const _BLE_CONNECTION_METHODS_BASE = {
         // el ping caduca a los 8 s; apilarlos hacía que la desconexión saliera 2-3 veces seguidas). Uno a la vez.
         if (self._pingInFlight && self._pingInFlight.has(deviceId)) return;
         (self._pingInFlight || (self._pingInFlight = new Set())).add(deviceId);
+        var pingSentAt = Date.now();
         self._pingDevice(deviceId).then(function(result) {
           self._pingInFlight.delete(deviceId);
           self._pingFailCount.set(deviceId, 0);
@@ -110,9 +111,14 @@ const _BLE_CONNECTION_METHODS_BASE = {
           self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.HEALTHY, since: Date.now(), rtt: result.rtt });
         }).catch(function(err) {
           self._pingInFlight.delete(deviceId);
+          // 3340 (diag. S24 3154 25-11 13:53, Marcos): un ping mandado ANTES de que el teléfono congelara la app vence al volver (su reloj
+          // corre al descongelarse) y se tomaba por «sin respuesta al primer ping» del enlace recién recuperado: a los 0,6 s de volver se
+          // rehacía un enlace sano (pongs a 50 ms justo antes) y un archivo de 358 trozos volvía a empezar. Un ping que tardó mucho más
+          // que su plazo (la app estuvo congelada) no cuenta; el vigilante manda otro al momento.
+          if (Date.now() - pingSentAt > 30000) { console.log('[BLEInterface] Ping a ' + deviceId + ' de antes de congelarse la app: no cuenta'); return; }
           var fails = (self._pingFailCount.get(deviceId) || 0) + 1;
           self._pingFailCount.set(deviceId, fails);
-          var unvF = !!(self._unverified && self._unverified.has(deviceId) && !((self._lastPongTime.get(deviceId) || 0) > self._unverified.get(deviceId)));
+          var unvF = !!(self._unverified && self._unverified.has(deviceId) && pingSentAt >= self._unverified.get(deviceId) && !((self._lastPongTime.get(deviceId) || 0) > self._unverified.get(deviceId)));
           if (unvF) console.warn('[BLEInterface] Enlace recuperado ' + deviceId + ' sin respuesta al primer ping: medio muerto, lo rehago');
           if (unvF || fails >= self._pingMaxFails) {
             if (unvF) self._unverified.delete(deviceId);
