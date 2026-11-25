@@ -756,8 +756,8 @@ export const BLE_UI_METHODS = {
       // Ronda 2797 (pedido del dueño): tocar la FOTO del contacto la abre a tamaño grande (solo si tiene foto);
       // tocar el resto de la fila (nombre) entra al chat. Sin foto, el toque en el círculo cae a la fila (abre el chat).
       avatar.addEventListener('click', function(e) {
-        if (contact.isGroup) return;
-        var ph = avatarOf(uuid);
+        // dueño 25-11: la foto de un GRUPO también se abre en grande al tocarla, como la de un contacto
+        var ph = contact.isGroup ? (window.NEXO_groupPhoto && window.NEXO_groupPhoto(uuid)) : avatarOf(uuid);
         // 3028 (dueño 12-11): sin «Guardar en galería» (así se copió la foto de un contacto como propia)
         if (ph && typeof window.__nexoOpenMedia === 'function') { e.stopPropagation(); window.__nexoOpenMedia(ph, 'image', true); }
       });
