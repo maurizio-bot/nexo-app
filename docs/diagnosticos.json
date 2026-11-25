@@ -1328,6 +1328,14 @@
    "sintoma": "capturas del dueño: chat con el vivo al mandar APK de 153 MB",
    "categoria": "Archivo grande: textos de la tarjeta y avisos confusos",
    "causa": "(1) Tarjetas con «No se pudo enviar · Toca para reintentar» y a la vez ✓✓ azul: la ✓✓ es del aviso del archivo, no del archivo. (2) Aviso amarillo «el otro tiene el Wi-Fi apagado: se envía por Bluetooth (más lento)» pero el archivo grande NO va por Bluetooth: falla. (3) Aviso rojo «demasiado grande para internet» largo y sin decir lo simple: pedir al otro que encienda el Wi-Fi. Con el Wi-Fi encendido salieron por Wi-Fi Direct a 22,5 y 18,7 MB/s"
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "23:04",
+   "nx": "nx1e50c95d",
+   "sintoma": "enlace_abre_cierra con nx126df3f4 (Katy, Honor) 6 desconexiones en 10 min, durante videollamada con el S24",
+   "categoria": "Bluetooth: patrón Honor (MTU 23 / atascos) + llamada",
+   "causa": "El enlace con Katy se abre y se atasca cada 10-20 s (MTU 23 otra vez a las 23:03:57); cada mensaje que suelta se re-rutea por internet (no se pierde nada). Llamada: 3.ª vez que arranca sin sonido ~5-10 s en el S23 (audio suspended, 0 salidas). Entre 23:03:11 y 23:03:20 se perdieron ~97 imágenes (~6 s de vídeo congelado) y unos 3 s de voz al recibir, justo cuando empezó el vaivén del Bluetooth con Katy (coincidencia, no probado). 23:04:26: otra app tomó el foco de audio. «Sincronía sin firma» ×3 justo al arrancar (23:01:42): 3.er caso al arrancar"
   }
  ]
 }
