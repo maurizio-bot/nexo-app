@@ -312,7 +312,9 @@ export class GwLink {
     if (!this._realOffSince) this._realOffSince = now;
     // Sin contactos por internet no hay nada que recoger ni mandar
     if (!net.inTags.size && !net.reqTags.size) return;
-    if (now - this._realOffSince < GW_AFTER_MS) return;
+    // 3342 (dueño 25-11, Wi-Fi y datos apagados con 3 NEXO cerca: «debe ser más rápido»): sin ninguna red en el teléfono no hay relé propio
+    // que esperar: se busca puente a los 1,5 s (con red, como antes: 8 s por si los relés propios vuelven solos)
+    if (now - this._realOffSince < (net._noNet ? 1500 : GW_AFTER_MS)) return;
     var nb = this._neighbors();
     // Puentes que ya no están cerca: se sueltan (lo mío sigue en el buzón; otro lo recoge)
     this.bridges.forEach(function(b) { if (nb.get(b.nx) !== b.dev && !nb.has(b.nx)) self._drop(b, 'ya no está cerca'); else if (nb.has(b.nx)) b.dev = nb.get(b.nx); });
@@ -481,7 +483,17 @@ export class GwLink {
   _cliOpened(p) {
     var vs = this.socks.get(String(p.s));
     if (!vs || vs._closed) return;
-    if (!p.ok) { console.warn('[GW] El puente ' + vs.br.nx + ' no pudo abrir la sesión' + (p.why ? ' (' + String(p.why).slice(0, 60) + ')' : '')); this.offers.delete(vs.br.nx); this.bridges.delete(vs.br.nx); this.net.relays.delete(vs.br.key); vs._end(); return; }
+    if (!p.ok) {
+      console.warn('[GW] El puente ' + vs.br.nx + ' no pudo abrir la sesión' + (p.why ? ' (' + String(p.why).slice(0, 60) + ')' : ''));
+      var bnx = vs.br.nx, of = this.offers.get(bnx), self = this;
+      this.bridges.delete(bnx); this.net.relays.delete(vs.br.key); vs._end();
+      // 3342 (diag. S24 25-11 14:16: «no conecta» y el siguiente intento a los 34 s): ese relé no le abre al puente (p. ej. lo castigó por
+      // límite); se prueba YA por el mismo puente con otro de los relés que ofreció (hasta 3), y si no queda ninguno, se suelta la oferta
+      if (of) { of.urls = of.urls.filter(function(u) { return u !== vs.url; }); of.bad = (of.bad || 0) + 1; of.at = Date.now(); }
+      if (of && of.urls.length && of.bad <= 3) { console.log('[GW] Pruebo otro relé por el mismo puente ' + bnx); setTimeout(function() { self.tick(); }, 50); }
+      else this.offers.delete(bnx);
+      return;
+    }
     vs._opened = true; clearTimeout(vs._openTimer);
     if (p.f === 0 || p.f === 1) vs.br.files = p.f === 1; // 3323: lo que dice el puente al abrir manda sobre la oferta
     noteHelp(vs.br.nx, 'me prestó su internet'); // 3323
