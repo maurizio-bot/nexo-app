@@ -1288,6 +1288,14 @@
    "sintoma": "aviso: «Respuesta de sincronía de nx1e50c95d sin firma válida o sin pedirla» ×3",
    "categoria": "Sincronía sin firma válida (informativo)",
    "causa": "El filtro de seguridad la descarta (correcto). Falta ver por qué llega sin firma o sin haberla pedido"
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "21:53",
+   "nx": "nx09acdb61",
+   "sintoma": "manual: lado receptor de la prueba sin internet (Vivo, 3150)",
+   "categoria": "Prueba sin red (informativo) + patrón MTU 23 al arrancar + sincronía sin firma",
+   "causa": "Recibió completos los 6 archivos de 153 MB por Wi-Fi Direct (21:49:57 a 21:51:46, a la par que el emisor); el APK de 23,5 MB nunca llegó a completarse (confirma el reinicio por cierre del grupo). «Wi-Fi apagado ×5» eran del propio Vivo (Wi-Fi apagado por el dueño en esos momentos). Al arrancar (21:41:58) 2 enlaces con el S24 a MTU 23 (4.º caso del patrón «enlace tras reabrir»). «Respuesta de sincronía de nx1e29ab2f sin firma válida o sin pedirla» también aquí (21:41:55): ya son 2 teléfonos y siempre justo tras arrancar → probable carrera al arrancar (respuesta llega antes de registrar la petición)"
   }
  ]
 }
