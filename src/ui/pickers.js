@@ -301,7 +301,7 @@ function _fileChosenSend(file, cap) {
     if (file.size > Math.floor(maxB64 * 3 / 4) || (inGroup && file.size > GROUP_MAX_BYTES && !(groupBlob && file.size <= groupBlob))) {
       // Ronda 2756: más grande que lo de siempre: como archivo grande (a disco por trozos) si hay Wi-Fi con el contacto
       var bigs = window.bleInterface && window.bleInterface.bigFiles;
-      if (file.size <= BIG_MAX_BYTES && bigs && (inGroup ? groupBigRoute(cidF) : bigs.route(cidF)) && typeof _sendBigFile === 'function') {
+      if (file.size <= BIG_MAX_BYTES && bigs && (inGroup ? groupBigRoute(cidF) : (bigs.route(cidF) || bigs.waitsWifi(cidF))) && typeof _sendBigFile === 'function') {
         _sendBigFile(cidF, file, _mimeOf(file.type, file.name));
         return;
       }

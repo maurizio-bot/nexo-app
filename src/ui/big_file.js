@@ -37,6 +37,10 @@ function _sliceB64(file, start, end) {
   });
 }
 
+var WIFI_OFF_RE = /wi-?fi apagado|^el otro no puede \(.*wi-?fi/i; // i18n-ok: mensaje interno de wifi_direct.js
+var WAIT_RETRY_MS = 15000;          // cada cuánto se reintenta un archivo que espera el Wi-Fi del otro
+var WAIT_MAX_MS = 6 * 3600000;      // y hasta cuándo (luego «No se pudo enviar · Toca para reintentar»)
+
 export class BigFiles {
   constructor(ble) {
     this.ble = ble;
@@ -89,6 +93,14 @@ export class BigFiles {
     if (ble.wifiDirect && ble.wifiDirect.canReach(nx, true)) return 'wd'; // 3260: aunque haya fallado hace poco (no hay otro camino para esto)
     if (this.l2Ok && this.l2Peers.has(nx) && this._bleReady(nx)) return 'l2';
     return null;
+  }
+
+  // 24-11 (dueño, 3b): el contacto entiende archivos grandes y está cerca por Bluetooth, pero ahora no hay camino rápido (su Wi-Fi
+  // apagado…): el archivo SÍ se acepta y espera («Esperando el Wi-Fi del otro»)
+  waitsWifi(nexoId) {
+    var nx = _nid(nexoId);
+    if (!nx || !this.peers.has(nx)) return false;
+    try { return !!this._bleReady(nx) || !!(this.ble && this.ble.wifiDirect && this.ble.wifiDirect.peers && this.ble.wifiDirect.peers.has(nx)); } catch (e) { return false; }
   }
 
   // Estado para la tarjeta del chat
@@ -164,6 +176,12 @@ export class BigFiles {
     // #99: un archivo muy grande (>~22 MB) por ahora solo va por un camino local (mismo Wi-Fi, Wi-Fi Direct o Bluetooth).
     // Por internet todavía no (Fase B: canal directo por Tor). Antes el fallo decía «sin camino» y no se entendía; ahora
     // queda claro y la tarjeta del chat lo muestra (nunca «enviada» sin enviarse).
+    // 24-11 (dueño, 3b): con el contacto que SÍ entiende archivos grandes pero sin camino ahora (su Wi-Fi apagado, o el mío), el
+    // archivo NO falla: espera («Esperando el Wi-Fi del otro») y se reintenta solo; así no se manda varias veces a mano.
+    if (!via && self.peers.has(nx)) {
+      self._esperaWifi(nx, id, 'sin camino ahora'); // i18n-ok: registro
+      return Promise.reject(Object.assign(new Error('esperando el Wi-Fi'), { code: 'BIG_WAIT' }));
+    }
     if (!via) {
       var msg = t('misc_big_toobig_a', 'Archivo muy grande (') + Math.round((((this.st[id] || {}).total) || 0) / 1048576) + t('misc_big_toobig_b', ' MB): por ahora solo se envía con el contacto cerca (mismo Wi-Fi, Wi-Fi Direct o Bluetooth); por internet todavía no.');
       self._set(id, { dir: 'out', state: 'failed', error: msg });
@@ -174,7 +192,9 @@ export class BigFiles {
       if (!s || !s.have) throw new Error(t('misc_big_gone', 'ya no está en este teléfono'));
       tSend = Date.now(); sendBytes = s.bytes;
       self._noteRoute(nx, via, s.bytes);
-      self._set(id, { dir: 'out', state: 'sending', bytes: 0, total: s.bytes, nx: nx, via: via });
+      // en un reintento por «esperando el Wi-Fi» la tarjeta no parpadea a «Enviando»: sigue esperando hasta que haya progreso real
+      if (self._wait && self._wait[id]) self._set(id, { dir: 'out', total: s.bytes, nx: nx, via: via });
+      else self._set(id, { dir: 'out', state: 'sending', bytes: 0, total: s.bytes, nx: nx, via: via });
       console.log('[BIG] Enviando ' + id + ' a ' + nx + ' por ' + ({ lan: 'Wi-Fi', wd: 'Wi-Fi Direct', l2: 'Bluetooth (L2CAP)' })[via] + ' (' + Math.round(s.bytes / 1048576) + ' MB)');
       if (via === 'wd') return self.ble.wifiDirect.sendBig(self._dev(nx, 'wd'), id, s.bytes);
       return new Promise(function(resolve, reject) {
@@ -193,16 +213,52 @@ export class BigFiles {
       });
     }).then(function() {
       // El socket confirmó que el otro tiene todos los bytes
+      if (self._wait) delete self._wait[id];
       self.saved[id] = 'sent'; self._save();
       var secsT = tSend ? Math.max(0.1, (Date.now() - tSend) / 1000) : 0; // 3260: la tarjeta termina diciendo por dónde fue y a qué velocidad
       self._set(id, { state: 'done', via: via, mbps: secsT && sendBytes ? Math.round(sendBytes / 1048576 / secsT * 10) / 10 : 0 });
       console.log('[BIG] ' + id + ' entregado');
       if (typeof self.onSent === 'function') self.onSent(nx, id); // grupos (group_media.js)
     }, function(e) {
+      // Wi-Fi apagado (aquí o en el otro) o sin camino por ahora: queda esperando y se reintenta solo (no «No se pudo enviar»)
+      if ((e && (e.wifiOff || e.code === 'WD_WIFI_OFF' || WIFI_OFF_RE.test(String(e.message || ''))))) {
+        self._esperaWifi(nx, id, e && e.message);
+        throw e;
+      }
       self._set(id, { dir: 'out', state: 'failed', error: e && e.message });
       console.warn('[BIG] ' + id + ' no se pudo enviar: ' + (e && e.message));
       throw e;
     });
+  }
+
+  // Espera del Wi-Fi del otro (dueño 24-11, 3b): la tarjeta pasa a «waitwifi» y se reintenta cada WAIT_RETRY_MS (cualquier camino que
+  // sirva: mismo Wi-Fi, Wi-Fi Direct, L2CAP) hasta WAIT_MAX_MS; pasado ese tiempo queda «No se pudo enviar · Toca para reintentar».
+  _esperaWifi(nx, id, why) {
+    var self = this, s = self.st[id] || {};
+    self._wait = self._wait || {};
+    var w = self._wait[id] || (self._wait[id] = { since: Date.now(), timer: null });
+    if (w.timer) { clearTimeout(w.timer); w.timer = null; }
+    if (Date.now() - w.since > WAIT_MAX_MS) {
+      delete self._wait[id];
+      self._set(id, { dir: 'out', state: 'failed', error: why });
+      console.warn('[BIG] ' + id + ' sigue sin camino tras ' + Math.round(WAIT_MAX_MS / 60000) + ' min: queda fallido'); // i18n-ok: registro
+      return;
+    }
+    self._set(id, { dir: 'out', state: 'waitwifi', nx: nx, bytes: 0, total: s.total, error: why });
+    console.log('[BIG] ' + id + ' espera el Wi-Fi de ' + nx + ' (' + why + '): se reintenta solo'); // i18n-ok: registro
+    var ms = (typeof window !== 'undefined' && window.NEXO_BIG_WAIT_MS > 0) ? window.NEXO_BIG_WAIT_MS : WAIT_RETRY_MS;
+    w.timer = setTimeout(function() {
+      w.timer = null;
+      var cur = self.st[id];
+      if (!cur || cur.state !== 'waitwifi') { delete self._wait[id]; return; }
+      self.transfer(nx, id).then(function() { delete self._wait[id]; }, function() {});
+    }, ms);
+  }
+  // Un toque en la tarjeta: reintentar ya (sin esperar al reloj)
+  retryNow(nx, id) {
+    var w = this._wait && this._wait[id];
+    if (w && w.timer) { clearTimeout(w.timer); w.timer = null; }
+    return this.transfer(nx, id).catch(function() {});
   }
 
   // Paquetes de control ('g?'); true si era de archivos grandes

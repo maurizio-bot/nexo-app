@@ -55,6 +55,7 @@ var FAIL_COOLDOWN_MS = 10 * 60000;
 var STATUS_FRESH_MS = 4000;
 var GROUP_FAIL_COOLDOWN_MS = 2 * 60000;
 var WIFI_OFF_NOTE_MS = 60000;
+var WIFI_OFF_NOTE_BIG_MS = 600000;
 var WIFI_OFF_RE = /wi-?fi apagado/i;
 var GROUP_FAIL_RE = /crear el grupo|no se pudo conectar|grupo no se form/i;
 // P8 (dueño 01-11): al ver el 1er contacto cercano con Wi-Fi Direct, pedir el permiso un poco después (no justo al
@@ -192,13 +193,15 @@ export class WifiDirect {
     }).catch(function() { return self.status; });
   }
   // 3013: Wi-Fi apagado (aquí o en el otro teléfono): al registro siempre; aviso al usuario como mucho una vez por minuto
-  _wifiOffNote(peerSide) {
+  // 24-11 (dueño, 3b): con un archivo grande el aviso es otro (no va por Bluetooth: espera y se manda solo al encender el Wi-Fi) y
+  // se repite poco (el archivo reintenta solo cada ~15 s)
+  _wifiOffNote(peerSide, big) {
     console.warn('[WIFI-DIRECT] Wi-Fi APAGADO en ' + (peerSide ? 'el otro teléfono' : 'este teléfono') + ': va por Bluetooth (Wi-Fi Direct necesita el Wi-Fi encendido, aunque no haya red)');
-    var now = Date.now(), k = peerSide ? 'peer' : 'me';
+    var now = Date.now(), k = (peerSide ? 'peer' : 'me') + (big ? ':big' : '');
     this._offNoteAt = this._offNoteAt || {};
-    if (now - (this._offNoteAt[k] || 0) < WIFI_OFF_NOTE_MS) return;
+    if (now - (this._offNoteAt[k] || 0) < (big ? WIFI_OFF_NOTE_BIG_MS : WIFI_OFF_NOTE_MS)) return;
     this._offNoteAt[k] = now;
-    try { if (typeof window !== 'undefined' && typeof CustomEvent === 'function') window.dispatchEvent(new CustomEvent('nexo:wd:wifiOff', { detail: { peer: !!peerSide } })); } catch (e) {}
+    try { if (typeof window !== 'undefined' && typeof CustomEvent === 'function') window.dispatchEvent(new CustomEvent('nexo:wd:wifiOff', { detail: { peer: !!peerSide, big: !!big } })); } catch (e) {}
   }
   // 3272: aviso al usuario de por qué este archivo va por Bluetooth (peer = la causa está en el OTRO teléfono)
   _aviso(kind, peer, grande) {
@@ -484,7 +487,7 @@ export class WifiDirect {
       console.warn('[WIFI-DIRECT] Archivo grande ' + fileId + ': ' + (e && e.message));
       // Cortado a mitad (WD_SEND: se alejó, se apagó…): Wi-Fi Direct sí funciona con él; se puede reintentar ya
       // (3013: Wi-Fi apagado tampoco es un fallo de Wi-Fi Direct)
-      if (e && (e.wifiOff || e.code === 'WD_WIFI_OFF')) self._wifiOffNote(e.wifiOff === 'peer');
+      if (e && (e.wifiOff || e.code === 'WD_WIFI_OFF')) self._wifiOffNote(e.wifiOff === 'peer', true);
       else { self._avisoErr(e, true, Infinity); if (!(e && e.code === 'WD_SEND')) self.noteFail(peer, e && e.message); }
       throw e;
     });

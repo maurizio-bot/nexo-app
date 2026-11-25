@@ -18,15 +18,24 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 
 ---
 
-## Dónde estamos (actualizado: 2026-11-23 tarde, México)
+## Dónde estamos (actualizado: 2026-11-25, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **APK SUBIDA 25-11 (tanda «Bluetooth nativo + logo + pendientes», Opus alto)** = logo B2 + Wi-Fi Direct híbrido (f7fbfbb7) + **3333** con la
+  app CONGELADA el nativo guarda en el buzón en disco (`frozenKeep`) ANTES de su ✓✓ y lo entrega al volver (`frozenDeliver` en handleOnResume)
+  o al reabrir: antes, si Android mataba el proceso, se perdía con ✓✓ · **3334** toque FCM con la app viva → `onWakeTouch` → la app
+  comprueba y repide a sus relés (en sim la app oculta ya se cura sola: NO probado que arregle el adjunto atorado; falta la recepción nativa
+  de trozos de archivo y avisar al emisor) · **3335** WebView sin «gesto para sonar» (`mediaPlaybackRequiresUserGesture=false`): llamada muda
+  5–10 s al arrancar · videollamada (gestos aprobados, zoom 1–4× solo del otro, PiP solo la llamada, barra que vuelve + diag «botones»;
+  `call_gestos.js`, `llamadagestos.js`) · actualización espera a colgar · archivo grande con Wi-Fi del otro apagado: «Esperando el Wi-Fi
+  del otro», reintenta solo, ✓✓ solo al llegar (`big_ticks.js`, `wdesperawifi.js`; en GRUPO no cubierto). Sin hacer: 3c (frenar el vaivén
+  del Bluetooth en llamada: medir primero). PRUEBAS DEL DUEÑO: icono; videollamada (pellizco, dos toques, ventanita desde Ajustes, botones
+  tras varias ventanitas); contestar desde el aviso y oír desde el primer segundo; archivo grande con el Wi-Fi del otro apagado y encenderlo.
 - **LOGO DEFINIDO (dueño 25-11), METIDO EN LA APP SIN APK ([skip ci]; va en la próxima tanda):** burbuja con cola + órbita + UN cubo (opción «B2»), dibujo
   sencillo sobre la imagen de arranque (que es la definitiva). Res de `android/app/src/main/res/`: icono adaptativo (primer plano 432 + capa de una tinta
   `ic_nexo_monochrome` para Android 13+), iconos de antes de Android 8, aviso `ic_stat_message` (silueta de burbuja + cubo; antes «burbuja + N»). Maestros SVG,
   generador y ficha de Play en el PRIVADO `negocio/icono_final_v2/`. El dueño duda si dejar la órbita (por ahora sí). PRUEBA al salir la APK: ver el icono en
   la pantalla de inicio (redondo y cuadrado), con tema de iconos (Android 13+), el aviso de un mensaje y que compile (no hay aapt aquí: lo valida el CI).
-  Siguiente: Bluetooth entero en el servicio nativo (con el 10 % de Fable que queda; el dueño lo pidió así 25-11).
 - **APK 3153 PUBLICADA (25-11 00:12 México; nightly-3153; lanzada a mano)** = invitación a grupo + historial para los nuevos + 3331 (puente sin
   duplicado) + 3332 (conexiones de paso repetidas, Alex) + arreglo de tamaño. `binary.js` falló una vez en el CI usando L2CAP con noL2Payload (sin explicar).
 - **SESIÓN DE PLÁTICA 24/25-11 (cerrada por contexto, 25-11 noche):** diagnósticos de la prueba sin internet y de las videollamadas

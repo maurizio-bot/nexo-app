@@ -24,6 +24,10 @@ const _BLE_CONNECTION_METHODS_BASE = {
     // 3013: aviso cuando Wi-Fi Direct no puede usarse por tener el Wi-Fi apagado (aquí o en el otro teléfono)
     if (self.wifiDirect && !self._wdOffListener && typeof window !== 'undefined') {
       self._wdOffListener = function(e) {
+        var big = !!(e && e.detail && e.detail.big);
+        if (big) { _showToast((e.detail.peer)
+          ? t('wd_wifi_off_peer_big', 'Pídele que encienda el Wi-Fi (no hace falta red); el archivo se manda solo al encenderlo.')
+          : t('wd_wifi_off_me_big', 'Enciende tu Wi-Fi (no hace falta red); el archivo se manda solo al encenderlo.'), 'warn'); return; }
         _showToast((e && e.detail && e.detail.peer)
           ? t('wd_wifi_off_peer', 'El otro teléfono tiene el Wi-Fi apagado: se envía por Bluetooth (más lento).')
           : t('wd_wifi_off_me', 'Wi-Fi apagado: se envía por Bluetooth (más lento). Enciende el Wi-Fi —no hace falta red— para enviar rápido.'), 'warn');

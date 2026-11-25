@@ -2,6 +2,7 @@
  * NEXO — Límites de tamaño y URLs de vídeos/imágenes en pantalla (sacado de main.js en la ronda 2752, sin cambios):
  * máximo por Bluetooth y por Wi-Fi Direct, aviso de "demasiado grande" y liberar las URL al salir del chat.
  */
+import { t } from './i18n.js';
 import { _wdReach, _netReach, _bigLocalRoute } from './ui_bits.js';
 
 
@@ -55,6 +56,9 @@ export function _maxB64For(contactId) {
 
 export function _tooBigMessage(bytes, contactId) {
   if (_wdReach(contactId)) return 'Archivo demasiado grande (' + (bytes / 1048576).toFixed(1) + ' MB). Máximo ~' + (WD_MAX_B64_BYTES * 3 / 4 / 1048576).toFixed(0) + ' MB.';
+  // 24-11 (dueño, 3b-c): con el otro cerca (entiende archivos grandes) el aviso es corto y dice lo que hay que hacer
+  var bi0 = window.bleInterface, bg = bi0 && bi0.bigFiles;
+  if (bg && typeof bg.waitsWifi === 'function' && bg.waitsWifi(contactId)) return t('wd_wifi_off_peer_big', 'Pídele que encienda el Wi-Fi (no hace falta red); el archivo se manda solo al encenderlo.');
   if (_netReach(contactId)) {
     return 'Archivo demasiado grande para internet (' + (bytes / 1048576).toFixed(1) + ' MB). Por internet van hasta ~' + (NET_MAX_B64_BYTES * 3 / 4 / 1048576).toFixed(0) + ' MB; para archivos más grandes, por Wi-Fi o Wi-Fi Direct con el otro cerca.';
   }

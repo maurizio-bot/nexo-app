@@ -3,6 +3,7 @@
  * mensaje (texto, foto, vídeo, audio, ubicación, archivo, contacto), estados ✓/✓✓, historial por páginas, progreso
  * de archivos que llegan y guardar el estado de cada mensaje. Lo que usa del resto de la app se lo da main.js.
  */
+import { bigTickCap, bigTicksSetApply } from './big_ticks.js';
 import { _b64ToBlob } from './video_tools.js';
 import { _buildFileCard, _ensureVideoThumb, _openFullscreenMedia } from './file_card.js';
 import { registerViewerSource } from './media_swipe.js';   // 3159: deslizar entre las fotos y vídeos del chat en el visor
@@ -843,6 +844,8 @@ export function _updateMessageStatus(messageId, status) {
     // #dueño 07-11: 'pending' («esperando», store-and-forward) tiene rango 1 para no pisar un 'sent'/'delivered' tardío,
     // pero SÍ debe VERSE cuando reemplaza a un envío en curso: un audio/archivo a un contacto AUSENTE se quedaba en ○
     // («clavado») hasta el tope global de 10 min. Se permite pending sobre sending/queued (nunca sobre sent/delivered/read).
+    // 24-11 (dueño, 3b-a): la ✓✓ del puntero de un archivo grande que aún no llegó se queda en ✓ hasta que llegue el archivo
+    status = bigTickCap(messageId, status);
     var allowPending = status === 'pending' && (current === 'sending' || current === 'queued');
     if (!allowPending && !_canUpgradeStatus(current, status)) {
       return;
@@ -928,3 +931,5 @@ function _retrySend(cid, msgId, div) {
   var d = document.querySelector('.message[data-msg-id="' + msgId + '"]') || div;
   _armRetry(d, cid, msgId, 'sending');
 }
+
+bigTicksSetApply(function(id, st) { _updateMessageStatus(id, st); }); // al llegar el archivo grande, la ✓✓ que se retuvo
