@@ -21,6 +21,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-23 tarde, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **SESIÓN DE PLÁTICA 24/25-11 (cerrada por contexto, 25-11 noche):** diagnósticos de la prueba sin internet y de las videollamadas
+  (S23/S24/vivo, 3150) analizados y anotados en `docs/PENDIENTES.md` (bloques «Videollamada 24-11 22:10» y «Videollamada: 3 fallos de
+  pantalla» con los GESTOS APROBADOS por el dueño) y en `docs/diagnosticos.json`. Todo para UNA sola APK; nada subido. Causa confirmada del
+  adjunto atorado: el toque FCM no despierta la parte que recibe archivos. **PLÁTICA DEL PRODUCTO (EDC) A RETOMAR:** pregunta abierta al
+  dueño: «¿qué es lo primero que quieres que una persona logre con NEXO cuando no hay señal?» (encontrar a su grupo / aviso rápido a todos /
+  pedir ayuda). Después: lista de pruebas físicas cortas, una por una. Plazo 7-dic de la cuenta de Google Play detenido: falta el nombre.
 - **Forma de trabajo:** CLAUDE.md «GASTO» (leer SOLO este bloque + 🔴 de `docs/AREAS.md`; lo demás con grep). Todo el detalle de 3266–3311:
   `docs/historial/ESTADO_traspaso_hasta_2026-11-23.md` (y los anteriores). PRINCIPIO: NEXO = todos los caminos; nunca recortar caminos.
 - **APK 3125 PUBLICADA (23-11 15:55 México; build 3314)** = 3309 (vista previa real por Tor, toque sellado 14A, «sr» firmado N10,
