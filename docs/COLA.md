@@ -20,7 +20,13 @@ Regla: una sesión = un tema; una APK por tanda; antes de subir `tamano.js`, `i1
    pasan por el nativo del puente dormido como TUBERÍA hacia el enlace del destino y sus 'ba'/'n' vuelven (por Jump siempre van en trozos
    de texto por GATT: sin binario/L2CAP/WD); lo reenviado no se le pasa a la app; `JumpPipeTest` (10). Revisión del nativo hecha (3315c). Pruebas del dueño al salir: ver ESTADO. **HECHO 3331:** sin el duplicado app viva + nativo (`OutboxBle.appSent`).
 2. [m] **13 MTU 23** (Vivo Y03, Katy): 3312 — con el enlace a MTU 23 el canal rápido L2CAP entra desde ~6 KB (antes ~45 KB); `l2mediano.js` caso `mtu23`.
-3. [m] **Wi-Fi Direct en teléfonos reales** (🔴 6): pruebas del dueño + «grupo siempre montado» si elige B (A/B pendiente de él).
+3. [m] **Wi-Fi Direct en teléfonos reales** (🔴 6): pruebas del dueño. **DECISIÓN DEL DUEÑO 25-11 (reemplaza el A/B): WI-FI DIRECT HÍBRIDO.** Solo cuando NO hay ningún camino: sin internet
+   y sin Wi-Fi (ni red local que llegue al contacto) = vagón, multitud. Entonces: (1) al abrir el chat con alguien cercano por Bluetooth, el grupo se
+   monta en el momento (los ~3 s quedan tapados mientras escribe); (2) con la app en segundo plano, se monta al enviar (como A); (3) con
+   Wi-Fi o internet funcionando NO se monta (no estorba al Wi-Fi normal, ahorra batería); (4) se desmonta al salir del chat, tras unos minutos sin
+   uso o al volver cualquier camino. Condición = «sin camino funcional», no solo «sin Wi-Fi» (Wi-Fi sin internet cuenta como sin camino si no
+   llega al contacto). Aviso por Bluetooth (ya hay enlace). Aguantar el aleteo de redes (túneles) con espera antes de montar/desmontar. Lo
+   puntual (3261, internet lento → comparar con Wi-Fi Direct) no cambia. Trabajo nativo grande: con el modelo grande, tras el Bluetooth nativo.
    **HECHO 3317:** preparar un archivo grande lee el pedazo siguiente mientras el nativo cifra el anterior (`bigprep.js`); falta medirlo
    en el teléfono (línea «[BIG] … preparado … MB/s» del diagnóstico; antes ≈5 MB/s).
 4. [m] **Llamadas**: gasto de datos por relés. **HECHO 3318:** en llamada con la app en segundo plano la escucha nativa ya no baja otra
