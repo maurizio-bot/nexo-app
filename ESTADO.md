@@ -26,6 +26,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   SOLO lo guardado con el mismo 'ba' que la app; la app los recoge primero en netBgDrain (JVM `NetChunkSpoolTest` 6, con relé local).
   El archivo lo arma la app al volver. **3337** 3b en GRUPOS: el grupo reintenta cada 15 s a los miembros que esperan su Wi-Fi
   (`group_media.bigToGroup`), la tarjeta dice «Esperando…» (`grupoesperawifi.js`, contraprueba falla; en ci.js).
+  **3338** oír al contacto por INTERNET ya no «protege» su enlace Bluetooth mudo con un envío atascado (`ble_ack.hasActiveTransfer`;
+  `xferstuck.js` caso 6; diag. S24 3154 10:32, Zhelowsky 25 min). **3339** «sr» vencida (entró del segundo plano): se ignora y se vuelve a
+  pedir la sincronía una vez (`srvencida.js`). GOOGLE PLAY (25-11): cuenta de desarrollador creada (personal, «MauBot»), identidad enviada,
+  «no comerciante»; falta que Google apruebe y el teléfono. Ficha/privacidad/permisos: `nexo-private/negocio/PLAY_FICHA/`.
 - **APK 3154 PUBLICADA (25-11 9:05 México; nightly-3154; CI en verde a la primera) (tanda «Bluetooth nativo + logo + pendientes», Opus alto)** = logo B2 + Wi-Fi Direct híbrido (f7fbfbb7) + **3333** con la
   app CONGELADA el nativo guarda en el buzón en disco (`frozenKeep`) ANTES de su ✓✓ y lo entrega al volver (`frozenDeliver` en handleOnResume)
   o al reabrir: antes, si Android mataba el proceso, se perdía con ✓✓ · **3334** toque FCM con la app viva → `onWakeTouch` → la app
