@@ -22,6 +22,7 @@ import { isBlocked } from './bloqueo.js';
 import { openCallReply, closeCallReply } from './call_reply.js';
 import { registerCallBar, minimizeCall, canMinimize } from './call_bar.js';
 import { initCallPip, miniOpen } from './call_pip.js';
+import { bindCallGestures, peerTransform, zoomReset } from './call_gestos.js';
 import { mergeCheck, mergeCalls } from './call_merge.js';
 import { bridgeOf } from './call_bridge.js';
 import { callToast, mergeKey, callShownName, confNotice, bridgeOther, secondAvatar } from './call_join_ui.js';
@@ -289,7 +290,7 @@ function _style() {
     // 13-11 (dueño): compartir pantalla. Barra roja arriba mientras comparto (tocarla detiene); el aviso antes de empezar;
     // la pantalla del otro se ve ENTERA (nunca recortada) y sin espejo, y se puede ampliar con dos dedos
     '#nexo-call-screen .nc-scrbar{position:absolute;left:0;right:0;top:0;z-index:12;background:#dc2626;color:#fff;font-size:14px;font-weight:600;text-align:center;padding:calc(env(safe-area-inset-top,0px) + 8px) 12px 8px;cursor:pointer}',
-    '#nexo-call-screen.nc-peer-screen .call-remote-video.nc-full{object-fit:contain !important;background:#000;transform-origin:0 0}',
+    '#nexo-call-screen.nc-peer-screen .call-remote-video.nc-full{object-fit:contain !important;background:#000}',
     '#nexo-scr-ask{position:absolute;inset:0;z-index:20;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:16px}',
     '#nexo-scr-ask .nc-ask-box{background:var(--nx-sheet);border:1px solid var(--nx-line);color:#fff;border-radius:var(--nx-radius);padding:18px;max-width:340px;font-size:15px;line-height:1.4}',
     '#nexo-scr-ask .nc-ask-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}',
@@ -345,29 +346,13 @@ function _screen() {
     '<div class="nc-bottom"><div class="call-buttons"></div></div>' +
     '<button class="nc-min" aria-label="' + t('call_minimize', 'Minimizar') + '">' + _svg('down', 24) + '</button>';
   el.querySelector('.nc-min').addEventListener('click', function(e) { e.stopPropagation(); haptic('confirm'); minimizeCall('1'); });
-  // Videollamada: tocar la pantalla muestra / oculta los controles
-  el.addEventListener('click', function(e) {
-    // mini flotante → volver a pantalla completa. 29b: con los botones ya ocultos solos (5 s en la ventanita) volvía a pantalla completa SIN
-    // botones y hacía falta un segundo toque: al volver se muestran y se vuelve a armar el ocultado automático
-    if (miniOpen(el)) return;
-    if (!el.classList.contains('nc-live') || (e.target && e.target.closest && e.target.closest('.nc-btn, .nc-pip'))) {
-      if (!el.classList.contains('nc-live')) console.log('[CALL] Toque en la pantalla de llamada ignorado: la llamada no está en curso');
-      return;
-    }
-    el.classList.toggle('nc-hide');
-    console.log('[CALL] Toque en la pantalla: botones ' + (el.classList.contains('nc-hide') ? 'ocultos' : 'visibles')); // 3229 (dueño 17-11: «al voltear la cámara no aparecen los botones»)
-    _autoHide(el);
-  });
-  // Ronda 2772: dos toques en la imagen grande: entera (cabe en la pantalla) ↔ a toda la pantalla (se recorta). El
-  // doble toque se mira también a mano (no todos los WebView mandan dblclick); un cambio por doble toque
-  var lastTap = 0, lastFill = 0;
-  var onVideo = function(e) { return el.classList.contains('nc-live') && !(e.target && e.target.closest && e.target.closest('.nc-btn, .nc-pip')); };
-  var fill = function() { var now = Date.now(); if (now - lastFill < 250) return; lastFill = now; _fit.user = el.classList.contains('nc-fill') ? 'fit' : 'fill'; el.classList.toggle('nc-fill', _fit.user === 'fill'); };
-  el.addEventListener('dblclick', function(e) { if (onVideo(e)) fill(); });
-  el.addEventListener('pointerup', function(e) {
-    if (e.pointerType !== 'touch' || !onVideo(e)) return;
-    var now = Date.now();
-    if (now - lastTap < 350) { lastTap = 0; fill(); } else lastTap = now;
+  // Videollamada: los toques y el zoom de la imagen del otro viven en call_gestos.js (un toque muestra/oculta la barra; dos toques:
+  // entera ↔ toda la pantalla, o tamaño normal si hay zoom; dos dedos, zoom solo de la imagen del otro)
+  bindCallGestures(el, {
+    miniOpen: miniOpen, autoHide: _autoHide,
+    isLive: function(e) { return e.classList.contains('nc-live'); },
+    target: function() { var c = _calls(), v = c && typeof c.videoViews === 'function' ? c.videoViews() : null, r = v && v.remote; return r && r.classList.contains('nc-full') && r.parentNode === el ? r : null; },
+    toggleFill: function(e) { _fit.user = e.classList.contains('nc-fill') ? 'fit' : 'fill'; e.classList.toggle('nc-fill', _fit.user === 'fill'); }
   });
   document.body.appendChild(el);
   return el;
@@ -542,9 +527,9 @@ function _videoLayout(el, st) {
   if (v.local) v.local.style.transform = (st.facing || 'user') === 'user' ? 'scaleX(-1)' : 'none'; // la de delante, como un espejo
   // 13-11: la pantalla del otro, entera y sin espejo (con el zoom de dos dedos si lo hay)
   el.classList.toggle('nc-peer-screen', !!st.peerScreen);
-  if (v.remote) v.remote.style.transform = st.peerScreen ? _zoomCss() : (st.peerFront === true && mirrorPeerPref() ? 'scaleX(-1)' : 'none');
-  if (!st.peerScreen) _zoom.s = 1;
-  else _pinchZoom(el, v.remote);
+  // zoom (call_gestos.js) solo de la imagen del otro cuando es la grande; con la mía grande o sin imagen, tamaño normal
+  if (_pip.swapped || !v.remote) zoomReset();
+  if (v.remote) v.remote.style.transform = peerTransform(!st.peerScreen && st.peerFront === true && mirrorPeerPref());
   el.classList.toggle('nc-fill', !st.peerScreen && (_fit.user ? _fit.user === 'fill' : _autoFill(el, big)));
   if (v.local) v.local.style.visibility = st.screen || st.cameraOff || (st.camState && st.camState !== 'on') ? 'hidden' : '';
   _screenBar(el, st);
@@ -577,26 +562,6 @@ function _screenAsk(el, onYes) {
   ov.querySelector('.nc-ask-yes').onclick = function(e) { e.stopPropagation(); ov.remove(); onYes(); };
   el.appendChild(ov);
 }
-// Zoom de dos dedos sobre la pantalla del otro (escala 1–4, se arrastra con dos dedos)
-var _zoom = { s: 1, x: 0, y: 0 };
-function _zoomCss() { return _zoom.s > 1.01 ? 'translate(' + _zoom.x + 'px,' + _zoom.y + 'px) scale(' + _zoom.s + ')' : 'none'; }
-function _pinchZoom(el, target) {
-  if (!target || target._pinch) return;
-  target._pinch = true;
-  var g = null;
-  var d = function(t0) { var a = t0[0], b = t0[1]; return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); };
-  var mid = function(t0) { return { x: (t0[0].clientX + t0[1].clientX) / 2, y: (t0[0].clientY + t0[1].clientY) / 2 }; };
-  el.addEventListener('touchstart', function(e) { if (!el.classList.contains('nc-peer-screen') || e.touches.length !== 2) return; g = { d: d(e.touches), m: mid(e.touches), s: _zoom.s, x: _zoom.x, y: _zoom.y }; }, { passive: true });
-  el.addEventListener('touchmove', function(e) {
-    if (!g || e.touches.length !== 2) return;
-    var s = Math.max(1, Math.min(4, g.s * d(e.touches) / (g.d || 1))), m = mid(e.touches);
-    _zoom.s = s; _zoom.x = m.x - (g.m.x - g.x) * s / g.s; _zoom.y = m.y - (g.m.y - g.y) * s / g.s;
-    if (s <= 1.01) { _zoom.x = 0; _zoom.y = 0; }
-    target.style.transform = _zoomCss();
-  }, { passive: true });
-  el.addEventListener('touchend', function(e) { if (e.touches.length < 2) g = null; }, { passive: true });
-}
-
 // Ronda 2769: avisos de la llamada: mi micrófono, el del otro y mi cámara (en ese orden de importancia)
 // (el motivo en palabras, no el nombre del error del navegador)
 function _devErr(e) {
@@ -683,7 +648,7 @@ function _render(st) {
       var s0 = old.querySelector('.call-status');
       if (s0 && st) { s0.classList.remove('nc-warn'); s0.textContent = st.reason === 'busy' ? t('call_end_busy', 'Ocupado') : st.reason === 'rejected' ? t('call_end_rejected', 'Rechazada') : st.reason === 'unanswered' ? t('call_end_no_answer', 'No contesta') : st.reason === 'lost' ? t('call_end_lost', 'Se cortó') : st.reason === 'missed' ? t('call_end_missed', 'Llamada perdida') : t('call_end_finished', 'Llamada terminada') + (st.seconds ? ' · ' + _fmt(st.seconds) : ''); }
       Array.prototype.forEach.call(old.querySelectorAll('.call-remote-video, .call-local-video, .nc-scrbar, #nexo-scr-ask'), function(n) { n.remove(); });
-      old.classList.remove('nc-peer-screen'); _zoom = { s: 1, x: 0, y: 0 };
+      old.classList.remove('nc-peer-screen'); zoomReset();
       var bt0 = old.querySelector('.call-buttons'); bt0.innerHTML = '';
       // #dueño: si se CORTÓ por mala conexión ('lost'), la pantalla da 5 s para «Volver a llamar» y luego se cierra y
       // vuelve al chat del contacto donde se hizo la llamada. Cualquier otro final se quita en 1,4 s como siempre.

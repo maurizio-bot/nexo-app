@@ -127,8 +127,33 @@ function _retryLater(build) {
   }, ms);
   return true;
 }
+// 25-11 (dueño, diag S23 del 24-11: «bajó e instaló la 3150 a los 3 min de llamada; a los 6 s de reiniciar volvió a llamar»): con una
+// llamada en curso (1-a-1 o de grupo, sonando o activa) NO se baja ni se abre el instalador: reiniciar la app la corta. Queda anotado
+// qué se quería hacer y se hace solo, unos segundos después de colgar.
+var _afterCall = null, _afterT = null;
+function _inCall() {
+  try {
+    var b = window.bleInterface, c = b && b.calls && b.calls.call, g = b && b.gcall && b.gcall.gc;
+    return !!((c && c.state !== 'ended') || (g && g.state !== 'ended'));
+  } catch (e) { return false; }
+}
+function _deferForCall(what) {
+  if (!_inCall()) return false;
+  if (!_afterCall) {
+    console.log('[UPDATER] hay una llamada en curso: la ' + (what === 'install' ? 'instalación' : 'descarga') + ' espera a que cuelgues'); // i18n-ok: registro
+    _toast(t('upd_wait_call', 'Hay una llamada en curso: la actualización espera a que cuelgues.'));
+  }
+  if (_afterCall !== 'install') _afterCall = what;
+  if (typeof window !== 'undefined' && !_deferForCall._on) {
+    _deferForCall._on = true;
+    var chk = function() { clearTimeout(_afterT); _afterT = setTimeout(function() { if (_inCall() || !_afterCall) return; var w = _afterCall; _afterCall = null; console.log('[UPDATER] se colgó: sigo con la ' + (w === 'install' ? 'instalación' : 'descarga')); (w === 'install' ? updaterInstall() : updaterDownload(true)); }, 4000); }; // i18n-ok: registro
+    window.addEventListener('nexo:call', chk); window.addEventListener('nexo:gcall', chk);
+  }
+  return true;
+}
 /** Baja el APK de la versión ofrecida (sin instalar). Sigue aunque se cierre la ventana; al terminar avisa. */
 export function updaterDownload(auto) {
+  if (_ready !== (updaterAvailable() || {}).build && _deferForCall('download')) return Promise.resolve({ ready: false, reason: 'in_call' });
   if (!auto) { clearTimeout(_retryT); _retryT = null; _retryN = 0; } // tocar «Descargar» empieza la cuenta de reintentos otra vez
   var a = updaterAvailable(), pl = _plugin();
   if (!a || !pl || typeof pl.updateInstall !== 'function') return Promise.resolve({ ready: false, reason: 'unavailable' });
@@ -158,6 +183,7 @@ export function updaterDownload(auto) {
 export function updaterInstall() {
   var a = updaterAvailable(), pl = _plugin();
   if (!a || !pl || typeof pl.updateInstall !== 'function') return Promise.resolve({ opened: false, reason: 'unavailable' });
+  if (_deferForCall('install')) return Promise.resolve({ opened: false, reason: 'in_call' });
   if (_ready !== a.build) return updaterDownload().then(function(r) { return { opened: false, reason: (r && r.ready) ? 'downloaded' : ((r && r.downloading) ? 'downloading' : ((r && r.reason) || 'net')) }; });
   return Promise.resolve(pl.updateInstall({ url: a.url, build: a.build, mode: 'open' })).then(function(r) {
     if (r && r.opened) { console.log('[UPDATER] instalador abierto para la ' + a.build); _notifyCancel(); return r; }
