@@ -336,7 +336,7 @@ function _bigTap(msg, big, name, mime) {
   var s = b.state(id) || {};
   var own = !!(msg && msg._own);
   if (s.state === 'preparing' || s.state === 'sending' || s.state === 'receiving' || s.state === 'waiting') return;
-  if (s.state === 'waitwifi' && s.dir === 'out') { if (!inGroupEarly(cid)) b.retryNow(cid, id); return; } // un toque: probar ya
+  if (s.state === 'waitwifi' && s.dir === 'out') { if (!inGroupEarly(cid)) b.retryNow(cid, id); else bigToGroup(cid, id); return; } // un toque: probar ya
   // Ronda 2764: en un grupo, reintentar es mandarlo a quien falte y pedirlo es pedírselo a quien lo mandó
   var inGroup = isGroupId(cid);
   if (s.state === 'failed' && s.dir === 'out') { if (inGroup) bigToGroup(cid, id); else b.transfer(cid, id).catch(function() {}); return; }

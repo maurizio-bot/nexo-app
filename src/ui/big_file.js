@@ -246,6 +246,7 @@ export class BigFiles {
     }
     self._set(id, { dir: 'out', state: 'waitwifi', nx: nx, bytes: 0, total: s.total, error: why });
     console.log('[BIG] ' + id + ' espera el Wi-Fi de ' + nx + ' (' + why + '): se reintenta solo'); // i18n-ok: registro
+    if (self._grp && self._grp[id]) { delete self._wait[id]; return; } // 3337: de un grupo: reintenta el grupo (group_media.bigToGroup)
     var ms = (typeof window !== 'undefined' && window.NEXO_BIG_WAIT_MS > 0) ? window.NEXO_BIG_WAIT_MS : WAIT_RETRY_MS;
     w.timer = setTimeout(function() {
       w.timer = null;

@@ -59,17 +59,33 @@ export function bigToGroup(gid, id) {
   var me = gs._me(), st = gs.st[id] || (gs.st[id] = { g: g.id, m: {} });
   st.big = st.big || {};
   var todo = g.members.filter(function(nx) { return nx !== me && st.big[nx] !== 'sent'; });
-  var sent = 0, failed = 0, noRoute = 0;
+  var sent = 0, failed = 0, noRoute = 0, waiting = 0;
+  bigs._grp = bigs._grp || {}; bigs._grp[id] = gid; // 3337: la espera del Wi-Fi de cada miembro la lleva el grupo (abajo), no big_file
+  var w = _bigWait[id];
+  if (w && w.t) { clearTimeout(w.t); w.t = null; }
   return todo.reduce(function(p, nx) {
     return p.then(function() {
       if (!bigs.route(nx)) { noRoute++; return; }
-      return bigs.transfer(nx, id).then(function() { st.big[nx] = 'sent'; sent++; gs._save(); }, function() { failed++; });
+      return bigs.transfer(nx, id).then(function() { st.big[nx] = 'sent'; sent++; gs._save(); }, function() { if (bigs.st[id] && bigs.st[id].state === 'waitwifi') waiting++; else failed++; });
     });
   }, Promise.resolve()).then(function() {
-    console.log('[GROUP] Archivo grande ' + id + ': enviado a ' + sent + ', sin camino ' + noRoute + ', fallido ' + failed + ' (lo piden al tocar la tarjeta)');
-    bigs._set(id, { dir: 'out', state: failed && !sent ? 'failed' : 'done' });
+    console.log('[GROUP] Archivo grande ' + id + ': enviado a ' + sent + ', sin camino ' + noRoute + ', esperando su Wi-Fi ' + waiting + ', fallido ' + failed + ' (lo piden al tocar la tarjeta)');
+    // 3337 (3b en grupos): un miembro cerca con el Wi-Fi apagado no deja la tarjeta en «No se pudo enviar»: espera y se reintenta solo
+    // (a los que aún no lo tienen) cada WAIT_RETRY_MS hasta WAIT_MAX_MS, como en un chat 1-a-1
+    if (waiting) {
+      w = _bigWait[id] || (_bigWait[id] = { since: Date.now(), t: null });
+      if (Date.now() - w.since <= BIG_WAIT_MAX_MS) {
+        bigs._set(id, { dir: 'out', state: 'waitwifi' });
+        var ms = (typeof window !== 'undefined' && window.NEXO_BIG_WAIT_MS > 0) ? window.NEXO_BIG_WAIT_MS : BIG_WAIT_RETRY_MS;
+        w.t = setTimeout(function() { w.t = null; bigToGroup(gid, id); }, ms);
+        return;
+      }
+    }
+    delete _bigWait[id];
+    bigs._set(id, { dir: 'out', state: (failed || waiting) && !sent ? 'failed' : 'done' });
   });
 }
+var _bigWait = {}, BIG_WAIT_RETRY_MS = 15000, BIG_WAIT_MAX_MS = 6 * 3600000;
 
 // ===== Vídeo HD =====
 
