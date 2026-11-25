@@ -1320,6 +1320,14 @@
    "sintoma": "par:pendiente_viejo (pedido por el S24): adjunto de 23,5 MB atorado en 589/601",
    "categoria": "Archivo grande: el despertador no despierta la parte que recibe",
    "causa": "Con la pantalla apagada la parte de la app que recibe archivos estuvo congelada ~43 min (sin una línea entre 21:45 y 22:27). Llegaron 6 toques FCM (22:13 a 22:25, cada 3 min) y todos dieron «Despierto: sin aviso»: arrancan el servicio y la escucha de mensajes, pero esa escucha no recibe trozos de archivo y nada despertó a la app. Al encender la pantalla (22:27:32) se reanudó al instante. Además: «NO suena: el canal de mensajes está sin sonido en el teléfono» (ajuste del Vivo, ya conocido)"
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "21:40-21:50",
+   "nx": "nx1n36c283",
+   "sintoma": "capturas del dueño: chat con el vivo al mandar APK de 153 MB",
+   "categoria": "Archivo grande: textos de la tarjeta y avisos confusos",
+   "causa": "(1) Tarjetas con «No se pudo enviar · Toca para reintentar» y a la vez ✓✓ azul: la ✓✓ es del aviso del archivo, no del archivo. (2) Aviso amarillo «el otro tiene el Wi-Fi apagado: se envía por Bluetooth (más lento)» pero el archivo grande NO va por Bluetooth: falla. (3) Aviso rojo «demasiado grande para internet» largo y sin decir lo simple: pedir al otro que encienda el Wi-Fi. Con el Wi-Fi encendido salieron por Wi-Fi Direct a 22,5 y 18,7 MB/s"
   }
  ]
 }
