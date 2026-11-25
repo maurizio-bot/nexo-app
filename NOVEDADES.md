@@ -14,6 +14,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <es-419>
 - Grupos: al agregarte te llega una invitación para aceptar o rechazar.
 - Quien entra a un grupo puede ver los mensajes de los últimos 30 días con «Ver mensajes anteriores» (el creador puede desactivarlo).
+- Bluetooth más ordenado: menos conexiones repetidas con la misma persona y el teléfono que hace de puente ya no manda dos veces lo mismo.
 </es-419>
 <!-- /APK -->
 
