@@ -5,7 +5,7 @@
  * Ahora: (1) al identificarse, la dirección → NEXO ID se recuerda 15 min y no se vuelve a sondear (cuenta como «visto» con su
  * NEXO ID); (2) si era un contacto ya enlazado por otra dirección, esa conexión de paso se cierra en el acto.
  */
-import { ANON_KNOWN_MS } from './ble_relay_conf.js';
+import { ANON_KNOWN_MS, PROBE_MARK_MS } from './ble_relay_conf.js';
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _mac(m) { return (m || '').toString().toLowerCase().replace(/[:-]/g, '').trim(); }
@@ -16,6 +16,7 @@ export function otherReadyLink(rel, nx, exceptMac) {
   if (!ble || !ble._deviceStates || typeof ble._deviceStates.forEach !== 'function') return false;
   ble._deviceStates.forEach(function(v, dev) {
     if (found || /^(lan|net)/i.test(String(dev)) || _mac(dev) === exceptMac) return;
+    if (rel._closedT && Date.now() - (rel._closedT.get(_mac(dev)) || 0) < 5000) return; // 3332: uno que acabo de cerrar ya no cuenta
     if (_nid(map && map.get(_mac(dev))) === nx && rel._isReady(dev)) found = true;
   });
   return found;
@@ -24,11 +25,13 @@ export function otherReadyLink(rel, nx, exceptMac) {
 // Lo llama relay.identify (al llegar el kx). wasProbe: la conexión la abrí yo «de paso» para saber quién era.
 export function anonIdentified(rel, deviceId, nx, wasProbe) {
   var m = _mac(deviceId);
+  if (!wasProbe) wasProbe = wasProbed(rel, m); // 3332
   rel.anonKnown.set(m, { nx: nx, ts: Date.now() });
   if (rel.anonKnown.size > 300) rel.anonKnown.delete(rel.anonKnown.keys().next().value);
   if (!wasProbe || !rel._isContact(nx) || !otherReadyLink(rel, nx, m)) return false;
   rel._closedT = rel._closedT || new Map();
   rel._closedT.set(m, Date.now()); if (rel._closedT.size > 100) rel._closedT.delete(rel._closedT.keys().next().value);
+  if (rel.probeMacs) rel.probeMacs.delete(m);
   console.log('[JUMP] El NEXO de paso era ' + nx + ', ya enlazado por otra dirección: cierro esta conexión');
   var pl = rel.ble && rel.ble.nativePlugin;
   if (pl && typeof pl.disconnectDevice === 'function') pl.disconnectDevice({ deviceId: deviceId }).catch(function() {});
@@ -43,4 +46,16 @@ export function anonAlreadyKnown(rel, m, deviceId, rssi) {
   rel.anon.delete(m);
   rel.noteSeen(k.nx, deviceId, rssi);
   return true;
+}
+
+// 3332 (diagnóstico S24 24-11 17:23, build 3150: 4 enlaces con Alex): las conexiones de paso que se identificaron por el NATIVO con la app
+// detrás perdían su marca «de paso» (el repaso las quitaba) y al volver la app no se cerraban. La marca vive aparte, unos minutos.
+export function noteProbe(rel, m) {
+  rel.probeMacs = rel.probeMacs || new Map();
+  rel.probeMacs.set(m, Date.now());
+  if (rel.probeMacs.size > 100) rel.probeMacs.delete(rel.probeMacs.keys().next().value);
+}
+export function wasProbed(rel, m) {
+  var t = rel.probeMacs && rel.probeMacs.get(m);
+  return !!t && Date.now() - t < PROBE_MARK_MS;
 }

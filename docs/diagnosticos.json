@@ -1256,6 +1256,14 @@
    "sintoma": "enlace_abre_cierra con nx0x4029e6 (Zhelowsky, 3 cierres por repetido en 10 min)",
    "categoria": "Enlaces repetidos (🔴 3)",
    "causa": "Zhelowsky va en la 3125 (sin el acuerdo 3327; él es el NEXO ID menor y debería decidir): el S24 cierra él a los 3 min. Build vieja. Aparte: textos largos (37 trozos) del S24 a Austin pendientes desde 14:22: Austin con la app cerrada y sin internet; su nativo sin la app solo avisa del primer trozo de algo largo (SinAppCore) y no lo recibe → es el frente grande 🔴 1 (Bluetooth entero en el servicio nativo)."
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "17:23",
+   "nx": "nx1n36c283 (S24), build 3150",
+   "sintoma": "enlace_abre_cierra con nx10b6f4ac (Alex, 3 cierres por repetido en 10 min)",
+   "categoria": "Enlaces repetidos (🔴 3)",
+   "causa": "Fallo de la app: tras actualizar (17:19) el S24 sondeó «de paso» 3 direcciones anónimas que eran Alex; se identificaron por el nativo con la app detrás y el repaso les quitaba la marca «de paso» sin cerrarlas (regla 24-11 del Vivo) → al volver la app, 4 enlaces con Alex y el desempate cerró 3. Arreglo 3332: marca de sondeo aparte 5 min, el repaso cierra la que sobra y 2.ª vuelta al sembrar los enlaces recuperados (anondup.js caso 7; anondup entra al CI). Aparte: cierre nativo de Tor de las 08:13 = build anterior a la 3146."
   }
  ]
 }

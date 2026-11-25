@@ -79,6 +79,22 @@ class DL extends ResourceLoader { constructor(d) { super(); this.d = d; } fetch(
     ble._markBleDead(nm(RMAC));
     chk('normal_si_muerto', (ble._bleDeadUntil.get(nm(RMAC)) || 0) > Date.now());
   } else chk('puente_no_muerto', false);
+  // 7. (3332, diagnóstico S24 24-11 17:23, build 3150) tres conexiones de paso que resultan ser Alex se identifican por el nativo con la
+  //    app detrás: el repaso las quitaba de «de paso» sin cerrarlas y al volver la app quedaban 4 enlaces con Alex (3 cierres por repetido)
+  {
+    const AL2 = 'nx10b6f4ad', G = '69:99:3B:C5:18:05', P = ['79:50:42:11:3F:30', '65:85:15:A0:B0:1D', '6B:37:75:B8:76:D3'];
+    ble.addSharedContacts([{ nexoId: AL2, name: 'Alex2' }], null, { quiet: true });
+    P.forEach((d, i) => { rel.noteAnon(d, 'Rprobe000' + i, -55); rel._connectAnon(d, true); ble._macToNexoId.set(nm(d), AL2); });
+    ble._macToNexoId.set(nm(G), AL2);
+    rel._closeIdleTransient(true); // el repaso con la dirección ya de un contacto (identificado por el nativo)
+    const d1 = disc.length;
+    ble.nativePlugin.getConnectedDevices = () => Promise.resolve({ devices: [P[0], P[1], G, P[2]].map((id) => ({ id, ready: true, role: 'client', direction: 'outgoing' })) });
+    ble._seedNativeConnections();
+    await sleep(50);
+    const cut = disc.slice(d1).map(nm);
+    chk('paso_repetido_cierra', P.every((d) => cut.indexOf(nm(d)) >= 0));
+    chk('paso_bueno_queda', cut.indexOf(nm(G)) < 0);
+  }
   r.fallos = mal; r.resultado = mal.length ? 'FALLO' : 'OK';
   console.log('ANONDUP ' + JSON.stringify(r));
   try { win.close(); } catch (e) {}

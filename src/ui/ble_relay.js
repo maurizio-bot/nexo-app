@@ -35,7 +35,7 @@
  * códigos de ahora ('dk', válidos 15 min): un puente que no lo conoce lo reconoce al escanear.
  */
 import { MAX_HOPS, AD_INTERVAL_MS, ROUTE_TTL_MS, QUEUE_FILE, QUEUE_MAX_AGE_MS, QUEUE_MAX, HOP_MAX_PAR, QUEUE_MAX_BYTES, SEEN_TTL_MS, SEEN_MAX, RQ_PER_LINK_MIN, QUEUE_PER_SOURCE, QUEUE_BYTES_PER_SOURCE, NEARBY_TTL_MS, NEARBY_FRESH_MS, DISCOVER_THROTTLE_MS, DISCOVER_WAIT_MS, SCAN_FRESH_MS, SCAN_MS, MAX_TRANSIENT, PASS_MIN_RSSI, PASS_FAIL_BASE_MS, PASS_FAIL_MAX_MS, PASS_RETRY_WINDOW_MS, MAX_TRANSIENT_ADD, BLE_LINKS_BUDGET, ANON_NO_ANSWER_MS, ANON_KNOWN_HOLD_MS, TRANSIENT_IDLE_MS, CONNECT_DEDUP_MS, LOW_BATTERY_PCT, LOW_BATTERY_PCT_SAVER, DEFAULT_HOP_BPS, _hopFailWaitMs } from './ble_relay_conf.js';
-import { anonIdentified, anonAlreadyKnown } from './ble_relay_anon.js';
+import { anonIdentified, anonAlreadyKnown, noteProbe, otherReadyLink } from './ble_relay_anon.js';
 export { _hopFailWaitMs, HOP_MAX_PAR };
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
@@ -622,6 +622,7 @@ export class BleRelay {
     if (self.transient.size >= cap) self._closeIdleTransient(true);
     if (self.transient.size >= cap || (typeof ble._linkRoom === 'function' && !ble._linkRoom({ hop: true }))) return false; // 3276: tope de enlaces
     self.transient.set(key, { deviceId: deviceId, since: Date.now(), lastUse: Date.now() });
+    noteProbe(self, _mac(deviceId)); // 3332
     console.log('[JUMP] Conectando con un NEXO anónimo (de paso) para saber quién es');
     var pl = ble.nativePlugin;
     if (pl && typeof pl.connectToDevice === 'function') pl.connectToDevice({ deviceId: deviceId }).catch(function() {});
@@ -710,7 +711,12 @@ export class BleRelay {
       // 24-11: un «anónimo» cuya dirección ya es de un contacto (se identificó sin pasar por identify) tampoco es de paso
       if (nx.indexOf('anon:') === 0) {
         var mapped = _nid(self.ble && self.ble._macToNexoId && self.ble._macToNexoId.get(_mac(t.deviceId)));
-        if (_isNx(mapped) && self._isContact(mapped)) { self.transient.delete(nx); return; }
+        if (_isNx(mapped) && self._isContact(mapped)) {
+          self.transient.delete(nx);
+          // 3332: si ese contacto ya tiene otro enlace listo, esta conexión de paso sobra: se cierra (antes quedaba como repetido)
+          if (otherReadyLink(self, mapped, _mac(t.deviceId))) anonIdentified(self, t.deviceId, mapped, true);
+          return;
+        }
       }
       // Si algo de la cola va por él, se mantiene
       var busy = self.queue.some(function(q) { var r = self.routes.get(q.dst); return q.dst === nx || (r && r.via === nx); });

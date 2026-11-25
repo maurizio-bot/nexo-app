@@ -415,6 +415,12 @@ const _BLE_CONNECTION_METHODS_BASE = {
         }
         else if (typeof self._askWhoIs === 'function') self._askWhoIs(deviceId); // 3263 (fase 2, enlaces heredados al abrir la app): sin saber de quién es, se le pregunta «quién eres»
       });
+      // 3332 (diagnóstico S24 24-11 17:23): con varias conexiones de paso al mismo contacto recuperadas a la vez, la primera no veía aún a
+      // las otras «listas» y se quedaba: una 2.ª vuelta, ya con todas sembradas, cierra las de paso que sobran (nunca la última)
+      if (self.relay && typeof self.relay.identify === 'function') list.forEach(function(d) {
+        var id = d.id || d.address, nx2 = id && self._macToNexoId.get(_normMac(id));
+        if (id && d.ready && nx2) { try { self.relay.identify(id, nx2); } catch (e) {} }
+      });
     }).catch(function() {});
   },
 

@@ -31,6 +31,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   internet en ninguno, con el Vivo en medio con la app cerrada (y Cari lejos del S24): un texto, un texto largo y una foto deben llegar
   con ✓✓; lo mismo con el Vivo con la pantalla apagada un rato largo. Queda: JS vivo y nativo pueden reenviar los dos un paquete corto
   guardado (duplicado inofensivo).
+- **3332 (diag. S24 17:23, build 3150, Alex con 4 enlaces):** las conexiones de paso identificadas por el nativo con la app detrás perdían
+  la marca «de paso» y no se cerraban; ahora marca aparte 5 min + cierre en el repaso + 2.ª vuelta al sembrar (`ble_relay_anon.js`;
+  `anondup.js` caso 7, y anondup entra al CI). Resubida con 3331 (se canceló la 3151; la invitación y el historial van en la nueva).
 - **3331 (24-11 18:30 México, SIN APK; va en la próxima):** fin del duplicado del puente (COLA 1): la app viva y el nativo ya no reenvían los
   dos el mismo paquete Jump guardado (`OutboxBle.appSent`, llamado desde `sendMessageImpl`; `JumpNativeTest` 3 casos nuevos). CI 3151
   (invitación + historial) en curso, termina ~19:00 México.
