@@ -1791,13 +1791,11 @@ El puntero de un vídeo a un contacto ausente lleva la miniatura (~24 KB) y sale
 - **Wi-Fi Direct necesita el Wi-Fi encendido en el otro teléfono** (5 de 8 fallos): avisar al usuario o decidir antes por Bluetooth; hoy cae a Bluetooth solo (bien).
 - **«Respuesta de sincronía … sin firma válida o sin pedirla» justo tras arrancar (2 teléfonos, 24-11):** sospecha de carrera al arrancar (la respuesta llega antes de registrar la petición); si es así, la resincronía tras reiniciar se pierde. Reproducir.
 
-- **Videollamada 24-11 22:10 (diag S23 y S24, build 3150) — para la próxima tanda:**
-  1. **Actualizar en plena llamada la corta** (el S23 bajó e instaló la 3150 a los 3 min). No bajar ni abrir el instalador mientras haya llamada, o avisar antes.
-  2. **Primeros 5-10 s sin micrófono** en el teléfono de Cari en las dos llamadas («audio suspended», «Audio en pausa: se reanuda»). Reanudar el audio al contestar/llamar.
-  3. **Error de decodificación de vídeo** ~1 por 1-2 min (se rehace solo con imagen completa). Medir si baja con otra configuración.
-  4. **Salir de la miniatura (PiP) de Android** dispara en JS el reinicio completo de «volví a primer plano» (limpieza, vaciar colas, re-búsqueda BT, toque despertador) durante la llamada, aunque el nativo dice que nunca estuvo en segundo plano: tratarlo como no-op.
-  5. **Toque despertador termina por «alcanzable»** solo porque hay enlace Bluetooth, aunque el otro no confirme (Katy: 3 mensajes 36 min). Terminar el toque solo con ACK real; si hay enlace pero sin ACK, tratarlo como zombi y probar internet/FCM.
-  6. **Adjunto grande por internet atorado en 589/601** con el otro dormido: sondeo de 1 trozo cada 60 s por más de 15 min sin fin. Espaciar el sondeo y avisar al usuario («su teléfono no contesta»).
-  7. **Mensaje sin cifrar atribuido a la tablet (nx1e29ab2f) descartado** 21:44:53: revisar qué mensaje era.
-  8. Patrón «enlace con MTU 23 / sin ACK» ya con Katy (5.º caso) → PRIORIDAD 1 (Bluetooth nativo). Tor (mutex destruido): 3 choques más.
-  Sana: llamada de 824 s, voz 99,8 %, P2P directo en 0,7 s, batería -22 %/h en el S23 (ahorro de batería puesto).
+- **Videollamada 24-11 22:10 (diag S23 y S24, build 3150; revisado de nuevo con Opus) — para la próxima tanda:**
+  1. **Actualizar en plena llamada la corta** (el S23 bajó e instaló la 3150 a los 3 min; a los 6 s de reiniciar volvió a llamar). No bajar ni abrir el instalador con llamada en curso; dejarlo para al colgar.
+  2. **Arranque de la llamada en el S23:** llamada 1 (contestó desde el aviso) micrófono en silencio total ~5 s; llamada 2 (llamó él, app recién reiniciada) no se oía nada ~5-10 s («audio suspended», 0 salidas por «llamada»). Reanudar audio y micrófono en cuanto conecta.
+  3. **Adjunto por internet atorado en 589/601 (~14 min)** con el vivo en línea y tocado: su app no despertó o lo de fondo no recibe trozos de archivo. Ver con el diagnóstico del vivo; avisar al que envía («su teléfono no contesta») en vez de sondear sin fin.
+  4. **Mensaje sin cifrar atribuido a la tablet (nx1e29ab2f) descartado** 21:44:53: ver qué era.
+  5. Vídeo: 3 errores de decodificación en 3 min de la llamada 1 (con el adjunto subiendo a la vez) y 1 en 14 min de la llamada 2; se rehacen solos. Vigilar, no urgente.
+  Descartado al revisar: la miniatura no reinicia nada; el despertador con Katy actuó bien (lo pendiente eran envíos automáticos, no mensajes); el volumen a 1 lo bajaron ellos por el eco.
+  Sana: llamada de 824 s, voz 99,8 %, conexión directa en 0,7 s.
