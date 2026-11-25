@@ -12,16 +12,19 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- (próxima APK: aún sin novedades)
+</es-419>
+<!-- /APK -->
+
+## Historial
+
+### APK 3154 (25-11-2026)
 - Logo nuevo.
 - Sin internet ni Wi-Fi, al abrir el chat con alguien cercano se prepara Wi-Fi Direct para mandar rápido.
 - Videollamada: zoom con dos dedos solo sobre la imagen del otro, los botones siempre vuelven al tocar y la ventanita muestra solo la llamada.
 - La llamada suena desde el primer segundo y una actualización espera a que cuelgues.
 - Archivo grande con el Wi-Fi del otro apagado: espera y se manda solo.
 - Lo que llega con NEXO dormida queda guardado aunque el teléfono la cierre.
-</es-419>
-<!-- /APK -->
-
-## Historial
 
 ### APK 3153 (25-11-2026)
 - Grupos: al agregarte te llega una invitación para aceptar o rechazar.

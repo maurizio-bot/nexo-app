@@ -26,7 +26,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   SOLO lo guardado con el mismo 'ba' que la app; la app los recoge primero en netBgDrain (JVM `NetChunkSpoolTest` 6, con relé local).
   El archivo lo arma la app al volver. **3337** 3b en GRUPOS: el grupo reintenta cada 15 s a los miembros que esperan su Wi-Fi
   (`group_media.bigToGroup`), la tarjeta dice «Esperando…» (`grupoesperawifi.js`, contraprueba falla; en ci.js).
-- **APK SUBIDA 25-11 (tanda «Bluetooth nativo + logo + pendientes», Opus alto)** = logo B2 + Wi-Fi Direct híbrido (f7fbfbb7) + **3333** con la
+- **APK 3154 PUBLICADA (25-11 9:05 México; nightly-3154; CI en verde a la primera) (tanda «Bluetooth nativo + logo + pendientes», Opus alto)** = logo B2 + Wi-Fi Direct híbrido (f7fbfbb7) + **3333** con la
   app CONGELADA el nativo guarda en el buzón en disco (`frozenKeep`) ANTES de su ✓✓ y lo entrega al volver (`frozenDeliver` en handleOnResume)
   o al reabrir: antes, si Android mataba el proceso, se perdía con ✓✓ · **3334** toque FCM con la app viva → `onWakeTouch` → la app
   comprueba y repide a sus relés (en sim la app oculta ya se cura sola: NO probado que arregle el adjunto atorado; falta la recepción nativa
