@@ -21,6 +21,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-23 tarde, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **APK 3153 PUBLICADA (25-11 00:12 México; nightly-3153; lanzada a mano)** = invitación a grupo + historial para los nuevos + 3331 (puente sin
+  duplicado) + 3332 (conexiones de paso repetidas, Alex) + arreglo de tamaño. `binary.js` falló una vez en el CI usando L2CAP con noL2Payload (sin explicar).
 - **SESIÓN DE PLÁTICA 24/25-11 (cerrada por contexto, 25-11 noche):** diagnósticos de la prueba sin internet y de las videollamadas
   (S23/S24/vivo, 3150) analizados y anotados en `docs/PENDIENTES.md` (bloques «Videollamada 24-11 22:10» y «Videollamada: 3 fallos de
   pantalla» con los GESTOS APROBADOS por el dueño) y en `docs/diagnosticos.json`. Todo para UNA sola APK; nada subido. Causa confirmada del

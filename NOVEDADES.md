@@ -12,13 +12,16 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Grupos: al agregarte te llega una invitación para aceptar o rechazar.
-- Quien entra a un grupo puede ver los mensajes de los últimos 30 días con «Ver mensajes anteriores» (el creador puede desactivarlo).
-- Bluetooth más ordenado: menos conexiones repetidas con la misma persona y el teléfono que hace de puente ya no manda dos veces lo mismo.
+- (próxima APK: aún sin novedades)
 </es-419>
 <!-- /APK -->
 
 ## Historial
+
+### APK 3153 (25-11-2026)
+- Grupos: al agregarte te llega una invitación para aceptar o rechazar.
+- Quien entra a un grupo puede ver los mensajes de los últimos 30 días con «Ver mensajes anteriores» (el creador puede desactivarlo).
+- Bluetooth más ordenado: menos conexiones repetidas con la misma persona y el teléfono que hace de puente ya no manda dos veces lo mismo.
 
 ### APK 3150 (24-11-2026)
 - Bloquear contacto (en su chat, la lista o su perfil): no te llegan sus mensajes, llamadas ni estados y no ve tu foto. No se le avisa; en grupos se le sigue viendo.
