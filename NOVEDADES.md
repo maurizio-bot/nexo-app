@@ -12,7 +12,11 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- (próxima APK: aún sin novedades)
+- Sin Wi-Fi ni datos, el internet prestado de un NEXO cercano se conecta en segundos.
+- Un mensaje que los servidores rechazan queda pendiente y sale solo, en vez de fallar.
+- Archivos que llegan con NEXO dormida no se atoran; un archivo grande ya no vuelve a empezar.
+- Archivo grande a un grupo con alguien sin Wi-Fi: espera y se manda solo.
+- Menos desconexiones falsas al volver a NEXO.
 </es-419>
 <!-- /APK -->
 
