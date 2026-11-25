@@ -1312,6 +1312,14 @@
    "sintoma": "pendiente_viejo: adjunto de 23,5 MB para nx09acdb61 (32 min) + llamada (3150)",
    "categoria": "Archivo grande sin terminar + llamada",
    "causa": "Revisado de nuevo (Opus): es el mismo adjunto de 23,5 MB del diagnóstico de las 21:52 (Wi-Fi local reiniciado 6 veces por el cierre del grupo de Wi-Fi Direct, ya anotado). Después por internet llegó al trozo 589 de 601 y el vivo no confirmó en ~14 min, aunque se le oía en línea y se le mandó toque (22:06:41): su app no despertó o lo de fondo no recibe trozos de archivo; falta el diagnóstico del vivo (pedido automático 22:10:24). Vídeo: 3 errores de decodificación en la llamada 1 (3 min, con el adjunto subiendo a la vez) y 1 en la llamada 2 (14 min); se rehacen solos. La salida de la miniatura NO reinicia nada (22:11:25 y 22:11:55: «nunca estuvo en segundo plano»); los «App de vuelta» de 22:11:06 y 22:12:06 fueron vueltas reales. «Mensaje sin cifrar atribuido a nx1e29ab2f: descartado» (21:44:53) a revisar. Sincronía sin firma a las 21:52:42, 8 s tras «sin red → Wi-Fi». Volumen de llamada a 1/15 en ambos: lo bajaron al estar juntos (eco), no la app. Tor: choques ya anotados"
+  },
+  {
+   "dia": "2026-11-24",
+   "hora": "22:27",
+   "nx": "nx09acdb61",
+   "sintoma": "par:pendiente_viejo (pedido por el S24): adjunto de 23,5 MB atorado en 589/601",
+   "categoria": "Archivo grande: el despertador no despierta la parte que recibe",
+   "causa": "Con la pantalla apagada la parte de la app que recibe archivos estuvo congelada ~43 min (sin una línea entre 21:45 y 22:27). Llegaron 6 toques FCM (22:13 a 22:25, cada 3 min) y todos dieron «Despierto: sin aviso»: arrancan el servicio y la escucha de mensajes, pero esa escucha no recibe trozos de archivo y nada despertó a la app. Al encender la pantalla (22:27:32) se reanudó al instante. Además: «NO suena: el canal de mensajes está sin sonido en el teléfono» (ajuste del Vivo, ya conocido)"
   }
  ]
 }
