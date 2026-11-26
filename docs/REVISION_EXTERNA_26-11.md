@@ -43,3 +43,13 @@ tiene el dueño con sus teléfonos.
 ## Lo que me sirvió
 Para quedarme sin señal (vagón, EDC, apagón) NEXO es la única de la tabla que combina caminos en una sola app con cuenta sin teléfono: ese es
 su espacio. Para el resto del día WhatsApp/Signal/Telegram ganan por pulido y por tener a todos.
+
+## Segunda y tercera revisión externa (IA del dueño, 26-11, sobre la nightly 3156) — comprobado en el código
+- **Cierto y barato:** el aviso de Contactos vacío dice «Tus contactos están en Chats» pero la pantalla se llama «Contactos» (`nav_contactos`, `ble_scan_hint_off`) →
+  incoherente; decidir «Chats» (o «Contactos» en los dos sitios). El símbolo del camino en el cabecera del chat NO se puede tocar (sin manejador): tocarlo
+  podría explicar «Bluetooth · directo / Wi-Fi / internet / por puente». Estados sigue sin entrada visible (ahora hay destello + guía).
+- **Ya estaba o ya se arregló en esta tanda:** el «+» de la guía (es.js ya decía «botón redondo»; el texto nuevo tampoco lo nombra; el botón es una burbuja);
+  pantalla vacía con botón; texto del diagnóstico automático ya dice «sin el contenido de tus mensajes» (es opcional y cifrado), solo está redactado técnico.
+- **Decisión del dueño (no se toca sin él):** nombre fijo para siempre (anti-suplantación) vs. poder cambiarlo avisando a los contactos; orden del
+  permiso de batería (hoy al final de la guía); etiquetas de texto en el menú de adjuntos (no verificado aquí).
+- **No aplica por ahora:** «agregar más» (las dos dicen lo mismo: no más funciones antes de Play); rediseño del estilo visual (el dueño aprobó el actual).
