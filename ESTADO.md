@@ -21,6 +21,23 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-25, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **🚨 APK DE EMERGENCIA (dueño 26-11 noche, URGENTE; SOLO Opus/Fable — Haiku y Sonnet ya no se usan, ver CLAUDE.md «Modelo»).** Una sola APK a NEXOCHAT con TODO esto:
+  1. **Envío roto en la 3159 (26-11 17:10, S24 del dueño → Galaxy S23):** 4 textos con «!» y Reintentar. Relés: «rate-limited: too many gift wraps from this
+     address» y luego «banned: too many rate-limit violations». El dueño dice que antes NO pasaba (es un hecho). Entre la 3156 y la 3159 el envío NO cambió (solo
+     pantallas): lo que cuadra es el PICO tras actualizar (16:38): 3 teléfonos en la misma Wi-Fi sincronizando a la vez, 137 sobres atrasados, historial de grupo
+     (8 partes ~250 KB), un mensaje de grupo de 972 trozos por internet (BT muerto), confirmaciones reenviadas. **Hecho (commit ef8917d, 3347):** `ble_ack.js` ya no
+     reintenta 5 veces en 10 s si el relé limita (cada intento era otra infracción) y queda ⏳ en vez de «!»; `_resendWaitErr` también espera con «banned»
+     (`reenviolimite.js` OK). **Falta:** ritmo/cola de publicación a relés (textos del usuario primero; ACK; fondo al final: historial de grupo, FENIX, trozos
+     grandes), relé que limita o banea → enfriarlo y usar los otros, y que lo grande no vaya trozo a trozo por relé si hay Bluetooth/Wi-Fi. Reproducir con un relé
+     que limita (`tests/sim/nostr_relay.js`). El dueño manda los diagnósticos en la sesión nueva.
+  2. **Fondo del chat de GRUPO como en el chat normal:** cada quien lo cambia SOLO para sí; y si quiere, opción de compartirlo con el grupo (hoy siempre se
+     comparte: «[GROUP] Fondo del grupo … compartido por»).
+  3. **Historial de grupo: hay imágenes que no se descargan** al cargarlo (las miniaturas sí llegan, `[THUMB]`; ver si falta pedir el archivo completo).
+  4. **TODOS los detalles menores pendientes, menos lo de Fable** (dueño: «la última APK debía dejarlo listo y no pasó»): B-EST (ventanas emergentes, menús ⋮ y
+     hojas iguales a Chats), 13 «sin camino» sin ✓✓, «Wi-Fi local: conectado pero su app no contesta», lo abierto de `docs/PENDIENTES.md` «26-11» y la parte de
+     código de `nexo-private/negocio/RUTA_LANZAMIENTO.md`. Fable (fuera): modo concierto nativo, 3c Bluetooth en llamada, doble enlace LE Coded → zombi.
+  Dueño: respuestas CORTAS, trabajar en silencio, solo escribirle al terminar o para una decisión. Esta sesión se cerró al 25 % de contexto; el límite semanal
+  está en aviso (se reinicia el domingo 29-11 a las 2:00 México).
 - **APK 3159 SUBIDA (26-11 ~14:40 México):** la 3158 falló en 2 pruebas (avisoschat: buscaba el texto viejo del menú ⋮; gruposaudit: 40 intentos de firma no bastaban, azar) → arregladas las pruebas, sin cambio de la app.
 - **(antes) APK 3158 (26-11 ~12:00, FALLÓ):** la 3157 FALLÓ en «Nada sin definir» (`screen` en `find_ui.js` de la 3345, que nunca había
   pasado por el CI) → arreglado; 3158 = todo lo de la 3157 + la tanda menor + ICONO EVERBEAT F (círculo y latido naranja #ff2301; `nexo-private/negocio/icono_everbeat_final/`).

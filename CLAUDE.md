@@ -39,8 +39,9 @@ encontrar fallos y medir cuánto, no para validarlo a él. Si algo no cuadra con
 - **Sin reloj de ausencia** ni avisos programados salvo para revisar un CI (uno solo, a la hora en que debe terminar). Esto NO es
   parar: al terminar algo se sigue SOLO con el siguiente pendiente que no necesita al dueño, sin esperar respuesta (dueño 23-11).
   Ayudantes en paralelo solo para trabajo que de verdad se reparte.
-- **Modelo:** el grande (Fable/Opus) para protocolo, nativo, cifrado y depuración; lo mecánico (apuntar diagnósticos, NOVEDADES,
-  documentos) no lo necesita: si el dueño está en un modelo ligero, eso se hace ahí.
+- **Modelo (dueño 26-11, reemplaza la regla anterior): SOLO Fable u Opus; Haiku y Sonnet ya NO se usan para nada** (ni lo mecánico).
+  PORQUÉ: lo que ahorran se gasta después en errores (26-11: en Sonnet se culpó a cambios que ya iban en versiones que funcionaban).
+  Si la sesión está en Sonnet/Haiku, avisar al dueño en una línea antes de trabajar.
 - **Lo grande, justo después del reinicio semanal** del límite (el dueño lo ve en Ajustes → Uso); cerca del tope, solo lo barato.
 
 **LO PRIMERO: leer `nexo-private/negocio/PLAN.md`** (repositorio PRIVADO `maurizio-bot/nexo-private`, desde el 15-11: conectarlo a la
