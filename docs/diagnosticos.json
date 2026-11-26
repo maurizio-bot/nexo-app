@@ -1440,6 +1440,14 @@
    "sintoma": "zombi (nx126df3f4), build 3155 — S23 sin red con internet prestado por Yael",
    "categoria": "Internet prestado: relé del puente que no contesta lo mío",
    "causa": "Puente listo en 1,7 s (con cambio de relé, 3342 OK), pero por el puente de Yael (nx16386482) el relé nos.lol «no contesta a un envío» cada ~13 s y se reabría el MISMO relé 7 veces: lo recibido llegaba y 6 textos al dueño no salían (✗ a las 17:20:52 y 17:21:36 por «Rechazado por los relés: conexión muerta»). Arreglado 3344: dos caídas seguidas a < 40 s de abrir → otro relé por el mismo puente (puenterele.js, contraprueba falla); el ✗ ya era pendiente con 3343. El zombi con Katy fue la comprobación al volver; el ping viejo ya no contó (3340 funcionando)"
+  },
+  {
+   "dia": "2026-11-25",
+   "hora": "17:53",
+   "nx": "nx1e50c95d",
+   "sintoma": "diagnóstico manual S23 (Cari), build 3155, con Wi-Fi",
+   "categoria": "Sin fallo de la app",
+   "causa": "12 textos al dueño por internet con ✓✓ en ≤ 1 s. El Honor de Katy (nx126df3f4) no ofrece el servicio Bluetooth de NEXO (no_service ×7, MTU 23): su app limitada por el ahorro de batería del Honor (ya se detecta: [ENERGIA]); la pausa creciente lo maneja y lo pendiente le llegó por internet (17:53:02). El S23 tiene el ahorro de batería encendido"
   }
  ]
 }
