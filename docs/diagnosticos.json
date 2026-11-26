@@ -1504,6 +1504,14 @@
    "sintoma": "zombi (nx01992876, Marcos), build 3156",
    "categoria": "Caminos",
    "causa": "Texto largo de grupo (972 trozos) por un Bluetooth que contesta pings pero no confirma (app de Marcos dormida) 8 ventanas, dos veces, con Marcos EN LÍNEA por internet: salió por Bluetooth justo cuando los relés reconectaban y el camino no se volvía a mirar al vencer las ventanas. Arreglado en 3346 (btsinack.js)."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "16:43",
+   "nx": "nx0g6ef54e",
+   "sintoma": "zombi (nx10b6f4ac, Alex), build 3159",
+   "categoria": "Caminos",
+   "causa": "Los relés limitaban al teléfono de Roberto («rate-limited: too many gift wraps»): sus textos al dueño (Wi-Fi local y Bluetooth listos) se reintentaban 5 veces por internet y quedaban fallidos, y lo pendiente volvía a internet. Arreglado en 3347 (relelimita.js). Además: 3 «Foreground kill» del sistema en 2 días (Motorola)."
   }
  ]
 }

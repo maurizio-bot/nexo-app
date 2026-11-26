@@ -429,6 +429,7 @@ ChatStream.prototype._sendFailed = function(idx, err) {
   if (self.type === 'file' && !wrong && _isLanDevice(self.deviceId) && bi && bi.lan && typeof bi.lan.inGrace === 'function' && bi.lan.inGrace(nx)) return true;
   // 3209: lo que los relés RECHAZAN (todos dijeron que no: tope o castigo) no se vuelve a probar al momento por el mismo camino
   var rejected = !!(err && err.code === 'NET_REJECTED');
+  if (rejected && bi && typeof bi._noteNetLimited === 'function') { try { bi._noteNetLimited(err); } catch (e) {} } // 3347: los relés limitan → otro camino si hay
   var best = ((fails >= 3 || wrong || rejected) && bi && typeof bi._resolveDeviceIdForNexoId === 'function') ? bi._resolveDeviceIdForNexoId(nx, bigFile) : null;
   var moved = !!(best && _normMac(best) !== _normMac(self.deviceId));
   if (moved) {

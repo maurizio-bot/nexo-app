@@ -1251,6 +1251,10 @@
     {
      "fallo": "3346 (diag. S24 3156 26-11 14:39–14:47, «zombi» con Marcos): un texto largo de grupo salió por Bluetooth cuando el contacto no estaba en línea por internet (los relés reconectaban); su Bluetooth contestaba los pings pero su app no confirmaba ni un trozo, y el envío reintentó 8 ventanas aunque segundos después el contacto ya estaba en línea por internet (el camino solo se volvía a mirar si fallaba la escritura nativa). 3346: un envío por Bluetooth directo atascado en la primera ventana tras 2 ventanas, con internet/Wi-Fi listo, se rehace por él. btsinack.js (contraprueba: 8 reintentos y 18 s; con el arreglo 0,8 s)",
      "prueba": "Bluetooth que no confirma con internet listo"
+    },
+    {
+     "fallo": "3347 (diag. Roberto 3159 26-11 16:42): con los relés LIMITANDO al teléfono («rate-limited: too many gift wraps»), los textos al dueño —Wi-Fi local y Bluetooth listos— salían por internet, 5 reintentos por los mismos relés y ✗; el reenvío volvía a internet. 3347: un «rate-limited» quita la preferencia por internet 60 s y el texto sigue ya por el camino listo (si no hay, ⏳ sin insistir). relelimita.js (contraprueba: no llega en 40 s, ✗, 36 rechazos; con el arreglo 0,2 s y 2 rechazos)",
+     "prueba": "Relés que limitan con Bluetooth listo"
     }
    ],
    "debiles": [

@@ -1,5 +1,6 @@
 import { _getBLEContacts, _normMac, _normId, _loadPinnedFromVault, _loadSeqCounter, _loadDeviceUUID, _generateUUID, _lanId, _netId, _getContactByUUID, _safeDispatchEvent, _getOrCreateNexoId, _hasNativeMethod, _safeNativeCall, BLE_STATES } from './ble_helpers.js';
 import { e2eAckKey } from '../vault/e2e_crypto.js';
+var NET_LIMIT_MS = 60000; // 3347: tiempo sin preferir internet tras un «rate-limited» de los relés
 // Métodos de BLEInterface: ARRANQUE y vuelta de la app: contactos, NEXO ID, estados viejos, a qué enlace va cada contacto, MTU, primer plano / segundo plano.
 // Reestructuración 15-11: movidos TAL CUAL desde ble_interface.js, que los une a la clase (como métodos normales).
 export const bleStartup = {
@@ -107,13 +108,16 @@ export const bleStartup = {
     // también con datos móviles, internet va ANTES que un Bluetooth listo (antes, sin estar los dos en Wi-Fi, el Bluetooth listo
     // iba primero para ahorrar datos: textos y fotos salían por Bluetooth con internet disponible; btemerg.js). canReach ya
     // excluye el internet que llega solo por un PUENTE si con ese contacto hay Bluetooth directo (net_link.canReach).
-    if (this.net && this.net.canReach(nx)) return _netId(nx);
+    // 3347 (diag. Roberto 3159 26-11 16:42, «rate-limited: too many gift wraps»): con los relés LIMITANDO a este teléfono, internet deja
+    // de ir primero mientras dure el castigo: lo que sale va por el Wi-Fi o el Bluetooth listos (si no hay otro, internet al final)
+    var netHot = this._netLimitedNow();
+    if (!netHot && this.net && this.net.canReach(nx)) return _netId(nx);
 
     // #dueño 06-11 (diagnóstico: un APK de 25 MB a un contacto en línea por internet se iba por BLUETOOTH, partido en
     // 148 mil trozos, y nunca llegaba): un archivo DEMASIADO GRANDE para Bluetooth prefiere internet ANTES que un
     // Bluetooth listo. preferNet lo activan solo los envíos de archivo grande (ble_ack.js). Si el contacto no es
     // alcanzable por internet ahora, cae al Bluetooth de abajo (y ble_ack lo deja pendiente hasta que haya internet/Wi-Fi).
-    if (preferNet && this.net && this.net.canReach(nx)) return _netId(nx);
+    if (preferNet && !netHot && this.net && this.net.canReach(nx)) return _netId(nx);
 
     // 0. v6.1.6: preferir un enlace YA LISTO con ese NEXO ID. Android usa direcciones distintas para
     // anunciarse y para conectarse como cliente: el otro puede estar conectado por una dirección
@@ -149,8 +153,19 @@ export const bleStartup = {
     this.foundDevices.forEach(function(d) {
       if (!found && _normId(d.deviceUUID) === nx) found = d.id;
     });
+    if (!found && netHot && this.net && this.net.canReach(nx)) return _netId(nx); // 3347: sin otro camino, internet aunque limiten
     return found;
   },
+
+  // 3347: los relés dijeron «rate-limited / too many / slow down» → NET_LIMIT_MS sin preferir internet (otro sobre ahora = más castigo)
+  _noteNetLimited(err) {
+    var m = String((err && err.message) || '');
+    if (!(err && err.code === 'NET_REJECTED' && /rate.?limit|slow down|too many/i.test(m))) return false;
+    if (!this._netLimitedNow()) console.log('[NET] Los relés limitan a este teléfono: ' + Math.round(NET_LIMIT_MS / 1000) + ' s sin preferir internet (va por Wi-Fi o Bluetooth si hay)'); // i18n-ok: registro
+    this._netLimitUntil = Date.now() + NET_LIMIT_MS;
+    return true;
+  },
+  _netLimitedNow() { return !!(this._netLimitUntil && Date.now() < this._netLimitUntil); },
 
   getMtu(deviceId) {
     var m = this._mtuByDevice.get(_normMac(deviceId));

@@ -638,6 +638,23 @@ export class BleAckSystem {
             return;
           }
         }
+        // 3347 (diag. Roberto 3159 26-11 16:42): los relés LIMITAN a este teléfono («rate-limited: too many gift wraps»): se reintentaba 5
+        // veces por internet (más sobres, más castigo) y quedaba ✗ con el Wi-Fi y el Bluetooth del contacto listos. Ahora va ya por el
+        // camino listo; si no hay otro, queda ⏳ pendiente sin insistir (lo retoma el reenvío de pendientes, con su espera).
+        if (self.ble && typeof self.ble._noteNetLimited === 'function' && _isNetDevice(entry.deviceId) && self.ble._noteNetLimited(err)) {
+          var rnx = String(entry.dst || entry.deviceId).toLowerCase().replace(/^net:?/, ''), alt = (typeof self.ble._resolveDeviceIdForNexoId === 'function') ? self.ble._resolveDeviceIdForNexoId(rnx) : null;
+          if (alt && !_isNetDevice(alt) && !entry.dst) {
+            console.log('[BleAckSystem] ' + entry.msgId + ': los relés limitan → sigue por ' + (_isLanDevice(alt) ? 'el Wi-Fi' : 'Bluetooth')); // i18n-ok: registro
+            entry.deviceId = alt;
+            self._doSend(entry);
+            return;
+          }
+          self.pendingAcks.delete(entry.msgId);
+          var pe = new Error('Contacto no disponible: queda pendiente'); pe.code = 'PEER_ABSENT';
+          entry.reject(err && err.code ? err : pe);
+          if (!entry.quiet) self._dispatchStatus(entry.msgId, 'pending');
+          return;
+        }
         if (entry.retries < self.maxRetries) {
           entry.retries++;
           console.warn('[BleAckSystem] Envio nativo fallo msgId=' + entry.msgId + ', reintento ' + entry.retries + '/' + self.maxRetries);
