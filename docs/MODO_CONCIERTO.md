@@ -66,6 +66,21 @@ teléfono mientras lo buscan dentro del grupo. Lo nuevo: interruptor y avisos, g
 13. **También en un grupo que ya existe** (dueño: «si los amigos ya tienen su grupo, no tienen por qué hacer otro»): se enciende desde sus
     ajustes y a cada integrante le llega la invitación con el aviso amarillo; solo quien acepta entra al modo.
 
+## Decisiones del dueño (25-11 noche, 3.ª parte; lo demás de Claude, aceptado «en general»)
+14. **Permisos al crear: NO aparecen** (opción B): el grupo nace «todos pueden todo»; se cambia después en «Ajustes del grupo».
+15. **Encender el modo en un grupo existente: cualquier integrante**; cada uno acepta o no con el aviso amarillo.
+16. **Renovar las 12 h: cada quien la suya.** ~15 min antes: «¿Sigues en modo concierto?»; si no contesta, se le apaga solo a él.
+17. **Salirse solo del modo, cuando quiera, sin salirse del grupo** (dueño: de 5 amigos, 2 se van antes): botón claro «Salir del modo
+    concierto» en el grupo; deja de poder buscar y de ser buscado al instante; el chat del grupo sigue igual.
+18. **El buscado ve «Ana te está buscando»** (silencioso) con «Ya voy» (le avisa a Ana) y «Ya no me busques» (corta esa búsqueda).
+19. **Se puede buscar a alguien del grupo que no es tu contacto** (aceptó el modo en ese grupo).
+20. **Vista «¿Dónde están todos?»**: con el modo activo, junto al nombre de cada integrante una **esfera de color** (nada de metros ni de
+    «niveles de señal»: la gente normal no lo entiende). Del más cercano al más lejano:
+    🔵 azul = juntos · 🟢 verde = cerca · 🟡 amarillo = intermedio · 🔴 rojo = muy lejos · ⚪ gris = no se le alcanza (no se detecta).
+    Propuesta técnica (Claude): sale del Bluetooth, sin GPS ni gasto extra (rojo = la señal apenas llega, amarillo = lejos,
+    verde = cerca, azul = a unos pasos, gris = no se oye); la distancia en metros y la flecha solo en la pantalla de una búsqueda.
+    La pantalla de búsqueda usa los MISMOS colores (hoy `find_ui.js` usa naranja/ámbar/cian/verde: cambiarlos).
+
 ## Riesgo técnico a resolver primero (Claude, 25-11)
 - **Google Play y la ubicación:** mandar la ubicación con la app cerrada suele exigir ubicación en SEGUNDO PLANO (Google la revisa con lupa,
   pide justificación y a veces video). Camino más limpio a estudiar: arrancar el servicio con permiso de ubicación EN EL MOMENTO de activar
