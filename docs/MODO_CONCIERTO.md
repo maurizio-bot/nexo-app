@@ -74,8 +74,8 @@ teléfono mientras lo buscan dentro del grupo. Lo nuevo: interruptor y avisos, g
     concierto» en el grupo; deja de poder buscar y de ser buscado al instante; el chat del grupo sigue igual.
 18. **El buscado ve «Ana te está buscando»** (silencioso). CORREGIDO por el dueño: NADA de «Ya voy» (si los dos se mueven no se encuentran)
     ni «Ya no me busques» (no tiene sentido si te buscan). Respuestas rápidas que el usuario completa: **«Estoy cerca de …»** (estoy aquí,
-    ven), **«Te veo en …»** (punto de encuentro) y **«Me quedo aquí»** (uno se queda quieto y el otro va; aceptada). Son TRES botones y
-    debajo la barra para escribir un mensaje distinto.
+    ven: el usuario lo completa, p. ej. «de aquí no me muevo») y **«Te veo en …»** (punto de encuentro). Son DOS botones (el dueño
+    descartó «Me quedo aquí»: no dice dónde y «Estoy cerca de…» ya lo cubre) y debajo la barra para escribir un mensaje distinto.
 19. **Se puede buscar a alguien del grupo que no es tu contacto** (aceptó el modo en ese grupo).
 20. **Vista «¿Dónde están todos?»**: con el modo activo, junto al nombre de cada integrante una **esfera de color** (nada de metros ni de
     «niveles de señal»: la gente normal no lo entiende). Del más cercano al más lejano:
