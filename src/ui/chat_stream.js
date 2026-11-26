@@ -2,6 +2,7 @@ import { FILE_CHUNK_SIZE, CHAT_CHUNK_SIZE, FILE_WINDOW_SIZE, CHAT_WINDOW_SIZE, F
 
 // 17: hasta cuántos trozos de internet (8000 letras c/u) sale un texto en una sola ventana (~200 KB; más largo, por ventanas como siempre)
 var NET_TEXT_WINDOW_MAX = 25;
+var BT_SILENT_SWITCH_RETRIES = 2; // 3346: ventanas sin un trozo confirmado por un Bluetooth directo antes de pasar a un camino mejor ya listo
 // 3272 (COLA 5, wifidirect.js --broken=fail): el HD de un vídeo (meta.hdFor) tiene su propio tope por Bluetooth (BLE_HD_MAX_CHARS, como en
 // ble_ack.js y ble_ack_files.js). Aquí se comparaba todo contra el tope de un archivo normal: si Wi-Fi Direct fallaba, el HD (3,4 M letras)
 // quedaba «demasiado grande para Bluetooth» y no salía nunca («HD interrumpido, se reintenta al reconectar»).
@@ -663,6 +664,11 @@ ChatStream.prototype._onWindowTimeout = function() {
       return;
     }
     self.windowRetryCount++;
+    // 3346 (diag. S24 3156 26-11 14:39–14:47, Marcos): un envío por Bluetooth DIRECTO atascado en la primera ventana (sin confirmaciones
+    // recientes) tras BT_SILENT_SWITCH_RETRIES ventanas, con un camino mejor listo AHORA (internet o Wi-Fi), se rehace por él. Antes el camino solo se volvía a mirar si fallaba la
+    // escritura nativa: un Bluetooth que el nativo del otro sí contesta (pings) pero cuya app no confirma se martillaba 8 ventanas aunque
+    // el contacto ya estuviera en línea por internet (salió por Bluetooth porque en ese instante los relés reconectaban).
+    if (self.windowStart === 0 && !(self.lastAckAt && Date.now() - self.lastAckAt < 2 * self.windowTimeoutMs) && self.windowRetryCount >= BT_SILENT_SWITCH_RETRIES && self._betterPathNow()) return;
     // 3044: respaldo Fénix con el enlace vivo y ni un trozo confirmado → la app del otro duerme: se rinde (ver FENIX_SILENT_RETRIES)
     if (self.meta && self.meta.type === 'fenix' && self.windowStart === 0 && self.windowRetryCount >= FENIX_SILENT_RETRIES) {
       console.log('[ChatStream] Respaldo Fénix: el otro no confirma ni un trozo en ' + self.windowRetryCount + ' ventanas (su app duerme): se rinde, queda para más tarde msgId=' + self.msgId);
@@ -779,6 +785,24 @@ ChatStream.prototype._probe = function(everyMs) {
   self._startWindowTimer(gapMs);
 };
 // 3124: el NEXO ID del otro extremo de este flujo (para despertarlo): el destinatario del archivo o el dueño del enlace
+// 3346: ¿hay ahora un camino mejor (internet/Wi-Fi) que el Bluetooth directo que no confirma? Si sí, el envío se rehace por él (trozos
+// a su medida) y devuelve true. Un puente (dst/fwd) y un respaldo Fénix tienen sus propias reglas.
+ChatStream.prototype._betterPathNow = function() {
+  var self = this, bi = self.ble;
+  if (_isNetDevice(self.deviceId) || _isLanDevice(self.deviceId)) return false;
+  if (self.meta && (self.meta.dst || self.meta.fwd || _isFenixTx(self.meta))) return false;
+  if (!bi || typeof bi._resolveDeviceIdForNexoId !== 'function') return false;
+  var nx = _normId(self._dn || self._peerNexoId());
+  if (!/^nx[0-9a-z]{8}$/.test(nx)) return false;
+  var best = null;
+  try { best = bi._resolveDeviceIdForNexoId(nx, self.type === 'file' && self.content && self.content.length > _bleMax(self.meta)); } catch (e) { return false; }
+  if (!best || !(_isNetDevice(best) || _isLanDevice(best))) return false;
+  // un archivo por internet solo si ese contacto admite archivos por ahí (como al reanudar: ble_ack_resume._resumeRunOne)
+  if (self.type === 'file' && _isNetDevice(best) && !(bi.net && ((typeof bi.net.filesOk === 'function' && bi.net.filesOk(nx)) || (typeof bi.net.mailboxFilesOk === 'function' && bi.net.mailboxFilesOk(nx))))) return false;
+  console.log('[ChatStream] ' + self.msgId + ': el Bluetooth no confirma ni un trozo en ' + self.windowRetryCount + ' ventanas y ' + (_isLanDevice(best) ? 'el Wi-Fi' : 'internet') + ' está listo con ' + nx + ': sigue por ' + (_isLanDevice(best) ? 'el Wi-Fi' : 'internet')); // i18n-ok: registro para el diagnóstico
+  self.ackSystem._restartStream(self, self.msgId, best);
+  return true;
+};
 ChatStream.prototype._peerNexoId = function() {
   var dev = this.deviceId;
   try { if (this.meta && this.meta.to) return _normId(this.meta.to); } catch (e) {}

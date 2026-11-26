@@ -1496,6 +1496,14 @@
    "sintoma": "resumen_diario (25-11), build 3156",
    "categoria": "Sin fallo de la app",
    "causa": "7 enviados, 7 con ✓✓ y leídos. MTU mínimo 7 de 10 con nx1e50c95d (S23, servidor): ya conocido. Wi-Fi local «su app no contesta» ×4 = el otro dormido."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "14:47",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx01992876, Marcos), build 3156",
+   "categoria": "Caminos",
+   "causa": "Texto largo de grupo (972 trozos) por un Bluetooth que contesta pings pero no confirma (app de Marcos dormida) 8 ventanas, dos veces, con Marcos EN LÍNEA por internet: salió por Bluetooth justo cuando los relés reconectaban y el camino no se volvía a mirar al vencer las ventanas. Arreglado en 3346 (btsinack.js)."
   }
  ]
 }

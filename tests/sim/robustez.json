@@ -1247,6 +1247,10 @@
     {
      "fallo": "Dueño 23-11: en una nota de voz no se podía adelantar ni regresar, y entre varias recibidas no se sabía cuál faltaba escuchar. Ahora la onda es una barra con bolita (tocar o arrastrar; la onda se pinta hasta donde va) y las recibidas sin escuchar llevan el botón y la bolita en cian y un punto; al darle a reproducir pasan a escuchadas (solo en este teléfono, voice_heard.js; lo de antes de la actualización cuenta como escuchado). voicechain.js H1–H3, S0–S3",
      "prueba": "NOTA DE VOZ: BARRA PARA ADELANTAR Y SIN ESCUCHAR"
+    },
+    {
+     "fallo": "3346 (diag. S24 3156 26-11 14:39–14:47, «zombi» con Marcos): un texto largo de grupo salió por Bluetooth cuando el contacto no estaba en línea por internet (los relés reconectaban); su Bluetooth contestaba los pings pero su app no confirmaba ni un trozo, y el envío reintentó 8 ventanas aunque segundos después el contacto ya estaba en línea por internet (el camino solo se volvía a mirar si fallaba la escritura nativa). 3346: un envío por Bluetooth directo atascado en la primera ventana tras 2 ventanas, con internet/Wi-Fi listo, se rehace por él. btsinack.js (contraprueba: 8 reintentos y 18 s; con el arreglo 0,8 s)",
+     "prueba": "Bluetooth que no confirma con internet listo"
     }
    ],
    "debiles": [
