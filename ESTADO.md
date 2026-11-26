@@ -33,6 +33,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **LA LISTA QUE MANDA (25-11 noche): `nexo-private/negocio/RUTA_LANZAMIENTO.md`** (tienda, código pendiente y negocio; marcar [x] ahí).
   **ANTES DE LA PRÓXIMA APK (B0, barato):** esconder la 3345 — quitar «Buscar a X entre la gente» del menú de los chats (`chat_menu.js`)
   y que se ignore la acción 'fnd' (`chat_actions.js`); el código se queda para el modo concierto. Google Play: identidad VERIFICADA (25-11 19:12).
+  **ESTILO PAREJO (dueño 25-11, «muy importante»):** Ajustes, «Nuevo grupo», botones y ventanas emergentes con el estilo de la pantalla de
+  Contactos (referencia); antes de las capturas de Play. Detalle: B-EST en la ruta.
 - **MODO CONCIERTO (25-11 noche): DISEÑO ACORDADO CON EL DUEÑO, SIN EMPEZAR** → `docs/MODO_CONCIERTO.md` (leerlo antes de tocar nada).
   Lo de 3345 (`find_ui.js`, `find_near.js`, «Buscar a X» en el menú de cualquier chat) está en la rama SIN APK y NO debe salir así: se
   reutiliza dentro del modo concierto según ese documento. Lo grande (nativo) después del reinicio semanal (dueño: 76 % el miércoles).
