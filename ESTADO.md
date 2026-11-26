@@ -30,6 +30,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   `xferstuck.js` caso 6; diag. S24 3154 10:32, Zhelowsky 25 min). **3339** «sr» vencida (entró del segundo plano): se ignora y se vuelve a
   pedir la sincronía una vez (`srvencida.js`). GOOGLE PLAY (25-11): cuenta de desarrollador creada (personal, «MauBot»), identidad enviada,
   «no comerciante»; falta que Google apruebe y el teléfono. Ficha/privacidad/permisos: `nexo-private/negocio/PLAY_FICHA/`.
+- **LA LISTA QUE MANDA (25-11 noche): `nexo-private/negocio/RUTA_LANZAMIENTO.md`** (tienda, código pendiente y negocio; marcar [x] ahí).
+  **ANTES DE LA PRÓXIMA APK (B0, barato):** esconder la 3345 — quitar «Buscar a X entre la gente» del menú de los chats (`chat_menu.js`)
+  y que se ignore la acción 'fnd' (`chat_actions.js`); el código se queda para el modo concierto. Google Play: identidad VERIFICADA (25-11 19:12).
 - **MODO CONCIERTO (25-11 noche): DISEÑO ACORDADO CON EL DUEÑO, SIN EMPEZAR** → `docs/MODO_CONCIERTO.md` (leerlo antes de tocar nada).
   Lo de 3345 (`find_ui.js`, `find_near.js`, «Buscar a X» en el menú de cualquier chat) está en la rama SIN APK y NO debe salir así: se
   reutiliza dentro del modo concierto según ese documento. Lo grande (nativo) después del reinicio semanal (dueño: 76 % el miércoles).
