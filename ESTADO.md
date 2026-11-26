@@ -21,6 +21,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-25, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **SIGUIENTE SESIÓN (26-11, cerrada por contexto al 37 %):** 1) revisar el CI de la **APK 3157** (run 45851189322, arrancó 9:39 México, ~11:05) y, si pasó, pasar
+  NOVEDADES al historial como 3157. 2) **DUEÑO 26-11: «junta TODO lo que no es pesado para la siguiente; cuando salga la 3157 la reviso, te doy indicaciones y ya después
+  subes esa»** → trabajar en rama con [skip ci] y NO subir a NEXOCHAT hasta sus indicaciones. Lista: (a) permiso de batería DESPUÉS del primer mensaje (aprobado;
+  ajustar `welcome.js` y `battery_prompt.js`); (b) resto de B-EST: ventanas emergentes, menús ⋮ y hojas iguales a Chats (medir en navegador como Ajustes); (c) menú
+  de adjuntar con texto bajo cada icono la primera vez; (d) `groups.js` «no_leido_A» da 1/2/3 (también antes: ¿prueba o cuenta de más?); (e) del resumen 25-11: 13
+  «sin camino» sin ✓✓ y «Wi-Fi local: conectado pero su app no contesta» ×10. Del dueño: nombre en tienda (NEXO/Kinway) y nombre de usuario fijo vs confirmación
+  doble. Para la APK de tienda: `VIA_FADE_MS = 1000` (main.js) + auditoría de seguridad. Para Fable: modo concierto nativo, 3c Bluetooth en llamada.
+  Pruebas en este contenedor: `PLAYWRIGHT_BROWSERS_PATH` a un enlace de `chromium_headless_shell-1243` (el de tests/sim pide la 1194); `estadovideo.js` falla aquí siempre.
 - **TANDA «TODO LO MENOR» (26-11, SUBIDA A NEXOCHAT por orden del dueño; detalle en `docs/PENDIENTES.md` «26-11»; revisar el CI ~85 min):** + botón +, «Chats», botón Estados, símbolo del camino tocable, guía de 7 pasos, Ajustes más humanos; destello de estados nuevos, pantallas parejas
   (Ajustes/Nuevo grupo = Contactos), grupos solo en los ⋮ del contacto, B0 hecho (3345 escondido), guía de 5 pasos, Contactos vacío con botón, voseo fuera.
   **ANTES DE LA APK DE TIENDA:** `VIA_FADE_MS = 1000` en `main.js` (símbolo del camino 1 s) y decidir NOMBRE (NEXO/Kinway; ver FICHA.md). Revisión externa: `docs/REVISION_EXTERNA_26-11.md`.
