@@ -1448,6 +1448,14 @@
    "sintoma": "diagnóstico manual S23 (Cari), build 3155, con Wi-Fi",
    "categoria": "Sin fallo de la app",
    "causa": "12 textos al dueño por internet con ✓✓ en ≤ 1 s. El Honor de Katy (nx126df3f4) no ofrece el servicio Bluetooth de NEXO (no_service ×7, MTU 23): su app limitada por el ahorro de batería del Honor (ya se detecta: [ENERGIA]); la pausa creciente lo maneja y lo pendiente le llegó por internet (17:53:02). El S23 tiene el ahorro de batería encendido"
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "05:04",
+   "nx": "nx1n36c283",
+   "sintoma": "resumen_diario (25-11), build 3156",
+   "categoria": "Sin fallo nuevo de la app",
+   "causa": "Día de las pruebas sin internet/puente con 3155→3156 mezcladas: 99 enviados (95 ✓✓, 89 leídos), 110 recibidos. Los fallos del puente (ACK timeout ×32, contacto no disponible ×26), «sin relés» ×21 y Wi-Fi local sin Wi-Fi ×7 son de esa prueba (ya vistos y arreglados 3342–3344). Wi-Fi Direct no salió 3 veces por Wi-Fi apagado aquí (ajuste del teléfono). Pendiente de mirar en el próximo resumen: «sin camino al salir» 13 sin ✓✓ aún (¿se entregaron al volver el camino?) y «conectado pero su app no contesta» ×10 por Wi-Fi local. Batería a la vista 7,2 %/h, 36,2 °C: normal"
   }
  ]
 }
