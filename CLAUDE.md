@@ -28,6 +28,8 @@ encontrar fallos y medir cuánto, no para validarlo a él. Si algo no cuadra con
      un cambio que aporta poco puede esperar (con `[skip ci]`) a que haya una razón de peso. Antes de subir, meter lo que cabe ya.
   2. **Cuánto se pierde con un CI en curso:** si arrancó hace ~2 min, cancelarlo para meter algo más cuesta poco y se puede; si le
      faltan ~5 min, no se interrumpe (se perdería todo el tiempo): lo nuevo va en la siguiente.
+  3. **Largo de la sesión (dueño 26-11):** cada mensaje relee toda la plática, así que esperar un CI en una sesión larga sale caro.
+     Sesión corta: se sube y se espera aquí. Cerca del cierre (20 %): subir con el TRASPASO escrito y que una sesión nueva revise el CI.
   Origen de las reglas viejas: se canceló la 3151 para meter más y luego falló la 3152; se perdió mucho tiempo ese día. La lección
   es «no perder tiempo de CI», no «nunca subir» ni «solo cuando el dueño lo diga». Si de verdad hay duda, preguntar.
   La batería completa la corre el CI; aquí solo la prueba nueva y las cercanas al cambio.
@@ -63,11 +65,13 @@ actualizarlos al terminar cada bloque de trabajo.
   que Claude decide, sin esperar; preguntar antes solo si es grande. Reglas y límites: `docs/COMO_TRABAJAMOS.md` §8. Léelo con
   `ESTADO.md` al empezar. (El «reloj de ausencia» de 5 min quedó sustituido por la regla de GASTO: no se programa, se sigue
   trabajando sin esperar.)
-  **Regla de cierre por contexto (dueño 18-11, pocos tokens):** al llegar a ~30 % de la ventana de contexto (el dueño lo ve en la app;
-  Claude lo estima por el largo de la plática), al terminar el tema en curso —nunca a la mitad— escribir el resumen en el bloque
+  **Regla de cierre por contexto (dueño 18-11; 26-11 bajada a 20 %):** al llegar a ~20 % de la ventana de contexto (~200 000 de
+  1 000 000; el dueño lo ve en la app), al terminar el tema en curso —nunca a la mitad— escribir el resumen en el bloque
   TRASPASO de `ESTADO.md` (lo pendiente, lo decidido, las pruebas en curso y los avisos programados; los diagnósticos largos van aparte,
   en `docs/diagnosticos.json`), avisar al dueño en una línea y pedirle abrir una sesión nueva. Sin esperar a que lo pida.
-  Medirlo: `python3 docs/contexto_estimar.py` (18-11: 9 000 caracteres = 1 %; 30 % = 270 000 caracteres desde el último resumen; medido contra el 44-45 % que veía el dueño; se ajusta con el tiempo).
+  Medirlo EXACTO: `get_session` (sin session_id) → `context_usage.used_tokens` / `max_tokens`. PORQUÉ del 20 %: el 30 % se fijó el
+  18-11 con una ventana más chica (~170 000 en total); con la ventana de 1 000 000, 30 % ya eran ~300 000 y el plan semanal se acababa
+  a media semana. Cada sesión arranca con ~100 000 fijos (instrucciones y herramientas). (`docs/contexto_estimar.py` queda de respaldo.)
   **Higiene de contexto (§9):** mantener el bloque TRASPASO de `ESTADO.md` y sugerir `/compact` o `/clear` al cerrar un bloque.
 
 - Rutina diaria (pedida por el dueño, `docs/ROBUSTEZ.md` §5): lo del dueño primero (sus pruebas y
