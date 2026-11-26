@@ -21,7 +21,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-25, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
-- **APK 3159 SUBIDA (26-11 ~14:40 México):** la 3158 falló en 2 pruebas (avisoschat: buscaba el texto viejo del menú ⋮; gruposaudit: 40 intentos de firma no bastaban, azar) → arregladas las pruebas, sin cambio de la app.
+- **APK 3159 PUBLICADA (26-11 15:57 México; CI en verde):** incluye todo lo de la 3157/3158 (icono Everbeat, tanda de UX menor). NOVEDADES ya en el historial. El dueño la revisa y da indicaciones; la tanda siguiente va en rama con [skip ci] hasta entonces.
+  Diag. S24 3156 (14:47): mensaje de grupo grande (972 trozos) 8 min por Bluetooth sin ACK con el contacto EN LÍNEA por internet → posible cambio de camino antes de agotar reintentos (PARA FABLE / por decidir). Aviso «se cerró desde recientes» = cierre real (motivo 10/11 en 24 h), no falso por actualización (motivo 16).
+- (antes) APK 3159 SUBIDA (26-11 ~14:40 México): la 3158 falló en 2 pruebas (avisoschat: buscaba el texto viejo del menú ⋮; gruposaudit: 40 intentos de firma no bastaban, azar) → arregladas las pruebas, sin cambio de la app.
 - **(antes) APK 3158 (26-11 ~12:00, FALLÓ):** la 3157 FALLÓ en «Nada sin definir» (`screen` en `find_ui.js` de la 3345, que nunca había
   pasado por el CI) → arreglado; 3158 = todo lo de la 3157 + la tanda menor + ICONO EVERBEAT F (círculo y latido naranja #ff2301; `nexo-private/negocio/icono_everbeat_final/`).
   El NOMBRE aún dice NEXO en la app (Everbeat pendiente del IMPI). Diagnósticos 26-11: doble enlace a la copia LE Coded → zombi (PARA FABLE, en PENDIENTES).

@@ -12,6 +12,12 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+</es-419>
+<!-- /APK -->
+
+## Historial
+
+### APK 3159 (26-11-2026; incluye lo de la 3157 y 3158, que no pasaron el CI)
 - Icono nuevo.
 - El botón de agregar es un +; la pantalla principal se llama Chats.
 - Botón Estados arriba, con puntito si hay nuevos.
@@ -20,10 +26,6 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Adjuntar con el nombre de cada opción.
 - «Se unió al grupo» ya no suma sin leer.
 - Guía de bienvenida nueva.
-</es-419>
-<!-- /APK -->
-
-## Historial
 
 
 ### APK 3156 (25-11-2026)
