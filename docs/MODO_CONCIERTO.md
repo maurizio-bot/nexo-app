@@ -72,7 +72,10 @@ teléfono mientras lo buscan dentro del grupo. Lo nuevo: interruptor y avisos, g
 16. **Renovar las 12 h: cada quien la suya.** ~15 min antes: «¿Sigues en modo concierto?»; si no contesta, se le apaga solo a él.
 17. **Salirse solo del modo, cuando quiera, sin salirse del grupo** (dueño: de 5 amigos, 2 se van antes): botón claro «Salir del modo
     concierto» en el grupo; deja de poder buscar y de ser buscado al instante; el chat del grupo sigue igual.
-18. **El buscado ve «Ana te está buscando»** (silencioso) con «Ya voy» (le avisa a Ana) y «Ya no me busques» (corta esa búsqueda).
+18. **El buscado ve «Ana te está buscando»** (silencioso). CORREGIDO por el dueño: NADA de «Ya voy» (si los dos se mueven no se encuentran)
+    ni «Ya no me busques» (no tiene sentido si te buscan). Respuestas rápidas que el usuario completa: **«Estoy cerca de …»** (estoy aquí,
+    ven) y **«Te veo en …»** (punto de encuentro). Propuesta de Claude pendiente de confirmar: una tercera, «Me quedo aquí» (uno se queda
+    quieto y el otro va: la regla clásica para encontrarse).
 19. **Se puede buscar a alguien del grupo que no es tu contacto** (aceptó el modo en ese grupo).
 20. **Vista «¿Dónde están todos?»**: con el modo activo, junto al nombre de cada integrante una **esfera de color** (nada de metros ni de
     «niveles de señal»: la gente normal no lo entiende). Del más cercano al más lejano:
