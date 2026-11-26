@@ -142,8 +142,9 @@ const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
     await P.A.gs.leaveSigned(gid); await W.flush();
     const exit = W.st('B', gid);
     // varios intentos (con el reloj t) para que su primer estado tenga la huella menor: antes bastaba con 1–2
+    // 26-11: 40 intentos a veces no bastaban (si la huella de «exit» sale muy baja: falló en el CI de la 3158); ahora hasta 2000
     let k1 = null;
-    for (let t = 1; t < 40; t++) { const s = G.gsNext(base, P.A.id, { m: [P.A.id, P.C.id], ad: [P.A.id] }); s.t = t; const c = await W.signAs('A', s); if (G.gsId(c) < G.gsId(exit)) { k1 = c; break; } }
+    for (let t = 1; t < 2000; t++) { const s = G.gsNext(base, P.A.id, { m: [P.A.id, P.C.id], ad: [P.A.id] }); s.t = t; const c = await W.signAs('A', s); if (G.gsId(c) < G.gsId(exit)) { k1 = c; break; } }
     const k2 = await W.forge('A', k1, { m: [P.C.id], ad: [P.C.id], cr: P.C.id });
     ['B', 'C'].forEach((n) => W.inject(n, 'A', gid, [k1, k2])); await W.flush();
     r.B2_salida_no_se_reescribe = ['B', 'C'].every((n) => W.st(n, gid).m.includes(P.B.id) && W.st(n, gid).cr === P.B.id) && !P.B.gs.list[gid].kicked;

@@ -39,7 +39,7 @@ global.window = { addEventListener() {}, Capacitor: { Plugins: { NexoBLE: {
   lock = true;
   r.A5_global = send('bbbb', 'bloqueo') === '';
   const src = (f) => fs.readFileSync(path.join(buildDir, 'src', f), 'utf8');
-  r.A6_menus = /data-action="hidetext"/.test(src('ui/ble_ui.js')) && /gm-hidetext/.test(src('ui/groups_ui.js')) && /isPreviewHidden\(cid\)/.test(src('main.js'));
+  r.A6_menus = /data-action="hidetext"|_mi\('hidetext'/.test(src('ui/ble_ui.js')) && /gm-hidetext/.test(src('ui/groups_ui.js')) && /isPreviewHidden\(cid\)/.test(src('main.js'));
   let i18n = true;
   for (const l of ['es', 'it', 'en', 'pt', 'fr']) { const T = (await importSrc('ui/i18n/' + l + '.js')).default; i18n = i18n && !!T.chat_hide_preview && !!T.chat_show_preview; }
   r.A6_idiomas = i18n;
