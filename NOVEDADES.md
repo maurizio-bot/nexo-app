@@ -13,6 +13,8 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <!-- APK -->
 <es-419>
 - Tocar la foto de un grupo en la lista de chats la abre en grande, como la de un contacto.
+- Internet prestado más estable: no se suelta al volver a NEXO y cambia de servidor solo si uno falla.
+- Un mensaje rechazado por los servidores queda pendiente y sale solo, sin marcarse como fallido.
 </es-419>
 <!-- /APK -->
 
