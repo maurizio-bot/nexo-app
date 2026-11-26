@@ -6,6 +6,16 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 26-11 — dueño: AUDITORÍA PREVIA A GOOGLE PLAY (guardado, sin hacer)
+- **PORQUÉ:** antes de subir a Play se hace otra auditoría; el dueño quiere que la app se vea uniforme y bien hecha.
+- **Estética uniforme (revisar TODO):** proporciones, posiciones, dimensiones y colores de cada pantalla, ventana y botón (referencia: Contactos;
+  ver B-EST en `nexo-private/negocio/RUTA_LANZAMIENTO.md`). Incluye **gestos y funcionalidades** (que sean coherentes entre pantallas).
+- **Grupos (decisión del dueño 26-11):** quitar el botón/opción de «Nuevo grupo» de donde está hoy (menú del botón flotante `nexo-fab-group`,
+  `groups_ui.js` ~254) y dejar SOLO «Crear grupo» en los ⋮ de cada contacto (ya existe, `ble_ui.js` `_toggleContactMenu`, 3222).
+  Ojo al hacerlo: con ese camino el grupo siempre nace con un contacto elegido; comprobar que desde la ventana se puedan sumar más.
+- **Revisión como persona externa:** probar la app como un usuario nuevo y compararla de forma real con otras mensajeras (qué tiene, qué le falta,
+  qué gusta y qué no). Hecha una primera el 26-11: `docs/REVISION_EXTERNA_26-11.md`.
+
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
