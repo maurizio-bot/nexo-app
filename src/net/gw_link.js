@@ -465,13 +465,24 @@ export class GwLink {
 
   _use(nx, dev, url) {
     var self = this, net = this.net, key = 'gw:' + nx;
-    var of = this.offers.get(nx) || {};
+    var of = this.offers.get(nx) || {}, of0 = of;
     var b = { nx: nx, dev: dev, url: url, key: key, wd: !!of.wd, wifi: !!of.wifi, files: of.files !== false };
     this.bridges.set(nx, b);
     this._chainSince = 0; this.askAt.clear();
     var r = net.relays.get(key) || { backoff: 2000, waits: new Map() };
     r.gw = nx; r.realUrl = url;
-    r.factory = function() { var sid = _rid(); var vs = new VSock(self, b, sid, url); self.socks.set(sid, vs); b.sock = vs; return vs; };
+    // 3344 (diag. S23 3155 25-11 17:19–17:21: por el puente de Yael, el relé nos.lol «no contesta a un envío» cada ~13 s y se reabría el MISMO
+    // relé 7 veces: lo de recibir llegaba, lo mío no salía). Una sesión que muere a menos de 40 s de abrirse dos veces seguidas → la siguiente,
+    // por el mismo puente, a otro de los relés que ofreció
+    r.factory = function() {
+      var now = Date.now(), of = self.offers.get(nx) || of0;
+      if (b.sock && b.sock._openAt && now - b.sock._openAt < 40000) b.quick = (b.quick || 0) + 1; else if (b.sock) b.quick = 0;
+      if (b.quick >= 2 && of && of.urls && of.urls.length > 1) {
+        var i = of.urls.indexOf(b.url), nu = of.urls[(i + 1) % of.urls.length];
+        if (nu && nu !== b.url) { console.log('[GW] El relé ' + _host(b.url) + ' por el puente ' + nx + ' se cae enseguida: pruebo ' + _host(nu)); b.url = nu; r.realUrl = nu; b.quick = 0; }
+      }
+      var sid = _rid(); var vs = new VSock(self, b, sid, b.url); self.socks.set(sid, vs); b.sock = vs; return vs;
+    };
     r.retryAt = 0;
     net.relays.set(key, r);
     console.log('[GW] Sin internet propio: uso a ' + nx + ' de puente (relé ' + _host(url) + '; ' + this.bridges.size + ' de ' + GW_MAX + ')' +
@@ -500,7 +511,7 @@ export class GwLink {
       else this.offers.delete(bnx);
       return;
     }
-    vs._opened = true; clearTimeout(vs._openTimer);
+    vs._opened = true; vs._openAt = Date.now(); clearTimeout(vs._openTimer);
     if (p.f === 0 || p.f === 1) vs.br.files = p.f === 1; // 3323: lo que dice el puente al abrir manda sobre la oferta
     noteHelp(vs.br.nx, 'me prestó su internet'); // 3323
     console.log('[GW] Conectado a internet por el puente ' + vs.br.nx + ' (relé ' + _host(vs.url) + ')');

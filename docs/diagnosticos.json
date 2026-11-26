@@ -1432,6 +1432,14 @@
    "sintoma": "prueba del dueño 3155: internet prestado sin Wi-Fi ni datos (captura: los mensajes van y vienen con ✓✓)",
    "categoria": "Internet prestado",
    "causa": "3342 funciona: puente listo en 1,4 s (17:20:33, con «pruebo otro relé por el mismo puente») y 3 s (17:31:41). Hallado: (1) en cada vuelta a la app se soltaba el puente («ya no está cerca») porque la limpieza de enlaces lo deja un momento sin enlace → 3343 gracia de 8 s; (2) dos textos ✗ 11 s por «Rechazado por los relés: banned» porque el código del error se pierde en los reintentos → 3343 se reconoce por el texto. Zhelowsky (3154) con el Bluetooth que entra y sale cada 30-40 s y Marcos (3148) sin confirmar Fénix: del otro lado"
+  },
+  {
+   "dia": "2026-11-25",
+   "hora": "17:27",
+   "nx": "nx1e50c95d",
+   "sintoma": "zombi (nx126df3f4), build 3155 — S23 sin red con internet prestado por Yael",
+   "categoria": "Internet prestado: relé del puente que no contesta lo mío",
+   "causa": "Puente listo en 1,7 s (con cambio de relé, 3342 OK), pero por el puente de Yael (nx16386482) el relé nos.lol «no contesta a un envío» cada ~13 s y se reabría el MISMO relé 7 veces: lo recibido llegaba y 6 textos al dueño no salían (✗ a las 17:20:52 y 17:21:36 por «Rechazado por los relés: conexión muerta»). Arreglado 3344: dos caídas seguidas a < 40 s de abrir → otro relé por el mismo puente (puenterele.js, contraprueba falla); el ✗ ya era pendiente con 3343. El zombi con Katy fue la comprobación al volver; el ping viejo ya no contó (3340 funcionando)"
   }
  ]
 }

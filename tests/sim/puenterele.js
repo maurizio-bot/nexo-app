@@ -57,8 +57,8 @@ function shutdown(p) { try { p.win.bleInterface.net._closeAll(); p.win.bleInterf
 
 (async () => {
   const r = { prueba: 'puenterele', build: path.basename(buildDir) };
-  const r1 = new NostrRelay(), r2 = new NostrRelay();
-  RELAYS = [await r1.start(), await r2.start()];
+  const r1 = new NostrRelay(), r2 = new NostrRelay(), r3 = new NostrRelay();
+  RELAYS = [await r1.start(), await r2.start(), await r3.start()];
   const radio = new Radio();
   const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', base), nB = new NativePhone('B', 'BB:BB:BB:BB:BB:02', base), nC = new NativePhone('C', 'CC:CC:CC:CC:CC:04', base);
   [nA, nB, nC].forEach((n) => { radio.add(n); n.load(); });
@@ -85,12 +85,28 @@ function shutdown(p) { try { p.win.bleInterface.net._closeAll(); p.win.bleInterf
   r.rechazos = refused;
   await openChatWith(A, 'C'); sendText(A, 'por el puente');
   r.llega_s = await waitFor(async () => (await C.win.vaultLoadMessages(idA)).some((m) => !m._own && String(m.content).trim() === 'por el puente'), 60000);
+  // 3344: la sesión por el puente se cae enseguida dos veces seguidas (el relé no contesta lo mío) → la siguiente va a otro relé
+  const br = netA.gw && Array.from(netA.gw.bridges.values())[0];
+  const url0 = br && br.url;
+  let prev = null;
+  for (let k = 0; k < 3 && br; k++) {
+    await waitFor(() => br.sock && br.sock !== prev && br.sock._opened && !br.sock._closed, 60000);
+    prev = br.sock;
+    if (br.url !== url0) break;
+    try { br.sock._end(); } catch (e) {}
+    await sleep(500);
+  }
+  r.cambia_de_rele = await waitFor(() => br && br.url !== url0 && br.sock && br.sock._opened, 90000);
+  // por el relé nuevo A vuelve a oír a C (le contesta el saludo por internet)
+  const mark = logs.length;
+  await openChatWith(A, 'C');
+  r.c_en_linea_tras_cambio_s = await waitFor(() => logs.slice(mark).some((l) => /\[A\] log: \[RUTA\] .* contesta: listo por internet/.test(l)), 30000);
   r.otro_rele = logs.some((l) => /\[A\] log: \[GW\] Pruebo otro relé por el mismo puente/.test(l));
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
-  const ok = r.rechazos === 1 && r.puente_listo_s !== null && r.puente_listo_s <= 15 && r.llega_s !== null && !r.errores.length;
+  const ok = r.rechazos === 1 && r.puente_listo_s !== null && r.puente_listo_s <= 15 && r.llega_s !== null && r.cambia_de_rele !== null && r.c_en_linea_tras_cambio_s !== null && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('PUENTERELE ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_puenterele.txt'), logs.join('\n'));
-  [A, B, C].forEach(shutdown); await r1.stop(); await r2.stop();
+  [A, B, C].forEach(shutdown); await r1.stop(); await r2.stop(); await r3.stop();
   process.exit(ok ? 0 : 1);
 })().catch((e) => { console.log('PUENTERELE ' + JSON.stringify({ prueba: 'puenterele', resultado: 'FALLO', error: String(e && e.message) })); fs.writeFileSync(path.join(__dirname, 'last_logs_puenterele.txt'), logs.join('\n')); process.exit(1); });
