@@ -235,8 +235,6 @@ export const BLE_UI_METHODS = {
     this.elements.mainContactsList = document.getElementById('main-contacts-list');
     this.elements.mainOnlineStrip = document.getElementById('main-contacts-online-strip');
     this.elements.mainEmptyMsg = document.getElementById('main-contacts-empty-msg');
-    var emptyAdd = document.getElementById('main-empty-add'); // 26-11: sin contactos, el camino a agregar/invitar se ve a primera vista
-    if (emptyAdd) emptyAdd.addEventListener('click', function() { self.togglePanel(); });
     var fabBtn = document.createElement('button');
     fabBtn.id = 'ble-fab-btn';
     fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'; // 26-11 (dueño): el + (la burbuja de mensaje no tiene relación con agregar)

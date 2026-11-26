@@ -22,6 +22,9 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - **Segunda ronda 26-11 (dueño: «regresa el +; tutorial e intuitivo»):** botón de agregar = **+** (dos sitios en `ble_ui.js`); pantalla principal **«Chats»**;
   **botón Estados** en la cabecera (casilla libre de la cuadrícula; puntito si hay sin ver; prueba E11); **símbolo del camino tocable** (explica Bluetooth/Wi-Fi/internet/salto/prestado);
   guía de 5 pasos reescrita (+, símbolo, estados, grupos).
+- **Tercera ronda 26-11:** quitado el botón central «Agregar o invitar» de Chats vacío (confundía con el +; ahora solo texto que apunta al +). Los círculos de estados
+  viven SOLO en la pantalla Estados (nunca en Chats ni en la cabecera del chat); tocar uno va a su estado (`feedGoNx`, ya era así). Guía de **7 pasos**: bienvenida, agregar (+),
+  escribir/mandar/llamar (+ símbolo del camino), grupos (+ fijar/silenciar/bloquear), estados, cuenta protegida (cifrado, bloqueo, Fénix), batería.
 - **PENDIENTE DE ESTA TANDA:** nombre (A/B/C, ver ESTADO), permiso de batería más tarde (idea de la revisión externa), «Estados» sin gesto escondido
   (hoy: destello + guía), revisión visual de TODAS las pantallas restantes (ahora solo se midieron Ajustes y Nuevo grupo).
 - **Revisión como persona externa:** `docs/REVISION_EXTERNA_26-11.md`.
