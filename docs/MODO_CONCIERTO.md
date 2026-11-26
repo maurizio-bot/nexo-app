@@ -54,6 +54,25 @@ mandar mensaje con sonido y pasa a ser el aviso silencioso del punto 7; la ubica
 teléfono mientras lo buscan dentro del grupo. Lo nuevo: interruptor y avisos, grupo con vencimiento, envío nativo de ubicación,
 «¡Ya lo encontraste!».
 
+## Decisiones del dueño (25-11 noche, 2.ª parte)
+10. **Una sola forma de crear grupo.** Se quitan los dos botones «Todos participan» / «Personalizado» del principio (los pidió el dueño el
+    23-11; ahora ve que «Personalizado» con todo en «Todos» es el grupo normal). Todo empieza en «todos pueden todo»; quien quiera
+    otra cosa la ajusta (las mismas opciones ya existen en «Ajustes del grupo»).
+11. **Una sola pantalla «Nuevo grupo»**, de arriba abajo: interruptor «Modo concierto» (arriba, apagado, con descripción; al encenderlo el
+    aviso amarillo) → nombre («Grupo N» por defecto) → contactos con la MISMA estética de la lista de contactos (foto, nombre, colores y
+    letra; palomita a la derecha) → «Crear grupo». El menú de ahora se ve aparte de la app: incongruente.
+12. **El modo concierto es un INTERRUPTOR del grupo, no otro tipo de grupo.** A las 12 h se apaga solo el modo; el grupo, sus mensajes y sus
+    integrantes se quedan como grupo normal. Se vuelve a encender para otro concierto.
+13. **También en un grupo que ya existe** (dueño: «si los amigos ya tienen su grupo, no tienen por qué hacer otro»): se enciende desde sus
+    ajustes y a cada integrante le llega la invitación con el aviso amarillo; solo quien acepta entra al modo.
+
+## Riesgo técnico a resolver primero (Claude, 25-11)
+- **Google Play y la ubicación:** mandar la ubicación con la app cerrada suele exigir ubicación en SEGUNDO PLANO (Google la revisa con lupa,
+  pide justificación y a veces video). Camino más limpio a estudiar: arrancar el servicio con permiso de ubicación EN EL MOMENTO de activar
+  el modo (app abierta: Android lo permite y lo conserva mientras el servicio vive) y pedir GPS solo durante los 20 min de una búsqueda.
+  Esto decide si Google pone trabas: revisarlo antes de programar lo nativo.
+- **Cómo se comunica:** «encontrarte con tus amigos», nunca «rastrear» (usuario y tienda).
+
 ## Abierto
 - Texto final de la descripción y del aviso amarillo (lo ve el dueño).
 - Rediseño del menú de «Nuevo grupo».
