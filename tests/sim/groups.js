@@ -69,13 +69,17 @@ const vaultHas = async (p, cid, re) => (await p.win.vaultLoadMessages(cid)).some
   r.B_conoce_a_C_antes = B.win.vaultLoadContacts().some((c) => (c.nexoId || '').toLowerCase() === id(C));
   // 3222 (dueño 17-11): «Crear grupo» desde los ⋮ de un contacto → la hoja «Nuevo grupo» con ese contacto ya elegido; y no hay botón arriba
   r.sin_boton_arriba = !A.win.document.getElementById('nexo-new-group-btn');
+  // 26-11 (dueño): el botón redondo de abajo SOLO agrega contactos (sin menú «Crear grupo»); el grupo nace en los ⋮ del contacto
+  click(A.win, A.win.document.getElementById('ble-fab-btn')); await sleep(400);
+  r.fab_sin_menu_de_grupo = !A.win.document.getElementById('nexo-fab-menu') && !A.win.document.getElementById('nexo-fab-group') && A.win.document.getElementById('ble-panel').classList.contains('active');
+  A.win.bleInterface.togglePanel(); await sleep(300);
   click(A.win, A.win.document.querySelector('#main-contacts-list .ble-btn-menu')); await sleep(300);
   click(A.win, A.win.document.querySelector('.ble-menu-item[data-action="newgroup"]')); await sleep(400);
   { const sh = A.win.document.getElementById('nexo-group-sheet');
     r.menu_crear_grupo = !!sh && sh.querySelectorAll('input[type=checkbox]:checked').length === 1 && !sh.querySelector('#nexo-group-create').disabled;
     if (sh) sh.remove(); }
   // 1. A crea el grupo
-  click(A.win, A.win.document.getElementById('ble-fab-btn')); await sleep(300); click(A.win, A.win.document.getElementById('nexo-fab-group')); await sleep(400); // 3222: «Crear grupo» desde el botón de agregar
+  A.win.NEXO_newGroupWith(); await sleep(400); // 3222: «Crear grupo» desde el botón de agregar
   const sheet = A.win.document.getElementById('nexo-group-sheet');
   r.boton_grupo = !!sheet;
   if (!sheet) { console.log('GROUPS ' + JSON.stringify(Object.assign(r, { resultado: 'FALLO' }))); fs.writeFileSync(path.join(__dirname, 'last_logs_groups.txt'), logs.join('\n')); process.exit(1); }
@@ -138,7 +142,7 @@ const vaultHas = async (p, cid, re) => (await p.win.vaultLoadMessages(cid)).some
   await openChatWith(A, '👥 Amigos'); await sendText(A, 'ya sin C'); await sleep(4000);
   r.no_se_manda_a_C = !(await vaultHas(A, id(C), /ya sin C/)) && !(await vaultHas(C, gid, /ya sin C/));
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css/.test(l)).slice(0, 5);
-  const ok = r.sin_boton_arriba && r.menu_crear_grupo && r.boton_sin_nombre && r.grupo_en_B && r.grupo_en_C && r.creado_entregado_en_A === true && r.B_conoce_a_C_despues && r.C_conoce_a_B_despues && r.llega_a_A && r.no_leido_A === 1 &&
+  const ok = r.sin_boton_arriba && r.fab_sin_menu_de_grupo && r.menu_crear_grupo && r.boton_sin_nombre && r.grupo_en_B && r.grupo_en_C && r.creado_entregado_en_A === true && r.B_conoce_a_C_despues && r.C_conoce_a_B_despues && r.llega_a_A && r.no_leido_A === 1 &&
     r.llega_a_C && r.no_va_al_chat_1a1_de_C && r.estado_en_B === 'entregado a todos' && r.burbuja_en_C.some((x) => /^B: hola grupo/.test(x)) && r.largo_llega_a_A && r.largo_llega_a_B &&
     r.sin_sobres_en_1a1 && r.archivo_llega_a_B && r.archivo_llega_a_C && r.archivo_entregado_en_A && r.copias_borradas && r.C_ya_no_lo_tiene && r.A_ve_que_salio && r.B_ve_que_salio && r.no_se_manda_a_C && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';

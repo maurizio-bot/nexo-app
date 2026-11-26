@@ -115,7 +115,7 @@ export function nameGate(bi, opts) {
   var pre = _clean(opts.prefill || (bi && bi.localDeviceName) || '');
   if (pre) input.value = pre;
   var warn = document.createElement('div'); warn.className = 'nm-warn';
-  warn.innerHTML = t('name_gate_warn', '⚠️ <b>Escribilo con atención: NO se puede cambiar después.</b> Tu nombre queda fijo para que nadie pueda hacerse pasar por otro (evita perfiles falsos y fraudes).');
+  warn.innerHTML = t('name_gate_warn', '⚠️ <b>Escríbelo con atención: NO se puede cambiar después.</b> Tu nombre queda fijo para que nadie pueda hacerse pasar por otro (evita perfiles falsos y fraudes).');
   var primary = document.createElement('button'); primary.className = 'nm-primary'; primary.id = 'nexo-name-ok';
   primary.textContent = t('name_gate_ok', 'Confirmar mi nombre');
   box.append(icon, title, body, input, warn, primary);

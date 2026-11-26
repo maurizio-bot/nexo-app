@@ -68,6 +68,10 @@ const menuItem = async (p, cls) => { click(p.win, $(p, '#chat-contact-avatar'));
   A.win.bleInterface.togglePanel(); await addFound(A); A.win.bleInterface.togglePanel();
   await openChatWith(A, 'B'); sendText(A, 'hola'); await sleep(2500);
   r.contactos = await wait(async () => (await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'hola'), 30);
+  // 0. 26-11 (B0, dueño): escondido por defecto: sin «Buscar a X…» en el menú del chat; con el interruptor encendido vuelve
+  r.escondido_por_defecto = !(await menuItem(A, 'chat-find'));
+  { const m = $(A, '#nexo-chat-menu'); if (m) m.remove(); }
+  A.win.__nexoFindOn = true; B.win.__nexoFindOn = true;
   // 1. la pantalla de buscar
   const it = await menuItem(A, 'chat-find');
   r.opcion_en_menu = !!it && /Buscar a .*entre la gente/.test(it.textContent);
@@ -120,7 +124,7 @@ const menuItem = async (p, cls) => { click(p.win, $(p, '#chat-contact-avatar'));
   click(A.win, gi);
   r.grupo_lista = await wait(() => Array.from(A.win.document.querySelectorAll('#nexo-find-group .find-grp-row')).some((x) => x.dataset.nx === idB && /Muy cerca/.test(x.textContent)), 15);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
-  const ok = r.contactos && r.opcion_en_menu && r.pantalla && r.lejos && r.muy_cerca && r.acercando && r.sigue_escaneando && r.escaneos_pocos &&
+  const ok = r.contactos && r.escondido_por_defecto && r.opcion_en_menu && r.pantalla && r.lejos && r.muy_cerca && r.acercando && r.sigue_escaneando && r.escaneos_pocos &&
     r.b_mensaje && r.b_te_buscan && r.b_vibra && r.b_busca_a_a && r.a_comparte && r.b_ve_distancia && r.b_flecha && r.nada_en_chats && r.sin_aviso_ubicacion &&
     r.a_cerrada && r.a_para_gps && r.b_deja_de_verla && r.a_para_escaneo && r.grupo_opcion && r.grupo_lista && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';

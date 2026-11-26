@@ -79,7 +79,7 @@ const check = (p, sel) => { const cb = q(p, sel); if (cb) { cb.checked = true; c
   for (const n of ['B', 'C', 'D']) { await openChatWith(A, n); await sendText(A, 'hola ' + n); await sleep(2500); await closeChat(A); }
 
   // 1. A crea el grupo en modo Control con B y C
-  click(A.win, q(A, '#ble-fab-btn')); await sleep(300); click(A.win, q(A, '#nexo-fab-group')); await sleep(400);
+  A.win.NEXO_newGroupWith(); await sleep(400);
   const sheet = q(A, '#nexo-group-sheet');
   // dueño 23-11: lo PRIMERO son las dos opciones; el nombre y los contactos aparecen al elegir una
   r.opciones_primero = !!q(A, '#nexo-group-mode .gset-mode-o') && !!q(A, '#nexo-group-mode .gset-mode-p') && q(A, '#nexo-group-step2').style.display === 'none';

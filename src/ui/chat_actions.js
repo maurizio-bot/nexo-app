@@ -3,7 +3,7 @@
  * cita, menú de la burbuja (responder, reenviar, copiar, eliminar para mí / para todos), barra de respuesta, hoja de
  * reenvío y aplicar el "eliminar para todos" que llega. Lo que usa del resto de la app se lo da main.js.
  */
-import { findOnAction } from './find_ui.js';
+import { findOnAction, findOn } from './find_ui.js';
 import { haptic } from './haptics.js'; // NEXO Touch (2968): háptica del sistema
 import { applyAvatar, avatarQueryReceived } from './avatar.js';
 import { applyContactProfile } from './profile_share.js';
@@ -855,7 +855,7 @@ export function _applyChatAction(senderId, act) {
   if (act && act.act === 'prof') { applyContactProfile(senderId, act); return; } // #dueño 04-11: datos de perfil completos (profile_share.js)
   if (act && act.act === 'psi') { psiOnAction(senderId, act); return; } // #dueño 04-11 paso 3: contactos en común (PSI, psi.js)
   if (act && act.act === 'pin') { pinOnAction(senderId, act); return; } // 3219: fijar un mensaje arriba del chat (chat_pin.js)
-  if (act && act.act === 'fnd') { findOnAction(senderId, act); return; } // 3345 (modo multitud): buscarse entre la gente (find_ui.js)
+  if (act && act.act === 'fnd') { if (findOn()) findOnAction(senderId, act); return; } // 26-11 (B0): escondido; la acción se ignora // 3345 (modo multitud): buscarse entre la gente (find_ui.js)
   if (act && act.act === 'ghq') { onHistoryQuery(senderId, act); return; } // 24-11: un nuevo del grupo me pide los mensajes anteriores
   if (act && act.act === 'ghr') { onHistoryReply(senderId, act); return; } // 24-11: llegan los mensajes anteriores del grupo
   if (act && act.act === 'game') { // ronda 2830+: juegos por turnos; se enruta por act.g

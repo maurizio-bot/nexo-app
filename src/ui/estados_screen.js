@@ -12,7 +12,7 @@
  *  - Dentro de Estados, deslizar de lado mueve entre los estados de un mismo contacto; solo en el PRIMERO de ellos, deslizar de
  *    izquierda a derecha vuelve a Contactos. La fila de círculos y el comentario no cambian de pantalla.
  */
-import { attachPullRefresh } from './estados.js';
+import { attachPullRefresh, activeStatusContacts, statusSeen } from './estados.js';
 import { feedMount, feedRender, feedShow, feedGoNx } from './estados_feed.js';
 import { t } from './i18n.js';
 
@@ -66,7 +66,7 @@ function _settle(open) {
   void scr.offsetWidth;
   _setPos(open ? 1 : 0);
   scr.setAttribute('aria-hidden', open ? 'false' : 'true');
-  if (open) { _hintHide(); console.log('[ESTADOS] Pantalla de estados abierta'); }
+  if (open) { _hintHide(); _edgeHide(); console.log('[ESTADOS] Pantalla de estados abierta'); }
   _anim = setTimeout(function() {
     _anim = null;
     scr.classList.remove('nx-est-anim'); if (app) app.classList.remove('nx-est-anim');
@@ -176,6 +176,41 @@ function _hintHide() {
   setTimeout(function() { try { h.remove(); } catch (e) {} }, 300);
 }
 
+
+// ---------- El destello del borde derecho (dueño 26-11): hay estados NUEVOS que no has visto ----------
+// Una rayita suave en el borde derecho que late despacio. No toma los toques. Desaparece al PRIMER toque en la pantalla (el usuario ya lo vio:
+// si quiere va a los estados y si no, no) y no vuelve por los mismos estados: solo por otros nuevos.
+var EDGE_KEY = 'nexo_est_edge_seen';
+var _edge = null;
+function _edgeUnseen() {
+  var out = [];
+  try { activeStatusContacts().forEach(function(c) { c.items.forEach(function(it) { if (!statusSeen(c.nx, it.sid)) out.push(c.nx + '|' + it.sid); }); }); } catch (e) {}
+  return out;
+}
+function _edgeSeen() { try { return JSON.parse(localStorage.getItem(EDGE_KEY) || '[]'); } catch (e) { return []; } }
+function _edgeMark(ids) { try { var seen = _edgeSeen(); localStorage.setItem(EDGE_KEY, JSON.stringify(seen.concat(ids.filter(function(i) { return seen.indexOf(i) < 0; })).slice(-300))); } catch (e) {} }
+function _edgeHide() {
+  if (!_edge) return;
+  var e = _edge; _edge = null;
+  document.removeEventListener('touchstart', _edgeHide, { capture: true });
+  document.removeEventListener('mousedown', _edgeHide, { capture: true });
+  _edgeMark(e._ids || []);
+  e.classList.add('out');
+  setTimeout(function() { try { e.remove(); } catch (x) {} }, 400);
+}
+function _edgeCheck() {
+  if (_edge || !_hintFree()) return;
+  var seen = _edgeSeen(), fresh = _edgeUnseen().filter(function(i) { return seen.indexOf(i) < 0; });
+  if (!fresh.length) return;
+  _edge = document.createElement('div');
+  _edge.id = 'nexo-est-edge'; _edge.className = 'nx-est-edge'; _edge.setAttribute('aria-hidden', 'true');
+  _edge._ids = fresh;
+  document.body.appendChild(_edge);
+  document.addEventListener('touchstart', _edgeHide, { passive: true, capture: true });
+  document.addEventListener('mousedown', _edgeHide, { passive: true, capture: true });
+  console.log('[ESTADOS] Destello del borde: ' + fresh.length + ' estado(s) nuevo(s)');
+}
+
 export function estadosScreenInit() {
   if (window.__nexoEstadosScreen) return;
   window.__nexoEstadosScreen = true;
@@ -185,11 +220,14 @@ export function estadosScreenInit() {
   document.addEventListener('touchmove', _onMove, { passive: false });
   document.addEventListener('touchend', _onEnd, { passive: true });
   document.addEventListener('touchcancel', _onCancel, { passive: true });
-  window.addEventListener('nexo:estado', function() { _render(false); });
-  window.addEventListener('nexo:ble:closeChat', function() { setTimeout(function() { _render(false); }, 60); });
-  window.addEventListener('nexo:ble:openChat', function() { _hintHide(); if (_open || _g) _closeNow(); });
+  window.addEventListener('nexo:estado', function() { _render(false); setTimeout(_edgeCheck, 400); });
+  window.addEventListener('nexo:ble:closeChat', function() { setTimeout(function() { _render(false); _edgeCheck(); }, 60); });
+  window.addEventListener('nexo:ble:openChat', function() { _hintHide(); _edgeHide(); if (_open || _g) _closeNow(); });
   window.__nexoEstadosBack = closeEstadosScreen;   // el «atrás» de Android (chat_nav.js)
   // 3230: abrir Estados (y, con nx, ir a los de ese contacto): openStatusViewer (estados.js) y las pruebas
   window.__nexoEstadosOpen = function(nx) { if (!_open) _settle(true); if (nx) feedGoNx(nx); return _open; };
   setTimeout(function() { _hintMaybe(0); }, 1200);
+  setTimeout(_edgeCheck, 2500);
+  document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') setTimeout(_edgeCheck, 600); });
+  window.__nexoEdgeCheck = _edgeCheck;
 }

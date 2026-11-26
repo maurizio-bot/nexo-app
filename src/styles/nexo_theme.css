@@ -413,7 +413,7 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
 
 /* Perfil */
 #nexo-profile-sheet, #nexo-settings-sheet, #nexo-contact-profile { background: transparent !important; padding: 0 !important; }
-#nexo-profile-sheet .nx-profile-in, #nexo-settings-sheet .nx-profile-in, #nexo-contact-profile .nx-profile-in { padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 24px; display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; background: var(--nx-bg); } /* 3140: liso, como Contactos */
+#nexo-profile-sheet .nx-profile-in, #nexo-settings-sheet .nx-profile-in, #nexo-contact-profile .nx-profile-in { padding: env(safe-area-inset-top, 0px) 16px 24px; display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; background: var(--nx-bg); } /* 3140: liso, como Contactos */
 .nx-card { background: var(--nx-surface); border: 1px solid var(--nx-line); border-radius: var(--nx-radius); padding: 14px 14px 12px; margin-bottom: 12px; }
 .nx-h { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; margin: 0 0 8px; }
 .nx-h .nx-ico { width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--nx-surface-2); border: 1px solid var(--nx-line); box-sizing: border-box; font-size: 15px; flex-shrink: 0; } /* 3140: redondo y neutro, como los botones de Contactos */
@@ -435,7 +435,7 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
 #nexo-profile-sheet input::placeholder { color: var(--nx-muted); }
 #nexo-settings-sheet select option { background: #0e0f1e; color: var(--nx-text); }
 #nexo-profile-sheet .nx-btn, #nexo-settings-sheet .nx-btn, #nexo-contact-profile .nx-btn { font-family: inherit; }
-#nexo-profile-sheet .nx-page-title, #nexo-settings-sheet .nx-page-title, #nexo-contact-profile .nx-page-title { padding-left: 2px; }
+#nexo-profile-sheet .nx-page-title, #nexo-settings-sheet .nx-page-title, #nexo-contact-profile .nx-page-title { padding-left: 0; }
 /* Avisos con la pantalla apagada: «listo» con una ✓ celeste (no el ✅ verde) */
 .nx-alert-row .nx-ok { color: var(--nx-cyan); font-weight: 800; }
 /* Ficha de contacto: etiquetas en gris suave y datos a 15 px (antes heredaban 16 px blancos) */
@@ -542,10 +542,10 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
    pantalla de Contactos para todas las demás. Fondo liso var(--nx-bg); cabecera de 64 px con el título a la izquierda (26 px, 800,
    degradado blanco→#b9c4ff, como #main-title); botones redondos de 42 px como los de Perfil y Grupo; personas siempre con su círculo
    de color (person_avatar.js = el de .ble-contact-avatar). ====== */
-.nx-page-head { display: flex; align-items: center; gap: 10px; min-height: calc(64px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 14px 0 18px; box-sizing: border-box; background: transparent; border: none; }
-.nx-page-title { flex: 1; min-width: 0; margin: 0; text-align: left; font-size: 26px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.15;
+.nx-page-head { display: flex; align-items: center; gap: 10px; min-height: calc(60px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 16px 0 16px; box-sizing: border-box; background: transparent; border: none; }
+.nx-page-title { flex: 1; min-width: 0; margin: 0; text-align: left; font-size: 21px; font-weight: 800; letter-spacing: -0.2px; line-height: 28px; /* 26-11: como el «Contactos» de la pantalla principal (21 px) */
   background: linear-gradient(90deg, #fff 30%, #b9c4ff); -webkit-background-clip: text; background-clip: text; color: transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nx-round-btn { width: 42px; height: 42px; min-width: 42px; border-radius: 50%; background: var(--nx-surface-2); border: 1px solid var(--nx-line); color: #fff;
+.nx-round-btn { width: 44px; height: 44px; min-width: 44px; border-radius: 50%; background: var(--nx-surface-2); border: 1px solid var(--nx-line); color: #fff;
   display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; font-size: 18px; }
 .nx-round-btn svg { width: 21px; height: 21px; stroke: #fff; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .nx-person-row { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: var(--nx-radius); }
@@ -680,7 +680,13 @@ html.nx-font-custom body, html.nx-font-custom button, html.nx-font-custom input,
 #ble-inv-whatsapp, #ble-inv-tiktok, #ble-inv-more, #ble-addid-btn { box-sizing: border-box; min-height: 43px; font-size: 14px !important; border-radius: 14px !important; }
 /* 24-11 (dueño): el símbolo del camino (Wi-Fi, Bluetooth, internet, Jump, internet prestado) entre la foto y el nombre; sin «En línea» */
 #chat-via-ico { position: absolute; left: 60px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; color: var(--nx-cyan); }
+#chat-via-ico { transition: opacity 0.5s ease; }
+#chat-via-ico.via-fade { opacity: 0; }
 #chat-via-ico .via-ico svg { width: 17px; height: 17px; display: block; }
 #chat-via-ico .via-ico svg[viewBox="0 0 30 24"] { width: 21px; }
 #chat-header.has-via #chat-contact-info { padding-left: 86px !important; }
 @media (max-width: 340px) { #chat-via-ico { left: 54px; } #chat-header.has-via #chat-contact-info { padding-left: 80px !important; } }
+
+/* 26-11: Contactos vacío — texto y un botón claro para agregar o invitar (mismo degradado que los botones principales) */
+#main-contacts-empty-msg.visible { flex-direction: column; gap: 18px; text-align: center; }
+#main-contacts-empty-msg .nx-btn-p-wide { min-height: 46px; padding: 0 26px; border: none; border-radius: var(--nx-radius, 14px); background: var(--nx-grad); color: #fff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 10px 30px rgba(0, 200, 255, 0.35), 0 4px 12px rgba(168, 85, 247, 0.35); }

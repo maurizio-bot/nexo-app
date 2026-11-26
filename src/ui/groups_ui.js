@@ -223,8 +223,7 @@ export function openGroupMenu(gid) {
 
 // 3222 (dueño 17-11: «quitamos el botón de grupos de arriba… el botón de agregar puede también servir para crear un grupo, son la
 // misma cosa con diferente número de contactos»; y en los ⋮ de cada contacto, «Crear grupo»): ya no hay botón 👥 en la cabecera.
-// El botón redondo de abajo pregunta «Agregar contacto» / «Crear grupo» (window.NEXO_fabMenu, lo llama ble_ui.js) y los ⋮ del
-// contacto abren «Nuevo grupo» con él ya elegido (window.NEXO_newGroupWith).
+// 26-11 (dueño): el botón redondo de abajo SOLO agrega contactos; «Crear grupo» vive en los ⋮ del contacto, que abren «Nuevo grupo» con él ya elegido (window.NEXO_newGroupWith).
 export function installGroupButton() {
   window.NEXO_groupCards = memberCards; // 22-11: para mandar las tarjetas al ponerse al día (group_admin.js)
   window.NEXO_toast = _toast;
@@ -232,29 +231,5 @@ export function installGroupButton() {
   window.NEXO_groupPhoto = function(gid) { var gs = _groups(); return gs && typeof gs.photoOf === 'function' ? gs.photoOf(gid) : null; }; // G6: lista y cabecera
   installGroupPanel();
   window.NEXO_newGroupWith = function(uuid) { openCreateGroupSheet(uuid); };
-  window.NEXO_fabMenu = _fabMenu;
-}
-
-function _fabMenu(fab, addFn) {
-  var old = document.getElementById('nexo-fab-menu');
-  if (old) { old.remove(); return; }
-  var m = document.createElement('div');
-  m.id = 'nexo-fab-menu';
-  m.className = 'nx-fab-menu';
-  var r = fab.getBoundingClientRect();
-  m.style.cssText = 'position:fixed;right:' + Math.max(8, window.innerWidth - r.right) + 'px;bottom:' + (window.innerHeight - r.top + 10) + 'px;z-index:2147483640;display:flex;flex-direction:column;gap:8px;align-items:flex-end;';
-  var opt = function(id, svg, label, fn) {
-    var b = document.createElement('button');
-    b.type = 'button'; b.id = id; b.className = 'nx-fab-opt';
-    b.innerHTML = '<span class="nx-fab-opt-l">' + label + '</span><span class="nx-btn-s nx-fab-opt-ic" aria-hidden="true">' + svg + '</span>';
-    b.addEventListener('click', function(e) { e.stopPropagation(); m.remove(); fn(); });
-    m.appendChild(b);
-  };
-  opt('nexo-fab-add', '<svg viewBox="0 0 24 24"><circle cx="10" cy="8" r="3.5"/><path d="M3.5 20a6.5 6.5 0 0 1 13 0M19 8v6M16 11h6"/></svg>', t('add_contacts', 'Agregar contactos'), addFn);
-  opt('nexo-fab-group', '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 13.5a6.5 6.5 0 0 1 3.5 6.5"/></svg>', t('prof_group_create', 'Crear grupo'), function() { openCreateGroupSheet(); });
-  document.body.appendChild(m);
-  setTimeout(function() {
-    document.addEventListener('click', function close(e) { if (!m.contains(e.target) && e.target !== fab) { m.remove(); document.removeEventListener('click', close); } });
-  }, 10);
 }
 

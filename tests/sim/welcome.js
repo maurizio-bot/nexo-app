@@ -1,7 +1,7 @@
 // #dueño 05-11: guía de bienvenida la PRIMERA vez (welcome_guide.js) — una pantalla con diapositivas que explica lo
 // básico (qué es NEXO, agregar un contacto, mandar un mensaje) y, al terminar, enlaza con el aviso de batería de siempre.
 // Escenarios (cada uno un teléfono que arranca; no hablan entre sí):
-//   N (nuevo): SALE la guía (4 diapositivas, «Atrás» off y «Saltar» en la 1ª). Avanzar con «Siguiente» hasta la última
+//   N (nuevo): SALE la guía (5 diapositivas, «Atrás» off y «Saltar» en la 1ª). Avanzar con «Siguiente» hasta la última
 //      («Empezar») → cierra, marca nexo_welcome_done y RECIÉN AHÍ sale el aviso de batería (el encadenado onDone).
 //   S (saltar): SALE la guía; «Saltar» la cierra de una, marca el flag y también enlaza con el aviso de batería.
 //   A (ya vista): con nexo_welcome_done='1' y batería ya exenta → NO sale sola; «Ver la guía otra vez» (force) la reabre.
@@ -58,12 +58,12 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
 
   // N: nuevo — sale la guía; se recorre entera y al «Empezar» se cierra, marca el flag y sale el aviso de batería
   r.N_sale_guia = await wait(() => !!$(N, 'nexo-welcome-overlay'), 20);
-  r.N_cuatro_diapositivas = (() => { const o = $(N, 'nexo-welcome-overlay'); return !!o && o.querySelectorAll('.wel-dot').length === 4; })();
+  r.N_cinco_diapositivas = (() => { const o = $(N, 'nexo-welcome-overlay'); return !!o && o.querySelectorAll('.wel-dot').length === 5; })();
   r.N_primera_es_bienvenida = /Bienvenido a NEXO/.test((qs(N, '#nexo-welcome-overlay .wel-title') || {}).textContent || '');
   r.N_atras_desactivado_en_1a = (() => { const b = $(N, 'nexo-welcome-back'); return !!b && b.disabled === true; })();
   r.N_aviso_bateria_aun_no = !$(N, 'nexo-bat-allow'); // la guía va ANTES del aviso de batería
-  // avanzar: Siguiente, Siguiente, Siguiente → última (botón «Empezar»)
-  for (let k = 0; k < 3; k++) { click(N.win, $(N, 'nexo-welcome-next')); await sleep(120); }
+  // avanzar: Siguiente ×4 → última (botón «Empezar»)
+  for (let k = 0; k < 4; k++) { click(N.win, $(N, 'nexo-welcome-next')); await sleep(120); }
   r.N_ultima_es_empezar = txt(N, 'nexo-welcome-next') === 'Empezar';
   r.N_saltar_oculto_en_ultima = (() => { const sk = $(N, 'nexo-welcome-skip'); return !!sk && sk.style.visibility === 'hidden'; })();
   click(N.win, $(N, 'nexo-welcome-next')); // Empezar → cierra
@@ -105,7 +105,7 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   r.G_luego_guia = await wait(() => !!$(G, 'nexo-welcome-overlay'), 15);   // tras fijar el nombre, sí sale la guía
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
-  const ok = r.N_sale_guia && r.N_cuatro_diapositivas && r.N_primera_es_bienvenida && r.N_atras_desactivado_en_1a &&
+  const ok = r.N_sale_guia && r.N_cinco_diapositivas && r.N_primera_es_bienvenida && r.N_atras_desactivado_en_1a &&
     r.N_aviso_bateria_aun_no && r.N_ultima_es_empezar && r.N_saltar_oculto_en_ultima && r.N_cierra && r.N_marca_vista && r.N_luego_aviso_bateria &&
     r.S_sale_guia && r.S_cierra && r.S_marca_vista && r.S_luego_aviso_bateria &&
     r.A_sin_guia && r.A_force_reabre && r.A_force_cierra &&

@@ -12,6 +12,7 @@
 //  E7  deslizar vertical en Contactos hace scroll y no cambia; un gesto que empieza a 10 px del borde derecho no abre Estados; deslizar
 //      de lado en la tira «en línea» la mueve a ella y no abre Estados; en el chat, deslizar ← no abre Estados
 //  E8  tocar el nombre en el visor abre el chat y se ve (Estados se quita)
+//  E10 (26-11) estados nuevos → destello en el borde derecho; se va al primer toque; no vuelve por los mismos
 //  E9  el aviso «Desliza a la izquierda…» sale la primera vez, se va al primer toque, y tras reiniciar no vuelve a salir
 // Contraprueba: en la 3168 (b5b8628c) E1 y E3… fallan (la tira está en Contactos y no hay pantalla).
 // Uso: node estadospantalla.js <dir_build> [dir_capturas]
@@ -84,6 +85,16 @@ const fin = (ok) => {
   for (let i = 0; i < 100 && !llego; i++) { llego = await A.evaluate((id) => (window.NEXO_statusesOf(id) || []).some((x) => x.t === 'hola desde Beto'), idB); if (!llego) await sleep(250); }
   r.preparado = llego;
   await sleep(600);
+
+  // E10 (26-11, dueño): estados NUEVOS → una rayita que late en el borde derecho; se va al primer toque; no vuelve por los mismos estados
+  let edge = false;
+  for (let i = 0; i < 30 && !edge; i++) { edge = await A.evaluate(() => { try { window.__nexoEdgeCheck(); } catch (e) {} const e = document.getElementById('nexo-est-edge'); return !!e && getComputedStyle(e).pointerEvents === 'none' && e.getBoundingClientRect().right >= innerWidth - 1; }); if (!edge) await sleep(300); }
+  r.E10_destello_sale = edge;
+  await shot('destello_borde.png');
+  await tap(120, 30); await sleep(700);
+  r.E10_se_va_al_tocar = edge && !(await A.evaluate(() => !!document.getElementById('nexo-est-edge')));
+  await A.evaluate(() => { try { window.__nexoEdgeCheck(); } catch (e) {} }); await sleep(300);
+  r.E10_no_vuelve_por_los_mismos = !(await A.evaluate(() => !!document.getElementById('nexo-est-edge')));
 
   // E1: Contactos limpio
   const c1 = await A.evaluate(() => {
@@ -163,13 +174,20 @@ const fin = (ok) => {
   await swipe(W - 10, CY, 60, CY, 200); await sleep(500);
   r.E7_borde_derecho_no = enContactos(await st());
   // la tira «en línea» se desliza de lado (aquí se le pone contenido ancho para que tenga por dónde): la tira se mueve y Estados no se abre
-  const strip = await A.evaluate(() => {
-    const e = document.getElementById('main-contacts-online-strip'); if (!e) return null;
-    const d = document.createElement('div'); d.id = 't-ancho'; d.style.cssText = 'width:1600px;height:70px;flex-shrink:0;'; e.appendChild(d); e.style.display = 'flex';
-    const q = e.getBoundingClientRect(); return { y: q.top + q.height / 2 };
-  });
-  if (strip) { await swipe(270, strip.y, 60, strip.y, 200); await sleep(500); }
-  const stripX = await A.evaluate(() => { const e = document.getElementById('main-contacts-online-strip'); const x = e ? e.scrollLeft : 0; const d = document.getElementById('t-ancho'); if (d) d.remove(); if (e) { e.scrollLeft = 0; e.style.display = ''; } return x; });
+  // (26-11: si «en línea» se redibuja justo en ese momento, borra el contenido ancho y el desliz cae en el vacío: se vuelve a armar y a intentar, hasta 3 veces)
+  let strip = null, stripX = 0;
+  for (let k = 0; k < 3 && stripX <= 50; k++) {
+    strip = await A.evaluate(() => {
+      const e = document.getElementById('main-contacts-online-strip'); if (!e) return null;
+      if (!document.getElementById('t-ancho')) { const d = document.createElement('div'); d.id = 't-ancho'; d.style.cssText = 'width:1600px;height:70px;flex-shrink:0;'; e.appendChild(d); }
+      e.style.display = 'flex'; e.scrollLeft = 0;
+      const q = e.getBoundingClientRect(); return { y: q.top + q.height / 2 };
+    });
+    if (!strip) break;
+    await swipe(270, strip.y, 60, strip.y, 200); await sleep(500);
+    stripX = await A.evaluate(() => { const e = document.getElementById('main-contacts-online-strip'); return e ? e.scrollLeft : 0; });
+  }
+  await A.evaluate(() => { const d = document.getElementById('t-ancho'); if (d) d.remove(); const e = document.getElementById('main-contacts-online-strip'); if (e) { e.scrollLeft = 0; e.style.display = ''; } });
   r.tira_scroll_px = stripX;
   r.E7_tira_en_linea_no = !!strip && stripX > 50 && enContactos(await st());
   await A.evaluate(() => { const row = document.querySelector('#main-contacts-list .ble-contact-row'); if (row) row.click(); }); await sleep(900);
@@ -196,7 +214,7 @@ const fin = (ok) => {
 
   const ok = ['E1_contactos_sin_estados', 'E2_sigue_al_dedo', 'E2_corto_vuelve', 'E3_abre_estados', 'E3_sin_boton_agregar', 'E3_contenido', 'E4_tocar_abre_visor', 'E4_atras_cierra_visor', 'E4_aro_visto',
     'E5_abajo_actualiza', 'E5_abajo_no_cambia', 'E6_derecha_vuelve', 'E6_atras_vuelve', 'E6_atras_sin_nada_false', 'E7_vertical_es_scroll', 'E7_borde_derecho_no', 'E7_chat_no_abre_estados',
-    'E7_tira_en_linea_no', 'E8_nombre_abre_chat_visible', 'E9_aviso_sale', 'E9_aviso_se_va_al_tocar', 'E9_aviso_no_segunda'].every((k) => r[k] === true) && r.preparado;
+    'E7_tira_en_linea_no', 'E8_nombre_abre_chat_visible', 'E9_aviso_sale', 'E9_aviso_se_va_al_tocar', 'E9_aviso_no_segunda', 'E10_destello_sale', 'E10_se_va_al_tocar', 'E10_no_vuelve_por_los_mismos'].every((k) => r[k] === true) && r.preparado;
   fin(ok);
   await browser.close();
   process.exit(ok ? 0 : 1);

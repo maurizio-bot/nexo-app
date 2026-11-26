@@ -148,7 +148,7 @@ const out = (r, code) => { console.log('BLOQUEO ' + JSON.stringify(r)); fs.write
   r.K5_ok = r.K5_buzon === 0 && r.K5_avisos === 0 && !delivered(r.K5_estado_en_A) && !r.K5_al_abrir && r.K5_sigue_bloqueado;
 
   // ---------- K6: en un grupo se le sigue viendo ----------
-  click(A.win, A.win.document.getElementById('ble-fab-btn')); await sleep(300); click(A.win, A.win.document.getElementById('nexo-fab-group')); await sleep(400);
+  A.win.NEXO_newGroupWith(); await sleep(400);
   const sheet = A.win.document.getElementById('nexo-group-sheet');
   sheet.querySelectorAll('.nexo-pick-row input').forEach((cb) => { cb.checked = true; cb.dispatchEvent(new A.win.Event('change')); });
   const gnm = sheet.querySelector('#nexo-group-name'); gnm.value = 'Con bloqueado'; gnm.dispatchEvent(new A.win.Event('input'));

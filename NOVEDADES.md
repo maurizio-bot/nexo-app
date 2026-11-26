@@ -12,6 +12,12 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Estados nuevos: una rayita suave late en el borde derecho; se va con tu primer toque.
+- Ajustes, Nuevo grupo y demás pantallas se ven iguales que Contactos.
+- Crear un grupo: desde los tres puntos (⋮) de un contacto.
+- Sin contactos, un botón claro para agregar o invitar.
+- Guía de bienvenida actualizada, con grupos y estados.
+- Textos en español de México.
 </es-419>
 <!-- /APK -->
 

@@ -156,7 +156,7 @@ export function _sendAttachment(type, payload, meta, opts) {
         console.warn('[BLOB] grupo ' + msgId + ': ' + (e && e.message) + (gstr.length <= GROUP_MAX_CHARS ? ' → va dentro del sobre como siempre' : ' → no se pudo subir'));
         if (gstr.length <= GROUP_MAX_CHARS) { gsA.sendText(contactId, gstr, msgId); return; }
         _updateMessageStatus(msgId, 'failed'); _updateMessageStorageStatus(msgId, 'failed', contactId);
-        _showPermissionError(t('chat_group_blob_fail', 'No se pudo subir el archivo al grupo (sin relés): probá de nuevo con internet'));
+        _showPermissionError(t('chat_group_blob_fail', 'No se pudo subir el archivo al grupo (sin relés): prueba de nuevo con internet'));
       });
       return msgId;
     }

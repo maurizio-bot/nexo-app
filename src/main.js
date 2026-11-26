@@ -287,14 +287,25 @@ function _subtitleFor(via, mtu) {
 try { if (typeof window !== 'undefined') window.__nexoViaSubtitle = _subtitleFor; } catch (e) {} // gancho de pruebas (puro)
 
 // v9.9.48: por dónde va el contacto del chat abierto (Wi-Fi de la misma red, Bluetooth, Jump, internet o internet prestado)
+// 26-11 (dueño): para la TIENDA, el símbolo del camino se ve ~1 s al entrar al chat (o al cambiar de camino) y se apaga solo: ni fijo ni oculto.
+// Interruptor: VIA_FADE_MS > 0 lo activa (hoy 0 = símbolo fijo, que el dueño usa para probar). Para la versión de la tienda: poner 1000.
+var VIA_FADE_MS = 0, _viaFadeT = null, _viaLastHtml = '';
+function _viaFade(el, html) {
+  if (!VIA_FADE_MS || !el) return;
+  if (html === _viaLastHtml && el.classList.contains('via-fade')) return;   // mismo camino y ya apagado: se queda apagado
+  _viaLastHtml = html;
+  el.classList.remove('via-fade'); clearTimeout(_viaFadeT);
+  _viaFadeT = setTimeout(function() { el.classList.add('via-fade'); }, VIA_FADE_MS);
+}
 function _viaSlot(html, text) {
   var hd = document.getElementById('chat-header');
   var el = document.getElementById('chat-via-ico');
-  if (!html) { if (el) el.remove(); if (hd) hd.classList.remove('has-via'); return; }
+  if (!html) { if (el) el.remove(); if (hd) hd.classList.remove('has-via'); _viaLastHtml = ''; return; }
   if (!el && hd) { el = document.createElement('div'); el.id = 'chat-via-ico'; hd.appendChild(el); }
   if (!el) return;
   el.innerHTML = html; el.title = text || ''; // SVG estático (sin datos del remitente)
   hd.classList.add('has-via');
+  _viaFade(el, html);
 }
 function _refreshLinkSubtitle() {
   var sub = document.getElementById('chat-contact-subtitle');

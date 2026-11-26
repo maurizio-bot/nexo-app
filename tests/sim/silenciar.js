@@ -114,7 +114,7 @@ const msgNotifs = (n, chat, n0) => n.notifLog.slice(n0).filter((x) => x.chatId =
   const rowA = Array.from(B.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).find((x) => (x.querySelector('.ble-contact-name') || {}).textContent === nameOfA);
   r.S1_icono_lista = !!(rowA && rowA.querySelector('.ble-contact-name .nx-mute-ico'));
   r.S1_nombre_intacto = rowA ? (rowA.querySelector('.ble-contact-name') || {}).textContent : null;
-  r.S1_ok = r.emparejados_s !== null && r.S1_circulo_es_boton && r.S1_opciones.length === 6 && /^Buscar a .* entre la gente$/.test(r.S1_opciones[0]) && r.S1_opciones.indexOf('Bloquear') >= 0 && /Silenciar notificaciones/.test(r.S1_opciones.join('|')) && /Mensajes destacados/.test(r.S1_opciones.join('|')) &&
+  r.S1_ok = r.emparejados_s !== null && r.S1_circulo_es_boton && r.S1_opciones.length === 5 && !r.S1_opciones.some((o) => /entre la gente/.test(o)) && r.S1_opciones.indexOf('Bloquear') >= 0 && /Silenciar notificaciones/.test(r.S1_opciones.join('|')) && /Mensajes destacados/.test(r.S1_opciones.join('|')) &&
     r.S1_hoja && r.S1_opciones_silencio.join('|') === '8 horas|1 semana|Siempre|Cancelar' && /llamadas sí suenan/.test(r.S1_nota) && r.S1_ocho_horas && r.S1_aviso === 'Chat silenciado' &&
     r.S1_nativo_sabe && r.S1_icono_cabecera && /^Activar sonido\s*Silenciado hasta el /.test(r.S1_menu_activar || '') && r.S1_icono_lista && r.S1_nombre_intacto === nameOfA;
 
@@ -171,7 +171,7 @@ const msgNotifs = (n, chat, n0) => n.notifLog.slice(n0).filter((x) => x.chatId =
   r.S5_activado = !!(B.win.__nexoMute && !B.win.__nexoMute.isMuted(idA)) && !(nB.muted && nB.muted.has(idA));
   r.S5_aviso_activado = (($(B, '#perm-error-toast') || {}).textContent) || '';
   // grupo A + B
-  click(A.win, A.win.document.getElementById('ble-fab-btn')); await sleep(300); click(A.win, A.win.document.getElementById('nexo-fab-group')); await sleep(400); // 3222: «Crear grupo» desde el botón de agregar
+  A.win.NEXO_newGroupWith(); await sleep(400); // 3222: «Crear grupo» desde el botón de agregar
   const sheet = A.win.document.getElementById('nexo-group-sheet');
   sheet.querySelectorAll('.nexo-pick-row input').forEach((cb) => { cb.checked = true; cb.dispatchEvent(new A.win.Event('change')); });
   const gnm = sheet.querySelector('#nexo-group-name'); gnm.value = 'Callados'; gnm.dispatchEvent(new A.win.Event('input'));

@@ -20,6 +20,9 @@ import { myDisplayName } from './display_name.js';
 import { haptic } from './haptics.js';
 import { nearInfo, nearList, locNote, locOf, locForget, distM, bearingDeg, bearingWord, distShow } from './find_near.js';
 
+// 26-11 (B0, dueño): «Buscar a X entre la gente» está ESCONDIDO hasta el modo concierto (docs/MODO_CONCIERTO.md). El código sigue; se enciende con
+// window.__nexoFindOn = true (las pruebas) o cambiando esto cuando llegue el modo concierto.
+export function findOn() { try { return window.__nexoFindOn === true; } catch (e) { return false; } }
 export var FIND_SCAN_MS = 90000;        // escaneo largo que pide la pantalla
 export var FIND_RESCAN_MS = 60000;      // y se relanza cada minuto (Android degrada un escaneo largo)
 export var LOC_EVERY_MS = 8000;         // mi ubicación, cada 8 s como mucho

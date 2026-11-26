@@ -207,7 +207,7 @@ export function applyChatWallpaper(sender, act) {
   try {
     _showInfoToast('🖼️ ' + _nameOf(nx) + ' ' +
       (img ? t('wp_shared_in', 'compartió el fondo de este chat') : t('wp_removed_in', 'quitó el fondo de este chat')) +
-      (here ? '' : t('wp_open_to_see', ' — abrí el chat para verlo')), 4200);
+      (here ? '' : t('wp_open_to_see', ' — abre el chat para verlo')), 4200);
   } catch (e) {}
   console.log('[WP] Fondo de chat ' + (img ? 'recibido' : 'quitado') + ' de ' + nx);
 }
@@ -328,7 +328,7 @@ function _openSheet() {
     sheet.querySelector('#nexo-wp-pick').onclick = function() {
       close();
       _pick(function(url) {
-        if (setChatWallpaperFor(nx, url)) _showInfoToast(t('wp_set_ok', 'Fondo de este chat puesto. Para que lo vea el otro, tocá «Compartir».'), 4000);
+        if (setChatWallpaperFor(nx, url)) _showInfoToast(t('wp_set_ok', 'Fondo de este chat puesto. Para que lo vea el otro, toca «Compartir».'), 4000);
         else _showInfoToast(t('prof_photo_invalid', 'foto no válida'), 3000);
       });
     };

@@ -37,7 +37,7 @@ export function openGamePicker(cid) {
   ov.id = 'game-picker-overlay'; ov.className = 'ttt-overlay game-picker-overlay';
   var panel = document.createElement('div'); panel.className = 'ttt-panel game-picker-panel';
   var head = document.createElement('div'); head.className = 'ttt-head';
-  var title = document.createElement('div'); title.className = 'ttt-title'; title.textContent = t('game_pick_title', '🎮 Elegí un juego');
+  var title = document.createElement('div'); title.className = 'ttt-title'; title.textContent = t('game_pick_title', '🎮 Elige un juego');
   head.appendChild(title);
   var oppName = _contactName(cid);
   var list = document.createElement('div'); list.className = 'game-pick-list';

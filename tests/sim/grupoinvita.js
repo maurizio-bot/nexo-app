@@ -63,7 +63,7 @@ const out = (r, code) => { console.log('GRUPOINVITA ' + JSON.stringify(r)); fs.w
 
 
 async function newGroup(A, name) {
-  click(A.win, A.win.document.getElementById('ble-fab-btn')); await sleep(300); click(A.win, A.win.document.getElementById('nexo-fab-group')); await sleep(400);
+  A.win.NEXO_newGroupWith(); await sleep(400);
   const sheet = A.win.document.getElementById('nexo-group-sheet');
   sheet.querySelectorAll('.nexo-pick-row input').forEach((cb) => { cb.checked = true; cb.dispatchEvent(new A.win.Event('change')); });
   const gnm = sheet.querySelector('#nexo-group-name'); gnm.value = name; gnm.dispatchEvent(new A.win.Event('input'));

@@ -235,12 +235,14 @@ export const BLE_UI_METHODS = {
     this.elements.mainContactsList = document.getElementById('main-contacts-list');
     this.elements.mainOnlineStrip = document.getElementById('main-contacts-online-strip');
     this.elements.mainEmptyMsg = document.getElementById('main-contacts-empty-msg');
+    var emptyAdd = document.getElementById('main-empty-add'); // 26-11: sin contactos, el camino a agregar/invitar se ve a primera vista
+    if (emptyAdd) emptyAdd.addEventListener('click', function() { self.togglePanel(); });
     var fabBtn = document.createElement('button');
     fabBtn.id = 'ble-fab-btn';
     fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
     fabBtn.style.cssText = 'position:fixed;bottom:80px;right:16px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2147483643;box-shadow:0 4px 15px rgba(0,200,255,0.3);transition:transform 0.15s ease;';
     // 3222 (dueño 17-11: «el botón de agregar puede también servir para crear un grupo»): si hay menú (groups_ui.js), pregunta qué hacer
-    fabBtn.addEventListener('click', function() { if (typeof window.NEXO_fabMenu === 'function') window.NEXO_fabMenu(fabBtn, function() { self.togglePanel(); }); else self.togglePanel(); });
+    fabBtn.addEventListener('click', function() { self.togglePanel(); }); // 26-11 (dueño): sin menú; «Crear grupo» vive solo en los ⋮ del contacto
     fabBtn.addEventListener('mousedown', function() { this.style.transform = 'scale(0.92)'; });
     fabBtn.addEventListener('mouseup', function() { this.style.transform = 'scale(1)'; });
     fabBtn.addEventListener('touchstart', function() { this.style.transform = 'scale(0.92)'; });

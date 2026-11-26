@@ -104,7 +104,7 @@ export function sendAccountTo(qrText) {
     _screen.status(t('prof_move_sending', 'Pasando tu cuenta…'));
     return pl.moveSend({ ip: p[1], port: Number(p[2]), id: p[3], token: p[4], key: p[5] });
   }).then(function() { return true; }, function() {
-    try { _screen.status(t('prof_move_flush_fail', 'No se pudo guardar todo antes de pasar la cuenta. No se pasó nada; tu cuenta sigue aquí. Probá de nuevo.')); _screen.closable(); } catch (x) {}
+    try { _screen.status(t('prof_move_flush_fail', 'No se pudo guardar todo antes de pasar la cuenta. No se pasó nada; tu cuenta sigue aquí. Prueba de nuevo.')); _screen.closable(); } catch (x) {}
     return false;
   });
 }

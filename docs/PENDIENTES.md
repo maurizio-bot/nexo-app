@@ -6,15 +6,22 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
-## 🆕 26-11 — dueño: AUDITORÍA PREVIA A GOOGLE PLAY (guardado, sin hacer)
-- **PORQUÉ:** antes de subir a Play se hace otra auditoría; el dueño quiere que la app se vea uniforme y bien hecha.
-- **Estética uniforme (revisar TODO):** proporciones, posiciones, dimensiones y colores de cada pantalla, ventana y botón (referencia: Contactos;
-  ver B-EST en `nexo-private/negocio/RUTA_LANZAMIENTO.md`). Incluye **gestos y funcionalidades** (que sean coherentes entre pantallas).
-- **Grupos (decisión del dueño 26-11):** quitar el botón/opción de «Nuevo grupo» de donde está hoy (menú del botón flotante `nexo-fab-group`,
-  `groups_ui.js` ~254) y dejar SOLO «Crear grupo» en los ⋮ de cada contacto (ya existe, `ble_ui.js` `_toggleContactMenu`, 3222).
-  Ojo al hacerlo: con ese camino el grupo siempre nace con un contacto elegido; comprobar que desde la ventana se puedan sumar más.
-- **Revisión como persona externa:** probar la app como un usuario nuevo y compararla de forma real con otras mensajeras (qué tiene, qué le falta,
-  qué gusta y qué no). Hecha una primera el 26-11: `docs/REVISION_EXTERNA_26-11.md`.
+## 🆕 26-11 — dueño: AUDITORÍA PREVIA A GOOGLE PLAY + TANDA «TODO LO MENOR» (hecha en la rama, SIN APK aún)
+- **PORQUÉ:** antes de subir a Play se hace otra auditoría; el dueño quiere la app uniforme y clara para un usuario nuevo. Lo grande queda para Fable.
+- **HECHO 26-11 (en `ccr-5f3d29e2-x9z1cz`, probado en tests/sim):**
+  · **Destello del borde derecho** si hay estados nuevos (`estados_screen.js` `_edgeCheck`, `.nx-est-edge`): late suave, no toma toques, se va al
+    PRIMER toque y no vuelve por los mismos estados (prueba E10 en `estadospantalla.js`).
+  · **Pantallas parejas:** `.nx-page-head/.nx-page-title/.nx-round-btn` como Contactos (título 21 px, botones 44, cabecera 60, margen 16); Ajustes, Nuevo
+    grupo, Enviar contactos, etc. Medido en navegador: títulos y botones iguales.
+  · **Grupos solo en los ⋮ del contacto:** el botón redondo ya no tiene menú (solo agrega); `NEXO_fabMenu` borrado; pruebas ajustadas (`groups.js` `fab_sin_menu_de_grupo`).
+  · **B0:** «Buscar a X entre la gente» escondido (`findOn()` en `find_ui.js`, interruptor `window.__nexoFindOn`); la acción 'fnd' se ignora. Para el modo concierto.
+  · **Guía de bienvenida** de 5 pasos al estado actual (grupos y estados incluidos; 5 idiomas). **Contactos vacío** con botón «Agregar o invitar».
+  · **Voseo/textos de México:** «Escríbelo», «Prueba», «Elige», «toca»… (`I18NVOSEO` ya vigila es.js).
+  · **Símbolo del camino en el chat:** interruptor `VIA_FADE_MS` en `main.js` (0 = fijo, como hoy). **PARA LA TIENDA: poner 1000** → se ve ~1 s al entrar o al
+    cambiar de camino y se apaga solo (dueño 26-11: «vía intermedia»). Sin probar en pruebas (queda apagado).
+- **PENDIENTE DE ESTA TANDA:** nombre (A/B/C, ver ESTADO), permiso de batería más tarde (idea de la revisión externa), «Estados» sin gesto escondido
+  (hoy: destello + guía), revisión visual de TODAS las pantallas restantes (ahora solo se midieron Ajustes y Nuevo grupo).
+- **Revisión como persona externa:** `docs/REVISION_EXTERNA_26-11.md`.
 
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).

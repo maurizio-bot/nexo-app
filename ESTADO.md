@@ -21,6 +21,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-25, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **TANDA «TODO LO MENOR» (26-11, rama `ccr-5f3d29e2-x9z1cz`, SIN APK; detalle en `docs/PENDIENTES.md` «26-11»):** destello de estados nuevos, pantallas parejas
+  (Ajustes/Nuevo grupo = Contactos), grupos solo en los ⋮ del contacto, B0 hecho (3345 escondido), guía de 5 pasos, Contactos vacío con botón, voseo fuera.
+  **ANTES DE LA APK DE TIENDA:** `VIA_FADE_MS = 1000` en `main.js` (símbolo del camino 1 s) y decidir NOMBRE (NEXO/Kinway; ver FICHA.md). Revisión externa: `docs/REVISION_EXTERNA_26-11.md`.
 - **DESPUÉS DE ESA APK (25-11, [skip ci], va en la SIGUIENTE):** **3336** adjunto atorado de raíz: con la app congelada la escucha nativa de
   internet guarda en DISCO los trozos de archivo ('f') de un contacto (`NetChunkSpool.kt`, `nexo_netbg_chunks/`, tope 48 MB) y confirma
   SOLO lo guardado con el mismo 'ba' que la app; la app los recoge primero en netBgDrain (JVM `NetChunkSpoolTest` 6, con relé local).
