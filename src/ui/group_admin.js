@@ -17,7 +17,7 @@ import { gsClean, gsVerify, gsImplicit, gsCan, gsStepError, gsJumpError, gsGenes
 import { e2eSign, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 import { _getBLEContacts } from './ble_helpers.js';
 import { stageBlob, fetchBlob, validatePointer, _bytesToB64, _b64ToBytes } from '../net/blob_mailbox.js';
-import { setChatWallpaperFor } from './wallpaper.js';
+import { setChatWallpaperFor, ensureChatWallpaperFor, setGroupWpOffer } from './wallpaper.js';
 import { t } from './i18n.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
@@ -269,10 +269,20 @@ export var groupAdminMethods = {
       }
       if (inner && inner.gs) return { ret: null };   // un aviso de cambio sin estado válido: no se muestra
       // G7: fondo del grupo compartido: solo de quien puede cambiar el grupo; se aplica aquí (local) y no se muestra como mensaje
+      // Dueño 26-11: cada quien pone el fondo SOLO para sí y compartirlo es a propósito (lo puede hacer quien escribe en el grupo). El que
+      // lo recibe lo usa si no tiene uno propio (o el que tenía también le llegó compartido); si eligió el suyo, el suyo se queda y el
+      // compartido queda a mano en ⚙️ → Fondo del grupo.
       if (inner && inner.type === 'nexo_act' && inner.act === 'gwp') {
-        if (g && !g.left && !g.kicked && gsCan(this.state(gid), from, 'edit') && typeof inner.img === 'string' && setChatWallpaperFor(gid, inner.img)) {
-          console.log('[GROUP] Fondo del grupo ' + gid + ' compartido por ' + from);
-          _toast('🎨 ' + this.memberName(from) + ' ' + t('grp_wp_got', 'compartió el fondo del grupo'));
+        var st0 = this.state(gid), okFrom = g && !g.left && !g.kicked && (st0 ? gsCan(st0, from, 'write') : (g.members || []).indexOf(from) >= 0), who = this.memberName(from);
+        if (okFrom && typeof inner.img === 'string') {
+          ensureChatWallpaperFor(gid).then(function(cur) {
+            if (cur.img && !cur.from && cur.img !== inner.img) {
+              if (setGroupWpOffer(gid, inner.img, from)) { console.log('[GROUP] Fondo del grupo ' + gid + ' compartido por ' + from + ': tengo uno propio, queda para usarlo si quiero'); _toast('🎨 ' + who + ' ' + t('grp_wp_got_offer', 'compartió un fondo del grupo. El tuyo se queda; para usarlo: ⚙️ → Fondo del grupo')); }
+            } else if (setChatWallpaperFor(gid, inner.img, from)) {
+              console.log('[GROUP] Fondo del grupo ' + gid + ' compartido por ' + from);
+              _toast('🎨 ' + who + ' ' + t('grp_wp_got', 'compartió el fondo del grupo'));
+            } else console.warn('[GROUP] Fondo del grupo ' + gid + ' de ' + from + ' descartado (no válido)');
+          }).catch(function() {});
         } else console.warn('[GROUP] Fondo del grupo ' + gid + ' de ' + from + ' descartado (sin permiso o no válido)');
         return { ret: null };
       }

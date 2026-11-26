@@ -134,7 +134,9 @@ export function _sendAttachment(type, payload, meta, opts) {
 
   if (inGroup) {
     var gstr = JSON.stringify(attachmentData);
-    var viaBlob = (type === 'image' || type === 'video' || type === 'file') && _groupBlobCap() > 0 && (gstr.length > GROUP_BLOB_MIN_CHARS || !!(meta && meta.blobPtr)) && blobMailboxEligible(payload, meta);
+    // 3348 (diag. 26-11: un adjunto de grupo de ~260 KB ENTERO dentro del sobre, a cada miembro, por internet en 45 trozos de 8000 con
+    // reintentos de ventana → los relés limitaron y castigaron la dirección): la nota de voz también va al buzón (antes no entraba aquí)
+    var viaBlob = (type === 'image' || type === 'video' || type === 'file' || type === 'audio') && _groupBlobCap() > 0 && (gstr.length > GROUP_BLOB_MIN_CHARS || !!(meta && meta.blobPtr)) && blobMailboxEligible(payload, meta);
     if (!viaBlob && gstr.length > GROUP_MAX_CHARS) {
       _showPermissionError(t('chat_too_big_group', 'Demasiado grande para un grupo (') + (gstr.length * 3 / 4 / 1048576).toFixed(1) + t('chat_max_mb', ' MB). Máximo ~') + (GROUP_MAX_CHARS * 3 / 4 / 1048576).toFixed(1) + t('chat_mb_for_now', ' MB por ahora.'));
       return;

@@ -143,7 +143,8 @@ export const netRelays = {
   _spareCheck() {
     var self = this, pool = self._sparePool(); if (!pool.length) return;
     var base = self._baseRelayUrls(); self._spareOn = self._spareOn || [];
-    var isDown = function(u) { var r = self.relays.get(u); return !!(r && !r.open && ((r.fails || 0) >= RELAY_DEAD_FAILS || r._sidelined)); };
+    var nowS = Date.now(), cool = function(r) { return typeof self.relayCooling === 'function' && self.relayCooling(r, nowS); }; // 3348: en pausa para publicar = caído para esto
+    var isDown = function(u) { var r = self.relays.get(u); return !!(r && ((!r.open && ((r.fails || 0) >= RELAY_DEAD_FAILS || r._sidelined)) || cool(r))); };
     var want = Math.min(RELAY_TARGET_OPEN, base.length);
     var healthy = base.concat(self._spareOn).filter(function(u) { return !isDown(u); }).length;
     var allBaseDown = base.length > 0 && base.every(isDown);
@@ -157,7 +158,7 @@ export const netRelays = {
       try { self._bgConfig(); } catch (e) {}
       return;
     }
-    var baseOpen = base.filter(function(u) { var r = self.relays.get(u); return !!(r && r.open); }).length;
+    var baseOpen = base.filter(function(u) { var r = self.relays.get(u); return !!(r && r.open && !cool(r)); }).length;
     if (self._spareOn.length && baseOpen >= want) {
       var drop = self._spareOn.splice(0);
       drop.forEach(function(u) { var r = self.relays.get(u); if (r && r.ws) { r.ws.onclose = null; r.ws.onopen = null; try { r.ws.close(); } catch (e) {} } self.relays.delete(u); });
@@ -412,7 +413,12 @@ export const netRelays = {
     }
     if (m[0] === 'EVENT' && m[1] === r.sub && m[2]) { if (r.liveSub === r.sub) this._noteLag(m[2]); this._onEvent(m[2]); }
     else if (m[0] === 'EOSE' && m[1] === r.sub) { r.liveSub = r.sub; if (!r.eoseOnce) { r.eoseOnce = true; this._ownSync(); } } // 3151: suscripción confirmada; 3212: desde aquí, en vivo
-    else if (m[0] === 'OK') { var fn = r.waits.get(m[1]); if (fn) { r.waits.delete(m[1]); fn(!!m[2], m[3]); } }
+    else if (m[0] === 'OK') {
+      // 3348: un «no» por límite o castigo pone al relé en pausa para publicar, aunque nadie espere ya esa respuesta (otro relé dijo OK
+      // antes): si no, se le seguía mandando todo y cada sobre era otra infracción. No por la respuesta a una identificación (NIP-42).
+      if (m[2] === false && !(r.authIds && r.authIds.has(m[1])) && typeof this._relayLimitNote === 'function') this._relayLimitNote(url, r, m[3]);
+      var fn = r.waits.get(m[1]); if (fn) { r.waits.delete(m[1]); fn(!!m[2], m[3]); }
+    }
     else if (m[0] === 'AUTH' && typeof m[1] === 'string') { r.challenge = m[1]; this._auth(url, r, m[1]); }
     else if (m[0] === 'CLOSED' && m[1] === r.sub) {
       // Algunos relés piden identificarse (NIP-42) para leer mensajes privados: tras hacerlo, se vuelve a pedir
@@ -427,6 +433,9 @@ export const netRelays = {
     r.authed = false;
     keys.forEach(function(sk) {
       var ev = _event(sk, 22242, [['relay', r.realUrl || url], ['challenge', challenge]], ''); // por un puente: el relé de verdad
+      if (!r.authIds) r.authIds = new Set();
+      if (r.authIds.size > 200) r.authIds.clear();
+      r.authIds.add(ev.id); // 3348: su «no» no es un límite
       r.waits.set(ev.id, function() { if (--pending === 0) { r.authed = true; if (r.needSub) { r.needSub = false; self._subscribe(r); } } });
       self._send(r, ['AUTH', ev]);
     });

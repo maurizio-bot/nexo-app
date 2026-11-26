@@ -9,7 +9,7 @@ import { _contactsStyles, _pickAvatar, SHEET_CLOSE_SVG } from './share_contacts.
 import { _normId } from './chat_format.js';
 import { vaultLoadContacts } from '../vault/vault_manager.js';
 import { makeAvatar } from './avatar.js';
-import { makeWallpaper, setChatWallpaperFor, chatWallpaperFor, clearChatWallpaperFor, wpShareLimits } from './wallpaper.js';
+import { makeWallpaper, setChatWallpaperFor, chatWallpaperFor, clearChatWallpaperFor, wpShareLimits, groupWpOffer, useGroupWpOffer } from './wallpaper.js';
 import { _showInfoToast } from './ui_bits.js';
 import { GS_MAX_MEMBERS } from './group_state.js';
 import { t } from './i18n.js';
@@ -317,8 +317,14 @@ function _blockedSheet(gid) {
 }
 
 // Fondo del grupo (G7): como el de un chat normal, guardado con el id del grupo; «Compartir» lo manda a cada miembro
+// Dueño 26-11: cada quien lo cambia SOLO para sí; compartirlo es opcional y lo puede hacer cualquiera que escriba en el grupo. Si otro
+// comparte uno mientras yo tengo el mío, el mío se queda y el suyo aparece aquí para usarlo si quiero.
+function _canShareWp(gs, gid) { return typeof gs.canWrite === 'function' ? gs.canWrite(gid) : gs.can(gid, 'edit'); }
 function _wpSheet(gid) {
   var gs = _gs(), p = _sheet('nexo-gset-wpl', t('grp_wp', 'Fondo del grupo'));
+  var sub = _el('div', 'gset-wp-sub', t('grp_wp_only_me', 'El fondo que elijas es solo para ti. Si quieres, compártelo con el grupo.'));
+  sub.style.cssText = 'font-size:14px;opacity:.75;padding:4px 4px 10px;line-height:1.35;';
+  p.body.appendChild(sub);
   var fin = _el('input', 'gset-wp-file'); fin.type = 'file'; fin.accept = 'image/*'; fin.style.display = 'none'; p.body.appendChild(fin);
   fin.addEventListener('change', function() {
     var f = fin.files && fin.files[0]; if (!f) return;
@@ -327,13 +333,22 @@ function _wpSheet(gid) {
   });
   p.body.appendChild(_btn('gset-wp-pick', '🖼️  ' + t('grp_wp_pick', 'Elegir fondo'), function() { fin.click(); }));
   if (chatWallpaperFor(gid)) {
-    if (gs.can(gid, 'edit')) p.body.appendChild(_btn('gset-wp-share', '📤  ' + t('grp_wp_share', 'Compartir el fondo con el grupo'), function() { p.sheet.remove(); _shareWp(gid); }));
+    if (_canShareWp(gs, gid)) p.body.appendChild(_btn('gset-wp-share', '📤  ' + t('grp_wp_share', 'Compartir el fondo con el grupo'), function() { p.sheet.remove(); _shareWp(gid); }));
     p.body.appendChild(_btn('gset-wp-clear', '🗑️  ' + t('grp_wp_clear', 'Quitar el fondo'), function() { clearChatWallpaperFor(gid); p.sheet.remove(); }));
   }
+  groupWpOffer(gid).then(function(o) {
+    if (!o || !o.img || !document.body.contains(p.sheet)) return;
+    var who = (gs && typeof gs.memberName === 'function') ? gs.memberName(o.from) : o.from.toUpperCase();
+    var b = _btn('gset-wp-offer', '🎨  ' + t('grp_wp_use_offer', 'Usar el fondo que compartió') + ' ' + who, function() {
+      p.sheet.remove();
+      if (useGroupWpOffer(gid)) _toast(t('grp_wp_set', 'Fondo puesto en este teléfono'));
+    });
+    p.body.insertBefore(b, p.body.querySelector('.gset-wp-pick').nextSibling);
+  });
 }
 function _shareWp(gid) {
   var gs = _gs(), img = chatWallpaperFor(gid);
-  if (!img || !gs.can(gid, 'edit')) return;
+  if (!img || !_canShareWp(gs, gid)) return;
   // Va dentro del sobre del grupo como acción oculta (wp); el que recibe comprueba que quien lo manda puede cambiar el grupo
   var id = gs.sendText(gid, JSON.stringify({ type: 'nexo_act', act: 'gwp', img: img }), null, null, null, null, { wp: 1 });
   if (id) _toast(t('grp_wp_shared', 'Fondo compartido con el grupo'));

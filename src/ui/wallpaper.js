@@ -45,6 +45,7 @@ export function wpShareLimits() { return { edge: SHARE_EDGE, len: SHARE_LEN, net
 var _list = '';           // data URL o '' (sin fondo)
 var _chat = '';           // fondo global de chats
 var _per = new Map();      // NEXO ID -> data URL (fondo por chat concreto; '' = sin fondo propio)
+var _perFrom = new Map();  // NEXO ID / grupo -> quién compartió ese fondo ('' = lo eligió el usuario)
 var _curNx = '';           // contacto del chat abierto ahora (para pintar y para el botón)
 var _applied = '';         // lo que está pintado ahora mismo (para el simulador; el navegador real pinta #app)
 var _outIds = new Map();    // id de la copia oculta compartida -> NEXO ID (se borra al entregarse)
@@ -109,7 +110,7 @@ function _ensurePer(nx) {
   return _load(CHATP_FILE(nx)).then(function(o) {
     var img = (o && typeof o.img === 'string' && IMG_RE.test(o.img)) ? o.img : '';
     // No pisar un valor puesto mientras tanto (el usuario eligió/recibió un fondo antes de que terminara la lectura)
-    if (!_per.has(nx)) _per.set(nx, img);
+    if (!_per.has(nx)) { _per.set(nx, img); _perFrom.set(nx, (img && o && NX_RE.test(_normId(o.from))) ? _normId(o.from) : ''); }
     return _per.get(nx) || '';
   });
 }
@@ -169,17 +170,49 @@ export function clearChatWallpaper() { _chat = ''; _save(CHAT_FILE, { img: '' })
 // ===== Fondo POR chat concreto (ronda 2890) =====
 export function chatWallpaperFor(nx) { return _per.get(_normId(nx)) || ''; }
 export function hasChatWallpaperFor(nx) { return !!chatWallpaperFor(nx); }
-export function setChatWallpaperFor(nx, dataUrl) {
+// from (dueño 26-11, fondo de GRUPO): quién lo compartió si llegó de otro ('' = lo eligió el usuario). Un fondo elegido por el usuario
+// no lo pisa uno que comparte otro del grupo (queda a mano como «oferta»); uno que llegó compartido sí lo puede cambiar el siguiente.
+export function setChatWallpaperFor(nx, dataUrl, from) {
   nx = _normId(nx);
   if (!CHAT_RE.test(nx) || !IMG_RE.test(dataUrl || '') || dataUrl.length > MAX_LEN) return false;
-  _per.set(nx, dataUrl); _save(CHATP_FILE(nx), { img: dataUrl });
+  var fr = NX_RE.test(_normId(from)) ? _normId(from) : '';
+  _per.set(nx, dataUrl); _perFrom.set(nx, fr); _save(CHATP_FILE(nx), fr ? { img: dataUrl, from: fr } : { img: dataUrl });
   if (_curNx === nx) _paint(dataUrl);
+  return true;
+}
+// Carga (si hace falta) el fondo propio de ese chat o grupo: { img, from } (from = quién lo compartió; '' = elegido aquí)
+export function ensureChatWallpaperFor(nx) {
+  nx = _normId(nx);
+  return _ensurePer(nx).then(function(img) { return { img: img || '', from: _perFrom.get(nx) || '' }; });
+}
+// Fondo de grupo compartido por otro mientras yo tengo uno propio (dueño 26-11): no se impone; queda para usarlo si quiero
+var _offer = new Map();   // id del grupo -> { img, from }
+function OFFER_FILE(gid) { return 'nexo_wp_o_' + gid + '.json'; }
+export function setGroupWpOffer(gid, img, from) {
+  gid = _normId(gid);
+  if (!/^gr[0-9a-z]{8}$/.test(gid) || !IMG_RE.test(img || '') || img.length > MAX_LEN) return false;
+  var o = { img: img, from: _normId(from) }; _offer.set(gid, o); _save(OFFER_FILE(gid), o); return true;
+}
+export function groupWpOffer(gid) {
+  gid = _normId(gid);
+  if (_offer.has(gid)) return Promise.resolve(_offer.get(gid));
+  return _load(OFFER_FILE(gid)).then(function(o) {
+    var v = (o && typeof o.img === 'string' && IMG_RE.test(o.img)) ? { img: o.img, from: _normId(o.from) } : null;
+    if (!_offer.has(gid)) _offer.set(gid, v);
+    return _offer.get(gid);
+  }, function() { return null; });
+}
+export function useGroupWpOffer(gid) {
+  gid = _normId(gid);
+  var o = _offer.get(gid);
+  if (!o || !setChatWallpaperFor(gid, o.img, o.from)) return false;
+  _offer.set(gid, null); _save(OFFER_FILE(gid), {});
   return true;
 }
 export function clearChatWallpaperFor(nx) {
   nx = _normId(nx);
   if (!CHAT_RE.test(nx)) return;
-  _per.set(nx, ''); _save(CHATP_FILE(nx), { img: '' });
+  _per.set(nx, ''); _perFrom.set(nx, ''); _save(CHATP_FILE(nx), { img: '' });
   if (_curNx === nx) _paint(_chat);   // vuelve al global de chats (o negro si no hay)
 }
 // Compartir el fondo de ESTE chat con el contacto (a propósito): acción oculta cifrada E2E, como la foto de perfil.

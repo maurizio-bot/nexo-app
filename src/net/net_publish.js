@@ -3,7 +3,66 @@ import { _event, BLOB_KIND, _relaySafe, _relayHost, _rnd, SEND_SILENT_MS, MAX_RE
 import { bytesToHex } from '@noble/hashes/utils.js';
 // Métodos de NetLink: PUBLICAR y BAJAR: eventos en los relés, buzón de archivos, publicar en varios y bajar por id.
 // Reestructuración 15-11: movidos TAL CUAL desde net_link.js, que los une a la clase (como métodos normales).
+
+// 3348 (diag. del dueño 26-11 14:47–17:11, builds 3156/3159: «rate-limited: too many gift wraps from this address» → «banned: too many
+// rate-limit violations»; otro relé: «Policy violated and pubkey is not in our web of trust»). Cada sobre más a un relé que ya limita
+// es otra infracción y lleva al castigo (y con 3 teléfonos en la misma Wi-Fi, la misma dirección: castigo para todos). Un relé que dice
+// que limita, castiga o no nos deja publicar queda EN PAUSA para publicar (se sigue leyendo de él) y lo que salga va a los demás; si
+// todos están en pausa, el envío queda pendiente al momento SIN mandar nada (no cuenta como otra infracción). En pausa cuenta como caído
+// para la reserva (_spareCheck): entra otro relé. Tras la pausa, el siguiente envío lo prueba otra vez; si vuelve a decir que no, la
+// pausa se dobla. Y mientras dure la calma tras un límite, lo PESADO (trozos de un mensaje grande, historial de grupo, respaldos) sale
+// con un respiro entre evento y evento; lo pequeño (textos, confirmaciones, saludos) sale sin esperar.
+var RATE_COOL_MS = 20000, RATE_COOL_MAX_MS = 600000;       // «rate-limited / slow down / too many»: 20 s, 40 s … 10 min
+var BAN_COOL_MS = 600000, BAN_COOL_MAX_MS = 7200000;       // «banned»: 10 min, 20 min … 2 h
+var POLICY_COOL_MS = 6 * 3600000;                          // no nos deja publicar (web of trust, pago, prueba de trabajo…): 6 h
+var LIMIT_FORGET_MS = 1800000;                             // sin otro «no» en 30 min, la pausa vuelve a empezar desde abajo
+var LIMIT_CALM_MS = 300000, BULK_EV_CHARS = 4000, BULK_GAP_MS = 1200; // tras un límite, 5 min con un respiro de 1,2 s entre eventos pesados
+export function relayLimitKind(msg) {
+  var m = String(msg || '');
+  if (/^(duplicate|invalid|auth-required|error):/i.test(m)) return '';
+  // (la clave de cada sobre es nueva cada vez: «pubkey is not in our web of trust» no se arregla nunca con ese relé)
+  if (/web of trust|not in our|policy|pubkey is not|whitelist|allowlist|paid|payment|^pow:/i.test(m)) return 'policy';
+  if (/banned|^restricted:|^blocked:/i.test(m)) return 'ban';
+  if (/rate.?limit|slow down|too many|too fast/i.test(m)) return 'rate';
+  return '';
+}
+// Pura (prueba relelimita.js): la pausa que toca para el n-ésimo «no» seguido de ese tipo
+export function relayCoolMs(kind, n) {
+  n = Math.max(1, n || 1);
+  if (kind === 'policy') return POLICY_COOL_MS;
+  if (kind === 'ban') return Math.min(BAN_COOL_MS * Math.pow(2, n - 1), BAN_COOL_MAX_MS);
+  if (kind === 'rate') return Math.min(RATE_COOL_MS * Math.pow(2, n - 1), RATE_COOL_MAX_MS);
+  return 0;
+}
 export const netPublish = {
+  // 3348: ¿este relé está en pausa para publicar?
+  relayCooling(r, now) { return !!(r && !r.gw && r.coolUntil && r.coolUntil > (now || Date.now())); },
+  // 3348: un relé dijo que no: si es por límite o castigo, en pausa (y quizá entra uno de reserva)
+  _relayLimitNote(url, r, msg) {
+    if (!r || r.gw) return;
+    var kind = relayLimitKind(msg); if (!kind) return;
+    var now = Date.now();
+    r.limitN = (r.limitKind === kind && now - (r.limitAt || 0) < LIMIT_FORGET_MS) ? (r.limitN || 0) + 1 : 1;
+    r.limitKind = kind; r.limitAt = now; this._limitAt = now;
+    var ms = relayCoolMs(kind, r.limitN);
+    r.coolUntil = now + ms;
+    console.log('[NET] Relé ' + _relayHost(url) + ' limita («' + String(msg || '').substring(0, 90) + '»): en pausa ' + Math.round(ms / 1000) + ' s para publicar (' + r.limitN + '.ª vez); lo de ahora va a los demás'); // i18n-ok: registro
+    try { if (typeof this._spareCheck === 'function') this._spareCheck(); } catch (e) {}
+  },
+  // 3348: tras un límite, cuánto debe esperar este evento PESADO (0: sale ya). Reserva su turno.
+  _bulkWait(ev) {
+    if (!ev || typeof ev.content !== 'string' || ev.content.length < BULK_EV_CHARS) return 0;
+    var now = Date.now();
+    if (now - (this._limitAt || 0) > LIMIT_CALM_MS) return 0;
+    var at = Math.max(now, this._bulkNextAt || 0);
+    this._bulkNextAt = at + BULK_GAP_MS;
+    return at - now;
+  },
+  // 3348: el motivo para dejar pendiente un envío con todos los relés en pausa (lo reconoce ble_ack _relayLimited)
+  _allCoolingErr(open) {
+    var now = Date.now(), soon = Math.min.apply(null, open.map(function(r) { return r.coolUntil || now; }));
+    return Object.assign(new Error('Rechazado por los relés: rate-limited (todos en pausa ' + Math.max(1, Math.round((soon - now) / 1000)) + ' s más)'), { code: 'NET_REJECTED' }); // i18n-ok: error interno
+  },
 
   // ---------- Fase B (build 2969): BUZÓN DE ARCHIVOS (src/net/blob_mailbox.js) ----------
   // Los trozos de un archivo cifrado van como eventos BLOB_KIND SIN etiqueta p (se bajan por id: el relé no correlaciona
@@ -107,8 +166,8 @@ export const netPublish = {
   publishEach(ev, timeoutMs, opts) {
     var self = this, only = opts && opts.only, t0 = Date.now();
     return new Promise(function(resolve) {
-      var open = [];
-      self.relays.forEach(function(r, u) { if (r.open && !r.gw && (!only || only.indexOf(u) >= 0)) open.push({ r: r, u: u }); });
+      var open = [], now0 = Date.now();
+      self.relays.forEach(function(r, u) { if (r.open && !r.gw && (!only || only.indexOf(u) >= 0) && !self.relayCooling(r, now0)) open.push({ r: r, u: u }); }); // 3348: no a los que están en pausa
       // Sin relés propios: un trozo del buzón de archivos sale por los puentes (parte 3; el puente lo acota por bytes). Lo demás
       // (borrados, el canal de diagnósticos…) no pasa por un puente. Se informa la URL del relé de verdad (va en el puntero).
       var viaGw = false;
@@ -123,7 +182,7 @@ export const netPublish = {
       var finish = function() { if (done) return; done = true; clearTimeout(timer); clearTimeout(grace); open.forEach(function(o) { o.r.waits.delete(ev.id); }); resolve(oks); };
       var timer = setTimeout(finish, timeoutMs || 10000);
       open.forEach(function(o) {
-        o.r.waits.set(ev.id, function(ok) {
+        o.r.waits.set(ev.id, function(ok, msg) {
           if (ok && oks.indexOf(o.u) < 0) oks.push(o.u);
           if (--left === 0) { finish(); return; }
           if (oks.length >= enough && !grace) grace = setTimeout(finish, Math.max((opts && opts.graceMs) || 1500, opts && opts.graceX ? (Date.now() - t0) * opts.graceX : 0));
@@ -152,11 +211,19 @@ export const netPublish = {
   },
 
   // only (3151): solo a esos relés (lo pesado al relé propio, net_own.js); sin only, a todos los abiertos como siempre
+  // 3348: tras un límite, lo pesado espera su turno (lo pequeño sale ya)
   _publish(ev, only) {
+    var self = this, wait = self._bulkWait(ev);
+    if (wait > 0) return new Promise(function(res) { setTimeout(res, wait); }).then(function() { return self._publishNow(ev, only); });
+    return self._publishNow(ev, only);
+  },
+  _publishNow(ev, only) {
     var self = this;
     return new Promise(function(resolve, reject) {
-      var open = [];
-      self.relays.forEach(function(r, u) { if (r.open && (!only || only.indexOf(u) >= 0)) open.push(r); });
+      var open = [], cooling = [], now0 = Date.now();
+      self.relays.forEach(function(r, u) { if (r.open && (!only || only.indexOf(u) >= 0)) { if (self.relayCooling(r, now0)) cooling.push(r); else open.push(r); } });
+      // 3348: todos los abiertos en pausa → pendiente ya, sin mandarles nada (cada sobre más sería otra infracción)
+      if (!open.length && cooling.length) { reject(self._allCoolingErr(cooling)); return; }
       if (!open.length) { reject(Object.assign(new Error('Sin relés'), { code: 'NET_DOWN' })); return; }
       var left = open.length, done = false, why = '';
       // L3 (auditoría 28-10): al cerrar la promesa (OK, rechazo o timeout) se quita ev.id de TODOS los relés abiertos;
@@ -181,6 +248,7 @@ export const netPublish = {
       }, SEND_SILENT_MS);
       open.forEach(function(r) {
         r.waits.set(ev.id, function(ok, msg) {
+          if (done) return;
           if (done) return;
           if (ok) { done = true; clearTimeout(timer); clearTimeout(early); cleanup(); resolve(true); return; }
           why = msg || why;

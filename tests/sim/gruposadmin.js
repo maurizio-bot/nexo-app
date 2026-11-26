@@ -249,6 +249,33 @@ const check = (p, sel) => { const cb = q(p, sel); if (cb) { cb.checked = true; c
   if (q(A, '#nexo-gset')) q(A, '#nexo-gset').remove();
   const wpFile = async (p) => { const o = await p.win.Capacitor.Plugins.NexoBLE.loadFromFile({ filename: 'nexo_wp_c_' + gid + '.json' }); try { return JSON.parse(o.content).img; } catch (e) { return null; } };
   r.fondo_en_B = await wait(async () => (await wpFile(B)) === WP, 60);
+  // Dueño 26-11: cada quien pone el fondo SOLO para sí; compartir es a propósito. Uno compartido cambia al compartido de antes, pero NO
+  // al que B eligió para sí: ése se queda y el compartido queda para usarlo desde ⚙️ → Fondo del grupo.
+  const pickWp = async (p, img, share) => {
+    p.win.NEXO_makeWallpaper = () => img;
+    p.win.NEXO_openGroupSettings(gid); await sleep(300);
+    click(p.win, q(p, '#nexo-gset .gset-wp')); await sleep(300);
+    { const fin = q(p, '#nexo-gset-wpl .gset-wp-file'); Object.defineProperty(fin, 'files', { value: [new p.win.File([Buffer.from('x')], 'f.jpg', { type: 'image/jpeg' })] }); fin.dispatchEvent(new p.win.Event('change')); }
+    await sleep(500);
+    if (share) { click(p.win, q(p, '#nexo-gset .gset-wp')); await sleep(300); click(p.win, q(p, '#nexo-gset-wpl .gset-wp-share')); await sleep(300); }
+    ['#nexo-gset-wpl', '#nexo-gset'].forEach((x) => { if (q(p, x)) q(p, x).remove(); });
+  };
+  const offerFile = async (p) => { const o = await p.win.Capacitor.Plugins.NexoBLE.loadFromFile({ filename: 'nexo_wp_o_' + gid + '.json' }).catch(() => null); try { return JSON.parse(o.content).img || null; } catch (e) { return null; } };
+  const WP2 = 'data:image/jpeg;base64,' + Buffer.from('fondo-dos-' + 'z'.repeat(300)).toString('base64');
+  const WPB = 'data:image/jpeg;base64,' + Buffer.from('fondo-de-B-' + 'w'.repeat(300)).toString('base64');
+  const WP3 = 'data:image/jpeg;base64,' + Buffer.from('fondo-tres-' + 'v'.repeat(300)).toString('base64');
+  await pickWp(A, WP2, true);
+  r.fondo_compartido_cambia_el_compartido = await wait(async () => (await wpFile(B)) === WP2, 60);
+  await pickWp(B, WPB, false);
+  r.fondo_propio_solo_en_B = (await wpFile(B)) === WPB && (await wpFile(A)) === WP2;
+  await pickWp(A, WP3, true);
+  r.fondo_propio_se_queda = (await wait(async () => (await offerFile(B)) === WP3, 60)) !== false && (await wpFile(B)) === WPB;
+  B.win.NEXO_openGroupSettings(gid); await sleep(300);
+  click(B.win, q(B, '#nexo-gset .gset-wp')); await sleep(500);
+  r.boton_usar_el_compartido = !!q(B, '#nexo-gset-wpl .gset-wp-offer');
+  click(B.win, q(B, '#nexo-gset-wpl .gset-wp-offer')); await sleep(300);
+  ['#nexo-gset-wpl', '#nexo-gset'].forEach((x) => { if (q(B, x)) q(B, x).remove(); });
+  r.usa_el_compartido = (await wpFile(B)) === WP3;
 
   // 10. Sale el creador: pasa a B (el admin más antiguo)
   A.win.NEXO_openGroupSettings(gid); await sleep(300);

@@ -141,6 +141,10 @@ class NostrRelay {
         if (bad) { this.stats.rejected.push(bad); send(['OK', ev && ev.id, false, bad]); return; }
         if (this._expired(ev, now)) { send(['OK', ev.id, false, 'invalid: expired']); return; }
         if (!allow()) { send(['OK', ev.id, false, 'rate-limited: slow down']); return; }
+        // 3348 (relelimita.js): un «no» con el texto que se quiera (castigo, web of trust…); se cuenta cada EVENT que llega
+        this.stats.events = (this.stats.events || 0) + 1;
+        const say = typeof this.opts.refuse === 'function' ? this.opts.refuse(ev, this.stats.events) : null;
+        if (say) { this.stats.rejected.push(say); send(['OK', ev.id, false, say]); return; }
         if (this._reject && Array.from(this._reject).some((t) => (ws.tag || '').indexOf(t) >= 0)) { this.stats.rejected.push('tag'); send(['OK', ev.id, false, 'rate-limited: tope (prueba)']); return; }
         // honorDeletes (3075): como los relés reales (NIP-09), un evento kind 5 borra los eventos que cita (del mismo autor)
         if (this.opts.honorDeletes && ev.kind === 5) {

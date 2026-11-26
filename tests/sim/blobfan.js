@@ -18,6 +18,7 @@ const { Radio, NativePhone, installWebCrypto } = require('./native_mock');
 const { NostrRelay } = require('./nostr_relay');
 
 const buildDir = path.resolve(process.argv[2]);
+const AUDIO = process.argv.includes('--audio');
 const base = { readsContentFallback: true, retain: ['onPayloadReceived', 'onLanMessage', 'onLanUp', 'onLanDown'], closeOnNoService: true, pace: [15, 15], ioDelay: 25, asymmetric: true, noL2: true };
 let RELAYS = [];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -110,7 +111,10 @@ async function findMsg(p, chat, b64, own) {
   [idB, idC].forEach((nx) => { const p = netA().peers.get(nx); if (p) p.lastRx = 0; }); await netA().tick();
   r.A_ve_a_los_dos_ausentes = await waitFor(() => !netA().canReach(idB) && !netA().canReach(idC), 15000) !== null;
   const ev0 = count1064();
-  const foto = await sendFile(A, 'foto_grupo.jpg', 200000);
+  // 3348 (--audio): una NOTA DE VOZ de 200 KB al grupo también va al buzón (antes iba ENTERA dentro del sobre, a cada miembro; diag. 26-11)
+  let foto;
+  if (AUDIO) { foto = Buffer.alloc(200000); let x = 7; for (let i = 0; i < foto.length; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; foto[i] = x & 255; } A.win.NEXO_sendAttachment('audio', foto.toString('base64'), { mime: 'audio/webm', duration: 12 }, { contactId: gid }); }
+  else foto = await sendFile(A, 'foto_grupo.jpg', 200000);
   const b64 = foto.toString('base64');
   let msgA = null;
   r.grupo_registrado_s = await waitFor(async () => !!(msgA = await findMsg(A, gid, b64, true)), 10000);
@@ -136,6 +140,10 @@ async function findMsg(p, chat, b64, own) {
   r.un_solo_borrado_kind5 = await waitFor(() => relays.some((x) => x.events.filter((e) => e.kind === 5 && blobs.length && e.pubkey === blobs[0].pubkey).length === 1), 10000) !== null;
   r.A_limpio_registro_grupo = !(ackA()._blobOut && ackA()._blobOut.has(gm));
 
+  if (AUDIO) {
+    const okA = typeof r.B_recibe_en_grupo_s === 'number' && typeof r.C_recibe_en_grupo_s === 'number' && r.una_sola_subida === true && typeof r.A_doble_tick_grupo_s === 'number';
+    r.resultado = okA ? 'OK' : 'FALLO'; console.log('BLOBFAN ' + JSON.stringify(r)); if (!okA) fs.writeFileSync(path.join(__dirname, 'last_logs_blobfan.txt'), logs.join('\n')); process.exit(okA ? 0 : 1);
+  }
   // ===== (3) B reenvía la foto a C (en línea): por REFERENCIA, 0 subidas; C ya la tenía: 0 bajadas =====
   r.B_y_C_en_linea_s = await waitFor(() => via(B, idC) === 'internet' && B.win.bleInterface.net.canReach(idC), 60000);
   const ev3 = count1064(), req3 = reqIds();
