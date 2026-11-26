@@ -12,12 +12,12 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Estados nuevos: una rayita suave late en el borde derecho; se va con tu primer toque.
-- Ajustes, Nuevo grupo y demás pantallas se ven iguales que Contactos.
-- Crear un grupo: desde los tres puntos (⋮) de un contacto.
-- Sin contactos, un botón claro para agregar o invitar.
-- Guía de bienvenida actualizada, con grupos y estados.
-- Textos en español de México.
+- Botón Estados arriba, con puntito si hay nuevos.
+- El botón de agregar vuelve a ser un +; la pantalla principal se llama Chats.
+- Toca el símbolo junto al nombre del chat: te dice por qué camino va.
+- Ajustes y Nuevo grupo se ven igual que Chats.
+- Crear grupo: desde los tres puntos (⋮) de un contacto.
+- Guía de bienvenida actualizada.
 </es-419>
 <!-- /APK -->
 

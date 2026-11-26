@@ -19,6 +19,9 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   · **Voseo/textos de México:** «Escríbelo», «Prueba», «Elige», «toca»… (`I18NVOSEO` ya vigila es.js).
   · **Símbolo del camino en el chat:** interruptor `VIA_FADE_MS` en `main.js` (0 = fijo, como hoy). **PARA LA TIENDA: poner 1000** → se ve ~1 s al entrar o al
     cambiar de camino y se apaga solo (dueño 26-11: «vía intermedia»). Sin probar en pruebas (queda apagado).
+- **Segunda ronda 26-11 (dueño: «regresa el +; tutorial e intuitivo»):** botón de agregar = **+** (dos sitios en `ble_ui.js`); pantalla principal **«Chats»**;
+  **botón Estados** en la cabecera (casilla libre de la cuadrícula; puntito si hay sin ver; prueba E11); **símbolo del camino tocable** (explica Bluetooth/Wi-Fi/internet/salto/prestado);
+  guía de 5 pasos reescrita (+, símbolo, estados, grupos).
 - **PENDIENTE DE ESTA TANDA:** nombre (A/B/C, ver ESTADO), permiso de batería más tarde (idea de la revisión externa), «Estados» sin gesto escondido
   (hoy: destello + guía), revisión visual de TODAS las pantallas restantes (ahora solo se midieron Ajustes y Nuevo grupo).
 - **Revisión como persona externa:** `docs/REVISION_EXTERNA_26-11.md`.

@@ -66,7 +66,7 @@ global.window = { dispatchEvent(ev) { if (ev && ev.type === 'nexo:lang') lastLan
   store = {}; navLang = 'it-IT'; m._resetForTest();
   r.zona1_it = m.t('nav_contactos') === 'Contatti' && m.t('online_now') === 'Online adesso';
   store = {}; navLang = 'es-ES'; m._resetForTest();
-  r.zona1_es = m.t('nav_contactos') === 'Contactos' && m.t('cam_foto') === 'FOTO';
+  r.zona1_es = m.t('nav_contactos') === 'Chats' && m.t('cam_foto') === 'FOTO';
 
   // 10) Fase 2 completa (chat, llamadas, multimedia, perfil/ajustes, grupos, varios): una clave de cada zona
   //     traduce en inglés e italiano y el español es idéntico al original (respaldo con 2.º arg).

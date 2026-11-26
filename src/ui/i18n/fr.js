@@ -20,6 +20,7 @@ export default {
   close: "Fermer",
 
   // Pantalla principal: navegación y lista de contactos (Fase 2a)
+  est_btn: "Statuts",
   nav_contactos: "Contacts",
   nav_compartir: "Partager",
   cam_video: "VIDÉO",
@@ -453,11 +454,11 @@ export default {
   welcome_s1_title: "Bienvenue sur NEXO",
   welcome_s1_body: "Une messagerie privée qui <b>ne manque jamais de chemin</b> : Bluetooth, Wi-Fi, internet ou un autre téléphone comme pont. Si l'un échoue, elle en utilise un autre. Tout est chiffré de bout en bout : seuls vous et le destinataire pouvez le lire.",
   welcome_s2_title: "Ajoutez vos contacts",
-  welcome_s2_body: "Appuyez sur le bouton rond en bas à droite. Si l'autre personne est à proximité avec NEXO ouvert, elle apparaît toute seule : appuyez dessus et, quand elle accepte, vous pouvez parler. Si elle est loin, envoyez-lui un <b>lien</b> (WhatsApp, TikTok…) ou ajoutez-la avec son <b>NEXO ID</b>.",
+  welcome_s2_body: "Appuyez sur le bouton <b>+</b> en bas à droite. Si l'autre personne est à proximité avec NEXO ouvert, elle apparaît toute seule : appuyez dessus et, quand elle accepte, vous pouvez parler. Si elle est loin, envoyez-lui un <b>lien</b> (WhatsApp, TikTok…) ou ajoutez-la avec son <b>NEXO ID</b>.",
   welcome_s3_title: "Écrivez et appelez",
-  welcome_s3_body: "Ouvrez un contact et écrivez. Envoyez des <b>photos, vidéos, audios et fichiers</b>, ou passez des <b>appels et appels vidéo</b>. Le symbole à côté du nom indique par quel chemin ça passe : Bluetooth, Wi-Fi ou internet.",
+  welcome_s3_body: "Ouvrez une discussion et écrivez. Envoyez des <b>photos, vidéos, audios et fichiers</b>, ou passez des <b>appels et appels vidéo</b>. Appuyez sur le <b>symbole à côté du nom</b> pour voir par quel chemin ça passe : Bluetooth, Wi-Fi ou internet.",
   welcome_sg_title: "Groupes et statuts",
-  welcome_sg_body: "Pour créer un groupe, appuyez sur les <b>trois points (⋮)</b> d'un contact et choisissez <b>« Créer un groupe »</b>. Les <b>statuts</b> sont sur le côté : faites glisser Contacts vers la <b>gauche</b>. Quand il y a de nouveaux statuts, une petite barre douce pulse sur le bord droit.",
+  welcome_sg_body: "Pour créer un groupe, appuyez sur les <b>trois points (⋮)</b> d'un contact et choisissez <b>« Créer un groupe »</b>. Les <b>statuts</b> sont dans le bouton <b>Statuts</b> en haut (à côté de la loupe) (ou faites glisser vers la <b>gauche</b>). S'il y en a de nouveaux, vous verrez un point et une petite barre douce sur le bord droit.",
   welcome_s4_title: "Une étape pour que tout fonctionne toujours",
   welcome_s4_body: "Pour recevoir les messages et les appels avec l'app fermée ou l'écran éteint, laissez NEXO fonctionner en <b>arrière-plan</b>. Nous vous le demandons maintenant, c'est rapide.",
   welcome_back: "‹ Retour",

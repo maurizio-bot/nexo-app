@@ -271,6 +271,9 @@ var _VIA_ICON = {
 // el dueño elige). Jump = tres puntos unidos por saltos; prestado = Bluetooth con un globo pequeño.
 _VIA_ICON.jump = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="17" r="2"/><circle cx="12" cy="17" r="2"/><circle cx="20" cy="17" r="2"/><path d="M5 13.5a4 4 0 0 1 6 0M13 13.5a4 4 0 0 1 6 0"/><path d="M17.5 11.5l1.5 2-2.4.4"/></svg>';
 _VIA_ICON.gw = '<svg viewBox="0 0 30 24" width="16" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M4 8l8 8-4 3V5l4 3-8 8"/><circle cx="22" cy="12" r="6.5" stroke-width="1.7"/><path d="M15.5 12h13M22 5.5c2 2 2 11 0 13M22 5.5c-2 2-2 11 0 13" stroke-width="1.4"/></svg>';
+// 26-11 (dueño): tocar el símbolo explica por dónde va el chat (una frase corta; si estaba apagado, vuelve a verse un rato)
+var _VIA_HELP = { wifi: 'Wi-Fi: conexión rápida por la misma red.', internet: 'Internet: llega por la red aunque estén lejos.', bluetooth: 'Bluetooth: directo con su teléfono, sin internet.',
+  jump: 'Salto: tu mensaje viaja por otro teléfono con NEXO.', gw: 'Internet prestado: un NEXO cercano te presta su conexión.' };
 var _VIA_WORD = { wifi: 'Wi-Fi', internet: 'Internet', bluetooth: 'Bluetooth', jump: 'Jump', gw: 'Internet · por puente' };
 // Subtítulo del chat 1:1: {ico, note, html, text}. ico = el símbolo del camino (va entre la foto y el nombre, 24-11); note = lo que queda
 // escrito debajo del nombre (señal débil, «Conectando…»); sin «En línea» (dueño 24-11: el símbolo ya lo dice). text = en palabras
@@ -297,13 +300,19 @@ function _viaFade(el, html) {
   el.classList.remove('via-fade'); clearTimeout(_viaFadeT);
   _viaFadeT = setTimeout(function() { el.classList.add('via-fade'); }, VIA_FADE_MS);
 }
+var _viaNow = '';
+function _viaTap(e) {
+  try { e.stopPropagation(); var el = document.getElementById('chat-via-ico'); if (el) { el.classList.remove('via-fade'); clearTimeout(_viaFadeT); if (VIA_FADE_MS) _viaFadeT = setTimeout(function() { el.classList.add('via-fade'); }, 3000); }
+    var msg = _VIA_HELP[_viaNow]; if (msg) _showInfoToast(msg, 3500); } catch (x) {}
+}
 function _viaSlot(html, text) {
   var hd = document.getElementById('chat-header');
   var el = document.getElementById('chat-via-ico');
   if (!html) { if (el) el.remove(); if (hd) hd.classList.remove('has-via'); _viaLastHtml = ''; return; }
-  if (!el && hd) { el = document.createElement('div'); el.id = 'chat-via-ico'; hd.appendChild(el); }
+  if (!el && hd) { el = document.createElement('div'); el.id = 'chat-via-ico'; el.addEventListener('click', _viaTap); hd.appendChild(el); }
   if (!el) return;
   el.innerHTML = html; el.title = text || ''; // SVG estático (sin datos del remitente)
+  el.setAttribute('role', 'button'); el.dataset.via = _viaNow || '';
   hd.classList.add('has-via');
   _viaFade(el, html);
 }
@@ -318,6 +327,7 @@ function _refreshLinkSubtitle() {
   if (via === 'internet' && bi.net && typeof bi.net.gwOnly === 'function' && bi.net.gwOnly()) via = 'gw'; // parte 3 del puente
   var mtu = (via === 'bluetooth' && typeof bi.getMtu === 'function' && bi._activeChatDeviceId) ? bi.getMtu(bi._activeChatDeviceId) : 0;
   var r = _subtitleFor(via, mtu);
+  _viaNow = via;
   _viaSlot(r.ico, r.text);
   sub.innerHTML = r.note;       // solo texto fijo (sin datos del remitente)
   sub.title = r.text;           // tooltip accesible con la palabra completa (Wi-Fi/Internet/Bluetooth)

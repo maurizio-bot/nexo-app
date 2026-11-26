@@ -680,7 +680,7 @@ html.nx-font-custom body, html.nx-font-custom button, html.nx-font-custom input,
 #ble-inv-whatsapp, #ble-inv-tiktok, #ble-inv-more, #ble-addid-btn { box-sizing: border-box; min-height: 43px; font-size: 14px !important; border-radius: 14px !important; }
 /* 24-11 (dueño): el símbolo del camino (Wi-Fi, Bluetooth, internet, Jump, internet prestado) entre la foto y el nombre; sin «En línea» */
 #chat-via-ico { position: absolute; left: 60px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; color: var(--nx-cyan); }
-#chat-via-ico { transition: opacity 0.5s ease; }
+#chat-via-ico { transition: opacity 0.5s ease; cursor: pointer; min-width: 36px; height: 36px; margin-left: -8px; }
 #chat-via-ico.via-fade { opacity: 0; }
 #chat-via-ico .via-ico svg { width: 17px; height: 17px; display: block; }
 #chat-via-ico .via-ico svg[viewBox="0 0 30 24"] { width: 21px; }
@@ -690,3 +690,7 @@ html.nx-font-custom body, html.nx-font-custom button, html.nx-font-custom input,
 /* 26-11: Contactos vacío — texto y un botón claro para agregar o invitar (mismo degradado que los botones principales) */
 #main-contacts-empty-msg.visible { flex-direction: column; gap: 18px; text-align: center; }
 #main-contacts-empty-msg .nx-btn-p-wide { min-height: 46px; padding: 0 26px; border: none; border-radius: var(--nx-radius, 14px); background: var(--nx-grad); color: #fff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 10px 30px rgba(0, 200, 255, 0.35), 0 4px 12px rgba(168, 85, 247, 0.35); }
+
+/* 26-11: botón de Estados en la cabecera (la casilla «group» de la cuadrícula estaba libre); puntito cuando hay estados sin ver */
+#nexo-estados-btn { grid-area: group; position: relative; }
+#nexo-estados-btn.has-new::after { content: ""; position: absolute; top: 8px; right: 8px; width: 9px; height: 9px; border-radius: 50%; background: var(--nx-grad); box-shadow: 0 0 8px rgba(0, 200, 255, 0.7); }

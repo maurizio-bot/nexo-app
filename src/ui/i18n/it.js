@@ -20,6 +20,7 @@ export default {
   close: "Chiudi",
 
   // Pantalla principal: navegación y lista de contactos (Fase 2a)
+  est_btn: "Stati",
   nav_contactos: "Contatti",
   nav_compartir: "Condividi",
   cam_video: "VIDEO",
@@ -453,11 +454,11 @@ export default {
   welcome_s1_title: "Benvenuto su NEXO",
   welcome_s1_body: "Messaggistica privata che <b>non resta mai senza strada</b>: Bluetooth, Wi-Fi, internet o un altro telefono come ponte. Se uno fallisce, usa un altro. Tutto è cifrato da un capo all'altro: solo tu e chi riceve potete leggerlo.",
   welcome_s2_title: "Aggiungi i tuoi contatti",
-  welcome_s2_body: "Tocca il pulsante rotondo in basso a destra. Se l'altra persona è vicina con NEXO aperto, compare da sola: toccala e, quando accetta, potete parlare. Se è lontana, mandale un <b>link</b> (WhatsApp, TikTok…) o aggiungila con il suo <b>NEXO ID</b>.",
+  welcome_s2_body: "Tocca il pulsante <b>+</b> in basso a destra. Se l'altra persona è vicina con NEXO aperto, compare da sola: toccala e, quando accetta, potete parlare. Se è lontana, mandale un <b>link</b> (WhatsApp, TikTok…) o aggiungila con il suo <b>NEXO ID</b>.",
   welcome_s3_title: "Scrivi e chiama",
-  welcome_s3_body: "Apri un contatto e scrivi. Invia <b>foto, video, audio e file</b>, oppure fai <b>chiamate e videochiamate</b>. Il simbolo accanto al nome mostra da che strada passa: Bluetooth, Wi-Fi o internet.",
+  welcome_s3_body: "Apri una chat e scrivi. Invia <b>foto, video, audio e file</b>, oppure fai <b>chiamate e videochiamate</b>. Tocca il <b>simbolo accanto al nome</b> per vedere da che strada passa: Bluetooth, Wi-Fi o internet.",
   welcome_sg_title: "Gruppi e stati",
-  welcome_sg_body: "Per creare un gruppo, tocca i <b>tre puntini (⋮)</b> di un contatto e scegli <b>«Crea gruppo»</b>. Gli <b>stati</b> sono di lato: scorri Contatti verso <b>sinistra</b>. Quando ci sono stati nuovi, una barretta morbida pulsa sul bordo destro.",
+  welcome_sg_body: "Per creare un gruppo, tocca i <b>tre puntini (⋮)</b> di un contatto e scegli <b>«Crea gruppo»</b>. Gli <b>stati</b> sono nel pulsante <b>Stati</b> in alto (accanto alla lente) (o scorri verso <b>sinistra</b>). Se ce ne sono di nuovi, vedrai un puntino e una barretta morbida sul bordo destro.",
   welcome_s4_title: "Un passo perché funzioni sempre",
   welcome_s4_body: "Per ricevere messaggi e chiamate con l'app chiusa o lo schermo spento, lascia che NEXO funzioni in <b>background</b>. Te lo chiediamo ora, è veloce.",
   welcome_back: "‹ Indietro",

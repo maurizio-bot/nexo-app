@@ -66,7 +66,7 @@ function _settle(open) {
   void scr.offsetWidth;
   _setPos(open ? 1 : 0);
   scr.setAttribute('aria-hidden', open ? 'false' : 'true');
-  if (open) { _hintHide(); _edgeHide(); console.log('[ESTADOS] Pantalla de estados abierta'); }
+  if (open) { _hintHide(); _edgeHide(); setTimeout(_btnBadge, 400); console.log('[ESTADOS] Pantalla de estados abierta'); }
   _anim = setTimeout(function() {
     _anim = null;
     scr.classList.remove('nx-est-anim'); if (app) app.classList.remove('nx-est-anim');
@@ -211,6 +211,24 @@ function _edgeCheck() {
   console.log('[ESTADOS] Destello del borde: ' + fresh.length + ' estado(s) nuevo(s)');
 }
 
+// ---------- El botón de Estados en la cabecera (dueño 26-11: «lo intuitivo»): el gesto sigue, pero ya hay una puerta visible ----------
+function _btnInstall() {
+  var header = document.getElementById('main-header');
+  if (!header) return false;
+  if (document.getElementById('nexo-estados-btn')) return true;
+  var b = document.createElement('button');
+  b.id = 'nexo-estados-btn'; b.type = 'button'; b.className = 'nx-btn-s';
+  b.title = t('est_btn', 'Estados'); b.setAttribute('aria-label', t('est_btn', 'Estados'));
+  b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="3.5" width="12" height="17" rx="3.2"/><circle cx="12" cy="10.2" r="2.1"/><path d="M9.2 16.2h5.6"/></svg>';
+  b.addEventListener('click', function(e) { e.stopPropagation(); if (!_open) _settle(true); });
+  header.appendChild(b);
+  return true;
+}
+function _btnBadge() {
+  var b = document.getElementById('nexo-estados-btn');
+  if (b) b.classList.toggle('has-new', _edgeUnseen().length > 0);
+}
+
 export function estadosScreenInit() {
   if (window.__nexoEstadosScreen) return;
   window.__nexoEstadosScreen = true;
@@ -227,6 +245,10 @@ export function estadosScreenInit() {
   // 3230: abrir Estados (y, con nx, ir a los de ese contacto): openStatusViewer (estados.js) y las pruebas
   window.__nexoEstadosOpen = function(nx) { if (!_open) _settle(true); if (nx) feedGoNx(nx); return _open; };
   setTimeout(function() { _hintMaybe(0); }, 1200);
+  (function tryBtn(n) { if (!_btnInstall() && n < 20) setTimeout(function() { tryBtn(n + 1); }, 500); else _btnBadge(); })(0);
+  window.addEventListener('nexo:estado', function() { setTimeout(_btnBadge, 300); });
+  window.addEventListener('nexo:ble:closeChat', function() { setTimeout(_btnBadge, 200); });
+  document.addEventListener('visibilitychange', function() { setTimeout(_btnBadge, 700); });
   setTimeout(_edgeCheck, 2500);
   document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') setTimeout(_edgeCheck, 600); });
   window.__nexoEdgeCheck = _edgeCheck;

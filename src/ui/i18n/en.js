@@ -20,6 +20,7 @@ export default {
   close: "Close",
 
   // Pantalla principal: navegación y lista de contactos (Fase 2a)
+  est_btn: "Statuses",
   nav_contactos: "Contacts",
   nav_compartir: "Share",
   cam_video: "VIDEO",
@@ -453,11 +454,11 @@ export default {
   welcome_s1_title: "Welcome to NEXO",
   welcome_s1_body: "Private messaging that <b>never runs out of ways</b>: Bluetooth, Wi-Fi, internet or another phone as a bridge. If one fails, it uses another. Everything is end-to-end encrypted: only you and the person receiving can read it.",
   welcome_s2_title: "Add your contacts",
-  welcome_s2_body: "Tap the round button at the bottom right. If the other person is nearby with NEXO open, they show up on their own: tap them and, once they accept, you can talk. If they are far away, send them a <b>link</b> (WhatsApp, TikTok…) or add them by their <b>NEXO ID</b>.",
+  welcome_s2_body: "Tap the <b>+</b> button at the bottom right. If the other person is nearby with NEXO open, they show up on their own: tap them and, once they accept, you can talk. If they are far away, send them a <b>link</b> (WhatsApp, TikTok…) or add them by their <b>NEXO ID</b>.",
   welcome_s3_title: "Write and call",
-  welcome_s3_body: "Open a contact and type. Send <b>photos, videos, audios and files</b>, or make <b>calls and video calls</b>. The symbol next to their name shows which way it goes: Bluetooth, Wi-Fi or internet.",
+  welcome_s3_body: "Open a chat and type. Send <b>photos, videos, audios and files</b>, or make <b>calls and video calls</b>. Tap the <b>symbol next to the name</b> to see which way it goes: Bluetooth, Wi-Fi or internet.",
   welcome_sg_title: "Groups and statuses",
-  welcome_sg_body: "To make a group, tap the <b>three dots (⋮)</b> of a contact and choose <b>“Create group”</b>. <b>Statuses</b> are off to the side: swipe Contacts to the <b>left</b>. When there are new statuses, a soft bar will pulse on the right edge.",
+  welcome_sg_body: "To make a group, tap the <b>three dots (⋮)</b> of a contact and choose <b>“Create group”</b>. <b>Statuses</b> are behind the <b>Statuses</b> button at the top (next to the magnifier) (or swipe <b>left</b>). When there are new ones, you will see a dot and a soft bar on the right edge.",
   welcome_s4_title: "One step so it always works",
   welcome_s4_body: "To receive messages and calls with the app closed or the screen off, let NEXO run in the <b>background</b>. We'll ask you now — it's quick.",
   welcome_back: "‹ Back",

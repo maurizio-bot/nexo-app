@@ -95,6 +95,9 @@ const fin = (ok) => {
   r.E10_se_va_al_tocar = edge && !(await A.evaluate(() => !!document.getElementById('nexo-est-edge')));
   await A.evaluate(() => { try { window.__nexoEdgeCheck(); } catch (e) {} }); await sleep(300);
   r.E10_no_vuelve_por_los_mismos = !(await A.evaluate(() => !!document.getElementById('nexo-est-edge')));
+  // E11 (26-11, «lo intuitivo»): el botón de Estados está en la cabecera (visible, redondo como la lupa) y con puntito mientras hay estados sin ver
+  r.E11_boton_visible = await A.evaluate(() => { const b = document.getElementById('nexo-estados-btn'), l = document.getElementById('nexo-contacts-search-btn'); if (!b || !l) return false; const q = b.getBoundingClientRect(), z = l.getBoundingClientRect(); return q.width === z.width && q.height === z.height && q.top === z.top && q.left > z.right - 1 && q.right <= innerWidth; });
+  r.E11_puntito = await A.evaluate(() => { const b = document.getElementById('nexo-estados-btn'); return !!b && b.classList.contains('has-new'); });
 
   // E1: Contactos limpio
   const c1 = await A.evaluate(() => {
@@ -205,6 +208,12 @@ const fin = (ok) => {
   r.E8_nombre_abre_chat_visible = s.chat && !s.abierta && s.app === 0 && s.vis !== 'visible';
   await A.evaluate(() => window.__nexoHandleBack()); await sleep(600);
 
+  // E11b: tocar el botón abre Estados (sin gesto) y volver lo cierra
+  await A.evaluate(() => document.getElementById('nexo-estados-btn').click()); await sleep(700);
+  r.E11_toca_abre = enEstados(await st());
+  await A.evaluate(() => window.__nexoHandleBack()); await sleep(700);
+  r.E11_vuelve = enContactos(await st());
+
   // E9b: tras reiniciar la app, el aviso no vuelve
   await A.reload();
   await A.waitForFunction(() => window.NEXO && window.NEXO.initialized, null, { timeout: 60000 });
@@ -214,7 +223,7 @@ const fin = (ok) => {
 
   const ok = ['E1_contactos_sin_estados', 'E2_sigue_al_dedo', 'E2_corto_vuelve', 'E3_abre_estados', 'E3_sin_boton_agregar', 'E3_contenido', 'E4_tocar_abre_visor', 'E4_atras_cierra_visor', 'E4_aro_visto',
     'E5_abajo_actualiza', 'E5_abajo_no_cambia', 'E6_derecha_vuelve', 'E6_atras_vuelve', 'E6_atras_sin_nada_false', 'E7_vertical_es_scroll', 'E7_borde_derecho_no', 'E7_chat_no_abre_estados',
-    'E7_tira_en_linea_no', 'E8_nombre_abre_chat_visible', 'E9_aviso_sale', 'E9_aviso_se_va_al_tocar', 'E9_aviso_no_segunda', 'E10_destello_sale', 'E10_se_va_al_tocar', 'E10_no_vuelve_por_los_mismos'].every((k) => r[k] === true) && r.preparado;
+    'E7_tira_en_linea_no', 'E8_nombre_abre_chat_visible', 'E9_aviso_sale', 'E9_aviso_se_va_al_tocar', 'E9_aviso_no_segunda', 'E10_destello_sale', 'E10_se_va_al_tocar', 'E10_no_vuelve_por_los_mismos', 'E11_boton_visible', 'E11_puntito', 'E11_toca_abre', 'E11_vuelve'].every((k) => r[k] === true) && r.preparado;
   fin(ok);
   await browser.close();
   process.exit(ok ? 0 : 1);

@@ -61,11 +61,24 @@ const vaultHas = async (p, cid, re) => (await p.win.vaultLoadMessages(cid)).some
   const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', opts), nB = new NativePhone('B', 'BB:BB:BB:BB:BB:02', opts), nC = new NativePhone('C', 'CC:CC:CC:CC:CC:03', opts);
   [nA, nB, nC].forEach((n) => { radio.add(n); n.load(); });
   const [A, B, C] = await Promise.all([boot('A', nA), boot('B', nB), boot('C', nC)]);
+  let r_via = null;
   const id = (p) => p.win.bleInterface.localNexoId.toLowerCase();
   A.win.bleInterface.togglePanel(); await addFound(A); await addFound(A); A.win.bleInterface.togglePanel();
   await sleep(1500);
-  for (const n of ['B', 'C']) { await openChatWith(A, n); await sendText(A, 'hola ' + n); await sleep(2500); await closeChat(A); }
+  for (const n of ['B', 'C']) {
+    await openChatWith(A, n); await sendText(A, 'hola ' + n); await sleep(2500);
+    if (n === 'B') { // 26-11 (dueño): el símbolo del camino se toca y explica por dónde va el chat
+      const ico = A.win.document.getElementById('chat-via-ico');
+      if (ico) { click(A.win, ico); await sleep(300); }
+      const tt = A.win.document.getElementById('perm-error-toast');
+      r_via = { hay_simbolo: !!ico, explica: !!tt && /Bluetooth|Wi-Fi|Internet|Salto/.test(tt.textContent) };
+    }
+    await closeChat(A);
+  }
   const r = { build: path.basename(buildDir) };
+  r.via_tocable = !!r_via && r_via.hay_simbolo && r_via.explica;
+  // 26-11 (dueño): el botón de agregar es un + (la burbuja de mensaje no tiene relación con agregar)
+  r.fab_html = (A.win.document.getElementById('ble-fab-btn') || {}).innerHTML; r.fab_es_mas = (() => { const f = A.win.document.getElementById('ble-fab-btn'); return !!f && /M12 5v14M5 12h14/.test(f.innerHTML) && !/M20 2H4/.test(f.innerHTML); })();
   r.B_conoce_a_C_antes = B.win.vaultLoadContacts().some((c) => (c.nexoId || '').toLowerCase() === id(C));
   // 3222 (dueño 17-11): «Crear grupo» desde los ⋮ de un contacto → la hoja «Nuevo grupo» con ese contacto ya elegido; y no hay botón arriba
   r.sin_boton_arriba = !A.win.document.getElementById('nexo-new-group-btn');
@@ -142,7 +155,7 @@ const vaultHas = async (p, cid, re) => (await p.win.vaultLoadMessages(cid)).some
   await openChatWith(A, '👥 Amigos'); await sendText(A, 'ya sin C'); await sleep(4000);
   r.no_se_manda_a_C = !(await vaultHas(A, id(C), /ya sin C/)) && !(await vaultHas(C, gid, /ya sin C/));
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css/.test(l)).slice(0, 5);
-  const ok = r.sin_boton_arriba && r.fab_sin_menu_de_grupo && r.menu_crear_grupo && r.boton_sin_nombre && r.grupo_en_B && r.grupo_en_C && r.creado_entregado_en_A === true && r.B_conoce_a_C_despues && r.C_conoce_a_B_despues && r.llega_a_A && r.no_leido_A === 1 &&
+  const ok = r.sin_boton_arriba && r.fab_es_mas && r.via_tocable && r.fab_sin_menu_de_grupo && r.menu_crear_grupo && r.boton_sin_nombre && r.grupo_en_B && r.grupo_en_C && r.creado_entregado_en_A === true && r.B_conoce_a_C_despues && r.C_conoce_a_B_despues && r.llega_a_A && r.no_leido_A === 1 &&
     r.llega_a_C && r.no_va_al_chat_1a1_de_C && r.estado_en_B === 'entregado a todos' && r.burbuja_en_C.some((x) => /^B: hola grupo/.test(x)) && r.largo_llega_a_A && r.largo_llega_a_B &&
     r.sin_sobres_en_1a1 && r.archivo_llega_a_B && r.archivo_llega_a_C && r.archivo_entregado_en_A && r.copias_borradas && r.C_ya_no_lo_tiene && r.A_ve_que_salio && r.B_ve_que_salio && r.no_se_manda_a_C && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';

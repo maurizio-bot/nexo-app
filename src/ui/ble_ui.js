@@ -239,7 +239,8 @@ export const BLE_UI_METHODS = {
     if (emptyAdd) emptyAdd.addEventListener('click', function() { self.togglePanel(); });
     var fabBtn = document.createElement('button');
     fabBtn.id = 'ble-fab-btn';
-    fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
+    fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'; // 26-11 (dueño): el + (la burbuja de mensaje no tiene relación con agregar)
+    fabBtn.setAttribute('aria-label', t('add_contacts', 'Agregar contactos')); fabBtn.title = t('add_contacts', 'Agregar contactos');
     fabBtn.style.cssText = 'position:fixed;bottom:80px;right:16px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2147483643;box-shadow:0 4px 15px rgba(0,200,255,0.3);transition:transform 0.15s ease;';
     // 3222 (dueño 17-11: «el botón de agregar puede también servir para crear un grupo»): si hay menú (groups_ui.js), pregunta qué hacer
     fabBtn.addEventListener('click', function() { self.togglePanel(); }); // 26-11 (dueño): sin menú; «Crear grupo» vive solo en los ⋮ del contacto
@@ -955,7 +956,7 @@ export const BLE_UI_METHODS = {
     if (this._activeChatDeviceId) { fabBtn.style.display = 'none'; return; }
     fabBtn.style.display = 'flex';
     // Ronda 2771: teléfonos nuevos cerca: el icono se queda y el número va en una burbuja (antes, un número suelto)
-    fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>' +
+    fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>' +
       (this.newDevicesCount > 0 ? '<span class="ble-fab-badge" style="position:absolute;top:-2px;right:-2px;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:10px;background:#ff6b35;border:2px solid #0a0a15;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;">' + Math.min(this.newDevicesCount, 99) + '</span>' : '');
   },
 
