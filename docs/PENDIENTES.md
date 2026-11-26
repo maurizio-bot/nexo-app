@@ -27,8 +27,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   escribir/mandar/llamar (+ símbolo del camino), grupos (+ fijar/silenciar/bloquear), estados, cuenta protegida (cifrado, bloqueo, Fénix), batería.
 - **PENDIENTES AL 26-11 (12:30 México), tras subir la 3158 (batería, estados con botón y menús/adjuntar YA HECHOS):**
   1. Revisar el CI de la 3158 (~13:45) y probarla en el teléfono; pasar NOVEDADES al historial como 3158.
-  2. NOMBRE «Everbeat»: IMPI (clases 9 y 38) y dominio (everbeat.app/.com) — del dueño. Si sale limpio: cambiar `app_name`, textos «NEXO», ficha de Play
-     («Everbeat: chat sin señal», lema «Todos para uno»), política de privacidad e imagen de arranque si lleva la palabra.
+  2. NOMBRE ELEGIDO «Nexbeat» (26-11, limpio en el IMPI). Falta: Play, dominio nexbeat.app/.com y registrar la marca (dueño). En la APK de tienda: cambiar `app_name`, textos «NEXO», ficha de Play
+     («Nexbeat», lema «Todos para uno»), política de privacidad e imagen de arranque si lleva la palabra.
   3. Nombre de usuario fijo vs. confirmación doble — decisión del dueño.
   4. Estilo parejo (B-EST): quedan ventanas emergentes, avisos y demás hojas (ya: Ajustes, Nuevo grupo, Agregar, menú ⋮, adjuntar).
   5. Estadística: «Wi-Fi local: su app no contesta» cuenta como fallo cuando el otro solo duerme → reclasificar.
