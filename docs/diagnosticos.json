@@ -1456,6 +1456,46 @@
    "sintoma": "resumen_diario (25-11), build 3156",
    "categoria": "Sin fallo nuevo de la app",
    "causa": "Día de las pruebas sin internet/puente con 3155→3156 mezcladas: 99 enviados (95 ✓✓, 89 leídos), 110 recibidos. Los fallos del puente (ACK timeout ×32, contacto no disponible ×26), «sin relés» ×21 y Wi-Fi local sin Wi-Fi ×7 son de esa prueba (ya vistos y arreglados 3342–3344). Wi-Fi Direct no salió 3 veces por Wi-Fi apagado aquí (ajuste del teléfono). Pendiente de mirar en el próximo resumen: «sin camino al salir» 13 sin ✓✓ aún (¿se entregaron al volver el camino?) y «conectado pero su app no contesta» ×10 por Wi-Fi local. Batería a la vista 7,2 %/h, 36,2 °C: normal"
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "08:30",
+   "nx": "nx10b6f4ac",
+   "sintoma": "zombi (nx0g6ef54e), build 3156 — nubia de Alex con Roberto (motorola) en la misma Wi-Fi",
+   "categoria": "Bluetooth: doble enlace al mismo teléfono (copia de largo alcance)",
+   "causa": "El primer anuncio que vio fue la COPIA de largo alcance (LE Coded, 70:73…3404) de Roberto y se conectó a ella (08:29:38.7); la dirección normal (68:F9…1429) se conectó también: DOS enlaces al mismo teléfono. «Copia de largo alcance… no me conecto por ahí (3404)» salió 1 s DESPUÉS, sin cerrar el enlace ya abierto. Los pings de la app salieron por el enlace de la copia (08:30:04/16/28 a 7073…) y Roberto nunca los recibió (su servidor solo ve 6f2d…) → 4 pings sin respuesta → zombi (08:30:50). También explica el «MTU 23» falso de nx0g6ef54e (08:29:45) y probablemente parte de los «enlaces a MTU mínimo». Nada se perdió: el texto salió por Wi-Fi en 323 ms. PENDIENTE (Bluetooth, para Fable): al detectar que un enlace es la copia LE Coded de un teléfono ya enlazado, cerrarlo y no usarlo para pings ni envíos; o comprobar la copia ANTES de conectar."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "08:30",
+   "nx": "nx0g6ef54e",
+   "sintoma": "par:zombi (pedido por nx10b6f4ac), build 3156",
+   "categoria": "Bluetooth: doble enlace al mismo teléfono (copia de largo alcance)",
+   "causa": "El otro lado del zombi de Alex: su servidor solo ve a Alex por 6f2d… y contesta los pings que le llegan (08:30:18, 08:30:35); los que Alex mandó por la copia LE Coded no llegaron. Además un teléfono sin identificar (…0da5) entra y sale cada ~36 s toda la mañana (frenado 5 min cada vez): externo, ya contenido."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "11:15",
+   "nx": "nx10b6f4ac",
+   "sintoma": "resumen_diario (25-11), build 3156",
+   "categoria": "Sin fallo nuevo de la app",
+   "causa": "2 enviados y 6 recibidos, todo con ✓✓. «Enlaces a MTU mínimo 6 de 6»: posiblemente los enlaces fantasma de la copia LE Coded (ver zombi 08:30). Puente caducado ×1 (sin más datos)."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "07:13",
+   "nx": "nx0g6ef54e",
+   "sintoma": "resumen_diario (25-11), build 3156",
+   "categoria": "Sin fallo de la app",
+   "causa": "1 enviado y 22 recibidos sin pérdidas. «Wi-Fi local: conectado pero su app no contesta ×10» = el otro con la app dormida (se le despierta con un toque): es normal, pero se cuenta como fallo y ensucia la estadística (reclasificar como «dormida», cosa menor)."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "11:27",
+   "nx": "nx16386482",
+   "sintoma": "resumen_diario (25-11), build 3156",
+   "categoria": "Sin fallo de la app",
+   "causa": "7 enviados, 7 con ✓✓ y leídos. MTU mínimo 7 de 10 con nx1e50c95d (S23, servidor): ya conocido. Wi-Fi local «su app no contesta» ×4 = el otro dormido."
   }
  ]
 }

@@ -12,22 +12,19 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Menú de adjuntar con el nombre de cada opción.
-- Menú ⋮ de un contacto con iconos claros, como el del chat.
-- «Se unió al grupo» ya no suma mensajes sin leer.
-- El permiso de batería se pide al agregar tu primer contacto.
+- Icono nuevo.
+- El botón de agregar es un +; la pantalla principal se llama Chats.
+- Botón Estados arriba, con puntito si hay nuevos.
+- Toca el símbolo junto al nombre del chat: te dice por qué camino va.
+- Crear grupo desde los tres puntos (⋮) de un contacto; menús con iconos claros.
+- Adjuntar con el nombre de cada opción.
+- «Se unió al grupo» ya no suma sin leer.
+- Guía de bienvenida nueva.
 </es-419>
 <!-- /APK -->
 
 ## Historial
 
-### APK 3157 (26-11-2026)
-- Botón Estados arriba, con puntito si hay nuevos.
-- El botón de agregar vuelve a ser un +; la pantalla principal se llama Chats.
-- Toca el símbolo junto al nombre del chat: te dice por qué camino va.
-- Ajustes y Nuevo grupo se ven igual que Chats.
-- Crear grupo: desde los tres puntos (⋮) de un contacto.
-- Guía de bienvenida actualizada.
 
 ### APK 3156 (25-11-2026)
 - Tocar la foto de un grupo en la lista de chats la abre en grande, como la de un contacto.

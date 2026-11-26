@@ -21,6 +21,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-25, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **APK 3158 SUBIDA (26-11 ~12:00 México; revisar el CI ~85 min):** la 3157 FALLÓ en «Nada sin definir» (`screen` en `find_ui.js` de la 3345, que nunca había
+  pasado por el CI) → arreglado; 3158 = todo lo de la 3157 + la tanda menor + ICONO EVERBEAT F (círculo y latido naranja #ff2301; `nexo-private/negocio/icono_everbeat_final/`).
+  El NOMBRE aún dice NEXO en la app (Everbeat pendiente del IMPI). Diagnósticos 26-11: doble enlace a la copia LE Coded → zombi (PARA FABLE, en PENDIENTES).
+  LECCIÓN: antes de subir, correr `node tests/sim/undef.js` (tarda 1 s) además de las pruebas cercanas.
 - **TANDA MENOR SIGUIENTE (26-11, en `ccr-5f3d29e2-x9z1cz`, [skip ci], SIN subir: el dueño revisa la 3157 y da indicaciones):** batería al PRIMER contacto
   (instalación nueva; `_askBgWhenUseful` en main_chats.js, `welcome.js`); menú ⋮ del contacto con iconos de línea (`ble_ui.js`); adjuntar con nombre bajo cada icono;
   «Agregar contactos» con título 21 px; «Se unió al grupo» ya no suma no-leídos ni avisa (`quiet` en notify.js; era el 1/2/3 de `groups.js`). NOVEDADES: 3157 al historial.

@@ -232,7 +232,7 @@ function _onOrient(e) {
   if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;
   else if (e.absolute && typeof e.alpha === 'number') h = 360 - e.alpha;
   if (h === null || !isFinite(h)) return;
-  var so = (typeof screen !== 'undefined' && screen.orientation && screen.orientation.angle) || 0;
+  var so = (typeof window !== 'undefined' && window.screen && window.screen.orientation && window.screen.orientation.angle) || 0;
   _st.heading = ((h + so) % 360 + 360) % 360; _st.headingAt = Date.now();
 }
 

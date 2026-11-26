@@ -29,6 +29,13 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   (hoy: destello + guía), revisión visual de TODAS las pantallas restantes (ahora solo se midieron Ajustes y Nuevo grupo).
 - **Revisión como persona externa:** `docs/REVISION_EXTERNA_26-11.md`.
 
+## 🆕 26-11 — diagnóstico de Alex (nubia) y Roberto: DOBLE ENLACE Bluetooth a la copia de largo alcance (PARA FABLE, Bluetooth)
+- Alex se conectó primero a la COPIA LE Coded de Roberto (70:73…3404) y luego a su dirección normal (68:F9…1429): dos enlaces al mismo teléfono. La detección
+  «copia de largo alcance… no me conecto por ahí» llegó 1 s tarde y no cerró el ya abierto. Los pings iban por la copia (muerta) → zombi a los 70 s; además un «MTU 23» falso.
+  Arreglo: comprobar la copia ANTES de conectar o, al detectarla, cerrar ese enlace y no usarlo para pings/envíos. Prueba: reproducir en `tests/sim` con un teléfono que
+  anuncia dos direcciones (normal + coded) y el coded visto primero. Ver `docs/diagnosticos.json` 26-11 08:30.
+- Menor: «Wi-Fi local: conectado pero su app no contesta» cuenta como FALLO cuando solo es el otro con la app dormida (se le despierta): reclasificar en el resumen.
+
 ## 🎯 META (dueño 15-11): Google Play para EDC México (feb 2027) — el detalle está en el repositorio PRIVADO `maurizio-bot/nexo-private`
 (`negocio/PENDIENTES_NEGOCIO.md` y `negocio/PLAN.md`).
 
