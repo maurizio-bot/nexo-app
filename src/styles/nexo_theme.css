@@ -485,8 +485,8 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
 #ble-panel { background: var(--nx-bg) !important; color: var(--nx-text); } /* 3140: liso, como Contactos */
 /* 3140 (zona Agregar contactos): cabecera de 64 px con el título a la izquierda, sin línea (como #main-header) */
 #ble-panel .ble-header { background: transparent !important; border-bottom: none !important; flex-direction: row; align-items: center; justify-content: flex-start;
-  min-height: calc(64px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 14px 0 18px !important; box-sizing: border-box; gap: 0; }
-#ble-panel .ble-header .contacts-title { font-size: 26px; font-weight: 800; letter-spacing: -0.3px; text-align: left;
+  min-height: calc(60px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 16px 0 16px !important; box-sizing: border-box; gap: 0; }
+#ble-panel .ble-header .contacts-title { font-size: 21px; font-weight: 800; letter-spacing: -0.2px; line-height: 28px; text-align: left; /* 26-11: como «Chats» */
   background: linear-gradient(90deg, #fff 30%, #b9c4ff); -webkit-background-clip: text; background-clip: text; color: transparent !important; }
 #ble-panel .ble-search-bar { margin: 8px 16px 12px; }
 #ble-panel .ble-search-bar svg { width: 18px; height: 18px; fill: none; color: var(--nx-muted); }
@@ -690,3 +690,12 @@ html.nx-font-custom body, html.nx-font-custom button, html.nx-font-custom input,
 /* 26-11: botón de Estados en la cabecera (la casilla «group» de la cuadrícula estaba libre); puntito cuando hay estados sin ver */
 #nexo-estados-btn { grid-area: group; position: relative; }
 #nexo-estados-btn.has-new::after { content: ""; position: absolute; top: 8px; right: 8px; width: 9px; height: 9px; border-radius: 50%; background: var(--nx-grad); box-shadow: 0 0 8px rgba(0, 200, 255, 0.7); }
+
+/* 26-11: menú ⋮ del contacto con iconos de línea como el menú del chat */
+.ble-contact-menu .ble-menu-item { display: flex; align-items: center; gap: 12px; }
+.ble-contact-menu .ble-menu-item .mm-ico { display: inline-flex; width: 20px; justify-content: center; color: var(--nx-text); flex-shrink: 0; }
+.ble-contact-menu .ble-menu-delete .mm-ico { color: inherit; }
+
+/* 26-11 (revisión externa + dueño «lo intuitivo»): cada opción de adjuntar con su nombre debajo del icono (Cámara, Galería…) */
+.attach-menu-item:not(.attach-more) { flex-direction: column; width: 56px !important; height: auto !important; gap: 3px; padding: 2px 0 !important; }
+.attach-menu-item:not(.attach-more)::after { content: attr(data-label); font-size: 10.5px; line-height: 1.2; color: var(--nx-muted); white-space: nowrap; max-width: 56px; overflow: hidden; text-overflow: ellipsis; }

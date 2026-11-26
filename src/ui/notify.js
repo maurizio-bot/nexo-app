@@ -140,6 +140,7 @@ export class Notifier {
       return;
     }
     if (m.msgId) this._keepUnread(cid, m.msgId);
+    if (m.quiet) return; // 26-11: aviso informativo (p. ej. «Se unió al grupo»): su «leído» sale al abrir, pero no suma ni avisa
     var bi = this.ble();
     var count = bi && typeof bi.bumpUnread === 'function' ? bi.bumpUnread(cid) : 0;
     // Notificación del teléfono solo con la app en segundo plano (a la vista ya se ve la burbuja numerada)

@@ -69,14 +69,19 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   click(N.win, $(N, 'nexo-welcome-next')); // Empezar → cierra
   r.N_cierra = await wait(() => !$(N, 'nexo-welcome-overlay'), 10);
   r.N_marca_vista = (() => { try { return N.win.localStorage.getItem('nexo_welcome_done') === '1'; } catch (e) { return false; } })();
-  r.N_luego_aviso_bateria = await wait(() => !!$(N, 'nexo-bat-allow'), 15); // el encadenado onDone dispara la batería
+  // 26-11 (dueño): instalación nueva y sin contactos → la batería ESPERA al primer contacto agregado; entonces sale
+  r.N_bateria_espera = !(await wait(() => !!$(N, 'nexo-bat-allow'), 6));
+  N.win.dispatchEvent(new N.win.CustomEvent('nexo:ble:contactAdded', { detail: {} }));
+  r.N_luego_aviso_bateria = r.N_bateria_espera && await wait(() => !!$(N, 'nexo-bat-allow'), 15);
 
   // S: saltar — «Saltar» cierra la guía de una, marca el flag y también enlaza con el aviso de batería
   r.S_sale_guia = await wait(() => !!$(S, 'nexo-welcome-overlay'), 20);
   click(S.win, $(S, 'nexo-welcome-skip'));
   r.S_cierra = await wait(() => !$(S, 'nexo-welcome-overlay'), 10);
   r.S_marca_vista = (() => { try { return S.win.localStorage.getItem('nexo_welcome_done') === '1'; } catch (e) { return false; } })();
-  r.S_luego_aviso_bateria = await wait(() => !!$(S, 'nexo-bat-allow'), 15);
+  r.S_bateria_espera = !(await wait(() => !!$(S, 'nexo-bat-allow'), 6));
+  S.win.dispatchEvent(new S.win.CustomEvent('nexo:ble:contactAdded', { detail: {} }));
+  r.S_luego_aviso_bateria = r.S_bateria_espera && await wait(() => !!$(S, 'nexo-bat-allow'), 15);
 
   // A: ya vista — NO sale sola; «Ver la guía otra vez» (force) la reabre aunque el flag esté puesto
   r.A_sin_guia = !(await wait(() => !!$(A, 'nexo-welcome-overlay'), 10));

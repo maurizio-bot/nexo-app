@@ -464,7 +464,7 @@ export default {
   welcome_sp_title: "Sua conta, protegida",
   welcome_sp_body: "Tudo é criptografado de ponta a ponta. Em <b>Configurações</b> você pode colocar bloqueio por digital ou PIN e, se perder o telefone, recuperar a conta com a <b>Fênix</b> (Configurações → Backup).",
   welcome_s4_title: "Um passo para funcionar sempre",
-  welcome_s4_body: "Para receber mensagens e chamadas com o app fechado ou a tela apagada, deixe o NEXO funcionar em <b>segundo plano</b>. Vamos pedir agora, é rápido.",
+  welcome_s4_body: "Quando você adicionar seu primeiro contato, vamos pedir para deixar o NEXO funcionar em <b>segundo plano</b>: assim você recebe mensagens e chamadas com o app fechado ou a tela apagada.",
   welcome_back: "‹ Voltar",
   welcome_skip: "Pular",
   welcome_next: "Próximo",

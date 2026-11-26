@@ -20,7 +20,8 @@ import { rem } from './ui/rem.js';
 import { initBLEInterface } from './ui/ble_interface.js';
 import { createAckSystem } from './ui/ble_ack.js';
 import { loadDisplayName, nameGate, applyDisplayName } from './ui/display_name.js';
-import { welcomeGuide } from './ui/welcome_guide.js';
+import { welcomeGuide, welcomeSeen } from './ui/welcome_guide.js';
+import { _getBLEContacts } from './ui/ble_helpers.js';
 import { notifBannerInit } from './ui/notif_banner.js';
 import { avatarInit } from './ui/avatar.js';
 import { updaterInit } from './ui/updater.js';
@@ -241,7 +242,9 @@ function _handleIncomingMessage(msg) {
       // que vendrá. Su «leído» marcaba el ARCHIVO como leído en el que lo manda sin haberse entregado (y podía perderse). Para el
       // aviso y el «leído» se usa un id propio (#cita) que no se confirma; cuando llega el archivo de verdad, se confirma él.
       var nId = (msg.attachmentMeta && msg.attachmentMeta.cita && !msg.attachmentPayload && !msg.attachmentRef) ? msgId + '#cita' : msgId;
-      _notifier.incoming(grpN ? { cid: grpN.id, msgId: nId, name: grpN.name, preview: who + ': ' + pvw }
+      // 26-11: el aviso «✅ Se unió al grupo» (gj) es informativo: se ve en el chat pero no suma no-leídos ni suena (el contador variaba 1–3)
+      var quiet = !!grpN && /"gj"\s*:\s*1/.test(String(msg.content || ''));
+      _notifier.incoming(grpN ? { cid: grpN.id, msgId: nId, name: grpN.name, preview: who + ': ' + pvw, quiet: quiet }
         : { cid: senderId, msgId: nId, name: who, preview: pvw });
     }
   } catch (err) {
@@ -450,7 +453,16 @@ async function initializeNexoApp() {
     // siempre. Si ya se vio la guía, welcomeGuide llama a _askBackgroundOnce al instante → mismo comportamiento de antes.
     // #dueño 06-11: ANTES de la bienvenida, la 1.ª vez se pide el NOMBRE (obligatorio, no se puede cambiar después; evita
     // perfiles falsos). Si ya está fijado, nameGate pasa de largo (y aplica el nombre). Luego la guía y el aviso de batería.
-    setTimeout(function() { _notifier.syncNative(); Promise.resolve(_notifier.ensurePermission()).then(function(pr) { try { notifBannerInit(!!(pr && pr.granted === false)); } catch (e) {} loadDisplayName().then(function() { nameGate(window.bleInterface, { onDone: function() { welcomeGuide({ onDone: _askBackgroundOnce }); } }); }); }).catch(function() {}); }, 4000);
+    setTimeout(function() { _notifier.syncNative(); Promise.resolve(_notifier.ensurePermission()).then(function(pr) { try { notifBannerInit(!!(pr && pr.granted === false)); } catch (e) {} loadDisplayName().then(function() { nameGate(window.bleInterface, { onDone: function() { var fresh = !welcomeSeen(); welcomeGuide({ onDone: function() { _askBgWhenUseful(fresh); } }); } }); }); }).catch(function() {}); }, 4000);
+    // 26-11 (dueño, revisión externa: «primero demostrar valor, después pedir permisos»): en una instalación NUEVA y sin contactos, el aviso
+    // de batería espera al PRIMER contacto agregado (antes no hay nada que recibir); si ya se había visto la guía o ya hay contactos, sale como siempre.
+    function _askBgWhenUseful(fresh) {
+      var n = 0; try { n = (_getBLEContacts() || []).length; } catch (e) {}
+      if (!fresh || n > 0) { _askBackgroundOnce(); return; }
+      console.log('[NOTIF] Aviso de batería: espera al primer contacto');
+      var on = function() { window.removeEventListener('nexo:ble:contactAdded', on); setTimeout(_askBackgroundOnce, 2500); };
+      window.addEventListener('nexo:ble:contactAdded', on);
+    }
     var initPromise = window.NEXO.app.init();
     var timeoutPromise = new Promise(function(resolve, reject) {
       setTimeout(function() { reject(new Error('INIT_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.CONNECT) ? NEXO_CONFIG.TIMEOUTS.CONNECT + 3000 : 13000);

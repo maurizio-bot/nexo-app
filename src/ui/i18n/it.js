@@ -464,7 +464,7 @@ export default {
   welcome_sp_title: "Il tuo account, protetto",
   welcome_sp_body: "Tutto è cifrato da un capo all'altro. In <b>Impostazioni</b> puoi mettere il blocco con impronta o PIN e, se perdi il telefono, recuperare l'account con <b>Fenice</b> (Impostazioni → Backup).",
   welcome_s4_title: "Un passo perché funzioni sempre",
-  welcome_s4_body: "Per ricevere messaggi e chiamate con l'app chiusa o lo schermo spento, lascia che NEXO funzioni in <b>background</b>. Te lo chiediamo ora, è veloce.",
+  welcome_s4_body: "Quando aggiungi il tuo primo contatto ti chiederemo di lasciare che NEXO funzioni in <b>background</b>: così ricevi messaggi e chiamate con l'app chiusa o lo schermo spento.",
   welcome_back: "‹ Indietro",
   welcome_skip: "Salta",
   welcome_next: "Avanti",

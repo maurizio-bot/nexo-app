@@ -464,7 +464,7 @@ export default {
   welcome_sp_title: "Votre compte, protégé",
   welcome_sp_body: "Tout est chiffré de bout en bout. Dans <b>Paramètres</b>, vous pouvez mettre un verrouillage par empreinte ou code PIN et, si vous perdez votre téléphone, récupérer votre compte avec <b>Phénix</b> (Paramètres → Sauvegarde).",
   welcome_s4_title: "Une étape pour que tout fonctionne toujours",
-  welcome_s4_body: "Pour recevoir les messages et les appels avec l'app fermée ou l'écran éteint, laissez NEXO fonctionner en <b>arrière-plan</b>. Nous vous le demandons maintenant, c'est rapide.",
+  welcome_s4_body: "Quand vous ajouterez votre premier contact, nous vous demanderons de laisser NEXO fonctionner en <b>arrière-plan</b> : ainsi vous recevez messages et appels avec l'app fermée ou l'écran éteint.",
   welcome_back: "‹ Retour",
   welcome_skip: "Passer",
   welcome_next: "Suivant",

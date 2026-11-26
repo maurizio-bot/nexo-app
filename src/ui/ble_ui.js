@@ -9,7 +9,9 @@ import { t } from './i18n.js'; // #132 idioma
 import { parseInvite, shareInvite } from './invite.js'; // 3129: enlace de invitación
 import { personAvatar } from './person_avatar.js'; // 3140: el círculo de color de Contactos
 import { isPreviewHidden, toggleHidePreview } from './chat_hide_preview.js';
-import { markMutedRow, muteMenuLabel, isMuted, openMuteSheet } from './chat_mute.js'; // 3219: silenciar un chat
+import { markMutedRow, muteMenuLabel, isMuted, openMuteSheet } from './chat_mute.js';
+import { sheetSvg, SHEET_ICONS } from './chat_sheet.js';
+function _escMenu(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); } // 3219: silenciar un chat
 import { blockMenuLabel, openBlockSheet } from './bloqueo_ui.js'; // bloquear contacto (24-11)
 import { groupInviteRow } from './group_invite_row.js'; // invitación a grupo (24-11)
 import { contactSearchQuery, _csMatch, installContactSearch } from './contacts_search.js'; // 3196: lupa de Contactos
@@ -806,9 +808,17 @@ export const BLE_UI_METHODS = {
     menu.className = 'ble-contact-menu';
     var isPinned = _isPinned(uuid);
     // Ronda 2771: "Cambiar nombre" (el nombre del chat ya se podía tocar y cambiar, pero nada lo decía)
-    menu.innerHTML = '<div class="ble-menu-item" data-action="pin">' + (isPinned ? '&#x2606; Desfijar' : '&#x2605; Fijar') + '</div><div class="ble-menu-item" data-action="rename">&#x270F;&#xFE0F; Cambiar nombre</div><div class="ble-menu-item" data-action="hidetext">' + (isPreviewHidden(uuid) ? '&#x1F441; ' + t('chat_show_preview', 'Mostrar el texto en los avisos') : '&#x1F648; ' + t('chat_hide_preview', 'Ocultar el texto en los avisos')) + '</div><div class="ble-menu-item" data-action="mute">' + (isMuted(uuid) ? '&#x1F514; ' : '&#x1F515; ') + muteMenuLabel(uuid) + '</div><div class="ble-menu-item" data-action="profile">&#x1F464; Perfil</div>' + '<div class="ble-menu-item" data-action="block">&#x1F6AB; ' + blockMenuLabel(uuid) + '</div><div class="ble-menu-item ble-menu-delete" data-action="delete">&#x1F5D1; Eliminar</div>';
-    // 3222 (dueño 17-11): «Crear grupo» desde los ⋮ del contacto: abre «Nuevo grupo» con este contacto ya elegido
-    if (typeof window.NEXO_newGroupWith === 'function') menu.insertAdjacentHTML('beforeend', '<div class="ble-menu-item" data-action="newgroup">&#x1F465; ' + t('prof_group_create', 'Crear grupo') + '</div>');
+    // 26-11 (dueño, estilo parejo): los mismos iconos de línea que el menú del chat (chat_sheet.js) en vez de emojis; «Eliminar» (peligro) al final
+    var _mi = function(action, svgPath, label, cls) { return '<div class="ble-menu-item' + (cls ? ' ' + cls : '') + '" data-action="' + action + '"><span class="mm-ico" aria-hidden="true">' + sheetSvg(svgPath.charAt(0) === '<' ? svgPath : '<path d="' + svgPath + '"/>', 19) + '</span><span>' + _escMenu(label) + '</span></div>'; };
+    var _P = { pin: 'M12 17v5M5 17h14l-2-4V5H7v8z', rename: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4', hide: 'M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.4 5.2A9.8 9.8 0 0 1 12 5c6 0 9.5 7 9.5 7a17 17 0 0 1-3.1 3.9M6.6 6.6A17 17 0 0 0 2.5 12S6 19 12 19a9.6 9.6 0 0 0 4.2-.9',
+      show: 'M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z', profile: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0', group: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 13.5a6.5 6.5 0 0 1 3.5 6.5',
+      del: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3' };
+    var hidden = isPreviewHidden(uuid), muted = isMuted(uuid);
+    menu.innerHTML = _mi('pin', _P.pin, isPinned ? 'Desfijar' : 'Fijar') + _mi('rename', _P.rename, 'Cambiar nombre') +
+      (typeof window.NEXO_newGroupWith === 'function' ? _mi('newgroup', _P.group, t('prof_group_create', 'Crear grupo')) : '') +
+      _mi('hidetext', hidden ? _P.show : _P.hide, hidden ? t('chat_show_preview', 'Mostrar el texto en los avisos') : t('chat_hide_preview', 'Ocultar el texto en los avisos')) +
+      _mi('mute', SHEET_ICONS[muted ? 'chat-unmute' : 'chat-mute'], muteMenuLabel(uuid)) + _mi('profile', _P.profile, 'Perfil') +
+      _mi('block', SHEET_ICONS['chat-block'], blockMenuLabel(uuid)) + _mi('delete', _P.del, 'Eliminar', 'ble-menu-delete');
     var rect = btn.getBoundingClientRect();
     menu.style.right = (window.innerWidth - rect.right) + 'px';
     // #dueño 05-11: el menú se abría SIEMPRE hacia abajo (top = rect.bottom), así que en los contactos del final de
@@ -826,7 +836,7 @@ export const BLE_UI_METHODS = {
     }
     menu.style.visibility = '';
     menu.addEventListener('click', function(e) {
-      var action = e.target.dataset.action;
+      var it = e.target && e.target.closest ? e.target.closest('[data-action]') : null; var action = it ? it.dataset.action : e.target.dataset.action;
       if (action === 'pin') { _togglePinnedContact(uuid); self.renderContactsList(); }
       else if (action === 'hidetext') { toggleHidePreview(uuid); }
       else if (action === 'newgroup') { window.NEXO_newGroupWith(uuid); }

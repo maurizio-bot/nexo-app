@@ -464,7 +464,7 @@ export default {
   welcome_sp_title: "Tu cuenta, protegida",
   welcome_sp_body: "Todo va cifrado de extremo a extremo. En <b>Ajustes</b> puedes poner bloqueo con tu huella o PIN y, si pierdes el teléfono, recuperar tu cuenta con <b>Fénix</b> (Ajustes → Respaldo).",
   welcome_s4_title: "Un paso para que funcione siempre",
-  welcome_s4_body: "Para recibir mensajes y llamadas con la app cerrada o la pantalla apagada, deja que NEXO funcione en <b>segundo plano</b>. Te lo pedimos ahora, es rápido.",
+  welcome_s4_body: "Cuando agregues a tu primer contacto te pediremos dejar que NEXO funcione en <b>segundo plano</b>: así recibes mensajes y llamadas con la app cerrada o la pantalla apagada.",
   welcome_back: "‹ Atrás",
   welcome_skip: "Saltar",
   welcome_next: "Siguiente",

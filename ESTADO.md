@@ -21,6 +21,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-25, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **TANDA MENOR SIGUIENTE (26-11, en `ccr-5f3d29e2-x9z1cz`, [skip ci], SIN subir: el dueño revisa la 3157 y da indicaciones):** batería al PRIMER contacto
+  (instalación nueva; `_askBgWhenUseful` en main_chats.js, `welcome.js`); menú ⋮ del contacto con iconos de línea (`ble_ui.js`); adjuntar con nombre bajo cada icono;
+  «Agregar contactos» con título 21 px; «Se unió al grupo» ya no suma no-leídos ni avisa (`quiet` en notify.js; era el 1/2/3 de `groups.js`). NOVEDADES: 3157 al historial.
 - **SIGUIENTE SESIÓN (26-11, cerrada por contexto al 37 %):** 1) revisar el CI de la **APK 3157** (run 45851189322, arrancó 9:39 México, ~11:05) y, si pasó, pasar
   NOVEDADES al historial como 3157. 2) **DUEÑO 26-11: «junta TODO lo que no es pesado para la siguiente; cuando salga la 3157 la reviso, te doy indicaciones y ya después
   subes esa»** → trabajar en rama con [skip ci] y NO subir a NEXOCHAT hasta sus indicaciones. Lista: (a) permiso de batería DESPUÉS del primer mensaje (aprobado;

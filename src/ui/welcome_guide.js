@@ -72,7 +72,7 @@ function _slides() {
       body: t('welcome_sp_body', 'Todo va cifrado de extremo a extremo. En <b>Ajustes</b> puedes poner bloqueo con tu huella o PIN y, si pierdes el teléfono, recuperar tu cuenta con <b>Fénix</b> (Ajustes → Respaldo).') },
     { icon: '🔋',
       title: t('welcome_s4_title', 'Un paso para que funcione siempre'),
-      body: t('welcome_s4_body', 'Para recibir mensajes y llamadas con la app cerrada o la pantalla apagada, deja que NEXO funcione en <b>segundo plano</b>. Te lo pedimos ahora, es rápido.') }
+      body: t('welcome_s4_body', 'Cuando agregues a tu primer contacto te pediremos dejar que NEXO funcione en <b>segundo plano</b>: así recibes mensajes y llamadas con la app cerrada o la pantalla apagada.') }
   ];
 }
 

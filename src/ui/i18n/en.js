@@ -464,7 +464,7 @@ export default {
   welcome_sp_title: "Your account, protected",
   welcome_sp_body: "Everything is end-to-end encrypted. In <b>Settings</b> you can add a fingerprint or PIN lock and, if you lose your phone, recover your account with <b>Phoenix</b> (Settings → Backup).",
   welcome_s4_title: "One step so it always works",
-  welcome_s4_body: "To receive messages and calls with the app closed or the screen off, let NEXO run in the <b>background</b>. We'll ask you now — it's quick.",
+  welcome_s4_body: "When you add your first contact we will ask you to let NEXO run in the <b>background</b>: that way you get messages and calls with the app closed or the screen off.",
   welcome_back: "‹ Back",
   welcome_skip: "Skip",
   welcome_next: "Next",
