@@ -1,4 +1,4 @@
-// 3345 (dueño 26-11, modo multitud / EDC: «lo primero en una multitud es buscar a las personas que conoces y poderte reencontrar»).
+// 3345 (dueño 25-11, modo multitud / EDC: «lo primero en una multitud es buscar a las personas que conoces y poderte reencontrar»).
 // A y B contactos por Bluetooth.
 //  1. A abre las opciones del chat de B → «Buscar a B entre la gente»: la pantalla sigue la SEÑAL de B (−82 = lejos → −55 = muy cerca,
 //     «te estás acercando») y el escaneo no para mientras está abierta (y para al cerrarla).

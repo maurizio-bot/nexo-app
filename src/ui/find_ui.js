@@ -1,5 +1,5 @@
 /**
- * 3345 (dueño 26-11, MODO MULTITUD / EDC: «lo primero en una multitud es buscar a las personas que conoces y poderte reencontrar»).
+ * 3345 (dueño 25-11, MODO MULTITUD / EDC: «lo primero en una multitud es buscar a las personas que conoces y poderte reencontrar»).
  * BUSCAR A UN CONTACTO ENTRE LA GENTE, sin internet ni enlace (opciones del chat → «Buscar a …»; en un grupo, «¿Quién del grupo está
  * cerca?»):
  *  - la SEÑAL de su Bluetooth en grande (muy cerca / cerca / lejos / apenas) y si te acercas o te alejas, con un toque al mejorar.

@@ -1,5 +1,5 @@
 /**
- * 3345 (dueño 26-11, MODO MULTITUD / EDC: «lo primero en una multitud es buscar a las personas que conoces en esa multitud y poderte
+ * 3345 (dueño 25-11, MODO MULTITUD / EDC: «lo primero en una multitud es buscar a las personas que conoces en esa multitud y poderte
  * reencontrar»). Lo que se sabe de DÓNDE está cada contacto, sin internet ni enlace:
  *  - su SEÑAL de Bluetooth: cada anuncio que oye el escaneo (ble_conn_scan.onDeviceFound) deja aquí su intensidad (RSSI). La señal
  *    de un teléfono salta mucho (el cuerpo, la gente, el bolsillo), así que se usa la MEDIANA de los últimos segundos y la tendencia

@@ -19,7 +19,7 @@ export function openChatMenu() {
   var cid = _normId(_getCurrentContactId());
   if (!cid) return null;
   var muted = isMuted(cid);
-  // 3345 (dueño 26-11, modo multitud): buscar al contacto entre la gente; en un grupo, ver quién está cerca
+  // 3345 (dueño 25-11, modo multitud): buscar al contacto entre la gente; en un grupo, ver quién está cerca
   var bg = window.bleInterface && window.bleInterface.groups, grp = bg && bg.isGroup && bg.isGroup(cid) ? bg.get(cid) : null;
   var find = /^nx[0-9a-z]{8}$/.test(cid) ? [{ label: t('find_menu', 'Buscar a {name} entre la gente').replace('{name}', _name()), cls: 'chat-find', fn: function() { openFind(cid, _name()); } }]
     : grp ? [{ label: t('find_grp_menu', '¿Quién del grupo está cerca?'), cls: 'chat-find', fn: function() { openFindGroup(cid, grp.members || [], grp.name || _name()); } }] : [];

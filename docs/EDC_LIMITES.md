@@ -58,7 +58,7 @@ abierto > reciente; soltar a un contacto inactivo a los ~2 min en multitud.
 8. Más de 2000 mensajes: archivar y buscar en todo el historial.
 9. Pequeños: `relay.noteAnon` y `RidBook.refresh` sin trabajo por aviso.
 
-10. **«Encontrar a los tuyos» (dueño 26-11, lo primero del modo multitud). HECHO 26-11 (3345)**: «Buscar a X entre la gente» (señal,
+10. **«Encontrar a los tuyos» (dueño 25-11, lo primero del modo multitud). HECHO 25-11 (3345)**: «Buscar a X entre la gente» (señal,
     hacer sonar, pantalla de luz, ubicación compartida con brújula) y «¿Quién del grupo está cerca?» (`find_ui.js`, `buscarcerca.js`);
     el contacto visto por el escaneo ya no guarda la libreta cada segundo. Falta medirlo en campo (señal real entre gente).
 

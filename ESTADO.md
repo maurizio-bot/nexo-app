@@ -32,7 +32,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   «no comerciante»; falta que Google apruebe y el teléfono. Ficha/privacidad/permisos: `nexo-private/negocio/PLAY_FICHA/`.
 - **AVISO PROGRAMADO (sesión anterior):** revisar el CI de la APK ebdef0e56 hacia las 19:56 México (25-11); si pasó: bloque de NOVEDADES al
   historial con su número, ESTADO «APK SUBIDA» → «PUBLICADA» y escribir la novedad de 3345 (abajo). Si la sesión nueva lo ve antes, que lo haga ella.
-- **DESPUÉS DE LA APK DE LAS 18:00 (26-11, [skip ci], va en la SIGUIENTE): 3345 MODO MULTITUD «encontrar a los tuyos»** (dueño 26-11: «lo
+- **DESPUÉS DE LA APK DE LAS 18:00 (25-11, [skip ci], va en la SIGUIENTE): 3345 MODO MULTITUD «encontrar a los tuyos»** (dueño 25-11: «lo
   primero en una multitud es buscar a las personas que conoces y poderte reencontrar»). Opciones del chat → «Buscar a X entre la gente»
   (`find_ui.js` + `find_near.js`): señal de Bluetooth en grande (mediana 4 s; muy cerca/cerca/lejos/apenas; «te acercas/te alejas»), escaneo
   sin parar mientras está abierta (nativo `durationMs`, relanzado cada min), «Hacer sonar su teléfono» (mensaje normal + acción oculta
