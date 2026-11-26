@@ -1496,6 +1496,62 @@
    "sintoma": "resumen_diario (25-11), build 3156",
    "categoria": "Sin fallo de la app",
    "causa": "7 enviados, 7 con ✓✓ y leídos. MTU mínimo 7 de 10 con nx1e50c95d (S23, servidor): ya conocido. Wi-Fi local «su app no contesta» ×4 = el otro dormido."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "17:11",
+   "nx": "nx1n36c283",
+   "sintoma": "4 textos a S23 con «!» (pantallazo del dueño), build 3159",
+   "categoria": "Fallo de la app",
+   "causa": "Relés limitan la dirección: «rate-limited: too many gift wraps» → «banned». Origen: mensaje de grupo gm17956644590414zot0 (~260 KB EN LÍNEA, no como archivo) que se reenvía a cada miembro por relé en 45 trozos de 8000 (972 de 360 por BT), con reintentos de ventana; desde 14:39 (3156). Tras actualizar a las 16:38 los 3 teléfonos en la MISMA Wi-Fi (misma dirección) → castigo compartido. Arreglo parcial 3347; falta (TRASPASO)."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "17:05",
+   "nx": "nx0g6ef54e",
+   "sintoma": "zombi (nx1n36c283) automático, build 3159",
+   "categoria": "Fallo de la app",
+   "causa": "Relés limitan la dirección: «rate-limited: too many gift wraps» → «banned». Origen: mensaje de grupo gm17956644590414zot0 (~260 KB EN LÍNEA, no como archivo) que se reenvía a cada miembro por relé en 45 trozos de 8000 (972 de 360 por BT), con reintentos de ventana; desde 14:39 (3156). Tras actualizar a las 16:38 los 3 teléfonos en la MISMA Wi-Fi (misma dirección) → castigo compartido. Arreglo parcial 3347; falta (TRASPASO)."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "17:06",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx0x4029e6) automático, build 3159",
+   "categoria": "Fallo de la app",
+   "causa": "Relés limitan la dirección: «rate-limited: too many gift wraps» → «banned». Origen: mensaje de grupo gm17956644590414zot0 (~260 KB EN LÍNEA, no como archivo) que se reenvía a cada miembro por relé en 45 trozos de 8000 (972 de 360 por BT), con reintentos de ventana; desde 14:39 (3156). Tras actualizar a las 16:38 los 3 teléfonos en la MISMA Wi-Fi (misma dirección) → castigo compartido. Arreglo parcial 3347; falta (TRASPASO)."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "17:03",
+   "nx": "nx01992876",
+   "sintoma": "par:zombi pedido por nx1n36c283, build 3159",
+   "categoria": "Fallo de la app",
+   "causa": "Relés limitan la dirección: «rate-limited: too many gift wraps» → «banned». Origen: mensaje de grupo gm17956644590414zot0 (~260 KB EN LÍNEA, no como archivo) que se reenvía a cada miembro por relé en 45 trozos de 8000 (972 de 360 por BT), con reintentos de ventana; desde 14:39 (3156). Tras actualizar a las 16:38 los 3 teléfonos en la MISMA Wi-Fi (misma dirección) → castigo compartido. Arreglo parcial 3347; falta (TRASPASO)."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "16:52",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx01992876) automático, build 3159",
+   "categoria": "Fallo de la app",
+   "causa": "Relés limitan la dirección: «rate-limited: too many gift wraps» → «banned». Origen: mensaje de grupo gm17956644590414zot0 (~260 KB EN LÍNEA, no como archivo) que se reenvía a cada miembro por relé en 45 trozos de 8000 (972 de 360 por BT), con reintentos de ventana; desde 14:39 (3156). Tras actualizar a las 16:38 los 3 teléfonos en la MISMA Wi-Fi (misma dirección) → castigo compartido. Arreglo parcial 3347; falta (TRASPASO)."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "16:43",
+   "nx": "nx0g6ef54e",
+   "sintoma": "zombi (nx10b6f4ac) automático, build 3159",
+   "categoria": "Fallo de la app",
+   "causa": "Relés limitan la dirección: «rate-limited: too many gift wraps» → «banned». Origen: mensaje de grupo gm17956644590414zot0 (~260 KB EN LÍNEA, no como archivo) que se reenvía a cada miembro por relé en 45 trozos de 8000 (972 de 360 por BT), con reintentos de ventana; desde 14:39 (3156). Tras actualizar a las 16:38 los 3 teléfonos en la MISMA Wi-Fi (misma dirección) → castigo compartido. Arreglo parcial 3347; falta (TRASPASO)."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "14:47",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx01992876) automático, build 3156",
+   "categoria": "Fallo de la app",
+   "causa": "Relés limitan la dirección: «rate-limited: too many gift wraps» → «banned». Origen: mensaje de grupo gm17956644590414zot0 (~260 KB EN LÍNEA, no como archivo) que se reenvía a cada miembro por relé en 45 trozos de 8000 (972 de 360 por BT), con reintentos de ventana; desde 14:39 (3156). Tras actualizar a las 16:38 los 3 teléfonos en la MISMA Wi-Fi (misma dirección) → castigo compartido. Arreglo parcial 3347; falta (TRASPASO)."
   }
  ]
 }

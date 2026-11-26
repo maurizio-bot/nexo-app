@@ -29,7 +29,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
      reintenta 5 veces en 10 s si el relé limita (cada intento era otra infracción) y queda ⏳ en vez de «!»; `_resendWaitErr` también espera con «banned»
      (`reenviolimite.js` OK). **Falta:** ritmo/cola de publicación a relés (textos del usuario primero; ACK; fondo al final: historial de grupo, FENIX, trozos
      grandes), relé que limita o banea → enfriarlo y usar los otros, y que lo grande no vaya trozo a trozo por relé si hay Bluetooth/Wi-Fi. Reproducir con un relé
-     que limita (`tests/sim/nostr_relay.js`). El dueño manda los diagnósticos en la sesión nueva.
+     que limita (`tests/sim/nostr_relay.js`). **Diagnósticos del dueño YA ANALIZADOS (no pedirlos otra vez; resumen en `docs/diagnosticos.json`
+     26-11 14:47–17:11):** la fuente del exceso es el mensaje de grupo **gm17956644590414zot0 (~260 KB mandado EN LÍNEA, no como archivo del buzón)**: por
+     internet va a cada miembro en 45 trozos de 8000 (por BT 972 de 360) y cada ventana sin ACK se reenvía (8 reintentos), una y otra vez desde las 14:39 (ya en
+     la 3156, con datos móviles = direcciones distintas). Tras actualizar (16:38) los 3 teléfonos en la MISMA Wi-Fi → mismo castigo para todos. Arreglo de raíz:
+     lo grande de grupo como archivo (puntero + buzón, como las fotos `[BLOB]`) y no reenviar ventanas por relé cuando el relé limita. Otro relé dijo «Policy
+     violated and pubkey is not in our web of trust» (apartarlo).
   2. **Fondo del chat de GRUPO como en el chat normal:** cada quien lo cambia SOLO para sí; y si quiere, opción de compartirlo con el grupo (hoy siempre se
      comparte: «[GROUP] Fondo del grupo … compartido por»).
   3. **Historial de grupo: hay imágenes que no se descargan** al cargarlo (las miniaturas sí llegan, `[THUMB]`; ver si falta pedir el archivo completo).
