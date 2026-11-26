@@ -153,6 +153,8 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
 #chat-contact-info { padding: 4px 96px 4px 52px !important; align-items: flex-start !important; text-align: left !important; }
 #chat-contact-name { text-align: left !important; font-size: 20px !important; font-weight: 800 !important; letter-spacing: -0.3px; color: #fff !important; }
 #chat-contact-subtitle { font-size: 12px !important; text-transform: none !important; letter-spacing: 0 !important; font-weight: 500; color: var(--nx-muted) !important; }
+/* dueño 25-11: la línea de abajo (p. ej. «6 personas: Roberto, Alex…») se corta con «…» antes de los botones; en un grupo se toca (lista) */
+#chat-contact-subtitle { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #chat-contact-subtitle .via-ico { color: var(--nx-cyan); } /* el icono del camino (en línea) conserva el celeste */
 #chat-contact-subtitle .via-weak { color: var(--nx-muted) !important; }
 #chat-head-actions { right: 14px !important; }

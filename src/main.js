@@ -80,6 +80,7 @@
  * FIX v9.9.23: sendFile valida payload no vacío antes de transferir
  * Base: v9.9.22-NEXO
  */
+import { installChatHeadFit } from './ui/chat_head_fit.js';
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
 import './styles/nexo_theme.css'; // ronda 2763: estilo NEXO en toda la app
@@ -399,6 +400,7 @@ window.addEventListener('nexo:avatar', function(e) {
 function installContactNameAutosize() {
   var n = document.getElementById('chat-contact-name');
   if (!n) return;
+  window.NEXO_fitContactName = _fitContactName; // dueño 25-11: chat_head_fit.js lo llama tras medir el hueco de los botones
   n.addEventListener('input', _fitContactName);
   _fitContactName();
 }
@@ -457,6 +459,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installSearchUi); else installSearchUi();
 // 3219: opciones del chat al tocar el círculo de la cabecera (buscar, destacados, silenciar) y el altavoz tachado
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installChatMenu); else installChatMenu();
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installChatHeadFit); else installChatHeadFit(); // dueño 25-11: cabecera que no se encima
 // #132 idioma: traducir el HTML estático marcado con data-i18n (pestañas, cámara, placeholders…). Al cambiar idioma la
 // app recarga, así que basta con aplicarlo al arrancar.
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function() { applyStaticI18n(); }); else applyStaticI18n();
