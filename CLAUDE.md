@@ -22,17 +22,21 @@ encontrar fallos y medir cuánto, no para validarlo a él. Si algo no cuadra con
   `ROBUSTEZ.md`, el privado y `docs/historial/` NO se leen enteros: se busca con grep lo que haga falta. El privado se clona solo si la
   tarea lo necesita (negocio, seguridad).
 - **Una sesión = un tema.** Al cerrarlo: TRASPASO al día, subir, y pedir sesión nueva (`/clear`). Nada de sesiones de un día entero.
-- **Una APK por tanda:** cada subida a NEXOCHAT cuesta ~85 min de CI; juntar los cambios y subir una vez. La batería completa la corre el
-  CI; aquí solo la prueba nueva y las cercanas al cambio.
+- **CUÁNDO SUBIR UNA APK: SENTIDO COMÚN, NO REGLA FIJA (dueño 26-11; reemplaza las reglas rígidas del 23-11 y 24-11).**
+  El PORQUÉ: cada subida a NEXOCHAT cuesta ~85 min de CI; lo que se cuida es no tirar ese tiempo. Se decide con el contexto:
+  1. **Urgencia:** un fallo fundamental o grave se sube ya. Si hay varios cambios acumulados, también se sube. Un día tranquilo con
+     un cambio que aporta poco puede esperar (con `[skip ci]`) a que haya una razón de peso. Antes de subir, meter lo que cabe ya.
+  2. **Cuánto se pierde con un CI en curso:** si arrancó hace ~2 min, cancelarlo para meter algo más cuesta poco y se puede; si le
+     faltan ~5 min, no se interrumpe (se perdería todo el tiempo): lo nuevo va en la siguiente.
+  Origen de las reglas viejas: se canceló la 3151 para meter más y luego falló la 3152; se perdió mucho tiempo ese día. La lección
+  es «no perder tiempo de CI», no «nunca subir» ni «solo cuando el dueño lo diga». Si de verdad hay duda, preguntar.
+  La batería completa la corre el CI; aquí solo la prueba nueva y las cercanas al cambio.
+- **AL APUNTAR UNA REGLA DEL DUEÑO (26-11): siempre con su PORQUÉ**, no como «NUNCA/SIEMPRE» suelto. Una regla sin razón se aplica a
+  ciegas en casos que no previó; con la razón se resuelven también los casos nuevos. Corregir un error no es poner un candado nuevo.
 - **Diagnósticos:** solo los de la última build; versiones viejas ni se abren. Un diagnóstico sin fallo de la app = una línea al dueño.
 - **Sin reloj de ausencia** ni avisos programados salvo para revisar un CI (uno solo, a la hora en que debe terminar). Esto NO es
   parar: al terminar algo se sigue SOLO con el siguiente pendiente que no necesita al dueño, sin esperar respuesta (dueño 23-11).
   Ayudantes en paralelo solo para trabajo que de verdad se reparte.
-- **Antes de subir una APK (dueño 23-11):** meter en ESA subida todo lo pendiente que se pueda hacer ya (aunque sean detalles). Nunca
-  subir y dejar para la siguiente lo que cabía: cada APK son ~1,5 h. **Dueño 24-11 (manda sobre lo anterior): NUNCA subir en cuanto
-  se termina un cambio ni cancelar un CI en curso para meter otro** (se pierde el doble de tiempo). Cada cambio se guarda con `[skip ci]`
-  y la APK se sube solo al cerrar la tanda completa (lo pedido + lo que se pueda hacer ya). Con un CI corriendo, lo nuevo espera a la
-  siguiente tanda.
 - **Modelo:** el grande (Fable/Opus) para protocolo, nativo, cifrado y depuración; lo mecánico (apuntar diagnósticos, NOVEDADES,
   documentos) no lo necesita: si el dueño está en un modelo ligero, eso se hace ahí.
 - **Lo grande, justo después del reinicio semanal** del límite (el dueño lo ve en Ajustes → Uso); cerca del tope, solo lo barato.
