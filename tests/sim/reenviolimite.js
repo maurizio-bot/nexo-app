@@ -13,6 +13,7 @@ const { importSrc } = require('./srcmod');
   r.buzon_espera = _resendWaitErr({ code: 'IN_MAILBOX', message: 'ya en el buzón' }) === true;
   r.rate_limited_espera = _resendWaitErr(rej('rate-limited: too many gift wraps from this address, try again later')) === true;
   r.slow_down_espera = _resendWaitErr(rej('rate-limited: slow down matey')) === true;
+  r.banned_espera = _resendWaitErr(rej('banned: too many rate-limit violations, try again later')) === true; // 3347
   r.otro_rechazo_no = _resendWaitErr(rej('blocked: pow required')) === false;
   r.otro_fallo_no = _resendWaitErr(new Error('Contacto no disponible: queda pendiente')) === false && _resendWaitErr(null) === false;
   const ok = Object.keys(r).filter((k) => k !== 'prueba').every((k) => r[k] === true);

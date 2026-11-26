@@ -66,6 +66,8 @@ import { ackResume } from './ble_ack_resume.js';
 // de enlace, y espera tras una vuelta que no salió (sin evento de enlace)
 var RCPT_MAX = 300, RCPT_TRIES = 8, RCPT_TTL_MS = 6 * 3600000, RCPT_GAP_MS = 4000;
 var RCPT_WAIT_MS = [3000, 15000, 45000, 120000, 300000, 600000];
+function _relayLimited(e) { var m = String((e && e.message) || ''); return /Rechazado por los relés/.test(m) && /rate.?limit|slow down|too many|banned/i.test(m); } // 3347
+
 export class BleAckSystem {
   constructor(bleInterface) {
     this.ble = bleInterface;
@@ -637,6 +639,16 @@ export class BleAckSystem {
             self._doSend(entry);
             return;
           }
+        }
+        // 3347 (diag. del dueño 26-11 17:10, build 3159: 5 textos a Galaxy S23 con «!» y Reintentar; relés: «rate-limited: too many gift wraps»
+        // y luego «banned: too many rate-limit violations»): los 5 reintentos en ~10 s eran 5 sobres más al relé que ya limitaba (cada uno
+        // cuenta como infracción → baneo) y al final salía «!». Si el relé limita, NO se reintenta aquí: queda pendiente (⏳) y la vuelta de
+        // reenvío espera (15 s → 2 min, _resendWaitErr). Es una espera, no un fallo.
+        if (_relayLimited(err)) {
+          self.pendingAcks.delete(entry.msgId);
+          entry.reject(err);
+          if (!entry.quiet) self._dispatchStatus(entry.msgId, 'pending');
+          return;
         }
         if (entry.retries < self.maxRetries) {
           entry.retries++;
