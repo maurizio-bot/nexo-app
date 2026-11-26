@@ -53,3 +53,9 @@ su espacio. Para el resto del día WhatsApp/Signal/Telegram ganan por pulido y p
 - **Decisión del dueño (no se toca sin él):** nombre fijo para siempre (anti-suplantación) vs. poder cambiarlo avisando a los contactos; orden del
   permiso de batería (hoy al final de la guía); etiquetas de texto en el menú de adjuntos (no verificado aquí).
 - **No aplica por ahora:** «agregar más» (las dos dicen lo mismo: no más funciones antes de Play); rediseño del estilo visual (el dueño aprobó el actual).
+
+## Ronda 4 (26-11): la reseña repegada, ya aplicado lo útil
+- Hecho en las rondas 1–4: pantalla «Chats», botón +, botón de Estados, símbolo del camino tocable, Chats vacío (texto + «funciona incluso sin internet», sin botón central),
+  guía de 7 pasos, Ajustes más humanos («Conexión», «Protección de tu cuenta» con el beneficio de Fénix, «Ayudar a mejorar NEXO» con «nunca incluye tus mensajes…»).
+- Sin hacer (decisión o más trabajo): permiso de batería después del primer mensaje; nombre fijo (confirmación doble o cambiable); menú de adjuntos con texto la
+  primera vez; etiqueta del camino bajo cada mensaje (tocar ✓✓ para ver por dónde llegó); explicar «Salto» con animación; reducir brillo/degradados (el dueño aprobó el estilo).
