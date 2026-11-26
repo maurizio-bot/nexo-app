@@ -1,5 +1,6 @@
 import { _hasNativeMethod, _safeNativeCall, _scanWindowFullAt, _normMac, _normId, _isBLEContact, _getBLEContacts, _isGenericName, _saveBLEContacts, BLE_STATES, _showToast, _niceName, _isPathDev } from './ble_helpers.js';
 import { t } from './i18n.js';
+import { nearNote } from './find_near.js';
 // Métodos de BLE_CONNECTION_METHODS: búsqueda de contactos conocidos, ventanas de escaneo, teléfonos encontrados y conexión GATT automática.
 // Reestructuración 23-11: movidos TAL CUAL desde ble_connections.js, que los une en BLE_CONNECTION_METHODS.
 export const BLE_CONN_SCAN = {
@@ -161,21 +162,28 @@ export const BLE_CONN_SCAN = {
     }
     var isContact = _isBLEContact(nexoId);
     if (isContact) {
+      nearNote(nx, device.rssi); // 3345 (modo multitud): su señal, para «Buscar a…» (find_near.js)
       var contacts = _getBLEContacts();
       var idx = contacts.findIndex(function(c) {
         return _normId(c.nexoId || c.deviceUUID) === nx;
       });
-      if (idx >= 0) {
-        contacts[idx].online = true;
-        contacts[idx].lastSeen = Date.now();
-        contacts[idx].deviceId = deviceId;
-        if (device.name && !_isGenericName(device.name) && _isGenericName(contacts[idx].name)) {
-          contacts[idx].name = device.name;
-        }
+      // 3345 (EDC, docs/EDC_LIMITES.md «ver a un contacto en el escaneo guarda toda la libreta»): con la pantalla de buscar el escaneo
+      // no para y cada contacto cercano avisa cada segundo. La libreta se guarda y la lista se repinta solo si algo cambia (deja de
+      // estar en línea, otra dirección, otro nombre) o cada 15 s (lo «en línea» mira el último minuto)
+      var c0 = idx >= 0 ? contacts[idx] : null;
+      var fixName = !!(c0 && device.name && !_isGenericName(device.name) && _isGenericName(c0.name));
+      var changed = !c0 || !c0.online || c0.deviceId !== deviceId || fixName || Date.now() - (c0.lastSeen || 0) > 15000;
+      if (c0 && changed) {
+        c0.online = true;
+        c0.lastSeen = Date.now();
+        c0.deviceId = deviceId;
+        if (fixName) c0.name = device.name;
         _saveBLEContacts(contacts);
       }
-      this.renderContactsList();
-      this.renderOnlineStrip();
+      if (changed) {
+        this.renderContactsList();
+        this.renderOnlineStrip();
+      }
       var state = this._getDeviceState(deviceId);
       // 3019 (diagnóstico S24 del dueño 12-11, vivo nx09acdb61): si ya hay un enlace LISTO y sano con este contacto por OTRA
       // dirección (Android usa una para anunciarse y otra para conectarse), no se abre un segundo: el limpiador de enlaces

@@ -30,6 +30,16 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   `xferstuck.js` caso 6; diag. S24 3154 10:32, Zhelowsky 25 min). **3339** «sr» vencida (entró del segundo plano): se ignora y se vuelve a
   pedir la sincronía una vez (`srvencida.js`). GOOGLE PLAY (25-11): cuenta de desarrollador creada (personal, «MauBot»), identidad enviada,
   «no comerciante»; falta que Google apruebe y el teléfono. Ficha/privacidad/permisos: `nexo-private/negocio/PLAY_FICHA/`.
+- **DESPUÉS DE LA APK DE LAS 18:00 (26-11, [skip ci], va en la SIGUIENTE): 3345 MODO MULTITUD «encontrar a los tuyos»** (dueño 26-11: «lo
+  primero en una multitud es buscar a las personas que conoces y poderte reencontrar»). Opciones del chat → «Buscar a X entre la gente»
+  (`find_ui.js` + `find_near.js`): señal de Bluetooth en grande (mediana 4 s; muy cerca/cerca/lejos/apenas; «te acercas/te alejas»), escaneo
+  sin parar mientras está abierta (nativo `durationMs`, relanzado cada min), «Hacer sonar su teléfono» (mensaje normal + acción oculta
+  'fnd' → «X te está buscando» con vibración), «Pantalla de luz» y «Compartir mi ubicación» (cada 8 s, cifrada, solo con la pantalla abierta,
+  30 min máx.; distancia + flecha con brújula). En grupo: «¿Quién del grupo está cerca?». Además: ver a un contacto en el escaneo ya no
+  guarda la libreta ni repinta la lista cada segundo (solo si cambia o cada 15 s). Prueba `buscarcerca.js` (en ci.js); `silenciar.js` ajustada
+  (6 opciones). NOVEDADES PENDIENTE de escribir al pasar el bloque actual al historial: «En una multitud: abre el chat de un contacto, toca su
+  foto → "Buscar entre la gente": ves si está cerca, si te acercas, puedes hacer sonar su teléfono y compartir tu ubicación para encontrarse.»
+  PRUEBAS DEL DUEÑO (con la APK): dos teléfonos, uno se aleja 30-50 m y se busca con la pantalla; «hacer sonar»; compartir ubicación a 150 m.
 - **APK SUBIDA 25-11 18:00 (tras 3155)** = foto del grupo en la lista se abre en grande (`grupofoto.js`) · **3343** el puente no se suelta al volver a la app (gracia 8 s) y rechazo de relés por texto = pendiente · **3344** relé del puente que se cae enseguida 2 veces → otro relé por el mismo puente (`puenterele.js`). PRUEBA: sin Wi-Fi ni datos, salir y volver a NEXO: el internet prestado sigue.
 - **APK 3155 PUBLICADA (25-11 16:00 México; CI en verde a la primera)** = 3336 (trozos de archivo a disco con la app congelada) · 3337 (grupos esperan Wi-Fi) · 3338 · 3339 ·
   **3340** ping de antes de congelarse no rehace un enlace sano (`pingcongelado.js`) · **3341** archivo grande por Wi-Fi local sobre la red de un

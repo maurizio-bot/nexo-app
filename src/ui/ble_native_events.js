@@ -25,6 +25,7 @@ export const bleNativeEvents = {
     });
     this._nativeScanStoppedListener = this.nativePlugin.addListener('onScanStopped', function() {
       try { if (self.isScanning) { self.isScanning = false; self._autoScanActive = false; self.updateScanButton(); } } catch (e) {}
+      try { if (typeof window.NEXO_findScanStopped === 'function') window.NEXO_findScanStopped(); } catch (e) {} // 3345: «Buscar a…» lo relanza
     });
   },
 

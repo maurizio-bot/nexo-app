@@ -11,6 +11,7 @@ import { isMuted, mutedLabel, muteMenuLabel, openMuteSheet, paintHeaderMute } fr
 import { openStarredSheet } from './chat_star.js';
 import { openChatSearch } from './search_ui.js';
 import { blockMenuLabel, openBlockSheet, paintBlockedBar } from './bloqueo_ui.js';
+import { openFind, openFindGroup } from './find_ui.js';
 
 function _name() { var n = document.getElementById('chat-contact-name'); return (n && n.value) || ''; }
 
@@ -18,13 +19,17 @@ export function openChatMenu() {
   var cid = _normId(_getCurrentContactId());
   if (!cid) return null;
   var muted = isMuted(cid);
-  return openSheet('nexo-chat-menu', _name(), '', [
+  // 3345 (dueño 26-11, modo multitud): buscar al contacto entre la gente; en un grupo, ver quién está cerca
+  var bg = window.bleInterface && window.bleInterface.groups, grp = bg && bg.isGroup && bg.isGroup(cid) ? bg.get(cid) : null;
+  var find = /^nx[0-9a-z]{8}$/.test(cid) ? [{ label: t('find_menu', 'Buscar a {name} entre la gente').replace('{name}', _name()), cls: 'chat-find', fn: function() { openFind(cid, _name()); } }]
+    : grp ? [{ label: t('find_grp_menu', '¿Quién del grupo está cerca?'), cls: 'chat-find', fn: function() { openFindGroup(cid, grp.members || [], grp.name || _name()); } }] : [];
+  return openSheet('nexo-chat-menu', _name(), '', find.concat([
     { label: t('misc_search_in_chat', 'Buscar en el chat'), cls: 'chat-search', fn: function() { openChatSearch(); } },
     { label: t('star_title', 'Mensajes destacados'), cls: 'chat-starred', fn: function() { openStarredSheet(cid); } },
     { label: muteMenuLabel(cid), sub: muted ? mutedLabel(cid) : '', cls: muted ? 'chat-unmute' : 'chat-mute', fn: function() { openMuteSheet(cid); } }
   ].concat(/^nx[0-9a-z]{8}$/.test(cid) ? [{ label: blockMenuLabel(cid), cls: 'chat-block', danger: true, fn: function() { openBlockSheet(cid, _name()); } }] : []).concat([ // bloqueo (24-11): solo de un contacto
     { label: t('chat_cancel', 'Cancelar'), cls: 'mm-cancel', fn: function() {} }
-  ]));
+  ])));
 }
 
 function _paintMute() { paintHeaderMute(_normId(_getCurrentContactId())); }

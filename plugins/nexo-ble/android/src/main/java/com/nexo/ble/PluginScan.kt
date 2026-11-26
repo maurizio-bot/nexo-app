@@ -108,7 +108,10 @@ internal fun NexoBlePlugin.startScanImpl(call: PluginCall) {
     try {
         bluetoothScanner?.startScan(filters, settings, scanCallback)
         mainHandler.removeCallbacks(scanTimeoutRunnable)
-        mainHandler.postDelayed(scanTimeoutRunnable, SCAN_TIMEOUT_MS)
+        // 3345 (modo multitud, «Buscar a…»): la pantalla de buscar a un contacto pide un escaneo largo (durationMs, 5 s–10 min) para
+        // seguir su señal sin parar; lo demás, los 15 s de siempre
+        val durMs = (call.getInt("durationMs") ?: 0).toLong().let { if (it in 5000L..600000L) it else SCAN_TIMEOUT_MS }
+        mainHandler.postDelayed(scanTimeoutRunnable, durMs)
         call.resolve(JSObject().put("started", true))
     } catch (e: SecurityException) {
         call.reject("Permiso BLUETOOTH_SCAN no concedido")

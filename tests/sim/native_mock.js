@@ -1088,7 +1088,7 @@ class NativePhone {
         self.scanStarts = (self.scanStarts || []).filter((t) => now - t < 30000);
         self.scanStarts.push(now);
         self.stats.scans = (self.stats.scans || 0) + 1;
-        self.scanningUntil = now + 6000;
+        self.scanningUntil = now + (a && a.durationMs >= 5000 ? Math.min(a.durationMs, 600000) : 6000); // 3345: escaneo largo de «Buscar a…»
         // Build 2838 (prueba de concierto/VOPR): inyección de fallo — un código de onScanFailed en cola (3/5/6…). No
         // entrega resultados; la app debe recuperarse con backoff. Opt-in (solo si el test llena scanFailQueue).
         if (self.scanFailQueue && self.scanFailQueue.length) {
