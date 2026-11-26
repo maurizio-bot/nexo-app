@@ -1512,6 +1512,22 @@
    "sintoma": "zombi (nx10b6f4ac, Alex), build 3159",
    "categoria": "Caminos",
    "causa": "Los relés limitaban al teléfono de Roberto («rate-limited: too many gift wraps»): sus textos al dueño (Wi-Fi local y Bluetooth listos) se reintentaban 5 veces por internet y quedaban fallidos, y lo pendiente volvía a internet. Arreglado en 3347 (relelimita.js). Además: 3 «Foreground kill» del sistema en 2 días (Motorola)."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "16:52",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx01992876, Marcos), build 3159",
+   "categoria": "Caminos",
+   "causa": "Los relés limitaron y luego CASTIGARON («banned: too many rate-limit violations») al S24 y a Marcos: comparten la misma IP del Wi-Fi de casa. Textos cortos 5 reintentos por relés y fallo (3347 lo arregla). Sospecha de la causa del castigo: mensaje de grupo de 261 KB (foto en línea dentro del sobre) mandado a cada miembro como 45 sobres de 8 KB por internet en cada reanudación. Pendiente para la siguiente sesión."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "17:03",
+   "nx": "nx01992876",
+   "sintoma": "par:zombi (pedido por nx1n36c283), build 3159",
+   "categoria": "Sin fallo de la app",
+   "causa": "Lo de 16:41 era aún la build 3148 (se actualizó en ese momento); la sesión 3159 recién arrancaba. MTU 23 con el S24 ×2 (ya conocido). Relés limitando también aquí (misma IP de casa)."
   }
  ]
 }
