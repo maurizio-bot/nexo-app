@@ -12,6 +12,11 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Si un servidor de internet pone límite, NEXO deja de insistirle y usa otros: tus mensajes ya no se quedan con «!».
+- Las notas de voz en un grupo se suben una sola vez.
+- Fondo del grupo: el que elijas es solo para ti; compartirlo es opcional.
+- Al traer los mensajes anteriores de un grupo, también llegan las fotos grandes.
+- Ventanas y menús con el mismo estilo.
 </es-419>
 <!-- /APK -->
 
