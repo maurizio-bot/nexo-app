@@ -85,6 +85,35 @@ function _load(name) {
 function _save(name, obj) { var pl = _pl(); if (pl && typeof pl.saveToFile === 'function') pl.saveToFile({ filename: name, content: JSON.stringify(obj) }).catch(function() {}); }
 function _emit(nx) { try { window.dispatchEvent(new CustomEvent('nexo:estado', { detail: { nx: nx } })); } catch (e) {} }
 function _contactIds() { return _getBLEContacts().map(function(c) { return _normId(c.nexoId || c.deviceUUID); }).filter(function(nx) { return NX_RE.test(nx) && !isBlocked(nx); }); } // bloqueo (24-11): a un bloqueado no le sale lo mío
+// 3358 (plan del dueño 27-11, docs/PLAN_CAPACIDAD_27-11.md §6: «lista de quién ve mis estados»): todos / todos menos… / solo… .
+// Se guarda en el teléfono; mis estados (y su medio) solo salen a quien puede verlos. Al cambiarla, a quien deja de poder se le quitan
+// los que ya tenía (aviso de borrado) y a quien ahora puede se le mandan.
+var PRIV_KEY = 'nexo_status_priv';
+function _privGet() {
+  try { var o = JSON.parse(localStorage.getItem(PRIV_KEY) || 'null'); if (o && (o.m === 'except' || o.m === 'only') && Array.isArray(o.l)) return { m: o.m, l: o.l.map(_normId).filter(function(x) { return NX_RE.test(x); }) }; } catch (e) {}
+  return { m: 'all', l: [] };
+}
+export function statusPrivacy() { return _privGet(); }
+export function statusAllowed(nx, p) {
+  p = p || _privGet(); nx = _normId(nx);
+  if (p.m === 'except') return p.l.indexOf(nx) < 0;
+  if (p.m === 'only') return p.l.indexOf(nx) >= 0;
+  return true;
+}
+export function setStatusPrivacy(m, list) {
+  var p = { m: (m === 'except' || m === 'only') ? m : 'all', l: (list || []).map(_normId).filter(function(x) { return NX_RE.test(x); }) };
+  try { localStorage.setItem(PRIV_KEY, JSON.stringify(p)); } catch (e) {}
+  var changed = false;
+  _contactIds().forEach(function(nx) {
+    if (statusAllowed(nx, p)) { sendStatusTo(nx); return; }
+    var st = _sent[nx];
+    if (!st) return;
+    Object.keys(st).forEach(function(sid) { _sendAct(nx, { type: 'nexo_act', act: 'st', sid: sid, del: 1, t: '', ts: Date.now() }); changed = true; });
+    _sent[nx] = {};
+  });
+  if (changed) _save(SENT_FILE, _sent);
+  return p;
+}
 function _contactName(nx) { var c = _getBLEContacts().find(function(x) { return _normId(x.nexoId || x.deviceUUID) === _normId(nx); }); return (c && c.name) || String(nx || '').toUpperCase(); }
 // Un estado está activo si tiene texto, foto, audio O video, con ts dentro de las 24 h
 function _active(s) { return !!(s && typeof s.ts === 'number' && ((typeof s.t === 'string' && s.t) || (typeof s.img === 'string' && s.img) || (typeof s.aud === 'string' && s.aud) || (typeof s.vid === 'string' && s.vid) || (s.big && s.big.k)) && (Date.now() - s.ts) < TTL_MS); }
@@ -358,7 +387,7 @@ export function sendStatusTo(nx, force) {
   nx = _normId(nx);
   if (_mineP) { _mineP.then(function() { sendStatusTo(nx, force); }); return 0; }   // 3062: tras leer mis estados
   var act = myStatuses();
-  if (!act.length || !NX_RE.test(nx) || _contactIds().indexOf(nx) < 0) return 0;
+  if (!act.length || !NX_RE.test(nx) || _contactIds().indexOf(nx) < 0 || !statusAllowed(nx)) return 0; // 3358: quien no puede verlos
   var s = _sent[nx] = (_sent[nx] && typeof _sent[nx] === 'object') ? _sent[nx] : {};
   var n = 0;
   act.forEach(function(it) { if (force || !s[it.sid]) { if (_broadcastItem(nx, it)) { s[it.sid] = 1; n++; } } });
@@ -472,7 +501,7 @@ export function statusMediaRequested(senderNx, act) {
   var nx = _normId(senderNx), sid = act && SID_RE.test(String(act.sid || '')) ? String(act.sid) : '';
   var it = sid ? myStatuses().find(function(x) { return x.sid === sid && x.big; }) : null;
   var bi = window.bleInterface, ack = bi && bi.ackSystem, now = Date.now(), key = nx + '|' + sid;
-  if (!NX_RE.test(nx) || !it || _contactIds().indexOf(nx) < 0 || !ack || typeof ack.sendFile !== 'function') return false;
+  if (!NX_RE.test(nx) || !it || _contactIds().indexOf(nx) < 0 || !statusAllowed(nx) || !ack || typeof ack.sendFile !== 'function') return false; // 3358
   if (now - (_smIn.get(key) || 0) < SM_GAP_MS) return false;
   var dev = typeof bi._resolveDeviceIdForNexoId === 'function' ? bi._resolveDeviceIdForNexoId(nx) : null;
   if (!dev) return false;                                    // sin enlace: no al buzón (allí se vería como un adjunto del chat)
@@ -659,6 +688,47 @@ function _overlay() {
   return o;
 }
 // Mis estados: cada uno con quién le dio me gusta y los comentarios (solo los veo yo); quitar uno; «+ Nuevo»
+// 3358: hoja «Quién ve mis estados» (todos / todos menos… / solo…) con la lista de contactos
+function _privSheet(onDone) {
+  var prev = document.getElementById('estado-priv'); if (prev) prev.remove();
+  var p = _privGet(), mode = p.m, sel = {};
+  p.l.forEach(function(x) { sel[x] = 1; });
+  var o = document.createElement('div'); o.id = 'estado-priv'; o.className = 'nx-panel';
+  o.style.cssText = 'position:fixed;inset:0;background:var(--nx-bg);z-index:6100;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;gap:10px;';
+  var h = document.createElement('div'); h.className = 'nx-ask-title'; h.textContent = t('est_priv_btn', 'Quién ve mis estados');
+  o.appendChild(h);
+  var modes = document.createElement('div'); modes.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
+  var listBox = document.createElement('div'); listBox.style.cssText = 'flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px;';
+  var opts = [['all', t('est_priv_all', 'Todos mis contactos')], ['except', t('est_priv_except', 'Mis contactos, excepto…')], ['only', t('est_priv_only', 'Solo compartir con…')]];
+  var paintList = function() {
+    listBox.innerHTML = '';
+    if (mode === 'all') return;
+    _contactIds().forEach(function(nx) {
+      var row = document.createElement('label'); row.className = 'estado-priv-row';
+      row.style.cssText = 'display:flex;align-items:center;gap:12px;min-height:48px;padding:4px 8px;border-bottom:1px solid var(--nx-line);font-size:15px;';
+      var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!sel[nx]; cb.setAttribute('data-nx', nx); cb.style.cssText = 'width:22px;height:22px;flex-shrink:0;';
+      cb.addEventListener('change', function() { if (cb.checked) sel[nx] = 1; else delete sel[nx]; });
+      var nm = document.createElement('span'); nm.textContent = _contactName(nx); nm.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      row.appendChild(cb); row.appendChild(nm); listBox.appendChild(row);
+    });
+  };
+  opts.forEach(function(op) {
+    var b = document.createElement('label'); b.style.cssText = 'display:flex;align-items:center;gap:12px;min-height:44px;font-size:15px;';
+    var r = document.createElement('input'); r.type = 'radio'; r.name = 'estado-priv-m'; r.value = op[0]; r.checked = mode === op[0]; r.style.cssText = 'width:22px;height:22px;';
+    r.addEventListener('change', function() { if (r.checked) { mode = op[0]; paintList(); } });
+    var tx = document.createElement('span'); tx.textContent = op[1];
+    b.appendChild(r); b.appendChild(tx); modes.appendChild(b);
+  });
+  o.appendChild(modes); o.appendChild(listBox);
+  var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:10px;';
+  var cancel = document.createElement('button'); cancel.className = 'nx-btn'; cancel.style.flex = '1'; cancel.textContent = t('cancel', 'Cancelar');
+  var save = document.createElement('button'); save.id = 'estado-priv-save'; save.className = 'nx-btn nx-btn-primary'; save.style.flex = '1'; save.textContent = t('est_priv_save', 'Guardar');
+  cancel.addEventListener('click', function() { o.remove(); });
+  save.addEventListener('click', function() { setStatusPrivacy(mode, Object.keys(sel)); o.remove(); if (onDone) onDone(); });
+  row.appendChild(cancel); row.appendChild(save); o.appendChild(row);
+  document.body.appendChild(o);
+  paintList();
+}
 function _myView() {
   var o = _overlay();
   var box = document.createElement('div');
@@ -676,6 +746,11 @@ function _myView() {
     nuevo.className = 'nx-btn nx-btn-primary'; if (nuevo.disabled) nuevo.style.cssText = 'opacity:0.4;box-shadow:none;';
     nuevo.addEventListener('click', function(e) { e.stopPropagation(); if (myStatuses().length >= MAX_ITEMS) { _toast(t('est_max', 'Ya tienes 10 estados: quita uno para publicar otro')); return; } _compose(); });
     box.appendChild(nuevo);
+    var priv = document.createElement('button'); priv.id = 'estado-privacidad'; priv.className = 'nx-btn';
+    var pv = _privGet();
+    priv.textContent = '👁 ' + t('est_priv_btn', 'Quién ve mis estados') + ': ' + (pv.m === 'all' ? t('est_priv_all', 'Todos mis contactos') : pv.m === 'except' ? t('est_priv_except_n', 'todos menos') + ' ' + pv.l.length : t('est_priv_only_n', 'solo') + ' ' + pv.l.length);
+    priv.addEventListener('click', function(e) { e.stopPropagation(); _privSheet(paint); });
+    box.appendChild(priv);
     if (!list.length) { o.remove(); return; }
     list.slice().reverse().forEach(function(it) {
       var card = document.createElement('div'); card.className = 'estado-mio'; card.setAttribute('data-sid', it.sid);
@@ -791,7 +866,7 @@ var PULL_PX = 70, PULL_COOLDOWN_MS = 10000;
 if (typeof window !== 'undefined') {
   window.NEXO_composeStatus = _compose; // 3035: pruebas (tests/sim/pedidos13.js)
   window.NEXO_openMyStatuses = _myView; // 3200: pruebas (tests/sim/estadovideo.js)
-  window.NEXO_setMyStatus = setMyStatus; window.NEXO_statusOf = statusOf; window.NEXO_applyStatus = applyStatus;
+  window.NEXO_setMyStatus = setMyStatus; window.NEXO_setStatusPrivacy = setStatusPrivacy; window.NEXO_statusPrivSheet = _privSheet; window.NEXO_statusOf = statusOf; window.NEXO_applyStatus = applyStatus;
   window.NEXO_iLiked = iLiked; // 3059: pruebas (tests/sim/estados3.js)
   window.NEXO_likeStatus = likeStatus; window.NEXO_likeReceived = likeReceived; window.NEXO_myLikes = myLikes; // pruebas (tests/sim/estados.js)
   window.NEXO_addMyStatus = addMyStatus; window.NEXO_statusesOf = statusesOf; window.NEXO_myStatuses = myStatuses; window.NEXO_removeMyStatus = removeMyStatus;
