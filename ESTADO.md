@@ -31,6 +31,19 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   ningún relé guarda tira TODA la subida y el reintento empieza de cero (sin reanudar). Propuesta: medir velocidad cada ~10 s, cortar solo
   tras ~1 min SIN avance, quedar ⏳ y seguir desde donde iba; tarjeta con velocidad y lo que falta. Lo nativo (soTimeout 30–60 s por
   lectura) y el wakelock de 20 min (se renueva por bloque) ya son por inactividad: bien.
+- **DUEÑO 27-11 ~22:00: NO SUBIR NADA (ni APK) HASTA QUE ÉL LO DIGA; juntar problemas y soluciones y mandar todo junto.**
+  **Lista de la siguiente APK (problema → solución):**
+  1. [hecho, en NEXOCHAT con skip ci] Responder con audio/foto/archivo (arriba).
+  2. [propuesto] No cortar un envío mientras avance (arriba).
+  3. **Audios al S23 en ✓ sin ✓✓ (diag. S24 21:53–21:56, 3160):** relés del S24 limitando → entran los de RESERVA (`net_relays._spareCheck`)
+     y se publica solo en los abiertos sin pausa (`net_publish` 172/226); el S23 con la app a la vista solo lee sus 4 de siempre (el nativo
+     en segundo plano lee 9) → lo que va solo por reserva da ✓ y no llega. Solución: la app escucha su buzón también en los de reserva (solo
+     lectura, como el nativo) y/o ✓ solo si lo guardó un relé que el otro lee. Confirmar con el diagnóstico del S23 (pedido al dueño).
+  4. **Lo que gasta el cupo de los relés:** (a) textos pendientes a un contacto cuya app no confirma (2 a Austin desde 20:14) se reenvían
+     por ventana ×8 en cada vuelta a la app → por internet el relé ya los guarda: publicar una vez y esperar, no republicar;
+     (b) 6 paquetes de puente (sxmwy5…) ×5 reintentos cada 600 s; (c) Fénix sube ~3 MB de audios justo al volver a la app (que espere a
+     que el usuario no esté mandando nada / cupo libre). Primero reproducir en `tests/sim` (relelimita.js de base).
+  5. **Zombi de la tablet (nx1e29ab2f):** enlace BT medio muerto que se rehace y cae cada ~30 s >7 min (área 3). Sin pérdida de mensajes.
 - **SIGUIENTE SESIÓN (27-11 ~21:50 México, cerrada por contexto al 25 %):** 1) revisar el CI de la **APK 3161** (commit e810a05 en
   NEXOCHAT, subido 20:53, ~22:20) y, si pasó, NOVEDADES al historial como 3161 (si falló: qué prueba). 2) Empezar **`docs/PLAN_CAPACIDAD_27-11.md`**
   (TODO aprobado por el dueño; leerlo entero, es corto): 0 sincronía de chats al entrar/deslizar abajo (1 a 1 y grupos, en su lugar,

@@ -1584,6 +1584,22 @@
    "sintoma": "reenvio_sin_fin (nx1e50c95d, 3 vueltas), build 3159",
    "categoria": "Fallo de la app",
    "causa": "Mismo episodio que el de las 18:21 (relés rate-limited/banned, 5 reintentos por texto). Arreglado en la 3160 (3347/3348/3350)."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "21:53",
+   "nx": "nx1n36c283",
+   "sintoma": "audios al S23 se quedan en ✓ (enviado) sin ✓✓ desde las 21:53; el S23 dice que lo suyo tampoco llega, build 3160",
+   "categoria": "Fallo de la app",
+   "causa": "Relés del S24 limitando a la vez (damus banned, primal «too many gift wraps», offchain web of trust, oxtr rate limited): entran relés de RESERVA y lo pesado se guarda en 1 solo relé. Lo que sale solo por un relé de reserva da ✓ pero el S23 con la app a la vista solo escucha sus 4 de siempre (el nativo en segundo plano sí escucha 9): probable causa de que no llegue. Volumen que gastó el cupo: 2 textos pendientes a Austin desde 20:14 reenviados por ventana 8 veces en cada vuelta a la app, 6 paquetes de puente (sxmwy5…) con 5 reintentos cada 10 min, Fénix subiendo 3 MB de audios al volver a la app. Pendiente: confirmar con el diagnóstico del S23 y arreglar (lista en ESTADO.md)."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "21:41",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx1e29ab2f, tablet), build 3160",
+   "categoria": "Fallo de la app",
+   "causa": "Enlace Bluetooth recuperado medio muerto (sin respuesta a 4 pings): se rehace y se cae cada ~30 s durante >7 min (área 3, enlaces que se abren y cierran). No pierde mensajes."
   }
  ]
 }
