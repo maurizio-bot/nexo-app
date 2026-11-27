@@ -1576,6 +1576,14 @@
    "sintoma": "8 textos al S23 con «!» (18:20–18:21), build 3159",
    "categoria": "Fallo de la app",
    "causa": "Lo mismo de las 17:10: relés «rate-limited: too many gift wraps» → «banned» (misma Wi-Fi; nos.lol y nostr.mom sin conectar, quedan damus, primal y offchain). En la 3159 cada texto se reintentaba 5 veces en ~5 s (cada uno, otra infracción) y salía «!». Además, justo antes salió por internet un respaldo Fénix de 251 KB (17 trozos) a Marcos. Arreglado en la APK de emergencia: 3347 (no reintentar, ⏳), 3348 (relé en pausa, reserva, respiro) y 3350 (Fénix cede internet mientras los relés limitan)."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "18:21",
+   "nx": "nx1n36c283",
+   "sintoma": "reenvio_sin_fin (nx1e50c95d, 3 vueltas), build 3159",
+   "categoria": "Fallo de la app",
+   "causa": "Mismo episodio que el de las 18:21 (relés rate-limited/banned, 5 reintentos por texto). Arreglado en la 3160 (3347/3348/3350)."
   }
  ]
 }
