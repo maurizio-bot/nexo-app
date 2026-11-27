@@ -4,6 +4,8 @@
 //      lo que C ya tenía (el «Creó…»/«Te agregaron») no se repite;
 //  H3  el creador lo cierra en Ajustes del grupo («Los nuevos pueden ver los mensajes anteriores» apagado): los demás ven el aviso,
 //      otro grupo con eso cerrado no ofrece el botón y si C lo pide igual, nadie se lo manda.
+//  H2b 3349 (dueño 26-11: «hay imágenes del historial que no se descargan»): las fotos de antes también llegan (chica, mediana) y la GRANDE
+//      (más que el tope) llega como copia reducida en vez del aviso «Archivo grande no incluido».
 // Contraprueba: la build de antes no tiene botón (H1 falla).
 // Imprime GRUPOHIST {json} y escribe last_logs_grupohistorial.txt. Uso: node grupohistorial.js <dir_build>
 'use strict';
@@ -98,6 +100,21 @@ const grpHas = async (p, gid, re) => (await msgsOf(p, gid)).some((m) => re.test(
   await waitFor(() => grpHas(B, gid, /primero de A/), 30000);
   await sendGroup(B, gid, '[H] respuesta de B');
   r.charla_s = await waitFor(() => grpHas(A, gid, /respuesta de B/), 30000);
+  // 3349 (dueño 26-11: «hay imágenes del historial que no se descargan»): fotos de antes (una chica y una de 150 KB) también deben llegarle a C
+  const mkImg = (n, seed) => { const b = Buffer.alloc(n); let x = seed; for (let i = 0; i < n; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; b[i] = x & 255; } b[0] = 0xff; b[1] = 0xd8; return b.toString('base64'); };
+  const IMG1 = mkImg(30000, 11), IMG2 = mkImg(150000, 22);
+  if (A.win.NEXO_openGroupChat) A.win.NEXO_openGroupChat(gid); await sleep(500);
+  A.win.NEXO_sendAttachment('image', IMG1, { format: 'jpeg', mime: 'image/jpeg' }, { contactId: gid }); await sleep(800);
+  A.win.NEXO_sendAttachment('image', IMG2, { format: 'jpeg', mime: 'image/jpeg' }, { contactId: gid }); await sleep(800);
+  // y una GRANDE (300 KB, más que el tope del historial): le llega a C una copia reducida (aquí su miniatura guardada: el simulador no tiene lienzo)
+  const IMG3 = mkImg(300000, 33), TH3 = mkImg(20000, 44);
+  A.win.NEXO_sendAttachment('image', IMG3, { format: 'jpeg', mime: 'image/jpeg' }, { contactId: gid });
+  await closeChat(A);
+  await waitFor(async () => { const l = await msgsOf(A, gid); return l.some((m) => m.attachmentType === 'image' && m._own && m.attachmentRef && !l.filter((x) => x.attachmentType === 'image').every((x) => x.attachmentRef !== m.attachmentRef)); }, 10000);
+  { const hy = await A.win.vaultHydrateAttachments((await msgsOf(A, gid)).filter((m) => m.attachmentType === 'image')); const m3 = hy.find((m) => m.attachmentPayload === IMG3);
+    r.foto_grande_registrada = !!m3; if (m3) await A.win.Capacitor.Plugins.NexoBLE.saveToFile({ filename: 'nexo_thumb_' + String(m3.msgId).replace(/[^A-Za-z0-9_-]/g, '_') + '.b64', content: TH3 }); }
+  const imgsIn = async (p) => { const ms0 = await msgsOf(p, gid); const hy = p.win.vaultHydrateAttachments ? await p.win.vaultHydrateAttachments(ms0.filter((m) => m.attachmentType === 'image')) : []; return hy.map((m) => m.attachmentPayload); };
+  r.fotos_en_B_s = await waitFor(async () => { const l = await imgsIn(B); return l.indexOf(IMG1) >= 0 && l.indexOf(IMG2) >= 0; }, 90000);
   await sleep(1000);
 
   // ---------- H1: A agrega a C → C acepta → botón ----------
@@ -129,7 +146,10 @@ const grpHas = async (p, gid, re) => (await msgsOf(p, gid)).some((m) => re.test(
   await closeChat(C); if (C.win.NEXO_openGroupChat) C.win.NEXO_openGroupChat(gid); await sleep(600);
   r.H2_boton_se_va = !C.win.document.getElementById('nx-grp-hist');
   await closeChat(C);
-  r.H2_ok = r.H2_llega_s !== null && r.H2_de_B && r.H2_avisos === 0 && r.H2_sin_repetidos && r.H2_creo_una_vez && r.H2_boton_se_va && ms.length > before;
+  r.H2_fotos_s = await waitFor(async () => { const l = await imgsIn(C); return l.indexOf(IMG1) >= 0 && l.indexOf(IMG2) >= 0; }, 30000);
+  r.H2_fotos = (await imgsIn(C)).map((x) => (x === IMG1 ? 'chica' : x === IMG2 ? 'mediana' : x === TH3 ? 'grande_reducida' : String(x || 'nada').length));
+  r.H2_grande_reducida = r.H2_fotos.indexOf('grande_reducida') >= 0 && !(await grpHas(C, gid, /Archivo grande no incluido/));
+  r.H2_ok = r.H2_llega_s !== null && r.H2_fotos_s !== null && r.H2_grande_reducida && r.H2_de_B && r.H2_avisos === 0 && r.H2_sin_repetidos && r.H2_creo_una_vez && r.H2_boton_se_va && ms.length > before;
 
   // ---------- H3: el creador lo cierra ----------
   A.win.NEXO_openGroupSettings(gid); await sleep(400);

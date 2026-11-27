@@ -90,12 +90,22 @@ export function onHistoryQuery(from, act) {
     var hyd = typeof window.vaultHydrateAttachments === 'function' ? window.vaultHydrateAttachments(msgs) : Promise.resolve(msgs);
     return Promise.resolve(hyd).catch(function() { return msgs; });
   }).then(function(msgs) {
+    // 3349 (dueño 26-11: «hay imágenes del historial que no se descargan»): una FOTO de más de 200 KB ya no se cambia por el aviso
+    // «📎 Archivo grande no incluido»: va una copia reducida (lado ≤ 1280, sacada aquí) o, si no se puede, su miniatura guardada (480);
+    // solo si no hay ninguna de las dos va el aviso. Y nunca viajan las marcas locales de la burbuja (thumbOnly/fullRef/lazyRef:
+    // nombres de archivos de ESTE teléfono; en el otro la foto se quedaba en miniatura sin poder abrirse).
+    return Promise.all((msgs || []).map(function(m) {
+      var pl = typeof m.attachmentPayload === 'string' ? m.attachmentPayload : '';
+      if (m.attachmentType !== 'image' || !pl || pl.length <= HIST_ATT_MAX * 4 / 3 || (m.attachmentMeta && m.attachmentMeta.once)) return m;
+      return _smallImage(m, pl).then(function(s) { return s ? Object.assign({}, m, { attachmentPayload: s, attachmentMeta: Object.assign({}, m.attachmentMeta || {}, { format: 'jpeg', histSmall: 1 }) }) : m; });
+    }));
+  }).then(function(msgs) {
     var items = (msgs || []).map(function(m) {
       var o = { i: _base(m.msgId || m.messageId), f: m._own ? me : _n(m.senderNexoId), ts: m.timestamp || 0, c: String(m.content || m.text || '') };
       if (m.attachmentType) {
-        o.at = m.attachmentType; o.am = m.attachmentMeta || null;
+        o.at = m.attachmentType; o.am = _wireMeta(m.attachmentMeta);
         var pl = typeof m.attachmentPayload === 'string' ? m.attachmentPayload : '';
-        if (pl && pl.length <= HIST_ATT_MAX * 4 / 3) o.ap = pl;
+        if (pl && pl.length > 16 && pl.length <= HIST_ATT_MAX * 4 / 3) o.ap = pl;
         else { o.at = null; o.am = null; o.c = '📎 ' + t('grp_hist_big', 'Archivo grande no incluido en el historial') + ((m.attachmentMeta && m.attachmentMeta.name) ? ': ' + String(m.attachmentMeta.name).substring(0, 80) : ''); }
       }
       if (o.c.length > HIST_PART) o.c = o.c.substring(0, 2000);
@@ -108,6 +118,54 @@ export function onHistoryQuery(from, act) {
     parts.forEach(function(it, k) { _sendTextTo(nx, JSON.stringify({ type: 'nexo_act', act: 'ghr', g: gid, p: k + 1, n: parts.length, it: it }), '', true); });
     console.log('[GROUP] Historial de ' + gid + ' mandado a ' + nx + ': ' + items.length + ' mensaje(s) en ' + parts.length + ' parte(s)');
   }).catch(function(e) { console.warn('[GROUP] No se pudo mandar el historial de ' + gid + ': ' + (e && e.message)); });
+}
+
+// 3349: lo de la burbuja que es de ESTE teléfono (o del envío por el buzón) no viaja en el historial
+function _wireMeta(am) {
+  if (!am || typeof am !== 'object') return null;
+  var o = Object.assign({}, am);
+  ['thumbOnly', 'fullRef', 'lazyRef', 'blobPtr', 'ptr', 'cita', 'to'].forEach(function(k) { delete o[k]; });
+  return o;
+}
+// 3349: copia reducida de una foto grande para el historial (JPEG, lado ≤ 1280 y que quepa en HIST_ATT_MAX); si no se puede (sin
+// lienzo, o tarda), su miniatura guardada (la del chat, 480). null = ninguna.
+export var HIST_IMG_SIDES = [1280, 960, 720];
+function _smallImage(m, b64) {
+  var id = String(m.msgId || m.messageId || '');
+  var thumb = function() {
+    var name = 'nexo_thumb_' + id.replace(/[^A-Za-z0-9_-]/g, '_') + '.b64';
+    return (typeof window.vaultLoadFile === 'function' ? Promise.resolve(window.vaultLoadFile(name)) : Promise.resolve(null)).then(function(t) {
+      return (typeof t === 'string' && t.length > 16 && t.length <= HIST_ATT_MAX * 4 / 3) ? t : null;
+    }, function() { return null; });
+  };
+  return new Promise(function(resolve) {
+    var done = false, fin = function(v) { if (!done) { done = true; clearTimeout(tm); resolve(v); } };
+    var tm = setTimeout(function() { fin(null); }, 4000);
+    try {
+      if (typeof document === 'undefined' || typeof Image === 'undefined') { fin(null); return; }
+      var img = new Image();
+      img.onload = function() {
+        try {
+          var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+          if (!w || !h) { fin(null); return; }
+          for (var i = 0; i < HIST_IMG_SIDES.length; i++) {
+            var k = Math.min(1, HIST_IMG_SIDES[i] / Math.max(w, h)), c = document.createElement('canvas');
+            c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+            var ctx = c.getContext && c.getContext('2d'); if (!ctx) { fin(null); return; }
+            ctx.drawImage(img, 0, 0, c.width, c.height);
+            var out = (c.toDataURL('image/jpeg', 0.7) || '').split(',')[1];
+            if (out && out.length <= HIST_ATT_MAX * 4 / 3) { fin(out); return; }
+          }
+          fin(null);
+        } catch (e) { fin(null); }
+      };
+      img.onerror = function() { fin(null); };
+      img.src = 'data:image/' + ((m.attachmentMeta && m.attachmentMeta.format) || 'jpeg') + ';base64,' + b64;
+    } catch (e) { fin(null); }
+  }).then(function(v) { return v || thumb(); }).then(function(v) {
+    console.log('[GROUP] Historial: foto ' + id + ' de ' + Math.round(b64.length * 3 / 4 / 1024) + ' KB → ' + (v ? 'copia reducida de ' + Math.round(v.length * 3 / 4 / 1024) + ' KB' : 'sin copia reducida (va el aviso)'));
+    return v;
+  });
 }
 
 // ---------- recibir ----------
