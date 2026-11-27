@@ -116,6 +116,10 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
 .ble-contact-row.is-pressed { background: var(--nx-surface) !important; }
 /* dueño 23-11: el «hover» solo con ratón (en el teléfono se quedaba pegado en la última fila tocada) */
 @media (hover: hover) and (pointer: fine) { .ble-contact-row:hover { background: var(--nx-surface) !important; } }
+/* Dueño 27-11: cada chat y grupo de la lista como una TARJETA, el rectángulo de Ajustes (.nx-card) pero sutil para no restar filas:
+   fondo al 4 %, aro de 1 px, esquinas de 14 y 6 px entre tarjetas (cada fila ~8 px más alta que antes). Al tocarla, un poco más clara. */
+#main-contacts-list .ble-contact-row { background: rgba(255, 255, 255, 0.04); border: 1px solid var(--nx-line); border-radius: 14px; margin: 0 0 6px; }
+#main-contacts-list .ble-contact-row.is-pressed { background: var(--nx-surface-2) !important; }
 .ble-contact-avatar { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08), 0 6px 18px rgba(0, 0, 0, 0.35); }
 .ble-contact-name { font-size: 15.5px !important; letter-spacing: 0.1px; }
 .ble-contact-msg { color: var(--nx-muted) !important; }

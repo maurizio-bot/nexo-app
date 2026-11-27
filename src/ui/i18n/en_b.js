@@ -240,4 +240,10 @@ export default {
   est_priv_except_n: "all except",
   est_priv_only_n: "only",
   est_priv_save: "Save",
+  chat_info: "Info",
+  photo_change: "Change photo",
+  photo_see: "View photo",
+  chat_info_name: "Contact name",
+  mcard_msg: "Message",
+  mcard_info: "Info",
 };

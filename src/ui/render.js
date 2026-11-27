@@ -693,6 +693,7 @@ export function _renderMessage(msg, skipSave) {
       // (fuera de .msg-group-sender y de .msg-content, que las pruebas leen por su texto)
       var from = document.createElement('div');
       from.className = 'msg-group-from';
+      if (msg.senderNexoId) { from.dataset.nx = String(msg.senderNexoId).toLowerCase(); from.setAttribute('role', 'button'); } // 27-11: tocarlo abre su tarjeta (member_card.js)
       var av = personAvatar(msg.senderNexoId, who.textContent, 22);
       av.classList.add('msg-group-av');
       from.appendChild(av);

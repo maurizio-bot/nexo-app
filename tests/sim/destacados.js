@@ -70,8 +70,8 @@ async function starLabel(p, id) { if (!(await bubbleMenu(p, id))) return 'sin_me
 async function star(p, id) { if (!(await bubbleMenu(p, id))) return false; const it = $(p, '#nexo-msg-menu .mm-star'); if (!it) { dismiss(p); return false; } click(p.win, it); await sleep(500); return true; }
 const starInBubble = (p, id) => !!$(p, '.message[data-msg-id="' + id + '"] .msg-meta .msg-star');
 async function openStarred(p) {
-  click(p.win, $(p, '#chat-contact-avatar')); await sleep(250);
-  click(p.win, $(p, '#nexo-chat-menu .chat-starred'));
+  click(p.win, $(p, '#chat-contact-name')); await sleep(250);
+  click(p.win, $(p, '.nx-panel .nx-info-opt.chat-starred'));
   await waitFor(() => !!$(p, '#nexo-starred-sheet') && !!($(p, '#nexo-starred-sheet .nx-starred-row') || $(p, '#nexo-starred-sheet .nx-starred-empty')), 5000);
   return Array.from(p.win.document.querySelectorAll('#nexo-starred-sheet .nx-starred-row')).map((x) => ({ id: x.dataset.msgId, who: (x.querySelector('.nx-starred-who') || {}).textContent, txt: (x.querySelector('.nx-starred-txt') || {}).textContent }));
 }

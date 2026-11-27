@@ -14,7 +14,7 @@ import { _showInfoToast } from './ui_bits.js';
 import { GS_MAX_MEMBERS } from './group_state.js';
 import { t } from './i18n.js';
 import { _doChatBack } from './chat_nav.js';
-import { _getBLEContacts } from './ble_helpers.js';
+import { openMemberCard } from './member_card.js'; // 27-11: la tarjeta de un miembro
 import { sheetSvg, SHEET_ICONS } from './chat_sheet.js'; // B-EST (26-11): iconos de trazo de las hojas
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
@@ -153,10 +153,13 @@ function _roleTag(s, nx) {
 }
 
 // ===== Ajustes del grupo =====
-export function openGroupSettings(gid) {
+// opts (dueño 27-11, propuesta B): { title, extra(body) } — la página «Información» del grupo (chat_info.js) usa esta misma pantalla con
+// su título y, debajo del nombre y la foto, las opciones del chat (buscar, destacados, temporales, silenciar)
+export function openGroupSettings(gid, opts) {
   var gs = _gs(), g = gs && gs.get(gid);
   if (!g || typeof gs.state !== 'function') return;
-  var p = _sheet('nexo-gset', t('grp_settings', 'Ajustes del grupo'));
+  opts = opts || {};
+  var p = _sheet('nexo-gset', opts.title || t('grp_settings', 'Ajustes del grupo'));
   var me = _me();
   function paint() {
     g = gs.get(gid);
@@ -181,6 +184,7 @@ export function openGroupSettings(gid) {
       b.appendChild(_btn('gset-photo-btn', '🖼️  ' + (img ? t('grp_photo_change', 'Cambiar la foto del grupo') : t('grp_photo_set', 'Poner foto del grupo')), function() { fin.click(); }));
       if (img) b.appendChild(_btn('gset-photo-del', '🗑️  ' + t('grp_photo_del', 'Quitar la foto del grupo'), function() { _run(gs.setPhoto(gid, '')); }));
     }
+    if (typeof opts.extra === 'function') { try { opts.extra(b); } catch (x) {} }
     // Modo e interruptores (solo quien hace de creador los cambia; los demás los ven)
     var boss = can('settings');
     var mh = _el('div', 'gset-sec nx-sec-label', t('grp_opts', 'Opciones del grupo')); b.appendChild(mh);
@@ -244,45 +248,14 @@ export function openGroupSettings(gid) {
   return p.sheet;
 }
 
-// Tocar a un miembro (dueño 23-11): contacto → su chat; si no lo es → hoja con «Agregar»
-function _isContact(nx) { try { return _getBLEContacts().some(function(c) { return _normId(c.nexoId || c.deviceUUID) === nx; }); } catch (e) { return false; } }
-function _memberTap(panel, nx, name) {
-  var bi = _bi(); if (!bi) return;
-  if (_isContact(nx)) {
-    if (panel) panel.remove();
-    if (typeof bi.openChat === 'function') Promise.resolve(bi.openChat(nx)).catch(function() {});
-    return;
-  }
-  var p = _sheet('nexo-gset-mem', name);
-  var note = _el('div', 'gset-note nx-note', t('grp_not_contact', 'No está en tus contactos.')); p.body.appendChild(note);
-  p.body.appendChild(_btn('gset-mem-add', '➕  ' + t('add', 'Agregar'), function() {
-    p.sheet.remove();
-    if (typeof bi.addByNexoId !== 'function') return;
-    Promise.resolve(bi.addByNexoId(nx)).then(function() { _toast(t('grp_req_sent', 'Solicitud enviada')); }, function(err) { _toast((err && err.message) || 'Error'); });
-  }));
-  p.body.appendChild(_btn('gset-mem-cancel', t('cancel'), function() { p.sheet.remove(); }));
-}
+// Tocar a un miembro: dueño 27-11, su TARJETA (foto, nombre, NEXO ID; Mensaje / Llamar / Info, o Agregar si no es contacto: member_card.js)
+function _memberTap(panel, nx, name) { openMemberCard(nx, name); }
 
-// Ruedita de ajustes arriba a la derecha del chat de un grupo (dueño 23-11: «no aparece la rueda de ajustes»; antes solo en los ⋮ de la lista)
-var GEAR_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
+// Dueño 27-11 (propuesta B): ya NO hay rueda en la cabecera del grupo; todo está en «Información» (tocar el nombre, chat_info.js).
+// Se conserva la función (la llaman al abrir/cerrar el chat) para quitar una rueda que hubiera quedado puesta.
 export function refreshGroupGear() {
-  var header = document.getElementById('chat-header'); if (!header) return;
-  var gs = _gs(), bi = _bi(), cid = bi && bi._activeChatDeviceId;
-  var g = gs && cid && gs.isGroup(cid) ? gs.get(cid) : null;
-  var show = !!(g && !g.kicked && !g.left);
   var b = document.getElementById('nexo-gset-btn');
-  if (!b) {
-    if (!show) return;
-    var actions = document.getElementById('chat-head-actions');
-    if (!actions) { actions = document.createElement('div'); actions.id = 'chat-head-actions'; header.appendChild(actions); }
-    b = _el('button'); b.id = 'nexo-gset-btn'; b.type = 'button';
-    b.title = t('grp_settings', 'Ajustes del grupo'); b.setAttribute('aria-label', t('grp_settings', 'Ajustes del grupo'));
-    b.innerHTML = GEAR_SVG;
-    b.style.cssText = 'width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;cursor:pointer;flex-shrink:0;margin-left:6px;padding:8px;box-sizing:border-box;';
-    b.addEventListener('click', function(e) { e.stopPropagation(); var b2 = _bi(), id = b2 && b2._activeChatDeviceId; if (id) openGroupSettings(id); });
-    actions.appendChild(b); // al final: queda arriba a la derecha, después de llamar y videollamar
-  }
-  b.style.display = show ? '' : 'none';
+  if (b) b.remove();
 }
 
 function _kickSheet(gid, nx, name) {

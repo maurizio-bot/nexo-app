@@ -80,9 +80,9 @@ const out = (r, code) => { console.log('BLOQUEO ' + JSON.stringify(r)); fs.write
   const nameOfA = ((B.win.vaultLoadContacts() || []).find((c) => String(c.nexoId || '').toLowerCase() === idA) || {}).name || '';
 
   // ---------- K1: bloquear desde las opciones del chat ----------
-  click(B.win, $(B, '#chat-contact-avatar')); await sleep(300);
-  r.K1_opciones = Array.from(B.win.document.querySelectorAll('#nexo-chat-menu .mm-item')).map((b) => b.textContent.trim());
-  click(B.win, $(B, '#nexo-chat-menu .chat-block')); await sleep(300);
+  click(B.win, $(B, '#chat-contact-name')); await sleep(300);
+  r.K1_opciones = Array.from(B.win.document.querySelectorAll('.nx-panel .nx-info-opt')).map((b) => b.textContent.trim());
+  click(B.win, $(B, '.nx-panel .nx-info-opt.chat-block')); await sleep(300);
   r.K1_titulo = (($(B, '#nexo-block-menu .nx-sheet-title') || {}).textContent) || '';
   r.K1_nota = (($(B, '#nexo-block-menu .nx-sheet-note') || {}).textContent) || '';
   click(B.win, $(B, '#nexo-block-menu .chat-block')); await sleep(400);

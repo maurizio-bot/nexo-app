@@ -15,6 +15,7 @@ export var SHEET_ICONS = {
   'chat-starred': '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
   'chat-search': '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
   'chat-find': '<circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19.1 4.9a10 10 0 0 1 0 14.2M4.9 19.1a10 10 0 0 1 0-14.2"/>', // 3345: buscar entre la gente
+  'chat-disappear': '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5"/><path d="M9 2h6"/>', // 27-11: mensajes temporales (antes sin icono)
   'chat-block': '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>', // bloquear contacto (24-11)
   'mm-cancel': '<path d="M18 6L6 18"/><path d="M6 6l12 12"/>',
   // B-EST (26-11): los de las demás hojas (grupo, fondo, responder llamada) con el mismo trazo, en vez de emojis

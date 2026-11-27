@@ -58,7 +58,7 @@ export function _setupBackButton() {
         if (sted) { sted.remove(); return true; } // 2878: editor de stickers (el modal más alto)
         var grev = document.getElementById('nexo-gallery-review'); // 3160: revisión de la galería = Cancelar (no manda nada)
         if (grev) { if (typeof grev.__nexoClose === 'function') grev.__nexoClose(); else grev.remove(); return true; }
-        var smalls = ['nexo-msg-menu', 'nexo-group-menu', 'nexo-contact-picker', 'cobro-sheet', 'nexo-forward-sheet', 'nexo-share-sheet', 'nexo-group-sheet', 'nexo-wp-sheet', 'nexo-sendto-sheet', 'nexo-mute-menu', 'nexo-chat-menu', 'nexo-starred-sheet']; // 3161: «Enviar a…» (share_in.js); 3219: silenciar, opciones del chat, destacados
+        var smalls = ['nexo-member-card', 'nexo-msg-menu', 'nexo-group-menu', 'nexo-contact-picker', 'cobro-sheet', 'nexo-forward-sheet', 'nexo-share-sheet', 'nexo-group-sheet', 'nexo-wp-sheet', 'nexo-sendto-sheet', 'nexo-mute-menu', 'nexo-chat-menu', 'nexo-starred-sheet']; // 3161: «Enviar a…» (share_in.js); 3219: silenciar, opciones del chat, destacados
         for (var si = 0; si < smalls.length; si++) { var sm = document.getElementById(smalls[si]); if (sm) { sm.remove(); return true; } }
         var rmenu = document.querySelector('.ble-contact-menu'); // revisión visual 28-11: el menú ⋮ de una fila de la lista no se cerraba con atrás
         if (rmenu) { rmenu.remove(); return true; }

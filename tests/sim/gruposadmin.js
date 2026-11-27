@@ -98,31 +98,35 @@ const check = (p, sel) => { const cb = q(p, sel); if (cb) { cb.checked = true; c
   await openChatWith(C, '👥 Equipo');
   { const i = q(C, '#message-input'); r.C_barra_bloqueada = !!i && i.disabled && /Solo los administradores/.test(i.getAttribute('placeholder') || ''); }
   // 1b (dueño 23-11): ruedita de ajustes arriba a la derecha del chat del grupo, también para quien no es admin; tocar a un miembro
-  { const gb = q(C, '#nexo-gset-btn'); r.C_ruedita_en_chat_grupo = !!gb && gb.style.display !== 'none' && gb.parentNode.id === 'chat-head-actions'; }
-  click(C.win, q(C, '#nexo-gset-btn')); await sleep(300);
+  // Dueño 27-11 (propuesta B): sin rueda; tocar el NOMBRE abre «Información» (con lo de la rueda)
+  { const gb = q(C, '#nexo-gset-btn'), nm = q(C, '#chat-contact-name'); r.C_ruedita_en_chat_grupo = !gb && !!nm && nm.getAttribute('role') === 'button' && !!q(C, '#chat-name-chev'); }
+  click(C.win, q(C, '#chat-contact-name')); await sleep(300);
   r.C_ruedita_abre_ajustes = !!q(C, '#nexo-gset .gset-member[data-nx="' + id(A) + '"]');
-  click(C.win, q(C, '#nexo-gset .gset-member[data-nx="' + id(B) + '"] .gset-member-name')); await sleep(600);
-  r.C_toca_miembro_contacto_abre_chat = !q(C, '#nexo-gset') && C.win.bleInterface._activeChatDeviceId === id(B);
+  click(C.win, q(C, '#nexo-gset .gset-member[data-nx="' + id(B) + '"] .gset-member-name')); await sleep(300);
+  // Dueño 27-11: primero su TARJETA (Mensaje / Llamar / Info); «Mensaje» abre su chat
+  r.C_tarjeta_de_contacto = !!q(C, '#nexo-member-card .mcard-msg') && !!q(C, '#nexo-member-card .mcard-call') && !!q(C, '#nexo-member-card .mcard-info') && !q(C, '#nexo-member-card .mcard-add');
+  click(C.win, q(C, '#nexo-member-card .mcard-msg')); await sleep(600);
+  r.C_toca_miembro_contacto_abre_chat = r.C_tarjeta_de_contacto && !q(C, '#nexo-gset') && C.win.bleInterface._activeChatDeviceId === id(B);
   { const gb = q(C, '#nexo-gset-btn'); r.C_sin_ruedita_en_chat_normal = !gb || gb.style.display === 'none'; }
   await closeChat(C);
   await openChatWith(C, '👥 Equipo');
   { const vl = C.win.vaultLoadContacts, bi = C.win.bleInterface, ab = bi.addByNexoId, sent = [];
     C.win.vaultLoadContacts = function() { return vl.apply(this, arguments).filter((c) => String(c.nexoId || '').toLowerCase() !== id(B)); };
     bi.addByNexoId = function(nx) { sent.push(nx); return Promise.resolve(true); };
-    click(C.win, q(C, '#nexo-gset-btn')); await sleep(300);
+    click(C.win, q(C, '#chat-contact-name')); await sleep(300);
     click(C.win, q(C, '#nexo-gset .gset-member[data-nx="' + id(B) + '"] .gset-member-name')); await sleep(300);
-    r.C_toca_no_contacto_ofrece_agregar = !!q(C, '#nexo-gset-mem .gset-mem-add');
+    r.C_toca_no_contacto_ofrece_agregar = !!q(C, '#nexo-member-card .gset-mem-add');
     // Dueño 26-11 (3160): sin botón X; el atrás de Android cierra la pantalla de arriba y luego Ajustes, y se queda en el chat
-    r.C_ajustes_sin_x = !q(C, '#nexo-gset .gset-close') && !q(C, '#nexo-gset-mem .gset-close');
+    r.C_ajustes_sin_x = !q(C, '#nexo-gset .gset-close') && !q(C, '#nexo-member-card .gset-close');
     { const hb = C.win.__nexoHandleBack;
-      r.C_atras_cierra_ficha = !!(hb && hb()) && !q(C, '#nexo-gset-mem') && !!q(C, '#nexo-gset');
+      r.C_atras_cierra_ficha = !!(hb && hb()) && !q(C, '#nexo-member-card') && !!q(C, '#nexo-gset');
       r.C_atras_cierra_ajustes = !!(hb && hb()) && !q(C, '#nexo-gset') && C.win.document.body.classList.contains('chat-view-active');
-      click(C.win, q(C, '#nexo-gset-btn')); await sleep(300);
+      click(C.win, q(C, '#chat-contact-name')); await sleep(300);
       click(C.win, q(C, '#nexo-gset .gset-member[data-nx="' + id(B) + '"] .gset-member-name')); await sleep(300); }
-    click(C.win, q(C, '#nexo-gset-mem .gset-mem-add')); await sleep(300);
+    click(C.win, q(C, '#nexo-member-card .gset-mem-add')); await sleep(300);
     r.C_agregar_manda_solicitud = sent.length === 1 && sent[0] === id(B);
     C.win.vaultLoadContacts = vl; bi.addByNexoId = ab;
-    ['#nexo-gset-mem', '#nexo-gset'].forEach((s) => { if (q(C, s)) q(C, s).remove(); }); }
+    ['#nexo-member-card', '#nexo-gset'].forEach((s) => { if (q(C, s)) q(C, s).remove(); }); }
   await closeChat(C);
 
   // 2. A designa admin a B desde Ajustes del grupo
@@ -144,6 +148,13 @@ const check = (p, sel) => { const cb = q(p, sel); if (cb) { cb.checked = true; c
   r.B_escribe_llega_a_A = await wait(() => vaultHas(A, gid, /hola de B admin/), 60);
   r.B_escribe_llega_a_C = await wait(() => vaultHas(C, gid, /hola de B admin/), 60);
   await closeChat(B);
+  // Dueño 27-11: en el chat del grupo, tocar el nombre de quien escribió abre su TARJETA (A tiene a B de contacto)
+  await openChatWith(A, '👥 Equipo'); await sleep(600);
+  { const f = q(A, '.msg-group-from[data-nx="' + id(B) + '"] .msg-group-sender');
+    if (f) { click(A.win, f); await sleep(300); }
+    r.A_toca_remitente_abre_tarjeta = !!f && !!q(A, '#nexo-member-card .mcard-msg') && ((q(A, '#nexo-member-card .nx-mcard-id') || {}).textContent || '') === 'NEXO ID: ' + id(B).toUpperCase();
+    const hb = A.win.__nexoHandleBack; r.A_atras_cierra_tarjeta = !!(hb && hb()) && !q(A, '#nexo-member-card') && A.win.document.body.classList.contains('chat-view-active'); }
+  await closeChat(A);
 
   // 3. C trucado: escribe y se firma admin
   gsOf(C).canWrite = () => true;

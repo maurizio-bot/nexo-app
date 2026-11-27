@@ -55,7 +55,7 @@ async function openChatWith(p, name) {
 function sendText(p, t) { const i = p.win.document.getElementById('message-input'); i.value = t; i.dispatchEvent(new p.win.Event('input', { bubbles: true })); click(p.win, p.win.document.getElementById('send-btn')); }
 const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) return true; await sleep(200); } return false; };
 const $ = (p, sel) => p.win.document.querySelector(sel);
-const menuItem = async (p, cls) => { click(p.win, $(p, '#chat-contact-avatar')); await sleep(300); return $(p, '#nexo-chat-menu .' + cls); };
+const menuItem = async (p, cls) => { click(p.win, $(p, '#chat-contact-name')); await sleep(300); return $(p, '.nx-panel .nx-info-opt.' + cls); };
 
 (async () => {
   const radio = new Radio();
@@ -70,7 +70,7 @@ const menuItem = async (p, cls) => { click(p.win, $(p, '#chat-contact-avatar'));
   r.contactos = await wait(async () => (await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'hola'), 30);
   // 0. 26-11 (B0, dueño): escondido por defecto: sin «Buscar a X…» en el menú del chat; con el interruptor encendido vuelve
   r.escondido_por_defecto = !(await menuItem(A, 'chat-find'));
-  { const m = $(A, '#nexo-chat-menu'); if (m) m.remove(); }
+  { const m = $(A, '.nx-panel'); if (m) m.remove(); }
   A.win.__nexoFindOn = true; B.win.__nexoFindOn = true;
   // 1. la pantalla de buscar
   const it = await menuItem(A, 'chat-find');

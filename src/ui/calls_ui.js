@@ -872,6 +872,7 @@ function _startCall(cid, video) {
   var lane = c1.call && c2 ? c2 : c1;
   lane.start(nx, !!video).catch(function(err) { callToast((err && err.message) || 'Error', 3500); });
 }
+if (typeof window !== 'undefined') window.NEXO_startCall = function(nx, video) { _startCall(nx, video); }; // 27-11: «Llamar» de la tarjeta de un miembro (member_card.js)
 function _refreshButton() {
   var cid = _getCurrentContactId(), gs = _bi() && _bi().groups, show = cid && !(gs && gs.isGroup(cid)) ? '' : 'none';
   var full = callCount() >= 2; // #222: con dos llamadas, apagados (se ven, y al tocarlos dicen por qué)

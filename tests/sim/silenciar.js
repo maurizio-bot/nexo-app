@@ -90,11 +90,11 @@ const msgNotifs = (n, chat, n0) => n.notifLog.slice(n0).filter((x) => x.chatId =
 
   // ---------- S1: silenciar desde las opciones del chat (tocar el círculo de la cabecera) ----------
   await openChat(B, idA);
-  const av = $(B, '#chat-contact-avatar');
+  const av = $(B, '#chat-contact-name');
   r.S1_circulo_es_boton = !!(av && av.getAttribute('role') === 'button');
   click(B.win, av); await sleep(300);
-  r.S1_opciones = Array.from(B.win.document.querySelectorAll('#nexo-chat-menu .mm-item')).map((b) => b.textContent.trim());
-  click(B.win, $(B, '#nexo-chat-menu .chat-mute')); await sleep(300);
+  r.S1_opciones = Array.from(B.win.document.querySelectorAll('.nx-panel .nx-info-opt')).map((b) => b.textContent.trim());
+  click(B.win, $(B, '.nx-panel .nx-info-opt.chat-mute')); await sleep(300);
   r.S1_hoja = !!$(B, '#nexo-mute-menu');
   r.S1_opciones_silencio = Array.from(B.win.document.querySelectorAll('#nexo-mute-menu .mm-item')).map((b) => b.textContent.trim());
   r.S1_nota = (($(B, '#nexo-mute-menu .nx-sheet-note') || {}).textContent) || '';
@@ -105,16 +105,16 @@ const msgNotifs = (n, chat, n0) => n.notifLog.slice(n0).filter((x) => x.chatId =
   r.S1_aviso = (($(B, '#perm-error-toast') || {}).textContent) || '';
   r.S1_nativo_sabe = !!(nB.muted && nB.muted.get(idA) === until);
   r.S1_icono_cabecera = !!$(B, '#chat-mute-ico');
-  click(B.win, $(B, '#chat-contact-avatar')); await sleep(300);
-  const un = $(B, '#nexo-chat-menu .chat-unmute');
+  click(B.win, $(B, '#chat-contact-name')); await sleep(300);
+  const un = $(B, '.nx-panel .nx-info-opt.chat-unmute');
   r.S1_menu_activar = un ? un.textContent.trim() : null;
-  { const m = $(B, '#nexo-chat-menu'); if (m) m.remove(); }
+  { const m = $(B, '#nexo-chat-info'); if (m) m.remove(); }
   await closeChat(B); await sleep(300);
   B.win.bleInterface.renderContactsList(); await sleep(200);
   const rowA = Array.from(B.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).find((x) => (x.querySelector('.ble-contact-name') || {}).textContent === nameOfA);
   r.S1_icono_lista = !!(rowA && rowA.querySelector('.ble-contact-name .nx-mute-ico'));
   r.S1_nombre_intacto = rowA ? (rowA.querySelector('.ble-contact-name') || {}).textContent : null;
-  r.S1_ok = r.emparejados_s !== null && r.S1_circulo_es_boton && r.S1_opciones.length === 6 && /Mensajes temporales/.test(r.S1_opciones.join('|')) && !r.S1_opciones.some((o) => /entre la gente/.test(o)) && r.S1_opciones.indexOf('Bloquear') >= 0 && /Silenciar notificaciones/.test(r.S1_opciones.join('|')) && /Mensajes destacados/.test(r.S1_opciones.join('|')) &&
+  r.S1_ok = r.emparejados_s !== null && r.S1_circulo_es_boton && r.S1_opciones.length === 5 && /Mensajes temporales/.test(r.S1_opciones.join('|')) && !r.S1_opciones.some((o) => /entre la gente/.test(o)) && r.S1_opciones.indexOf('Bloquear') >= 0 && /Silenciar notificaciones/.test(r.S1_opciones.join('|')) && /Mensajes destacados/.test(r.S1_opciones.join('|')) &&
     r.S1_hoja && r.S1_opciones_silencio.join('|') === '8 horas|1 semana|Siempre|Cancelar' && /llamadas sí suenan/.test(r.S1_nota) && r.S1_ocho_horas && r.S1_aviso === 'Chat silenciado' &&
     r.S1_nativo_sabe && r.S1_icono_cabecera && /^Activar sonido\s*Silenciado hasta el /.test(r.S1_menu_activar || '') && r.S1_icono_lista && r.S1_nombre_intacto === nameOfA;
 
@@ -236,9 +236,9 @@ const msgNotifs = (n, chat, n0) => n.notifLog.slice(n0).filter((x) => x.chatId =
   for (const l of ['es', 'it', 'en', 'pt', 'fr']) {
     const T = (await importSrc('ui/i18n/' + l + '.js')).default;
     B.win.NEXO_FORCE_LANG = l;
-    click(B.win, $(B, '#chat-contact-avatar')); await sleep(200);
-    const opts = Array.from(B.win.document.querySelectorAll('#nexo-chat-menu .mm-item')).map((b) => b.textContent.trim());
-    click(B.win, $(B, '#nexo-chat-menu .chat-mute')); await sleep(200);
+    click(B.win, $(B, '#chat-contact-name')); await sleep(200);
+    const opts = Array.from(B.win.document.querySelectorAll('.nx-panel .nx-info-opt')).map((b) => b.textContent.trim());
+    click(B.win, $(B, '.nx-panel .nx-info-opt.chat-mute')); await sleep(200);
     const ms = Array.from(B.win.document.querySelectorAll('#nexo-mute-menu .mm-item')).map((b) => b.textContent.trim());
     const title = (($(B, '#nexo-mute-menu .nx-sheet-title') || {}).textContent) || '', note = (($(B, '#nexo-mute-menu .nx-sheet-note') || {}).textContent) || '';
     { const m = $(B, '#nexo-mute-menu'); if (m) m.remove(); }

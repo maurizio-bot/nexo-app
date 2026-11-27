@@ -4,10 +4,10 @@
  *     el hueco de la derecha se mide con los botones que hay (antes era fijo para 2 y con 3 se encimaba).
  *  2. Con el hueco ya medido, main.js (_fitContactName, 22-11) ajusta la letra: si cabe en 2 líneas, tamaño normal; si no, baja de a 1 px.
  *  3. La línea de abajo («6 personas: Roberto, Alex…») se corta con «…» antes de los botones (CSS en nexo_theme.css).
- *  4. En un grupo, tocar esa línea abre la lista de integrantes (Ajustes del grupo, en su sección de personas).
+ *  4. En un grupo, tocar esa línea abre la lista de integrantes («Información» del grupo, en su sección de personas).
  */
 import { _getCurrentContactId } from './chat_format.js';
-import { openGroupSettings } from './group_panel.js';
+import { openChatInfo } from './chat_info.js'; // dueño 27-11: la página «Información» (con la lista de personas)
 
 function $(id) { return document.getElementById(id); }
 
@@ -36,7 +36,7 @@ export function installChatHeadFit() {
       var cid = String(_getCurrentContactId() || '').toLowerCase(), bi = window.bleInterface;
       if (!cid || !bi || !bi.groups || !bi.groups.isGroup(cid)) return;
       e.stopPropagation();
-      openGroupSettings(cid);
+      openChatInfo(cid);
       setTimeout(function() { var m = document.querySelector('.gset-member'); if (m && m.scrollIntoView) m.scrollIntoView({ block: 'center' }); }, 60);
     });
   }

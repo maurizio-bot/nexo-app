@@ -87,3 +87,34 @@ body:not(.chat-view-active) #nexo-pin-bar, body.vault-visible #nexo-pin-bar { di
 #nx-grp-hist { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 74px); left: 50%; transform: translateX(-50%); z-index: 50; border: 0; border-radius: 18px; padding: 9px 16px; font: inherit; font-size: 14px; font-weight: 600; color: #fff; background: var(--nx-grad, linear-gradient(135deg, #00c8ff, #a855f7)); box-shadow: 0 3px 12px rgba(0, 200, 255, 0.35); cursor: pointer; white-space: nowrap; }
 /* Revisión visual 28-11: el botón flotante tapaba el aviso de cifrado (el primer elemento del chat): se le deja su hueco */
 body:has(#nx-grp-hist) #e2e-banner { margin-top: 48px !important; }
+
+/* ===== Dueño 27-11 (propuesta B, chat_info.js): foto = ver la foto; nombre › = «Información» ===== */
+#chat-contact-info { position: relative; }
+#chat-contact-avatar { z-index: 3; } /* el nombre (relative, por el «›») no debe tapar la foto */
+#chat-contact-name[readonly] { cursor: pointer; caret-color: transparent; -webkit-user-select: none; user-select: none; }
+#chat-contact-name { padding-right: 16px !important; }
+#chat-name-chev { position: absolute; font-size: 22px; line-height: 1; font-weight: 700; color: var(--nx-muted, rgba(255,255,255,0.6)); pointer-events: auto; cursor: pointer; padding: 0 2px; }
+.nx-photo-view { position: fixed; inset: 0; z-index: 2147483646; background: #000; display: flex; flex-direction: column; box-sizing: border-box;
+  padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px); }
+.nx-photo-stage { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.nx-photo-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }
+.nx-photo-ini { width: min(62vw, 260px) !important; height: min(62vw, 260px) !important; min-width: 0 !important; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: min(22vw, 96px) !important; font-weight: 700; }
+.nx-photo-name { text-align: center; font-size: 18px; font-weight: 700; color: #fff; padding: 12px 8px 6px; overflow-wrap: anywhere; }
+.nx-photo-acts { display: flex; flex-direction: column; gap: 4px; }
+.nx-info-top { display: flex; align-items: center; gap: 14px; margin: 6px 0 8px; }
+.nx-info-photo { width: 72px !important; height: 72px !important; min-width: 72px; border-radius: 50%; font-size: 26px !important; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.nx-info-top .nx-input { flex: 1; width: auto; font-size: 17px; font-weight: 700; }
+.nx-info-id { margin: 0 0 6px; letter-spacing: 0.5px; }
+.nx-info-sec { margin-top: 10px; }
+/* Dueño 27-11: tarjeta de un miembro del grupo (member_card.js) */
+.nx-mcard { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 18px !important; }
+.nx-mcard-av { box-shadow: 0 0 0 2px rgba(255,255,255,0.08); }
+.nx-mcard-name { font-size: 19px; font-weight: 800; color: #fff; margin-top: 10px; overflow-wrap: anywhere; max-width: 100%; }
+.nx-mcard-id { font-size: 13px; color: var(--nx-muted, rgba(255,255,255,0.6)); margin: 4px 0 14px; letter-spacing: 0.5px; }
+.nx-mcard-acts { display: flex; gap: 10px; width: 100%; justify-content: center; margin-bottom: 6px; }
+.nx-mcard-btn { flex: 1 1 0; max-width: 110px; min-height: 64px; border-radius: 16px; border: 1px solid var(--nx-line, rgba(255,255,255,0.08)); background: rgba(255,255,255,0.06); color: #fff;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font: inherit; font-size: 13px; cursor: pointer; padding: 8px 4px; }
+.nx-mcard-btn:active { background: rgba(255,255,255,0.12); }
+.nx-mcard-ico { color: var(--nx-cyan, #00c8ff); display: flex; }
+.nx-mcard .mm-item { width: 100%; }
+.msg-group-from[role="button"] { cursor: pointer; }

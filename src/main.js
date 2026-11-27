@@ -117,7 +117,9 @@ import { isPreviewHidden, loadHidePreview } from './ui/chat_hide_preview.js';
 import { loadApariencia } from './ui/apariencia.js'; // cola 33: color de burbujas y letra elegidos en Ajustes → Apariencia
 import { isMuted, loadMuted } from './ui/chat_mute.js'; // 3219: silenciar un chat o grupo
 import { loadPins } from './ui/chat_pin.js'; // 3219: mensajes fijados arriba del chat
-import { installChatMenu } from './ui/chat_menu.js'; // 3219: opciones del chat (tocar el círculo de la cabecera)
+import { installChatMenu } from './ui/chat_menu.js'; // 3219: opciones del chat (hoy dentro de «Información», chat_info.js)
+import { installChatInfo, openChatInfo } from './ui/chat_info.js'; // dueño 27-11 (propuesta B): foto = ver la foto; nombre › = «Información»
+import { installMemberCard } from './ui/member_card.js'; // dueño 27-11: tarjeta de un miembro del grupo
 import { initE2E } from './vault/e2e_crypto.js';
 import { ratchetInit, ratchetSafetyNumber, ratchetPeerBundle, ratchetSessionPq } from './vault/e2e_ratchet.js';
 import { safetyQrPayload, checkSafetyQr, showSafetyQr, openQrScanner } from './ui/qr_verify.js';
@@ -483,6 +485,9 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installSearchUi); else installSearchUi();
 // 3219: opciones del chat al tocar el círculo de la cabecera (buscar, destacados, silenciar) y el altavoz tachado
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installChatMenu); else installChatMenu();
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installChatInfo); else installChatInfo();
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installMemberCard); else installMemberCard();
+window.NEXO_openChatInfo = openChatInfo; // la tarjeta de un miembro («Info») abre su página
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installChatHeadFit); else installChatHeadFit(); // dueño 25-11: cabecera que no se encima
 // #132 idioma: traducir el HTML estático marcado con data-i18n (pestañas, cámara, placeholders…). Al cambiar idioma la
 // app recarga, así que basta con aplicarlo al arrancar.

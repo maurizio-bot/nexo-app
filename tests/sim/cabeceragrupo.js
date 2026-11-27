@@ -39,7 +39,7 @@ const logs = [];
   });
   await abrir('Pura gente del señor Nexo (Ya Se Admite Italia)');
   r.largo = await geo();
-  r.no_se_encima = r.largo.botones >= 3 && r.largo.nomR <= r.largo.actL && r.largo.subR <= r.largo.actL;
+  r.no_se_encima = r.largo.botones >= 2 && r.largo.nomR <= r.largo.actL && r.largo.subR <= r.largo.actL;
   // entero en ≤ 2 líneas; si ni a la letra mínima cabe (teléfono angosto), se ven 2 líneas a 13 px (nunca debajo de los botones)
   r.nombre_entero = r.largo.fs >= 13 && r.largo.visibles <= 2 && (r.largo.nomEntero || r.largo.fs === 13);
   r.subtitulo_con_puntos = r.largo.subCorta;
