@@ -360,7 +360,7 @@ function _openSettings(fromProfile) {
     card('🔥', t('prof_fenix_title', 'Fénix (respaldo de tu cuenta)'), '<div id="nexo-fenix-status" class="nx-sub"></div>' +
       '<button id="nexo-fenix-recover" class="nx-btn">' + t('prof_fenix_recover', 'Recuperar mi cuenta (teléfono nuevo)') + '</button>') +
     // Ronda 2759: pasar la cuenta de un teléfono a otro (move_account.js)
-    card('📲', t('prof_change_phone', 'Cambiar de teléfono'), '<div class="nx-sub">' + t('prof_change_phone_sub', 'Con los dos teléfonos en el mismo Wi-Fi: en el nuevo, "Traer mi cuenta"; en este, "Pasar mi cuenta" y lee su código. Pasa todo (contactos, chats, fotos, grupos) y este queda vacío.') + '</div>' +
+    card('📲', t('prof_change_phone', 'Cambiar de teléfono'), '<div class="nx-sub">' + t('prof_change_phone_sub', 'Con los dos teléfonos en el mismo Wi-Fi: en el nuevo, «Traer mi cuenta»; en este, «Pasar mi cuenta» y lee su código. Pasa todo (contactos, chats, fotos, grupos) y este queda vacío.') + '</div>' +
       '<button id="nexo-move-send" class="nx-btn">' + t('prof_move_send', 'Pasar mi cuenta a un teléfono nuevo') + '</button>' +
       '<button id="nexo-move-receive" class="nx-btn">' + t('prof_move_receive', 'Traer mi cuenta de otro teléfono') + '</button>') +
     '</div>' +

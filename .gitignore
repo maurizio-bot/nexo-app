@@ -24,3 +24,4 @@ tests/kotlin/.gradle/
 .claude/worktrees/
 tests/kotlin-android/.kotlin/
 tests/kotlin/.kotlin/
+tests/sim/shots_revision/

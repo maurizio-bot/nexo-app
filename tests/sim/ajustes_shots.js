@@ -7,6 +7,7 @@ const { PW, bootPhone, sleep } = require('./pw_harness');
 const { Radio, NativePhone } = require('./native_mock');
 const dist = path.resolve(process.argv[2], 'dist');
 const out = path.resolve(process.argv[3] || 'shots_ajustes');
+const W = +((/^(\d+)x/.exec(process.env.SHOTS_VIEWPORT || '') || [0, 393])[1]);
 fs.mkdirSync(out, { recursive: true });
 (async () => {
   const browser = await PW.chromium.launch();
@@ -15,7 +16,7 @@ fs.mkdirSync(out, { recursive: true });
   radio.add(nA); nA.load();
   const logs = [];
   const { page } = await bootPhone(browser, 'A', nA, dist, { phone: true, logs, seedName: 'Ana', lang: 'es' });
-  await page.setViewportSize({ width: 393, height: 852 });
+  await page.setViewportSize({ width: W, height: 852 });
   await sleep(800);
   await page.evaluate(() => document.getElementById('nexo-profile-btn').click()); await sleep(600);
   await page.evaluate(() => document.getElementById('nexo-open-settings').click()); await sleep(900);
@@ -25,10 +26,10 @@ fs.mkdirSync(out, { recursive: true });
   let txt = 'LISTA:\n' + await page.evaluate(() => document.getElementById('nexo-settings-sheet').innerText);
   for (const k of secs) {
     await page.evaluate((k) => document.querySelector('.nx-set-row[data-sec="' + k + '"]').click(), k); await sleep(500);
-    await page.setViewportSize({ width: 393, height: 1700 }); await sleep(200);
+    await page.setViewportSize({ width: W, height: 1700 }); await sleep(200);
     await page.screenshot({ path: path.join(out, 'ajustes_' + k + '.png') });
     txt += '\n\n=== ' + k + ' ===\n' + await page.evaluate(() => document.getElementById('nexo-settings-sheet').innerText);
-    await page.setViewportSize({ width: 393, height: 852 });
+    await page.setViewportSize({ width: W, height: 852 });
     await page.evaluate(() => document.getElementById('nexo-settings-back').click()); await sleep(250);
   }
   fs.writeFileSync(path.join(out, 'ajustes_texto.txt'), txt);

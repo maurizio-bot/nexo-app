@@ -217,7 +217,7 @@ export function securitySectionHtml() {
     '<label id="nexo-sec-facefast-row" style="' + row + '"><span>' + t('prof_lock_facefast', 'Desbloqueo rápido por rostro') + ' <span style="color:var(--nx-muted);font-size:12px;">' + t('prof_lock_less_secure', '(menos seguro)') + '</span></span><input type="checkbox" id="nexo-sec-facefast"></label>' +
     '<label style="' + row + '"><span>' + t('prof_lock_screenshots', 'Bloquear capturas de pantalla') + '</span><input type="checkbox" id="nexo-sec-secure"></label>' +
     '<div id="nexo-sec-msg" style="font-size:13px;color:var(--nx-cyan);min-height:0;margin-bottom:4px;"></div>' +
-    '<div style="font-size:12px;color:var(--nx-muted);margin-bottom:2px;">' + t('prof_lock_sec_note', 'Con las capturas bloqueadas NEXO tampoco se ve en "recientes" ni en grabaciones. Con el bloqueo los mensajes siguen llegando.') + '</div>';
+    '<div style="font-size:12px;color:var(--nx-muted);margin-bottom:2px;">' + t('prof_lock_sec_note', 'Con las capturas bloqueadas NEXO tampoco se ve en «recientes» ni en grabaciones. Con el bloqueo los mensajes siguen llegando.') + '</div>';
 }
 
 // Aviso dentro de Perfil (la hoja tapa los avisos normales) o, si no está abierto, aviso normal

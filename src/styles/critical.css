@@ -364,11 +364,11 @@ Consolidado: inline + main.css + ble_styles
    border: 1px solid rgba(0,200,255,0.3);
    }
    /* FIX v10.11: File attachment - burbuja fina */
+   /* Revisión visual 28-11: la tarjeta (file_card.js) ya trae su fila con relleno; como flex la fila no encogía (min-width auto)
+      y un nombre largo se salía de la tarjeta sin «…» (y la miniatura de un PDF quedaba al lado y no encima). Ahora es bloque. */
    .msg-content .file-attachment {
-   display: flex;
-   align-items: center;
-   gap: 8px;
-   padding: 8px 12px;
+   display: block;
+   padding: 0;
    background: rgba(255,255,255,0.05);
    border-radius: 12px;
    border: 1px solid rgba(255,255,255,0.1);

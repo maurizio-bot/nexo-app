@@ -402,6 +402,7 @@ export const BLE_UI_METHODS = {
     window.addEventListener('nexo:ble:openChat', function() {
       if (self.elements.fabBtn) self.elements.fabBtn.style.display = 'none';
       if (self.elements.bottomNav) self.elements.bottomNav.style.display = 'none';
+      var rm = document.querySelector('.ble-contact-menu'); if (rm) rm.remove(); // revisión visual 28-11: el menú ⋮ de la lista no queda encima del chat
     });
     // 3196 (dueño 17-11: «falta el botón para buscar contactos en la pantalla Contactos»): la lupa de la cabecera (contacts_search.js)
     installContactSearch(self);

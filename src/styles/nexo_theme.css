@@ -178,6 +178,9 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
 }
 .msg-time { color: rgba(255, 255, 255, 0.55) !important; }
 .message.other .msg-time { color: var(--nx-muted) !important; }
+/* Revisión visual 28-11: en la burbuja propia (degradado celeste→morado) la hora al 55 % y el ✓✓ «entregado» gris casi no se leían
+   (contraste ~1.5); ahora los mismos valores que Apariencia ya usa con texto blanco (apariencia.js: hora 0.7, entregado 0.75). */
+.message.own .msg-time { color: rgba(255, 255, 255, 0.7) !important; }
 /* Emoji grande (pedido del dueño 29-10): un mensaje de 1–3 emojis sueltos se muestra SIN burbuja (ni fondo ni sombra ni
    borde). Gana a .message.own/.other por mayor especificidad (:has) + !important. El tamaño lo pone critical.css. */
 .message.own:has(.msg-text.emoji-jumbo), .message.other:has(.msg-text.emoji-jumbo),
@@ -288,6 +291,7 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
    color de "entregado" era casi blanco. Ahora: enviado ✓ gris oscuro, entregado ✓✓ GRIS claro (apagado, "aún sin
    leer"), leído ✓✓ AZUL con brillo. Como WhatsApp: gris hasta que lo leen, y ahí se pone de color. */
 .msg-status.status-delivered { color: var(--nx-muted) !important; text-shadow: none !important; } /* 3140: colores de la paleta NEXO */
+.message.own .msg-status.status-delivered, .message.own .msg-status.status-sent { color: rgba(255, 255, 255, 0.75) !important; }
 .msg-status.status-read { color: var(--nx-cyan) !important; text-shadow: 0 0 6px rgba(0, 200, 255, 0.6); }
 .system-msg { background: var(--nx-surface) !important; border: 1px solid var(--nx-line); color: var(--nx-muted) !important; border-radius: 999px !important; }
 #e2e-banner {
@@ -429,7 +433,9 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
 .nx-id-card .nx-idtxt { font-size: 12px; color: var(--nx-muted); }
 .nx-id-card b { display: block; font-size: 19px; color: #fff; letter-spacing: 0.6px; margin-top: 2px; }
 #nexo-profile-sheet label, #nexo-settings-sheet label { color: var(--nx-text); }
-#nexo-profile-sheet input[type="checkbox"], #nexo-settings-sheet input[type="checkbox"] { accent-color: #00c8ff; width: 18px; height: 18px; }
+#nexo-profile-sheet input[type="checkbox"], #nexo-settings-sheet input[type="checkbox"] { accent-color: #00c8ff; width: 18px; height: 18px; flex-shrink: 0; } /* revisión visual 28-11: con un texto largo al lado la casilla se encogía (13–17 px de ancho) */
+/* Revisión visual 28-11: «Cambiar foto» / «Compartir mi ID» medían 24 px de alto: zona de toque de 44 px sin mover nada */
+#nexo-av-pick, #nexo-av-clear, #nexo-id-share { padding-top: 10px; padding-bottom: 10px; margin-top: -10px; margin-bottom: -10px; }
 #nexo-diag-text { background: rgba(0, 0, 0, 0.45) !important; border: 1px solid var(--nx-line) !important; border-radius: 14px !important; color: var(--nx-muted) !important; }
 /* 3140 (zona Perfil/Ajustes): campos y desplegables con la paleta NEXO (antes cajas #111 con borde gris) */
 #nexo-profile-sheet input[type="tel"], #nexo-profile-sheet input[type="email"], #nexo-settings-sheet select {

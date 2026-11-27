@@ -85,3 +85,5 @@ body:not(.chat-view-active) #nexo-pin-bar, body.vault-visible #nexo-pin-bar { di
 .nx-blocked-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Historial para los nuevos del grupo (dueño 24-11): botón «📜 Ver mensajes anteriores» bajo la cabecera del chat del grupo */
 #nx-grp-hist { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 74px); left: 50%; transform: translateX(-50%); z-index: 50; border: 0; border-radius: 18px; padding: 9px 16px; font: inherit; font-size: 14px; font-weight: 600; color: #fff; background: var(--nx-grad, linear-gradient(135deg, #00c8ff, #a855f7)); box-shadow: 0 3px 12px rgba(0, 200, 255, 0.35); cursor: pointer; white-space: nowrap; }
+/* Revisión visual 28-11: el botón flotante tapaba el aviso de cifrado (el primer elemento del chat): se le deja su hueco */
+body:has(#nx-grp-hist) #e2e-banner { margin-top: 48px !important; }

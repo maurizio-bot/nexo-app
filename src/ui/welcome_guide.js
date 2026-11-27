@@ -43,8 +43,8 @@ function _injectStyles() {
     + ' #nexo-welcome-overlay .wel-dot.on { background: var(--nx-grad); transform: scale(1.25); }'
     + ' #nexo-welcome-overlay .wel-primary { display: block; width: 100%; padding: 15px; border: none; border-radius: 14px; font-size: 16px; font-weight: 700; color: #fff; cursor: pointer; background: var(--nx-grad); box-shadow: 0 10px 30px rgba(0,200,255,0.35), 0 4px 12px rgba(168,85,247,0.35); }'
     + ''
-    + ' #nexo-welcome-overlay .wel-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; min-height: 22px; }'
-    + ' #nexo-welcome-overlay .wel-ghost { background: transparent; color: var(--nx-muted); border: none; font-size: 14px; padding: 6px 2px; cursor: pointer; }'
+    + ' #nexo-welcome-overlay .wel-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; min-height: 22px; }'
+    + ' #nexo-welcome-overlay .wel-ghost { background: transparent; color: var(--nx-muted); border: none; font-size: 14px; padding: 6px 12px; margin: 0 -12px; min-height: 44px; min-width: 64px; cursor: pointer; }' // revisión visual 28-11: zona de toque de 44 px (antes 29 px de alto)
     + ' #nexo-welcome-overlay .wel-ghost:disabled { visibility: hidden; }';
   document.head.appendChild(s);
 }
