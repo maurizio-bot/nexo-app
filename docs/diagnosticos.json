@@ -1552,6 +1552,22 @@
    "sintoma": "zombi (nx01992876) automático, build 3156",
    "categoria": "Fallo de la app",
    "causa": "Relés limitan la dirección: «rate-limited: too many gift wraps» → «banned». Origen: mensaje de grupo gm17956644590414zot0 (~260 KB EN LÍNEA, no como archivo) que se reenvía a cada miembro por relé en 45 trozos de 8000 (972 de 360 por BT), con reintentos de ventana; desde 14:39 (3156). Tras actualizar a las 16:38 los 3 teléfonos en la MISMA Wi-Fi (misma dirección) → castigo compartido. Arreglo parcial 3347; falta (TRASPASO)."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "17:44",
+   "nx": "nx01992876",
+   "sintoma": "resumen_diario (25-11), build 3159",
+   "categoria": "Sin fallo nuevo de la app",
+   "causa": "1 enviado ✓✓, 17 recibidos. «Wi-Fi local: conectado pero su app no contesta» ×5 = el otro dormido (reclasificado en la APK de emergencia: ya no cuenta como fallo). «sin relés» ×3 y puente ×3 = día de pruebas sin internet. MTU 23 en 6 de 44 enlaces (doble enlace LE Coded, para Fable). Batería del teléfono 11,3 %/h en segundo plano (1,2 h)."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "18:01",
+   "nx": "nx1905c1ee",
+   "sintoma": "resumen_diario (25-11), build 3159",
+   "categoria": "Sin fallo nuevo de la app",
+   "causa": "5 enviados, 5 ✓✓. Buzón de archivos: subida 46–58 KB/s, bajada 253–309 KB/s. «conectado pero su app no contesta» ×3 (reclasificado). Puente: caducado sin entregar ×4 y ACK timeout ×2 = pruebas sin internet del 25-11 (ya vistas, 3342–3344)."
   }
  ]
 }
