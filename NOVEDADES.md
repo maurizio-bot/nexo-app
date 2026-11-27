@@ -3,7 +3,10 @@
 Lo que trae cada versión, contado para el usuario (pedido del dueño 15-11: «que venga una breve descripción de lo que se hizo, para
 que el user cuando la descargue pueda verificar qué es lo que se implementó… para cuando se suba a Google Play»).
 
-- El bloque entre `<!-- APK -->` y `<!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
+- El bloque entre `<!-- APK -->
+<es-419>
+</es-419>
+<!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
   y la app lo muestra junto al botón de actualizar (Perfil → Ajustes → Actualizaciones, y «¿Qué trae?» en el aviso de abajo).
 - Formato de Google Play (se pega tal cual en «Novedades de esta versión»): un bloque por idioma (español, italiano, inglés y, desde
   la 3123, portugués de Brasil y francés), **máximo 500 caracteres** cada uno
@@ -24,6 +27,9 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 ## Historial
 
+
+### APK 3167 (28-11-2026)
+` y `
 
 ### APK 3161 (27-11-2026)
 - Al traer los mensajes anteriores de un grupo, también llegan las imágenes mandadas como archivo.
