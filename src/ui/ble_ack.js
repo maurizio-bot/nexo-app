@@ -66,7 +66,7 @@ import { ackResume } from './ble_ack_resume.js';
 // de enlace, y espera tras una vuelta que no salió (sin evento de enlace)
 var RCPT_MAX = 300, RCPT_TRIES = 8, RCPT_TTL_MS = 6 * 3600000, RCPT_GAP_MS = 4000;
 var RCPT_WAIT_MS = [3000, 15000, 45000, 120000, 300000, 600000];
-function _relayLimited(e) { var m = String((e && e.message) || ''); return /Rechazado por los relés/.test(m) && /rate.?limit|slow down|too many|banned/i.test(m); } // 3347
+function _relayLimited(e) { var m = String((e && e.message) || ''); return /Rechazado por los relés/.test(m) && /rate.?limit|slow down|too many|banned|en espera/i.test(m); } // 3347; fase 1: «en espera» = ninguno de sus relés abierto
 
 export class BleAckSystem {
   constructor(bleInterface) {

@@ -112,7 +112,7 @@ function _openProfileSheet() {
         if (!setMyAvatar(url)) throw new Error(t('prof_photo_invalid', 'foto no válida'));
         paintMine();
         if (_showInfoToast) _showInfoToast(t('prof_photo_ready', 'Foto de perfil lista: tus contactos la verán al conectar'), 3000);
-      }).catch(function(e) { if (_showInfoToast) _showInfoToast(t('prof_photo_fail', 'No se pudo usar esa foto: ') + ((e && e.message) || t('prof_error', 'error')), 3500); });
+      }).catch(function(e) { if (e && e.code === 'CANCEL') return; if (_showInfoToast) _showInfoToast(t('prof_photo_fail', 'No se pudo usar esa foto: ') + ((e && e.message) || t('prof_error', 'error')), 3500); });
     };
     document.body.appendChild(inp);
     inp.click();

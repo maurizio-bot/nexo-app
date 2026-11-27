@@ -21,6 +21,20 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **28-11 (Opus) — FASE 1 INTERNET, PRIMER BLOQUE HECHO (relés), [skip ci] hasta la siguiente APK:** política de relés ÚNICA app/nativo
+  (`src/core/ruta/politica_reles.js` = `RelayPolicy.kt`, mismos vectores `tests/vectores/politica_reles.json`; `politicareles.js` y
+  `RelayPolicyTest.kt`). (a) **anuncio cifrado de dónde leo** en el saludo (`lr`, app y nativo; se guarda en `state.peerLee`, caduca 24 h, solo
+  relés de mi pool); (b) **a un contacto se le publica solo en los relés que él lee** (también una reserva que yo solo escucho) y el ✓ sale
+  solo de ellos; con los suyos en pausa/cerrados queda ⏳ sin mandar («en espera», `_resendWaitErr`); sin anuncio, como antes (`leeen.js`,
+  caso 21:53); (c) **el nativo escucha TODOS** (se quitó `CELL_READ_RELAYS = 2`, ahora 99 como la app) y también los de reserva que la app solo
+  escucha (`lo`); (d) **el nativo respeta el «OK false»** (pausa por relé como la app) y **las pausas se comparten** en los dos sentidos
+  (`cool` en netBgConfig y en netBgDrain); (e) el nativo publica con la misma política (`targetsFor`; `NetBgRelesTest.kt`). NOVEDADES escrito.
+  **Y del dueño 28-11 (misma sesión):** fotos de perfil y de grupo con AJUSTE (mover, acercar, alejar hasta verla entera; fuera, la
+  foto desenfocada; 384 px, ≤ 60 000 car.: `avatar_crop.js`, `fotoajuste.js`); **eliminar para todos en grupos** (acción con `g` a cada
+  miembro, solo vale si lo escribió él, también si llega antes que el mensaje: `editar.js` E11). Fotos del chat sin tocar (1280–1600 px, sin recorte).
+  **Falta de la fase 1** (contrato §D.3 1a/1b): módulos `contacto_ruta/elegir/calendario` + banco `tests/sim/mundo/` + modo sombra
+  `[RUTA-SOMBRA]`; republicar el MISMO evento (no re-cifrar); juntar textos en un sobre; el calendario manda en lo de internet (quitar
+  red de seguridad +10 s y ventanas ×8 por internet); puntuación de relés; cupo que baja a la mitad 1 h tras un límite; toques FCM degradados.
 - **PREGUNTAS DEL DUEÑO SIN RESPONDER (página de privacidad de Nexbeat, de la sesión cerrada del 26-11):** (1) correo público de contacto
   (uno solo para la app); (2) crear repo público `nexbeat` en GitHub (luego Settings → Pages → `main`/raíz) y avisar para subir la página;
   (3) ¿pasar `docs/diagnosticos.json` (con NEXO ID) al repo privado? Recomendado: sí (la política dice que se guardan en privado).

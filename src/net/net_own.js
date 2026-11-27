@@ -96,10 +96,10 @@ export const netOwn = {
     var own = this._ownOpenUrls();
     return own.length ? own : null;
   },
-  _publishOwn(ev, only) {
+  _publishOwn(ev, only, nx) {
     var self = this;
-    if (!only || !only.length) return this._publish(ev);
-    return this._publish(ev, only).catch(function() { self.ownMarkBad('no contestó a un envío'); return self._publish(ev); });
+    if (!only || !only.length) return this._publish(ev, null, nx);
+    return this._publish(ev, only).catch(function() { self.ownMarkBad('no contestó a un envío'); return self._publish(ev, null, nx); });
   },
   // Buzón de archivos: relés a los que subir los trozos (solo el propio, sano) o null (todos los abiertos, como siempre)
   blobTargets() {

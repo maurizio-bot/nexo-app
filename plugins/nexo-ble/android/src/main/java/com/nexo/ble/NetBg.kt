@@ -59,14 +59,18 @@ class NetBg(
     // 3281: los trozos de un archivo de la bandeja se guardan aparte (son grandes): json = sus eventos, o null = borrarlos (ya salió)
     private val onBlob: (id: String, json: String?) -> Unit = { _, _ -> },
 ) {
-    class Contact(val nx: String, val name: String, val kraw: ByteArray)
+    // lee (fase 1, 28-11): los relés donde lee ese contacto (su último anuncio, ya filtrado por la app con lecturasDe); vacío = no se sabe
+    class Contact(val nx: String, val name: String, val kraw: ByteArray, val lee: List<String> = emptyList())
     // 3190: solicitud de contacto de mi buzón. kind = "req" (me quieren agregar) o "acc" (aceptó una solicitud MÍA); twin = nombre del
     // contacto que ya tengo con ese mismo nombre y otro NEXO ID (posible impostor), o ""
     class Req(val from: String, val name: String, val kind: String, val twin: String = "")
     // 3204: gapSince = desde cuándo hay que pedirle lo suyo a este relé al volver al Wi-Fi (se dejó de escuchar con datos móviles; -1 =
     // nada pendiente; vale mientras escucha esta NetBg: se olvida al pararse); gapAsked = ya se le pidió por esta conexión y se espera su
     // EOSE (con él queda al día)
+    // lo (fase 1): relé de reserva que solo se ESCUCHA (como r.lo en la app: no se publica en él salvo que un contacto lea ahí); pause: su
+    // pausa para publicar tras un «no» (RelayPolicy.note), compartida con la app
     private class Relay(val url: String) { var ws: WsClient? = null; var retryAt = 0L; var fails = 0; var authed = false; var openedAt = 0L; var closedAt = 0L
+        @Volatile var lo = false; @Volatile var pause: RelayPolicy.Pause? = null
         @Volatile var gapSince = -1L; @Volatile var gapAsked = false }
     // 3204: lo que la política de escucha necesita saber de cada relé (en el orden de la lista): abierto, o se puede intentar ya (pasó su espera)
     class RelayView(val open: Boolean, val due: Boolean)
@@ -116,7 +120,10 @@ class NetBg(
         // dos teléfonos), saltando los caídos (los que esperan su reintento); los demás se sueltan. El ✓✓ sale por los escuchados (son
         // los únicos abiertos). Con Wi-Fi o cable, todos, como siempre; y a cada relé soltado se le pide desde que se soltó (gapSince):
         // el `since` común ya va por delante y saltaría lo que un contacto dejó solo en él mientras tanto.
-        const val CELL_READ_RELAYS = 2
+        // Fase 1 (28-11, contrato B.5.5, se quita «2 relés con datos»): la app ya escuchaba todos (CELL_READ_RELAYS = 99, 3355) y este nativo
+        // solo 2 con datos: lo que un contacto dejaba en otro de los suyos no llegaba con la app oculta (caso S23 27-11 21:53). Ahora los dos
+        // escuchan la MISMA lista entera; listenPlan queda (con n) por si una medida de datos pide bajar repetidos sin cerrar caminos.
+        const val CELL_READ_RELAYS = 99
         const val TTL_MSG_MS = 7 * 86_400_000L // caducidad de un mensaje en los relés (TTL_MSG de la app): más atrás no hay nada que pedir
         // ¿Con datos móviles tras este aviso del tipo de red (NetChange.typeOf)? Celular sin Wi-Fi ni cable: sí. Wi-Fi, cable, VPN sola u
         // otra: no (como siempre). Sin red o sin saberlo: lo que había (un túnel sin cobertura no vuelve a abrir todos los relés).
@@ -299,6 +306,39 @@ class NetBg(
         }
         return out
     }
+    // Fase 1: las pausas que tiene este nativo (para que la app no le mande nada al relé que limitó con ella oculta)
+    fun pausesForApp(): Map<String, RelayPolicy.Pause> = synchronized(lock) {
+        val m = HashMap<String, RelayPolicy.Pause>(); relays.values.forEach { r -> r.pause?.let { m[r.url] = it } }
+        RelayPolicy.merge(m, null, System.currentTimeMillis())
+    }
+    // Fase 1: los relés donde escucho (todos los de la lista: los mismos que la app); van en mi saludo cifrado (lr)
+    fun myReads(): List<String> = synchronized(lock) { relays.keys.toList().take(RelayPolicy.LECTURAS_MAX) }
+    // Fase 1: dónde lee un contacto (null = no lo sé), solo con relés que conozco
+    private fun readsOf(nx: String): List<String>? {
+        val p = synchronized(peerReads) { peerReads[nx] } ?: return null
+        return RelayPolicy.readsOf(p.first, p.second, synchronized(lock) { relays.keys.toList() }, System.currentTimeMillis())
+    }
+    // Fase 1: las conexiones a las que va un sobre (para nx, solo las suyas si sé dónde lee; sin nx, las mías que publican), con la
+    // MISMA política que la app (RelayPolicy.targets): nunca a un relé en pausa
+    private fun targetsFor(nx: String?): List<WsClient> {
+        val now = System.currentTimeMillis()
+        val list = synchronized(lock) { relays.values.toList() }
+        val lee = if (nx != null) readsOf(nx) else null
+        val t = RelayPolicy.targets(list.map { RelayPolicy.View(it.url, it.ws?.open == true, it.pause?.hasta ?: 0L, it.lo) }, lee, now)
+        if (t.publicar.isEmpty() && t.motivo != "sin_reles") routeNote(nx ?: "", t.motivo, now)
+        val byUrl = list.associateBy { it.url }
+        return t.publicar.mapNotNull { byUrl[it]?.ws }.filter { it.open }
+    }
+    private val routeSaid = HashMap<String, Long>()
+    private fun routeNote(nx: String, motivo: String, now: Long) {
+        val k = "$nx|$motivo"
+        synchronized(routeSaid) { if (now - (routeSaid[k] ?: 0L) < 60_000L) return; routeSaid[k] = now }
+        log("[RUTA] Internet en segundo plano" + (if (nx.isNotEmpty()) " a $nx" else "") + ": " + when (motivo) {
+            "en_pausa" -> "sus relés están en pausa (limitaron): espero sin mandar nada"
+            "ninguno_suyo" -> "ninguno de los relés que lee está abierto: espero sin mandar (un ✓ en otro relé mentiría)"
+            else -> "sin relé libre: espero"
+        })
+    }
     private fun keepForApp(ev: String) = synchronized(forApp) {
         forApp.add(ev); forAppChars += ev.length
         while (forApp.size > FOR_APP_MAX || forAppChars > FOR_APP_MAX_CHARS) { forAppChars -= forApp.removeAt(0).length }
@@ -309,7 +349,10 @@ class NetBg(
     // contacto antiguo la ignora, igual que hoy).
     @Volatile private var ackKeys: Map<String, ByteArray> = emptyMap()
 
-    fun configure(me: String, relayUrls: List<String>, since: Long, list: List<Contact>, known: Map<String, String> = emptyMap(), reqOut: Set<String> = emptySet(), reqSince: Long = 0L) {
+    // Fase 1 (28-11): dónde lee cada contacto (nx → (relés, desde cuándo lo sé)): lo da la app al configurar y se pone al día con sus saludos
+    private val peerReads = HashMap<String, Pair<List<String>, Long>>()
+    fun configure(me: String, relayUrls: List<String>, since: Long, list: List<Contact>, known: Map<String, String> = emptyMap(), reqOut: Set<String> = emptySet(), reqSince: Long = 0L,
+                  lo: List<String> = emptyList(), cool: Map<String, RelayPolicy.Pause> = emptyMap()) {
         synchronized(lock) {
             // 3204: otra cuenta: lo pendiente de pedir a los relés soltados era de la anterior
             if (me.lowercase() != this.me) { relays.values.forEach { it.gapSince = -1L; it.gapAsked = false }; gapsForApp.clear() }
@@ -320,8 +363,16 @@ class NetBg(
             // con los mismos relés (conexión, esperas y lo pendiente); los que ya no están se cierran
             val old = LinkedHashMap(relays); relays.clear()
             // S-D5: el nativo solo habla con relés wss:// (uno en claro se ignora; como _relaySafe en la app)
-            relayUrls.forEach { if (WsClient.urlOk(it) && !relays.containsKey(it)) relays[it] = old.remove(it) ?: Relay(it) }
+            relayUrls.forEach { if (WsClient.urlOk(it) && !relays.containsKey(it)) relays[it] = (old.remove(it) ?: Relay(it)).also { r -> r.lo = false } }
+            // fase 1: y los de reserva que la app solo escucha (la misma escucha en los dos), al final de la lista
+            lo.forEach { if (WsClient.urlOk(it) && !relays.containsKey(it)) relays[it] = (old.remove(it) ?: Relay(it)).also { r -> r.lo = true } }
             old.values.forEach { val ws = it.ws; it.ws = null; ws?.close() }
+            // fase 1: las pausas de la app y las mías, juntas (la más larga manda)
+            val now = System.currentTimeMillis()
+            val mine = HashMap<String, RelayPolicy.Pause>(); relays.values.forEach { r -> r.pause?.let { mine[r.url] = it } }
+            val j = RelayPolicy.merge(mine, cool, now)
+            relays.values.forEach { r -> r.pause = j[r.url] }
+            synchronized(peerReads) { list.forEach { c -> if (c.lee.isNotEmpty()) { val prev = peerReads[c.nx]; if (prev == null || prev.first != c.lee) peerReads[c.nx] = Pair(c.lee, now) } else peerReads.remove(c.nx) } }
             tagDay = ""
         }
         if (running) synchronized(lock) { lock.notifyAll() }
@@ -403,7 +454,7 @@ class NetBg(
     // El evento ya viene firmado por la app: va tal cual, a 3 relés abiertos como mucho (la réplica de la app)
     private fun publishRaw(ev: String, expectId: String): Boolean {
         if (!blobChunkOk(ev, expectId)) { log("Bandeja de salida: un trozo guardado no cuadra con su huella ($expectId): no se sube"); return false }
-        val open = synchronized(lock) { relays.values.mapNotNull { it.ws }.filter { it.open } }.take(3)
+        val open = targetsFor(null).take(3) // fase 1: no a los que están en pausa ni a los de solo escucha
         if (open.isEmpty()) return false
         val frame = "[\"EVENT\",$ev]"
         var sent = false
@@ -440,7 +491,7 @@ class NetBg(
                         log("Bandeja de salida: ${x.id} para ${x.nx} es demasiado grande para internet: lo manda la app al abrirse")
                         continue
                     }
-                    if (!publishEvent(ev)) break // se cerraron los relés mientras tanto
+                    if (!publishEvent(ev, x.nx)) continue // fase 1: sus relés en pausa o cerrados (o se cerraron todos): sigue en la bandeja
                     outbox.published(x.id, ev.optString("id"), now)
                     log("Bandeja de salida: ${x.id} para ${x.nx} sale por internet sin la app" + if (x.tries > 1) " (intento nº ${x.tries})" else "")
                 } catch (e: Exception) { log("Bandeja de salida: ${x.id} no se pudo subir (${e.javaClass.simpleName})") }
@@ -631,6 +682,11 @@ class NetBg(
             "AUTH" -> auth(r, m.optString(1))
             "CLOSED" -> if (m.optString(2).startsWith("auth-required")) { /* se resuscribe tras identificarse */ }
             "OK" -> {
+                // Fase 1 (28-11): un «no» de límite, castigo o política pone a ESTE relé en pausa para publicar (como la app; antes se ignoraba)
+                if (!m.optBoolean(2)) RelayPolicy.note(r.pause, m.optString(3), System.currentTimeMillis())?.let { p ->
+                    r.pause = p
+                    log("Relé ${host(r.url)} limita («${m.optString(3).take(90)}»): en pausa ${(p.hasta - p.at) / 1000} s para publicar (${p.n}.ª vez), también para la app")
+                }
                 if (m.optBoolean(2)) { outboxAccepted(m.optString(1)); outboxChunkAccepted(m.optString(1)) } // 3268: ¿era uno de la bandeja de salida? 3281: ¿o un trozo de un archivo suyo?
                 if (!r.authed && m.optBoolean(2)) { r.authed = true; subscribe(r) }
             }
@@ -670,6 +726,9 @@ class NetBg(
         val o = open(c.kraw, c.nx, me, ev.optString("content")) ?: return
         since = advanceSince(since, ts, System.currentTimeMillis())   // auditoría 23-11 (S-A2): solo lo que abrió bien, nunca al futuro
         if (o.optInt("h") == 1) {
+            // Fase 1: su anuncio de dónde lee (saludo de su app o de su nativo)
+            o.optJSONArray("lr")?.let { a -> val t = o.optLong("t"); val l = (0 until minOf(a.length(), RelayPolicy.LECTURAS_MAX)).map { a.optString(it) }.filter { it.isNotEmpty() && it.length < 200 }
+                if (t > 0) synchronized(peerReads) { val prev = peerReads[c.nx]; if (prev == null || prev.second < t) peerReads[c.nx] = Pair(l, t) } }
             // 3234: el saludo de «abrir el chat» lo contesta ya este nativo (la app dormida tardaba 5–33 s en despertar para contestar)
             val now = System.currentTimeMillis()
             if (helloReplyDue(now, o.optLong("t"), synchronized(helloAt) { helloAt[c.nx] ?: 0L }, o.optInt("r") == 1)) {
@@ -746,7 +805,7 @@ class NetBg(
     // app abierta (net_link._hello), sin token ni datos de relé propio (esos los manda la app al despertar). TTL_HELLO = 600 s.
     private fun publishHelloReply(c: Contact) {
         try {
-            val body = JSONObject().put("t", System.currentTimeMillis()).put("w", 0).put("h", 1).put("r", 1)
+            val body = JSONObject().put("t", System.currentTimeMillis()).put("w", 0).put("h", 1).put("r", 1).put("lr", JSONArray(myReads())) // fase 1: dónde leo
             if (publishSealed(c, body, 600L)) log("Internet en segundo plano: saludo de ${c.nx} contestado (su app no hace falta despierta)")
         } catch (e: Exception) { log("Internet en segundo plano: no se pudo contestar el saludo ($e)") }
     }
@@ -754,15 +813,17 @@ class NetBg(
     // Sella `body` para la pareja y lo sube a los relés abiertos (misma etiqueta y sobre que NetLink.send). false si no hay relé abierto.
     private fun publishSealed(c: Contact, body: JSONObject, ttlSecs: Long): Boolean {
         if (synchronized(lock) { relays.values.none { it.ws?.open == true } }) return false
-        return publishEvent(sealedEvent(c, body, ttlSecs))
+        if (targetsFor(c.nx).isEmpty()) return false // fase 1: sus relés en pausa o cerrados: no se sella para nada
+        return publishEvent(sealedEvent(c, body, ttlSecs), c.nx)
     }
     private fun sealedEvent(c: Contact, body: JSONObject, ttlSecs: Long): JSONObject {
         val b64 = seal(c.kraw, me, c.nx, body.toString())
         val tagPub = Secp256k1.hex(Secp256k1.xOnly(tagKey(c.kraw, c.nx, day(0))))
         return event(randomSk(), KIND, listOf(listOf("p", tagPub), listOf("expiration", (System.currentTimeMillis() / 1000 + ttlSecs).toString())), b64)
     }
-    private fun publishEvent(ev: JSONObject): Boolean {
-        val open = synchronized(lock) { relays.values.mapNotNull { it.ws }.filter { it.open } }
+    // Fase 1: a los relés de la política común (para nx: donde lee; nunca a uno en pausa)
+    private fun publishEvent(ev: JSONObject, nx: String?): Boolean {
+        val open = targetsFor(nx)
         if (open.isEmpty()) return false
         val frame = JSONArray(listOf("EVENT", ev)).toString()
         var sent = false

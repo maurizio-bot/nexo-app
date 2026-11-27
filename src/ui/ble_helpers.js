@@ -256,7 +256,7 @@ export function _dupBleLinksToClose(links, opts) {
 export function _resendWaitErr(e) {
   var m = String((e && e.message) || '');
   if (/ACK timeout/i.test(m) || (e && e.code === 'IN_MAILBOX')) return true;
-  return !!(e && e.code === 'NET_REJECTED' && /rate.?limit|slow down|too many|banned/i.test(m));
+  return !!(e && e.code === 'NET_REJECTED' && /rate.?limit|slow down|too many|banned|en espera/i.test(m)); // fase 1: «en espera» (ninguno de sus relés abierto)
 }
 
 export function _rssiToBars(rssi) {

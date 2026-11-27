@@ -297,7 +297,10 @@ if (mode === 'multi') {
       }))));
       return;
     }
+    // Fase 1 (28-11): lo que cada relé aceptó (ok) y rechazó (no) de lo que le publicaron, y hacer que uno diga «no» (refuse: texto o null)
+    if (t === 'PUBS') { q(async () => say('PUBS ' + JSON.stringify(relays.map((r) => ({ ok: r.stats.published, no: r.stats.rejected.length }))))); return; }
     const o = JSON.parse(t);
+    if (o.refuse !== undefined) { q(async () => { const msg = o.msg || null; relays[o.refuse].opts.refuse = msg ? () => msg : undefined; say('REFUSE ' + o.refuse); }); return; }
     if (o.down !== undefined) { q(async () => { const i = o.down; down[i] = true; await relays[i].stop(); say('DOWN ' + i); }); return; }
     if (o.up !== undefined) { q(async () => { const i = o.up; await relays[i].start(ports[i]); watch(i); down[i] = false; say('UP ' + i); }); return; }
     if (o.send) {

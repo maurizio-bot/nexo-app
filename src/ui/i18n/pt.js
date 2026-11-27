@@ -829,7 +829,7 @@ export default {
   prof_cp_online: "Online",
   prof_cp_offline: "Desconectado",
   prof_cp_chat: "Abrir conversa",
-  prof_photo_big: "A foto tem mais de 5 MB: escolha uma menor",
+  prof_photo_big: "A foto tem mais de 5 MB: escolha uma menor", av_crop_title: "Ajuste a foto", av_crop_hint: "Arraste para mover · faça pinça ou use a barra para aproximar ou afastar", av_crop_use: "Usar foto", av_crop_zoom: "Aproximar ou afastar",
   chat_photo_big: "A foto tem mais de 40 MB: escolha uma menor", chat_photo_as_file: "Essa foto está num formato que não pode ser mostrado: é enviada como arquivo",
   prof_cp_mine: "É minha foto",
   prof_cp_mine_sure: "É sua? Toque de novo para confirmar",

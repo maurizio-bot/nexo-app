@@ -12,7 +12,10 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Mejoras de estabilidad y de entrega de mensajes.
+- Por internet, tus mensajes van a los servidores donde tu contacto los lee: ya no se marcan ✓ si él no los va a recibir.
+- Con la app cerrada, NEXO escucha los mismos servidores que abierta y respeta cuando uno pide esperar (menos bloqueos).
+- Al poner tu foto de perfil o la del grupo, ahora la ajustas tú (mover, acercar o alejar) y se ve más nítida.
+- En los grupos ya puedes eliminar para todos un mensaje tuyo.
 </es-419>
 <!-- /APK -->
 

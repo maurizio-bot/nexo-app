@@ -76,7 +76,7 @@ function _pickList(id, title, items, saveLabel, onSave, max) {
   p.sheet.appendChild(save);
   return p;
 }
-function _run(promise) { return Promise.resolve(promise).catch(function(e) { _toast((e && e.message) || String(e)); }); }
+function _run(promise) { return Promise.resolve(promise).catch(function(e) { if (e && e.code === 'CANCEL') return; _toast((e && e.message) || String(e)); }); } // 28-11: cerrar el ajuste de la foto no es un error
 
 // Elegir el modo (al crear el grupo y en Ajustes): Control (el creador y los admins mandan) / Colegas (todos hacen todo)
 // OPCIONES del grupo (dueño 23-11: «lo primero al crear un grupo son las opciones; algo muy rápido, dos nada más»). También en

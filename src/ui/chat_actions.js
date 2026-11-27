@@ -393,7 +393,9 @@ export function _openMsgMenu(div) {
     if (canStar(msg)) add(msg.starred ? t('chat_unstar', '⭐  Quitar destacado') : t('chat_star', '⭐  Destacar'), 'mm-star', function() { toggleStar(cid, msg); });
     if (canPin(cid, msg)) add(isPinned(_normId(cid), id) ? t('chat_unpin', '📌  Desfijar') : t('chat_pin', '📌  Fijar'), 'mm-pin', function() { togglePin(cid, msg); });
     add(t('chat_delete_me', '🗑  Eliminar para mí'), 'mm-del-me', function() { _deleteForMe(cid, id); }, true);
-    if (isOwn && !deleted && Date.now() - (msg.timestamp || 0) < DELETE_ALL_MS && _peerUnderstands(cid)) {
+    // 28-11 (dueño: «a grupos falta el botón eliminar para todos»): también en un grupo (a cada miembro, como editar, 3195)
+    var gsDel = window.bleInterface && window.bleInterface.groups, inGroup = !!(gsDel && typeof gsDel.isGroup === 'function' && gsDel.isGroup(cid));
+    if (isOwn && !deleted && Date.now() - (msg.timestamp || 0) < DELETE_ALL_MS && (inGroup || _peerUnderstands(cid))) {
       add(t('chat_delete_all', '🗑  Eliminar para todos'), 'mm-del-all', function() { _deleteForAll(cid, msg); }, true);
     }
     add(t('chat_cancel', 'Cancelar'), 'mm-cancel', function() {});
@@ -738,7 +740,14 @@ export function _deleteForMe(cid, id) {
 export function _deleteForAll(cid, msg) {
   var id = msg.msgId || msg.messageId;
   _outboxForget(id);
-  _sendTextTo(cid, JSON.stringify({ type: 'nexo_act', act: 'del', id: id }), '', true);
+  // 28-11: en un GRUPO, la misma acción oculta (cifrada de extremo a extremo) a cada miembro con el id del grupo (g); cada uno la aplica a
+  // su copia (id + sus 8 letras) solo si el mensaje lo escribí yo (como la edición, 3195)
+  var gs = window.bleInterface && window.bleInterface.groups, g = gs && typeof gs.isGroup === 'function' && gs.isGroup(cid) ? gs.get(cid) : null;
+  if (g) {
+    var wire = JSON.stringify({ type: 'nexo_act', act: 'del', id: id, g: g.id }), me = _myNexoId(), n = 0;
+    (g.members || []).forEach(function(nx) { if (_normId(nx) && _normId(nx) !== me) { _sendTextTo(_normId(nx), wire, '', true); n++; } });
+    console.log('[CHAT] Mensaje del grupo ' + g.id + ' eliminado para todos (a ' + n + ' persona(s))');
+  } else _sendTextTo(cid, JSON.stringify({ type: 'nexo_act', act: 'del', id: id }), '', true);
   vaultBlankMessage(cid, id).then(function() { _rerenderBlank(id, msg); return _refreshChatPreview(cid); }).catch(function() {});
   unpinId(cid, id, false); // dueño 23-11: borrado para todos: deja de estar fijado también para todos
   console.log('[CHAT] Mensaje eliminado para todos');
@@ -914,13 +923,20 @@ export function _applyChatAction(senderId, act) {
     return;
   }
   if (!act || act.act !== 'del' || !act.id) return;
-  var cid = _normId(senderId);
+  var cid = _normId(senderId), midd = String(act.id), whod = cid;
+  // 28-11: eliminado para todos en un GRUPO: solo de un miembro, a mi copia (id + mis 8 letras) y solo si ese mensaje lo escribió él
+  if (act.g) {
+    var gsd = window.bleInterface && window.bleInterface.groups, gd = gsd ? gsd.get(act.g) : null, med = _myNexoId();
+    if (!gd || gd.left || (gd.members || []).indexOf(whod) < 0 || !/^gm[0-9a-z]+$/.test(midd) || !med) { console.warn('[CHAT] Eliminado de grupo descartado (de ' + whod + ': no es miembro o el grupo no está)'); return; }
+    cid = gd.id; midd = midd + '_' + med.substring(2);
+  }
   // 3175: si el mensaje aún no llegó, queda la lápida: cuando llegue no se mostrará ni se guardará (ni su adjunto, ni su aviso)
-  vaultBlankMessage(cid, act.id, true).then(function(r) { // solo mensajes que escribió quien lo pide
-    if (r === 'queued') { console.log('[CHAT] ' + cid + ' eliminó para todos un mensaje que aún no llegó: no se mostrará'); return; }
+  vaultBlankMessage(cid, midd, true, whod).then(function(r) { // solo mensajes que escribió quien lo pide
+    if (r === 'queued') { console.log('[CHAT] ' + whod + ' eliminó para todos un mensaje que aún no llegó: no se mostrará'); return; }
+    if (r === 'author') { console.warn('[CHAT] Eliminado de ' + midd + ' descartado: ' + whod + ' no lo escribió (suplantación)'); return; }
     if (r !== true) return;
-    console.log('[CHAT] ' + cid + ' eliminó un mensaje para todos');
-    if (_normId(_getCurrentContactId()) === cid) _findMessage(cid, act.id).then(function(m) { if (m) _rerenderBlank(act.id, m); });
+    console.log('[CHAT] ' + whod + ' eliminó un mensaje para todos');
+    if (_normId(_getCurrentContactId()) === cid) _findMessage(cid, midd).then(function(m) { if (m) _rerenderBlank(midd, m); });
     return _refreshChatPreview(cid);
   }).catch(function() {});
 }

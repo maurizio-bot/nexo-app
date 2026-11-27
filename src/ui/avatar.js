@@ -1,6 +1,6 @@
 /**
  * avatar.js v1.0 (ronda 2765, pedido del dueño) — Foto de perfil.
- * - La propia: Perfil → tocar el círculo → elegir una foto; se recorta cuadrada a 160 px (JPEG, ~10–15 KB) y se guarda
+ * - La propia: Perfil → tocar el círculo → elegir una foto; se ajusta en un círculo (mover, acercar, alejar; 28-11: avatar_crop.js) y sale a 384 px (JPEG, ≤ 45 KB) y se guarda
  *   (cifrada en reposo, como todo lo de NEXO) en nexo_my_avatar.json { h, img }.
  * - Va a cada contacto como acción oculta del chat ({type:'nexo_act', act:'av', h, img}): cifrada de extremo a extremo,
  *   por cualquier camino (Bluetooth, Wi-Fi, internet, Jump), sin aviso ni "no leído"; a quien aún no la tiene, al
@@ -24,12 +24,13 @@ import { _sendTextTo } from './send.js';
 import { isBlocked } from './bloqueo.js';
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
 import { t } from './i18n.js';
+import { openAvatarCrop } from './avatar_crop.js';
 import { printOfImage, printSame, printScore, printValid } from './img_print.js';
 
 var MY_FILE = 'nexo_my_avatar.json', SENT_FILE = 'nexo_av_sent.json', HIST_FILE = 'nexo_av_hist.json';
 var IMG_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/;
 var MAX_LEN = 60000;          // ~45 KB de imagen como mucho (las nuestras: 10–15 KB)
-var SIZE = 160;
+// (28-11: el tamaño del resultado está en avatar_crop.js, OUT_SIZE = 384 px)
 export var AVATAR_MAX_BYTES = 5 * 1024 * 1024;   // 3066 (dueño 13-11): la foto que se elige para el perfil, como mucho 5 MB
 var NX_RE = /^nx[0-9a-z]{8}$/;
 
@@ -397,7 +398,9 @@ export function applyAvatar(sender, act) {
   _keep(nx, img, at).then(_recompute).catch(function() {});
 }
 
-// Cuadrada, 160 px, JPEG (el simulador no tiene canvas: window.NEXO_makeAvatar)
+// 28-11 (dueño: «que no se recorten tanto y suban con buena calidad»): antes se cortaba sola al cuadrado del centro a 160 px; ahora el
+// usuario la ajusta (mover, acercar y alejar hasta verla entera) y sale a 384 px con la mejor calidad que cabe (avatar_crop.js).
+// Rechaza con code 'CANCEL' si el usuario cierra el ajuste (sin aviso). El simulador no tiene canvas: window.NEXO_makeAvatar.
 export function makeAvatar(file) {
   if (file && file.size > AVATAR_MAX_BYTES) return Promise.reject(new Error(t('prof_photo_big', 'La foto pesa más de 5 MB: elige una más pequeña')));
   if (typeof window.NEXO_makeAvatar === 'function') return Promise.resolve(window.NEXO_makeAvatar(file));
@@ -407,18 +410,11 @@ export function makeAvatar(file) {
     r.onload = function() {
       var im = new Image();
       im.onerror = function() { reject(new Error(t('misc_avatar_not_image', 'no es una imagen'))); };
-      im.onload = function() {
-        var s = Math.min(im.width, im.height), cv = document.createElement('canvas');
-        cv.width = cv.height = SIZE;
-        cv.getContext('2d').drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, SIZE, SIZE);
-        var out = cv.toDataURL('image/jpeg', 0.82);
-        if (out.length > MAX_LEN) out = cv.toDataURL('image/jpeg', 0.6);
-        resolve(out);
-      };
+      im.onload = function() { openAvatarCrop(im).then(resolve, reject); };
       im.src = r.result;
     };
     r.readAsDataURL(file);
   });
 }
 
-if (typeof window !== 'undefined') { window.NEXO_applyAvatar = applyAvatar; window.NEXO_avatarOf = avatarOf; window.NEXO_avatarDiag = avatarDiag; } // pruebas (tests/sim/cola3033.js)
+if (typeof window !== 'undefined') { window.NEXO_applyAvatar = applyAvatar; window.NEXO_avatarOf = avatarOf; window.NEXO_avatarDiag = avatarDiag; window.NEXO_avatarMake = makeAvatar; } // pruebas (tests/sim/cola3033.js)

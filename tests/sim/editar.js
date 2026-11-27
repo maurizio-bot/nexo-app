@@ -19,6 +19,8 @@
 //      para escribir), avisa y el texto se queda en la caja, sin mandar nada;
 //  E8  los textos («Editar», «Editando mensaje», «Editado» y el aviso de los 15 min) en los 5 idiomas y sin voseo;
 //  E9  tras reiniciar B sigue editado (bóveda) y con «Editado»;
+//  E11 (28-11) eliminar para todos en un GRUPO: A lo tiene en el menú de su mensaje (B no en el de A); a B y C les queda eliminado;
+//      un «eliminar» de otro miembro o de fuera se ignora (suplantación);
 //  E10 una edición cuyo texto parece JSON del protocolo (p. ej. una foto) se guarda y se ve como TEXTO (no cambia el tipo del mensaje).
 // (Que la barra «Editando mensaje» se VEA encima de la barra de escribir y su ✕ se pueda tocar lo mira pressall.js en Chromium: antes
 // de la 3195 quedaba detrás.) Imprime EDITAR {json} y escribe last_logs_editar.txt.
@@ -358,6 +360,27 @@ const editsIn = (name) => logs.filter((l) => l.indexOf('[' + name + '] PRUEBA ll
   r.E6_aviso_suplantacion = logs.some((l) => /\[B\] warn: \[CHAT\] Edición de .* descartada: .* no lo escribió/.test(l));
   r.E6_ok = r.E6_B_sigue === '[E3] del grupo editado' && r.E6_aviso_suplantacion;
 
+  // ---------- E11 (28-11, dueño: «a grupos falta el botón eliminar para todos»): eliminar para todos en el GRUPO ----------
+  await openGroup(A, gid);
+  typeSend(A, '[E11] para borrar');
+  const g11 = await ownWith(A, gid, /\[E11\]/);
+  const w11B = g11 && (g11.msgId + '_' + idB.substring(2)), w11C = g11 && (g11.msgId + '_' + idC.substring(2));
+  r.E11_llega_s = await waitFor(async () => !!(g11 && await byId(B, gid, w11B) && await byId(C, gid, w11C)), 40000);
+  // suplantación: C (miembro) y alguien de fuera piden borrar el mensaje de A en B: se ignora
+  inject(B, idC, { type: 'nexo_act', act: 'del', id: g11.msgId, g: gid });
+  inject(B, 'nxzzzzzzzz', { type: 'nexo_act', act: 'del', id: g11.msgId, g: gid });
+  await sleep(1500);
+  r.E11_suplantacion_ignorada = !((await byId(B, gid, w11B)) || {}).deleted && logs.some((l) => /\[B\] warn: \[CHAT\] Eliminado de .* descartado: .* no lo escribió/.test(l));
+  await openGroup(B, gid);
+  r.E11_B_menu_ajeno = (await bubbleMenu(B, w11B)) ? !!$(B, '#nexo-msg-menu .mm-del-all') : 'sin_menu'; dismissMenu(B);
+  await closeChat(B);
+  await openGroup(A, gid);
+  r.E11_A_menu = (await bubbleMenu(A, g11.msgId)) ? !!$(A, '#nexo-msg-menu .mm-del-all') : 'sin_menu';
+  click(A.win, $(A, '#nexo-msg-menu .mm-del-all')); await sleep(600);
+  r.E11_A_borrado = !!((await byId(A, gid, g11.msgId)) || {}).deleted;
+  r.E11_borrado_en_B_y_C_s = await waitFor(async () => { const b = await byId(B, gid, w11B), c = await byId(C, gid, w11C); return !!(b && b.deleted && !b.content && c && c.deleted && !c.content); }, 30000);
+  r.E11_ok = r.E11_llega_s !== null && r.E11_suplantacion_ignorada && r.E11_B_menu_ajeno === false && r.E11_A_menu === true && r.E11_A_borrado && r.E11_borrado_en_B_y_C_s !== null;
+
   // ---------- E4G: en el grupo, la edición antes que el mensaje; la falsa de otro que también esperaba no gana ----------
   holdC.tokens.add('[E4G]');
   await openGroup(B, gid);
@@ -434,7 +457,7 @@ const editsIn = (name) => logs.filter((l) => l.indexOf('[' + name + '] PRUEBA ll
     r.E9.E4G_suyo === '[E4G] de B tarde (editado)' && r.E9_marca === 'Editado';
 
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
-  const ok = r.E1_ok && r.E2_ok && r.E3_ok && r.E4_ok && r.E4G_ok && r.E5_ok && r.E6_ok && r.E7_ok && r.E8_ok && r.E9_ok && r.E10_ok && !r.errores.length;
+  const ok = r.E1_ok && r.E2_ok && r.E3_ok && r.E4_ok && r.E4G_ok && r.E5_ok && r.E6_ok && r.E7_ok && r.E8_ok && r.E9_ok && r.E10_ok && r.E11_ok && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('EDITAR ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_editar.txt'), logs.join('\n'));

@@ -79,7 +79,7 @@ export function vaultEarlyQueue(cid, msgId, kind, value, who, ts) {
   if (!cid || !msgId) return false;
   var k = _key(cid, msgId), now = Date.now();
   var w = _w[k] || { t: now };
-  if (kind === 'del') { w = { t: w.t || now, d: 1 }; }
+  if (kind === 'del') { w = { t: w.t || now, d: 1 }; if (who) w.da = _normId(who); } // 28-11: en un grupo, quién lo pidió (solo vale si lo escribió él)
   else if (w.d) return true; // ya eliminado para todos: nada más que hacer
   else if (kind === 'edit') {
     if (typeof value !== 'string' || value.length > EDIT_MAX_CHARS) return false;
@@ -113,6 +113,8 @@ export function vaultEarlyApply(cid, n, existing) {
   var k = _key(cid, n.msgId), w = _w[k];
   if (!w) return null;
   if (Date.now() - (w.t || 0) > KEEP_MS) { delete _w[k]; _saveSoon(); return null; }
+  // 28-11 (eliminar para todos en grupos): en un grupo solo vale si lo pidió quien escribió el mensaje (otro miembro no puede borrarlo)
+  if (w.d && w.da && GID_RE.test(_normId(cid)) && _normId(n.senderNexoId) !== w.da) { delete w.d; delete w.da; }
   if (w.d) {
     n.deleted = true; n.content = ''; n.text = '';
     n.attachmentType = null; n.attachmentPayload = null; n.attachmentRef = null; n.attachmentMeta = null;

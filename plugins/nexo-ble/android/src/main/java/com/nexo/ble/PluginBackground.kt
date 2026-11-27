@@ -351,7 +351,7 @@ internal fun NexoBlePlugin.netBgConfigImpl(call: PluginCall) {
     // solicitud de contacto (NetBg.onReqEvent): todos mis contactos (NEXO ID → nombre: «ya es contacto» y el aviso de posible impostor),
     // a quién mandé yo una solicitud y desde cuándo la app ya no escucha su buzón
     val cfg = try { NetBgSaved.fromApp(call.data) } catch (e: NetBgSaved.BadConfig) { call.reject(e.message); return }
-    netBg().configure(cfg.me, cfg.relays, cfg.since, cfg.contacts, cfg.known, cfg.reqOut, cfg.reqSince)
+    netBg().configure(cfg.me, cfg.relays, cfg.since, cfg.contacts, cfg.known, cfg.reqOut, cfg.reqSince, cfg.lo, cfg.cool)
     netBg().gwHelp = cfg.gwHelp // 3323
     netBg().setAckKeys(HashMap(ackKeys))   // #87: para confirmar la ENTREGA (✓✓) con la app cerrada
     // 3192 (#87, dueño 17-11 «Ok»): y se guarda CIFRADA en el teléfono (solo si cambió) para que la escucha arranque aunque Android haya
@@ -371,7 +371,10 @@ internal fun NexoBlePlugin.netBgDrainImpl(call: PluginCall) {
     // 3205: y los relés que soltó con datos móviles sin pedirles aún lo suyo (url → desde cuándo, ms): se lo pide la app (net_relays._bgGaps)
     val gaps = JSObject()
     try { netBgShared?.drainGapsForApp()?.forEach { (u, at) -> gaps.put(u, at) } } catch (e: Exception) { }
-    call.resolve(JSObject().put("events", arr).put("gaps", gaps))
+    // Fase 1 (28-11): y las pausas de los relés que limitaron con la app oculta (la app no les manda nada hasta que venzan)
+    val cool = JSObject()
+    try { netBgShared?.pausesForApp()?.forEach { (u, p) -> cool.put(u, JSObject().put("kind", p.kind).put("n", p.n).put("at", p.at).put("hasta", p.hasta)) } } catch (e: Exception) { }
+    call.resolve(JSObject().put("events", arr).put("gaps", gaps).put("cool", cool))
 }
 
 // 3268 (PRIORIDAD 1, fase 3; COLA 29): la app da la lista ENTERA de sus textos pendientes ya cifrados de punta a punta

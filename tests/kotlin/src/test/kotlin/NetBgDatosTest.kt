@@ -14,7 +14,8 @@ import kotlin.test.*
  * 3204 (dueño 17-11 «Ok» a 2 conexiones y 2 copias con datos móviles; parte nativa de la 3193), de punta a punta con 4 relés locales que
  * exigen identificarse (NIP-42) y DOS apps REALES (el código de la app compilado, netbg_helper.mjs): A manda con su NetLink.send real y
  * comprueba los ✓✓ con su NetLink real; B da la configuración de la escucha con su _bgConfig real (los relés en el orden común).
- *  1. Con «datos» la NetBg de B solo abre y se suscribe a los 2 primeros relés (REQ contados por relé: los otros 2, ninguno ni conexión).
+ *  FASE 1 (28-11): ya no se escuchan solo 2 con datos (se quitó, contrato B.5.5): la NetBg escucha los 4, como la app.
+ *  1. (3204, hasta la 3167) Con «datos» la NetBg de B solo abría y se suscribía a los 2 primeros relés.
  *  2. Un mensaje de A llega y el ✓✓ (aceptado por la app real de A) sale solo por esos 2.
  *  3. Se cae el 1.º: entra el 3.º (y llega lo siguiente); vuelve el 1.º: se suelta el 3.º.
  *  4. Un mensaje queda solo en los relés 3.º y 4.º (y luego llega otro, más nuevo, por todos): con datos no se ve; al pasar a «Wi-Fi»
@@ -94,14 +95,14 @@ class NetBgDatosTest {
             b.start()
             assertTrue(b.running)
 
-            // 1. Con datos: suscripción solo en los 2 primeros; a los otros 2 ni se conecta
-            var s = waitStats(relay, 10000) { st -> st[0].subs == 1 && st[1].subs == 1 }
-            assertEquals(listOf(1, 1, 0, 0), subs(s), "con datos móviles, suscripción solo en los 2 primeros relés")
-            assertEquals(0, s[2].reqs + s[3].reqs, "a los relés 3.º y 4.º no les llega ni un REQ")
-            assertEquals(listOf(1, 1, 0, 0), opens(s), "ni se conecta a los otros 2")
-            assertTrue(logs.any { it.contains("datos móviles, escucho 2 relés (${host(urls[0])}, ${host(urls[1])})") }, "registro: $logs")
+            // Fase 1 (28-11, contrato B.5.5): con datos móviles la NetBg escucha los 4 (la MISMA lista que la app, que ya escuchaba todos):
+            // lo que un contacto deja solo en el 3.º y el 4.º llega también con datos (caso S23 27-11 21:53). Antes (3204–3167): solo 2.
+            // 1. Con datos: suscripción en los 4
+            var s = waitStats(relay, 10000) { st -> st.all { it.subs == 1 } }
+            assertEquals(listOf(1, 1, 1, 1), subs(s), "con datos móviles, suscripción en los 4 relés (como la app)")
+            assertFalse(logs.any { it.contains("datos móviles, escucho 2 relés") }, "ya no se sueltan relés con datos: $logs")
 
-            // 2. Un mensaje de A (por todos los relés) llega; el ✓✓ sale solo por los 2 escuchados y A (real) lo acepta
+            // 2. Un mensaje de A (por todos los relés) llega; el ✓✓ sale por los relés abiertos y A (real) lo acepta
             val send = { id: String, only: List<Int>?, ago: Int ->
                 val o = JSONObject().put("from", A).put("to", B).put("toPk", pkB).put("ago", ago)
                     .put("p", JSONObject().put("type", "chat").put("msgId", id).put("content", "hola $id").toString())
@@ -115,34 +116,22 @@ class NetBgDatosTest {
             val a1 = (0 until acks.length()).map { acks.getJSONObject(it) }.filter { it.getString("msgId") == "dm1" }
             assertEquals(1, a1.size, "un ✓✓ de dm1: $acks")
             assertTrue(a1[0].getBoolean("ok"), "✓✓ firmado y aceptado por la app real de A")
-            assertEquals(listOf(0, 1), a1[0].getJSONArray("on").let { a -> (0 until a.length()).map { a.getInt(it) } }, "el ✓✓ sale por los 2 relés escuchados")
 
-            // 3. Se cae el 1.º: entra el 3.º (el 4.º sigue sin conexión) y lo siguiente llega
+            // 3. Se cae el 1.º: los otros 3 siguen escuchando y lo siguiente llega
             relay.ask("{\"down\":0}", "DOWN ")
-            s = waitStats(relay, 10000) { st -> st[1].subs == 1 && st[2].subs == 1 }
-            assertEquals(listOf(0, 1, 1, 0), subs(s), "cayó el 1.º: se escucha el 2.º y el 3.º")
-            assertEquals(0, s[3].reqs + s[3].open, "el 4.º, nada")
             send("dm2", null, 0)
             assertTrue(waitFor(10000) { "dm2" in got }, "llegó con el 1.º caído: $got")
-            // vuelve el 1.º (pasada su espera de reintento): se escucha otra vez y se suelta el 3.º
             relay.ask("{\"up\":0}", "UP ")
-            s = waitStats(relay, 25000) { st -> st[0].subs == 1 && st[2].open == 0 }
-            assertEquals(listOf(1, 1, 0, 0), subs(s), "volvió el 1.º: otra vez el 1.º y el 2.º")
-            assertEquals(listOf(1, 1, 0, 0), opens(s), "el 3.º se soltó")
+            s = waitStats(relay, 25000) { st -> st.all { it.subs == 1 } }
+            assertEquals(listOf(1, 1, 1, 1), subs(s), "volvió el 1.º: otra vez los 4")
 
-            // 4. Un mensaje queda SOLO en el 3.º y el 4.º (de hace 3 s); luego otro, nuevo, por todos: el since común lo deja atrás
-            assertEquals(listOf(2, 3), send("dm3", listOf(2, 3), 3).let { a -> (0 until a.length()).map { a.getInt(it) } })
+            // 4. Un mensaje queda SOLO en el 3.º y el 4.º: con datos llega igual (antes había que esperar al Wi-Fi)
+            assertEquals(listOf(2, 3), send("dm3", listOf(2, 3), 0).let { a -> (0 until a.length()).map { a.getInt(it) } })
+            assertTrue(waitFor(10000) { "dm3" in got }, "con datos llegó lo que quedó solo en los relés 3.º y 4.º: $got")
             send("dm4", null, 0)
             assertTrue(waitFor(10000) { "dm4" in got }, "llegó el nuevo: $got")
-            Thread.sleep(1500)
-            assertFalse("dm3" in got, "con datos, lo que quedó solo en los relés no escuchados no se ve todavía")
-            // al Wi-Fi: los 4, y a los soltados se les pide desde que se soltaron
             setNet(b, "wifi")
-            assertTrue(waitFor(15000) { "dm3" in got }, "al volver al Wi-Fi llegó lo que quedó solo en los otros relés: $got")
-            s = waitStats(relay, 10000) { st -> st.all { it.subs == 1 } }
-            assertEquals(listOf(1, 1, 1, 1), subs(s), "con Wi-Fi, suscripción en los 4")
-            assertTrue(logs.any { it.contains("Wi-Fi, escucho todos los relés (4)") }, "registro: $logs")
-            Thread.sleep(800)
+            Thread.sleep(1500)
             acks = JSONArray(relay.ask(JSONObject().put("acks", JSONObject().put("me", A).put("peer", B).put("peerPk", pkB)).toString(), "ACKS "))
             val ok = (0 until acks.length()).map { acks.getJSONObject(it) }.filter { it.getBoolean("ok") && it.getString("from") == B }.map { it.getString("msgId") }.toSet()
             assertEquals(setOf("dm1", "dm2", "dm3", "dm4"), ok, "✓✓ de todos, aceptados por la app real de A: $acks")
@@ -175,26 +164,12 @@ class NetBgDatosTest {
             NetBgSaved.apply(b, NetBgSaved.Saved(cfg, HashMap()))
             setNet(b, "cell")
             b.start()
-            val s = waitStats(relay, 10000) { st -> st[0].subs == 1 && st[1].subs == 1 }
-            assertEquals(listOf(1, 1, 0, 0), subs(s), "con datos móviles, solo los 2 primeros")
-            val since = b.lastSeen()
-            // la app recoge antes de que se pare la escucha: ya le toca (y no se repite en la siguiente recogida)
-            val g1 = gaps(b)
-            assertNotNull(g1, "netBgDrain pasa los relés soltados (drainGapsForApp)")
-            assertEquals(mapOf(urls[2] to since, urls[3] to since), g1, "los 2 soltados, desde lo último visto al soltarlos")
-            // vuelve la app: se para la escucha (antes: lo pendiente se olvidaba aquí) y la app lo recoge después
+            // Fase 1 (28-11): con datos ya no se suelta ningún relé (la misma escucha que la app): no queda nada que pasar a la app
+            val s = waitStats(relay, 10000) { st -> st.all { it.subs == 1 } }
+            assertEquals(listOf(1, 1, 1, 1), subs(s), "con datos móviles, los 4")
+            assertEquals(emptyMap(), gaps(b), "ningún relé soltado")
             b.stop()
-            assertEquals(mapOf(urls[2] to since, urls[3] to since), gaps(b), "parada la escucha, la app aún los recibe")
-            assertEquals(emptyMap(), gaps(b), "una sola vez")
-            // otra vez con datos (soltados de nuevo) y luego el Wi-Fi con la escucha en marcha: ella misma les pide lo suyo, y al pararse
-            // ya no queda nada que pasar a la app
-            b.start()
-            assertEquals(listOf(1, 1, 0, 0), subs(waitStats(relay, 10000) { st -> st[0].subs == 1 && st[1].subs == 1 && st[2].subs == 0 }), "otra vez con datos")
-            setNet(b, "wifi")
-            assertTrue(waitFor(15000) { stats(relay).all { it.subs == 1 } }, "con Wi-Fi, los 4")
-            Thread.sleep(1500)
-            b.stop()
-            assertEquals(emptyMap(), gaps(b), "ya pedido a todos (EOSE): nada pendiente")
+            assertEquals(emptyMap(), gaps(b), "parada la escucha, tampoco")
         } finally { try { bg?.stop() } catch (e: Exception) { }; relay.close(); peer.close() }
     }
 }

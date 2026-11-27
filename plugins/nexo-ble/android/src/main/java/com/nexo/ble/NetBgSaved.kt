@@ -40,7 +40,9 @@ object NetBgSaved {
 
     class Config(val me: String, val relays: List<String>, val since: Long, val contacts: List<NetBg.Contact>,
                  val known: Map<String, String> = emptyMap(), val reqOut: Set<String> = emptySet(), val reqSince: Long = 0L,
-                 val gwHelp: Set<String> = emptySet()) // 3323: los que me ayudaron (reciprocidad del puente a internet)
+                 val gwHelp: Set<String> = emptySet(), // 3323: los que me ayudaron (reciprocidad del puente a internet)
+                 val lo: List<String> = emptyList(), // fase 1 (28-11): los de reserva que solo se escuchan (la misma escucha que la app)
+                 val cool: Map<String, RelayPolicy.Pause> = emptyMap()) // fase 1: las pausas de la app (no se guardan en disco)
     class Saved(val cfg: Config, val ack: Map<String, ByteArray>, val out: String? = null)
     class BadConfig(msg: String) : Exception(msg)
 
@@ -57,22 +59,31 @@ object NetBgSaved {
                     val c = it.getJSONObject(i)
                     val nx = c.optString("nx", ""); val kraw = c.optString("kraw", "")
                     if (nx.isEmpty() || kraw.isEmpty()) throw BadConfig("configuración ilegible")
-                    list.add(NetBg.Contact(nx.lowercase(), c.optString("name"), Secp256k1.unhex(kraw)))
+                    list.add(NetBg.Contact(nx.lowercase(), c.optString("name"), Secp256k1.unhex(kraw), urls(c.optJSONArray("lee"))))
                 }
             }
         } catch (e: Exception) { throw BadConfig("configuración ilegible") }
+        val cool = HashMap<String, RelayPolicy.Pause>()
+        try { o.optJSONObject("cool")?.let { m -> m.keys().forEach { u -> val x = m.optJSONObject(u) ?: return@forEach; if (WsClient.urlOk(u) && x.has("hasta")) cool[u] = RelayPolicy.Pause(x.optString("kind"), maxOf(1, x.optInt("n", 1)), x.optLong("at"), x.optLong("hasta")) } } } catch (e: Exception) { }
         val known = HashMap<String, String>(); val reqOut = HashSet<String>()
         try {
             o.optJSONArray("known")?.let { for (i in 0 until it.length()) { val k = it.optJSONObject(i) ?: continue; val nx = k.optString("nx").lowercase(); if (nx.isNotEmpty()) known[nx] = k.optString("name") } }
             o.optJSONArray("reqOut")?.let { for (i in 0 until it.length()) { val nx = it.optString(i).lowercase(); if (nx.isNotEmpty()) reqOut.add(nx) } }
         } catch (e: Exception) { }
-        return Config(me, relays, o.optLong("since", 0L), list, known, reqOut, o.optLong("reqSince", 0L), helpOf(o))
+        return Config(me, relays, o.optLong("since", 0L), list, known, reqOut, o.optLong("reqSince", 0L), helpOf(o), urls(o.optJSONArray("lo")), cool)
+    }
+    // Fase 1: una lista de relés (wss:// o, en pruebas, ws://), como mucho RelayPolicy.LECTURAS_MAX
+    private fun urls(a: JSONArray?): List<String> {
+        val out = ArrayList<String>()
+        try { a?.let { for (i in 0 until minOf(it.length(), RelayPolicy.LECTURAS_MAX)) { val u = it.optString(i); if ((u.startsWith("wss://") || u.startsWith("ws://")) && u.length < 200 && u !in out) out.add(u) } } } catch (e: Exception) { }
+        return out
     }
 
     // ---------- en disco (el texto que se cifra) ----------
     fun configJson(c: Config): String = JSONObject()
         .put("v", 1).put("me", c.me.lowercase()).put("relays", JSONArray(c.relays)).put("since", c.since).put("reqSince", c.reqSince)
-        .put("contacts", JSONArray(c.contacts.map { JSONObject().put("nx", it.nx).put("name", it.name).put("kraw", Secp256k1.hex(it.kraw)) }))
+        .put("contacts", JSONArray(c.contacts.map { JSONObject().put("nx", it.nx).put("name", it.name).put("kraw", Secp256k1.hex(it.kraw)).put("lee", JSONArray(it.lee)) }))
+        .put("lo", JSONArray(c.lo))
         .put("known", JSONArray(c.known.entries.sortedBy { it.key }.map { JSONObject().put("nx", it.key).put("name", it.value) }))
         .put("reqOut", JSONArray(c.reqOut.sorted()))
         .put("gwHelp", JSONArray(c.gwHelp.sorted()))
@@ -95,7 +106,7 @@ object NetBgSaved {
                 for (i in 0 until it.length()) {
                     val c = it.optJSONObject(i) ?: continue
                     val nx = c.optString("nx").lowercase(); val k = c.optString("kraw").lowercase()
-                    if (NX.matches(nx) && HEX.matches(k)) list.add(NetBg.Contact(nx, c.optString("name"), Secp256k1.unhex(k)))
+                    if (NX.matches(nx) && HEX.matches(k)) list.add(NetBg.Contact(nx, c.optString("name"), Secp256k1.unhex(k), urls(c.optJSONArray("lee"))))
                 }
             }
             val known = HashMap<String, String>()
@@ -103,7 +114,7 @@ object NetBgSaved {
             val reqOut = HashSet<String>()
             o.optJSONArray("reqOut")?.let { for (i in 0 until it.length()) { val nx = it.optString(i).lowercase(); if (NX.matches(nx)) reqOut.add(nx) } }
             if (!NX.matches(me) || relays.isEmpty()) null
-            else Config(me, relays, o.optLong("since", 0L), list, known, reqOut, o.optLong("reqSince", 0L), helpOf(o))
+            else Config(me, relays, o.optLong("since", 0L), list, known, reqOut, o.optLong("reqSince", 0L), helpOf(o), urls(o.optJSONArray("lo")))
         }
     } catch (e: Exception) { null }
 
@@ -149,7 +160,7 @@ object NetBgSaved {
     /** La escucha con lo guardado, igual que netBgConfigImpl + setAckKeysImpl con la app (sin arrancarla). */
     fun apply(bg: NetBg, s: Saved, chunkLoader: ((String) -> List<String>?)? = null) {
         val c = s.cfg
-        bg.configure(c.me, c.relays, c.since, c.contacts, c.known, c.reqOut, c.reqSince)
+        bg.configure(c.me, c.relays, c.since, c.contacts, c.known, c.reqOut, c.reqSince, c.lo)
         bg.gwHelp = c.gwHelp
         bg.setAckKeys(s.ack)
         bg.outboxLoad(s.out, chunkLoader) // 3268: lo que quedó pendiente de salir (se sube en cuanto haya un relé abierto); 3281: con los trozos de sus archivos

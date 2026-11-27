@@ -507,7 +507,8 @@ export async function vaultDeleteMessage(contactNexoId, msgId) {
 // Eliminado para todos: el mensaje queda como aviso ("Se eliminó este mensaje"), sin contenido ni adjuntos
 // 3175: fromPeer = lo pide el contacto (acción recibida): solo un mensaje SUYO y no borrado; si aún no llegó, queda la lápida
 // (vault_early_acts.js) y devuelve 'queued'
-export async function vaultBlankMessage(contactNexoId, msgId, fromPeer) {
+// author (28-11, grupos): quien lo pide; en un GRUPO tiene que ser quien escribió el mensaje ('author' si no: suplantación)
+export async function vaultBlankMessage(contactNexoId, msgId, fromPeer, author) {
   if (!contactNexoId || !msgId) return false;
   var cid = _normId(contactNexoId);
   return _withMsgLock(cid, async function() {
@@ -516,10 +517,11 @@ export async function vaultBlankMessage(contactNexoId, msgId, fromPeer) {
     if (idx < 0) {
       if (!fromPeer) return false;
       await vaultEarlyReady();
-      return vaultEarlyQueue(cid, msgId, 'del') ? 'queued' : false;
+      return vaultEarlyQueue(cid, msgId, 'del', null, author || '') ? 'queued' : false;
     }
     var m = messages[idx];
     if (fromPeer && (m._own || m.deleted)) return false;
+    if (fromPeer && _GID_RE.test(cid) && (!author || _normId(m.senderNexoId) !== _normId(author))) return 'author';
     messages[idx] = Object.assign({}, m, { deleted: true, content: '', attachmentType: null, attachmentPayload: null,
       attachmentRef: null, attachmentMeta: null, hdRef: null, hdStatus: null });
     _persistMessages(cid, messages);

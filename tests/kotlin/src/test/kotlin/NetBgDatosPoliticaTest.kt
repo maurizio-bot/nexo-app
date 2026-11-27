@@ -12,10 +12,18 @@ class NetBgDatosPoliticaTest {
     private val idle = RelayView(open = false, due = true)    // sin conexión, se puede intentar ya (p. ej. soltado o recién configurado)
     private val waiting = RelayView(open = false, due = false) // caído: espera su reintento
 
-    private fun plan(cell: Boolean, rs: List<RelayView>, opens: Set<Int> = rs.indices.toSet()): Triple<List<Int>, List<Int>, List<Int>> {
+    // Fase 1 (28-11): por defecto ya se escuchan TODOS también con datos (CELL_READ_RELAYS = 99, como la app); el mecanismo de «los n
+    // primeros sanos» se sigue probando con n = 2 por si una medida de datos pide usarlo otra vez
+    private fun plan(cell: Boolean, rs: List<RelayView>, opens: Set<Int> = rs.indices.toSet(), n: Int = 2): Triple<List<Int>, List<Int>, List<Int>> {
         val tried = ArrayList<Int>()
-        val p = NetBg.listenPlan(cell, rs, { i -> tried.add(i); i in opens })
+        val p = NetBg.listenPlan(cell, rs, { i -> tried.add(i); i in opens }, n)
         return Triple(p.listen, p.park, tried)
+    }
+
+    @Test fun fase1ConDatosEscuchaTodosComoLaApp() {
+        assertEquals(99, NetBg.CELL_READ_RELAYS)
+        val p = NetBg.listenPlan(true, listOf(open, open, idle, open, idle, open), { true })
+        assertEquals(listOf(0, 1, 2, 3, 4, 5), p.listen); assertEquals(emptyList(), p.park)
     }
 
     @Test fun conWifiEscuchaTodos() {

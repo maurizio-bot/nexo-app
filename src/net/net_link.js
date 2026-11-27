@@ -324,6 +324,7 @@ export class NetLink {
     var res = null;
     try { res = await pl.netBgDrain(); } catch (e) { return 0; }
     try { this._bgGaps(res && res.gaps); } catch (e) {} // 3205: y a qué relés que soltó con datos hay que pedirles desde cuándo
+    try { if (res && res.cool && typeof res.cool === 'object') this.mergeRelayPauses(res.cool); } catch (e) {} // fase 1: las pausas que puso el nativo
     var evs = (res && Array.isArray(res.events)) ? res.events : [];
     // 3044 (diagnóstico S24 APK 3033: «500 sobre(s) … entran ya» tras una llamada en segundo plano con la app viva: eran
     // repetidos que la app ya había procesado; _onEvent los descarta, pero el registro los contaba como nuevos)
@@ -398,6 +399,7 @@ export class NetLink {
     // Solo lo reciente cuenta para "en línea" (lo guardado de hace rato es del buzón)
     if (now - t < UP_MS && t > (peer.lastRx || 0)) { peer.lastRx = t; peer.wifi = !!o.w; peer.gw = !!o.g; }
     if (o.h && !o.r && now - t < UP_MS && t >= (peer.roT || 0)) { peer.ro = o.ro === 1; peer.roT = t; } // 3151: ¿lee del relé propio?
+    if (o.h && Array.isArray(o.lr) && t > 0 && now - t < 86400000) this._notePeerReads(nx, o.lr, t); // fase 1 (28-11): dónde lee (saludo de su app o de su nativo)
     // 3247: ¿tiene NEXO limitado por el ahorro de batería? (solo lo dice el saludo de su app; el del nativo —r— no lo trae)
     if (o.h && !o.r && (o.lm === 0 || o.lm === 1) && now - t < UP_MS) {
       if (!this.state.peerLim) this.state.peerLim = {};
@@ -456,7 +458,7 @@ export class NetLink {
     for (var i = 0; i < cs.length; i++) {
       var nx = _nid(cs[i].nexoId || cs[i].deviceUUID);
       if (isBlocked(nx)) continue; // bloqueo (24-11): sin su clave la escucha nativa no abre sus sobres (ni aviso, ni llamada, ni ✓✓)
-      try { var pair = await this._pair(nx, cs[i].publicKey); list.push({ nx: nx, name: cs[i].name || '', kraw: bytesToHex(pair.kraw) }); } catch (e) {}
+      try { var pair = await this._pair(nx, cs[i].publicKey); list.push({ nx: nx, name: cs[i].name || '', kraw: bytesToHex(pair.kraw), lee: this.peerReads(nx) || [] }); } catch (e) {}
     }
     // 3190 (dueño 17-11: «hay que poner esa notificación: hay un contacto que te quiere agregar»): la parte nativa también escucha mi
     // buzón de solicitudes en segundo plano y avisa. Para eso: todos mis contactos (NEXO ID y nombre: «ya es contacto» y el aviso de
@@ -468,12 +470,16 @@ export class NetLink {
     blockedIds().forEach(function(nx) { if (!seenNx[nx] && nx !== me) { seenNx[nx] = 1; known.push({ nx: nx, name: '' }); } }); // bloqueo (24-11): sus solicitudes tampoco avisan
     var reqOut = ((this.ble && typeof this.ble._reqStore === 'function') ? this.ble._reqStore('nexo_req_out') : []).map(function(x) { return _nid(x && x.id); }).filter(function(nx) { return /^nx[0-9a-z]{8}$/.test(nx); });
     var reqSince = (this._hiddenAt && this.online()) ? this._hiddenAt - 120000 : 0;
-    var sig = list.map(function(c) { return c.nx + c.kraw; }).join(',') + '|' + this.relayUrls().join(',') + '|' + known.map(function(k) { return k.nx + ':' + k.name; }).join(',') + '|' + reqOut.join(',') + '|' + helperList().join(','); // 3323
+    // Fase 1 (28-11, contrato B.5): la parte nativa escucha LO MISMO que la app (los de reserva que yo solo escucho, lo) y publica con la
+    // misma política: dónde lee cada contacto (lee) y las pausas de los relés que limitan (cool), compartidas en los dos sentidos
+    var lo = [], self0 = this; this.relays.forEach(function(r, u) { if (r.lo && !r.gw && self0.relayUrls().indexOf(u) < 0) lo.push(u); });
+    var cool = this.relayPauses(), nowS = Date.now();
+    var sig = list.map(function(c) { return c.nx + c.kraw + (c.lee || []).join(';'); }).join(',') + '|' + this.relayUrls().join(',') + '|' + lo.join(',') + '|' + Object.keys(cool).filter(function(u) { return cool[u].hasta > nowS; }).map(function(u) { return u + cool[u].hasta; }).join(',') + '|' + known.map(function(k) { return k.nx + ':' + k.name; }).join(',') + '|' + reqOut.join(',') + '|' + helperList().join(','); // 3323
     // Desde justo después de lo último que recogió la app (lo ya visto no vuelve a avisar)
     var since = this.state.lastSeen ? this.state.lastSeen + 1000 : Date.now() - 600000;
     if (sig === this._bgSig && !this._bgSinceDirty) return;
     this._bgSig = sig; this._bgSinceDirty = false;
-    try { await pl.netBgConfig({ me: me, relays: this.relayUrls(), since: since, contacts: list, known: known, reqOut: reqOut, reqSince: reqSince, gwHelp: helperList() }); } catch (e) {}
+    try { await pl.netBgConfig({ me: me, relays: this.relayUrls(), lo: lo, cool: cool, since: since, contacts: list, known: known, reqOut: reqOut, reqSince: reqSince, gwHelp: helperList() }); } catch (e) {}
   }
 
   _saveState() {
@@ -513,7 +519,7 @@ export class NetLink {
     var pair = await this._pair(nx, c.publicKey);
     var body = { t: Date.now(), w: this.wifi ? 1 : 0 };
     if (this.gwOnly()) body.g = 1; // puente parte 4: «estoy por un puente»: mándame fotos/archivos al buzón de archivos
-    if (opts && opts.hello) { body.h = 1; if (this.tor.ready && this.tor.onion) { body.o = this.tor.onion; body.op = this.tor.port; } if (this.fcmToken) body.f = this.fcmToken; if (this._ownHealthy()) body.ro = 1; if (typeof window !== 'undefined' && typeof window.NEXO_BG_LIMITED === 'boolean') body.lm = window.NEXO_BG_LIMITED ? 1 : 0; } // 3247: lm = «NEXO limitado por el ahorro de batería» // 3151: ro = «leo del relé propio»
+    if (opts && opts.hello) { body.h = 1; if (this.tor.ready && this.tor.onion) { body.o = this.tor.onion; body.op = this.tor.port; } if (this.fcmToken) body.f = this.fcmToken; if (this._ownHealthy()) body.ro = 1; body.lr = this.myReads(); if (typeof window !== 'undefined' && typeof window.NEXO_BG_LIMITED === 'boolean') body.lm = window.NEXO_BG_LIMITED ? 1 : 0; } // 3247: lm = «NEXO limitado por el ahorro de batería» // 3151: ro = «leo del relé propio»
     // #130b (dueño 31-10): una oferta de llamada/videollamada (1-a-1 o invitación de grupo) marca el sobre con cl:1, para
     // que la escucha nativa de internet en segundo plano (NetBg) la saque como LLAMADA a pantalla completa (enciende el
     // teléfono, Contestar/Rechazar), no como un aviso de mensaje. El síntoma del dueño era justo ese: con la pantalla
@@ -549,7 +555,7 @@ export class NetLink {
     var tag = this._tag(pair, nx, _day(0));
     var ev = _event(schnorr.utils.randomSecretKey(), KIND, [['p', tag.pub], ['expiration', String(Math.floor(Date.now() / 1000) + ttl)]], b64);
     // 3151: lo pesado (parte de llamada, trozo de un archivo en vivo) solo al relé propio si los dos leemos de él (net_own.js)
-    var pub = this._publishOwn(ev, (opts && opts.hello) || ttl === TTL_MSG ? null : this._ownOnlyFor(nx));
+    var pub = this._publishOwn(ev, (opts && opts.hello) || ttl === TTL_MSG ? null : this._ownOnlyFor(nx), (opts && opts.hello) ? null : nx); // fase 1: el saludo va a todos (aún no sé dónde lee); lo demás, a los suyos
     // FCM «despertador» (#87, Fase 2): salió por el buzón de los relés (si fuera por Tor directo ya habría vuelto
     // arriba). M1 (auditoría 28-10): pedir el «toque» SOLO por un mensaje nuevo de verdad (nid: texto nuevo o primer
     // trozo de un archivo) — NUNCA por cada trozo/ack/control; un archivo grande serían miles de toques = cuota de FCM

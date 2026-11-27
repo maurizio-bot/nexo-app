@@ -1,6 +1,7 @@
 import { schnorr } from '@noble/curves/secp256k1.js';
 import { _event, BLOB_KIND, _relaySafe, _relayHost, _rnd, SEND_SILENT_MS, MAX_RELAY_FRAME } from './net_link_shared.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
+import { tipoLimite, pausaMs, anotarLimite, juntarPausas, lecturasDe, destinos } from '../core/ruta/politica_reles.js';
 // Métodos de NetLink: PUBLICAR y BAJAR: eventos en los relés, buzón de archivos, publicar en varios y bajar por id.
 // Reestructuración 15-11: movidos TAL CUAL desde net_link.js, que los une a la clase (como métodos normales).
 
@@ -12,10 +13,8 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 // para la reserva (_spareCheck): entra otro relé. Tras la pausa, el siguiente envío lo prueba otra vez; si vuelve a decir que no, la
 // pausa se dobla. Y mientras dure la calma tras un límite, lo PESADO (trozos de un mensaje grande, historial de grupo, respaldos) sale
 // con un respiro entre evento y evento; lo pequeño (textos, confirmaciones, saludos) sale sin esperar.
-var RATE_COOL_MS = 20000, RATE_COOL_MAX_MS = 600000;       // «rate-limited / slow down / too many»: 20 s, 40 s … 10 min
-var BAN_COOL_MS = 600000, BAN_COOL_MAX_MS = 7200000;       // «banned»: 10 min, 20 min … 2 h
-var POLICY_COOL_MS = 6 * 3600000;                          // no nos deja publicar (web of trust, pago, prueba de trabajo…): 6 h
-var LIMIT_FORGET_MS = 1800000;                             // sin otro «no» en 30 min, la pausa vuelve a empezar desde abajo
+// Fase 1 (28-11): las pausas y el tipo de «no» vienen de la política común app/nativo (src/core/ruta/politica_reles.js; mismos vectores
+// que RelayPolicy.kt). Los valores no cambian: 20 s→10 min por límite, 10 min→2 h por castigo, 6 h por política, se olvida a los 30 min.
 var LIMIT_CALM_MS = 300000, BULK_EV_CHARS = 4000, BULK_GAP_MS = 1200; // tras un límite, 5 min con un respiro de 1,2 s entre eventos pesados
 // 3357 (dueño 27-11, docs/ENRUTADO_27-11.md §4: «cupo por relé: contar sobres/min y no acercarse al límite; lo pesado repartido»): diag. S24
 // 21:53 y 23:33, Fénix y archivos subían decenas de sobres de golpe y los relés limitaban/castigaban. Se cuentan los sobres que salen
@@ -25,37 +24,75 @@ var LIMIT_CALM_MS = 300000, BULK_EV_CHARS = 4000, BULK_GAP_MS = 1200; // tras un
 // CI 3164: con 90/min un archivo de 12 MB por internet (~300 trozos) tardaba minutos y se iba por Bluetooth: sin límites recientes el cupo
 // solo frena una ráfaga desbocada (600/min = 10 por segundo); tras un límite, 30/min (lo que de verdad cuida a los relés).
 var QUOTA_PER_MIN = 600, QUOTA_CALM_PER_MIN = 30, QUOTA_WIN_MS = 60000;
-export function relayLimitKind(msg) {
-  var m = String(msg || '');
-  if (/^(duplicate|invalid|auth-required|error):/i.test(m)) return '';
-  // (la clave de cada sobre es nueva cada vez: «pubkey is not in our web of trust» no se arregla nunca con ese relé)
-  if (/web of trust|not in our|policy|pubkey is not|whitelist|allowlist|paid|payment|^pow:/i.test(m)) return 'policy';
-  if (/banned|^restricted:|^blocked:/i.test(m)) return 'ban';
-  if (/rate.?limit|slow down|too many|too fast/i.test(m)) return 'rate';
-  return '';
-}
-// Pura (prueba relelimita.js): la pausa que toca para el n-ésimo «no» seguido de ese tipo
-export function relayCoolMs(kind, n) {
-  n = Math.max(1, n || 1);
-  if (kind === 'policy') return POLICY_COOL_MS;
-  if (kind === 'ban') return Math.min(BAN_COOL_MS * Math.pow(2, n - 1), BAN_COOL_MAX_MS);
-  if (kind === 'rate') return Math.min(RATE_COOL_MS * Math.pow(2, n - 1), RATE_COOL_MAX_MS);
-  return 0;
-}
+export { tipoLimite as relayLimitKind, pausaMs as relayCoolMs };
 export const netPublish = {
   // 3350: ¿algún relé limitó o castigó hace poco? (lo de fondo, como Fénix, cede internet mientras tanto)
   relayLimitedRecently(ms) { return !!this._limitAt && Date.now() - this._limitAt < (ms || LIMIT_CALM_MS); },
+  // ---------- Fase 1 (28-11, contrato B.5): «dónde leo» ----------
+  // Los relés donde escucho de verdad (la app y, desde la fase 1, también la parte nativa: la misma lista). Va en mi saludo cifrado.
+  myReads() {
+    var self = this, out = [];
+    this.relays.forEach(function(r, u) { if (!r.gw && !r.fetchOnly && (typeof self._subWanted !== 'function' || self._subWanted(r))) out.push(u); });
+    return out.slice(0, 12);
+  },
+  // Los relés que conozco (los de siempre, los de reserva y el propio): solo de esos se acepta un anuncio (politica_reles.lecturasDe)
+  _relayPool() {
+    var out = [];
+    [this._pubRelayUrls(), this._ownList(), this._sparePool(), this.relayUrls()].forEach(function(l) { (l || []).forEach(function(u) { if (out.indexOf(u) < 0) out.push(u); }); });
+    return out;
+  },
+  // Dónde lee este contacto (su último anuncio, si sigue vigente y cruza con lo mío) o null (= no lo sé: a todos los míos, como hasta la 3167)
+  peerReads(nx) {
+    var a = this.state && this.state.peerLee && this.state.peerLee[nx];
+    return a ? lecturasDe(a, this._relayPool(), Date.now()) : null;
+  },
+  // Llegó su anuncio (saludo de su app o de su parte nativa): se guarda (sobrevive al reinicio; caduca a las 24 h)
+  _notePeerReads(nx, lee, t) {
+    if (!Array.isArray(lee) || !(t > 0)) return;
+    var list = lee.filter(function(u) { return typeof u === 'string' && u.length < 200; }).slice(0, 12);
+    if (!this.state.peerLee) this.state.peerLee = {};
+    var prev = this.state.peerLee[nx];
+    if (prev && prev.at >= t) return;
+    var same = prev && prev.lee.join() === list.join();
+    this.state.peerLee[nx] = { lee: list, at: t };
+    if (!same) {
+      var mine = lecturasDe({ lee: list, at: t }, this._relayPool(), Date.now());
+      console.log('[RUTA] ' + nx + ' lee en ' + list.length + ' relé(s)' + (mine ? ' (' + mine.map(_relayHost).join(', ') + '): le publico solo ahí' : ' que no son de los míos: le publico en los míos')); // i18n-ok: registro
+      this._saveState();
+    }
+  },
+  // Una línea [RUTA] (con freno: una por contacto y motivo cada 60 s) cuando no se publica por no tener libre ninguno de sus relés
+  _routeNote(nx, motivo, lee) {
+    var k = nx + '|' + motivo, now = Date.now(), m = this._routeSaid || (this._routeSaid = new Map());
+    if (now - (m.get(k) || 0) < 60000) return;
+    m.set(k, now);
+    console.log('[RUTA] ' + nx + ': ' + (motivo === 'en_pausa' ? 'sus relés (' + lee.map(_relayHost).join(', ') + ') están en pausa' : 'ninguno de sus relés (' + lee.map(_relayHost).join(', ') + ') está abierto') + ': queda pendiente sin mandar (sin ✓ en uno que no lee)'); // i18n-ok: registro
+  },
+  // Pausas compartidas con la parte nativa: las mías ({url: {kind,n,at,hasta}}) y juntar las que trae el nativo al volver la app
+  relayPauses() {
+    var out = {}, now = Date.now();
+    this.relays.forEach(function(r, u) { if (!r.gw && r.limitKind && r.coolUntil) out[u] = { kind: r.limitKind, n: r.limitN || 1, at: r.limitAt || 0, hasta: r.coolUntil }; });
+    return juntarPausas(out, {}, now);
+  },
+  mergeRelayPauses(theirs) {
+    var self = this, now = Date.now(), j = juntarPausas(this.relayPauses(), theirs || {}, now), n = 0;
+    Object.keys(j).forEach(function(u) {
+      var r = self.relays.get(u), x = j[u]; if (!r || r.gw) return;
+      if ((r.coolUntil || 0) < x.hasta) { r.coolUntil = x.hasta; r.limitKind = x.kind; r.limitN = x.n; r.limitAt = x.at; if (x.hasta > now) n++; }
+    });
+    if (n) { this._limitAt = Math.max(this._limitAt || 0, now); console.log('[NET] La parte nativa dejó ' + n + ' relé(s) en pausa para publicar: los respeto'); } // i18n-ok: registro
+    return n;
+  },
   // 3348: ¿este relé está en pausa para publicar?
   relayCooling(r, now) { return !!(r && !r.gw && r.coolUntil && r.coolUntil > (now || Date.now())); },
   // 3348: un relé dijo que no: si es por límite o castigo, en pausa (y quizá entra uno de reserva)
   _relayLimitNote(url, r, msg) {
     if (!r || r.gw) return;
-    var kind = relayLimitKind(msg); if (!kind) return;
-    var now = Date.now();
-    r.limitN = (r.limitKind === kind && now - (r.limitAt || 0) < LIMIT_FORGET_MS) ? (r.limitN || 0) + 1 : 1;
-    r.limitKind = kind; r.limitAt = now; this._limitAt = now;
-    var ms = relayCoolMs(kind, r.limitN);
-    r.coolUntil = now + ms;
+    var now = Date.now(), st = anotarLimite(r.limitKind ? { kind: r.limitKind, n: r.limitN, at: r.limitAt, hasta: r.coolUntil } : null, msg, now);
+    if (!st) return;
+    r.limitN = st.n; r.limitKind = st.kind; r.limitAt = st.at; this._limitAt = now;
+    var ms = st.hasta - now;
+    r.coolUntil = st.hasta;
     console.log('[NET] Relé ' + _relayHost(url) + ' limita («' + String(msg || '').substring(0, 90) + '»): en pausa ' + Math.round(ms / 1000) + ' s para publicar (' + r.limitN + '.ª vez); lo de ahora va a los demás'); // i18n-ok: registro
     try { if (typeof this._spareCheck === 'function') this._spareCheck(); } catch (e) {}
   },
@@ -250,16 +287,31 @@ export const netPublish = {
 
   // only (3151): solo a esos relés (lo pesado al relé propio, net_own.js); sin only, a todos los abiertos como siempre
   // 3348: tras un límite, lo pesado espera su turno (lo pequeño sale ya)
-  _publish(ev, only) {
+  // nx (fase 1, 28-11): el sobre es para ese contacto: va solo a los relés que él lee (si los anunció; política común destinos())
+  _publish(ev, only, nx) {
     var self = this, wait = only ? 0 : Math.max(self._bulkWait(ev), self._quotaWait(ev)); // al relé propio (only) no: no limita; 3357: cupo
-    if (wait > 0) return new Promise(function(res) { setTimeout(res, wait); }).then(function() { return self._publishNow(ev, only); });
-    return self._publishNow(ev, only);
+    if (wait > 0) return new Promise(function(res) { setTimeout(res, wait); }).then(function() { return self._publishNow(ev, only, nx); });
+    return self._publishNow(ev, only, nx);
   },
-  _publishNow(ev, only) {
+  _publishNow(ev, only, nx) {
     var self = this;
     return new Promise(function(resolve, reject) {
       var open = [], cooling = [], now0 = Date.now();
-      self.relays.forEach(function(r, u) { if (r.open && !r.lo && (!only || only.indexOf(u) >= 0)) { if (self.relayCooling(r, now0)) cooling.push(r); else open.push(r); } }); // 3355: los de solo escucha no publican
+      var lee = (nx && !only && !self.gwOnly()) ? self.peerReads(nx) : null;
+      if (lee) {
+        // Fase 1 (contrato B.5.2, caso S24→S23 27-11 21:53): con su anuncio de «dónde leo», solo a los suyos que tengo abiertos (también una
+        // reserva que yo solo escucho) y el ✓ sale solo de ellos. Ninguno suyo libre: pendiente sin mandar (un ✓ en otro relé mentiría).
+        var vista = [];
+        self.relays.forEach(function(r, u) { if (!r.fetchOnly) vista.push({ url: u, abierto: !!(r.open && r.ws), hasta: r.coolUntil || 0, soloLeer: !!r.lo, puente: !!r.gw }); });
+        var d = destinos(vista, lee, now0);
+        d.publicar.forEach(function(u) { open.push(self.relays.get(u)); });
+        if (!open.length) {
+          self._routeNote(nx, d.motivo, lee);
+          if (d.motivo === 'en_pausa') { reject(self._allCoolingErr(d.pausados.map(function(u) { return self.relays.get(u); }))); return; }
+          reject(Object.assign(new Error('Rechazado por los relés: en espera (ninguno de los relés que lee ' + nx + ' está abierto ahora)'), { code: 'NET_REJECTED' })); // i18n-ok: error interno
+          return;
+        }
+      } else self.relays.forEach(function(r, u) { if (r.open && !r.lo && (!only || only.indexOf(u) >= 0)) { if (self.relayCooling(r, now0)) cooling.push(r); else open.push(r); } }); // 3355: los de solo escucha no publican
       // 3348: todos los abiertos en pausa → pendiente ya, sin mandarles nada (cada sobre más sería otra infracción)
       if (!open.length && cooling.length) { reject(self._allCoolingErr(cooling)); return; }
       if (!open.length) { reject(Object.assign(new Error('Sin relés'), { code: 'NET_DOWN' })); return; }
