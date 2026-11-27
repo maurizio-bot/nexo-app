@@ -12,11 +12,10 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Si un servidor de internet pone límite, NEXO deja de insistirle y usa otros: tus mensajes ya no se quedan con «!».
-- Las notas de voz en un grupo se suben una sola vez.
-- Fondo del grupo: el que elijas es solo para ti; compartirlo es opcional.
-- Al traer los mensajes anteriores de un grupo, también llegan las fotos grandes.
-- Ventanas y menús con el mismo estilo.
+- Al traer los mensajes anteriores de un grupo, también llegan las imágenes mandadas como archivo.
+- Cuando alguien entra a un grupo sale un solo aviso.
+- Ajustes del grupo: se vuelve con el gesto de atrás, sin botón.
+- El botón de Estados es una flecha y te enseña el gesto.
 </es-419>
 <!-- /APK -->
 

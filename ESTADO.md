@@ -21,18 +21,19 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
-- **SIGUIENTE (dueño 26-11 20:16, capturas en la 3160, grupo «Pura gente del señor Nexo»):**
-  1. **Historial: siguen «📎 Archivo grande no incluido: 1000103065.png»** (de Austin y Roberto). OJO: el historial lo arma el MIEMBRO que lo manda;
-     si mandó con 3159 sale el aviso viejo. Pero el aviso lleva NOMBRE de archivo → probablemente son imágenes enviadas como `attachmentType 'file'`
-     (png con nombre) o > 200 KB tras reducir: 3349 solo cubre `'image'`. Arreglo: en `group_history.js` tratar también 'file' con mime image/*
-     (reducir igual) y, para lo que no se pueda, mandar el PUNTERO del buzón si `blobPtr` sigue vigente (7 días) o pedirlo al que lo manda.
-  2. **Al entrar alguien salen 3–4 avisos** («Te agregaron al grupo», «Nuevo en el grupo: tú», «Nuevo en el grupo: X», más «✅ Se unió al grupo»):
-     dejar UNO solo (dueño: «con uno es suficiente»). Ver `groups.js` (gj/«Se unió») y los avisos gsn… de `group_admin.js`.
-  3. **Ajustes del grupo (y sus pantallas) tienen botón X y NO tienen gesto de atrás:** el dueño quiere SIN botones de atrás, solo el gesto
-     (como el resto de la app). B-EST (096e5df) puso `.nx-panel`: quitar la X y engancharlo al gesto/botón atrás de Android (`chat_nav`/back handler).
-  4. **Botón Estados (arriba a la derecha en Chats): el símbolo no se entiende** → una FLECHA hacia la derecha; al tocarla, además de ir a
-     Estados, un letrero breve «Desliza la pantalla hacia la izquierda para ver los estados» que se quita solo (enseña el gesto). Prueba E11
-     de `estadospantalla.js` (botón y puntito).
+- **APK 3161 SUBIDA (27-11, Opus): los 4 detalles del dueño en la 3160** (grupo «Pura gente del señor Nexo»). Revisar el CI (~85 min) y, si pasa,
+  NOVEDADES al historial como 3161.
+  1. **Historial de grupo:** imagen mandada desde «Archivo» ('file', png con nombre, > 200 KB) va como FOTO reducida (JPEG) en vez de «📎 Archivo
+     grande no incluido» (`group_history._isImageFile`; `grupohistorial.js` H2c, contraprueba). Sigue el aviso para archivos a disco (> 5 MB,
+     `meta.big`) y para lo que no es imagen; mandar el puntero del buzón para esos queda por hacer (no pedido).
+  2. **Un aviso por teléfono al entrar alguien:** el que entra solo «Te agregaron» (ya no «Nuevo en el grupo: tú», también al volver tras salir
+     o ser expulsado); los demás «Nuevo en el grupo: X» y el «✅ Se unió» de X ya no se muestra donde salió ese aviso (`g.addN` en `group_admin`).
+     Al crear un grupo sigue saliendo «Se unió» (es el único aviso ahí; I3 de grupoinvita). `grupohistorial.js` H1b (contraprueba).
+  3. **Ajustes del grupo y sus pantallas sin X:** atrás de Android cierra la `.nx-panel` de más arriba (`chat_nav.__nexoHandleBack`). `gruposadmin.js`.
+  4. **Botón Estados = flecha →**; al tocarlo, letrero «Desliza la pantalla hacia la izquierda para ver los estados» encima de Estados, 3,5 s,
+     las 3 primeras veces (`estados_screen._btnHint`). `estadospantalla.js` E11 (flecha, letrero, se quita).
+  **PRUEBAS DEL DUEÑO:** (a) mandar un png grande como Archivo al grupo y que alguien nuevo pida «Ver mensajes anteriores»; (b) agregar a alguien:
+  un solo aviso en cada teléfono; (c) Ajustes del grupo → un integrante → atrás, atrás; (d) tocar la flecha de Estados.
 - **APK DE EMERGENCIA (26-11 noche, Opus; el dueño eligió esperar al estilo parejo para que vaya TODO junto) — **APK 3160 PUBLICADA (26-11 20:09 México; CI en verde a la primera)**:**
   1. **Relés que limitan** (diag. 26-11 17:10 y 18:21, S24 → S23, «!»): **3347** no se reintenta 5 veces en 10 s (⏳, no «!»); **3348** relé que
      limita/castiga/no deja publicar queda EN PAUSA para publicar (rate 20 s→10 min; banned 10 min→2 h; web of trust/pago/PoW 6 h; se sigue leyendo),
@@ -52,25 +53,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   pide «Ver mensajes anteriores»: ve las fotos. **Sin hacer:** que lo grande vaya por Bluetooth/Wi-Fi en vez de relés cuando ambos existen (el
   enrutador ya los prefiere; no se tocó). Fable (fuera): modo concierto nativo, 3c Bluetooth en llamada, doble enlace LE Coded → zombi.
   Límite semanal en aviso (se reinicia el domingo 29-11 a las 2:00 México).
-- **APK 3159 SUBIDA (26-11 ~14:40 México):** la 3158 falló en 2 pruebas (avisoschat: buscaba el texto viejo del menú ⋮; gruposaudit: 40 intentos de firma no bastaban, azar) → arregladas las pruebas, sin cambio de la app.
-- **(antes) APK 3158 (26-11 ~12:00, FALLÓ):** la 3157 FALLÓ en «Nada sin definir» (`screen` en `find_ui.js` de la 3345, que nunca había
-  pasado por el CI) → arreglado; 3158 = todo lo de la 3157 + la tanda menor + ICONO EVERBEAT F (círculo y latido naranja #ff2301; `nexo-private/negocio/icono_everbeat_final/`).
-  El NOMBRE aún dice NEXO en la app (Everbeat pendiente del IMPI). Diagnósticos 26-11: doble enlace a la copia LE Coded → zombi (PARA FABLE, en PENDIENTES).
-  LECCIÓN: antes de subir, correr `node tests/sim/undef.js` (tarda 1 s) además de las pruebas cercanas.
-- **TANDA MENOR SIGUIENTE (26-11, en `ccr-5f3d29e2-x9z1cz`, [skip ci], SIN subir: el dueño revisa la 3157 y da indicaciones):** batería al PRIMER contacto
-  (instalación nueva; `_askBgWhenUseful` en main_chats.js, `welcome.js`); menú ⋮ del contacto con iconos de línea (`ble_ui.js`); adjuntar con nombre bajo cada icono;
-  «Agregar contactos» con título 21 px; «Se unió al grupo» ya no suma no-leídos ni avisa (`quiet` en notify.js; era el 1/2/3 de `groups.js`). NOVEDADES: 3157 al historial.
-- **SIGUIENTE SESIÓN (26-11, cerrada por contexto al 37 %):** 1) revisar el CI de la **APK 3157** (run 45851189322, arrancó 9:39 México, ~11:05) y, si pasó, pasar
-  NOVEDADES al historial como 3157. 2) **DUEÑO 26-11: «junta TODO lo que no es pesado para la siguiente; cuando salga la 3157 la reviso, te doy indicaciones y ya después
-  subes esa»** → trabajar en rama con [skip ci] y NO subir a NEXOCHAT hasta sus indicaciones. Lista: (a) permiso de batería DESPUÉS del primer mensaje (aprobado;
-  ajustar `welcome.js` y `battery_prompt.js`); (b) resto de B-EST: ventanas emergentes, menús ⋮ y hojas iguales a Chats (medir en navegador como Ajustes); (c) menú
-  de adjuntar con texto bajo cada icono la primera vez; (d) `groups.js` «no_leido_A» da 1/2/3 (también antes: ¿prueba o cuenta de más?); (e) del resumen 25-11: 13
-  «sin camino» sin ✓✓ y «Wi-Fi local: conectado pero su app no contesta» ×10. Del dueño: nombre en tienda (NEXO/Kinway) y nombre de usuario fijo vs confirmación
-  doble. Para la APK de tienda: `VIA_FADE_MS = 1000` (main.js) + auditoría de seguridad. Para Fable: modo concierto nativo, 3c Bluetooth en llamada.
-  Pruebas en este contenedor: `PLAYWRIGHT_BROWSERS_PATH` a un enlace de `chromium_headless_shell-1243` (el de tests/sim pide la 1194); `estadovideo.js` falla aquí siempre.
-- **TANDA «TODO LO MENOR» (26-11, SUBIDA A NEXOCHAT por orden del dueño; detalle en `docs/PENDIENTES.md` «26-11»; revisar el CI ~85 min):** + botón +, «Chats», botón Estados, símbolo del camino tocable, guía de 7 pasos, Ajustes más humanos; destello de estados nuevos, pantallas parejas
-  (Ajustes/Nuevo grupo = Contactos), grupos solo en los ⋮ del contacto, B0 hecho (3345 escondido), guía de 5 pasos, Contactos vacío con botón, voseo fuera.
-  **ANTES DE LA APK DE TIENDA:** `VIA_FADE_MS = 1000` en `main.js` (símbolo del camino 1 s) y decidir NOMBRE (NEXO/Kinway; ver FICHA.md). Revisión externa: `docs/REVISION_EXTERNA_26-11.md`.
+- **Viejo (3157–3159, tanda menor, lista del 26-11):** en `docs/historial/ESTADO_traspaso_hasta_2026-11-26.md`. LECCIÓN: antes de subir, `node tests/sim/undef.js`.
+  Playwright aquí: `PLAYWRIGHT_BROWSERS_PATH` a una carpeta con `chromium_headless_shell-1194/chrome-linux/headless_shell` → el de la 1243.
 - **DESPUÉS DE ESA APK (25-11, [skip ci], va en la SIGUIENTE):** **3336** adjunto atorado de raíz: con la app congelada la escucha nativa de
   internet guarda en DISCO los trozos de archivo ('f') de un contacto (`NetChunkSpool.kt`, `nexo_netbg_chunks/`, tope 48 MB) y confirma
   SOLO lo guardado con el mismo 'ba' que la app; la app los recoge primero en netBgDrain (JVM `NetChunkSpoolTest` 6, con relé local).
