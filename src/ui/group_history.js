@@ -96,8 +96,16 @@ export function onHistoryQuery(from, act) {
     // nombres de archivos de ESTE teléfono; en el otro la foto se quedaba en miniatura sin poder abrirse).
     return Promise.all((msgs || []).map(function(m) {
       var pl = typeof m.attachmentPayload === 'string' ? m.attachmentPayload : '';
-      if (m.attachmentType !== 'image' || !pl || pl.length <= HIST_ATT_MAX * 4 / 3 || (m.attachmentMeta && m.attachmentMeta.once)) return m;
-      return _smallImage(m, pl).then(function(s) { return s ? Object.assign({}, m, { attachmentPayload: s, attachmentMeta: Object.assign({}, m.attachmentMeta || {}, { format: 'jpeg', histSmall: 1 }) }) : m; });
+      // 26-11 (dueño, 3160: «📎 Archivo grande no incluido: 1000103065.png»): una imagen mandada desde «Archivo» viaja como 'file'
+      // con su nombre y mime image/*; se reduce igual y en el historial va como FOTO (JPEG), ya no como el aviso.
+      var asFile = _isImageFile(m);
+      if ((m.attachmentType !== 'image' && !asFile) || !pl || pl === 'big' || pl.length <= HIST_ATT_MAX * 4 / 3 || (m.attachmentMeta && m.attachmentMeta.once)) return m;
+      return _smallImage(m, pl).then(function(s) {
+        if (!s) return m;
+        var am = Object.assign({}, m.attachmentMeta || {}, { format: 'jpeg', histSmall: 1 });
+        if (asFile) { am = { format: 'jpeg', histSmall: 1 }; if (m.attachmentMeta && m.attachmentMeta.caption) am.caption = m.attachmentMeta.caption; }
+        return Object.assign({}, m, { attachmentType: 'image', attachmentPayload: s, attachmentMeta: am });
+      });
     }));
   }).then(function(msgs) {
     var items = (msgs || []).map(function(m) {
@@ -120,6 +128,14 @@ export function onHistoryQuery(from, act) {
   }).catch(function(e) { console.warn('[GROUP] No se pudo mandar el historial de ' + gid + ': ' + (e && e.message)); });
 }
 
+// Imagen mandada como archivo (con nombre): 'file' con mime image/* (o extensión de imagen), no un archivo grande a disco
+var IMG_EXT_RE = /\.(png|jpe?g|webp|gif|bmp|heic|heif)$/i;
+function _isImageFile(m) {
+  if (!m || m.attachmentType !== 'file') return false;
+  var am = m.attachmentMeta || {};
+  if (am.big) return false;
+  return /^image\//i.test(String(am.mime || am.type || '')) || IMG_EXT_RE.test(String(am.name || ''));
+}
 // 3349: lo de la burbuja que es de ESTE teléfono (o del envío por el buzón) no viaja en el historial
 function _wireMeta(am) {
   if (!am || typeof am !== 'object') return null;
@@ -160,7 +176,8 @@ function _smallImage(m, b64) {
         } catch (e) { fin(null); }
       };
       img.onerror = function() { fin(null); };
-      img.src = 'data:image/' + ((m.attachmentMeta && m.attachmentMeta.format) || 'jpeg') + ';base64,' + b64;
+      var am0 = m.attachmentMeta || {}, mt = /^image\/[a-z0-9.+-]{1,30}$/i.test(String(am0.mime || '')) ? String(am0.mime) : 'image/' + (am0.format || 'jpeg');
+      img.src = 'data:' + mt + ';base64,' + b64;
     } catch (e) { fin(null); }
   }).then(function(v) { return v || thumb(); }).then(function(v) {
     console.log('[GROUP] Historial: foto ' + id + ' de ' + Math.round(b64.length * 3 / 4 / 1024) + ' KB → ' + (v ? 'copia reducida de ' + Math.round(v.length * 3 / 4 / 1024) + ' KB' : 'sin copia reducida (va el aviso)'));

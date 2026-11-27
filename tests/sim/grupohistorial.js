@@ -6,6 +6,7 @@
 //      otro grupo con eso cerrado no ofrece el botón y si C lo pide igual, nadie se lo manda.
 //  H2b 3349 (dueño 26-11: «hay imágenes del historial que no se descargan»): las fotos de antes también llegan (chica, mediana) y la GRANDE
 //      (más que el tope) llega como copia reducida en vez del aviso «Archivo grande no incluido».
+//  H2c (dueño 26-11, 3160): lo mismo con una imagen grande mandada desde «Archivo» ('file', «1000103065.png»): llega como foto.
 // Contraprueba: la build de antes no tiene botón (H1 falla).
 // Imprime GRUPOHIST {json} y escribe last_logs_grupohistorial.txt. Uso: node grupohistorial.js <dir_build>
 'use strict';
@@ -108,11 +109,17 @@ const grpHas = async (p, gid, re) => (await msgsOf(p, gid)).some((m) => re.test(
   A.win.NEXO_sendAttachment('image', IMG2, { format: 'jpeg', mime: 'image/jpeg' }, { contactId: gid }); await sleep(800);
   // y una GRANDE (300 KB, más que el tope del historial): le llega a C una copia reducida (aquí su miniatura guardada: el simulador no tiene lienzo)
   const IMG3 = mkImg(300000, 33), TH3 = mkImg(20000, 44);
-  A.win.NEXO_sendAttachment('image', IMG3, { format: 'jpeg', mime: 'image/jpeg' }, { contactId: gid });
+  A.win.NEXO_sendAttachment('image', IMG3, { format: 'jpeg', mime: 'image/jpeg' }, { contactId: gid }); await sleep(800);
+  // H2c (dueño 26-11, 3160: «📎 Archivo grande no incluido: 1000103065.png»): una imagen GRANDE mandada desde «Archivo» ('file', png con nombre)
+  const IMG4 = mkImg(300000, 55), TH4 = mkImg(18000, 66);
+  A.win.NEXO_sendAttachment('file', IMG4, { name: '1000103065.png', size: 225000, type: 'image/png', mime: 'image/png' }, { contactId: gid });
   await closeChat(A);
   await waitFor(async () => { const l = await msgsOf(A, gid); return l.some((m) => m.attachmentType === 'image' && m._own && m.attachmentRef && !l.filter((x) => x.attachmentType === 'image').every((x) => x.attachmentRef !== m.attachmentRef)); }, 10000);
   { const hy = await A.win.vaultHydrateAttachments((await msgsOf(A, gid)).filter((m) => m.attachmentType === 'image')); const m3 = hy.find((m) => m.attachmentPayload === IMG3);
     r.foto_grande_registrada = !!m3; if (m3) await A.win.Capacitor.Plugins.NexoBLE.saveToFile({ filename: 'nexo_thumb_' + String(m3.msgId).replace(/[^A-Za-z0-9_-]/g, '_') + '.b64', content: TH3 }); }
+  await waitFor(async () => { const hy = await A.win.vaultHydrateAttachments((await msgsOf(A, gid)).filter((m) => m.attachmentType === 'file')); return hy.some((m) => m.attachmentPayload === IMG4); }, 10000);
+  { const hy = await A.win.vaultHydrateAttachments((await msgsOf(A, gid)).filter((m) => m.attachmentType === 'file')); const m4 = hy.find((m) => m.attachmentPayload === IMG4);
+    r.png_registrado = !!m4; if (m4) await A.win.Capacitor.Plugins.NexoBLE.saveToFile({ filename: 'nexo_thumb_' + String(m4.msgId).replace(/[^A-Za-z0-9_-]/g, '_') + '.b64', content: TH4 }); }
   const imgsIn = async (p) => { const ms0 = await msgsOf(p, gid); const hy = p.win.vaultHydrateAttachments ? await p.win.vaultHydrateAttachments(ms0.filter((m) => m.attachmentType === 'image')) : []; return hy.map((m) => m.attachmentPayload); };
   r.fotos_en_B_s = await waitFor(async () => { const l = await imgsIn(B); return l.indexOf(IMG1) >= 0 && l.indexOf(IMG2) >= 0; }, 90000);
   await sleep(1000);
@@ -147,9 +154,10 @@ const grpHas = async (p, gid, re) => (await msgsOf(p, gid)).some((m) => re.test(
   r.H2_boton_se_va = !C.win.document.getElementById('nx-grp-hist');
   await closeChat(C);
   r.H2_fotos_s = await waitFor(async () => { const l = await imgsIn(C); return l.indexOf(IMG1) >= 0 && l.indexOf(IMG2) >= 0; }, 30000);
-  r.H2_fotos = (await imgsIn(C)).map((x) => (x === IMG1 ? 'chica' : x === IMG2 ? 'mediana' : x === TH3 ? 'grande_reducida' : String(x || 'nada').length));
+  r.H2_fotos = (await imgsIn(C)).map((x) => (x === IMG1 ? 'chica' : x === IMG2 ? 'mediana' : x === TH3 ? 'grande_reducida' : x === TH4 ? 'png_reducido' : String(x || 'nada').length));
+  r.H2c_png_como_foto = r.H2_fotos.indexOf('png_reducido') >= 0 && !(await grpHas(C, gid, /no incluido[^\n]*1000103065/));
   r.H2_grande_reducida = r.H2_fotos.indexOf('grande_reducida') >= 0 && !(await grpHas(C, gid, /Archivo grande no incluido/));
-  r.H2_ok = r.H2_llega_s !== null && r.H2_fotos_s !== null && r.H2_grande_reducida && r.H2_de_B && r.H2_avisos === 0 && r.H2_sin_repetidos && r.H2_creo_una_vez && r.H2_boton_se_va && ms.length > before;
+  r.H2_ok = r.H2_llega_s !== null && r.H2_fotos_s !== null && r.H2_grande_reducida && r.H2c_png_como_foto && r.H2_de_B && r.H2_avisos === 0 && r.H2_sin_repetidos && r.H2_creo_una_vez && r.H2_boton_se_va && ms.length > before;
 
   // ---------- H3: el creador lo cierra ----------
   A.win.NEXO_openGroupSettings(gid); await sleep(400);
