@@ -31,8 +31,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   ningún relé guarda tira TODA la subida y el reintento empieza de cero (sin reanudar). Propuesta: medir velocidad cada ~10 s, cortar solo
   tras ~1 min SIN avance, quedar ⏳ y seguir desde donde iba; tarjeta con velocidad y lo que falta. Lo nativo (soTimeout 30–60 s por
   lectura) y el wakelock de 20 min (se renueva por bloque) ya son por inactividad: bien.
-- **APK 3162 SUBIDA (27-11 ~23:50 México, dueño: «sube todo»):** responder con adjunto + pulsación larga en el fondo de grupo (puntos 1 y 6).
-  Revisar su CI (~85 min); si pasa, NOVEDADES al historial como 3162. El enrutado (punto 7) sigue por hacer, en una sesión nueva.
+- **APK 3162 CANCELADA por el dueño (27-11 ~00:05 México):** solo traía responder con adjunto + fondo de grupo; él quiere que la siguiente APK
+  lleve TAMBIÉN los arreglos (punto 7: reenvíos, Fénix, relés, enrutado; y «no cortar envíos»). NO subir hasta tenerlos hechos y probados.
+  Lección: al subir, decir con claridad qué arreglos NO van todavía.
 - (27-11 ~22:00, LEVANTADO a las 23:50) el dueño pidió no subir nada hasta que lo dijera.
   **Lista de la siguiente APK (problema → solución):**
   1. [hecho, en NEXOCHAT con skip ci] Responder con audio/foto/archivo (arriba).
