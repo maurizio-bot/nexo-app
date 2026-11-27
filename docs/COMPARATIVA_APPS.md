@@ -32,7 +32,7 @@ Instagram y TikTok solo como referencia de mensajes (al final).
 |---|---|---|---|---|---|---|
 | Archivo máximo | 2 GB | 2 GB (4 GB Premium) | 100 MB (c) | fotos (?) | — (solo imágenes) | **1 GB por Wi-Fi/Wi-Fi Direct** · ~40 MB por internet · 5 MB buzón (ausente) · ~2,2 MB por Bluetooth |
 | Fotos a la vez | ~100 (c) | 10 por álbum (c) | ? | ? | ? | 10 |
-| Foto HD | opción HD | sin compresión | estándar / alta | ? | ? | reduce a 1600 px; **sin opción HD** |
+| Foto HD | opción HD | sin compresión | estándar / alta | ? | ? | sí, automático: llega primero reducida (1600 px) y luego sube a la original (dueño 27-11) |
 | Vídeo | HD | sin compresión | sí | — | — | 240p de entrada, HD 720p ~6 MB; largo 60 s (110 s por Wi-Fi) |
 | Notas de voz | sí | sí | sí | sí (?) | — | sí (sin duración máxima, solo tope de tamaño) |
 | Notas de vídeo (círculo) | 60 s | 60 s | — | — | — | **—** |
