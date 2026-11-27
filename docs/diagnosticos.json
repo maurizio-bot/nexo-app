@@ -1664,6 +1664,30 @@
    "sintoma": "par:zombi (pedido por nx1n36c283), build 3167",
    "categoria": "Fallo de la app",
    "causa": "El otro lado del anterior: al abrir la app su nativo cierra los enlaces GATT de cliente (09:10:52). Además, al arrancar (09:03:45) «Respuesta de sincronía … sin firma válida o vencida» de nx01992876 y nx0g6ef54e: se vuelve a pedir y luego todo llega (sin pérdida); revisar en la fase 2 si es la respuesta guardada por el nativo que ya venció."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "09:46",
+   "nx": "nx1905c1ee",
+   "sintoma": "par:reenvio_sin_fin (pedido por nx1n36c283), build 3167",
+   "categoria": "Fallo de la app",
+   "causa": "Austin (HONOR) arrancó con 1 solo contacto: el S24, Roberto, Zhelowsky y Alex NO eran contactos suyos (sin clave de pareja) aunque él sí lo es de ellos y comparten el grupo gr7ez2dx3p. Por eso (1) sus confirmaciones al S24 van sin firma y el S24 las ignora → reenvío sin fin; (2) sus 6 fotos al grupo quedan «Sin clave de cifrado del contacto» para 4 miembros. Se resolvió solo a las 09:46:40 al agregar al S24 por «contacto compartido». No se sabe cómo perdió los contactos (¿reinstaló o borró datos? el archivo se lee bien). PROPUESTA (seguridad, decide el dueño): si un contacto confirma sin firma porque perdió mi clave, pedirle el intercambio de claves en vez de reenviar sin fin. Ajuste del teléfono: optimización de batería ACTIVA y el sistema la cerró (LowMemQuick 09:25): la app ya lo avisa."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "10:47",
+   "nx": "nx0cb2b010",
+   "sintoma": "resumen_diario (2026-11-26), build 3167",
+   "categoria": "Resumen",
+   "causa": "Sin actividad; sin fallo."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "10:47",
+   "nx": "nx0x4029e6",
+   "sintoma": "resumen_diario (2026-11-26), build 3167",
+   "categoria": "Resumen",
+   "causa": "2/2 ✓✓; MTU 23 en 26 % de enlaces (área 3, fase 2)."
   }
  ]
 }
