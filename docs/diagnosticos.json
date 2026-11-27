@@ -1568,6 +1568,14 @@
    "sintoma": "resumen_diario (25-11), build 3159",
    "categoria": "Sin fallo nuevo de la app",
    "causa": "5 enviados, 5 ✓✓. Buzón de archivos: subida 46–58 KB/s, bajada 253–309 KB/s. «conectado pero su app no contesta» ×3 (reclasificado). Puente: caducado sin entregar ×4 y ACK timeout ×2 = pruebas sin internet del 25-11 (ya vistas, 3342–3344)."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "18:21",
+   "nx": "nx1n36c283",
+   "sintoma": "8 textos al S23 con «!» (18:20–18:21), build 3159",
+   "categoria": "Fallo de la app",
+   "causa": "Lo mismo de las 17:10: relés «rate-limited: too many gift wraps» → «banned» (misma Wi-Fi; nos.lol y nostr.mom sin conectar, quedan damus, primal y offchain). En la 3159 cada texto se reintentaba 5 veces en ~5 s (cada uno, otra infracción) y salía «!». Además, justo antes salió por internet un respaldo Fénix de 251 KB (17 trozos) a Marcos. Arreglado en la APK de emergencia: 3347 (no reintentar, ⏳), 3348 (relé en pausa, reserva, respiro) y 3350 (Fénix cede internet mientras los relés limitan)."
   }
  ]
 }

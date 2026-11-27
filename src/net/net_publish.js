@@ -35,6 +35,8 @@ export function relayCoolMs(kind, n) {
   return 0;
 }
 export const netPublish = {
+  // 3350: ¿algún relé limitó o castigó hace poco? (lo de fondo, como Fénix, cede internet mientras tanto)
+  relayLimitedRecently(ms) { return !!this._limitAt && Date.now() - this._limitAt < (ms || LIMIT_CALM_MS); },
   // 3348: ¿este relé está en pausa para publicar?
   relayCooling(r, now) { return !!(r && !r.gw && r.coolUntil && r.coolUntil > (now || Date.now())); },
   // 3348: un relé dijo que no: si es por límite o castigo, en pausa (y quizá entra uno de reserva)

@@ -91,7 +91,17 @@ const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
     P.relayCoolMs('rate', 1) === 20000 && P.relayCoolMs('rate', 2) === 40000 && P.relayCoolMs('rate', 20) === 600000 &&
     P.relayCoolMs('ban', 1) === 600000 && P.relayCoolMs('ban', 9) === 7200000 && P.relayCoolMs('policy', 1) === 6 * 3600000;
 
-  const ok = r.L1 && r.L2 && r.L3 && r.L4 && r.L5 && r.L6;
+  // L7 (3350, diag. S24 26-11 18:21: un respaldo Fénix de 251 KB salía por internet en 17 trozos con los relés ya limitando): lo de fondo cede
+  r.limito_hace_poco = net.relayLimitedRecently() === true;
+  let L7 = r.limito_hace_poco;
+  try {
+    const { ChatStream } = await importSrc('ui/chat_stream.js');
+    const y = (type, dev, lim) => ChatStream.prototype._bgShouldYieldNet.call({ meta: { type }, deviceId: dev, ble: { net: { relayLimitedRecently: () => lim } } });
+    r.fenix_cede = [y('fenix', 'net:nx1e50c95d', true), y('fenix', 'net:nx1e50c95d', false), y('image', 'net:nx1e50c95d', true), y('fenix', 'AA:BB:CC:DD:EE:01', true)];
+    L7 = L7 && r.fenix_cede.join() === 'true,false,false,false';
+  } catch (e) { r.fenix_cede = 'error: ' + e.message; L7 = false; }
+  r.L7 = L7;
+  const ok = r.L1 && r.L2 && r.L3 && r.L4 && r.L5 && r.L6 && r.L7;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('RELELIMITA ' + JSON.stringify(r));
   try { net._closeAll(); net.relays.forEach((x) => { x.retryAt = Date.now() + 9e6; }); clearInterval(net._timer); } catch (e) {}

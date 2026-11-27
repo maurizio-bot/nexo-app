@@ -386,6 +386,10 @@ ChatStream.prototype._sendWindow = function() {
         setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
         return;
       }
+      // 3350 (diag. S24 26-11 18:21, 3159: con los relés ya limitando, un respaldo Fénix de 251 KB salía por internet en 17 trozos y los
+      // textos del usuario se quedaban en «!»): lo de FONDO cede internet mientras dure la calma tras un límite; queda pendiente y Fénix
+      // lo reintenta luego (lo del usuario va primero).
+      if (self._bgShouldYieldNet()) { console.log('[ChatStream] Respaldo Fénix por internet con los relés limitando: cede, queda pendiente msgId=' + self.msgId); self._giveUpPending(); return; } // i18n-ok: registro
       self.sentMask[idx] = true;
       self._sendChunk(idx)
         .then(function() {
@@ -474,6 +478,12 @@ ChatStream.prototype._giveUpPending = function() {
 // #dueño 08-11: ¿este stream es un respaldo Fénix de FONDO sobre un Bluetooth atascado y debe rendir la radio YA? (ver
 // _fenixYieldBle). Se consulta en el bucle de trozos para que un respaldo en vuelo no siga martillando un enlace que el
 // nativo ya marcó muerto (_bleCongested). El usuario (no-Fénix) nunca entra acá.
+// 3350: ¿un respaldo Fénix por INTERNET debe ceder? Sí si hace poco algún relé dijo que limita o castiga (net_publish.relayLimitedRecently)
+ChatStream.prototype._bgShouldYieldNet = function() {
+  if (!_isFenixTx(this.meta) || !_isNetDevice(this.deviceId)) return false;
+  var net = this.ble && this.ble.net;
+  try { return !!(net && typeof net.relayLimitedRecently === 'function' && net.relayLimitedRecently()); } catch (e) { return false; }
+};
 ChatStream.prototype._bgShouldYieldBle = function() {
   var dev = this.deviceId;
   var isBle = !_isNetDevice(dev) && !_isLanDevice(dev);
