@@ -59,6 +59,9 @@ export function _setupBackButton() {
         if (grev) { if (typeof grev.__nexoClose === 'function') grev.__nexoClose(); else grev.remove(); return true; }
         var smalls = ['nexo-msg-menu', 'nexo-group-menu', 'nexo-contact-picker', 'cobro-sheet', 'nexo-forward-sheet', 'nexo-share-sheet', 'nexo-group-sheet', 'nexo-wp-sheet', 'nexo-sendto-sheet', 'nexo-mute-menu', 'nexo-chat-menu', 'nexo-starred-sheet']; // 3161: «Enviar a…» (share_in.js); 3219: silenciar, opciones del chat, destacados
         for (var si = 0; si < smalls.length; si++) { var sm = document.getElementById(smalls[si]); if (sm) { sm.remove(); return true; } }
+        // Dueño 26-11 (3160): Ajustes del grupo y sus pantallas (.nx-panel, sin botón X): atrás cierra la de más arriba
+        var panels = document.querySelectorAll('.nx-panel');
+        if (panels.length) { panels[panels.length - 1].remove(); return true; }
         if (typeof window.__nexoEndSelect === 'function' && window.__nexoEndSelect()) return true; // 3206: la selección de mensajes
         var amenu = document.getElementById('attach-menu');
         if (amenu && amenu.classList.contains('visible')) { amenu.classList.add('hidden'); amenu.classList.remove('visible'); return true; }

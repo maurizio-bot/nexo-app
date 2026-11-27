@@ -112,6 +112,13 @@ const check = (p, sel) => { const cb = q(p, sel); if (cb) { cb.checked = true; c
     click(C.win, q(C, '#nexo-gset-btn')); await sleep(300);
     click(C.win, q(C, '#nexo-gset .gset-member[data-nx="' + id(B) + '"] .gset-member-name')); await sleep(300);
     r.C_toca_no_contacto_ofrece_agregar = !!q(C, '#nexo-gset-mem .gset-mem-add');
+    // Dueño 26-11 (3160): sin botón X; el atrás de Android cierra la pantalla de arriba y luego Ajustes, y se queda en el chat
+    r.C_ajustes_sin_x = !q(C, '#nexo-gset .gset-close') && !q(C, '#nexo-gset-mem .gset-close');
+    { const hb = C.win.__nexoHandleBack;
+      r.C_atras_cierra_ficha = !!(hb && hb()) && !q(C, '#nexo-gset-mem') && !!q(C, '#nexo-gset');
+      r.C_atras_cierra_ajustes = !!(hb && hb()) && !q(C, '#nexo-gset') && C.win.document.body.classList.contains('chat-view-active');
+      click(C.win, q(C, '#nexo-gset-btn')); await sleep(300);
+      click(C.win, q(C, '#nexo-gset .gset-member[data-nx="' + id(B) + '"] .gset-member-name')); await sleep(300); }
     click(C.win, q(C, '#nexo-gset-mem .gset-mem-add')); await sleep(300);
     r.C_agregar_manda_solicitud = sent.length === 1 && sent[0] === id(B);
     C.win.vaultLoadContacts = vl; bi.addByNexoId = ab;

@@ -5,7 +5,7 @@
  * salir. Cada botón aparece solo si quien mira tiene permiso (group_state.gsCan); aun así, el que recibe vuelve a comprobarlo.
  * También bloquea la barra de escribir con el motivo cuando no se puede escribir en el grupo abierto (G5).
  */
-import { _contactsStyles, _pickAvatar, SHEET_CLOSE_SVG } from './share_contacts.js';
+import { _contactsStyles, _pickAvatar } from './share_contacts.js';
 import { _normId } from './chat_format.js';
 import { vaultLoadContacts } from '../vault/vault_manager.js';
 import { makeAvatar } from './avatar.js';
@@ -43,9 +43,8 @@ function _sheet(id, title) {
   sh.style.cssText = 'position:fixed;inset:0;z-index:2147483646;';
   var head = _el('div', 'nx-page-head nx-sheet-head');
   head.appendChild(_el('div', 'nx-page-title', title));
-  var x = _el('button', 'nx-round-btn gset-close'); x.type = 'button'; x.innerHTML = SHEET_CLOSE_SVG; x.setAttribute('aria-label', t('cancel'));
-  x.addEventListener('click', function() { sh.remove(); });
-  head.appendChild(x); sh.appendChild(head);
+  // Dueño 26-11 (3160): sin botón X; se vuelve con el gesto o el botón atrás de Android, como el resto de la app (chat_nav: .nx-panel)
+  sh.appendChild(head);
   var body = _el('div', 'gset-body nx-panel-body');
   sh.appendChild(body);
   document.body.appendChild(sh);
