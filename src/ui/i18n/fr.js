@@ -464,7 +464,7 @@ export default {
   welcome_sp_title: "Votre compte, protégé",
   welcome_sp_body: "Tout est chiffré de bout en bout ; touche le <b>🔒</b> au début d’une discussion pour vérifier avec le <b>QR</b>. Dans <b>Réglages → Sécurité</b> tu mets un verrou par empreinte ou PIN. Dans <b>Réglages → Sauvegarde et changement de téléphone</b>, <b>Fénix</b> récupère ton compte si tu perds ton téléphone et « Transférer mon compte » l’emmène sur un nouveau.",
   welcome_sm_title: "Tes messages",
-  welcome_sm_body: "<b>Glisse</b> un message pour y répondre. <b>Maintiens-le</b> pour réagir, modifier (15 min), transférer, en sélectionner plusieurs, mettre en favori, épingler ou supprimer. <b>Deux touches</b> mettent ❤️. En revoyant une photo ou une vidéo, l’œil <b>« 1 »</b> l’envoie pour être vue une seule fois.",
+  welcome_sm_body: "<b>Glisse</b> un message pour y répondre. <b>Maintiens-le</b> pour réagir, modifier (15 min), transférer, en sélectionner plusieurs, mettre en favori, épingler ou supprimer. <b>Deux touches</b> mettent ❤️. En revoyant une photo ou une vidéo, l’œil <b>« 1 »</b> l’envoie pour être vue une seule fois. En touchant sa photo en haut : rechercher, favoris, <b>messages éphémères</b> et silence.",
   welcome_sc_title: "Aussi sans internet",
   welcome_sc_body: "Touche le <b>symbole à côté du nom</b> de la discussion : il te dit par où ça passe : Wi-Fi, internet, Bluetooth, un <b>saut</b> par un autre NEXO ou un <b>internet prêté</b> par un NEXO proche. Les gros fichiers passent par <b>Wi-Fi Direct</b>. Dans la foule, le menu de la discussion (touche sa photo) permet de <b>trouver la personne</b>.",
   welcome_sa_title: "À ton goût",

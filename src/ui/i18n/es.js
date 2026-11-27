@@ -464,7 +464,7 @@ export default {
   welcome_sp_title: "Tu cuenta, protegida",
   welcome_sp_body: "Todo va cifrado de extremo a extremo; toca el <b>🔒</b> del inicio de un chat para verificar con <b>QR</b>. En <b>Ajustes → Seguridad</b> pones bloqueo con huella o PIN. En <b>Ajustes → Respaldo y cambio de teléfono</b>, <b>Fénix</b> recupera tu cuenta si pierdes el teléfono y «Pasar mi cuenta» la lleva a uno nuevo.",
   welcome_sm_title: "Tus mensajes",
-  welcome_sm_body: "<b>Desliza</b> un mensaje para responderlo. <b>Mantenlo presionado</b> para reaccionar, editar (15 min), reenviar, seleccionar varios, destacar, fijar o borrar. <b>Dos toques</b> ponen ❤️. Al revisar una foto o vídeo, el ojo <b>«1»</b> la manda para verse una sola vez.",
+  welcome_sm_body: "<b>Desliza</b> un mensaje para responderlo. <b>Mantenlo presionado</b> para reaccionar, editar (15 min), reenviar, seleccionar varios, destacar, fijar o borrar. <b>Dos toques</b> ponen ❤️. Al revisar una foto o vídeo, el ojo <b>«1»</b> la manda para verse una sola vez. Tocando su foto arriba: buscar, destacados, <b>mensajes temporales</b> y silenciar.",
   welcome_sc_title: "También sin internet",
   welcome_sc_body: "Toca el <b>símbolo junto al nombre</b> del chat y te dice por dónde va: Wi-Fi, internet, Bluetooth, <b>salto</b> por otro NEXO o <b>internet prestado</b> de un NEXO cercano. Los archivos grandes van por <b>Wi-Fi Direct</b>. Entre mucha gente, en el menú del chat (toca su foto) puedes <b>buscar a la persona</b>.",
   welcome_sa_title: "Hazla tuya",

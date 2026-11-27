@@ -64,7 +64,7 @@ function _slides() {
     // dueño 28-11: la guía al día con todas las funciones (inventario del código 28-11)
     { icon: '↩️',
       title: t('welcome_sm_title', 'Tus mensajes'),
-      body: t('welcome_sm_body', '<b>Desliza</b> un mensaje para responderlo. <b>Mantenlo presionado</b> para reaccionar, editar (15 min), reenviar, seleccionar varios, destacar, fijar o borrar. <b>Dos toques</b> ponen ❤️. Al revisar una foto o vídeo, el ojo <b>«1»</b> la manda para verse una sola vez.') },
+      body: t('welcome_sm_body', '<b>Desliza</b> un mensaje para responderlo. <b>Mantenlo presionado</b> para reaccionar, editar (15 min), reenviar, seleccionar varios, destacar, fijar o borrar. <b>Dos toques</b> ponen ❤️. Al revisar una foto o vídeo, el ojo <b>«1»</b> la manda para verse una sola vez. Tocando su foto arriba: buscar, destacados, <b>mensajes temporales</b> y silenciar.') },
     { icon: '👥',
       title: t('welcome_sg_title', 'Grupos'),
       body: t('welcome_sg_body', 'Toca los <b>tres puntos (⋮)</b> de un contacto y elige <b>«Crear grupo»</b>. En el ⋮ del grupo están sus <b>Ajustes</b> (foto, permisos, administradores, agregar personas). Desde la cabecera del grupo haces <b>llamadas de grupo</b>, y manteniendo presionado el fondo lo cambias o lo compartes.') },

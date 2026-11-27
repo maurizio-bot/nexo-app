@@ -464,7 +464,7 @@ export default {
   welcome_sp_title: "Sua conta, protegida",
   welcome_sp_body: "Tudo é criptografado de ponta a ponta; toque no <b>🔒</b> do início de uma conversa para verificar com <b>QR</b>. Em <b>Ajustes → Segurança</b> você põe bloqueio com digital ou PIN. Em <b>Ajustes → Backup e troca de celular</b>, o <b>Fénix</b> recupera sua conta se você perder o celular e «Passar minha conta» leva para um novo.",
   welcome_sm_title: "Suas mensagens",
-  welcome_sm_body: "<b>Deslize</b> uma mensagem para responder. <b>Segure</b> para reagir, editar (15 min), encaminhar, selecionar várias, favoritar, fixar ou apagar. <b>Dois toques</b> põem ❤️. Ao revisar uma foto ou vídeo, o olho <b>«1»</b> envia para ver uma só vez.",
+  welcome_sm_body: "<b>Deslize</b> uma mensagem para responder. <b>Segure</b> para reagir, editar (15 min), encaminhar, selecionar várias, favoritar, fixar ou apagar. <b>Dois toques</b> põem ❤️. Ao revisar uma foto ou vídeo, o olho <b>«1»</b> envia para ver uma só vez. Tocando na foto no alto: buscar, favoritas, <b>mensagens temporárias</b> e silenciar.",
   welcome_sc_title: "Também sem internet",
   welcome_sc_body: "Toque no <b>símbolo ao lado do nome</b> da conversa e ele diz por onde vai: Wi-Fi, internet, Bluetooth, <b>salto</b> por outro NEXO ou <b>internet emprestada</b> de um NEXO por perto. Arquivos grandes vão por <b>Wi-Fi Direct</b>. No meio de muita gente, no menu da conversa (toque na foto) você pode <b>achar a pessoa</b>.",
   welcome_sa_title: "Do seu jeito",

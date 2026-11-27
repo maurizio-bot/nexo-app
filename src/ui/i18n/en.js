@@ -464,7 +464,7 @@ export default {
   welcome_sp_title: "Your account, protected",
   welcome_sp_body: "Everything is end-to-end encrypted; tap the <b>🔒</b> at the start of a chat to verify with <b>QR</b>. In <b>Settings → Security</b> you set a fingerprint or PIN lock. In <b>Settings → Backup and phone change</b>, <b>Fénix</b> recovers your account if you lose your phone and «Move my account» takes it to a new one.",
   welcome_sm_title: "Your messages",
-  welcome_sm_body: "<b>Swipe</b> a message to reply. <b>Press and hold</b> it to react, edit (15 min), forward, select several, star, pin or delete. <b>Double tap</b> adds ❤️. When reviewing a photo or video, the <b>«1»</b> eye sends it to be seen only once.",
+  welcome_sm_body: "<b>Swipe</b> a message to reply. <b>Press and hold</b> it to react, edit (15 min), forward, select several, star, pin or delete. <b>Double tap</b> adds ❤️. When reviewing a photo or video, the <b>«1»</b> eye sends it to be seen only once. Tap their photo at the top: search, starred, <b>disappearing messages</b> and mute.",
   welcome_sc_title: "Also without internet",
   welcome_sc_body: "Tap the <b>symbol next to the name</b> in a chat and it tells you the path: Wi-Fi, internet, Bluetooth, a <b>hop</b> through another NEXO or <b>borrowed internet</b> from a nearby NEXO. Big files go by <b>Wi-Fi Direct</b>. In a crowd, the chat menu (tap their photo) lets you <b>find the person</b>.",
   welcome_sa_title: "Make it yours",
