@@ -219,10 +219,25 @@ function _btnInstall() {
   var b = document.createElement('button');
   b.id = 'nexo-estados-btn'; b.type = 'button'; b.className = 'nx-btn-s';
   b.title = t('est_btn', 'Estados'); b.setAttribute('aria-label', t('est_btn', 'Estados'));
-  b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="3.5" width="12" height="17" rx="3.2"/><circle cx="12" cy="10.2" r="2.1"/><path d="M9.2 16.2h5.6"/></svg>';
-  b.addEventListener('click', function(e) { e.stopPropagation(); if (!_open) _settle(true); });
+  // Dueño 26-11 (3160: «el símbolo no se entiende»): una FLECHA a la derecha (los estados están a la derecha de Chats) y, al tocarla, un
+  // letrero breve que enseña el gesto (las 3 primeras veces; se quita solo)
+  b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13"/><path d="M13 6l6 6-6 6"/></svg>';
+  b.addEventListener('click', function(e) { e.stopPropagation(); if (!_open) { _settle(true); _btnHint(); } });
   header.appendChild(b);
   return true;
+}
+var BTN_HINT_KEY = 'nexo_est_btn_hint_n', BTN_HINT_MAX = 3, BTN_HINT_MS = 3500;
+function _btnHint() {
+  var n = 0;
+  try { n = parseInt(localStorage.getItem(BTN_HINT_KEY) || '0', 10) || 0; } catch (e) {}
+  if (n >= BTN_HINT_MAX) return;
+  try { localStorage.setItem(BTN_HINT_KEY, String(n + 1)); localStorage.setItem(HINT_KEY, '1'); } catch (e) {} // el aviso de una vez ya no hace falta
+  var old = document.getElementById('nexo-est-btnhint'); if (old) old.remove();
+  var h = document.createElement('div');
+  h.id = 'nexo-est-btnhint'; h.className = 'nx-est-hint nx-est-hint-top'; h.setAttribute('role', 'status');
+  h.textContent = t('est_btn_hint', 'Desliza la pantalla hacia la izquierda para ver los estados');
+  document.body.appendChild(h);
+  setTimeout(function() { h.classList.add('out'); setTimeout(function() { try { h.remove(); } catch (e) {} }, 300); }, BTN_HINT_MS);
 }
 function _btnBadge() {
   var b = document.getElementById('nexo-estados-btn');

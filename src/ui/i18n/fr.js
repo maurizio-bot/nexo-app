@@ -807,6 +807,7 @@ export default {
   est_refreshing: "Actualisation des statuts, photos et discussions…",
   est_none_yet: "Pas encore de statut de vos contacts. Quand ils en publieront un, il apparaîtra ici.",
   est_swipe_hint: "Glissez vers la gauche pour voir les statuts",
+  est_btn_hint: "Faites glisser l'écran vers la gauche pour voir les statuts",
   media_cita_waiting: "En attente que vous soyez tous les deux en ligne pour le télécharger",
   media_cita_tap: "Il arrive seulement quand vous êtes tous les deux en ligne ; je l'ai déjà prévenu que je suis là",
   game_you: "Vous",

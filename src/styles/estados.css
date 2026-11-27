@@ -101,6 +101,7 @@ body.nx-est-on #ble-fab-btn, body.nx-est-drag #ble-fab-btn { opacity: 0 !importa
   color: var(--nx-text); font-size: 14px; line-height: 1.35; text-align: center; pointer-events: none;
   transform: translateX(-50%); animation: nxEstHintIn 300ms ease both; }
 .nx-est-hint.out { animation: nxEstHintOut 260ms ease both; }
+.nx-est-hint.nx-est-hint-top { z-index: 2600; } /* dueño 26-11: el letrero del botón sale ENCIMA de la pantalla de Estados */
 @keyframes nxEstHintIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @keyframes nxEstHintOut { from { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, 8px); } }
 /* El destello del borde derecho: hay estados nuevos. Discreto: una rayita que late despacio; no toma los toques */

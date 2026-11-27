@@ -211,6 +211,11 @@ const fin = (ok) => {
   // E11b: tocar el botón abre Estados (sin gesto) y volver lo cierra
   await A.evaluate(() => document.getElementById('nexo-estados-btn').click()); await sleep(700);
   r.E11_toca_abre = enEstados(await st());
+  // dueño 26-11 (3160): el botón es una flecha y al tocarlo sale el letrero que enseña el gesto, encima de Estados, y se quita solo
+  r.E11_flecha = await A.evaluate(() => { const p = document.querySelectorAll('#nexo-estados-btn svg path'); return p.length === 2 && !document.querySelector('#nexo-estados-btn svg rect'); });
+  r.E11_letrero = await A.evaluate(() => { const h = document.getElementById('nexo-est-btnhint'); return !!h && /Desliza la pantalla hacia la izquierda/.test(h.textContent) && parseInt(getComputedStyle(h).zIndex, 10) > 2500; });
+  await sleep(4200);
+  r.E11_letrero_se_quita = await A.evaluate(() => !document.getElementById('nexo-est-btnhint'));
   await A.evaluate(() => window.__nexoHandleBack()); await sleep(700);
   r.E11_vuelve = enContactos(await st());
 
@@ -223,7 +228,7 @@ const fin = (ok) => {
 
   const ok = ['E1_contactos_sin_estados', 'E2_sigue_al_dedo', 'E2_corto_vuelve', 'E3_abre_estados', 'E3_sin_boton_agregar', 'E3_contenido', 'E4_tocar_abre_visor', 'E4_atras_cierra_visor', 'E4_aro_visto',
     'E5_abajo_actualiza', 'E5_abajo_no_cambia', 'E6_derecha_vuelve', 'E6_atras_vuelve', 'E6_atras_sin_nada_false', 'E7_vertical_es_scroll', 'E7_borde_derecho_no', 'E7_chat_no_abre_estados',
-    'E7_tira_en_linea_no', 'E8_nombre_abre_chat_visible', 'E9_aviso_sale', 'E9_aviso_se_va_al_tocar', 'E9_aviso_no_segunda', 'E10_destello_sale', 'E10_se_va_al_tocar', 'E10_no_vuelve_por_los_mismos', 'E11_boton_visible', 'E11_puntito', 'E11_toca_abre', 'E11_vuelve'].every((k) => r[k] === true) && r.preparado;
+    'E7_tira_en_linea_no', 'E8_nombre_abre_chat_visible', 'E9_aviso_sale', 'E9_aviso_se_va_al_tocar', 'E9_aviso_no_segunda', 'E10_destello_sale', 'E10_se_va_al_tocar', 'E10_no_vuelve_por_los_mismos', 'E11_boton_visible', 'E11_puntito', 'E11_toca_abre', 'E11_vuelve', 'E11_flecha', 'E11_letrero', 'E11_letrero_se_quita'].every((k) => r[k] === true) && r.preparado;
   fin(ok);
   await browser.close();
   process.exit(ok ? 0 : 1);

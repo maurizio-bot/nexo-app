@@ -807,6 +807,7 @@ export default {
   est_refreshing: "Refreshing statuses, photos and chats…",
   est_none_yet: "No statuses from your contacts yet. When they post one, it will show up here.",
   est_swipe_hint: "Swipe left to see statuses",
+  est_btn_hint: "Swipe the screen to the left to see statuses",
   media_cita_waiting: "Waiting for both of you to be online to download it",
   media_cita_tap: "It arrives only when you are both online; I've already let them know I'm here",
   game_you: "You",

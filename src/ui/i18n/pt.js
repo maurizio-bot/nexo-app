@@ -807,6 +807,7 @@ export default {
   est_refreshing: "Atualizando status, fotos e conversas…",
   est_none_yet: "Ainda não há status dos seus contatos. Quando publicarem um, aparecerá aqui.",
   est_swipe_hint: "Deslize para a esquerda para ver os status",
+  est_btn_hint: "Deslize a tela para a esquerda para ver os status",
   media_cita_waiting: "Aguardando vocês dois estarem online para baixar",
   media_cita_tap: "Só chega quando vocês dois estiverem online; já avisei que estou aqui",
   game_you: "Você",

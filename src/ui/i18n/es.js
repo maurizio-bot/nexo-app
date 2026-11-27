@@ -807,6 +807,7 @@ export default {
   est_refreshing: "Actualizando estados, fotos y chats…",
   est_none_yet: "Aún no hay estados de tus contactos. Cuando publiquen uno, saldrá aquí.",
   est_swipe_hint: "Desliza a la izquierda para ver los estados",
+  est_btn_hint: "Desliza la pantalla hacia la izquierda para ver los estados",
   media_cita_waiting: "Esperando que los dos estén en línea para bajarlo",
   media_cita_tap: "Llega solo cuando los dos estén en línea; ya le avisé que estoy",
   game_you: "Tú",
