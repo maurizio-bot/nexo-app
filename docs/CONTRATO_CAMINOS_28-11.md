@@ -773,6 +773,17 @@ y 0 `DESCONOCIDO` sin tipificar en una semana de uso real; envíos por mensaje y
 
 ## E. Preguntas para el dueño (solo lo que es suyo)
 
+> **RESPUESTAS DEL DUEÑO (28-11 ~07:30 México) — MANDAN sobre las preferencias de abajo:**
+> - **E1:** archivos por datos móviles **sin límite y sin aviso** (como hoy; «debe poder correr bien»). Un ajuste opcional «ahorrar
+>   datos», apagado de fábrica, queda para más adelante.
+> - **E3 y E5:** **Tor nunca se arranca solo** (es lento). Los archivos grandes a alguien lejos van por **conexión directa WebRTC** (la de
+>   las llamadas; PLAN_CAPACIDAD §2); Tor solo si el usuario lo enciende por privacidad o como último recurso si WebRTC no conecta.
+> - **E2** (videollamada con datos estando cerca: por internet, aviso la primera vez), **E4** (puente 24 h/20 MB; 72 h en modo
+>   concierto), **E6** (aviso discreto a los 3 días sin ✓✓), **E7** (relés anunciados solo cifrado al contacto), **E8** (Wi-Fi Direct
+>   preparado con batería > 30 %): **aprobadas como las recomendé**.
+> - Del plan de Bluetooth: **9** firmar la prueba de vida: sí · **10** contacto que no contesta: pausas de 2 a 10 min · **11** avisar
+>   una vez que el teléfono del otro tiene NEXO dormido · **12** juntar pasos chicos en una APK.
+
 Mientras no conteste, se mantiene lo de hoy (indicado en cada una).
 
 **E1. Archivos por datos móviles.** Hoy un archivo por internet va al buzón aunque alguno esté con datos (hasta ~42 MB); en directo
