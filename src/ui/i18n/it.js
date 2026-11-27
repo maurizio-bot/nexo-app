@@ -801,6 +801,7 @@ export default {
   est_view: "Vedi",
   est_max: "Hai già 10 stati: rimuovine uno per pubblicarne un altro",
   est_my_statuses: "I miei stati",
+  chat_pull_refresh: "Aggiorno la chat…",
   est_new: "Nuovo stato",
   est_priv_btn: "Chi vede i miei stati",
   est_priv_all: "Tutti i miei contatti",

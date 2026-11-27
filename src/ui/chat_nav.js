@@ -4,6 +4,7 @@
  */
 import { _cancelReply, _renderedMessageIds } from './chat_actions.js';
 import { _cleanupObjectURLs } from './media_limits.js';
+import { t } from './i18n.js';
 
 
 export function _clearMessageContainer() {
@@ -240,7 +241,23 @@ export function _setupSwipeBack() {
   }
 }
 
-// Ronda 2783 (pedido del dueño): deslizar el chat hacia ABAJO = cerrarlo (volver a la lista). Aparte del "volver"
+// 3359 (dueño 27-11): «actualizar» el chat abierto: lo mío pendiente sale ya, se pide al otro lo que me falte (sincronía de sesión,
+// por el camino que haya) y a los relés lo reciente. La sincronía completa por tramos (archivos, grupos) es el punto 0 del plan.
+export function _chatPullRefresh() {
+  try {
+    var bi = window.bleInterface, c = window.NEXO && window.NEXO.app && window.NEXO.app.activeContact;
+    var nx = String((c && (c.nexoId || c.deviceUUID)) || '').toLowerCase();
+    window.__nexoChatPullAt = Date.now();
+    try { if (typeof window.NEXO_toast === 'function') window.NEXO_toast(t('chat_pull_refresh', 'Actualizando el chat…')); } catch (e) {}
+    if (!bi || !/^nx[0-9a-z]{8}$/.test(nx)) return;
+    try { if (typeof bi._resendPendingMessages === 'function') bi._resendPendingMessages(nx); } catch (e) {}
+    try { var dev = typeof bi._resolveDeviceIdForNexoId === 'function' ? bi._resolveDeviceIdForNexoId(nx) : null; if (dev && bi.ackSystem && typeof bi.ackSystem.sendSessionSync === 'function') bi.ackSystem.sendSessionSync(dev, nx); } catch (e) {}
+    try { if (bi.net && typeof bi.net.resync === 'function') bi.net.resync('deslizar abajo en el chat'); } catch (e) {}
+    console.log('[MAIN] Chat actualizado al deslizar hacia abajo: ' + nx); // i18n-ok: registro
+  } catch (e) {}
+}
+
+// Ronda 2783 (pedido del dueño): deslizar el chat hacia ABAJO = cerrarlo (volver a la lista). 3359: ahora ACTUALIZA (ver arriba). Aparte del "volver"
 // lateral para no estorbarlo. No pelea con el scroll: solo cuenta si el gesto empieza con los mensajes arriba del
 // todo (scrollTop<=2) y es claramente vertical hacia abajo; si no, es scroll normal del historial.
 export function _setupPullToClose() {
@@ -259,22 +276,19 @@ export function _setupPullToClose() {
       cY = e.touches[0].clientY;
       var dy = cY - sY;
       if (dy <= 0 || mc.scrollTop > 2) { active = false; app.style.transform = ''; app.style.opacity = ''; return; }
-      var ty = Math.min(dy, window.innerHeight * 0.5);
+      var ty = Math.min(dy * 0.4, 90); // 3359: solo un tirón corto (actualizar), sin desvanecer el chat como al cerrar
       app.style.transform = 'translateY(' + ty + 'px)';
-      app.style.opacity = String(Math.max(0.4, 1 - (ty / window.innerHeight)));
       if (e.cancelable) e.preventDefault();
     }, { passive: false });
     var endPull = function() {
       if (!active) return;
       active = false;
       var dy = cY - sY;
-      if (dy > Math.max(100, window.innerHeight * 0.18)) {
-        _doChatBack();           // _doChatBack pone su propia animación de salida y limpia los estilos
-      } else {
-        app.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
-        app.style.transform = ''; app.style.opacity = '';
-        setTimeout(function() { app.style.transition = ''; }, 250);
-      }
+      // 3359 (dueño 27-11, docs/PLAN_CAPACIDAD_27-11.md §0): deslizar hacia abajo ya NO cierra el chat: lo ACTUALIZA (como en Contactos)
+      if (dy > Math.max(100, window.innerHeight * 0.18)) _chatPullRefresh();
+      app.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
+      app.style.transform = ''; app.style.opacity = '';
+      setTimeout(function() { app.style.transition = ''; }, 250);
     };
     mc.addEventListener('touchend', endPull, { passive: true });
     mc.addEventListener('touchcancel', endPull, { passive: true });

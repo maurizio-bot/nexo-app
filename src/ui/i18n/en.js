@@ -801,6 +801,7 @@ export default {
   est_view: "View",
   est_max: "You already have 10 statuses: remove one to post another",
   est_my_statuses: "My statuses",
+  chat_pull_refresh: "Updating the chat…",
   est_new: "New status",
   est_priv_btn: "Who sees my statuses",
   est_priv_all: "All my contacts",

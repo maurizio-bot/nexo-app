@@ -801,6 +801,7 @@ export default {
   est_view: "Voir",
   est_max: "Vous avez déjà 10 statuts : retirez-en un pour en publier un autre",
   est_my_statuses: "Mes statuts",
+  chat_pull_refresh: "Mise à jour de la discussion…",
   est_new: "Nouveau statut",
   est_priv_btn: "Qui voit mes statuts",
   est_priv_all: "Tous mes contacts",

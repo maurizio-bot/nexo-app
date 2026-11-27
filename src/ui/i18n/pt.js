@@ -801,6 +801,7 @@ export default {
   est_view: "Ver",
   est_max: "Você já tem 10 status: remova um para publicar outro",
   est_my_statuses: "Meus status",
+  chat_pull_refresh: "Atualizando a conversa…",
   est_new: "Novo status",
   est_priv_btn: "Quem vê meus status",
   est_priv_all: "Todos os meus contatos",

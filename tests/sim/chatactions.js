@@ -246,12 +246,12 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   r.accion_falsa_ignorada = !!bubbleWith(A, 'esta es mi respuesta') && !(await A.win.vaultLoadMessages(id('B'))).find((m) => (m.msgId || m.messageId) === aMsgId).deleted;
   // Nada de JSON a la vista ni en la lista de chats
   r.json_visible = shown(A).concat(shown(B)).filter((t) => /"type":"nexo_/.test(t)).length;
-  // 4d) Deslizar el chat hacia ABAJO = cerrarlo (ronda 2783). En jsdom mc.scrollTop es 0, así que el gesto cuenta.
+  // 4d) Deslizar el chat hacia ABAJO: desde 3359 (dueño 27-11) ya NO lo cierra, lo ACTUALIZA (chatpull.js). En jsdom mc.scrollTop es 0.
   const mcA = A.win.document.getElementById('messages-container');
   const teA = (type, y) => { const ev = new A.win.Event(type, { bubbles: true, cancelable: true }); ev.touches = [{ clientX: 60, clientY: y }]; mcA.dispatchEvent(ev); };
   r.chat_abierto = A.win.document.body.classList.contains('chat-view-active');
   teA('touchstart', 80); teA('touchmove', 200); teA('touchmove', 340); teA('touchend', 340); await sleep(900);
-  r.deslizar_abajo_cierra = r.chat_abierto && !A.win.document.body.classList.contains('chat-view-active');
+  r.deslizar_abajo_no_cierra = r.chat_abierto && A.win.document.body.classList.contains('chat-view-active');
   // 4e) Zoom de la foto en el visor: pellizco (dos dedos) para acercar/alejar y doble toque para alternar (ronda 2783)
   if (typeof A.win.__nexoOpenMedia === 'function') {
     A.win.__nexoOpenMedia('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'image');
