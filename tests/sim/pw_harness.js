@@ -13,7 +13,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function bootPhone(browser, name, native, dist, opts = {}) {
   // (ronda 2771) SHOTS_VIEWPORT=360x740: otro tamaño de teléfono (p. ej. el Vivo, 360 px de ancho)
   const vp = /^(\d+)x(\d+)$/.exec(process.env.SHOTS_VIEWPORT || '');
-  const page = await browser.newPage(opts.phone ? { viewport: { width: vp ? +vp[1] : 393, height: vp ? +vp[2] : 851 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true } : undefined);
+  const page = await browser.newPage(opts.phone ? { viewport: { width: vp ? +vp[1] : 393, height: vp ? +vp[2] : 851 }, deviceScaleFactor: +(process.env.SHOTS_DSF || 2), isMobile: true, hasTouch: true } : undefined);
   const logs = opts.logs || [];
   page.on('console', (m) => { if (!opts.quiet) logs.push(`${new Date().toISOString().substring(14, 23)} [${name}] ${m.text()}`.substring(0, 300)); });
   page.on('pageerror', (e) => logs.push(`[${name}] PAGEERROR ${e.message}`));

@@ -95,7 +95,7 @@ export function sendAccountTo(qrText) {
   var pl = _plugin();
   var p = String(qrText || '').split('|');
   _listen();
-  if (p[0] !== 'NEXO-MOVE1' || p.length !== 6) { _screen = _overlay(); _screen.status(t('prof_move_wrong_qr', 'Ese código no es de "Traer mi cuenta".')); _screen.closable(); return Promise.resolve(false); }
+  if (p[0] !== 'NEXO-MOVE1' || p.length !== 6) { _screen = _overlay(); _screen.status(t('prof_move_wrong_qr', 'Ese código no es de «Traer mi cuenta».')); _screen.closable(); return Promise.resolve(false); }
   _screen = _overlay();
   _screen.status(t('prof_move_saving', 'Guardando lo pendiente…'));
   // Auditoría #8c: si NO se pudo volcar todo a disco, no pasar la cuenta (moveSend lee de disco y luego borra lo de
@@ -117,7 +117,7 @@ export function startSendAccount() {
   var check = lockEnabled() ? appLockConfirm(t('prof_move_auth', 'Pasar tu cuenta a otro teléfono')) : Promise.resolve({ ok: true });
   return Promise.resolve(check).then(function(r) {
     if (!r || !(r.ok || r.none)) { console.log('[MOVE] Pasar la cuenta: sin la huella/PIN, no se sigue'); return false; }
-    openQrScanner(function(text) { sendAccountTo(text); }, t('prof_move_scan_caption', 'Apunta al código de "Traer mi cuenta" del teléfono nuevo'));
+    openQrScanner(function(text) { sendAccountTo(text); }, t('prof_move_scan_caption', 'Apunta al código de «Traer mi cuenta» del teléfono nuevo'));
     return true;
   });
 }

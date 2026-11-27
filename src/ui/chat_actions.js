@@ -360,12 +360,12 @@ export function _openMsgMenu(div) {
     if (!deleted) {
       // Ronda 2783: barra de reacciones arriba del menú (como WhatsApp)
       var rbar = document.createElement('div');
-      rbar.style.cssText = 'display:flex;justify-content:space-around;align-items:center;padding:6px 10px 8px;border-bottom:1px solid rgba(255,255,255,0.08);';
+      rbar.style.cssText = 'display:flex;justify-content:space-around;align-items:center;padding:2px 6px 4px;border-bottom:1px solid rgba(255,255,255,0.08);';
       REACTION_SET.forEach(function(e) {
         var rb = document.createElement('button');
         rb.className = 'mm-react';
         rb.textContent = e;
-        rb.style.cssText = 'background:none;border:none;font-size:24px;line-height:1;padding:3px 5px;cursor:pointer;';
+        rb.style.cssText = 'background:none;border:none;font-size:24px;line-height:1;padding:0;width:44px;height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;'; // revisión visual 28-11: toque de 44 px (antes 40×30)
         rb.onclick = function(ev) { ev.stopPropagation(); close(); _reactTo(cid, id, e); };
         rbar.appendChild(rb);
       });

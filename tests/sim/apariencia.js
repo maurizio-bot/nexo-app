@@ -64,7 +64,7 @@ async function arrancar(browser, radio, nat, name, logs) {
   if (f0) {
     ok(f0.fondo === 'linear-gradient(135deg, rgb(0, 200, 255), rgb(168, 85, 247))', '(1) degradado de siempre, es: ' + f0.fondo);
     ok(f0.color === 'rgb(255, 255, 255)', '(1) texto blanco de siempre, es: ' + f0.color);
-    ok(f0.hora === 'rgba(255, 255, 255, 0.55)', '(1) hora de siempre, es: ' + f0.hora);
+    ok(f0.hora === 'rgba(255, 255, 255, 0.7)', '(1) hora de siempre (0.7 desde la revisión visual 28-11, antes 0.55: no se leía), es: ' + f0.hora);
     ok(f0.borde === 'rgba(0, 0, 0, 0)', '(1) sin contorno (transparente), es: ' + f0.borde);
     ok(!f0.blur || f0.blur === 'none', '(1) sin desenfoque en la propia, es: ' + f0.blur);
     ok(/-apple-system/.test(f0.letra), '(1) letra de siempre, es: ' + f0.letra);

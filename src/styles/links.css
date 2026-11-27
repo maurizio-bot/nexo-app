@@ -55,3 +55,7 @@
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere;
 }
 .nx-sendto-empty { color: var(--nx-muted); font-size: 15px; line-height: 1.5; padding: 24px; text-align: center; }
+/* Revisión visual 28-11: la burbuja parte palabras con guion (hyphens:auto, critical.css) y en un enlace o un dominio metía guiones
+   que no existen («ejemplo-de-en-lace.com»): en enlaces y en el nombre de la tarjeta se parte sin inventar guiones. */
+.nx-link, .nx-lc-name, .nx-lc-title { hyphens: manual; -webkit-hyphens: manual; }
+.nx-lc-name { overflow-wrap: anywhere; }
