@@ -3,10 +3,7 @@
 Lo que trae cada versión, contado para el usuario (pedido del dueño 15-11: «que venga una breve descripción de lo que se hizo, para
 que el user cuando la descargue pueda verificar qué es lo que se implementó… para cuando se suba a Google Play»).
 
-- El bloque entre `<!-- APK -->
-<es-419>
-</es-419>
-<!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
+- El bloque entre `<!-- APK -->` y `<!-- /APK -->` es el de la **próxima APK**: el workflow lo pone como descripción del lanzamiento
   y la app lo muestra junto al botón de actualizar (Perfil → Ajustes → Actualizaciones, y «¿Qué trae?» en el aviso de abajo).
 - Formato de Google Play (se pega tal cual en «Novedades de esta versión»): un bloque por idioma (español, italiano, inglés y, desde
   la 3123, portugués de Brasil y francés), **máximo 500 caracteres** cada uno
@@ -15,13 +12,7 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Responde con nota de voz, foto o archivo.
-- Nuevo: encuestas, mensajes temporales y elegir quién ve tus estados.
-- En un grupo, mantén presionado el fondo para cambiarlo.
-- Desliza hacia abajo en un chat para actualizarlo.
-- Los mensajes por internet llegan aunque los servidores estén saturados, sin repetirse.
-- Los archivos lentos ya no se cortan y siguen donde iban.
-- Guía de bienvenida al día y pantallas más cómodas.
+- Mejoras de estabilidad y de entrega de mensajes.
 </es-419>
 <!-- /APK -->
 
@@ -29,7 +20,13 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 
 ### APK 3167 (28-11-2026)
-` y `
+- Responde con nota de voz, foto o archivo.
+- Nuevo: encuestas, mensajes temporales y elegir quién ve tus estados.
+- En un grupo, mantén presionado el fondo para cambiarlo.
+- Desliza hacia abajo en un chat para actualizarlo.
+- Los mensajes por internet llegan aunque los servidores estén saturados, sin repetirse.
+- Los archivos lentos ya no se cortan y siguen donde iban.
+- Guía de bienvenida al día y pantallas más cómodas.
 
 ### APK 3161 (27-11-2026)
 - Al traer los mensajes anteriores de un grupo, también llegan las imágenes mandadas como archivo.
