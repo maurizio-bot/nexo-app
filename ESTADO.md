@@ -21,6 +21,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **DECISIÓN DEL DUEÑO 28-11 ~07:00 México — CONEXIONES SÓLIDAS, UNA A LA VEZ** (tras `docs/AUDITORIA_CONEXIONES_28-11.md`: las 4 áreas
+  «parchado/frágil»). Orden aprobado: (0) contrato común de los caminos + diseño del cambio entre caminos EN PAPEL
+  (`docs/CONTRATO_CAMINOS_28-11.md`, en curso) → (1) internet → (2) Bluetooth (`docs/PLAN_BLUETOOTH_28-11.md`, en curso) → (3) Wi-Fi
+  Direct → (4) Wi-Fi local → (5) programar el cambio entre caminos. Cada fase: plan escrito que revisa el dueño, batería de escenarios
+  en tests/sim, APK que funciona, medidas en teléfonos reales; lo viejo que sobra se quita al terminar la fase. Conservar lo que sirve.
+  El dueño exige opinión honesta y objetiva (decirle cuando se equivoca, con razones), no darle la razón.
 - **28-11 ~01:20 México (Opus): SUBIDA UNA APK CON TODO lo pedido («sube todo» menos lo de Fable): arreglos 1–6 + guía de bienvenida al día
   (10 diapositivas, 5 idiomas) + revisión visual severa a 360 px (archivos con nombre largo, contraste de hora/✓, toques ≥ 44 px, ⋮ que no se
   cerraba) + del plan §6: quién ve mis estados (`estadopriv.js`), mensajes temporales (`chat_disappear.js`, `chatdisappear.js`), encuestas
