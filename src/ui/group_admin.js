@@ -268,6 +268,8 @@ export var groupAdminMethods = {
         return { ret: null };
       }
       if (inner && inner.gs) return { ret: null };   // un aviso de cambio sin estado válido: no se muestra
+      // Dueño 26-11: «✅ Se unió al grupo» no se muestra si aquí ya salió «Nuevo en el grupo: X» (un solo aviso por entrada)
+      if (inner && inner.gj && g && g.addN && g.addN[from]) { delete g.addN[from]; this._save(); return { ret: null }; }
       // G7: fondo del grupo compartido: solo de quien puede cambiar el grupo; se aplica aquí (local) y no se muestra como mensaje
       // Dueño 26-11: cada quien pone el fondo SOLO para sí y compartirlo es a propósito (lo puede hacer quien escribe en el grupo). El que
       // lo recibe lo usa si no tiene uno propio (o el que tenía también le llegó compartido); si eligió el suyo, el suyo se queda y el
@@ -449,18 +451,30 @@ export var groupAdminMethods = {
       if (this._throttle('L|' + g.id)) this.leaveSigned(g.id, true).catch(function(e) { console.warn('[GROUP] No se pudo repetir la salida de ' + g.id + ': ' + (e && e.message)); });
       return;
     }
+    // Dueño 26-11 (3160: «al entrar alguien salen 3–4 avisos; con uno es suficiente»): UN aviso por teléfono. El que entra ve solo «Te
+    // agregaron al grupo» (ya no además «Nuevo en el grupo: tú»); los demás, «Nuevo en el grupo: X», y el «✅ Se unió» que manda X al
+    // aceptar ya no se muestra donde ese aviso salió (g.addN: a quién se anunció y cuándo).
+    var youIn = (inNow && wasOut) || applied.some(function(a) { return a.join; });
+    applied.forEach(function(a) {
+      if (a.join || !a.prev) return;
+      var ad = gsDiff(a.prev, a.next).added || [];
+      ad.forEach(function(x) { if (x !== me) { g.addN = g.addN || {}; g.addN[x] = Date.now(); } });
+    });
     // (quien ya estaba fuera y sigue fuera no ve avisos de lo que pase después en el grupo)
     if (!mine && !g.left && !(wasOut && !inNow)) applied.forEach(function(a) {
       if (a.join) { self._notice(g.id, a.next.by, '👥 ' + (a.next.v === 1 ? t('grp_n_created', 'Creó el grupo ') + '«' + a.next.n + '»' : t('grp_n_you_in', 'Te agregaron al grupo'))); return; }
-      var txt = self._diffText(a.prev, a.next);
+      var addedMe = a.prev && a.prev.m.indexOf(me) < 0 && a.next.m.indexOf(me) >= 0;
+      var txt = self._diffText(a.prev, a.next, true);
+      if (addedMe && !youIn) { youIn = true; self._notice(g.id, a.next.by, '👥 ' + t('grp_n_you_in', 'Te agregaron al grupo')); }
       if (txt && a.next.by !== me) self._notice(g.id, a.next.by, txt);
     });
     if (s.ph && !this.photoOf(g.id)) this._photosLoad();
     this._save();
     _emit('nexo:groups', gone ? { id: g.id, gone: 1 } : { id: g.id });
   },
-  _diffText(prev, next) {
+  _diffText(prev, next, noMe) {
     var d = gsDiff(prev, next), n = [], nm = this.memberName.bind(this), me = this._me();
+    if (noMe && d.added) d.added = d.added.filter(function(x) { return x !== me; }); // «Te agregaron al grupo» ya lo dice
     var who = function(l) { return l.map(function(x) { return x === me ? t('prof_group_you', 'tú') : nm(x); }).join(', '); };
     if (d.left && this._rjFrom && next.by === this._rjFrom) return t('grp_reject_msg', '🚫 No aceptó la invitación') + (d.creator ? ' · ' + t('grp_n_boss', 'Ahora administra el grupo: ') + who([d.creator]) : '');
     if (d.left) return t('grp_left_msg', '👋 Salió del grupo') + (d.creator ? ' · ' + t('grp_n_boss', 'Ahora administra el grupo: ') + who([d.creator]) : '');

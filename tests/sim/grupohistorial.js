@@ -6,6 +6,7 @@
 //      otro grupo con eso cerrado no ofrece el botón y si C lo pide igual, nadie se lo manda.
 //  H2b 3349 (dueño 26-11: «hay imágenes del historial que no se descargan»): las fotos de antes también llegan (chica, mediana) y la GRANDE
 //      (más que el tope) llega como copia reducida en vez del aviso «Archivo grande no incluido».
+//  H1b (dueño 26-11, 3160): al entrar C, un solo aviso por teléfono (C: «Te agregaron»; B: «Nuevo en el grupo: C»; A: el suyo).
 //  H2c (dueño 26-11, 3160): lo mismo con una imagen grande mandada desde «Archivo» ('file', «1000103065.png»): llega como foto.
 // Contraprueba: la build de antes no tiene botón (H1 falla).
 // Imprime GRUPOHIST {json} y escribe last_logs_grupohistorial.txt. Uso: node grupohistorial.js <dir_build>
@@ -125,6 +126,8 @@ const grpHas = async (p, gid, re) => (await msgsOf(p, gid)).some((m) => re.test(
   await sleep(1000);
 
   // ---------- H1: A agrega a C → C acepta → botón ----------
+  const cnt = async (p, re) => (await msgsOf(p, gid)).filter((m) => re.test(String(m.content))).length;
+  const a0 = { A_nuevo: await cnt(A, /Nuevo en el grupo/), A_se_unio: await cnt(A, /Se unió al grupo/), B_nuevo: await cnt(B, /Nuevo en el grupo/), B_se_unio: await cnt(B, /Se unió al grupo/) };
   const cards = A.win.NEXO_groupCards ? A.win.NEXO_groupCards({ members: [idA, idB, idC] }) : null;
   await A.win.bleInterface.groups.addMembers(gid, [idC], cards);
   r.H1_invitado_s = await waitFor(() => C.win.bleInterface.groups.isInvited && C.win.bleInterface.groups.isInvited(gid), 60000);
@@ -137,7 +140,14 @@ const grpHas = async (p, gid, re) => (await msgsOf(p, gid)).some((m) => re.test(
   C.win.NEXO_openGroupMenu(gid); await sleep(300);
   r.H1_en_menu = !!C.win.document.querySelector('#nexo-group-menu .gm-history');
   { const m = C.win.document.getElementById('nexo-group-menu'); if (m) m.remove(); }
-  r.H1_ok = r.H1_invitado_s !== null && /Ver mensajes anteriores/.test(r.H1_boton || '') && r.H1_no_tiene_lo_de_antes && r.H1_en_menu;
+  // H1b (dueño 26-11, 3160: «al entrar alguien salen 3–4 avisos; con uno es suficiente»): UN aviso por teléfono
+  await sleep(8000);
+  r.H1b_avisos = { C_propios: (await msgsOf(C, gid)).filter((m) => String(m.msgId).indexOf('gsn') === 0).length, C_nuevo: await cnt(C, /Nuevo en el grupo/),
+    B_nuevo: await cnt(B, /Nuevo en el grupo/) - a0.B_nuevo, B_se_unio: await cnt(B, /Se unió al grupo/) - a0.B_se_unio,
+    A_nuevo: await cnt(A, /Nuevo en el grupo/) - a0.A_nuevo, A_se_unio: await cnt(A, /Se unió al grupo/) - a0.A_se_unio };
+  const av = r.H1b_avisos;
+  r.H1b_uno_solo = av.C_propios === 1 && av.C_nuevo === 0 && av.B_nuevo === 1 && av.B_se_unio === 0 && av.A_nuevo + av.A_se_unio === 1;
+  r.H1_ok = r.H1_invitado_s !== null && /Ver mensajes anteriores/.test(r.H1_boton || '') && r.H1_no_tiene_lo_de_antes && r.H1_en_menu && r.H1b_uno_solo;
 
   // ---------- H2: lo toca → llegan los de antes ----------
   const n2 = nC.notifLog.length;
