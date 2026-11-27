@@ -506,7 +506,9 @@ function _netStoredMap(ack) {
   if (!ack._netStored) ack._netStored = new Map();
   return ack._netStored;
 }
-ChatStream.prototype._netStoreTracked = function() { return this.type === 'chat' && _isNetDevice(this.deviceId) && !(this.meta && this.meta.dst); };
+// También lo que este teléfono guarda para otro (puente, meta.dst) si sale por internet: el diag. 23:33 eran justo 2 textos de la cola del
+// puente (msg…g2n0x4v7, msg…r8yh2amzl) republicados ×8 por net:. Un puente por Bluetooth no entra (no es un relé que guarde).
+ChatStream.prototype._netStoreTracked = function() { return this.type === 'chat' && _isNetDevice(this.deviceId); };
 ChatStream.prototype._noteNetStored = function(idx) {
   if (!this._netStoreTracked()) return;
   var m = _netStoredMap(this.ackSystem); if (!m) return;

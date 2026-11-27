@@ -64,10 +64,14 @@ const { importSrc } = require('./srcmod');
   // (6) Un ARCHIVO por internet no entra aquí (tiene su sondeo propio)
   const e = make({ type: 'file' }); e.st._noteNetStored(0);
   r.archivo_no_cambia = !(shared.get('msgprueba01')) && e.st._netWindowStored() === false;
-  // (7) Un texto por un PUENTE (meta.dst) ni por Bluetooth no entra aquí
-  const f = make({ meta: { dst: 'nxc' } }); f.st._noteNetStored(0);
-  const g = make({ deviceId: 'AA:BB:CC:DD:EE:01' }); g.st._noteNetStored(0);
-  r.puente_y_bt_no_cambian = shared.size === 0;
+  // (7) Por Bluetooth (también un puente por Bluetooth) no entra aquí
+  const g = make({ deviceId: 'AA:BB:CC:DD:EE:01', meta: { dst: 'nxc' } }); g.st._noteNetStored(0);
+  r.bt_no_cambia = shared.size === 0;
+  // (7b) EL CASO DEL DIAG. 23:33: lo que este teléfono guarda para otro (meta.dst) y sale por INTERNET sí entra: no se republica
+  const f = make({ meta: { dst: 'nxb0000001', fwd: true } }); for (let i = 0; i < 4; i++) f.st._noteNetStored(i);
+  for (let k = 0; k < 8; k++) f.st._onWindowTimeout();
+  r.puente_por_internet_no_republica = f.sends === 0 && f.st.windowRetryCount === 0;
+  shared.delete('msgprueba01');
   // (8) Si el otro ya confirmó parte, solo cuentan los trozos sin confirmar
   const h = make(); h.st._noteNetStored(2); h.st._noteNetStored(3); h.st.ackedMask = [true, true, false, false];
   r.solo_sin_confirmar = h.st._netWindowStored() === true;

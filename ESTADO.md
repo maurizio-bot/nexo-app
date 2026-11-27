@@ -24,7 +24,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **28-11 ~01:20 México (Opus): SUBIDA UNA APK CON TODO lo pedido («sube todo» menos lo de Fable): arreglos 1–6 + guía de bienvenida al día
   (10 diapositivas, 5 idiomas) + revisión visual severa a 360 px (archivos con nombre largo, contraste de hora/✓, toques ≥ 44 px, ⋮ que no se
   cerraba) + del plan §6: quién ve mis estados (`estadopriv.js`), mensajes temporales (`chat_disappear.js`, `chatdisappear.js`), encuestas
-  (`poll.js`, `polltest.js`) + plan §0 parcial: deslizar abajo en el chat ACTUALIZA, ya no cierra (`chatpull.js`). CI 3164 FALLÓ (8 pruebas: cupo demasiado bajo para archivos grandes, i18n > 1000 líneas, escucha de reservas con relé propio, 3 pruebas a actualizar); arreglado y resubido (3165). REVISAR SU CI.**
+  (`poll.js`, `polltest.js`) + plan §0 parcial: deslizar abajo en el chat ACTUALIZA, ya no cierra (`chatpull.js`). CI 3164 FALLÓ (8 pruebas: cupo demasiado bajo para archivos grandes, i18n > 1000 líneas, escucha de reservas con relé propio, 3 pruebas a actualizar); arreglado y resubido: 3165 PASÓ. 3166 = + arreglo 1 también para lo que este teléfono guarda para otro y sale por internet (caso exacto del diag. 23:33). REVISAR SU CI; al pasar, NOVEDADES al historial como 3166.**
   **Decisiones visuales para el dueño (no tocadas):** ✓✓ celeste poco contraste; nombre de grupo largo con 3 botones se corta; casillas a la
   izquierda vs. derecha en Seguridad (¿interruptores?); hora 12 h vs 24 h; Estados con fondo negro puro y sin título; píldora de llamada en 2
   líneas; insignia «1» del + blanca sobre naranja. **Queda del plan (para el límite fresco):** §0 sincronía completa, §1–5, §6 notas de vídeo,
