@@ -26,7 +26,7 @@ function _el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.c
 // de trazo en vez del emoji del texto; sin rayas entre filas. El icono sale de la clase de la opción (las que buscan las pruebas).
 var ROW_ICO = { 'gset-photo-btn': 'nx-image', 'gset-photo-del': 'nx-trash', 'gset-admins': 'chat-starred', 'gset-add': 'nx-person-add',
   'gset-blocked': 'chat-block', 'gset-wp': 'nx-palette', 'gset-leave': 'nx-leave', 'gset-mem-add': 'nx-person-add', 'gset-mem-cancel': 'mm-cancel',
-  'gset-kick-only': 'nx-person-x', 'gset-kick-block': 'chat-block', 'gset-kick-cancel': 'mm-cancel', 'gset-wp-pick': 'nx-image', 'gset-wp-share': 'nx-share', 'gset-wp-clear': 'nx-trash' };
+  'gset-kick-only': 'nx-person-x', 'gset-kick-block': 'chat-block', 'gset-kick-cancel': 'mm-cancel', 'gset-wp-pick': 'nx-image', 'gset-wp-share': 'nx-share', 'gset-wp-clear': 'nx-trash', 'gset-wp-offer': 'nx-image' };
 function _btn(cls, label, fn, danger) {
   var b = _el('button', 'mm-item nx-row ' + cls + (danger ? ' nx-danger' : '')); b.type = 'button';
   var ico = SHEET_ICONS[ROW_ICO[String(cls).split(' ')[0]]];

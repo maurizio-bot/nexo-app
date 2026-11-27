@@ -21,7 +21,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
-- **APK DE EMERGENCIA (26-11 noche, Opus; el dueño eligió esperar al estilo parejo para que vaya TODO junto) — EN CURSO (falta el estilo parejo del ayudante; luego se sube a NEXOCHAT):**
+- **APK DE EMERGENCIA (26-11 noche, Opus; el dueño eligió esperar al estilo parejo para que vaya TODO junto) — SUBIDA A NEXOCHAT (26-11 ~19:00 México; revisar el CI ~85 min y, si pasa, NOVEDADES al historial con su número):**
   1. **Relés que limitan** (diag. 26-11 17:10 y 18:21, S24 → S23, «!»): **3347** no se reintenta 5 veces en 10 s (⏳, no «!»); **3348** relé que
      limita/castiga/no deja publicar queda EN PAUSA para publicar (rate 20 s→10 min; banned 10 min→2 h; web of trust/pago/PoW 6 h; se sigue leyendo),
      en pausa = caído para la reserva (entra otro), con todos en pausa queda pendiente SIN mandar nada, tras un límite lo pesado (≥ 4000) sale con
@@ -32,7 +32,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
      compartió X» en ⚙️ → Fondo del grupo); sí cambia uno que también llegó compartido (`wallpaper.js` from/oferta, `group_admin` gwp). `gruposadmin.js`.
   3. **Historial de grupo (3349):** foto > 200 KB → copia reducida (lienzo ≤ 1280) o su miniatura, ya no el aviso «no incluido»; no viajan marcas
      locales (thumbOnly/fullRef/blobPtr). `grupohistorial.js` H2b (contraprueba). Fotos ≤ 200 KB ya llegaban (probado).
-  4. **Menores:** estadística («su app no contesta» ya no es fallo del Wi-Fi; «sin camino» que pasa directo a leído cuenta); B-EST (ventanas, menús ⋮ y hojas como Contactos): lo hace un ayudante en otra rama, se junta antes de subir.
+  4. **Menores:** estadística («su app no contesta» ya no es fallo del Wi-Fi; «sin camino» que pasa directo a leído cuenta); **B-EST hecho** (commit 096e5df: hojas que suben = «Opciones del chat», avisos centrados `.nx-ask` con `.nx-btn`, Ajustes del grupo y
+     sus pantallas con filas de icono; la hoja común queda encima del botón +; medido a 360 px; OJO `critical.css` esconde clases con «log/toast/debug/rem-»).
+     Fuera: los `window.confirm` nativos, `#nexo-pin-menu` (opaco cian, dueño 24-11) y pantallas de diseño propio (juegos, editor de stickers, bienvenida…).
   **PRUEBAS DEL DUEÑO:** (a) los 3 en la misma Wi-Fi, mandar varios textos seguidos al S23: ⏳ si un relé limita, nunca «!», y llegan; (b) nota de voz
   en el grupo; (c) poner un fondo de grupo propio y que otro comparta el suyo: el tuyo se queda; (d) alguien nuevo en un grupo con fotos grandes
   pide «Ver mensajes anteriores»: ve las fotos. **Sin hacer:** que lo grande vaya por Bluetooth/Wi-Fi en vez de relés cuando ambos existen (el
