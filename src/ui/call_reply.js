@@ -7,6 +7,7 @@
 import { _sendTextTo } from './send.js';
 import { _showInfoToast } from './ui_bits.js';
 import { t } from './i18n.js';
+import { sheetRow } from './chat_sheet.js'; // B-EST (26-11): filas de hoja comunes
 
 function _presets() {
   return [
@@ -33,45 +34,38 @@ export function openCallReply(nx, name, reject) {
   var ov = document.createElement('div');
   ov.id = 'nexo-call-reply';
   ov.setAttribute('data-nx', String(nx || ''));
-  ov.style.cssText = 'position:fixed;inset:0;z-index:2147483646;display:flex;flex-direction:column;justify-content:flex-end;background:rgba(0,0,0,0.55);';
+  // B-EST (26-11): la hoja común (como las opciones del chat): asa, título de hoja, cada frase como fila con su icono y «Cancelar» al final
+  ov.className = 'nx-chat-sheet';
+  ov.style.zIndex = '2147483646'; // por encima de la pantalla de llamada
   var sheet = document.createElement('div');
-  sheet.style.cssText = 'background:#14152a;color:#fff;border-radius:18px 18px 0 0;max-height:80vh;display:flex;flex-direction:column;gap:8px;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));box-sizing:border-box;font-family:inherit;';
+  sheet.className = 'nx-chat-sheet-body nx-sheet-tall';
   var h = document.createElement('div');
-  h.style.cssText = 'font-size:16px;font-weight:700;margin-bottom:4px;';
+  h.className = 'nx-sheet-title';
   h.textContent = t('call_qr_title', 'Responder con mensaje') + (name ? ' · ' + name : '');
   sheet.appendChild(h);
-  var rowCss = 'text-align:left;background:rgba(255,255,255,0.07);border:none;color:#fff;border-radius:12px;padding:12px 14px;font-size:15px;cursor:pointer;font-family:inherit;';
   var close = function() { ov.remove(); };
   _presets().forEach(function(txt) {
-    var b = document.createElement('button');
-    b.className = 'nexo-qr-preset';
-    b.style.cssText = rowCss;
-    b.textContent = txt;
+    var b = sheetRow(txt, 'nx-open', 'nexo-qr-preset');
     b.addEventListener('click', function(e) { e.stopPropagation(); close(); sendCallReply(nx, txt, reject); });
     sheet.appendChild(b);
   });
   // «Escribir…»: un cuadro de texto propio y «Enviar»
-  var write = document.createElement('button');
-  write.className = 'nexo-qr-write';
-  write.style.cssText = rowCss + 'opacity:0.9;';
-  write.textContent = t('call_qr_write', 'Escribir…');
+  var write = sheetRow(t('call_qr_write', 'Escribir…'), 'nx-edit', 'nexo-qr-write');
   var box = document.createElement('div');
-  box.style.cssText = 'display:none;gap:8px;align-items:flex-end;';
+  box.className = 'nx-qr-box';
+  box.style.display = 'none';
   var ta = document.createElement('textarea');
   ta.rows = 2; ta.maxLength = 500;
+  ta.className = 'nx-input';
   ta.placeholder = t('call_qr_placeholder', 'Tu mensaje');
-  ta.style.cssText = 'flex:1;min-width:0;resize:none;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);color:#fff;border-radius:12px;padding:10px 12px;font-size:15px;font-family:inherit;box-sizing:border-box;';
   var send = document.createElement('button');
-  send.className = 'nexo-qr-send';
-  send.style.cssText = 'background:#16a34a;border:none;color:#fff;border-radius:12px;padding:12px 16px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;';
+  send.className = 'nexo-qr-send nx-btn nx-btn-primary';
   send.textContent = t('call_qr_send', 'Enviar');
   send.addEventListener('click', function(e) { e.stopPropagation(); var v = ta.value.trim(); if (!v) { ta.focus(); return; } close(); sendCallReply(nx, v, reject); });
   box.appendChild(ta); box.appendChild(send);
   write.addEventListener('click', function(e) { e.stopPropagation(); write.style.display = 'none'; box.style.display = 'flex'; ta.focus(); });
   sheet.appendChild(write); sheet.appendChild(box);
-  var cancel = document.createElement('button');
-  cancel.style.cssText = 'margin-top:4px;background:rgba(255,255,255,0.12);border:none;color:#fff;border-radius:12px;padding:12px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;';
-  cancel.textContent = t('misc_cancel', 'Cancelar');
+  var cancel = sheetRow(t('misc_cancel', 'Cancelar'), 'mm-cancel', 'nexo-qr-cancel');
   cancel.addEventListener('click', function(e) { e.stopPropagation(); close(); });
   sheet.appendChild(cancel);
   ov.addEventListener('click', function(e) { if (e.target === ov) close(); });

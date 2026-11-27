@@ -663,17 +663,17 @@ function _myView() {
   var o = _overlay();
   var box = document.createElement('div');
   box.id = 'estado-mios';
-  box.style.cssText = 'background:var(--nx-sheet);border:1px solid var(--nx-line);border-radius:var(--nx-radius);padding:16px;max-width:360px;width:100%;max-height:85vh;overflow-y:auto;color:#fff;display:flex;flex-direction:column;gap:12px;';
+  box.className = 'nx-ask-card nx-ask-flex'; box.style.cssText = 'max-height:85vh;overflow-y:auto;'; // B-EST (26-11): la tarjeta del aviso común
   var paint = function() {
     var list = myStatuses();
     _freeUrls(o);   // 3200: las URL blob: de lo que se vio antes
     box.innerHTML = '';
-    var h = document.createElement('div'); h.style.cssText = 'font-size:18px;font-weight:800;color:#fff;letter-spacing:-0.2px;'; h.textContent = t('est_my_statuses', 'Mis estados') + ' (' + list.length + '/' + MAX_ITEMS + ')';
+    var h = document.createElement('div'); h.className = 'nx-ask-title'; h.textContent = t('est_my_statuses', 'Mis estados') + ' (' + list.length + '/' + MAX_ITEMS + ')';
     box.appendChild(h);
     var nuevo = document.createElement('button'); nuevo.id = 'estado-nuevo';
     nuevo.textContent = '＋ ' + t('est_new', 'Nuevo estado');
     nuevo.disabled = list.length >= MAX_ITEMS;
-    nuevo.style.cssText = 'padding:10px;background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));border:none;border-radius:14px;color:#fff;font-weight:700;cursor:pointer;box-shadow:0 10px 30px rgba(0,200,255,0.35),0 4px 12px rgba(168,85,247,0.35);' + (nuevo.disabled ? 'opacity:0.4;box-shadow:none;' : '');
+    nuevo.className = 'nx-btn nx-btn-primary'; if (nuevo.disabled) nuevo.style.cssText = 'opacity:0.4;box-shadow:none;';
     nuevo.addEventListener('click', function(e) { e.stopPropagation(); if (myStatuses().length >= MAX_ITEMS) { _toast(t('est_max', 'Ya tienes 10 estados: quita uno para publicar otro')); return; } _compose(); });
     box.appendChild(nuevo);
     if (!list.length) { o.remove(); return; }
@@ -692,8 +692,7 @@ function _myView() {
       // Se carga al tocar «Ver» (no los 10 a la vez) y desde una URL blob: (la CSP no deja «data:» en un <video>/<audio>).
       var ver = null;
       if (kk === 'vid' || kk === 'aud' || (kk === 'img' && it.big)) {
-        ver = document.createElement('button'); ver.className = 'estado-ver'; ver.textContent = '▶ ' + t('est_view', 'Ver');
-        ver.style.cssText = 'padding:6px 12px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:14px;color:#fff;font-size:12px;cursor:pointer;flex-shrink:0;';
+        ver = document.createElement('button'); ver.className = 'estado-ver nx-chip'; ver.textContent = '▶ ' + t('est_view', 'Ver');
         ver.addEventListener('click', function(e) {
           e.stopPropagation(); ver.disabled = true; ver.style.opacity = '0.5';
           statusMedia('me', it).then(function(d) {
@@ -713,8 +712,7 @@ function _myView() {
         });
         top.appendChild(ver);
       }
-      var del = document.createElement('button'); del.className = 'estado-quitar'; del.textContent = t('grp_remove', 'Quitar');
-      del.style.cssText = 'padding:6px 12px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:14px;color:#ff8a80;font-size:12px;cursor:pointer;flex-shrink:0;';
+      var del = document.createElement('button'); del.className = 'estado-quitar nx-chip nx-chip-danger'; del.textContent = t('grp_remove', 'Quitar');
       del.addEventListener('click', function(e) { e.stopPropagation(); removeMyStatus(it.sid); paint(); });
       top.appendChild(del);
       card.appendChild(top);

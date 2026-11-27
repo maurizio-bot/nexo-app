@@ -15,16 +15,23 @@ import { GS_MAX_MEMBERS } from './group_state.js';
 import { t } from './i18n.js';
 import { _doChatBack } from './chat_nav.js';
 import { _getBLEContacts } from './ble_helpers.js';
+import { sheetSvg, SHEET_ICONS } from './chat_sheet.js'; // B-EST (26-11): iconos de trazo de las hojas
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
 function _gs() { var b = _bi(); return b && b.groups; }
 function _me() { return _normId(_bi() && _bi().localNexoId); }
 function _toast(s) { try { _showInfoToast(s, 3200); } catch (e) {} }
 function _el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
-var BTN = 'display:block;width:100%;text-align:left;padding:13px 4px;background:none;border:none;border-bottom:1px solid rgba(255,255,255,0.08);font-size:16px;color:#fff;';
+// B-EST (26-11, dueño: «un mismo estilo»): cada opción es una fila de hoja (.mm-item.nx-row, la de las opciones del chat) con su icono
+// de trazo en vez del emoji del texto; sin rayas entre filas. El icono sale de la clase de la opción (las que buscan las pruebas).
+var ROW_ICO = { 'gset-photo-btn': 'nx-image', 'gset-photo-del': 'nx-trash', 'gset-admins': 'chat-starred', 'gset-add': 'nx-person-add',
+  'gset-blocked': 'chat-block', 'gset-wp': 'nx-palette', 'gset-leave': 'nx-leave', 'gset-mem-add': 'nx-person-add', 'gset-mem-cancel': 'mm-cancel',
+  'gset-kick-only': 'nx-person-x', 'gset-kick-block': 'chat-block', 'gset-kick-cancel': 'mm-cancel', 'gset-wp-pick': 'nx-image', 'gset-wp-share': 'nx-share', 'gset-wp-clear': 'nx-trash' };
 function _btn(cls, label, fn, danger) {
-  var b = _el('button', cls, label); b.type = 'button';
-  b.style.cssText = BTN + (danger ? 'color:#ff6b6b;' : '');
+  var b = _el('button', 'mm-item nx-row ' + cls + (danger ? ' nx-danger' : '')); b.type = 'button';
+  var ico = SHEET_ICONS[ROW_ICO[String(cls).split(' ')[0]]];
+  if (ico) { var ic = _el('span', 'mm-ico'); ic.innerHTML = sheetSvg(ico, 20); b.appendChild(ic); label = String(label).replace(/^\S+\s{2}/, ''); } // el emoji del texto lo hace el icono
+  b.appendChild(_el('span', 'nx-sheet-label', label));
   b.addEventListener('click', function(e) { e.stopPropagation(); fn(); });
   return b;
 }
@@ -32,13 +39,14 @@ function _sheet(id, title) {
   var old = document.getElementById(id); if (old) old.remove();
   _contactsStyles();
   var sh = _el('div'); sh.id = id;
-  sh.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:var(--nx-bg,#0b0c1a);color:#fff;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
+  sh.className = 'nx-panel'; // B-EST (26-11): pantalla como Nuevo grupo / Reenviar (cabecera de Contactos arriba del todo, sin 16 px de más)
+  sh.style.cssText = 'position:fixed;inset:0;z-index:2147483646;';
   var head = _el('div', 'nx-page-head nx-sheet-head');
   head.appendChild(_el('div', 'nx-page-title', title));
   var x = _el('button', 'nx-round-btn gset-close'); x.type = 'button'; x.innerHTML = SHEET_CLOSE_SVG; x.setAttribute('aria-label', t('cancel'));
   x.addEventListener('click', function() { sh.remove(); });
   head.appendChild(x); sh.appendChild(head);
-  var body = _el('div', 'gset-body'); body.style.cssText = 'flex:1;overflow-y:auto;';
+  var body = _el('div', 'gset-body nx-panel-body');
   sh.appendChild(body);
   document.body.appendChild(sh);
   return { sheet: sh, body: body };
@@ -47,8 +55,7 @@ function _fold(s) { return String(s || '').toLowerCase().normalize('NFD').replac
 // Lista con buscador por nombre y casillas: items [{ nx, name, on, locked }] → onSave(lista de NEXO ID marcados)
 function _pickList(id, title, items, saveLabel, onSave, max) {
   var p = _sheet(id, title);
-  var q = _el('input', 'gset-q'); q.placeholder = t('grp_search', 'Buscar por nombre');
-  q.style.cssText = 'background:rgba(255,255,255,0.08);border:none;border-radius:10px;padding:12px;color:#fff;font-size:16px;margin-bottom:8px;width:100%;box-sizing:border-box;';
+  var q = _el('input', 'gset-q nx-input'); q.placeholder = t('grp_search', 'Buscar por nombre');
   p.body.appendChild(q);
   var list = _el('div'); p.body.appendChild(list);
   var on = {};
@@ -66,7 +73,7 @@ function _pickList(id, title, items, saveLabel, onSave, max) {
   if (!items.length) list.appendChild(_el('div', 'gset-empty', t('grp_nobody', 'No hay nadie para elegir')));
   q.addEventListener('input', function() { var f = _fold(q.value); Array.prototype.forEach.call(list.children, function(r) { if (r.dataset) r.style.display = !f || (r.dataset.q || '').indexOf(f) >= 0 ? '' : 'none'; }); });
   var save = _btn(id + '-save gset-save', saveLabel, function() { p.sheet.remove(); onSave(Object.keys(on)); });
-  save.style.cssText = 'background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:600;margin-top:8px;';
+  save.className = id + '-save gset-save nx-btn nx-btn-primary'; // el botón principal de la pantalla (como «Crear grupo»)
   p.sheet.appendChild(save);
   return p;
 }
@@ -85,9 +92,8 @@ export function groupOptionsPicker(host, cur, onChange, onPick) {
   if (!host) return api;
   host.innerHTML = '';
   var mk = function(cls, label, sub, fn) {
-    var b = _el('button', 'gset-mode ' + cls); b.type = 'button';
-    b.style.cssText = 'display:block;width:100%;text-align:left;padding:12px;margin:0 0 8px;border-radius:12px;border:1px solid rgba(255,255,255,0.18);background:none;color:#fff;font-size:16px;';
-    b.appendChild(_el('div', '', label)); var s = _el('div', '', sub); s.style.cssText = 'font-size:13px;opacity:0.7;margin-top:2px;'; b.appendChild(s);
+    var b = _el('button', 'gset-mode nx-opt ' + cls); b.type = 'button';
+    b.appendChild(_el('div', 'nx-opt-t', label)); b.appendChild(_el('div', 'nx-opt-d', sub));
     b.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); fn(); });
     host.appendChild(b); return b;
   };
@@ -106,18 +112,17 @@ export function groupOptionsPicker(host, cur, onChange, onPick) {
   var rows = _el('div', 'gset-rows'); host.appendChild(rows);
   var ROWS = [['ow', t('grp_row_write', 'Escribir y compartir')], ['oa', t('grp_row_add', 'Agregar personas')], ['md', t('grp_row_edit', 'Cambiar nombre y foto')]];
   var isAdm = function(k) { return k === 'md' ? v.md === 'c' : !!v[k]; };
-  function mark(b, on) { b.style.borderColor = on ? '#00c8ff' : 'rgba(255,255,255,0.18)'; b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  function mark(b, on) { b.style.borderColor = on ? '#00c8ff' : ''; b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   function paint() {
     mark(bAll, picked && !custom); mark(bCus, custom);
     rows.innerHTML = ''; rows.style.display = custom ? 'block' : 'none';
     if (!custom) return;
     ROWS.forEach(function(r) {
-      var line = _el('div', 'gset-row gset-row-' + r[0]); line.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 8px;';
-      var lb = _el('div', '', r[1]); lb.style.cssText = 'flex:1 1 140px;font-size:15px;'; line.appendChild(lb);
+      var line = _el('div', 'gset-row nx-opt-row gset-row-' + r[0]);
+      line.appendChild(_el('div', 'nx-opt-row-t', r[1]));
       [[0, 'gset-who-all', t('grp_who_all', 'Todos')], [1, 'gset-who-adm', t('grp_who_admins', 'Solo administradores')]].forEach(function(o) {
         var sel = isAdm(r[0]) === !!o[0];
-        var b = _el('button', o[1], o[2]); b.type = 'button';
-        b.style.cssText = 'padding:7px 10px;border-radius:10px;font-size:13px;color:#fff;border:1px solid;background:' + (sel ? 'rgba(0,200,255,0.15)' : 'none') + ';';
+        var b = _el('button', o[1] + ' nx-chip' + (sel ? ' nx-chip-on' : ''), o[2]); b.type = 'button';
         mark(b, sel);
         b.addEventListener('click', function(e) {
           e.preventDefault(); e.stopPropagation();
@@ -160,13 +165,12 @@ export function openGroupSettings(gid) {
     var s = gs.state(gid), b = p.body, can = function(w, x) { return gs.can(gid, w, x); };
     b.innerHTML = '';
     // Foto y nombre
-    var top = _el('div'); top.style.cssText = 'display:flex;align-items:center;gap:12px;margin-bottom:10px;';
+    var top = _el('div', 'gset-top');
     var av = _el('div', 'ble-contact-avatar gset-photo'); av.style.cssText = 'width:64px;height:64px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:26px;background:#2a2c48;';
     var img = gs.photoOf(gid);
     if (img) { av.style.backgroundImage = 'url("' + img + '")'; av.style.backgroundSize = 'cover'; } else av.textContent = '👥';
     top.appendChild(av);
-    var nm = _el('input', 'gset-name'); nm.value = s.n; nm.maxLength = 60; nm.disabled = !can('edit');
-    nm.style.cssText = 'flex:1;background:rgba(255,255,255,0.08);border:none;border-radius:10px;padding:12px;color:#fff;font-size:16px;';
+    var nm = _el('input', 'gset-name nx-input'); nm.value = s.n; nm.maxLength = 60; nm.disabled = !can('edit');
     top.appendChild(nm); b.appendChild(top);
     if (can('edit')) {
       nm.addEventListener('change', function() { _run(gs.renameSigned(gid, nm.value)); });
@@ -180,17 +184,17 @@ export function openGroupSettings(gid) {
     }
     // Modo e interruptores (solo quien hace de creador los cambia; los demás los ven)
     var boss = can('settings');
-    var mh = _el('div', 'gset-sec', t('grp_opts', 'Opciones del grupo')); mh.style.cssText = 'font-size:13px;opacity:0.7;margin:12px 2px 2px;'; b.appendChild(mh);
+    var mh = _el('div', 'gset-sec nx-sec-label', t('grp_opts', 'Opciones del grupo')); b.appendChild(mh);
     if (boss) {
       var mp = _el('div', 'gset-opts'); b.appendChild(mp);
       groupOptionsPicker(mp, s, function(ch) { _run(gs.setSettings(gid, ch)); });
     } else {
-      var info = _el('div', 'gset-mode-info', groupOptionsText(s));
-      info.style.cssText = 'padding:8px 2px;font-size:15px;'; b.appendChild(info);
+      var info = _el('div', 'gset-mode-info nx-note', groupOptionsText(s));
+      b.appendChild(info);
     }
     // Historial para los nuevos (dueño 24-11, opción B): lo cambia quien hace de creador; los demás lo ven
     var hxOn = !s.hx;
-    var hxRow = _el('label', 'gset-hist'); hxRow.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 2px;font-size:15px;';
+    var hxRow = _el('label', 'gset-hist nx-check-row');
     var hxBox = _el('input', 'gset-hist-box'); hxBox.type = 'checkbox'; hxBox.checked = hxOn; hxBox.disabled = !boss;
     hxRow.appendChild(hxBox); hxRow.appendChild(_el('span', '', t('grp_hist_opt', 'Los nuevos pueden ver los mensajes anteriores (últimos 30 días)')));
     if (boss) hxBox.addEventListener('change', function() { _run(gs.setSettings(gid, { hx: hxBox.checked ? 0 : 1 })); });
@@ -210,21 +214,20 @@ export function openGroupSettings(gid) {
         var cards = typeof window.NEXO_groupCards === 'function' ? window.NEXO_groupCards({ members: s.m.concat(list) }) : null;
         _run(gs.addMembers(gid, list, cards));
       }, GS_MAX_MEMBERS - s.m.length);
-      var note = _el('div', 'gset-note', s.hx ? t('grp_add_note', 'Quien entra no ve los mensajes de antes.') : t('grp_add_note_hist', 'Le llega una invitación; al entrar puede pedir los mensajes de los últimos 30 días.')); note.style.cssText = 'font-size:13px;opacity:0.7;margin:6px 2px;'; pk.sheet.insertBefore(note, pk.sheet.lastChild);
+      var note = _el('div', 'gset-note nx-note', s.hx ? t('grp_add_note', 'Quien entra no ve los mensajes de antes.') : t('grp_add_note_hist', 'Le llega una invitación; al entrar puede pedir los mensajes de los últimos 30 días.')); pk.sheet.insertBefore(note, pk.sheet.lastChild);
     }));
     // Miembros, con expulsar (G4/G9)
-    var mt = _el('div', 'gset-sec', s.m.length + t('prof_group_people', ' personas: ').replace(/:\s*$/, '')); mt.style.cssText = 'font-size:13px;opacity:0.7;margin:14px 2px 2px;'; b.appendChild(mt);
+    var mt = _el('div', 'gset-sec nx-sec-label', s.m.length + t('prof_group_people', ' personas: ').replace(/:\s*$/, '')); b.appendChild(mt);
     s.m.forEach(function(nx) {
-      var row = _el('div', 'gset-member'); row.dataset.nx = nx; row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid rgba(255,255,255,0.06);';
+      var row = _el('div', 'gset-member nx-person-row'); row.dataset.nx = nx; // como una fila de Contactos (sin rayas)
       var name = nx === me ? t('prof_group_you', 'tú') : gs.memberName(nx);
       row.appendChild(_pickAvatar(nx, name));
-      var nmEl = _el('div', 'gset-member-name', name); nmEl.style.cssText = 'flex:1;'; row.appendChild(nmEl);
+      var nmEl = _el('div', 'gset-member-name nx-pick-name', name); row.appendChild(nmEl);
       // Dueño 23-11: tocar a un miembro abre su chat si ya es contacto; si no, «Agregar» (solicitud de contacto)
       if (nx !== me) { row.style.cursor = 'pointer'; row.addEventListener('click', function(e) { if (e.target && e.target.closest && e.target.closest('.gset-kick')) return; _memberTap(p.sheet, nx, name); }); }
-      var tag = _roleTag(s, nx); if (tag) { var tg = _el('span', 'gset-role', tag); tg.style.cssText = 'font-size:12px;color:#00c8ff;'; row.appendChild(tg); }
+      var tag = _roleTag(s, nx); if (tag) { var tg = _el('span', 'gset-role nx-role-tag', tag); row.appendChild(tg); }
       if (nx !== me && can('kick', nx)) {
-        var k = _el('button', 'gset-kick', t('grp_kick', 'Expulsar')); k.type = 'button';
-        k.style.cssText = 'background:none;border:1px solid #ff6b6b;color:#ff6b6b;border-radius:10px;padding:6px 10px;font-size:14px;';
+        var k = _el('button', 'gset-kick nx-chip nx-chip-danger', t('grp_kick', 'Expulsar')); k.type = 'button';
         k.addEventListener('click', function() { _kickSheet(gid, nx, name); });
         row.appendChild(k);
       }
@@ -252,7 +255,7 @@ function _memberTap(panel, nx, name) {
     return;
   }
   var p = _sheet('nexo-gset-mem', name);
-  var note = _el('div', 'gset-note', t('grp_not_contact', 'No está en tus contactos.')); note.style.cssText = 'font-size:14px;opacity:0.75;margin:6px 2px 10px;'; p.body.appendChild(note);
+  var note = _el('div', 'gset-note nx-note', t('grp_not_contact', 'No está en tus contactos.')); p.body.appendChild(note);
   p.body.appendChild(_btn('gset-mem-add', '➕  ' + t('add', 'Agregar'), function() {
     p.sheet.remove();
     if (typeof bi.addByNexoId !== 'function') return;
@@ -289,7 +292,7 @@ function _kickSheet(gid, nx, name) {
   if (gs.can(gid, 'block', nx)) {
     p.body.appendChild(_btn('gset-kick-block', t('grp_kick_block', 'Expulsar y bloquear'), function() { p.sheet.remove(); _run(gs.kick(gid, nx, true)); }, true));
     var n = _el('div', 'gset-note', t('grp_block_note', 'El bloqueo es solo para este grupo: nadie podrá volver a agregarlo hasta que lo desbloquees. No cambia el contacto fuera del grupo.'));
-    n.style.cssText = 'font-size:13px;opacity:0.7;margin:8px 2px;'; p.body.appendChild(n);
+    n.className = 'gset-note nx-note'; p.body.appendChild(n);
   }
   p.body.appendChild(_btn('gset-kick-cancel', t('cancel'), function() { p.sheet.remove(); }));
 }
@@ -300,13 +303,12 @@ function _blockedSheet(gid) {
     var s = gs.state(gid); p.body.innerHTML = '';
     if (!s.bl.length) { p.sheet.remove(); return; }
     s.bl.forEach(function(nx) {
-      var row = _el('div', 'gset-bl-row'); row.dataset.nx = nx; row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid rgba(255,255,255,0.06);';
+      var row = _el('div', 'gset-bl-row nx-person-row'); row.dataset.nx = nx;
       var name = gs.memberName(nx);
       row.appendChild(_pickAvatar(nx, name));
-      var ne = _el('div', '', name); ne.style.cssText = 'flex:1;'; row.appendChild(ne);
+      var ne = _el('div', 'nx-pick-name', name); row.appendChild(ne);
       if (gs.can(gid, 'unblock', nx)) {
-        var u = _el('button', 'gset-unblock', t('grp_unblock', 'Desbloquear')); u.type = 'button';
-        u.style.cssText = 'background:none;border:1px solid #00c8ff;color:#00c8ff;border-radius:10px;padding:6px 10px;font-size:14px;';
+        var u = _el('button', 'gset-unblock nx-chip nx-chip-accent', t('grp_unblock', 'Desbloquear')); u.type = 'button';
         u.addEventListener('click', function() { _run(gs.unblock(gid, nx)).then(paint); });
         row.appendChild(u);
       }

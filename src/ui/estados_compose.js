@@ -19,8 +19,8 @@ function _readBytes(b) {
 function _compose() {
   var o = _overlay();
   var box = document.createElement('div');
-  box.style.cssText = 'background:var(--nx-sheet);border:1px solid var(--nx-line);border-radius:var(--nx-radius);padding:20px;max-width:340px;width:100%;color:#fff;display:flex;flex-direction:column;gap:12px;';
-  var h = document.createElement('div'); h.style.cssText = 'font-size:18px;font-weight:800;color:#fff;letter-spacing:-0.2px;'; h.textContent = t('grp_my_status_24h', 'Mi estado (24 h)');
+  box.className = 'nx-ask-card nx-ask-flex'; // B-EST (26-11): la tarjeta del aviso común, con su título y sus botones parejos
+  var h = document.createElement('div'); h.className = 'nx-ask-title'; h.textContent = t('grp_my_status_24h', 'Mi estado (24 h)');
   var m = null;   // 3032: «Publicar» crea un estado NUEVO (hasta 10); los anteriores se ven y se quitan en «Mis estados»
   var picked = { img: '', mime: '', aud: '', amime: '', vid: '', vmime: '' };
   // previa de la foto (si hay)
@@ -78,7 +78,7 @@ function _compose() {
   ta.id = 'estado-input';
   ta.maxLength = MAX_LEN;
   ta.placeholder = t('grp_status_ph', '¿Qué estás pensando?');
-  ta.style.cssText = 'width:100%;min-height:70px;background:var(--nx-surface);border:1px solid var(--nx-line);border-radius:14px;color:#fff;font-size:15px;padding:10px;outline:none;resize:none;';
+  ta.className = 'nx-input'; ta.style.cssText = 'min-height:70px;resize:none;';
   // elegir foto
   var fin = document.createElement('input'); fin.type = 'file'; fin.accept = 'image/*'; fin.style.display = 'none';
   fin.addEventListener('change', function() {
@@ -92,7 +92,7 @@ function _compose() {
   var photoBtn = document.createElement('button');
   photoBtn.id = 'estado-foto';
   photoBtn.textContent = '📷 ' + t('est_add_photo', 'Foto');
-  photoBtn.style.cssText = 'flex:1;padding:9px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:14px;color:#fff;cursor:pointer;';
+  photoBtn.className = 'nx-btn';
   photoBtn.addEventListener('click', function(e) { e.stopPropagation(); fin.click(); });
   // grabar audio (grabador propio, autocontenido; tope AUD_SECS). Un segundo toque detiene.
   var rec = null, recChunks = [], recTimer = null, recStart = 0;
@@ -100,7 +100,7 @@ function _compose() {
   var audBtn = document.createElement('button');
   audBtn.id = 'estado-audio-btn';
   audBtn.textContent = '🎤 ' + t('est_add_audio', 'Audio');
-  audBtn.style.cssText = 'flex:1;padding:9px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:14px;color:#fff;cursor:pointer;';
+  audBtn.className = 'nx-btn';
   audBtn.addEventListener('click', function(e) {
     e.stopPropagation();
     if (rec && rec.state === 'recording') { _stopRec(); return; }
@@ -135,7 +135,7 @@ function _compose() {
   var vidBtn = document.createElement('button');
   vidBtn.id = 'estado-video-btn';
   vidBtn.textContent = '🎥 ' + t('est_add_video', 'Video');
-  vidBtn.style.cssText = 'flex:1;padding:9px;background:var(--nx-surface-2);border:1px solid var(--nx-line);border-radius:14px;color:#fff;cursor:pointer;';
+  vidBtn.className = 'nx-btn';
   var vfin = document.createElement('input'); vfin.type = 'file'; vfin.accept = 'video/*'; vfin.style.display = 'none';
   function _busy(on) { busy = on; vidBtn.disabled = on; vidBtn.textContent = '🎥 ' + (on ? t('est_processing', 'Procesando…') : t('est_add_video', 'Video')); }
   function _readFail(e, desc) {
@@ -186,11 +186,11 @@ function _compose() {
     }, function(e) { _busy(false); _readFail(e, desc); }).catch(function() { _busy(false); _toast(t('est_vid_fail', 'No se pudo preparar el video')); });
   });
   vidBtn.addEventListener('click', function(e) { e.stopPropagation(); try { vfin.value = ''; } catch (x) {} vfin.click(); });   // 3200: el mismo video se puede volver a elegir
-  var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:10px;';
+  var row = document.createElement('div'); row.className = 'nx-ask-actions';
   var pub = document.createElement('button');
   pub.id = 'estado-publicar';
   pub.textContent = t('grp_publish', 'Publicar');
-  pub.style.cssText = 'flex:1;padding:11px;background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));border:none;border-radius:14px;color:#fff;font-weight:700;cursor:pointer;box-shadow:0 10px 30px rgba(0,200,255,0.35),0 4px 12px rgba(168,85,247,0.35);';
+  pub.className = 'nx-btn nx-btn-primary';
   pub.addEventListener('click', function(e) {
     e.stopPropagation();
     // 3200: grabando un audio, este toque lo termina (sale su previa y se publica con el siguiente; antes salía sin el audio)
@@ -202,7 +202,7 @@ function _compose() {
   });
   row.appendChild(pub);
   box.appendChild(h); box.appendChild(prev); box.appendChild(vidPrev); box.appendChild(vidCover); box.appendChild(audPrev); box.appendChild(ta);
-  var mrow = document.createElement('div'); mrow.style.cssText = 'display:flex;gap:10px;';
+  var mrow = document.createElement('div'); mrow.className = 'nx-ask-actions';
   mrow.appendChild(photoBtn); mrow.appendChild(audBtn); mrow.appendChild(vidBtn);
   box.appendChild(mrow); box.appendChild(fin); box.appendChild(vfin); box.appendChild(row);
   o.appendChild(box);
