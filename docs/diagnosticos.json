@@ -1600,6 +1600,14 @@
    "sintoma": "zombi (nx1e29ab2f, tablet), build 3160",
    "categoria": "Fallo de la app",
    "causa": "Enlace Bluetooth recuperado medio muerto (sin respuesta a 4 pings): se rehace y se cae cada ~30 s durante >7 min (área 3, enlaces que se abren y cierran). No pierde mensajes."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "23:33",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx09acdb61, vivo), build 3161",
+   "categoria": "Fallo de la app",
+   "causa": "El zombi del vivo: enlace sin respuesta a 4 pings, se rehace (mecanismo de siempre, sin pérdida). Lo grave es otra cosa y CONFIRMA la lista de la siguiente APK: al volver a la app (23:30:50) los 2 textos pendientes a un contacto que no confirma (msg…r8yh2amzl y msg…g2n0x4v7, 4 trozos de 8000 c. cada uno) se reenvían por ventana 8 veces en 85 s (~70 sobres de ~8 KB) y a la vez 6 paquetes de puente sxmwy5… con 5 reintentos cada uno → a las 23:31:49 damus «banned: too many rate-limit violations». Con 2 relés abiertos (nos.lol y nostr.mom sin conectar) queda solo primal. Es tráfico que genera NEXO mismo (punto 1 de la lista: reenvíos controlados)."
   }
  ]
 }

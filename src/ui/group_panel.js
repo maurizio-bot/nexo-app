@@ -9,7 +9,7 @@ import { _contactsStyles, _pickAvatar } from './share_contacts.js';
 import { _normId } from './chat_format.js';
 import { vaultLoadContacts } from '../vault/vault_manager.js';
 import { makeAvatar } from './avatar.js';
-import { makeWallpaper, setChatWallpaperFor, chatWallpaperFor, clearChatWallpaperFor, wpShareLimits, groupWpOffer, useGroupWpOffer } from './wallpaper.js';
+import { makeWallpaper, setChatWallpaperFor, chatWallpaperFor, clearChatWallpaperFor, wpShareLimits, groupWpOffer, useGroupWpOffer, setGroupWpOpener } from './wallpaper.js';
 import { _showInfoToast } from './ui_bits.js';
 import { GS_MAX_MEMBERS } from './group_state.js';
 import { t } from './i18n.js';
@@ -377,6 +377,7 @@ export function refreshGroupComposer() {
   }
 }
 export function installGroupPanel() {
+  setGroupWpOpener(function(gid) { _wpSheet(gid); }); // 27-11: pulsación larga sobre el fondo de un grupo → su hoja del fondo
   window.addEventListener('nexo:ble:openChat', function() { setTimeout(function() { refreshGroupComposer(); refreshGroupGear(); }, 0); });
   window.addEventListener('nexo:ble:closeChat', function() { setTimeout(function() { refreshGroupComposer(); refreshGroupGear(); }, 0); });
   window.addEventListener('nexo:groups', function(e) {

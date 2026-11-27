@@ -43,6 +43,12 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
      por ventana ×8 en cada vuelta a la app → por internet el relé ya los guarda: publicar una vez y esperar, no republicar;
      (b) 6 paquetes de puente (sxmwy5…) ×5 reintentos cada 600 s; (c) Fénix sube ~3 MB de audios justo al volver a la app (que espere a
      que el usuario no esté mandando nada / cupo libre). Primero reproducir en `tests/sim` (relelimita.js de base).
+  6. [hecho, skip ci] **Grupo: pulsación larga sobre el fondo** abre la hoja del fondo del grupo (elegir solo para mí, compartir, usar el
+     compartido, quitar) (`wallpaper.setGroupWpOpener`, `group_panel`); `gruposadmin.js` (con contraprueba de arrastre). NOVEDADES: «En un grupo,
+     mantén presionado el fondo para cambiarlo o compartirlo».
+  7. **Plan aprobado 27-11 (dueño): enrutado por contacto con causa** (dónde está el otro, ✓✓ medido por camino, despierto/dormido, dónde
+     escucha), reenvíos con UN calendario y cupo por relé, quitar «2 relés con datos», Fénix parado con la app a la vista. Diag. S24 23:33
+     (3161) lo confirma: 2 textos pendientes ×8 ventanas + 6 de puente ×5 → damus «banned». Relé de NEXO: organizar el domingo 29-11.
   5. **Zombi de la tablet (nx1e29ab2f):** enlace BT medio muerto que se rehace y cae cada ~30 s >7 min (área 3). Sin pérdida de mensajes.
 - **SIGUIENTE SESIÓN (27-11 ~21:50 México, cerrada por contexto al 25 %):** 1) revisar el CI de la **APK 3161** (commit e810a05 en
   NEXOCHAT, subido 20:53, ~22:20) y, si pasó, NOVEDADES al historial como 3161 (si falló: qué prueba). 2) Empezar **`docs/PLAN_CAPACIDAD_27-11.md`**

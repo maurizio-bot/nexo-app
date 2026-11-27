@@ -254,6 +254,21 @@ const check = (p, sel) => { const cb = q(p, sel); if (cb) { cb.checked = true; c
   r.boton_compartir_fondo = !!q(A, '#nexo-gset-wpl .gset-wp-share');
   click(A.win, q(A, '#nexo-gset-wpl .gset-wp-share')); await sleep(300);
   if (q(A, '#nexo-gset')) q(A, '#nexo-gset').remove();
+  // Dueño 27-11: en el chat del GRUPO, la pulsación larga sobre el fondo abre la hoja del fondo del grupo (elegir, compartir, quitar)
+  {
+    A.win.NEXO_WP_LONGPRESS_MS = 40;
+    await openChatWith(A, '👥 Equipo');
+    const mc = A.win.document.getElementById('messages-container');
+    const md = (x, y) => mc.dispatchEvent(new A.win.MouseEvent('mousedown', { bubbles: true, button: 0, clientX: x, clientY: y }));
+    const mm = (x, y) => mc.dispatchEvent(new A.win.MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: y }));
+    const mu = () => mc.dispatchEvent(new A.win.MouseEvent('mouseup', { bubbles: true }));
+    const rm = () => ['#nexo-gset-wpl', '#nexo-wp-sheet'].forEach((x) => { if (q(A, x)) q(A, x).remove(); });
+    rm(); md(100, 300); await sleep(120); mu(); await sleep(60);
+    r.grupo_pulsacion_abre_fondo = !!q(A, '#nexo-gset-wpl .gset-wp-pick') && !!q(A, '#nexo-gset-wpl .gset-wp-share') && !q(A, '#nexo-wp-sheet');
+    rm(); md(100, 300); mm(100, 380); await sleep(120); mu(); await sleep(60);
+    r.grupo_arrastre_no_abre = !q(A, '#nexo-gset-wpl'); // contraprueba: deslizar no la abre
+    rm(); await closeChat(A);
+  }
   const wpFile = async (p) => { const o = await p.win.Capacitor.Plugins.NexoBLE.loadFromFile({ filename: 'nexo_wp_c_' + gid + '.json' }); try { return JSON.parse(o.content).img; } catch (e) { return null; } };
   r.fondo_en_B = await wait(async () => (await wpFile(B)) === WP, 60);
   // Dueño 26-11: cada quien pone el fondo SOLO para sí; compartir es a propósito. Uno compartido cambia al compartido de antes, pero NO

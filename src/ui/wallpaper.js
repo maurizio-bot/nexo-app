@@ -299,8 +299,14 @@ function _refreshButton() {
 }
 
 // #dueño 05-11: se quitó el botón 🖼️ de la cabecera. Ahora el fondo del chat se abre con una PULSACIÓN LARGA (~0,8 s)
-// sobre el FONDO del chat (donde no hay mensajes). Solo en chats 1-a-1 y solo si no se arrastró (para no pisar el scroll
+// sobre el FONDO del chat (donde no hay mensajes). En chats 1-a-1 y (27-11) en grupos; solo si no se arrastró (para no pisar el scroll
 // ni el gesto de cerrar). El tiempo es configurable por window.NEXO_WP_LONGPRESS_MS (para probarlo determinista en jsdom).
+// Dueño 27-11 («en un grupo: mantengo presionado el fondo para cambiarlo y compartirlo»): en un GRUPO la misma pulsación larga abre la
+// hoja del fondo del grupo de Ajustes del grupo (solo para mí, compartir con el grupo, usar el que compartió otro, quitar). La registra
+// group_panel (installGroupPanel) para no importar el panel desde aquí (ciclo de módulos).
+var GR_RE = /^gr[0-9a-z]{8}$/, _groupWpOpener = null;
+export function setGroupWpOpener(fn) { _groupWpOpener = (typeof fn === 'function') ? fn : null; }
+function _wpTarget() { return NX_RE.test(_curNx) ? 'chat' : ((GR_RE.test(_curNx) && _groupWpOpener) ? 'group' : ''); }
 export function installWallpaperGesture() {
   var c = document.getElementById('messages-container');
   if (!c || c._nexoWpGesture) return;
@@ -308,11 +314,12 @@ export function installWallpaperGesture() {
   var timer = null, sx = 0, sy = 0, moved = false, MOVE = 12;
   function clearT() { if (timer) { clearTimeout(timer); timer = null; } }
   function start(x, y, target) {
-    if (!NX_RE.test(_curNx)) return;                                  // solo en chats 1-a-1
+    var kind = _wpTarget(); if (!kind) return;                        // chats 1-a-1 y grupos
     if (target && target.closest && target.closest('.message, button, a, input, textarea, img, video, svg, .msg-media')) return; // solo el FONDO vacío
     sx = x; sy = y; moved = false; clearT();
     var ms = (typeof window !== 'undefined' && window.NEXO_WP_LONGPRESS_MS) || 800;
-    timer = setTimeout(function() { timer = null; if (!moved) _openSheet(); }, ms);
+    var gid = _curNx;
+    timer = setTimeout(function() { timer = null; if (moved || _curNx !== gid) return; if (kind === 'group') { try { _groupWpOpener(gid); } catch (e) {} } else _openSheet(); }, ms);
   }
   function move(x, y) { if (timer && (Math.abs(x - sx) > MOVE || Math.abs(y - sy) > MOVE)) { moved = true; clearT(); } }
   c.addEventListener('touchstart', function(e) { var t = e.touches && e.touches[0]; if (t) start(t.clientX, t.clientY, e.target); }, { passive: true });
