@@ -1688,6 +1688,14 @@
    "sintoma": "resumen_diario (2026-11-26), build 3167",
    "categoria": "Resumen",
    "causa": "2/2 ✓✓; MTU 23 en 26 % de enlaces (área 3, fase 2)."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "13:44",
+   "nx": "nx0g6ef54e",
+   "sintoma": "enlace_abre_cierra (nx10b6f4ac 6 desconexiones en 10 min), build 3170",
+   "categoria": "Fallo de la app",
+   "causa": "Bluetooth con Alex (sin internet, su app dormida): el enlace abre, queda «stuck» y se rehace cada ~15–20 s; los 2 textos viejos (8yh2amzl, g2n0x4v7) siguen ⏳ sin otro camino. Es el zombi/enlace medio muerto del área 3 (fase 2 Bluetooth: APP_CALLA sin reconectar). Fase 1 en la 3170 ya se ve: «[RUTA] nx1n36c283 lee en 9 relé(s)… le publico solo ahí» (alterna 9/4 según conteste su app o su nativo con la config guardada antes de la 3170: correcto, cada uno escucha lo que anuncia)."
   }
  ]
 }
