@@ -61,7 +61,11 @@ export const netPublish = {
   },
   // 3348: tras un límite, cuánto debe esperar este evento PESADO (0: sale ya). Reserva su turno.
   _isBulkEv(ev) { return !!ev && (ev.kind === BLOB_KIND || (typeof ev.content === 'string' && ev.content.length >= BULK_EV_CHARS)); },
-  _quotaNote() {
+  // Diag. S24 3165 05:07 (audio de 69 KB al S23 tardó 94 s: «45 sobres en el último minuto»): se contaban TODOS los sobres (saludos a 27
+  // contactos al volver a la app, acuses, textos) y lo pesado esperaba casi un minuto. Solo cuenta lo PESADO: el cupo es para no tirar
+  // ráfagas de trozos, no para frenar el audio del usuario detrás de los saludos.
+  _quotaNote(ev) {
+    if (ev && !this._isBulkEv(ev)) return;
     var now = Date.now(), t = this._pubTimes || (this._pubTimes = []);
     t.push(now);
     while (t.length && now - t[0] > QUOTA_WIN_MS) t.shift();
@@ -209,7 +213,7 @@ export const netPublish = {
         self.relays.forEach(function(r) { if (r.open && r.gw && r.realUrl && !open.some(function(o) { return o.u === r.realUrl; }) && (!self.gw || typeof self.gw.blobRelayOk !== 'function' || self.gw.blobRelayOk(r))) open.push({ r: r, u: r.realUrl }); });
       }
       if (!open.length) { resolve([]); return; }
-      self._quotaNote();
+      self._quotaNote(ev);
       var oks = [], left = open.length, done = false, grace = null;
       var enough = opts && opts.enough ? Math.min(opts.enough, open.length) : open.length;
       if (viaGw && opts && opts.enough) enough = 1; // puente parte 4: un relé (por cualquier puente) ya lo tiene; los demás, con margen
@@ -259,7 +263,7 @@ export const netPublish = {
       // 3348: todos los abiertos en pausa → pendiente ya, sin mandarles nada (cada sobre más sería otra infracción)
       if (!open.length && cooling.length) { reject(self._allCoolingErr(cooling)); return; }
       if (!open.length) { reject(Object.assign(new Error('Sin relés'), { code: 'NET_DOWN' })); return; }
-      self._quotaNote();
+      self._quotaNote(ev);
       var left = open.length, done = false, why = '';
       // L3 (auditoría 28-10): al cerrar la promesa (OK, rechazo o timeout) se quita ev.id de TODOS los relés abiertos;
       // antes solo lo borraba el que contestaba OK, y con un relé que acepta pero nunca manda OK, r.waits crecía toda la

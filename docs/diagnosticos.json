@@ -1616,6 +1616,14 @@
    "sintoma": "resumen diario del 26-11, build 3161",
    "categoria": "Resumen (sin fallo nuevo)",
    "causa": "Confirma lo arreglado en la 3165: puente (Jump) 128 fallos de reenvío (ACK timeout ×106, rate-limited ×6) → arreglo 2 (sin 5 reintentos seguidos); internet 11 sin ✓✓ y relés que no contestan ×41 → arreglos 1, 4 y 5. Wi-Fi Direct 1 intento fallido (el otro no respondió 25 s). Batería 8 %/h a la vista, 7,2 %/h en segundo plano; 106,6 MB de datos."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "05:17",
+   "nx": "nx1n36c283",
+   "sintoma": "reenvio_sin_fin (nx09acdb61, 1 sin confirmar, 3 vueltas), build 3165",
+   "categoria": "Fallo de la app",
+   "causa": "Síntoma: enlace Bluetooth con el vivo medio muerto (MTU 23, «stuck», su app dormida, sin internet): el texto no puede salir por otro camino; es el zombi (área 3, domingo con Fable). Lo que confirma la 3165: los 2 textos de la cola del puente ya NO se reenvían ×8 (el ✓✓ del nativo del otro los frena) y el puente manda cada paquete una vez y espera su calendario. Fallo NUEVO de la 3165: un audio de 69 KB tardó 94 s en el buzón porque el cupo contaba todos los sobres (45 en un minuto, sobre todo saludos al volver a la app) → arreglado en la 3166: solo cuenta lo pesado."
   }
  ]
 }

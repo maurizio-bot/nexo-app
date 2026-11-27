@@ -42,6 +42,10 @@ const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
   // integración: publishEach cuenta y sale; con el cupo lleno, un trozo pesado tarda
   const ok0 = await net.publishEach(Object.assign(net.blobEvent(net.randomKey(), 'QUJD', Math.floor(Date.now() / 1000) + 600)), 3000);
   r.publica_y_cuenta = ok0.length === 2 && net._pubTimes.length === 1;
+  // C5 (diag. S24 3165 05:07): un sobre CHICO (texto, saludo, acuse) no cuenta para el cupo de lo pesado
+  const antes = net._pubTimes.length;
+  await net.publishEach({ id: 'a'.repeat(64), kind: S.KIND, content: 'z'.repeat(200), tags: [], created_at: Math.floor(Date.now() / 1000), pubkey: 'b'.repeat(64), sig: 'c'.repeat(128) }, 1500);
+  r.C5_chico_no_cuenta = net._pubTimes.length === antes;
   // C4: al relé propio no (simulado: la lista propia es U1)
   net._ownList = () => [U1]; net._isOwn = (u) => u === U1;
   for (let i = 0; i < 700; i++) net._quotaNote();
