@@ -34,6 +34,13 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **APK 3162 CANCELADA por el dueño (27-11 ~00:05 México):** solo traía responder con adjunto + fondo de grupo; él quiere que la siguiente APK
   lleve TAMBIÉN los arreglos (punto 7: reenvíos, Fénix, relés, enrutado; y «no cortar envíos»). NO subir hasta tenerlos hechos y probados.
   Lección: al subir, decir con claridad qué arreglos NO van todavía.
+- **DECISIÓN DEL DUEÑO 28-11 ~00:10 México — SIGUIENTE SESIÓN (Opus), hacer y SUBIR YA (sin esperar al domingo), cada uno con su prueba:**
+  1 reenvíos controlados (lo guardado por un relé no se republica ×8; un solo calendario por mensaje); 2 puente Jump sin 5 reintentos
+  seguidos; 3 Fénix parado con la app a la vista (arranca al salir); 4 cupo por relé + juntar textos pendientes + repartir lo pesado;
+  5 quitar CELL_READ_RELAYS=2 y avisar dónde escucha cada uno (publicar donde el otro lee); 6 no cortar envíos que avanzan (corte tras
+  ~1 min sin avance y seguir desde donde iba). Casos de prueba: diag 21:53 y 23:33. Diseño: `docs/ENRUTADO_27-11.md`.
+  **Para Fable el domingo 29-11 a las 2:00 México:** el enrutado por contacto (qué camino y cuándo cambiar) y el zombi de la tablet (nativo).
+  El dueño pidió además una **revisión severa como usuario/analista visual y de ergonomía**: hacerla con capturas a 360 px (Playwright).
 - (27-11 ~22:00, LEVANTADO a las 23:50) el dueño pidió no subir nada hasta que lo dijera.
   **Lista de la siguiente APK (problema → solución):**
   1. [hecho, en NEXOCHAT con skip ci] Responder con audio/foto/archivo (arriba).
