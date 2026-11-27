@@ -6,7 +6,7 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
-## 🆕 27-11 tarde (2) — dueño: tarjetas en la lista de chats y tarjeta de un miembro del grupo (para la siguiente sesión; NO subir aún)
+## 🆕 27-11 tarde (2) — dueño: tarjetas en la lista de chats y tarjeta de un miembro del grupo — **HECHO 27-11 noche (subido)**
 - **HECHO en la rama:** fondo negro puro #000 en TODA la app (`--nx-bg`, antes #070812 desde la 3140; también los respaldos `var(--nx-bg,…)`).
 - **Lista de Contactos (chats y grupos) con el rectángulo de Ajustes:** cada fila como una tarjeta (el mismo estilo que los ajustes: fondo
   apenas más claro, esquinas redondeadas, separación). PORQUÉ (dueño): se ve mejor y más ordenado. Aviso honesto: cada fila ocupa ~8 px más,
@@ -15,7 +15,7 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   nombre, NEXO ID; botones «Mensaje», «Llamar», «Info»; si no es contacto mío, «Agregar» (manda la solicitud con la clave que viene en el grupo;
   si no la hay, por kx dirigido). Como WhatsApp. Aprobado como idea por el dueño («¿qué te parece?» → recomendado: sí).
 
-## 🆕 27-11 tarde — dueño: tocar la FOTO de la cabecera del chat/grupo = VER la foto (y cambiarla), NADA MÁS (pendiente, NO subir aún)
+## 🆕 27-11 tarde — dueño: tocar la FOTO de la cabecera del chat/grupo = VER la foto (y cambiarla), NADA MÁS — **HECHO 27-11 noche (propuesta B, subido)**
 **Lo pidió el dueño:** «al pulsar en la foto de perfil de chat o grupo debe visualizarse la foto y tener opción de cambiar; no debe hacer otra
 cosa. Los ajustes están en la rueda de ajustes.» PORQUÉ: es lo que el usuario espera (WhatsApp/Telegram: la foto se abre en grande) y los
 ajustes ya tienen su sitio (la rueda); dos sitios para lo mismo confunde.

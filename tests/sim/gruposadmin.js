@@ -99,7 +99,7 @@ const check = (p, sel) => { const cb = q(p, sel); if (cb) { cb.checked = true; c
   { const i = q(C, '#message-input'); r.C_barra_bloqueada = !!i && i.disabled && /Solo los administradores/.test(i.getAttribute('placeholder') || ''); }
   // 1b (dueño 23-11): ruedita de ajustes arriba a la derecha del chat del grupo, también para quien no es admin; tocar a un miembro
   // Dueño 27-11 (propuesta B): sin rueda; tocar el NOMBRE abre «Información» (con lo de la rueda)
-  { const gb = q(C, '#nexo-gset-btn'), nm = q(C, '#chat-contact-name'); r.C_ruedita_en_chat_grupo = !gb && !!nm && nm.getAttribute('role') === 'button' && !!q(C, '#chat-name-chev'); }
+  { const gb = q(C, '#nexo-gset-btn'), nm = q(C, '#chat-contact-info'); r.C_ruedita_en_chat_grupo = !gb && !!nm && nm.getAttribute('role') === 'button' && !!q(C, '#chat-name-chev'); }
   click(C.win, q(C, '#chat-contact-name')); await sleep(300);
   r.C_ruedita_abre_ajustes = !!q(C, '#nexo-gset .gset-member[data-nx="' + id(A) + '"]');
   click(C.win, q(C, '#nexo-gset .gset-member[data-nx="' + id(B) + '"] .gset-member-name')); await sleep(300);

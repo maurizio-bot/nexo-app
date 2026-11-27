@@ -847,7 +847,8 @@ export const BLE_UI_METHODS = {
       else if (action === 'profile') { _safeDispatchEvent('nexo:ble:goToProfile', { deviceUUID: uuid }); }
       else if (action === 'rename') {
         self.openChat(uuid);
-        setTimeout(function() { var ni = document.getElementById('chat-contact-name'); if (ni) { ni.focus(); try { ni.select(); } catch (er) {} } }, 300);
+        // Dueño 27-11 (propuesta B): el nombre ya no se edita en la cabecera: se abre «Información» con su campo listo para escribir
+        setTimeout(function() { if (typeof window.NEXO_openChatInfo === 'function') window.NEXO_openChatInfo(uuid); var ni = document.querySelector('#nexo-chat-info .nx-info-name'); if (ni) { ni.focus(); try { ni.select(); } catch (er) {} } }, 300);
       }
       menu.remove();
     });

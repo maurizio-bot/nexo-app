@@ -90,7 +90,7 @@ const msgNotifs = (n, chat, n0) => n.notifLog.slice(n0).filter((x) => x.chatId =
 
   // ---------- S1: silenciar desde las opciones del chat (tocar el círculo de la cabecera) ----------
   await openChat(B, idA);
-  const av = $(B, '#chat-contact-name');
+  const av = $(B, '#chat-contact-info');
   r.S1_circulo_es_boton = !!(av && av.getAttribute('role') === 'button');
   click(B.win, av); await sleep(300);
   r.S1_opciones = Array.from(B.win.document.querySelectorAll('.nx-panel .nx-info-opt')).map((b) => b.textContent.trim());

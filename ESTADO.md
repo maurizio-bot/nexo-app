@@ -21,20 +21,21 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
-- **ENCARGO DEL DUEÑO 27-11 tarde (sesión nueva, empezar aquí): hacer TODO esto y SUBIR UNA APK al terminar y probar:**
-  1. Cabecera «propuesta B» (foto = ver foto + «Cambiar foto» en grupo; nombre › = página «Información» con todas las opciones; sin rueda).
-  2. Tarjetas (rectángulo como Ajustes) en la lista de chats y grupos, revisadas a 360 px.
-  3. Tarjeta de un miembro del grupo al tocar su nombre (Mensaje, Llamar, Info; Agregar si no es contacto).
-  4. Fase 1 internet, segundo bloque (contrato §D.3): modo sombra `[RUTA-SOMBRA]` + republicar el MISMO evento + juntar textos en un sobre
-     + quitar la red de seguridad +10 s y las ventanas ×8 por internet (lo que quepa con su prueba; decir qué NO va).
-  Ya en la rama (van en esa APK): ajuste de la foto encima de las hojas y fondo negro #000.
-- **(aprobado por el dueño 27-11; ahora SÍ subir con el encargo de arriba):** cabecera del chat/grupo «propuesta B» de `docs/PENDIENTES.md`
-  (27-11 tarde): foto = ver la foto (+ «Cambiar foto» en grupo); nombre › = página «Información» con todas las opciones; se quita la rueda.
-- **HECHO en la rama, VA EN LA SIGUIENTE APK (dueño 27-11: «pantallas encimadas al cambiar la foto del grupo»):** el ajuste de la foto
-  (`avatar_crop.js`) quedaba DEBAJO de la hoja de Perfil y de la de ajustes del grupo (z 10050 vs 2147483646) → ahora encima; `cabecera.js`
-  comprueba que se ve encima. **Fondo del chat (#070812, no #000):** no cambió de la 3167 a la 3170 (sin cambios de estilos); viene de la
-  3140 (16-11, «fondo liso como Contactos»). **Dueño: negro puro en toda la app → HECHO en la rama (`--nx-bg: #000`).** Más pedidos para la siguiente sesión en
-  `docs/PENDIENTES.md` «27-11 tarde (2)»: tarjetas en la lista de chats y tarjeta de un miembro del grupo (mensaje, llamar, info, agregar).
+- **27-11 noche (Opus): ENCARGO DEL 27-11 tarde HECHO Y SUBIDO a NEXOCHAT (APK siguiente a la 3170; revisar su CI en una sesión nueva).**
+  1. Cabecera «propuesta B»: foto = visor (`chat_info.js` `openPhotoView`; grupo con «Cambiar/Quitar foto» si puede editar); nombre › =
+     «Información» (`openChatInfo`: 1-a-1 con nombre editable, NEXO ID y opciones del chat; grupo = `openGroupSettings(gid,{title,extra})`
+     con las opciones del chat arriba). Sin rueda (`refreshGroupGear` solo la quita). El bloque del nombre (`#chat-contact-info`) es el
+     botón; el `<textarea>` queda de solo lectura. «Cambiar nombre» del ⋮ abre «Información» con el campo listo. Prueba `cabecerachat.js`.
+  2. Tarjetas en la lista (`nexo_theme.css`: fondo 4 %, aro 1 px, radio 14, 6 px): a 360 px caben 8 filas (antes 9). Prueba `tarjetaslista.js`.
+  3. Tarjeta de un miembro (`member_card.js`): desde su nombre en un mensaje del grupo o en la lista de personas; contacto → Mensaje /
+     Llamar / Info; no contacto → Agregar. Pruebas en `gruposadmin.js` y `cabecerachat.js` (M1).
+  4. Fase 1 internet, 2.º bloque: **HECHO** modo sombra (`src/core/ruta/elegir.js`, anotado en `ble_send._rutaSombra`: líneas
+     «[RUTA-SOMBRA] … elegiría X / se hizo Y» y un resumen con % cada 20) y **republicar el MISMO evento** al reintentar por internet
+     (`src/core/ruta/republicar.js` en `net_link.send`; «duplicate» del relé = guardado). Prueba `rutasombra.js`.
+     **NO HECHO (decisión técnica, se le explicó al dueño):** juntar textos en un sobre (cambia el formato en el cable) y quitar la red
+     de seguridad +10 s y las ventanas ×8 por internet: según el propio contrato (D.2/B.4.5) se quitan cuando el CALENDARIO manda; hoy
+     son lo que despierta a un teléfono dormido. Siguen para el bloque del calendario (después de ver la sombra en diagnósticos reales).
+  Qué mirar en los diagnósticos de esta APK: líneas `[RUTA-SOMBRA] resumen` (meta ≥ 95 % iguales) y `[NET] reintento … republico el mismo evento`.
 - **APK 3170 PASÓ (27-11 13:34 México)** con todo lo de abajo (fase 1 relés + ráfagas + fotos con ajuste + eliminar para todos en grupos + lo de Austin).
 - **28-11 (Opus) — FASE 1 INTERNET, PRIMER BLOQUE HECHO (relés):** política de relés ÚNICA app/nativo
   (`src/core/ruta/politica_reles.js` = `RelayPolicy.kt`, mismos vectores `tests/vectores/politica_reles.json`; `politicareles.js` y

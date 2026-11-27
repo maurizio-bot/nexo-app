@@ -173,15 +173,16 @@ export function installChatInfo() {
     av.addEventListener('click', function(e) { e.stopPropagation(); openPhotoView(); });
   }
   var nm = $('chat-contact-name'), info = $('chat-contact-info');
-  if (nm && info && !nm._nxInfo) {
-    nm._nxInfo = true;
+  if (nm && info && !info._nxInfo) {
+    info._nxInfo = true;
     nm.readOnly = true; // dueño 27-11: el nombre se cambia en «Información», no al tocarlo
-    nm.setAttribute('role', 'button');
-    nm.setAttribute('aria-label', t('chat_info', 'Información'));
-    nm.style.cursor = 'pointer';
-    nm.addEventListener('click', function(e) { e.stopPropagation(); e.preventDefault(); try { nm.blur(); } catch (x) {} openChatInfo(); });
+    nm.tabIndex = -1;
+    // El botón es el bloque del nombre (nombre + «›» + línea de abajo): un <textarea> no puede llevar la onda de press.js dentro
+    info.setAttribute('role', 'button');
+    info.setAttribute('aria-label', t('chat_info', 'Información'));
+    info.style.cursor = 'pointer';
+    info.addEventListener('click', function(e) { e.stopPropagation(); e.preventDefault(); try { nm.blur(); } catch (x) {} openChatInfo(); });
     var ch = _el('span', '', '›'); ch.id = 'chat-name-chev'; ch.setAttribute('aria-hidden', 'true');
-    ch.addEventListener('click', function(e) { e.stopPropagation(); openChatInfo(); });
     info.appendChild(ch);
     nm.addEventListener('input', _soonChev);
   }

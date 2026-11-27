@@ -1,6 +1,7 @@
 import { _normId, _isGenericName, _getBLEContacts, _saveBLEContacts, _lanNx, _netNx, _normMac, _hasNativeMethod, _isControlPacket, _safeNativeCall, _vaultUpdateMessageStatus, BLE_STATES, _failStatus, _isPathDev, _netId } from './ble_helpers.js';
 import { e2eAckTag } from '../vault/e2e_crypto.js';
 import { isBlocked, isGroupWire } from './bloqueo.js';
+import { Sombra } from '../core/ruta/elegir.js'; // fase 1 (contrato D.3 1a): modo sombra del cambio entre caminos (solo anota)
 // Build 2836 (pedido del dueño): margen para la «red de seguridad de entrega». Si un mensaje enviado por Bluetooth no
 // se confirma «entregado» en este tiempo, se deja además en el buzón de relés (dispara el toque FCM de alta prioridad).
 var DELIVERY_SAFETY_MS = 10000;
@@ -299,6 +300,7 @@ export const BLE_SEND_METHODS = {
         var deviceId = self._resolveDeviceIdForNexoId(uuid);
         // v6.3.0 Jump: sin enlace directo pero con ruta por otro teléfono → sale por él
         var relayHop = self.relay && self.relay.relayHop(uuid);
+        self._rutaSombra(uuid, msgId, deviceId, relayHop && !self._cameraBlePaused); // fase 1: solo anota qué elegiría la tabla (no cambia nada)
         if (relayHop && !self._cameraBlePaused) {
           self._sendViaRelay(uuid, content, msgId, msgSeq)
             .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
@@ -397,6 +399,28 @@ export const BLE_SEND_METHODS = {
         }
       } catch (fatal) { reject(fatal); }
     });
+  },
+
+  // Fase 1 del contrato de los caminos (D.3 1a), MODO SOMBRA: con los hechos de hoy (adaptadores aproximados) calcula el camino que la
+  // tabla TEXTO elegiría y lo anota junto al que se usó: «[RUTA-SOMBRA] … elegiría X / se hizo Y». No manda nada ni cambia el camino.
+  // Solo mensajes nuevos de contacto (no acciones ocultas ni grupos: los grupos se deciden por miembro y pasan por aquí uno a uno).
+  _rutaSombra(uuid, msgId, deviceId, viaJump) {
+    try {
+      if (!/^nx[0-9a-z]{8}$/.test(uuid)) return;
+      if (this._quietOut && this._quietOut.has(msgId)) return;
+      var net = this.net, lan = this.lan;
+      if (!this._sombra) { this._sombra = new Sombra(function(l) { console.log(l); }); if (typeof window !== 'undefined') window.NEXO_rutaSombra = this._sombra; }
+      var yo = !!(net && net.online && net.online()), gw = !!(net && net.gwOnly && net.gwOnly());
+      var hechos = {
+        lan: !!(lan && lan.canReach && lan.canReach(uuid)),
+        cerca: !!(typeof this._btNearby === 'function' && this._btNearby(uuid)),
+        yoNet: yo && !gw, gw: gw,
+        elNet: !!(net && net.canReach && net.canReach(uuid)),
+        buzon: !!(net && net.mailboxOk && net.mailboxOk(uuid)),
+        jump: !!viaJump
+      };
+      this._sombra.anotar(msgId, 'TEXTO', hechos, { deviceId: deviceId, jump: !!viaJump, buzon: hechos.buzon, gwOnly: gw });
+    } catch (e) {}
   },
 
   // Build 2836 (pedido del dueño: «enviar mensaje con ahorro de batería, como WhatsApp que siempre llega»): red de

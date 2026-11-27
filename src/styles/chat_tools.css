@@ -93,7 +93,8 @@ body:has(#nx-grp-hist) #e2e-banner { margin-top: 48px !important; }
 #chat-contact-avatar { z-index: 3; } /* el nombre (relative, por el «›») no debe tapar la foto */
 #chat-contact-name[readonly] { cursor: pointer; caret-color: transparent; -webkit-user-select: none; user-select: none; }
 #chat-contact-name { padding-right: 16px !important; }
-#chat-name-chev { position: absolute; font-size: 22px; line-height: 1; font-weight: 700; color: var(--nx-muted, rgba(255,255,255,0.6)); pointer-events: auto; cursor: pointer; padding: 0 2px; }
+#chat-name-chev { position: absolute; font-size: 22px; line-height: 1; font-weight: 700; color: var(--nx-muted, rgba(255,255,255,0.6)); pointer-events: none; padding: 0 2px; }
+#chat-contact-name[readonly] { pointer-events: none; } /* el toque lo recibe el bloque del nombre (#chat-contact-info, el botón) */
 .nx-photo-view { position: fixed; inset: 0; z-index: 2147483646; background: #000; display: flex; flex-direction: column; box-sizing: border-box;
   padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px); }
 .nx-photo-stage { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }

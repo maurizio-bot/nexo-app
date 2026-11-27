@@ -430,7 +430,8 @@ export const netRelays = {
       // 3348: un «no» por límite o castigo pone al relé en pausa para publicar, aunque nadie espere ya esa respuesta (otro relé dijo OK
       // antes): si no, se le seguía mandando todo y cada sobre era otra infracción. No por la respuesta a una identificación (NIP-42).
       if (m[2] === false && !(r.authIds && r.authIds.has(m[1])) && typeof this._relayLimitNote === 'function') this._relayLimitNote(url, r, m[3]);
-      var fn = r.waits.get(m[1]); if (fn) { r.waits.delete(m[1]); fn(!!m[2], m[3]); }
+      // Fase 1 (republicar el mismo evento): «duplicate: ya lo tengo» = guardado, aunque algún relé lo diga con OK false (NIP-01)
+      var fn = r.waits.get(m[1]); if (fn) { r.waits.delete(m[1]); fn(!!m[2] || /^duplicate:/i.test(String(m[3] || '')), m[3]); }
     }
     else if (m[0] === 'AUTH' && typeof m[1] === 'string') { r.challenge = m[1]; this._auth(url, r, m[1]); }
     else if (m[0] === 'CLOSED' && m[1] === r.sub) {

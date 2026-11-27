@@ -68,7 +68,7 @@ const NX = 'nxcabcht01';
     const cv = document.createElement('canvas').getContext('2d'); const cs = getComputedStyle(nm); cv.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
     const n = nm.getBoundingClientRect(), textoFin = n.left + (parseFloat(cs.paddingLeft) || 0) + cv.measureText(nm.value).width;
     let actL = 9999; if (act) Array.from(act.children).forEach((b) => { const r0 = b.getBoundingClientRect(); if (r0.width > 0 && r0.left < actL) actL = r0.left; });
-    return { role: nm.getAttribute('role'), ro: nm.readOnly, chev: !!c && c.width > 0, chevL: c ? Math.round(c.left) : null, chevR: c ? Math.round(c.right) : null, textoFin: Math.round(textoFin), actL: Math.round(actL),
+    return { role: document.getElementById('chat-contact-info').getAttribute('role'), ro: nm.readOnly, chev: !!c && c.width > 0, chevL: c ? Math.round(c.left) : null, chevR: c ? Math.round(c.right) : null, textoFin: Math.round(textoFin), actL: Math.round(actL),
       enLinea: c ? Math.abs((c.top + c.bottom) / 2 - (n.top + Math.min(n.height, parseFloat(cs.lineHeight) || 23) / 2)) < 8 : false };
   });
   { const g = r.N1_geo; check('N1_nombre_boton_con_flecha', g.role === 'button' && g.ro === true && g.chev && g.chevL >= g.textoFin - 2 && g.chevL <= g.textoFin + 14 && g.chevR <= g.actL && g.enLinea, JSON.stringify(g)); }

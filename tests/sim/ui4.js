@@ -89,9 +89,11 @@ async function scanUntil(p, cond, s) { for (let i = 0; i < s * 10; i++) { await 
   r.menu_cambiar_nombre = !!item;
   click(A.win, item);
   await sleep(800);
-  const ni = $(A, '#chat-contact-name');
+  // Dueño 27-11 (propuesta B): «Cambiar nombre» abre «Información» con el campo del nombre listo para escribir
+  const ni = $(A, '#nexo-chat-info .nx-info-name');
   r.nombre_listo = !!ni && A.win.document.activeElement === ni;
-  if (ni) { ni.value = 'María'; ni.dispatchEvent(new A.win.Event('blur')); }
+  if (ni) { ni.value = 'María'; ni.dispatchEvent(new A.win.Event('change')); }
+  { const p = $(A, '#nexo-chat-info'); if (p) p.remove(); }
   await sleep(300);
   click(A.win, $(A, '#chat-back-btn'));
   await sleep(3500);

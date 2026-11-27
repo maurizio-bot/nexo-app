@@ -44,6 +44,7 @@ import { schnorr } from '@noble/curves/secp256k1.js';
 import { netRelays } from './net_relays.js';
 import { netTor } from './net_tor.js';
 import { netWake } from './net_wake.js';
+import { Republicar, huella } from '../core/ruta/republicar.js'; // fase 1 (contrato B.4.2): reintentar = el MISMO evento
 import { netPublish } from './net_publish.js';
 import { netOwn } from './net_own.js';
 
@@ -517,6 +518,20 @@ export class NetLink {
     var tp = this.peers.get(nx);
     if (!c || !(this.online() || (tp && tp.torUp))) throw Object.assign(new Error('Sin internet con ' + nx), { code: 'NET_DOWN' });
     var pair = await this._pair(nx, c.publicKey);
+    // Fase 1 (contrato B.4.2/D.2): el MISMO paquete al mismo contacto (un reintento: ventana que venció, vuelta de pendientes, buzón) se
+    // republica con el evento YA firmado y cifrado (mismo id): el relé que lo tenía dice «duplicate» y no cuenta otro sobre para su
+    // límite, y el otro lo cuenta una vez. No el saludo, ni las partes de llamada, ni por Tor; con otra clave del contacto u otro día, nuevo.
+    var hello0 = !!(opts && opts.hello), rdia = _day(0) + '|' + huella(c.publicKey || '');
+    if (!this._repub) this._repub = new Republicar();
+    var repOk = !hello0 && typeof content === 'string' && content.length > 0 && this._ttlFor(content) !== TTL_RT && !(this._preferTor(opts) || this._torPreferred(nx));
+    var rep = repOk ? this._repub.buscar(nx, content, rdia, Date.now()) : null;
+    if (rep) {
+      console.log('[NET] reintento a ' + nx + ': republico el mismo evento (' + String(rep.ev.id || '').slice(0, 8) + ', vez ' + (rep.veces + 1) + ')');
+      var pubR = this._publishOwn(rep.ev, rep.ttl === TTL_MSG ? null : this._ownOnlyFor(nx), nx);
+      var nidR = this._newMsgId(content), selfR = this;
+      if (nidR) pubR.then(function() { selfR._wake(nx, selfR._isCallOffer(content)); }, function() {});
+      return pubR;
+    }
     var body = { t: Date.now(), w: this.wifi ? 1 : 0 };
     if (this.gwOnly()) body.g = 1; // puente parte 4: «estoy por un puente»: mándame fotos/archivos al buzón de archivos
     if (opts && opts.hello) { body.h = 1; if (this.tor.ready && this.tor.onion) { body.o = this.tor.onion; body.op = this.tor.port; } if (this.fcmToken) body.f = this.fcmToken; if (this._ownHealthy()) body.ro = 1; body.lr = this.myReads(); if (typeof window !== 'undefined' && typeof window.NEXO_BG_LIMITED === 'boolean') body.lm = window.NEXO_BG_LIMITED ? 1 : 0; } // 3247: lm = «NEXO limitado por el ahorro de batería» // 3151: ro = «leo del relé propio»
@@ -555,6 +570,7 @@ export class NetLink {
     var tag = this._tag(pair, nx, _day(0));
     var ev = _event(schnorr.utils.randomSecretKey(), KIND, [['p', tag.pub], ['expiration', String(Math.floor(Date.now() / 1000) + ttl)]], b64);
     // 3151: lo pesado (parte de llamada, trozo de un archivo en vivo) solo al relé propio si los dos leemos de él (net_own.js)
+    if (repOk) this._repub.guardar(nx, content, rdia, ev, ttl, Date.now());
     var pub = this._publishOwn(ev, (opts && opts.hello) || ttl === TTL_MSG ? null : this._ownOnlyFor(nx), (opts && opts.hello) ? null : nx); // fase 1: el saludo va a todos (aún no sé dónde lee); lo demás, a los suyos
     // FCM «despertador» (#87, Fase 2): salió por el buzón de los relés (si fuera por Tor directo ya habría vuelto
     // arriba). M1 (auditoría 28-10): pedir el «toque» SOLO por un mensaje nuevo de verdad (nid: texto nuevo o primer
