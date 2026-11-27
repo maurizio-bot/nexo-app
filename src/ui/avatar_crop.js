@@ -70,7 +70,9 @@ export function openAvatarCrop(im) {
     var box = doc.createElement('div');
     box.id = 'nexo-avatar-crop';
     box.setAttribute('role', 'dialog');
-    box.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(0,0,0,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:16px;box-sizing:border-box;touch-action:none;color:#fff;font-family:inherit;';
+    // 27-11 (dueño: «pantallas encimadas al cambiar la foto del grupo»): con 10050 el ajuste quedaba DEBAJO de la hoja de Perfil y de la de
+    // ajustes del grupo (las dos a 2147483646): encima de todo, siempre
+    box.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:16px;box-sizing:border-box;touch-action:none;color:#fff;font-family:inherit;';
     var title = doc.createElement('div');
     title.textContent = t('av_crop_title', 'Ajusta la foto');
     title.style.cssText = 'font-size:18px;font-weight:600;';

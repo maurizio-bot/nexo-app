@@ -283,6 +283,9 @@ const R1 = (x) => Math.round(x);
   });
   // 28-11: la foto se ajusta antes de usarla (avatar_crop.js): se acepta como viene
   await waitFor(() => ev(() => !!document.querySelector('#nexo-avatar-crop .nexo-av-use')), 4000);
+  // 27-11: el ajuste se VE encima de la hoja de Perfil (antes quedaba debajo: pantallas encimadas)
+  r.F_ajuste_encima = await ev(() => { const b = document.querySelector('#nexo-avatar-crop .nexo-av-use'); if (!b) return 'sin ajuste'; const q = b.getBoundingClientRect(); const top = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2); return top === b || b.contains(top); });
+  check('F_ajuste_de_la_foto_encima_de_perfil', r.F_ajuste_encima === true, String(r.F_ajuste_encima));
   await ev(() => { const b = document.querySelector('#nexo-avatar-crop .nexo-av-use'); if (b) b.click(); });
   const tFoto = await waitFor(() => ev(() => { const a = document.getElementById('nexo-hdr-av'); return !!a && /url\(["']?data:image/.test(a.style.backgroundImage || '') && a.classList.contains('nx-has-photo'); }), 6000);
   r.F_foto = { puesta, ms: tFoto };
