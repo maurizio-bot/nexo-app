@@ -1584,6 +1584,22 @@
    "sintoma": "reenvio_sin_fin (nx1e50c95d, 3 vueltas), build 3159",
    "categoria": "Fallo de la app",
    "causa": "Mismo episodio que el de las 18:21 (relés rate-limited/banned, 5 reintentos por texto). Arreglado en la 3160 (3347/3348/3350)."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "22:16",
+   "nx": "nx1e50c95d",
+   "sintoma": "S23: no le llegaron 6 audios del S24 (21:53–21:56), build 3160",
+   "categoria": "Fallo de la app",
+   "causa": "Ver el de las 22:19 del S24 (mismo episodio). En el S23 no entró ningún puntero de esos audios; sus 6 textos salieron por la red de seguridad al buzón y sí llegaron."
+  },
+  {
+   "dia": "2026-11-26",
+   "hora": "22:19",
+   "nx": "nx1n36c283",
+   "sintoma": "6 audios y 1 texto al S23 en ✓ para siempre, build 3160",
+   "categoria": "Fallo de la app",
+   "causa": "primal (único relé en común) limitó al S24 por ráfaga al volver a primer plano (sin ritmo previo; 3348 solo actúa tras el primer «no»; ×34 al arrancar). Trozos en 1 relé y puntero/texto aceptados por relés que el S23 no lee → ✓. Nada reenvía un ✓ sin ✓✓ (handleCustody borra el pendiente; _sendFileViaBlobMailbox no repite el puntero). Además 2 textos largos se reanudan sin fin desde el 26-11 (peerSafeAt solo en memoria) y enlaces Bluetooth abiertos con tablet/vivo sin chat. Plan: docs/PLAN_ENTREGA_27-11.md."
   }
  ]
 }

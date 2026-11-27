@@ -21,6 +21,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **27-11 ~22:40 (Opus), SOLO DIAGNÓSTICO, sin código:** 6 audios + 1 texto del S24 al S23 quedaron en ✓ para siempre (diag. 26-11
+  22:16/22:19 en `docs/diagnosticos.json`). Plan en **`docs/PLAN_ENTREGA_27-11.md`** (4 puntos, orden 1→3→4→2): 1 rescate de ✓ sin
+  ✓✓; 2 relés en común acordados entre los dos (saludo con `rr`/`rw`); 3 ritmo por relé ANTES de publicar + pausa guardada + fin del
+  reenvío sin fin de 2 textos largos; 4 **DECISIÓN DEL DUEÑO 27-11: Bluetooth solo conecta con motivo** (pendiente, chat abierto,
+  llamada); escanear sí. Esto va ANTES que `PLAN_CAPACIDAD_27-11.md` (es «que todo llegue»). Hacerlo con el límite fresco (domingo 29-11 2:00).
 - **27-11 noche (Opus), [skip ci], va en la SIGUIENTE APK:** **responder con un adjunto** (dueño: «deslizo para responder, mando audio y se
   va solo; queda la barra con un mensaje vacío»): nota de voz, foto, archivo (también grande) llevan la cita (`meta.rp`, sellada en `xs`
   por el camino cifrado; `_takeReplyFor` quita la barra; un reenvío no la lleva). `chatactions.js` 1b (voz_*). NOVEDADES: añadir
