@@ -12,6 +12,18 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Si un servidor de internet pone límite, NEXO deja de insistirle y usa otros: tus mensajes ya no se quedan con «!».
+- Las notas de voz en un grupo se suben una sola vez.
+- Fondo del grupo: el que elijas es solo para ti; compartirlo es opcional.
+- Al traer los mensajes anteriores de un grupo, también llegan las fotos grandes.
+- Ventanas y menús con el mismo estilo.
+</es-419>
+<!-- /APK -->
+
+## Historial
+
+
+### APK 3159 (26-11-2026)
 - Icono nuevo.
 - El botón de agregar es un +; la pantalla principal se llama Chats.
 - Botón Estados arriba, con puntito si hay nuevos.
@@ -20,11 +32,6 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 - Adjuntar con el nombre de cada opción.
 - «Se unió al grupo» ya no suma sin leer.
 - Guía de bienvenida nueva.
-</es-419>
-<!-- /APK -->
-
-## Historial
-
 
 ### APK 3156 (25-11-2026)
 - Tocar la foto de un grupo en la lista de chats la abre en grande, como la de un contacto.

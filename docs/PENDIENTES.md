@@ -30,8 +30,9 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   2. NOMBRE ELEGIDO «Nexbeat» (26-11, limpio en el IMPI). Falta: Play, dominio nexbeat.app/.com y registrar la marca (dueño). En la APK de tienda: cambiar `app_name`, textos «NEXO», ficha de Play
      («Nexbeat», lema «Todos para uno»), política de privacidad e imagen de arranque si lleva la palabra.
   3. Nombre de usuario fijo vs. confirmación doble — decisión del dueño.
-  4. Estilo parejo (B-EST): quedan ventanas emergentes, avisos y demás hojas (ya: Ajustes, Nuevo grupo, Agregar, menú ⋮, adjuntar).
-  5. Estadística: «Wi-Fi local: su app no contesta» cuenta como fallo cuando el otro solo duerme → reclasificar.
+  4. Estilo parejo (B-EST): quedan ventanas emergentes, avisos y demás hojas (ya: Ajustes, Nuevo grupo, Agregar, menú ⋮, adjuntar). → **APK de emergencia 26-11 noche** (ver ESTADO).
+  5. ✅ (26-11 noche) Estadística: «Wi-Fi local: conectado pero su app no contesta» ya no cuenta como fallo del Wi-Fi (`usage_extra.pfClassify`); y lo que
+     salió «sin camino» y pasó directo a «leído» ya cuenta como llegado (`diag_state`; eran los «13 sin ✓✓» del resumen del 25-11). Pruebas redesmedidas/redesmedidas2.
   6. Para la APK de tienda: `VIA_FADE_MS = 1000` (main.js) + auditoría de seguridad final + capturas de Play con el icono nuevo.
   7. PARA FABLE: doble enlace Bluetooth a la copia LE Coded (zombi, MTU 23 falso); modo concierto nativo; vaivén del Bluetooth en llamada (3c).
   8. Del dueño (Google Play): falta el teléfono en la cuenta y el plazo del 7-dic (ver `nexo-private/negocio/RUTA_LANZAMIENTO.md`).

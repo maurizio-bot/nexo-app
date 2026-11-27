@@ -634,6 +634,10 @@
     {
      "fallo": "3249 (diagnósticos 19-11 Vivo 05:12 y S24 05:23): lo detenido en la conexión mientras la app estaba congelada contaba como retraso del relé y subía el margen al reconectar a 10 min durante 12 h (S24: 12,2 MB repetidos en 18 min, 40,6 MB en 168 min). Ahora no cuenta. margencongelado.js (contraprueba 3107: 459 s)",
      "prueba": "3249 (diagnósticos 19-11"
+    },
+    {
+     "fallo": "3348 (diagnósticos del dueño 26-11 14:47–17:11, 3156/3159: 4 textos al S23 con «!»; relés «rate-limited: too many gift wraps» → «banned»; otro «not in our web of trust»): cada sobre seguía yendo a todos los relés aunque uno ya limitara (cada uno, otra infracción). Ahora el relé que limita/castiga/no deja publicar queda en pausa (20 s → 10 min; castigo 10 min → 2 h; política 6 h), entra la reserva, con todos en pausa queda pendiente sin mandar nada y tras un límite lo pesado sale con respiro. relelimita.js (contraprueba: 7 sobres también a los que limitaban)",
+     "prueba": "3348 (diag. del dueño 26-11"
     }
    ],
    "debiles": [
@@ -1879,6 +1883,10 @@
     {
      "fallo": "3177 (ciudad 17-11): foto de grupo por el buzón que llegaba por trozos se guardaba como 'ptr' y nunca se bajaba. grupoptr.js (contraprueba 80c39795)",
      "prueba": "foto de GRUPO por el buzón de archivos que llega p"
+    },
+    {
+     "fallo": "3348 (diag. 26-11): un adjunto de grupo de ~260 KB iba ENTERO dentro del sobre a cada miembro, por internet en 45 trozos con reintentos → los relés castigaron la dirección. La nota de voz también va al buzón (una subida, puntero a cada uno). blobfan.js --audio (contraprueba: 0 trozos en el buzón)",
+     "prueba": "una NOTA DE VOZ de 200 KB al grupo"
     }
    ],
    "debiles": [

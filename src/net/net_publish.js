@@ -213,7 +213,7 @@ export const netPublish = {
   // only (3151): solo a esos relés (lo pesado al relé propio, net_own.js); sin only, a todos los abiertos como siempre
   // 3348: tras un límite, lo pesado espera su turno (lo pequeño sale ya)
   _publish(ev, only) {
-    var self = this, wait = self._bulkWait(ev);
+    var self = this, wait = only ? 0 : self._bulkWait(ev); // al relé propio (only) no: no limita
     if (wait > 0) return new Promise(function(res) { setTimeout(res, wait); }).then(function() { return self._publishNow(ev, only); });
     return self._publishNow(ev, only);
   },
