@@ -24,7 +24,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **28-11 ~01:20 México (Opus): SUBIDA UNA APK CON TODO lo pedido («sube todo» menos lo de Fable): arreglos 1–6 + guía de bienvenida al día
   (10 diapositivas, 5 idiomas) + revisión visual severa a 360 px (archivos con nombre largo, contraste de hora/✓, toques ≥ 44 px, ⋮ que no se
   cerraba) + del plan §6: quién ve mis estados (`estadopriv.js`), mensajes temporales (`chat_disappear.js`, `chatdisappear.js`), encuestas
-  (`poll.js`, `polltest.js`) + plan §0 parcial: deslizar abajo en el chat ACTUALIZA, ya no cierra (`chatpull.js`). REVISAR SU CI.**
+  (`poll.js`, `polltest.js`) + plan §0 parcial: deslizar abajo en el chat ACTUALIZA, ya no cierra (`chatpull.js`). CI 3164 FALLÓ (8 pruebas: cupo demasiado bajo para archivos grandes, i18n > 1000 líneas, escucha de reservas con relé propio, 3 pruebas a actualizar); arreglado y resubido (3165). REVISAR SU CI.**
   **Decisiones visuales para el dueño (no tocadas):** ✓✓ celeste poco contraste; nombre de grupo largo con 3 botones se corta; casillas a la
   izquierda vs. derecha en Seguridad (¿interruptores?); hora 12 h vs 24 h; Estados con fondo negro puro y sin título; píldora de llamada en 2
   líneas; insignia «1» del + blanca sobre naranja. **Queda del plan (para el límite fresco):** §0 sincronía completa, §1–5, §6 notas de vídeo,
@@ -32,7 +32,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **28-11 madrugada (Opus): ARREGLOS 1–6 HECHOS y probados.** Cada uno con prueba:
   1 reenvíos: un trozo de texto que un relé guardó no se republica en 30 min; un calendario (toque, 15→120 s), ⏳ a 10 min (`chat_stream`
   `_netWindowStored`; `reenvionet.js`). 2 puente: 1 envío por internet / 1 reintento por BT y luego su calendario (`ble_relay`, `ble_ack`
-  opts; `puentereint.js`). 3 Fénix en vuelo cede al volver la app (`_bgShouldYieldNet`; `fenixfg.js`). 4 cupo: 90 sobres pesados/min
+  opts; `puentereint.js`). 3 Fénix en vuelo cede al volver la app (`_bgShouldYieldNet`; `fenixfg.js`). 4 cupo: 600 sobres pesados/min (CI 3164: con 90 los archivos grandes por internet se iban a Bluetooth)
   (30 tras un límite), textos sin espera (`net_publish._quotaWait`; `cuporele.js`). **NO hecho del 4: juntar textos pendientes en un
   sobre** (con el 1 ya no se republican; queda para el enrutado del domingo). 5 con datos se escuchan todos (CELL_READ_RELAYS 99) y la app
   escucha los de reserva solo para leer (`r.lo`; `relevo.js` R4 = caso S23 21:53; `datosmoviles.js` adaptado). 6 sin tope de 2 h si

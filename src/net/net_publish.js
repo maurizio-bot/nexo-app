@@ -22,7 +22,9 @@ var LIMIT_CALM_MS = 300000, BULK_EV_CHARS = 4000, BULK_GAP_MS = 1200; // tras un
 // (cada uno va a todos los relés abiertos: es la cuenta de cada relé); con QUOTA_PER_MIN en el último minuto, lo PESADO espera su turno
 // repartido (uno cada 60/cupo s). Los textos y señales nunca esperan (cuentan, pero salen ya). Tras un límite (5 min) el cupo baja a
 // QUOTA_CALM_PER_MIN; sin límites, QUOTA_PER_MIN (≈ el ritmo que ya tenía un archivo grande: no se frena lo normal).
-var QUOTA_PER_MIN = 90, QUOTA_CALM_PER_MIN = 30, QUOTA_WIN_MS = 60000;
+// CI 3164: con 90/min un archivo de 12 MB por internet (~300 trozos) tardaba minutos y se iba por Bluetooth: sin límites recientes el cupo
+// solo frena una ráfaga desbocada (600/min = 10 por segundo); tras un límite, 30/min (lo que de verdad cuida a los relés).
+var QUOTA_PER_MIN = 600, QUOTA_CALM_PER_MIN = 30, QUOTA_WIN_MS = 60000;
 export function relayLimitKind(msg) {
   var m = String(msg || '');
   if (/^(duplicate|invalid|auth-required|error):/i.test(m)) return '';

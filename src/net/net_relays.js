@@ -174,7 +174,7 @@ export const netRelays = {
   // otro, con la app a la vista y sus relés de siempre bien, no escuchaba ahí (su nativo en segundo plano sí) y no le llegaba. Ahora la app
   // también escucha TODOS los de reserva, solo para leer (r.lo: no se publica en ellos salvo que entren de reserva para publicar).
   // Solo con los relés por defecto (pool de reserva) y con internet propio (no por un puente).
-  _listenSpares() { return this._sparePool().length > 0 && !this.gwOnly() && !(typeof window !== 'undefined' && window.NEXO_NO_LISTEN_SPARES); },
+  _listenSpares() { return this._sparePool().length > 0 && !this.gwOnly() && !this._ownList().length && !(typeof window !== 'undefined' && window.NEXO_NO_LISTEN_SPARES); }, // con relé propio no (se lee del propio y de uno público, 3151)
   _listenSpareUrls() {
     if (!this._listenSpares() || !this._realOpenCount()) return [];
     var on = this.relayUrls();
