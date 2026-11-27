@@ -12,15 +12,19 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Al traer los mensajes anteriores de un grupo, también llegan las imágenes mandadas como archivo.
-- Cuando alguien entra a un grupo sale un solo aviso.
-- Ajustes del grupo: se vuelve con el gesto de atrás, sin botón.
-- El botón de Estados es una flecha y te enseña el gesto.
+- Puedes responder a un mensaje con una nota de voz, foto o archivo.
+- En un grupo, mantén presionado el fondo para cambiarlo o compartirlo.
 </es-419>
 <!-- /APK -->
 
 ## Historial
 
+
+### APK 3161 (27-11-2026)
+- Al traer los mensajes anteriores de un grupo, también llegan las imágenes mandadas como archivo.
+- Cuando alguien entra a un grupo sale un solo aviso.
+- Ajustes del grupo: se vuelve con el gesto de atrás, sin botón.
+- El botón de Estados es una flecha y te enseña el gesto.
 
 ### APK 3160 (26-11-2026)
 - Si un servidor de internet pone límite, NEXO deja de insistirle y usa otros: tus mensajes ya no se quedan con «!».
