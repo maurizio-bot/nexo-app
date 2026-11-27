@@ -21,7 +21,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
-- **APK DE EMERGENCIA (26-11 noche, Opus; el dueño eligió esperar al estilo parejo para que vaya TODO junto) — SUBIDA A NEXOCHAT (26-11 ~19:00 México; revisar el CI ~85 min y, si pasa, NOVEDADES al historial con su número):**
+- **APK DE EMERGENCIA (26-11 noche, Opus; el dueño eligió esperar al estilo parejo para que vaya TODO junto) — **APK 3160 PUBLICADA (26-11 20:09 México; CI en verde a la primera)**:**
   1. **Relés que limitan** (diag. 26-11 17:10 y 18:21, S24 → S23, «!»): **3347** no se reintenta 5 veces en 10 s (⏳, no «!»); **3348** relé que
      limita/castiga/no deja publicar queda EN PAUSA para publicar (rate 20 s→10 min; banned 10 min→2 h; web of trust/pago/PoW 6 h; se sigue leyendo),
      en pausa = caído para la reserva (entra otro), con todos en pausa queda pendiente SIN mandar nada, tras un límite lo pesado (≥ 4000) sale con
