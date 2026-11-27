@@ -164,6 +164,7 @@ export function autoDiagSendSummary(day, text) {
 // SOLO si tiene el diagnóstico automático encendido (su interruptor manda) y con sus propios límites. Un pedido por contacto
 // cada PAIR_ASK_MS; un diagnóstico pedido no pide a su vez (sin ping-pong). Una build anterior ignora el pedido (sin «text»).
 var PAIR_ASK_MS = 30 * 60 * 1000, _pairAsked = {}, _pairGot = {};
+var BOOT_WAIT_MS = 15000, _bootAt = Date.now(); // 3172: un pedido con la app recién abierta espera a los registros del disco
 function _askPeer(kind, info, now) {
   if (/^par:/.test(kind)) return;
   var m = /^(nx[0-9a-z]{8})\b/.exec(String(info || '')); if (!m) return;
@@ -182,6 +183,16 @@ function _pairRequest(from, k) {
   if (!_isContact(from)) return 'no_contacto';
   if (now - (_pairGot[from] || 0) < _knob('NEXO_AUTODIAG_PAIR_MS', PAIR_ASK_MS)) return 'reciente';
   _pairGot[from] = now;
+  // 3172 (diag. automático del Motorola nx0x4029e6 3170 27-11 16:54, «par:zombi» pedido por el S24): el pedido llegó con la app recién
+  // abierta (entre los 97 sobres guardados en segundo plano) y el diagnóstico se armó a los 0,6 s de arrancar: sin REGISTRO NATIVO ni
+  // SESIÓN ANTERIOR (se leen del disco a los 0,5 s, en segundo plano) y con medio segundo de registro: no explicaba nada del zombi.
+  // Recién abierta, se espera a tener esos registros (y unos segundos de la sesión) antes de armarlo.
+  var wait = _knob('NEXO_AUTODIAG_BOOT_MS', BOOT_WAIT_MS) - (now - _bootAt);
+  if (wait > 0 && autoDiagEnabled()) {
+    console.log('[AUTODIAG] ' + from + ' pidió mi diagnóstico (su síntoma «' + sym + '»): la app acaba de abrirse, lo armo en ' + Math.round(wait / 1000) + ' s (con los registros cargados)');
+    setTimeout(function() { var r2 = autoDiagReport('par:' + sym, 'pedido por ' + from); console.log('[AUTODIAG] ' + from + ' pidió mi diagnóstico (su síntoma «' + sym + '»): ' + r2); }, wait);
+    return 'espera_arranque';
+  }
   var r = autoDiagReport('par:' + sym, 'pedido por ' + from);
   console.log('[AUTODIAG] ' + from + ' pidió mi diagnóstico (su síntoma «' + sym + '»): ' + r);
   return r;

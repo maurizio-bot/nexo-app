@@ -21,6 +21,10 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **27-11 17:10 México (Opus): 2 arreglos de diagnósticos de la 3170, en NEXOCHAT con [skip ci] (van en la PRÓXIMA APK, no en la 3171):**
+  (a) zombi falso del S23 con el HONOR: el Dedup cerraba el enlace repetido y el ping que iba por él contaba como «medio muerto»
+  (`ble_connections.js`; prueba `pingdedup.js`, contraprueba en 6fcb8ad). (b) diagnóstico «par:» pedido con la app recién abierta salía
+  sin registro nativo ni sesión anterior: ahora espera 15 s (`autodiag.js` BOOT_WAIT_MS; `diagplus.js` D4b). NOVEDADES no hace falta (interno).
 - **27-11 noche (Opus): ENCARGO DEL 27-11 tarde HECHO Y SUBIDO a NEXOCHAT (APK siguiente a la 3170; revisar su CI en una sesión nueva).**
   1. Cabecera «propuesta B»: foto = visor (`chat_info.js` `openPhotoView`; grupo con «Cambiar/Quitar foto» si puede editar); nombre › =
      «Información» (`openChatInfo`: 1-a-1 con nombre editable, NEXO ID y opciones del chat; grupo = `openGroupSettings(gid,{title,extra})`

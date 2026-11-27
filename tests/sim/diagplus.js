@@ -49,7 +49,7 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
   const radio = new Radio();
   const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', opts), nB = new NativePhone('B', 'BB:BB:BB:BB:BB:02', opts);
   [nA, nB].forEach((n) => { radio.add(n); n.load(); });
-  const knobs = { NEXO_AUTODIAG_SCAN_MS: 3600000, NEXO_AUTODIAG_PAIR_MS: 0, NEXO_DIAG_SLOW_MS: 1500 };
+  const knobs = { NEXO_AUTODIAG_SCAN_MS: 3600000, NEXO_AUTODIAG_PAIR_MS: 0, NEXO_DIAG_SLOW_MS: 1500, NEXO_AUTODIAG_BOOT_MS: 0 };
   const [A, B] = await Promise.all([boot('A', nA, knobs), boot('B', nB, knobs)]);
   const biA = A.win.bleInterface, idA = biA.localNexoId.toLowerCase(), idB = B.win.bleInterface.localNexoId.toLowerCase();
   A.win.NEXO_DIAG_DEV = idB; B.win.NEXO_DIAG_DEV = idB; // B es el desarrollador (y también el contacto implicado)
@@ -97,6 +97,18 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
   adA().report('enlace_abre_cierra', idB + ' 6 desconexiones en 10 min');
   r.D4_par_manda_s = await waitFor(() => adB().inbox().some((e) => e.sym === 'par:enlace_abre_cierra' && e.info === 'pedido por ' + idA && e.local), 30000);
   r.D4_A_no_pide_por_un_pedido = !logs.some((l) => /\[B\].*pido a .* su diagnóstico \(síntoma «par:/.test(l));
+  // 3172 (Motorola 3170 27-11 16:54): un pedido con la app recién abierta se armaba a los 0,6 s, sin registro nativo ni sesión anterior.
+  // Ahora espera a tener los registros: se simula «recién abierta» con la perilla (espera ≈ 3 s desde ahora)
+  {
+    const gapB = B.win.NEXO_AUTODIAG_GAP_MS; B.win.NEXO_AUTODIAG_GAP_MS = 0;
+    B.win.NEXO_AUTODIAG_BOOT_MS = Math.round(B.win.performance.now()) + 3000;
+    const t0 = Date.now();
+    adA().report('zombi', idB);
+    r.D4b_espera_arranque = await waitFor(() => logs.some((l) => /\[B\].*pidió mi diagnóstico \(su síntoma «zombi»\): la app acaba de abrirse, lo armo en/.test(l)), 10000) !== null;
+    r.D4b_par_llega_s = await waitFor(() => adB().inbox().some((e) => e.sym === 'par:zombi' && e.local), 15000);
+    r.D4b_no_antes_de_2s = (Date.now() - t0) >= 2000;
+    B.win.NEXO_AUTODIAG_BOOT_MS = 0; B.win.NEXO_AUTODIAG_GAP_MS = gapB;
+  }
 
   // ===== D5: síntomas nuevos =====
   const symsA = () => (adA().state().sent || []).map((x) => x.sym);
@@ -160,7 +172,7 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
 
   r.contenido_en_diagnostico = /hola B|hola A/.test(txt);
   r.errores = logs.filter((l) => / error: /.test(l) && !/Not implemented|ResizeObserver/.test(l)).slice(0, 3);
-  const ok = typeof r.emparejados_s === 'number' && r.reporte === 'enviado' && typeof r.llega_a_B_s === 'number' && r.D1_estado_y_zona && r.D1_contacto_camino_y_build && r.D1b_wifi_y_rapidos && !!r.D1c_tor && r.D2_linea_de_tiempo && r.D3_compactado && r.estado_antes_del_registro &&
+  const ok = r.D4b_espera_arranque && typeof r.D4b_par_llega_s === 'number' && r.D4b_no_antes_de_2s && typeof r.emparejados_s === 'number' && r.reporte === 'enviado' && typeof r.llega_a_B_s === 'number' && r.D1_estado_y_zona && r.D1_contacto_camino_y_build && r.D1b_wifi_y_rapidos && !!r.D1c_tor && r.D2_linea_de_tiempo && r.D3_compactado && r.estado_antes_del_registro &&
     r.D4_apagado_no_manda && typeof r.D4_par_manda_s === 'number' && r.D4_A_no_pide_por_un_pedido && r.D5_enlace_abre_cierra && r.D5_entrega_lenta && r.D5b_dormido_no_es_lento && r.D5c_repetida_no_es_lenta && r.D5d_oculto_no_es_lento && r.D5e_leido_no_repetida && r.D6_hueco_10_min && r.D6_pasa_tras_10_min && !r.contenido_en_diagnostico && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('DIAGPLUS ' + JSON.stringify(r));

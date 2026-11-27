@@ -1696,6 +1696,22 @@
    "sintoma": "enlace_abre_cierra (nx10b6f4ac 6 desconexiones en 10 min), build 3170",
    "categoria": "Fallo de la app",
    "causa": "Bluetooth con Alex (sin internet, su app dormida): el enlace abre, queda «stuck» y se rehace cada ~15–20 s; los 2 textos viejos (8yh2amzl, g2n0x4v7) siguen ⏳ sin otro camino. Es el zombi/enlace medio muerto del área 3 (fase 2 Bluetooth: APP_CALLA sin reconectar). Fase 1 en la 3170 ya se ve: «[RUTA] nx1n36c283 lee en 9 relé(s)… le publico solo ahí» (alterna 9/4 según conteste su app o su nativo con la config guardada antes de la 3170: correcto, cada uno escucha lo que anuncia)."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "16:33",
+   "nx": "nx1e50c95d",
+   "sintoma": "zombi (nx126df3f4), build 3170",
+   "categoria": "Fallo de la app",
+   "causa": "Zombi FALSO: al volver a la app, el Dedup cerró el enlace repetido 96a8 del HONOR (tenía 2 enlaces cliente, d2bc sano) y el ping del enlace recuperado que iba por él falló; se tomó por «medio muerto» → «sin respuesta a 4 pings» y diagnóstico. Arreglado en la 3172 (ping a un enlace que yo cerré por repetido o ya caído no cuenta; prueba pingdedup.js, contraprueba en 6fcb8ad)."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "16:54",
+   "nx": "nx0x4029e6",
+   "sintoma": "par:zombi (pedido por nx1n36c283), build 3170",
+   "categoria": "Fallo de la app",
+   "causa": "Diagnóstico emparejado inútil: el pedido llegó con la app recién abierta (97 sobres guardados en segundo plano) y se armó a los 0,6 s, sin REGISTRO NATIVO ni SESIÓN ANTERIOR (se leen del disco a los 0,5 s). Arreglado en la 3172: recién abierta espera 15 s a tener los registros (diagplus D4b). El zombi del S24 con el Motorola no se puede explicar con este diagnóstico."
   }
  ]
 }

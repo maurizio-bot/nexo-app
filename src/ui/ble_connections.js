@@ -116,6 +116,16 @@ const _BLE_CONNECTION_METHODS_BASE = {
           // rehacía un enlace sano (pongs a 50 ms justo antes) y un archivo de 358 trozos volvía a empezar. Un ping que tardó mucho más
           // que su plazo (la app estuvo congelada) no cuenta; el vigilante manda otro al momento.
           if (Date.now() - pingSentAt > 30000) { console.log('[BLEInterface] Ping a ' + deviceId + ' de antes de congelarse la app: no cuenta'); return; }
+          // 3172 (diag. automático S23 nx1e50c95d 3170 27-11 16:33, zombi falso con el HONOR): al volver, el ping del enlace recuperado y el
+          // Dedup salieron en el mismo milisegundo; el Dedup cerró ese enlace (repetido), el ping falló por eso y se tomó por «medio muerto»
+          // → «sin respuesta a 4 pings» y diagnóstico de zombi. Un ping a un enlace que YO acabo de cerrar por repetido, o que ya no está
+          // conectado, no dice nada de la salud del otro: no cuenta (el cierre ya lo lleva el Dedup / la desconexión).
+          var dupAtP = self._dupClosedAt && self._dupClosedAt.get(_normMac(deviceId));
+          if ((dupAtP && Date.now() - dupAtP < 15000) || !self.connectedDevices.has(deviceId)) {
+            if (self._unverified) self._unverified.delete(deviceId);
+            console.log('[BLEInterface] Ping a ' + deviceId + ' sin respuesta pero el enlace ya lo cerré yo (repetido) o ya no está: no cuenta');
+            return;
+          }
           var fails = (self._pingFailCount.get(deviceId) || 0) + 1;
           self._pingFailCount.set(deviceId, fails);
           var unvF = !!(self._unverified && self._unverified.has(deviceId) && pingSentAt >= self._unverified.get(deviceId) && !((self._lastPongTime.get(deviceId) || 0) > self._unverified.get(deviceId)));
