@@ -6,6 +6,23 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 🆕 27-11 tarde — dueño: tocar la FOTO de la cabecera del chat/grupo = VER la foto (y cambiarla), NADA MÁS (pendiente, NO subir aún)
+**Lo pidió el dueño:** «al pulsar en la foto de perfil de chat o grupo debe visualizarse la foto y tener opción de cambiar; no debe hacer otra
+cosa. Los ajustes están en la rueda de ajustes.» PORQUÉ: es lo que el usuario espera (WhatsApp/Telegram: la foto se abre en grande) y los
+ajustes ya tienen su sitio (la rueda); dos sitios para lo mismo confunde.
+**Hoy (revisado 27-11):** `chat_menu.js` `installChatMenu` hace que tocar `#chat-contact-avatar` abra «Opciones del chat» (buscar,
+destacados, mensajes temporales, silenciar, bloquear) — en 1-a-1 y en grupo. La rueda (`group_panel.js` `refreshGroupGear`) solo existe en
+GRUPOS y abre los ajustes del grupo (nombre, foto, miembros, fondo…), sin esas opciones del chat. En un chat 1-a-1 no hay rueda.
+**Plan:**
+1. Tocar la foto de la cabecera → visor a pantalla completa de la foto (contacto o grupo; sin foto: el círculo con las iniciales en grande).
+   En un GRUPO, con botón «Cambiar foto» si `gs.can(gid,'edit')` (usa `makeAvatar` = el ajuste nuevo y `gs.setPhoto`). En 1-a-1, la foto
+   del contacto solo se ve (es suya; la mía se cambia en Perfil). Cerrar: deslizar abajo / atrás (sin X, regla del plan §6).
+2. Las opciones del chat (buscar, destacados, temporales, silenciar, bloquear) pasan a la RUEDA: en el grupo, arriba en sus ajustes; en
+   1-a-1, una rueda igual en la cabecera (hoy no hay) con esas opciones.
+3. Prueba en Chromium a 360 px: tocar la foto abre el visor y no el menú; la rueda tiene todas las opciones; contraprueba con la 3170.
+**[DUDA para el dueño]** en 1-a-1 ¿una rueda nueva en la cabecera (el 05-11 quería la cabecera despejada) o las opciones dentro del visor de
+la foto, debajo? Recomiendo la rueda: el mismo sitio en chats y grupos.
+
 ## 🆕 26-11 — dueño: AUDITORÍA PREVIA A GOOGLE PLAY + TANDA «TODO LO MENOR» (hecha en la rama, SIN APK aún)
 - **PORQUÉ:** antes de subir a Play se hace otra auditoría; el dueño quiere la app uniforme y clara para un usuario nuevo. Lo grande queda para Fable.
 - **HECHO 26-11 (en `ccr-5f3d29e2-x9z1cz`, probado en tests/sim):**
