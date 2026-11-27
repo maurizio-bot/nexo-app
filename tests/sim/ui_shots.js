@@ -59,7 +59,10 @@ const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeO
     const dt = new DataTransfer(); dt.items.add(new File([blob], 'yo.png', { type: 'image/png' })); inp.files = dt.files;
     inp.dispatchEvent(new Event('change'));
   });
-  await sleep(1500);
+  await sleep(800);
+  await shot(A, '07a_ajustar_foto'); // 28-11: el ajuste de la foto (avatar_crop.js)
+  await A.evaluate(() => { const b = document.querySelector('#nexo-avatar-crop .nexo-av-use'); if (b) b.click(); });
+  await sleep(1000);
   await shot(A, '07b_perfil_con_foto');
   await A.evaluate(() => { const c = document.getElementById('nexo-profile-close'); if (c) c.click(); });
   await A.evaluate(() => window.NEXO_newGroupWith()); await sleep(500); // 3222

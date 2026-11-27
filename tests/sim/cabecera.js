@@ -281,6 +281,9 @@ const R1 = (x) => Math.round(x);
     inp.files = dt.files; inp.dispatchEvent(new Event('change'));
     return 'ok';
   });
+  // 28-11: la foto se ajusta antes de usarla (avatar_crop.js): se acepta como viene
+  await waitFor(() => ev(() => !!document.querySelector('#nexo-avatar-crop .nexo-av-use')), 4000);
+  await ev(() => { const b = document.querySelector('#nexo-avatar-crop .nexo-av-use'); if (b) b.click(); });
   const tFoto = await waitFor(() => ev(() => { const a = document.getElementById('nexo-hdr-av'); return !!a && /url\(["']?data:image/.test(a.style.backgroundImage || '') && a.classList.contains('nx-has-photo'); }), 6000);
   r.F_foto = { puesta, ms: tFoto };
   check('F_foto_nueva_en_cabecera', puesta === 'ok' && tFoto !== null, JSON.stringify(r.F_foto));
