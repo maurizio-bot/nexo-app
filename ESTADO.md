@@ -30,6 +30,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
      dejar UNO solo (dueño: «con uno es suficiente»). Ver `groups.js` (gj/«Se unió») y los avisos gsn… de `group_admin.js`.
   3. **Ajustes del grupo (y sus pantallas) tienen botón X y NO tienen gesto de atrás:** el dueño quiere SIN botones de atrás, solo el gesto
      (como el resto de la app). B-EST (096e5df) puso `.nx-panel`: quitar la X y engancharlo al gesto/botón atrás de Android (`chat_nav`/back handler).
+  4. **Botón Estados (arriba a la derecha en Chats): el símbolo no se entiende** → una FLECHA hacia la derecha; al tocarla, además de ir a
+     Estados, un letrero breve «Desliza la pantalla hacia la izquierda para ver los estados» que se quita solo (enseña el gesto). Prueba E11
+     de `estadospantalla.js` (botón y puntito).
 - **APK DE EMERGENCIA (26-11 noche, Opus; el dueño eligió esperar al estilo parejo para que vaya TODO junto) — **APK 3160 PUBLICADA (26-11 20:09 México; CI en verde a la primera)**:**
   1. **Relés que limitan** (diag. 26-11 17:10 y 18:21, S24 → S23, «!»): **3347** no se reintenta 5 veces en 10 s (⏳, no «!»); **3348** relé que
      limita/castiga/no deja publicar queda EN PAUSA para publicar (rate 20 s→10 min; banned 10 min→2 h; web of trust/pago/PoW 6 h; se sigue leyendo),
