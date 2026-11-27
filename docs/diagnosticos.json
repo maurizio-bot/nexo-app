@@ -1648,6 +1648,22 @@
    "sintoma": "resumen_diario (2026-11-26), build 3167",
    "categoria": "Resumen",
    "causa": "Sin fallo nuevo: 7/7 ✓✓; zombi ×3 y Jump ACK timeout (ya conocidos)."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "09:11",
+   "nx": "nx1n36c283",
+   "sintoma": "zombi (nx0x4029e6), build 3167",
+   "categoria": "Fallo de la app",
+   "causa": "Falso zombi: a las 09:10:52 Zhelowsky abrió su app y su parte nativa CERRÓ sus enlaces Bluetooth de cliente («CLEANUP GATT client cerrado» ×3) en vez de pasárselos a la app; el S24 recuperó ese enlace entrante (4A:D5) ya muerto, sin respuesta al ping → «medio muerto, lo rehago». Sin pérdida (siguió por Wi-Fi local, comprobado). Para la fase 2 (Bluetooth): al abrirse la app, el nativo entrega los enlaces vivos, no los cierra."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "09:11",
+   "nx": "nx0x4029e6",
+   "sintoma": "par:zombi (pedido por nx1n36c283), build 3167",
+   "categoria": "Fallo de la app",
+   "causa": "El otro lado del anterior: al abrir la app su nativo cierra los enlaces GATT de cliente (09:10:52). Además, al arrancar (09:03:45) «Respuesta de sincronía … sin firma válida o vencida» de nx01992876 y nx0g6ef54e: se vuelve a pedir y luego todo llega (sin pérdida); revisar en la fase 2 si es la respuesta guardada por el nativo que ya venció."
   }
  ]
 }
