@@ -12,6 +12,7 @@ import { openStarredSheet } from './chat_star.js';
 import { openChatSearch } from './search_ui.js';
 import { blockMenuLabel, openBlockSheet, paintBlockedBar } from './bloqueo_ui.js';
 import { openFind, openFindGroup, findOn } from './find_ui.js';
+import { disappearOf, disappearLabel, openDisappearSheet, installDisappear } from './chat_disappear.js';
 
 function _name() { var n = document.getElementById('chat-contact-name'); return (n && n.value) || ''; }
 
@@ -26,6 +27,7 @@ export function openChatMenu() {
   return openSheet('nexo-chat-menu', _name(), '', find.concat([
     { label: t('misc_search_in_chat', 'Buscar en el chat'), cls: 'chat-search', fn: function() { openChatSearch(); } },
     { label: t('star_title', 'Mensajes destacados'), cls: 'chat-starred', fn: function() { openStarredSheet(cid); } },
+    { label: t('dsp_title', 'Mensajes temporales'), sub: disappearOf(cid) ? disappearLabel(disappearOf(cid).ttl) : '', cls: 'chat-disappear', fn: function() { setTimeout(function() { openDisappearSheet(cid, openSheet); }, 0); } }, // 3360
     { label: muteMenuLabel(cid), sub: muted ? mutedLabel(cid) : '', cls: muted ? 'chat-unmute' : 'chat-mute', fn: function() { openMuteSheet(cid); } }
   ].concat(/^nx[0-9a-z]{8}$/.test(cid) ? [{ label: blockMenuLabel(cid), cls: 'chat-block', danger: true, fn: function() { openBlockSheet(cid, _name()); } }] : []).concat([ // bloqueo (24-11): solo de un contacto
     { label: t('chat_cancel', 'Cancelar'), cls: 'mm-cancel', fn: function() {} }
@@ -36,6 +38,7 @@ function _paintMute() { paintHeaderMute(_normId(_getCurrentContactId())); }
 function _paintBlock() { paintBlockedBar(_normId(_getCurrentContactId()), _name()); }
 
 export function installChatMenu() {
+  installDisappear(); // 3360: mensajes temporales (barrido de lo caducado)
   var av = document.getElementById('chat-contact-avatar');
   if (av && !av._nxMenu) {
     av._nxMenu = true;
