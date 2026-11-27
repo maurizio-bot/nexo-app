@@ -21,7 +21,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
-- **28-11 (Opus) — FASE 1 INTERNET, PRIMER BLOQUE HECHO (relés), [skip ci] hasta la siguiente APK:** política de relés ÚNICA app/nativo
+- **APK 3170 PASÓ (27-11 13:34 México)** con todo lo de abajo (fase 1 relés + ráfagas + fotos con ajuste + eliminar para todos en grupos + lo de Austin).
+- **28-11 (Opus) — FASE 1 INTERNET, PRIMER BLOQUE HECHO (relés):** política de relés ÚNICA app/nativo
   (`src/core/ruta/politica_reles.js` = `RelayPolicy.kt`, mismos vectores `tests/vectores/politica_reles.json`; `politicareles.js` y
   `RelayPolicyTest.kt`). (a) **anuncio cifrado de dónde leo** en el saludo (`lr`, app y nativo; se guarda en `state.peerLee`, caduca 24 h, solo
   relés de mi pool); (b) **a un contacto se le publica solo en los relés que él lee** (también una reserva que yo solo escucho) y el ✓ sale

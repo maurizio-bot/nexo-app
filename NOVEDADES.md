@@ -12,16 +12,19 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Por internet, tus mensajes van a los servidores donde tu contacto los lee: ya no se marcan ✓ si él no los va a recibir.
-- Con la app cerrada, NEXO escucha los mismos servidores que abierta y respeta cuando uno pide esperar (menos bloqueos).
-- Al poner tu foto de perfil o la del grupo, ahora la ajustas tú (mover, acercar o alejar) y se ve más nítida.
-- En los grupos ya puedes eliminar para todos un mensaje tuyo.
-- Si un contacto ya no te tiene agregado, NEXO te lo avisa.
+- Mejoras de estabilidad y de entrega de mensajes.
 </es-419>
 <!-- /APK -->
 
 ## Historial
 
+
+### APK 3170 (27-11-2026)
+- Por internet, tus mensajes van a los servidores donde tu contacto los lee: ya no se marcan ✓ si él no los va a recibir.
+- Con la app cerrada, NEXO escucha los mismos servidores que abierta y respeta cuando uno pide esperar (menos bloqueos).
+- Al poner tu foto de perfil o la del grupo, ahora la ajustas tú (mover, acercar o alejar) y se ve más nítida.
+- En los grupos ya puedes eliminar para todos un mensaje tuyo.
+- Si un contacto ya no te tiene agregado, NEXO te lo avisa.
 
 ### APK 3167 (28-11-2026)
 - Responde con nota de voz, foto o archivo.
