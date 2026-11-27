@@ -21,7 +21,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
-- **SIGUIENTE (aprobado por el dueño 27-11, NO subir hasta que él lo diga):** cabecera del chat/grupo «propuesta B» de `docs/PENDIENTES.md`
+- **ENCARGO DEL DUEÑO 27-11 tarde (sesión nueva, empezar aquí): hacer TODO esto y SUBIR UNA APK al terminar y probar:**
+  1. Cabecera «propuesta B» (foto = ver foto + «Cambiar foto» en grupo; nombre › = página «Información» con todas las opciones; sin rueda).
+  2. Tarjetas (rectángulo como Ajustes) en la lista de chats y grupos, revisadas a 360 px.
+  3. Tarjeta de un miembro del grupo al tocar su nombre (Mensaje, Llamar, Info; Agregar si no es contacto).
+  4. Fase 1 internet, segundo bloque (contrato §D.3): modo sombra `[RUTA-SOMBRA]` + republicar el MISMO evento + juntar textos en un sobre
+     + quitar la red de seguridad +10 s y las ventanas ×8 por internet (lo que quepa con su prueba; decir qué NO va).
+  Ya en la rama (van en esa APK): ajuste de la foto encima de las hojas y fondo negro #000.
+- **(aprobado por el dueño 27-11; ahora SÍ subir con el encargo de arriba):** cabecera del chat/grupo «propuesta B» de `docs/PENDIENTES.md`
   (27-11 tarde): foto = ver la foto (+ «Cambiar foto» en grupo); nombre › = página «Información» con todas las opciones; se quita la rueda.
 - **HECHO en la rama, VA EN LA SIGUIENTE APK (dueño 27-11: «pantallas encimadas al cambiar la foto del grupo»):** el ajuste de la foto
   (`avatar_crop.js`) quedaba DEBAJO de la hoja de Perfil y de la de ajustes del grupo (z 10050 vs 2147483646) → ahora encima; `cabecera.js`
