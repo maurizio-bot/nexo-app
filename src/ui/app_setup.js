@@ -10,6 +10,7 @@ import { _getCurrentContactId, _peerUnderstands } from './chat_format.js';
 import { _handleFile, _handleGallery } from './pickers.js';
 import { _handleLocation } from './location.js';
 import { _handleCobro } from './cobro.js';
+import { openPollSheet } from './poll.js';
 import { _handleShareContacts } from './share_contacts.js';
 import { _handleVoiceToggle, _prewarmMic, voiceSlideStart, voiceSlideMove, voiceSlideEnd, voiceHoldRelease } from './voice.js';
 import { _msgContactMap } from './chat_state.js';
@@ -103,6 +104,7 @@ export function _bindAttachmentHandlers() {
       else if (type === 'file') _handleFile();
       else if (type === 'location') _handleLocation();
       else if (type === 'cobro') _handleCobro();
+      else if (type === 'poll') openPollSheet(); // 3361
       else if (type === 'contact') _handleShareContacts();
       else if (type === 'sticker') { _closeAttachMenu(); var _scid = _getCurrentContactId(); openStickerPicker(_scid, _sendStickerTo, function() { openStickerEditor(_scid, _sendStickerTo); }); }
       else if (type === 'ttt') { _closeAttachMenu(); openTttForContact(_getCurrentContactId()); } // compat: por si quedó algún item viejo

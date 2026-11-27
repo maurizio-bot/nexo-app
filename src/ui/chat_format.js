@@ -116,7 +116,7 @@ export function _findMessage(cid, id) {
 }
 
 // v9.9.29: la lista de contactos se ordena por el último mensaje enviado o recibido
-export var _PREVIEW_BY_TYPE = { contact: t('chat_prev_contact', '👤 Contacto'), image: t('chat_prev_photo', '📷 Foto'), video: t('chat_prev_video', '🎬 Vídeo'), audio: t('chat_prev_audio', '🎤 Audio'), voice: t('chat_prev_audio', '🎤 Audio'), location: t('chat_prev_location', '📍 Ubicación'), file: t('chat_file', '📎 Archivo'), sticker: t('chat_sticker', '🎟️ Sticker') };
+export var _PREVIEW_BY_TYPE = { contact: t('chat_prev_contact', '👤 Contacto'), image: t('chat_prev_photo', '📷 Foto'), video: t('chat_prev_video', '🎬 Vídeo'), audio: t('chat_prev_audio', '🎤 Audio'), voice: t('chat_prev_audio', '🎤 Audio'), location: t('chat_prev_location', '📍 Ubicación'), file: t('chat_file', '📎 Archivo'), sticker: t('chat_sticker', '🎟️ Sticker'), poll: t('chat_prev_poll', '📊 Encuesta') };
 
 // Gancho para las pruebas (tests/sim/chatactions.js): comprobar el resumen de respuesta de un adjunto codificado en
 // content (ubicación/foto) sin depender del GPS. Es una función pura de solo lectura.

@@ -16,6 +16,7 @@ import { _msgContactMap } from './chat_state.js';
 import { _objectURLRegistry } from './media_limits.js';
 import { _renderContactCard } from './share_contacts.js';
 import { _renderCobroCard } from './cobro.js';
+import { renderPollCard } from './poll.js';
 import { haptic } from './haptics.js'; // 3131: tick al cambiar la velocidad de una nota de voz
 import { _renderE2EBanner } from './e2e_banner.js';
 import { _setHdBadge } from './video_send.js';
@@ -525,6 +526,8 @@ export function _renderMessage(msg, skipSave) {
         }
       } else if (attachment.type === 'contact') {
         _renderContactCard(contentDiv, attachment.meta || {}, msg);
+      } else if (attachment.type === 'poll') {
+        renderPollCard(contentDiv, attachment.meta || {}, msg); // 3361: encuesta (poll.js)
       } else if (attachment.type === 'cobro') {
         _renderCobroCard(contentDiv, attachment.meta || {}, msg, msg._own ? '' : (msg.senderNexoId || (msg.groupId ? '' : _getCurrentContactId()) || '')); // 3135: quién lo pide (aviso si no está verificado)
       } else if (attachment.type === 'audio') {

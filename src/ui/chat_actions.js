@@ -27,6 +27,7 @@ import { _isBLEContact } from './ble_helpers.js'; // dueño 23-11: vista previa 
 import { canStar, toggleStar } from './chat_star.js'; // 3219: mensajes destacados (solo aquí)
 import { canPin, chatPinUse, isPinned, pinOnAction, togglePin, unpinId } from './chat_pin.js'; // 3219: fijar mensajes (para los dos)
 import { disappearOnAction } from './chat_disappear.js'; // 3360: mensajes temporales
+import { pollOnAction } from './poll.js'; // 3361: encuestas
 import { onHistoryQuery, onHistoryReply } from './group_history.js'; // historial para los nuevos del grupo (24-11)
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
@@ -868,6 +869,7 @@ export function _applyChatAction(senderId, act) {
   if (act && act.act === 'sm') { statusMediaRequested(senderId, act); return; } // 3032: me piden la media grande de un estado
   if (act && act.act === 'prof') { applyContactProfile(senderId, act); return; } // #dueño 04-11: datos de perfil completos (profile_share.js)
   if (act && act.act === 'psi') { psiOnAction(senderId, act); return; } // #dueño 04-11 paso 3: contactos en común (PSI, psi.js)
+  if (act && act.act === 'vote') { pollOnAction(senderId, act); return; } // 3361: voto de una encuesta (poll.js)
   if (act && act.act === 'dsp') { disappearOnAction(senderId, act); return; } // 3360: mensajes temporales (chat_disappear.js)
   if (act && act.act === 'pin') { pinOnAction(senderId, act); return; } // 3219: fijar un mensaje arriba del chat (chat_pin.js)
   if (act && act.act === 'fnd') { if (findOn()) findOnAction(senderId, act); return; } // 26-11 (B0): escondido; la acción se ignora // 3345 (modo multitud): buscarse entre la gente (find_ui.js)
