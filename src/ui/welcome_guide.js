@@ -8,7 +8,7 @@
  * lógica de la app: es solo una capa informativa que se cierra con «Empezar».
  *
  * - Se muestra UNA sola vez (marca `nexo_welcome_done` en localStorage, igual que el aviso de batería). Luego se puede
- *   volver a ver en Perfil → Ajustes → «Guía de bienvenida».
+ *   volver a ver en Ajustes (la ruedita) → Diagnóstico y ayuda → «Guía de bienvenida».
  * - Al terminar (o al saltarla) llama a onDone(): en el arranque, eso dispara el aviso de batería a continuación, de
  *   modo que el usuario nuevo ve primero la bienvenida y después el único paso que hace falta para que funcione siempre.
  * - Sin dependencias nativas: se prueba en el simulador (tests/sim/welcome.js) arrancando la app como un teléfono nuevo.
@@ -60,16 +60,26 @@ function _slides() {
       body: t('welcome_s2_body', 'Toca el botón <b>+</b> de abajo a la derecha. Si la otra persona está cerca con NEXO abierto, aparece sola: tócala y, cuando acepte, ya pueden hablar. Si está lejos, mándale un <b>enlace</b> (WhatsApp, TikTok…) o agrégala por su <b>NEXO ID</b>.') },
     { icon: '💬',
       title: t('welcome_s3_title', 'Escribe, manda y llama'),
-      body: t('welcome_s3_body', 'Abre un chat y escribe. Con el botón de adjuntar manda <b>fotos, vídeos, audios, archivos y tu ubicación</b>; arriba hay botones para <b>llamadas y videollamadas</b>. Toca el <b>símbolo junto al nombre</b> y te dice por qué camino va: Bluetooth, Wi-Fi o internet.') },
+      body: t('welcome_s3_body', 'Abre un chat y escribe. Con el <b>+</b> junto al texto mandas <b>fotos, vídeos, archivos y tu ubicación</b>; en «Más» hay contacto, cobro, stickers, juegos y buscar en el chat. Mantén el <b>micrófono</b> para una nota de voz (desliza a la izquierda para cancelar). Arriba a la derecha: <b>llamada y videollamada</b>.') },
+    // dueño 28-11: la guía al día con todas las funciones (inventario del código 28-11)
+    { icon: '↩️',
+      title: t('welcome_sm_title', 'Tus mensajes'),
+      body: t('welcome_sm_body', '<b>Desliza</b> un mensaje para responderlo. <b>Mantenlo presionado</b> para reaccionar, editar (15 min), reenviar, seleccionar varios, destacar, fijar o borrar. <b>Dos toques</b> ponen ❤️. Al revisar una foto o vídeo, el ojo <b>«1»</b> la manda para verse una sola vez.') },
     { icon: '👥',
       title: t('welcome_sg_title', 'Grupos'),
-      body: t('welcome_sg_body', 'Para hacer un grupo, toca los <b>tres puntos (⋮)</b> de un contacto y elige <b>«Crear grupo»</b>. En ese mismo menú puedes fijar, silenciar o bloquear a alguien.') },
+      body: t('welcome_sg_body', 'Toca los <b>tres puntos (⋮)</b> de un contacto y elige <b>«Crear grupo»</b>. En el ⋮ del grupo están sus <b>Ajustes</b> (foto, permisos, administradores, agregar personas). Desde la cabecera del grupo haces <b>llamadas de grupo</b>, y manteniendo presionado el fondo lo cambias o lo compartes.') },
     { icon: '📸',
       title: t('welcome_se_title', 'Estados'),
-      body: t('welcome_se_body', 'Toca el botón <b>Estados</b> de arriba (junto a la lupa) o desliza hacia la <b>izquierda</b>. Verás los círculos de tus contactos: toca uno y vas directo a su estado. Publica el tuyo en «Mi estado». Si hay nuevos, verás un puntito.') },
+      body: t('welcome_se_body', 'Toca la <b>flecha →</b> de arriba (junto a la lupa) o desliza hacia la <b>izquierda</b>. Toca un círculo para ver sus estados; en «Mi estado» publicas texto, foto, audio o vídeo, y en «Mis estados» eliges <b>quién los ve</b>. Un puntito te avisa de los nuevos.') },
+    { icon: '📡',
+      title: t('welcome_sc_title', 'También sin internet'),
+      body: t('welcome_sc_body', 'Toca el <b>símbolo junto al nombre</b> del chat y te dice por dónde va: Wi-Fi, internet, Bluetooth, <b>salto</b> por otro NEXO o <b>internet prestado</b> de un NEXO cercano. Los archivos grandes van por <b>Wi-Fi Direct</b>. Entre mucha gente, en el menú del chat (toca su foto) puedes <b>buscar a la persona</b>.') },
     { icon: '🔐',
       title: t('welcome_sp_title', 'Tu cuenta, protegida'),
-      body: t('welcome_sp_body', 'Todo va cifrado de extremo a extremo. En <b>Ajustes</b> puedes poner bloqueo con tu huella o PIN y, si pierdes el teléfono, recuperar tu cuenta con <b>Fénix</b> (Ajustes → Respaldo).') },
+      body: t('welcome_sp_body', 'Todo va cifrado de extremo a extremo; toca el <b>🔒</b> del inicio de un chat para verificar con <b>QR</b>. En <b>Ajustes → Seguridad</b> pones bloqueo con huella o PIN. En <b>Ajustes → Respaldo y cambio de teléfono</b>, <b>Fénix</b> recupera tu cuenta si pierdes el teléfono y «Pasar mi cuenta» la lleva a uno nuevo.') },
+    { icon: '🎨',
+      title: t('welcome_sa_title', 'Hazla tuya'),
+      body: t('welcome_sa_body', 'Mantén presionado un espacio libre (la lista, un chat, Perfil) para cambiar el <b>fondo</b>. En <b>Ajustes → Apariencia</b> eliges el color de las burbujas, el estilo y la letra. La <b>ruedita</b> de arriba abre Ajustes, y esta guía está en Ajustes → Diagnóstico y ayuda.') },
     { icon: '🔋',
       title: t('welcome_s4_title', 'Un paso para que funcione siempre'),
       body: t('welcome_s4_body', 'Cuando agregues a tu primer contacto te pediremos dejar que NEXO funcione en <b>segundo plano</b>: así recibes mensajes y llamadas con la app cerrada o la pantalla apagada.') }
