@@ -84,9 +84,38 @@ sistema**: un modelo único de «qué sé de este contacto» y «qué camino uso
   otro). El que envía da por «enviado» con la custodia del puente y deja de reintentar. **Dos puentes distintos:** el de la app (custodia
   24 h, varios saltos) y el nativo con la app dormida (sin custodia, 10 min, solo directo).
 
-## 7. Cómo lo hacen otros (investigación)
+## 7. Cómo lo hacen otros (investigación con fuentes, 28-11)
 
-(pendiente: se añade al llegar la investigación)
+- **Google Nearby Connections** (código en github.com/google/nearby, `bwu_manager.cc`): empieza por Bluetooth y, tras el apretón de manos
+  cifrado, **sube** al medio más rápido que tengan los dos (Wi-Fi LAN → hotspot → Wi-Fi Direct → Aware). El cambio es **ordenado**: el
+  canal nuevo se abre en pausa, por el viejo se manda «última escritura» y «ya se puede cerrar», y solo entonces se cambia (no se pierde ni
+  se desordena nada). Si falla: vuelve al anterior, prueba el siguiente y, si no queda, espera creciente.
+- **Apple Network.framework:** tres modos explícitos — `handover` (cambiar solo si se pierde el camino), `interactive` (cambiar si hay
+  pérdida o retraso), `aggregate` (sumar; gasta datos). «Happy Eyeballs» (RFC 8305): intentos escalonados en paralelo, gana el primero.
+- **Briar:** por contacto se queda **una sola conexión, la de más prioridad**; si hay Wi-Fi local con un contacto, suelta su Bluetooth
+  (Bluetooth admite pocas conexiones). Sondeo por transporte con intervalo al azar; al aparecer un transporte, intenta ya. La
+  confirmación de cada mensaje va **por contacto, no por camino**.
+- **bitchat** (malla BLE + Nostr): orden malla → Nostr → «mensajeros»; ruta fija si hay un camino confirmado en los dos sentidos y, si
+  falla, inundar; saltos (TTL) según cuántos vecinos hay; espera al azar antes de reenviar y cancelar si otro ya lo hizo; **bandeja por
+  contacto con tope de mensajes, de reintentos (8) y de horas (24 h)**; se borra con la confirmación de extremo a extremo.
+- **Meshtastic:** inundación controlada con espera según la señal (SNR); desde la 2.6 los directos **aprenden el siguiente salto** y en el
+  último reintento vuelven a inundar.
+- **Berty:** al encontrarse cerca, cada teléfono le pasa al otro **dónde encontrarlo luego por internet** («registro local»).
+- **Nostr NIP-65 / NIP-17:** cada usuario **publica la lista de relés donde lee**; un mensaje privado se publica **solo en los relés de
+  lectura del destinatario**. Respuestas estándar de los relés: `rate-limited` (puede traer cuánto esperar), `duplicate` = éxito,
+  `blocked`/`restricted`/`invalid` = no reintentar. Los clientes buenos **puntúan cada relé** y usan relés distintos por contacto.
+- **DTN (redes sin conexión continua):** Spray-and-Wait (tope de copias), PRoPHET (probabilidad de encontrarse con el destinatario, que
+  sube con cada encuentro y baja con el tiempo; solo se entrega a quien tiene más probabilidad).
+- **Despertar (FCM):** un aviso de prioridad alta que no termina en notificación visible **FCM lo baja a normal** (se mide 7 días por
+  instalación); se puede vigilar con `getPriority()` frente a `getOriginalPriority()`. El cupo de «App Standby» también lo frena.
+- **Reintentos (AWS):** espera creciente **con azar completo** («Full Jitter») y tope de intentos; sin azar es lo peor.
+- Sin fuente encontrada: reglas publicadas de histéresis o batería para no oscilar (se toman como buena práctica de diseño).
+
+**Lo que NEXO no tiene y los demás sí (lo esencial):** estado y prioridad por contacto (Briar), subida de camino con cierre ordenado
+(Nearby), cambio por calidad medida con modo explícito (Apple), relés de lectura anunciados y publicar en los del otro (Nostr), puntuar
+relés y respetar el «esperar N ms» del relé, bandeja por contacto con un calendario y topes (bitchat), ruta aprendida con plan B
+(Meshtastic), pasarse «dónde encontrarme» al estar cerca (Berty), probabilidad de encuentro para el puente (PRoPHET), vigilar que FCM no
+baje la prioridad de nuestros toques, y azar en las esperas.
 
 ## 8. Lo que haría falta para que sea sólido (coinciden las 4 revisiones)
 
@@ -108,4 +137,20 @@ sistema**: un modelo único de «qué sé de este contacto» y «qué camino uso
 
 ## 9. Opciones para el dueño
 
-(se completa con la investigación: ver el mensaje del 28-11)
+**Arreglos sueltos que no dependen del rediseño** (baratos, cada uno con su prueba; se pueden hacer ya en Opus):
+el `_lastPongTime` con claves distintas (confirmado); el nativo que ignora a un relé que lo castiga; la doble publicación por la red de
+seguridad por internet; el plazo fijo de 120 s al recibir por Wi-Fi Direct; la videollamada rechazada estando cerca por Bluetooth con
+datos; el nativo escuchando solo 2 relés con datos y sin las reservas.
+
+**El rediseño:**
+- **A — Reescribir el núcleo de conexiones de una vez** (estado por contacto, `elegir()`, calendario por mensaje, máquina de estados del
+  Bluetooth en el nativo, política de relés compartida con el nativo). Lo que vives: semanas sin APK estables y un salto grande con riesgo
+  alto de fallos nuevos a la vez. No lo recomiendo.
+- **B — Núcleo nuevo y migrar por partes (recomendado).** 1) Diseño completo por escrito (estado por contacto, tabla de decisiones con
+  cada condición de arriba, calendario por mensaje) que tú revisas antes de programar. 2) El núcleo como módulos nuevos y puros con una
+  matriz de escenarios en `tests/sim` (misma Wi-Fi con corte, lejos con relés limitando, dormido, Bluetooth medio muerto, multitud,
+  entrar a la Wi-Fi a mitad de un archivo, el nativo con la app oculta…) que cuenta envíos por mensaje y cambios de camino con su causa.
+  3) Migrar por partes, cada una con su APK que funciona: textos y acuses → archivos → llamadas y grupos → nativo. Al migrar cada parte se
+  BORRAN las reglas viejas que sustituye (no se dejan conviviendo). 4) Máquina de estados del Bluetooth (zombi). 5) Wi-Fi Direct como
+  camino propio para la multitud. Lo que vives: una APK por fase que mejora algo concreto y medible, sin sustos; tarda más en total.
+- **C — Seguir arreglando cada diagnóstico.** Lo que vives: lo de esta semana, cada semana. No.
