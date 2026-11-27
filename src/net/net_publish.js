@@ -90,6 +90,7 @@ export const netPublish = {
     if (!r || r.gw) return;
     var now = Date.now(), st = anotarLimite(r.limitKind ? { kind: r.limitKind, n: r.limitN, at: r.limitAt, hasta: r.coolUntil } : null, msg, now);
     if (!st) return;
+    if (st.rafaga) return; // 28-11: otro «no» de la misma ráfaga: ya está en pausa, sin doblarla ni otra línea al registro
     r.limitN = st.n; r.limitKind = st.kind; r.limitAt = st.at; this._limitAt = now;
     var ms = st.hasta - now;
     r.coolUntil = st.hasta;

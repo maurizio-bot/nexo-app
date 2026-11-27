@@ -1,71 +1,610 @@
 {
   "_": "Vectores de la política de relés (src/core/ruta/politica_reles.js y RelayPolicy.kt deben dar lo mismo). Fase 1 del contrato de los caminos.",
   "tipoLimite": [
-    ["rate-limited: too many gift wraps from this address, try again later", "rate"],
-    ["rate-limited: slow down matey", "rate"],
-    ["error: too fast", ""],
-    ["too many events", "rate"],
-    ["banned: too many rate-limit violations, try again later", "ban"],
-    ["restricted: not allowed", "ban"],
-    ["blocked: Policy violated and pubkey is not in our web of trust", "policy"],
-    ["pow: difficulty 20 required", "policy"],
-    ["blocked: paid relay", "policy"],
-    ["duplicate: already have this event", ""],
-    ["invalid: event too large", ""],
-    ["auth-required: we only accept events from registered users", ""],
-    ["", ""]
+    [
+      "rate-limited: too many gift wraps from this address, try again later",
+      "rate"
+    ],
+    [
+      "rate-limited: slow down matey",
+      "rate"
+    ],
+    [
+      "error: too fast",
+      ""
+    ],
+    [
+      "too many events",
+      "rate"
+    ],
+    [
+      "banned: too many rate-limit violations, try again later",
+      "ban"
+    ],
+    [
+      "restricted: not allowed",
+      "ban"
+    ],
+    [
+      "blocked: Policy violated and pubkey is not in our web of trust",
+      "policy"
+    ],
+    [
+      "pow: difficulty 20 required",
+      "policy"
+    ],
+    [
+      "blocked: paid relay",
+      "policy"
+    ],
+    [
+      "duplicate: already have this event",
+      ""
+    ],
+    [
+      "invalid: event too large",
+      ""
+    ],
+    [
+      "auth-required: we only accept events from registered users",
+      ""
+    ],
+    [
+      "",
+      ""
+    ]
   ],
   "pausaMs": [
-    ["rate", 1, 20000], ["rate", 2, 40000], ["rate", 6, 600000], ["rate", 20, 600000], ["rate", 0, 20000],
-    ["ban", 1, 600000], ["ban", 2, 1200000], ["ban", 9, 7200000],
-    ["policy", 1, 21600000], ["policy", 5, 21600000],
-    ["", 1, 0]
+    [
+      "rate",
+      1,
+      20000
+    ],
+    [
+      "rate",
+      2,
+      40000
+    ],
+    [
+      "rate",
+      6,
+      600000
+    ],
+    [
+      "rate",
+      20,
+      600000
+    ],
+    [
+      "rate",
+      0,
+      20000
+    ],
+    [
+      "ban",
+      1,
+      600000
+    ],
+    [
+      "ban",
+      2,
+      1200000
+    ],
+    [
+      "ban",
+      9,
+      7200000
+    ],
+    [
+      "policy",
+      1,
+      21600000
+    ],
+    [
+      "policy",
+      5,
+      21600000
+    ],
+    [
+      "",
+      1,
+      0
+    ]
   ],
   "anotarLimite": [
-    { "prev": null, "msg": "rate-limited: x", "now": 1000000, "out": { "kind": "rate", "n": 1, "at": 1000000, "hasta": 1020000 } },
-    { "prev": { "kind": "rate", "n": 1, "at": 1000000, "hasta": 1020000 }, "msg": "rate-limited: x", "now": 1030000, "out": { "kind": "rate", "n": 2, "at": 1030000, "hasta": 1070000 } },
-    { "prev": { "kind": "rate", "n": 3, "at": 1000000, "hasta": 1080000 }, "msg": "rate-limited: x", "now": 2900000, "out": { "kind": "rate", "n": 1, "at": 2900000, "hasta": 2920000 } },
-    { "prev": { "kind": "rate", "n": 3, "at": 1000000, "hasta": 1080000 }, "msg": "banned: y", "now": 1100000, "out": { "kind": "ban", "n": 1, "at": 1100000, "hasta": 1700000 } },
-    { "prev": { "kind": "rate", "n": 1, "at": 1000000, "hasta": 1020000 }, "msg": "duplicate: z", "now": 1100000, "out": null }
+    {
+      "prev": null,
+      "msg": "rate-limited: x",
+      "now": 1000000,
+      "out": {
+        "kind": "rate",
+        "n": 1,
+        "at": 1000000,
+        "hasta": 1020000
+      }
+    },
+    {
+      "prev": {
+        "kind": "rate",
+        "n": 1,
+        "at": 1000000,
+        "hasta": 1020000
+      },
+      "msg": "rate-limited: x",
+      "now": 1030000,
+      "out": {
+        "kind": "rate",
+        "n": 2,
+        "at": 1030000,
+        "hasta": 1070000
+      }
+    },
+    {
+      "prev": {
+        "kind": "rate",
+        "n": 3,
+        "at": 1000000,
+        "hasta": 1080000
+      },
+      "msg": "rate-limited: x",
+      "now": 2900000,
+      "out": {
+        "kind": "rate",
+        "n": 1,
+        "at": 2900000,
+        "hasta": 2920000
+      }
+    },
+    {
+      "prev": {
+        "kind": "rate",
+        "n": 3,
+        "at": 1000000,
+        "hasta": 1080000
+      },
+      "msg": "banned: y",
+      "now": 1100000,
+      "out": {
+        "kind": "ban",
+        "n": 1,
+        "at": 1100000,
+        "hasta": 1700000
+      }
+    },
+    {
+      "prev": {
+        "kind": "rate",
+        "n": 1,
+        "at": 1000000,
+        "hasta": 1020000
+      },
+      "msg": "duplicate: z",
+      "now": 1100000,
+      "out": null
+    },
+    {
+      "_": "misma ráfaga (<5 s): no dobla la pausa",
+      "prev": {
+        "kind": "rate",
+        "n": 1,
+        "at": 1000000,
+        "hasta": 1020000
+      },
+      "msg": "rate-limited: x",
+      "now": 1002000,
+      "out": {
+        "kind": "rate",
+        "n": 1,
+        "at": 1000000,
+        "hasta": 1020000,
+        "rafaga": true
+      }
+    },
+    {
+      "_": "ráfaga de castigos: sigue en 1.ª vez",
+      "prev": {
+        "kind": "ban",
+        "n": 1,
+        "at": 1000000,
+        "hasta": 1600000
+      },
+      "msg": "banned: x",
+      "now": 1004999,
+      "out": {
+        "kind": "ban",
+        "n": 1,
+        "at": 1000000,
+        "hasta": 1600000,
+        "rafaga": true
+      }
+    },
+    {
+      "_": "la pausa ya terminó: el «no» siguiente sí cuenta (aunque sea a los 3 s)",
+      "prev": {
+        "kind": "rate",
+        "n": 1,
+        "at": 1000000,
+        "hasta": 1002000
+      },
+      "msg": "rate-limited: x",
+      "now": 1003000,
+      "out": {
+        "kind": "rate",
+        "n": 2,
+        "at": 1003000,
+        "hasta": 1043000
+      }
+    }
   ],
   "juntarPausas": [
-    { "a": { "wss://a": { "kind": "rate", "n": 1, "at": 1000, "hasta": 21000 } }, "b": { "wss://a": { "kind": "rate", "n": 2, "at": 5000, "hasta": 45000 }, "wss://b": { "kind": "ban", "n": 1, "at": 1000, "hasta": 601000 } }, "now": 10000,
-      "out": { "wss://a": { "kind": "rate", "n": 2, "at": 5000, "hasta": 45000 }, "wss://b": { "kind": "ban", "n": 1, "at": 1000, "hasta": 601000 } } },
-    { "a": { "wss://a": { "kind": "rate", "n": 1, "at": 1000, "hasta": 21000 } }, "b": {}, "now": 5000000, "out": {} },
-    { "a": null, "b": { "wss://c": { "kind": "policy", "n": 1, "at": 0, "hasta": 21600000 } }, "now": 100, "out": { "wss://c": { "kind": "policy", "n": 1, "at": 0, "hasta": 21600000 } } }
+    {
+      "a": {
+        "wss://a": {
+          "kind": "rate",
+          "n": 1,
+          "at": 1000,
+          "hasta": 21000
+        }
+      },
+      "b": {
+        "wss://a": {
+          "kind": "rate",
+          "n": 2,
+          "at": 5000,
+          "hasta": 45000
+        },
+        "wss://b": {
+          "kind": "ban",
+          "n": 1,
+          "at": 1000,
+          "hasta": 601000
+        }
+      },
+      "now": 10000,
+      "out": {
+        "wss://a": {
+          "kind": "rate",
+          "n": 2,
+          "at": 5000,
+          "hasta": 45000
+        },
+        "wss://b": {
+          "kind": "ban",
+          "n": 1,
+          "at": 1000,
+          "hasta": 601000
+        }
+      }
+    },
+    {
+      "a": {
+        "wss://a": {
+          "kind": "rate",
+          "n": 1,
+          "at": 1000,
+          "hasta": 21000
+        }
+      },
+      "b": {},
+      "now": 5000000,
+      "out": {}
+    },
+    {
+      "a": null,
+      "b": {
+        "wss://c": {
+          "kind": "policy",
+          "n": 1,
+          "at": 0,
+          "hasta": 21600000
+        }
+      },
+      "now": 100,
+      "out": {
+        "wss://c": {
+          "kind": "policy",
+          "n": 1,
+          "at": 0,
+          "hasta": 21600000
+        }
+      }
+    }
   ],
   "lecturasDe": [
-    { "anuncio": { "lee": ["wss://a", "wss://x", "wss://b", "wss://a"], "at": 1000 }, "pool": ["wss://a", "wss://b", "wss://c"], "now": 2000, "out": ["wss://a", "wss://b"] },
-    { "anuncio": { "lee": ["wss://x"], "at": 1000 }, "pool": ["wss://a"], "now": 2000, "out": null },
-    { "anuncio": { "lee": ["wss://a"], "at": 1000 }, "pool": ["wss://a"], "now": 86401001, "out": null },
-    { "anuncio": { "lee": ["wss://a"], "at": 1000000 }, "pool": ["wss://a"], "now": 1000, "out": null },
-    { "anuncio": null, "pool": ["wss://a"], "now": 1000, "out": null },
-    { "anuncio": { "lee": "wss://a", "at": 1000 }, "pool": ["wss://a"], "now": 1000, "out": null }
+    {
+      "anuncio": {
+        "lee": [
+          "wss://a",
+          "wss://x",
+          "wss://b",
+          "wss://a"
+        ],
+        "at": 1000
+      },
+      "pool": [
+        "wss://a",
+        "wss://b",
+        "wss://c"
+      ],
+      "now": 2000,
+      "out": [
+        "wss://a",
+        "wss://b"
+      ]
+    },
+    {
+      "anuncio": {
+        "lee": [
+          "wss://x"
+        ],
+        "at": 1000
+      },
+      "pool": [
+        "wss://a"
+      ],
+      "now": 2000,
+      "out": null
+    },
+    {
+      "anuncio": {
+        "lee": [
+          "wss://a"
+        ],
+        "at": 1000
+      },
+      "pool": [
+        "wss://a"
+      ],
+      "now": 86401001,
+      "out": null
+    },
+    {
+      "anuncio": {
+        "lee": [
+          "wss://a"
+        ],
+        "at": 1000000
+      },
+      "pool": [
+        "wss://a"
+      ],
+      "now": 1000,
+      "out": null
+    },
+    {
+      "anuncio": null,
+      "pool": [
+        "wss://a"
+      ],
+      "now": 1000,
+      "out": null
+    },
+    {
+      "anuncio": {
+        "lee": "wss://a",
+        "at": 1000
+      },
+      "pool": [
+        "wss://a"
+      ],
+      "now": 1000,
+      "out": null
+    }
   ],
   "destinos": [
-    { "_": "sin anuncio: mis abiertos sin pausa que no son solo de escucha (como hasta la 3167)",
-      "relays": [{ "url": "wss://a", "abierto": true }, { "url": "wss://b", "abierto": true, "hasta": 50000 }, { "url": "wss://s", "abierto": true, "soloLeer": true }, { "url": "wss://c", "abierto": false }],
-      "lee": null, "now": 1000, "out": { "publicar": ["wss://a"], "pausados": ["wss://b"], "motivo": "sin_anuncio" } },
-    { "_": "caso 21:53: mis relés de siempre en pausa; él lee a, b y s (una reserva que yo solo escucho): va a s",
-      "relays": [{ "url": "wss://a", "abierto": true, "hasta": 50000 }, { "url": "wss://b", "abierto": true, "hasta": 50000 }, { "url": "wss://s", "abierto": true, "soloLeer": true }, { "url": "wss://t", "abierto": true }],
-      "lee": ["wss://a", "wss://b", "wss://s"], "now": 1000, "out": { "publicar": ["wss://s"], "pausados": ["wss://a", "wss://b"], "motivo": "suyos" } },
-    { "_": "caso 21:53 sin la reserva común: él lee a y b (en pausa); mi reserva t está libre pero NO la lee: pendiente, sin ✓ falso",
-      "relays": [{ "url": "wss://a", "abierto": true, "hasta": 50000 }, { "url": "wss://b", "abierto": true, "hasta": 50000 }, { "url": "wss://t", "abierto": true }],
-      "lee": ["wss://a", "wss://b"], "now": 1000, "out": { "publicar": [], "pausados": ["wss://a", "wss://b"], "motivo": "en_pausa" } },
-    { "_": "ninguno de los suyos abierto ahora",
-      "relays": [{ "url": "wss://a", "abierto": false }, { "url": "wss://t", "abierto": true }],
-      "lee": ["wss://a"], "now": 1000, "out": { "publicar": [], "pausados": [], "motivo": "ninguno_suyo" } },
-    { "_": "la pausa ya venció: vuelve a publicarse ahí",
-      "relays": [{ "url": "wss://a", "abierto": true, "hasta": 999 }, { "url": "wss://b", "abierto": true }],
-      "lee": ["wss://a", "wss://b"], "now": 1000, "out": { "publicar": ["wss://a", "wss://b"], "pausados": [], "motivo": "suyos" } },
-    { "_": "un relé por un puente no cuenta aquí (va aparte)",
-      "relays": [{ "url": "wss://a", "abierto": true, "puente": true }],
-      "lee": null, "now": 1000, "out": { "publicar": [], "pausados": [], "motivo": "sin_reles" } },
-    { "_": "sin anuncio y todos en pausa",
-      "relays": [{ "url": "wss://a", "abierto": true, "hasta": 5000 }],
-      "lee": null, "now": 1000, "out": { "publicar": [], "pausados": ["wss://a"], "motivo": "en_pausa" } }
+    {
+      "_": "sin anuncio: mis abiertos sin pausa que no son solo de escucha (como hasta la 3167)",
+      "relays": [
+        {
+          "url": "wss://a",
+          "abierto": true
+        },
+        {
+          "url": "wss://b",
+          "abierto": true,
+          "hasta": 50000
+        },
+        {
+          "url": "wss://s",
+          "abierto": true,
+          "soloLeer": true
+        },
+        {
+          "url": "wss://c",
+          "abierto": false
+        }
+      ],
+      "lee": null,
+      "now": 1000,
+      "out": {
+        "publicar": [
+          "wss://a"
+        ],
+        "pausados": [
+          "wss://b"
+        ],
+        "motivo": "sin_anuncio"
+      }
+    },
+    {
+      "_": "caso 21:53: mis relés de siempre en pausa; él lee a, b y s (una reserva que yo solo escucho): va a s",
+      "relays": [
+        {
+          "url": "wss://a",
+          "abierto": true,
+          "hasta": 50000
+        },
+        {
+          "url": "wss://b",
+          "abierto": true,
+          "hasta": 50000
+        },
+        {
+          "url": "wss://s",
+          "abierto": true,
+          "soloLeer": true
+        },
+        {
+          "url": "wss://t",
+          "abierto": true
+        }
+      ],
+      "lee": [
+        "wss://a",
+        "wss://b",
+        "wss://s"
+      ],
+      "now": 1000,
+      "out": {
+        "publicar": [
+          "wss://s"
+        ],
+        "pausados": [
+          "wss://a",
+          "wss://b"
+        ],
+        "motivo": "suyos"
+      }
+    },
+    {
+      "_": "caso 21:53 sin la reserva común: él lee a y b (en pausa); mi reserva t está libre pero NO la lee: pendiente, sin ✓ falso",
+      "relays": [
+        {
+          "url": "wss://a",
+          "abierto": true,
+          "hasta": 50000
+        },
+        {
+          "url": "wss://b",
+          "abierto": true,
+          "hasta": 50000
+        },
+        {
+          "url": "wss://t",
+          "abierto": true
+        }
+      ],
+      "lee": [
+        "wss://a",
+        "wss://b"
+      ],
+      "now": 1000,
+      "out": {
+        "publicar": [],
+        "pausados": [
+          "wss://a",
+          "wss://b"
+        ],
+        "motivo": "en_pausa"
+      }
+    },
+    {
+      "_": "ninguno de los suyos abierto ahora",
+      "relays": [
+        {
+          "url": "wss://a",
+          "abierto": false
+        },
+        {
+          "url": "wss://t",
+          "abierto": true
+        }
+      ],
+      "lee": [
+        "wss://a"
+      ],
+      "now": 1000,
+      "out": {
+        "publicar": [],
+        "pausados": [],
+        "motivo": "ninguno_suyo"
+      }
+    },
+    {
+      "_": "la pausa ya venció: vuelve a publicarse ahí",
+      "relays": [
+        {
+          "url": "wss://a",
+          "abierto": true,
+          "hasta": 999
+        },
+        {
+          "url": "wss://b",
+          "abierto": true
+        }
+      ],
+      "lee": [
+        "wss://a",
+        "wss://b"
+      ],
+      "now": 1000,
+      "out": {
+        "publicar": [
+          "wss://a",
+          "wss://b"
+        ],
+        "pausados": [],
+        "motivo": "suyos"
+      }
+    },
+    {
+      "_": "un relé por un puente no cuenta aquí (va aparte)",
+      "relays": [
+        {
+          "url": "wss://a",
+          "abierto": true,
+          "puente": true
+        }
+      ],
+      "lee": null,
+      "now": 1000,
+      "out": {
+        "publicar": [],
+        "pausados": [],
+        "motivo": "sin_reles"
+      }
+    },
+    {
+      "_": "sin anuncio y todos en pausa",
+      "relays": [
+        {
+          "url": "wss://a",
+          "abierto": true,
+          "hasta": 5000
+        }
+      ],
+      "lee": null,
+      "now": 1000,
+      "out": {
+        "publicar": [],
+        "pausados": [
+          "wss://a"
+        ],
+        "motivo": "en_pausa"
+      }
+    }
   ],
   "daGuardado": [
-    ["wss://a", null, true], ["wss://a", ["wss://a", "wss://b"], true], ["wss://t", ["wss://a", "wss://b"], false]
+    [
+      "wss://a",
+      null,
+      true
+    ],
+    [
+      "wss://a",
+      [
+        "wss://a",
+        "wss://b"
+      ],
+      true
+    ],
+    [
+      "wss://t",
+      [
+        "wss://a",
+        "wss://b"
+      ],
+      false
+    ]
   ]
 }

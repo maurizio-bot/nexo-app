@@ -11,6 +11,7 @@ export const LIMITES = Object.freeze({
   BAN_COOL_MS: 600000, BAN_COOL_MAX_MS: 7200000,     // «banned / restricted / blocked»: 10 min, 20 min … 2 h
   POLICY_COOL_MS: 6 * 3600000,                       // no nos deja publicar (web of trust, pago, prueba de trabajo…): 6 h
   LIMIT_FORGET_MS: 1800000,                          // sin otro «no» en 30 min, la pausa vuelve a empezar desde abajo
+  LIMIT_BURST_MS: 5000,                              // los «no» de una misma ráfaga (sobres que ya iban en camino) cuentan como UNO
   LECTURAS_VIGENCIA_MS: 24 * 3600000,                // un anuncio de «dónde leo» caduca a las 24 h (contrato B.5.1)
   LECTURAS_MAX: 12,                                  // relés que se anuncian / se aceptan de un contacto como mucho
 });
@@ -40,6 +41,9 @@ export function pausaMs(kind, n) {
 export function anotarLimite(prev, msg, now) {
   var kind = tipoLimite(msg); if (!kind) return null;
   var p = prev || {};
+  // 28-11 (diag. Roberto 09:46 «banned … 37.ª vez: 7200 s» con ×35 iguales en el mismo instante; S24 09:44 relay.primal.net «210.ª vez»): los
+  // sobres que ya iban en camino cuando llegó el primer «no» no son infracciones nuevas nuestras: la pausa no se dobla por cada uno.
+  if (p.kind === kind && now >= (p.at || 0) && now < (p.hasta || 0) && now - (p.at || 0) < LIMITES.LIMIT_BURST_MS) return { kind: kind, n: p.n || 1, at: p.at, hasta: p.hasta, rafaga: true };
   var n = (p.kind === kind && now - (p.at || 0) < LIMITES.LIMIT_FORGET_MS) ? (p.n || 0) + 1 : 1;
   return { kind: kind, n: n, at: now, hasta: now + pausaMs(kind, n) };
 }

@@ -10,6 +10,7 @@ object RelayPolicy {
     const val BAN_COOL_MS = 600_000L; const val BAN_COOL_MAX_MS = 7_200_000L
     const val POLICY_COOL_MS = 6 * 3_600_000L
     const val LIMIT_FORGET_MS = 1_800_000L
+    const val LIMIT_BURST_MS = 5_000L // los «no» de una misma ráfaga cuentan como UNO (diag. 28-11: «37.ª vez» por ×35 sobres en camino)
     const val LECTURAS_VIGENCIA_MS = 24 * 3_600_000L
     const val LECTURAS_MAX = 12
 
@@ -47,6 +48,7 @@ object RelayPolicy {
     // Un relé dijo «no» (msg) a las `now`: su pausa tras ese «no», o null si no es un límite (queda como estaba)
     fun note(prev: Pause?, msg: String?, now: Long): Pause? {
         val kind = limitKind(msg); if (kind.isEmpty()) return null
+        if (prev != null && prev.kind == kind && now >= prev.at && now < prev.hasta && now - prev.at < LIMIT_BURST_MS) return prev // misma ráfaga: sin doblar
         val n = if (prev != null && prev.kind == kind && now - prev.at < LIMIT_FORGET_MS) prev.n + 1 else 1
         return Pause(kind, n, now, now + coolMs(kind, n))
     }

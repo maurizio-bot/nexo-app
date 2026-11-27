@@ -683,7 +683,7 @@ class NetBg(
             "CLOSED" -> if (m.optString(2).startsWith("auth-required")) { /* se resuscribe tras identificarse */ }
             "OK" -> {
                 // Fase 1 (28-11): un «no» de límite, castigo o política pone a ESTE relé en pausa para publicar (como la app; antes se ignoraba)
-                if (!m.optBoolean(2)) RelayPolicy.note(r.pause, m.optString(3), System.currentTimeMillis())?.let { p ->
+                if (!m.optBoolean(2)) RelayPolicy.note(r.pause, m.optString(3), System.currentTimeMillis())?.takeIf { it !== r.pause }?.let { p ->
                     r.pause = p
                     log("Relé ${host(r.url)} limita («${m.optString(3).take(90)}»): en pausa ${(p.hasta - p.at) / 1000} s para publicar (${p.n}.ª vez), también para la app")
                 }

@@ -1624,6 +1624,30 @@
    "sintoma": "reenvio_sin_fin (nx09acdb61, 1 sin confirmar, 3 vueltas), build 3165",
    "categoria": "Fallo de la app",
    "causa": "Síntoma: enlace Bluetooth con el vivo medio muerto (MTU 23, «stuck», su app dormida, sin internet): el texto no puede salir por otro camino; es el zombi (área 3, domingo con Fable). Lo que confirma la 3165: los 2 textos de la cola del puente ya NO se reenvían ×8 (el ✓✓ del nativo del otro los frena) y el puente manda cada paquete una vez y espera su calendario. Fallo NUEVO de la 3165: un audio de 69 KB tardó 94 s en el buzón porque el cupo contaba todos los sobres (45 en un minuto, sobre todo saludos al volver a la app) → arreglado en la 3166: solo cuenta lo pesado."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "09:47",
+   "nx": "nx0g6ef54e",
+   "sintoma": "zombi (nx1n36c283), build 3167",
+   "categoria": "Fallo de la app",
+   "causa": "Al volver a la app salieron decenas de sobres a la vez y cada «no» del relé contaba como otra infracción: relay.damus.io «banned … 37.ª vez» → pausa 7200 s por UNA ráfaga. Arreglado (28-11): los «no» de una misma ráfaga (< 5 s, con la pausa en curso) cuentan como uno (politica_reles.anotarLimite = RelayPolicy.note). El zombi en sí (S24 con la app oculta: Wi-Fi conectado sin contestar la comprobación, BT sin respuesta a 4 pings) es del área 3 (fase 2 Bluetooth). Puente: 6 paquetes sxmwy5… con ACK timeout y calendario 15→480 s (se pasará al calendario único, fase 1/5)."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "09:45",
+   "nx": "nx1n36c283",
+   "sintoma": "reenvio_sin_fin (nx1905c1ee 1 sin confirmar, 3 vueltas), build 3167",
+   "categoria": "Fallo de la app",
+   "causa": "(1) relay.primal.net «rate-limited … 210.ª vez» con ×175 iguales en un instante al volver a la app: misma ráfaga contada como infracciones → arreglado igual (28-11). (2) Austin (nx1905c1ee, HONOR Xb, 3167) confirma por Bluetooth y el S24 ignora cada confirmación «sin firma válida» → el texto msg…lwk6zd008 se reenvía sin fin. Causa probable: la parte nativa de Austin confirma sin la clave de firma del S24 (o con una vieja). PENDIENTE: diagnóstico de Austin para confirmarlo."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "09:47",
+   "nx": "nx0g6ef54e",
+   "sintoma": "resumen_diario (2026-11-26), build 3167",
+   "categoria": "Resumen",
+   "causa": "Sin fallo nuevo: 7/7 ✓✓; zombi ×3 y Jump ACK timeout (ya conocidos)."
   }
  ]
 }

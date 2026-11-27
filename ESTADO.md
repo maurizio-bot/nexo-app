@@ -32,6 +32,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   **Y del dueño 28-11 (misma sesión):** fotos de perfil y de grupo con AJUSTE (mover, acercar, alejar hasta verla entera; fuera, la
   foto desenfocada; 384 px, ≤ 60 000 car.: `avatar_crop.js`, `fotoajuste.js`); **eliminar para todos en grupos** (acción con `g` a cada
   miembro, solo vale si lo escribió él, también si llega antes que el mensaje: `editar.js` E11). Fotos del chat sin tocar (1280–1600 px, sin recorte).
+  **Diags 27-11 09:45–09:47 (3167):** los «no» de una RÁFAGA de sobres contaban uno por uno («banned 37.ª vez → 7200 s», primal «210.ª
+  vez»): ahora cuentan como uno (`LIMIT_BURST_MS` 5 s, en JS y Kotlin; también destapaba el fallo intermitente de `acuses.js` G).
+  **PENDIENTE:** Austin (nx1905c1ee) confirma por Bluetooth «sin firma válida» al S24 → reenvío sin fin; pedir su diagnóstico.
   **Falta de la fase 1** (contrato §D.3 1a/1b): módulos `contacto_ruta/elegir/calendario` + banco `tests/sim/mundo/` + modo sombra
   `[RUTA-SOMBRA]`; republicar el MISMO evento (no re-cifrar); juntar textos en un sobre; el calendario manda en lo de internet (quitar
   red de seguridad +10 s y ventanas ×8 por internet); puntuación de relés; cupo que baja a la mitad 1 h tras un límite; toques FCM degradados.
