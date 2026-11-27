@@ -98,8 +98,11 @@ function _onStatus(e) {
   if (tr.ev.length > 12) tr.ev.splice(1, 1);
   var slowMs = (typeof window.NEXO_DIAG_SLOW_MS === 'number' && window.NEXO_DIAG_SLOW_MS >= 0) ? window.NEXO_DIAG_SLOW_MS : SLOW_MS; // perilla de prueba
   var asleep = _hidden || _backAt > tr.t0; // 3034: la app estuvo en segundo plano mientras esperaba la ✓✓
-  if (d.status === 'delivered' && !doneBefore) { try { if (typeof window.NEXO_noteDelivered === 'function') window.NEXO_noteDelivered(tr.via0, asleep ? -1 : now - tr.t0, id); } catch (eD) {} } // 3259: primera ✓✓: tiempo por camino
-  if ((d.status === 'delivered') && !doneBefore && !tr.slow && !asleep && tr.via0 !== 'none' && now - tr.t0 > slowMs) {
+  // Dueño 26-11 (resumen del 25-11: «sin camino al salir» 13 sin ✓✓): lo que llega cuando el otro ya tiene el chat abierto pasa directo a
+  // «leído», sin «entregado» antes, y no se contaba como llegado (quedaba «sin ✓✓» para siempre). La primera de las dos cuenta.
+  var firstDone = (d.status === 'delivered' || d.status === 'read') && !doneBefore;
+  if (firstDone) { try { if (typeof window.NEXO_noteDelivered === 'function') window.NEXO_noteDelivered(tr.via0, asleep ? -1 : now - tr.t0, id); } catch (eD) {} } // 3259: primera ✓✓: tiempo por camino
+  if (firstDone && !tr.slow && !asleep && tr.via0 !== 'none' && now - tr.t0 > slowMs) {
     tr.slow = true;
     try { window.dispatchEvent(new CustomEvent('nexo:diag:symptom', { detail: { kind: 'entrega_lenta', info: tr.nx + ' ' + id + ' ' + Math.round((now - tr.t0) / 1000) + ' s, camino al mandar ' + tr.via0 } })); } catch (e3) {}
   }

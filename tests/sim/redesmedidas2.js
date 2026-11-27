@@ -89,6 +89,7 @@ const { importSrc, buildDir } = require('./srcmod');
       '[WIFI] Sin Wi-Fi con nx1abcdefgh (no volvió en 3.0 s): sigue por Bluetooth',
       '[WIFI] Señal Wi-Fi mala con nx1abcdefgh (ida y vuelta 900 ms, 20 s sin recibir): lo nuevo por otro camino',
       '[WIFI] nx1abcdefgh en la misma red, pero aún sin su clave: por Bluetooth', // informativo
+      '[WIFI] nx1abcdefgh conectado por Wi-Fi pero su app no contesta la comprobación: toque para despertarla', // dueño 26-11: su app duerme, no es fallo del Wi-Fi
       '[NET] Relé relay.example.org no contesta (sin datos 45 s): conexión muerta, reconecto',
       '[NET] Relé relay.example.org: la red cambió, reconecto por la nueva', // no es falla
       '[NET] Sin relés: internet no disponible',

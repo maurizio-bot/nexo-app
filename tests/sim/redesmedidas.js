@@ -52,6 +52,11 @@ const { importSrc } = require('./srcmod');
     r.R3_hay_listener = st.length > 0;
     r.R3_salio_y_llego = /Bluetooth: salieron 2, con ✓✓ 2/.test(L) && /<1 s 2, <5 s 0/.test(L.split('\n').find((x) => /Bluetooth: salieron/.test(x)) || '');
     r.R3_repetida_no_suma = /Bluetooth: salieron 2, con ✓✓ 2/.test(L) && !/con ✓✓ 3/.test(L);
+    // R6 (dueño 26-11: «sin camino al salir» con 13 sin ✓✓): salió sin camino y pasó directo a «leído» (el otro tenía el chat abierto): cuenta como llegado
+    window.bleInterface.linkOf = () => 'none'; window.bleInterface.ackSystem.pendingAcks.set('msg6sincamino0001', { deviceId: 'AA:BB:CC:DD:EE:01' });
+    st.forEach((fn) => fn({ detail: { msgId: 'msg6sincamino0001', status: 'pending' } })); st.forEach((fn) => fn({ detail: { msgId: 'msg6sincamino0001', status: 'read' } }));
+    r.R6_leido_sin_entregado_cuenta = /sin camino al salir: salieron 1, con ✓✓ 1/.test(lines());
+    window.bleInterface.linkOf = () => 'bluetooth';
     // R5
     const b5 = lines();
     us.usageNoteSent('marte'); us.usageNoteDelivered('marte', 5); us.usageNoteDelivered('bluetooth', NaN); us.usageNoteSymptom('');

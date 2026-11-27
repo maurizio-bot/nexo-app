@@ -35,7 +35,9 @@ export function pfClassify(text) {
   if (/^\[WIFI\] Conexión con .* sin comprobar/.test(s)) return { via: 'wifi', cause: /su app no contestó/.test(s) ? 'sin comprobar (su app no contestó)' : 'sin comprobar' }; // i18n-ok: causa para el desarrollador
   if ((m = /^\[WIFI\] Sin Wi-Fi con \S+ \((.+?)\): sigue/.exec(s))) return /^sin comprobar/.test(m[1]) ? null : { via: 'wifi', cause: 'sin Wi-Fi: ' + m[1] }; // «sin comprobar» ya se contó en su aviso // i18n-ok: causa para el desarrollador
   if (/^\[WIFI\] Señal Wi-Fi mala/.test(s)) return { via: 'wifi', cause: 'señal mala' }; // i18n-ok: causa para el desarrollador
-  if (/^\[WIFI\] .* conectado por Wi-Fi pero su app no contesta/.test(s)) return { via: 'wifi', cause: 'conectado pero su app no contesta' }; // i18n-ok: causa para el desarrollador
+  // Dueño 26-11 (resumen del 25-11: «Wi-Fi local: conectado pero su app no contesta» ×10): es que la app del OTRO duerme y se le despierta con un
+  // toque; el Wi-Fi está bien. No es un fallo del camino (si no despierta, cuenta su «sin comprobar (su app no contestó)», que sí lo es).
+  if (/^\[WIFI\] .* conectado por Wi-Fi pero su app no contesta/.test(s)) return null;
   if ((m = /^\[NET\] Relé \S+ no contesta \((.*?)\)/.exec(s))) return { via: 'internet', cause: 'relé no contesta (' + m[1] + ')' }; // i18n-ok: causa para el desarrollador
   if (/^\[NET\] Sin relés: internet no disponible/.test(s)) return { via: 'internet', cause: 'sin relés' }; // i18n-ok: causa para el desarrollador
   if (/^\[NET\] Relé inestable/.test(s)) return { via: 'internet', cause: 'relé inestable (apartado)' }; // i18n-ok: causa para el desarrollador
