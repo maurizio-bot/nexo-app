@@ -21,6 +21,14 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **SIGUIENTE SESIÓN (27-11 ~21:50 México, cerrada por contexto al 25 %):** 1) revisar el CI de la **APK 3161** (commit e810a05 en
+  NEXOCHAT, subido 20:53, ~22:20) y, si pasó, NOVEDADES al historial como 3161 (si falló: qué prueba). 2) Empezar **`docs/PLAN_CAPACIDAD_27-11.md`**
+  (TODO aprobado por el dueño; leerlo entero, es corto): 0 sincronía de chats al entrar/deslizar abajo (1 a 1 y grupos, en su lugar,
+  archivos salvo borrados) y QUITAR «deslizar abajo cierra el chat»; 1 sin tope de 2000 mensajes (por tamaño, 1 GB) + búsqueda en todo;
+  2 archivos grandes por internet directo; 3 llamadas de grupo por internet (vídeo 9, voz 30); 4 Wi-Fi Direct listo por intención (B);
+  5 grupos de 100; 6 baratos (botones de atrás que quedan, lista de estados, mensajes que desaparecen, notas de vídeo, encuestas,
+  ubicación en vivo); 7 traducción. Lo pesado (1–4) con el límite fresco: se reinicia el domingo 29-11 a las 2:00 México.
+  Comparativa con las demás apps: `docs/COMPARATIVA_APPS.md`.
 - **APK 3161 SUBIDA (27-11, Opus): los 4 detalles del dueño en la 3160** (grupo «Pura gente del señor Nexo»). Revisar el CI (~85 min) y, si pasa,
   NOVEDADES al historial como 3161.
   1. **Historial de grupo:** imagen mandada desde «Archivo» ('file', png con nombre, > 200 KB) va como FOTO reducida (JPEG) en vez de «📎 Archivo
