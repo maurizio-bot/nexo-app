@@ -30,6 +30,9 @@ encontrar fallos y medir cuánto, no para validarlo a él. Si algo no cuadra con
      faltan ~5 min, no se interrumpe (se perdería todo el tiempo): lo nuevo va en la siguiente.
   3. **Largo de la sesión (dueño 26-11):** cada mensaje relee toda la plática, así que esperar un CI en una sesión larga sale caro.
      Sesión corta: se sube y se espera aquí. Cerca del cierre (20 %): subir con el TRASPASO escrito y que una sesión nueva revise el CI.
+  4. **Cuándo (dueño 27-11): aprovechar cuando el dueño duerme o lleva un rato (> 5–10 min) sin escribir.** PORQUÉ: así la APK
+     compila mientras él no la necesita y la encuentra lista al volver, sin esperarla en la plática. Sentido común: nunca un mini cambio
+     por APK; se acumula TODO lo pendiente y se sube UNA. Si él dijo «no subas hasta que te diga», eso manda hasta que lo levante.
   Origen de las reglas viejas: se canceló la 3151 para meter más y luego falló la 3152; se perdió mucho tiempo ese día. La lección
   es «no perder tiempo de CI», no «nunca subir» ni «solo cuando el dueño lo diga». Si de verdad hay duda, preguntar.
   La batería completa la corre el CI; aquí solo la prueba nueva y las cercanas al cambio.
