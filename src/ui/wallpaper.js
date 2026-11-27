@@ -15,6 +15,7 @@
  * que se crean al abrirse. Los grupos no entran aquí.
  */
 import { t } from './i18n.js';
+import { sheetSvg, SHEET_ICONS } from './chat_sheet.js'; // B-EST (26-11): iconos de trazo de las hojas
 import { _normId, _getBLEContacts } from './ble_helpers.js';
 import { _sendTextTo } from './send.js';
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
@@ -250,6 +251,8 @@ export function makeWallpaper(file, maxEdge, maxLen) {
 // ===== Botón 🖼️ en la cabecera del chat (opción A del dueño) + hoja de acciones =====
 // Auditoría 23-11 (I-X2): el nombre del contacto lo elige él; en la hoja va dentro de HTML
 function _escH(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return '&#' + c.charCodeAt(0) + ';'; }); }
+// B-EST (26-11): una fila de la hoja común (chat_sheet.js) en HTML; html = texto ya escapado (los nombres van por _escH), el SVG es fijo
+function _wpRow(id, icon, html) { return '<button type="button" id="' + id + '" class="mm-item"><span class="mm-ico">' + sheetSvg(SHEET_ICONS[icon], 20) + '</span><span class="nx-sheet-label">' + html + '</span></button>'; }
 function _curName() { try { return (document.getElementById('chat-contact-name') || {}).value || t('the_contact', 'el contacto'); } catch (e) { return t('the_contact', 'el contacto'); } }
 
 function _refreshButton() {
@@ -312,14 +315,16 @@ function _openSheet() {
     var has = hasChatWallpaperFor(nx);
     var sheet = document.createElement('div');
     sheet.id = 'nexo-wp-sheet';
-    sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center;';
-    sheet.innerHTML = '<div class="nx-card" style="width:100%;max-width:460px;margin:0 0 env(safe-area-inset-bottom,0px);border-radius:20px 20px 0 0;">' +
-      '<div class="nx-h"><span class="nx-ico">🖼️</span>' + t('wp_sheet_title', 'Fondo de este chat') + '</div>' +
-      '<div class="nx-sub">' + t('wp_sheet_sub', 'Una foto de fondo solo para este chat (manda sobre el fondo general de chats).') + '</div>' +
-      '<button id="nexo-wp-pick" class="nx-btn nx-btn-primary">' + (has ? t('wp_change', 'Cambiar la foto…') : t('wp_set', 'Elegir una foto…')) + '</button>' +
-      (has ? '<button id="nexo-wp-share" class="nx-btn">' + t('wp_share', 'Compartir este fondo con ') + _escH(name) + '</button>' +
-             '<button id="nexo-wp-remove" class="nx-btn">' + t('wp_remove', 'Quitar el fondo de este chat') + '</button>' : '') +
-      '<button id="nexo-wp-close" class="nx-btn" style="background:none;border:none;">' + t('close', 'Cerrar') + '</button>' +
+    // B-EST (26-11): la hoja común (como las opciones del chat): asa, título de hoja, nota y filas con icono de trazo
+    sheet.className = 'nx-chat-sheet';
+    sheet.style.zIndex = '2147483646';
+    sheet.innerHTML = '<div class="nx-chat-sheet-body">' +
+      '<div class="nx-sheet-title">' + t('wp_sheet_title', 'Fondo de este chat') + '</div>' +
+      '<div class="nx-sheet-note">' + t('wp_sheet_sub', 'Una foto de fondo solo para este chat (manda sobre el fondo general de chats).') + '</div>' +
+      _wpRow('nexo-wp-pick', 'nx-image', has ? t('wp_change', 'Cambiar la foto…') : t('wp_set', 'Elegir una foto…')) +
+      (has ? _wpRow('nexo-wp-share', 'nx-share', t('wp_share', 'Compartir este fondo con ') + _escH(name)) +
+             _wpRow('nexo-wp-remove', 'nx-trash', t('wp_remove', 'Quitar el fondo de este chat')) : '') +
+      _wpRow('nexo-wp-close', 'mm-cancel', t('close', 'Cerrar')) +
       '</div>';
     document.body.appendChild(sheet);
     sheet.addEventListener('click', function(e) { if (e.target === sheet) sheet.remove(); });
@@ -422,12 +427,13 @@ function _openScreenSheet(k) {
   var sheet = document.createElement('div');
   sheet.id = 'nexo-wp-sheet';
   sheet.setAttribute('data-screen', k);
-  sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center;';
-  sheet.innerHTML = '<div class="nx-card" style="width:100%;max-width:460px;margin:0 0 env(safe-area-inset-bottom,0px);border-radius:20px 20px 0 0;">' +
-    '<div class="nx-h"><span class="nx-ico">🖼️</span>' + t('prof_wallpaper_title', 'Fondo de pantalla') + '</div>' +
-    '<button id="nexo-wp-pick" class="nx-btn nx-btn-primary">' + (has ? t('wp_change', 'Cambiar la foto…') : t('wp_set', 'Elegir una foto…')) + '</button>' +
-    (has ? '<button id="nexo-wp-remove" class="nx-btn">' + t('prof_wallpaper_remove', 'Quitar este fondo') + '</button>' : '') +
-    '<button id="nexo-wp-close" class="nx-btn" style="background:none;border:none;">' + t('close', 'Cerrar') + '</button>' +
+  sheet.className = 'nx-chat-sheet'; // B-EST (26-11): la misma hoja común que la del fondo de un chat
+  sheet.style.zIndex = '2147483647';
+  sheet.innerHTML = '<div class="nx-chat-sheet-body">' +
+    '<div class="nx-sheet-title">' + t('prof_wallpaper_title', 'Fondo de pantalla') + '</div>' +
+    _wpRow('nexo-wp-pick', 'nx-image', has ? t('wp_change', 'Cambiar la foto…') : t('wp_set', 'Elegir una foto…')) +
+    (has ? _wpRow('nexo-wp-remove', 'nx-trash', t('prof_wallpaper_remove', 'Quitar este fondo')) : '') +
+    _wpRow('nexo-wp-close', 'mm-cancel', t('close', 'Cerrar')) +
     '</div>';
   document.body.appendChild(sheet);
   var close = function() { var s = document.getElementById('nexo-wp-sheet'); if (s) s.remove(); };

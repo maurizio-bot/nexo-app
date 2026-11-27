@@ -3,7 +3,7 @@
    blancos de grosor 2 (estilo aprobado por el dueño el 17-11: docs/estilo_botones_muestra.html). */
 
 /* ---------- Hojas que suben desde abajo (Silenciar, Opciones del chat): como #nexo-msg-menu ---------- */
-.nx-chat-sheet { position: fixed; inset: 0; z-index: 6000; display: flex; align-items: flex-end; justify-content: center;
+.nx-chat-sheet { position: fixed; inset: 0; z-index: 8500; /* B-EST: encima del botón redondo de Contactos (8000), como avisos y hojas */ display: flex; align-items: flex-end; justify-content: center;
   background: rgba(3, 4, 12, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 .nx-chat-sheet-body { position: relative; width: 100%; max-width: 480px; box-sizing: border-box; color: var(--nx-text);
   background: var(--nx-sheet); border-top: 1px solid var(--nx-line); border-radius: 22px 22px 0 0;

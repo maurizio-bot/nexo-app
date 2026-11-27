@@ -14,6 +14,7 @@ import { isPreviewHidden, toggleHidePreview } from './chat_hide_preview.js';
 import { isMuted, muteMenuLabel, openMuteSheet } from './chat_mute.js'; // 3219: silenciar el grupo
 import { openGroupSettings, groupOptionsPicker, installGroupPanel } from './group_panel.js'; // 22-11 (COLA 4b): Ajustes del grupo
 import { historyAllowed, requestHistory } from './group_history.js'; // 24-11: historial para los nuevos
+import { sheetRow } from './chat_sheet.js'; // B-EST (26-11): filas de hoja comunes
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
 function _groups() { var b = _bi(); return b && b.groups; }
@@ -185,37 +186,35 @@ export function openGroupMenu(gid) {
   if (old) old.remove();
   var box = document.createElement('div');
   box.id = 'nexo-group-menu';
-  box.style.cssText = 'position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.45);display:flex;align-items:flex-end;justify-content:center;';
+  box.className = 'nx-chat-sheet'; // B-EST (26-11): la hoja común (chat_sheet.js / chat_tools.css), como las opciones del chat
   var sheet = document.createElement('div');
-  sheet.style.cssText = 'background:#14152a;color:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:14px 0;';
+  sheet.className = 'nx-chat-sheet-body';
   var title = document.createElement('div');
-  title.style.cssText = 'padding:4px 20px 8px;font-size:17px;font-weight:700;';
+  title.className = 'nx-sheet-title';
   title.textContent = g.name;
   var mem = document.createElement('div');
-  mem.className = 'nexo-group-members';
-  mem.style.cssText = 'padding:0 20px 10px;font-size:13px;opacity:0.8;';
+  mem.className = 'nexo-group-members nx-sheet-note';
   mem.textContent = groupSubtitle(g);
   sheet.appendChild(title); sheet.appendChild(mem);
-  var add = function(label, cls, fn, danger) {
-    var b = document.createElement('button');
-    b.className = 'mm-item ' + cls;
-    b.textContent = label;
-    b.style.cssText = 'display:block;width:100%;text-align:left;padding:14px 20px;background:none;border:none;font-size:16px;color:' + (danger ? '#ff6b6b' : '#fff') + ';';
+  // cada opción con su icono de trazo (los del menú ⋮ de un contacto), sin emojis
+  var add = function(label, cls, fn, danger, icon) {
+    var b = sheetRow(label, icon, cls, danger);
     b.onclick = function(e) { e.stopPropagation(); box.remove(); fn(); };
     sheet.appendChild(b);
   };
-  add('💬  ' + t('prof_open', 'Abrir'), 'gm-open', function() { openGroupChat(g.id); });
-  if (!g.kicked) add('⚙️  ' + t('grp_settings', 'Ajustes del grupo'), 'gm-settings', function() { openGroupSettings(g.id); }); // 22-11 (COLA 4b)
+  add(t('prof_open', 'Abrir'), 'gm-open', function() { openGroupChat(g.id); }, false, 'nx-open');
+  if (!g.kicked) add(t('grp_settings', 'Ajustes del grupo'), 'gm-settings', function() { openGroupSettings(g.id); }, false, 'nx-gear'); // 22-11 (COLA 4b)
   var meH = String((window.bleInterface && window.bleInterface.localNexoId) || '').toLowerCase();
-  if (!g.kicked && !g.left && String(g.createdBy || '').toLowerCase() !== meH && historyAllowed(g.id)) add('📜  ' + t('grp_hist_btn', 'Ver mensajes anteriores'), 'gm-history', function() { requestHistory(g.id); }); // 24-11
-  add(isPreviewHidden(g.id) ? '👁  ' + t('chat_show_preview', 'Mostrar el texto en los avisos') : '🙈  ' + t('chat_hide_preview', 'Ocultar el texto en los avisos'), 'gm-hidetext', function() { toggleHidePreview(g.id); });
-  add((isMuted(g.id) ? '🔔  ' : '🔕  ') + muteMenuLabel(g.id), 'gm-mute', function() { openMuteSheet(g.id); }); // 3219
-  add('🚪  ' + (g.kicked ? t('grp_remove_list', 'Quitar de la lista') : t('prof_group_leave', 'Salir del grupo')), 'gm-leave', function() {
+  if (!g.kicked && !g.left && String(g.createdBy || '').toLowerCase() !== meH && historyAllowed(g.id)) add(t('grp_hist_btn', 'Ver mensajes anteriores'), 'gm-history', function() { requestHistory(g.id); }, false, 'nx-history'); // 24-11
+  var hid = isPreviewHidden(g.id);
+  add(hid ? t('chat_show_preview', 'Mostrar el texto en los avisos') : t('chat_hide_preview', 'Ocultar el texto en los avisos'), 'gm-hidetext', function() { toggleHidePreview(g.id); }, false, hid ? 'nx-eye' : 'nx-eye-off');
+  add(muteMenuLabel(g.id), 'gm-mute', function() { openMuteSheet(g.id); }, false, isMuted(g.id) ? 'chat-unmute' : 'chat-mute'); // 3219
+  add(g.kicked ? t('grp_remove_list', 'Quitar de la lista') : t('prof_group_leave', 'Salir del grupo'), 'gm-leave', function() {
     gs.leave(g.id);
     var bi = _bi();
     if (bi && typeof bi.renderContactsList === 'function') bi.renderContactsList();
-  }, true);
-  add(t('cancel'), 'gm-cancel', function() {});
+  }, true, 'nx-leave');
+  add(t('cancel'), 'gm-cancel', function() {}, false, 'mm-cancel');
   box.onclick = function(e) { if (e.target === box) box.remove(); };
   box.appendChild(sheet);
   document.body.appendChild(box);

@@ -291,11 +291,7 @@ function _style() {
     // la pantalla del otro se ve ENTERA (nunca recortada) y sin espejo, y se puede ampliar con dos dedos
     '#nexo-call-screen .nc-scrbar{position:absolute;left:0;right:0;top:0;z-index:12;background:#dc2626;color:#fff;font-size:14px;font-weight:600;text-align:center;padding:calc(env(safe-area-inset-top,0px) + 8px) 12px 8px;cursor:pointer}',
     '#nexo-call-screen.nc-peer-screen .call-remote-video.nc-full{object-fit:contain !important;background:#000}',
-    '#nexo-scr-ask{position:absolute;inset:0;z-index:20;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:16px}',
-    '#nexo-scr-ask .nc-ask-box{background:var(--nx-sheet);border:1px solid var(--nx-line);color:#fff;border-radius:var(--nx-radius);padding:18px;max-width:340px;font-size:15px;line-height:1.4}',
-    '#nexo-scr-ask .nc-ask-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}',
-    '#nexo-scr-ask .nc-ask-no{background:var(--nx-surface-2);border:1px solid var(--nx-line);color:#fff}',
-    '#nexo-scr-ask button{border:none;border-radius:14px;padding:10px 16px;font-size:15px;font-weight:600;min-height:44px}',
+    '#nexo-scr-ask{position:absolute;z-index:20}', // B-EST (26-11): el aviso común (.nx-ask, nexo_theme.css), dentro de la pantalla de llamada
     '#nexo-call-screen .nc-warnbar{display:none;margin-top:8px;font-size:13px;color:#fbbf24;text-shadow:0 1px 8px rgba(0,0,0,.7);text-align:center}',
     '#nexo-call-screen.nc-video.nc-live .nc-warnbar:not(:empty){display:block}',
     '#nexo-call-screen .nc-mini{display:none;font-size:17px;font-weight:600;text-shadow:0 1px 8px rgba(0,0,0,.6)}',
@@ -553,7 +549,8 @@ function _screenAsk(el, onYes) {
   if (document.getElementById('nexo-scr-ask')) return;
   var ov = document.createElement('div');
   ov.id = 'nexo-scr-ask';
-  ov.innerHTML = '<div class="nc-ask-box"><div class="nc-ask-txt"></div><div class="nc-ask-btns"><button class="nc-ask-no"></button><button class="nc-ask-yes" style="background:var(--nx-grad);color:#fff"></button></div></div>';
+  ov.className = 'nx-ask';
+  ov.innerHTML = '<div class="nc-ask-box nx-ask-card"><div class="nc-ask-txt nx-ask-text"></div><div class="nc-ask-btns nx-ask-actions"><button class="nc-ask-no nx-btn"></button><button class="nc-ask-yes nx-btn nx-btn-primary"></button></div></div>';
   ov.querySelector('.nc-ask-txt').textContent = t('call_screen_ask', 'Se verá TODO lo que haya en tu pantalla, también las notificaciones que lleguen. Android te pedirá permiso.');
   ov.querySelector('.nc-ask-no').textContent = t('cancel', 'Cancelar');
   ov.querySelector('.nc-ask-yes').textContent = t('call_screen_go', 'Compartir');

@@ -296,16 +296,16 @@ function _openNotesSheet(a, text) {
   try {
     var old = document.getElementById('nexo-update-notes-sheet'); if (old) old.remove();
     var ov = document.createElement('div'); ov.id = 'nexo-update-notes-sheet';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:9500;display:flex;flex-direction:column;justify-content:flex-end;background:rgba(0,0,0,0.55);';
+    ov.className = 'nx-chat-sheet'; ov.style.zIndex = '9500'; // B-EST (26-11): la hoja común, con su asa y su título de hoja
     var sh = document.createElement('div');
-    sh.style.cssText = 'background:#0e0f1e;border:1px solid var(--nx-line,rgba(255,255,255,0.08));border-bottom:none;color:#fff;border-radius:22px 22px 0 0;max-height:75vh;display:flex;flex-direction:column;gap:10px;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));box-sizing:border-box;';
-    var h = document.createElement('div'); h.style.cssText = 'font-size:18px;font-weight:800;letter-spacing:-0.2px;'; h.textContent = t('upd_notes_next', 'Lo nuevo en la versión') + ' ' + a.build;
-    var body = document.createElement('div'); body.style.cssText = 'overflow:auto;font-size:14px;line-height:1.5;white-space:pre-wrap;'; body.textContent = text;
+    sh.className = 'nx-chat-sheet-body nx-sheet-tall';
+    var h = document.createElement('div'); h.className = 'nx-sheet-title'; h.textContent = t('upd_notes_next', 'Lo nuevo en la versión') + ' ' + a.build;
+    var body = document.createElement('div'); body.className = 'nx-sheet-text nx-sheet-scroll'; body.textContent = text;
     var ready = _ready === a.build;
-    var go = document.createElement('button'); go.style.cssText = 'background:var(--nx-grad,linear-gradient(135deg,#00c8ff,#a855f7));color:#fff;border:none;border-radius:14px;padding:12px;font-size:15px;font-weight:700;box-shadow:0 10px 30px rgba(0,200,255,0.35),0 4px 12px rgba(168,85,247,0.35);';
+    var go = document.createElement('button'); go.className = 'nx-btn nx-btn-primary';
     go.textContent = ready ? t('upd_install', 'Instalar') : t('upd_download', 'Descargar');
     go.onclick = function() { ov.remove(); if (ready) updaterInstall(); else if (!_busy) updaterDownload(); };
-    var close = document.createElement('button'); close.style.cssText = 'background:var(--nx-surface-2,rgba(255,255,255,0.1));color:#fff;border:1px solid var(--nx-line,rgba(255,255,255,0.08));border-radius:14px;padding:12px;font-size:15px;font-weight:600;';
+    var close = document.createElement('button'); close.className = 'nx-btn';
     close.textContent = t('chat_close', 'Cerrar'); close.onclick = function() { ov.remove(); };
     ov.onclick = function(e) { if (e.target === ov) ov.remove(); };
     sh.appendChild(h); sh.appendChild(body); if (!_busy) sh.appendChild(go); sh.appendChild(close);

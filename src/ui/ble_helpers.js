@@ -642,6 +642,8 @@ export function _showToast(message, type) {
   var colors = { info: '#0082FC', warn: '#FFC107', error: '#FF5252', success: '#4CAF50' };
   var toast = document.createElement('div');
   toast.textContent = message;
+  // B-EST (26-11): el aviso corto de la app (nexo_theme.css), no un color liso por tipo. Sin «toast» ni «log» en la clase: critical.css esconde esas
+  toast.className = 'nx-aviso' + (type === 'error' ? ' nx-aviso-err' : type === 'warn' ? ' nx-aviso-warn' : '');
   toast.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);padding:12px 20px;border-radius:10px;background:' + (colors[type] || colors.info) + ';color:' + (type === 'warn' ? '#000' : '#fff') + ';font-size:14px;font-weight:600;z-index:2147483647;box-shadow:0 4px 16px rgba(0,0,0,0.4);opacity:0;transition:opacity 0.3s ease;pointer-events:none;max-width:80%;text-align:center;';
   document.body.appendChild(toast);
   requestAnimationFrame(function() { toast.style.opacity = '1'; });

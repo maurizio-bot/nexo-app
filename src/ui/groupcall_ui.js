@@ -246,15 +246,15 @@ function _gScreenAsk(el, onYes) {
   if (document.getElementById('nexo-gscr-ask')) return;
   var ov = document.createElement('div');
   ov.id = 'nexo-gscr-ask';
-  ov.style.cssText = 'position:absolute;inset:0;z-index:6;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:24px;';
+  // B-EST (26-11): el aviso común (.nx-ask, nexo_theme.css), el mismo que en la llamada de dos; dentro de la pantalla de llamada
+  ov.className = 'nx-ask';
+  ov.style.cssText = 'position:absolute;z-index:6;';
   var box = document.createElement('div');
-  box.style.cssText = 'max-width:340px;background:#141826;border-radius:16px;padding:18px;color:#fff;font-size:15px;line-height:1.4;';
-  var txt = document.createElement('div'); txt.textContent = t('call_screen_ask', 'Se verá TODO lo que haya en tu pantalla, también las notificaciones que lleguen. Android te pedirá permiso.');
-  var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;margin-top:16px;';
-  var no = document.createElement('button'); no.className = 'gc-ask-no'; no.textContent = t('cancel', 'Cancelar');
-  no.style.cssText = 'padding:10px 16px;border:none;border-radius:12px;background:rgba(255,255,255,0.14);color:#fff;font-size:15px;';
-  var yes = document.createElement('button'); yes.className = 'gc-ask-yes'; yes.textContent = t('call_screen_go', 'Compartir');
-  yes.style.cssText = 'padding:10px 16px;border:none;border-radius:12px;background:#16a34a;color:#fff;font-size:15px;font-weight:600;';
+  box.className = 'nx-ask-card';
+  var txt = document.createElement('div'); txt.className = 'nx-ask-text'; txt.textContent = t('call_screen_ask', 'Se verá TODO lo que haya en tu pantalla, también las notificaciones que lleguen. Android te pedirá permiso.');
+  var row = document.createElement('div'); row.className = 'nx-ask-actions';
+  var no = document.createElement('button'); no.className = 'gc-ask-no nx-btn'; no.textContent = t('cancel', 'Cancelar');
+  var yes = document.createElement('button'); yes.className = 'gc-ask-yes nx-btn nx-btn-primary'; yes.textContent = t('call_screen_go', 'Compartir');
   row.appendChild(no); row.appendChild(yes); box.appendChild(txt); box.appendChild(row); ov.appendChild(box);
   ov.addEventListener('click', function(e) { e.stopPropagation(); if (e.target === ov) ov.remove(); });
   no.addEventListener('click', function(e) { e.stopPropagation(); ov.remove(); });

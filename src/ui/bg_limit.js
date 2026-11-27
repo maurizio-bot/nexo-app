@@ -74,16 +74,15 @@ function _showLateNote(n) {
   _set(NOTE_KEY, String(Date.now()));
   console.log('[ENERGIA] ' + n + ' mensaje(s) llegaron con más de 2 min de retraso y NEXO está limitado: se avisa'); // i18n-ok: registro
   var box = document.createElement('div'); box.id = 'nexo-late-note';
-  box.style.cssText = 'position:fixed;left:12px;right:12px;bottom:84px;z-index:2147483640;background:var(--nx-sheet,#141526);border:1px solid var(--nx-line,#333);border-radius:16px;padding:14px;color:var(--nx-text,#fff);font-size:14px;line-height:1.45;';
-  var p = document.createElement('div');
+  box.className = 'nx-ask-card nx-float-card'; // B-EST (26-11): la tarjeta del aviso común, flotando sobre Contactos
+  box.style.cssText = 'position:fixed;left:12px;right:12px;bottom:84px;z-index:2147483640;';
+  var p = document.createElement('div'); p.className = 'nx-ask-text';
   p.textContent = (n === 1 ? t('late_note_one', 'Te llegó un mensaje tarde.') : t('late_note_many', 'Te llegaron {n} mensajes tarde.').replace('{n}', n)) + ' ' +
     t('late_note_why', 'El ahorro de batería tiene a NEXO limitado en este teléfono y eso frena tus mensajes.');
-  var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;margin-top:10px;';
-  var fix = document.createElement('button'); fix.id = 'nexo-late-fix'; fix.textContent = t('late_note_fix', 'Arreglarlo');
-  fix.style.cssText = 'flex:1;padding:11px;border:none;border-radius:12px;background:var(--nx-grad,#3b82f6);color:#fff;font-weight:700;';
-  var no = document.createElement('button'); no.id = 'nexo-late-later'; no.textContent = t('prof_bat_later', 'Ahora no');
-  no.style.cssText = 'padding:11px 14px;border:none;border-radius:12px;background:transparent;color:var(--nx-muted,#aaa);';
-  row.append(fix, no); box.append(p, row); document.body.appendChild(box);
+  var row = document.createElement('div'); row.className = 'nx-ask-actions';
+  var fix = document.createElement('button'); fix.id = 'nexo-late-fix'; fix.textContent = t('late_note_fix', 'Arreglarlo'); fix.className = 'nx-btn nx-btn-primary';
+  var no = document.createElement('button'); no.id = 'nexo-late-later'; no.textContent = t('prof_bat_later', 'Ahora no'); no.className = 'nx-btn';
+  row.append(no, fix); box.append(p, row); document.body.appendChild(box);
   var close = function() { if (box.parentNode) box.parentNode.removeChild(box); };
   no.onclick = close;
   fix.onclick = function() { close(); batteryGuard({ plugin: _plugin(), force: true, onDone: function() { bgLimitRefresh(); } }); };

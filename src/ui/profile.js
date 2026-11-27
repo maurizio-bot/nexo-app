@@ -670,29 +670,27 @@ window.addEventListener('nexo:fenix:request', function(e) {
   if (old) old.remove();
   var box = document.createElement('div');
   box.id = 'nexo-fenix-ask';
-  box.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;';
+  box.className = 'nx-ask'; // B-EST (26-11): el aviso común (nexo_theme.css)
+  box.style.zIndex = '2147483647';
   var card = document.createElement('div');
-  card.className = 'nx-fenix-card';
-  card.style.cssText = 'background:var(--nx-sheet);color:#fff;border:1px solid var(--nx-line);border-radius:var(--nx-radius);padding:18px;max-width:340px;width:100%;font-size:14px;';
+  card.className = 'nx-fenix-card nx-ask-card';
   var h = document.createElement('div');
-  h.style.cssText = 'font-size:17px;font-weight:700;margin-bottom:8px;';
+  h.className = 'nx-ask-title';
   h.textContent = t('prof_fenix_req_title', '🔥 Recuperar una cuenta');
   var p = document.createElement('div');
-  p.style.cssText = 'opacity:0.85;margin-bottom:12px;';
+  p.className = 'nx-ask-text';
   p.textContent = t('prof_fenix_req_pre', 'Un teléfono nuevo cerca') + (d.name ? ' ("' + d.name + '")' : '') + t('prof_fenix_req_body', ' pide recuperar su cuenta NEXO. Ayúdale solo si la persona está contigo y estás seguro de quién es. ¿Quién es?');
   card.appendChild(h); card.appendChild(p);
   var close = function() { box.remove(); };
   d.choices.forEach(function(c) {
     var b = document.createElement('button');
-    b.className = 'fenix-yes';
-    b.style.cssText = 'display:block;width:100%;margin-bottom:8px;padding:12px;border:none;border-radius:14px;background:var(--nx-grad);color:#fff;font-size:15px;font-weight:600;font-family:inherit;';
+    b.className = 'fenix-yes nx-btn nx-btn-primary';
     b.textContent = t('prof_fenix_is', 'Es ') + c.name;
     b.onclick = function() { close(); fx.answerRecovery(d.rid, c.nx); };
     card.appendChild(b);
   });
   var no = document.createElement('button');
-  no.className = 'fenix-no';
-  no.style.cssText = 'display:block;width:100%;padding:12px;border:1px solid var(--nx-line);border-radius:14px;background:var(--nx-surface-2);color:#fff;font-size:15px;font-weight:600;font-family:inherit;';
+  no.className = 'fenix-no nx-btn';
   no.textContent = t('prof_fenix_dunno', 'No lo sé / no es nadie de ellos');
   no.onclick = function() { close(); fx.answerRecovery(d.rid, null); };
   card.appendChild(no);

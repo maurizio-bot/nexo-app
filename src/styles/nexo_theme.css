@@ -161,11 +161,11 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
 /* Dueño 01-11 (plan 2/3): los botones de llamada/videollamada del chat de GRUPO (#nexo-gcall-btn/#nexo-gvideo-btn)
    llevan el mismo «look NEXO» que los del chat de contacto 1-a-1 (antes se quedaban con su estilo inline: 38px, sin
    borde, SVG sin tamaño). El `display` va SIN !important a propósito: así el show/hide inline (según isGroup) gana. */
-#nexo-call-btn, #nexo-video-btn, #nexo-gcall-btn, #nexo-gvideo-btn {
+#nexo-call-btn, #nexo-video-btn, #nexo-gcall-btn, #nexo-gvideo-btn, #nexo-gset-btn { /* B-EST: también la ruedita del grupo (antes 38 px y sin aro) */
   width: 42px !important; height: 42px !important; background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important;
   display: inline-flex; align-items: center; justify-content: center; padding: 0 !important; /* sin !important: en un grupo se ocultan */
 }
-#nexo-call-btn svg, #nexo-video-btn svg, #nexo-gcall-btn svg, #nexo-gvideo-btn svg { width: 21px; height: 21px; } /* 3140: 42/21 como los de Contactos */
+#nexo-call-btn svg, #nexo-video-btn svg, #nexo-gcall-btn svg, #nexo-gvideo-btn svg, #nexo-gset-btn svg { width: 21px; height: 21px; } /* 3140: 42/21 como los de Contactos */
 #messages-container { background: transparent !important; }
 /* #dueño 02-11: la burbuja de texto RECORTABA el texto — el radio (20px) era mayor que el padding, así que la esquina
    redondeada comía las letras. Se reduce el radio (14px) para que no recorte; con el padding de critical.css (10px 14px)
@@ -185,9 +185,12 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
   background: none !important; border-color: transparent !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
 }
 /* Stickers (2829): hoja inferior con la rejilla del pack incorporado */
-.sticker-sheet { position: fixed; inset: 0; z-index: 2600; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,0.45); }
-.sticker-panel { width: 100%; max-width: 520px; max-height: 60vh; overflow-y: auto; background: var(--nx-surface, #12232a); border-top-left-radius: 16px; border-top-right-radius: 16px; padding: 10px 12px calc(14px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 24px rgba(0,0,0,0.4); }
-.sticker-head { color: var(--nx-text, #e8f0f2); font-weight: 600; font-size: 15px; padding: 4px 4px 10px; }
+/* B-EST (26-11): la hoja de stickers como las demás (.nx-chat-sheet): el mismo fondo, el asa, radio 22 y el título de hoja (17/700) */
+.sticker-sheet { position: fixed; inset: 0; z-index: 2600; display: flex; align-items: flex-end; justify-content: center; background: rgba(3, 4, 12, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.sticker-panel { position: relative; width: 100%; max-width: 520px; max-height: 60vh; overflow-y: auto; box-sizing: border-box; background: var(--nx-sheet); border-top: 1px solid var(--nx-line);
+  border-top-left-radius: 22px; border-top-right-radius: 22px; padding: 24px 12px calc(14px + env(safe-area-inset-bottom)); box-shadow: 0 -16px 50px rgba(0, 0, 0, 0.55); animation: nxUp 0.22s ease-out; }
+.sticker-panel::before { content: ''; position: absolute; top: 9px; left: 50%; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: rgba(255, 255, 255, 0.25); }
+.sticker-head { color: #fff; font-weight: 700; font-size: 17px; padding: 4px 12px 10px; } /* el texto a 24 px del borde, como .nx-sheet-title */
 .sticker-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .sticker-cell { background: rgba(255,255,255,0.06); border: none; border-radius: 12px; padding: 8px; cursor: pointer; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; }
 .sticker-cell.is-pressed { background: rgba(255,255,255,0.14); }
@@ -341,8 +344,9 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
 
 /* ---------- Hojas (menú de un mensaje, reenviar, compartir, grupo) ---------- */
 /* Menús que suben desde abajo (fondo oscuro translúcido + hoja de cristal) */
-#nexo-msg-menu, #nexo-group-menu, #nexo-contact-picker { background: rgba(3, 4, 12, 0.55) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
-#nexo-msg-menu > div, #nexo-group-menu > div, #nexo-contact-picker > div {
+/* B-EST (26-11): el menú de un grupo y «Agregar a la llamada» ya usan la hoja común (.nx-chat-sheet, chat_tools.css); aquí solo el de un mensaje */
+#nexo-msg-menu { background: rgba(3, 4, 12, 0.55) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+#nexo-msg-menu > div {
   position: relative; background: var(--nx-sheet) !important; color: var(--nx-text) !important;
   border: 1px solid var(--nx-line) !important; border-bottom: none !important; border-radius: 26px 26px 0 0 !important;
   padding: 24px 10px calc(14px + env(safe-area-inset-bottom, 0px)) !important; box-shadow: 0 -16px 50px rgba(0, 0, 0, 0.55) !important;
@@ -355,7 +359,7 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
   background: var(--nx-sheet) !important; color: var(--nx-text) !important;
   border: 1px solid var(--nx-line) !important; border-radius: 14px !important;
 }
-#nexo-msg-menu > div::before, #nexo-group-menu > div::before, #nexo-contact-picker > div::before {
+#nexo-msg-menu > div::before {
   content: ''; position: absolute; top: 9px; left: 50%; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: rgba(255, 255, 255, 0.25);
 }
 @keyframes nxUp { from { transform: translateY(40px); opacity: 0.4; } to { transform: none; opacity: 1; } }
@@ -385,11 +389,11 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
 }
 #nexo-share-search::placeholder, #nexo-group-name::placeholder { color: var(--nx-muted); }
 /* Casilla redonda: vacía con aro claro; marcada con el degradado NEXO y una ✓ blanca */
-#nexo-share-sheet input[type="checkbox"], #nexo-group-sheet input[type="checkbox"], #nexo-forward-sheet input[type="checkbox"] {
+#nexo-share-sheet input[type="checkbox"], #nexo-group-sheet input[type="checkbox"], #nexo-forward-sheet input[type="checkbox"], .nx-panel .nexo-pick-row input[type="checkbox"] { /* B-EST: también al elegir en Ajustes del grupo */
   -webkit-appearance: none; appearance: none; width: 22px !important; height: 22px !important; min-width: 22px; margin: 0; padding: 0 !important;
   border-radius: 50% !important; border: 2px solid rgba(255, 255, 255, 0.25) !important; background: transparent !important; flex-shrink: 0; cursor: pointer;
 }
-#nexo-share-sheet input[type="checkbox"]:checked, #nexo-group-sheet input[type="checkbox"]:checked, #nexo-forward-sheet input[type="checkbox"]:checked {
+#nexo-share-sheet input[type="checkbox"]:checked, #nexo-group-sheet input[type="checkbox"]:checked, #nexo-forward-sheet input[type="checkbox"]:checked, .nx-panel .nexo-pick-row input[type="checkbox"]:checked {
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / 13px no-repeat, var(--nx-grad) !important;
   border-color: transparent !important; box-shadow: 0 3px 10px rgba(0, 200, 255, 0.35);
 }
@@ -466,14 +470,13 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
 #ble-panel-back { box-shadow: none !important; }
 
 /* Avisos cortos */
-.info-toast, #perm-error-toast {
+.info-toast, #perm-error-toast, .nx-aviso { /* B-EST: .nx-aviso = los de _showToast (ble_helpers.js), que eran azul/amarillo/rojo/verde lisos */
   background: var(--nx-sheet) !important; border: 1px solid var(--nx-line) !important; color: var(--nx-text) !important;
   border-radius: 16px !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5) !important;
 }
 /* 3140 (zona 6): un ERROR (permiso denegado, archivo demasiado grande) se distingue de un aviso normal: borde y letra en rojo suave */
-#perm-error-toast.err-toast { border-color: rgba(255, 59, 48, 0.45) !important; color: #ff8a80 !important; }
-/* 3140 (zona 6): hoja «Fondo de este chat» opaca (la .nx-card sola es casi transparente y se veían las burbujas detrás) */
-#nexo-wp-sheet > .nx-card { background: var(--nx-sheet) !important; border-radius: var(--nx-radius) var(--nx-radius) 0 0 !important; }
+#perm-error-toast.err-toast, .nx-aviso.nx-aviso-err { border-color: rgba(255, 59, 48, 0.45) !important; color: #ff8a80 !important; }
+.nx-aviso.nx-aviso-warn { border-color: rgba(255, 176, 32, 0.45) !important; color: #ffc861 !important; }
 
 /* Pasar la cuenta / Fénix */
 #nexo-move-screen { background: var(--nx-bg) !important; } /* 3140 */
@@ -481,7 +484,6 @@ body.chat-view-active #nexo-contacts-search-bar { display: none !important; }
   min-height: 42px; padding: 0 20px !important; font-weight: 600; }
 /* 3140 (zona hojas): título arriba a la izquierda, como «Contactos» */
 #nexo-move-screen .move-title { position: absolute; top: env(safe-area-inset-top, 0px); left: 18px; right: 18px; min-height: 64px; display: flex; align-items: center; }
-#nexo-fenix-ask { background: rgba(3, 4, 10, 0.78) !important; } /* 3140: solo la capa oscura; la tarjeta lleva var(--nx-sheet) y el radio NEXO (profile.js) */
 #ble-panel { background: var(--nx-bg) !important; color: var(--nx-text); } /* 3140: liso, como Contactos */
 /* 3140 (zona Agregar contactos): cabecera de 64 px con el título a la izquierda, sin línea (como #main-header) */
 #ble-panel .ble-header { background: transparent !important; border-bottom: none !important; flex-direction: row; align-items: center; justify-content: flex-start;
@@ -699,3 +701,85 @@ html.nx-font-custom body, html.nx-font-custom button, html.nx-font-custom input,
 /* 26-11 (revisión externa + dueño «lo intuitivo»): cada opción de adjuntar con su nombre debajo del icono (Cámara, Galería…) */
 .attach-menu-item:not(.attach-more) { flex-direction: column; width: 56px !important; height: auto !important; gap: 3px; padding: 2px 0 !important; }
 .attach-menu-item:not(.attach-more)::after { content: attr(data-label); font-size: 10.5px; line-height: 1.2; color: var(--nx-muted); white-space: nowrap; max-width: 56px; overflow: hidden; text-overflow: ellipsis; }
+
+/* ====== B-EST (dueño 26-11, «muy importante»): TODAS las hojas, avisos y paneles con UN mismo estilo, parejo con Contactos. Tres piezas:
+   · HOJA que sube desde abajo: .nx-chat-sheet > .nx-chat-sheet-body (chat_tools.css; chat_sheet.js openSheet / sheetRow): fondo oscuro
+     translúcido, cuerpo var(--nx-sheet) con su asa y radio 22; título .nx-sheet-title (17/700), nota .nx-sheet-note (13, gris) y cada
+     opción una fila .mm-item (15 px, relleno 13/14, radio 14, icono de trazo de 20; peligro .nx-danger = #ff6b6b; «Cancelar» al final con
+     su ✕). La usan las opciones del chat, silenciar, bloquear, el menú de un mensaje, el ⋮ de un grupo, el fondo del chat y de las
+     pantallas, agregar a la llamada, responder una llamada con mensaje y las novedades de una versión.
+   · AVISO centrado (una pregunta): .nx-ask > .nx-ask-card (no «dialog» ni «toast»: critical.css esconde toda clase que contenga
+     «log», «toast», «debug» o «rem-»): el mismo fondo y borde de la hoja, radio var(--nx-radius); título
+     .nx-ask-title (17/700, el de la hoja), texto .nx-ask-text (14, gris; sin título, en blanco a 15) y los botones en
+     .nx-ask-actions, parejos («Cancelar» / «Ahora no» a la izquierda, la acción a la derecha).
+   · BOTONES de texto: .nx-btn (secundario) y .nx-btn-primary (la acción), los de Ajustes: 43 px, radio 14, letra 14/600.
+   Las PANTALLAS (Ajustes del grupo y lo que sale de ahí) son .nx-panel con la cabecera de Contactos (.nx-page-head): filas .mm-item.nx-row,
+   personas en .nx-person-row, campos .nx-input, títulos de sección .nx-sec-label, notas .nx-note y botoncitos .nx-chip. ====== */
+.nx-chat-sheet-body.nx-sheet-tall { display: flex; flex-direction: column; max-height: 80vh; }
+.nx-sheet-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.nx-sheet-list { display: flex; flex-direction: column; gap: 2px; }
+.nx-sheet-text { padding: 2px 14px 10px; font-size: 14px; line-height: 1.5; color: var(--nx-text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.nx-chat-sheet-body > .nx-btn { width: calc(100% - 8px); margin: 8px 4px 0; flex-shrink: 0; }
+/* Responder una llamada con mensaje: el cuadro de texto y «Enviar» en una fila */
+.nx-qr-box { gap: 8px; align-items: flex-end; padding: 4px 4px 8px; }
+.nx-qr-box .nx-input { flex: 1; resize: none; }
+.nx-qr-box .nx-btn { width: auto; flex-shrink: 0; margin: 0; padding: 0 18px; }
+
+.nx-ask { position: fixed; inset: 0; z-index: 9500; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box;
+  background: rgba(3, 4, 12, 0.72); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.nx-ask-card { width: 100%; max-width: 360px; box-sizing: border-box; padding: 20px 18px 18px; color: var(--nx-text); font-size: 14px;
+  background: var(--nx-sheet); border: 1px solid var(--nx-line); border-radius: var(--nx-radius); box-shadow: 0 14px 48px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); animation: nxPop 0.18s ease-out; }
+@keyframes nxPop { from { transform: scale(0.96); opacity: 0.4; } to { transform: none; opacity: 1; } }
+.nx-ask-title { margin: 0 0 8px; font-size: 17px; font-weight: 700; line-height: 1.3; color: #fff; }
+.nx-ask-text { margin: 0 0 16px; font-size: 14px; line-height: 1.45; color: var(--nx-muted); }
+.nx-ask-card > .nx-ask-text:first-child { font-size: 15px; color: var(--nx-text); }
+.nx-ask-actions { display: flex; gap: 10px; }
+.nx-ask-actions .nx-btn { flex: 1 1 0; min-width: 0; margin: 0; padding-left: 8px; padding-right: 8px; }
+.nx-ask-card > .nx-btn:last-child { margin-bottom: 0; }
+.nx-float-card { width: auto; max-width: none; padding: 14px; } /* la tarjeta que flota sobre Contactos (mensajes que llegaron tarde) */
+@media (prefers-reduced-motion: reduce) { .nx-ask-card { animation: none; } }
+
+.nx-panel { background: var(--nx-bg); color: var(--nx-text); display: flex; flex-direction: column; box-sizing: border-box; padding: 0 16px calc(16px + env(safe-area-inset-bottom, 0px)); }
+.nx-panel-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.mm-item.nx-row { display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; margin: 0; text-align: left; background: none; border: none; color: #fff; font-family: inherit; cursor: pointer; }
+.mm-item.nx-row.nx-danger { color: #ff6b6b; }
+.mm-item.nx-row .mm-ico { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; }
+.mm-item.nx-row .nx-sheet-label { min-width: 0; }
+.nx-input { width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 10px 14px; border-radius: 14px; background: var(--nx-surface); border: 1px solid var(--nx-line);
+  color: var(--nx-text); font: inherit; font-size: 15px; outline: none; -webkit-appearance: none; appearance: none; }
+.nx-input:focus { border-color: rgba(255, 255, 255, 0.22); }
+.nx-input::placeholder { color: var(--nx-muted); }
+.nx-input:disabled { opacity: 0.7; }
+.nx-sec-label { margin: 16px 4px 6px; font-size: 12px; font-weight: 600; color: var(--nx-muted); }
+.nx-note { margin: 6px 4px 10px; font-size: 13px; line-height: 1.4; color: var(--nx-muted); }
+.nx-check-row { display: flex; align-items: center; gap: 12px; padding: 10px 4px; font-size: 15px; line-height: 1.35; }
+.nx-check-row input[type="checkbox"] { accent-color: #00c8ff; width: 18px; height: 18px; flex-shrink: 0; margin: 0; }
+.nx-role-tag { flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--nx-cyan); }
+.nx-person-row > .nx-pick-name { flex: 1; }
+.nx-chip { flex-shrink: 0; min-height: 34px; padding: 0 12px; box-sizing: border-box; border-radius: 14px; background: var(--nx-surface-2); border: 1px solid var(--nx-line);
+  color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.nx-chip-on { background: rgba(0, 200, 255, 0.15); }
+.nx-chip-danger { color: #ff6b6b; border-color: rgba(255, 107, 107, 0.45); }
+.nx-chip-accent { color: var(--nx-cyan); border-color: rgba(0, 200, 255, 0.45); }
+.nx-opt { display: block; width: 100%; box-sizing: border-box; margin: 0 0 8px; padding: 12px 14px; text-align: left; border-radius: 14px; background: var(--nx-surface);
+  border: 1px solid var(--nx-line); color: #fff; font: inherit; cursor: pointer; }
+.nx-opt-t { font-size: 15px; font-weight: 600; }
+.nx-opt-d { margin-top: 2px; font-size: 12.5px; line-height: 1.3; color: var(--nx-muted); }
+.nx-opt-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
+.nx-opt-row-t { flex: 1 1 140px; font-size: 15px; }
+.gset-top { display: flex; align-items: center; gap: 12px; margin: 4px 0 10px; }
+.gset-top .nx-input { flex: 1; width: auto; }
+.gset-q { margin-bottom: 8px; }
+.gset-save { flex-shrink: 0; margin: 10px 0 0; }
+/* Las ventanas de Estados («Mi estado», «Mis estados»): la misma tarjeta, en columna */
+.nx-ask-card.nx-ask-flex { display: flex; flex-direction: column; gap: 12px; }
+.nx-ask-flex > .nx-ask-title, .nx-ask-flex .nx-btn { margin: 0; }
+.nx-ask-card .nx-btn:disabled { opacity: 0.45; box-shadow: none; cursor: default; }
+/* El menú ⋮ de un contacto (desplegable junto al botón): las mismas filas que las hojas (15 px, rojo #ff6b6b, velo al tocar) */
+.ble-contact-menu { padding: 4px !important; }
+.ble-contact-menu .ble-menu-item { font-size: 15px; padding: 13px 14px; border-radius: 10px; }
+.ble-contact-menu .ble-menu-item .mm-ico svg { width: 20px; height: 20px; }
+.ble-contact-menu .ble-menu-delete { color: #ff6b6b; }
+.ble-contact-menu .ble-menu-item.is-pressed { background: var(--nx-surface-2); }
+.nx-panel .nexo-pick-row input[type="checkbox"]:disabled { opacity: 0.5; cursor: default; }
