@@ -49,6 +49,7 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
   7. **Plan aprobado 27-11 (dueño): enrutado por contacto con causa** (dónde está el otro, ✓✓ medido por camino, despierto/dormido, dónde
      escucha), reenvíos con UN calendario y cupo por relé, quitar «2 relés con datos», Fénix parado con la app a la vista. Diag. S24 23:33
      (3161) lo confirma: 2 textos pendientes ×8 ventanas + 6 de puente ×5 → damus «banned». Relé de NEXO: organizar el domingo 29-11.
+     **Diseño completo: `docs/ENRUTADO_27-11.md` (leerlo entero, es corto). SIGUIENTE SESIÓN: empezar por ahí (reenvíos y Fénix primero).**
   5. **Zombi de la tablet (nx1e29ab2f):** enlace BT medio muerto que se rehace y cae cada ~30 s >7 min (área 3). Sin pérdida de mensajes.
 - **SIGUIENTE SESIÓN (27-11 ~21:50 México, cerrada por contexto al 25 %):** 1) revisar el CI de la **APK 3161** (commit e810a05 en
   NEXOCHAT, subido 20:53, ~22:20) y, si pasó, NOVEDADES al historial como 3161 (si falló: qué prueba). 2) Empezar **`docs/PLAN_CAPACIDAD_27-11.md`**
