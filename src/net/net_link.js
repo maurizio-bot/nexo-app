@@ -529,6 +529,7 @@ export class NetLink {
       console.log('[NET] reintento a ' + nx + ': republico el mismo evento (' + String(rep.ev.id || '').slice(0, 8) + ', vez ' + (rep.veces + 1) + ')');
       var pubR = this._publishOwn(rep.ev, rep.ttl === TTL_MSG ? null : this._ownOnlyFor(nx), nx);
       var nidR = this._newMsgId(content), selfR = this;
+      pubR.then(function() { selfR._repub.guardado(nx, content, rdia); }, function() {});
       if (nidR) pubR.then(function() { selfR._wake(nx, selfR._isCallOffer(content)); }, function() {});
       return pubR;
     }
@@ -572,6 +573,7 @@ export class NetLink {
     // 3151: lo pesado (parte de llamada, trozo de un archivo en vivo) solo al relé propio si los dos leemos de él (net_own.js)
     if (repOk) this._repub.guardar(nx, content, rdia, ev, ttl, Date.now());
     var pub = this._publishOwn(ev, (opts && opts.hello) || ttl === TTL_MSG ? null : this._ownOnlyFor(nx), (opts && opts.hello) ? null : nx); // fase 1: el saludo va a todos (aún no sé dónde lee); lo demás, a los suyos
+    if (repOk) { var selfG = this; pub.then(function() { selfG._repub.guardado(nx, content, rdia); }, function() {}); } // 3172: guardado → el reintento va nuevo
     // FCM «despertador» (#87, Fase 2): salió por el buzón de los relés (si fuera por Tor directo ya habría vuelto
     // arriba). M1 (auditoría 28-10): pedir el «toque» SOLO por un mensaje nuevo de verdad (nid: texto nuevo o primer
     // trozo de un archivo) — NUNCA por cada trozo/ack/control; un archivo grande serían miles de toques = cuota de FCM

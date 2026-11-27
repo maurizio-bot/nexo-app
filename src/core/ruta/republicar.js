@@ -25,6 +25,11 @@ Republicar.prototype.clave = function(nx, paquete, dia) { return String(nx) + '|
 Republicar.prototype.buscar = function(nx, paquete, dia, ahora) {
   var k = this.clave(nx, paquete, dia), e = this.m.get(k);
   if (!e) return null;
+  // 3172 (CI 3171: bigresume, netsilence y netsmall fallaron): un relé NO reenvía a quien escucha un evento que ya tenía («duplicate»), y el
+  // que estaba callado o dormido (o volvió con otra suscripción) nunca lo recibe en vivo: el archivo quedaba en sondeo sin fin. El mismo
+  // evento solo se republica si NINGÚN relé lo guardó la vez anterior (se cortó, «rate-limited»…); si alguno lo guardó y el otro aún
+  // no confirma, va uno nuevo (como antes de la fase 1).
+  if (e.guardado) { this.m.delete(k); return null; }
   var exp = 0;
   try { (e.ev.tags || []).forEach(function(t) { if (t && t[0] === 'expiration') exp = Number(t[1]) || 0; }); } catch (x) {}
   if (ahora - e.at > REPUB.VENTANA_MS || (exp && exp * 1000 - ahora < REPUB.MARGEN_CADUCA_S * 1000)) { this.m.delete(k); return null; }
@@ -37,6 +42,8 @@ Republicar.prototype.guardar = function(nx, paquete, dia, ev, ttl, ahora) {
   this.m.set(k, { ev: ev, ttl: ttl, at: ahora, veces: 0 });
   while (this.m.size > REPUB.MAX) this.m.delete(this.m.keys().next().value);
 };
+// Algún relé guardó ese evento (el envío se resolvió): ya no se republica igual
+Republicar.prototype.guardado = function(nx, paquete, dia) { var e = this.m.get(this.clave(nx, paquete, dia)); if (e) e.guardado = true; };
 // Se olvida (el contacto cambió de clave o de relés: el evento viejo ya no sirve)
 Republicar.prototype.olvidar = function(nx) {
   var p = String(nx) + '|', self = this;
