@@ -21,7 +21,15 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
-- **28-11 madrugada (Opus): ARREGLOS 1–6 HECHOS, probados y SUBIDOS a NEXOCHAT (APK 3162 nueva; revisar su CI ~85 min).** Cada uno con prueba:
+- **28-11 ~01:20 México (Opus): SUBIDA UNA APK CON TODO lo pedido («sube todo» menos lo de Fable): arreglos 1–6 + guía de bienvenida al día
+  (10 diapositivas, 5 idiomas) + revisión visual severa a 360 px (archivos con nombre largo, contraste de hora/✓, toques ≥ 44 px, ⋮ que no se
+  cerraba) + del plan §6: quién ve mis estados (`estadopriv.js`), mensajes temporales (`chat_disappear.js`, `chatdisappear.js`), encuestas
+  (`poll.js`, `polltest.js`) + plan §0 parcial: deslizar abajo en el chat ACTUALIZA, ya no cierra (`chatpull.js`). REVISAR SU CI.**
+  **Decisiones visuales para el dueño (no tocadas):** ✓✓ celeste poco contraste; nombre de grupo largo con 3 botones se corta; casillas a la
+  izquierda vs. derecha en Seguridad (¿interruptores?); hora 12 h vs 24 h; Estados con fondo negro puro y sin título; píldora de llamada en 2
+  líneas; insignia «1» del + blanca sobre naranja. **Queda del plan (para el límite fresco):** §0 sincronía completa, §1–5, §6 notas de vídeo,
+  ubicación en vivo y quitar X/atrás restantes, §7 traducción; juntar textos en un sobre y avance nativo de Wi-Fi Direct/L2 (con el enrutado).
+- **28-11 madrugada (Opus): ARREGLOS 1–6 HECHOS y probados.** Cada uno con prueba:
   1 reenvíos: un trozo de texto que un relé guardó no se republica en 30 min; un calendario (toque, 15→120 s), ⏳ a 10 min (`chat_stream`
   `_netWindowStored`; `reenvionet.js`). 2 puente: 1 envío por internet / 1 reintento por BT y luego su calendario (`ble_relay`, `ble_ack`
   opts; `puentereint.js`). 3 Fénix en vuelo cede al volver la app (`_bgShouldYieldNet`; `fenixfg.js`). 4 cupo: 90 sobres pesados/min

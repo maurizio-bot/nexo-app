@@ -12,11 +12,13 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
-- Puedes responder a un mensaje con una nota de voz, foto o archivo.
-- En un grupo, mantén presionado el fondo para cambiarlo o compartirlo.
-- Los mensajes por internet llegan aunque tus servidores estén saturados, y NEXO ya no los manda repetidos.
-- Los archivos que avanzan despacio ya no se cortan, y si se cortan siguen desde donde iban.
-- La copia de seguridad espera a que salgas de la app.
+- Responde con nota de voz, foto o archivo.
+- Nuevo: encuestas, mensajes temporales y elegir quién ve tus estados.
+- En un grupo, mantén presionado el fondo para cambiarlo.
+- Desliza hacia abajo en un chat para actualizarlo.
+- Los mensajes por internet llegan aunque los servidores estén saturados, sin repetirse.
+- Los archivos lentos ya no se cortan y siguen donde iban.
+- Guía de bienvenida al día y pantallas más cómodas.
 </es-419>
 <!-- /APK -->
 
